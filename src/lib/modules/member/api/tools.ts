@@ -48,6 +48,8 @@ const ASSISTANT_READ_SCOPES = [
   "member.point.read",
   "member.loyalty.read",
   "member.promo.read",
+  // M3.10 — ชุดสาม: ผู้ช่วยต้องอ่านรีวิว (สรุป/สถิติ/รายการ) ได้ ส่วนการตอบรีวิวยังเป็นข้อเสนอให้คนกดเหมือนเดิม
+  "member.review.read",
 ] as const;
 
 function assistantActor(tenantId: string, systemId: string): ApiActor {
@@ -258,10 +260,31 @@ export function memberToolScope(toolName: string): string | null {
   return memberToolOps().find((o) => o.tool?.name === toolName)?.action ?? null;
 }
 
+/**
+ * tool รุ่นแรกของสกิล `members` ที่เขียนมือไว้ใน `ai/tools.ts` (ก่อนมีทะเบียน op) — **ไม่มี scope ของตัวเอง**
+ * 🔴 M3.10: คีย์ที่ถือ scope ของระบบสมาชิกไม่เห็น/เรียก 8 ตัวนี้ผ่าน `/api/v1/ai/*` — ทุกตัวมีคู่ในทะเบียนที่ผูก scope แล้ว
+ *    (`customer_search` → `member_search` · `point_adjust` → `member_points_credit` · …) ถ้าปล่อยไว้ คีย์อ่านอย่างเดียว
+ *    ก็ยื่นข้อเสนอ "ปรับแต้ม" ได้ และ manifest จะโฆษณาเครื่องมือที่ไม่ผ่านด่าน scope (ข้อสอบ M3.10-S2.1 นับเท่าทะเบียน)
+ *    ผู้ช่วยในแอป (ไม่ใช่คีย์) ยังใช้ครบเหมือนเดิม · คีย์รุ่นเก่าที่ไม่มี scope เลยก็ยังเรียกได้เหมือนเดิม
+ */
+export const LEGACY_MEMBER_TOOLS: ReadonlySet<string> = new Set([
+  "member_count",
+  "member_create",
+  "customer_search",
+  "customer_points",
+  "point_adjust",
+  "reward_redeem",
+  "reward_list_redemptions",
+  "coupon_create",
+]);
+
 /** คีย์ที่มี scope ชุดนี้ เรียก tool ของระบบสมาชิกตัวนี้ได้ไหม (tool นอกสกิลนี้ = ไม่เกี่ยว คืน true) */
 export function memberToolAllowedForScopes(toolName: string, scopes: string[]): boolean {
   const action = memberToolScope(toolName);
-  if (action === null) return true;
+  if (action === null) {
+    if (LEGACY_MEMBER_TOOLS.has(toolName) && scopes.some((s) => s.startsWith("member."))) return false;
+    return true;
+  }
   return memberScopesCan(scopes, action);
 }
 
@@ -367,6 +390,32 @@ async function summarize(prepared: Prepared, tenantId: string, systemId: string)
   if (typeof body.satang === "number") parts.push(`${(body.satang / 100).toLocaleString("th-TH")} บาท`);
   if (typeof body.count === "number") parts.push(`${body.count} ตรา`);
   if (Array.isArray(body.customerIds)) parts.push(`สมาชิก ${body.customerIds.length} คน`);
+  // M3.10 — ชุดสาม: แคมเปญ/รีวิว/แจ้งเตือน ต้องบอกช่องทางและข้อความที่จะออกไปให้เห็นก่อนกดยืนยัน
+  if (Array.isArray(body.channels) && body.channels.length > 0) parts.push(`ช่องทาง ${body.channels.join(", ")}`);
+  const content = isRecord(body.content) ? body.content : null;
+  const draft = typeof content?.line === "string" ? content.line : typeof content?.sms === "string" ? content.sms : null;
+  if (draft) parts.push(`ข้อความ "${draft.length > 80 ? `${draft.slice(0, 80)}…` : draft}"`);
+  if (typeof body.body === "string" && body.body.trim()) {
+    const t = body.body.trim();
+    parts.push(`ข้อความ "${t.length > 80 ? `${t.slice(0, 80)}…` : t}"`);
+  }
+  if (typeof params.key === "string" && params.key) parts.push(`เหตุการณ์ ${params.key}`);
+  // M3.10 — การ์ดยืนยันของ "ออก voucher" ต้องบอกต้นทุนสูงสุด (กล่องข้อเสนอภาพ 27 ซ้าย: การกระทำ + ต้นทุนรวม)
+  //   คิดได้เฉพาะ voucher ลดเป็นจำนวนเงิน (FIXED) = มูลค่าต่อใบ × จำนวนคน · แบบเปอร์เซ็นต์ขึ้นกับบิล จึงไม่เดาตัวเลข
+  if (op.id === "vouchers.issue" && Array.isArray(body.customerIds)) {
+    const count = body.customerIds.length;
+    const adhoc = isRecord(body.adhoc) ? body.adhoc : null;
+    const tpl =
+      typeof body.templateId === "string" && body.templateId
+        ? await tenantDb({ tenantId, systemId }).voucherTemplate.findFirst({ where: { id: body.templateId }, select: { name: true, kind: true, value: true } })
+        : null;
+    if (tpl) parts.push(`แบบ "${tpl.name}"`);
+    const kind = tpl?.kind ?? (typeof adhoc?.kind === "string" ? adhoc.kind : null);
+    const value = tpl?.value ?? (typeof adhoc?.value === "number" ? adhoc.value : null);
+    if (kind === "FIXED" && typeof value === "number" && count > 0) {
+      parts.push(`ต้นทุนสูงสุด ฿${((value * count) / 100).toLocaleString("th-TH")}`);
+    }
+  }
   if (typeof body.reason === "string") parts.push(`เหตุผล: ${body.reason}`);
   return parts.join(" · ");
 }

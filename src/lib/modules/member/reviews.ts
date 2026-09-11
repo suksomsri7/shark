@@ -912,6 +912,30 @@ export async function reviewsForMember(ctx: MemberCtx, actor: MemberActor, custo
   return toRows(ctx.tenantId, rows);
 }
 
+/**
+ * รีวิว 1 ใบ (M3.10 · REST `GET /reviews/{id}`) — กติกาการมองเห็นเดียวกับกล่องรีวิว
+ * (ไม่รวมใบที่ลูกค้ายังไม่ส่ง · STAFF เห็นเฉพาะสาขาตน) · มองไม่เห็น = ไม่พบ (404-not-403)
+ */
+export async function getReview(ctx: MemberCtx, actor: MemberActor, reviewId: string): Promise<ReviewRow> {
+  requireRead(actor);
+  const scope = unitScopeWhere(actor);
+  const row = await prisma.memberReview.findFirst({
+    where: { id: String(reviewId ?? ""), tenantId: ctx.tenantId, systemId: ctx.systemId, status: { not: "REQUESTED" }, ...(scope ? { AND: [scope] } : {}) },
+    include: { customer: { select: CUSTOMER_SELECT } },
+  });
+  if (!row) throw new MemberNotFoundError("ไม่พบรีวิวนี้ในระบบสมาชิกที่เปิดอยู่");
+  return (await toRows(ctx.tenantId, [row]))[0]!;
+}
+
+/**
+ * ลิงก์รีวิวนี้เป็นของใคร (M3.10 · REST `POST /me/reviews`) — ใบที่ยังรอส่งเท่านั้น · ไม่มี = null
+ * 🔴 เลนลูกค้าต้องเทียบเจ้าของลิงก์กับ session ก่อนส่ง (ลิงก์หลุดไปถึงสมาชิกคนอื่นต้องส่งแทนไม่ได้)
+ */
+export async function reviewTokenOwner(token: string): Promise<{ tenantId: string; systemId: string; customerId: string } | null> {
+  const row = await openRowOf(token);
+  return row ? { tenantId: row.tenantId, systemId: row.systemId, customerId: row.customerId } : null;
+}
+
 /** กล่อง "รีวิวร้าน" (ภาพ 08 ขวา) — คะแนนรวมทั้งร้าน (ไม่ซ่อน) + 2 รีวิวล่าสุด */
 export async function shopSummaryFor360(ctx: MemberCtx): Promise<ShopReviewSummary & { recent: ReviewRow[] }> {
   const where: Prisma.MemberReviewWhereInput = { tenantId: ctx.tenantId, systemId: ctx.systemId, status: { in: VISIBLE }, rating: { gte: 1 } };

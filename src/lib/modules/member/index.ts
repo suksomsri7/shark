@@ -519,3 +519,9 @@ export {
   setReportSchedule,
   runScheduledReports,
 } from "./reports";
+
+// ── REST ชุดสาม (M3.10) — ช่องเสียบแคมเปญของ REST ระบบสมาชิก ──
+// composition root `src/lib/member-api-ports.ts` เสียบตัวจริงของ marketing เข้ามาที่นี่
+// (โมดูลสมาชิกไม่ import marketing — F2 อนุญาตทิศเดียว marketing→member)
+export { registerMemberCampaignPort } from "./api/campaign-port";
+export type { CampaignPortCtx, CampaignPortInput, CampaignTestInput, MemberCampaignPort } from "./api/campaign-port";

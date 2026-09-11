@@ -3,9 +3,11 @@
 // 🔴 ไม่มีรายชื่อ endpoint ของตัวเอง — อ่านจาก `MEMBER_OPS` ล้วน ๆ (ทะเบียนเดียว หลายทางออก)
 //    สิ่งที่อยู่ที่นี่คือ "คำนำของระบบสมาชิก" เท่านั้น: ข้อมูลอ่อนไหว · ช่องทาง · ฟิลด์กำหนดเอง · ฮุค
 import { buildOpenApi as coreBuildOpenApi, type ApiDocInfo, type OpenApiDocument } from "@/lib/api/openapi";
-import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 import type { ApiOp } from "@/lib/api/op";
-import { MEMBER_RATE_LIMITS } from "./config";
+import { MEMBER_RATE_LIMITS } from "./rate";
+import { memberAuthOf } from "./op";
+import { MEMBER_OPS } from "./registry";
+import { memberWebhookEvents } from "./webhook-events";
 
 export { jsonSchemaOf } from "@/lib/api/openapi";
 export type { ApiDocInfo, JsonSchema, OpenApiDocument } from "@/lib/api/openapi";
@@ -14,28 +16,11 @@ const SERVER_URL = "https://shark.in.th/api/v1/member";
 /** เวอร์ชันของ "สัญญา" ไม่ใช่ของ build */
 const API_VERSION = "1.0.0";
 
-/**
- * คำนำหน้าของ event ที่ "ระบบสมาชิก" เป็นเจ้าของ
- * 🔴 M2.10: ไม่ใช่แค่ `member.*` — ความภักดีทั้งหมด (แต้ม · ตราสะสม · ของรางวัล · voucher · บัตรกำนัล)
- *    เกิดในโมดูลของตัวเองแต่พูดถึง "สมาชิกคนหนึ่ง" เสมอ ⇒ ร้านที่ต่อฮุคของระบบสมาชิกต้องเห็นครบ
- *    (ถ้ากรองแค่ `member.` คู่มือจะบอกว่าไม่มี `point.earned` ให้สมัคร ทั้งที่หน้าตั้งค่าฮุคมีช่องติ๊กอยู่)
- */
-const MEMBER_EVENT_PREFIXES = ["member.", "point.", "stamp.", "reward.", "voucher.", "giftcard."] as const;
-
 // รายชื่อ event ที่ร้านสมัครฮุคได้ ดึงจากทะเบียนเดียวกับหน้าตั้งค่า (ห้ามพิมพ์มือ = ตกหล่นแน่)
+// 🔴 M3.10: ย้ายไปไฟล์ของตัวเอง (`webhook-events.ts`) — op `webhooks.*` ในทะเบียนต้องใช้ และไฟล์นี้อ่านทะเบียน
+//    (อยู่ไฟล์เดียวกัน = วงกลม registry → ops/webhooks → openapi → registry) · re-export ไว้ให้ผู้เรียกเดิม
+export { memberWebhookEvents, MEMBER_EVENT_PREFIXES } from "./webhook-events";
 const MEMBER_WEBHOOK_EVENTS = memberWebhookEvents().map((e) => `\`${e}\``);
-
-/** event ของระบบสมาชิกในทะเบียนฮุค — ตัดตัวซ้ำ (บางตัวมาทาง `AUTOMATION_EVENTS` ที่ spread ไว้) */
-export function memberWebhookEvents(): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const e of WEBHOOK_EVENTS) {
-    if (!MEMBER_EVENT_PREFIXES.some((p) => e.value.startsWith(p)) || seen.has(e.value)) continue;
-    seen.add(e.value);
-    out.push(e.value);
-  }
-  return out;
-}
 
 const INFO_DESCRIPTION = [
   "REST API for the SHARK membership module. One API key works inside one member system (AppSystem of type MEMBER) and sees every member of that system.",
@@ -57,6 +42,8 @@ const INFO_DESCRIPTION = [
   "14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.",
   "15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.",
   `16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: ${MEMBER_WEBHOOK_EVENTS.join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.`,
+  "17. Operations under `/join/{tenantSlug}` are the public signup lane used by the shop's signup page and app: no API key, no customer session, rate limited per network, `Idempotency-Key` optional. The flow is form -> start (one time code) -> verify -> complete; verify and complete hand back a customer session `cs_...` that works on `/me` right away. The phone or email of a new member always comes from the verified code, never from the body.",
+  "18. Every answer uses the same envelope, including creations: HTTP 200 and the created record in `data` (there is no 201).",
 ].join("\n");
 
 /** ส่วนหัวเอกสารของ API ระบบสมาชิก */
@@ -70,7 +57,50 @@ export const MEMBER_DOC_INFO: ApiDocInfo = {
     "API key created in the member settings (Members > Settings > API). Send it as `Authorization: Bearer <key>`.",
 };
 
-/** ทะเบียน op ของระบบสมาชิก → เอกสาร OpenAPI 3.1 (บริสุทธิ์ · เรียกซ้ำได้ผลเท่ากันทุกไบต์) */
-export function buildOpenApi(ops: readonly ApiOp[]): OpenApiDocument {
-  return coreBuildOpenApi(ops, MEMBER_DOC_INFO);
+/** ตัวเลือกของ `buildOpenApi` — ไม่ส่ง = ทะเบียนเต็ม (`MEMBER_OPS`) กับเซิร์ฟเวอร์จริง */
+export type MemberOpenApiOptions = {
+  /** ทะเบียนที่จะเขียนเป็นเอกสาร (ข้อสอบ/คู่มือส่งชุดย่อยได้) */
+  ops?: readonly ApiOp[];
+  /** โดเมนของเซิร์ฟเวอร์ เช่น `https://shark.in.th` — path `/api/v1/member` ต่อท้ายให้เอง */
+  baseUrl?: string;
+};
+
+const PUBLIC_DESCRIPTION =
+  "Public operation: no API key and no customer session. The shop comes from `tenantSlug` in the path; calls are rate limited per network, and `Idempotency-Key` is optional.";
+const CUSTOMER_DESCRIPTION =
+  "Customer lane: send the customer session as `Authorization: Bearer cs_...` (from the signup or sign-in flow). A shop API key gets 401 `customer_session_required`.";
+
+/**
+ * ทะเบียน op ของระบบสมาชิก → เอกสาร OpenAPI 3.1 (บริสุทธิ์ · เรียกซ้ำได้ผลเท่ากันทุกไบต์)
+ * รับได้ทั้งรายการ op (รูปเดิมของ M1.11) และตัวเลือก `{ ops?, baseUrl? }` (M3.10)
+ *
+ * 🔴 เลนของ op (M3.10) ต่างกันที่ security — แกนกลางเขียน `bearer` ให้ทุกตัว แล้วที่นี่ปรับตามเลน:
+ *    สาธารณะ (`/join/*`) = `security: []` · ลูกค้า (`/me/*`) = scheme `customerToken` · ที่เหลือ = คีย์ของร้าน
+ */
+export function buildOpenApi(input: readonly ApiOp[] | MemberOpenApiOptions = {}): OpenApiDocument {
+  const opts: MemberOpenApiOptions = Array.isArray(input) ? { ops: input as readonly ApiOp[] } : (input as MemberOpenApiOptions);
+  const ops = opts.ops ?? MEMBER_OPS;
+  const info: ApiDocInfo = opts.baseUrl
+    ? { ...MEMBER_DOC_INFO, serverUrl: `${opts.baseUrl.replace(/\/+$/, "")}/api/v1/member` }
+    : MEMBER_DOC_INFO;
+  const doc = coreBuildOpenApi(ops, info);
+  doc.components.securitySchemes.customerToken = {
+    type: "http",
+    scheme: "bearer",
+    description: "Customer session token (`cs_...`) returned by POST /join/{tenantSlug}/verify or /complete, or by the membership card sign-in. Only valid on `/me` operations.",
+  };
+  for (const op of ops) {
+    const operation = doc.paths[op.path]?.[op.method.toLowerCase()];
+    if (!operation) continue;
+    const lane = memberAuthOf(op);
+    if (lane === "public") {
+      operation.security = [];
+      operation["x-shark-scope"] = "public";
+      operation.description = `${op.label}\n\n${PUBLIC_DESCRIPTION}`;
+    } else if (lane === "customer") {
+      operation.security = [{ customerToken: [] }];
+      operation.description = `${operation.description}\n\n${CUSTOMER_DESCRIPTION}`;
+    }
+  }
+  return doc;
 }

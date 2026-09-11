@@ -91,7 +91,7 @@ export const SKILLS: Skill[] = [
   {
     id: "members",
     label: "สมาชิก แต้ม และรางวัล",
-    summary: "Customers and loyalty: find customers, member count, add members, points balance and adjustment, redeem rewards, coupons.",
+    summary: "Customers and loyalty: find and summarise members, what to offer them, points, rewards, vouchers, coupons; customer segments, campaign drafts, journeys, reviews, referrals and membership reports.",
     // 🔴 สองชุดในสกิลเดียว (M1.11):
     //   (ก) 8 ตัวแรก = tool รุ่นแรกที่เขียนมือใน `tools.ts` — **คงชื่อไว้ตลอดไป** (โมเดล/สกิลของลูกค้าอ้างอยู่)
     //   (ข) ที่เหลือ = generate จากทะเบียน op ของ REST ระบบสมาชิก (`MEMBER_OPS`) — เขียนเป็นตัวหนังสือ
@@ -117,6 +117,14 @@ export const SKILLS: Skill[] = [
       // (ข) ชุดสอง M2.10 — เขียน (ผ่านการยืนยันของเจ้าของ)
       "member_points_credit", "member_stamps_add", "member_rewards_redeem",
       "member_vouchers_issue", "member_giftcards_sell",
+      // (ข) ชุดสาม M3.10 — อ่าน (สมาชิกรายคน · กลุ่ม · แคมเปญ · journey · รีวิว · แนะนำเพื่อน · รายงาน)
+      "member_summary", "member_recommend_offer", "member_history",
+      "segment_list", "segment_count", "campaign_list", "campaign_stats",
+      "journey_list", "journey_presets", "journey_stats",
+      "review_list", "review_summary", "review_stats",
+      "referral_leaderboard", "referral_stats", "report_overview", "report_rfm",
+      // (ข) ชุดสาม M3.10 — เขียน (ผ่านการยืนยันของเจ้าของ · แคมเปญเกิดเป็นร่างเท่านั้น)
+      "segment_save", "campaign_draft_message", "review_reply", "notification_test_send",
     ],
     systems: ["MEMBER", "POINT", "REWARD", "COUPON"],
   },

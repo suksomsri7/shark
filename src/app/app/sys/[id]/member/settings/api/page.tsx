@@ -3,8 +3,18 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { bundleLabelForScopes, bundlesCovering } from "@/lib/api-keys/scopes";
 import { hasMemberPerm, toMemberActor } from "@/lib/modules/member/access";
-import { createMemberApiKeyAction, revokeMemberApiKeyAction } from "@/lib/modules/member/api-actions";
+import {
+  createMemberApiKeyAction,
+  createMemberWebhookAction,
+  deleteMemberWebhookAction,
+  revokeMemberApiKeyAction,
+  testMemberWebhookAction,
+  toggleMemberWebhookAction,
+} from "@/lib/modules/member/api-actions";
 import { memberWebhookEvents } from "@/lib/modules/member/api/openapi";
+import { isMemberWebhookEndpoint } from "@/lib/modules/member/api/webhook-events";
+import type { MemberWebhookDeliveryRow, MemberWebhookRow } from "@/lib/modules/member/api-shared";
+import { listDeliveries, listEndpoints } from "@/lib/webhooks/service";
 import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
 import { webhookEventLabel } from "@/lib/webhooks/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,6 +30,7 @@ import { MemberApiSettings, type MemberApiKeyRow, type MemberApiToolRow } from "
 // 🔴 ตาราง tool/จำนวน op มาจากทะเบียน `MEMBER_OPS` ตัวเดียวกับที่ REST ใช้จริง — ห้ามพิมพ์มือ
 
 const dayFmt = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" });
+const timeFmt = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 
 function parseScopes(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
@@ -58,7 +69,13 @@ export default async function MemberApiSettingsPage({ params }: { params: Promis
   });
 
   const withTool = MEMBER_OPS.filter((o) => o.tool);
-  const tools: MemberApiToolRow[] = withTool.slice(0, TOOL_PREVIEW).map((o) => ({
+  // ตัวอย่างในตาราง = ครบทุกชนิดแบบภาพ 27 (อ่าน 4 · เขียน 2 · อันตราย 2) — รายชื่อครบอยู่ในคู่มือ
+  const preview = [
+    ...withTool.filter((o) => o.kind === "read").slice(0, 4),
+    ...withTool.filter((o) => o.kind === "write").slice(0, 2),
+    ...withTool.filter((o) => o.kind === "danger").slice(0, 2),
+  ].slice(0, TOOL_PREVIEW);
+  const tools: MemberApiToolRow[] = preview.map((o) => ({
     name: o.tool!.name,
     method: o.method,
     kind: o.kind,
@@ -66,6 +83,32 @@ export default async function MemberApiSettingsPage({ params }: { params: Promis
     label: o.label,
   }));
   const events = memberWebhookEvents().map((value) => ({ value, label: webhookEventLabel(value) }));
+
+  // M3.10 — ปลายทางของระบบสมาชิก (สมัครเฉพาะเหตุการณ์ของระบบสมาชิก) + การส่งล่าสุดของปลายทางเหล่านั้น
+  const allowed = new Set(memberWebhookEvents());
+  const endpointRows = (await listEndpoints({ tenantId })).filter((e) => isMemberWebhookEndpoint(e.eventsJson, allowed));
+  const endpointIds = new Set(endpointRows.map((e) => e.id));
+  const deliveryRows = endpointRows.length > 0 ? (await listDeliveries({ tenantId }, 100)).filter((d) => endpointIds.has(d.endpointId)) : [];
+  const webhooks: MemberWebhookRow[] = endpointRows.map((e) => {
+    const last = deliveryRows.find((d) => d.endpointId === e.id);
+    return {
+      id: e.id,
+      url: e.url,
+      events: Array.isArray(e.eventsJson) ? e.eventsJson.filter((x): x is string => typeof x === "string") : [],
+      active: e.active,
+      lastLabel: last ? timeFmt.format(last.createdAt) : null,
+      lastStatus: last ? (last.status === "FAILED" ? "FAILED" : "OK") : null,
+    };
+  });
+  const deliveries: MemberWebhookDeliveryRow[] = deliveryRows.slice(0, 30).map((d) => ({
+    id: d.id,
+    endpointId: d.endpointId,
+    eventType: d.eventType,
+    status: d.status === "FAILED" ? "FAILED" : "OK",
+    attempts: d.attempts,
+    lastError: d.lastError,
+    atLabel: timeFmt.format(d.createdAt),
+  }));
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -85,6 +128,12 @@ export default async function MemberApiSettingsPage({ params }: { params: Promis
         events={events}
         createKey={createMemberApiKeyAction}
         revokeKey={revokeMemberApiKeyAction}
+        webhooks={webhooks}
+        deliveries={deliveries}
+        createWebhook={createMemberWebhookAction}
+        toggleWebhook={toggleMemberWebhookAction}
+        deleteWebhook={deleteMemberWebhookAction}
+        testWebhook={testMemberWebhookAction}
       />
     </div>
   );

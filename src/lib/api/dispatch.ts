@@ -209,7 +209,8 @@ export async function dispatch(
       const env = unwrapEnvelope(await op.handler(ctx));
       // WO B3: op ที่ประกาศ `csv` + ผู้เรียกขอ `Accept: text/csv` → ตอบไฟล์ CSV แทน JSON
       // (เฉพาะ data ที่ handler คืน — ไม่ใช่ทั้งซอง page/extra ซึ่งไม่มีความหมายในไฟล์แบน)
-      if (op.csv && wantsCsv(req)) {
+      // M3.10: op ที่ประกาศ `csvAlways` ตอบ CSV เสมอ (path ของมันคือไฟล์ — ลิงก์ดาวน์โหลดตั้งหัว Accept ไม่ได้)
+      if (op.csv && (op.csvAlways === true || wantsCsv(req))) {
         const body = await op.csv(ctx, env.data);
         return csvResponse(body, `${op.id}.csv`, requestId);
       }

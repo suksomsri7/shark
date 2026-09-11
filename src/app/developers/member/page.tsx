@@ -13,6 +13,7 @@ import type { ApiOp, ApiOpKind } from "@/lib/api/op";
 import { API_ERROR_CODES, type ApiErrorCode } from "@/lib/api/respond";
 import { MEMBER_RATE_LIMITS } from "@/lib/modules/member/api/config";
 import { buildOpenApi, memberWebhookEvents } from "@/lib/modules/member/api/openapi";
+import { memberAuthOf } from "@/lib/modules/member/api/op";
 import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
 import { webhookEventLabel } from "@/lib/webhooks/labels";
 
@@ -88,6 +89,18 @@ const DOMAIN_TH: Record<string, string> = {
   vouchers: "voucher",
   coupons: "คูปอง",
   giftcards: "บัตรกำนัล",
+  // ── ชุดสาม: การตลาด · ความสัมพันธ์ · รายงาน · การเชื่อมต่อ (M3.10) ──
+  segments: "กลุ่มลูกค้า",
+  campaigns: "แคมเปญ",
+  journeys: "journey อัตโนมัติ",
+  reviews: "รีวิวลูกค้า",
+  referrals: "แนะนำเพื่อน",
+  notifications: "แจ้งเตือนสมาชิก",
+  reports: "รายงาน",
+  settings: "ตั้งค่ารวม",
+  apikeys: "คีย์ API",
+  webhooks: "Webhook ขาออก",
+  join: "สมัครสมาชิกเอง (ไม่ต้องใช้คีย์)",
   me: "ฝั่งลูกค้าเอง",
 };
 
@@ -107,8 +120,27 @@ const DOMAIN_ORDER = [
   "vouchers",
   "coupons",
   "giftcards",
+  "segments",
+  "campaigns",
+  "journeys",
+  "reviews",
+  "referrals",
+  "notifications",
+  "reports",
+  "settings",
+  "apikeys",
+  "webhooks",
+  "join",
   "me",
 ];
+
+/** ช่อง Scope ของตาราง — เลนสาธารณะ/ลูกค้าไม่มี scope ของคีย์ (M3.10) */
+function scopeText(op: ApiOp): string {
+  const lane = memberAuthOf(op);
+  if (lane === "public") return "ไม่ต้องใช้คีย์ (สาธารณะ)";
+  if (lane === "customer") return "session ลูกค้า (cs_…)";
+  return op.action;
+}
 
 /** กลุ่มของ op — id ที่ไม่มีจุด (`ping`) ถือเป็นกลุ่ม `core` */
 function domainOf(op: ApiOp): string {
@@ -389,6 +421,14 @@ export default function MemberApiDocsPage() {
             token ของตัวเอง (ขึ้นต้น <code>cs_</code>) มาที่ <code>Authorization: Bearer</code> เหมือนกัน
             และเรียกได้เฉพาะ <code>/me/*</code> เท่านั้น — เส้นทางอื่นได้ 403 <code>customer_scope</code>
           </li>
+          <li>
+            <strong>
+              <code>/join/{"{tenantSlug}"}</code> ไม่ต้องใช้คีย์
+            </strong>{" "}
+            — เลนสมัครสมาชิกของหน้าเว็บ/LIFF/แอปลูกค้า: ขอรหัส OTP → ยืนยัน → สมัคร แล้วได้ token{" "}
+            <code>cs_</code> ใช้กับ <code>/me/*</code> ต่อได้ทันที · จำกัดความถี่ต่อเครือข่าย ·{" "}
+            <code>Idempotency-Key</code> ไม่บังคับ · เบอร์/อีเมลของสมาชิกใหม่มาจากรหัสที่ยืนยันแล้วเท่านั้น
+          </li>
         </ul>
       </section>
 
@@ -455,7 +495,7 @@ export default function MemberApiDocsPage() {
                             <td className={`${td} font-mono text-xs`}>
                               {op.method} {op.path}
                             </td>
-                            <td className={`${td} font-mono text-xs`}>{op.action}</td>
+                            <td className={`${td} font-mono text-xs`}>{scopeText(op)}</td>
                             <td className={td}>
                               <div>{op.label}</div>
                               <div className="text-xs text-neutral-500">{op.summary}</div>

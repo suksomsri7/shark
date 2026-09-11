@@ -14,7 +14,14 @@ import { prisma, tenantDb } from "@/lib/core/db";
 
 export type Ctx = { tenantId: string };
 export type WebhookEvent = { tenantId: string; type: string; payload: unknown };
-export type WebhookDeps = { fetchFn?: typeof fetch };
+export type WebhookDeps = {
+  fetchFn?: typeof fetch;
+  /** ชื่อเดียวกับ global (M3.10 · ข้อสอบ/ผู้เรียกที่ส่ง `{ fetch }` มาตรง ๆ) — มี `fetchFn` ด้วย = ใช้ `fetchFn` */
+  fetch?: typeof fetch;
+};
+
+/** ตัวยิงที่ใช้จริง: `fetchFn` → `fetch` ที่ฉีดมา → global fetch */
+const fetchOf = (deps?: WebhookDeps): typeof fetch => deps?.fetchFn ?? deps?.fetch ?? fetch;
 
 const TIMEOUT_MS = 5000;
 const MAX_ATTEMPTS = 5;
@@ -129,7 +136,7 @@ export async function testEndpoint(
   eventType: string,
   deps?: WebhookDeps,
 ): Promise<{ delivered: boolean; error: string | null }> {
-  const fetchFn = deps?.fetchFn ?? fetch;
+  const fetchFn = fetchOf(deps);
   const ep = await tenantDb(ctx).webhookEndpoint.findFirst({ where: { id } });
   if (!ep) throw new Error("ไม่พบปลายทางนี้");
   const payload = { test: true, message: "ทดสอบการส่งจากหน้าตั้งค่า Webhooks" };
@@ -153,7 +160,7 @@ export async function testEndpoint(
 // กระจาย event ไปทุก endpoint ที่ subscribe → บันทึก WebhookDelivery · คืนจำนวนที่สำเร็จ
 // kernel-level: เรียกจาก outbox (ไม่มี session) → prisma ตรง + กรอง tenantId เอง
 export async function dispatchWebhooks(evt: WebhookEvent, deps?: WebhookDeps): Promise<number> {
-  const fetchFn = deps?.fetchFn ?? fetch;
+  const fetchFn = fetchOf(deps);
   const endpoints = await prisma.webhookEndpoint.findMany({
     where: { tenantId: evt.tenantId, active: true },
   });
@@ -187,7 +194,7 @@ export async function dispatchWebhooks(evt: WebhookEvent, deps?: WebhookDeps): P
 // ยิงซ้ำการส่งที่ล้ม (attempts < 5) ทุก tenant · สำเร็จ→OK · ล้ม→attempts+1 · คืนจำนวนที่กู้สำเร็จ
 // kernel-level: เรียกจาก cron (ไม่มี session) → prisma ตรงข้ามทุกร้าน
 export async function retryFailedWebhooks(deps?: WebhookDeps): Promise<number> {
-  const fetchFn = deps?.fetchFn ?? fetch;
+  const fetchFn = fetchOf(deps);
   const failed = await prisma.webhookDelivery.findMany({
     where: { status: "FAILED", attempts: { lt: MAX_ATTEMPTS } },
     include: { endpoint: true },

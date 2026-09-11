@@ -85,6 +85,21 @@ export async function withIdempotency(
   run: () => Promise<RunResult>,
 ): Promise<Response> {
   const idemKey = req.headers.get("idempotency-key")?.trim();
+  // M3.10 — op ที่ประกาศ `idempotency: "optional"` (เลนสาธารณะ) ไม่ส่ง header = ทำงานเลย ไม่จอง/ไม่เก็บผล
+  // (ชั้นบริการของ op พวกนี้กันซ้ำเองอยู่แล้ว — ดูเหตุผลที่ `op.ts`) · ส่ง header มา = กันซ้ำตามปกติ
+  if (!idemKey && op.idempotency === "optional") {
+    let result: RunResult;
+    try {
+      result = await run();
+    } catch (e) {
+      const m = mapError(e);
+      result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
+    }
+    return new Response(JSON.stringify(result.body), {
+      status: result.status,
+      headers: { "content-type": "application/json; charset=utf-8", "X-Request-Id": requestId, ...extraHeaders },
+    });
+  }
   if (!idemKey) {
     return fail(
       400,

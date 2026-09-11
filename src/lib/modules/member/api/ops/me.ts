@@ -26,6 +26,12 @@ import { defineMemberOp, type ApiOp } from "../op";
 import { jsonSafe } from "../serialize";
 import { getWallet } from "../../wallet";
 import * as me from "../../me";
+import { HISTORY_KIND_KEYS, type HistoryKindKey } from "../../history-kinds";
+import { listHistory } from "../../history";
+import { registerPushDevice, removePushDevice, PUSH_PLATFORMS } from "../../push-devices";
+import { codeFor, getProgram, referralCounts } from "../../referrals";
+import { reviewTokenOwner, submitReview } from "../../reviews";
+import { as400 } from "../http-errors";
 
 /** ทุก op ของช่องทางลูกค้า ตอบเหมือนกันเมื่อผู้เรียกไม่ใช่ตัวลูกค้าเอง */
 function requireCustomerSession(): never {
@@ -229,4 +235,145 @@ const meTransfer = defineMemberOp({
   },
 });
 
-export const ME_OPS: ApiOp[] = [meGet, meUpdate, meCard, meWallet, meVouchers, meStamps, meGiftCards, meRedeem, meTransfer];
+// ───────────────────────── M3.10 — ชุดสาม ─────────────────────────
+// รีวิวจากลิงก์ · โค้ดแนะนำเพื่อนของฉัน · ประวัติของฉัน · เครื่องรับแจ้งเตือนในแอป
+
+const TEST_ME3 = "M3.10-S3.11";
+
+const meReviewSubmit = defineMemberOp({
+  id: "me.reviews.submit",
+  method: "POST",
+  path: "/me/reviews",
+  kind: "write",
+  action: "member.customer.update",
+  summary:
+    "The signed-in customer sends the review the shop asked for, using the token from their review link (1-5 stars, optional text and photos). A link belongs to one member and works once; a link of somebody else answers 404. Points for reviewing are added when the shop set them.",
+  label: "ส่งรีวิวของฉัน",
+  input: z
+    .object({
+      token: z.string().trim().min(10).max(200).describe("Token from the review link the shop sent (/m/<shop>/review/<token>)."),
+      rating: z.coerce.number().int().min(1).max(5),
+      body: z.string().max(2000).nullish(),
+      photoFileIds: z.array(z.string().trim().min(1).max(64)).max(5).optional(),
+    })
+    .strict(),
+  test: TEST_ME3,
+  async handler({ actor, input }) {
+    const customerId = selfId(actor);
+    const owner = await reviewTokenOwner(input.token);
+    if (!owner || owner.customerId !== customerId || owner.tenantId !== actor.tenantId) {
+      throw new ApiError(404, "not_found", "ไม่พบลิงก์รีวิวนี้ในบัญชีของคุณ — ลิงก์อาจถูกใช้ไปแล้ว หรือเป็นของสมาชิกคนอื่น", "No open review request with this token belongs to this customer.");
+    }
+    return jsonSafe(
+      await as400(() => submitReview({ token: input.token, rating: input.rating, body: input.body ?? null, photoFileIds: input.photoFileIds })),
+    );
+  },
+});
+
+const meReferral = defineMemberOp({
+  id: "me.referral",
+  method: "GET",
+  path: "/me/referral",
+  kind: "read",
+  action: "member.customer.read",
+  summary:
+    "The signed-in customer's own referral code, share link (/ref/<code>), ready-made share text, how many friends they referred and how many converted, and whether the shop's programme is on.",
+  label: "โค้ดแนะนำเพื่อนของฉัน",
+  test: TEST_ME3,
+  async handler({ actor }) {
+    const customerId = selfId(actor);
+    const ctx = memberCtxOf(actor);
+    const [code, counts, program] = await Promise.all([codeFor(ctx, customerId), referralCounts(actor.tenantId, customerId), getProgram(ctx)]);
+    return jsonSafe({ ...code, referred: counts.referred, converted: counts.converted, programEnabled: program.enabled });
+  },
+});
+
+/** ชนิดประวัติที่ลูกค้าเห็นของตัวเองได้ — แชท/เอกสารภายใน/งานของพนักงาน/บันทึกโปรไฟล์หลังร้าน เป็นเรื่องของร้าน */
+const CUSTOMER_HISTORY_KINDS: readonly HistoryKindKey[] = ["purchase", "booking", "tier", "loyalty", "review"];
+
+const meHistory = defineMemberOp({
+  id: "me.history",
+  method: "GET",
+  path: "/me/history",
+  kind: "read",
+  action: "member.customer.read",
+  summary:
+    "The signed-in customer's own timeline, newest first: purchases, bookings, tier changes, points and rewards, reviews and referrals. Staff-only entries (chat, internal documents, tasks, profile notes) and staff names are left out. Page with `cursor`.",
+  label: "ประวัติของฉัน",
+  input: z
+    .object({
+      kind: z.enum(HISTORY_KIND_KEYS).optional().describe("One of purchase, booking, tier, loyalty, review."),
+      take: z.coerce.number().int().min(1).max(50).optional().describe("Rows, 1-50 (default 20)."),
+      cursor: z.string().trim().max(200).optional(),
+    })
+    .strict(),
+  test: TEST_ME3,
+  async handler({ actor, input }) {
+    const customerId = selfId(actor);
+    const kind = input.kind && CUSTOMER_HISTORY_KINDS.includes(input.kind) ? input.kind : null;
+    if (input.kind && !kind) return jsonSafe({ items: [], nextCursor: null });
+    const res = await listHistory(memberCtxOf(actor), memberActorOf(actor), customerId, {
+      kind: kind ?? "all",
+      take: input.take ?? 20,
+      cursor: input.cursor ?? null,
+    });
+    const items = res.items
+      .filter((h) => CUSTOMER_HISTORY_KINDS.includes(h.kind))
+      .map((h) => ({ id: h.id, at: h.at, kind: h.kind, title: h.title, summary: h.summary, badge: h.badge, unit: h.unit ? { name: h.unit.name } : null }));
+    return jsonSafe({ items, nextCursor: res.nextCursor });
+  },
+});
+
+const mePushRegister = defineMemberOp({
+  id: "me.pushDevices.register",
+  method: "POST",
+  path: "/me/push-devices",
+  kind: "write",
+  action: "member.customer.update",
+  summary:
+    "Register this phone for in-app notifications of the signed-in customer (Expo push token). Calling again with the same token refreshes it; a phone that changes hands moves to the new customer.",
+  label: "ลงทะเบียนเครื่องรับแจ้งเตือน",
+  input: z
+    .object({
+      expoToken: z.string().trim().min(10).max(250).describe("ExponentPushToken[...] from the Expo notifications API."),
+      platform: z.enum(PUSH_PLATFORMS).optional().describe("ios (default), android or web."),
+    })
+    .strict(),
+  test: TEST_ME3,
+  async handler({ actor, input }) {
+    selfId(actor);
+    return jsonSafe(await as400(() => registerPushDevice(memberCtxOf(actor), memberActorOf(actor), { expoToken: input.expoToken, platform: input.platform ?? null })));
+  },
+});
+
+const mePushRemove = defineMemberOp({
+  id: "me.pushDevices.remove",
+  method: "DELETE",
+  path: "/me/push-devices/{id}",
+  kind: "write",
+  action: "member.customer.update",
+  summary: "Stop notifications on one of the signed-in customer's phones (for example on sign out). A device of somebody else answers 404.",
+  label: "เลิกรับแจ้งเตือนบนเครื่องนี้",
+  test: TEST_ME3,
+  async handler({ actor, params }) {
+    selfId(actor);
+    return jsonSafe(await removePushDevice(memberCtxOf(actor), memberActorOf(actor), params.id ?? ""));
+  },
+});
+
+export const ME_OPS: ApiOp[] = [
+  meGet,
+  meUpdate,
+  meCard,
+  meWallet,
+  meVouchers,
+  meStamps,
+  meGiftCards,
+  meRedeem,
+  meTransfer,
+  meReviewSubmit,
+  meReferral,
+  meHistory,
+  mePushRegister,
+  mePushRemove,
+];

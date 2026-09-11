@@ -27,6 +27,7 @@ import { API_ERROR_CODES, type ApiErrorCode } from "@/lib/api/respond";
 import { MEMBER_RATE_LIMITS } from "@/lib/modules/member/api/config";
 import { buildOpenApi, memberWebhookEvents } from "@/lib/modules/member/api/openapi";
 import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
+import { memberAuthOf } from "@/lib/modules/member/api/op";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/MEMBER-API.md");
@@ -183,6 +184,17 @@ const GLOSSARY: [string, string, string][] = [
   ["รออนุมัติ", "waiting for the shop's approval chain", "`{ pending: true, approvalRequestId }`"],
   ["สาขา", "business unit (branch)", "`homeUnitId` · `unitId`"],
   ["สตางค์", "satang (1/100 baht)", "`*Satang`"],
+  ["กลุ่มลูกค้า", "customer segment", "`/segments` · `POST /segments/count`"],
+  ["แคมเปญ (ร่าง)", "campaign (draft until sent)", "`/campaigns` · `POST /campaigns/{id}/send`"],
+  ["กลุ่มเทียบ", "holdout group", "`holdoutPct`"],
+  ["journey อัตโนมัติ", "automated journey", "`/journeys` · `/journeys/presets`"],
+  ["รีวิวลูกค้า", "customer review", "`/reviews`"],
+  ["แนะนำเพื่อน", "referral programme", "`/referrals/program` · `/ref/<code>`"],
+  ["แจ้งเตือนสมาชิก", "member notification template", "`/notifications/templates`"],
+  ["รายงานสมาชิก", "membership report", "`/reports/{tab}`"],
+  ["สมัครสมาชิกเอง", "public signup lane", "`/join/{tenantSlug}/*`"],
+  ["ตั๋วสมัคร", "signup ticket after the one time code", "`joinToken` (`jt_...`)"],
+  ["เซสชันลูกค้า", "customer session", "`token` (`cs_...`) · `/me`"],
 ];
 
 // ── Webhooks ──────────────────────────────────────────────────────────────
@@ -303,6 +315,37 @@ const WEBHOOK_EVENT_DOCS: Record<string, WebhookDoc> = {
     when: "A gift card paid for part or all of a bill.",
     payload: { giftCardId: "cmf1gcd0001", number: "GC-10004521", satang: 12000, saleId: "cmf1sal0002", balanceAfter: 38000 },
   },
+  // ── ชุดสาม (M3.10 เปิดให้สมัครผ่านระบบสมาชิก) — payload ตรงกับ emitOutbox ใน reviews.ts / referrals.ts / marketing/campaigns.ts
+  "campaign.sent": {
+    when: "A campaign finished a sending round. `sent` counts messages delivered in that round; `variants` counts recipients per variant.",
+    payload: { campaignId: "cmf1cmp0001", name: "Birthday September", sent: 118, holdout: 12, variants: { A: 65, B: 65 } },
+  },
+  "review.requested": {
+    when: "A member was asked to review a bill or an appointment. `sent` is false when the link could not go out over LINE (staff can share it).",
+    payload: { customerId: "cmf1cus0001", reviewId: "cmf1rev0001", refType: "PosSale", refId: "cmf1sal0001", sent: true },
+  },
+  "review.received": {
+    when: "A member sent a review. `escalated` is true when the rating was at or below the shop's threshold and a task card was opened.",
+    payload: { customerId: "cmf1cus0001", reviewId: "cmf1rev0001", rating: 5, refType: "PosSale", refId: "cmf1sal0001", escalated: false },
+  },
+  "review.replied": {
+    when: "The shop replied to a review, or edited its reply (`edited: true`).",
+    payload: { customerId: "cmf1cus0001", reviewId: "cmf1rev0001", rating: 2, edited: false },
+  },
+  "referral.joined": {
+    when: "A friend signed up with a member's referral code. `customerId` is the referrer.",
+    payload: { referrerId: "cmf1cus0001", refereeId: "cmf1cus0002", referralId: "cmf1ref0001", customerId: "cmf1cus0001", code: "K7Q2M4XP" },
+  },
+  "referral.converted": {
+    when: "A referral met the programme's condition (signup or first purchase) and both sides were rewarded. `rewards` says what each side got.",
+    payload: {
+      referrerId: "cmf1cus0001",
+      refereeId: "cmf1cus0002",
+      referralId: "cmf1ref0001",
+      customerId: "cmf1cus0001",
+      rewards: { referrer: { kind: "POINTS", points: 300 }, referee: { kind: "VOUCHER", voucherId: "cmf1vch0002", valueSatang: 10000 } },
+    },
+  },
 };
 
 const VERIFY_SAMPLE = [
@@ -419,7 +462,7 @@ function aiToolSection(ops: ApiOp[]): string[] {
     "| --- | --- | --- | --- |",
   ];
   for (const op of [...withTool].sort((a, b) => a.tool!.name.localeCompare(b.tool!.name))) {
-    out.push(`| \`${op.tool!.name}\` | \`${op.id}\` | ${op.kind} | \`${op.action}\` |`);
+    out.push(`| \`${op.tool!.name}\` | \`${op.id}\` | ${op.kind} | ${scopeLabel(op)} |`);
   }
   out.push("");
   return out;
@@ -450,7 +493,7 @@ function aiAgentSection(ops: ApiOp[]): string[] {
     "",
     `\`GET ${AI_BASE_URL}/skills\` lists the skills this shop can use. The member skill is listed only when the shop has an active member system and the key is allowed to call at least one of its tools. A shop without a member system, or a key whose scopes reach none of the tools, gets 404 from \`${AI_BASE_URL}/skills/${AI_SKILL_ID}\` - the same answer as a skill that does not exist, so nothing leaks about what is behind the wall.`,
     "",
-    `\`GET ${AI_BASE_URL}/skills/${AI_SKILL_ID}\` returns the tools in OpenAI function-calling shape, so they can be handed to the model without conversion. ${withTool.length} of them come from the operations in this document (${readTools.length} read, ${writeTools.length} write or danger); the skill also carries a few older loyalty tools that predate this API.`,
+    `\`GET ${AI_BASE_URL}/skills/${AI_SKILL_ID}\` returns the tools in OpenAI function-calling shape, so they can be handed to the model without conversion. ${withTool.length} of them come from the operations in this document (${readTools.length} read, ${writeTools.length} write or danger), and for a key that holds member scopes that is the whole list. The in-app assistant also keeps a few older loyalty tools that predate this API; they have no scope of their own, so a member-scoped key neither sees nor calls them (each has a scoped equivalent here).`,
     "",
     "```text",
     `{ "id": "${AI_SKILL_ID}", "label": "สมาชิก แต้ม และรางวัล", "summary": "...", "tools": [`,
@@ -660,9 +703,17 @@ function queryTable(operation: OpenApiOperation): string[] {
   return lines;
 }
 
+/** สิทธิ์ที่ผู้เรียกต้องมี — เลนสาธารณะ/ลูกค้าไม่มี scope ของคีย์ (M3.10) */
+function scopeLabel(op: ApiOp): string {
+  const lane = memberAuthOf(op);
+  if (lane === "public") return "public (no key)";
+  if (lane === "customer") return "customer session (`cs_...`)";
+  return `\`${op.action}\``;
+}
+
 /** path template → path จริงที่ยิงได้ (ตัวอย่างใช้ `123` แทน id เพื่อไม่ให้ดูเหมือน id ของร้านจริง) */
 function samplePath(op: ApiOp): string {
-  return op.path.replace(/\{[A-Za-z0-9_]+\}/g, "123");
+  return op.path.replace(/\{tenantSlug\}/g, "my-shop").replace(/\{key\}/g, "WELCOME").replace(/\{tab\}/g, "rfm").replace(/\{[A-Za-z0-9_]+\}/g, "123");
 }
 
 function queryString(operation: OpenApiOperation): string {
@@ -672,9 +723,12 @@ function queryString(operation: OpenApiOperation): string {
 }
 
 function curlExample(op: ApiOp, operation: OpenApiOperation): string[] {
+  const lane = memberAuthOf(op);
   const lines = [`curl -sS -X ${op.method} "${BASE_URL}${samplePath(op)}${queryString(operation)}" \\`];
-  lines.push(`  -H "Authorization: Bearer $SHARK_API_KEY" \\`);
-  if (op.kind !== "read") lines.push(`  -H "Idempotency-Key: $(uuidgen)" \\`);
+  // M3.10 — เลนสาธารณะไม่มีหัว Authorization · เลนลูกค้าใช้ session ของลูกค้า ไม่ใช่คีย์ของร้าน
+  if (lane === "key") lines.push(`  -H "Authorization: Bearer $SHARK_API_KEY" \\`);
+  if (lane === "customer") lines.push(`  -H "Authorization: Bearer $CUSTOMER_TOKEN" \\`);
+  if (op.kind !== "read" && op.idempotency !== "optional") lines.push(`  -H "Idempotency-Key: $(uuidgen)" \\`);
   const body = op.method === "GET" ? null : bodySchemaOf(operation);
   if (body && isRecord(body.properties) && Object.keys(body.properties).length > 0) {
     lines.push(`  -H "Content-Type: application/json" \\`);
@@ -725,11 +779,50 @@ export function renderEndpointsReference(ops: ApiOp[] = MEMBER_OPS): string {
     if (group.length === 0) continue;
     out.push(`## ${section.title}`, "", section.blurb, "", "| Operation id | Method + path | Scope | AI tool |", "| --- | --- | --- | --- |");
     for (const op of group) {
-      out.push(`| \`${op.id}\` | \`${op.method} ${op.path}\` | \`${op.action}\` | ${op.tool ? `\`${op.tool.name}\`` : "-"} |`);
+      out.push(`| \`${op.id}\` | \`${op.method} ${op.path}\` | ${scopeLabel(op)} | ${op.tool ? `\`${op.tool.name}\`` : "-"} |`);
     }
     out.push("");
   }
   return out.join("\n");
+}
+
+/**
+ * เลนสาธารณะ "สมัครสมาชิกจากลิงก์ของร้าน" (M3.10) — ทั้งหัวข้อ derive จาก op ที่เลน = public
+ * ⇒ เพิ่ม/ถอดขั้นของการสมัครแล้วคู่มือเปลี่ยนตามเอง (ไม่มีรายชื่อ path ที่พิมพ์มือ)
+ */
+/** ประโยคแรกของ summary (ตารางสรุปขั้นตอนไม่ต้องการคำอธิบายเต็ม) */
+function firstSentence(text: string): string {
+  const m = /^(.+?\.)(\s|$)/.exec(text);
+  return m ? m[1]! : text;
+}
+
+function signupSection(ops: ApiOp[]): string[] {
+  const pub = ops.filter((o) => memberAuthOf(o) === "public");
+  if (pub.length === 0) return [];
+  const order = ["join.form", "join.start", "join.verify", "join.complete"];
+  const rank = (id: string): number => {
+    const i = order.indexOf(id);
+    return i < 0 ? order.length : i;
+  };
+  const sorted = [...pub].sort((a, b) => rank(a.id) - rank(b.id));
+  return [
+    "## Signup lane (no API key)",
+    "",
+    "The shop's signup page (LINE LIFF, the website, the customer app) lets a person become a member on their own. These operations need **no API key and no customer session**; the shop is chosen by `tenantSlug` in the path, calls are rate limited per network, and `Idempotency-Key` is optional (every step already works once only).",
+    "",
+    "| Step | Operation | What it does |",
+    "| --- | --- | --- |",
+    ...sorted.map((o, i) => `| ${i + 1} | \`${o.method} ${o.path}\` | ${firstSentence(o.summary.replace(/^Public, no key\.\s*/, ""))} |`),
+    "",
+    "Rules worth knowing before you build a signup page on top of it:",
+    "",
+    "- `start` answers the same way for a new person and for an existing member, so the page cannot be used to find out who is a member. At most 3 codes per phone or email and 10 per network every 10 minutes.",
+    "- `verify` either signs an existing member straight in (`existing: true` and a customer session `token`, `cs_...`) or hands out a `joinToken` (`jt_...`, 15 minutes, single use). Five wrong codes lock that code; ask for a new one.",
+    "- `complete` takes the phone or email from the verified code, never from the body. It checks the form against the shop's own fields (`required` ones must be filled), the policy version (must be the one currently in force; 0 when the shop has none) and the referral code. Anything wrong answers 400 and **leaves the joinToken usable**, so the person only fixes the field.",
+    "- The new member is recorded with source `LIFF`, consent per channel as sent, attribution to the acquisition link given in `src`, and the shop's welcome points. The returned `token` works on every `/me` operation right away.",
+    "- `lineUserId` in the body is only recorded for staff; linking a LINE account needs a server that verified the LIFF id token.",
+    "",
+  ];
 }
 
 // ── ตัวเรนเดอร์ (บริสุทธิ์) ─────────────────────────────────────────────────
@@ -738,6 +831,8 @@ export function renderDocs(ops: ApiOp[] = MEMBER_OPS): string {
   const out: string[] = [];
   const push = (...lines: string[]) => out.push(...lines);
   const csvOps = ops.filter((o) => o.csv);
+  const csvAlways = csvOps.filter((o) => o.csvAlways === true);
+  const csvOnAsk = csvOps.filter((o) => o.csvAlways !== true);
 
   // 5 บรรทัดแรกต้องเป็นอังกฤษล้วน — ผู้อ่านคนแรกคือ agent/นักพัฒนา
   push(
@@ -806,10 +901,13 @@ export function renderDocs(ops: ApiOp[] = MEMBER_OPS): string {
     "- **Custom fields travel in `fields`.** Both directions, keyed by the field key from `GET /fields/layout`. A profile read groups them into `sections[]` instead, because a section can be hidden as a whole.",
     "- **No `Date` objects and no shop ids leak out.** Timestamps are ISO-8601 UTC strings or `null`; `tenantId` and `systemId` are never echoed back - the key already knows where it is.",
     "- **Personal identifiers come back reduced.** `phoneMasked` on every card sized shape, and the `externalId` of a linked channel account is masked. The full phone is on the profile itself, for the operations that legitimately need it.",
-    `- **CSV.** ${csvOps.length === 0 ? "No operation renders CSV." : `${csvOps.length === 1 ? "One operation renders" : `${csvOps.length} operations render`} CSV when asked with \`Accept: text/csv\`: ${csvOps.map((o) => `\`${o.method} ${o.path}\``).join(", ")}. The file is UTF-8 with a BOM and comes back as an attachment instead of the JSON envelope. \`POST /members/export\` is the other way out: it returns the CSV inline in \`csv\` and is audited.`}`,
+    `- **CSV.** ${csvOnAsk.length === 0 ? "No operation renders CSV on request." : `${csvOnAsk.length === 1 ? "One operation renders" : `${csvOnAsk.length} operations render`} CSV when asked with \`Accept: text/csv\`: ${csvOnAsk.map((o) => `\`${o.method} ${o.path}\``).join(", ")}.`}${csvAlways.length === 0 ? "" : ` ${csvAlways.map((o) => `\`${o.method} ${o.path}\``).join(", ")} ${csvAlways.length === 1 ? "is" : "are"} always a CSV file, no header needed (download links and spreadsheets cannot set one).`} The file is UTF-8 with a BOM and comes back as an attachment instead of the JSON envelope. \`POST /members/export\` is the other way out: it returns the CSV inline in \`csv\` and is audited.`,
     "- **Some writes answer \"waiting\".** When the shop routes an action through its approval chain, the reply is `{ applied: false, pending: true, approvalRequestId }` with HTTP 200. The work has **not** happened; somebody in the shop has to approve it. Poll the member, or subscribe to the matching webhook, instead of assuming success.",
     "",
   );
+
+  // ── Signup lane (M3.10) ─────────────────────────────────────────────
+  push(...signupSection(ops));
 
   // ── Error codes ─────────────────────────────────────────────────────
   push(
@@ -838,7 +936,7 @@ export function renderDocs(ops: ApiOp[] = MEMBER_OPS): string {
       push(`#### \`${op.id}\``, "");
       const toolNote = op.tool ? ` · AI tool: \`${op.tool.name}\`` : "";
       const csvNote = op.csv ? " · `Accept: text/csv` supported" : "";
-      push(`**${op.method} ${op.path}** - ${op.summary} · scope: \`${op.action}\` · ${op.kind}${toolNote}${csvNote}`, "");
+      push(`**${op.method} ${op.path}** - ${op.summary} · scope: ${scopeLabel(op)} · ${op.kind}${toolNote}${csvNote}`, "");
       const pathParams = operation.parameters.filter((p) => p.in === "path");
       if (pathParams.length > 0) {
         push(`Path parameters: ${pathParams.map((p) => `\`${p.name}\``).join(", ")} (required).`, "");

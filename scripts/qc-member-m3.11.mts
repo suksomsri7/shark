@@ -104,13 +104,14 @@ try {
   // ═══ S2 attribution ═══
   const linkAfter = await P.acquisitionLink.findUnique({ where: { id: linkRow.id } });
   const attr1 = c1?.customerId ? await P.memberAttribution.findMany({ where: { customerId: c1.customerId } }) : [];
-  chk("M3.11-S2.1", "src ตรง AcquisitionLink: startJoin นับ hits ≥ 1 · completeJoin → link.signups 1 · MemberAttribution FIRST {source LIFF, linkId} ของคนที่ 1", (linkAfter?.hits ?? 0) >= 1 && linkAfter?.signups === 1 && attr1.some((a: Any) => a.kind === "FIRST" && a.linkId === linkRow.id && a.source === "LIFF"), "attribution", `hits=${linkAfter?.hits} signups=${linkAfter?.signups} attr=${JSON.stringify(attr1.map((a: Any) => [a.kind, a.source, a.linkId === linkRow.id]))}`);
+  // ORACLE-EDIT M3.11-S2.1/S2.2 (ล่วงหน้า · แจ้งโดย builder M3.10): MemberAttribution ใช้คอลัมน์ `touch` (FIRST|LAST · member.prisma:613) ไม่ใช่ `kind`
+  chk("M3.11-S2.1", "src ตรง AcquisitionLink: startJoin นับ hits ≥ 1 · completeJoin → link.signups 1 · MemberAttribution FIRST {source LIFF, linkId} ของคนที่ 1", (linkAfter?.hits ?? 0) >= 1 && linkAfter?.signups === 1 && attr1.some((a: Any) => (a.touch ?? a.kind) === "FIRST" && a.linkId === linkRow.id && a.source === "LIFF"), "attribution", `hits=${linkAfter?.hits} signups=${linkAfter?.signups} attr=${JSON.stringify(attr1.map((a: Any) => [(a.touch ?? a.kind), a.source, a.linkId === linkRow.id]))}`);
   const s6 = await J.startJoin(slug, { phone: phone(), src: "no-such-src" }, { ip: "127.0.0.1" });
   const v6 = await J.verifyJoin(slug, { otpId: s6?.otpId, code: s6?.devOtp });
   const c6 = await J.completeJoin(slug, { joinToken: v6?.joinToken, fields: fill(), consents, policyVersion: form?.policyVersion ?? 1, src: "no-such-src" }, {});
   if (c6?.customerId) made.customers.push(c6.customerId);
   const attr6 = c6?.customerId ? await P.memberAttribution.findMany({ where: { customerId: c6.customerId } }) : [];
-  chk("M3.11-S2.2", "src ไม่รู้จัก → ยังสมัครได้ source LIFF · attribution FIRST linkId null · link.signups ไม่เพิ่ม", !!c6?.customerId && attr6.some((a: Any) => a.kind === "FIRST" && a.source === "LIFF" && !a.linkId) && (await P.acquisitionLink.findUnique({ where: { id: linkRow.id } }))?.signups === 1, "ไม่พัง", `c6=${!!c6?.customerId} attr=${JSON.stringify(attr6.map((a: Any) => [a.kind, a.source, a.linkId]))}`);
+  chk("M3.11-S2.2", "src ไม่รู้จัก → ยังสมัครได้ source LIFF · attribution FIRST linkId null · link.signups ไม่เพิ่ม", !!c6?.customerId && attr6.some((a: Any) => (a.touch ?? a.kind) === "FIRST" && a.source === "LIFF" && !a.linkId) && (await P.acquisitionLink.findUnique({ where: { id: linkRow.id } }))?.signups === 1, "ไม่พัง", `c6=${!!c6?.customerId} attr=${JSON.stringify(attr6.map((a: Any) => [(a.touch ?? a.kind), a.source, a.linkId]))}`);
 
   // ═══ S3 LIFF UI ═══
   const joinSrc = read("src/app/m/[slug]/join/page.tsx") + read("src/app/m/[slug]/join/done/page.tsx") + (existsSync("src/components/member/JoinFlow.tsx") ? read("src/components/member/JoinFlow.tsx") : "") + readdirSync("src/components/member").filter((f) => /join/i.test(f)).map((f) => read(`src/components/member/${f}`)).join("\n");

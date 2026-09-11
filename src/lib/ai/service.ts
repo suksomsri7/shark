@@ -80,7 +80,15 @@ export function aiEnabled(): boolean {
 export async function sendMessage(
   ctx: Ctx,
   input: { conversationId?: string; text: string; imageUrls?: string[] },
-  deps?: { provider?: AiProvider; source?: AiCreditSource },
+  deps?: {
+    provider?: AiProvider;
+    source?: AiCreditSource;
+    /**
+     * (M3.10) แจ้งชื่อเครื่องมือทุกตัวที่ถูกเรียกในเทิร์นนี้ (ไม่รวม load_skill) — หน้าผู้ช่วยของโมดูลใช้แสดง
+     * บรรทัด "เครื่องมือที่ใช้" ใต้คำตอบ · ไม่ส่ง = พฤติกรรมเดิมทุกประการ · callback ล้ม = ข้าม (ไม่พาแชทล้ม)
+     */
+    onToolCall?: (name: string) => void;
+  },
 ): Promise<SendResult> {
   const text = input.text.trim();
   if (!text) return { ok: false, error: "empty" };
@@ -255,6 +263,11 @@ export async function sendMessage(
               : "No matching skill. Pick an id from the AVAILABLE SKILLS list.",
           });
           continue;
+        }
+        try {
+          deps?.onToolCall?.(tc.name);
+        } catch {
+          // ผู้ฟังพัง = ไม่ใช่เรื่องของแชท
         }
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
         const result = await runTool(

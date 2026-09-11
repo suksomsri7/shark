@@ -23,6 +23,17 @@ import { STAMPS_OPS } from "./ops/stamps";
 import { TIERS_OPS } from "./ops/tiers";
 import { VOUCHERS_OPS } from "./ops/vouchers";
 import { WALLET_OPS } from "./ops/wallet";
+import { CAMPAIGNS_OPS } from "./ops/campaigns";
+import { INSIGHTS_OPS } from "./ops/insights";
+import { JOIN_OPS } from "./ops/join";
+import { JOURNEYS_OPS } from "./ops/journeys";
+import { NOTIFICATIONS_OPS } from "./ops/notifications";
+import { REFERRALS_OPS } from "./ops/referrals";
+import { REPORTS_OPS } from "./ops/reports";
+import { REVIEWS_OPS } from "./ops/reviews";
+import { SEGMENTS_OPS } from "./ops/segments";
+import { SETTINGS_OPS } from "./ops/settings";
+import { WEBHOOKS_OPS } from "./ops/webhooks";
 
 export * from "./op";
 
@@ -42,6 +53,19 @@ export const MEMBER_OPS: ApiOp[] = [
   ...VOUCHERS_OPS,
   ...COUPONS_OPS,
   ...GIFTCARDS_OPS,
+  // ── ชุดสาม: การตลาด · ความสัมพันธ์ · รายงาน · การเชื่อมต่อ (M3.10 · §2.13–2.20) ──
+  ...INSIGHTS_OPS,
+  ...SEGMENTS_OPS,
+  ...CAMPAIGNS_OPS,
+  ...JOURNEYS_OPS,
+  ...REVIEWS_OPS,
+  ...REFERRALS_OPS,
+  ...NOTIFICATIONS_OPS,
+  ...REPORTS_OPS,
+  ...SETTINGS_OPS,
+  ...WEBHOOKS_OPS,
+  // เลนสาธารณะ (`/join/{tenantSlug}/*`) — สมัครสมาชิกจากลิงก์ของร้าน ไม่ต้องมีคีย์ (M3.10 · public-lane.ts)
+  ...JOIN_OPS,
   // ช่องทางของลูกค้าเอง (`/me/*`) — session ลูกค้า `cs_…` เท่านั้น (M2.9 ออก token · M2.10 เปิดทาง REST)
   ...ME_OPS,
 ];

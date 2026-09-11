@@ -5,6 +5,7 @@
 import type { ApiModuleConfig } from "@/lib/api/require";
 import { memberApiKeyActor } from "./actor";
 import { memberCustomerAuth } from "./customer-lane";
+import { memberPublicAuth } from "./public-lane";
 import { MEMBER_RATE_LIMITS } from "./rate";
 
 export { MEMBER_RATE_LIMITS } from "./rate";
@@ -18,7 +19,10 @@ export const MEMBER_API_CONFIG: ApiModuleConfig = {
   rateLimits: MEMBER_RATE_LIMITS,
   makeActor: memberApiKeyActor,
   // 🔴 เลนที่สองของโมดูลนี้ (M2.10): `Authorization: Bearer cs_…` = ลูกค้าเข้ามาเอง ไม่ใช่คีย์ของร้าน
-  altAuth: memberCustomerAuth,
+  // 🔴 เลนที่สาม (M3.10): `/join/{tenantSlug}/*` = สมัครสมาชิกจากลิงก์ของร้าน ไม่ต้องมีอะไรเลย
+  //    ตัดสินเลนสาธารณะก่อนเสมอ (op ของเลนนี้ไม่สนหัว Authorization — ถือคีย์มาก็ไม่ได้สิทธิ์เพิ่ม)
+  altAuth: async (req, op, requestId) =>
+    (await memberPublicAuth(req, op, requestId)) ?? (await memberCustomerAuth(req, op, requestId)),
   messages: {
     keyExpiredTh: "คีย์ API หมดอายุแล้ว — กรุณาหมุนคีย์ใหม่ที่หน้าสมาชิก › ตั้งค่า › API",
     keyExpiredEn: "This API key has expired. Rotate it from the member settings page.",

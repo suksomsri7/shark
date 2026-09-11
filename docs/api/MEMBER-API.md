@@ -1,7 +1,7 @@
 # SHARK Member API
 
 Machine readable contract: `/api/v1/member/openapi.json` (OpenAPI 3.1.0, no API key needed).
-Base URL: `https://shark.in.th/api/v1/member` - contract version 1.0.0 - 135 operations.
+Base URL: `https://shark.in.th/api/v1/member` - contract version 1.0.0 - 212 operations.
 Generated from the operation registry by `scripts/gen-member-api-docs.mts`. Do not edit by hand: run the script.
 
 ## Who this is for
@@ -61,7 +61,9 @@ Conventions that apply to every operation:
 13. Rate limits are per key and per class: 600 reads and 600 writes per minute, 60 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.
 15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
+16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `campaign.sent`, `review.requested`, `review.received`, `review.replied`, `referral.joined`, `referral.converted`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
+17. Operations under `/join/{tenantSlug}` are the public signup lane used by the shop's signup page and app: no API key, no customer session, rate limited per network, `Idempotency-Key` optional. The flow is form -> start (one time code) -> verify -> complete; verify and complete hand back a customer session `cs_...` that works on `/me` right away. The phone or email of a new member always comes from the verified code, never from the body.
+18. Every answer uses the same envelope, including creations: HTTP 200 and the created record in `data` (there is no 201).
 
 ### Shapes of a reply
 
@@ -69,8 +71,27 @@ Conventions that apply to every operation:
 - **Custom fields travel in `fields`.** Both directions, keyed by the field key from `GET /fields/layout`. A profile read groups them into `sections[]` instead, because a section can be hidden as a whole.
 - **No `Date` objects and no shop ids leak out.** Timestamps are ISO-8601 UTC strings or `null`; `tenantId` and `systemId` are never echoed back - the key already knows where it is.
 - **Personal identifiers come back reduced.** `phoneMasked` on every card sized shape, and the `externalId` of a linked channel account is masked. The full phone is on the profile itself, for the operations that legitimately need it.
-- **CSV.** One operation renders CSV when asked with `Accept: text/csv`: `GET /members`. The file is UTF-8 with a BOM and comes back as an attachment instead of the JSON envelope. `POST /members/export` is the other way out: it returns the CSV inline in `csv` and is audited.
+- **CSV.** One operation renders CSV when asked with `Accept: text/csv`: `GET /members`. `GET /reports/{tab}/csv` is always a CSV file, no header needed (download links and spreadsheets cannot set one). The file is UTF-8 with a BOM and comes back as an attachment instead of the JSON envelope. `POST /members/export` is the other way out: it returns the CSV inline in `csv` and is audited.
 - **Some writes answer "waiting".** When the shop routes an action through its approval chain, the reply is `{ applied: false, pending: true, approvalRequestId }` with HTTP 200. The work has **not** happened; somebody in the shop has to approve it. Poll the member, or subscribe to the matching webhook, instead of assuming success.
+
+## Signup lane (no API key)
+
+The shop's signup page (LINE LIFF, the website, the customer app) lets a person become a member on their own. These operations need **no API key and no customer session**; the shop is chosen by `tenantSlug` in the path, calls are rate limited per network, and `Idempotency-Key` is optional (every step already works once only).
+
+| Step | Operation | What it does |
+| --- | --- | --- |
+| 1 | `GET /join/{tenantSlug}/form` | The shop's signup form: the fields a new member fills in (with `required`), the 4 consent channels (LINE, EMAIL, SMS, PUSH), the privacy policy version to accept (0 = none published), the welcome points and whether the referral programme is on. |
+| 2 | `POST /join/{tenantSlug}/start` | Send a one time code to a phone number or email to start signing up. |
+| 3 | `POST /join/{tenantSlug}/verify` | Check the one time code. |
+| 4 | `POST /join/{tenantSlug}/complete` | Finish signing up with the `joinToken`: the form fields, consent per channel, the accepted policy version (must be the current one), an optional referral code and `src`. |
+
+Rules worth knowing before you build a signup page on top of it:
+
+- `start` answers the same way for a new person and for an existing member, so the page cannot be used to find out who is a member. At most 3 codes per phone or email and 10 per network every 10 minutes.
+- `verify` either signs an existing member straight in (`existing: true` and a customer session `token`, `cs_...`) or hands out a `joinToken` (`jt_...`, 15 minutes, single use). Five wrong codes lock that code; ask for a new one.
+- `complete` takes the phone or email from the verified code, never from the body. It checks the form against the shop's own fields (`required` ones must be filled), the policy version (must be the one currently in force; 0 when the shop has none) and the referral code. Anything wrong answers 400 and **leaves the joinToken usable**, so the person only fixes the field.
+- The new member is recorded with source `LIFF`, consent per channel as sent, attribution to the acquisition link given in `src`, and the shop's welcome points. The returned `token` works on every `/me` operation right away.
+- `lineUserId` in the body is only recorded for staff; linking a LINE account needs a server that verified the LIFF id token.
 
 ## Error codes
 
@@ -105,7 +126,68 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 
 ### Read operations
 
-Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 55 of the 135 operations.
+Safe to call at any time. No `Idempotency-Key`, nothing is written, nothing is audited. 98 of the 212 operations.
+
+#### `apikeys.list`
+
+**GET /api-keys** - Active API keys bound to this member system: name, first characters, bundle, scopes, expiry and last use. Raw keys are never returned. · scope: `member.api.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/api-keys" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `campaigns.preview`
+
+**POST /campaigns/{id}/preview** - What would happen if the campaign were sent now: audience, how many would actually receive it, holdout, split by channel, maximum cost in satang, expected use rate and today's remaining message quota. Changes nothing. · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/preview" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `campaigns.stats`
+
+**GET /campaigns/{id}/stats** - Results per variant and for the holdout group (sent, opened, used, sales, cost, ROI) plus the uplift over the holdout. Recomputed from the recipients on every call. · scope: `member.promo.read` · read · AI tool: `campaign_stats`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/campaigns/123/stats" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `campaigns.get`
+
+**GET /campaigns/{id}** - One campaign: status, target segment, channels, message content, variant B, holdout, attached voucher and schedule. · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/campaigns/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `campaigns.list`
+
+**GET /campaigns** - Campaigns of this member system with their results per row: audience, sent, opened, used, sales, cost and ROI. · scope: `member.promo.read` · read · AI tool: `campaign_list`
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/campaigns" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
 
 #### `channels.list`
 
@@ -203,42 +285,145 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/giftcards" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `join.form`
+
+**GET /join/{tenantSlug}/form** - Public, no key. The shop's signup form: the fields a new member fills in (with `required`), the 4 consent channels (LINE, EMAIL, SMS, PUSH), the privacy policy version to accept (0 = none published), the welcome points and whether the referral programme is on. · scope: public (no key) · read
+
+Path parameters: `tenantSlug` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/join/my-shop/form"
+```
+
+#### `journeys.runs`
+
+**GET /journeys/{id}/runs** - The latest members who went through the journey in the window: when they entered, the step they are at, its status and whether they used what they got. · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days (default 30). · min 1 · max 365 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/journeys/123/runs" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journeys.stats`
+
+**GET /journeys/{id}/stats** - Results of a journey over a window: members who entered, count per step, holdout conversion, sent/used/sales/cost/ROI, uplift over the holdout, daily use and the latest entries. · scope: `member.promo.read` · read · AI tool: `journey_stats`
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days (default 30). · min 1 · max 365 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/journeys/123/stats" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journeys.get`
+
+**GET /journeys/{id}** - One journey: trigger, conditions, steps, holdout, re-entry window and whether it is enabled. · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/journeys/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journeys.presets`
+
+**GET /journeys/presets** - The ready-made journeys (birthday, new member, inactive, at risk, no show, ask for a review): key, Thai name, what it does, trigger, steps and holdout. Create one with POST /journeys { presetKey }. · scope: `member.promo.read` · read · AI tool: `journey_presets`
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/journeys/presets" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `journeys.list`
+
+**GET /journeys** - Journeys of this member system with a Thai one-line summary and this month's results (entered, used, sales, cost, ROI). · scope: `member.promo.read` · read · AI tool: `journey_list`
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/journeys" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `me.card`
 
-**GET /me/card** - The signed-in customer's membership card: member code, tier and a short lived QR token staff can scan at the counter. Needs a customer session; a shop API key gets 401 customer_session_required. · scope: `member.customer.read` · read
+**GET /me/card** - The signed-in customer's membership card: member code, tier and a short lived QR token staff can scan at the counter. Needs a customer session; a shop API key gets 401 customer_session_required. · scope: customer session (`cs_...`) · read
 
 No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me/card" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `me.giftcards`
 
-**GET /me/giftcards** - Gift cards the signed-in customer owns, with the number masked and no PIN. A customer who lost their PIN has to ask the shop for a new card; nothing can read the old one back. · scope: `member.customer.read` · read
+**GET /me/giftcards** - Gift cards the signed-in customer owns, with the number masked and no PIN. A customer who lost their PIN has to ask the shop for a new card; nothing can read the old one back. · scope: customer session (`cs_...`) · read
 
 No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me/giftcards" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+```
+
+#### `me.history`
+
+**GET /me/history** - The signed-in customer's own timeline, newest first: purchases, bookings, tier changes, points and rewards, reviews and referrals. Staff-only entries (chat, internal documents, tasks, profile notes) and staff names are left out. Page with `cursor`. · scope: customer session (`cs_...`) · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("purchase", "booking", "chat", "document", "tier", "loyalty", "task", "review", "profile") | no | One of purchase, booking, tier, loyalty, review. |
+| `take` | integer | no | Rows, 1-50 (default 20). · min 1 · max 50 |
+| `cursor` | string | no | max length 200 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/me/history" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
+```
+
+#### `me.referral`
+
+**GET /me/referral** - The signed-in customer's own referral code, share link (/ref/<code>), ready-made share text, how many friends they referred and how many converted, and whether the shop's programme is on. · scope: customer session (`cs_...`) · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/me/referral" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `me.stamps`
 
-**GET /me/stamps** - How far the signed-in customer is on every stamp card they can collect. · scope: `member.customer.read` · read
+**GET /me/stamps** - How far the signed-in customer is on every stamp card they can collect. · scope: customer session (`cs_...`) · read
 
 No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me/stamps" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `me.vouchers`
 
-**GET /me/vouchers** - The vouchers the signed-in customer is holding, newest first. · scope: `member.customer.read` · read
+**GET /me/vouchers** - The vouchers the signed-in customer is holding, newest first. · scope: customer session (`cs_...`) · read
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -246,29 +431,29 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/me/stamps" \
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me/vouchers" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `me.wallet`
 
-**GET /me/wallet** - Everything the signed-in customer can spend: points and what expires soon, vouchers, coupons, gift cards (numbers masked, never a PIN), rewards waiting to be collected, stamp cards and their tier benefits. · scope: `member.customer.read` · read
+**GET /me/wallet** - Everything the signed-in customer can spend: points and what expires soon, vouchers, coupons, gift cards (numbers masked, never a PIN), rewards waiting to be collected, stamp cards and their tier benefits. · scope: customer session (`cs_...`) · read
 
 No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me/wallet" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `me.get`
 
-**GET /me** - The signed-in customer's own profile and the fields the shop lets them see. Needs a customer session (LIFF or the mobile app); a shop API key gets 401 customer_session_required. · scope: `member.customer.read` · read
+**GET /me** - The signed-in customer's own profile and the fields the shop lets them see. Needs a customer session (LIFF or the mobile app); a shop API key gets 401 customer_session_required. · scope: customer session (`cs_...`) · read
 
 No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/me" \
-  -H "Authorization: Bearer $SHARK_API_KEY"
+  -H "Authorization: Bearer $CUSTOMER_TOKEN"
 ```
 
 #### `members.activity`
@@ -302,6 +487,26 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/consents" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `members.history`
+
+**GET /members/{id}/history** - The member's 360 timeline, newest first: purchases, bookings, chats, documents, tier changes, points and rewards, tasks, reviews and profile changes, with counts per kind. Filter by `kind`, date range or branch; page with `cursor`. · scope: `member.customer.read` · read · AI tool: `member_history`
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `kind` | enum("all", "purchase", "booking", "chat", "document", "tier", "loyalty", "task", "review", "profile") | no | - |
+| `from` | string | no | ISO date or time. · max length 40 |
+| `to` | string | no | max length 40 |
+| `unitId` | string | no | max length 40 |
+| `take` | integer | no | Rows, 1-100 (default 30). · min 1 · max 100 |
+| `cursor` | string | no | max length 200 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/history" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -349,6 +554,19 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/points" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `members.recommendOffer`
+
+**GET /members/{id}/recommend-offer** - What to offer this member right now, most urgent first, each with the reason taken from real data: rewards waiting, points or vouchers about to expire, birthday within 14 days, close to the next tier, a stamp card almost full, or not seen for 60 days. An empty list means nothing stands out. · scope: `member.customer.read` · read · AI tool: `member_recommend_offer`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/recommend-offer" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `stamps.progress`
 
 **GET /members/{id}/stamps** - How far this member is on every stamp card they can collect: stamps so far, slots to fill, which cycle and when the card expires. · scope: `member.loyalty.read` · read
@@ -359,6 +577,19 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/stamps" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `members.summary`
+
+**GET /members/{id}/summary** - A compact picture of one member for an assistant or a counter screen: card (masked phone), member since, days since the last visit, 12 month spend and visits, tier with progress to the next one, what the wallet holds (points, expiring points, vouchers, stamp cards, rewards to collect, gift cards) and the last 5 timeline entries. No contact details, no sensitive fields. · scope: `member.customer.read` · read · AI tool: `member_summary`
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/members/123/summary" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -537,6 +768,30 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/members" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `notifications.stats`
+
+**GET /notifications/stats** - Notifications of a Thai calendar month: sent, failed, skipped (no consent, switched off, no channel) and still queued, with sent counts per channel and per notification. · scope: `member.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `month` | string | no | `YYYY-MM` (default: this Thai month). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/notifications/stats" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `notifications.templates.list`
+
+**GET /notifications/templates** - The 8 member notifications (welcome, points earned, points expiring, tier up, tier at risk, new voucher, stamp card complete, review request) with their per-channel text, timing and switch, the variables each may use, plus quiet hours, the consent switches and whether SMS is available. · scope: `member.customer.read` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/notifications/templates" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `ping`
 
 **GET /ping** - Check that the API key works, and see which member system and permission bundle it is bound to. · scope: `member.customer.read` · read
@@ -681,6 +936,233 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/privacy/sensitive" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `referrals.leaderboard`
+
+**GET /referrals/leaderboard** - Top referrers over a window: friends referred, friends converted, points and vouchers they earned from it. · scope: `member.promo.read` · read · AI tool: `referral_leaderboard`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | min 1 · max 3650 |
+| `take` | integer | no | min 1 · max 100 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/referrals/leaderboard" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `referrals.program.get`
+
+**GET /referrals/program** - The referral programme: on or off, what the referrer and the new friend get, whether it converts on signup or on the first purchase (with its minimum), the monthly cap, the fraud check and the share text. `saved: false` means the defaults are showing. · scope: `member.promo.read` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/referrals/program" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `referrals.stats`
+
+**GET /referrals/stats** - Programme results: members who joined through a referral, conversion share, reward cost per new member in satang, and their first 90 day spend compared with the average member. · scope: `member.promo.read` · read · AI tool: `referral_stats`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days. Omit for all time. · min 1 · max 3650 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/referrals/stats" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `referrals.list`
+
+**GET /referrals** - Referrals newest first: referrer, friend, status (PENDING, CONVERTED, REWARDED, REJECTED), first purchase and the rewards paid. Page with `cursor`. · scope: `member.promo.read` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `status` | enum("PENDING", "CONVERTED", "REWARDED", "REJECTED") | no | - |
+| `referrerCustomerId` | string | no | max length 40 |
+| `take` | integer | no | min 1 · max 100 |
+| `cursor` | string | no | max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/referrals" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.export`
+
+**GET /reports/{tab}/csv** - One report as a CSV file (UTF-8 with a BOM). `tab` is one of: overview, rfm, tiers, points, promotions, sources, cohort. The reply is always the file; no Accept header is needed. · scope: `member.report.view` · read · `Accept: text/csv` supported
+
+Path parameters: `tab` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/rfm/csv" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.cohort`
+
+**GET /reports/cohort** - Monthly signup cohorts and how many of each came back in the following months. · scope: `member.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `months` | integer | no | How many Thai calendar months back (default 12). · min 1 · max 36 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/cohort" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.overview`
+
+**GET /reports/overview** - Membership at a glance: members (total, new this month, active in 90 days), member sales and their share of all sales, retention, points outstanding and their liability in satang, promotion cost this month, and new members per month. · scope: `member.report.view` · read · AI tool: `report_overview`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `months` | integer | no | How many Thai calendar months back (default 12). · min 1 · max 36 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/overview" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.points`
+
+**GET /reports/points** - Points earned, burned and expired per Thai month, with the balance outstanding and its liability. · scope: `member.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `months` | integer | no | How many Thai calendar months back (default 12). · min 1 · max 36 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/points" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.promotions`
+
+**GET /reports/promotions** - Every journey and campaign over a window: entered or sent, used, sales, cost and ROI, with the holdout uplift. · scope: `member.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days. · min 1 · max 730 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/promotions" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.rfm`
+
+**GET /reports/rfm** - RFM segmentation (recency, frequency, monetary quintiles) into 9 named groups with counts and a Thai description of each. Per-member scores only with `includeScores=true` (at most 500 rows). · scope: `member.report.view` · read · AI tool: `report_rfm`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Look-back window in days (default 365). · min 30 · max 730 |
+| `includeScores` | enum("true", "false") | no | - |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/rfm" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.sources`
+
+**GET /reports/sources** - Where members came from over a window: signups per acquisition source and their share. · scope: `member.report.view` · read
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days. · min 1 · max 730 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/sources" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reports.tiers`
+
+**GET /reports/tiers** - Members per tier with their share, spend and movement. · scope: `member.report.view` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reports/tiers" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reviews.get`
+
+**GET /reviews/{id}** - One review with everything the inbox shows. A review the key cannot see, or one the customer has not sent yet, answers 404. · scope: `member.review.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reviews/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reviews.settings.get`
+
+**GET /reviews/settings** - Review settings: hours after the service to ask, channel, points given for a review, the rating at or below which a task card is opened, its board and assignee, and the reply template. · scope: `member.review.read` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reviews/settings" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reviews.stats`
+
+**GET /reviews/stats** - Review numbers over a window: average, count, replied share, low ratings and how many got a task card, distribution per star, this week's new reviews, unreplied count and the weekly trend. · scope: `member.review.read` · read · AI tool: `review_stats`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `days` | integer | no | Window in days (default 30). · min 1 · max 365 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reviews/stats" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reviews.summary`
+
+**GET /reviews/summary** - Monthly summary of reviews in Thai: strengths, what customers mention most, and the trend (the trend is computed from real averages, never written by the model). Cached per Thai day. · scope: `member.review.read` · read · AI tool: `review_summary`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `month` | string | no | Thai calendar month `YYYY-MM` (default: this month). |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reviews/summary" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `reviews.list`
+
+**GET /reviews** - Reviews customers sent, newest first, with rating, text, photos, service, staff, branch, reply and escalation card. Filter by rating, unreplied, service, staff or branch; page with `cursor`. · scope: `member.review.read` · read · AI tool: `review_list`
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `rating` | integer | no | min 1 · max 5 |
+| `unreplied` | enum("true", "false") | no | true = only reviews without a reply. |
+| `serviceId` | string | no | max length 40 |
+| `staffEmployeeId` | string | no | max length 40 |
+| `unitId` | string | no | max length 40 |
+| `includeHidden` | enum("true", "false") | no | - |
+| `take` | integer | no | min 1 · max 100 |
+| `cursor` | string | no | max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/reviews" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 #### `rewards.redemptions.lookup`
 
 **GET /rewards/redemptions/lookup** - Find one redemption by the code on the member's phone (QR content or the short code). Unknown or another shop's code answers `null` - it never hints that a code exists. · scope: `member.loyalty.fulfil` · read
@@ -717,6 +1199,83 @@ No query parameters.
 
 ```bash
 curl -sS -X GET "https://shark.in.th/api/v1/member/rewards" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `segments.members`
+
+**GET /segments/{id}/members** - Members of a saved segment, most recently active first, as card-sized rows. Page with `cursor` (the `nextCursor` of the previous reply). · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `take` | integer | no | Rows per page, 1-50 (default 20). · min 1 · max 50 |
+| `cursor` | string | no | max length 40 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/segments/123/members" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `segments.get`
+
+**GET /segments/{id}** - One saved segment with its definition and summary. A private segment of another person answers 404. · scope: `member.promo.read` · read
+
+Path parameters: `id` (required).
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/segments/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `segments.count`
+
+**POST /segments/count** - How many members match a definition right now, their average 12 month spend in satang and up to 5 sample members (masked phone). Nothing is saved; POST only because a definition can be long. · scope: `member.promo.read` · read · AI tool: `segment_count`
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `definition` | one of several shapes | yes | Either `{ groups: [{ conditions: [...] }] }` (groups are OR-ed, conditions inside a group are AND-ed) or a plain list of conditions (one group). `{ groups: [] }` means every member. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/segments/count" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"definition":"example definition"}'
+```
+
+#### `segments.fields`
+
+**GET /segments/fields** - Everything a segment condition can test: system fields (tier, points, days since last visit, spend, visits, vouchers, consent, source, branch, tags) and the shop's filterable custom fields, each with its allowed operators and choices. · scope: `member.promo.read` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/segments/fields" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `segments.list`
+
+**GET /segments** - Saved customer segments this key can see (team segments, newest first), each with its definition, a Thai one-line summary and the member count from its last save. · scope: `member.promo.read` · read · AI tool: `segment_list`
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/segments" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `settings.get`
+
+**GET /settings** - Settings of this member system in one call: reviews, the referral programme, member notifications (templates, quiet hours, consent switches), gift cards and the scheduled report email. · scope: `member.settings.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/settings" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
@@ -857,9 +1416,151 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/vouchers" \
   -H "Authorization: Bearer $SHARK_API_KEY"
 ```
 
+#### `webhooks.deliveries`
+
+**GET /webhooks/{id}/deliveries** - Latest deliveries to one endpoint: event, status (OK or FAILED), attempts, last error and time. Failed deliveries are retried up to 5 times. · scope: `member.api.manage` · read
+
+Path parameters: `id` (required).
+
+| Query | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `take` | integer | no | Rows, 1-100 (default 20). · min 1 · max 100 |
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/webhooks/123/deliveries" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
+#### `webhooks.list`
+
+**GET /webhooks** - Webhook endpoints of the member system (those subscribed only to member events): URL, events, whether active, and the last delivery. The signing secret is never returned here. · scope: `member.api.manage` · read
+
+No query parameters.
+
+```bash
+curl -sS -X GET "https://shark.in.th/api/v1/member/webhooks" \
+  -H "Authorization: Bearer $SHARK_API_KEY"
+```
+
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 76 of the 135 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 107 of the 212 operations.
+
+#### `apikeys.create`
+
+**POST /api-keys** - Issue a new API key bound to this member system with one of the member bundles. The raw key is in `secret` and is shown only in this reply; a replay of the same request answers `secret: null`. · scope: `member.api.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | What the key is for, for example 'Website signup form'. · min length 1 · max length 80 |
+| `bundle` | enum("member-read", "member-operate", "member-admin") | yes | member-read (read only) · member-operate (counter work) · member-admin (everything, including settings and keys). |
+| `ttlDays` | integer | no | Days until the key expires (default 365). 0 = never. · min 0 · max 3650 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/api-keys" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"สมชาย ใจดี","bundle":"member-read"}'
+```
+
+#### `campaigns.cancel`
+
+**POST /campaigns/{id}/cancel** - Stop a campaign: queued messages that were not sent yet are dropped. Messages already delivered cannot be recalled. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/cancel" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `campaigns.send`
+
+**POST /campaigns/{id}/send** - Send the campaign now (or hand it to the scheduler when `scheduledAt` is in the future). Consent is checked per member and channel at the moment of sending; members already handled are never sent twice. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/send" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `campaigns.testSend`
+
+**POST /campaigns/{id}/test** - Render the campaign message with sample values and email it to the person behind the API key (never to a member). Answers the rendered preview even when no email could be sent. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `channel` | enum("LINE", "EMAIL", "SMS", "PUSH") | no | Which channel's text to render. Default: email if the campaign has one, else its first channel. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/test" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `campaigns.update`
+
+**PATCH /campaigns/{id}** - Change a draft or scheduled campaign. Fields you leave out keep their value. A sent or cancelled campaign cannot change. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | Campaign name as the owner will read it in the report. · min length 1 · max length 120 |
+| `segmentId` | string or null | no | A saved segment (GET /segments). The audience is frozen into the campaign when it is created. · max length 40 |
+| `definition` | any | no | An ad-hoc segment definition instead of `segmentId` (same shape as POST /segments/count). Omit both to target every member of the system. |
+| `channels` | array of enum("LINE", "EMAIL", "SMS", "PUSH") | no | Channels in order of preference; each member gets the first channel they can receive and consented to. · max 4 items |
+| `content` | object | no | Message per channel. Every channel listed in `channels` needs its text here. |
+| `variantB` | object or null | no | Optional A/B variant. Members are split deterministically. |
+| `holdoutPct` | integer | no | Share of the audience kept as a control group that receives nothing (0-50, default 0). · min 0 · max 50 |
+| `attachVoucherTemplateId` | string or null | no | Voucher template issued to each recipient (GET /vouchers/templates). · max length 40 |
+| `couponCode` | string or null | no | max length 40 |
+| `scheduledAt` | string or null | no | ISO time to send automatically. Leave out to keep it as a draft until POST /campaigns/{id}/send. · format date-time |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/member/campaigns/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `campaigns.create`
+
+**POST /campaigns** - Create a campaign as a draft (or scheduled, with `scheduledAt`). Nobody receives anything until POST /campaigns/{id}/send or the scheduled time. Monthly campaign limits of the shop's plan apply. · scope: `member.promo.manage` · write · AI tool: `campaign_draft_message`
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | Campaign name as the owner will read it in the report. · min length 1 · max length 120 |
+| `segmentId` | string or null | no | A saved segment (GET /segments). The audience is frozen into the campaign when it is created. · max length 40 |
+| `definition` | any | no | An ad-hoc segment definition instead of `segmentId` (same shape as POST /segments/count). Omit both to target every member of the system. |
+| `channels` | array of enum("LINE", "EMAIL", "SMS", "PUSH") | yes | Channels in order of preference; each member gets the first channel they can receive and consented to. · max 4 items |
+| `content` | object | yes | Message per channel. Every channel listed in `channels` needs its text here. |
+| `variantB` | object or null | no | Optional A/B variant. Members are split deterministically. |
+| `holdoutPct` | integer | no | Share of the audience kept as a control group that receives nothing (0-50, default 0). · min 0 · max 50 |
+| `attachVoucherTemplateId` | string or null | no | Voucher template issued to each recipient (GET /vouchers/templates). · max length 40 |
+| `couponCode` | string or null | no | max length 40 |
+| `scheduledAt` | string or null | no | ISO time to send automatically. Leave out to keep it as a draft until POST /campaigns/{id}/send. · format date-time |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"สมชาย ใจดี","channels":[],"content":{}}'
+```
 
 #### `coupons.issuePerMember`
 
@@ -1127,7 +1828,7 @@ Path parameters: `key` (required).
 | `onlyFieldKeys` | array of string | no | Add only these field keys from the template. · max 100 items |
 
 ```bash
-curl -sS -X POST "https://shark.in.th/api/v1/member/fields/templates/123/apply" \
+curl -sS -X POST "https://shark.in.th/api/v1/member/fields/templates/WELCOME/apply" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
@@ -1285,9 +1986,134 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/giftcards" \
   -d '{"satang":1,"recipient":"example recipient","payMethods":[],"unitId":"example unitId"}'
 ```
 
+#### `join.complete`
+
+**POST /join/{tenantSlug}/complete** - Public, no key. Finish signing up with the `joinToken`: the form fields, consent per channel, the accepted policy version (must be the current one), an optional referral code and `src`. The phone or email comes from the verified code, not from the body. Answers the new member and a customer session `token` (`cs_...`) usable on /me right away. Wrong data answers 400 and leaves the joinToken usable. · scope: public (no key) · write
+
+Path parameters: `tenantSlug` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `joinToken` | string | yes | min length 10 · max length 120 |
+| `fields` | object | no | Values keyed by the field keys of GET /join/{tenantSlug}/form. |
+| `consents` | array of object | no | max 4 items |
+| `policyVersion` | integer | yes | `policyVersion` of the form the person accepted. · min 0 |
+| `referralCode` | string or null | no | max length 20 |
+| `src` | string or null | no | max length 40 |
+| `lineUserId` | string or null | no | Recorded for staff to link; not trusted to link LINE by itself. · max length 80 |
+| `device` | object or null | no | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/join/my-shop/complete" \
+  -H "Content-Type: application/json" \
+  -d '{"joinToken":"example joinToken","policyVersion":0}'
+```
+
+#### `join.start`
+
+**POST /join/{tenantSlug}/start** - Public, no key. Send a one time code to a phone number or email to start signing up. The answer never tells whether the person is already a member. At most 3 codes per number and 10 per network per 10 minutes. `src` counts a visit of the shop's acquisition link. · scope: public (no key) · write
+
+Path parameters: `tenantSlug` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `phone` | string or null | no | max length 20 |
+| `email` | string or null | no | max length 200 · format email |
+| `src` | string or null | no | Acquisition link code from `?src=`. · max length 40 |
+| `referralCode` | string or null | no | Friend's referral code from `?ref=` (checked when completing). · max length 20 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/join/my-shop/start" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `join.verify`
+
+**POST /join/{tenantSlug}/verify** - Public, no key. Check the one time code. A person who is already a member gets `{ existing: true, token }` (a customer session, `cs_...`) and nothing is created; a new person gets `{ existing: false, joinToken }` (`jt_...`, valid 15 minutes) for the complete step. Five wrong codes lock that code. · scope: public (no key) · write
+
+Path parameters: `tenantSlug` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `otpId` | string | yes | min length 1 · max length 80 |
+| `code` | string | yes | min length 4 · max length 10 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/join/my-shop/verify" \
+  -H "Content-Type: application/json" \
+  -d '{"otpId":"example otpId","code":"example code"}'
+```
+
+#### `journeys.toggle`
+
+**POST /journeys/{id}/toggle** - Switch a journey on or off. Off cancels every step that is still waiting (`cancelled` says how many). · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `enabled` | boolean | yes | - |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/journeys/123/toggle" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled":true}'
+```
+
+#### `journeys.update`
+
+**PATCH /journeys/{id}** - Change a journey. Fields you leave out keep their value. Disabling it cancels every step that is still waiting. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | min length 1 · max length 120 |
+| `trigger` | object | no | - |
+| `conditions` | any | no | - |
+| `actions` | array of object | no | max 20 items |
+| `holdoutPct` | integer | no | min 0 · max 50 |
+| `reentryDays` | integer or null | no | min 1 · max 3650 |
+| `enabled` | boolean | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/member/journeys/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `journeys.create`
+
+**POST /journeys** - Create a journey, either from a ready-made one (`presetKey`, optionally with `templateId` for its voucher step) or from `trigger` + `conditions` + `actions`. The journey limit of the shop's plan applies. · scope: `member.promo.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `presetKey` | string | no | Key from GET /journeys/presets. When sent, trigger/conditions/actions are taken from the preset. · max length 40 |
+| `templateId` | string or null | no | Voucher template for the preset's voucher step. Default: the shop's first active template. · max length 40 |
+| `name` | string | no | min length 1 · max length 120 |
+| `trigger` | object | no | - |
+| `conditions` | any | no | Segment definition (same shape as POST /segments/count). Omit for every member. |
+| `actions` | array of object | no | max 20 items |
+| `holdoutPct` | integer | no | min 0 · max 50 |
+| `reentryDays` | integer or null | no | A member may enter again after this many days. Null means once in a lifetime. · min 1 · max 3650 |
+| `enabled` | boolean | no | Default true. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/journeys" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 #### `me.transfer`
 
-**POST /me/points/transfer** - The signed-in customer sends some of their points to another member of the same shop. It needs the one time code they asked for on the membership card page; staff can never do this on a customer's behalf. · scope: `member.point.transfer` · write
+**POST /me/points/transfer** - The signed-in customer sends some of their points to another member of the same shop. It needs the one time code they asked for on the membership card page; staff can never do this on a customer's behalf. · scope: customer session (`cs_...`) · write
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1297,15 +2123,65 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/giftcards" \
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/member/me/points/transfer" \
-  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"toCustomerId":"example toCustomerId","points":1,"otp":"example otp"}'
 ```
 
+#### `me.pushDevices.remove`
+
+**DELETE /me/push-devices/{id}** - Stop notifications on one of the signed-in customer's phones (for example on sign out). A device of somebody else answers 404. · scope: customer session (`cs_...`) · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/member/me/push-devices/123" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `me.pushDevices.register`
+
+**POST /me/push-devices** - Register this phone for in-app notifications of the signed-in customer (Expo push token). Calling again with the same token refreshes it; a phone that changes hands moves to the new customer. · scope: customer session (`cs_...`) · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `expoToken` | string | yes | ExponentPushToken[...] from the Expo notifications API. · min length 10 · max length 250 |
+| `platform` | enum("ios", "android", "web") | no | ios (default), android or web. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/me/push-devices" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"expoToken":"example expoToken"}'
+```
+
+#### `me.reviews.submit`
+
+**POST /me/reviews** - The signed-in customer sends the review the shop asked for, using the token from their review link (1-5 stars, optional text and photos). A link belongs to one member and works once; a link of somebody else answers 404. Points for reviewing are added when the shop set them. · scope: customer session (`cs_...`) · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `token` | string | yes | Token from the review link the shop sent (/m/<shop>/review/<token>). · min length 10 · max length 200 |
+| `rating` | integer | yes | min 1 · max 5 |
+| `body` | string or null | no | max length 2000 |
+| `photoFileIds` | array of string | no | max 5 items |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/me/reviews" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"example token","rating":1}'
+```
+
 #### `me.redeem`
 
-**POST /me/rewards/redeem** - The signed-in customer spends their own points or stamps on a reward. The answer carries the QR code they show at the counter when they come to collect. · scope: `member.loyalty.read` · write
+**POST /me/rewards/redeem** - The signed-in customer spends their own points or stamps on a reward. The answer carries the QR code they show at the counter when they come to collect. · scope: customer session (`cs_...`) · write
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1313,7 +2189,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/me/points/transfer" \
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/member/me/rewards/redeem" \
-  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"rewardId":"example rewardId"}'
@@ -1465,6 +2341,28 @@ No body fields.
 curl -sS -X POST "https://shark.in.th/api/v1/member/members/123/privacy/export" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `reviews.request`
+
+**POST /members/{id}/reviews/request** - Ask a member to review a bill or an appointment. Sends the review link over LINE when the member has LINE and consented; otherwise returns the link so staff can share it. Asking twice for the same bill returns the first request. · scope: `member.review.reply` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `refType` | enum("PosSale", "Appointment") | yes | What is being reviewed. |
+| `refId` | string | yes | Id of the bill or the appointment. · min length 1 · max length 40 |
+| `unitId` | string or null | no | max length 40 |
+| `serviceId` | string or null | no | max length 40 |
+| `staffEmployeeId` | string or null | no | max length 40 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/members/123/reviews/request" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"refType":"PosSale","refId":"example refId"}'
 ```
 
 #### `rewards.redeem`
@@ -1718,7 +2616,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/members" \
 
 #### `me.update`
 
-**PATCH /me** - The signed-in customer edits their own details. Only fields the shop marked as customer editable may be sent. Needs a customer session; a shop API key gets 401 customer_session_required. · scope: `member.customer.update` · write
+**PATCH /me** - The signed-in customer edits their own details. Only fields the shop marked as customer editable may be sent. Needs a customer session; a shop API key gets 401 customer_session_required. · scope: customer session (`cs_...`) · write
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -1726,6 +2624,64 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/members" \
 
 ```bash
 curl -sS -X PATCH "https://shark.in.th/api/v1/member/me" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `notifications.settings.set`
+
+**PUT /notifications/settings** - Change the notification switches: quiet hours (messages inside the window wait until it ends), respect consent per channel, and let transactional notifications through without marketing consent. · scope: `member.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `quietHours` | object | no | - |
+| `respectConsent` | boolean | no | - |
+| `transactionalOverride` | boolean | no | - |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/member/notifications/settings" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `notifications.testSend`
+
+**POST /notifications/templates/{key}/test** - Render one notification with sample values and send it to the person behind the key on the chosen channel (never to a member). Answers the rendered preview and whether it could be delivered; nothing is logged as a member notification. · scope: `member.settings.manage` · write · AI tool: `notification_test_send`
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `channel` | enum("LINE", "EMAIL", "SMS", "PUSH") | yes | Which channel's text to render and send. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/notifications/templates/WELCOME/test" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"channel":"LINE"}'
+```
+
+#### `notifications.templates.set`
+
+**PUT /notifications/templates/{key}** - Change one notification: its switch, timing (IMMEDIATE or DAILY_DIGEST at `digestHour`), lead days (POINTS_EXPIRING) and the text per channel. Only the variables listed for that notification are accepted; anything else answers 400 with the allowed list. · scope: `member.settings.manage` · write
+
+Path parameters: `key` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `enabled` | boolean | no | - |
+| `timing` | enum("IMMEDIATE", "DAILY_DIGEST") | no | - |
+| `digestHour` | integer | no | min 0 · max 23 |
+| `leadDays` | array of integer | no | max 5 items |
+| `channels` | object | no | - |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/member/notifications/templates/WELCOME" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
@@ -1876,6 +2832,121 @@ curl -sS -X PUT "https://shark.in.th/api/v1/member/privacy/sensitive" \
   -d '{"targetType":"SECTION","targetId":"sec_123","roles":["OWNER","MANAGER"]}'
 ```
 
+#### `referrals.reject`
+
+**POST /referrals/{id}/reject** - Reject a referral that is still pending (for example a self referral the fraud check missed). No rewards will be paid for it. · scope: `member.referral.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string or null | no | max length 200 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/referrals/123/reject" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `referrals.program.set`
+
+**PUT /referrals/program** - Change the referral programme. Send only what you want to move. Referrals already made keep the rules they were made under. · scope: `member.referral.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `enabled` | boolean | no | - |
+| `referrerRewardKind` | enum("POINTS", "VOUCHER") | no | - |
+| `referrerRewardValue` | one of several shapes | no | POINTS reward: { points } · VOUCHER reward: { kind, value, validDays }. |
+| `refereeRewardKind` | enum("POINTS", "VOUCHER") | no | - |
+| `refereeRewardValue` | one of several shapes | no | POINTS reward: { points } · VOUCHER reward: { kind, value, validDays }. |
+| `convertOn` | enum("SIGNUP", "FIRST_PURCHASE") | no | - |
+| `minFirstPurchaseSatang` | integer or null | no | min 0 |
+| `monthlyCap` | integer or null | no | Most rewarded referrals per referrer per Thai month. Null = no cap. · min 1 · max 10000 |
+| `fraudPhoneDevice` | boolean | no | - |
+| `shareText` | string | no | Variables: {ร้าน} {รางวัลเพื่อน} {link}. · max length 500 |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/member/referrals/program" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `reviews.escalate`
+
+**POST /reviews/{id}/escalate** - Hand a review to a manager now: opens (or returns) a task card on the configured board, assigns it and notifies. Calling again returns the same card. · scope: `member.review.reply` · write
+
+Path parameters: `id` (required).
+
+No body fields.
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/reviews/123/escalate" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)"
+```
+
+#### `reviews.hide`
+
+**POST /reviews/{id}/hide** - Hide a review (spam, abuse). It is never deleted, just left out of the averages and the inbox; the reason is kept. · scope: `member.review.reply` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | min length 1 · max length 200 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/reviews/123/hide" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log"}'
+```
+
+#### `reviews.reply`
+
+**POST /reviews/{id}/reply** - Reply to a review. The reply is sent to the customer over LINE when possible; sending the same text again changes nothing, a new text edits the reply. · scope: `member.review.reply` · write · AI tool: `review_reply`
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `body` | string | yes | min length 1 · max length 2000 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/reviews/123/reply" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"body":"example body"}'
+```
+
+#### `reviews.settings.set`
+
+**PUT /reviews/settings** - Change review settings. Send only what you want to move. · scope: `member.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `askAfterHours` | integer | no | min 0 · max 720 |
+| `rewardPoints` | integer | no | Points given when a customer sends a review (0 = none). · min 0 · max 100000 |
+| `escalateBelow` | integer | no | Ratings at or below this open a task card. · min 1 · max 5 |
+| `escalateBoardId` | string or null | no | max length 40 |
+| `escalateAssigneeRole` | enum("OWNER", "MANAGER", "STAFF") | no | - |
+| `replyTemplate` | string | no | max length 2000 |
+| `googleReviewUrl` | string or null | no | max length 500 · format uri |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/member/reviews/settings" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 #### `rewards.toggle`
 
 **POST /rewards/{id}/toggle** - Show or hide a reward. Hiding it stops new redemptions; ones already waiting can still be collected. · scope: `member.loyalty.manage` · write
@@ -1990,6 +3061,64 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/rewards" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"name":"สมชาย ใจดี","kind":"ITEM","pointsCost":0}'
+```
+
+#### `segments.update`
+
+**PATCH /segments/{id}** - Rename a segment, change its conditions or its visibility. Fields you leave out keep their value; the member count is refreshed. · scope: `member.promo.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | no | min length 1 · max length 120 |
+| `definition` | one of several shapes | no | Either `{ groups: [{ conditions: [...] }] }` (groups are OR-ed, conditions inside a group are AND-ed) or a plain list of conditions (one group). `{ groups: [] }` means every member. |
+| `scope` | enum("TEAM", "PRIVATE") | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/member/segments/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `segments.create`
+
+**POST /segments** - Save a customer segment. The member count is taken at save time and shown in lists; campaigns re-evaluate the definition when they are built. · scope: `member.promo.manage` · write · AI tool: `segment_save`
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `name` | string | yes | What the group is for, as the team will read it. · min length 1 · max length 120 |
+| `definition` | one of several shapes | yes | Either `{ groups: [{ conditions: [...] }] }` (groups are OR-ed, conditions inside a group are AND-ed) or a plain list of conditions (one group). `{ groups: [] }` means every member. |
+| `scope` | enum("TEAM", "PRIVATE") | no | TEAM (default) is visible to everyone who may read promotions; PRIVATE only to its owner. |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/segments" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"สมชาย ใจดี","definition":"example definition"}'
+```
+
+#### `settings.set`
+
+**PUT /settings** - Change settings of several areas at once. Send only the areas and fields you want to move; each area goes through its own rules (referral needs member.referral.manage, gift cards member.giftcard.manage). Answers the full settings after the change. · scope: `member.settings.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `review` | object | no | Same fields as PUT /reviews/settings. |
+| `referral` | object | no | Same fields as PUT /referrals/program. |
+| `notifications` | object | no | System switches. Templates change one at a time with PUT /notifications/templates/{key}. |
+| `giftCard` | object | no | Same fields as PUT /giftcards/settings. |
+| `reports` | object | no | Scheduled report email. |
+
+```bash
+curl -sS -X PUT "https://shark.in.th/api/v1/member/settings" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 #### `sources.links.toggle`
@@ -2427,9 +3556,82 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/vouchers" \
   -d '{"customerIds":[],"origin":"TIER"}'
 ```
 
+#### `webhooks.test`
+
+**POST /webhooks/{id}/test** - Send one signed test delivery to the endpoint right now (payload `{ test: true }`), whatever events it subscribes to, and log it like a real delivery. · scope: `member.api.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `event` | string | no | Event type to put in the test (default member.updated). · max length 80 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/webhooks/123/test" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `webhooks.update`
+
+**PATCH /webhooks/{id}** - Change the events an endpoint receives or pause it (`active: false`). The secret does not change, so the receiving system keeps verifying signatures. · scope: `member.api.manage` · write
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `events` | array of string | no | max 60 items |
+| `active` | boolean | no | - |
+
+```bash
+curl -sS -X PATCH "https://shark.in.th/api/v1/member/webhooks/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+#### `webhooks.create`
+
+**POST /webhooks** - Add an https endpoint that receives the chosen member events. The signing secret is in `secret` and is shown only in this reply; verify every delivery with HMAC-SHA256 of the raw body. · scope: `member.api.manage` · write
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `url` | string | yes | https URL that accepts POST. · min length 1 · max length 500 |
+| `events` | array of string | yes | Member events to receive (see the Webhooks section). · max 60 items |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/webhooks" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"example url","events":[]}'
+```
+
 ### Danger operations
 
-Hard or impossible to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 4 of the 135 operations.
+Hard or impossible to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 7 of the 212 operations.
+
+#### `apikeys.revoke`
+
+**DELETE /api-keys/{id}** - Revoke a key of this member system. It stops working immediately (the next call with it answers 401). A key of another system or module answers 404. · scope: `member.api.manage` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this is being done, at least 5 characters. Stored in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/member/api-keys/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
 
 #### `members.merge`
 
@@ -2513,9 +3715,47 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/members/123/tier" \
   -d '{"tierDefId":"tier_123","reason":"reason for the audit log","confirm":true}'
 ```
 
+#### `segments.delete`
+
+**DELETE /segments/{id}** - Delete a saved segment. Campaigns already built from it keep their frozen audience; journeys never referenced it by id. · scope: `member.promo.manage` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this is being done, at least 5 characters. Stored in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/member/segments/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `webhooks.delete`
+
+**DELETE /webhooks/{id}** - Delete an endpoint and its delivery log. Deliveries still queued for it are dropped. · scope: `member.api.manage` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `reason` | string | yes | Why this is being done, at least 5 characters. Stored in the audit log. · min length 5 · max length 500 |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+
+```bash
+curl -sS -X DELETE "https://shark.in.th/api/v1/member/webhooks/123" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
 ## AI tools
 
-33 of these operations are also exposed to the SHARK assistant as tools of the `members` skill.
+54 of these operations are also exposed to the SHARK assistant as tools of the `members` skill.
 Read tools run straight away. Write and danger tools never run by themselves: they create a proposal that the shop owner confirms in the app, and only then the very same operation below is executed, with the confirming person's permissions and their name in the audit log. Danger tools need a second confirmation.
 
 The assistant reads member data as a plain staff member with no HR position, so it **never sees sensitive fields**, whatever the key that started the conversation holds.
@@ -2524,6 +3764,12 @@ Tools carrying the destructive flag: `member_merge`, `member_tier_set_manual`.
 
 | Tool | Operation | Class | Scope |
 | --- | --- | --- | --- |
+| `campaign_draft_message` | `campaigns.create` | write | `member.promo.manage` |
+| `campaign_list` | `campaigns.list` | read | `member.promo.read` |
+| `campaign_stats` | `campaigns.stats` | read | `member.promo.read` |
+| `journey_list` | `journeys.list` | read | `member.promo.read` |
+| `journey_presets` | `journeys.presets` | read | `member.promo.read` |
+| `journey_stats` | `journeys.stats` | read | `member.promo.read` |
 | `member_activity` | `members.activity` | read | `member.customer.read` |
 | `member_channels` | `channels.list` | read | `member.customer.read` |
 | `member_consent_set` | `consents.set` | write | `member.customer.update` |
@@ -2533,12 +3779,14 @@ Tools carrying the destructive flag: `member_merge`, `member_tier_set_manual`.
 | `member_get` | `members.get` | read | `member.customer.read` |
 | `member_giftcard_balance` | `giftcards.balance` | read | `member.customer.read` |
 | `member_giftcards_sell` | `giftcards.sell` | write | `member.giftcard.sell` |
+| `member_history` | `members.history` | read | `member.customer.read` |
 | `member_import_preview` | `members.import.start` | write | `member.customer.import` |
 | `member_link_identity` | `members.identities.link` | write | `member.customer.update` |
 | `member_list` | `members.list` | read | `member.customer.read` |
 | `member_merge` | `members.merge` | danger | `member.customer.merge` |
 | `member_points_balance` | `points.balance` | read | `member.point.read` |
 | `member_points_credit` | `points.credit` | write | `member.point.adjust` |
+| `member_recommend_offer` | `members.recommendOffer` | read | `member.customer.read` |
 | `member_register` | `members.create` | write | `member.customer.create` |
 | `member_resolve` | `members.resolve` | write | `member.customer.update` |
 | `member_rewards_list` | `rewards.list` | read | `member.loyalty.read` |
@@ -2548,6 +3796,7 @@ Tools carrying the destructive flag: `member_merge`, `member_tier_set_manual`.
 | `member_source_report` | `sources.report` | read | `member.report.view` |
 | `member_stamp_cards` | `stamps.cards.list` | read | `member.loyalty.read` |
 | `member_stamps_add` | `stamps.add` | write | `member.loyalty.stamp` |
+| `member_summary` | `members.summary` | read | `member.customer.read` |
 | `member_tier_history` | `tiers.history` | read | `member.tier.read` |
 | `member_tier_list` | `tiers.list` | read | `member.tier.read` |
 | `member_tier_set_manual` | `tiers.setManual` | danger | `member.tier.setManual` |
@@ -2557,6 +3806,18 @@ Tools carrying the destructive flag: `member_merge`, `member_tier_set_manual`.
 | `member_vouchers_issue` | `vouchers.issue` | write | `member.promo.issue` |
 | `member_wallet` | `wallet.get` | read | `member.customer.read` |
 | `member_wallet_quote` | `wallet.quote` | read | `member.customer.read` |
+| `notification_test_send` | `notifications.testSend` | write | `member.settings.manage` |
+| `referral_leaderboard` | `referrals.leaderboard` | read | `member.promo.read` |
+| `referral_stats` | `referrals.stats` | read | `member.promo.read` |
+| `report_overview` | `reports.overview` | read | `member.report.view` |
+| `report_rfm` | `reports.rfm` | read | `member.report.view` |
+| `review_list` | `reviews.list` | read | `member.review.read` |
+| `review_reply` | `reviews.reply` | write | `member.review.reply` |
+| `review_stats` | `reviews.stats` | read | `member.review.read` |
+| `review_summary` | `reviews.summary` | read | `member.review.read` |
+| `segment_count` | `segments.count` | read | `member.promo.read` |
+| `segment_list` | `segments.list` | read | `member.promo.read` |
+| `segment_save` | `segments.create` | write | `member.promo.manage` |
 
 ## AI agents
 
@@ -2571,7 +3832,7 @@ curl -sS "https://shark.in.th/api/v1/ai/skills/members" -H "Authorization: Beare
 
 `GET https://shark.in.th/api/v1/ai/skills` lists the skills this shop can use. The member skill is listed only when the shop has an active member system and the key is allowed to call at least one of its tools. A shop without a member system, or a key whose scopes reach none of the tools, gets 404 from `https://shark.in.th/api/v1/ai/skills/members` - the same answer as a skill that does not exist, so nothing leaks about what is behind the wall.
 
-`GET https://shark.in.th/api/v1/ai/skills/members` returns the tools in OpenAI function-calling shape, so they can be handed to the model without conversion. 33 of them come from the operations in this document (18 read, 15 write or danger); the skill also carries a few older loyalty tools that predate this API.
+`GET https://shark.in.th/api/v1/ai/skills/members` returns the tools in OpenAI function-calling shape, so they can be handed to the model without conversion. 54 of them come from the operations in this document (35 read, 19 write or danger), and for a key that holds member scopes that is the whole list. The in-app assistant also keeps a few older loyalty tools that predate this API; they have no scope of their own, so a member-scoped key neither sees nor calls them (each has a scoped equivalent here).
 
 ```text
 { "id": "members", "label": "สมาชิก แต้ม และรางวัล", "summary": "...", "tools": [
@@ -2724,6 +3985,12 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | `member.birthday.upcoming` | Daily, for each member whose birthday is exactly `daysBefore` Thai calendar days away. Only fired for `daysBefore` values that an enabled journey of the shop listens to, and not for members who already went through that journey within its re-entry window. |
 | `member.inactive` | Daily, for each member with no purchase or booking for at least `days` days (members who never had any activity count from their signup date). Same filtering as `member.birthday.upcoming`; a member skipped by the journey's conditions is re-checked weekly, not daily. |
 | `member.tier.review_due` | Daily, for each member whose tier review date is exactly `daysBefore` Thai calendar days away. Same filtering as `member.birthday.upcoming`. |
+| `campaign.sent` | A campaign finished a sending round. `sent` counts messages delivered in that round; `variants` counts recipients per variant. |
+| `review.requested` | A member was asked to review a bill or an appointment. `sent` is false when the link could not go out over LINE (staff can share it). |
+| `review.received` | A member sent a review. `escalated` is true when the rating was at or below the shop's threshold and a task card was opened. |
+| `review.replied` | The shop replied to a review, or edited its reply (`edited: true`). |
+| `referral.joined` | A friend signed up with a member's referral code. `customerId` is the referrer. |
+| `referral.converted` | A referral met the programme's condition (signup or first purchase) and both sides were rewarded. `rewards` says what each side got. |
 | `member.sensitive.viewed` | Somebody opened sensitive member data (a health note, an emergency contact). The position they held at that moment is recorded, not the one they hold today. |
 
 #### `member.created`
@@ -3169,6 +4436,127 @@ Daily, for each member whose tier review date is exactly `daysBefore` Thai calen
 }
 ```
 
+#### `campaign.sent`
+
+A campaign finished a sending round. `sent` counts messages delivered in that round; `variants` counts recipients per variant.
+
+```json
+{
+  "type": "campaign.sent",
+  "payload": {
+    "campaignId": "cmf1cmp0001",
+    "name": "Birthday September",
+    "sent": 118,
+    "holdout": 12,
+    "variants": {
+      "A": 65,
+      "B": 65
+    }
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `review.requested`
+
+A member was asked to review a bill or an appointment. `sent` is false when the link could not go out over LINE (staff can share it).
+
+```json
+{
+  "type": "review.requested",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "reviewId": "cmf1rev0001",
+    "refType": "PosSale",
+    "refId": "cmf1sal0001",
+    "sent": true
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `review.received`
+
+A member sent a review. `escalated` is true when the rating was at or below the shop's threshold and a task card was opened.
+
+```json
+{
+  "type": "review.received",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "reviewId": "cmf1rev0001",
+    "rating": 5,
+    "refType": "PosSale",
+    "refId": "cmf1sal0001",
+    "escalated": false
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `review.replied`
+
+The shop replied to a review, or edited its reply (`edited: true`).
+
+```json
+{
+  "type": "review.replied",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "reviewId": "cmf1rev0001",
+    "rating": 2,
+    "edited": false
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `referral.joined`
+
+A friend signed up with a member's referral code. `customerId` is the referrer.
+
+```json
+{
+  "type": "referral.joined",
+  "payload": {
+    "referrerId": "cmf1cus0001",
+    "refereeId": "cmf1cus0002",
+    "referralId": "cmf1ref0001",
+    "customerId": "cmf1cus0001",
+    "code": "K7Q2M4XP"
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `referral.converted`
+
+A referral met the programme's condition (signup or first purchase) and both sides were rewarded. `rewards` says what each side got.
+
+```json
+{
+  "type": "referral.converted",
+  "payload": {
+    "referrerId": "cmf1cus0001",
+    "refereeId": "cmf1cus0002",
+    "referralId": "cmf1ref0001",
+    "customerId": "cmf1cus0001",
+    "rewards": {
+      "referrer": {
+        "kind": "POINTS",
+        "points": 300
+      },
+      "referee": {
+        "kind": "VOUCHER",
+        "voucherId": "cmf1vch0002",
+        "valueSatang": 10000
+      }
+    }
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
 #### `member.sensitive.viewed`
 
 Somebody opened sensitive member data (a health note, an emergency contact). The position they held at that moment is recorded, not the one they hold today.
@@ -3215,3 +4603,14 @@ Field names and codes in this API are English. This table maps them to the Thai 
 | รออนุมัติ | waiting for the shop's approval chain | `{ pending: true, approvalRequestId }` |
 | สาขา | business unit (branch) | `homeUnitId` · `unitId` |
 | สตางค์ | satang (1/100 baht) | `*Satang` |
+| กลุ่มลูกค้า | customer segment | `/segments` · `POST /segments/count` |
+| แคมเปญ (ร่าง) | campaign (draft until sent) | `/campaigns` · `POST /campaigns/{id}/send` |
+| กลุ่มเทียบ | holdout group | `holdoutPct` |
+| journey อัตโนมัติ | automated journey | `/journeys` · `/journeys/presets` |
+| รีวิวลูกค้า | customer review | `/reviews` |
+| แนะนำเพื่อน | referral programme | `/referrals/program` · `/ref/<code>` |
+| แจ้งเตือนสมาชิก | member notification template | `/notifications/templates` |
+| รายงานสมาชิก | membership report | `/reports/{tab}` |
+| สมัครสมาชิกเอง | public signup lane | `/join/{tenantSlug}/*` |
+| ตั๋วสมัคร | signup ticket after the one time code | `joinToken` (`jt_...`) |
+| เซสชันลูกค้า | customer session | `token` (`cs_...`) · `/me` |

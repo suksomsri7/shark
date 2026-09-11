@@ -90,7 +90,8 @@ fi
 
 echo "🚀 start ที่ http://127.0.0.1:$PORT (log: $LOGFILE)"
 : > "$LOGFILE"
-setsid env "${ENVARR[@]}" PORT="$PORT" pnpm exec next start -p "$PORT" >> "$LOGFILE" 2>&1 &
+# M3.10 (11 ก.ย.): next start = NODE_ENV production → OTP ของลูกค้า/สมัครสมาชิกไม่คืน devOtp · QC server เท่านั้นเปิด QC_OTP_PREVIEW=1 (ข้อสอบ join lane ยิง HTTP จริง)
+setsid env "${ENVARR[@]}" QC_OTP_PREVIEW=1 PORT="$PORT" pnpm exec next start -p "$PORT" >> "$LOGFILE" 2>&1 &
 echo $! > "$PIDFILE"
 
 for i in $(seq 1 60); do

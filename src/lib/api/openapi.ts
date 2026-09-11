@@ -272,11 +272,15 @@ function buildOperation(op: ApiOp): OpenApiOperation {
     schema: { type: "string" },
   });
   if (isWriteLike) {
+    // M3.10 — `idempotency: "optional"` (เลนสาธารณะ) = header ไม่บังคับ · op อื่นทุกตัวเหมือนเดิมทุกไบต์
+    const optional = op.idempotency === "optional";
     parameters.push({
       name: "Idempotency-Key",
       in: "header",
-      required: true,
-      description: "Unique per logical attempt (a UUID is fine). Retrying with the same key and body replays the first response instead of doing the work twice.",
+      required: !optional,
+      description: optional
+        ? "Optional here. When sent, retrying with the same key and body replays the first response; when omitted, the call simply runs (the operation guards against repeats on its own)."
+        : "Unique per logical attempt (a UUID is fine). Retrying with the same key and body replays the first response instead of doing the work twice.",
       schema: { type: "string" },
     });
   }
@@ -323,6 +327,13 @@ function buildOperation(op: ApiOp): OpenApiOperation {
       },
     },
   };
+  // M3.10 — op ที่เป็นไฟล์เสมอ (`csvAlways`): ไม่มีซอง JSON ให้บรรยาย · op อื่นทุกตัวเหมือนเดิมทุกไบต์
+  if (op.csv && op.csvAlways === true) {
+    responses["200"] = {
+      description: "Success. The reply is always a CSV file (UTF-8 with a BOM, sent as an attachment); no `Accept` header is needed.",
+      content: { "text/csv": { schema: { type: "string", description: "CSV file, UTF-8 with a BOM, comma separated." } } },
+    };
+  }
   const errorStatuses = isWriteLike ? [...COMMON_ERROR_RESPONSES, WRITE_CONFLICT_RESPONSE] : COMMON_ERROR_RESPONSES;
   for (const [status, description] of errorStatuses) responses[status] = errorResponse(description);
 

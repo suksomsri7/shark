@@ -18,6 +18,9 @@ import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/
 import { safeReason } from "@/lib/core/errors";
 import { prisma } from "./db";
 import { hasMemberPerm, toMemberActor } from "./access";
+import { createEndpoint, deleteEndpoint, getEndpoint, setEndpointActive, testEndpoint } from "@/lib/webhooks/service";
+import { isMemberWebhookEndpoint, memberWebhookEventsCheck, memberWebhookUrlProblem } from "./api/webhook-events";
+import type { MemberWebhookActionResult, MemberWebhookCreateResult, MemberWebhookTestResult } from "./api-shared";
 
 export type MemberKeyResult = { ok: true; rawKey: string } | { ok: false; reason: string };
 export type MemberApiActionResult = { ok: true } | { ok: false; reason: string };
@@ -111,5 +114,107 @@ export async function revokeMemberApiKeyAction(fd: FormData): Promise<MemberApiA
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เพิกถอนคีย์ไม่สำเร็จ") };
+  }
+}
+
+// ───────────────────────── Webhook ของระบบสมาชิก (M3.10 · ภาพ 27 ขวา) ─────────────────────────
+//
+// ด่าน 2 ชั้นเหมือนคีย์: `member.api.manage` (โมดูลสมาชิก) + `webhook.endpoint.*` (แพลตฟอร์ม — หน้า /app/settings/webhooks ใช้ชุดเดียวกัน)
+// 🔴 แตะได้เฉพาะ "ปลายทางของระบบสมาชิก" (สมัครเฉพาะเหตุการณ์ของระบบสมาชิก) — ปลายทางของบัญชี/ทั้งร้านแก้ที่ตั้งค่าร้านเท่านั้น
+// 🔴 ผลลัพธ์ใช้ชนิดจาก `api-shared.ts` (ไฟล์นี้ห้าม export type เพิ่ม)
+
+async function gateWebhook(systemId: string, platformAction: "webhook.endpoint.create" | "webhook.endpoint.update" | "webhook.endpoint.delete") {
+  const auth = await requireTenant();
+  const tenantId = auth.active.tenantId;
+  const actor = toMemberActor(auth.user.id, auth.active);
+  if (!hasMemberPerm(actor, "member.api.manage")) {
+    throw new Error("บัญชีของคุณยังไม่ได้รับสิทธิ์จัดการการเชื่อมต่อของระบบสมาชิก — ขอสิทธิ์จากเจ้าของร้านก่อน");
+  }
+  assertCan(
+    { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> },
+    { module: "webhook", action: platformAction },
+  );
+  const system = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "MEMBER" }, select: { id: true } });
+  if (!system) throw new Error("ไม่พบระบบสมาชิกนี้ในร้านนี้");
+  return { tenantId, userId: auth.user.id };
+}
+
+/** ปลายทางนี้เป็นของระบบสมาชิกในร้านนี้ไหม (ไม่ใช่ = "ไม่พบ") */
+async function memberEndpoint(tenantId: string, id: string) {
+  const row = await getEndpoint({ tenantId }, id);
+  return row && isMemberWebhookEndpoint(row.eventsJson) ? row : null;
+}
+
+/** เพิ่มปลายทาง — https เท่านั้น · เหตุการณ์ของระบบสมาชิกอย่างน้อย 1 ตัว · secret คืนครั้งเดียว */
+export async function createMemberWebhookAction(fd: FormData): Promise<MemberWebhookCreateResult> {
+  const systemId = s(fd, "systemId");
+  const { tenantId, userId } = await gateWebhook(systemId, "webhook.endpoint.create");
+  const url = s(fd, "url");
+  const urlProblem = memberWebhookUrlProblem(url);
+  if (urlProblem) return { ok: false, reason: urlProblem };
+  const checked = memberWebhookEventsCheck(fd.getAll("events").map((v) => String(v)));
+  if (!checked.ok) return { ok: false, reason: checked.reason };
+  try {
+    const res = await createEndpoint({ tenantId }, { url, events: checked.events });
+    await writeAudit({
+      tenantId,
+      actorId: userId,
+      action: "member.api.manage",
+      targetType: "WebhookEndpoint",
+      targetId: res.id,
+      after: { created: true, events: checked.events, systemId },
+    });
+    revalidatePath(PATH(systemId));
+    return { ok: true, id: res.id, secret: res.secret };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "เพิ่มปลายทางไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
+}
+
+/** พัก/เปิดใช้ปลายทาง (secret เดิม · ระบบปลายทางไม่ต้องเปลี่ยนอะไร) */
+export async function toggleMemberWebhookAction(fd: FormData): Promise<MemberWebhookActionResult> {
+  const systemId = s(fd, "systemId");
+  const { tenantId, userId } = await gateWebhook(systemId, "webhook.endpoint.update");
+  const row = await memberEndpoint(tenantId, s(fd, "endpointId"));
+  if (!row) return { ok: false, reason: "ไม่พบปลายทางนี้ในระบบสมาชิก — อาจถูกลบไปแล้ว" };
+  const active = s(fd, "active") === "true";
+  try {
+    await setEndpointActive({ tenantId }, row.id, active);
+    await writeAudit({ tenantId, actorId: userId, action: "member.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { active } });
+    revalidatePath(PATH(systemId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
+}
+
+/** ลบปลายทาง (ประวัติการส่งหายตาม) */
+export async function deleteMemberWebhookAction(fd: FormData): Promise<MemberWebhookActionResult> {
+  const systemId = s(fd, "systemId");
+  const { tenantId, userId } = await gateWebhook(systemId, "webhook.endpoint.delete");
+  const row = await memberEndpoint(tenantId, s(fd, "endpointId"));
+  if (!row) return { ok: false, reason: "ไม่พบปลายทางนี้ในระบบสมาชิก — อาจถูกลบไปแล้ว" };
+  try {
+    await deleteEndpoint({ tenantId }, row.id);
+    await writeAudit({ tenantId, actorId: userId, action: "member.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { deleted: true } });
+    revalidatePath(PATH(systemId));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ลบไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
+}
+
+/** ยิงทดสอบ 1 ครั้ง (payload `{ test: true }` · ลงประวัติการส่งเหมือนของจริง) */
+export async function testMemberWebhookAction(fd: FormData): Promise<MemberWebhookTestResult> {
+  const systemId = s(fd, "systemId");
+  const { tenantId } = await gateWebhook(systemId, "webhook.endpoint.update");
+  const row = await memberEndpoint(tenantId, s(fd, "endpointId"));
+  if (!row) return { ok: false, reason: "ไม่พบปลายทางนี้ในระบบสมาชิก — อาจถูกลบไปแล้ว" };
+  try {
+    const res = await testEndpoint({ tenantId }, row.id, "member.updated");
+    revalidatePath(PATH(systemId));
+    return { ok: true, delivered: res.delivered, error: res.error };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ทดสอบส่งไม่สำเร็จ — ลองใหม่อีกครั้ง") };
   }
 }

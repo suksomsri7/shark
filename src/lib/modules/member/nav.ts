@@ -92,6 +92,9 @@ export const MEMBER_DEEP_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "campaigns-new", label: "สร้างแคมเปญ", path: "/member/campaigns/new", status: "ready" },
   // M3.3 — ตัวสร้าง journey แบบว่าง (ภาพ 07 บน) · หน้ารายการอยู่ใน MEMBER_CAMPAIGN_NAV
   { key: "journeys-new", label: "สร้าง Journey ใหม่", path: "/member/journeys/new", status: "ready" },
+  // M3.10 — ผู้ช่วย AI ของระบบสมาชิก (ภาพ 27 ซ้าย) · §2.2 ล็อกแถบหลักไว้ 9 หมวด ⇒ เป็นหน้าลึกใน drawer ☰
+  //   (เปิดได้ทุกคนที่อ่านโมดูลได้ — ผู้ช่วยอ่านอย่างเดียว ส่วนการเขียนเป็นข้อเสนอที่ตรวจสิทธิ์ของคนกดเสมอ)
+  { key: "assistant", label: "ผู้ช่วย AI", path: "/member/assistant", status: "ready" },
 ] as const);
 
 export const MEMBER_CAMPAIGN_NAV: readonly MemberNavEntry[] = Object.freeze([
