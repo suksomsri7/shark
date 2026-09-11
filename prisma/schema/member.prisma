@@ -69,9 +69,15 @@ model Customer {
   referredById     String?
   mergedIntoId     String?
   privacyVersion   Int?
+  // ── M2.9 (migration `member_v2_f2`) — บัตรสมาชิก QR ของหน้า `/m/<slug>/card` ──
+  // เก็บเฉพาะ hash ของ token ที่อยู่ใน QR (token ดิบไม่เคยถูกเก็บ) + วันหมดอายุ 24 ชม.
+  // พนักงานสแกน → `me.resolveCardToken(tenantId, token)` เทียบ hash + อายุ แล้วคืนการ์ดย่อ
+  cardTokenHash      String?
+  cardTokenExpiresAt DateTime?
 
   appointments Appointment[]
   activities   MemberActivity[]
+  identities   MemberChannelIdentity[]
 
   @@unique([memberSystemId, phone])
   @@unique([memberSystemId, memberCode])
@@ -245,6 +251,10 @@ enum TierBenefitType {
 enum PrivacyRequestType {
   EXPORT
   DELETE
+  // M2.9 — คำขอ "ลบข้อมูลของฉัน" ที่ **ลูกค้ากดเอง** จากหน้า `/m/<slug>/profile` (PDPA)
+  // แยกจาก DELETE (ร้าน/ระบบเป็นคนเปิดคำขอ) เพราะคนละเส้นทางอนุมัติ: ERASE ไม่ลบทันทีเด็ดขาด
+  // แม้ร้านจะยังไม่ได้ตั้งนโยบายอนุมัติ (ดู privacy.requestErase)
+  ERASE
 }
 
 enum PrivacyRequestStatus {
@@ -505,9 +515,12 @@ model MemberTag {
 // ───────────────────────── ตัวตนหลายช่องทาง (D18) ─────────────────────────
 // 1 externalId ผูกได้ 1 สมาชิกต่อร้าน · ลูกค้าเปลี่ยนบัญชี LINE = เพิ่มแถวใหม่ ไม่ลบของเก่า
 model MemberChannelIdentity {
-  id          String           @id @default(cuid())
-  tenantId    String
-  customerId  String
+  id         String @id @default(cuid())
+  tenantId   String
+  customerId String
+  // M2.9 — ผูก relation จริงกับ Customer (ในโมดูลเดียวกัน): หน้าลูกค้า/LINE login ต้องถามว่า
+  // "id ช่องทางนี้เป็นของสมาชิกในระบบสมาชิกไหน" ในคำสั่งเดียว · ลบสมาชิก = id ช่องทางหายตามทันที
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   channel     String // key ของทะเบียนช่องทางกลาง (D19)
   externalId  String
   displayName String?

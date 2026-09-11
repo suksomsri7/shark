@@ -216,6 +216,9 @@ export async function logAccess(ctx: MemberCtx, actor: MemberActor, input: LogAc
 /** ที่มาของความยินยอม (enum เดียวกับ `MemberConsentSource` ของ Prisma) */
 const CONSENT_SOURCES: readonly string[] = ["SIGNUP_FORM", "LIFF", "STAFF", "IMPORT", "API", "CUSTOMER_SELF"];
 
+/** ที่มาที่แปลว่า "ลูกค้าเป็นคนกดเอง" — ใช้ตัดสินว่า actor CUSTOMER บันทึกที่มานี้ได้ไหม (M2.9) */
+const CUSTOMER_SELF_SOURCES = new Set<string>(["CUSTOMER_SELF", "LIFF"]);
+
 /** ช่องทางที่ `Customer.marketingConsent` (คอลัมน์เดิมของ v1) เป็นตัวแทนอยู่ — §4.5 */
 const LEGACY_CONSENT_CHANNELS: readonly string[] = ["LINE", "EMAIL", "SMS"];
 
@@ -553,8 +556,10 @@ export async function setConsent(
     if (!actor.customerId || actor.customerId !== customerId) {
       throw new MemberForbiddenError("แก้ความยินยอมได้เฉพาะของบัญชีตัวเองเท่านั้น");
     }
-    if (source !== "CUSTOMER_SELF") {
-      throw new MemberInputError('ลูกค้าที่ตั้งค่าเองต้องบันทึกที่มาเป็น "ลูกค้าตั้งเอง" เท่านั้น');
+    // M2.9 — ที่มาที่ยอมรับได้เมื่อ "ลูกค้าเป็นคนกดเอง" มี 2 ค่า: กดจากหน้าลูกค้า `/m/*` (LIFF/ในแอป)
+    // หรือกดจากฟอร์มอื่นของตัวเอง (CUSTOMER_SELF) — ที่มาของพนักงาน/นำเข้า/API ห้ามเด็ดขาด
+    if (!CUSTOMER_SELF_SOURCES.has(source)) {
+      throw new MemberInputError('ลูกค้าที่ตั้งค่าเองต้องบันทึกที่มาเป็น "ลูกค้าตั้งเอง" หรือหน้าสมาชิกเท่านั้น');
     }
   } else if (!hasMemberPerm(actor, "member.customer.update")) {
     throw new MemberForbiddenError("บัญชีของคุณยังไม่ได้รับสิทธิ์แก้ความยินยอมของสมาชิก — ขอสิทธิ์จากเจ้าของร้านก่อน");
@@ -1048,32 +1053,59 @@ export async function requestErase(
   ctx: MemberCtx,
   actor: MemberActor,
   customerId: string,
-  via: string,
+  input: string | { via: string; reason?: string | null },
 ): Promise<{ requestId: string; approvalRequestId?: string; status: string }> {
+  // M2.9 — หน้าลูกค้าส่ง `{ reason, via }` มา (มีเหตุผลให้ร้านอ่านก่อนอนุมัติ) · ผู้เรียกเดิมส่ง `via` เป็นข้อความ
+  const via = typeof input === "string" ? input : input?.via;
+  const reason = typeof input === "string" ? null : (input?.reason ?? null);
   const source = assertConsentSource(via);
-  if (!isSelf(actor, customerId) && !hasMemberPerm(actor, "member.customer.delete")) {
+  const self = isSelf(actor, customerId);
+  if (!self && !hasMemberPerm(actor, "member.customer.delete")) {
     throw new MemberForbiddenError('บัญชีของคุณยังไม่ได้รับสิทธิ์ลบข้อมูลสมาชิก — ขอสิทธิ์ "ลบข้อมูลสมาชิกถาวร (คำขอ PDPA)" จากเจ้าของร้านก่อน');
   }
   const customer = await loadMemberRow(ctx, customerId);
+  // 🔴 คำขอที่ **ลูกค้ากดเอง** = ชนิด ERASE และ **ไม่ลบทันทีเด็ดขาด** แม้ร้านยังไม่ตั้งนโยบายอนุมัติ
+  //    (ปุ่มเดียวในไลน์ลบประวัติทั้งชีวิตของตัวเองโดยไม่มีใครเห็น = อุบัติเหตุที่ย้อนไม่ได้)
+  //    คำขอที่ร้าน/ระบบเปิดให้ = DELETE ตามเดิม (ผ่านสายอนุมัติ · ไม่มีนโยบาย = ลบทันที)
+  const type = self ? "ERASE" : "DELETE";
 
   const pending = await prisma.memberPrivacyRequest.findFirst({
-    where: { tenantId: ctx.tenantId, customerId, type: "DELETE", status: { in: ["PENDING", "APPROVED"] } },
+    where: { tenantId: ctx.tenantId, customerId, type: { in: ["DELETE", "ERASE"] }, status: { in: ["PENDING", "APPROVED"] } },
     orderBy: { createdAt: "desc" },
   });
   if (pending) return { requestId: pending.id, ...(pending.approvalRequestId ? { approvalRequestId: pending.approvalRequestId } : {}), status: pending.status };
 
   const request = await prisma.memberPrivacyRequest.create({
-    data: { tenantId: ctx.tenantId, customerId, type: "DELETE", status: "PENDING", requestedVia: source },
+    data: { tenantId: ctx.tenantId, customerId, type, status: "PENDING", requestedVia: source },
     select: { id: true },
   });
   await writeAudit({
     tenantId: ctx.tenantId,
+    actorType: self ? "SYSTEM" : "USER",
     actorId: ctx.actorUserId ?? (actor.userId || null),
     action: "member.erase",
     targetType: "Customer",
     targetId: customerId,
-    after: { requestId: request.id, via: source, step: "requested" },
+    after: { requestId: request.id, via: source, step: "requested", ...(self ? { by: "customer" } : {}), ...(reason ? { reason } : {}) },
   });
+  if (self) {
+    // ลูกค้าขอเอง → เปิดคำขออนุมัติให้ร้านเห็นเสมอ (มีนโยบาย = เข้าสายอนุมัติ · ไม่มี = ค้าง PENDING รอร้านกด)
+    const submittedSelf = await approval.submitForApproval(
+      { tenantId: ctx.tenantId },
+      {
+        entityType: "member.erase",
+        entityId: request.id,
+        systemId: ctx.systemId,
+        unitId: customer.homeUnitId,
+        requestedById: "member.privacy.customer",
+      },
+    );
+    if (!("autoApproved" in submittedSelf)) {
+      await prisma.memberPrivacyRequest.update({ where: { id: request.id }, data: { approvalRequestId: submittedSelf.requestId } });
+      return { requestId: request.id, approvalRequestId: submittedSelf.requestId, status: "PENDING" };
+    }
+    return { requestId: request.id, status: "PENDING" };
+  }
 
   const submitted = await approval.submitForApproval(
     { tenantId: ctx.tenantId },
@@ -1221,7 +1253,7 @@ export async function applyEraseApproved(
   input: { requestId: string; approved: boolean },
 ): Promise<{ ok: boolean }> {
   const request = await prisma.memberPrivacyRequest.findFirst({
-    where: { id: input.requestId, tenantId: ctx.tenantId, type: "DELETE" },
+    where: { id: input.requestId, tenantId: ctx.tenantId, type: { in: ["DELETE", "ERASE"] } },
   });
   if (!request) return { ok: false };
   if (!input.approved) {
@@ -1299,7 +1331,7 @@ export async function sweepAutoErase(ctx?: MemberCtx, now: Date = new Date()): P
     try {
       // คนที่เคยมีคำขอลบ (ค้าง/ทำแล้ว) ต้องไม่ถูกขอซ้ำ — ตารางคำขอไม่มี relation จึงคัดเป็น 2 จังหวะ
       const already = await prisma.memberPrivacyRequest.findMany({
-        where: { tenantId: sys.tenantId, type: "DELETE", status: { in: ["PENDING", "APPROVED", "DONE"] } },
+        where: { tenantId: sys.tenantId, type: { in: ["DELETE", "ERASE"] }, status: { in: ["PENDING", "APPROVED", "DONE"] } },
         select: { customerId: true },
       });
       const stale = await prisma.customer.findMany({

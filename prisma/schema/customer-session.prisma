@@ -1,0 +1,46 @@
+// customer-session.prisma — ตัวตนของ "ลูกค้า" ฝั่งหน้าร้าน `/m/*` (M2.9 · migration `member_v2_f2`)
+//
+// 🔴 ทำไมแยกจาก `Session`/`PlatformAuthToken` ของพนักงาน: คนละประชากร คนละอายุ คนละความเสี่ยง
+//    - `Session` ผูก `User` (พนักงาน/เจ้าของ) ที่มี Membership + สิทธิ์ทั้งร้าน
+//    - ตารางนี้ผูก `Customer` ที่ "เป็นเจ้าของข้อมูลตัวเองคนเดียว" — ไม่มีสิทธิ์อะไรในร้านเลย
+//    ถ้าใช้ตารางเดียวกัน วันหนึ่งโค้ดฝั่งพนักงานจะเผลออ่าน session ลูกค้าเป็นผู้ใช้ของร้าน
+//    (หรือกลับกัน) ⇒ แยกตาราง + แยกชื่อ cookie ตั้งแต่วันแรก (พิมพ์เขียว §6.3 · D4)
+// 🔴 ไม่มี FK ข้ามไป `Customer` (กติกาเดียวกับตารางใหม่ของระบบสมาชิก v2) — ลบสมาชิกทำผ่าน
+//    `privacy.eraseMember` ซึ่งกวาด session/otp ของคนนั้นเอง
+
+/// session ของลูกค้าที่ล็อกอินหน้า `/m/<slug>/*` (LIFF / WebView ในแอป / เบราว์เซอร์)
+/// เก็บเฉพาะ hash ของ token (ของดิบอยู่ใน cookie ฝั่งลูกค้าเท่านั้น)
+model CustomerSession {
+  id         String    @id @default(cuid())
+  tenantId   String
+  customerId String
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([tenantId, expiresAt])
+}
+
+/// รหัส OTP ที่ส่งให้ลูกค้า (เบอร์/อีเมล) เพื่อเข้าหน้า `/m/*`
+/// `target` = เบอร์/อีเมลที่ขอมา (ยังไม่รู้ว่าเป็นสมาชิกไหม) · `customerId` = สมาชิกที่ตรงกับ target ตอนออกรหัส
+/// (null = ไม่มีสมาชิกคนนี้ในร้าน — ยังออกรหัสให้เหมือนกันเพื่อไม่ให้คนนอกใช้หน้า login เดาว่าใครเป็นสมาชิก)
+model CustomerOtp {
+  id         String    @id
+  tenantId   String
+  target     String
+  channel    String // "PHONE" | "EMAIL"
+  codeHash   String // sha256(`${otpId}:${code}`) — ไม่เก็บรหัสดิบ
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  customerId String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, target, createdAt])
+  @@index([expiresAt])
+}

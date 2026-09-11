@@ -197,6 +197,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   MemberSavedView: sys(),
   MemberTag: sys(),
   MemberChannelIdentity: tenant, // ค้นด้วย (tenantId, channel, externalId) — ขาเข้ายังไม่รู้ระบบ
+  // M2.9 — ตัวตนของ "ลูกค้า" ฝั่ง `/m/*` (คนละตารางกับ Session ของพนักงาน)
+  //   แกน tenant: ค้นด้วย tokenHash/otpId ก่อนรู้ว่าเป็นระบบสมาชิกไหน (Customer.memberSystemId เป็นตัวคุมต่อ)
+  CustomerSession: tenant,
+  CustomerOtp: tenant,
   AcquisitionLink: sys(),
   MemberAttribution: tenant,
   MemberTierDef: sys(),

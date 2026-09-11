@@ -368,7 +368,7 @@ export function displayOf(
  * ฟิลด์กำหนดเอง (เช่น instructorId target EMPLOYEE) — id ที่หาไม่เจอ (ถูกลบไปแล้ว) ไม่ใส่ลง map
  * (`displayOf` คืน "(ถูกลบ)" เอง) · อ่านอย่างเดียวข้ามโมดูล (แบบเดียวกับ `connectionsOf`/`privacy.ts` — ดูหมายเหตุหัวไฟล์)
  */
-async function resolveLookupNames(ctx: MemberCtx, entries: { target: string | undefined; id: string }[]): Promise<Map<string, string>> {
+export async function resolveLookupNames(ctx: MemberCtx, entries: { target: string | undefined; id: string }[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const byTarget = new Map<string, string[]>();
   for (const e of entries) {

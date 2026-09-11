@@ -164,6 +164,30 @@ export {
   sweepAutoErase,
 } from "./privacy";
 
+// ── ฝั่งลูกค้า `/m/*` (M2.9 · §3.10 §6.3) ──
+// 🔴 จุดเดียวที่โมดูลอื่น (POS/แอปพนักงาน/REST) ถามเรื่อง "ตัวตนของลูกค้า" และ "บัตรสมาชิก QR" ได้
+//    ห้ามอ่านตาราง CustomerSession/Customer.cardTokenHash เองจากโมดูลอื่นเด็ดขาด
+export type { CustomerSessionInfo, CustomerSessionToken } from "./customer-session";
+export {
+  /** อ่าน session ลูกค้าจาก token ของ cookie `shark_customer` (หมดอายุ/เพิกถอน = null) */
+  getCustomerSession,
+  /** ออก session ให้ลูกค้า (หลังสมัคร/เครื่องมือดูแลระบบ/QC harness) */
+  mintCustomerSession,
+  revokeCustomerSession,
+  /** cron รายวัน: ลบ OTP/session ที่หมดอายุแล้วทุกร้าน */
+  sweepCustomerAuth,
+} from "./customer-session";
+
+export type { CardLookupDto, MeCardDto, MeDto } from "./me";
+export {
+  /** พนักงานสแกน QR บัตรสมาชิก → การ์ดย่อ (หมดอายุ/คนละร้าน = null) */
+  resolveCardToken,
+  /** บัตรสมาชิกของลูกค้าคนนั้น (ต้องเป็น actor ลูกค้าเจ้าของบัตรเท่านั้น) */
+  meCard,
+  meGet,
+  meUpdate,
+} from "./me";
+
 // ── ทางเข้าเดิม (v1) ที่โมดูลอื่นใช้อยู่แล้ว — คงสัญญาไว้ทุกตัว ──
 export {
   /** หา/สร้างสมาชิกจากเบอร์→อีเมล (แชท/POS/จอง เรียกอยู่) */

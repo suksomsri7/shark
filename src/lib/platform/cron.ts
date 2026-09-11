@@ -22,7 +22,7 @@ import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 import { sweepOverdue } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
-import { runTierReview, sweepAutoErase } from "@/lib/modules/member";
+import { runTierReview, sweepAutoErase, sweepCustomerAuth } from "@/lib/modules/member";
 import { expireDue, notifyExpiring } from "@/lib/modules/point";
 import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
 import { expireDue as stampExpireDue } from "@/lib/modules/stamp";
@@ -201,6 +201,7 @@ export async function runDailyCron(
   voucherExpired: number;
   voucherExpiring: number;
   rewardExpired: number;
+  customerAuthSwept: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -228,6 +229,7 @@ export async function runDailyCron(
   let voucherExpired = -1;
   let voucherExpiringCount = -1;
   let rewardExpired = -1;
+  let customerAuthSwept = -1;
 
   // M2.5 — hook ของแจกย้อนกลับต้องพร้อมก่อนรอบทบทวนระดับ (idempotent · เรียกซ้ำได้)
   registerMemberHooks();
@@ -406,6 +408,12 @@ export async function runDailyCron(
   } catch {
     // sweep แจ้ง voucher ใกล้หมดอายุพัง → -1 ไปต่อ
   }
+  try {
+    // M2.9: ล้าง OTP/เซสชันของลูกค้า (`/m/*`) ที่หมดอายุแล้วทุกร้าน — ของพวกนี้ไม่มีค่าทางบัญชี
+    customerAuthSwept = await sweepCustomerAuth(now);
+  } catch {
+    // กวาด session ลูกค้าพัง → -1 ไปต่อ
+  }
 
   return {
     subsExpired,
@@ -434,5 +442,6 @@ export async function runDailyCron(
     voucherExpired,
     voucherExpiring: voucherExpiringCount,
     rewardExpired,
+    customerAuthSwept,
   };
 }
