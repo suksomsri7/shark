@@ -260,3 +260,47 @@ export {
   /** ลูกค้ากดลิงก์/สแกน QR ที่มา (สาธารณะ — เส้นทาง `/m/{slug}?src=` เรียกตัวนี้) */
   hit,
 } from "./sources";
+
+// ── กลุ่มลูกค้า / segment (M3.1 · §5.9 · ภาพ 21 ขั้น 1) ──
+// 🔴 จุดเดียวที่การตลาด (แคมเปญ M3.2 · journey M3.3) และการออก voucher "เป็นกลุ่ม" (M2.5)
+//    ถามว่า "ใครเข้าเงื่อนไขนี้บ้าง" — `marketing/segments.ts` เป็นทางเข้าเดิมของฝั่งการตลาด
+//    ที่ re-export ผ่านไฟล์นี้ล้วน (ห้ามให้โมดูลอื่น import `member/segments` ตรง)
+export type {
+  SegmentOp,
+  SegmentFieldKind,
+  SegmentFieldOption,
+  SegmentFieldDef,
+  SegmentCondition,
+  SegmentGroup,
+  SegmentDefinition,
+  SegmentScope,
+  SegmentDto,
+  CountSegmentResult,
+  SampleSegmentOptions,
+  SampleSegmentResult,
+  SaveSegmentInput,
+} from "./segments";
+
+export {
+  /** ฟิลด์ทั้งหมดที่ตั้งเงื่อนไขได้ในร้านนี้ (ระบบ + `f.{key}` + ระดับ/แต้ม/ยินยอม/CRM) */
+  listSegmentFields,
+  /** นิยาม → เงื่อนไขค้นหาสมาชิก (`Prisma.CustomerWhereInput`) */
+  evaluateSegment,
+  /** กี่คนเข้าเงื่อนไข + ยอดซื้อเฉลี่ย + ตัวอย่าง 5 ชื่อ */
+  countSegment,
+  /** ไล่รายชื่อคนที่เข้าเงื่อนไขทีละหน้า */
+  sampleSegment,
+  /** กลุ่มที่บันทึกไว้ */
+  listSegments,
+  getSegment,
+  saveSegment,
+  deleteSegment,
+  segmentMembers,
+  /** บันทึก/ลบกลุ่มได้ไหม (promo.manage หรือคีย์สร้างแคมเปญ — ขั้นที่ 1 ของแคมเปญคือกลุ่มเป้าหมาย) */
+  canManageSegments,
+  /** ประโยคไทยย่อของนิยาม + ป้ายไทยของตัวดำเนินการ (หน้าจอ/แคมเปญใช้ชุดเดียวกัน) */
+  describeDefinition,
+  parseDefinition,
+  SEGMENT_OPS,
+  SEGMENT_OP_LABELS,
+} from "./segments";

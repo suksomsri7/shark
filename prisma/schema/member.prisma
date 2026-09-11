@@ -75,9 +75,15 @@ model Customer {
   cardTokenHash      String?
   cardTokenExpiresAt DateTime?
 
-  appointments Appointment[]
-  activities   MemberActivity[]
-  identities   MemberChannelIdentity[]
+  appointments  Appointment[]
+  activities    MemberActivity[]
+  identities    MemberChannelIdentity[]
+  // M3.1 (`member_v2_g`) — เอนจิน segment ถาม "ใครเข้าเงื่อนไข" ข้ามตารางเหล่านี้ในคำสั่งเดียว
+  // (ค่าฟิลด์กำหนดเอง · ยินยอมรายช่องทาง · ยอดแต้ม · voucher ที่ถืออยู่) · ลบสมาชิกตาม PDPA = หายตามทั้งชุด
+  fieldValues   MemberFieldValue[]
+  consents      MemberConsent[]
+  pointBalances PointBalance[]
+  vouchers      Voucher[]
 
   @@unique([memberSystemId, phone])
   @@unique([memberSystemId, memberCode])
@@ -316,6 +322,8 @@ model MemberField {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
+  values MemberFieldValue[]
+
   @@unique([systemId, key])
   @@index([tenantId])
   @@index([systemId, sectionId, sortOrder])
@@ -327,7 +335,11 @@ model MemberFieldValue {
   id          String    @id @default(cuid())
   tenantId    String
   customerId  String
+  // M3.1 (`member_v2_g`) — relation จริงทั้งสองข้าง: segment ถาม "ค่าฟิลด์กำหนดเองของสมาชิกที่เข้าเงื่อนไขอื่น"
+  // ในคำสั่งเดียวได้ (เดิมต้องอ่าน customerId มาก่อนแล้วยิงซ้ำ) · ลบสมาชิก/ลบฟิลด์ = ค่าหายตาม
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   fieldId     String
+  field       MemberField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
   valueText   String?
   valueNumber Decimal?  @db.Decimal(18, 4)
   valueDate   DateTime?
@@ -391,6 +403,8 @@ model MemberConsent {
   id            String              @id @default(cuid())
   tenantId      String
   customerId    String
+  // M3.1 (`member_v2_g`) — relation จริง: เงื่อนไข "ยินยอมรับข่าวสารทาง X" ถามพร้อมเงื่อนไขอื่นในคำสั่งเดียว
+  customer      Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   channel       String
   granted       Boolean             @default(false)
   source        MemberConsentSource
@@ -645,4 +659,27 @@ model MemberTierHistory {
 
   @@index([customerId, createdAt])
   @@index([tenantId, reason])
+}
+
+// ───────────────────────── กลุ่มลูกค้า / Segment (M3.1 · §4.3 §5.9) ─────────────────────────
+// นิยามกลุ่มที่บันทึกไว้ = `definition` Json รูป { groups: [{ conditions: [{ field, op, value }] }] }
+// (เงื่อนไขในกลุ่มเดียวกัน AND · ข้ามกลุ่ม OR) — แคมเปญ (M3.2) / journey (M3.3) / การออก voucher
+// แบบ "เป็นกลุ่ม" (M2.5) อ้างกลุ่มนี้ด้วย id แทนที่จะเก็บเงื่อนไขซ้ำของใครของมัน
+// `lastCount`/`lastCountAt` = จำนวนคนที่นับได้ครั้งล่าสุด (รายการโชว์ได้โดยไม่ต้องนับใหม่ทุกครั้ง)
+// `scope` = TEAM (ทั้งร้านเห็น) | PRIVATE (เฉพาะเจ้าของ) — กติกาเดียวกับ MemberSavedView ของ M1.5
+model MemberSegment {
+  id          String    @id @default(cuid())
+  tenantId    String
+  systemId    String
+  name        String
+  definition  Json      @default("{}")
+  lastCount   Int?
+  lastCountAt DateTime?
+  ownerUserId String?
+  scope       String    @default("TEAM") // TEAM | PRIVATE
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([systemId])
 }

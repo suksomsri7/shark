@@ -102,7 +102,8 @@ try {
   const expPts = balRows.filter((r: Any) => r.balance >= 100).length;
   chk("M3.1-S2.5", `points gte 100 → ${expPts} (จาก PointBalance ระบบแต้มของร้าน) · points gte 0 = ทุกคน ${total} (ไม่มีแถว balance = 0)`, (await cnt(def({ field: "points", op: "gte", value: 100 }))) === expPts && (await cnt(def({ field: "points", op: "gte", value: 0 }))) === total, `${expPts}/${total}`, `${await cnt(def({ field: "points", op: "gte", value: 100 }))}/${await cnt(def({ field: "points", op: "gte", value: 0 }))} ps=${typeof PS.getBalance}`);
 
-  chk("M3.1-S2.6", "spent12m gte 3,600,000 สตางค์ → 4 (cache ที่เตรียม: 3.5M+i·0.1M · i=1..4) · visits12m gte 10 → 3 (8+i · i≥2)", (await cnt(def({ field: "spent12m", op: "gte", value: 3_600_000 }))) === 4 && (await cnt(def({ field: "visits12m", op: "gte", value: 10 }))) === 3, "4/3", `${await cnt(def({ field: "spent12m", op: "gte", value: 3_600_000 }))}/${await cnt(def({ field: "visits12m", op: "gte", value: 10 }))}`);
+  const expSpent = await prisma.customer.count({ where: { ...base, spent12mSatang: { gte: 3_600_000 } } }); const expVisits = await prisma.customer.count({ where: { ...base, visits12m: { gte: 10 } } });
+  chk("M3.1-S2.6", `spent12m gte 3,600,000 สตางค์ → ${expSpent} (นับสดจาก Customer.spent12mSatang · seed มีคนถึงเกณฑ์อยู่ก่อน + 4 ที่เตรียม) · visits12m gte 10 → ${expVisits}`, (await cnt(def({ field: "spent12m", op: "gte", value: 3_600_000 }))) === expSpent && expSpent >= 4 && (await cnt(def({ field: "visits12m", op: "gte", value: 10 }))) === expVisits && expVisits >= 3, `${expSpent}/${expVisits}`, `${await cnt(def({ field: "spent12m", op: "gte", value: 3_600_000 }))}/${await cnt(def({ field: "visits12m", op: "gte", value: 10 }))}`);
 
   const V = (await import("@/lib/modules/voucher" as string)) as Record<string, (...a: Any[]) => Any>;
   const iss = await V.issue(ctx, owner, { customerIds: [m(5).id, m(6).id], adhoc: { kind: "FIXED", value: 1_000, config: {}, validDays: 7 }, origin: "MANUAL", originRef: { campaignId: `seg-${tag}` } });
@@ -114,9 +115,12 @@ try {
   const eBadChannel = await fails(() => S.countSegment(ctx, owner, def({ field: "consent.PIGEON", op: "eq", value: true })));
   chk("M3.1-S2.8", `consent.LINE eq true → ${expLine} (seed 40) · consent.LINE eq false = ที่เหลือ (ไม่มีแถว = ไม่ยินยอม) · ช่องทางไม่รู้จัก → throw ไทย`, (await cnt(def({ field: "consent.LINE", op: "eq", value: true }))) === expLine && expLine > 0 && (await cnt(def({ field: "consent.LINE", op: "eq", value: false }))) === total - expLine && thai(eBadChannel), `${expLine}`, `${await cnt(def({ field: "consent.LINE", op: "eq", value: true }))}/${await cnt(def({ field: "consent.LINE", op: "eq", value: false }))} e=${thai(eBadChannel)}`);
 
-  const expSrc = await prisma.customer.count({ where: { ...base, source: "STAFF" as Any } });
+  // seed ไม่ได้ตั้ง source เป็น "STAFF" (ไม่มีใน enum MemberSource) — ใช้ source ที่พบมากที่สุดในชุดข้อมูลจริง
+  const srcGroups = (await prisma.customer.groupBy({ by: ["source"], where: base, _count: { _all: true } } as Any)) as Any[];
+  const topSrc = String(srcGroups.sort((a: Any, b: Any) => b._count._all - a._count._all)[0]?.source ?? "WALK_IN");
+  const expSrc = await prisma.customer.count({ where: { ...base, source: topSrc as Any } });
   const expUnit = await prisma.customer.count({ where: { ...base, homeUnitId: E.units.kata } });
-  chk("M3.1-S2.9", `source in [STAFF] → ${expSrc} · unit in [กะตะ] → ${expUnit} (20) · unit nin [กะตะ] → ${total - expUnit}`, (await cnt(def({ field: "source", op: "in", value: ["STAFF"] }))) === expSrc && (await cnt(def({ field: "unit", op: "in", value: [E.units.kata] }))) === expUnit && (await cnt(def({ field: "unit", op: "nin", value: [E.units.kata] }))) === total - expUnit, `${expSrc}/${expUnit}`, `${await cnt(def({ field: "source", op: "in", value: ["STAFF"] }))}/${await cnt(def({ field: "unit", op: "in", value: [E.units.kata] }))}/${await cnt(def({ field: "unit", op: "nin", value: [E.units.kata] }))}`);
+  chk("M3.1-S2.9", `source in [${topSrc}] → ${expSrc} · unit in [กะตะ] → ${expUnit} (20) · unit nin [กะตะ] → ${total - expUnit}`, (await cnt(def({ field: "source", op: "in", value: [topSrc] }))) === expSrc && (await cnt(def({ field: "unit", op: "in", value: [E.units.kata] }))) === expUnit && (await cnt(def({ field: "unit", op: "nin", value: [E.units.kata] }))) === total - expUnit, `${expSrc}/${expUnit}`, `${await cnt(def({ field: "source", op: "in", value: [topSrc] }))}/${await cnt(def({ field: "unit", op: "in", value: [E.units.kata] }))}/${await cnt(def({ field: "unit", op: "nin", value: [E.units.kata] }))}`);
 
   const tag0 = await prisma.customer.findMany({ where: { id: { in: [m(7).id, m(8).id] } }, select: { id: true, tags: true } });
   restore.push(async () => { for (const c of tag0) await P.customer.update({ where: { id: c.id }, data: { tags: c.tags } }); });
@@ -127,7 +131,9 @@ try {
   const bdRows = await prisma.customer.findMany({ where: { ...base, birthDate: { not: null } }, select: { birthDate: true } });
   const expOct = bdRows.filter((r) => r.birthDate!.getUTCMonth() === 9).length;
   const expFemale = await prisma.customer.count({ where: { ...base, gender: "FEMALE" as Any } });
-  chk("M3.1-S2.11", `birthdayMonth eq 10 → ${expOct} (seed 12) · ฟิลด์ระบบ gender eq FEMALE → ${expFemale} · createdAt before วันนี้+1 = ทุกคน ${total}`, (await cnt(def({ field: "birthdayMonth", op: "eq", value: 10 }))) === expOct && expOct >= 12 && (await cnt(def({ field: "gender", op: "eq", value: "FEMALE" }))) === expFemale && (await cnt(def({ field: "createdAt", op: "before", value: new Date(Date.now() + 86_400_000).toISOString() }))) === total, `${expOct}/${expFemale}/${total}`, `${await cnt(def({ field: "birthdayMonth", op: "eq", value: 10 }))}/${await cnt(def({ field: "gender", op: "eq", value: "FEMALE" }))}/${await cnt(def({ field: "createdAt", op: "before", value: new Date(Date.now() + 86_400_000).toISOString() }))}`);
+  // seed อ้างวันที่ 30 ก.ย. ⇒ ก่อนวันนั้นมีสมาชิกที่ createdAt อยู่ในอนาคต — นับสดจาก DB แทน "ทุกคน"
+  const expCreated = await prisma.customer.count({ where: { ...base, createdAt: { lt: new Date(Date.now() + 86_400_000) } } });
+  chk("M3.1-S2.11", `birthdayMonth eq 10 → ${expOct} (seed 12) · ฟิลด์ระบบ gender eq FEMALE → ${expFemale} · createdAt before วันนี้+1 → ${expCreated} (นับสด · seed มีวันสมัครในอนาคตจนถึง 30 ก.ย.)`, (await cnt(def({ field: "birthdayMonth", op: "eq", value: 10 }))) === expOct && expOct >= 12 && (await cnt(def({ field: "gender", op: "eq", value: "FEMALE" }))) === expFemale && (await cnt(def({ field: "createdAt", op: "before", value: new Date(Date.now() + 86_400_000).toISOString() }))) === expCreated, `${expOct}/${expFemale}/${expCreated}`, `${await cnt(def({ field: "birthdayMonth", op: "eq", value: 10 }))}/${await cnt(def({ field: "gender", op: "eq", value: "FEMALE" }))}/${await cnt(def({ field: "createdAt", op: "before", value: new Date(Date.now() + 86_400_000).toISOString() }))}`);
 
   const crmExists = !!(await P.crmContact?.count?.({ where: { tenantId: tid } }).catch(() => null));
   const lc = await S.countSegment(ctx, owner, def({ field: "lifecycle", op: "in", value: ["CUSTOMER"] }));

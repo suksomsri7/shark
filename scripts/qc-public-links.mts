@@ -48,7 +48,7 @@ const origin = read("src/lib/core/origin.ts"); // ตัวนี้ตั้ง
 chk("PL-2.1", "อ่านโดเมนจาก header ของคำขอ (x-forwarded-host / host)",
   /x-forwarded-host/.test(origin) && /headers\(\)/.test(origin), "อ่านจาก header", "ไม่ได้อ่าน");
 chk("PL-2.2", "ไม่มี request → fallback ไป env.APP_URL และไม่ throw (อีเมล/cron ยังใช้ได้)",
-  /catch\s*\{[\s\S]{0,80}fallback/.test(origin) && /env\.APP_URL/.test(origin),
+  /catch\s*\{[\s\S]{0,400}(fallback|appUrlFallback|ค่าที่ตั้ง)/.test(origin) && /env\.APP_URL/.test(origin), // M1.11 ย้าย fallback ไปฟังก์ชัน appUrlFallback (dynamic import) — คอมเมนต์ใน catch เป็นไทย
   "มี fallback ใน catch", "ไม่มี");
 
 console.log("\n── [3] ปลายทางของลิงก์มีหน้าอยู่จริง ──");

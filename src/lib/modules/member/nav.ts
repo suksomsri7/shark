@@ -62,6 +62,15 @@ export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "api", label: "API", path: "/member/settings/api", status: "ready" },
 ] as const);
 
+/**
+ * หน้าย่อยของหมวด "แคมเปญ" (M3.1) — ตัวสร้างกลุ่มลูกค้ามาถึงก่อนตัวแคมเปญเอง (M3.2)
+ * 🔴 ไม่เพิ่มลง `MEMBER_NAV`: §2.2 ล็อกไว้ 9 หมวด และ "กลุ่มลูกค้า" เป็นขั้นที่ 1 ของการทำแคมเปญ
+ *    (ภาพ 21) ไม่ใช่หมวดใหม่ — จึงต่อท้ายใน drawer ☰ แบบเดียวกับหน้าย่อยของหมวดตั้งค่า
+ */
+export const MEMBER_CAMPAIGN_NAV: readonly MemberNavEntry[] = Object.freeze([
+  { key: "segments", label: "กลุ่มลูกค้า", path: "/member/segments", status: "ready" },
+] as const);
+
 /** สิทธิ์ที่ต้องมีของหน้าย่อยในหมวดตั้งค่า (ไม่มีในตาราง = ใช้ `member.settings.manage`) */
 function canOpenSettingsPage(key: string, actor: MemberActor): boolean {
   if (key === "privacy") return canManagePrivacy(actor);
@@ -110,9 +119,15 @@ export function memberNavChildren(base: string, actor?: MemberActor): { href: st
   const settingsChildren = MEMBER_SETTINGS_NAV.filter(
     (e) => e.status === "ready" && e.key !== "fields" && (!actor || canOpenSettingsPage(e.key, actor)),
   ).map((e) => ({ href: `${base}${e.path}`, label: e.label }));
+  // M3.1 — "กลุ่มลูกค้า" (ขั้นที่ 1 ของการทำแคมเปญ) เห็นได้ถ้าเข้าโมดูลสมาชิกได้
+  const campaignChildren = MEMBER_CAMPAIGN_NAV.filter((e) => e.status === "ready" && (!actor || canReadMember(actor))).map((e) => ({
+    href: `${base}${e.path}`,
+    label: e.label,
+  }));
   return [
     { href: base, label: "หน้าหลัก" },
     ...visibleNavEntries(actor).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
+    ...campaignChildren,
     ...settingsChildren,
     ...LEGACY_V1_LINKS.map((l) => ({ href: `${base}${l.href}`, label: l.label })),
   ];

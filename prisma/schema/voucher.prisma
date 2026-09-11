@@ -82,6 +82,8 @@ model Voucher {
   template   VoucherTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
 
   customerId String // Customer.id — ใบนี้เป็นของใคร (ย้ายเมื่อรวมสมาชิกซ้ำ §11.1)
+  // M3.1 (`member_v2_g`) — relation จริงไป Customer: เงื่อนไข "ถือ voucher ที่ใช้ได้กี่ใบ" ของ segment
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   code String // `V-XXXXXX` — พิมพ์/ส่งให้ลูกค้า
 

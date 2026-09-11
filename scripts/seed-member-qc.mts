@@ -342,6 +342,15 @@ for (let i = 1; i <= MQC.members.lineIdentityCount; i += 1) {
   }
 }
 
+// ═══════════════════ 13.1 ตรึงระดับตามแผนหลังระบายคิว (M2.8 · 11 ก.ย. 2569) ═══════════════════
+// consumer `pos.sale.paid` (member-bridges) ประเมินระดับจากยอดบิลระหว่างระบายคิว ⇒ สมาชิก seed ถูกเลื่อนระดับเอง
+// (member 30/silver 15/gold 10/platinum 5 เพี้ยน) แล้วเฉลย byTier/ข้อสอบ m1.5/m1.9 พัง ⇒ ตั้งกลับตามแผน + ล้างประวัติที่เกิดจากการเลื่อน
+// (backfill ขั้น 14 จะเติม tierDefId/INITIAL history จาก `tier` ให้ใหม่)
+for (const m of members) {
+  await prisma.customer.update({ where: { id: m.id }, data: { tier: m.tier as Any, tierDefId: null } as Any });
+}
+await P.memberTierHistory.deleteMany({ where: { tenantId, customerId: { in: members.map((m) => m.id) } } }).catch(() => null);
+
 // ═══════════════════ 14. รัน backfill ทั้ง 7 ตัวกับร้านนี้ ═══════════════════
 // ⇒ ฐานข้อมูลอยู่ในสภาพ "หลัง backfill" (มี TierDef/ฟิลด์ระบบ/ยินยอม/Party/ที่มา/ผูก HR/โค้ดแนะนำเพื่อน)
 //   ให้ทุกชุดข้อสอบถัดไป — เหมือนร้านจริงที่เพิ่งอัปเกรดมาเป็นระบบสมาชิก v2

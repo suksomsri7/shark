@@ -196,6 +196,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   MemberPrivacyRequest: tenant,
   MemberSavedView: sys(),
   MemberTag: sys(),
+  MemberSegment: sys(), // M3.1 — กลุ่มลูกค้าเป็นของ "ระบบสมาชิก" หนึ่งระบบ (เงื่อนไขอ้างฟิลด์/ระดับของระบบนั้น)
   MemberChannelIdentity: tenant, // ค้นด้วย (tenantId, channel, externalId) — ขาเข้ายังไม่รู้ระบบ
   // M2.9 — ตัวตนของ "ลูกค้า" ฝั่ง `/m/*` (คนละตารางกับ Session ของพนักงาน)
   //   แกน tenant: ค้นด้วย tokenHash/otpId ก่อนรู้ว่าเป็นระบบสมาชิกไหน (Customer.memberSystemId เป็นตัวคุมต่อ)

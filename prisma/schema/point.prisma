@@ -97,6 +97,9 @@ model PointBalance {
   tenantId   String
   systemId   String
   customerId String
+  // M3.1 (`member_v2_g`) — relation จริงไป Customer: เงื่อนไข "แต้มคงเหลือ ≥ N" ของ segment
+  // ถามพร้อมเงื่อนไขอื่นในคำสั่งเดียว (โค้ดยังคุยกันผ่าน facade ตามเดิม — นี่เป็นเรื่องของฐานข้อมูล)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   balance    Int      @default(0)
   updatedAt  DateTime @updatedAt
 
