@@ -1,5 +1,9 @@
 # RESUME — สถานะสด (เขียนด้วยมือ Fable · เครื่องหลักคือ `pnpm resume`)
 
+## 🔁 11 ก.ย. 2569 05:25 UTC — [session member] **ส่งต่อบทบาทผู้คุมงาน Fable → Opus 5 (24/34 ≈ 71%)** · worktree `/root/projects/shark-member` branch `session/member`
+- อ่าน **`ledger/HANDOVER-2026-09-11-MEMBER-M3-CONTROLLER.md`** ก่อน (สถานะ · ลำดับ 10 ใบที่เหลือ · brief ใน `ledger/member-briefs/` · กติกา ORACLE-EDIT · รายการ audit ของ Fable)
+- M3.3 builder ถูกหยุดกลางทาง ไฟล์ค้างบนดิสก์ (ไม่ commit) — spawn ใหม่ด้วย brief เดิม
+- Fable กลับมาเมื่อ weekly limit reset → ทำ §6 ของ HANDOVER (audit) ไม่ทำซ้ำ
 ## 🤖 11 ก.ย. 2569 (ค่ำ) — [session CRM] **ชุดส่งต่อ Codex เฟส C1 พร้อม** · branch `session/crm-codex` (จาก main) · คู่มือ `ledger/CODEX-HANDOFF-CRM.md` (กติกา 10 ข้อ · ลำดับอ่าน · ขั้นตอนต่อใบ · reviewer prompt · สิ่งที่ Fable ต้องทำเมื่อกลับมา §9)
 - ของที่ Fable เขียนให้: `scripts/crm-qc-env.mts` (สัญญาชุดข้อมูล) · `scripts/seed-crm-qc.mts` (ต่อยอดร้าน QC สมาชิก · has(model) กันตารางเฟสถัดไป · รัน backfill 6 ตัวท้าย) · `scripts/qc-crm-c1.1.mts` (26 ข้อ · SKIPPED จนกว่าจะมี migration crm_v2_a) · qc-all `// requires: crm-seed` · `wo-notes/TEMPLATE-crm.md` · AGENTS.md ชี้ handoff
 - กติกาสำคัญ: Codex ทำเฉพาะ C1 · ข้อสอบก่อน→ห้ามแก้ · ห้าม main/deploy/prod/.env · ห้ามแตะ POS/บัญชี tx/automation engine · ผ่าน with-gate-lock · เมื่อ C1 ครบ → Codex reviewer เขียน `ledger/REVIEW-CRM-C1.md` → **Fable ตรวจซ้ำ + merge + prod** (handoff §9)
