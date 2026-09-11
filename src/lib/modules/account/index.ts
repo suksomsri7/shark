@@ -26,6 +26,10 @@ export {
   createAccountProductWithSalePrice,
 } from "./service";
 
+// M3.7 (ระบบสมาชิก v2 · ไทม์ไลน์ประวัติ) — เอกสารขาออกของ party หนึ่ง (อ่านอย่างเดียว · read-through)
+//   ผู้เรียก: `member/history.ts` (dynamic import — account/index อยู่ในวงจรโหลดไฟล์ของโมดูลบัญชีเอง)
+export { listDocsByParty, type PartyDocRow } from "./service";
+
 // WO 4.1 (MAP §F.11) — คลังเรียกกลับเข้ามาเมื่อ item เปลี่ยน (ชื่อ/sku/หน่วย/ต้นทุน)
 //   chokepoint inventory→account · ไม่ throw · ไม่ผูก/ไม่มีระบบ = { synced:false, reason }
 export { syncItemToAccountProduct, type SyncResult } from "./inventory-link";

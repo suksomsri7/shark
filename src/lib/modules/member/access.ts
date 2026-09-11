@@ -59,6 +59,17 @@ export function coversUnit(actor: MemberActor, unitId: string | null | undefined
   return !!unitId && actor.unitAccess.includes(unitId);
 }
 
+/**
+ * M3.7 — โมดูลของไทม์ไลน์ที่แปลว่า "ลูกค้าคนนี้เคยซื้อ/จอง/ใช้บริการที่สาขานั้นจริง" (§6.1 บรรทัด
+ * "สมาชิกที่เคยซื้อ/จองในสาขาตน (ผ่าน MemberActivity.unitId)") — ด่านมองเห็นของพนักงานที่ถูกจำกัดสาขา
+ * นับเฉพาะแถวของโมดูลเหล่านี้
+ * 🔴 ทำไมต้องจำกัด: ตั้งแต่ M3.7 ไทม์ไลน์มีแถวจากทุกโมดูล (แต้ม · รีวิว · แนะนำเพื่อน · บอร์ดงาน …) และหลายแถว
+ *    ติด `unitId` ของ "สาขาที่เกิดเรื่อง" ซึ่งไม่ใช่สาขาที่ลูกค้าไปใช้บริการ (เช่น เพื่อนที่ถูกแนะนำไปซื้อที่
+ *    สาขากะตะ → แถว REFERRAL_CONVERTED ของ "ผู้แนะนำ" ติด unitId กะตะ) ⇒ ถ้านับทุกแถว พนักงานสาขาอื่น
+ *    จะเห็นโปรไฟล์ของคนที่ไม่เคยไปสาขาตนเลย · ใช้ชุดเดียวกันทุกด่าน (profile · list · wallet)
+ */
+export const VISIT_SCOPE_MODULES: readonly string[] = Object.freeze(["pos", "booking", "restaurant"]);
+
 /** actor ถูกจำกัดสาขาไหม (false = เห็นทั้งร้าน จึงข้ามการค้นกิจกรรมข้ามสาขาได้) */
 export function isUnitScoped(actor: MemberActor): boolean {
   if (actor.role === "OWNER") return false;

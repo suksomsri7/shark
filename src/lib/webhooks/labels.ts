@@ -48,6 +48,8 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   //    ประกาศอยู่ที่ `AUTOMATION_EVENTS` ซึ่ง spread ไว้ข้างบนแล้ว — **ห้ามประกาศซ้ำที่นี่**
   //    (บทเรียนเดียวกับ 5 ตัวของบอร์ดงาน: ประกาศ 2 ที่ = หน้าตั้งค่าฮุคมีช่องติ๊กซ้ำ 2 แถว)
   // M3.5 — `referral.joined` / `referral.converted` ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่
+  // M3.7 — `booking.completed` / `booking.no_show` / `crm.deal.won` / `shop.order.paid` สมัครฮุคได้ครบแล้ว
+  //   ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) · ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event)
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

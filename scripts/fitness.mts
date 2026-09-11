@@ -382,6 +382,8 @@ const ALLOWED_EDGES = new Set([
   //   member→kanban (M3.4 รีวิวคะแนนต่ำ → การ์ดบอร์ดงานผ่าน facade links.createCardFromExternal · M3.7 ไทม์ไลน์อ่านการ์ดที่ผูก PARTY ผ่าน listCardsForTarget)
   //   ORACLE-EDIT F2.1: เพิ่มเส้นนี้ + ให้ F2 นับ dynamic import() ด้วย (เดิมจับแค่ `from` → reviews.ts ใช้ import() หลบการตรวจได้)
   "member→kanban",
+  //   member→account (M3.7 ไทม์ไลน์อ่านเอกสารบัญชีของ party ผ่าน facade listDocsByParty — ข้อสอบ M3.7 S4.2 คาดเส้นนี้) · ORACLE-EDIT F2.1
+  "member→account",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

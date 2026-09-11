@@ -133,6 +133,14 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   🔴 ทั้ง 2 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว · เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำ)
   { value: "referral.joined", label: "เมื่อเพื่อนสมัครสมาชิกด้วยโค้ดแนะนำ" },
   { value: "referral.converted", label: "เมื่อแนะนำเพื่อนสำเร็จ (จ่ายรางวัลสองฝั่งแล้ว)" },
+  // M3.7 (§7.1 · ไทม์ไลน์สมาชิก) — event ใหม่ 2 ตัว · ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว
+  //   `crm.deal.won`    ยิงจาก `crm/service.ts#moveDeal` เมื่อดีลเข้าขั้น WON (idempotencyKey ผูกดีล)
+  //                     payload: dealId · contactId · valueSatang · title · name · partyId? · phone? · email?
+  //   `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์
+  //                     payload: orderId · unitId · code · customerName · customerPhone · totalSatang · posSaleId? · channel (SHOP|SHOPEE|LAZADA|TIKTOK)
+  //   🔴 เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำที่นั่น)
+  { value: "crm.deal.won", label: "เมื่อปิดดีล CRM สำเร็จ" },
+  { value: "shop.order.paid", label: "เมื่อออเดอร์ออนไลน์ชำระเงินแล้ว" },
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

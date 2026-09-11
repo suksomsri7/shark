@@ -462,3 +462,60 @@ export {
 //   ตัวส่งจริง (LINE ผ่านแชท) ต้องฉีดผ่าน `deps` เสมอ (ค่าปริยาย `notificationSenders` จาก
 //   `src/lib/member-journey-senders.ts`) — โมดูลนี้เองไม่รู้จักแชท (F2)
 export * as notifications from "./notifications";
+
+// ── ไทม์ไลน์ประวัติ (M3.7 · §4.3 §8 · ภาพ 08 ซ้าย/กลาง) ──
+// 🔴 consumer ทุกโมดูล (ผ่าน composition root `src/lib/member-bridges.ts`) เขียนแถวด้วย `recordOnce`/`recordDaily`
+//    เท่านั้น — ห้ามยิง `memberActivity.create` เองจากนอกโมดูล (กันซ้ำ = สัญญาของไฟล์ history.ts)
+export type { RecordOnceInput, RecordOnceResult, RecordDailyInput, HistoryOptions, HistoryItem, HistoryResult } from "./history";
+export {
+  /** เขียนแถวไทม์ไลน์ครั้งเดียวต่อ (customerId, module, type, refId) — ซ้ำ = คืนแถวเดิม */
+  recordOnce,
+  /** 1 แถวต่อ ref ต่อวันไทย + ตัวนับ (แชท) */
+  recordDaily,
+  /** เติม data/summary ให้แถวที่มีอยู่ (สะพานขายเติมแต้ม/ตราทีหลัง) */
+  patchActivity,
+  /** ไทม์ไลน์ + read-through เอกสาร/การ์ด · กรองชนิด/ช่วง/สาขา · นับต่อชนิด · เคอร์เซอร์ */
+  listHistory,
+  historyUnitOptions,
+  bkkDayStart,
+} from "./history";
+export type { HistoryKindKey, HistoryKindFilter, HistoryCounts } from "./history-kinds";
+export { HISTORY_KINDS, kindOf as historyKindOf, channelDisplayName } from "./history-kinds";
+
+// ── รายงานสมาชิก (M3.8 · §5.10 · ภาพ 25) ──
+// 🔴 ชื่อที่ export ออกนอกโมดูลมีคำว่า report กำกับ (ชื่อสั้นในไฟล์ `overview`/`tiers`/`points`/`sources` ชนง่าย)
+//    cron รายชั่วโมง (`platform/cron.ts` → `memberReportsEmail`) เรียก `runScheduledReports`
+export type {
+  ReportTab,
+  ReportOverview,
+  ReportRfm,
+  RfmScore,
+  RfmSegmentKey,
+  ReportTiers,
+  ReportTierRow,
+  ReportPoints,
+  ReportPromotions,
+  ReportJourneyRow,
+  ReportCampaignRow,
+  ReportSources,
+  ReportSourceRow,
+  ReportCohort,
+  ReportSchedule,
+  ReportScheduleInput,
+} from "./reports-shared";
+export { REPORT_TABS, REPORT_TAB_LABELS, RFM_SEGMENTS } from "./reports-shared";
+export type { ReportEmailRequest, ReportEmailSender } from "./reports";
+export type { JourneyReportRow } from "./journeys";
+export {
+  overview as reportOverview,
+  rfm as reportRfm,
+  tiers as reportTiers,
+  points as reportPoints,
+  promotions as reportPromotions,
+  sources as reportSources,
+  cohort as reportCohort,
+  exportCsv as exportReportCsv,
+  getReportSchedule,
+  setReportSchedule,
+  runScheduledReports,
+} from "./reports";

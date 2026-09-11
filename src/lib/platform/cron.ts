@@ -235,6 +235,22 @@ export async function notificationsDue(now: Date = new Date()): Promise<number> 
   }
 }
 
+/**
+ * M3.8 — step `memberReportsEmail`: ส่งอีเมลรายงานสมาชิกตามที่ร้านตั้งไว้ (`settings.member.reports.schedule`)
+ * เรียกจาก cron **รายชั่วโมง** · ร้านที่ตั้ง 06:00 ได้ฉบับแรกของวันในรอบที่ชั่วโมงไทย ≥ 6 (ค่าปริยาย = ราว 06:00)
+ * แล้วไม่ส่งซ้ำวันเดียวกัน (`lastSentDate`) · ตัวส่งจริง = `core/email` เดิม (import แบบ dynamic ในตัว service)
+ * 🔴 best-effort — ล้มห้ามทำให้ cron ทั้งรอบแดง · ระบบเดียวส่งพังไม่ทำให้ระบบอื่นไม่ได้รับ (service ห่อทีละระบบ)
+ */
+export async function memberReportsEmail(now: Date = new Date()): Promise<number> {
+  try {
+    const { runScheduledReports } = await import("@/lib/modules/member/reports");
+    const r = await runScheduledReports({ now });
+    return r.sent;
+  } catch {
+    return -1;
+  }
+}
+
 // งานประจำวัน: กวาด subs + proposals + เก็บตก outbox
 // ห้าม throw — แต่ละส่วนห่อ try/catch เอง · ส่วนไหนพังเก็บเป็น -1 แล้วไปต่อ
 // (cron ต้องไม่ล้มทั้งรอบเพราะงานย่อยอันเดียวพัง)

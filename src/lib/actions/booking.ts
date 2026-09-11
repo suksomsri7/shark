@@ -10,6 +10,7 @@ import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
 import * as booking from "@/lib/modules/booking/service";
 import { systemForUnit } from "@/lib/modules/system/service";
+import { scheduleDrain } from "@/lib/outbox-consumers";
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -115,11 +116,12 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
   if (!parsed.success) return;
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const db = tenantDb(ctx);
-  const appt = await db.appointment.update({
-    where: { id },
-    data: { status: parsed.data },
-    include: { service: true },
-  });
+  // M3.7 — เปลี่ยนสถานะผ่าน service จุดเดียว (`setAppointmentStatus` ยิง booking.completed / booking.no_show)
+  //   🔴 เดิม action อัปเดตแถวตรง ⇒ event ไม่เคยเกิดจากปุ่มบนจอ: สแตมป์ "จองที่มาจริง" (M2.3) · journey
+  //      "จองแล้วไม่มา" (M3.3) · ไทม์ไลน์ มา/ไม่มา + แต้ม CHECKIN + ขอรีวิว (M3.7) ทำงานเฉพาะในข้อสอบ
+  await booking.setAppointmentStatus(ctx.tenantId, ctx.unitId, id, parsed.data);
+  const appt = await db.appointment.findFirst({ where: { id }, include: { service: true } });
+  if (!appt) return;
   // มาใช้บริการจริง → ระบบที่ "เชื่อมไว้" ทำงานตามนั้น (member/pos/point เป็นการเชื่อมแบบเลือกได้)
   if (parsed.data === "DONE") {
     // ราคาที่คิดจริง = ราคา ณ วันจอง (snapshot) — ร้านขึ้นราคาทีหลังต้องไม่ย้อนไปคิดกับนัดเก่า
@@ -131,16 +133,8 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
     ]);
     if (appt.customerId) {
       await member.recordVisit(ctx.tenantId, appt.customerId);
-      await member.logActivity({
-        tenantId: ctx.tenantId,
-        customerId: appt.customerId,
-        unitId: ctx.unitId,
-        module: "booking",
-        type: "VISIT",
-        refType: "Appointment",
-        refId: appt.id,
-        summary: "มาใช้บริการ",
-      });
+      // M3.7 — แถวไทม์ไลน์ VISIT ย้ายไปที่ consumer `booking.completed` (recordOnce + บริการ/ช่าง/เวลานัด)
+      //   เขียนตรงที่นี่อีก = แถวซ้ำ 2 บรรทัดต่อการมา 1 ครั้ง
     }
     if (spent > 0 && posSystemId) {
       await pos.createSale({
@@ -158,6 +152,8 @@ export async function setStatusAction(unitSlug: string, formData: FormData) {
       });
     }
   }
+  // M3.7 — ระบายคิวหลังตอบ (after()) ให้สแตมป์/ไทม์ไลน์/journey ของนัดนี้ตามมาทันที ไม่ต้องรอ cron รายชั่วโมง
+  scheduleDrain();
   revalidatePath(`/app/u/${unitSlug}/booking`);
 }
 

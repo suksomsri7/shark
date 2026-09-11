@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runScheduledTasks } from "@/lib/ai/scheduled";
-import { campaignsDue, journeyWaits, notificationsDue, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
+import { campaignsDue, journeyWaits, memberReportsEmail, notificationsDue, sweepPendingVoiceDelivery } from "@/lib/platform/cron";
 import { sweepScheduledRules } from "@/lib/modules/kanban/automation";
 import { sweepDueSoonReminders } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
@@ -76,6 +76,8 @@ export async function GET(req: Request) {
   const journeyWaitsRan = await journeyWaits(new Date());
   // M3.6 — การแจ้งเตือนสมาชิก: แถวที่ถึงกำหนด (digest รายวัน + เลื่อนจาก quiet hours) — ห่อ try/catch เองแล้ว
   const notificationsSent = await notificationsDue(new Date());
+  // M3.8 — อีเมลรายงานสมาชิกตามเวลาที่ร้านตั้ง (ไม่ส่งซ้ำวันเดียวกัน) — ห่อ try/catch เองแล้ว คืน -1 เมื่อพัง
+  const memberReportsSent = await memberReportsEmail(new Date());
   return NextResponse.json({
     ok: true,
     ran,
@@ -87,6 +89,7 @@ export async function GET(req: Request) {
     campaignsSent,
     journeyWaitsRan,
     notificationsSent,
+    memberReportsSent,
     at: new Date().toISOString(),
   });
 }

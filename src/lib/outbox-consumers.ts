@@ -15,9 +15,8 @@ import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
-import { chatChannelToKey, getChannel } from "@/lib/core/channels";
 import { formatThaiDate } from "@/lib/ui/date";
-import { logActivity as memberLogActivity, runForEvent as runJourneysForEvent } from "@/lib/modules/member";
+import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
 // M3.5 — ตาข่ายเก็บตกของแนะนำเพื่อนตอน `member.created` (facade ล้วน)
 import { referralOnMemberCreated } from "@/lib/modules/member";
 // M3.3 — ทะเบียนทริกเกอร์ของ journey (ไฟล์บริสุทธิ์) · เช็คก่อนโหลดตัวส่ง ⇒ event อื่นทั้งระบบไม่เสียอะไรเพิ่ม
@@ -69,31 +68,9 @@ async function notifyMember(
   }
 }
 
-// M1.12 (§7.1 §9.3) — ผูกห้องแชทเข้ากับสมาชิกแล้ว → บันทึกลงไทม์ไลน์สมาชิก (MemberActivity)
-// ของจริง (ChatContact/MemberChannelIdentity) ถูกเขียนครบใน tx ของ `member/chat-bridge.ts#linkContact`
-// แล้ว — handler นี้ทำงานจริง 1 อย่าง (เขียนไทม์ไลน์) + ปิด event เป็น DONE + เป็นจุดให้ Automation/Webhooks ยิงต่อ
-const chatContactLinked: OutboxHandler = async (evt) => {
-  const p = evt.payload as { contactId?: unknown; customerId?: unknown } | null;
-  const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
-  const contactId = p && typeof p.contactId === "string" ? p.contactId : null;
-  if (!customerId) return;
-  // สมาชิกอาจถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง (ปกติของ outbox แบบ eventual) — ไม่มีใครให้บันทึกไทม์ไลน์แล้ว
-  // ถือเป็นงานเสร็จเงียบ ๆ (ไม่ throw ให้ event ค้าง PENDING ตลอดกาล) เหมือน guard `if (!sale) return;` ของ posSalePaid ด้านล่าง
-  const stillExists = await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: { id: true } });
-  if (!stillExists) return;
-  const contact = contactId ? await prisma.chatContact.findFirst({ where: { id: contactId, tenantId: evt.tenantId } }) : null;
-  const channelKey = contact ? chatChannelToKey(contact.channel) : null;
-  const label = channelKey ? (getChannel(channelKey)?.label ?? channelKey) : "แชท";
-  await memberLogActivity({
-    tenantId: evt.tenantId,
-    customerId,
-    module: "chat",
-    type: "CHAT_LINKED",
-    refType: "ChatContact",
-    refId: contactId ?? undefined,
-    summary: `ผูกช่องทาง${label}เข้ากับสมาชิกคนนี้แล้ว`,
-  });
-};
+// M1.12 (§7.1 §9.3) — ผูกห้องแชทเข้ากับสมาชิกแล้ว → ไทม์ไลน์สมาชิก
+// M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onChatContactLinked` (แถว CHANNEL_LINKED · recordOnce ต่อผู้ติดต่อ ·
+//   สมาชิกถูกลบก่อนคิวมาถึง = จบเงียบเหมือนเดิม) — ดู `memberBridge` ด้านล่าง
 
 // ขายสด POS → บัญชี
 const posSalePaid: OutboxHandler = async (evt) => {
@@ -393,49 +370,8 @@ const kanbanOutbound =
     await outbound[name](evt);
   };
 
-/**
- * M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → บันทึกลงไทม์ไลน์ของเจ้าของบัตร
- * เจ้าของอาจเป็น null (บัตรที่พิมพ์แจก/ส่งให้คนนอกระบบ) หรือถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง
- * ⇒ ถือเป็นงานเสร็จเงียบ ๆ (ห้าม throw ให้ event ค้าง PENDING ตลอดกาล — แบบเดียวกับ chatContactLinked)
- */
-const giftCardActivity =
-  (kind: "SOLD" | "USED"): OutboxHandler =>
-  async (evt) => {
-    const p = (evt.payload ?? {}) as {
-      giftCardId?: unknown;
-      number?: unknown;
-      satang?: unknown;
-      balanceAfter?: unknown;
-      ownerCustomerId?: unknown;
-    };
-    const giftCardId = typeof p.giftCardId === "string" ? p.giftCardId : null;
-    if (!giftCardId) return;
-    const card = await prisma.giftCard.findFirst({
-      where: { id: giftCardId, tenantId: evt.tenantId },
-      select: { number: true, ownerCustomerId: true, balanceSatang: true },
-    });
-    const customerId = card?.ownerCustomerId ?? (typeof p.ownerCustomerId === "string" ? p.ownerCustomerId : null);
-    if (!card || !customerId) return;
-    const stillExists = await prisma.customer.findFirst({
-      where: { id: customerId, tenantId: evt.tenantId },
-      select: { id: true },
-    });
-    if (!stillExists) return;
-    const satang = typeof p.satang === "number" ? p.satang : 0;
-    const baht = (n: number) => (n / 100).toLocaleString("th-TH");
-    await memberLogActivity({
-      tenantId: evt.tenantId,
-      customerId,
-      module: "giftcard",
-      type: kind === "SOLD" ? "GIFTCARD_SOLD" : "GIFTCARD_USED",
-      refType: "GiftCard",
-      refId: giftCardId,
-      summary:
-        kind === "SOLD"
-          ? `ได้รับบัตรกำนัล ${card.number} มูลค่า ฿${baht(satang)}`
-          : `ใช้บัตรกำนัล ${card.number} ฿${baht(satang)} (เหลือ ฿${baht(card.balanceSatang)})`,
-    });
-  };
+// M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → ไทม์ไลน์ของเจ้าของบัตร
+// M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onLoyaltyEvent` (recordOnce · เจ้าของว่าง/ถูกลบ = จบเงียบเหมือนเดิม)
 
 /**
  * M2.3 (§9.1 §9.2) — สแตมป์การ์ดจากบิล/จากนัด
@@ -486,6 +422,56 @@ const memberSaleBridge =
     }
   };
 
+/**
+ * M3.7 (§4.3 §7.1 §8) — ไทม์ไลน์ประวัติสมาชิก: ทุกโมดูล → MemberActivity ผ่าน composition root `member-bridges.ts`
+ *
+ * 🔴 ห่อ try/catch เองทุกตัว (แบบ `memberSaleBridge`): ไทม์ไลน์เป็น "บันทึกประกอบ" — พังแล้วต้องไม่พางานหลัก
+ *    ของ event (บัญชี · แจ้งเตือน · บอร์ดงาน · journey) ล้ม และต้องไม่ทำให้ event ค้าง PENDING ⇒ WARN แล้ว DONE
+ *    (ทุกขั้นในสะพาน idempotent อยู่แล้ว — replay ด้วยมือได้ถ้าต้องการเก็บตก)
+ * 🔴 dynamic import ด้วยเหตุผลเดียวกับ `memberSaleBridge` (member-bridges → member/index → … → scheduleDrain = วงกลม)
+ */
+type MemberEventBridge =
+  | "onChatContactLinked"
+  | "onChatMessageReceived"
+  | "onKanbanCardCompleted"
+  | "onCrmDealWon"
+  | "onShopOrderPaid"
+  | "onPointEvent"
+  | "onTierChanged"
+  | "onLoyaltyEvent";
+
+const memberBridge =
+  (name: MemberEventBridge): OutboxHandler =>
+  async (evt) => {
+    try {
+      const bridges = await import("@/lib/member-bridges");
+      await bridges[name](evt);
+    } catch (e) {
+      await logOps("WARN", "member", `ไทม์ไลน์สมาชิกของ "${evt.type}" บันทึกไม่สำเร็จ — งานหลักของเหตุการณ์ไม่กระทบ`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  };
+
+/** M3.7 — นัดหมาย "มาแล้ว" / "ไม่มา" → ไทม์ไลน์ (+ สแตมป์ตาข่าย · แต้ม CHECKIN · ขอรีวิว) · ห่อ try/catch แบบเดียวกัน */
+const memberApptBridge =
+  (name: "onBookingCompleted" | "onBookingNoShow"): OutboxHandler =>
+  async (evt) => {
+    const p = evt.payload as { appointmentId?: unknown } | null;
+    const appointmentId = p && typeof p.appointmentId === "string" ? p.appointmentId : null;
+    if (!appointmentId) return;
+    try {
+      const bridges = await import("@/lib/member-bridges");
+      await bridges[name](evt.tenantId, appointmentId);
+    } catch (e) {
+      await logOps("WARN", "member", `ไทม์ไลน์สมาชิกของ "${evt.type}" บันทึกไม่สำเร็จ (นัด ${appointmentId})`, {
+        tenantId: evt.tenantId,
+        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+      });
+    }
+  };
+
 /** ลูกค้ามาตามนัดจริง (Appointment → DONE) → สแตมป์ชนิด "จองที่มาจริง" */
 const stampFromVisit: OutboxHandler = async (evt) => {
   const p = evt.payload as { appointmentId?: unknown } | null;
@@ -506,10 +492,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
     compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")),
   ),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
-  "booking.completed": withAutomation(stampFromVisit),
+  // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
+  "booking.completed": withAutomation(compose(stampFromVisit, memberApptBridge("onBookingCompleted"))),
   // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
-  //   no-op ที่ห้ามล้ม: ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
-  "booking.no_show": withAutomation(async () => {}),
+  //   ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
+  // M3.7: + ไทม์ไลน์ NO_SHOW (ห่อ try/catch — พังไม่ค้างคิว)
+  "booking.no_show": withAutomation(memberApptBridge("onBookingNoShow")),
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
@@ -531,6 +519,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
         detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
       });
     }
+    // M3.7 — ห้องที่ผูกสมาชิก → ไทม์ไลน์ "แชท" 1 แถวต่อห้องต่อวันไทย (memberBridge กลืน error เอง ไม่ล้มคิว)
+    await memberBridge("onChatMessageReceived")(evt);
   }),
   // WO-C2 (§3.4): แอดมินตอบ / เธรดเปลี่ยนสถานะ — ผลข้างเคียงเกิดใน service ไปแล้ว
   // consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล
@@ -549,8 +539,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (ข้อสอบ CP-6 สแกนซอร์สแล้วเทียบกับตารางนี้ ห้ามให้เกิดซ้ำ)
   //    ผลข้างเคียงเกิดใน markRead ไปแล้ว — no-op เพื่อปิด event เป็น DONE + ให้ withWebhooks ยิงต่อ
   "chat.conversation.read": withAutomation(async () => {}),
-  // M1.12 — ผูกห้องแชทเข้ากับสมาชิก (auto/manual) → เขียนไทม์ไลน์สมาชิก (ดู handler ด้านบน)
-  "chat.contact.linked": withAutomation(chatContactLinked),
+  // M1.12 — ผูกห้องแชทเข้ากับสมาชิก (auto/manual) → เขียนไทม์ไลน์สมาชิก
+  // M3.7 — ย้ายตัวเขียนไปสะพาน (CHANNEL_LINKED · data.channel · recordOnce ต่อผู้ติดต่อ — replay ไม่ซ้ำ)
+  "chat.contact.linked": withAutomation(memberBridge("onChatContactLinked")),
   // Wave4-B: AppNotification "มีคนกรอกฟอร์ม" ถูกสร้างแล้วใน submitPublicForm —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย lead ใหม่
   // K3.3: + เปิดการ์ดจากฟอร์ม (คำตอบทุกข้ออยู่ในรายละเอียดการ์ด) เฉพาะร้านที่เปิดสวิตช์
@@ -577,7 +568,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "kanban.card.overdue": withAutomation(async () => {}),
   // K3.4 (§9.3 "ย้อนกลับ"): + แปะบันทึกภายในในห้องแชทที่การ์ดผูกไว้ / รอยประวัติของเอกสารบัญชี
   //   🔴 ต่อท้ายด้วย `compose` เหมือนสะพานขาเข้า — ขาออกพังห้ามพา consumer หลักล้ม (WARN แล้วไปต่อ)
-  "kanban.card.completed": withAutomation(compose(async () => {}, kanbanOutbound("cardCompleted"))),
+  // M3.7: + ไทม์ไลน์ CARD_COMPLETED ของสมาชิกที่การ์ดผูก PARTY ไว้ (ห่อ try/catch — ไม่พาขาออกล้ม)
+  "kanban.card.completed": withAutomation(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted"))),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล — บทเรียน 30 ส.ค. 2026)
@@ -692,7 +684,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    transaction ของ `member/tiers.ts` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) +
   //    เป็นทริกเกอร์ให้กฎอัตโนมัติ/journey + ยิงเว็บฮุคออกนอกระบบ
   //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") — M3.6 ต่อสายแล้ว
-  "member.tier.changed": withAutomation(async (evt) => {
+  // M3.7: + ไทม์ไลน์ TIER_CHANGED { from, to, reason ไทย+ตัวเลข } (ต่อท้ายด้วย compose · memberBridge กลืน error เอง)
+  "member.tier.changed": withAutomation(compose(async (evt) => {
     // M3.6 — notifications.send(TIER_UP) เฉพาะ "ขึ้น" ระดับ (ไม่แจ้งตอนลด/คงระดับ) — เทียบ sortOrder
     const p = evt.payload as { customerId?: unknown; from?: unknown; to?: unknown } | null;
     const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
@@ -709,7 +702,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     const from = defs.find((d) => d.key === fromKey);
     const to = defs.find((d) => d.key === toKey);
     if (from && to && to.sortOrder > from.sortOrder) await notifyMember(evt.tenantId, customerId, "TIER_UP");
-  }),
+  }, memberBridge("onTierChanged"))),
   "member.tier.at_risk": withAutomation(async (evt) => {
     const p = evt.payload as { customerId?: unknown } | null;
     if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "TIER_AT_RISK");
@@ -730,13 +723,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    ตัวนี้มีไว้ 3 อย่าง (1) ปิด event เป็น DONE ไม่ให้คิวตัน (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey
   //    (3) ยิงเว็บฮุคออกนอกระบบ · การ**แจ้งลูกค้า** ("แต้มจะหมดอายุ 7 วัน") เป็นงานของ M3.6
   //    `point.transferred` ยังไม่มีใครยิงจนกว่าจะถึง M2.2 — ลงทะเบียนไว้พร้อมกันเพราะเป็นชุดเดียวกัน
-  "point.earned": withAutomation(async (evt) => {
+  // M3.7: + ไทม์ไลน์ POINTS_EARNED / POINTS_BURNED / POINTS_EXPIRED (recordOnce ต่อ lot/event · แต้มของบิล/ออเดอร์
+  //   แสดงบนแถวซื้ออยู่แล้ว ไม่ซ้ำอีกบรรทัด)
+  "point.earned": withAutomation(compose(async (evt) => {
     const p = evt.payload as { customerId?: unknown; points?: unknown } | null;
     const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
     const points = p && typeof p.points === "number" ? p.points : null;
     if (customerId && points) await notifyMember(evt.tenantId, customerId, "POINTS_EARNED", { แต้ม: points });
-  }),
-  "point.burned": withAutomation(async () => {}),
+  }, memberBridge("onPointEvent"))),
+  "point.burned": withAutomation(memberBridge("onPointEvent")),
   "point.expiring": withAutomation(async (evt) => {
     const p = evt.payload as { customerId?: unknown; points?: unknown; expiresAt?: unknown; lotId?: unknown; daysLeft?: unknown } | null;
     const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
@@ -748,30 +743,32 @@ const baseConsumers: Record<string, OutboxHandler> = {
     const refId = `point.expiring:${typeof p?.lotId === "string" ? p.lotId : ""}:${typeof p?.daysLeft === "number" ? p.daysLeft : ""}`;
     await notifyMember(evt.tenantId, customerId, "POINTS_EXPIRING", vars, refId);
   }),
-  "point.expired": withAutomation(async () => {}),
+  "point.expired": withAutomation(memberBridge("onPointEvent")),
   "point.transferred": withAutomation(async () => {}),
   // ── บัตรกำนัล (M2.6 · §7.1) ──
   // ของจริง (ตัวบัตร/รายการบนบัตร/บิล POS/เอกสารบัญชี) ถูกเขียนครบใน transaction ของ `giftcard/service.ts`
   // แล้ว — consumer นี้ทำงานจริง 1 อย่าง: **เขียนไทม์ไลน์ของเจ้าของบัตร** (บัตรที่ยังไม่มีเจ้าของในระบบ
   // = ไม่มีใครให้บันทึก จบเงียบ ๆ) + ปิด event เป็น DONE + เป็นจุดให้กฎอัตโนมัติ/เว็บฮุคยิงต่อ
-  "giftcard.sold": withAutomation(giftCardActivity("SOLD")),
-  "giftcard.used": withAutomation(giftCardActivity("USED")),
+  // M3.7 — ตัวเขียนย้ายไปสะพาน (recordOnce: ขาย = 1 แถวต่อบัตร · ใช้ = 1 แถวต่อการใช้ครั้งนั้น — replay ไม่ซ้ำ)
+  "giftcard.sold": withAutomation(memberBridge("onLoyaltyEvent")),
+  "giftcard.used": withAutomation(memberBridge("onLoyaltyEvent")),
   // ── สแตมป์การ์ด (M2.3 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สมาชิก: ใบสะสม · รายการตรา · รางวัล (แต้ม) ถูกเขียนครบใน transaction
   //    ของ `stamp/service.ts` แล้ว · 3 บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
   //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("ครบใบแล้วส่ง LINE บอกลูกค้า" = งานของ M3.x)
   //    (3) ยิงเว็บฮุคออกนอกระบบ
   "stamp.added": withAutomation(async () => {}),
-  "stamp.completed": withAutomation(async (evt) => {
+  // M3.7: + ไทม์ไลน์ STAMP_COMPLETED (ต่อท้ายด้วย compose)
+  "stamp.completed": withAutomation(compose(async (evt) => {
     const p = evt.payload as { customerId?: unknown } | null;
     if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "STAMP_COMPLETE");
-  }),
+  }, memberBridge("onLoyaltyEvent"))),
   "stamp.expired": withAutomation(async () => {}),
   // ── รางวัล v2 (M2.4 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สแตมป์: รายการแลก/สต็อก/แต้ม-สแตมป์ที่หัก ถูกเขียนครบใน transaction
   //    ของ `reward/v2.ts` แล้ว · 2 บรรทัดนี้มีไว้ (1) ปิด event เป็น DONE ไม่ให้คิวตัน
   //    (2) เป็นทริกเกอร์ของกฎอัตโนมัติ/journey ("แลกของรางวัลแล้ว" / "รับของแล้ว") (3) ยิงเว็บฮุคออกนอกระบบ
-  "reward.redeemed": withAutomation(async () => {}),
+  "reward.redeemed": withAutomation(memberBridge("onLoyaltyEvent")), // M3.7: + ไทม์ไลน์ REWARD_REDEEMED
   "reward.fulfilled": withAutomation(async () => {}),
   // ── voucher (M2.5 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มแต้ม/สแตมป์: ตัวใบ · ไทม์ไลน์ของสมาชิก · สถานะ USED/EXPIRED ถูกเขียนครบใน
@@ -792,9 +789,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   }),
   // M3.2 — voucher ที่ **แคมเปญแนบไปให้** ถูกใช้ = ผลของแคมเปญใบนั้น (ยกความดี + อัปสถิติ variant)
   //   ใบที่ไม่ได้มาจากแคมเปญ → `trackUseFromVoucher` จบเงียบ ๆ (ไม่มีผู้รับให้ผูก)
-  "voucher.used": withAutomation(async (evt) => {
+  // M3.7: + ไทม์ไลน์ VOUCHER_USED (ตอนออกใบ voucher/service.ts เขียน VOUCHER_ISSUED เองแล้ว — ไม่เขียนซ้ำที่คิว)
+  "voucher.used": withAutomation(compose(async (evt) => {
     await marketing.trackUseFromVoucher({ tenantId: evt.tenantId, payload: evt.payload });
-  }),
+  }, memberBridge("onLoyaltyEvent"))),
   "voucher.expiring": withAutomation(async () => {}),
   "voucher.expired": withAutomation(async () => {}),
   // ดูข้อมูลอ่อนไหว: แถว MemberAccessLog ถูกเขียนไปแล้วตอนเปิดดู (privacy.logAccess)
@@ -819,6 +817,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (2) ทริกเกอร์กฎอัตโนมัติ/journey ("แนะนำสำเร็จ → ขอบคุณผู้แนะนำ") (3) ยิงเว็บฮุคออกนอกระบบ
   "referral.joined": withAutomation(async () => {}),
   "referral.converted": withAutomation(async () => {}),
+  // ── ไทม์ไลน์สมาชิก: event ใหม่ของ M3.7 (§7.1) ──
+  // 🔴 ทั้ง 2 ตัวลงครบ 3 ทะเบียน (ที่นี่ · AUTOMATION_EVENTS · WEBHOOK_EVENTS ผ่าน spread) — ขาด = คิวตันเงียบ
+  // `crm.deal.won` ยิงจาก `crm/service.ts#moveDeal` เมื่อดีลเข้าขั้น WON → หา/สมัครสมาชิก + ผูก CrmContact + แถว DEAL_WON
+  "crm.deal.won": withAutomation(memberBridge("onCrmDealWon")),
+  // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
+  //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
+  "shop.order.paid": withAutomation(memberBridge("onShopOrderPaid")),
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

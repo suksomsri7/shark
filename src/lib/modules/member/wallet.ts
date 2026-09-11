@@ -26,7 +26,7 @@ import * as stamp from "@/lib/modules/stamp";
 import * as voucher from "@/lib/modules/voucher";
 import { getUnitSystems, listSystems, systemForUnit, unitsForSystem } from "@/lib/modules/system";
 import type { Prisma } from "@prisma/client";
-import { canReadMember, coversUnit, isUnitScoped, type MemberActor } from "./access";
+import { canReadMember, coversUnit, isUnitScoped, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
 import { prisma } from "./db";
 import { MemberInputError, MemberNotFoundError } from "./errors";
 import { MEMBER_LIMITS } from "./limits";
@@ -236,7 +236,7 @@ async function assertVisible(ctx: MemberCtx, actor: MemberActor, customer: Custo
   if (!isUnitScoped(actor)) return;
   if (coversUnit(actor, customer.homeUnitId)) return;
   const seen = await prisma.memberActivity.count({
-    where: { tenantId: ctx.tenantId, customerId: customer.id, unitId: { in: actor.unitAccess } },
+    where: { tenantId: ctx.tenantId, customerId: customer.id, unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } },
   });
   if (seen === 0) throw new MemberNotFoundError(NOT_FOUND_MSG);
 }

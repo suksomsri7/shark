@@ -1,4 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
+import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 import type { CrmActivityType, Prisma } from "@prisma/client";
 import {
   DEFAULT_PIPELINE,
@@ -148,6 +149,25 @@ export async function moveDeal(ctx: Ctx, dealId: string, stageId: string): Promi
         });
       }
     }
+    // M3.7 (ระบบสมาชิก v2 · §7.1) — ดีลปิดได้ → ไทม์ไลน์สมาชิก + ผูก/สมัครสมาชิกให้ผู้ติดต่อ (consumer ที่ composition root)
+    // 🔴 additive จุดเดียว: CRM ไม่รู้จักโมดูลสมาชิก — แค่ประกาศเหตุการณ์ · idempotencyKey ผูกดีล (ย้ายไป-กลับไม่ยิงซ้ำ)
+    // 🔴 ลง 3 ทะเบียนแล้ว (outbox-consumers · automation/labels · webhooks/labels ผ่าน spread)
+    await emitOutboxOutsideTx({
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      type: "crm.deal.won",
+      idempotencyKey: `crm.deal.won#${deal.id}`,
+      payload: {
+        dealId: deal.id,
+        contactId: deal.contactId,
+        valueSatang: deal.valueSatang,
+        title: deal.title,
+        name: contact?.name ?? null,
+        partyId: contact?.partyId ?? null,
+        phone: contact?.phone ?? null,
+        email: contact?.email ?? null,
+      },
+    });
   }
 }
 

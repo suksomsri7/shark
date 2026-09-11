@@ -15,7 +15,7 @@ import type { MemberSource, MemberStatus, Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { csvRow } from "@/lib/core/csv";
 import { prisma } from "./db";
-import { coversUnit, hasMemberPerm, isUnitScoped, canReadMember, type MemberActor } from "./access";
+import { coversUnit, hasMemberPerm, isUnitScoped, canReadMember, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
 import type { MemberCtx } from "./privacy";
 import { MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
@@ -111,7 +111,8 @@ function displayNameOf(r: Pick<CustomerRow, "name" | "firstName" | "lastName" | 
 /** ขอบเขตสาขาของ actor (§6.1) — homeUnitId ในสิทธิ์ตน หรือเคยมีกิจกรรมที่สาขาตน */
 function actorScopeWhere(actor: MemberActor): Prisma.CustomerWhereInput | null {
   if (!isUnitScoped(actor)) return null;
-  return { OR: [{ homeUnitId: { in: actor.unitAccess } }, { activities: { some: { unitId: { in: actor.unitAccess } } } }] };
+  // M3.7 — นับเฉพาะแถว "ซื้อ/จอง/ใช้บริการ" (VISIT_SCOPE_MODULES) ด่านเดียวกับ profile.assertVisible
+  return { OR: [{ homeUnitId: { in: actor.unitAccess } }, { activities: { some: { unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } } } }] };
 }
 
 async function buildWhere(ctx: MemberCtx, actor: MemberActor, opts: ListMembersOptions): Promise<Prisma.CustomerWhereInput> {
@@ -399,7 +400,7 @@ export async function bulkSetTags(ctx: MemberCtx, actor: MemberActor, ids: strin
       continue;
     }
     if (isUnitScoped(actor) && !coversUnit(actor, row.homeUnitId)) {
-      const seen = await prisma.memberActivity.count({ where: { tenantId: ctx.tenantId, customerId: row.id, unitId: { in: actor.unitAccess } } });
+      const seen = await prisma.memberActivity.count({ where: { tenantId: ctx.tenantId, customerId: row.id, unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } } });
       if (seen === 0) {
         skipped++;
         continue;

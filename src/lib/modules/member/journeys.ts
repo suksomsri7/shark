@@ -1549,6 +1549,59 @@ export async function journeyStats(ctx: MemberCtx, actor: MemberActor, id: strin
   return view;
 }
 
+/** ผลสรุปของ journey 1 เส้นสำหรับรายงาน (M3.8) — ตัวเลขชุดเดียวกับ `journeyStats` */
+export type JourneyReportRow = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  entered: number;
+  sent: number;
+  used: number;
+  usedPct: number;
+  saleSatang: number;
+  costSatang: number;
+  holdEntered: number;
+  holdConverted: number;
+  convertedPct: number;
+};
+
+/**
+ * M3.8 รายงาน "โปรโมชัน" — สรุปทุก journey ของระบบนี้ในหน้าต่าง [now − days, now] ด้วยสูตรเดียวกับ `journeyStats`
+ * 🔴 additive ล้วน: อ่านอย่างเดียว (ไม่เขียนแคช `AutomationRule.journeyStats` แบบ journeyStats) · รับ `now` ให้ผลนิ่ง
+ * 🔴 ต้นทุนแต้มจาก GIVE_POINTS ไม่คิดที่นี่ (ต้องใช้มูลค่าแต้มของร้าน) — รายงานบวกเพิ่มเองจาก PointLedger refType JOURNEY
+ */
+export async function journeyReportRows(ctx: MemberCtx, actor: MemberActor, opts: { days?: number; now?: Date } = {}): Promise<JourneyReportRow[]> {
+  requireRead(actor);
+  const days = Math.max(1, Math.min(Math.round(numOr(opts.days, 30)), 365));
+  const now = opts.now ?? new Date();
+  const since = new Date(now.getTime() - days * DAY_MS);
+  const rules = (await prisma.automationRule.findMany({
+    where: { tenantId: ctx.tenantId, scope: SCOPE, memberSystemId: ctx.systemId },
+    orderBy: { createdAt: "asc" },
+    select: RULE_SELECT,
+    take: 200,
+  })) as RuleRow[];
+  return Promise.all(
+    rules.map(async (r) => {
+      const s = await computeStats(r, since, now, days, false);
+      return {
+        id: r.id,
+        name: r.name,
+        enabled: r.enabled,
+        entered: s.entered,
+        sent: s.sent,
+        used: s.used,
+        usedPct: pct1(s.used, s.sent),
+        saleSatang: s.saleSatang,
+        costSatang: s.costSatang,
+        holdEntered: s.holdEntered,
+        holdConverted: s.holdConverted,
+        convertedPct: pct1(s.holdConverted, s.holdEntered),
+      };
+    }),
+  );
+}
+
 export async function listJourneys(ctx: MemberCtx, actor: MemberActor): Promise<JourneyListRow[]> {
   requireRead(actor);
   const rows = (await prisma.automationRule.findMany({

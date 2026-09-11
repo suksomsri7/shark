@@ -12,6 +12,10 @@ import { MemberReviewsTab, ShopReviewSummary } from "@/components/member/ReviewM
 // M3.5 — แท็บแนะนำเพื่อน (ภาพ 08 ขวา: การ์ดโค้ด/ลิงก์/สถิติ/ต้นไม้)
 import { referralsForMember } from "@/lib/modules/member/referrals";
 import { ReferralMemberTab } from "@/components/member/ReferralMemberCard";
+// M3.7 — แท็บประวัติ (ภาพ 08 ซ้าย/กลาง: ชิปกรอง 9 ชนิด + ช่วงเวลา + สาขา · ไทม์ไลน์ · โหลดเพิ่ม)
+import { historyUnitOptions, listHistory, toHistoryPageView } from "@/lib/modules/member/history";
+import { HISTORY_DEFAULT_RANGE, HISTORY_PAGE_SIZE, historyRangeFrom } from "@/lib/modules/member/history-kinds";
+import { MemberHistory } from "@/components/member/MemberHistory";
 
 // สมาชิก 360° (M1.5 · ภาพ 02) — `/app/sys/{id}/member/members/{memberId}`
 // URL state: `?tab=profile|wallet|history|reviews|referrals`
@@ -77,11 +81,24 @@ export default async function Member360Page({
       />
     ) : undefined;
 
+  // M3.7 — แท็บประวัติ: หน้าแรก (ช่วงปริยาย 90 วันตามภาพ 08) โหลดที่ server · กรอง/โหลดเพิ่มผ่าน server action
+  //   มองไม่เห็นสมาชิกคนนี้ = getMember360 notFound() ไปแล้วข้างบน (ด่านเดียวกัน)
+  const historyPanel =
+    tab === "history" ? (
+      <MemberHistory
+        systemId={id}
+        memberId={memberId}
+        initialRange={HISTORY_DEFAULT_RANGE}
+        initial={toHistoryPageView(await listHistory(ctx, actor, memberId, { from: historyRangeFrom(HISTORY_DEFAULT_RANGE), take: HISTORY_PAGE_SIZE }))}
+        units={await historyUnitOptions(ctx, actor)}
+      />
+    ) : undefined;
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={member.profile.name || member.profile.memberCode} back={{ href: `/app/sys/${id}/member/members`, label: "สมาชิก" }} />
       <MemberTabs systemId={id} actor={actor} />
-      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} tabPanel={reviewPanel ?? referralPanel} sideTop={reviewSide} />
+      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} tabPanel={reviewPanel ?? referralPanel ?? historyPanel} sideTop={reviewSide} />
     </div>
   );
 }

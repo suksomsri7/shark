@@ -98,7 +98,7 @@ try {
   const hx = await H.listHistory(ctx, owner, X, { take: 50 });
   const docRow = hx?.items?.find((i: Any) => i.kind === "document");
   const purRow = hx?.items?.find((i: Any) => i.kind === "purchase" && i.ref?.id === saleX);
-  chk("M3.7-S2.1", "pos.sale.paid → pos/PURCHASE refType PosSale data { netSatang 455000, receiptNo, pointsEarned ≥ 0 } unitId ป่าตอง · listHistory: แถว purchase title มี 'ซื้อ' + เลขบิล · ref { type PosSale, id } · read-through เอกสารบัญชี (ใบเสร็จของ party) kind document title มี docNo · data.totalSatang 455000", pur.length === 1 && pur[0].refType === "PosSale" && pur[0].data?.netSatang === 455_000 && !!pur[0].data?.receiptNo && typeof pur[0].data?.pointsEarned === "number" && pur[0].unitId === E.units.patong && !!purRow && /ซื้อ/.test(purRow.title ?? "") && purRow.ref?.type === "PosSale" && !!docRow && /[A-Z]{1,4}-?\d/.test(docRow.title ?? "") && docRow.data?.totalSatang === 455_000, "PURCHASE + เอกสาร", `pur=${JSON.stringify(pur[0]?.data)} n=${pur.length} purRow=${JSON.stringify({ t: purRow?.title, ref: purRow?.ref })} doc=${JSON.stringify({ t: docRow?.title, d: docRow?.data })}`);
+  chk("M3.7-S2.1", "pos.sale.paid → pos/PURCHASE refType PosSale data { netSatang 455000, receiptNo, pointsEarned ≥ 0 } unitId ป่าตอง · listHistory: แถว purchase title มี 'ซื้อ' + เลขบิล · ref { type PosSale, id } · read-through เอกสารบัญชี (ใบเสร็จของ party) kind document title มี docNo · data.totalSatang 455000", pur.length === 1 && pur[0].refType === "PosSale" && pur[0].data?.netSatang === 455_000 && !!pur[0].data?.receiptNo && typeof pur[0].data?.pointsEarned === "number" && pur[0].unitId === E.units.patong && !!purRow && /ซื้อ/.test(purRow.title ?? "") && purRow.ref?.type === "PosSale" && !!docRow && /[ก-๙]+.*\s[A-Z]{0,4}-?\d/.test(docRow.title ?? "") /* ORACLE-EDIT M3.7-S2.1: เลขใบเสร็จจากบิล POS ไม่มีตัวอักษรนำหน้า (202609-0269) — บังคับ "<ชนิดไทย> <เลข>" */ && docRow.data?.totalSatang === 455_000, "PURCHASE + เอกสาร", `pur=${JSON.stringify(pur[0]?.data)} n=${pur.length} purRow=${JSON.stringify({ t: purRow?.title, ref: purRow?.ref })} doc=${JSON.stringify({ t: docRow?.title, d: docRow?.data })}`);
   await pos.voidSale(tid, E.units.patong, saleX);
   await drain();
   const vd = await one(X, "pos", "PURCHASE_VOIDED", { refId: saleX });
@@ -137,6 +137,8 @@ try {
   const boardId = (board?.id ?? board?.boardId ?? board) as string; made.boards.push(boardId);
   const colsK = await P.kanbanColumn.findMany({ where: { boardId }, orderBy: { position: "asc" } });
   const doneCol = colsK.find((c: Any) => c.isDoneColumn) ?? colsK[colsK.length - 1];
+  // ORACLE-EDIT M3.7-S2.6: createBoard ไม่ตั้งคอลัมน์ "เสร็จ" ให้ → ย้ายเข้าคอลัมน์สุดท้ายไม่ยิง kanban.card.completed · ตั้ง isDoneColumn ก่อนย้าย (บอร์ดของข้อสอบเอง ลบใน finally)
+  if (!doneCol.isDoneColumn) await P.kanbanColumn.update({ where: { id: doneCol.id }, data: { isDoneColumn: true } });
   const card = await kanban.createCard({ tenantId: tid, systemId: kb!.id, columnId: colsK[0].id, title: "เคลมประกันอุปกรณ์", createdById: owner.userId });
   made.cards.push(card.id);
   const partyX = (await prisma.customer.findUnique({ where: { id: X }, select: { partyId: true } }))!.partyId!;
@@ -154,7 +156,7 @@ try {
   const cctx = { tenantId: tid, systemId: crmSys!.id };
   const pipe = await crm.ensureCrm(cctx);
   const pipelineId = (pipe?.id ?? pipe?.pipelineId ?? pipe) as string;
-  const stages = await P.crmStage.findMany({ where: { tenantId: tid, pipelineId }, orderBy: { position: "asc" } });
+  const stages = await P.crmStage.findMany({ where: { tenantId: tid, pipelineId }, orderBy: { sortOrder: "asc" } }); // ORACLE-EDIT M3.7-S2.7: CrmStage ใช้ sortOrder (ไม่มี position)
   const wonStage = stages.find((s: Any) => s.kind === "WON"); const openStage = stages.find((s: Any) => s.kind === "OPEN") ?? stages[0];
   const phoneX = (await prisma.customer.findUnique({ where: { id: X }, select: { phone: true } }))!.phone!;
   const cX = await P.crmContact.create({ data: { tenantId: tid, systemId: crmSys!.id, name: "ไทม์ไลน์ (CRM)", phone: phoneX, lifecycleStage: "LEAD" } }); made.crm.contacts.push(cX.id);
@@ -231,12 +233,13 @@ try {
 
   // ═══ S5 perf ═══
   const Z = await mkCust("พันแถว");
+  const zBefore = await P.memberActivity.count({ where: { customerId: Z } }); // ORACLE-EDIT M3.7-S5.1: createMember เขียนแถว "สมัครสมาชิก" เสมอ → ฐานไม่ใช่ 0
   await P.memberActivity.createMany({ data: Array.from({ length: 1200 }, (_, i) => ({ tenantId: tid, customerId: Z, module: ["pos", "booking", "chat", "point"][i % 4], type: ["PURCHASE", "VISIT", "MESSAGE", "POINTS_EARNED"][i % 4], refType: "Perf", refId: `perf-${i}`, summary: `แถวทดสอบ ${i}`, data: { i }, unitId: i % 3 === 0 ? E.units.kata : E.units.patong, createdAt: new Date(Date.now() - i * 3600_000) })) });
   const t0 = Date.now(); const big = await H.listHistory(ctx, owner, Z, { take: 50 }); const t1 = Date.now();
   const bigF = await H.listHistory(ctx, owner, Z, { kind: "chat", from: new Date(Date.now() - 200 * 3600_000), take: 50 }); const t2 = Date.now();
   const plan = (await prisma.$queryRawUnsafe(`explain select * from "MemberActivity" where "customerId" = '${Z}' and "module" = 'chat' order by "createdAt" desc limit 50`)) as Any[];
   const planTxt = plan.map((r: Any) => r["QUERY PLAN"]).join("\n");
-  chk("M3.7-S5.1", "1,200 แถว: listHistory take 50 < 600ms · กรอง kind+from < 600ms · counts.all = 1200 (+read-through 0) · EXPLAIN customerId+module order createdAt ใช้ Index Scan (index [customerId, module, createdAt])", big?.items?.length === 50 && t1 - t0 < 600 && bigF?.items?.length === 50 && t2 - t1 < 600 && big.counts?.all === 1200 && /Index (Only )?Scan/.test(planTxt) && !/Seq Scan on "?MemberActivity/.test(planTxt), "เร็ว+ใช้ index", `t=${t1 - t0}/${t2 - t1}ms n=${big?.items?.length} all=${big?.counts?.all} plan=${planTxt.split("\n")[0]?.slice(0, 80)}`, "MAJOR");
+  chk("M3.7-S5.1", "1,200 แถว: listHistory take 50 < 600ms · กรอง kind+from < 600ms · counts.all = 1200 (+read-through 0) · EXPLAIN customerId+module order createdAt ใช้ Index Scan (index [customerId, module, createdAt])", big?.items?.length === 50 && t1 - t0 < 600 && bigF?.items?.length === 50 && t2 - t1 < 600 && big.counts?.all === 1200 + zBefore && /Index (Only )?Scan/.test(planTxt) && !/Seq Scan on "?MemberActivity/.test(planTxt), "เร็ว+ใช้ index", `t=${t1 - t0}/${t2 - t1}ms n=${big?.items?.length} all=${big?.counts?.all} plan=${planTxt.split("\n")[0]?.slice(0, 80)}`, "MAJOR");
   chk("M3.7-S5.2", "consumer ทุกตัวของ M3.7 ห่อ try/catch (ต้นทางพัง เช่น สมาชิกถูกลบ → WARN แล้วปิด DONE ไม่ค้าง PENDING) · drain แล้ว event ทุกชนิดของร้าน QC ไม่ค้าง (PENDING/FAILED = 0 ยกเว้น chat.message.received ที่ไม่มี provider)", (await P.outboxEvent.count({ where: { tenantId: tid, status: { in: ["PENDING", "FAILED"] }, type: { in: ["pos.sale.paid", "pos.sale.voided", "booking.completed", "booking.no_show", "chat.contact.linked", "kanban.card.completed", "crm.deal.won", "shop.order.paid", "point.earned", "point.burned"] } } })) === 0 && /catch/.test(bridges), "คิวว่าง", `stuck=${await P.outboxEvent.count({ where: { tenantId: tid, status: { in: ["PENDING", "FAILED"] } } })}`);
 
   // ═══ S6 UI / ภาพ ═══

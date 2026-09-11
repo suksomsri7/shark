@@ -3510,6 +3510,71 @@ export async function getDocRef(
     select: { id: true, docType: true, docNo: true, status: true },
   });
 }
+
+/** M3.7 — แถวเอกสารแบบย่อของ "ผู้ติดต่อกลาง (party) คนหนึ่ง" (ไทม์ไลน์สมาชิกอ่านผ่าน facade) */
+export type PartyDocRow = {
+  id: string;
+  systemId: string;
+  docType: AccountDocType;
+  /** ป้ายไทยของชนิดเอกสาร (ใบเสร็จรับเงิน · ใบกำกับภาษีอย่างย่อ …) */
+  docLabel: string;
+  docNo: string | null;
+  status: AccountDocStatus;
+  statusLabel: string;
+  totalSatang: number;
+  issuedAt: Date;
+  createdAt: Date;
+  refType: string | null;
+  refId: string | null;
+  /** หน้าเอกสาร (เฉพาะชนิดที่มีหน้ารายละเอียดจริง — ชนิดอื่น = null) */
+  href: string | null;
+};
+
+const PARTY_DOC_EXTRA_LABEL: Partial<Record<AccountDocType, string>> = {
+  TAX_INVOICE_ABB: "ใบกำกับภาษีอย่างย่อ",
+};
+
+/**
+ * M3.7 (§8 ไทม์ไลน์สมาชิก · read-through) — เอกสารบัญชีทุกระบบบัญชีของร้านที่ผูกผู้ติดต่อซึ่งเป็น party นี้
+ * 🔴 อ่านอย่างเดียว · ขาออก (ฝั่งขาย/รับเงิน) เท่านั้น — เอกสารฝั่งจ่าย (ซื้อ/ค่าใช้จ่าย) ไม่ใช่ "ประวัติลูกค้า"
+ * 🔴 รวม DRAFT ด้วย (สถานะบอกใน `status`) — ใบเสนอราคาที่ร่างให้ลูกค้าอยู่ก็คือเรื่องที่คุยกับเขาอยู่
+ */
+export async function listDocsByParty(tenantId: string, partyId: string, opts: { take?: number } = {}): Promise<PartyDocRow[]> {
+  if (!partyId) return [];
+  const take = Math.min(Math.max(1, Math.trunc(opts.take ?? 100)), 200);
+  const rows = await prisma.accountDocument.findMany({
+    where: { tenantId, direction: "OUT", contact: { partyId, tenantId } },
+    orderBy: [{ issueDate: "desc" }, { id: "desc" }],
+    take,
+    select: {
+      id: true,
+      systemId: true,
+      docType: true,
+      docNo: true,
+      status: true,
+      grandTotal: true,
+      issueDate: true,
+      createdAt: true,
+      refType: true,
+      refId: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    systemId: r.systemId,
+    docType: r.docType,
+    docLabel: DOC_LABEL[r.docType] ?? PARTY_DOC_EXTRA_LABEL[r.docType] ?? "เอกสาร",
+    docNo: r.docNo,
+    status: r.status,
+    statusLabel: STATUS_LABEL[r.status] ?? r.status,
+    totalSatang: r.grandTotal,
+    issuedAt: r.issueDate,
+    createdAt: r.createdAt,
+    refType: r.refType,
+    refId: r.refId,
+    href: isVisibleDocType(r.docType) ? `/app/sys/${r.systemId}/account/docs/${r.docType}/${r.id}` : null,
+  }));
+}
 /**
  * จับคู่ผู้ติดต่อด้วยเบอร์โทรแบบ normalize (WO 0.2 → คอลัมน์จริงใน WO 0.3)
  *

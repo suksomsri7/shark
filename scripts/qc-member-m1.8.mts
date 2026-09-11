@@ -154,6 +154,20 @@ try {
   chk("M1.8-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));
 } finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
+  // ORACLE-EDIT M1.8-finally (หลัง M3.5): createMember({ referralCode }) สร้างแถว Referral + รางวัลฝั่งผู้แนะนำ (สมาชิก seed) ตั้งแต่ M3.5
+  //   ชุดนี้เดิมลบแค่ลูกค้า → Referral กลายเป็นกำพร้า (referee = null) + แต้ม/กิจกรรมค้างที่ผู้แนะนำ ⇒ ลบของชุดนี้ + กำพร้าที่ค้างจากรอบก่อน (ก่อนลบลูกค้า)
+  if (tid && P.referral) {
+    const refs = ((await P.referral.findMany({ where: { tenantId: tid, OR: [{ refereeCustomerId: { in: made.customers } }, { refereeCustomerId: null }] }, select: { id: true } }).catch(() => [])) as Any[]).map((r) => r.id as string);
+    if (refs.length) {
+      const leds = (await P.pointLedger.findMany({ where: { tenantId: tid, refType: "REFERRAL", refId: { in: refs } }, select: { id: true, systemId: true, customerId: true, delta: true } }).catch(() => [])) as Any[];
+      for (const l of leds) await d(() => P.pointBalance.updateMany({ where: { systemId: l.systemId, customerId: l.customerId }, data: { balance: { decrement: l.delta } } }));
+      await d(() => P.pointLot.deleteMany({ where: { ledgerId: { in: leds.map((l) => l.id) } } }));
+      await d(() => P.pointLedger.deleteMany({ where: { id: { in: leds.map((l) => l.id) } } }));
+      await d(() => P.memberActivity.deleteMany({ where: { tenantId: tid, refId: { in: refs } } }));
+      for (const rid of refs) await d(() => P.voucher.deleteMany({ where: { tenantId: tid, origin: "REFERRAL", originRef: { path: ["referralId"], equals: rid } } }));
+      await d(() => P.referral.deleteMany({ where: { id: { in: refs } } }));
+    }
+  }
   if (made.customers.length) {
     const parties = (await prisma.customer.findMany({ where: { id: { in: made.customers } }, select: { partyId: true } })).map((c) => c.partyId).filter(Boolean) as string[];
     for (const mdl of ["memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberFieldValueHistory", "memberChannelIdentity", "memberAccessLog", "memberActivity", "pointLedger", "pointBalance"]) await d(() => P[mdl].deleteMany({ where: { customerId: { in: made.customers } } }));

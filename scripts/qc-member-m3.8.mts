@@ -61,7 +61,7 @@ try {
   restore.push(() => prisma.appSystem.update({ where: { id: SYS }, data: { settings: (sys0?.settings ?? {}) as Any } }));
   // ค่าคาดหวังจาก DB โดยตรง (ทนต่อ reseed)
   const memberIds = (await prisma.customer.findMany({ where: { tenantId: tid, memberSystemId: SYS, status: { not: "MERGED" as Any } }, select: { id: true } })).map((c) => c.id);
-  const bills = await prisma.posSale.findMany({ where: { tenantId: tid, status: "PAID" as Any, memberId: { in: memberIds }, createdAt: { gte: d365, lte: now } }, select: { memberId: true, grandTotalSatang: true, netSatang: true, createdAt: true } as Any }) as Any[];
+  const bills = await prisma.posSale.findMany({ where: { tenantId: tid, status: "PAID" as Any, memberId: { in: memberIds }, createdAt: { gte: d365, lte: now } }, select: { memberId: true, grandTotalSatang: true, createdAt: true } as Any }) as Any[]; // ORACLE-EDIT M3.8-S1.x: PosSale ไม่มีคอลัมน์ netSatang (Prisma: Unknown field) · ยอดสุทธิ = grandTotalSatang ตามตัวสำรองบรรทัดถัดไป
   const amt = (b: Any) => Number(b.netSatang ?? b.grandTotalSatang ?? 0);
   const sumSatang = bills.reduce((s, b) => s + amt(b), 0);
   const perMember = new Map<string, Any[]>(); for (const b of bills) { const arr = perMember.get(b.memberId) ?? []; arr.push(b); perMember.set(b.memberId, arr); }

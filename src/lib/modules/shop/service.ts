@@ -5,6 +5,7 @@
 // เงินต้องเข้าเสมอ: ยืนยันรับเงิน = ปิดบิลผ่าน POS (บังคับ) → ตัดสต็อกผ่าน inventory (best-effort ข้ามเงียบถ้าไม่มี)
 import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import { listSystems } from "@/lib/modules/system/service";
@@ -234,6 +235,27 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   });
 
   await db.shopOrder.updateMany({ where: { id: orderId }, data: { posSaleId: sale.saleId } });
+
+  // M3.7 (ระบบสมาชิก v2 · §7.1 · D19) — ออเดอร์ชำระแล้ว → สมาชิก/แต้ม/ไทม์ไลน์ของลูกค้า (consumer ที่ composition root)
+  // 🔴 ร้านค้าไม่รู้จักโมดูลสมาชิก — แค่ประกาศเหตุการณ์ · idempotencyKey ผูกออเดอร์ · ลง 3 ทะเบียนแล้ว
+  //    `channel` = "SHOP" (หน้าร้านเว็บของร้านเอง) · ตัวเชื่อมตลาดออนไลน์ยิง SHOPEE/LAZADA/TIKTOK ด้วยรูปเดียวกัน
+  await emitOutboxOutsideTx({
+    tenantId: ctx.tenantId,
+    unitId: ctx.unitId,
+    systemId: posSys.id,
+    type: "shop.order.paid",
+    idempotencyKey: `shop.order.paid#${orderId}`,
+    payload: {
+      orderId,
+      unitId: ctx.unitId,
+      code: order.code,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      totalSatang: order.totalSatang,
+      posSaleId: sale.saleId,
+      channel: "SHOP",
+    },
+  });
 
   // 4) ตัดสต็อก — เฉพาะ line ที่ product ผูก invItemId · ไม่มีระบบ INVENTORY/ไม่ผูก → ข้ามเงียบ
   const invSystems = await listSystems(ctx.tenantId, "INVENTORY");

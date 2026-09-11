@@ -43,7 +43,8 @@ export const MEMBER_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "promotions", label: "โปรโมชัน", path: "/member/promotions", status: "ready" },
   // M3.2 — หมวดนี้เปิดแล้ว (ตารางแคมเปญ + ตัวสร้าง 3 ขั้น + หน้าสถิติต่อ variant/กลุ่มเทียบ)
   { key: "campaigns", label: "แคมเปญ", path: "/member/campaigns", status: "ready" },
-  { key: "reports", label: "รายงาน", path: "/member/reports", status: "soon", wo: "M3.8" },
+  // M3.8 — รายงานสมาชิก (ภาพ 25) · เห็นเฉพาะคนที่มี `member.report.view` (หน้า 404 สำหรับคนอื่น)
+  { key: "reports", label: "รายงาน", path: "/member/reports", status: "ready" },
   { key: "settings", label: "ตั้งค่า", path: "/member/settings/fields", status: "ready" },
 ] as const);
 
@@ -141,6 +142,7 @@ function visibleNavEntries(actor?: MemberActor): readonly MemberNavEntry[] {
     if (e.status !== "ready") return false;
     if (!actor) return true;
     if (e.key === "settings") return canManageSettings(actor);
+    if (e.key === "reports") return hasMemberPerm(actor, "member.report.view");
     return canReadMember(actor);
   });
 }
@@ -176,7 +178,11 @@ export function memberNavItems(
   actor?: MemberActor,
 ): { key: string; href: string; label: string; status: MemberNavStatus; wo?: string }[] {
   const base = `/app/sys/${systemId}`;
-  return MEMBER_NAV.filter((e) => e.key !== "settings" || !actor || canManageSettings(actor)).map((e) => ({
+  return MEMBER_NAV.filter(
+    (e) =>
+      !actor ||
+      (e.key === "settings" ? canManageSettings(actor) : e.key === "reports" ? hasMemberPerm(actor, "member.report.view") : true),
+  ).map((e) => ({
     key: e.key,
     href: e.status === "ready" ? `${base}${e.path}` : "#",
     label: e.label,

@@ -23,13 +23,14 @@ import * as point from "@/lib/modules/point";
 import * as approval from "@/lib/modules/approval/service";
 import { systemForUnit, unitsForSystem } from "@/lib/modules/system/service";
 import { prisma } from "./db";
-import { coversUnit, hasMemberPerm, isUnitScoped, type MemberActor } from "./access";
+import { coversUnit, hasMemberPerm, isUnitScoped, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
 import { MemberConflictError, MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
 import * as sources from "./sources";
 import * as tiers from "./tiers";
 import { evaluateSensitiveAccess, logAccess, type MemberCtx } from "./privacy";
 import { uniqueMemberCode } from "./service";
+import type { HistoryItem } from "./history";
 
 type Tx = Prisma.TransactionClient;
 
@@ -203,7 +204,13 @@ export type Member360 = {
    * ตัวเลขสรุปต่อคนที่ใบงานถัด ๆ ไปเติมเพิ่ม (M3.4 รีวิว · M3.5 แนะนำเพื่อน · M3.7 ประวัติ)
    * M3.4 — `reviewAvg` = ค่าเฉลี่ยรีวิวที่ส่งแล้วและไม่ถูกซ่อนของคนนี้ (cache `Customer.reviewAvg` ที่ reviews.ts เขียน)
    */
-  counters: { reviewAvg: number | null };
+  counters: {
+    reviewAvg: number | null;
+    /** M3.7 — จำนวนครั้งที่มาตามนัดจริง (แถวไทม์ไลน์ booking/VISIT) */
+    visits: number;
+  };
+  /** M3.7 — ไทม์ไลน์ล่าสุด 5 รายการ (ตัวเดียวกับแท็บ "ประวัติ" · `listHistory`) — อ่านไม่ได้ = [] (หน้า 360 ต้องเปิดได้) */
+  history: HistoryItem[];
   mergedIntoId: string | null;
   /** M3.5 — แนะนำเพื่อนของคนนี้ (โค้ด · แนะนำแล้ว (ไม่นับที่ถูกปฏิเสธ) · สำเร็จ) — การ์ดเต็มอยู่ที่ `referralsForMember` */
   referrals: { code: string | null; referred: number; converted: number };
@@ -471,9 +478,29 @@ async function assertVisible(ctx: MemberCtx, actor: MemberActor, customer: Custo
   if (!isUnitScoped(actor)) return;
   if (coversUnit(actor, customer.homeUnitId)) return;
   const seen = await db(tx).memberActivity.count({
-    where: { tenantId: ctx.tenantId, customerId: customer.id, unitId: { in: actor.unitAccess } },
+    where: { tenantId: ctx.tenantId, customerId: customer.id, unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } },
   });
   if (seen === 0) throw new MemberNotFoundError(NOT_FOUND_MSG);
+}
+
+/**
+ * M3.7 — "actor คนนี้มองเห็นสมาชิกคนนี้ไหม" แบบเบา (ด่านเดียวกับ `briefFor`/หน้า 360 แต่ไม่โหลดระดับ/แต้ม)
+ * ไม่เห็น/ไม่มี = `MemberNotFoundError` เสมอ (§6.4) · ใช้ในโมดูลเท่านั้น (ไม่เปิดผ่าน facade)
+ */
+export async function loadVisibleMember(
+  ctx: MemberCtx,
+  actor: MemberActor,
+  customerId: string,
+): Promise<{ id: string; partyId: string | null; homeUnitId: string | null; memberCode: string; name: string }> {
+  const row = await loadCustomer(ctx, String(customerId ?? ""));
+  await assertVisible(ctx, actor, row);
+  return {
+    id: row.id,
+    partyId: row.partyId,
+    homeUnitId: row.homeUnitId,
+    memberCode: row.memberCode ?? "",
+    name: row.name ?? ([row.firstName, row.lastName].filter(Boolean).join(" ") || row.memberCode || ""),
+  };
 }
 
 /** ตั้งสาขาหลักได้เฉพาะสาขาที่ actor ดูแล (ไม่งั้นพนักงานสาขาหนึ่งย้ายสมาชิกไปอีกสาขาแล้วมองไม่เห็นต่อ) */
@@ -1152,9 +1179,14 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
   ]);
 
   // M3.5 — ตัวเลขแนะนำเพื่อนย่อ (2 count ไม่โหลดแถว) · การ์ดเต็ม/ต้นไม้อยู่ที่ `referrals.referralsForMember`
-  const [referralsReferred, referralsConverted] = await Promise.all([
+  // M3.7 — ไทม์ไลน์ล่าสุด 5 รายการ (ตัวเดียวกับแท็บประวัติ) + จำนวนครั้งที่มาตามนัด
+  //   dynamic import: history.ts import ไฟล์นี้ (loadVisibleMember) — โหลดตอนใช้ ไม่ใช่ตอนโหลดไฟล์
+  //   ไทม์ไลน์อ่านไม่ได้ = [] (หน้า 360 ต้องเปิดได้เสมอ · แท็บประวัติจะบอกเองถ้ามีปัญหา)
+  const [referralsReferred, referralsConverted, visitsCount, recentHistory] = await Promise.all([
     prisma.referral.count({ where: { tenantId: ctx.tenantId, referrerCustomerId: customer.id, status: { not: "REJECTED" }, NOT: { refereeCustomerId: customer.id } } }),
     prisma.referral.count({ where: { tenantId: ctx.tenantId, referrerCustomerId: customer.id, status: { in: ["CONVERTED", "REWARDED"] } } }),
+    prisma.memberActivity.count({ where: { tenantId: ctx.tenantId, customerId: customer.id, module: "booking", type: "VISIT" } }),
+    import("./history").then((h) => h.listHistory(ctx, actor, customer.id, { take: 5 })).then((r) => r.items).catch(() => [] as HistoryItem[]),
   ]);
 
   // ระดับถัดไปบนบันได (ปิดหนี้ M1.4) — อ่านอย่างเดียว (`noCache`) เพื่อไม่ให้การ "เปิดดูโปรไฟล์"
@@ -1312,7 +1344,8 @@ export async function getMember360(ctx: MemberCtx, actor: MemberActor, id: strin
     })),
     attribution: { first: attributionOf("FIRST"), last: attributionOf("LAST") },
     connections,
-    counters: { reviewAvg: customer.reviewAvg !== null ? Number(customer.reviewAvg) : null },
+    counters: { reviewAvg: customer.reviewAvg !== null ? Number(customer.reviewAvg) : null, visits: visitsCount },
+    history: recentHistory,
     mergedIntoId: customer.mergedIntoId,
     referrals: { code: customer.referralCode, referred: referralsReferred, converted: referralsConverted },
   };
