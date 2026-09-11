@@ -67,6 +67,27 @@ export const MEMBER_SETTINGS_NAV: readonly MemberNavEntry[] = Object.freeze([
  * 🔴 ไม่เพิ่มลง `MEMBER_NAV`: §2.2 ล็อกไว้ 9 หมวด และ "กลุ่มลูกค้า" เป็นขั้นที่ 1 ของการทำแคมเปญ
  *    (ภาพ 21) ไม่ใช่หมวดใหม่ — จึงต่อท้ายใน drawer ☰ แบบเดียวกับหน้าย่อยของหมวดตั้งค่า
  */
+/**
+ * หน้าลึกของแต่ละหมวด (ไม่ใช่หมวดใหม่ · ไม่ขึ้นแถบแท็บ) — ให้ drawer ☰ กางถึงทุก `page.tsx` ที่ไม่ใช่ [param]
+ * 🔴 ด่าน `qc-nav-functions` S5 (completeness): หน้าที่มีเนื้อหาจริงห้ามเป็นหน้ากำพร้าใน accordion
+ *    (11 ก.ย. 2569 — เฟส M2 เพิ่มหน้าลึก 13 หน้าแต่ไม่มีใครลงทะเบียน · เพิ่มหน้าใหม่ = เพิ่มที่นี่)
+ */
+export const MEMBER_DEEP_NAV: readonly MemberNavEntry[] = Object.freeze([
+  { key: "members-new", label: "สมัครสมาชิก", path: "/member/members/new", status: "ready" },
+  { key: "members-import", label: "นำเข้าสมาชิก", path: "/member/members/import", status: "ready" },
+  { key: "members-duplicates", label: "สมาชิกซ้ำ", path: "/member/members/duplicates", status: "ready" },
+  { key: "points-adjust", label: "ปรับแต้ม", path: "/member/points/adjust", status: "ready" },
+  { key: "points-expiring", label: "แต้มใกล้หมดอายุ", path: "/member/points/expiring", status: "ready" },
+  { key: "stamps-new", label: "สร้างสแตมป์การ์ด", path: "/member/stamps/new", status: "ready" },
+  { key: "rewards-new", label: "เพิ่มของรางวัล", path: "/member/rewards/new", status: "ready" },
+  { key: "rewards-fulfil", label: "รับของรางวัล", path: "/member/rewards/fulfil", status: "ready" },
+  { key: "rewards-redemptions", label: "ประวัติการแลก", path: "/member/rewards/redemptions", status: "ready" },
+  { key: "promotions-giftcards", label: "Gift Card", path: "/member/promotions/giftcards", status: "ready" },
+  { key: "promotions-giftcards-settings", label: "ตั้งค่า Gift Card", path: "/member/promotions/giftcards/settings", status: "ready" },
+  { key: "promotions-vouchers", label: "Voucher", path: "/member/promotions/vouchers", status: "ready" },
+  { key: "promotions-vouchers-templates", label: "แบบ Voucher", path: "/member/promotions/vouchers/templates", status: "ready" },
+] as const);
+
 export const MEMBER_CAMPAIGN_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "segments", label: "กลุ่มลูกค้า", path: "/member/segments", status: "ready" },
 ] as const);
@@ -124,9 +145,14 @@ export function memberNavChildren(base: string, actor?: MemberActor): { href: st
     href: `${base}${e.path}`,
     label: e.label,
   }));
+  const deepChildren = MEMBER_DEEP_NAV.filter((e) => e.status === "ready" && (!actor || canReadMember(actor))).map((e) => ({
+    href: `${base}${e.path}`,
+    label: e.label,
+  }));
   return [
     { href: base, label: "หน้าหลัก" },
     ...visibleNavEntries(actor).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
+    ...deepChildren,
     ...campaignChildren,
     ...settingsChildren,
     ...LEGACY_V1_LINKS.map((l) => ({ href: `${base}${l.href}`, label: l.label })),

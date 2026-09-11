@@ -26,6 +26,9 @@ try { process.loadEnvFile?.(process.env.QC_ENV_FILE ?? ".env"); } catch { /* CI:
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
+// Customer มีคอลัมน์ BigInt (spent12mSatang · M1.x) — JSON.stringify ตรง ๆ จะ throw กลบข้อความ assert (11 ก.ย. 2569)
+const jsonSafe = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x));
+
 const ROOT = resolve(import.meta.dirname, "..");
 
 const { prisma } = await import("@/lib/core/db");
@@ -343,7 +346,7 @@ try {
       phone: "0611110001",
     });
     qcCreatedRows.push({ model: "accountContact", id: c1.id });
-    assert("account.createContact เชื่อม partyId", !!c1.partyId, JSON.stringify(c1));
+    assert("account.createContact เชื่อม partyId", !!c1.partyId, jsonSafe(c1));
 
     const c2 = await memberSvc.findOrCreate({
       tenantId: qcScope.tenantId,
@@ -353,7 +356,7 @@ try {
       source: "STAFF",
     });
     qcCreatedRows.push({ model: "customer", id: c2.id });
-    assert("member.findOrCreate เชื่อม partyId", !!c2.partyId, JSON.stringify(c2));
+    assert("member.findOrCreate เชื่อม partyId", !!c2.partyId, jsonSafe(c2));
 
     const c3 = await crmSvc.createContact(
       { tenantId: qcScope.tenantId, systemId: qcCrmSys },

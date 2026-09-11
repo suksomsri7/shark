@@ -62,5 +62,11 @@ M3.1 segments (กำลังทำ) → M3.2 campaigns v2 → M3.3 journeys �
 - Vercel READY ทุก push ของเฟส M2 (ล่าสุด `0b5c5f0`) · `_prisma_migrations` บน prod มี `member_v2_a…f2_identity_fk` ครบ 12 ใบ (ตรวจด้วย `/tmp/claude-0/prodmig.cjs` แบบอ่านอย่างเดียว) · `MemberChannelIdentity` บน prod 0 แถว ⇒ FK ใบ f2_identity_fk ผูกโดยไม่ลบอะไร
 - ไม่มี backfill ที่ต้องรันบน prod ในเฟสนี้ (ร้านจริงยังไม่เปิดใช้ v2)
 
-## ผล qc:all เต็มชุด (ปิดเฟส M2)
-_(เติมหลังรันจบ)_
+## ผล qc:all เต็มชุด (ปิดเฟส M2 · 11 ก.ย. 03:50–04:20 UTC · QC DB · ไม่มี builder)
+- รอบสะอาด: **312/319 ชุดผ่าน** (1627 วิ) · แดง 7 → ตามไล่:
+  - `acc-v2-contact-merge/contact-profile/contacts` + `acc-v2-party` — เฉลยบัญชี QC ขาดคีย์หลัง reseed มือ (ต้องรัน `acc-v2-expected-{contacts,contact-profile,dashboard}.mts`) + suite party JSON.stringify ชน BigInt (`spent12mSatang`) → แก้แล้ว รันซ้ำ **5/5 ผ่าน**
+  - `member-m2.9` — ภาพลูกค้าถูกถ่ายด้วย memberCode ก่อน reseed → ถ่ายใหม่ **22/22**
+  - `nav-functions` S5 — หน้าลึกของโมดูลสมาชิก 13 หน้า (members/new·import·duplicates · points/adjust·expiring · stamps/new · rewards/new·fulfil·redemptions · promotions/giftcards(+settings)·vouchers(+templates)) ไม่อยู่ใน drawer → เพิ่ม `MEMBER_DEEP_NAV` ใน `member/nav.ts` **11/11 ผ่าน**
+  - `kanban-k2.3` 15/17 — ข้อภาพ/ลากขอบ ต้องมี `.qc-shots/kanban/2.3` (อยู่ worktree shark-kanban) — ไม่ใช่บั๊ก
+- ⇒ สุทธิ **318/319** (เหลือ k2.3 ข้อภาพข้าม worktree) · รอบก่อนหน้า (271/320) แดงเพราะรันขณะ builder M3.1 แก้สคีมา + qc-all รัน reseed กลางรอบ — แก้ต้นเหตุทั้งสองแล้ว (qc-all ตัด `qc-member-m1.1` ออก · กติกา: qc:all เต็มชุดรันตอนไม่มี builder)
+- บทเรียน: reseed บัญชีมือต้องตามด้วยสคริปต์เฉลย 3 ตัว · suite ที่ stringify Customer ต้องทน BigInt · ข้อสอบ m1.1 เลิกบังคับ "ยังไม่มีตาราง M2/M3"
