@@ -148,7 +148,7 @@ try {
   chk("C1.1-S5.4", "CrmCompany ทุกแถวมี partyId (บังคับ) · CrmContact ทุกแถวมี partyId หลัง backfill party-links", allCoHaveParty && contactsNoParty === 0, "0/0", `coNull=${!allCoHaveParty} contactNull=${contactsNoParty}`);
 
   // ═══ S6 core/teams.ts ═══
-  const teams = (await import("@/lib/core/teams")) as Any;
+  const teams = (await import("@/lib/core/teams" as string)) as Any; // as string: โมดูลยังไม่มีจนกว่า C1.1 จะสร้าง — next build ตรวจ type ไฟล์ .mts ด้วย (deploy 5cc4100 ล้มเพราะจุดนี้)
   const fnMiss = ["createTeam", "updateTeam", "archiveTeam", "addMember", "removeMember", "teamsOf", "membersOf", "unitIdsOf", "listTeams"].filter((f) => typeof teams[f] !== "function");
   chk("C1.1-S6.1", "src/lib/core/teams.ts export createTeam/updateTeam/archiveTeam/addMember/removeMember/teamsOf/membersOf/unitIdsOf/listTeams", fnMiss.length === 0, "ครบ", `ขาด: ${fnMiss.join(",") || "-"}`);
   let dupErr = false; let t1: Any = null;
