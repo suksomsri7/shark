@@ -17,7 +17,8 @@
 //   onHandByLocation(ctx, itemId) → [{ locationId, name, onHand }] (รวม default · เฉพาะแถวที่มี)
 //   adjust(ctx, { ..., locationId? }) — เดินเรื่องเดียวกับ receive/consume (คลัง default ถ้าไม่ส่ง)
 // procurement.ts: receivePo(ctx, poId, opts?: { locationId?: string }) — ส่งต่อไป receive ทุก line (default = คลังหลัก)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-warehouse"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

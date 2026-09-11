@@ -14,7 +14,8 @@
 //
 // รัน: pnpm exec tsx scripts/qc-ai-skills.mts
 process.env.SHARK_AI_MOCK = "1";
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ env จาก secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-skills"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { readFileSync } = await import("node:fs");
 const sk = await import("@/lib/ai/skills");

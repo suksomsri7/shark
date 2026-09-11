@@ -3,7 +3,8 @@
 //   src/app/manifest.ts: export default → { name/short_name ไทย, start_url "/app", display "standalone",
 //     background_color, theme_color, icons: [192, 512 (purpose any+maskable ได้)] ชี้ /icon-192.png /icon-512.png }
 //   src/app/layout.tsx: metadata/viewport มี themeColor + appleWebApp (title/capable) + icons apple → /apple-touch-icon.png
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pwa"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { readFileSync, existsSync } = await import("node:fs");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

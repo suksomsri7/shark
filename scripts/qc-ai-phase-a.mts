@@ -15,7 +15,8 @@
 //   tools ใหม่: void_sale (saleId) — action tool เสนอ destructive
 // [3] VALIDATE-EXPLAIN — tool ตรวจ input ก่อนเสนอ ถ้าผิดคืน {error, suggestion?} (ไม่สร้าง proposal) ให้ LLM อธิบาย:
 //   inventory_adjust: newQty < 0 → { error:"...ติดลบไม่ได้...", suggestion:"ตั้งเป็น 0?" } ไม่สร้าง proposal
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-phase-a"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

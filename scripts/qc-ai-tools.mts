@@ -19,7 +19,8 @@
 //    ส่ง tools ทุกรอบ · reply มี toolCalls → append assistant(toolCalls) + tool result ต่อรอบถัดไป · เพดาน 5 รอบ (ครบ = จบด้วยข้อความสุภาพ ok:true)
 //    persist เฉพาะ USER + ASSISTANT ตัวจบ (ไม่เก็บ tool traffic) · usage รวมทุกรอบ
 // 4) persona.ts: บอกว่า AI ดูข้อมูลจริงของร้านผ่านเครื่องมือได้ (ตัดประโยค "ยังทำรายการแทนไม่ได้" ให้เหลือเฉพาะ mutation)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-tools"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

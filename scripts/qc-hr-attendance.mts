@@ -9,7 +9,8 @@
 // [5] ไม่รั่วข้ามร้าน (ctx ผิดร้าน = มองไม่เห็นข้อมูล)
 //
 // รัน: pnpm exec tsx scripts/qc-hr-attendance.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hr-attendance"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

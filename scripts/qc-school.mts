@@ -12,7 +12,8 @@
 //   cancelEnrollment(ctx, id) → boolean (ENROLLED เท่านั้น)
 //   checkIn(ctx, enrollmentId, date, present?) → {ok} — บันทึกเช็คชื่อ upsert-เอง (find→update/create · unique [enrollmentId,date]) ซ้ำวันเดิม = อัปเดต present ไม่งอกแถว · attendanceSheet(ctx, classId, date) → [{enrollmentId, studentName, present|null}]
 //   UI: UNIT_NAV SCHOOL + SYSTEM_DEFS SCHOOL (business · available · no.23 — อัปเดต comment จำนวน F9.2) + หน้า /app/u/[unitSlug]/school (คอร์ส/รอบ/สมัคร/ชำระ/เช็คชื่อ) ไทยล้วน
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-school"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

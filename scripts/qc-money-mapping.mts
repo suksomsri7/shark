@@ -9,7 +9,8 @@
 //      drLines key map: CASH→"CASH" · PROMPTPAY/TRANSFER→"BANK" · DEPOSIT→"DEPOSIT_RECEIVED" · ROOM_CHARGE→"AR"
 //   3) src/lib/modules/account/gl.ts postExternalSale: drLines key type ขยายเป็น "CASH"|"BANK"|"DEPOSIT_RECEIVED"|"AR" (Book.id รองรับ key พวกนี้อยู่แล้ว — resolveLine)
 //   ⚠️ ห้ามแตะ pos/service.ts (สร้างบิลเหมือนเดิม) · ห้ามแตะ oracle/CHART · qc-account-cpa 107 + qc-hotel-money + qc-pos-account ต้องเขียวเป๊ะ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-money-mapping"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const pos = (await import("@/lib/modules/pos/service")) as unknown as { createSale: (i: any) => Promise<{ saleId: string }> };

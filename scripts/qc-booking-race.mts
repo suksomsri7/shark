@@ -5,7 +5,8 @@
 //   - idempotencyKey?: string → key เดิม = คืนนัดเดิม (ไม่สร้างใหม่); ชน unique = คืนนัดเดิม
 //   - overlap ปกติ (sequential) → ok:false
 //   - คนละช่าง เวลาเดียวกัน → ได้ทั้งคู่ (lock ต่อช่าง ไม่ล็อกเกิน)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-booking-race"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const svc = (await import("@/lib/modules/booking/service" as string)) as any;
 const { localToUtc } = (await import("@/lib/modules/booking/slots" as string)) as any;

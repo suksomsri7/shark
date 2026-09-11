@@ -8,7 +8,8 @@
 //     · public token-first (prisma ตรงเฉพาะ resolve token พร้อม comment — จากนั้น query ต่อด้วย tenant/system ของ supplier)
 //     · เห็นเฉพาะ PO ของ supplier ตัวเอง เรียงใหม่ก่อน · token ปลอม/ปิดแล้ว → null · ห้ามมีข้อมูล supplier อื่น หรือ token หลุดใน view
 //   UI: หน้า public /vendor/[token] (read-only ไทย: ชื่อ supplier + ตาราง PO code/สถานะ/ยอด/วันที่) + ปุ่ม "เปิดลิงก์ผู้ขาย"/ปิด ในหน้า supplier ฝั่งร้าน (actions มี assertCan inventory.supplier.*)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-vendor-portal"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

@@ -25,7 +25,8 @@
 // VO-9) PDPA: ไฟล์เสียงถูกกวาดตาม `retentionDays` เหมือนเนื้อความอื่น
 //       🔴 เสียงคือเนื้อความอีกรูปหนึ่ง — ปกปิดข้อความแล้วแต่คลิปเสียงยังฟังได้ = ยังไม่ได้ปกปิด
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-v2-voice"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

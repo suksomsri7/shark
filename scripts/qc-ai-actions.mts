@@ -13,7 +13,8 @@
 //   kanban_create_card { title, detail?, boardName? } → หา KanbanBoard (ชื่อตรง หรือบอร์ดแรกถ้าไม่ระบุ) → createCard คอลัมน์แรก
 //     ไม่มีบอร์ดเลย → FAILED "ยังไม่มีบอร์ด" · perm ตาม convention ใน kanban/actions.ts
 // หมายเหตุ: support_reply_case เลื่อนเป็น 0045b (ต้องส่ง actor userId เข้า execute — แตะ signature กลาง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-actions"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

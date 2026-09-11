@@ -2,7 +2,8 @@
 // สร้าง tenant ทดสอบ → ขับ service/logic จริงกับ Neon → verify → ลบ test data
 // รัน: pnpm exec tsx scripts/qc-chat-security.mts
 // fail-before/pass-after: `git stash` แก้ M9-M12 แล้วรัน → เห็น FAIL (race 2 conv / IDOR leak / no limit) แล้ว unstash → PASS
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-security"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 try {
   process.loadEnvFile(".env.local");
 } catch {}

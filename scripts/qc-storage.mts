@@ -11,7 +11,8 @@
 //     — สำเร็จ → FileAsset row (tenant-scoped)
 //   listAssets(ctx, kind?, take=50)    // ใหม่→เก่า
 //   deps.put ฉีดได้ (ข้อสอบ) — ของจริง PUT https://sg.storage.bunnycdn.com/<zone>/<path> header AccessKey
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-storage"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 // บังคับสภาพแวดล้อมข้อสอบ: เปิด storage แบบ mock (CDN สมมุติ) — deps.put ฉีดเอง ไม่ยิงจริง
 process.env.SHARK_BUNNY_ZONE = "qc-zone";
 process.env.SHARK_BUNNY_KEY = "qc-key";

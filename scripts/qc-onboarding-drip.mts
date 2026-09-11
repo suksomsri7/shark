@@ -14,7 +14,8 @@
 //   cron: runDailyCron เพิ่ม field onboardingDripped (try/catch -1 · field เดิมห้ามหาย —
 //     ตอนนี้: subsExpired proposalsExpired outboxDrained tenantsPurged weeklyReports lotsExpiring webhooksRetried periodsClosed)
 //   UI: การ์ด "เริ่มต้นร้านให้ครบ" บนหน้า /app (dashboard) แสดง checklist (ติ๊กอัตโนมัติ) เฉพาะเมื่อยังไม่ครบ + ลิงก์แต่ละข้อ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-onboarding-drip"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

@@ -15,7 +15,8 @@
 //    · ทุกเส้น: ไม่มี/ผิด key → 401 JSON {error} · rate limit ต่อ key 60/นาที (core checkRateLimit) → 429
 // 3) UI /app/settings/api: สร้าง key (โชว์ rawKey ครั้งเดียว) + ตาราง prefix/ชื่อ/lastUsed + ปุ่มเพิกถอน (assertCan api.key.*)
 // 4) หน้า docs สาธารณะ /developers (ไทย): อธิบาย auth + ทุก endpoint + ตัวอย่าง curl
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-public-api"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const { createHash } = await import("node:crypto");

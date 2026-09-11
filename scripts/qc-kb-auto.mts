@@ -7,7 +7,8 @@
 //     description ต้องกำกับ: ใช้เมื่อ user บอก "ความรู้ถาวรของกิจการ" (นโยบาย/ราคา/วิธีทำงาน/กติกา)
 //       ห้ามเก็บเรื่องชั่วคราว/คำสั่งงาน + เช็ค kb_search ก่อนกันซ้ำ + ตอบ user สั้น ๆ ว่าบันทึกแล้ว
 //   persona.ts มีกติกา auto เก็บความรู้ลง KB
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-kb-auto"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

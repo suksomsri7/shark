@@ -1,6 +1,7 @@
 // QC service-layer ของ 7 ระบบใหม่ (P1) — สร้าง tenant ทดสอบ, รัน happy path ผ่าน service จริง,
 // verify runtime กับ Neon, แล้วลบ test data ทั้งหมด. รัน: pnpm exec tsx scripts/qc-systems.ts
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-systems"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

@@ -8,7 +8,8 @@
 //   3) system/service.ts เพิ่ม createSystemAutoLink(tenantId, type, name) → สร้าง + ถ้ากิจการมี 1 unit เชื่อมให้อัตโนมัติ
 //      (ซ่อน UI สำหรับสาขาเดียวแล้ว ระบบใหม่ต้องไม่หลุดการเชื่อม) — addSystemAction ใช้ตัวนี้
 //   4) NavDrawer หมวดตั้งค่า มี "สาขาและการเชื่อมระบบ"
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-connections"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync, existsSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

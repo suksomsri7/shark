@@ -3,7 +3,8 @@
 //   platformFeedbackSummary() → { up, down, total, ratePct, recentDown: [{userText, note}] } (รวมทุก tenant)
 //   platformEvalScore() → { total, passed, pct } (จาก scoreEvalWithHeuristic ของ ai/eval.ts)
 // สัญญา หน้า src/app/backoffice/ai-quality/page.tsx: มีจริง + guard requireBackoffice
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-quality"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { readFileSync, existsSync } = await import("node:fs");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

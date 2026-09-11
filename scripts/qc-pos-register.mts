@@ -11,7 +11,8 @@
 //   - coupon flow: quote คิดส่วนลด → createSale ยอดสุทธิ → PAID + คูปองถูก redeem
 //   - cross-tenant: ร้านอื่นเรียกไม่เห็น/ปฏิเสธ (posUnitIsLinked / catalog ไม่รั่ว)
 
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets ตรง ๆ */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pos-register"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

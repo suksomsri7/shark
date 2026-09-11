@@ -4,7 +4,8 @@
 //     listMemories(ctx, take=50) เรียง updatedAt desc · forgetMemory(ctx, id) → boolean · memoryBlock(ctx) → string ("" ถ้าไม่มี — ไทย รวมเป็น bullet)
 //   tools: remember_fact (action=false! จดทันทีไม่ต้อง proposal — เป็นการจดโน้ต ไม่ใช่ mutation ธุรกิจ) + forget_fact + list_memories
 //   service.ts: buildSystemPrompt ได้รับ memoryBlock ฉีดเข้า system prompt (persona รับ field memories)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-memory"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

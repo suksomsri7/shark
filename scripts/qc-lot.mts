@@ -16,7 +16,8 @@
 //   cron: runDailyCron เพิ่ม field lotsExpiring (try/catch → -1 แบบ field อื่น — ของเดิมห้ามหาย)
 //   automation: AUTOMATION_EVENTS เพิ่ม { value: "inventory.lot.expiring", label: ไทย } (จุดต่อ Automation กติกาแจ้งเตือน/webhook)
 //   UI: ฟอร์มรับเข้า มีช่อง lot+วันหมดอายุ (ไม่บังคับ) · หน้า item ดู lot คงเหลือ · ช่องค้นหาด้วยบาร์โค้ด
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-lot"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

@@ -9,7 +9,8 @@
 //   listMyCasesWithMeta(ctx) → [{ id, caseNo, subject, status, unreadCount }] — unreadCount = ข้อความ PLATFORM ที่ createdAt > shopLastReadAt (ยังไม่อ่าน)
 //   unreadCaseTotal(ctx) → number — ผลรวม unread ทุกเคส (สำหรับ badge ปุ่ม help บน Topbar)
 // UI HelpSheet: การ์ดเคสโชว์ #caseNo + สถานะ + badge ตัวเลข unread · ฟอร์มแนบรูป/ไฟล์ (attach) · เปิดเคส = markCaseRead
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-help-v2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 async function platformReply(caseId: string, tenantId: string, body: string) { await prisma.supportMessage.create({ data: { tenantId, caseId, authorSide: "PLATFORM", authorId: "admin-1", body } }); await prisma.supportCase.update({ where: { id: caseId }, data: { status: "PENDING" } }); }
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

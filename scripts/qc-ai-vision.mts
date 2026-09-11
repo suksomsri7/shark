@@ -10,7 +10,8 @@
 //    payload: { vendor?: string, note: string, amountSatang: number, date?: string }
 // 4) AI tool "record_expense" ใน tools.ts — LLM เรียกหลังอ่านใบเสร็จ → createProposal(kind record_expense) (เสนอ ไม่ทำเอง)
 // 5) UI AiChat: ปุ่มแนบรูป (file→dataURL cap ~2MB, preview, ลบได้) + ส่ง imageUrls
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-vision"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

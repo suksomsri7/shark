@@ -8,7 +8,8 @@
 //     "🛟 ทีมงาน: <body>" เข้าห้องเดิม + touch AiConversation.updatedAt (unread เด้งในแอปเอง)
 //   src/lib/ai/tools.ts มี tool "support_open_case" (AI เรียกเมื่อ user แจ้งปัญหา/ทำแทนไม่ได้)
 //   web: Topbar ไม่มีปุ่มศูนย์ช่วยเหลือ · NavDrawer ไม่มีปุ่ม ✕
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-mobile-help"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

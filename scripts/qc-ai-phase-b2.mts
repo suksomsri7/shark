@@ -11,7 +11,8 @@
 //   approval_decide {requestSummary หรือ requestId, decision:"APPROVED"|"REJECTED", note?} → approval.decide (ส่ง MembershipCtx ของคนกดยืนยันจริง — dispatch ต้องรับ m เพิ่ม)
 //   inventory_consume {sku, qty, note?} → inventory.consume (validate qty>0)
 // read ใหม่: approvals_pending (คำขอรอฉันอนุมัติ) · rental_active (สัญญาเช่าค้างคืน)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-phase-b2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

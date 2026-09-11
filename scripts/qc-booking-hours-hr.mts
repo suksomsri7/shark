@@ -5,7 +5,8 @@
 //   getAvailableSlots(...) → ใช้ "เวลาร้าน" (getUnitHours) เป็นกรอบ · วันปิด/นอกเวลา = ไม่มีช่อง
 //   listLinkableEmployees(tenantId) → พนักงานจากระบบ HR ที่เปิดอยู่ (active) · ไม่เปิด HR = []
 //   createStaff({tenantId, unitId, name?, employeeId?}) → ถ้ามี employeeId ดึงชื่อจาก HrEmployee + set employeeId · ไม่มี = ใช้ name เอง
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-booking-hours-hr"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { existsSync, readFileSync } = await import("node:fs");
 const svc = (await import("@/lib/modules/booking/service" as string)) as any;

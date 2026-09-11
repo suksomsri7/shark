@@ -11,7 +11,8 @@
 //   markPaid(ctx, orderId) — posSale PAID (ลงบัญชี) · idempotent
 //   checkIn(ctx, code) — VALID→CHECKED_IN (กันซ้ำ)
 //   promptpayForOrder(tenantId, unitId, orderId) — payload PromptPay ยอดตั๋ว
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ticket-public"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

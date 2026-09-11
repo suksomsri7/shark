@@ -10,7 +10,8 @@
 //   activeAnnouncements(ctx {tenantId}): เฉพาะ published ที่ร้านนี้ยังไม่กดรับทราบ ใหม่→เก่า
 //   dismissAnnouncement(ctx, announcementId): Promise<boolean>       // idempotent (ซ้ำ → true เงียบ ๆ ไม่พัง)
 // UI: banner บน /app (แสดง active ตัวล่าสุด + ปุ่มรับทราบ) · /backoffice/announcements (สร้าง/ประกาศ/เอาลง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-announce"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

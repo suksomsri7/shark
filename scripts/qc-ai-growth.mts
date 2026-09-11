@@ -12,7 +12,8 @@
 //            ไม่งั้น createSystem(tenantId, type, name ?? ป้ายไทย default) → note ไทย
 // persona: แนะนำเชิงรุกเมื่อ user ถามแนวทาง/เมื่อบริบทเหมาะ — ห้ามยัดเยียดทุกข้อความ
 // registry รวม = 13 (11 + 2)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-growth"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

@@ -10,7 +10,8 @@
 //   getPublicEnrollment(unitId, publicToken) — สถานะการสมัคร (กัน cross-tenant PII)
 //   markPaid(ctx, enrollmentId) — posSale PAID (ลงบัญชี) · idempotent
 //   promptpayForEnrollment(ctx, enrollmentId) — payload PromptPay ยอดค่าเรียน
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-school-public"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

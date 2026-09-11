@@ -8,7 +8,8 @@
 //     — provider null (ไม่ฉีด+ไม่มี env) → คืน null เงียบ ๆ · **ห้ามเขียน DB ใด ๆ (ร่างเฉย ๆ คนกดส่งเอง)**
 //   summarizeCase(caseId, deps?): Promise<string | null>   // สรุปเคสสั้น ๆ สำหรับหัวตาราง — กติกาเดียวกัน
 // UI: หน้า backoffice/cases/[id] เพิ่มปุ่ม "ให้ AI ร่างคำตอบ" (client) → เรียก action → เติมข้อความลง textarea ตอบกลับ (แก้ได้ก่อนส่ง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-support-ai"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

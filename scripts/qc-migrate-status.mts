@@ -15,7 +15,8 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, existsSync } from "node:fs";
 
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-migrate-status"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 type Check = { id: string; name: string; ok: boolean; expected: string; actual: string; sev: Sev };

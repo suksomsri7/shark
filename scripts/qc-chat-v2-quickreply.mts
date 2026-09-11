@@ -30,7 +30,8 @@
 //    ด่านนี้จึงรับหลายชื่อ/หลายที่อยู่ (ดู CANDIDATES) และล้มพร้อมข้อความบอกสัญญาที่ต้องการ
 //    ถ้าสายงานเลือกชื่ออื่น ให้แจ้ง Fable เพิ่มชื่อลงลิสต์ — ห้ามแก้ข้อสอบเอง
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-v2-quickreply"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 // 🔴 ต้องทับ **ก่อน** import โค้ดแอป — .env ของรีโปนี้ชี้ DB prod จริง
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);

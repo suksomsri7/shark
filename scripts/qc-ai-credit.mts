@@ -12,7 +12,8 @@
 //
 // รัน: pnpm exec tsx scripts/qc-ai-credit.mts
 process.env.SHARK_AI_MOCK = "1"; // ไม่ยิง LLM จริง — ข้อสอบห้ามเผาเงิน
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ env จาก secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-credit"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const pricing = await import("@/lib/ai/pricing");

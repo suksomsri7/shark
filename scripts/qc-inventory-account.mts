@@ -11,7 +11,8 @@
 //   | receive manual     | อื่น ๆ                       | Dr 1200 / Cr 3000 ทุนเจ้าของ  |
 //   | adjust/transfer    | —                            | ข้าม (out of scope)           |
 //   ไม่มีระบบ ACCOUNT → รับ/ตัดได้ปกติ ไม่ error ไม่โพสต์ GL
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-inventory-account"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const gl = await import("@/lib/modules/account/gl");

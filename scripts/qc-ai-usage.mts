@@ -18,7 +18,8 @@
 //   service.ts: blocked → { ok:false, error:"over_budget", scope, resetAt } โดย "ห้ามเรียก provider"
 //               · สำเร็จ → เครดิตเพิ่มจริงทั้ง 2 ชั้น · degraded → applyDegrade ก่อนเลือก tier
 //   actions.ts: ข้อความไทยบอกเวลาที่โควตากลับมา · GET /api/mobile/usage (requireMobile) · เว็บมีแถบโควตา
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-usage"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync, existsSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

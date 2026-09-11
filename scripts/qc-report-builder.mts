@@ -13,7 +13,8 @@
 //   saveReport(ctx, { name, config }) → {id} · listReports(ctx) · deleteReport(ctx, id) (schema ReportDef มีแล้ว)
 //   toCsv(result) → string — ขึ้นต้น BOM ﻿ + header + escape ค่า (คำที่มี , หรือ " ต้องห่อ)
 //   UI /app/reports: เลือก dataset → filter → group/metric → ตาราง + ปุ่มดาวน์โหลด CSV + บันทึก/เรียกรายงานที่บันทึก + ลิงก์ NavDrawer · actions มี assertCan reports.*
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-report-builder"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

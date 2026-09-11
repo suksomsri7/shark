@@ -10,7 +10,8 @@
 //     — สถานะไม่ใช่ ORDERED → ok:false ไทย
 //   cancelPo(ctx, poId): Promise<boolean>          // DRAFT/ORDERED→CANCELLED · RECEIVED → false
 //   poDetail(ctx, poId)                            // + lines + item name
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-procurement"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

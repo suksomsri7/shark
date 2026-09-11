@@ -13,7 +13,8 @@
 //   suspendTenant(pu: PlatformUser, tenantId, reason): Promise<boolean>            // SUPER_ADMIN เท่านั้น (requirePlatformRole) → SUSPENDED + audit "tenant.suspend"
 //   reactivateTenant(pu: PlatformUser, tenantId): Promise<boolean>                 // SUPER_ADMIN → ACTIVE + audit "tenant.reactivate"
 // gate ระงับร้าน: Fable ใส่ใน requireTenant แล้ว (SUSPENDED/CLOSED → redirect /suspended) — Builder สร้างหน้า /suspended
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-support"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

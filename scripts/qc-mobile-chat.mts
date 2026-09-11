@@ -17,7 +17,8 @@
 //   POST /api/mobile/plans/confirm {id} · POST /api/mobile/plans/reject {id}
 //   GET /api/mobile/dna/questions → {questions:[13 ข้อ]} · POST /api/mobile/dna/answers {facts} → {blueprintId,plan} · POST /api/mobile/dna/apply {blueprintId} → {ok,results}
 process.env.SHARK_AI_MOCK = "1";
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-mobile-chat"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1"; // ย้ำหลัง loadEnvFile — .env ห้าม override ข้อสอบ
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

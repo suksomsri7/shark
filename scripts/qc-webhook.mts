@@ -15,7 +15,8 @@
 //   ผูกเข้า outbox: src/lib/outbox-consumers.ts — หลัง handler หลักของทุก event สำเร็จ → dispatchWebhooks
 //     (pattern เดียวกับ withAutomation — ห่อเพิ่ม ห้ามทำ consumer เดิมพัง)
 // UI /app/settings/webhooks: เพิ่ม/ปิด/ลบ endpoint + เลือก event (จาก AUTOMATION_EVENTS + approval/inventory) + โชว์ secret ครั้งเดียว + ตาราง delivery ล่าสุด (assertCan webhook.endpoint.*)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-webhook"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { createHmac } = await import("node:crypto");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

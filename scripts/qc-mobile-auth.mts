@@ -10,7 +10,8 @@
 //   POST /api/mobile/push/register (Bearer+X-Tenant-Id) {expoToken,platform} → 200 {ok} — upsert by expoToken (เครื่องย้าย user → แถวย้ายตาม)
 //   POST /api/mobile/auth/logout (Bearer) {expoToken?} → 200 {ok} — revoke session + ลบ push device
 //   POST /api/mobile/webview-session (Bearer+X-Tenant-Id) → 200 {code} — อายุ 60 วิ ใช้ครั้งเดียว
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-mobile-auth"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];

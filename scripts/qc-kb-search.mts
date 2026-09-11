@@ -2,7 +2,8 @@
 // ⚠️ standalone-typesafe: dynamic import + wide cast
 // สัญญา: searchKb แตกคำถามเป็นคำ ๆ match "คำใดคำหนึ่ง" (OR) + จัดอันดับตามจำนวนคำตรง (title ×3)
 //   → คำถามหลายคำ/ไม่ตรงเป๊ะก็เจอ (เดิม contains ทั้ง query = exact substring)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-kb-search"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const kb = (await import("@/lib/modules/kb/service" as string)) as {
   createArticle: (ctx: any, i: any) => Promise<{ id: string }>;

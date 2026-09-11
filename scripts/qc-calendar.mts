@@ -10,7 +10,8 @@
 //     · ตัดทิ้ง: Appointment CANCELLED · HotelReservation CANCELLED · HrLeave REJECTED/CANCELLED (PENDING+APPROVED = แสดง พร้อม status จริง)
 //     · เรียง startAt จากน้อยไปมาก · ระบบ/ตารางไม่เปิด = ข้ามเงียบ ๆ (ห้าม throw) · tenant ว่าง → []
 //   UI: หน้า /app/calendar (read-only — เดือน+รายการ ไทยล้วน) + ลิงก์ใน NavDrawer
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-calendar"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

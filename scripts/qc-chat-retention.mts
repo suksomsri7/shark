@@ -34,7 +34,8 @@
 //       · ไฟล์ที่หลายแถวชี้ร่วมกัน ห้ามลบ (positive control — ฟองของเธรดที่ยังไม่หมดอายุต้องรอด)
 //       · ลบไฟล์ล้มเหลว/ระเบิด → ฟิลด์ต้องถูกล้างอยู่ดี (ความเป็นส่วนตัวใน DB ห้ามขึ้นกับ CDN)
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-retention"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 // 🔴 ตัด env ของ Bunny ทิ้งทันทีหลัง loadEnvFile — .env ของเครื่องนี้เป็นคีย์ **ของจริง**
 //    retention เรียกตัวลบไฟล์แล้ว (WO-CV9): env ครบเมื่อไหร่ = ยิง DELETE ไปที่ storage prod จริง

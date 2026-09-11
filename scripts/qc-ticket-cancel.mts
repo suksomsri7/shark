@@ -7,7 +7,8 @@
 //     · claim อะตอมมิก (status→CANCELLED guard) · idempotent: cancel ซ้ำ ไม่คืนโควตา/ไม่ void บัญชีเบิ้ล
 //     · order PENDING → คืนโควตาปกติ ไม่มี posSale ให้ void (ไม่ error)
 //     · cross-tenant: ctx tenant อื่น → order เดิมไม่ถูกแตะ (guard tenantDb → throw ORDER_NOT_FOUND)
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ticket-cancel"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

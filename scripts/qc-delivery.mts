@@ -12,7 +12,8 @@
 //     getShipmentForOrder(ctx, orderId) → shipment | null
 //   ฝั่ง public: หน้า /s/.../shop/order/[code] แสดงสถานะจัดส่ง + เลขพัสดุ เมื่อมี shipment (แก้หน้าเดิม — shop.getOrderByCode ฝั่ง shop ห้ามแตะ signature · ดึง shipment แยกใน page)
 //   UI ฝั่งร้าน: หน้า orders ของ shop เพิ่มปุ่ม "จัดส่ง" (เลือก provider+เลขพัสดุ) + อัปเดตสถานะ · actions assertCan delivery.shipment.*
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-delivery"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

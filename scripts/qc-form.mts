@@ -17,7 +17,8 @@
 //   listSubmissions(ctx, formId, take?) → เรียงใหม่ก่อน
 // public UI: /f/[token] (render ตาม fieldsJson + ส่ง + หน้าขอบคุณ · rate limit ด้วย core checkRateLimit)
 // app UI: /app/forms (สร้าง/แก้ฟอร์ม builder เพิ่ม-ลบ field + ลิงก์สาธารณะ copy ได้ + ตาราง submissions) + ลิงก์ NavDrawer · actions มี assertCan forms.*
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-form"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

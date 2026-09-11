@@ -16,7 +16,8 @@
 //   voidInvoice(pu, invoiceId) — PENDING→VOID + audit "billing.void"
 //   listInvoices(filter?: { status?, tenantId? }) — ใหม่→เก่า + tenantName
 // src/lib/payment/actions.ts (ฝั่งร้าน): savePaymentProfileAction (requireTenant) / listMyInvoicesAction (เห็นเฉพาะร้านตัวเอง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-payment"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

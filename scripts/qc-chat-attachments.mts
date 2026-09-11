@@ -40,7 +40,8 @@
 //   sendReplyAction: ไฟล์มาในช่อง FormData ชื่อ "files" (multiple) — `formData.getAll("files")`
 //   sendReply({ ..., attachments: ExternalAttachmentInput[] })  // url ต้องอัปเสร็จแล้วก่อนเรียก
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-attachments"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 // เปิด storage ด้วยค่าปลอม — ต้องให้ uploadFile "เดินไปถึงจุดยิง" จริง ไม่งั้นวัดตำแหน่ง tx ไม่ได้

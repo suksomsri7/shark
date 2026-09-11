@@ -15,7 +15,8 @@
 //   checkDomain(ctx, deps?): Promise<{ status: string }>  // map active→ACTIVE, pending→VERIFYING, error→FAILED + อัปเดต Tenant
 //   removeDomain(ctx, deps?): Promise<boolean>            // client.removeDomain + เคลียร์ field → NONE
 //   resolveTenantByHost(host: string): Promise<{ slug: string } | null>   // เฉพาะ ACTIVE (proxy ใช้)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-domain"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

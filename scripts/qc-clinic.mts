@@ -13,7 +13,8 @@
 //   billVisit(ctx, visitId) → {ok, posSaleId?} — claim OPEN→BILLED + pos.createSale `clinic-<visitId>` sourceModule "CLINIC"
 //     payMethods CASH ยอด feeSatang · fee 0 → BILLED โดยไม่สร้างบิล (posSaleId null) · ไม่มีระบบ POS (และ fee>0) → throw+revert OPEN · ซ้ำ ok:false
 //   UI: SYSTEM_DEFS CLINIC (business · available · no.24 · 🏥) + UNIT_NAV + /app/u/[unitSlug]/clinic (ค้นผู้ป่วย/เพิ่ม/เปิด visit/จ่ายยา/เก็บเงิน) ไทยล้วน · PDPA: หน้าโชว์เท่าที่จำเป็น
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-clinic"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

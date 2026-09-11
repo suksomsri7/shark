@@ -10,7 +10,8 @@
 //     insight ≥1 → AppNotification { title:"ผู้ช่วยมีเรื่องอยากบอก", body: รวม insight (ทัก + ชวนสั่ง AI แก้) }
 //     · กันสแปม: มี noti title นี้ของวันเดียวกัน (BKK) → ข้าม · ร้านพัง catch ไปต่อ
 //   cron: runDailyCron เพิ่ม field proactiveNudges (try/catch -1 · field เดิมห้ามหาย)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-proactive"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

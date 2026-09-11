@@ -28,7 +28,8 @@
 //       setStatus ยิง `chat.conversation.status` (สถานะไม่เปลี่ยน = ไม่ยิง) ·
 //       ทั้ง 2 type ต้องมี consumer จริงใน outbox-consumers ไม่งั้น event ค้าง PENDING ตลอดกาล
 // XC-4) resolveLocale() — ไม่กลืนสตริงว่างที่ร้านตั้งใจตั้ง (ห้าม `||`) · page.tsx เลิกฮาร์ดโค้ด `.th`
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-core-v2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

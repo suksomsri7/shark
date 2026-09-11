@@ -16,7 +16,8 @@
 //   inventory_receive: { sku, qty, costSatang? }  (resolve item จาก sku ในระบบ INVENTORY ตอน execute — ไม่เจอ → FAILED)
 //   hr_decide_leave: { leaveId, decision: "APPROVED"|"REJECTED" }
 //   marketing_create_campaign: { name, channel, segment? }  (DRAFT เสมอ — ส่งจริง user กดใน UI เอง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-proposals"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

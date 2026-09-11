@@ -46,7 +46,8 @@
 //   ทุกตัว **อ่านสิทธิ์ของ actor จาก DB เอง** (ห้ามเชื่อ role ที่ส่งมาจากฟอร์ม)
 //   ชื่ออื่นที่ยอมรับ: ดู ALIAS ด้านล่าง — ถ้าเปลี่ยนชื่อไปจากนี้ ให้เพิ่มใน ALIAS ไม่ใช่แก้ตรรกะข้อสอบ
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-staff-perms"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

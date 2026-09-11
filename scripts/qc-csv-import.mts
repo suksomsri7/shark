@@ -6,7 +6,8 @@
 //   src/lib/modules/inventory/service.ts  importItems(ctx{tenantId,systemId}, table) → { created, skipped, errors }
 //       · ชื่อว่าง = error · sku ซ้ำ = ข้าม · ราคาทุนบาท→สตางค์ · onHand เริ่ม 0
 //   cross-tenant: import เข้า system ตัวเอง ไม่รั่วไป tenant/system อื่น
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-csv-import"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const csv = await import("@/lib/core/csv");
 const member = await import("@/lib/modules/member/service");

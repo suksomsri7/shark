@@ -8,7 +8,8 @@
 //     · ครบ → DONE + executedAt · ทุก step บันทึก status/note ลง stepsJson
 //   rejectPlan(ctx, id) · listPendingPlans(ctx, conversationId)
 //   tool "propose_plan" (LLM เรียกเมื่อ user สั่งงานหลายอย่างพร้อมกัน) → createPlan · UI การ์ดแผน (แสดง step + ปุ่มยืนยันครั้งเดียว · destructive = 2 จังหวะ)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-plan"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

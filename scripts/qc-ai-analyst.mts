@@ -14,7 +14,8 @@
 //     — รันเฉพาะ "วันจันทร์" ตามเวลาไทย (ไม่ใช่จันทร์ → 0 ไม่ทำอะไร)
 //     — วนทุก tenant ACTIVE ที่มี AppSystem ≥1 (cap 50/รอบ) → weeklyAnalysis · ตัวไหนพัง catch แล้วไปต่อ · คืนจำนวนที่ส่งสำเร็จ
 // cron: runDailyCron เพิ่ม weeklyReports (try/catch -1) — ห้ามลบ field เดิม
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-analyst"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

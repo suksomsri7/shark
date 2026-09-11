@@ -17,7 +17,8 @@
 // 5) src/proxy.ts applySecurity เพิ่ม: Strict-Transport-Security (max-age ≥ 1 ปี + includeSubDomains) + Permissions-Policy (ปิด camera/microphone/geolocation) — ของเดิม 3 ตัวห้ามหาย
 // 6) /api/chat/webchat: rate limit ต่อ session/ip ด้วย checkRateLimit → เกิน = 429 (surface สาธารณะ)
 // 7) docs/SECURITY_AUDIT.md — self-audit checklist (rate limit/headers/CSRF/secret/RBAC/tenant isolation + สถานะ + ช่องโหว่ที่รู้และ defer)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hardening"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_CRON_SECRET = "qc-cron-secret";
 process.env.CRON_SECRET = "qc-legacy-secret";
 const { prisma } = await import("@/lib/core/db");

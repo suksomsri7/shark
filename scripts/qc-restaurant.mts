@@ -1,4 +1,5 @@
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ } try { process.loadEnvFile(".env.local"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-restaurant"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const menu = await import("@/lib/modules/restaurant/menu");
 const table = await import("@/lib/modules/restaurant/table");

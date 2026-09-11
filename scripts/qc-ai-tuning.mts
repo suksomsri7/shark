@@ -7,7 +7,8 @@
 //   approvedPromptTweaksText() → string (รวมเฉพาะ content ของ APPROVED · ไม่มี = "")
 // สัญญา src/lib/ai/persona.ts: PersonaContext.promptTweaks?: string · buildSystemPrompt แทรกบล็อกเมื่อมี · pure (ไม่มี = ไม่แทรก)
 // สัญญา src/lib/ai/service.ts: เรียก approvedPromptTweaksText ตอนสร้าง system prompt
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-tuning"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { readFileSync } = await import("node:fs");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

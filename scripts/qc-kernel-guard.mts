@@ -16,7 +16,8 @@
 //   KG-6 model unit/system-scoped  → ไม่มี unitId/systemId ในบริบท = โยนทันที (fail-closed)
 //
 // รัน: pnpm qc:kernel
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-kernel-guard"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma, tenantDb } = (await import("@/lib/core/db" as string)) as {
   prisma: any;

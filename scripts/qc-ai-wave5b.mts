@@ -9,7 +9,8 @@
 //   restaurant_close_bill {tableName, unitName?, payMethod?} → restaurant.checkout (DESTRUCTIVE ยืนยัน 2 ชั้น)
 //     resolve โต๊ะ (ชื่อ contains) → session OPEN · conservative ยอดตามบิล
 // read ใหม่: kanban_my_tasks {assignee?} → resolve userId ผ่าน membership (ข้อจำกัด: ctx ไม่มี userId)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-wave5b"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

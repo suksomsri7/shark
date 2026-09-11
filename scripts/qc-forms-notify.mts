@@ -2,7 +2,8 @@
 // ⚠️ standalone-typesafe: dynamic import + wide cast
 // สัญญา: submitPublicForm(token, answers) → สร้าง FormSubmission + AppNotification "มีคนกรอกฟอร์ม"
 //   + emitOutbox "forms.submission.received" · lead เข้า CRM ถ้า crmEnabled+มีระบบ CRM
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-forms-notify"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const forms = (await import("@/lib/modules/forms/service" as string)) as {
   createForm: (ctx: any, input: any) => Promise<{ id: string; publicToken: string }>;

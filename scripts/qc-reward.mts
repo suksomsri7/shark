@@ -3,7 +3,8 @@
 // พิสูจน์: แลกจริง (burn แต้ม + PENDING + ตัดสต็อก) · ยกเลิกคืนแต้ม+สต็อก · แต้มไม่พอปฏิเสธ · fulfill idempotent · กันข้ามร้าน
 // standalone-typesafe: dynamic import + wide cast (ไม่พึ่ง typed literal)
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-reward"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

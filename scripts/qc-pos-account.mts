@@ -12,7 +12,8 @@
 //   void → reversal ครบทุกขา · replay → ไม่เบิ้ล (idempotency PosSale#id#event)
 //   POS ที่ไม่ได้เชื่อม (ไม่มี AccountSystemLink) → ห้ามมี entry (หลัก standalone)
 
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env — env มาจาก secrets โดยตรง */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pos-account"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

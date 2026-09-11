@@ -7,7 +7,8 @@
 //   createBooking(ctx, ...) — FOR UPDATE lock กันจองซ้อน + snapshot depositSatang + คืน publicToken
 //   getPublicBooking(unitId, publicToken) — สถานะการจอง (กัน cross-tenant PII)
 //   recordRentalDeposit(ctx, bookingId) — บิล POS DEPOSIT (Dr 2110) + depositPaidAt · idempotent
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-rental-public"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

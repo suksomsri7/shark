@@ -13,7 +13,8 @@
 // src/lib/platform/ops.ts — listOpsEvents(filter {level?, take?}) ใหม่→เก่า (backoffice ใช้)
 // หน้า backoffice/system-health: health + OpsEvents ล่าสุด + ปุ่ม filter level — requireBackoffice
 // จุดเกาะ (Builder ทำ): cron tick + outbox drain error + AI provider error → logOps("ERROR"/"WARN", ...)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ops"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

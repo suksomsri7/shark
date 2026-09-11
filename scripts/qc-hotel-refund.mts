@@ -2,7 +2,8 @@
 // ⚠️ Oracle ของ Fable — Builder ห้ามแตะหลังเขียว · fail-before: ไม่มี refundStay → RF-* แดง
 // happy: create→checkIn→checkOut (posSale PAID+journal) → refundStay → posSale VOIDED + reservation REFUNDED + บัญชี net=0
 // idempotency: refund ซ้ำ → ไม่กลับบัญชีเบิ้ล · guard: refund reservation ที่ยังไม่เช็คเอาท์ → ok:false · cross-tenant ปฏิเสธ
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hotel-refund"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

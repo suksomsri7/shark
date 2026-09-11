@@ -9,7 +9,8 @@
 //   execute: resolve ระบบ MEMBER → member.findOrCreate source "STAFF" · ไม่มีระบบ MEMBER → FAILED + note ไทย
 //   assertCan ตาม convention "member.customer.create"
 // จำนวน registry รวม = 11 (5+3 เดิม + 3 ใหม่)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-tools2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

@@ -33,7 +33,8 @@
 //      (เว็บ SiamDive) เรียกจากเซิร์ฟเวอร์ ไม่ได้ฝัง widget ⇒ บังคับ widget key = บังคับให้ร้าน
 //      ออกกุญแจสาธารณะ + ตั้ง originAllowlist ทั้งที่ไม่มีเบราว์เซอร์เข้ามาเกี่ยวเลย
 //      🔴 ที่ยังต้องแดงเหมือนเดิม: widget อ่านของร้านอื่นไม่ได้ (คุมเพิ่มใน qc-chat-business-hours.mts BH-2)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-api-v1"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

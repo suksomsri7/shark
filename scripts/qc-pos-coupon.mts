@@ -8,7 +8,8 @@
 // - โค้ดใช้ไม่ได้ (หมดสิทธิ์/ปลอม/หมดอายุ) → createSale ต้อง "ล้มเสียงดัง" ห้ามขายต่อแบบเงียบ ๆ
 // - voidSale → coupon.release → ใช้สิทธิ์ได้อีก · replay idempotencyKey เดิม → ไม่ redeem ซ้ำ
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pos-coupon"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

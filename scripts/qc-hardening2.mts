@@ -8,7 +8,8 @@
 //        (Math.random ของ V8 = xorshift128+ เดาค่าถัดไปได้จากผลลัพธ์ไม่กี่ค่า)
 //   H2-3 endpoint สาธารณะที่เขียน DB ต้องมีด่านกันถล่ม (rate limit) ครบทุกตัว
 //   H2-4 resolve หน้าร้านสาธารณะ: ประเภทสาขาไม่ตรง / ร้านไม่ ACTIVE → ต้องคืน null เสมอ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hardening2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync, existsSync } from "node:fs";
 
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

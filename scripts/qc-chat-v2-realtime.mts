@@ -29,7 +29,8 @@
 //      จะทดสอบ "ไม่มีกุญแจ" กับ "มีกุญแจ" ในโปรเซสเดียวไม่ได้เลย
 //   ถ้าสายงานเลือกชื่ออื่น ให้แจ้ง Fable เพิ่มลงลิสต์ — ห้ามแก้ข้อสอบเอง
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-v2-realtime"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 
 const { readFileSync, existsSync, readdirSync, statSync } = await import("node:fs");

@@ -9,7 +9,8 @@
 //   confirmAppointment / rejectAppointment / completeAppointment — claim อะตอมมิก
 //   listAppointments(ctx) — คำขอนัดฝั่งร้าน
 // rate limit: checkRateLimit (src/lib/core/rate-limit) — ต่อ IP ต่อ unit
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-clinic-public"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { checkRateLimit } = await import("@/lib/core/rate-limit");
 const svc = (await import("@/lib/modules/clinic/service" as string)) as { [k: string]: (...a: any[]) => Promise<any> };

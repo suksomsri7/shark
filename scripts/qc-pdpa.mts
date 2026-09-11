@@ -13,7 +13,8 @@
 // UI: หน้า /app/settings/privacy — ปุ่ม export + ขอลบร้าน (banner เตือน 30 วัน + ยกเลิกได้) · ลิงก์ NavDrawer
 // cron: runDailyCron เรียก sweepPendingDeletes ด้วย (เพิ่ม field ผลลัพธ์ใหม่ได้ — ห้ามลบ 3 field เดิม)
 // docs: docs/sds/11_DR.md — runbook กู้ข้อมูล (Neon PITR/branch restore ขั้นตอนจริง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pdpa"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

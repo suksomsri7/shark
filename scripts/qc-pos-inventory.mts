@@ -10,7 +10,8 @@
 //   - idempotent: void ซ้ำ → ไม่คืนสต็อก/COGS เบิ้ล
 //   - ไม่มีระบบ INVENTORY/ACCOUNT → ขายได้ปกติ ไม่ error ไม่โพสต์ GL
 
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets ตรง ๆ */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pos-inventory"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

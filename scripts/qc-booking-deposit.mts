@@ -6,7 +6,8 @@
 //   createAppointment — snapshot depositSatang จากบริการตอนสร้าง
 //   recordDeposit(ctx, appointmentId, payMethod?) — เปิดบิล POS DEPOSIT (Dr 2110) + ปั๊ม depositPaidAt · idempotent · ไม่ผูก POS = บันทึกเฉย ๆ
 //   refundDeposit(ctx, appointmentId) — void บิล (กลับ Dr 2110) + เคลียร์ depositPaidAt · idempotent
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-booking-deposit"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

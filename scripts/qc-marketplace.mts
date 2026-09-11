@@ -11,7 +11,8 @@
 //     · สำเร็จ → บันทึก TenantInstall (unique [tenantId,itemKey]) + เก็บ blueprintId · ติดตั้งซ้ำ key เดิม → throw ไทย
 //   listInstalled(ctx) → TenantInstall[]
 //   UI: /app/marketplace — grid เทมเพลต (ไอคอน+ป้าย+คำอธิบาย+ปุ่มติดตั้ง/ป้าย "ติดตั้งแล้ว") + ลิงก์ NavDrawer · actions assertCan marketplace.template.install
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-marketplace"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { ZDnaFacts } = await import("@/lib/dna/schema");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

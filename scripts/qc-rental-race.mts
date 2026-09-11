@@ -4,7 +4,8 @@
 //     ช่วงทับกันพร้อมกัน serialize → สำเร็จ 1 ล้มเหลว 1 (จองซ้อนไม่เกิด)
 //   - overlap ปกติ (sequential) → throw ไทย (booking ไม่เกิด)
 //   - คนละ asset ช่วงเดียวกัน → ได้ทั้งคู่ (lock ต่อ asset ไม่ล็อกเกิน)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-rental-race"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const D = (s: string) => new Date(s);
 

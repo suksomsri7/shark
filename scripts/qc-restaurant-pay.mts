@@ -3,7 +3,8 @@
 //          → ร้านเห็นคำขอ "ลูกค้าแจ้งชำระ (พร้อมเพย์)" → กด "ยืนยันรับเงิน" → checkout PROMPTPAY ปิดบิล+ปิดโต๊ะ
 // พิสูจน์: guestBill/billPreview ยอดถูก · payload PromptPay ล็อกยอด · สัญญาณลูกค้า→ร้าน (PAY_PROMPTPAY) · posSale PAID · idempotent · cross-tenant กันรั่ว
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-restaurant-pay"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

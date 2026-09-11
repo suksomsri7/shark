@@ -28,7 +28,8 @@
 //   ยิงข้อความลูกค้าเข้าทาง `receiveWebchatInbound` ของจริง แล้วอ่าน payload ที่ถูกส่งไป Expo
 //   → วัด "ใครได้แจ้งเตือนบ้าง" จากพฤติกรรมจริง ไม่ใช่จากชื่อฟังก์ชันที่เดาเอา
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-notify-v2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db";
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

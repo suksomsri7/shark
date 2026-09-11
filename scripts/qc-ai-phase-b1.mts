@@ -12,7 +12,8 @@
 // [read tools ใหม่]:
 //   today_appointments — นัดวันนี้ (BKK) ทุก unit · queue_waiting — คิวที่รอตอนนี้ · shop_pending_orders — ออเดอร์รอชำระ/รอยืนยัน
 // validate-explain: pos_create_sale lines ว่าง/qty≤0/ราคาติดลบ → {error,suggestion} ไม่สร้าง proposal
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-phase-b1"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

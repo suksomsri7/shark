@@ -14,7 +14,8 @@
 // service.ts:
 //   listTenantsOverview(): Promise<{ id; name; createdAt; systemsCount: number }[]>  // เรียงใหม่→เก่า
 //   platformMetrics(): Promise<{ totalTenants: number; totalSystems: number; systemsByType: Record<string, number> }>
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-backoffice"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.AUTH_PREVIEW_OTP = "1";
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

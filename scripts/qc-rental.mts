@@ -17,7 +17,8 @@
 //     · มัดจำ: คืนลูกค้านอกระบบ v1 (ไม่เข้า GL — บันทึกใน booking แล้ว follow-up 0050b)
 //   cancelBooking(ctx, bookingId) → boolean (BOOKED เท่านั้น)
 //   UI: unit type RENTAL ใน UNIT_NAV + SYSTEM_DEFS (business "RENTAL" available — enum มีแล้ว) + หน้า /app/u/[unitSlug]/rental (สินทรัพย์+จอง+รับ/คืน) ไทยล้วน
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-rental"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

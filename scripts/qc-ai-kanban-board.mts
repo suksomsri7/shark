@@ -1,5 +1,6 @@
 // QC — AI สร้างบอร์ด Kanban (feedback เจ้าของ 2026-07-17: "สั่ง AI สร้างบอร์ด แต่ทำไม่ได้") · Fable oracle
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-kanban-board"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

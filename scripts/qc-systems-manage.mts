@@ -12,7 +12,8 @@
 // [5] ทางเข้าต้องหาเจอ: เมนูมีลิงก์ "จัดการระบบ" · หน้านั้นมีทางไปลบกิจการ
 //
 // รัน: pnpm exec tsx scripts/qc-systems-manage.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-systems-manage"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const { readFileSync, existsSync } = await import("node:fs");

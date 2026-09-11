@@ -10,7 +10,8 @@
 //   runWidgets(ctx, keys) → [{ key, label, value: number }] — ตามลำดับ keys · ระบบไม่เปิด = 0 ห้าม throw
 //     · เงินคืนเป็น "สตางค์" (UI ค่อย format) — salesToday ต้องตรงยอด PosSale PAID วันนี้ (BKK)
 //   UI: หน้า /app (dashboard) render ตาม layout + โหมด "ปรับแต่ง" (เลือก/เรียง widget แล้วบันทึก) — actions assertCan dashboard.layout.update
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-dashboard-builder"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

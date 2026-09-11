@@ -10,7 +10,8 @@
 // [6] แท็บ/ชื่อระบบไม่เพี้ยนกันระหว่าง layout กับหน้าจริง (เจ้าของหาหน้าขายไม่เจอเพราะชื่อไม่ตรง)
 //
 // รัน: pnpm exec tsx scripts/qc-hr-roster.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hr-roster"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const { existsSync, readFileSync } = await import("node:fs");

@@ -10,7 +10,8 @@
 // [6] เปลี่ยนใจไม่อนุมัติ → ช่องจองกลับมาเอง
 //
 // รัน: pnpm exec tsx scripts/qc-hr-leave-booking.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hr-leave-booking"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

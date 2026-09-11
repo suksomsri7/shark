@@ -9,7 +9,8 @@
 //   inventory.bulkCount(ctx{tenantId,systemId}, counts:[{itemId, countedQty}])
 //     → { done, failed:[{itemId, reason}] } · วน adjust() ตั้ง onHand = countedQty (movement ADJUST · ไม่โพสต์ GL)
 //   cross-tenant: bulk ด้วย id ร้านอื่น → ข้าม/ปฏิเสธ (failed) ไม่แตะข้อมูลร้านต้นทาง
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-bulk-ops"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

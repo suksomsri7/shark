@@ -1,7 +1,8 @@
 // QC — CRM: Lead→Prospect→Customer + Pipeline/Deal + Follow-up + forecast
 // ⚠️ Oracle ของ Fable — Builder (WO-0009) ห้ามแตะ
 // ส่วน RULES (สมอง) = Fable เขียน → เขียวตั้งแต่ต้น · ส่วน SVC (service) = Builder → fail-before แดง
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-crm"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const rules = await import("@/lib/modules/crm/rules");

@@ -2,7 +2,8 @@
 // ขับ service จริงกับ Neon → verify AppNotification/outbox/de-dup/AI tool → ลบ test data
 // รัน: pnpm exec tsx scripts/qc-chat-notify.mts
 // fail-before/pass-after: stash การแก้ receive*Inbound แล้วรัน → เห็น FAIL (ไม่มี notification) → unstash → PASS
-try { process.loadEnvFile(".env"); } catch { /* CI ไม่มี .env */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-notify"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 try { process.loadEnvFile(".env.local"); } catch {}
 
 const { prisma } = await import("@/lib/core/db");

@@ -9,7 +9,8 @@
 //     · คืนยาเข้าคลัง: อ้าง InvMovement OUT ที่ตัดจริง → inventory.receive (idempotencyKey `clinic-refund-<visitId>-<itemId>`)
 //       ที่ต้นทุนปัจจุบัน → ต้นทุนถัวเฉลี่ยไม่เพี้ยน · คืนตรงกับที่ตัด (idempotent)
 //     · cross-tenant: ctx tenant อื่น → ok:false (guard tenantDb)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-clinic-refund"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

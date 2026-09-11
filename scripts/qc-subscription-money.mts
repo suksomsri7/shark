@@ -8,7 +8,8 @@
 //     → ถ้า plan.priceSatang > 0 และระบบ MEMBER ผูก unit ที่มี POS → pos.createSale
 //        (sourceModule "MEMBER", idempotencyKey `subscription-<subId>`) → ลงบัญชีอัตโนมัติ
 //     → ไม่ผูก POS = standalone: สมัครได้ ไม่เก็บเงิน · ราคา 0 = ฟรี ไม่ออกบิล
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-subscription-money"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const acc = await import("@/lib/modules/account/service");

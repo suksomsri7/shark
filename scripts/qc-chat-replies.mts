@@ -36,7 +36,8 @@
 //       · ประวัติที่ย้ายมาต้องได้เวลาจริง ไม่ใช่ "ตอนย้าย"
 // XR-8) `/thread` และ `/messages` คืน `createdAt` ครบตามสัญญา §3.2
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-replies"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

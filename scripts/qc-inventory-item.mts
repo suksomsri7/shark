@@ -4,7 +4,8 @@
 //     · แก้เฉพาะ field ที่ตั้ง · ห้ามแตะ onHand/costSatang (ledger-derived) · name ว่าง/sku ซ้ำ → throw ไทย
 //   archiveItem(ctx, itemId) → soft-delete (archivedAt) · ไม่โผล่ listItems · movement history คงอยู่
 //   updateItem/archiveItem ข้ามร้าน (systemId อื่น) → throw (ไม่พบสินค้า)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-inventory-item"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 

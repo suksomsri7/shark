@@ -14,7 +14,8 @@
 //     drift ≥ 1 → AppNotification { title: "ธุรกิจคุณเปลี่ยนไปจากตอนตั้งค่า" } body รวม drift + ชวนคุยกับ AI (M4)
 //     · กันสแปม: มี noti title นี้ใน 7 วันล่าสุด → ข้าม · ร้านพัง catch แล้วไปต่อ
 //   ⚠️ ห้ามแตะ src/lib/platform/cron.ts (Builder 0072 ถืออยู่ — Fable wire เอง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-dna-review"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

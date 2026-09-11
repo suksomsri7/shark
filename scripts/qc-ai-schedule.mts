@@ -7,7 +7,8 @@
 //     · เซ็ต lastRunDay = วันนี้ (รันซ้ำชั่วโมงเดิม → ข้าม) · task พัง catch ไปต่อ · ไม่มี provider → ข้าม (ไม่ throw)
 //   tool "schedule_task" (action → proposal NORMAL — สร้างงานประจำต้องยืนยัน) + kind ai_schedule_task ใน proposals
 //   /api/cron/hourly (route ใหม่ · isCronAuthorized) → runScheduledTasks + vercel.json cron รายชั่วโมง (Fable ใส่แล้ว)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-schedule"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

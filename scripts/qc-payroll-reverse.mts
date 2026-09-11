@@ -14,7 +14,8 @@
 // วิธี reverse ที่เลือก = reverseEntry(byId) (ใช้ HrPayrollRun.journalEntryId ตรง ๆ)
 //   เหตุผล: ไม่แตะ postPayrollJV/postManualJV → cpa 107 ปลอดภัยโดยโครงสร้าง · run มี JV เดียว → byId พอดี
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-payroll-reverse"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 

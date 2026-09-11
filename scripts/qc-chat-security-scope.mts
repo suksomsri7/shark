@@ -22,7 +22,8 @@
 //     · actions.ts ต้องส่ง auth.active.unitAccess ลงมาจริง (ไม่งั้นรูยังเปิดอยู่)
 // B10) line.ts verifyWebhook — อ่าน header ตัวพิมพ์เล็กครั้งเดียว ห้ามมี fallback ที่ตายแล้ว
 //      (route lowercase คีย์ทุกตัวก่อนส่งเข้า adapter)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-security-scope"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

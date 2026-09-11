@@ -7,7 +7,8 @@
 //     — receipt error DeviceNotRegistered → ลบ PushDevice แถวนั้นทิ้ง (token ตาย)
 //     — default post = fetch https://exp.host/--/api/v2/push/send · ห้าม throw ถ้าส่งพลาด (best-effort + OpsEvent)
 // wiring (static): platform/support.ts (ทีมงานตอบเคส) + ai/proactive.ts + ai/scheduled.ts เรียก sendPushToTenant
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-push"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 import { readFileSync } from "node:fs";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

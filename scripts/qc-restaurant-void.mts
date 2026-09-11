@@ -8,7 +8,8 @@
 //     · reset item.saleId=null, settledAt=null · เปิดโต๊ะกลับ OPEN (ถ้าปิดและโต๊ะว่าง)
 //     · idempotent: void ซ้ำ → ไม่มี item ผูก saleId แล้ว → ok:false ไม่กลับบัญชีเบิ้ล
 //     · cross-tenant: tenant อื่น → ok:false (guard tenantDb/scoped where)
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-restaurant-void"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

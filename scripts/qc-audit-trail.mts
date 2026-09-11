@@ -9,7 +9,8 @@
 //   listAuditActions(tenantId) → distinct action + label
 // wiring: src/lib/modules/hr/payroll-actions.ts เรียก writeAudit ที่ approve/pay/reverse
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-audit-trail"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const access = (await import("@/lib/modules/account/access")) as unknown as {
   writeAudit: (i: Record<string, unknown>) => Promise<void>;

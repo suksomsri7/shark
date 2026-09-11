@@ -11,7 +11,8 @@
 //   - แก้ราคาสินค้าที่ผูก AccountProduct ไว้แล้ว ได้แม้ POS ไม่ผูกบัญชี (รู้ productId ตรง)
 //   - cross-tenant: ร้านอื่นตั้งราคา item ร้าน A ไม่ได้ / listPosProducts ไม่รั่ว
 
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets ตรง ๆ */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-pos-products"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

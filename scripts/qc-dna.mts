@@ -6,7 +6,8 @@
 //
 // รัน: pnpm exec tsx scripts/qc-dna.mts
 
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ env จาก secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-dna"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const { compile } = await import("@/lib/dna/compile");

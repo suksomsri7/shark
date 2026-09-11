@@ -26,7 +26,8 @@
 // public API: /api/store/[tenantSlug]/[unitSlug]/shop/order (POST สร้างออเดอร์ — rate limit ด้วย core checkRateLimit)
 // public UI: /s/[tenantSlug]/[unitSlug]/shop (catalog+ตะกร้า+checkout) + /shop/order/[code] (สถานะ+QR)
 // app UI: จัดการสินค้า+ออเดอร์+ปุ่มยืนยันรับเงิน (actions มี assertCan shop.*)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-shop"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

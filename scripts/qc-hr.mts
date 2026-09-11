@@ -1,5 +1,6 @@
 // QC — HR: พนักงาน + ลงเวลา + ลา + availability (C-2) · Fable oracle, Builder ห้ามแตะ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-hr"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const rules = await import("@/lib/modules/hr/rules");

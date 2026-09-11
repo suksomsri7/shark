@@ -8,7 +8,8 @@
 //   cancelSubscription(ctx, subId): Promise<boolean>                            // ACTIVE→CANCELLED + cancelledAt · อื่น → false
 //   isSubscriptionActive(ctx, customerId, at?: Date): Promise<boolean>          // มี ACTIVE ที่ at อยู่ในช่วง start..end
 //   expireDue(ctx, now?: Date): Promise<number>                                 // ACTIVE ที่ endAt < now → EXPIRED (คืนจำนวน) — cron-ready idempotent
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-subscription"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";

@@ -2,7 +2,8 @@
 // พิสูจน์ public path (resolve slug → รับบัตร ONLINE → getTicketStatus) ทำงานจริง + กัน leak ข้ามร้าน
 // persona: ร้านบริการ 1 ประเภทคิว — ลูกค้า 3 คนสแกน QR กดรับบัตร, คนที่ 3 อยากรู้ "เหลืออีกกี่คิว"
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-queue-public"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const q = await import("@/lib/modules/queue/service");

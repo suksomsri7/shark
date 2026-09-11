@@ -9,7 +9,8 @@
 //   หน้า public 3 จุดใช้ t()/DICT + อ่าน cookie lang (pattern getLocaleFromCookie เดิม):
 //     (store)/s/[t]/[u]/restaurant/page.tsx · restaurant/t/[qrToken]/page.tsx · queue/display/[displayToken]/page.tsx
 //   สวิตช์ภาษา th/en บนหน้า restaurant public (component เดิมถ้ามี — หาก LangSwitch มีอยู่ให้ reuse)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-i18n2"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { readFileSync } = await import("node:fs");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

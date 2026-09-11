@@ -13,7 +13,8 @@
 //   anonymize(text): string — แทนเบอร์ (0\d{8,9}) → "<PHONE>" · อีเมล → "<EMAIL>" · (ตัวเลขยอดคงไว้)
 //   recordSample(ctx, {userText, toolCalls, replyText, model}) — เก็บ AiTrainingSample เฉพาะเมื่อ SHARK_AI_COLLECT=1 · anonymize userText+replyText+args ก่อนเก็บ · ปิด env = ไม่เก็บ (ไม่ throw)
 //   sendMessage เรียก recordSample หลังตอบเสร็จ (best-effort ไม่ให้พังการตอบ)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-brain"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];

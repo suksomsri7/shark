@@ -4,7 +4,8 @@
 //   runEval(deps: { pickTool: (prompt: string) => string | null }) → { total, passed, byCase: [{prompt, expect, got, ok}] }
 //     · pickTool ฉีดได้ (mock) — เทียบ got กับ expectTool · คะแนน = passed/total
 //   evalToolFromRegistry(prompt) → string|null — heuristic match prompt → tool name (fallback null) เอาไว้เดินจริงกับ toolRegistry (ไม่ต้องยิง LLM ตอนสอบ)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-eval"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];
 const chk = (id: string, n: string, ok: boolean, s: Sev = "CRITICAL") => { cks.push({ id, ok, sev: s }); console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}`); };

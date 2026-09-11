@@ -12,7 +12,8 @@
 //   UI /app/kb: รายการ+สร้าง/แก้ (title/body/category) + ค้นหา + toggle active + ลิงก์ NavDrawer
 //   systems.ts: KB (code "KB", no.16) เปลี่ยน status "coming_soon" → "available" (ป้าย "เร็วๆ นี้" ตัวสุดท้ายหลุด)
 //     — KB เป็น kind feature ระดับ tenant: เปิดหน้า /app/kb ตรง (ดูว่า SYSTEM_DEFS ตัว available ตัวอื่น wire เข้าเมนูยังไงแล้วตามนั้น)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-kb"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

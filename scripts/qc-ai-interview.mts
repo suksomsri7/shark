@@ -5,7 +5,8 @@
 //   export async function nextInterviewTurn(provider: AiProvider, tenantName: string, transcript: InterviewTurn[]): Promise<InterviewResult>
 // โปรโตคอล LLM: ตอบ "คำถามถัดไป" เป็นข้อความธรรมดา หรือปิดจ๊อบด้วยบรรทัด `FACTS_JSON: {…13 field ตาม ZDnaFacts…}`
 // กติกาเหล็ก: JSON เพี้ยน/facts ไม่ผ่าน ZDnaFacts → ต้องคืน done:false ถามต่อ (ห้าม throw) · ZDnaFacts.parse ที่ boundary เสมอ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-interview"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { ZBlueprintPlan } = await import("@/lib/dna/schema");
 const { compile } = await import("@/lib/dna/compile");
 import type { AiChatMessage, AiProvider, AiReply } from "@/lib/ai/provider";

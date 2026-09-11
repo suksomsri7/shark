@@ -12,7 +12,8 @@
 // [8] รูป: ผูก/ลบ/ตั้งรูปหลักได้ · รับเฉพาะลิงก์ http(s) · ไม่รั่วข้ามร้าน
 //
 // รัน: pnpm exec tsx scripts/qc-catalog-services.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-catalog-services"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const { existsSync, readFileSync } = await import("node:fs");

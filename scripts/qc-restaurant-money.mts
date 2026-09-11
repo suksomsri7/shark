@@ -3,7 +3,8 @@
 // persona: ร้านอาหารจด VAT — ลูกค้านั่งโต๊ะ สั่งข้าวกะเพรา 2 จาน จ่ายสด ฿120
 // คาดหวัง: เช็คบิลแล้วเงินविّิ่งเข้าสมุดบัญชีเอง (Dr 1000 12000 / Cr 4000 ฐาน / Cr 2200 VAT)
 
-try { process.loadEnvFile(".env"); } catch { /* CI */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-restaurant-money"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

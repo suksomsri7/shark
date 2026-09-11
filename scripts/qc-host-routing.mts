@@ -8,7 +8,8 @@
 //     · เจอ tenant แต่ไม่มี unit → "/s/<tenantSlug>" ก็ได้หรือ null — สัญญา: คืน null (ยังไม่มีอะไรให้โชว์)
 //   src/app/page.tsx (root): อ่าน header "x-shark-host" (proxy ตั้งให้เมื่อ custom domain) →
 //     มีค่า → hostEntryPath → redirect ไป path นั้น · ไม่เจอ/ไม่มี header → landing เดิม (ห้ามพัง)
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-host-routing"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];

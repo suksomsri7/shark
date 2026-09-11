@@ -5,7 +5,8 @@
 //   feedbackStats(ctx) → { up, down, total, downSamples: [{userText, note}] } (down ล่าสุด ≤20 สำหรับวิเคราะห์)
 //   action src/lib/ai/actions.ts: sendAiFeedbackAction({conversationId?, userText, replyText, rating, note?})
 //   UI AiChat: ปุ่ม 👍👎 ใต้ข้อความ ASSISTANT (กด 👎 = ช่องหมายเหตุ optional) · กดแล้วขอบคุณ
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai-feedback"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; sev: Sev }[] = [];

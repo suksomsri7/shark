@@ -29,7 +29,8 @@
 // BH-4) หน้าจอเจ้าของร้าน — ฟอร์มครบ 7 วัน + tz + วันหยุด + ข้อความเสริม · ตรวจสิทธิ์ด้วย assertChatCan
 //       · error แสดง inline (ไม่ใช่ alert) · ค่าเริ่มต้น = ไม่เปิดใช้ (ไม่เดาเวลาแทนร้าน)
 
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-chat-business-hours"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 process.env.DATABASE_URL = "postgresql://qc:qc@127.0.0.1:1/qc-no-db"; // กันพลาด: ต่อไม่ติดโดยตั้งใจ
 process.env.CHAT_CREDENTIALS_KEY ??= "0".repeat(64);
 

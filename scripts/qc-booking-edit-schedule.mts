@@ -8,7 +8,8 @@
 // [4] ตารางงาน — ตั้งเวลาเข้า-ออกรายวันได้ · ยังไม่ตั้ง = ห้ามตัดสินว่าสาย
 //
 // รัน: pnpm exec tsx scripts/qc-booking-edit-schedule.mts
-try { process.loadEnvFile(".env"); } catch { /* CI ใช้ secrets */ }
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-booking-edit-schedule"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");

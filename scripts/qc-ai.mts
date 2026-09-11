@@ -1,7 +1,8 @@
 // QC — AI Layer Phase 1: kernel + chat service (docs/AI_LAYER.md) · Fable oracle
 // รันด้วย MockProvider เสมอ (SHARK_AI_MOCK=1 ตั้งในไฟล์นี้) — deterministic ไม่เผาเงิน
 process.env.SHARK_AI_MOCK = "1";
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-ai"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const rules = await import("@/lib/ai/rules");
 const prov = await import("@/lib/ai/provider");

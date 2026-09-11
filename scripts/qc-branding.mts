@@ -8,7 +8,8 @@
 //   getPublicBranding(tenantId) → { displayName, logoUrl, brandColor } — ไม่ตั้ง → default { displayName: ชื่อ tenant, logoUrl: null, brandColor: null }
 //   ใช้จริงบน storefront: หน้า /s/[tenantSlug]/[unitSlug]/shop + /f/[token] แสดง displayName/logo/สี accent จาก branding
 //   UI: /app/settings/branding (ฟอร์มชื่อ/โลโก้ URL/สี + preview) + assertCan branding.setting.update
-try { process.loadEnvFile(".env"); } catch {}
+import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
+loadLegacyQcEnv("qc-branding"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
 const { prisma } = await import("@/lib/core/db");
 const { readFileSync } = await import("node:fs");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
