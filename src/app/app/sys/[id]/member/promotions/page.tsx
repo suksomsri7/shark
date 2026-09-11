@@ -64,8 +64,8 @@ export default async function MemberPromotionsHubPage({ params }: { params: Prom
       title: "Journey",
       desc: "เส้นทางอัตโนมัติ เช่น ต้อนรับสมาชิกใหม่ · ชวนกลับมาเมื่อหายไปนาน",
       icon: "bolt",
-      href: null,
-      wo: "M3.3",
+      // M3.3 — หน้า journey อยู่ที่ /member/journeys (หมวดเดียวกับแคมเปญ · เงื่อนไขใช้ engine กลุ่มลูกค้า)
+      href: `/app/sys/${id}/member/journeys`,
     },
   ];
 

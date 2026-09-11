@@ -121,7 +121,24 @@ try {
     lines: [{ name: "ตะกร้าใหญ่", qty: 1, unitPriceSatang: 10000 }],
     payMethods: [{ type: "CASH", amountSatang: 10000 }],
   });
-  chk("MEM-2", "ขายแนบสมาชิกได้แต้ม (>0)", s3.pointEarned > 0, ">0", String(s3.pointEarned));
+  // ตั้งแต่ M2.8 (ระบบสมาชิก v2) แต้มย้ายออกจาก tx ของบิลไปอยู่ consumer `pos.sale.paid`
+  // ⇒ ตอนปิดบิล pointEarned = 0 เสมอ · ค่าจริงถูกเขียนหลังระบายคิว → อ่านจาก DB หลัง drain
+  {
+    const { drainAll } = await import("@/lib/outbox-consumers");
+    await drainAll();
+  }
+  const s3db = await prisma.posSale.findUnique({ where: { id: s3.saleId }, select: { pointEarned: true } });
+  const s3Ledger = await prisma.pointLedger.aggregate({
+    where: { tenantId, refType: "PosSale", refId: s3.saleId, type: "EARN" },
+    _sum: { delta: true },
+  });
+  chk(
+    "MEM-2",
+    "ขายแนบสมาชิกได้แต้ม (>0 หลังระบายคิว · บิล = สมุดแต้ม)",
+    (s3db?.pointEarned ?? 0) > 0 && (s3Ledger._sum.delta ?? 0) === s3db?.pointEarned,
+    ">0 และเท่ากับ PointLedger",
+    `บิล ${s3db?.pointEarned} · ledger ${s3Ledger._sum.delta}`,
+  );
 
   // ── coupon flow (mirror register: validate → createSale ยอดสุทธิ) ──
   console.log("\n── ขายพร้อมคูปอง ──");

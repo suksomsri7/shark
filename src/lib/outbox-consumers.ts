@@ -16,7 +16,9 @@ import { applyApprovalEffect } from "@/lib/approval-effects";
 import { logOps } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { chatChannelToKey, getChannel } from "@/lib/core/channels";
-import { logActivity as memberLogActivity } from "@/lib/modules/member";
+import { logActivity as memberLogActivity, runForEvent as runJourneysForEvent } from "@/lib/modules/member";
+// M3.3 — ทะเบียนทริกเกอร์ของ journey (ไฟล์บริสุทธิ์) · เช็คก่อนโหลดตัวส่ง ⇒ event อื่นทั้งระบบไม่เสียอะไรเพิ่ม
+import { JOURNEY_TRIGGER_EVENTS } from "@/lib/modules/member/journeys-shared";
 // M3.2 — ผลของแคมเปญถูกนับจากคิว (voucher ถูกใช้) · facade ล้วน ไม่ล้วงไฟล์ในโมดูล
 import * as marketing from "@/lib/modules/marketing";
 // M2.5 — ต่อสาย "ของแจกย้อนกลับ" ของระบบสมาชิก (ขึ้นระดับ → voucher ต้อนรับ)
@@ -153,6 +155,20 @@ const withAutomation =
         tenantId: evt.tenantId,
         detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
       });
+    }
+    // M3.3 — journey อัตโนมัติของระบบสมาชิก (best-effort แบบเดียวกับ automation: พังห้ามล้ม consumer หลัก)
+    //   ส่ง `id` ของ event ไปด้วย → เอนจินอ่าน idempotencyKey เป็นกุญแจกันวน (ตรงกับตอนเรียกตรงจาก cron/ข้อสอบ)
+    //   ตัวส่งจริง (แชท/บอร์ดงาน) โหลดแบบ dynamic — `member-journey-senders` → chat/kanban → … → ไฟล์นี้ = วงกลม
+    if (JOURNEY_TRIGGER_EVENTS.has(evt.type)) {
+      try {
+        const { journeySenders } = await import("@/lib/member-journey-senders");
+        await runJourneysForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload, id: evt.id }, { deps: journeySenders });
+      } catch (e) {
+        await logOps("WARN", "outbox", `journey ของ "${evt.type}" ล้มเหลว`, {
+          tenantId: evt.tenantId,
+          detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        });
+      }
     }
   };
 
@@ -456,6 +472,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   ),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   "booking.completed": withAutomation(stampFromVisit),
+  // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
+  //   no-op ที่ห้ามล้ม: ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
+  "booking.no_show": withAutomation(async () => {}),
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
@@ -622,6 +641,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    การ**แจ้งเตือนลูกค้า** ("คุณขึ้นเป็น Gold แล้ว" / "อีก 30 วันจะหลุดระดับ") เป็นงานของ M3.6
   "member.tier.changed": withAutomation(async () => {}),
   "member.tier.at_risk": withAutomation(async () => {}),
+  // ── ทริกเกอร์รอบเวลาของ journey (M3.3 · §7.3 §7.5) ──
+  // 🔴 cron รายวัน `emitJourneyCronEvents` ยิงให้ (เฉพาะค่าที่มี journey เปิดใช้อยู่) · ตัวงานจริงคือ journey
+  //    ที่ withAutomation เรียกต่อ — handler หลักเป็น no-op เพื่อปิด event เป็น DONE (ขาดบรรทัดนี้ = คิวตัน)
+  "member.birthday.upcoming": withAutomation(async () => {}),
+  "member.inactive": withAutomation(async () => {}),
+  "member.tier.review_due": withAutomation(async () => {}),
   // ── ความยินยอมของสมาชิก (M1.7 · D19 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มบน: แถว MemberConsent + คอลัมน์ marketingConsent ถูกเขียนครบใน transaction
   //    ของ `member/privacy.setConsent` แล้ว · ตัวนี้มีไว้ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็น

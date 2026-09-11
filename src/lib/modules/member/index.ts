@@ -304,3 +304,43 @@ export {
   SEGMENT_OPS,
   SEGMENT_OP_LABELS,
 } from "./segments";
+
+// ── journey อัตโนมัติ (M3.3 · §5.9 §7.3 §7.5 §11.6 · ภาพ 07 บน · 22) ──
+// 🔴 คิว outbox (withAutomation) เรียก `runForEvent` ทุก event ที่เป็นทริกเกอร์ของ journey · cron รายชั่วโมง
+//    เรียก `runDueWaits` · cron รายวันเรียก `emitJourneyCronEvents` — ตัวส่งจริง (LINE/อีเมล/SMS/push/บอร์ดงาน)
+//    ถูกฉีดจาก composition root `src/lib/member-journey-senders.ts` ผ่าน `deps` (โมดูลสมาชิกไม่รู้จักแชท/บอร์ดงาน)
+export type { JourneyEvent, JourneyRunOptions, JourneyDetailView } from "./journeys";
+export type {
+  JourneyDto,
+  JourneyListRow,
+  JourneyStatsView,
+  JourneyDryRun,
+  JourneyDeps,
+  JourneySendRequest,
+  JourneySendResult,
+  JourneyKanbanRequest,
+  JourneyKanbanResult,
+  SaveJourneyInput,
+} from "./journeys-shared";
+export {
+  createJourney,
+  updateJourney,
+  toggleJourney,
+  deleteJourney,
+  duplicateJourney,
+  listJourneys,
+  getJourney,
+  journeyDetail,
+  journeyBuilderOptions,
+  canManageJourneys,
+  /** event 1 ใบ → ทุก journey ที่ฟัง event นี้ (best-effort · ห้ามล้ม consumer หลัก) */
+  runForEvent,
+  /** cron รายชั่วโมง — ขั้น "รอ n วัน" ที่ถึงเวลาแล้ว */
+  runDueWaits,
+  /** cron รายวัน — ยิง event วันเกิด/หายไปนาน/ใกล้รอบทบทวนระดับ */
+  emitJourneyCronEvents,
+  dryRun,
+  journeyStats,
+  createFromPreset,
+  JOURNEY_PRESETS,
+} from "./journeys";

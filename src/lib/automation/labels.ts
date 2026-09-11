@@ -102,6 +102,16 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // M2.3 (§9.2) — ยิงจาก `booking/service.ts#setAppointmentStatus` เมื่อนัดเปลี่ยนเป็น "มาแล้ว (DONE)"
   //   payload: appointmentId · unitId · customerId · serviceId — สแตมป์ชนิด "จองที่มาจริง" กินทริกเกอร์นี้
   { value: "booking.completed", label: "เมื่อลูกค้ามาตามนัดจริง" },
+  // M3.3 (§7.1 · journey "จองแล้วไม่มา") — ยิงจาก `booking/service.ts#setAppointmentStatus` เมื่อนัดเปลี่ยนเป็น NO_SHOW
+  //   payload: appointmentId · unitId · customerId · serviceId — idempotencyKey ผูกตัวนัด (กดซ้ำไม่ยิงซ้ำ)
+  //   🔴 ต้องมี consumer ใน `outbox-consumers.ts` ด้วย (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "booking.no_show", label: "เมื่อลูกค้าจองแล้วไม่มาตามนัด" },
+  // M3.3 (§7.3 §7.5) — ทริกเกอร์ "รอบเวลา" ของ journey: cron รายวัน `emitJourneyCronEvents` เป็นคนยิง
+  //   เฉพาะค่าพารามิเตอร์ที่มี journey เปิดใช้อยู่จริง · payload: customerId + daysBefore / days · day (วันไทย)
+  //   🔴 ทั้ง 3 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ขาดไป = คิวตันทั้งระบบเงียบ ๆ)
+  { value: "member.birthday.upcoming", label: "เมื่อใกล้วันเกิดสมาชิก" },
+  { value: "member.inactive", label: "เมื่อสมาชิกไม่ซื้อ/ไม่จองมานาน" },
+  { value: "member.tier.review_due", label: "เมื่อใกล้ถึงรอบทบทวนระดับสมาชิก" },
   // M1.12 (§7.1 §9.3) — ยิงจาก `member/chat-bridge.ts#linkContact` (ทั้งจับคู่อัตโนมัติและเลือกมือ)
   //   payload มี contactId · partyId · customerId · method (PHONE/EMAIL/CHANNEL_ID/MANUAL)
   { value: "chat.contact.linked", label: "เมื่อผูกห้องแชทเข้ากับสมาชิก" },

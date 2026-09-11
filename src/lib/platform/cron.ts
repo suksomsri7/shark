@@ -22,7 +22,7 @@ import { sweepRecurringCards } from "@/lib/modules/kanban/recurrence";
 import { sweepDueDateRules } from "@/lib/modules/kanban/automation";
 import { sweepOverdue } from "@/lib/modules/kanban/reminders";
 import { sweepKanbanDigest } from "@/lib/modules/kanban/digest";
-import { runTierReview, sweepAutoErase, sweepCustomerAuth } from "@/lib/modules/member";
+import { emitJourneyCronEvents, runDueWaits, runTierReview, sweepAutoErase, sweepCustomerAuth } from "@/lib/modules/member";
 import { expireDue, notifyExpiring } from "@/lib/modules/point";
 import { expireDue as giftCardExpireDue } from "@/lib/modules/giftcard";
 import { expireDue as stampExpireDue } from "@/lib/modules/stamp";
@@ -187,6 +187,36 @@ export async function campaignsDue(now: Date = new Date()): Promise<number> {
   }
 }
 
+/**
+ * M3.3 — journey: ขั้น "รอ n วันแล้วทำต่อ" ที่ถึงเวลาแล้ว (ทุกร้าน) · เรียกจาก cron **รายชั่วโมง**
+ * 🔴 ตัวส่งจริง (LINE/อีเมล/SMS/push/บอร์ดงาน) ฉีดจาก composition root แบบ dynamic — ไฟล์นั้นลากแชท/บอร์ดงาน
+ *    ซึ่งวนกลับมาที่ outbox-consumers (เหตุผลเดียวกับ kanbanBridge)
+ * 🔴 best-effort — ล้มห้ามทำให้ cron ทั้งรอบแดง · แถวที่หยิบแล้วถูกจองด้วย updateMany (cron ซ้อนไม่ทำซ้ำ)
+ */
+export async function journeyWaits(now: Date = new Date()): Promise<number> {
+  try {
+    registerMemberHooks();
+    const { journeySenders } = await import("@/lib/member-journey-senders");
+    const r = await runDueWaits({ now, deps: journeySenders });
+    return r.ran;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * M3.3 — journey: ยิง event รอบเวลา (วันเกิด · หายไปนาน · ใกล้รอบทบทวนระดับ) ของทุกร้าน · เรียกจาก cron **รายวัน**
+ * ก่อน drain outbox ในรอบเดียวกัน ⇒ ลูกค้าได้ของวันนี้เลย ไม่ต้องรอ cron รอบถัดไป
+ */
+export async function journeyCronEvents(now: Date = new Date()): Promise<number> {
+  try {
+    const r = await emitJourneyCronEvents({ now });
+    return r.emitted;
+  } catch {
+    return -1;
+  }
+}
+
 // งานประจำวัน: กวาด subs + proposals + เก็บตก outbox
 // ห้าม throw — แต่ละส่วนห่อ try/catch เอง · ส่วนไหนพังเก็บเป็น -1 แล้วไปต่อ
 // (cron ต้องไม่ล้มทั้งรอบเพราะงานย่อยอันเดียวพัง)
@@ -220,6 +250,7 @@ export async function runDailyCron(
   voucherExpiring: number;
   rewardExpired: number;
   customerAuthSwept: number;
+  journeyEvents: number;
 }> {
   let subsExpired = -1;
   let proposalsExpired = -1;
@@ -248,9 +279,14 @@ export async function runDailyCron(
   let voucherExpiringCount = -1;
   let rewardExpired = -1;
   let customerAuthSwept = -1;
+  let journeyEvents = -1;
 
   // M2.5 — hook ของแจกย้อนกลับต้องพร้อมก่อนรอบทบทวนระดับ (idempotent · เรียกซ้ำได้)
   registerMemberHooks();
+
+  // M3.3 — ยิง event รอบเวลาของ journey **ก่อน** drain ด้านล่าง ⇒ journey วันเกิด/หายไปนานวิ่งในรอบนี้เลย
+  //   (ตัว step ห่อ try/catch เองแล้ว คืน -1 เมื่อพัง)
+  journeyEvents = await journeyCronEvents(now);
 
   try {
     subsExpired = await sweepExpiredSubscriptions(now);
@@ -461,5 +497,6 @@ export async function runDailyCron(
     voucherExpiring: voucherExpiringCount,
     rewardExpired,
     customerAuthSwept,
+    journeyEvents,
   };
 }

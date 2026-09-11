@@ -36,6 +36,11 @@ export const MEMBER_LIMITS = Object.freeze({
   voucherTemplates: 100,
   /** journey ต่อระบบ (M3.3) */
   journeys: 50,
+  /**
+   * แถว AutomationRun ของ journey ต่อระบบสมาชิกต่อเดือนไทย (M3.3 · §11.6) — นับทุกแถว (เข้า/ข้าม/กลุ่มเทียบ/ขั้นที่รอ)
+   * เกินแล้ว = event ถัดไปถูกบันทึกเป็น "ข้าม (quota)" ไม่ทำการกระทำ (ไม่ throw · คิวไม่ตัน)
+   */
+  automationRunsPerMonth: 5_000,
   /** segment ต่อระบบ (M3.1) */
   segments: 100,
   /** แคมเปญต่อเดือนไทย (M3.2) */

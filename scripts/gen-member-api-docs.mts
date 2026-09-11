@@ -282,6 +282,19 @@ const WEBHOOK_EVENT_DOCS: Record<string, WebhookDoc> = {
     when: "A voucher expired unused.",
     payload: { customerId: "cmf1cus0001", voucherId: "cmf1vch0001", code: "V-8KQ2M4", origin: "CAMPAIGN" },
   },
+  // M3.3 — ทริกเกอร์รอบเวลาของ journey (cron รายวัน `member/journeys.ts#emitJourneyCronEvents`)
+  "member.birthday.upcoming": {
+    when: "Daily, for each member whose birthday is exactly `daysBefore` Thai calendar days away. Only fired for `daysBefore` values that an enabled journey of the shop listens to, and not for members who already went through that journey within its re-entry window.",
+    payload: { customerId: "cmf1cus0001", daysBefore: 7, day: "2026-09-11" },
+  },
+  "member.inactive": {
+    when: "Daily, for each member with no purchase or booking for at least `days` days (members who never had any activity count from their signup date). Same filtering as `member.birthday.upcoming`; a member skipped by the journey's conditions is re-checked weekly, not daily.",
+    payload: { customerId: "cmf1cus0001", days: 60, day: "2026-09-11" },
+  },
+  "member.tier.review_due": {
+    when: "Daily, for each member whose tier review date is exactly `daysBefore` Thai calendar days away. Same filtering as `member.birthday.upcoming`.",
+    payload: { customerId: "cmf1cus0001", daysBefore: 30, day: "2026-09-11" },
+  },
   "giftcard.sold": {
     when: "A gift card was sold. From this moment the amount is money the shop owes, not revenue; it becomes revenue as the card is spent.",
     payload: { giftCardId: "cmf1gcd0001", number: "GC-10004521", satang: 50000, buyerCustomerId: "cmf1cus0001", ownerCustomerId: "cmf1cus0001", saleId: "cmf1sal0001" },

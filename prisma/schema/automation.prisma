@@ -8,6 +8,15 @@ enum AutomationActionType {
 enum AutomationRunStatus {
   OK
   FAILED
+  // ── M3.3 (journey · §7.5 §11.6) — เพิ่มค่าล้วน · OK/FAILED คงความหมายเดิมเป๊ะ ──
+  //   WAITING   = ขั้น "รอ n วัน" ที่ตั้งคิวไว้ (มี scheduledAt) — cron รายชั่วโมงมาเก็บเมื่อถึงเวลา
+  //   HOLDOUT   = คนที่ถูกกันไว้เป็นกลุ่มเทียบ (ไม่ทำ action เลย แต่บันทึกไว้เพื่อวัดผลจริงของ journey)
+  //   SKIPPED   = ไม่ได้ลงมือเพราะเงื่อนไข/เข้าซ้ำ/โควตา/สิทธิ์ (detail บอกเหตุผลเป็นภาษาไทย)
+  //   CANCELLED = ขั้นที่รออยู่ถูกยกเลิกเพราะ journey ถูกปิด
+  WAITING
+  HOLDOUT
+  SKIPPED
+  CANCELLED
 }
 
 // M1.1 (D15 · §4.1) — กฎอัตโนมัติใช้ตารางเดียวกันทั้ง 3 โลก แยกกันด้วย scope
@@ -49,10 +58,23 @@ model AutomationRule {
   // ── M1.1 (ระบบสมาชิก v2 · D15) — เพิ่มคอลัมน์ล้วน · แถวเดิมได้ scope = KANBAN อัตโนมัติ ──
   // กฎระดับ/journey ตั้ง actionType = NOTIFY, actionConfig = {} เป็น placeholder แบบเดียวกับ K2.9
   // แล้วอ่านจริงจาก `conditions`/`actions` (เอนจินเดิมถูกจำกัดให้เห็นเฉพาะ scope KANBAN)
+  // M3.3 — run ของ journey (ผูกผ่าน AutomationRun.journeyId · กฎบอร์ดงาน/POS ไม่มีแถวในนี้ — ดูหมายเหตุที่ AutomationRun.rule)
+  journeyRuns   AutomationRun[]
   scope         AutomationScope @default(KANBAN)
   memberSystemId String? // ระบบ MEMBER ที่กฎนี้สังกัด (null = ไม่ใช่กฎของสมาชิก)
   tierDefId     String? // กฎนี้เลื่อน/คงระดับไหน (MEMBER_TIER)
   journeyStats  Json? // สถิติต่อขั้นของ journey (MEMBER_JOURNEY) — {steps:{...}, holdout:{...}}
+
+  // ── M3.3 (journey · §5.9 §11.6) — เพิ่มคอลัมน์ล้วน · แถวเดิมได้ค่าปริยายที่แปลว่า "เหมือนเดิม" ──
+  // 🔴 `holdoutPct` = % ที่ถูกกันไว้เป็นกลุ่มเทียบ (0 = ไม่กัน · เพดาน 50) — สุ่มด้วยแฮชคงที่
+  //    hash(ruleId:customerId) ⇒ คนเดิมอยู่กลุ่มเดิมเสมอ แม้ยิง event ซ้ำหรือรีสตาร์ทเครื่อง
+  // 🔴 `reentryDays` = เข้าซ้ำได้อีกครั้งหลังกี่วัน (null = ครั้งเดียวตลอดชีพของสมาชิกคนนั้น)
+  // 🔴 `trigger` = {event, params} — params คือพารามิเตอร์ของทริกเกอร์ที่ cron ใช้
+  //    (birthday.upcoming {daysBefore} · inactive {days}) · `event` ข้างบนยังเก็บชื่อ event เหมือนเดิม
+  //    เพื่อให้ index [tenantId, event, enabled] ยังเป็นเส้นอ่านหลักของเอนจิน
+  holdoutPct    Int             @default(0)
+  reentryDays   Int?
+  trigger       Json?
 
   @@index([tenantId, event, enabled])
   // เส้นอ่านของเอนจินบอร์ดงาน: กฎที่เปิดอยู่ของบอร์ดใบเดียว (runForKanbanEvent/sweep/หน้าตั้งกฎ)
@@ -71,9 +93,36 @@ model AutomationRun {
   boardId String?
   cardId  String? // การ์ดที่ถูกกระทำ (SCHEDULED/ปุ่มบนบอร์ด = null)
 
+  // ── M3.3 (journey) — เพิ่มคอลัมน์ล้วน (nullable ทั้งชุด) · แถวเดิมของ v1/บอร์ดงานไม่รู้จักช่องเหล่านี้ ──
+  // 🔴 1 แถว = "คน 1 คนเดินผ่าน journey 1 ครั้ง" (stepIndex = null) หรือ "ขั้นที่รอเวลา" (stepIndex = เลขขั้น)
+  //    `journeyId` = ruleId ซ้ำอีกช่อง เพื่ออ่านแบบ "ของ journey นี้" ได้โดยไม่ปนกับกฎบอร์ด/ระดับ
+  //    `payload`   = ของที่ขั้นถัดไปต้องใช้ {thenActions, ifVoucherUnused, voucherId, event, parentRunId}
+  //    `eventKey`  = idempotencyKey ของ event ต้นทาง — **ตัวกันวน**: unique(ruleId, customerId, eventKey)
+  //                  ทำให้ event เดิมที่ถูกส่งซ้ำ/ยิงพร้อมกัน สร้างแถวได้ครั้งเดียวเท่านั้น (จบใน SQL คำสั่งเดียว)
+  //                  แถวของขั้นที่รอเวลา (stepIndex != null) ตั้งเป็น null เสมอ — NULL ไม่ชนกันเองใน Postgres
+  customerId  String?
+  journeyId   String?
+  // 🔴 `rule` ผูกผ่าน `journeyId` **ไม่ใช่** `ruleId` โดยตั้งใจ:
+  //    - โควตา/สถิติของ journey ต้องถามว่า "run ของกฎที่สังกัดระบบสมาชิกนี้มีกี่ใบเดือนนี้" (relation filter)
+  //    - ถ้าผูก FK ที่ `ruleId` + Cascade จะหักสัญญา K2.9 ของบอร์ดงาน ("ลบกฎแล้ว run เก่ายังอยู่เป็นประวัติ" —
+  //      ข้อสอบ qc-kanban-k2.9 S10.2) และต้องลบแถวกำพร้าบน prod ก่อนผูก FK
+  //    ⇒ แถวของบอร์ดงาน/POS มี journeyId = null (ไม่ผูก · พฤติกรรมเดิมเป๊ะ) · แถวของ journey ผูกกฎจริง
+  //      ลบ journey = ลบ run ของมันไปด้วย (Cascade) — ไม่มีแถวเดิมตัวไหนถูกแตะตอน migrate
+  rule        AutomationRule? @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  stepIndex   Int?
+  scheduledAt DateTime?
+  finishedAt  DateTime?
+  payload     Json?
+  eventKey    String?
+
+  @@unique([ruleId, customerId, eventKey])
   @@index([tenantId, createdAt])
   // หน้า "บันทึกการทำงาน" + ตัวกันวน 60 วิ + โควตารายเดือน อ่านตามกฎแล้วเรียงเวลา
   @@index([tenantId, ruleId, createdAt])
+  // M3.3 — cron รายชั่วโมงหยิบ "ขั้นที่รอเวลาและถึงกำหนดแล้ว" ของทุกร้าน
+  @@index([tenantId, status, scheduledAt])
+  // M3.3 — ตัวกันเข้าซ้ำ/สถิติ อ่าน "คนนี้เคยเข้า journey นี้เมื่อไร"
+  @@index([ruleId, customerId, createdAt])
 }
 
 // ศูนย์แจ้งเตือนในแอป (v1 — ปลายทางของ action NOTIFY)

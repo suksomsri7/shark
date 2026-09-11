@@ -61,7 +61,7 @@ Conventions that apply to every operation:
 13. Rate limits are per key and per class: 600 reads and 600 writes per minute, 60 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.
 15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
+16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
 
 ### Shapes of a reply
 
@@ -2721,6 +2721,9 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | `voucher.used` | A voucher was spent on a bill or an appointment. `discountSatang` is what it actually took off. |
 | `voucher.expiring` | A voucher is close to its expiry date (7 days out, then 1 day out, by Thai calendar days). |
 | `voucher.expired` | A voucher expired unused. |
+| `member.birthday.upcoming` | Daily, for each member whose birthday is exactly `daysBefore` Thai calendar days away. Only fired for `daysBefore` values that an enabled journey of the shop listens to, and not for members who already went through that journey within its re-entry window. |
+| `member.inactive` | Daily, for each member with no purchase or booking for at least `days` days (members who never had any activity count from their signup date). Same filtering as `member.birthday.upcoming`; a member skipped by the journey's conditions is re-checked weekly, not daily. |
+| `member.tier.review_due` | Daily, for each member whose tier review date is exactly `daysBefore` Thai calendar days away. Same filtering as `member.birthday.upcoming`. |
 | `member.sensitive.viewed` | Somebody opened sensitive member data (a health note, an emergency contact). The position they held at that moment is recorded, not the one they hold today. |
 
 #### `member.created`
@@ -3113,6 +3116,54 @@ A voucher expired unused.
     "voucherId": "cmf1vch0001",
     "code": "V-8KQ2M4",
     "origin": "CAMPAIGN"
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `member.birthday.upcoming`
+
+Daily, for each member whose birthday is exactly `daysBefore` Thai calendar days away. Only fired for `daysBefore` values that an enabled journey of the shop listens to, and not for members who already went through that journey within its re-entry window.
+
+```json
+{
+  "type": "member.birthday.upcoming",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "daysBefore": 7,
+    "day": "2026-09-11"
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `member.inactive`
+
+Daily, for each member with no purchase or booking for at least `days` days (members who never had any activity count from their signup date). Same filtering as `member.birthday.upcoming`; a member skipped by the journey's conditions is re-checked weekly, not daily.
+
+```json
+{
+  "type": "member.inactive",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "days": 60,
+    "day": "2026-09-11"
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `member.tier.review_due`
+
+Daily, for each member whose tier review date is exactly `daysBefore` Thai calendar days away. Same filtering as `member.birthday.upcoming`.
+
+```json
+{
+  "type": "member.tier.review_due",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "daysBefore": 30,
+    "day": "2026-09-11"
   },
   "sentAt": "2026-09-10T09:15:00.000Z"
 }

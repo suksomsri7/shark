@@ -1,0 +1,17 @@
+คุณคือ builder ของ WO **M3.7** ระบบสมาชิก v2 (SHARK) — ไทม์ไลน์ประวัติ: consumer ทุกโมดูล → MemberActivity (pos paid/voided · booking completed/no_show (event ใหม่) · chat linked + message (1 แถว/ห้อง/วันไทย) · kanban card completed · crm.deal.won (event ใหม่ + auto-link/สร้างสมาชิก) · ecommerce shop.order.paid (event ใหม่ · marketplace → สมาชิก/แต้ม/ที่มา MARKETPLACE + linkIdentity) · loyalty ทั้งหมด recordOnce) · read-through เอกสารบัญชี (account facade listDocsByParty) + การ์ดบอร์ดที่เปิดอยู่ (kanban listCardsForTarget) · แท็บประวัติใน 360 กรองชนิด 9 ชิป/ช่วง/สาขา + cursor · unit scope · perf · **ไม่มี migration** · ภาพ 08 (ซ้าย/กลาง)
+
+อ่านก่อนเริ่ม (ตามลำดับ):
+1. `ledger/member-briefs/member-builder-common.md` — กติกาตายตัว + วิธีส่งมอบ (**'use client' ห้าม import โมดูลที่ลากถึง prisma** → `*-shared.ts` + server action · use server ห้าม export type · parity เป็นของผู้คุมงาน)
+2. `ledger/MEMBER-RUN.md` §0.1 · §2 M3.7 · §4 (มติล่าสุด)
+3. **ข้อสอบ `scripts/qc-member-m3.7.mts` = สัญญาฉบับเต็ม** (หัวไฟล์ = event payload · ชนิดแถวต่อ consumer · recordOnce/listHistory · HISTORY_KINDS · testid) — อ่านทุกข้อ · SKIP guard บอกไฟล์ที่ต้องมี
+4. `ledger/wo-notes/member-M2.8.md` (member-bridges.ts = composition root ของ consumer สมาชิก · pos.sale.paid เขียน PURCHASE อยู่แล้ว — ใบนี้เติม data) · `member-M3.3.md` · `member-M3.4.md` (reviews.requestReview — เรียกผ่าน bridges แบบไม่ throw) · `member-M3.5.md` · `member-M1.12.md` (chat.contact.linked) · `member-M1.4.md` (linkIdentity D18 · createMember) · `member-M2.1.md` (earnWithLot/computeEarn) · `member-M2.3.md` (stamp.autoStampFromVisit)
+5. ภาพ `ledger/design-member/08-history-review-referral.png` ซ้าย/กลาง (ไทม์ไลน์ + ชิปกรอง) — UI ต้องตรงภาพ · `MemberIcon` · จุดสีตาม kind ใช้ token (ห้าม hex) · กริดยุบบนมือถือ + `min-w-0`
+
+ขอบเขตไฟล์: `src/lib/modules/member/{history.ts, history-kinds.ts}` (history-kinds = ไฟล์บริสุทธิ์ ใช้ใน client ได้) · แท็บประวัติใน 360 (`src/components/member/MemberHistory*.tsx` + Edit เฉพาะจุดในหน้า `members/[memberId]`) · Edit เฉพาะจุด: `member/index.ts` · `src/lib/member-bridges.ts` · `outbox-consumers.ts` · `automation/labels.ts` · `webhooks/labels.ts` · `booking/service.ts` (emit ใน setAppointmentStatus — **ตรวจก่อนว่า M2.3 ยิง booking.completed อยู่แล้ว** ห้ามยิงซ้ำ) · `crm/service.ts#moveDeal` (emit crm.deal.won) · `shop/service.ts#confirmOrderPaid` (emit shop.order.paid) · account facade (`listDocsByParty` additive) · kanban links facade (ใช้ listCardsForTarget ที่มีอยู่)
+- event ใหม่ทุกตัว (booking.completed ถ้ายังไม่ลง · booking.no_show · crm.deal.won · shop.order.paid) **ลง 3 ทะเบียน** ในใบนี้ ไม่งั้นคิวตันเงียบ
+- ⚠️ `crm/*` มี session CRM v2 (Codex · branch session/crm-codex) ออกแบบคู่ขนาน — ใน worktree นี้แตะ `crm/service.ts` เฉพาะจุด emit เท่านั้น (additive · 1 จุด) ห้ามปรับโครงสร้าง
+- ห้ามแตะ tx ของ POS (`pos/service.ts`) — ข้อมูลเพิ่มของ PURCHASE ให้เติมใน bridges (consumer) เท่านั้น
+
+regressions ต้องผ่านเท่าเดิม: `qc-member-m2.8` 30/30 · `m1.12` · `m1.4` · `m2.3` · `m3.3` · `m3.4` · `m3.5` · `qc-acc-v2-pos-lines` · `qc-kanban-k3.3` (ถ้าข้อภาพข้าม worktree แดง = ฐานเดิม) · `qc-chat-member-autolink` · ชุด crm/shop/booking เดิมที่ใช้ QC env (เปิดหัวไฟล์ดูก่อน · export env จาก `.env.qc`) · fitness 2 โหมด · grep 'use client' ก่อนส่งมอบ
+
+ส่งมอบตาม common.md (wo-notes `ledger/wo-notes/member-M3.7.md` · ตอบสั้น: ไฟล์ · ผลข้อสอบ x/y · ข้อค้าง+เหตุผล) · ห้าม build/commit/push · ห้ามรัน suite ที่ชี้ `.env` (ทุก qc-*.mts มีด่านหยุดเองแล้ว — ถ้าเจอข้อความ "🔴 หยุด!" ให้ export env ของ `.env.qc` ตามที่มันบอก)

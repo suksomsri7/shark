@@ -673,7 +673,9 @@ export async function listRuns(
     id: r.id,
     ruleId: r.ruleId,
     ruleName: ruleName.get(r.ruleId) ?? "กฎที่ถูกลบไปแล้ว",
-    status: r.status,
+    // M3.3 — enum AutomationRunStatus ได้ค่าเพิ่ม (WAITING/HOLDOUT/SKIPPED/CANCELLED ของ journey สมาชิก)
+    //   แถวของบอร์ดงานมีแค่ OK/FAILED เสมอ (journey ไม่มี boardId) — แคบชนิดกลับเป็นสัญญาเดิมของ DTO
+    status: r.status === "FAILED" ? "FAILED" : "OK",
     detail: r.detail,
     cardId: r.cardId,
     cardTitle: r.cardId ? (cardTitle.get(r.cardId) ?? null) : null,

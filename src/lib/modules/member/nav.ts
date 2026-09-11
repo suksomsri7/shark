@@ -87,10 +87,16 @@ export const MEMBER_DEEP_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "promotions-giftcards-settings", label: "ตั้งค่า Gift Card", path: "/member/promotions/giftcards/settings", status: "ready" },
   { key: "promotions-vouchers", label: "Voucher", path: "/member/promotions/vouchers", status: "ready" },
   { key: "promotions-vouchers-templates", label: "แบบ Voucher", path: "/member/promotions/vouchers/templates", status: "ready" },
+  // M3.2 — ตัวสร้างแคมเปญ 3 ขั้น (ตกหล่นตอน M3.2 · qc-nav-functions S5 จับได้ตอน M3.3)
+  { key: "campaigns-new", label: "สร้างแคมเปญ", path: "/member/campaigns/new", status: "ready" },
+  // M3.3 — ตัวสร้าง journey แบบว่าง (ภาพ 07 บน) · หน้ารายการอยู่ใน MEMBER_CAMPAIGN_NAV
+  { key: "journeys-new", label: "สร้าง Journey ใหม่", path: "/member/journeys/new", status: "ready" },
 ] as const);
 
 export const MEMBER_CAMPAIGN_NAV: readonly MemberNavEntry[] = Object.freeze([
   { key: "segments", label: "กลุ่มลูกค้า", path: "/member/segments", status: "ready" },
+  // M3.3 — journey อัตโนมัติ (ภาพ 07 บน · 22) · เงื่อนไขใช้ engine เดียวกับกลุ่มลูกค้า จึงอยู่หมวดเดียวกับแคมเปญ
+  { key: "journeys", label: "Journey อัตโนมัติ", path: "/member/journeys", status: "ready" },
 ] as const);
 
 /** สิทธิ์ที่ต้องมีของหน้าย่อยในหมวดตั้งค่า (ไม่มีในตาราง = ใช้ `member.settings.manage`) */

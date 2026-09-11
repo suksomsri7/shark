@@ -741,6 +741,23 @@ export async function setAppointmentStatus(
       },
     });
   }
+  // M3.3 (§7.1) — "ไม่มาตามนัด" = ทริกเกอร์ของ journey "จองแล้วไม่มา" (ชวนนัดใหม่) · ครบ 3 ทะเบียนแล้ว
+  // 🔴 idempotencyKey ผูกกับตัวนัดเหมือน booking.completed ⇒ กดสลับสถานะไปกลับไม่ยิงซ้ำ (voucher ไม่เบิ้ล)
+  if (status === "NO_SHOW") {
+    await emitOutboxOutsideTx({
+      tenantId,
+      unitId,
+      type: "booking.no_show",
+      idempotencyKey: `booking.no_show#${appointmentId}`,
+      payload: {
+        appointmentId,
+        tenantId,
+        unitId,
+        customerId: appt.customerId,
+        serviceId: appt.serviceId,
+      },
+    });
+  }
 }
 
 // ── มัดจำ (WO Wave3-A: กัน no-show) ─────────────────────────────

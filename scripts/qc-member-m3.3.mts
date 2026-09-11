@@ -75,7 +75,7 @@ try {
   const tenant0 = await prisma.tenant.findUnique({ where: { id: tid }, select: { limits: true } });
   restore.push(() => prisma.tenant.update({ where: { id: tid }, data: { limits: tenant0?.limits ?? {} } }));
   const T300 = await V.createTemplate(ctx, owner, { name: `journey ฿300 ${tag}`, kind: "FIXED", value: 30_000, config: { unitIds: [] }, validDays: 14, origin: "JOURNEY" });
-  const mkCust = async (nm: string, extra: Any = {}) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0890${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "journey", source: "STAFF", homeUnitId: E.units.patong, consents: [{ channel: "LINE", granted: true }], ...extra }); made.customers.push(c.customerId); await PV.setConsent(ctx, owner, c.customerId, { channel: "LINE", granted: true, source: "STAFF" }).catch(() => null); await P.memberChannelIdentity.create({ data: { tenantId: tid, customerId: c.customerId, channel: "LINE", externalId: `U-j-${tag}-${Math.random().toString(36).slice(2, 8)}` } }).catch(() => null); return c.customerId as string; };
+  const mkCust = async (nm: string, extra: Any = {}) => { const c = await PR.createMember(ctx as Any, owner, { phone: `0890${String((Date.now() + Math.floor(Math.random() * 1000)) % 1_000_000).padStart(6, "0")}`, firstName: nm, lastName: "journey", source: "WALK_IN", homeUnitId: E.units.patong, consents: [{ channel: "LINE", granted: true }], ...extra }); made.customers.push(c.customerId); await PV.setConsent(ctx, owner, c.customerId, { channel: "LINE", granted: true, source: "STAFF" }).catch(() => null); await P.memberChannelIdentity.create({ data: { tenantId: tid, customerId: c.customerId, channel: "LINE", externalId: `U-j-${tag}-${Math.random().toString(36).slice(2, 8)}` } }).catch(() => null); return c.customerId as string; };
   const evt = (type: string, customerId: string, extra: Any = {}, keyExtra = "") => ({ tenantId: tid, type, payload: { customerId, ...extra }, idempotencyKey: `qc33-${tag}-${type}-${customerId}${keyExtra}` });
   const hashPct = (ruleId: string, cid: string) => (parseInt(sha256(`${ruleId}:${cid}`).slice(0, 8), 16) % 10000) / 100;
 
@@ -106,8 +106,9 @@ try {
   // ═══ S2 6 journey สำเร็จรูปรันครบเส้น ═══
   // (1) birthday — สมาชิกใหม่ X วันเกิดอีก 7 วัน · holdout 0 เพื่อให้เข้าแน่
   await P.automationRule.update({ where: { id: jb.id }, data: { holdoutPct: 0 } });
-  const in7 = new Date(Date.now() + 7 * 86_400_000);
-  const X = await mkCust("วันเกิด", { birthDate: new Date(Date.UTC(1990, in7.getUTCMonth(), in7.getUTCDate())) });
+  // ORACLE-EDIT M3.3-S2.1: วันเกิด = "วันไทย" + 7 (cron ใช้วันไทย) · createMember รับ birthDate เป็นสตริง YYYY-MM-DD
+  const in7 = new Date(Date.now() + 7 * 3_600_000 + 7 * 86_400_000);
+  const X = await mkCust("วันเกิด", { birthDate: `1990-${String(in7.getUTCMonth() + 1).padStart(2, "0")}-${String(in7.getUTCDate()).padStart(2, "0")}` });
   const d1 = mkDeps();
   const em1 = await J.emitJourneyCronEvents({ now: new Date(), tenantId: tid });
   const { drainOutbox } = await import("@/lib/core/outbox");
@@ -274,6 +275,8 @@ try {
   chk("M3.3-S4.1", `holdout 50%: run HOLDOUT = ชุด hashPct(ruleId:customerId) < 50 เป๊ะ (${expHold.length}/8) · คนอื่น OK`, JSON.stringify(actHold) === JSON.stringify(expHold) && (await runs(jh.id, { status: "OK" })).length === 8 - expHold.length, `${expHold.length}`, `hold=${actHold.length} ok=${(await runs(jh.id, { status: "OK" })).length}`);
   const tagged = (await prisma.customer.findMany({ where: { id: { in: hs } }, select: { tags: true } })).filter((c) => ((c.tags as Any as string[]) ?? []).includes(`h-${tag}`)).length;
   chk("M3.3-S4.2", "HOLDOUT ไม่ทำ action (tag ติดเฉพาะกลุ่ม OK) แต่บันทึก run เพื่อเทียบ · ยิง event ซ้ำคนเดิม → ไม่เปลี่ยนกลุ่ม (deterministic) · rule.holdoutPct 50", tagged === 8 - expHold.length && (await runs(jh.id, { status: "HOLDOUT" })).every((r: Any) => expHold.includes(r.customerId)) && (await rule(jh.id))?.holdoutPct === 50, "tag เฉพาะ OK", `tagged=${tagged}/${8 - expHold.length}`);
+  // ORACLE-EDIT M3.3-S8.2: ปิด jh หลังวัด S4 — ข้อต่อจากนี้ยิง member.tier.at_risk ใส่คนใหม่ (R1/Q1/Q2/L1) ทำให้กลุ่มเทียบของ jh โตเกิน expHold
+  await J.toggleJourney(ctx, owner, jh.id, false);
 
   // ═══ S5 re-entry ═══
   const jre = await J.createJourney(ctx, owner, { name: `re-entry ${tag}`, trigger: { event: "member.tier.at_risk" }, conditions: { groups: [] }, actions: [{ type: "ADD_TAG", params: { tag: "re" } }], holdoutPct: 0, reentryDays: 10, enabled: true });
@@ -351,6 +354,16 @@ try {
 } finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
   for (const r of restore) await d(r);
+  // ORACLE-EDIT M3.3-S2.3 (finally): cron รอบเวลายิงให้คนใน seed ได้ (วันเกิดตรง/หายไปนาน) → คืนแต้ม/ไทม์ไลน์ของ run journey ที่ข้อสอบสร้าง
+  if (made.journeys.length) {
+    const runIds = ((await P.automationRun.findMany({ where: { OR: [{ ruleId: { in: made.journeys } }, { journeyId: { in: made.journeys } }] }, select: { id: true } }).catch(() => [])) as Any[]).map((x) => x.id);
+    if (runIds.length) {
+      const jl = ((await P.pointLedger.findMany({ where: { tenantId: tid, refType: "JOURNEY", refId: { in: runIds } }, select: { id: true, systemId: true, customerId: true, delta: true } }).catch(() => [])) as Any[]);
+      for (const l of jl) await d(() => P.pointBalance.updateMany({ where: { systemId: l.systemId, customerId: l.customerId }, data: { balance: { decrement: l.delta } } }));
+      await d(() => P.pointLot.deleteMany({ where: { ledgerId: { in: jl.map((l) => l.id) } } })); await d(() => P.pointLedger.deleteMany({ where: { id: { in: jl.map((l) => l.id) } } }));
+      await d(() => P.memberActivity.deleteMany({ where: { tenantId: tid, type: { in: ["JOURNEY_STEP", "REVIEW_REQUESTED"] }, OR: [{ refId: { in: runIds } }, { refId: { in: made.journeys } }, { createdAt: { gte: new Date(parseInt(tag, 36)) } }] } }));
+    }
+  }
   if (made.journeys.length) { await d(() => P.automationRun.deleteMany({ where: { ruleId: { in: made.journeys } } })); await d(() => P.automationRule.deleteMany({ where: { id: { in: made.journeys } } })); }
   await d(() => P.appNotification.deleteMany({ where: { tenantId: tid, createdAt: { gte: new Date(Date.now() - 3600_000) }, title: { contains: "เสี่ยง" } } }));
   if (made.appts.length) await d(() => prisma.appointment.deleteMany({ where: { id: { in: made.appts } } }));
