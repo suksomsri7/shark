@@ -99,6 +99,20 @@ try {
     "ครบ", `cols=${[...rc].length} st=${st.join(",")} src=${src.includes("REVIEW")} set0=${JSON.stringify(set0)} below=${thai(eBelow)} board=${thai(eBoard)} thana=${!!eThana} set1=${set1?.escalateBoardId === boardId}`);
 
   // ═══ S2 request → token → submit (1 ครั้ง/ref) ═══
+  // ORACLE-EDIT M3.4-S2.1/S2.2: ชุดนี้ใช้บิลของ seed ร่วมกับ harness ภาพ (TMP34 ขอ+ส่งรีวิวบิลเดียวกัน) ⇒ รันหลังถ่ายภาพแล้วเจอ "ลิงก์รีวิวนี้ใช้ไม่ได้แล้ว"
+  //   ล้างรีวิวของบิล seed ที่ชุดนี้จะใช้ก่อนเริ่ม (ข้อมูล QC · ไม่แตะเงื่อนไขข้อสอบ)
+  {
+    const seedSales = (await prisma.posSale.findMany({ where: { tenantId: tid, memberId: { in: E.members.slice(0, 8).map((x: Any) => x.id) }, status: "PAID" as Any }, select: { id: true } })) as Any[];
+    const ids = seedSales.map((x) => x.id);
+    if (ids.length) {
+      const old = (await P.memberReview.findMany({ where: { tenantId: tid, refType: "PosSale", refId: { in: ids } }, select: { id: true } }).catch(() => [])) as Any[];
+      const oid = old.map((r) => r.id);
+      if (oid.length) {
+        await P.memberActivity.deleteMany({ where: { tenantId: tid, module: "review", refId: { in: oid } } }).catch(() => null);
+        await P.memberReview.deleteMany({ where: { id: { in: oid } } }).catch(() => null);
+      }
+    }
+  }
   const X = await mkCust("รีวิวเวอร์");
   const s1 = await sale(3);
   const d1 = mkDeps();
@@ -165,7 +179,10 @@ try {
   const esc2 = await R.escalate(ctx, rqL.reviewId);
   chk("M3.4-S4.2", "escalate ซ้ำ → การ์ดเดิม (sourceKey idempotent · created false) · kanbanCardId เท่าเดิม · ไม่มีการ์ดเพิ่มในบอร์ด", esc2?.cardId === rowL?.kanbanCardId && esc2.created === false && (await P.kanbanCard.count({ where: { boardId, sourceKey: `review:${rqL.reviewId}` } })) === 1, "idempotent", `esc2=${JSON.stringify(esc2)} n=${await P.kanbanCard.count({ where: { boardId, sourceKey: `review:${rqL.reviewId}` } })}`);
   await R.setReviewSettings(ctx, owner, { escalateBoardId: null });
-  await P.kanbanBoard.updateMany({ where: { tenantId: tid, id: boardId }, data: { status: "ARCHIVED" } }).catch(() => null);
+  // ORACLE-EDIT M3.4-S4.3: ข้อนี้วัดกรณี "ร้านไม่มีบอร์ดใช้ได้" — เดิมเก็บเฉพาะบอร์ดของข้อสอบ · ถ้าร้าน QC มีบอร์ดอื่น (harness ภาพ/ชุดอื่น) escalate จะไปเปิดการ์ดแทนแจ้งเตือน
+  //   ⇒ เก็บบอร์ดที่ยังใช้งานทั้งหมดชั่วคราว แล้วคืนสถานะเดิมหลังวัด (ข้อมูล QC เท่านั้น)
+  const otherBoards = ((await P.kanbanBoard.findMany({ where: { tenantId: tid, status: "ACTIVE" }, select: { id: true } }).catch(() => [])) as Any[]).map((b) => b.id as string);
+  await P.kanbanBoard.updateMany({ where: { tenantId: tid, id: { in: [...otherBoards, boardId] } }, data: { status: "ARCHIVED" } }).catch(() => null);
   const nBefore = await P.appNotification.count({ where: { tenantId: tid } });
   const L2 = await mkCust("ผิดหวังสอง", E.units.kata);
   const s6 = await sale(45);
@@ -173,7 +190,7 @@ try {
   made.reviews.push(rqL2?.reviewId); made.ledgerKeys.push(`review:${rqL2?.reviewId}`);
   const subL2 = await R.submitReview({ token: rqL2.token, rating: 1, body: "แย่มาก" });
   const rowL2 = await rv(rqL2.reviewId);
-  await P.kanbanBoard.updateMany({ where: { tenantId: tid, id: boardId }, data: { status: "ACTIVE" } }).catch(() => null);
+  await P.kanbanBoard.updateMany({ where: { tenantId: tid, id: { in: [...otherBoards, boardId] } }, data: { status: "ACTIVE" } }).catch(() => null);
   await R.setReviewSettings(ctx, owner, { escalateBoardId: boardId });
   chk("M3.4-S4.3", "ไม่มีบอร์ดใช้ได้ (escalateBoardId null + บอร์ดถูกเก็บ) → status ESCALATED kanbanCardId null + AppNotification แจ้งผู้จัดการ +1 (title ไทย) · ไม่ throw ให้ลูกค้า (submit สำเร็จ)", subL2?.escalated === true && rowL2?.status === "ESCALATED" && rowL2.kanbanCardId === null && (await P.appNotification.count({ where: { tenantId: tid } })) === nBefore + 1, "แจ้งแทนการ์ด", `sub=${JSON.stringify(subL2)} st=${rowL2?.status}/${rowL2?.kanbanCardId} notif=${await P.appNotification.count({ where: { tenantId: tid } })}/${nBefore + 1}`);
 

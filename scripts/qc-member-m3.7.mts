@@ -80,6 +80,8 @@ try {
   let accSys = await prisma.appSystem.findFirst({ where: { tenantId: tid, type: "ACCOUNT" as Any } });
   if (!accSys) { accSys = await sys.createSystem(tid, "ACCOUNT", "บัญชี (MB QC)"); for (const u of [E.units.patong, E.units.kata]) await sys.linkUnit(tid, accSys!.id, u); await accSvc.saveSettings(tid, accSys!.id, { orgPrefix: "บริษัท", orgName: "สยามไดฟ์ เมมเบอร์ คิวซี จำกัด", taxId: "0835565009999", branchCode: "00000", vatRegistered: false, vatRateBp: 700 }); await gl.ensureAccounting({ tenantId: tid, systemId: accSys!.id }); }
   const ACC = accSys!.id;
+  // ORACLE-EDIT M3.7-S2.1: ผังบัญชีถูก ensure เฉพาะตอนข้อสอบสร้างระบบบัญชีเอง · ถ้าร้าน QC มีระบบบัญชีอยู่แล้ว (เช่น seed CRM สร้าง "บัญชี · CRM QC") จะผูก POS เข้ากับระบบที่ไม่มีผัง → consumer pos.sale.paid throw "ยังไม่ได้ seed ผังบัญชี" → ขั้นสมาชิก (แต้ม/สแตมป์/ประวัติ) ไม่ทำงานทั้งร้าน · ensure เสมอ (idempotent)
+  await gl.ensureAccounting({ tenantId: tid, systemId: ACC });
   if (!(await P.accountSystemLink.findFirst({ where: { tenantId: tid, systemId: ACC, linkedKind: "POS", linkedId: POS } }))) await P.accountSystemLink.create({ data: { tenantId: tid, systemId: ACC, linkedKind: "POS", linkedId: POS } });
 
   // ═══ S1 ทะเบียน · events ═══

@@ -245,6 +245,32 @@ if (needsCrmSeed.length) {
       console.log(seed.out.split("\n").slice(-25).join("\n"));
     }
   }
+  // ORACLE-EDIT qc-all (12 ก.ย.): seed CRM ต่อยอด "ร้าน QC สมาชิก" ร้านเดียวกัน · ดีลที่ปิดได้ของ seed ยิง `crm.deal.won`
+  //   → consumer ของ M3.7 สร้างสมาชิกใหม่ (source CRM) ให้อัตโนมัติ (พฤติกรรมที่ถูกต้องของฟีเจอร์)
+  //   แต่ทำให้ฐาน "สมาชิก 60 คน" ของชุดข้อมูลสมาชิกเพี้ยน ⇒ ชุดที่นับทั้งระบบ (m1.1 S3.x · m1.5 · m1.9 · m1.11) แดงทุกครั้งที่รันหลัง seed CRM
+  //   ⇒ ระบายคิวให้จบแล้วคืนฐานสมาชิกกลับ 60 (ลบเฉพาะสมาชิกที่เกิดจากดีล — ข้อมูล CRM (contact/deal) ไม่ถูกแตะ)
+  if (!crmSeedBlocked) {
+    try {
+      const { prisma } = await import("@/lib/core/db");
+      const { drainAll } = await import("@/lib/outbox-consumers");
+      for (let i = 0; i < 5; i += 1) { const { processed } = await drainAll(); if (processed === 0) break; }
+      const P = prisma as unknown as Record<string, { deleteMany: (a: unknown) => Promise<{ count: number }>; findMany: (a: unknown) => Promise<{ id: string; partyId: string | null }[]> }>;
+      const mq2 = (await import("./member-qc-env.mts" as string)) as { resolveMemberScope: (p: unknown) => Promise<{ tenantId: string; systemId: string } | null> };
+      const sc = await mq2.resolveMemberScope(prisma);
+      if (sc) {
+        const rows = await P.customer.findMany({ where: { tenantId: sc.tenantId, memberSystemId: sc.systemId, source: "CRM" }, select: { id: true, partyId: true } });
+        const ids = rows.map((r) => r.id);
+        if (ids.length) {
+          for (const mdl of ["memberActivity", "memberConsent", "memberAttribution", "memberTierHistory", "memberFieldValue", "memberChannelIdentity", "memberAccessLog", "pointBalance", "pointLedger", "referral"]) {
+            await P[mdl]?.deleteMany({ where: { customerId: { in: ids } } }).catch(() => null);
+          }
+          await P.customer.deleteMany({ where: { id: { in: ids } } }).catch(() => null);
+          console.log(`   ↩︎ คืนฐานสมาชิก: ลบสมาชิกที่ดีล CRM สร้างให้ ${ids.length} คน`);
+        }
+      }
+      await prisma.$disconnect();
+    } catch { /* ไม่ให้ขั้นเตรียมข้อมูลทำ qc-all ตาย */ }
+  }
   console.log(
     `   ${crmSeedBlocked ? "❌" : "✅"} เตรียมชุดข้อมูล QC CRM ${((Date.now() - t0) / 1000).toFixed(1)}s${crmSeedBlocked ? ` — ${crmSeedBlocked}` : ""}\n`,
   );

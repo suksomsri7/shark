@@ -82,6 +82,8 @@ try {
   const { drainOutbox } = await import("@/lib/core/outbox");
   const { consumers: CONS } = (await import("@/lib/outbox-consumers" as string)) as Any;
   const drain = async () => { await drainOutbox(CONS, { limit: 300 }); await drainOutbox(CONS, { limit: 300 }); };
+  // ORACLE-EDIT M2.6-S1.2: ข้อนี้วัด "ค่าปริยาย" — แถว GiftCardSettings ค้างจากรอบก่อน/harness ⇒ ลบก่อนอ่าน (restore ด้านล่างคืนค่าที่อ่านได้)
+  await P.giftCardSettings.deleteMany({ where: { tenantId: tid, systemId: SYS } }).catch(() => null);
   const set0 = await G.getSettings(ctx);
   restore.push(() => G.setSettings(ctx, owner, set0));
   const sellOk = async (input: Any) => { const r = await G.sell(ctx, owner, { satang: 100_000, payMethods: pay(100_000), unitId: E.units.patong, recipient: { print: true }, ...input }); if (r?.saleId) made.sales.push(r.saleId); return r; };
@@ -233,6 +235,8 @@ try {
     await gl.ensureAccounting({ tenantId: tid, systemId: accSys!.id });
   }
   const ACC = accSys!.id;
+  // ORACLE-EDIT M2.6-S4.x: ensure ผังบัญชีเสมอ (ไม่ใช่เฉพาะตอนสร้างระบบเอง) — ระบบบัญชีที่ seed อื่นสร้างไว้ยังไม่มีผัง ⇒ ผูก POS แล้วคิวบิลค้างทั้งร้าน
+  await gl.ensureAccounting({ tenantId: tid, systemId: ACC });
   const link = await P.accountSystemLink.findFirst({ where: { tenantId: tid, systemId: ACC, linkedKind: "POS", linkedId: POS } });
   if (!link) await P.accountSystemLink.create({ data: { tenantId: tid, systemId: ACC, linkedKind: "POS", linkedId: POS } });
   await G.setSettings(ctx, owner, { accountingLink: true });

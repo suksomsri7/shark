@@ -170,6 +170,10 @@ if (WO === "3.4") {
       if (TMP34.boardId) await R34.setReviewSettings(ctx34, ownerActor34, { escalateBoardId: TMP34.boardId });
     } catch (e) { console.log(`⚠️ เตรียมบอร์ด 3.4 ไม่สำเร็จ: ${(e as Error).message}`); }
     const sales = await prisma.posSale.findMany({ where: { tenantId: E.tenantId, status: "PAID" as Any, memberId: { in: E.members.slice(0, 6).map((x: Any) => x.id) } }, orderBy: { createdAt: "asc" }, take: 6 });
+    // ORACLE-EDIT M3.4-S9.1 (harness): บิลที่มีรีวิวค้างจากรอบก่อน → requestReview ไม่คืน token ⇒ ไม่มีสเปค LIFF ให้ถ่าย · ล้างรีวิวของบิลชุดนี้ก่อนเตรียม
+    { const P34 = prisma as Any; const old34 = (await P34.memberReview.findMany({ where: { tenantId: E.tenantId, refType: "PosSale", refId: { in: sales.map((x: Any) => x.id) } }, select: { id: true } }).catch(() => [])) as Any[];
+      const oid34 = old34.map((r) => r.id);
+      if (oid34.length) { await P34.memberActivity.deleteMany({ where: { tenantId: E.tenantId, module: "review", refId: { in: oid34 } } }).catch(() => null); await P34.memberReview.deleteMany({ where: { id: { in: oid34 } } }).catch(() => null); } }
     const ratings = [5, 2, 5, 4, 2, 5]; const bodies = ["ครูสอนดีมาก อุปกรณ์พร้อม แนะนำเลยครับ", "รอคิวรับอุปกรณ์นานเกินไป พนักงานดูวุ่นมาก", "ทริปดีมาก จุดดำน้ำสวย ทีมงานดูแลดี", "โดยรวมดี แต่เวลานัดคลาดเคลื่อนไปหน่อย", "อุปกรณ์เก่าไปหน่อย ชุดยางเริ่มขาด", "ครูใจเย็น สอนละเอียด ประทับใจมากค่ะ"];
     for (const [i, sl] of sales.entries()) {
       const rq = await R34.requestReview(ctx34, { customerId: sl.memberId, refType: "PosSale", refId: sl.id, unitId: sl.unitId }, { deps: { line: async () => ({ ok: true }) } }).catch(() => null);
