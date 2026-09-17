@@ -420,11 +420,11 @@ const compose =
         tenantId: evt.tenantId,
         detail: errDetail(e),
       });
-      errors.push(e);
+      // 🔴 Fable (ตรวจรับ S2): ของแถมล้ม = WARN เท่านั้น **ไม่โยนต่อ** — คงสัญญาเดิมของ compose
+      //    ("ของแถมพังห้ามพา consumer หลักล้ม") · ถ้าโยน งานหลักที่สำเร็จแล้วจะถูก retry ซ้ำเพราะฟีเจอร์เสริม
     }
-    if (errors.length === 1) throw errors[0];
-    // หลายขั้นล้มพร้อมกัน → ข้อความของขั้นแรกต้องมาก่อน (คนอ่าน `OutboxEvent.lastError` ต้องเห็นเหตุต้นทาง)
-    if (errors.length > 1) throw new Error(errors.map((e) => (e instanceof Error ? e.message : String(e))).join(" · "));
+    // งานเดิมล้ม → โยนท้ายสุด (หลังของแถมวิ่งแล้ว) ให้คิว retry ตามเดิม
+    if (errors.length) throw errors[0];
   };
 
 /**
