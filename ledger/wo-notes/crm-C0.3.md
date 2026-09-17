@@ -33,7 +33,7 @@
 | D9 | ผู้ตรวจไม่มี BLOCKER | ✅ | รอบแรก: **BLOCKER 1 (บั๊กเงิน) + SHOULD-FIX 5** → แก้ครบ 9 จุด → รอบสอง (ตรวจเฉพาะรอบแก้) ดู §7 |
 | D10 | เอกสาร/ทะเบียน | ✅ | ไม่มี op/สิทธิ์/event ใหม่ · `ALLOWED_EDGES` มีเหตุผลครบทุกเส้น |
 | D11 | wo-notes + คืนสภาพ QC | ✅ | ไฟล์นี้ · `qc-member-m1.9` 26/26 (วัดหลังระบายคิวและหลังจบทุกอย่าง) · ข้อสอบสร้างร้านชั่วคราวของตัวเองแล้วกวาดลบครบ (`C0.3-CLEAN`) |
-| D12 | commit → push → Vercel READY | ⏳ | §10 |
+| D12 | commit → push → Vercel READY | ✅ | `a30a0a6` (+ `67f57ba` บันทึก hash · WIP `99b99d3`) · push `session/crm` + `main` · deploy ใหม่ขึ้นจริง 23:21 UTC (`dpl_CbQBE…` → `dpl_5AQGZ…`) · `/api/health` 200 `{"ok":true,"db":true,"outboxPending":0}` · ไม่มี migration |
 
 ## 4. กลุ่มข้อสอบ X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล N-A |
