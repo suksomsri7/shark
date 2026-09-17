@@ -404,3 +404,146 @@ export async function mergeParties(
   });
   return res.count > 0;
 }
+
+// ─────────────────────── แก้ข้อมูลติดต่อของ Party (WO CRM v2 · C0.3 ส่วน E) ───────────────────────
+
+/**
+ * แก้ **เฉพาะช่องที่ส่งมา** ของ Party หนึ่งราย (ชื่อ/เบอร์/อีเมล) — ใช้จากฟอร์มแก้ผู้ติดต่อของ CRM
+ *
+ * 🔴 กติกาที่ห้ามพลาด (ใบสั่ง C0.3 ส่วน E):
+ *  1) **partial ต้องไม่ล้างช่องอื่น** — ช่องที่เป็น `undefined` = ไม่แตะเลย (ไม่ใช่ "เขียนทับด้วย null")
+ *     ส่ง `null`/`""` มาตรง ๆ = ตั้งใจล้างช่องนั้น (เบอร์ถูกล้าง → `phoneNorm` ถูกล้างตามในคำสั่งเดียวกัน
+ *     ไม่งั้นจะเหลือกุญแจจับคู่ค้างชี้เบอร์ที่ไม่มีอยู่แล้ว)
+ *  2) เบอร์ต้อง normalize ด้วย `normalizePartyPhone` ตัวเดียวกับ `findOrCreate` แล้วเขียน `phoneNorm`
+ *     — `phoneNorm` คือกุญแจที่ทุกตัวหาคู่ซ้ำใช้ · ลืมเขียน = คนซ้ำหลุดจากจอ "รวมผู้ติดต่อซ้ำ" เงียบ ๆ
+ *  3) เบอร์/อีเมลใหม่ไป**ชนกับ Party รายอื่นของร้านเดียวกัน** = ห้ามล้มคำสั่ง (ฟอร์มแก้ผู้ติดต่อของ CRM
+ *     จะแก้อะไรไม่ได้เลยทั้งที่ผู้ใช้กรอกถูก) ⇒ เขียนค่าใหม่ตามที่สั่ง แล้ว**บันทึกคู่ "อาจเป็นคนเดียวกัน"**
+ *     ลง `PartyMergeCandidate` ให้ร้านไปตัดสินที่หน้ารวมผู้ติดต่อซ้ำแทน
+ *  4) `client` (tx) ที่ส่งมาต้องถูกใช้จริง — ผู้เรียกผูกการแก้นี้ไว้ใน transaction ของตัวเอง
+ *     (rollback แล้วต้องไม่มีอะไรเปลี่ยน · รวมถึงแถว merge candidate ที่บันทึกในคำสั่งเดียวกัน)
+ *  5) id ของร้านอื่น/ไม่มีอยู่ → ไม่แตะแถวใด ๆ แล้วคืนเหตุผลไทย (ไม่ throw · ไม่บอกว่ามีอยู่แต่ห้ามแก้)
+ *  6) **id ที่ถูกรวมไปแล้วต้องเด้งไปตัวปลายทางก่อนเขียนเสมอ** (`resolveCanonical`) — ไม่ใช่ปฏิเสธ:
+ *     ผู้เรียก (ฟอร์มแก้ผู้ติดต่อของ CRM / ตัวเชื่อมของโมดูลอื่น) ถือ id ที่ตัวเองเก็บไว้ ซึ่งอาจถูกรวมทีหลัง
+ *     โดยไม่มีใครไปไล่แก้ id ที่เก็บไว้ทุกที่ · เขียนลงแถวที่ถูกรวมไปแล้ว = เขียนลง "ป้ายหลุมศพ" ที่ไม่มีใคร
+ *     อ่านอีกแล้ว (ทุกจอตาม `mergedIntoId` ไปตัวปลายทาง) ⇒ ผู้ใช้เห็นว่ากดบันทึกสำเร็จ แต่ข้อมูลไม่เปลี่ยน
+ *     เลือก "เด้งไปตัวปลายทาง" แทน "ปฏิเสธ" เพราะนั่นคือสิ่งที่ผู้ใช้ตั้งใจจริง ๆ (แก้เบอร์ของ *คนคนนี้*)
+ *     และเป็นพฤติกรรมเดียวกับที่ `mergeParties` ใช้อยู่แล้ว · แถวที่ถูกเขียนจริงคืนกลับไปที่ `partyId`
+ *
+ * 🔴 ไม่ log ข้อมูลติดต่อ (PDPA · กลุ่ม X8) — ทั้งไฟล์นี้ไม่พิมพ์เบอร์/อีเมลลง console
+ */
+export type UpdateContactInfoInput = {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+};
+
+export type UpdateContactInfoResult = {
+  ok: boolean;
+  reason?: string;
+  /** แถวที่ถูกเขียนจริง — ต่างจาก `partyId` ที่ส่งเข้ามาเมื่อ id นั้นถูกรวมไปแล้ว (ดูข้อ 6) */
+  partyId?: string;
+  /** ช่องที่ถูกเขียนจริง (ค่าเดิมเท่ากับค่าใหม่ = ไม่นับ ไม่เขียน) */
+  changed: ("name" | "phone" | "email")[];
+  /** แถว PartyMergeCandidate ที่บันทึกเพราะค่าที่ใหม่ไปชนกับรายอื่น */
+  mergeCandidateIds: string[];
+};
+
+export async function updateContactInfo(
+  tenantId: string,
+  partyId: string,
+  input: UpdateContactInfoInput,
+  client?: Prisma.TransactionClient,
+): Promise<UpdateContactInfoResult> {
+  const empty: UpdateContactInfoResult = { ok: false, changed: [], mergeCandidateIds: [] };
+  const asked = (partyId ?? "").trim();
+  if (!tenantId || !asked) return { ...empty, reason: "ไม่พบผู้ติดต่อรายนี้" };
+  const db = dbFor(tenantId, client);
+
+  // ข้อ 6: ตามสาย `mergedIntoId` ให้สุดก่อนเขียน — id ที่ถูกรวมไปแล้วคือแถวที่ไม่มีจอไหนอ่านอีกแล้ว
+  // (`resolveCanonical` ผูก `tenantId` ในทุก query และคืน id เดิมเมื่อไม่พบ/ไม่ใช่ของร้านนี้ ⇒ ด่านร้านยังอยู่ครบ)
+  const id = await resolveCanonical(tenantId, asked, db);
+
+  // where ผูก tenantId ตรง ๆ (ไม่พึ่งแค่ tenantDb inject — client ที่ผู้เรียกส่งมาอาจเป็น tx ดิบ)
+  const current = await db.party.findFirst({
+    where: { tenantId, id },
+    select: { id: true, name: true, phone: true, phoneNorm: true, email: true },
+  });
+  if (!current) return { ...empty, reason: "ไม่พบผู้ติดต่อรายนี้" };
+
+  const data: { name?: string; phone?: string | null; phoneNorm?: string | null; email?: string | null } = {};
+  const changed: ("name" | "phone" | "email")[] = [];
+
+  if (input.name !== undefined) {
+    const name = (input.name ?? "").trim();
+    // ชื่อว่าง = ไม่มีอะไรให้เขียน (Party.name ห้ามว่าง) — เงียบ ไม่ throw ไม่ล้างชื่อเดิมทิ้ง
+    if (name && name !== current.name) {
+      data.name = name;
+      changed.push("name");
+    }
+  }
+
+  // 🔴 `newPhoneNorm`/`newEmail` = "ค่าที่ **เปลี่ยน** ไปเป็น" ไม่ใช่ "ค่าที่ผู้เรียกพิมพ์มาด้วย" — ต้องตั้ง
+  //    ข้างใน if ที่ push `changed` เท่านั้น: ฟอร์มส่งทุกช่องกลับมาทุกครั้ง (ผู้ใช้แก้แค่ชื่อ เบอร์เดิมก็ติดมา
+  //    ด้วย) ถ้าตั้งไว้ข้างนอก ทุกครั้งที่กดบันทึกจะไปสแกนหาคู่ชนของ "เบอร์เดิม" แล้วบันทึก
+  //    PartyMergeCandidate ใหม่ทั้งที่ไม่มีอะไรเปลี่ยนเลย ⇒ จอ "รวมผู้ติดต่อซ้ำ" ถูกถมด้วยคู่ที่ร้านเคย
+  //    ตัดสินไปแล้ว (แถว REJECTED ถูกปลุกกลับมา) จนของจริงจมหาย
+  let newPhoneNorm: string | null = null;
+  if (input.phone !== undefined) {
+    const raw = (input.phone ?? "").trim();
+    const norm = normalizePartyPhone(raw) || null;
+    if (raw !== (current.phone ?? "") || norm !== current.phoneNorm) {
+      data.phone = raw || null;
+      data.phoneNorm = norm; // ล้างเบอร์ = ล้างกุญแจจับคู่ในคำสั่งเดียวกัน
+      changed.push("phone");
+      newPhoneNorm = norm;
+    }
+  }
+
+  let newEmail: string | null = null;
+  if (input.email !== undefined) {
+    const email = (input.email ?? "").trim() || null;
+    if (email !== current.email) {
+      data.email = email;
+      changed.push("email");
+      newEmail = email;
+    }
+  }
+
+  if (changed.length > 0) {
+    // updateMany + where ที่มี tenantId = แก้ข้ามร้านไม่ได้แม้ผู้เรียกส่ง client ดิบมา
+    await db.party.updateMany({ where: { tenantId, id }, data });
+  }
+
+  // ── ค่าที่ชนกับรายอื่น → บันทึกคู่ ไม่ใช่ล้มคำสั่ง (ข้อ 3) ──
+  const mergeCandidateIds: string[] = [];
+  const seen = new Set<string>();
+  const noteCandidate = async (otherId: string, reason: PartyMergeReason) => {
+    if (!otherId || otherId === id || seen.has(otherId)) return;
+    seen.add(otherId);
+    const row = await recordMergeCandidatePair(tenantId, id, otherId, reason, db);
+    if (row) mergeCandidateIds.push(row.id);
+  };
+
+  if (newPhoneNorm && newPhoneNorm.length >= 8) {
+    const clash = await db.party.findMany({
+      where: { tenantId, phoneNorm: newPhoneNorm, mergedIntoId: null, id: { not: id } },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: 5,
+    });
+    for (const c of clash) await noteCandidate(c.id, "PHONE");
+  }
+  if (newEmail) {
+    const clash = await db.party.findMany({
+      where: { tenantId, email: newEmail, mergedIntoId: null, id: { not: id } },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: 5,
+    });
+    // 🔴 `PartyMergeReason` ไม่มีค่า EMAIL (เพิ่มไม่ได้ในใบนี้ — ห้าม migration) ⇒ ใช้ `NAME_SIMILAR`
+    //    เป็นเหตุผล "หลักฐานอ่อน ๆ อย่างอื่น" แบบเดียวกับที่ member/profile.ts:1471 ใช้อยู่แล้ว
+    for (const c of clash) await noteCandidate(c.id, "NAME_SIMILAR");
+  }
+
+  return { ok: true, partyId: id, changed, mergeCandidateIds };
+}

@@ -2,6 +2,7 @@ import { tenantDb } from "@/lib/core/db";
 import { emitOutboxOutsideTx } from "@/lib/core/outbox";
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
+import { thaiDateKey } from "@/lib/ui/date";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1): จาก name/phone/email เท่านั้น — **ห้ามส่ง nationalId/PDPA อื่น**
 // เรียกผ่าน facade เท่านั้น (F2.2)
@@ -719,4 +720,61 @@ export async function monthlyAttendance(
     workDays,
     unjudgedCount: ins.filter((e) => e.judgement == null || e.judgement === "NO_SCHEDULE").length,
   };
+}
+
+// ─────────── ทางเข้าระดับร้าน สำหรับโมดูลอื่น (WO CRM v2 · C0.3 ส่วน C) ───────────
+// 🔴 สองตัวล่างนี้รับ **tenantId เปล่า ๆ** (ไม่มี systemId) เพราะผู้เรียกคือ CRM ซึ่งรู้แค่ "userId คนนี้"
+//    ไม่รู้ว่าร้านนี้มีระบบ HR ระบบไหน ⇒ ไล่ระบบ HR ของร้านก่อน แล้วค่อย query แบบผูก systemId ตามปกติ
+//    (HrEmployee/HrLeave เป็น system-scoped ⇒ `tenantDb({tenantId})` เฉย ๆ จะโยน fail-closed —
+//     นั่นคือพฤติกรรมที่ถูก ห้ามหลบด้วยการลาก prisma ดิบเข้ามาในไฟล์นี้ · chokepoint F5.1)
+
+/** พนักงานที่ผูกกับ user คนนี้ในร้านนี้ — ไม่มี/ข้ามร้าน → null (ของที่ยัง active มาก่อนเสมอ) */
+export async function employeeOfUser(
+  tenantId: string,
+  userId: string,
+): Promise<{ employeeId: string; systemId: string; name: string } | null> {
+  const uid = (userId ?? "").trim();
+  if (!tenantId || !uid) return null;
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({
+    where: { tenantId, type: "HR" },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const s of systems) {
+    const row = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findFirst({
+      where: { linkedUserId: uid },
+      // ที่ยังทำงานอยู่มาก่อน — คนที่ลาออกแล้วยังคืนได้ถ้าไม่มีแถวอื่น (ผู้เรียกจะได้รู้ว่า "เคยเป็นใคร")
+      orderBy: [{ active: "desc" }, { createdAt: "asc" }],
+      select: { id: true, systemId: true, name: true },
+    });
+    if (row) return { employeeId: row.id, systemId: row.systemId, name: row.name };
+  }
+  return null;
+}
+
+/**
+ * "คนนี้ลาอยู่ไหม ณ เวลานั้น" — นับเฉพาะใบลาที่ **APPROVED** (PENDING/REJECTED ไม่นับ)
+ *
+ * 🕐 กับดักวันที่ไทย (ผู้คุมงานตัดสินไว้ในใบ C0.3 ข้อ 4): `HrLeave.fromDate/toDate` เป็น `@db.Date`
+ *    = เที่ยงคืน **UTC** ของวันนั้น ส่วน `at` เป็นเวลาจริง ⇒ เทียบ `toDate >= at` ดิบ ๆ จะตอบผิด
+ *    (ลาวันเดียว 20 ก.ย. ถามตอนเที่ยงวันที่ 20 ตามเวลาไทย → `toDate` = 20 ก.ย. 00:00Z < at ⇒ ตอบ "ไม่ลา"
+ *     แล้วระบบก็แจกงานให้คนที่ไม่อยู่) และช่วง 00:00–07:00 ตามเวลาไทยยังเป็น "เมื่อวาน" ในสายตา UTC อีกด้วย
+ *    ⇒ แปลง `at` เป็น **วันตามปฏิทินไทย** ด้วย `thaiDateKey` (+07:00 · helper กลางของรีโป) ก่อน
+ *    แล้วค่อยแปลงกลับเป็นเที่ยงคืน UTC ของวันนั้น ซึ่งเป็นรูปเดียวกับที่คอลัมน์ `@db.Date` เก็บ
+ *    ⇒ `fromDate <= วันไทย <= toDate` จึงเป็นการเทียบ "วันกับวัน" ไม่ใช่ "วันกับเวลา" (รวมปลายทั้งสองข้าง)
+ */
+export async function isOnLeave(tenantId: string, userId: string, at: Date): Promise<boolean> {
+  const emp = await employeeOfUser(tenantId, userId);
+  if (!emp) return false;
+  const when = at instanceof Date && Number.isFinite(at.getTime()) ? at : new Date();
+  const dayTh = toDbDate(thaiDateKey(when)); // วันไทยของ `at` ในรูปเดียวกับคอลัมน์ @db.Date
+  const hit = await tenantDb({ tenantId, systemId: emp.systemId }).hrLeave.count({
+    where: {
+      employeeId: emp.employeeId,
+      status: "APPROVED",
+      fromDate: { lte: dayTh },
+      toDate: { gte: dayTh },
+    },
+  });
+  return hit > 0;
 }

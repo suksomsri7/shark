@@ -1122,3 +1122,27 @@ export async function setPrimaryImage(ctx: Ctx, itemId: string, imageId: string)
   if (writes.length) await db.$transaction(writes);
   return { ok: true };
 }
+
+// ── ค้นแคตตาล็อกจากคำเดียว (WO CRM v2 · C0.3 ส่วน D) ──
+// 🔴 ต่างจาก `findItemByBarcode` (เทียบบาร์โค้ดตรงตัว สำหรับเครื่องยิง) — ตัวนี้คือช่องค้นหาของ **คน**
+//    ที่กำลังหยิบของลงบรรทัดใบเสนอราคาของ CRM ⇒ ค้นทั้ง ชื่อ · SKU · บาร์โค้ด ในคำสั่งเดียว
+//    และคืน **ทั้งสินค้าและบริการ** (บรรทัดดีลขายได้ทั้งสองชนิด — ตัวกรองชนิดอยู่ที่ listItems/listServices)
+// 🔴 ของที่เลิกขาย (`archivedAt`) ไม่โผล่เด็ดขาด · เพดาน 50 แถวเสมอ (ผู้เรียกขอ 999 ก็ได้ 50)
+//    — ช่องค้นหาที่อ่านทั้งคลังคือ query ที่ทำให้หน้าจอค้างตอนร้านมีของเป็นหมื่นชิ้น
+export async function searchItems(ctx: Ctx, q: string, take = 20) {
+  const query = (q ?? "").trim();
+  if (!query) return [];
+  const limit = Math.min(Math.max(1, Math.floor(take) || 1), 50);
+  return tenantDb(ctx).invItem.findMany({
+    where: {
+      archivedAt: null,
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { sku: { contains: query, mode: "insensitive" } },
+        { barcode: { contains: query, mode: "insensitive" } },
+      ],
+    },
+    orderBy: [{ kind: "asc" }, { name: "asc" }],
+    take: limit,
+  });
+}

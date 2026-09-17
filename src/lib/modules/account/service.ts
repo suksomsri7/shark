@@ -17,6 +17,7 @@ import {
 // WO 4.3 (§8.2) — ขาย "รายการจัดชุด" = ตัดสต็อกส่วนประกอบ (ไฟล์แยกกัน import วน service↔product)
 import { consumeBundleComponentsInTx } from "./bundle";
 import type {
+  ActorType,
   AccountDocType,
   AccountDocStatus,
   AccountVatMode,
@@ -772,8 +773,13 @@ export function formatContactCode(seq: number): string {
  *    (บทเรียน `reference_atomic_counter_single_statement`: ตัวนับร่วมห้ามเชื่อ SELECT-then-INSERT)
  * นับรวมแถวที่ปิดใช้งานแล้วด้วย เพื่อไม่ให้เลขเดิมถูกนำกลับมาใช้ซ้ำโดยไม่ตั้งใจ
  */
-export async function nextContactCode(systemId: string): Promise<string> {
-  const rows = await prisma.accountContact.findMany({
+// CRM v2 · C0.3: พารามิเตอร์ `db` เป็นของเพิ่ม (ไม่ส่ง = ใช้ client เดิมเป๊ะ) — ผู้เรียกที่อยู่ใน
+//   transaction ต้องอ่านผ่าน `tx` ตัวเดียวกัน ไม่งั้นจะกิน connection ที่สองจากพูล (ดู ensureAccountContact)
+export async function nextContactCode(
+  systemId: string,
+  db: Prisma.TransactionClient = prisma,
+): Promise<string> {
+  const rows = await db.accountContact.findMany({
     where: { systemId, code: { not: null } },
     select: { code: true },
   });
@@ -784,7 +790,7 @@ export async function nextContactCode(systemId: string): Promise<string> {
   }
   // ยังไม่ backfill (ไม่มีแถวไหนมี code เลย) → เริ่มนับต่อจากจำนวนผู้ติดต่อที่มีอยู่ ไม่ใช่ 1
   // (ไม่งั้นผู้ติดต่อใหม่จะได้ C00001 ชนกับเลขที่หน้ารายการคำนวณสดให้แถวเก่าอยู่ — WO 3.2)
-  if (max === 0) max = await prisma.accountContact.count({ where: { systemId } });
+  if (max === 0) max = await db.accountContact.count({ where: { systemId } });
   return formatContactCode(max + 1);
 }
 
@@ -2261,11 +2267,27 @@ export async function issueDocument(
 }
 
 // ใบเสนอราคา: ตอบรับ/ปฏิเสธ
+//
+// CRM v2 · C0.3 (additive): `opts.audit` = หลักฐานผู้ตอบ (ใครเซ็น · จาก ip ไหน · ด้วยเบราว์เซอร์อะไร)
+//   🔴 ต้องเขียน **ในธุรกรรมเดียวกับการเปลี่ยนสถานะ**: ถ้าเขียนทีหลัง (เช่นผ่าน `writeAudit` ซึ่งกลืน error
+//      ทุกชนิดโดยตั้งใจ) ใบที่ลูกค้ากด "ตอบรับ" จากพอร์ทัลอาจกลายเป็น ACCEPTED โดยไม่มีหลักฐานว่าใครกด
+//      — ช่องเดียวบน facade นี้ที่มีไว้เป็น "หลักฐานทางกฎหมาย" จึงยอมให้หายไม่ได้
+//      หลักฐานเขียนไม่ลง = ธุรกรรมย้อนกลับทั้งใบ (สถานะไม่ขยับ) ซึ่งเป็นสัญญาที่ถูกต้องของช่องนี้
+//   ไม่ส่ง `opts` = พฤติกรรมเดิมเป๊ะ (ผู้เรียกเดิมทุกรายไม่ต้องแก้อะไร · ไม่มีแถว audit เพิ่ม)
 export async function setQuotationResponse(
   tenantId: string,
   systemId: string,
   id: string,
   accepted: boolean,
+  opts?: {
+    audit?: {
+      action: string;
+      actorType?: ActorType;
+      actorId?: string | null;
+      /** 🔴 PDPA (X8): ห้ามใส่เบอร์/อีเมล/เนื้อความของลูกค้า — ใส่ได้แค่หลักฐานการลงนาม */
+      after?: unknown;
+    };
+  },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId } });
   if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
@@ -2282,6 +2304,20 @@ export async function setQuotationResponse(
       },
     });
     await emitQuotationResponded(tx, { tenantId, systemId }, { id, docNo: doc.docNo, accepted });
+    // หลักฐานผู้ตอบ (ถ้าผู้เรียกส่งมา) — โครงแถวเดียวกับ `core/audit.writeAudit` แต่ผูกกับธุรกรรมนี้
+    if (opts?.audit) {
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorType: opts.audit.actorType ?? "USER",
+          actorId: opts.audit.actorId ?? null,
+          action: opts.audit.action,
+          targetType: "AccountDocument",
+          targetId: id,
+          after: (opts.audit.after ?? undefined) as never,
+        },
+      });
+    }
   });
   return { ok: true };
 }
@@ -3709,6 +3745,23 @@ export async function findOrCreateCustomerContact(
     if (byNameEmail) return backfillContactPartyId(ctx, byNameEmail, c);
   }
 
+  // 🔴 CRM v2 · C0.3: ผู้เรียกที่ "รู้ partyId" ต้องสร้างผ่านประตูเดียวกับ `ensureAccountContact`
+  //    (ล็อกที่ฐานข้อมูลต่อ `(systemId, partyId)`) ไม่งั้นจะมี **สองประตู** ที่ SELECT-then-INSERT บนกุญแจ
+  //    เดียวกัน: ใบเสนอราคาที่ออกพร้อมกับงาน sync ผู้ติดต่อของ Party เดียวกัน = ผู้ติดต่อ 2 ใบต่อ 1 ตัวตน
+  //    ⇒ เอกสารของลูกค้าแตกเป็นสองกอง และ `outstandingByContacts` รายงานยอดค้างเป็นสองก้อน
+  //    แถวที่ได้เหมือน `createContact` ทุกคอลัมน์ (kind/legalType/branchCode/phoneNorm/เลขที่/event เดียวกัน)
+  if (c.partyId) {
+    const ensured = await ensureAccountContact(ctx, {
+      partyId: c.partyId,
+      name: c.name,
+      taxId: c.taxId ?? null,
+      branchCode: c.branchCode ?? null,
+      phone: c.phone ?? null,
+      email: c.email ?? null,
+    });
+    return { id: ensured.id };
+  }
+
   return createContact({
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,
@@ -3723,6 +3776,199 @@ export async function findOrCreateCustomerContact(
 }
 export async function setDocExternalRef(docId: string, ref: { refSystemId: string; refType: string; refId: string }) {
   await prisma.accountDocument.update({ where: { id: docId }, data: ref });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRM v2 · C0.3-A — สิ่งที่โมดูลอื่น (CRM) ต้องใช้แต่ยังไม่มีในโมดูลบัญชี
+//   เรียกผ่าน facade `account/index.ts` เท่านั้น (F2.2) · additive ล้วน — ไม่มีผู้เรียกเดิมรายไหนพฤติกรรมเปลี่ยน
+// ═══════════════════════════════════════════════════════════════
+
+/** ข้อมูลเชื่อมโยงของเอกสาร 1 ใบ — event ของบัญชีส่งมาแค่ `documentId` ⇒ ผู้บริโภคฝั่ง CRM ต้องถามกลับ */
+export type DocLinkInfo = {
+  docId: string;
+  systemId: string;
+  docType: AccountDocType;
+  status: AccountDocStatus;
+  docNo: string | null;
+  contactId: string | null;
+  /** ตัวตนกลางของผู้ติดต่อในเอกสาร (AccountContact.partyId) — null = ผู้ติดต่อยังไม่ผูก Party/ไม่มีผู้ติดต่อ */
+  partyId: string | null;
+  sourceDocId: string | null;
+  refSystemId: string | null;
+  refType: string | null;
+  refId: string | null;
+  grandTotal: number;
+  paidTotal: number;
+};
+
+/**
+ * อ่านข้อมูลเชื่อมโยงของเอกสารด้วย tenant + id (ไม่ต้องรู้ systemId ล่วงหน้า — event ไม่ได้ส่งมาให้)
+ * ไม่พบ/ข้ามร้าน → `null` (ไม่ throw · ไม่บอกว่าเอกสารของร้านอื่นมีอยู่จริงไหม)
+ */
+export async function docLinkInfo(tenantId: string, docId: string): Promise<DocLinkInfo | null> {
+  if (!tenantId || !docId) return null;
+  const doc = await prisma.accountDocument.findFirst({
+    where: { id: docId, tenantId },
+    select: {
+      id: true,
+      systemId: true,
+      docType: true,
+      status: true,
+      docNo: true,
+      contactId: true,
+      sourceDocId: true,
+      refSystemId: true,
+      refType: true,
+      refId: true,
+      grandTotal: true,
+      paidTotal: true,
+      contact: { select: { partyId: true } },
+    },
+  });
+  if (!doc) return null;
+  return {
+    docId: doc.id,
+    systemId: doc.systemId,
+    docType: doc.docType,
+    status: doc.status,
+    docNo: doc.docNo,
+    contactId: doc.contactId,
+    partyId: doc.contact?.partyId ?? null,
+    sourceDocId: doc.sourceDocId,
+    refSystemId: doc.refSystemId,
+    refType: doc.refType,
+    refId: doc.refId,
+    grandTotal: doc.grandTotal,
+    paidTotal: doc.paidTotal,
+  };
+}
+
+export type EnsureAccountContactInput = {
+  /** ตัวตนกลางระดับ tenant (Party.id) — กุญแจเดียวของฟังก์ชันนี้ */
+  partyId: string;
+  name: string;
+  taxId?: string | null;
+  branchCode?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  legalType?: AccountLegalType;
+};
+
+/** กุญแจล็อกของ "หนึ่ง Party = หนึ่งผู้ติดต่อต่อสมุดบัญชี" — ต่อระบบบัญชี ไม่ใช่ต่อร้าน (สมุดคนละเล่มไม่ต้องรอกัน) */
+const ensureContactLockKey = (systemId: string, partyId: string) => `account:contact-party:${systemId}:${partyId}`;
+
+const findContactOfParty = async (
+  db: Prisma.TransactionClient,
+  ctx: { tenantId: string; systemId: string },
+  partyId: string,
+): Promise<{ id: string } | null> =>
+  db.accountContact.findFirst({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, archivedAt: null, mergedIntoId: null },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+/**
+ * ผู้ติดต่อฝั่งบัญชีของ Party หนึ่ง — มีอยู่แล้วคืนตัวเดิม ไม่มีก็สร้างให้ (idempotent ต่อ `(systemId, partyId)`)
+ *
+ * 🔴 AUDIT-CLASS X3: ยิงพร้อมกันหลายทาง **ข้ามโพรเซส** ต้องได้แถวเดียว
+ *    "อ่านแล้วค่อยสร้าง" ธรรมดาแตกเสมอที่ READ COMMITTED และ mutex/Map ในหน่วยความจำกันได้แค่โพรเซสตัวเอง
+ *    (บทเรียน H5 ของ RUN สมาชิก) ⇒ กันที่ **ฐานข้อมูล** ด้วย `pg_advisory_xact_lock` บนกุญแจ
+ *    `(systemId, partyId)` — ล็อกอยู่ที่เซิร์ฟเวอร์ Postgres จึงครอบทุกโพรเซส/ทุกเครื่องที่ต่อฐานเดียวกัน
+ *    (ตารางนี้ยังไม่มี unique index `(systemId, partyId)` และใบนี้เพิ่ม migration ไม่ได้ — ดูหมายเหตุใน
+ *     รายงานส่งมอบ C0.3: ถ้าจะแข็งกว่านี้ ต้องเพิ่ม partial unique index ในใบที่มี migration)
+ * 🔴 ภายใน transaction ใช้ `tx` อย่างเดียว ห้ามเรียกฟังก์ชันที่เปิด connection ใหม่ (เช่น `createContact`)
+ *    ไม่งั้นคนที่ถือล็อกจะไปรอ connection ที่ถูกคนที่รอล็อกถือไว้ = ค้างกันทั้งพูล
+ * 🔴 "อ่านซ้ำหลังได้ล็อก" ถูกต้องเพราะฐานนี้อยู่ระดับ **READ COMMITTED** (ค่าปริยายของ Postgres):
+ *    ทุกคำสั่งเห็นสิ่งที่ commit แล้ว ณ ตอนที่คำสั่งนั้นเริ่ม ⇒ คนที่เพิ่งได้ล็อกเห็นแถวของผู้ชนะ
+ *    ถ้าย้ายไป REPEATABLE READ/SERIALIZABLE snapshot จะถูกจับ **ก่อน** รอล็อก ⇒ อ่านซ้ำไม่เห็นของผู้ชนะ
+ *    และจะได้แถวซ้ำอีก (ตอนนั้นต้องเปลี่ยนไปพึ่ง unique index + ดัก P2002 แทน)
+ */
+export async function ensureAccountContact(
+  ctx: { tenantId: string; systemId: string },
+  input: EnsureAccountContactInput,
+): Promise<{ id: string; created: boolean }> {
+  const asked = (input.partyId ?? "").trim();
+  if (!asked) throw new Error("ต้องมีตัวตนกลาง (partyId) ก่อนจึงจะผูกผู้ติดต่อฝั่งบัญชีได้");
+  // 🔴 ตามสาย `mergedIntoId` ไปตัวจริงก่อนเสมอ: ผู้เรียก (consumer ของ CRM) อาจถือ id ของ Party ที่ถูก
+  //    "รวมผู้ติดต่อซ้ำ" ไปแล้ว — ถ้าใช้ id เก่าดื้อ ๆ จะได้ผู้ติดต่อใบที่สามผูกกับตัวตนที่ตายแล้ว
+  //    = แอบยกเลิกผลการรวมเงียบ ๆ (facade เดียวกันนี้ export `mergeContacts` อยู่ข้าง ๆ)
+  const partyId = await party.resolveCanonical(ctx.tenantId, asked);
+
+  // ทางลัด: เคยมีแล้วก็จบตรงนี้ (ไม่เปิด transaction/ไม่จับล็อก — เส้นทางปกติของผู้เรียกทุกคน)
+  const hit = await findContactOfParty(prisma, ctx, partyId);
+  if (hit) return { id: hit.id, created: false };
+
+  // เลขผู้เสียภาษีใช้กติกาเดียวกับ `createContact` เป๊ะ (13 หลัก) — ผิดรูปแบบต้องเด้งให้ผู้กรอกเห็น
+  // ไม่ใช่ถูกทิ้งเงียบ ๆ (ถ้าทิ้ง ผู้ติดต่อจะไม่มีเลขภาษีทั้งที่ผู้ใช้กรอกมา และออกใบกำกับไม่ได้ทีหลัง)
+  const taxId = normalizeTaxId(input.taxId);
+  if (taxId && !/^\d{13}$/.test(taxId)) throw new Error("เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลข 13 หลัก");
+  const validTaxId = taxId || null;
+  const branchCode = input.branchCode || "00000";
+  const legalType: AccountLegalType = input.legalType ?? "COMPANY";
+  const lockKey = ensureContactLockKey(ctx.systemId, partyId);
+
+  const attempt = async (withCode: boolean): Promise<{ id: string; created: boolean }> =>
+    prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+      // อ่านซ้ำ "หลังได้ล็อก" — คนที่ชนะรอบนี้สร้างไปแล้ว คนที่เหลือต้องเห็นของเขา
+      const again = await findContactOfParty(tx, ctx, partyId);
+      if (again) return { id: again.id, created: false };
+      // เลขผู้เสียภาษี+สาขา มี partial unique index อยู่ที่ฐาน ⇒ ชนแล้ว insert พัง
+      //   ⇒ ใช้ผู้ติดต่อรายนั้นแล้วเติม partyId ให้ (ลำดับจับคู่เดียวกับ findOrCreateCustomerContact ข้อ 1)
+      let taxIdForInsert = validTaxId;
+      if (validTaxId) {
+        const byTax = await tx.accountContact.findFirst({
+          where: { tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null, taxId: validTaxId, branchCode },
+          select: { id: true, partyId: true },
+          orderBy: { createdAt: "asc" },
+        });
+        if (byTax && (byTax.partyId === null || byTax.partyId === partyId)) {
+          if (byTax.partyId === null)
+            await tx.accountContact.updateMany({ where: { id: byTax.id, partyId: null }, data: { partyId } });
+          return { id: byTax.id, created: false };
+        }
+        if (byTax) {
+          // 🔴 เลขภาษีเดียวกันแต่เป็นของ **ตัวตนอื่น** ที่ผูกไว้แล้ว: ห้ามคืนใบของเขา (เอกสารของอีกคนจะไป
+          //    โผล่ในชื่อคนนี้) และ insert พร้อมเลขภาษีก็ชน partial unique index ⇒ สร้างใบของ Party นี้
+          //    โดย **ไม่ใส่เลขภาษี** แล้วปล่อยให้ร้านไปตัดสินที่หน้า "รวมผู้ติดต่อซ้ำ"
+          //    (log ไม่มีเลขภาษี/เบอร์/อีเมล — PDPA X8 · มีแต่ id ของระบบ/ตัวตน)
+          taxIdForInsert = null;
+          console.warn(
+            `[account] เลขภาษีซ้ำกับผู้ติดต่อของตัวตนอื่น (system=${ctx.systemId} party=${partyId} contact=${byTax.id}) — สร้างผู้ติดต่อใหม่โดยไม่ใส่เลขภาษี`,
+          );
+        }
+      }
+      const code = withCode ? await nextContactCode(ctx.systemId, tx) : null;
+      const row = await tx.accountContact.create({
+        data: {
+          tenantId: ctx.tenantId,
+          systemId: ctx.systemId,
+          kind: "CUSTOMER",
+          legalType,
+          name: input.name,
+          taxId: taxIdForInsert,
+          branchCode,
+          ...contactWriteFields({ phone: input.phone ?? null }), // phone + phoneNorm คู่กันเสมอ (WO 0.3)
+          email: input.email ?? null,
+          partyId,
+          ...(code ? { code } : {}),
+        },
+      });
+      await emitContactCreated(tx, ctx, row);
+      return { id: row.id, created: true };
+    });
+
+  // เลขที่ผู้ติดต่อเป็น SELECT-then-INSERT ⇒ คนละ Party สองรายที่สร้างพร้อมกันได้เลขเดียวกันได้
+  //   (unique index ของ `code` เป็นตัวกันจริง) — ชนแล้ววนไปขอเลขถัดไป เหมือน `createContact`
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      return await attempt(true);
+    } catch (e) {
+      if (!isContactCodeConflict(e)) throw e;
+    }
+  }
+  return attempt(false); // ชน 6 รอบติด = ผิดปกติจริง — บันทึกโดยไม่มีเลขที่ ดีกว่าทำงานผู้เรียกหาย
 }
 
 // ═══════════════════════════════════════════════════════════════

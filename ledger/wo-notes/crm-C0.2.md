@@ -33,7 +33,7 @@
 | D9 | ผู้ตรวจไม่มี BLOCKER | ✅ | **"no BLOCKERs"** · ผู้ตรวจไล่กราฟโมดูลเองยืนยัน facade เพิ่มโหนดเดียวและไม่แตะ `@/lib/env`/`core/context` · ข้อ SHOULD-FIX ปิดครบ (§7) |
 | D10 | เอกสาร/ทะเบียน | ✅ | N-A — ไม่มี op/สิทธิ์/event ใหม่ |
 | D11 | wo-notes + คืนสภาพ QC | ✅ | ไฟล์นี้ · `qc-member-m1.9` 26/26 (วัดหลังระบายคิว) |
-| D12 | commit → push → Vercel READY | ✅ | ดู §10 |
+| D12 | commit → push → Vercel READY | ✅ | `9ea28f1` (+ `f09c4ee` บันทึก hash) · push `session/crm` + `main` · deploy ใหม่ขึ้นจริง 15:12 UTC (`dpl_33Xqe…` → `dpl_CbQBE…`) · `/api/health` 200 `{"ok":true,"db":true,"outboxPending":0}` · ไม่มี migration |
 
 ## 4. กลุ่มข้อสอบ X
 | กลุ่ม | เกี่ยว? | เหตุผล / check ids |

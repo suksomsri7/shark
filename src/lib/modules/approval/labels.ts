@@ -10,6 +10,16 @@ export const ENTITY_TYPES = [
   { value: "member.erase", label: "ลบข้อมูลสมาชิก (PDPA)" },
   { value: "member.point.adjust", label: "ปรับแต้มสมาชิกด้วยมือ (เกินเพดาน)" },
   { value: "member.voucher.issue", label: "ออก voucher เกินเพดาน" },
+  // 🐞 หนี้เดิม (พบตอนใบ CRM v2 C0.3): `account/approval-cap.ts` ยื่นคำขอชนิด "AccountDocument" อยู่แล้ว
+  //    (เอกสารเกินเพดานอนุมัติ WO 8.3) และ `approval-effects.ts` มีผลรองรับ แต่ชนิดนี้ไม่เคยอยู่ในทะเบียน
+  //    ⇒ หน้า /app/settings/approval ไม่มีตัวเลือกให้ตั้งสายอนุมัติ = ด่านเพดานไม่มีวันถูกบังคับจริง
+  { value: "AccountDocument", label: "เอกสารบัญชีเกินเพดานอนุมัติ" },
+  // CRM v2 (RESOLUTIONS R-C ข้อ 10): ชนิดของ CRM เป็นตัวพิมพ์เล็กคั่นจุด · แต่ละใบงานหลังจากนี้เติมผลของตัวเอง
+  //   ใน `src/lib/approval-effects.ts` (ใบ C0.3 วางกิ่งเปล่าไว้ให้แล้ว)
+  { value: "crm.discount", label: "ส่วนลดเกินเพดาน (CRM)" },
+  { value: "crm.commission", label: "จ่ายคอมมิชชันการขาย (CRM)" },
+  { value: "crm.reassign", label: "โอนดีล/ผู้ติดต่อให้ผู้ดูแลคนใหม่ (CRM)" },
+  { value: "crm.portal_request", label: "คำขอจากพอร์ทัลลูกค้า (CRM)" },
 ] as const;
 
 export const APPROVER_ROLES = [

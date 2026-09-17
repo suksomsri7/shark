@@ -1323,6 +1323,14 @@ async function maybeAutoLinkMember(tenantId: string, systemId: string, contactId
   if (!memberSystemId) return;
   try {
     await linkContact({ tenantId, systemId: memberSystemId, actorUserId: null }, { contactId });
+    // WO CRM v2 C0.3-B: `ChatContact.partyId` ถูกเขียนโดย **ฝั่งสมาชิกตอนผูกจริง** อยู่แล้ว
+    // (`member/chat-bridge.ts:120` เส้นผูกด้วยมือ · `member/profile.ts:1520` เส้นผูกอัตโนมัติผ่าน linkIdentity)
+    // ⇒ ที่นี่ไม่ต้องตามเขียนซ้ำ
+    // 🔴 เคยมีโค้ด "เติมย้อนหลัง" ตรงนี้ แล้วถอดออก (ตรวจทานหลัง C0.3): `linkContact` คืนค่าแบบ idempotent
+    //    ทันทีเมื่อห้องผูกอยู่แล้ว ⇒ การเติมย้อนหลังช่วยได้เฉพาะ "แถวที่ผูกไว้ก่อนจะมีโค้ดเขียนคอลัมน์นี้"
+    //    เท่านั้น แต่ราคาที่จ่ายคือ **คำสั่งอ่าน/เขียน DB เพิ่มต่อข้อความขาเข้าทุกข้อความ ตลอดไป**
+    //    (ทางนี้ถูกเรียกทุกข้อความที่ลูกค้าทักเข้ามา) — ไม่คุ้ม และแก้ผิดที่: ข้อมูลเก่าต้องเติมด้วยงานเติมข้อมูล
+    //    ครั้งเดียว ไม่ใช่ให้เส้นทางที่ร้อนที่สุดแบกไว้ทุกข้อความ (บันทึกไว้ในรายงานส่งมอบแล้ว)
   } catch {
     // ไม่ block flow แชท
   }
@@ -2261,9 +2269,11 @@ export async function linkCustomer(args: {
 
   // ถอด
   if (args.customerId === null) {
+    // WO CRM v2 C0.3-B: ถอดสมาชิกออก = ถอด `partyId` ออกด้วย — ไม่งั้นห้องนี้ยังชี้ตัวตนกลางของคนที่
+    // ไม่ได้ผูกอยู่แล้ว (CRM จะยังเห็นห้องนี้ในไทม์ไลน์ของลูกค้ารายนั้นตลอดไป)
     await prisma.chatContact.update({
       where: { id: contact.id },
-      data: { customerId: null, linkedAt: null, linkedByUserId: null },
+      data: { customerId: null, partyId: null, linkedAt: null, linkedByUserId: null },
     });
     return { ok: true };
   }
@@ -2282,10 +2292,24 @@ export async function linkCustomer(args: {
   }
   if (!customerId) return { ok: false, reason: "ระบุเบอร์หรือสมาชิกที่จะผูก" };
 
+  // WO CRM v2 C0.3-B: ผูกสมาชิกเมื่อไหร่ ให้เขียน `ChatContact.partyId` = `Customer.partyId` ทันที
+  // 🔴 คอลัมน์นี้มีมาตั้งแต่ WO 3.1 แต่ **ไม่เคยมีโค้ดแชทเขียนค่า** (คอมเมนต์ในสกีมาบอกไว้เอง) ⇒ CRM
+  //    ที่รู้จักลูกค้าในนาม Party มองไม่เห็นห้องแชทเลย · เส้นผูกอัตโนมัติ (`maybeAutoLinkMember` →
+  //    `member.linkContact`) เขียนค่านี้อยู่แล้ว เหลือเส้น "พนักงานกดผูกเอง" เส้นนี้เส้นเดียวที่ขาด
+  // อ่านแยกคำสั่งเดียว (select แค่ partyId) — ไม่ใช่ join ทั้งแถวสมาชิกมาเพื่อค่าเดียว
+  const linkedParty = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId: args.tenantId },
+    select: { partyId: true },
+  });
+  // 🔴 "มีค่าก็เขียน ไม่มีก็ไม่แตะ" — ห้าม `?? null`: สมาชิกบางคนยังไม่มี Party (แถวเก่าก่อน WO 3.1 /
+  //    สมาชิกที่สร้างจากเส้นที่ยังไม่เรียก party.safeFindOrCreate) ⇒ `?? null` จะ **ล้าง** `partyId` ที่เส้น
+  //    ผูกอัตโนมัติเคยเขียนไว้แล้ว เพียงเพราะปลายทางใหม่อ่อนกว่า = ข้อมูลหายเงียบ ๆ โดยไม่มีใครสั่งให้ถอด
+  //    การล้างค่ามีที่เดียวคือ "ถอดสมาชิก" (args.customerId === null) ด้านบน ซึ่งผู้ใช้สั่งเองชัดเจน
   await prisma.chatContact.update({
     where: { id: contact.id },
     data: {
       customerId,
+      ...(linkedParty?.partyId ? { partyId: linkedParty.partyId } : {}),
       phone: args.phone?.trim() || contact.phone,
       linkedAt: new Date(),
       linkedByUserId: args.actorUserId,

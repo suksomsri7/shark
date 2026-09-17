@@ -137,6 +137,29 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
     return;
   }
 
+  // ═══ CRM v2 (ใบ C0.3 ส่วน F · RESOLUTIONS R-C ข้อ 10) ═══
+  //   ชนิด entity ของ CRM ลงทะเบียนครบตั้งแต่ใบนี้ (ทะเบียนป้ายไทย + allowlist หน้าตั้งค่า) เพื่อให้ร้าน
+  //   ตั้งสายอนุมัติได้ก่อน แต่ "ผลของการอนุมัติ" เป็นของใบที่เป็นเจ้าของเรื่องนั้น ๆ:
+  //     · crm.discount        → ใบ C1.5 (บรรทัดดีลที่ส่วนลดเกินเพดาน พักไว้ที่ CrmDeal.pendingLines)
+  //     · crm.commission      → ใบ C3.3 (จ่ายคอมมิชชัน → HrPayAdjustment ผ่าน facade hr)
+  //     · crm.reassign        → ใบ C3.2 (โอนดีล/ผู้ติดต่อเป็นกลุ่ม)
+  //     · crm.portal_request  → ใบ C3.5 (คำขอจากพอร์ทัลลูกค้า)
+  //   🔴 วันนี้เป็น **NO-OP เงียบ ๆ โดยตั้งใจ**: ไม่ throw และไม่เขียนอะไรเลย — คำขอที่ถูกอนุมัติ/ปฏิเสธ
+  //      ยังถูกบันทึกครบในสายอนุมัติเอง (ApprovalRequest + แจ้งเตือน) · ใบเจ้าของเรื่องมาเติมกิ่งของตัวเอง
+  //      ที่นี่ ห้ามแตะกิ่งของใบอื่น
+  if (entityType === "crm.discount") {
+    return;
+  }
+  if (entityType === "crm.commission") {
+    return;
+  }
+  if (entityType === "crm.reassign") {
+    return;
+  }
+  if (entityType === "crm.portal_request") {
+    return;
+  }
+
   if (entityType === "HrLeave") {
     await prisma.hrLeave.updateMany({
       where: { id: entityId, tenantId: evt.tenantId, status: "PENDING" },

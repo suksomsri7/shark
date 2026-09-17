@@ -7,6 +7,7 @@
 import type { Prisma } from "@prisma/client";
 import { handleBeamPaid, handleBeamFailed } from "./payment-request";
 import {
+  convertDocument,
   createDocument,
   findAccountLinkFor,
   findAccountLinkForPos,
@@ -14,11 +15,15 @@ import {
   findOrCreateCustomerContact,
   resolveProductIdsForExternalSale,
   setDocExternalRef,
+  setQuotationResponse,
   upsertExternalSaleDocument,
   vatConfigOf,
   voidExternalSaleDocument,
   type ExternalSaleDocLine,
 } from "./service";
+// CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
+import { lineAmount, type LineInput } from "./totals";
+import { baht } from "./service";
 
 // ราคาขายสินค้า POS (master data — ไม่กระทบ GL) เปิดผ่าน facade ให้โมดูล pos เรียก
 export {
@@ -367,6 +372,69 @@ function giftCardChannelKey(
 }
 
 // ─────────────────────────────────────────────────────────────
+// ตรวจของที่ผู้เรียกภายนอกส่งเข้ามา (CRM v2 · C0.3) — **ปฏิเสธ ไม่ใช่แอบปัดให้**
+//
+// 🔴 ทำไมต้องตรวจที่นี่ ไม่ใช่ใน `createDocument`: `computeTotals` clamp ส่วนลดที่ "เอาไปคิด"
+//    (`Math.min(Math.max(0,d), baseSum)`) แต่ `createDocument` **เก็บค่าดิบ** ลงคอลัมน์ `discountAmount`
+//    และ `gl.postDocument` คิดฐานรายได้จากค่าที่เก็บ (`subTotal − discountAmount`)
+//    ⇒ ส่งส่วนลด ฿1,500 ให้ใบ ฿1,000: เอกสารพิมพ์ออกมาว่าลด ฿1,500 แต่ยอดรวม ฿0 (ขัดกันเอง)
+//      แปลงเป็นใบแจ้งหนี้แล้วกด "ออกเอกสาร" จะเด้ง "ลงบัญชีไม่สมดุล…" ตลอดกาล — ใบนั้นออกไม่ได้อีกเลย
+//      ส่วนลดติดลบร้ายกว่า: เงียบจนถึงตอนออกเอกสาร แล้วบันทึกรายได้ **สูงกว่า** ที่เสนอราคาไว้
+//    หน้าจอเอกสารของคนในร้านผ่าน `computeDocTotals` ที่ clamp มาก่อนแล้ว — facade นี้คือผู้เรียกรายแรก
+//    ที่ยิงตรงถึง `createDocument` ได้ · `createDocument` เป็นโค้ดเงินที่ใช้ร่วมกัน ใบนี้เป็น additive-only
+//    จึงแก้ที่ปากทางนี้ (ข้อบกพร่องที่ลึกกว่านั้นบันทึกเป็นหนี้ของโมดูลบัญชี ไม่แก้ในใบนี้)
+//    🔴 แอบ clamp ให้เงียบ ๆ ไม่ได้: ฿1,500 ที่กลายเป็น ฿1,000 เองคือการปิดบังความผิดพลาดของคนกรอก
+// ─────────────────────────────────────────────────────────────
+
+/** จำนวนของบรรทัด: คอลัมน์เป็น Decimal(12,4) — ปัดที่ปากทางให้ตรงกับที่ฐานเก็บ (ไม่งั้นใบพิมพ์ขัดกันเอง) */
+const roundQty4 = (qty: number): number =>
+  Number.isFinite(qty) ? Math.round(qty * 10_000) / 10_000 : qty;
+
+const isSatang = (n: unknown): boolean => typeof n === "number" && Number.isFinite(n) && Number.isInteger(n);
+
+/**
+ * ปัญหาของ input (ถ้ามี) เป็นข้อความไทยที่ **บอกตัวเลขที่ได้รับจริง** — ไม่มีปัญหา = null
+ * `checkLines` = ผู้เรียกส่ง `lines` มาเอง (บรรทัดที่ระบบสร้างเองจาก title/valueSatang คงพฤติกรรมเดิมเป๊ะ)
+ */
+function externalQuotationProblem(
+  lines: LineInput[],
+  checkLines: boolean,
+  discountAmount?: number | null,
+): string | null {
+  if (checkLines) {
+    for (let i = 0; i < lines.length; i += 1) {
+      const l = lines[i];
+      const at = `รายการที่ ${i + 1}`;
+      if (typeof l.qty !== "number" || !Number.isFinite(l.qty) || l.qty < 0)
+        return `${at}: จำนวนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.qty)})`;
+      if (!isSatang(l.unitPrice) || l.unitPrice < 0)
+        return `${at}: ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.unitPrice)})`;
+      const disc = l.discount ?? 0;
+      if (!isSatang(disc) || disc < 0)
+        return `${at}: ส่วนลดต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.discount)})`;
+      const gross = Math.round(l.qty * l.unitPrice);
+      if (disc > gross)
+        return `${at}: ส่วนลด ฿${baht(disc)} มากกว่ายอดของรายการ ฿${baht(gross)} — ตรวจส่วนลดของรายการนี้อีกครั้ง`;
+      if (l.vatRateBp !== undefined && l.vatRateBp !== null) {
+        const bp = l.vatRateBp;
+        if (!isSatang(bp) || bp < -1 || bp > 10_000)
+          return `${at}: อัตราภาษีต้องเป็นจำนวนเต็ม (0 = 0% · -1 = ยกเว้น · 700 = 7%) (ได้รับ ${String(bp)})`;
+      }
+    }
+  }
+  if (discountAmount !== undefined && discountAmount !== null) {
+    if (!isSatang(discountAmount))
+      return `ส่วนลดท้ายบิลต้องเป็นจำนวนเต็มสตางค์ (ได้รับ ${String(discountAmount)})`;
+    if (discountAmount < 0)
+      return `ส่วนลดท้ายบิลต้องเป็นศูนย์หรือมากกว่า (ได้รับ ฿${baht(discountAmount)})`;
+    const baseSum = lines.reduce((sum, l) => sum + lineAmount(l), 0);
+    if (discountAmount > baseSum)
+      return `ส่วนลดท้ายบิล ฿${baht(discountAmount)} มากกว่ายอดรวมรายการ ฿${baht(baseSum)} — ตรวจยอดส่วนลดอีกครั้ง`;
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────
 // ใบเสนอราคาจากระบบภายนอก (contract 2.4 ฝั่งเอกสาร) — ผู้ใช้แรก: CRM Deal (WO-0010)
 // caller ห้ามรู้เรื่องเลขบัญชี/VAT — ส่งแค่ "ลูกค้าใคร มูลค่าเท่าไหร่ ชื่องานอะไร"
 // idempotent ต่อ (refType, refId): เรียกซ้ำได้ใบเดิม
@@ -384,6 +452,15 @@ export async function createExternalQuotation(input: {
   // ตัวแรกก่อน taxId/phone/name+email (lookup แทนการเดาจากชื่อ/เบอร์) · sourceContactId เก็บไว้เผื่อ debug/audit
   partyId?: string | null;
   sourceContactId?: string | null;
+  // ── CRM v2 · C0.3-A1 · additive ทั้งก้อน — ไม่ส่งสักตัว = เอกสาร/บรรทัดเหมือนเดิมทุกคอลัมน์ ──
+  /** บรรทัดจริงของดีล (หลายบรรทัด · VAT/ส่วนลดต่อบรรทัด) — **มี `lines` เมื่อไหร่ ยอดคิดจาก `lines` เท่านั้น
+   *  และ `valueSatang` ถูกละทิ้งทั้งตัว** (มติผู้คุมงาน C0.3 ข้อ 2 — ห้าม "เกลี่ย" สองตัวเลขให้ตรงกัน) */
+  lines?: LineInput[];
+  /** ส่วนลดท้ายบิล (สตางค์) — กระจายตามสัดส่วนฐานของแต่ละบรรทัดโดย `computeTotals` */
+  discountAmount?: number | null;
+  validUntil?: Date | null;
+  note?: string | null;
+  createdById?: string | null;
 }): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
   // 1) หา link → ระบบบัญชีปลายทาง (opt-in — ไม่เชื่อม = ไม่ออก)
   const link = await findAccountLinkFor(input.tenantId, input.sourceKind, input.sourceSystemId);
@@ -397,17 +474,103 @@ export async function createExternalQuotation(input: {
   // 3) findOrCreate ผู้ติดต่อฝั่งบัญชี — partyId ก่อน (ถ้ามี) แล้วค่อยเทียบเบอร์/ชื่อ
   const contact = await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null });
 
+  // 3.5) ตรวจของที่ผู้เรียกส่งมาใหม่ **ก่อนแตะเงิน** (ดูหมายเหตุที่ `externalQuotationProblem`)
+  const lines: LineInput[] =
+    input.lines && input.lines.length > 0
+      ? input.lines.map((l) => ({ ...l, qty: roundQty4(l.qty) }))
+      : [{ description: input.title, qty: 1, unitPrice: input.valueSatang }];
+  const problem = externalQuotationProblem(lines, input.lines != null && input.lines.length > 0, input.discountAmount);
+  if (problem) return { ok: false, reason: problem };
+
   // 4) สร้างใบเสนอราคา (DRAFT — พนักงานตรวจ/ส่งเองในระบบบัญชี) + ผูก ref กลับดีล
+  //    ไม่ส่ง `lines` = บรรทัดเดียวจาก title+valueSatang (เส้นทางเดิมเป๊ะ) · ส่ง `lines` = ยอดมาจากบรรทัด
   const doc = await createDocument({
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,
     docType: "QUOTATION",
     contactId: contact.id,
-    lines: [{ description: input.title, qty: 1, unitPrice: input.valueSatang }],
+    lines,
+    // ทุกช่องด้านล่างเป็น optional ของ `createDocument` อยู่แล้ว — ไม่ส่งมา = undefined = ค่าเดิม (0/null)
+    discountAmount: input.discountAmount ?? undefined,
+    validUntil: input.validUntil ?? undefined,
+    note: input.note ?? undefined,
+    createdById: input.createdById ?? undefined,
   });
   await setDocExternalRef(doc.id, { refSystemId: input.sourceSystemId, refType: input.refType, refId: input.refId });
   return { ok: true, docId: doc.id, created: true };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CRM v2 · ใบ C0.3 ส่วน A — สิ่งที่ CRM ต้องเรียกจากโมดูลบัญชี (ทั้งหมดเป็นของเพิ่ม)
+//   · ตัวห่อ = บาง: ด่าน/ข้อความไทย/ธุรกรรม อยู่ที่ service เดิมทั้งหมด ไม่มีตรรกะซ้ำที่นี่
+//   · ทุกตัวผูก `ctx {tenantId, systemId}` ⇒ id ของร้านอื่น = "ไม่พบเอกสาร" ไม่ใช่ข้อมูลรั่ว (X1)
+// ═══════════════════════════════════════════════════════════════
+
+export type AccountCtx = { tenantId: string; systemId: string };
+
+/**
+ * ใบเสนอราคา → ใบแจ้งหนี้ (ใบใหม่เป็น DRAFT · `sourceDocId` ชี้กลับใบเสนอราคา · relation CONVERT)
+ * ต้นทางยังเป็นร่าง = ปฏิเสธพร้อมเหตุผลไทย (ด่านของ `convertDocument` — ห้ามข้าม)
+ */
+export async function convertQuotationToInvoice(
+  ctx: AccountCtx,
+  quotationDocId: string,
+  opts: { createdById?: string | null } = {},
+): Promise<{ ok: true; docId: string } | { ok: false; reason: string }> {
+  const res = await convertDocument(ctx.tenantId, ctx.systemId, quotationDocId, "INVOICE", opts.createdById ?? null);
+  return res.ok ? { ok: true, docId: res.newId } : res;
+}
+
+/**
+ * ลูกค้าตอบใบเสนอราคา (ตอบรับ/ปฏิเสธ) + **เก็บหลักฐานผู้เซ็นไว้ในแถว audit ของเอกสารใบนั้น**
+ * ยังบังคับสถานะ `AWAITING_ACCEPT` เหมือนเดิม (ตัวห่อไม่มีสิทธิ์ข้ามด่านของ `setQuotationResponse`)
+ * 🔴 PDPA (X8): หลักฐานที่เก็บมีแค่ ชื่อผู้เซ็น · ip ที่ hash แล้ว · user agent — ไม่มีเบอร์/อีเมล
+ */
+export async function respondQuotation(
+  ctx: AccountCtx,
+  docId: string,
+  accepted: boolean,
+  opts: {
+    by: "STAFF" | "PORTAL";
+    signer?: { name: string; ipHash: string; userAgent: string } | null;
+    /** ผู้ใช้ที่กดฝั่งร้าน (by = STAFF) — ฝั่งพอร์ทัลลูกค้าไม่มี User ⇒ actorType = SYSTEM */
+    actorUserId?: string | null;
+  } = { by: "STAFF" },
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  // 🔴 หลักฐานเขียน **ในธุรกรรมเดียวกับการเปลี่ยนสถานะ** (ดูหมายเหตุที่ `setQuotationResponse`):
+  //    ถ้าเขียนทีหลังผ่าน `writeAudit` (ซึ่งกลืน error ทุกชนิดโดยตั้งใจ) ใบที่ลูกค้ากดตอบรับจากพอร์ทัล
+  //    อาจจบเป็น ACCEPTED โดยไม่มีบันทึกว่าใครเซ็น จาก ip ไหน ด้วยเบราว์เซอร์อะไร
+  return setQuotationResponse(ctx.tenantId, ctx.systemId, docId, accepted, {
+    audit: {
+      actorType: opts.by === "PORTAL" ? "SYSTEM" : "USER",
+      actorId: opts.by === "PORTAL" ? null : opts.actorUserId ?? null,
+      action: accepted ? "account.quotation.accept" : "account.quotation.reject",
+      after: {
+        accepted,
+        by: opts.by,
+        signer: opts.signer
+          ? { name: opts.signer.name, ipHash: opts.signer.ipHash, userAgent: opts.signer.userAgent }
+          : null,
+      },
+    },
+  });
+}
+
+// ลิงก์+QR เก็บเงินของเอกสาร 1 ใบ (ยอด = ยอดคงค้างจริง ณ ตอนนี้ · ด่านชนิด/สถานะ/ช่องทางอยู่ใน service)
+export { createPaymentRequest as createPaymentRequestForDoc, type CreatePaymentRequestResult } from "./payment-request";
+
+// ยอดค้างรับต่อผู้ติดต่อ (1 query ครอบทุกราย) · ข้อมูลเชื่อมโยงของเอกสาร (event บัญชีส่งมาแค่ documentId)
+// · "หนึ่ง Party = หนึ่งผู้ติดต่อต่อสมุด" (idempotent + กันยิงพร้อมกันที่ฐานข้อมูล — X3)
+export {
+  outstandingByContacts,
+  docLinkInfo,
+  ensureAccountContact,
+  type DocLinkInfo,
+  type EnsureAccountContactInput,
+} from "./service";
+
+// รวมผู้ติดต่อซ้ำ (ใช้ตอน CRM รวมบริษัท/ผู้ติดต่อแล้วต้องรวมฝั่งบัญชีตาม) — ธุรกรรมเดียว ครบทุกตาราง
+export { mergeContacts, type MergeContactsInput, type MergeResult } from "./contact-merge";
 
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
 // reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)

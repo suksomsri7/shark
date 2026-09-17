@@ -14,6 +14,9 @@ import {
   recordMergeCandidates as recordMergeCandidatesInner,
   recordMergeCandidatePair as recordMergeCandidatePairInner,
   mergeParties as mergePartiesInner,
+  updateContactInfo as updateContactInfoInner,
+  type UpdateContactInfoInput,
+  type UpdateContactInfoResult,
   normalizePartyTaxId,
   normalizePartyPhone,
   nameSimilarity,
@@ -22,7 +25,7 @@ import {
 } from "./service";
 
 export { normalizePartyTaxId, normalizePartyPhone, nameSimilarity };
-export type { PartyFindOrCreateInput, DuplicatePair, PartyBrief, PartyProfile };
+export type { PartyFindOrCreateInput, DuplicatePair, PartyBrief, PartyProfile, UpdateContactInfoInput, UpdateContactInfoResult };
 
 /** หา/สร้าง Party ตามลำดับ taxId → phoneNorm → name+email (ดู service.ts) — อาจ throw ถ้า DB ผิดพลาดจริง */
 export async function findOrCreate(
@@ -142,4 +145,22 @@ export async function mergeParties(
   client?: Prisma.TransactionClient,
 ): Promise<boolean> {
   return mergePartiesInner(tenantId, keepId, mergeId, client);
+}
+
+/**
+ * แก้ข้อมูลติดต่อ (ชื่อ/เบอร์/อีเมล) ของ Party หนึ่งราย — **เฉพาะช่องที่ส่งมา** (WO CRM v2 · C0.3 ส่วน E)
+ * เบอร์ถูก normalize ด้วยกติกาเดียวกับ `findOrCreate` แล้วเขียน `phoneNorm` ให้เสมอ ·
+ * ค่าที่ไปชนกับ Party รายอื่นของร้านเดียวกัน = **บันทึกคู่ "อาจเป็นคนเดียวกัน"** ไม่ใช่ล้มคำสั่ง ·
+ * ส่ง `client` (tx) มาได้ = เข้าร่วมทรานแซกชันของผู้เรียกจริง ๆ (rollback แล้วไม่มีอะไรเปลี่ยน) ·
+ * id ของร้านอื่น/ไม่มีอยู่ → `{ok:false}` พร้อมเหตุผลไทย ไม่ throw ไม่แตะแถวใด ·
+ * **id ที่ถูกรวมไปแล้วจะถูกเด้งไปตัวปลายทางก่อนเขียน** (`resolveCanonical`) แล้วคืนแถวที่เขียนจริงใน `partyId`
+ * — ผู้เรียกที่ถือ id เก่าจึงไม่เขียนลงแถวที่ไม่มีจอไหนอ่านอีกแล้ว (กดบันทึกผ่าน แต่ข้อมูลไม่เปลี่ยน)
+ */
+export async function updateContactInfo(
+  tenantId: string,
+  partyId: string,
+  input: UpdateContactInfoInput,
+  client?: Prisma.TransactionClient,
+): Promise<UpdateContactInfoResult> {
+  return updateContactInfoInner(tenantId, partyId, input, client);
 }

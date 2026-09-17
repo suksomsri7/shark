@@ -384,6 +384,25 @@ const ALLOWED_EDGES = new Set([
   "member→kanban",
   //   member→account (M3.7 ไทม์ไลน์อ่านเอกสารบัญชีของ party ผ่าน facade listDocsByParty — ข้อสอบ M3.7 S4.2 คาดเส้นนี้) · ORACLE-EDIT F2.1
   "member→account",
+  // ═══ CRM v2 ▸ ใบ C0.3 (facade ที่ CRM ต้องใช้ในโมดูลอื่น) ═══
+  //   Fable/ผู้คุมงานอนุมัติล่วงหน้าตาม CRM-MASTER-PLAN §9 + ใบ C0.3 · **ทิศเดียวทุกเส้น** และ
+  //   import ได้เฉพาะ `index.ts` ของปลายทางเท่านั้น (F2.2 ยังเฝ้าฝั่ง account อยู่)
+  //   เส้น `crm→account` / `crm→party` มีอยู่แล้วด้านบน (WO-0010 / WO 3.1)
+  //   crm→chat      : ส่ง LINE หาผู้ติดต่อ + รายการห้องแชทของบริษัทในหน้า 360 (sendLineToParty / listConversationsByParty)
+  //   crm→hr        : คอมมิชชันของพนักงานขาย → HrPayAdjustment · เช็ค "ลาอยู่ไหม" ก่อนแจกลูกค้าใหม่ (C2.3/C3.3)
+  //   crm→inventory : บรรทัดดีลเลือกสินค้า/บริการจากแคตตาล็อกกลาง InvItem (C1.5)
+  //   crm→approval  : ส่วนลด/คอมมิชชัน/โอนงาน/คำขอพอร์ทัล เกินเพดาน → สายอนุมัติกลาง (ผลกลับที่ approval-effects.ts)
+  //   crm→member    : ผู้ติดต่อที่เป็นสมาชิก (สิทธิ์/แต้ม/ความยินยอม) ผ่าน facade member เท่านั้น (C1.4)
+  //   crm→kanban    : งานของดีล/กิจกรรม → การ์ดบอร์ดงาน ผ่าน links.createCardFromExternal (เส้นเดียวกับ member→kanban)
+  //   crm→forms     : ฟอร์มเว็บ → lead (ทิศหลักคือ forms→crm ที่มีอยู่แล้ว · ขานี้ใช้ตอน CRM อ่านนิยามฟอร์ม C2.6)
+  //   (ไม่มี `crm→storage` / `crm→ai` เพราะไม่มีโมดูลชื่อนั้นใน src/lib/modules — ของกลางพวกนั้นอยู่ที่ `src/lib/*`)
+  "crm→chat",
+  "crm→hr",
+  "crm→inventory",
+  "crm→approval",
+  "crm→member",
+  "crm→kanban",
+  "crm→forms",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

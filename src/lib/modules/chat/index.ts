@@ -12,3 +12,22 @@ export {
   /** ส่งข้อความถึงลูกค้าคนหนึ่งผ่านช่องทางแชท โดยที่ร้านเป็นฝ่ายเริ่ม (ไม่ต้องมีห้องแชทมาก่อน) */
   pushToContact,
 } from "./push";
+
+// ── ทางเชื่อมกับ "ตัวตนกลาง" (Party) — ใบ CRM v2 · C0.3 ส่วน B ──
+// ผู้เรียก: CRM (หน้า 360 องศาของผู้ติดต่อ/บริษัท · การส่งข้อความหาลูกค้าจากดีล)
+export type {
+  ChatPartyCtx,
+  SendLineToPartyInput,
+  SendLineToPartyResult,
+  ConversationByPartyRow,
+} from "./party-bridge";
+export {
+  /** ส่งไลน์ถึง Party รายหนึ่ง (ไม่มีตรรกะความยินยอม — ผู้เรียกตัดสิน) · ไม่ throw · เหตุผลปฏิเสธแยกกรณี */
+  sendLineToParty,
+  /**
+   * ห้องแชทของ Party รายหนึ่ง **ทั่วทั้งร้าน** (ทุกระบบแชท) โดยยังเคารพด่าน unit ของกล่องแชท
+   * 🔴 `opts.unitAccess` **บังคับ** — ผู้เรียก CRM ส่ง `auth.active.unitAccess as string[]` ของคนที่เปิดหน้า
+   *    (ลืมส่ง = คอมไพล์ไม่ผ่าน · ไม่ใช่ "เห็นทั้งร้านโดยไม่มีด่านสาขา" เงียบ ๆ)
+   */
+  listConversationsByParty,
+} from "./party-bridge";

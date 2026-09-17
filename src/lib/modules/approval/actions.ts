@@ -13,7 +13,23 @@ import { createPolicy, updatePolicy, setPolicyActive, decide, bulkDecide, cancel
 const SETTINGS_PATH = "/app/settings/approval";
 const APPROVALS_PATH = "/app/approvals";
 
-const ENTITY_TYPES = new Set(["PurchaseOrder", "HrLeave", "member.merge", "member.tier.manual", "member.erase", "member.point.adjust", "member.voucher.issue"]);
+// ชนิด entity ที่ตั้งสายอนุมัติได้ — ต้องตรงกับทะเบียนป้ายไทย `./labels.ts` (หน้าตั้งค่าอ่านจากที่นั่น)
+//   · "AccountDocument" = หนี้เดิมที่ใบ CRM v2 C0.3 ปิด (approval-cap.ts ยื่นชนิดนี้อยู่แล้วแต่ตั้งกฎไม่ได้)
+//   · "crm.*" 4 ตัว = RESOLUTIONS R-C ข้อ 10 (ผลของแต่ละตัวอยู่ใน src/lib/approval-effects.ts)
+const ENTITY_TYPES = new Set([
+  "PurchaseOrder",
+  "HrLeave",
+  "AccountDocument",
+  "member.merge",
+  "member.tier.manual",
+  "member.erase",
+  "member.point.adjust",
+  "member.voucher.issue",
+  "crm.discount",
+  "crm.commission",
+  "crm.reassign",
+  "crm.portal_request",
+]);
 const ROLES = new Set(["MANAGER", "OWNER"]);
 
 function ctxOf(auth: Awaited<ReturnType<typeof requireTenant>>) {
