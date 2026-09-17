@@ -160,9 +160,13 @@ const send = defineMemberOp({
   id: "campaigns.send",
   method: "POST",
   path: "/campaigns/{id}/send",
-  kind: "write",
+  // 🔴 AUDIT M15: ยิงถึงลูกค้าทั้งกลุ่มและ "เรียกคืนไม่ได้" ⇒ เป็นคำสั่งอันตรายเหมือนรวมสมาชิก/ลบข้อมูล
+  //    (kind danger ⇒ แกน REST บังคับ `confirm: true` + `reason` ≥ 5 ตัวอักษร และเก็บเหตุผลลง audit ·
+  //     ฝั่งผู้ช่วย AI ข้อเสนอจะกลายเป็น DESTRUCTIVE = ต้องกดยืนยัน 2 ชั้น · ทะเบียน/OpenAPI หยิบจาก
+  //     `op.kind` เองทั้งคู่ ไม่ต้องแก้ไฟล์อื่น)
+  kind: "danger",
   action: "member.promo.manage",
-  summary: "Send the campaign now (or hand it to the scheduler when `scheduledAt` is in the future). Consent is checked per member and channel at the moment of sending; members already handled are never sent twice.",
+  summary: "Send the campaign now (or hand it to the scheduler when `scheduledAt` is in the future). Hard to undo: messages already delivered cannot be recalled, so this needs `confirm: true` and a `reason`. Consent is checked per member and channel at the moment of sending; members already handled are never sent twice.",
   label: "ส่งแคมเปญ",
   test: TEST,
   async handler({ actor, params }) {

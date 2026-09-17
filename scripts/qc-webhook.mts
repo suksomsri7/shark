@@ -63,6 +63,8 @@ try {
     const n3 = await wh.dispatchWebhooks({ tenantId: tid, type: "pos.sale.paid", payload: { saleId: "s2" } }, { fetchFn: mkFetch(true, capF) });
     const failed = await prisma.webhookDelivery.count({ where: { tenantId: tid, status: "FAILED" } });
     chk("WB-3.1", "ยิงล้ม → คืน 0 + FAILED 2 แถว (attempts 1 + lastError) ไม่โยนออก", n3 === 0 && failed === 2 && (await prisma.webhookDelivery.findFirst({ where: { tenantId: tid, status: "FAILED" } }))?.attempts === 1, "0/2", `${n3}/${failed}`);
+    // ORACLE-EDIT WB-3.2 (Fable 17 ก.ย. · AUDIT M1 backoff ต่อใบ): ใบที่เพิ่งล้มยังไม่ถึงรอบยิงซ้ำ (2/5/15/60/180 นาที) ⇒ เลื่อนเวลาให้ถึงรอบก่อนวัด — เงื่อนไขข้อสอบเดิมไม่เปลี่ยน
+    await prisma.$executeRawUnsafe(`UPDATE "WebhookDelivery" SET "updatedAt" = now() - interval '24 hours' WHERE "tenantId" = $1 AND status = 'FAILED'`, tid);
     const nR = await wh.retryFailedWebhooks({ fetchFn: mkFetch(false, []) });
     chk("WB-3.2", "retry สำเร็จ → FAILED→OK หมด", nR >= 2 && (await prisma.webhookDelivery.count({ where: { tenantId: tid, status: "FAILED" } })) === 0, "≥2/0", `${nR}`);
 

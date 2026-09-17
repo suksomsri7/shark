@@ -25,11 +25,10 @@ import {
   revokeCustomerSession,
   verifyOtp,
 } from "./customer-session";
+import { customerCookieOptions } from "./customer-cookie";
 import { meUpdate, resolveCardToken, rotateCardToken, type MeResult } from "./me";
 import type { MemberCtx } from "./profile";
 import { acceptPolicy, requestErase, requestExport, setConsent } from "./privacy";
-
-const SESSION_DAYS = 30;
 
 type Gate = { ctx: MemberCtx; customerId: string };
 
@@ -93,14 +92,9 @@ export async function verifyOtpAction(input: {
       { otpId: input.otpId, code: input.code },
       { userAgent: h.get("user-agent") ?? "m-web", ip: (h.get("x-forwarded-for") ?? "").split(",")[0]?.trim() || null },
     );
+    // 🔴 AUDIT L5: `Secure` ผูกกับโปรโตคอลของคำขอ/สภาพแวดล้อม ไม่ใช่ชื่อ cookie (customer-cookie.ts)
     const jar = await cookies();
-    jar.set(session.cookieName, session.token, {
-      httpOnly: true,
-      secure: session.cookieName.startsWith("__Host-"),
-      sameSite: "lax",
-      path: "/",
-      maxAge: SESSION_DAYS * 24 * 60 * 60,
-    });
+    jar.set(session.cookieName, session.token, customerCookieOptions(h));
     return { ok: true, data: { next: path(input.slug, "card") } };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ยืนยันรหัสไม่สำเร็จ — ขอรหัสใหม่แล้วลองอีกครั้ง") };

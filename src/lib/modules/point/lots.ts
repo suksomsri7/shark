@@ -236,10 +236,23 @@ export async function burnFifo(ctx: PointCtx, input: BurnFifoInput, client: Clie
   }
 
   return withTx(client, async (tx) => {
-    const current = await balanceIn(tx, ctx.systemId, input.customerId);
-    if (current < input.points) {
+    // 🔴 AUDIT M9: "อ่านยอด → ค่อยหัก" ไม่ atomic — สองคำขอที่เข้าพร้อมกันอ่านยอดเดียวกันแล้วหักทั้งคู่
+    //    ⇒ ให้ฐานข้อมูลตัดสินในคำสั่งเดียว: updateMany + เงื่อนไข `balance >= points`
+    //    (คำสั่งนี้ล็อกแถวยอด และตรวจเงื่อนไขใหม่หลังคู่แข่ง commit ⇒ ผู้แพ้ได้ 0 แถว ไม่มีทางติดลบ)
+    const claimed = await tx.pointBalance.updateMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, customerId: input.customerId, balance: { gte: input.points } },
+      data: { balance: { decrement: input.points } },
+    });
+    if (claimed.count !== 1) {
+      const current = await balanceIn(tx, ctx.systemId, input.customerId);
       throw pointError(`แต้มคงเหลือไม่พอ (มี ${current} แต้ม ต้องใช้ ${input.points} แต้ม)`);
     }
+    // คืนยอดที่เพิ่ง "จอง" ไว้ เพราะตัวเขียน ledger (`writeLedger`) จะหักยอดให้อีกครั้งใน tx เดียวกันนี้
+    // (แถวยอดถูกล็อกไว้ตั้งแต่คำสั่งจองจนจบ tx ⇒ ไม่มีคำขออื่นเห็น/แทรกยอดระหว่างกลางได้)
+    await tx.pointBalance.update({
+      where: { systemId_customerId: { systemId: ctx.systemId, customerId: input.customerId } },
+      data: { balance: { increment: input.points } },
+    });
     const lots = await tx.pointLot.findMany({
       where: {
         tenantId: ctx.tenantId,
@@ -273,7 +286,17 @@ export async function burnFifo(ctx: PointCtx, input: BurnFifoInput, client: Clie
     });
     if (led.duplicated) return { ledgerId: led.ledgerId, lotsUsed: used, balance: led.balance };
     for (const u of used) {
-      await tx.pointLot.update({ where: { id: u.lotId }, data: { remaining: { decrement: u.points } } });
+      // 🔴 AUDIT M9: หักล็อตแบบมีเงื่อนไขในคำสั่งเดียวเช่นกัน — ล็อตห้ามติดลบจากการแย่งกันแลก
+      //    (การคืนแต้มตอน void ยังหักติดลบได้ตามกติกา §11.4 — คนละเส้นทาง ดู reverseWithLots)
+      const cut = await tx.pointLot.updateMany({
+        where: { id: u.lotId, remaining: { gte: u.points } },
+        data: { remaining: { decrement: u.points } },
+      });
+      if (cut.count !== 1) {
+        // ล็อตถูกตัด/หมดอายุไปก่อนโดยคำสั่งอื่นที่เพิ่ง commit ⇒ ถอยทั้งรายการ (tx rollback) แล้วบอกเป็นภาษาคน
+        const current = (await balanceIn(tx, ctx.systemId, input.customerId)) + input.points; // +คืนยอดที่ tx นี้หักไปแล้ว
+        throw pointError(`แต้มคงเหลือไม่พอ (มี ${current} แต้ม ต้องใช้ ${input.points} แต้ม)`);
+      }
     }
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
@@ -307,11 +330,6 @@ export async function reverseWithLots(
   input: ReverseInput,
   client: Client = prisma,
 ): Promise<{ reversed: number }> {
-  const dup = await client.pointLedger.findUnique({
-    where: { tenantId_idempotencyKey: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } },
-  });
-  if (dup) return { reversed: 0 };
-
   const entries = await client.pointLedger.findMany({
     where: {
       tenantId: ctx.tenantId,
@@ -324,11 +342,27 @@ export async function reverseWithLots(
   });
   if (entries.length === 0) return { reversed: 0 };
 
+  // 🔴 AUDIT M11: คีย์กันซ้ำต้องผูกกับ "แถว ledger ที่ถูกกลับ" ไม่ใช่ใบเดียวต่อบิล
+  //    ของเดิม: เจอแถวคีย์ `<key>` แล้วออกจากฟังก์ชันทันที ⇒ EARN ที่ลงหลังการกลับรายการ
+  //    (คิวปิดบิลวิ่งจบทีหลังคิวยกเลิก) ไม่มีวันถูกกลับ — ลูกค้าเหลือแต้มของบิลที่ยกเลิกไปแล้ว
+  //    ตอนนี้วนทุกแถวทุกครั้ง แล้วให้ `writeLedger` กันซ้ำเป็นราย ๆ ไป
+  //    รูปคีย์เดิม (`<key>` · `<key>:<ลำดับ>`) ยังนับว่า "กลับไปแล้ว" — ข้อมูลเก่าห้ามถูกกลับซ้ำ
+  const legacyKeys = entries.map((_, i) => (i === 0 ? input.idempotencyKey : `${input.idempotencyKey}:${i}`));
+  const legacyDone = new Set(
+    (
+      await client.pointLedger.findMany({
+        where: { tenantId: ctx.tenantId, idempotencyKey: { in: legacyKeys } },
+        select: { idempotencyKey: true },
+      })
+    ).map((r) => r.idempotencyKey),
+  );
+
   const now = new Date();
   return withTx(client, async (tx) => {
     let reversed = 0;
     for (const [i, entry] of entries.entries()) {
-      const key = i === 0 ? input.idempotencyKey : `${input.idempotencyKey}:${i}`;
+      if (legacyDone.has(legacyKeys[i] as string)) continue; // กลับไปแล้วด้วยคีย์รูปเดิม
+      const key = `${input.idempotencyKey}:${entry.id}`;
       const led = await writeLedger(tx, {
         tenantId: ctx.tenantId,
         systemId: ctx.systemId,

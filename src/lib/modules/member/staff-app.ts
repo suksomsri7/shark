@@ -7,12 +7,15 @@
 //    ตัดสินที่ service เดิมทั้งหมด (`listMembers` · `briefFor` · `memberSummary` · `stamp.addStamp`)
 //    มองไม่เห็นสมาชิก (ข้ามร้าน/นอกสาขา) = "ไม่พบ" (404 ไม่ใช่ 403 · §6.4)
 // 🔴 ไม่มีเบอร์เต็มในผลลัพธ์ใด ๆ — ใช้เบอร์ปิดบังจาก facade เสมอ (หน้าจอพนักงานมีคนยืนดูข้างหลังได้)
-// 🔴 PIN ของใบสแตมป์ (`ruleConfig.staffPin` — ตาราง §6.2 "ประทับสแตมป์: STAFF ✓ (PIN)"):
+// 🔴 PIN ของใบสแตมป์ (ตาราง §6.2 "ประทับสแตมป์: STAFF ✓ (PIN)"):
 //    ใบที่ร้านตั้ง PIN ไว้ ต้องใส่ PIN ตรงก่อนประทับทุกครั้ง (กันเครื่องพนักงานที่ถูกหยิบไปกดเอง)
-//    ใบที่ไม่ตั้ง PIN = ประทับได้เลย (จอไม่ขอ PIN) · ตรวจที่นี่ก่อนเรียก `addStamp` (service ตรวจ PIN
-//    เฉพาะฝั่งลูกค้ากดเอง — ฝั่งพนักงานยังไม่มีด่านนี้)
+//    ใบที่ไม่ตั้ง PIN = ประทับได้เลย (จอไม่ขอ PIN)
+//    🔴 AUDIT M4: ไฟล์นี้ **ไม่เคยเห็นตัวเลข PIN** — ส่ง `byPin` + `requireStaffPin` ให้ `stamp.addStamp`
+//       เทียบเองแบบ constant-time · ที่นี่รับผิดชอบแค่รูปแบบ (4–6 หลัก) และ "เดาได้กี่ครั้ง"
+//       (เพดาน 5 ครั้ง/15 นาที ต่อ (ผู้ใช้, ใบ) บนฐานข้อมูล — ตรวจก่อนถึง service เสมอ)
 
 import * as stamp from "@/lib/modules/stamp";
+import { checkRateLimitDb, resetRateLimitDb } from "@/lib/core/rate-limit-db";
 import { prisma } from "./db";
 import type { MemberActor } from "./access";
 import { MemberInputError, MemberNotFoundError } from "./errors";
@@ -21,6 +24,9 @@ import { memberSummary } from "./insights";
 import { listMembers } from "./list";
 import { resolveCardToken } from "./me";
 import { briefFor, type MemberCtx } from "./profile";
+
+/** เพดานเดา PIN ของใบสแตมป์ต่อ (ผู้ใช้, ใบ) — AUDIT M4 */
+const PIN_RATE = { limit: 5, windowMs: 15 * 60_000 } as const;
 
 // ───────────────────────── ชนิดข้อมูลที่แอปอ่าน (JSON) ─────────────────────────
 
@@ -148,7 +154,8 @@ export async function staffStampCards(ctx: MemberCtx, actor: MemberActor, custom
       name: p.name,
       slots: p.slots,
       stamps: p.stamps,
-      pinRequired: !!card.ruleConfig.staffPin,
+      // 🔴 AUDIT M4: DTO ของ stamp ไม่มีตัวเลข PIN แล้ว — ใช้ธง `pinRequired` ที่โมดูลคำนวณให้
+      pinRequired: card.pinRequired,
       reward: rewardText(card),
     });
   }
@@ -212,12 +219,18 @@ export async function staffStamp(ctx: MemberCtx, actor: MemberActor, input: Staf
   const card = cards.find((c) => c.cardId === cardId);
   if (!card) throw new MemberNotFoundError("ใบสแตมป์นี้ประทับให้สมาชิกคนนี้ไม่ได้ — ใบอาจถูกปิด หรือจำกัดระดับ/สาขาไว้");
 
+  // 🔴 AUDIT M4: เดิมอ่าน PIN จริงออกมาเทียบด้วย `!==` ที่นี่ และเดาได้ไม่จำกัดครั้ง
+  //    ตอนนี้: (1) เพดานเดาต่อ (ผู้ใช้, ใบ) บนฐานข้อมูล — ทนข้าม instance เหมือนเพดานอื่นของโมดูล
+  //            (2) การเทียบอยู่ในโมดูล stamp แบบ constant-time (`requireStaffPin`) — PIN ไม่ออกมาที่นี่เลย
+  const pinKey = card.pinRequired ? `member:staff-pin:${ctx.tenantId}:${actor.userId || "unknown"}:${cardId}` : null;
   if (card.pinRequired) {
-    const sctx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null };
-    const full = await stamp.getCard(sctx, cardId);
     const pin = String(input?.pin ?? "").trim();
     if (!/^\d{4,6}$/.test(pin)) throw new MemberInputError("ใส่ PIN ของใบนี้ 4–6 หลักก่อนกดประทับ");
-    if (pin !== full.ruleConfig.staffPin) throw new MemberInputError("PIN ไม่ตรงกับที่ร้านตั้งไว้ — ตรวจ PIN แล้วลองอีกครั้ง");
+    const rl = await checkRateLimitDb(pinKey!, PIN_RATE);
+    if (!rl.ok) {
+      const mins = Math.max(1, Math.ceil((rl.retryAfterSec ?? 60) / 60));
+      throw new MemberInputError(`ใส่ PIN ผิดหลายครั้งเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`);
+    }
   }
 
   // พนักงานที่ดูแลสาขาเดียว = ตรานี้เกิดที่สาขานั้น (ใบที่จำกัดสาขาจะตรวจได้ถูก) · ดูแลหลายสาขา/ทั้งร้าน = ไม่ระบุ
@@ -232,8 +245,12 @@ export async function staffStamp(ctx: MemberCtx, actor: MemberActor, input: Staf
     refType: "MANUAL",
     refId: note || null,
     unitId,
+    byPin: card.pinRequired ? String(input?.pin ?? "").trim() : null,
+    requireStaffPin: card.pinRequired,
     idempotencyKey: `mobile.stamp:${requestId}`,
   });
+  // PIN ถูก = ล้างตัวนับ (คนพิมพ์พลาดครั้งสองครั้งไม่ถูกลงโทษข้ามกะ)
+  if (pinKey) await resetRateLimitDb(pinKey);
 
   const stamps = Math.min(r.stamps, card.slots);
   const left = Math.max(0, card.slots - stamps);

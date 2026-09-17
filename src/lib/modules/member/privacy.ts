@@ -15,7 +15,9 @@
 // 🔴 "ดูไม่ได้" ไม่ใช่ error — หน้า 360 แสดงกล่องว่างพร้อมป้าย "ซ่อน" (§6.4) และ **ไม่ส่งค่าลง client**
 // 🔴 prisma มาจาก `./db` (จุดเดียวของโมดูลที่ล้วง core — ดู member/db.ts)
 
-import type { MemberConsentSource, Prisma, PrismaClient, Role } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@prisma/client";
+import type { MemberConsentSource, PrismaClient, Role } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { sanitizeHtml } from "@/lib/core/sanitize";
@@ -154,6 +156,17 @@ export async function canViewSensitive(
   return decision.allowed;
 }
 
+/**
+ * 🔴 AUDIT L8 — "ใครเป็นคนเปิดดู" ที่จะลงคอลัมน์ `MemberAccessLog.userId`
+ *   คนจริง → `User.id` · คีย์ API ที่ไม่มีคนจริงผูกอยู่ → `apikey:<ApiKey.id>` · ลูกค้า/งานระบบ → "" (ไม่บันทึก)
+ *   ไม่ต้องมี migration — คอลัมน์นี้เป็น String เปล่า ๆ ไม่ได้ผูก FK ไปตาราง User
+ */
+function actorRefOf(actor: MemberActor): string {
+  if (actor.userId) return actor.userId;
+  const keyId = (actor as MemberActor & { keyId?: unknown }).keyId;
+  return typeof keyId === "string" && keyId.trim() !== "" ? `apikey:${keyId.trim()}` : "";
+}
+
 export type LogAccessInput = SensitiveTarget & {
   /** หน้าที่เปิดดู (เช่น "member.360") — ช่วยตอบคำถาม "ดูจากที่ไหน" ตอนตรวจสอบย้อนหลัง */
   page?: string | null;
@@ -161,20 +174,112 @@ export type LogAccessInput = SensitiveTarget & {
   decision?: SensitiveDecision;
 };
 
+/** 1 รายการของการเปิดดูแบบเหมาเข่ง (ไฟล์ส่งออก) — รูปเดียวกับ `LogAccessInput` แต่ `page` อยู่ระดับก้อน */
+export type LogAccessEntry = SensitiveTarget & { decision?: SensitiveDecision };
+
+/** เขียน MemberAccessLog ทีละก้อน (คำสั่งเดียวต่อ 1,000 แถว) */
+const ACCESS_LOG_CHUNK = 1_000;
+/** จำนวน id ตัวอย่างที่ติดไปกับ event สรุป — พอให้คนตามรอยได้โดยไม่ทำ payload บวม */
+const ACCESS_LOG_SAMPLE = 20;
+
+/**
+ * บันทึกการเปิดดูข้อมูลอ่อนไหว **หลายสมาชิกในครั้งเดียว** (D17 · ใช้กับไฟล์ส่งออกรายชื่อ)
+ *
+ * 🔴 ทำไมต้องมีตัวนี้ (AUDIT H2): ส่งออกได้ถึง `MEMBER_LIMITS.exportRows` = 50,000 แถว ถ้าเรียก
+ *    `logAccess` ทีละแถวจะได้ 50,000 transaction + 50,000 แถวในคิว outbox จากการกดปุ่มเดียว
+ *    (คิวตันและ DB ช้าทั้งร้าน) ⇒ ที่นี่เก็บ **แถวต่อสมาชิกเท่าเดิม** (หลักฐาน D17 ไม่ลดคุณภาพ)
+ *    แต่เขียนด้วย `createMany` เป็นก้อน ๆ และยิง event สรุป **ใบเดียว** ต่อการส่งออก 1 ครั้ง
+ * 🔴 กติกาอื่นเหมือน `logAccess` ทุกข้อ: ผู้กระทำ (`userId` หรือ `apikey:<id>` — AUDIT L8) ·
+ *    ไม่มีผู้กระทำ/ไม่มีอะไรต้องบันทึก = เงียบ · เคารพ `decision.shouldLog` ของนโยบาย
+ * ⚠️ แถว log เขียนก่อน แล้วค่อยยิง event (ไม่ atomic ร่วมกัน) — หลักฐานการตรวจสอบคือ "แถว"
+ *    ส่วน event เป็นแค่การกระจายต่อให้เว็บฮุค (consumer เป็น no-op) ⇒ ตกหล่นแล้วไม่มีอะไรเสียหาย
+ * คืนจำนวนแถวที่เขียนจริง
+ */
+export async function logAccessMany(
+  ctx: MemberCtx,
+  actor: MemberActor,
+  entries: LogAccessEntry[],
+  page?: string | null,
+): Promise<number> {
+  const actorRef = actorRefOf(actor);
+  if (!actorRef || entries.length === 0) return 0;
+
+  // ตัดสินทีละเป้าหมายเท่าที่ยังไม่มีคำตัดสินติดมา (ผู้เรียกฝั่งส่งออกคำนวณมาให้แล้วทุกใบ)
+  const cache = new Map<string, SensitiveDecision>();
+  const rows: { customerId: string; targetType: string; targetId: string; decision: SensitiveDecision }[] = [];
+  for (const e of entries) {
+    let decision = e.decision;
+    if (!decision) {
+      const k = `${e.targetType}:${e.targetId}:${e.customerId}`;
+      decision = cache.get(k) ?? (await evaluateSensitiveAccess(ctx, actor, e));
+      cache.set(k, decision);
+    }
+    if (!decision.allowed || !decision.shouldLog) continue;
+    rows.push({ customerId: e.customerId, targetType: e.targetType, targetId: e.targetId, decision });
+  }
+  if (rows.length === 0) return 0;
+
+  for (let i = 0; i < rows.length; i += ACCESS_LOG_CHUNK) {
+    await prisma.memberAccessLog.createMany({
+      data: rows.slice(i, i + ACCESS_LOG_CHUNK).map((r) => ({
+        tenantId: ctx.tenantId,
+        customerId: r.customerId,
+        userId: actorRef,
+        hrEmployeeId: r.decision.hrEmployeeId,
+        hrPosition: r.decision.hrPosition,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        page: page ?? null,
+      })),
+    });
+  }
+
+  const customerIds = [...new Set(rows.map((r) => r.customerId))];
+  const targets = [...new Map(rows.map((r) => [`${r.targetType}:${r.targetId}`, { targetType: r.targetType, targetId: r.targetId }])).values()];
+  const first = rows[0]!;
+  await emitOutbox(prisma, {
+    tenantId: ctx.tenantId,
+    type: "member.sensitive.viewed",
+    idempotencyKey: `member.sensitive.viewed#batch:${randomUUID()}`,
+    payload: {
+      // รูปเดิมของ event ใบเดี่ยว (เว็บฮุคที่อ่านฟิลด์พวกนี้อยู่แล้วไม่พัง) — ชี้ที่รายการแรกของก้อน
+      customerId: first.customerId,
+      userId: actorRef,
+      target: { targetType: first.targetType, targetId: first.targetId },
+      targetType: first.targetType,
+      targetId: first.targetId,
+      hrPosition: first.decision.hrPosition,
+      // ส่วนที่บอกว่านี่คือ "ก้อน" ไม่ใช่การเปิดดูคนเดียว
+      batch: true,
+      page: page ?? null,
+      count: rows.length,
+      customerCount: customerIds.length,
+      customerIds: customerIds.slice(0, ACCESS_LOG_SAMPLE),
+      targets,
+    },
+    systemId: ctx.systemId,
+  });
+  return rows.length;
+}
+
 /**
  * บันทึก "มีคนเปิดดูข้อมูลอ่อนไหว" (D17) + ยิง event `member.sensitive.viewed`
  * 🔴 เก็บตำแหน่ง HR **ณ เวลาที่ดู** ลงแถวเลย (ไม่ใช่ join สดตอนอ่านรายงาน) — คนย้ายตำแหน่งแล้ว
  *    ประวัติต้องยังบอกว่า "ตอนนั้นเขาเป็นพยาบาล" ไม่ใช่ตำแหน่งวันนี้
  */
 export async function logAccess(ctx: MemberCtx, actor: MemberActor, input: LogAccessInput): Promise<void> {
-  if (!actor.userId) return; // ลูกค้า/ระบบ ไม่ใช่ "พนักงานเปิดดูข้อมูลคนอื่น" จึงไม่มีอะไรต้องบันทึก
+  // 🔴 AUDIT L8: คีย์ API ที่ไม่ผูกกับคนจริง (`createdById` ว่าง) เคยถูกข้ามทั้งแถว ⇒ ระบบภายนอกเปิดอ่าน
+  //    ข้อมูลอ่อนไหวได้โดยไม่มีร่องรอยเลย · ไม่มีคอลัมน์ใหม่ ⇒ เก็บ "apikey:<id ของคีย์>" ลงคอลัมน์ผู้กระทำ
+  //    (ค่าที่ขึ้นต้นด้วย `apikey:` = ไม่ใช่ User.id — หน้าอ่านประวัติแปลงเป็นชื่อคีย์ได้)
+  const actorRef = actorRefOf(actor);
+  if (!actorRef) return; // ลูกค้า/ระบบ ไม่ใช่ "พนักงานเปิดดูข้อมูลคนอื่น" จึงไม่มีอะไรต้องบันทึก
   const decision = input.decision ?? (await evaluateSensitiveAccess(ctx, actor, input));
   await prisma.$transaction(async (tx) => {
     const row = await tx.memberAccessLog.create({
       data: {
         tenantId: ctx.tenantId,
         customerId: input.customerId,
-        userId: actor.userId,
+        userId: actorRef,
         hrEmployeeId: decision.hrEmployeeId,
         hrPosition: decision.hrPosition,
         targetType: input.targetType,
@@ -188,7 +293,7 @@ export async function logAccess(ctx: MemberCtx, actor: MemberActor, input: LogAc
       idempotencyKey: `member.sensitive.viewed#${row.id}`,
       payload: {
         customerId: input.customerId,
-        userId: actor.userId,
+        userId: actorRef,
         target: { targetType: input.targetType, targetId: input.targetId },
         targetType: input.targetType,
         targetId: input.targetId,
@@ -1130,7 +1235,11 @@ export async function requestErase(
  *
  * ตัดทิ้ง : ชื่อ/เบอร์/อีเมล/วันเกิด/รูป/id ช่องทาง · ค่าฟิลด์กำหนดเองทั้งหมด (รวมประวัติค่าเก่า) ·
  *          ที่อยู่ · แท็ก · โน้ต · ตัวตนกลาง (Party) ถ้าไม่มีโมดูลอื่นชี้อยู่
+ *          🔴 AUDIT M5/M6 (ตรวจรับ 16 ก.ย. — ของที่เคยตกค้าง): ข้อความ/คำตอบ/รูปในรีวิว + FileAsset ของรูป
+ *          และรูปโปรไฟล์ · `Referral.refereeContact` ฝั่งเพื่อนที่ถูกแนะนำ · หัวเรื่อง/เนื้อความของ
+ *          MemberNotification · CustomerSession ทุกใบถูกเพิกถอน · CustomerOtp ของคน/เบอร์/อีเมลนี้
  * คงไว้   : บิลขาย · รายการแต้ม · ประวัติระดับ · ไทม์ไลน์ · บันทึกการดู · แถวความยินยอม (ถอนทั้งหมด)
+ *          · แถวรีวิว/แจ้งเตือน/แนะนำเพื่อน (เหลือแต่ตัวเลข+สถานะ)
  *          — เป็นหลักฐานทางบัญชี/การตรวจสอบที่กฎหมายบังคับให้เก็บ ลบทิ้ง = ทำบัญชีของร้านพัง
  *
  * 🔴 idempotent: เรียกซ้ำกับคนที่ถูกลบแล้ว = เงียบ (ไม่ throw · ไม่แตะอะไร) — ตัวระบายคิวยิงซ้ำได้
@@ -1175,13 +1284,47 @@ export async function eraseMember(
     anonymizeParty = acc + crm + chat + hr + cards === 0;
   }
 
+  // 🔴 AUDIT M5: เป้าหมาย OTP ที่ต้องกวาด (เบอร์/อีเมลของคนนี้ก่อนถูกลบชื่อ)
+  const otpTargets = [c.phone, c.phone2, c.email].filter((v): v is string => !!v && v.trim() !== "");
+
   const now = new Date();
+  const removedFiles: string[] = [];
   await prisma.$transaction(async (tx) => {
     await tx.memberFieldValue.deleteMany({ where: { customerId } });
     await tx.memberFieldValueHistory.deleteMany({ where: { customerId } });
     await tx.memberAddress.deleteMany({ where: { customerId } });
     await tx.memberChannelIdentity.deleteMany({ where: { customerId } });
     await tx.memberConsent.updateMany({ where: { customerId, granted: true }, data: { granted: false, revokedAt: now } });
+
+    // 🔴 AUDIT M5: รีวิว — ข้อความของลูกค้า/คำตอบของร้าน (มักมีชื่อ+เบอร์) และรูปที่แนบ
+    //    คงแถว + คะแนน + สถานะไว้เป็นสถิติ/หลักฐาน (ลบ PII ไม่ใช่ลบแถว)
+    const reviews = await tx.memberReview.findMany({ where: { customerId }, select: { photoFileIds: true } });
+    const photoIds = [...new Set(reviews.flatMap((r) => r.photoFileIds))].filter((x) => !!x);
+    await tx.memberReview.updateMany({ where: { customerId }, data: { body: null, replyBody: null, photoFileIds: [] } });
+
+    // รูปรีวิว + รูปโปรไฟล์ — ลบแถว FileAsset ในนี้ · ไฟล์บน storage ลบ best-effort หลัง tx
+    const fileIds = [...photoIds, ...(c.avatarFileId ? [c.avatarFileId] : [])];
+    if (fileIds.length) {
+      const files = await tx.fileAsset.findMany({ where: { id: { in: fileIds }, tenantId: ctx.tenantId }, select: { id: true, cdnUrl: true } });
+      if (files.length) {
+        await tx.fileAsset.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
+        for (const f of files) if (f.cdnUrl) removedFiles.push(f.cdnUrl);
+      }
+    }
+
+    // 🔴 AUDIT M5: แนะนำเพื่อน — ฝั่งที่คนนี้เป็น "เพื่อนที่ถูกแนะนำ" เก็บเบอร์/ชื่อ/ลายนิ้วมืออุปกรณ์ไว้ในก้อน JSON
+    await tx.referral.updateMany({ where: { tenantId: ctx.tenantId, refereeCustomerId: customerId }, data: { refereeContact: Prisma.DbNull } });
+
+    // 🔴 AUDIT M5: แจ้งเตือนสมาชิก — หัวเรื่อง/เนื้อความมีชื่อ+เบอร์ (คงแถว + สถานะ/ช่องทาง/เวลาไว้เป็นหลักฐานการส่ง)
+    await tx.memberNotification.updateMany({ where: { customerId }, data: { subject: null, body: "" } });
+
+    // 🔴 AUDIT M6: ลบข้อมูลแล้ว session เดิมต้องใช้ไม่ได้ทันที (ไม่งั้นแอปที่เปิดค้างยังอ่านโปรไฟล์ได้)
+    await tx.customerSession.updateMany({ where: { customerId, revokedAt: null }, data: { revokedAt: now } });
+
+    // 🔴 AUDIT M5: OTP ที่ค้างอยู่เก็บเบอร์/อีเมลดิบไว้ในคอลัมน์ target
+    await tx.customerOtp.deleteMany({
+      where: { OR: [{ customerId }, ...(otpTargets.length ? [{ tenantId: ctx.tenantId, target: { in: otpTargets } }] : [])] },
+    });
     await tx.customer.update({
       where: { id: customerId },
       data: {
@@ -1232,13 +1375,19 @@ export async function eraseMember(
     });
   });
   await closeRequest();
+  // 🔴 AUDIT M5: ไฟล์จริงบนที่เก็บ — ลบแบบ best-effort นอก tx (ตัวลบห้าม throw · ลบไม่ได้ก็ลง OpsEvent เอง)
+  //    แถว FileAsset ถูกลบไปแล้วใน tx ⇒ ความเป็นส่วนตัวใน DB เกิดแน่นอนไม่ว่าที่เก็บจะตอบอะไร
+  if (removedFiles.length) {
+    const { deleteStoredFile } = await import("@/lib/storage/service");
+    for (const url of removedFiles) await deleteStoredFile(url, { tenantId: ctx.tenantId }).catch(() => null);
+  }
   await writeAudit({
     tenantId: ctx.tenantId,
     actorId: ctx.actorUserId,
     action: "member.erase",
     targetType: "Customer",
     targetId: customerId,
-    after: { requestId: options.requestId ?? null, step: "erased", partyAnonymized: anonymizeParty },
+    after: { requestId: options.requestId ?? null, step: "erased", partyAnonymized: anonymizeParty, filesRemoved: removedFiles.length },
   });
   return { erased: true };
 }

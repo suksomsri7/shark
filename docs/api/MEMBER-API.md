@@ -1444,7 +1444,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/member/webhooks" \
 
 ### Write operations
 
-Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 107 of the 212 operations.
+Change data. `Idempotency-Key` is required and every success is written to the audit log with the key name. 106 of the 212 operations.
 
 #### `apikeys.create`
 
@@ -1474,20 +1474,6 @@ No body fields.
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/cancel" \
-  -H "Authorization: Bearer $SHARK_API_KEY" \
-  -H "Idempotency-Key: $(uuidgen)"
-```
-
-#### `campaigns.send`
-
-**POST /campaigns/{id}/send** - Send the campaign now (or hand it to the scheduler when `scheduledAt` is in the future). Consent is checked per member and channel at the moment of sending; members already handled are never sent twice. · scope: `member.promo.manage` · write
-
-Path parameters: `id` (required).
-
-No body fields.
-
-```bash
-curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/send" \
   -H "Authorization: Bearer $SHARK_API_KEY" \
   -H "Idempotency-Key: $(uuidgen)"
 ```
@@ -3612,7 +3598,7 @@ curl -sS -X POST "https://shark.in.th/api/v1/member/webhooks" \
 
 ### Danger operations
 
-Hard or impossible to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 7 of the 212 operations.
+Hard or impossible to undo. On top of the write rules they need `confirm: true` and a `reason` of at least 5 characters. An AI agent must ask a human before calling these. 8 of the 212 operations.
 
 #### `apikeys.revoke`
 
@@ -3631,6 +3617,25 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/member/api-keys/123" \
   -H "Idempotency-Key: $(uuidgen)" \
   -H "Content-Type: application/json" \
   -d '{"reason":"reason for the audit log","confirm":true}'
+```
+
+#### `campaigns.send`
+
+**POST /campaigns/{id}/send** - Send the campaign now (or hand it to the scheduler when `scheduledAt` is in the future). Hard to undo: messages already delivered cannot be recalled, so this needs `confirm: true` and a `reason`. Consent is checked per member and channel at the moment of sending; members already handled are never sent twice. · scope: `member.promo.manage` · danger
+
+Path parameters: `id` (required).
+
+| Field | Type | Required | Rules |
+| --- | --- | --- | --- |
+| `confirm` | enum(true) | yes | Must be exactly true. Proves the caller meant to run an operation that is hard to undo. |
+| `reason` | string | yes | Why this is being done, at least 5 characters. Stored in the audit log. · min length 5 |
+
+```bash
+curl -sS -X POST "https://shark.in.th/api/v1/member/campaigns/123/send" \
+  -H "Authorization: Bearer $SHARK_API_KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":true,"reason":"reason for the audit log"}'
 ```
 
 #### `members.merge`

@@ -100,6 +100,14 @@ export async function revokeMemberApiKeyAction(fd: FormData): Promise<MemberApiA
   const { tenantId, userId } = await gate(systemId, "api.key.revoke");
   const keyId = s(fd, "keyId");
   if (!keyId) return { ok: false, reason: "ไม่พบคีย์ที่จะเพิกถอน" };
+  // 🔴 AUDIT L9: เดิมส่ง keyId ให้ `revokeApiKey` ตรง ๆ โดยไม่เทียบว่าเป็นคีย์ของ **ระบบนี้** จริง
+  //    ⇒ หน้าตั้งค่าของระบบสมาชิกหนึ่งยิง FormData เพิกถอนคีย์ของอีกระบบ/อีกเล่มบัญชีในร้านเดียวกันได้
+  //    (ร้านข้ามกันไม่ได้อยู่แล้วเพราะ `revokeApiKey` ผูก tenantId — ที่ขาดคือชั้น systemId)
+  const owned = await prisma.apiKey.findFirst({
+    where: { id: keyId, tenantId, systemId },
+    select: { id: true },
+  });
+  if (!owned) return { ok: false, reason: "ไม่พบคีย์นี้ในระบบสมาชิกนี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" };
   try {
     await revokeApiKey({ tenantId }, keyId);
     await writeAudit({

@@ -23,7 +23,9 @@ export default async function StampCardPage({ params }: { params: Promise<{ id: 
   if (!canReadMember(actor) || !hasMemberPerm(actor, "member.loyalty.manage")) notFound();
 
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
-  const card = await getCard(ctx, cardId).catch(() => null);
+  // 🔴 AUDIT M4: ส่ง actor เข้าไปด้วย = หน้านี้ (คนมี `member.loyalty.manage` เท่านั้น — ด่านข้างบน)
+  //    ได้ `ruleConfig.staffPin` ของจริงมาเติมฟอร์ม · หน้า/op อื่นได้แค่ `pinRequired`
+  const card = await getCard(ctx, cardId, actor).catch(() => null);
   if (!card) notFound();
 
   const [sample, tiers, units, services, rows] = await Promise.all([

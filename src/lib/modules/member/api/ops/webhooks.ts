@@ -7,7 +7,8 @@
 //
 // 🔴 url ต้องเป็น https (ส่งข้อมูลอ้างอิงสมาชิกผ่านเน็ต — http = 400) · events ต้องไม่ว่าง (ว่าง = "ทุกเหตุการณ์ของร้าน" ในบริการกลาง)
 // 🔴 secret คืนครั้งเดียวตอนสร้าง (`replaySecrets`) · รายการ/แก้ไข ไม่เคยคืน secret
-// 🔴 ลายเซ็น `X-Shark-Signature` = hex(HMAC-SHA256(secret, body ดิบ)) · ส่งไม่ผ่านลองใหม่สูงสุด 5 ครั้ง (cron)
+// 🔴 ลายเซ็น `X-Shark-Signature` = hex(HMAC-SHA256(secret, body ดิบ)) · ส่งไม่ผ่านลองใหม่สูงสุด 5 ครั้ง (cron · backoff ต่อใบ)
+// 🔴 AUDIT M1: เพิ่ม `X-Shark-Timestamp` + `X-Shark-Signature-V2` = hex(HMAC-SHA256(secret, `${ts}.${body}`)) · ปลายทางภายใน/loopback/metadata ถูกปฏิเสธทั้งตอนสร้างและตอนส่ง
 
 import { z } from "zod";
 import {
@@ -19,6 +20,7 @@ import {
   setEndpointActive,
   setEndpointEvents,
   testEndpoint,
+  webhookTargetProblem,
 } from "@/lib/webhooks/service";
 import type { ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
@@ -111,6 +113,9 @@ const create = defineMemberOp({
   async handler({ actor, input }) {
     const url = checkUrl(input.url);
     const events = checkEvents(input.events);
+    // 🔴 AUDIT M1: ปลายทางภายใน/loopback/metadata = 400 พร้อมเหตุผลไทย (ไม่ใช่ 500 จากบริการกลาง)
+    const unsafe = await webhookTargetProblem(url);
+    if (unsafe) throw badRequest(unsafe, "The endpoint URL must resolve to a public address.", [{ path: "url", message: unsafe }]);
     const res = await createEndpoint({ tenantId: actor.tenantId }, { url, events });
     return jsonSafe({ id: res.id, secret: res.secret, url, events, active: true });
   },

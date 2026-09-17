@@ -10,9 +10,10 @@
 // 🔴 ห้าม log รหัส OTP ดิบลง console/ops ไม่ว่ากรณีใด — `devOtp` คืนเป็นค่าในผลลัพธ์เฉพาะนอก production
 
 import { otpCode, randomToken, sha256 } from "@/lib/core/hash";
-import { checkRateLimit, resetRateLimit } from "@/lib/core/rate-limit";
+import { checkRateLimitDb, resetRateLimitDb } from "@/lib/core/rate-limit-db";
 import { prisma } from "./db";
 import type { MemberActor } from "./access";
+import { appRequiresSecureCookies } from "./customer-cookie";
 import type { MemberCtx } from "./profile";
 
 // ───────────────────────── ค่าคงที่ของสัญญา ─────────────────────────
@@ -23,6 +24,11 @@ const MAX_OTP_ATTEMPTS = 5; // กรอกผิดครบ 5 ครั้ง 
 const RL_WINDOW_MS = 10 * 60_000;
 const RL_PER_TARGET = 3; // ต่อเบอร์/อีเมล 3 ครั้ง / 10 นาที
 const RL_PER_IP = 10; // ต่อ ip 10 ครั้ง / 10 นาที
+// 🔴 AUDIT H4: ถัง "กรอกรหัสผิด" ตอนยืนยัน — คนละถังกับ "ขอรหัส" (เพดานต่อใบ 5 ครั้งเดิมยังอยู่
+//    แต่ผู้โจมตีขอใบใหม่ได้เรื่อย ๆ ⇒ ต้องมีเพดานรวมต่อเบอร์/ต่อ IP ด้วย) · สำเร็จแล้วล้างถัง
+const RL_VERIFY_WINDOW_MS = 15 * 60_000;
+const RL_VERIFY_PER_TARGET = 10; // ยืนยันผิดต่อเบอร์/อีเมล 10 ครั้ง / 15 นาที
+const RL_VERIFY_PER_IP = 10; // ยืนยันผิดต่อ ip 10 ครั้ง / 15 นาที
 
 /**
  * คำนำหน้าของ token session ลูกค้า (M2.10)
@@ -39,11 +45,21 @@ export function isCustomerToken(raw: string): boolean {
 
 /** ชื่อ cookie ของลูกค้า — HTTPS ใช้ `__Host-` (Secure + Path=/ + ไม่มี Domain) */
 export function customerCookieName(): string {
-  return (process.env.APP_ENV ?? "development") !== "development" ? "__Host-shark_customer" : "shark_customer";
+  return appRequiresSecureCookies() ? "__Host-shark_customer" : "shark_customer";
 }
 
-/** โชว์รหัสบนจอได้ไหม (dev/preview/QC) — production ไม่มีวันคืนรหัสกลับไปให้ผู้เรียก */
+/**
+ * โชว์รหัสบนจอได้ไหม (dev/preview/QC) — production ไม่มีวันคืนรหัสกลับไปให้ผู้เรียก
+ *
+ * 🔴 AUDIT M3: `QC_OTP_PREVIEW` ถูกเช็คก่อน ⇒ env ตัวนี้หลุดไป prod ครั้งเดียว = OTP ของลูกค้าทุกคน
+ *    โผล่ในผลลัพธ์ของ API สาธารณะ · ตอนนี้ **prod จริงตัดจบเป็นเงื่อนไขแรก** ไม่ว่าจะตั้ง env อะไรมา
+ * 🔴 ตัวแยก "prod จริง" ต้องใช้สองตัวคู่กัน: `NODE_ENV=production` อย่างเดียวไม่พอ เพราะ `next start`
+ *    ของเซิร์ฟเวอร์ QC (scripts/acc-v2-serve.sh) ก็เป็น production เหมือนกัน — ตัวที่ต่างคือ `APP_ENV`
+ *    (.env.qc ตั้ง `APP_ENV=development` · prod จริงตั้ง `APP_ENV=production`) ซึ่งเป็นตัวเดียวกับที่
+ *    ใช้ตัดสินชื่อ/Secure ของ cookie อยู่แล้ว ⇒ ไม่มีตัวแปรลับตัวที่สองให้ลืมตั้ง
+ */
 function otpPreviewOn(): boolean {
+  if (process.env.NODE_ENV === "production" && (process.env.APP_ENV ?? "development") === "production") return false;
   if (process.env.QC_OTP_PREVIEW === "1") return true;
   return process.env.NODE_ENV !== "production";
 }
@@ -98,20 +114,36 @@ function maskTarget(target: string, channel: "PHONE" | "EMAIL"): string {
 
 const rateKeys = new Set<string>();
 
-function hit(key: string, limit: number): void {
+/**
+ * นับ 1 ครั้งในถังบนฐานข้อมูล
+ * 🔴 AUDIT H4: เดิมใช้ `core/rate-limit.ts` (Map ใน process เดียว) ⇒ บนหลาย instance เพดานจริง =
+ *    ที่ตั้งไว้ × จำนวน instance แทบไม่กันอะไรเลย · ย้ายมา `checkRateLimitDb` ถังเดียวกับที่เลนสมัคร
+ *    สมาชิก (`public-lane`/`join-actions.gate`) ใช้อยู่ ⇒ ทุก instance เห็นตัวเลขเดียวกัน
+ *    (ตัวเลขเพดานคงเดิมทุกตัว — ย้ายที่นับอย่างเดียว ไม่ได้บีบผู้ใช้จริงเพิ่ม)
+ */
+async function hit(key: string, limit: number, windowMs: number, message: (mins: number) => string): Promise<void> {
   rateKeys.add(key);
-  const r = checkRateLimit(key, { limit, windowMs: RL_WINDOW_MS });
+  const r = await checkRateLimitDb(key, { limit, windowMs });
   if (!r.ok) {
     const mins = Math.max(1, Math.ceil((r.retryAfterSec ?? 60) / 60));
-    throw new CustomerRateLimitError(
-      `ขอรหัสยืนยันบ่อยเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`,
-    );
+    throw new CustomerRateLimitError(message(mins));
   }
+}
+
+const askTooOften = (mins: number) => `ขอรหัสยืนยันบ่อยเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`;
+const verifyTooOften = (mins: number) => `ใส่รหัสยืนยันผิดหลายครั้งเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`;
+
+/** คีย์ถัง "ยืนยันรหัสผิด" (AUDIT H4) — ต่อปลายทาง และต่อ IP */
+function verifyKeys(tenantId: string | null, target: string | null, ip: string): string[] {
+  const out: string[] = [];
+  if (tenantId && target) out.push(`customer-otp:verify:${tenantId}:${target}`);
+  if (ip) out.push(`customer-otp:verify:ip:${ip}`);
+  return out;
 }
 
 /** ล้างตัวนับของ QC เท่านั้น (ล้างเฉพาะถังของไฟล์นี้ ไม่แตะถังของโมดูลอื่น) */
 export async function __resetCustomerOtpLimit(): Promise<void> {
-  for (const k of rateKeys) resetRateLimit(k);
+  for (const k of rateKeys) await resetRateLimitDb(k);
   rateKeys.clear();
 }
 
@@ -158,9 +190,11 @@ export async function requestOtp(
   const channel: "PHONE" | "EMAIL" = phone ? "PHONE" : "EMAIL";
   const target = phone || email;
 
-  hit(`customer-otp:target:${tenant.id}:${channel}:${target}`, RL_PER_TARGET);
+  // 🔴 AUDIT H4: เพดานทั้งสองชั้นนับบนฐานข้อมูล (ทนข้าม instance) — เลนสมัครสมาชิกเรียกผ่านทางนี้
+  //    เหมือนกันทุกประการ จึงได้เพดานชุดเดียวกัน ไม่ใช่เพดานคนละใบให้ยิงสลับกันได้สองเท่า
+  await hit(`customer-otp:target:${tenant.id}:${channel}:${target}`, RL_PER_TARGET, RL_WINDOW_MS, askTooOften);
   const ip = trimmed(opts?.ip);
-  if (ip) hit(`customer-otp:ip:${ip}`, RL_PER_IP);
+  if (ip) await hit(`customer-otp:ip:${ip}`, RL_PER_IP, RL_WINDOW_MS, askTooOften);
 
   const customer = await prisma.customer.findFirst({
     where: {
@@ -189,14 +223,30 @@ export async function requestOtp(
   });
 
   // ส่งจริงเฉพาะเมื่อรู้จักปลายทาง — ส่งไม่ออกห้ามทำให้คำขอล้ม (ผู้ใช้จะเห็นแค่ "ส่งแล้ว" เหมือนกันหมด)
+  //
+  // 🔴 AUDIT L1: เดิม `await sendEmail(...)` อยู่ในเส้นทางคำขอ ⇒ อีเมลที่เป็นสมาชิกตอบช้ากว่าอีเมล
+  //    คนแปลกหน้าเท่ากับเวลาที่ผู้ให้บริการอีเมลใช้ (หลักร้อย ms ขึ้นไป) = จับเวลาแล้วรู้ว่าใครเป็นสมาชิก
+  //    ⇒ ย้ายการส่งออกนอกเส้นทางคำขอ: มี request scope ใช้ `after()` ของ Next · ไม่มี (ถูกเรียกเป็น
+  //    ไลบรารีจากคิว/ข้อสอบ) ก็ยิงทิ้งพร้อม `.catch` — ทั้งสองทางคืนค่าให้ผู้เรียกทันทีเท่ากันหมด
   if ((customer || opts?.forJoin === true) && channel === "EMAIL") {
+    const subject = opts?.forJoin === true ? `รหัสยืนยันสมัครสมาชิก ${tenant.name}` : `รหัสเข้าสู่ระบบสมาชิก ${tenant.name}`;
+    const deliver = async (): Promise<void> => {
+      try {
+        const { sendEmail } = await import("@/lib/core/email");
+        await sendEmail(target, subject, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
+      } catch {
+        // ส่งอีเมลไม่ออก = ผู้ใช้กดขอใหม่ได้ — ห้ามโยนต่อ (และห้าม log รหัส)
+      }
+    };
+    let scheduled = false;
     try {
-      const { sendEmail } = await import("@/lib/core/email");
-      const subject = opts?.forJoin === true ? `รหัสยืนยันสมัครสมาชิก ${tenant.name}` : `รหัสเข้าสู่ระบบสมาชิก ${tenant.name}`;
-      await sendEmail(target, subject, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
+      const { after } = await import("next/server");
+      after(deliver);
+      scheduled = true;
     } catch {
-      // ส่งอีเมลไม่ออก = ผู้ใช้กดขอใหม่ได้ — ห้ามโยนต่อ (และห้าม log รหัส)
+      // นอกขอบเขตคำขอ (คิว/ข้อสอบ/สคริปต์) — `after()` โยนทิ้ง ยังไม่ได้เรียก deliver จึงไม่ส่งซ้ำ
     }
+    if (!scheduled) void deliver();
   }
   // หนี้: ยังไม่มีผู้ให้บริการ SMS ในระบบ ⇒ ช่องทางเบอร์ส่งจริงไม่ได้จนกว่าจะต่อ gateway (M3.2)
 
@@ -249,6 +299,15 @@ export async function verifyOtp(
 
   const row = await prisma.customerOtp.findUnique({ where: { id: otpId } });
   const now = new Date();
+
+  // 🔴 AUDIT H4: เพดานเดิมนับ "ผิดต่อใบ" (5 ครั้ง) อย่างเดียว — ขอใบใหม่แล้วเดาต่อได้ไม่จำกัด
+  //    ⇒ นับรวมต่อเบอร์/อีเมล และต่อ IP บนฐานข้อมูลด้วย (ยิงขนานจากหลาย instance ก็โดนถังเดียวกัน)
+  //    ยืนยันสำเร็จ = ล้างถัง (คนกดผิดเพราะพิมพ์พลาดไม่ถูกลงโทษข้ามรอบ)
+  const ip = trimmed(meta?.ip) || trimmed(row?.ip);
+  const keys = verifyKeys(row?.tenantId ?? null, row?.target ?? null, ip);
+  const limitOf = (k: string) => (k.startsWith("customer-otp:verify:ip:") ? RL_VERIFY_PER_IP : RL_VERIFY_PER_TARGET);
+  for (const k of keys) await hit(k, limitOf(k), RL_VERIFY_WINDOW_MS, verifyTooOften);
+
   if (!row || row.usedAt || row.expiresAt < now || row.attempts >= MAX_OTP_ATTEMPTS) {
     throw new CustomerAuthError(VERIFY_FAIL);
   }
@@ -257,13 +316,16 @@ export async function verifyOtp(
     await prisma.customerOtp.update({ where: { id: row.id }, data: { attempts: { increment: 1 } } });
     throw new CustomerAuthError(VERIFY_FAIL);
   }
+  // 🔴 AUDIT M6: บัญชีที่ถูกระงับเข้าระบบไม่ได้ (เดิมรับ SUSPENDED ด้วย) — พิมพ์เขียว §3.10/§6.2 ไม่มี
+  //    ข้อยกเว้นให้คนถูกระงับล็อกอิน · ข้อความยังเป็นใบเดียวกับ "รหัสผิด" (ไม่บอกใบ้สถานะบัญชีคนอื่น)
   const customer = await prisma.customer.findFirst({
-    where: { id: row.customerId, tenantId: row.tenantId, status: { in: ["ACTIVE", "SUSPENDED"] } },
+    where: { id: row.customerId, tenantId: row.tenantId, status: "ACTIVE" },
     select: { id: true, tenantId: true },
   });
   if (!customer) throw new CustomerAuthError(VERIFY_FAIL);
 
   await prisma.customerOtp.update({ where: { id: row.id }, data: { usedAt: now } });
+  for (const k of keys) await resetRateLimitDb(k);
   return createSessionRow(customer, meta);
 }
 
@@ -293,8 +355,10 @@ export async function loginWithLine(
     select: { customerId: true },
   });
   if (!identity) return { needsJoin: true, joinUrl };
+  // 🔴 AUDIT M6: ระงับบัญชีแล้วเข้าด้วย LINE ไม่ได้ (เดิมรับ SUSPENDED) — ผลเหมือน "ยังไม่เคยผูก"
+  //    คือ needsJoin ไม่ออก session (ไม่บอกใบ้ว่าบัญชีนี้ถูกระงับ)
   const customer = await prisma.customer.findFirst({
-    where: { id: identity.customerId, tenantId: tenant.id, status: { in: ["ACTIVE", "SUSPENDED"] } },
+    where: { id: identity.customerId, tenantId: tenant.id, status: "ACTIVE" },
     select: { id: true, tenantId: true },
   });
   if (!customer) return { needsJoin: true, joinUrl };
@@ -308,8 +372,9 @@ export async function mintCustomerSession(
   customerId: string,
   meta: { userAgent?: string | null; ip?: string | null } = {},
 ): Promise<CustomerSessionToken> {
-  const customer = await prisma.customer.findUnique({
-    where: { id: trimmed(customerId) },
+  // 🔴 AUDIT M6: ออก session ให้ได้เฉพาะบัญชีที่ยังใช้งานอยู่ (ระงับ/ปิด/ถูกรวม = ออกไม่ได้)
+  const customer = await prisma.customer.findFirst({
+    where: { id: trimmed(customerId), status: "ACTIVE" },
     select: { id: true, tenantId: true },
   });
   if (!customer) throw new CustomerAuthError("ไม่พบสมาชิกคนนี้ — ลิงก์อาจเก่าเกินไป ลองเข้าจากหน้าร้านอีกครั้ง");
@@ -329,8 +394,10 @@ export async function getCustomerSession(token: string): Promise<CustomerSession
   if (!t) return null;
   const row = await prisma.customerSession.findUnique({ where: { tokenHash: sha256(t) } });
   if (!row || row.revokedAt || row.expiresAt < new Date()) return null;
+  // 🔴 AUDIT M6: สถานะ SUSPENDED = ใช้ session ต่อไม่ได้ทันที (ไม่ต้องรอ cookie หมดอายุ)
+  //    คู่กับการเพิกถอน session ตอนกดระงับใน `profile.setStatus` — ปลดระงับแล้วล็อกอินใหม่ได้ตามปกติ
   const customer = await prisma.customer.findFirst({
-    where: { id: row.customerId, tenantId: row.tenantId, status: { in: ["ACTIVE", "SUSPENDED"] } },
+    where: { id: row.customerId, tenantId: row.tenantId, status: "ACTIVE" },
     select: { id: true, tenantId: true, memberSystemId: true },
   });
   if (!customer) return null;

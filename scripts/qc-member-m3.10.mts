@@ -172,6 +172,8 @@ try {
   const failed = await P.webhookDelivery.findFirst({ where: { endpointId: wh.body?.id, status: "FAILED" }, orderBy: { createdAt: "desc" } });
   // ORACLE-EDIT M3.10-S3.10: retryFailedWebhooks ทำทั้งฐาน → delivery FAILED ของชุดอื่นใน QC ถูกเปลี่ยนเป็น OK ทุกรอบ · จำไว้แล้วคืนสภาพหลังวัด (ไม่เปลี่ยนเงื่อนไข)
   const othersFailed = (await P.webhookDelivery.findMany({ where: { status: "FAILED", NOT: { endpointId: wh.body?.id ?? "-" } }, select: { id: true, status: true, attempts: true, lastError: true } }).catch(() => [])) as Any[];
+  // ORACLE-EDIT M3.10-S3.10b (Fable 17 ก.ย. · AUDIT M1 backoff ต่อใบ): ใบที่เพิ่งล้มยังไม่ถึงรอบยิงซ้ำ ⇒ เลื่อน updatedAt ของใบนี้ให้ถึงรอบก่อนวัด — เงื่อนไขเดิม (OK · attempts 2) ไม่เปลี่ยน
+  if (failed) await prisma.$executeRawUnsafe(`UPDATE "WebhookDelivery" SET "updatedAt" = now() - interval '24 hours' WHERE id = $1`, failed.id);
   const retried = await hooksSvc.retryFailedWebhooks({ fetch: fetchOk } as Any);
   for (const o of othersFailed) await P.webhookDelivery.update({ where: { id: o.id }, data: { status: o.status, attempts: o.attempts, lastError: o.lastError } }).catch(() => null);
   const afterRetry = failed ? await P.webhookDelivery.findUnique({ where: { id: failed.id } }) : null;

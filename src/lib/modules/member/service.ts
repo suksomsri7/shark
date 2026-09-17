@@ -299,6 +299,13 @@ export async function recordVisit(tenantId: string, customerId: string, client: 
   });
 }
 
+/**
+ * เพดานของคอลัมน์ `Customer.totalSpentSatang` (Int ของ Postgres = ฿21,474,836.47)
+ * 🔴 AUDIT L15: ขยายเป็น BigInt ต้องมี migration (run นี้ห้ามทำ) ⇒ กันไว้ที่เพดานแทน
+ *    ทะลุแล้ว "บวกไม่ขึ้น" ยังดีกว่าคำสั่งล้มทั้งชุด (คิวค้าง = แต้ม/ระดับของทั้งร้านหยุด)
+ */
+const MAX_TOTAL_SPENT_SATANG = 2_147_483_647;
+
 // ── บันทึกยอดใช้จ่าย (เรียกโดย POS createSale) → อัปเดต tier ──
 export async function recordSpend(
   tenantId: string,
@@ -306,21 +313,45 @@ export async function recordSpend(
   amountSatang: number,
   client: Client = prisma,
 ) {
-  const c = await client.customer.findFirst({ where: { id: customerId, tenantId } });
+  const c = await client.customer.findFirst({ where: { id: customerId, tenantId }, select: { id: true, tierDefId: true } });
   if (!c) return;
-  const total = c.totalSpentSatang + amountSatang;
+  // 🔴 AUDIT H5: บวกแบบ atomic (`increment`) — ห้าม "อ่าน → บวกในแอป → เขียน" อีก
+  //    สองคิวที่ drain คนละอินสแตนซ์อ่านค่าเดียวกันแล้วเขียนทับกัน = ยอดของบิลหนึ่งหายเงียบ ๆ
+  // 🔴 AUDIT L15: เงื่อนไข `lte เพดาน - ยอดที่จะบวก` ทำให้ "บวกแล้วทะลุ" ไม่เข้าเงื่อนไข (นับ 0 แถว)
+  //    ⇒ ไปเข้าทางด้านล่างที่ตรึงไว้ที่เพดาน + ส่งเสียงให้ร้านรู้
+  // 🔴 ขา VOID ส่งยอดติดลบมา ⇒ ขอบบนต้องไม่เกินเพดานเอง ไม่งั้นค่าที่ส่งเข้า query ทะลุชนิด Int ของคอลัมน์
+  //    แล้วฐานข้อมูลปฏิเสธทั้งคำสั่ง (คืนยอดตอนยกเลิกบิลล้มเงียบ ๆ — จับได้ตอน qc-member-m2.8 S2.3)
+  const ceiling = amountSatang > 0 ? MAX_TOTAL_SPENT_SATANG - amountSatang : MAX_TOTAL_SPENT_SATANG;
+  const grew = await client.customer.updateMany({
+    where: { id: customerId, tenantId, totalSpentSatang: { lte: ceiling } },
+    data: { totalSpentSatang: { increment: amountSatang } },
+  });
+  if (grew.count === 0) {
+    const row = await client.customer.findFirst({ where: { id: customerId, tenantId }, select: { totalSpentSatang: true } });
+    if (!row) return; // สมาชิกถูกลบระหว่างทาง = ไม่มีใครให้บวกแล้ว
+    if (row.totalSpentSatang !== MAX_TOTAL_SPENT_SATANG) {
+      await client.customer.updateMany({ where: { id: customerId, tenantId }, data: { totalSpentSatang: MAX_TOTAL_SPENT_SATANG } });
+    }
+    const { logOps } = await import("@/lib/core/ops");
+    await logOps(
+      "WARN",
+      "member",
+      `ยอดใช้จ่ายสะสมของสมาชิกชนเพดานของระบบแล้ว — ตรึงไว้ที่ ฿21,474,836.47 (สมาชิก ${customerId})`,
+      { tenantId, detail: `customerId=${customerId} addSatang=${amountSatang} cap=${MAX_TOTAL_SPENT_SATANG}` },
+    );
+  }
   // 🔴 M2.x (10 ก.ย. 2569): ถ้าสมาชิกอยู่ในระบบสมาชิก v2 (มี tierDefId) ห้ามเขียน `tier` จากยอดสะสมแบบ v1
   //    — ระดับ v2 เป็นของ tiers.ts (applyTierChange/runTierReview) เท่านั้น · เขียนทับที่นี่ทำให้
   //    Customer.tier กับ tierDef.legacyTier ไม่ตรงกันเงียบ ๆ (พบจริงระหว่าง M2.2/M2.4/M2.5 · qc-member-m1.9 S7.3)
-  if (c.tierDefId) {
-    await client.customer.update({ where: { id: customerId }, data: { totalSpentSatang: total } });
-    return;
-  }
+  if (c.tierDefId) return;
+  // 🔴 AUDIT H5: ระดับ v1 ต้องคิดจากยอด "หลังบวก" ที่อ่านกลับมาจริง (ไม่ใช่ค่าที่แอปคำนวณเอง)
+  const after = await client.customer.findFirst({ where: { id: customerId, tenantId }, select: { totalSpentSatang: true } });
+  if (!after) return;
   // ใช้เกณฑ์ระดับของร้าน (ไม่ใช่ค่า hardcode) — เจ้าของกำหนดชื่อ+ยอดขั้นต่ำเองได้
   const config = await getTierConfig({ tenantId });
-  await client.customer.update({
-    where: { id: customerId },
-    data: { totalSpentSatang: total, tier: computeTierFor(total, config) },
+  await client.customer.updateMany({
+    where: { id: customerId, tenantId, tierDefId: null },
+    data: { tier: computeTierFor(after.totalSpentSatang, config) },
   });
 }
 

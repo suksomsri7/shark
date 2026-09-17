@@ -18,6 +18,7 @@ import { executeProposal, rejectProposal } from "@/lib/ai/proposals";
 import { prisma } from "./db";
 import { canReadMember, toMemberActor } from "./access";
 import { appendToolsLine, assistantState } from "./assistant";
+import { assertProposalInScope } from "./assistant-guard";
 import type { AssistantActionResult, AssistantConfirmResult, AssistantStateDto } from "./assistant-shared";
 
 const TEXT_MAX = 2000;
@@ -94,7 +95,10 @@ export async function cancelMemberProposalAction(
   proposalId: string,
 ): Promise<AssistantActionResult<AssistantStateDto>> {
   try {
-    const { tenantId, viewer } = await gate(systemId);
+    const { tenantId, mc, viewer } = await gate(systemId);
+    // 🔴 AUDIT L10: ยกเลิกได้เฉพาะข้อเสนอของบทสนทนาที่เปิดอยู่ + ระบบสมาชิกใบนี้ + ต้องมีสิทธิ์
+    //    ชุดเดียวกับตอนกดยืนยัน (ไม่งั้นคนที่มีแค่สิทธิ์อ่านปิดงานของคนอื่นทิ้งได้ทั้งร้าน)
+    await assertProposalInScope({ tenantId, systemId, conversationId, proposalId: String(proposalId ?? "") }, mc);
     await rejectProposal({ tenantId }, String(proposalId ?? ""));
     return { ok: true, data: await assistantState(tenantId, conversationId, viewer) };
   } catch (e) {

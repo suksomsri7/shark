@@ -67,8 +67,12 @@ export type CreateMemberInput = {
   sourceDetail?: Record<string, unknown>;
   sourceChannel?: string | null;
   referralCode?: string | null;
-  /** M3.5 — ข้อมูลอุปกรณ์ตอนสมัครด้วยโค้ดแนะนำ (LIFF join ส่ง fingerprint มา) ใช้กันโกงเบอร์/อุปกรณ์ซ้ำ */
-  device?: { fingerprint?: string | null; phone?: string | null } | null;
+  /**
+   * M3.5 — ข้อมูลอุปกรณ์ตอนสมัครด้วยโค้ดแนะนำ (LIFF join ส่ง fingerprint มา) ใช้กันโกงเบอร์/อุปกรณ์ซ้ำ
+   * 🔴 AUDIT M14 (ชุด S4): เพิ่ม `ip`/`ipHash` — fingerprint มาจาก client จึงปลอมได้ ต้องนับ IP ควบด้วย
+   *    ที่นี่เป็น **ชนิดอย่างเดียว** (ก้อนนี้ถูกส่งต่อทั้งก้อนให้ `referrals.attach()` อยู่แล้ว)
+   */
+  device?: { fingerprint?: string | null; phone?: string | null; ip?: string | null; ipHash?: string | null } | null;
   homeUnitId?: string | null;
   tags?: string[];
   idempotencyKey?: string | null;
@@ -1078,11 +1082,20 @@ export async function setStatus(
 ): Promise<MemberBrief> {
   const value = normalizeStatus(status);
   const label: Record<string, string> = { ACTIVE: "เปิดใช้งาน", SUSPENDED: "ระงับชั่วคราว", CLOSED: "ปิดบัญชีสมาชิก" };
-  return mutate(ctx, actor, id, { status: value }, {
+  const brief = await mutate(ctx, actor, id, { status: value }, {
     action: "member.status.changed",
     type: "STATUS_CHANGED",
     summary: `${label[value] ?? value}${reason ? ` — ${reason}` : ""}`,
   });
+  // 🔴 AUDIT M6: ระงับ/ปิดบัญชีแล้ว session ลูกค้าที่ออกไปแล้วต้องตายทันที — เดิม `revokeAllCustomerSessions`
+  //    ไม่มีผู้เรียกเลย ⇒ คนที่ถูกระงับยังเปิด `/m/<slug>/*` ต่อได้อีก 30 วันจนกว่า cookie หมดอายุ
+  //    (ฝั่งพนักงานไม่กระทบ — หน้าจอของร้านยังเปิดดู/แก้สมาชิกที่ถูกระงับได้เหมือนเดิม)
+  //    ปลดระงับ (ACTIVE) ไม่เพิกถอนอะไร และล็อกอินใหม่ได้ทันที
+  if (value === "SUSPENDED" || value === "CLOSED") {
+    const { revokeAllCustomerSessions } = await import("./customer-session");
+    await revokeAllCustomerSessions(id);
+  }
+  return brief;
 }
 
 /** ตั้ง/ถอดผู้ดูแลสมาชิก (ต้องเป็นผู้ใช้ที่มีบัญชีในร้าน) */

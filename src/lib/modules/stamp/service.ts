@@ -17,6 +17,7 @@
 //    การลาก facade ของโมดูลขายของ/โมดูลจองเข้ามาจะสร้างวงจร (ทั้งคู่เรียกสมาชิกอยู่แล้ว)
 //    ⇒ fitness F2 อนุญาตเฉพาะเส้น stamp→member · stamp→point · stamp→voucher เท่านั้น
 
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { Prisma, StampCard as StampCardRow, StampCardProgress as StampProgressRow, StampRewardKind, StampRuleKind } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { earnWithLot } from "@/lib/modules/point";
@@ -75,7 +76,15 @@ export type StampCardDto = {
   description: string | null;
   slots: number;
   ruleKind: StampRuleKind;
+  /**
+   * 🔴 AUDIT M4: `ruleConfig.staffPin` เป็น **null เสมอ** ใน DTO ทั่วไป — PIN ห้ามออกจากเซิร์ฟเวอร์
+   *    (DTO ก้อนนี้ถูกส่งเข้า client component ของหน้ารวม และเป็นผลของ op อ่านอย่างเดียว
+   *     `stamps.cards.list` ซึ่งคีย์ `member-read` เรียกได้) · อ่านค่าจริงได้ทางเดียวคือ
+   *     `getCard(ctx, id, actor)` ของคนที่มี `member.loyalty.manage` (หน้าตั้งค่าใบ)
+   */
   ruleConfig: StampRuleConfig;
+  /** ใบนี้ตั้ง PIN ไว้ไหม (สิ่งเดียวที่หน้าจอ/แอปพนักงานต้องรู้) */
+  pinRequired: boolean;
   rewardKind: StampRewardKind;
   rewardConfig: StampRewardConfig;
   autoRestart: boolean;
@@ -112,6 +121,12 @@ export type AddStampInput = {
   refId?: string | null;
   unitId?: string | null;
   byPin?: string | null;
+  /**
+   * 🔴 AUDIT M4: ผู้เรียกฝั่ง "พนักงาน" ที่ต้องการให้ตรวจ PIN ของใบด้วย (แอปพนักงาน — §6.2
+   * "ประทับสแตมป์: STAFF ✓ (PIN)") · ค่าปริยาย false = พฤติกรรมเดิมทุกประการสำหรับ POS/คิว/REST
+   * ⇒ ตัว PIN ไม่ต้องออกจากโมดูลนี้ไปให้ผู้เรียกเปรียบเทียบเอง
+   */
+  requireStaffPin?: boolean;
   idempotencyKey: string;
 };
 
@@ -197,6 +212,17 @@ function rewardConfigOf(card: { rewardConfig: unknown }): StampRewardConfig {
 /** เพดานต่อวันที่ใช้จริง — PER_DAY บังคับ 1 ตรา/วันไทยเสมอ ไม่ว่าร้านจะตั้ง perDayMax เท่าไหร่ */
 function dailyCapOf(card: { ruleKind: StampRuleKind }, cfg: StampRuleConfig): number {
   return card.ruleKind === "PER_DAY" ? 1 : cfg.perDayMax;
+}
+
+/**
+ * เทียบ PIN แบบ constant-time (AUDIT M4)
+ * 🔴 `!==` ธรรมดาเลิกเทียบทันทีที่เจอตัวแรกที่ต่าง ⇒ เวลาที่ใช้บอกใบ้ว่า "กี่หลักแรกถูก"
+ *    เทียบ digest ความยาวเท่ากันเสมอ จึงไม่รั่วทั้งค่าและความยาวของ PIN จริง
+ */
+function pinMatches(given: string | null | undefined, expected: string): boolean {
+  const a = typeof given === "string" ? given.trim() : "";
+  if (!a) return false;
+  return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(expected).digest());
 }
 
 // ───────────────────────── สิทธิ์ (§6.1) ─────────────────────────
@@ -316,14 +342,21 @@ async function statsOf(db: Db, cardIds: string[]): Promise<Map<string, StampCard
   return out;
 }
 
-function toDto(card: StampCardRow, stats: StampCardStats): StampCardDto {
+/**
+ * แถวในฐาน → DTO
+ * 🔴 AUDIT M4: `revealPin` เปิดได้เฉพาะผู้เรียกที่ตรวจสิทธิ์ `member.loyalty.manage` มาแล้ว (หน้าตั้งค่าใบ)
+ *    ค่าปริยาย = ตัด PIN ทิ้ง เหลือแค่ `pinRequired`
+ */
+function toDto(card: StampCardRow, stats: StampCardStats, opts: { revealPin?: boolean } = {}): StampCardDto {
+  const cfg = ruleConfigOf(card);
   return {
     id: card.id,
     name: card.name,
     description: card.description,
     slots: card.slots,
     ruleKind: card.ruleKind,
-    ruleConfig: ruleConfigOf(card),
+    ruleConfig: opts.revealPin === true ? cfg : { ...cfg, staffPin: null },
+    pinRequired: cfg.staffPin !== null,
     rewardKind: card.rewardKind,
     rewardConfig: rewardConfigOf(card),
     autoRestart: card.autoRestart,
@@ -346,10 +379,16 @@ export async function listCards(ctx: StampCtx): Promise<StampCardDto[]> {
   return cards.map((c) => toDto(c, stats.get(c.id) ?? { active: 0, completed: 0, rewardsPaid: 0 }));
 }
 
-export async function getCard(ctx: StampCtx, cardId: string): Promise<StampCardDto> {
+/**
+ * ใบเดียว (+ สถิติ)
+ * 🔴 AUDIT M4: ส่ง `actor` ที่มี `member.loyalty.manage` มาด้วย = ได้ `ruleConfig.staffPin` ของจริง
+ *    (หน้าตั้งค่าใบต้องเติมค่าเดิมลงฟอร์ม) · ไม่ส่ง/สิทธิ์ไม่ถึง = PIN เป็น null เหมือน DTO ที่อื่น
+ */
+export async function getCard(ctx: StampCtx, cardId: string, actor?: MemberActor): Promise<StampCardDto> {
   const card = await loadCard(prisma, ctx, cardId);
   const stats = await statsOf(prisma, [card.id]);
-  return toDto(card, stats.get(card.id) ?? { active: 0, completed: 0, rewardsPaid: 0 });
+  const revealPin = !!actor && hasMemberPerm(actor, "member.loyalty.manage");
+  return toDto(card, stats.get(card.id) ?? { active: 0, completed: 0, rewardsPaid: 0 }, { revealPin });
 }
 
 export async function cardStats(ctx: StampCtx, cardId: string): Promise<StampCardStats> {
@@ -455,7 +494,14 @@ export async function toggleCard(ctx: StampCtx, actor: MemberActor, cardId: stri
  *     (สาขาไม่ครอบ = **ไม่พบ** ไม่ใช่ "ไม่มีสิทธิ์" — §6.4 404-not-403 ไม่บอกใบ้ว่ามีสมาชิกคนนี้อยู่)
  *   • ลูกค้าเอง (LIFF): ต้องเป็นบัตรของตัวเอง + ใบตั้ง PIN ไว้ + ใส่ PIN ตรง
  */
-function assertCanStamp(actor: MemberActor, card: StampCardRow, cfg: StampRuleConfig, customer: CustomerLite, byPin: string | null): void {
+function assertCanStamp(
+  actor: MemberActor,
+  card: StampCardRow,
+  cfg: StampRuleConfig,
+  customer: CustomerLite,
+  byPin: string | null,
+  requireStaffPin = false,
+): void {
   if (actor.role === "CUSTOMER") {
     if (!actor.customerId || actor.customerId !== customer.id) {
       throw new StampForbiddenError("ประทับตราได้เฉพาะบัตรของตัวเอง — ถ้าต้องการประทับให้คนอื่น ให้พนักงานเป็นผู้ทำรายการ");
@@ -463,10 +509,15 @@ function assertCanStamp(actor: MemberActor, card: StampCardRow, cfg: StampRuleCo
     if (!cfg.staffPin) {
       throw new StampStateError("ใบนี้ยังไม่ได้ตั้ง PIN สำหรับให้ลูกค้ากดเอง — ยื่นบัตรให้พนักงานประทับให้แทน");
     }
-    if (!byPin || byPin !== cfg.staffPin) {
-      throw new StampStateError("PIN ไม่ตรงกับที่ร้านตั้งไว้ — ขอ PIN จากพนักงานแล้วลองใหม่อีกครั้ง");
+    if (!pinMatches(byPin, cfg.staffPin)) {
+      throw new StampStateError("PIN ไม่ถูกต้อง — ขอ PIN จากพนักงานแล้วลองใหม่อีกครั้ง");
     }
     return;
+  }
+  // 🔴 AUDIT M4: ฝั่งพนักงาน (แอปพนักงานเท่านั้นที่ขอมา) — ใบที่ร้านตั้ง PIN ไว้ต้องใส่ PIN ให้ตรงก่อน
+  //    ข้อความไม่บอกว่า "ผิดตรงไหน" มากกว่าคำว่า PIN ไม่ถูกต้อง (กันการไล่เดาทีละหลัก)
+  if (requireStaffPin && cfg.staffPin && !pinMatches(byPin, cfg.staffPin)) {
+    throw new StampStateError("PIN ไม่ถูกต้อง — ตรวจ PIN กับผู้จัดการร้านแล้วลองอีกครั้ง");
   }
   if (!hasMemberPerm(actor, "member.loyalty.stamp")) {
     throw new StampForbiddenError("บัญชีของคุณยังไม่ได้รับสิทธิ์ประทับสแตมป์ — ขอสิทธิ์จากเจ้าของร้านก่อน");
@@ -764,7 +815,7 @@ export async function addStamp(ctx: StampCtx, actor: MemberActor, input: AddStam
   const cfg = ruleConfigOf(card);
   const customer = await loadCustomer(prisma, ctx, input.customerId);
   const unitId = input.unitId ?? null;
-  assertCanStamp(actor, card, cfg, customer, input.byPin ?? null);
+  assertCanStamp(actor, card, cfg, customer, input.byPin ?? null, input.requireStaffPin === true);
   assertEligible(card, customer, unitId);
 
   const now = new Date();

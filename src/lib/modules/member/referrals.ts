@@ -24,7 +24,7 @@
 import type { Prisma } from "@prisma/client";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
-import { randomCode } from "@/lib/core/hash";
+import { randomCode, sha256 } from "@/lib/core/hash";
 import { publicOrigin } from "@/lib/core/origin";
 import * as party from "@/lib/modules/party";
 import { earnWithLot, getPointSettings, resolvePointSystemIds } from "@/lib/modules/point";
@@ -169,6 +169,9 @@ function kindOf(v: unknown): ReferralRewardKindValue | null {
   return v === "POINTS" || v === "VOUCHER" ? v : null;
 }
 
+/** 🔴 AUDIT M14: เพดานรางวัลต่อผู้แนะนำต่อเดือน เมื่อร้านเว้นว่างไว้ (ไม่มีคำว่า "ไม่จำกัด" อีกต่อไป) */
+const MONTHLY_CAP_FALLBACK = 30;
+
 type ProgramRow = {
   enabled: boolean;
   referrerRewardKind: ReferralRewardKindValue;
@@ -211,7 +214,9 @@ function programDto(row: ProgramRow | null): ReferralProgramDto {
     refereeRewardValue: refereeValue,
     convertOn: row.convertOn === "SIGNUP" ? "SIGNUP" : "FIRST_PURCHASE",
     minFirstPurchaseSatang: row.minFirstPurchaseSatang,
-    monthlyCap: row.monthlyCap,
+    // 🔴 AUDIT M14: "เว้นว่าง" เคยแปลว่า **ไม่จำกัด** ⇒ บัญชีเดียวปั๊มรางวัลได้ไม่รู้จบเมื่อกันโกงพลาด
+    //    ตอนนี้ว่าง = ใช้เพดานปริยายที่ปลอดภัย (ร้านที่อยากได้มากกว่านี้ ใส่ตัวเลขเองได้)
+    monthlyCap: row.monthlyCap ?? MONTHLY_CAP_FALLBACK,
     fraudPhoneDevice: row.fraudPhoneDevice,
     shareText: row.shareText,
     saved: true,
@@ -273,7 +278,8 @@ export async function setProgram(ctx: MemberCtx, actor: MemberActor, input: SetR
     const raw = input.monthlyCap;
     const n = raw === null ? null : numOrDefault(raw, null);
     if (n !== null && (!Number.isInteger(n) || n < 0)) {
-      throw new MemberInputError("จำนวนครั้งต่อเดือนต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป (เว้นว่าง = ไม่จำกัด) — แก้ตัวเลขแล้วบันทึกอีกครั้ง");
+      // 🔴 AUDIT M14: เว้นว่างไม่ได้แปลว่า "ไม่จำกัด" แล้ว — ใช้เพดานปริยาย
+      throw new MemberInputError(`จำนวนครั้งต่อเดือนต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป (เว้นว่าง = ใช้ค่าปริยาย ${MONTHLY_CAP_FALLBACK} ครั้ง/เดือน) — แก้ตัวเลขแล้วบันทึกอีกครั้ง`);
     }
     next.monthlyCap = n;
   }
@@ -383,13 +389,39 @@ export async function resolveReferralLanding(rawCode: string): Promise<{ slug: s
 
 // ───────────────────────── attach (ตอนสมัคร) ─────────────────────────
 
+/**
+ * 🔴 AUDIT M14: สัญญาณของ "เครื่อง/ที่มา" ที่ใช้กันโกง
+ *   `fingerprint` มาจาก client ⇒ ปลอมได้ ⇒ **ห้ามเป็นสัญญาณเดียว** · `ip` มาจากฝั่ง server (เลน join)
+ *   เก็บเป็น hash เท่านั้น (ip ดิบ = ข้อมูลส่วนบุคคล ไม่ควรค้างอยู่ในก้อน JSON ของ Referral)
+ */
+export type ReferralDeviceSignals = {
+  fingerprint?: string | null;
+  phone?: string | null;
+  /** ip ของคำขอ (ฝั่ง server เท่านั้น) — ถูกแปลงเป็น hash ก่อนเก็บ */
+  ip?: string | null;
+  /** hash ของ ip ที่ผู้เรียกคำนวณมาแล้ว */
+  ipHash?: string | null;
+};
+
 export type AttachInput = {
   refereeCustomerId: string;
   code: string;
-  device?: { fingerprint?: string | null; phone?: string | null } | null;
+  device?: ReferralDeviceSignals | null;
+  /** ip ของคำขอที่ผู้เรียกฝั่ง server อ่านจาก header เอง (ชนะค่าที่อยู่ใน `device`) */
+  ip?: string | null;
 };
 
 const normPhone = (p: string | null | undefined): string => (p ? party.normalizePartyPhone(p) : "");
+
+/** 🔴 AUDIT M14: ช่วงเวลาที่ย้อนดูสัญญาณโกง (เครื่อง/ไอพีเดิม) — ยาวพอครอบโปรแกรมหนึ่งรอบ */
+const FRAUD_WINDOW_DAYS = 90;
+/** hash ของ ip (ไม่เก็บ ip ดิบ) — คืน null เมื่อไม่มีค่าที่ใช้ได้ */
+function ipHashOf(input: AttachInput): string | null {
+  const raw = String(input.ip ?? input.device?.ip ?? "").trim();
+  if (raw) return sha256(raw).slice(0, 64);
+  const given = String(input.device?.ipHash ?? "").trim();
+  return given ? given.slice(0, 128) : null;
+}
 
 function maskPhone(p: string): string {
   return p.length >= 4 ? `${"x".repeat(Math.max(0, p.length - 4))}${p.slice(-4)}` : p;
@@ -422,6 +454,8 @@ export async function attach(ctx: MemberCtx, input: AttachInput): Promise<Attach
   const now = new Date();
   const fingerprint = String(input.device?.fingerprint ?? "").trim().slice(0, 200) || null;
   const devicePhone = normPhone(input.device?.phone ?? null);
+  const ipHash = ipHashOf(input);
+  const since = new Date(now.getTime() - FRAUD_WINDOW_DAYS * 86_400_000);
 
   let rejectReason: string | null = null;
   if (referee.id === referrer.id) {
@@ -438,22 +472,33 @@ export async function attach(ctx: MemberCtx, input: AttachInput): Promise<Attach
       const refereePhones = [normPhone(referee.phone), devicePhone].filter(Boolean);
       if (referrerPhone && refereePhones.includes(referrerPhone)) {
         rejectReason = "เบอร์/อุปกรณ์ซ้ำ — เบอร์โทรของเพื่อนตรงกับเบอร์ของผู้แนะนำ";
-      } else if (fingerprint) {
-        const sameDevice = await prisma.referral.findFirst({
-          where: {
-            tenantId: ctx.tenantId,
-            OR: [{ referrerCustomerId: referrer.id }, { refereeCustomerId: referrer.id }],
-            refereeContact: { path: ["fingerprint"], equals: fingerprint },
-          },
-          select: { id: true },
-        });
-        if (sameDevice) rejectReason = "เบอร์/อุปกรณ์ซ้ำ — อุปกรณ์เดียวกับที่เคยสมัครด้วยโค้ดของผู้แนะนำคนนี้";
+      } else {
+        // 🔴 AUDIT M14: เดิมเทียบเฉพาะใบของ "ผู้แนะนำคนเดิม" ⇒ เครื่องเดียวสมัครวนด้วยโค้ดของเพื่อนอีก
+        //    10 คนก็ผ่านหมด · ต้องดูทั้งร้านในช่วงโปรแกรม และไม่พึ่ง fingerprint ที่ client ส่งมาอย่างเดียว
+        //    (ip hash มาจากฝั่ง server) — ใบที่ถูกปฏิเสธไปแล้วไม่นับ ไม่งั้นความผิดพลาดครั้งเดียวจะลามต่อ
+        const signals: Prisma.ReferralWhereInput[] = [];
+        if (fingerprint) signals.push({ refereeContact: { path: ["fingerprint"], equals: fingerprint } });
+        if (ipHash) signals.push({ refereeContact: { path: ["ipHash"], equals: ipHash } });
+        const sameDevice = signals.length
+          ? await prisma.referral.findFirst({
+              where: {
+                tenantId: ctx.tenantId,
+                status: { not: "REJECTED" },
+                createdAt: { gte: since },
+                NOT: { refereeCustomerId: referee.id },
+                OR: signals,
+              },
+              select: { id: true },
+            })
+          : null;
+        if (sameDevice) rejectReason = "เบอร์/อุปกรณ์ซ้ำ — เครื่องหรือเครือข่ายเดียวกันนี้เคยสมัครรับสิทธิ์แนะนำเพื่อนไปแล้วในร้านนี้";
       }
     }
   }
 
   const contact: Record<string, unknown> = {};
   if (fingerprint) contact.fingerprint = fingerprint;
+  if (ipHash) contact.ipHash = ipHash; // 🔴 AUDIT M14: เก็บ hash เท่านั้น (ไม่เก็บ ip ดิบ)
   const phoneForContact = normPhone(referee.phone) || devicePhone;
   if (phoneForContact) contact.phoneMasked = maskPhone(phoneForContact);
   const status: ReferralStatusValue = rejectReason ? "REJECTED" : "PENDING";

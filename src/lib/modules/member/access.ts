@@ -39,6 +39,12 @@ export type MemberActor = {
    * ประกาศไว้ล่วงหน้าตามสัญญา §6.1 "ฝั่ง API: bundle readonly/operate ไม่เห็นอ่อนไหวเสมอ"
    */
   apiRole?: MemberApiRole;
+  /**
+   * 🔴 AUDIT L8 (ชุด S4): id ของคีย์ API ที่อยู่เบื้องหลัง actor นี้ (มีเมื่อ `apiRole` มี)
+   * บันทึกการดูข้อมูลอ่อนไหว (`privacy.logAccess`) เดิมข้ามคีย์ที่ไม่มี `userId` ไปเงียบ ๆ
+   * ⇒ มีคีย์ไว้ให้ลงเป็น `apikey:<id>` ได้ · **ไม่แทน `userId`** (คีย์ไม่ใช่คน)
+   */
+  keyId?: string;
   /** actor เป็น "ตัวลูกค้าเอง" (role CUSTOMER) — id ของสมาชิกที่ล็อกอินอยู่ */
   customerId?: string;
 };
@@ -99,7 +105,10 @@ function hasAnyMemberPermission(actor: MemberActor): boolean {
  *  เพื่อค้นหาคนมาประทับสแตมป์ ไม่งั้นได้ 403/404 ทั้งที่เจ้าของตั้งใจให้ทำงานนี้)
  */
 export function canReadMember(actor: MemberActor): boolean {
-  if (actor.apiRole) return true;
+  // 🔴 AUDIT H1: คีย์ API ต้องถือ scope `member.*` อย่างน้อยหนึ่งตัวจึงจะ "อ่านโมดูลสมาชิกโดยนัย" ได้
+  //    เดิม `if (actor.apiRole) return true` ⇒ คีย์ของโมดูลอื่นในร้านเดียวกัน (บัญชี/บอร์ดงาน) ผ่านด่านนี้
+  //    แล้วอ่านรายชื่อสมาชิก/เรียก tool ตระกูลสมาชิกได้ · ขอบเขตสาขา (unit scope) ไม่เปลี่ยน
+  if (actor.apiRole) return hasAnyMemberPermission(actor);
   if (actor.role === "CUSTOMER") return !!actor.customerId;
   if (actor.role === "OWNER" || actor.role === "MANAGER") return true;
   return hasAnyMemberPermission(actor);

@@ -21,6 +21,7 @@ import { safeReason } from "@/lib/core/errors";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { completeJoin, resolveJoinTarget, startJoin, verifyJoin } from "./join";
 import { customerCookieName, loginWithLine } from "./customer-session";
+import { customerCookieOptions } from "./customer-cookie";
 import { JOIN_ACTION, JOIN_RATE_LIMITS } from "./api/public-lane";
 import type {
   JoinActionResult,
@@ -31,7 +32,6 @@ import type {
   JoinVerifyData,
 } from "./join-shared";
 
-const SESSION_DAYS = 30;
 const LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 
 /** actor สาธารณะของหน้าสมัคร — ถือสิทธิ์ `member.join` ตัวเดียว (เหมือน `publicApiActor` ของ REST) */
@@ -62,16 +62,11 @@ async function gate(kind: "read" | "write" = "write"): Promise<ReqMeta> {
   return meta;
 }
 
+// 🔴 AUDIT L5: ค่า `Secure` มาจาก "คำขอนี้เป็น https / APP_ENV ไม่ใช่ dev" (customer-cookie.ts)
+//    ไม่ใช่จากชื่อ cookie อีกต่อไป — ชุดตัวเลือกเดียวกับ me-actions และ route `/m/<slug>/auth/line`
 async function setCustomerCookie(token: string): Promise<void> {
-  const jar = await cookies();
-  const name = customerCookieName();
-  jar.set(name, token, {
-    httpOnly: true,
-    secure: name.startsWith("__Host-"),
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_DAYS * 24 * 60 * 60,
-  });
+  const [jar, h] = await Promise.all([cookies(), headers()]);
+  jar.set(customerCookieName(), token, customerCookieOptions(h));
 }
 
 function slugOf(raw: unknown): string {

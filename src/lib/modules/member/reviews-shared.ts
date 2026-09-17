@@ -147,6 +147,9 @@ export type ReviewActionResult<T> = { ok: true; data: T } | { ok: false; reason:
 export type ReviewLiffView =
   | { state: "open"; shopName: string; serviceName: string | null; firstName: string; rewardPoints: number; maxPhotos: number }
   | { state: "done"; shopName: string; rating: number }
+  // 🔴 AUDIT L2: ลิงก์ขอรีวิวมีอายุ 30 วัน — แยกจาก `invalid` เพราะไม่ใช่ลิงก์ผิด/ลิงก์ปลอม
+  //    ลูกค้าไม่ได้ทำอะไรผิด ข้อความจึงต้องบอกทางออก (ขอลิงก์ใหม่) ไม่ใช่บอกว่า "ใช้ไม่ได้"
+  | { state: "expired"; shopName: string }
   | { state: "invalid" };
 
 export type ReviewSubmitResult = { reviewId: string; pointsEarned: number; escalated: boolean };

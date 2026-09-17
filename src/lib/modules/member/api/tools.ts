@@ -52,8 +52,26 @@ const ASSISTANT_READ_SCOPES = [
   "member.review.read",
 ] as const;
 
-function assistantActor(tenantId: string, systemId: string): ApiActor {
-  const scopes = [...ASSISTANT_READ_SCOPES];
+/**
+ * 🔴 AUDIT H3: สิทธิ์จริงของ "คนที่เปิดหน้าผู้ช่วย" — ผู้ช่วยยืมสิทธิ์ของเขา ไม่ใช่ถือชุดคงที่ของตัวเอง
+ * `null` = ไม่รู้ว่าใครถาม (คิว/เว็บฮุก/ตัวเรียกรุ่นเก่าที่ส่งมาแต่ tenantId) ⇒ พฤติกรรมเดิมทุกประการ
+ */
+type AssistantViewer = { role: MembershipCtx["role"]; unitAccess: string[]; permissions: Record<string, unknown> };
+
+/**
+ * actor ของผู้ช่วย
+ * 🔴 AUDIT H3: เดิม scope เป็นชุดคงที่ + `membership` สร้างจาก scope (unitAccess ว่าง = ทุกสาขา)
+ *    ⇒ พนักงานสาขาเดียวที่มีแค่ `member.loyalty.stamp` ถามผู้ช่วย แล้วได้รายชื่อ/รายงานทั้งร้าน
+ *    ตอนนี้: scope = ASSISTANT_READ_SCOPES ∩ สิ่งที่คนเปิดหน้าทำได้จริง · unitAccess = ของคนนั้น
+ * 🔴 บทบาทของ membership ยังถูกกดเป็น STAFF เสมอ (แม้คนเปิดหน้าเป็นเจ้าของร้าน) — ผู้ช่วยต้อง
+ *    ตกด่านนโยบายข้อมูลอ่อนไหว D8 เหมือนเดิม ไม่ใช่เห็นเบอร์เต็ม/ฟิลด์อ่อนไหวเพราะคนถามเป็นเจ้าของ
+ *    (เจ้าของมี unitAccess ทั้งร้านอยู่แล้ว ⇒ ใส่ `["*"]` ให้ชัด กันกรณีแถว Membership ถูกจำกัดสาขาไว้)
+ */
+function assistantActor(tenantId: string, systemId: string, viewer: AssistantViewer | null): ApiActor {
+  const m: MembershipCtx | null = viewer
+    ? { role: viewer.role, unitAccess: viewer.unitAccess, permissions: viewer.permissions }
+    : null;
+  const scopes = [...ASSISTANT_READ_SCOPES].filter((s) => (m ? memberMembershipCan(m, s) : true));
   return {
     kind: "assistant",
     module: "member",
@@ -61,10 +79,38 @@ function assistantActor(tenantId: string, systemId: string): ApiActor {
     systemId,
     keyName: "ผู้ช่วย AI",
     scopes,
-    membership: membershipFromScopes(scopes),
-    can: (action) => memberScopesCan(scopes, action),
+    membership: m
+      ? { role: "STAFF", unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess, permissions: Object.fromEntries(scopes.map((s) => [s, true])) }
+      : membershipFromScopes(scopes),
+    can: (action) => memberScopesCan(scopes, action) && (m ? memberMembershipCan(m, action) : true),
     denyMessageTh: MEMBER_DENY_TH,
   };
+}
+
+/**
+ * คนที่เปิดหน้าผู้ช่วยอยู่ตอนนี้ (AUDIT H3)
+ * 1) ผู้เรียกบอกมาเอง (`MemberToolCtx` ที่มี role/unitAccess/permissions — หน้าจอ/ข้อสอบ)
+ * 2) ไม่บอก = ถามจาก session ของคำขอปัจจุบัน (`ai/tools.ts` ส่งมาแต่ tenantId · ยังไม่มีช่องให้ส่ง membership)
+ * 3) ไม่มี session (คิว outbox · เว็บฮุก · เรียกด้วย tenantId ลอย ๆ) = null ⇒ พฤติกรรมเดิม
+ */
+async function viewerOf(target: MemberToolCtx | string, tenantId: string): Promise<AssistantViewer | null> {
+  if (typeof target !== "string" && (target.role !== undefined || target.permissions !== undefined || target.unitAccess !== undefined)) {
+    return { role: target.role ?? "STAFF", unitAccess: target.unitAccess ?? [], permissions: target.permissions ?? {} };
+  }
+  try {
+    const { getAuth } = await import("@/lib/core/context");
+    const auth = await getAuth();
+    const active = auth?.active;
+    if (!active || active.tenantId !== tenantId) return null;
+    return {
+      role: active.role,
+      unitAccess: Array.isArray(active.unitAccess) ? (active.unitAccess as string[]) : [],
+      permissions: (active.permissions ?? {}) as Record<string, unknown>,
+    };
+  } catch {
+    // อยู่นอกขอบเขตคำขอ (ไม่มี cookies()) — ไม่ใช่ความผิดพลาด แค่แปลว่า "ไม่มีคนเปิดหน้าอยู่"
+    return null;
+  }
 }
 
 /** actor ของ "คนที่กดยืนยันข้อเสนอ" — สิทธิ์คือ Membership จริงของคนคนนั้น (K3.5) */
@@ -282,7 +328,11 @@ export const LEGACY_MEMBER_TOOLS: ReadonlySet<string> = new Set([
 export function memberToolAllowedForScopes(toolName: string, scopes: string[]): boolean {
   const action = memberToolScope(toolName);
   if (action === null) {
-    if (LEGACY_MEMBER_TOOLS.has(toolName) && scopes.some((s) => s.startsWith("member."))) return false;
+    // 🔴 AUDIT H1: tool รุ่นเก่า 8 ตัวไม่มี scope ของตัวเอง ⇒ **คีย์ทุกใบ** ถูกปฏิเสธ ไม่ใช่เฉพาะคีย์ที่ถือ
+    //    scope ของระบบสมาชิก · เดิมคีย์ที่ไม่มี scope `member.*` เลย (คีย์ของบัญชี/บอร์ดงาน หรือคีย์เปล่า)
+    //    ยังเรียกได้ = อ่านเบอร์เต็ม/ยื่นข้อเสนอปรับแต้มข้ามโมดูลได้ · ทุกตัวมีคู่ในทะเบียนที่ผูก scope แล้ว
+    //    (ผู้ช่วยในแอปไม่ได้เดินผ่านฟังก์ชันนี้ — มันเป็นด่านของ `/api/v1/ai/*` ที่ยืนยันตัวด้วยคีย์เท่านั้น)
+    if (LEGACY_MEMBER_TOOLS.has(toolName)) return false;
     return true;
   }
   return memberScopesCan(scopes, action);
@@ -519,8 +569,9 @@ export async function runMemberTool(
     };
   }
 
-  const actor = assistantActor(tenantId, system.id);
-  if (!actor.can(prepared.op.action)) return { mode: "error", error: "ผู้ช่วยไม่มีสิทธิ์อ่านข้อมูลส่วนนี้" };
+  // 🔴 AUDIT H3: สิทธิ์/ขอบเขตสาขาของผู้ช่วย = ของคนที่กำลังถาม (ไม่ใช่ชุดคงที่ทั้งร้าน)
+  const actor = assistantActor(tenantId, system.id, await viewerOf(target, tenantId));
+  if (!actor.can(prepared.op.action)) return { mode: "error", error: "ผู้ช่วยไม่มีสิทธิ์อ่านข้อมูลส่วนนี้ — บัญชีที่ถามยังไม่ได้รับสิทธิ์นี้จากเจ้าของร้าน" };
   try {
     const env = await runOpAsActor(prepared.op, actor, {
       input: prepared.input,

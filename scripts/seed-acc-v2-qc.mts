@@ -2053,6 +2053,8 @@ await approvalSvc.createPolicy(
 
 // ── คีย์ API 1 อัน + ปลายทาง webhook 1 อัน (ปลายทางเป็น localhost ที่ไม่มีใครฟัง = ส่งแล้วล้มเป็นปกติ) ──
 const seedApiKey = await apiKeysSvc.createApiKey({ tenantId }, "สำนักงานบัญชี");
+// AUDIT M1 (17 ก.ย.): ปลายทางภายใน/loopback ถูกบล็อกแล้ว — seed QC ใช้ช่องทดสอบที่เอกสารกำหนด (มีผลเฉพาะ APP_ENV ≠ production)
+process.env.WEBHOOK_ALLOW_PRIVATE ??= "1";
 const seedHook = await webhooksSvc.createEndpoint(
   { tenantId },
   { url: "http://127.0.0.1:9/shark-acc-v2-qc", events: ["account.document.approved", "account.payment.recorded"] },

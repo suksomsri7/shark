@@ -4,6 +4,8 @@
 //   overview · rfm · tiers · points · promotions · sources · cohort · exportCsv · getReportSchedule · setReportSchedule · runScheduledReports
 //
 // 🔴 ทุกรายงานรับ actor → ต้องมี `member.report.view` (ไม่มี = MemberForbiddenError ภาษาไทย)
+// 🔴 AUDIT M13 (ตรวจรับ 16 ก.ย.): actor ที่ถูกจำกัดสาขาเห็นตัวเลขเฉพาะสมาชิกในขอบเขตตน — กติกาเดียวกับ
+//    รายชื่อสมาชิก (`memberWhere`/`memberScopeSql`) · ทุก `findMany` มีเพดานแถว และตัวเลขหลักนับใน DB
 // 🔴 ทุกรายงานรับ `{ now? }` — หน้าต่างเวลา = [now − n, now] · บิลที่ createdAt > now ไม่ถูกนับ ⇒ ส่ง now เดิม = ผลเดิมเป๊ะ
 // 🔴 ไม่มี N+1: บิลรวมด้วย `posSale.groupBy` (ต่อสมาชิก 1 คำสั่ง) · แต้มรวมด้วย `aggregate/groupBy` ผ่าน relation `customer`
 //    · ของที่ต้องจัดกลุ่ม "ตามเดือนไทย" (แต้มรายเดือน · cohort) ใช้ `$queryRaw` คำสั่งเดียว (Prisma groupBy จัดกลุ่มตามเดือนไม่ได้)
@@ -13,9 +15,10 @@
 // 🔴 อีเมลผ่านตัวส่งเดิม `core/email.sendEmail` (import แบบ dynamic — `@/lib/env` ตรวจ env ตอนโหลดไฟล์ · fitness โหมดไม่มี env)
 //    ข้อสอบ/ผู้เรียกฉีด `deps.email` แทนได้ · ตัวส่งเดิมยังไม่รองรับไฟล์แนบ ⇒ ฉบับจริงส่ง KPI เป็นข้อความ + ลิงก์หน้ารายงาน
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { csvRow } from "@/lib/core/csv";
 import { prisma } from "./db";
-import { hasMemberPerm, type MemberActor } from "./access";
+import { hasMemberPerm, isUnitScoped, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
 import { MemberForbiddenError, MemberInputError } from "./errors";
 import { journeyReportRows } from "./journeys";
 import { memberSourceLabel } from "./member-source-labels";
@@ -91,17 +94,51 @@ const numVal = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** สมาชิกในระบบนี้ (ไม่นับคนที่ถูกรวมเข้าคนอื่นแล้ว) — ตัวกรองเดียวกันทุกรายงาน */
-function memberWhere(ctx: MemberCtx): Prisma.CustomerWhereInput {
-  return { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, status: { not: "MERGED" } };
+/**
+ * 🔴 AUDIT M13: เพดานแถวที่ยอมอ่านเข้าหน่วยความจำต่อ 1 คำสั่ง — เดิม `findMany` ของรายงานไม่มี `take`
+ *    ร้านที่มีสมาชิกหลักแสนคนจะดึงทั้งตารางทุกครั้งที่เปิดหน้ารายงาน (ช้า + กินหน่วยความจำจนล้ม)
+ *    ตัวเลขหลัก (จำนวนสมาชิก · สมาชิกใหม่ต่อเดือน) ย้ายไปนับใน DB แล้ว จึงยังถูกต้องแม้ชนเพดานนี้
+ */
+const MAX_MEMBER_ROWS = 20_000;
+
+/**
+ * 🔴 AUDIT M13: ขอบเขตสาขาของ actor — **กติกาเดียวกับรายชื่อสมาชิก** (`list.ts` actorScopeWhere §6.1):
+ *    สมาชิกที่สาขาหลักอยู่ในสิทธิ์ตน หรือเคยซื้อ/จอง/ใช้บริการที่สาขาตน
+ *    เดิมรายงานไม่กรองเลย ⇒ พนักงานสาขาเดียวเปิดรายงานแล้วเห็นตัวเลขของทั้งร้าน
+ */
+function actorScopeWhere(actor: MemberActor): Prisma.CustomerWhereInput | null {
+  if (!isUnitScoped(actor)) return null;
+  return {
+    OR: [
+      { homeUnitId: { in: actor.unitAccess } },
+      { activities: { some: { unitId: { in: actor.unitAccess }, module: { in: [...VISIT_SCOPE_MODULES] } } } },
+    ],
+  };
+}
+
+/** สมาชิกในระบบนี้ (ไม่นับคนที่ถูกรวมเข้าคนอื่นแล้ว) ในขอบเขตของ actor — ตัวกรองเดียวกันทุกรายงาน */
+function memberWhere(ctx: MemberCtx, actor: MemberActor): Prisma.CustomerWhereInput {
+  const base: Prisma.CustomerWhereInput = { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, status: { not: "MERGED" } };
+  const scope = actorScopeWhere(actor);
+  return scope ? { ...base, AND: [scope] } : base;
+}
+
+/** ขอบเขตเดียวกันในรูป SQL (รายงานที่จัดกลุ่มตามเดือนไทยต้องใช้ `$queryRaw`) — `c` = alias ของ Customer */
+function memberScopeSql(actor: MemberActor): Prisma.Sql {
+  if (!isUnitScoped(actor)) return Prisma.empty;
+  return Prisma.sql`AND (c."homeUnitId" = ANY(${actor.unitAccess}) OR EXISTS (
+        SELECT 1 FROM "MemberActivity" a
+        WHERE a."customerId" = c."id" AND a."unitId" = ANY(${actor.unitAccess}) AND a."module" = ANY(${[...VISIT_SCOPE_MODULES]})
+      ))`;
 }
 
 type MemberRow = { id: string; createdAt: Date; tierDefId: string | null; source: string | null; lastActivityAt: Date | null };
 
-async function loadMembers(ctx: MemberCtx): Promise<MemberRow[]> {
+async function loadMembers(ctx: MemberCtx, actor: MemberActor): Promise<MemberRow[]> {
   return prisma.customer.findMany({
-    where: memberWhere(ctx),
+    where: memberWhere(ctx, actor),
     select: { id: true, createdAt: true, tierDefId: true, source: true, lastActivityAt: true },
+    take: MAX_MEMBER_ROWS,
   });
 }
 
@@ -134,9 +171,9 @@ async function burnRateOf(tenantId: string): Promise<number> {
 }
 
 /** แต้มคงค้างรวมของสมาชิกในระบบ (ทุกระบบแต้มที่สมาชิกถืออยู่) */
-async function outstandingOf(ctx: MemberCtx): Promise<number> {
+async function outstandingOf(ctx: MemberCtx, actor: MemberActor): Promise<number> {
   const agg = await prisma.pointBalance.aggregate({
-    where: { tenantId: ctx.tenantId, customer: memberWhere(ctx) },
+    where: { tenantId: ctx.tenantId, customer: memberWhere(ctx, actor) },
     _sum: { balance: true },
   });
   return numVal(agg._sum.balance);
@@ -162,18 +199,28 @@ export async function overview(ctx: MemberCtx, actor: MemberActor, opts: { month
   const curMonth = thaiMonthKey(now);
   const monthStart = thaiMonthStart(curMonth);
 
-  const members = await loadMembers(ctx);
+  const members = await loadMembers(ctx, actor);
   const ids = new Set(members.map((m) => m.id));
 
-  const [bills, bills90, shopAgg, outstanding, burnRate, vouchersUsed, promoPoints] = await Promise.all([
+  const [total, byMonthRows, bills, bills90, shopAgg, outstanding, burnRate, vouchersUsed, promoPoints] = await Promise.all([
+    // 🔴 AUDIT M13: จำนวนสมาชิก/สมาชิกใหม่ต่อเดือน นับใน DB (ไม่ขึ้นกับเพดานแถวด้านบน)
+    prisma.customer.count({ where: memberWhere(ctx, actor) }),
+    prisma.$queryRaw<{ month: string; n: bigint }[]>`
+      SELECT to_char(c."createdAt" + interval '7 hours', 'YYYY-MM') AS month, COUNT(*)::int8 AS n
+      FROM "Customer" c
+      WHERE c."tenantId" = ${ctx.tenantId} AND c."memberSystemId" = ${ctx.systemId} AND c."status" <> 'MERGED'
+        ${memberScopeSql(actor)}
+      GROUP BY 1
+    `,
     billsByMember(ctx, ids, from, now),
     billsByMember(ctx, ids, d90, now),
     prisma.posSale.aggregate({ where: { tenantId: ctx.tenantId, status: "PAID", createdAt: { gte: from, lte: now } }, _sum: { grandTotalSatang: true } }),
-    outstandingOf(ctx),
+    outstandingOf(ctx, actor),
     burnRateOf(ctx.tenantId),
     prisma.voucher.findMany({
       where: { tenantId: ctx.tenantId, systemId: ctx.systemId, status: "USED", usedAt: { gte: monthStart, lte: now } },
       select: { kind: true, value: true, usedRef: true },
+      take: MAX_MEMBER_ROWS,
     }),
     // แต้มที่ "ร้านแจก" เพื่อโปรโมชัน (journey/แคมเปญ) เดือนนี้ — ไม่นับแต้มจากการซื้อปกติ
     // (PointLedger ไม่มี relation ไป Customer ⇒ รวมต่อคนแล้วคัดสมาชิกของระบบนี้ในหน่วยความจำ)
@@ -198,17 +245,13 @@ export async function overview(ctx: MemberCtx, actor: MemberActor, opts: { month
   const active = new Set<string>(bills90.keys());
   for (const m of members) if (m.lastActivityAt && m.lastActivityAt >= d90 && m.lastActivityAt <= now) active.add(m.id);
 
-  const byMonth = new Map<string, number>();
-  for (const m of members) {
-    const k = thaiMonthKey(m.createdAt);
-    byMonth.set(k, (byMonth.get(k) ?? 0) + 1);
-  }
+  const byMonth = new Map<string, number>(byMonthRows.map((r) => [r.month, Math.round(numVal(r.n))]));
 
   const promoPointsTotal = promoPoints.reduce((s, p) => s + (ids.has(p.customerId) ? numVal(p._sum.delta) : 0), 0);
   const promoCost = vouchersUsed.reduce((s, v) => s + voucherCost(v), 0) + promoPointsTotal * burnRate;
 
   return {
-    members: { total: members.length, newThisMonth: byMonth.get(curMonth) ?? 0, active90d: active.size },
+    members: { total, newThisMonth: byMonth.get(curMonth) ?? 0, active90d: active.size },
     sales: {
       satang,
       billCount,
@@ -231,7 +274,7 @@ export async function rfm(ctx: MemberCtx, actor: MemberActor, opts: { days?: num
   const now = nowOf(opts);
   const days = intOr(opts.days, 365, 1, 3650);
   const from = new Date(now.getTime() - days * DAY_MS);
-  const members = await prisma.customer.findMany({ where: memberWhere(ctx), select: { id: true } });
+  const members = await prisma.customer.findMany({ where: memberWhere(ctx, actor), select: { id: true }, take: MAX_MEMBER_ROWS });
   const bills = await billsByMember(ctx, new Set(members.map((m) => m.id)), from, now);
 
   const raw = [...bills.entries()].map(([customerId, b]) => ({
@@ -265,18 +308,19 @@ export async function tiers(ctx: MemberCtx, actor: MemberActor, opts: RangeOpts 
   requireReportView(actor);
   const now = nowOf(opts);
   const from = new Date(now.getTime() - 365 * DAY_MS);
-  const members = await loadMembers(ctx);
+  const members = await loadMembers(ctx, actor);
   const ids = new Set(members.map((m) => m.id));
   const [defs, bills, balances] = await Promise.all([
     prisma.memberTierDef.findMany({
       where: { tenantId: ctx.tenantId, systemId: ctx.systemId },
       select: { id: true, name: true, color: true, sortOrder: true, archivedAt: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      take: 200,
     }),
     billsByMember(ctx, ids, from, now),
     prisma.pointBalance.groupBy({
       by: ["customerId"],
-      where: { tenantId: ctx.tenantId, customer: memberWhere(ctx) },
+      where: { tenantId: ctx.tenantId, customer: memberWhere(ctx, actor) },
       _sum: { balance: true },
     }),
   ]);
@@ -336,12 +380,13 @@ export async function points(ctx: MemberCtx, actor: MemberActor, opts: { months?
         AND l."customerId" IN (
           SELECT c."id" FROM "Customer" c
           WHERE c."tenantId" = ${ctx.tenantId} AND c."memberSystemId" = ${ctx.systemId} AND c."status" <> 'MERGED'
+            ${memberScopeSql(actor)}
         )
         AND l."createdAt" >= (${from.toISOString()}::timestamptz AT TIME ZONE 'UTC')
         AND l."createdAt" <= (${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')
       GROUP BY 1
     `,
-    outstandingOf(ctx),
+    outstandingOf(ctx, actor),
     burnRateOf(ctx.tenantId),
   ]);
   const byMonth = new Map(rows.map((r) => [r.month, r]));
@@ -384,6 +429,7 @@ export async function promotions(ctx: MemberCtx, actor: MemberActor, opts: { day
         sentAt: true,
         variantStats: { select: { variant: true, sent: true, used: true, saleSatang: true, costSatang: true } },
       },
+      take: MAX_MEMBER_ROWS, // 🔴 AUDIT M13: ไม่มี findMany ไร้ขอบเขตในรายงาน
     }),
   ]);
 
@@ -397,7 +443,7 @@ export async function promotions(ctx: MemberCtx, actor: MemberActor, opts: { day
     : [];
   const runIds = pointsByRun.map((p) => p.refId).filter((x): x is string => !!x);
   const runs = runIds.length
-    ? await prisma.automationRun.findMany({ where: { tenantId: ctx.tenantId, id: { in: runIds } }, select: { id: true, ruleId: true } })
+    ? await prisma.automationRun.findMany({ where: { tenantId: ctx.tenantId, id: { in: runIds } }, select: { id: true, ruleId: true }, take: MAX_MEMBER_ROWS })
     : [];
   const ruleOfRun = new Map(runs.map((r) => [r.id, r.ruleId]));
   const pointsByRule = new Map<string, number>();
@@ -485,10 +531,14 @@ export async function sources(ctx: MemberCtx, actor: MemberActor, opts: { days?:
   const [grouped, joined, links] = await Promise.all([
     prisma.customer.groupBy({
       by: ["source"],
-      where: { ...memberWhere(ctx), createdAt: { gte: from, lte: now } },
+      where: { ...memberWhere(ctx, actor), createdAt: { gte: from, lte: now } },
       _count: { _all: true },
     }),
-    prisma.customer.findMany({ where: { ...memberWhere(ctx), createdAt: { gte: from, lte: now } }, select: { id: true, source: true } }),
+    prisma.customer.findMany({
+      where: { ...memberWhere(ctx, actor), createdAt: { gte: from, lte: now } },
+      select: { id: true, source: true },
+      take: MAX_MEMBER_ROWS,
+    }),
     prisma.acquisitionLink.groupBy({
       by: ["source"],
       where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: from, lte: now } },
@@ -533,7 +583,7 @@ export async function cohort(ctx: MemberCtx, actor: MemberActor, opts: { months?
   const start = thaiMonthStart(keys[0]!);
 
   const [members, billMonths] = await Promise.all([
-    prisma.customer.findMany({ where: { ...memberWhere(ctx), createdAt: { gte: start } }, select: { id: true, createdAt: true } }),
+    prisma.customer.findMany({ where: { ...memberWhere(ctx, actor), createdAt: { gte: start } }, select: { id: true, createdAt: true }, take: MAX_MEMBER_ROWS }),
     // (สมาชิก, เดือนไทยที่มีบิล) ไม่ซ้ำ — คำสั่งเดียว · จำกัดเฉพาะสมาชิกที่สมัครตั้งแต่ต้น cohort แรก
     prisma.$queryRaw<{ memberId: string; month: string }[]>`
       SELECT DISTINCT s."memberId" AS "memberId", to_char(s."createdAt" + interval '7 hours', 'YYYY-MM') AS month
@@ -568,16 +618,16 @@ export async function cohort(ctx: MemberCtx, actor: MemberActor, opts: { months?
 
 const BOM = "﻿";
 
-/** ครอบ " เมื่อค่ามี , " หรือขึ้นบรรทัด (มาตรฐาน RFC 4180 · Excel ภาษาไทยเปิดได้เพราะมี BOM) */
-function csvCell(v: string | number | null): string {
-  const s = v === null ? "" : typeof v === "number" ? (Number.isFinite(v) ? String(v) : "") : v;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 const bahtCell = (satang: number): string => (Math.round(satang) / 100).toFixed(2);
 
+/**
+ * 🔴 AUDIT M2: ทุกช่องผ่าน `csvCell` กลางของ `core/csv.ts` — ตัวเดิมครอบ quote อย่างเดียว ไม่กันสูตร
+ *    ⇒ ชื่อแคมเปญ/ชื่อ journey ที่ตั้งว่า `=HYPERLINK("http://evil","คลิก")` กลายเป็นสูตรทันทีที่เจ้าของร้าน
+ *      เปิดไฟล์ด้วย Excel (CSV formula injection) · ตัวกลางเติม `'` นำหน้าให้ แต่ **ไม่แตะตัวเลข**
+ *      (คอลัมน์เงินยัง SUM ได้) · BOM + ข้อความไทยเหมือนเดิม
+ */
 function csvOf(rows: (string | number | null)[][]): string {
-  return BOM + rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+  return BOM + rows.map((r) => csvRow(r)).join("\r\n") + "\r\n";
 }
 
 async function csvRows(ctx: MemberCtx, actor: MemberActor, tab: ReportTab, now: Date): Promise<(string | number | null)[][]> {

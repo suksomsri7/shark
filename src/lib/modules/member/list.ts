@@ -16,7 +16,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { csvRow } from "@/lib/core/csv";
 import { prisma } from "./db";
 import { coversUnit, hasMemberPerm, isUnitScoped, canReadMember, VISIT_SCOPE_MODULES, type MemberActor } from "./access";
-import type { MemberCtx } from "./privacy";
+import { evaluateSensitiveAccess, logAccessMany, type MemberCtx, type SensitiveDecision, type SensitiveTarget } from "./privacy";
 import { MemberForbiddenError, MemberInputError, MemberNotFoundError } from "./errors";
 import * as fields from "./fields";
 import { displayOf, maskPhone, pointsOfMany } from "./profile";
@@ -98,6 +98,46 @@ function requireCanRead(actor: MemberActor): void {
   if (!canReadMember(actor)) {
     throw new MemberForbiddenError("บัญชีของคุณยังไม่ได้รับสิทธิ์เข้าโมดูลสมาชิก — ขอสิทธิ์จากเจ้าของร้านก่อน");
   }
+}
+
+// ───────────────────────── ฟิลด์อ่อนไหวในหน้ารวม/ไฟล์ส่งออก (AUDIT H2) ─────────────────────────
+//
+// 🔴 หน้า 360 ตัดฟิลด์อ่อนไหวด้วยนโยบาย D8 มาตั้งแต่ M1.7 แต่ "คอลัมน์ของหน้ารวม" กับ "ไฟล์ส่งออก"
+//    อ่านค่าจาก `fields.getFieldValues` ตรง ๆ ⇒ พนักงานที่มี `member.customer.export` ดึงค่าอ่อนไหว
+//    ของทุกคนในขอบเขตตัวเองได้โดยไม่มีร่องรอย · ที่นี่ใช้ด่านเดียวกับ 360 (`evaluateSensitiveAccess`)
+// 🔴 ฟิลด์ถือว่า "อ่อนไหว" เมื่อตัวมันติดธง หรืออยู่ในส่วนที่ติดธง — เป้าหมายของนโยบายก็ตามนั้น
+//    (ส่วน = SECTION/section.id · ฟิลด์เดี่ยว = FIELD/field.id) เหมือน `getMember360`
+
+type SensitiveField = { key: string; targetType: SensitiveTarget["targetType"]; targetId: string };
+
+function sensitiveFieldsOf(layout: { sections: { id: string; sensitive: boolean; fields: { id: string; key: string; sensitive: boolean }[] }[] }): Map<string, SensitiveField> {
+  const out = new Map<string, SensitiveField>();
+  for (const s of layout.sections) {
+    for (const f of s.fields) {
+      if (s.sensitive) out.set(f.key, { key: f.key, targetType: "SECTION", targetId: s.id });
+      else if (f.sensitive) out.set(f.key, { key: f.key, targetType: "FIELD", targetId: f.id });
+    }
+  }
+  return out;
+}
+
+/**
+ * ตัวตัดสิน "actor นี้เห็นฟิลด์อ่อนไหวตัวนี้ของสมาชิกคนนี้ไหม" แบบใช้ซ้ำได้ทั้งหน้ารวมและไฟล์ส่งออก
+ * 🔴 actor ที่เห็นทุกสาขาอยู่แล้ว (ไม่ถูกจำกัดสาขา · ไม่ใช่ลูกค้า) ⇒ คำตอบไม่ขึ้นกับตัวสมาชิก
+ *    (เงื่อนไขเดียวที่ขึ้นกับสมาชิกคือ `sameUnitOnly` ซึ่ง `coversUnit` ผ่านเสมอสำหรับคนแบบนี้)
+ *    ⇒ ตัดสินครั้งเดียวต่อเป้าหมาย ไม่ยิงนโยบาย 2 คิวรีต่อแถว (ไฟล์ส่งออกมีได้ถึงหลักหมื่นแถว)
+ */
+function sensitiveJudge(ctx: MemberCtx, actor: MemberActor) {
+  const perTarget = actor.role !== "CUSTOMER" && !isUnitScoped(actor);
+  const cache = new Map<string, SensitiveDecision>();
+  return async (f: SensitiveField, customerId: string): Promise<SensitiveDecision> => {
+    const cacheKey = perTarget ? `${f.targetType}:${f.targetId}` : `${f.targetType}:${f.targetId}:${customerId}`;
+    const hit = cache.get(cacheKey);
+    if (hit) return hit;
+    const decision = await evaluateSensitiveAccess(ctx, actor, { targetType: f.targetType, targetId: f.targetId, customerId });
+    cache.set(cacheKey, decision);
+    return decision;
+  };
 }
 
 function tagsOf(row: { tags: Prisma.JsonValue }): string[] {
@@ -204,7 +244,7 @@ const LIST_SELECT = {
 
 type ListRow = Prisma.CustomerGetPayload<{ select: typeof LIST_SELECT }>;
 
-async function toRows(ctx: MemberCtx, rows: ListRow[]): Promise<MemberListRow[]> {
+async function toRows(ctx: MemberCtx, actor: MemberActor, rows: ListRow[]): Promise<MemberListRow[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const tierIds = [...new Set(rows.map((r) => r.tierDefId).filter((x): x is string => !!x))];
@@ -226,6 +266,20 @@ async function toRows(ctx: MemberCtx, rows: ListRow[]): Promise<MemberListRow[]>
   // ภาพ 01: คอลัมน์ท้ายตารางมาจากฟิลด์ "กำหนดเอง" ที่เปิด showInList เท่านั้น (isSystem ซ้ำกับคอลัมน์คงที่อยู่แล้ว
   // เช่น รหัส/ชื่อ/เบอร์/อีเมล — โผล่ซ้ำ + หลุดอีเมลเต็มถ้าไม่กรองออก)
   const listFieldDefs = layout.sections.flatMap((s) => s.fields).filter((f) => f.showInList && !f.isSystem);
+  // 🔴 AUDIT H2: คอลัมน์ท้ายตารางที่เป็นฟิลด์อ่อนไหว ต้องผ่านนโยบาย D8 ของ actor คนนี้ก่อนจึงจะมีค่า
+  const sensitiveByKey = sensitiveFieldsOf(layout);
+  const judge = sensitiveJudge(ctx, actor);
+  const hiddenPerCustomer = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const hidden = new Set<string>();
+    for (const f of listFieldDefs) {
+      const sf = sensitiveByKey.get(f.key);
+      if (!sf) continue;
+      const decision = await judge(sf, r.id);
+      if (!decision.allowed) hidden.add(f.key);
+    }
+    hiddenPerCustomer.set(r.id, hidden);
+  }
 
   // "อีก ฿X เลื่อน {ระดับถัดไป}" — เกณฑ์ spent12m ของกฎเลื่อนระดับของ "ระดับถัดไปในบันได" (sortOrder ถัดจากระดับปัจจุบัน)
   // ไม่เรียก evaluateMember ทีละคน (แพง) — อ่านกฎเลื่อนของระดับถัดไปแค่ครั้งเดียวต่อระดับ แล้วเทียบ spent12mSatang cache เอง
@@ -250,8 +304,11 @@ async function toRows(ctx: MemberCtx, rows: ListRow[]): Promise<MemberListRow[]>
 
   return rows.map((r) => {
     const bag = values[r.id] ?? {};
+    const hidden = hiddenPerCustomer.get(r.id) ?? new Set<string>();
     const listFields: Record<string, string> = {};
     for (const f of listFieldDefs) {
+      // 🔴 AUDIT H2: ดูไม่ได้ = ไม่มีคีย์นี้ใน DTO เลย (ไม่ใช่ส่งค่าไปแล้วให้หน้าจอซ่อน)
+      if (hidden.has(f.key)) continue;
       const v = bag[f.key];
       if (v === undefined || v === null) continue;
       listFields[f.key] = displayOf(f, v);
@@ -334,7 +391,7 @@ export async function listMembers(ctx: MemberCtx, actor: MemberActor, opts: List
     ]);
   }
 
-  const items = await toRows(ctx, rows);
+  const items = await toRows(ctx, actor, rows);
   return { items, total, page, take };
 }
 
@@ -449,7 +506,7 @@ export async function exportMembers(ctx: MemberCtx, actor: MemberActor, opts: Ex
   if (!hasMemberPerm(actor, "member.customer.export")) {
     throw new MemberForbiddenError("บัญชีของคุณยังไม่ได้รับสิทธิ์ส่งออกรายชื่อสมาชิก — ขอสิทธิ์ member.customer.export จากเจ้าของร้านก่อน");
   }
-  const columns = opts.columns?.length ? opts.columns : ["memberCode", "name", "phone"];
+  const requested = opts.columns?.length ? opts.columns : ["memberCode", "name", "phone"];
   const where = await buildWhere(ctx, actor, opts.filters ?? {});
 
   const total = await prisma.customer.count({ where });
@@ -475,11 +532,38 @@ export async function exportMembers(ctx: MemberCtx, actor: MemberActor, opts: Ex
   const unitById = new Map(units.map((u) => [u.id, u]));
   const fieldByKey = new Map(layout.sections.flatMap((s) => s.fields).map((f) => [f.key, f]));
 
+  // 🔴 AUDIT H2: `columns` มาจาก client ⇒ คีย์ที่ไม่รู้จักถูกทิ้ง ไม่ใช่สะท้อนสตริงดิบกลับไปในหัวตาราง
+  //    (คอลัมน์คงที่ของหน้าส่งออก + ฟิลด์ที่มีจริงในเลย์เอาต์ของระบบนี้เท่านั้น)
+  const columns = [...new Set(requested.filter((c) => typeof c === "string" && (EXPORT_LABELS[c] !== undefined || fieldByKey.has(c))))];
+  if (columns.length === 0) throw new MemberInputError("ยังไม่ได้เลือกคอลัมน์ที่จะส่งออก — เลือกอย่างน้อย 1 คอลัมน์แล้วลองใหม่");
+
+  // 🔴 AUDIT H2: ฟิลด์อ่อนไหวในไฟล์ส่งออกต้องผ่านนโยบาย D8 ต่อ (actor, ฟิลด์, สมาชิก) — ไม่ผ่าน = ช่องว่าง
+  //    แถวยังออกครบ (คนทำงานยังได้รายชื่อไปใช้) แต่ค่าที่ต้องหวงไม่หลุดไปกับไฟล์
+  const sensitiveByKey = sensitiveFieldsOf(layout);
+  const judge = sensitiveJudge(ctx, actor);
+  const sensitiveCols = columns.map((c) => sensitiveByKey.get(c)).filter((x): x is SensitiveField => !!x);
+  const blocked = new Map<string, Set<string>>();
+  // 🔴 D17: ทุกครั้งที่ค่าอ่อนไหว **ออกไปจริง** ต้องมีแถว MemberAccessLog ของสมาชิกคนนั้น (ไฟล์ส่งออกคือ
+  //    การเปิดดูแบบเหมาเข่ง — ถ้าไม่บันทึก ผู้ตรวจย้อนหลังจะไม่มีทางรู้ว่าใครดึงอะไรออกไปเมื่อไหร่)
+  const toLog: { customerId: string; f: SensitiveField; decision: SensitiveDecision }[] = [];
+
+  for (const r of rows) {
+    if (sensitiveCols.length === 0) break;
+    const hide = new Set<string>();
+    for (const f of sensitiveCols) {
+      const decision = await judge(f, r.id);
+      if (!decision.allowed) hide.add(f.key);
+      else if ((values[r.id] ?? {})[f.key] != null) toLog.push({ customerId: r.id, f, decision });
+    }
+    blocked.set(r.id, hide);
+  }
+
   const header = columns.map((c) => EXPORT_LABELS[c] ?? fieldByKey.get(c)?.label ?? c);
   const lines = [csvRow(header)];
 
   for (const r of rows) {
     const bag = values[r.id] ?? {};
+    const hide = blocked.get(r.id) ?? new Set<string>();
     const t = r.tierDefId ? (tierById.get(r.tierDefId) ?? null) : null;
     const u = r.homeUnitId ? (unitById.get(r.homeUnitId) ?? null) : null;
     const cellOf = (col: string): string | number => {
@@ -500,6 +584,7 @@ export async function exportMembers(ctx: MemberCtx, actor: MemberActor, opts: Ex
         case "source": return memberSourceLabel(r.source);
         case "createdAt": return r.createdAt.toISOString().slice(0, 10);
         default: {
+          if (hide.has(col)) return ""; // 🔴 AUDIT H2 — ไม่ผ่านนโยบายข้อมูลอ่อนไหว = ช่องว่าง
           const field = fieldByKey.get(col);
           return field ? displayOf(field, bag[col] ?? null) : "";
         }
@@ -510,12 +595,22 @@ export async function exportMembers(ctx: MemberCtx, actor: MemberActor, opts: Ex
 
   const csv = `﻿${lines.join("\r\n")}\r\n`;
 
+  // 🔴 AUDIT H2 (D17): บันทึกการดูข้อมูลอ่อนไหวรายสมาชิก — เขียนหลังประกอบไฟล์เสร็จ ไฟล์ออกไม่ได้ก็ไม่มีแถวค้าง
+  //    ใช้ตัวเขียนแบบก้อน (`logAccessMany`): แถวยังครบรายสมาชิกเหมือน 360 แต่เขียนด้วย createMany และยิง
+  //    event สรุปใบเดียวต่อการส่งออก 1 ครั้ง — ส่งออก 50,000 แถวต้องไม่กลายเป็น 50,000 transaction + คิวตัน
+  await logAccessMany(
+    ctx,
+    actor,
+    toLog.map((e) => ({ customerId: e.customerId, targetType: e.f.targetType, targetId: e.f.targetId, decision: e.decision })),
+    "member.export",
+  );
+
   await writeAudit({
     tenantId: ctx.tenantId,
     actorId: ctx.actorUserId ?? undefined,
     action: "member.export",
     targetType: "Customer",
-    after: { columns, rows: rows.length, filters: opts.filters ?? {} },
+    after: { columns, sensitiveColumns: sensitiveCols.map((f) => f.key), rows: rows.length, filters: opts.filters ?? {} },
   });
 
   return { csv, rows: rows.length };

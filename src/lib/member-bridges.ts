@@ -133,16 +133,22 @@ async function recordSpendOnce(
     ...(kind === "PURCHASE" ? { pointsEarned: 0, voucherUsed: sale.voucherUseIds.length, stampsAdded: 0 } : {}),
   };
   await prisma.$transaction(async (tx) => {
-    // ตรวจซ้ำในtx (กันสองคิวเข้าพร้อมกัน — ตารางไทม์ไลน์ไม่มี unique index ให้พึ่ง)
-    const dup = await tx.memberActivity.findFirst({
-      where: { tenantId: sale.tenantId, customerId: sale.memberId, module: "pos", type: kind, refType: "PosSale", refId: sale.id },
-      select: { id: true },
-    });
-    if (dup) return;
-    await member.recordSpend(ctx.tenantId, sale.memberId, delta, tx);
+    // 🔴 AUDIT M10: ขา VOID หักยอดได้ต่อเมื่อขา PURCHASE เคย "บวกจริง" มาก่อนเท่านั้น
+    //    (บัญชีล้มถาวร/บิลถูก void ก่อนคิวปิดบิลมาถึง ⇒ ไม่เคยบวก) — ห้ามลบยอดที่ไม่เคยบวก
+    if (kind === "VOID") {
+      const purchased = await tx.memberActivity.findFirst({
+        where: { tenantId: sale.tenantId, customerId: sale.memberId, module: "pos", type: "PURCHASE", refType: "PosSale", refId: sale.id },
+        select: { id: true },
+      });
+      if (!purchased) return;
+    }
     const row = { customerId: sale.memberId, unitId: sale.unitId, module: "pos", refType: "PosSale", refId: sale.id, summary, data };
-    // ธงของสะพาน (M2.8 — PURCHASE / VOID) · recordOnce ใน tx เดียวกับยอดสะสม
-    await member.recordOnce(ctx, { ...row, type: kind }, tx);
+    // 🔴 AUDIT H5: **ยึดธงก่อน แล้วค่อยบวก** — `recordOnce` ถือ advisory lock ต่อคีย์ + ตรวจซ้ำให้ในตัว
+    //    ⇒ คิวที่เข้าพร้อมกันจะมีเพียงคิวเดียวที่ได้ `created: true` (ที่เหลือรอจน commit แล้วเห็นแถว)
+    //    ของเดิมตรวจธงก่อน → บวก → ค่อยเขียนธง ⇒ สองคิวผ่านด่านตรวจพร้อมกันแล้วบวกยอดคนละครั้ง
+    const flag = await member.recordOnce(ctx, { ...row, type: kind }, tx);
+    if (!flag.created) return; // คิวอื่นยึดธงไปแล้ว = ยอดถูกบวก/หักไปแล้ว
+    await member.recordSpend(ctx.tenantId, sale.memberId, delta, tx);
     // M3.7 — ขา void: แถวที่ไทม์ไลน์แสดงคือ PURCHASE_VOIDED (แถว VOID = ธงกันลดยอดซ้ำ ไทม์ไลน์ซ่อนเมื่อมีคู่)
     if (kind === "VOID") await member.recordOnce(ctx, { ...row, type: "PURCHASE_VOIDED" }, tx);
   });
@@ -267,6 +273,12 @@ export async function onPosSalePaid(tenantId: string, saleId: string): Promise<v
 
   const ctx = { tenantId, systemId: memberSystemId, actorUserId: null };
   await recordSpendOnce(ctx, sale, "PURCHASE");
+  // 🔴 AUDIT M11: บิลอาจถูกยกเลิกไปแล้วระหว่างที่คิวใบนี้กำลังวิ่ง (คิว void วิ่งจบก่อนขั้นให้แต้ม)
+  //    ⇒ อ่านสถานะซ้ำก่อนให้ของ · ถ้าไม่ใช่ PAID แล้ว ให้เก็บกวาดด้วยสะพาน void (ทุกขั้น idempotent)
+  if (!(await saleStillPaid(tenantId, sale.id))) {
+    await onPosSaleVoided(tenantId, saleId);
+    return;
+  }
   await earnForSale({ tenantId, memberSystemId, pointSystemId }, sale);
   await stamp.autoStampFromSale({ tenantId, systemId: memberSystemId }, { saleId: sale.id });
   // M3.7 — แถวไทม์ไลน์ของบิลได้ตัวเลขครบ (แต้ม/ตรา/voucher) หลังขั้นแต้ม+ตราเสร็จ
@@ -286,6 +298,16 @@ export async function onPosSalePaid(tenantId: string, saleId: string): Promise<v
   //   ขั้นสุดท้ายโดยตั้งใจ (ของที่ลูกค้าได้จากบิลตัวเองต้องมาก่อน) · ไม่ใช่เพื่อนที่ถูกแนะนำ = จบใน 1 คำสั่ง
   //   พัง = โยนต่อ → ผู้เรียกเขียน WARN "สะพานสมาชิก" (บิล/บัญชีไม่กระทบ) · แถวค้าง CONVERTED จ่ายต่อในบิลถัดไป
   await member.referralOnSalePaid(ctx, { customerId: sale.memberId, saleId: sale.id });
+
+  // 🔴 AUDIT M11: บิลถูกยกเลิกระหว่างคิวนี้วิ่ง แล้วคิว void วิ่งจบไปก่อน = มันไม่เห็นแต้ม/ตราที่เราเพิ่งให้
+  //    ⇒ ปิดท้ายด้วยการอ่านสถานะซ้ำ แล้วเก็บกวาดเอง (ทุกขั้นของสะพาน void idempotent — เรียกซ้ำไม่คืนของซ้ำ)
+  if (!(await saleStillPaid(tenantId, sale.id))) await onPosSaleVoided(tenantId, saleId);
+}
+
+/** บิลใบนี้ยังเป็น "ชำระแล้ว" อยู่ไหม ณ วินาทีนี้ (อ่านสด — ไม่ใช้ค่าที่อ่านไว้ตอนต้นคิว) */
+async function saleStillPaid(tenantId: string, saleId: string): Promise<boolean> {
+  const row = await prisma.posSale.findFirst({ where: { id: saleId, tenantId }, select: { status: true } });
+  return row?.status === "PAID";
 }
 
 /**

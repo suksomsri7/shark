@@ -67,6 +67,8 @@ export function memberActorForKey(input: {
     unitAccess: ["*"],
     permissions: Object.fromEntries(input.scopes.map((s) => [s, true])),
     apiRole,
+    // 🔴 AUDIT L8 (ชุด S4): ให้ `privacy.logAccess` บันทึกการดูของคีย์ได้ (`apikey:<id>`) แทนที่จะข้ามไป
+    keyId: input.keyId,
   };
 }
 

@@ -31,6 +31,7 @@ import { logOps } from "@/lib/core/ops";
 // 🔴 เส้น `kanban→approval` — Fable อนุมัติล่วงหน้าใน ledger/KANBAN-RUN.md (ท้าย §K3.2) สำหรับ K2.9
 //    (การกระทำ `open_approval`) · อยู่ใน `ALLOWED_EDGES` ของ `scripts/fitness.mts` แล้ว
 import { submitForApproval } from "@/lib/modules/approval/service";
+import { webhookTargetProblem } from "@/lib/webhooks/service";
 import { KanbanForbiddenError, KanbanNotFoundError } from "./access";
 import { logActivity } from "./activity-log";
 import { archiveCard, setCardAssignees, updateCardFields } from "./cards";
@@ -1082,6 +1083,12 @@ async function runAction(action: KanbanRuleAction, scope: RunScope, card: RuleCa
       return;
     }
     case "webhook": {
+      // 🔴 AUDIT M1 (ขยายจากรอบแก้ S4): ปลายทางของกฎอัตโนมัติก็มาจากผู้ใช้เหมือน webhook ของร้าน
+      //    ⇒ ผ่านด่านเดียวกัน (`webhookTargetProblem` — บล็อก loopback/เครือข่ายภายใน/metadata ·
+      //    ช่องทดสอบ `WEBHOOK_ALLOW_PRIVATE=1` + APP_ENV ≠ production) · โยนเป็นความล้มเหลวของ
+      //    "การกระทำที่ k" ตามกติกา D21 ⇒ ขึ้น AutomationRun FAILED พร้อมเหตุผลไทยให้เจ้าของกฎเห็น
+      const unsafe = await webhookTargetProblem(action.params.url);
+      if (unsafe) throw new Error(unsafe);
       const post = deps?.post ?? postWebhook;
       await post(action.params.url, {
         event: "kanban.automation",

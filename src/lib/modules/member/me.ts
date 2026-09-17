@@ -326,7 +326,13 @@ export async function meUpdate(
  *   (เปิดหน้าบัตรซ้ำ/คนละเครื่อง ได้ QR เดิมจนกว่าจะหมดอายุหรือกดหมุนใหม่)
  */
 function cardTokenFor(customerId: string, expiresAtMs: number): string {
-  const secret = process.env.SESSION_SECRET ?? "shark-member-card";
+  // 🔴 AUDIT L4: ห้ามมีความลับสำรองฝังในโค้ด — โค้ดเป็นของสาธารณะในทีม/บิลด์ ⇒ ใครก็ปลอม QR บัตร
+  //    สมาชิกของคนอื่นได้ถ้าเซิร์ฟเวอร์เผลอขึ้นโดยไม่มี `SESSION_SECRET` · ไม่มีความลับ = ล้มทันที
+  //    พร้อมบอกสาเหตุให้ผู้ดูแลระบบ (ไม่ใช่ข้อความโทษลูกค้า)
+  const secret = process.env.SESSION_SECRET ?? "";
+  if (!secret) {
+    throw new Error("ระบบยังไม่ได้ตั้งค่า SESSION_SECRET จึงออกบัตรสมาชิกไม่ได้ — แจ้งผู้ดูแลระบบให้ตั้งค่าก่อน");
+  }
   return createHmac("sha256", `member-card:${secret}`).update(`${customerId}:${expiresAtMs}`).digest("base64url");
 }
 

@@ -3,6 +3,7 @@
 // 🔴 ไม่ต้องล็อกอิน: token ในลิงก์คือสิทธิ์ของรีวิว 1 ใบ (ใช้ครั้งเดียว · เก็บเฉพาะ hash) — เปิดจากไลน์แล้วเขียนได้ทันที
 //    ห้ามเรียกด่านพนักงาน/ด่าน session ลูกค้าในหน้านี้ (คนที่กดลิงก์จากไลน์ส่วนใหญ่ยังไม่เคยล็อกอินหน้าสมาชิก)
 // 🔴 ลิงก์ที่ใช้แล้ว → "รีวิวไปแล้ว" (m-review-done) · ลิงก์มั่ว/คนละร้าน → ข้อความไทย (m-review-invalid) ไม่ใช่หน้าพัง
+// 🔴 AUDIT L2: ลิงก์เกิน 30 วัน → "ลิงก์หมดอายุ" (m-review-expired) — คนละความหมายกับลิงก์ผิด และไม่โทษลูกค้า
 import { reviewLiffView } from "@/lib/modules/member/reviews";
 import { ReviewLiffForm, ReviewLiffMessage } from "@/components/member/ReviewLiff";
 
@@ -12,6 +13,7 @@ export default async function MemberReviewPage({ params }: { params: Promise<{ s
   const { slug, token } = await params;
   const view = await reviewLiffView(slug, token);
   if (view.state === "invalid") return <ReviewLiffMessage kind="invalid" />;
+  if (view.state === "expired") return <ReviewLiffMessage kind="expired" shopName={view.shopName} />;
   if (view.state === "done") return <ReviewLiffMessage kind="done" shopName={view.shopName} rating={view.rating} />;
   return (
     <ReviewLiffForm

@@ -1,5 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
-import { emitOutboxOutsideTx } from "@/lib/core/outbox";
+import { emitOutbox } from "@/lib/core/outbox";
 import type { CrmActivityType, Prisma } from "@prisma/client";
 import {
   DEFAULT_PIPELINE,
@@ -132,18 +132,26 @@ export async function moveDeal(ctx: Ctx, dealId: string, stageId: string): Promi
   if (!deal || !stage) throw new Error("ไม่พบดีลหรือขั้นตอน");
 
   const state = dealStateForStage(stage.kind, new Date());
-  await db.crmDeal.update({
-    where: { id: deal.id },
-    data: { stageId: stage.id, kind: state.kind, closedAt: state.closedAt },
-  });
+  // 🔴 AUDIT M12: ดีลที่ปิดได้ทำให้ลูกค้า "ได้ของ" (สมัครสมาชิกให้ + ไทม์ไลน์ + journey ของระบบสมาชิก)
+  //    ⇒ event ต้องเขียนใน transaction เดียวกับการเปลี่ยนขั้นดีล (กติกา core/outbox.ts:69-72)
+  //    ของเดิมยิงนอก tx: ดีลขึ้นเป็น WON แล้วโปรเซสถูกตัดก่อนยิง = ไม่มีใครรู้ ไม่มีแถวค้างให้ตามเก็บ
+  await db.$transaction(async (tx) => {
+    // `tenantDb` เป็น client ที่ `$extends` แล้ว ⇒ ชนิดของ tx ไม่ตรงกับ `Prisma.TransactionClient` ที่ core รับ
+    // (ต่างกันแค่ "ชนิด" จาก extension — ของจริงคือ transaction client ตัวเดียวกัน และยังฉีดขอบเขตร้านให้ทุก query)
+    // 🔴 โมดูล CRM เพิ่ม import prisma ดิบแทนไม่ได้ (fitness F5.1 เต็ม baseline พอดี) ⇒ แปลงชนิดที่จุดเดียวตรงนี้
+    const txc = tx as unknown as Prisma.TransactionClient;
+    await tx.crmDeal.update({
+      where: { id: deal.id },
+      data: { stageId: stage.id, kind: state.kind, closedAt: state.closedAt },
+    });
+    if (stage.kind !== "WON") return;
 
-  // ปิดสำเร็จ (WON) → เลื่อน lifecycle ของ contact เป็น CUSTOMER (จากกติกา)
-  if (stage.kind === "WON") {
-    const contact = await db.crmContact.findFirst({ where: { id: deal.contactId } });
+    // ปิดสำเร็จ (WON) → เลื่อน lifecycle ของ contact เป็น CUSTOMER (จากกติกา)
+    const contact = await tx.crmContact.findFirst({ where: { id: deal.contactId } });
     if (contact) {
       const next = lifecycleAfterDealWon(contact.lifecycleStage);
       if (next !== contact.lifecycleStage) {
-        await db.crmContact.update({
+        await tx.crmContact.update({
           where: { id: contact.id },
           data: { lifecycleStage: next },
         });
@@ -152,7 +160,7 @@ export async function moveDeal(ctx: Ctx, dealId: string, stageId: string): Promi
     // M3.7 (ระบบสมาชิก v2 · §7.1) — ดีลปิดได้ → ไทม์ไลน์สมาชิก + ผูก/สมัครสมาชิกให้ผู้ติดต่อ (consumer ที่ composition root)
     // 🔴 additive จุดเดียว: CRM ไม่รู้จักโมดูลสมาชิก — แค่ประกาศเหตุการณ์ · idempotencyKey ผูกดีล (ย้ายไป-กลับไม่ยิงซ้ำ)
     // 🔴 ลง 3 ทะเบียนแล้ว (outbox-consumers · automation/labels · webhooks/labels ผ่าน spread)
-    await emitOutboxOutsideTx({
+    await emitOutbox(txc, {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
       type: "crm.deal.won",
@@ -168,7 +176,7 @@ export async function moveDeal(ctx: Ctx, dealId: string, stageId: string): Promi
         email: contact?.email ?? null,
       },
     });
-  }
+  });
 }
 
 // ── Activity / Follow-up ──

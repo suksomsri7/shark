@@ -13,7 +13,7 @@ import { runForEvent } from "@/lib/automation/engine";
 import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect } from "@/lib/approval-effects";
-import { logOps } from "@/lib/core/ops";
+import { logOps as logOpsRaw } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
 import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
@@ -36,6 +36,35 @@ const saleIdOf = (payload: unknown): string | null => {
   return p && typeof p.saleId === "string" ? p.saleId : null;
 };
 
+// ── 🔴 AUDIT L12: บันทึกเหตุการณ์ระบบห้ามมีข้อมูลติดต่อของลูกค้าแบบดิบ ─────────────────────
+//
+// error/stack ของสะพานมักลากข้อความอย่าง "บิล <เลขใบเสร็จ> ผูกกับสมาชิก…" ติดมาด้วย และเลขใบเสร็จ/
+// ข้อความของโมดูลอาจมีเบอร์หรืออีเมลของลูกค้าอยู่ · OpsEvent เปิดอ่านจากหน้าผู้ดูแลแพลตฟอร์ม
+// และถูกส่งต่อเข้าอีเมลแจ้งเตือนของ level ERROR ⇒ ปิดบังทั้ง `message` และ `detail` ก่อนเขียนเสมอ
+//   • เลขติดกัน ≥ 7 หลัก = เบอร์ / เลขบัตรประชาชน / เลขบัญชี (เลขสั้นอย่างจำนวนเงิน/บรรทัดของ stack ไม่โดน)
+//   • อีเมล = ปิดทั้งใบ (ส่วนหน้า @ คือตัวระบุตัวบุคคล)
+const redactPii = (text: string): string =>
+  text.replace(/\d{7,}/g, "[ตัวเลขถูกปิดบัง]").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[อีเมลถูกปิดบัง]");
+
+/**
+ * `logOps` ของไฟล์นี้ — **ปิดบัง PII ให้ก่อนเสมอ** แล้วค่อยส่งต่อให้ตัวจริง (`logOpsRaw`)
+ * จงใจตั้งชื่อทับของเดิม: ทุกจุดในไฟล์นี้เรียก `logOps(...)` เหมือนเดิม จึงไม่มีทางหลุดด่านปิดบังโดยไม่ตั้งใจ
+ */
+async function logOps(
+  level: "ERROR" | "WARN" | "INFO",
+  source: string,
+  message: string,
+  opts?: { detail?: string; tenantId?: string },
+): Promise<void> {
+  await logOpsRaw(level, source, redactPii(message), {
+    ...(opts ?? {}),
+    ...(opts?.detail ? { detail: redactPii(opts.detail) } : {}),
+  });
+}
+
+/** ข้อความของ error (ใช้ stack ถ้ามี) — รูปเดียวกันทุกจุดที่เขียน detail ของ OpsEvent */
+const errDetail = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.message) : String(e));
+
 // ── การแจ้งเตือนสมาชิก (M3.6 · §5.10 §8.x) ──────────────────────────────────
 // 🔴 event เหล่านี้ (แต้ม/สแตมป์/voucher) ถูกยิงด้วย `systemId` ของระบบต้นทาง (POINT/STAMP อาจไม่ใช่
 //    ระบบสมาชิกโดยตรง) ⇒ resolve ระบบสมาชิกจริงจาก `Customer.memberSystemId` เสมอ (แบบเดียวกับ
@@ -43,13 +72,17 @@ const saleIdOf = (payload: unknown): string | null => {
 // 🔴 ตัวส่งจริง (LINE ผ่านแชท) มาจาก composition root `member-journey-senders.ts` — dynamic import
 //    เพื่อไม่ให้ไฟล์นี้ผูกกับโมดูลแชทตอนโหลด (ไม่ได้เกี่ยวกับ F2 ที่นี่ — composition root อยู่นอก
 //    src/lib/modules อยู่แล้ว — แต่คงรูปแบบ dynamic import เดียวกับ journey/webhooks ด้านบนเพื่อความสม่ำเสมอ)
+// 🔴 AUDIT H6 (ครึ่งของคิว): ส่ง `eventId` = id ของ event ในคิวไปด้วยทุกครั้ง — redelivery/drain ซ้อน
+//    ของ event เดิมจะถูก `notifications.send` ตัดทิ้งด้วยกุญแจนี้ (ลูกค้าไม่ได้ LINE/SMS/อีเมลซ้ำ)
+//    ผู้เรียกที่มีคีย์ของตัวเองอยู่แล้ว (`point.expiring` = ล็อต × วันที่เหลือ) ส่ง `refId` มาทับได้เหมือนเดิม
 async function notifyMember(
-  tenantId: string,
+  evt: { id: string; tenantId: string },
   customerId: string,
   key: string,
   vars?: Record<string, string | number>,
   refId?: string,
 ): Promise<void> {
+  const tenantId = evt.tenantId;
   try {
     const customer = await prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { memberSystemId: true } });
     if (!customer) return; // สมาชิกถูกลบ/รวมไปแล้วก่อนคิวจะมาถึง — ไม่มีใครให้แจ้งแล้ว (ปกติของ outbox)
@@ -57,14 +90,11 @@ async function notifyMember(
     const { notificationSenders } = await import("@/lib/member-journey-senders");
     await notifications.send(
       { tenantId, systemId: customer.memberSystemId, actorUserId: null },
-      { event: key, customerId, ...(vars ? { vars } : {}), ...(refId ? { refId } : {}) },
+      { event: key, customerId, ...(vars ? { vars } : {}), ...(refId ? { refId } : {}), eventId: evt.id },
       { deps: notificationSenders },
     );
   } catch (e) {
-    await logOps("WARN", "outbox", `แจ้งเตือนสมาชิก "${key}" ล้มเหลว`, {
-      tenantId,
-      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-    });
+    await logOps("WARN", "outbox", `แจ้งเตือนสมาชิก "${key}" ล้มเหลว`, { tenantId, detail: errDetail(e) });
   }
 }
 
@@ -149,24 +179,22 @@ const withAutomation =
   async (evt) => {
     // M2.5 — hook ของแจกย้อนกลับต้องพร้อมก่อน handler ตัวใดจะทำงาน (idempotent · เช็ค boolean เฉย ๆ)
     registerMemberHooks();
-    // งานหลักก่อน — พังต้องโยนต่อเหมือนเดิม (drain จะ retry/backoff) เพียงแต่ log ERROR ก่อน
+    // 🔴 AUDIT M10: งานหลักพัง = ยัง "ล้ม" เหมือนเดิม (drain retry/backoff) แต่ **ห้ามโยนตรงนี้**
+    //    ของเดิมโยนทันที ⇒ กฎอัตโนมัติ/journey/เว็บฮุคของ event นั้นไม่เคยได้วิ่งเลยเมื่อขาบัญชีล้ม
+    //    (ร้านตั้ง journey "ปิดบิลแล้วขอบคุณลูกค้า" ไว้ แล้วเงียบสนิทเพราะผังบัญชียังไม่ได้ตั้ง)
+    //    ⇒ เก็บ error ไว้ก่อน วิ่งชั้นที่เหลือให้ครบ แล้วค่อยโยนท้ายสุด
+    let failure: unknown = null;
     try {
       await handler(evt);
     } catch (e) {
-      await logOps("ERROR", "outbox", `handler "${evt.type}" ล้มเหลว`, {
-        tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-      });
-      throw e; // โยนต่อ — พฤติกรรมเดิมห้ามเปลี่ยน
+      await logOps("ERROR", "outbox", `handler "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
+      failure = e;
     }
     try {
       await runForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
     } catch (e) {
       // automation ล้มเหลว = เรื่องรอง — event หลัก DONE ตามปกติ · แค่บันทึก WARN
-      await logOps("WARN", "outbox", `automation ของ "${evt.type}" ล้มเหลว`, {
-        tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-      });
+      await logOps("WARN", "outbox", `automation ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
     }
     // M3.3 — journey อัตโนมัติของระบบสมาชิก (best-effort แบบเดียวกับ automation: พังห้ามล้ม consumer หลัก)
     //   ส่ง `id` ของ event ไปด้วย → เอนจินอ่าน idempotencyKey เป็นกุญแจกันวน (ตรงกับตอนเรียกตรงจาก cron/ข้อสอบ)
@@ -176,12 +204,12 @@ const withAutomation =
         const { journeySenders } = await import("@/lib/member-journey-senders");
         await runJourneysForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload, id: evt.id }, { deps: journeySenders });
       } catch (e) {
-        await logOps("WARN", "outbox", `journey ของ "${evt.type}" ล้มเหลว`, {
-          tenantId: evt.tenantId,
-          detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-        });
+        await logOps("WARN", "outbox", `journey ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
       }
     }
+    // 🔴 AUDIT M10: รายงานความล้มของงานหลักท้ายสุด — event ยังถูก retry เหมือนเดิม
+    //    (ขั้นที่วิ่งไปแล้ว idempotent ทุกตัว: ธงยอดสะสม · คีย์แต้ม · คีย์ตรา · eventKey ของ journey · ฮุคยิงรอบเดียวต่อ event)
+    if (failure) throw failure;
   };
 
 // ── บัญชี V2 · WO 7.2 (§12 กล่องขาเข้า): รูปบิลที่ลูกค้า/ทีมส่งเข้าห้องแชท → เข้ากล่องขาเข้าของบัญชี ──
@@ -268,20 +296,35 @@ const chatInboundToAccountInbox: OutboxHandler = async (evt) => {
 };
 
 // ── Approval Engine (WO-0049): แจ้งเตือนร้านเมื่อคำขออนุมัติเปลี่ยนสถานะ ──
-const approvalMeta = (payload: unknown): { entityType: string; entityId: string } => {
-  const p = (payload ?? {}) as { entityType?: unknown; entityId?: unknown };
+const approvalMeta = (payload: unknown): { entityType: string; entityId: string; requestId: string } => {
+  const p = (payload ?? {}) as { entityType?: unknown; entityId?: unknown; requestId?: unknown };
   return {
     entityType: typeof p.entityType === "string" ? p.entityType : "",
     entityId: typeof p.entityId === "string" ? p.entityId : "",
+    requestId: typeof p.requestId === "string" ? p.requestId : "",
   };
 };
 
+// 🔴 AUDIT L13: คิวยิงซ้ำได้เสมอ (lease หมด · ขั้นหลังล้มแล้ว drain รอบถัดไป) — ของเดิม `create` ตรง ๆ
+//    ⇒ ทีมเห็นใบแจ้ง "มีคำขออนุมัติใหม่" ซ้ำหลายใบสำหรับคำขอเดียว · ตารางแจ้งเตือนไม่มีคอลัมน์คีย์
+//    (เพิ่ม = migration ซึ่ง run นี้ห้าม) ⇒ ผูก "รหัสคำขอ" ไว้ในเนื้อความ แล้วเช็คก่อนสร้าง
+//    (รหัสมีประโยชน์กับทีมอยู่แล้ว — ใช้อ้างอิงคำขอได้ตรงใบ) · ไม่มีรหัส = สร้างตามเดิม (ห้ามกลืนใบของคนอื่น)
 const approvalNotify =
   (title: (label: string) => string, body: string): OutboxHandler =>
   async (evt) => {
-    const { entityType } = approvalMeta(evt.payload);
+    const { entityType, entityId, requestId } = approvalMeta(evt.payload);
+    const ref = requestId || entityId;
+    const notifTitle = title(entityLabel(entityType));
+    const notifBody = ref ? `${body} (รหัสคำขอ ${ref})` : body;
+    if (ref) {
+      const dup = await prisma.appNotification.findFirst({
+        where: { tenantId: evt.tenantId, title: notifTitle, body: notifBody },
+        select: { id: true },
+      });
+      if (dup) return; // แจ้งไปแล้วสำหรับคำขอใบนี้ — retry ห้ามแจ้งซ้ำ
+    }
     await prisma.appNotification.create({
-      data: { tenantId: evt.tenantId, title: title(entityLabel(entityType)), body },
+      data: { tenantId: evt.tenantId, title: notifTitle, body: notifBody },
     });
   };
 
@@ -313,18 +356,38 @@ const withApprovalEffect =
 // ── Webhooks ขาออก (WO-0062): ห่อเพิ่มอีกชั้นหลัง handler หลัก(+automation) สำเร็จ ──
 // ยิงฮุคไปทุก endpoint ที่ร้าน subscribe event นี้ — best-effort เหมือน automation
 // (dispatch จับ error ต่อ endpoint อยู่แล้ว · ห่อ try/catch กัน error ระดับ query ไม่ให้ล้ม consumer)
+/**
+ * 🔴 AUDIT M10: ยิงฮุค **รอบเดียวต่อ event** — ตอนนี้ event ที่งานหลักล้มยังยิงฮุคอยู่ และถูก retry ได้ถึง 5 รอบ
+ *    ถ้าไม่กัน ปลายทางของร้านจะได้ของใบเดียวกัน 5 ใบ (ระบบภายนอกส่วนใหญ่ไม่ได้กันซ้ำให้)
+ *    ตาราง `WebhookDelivery` ไม่มีคอลัมน์อ้าง event (เพิ่ม = migration ซึ่ง run นี้ห้าม) ⇒ ใช้ "รอบแรกของ event"
+ *    เป็นเกณฑ์: `attempts === 0` คือยังไม่เคยมีรอบไหนล้ม · ใบที่ยิงแล้วปลายทางไม่รับ มี cron `retryFailedWebhooks`
+ *    ตามเก็บให้ต่อ (backoff ต่อใบ) ⇒ ไม่ต้องอาศัยการ retry ของคิวเพื่อส่งซ้ำ
+ *    เรียกนอกคิว (ข้อสอบ/สคริปต์เรียก consumer ตรง) = ไม่มีแถว event → ยิงตามปกติ
+ */
+async function webhooksAlreadyDispatched(evt: { id: string }): Promise<boolean> {
+  const row = await prisma.outboxEvent.findUnique({ where: { id: evt.id }, select: { attempts: true } });
+  return !!row && row.attempts > 0;
+}
+
 const withWebhooks =
   (handler: OutboxHandler): OutboxHandler =>
   async (evt) => {
-    await handler(evt); // handler หลัก(+automation) — พังต้องโยนต่อ (drain retry) ตามเดิม
+    // 🔴 AUDIT M10: งานหลักพัง = ฮุคยังต้องออก (ร้าน/ระบบภายนอกต้องรู้ว่าเกิดเหตุการณ์แล้ว)
+    //    แล้วค่อยโยน error ท้ายสุดเพื่อให้คิว retry ตามเดิม
+    let failure: unknown = null;
     try {
-      await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+      await handler(evt);
     } catch (e) {
-      await logOps("WARN", "outbox", `webhook ของ "${evt.type}" ล้มเหลว`, {
-        tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-      });
+      failure = e;
     }
+    try {
+      if (!(await webhooksAlreadyDispatched(evt))) {
+        await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+      }
+    } catch (e) {
+      await logOps("WARN", "outbox", `webhook ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    }
+    if (failure) throw failure;
   };
 
 // ── K3.3 (§9.2 "การ์ดเกิดจากที่อื่น"): ต่อสะพาน "โมดูลอื่น → บอร์ดงาน" ท้าย handler เดิม ──
@@ -332,18 +395,36 @@ const withWebhooks =
 // 🔴 `compose` = "ของเดิมก่อนเสมอ แล้วค่อยของใหม่" — notify/effect/bridge บัญชีที่มีอยู่ต้องทำงาน
 //    เหมือนเดิมเป๊ะ (พังก็โยนต่อให้ drain retry เหมือนเดิม) · ส่วนสะพานบอร์ดงานเป็น "ของแถม":
 //    พังแล้วห้ามพา consumer หลักล้ม ไม่งั้นคิวทั้งระบบตันเพราะฟีเจอร์เสริมใบเดียว → try/catch + WARN
+// 🔴 AUDIT M10 (แก้ 17 ก.ย.): ของเดิม `await base(evt)` โยนทันทีที่งานเดิมล้ม ⇒ ขั้นของแถมทั้งสาย
+//    (สะพานสมาชิก · สแตมป์ · บอร์ดงาน) ไม่ได้วิ่งเลย · ผลจริง: ร้านที่ยังไม่ได้ตั้งผังบัญชี ปิดบิลแล้ว
+//    ลูกค้าไม่ได้แต้ม/ยอดสะสม/ตรา **ทั้งร้าน เงียบ ๆ** จนกว่าจะมีคนไปเปิดดู lastError ของคิว
+//    ตอนนี้: ทุกขั้นวิ่งเสมอ แล้วรวมความล้มเหลวเป็นใบเดียวโยนท้ายสุด ⇒ event ถูก retry ตามเดิม
+//    (ทุกขั้นเป็น idempotent จึงวิ่งซ้ำตอน retry ได้ — ธงยอดสะสม · คีย์แต้ม/ตรา · sourceKey ของการ์ด)
+//    ของแถมที่ล้มยังเขียน WARN บอกว่าเป็น "ของแถม" เหมือนเดิม และ **ไม่ทำให้คิวตัน**: event ที่ล้มถูกถอย
+//    ด้วย backoff และหยุดที่ 5 ครั้ง (FAILED) ไม่ได้ขวาง event ตัวอื่นในคิว
+//    🔴 สะพานสมาชิก/ไทม์ไลน์ยังกลืน error ของตัวเองอยู่ (ดู memberSaleBridge/memberBridge) —
+//       "ไทม์ไลน์ขาดไปแถวหนึ่ง" จึงยังไม่ทำให้บิลของร้านค้างคิวเหมือนเดิม
 const compose =
   (base: OutboxHandler, extra: OutboxHandler): OutboxHandler =>
   async (evt) => {
-    await base(evt); // งานเดิมของ event นี้ — พฤติกรรมห้ามเปลี่ยน
+    const errors: unknown[] = [];
     try {
-      await extra(evt);
+      await base(evt); // งานเดิมของ event นี้
     } catch (e) {
-      await logOps("WARN", "outbox", `สะพานบอร์ดงานของ "${evt.type}" ล้มเหลว`, {
-        tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
-      });
+      errors.push(e);
     }
+    try {
+      await extra(evt); // ของแถม — วิ่งเสมอ แม้งานเดิมจะล้ม
+    } catch (e) {
+      await logOps("WARN", "outbox", `ขั้นเสริม (สะพานบอร์ดงาน/สมาชิก) ของ "${evt.type}" ล้มเหลว`, {
+        tenantId: evt.tenantId,
+        detail: errDetail(e),
+      });
+      errors.push(e);
+    }
+    if (errors.length === 1) throw errors[0];
+    // หลายขั้นล้มพร้อมกัน → ข้อความของขั้นแรกต้องมาก่อน (คนอ่าน `OutboxEvent.lastError` ต้องเห็นเหตุต้นทาง)
+    if (errors.length > 1) throw new Error(errors.map((e) => (e instanceof Error ? e.message : String(e))).join(" · "));
   };
 
 /**
@@ -674,7 +755,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     }
     // M3.6 — ต้อนรับสมาชิกใหม่ (notifications.send เช็คยินยอม/quiet hours/สวิตช์เปิดปิดเองครบ)
     const p = evt.payload as { customerId?: unknown } | null;
-    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "WELCOME");
+    if (p && typeof p.customerId === "string") await notifyMember(evt, p.customerId, "WELCOME");
   }),
   "member.updated": withAutomation(async () => {}),
   "member.merged": withAutomation(async () => {}),
@@ -701,11 +782,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
     });
     const from = defs.find((d) => d.key === fromKey);
     const to = defs.find((d) => d.key === toKey);
-    if (from && to && to.sortOrder > from.sortOrder) await notifyMember(evt.tenantId, customerId, "TIER_UP");
+    if (from && to && to.sortOrder > from.sortOrder) await notifyMember(evt, customerId, "TIER_UP");
   }, memberBridge("onTierChanged"))),
   "member.tier.at_risk": withAutomation(async (evt) => {
     const p = evt.payload as { customerId?: unknown } | null;
-    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "TIER_AT_RISK");
+    if (p && typeof p.customerId === "string") await notifyMember(evt, p.customerId, "TIER_AT_RISK");
   }),
   // ── ทริกเกอร์รอบเวลาของ journey (M3.3 · §7.3 §7.5) ──
   // 🔴 cron รายวัน `emitJourneyCronEvents` ยิงให้ (เฉพาะค่าที่มี journey เปิดใช้อยู่) · ตัวงานจริงคือ journey
@@ -729,7 +810,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     const p = evt.payload as { customerId?: unknown; points?: unknown } | null;
     const customerId = p && typeof p.customerId === "string" ? p.customerId : null;
     const points = p && typeof p.points === "number" ? p.points : null;
-    if (customerId && points) await notifyMember(evt.tenantId, customerId, "POINTS_EARNED", { แต้ม: points });
+    if (customerId && points) await notifyMember(evt, customerId, "POINTS_EARNED", { แต้ม: points });
   }, memberBridge("onPointEvent"))),
   "point.burned": withAutomation(memberBridge("onPointEvent")),
   "point.expiring": withAutomation(async (evt) => {
@@ -741,7 +822,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     const vars: Record<string, string | number> = { แต้มที่จะหมด: points, วันหมดอายุ: expiresAt ? formatThaiDate(expiresAt) : "" };
     // idempotent ต่อ (ล็อต, วันที่เหลือ) — refId กันแจ้งซ้ำถ้า event ถูกยิงซ้ำ (drain retry / ผู้ดูแลกดรันเอง)
     const refId = `point.expiring:${typeof p?.lotId === "string" ? p.lotId : ""}:${typeof p?.daysLeft === "number" ? p.daysLeft : ""}`;
-    await notifyMember(evt.tenantId, customerId, "POINTS_EXPIRING", vars, refId);
+    await notifyMember(evt, customerId, "POINTS_EXPIRING", vars, refId);
   }),
   "point.expired": withAutomation(memberBridge("onPointEvent")),
   "point.transferred": withAutomation(async () => {}),
@@ -761,7 +842,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // M3.7: + ไทม์ไลน์ STAMP_COMPLETED (ต่อท้ายด้วย compose)
   "stamp.completed": withAutomation(compose(async (evt) => {
     const p = evt.payload as { customerId?: unknown } | null;
-    if (p && typeof p.customerId === "string") await notifyMember(evt.tenantId, p.customerId, "STAMP_COMPLETE");
+    if (p && typeof p.customerId === "string") await notifyMember(evt, p.customerId, "STAMP_COMPLETE");
   }, memberBridge("onLoyaltyEvent"))),
   "stamp.expired": withAutomation(async () => {}),
   // ── รางวัล v2 (M2.4 · §7.1) ──
@@ -785,7 +866,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     const origin = p && typeof p.origin === "string" ? p.origin : null;
     if (!customerId || origin === "CAMPAIGN" || origin === "JOURNEY") return;
     const code = p && typeof p.code === "string" ? p.code : "";
-    await notifyMember(evt.tenantId, customerId, "VOUCHER_NEW", { voucher: code });
+    await notifyMember(evt, customerId, "VOUCHER_NEW", { voucher: code });
   }),
   // M3.2 — voucher ที่ **แคมเปญแนบไปให้** ถูกใช้ = ผลของแคมเปญใบนั้น (ยกความดี + อัปสถิติ variant)
   //   ใบที่ไม่ได้มาจากแคมเปญ → `trackUseFromVoucher` จบเงียบ ๆ (ไม่มีผู้รับให้ผูก)

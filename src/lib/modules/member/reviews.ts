@@ -65,6 +65,17 @@ export type { ReviewDeps } from "./reviews-shared";
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const BKK_MS = 7 * HOUR_MS;
+
+/**
+ * 🔴 AUDIT L2: ลิงก์ขอรีวิว = สิทธิ์ที่ลอยอยู่ในไลน์/อีเมลตลอดกาล — ให้มีอายุ 30 วันนับจากวันที่ร้านส่ง
+ *    (เลยกำหนด = ลูกค้ายังขอลิงก์ใหม่ได้ · ไม่ใช่ความผิดของลูกค้า จึงห้ามใช้ข้อความโทษ)
+ */
+export const REVIEW_TOKEN_TTL_DAYS = 30;
+const REVIEW_TOKEN_EXPIRED_TH = "ลิงก์หมดอายุแล้ว (ลิงก์ขอรีวิวมีอายุ 30 วัน) — ขอลิงก์ใหม่จากร้านได้ทุกเมื่อ ขอบคุณค่ะ";
+function reviewTokenExpired(row: { requestSentAt: Date | null }, now: Date): boolean {
+  return !!row.requestSentAt && row.requestSentAt.getTime() + REVIEW_TOKEN_TTL_DAYS * DAY_MS < now.getTime();
+}
+
 /** สถานะที่นับเป็น "รีวิวที่ส่งแล้วและมองเห็น" */
 const VISIBLE: ReviewStatus[] = ["NEW", "REPLIED", "ESCALATED"];
 const TAKE_MAX = 100;
@@ -463,6 +474,8 @@ export async function submitReview(
 
   const row = await openRowOf(token);
   if (!row) throw new MemberInputError("ลิงก์รีวิวนี้ใช้ไม่ได้แล้ว หรือรีวิวเรียบร้อยแล้ว — ขอบคุณค่ะ");
+  // 🔴 AUDIT L2: ลิงก์เก่าเกิน 30 วัน ไม่รับรีวิวแล้ว (ข้อมูลคลาดเคลื่อน + สิทธิ์ที่ลอยอยู่นานเกินไป)
+  if (reviewTokenExpired(row, now)) throw new MemberInputError(REVIEW_TOKEN_EXPIRED_TH);
 
   const text = (body ?? "").trim() || null;
   // ใช้ token ครั้งเดียว: เปลี่ยนสถานะ + ล้าง hash ในคำสั่งเดียว (กดส่งซ้ำ/สองแท็บ = ใบแรกชนะ)
@@ -516,7 +529,9 @@ export async function submitReview(
         refType: "MemberReview",
         refId: row.id,
         summary: `รีวิว ${rating} ดาว${text ? `: ${text}` : ""}`.slice(0, 500),
-        data: { rating, points: pointsEarned, photos: (photoFileIds ?? []).length },
+        // 🔴 AUDIT L3: เก็บ "ใบเสร็จของสิทธิ์" ไว้ — hash ของโทเคนที่ถูกใช้ไปแล้ว (โทเคนเองถูกล้างจากแถวรีวิว
+        //    เพื่อให้ใช้ซ้ำไม่ได้) ⇒ หน้า LIFF ยังพิสูจน์ได้ว่า "คนที่เปิดลิงก์นี้คือเจ้าของรีวิว" โดยไม่ต้องเชื่อ id เปล่า ๆ
+        data: { rating, points: pointsEarned, photos: (photoFileIds ?? []).length, tokenHash: row.requestTokenHash },
       },
     });
     await emitOutbox(tx, {
@@ -1123,8 +1138,9 @@ export async function draftReply(ctx: MemberCtx, actor: MemberActor, reviewId: s
 // ───────────────────────── หน้า LIFF (ไม่ต้อง session) ─────────────────────────
 
 /**
- * สิ่งที่หน้า `/m/<slug>/review/<token>` ต้องรู้ — token ผิดร้าน/ไม่มี = invalid
- * token ที่ใช้ไปแล้ว (hash ถูกล้าง) = อ่าน reviewId จากส่วนหน้าของ token แล้วตอบแค่ "รีวิวไปแล้ว"
+ * สิ่งที่หน้า `/m/<slug>/review/<token>` ต้องรู้ — token ผิดร้าน/ไม่มี = invalid · เกิน 30 วัน = expired
+ * 🔴 AUDIT L3: สาขา "รีวิวไปแล้ว" เคยตอบจาก **id ที่อยู่หน้าโทเคน** อย่างเดียว ⇒ ไล่เดา id ได้ = อ่านคะแนน
+ *    ของลูกค้าคนอื่นได้ทั้งร้าน · ตอนนี้ต้องพิสูจน์ว่าถือโทเคนจริง (hash ในแถว หรือใบเสร็จในไทม์ไลน์)
  */
 export async function reviewLiffView(slug: string, token: string): Promise<ReviewLiffView> {
   let t = String(token ?? "").trim();
@@ -1137,6 +1153,8 @@ export async function reviewLiffView(slug: string, token: string): Promise<Revie
   if (!tenant || t.length < 10) return { state: "invalid" };
   const open = await openRowOf(t);
   if (open && open.tenantId === tenant.id) {
+    // 🔴 AUDIT L2: ลิงก์เกิน 30 วัน → บอกตรง ๆ ว่าหมดอายุ (ไม่ใช่ "ลิงก์ใช้ไม่ได้" ที่ฟังเหมือนลูกค้าทำผิด)
+    if (reviewTokenExpired(open, new Date())) return { state: "expired", shopName: tenant.name };
     const [customer, settings, ref] = await Promise.all([
       prisma.customer.findUnique({ where: { id: open.customerId }, select: { name: true, firstName: true, nickname: true } }),
       getReviewSettings({ tenantId: open.tenantId, systemId: open.systemId, actorUserId: null }),
@@ -1154,10 +1172,24 @@ export async function reviewLiffView(slug: string, token: string): Promise<Revie
       maxPhotos: REVIEW_MAX_PHOTOS,
     };
   }
+  // 🔴 AUDIT L3: สาขา "รีวิวไปแล้ว" เคยตัดสินจาก **id ที่อยู่หน้าโทเคน** อย่างเดียว ⇒ ใครเดา/ไล่ id รีวิวได้
+  //    ก็อ่านคะแนนของคนอื่นได้ทั้งร้าน · ต้องพิสูจน์ว่าถือโทเคนจริงด้วยการเทียบ hash เหมือนสาขา "เปิดอยู่"
   const reviewId = t.split(".")[0] ?? "";
   if (reviewId && reviewId !== t) {
-    const done = await prisma.memberReview.findFirst({ where: { id: reviewId, tenantId: tenant.id, status: { not: "REQUESTED" } }, select: { rating: true } });
-    if (done) return { state: "done", shopName: tenant.name, rating: done.rating };
+    const hash = sha256(t);
+    const done = await prisma.memberReview.findFirst({
+      where: { id: reviewId, tenantId: tenant.id, status: { not: "REQUESTED" } },
+      select: { rating: true, requestTokenHash: true },
+    });
+    if (done) {
+      // ถือโทเคนจริงไหม: แถวยังเก็บ hash ไว้ (ยังไม่ถูกใช้) หรือมี "ใบเสร็จ" ในไทม์ไลน์ตอนส่งรีวิว
+      const holder =
+        done.requestTokenHash === hash ||
+        (await prisma.memberActivity.count({
+          where: { tenantId: tenant.id, refType: "MemberReview", refId: reviewId, data: { path: ["tokenHash"], equals: hash } },
+        })) > 0;
+      if (holder) return { state: "done", shopName: tenant.name, rating: done.rating };
+    }
   }
   return { state: "invalid" };
 }

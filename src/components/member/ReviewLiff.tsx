@@ -168,9 +168,16 @@ export function ReviewLiffForm({
 }
 
 /** ลิงก์ใช้ไปแล้ว / ลิงก์ใช้ไม่ได้ (ไม่มี state — วาดจากฝั่งเซิร์ฟเวอร์ได้) */
-export function ReviewLiffMessage({ kind, shopName, rating }: { kind: "done" | "invalid"; shopName?: string; rating?: number }) {
+// 🔴 AUDIT L2: "หมดอายุ" เป็นสถานะของตัวเอง — ลูกค้าไม่ได้ทำผิด จึงบอกทางออกแทนคำว่า "ใช้ไม่ได้"
+const MESSAGE_TESTID: Record<"done" | "expired" | "invalid", string> = {
+  done: "m-review-done",
+  expired: "m-review-expired",
+  invalid: "m-review-invalid",
+};
+
+export function ReviewLiffMessage({ kind, shopName, rating }: { kind: "done" | "expired" | "invalid"; shopName?: string; rating?: number }) {
   return (
-    <div data-testid={kind === "done" ? "m-review-done" : "m-review-invalid"} className="flex flex-col gap-3 pb-4">
+    <div data-testid={MESSAGE_TESTID[kind]} className="flex flex-col gap-3 pb-4">
       <MTopBar title={shopName ? `รีวิว ${shopName}` : "รีวิว"} left="star" />
       <MCardBox className="mx-4 flex flex-col items-center gap-2 p-6 text-center">
         <span className="grid h-12 w-12 place-items-center rounded-full" style={{ background: "var(--color-surface-2)" }}>
@@ -181,6 +188,11 @@ export function ReviewLiffMessage({ kind, shopName, rating }: { kind: "done" | "
             <span className="text-base font-semibold">รีวิวไปแล้ว — ขอบคุณค่ะ</span>
             {rating ? <ReviewStars rating={rating} size={16} /> : null}
             <MMuted size={12.5}>ลิงก์นี้ใช้ส่งรีวิวได้ครั้งเดียว ร้านได้รับรีวิวของคุณแล้ว</MMuted>
+          </>
+        ) : kind === "expired" ? (
+          <>
+            <span className="text-base font-semibold">ลิงก์หมดอายุแล้ว — ขอลิงก์ใหม่จากร้านได้เลยค่ะ</span>
+            <MMuted size={12.5}>ลิงก์ขอรีวิวมีอายุ 30 วันนับจากวันที่ร้านส่ง ทางร้านส่งลิงก์ใหม่ให้ได้ทุกเมื่อ</MMuted>
           </>
         ) : (
           <>

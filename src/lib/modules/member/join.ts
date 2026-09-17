@@ -460,6 +460,15 @@ export async function completeJoin(tenantSlug: string, input: CompleteJoinInput,
   if (unverifiedLine && !verifiedLine) sourceDetail.lineUserIdUnverified = unverifiedLine;
 
   const byEmail = ticket.channel === "JOIN_EMAIL" || isEmailTarget(ticket.target);
+  // 🔴 AUDIT M14: กันโกงแนะนำเพื่อนต้องมีสัญญาณที่ client ปลอมไม่ได้ด้วย — ส่ง hash ของ ip ที่ฝั่ง server
+  //    อ่านจาก header เอง (`meta.ip`) ไปกับข้อมูลอุปกรณ์ · ไม่ส่ง ip ดิบต่อ และไม่เก็บ ip ดิบที่ปลายทาง
+  //    ⚠️ ประกาศเป็นตัวแปร (ไม่ใช่ literal ตรง ๆ) เพราะชนิด `device` ของ `createMember` ยังไม่มีช่องนี้
+  //       — ค่าถูกส่งต่อทั้งก้อนถึง `referrals.attach` จึงทำงานจริงตอนรัน (ดูรายงานรอบแก้ S4)
+  const deviceSignals: { fingerprint: string | null; phone: string | null; ipHash: string | null } = {
+    fingerprint: trimmed(input?.device?.fingerprint) || null,
+    phone: byEmail ? null : ticket.target,
+    ipHash: trimmed(meta.ip) ? sha256(trimmed(meta.ip)) : null,
+  };
   const created = await createMember(ctx, JOIN_ACTOR, {
     phone: byEmail ? null : ticket.target,
     email: byEmail ? ticket.target : null,
@@ -474,7 +483,7 @@ export async function completeJoin(tenantSlug: string, input: CompleteJoinInput,
     sourceDetail,
     sourceChannel: verifiedLine ? "LINE" : null,
     referralCode: trimmed(input?.referralCode) || null,
-    device: { fingerprint: trimmed(input?.device?.fingerprint) || null, phone: byEmail ? null : ticket.target },
+    device: deviceSignals,
     idempotencyKey: ticket.id,
   });
 
