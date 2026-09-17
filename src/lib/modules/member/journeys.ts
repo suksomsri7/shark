@@ -595,7 +595,12 @@ export type JourneyEvent = {
 
 export type JourneyRunOptions = { now?: Date; deps?: JourneyDeps };
 
-const ID_KEYS = ["customerId", "memberId", "ownerCustomerId", "buyerCustomerId"] as const;
+// 🔴 AUDIT M8: payload จริงของ 2 เหตุการณ์นี้ไม่ได้ใช้คีย์ `customerId` — ทริกเกอร์เลยตั้งได้แต่ไม่เคยวิ่ง
+//   • `member.merged` → `keepId` = "คนที่เก็บไว้" (profile.ts) — journey ต้องวิ่งให้คนที่ยังอยู่จริง
+//     (ไม่ใช่ `mergedId` ที่สถานะกลายเป็น MERGED แล้ว — เอนจินตัดคนสถานะ MERGED ทิ้งอยู่แล้ว)
+//   • `point.transferred` → `fromCustomerId` = "ผู้โอน" (point/transfer.ts) — เลือกผู้โอนเพราะเป็นคนที่ลงมือ
+//     ทำเหตุการณ์นี้ (เจ้าของแต้มที่เสียไป) · ผู้รับมี event ของตัวเอง (point.earned) ให้ journey จับอยู่แล้ว
+const ID_KEYS = ["customerId", "memberId", "ownerCustomerId", "buyerCustomerId", "keepId", "fromCustomerId"] as const;
 
 async function resolveCustomerId(tenantId: string, payload: unknown): Promise<string | null> {
   const p = (payload ?? {}) as Record<string, unknown>;
@@ -661,9 +666,19 @@ export async function runForEvent(evt: JourneyEvent, opts: JourneyRunOptions = {
   if (rules.length === 0) return { runs: 0 };
 
   const customerId = await resolveCustomerId(evt.tenantId, evt.payload);
-  if (!customerId) return { runs: 0 };
-  const customer = (await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: CUSTOMER_SELECT })) as CustomerRow | null;
-  if (!customer || customer.status === "MERGED") return { runs: 0 };
+  const customer = customerId
+    ? ((await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: CUSTOMER_SELECT })) as CustomerRow | null)
+    : null;
+  if (!customer || customer.status === "MERGED") {
+    // 🔴 AUDIT M8: หาสมาชิกของ event ไม่เจอ = ห้ามเงียบ — เขียนแถว SKIPPED ให้ร้านเห็นในหน้า "บันทึกการทำงาน"
+    //    ว่า journey ไม่ได้วิ่งเพราะอะไร (ไม่งั้นเจ้าของร้านนั่งรอ journey ที่ไม่มีวันทำงานโดยไม่มีร่องรอย)
+    const detail = !customerId
+      ? `ข้าม — เหตุการณ์ "${evt.type}" ไม่มีรหัสสมาชิกในข้อมูลที่ส่งมา จึงไม่รู้ว่าต้องทำ journey นี้ให้ใคร`
+      : `ข้าม — สมาชิกของเหตุการณ์ "${evt.type}" ถูกลบหรือถูกรวมเข้ากับสมาชิกคนอื่นไปแล้ว`;
+    const key = await eventKeyOf(evt);
+    for (const rule of rules) await noteUnresolvedEvent(rule, key, { type: evt.type, payload: evt.payload }, detail);
+    return { runs: 0 };
+  }
 
   const now = opts.now ?? new Date();
   const eventKey = await eventKeyOf(evt);
@@ -678,6 +693,28 @@ export async function runForEvent(evt: JourneyEvent, opts: JourneyRunOptions = {
     }
   }
   return { runs };
+}
+
+/**
+ * 🔴 AUDIT M8: แถว "event นี้หาสมาชิกไม่ได้" — 1 แถวต่อ journey ต่อ event (ไม่มี customerId ให้ผูก)
+ * คิว outbox ยิงซ้ำได้เสมอ จึงเช็คก่อนเขียน (unique(ruleId, customerId, eventKey) ใช้ไม่ได้เมื่อ customerId เป็น NULL)
+ */
+async function noteUnresolvedEvent(rule: RuleRow, eventKey: string, event: JourneyEventRef, detail: string): Promise<void> {
+  const seen = await prisma.automationRun.findFirst({ where: { ruleId: rule.id, customerId: null, eventKey }, select: { id: true } });
+  if (seen) return;
+  await prisma.automationRun.create({
+    data: {
+      tenantId: rule.tenantId,
+      ruleId: rule.id,
+      journeyId: rule.id,
+      eventKey,
+      status: "SKIPPED",
+      detail,
+      finishedAt: new Date(),
+      payload: asJson({ event }),
+    },
+    select: { id: true },
+  }).catch(() => null);
 }
 
 type RunSeed = { status: "OK" | "SKIPPED" | "HOLDOUT"; detail: string };
@@ -1074,21 +1111,30 @@ function waitPayloadOf(v: Prisma.JsonValue | null): WaitPayload {
   };
 }
 
+/** อายุการจองขั้นที่รอเวลา — cron ที่จองไว้แล้วตายกลางทาง แถวจะถูกหยิบใหม่หลังหมดเวลานี้ */
+const WAIT_LEASE_MS = 15 * 60_000;
+
 /**
  * ขั้น "รอ n วัน" ที่ถึงเวลาแล้ว (ทุกร้าน · cron รายชั่วโมง) — journey ปิด/ลบ → ยกเลิก · ใช้ voucher แล้ว (ifVoucherUnused) → ข้าม
- * 🔴 จองแถวด้วย updateMany เงื่อนไข "ยังรอ + ยังไม่มีใครหยิบ" ⇒ cron 2 ตัวซ้อนกันหยิบแถวเดียวกันไม่ได้
+ * 🔴 AUDIT M7: จองแบบ **lease** — เลื่อน `scheduledAt` ออกไป 15 นาที โดยเทียบกับค่าเดิม (updateMany เงื่อนไข
+ *    "ยังรอ + scheduledAt ยังเป็นค่าเดิม") ⇒ cron 2 ตัวซ้อนกันได้ตัวเดียว · เครื่องดับกลางทาง = รอบถัดไป
+ *    (หลังหมด lease) หยิบไปทำต่อได้เอง · `finishedAt` เป็น "ทำจบแล้วจริง" เท่านั้น ไม่ใช่ตัวจอง
+ *    แถวที่ค้างจากบั๊กเดิม (WAITING + finishedAt ถูกเซ็ตตอนจอง) จึงถูกกู้ด้วยรอบเดียวกันนี้
  */
 export async function runDueWaits(opts: { now?: Date; deps?: JourneyDeps; tenantId?: string; limit?: number } = {}): Promise<{ ran: number }> {
   const now = opts.now ?? new Date();
   const due = await prisma.automationRun.findMany({
-    where: { status: "WAITING", finishedAt: null, scheduledAt: { lte: now }, journeyId: { not: null }, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
+    where: { status: "WAITING", scheduledAt: { lte: now }, journeyId: { not: null }, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
     orderBy: { scheduledAt: "asc" },
     take: Math.min(Math.max(opts.limit ?? 500, 1), 2000),
-    select: { id: true, tenantId: true, ruleId: true, customerId: true, stepIndex: true, payload: true },
+    select: { id: true, tenantId: true, ruleId: true, customerId: true, stepIndex: true, scheduledAt: true, payload: true },
   });
   let ran = 0;
   for (const w of due) {
-    const claimed = await prisma.automationRun.updateMany({ where: { id: w.id, status: "WAITING", finishedAt: null }, data: { finishedAt: new Date() } });
+    const claimed = await prisma.automationRun.updateMany({
+      where: { id: w.id, status: "WAITING", scheduledAt: w.scheduledAt },
+      data: { scheduledAt: new Date(now.getTime() + WAIT_LEASE_MS), finishedAt: null },
+    });
     if (claimed.count !== 1) continue;
     ran += 1;
     try {
@@ -1096,7 +1142,7 @@ export async function runDueWaits(opts: { now?: Date; deps?: JourneyDeps; tenant
     } catch (e) {
       await prisma.automationRun.update({
         where: { id: w.id },
-        data: { status: "FAILED", detail: `ทำขั้นหลังรอไม่สำเร็จ — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}` },
+        data: { status: "FAILED", finishedAt: new Date(), detail: `ทำขั้นหลังรอไม่สำเร็จ — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}` },
       }).catch(() => null);
     }
   }
@@ -1108,8 +1154,12 @@ async function finishWait(
   now: Date,
   deps: JourneyDeps,
 ): Promise<void> {
+  // 🔴 AUDIT M7: ทุกทางออกของขั้นที่รอ = "จบจริง" ⇒ ต้องปิด `finishedAt` ที่นี่ (ตัวจองไม่ได้ปิดให้อีกแล้ว)
   const done = (status: "OK" | "SKIPPED" | "CANCELLED", detail: string, extra: Record<string, unknown> = {}) =>
-    prisma.automationRun.update({ where: { id: w.id }, data: { status, detail, payload: asJson({ ...(w.payload as Record<string, unknown> ?? {}), ...extra }) } });
+    prisma.automationRun.update({
+      where: { id: w.id },
+      data: { status, detail, finishedAt: new Date(), payload: asJson({ ...(w.payload as Record<string, unknown> ?? {}), ...extra }) },
+    });
 
   const rule = (await prisma.automationRule.findFirst({ where: { id: w.ruleId, tenantId: w.tenantId }, select: RULE_SELECT })) as RuleRow | null;
   if (!rule || !rule.enabled) {

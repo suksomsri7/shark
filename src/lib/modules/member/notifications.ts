@@ -88,10 +88,12 @@ function nextQuietEnd(now: Date, to: string): Date {
   return bkkAt(now, g.h, g.m, dayOffset);
 }
 
-/** รอบ digest ถัดไป (ชั่วโมงนี้ผ่านไปแล้ว = พรุ่งนี้) */
+/** รอบ digest ถัดไป (รอบของวันนี้ผ่านไปแล้ว = พรุ่งนี้) */
 function nextDigestTime(now: Date, hour: number): Date {
   const t = bkkParts(now);
-  return t.h < hour ? bkkAt(now, hour, 0, 0) : bkkAt(now, hour, 0, 1);
+  // 🔴 AUDIT L14: เทียบเป็น "นาทีของวัน" ไม่ใช่เทียบชั่วโมงอย่างเดียว — เหตุการณ์ที่เกิด 09:00:xx ตรงชั่วโมงพอดี
+  //    (รอบ 09:00 ของวันนี้ยังไม่ผ่านไป) ต้องเข้ารอบวันนี้ ไม่ใช่ถูกเลื่อนไปพรุ่งนี้ (ลูกค้าได้ช้าไป 1 วัน)
+  return t.h * 60 + t.mi <= hour * 60 ? bkkAt(now, hour, 0, 0) : bkkAt(now, hour, 0, 1);
 }
 
 function monthRangeBkk(now: Date): { start: Date; end: Date } {
@@ -374,9 +376,101 @@ async function resolveSend(channel: NotifChannel, deps: NotificationDeps | undef
   return defaultSend(channel, req);
 }
 
+// ───────────────────────── จองแถว / กันส่งซ้ำ (H6) ─────────────────────────
+
+/** อายุการจองแถวหนึ่งใบ — เกินเท่านี้ถือว่าโพรเซสที่จองไว้ตายแล้ว แถวถูกปล่อยกลับเข้าคิว */
+const CLAIM_LEASE_MS = 15 * 60_000;
+
+/** สถานะ "กำลังส่ง" = แถวที่ถูกจองไว้แล้วแต่ยังไม่รู้ผล (ไม่ใช่ enum ในฐานข้อมูล — คอลัมน์เป็น String) */
+const SENDING = "SENDING";
+
+/** กุญแจกันซ้ำของความพยายามส่งหนึ่งครั้ง (ตารางนี้ไม่มี unique index — ใบนี้ห้าม migration จึงล็อกด้วย advisory lock) */
+function dedupeKey(systemId: string, customerId: string, event: string, channel: NotifChannel, refId: string): string {
+  return `member-notif|${systemId}|${customerId}|${event}|${channel}|${refId}`;
+}
+
+type ClaimInput = {
+  customerId: string;
+  event: string;
+  channel: NotifChannel;
+  status: string;
+  scheduledAt: Date | null;
+  subject?: string;
+  body: string;
+  refId?: string;
+};
+
+/** สถานะของแถวเดิม → สถานะที่ตอบผู้เรียกเมื่อเจอว่า "ส่งไปแล้ว" */
+function dupStatusOf(status: string): SendResultItem["status"] {
+  if (status === "SENT" || status === "DIGESTED") return "SENT";
+  if (status === "FAILED") return "FAILED";
+  if (status === "QUEUED" || status === SENDING) return "QUEUED";
+  return "SKIPPED";
+}
+
+/**
+ * 🔴 AUDIT H6: จองแถว "ความพยายามส่ง" หนึ่งใบแบบกันซ้ำ — มี `refId` = ล็อกกุญแจ
+ * (systemId, customerId, event, channel, refId) ด้วย `pg_advisory_xact_lock` (แบบเดียวกับ `history.recordOnce`)
+ * แล้วมองหาแถวเดิมที่ไม่ใช่ SKIPPED ก่อนสร้าง ⇒ คิว outbox ที่ยิงซ้ำ/cron ซ้อนกัน ส่งหาลูกค้าได้ครั้งเดียว
+ * แถว SKIPPED (ไม่มีช่องทาง/ไม่ยินยอม/ปิดเทมเพลต) ไม่ใช่ความพยายามส่ง จึงไม่ถูกนับเป็น "เคยส่งแล้ว"
+ */
+async function claimSendRow(ctx: MemberCtx, input: ClaimInput): Promise<{ id: string; status: string; duplicate: boolean }> {
+  const data = {
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    customerId: input.customerId,
+    event: input.event,
+    channel: input.channel,
+    status: input.status,
+    scheduledAt: input.scheduledAt,
+    subject: input.subject,
+    body: input.body,
+    refId: input.refId,
+  };
+  if (!input.refId) {
+    const row = await prisma.memberNotification.create({ data, select: { id: true, status: true } });
+    return { id: row.id, status: row.status, duplicate: false };
+  }
+  const key = dedupeKey(ctx.systemId, input.customerId, input.event, input.channel, input.refId);
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+    const found = await tx.memberNotification.findFirst({
+      where: {
+        systemId: ctx.systemId,
+        customerId: input.customerId,
+        event: input.event,
+        channel: input.channel,
+        refId: input.refId,
+        status: { not: "SKIPPED" },
+      },
+      select: { id: true, status: true },
+    });
+    if (found) return { id: found.id, status: found.status, duplicate: true };
+    const row = await tx.memberNotification.create({ data, select: { id: true, status: true } });
+    return { id: row.id, status: row.status, duplicate: false };
+  });
+}
+
+/** ช่องทางนี้ส่งได้ไหมตามความยินยอม (กติกาเดียวกันทั้งตอนเข้าคิวและตอนส่งจริง — H7) */
+function consentAllows(settings: NotificationSettingsView, transactional: boolean, consents: Map<string, boolean>, ch: NotifChannel): boolean {
+  if (!settings.respectConsent) return true;
+  if (consents.get(ch) === true) return true;
+  return transactional && settings.transactionalOverride;
+}
+
+const consentReason = (ch: NotifChannel): string => `ลูกค้ายังไม่ได้ยินยอมรับข่าวสารทาง${CHANNEL_LABEL[ch]}`;
+
 // ───────────────────────── send ─────────────────────────
 
-export type SendInput = { event: string; customerId: string; vars?: Record<string, string | number>; refId?: string };
+export type SendInput = {
+  event: string;
+  customerId: string;
+  vars?: Record<string, string | number>;
+  /** อ้างอิงของ "ความพยายามส่งครั้งนี้" — ใบเดียวกันส่งซ้ำไม่ได้ (ดู `claimSendRow`) */
+  refId?: string;
+  /** id ของ event ในคิว outbox — ผู้เรียกที่ไม่มี refId ของตัวเอง ใช้ตัวนี้เป็นกุญแจกันซ้ำแทนได้ (H6) */
+  eventId?: string;
+};
 export type SendOptions = { now?: Date; deps?: NotificationDeps };
 export type SendResultItem = { channel: NotifChannel; status: "SENT" | "FAILED" | "SKIPPED" | "QUEUED"; reason?: string; notificationId: string };
 export type SendResult = { results: SendResultItem[] };
@@ -385,6 +479,7 @@ export type SendResult = { results: SendResultItem[] };
  * ส่งแจ้งเตือน 1 เหตุการณ์ให้สมาชิก 1 คน — วนทุกช่องทางที่เปิดใช้ (channels[ch].enabled)
  * ลำดับด่าน: (1) ไม่มีปลายทาง (2) SMS ไม่มี provider (3) ไม่ยินยอม (4) เทมเพลตปิดทั้งเหตุการณ์
  * (5) digest → คิว (6) quiet hours → คิว (7) ส่งจริงผ่าน deps/ตัวส่งปริยาย — ทุกผลบันทึก 1 แถว/ช่องทาง
+ * 🔴 AUDIT H6: ด่าน (5)-(7) จองแถวผ่าน `claimSendRow` ก่อนเสมอ ⇒ refId เดิมส่งได้ครั้งเดียวจริง ๆ
  */
 export async function send(ctx: MemberCtx, input: SendInput, opts: SendOptions = {}): Promise<SendResult> {
   const evDef = getNotifEvent(input.event);
@@ -393,6 +488,8 @@ export async function send(ctx: MemberCtx, input: SendInput, opts: SendOptions =
   if (!customer) throw new MemberNotFoundError();
 
   const now = opts.now ?? new Date();
+  // 🔴 AUDIT H6: ไม่มี refId ของตัวเอง = ใช้ id ของ event ต้นทางจากคิว outbox เป็นกุญแจกันซ้ำแทน
+  const refId = input.refId?.trim() || input.eventId?.trim() || undefined;
   const settings = await getNotificationSettings(ctx);
   const tpl = settings.templates[evDef.key];
   const [vars, destinations, consents] = await Promise.all([
@@ -411,56 +508,70 @@ export async function send(ctx: MemberCtx, input: SendInput, opts: SendOptions =
     const title = ch === "PUSH" ? renderTemplate(chCfg.title ?? "", vars) : undefined;
     const to = destinations[ch];
 
-    let status: SendResultItem["status"] = "SENT";
-    let reason: string | undefined;
-    let scheduledAt: Date | null = null;
-    let sentAt: Date | null = null;
-
-    if (!to.trim()) {
-      status = "SKIPPED";
-      reason = NO_CHANNEL_REASON[ch];
-    } else if (ch === "SMS" && !opts.deps?.sms && !getSmsProvider()) {
-      status = "SKIPPED";
-      reason = "ยังไม่มีผู้ให้บริการ SMS — เชื่อมต่อเกตเวย์ก่อนจึงจะส่งได้";
-    } else if (settings.respectConsent && consents.get(ch) !== true && !(evDef.transactional && settings.transactionalOverride)) {
-      status = "SKIPPED";
-      reason = `ลูกค้ายังไม่ได้ยินยอมรับข่าวสารทาง${CHANNEL_LABEL[ch]}`;
-    } else if (!tpl.enabled) {
-      status = "SKIPPED";
-      reason = "เทมเพลตนี้ปิดใช้งานอยู่";
-    } else if (tpl.timing === "DAILY_DIGEST") {
-      status = "QUEUED";
-      scheduledAt = nextDigestTime(now, tpl.digestHour ?? 9);
-    } else if (settings.quietHours.enabled && inQuietWindow(now, settings.quietHours.from, settings.quietHours.to)) {
-      status = "QUEUED";
-      scheduledAt = nextQuietEnd(now, settings.quietHours.to);
-    } else {
-      const r = await resolveSend(ch, opts.deps, { tenantId: ctx.tenantId, customerId: input.customerId, channel: ch, to, subject, title, body });
-      status = r.ok ? "SENT" : "FAILED";
-      reason = r.ok ? undefined : (r.error ?? "ส่งไม่สำเร็จ");
-      sentAt = r.ok ? now : null;
+    // ด่านที่ตัดสินว่า "ครั้งนี้ไม่ใช่ความพยายามส่งจริง" — บันทึก SKIPPED โดยไม่ผูก refId (ผู้เรียกที่กรองผลลัพธ์
+    // ตาม refId ของช่องทางหนึ่ง จะไม่ปนกับช่องทางอื่นที่แค่ "ไม่มีทางส่ง" ของ event เดียวกัน)
+    const gateReason = !to.trim()
+      ? NO_CHANNEL_REASON[ch]
+      : ch === "SMS" && !opts.deps?.sms && !getSmsProvider()
+        ? "ยังไม่มีผู้ให้บริการ SMS — เชื่อมต่อเกตเวย์ก่อนจึงจะส่งได้"
+        : !consentAllows(settings, evDef.transactional === true, consents, ch)
+          ? consentReason(ch)
+          : !tpl.enabled
+            ? "เทมเพลตนี้ปิดใช้งานอยู่"
+            : null;
+    if (gateReason) {
+      const row = await prisma.memberNotification.create({
+        data: {
+          tenantId: ctx.tenantId,
+          systemId: ctx.systemId,
+          customerId: input.customerId,
+          event: evDef.key,
+          channel: ch,
+          status: "SKIPPED",
+          subject,
+          body,
+          reason: gateReason,
+        },
+        select: { id: true },
+      });
+      results.push({ channel: ch, status: "SKIPPED", reason: gateReason, notificationId: row.id });
+      continue;
     }
 
-    const row = await prisma.memberNotification.create({
-      data: {
-        tenantId: ctx.tenantId,
-        systemId: ctx.systemId,
-        customerId: input.customerId,
-        event: evDef.key,
-        channel: ch,
-        status,
-        scheduledAt,
-        sentAt,
-        subject,
-        body,
-        reason,
-        // refId ติดตามความพยายามส่งของ "ครั้งนี้" — แถว SKIPPED (ไม่มีช่องทาง/ไม่ยินยอม/ปิดเทมเพลต)
-        // ไม่ใช่ความพยายามส่งจริง จึงไม่ผูก refId (ผู้เรียกที่กรองผลลัพธ์ตาม refId ของช่องทางหนึ่งจะไม่ปนกับ
-        // ช่องทางอื่นที่แค่ "ไม่มีทางส่ง" ของ event เดียวกัน)
-        ...(status === "SKIPPED" ? {} : { refId: input.refId }),
-      },
+    const scheduledAt = tpl.timing === "DAILY_DIGEST"
+      ? nextDigestTime(now, tpl.digestHour ?? 9)
+      : settings.quietHours.enabled && inQuietWindow(now, settings.quietHours.from, settings.quietHours.to)
+        ? nextQuietEnd(now, settings.quietHours.to)
+        : null;
+
+    // 🔴 AUDIT H6: จองแถวก่อนยิงจริงเสมอ — refId เดิม (redelivery ของคิว/ผู้ดูแลกดรันซ้ำ) เจอแถวเดิมแล้วจบ ไม่ส่งซ้ำ
+    const claim = await claimSendRow(ctx, {
+      customerId: input.customerId,
+      event: evDef.key,
+      channel: ch,
+      status: scheduledAt ? "QUEUED" : SENDING,
+      scheduledAt,
+      subject,
+      body,
+      refId,
     });
-    results.push({ channel: ch, status, ...(reason ? { reason } : {}), notificationId: row.id });
+    if (claim.duplicate) {
+      const reason = "ข้ามการส่งซ้ำ — เหตุการณ์นี้ถูกบันทึกส่งให้สมาชิกไปแล้ว (อ้างอิงเดียวกัน)";
+      results.push({ channel: ch, status: dupStatusOf(claim.status), reason, notificationId: claim.id });
+      continue;
+    }
+    if (scheduledAt) {
+      results.push({ channel: ch, status: "QUEUED", notificationId: claim.id });
+      continue;
+    }
+
+    const r = await resolveSend(ch, opts.deps, { tenantId: ctx.tenantId, customerId: input.customerId, channel: ch, to, subject, title, body });
+    const reason = r.ok ? undefined : (r.error ?? "ส่งไม่สำเร็จ").slice(0, 500);
+    await prisma.memberNotification.update({
+      where: { id: claim.id },
+      data: r.ok ? { status: "SENT", sentAt: now } : { status: "FAILED", reason },
+    });
+    results.push({ channel: ch, status: r.ok ? "SENT" : "FAILED", ...(reason ? { reason } : {}), notificationId: claim.id });
   }
   return { results };
 }
@@ -469,34 +580,80 @@ export async function send(ctx: MemberCtx, input: SendInput, opts: SendOptions =
 
 export type RunDueResult = { sent: number; failed: number; digested: number };
 
-/** ประมวลผลแถว QUEUED ที่ถึงกำหนดแล้ว — รวม digest ต่อ (customerId, channel) หรือส่งเดี่ยวถ้าเป็นแค่เลื่อนจาก quiet hours */
+/**
+ * ประมวลผลแถว QUEUED ที่ถึงกำหนดแล้ว — รวม digest ต่อ (customerId, channel) หรือส่งเดี่ยวถ้าเป็นแค่เลื่อนจาก quiet hours
+ * 🔴 AUDIT H6: จองทั้งกลุ่ม (customerId, channel) ใน transaction สั้น ๆ ที่ถือ advisory lock ⇒ cron 2 ตัวซ้อนกัน
+ *    ตัวหลังจะไม่เห็นแถว QUEUED เหลือ (ไม่ส่งซ้ำ · ไม่เกิดแถว DIGEST สองใบ) · แถวที่ค้าง "กำลังส่ง" เกิน 15 นาที
+ *    (โพรเซสตายกลางทาง) ถูกปล่อยกลับเข้าคิวต้นรอบ
+ * 🔴 AUDIT H7: ตรวจความยินยอมใหม่ตอนถึงเวลาส่งจริง — ถอนยินยอมระหว่างรอคิว = ไม่ส่ง (แถวเป็น SKIPPED)
+ */
 export async function runDue(ctx: MemberCtx, opts: { now?: Date; deps?: NotificationDeps } = {}): Promise<RunDueResult> {
   const now = opts.now ?? new Date();
+  const staleBefore = new Date(now.getTime() - CLAIM_LEASE_MS);
+  await prisma.memberNotification.updateMany({
+    where: { systemId: ctx.systemId, status: SENDING, scheduledAt: { lte: staleBefore } },
+    data: { status: "QUEUED" },
+  });
+  await prisma.memberNotification.updateMany({
+    where: { systemId: ctx.systemId, status: SENDING, scheduledAt: null, createdAt: { lte: staleBefore } },
+    data: { status: "QUEUED", scheduledAt: now },
+  });
+
   const due = await prisma.memberNotification.findMany({
     where: { systemId: ctx.systemId, status: "QUEUED", scheduledAt: { lte: now } },
     orderBy: { createdAt: "asc" },
+    select: { customerId: true, channel: true },
   });
   if (due.length === 0) return { sent: 0, failed: 0, digested: 0 };
 
   const settings = await getNotificationSettings(ctx);
-  const groups = new Map<string, typeof due>();
+  const pairs: { customerId: string; channel: NotifChannel }[] = [];
+  const seen = new Set<string>();
   for (const row of due) {
     const k = `${row.customerId}::${row.channel}`;
-    const arr = groups.get(k) ?? [];
-    arr.push(row);
-    groups.set(k, arr);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    pairs.push({ customerId: row.customerId, channel: row.channel as NotifChannel });
   }
 
   let sent = 0;
   let failed = 0;
   let digested = 0;
 
-  for (const [key, rows] of groups) {
-    const [customerId, channelRaw] = key.split("::");
-    const channel = channelRaw as NotifChannel;
-    const isDigest = rows.length > 1 || rows.some((r) => (settings.templates[r.event]?.timing ?? "IMMEDIATE") === "DAILY_DIGEST");
+  for (const { customerId, channel } of pairs) {
+    // จองทั้งกลุ่มพร้อมกัน — อ่านซ้ำ "ข้างใน" ล็อกถึงจะเป็นความจริง (รอบก่อนหน้าอาจหยิบไปแล้ว)
+    const claimKey = `member-notif-due|${ctx.systemId}|${customerId}|${channel}`;
+    const claimed = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${claimKey}, 0))`;
+      const mine = await tx.memberNotification.findMany({
+        where: { systemId: ctx.systemId, customerId, channel, status: "QUEUED", scheduledAt: { lte: now } },
+        orderBy: { createdAt: "asc" },
+      });
+      if (mine.length === 0) return mine;
+      await tx.memberNotification.updateMany({ where: { id: { in: mine.map((r) => r.id) } }, data: { status: SENDING, scheduledAt: now } });
+      return mine;
+    });
+    if (claimed.length === 0) continue;
+
+    // H7 — ความยินยอม ณ เวลาส่งจริง (กติกาเดียวกับ `send`) · ถอนแล้ว = ไม่ส่ง ไม่ว่ารอมานานแค่ไหน
+    const consents = await consentMapOf(ctx, customerId);
+    const allowed: typeof claimed = [];
+    for (const row of claimed) {
+      if (consentAllows(settings, getNotifEvent(row.event)?.transactional === true, consents, channel)) {
+        allowed.push(row);
+        continue;
+      }
+      await prisma.memberNotification.update({
+        where: { id: row.id },
+        data: { status: "SKIPPED", reason: `ไม่ได้ส่ง — ${consentReason(channel)} ณ เวลาที่ถึงกำหนดส่ง` },
+      });
+    }
+    if (allowed.length === 0) continue;
+
+    const isDigest = allowed.length > 1 || allowed.some((r) => (settings.templates[r.event]?.timing ?? "IMMEDIATE") === "DAILY_DIGEST");
     const destinations = await destinationsOf(ctx, customerId);
     const to = destinations[channel];
+    const rows = allowed;
 
     if (!isDigest) {
       const row = rows[0];
@@ -599,7 +756,8 @@ export async function stats(ctx: MemberCtx, actor: MemberActor, opts: { month?: 
       out.byEvent[r.event] = (out.byEvent[r.event] ?? 0) + n;
     } else if (r.status === "FAILED") out.failed += n;
     else if (r.status === "SKIPPED") out.skipped += n;
-    else if (r.status === "QUEUED") out.queued += n;
+    // 🔴 AUDIT H6: "SENDING" = แถวที่ถูกจองไว้แล้วแต่ยังไม่รู้ผล — นับรวมกับ "รอส่ง" เพื่อไม่ให้หายไปจากสรุปเดือน
+    else if (r.status === "QUEUED" || r.status === SENDING) out.queued += n;
   }
   return out;
 }

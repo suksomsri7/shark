@@ -20,6 +20,24 @@ export const NOTIF_CHANNEL_LABELS: Record<NotifChannel, string> = {
   PUSH: "push",
 };
 
+/**
+ * ป้ายไทยของสถานะแถวแจ้งเตือน (`MemberNotification.status` เป็น String ไม่ใช่ enum)
+ * 🔴 AUDIT H6: "SENDING" = แถวที่ถูกจองไว้ก่อนยิงจริง (กันส่งซ้ำ) — ต้องมีป้ายของตัวเอง ไม่ใช่ช่องว่างในหน้าจอ
+ */
+export const NOTIF_STATUS_LABELS: Record<string, string> = {
+  SENT: "ส่งแล้ว",
+  SENDING: "กำลังส่ง",
+  QUEUED: "รอส่ง",
+  DIGESTED: "รวมอยู่ในสรุปรายวัน",
+  FAILED: "ส่งไม่สำเร็จ",
+  SKIPPED: "ไม่ได้ส่ง",
+};
+
+/** ป้ายของสถานะหนึ่ง — สถานะที่ยังไม่รู้จักต้องอ่านออก ไม่ใช่ค่าว่าง */
+export function notifStatusLabel(status: string): string {
+  return NOTIF_STATUS_LABELS[status] ?? "ไม่ทราบสถานะ";
+}
+
 export const NOTIF_TIMING_LABELS: Record<NotifTiming, string> = {
   IMMEDIATE: "ทันที",
   DAILY_DIGEST: "รวมรายวัน",
@@ -257,6 +275,13 @@ export type NotificationDeps = {
   sms?: NotificationSendFn;
   push?: NotificationSendFn;
 };
+
+/**
+ * ผลลัพธ์ของ server action ในหน้า "ตั้งค่า › การแจ้งเตือน"
+ * 🔴 AUDIT L11: ชนิดข้อมูลต้องอยู่ที่นี่ — ไฟล์ `"use server"` export ได้เฉพาะ async function
+ *    (export type ในนั้น = หน้าจอ 500 ทั้งที่ build ผ่าน)
+ */
+export type NotifActionResult<T> = { ok: true; data: T } | { ok: false; reason: string };
 
 /** ช่องทาง → ชื่อคีย์ของ deps */
 export function depsKeyOf(channel: NotifChannel): "line" | "email" | "sms" | "push" {

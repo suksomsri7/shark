@@ -27,8 +27,9 @@ import {
   type SetTemplatePatch,
   type TestSendResult,
 } from "./notifications";
-
-export type NotifActionResult<T> = { ok: true; data: T } | { ok: false; reason: string };
+// 🔴 AUDIT L11: ไฟล์ "use server" export ได้เฉพาะ async function — ชนิดข้อมูลย้ายไป `notifications-shared.ts`
+//    (import แบบ type-only ถูกลบตอน compile จึงไม่ขัดกติกาของ "use server")
+import type { NotifActionResult } from "./notifications-shared";
 
 const PATH = (systemId: string) => `/app/sys/${systemId}/member/settings/notifications`;
 
