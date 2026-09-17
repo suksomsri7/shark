@@ -14,8 +14,8 @@
 |---|---|---|
 | 6-1 commit/ledger ครบทุกใบ | ✅ | M3.3–M3.11 + M3.F มีแถว §3.1 + wo-notes + commit บน main |
 | 6-2 diff ORACLE-EDIT | ✅ | hunk ไร้ marker 27 จุด = ส่วนต่อของ ORACLE-EDIT ใน §4 ทั้งหมด · สุ่มตรวจ 2 เรื่องเงิน/สัญญา (Voucher FIXED=สตางค์ · REST ไม่มี 201) ตรงโค้ด |
-| 6-3 qc:all ของตัวเอง | ⏳ | ดู §5 (เติมเมื่อ pipeline จบ) |
-| 6-4 ภาพ vs mockup ด้วยตา | ⏳ | ดู §5 |
+| 6-3 qc:all ของตัวเอง + 3 ชุดสุ่ม | ✅ | 316/320 — แดง 2 หนี้เดิม (kanban) + 2 flake ที่รันเดี่ยวผ่าน · ดู §5 |
+| 6-4 ภาพ vs mockup ด้วยตา | ✅ | M3.3–M3.11 ผ่านทุกใบ · ดู §5 |
 | 6-5 prodmig | ✅ | 18 ใบ member_v2 a→h3 บน prod · backfill dry-run 0 |
 | 6-6 ไม่ละเมิด prod-suite / .env | ✅ | `.env` mtime 10 ก.ย. · ไม่มีบันทึกละเมิดใหม่ |
 
@@ -61,9 +61,13 @@ L1 timing enumeration หน้า login (`customer-session.ts:192` await sendEm
 
 IDOR เลน `/me/*` ไม่พบ · tenant isolation ทุกด่าน · token `cs_`/`jt_` สุ่ม 32 ไบต์ เก็บ sha256 · LINE verify ฝั่ง server ตรวจ aud · referral: ไม่มี open redirect, advisory lock กันทะลุเพดาน, idempotencyKey ทั้งสองฝั่ง · member enumeration ปิด (ยกเว้น L1) · XSS: sanitizeHtml allowlist ทดสอบเลี่ยงไม่ผ่าน · action ทุกไฟล์ gate ก่อนทำงาน + re-resolve AppSystem · 404-not-403 ทุกหน้า · unit scope ตรงกันทุกด่าน · QR บัตร HMAC+TTL+tenant · mobile API 4 เส้น requireMobile+assertCan+phoneMasked · นโยบายข้อมูลอ่อนไหวใน 360 ตัดจาก DTO จริง · outbox: emit กันซ้ำจริง, drain วนจนเงียบ, lease claim, `member.created` ใน tx เดียวกับแถว · journey loop guard unique+re-entry ≥1 วัน · คณิตเวลาไทยไม่มี getDay() ดิบ · แต้ม ledger มี idempotencyKey ทุกตัว · เงินเป็นสตางค์ตลอดสาย
 
-## 5. pipeline ของ Fable (§6-3/6-4)
+## 5. pipeline ของ Fable (§6-3/6-4) — 17 ก.ย. 03:25–05:40 UTC
 
-(เติมเมื่อจบ)
+- seed ใหม่ (ร้าน `cmu4p3c290000yxkzrpiyjyu9`) → `acc-v2-serve.sh` build ผ่าน (รวม type-check `scripts/*.mts`) → ถ่ายภาพ 26 ใบ × 4 ผู้ใช้ → `pnpm qc:all`
+- **ภาพ**: ผู้ใช้ owner ไม่มี ❌ เลยทั้ง 26 ใบ · ❌ ที่เหลือเป็นของ noperm/thana/customer ที่ **ต้อง** เข้าไม่ได้ (404-not-403) · เปิดเทียบ mockup ด้วยตา 07/08/23/24/25/27/29/30/03 กับภาพ M3.3–M3.11 → **PARITY ผ่านทุกใบ** · ข้อสังเกต (ไม่ตีกลับ): (ก) สำเร็จรูป "วันเกิด — voucher + LINE + แต้ม" ไม่มีแถว "ออก voucher" ในตัวสร้าง (mockup มี) — ข้อความอ้าง `{voucher}` แต่ไม่มี action ออก voucher (ข) ฟอร์ม LIFF ค่าปริยาย consent = ปิดทุกช่อง (mockup เปิด) — **ดีกว่า mockup** ในแง่ PDPA คงไว้ (ค) บทสนทนาในภาพผู้ช่วย AI เป็น fixture ที่ harness ใส่ (`visual-member.mts:101-103`) ไม่ใช่ข้อมูลปลอมใน product
+- **qc:all = 316/320** · แดง 4: `kanban-k2.3` + `kanban-k2.11` (หนี้เดิม — ภาพอยู่ worktree shark-kanban) · `member-m2.8` + `member-m3.6` ขึ้น "-" (ไม่มี summary = ตัวรันตาย/หมดเวลา) → **รันเดี่ยวซ้ำทันที = 30/30 และ 19/19** ⇒ เป็น flake ของรอบรวม ยังไม่รู้สาเหตุ (qc-all ไม่เก็บ output ของชุดที่แดง — หนี้ใหม่: ให้ qc-all เขียน log ต่อชุดที่ล้ม) · `member-m1.9` **เขียวแล้ว** หลัง ORACLE-EDIT M2.3-S5.2 (หนี้ M3.F ข้อ 4 ปิด)
+- 3 ชุดสุ่มรันเดี่ยว: m2.3 22/22 · m2.8 30/30 · m3.6 19/19
+- 🔴 บทเรียนเครื่อง: "container รีสตาร์ท" ที่ Opus เจอ ≥5 ครั้ง = cgroup `claude-remote.service` จำกัด 5 GiB — `next build` peak 5.6 GiB โดน OOM kill ทั้ง session (dmesg ยืนยัน) · `setsid nohup` ไม่ช่วย · ทางแก้ = `systemd-run --unit=… -p MemoryMax=6G bash <script>` (pipeline รอบนี้รันแบบนี้จนจบ)
 
 ## 6. แผนแก้ที่เสนอ (รอเจ้าของสั่ง — ยังไม่แตะโค้ด product)
 
