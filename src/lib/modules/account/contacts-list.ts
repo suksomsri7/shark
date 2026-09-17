@@ -15,7 +15,7 @@ import { normalizeTaxId, normalizePhoneTh, contactWriteFields, findLinkedSystemI
 import * as party from "@/lib/modules/party";
 // WO 3.2 — เส้น account→member / account→crm อ่านอย่างเดียว (ป้าย "สมาชิก"/"CRM") อนุมัติล่วงหน้าใน fitness.mts
 import * as memberSvc from "@/lib/modules/member/service";
-import * as crmSvc from "@/lib/modules/crm/service";
+import * as crmSvc from "@/lib/modules/crm";
 import { clampSearch } from "./search-input";
 
 export type Ctx = { tenantId: string; systemId: string };

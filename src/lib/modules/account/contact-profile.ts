@@ -13,7 +13,7 @@
 import type { AccountContactKind, AccountDocStatus, AccountDocType, AccountLegalType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import * as memberSvc from "@/lib/modules/member/service";
-import * as crmSvc from "@/lib/modules/crm/service";
+import * as crmSvc from "@/lib/modules/crm";
 import { agingReport } from "./reports";
 import { docTypeLabel, dayKeyBkk } from "./dashboard";
 import { findLinkedSystemIds, listDocumentsPaged, STATUS_LABEL } from "./service";

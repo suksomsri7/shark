@@ -16,7 +16,7 @@
 import { tenantDb } from "@/lib/core/db";
 import * as party from "@/lib/modules/party";
 import * as memberSvc from "@/lib/modules/member/service";
-import * as crmSvc from "@/lib/modules/crm/service";
+import * as crmSvc from "@/lib/modules/crm";
 import { findLinkedSystemIds, normalizePhoneTh } from "./service";
 
 export type Ctx = { tenantId: string; systemId: string };

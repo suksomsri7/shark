@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
-import { createContact } from "@/lib/modules/crm/service";
+import { createContact } from "@/lib/modules/crm";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 

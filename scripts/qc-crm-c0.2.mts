@@ -4,11 +4,12 @@
 // requires: crm-seed
 //
 // What this file proves (brief: ledger/crm-briefs/crm-brief-C0.2.md + its "Controller addendum 2026-09-17")
-//   S1  the facade EXISTS and is COMPLETE — every symbol the six outside importers actually use today is
+//   S1  the facade EXISTS and is COMPLETE — every symbol the five outside importers actually use today is
 //       re-exported, with the same runtime shape. The symbol list is DERIVED FROM THE CODE by this file
 //       (regex over the importer sources), never copied from the brief; SYMBOL_BASELINE below is only a
 //       positive control that the derivation itself still works.
-//   S2  no file outside the crm module imports `crm/service|rules|actions|ui` any more (static scan of src/)
+//   S2  no file outside the crm module imports `crm/service|rules|actions` any more (static scan of src/)
+//       🔴 ORACLE-EDIT 17 ก.ย.: `crm/ui` = ทางเข้าคอมโพเนนต์ที่ถูกต้อง (ทุกโมดูลทำแบบนี้) — ไม่นับเป็นการล้วงลึก
 //   S3  ZERO BEHAVIOUR CHANGE — the re-exported functions are called THROUGH THE FACADE and DIRECTLY from
 //       `crm/service` in the same process against the same rows, and the two answers must be deep-equal on a
 //       stable projection. Equality is RELATIONAL (facade vs direct, same run) so it survives any reseed:
@@ -72,18 +73,25 @@ const byId = (rows: Any) => (Array.isArray(rows) ? [...rows].sort((x: Any, y: An
 const nonEmpty = (v: Any) => (v instanceof Set ? v.size > 0 : Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// the six outside importers (controller addendum 2026-09-17 — re-verified with
+// the five outside importers (controller addendum 2026-09-17 — re-verified with
 //   grep -rn "modules/crm" src/ --include=*.ts --include=*.tsx \
 //     | grep -v "^src/lib/modules/crm/" | grep -v "^src/app/app/sys/\[id\]/crm/"
-// which returns exactly these six lines on session/crm @ efd8452)
+// which returns exactly these six lines (five of them reach the server surface; the sixth, page.tsx, uses the ui entry point — see the ORACLE-EDIT note below) on session/crm @ efd8452)
 // ═══════════════════════════════════════════════════════════════════════════
+// 🔴 ORACLE-EDIT C0.2-S1.3/S2.1/S2.2/S2.3/S4.3 (ผู้คุมงาน · 17 ก.ย. 2569) — ถอด `src/app/app/sys/[id]/page.tsx` ออกจาก
+// รายชื่อ "ผู้เรียกที่ต้องย้ายไป facade" และให้ `crm/ui` เป็น **ทางเข้าที่สองที่ถูกต้อง** ไม่ใช่ของภายในที่ต้องซ่อน
+// เหตุผล (หลักฐานในโค้ด main): หน้ารวมระบบ `src/app/app/sys/[id]/page.tsx` import Hub ของ **ทุกโมดูล** จาก `<module>/ui`
+//   บรรทัด 8–19: coupon/ui · meeting/ui · kanban/ui · chat/ui · inventory/ui · hr/ui · marketing/ui · member/ui · point/ui · reward/ui
+//   ⇒ กติกาของบ้านนี้คือ "index.ts = ผิวฝั่งเซิร์ฟเวอร์ · ui.tsx = ทางเข้าคอมโพเนนต์" · CRM ต้องเหมือนพี่น้องอีก 10 โมดูล
+// และ addendum 2 ข้อ 1 ของผู้คุมงาน (สั่งให้ยัด CrmHub เข้า facade) **ผิด**: ทำให้ index.ts ลาก ui.tsx → core/context → lib/env
+//   ซึ่ง parse process.env ตอน import ⇒ `env -u DATABASE_URL pnpm fitness` (ด่าน D5 โหมดสอง) แดงทั้ง F10.1 และ F13
+//   builder พิสูจน์แล้วว่าถอดบรรทัดเดียวนี้ออก fitness กลับเขียวทั้งสองโหมด
 const OUTSIDE_IMPORTERS = [
   "src/lib/ai/proposals.ts",
   "src/lib/modules/forms/service.ts",
   "src/lib/modules/account/contacts-list.ts",
   "src/lib/modules/account/contact-links.ts",
   "src/lib/modules/account/contact-profile.ts",
-  "src/app/app/sys/[id]/page.tsx",
 ] as const;
 
 // POSITIVE CONTROL for the derivation only (verified by hand on session/crm @ efd8452, 17 Sep 2026).
@@ -95,10 +103,10 @@ const SYMBOL_BASELINE: Record<string, string[]> = {
   "src/lib/modules/account/contacts-list.ts": ["listPartyIdsWithContact"],
   "src/lib/modules/account/contact-links.ts": ["findContactsForLink", "setContactPartyId"],
   "src/lib/modules/account/contact-profile.ts": ["findContactByPartyId", "findLatestDealForContact"],
-  "src/app/app/sys/[id]/page.tsx": ["CrmHub"],
 };
 // submodules the facade is meant to hide (the S2 scan and the derivation both key off this list)
-const DEEP = "(?:service|rules|actions|ui)";
+// 🔴 ORACLE-EDIT (ดูเหตุผลด้านบน): `ui` ถูกถอดออก — เป็นทางเข้าที่ถูกต้องเหมือนทุกโมดูล ไม่ใช่ของภายใน
+const DEEP = "(?:service|rules|actions)";
 // specifiers that count as "the crm module": the facade itself or one of its internals
 const CRM_SPEC = `@/lib/modules/crm(?:/index|/${DEEP})?`;
 
@@ -153,11 +161,11 @@ try {
   // ═══════════════════════════════════════════════════════════════════════
   // S1 — the facade exists and is complete (symbol list derived from the code)
   // ═══════════════════════════════════════════════════════════════════════
-  console.log("\n── S1: facade completeness (symbol list derived from the six importers, not from the brief) ──");
+  console.log("\n── S1: facade completeness (symbol list derived from the five importers, not from the brief) ──");
   const derivationOk = OUTSIDE_IMPORTERS.every((f) => existsSync(f) && (SYMBOL_BASELINE[f] ?? []).every((s) => derivedPerFile[f].includes(s)));
   chk(
     "C0.2-S1.1",
-    `[static] the symbol list is derived from the six outside importers and still covers the hand-verified baseline — ${OUTSIDE_IMPORTERS.map((f) => `${f.split("/").pop()}:{${derivedPerFile[f].join(",")}}`).join(" · ")}`,
+    `[static] the symbol list is derived from the five outside importers and still covers the hand-verified baseline — ${OUTSIDE_IMPORTERS.map((f) => `${f.split("/").pop()}:{${derivedPerFile[f].join(",")}}`).join(" · ")}`,
     derivationOk && DERIVED.length > 0,
     `each file ⊇ ${JSON.stringify(SYMBOL_BASELINE)}`,
     cut(JSON.stringify(derivedPerFile)),
@@ -178,7 +186,7 @@ try {
   for (const m of ["service", "ui", "rules", "actions"]) internals[m] = await load(`@/lib/modules/crm/${m}`);
   chk(
     "C0.2-S1.2",
-    "the facade module loads in a plain node/tsx process (a server module that re-exports a React component must still be importable outside the Next bundler — account/forms/ai all import it from server code)",
+    "the facade module loads in a plain node/tsx process (account/forms/ai all import it from server code, and both fitness modes import those — so the facade must never drag in anything that needs a full env at import time; this is exactly what ORACLE-EDIT #1 was about)",
     !!facade,
     "loads",
     facade ? "loads" : `import failed: ${cut(JSON.stringify(loadErr))}`,
@@ -188,7 +196,7 @@ try {
   const missing = DERIVED.filter((s) => !facade || !(s in facade) || facade[s] === undefined);
   chk(
     "C0.2-S1.3",
-    `the facade re-exports EVERY symbol the six importers use (${DERIVED.length}: ${DERIVED.join(", ")}) — a missing one is a build break for a \`* as crmSvc\` caller`,
+    `the facade re-exports EVERY symbol the five importers use (${DERIVED.length}: ${DERIVED.join(", ")}) — a missing one is a build break for a \`* as crmSvc\` caller`,
     !!facade && missing.length === 0,
     DERIVED.join(","),
     missing.length ? `missing from the facade: ${missing.join(", ")}` : "all present",
@@ -239,7 +247,7 @@ try {
   // ═══════════════════════════════════════════════════════════════════════
   // S2 — nobody outside the crm module reaches past the facade
   // ═══════════════════════════════════════════════════════════════════════
-  console.log("\n── S2: no outside file imports crm/service|rules|actions|ui ──");
+  console.log("\n── S2: no outside file imports crm/service|rules|actions (ui = component entry point, allowed) ──");
   // EXEMPT DIRECTORIES (exactly two, and why):
   //   1. `src/lib/modules/crm/**`      — the module's OWN files. Inside a module the files import each other
   //      relatively/deeply by design, and the facade itself must import them (`export … from "./service"`);
@@ -255,16 +263,17 @@ try {
   const offenders = outsideFiles.filter((f) => DEEP_RE.test(read(f)));
   chk(
     "C0.2-S2.1",
-    `[static] no file outside the crm module imports @/lib/modules/crm/{service,rules,actions,ui} (${outsideFiles.length} files scanned under src/; exempt: (1) src/lib/modules/crm/** = the module's own files, the facade has to import them; (2) src/app/app/sys/[id]/crm/** = the module's own Next.js routes, which live outside src/lib only because of routing)`,
+    `[static] no file outside the crm module imports @/lib/modules/crm/{service,rules,actions} (${outsideFiles.length} files scanned under src/; exempt: (1) src/lib/modules/crm/** = the module's own files, the facade has to import them; (2) src/app/app/sys/[id]/crm/** = the module's own Next.js routes, which live outside src/lib only because of routing)`,
     offenders.length === 0,
     "0 deep importers",
     offenders.length ? offenders.join(", ") : "0",
   );
-  const bites = DEEP_RE.test('import * as x from "@/lib/modules/crm/service";') && DEEP_RE.test('import { CrmHub } from "@/lib/modules/crm/ui";') && DEEP_RE.test('const r = await import("@/lib/modules/crm/rules");');
-  const quiet = !DEEP_RE.test('import * as x from "@/lib/modules/crm";') && !DEEP_RE.test('import * as x from "@/lib/modules/crm/index";');
+  // 🔴 ORACLE-EDIT: `crm/ui` ย้ายจากฝั่ง "ต้องถูกจับ" ไปฝั่ง "ต้องถูกปล่อย" (ทางเข้าคอมโพเนนต์ เหมือนทุกโมดูล)
+  const bites = DEEP_RE.test('import * as x from "@/lib/modules/crm/service";') && DEEP_RE.test('import { x } from "@/lib/modules/crm/actions";') && DEEP_RE.test('const r = await import("@/lib/modules/crm/rules");');
+  const quiet = !DEEP_RE.test('import * as x from "@/lib/modules/crm";') && !DEEP_RE.test('import * as x from "@/lib/modules/crm/index";') && !DEEP_RE.test('import { CrmHub } from "@/lib/modules/crm/ui";');
   chk(
     "C0.2-S2.2",
-    "[static] POSITIVE CONTROL for the S2.1 scanner: it flags a synthetic `from \"@/lib/modules/crm/service\"` / `/ui` / dynamic `import(\".../rules\")`, and does NOT flag the facade specifier itself — otherwise \"0 offenders\" would mean nothing",
+    "[static] POSITIVE CONTROL for the S2.1 scanner: it flags a synthetic `from \"@/lib/modules/crm/service\"` / `/actions` / dynamic `import(\".../rules\")`, and does NOT flag the legitimate entry points (`@/lib/modules/crm`, `crm/index`, `crm/ui`) — otherwise \"0 offenders\" would mean nothing",
     bites && quiet,
     "flags deep, ignores facade",
     `flagsDeep=${bites} ignoresFacade=${quiet}`,
@@ -272,7 +281,7 @@ try {
   const notRepointed = OUTSIDE_IMPORTERS.filter((f) => !FACADE_RE.test(read(f)));
   chk(
     "C0.2-S2.3",
-    "[static] each of the six importers now imports FROM THE FACADE (`@/lib/modules/crm` or `/index`) — guards the cheap way to make S2.1 green, which is to delete the import instead of repointing it",
+    "[static] each of the five importers now imports FROM THE FACADE (`@/lib/modules/crm` or `/index`) — guards the cheap way to make S2.1 green, which is to delete the import instead of repointing it",
     notRepointed.length === 0,
     "6/6 repointed",
     notRepointed.length ? `still not importing the facade: ${notRepointed.join(", ")}` : "6/6",
@@ -295,11 +304,20 @@ try {
   );
   chk(
     "C0.2-S4.2",
-    "[static] F2.3 has the SAME SHAPE as F2.2 (the account rule it is modelled on): it filters the module file list, excludes the crm module itself, matches `@/lib/modules/crm/<anything but index>` and reports the offending files",
-    // NB: inside fitness.mts the path lives in a regex literal, so it reads `modules\/crm\/` — match both spellings
-    /moduleFiles/.test(f23Block) && /modules\\?\/crm\\?\//.test(f23Block) && /\(\?!index\)/.test(f23Block) && /"crm"/.test(f23Block),
-    "moduleFiles + /modules/crm/(?!index)/ + self-exclusion",
-    f23Idx < 0 ? "no F2.3" : `moduleFiles=${/moduleFiles/.test(f23Block)} crmPath=${/modules\\?\/crm\\?\//.test(f23Block)} notIndex=${/\(\?!index\)/.test(f23Block)} selfExcl=${/"crm"/.test(f23Block)}`,
+    // 🔴 ORACLE-EDIT C0.2-S4.2 (ผู้คุมงาน · 17 ก.ย. 2569 · รอบสอง — ผู้ตรวจจับได้ว่าข้อนี้ "เขียวด้วยเหตุผลที่ผิด")
+    // ของเดิมบังคับให้บล็อก F2.3 มีคำว่า `moduleFiles` (ตามรูปของ F2.2) — แต่กฎฉบับที่สั่งให้ทำ **จงใจไม่ใช้** `moduleFiles`
+    // เพราะต้องกวาดทั้ง src/ (ผู้เรียก 2 ใน 6 อยู่นอก src/lib/modules) · ที่ผ่านมาเขียวเพราะหน้าต่าง +500 ตัวอักษร
+    // ไหลไปโดนกฎ F5 ที่อยู่ถัดไปซึ่งมีคำว่า `moduleFiles` พอดี ⇒ ข้อสอบไม่ได้ตรวจสิ่งที่อ้างเลย
+    // ฉบับแก้: ตรวจ "สัญญาที่แท้จริง" ของกฎฉบับกว้าง — ต้องกวาดไฟล์นอกโมดูล · กันโฟลเดอร์ของโมดูลเอง 2 อัน ·
+    //          จับ modules/crm/<ที่ไม่ใช่ index|ui> · รายงานชื่อไฟล์ที่ผิด
+    "[static] F2.3 มีสัญญาครบตามกฎฉบับกว้าง: กวาดไฟล์นอกโมดูล · ยกเว้นโฟลเดอร์ของโมดูลเอง (src/lib/modules/crm + app/sys/[id]/crm) · จับ modules/crm/<ไม่ใช่ index|ui> · บอกชื่อไฟล์ที่ผิด",
+    /modules\\?\/crm\\?\//.test(f23Block)
+      && /\(\?!index/.test(f23Block)
+      && /\(\?!ui/.test(f23Block)
+      && /app\/sys\/\[id\]\/crm|app\\?\/sys/.test(f23Block)
+      && /src\/lib\/modules\/crm/.test(f23Block),
+    "กวาดนอกโมดูล + ยกเว้น 2 โฟลเดอร์ของตัวเอง + (?!index) + (?!ui) + รายงานไฟล์",
+    f23Idx < 0 ? "no F2.3" : `crmPath=${/modules\\?\/crm\\?\//.test(f23Block)} notIndex=${/\(\?!index/.test(f23Block)} notUi=${/\(\?!ui/.test(f23Block)} exemptRoutes=${/app\/sys\/\[id\]\/crm|app\\?\/sys/.test(f23Block)} exemptModule=${/src\/lib\/modules\/crm/.test(f23Block)}`,
   );
   // pull the regex literal out of the F2.3 block and prove it on synthetic lines (we never write a file into src/)
   let reLit: string | null = null;
@@ -313,7 +331,8 @@ try {
       const body = reLit.slice(1, reLit.lastIndexOf("/"));
       const flags = reLit.slice(reLit.lastIndexOf("/") + 1);
       const R = new RegExp(body, flags.replace("g", ""));
-      const hitsDeep = R.test('import * as crmSvc from "@/lib/modules/crm/service";') && R.test('import { CrmHub } from "@/lib/modules/crm/ui";');
+      // 🔴 ORACLE-EDIT: ด่าน F2.3 ต้องจับ service/rules/actions และ **ปล่อย** ui (ทางเข้าคอมโพเนนต์)
+      const hitsDeep = R.test('import * as crmSvc from "@/lib/modules/crm/service";') && R.test('import { x } from "@/lib/modules/crm/actions";') && !R.test('import { CrmHub } from "@/lib/modules/crm/ui";');
       const spares = !R.test('import * as crmSvc from "@/lib/modules/crm";') && !R.test('import * as crmSvc from "@/lib/modules/crm/index";');
       biteOk = hitsDeep && spares;
       biteAct = `pattern=${cut(reLit, 90)} flagsDeep=${hitsDeep} sparesFacade=${spares}`;
@@ -321,7 +340,7 @@ try {
   }
   chk(
     "C0.2-S4.3",
-    "[static] F2.3 ACTUALLY BITES: its own matcher, applied to synthetic import lines, flags `crm/service` and `crm/ui` and spares `@/lib/modules/crm` / `crm/index` — a rule that matches nothing would be green forever",
+    "[static] F2.3 ACTUALLY BITES: its own matcher, applied to synthetic import lines, flags `crm/service` and `crm/actions`, and spares `@/lib/modules/crm`, `crm/index` and `crm/ui` (the component entry point every module exposes) — a rule that matches nothing would be green forever",
     biteOk,
     "flags deep imports, spares the facade",
     biteAct,

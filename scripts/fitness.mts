@@ -412,6 +412,50 @@ chk(
   "MAJOR",
 );
 
+// ═══ F2.3 (ใบ CRM v2 C0.2) — โค้ดนอกโมดูล CRM แตะ crm ได้เฉพาะทางเข้าที่ประกาศไว้ ═══
+// ทางเข้าที่ถูกต้องมี 2 ทาง (มติผู้คุมงาน C0.2 addendum 3):
+//   • `@/lib/modules/crm`      = facade ฝั่งเซิร์ฟเวอร์ (index.ts)
+//   • `@/lib/modules/crm/ui`   = ทางเข้าคอมโพเนนต์ — **ไม่ใช่การล้วงลึก**: `src/app/app/sys/[id]/page.tsx`
+//     import Hub ของทุกโมดูลจาก `<module>/ui` อยู่แล้ว 10 ตัว (coupon · meeting · kanban · chat · inventory ·
+//     hr · marketing · member · point · reward) — CRM เดินตามพี่น้องสิบตัวนี้ ห้าม "แก้" กลับเป็นข้อยกเว้นรายไฟล์
+//     🔴 เหตุผลทางเทคนิคด้วย: ถ้าลาก ./ui เข้า index.ts ทุกคนที่ import facade จะได้ ui.tsx → @/lib/core/context
+//        → @/lib/env ติดมาในกราฟ ⇒ ทะเบียน AI (F10) / บัญชี (F13) ระเบิดในโหมดไร้ env (ด่าน D5 · pre-commit)
+// สิ่งที่ห้าม = ของภายในโมดูล: service · rules · actions และไฟล์ภายในอื่นที่จะมาทีหลัง (settings · where · nav …)
+// รูปเดียวกับ F2.2 ของบัญชี (กรองรายชื่อไฟล์ → กันโมดูลตัวเอง → matcher → บอกไฟล์ที่ผิด) ต่างกันข้อเดียว:
+// **กวาดทั้ง `src/`** ไม่ใช่แค่ moduleFiles เพราะผู้เรียก CRM รายหนึ่งอยู่นอก src/lib/modules (`src/lib/ai/proposals.ts`)
+//
+// ยกเว้น 2 โฟลเดอร์ ซึ่งคือ "ตัวโมดูล CRM เอง" ไม่ใช่โมดูลอื่น — ดูค่าคงที่ CRM_SELF_DIRS ด้านล่าง:
+//   (ก) ไฟล์ของโมดูลเอง (facade ต้อง import ./service ของตัวเอง)  (ข) route ของ CRM ที่ Next บังคับให้อยู่ใต้ src/app
+// 🔴 **จงใจไม่ยกเว้น** route ของ CRM ที่ชื่อโฟลเดอร์ไม่ได้สะกดว่า crm ตามมติ RESOLUTIONS R-C.5/R-C.7 —
+//    `src/app/b/[slug]/**` (portal) · `/u/[token]` (เลิกรับข่าว) · `/t/*` (ติดตามอีเมล/เว็บ) · `/l/[code]` (ลิงก์ย่อ):
+//    ใบ C2.5 / C3.5 ที่สร้างหน้าพวกนี้ **ต้องเรียกผ่าน facade** เหมือนคนนอกทุกราย (ตัดสินแล้ว ไม่ใช่ของหลุด)
+//    ⇒ ด่านนี้แดงตอนทำ C2.5/C3.5 = ย้ายฟังก์ชันที่ต้องใช้ขึ้น facade · ห้ามขยายรายการยกเว้น
+//
+// matcher — บทเรียนจากรีวิว C0.2 (3 รูรั่วที่เคยเขียวทั้งที่โมดูลเปิดโล่ง):
+//   1) จับ **ทุก specifier ที่มี `modules/crm/`** ไม่ใช่เฉพาะรูป `@/…` — `"../modules/crm/service"` ที่ IDE
+//      auto-import ให้ ก็ต้องโดน (ข้อสอบ C0.2 จับรูปนี้อยู่แล้ว · ด่านนี้ต้องไม่อ่อนกว่าข้อสอบ ซึ่งจะไม่ถูกรันอีกหลัง C1.1)
+//   2) ยกเว้นต้องผูกอัญประกาศ: เขียน (?!index) ลอย ๆ ⇒ `crm/index-shared` (ธรรมเนียม *-shared.ts ของรีโป) หรือ
+//      `crm/indexing` หลุดฟรี ⇒ ใช้ (?!index["']) · ส่วน (?!ui["']) ถูกอยู่แล้ว (`crm/ui-internals`, `crm/ui/Sub` ยังโดนจับ)
+//   3) จับ `require(...)` และ `import "…";` เปล่า ๆ ด้วย — webpack แปลง alias ให้ทั้งคู่ = ทางลอดจริง
+// ไม่มีประตูหลัง: specifier ที่โผล่ในคอมเมนต์/สตริงก็แดง — false positive แบบนี้ถูกและเสียงดัง ดีกว่ามีข้อยกเว้นให้ใช้
+const CRM_SELF_DIRS = ["src/lib/modules/crm/", "src/app/app/sys/[id]/crm/"];
+const CRM_DEEP_RE = /(?:from\s*|import\s*\(\s*|require\s*\(\s*|import\s+)["'][^"']*modules\/crm\/(?!index["'])(?!ui["'])/g;
+// รายงานเป็น `ไฟล์:บรรทัด` — คนที่เจอด่านแดงต้องกระโดดไปบรรทัดนั้นได้ทันที
+const deepCrmImports = walk(join(ROOT, "src"), (p) => p.endsWith(".ts") || p.endsWith(".tsx"))
+  .filter((f) => !CRM_SELF_DIRS.some((d) => rel(f).startsWith(d)))
+  .flatMap((f) =>
+    [...readFileSync(f, "utf8").matchAll(CRM_DEEP_RE)].map(
+      (m) => `${rel(f)}:${readFileSync(f, "utf8").slice(0, m.index ?? 0).split("\n").length}`,
+    ),
+  );
+chk(
+  "F2.3",
+  "โค้ดอื่นแตะ crm ได้เฉพาะผ่าน crm/index (facade) หรือ crm/ui (ทางเข้าคอมโพเนนต์)",
+  deepCrmImports.length === 0,
+  deepCrmImports.length ? `ล้วงลึก: ${deepCrmImports.join(", ")}` : "ครบ",
+  "MAJOR",
+);
+
 // F5: raw prisma ในโมดูล
 const rawPrismaFiles = moduleFiles.filter((f) =>
   /import\s*\{[^}]*\bprisma\b[^}]*\}\s*from\s+["']@\/lib\/core\/db["']/.test(readFileSync(f, "utf8")),

@@ -22,7 +22,7 @@ import * as bookingSvc from "@/lib/modules/booking/service";
 import * as hotelSvc from "@/lib/modules/hotel/service";
 import * as queueSvc from "@/lib/modules/queue/service";
 import * as shopSvc from "@/lib/modules/shop/service";
-import * as crmSvc from "@/lib/modules/crm/service";
+import * as crmSvc from "@/lib/modules/crm";
 import * as kbSvc from "@/lib/modules/kb/service";
 import * as schoolSvc from "@/lib/modules/school/service";
 import * as clinicSvc from "@/lib/modules/clinic/service";

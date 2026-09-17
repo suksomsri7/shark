@@ -49,3 +49,21 @@ The C0.2 oracle (`scripts/qc-crm-c0.2.mts`, commit `47b0028`) is written and com
 3. **`src/lib/member-bridges.ts` is out of scope** — it reaches CRM through raw prisma (`prisma.crmDeal.findFirst` :619, `prisma.crmContact.updateMany` :659 in `onCrmDealWon`), not through an import, so no facade and no F2.3 can see it. **C1.8** owns that. Do not touch it.
 4. Oracle severities stay as written: S1.6 (exact export surface) and S3.6 (reads over real seed rows) are MINOR — C0.2 runs before C1.1 seeds the CRM data set. They get promoted after C1.1, not now.
 5. Zero behaviour change, enforced by oracle S1.4 (`facade[s] === service[s]`, same `typeof`/`length`/`name`) and S1.5 (`index.ts` is re-exports only, no logic). A wrapper function, a bound copy or a re-declared export all fail. Plan for that from the first line.
+
+## Controller addendum 3 — addendum 2 #1 was WRONG, corrected (2026-09-17)
+The builder proved that `export { CrmHub } from "./ui"` in `index.ts` drags `ui.tsx → core/context → lib/env` into the
+server graph of `ai/tools` and `account/api/registry`; `src/lib/env.ts:27` parses `process.env` at import time, so
+`env -u DATABASE_URL pnpm fitness` (gate D5, second mode) goes red (F10.1 + F13 crash). Removing that one line makes
+fitness green in both modes again.
+
+I checked the repo's own convention before deciding: `src/app/app/sys/[id]/page.tsx:8–19` imports the Hub of **every**
+module from `<module>/ui` — coupon · meeting · kanban · chat · inventory · hr · marketing · member · point · reward.
+So the house rule is: **`index.ts` = the server surface · `ui.tsx` = the component entry point.** CRM follows its ten siblings.
+
+**DECISION (replaces addendum 2 #1):**
+1. `src/lib/modules/crm/index.ts` exports the SERVER surface only — the six functions + their types. No `CrmHub`, no `./ui` re-export.
+2. `src/app/app/sys/[id]/page.tsx` goes back to `import { CrmHub } from "@/lib/modules/crm/ui";` exactly like the other ten modules.
+3. F2.3 forbids `@/lib/modules/crm/{service,rules,actions}` from outside the module and ALLOWS `@/lib/modules/crm` and
+   `@/lib/modules/crm/ui`. Write that reason into the rule's comment, naming the ten sibling modules as the precedent.
+4. The oracle has been corrected by the CONTROLLER (`ORACLE-EDIT C0.2-S1.3/S2.1/S2.2/S2.3/S4.3`, logged in
+   `ledger/CRM-RUN.md` §4). `OUTSIDE_IMPORTERS` is five files now; `DEEP` is `service|rules|actions`. Do not touch the oracle.
