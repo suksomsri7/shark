@@ -1,5 +1,7 @@
 # CRM-RUN — แผนงาน RUN "CRM v2" (32 ใบ · 3 เฟส) — สถานะ: **ยังไม่ RUN (เจ้าของสั่ง 11 ก.ย. 2569: ออกแบบให้ลึกและเรียบร้อยก่อน · ต้องทำงานร่วมกับทุกระบบได้)**
 
+> 🔴 **18 ก.ย. 2569 — ไฟล์นี้ถูกครอบด้วย `ledger/CRM-MASTER-PLAN.md`** (53 ใบ · 7 เฟส: เพิ่ม C0 ปรับฐาน · C2.0/C3.0 ใบ migration · C4 ทุกปุ่ม · C5 ล่าบั๊ก · C6 ปล่อย · กลุ่มข้อสอบ X บังคับทุกใบ) · ตารางใบงาน/สัญญารายใบข้างล่างยังใช้เป็นสัญญา **ยกเว้นส่วนที่ MASTER-PLAN §6 คอลัมน์ "แก้จากเดิม" ระบุ** · เหตุผล: `ledger/REVIEW-CRM-DESIGN-2026-09-18.md` (ข้อสมมติผิด 21 จุด · แผนขัดกันเอง 5 จุด)
+
 > เขียน 11 ก.ย. 2569 · พิมพ์เขียว `docs/modules/20-crm-v2.md` · API `docs/api/CRM-API.md` · แบบ `ledger/DESIGN-CRM.md` + ภาพ 17 ใบ `ledger/design-crm/`
 > ใช้เอกสารนี้ **เทียบ QC**: ทุกใบมี (1) สัญญาไฟล์/ฟังก์ชัน (2) รายการข้อสอบ (oracle) ที่ Fable จะเขียนเป็น `scripts/qc-crm-<wo>.mts` ก่อน spawn builder (3) ภาพที่ต้องตรงกับ mockup (4) regressions
 > วิธีทำงาน = `ledger/MEMBER-RUN.md` §0–§0.1 ทั้งหมด (oracle ก่อน · builder ห้าม build/commit · Fable build+ภาพ+commit+push+ตรวจ prod · งานหนักทีละ 1 · fitness 2 โหมด · event ลง 3 ทะเบียนในใบเดียว · ทุก push ตรวจ Vercel + `_prisma_migrations`)
@@ -182,3 +184,4 @@
 ## 4. บันทึกเหตุการณ์ / มติเทคนิค
 - 11 ก.ย. 2569 (ค่ำ) — ชุดส่งต่อ Codex: CODEX-HANDOFF-CRM.md · crm-qc-env/seed-crm-qc/qc-crm-c1.1 (26 ข้อ) · qc-all crm-seed · TEMPLATE-crm · AGENTS.md · branch session/crm-codex
 - 11 ก.ย. 2569 — เขียนแผน 32 ใบจากพิมพ์เขียว 20-crm-v2 หลังมติเจ้าของ 10 ข้อ (DESIGN-CRM §9) · C7 portal เจ้าของยืนยัน "เอา" 11 ก.ย. → C3.5 อยู่ในแผนเต็ม
+- 18 ก.ย. 2569 — Fable ทบทวนแบบกับโค้ดจริง main `6fff98d` (Codex ยังไม่เริ่ม · branch ว่าง): `REVIEW-CRM-DESIGN-2026-09-18.md` + `CRM-MASTER-PLAN.md` + พิมพ์เขียว §15 (มติ C15–C27) · ผู้ทำงานคนถัดไปเริ่มที่ C0.1
