@@ -118,6 +118,11 @@ export async function listConversationsByParty(
   const pid = (partyId ?? "").trim();
   if (!tenantId || !pid) return [];
   const take = Math.min(Math.max(1, Math.floor(opts?.take ?? 20) || 1), MAX_CONVERSATIONS);
+  // 🔴 ด่าน unit ต้อง "ปิดไว้ก่อน" ตอนรันจริง ไม่ใช่แค่ตอนคอมไพล์: ผู้เรียก CRM ส่ง
+  //    `auth.active.unitAccess as string[]` ซึ่งมาจากคอลัมน์ JSON ผ่าน `as` (TypeScript ไม่ได้ตรวจอะไรเลย)
+  //    ⇒ ถ้าวันหนึ่งค่านั้นเป็น null/ไม่ใช่อาร์เรย์ `unitAccessWhere(undefined)` จะคืน `{}` = ไม่กรองสาขาเลย
+  //    และเงียบสนิท · ไม่ใช่อาร์เรย์ = ไม่มีสิทธิ์ที่พิสูจน์ได้ = ไม่เห็นห้องไหนเลย
+  if (!Array.isArray(opts?.unitAccess)) return [];
   const unitAccess = opts.unitAccess;
 
   const rows = await prisma.chatConversation.findMany({

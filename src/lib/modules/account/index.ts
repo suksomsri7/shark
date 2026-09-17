@@ -24,6 +24,8 @@ import {
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
 import { baht } from "./service";
+// ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
+import { safeReason } from "./errors";
 
 // ราคาขายสินค้า POS (master data — ไม่กระทบ GL) เปิดผ่าน facade ให้โมดูล pos เรียก
 export {
@@ -392,6 +394,19 @@ const roundQty4 = (qty: number): number =>
 
 const isSatang = (n: unknown): boolean => typeof n === "number" && Number.isFinite(n) && Number.isInteger(n);
 
+// ─── เพดาน "เท่าที่ฐานข้อมูลเก็บได้จริง" ───────────────────────────────────────
+// 🔴 ด่าน "จำนวนเต็ม/ไม่ติดลบ" อย่างเดียวไม่พอ: `unitPrice` · `discount` · `amount` ของบรรทัด และ
+//    `AccountDocument.discountAmount`/`subTotal` เป็น Postgres `int4` ส่วน `qty` เป็น `Decimal(12,4)`
+//    (prisma/schema/account.prisma:215-232) ⇒ ค่าที่ใหญ่เกินผ่านด่านเดิมได้สบาย แล้วไปตายที่ฐานข้อมูล
+//    (`value out of range for type integer` · `numeric field overflow`) เป็น **exception ที่หลุดออกจาก
+//    facade ซึ่งสัญญาไว้ว่าคืน `{ok:false, reason}` เสมอ** ⇒ route ฝั่ง CRM ตอบ 500 แทนข้อความไทย
+const MAX_SATANG = 2_147_483_647; // int4 = ฿21,474,836.47
+const MAX_QTY = 99_999_999.9999; // Decimal(12,4) = 8 หลักหน้าจุด + 4 หลักหลังจุด
+const MAX_QTY_TEXT = MAX_QTY.toLocaleString("th-TH", { maximumFractionDigits: 4 });
+/** จำนวนบรรทัดสูงสุดที่รับจากระบบภายนอก — อาร์เรย์ไม่จำกัดคือทางที่สองที่ทำให้ใบนี้ระเบิด
+ *  (เทียบเคียงเพดานเดิมของโมดูล `TEMPLATE_MAX_LINES` = 100 แล้วเผื่อไว้ให้ดีลใหญ่) */
+const MAX_EXTERNAL_LINES = 200;
+
 /**
  * ปัญหาของ input (ถ้ามี) เป็นข้อความไทยที่ **บอกตัวเลขที่ได้รับจริง** — ไม่มีปัญหา = null
  * `checkLines` = ผู้เรียกส่ง `lines` มาเอง (บรรทัดที่ระบบสร้างเองจาก title/valueSatang คงพฤติกรรมเดิมเป๊ะ)
@@ -399,20 +414,31 @@ const isSatang = (n: unknown): boolean => typeof n === "number" && Number.isFini
 function externalQuotationProblem(
   lines: LineInput[],
   checkLines: boolean,
-  discountAmount?: number | null,
+  discountAmount: number | null | undefined,
+  valueSatang: number,
 ): string | null {
   if (checkLines) {
+    if (lines.length > MAX_EXTERNAL_LINES)
+      return `จำนวนรายการมากเกินไป (สูงสุด ${MAX_EXTERNAL_LINES} รายการ · ได้รับ ${lines.length} รายการ)`;
     for (let i = 0; i < lines.length; i += 1) {
       const l = lines[i];
       const at = `รายการที่ ${i + 1}`;
       if (typeof l.qty !== "number" || !Number.isFinite(l.qty) || l.qty < 0)
         return `${at}: จำนวนต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.qty)})`;
+      if (l.qty > MAX_QTY)
+        return `${at}: จำนวนสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ${MAX_QTY_TEXT} · ได้รับ ${String(l.qty)})`;
       if (!isSatang(l.unitPrice) || l.unitPrice < 0)
         return `${at}: ราคาต่อหน่วยต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.unitPrice)})`;
+      if (l.unitPrice > MAX_SATANG)
+        return `${at}: ราคาต่อหน่วยสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(l.unitPrice)})`;
       const disc = l.discount ?? 0;
       if (!isSatang(disc) || disc < 0)
         return `${at}: ส่วนลดต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 0 ขึ้นไป (ได้รับ ${String(l.discount)})`;
+      if (disc > MAX_SATANG)
+        return `${at}: ส่วนลดสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(disc)})`;
       const gross = Math.round(l.qty * l.unitPrice);
+      if (gross > MAX_SATANG)
+        return `${at}: ยอดของรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(gross)})`;
       if (disc > gross)
         return `${at}: ส่วนลด ฿${baht(disc)} มากกว่ายอดของรายการ ฿${baht(gross)} — ตรวจส่วนลดของรายการนี้อีกครั้ง`;
       if (l.vatRateBp !== undefined && l.vatRateBp !== null) {
@@ -421,13 +447,31 @@ function externalQuotationProblem(
           return `${at}: อัตราภาษีต้องเป็นจำนวนเต็ม (0 = 0% · -1 = ยกเว้น · 700 = 7%) (ได้รับ ${String(bp)})`;
       }
     }
+  } else {
+    // ── เส้นทางเดิม (`valueSatang` → บรรทัดเดียว) ต้องถูกตรวจเหมือนกัน ──────────────────
+    // 🔴 เดิมเส้นนี้ไม่ถูกตรวจเลย: `valueSatang: -150000` ทำให้แถวบรรทัดเก็บ `unitPrice = -150000`
+    //    แต่ `amount = lineAmount = Math.max(0, -150000) = 0` (totals.ts:31-32) ⇒ subTotal/grandTotal = 0
+    //    เอกสารพิมพ์ออกมาเป็น "บรรทัดติดลบบนใบที่ยอดรวมศูนย์" — ขัดกันเองแบบเดียวกับส่วนลดเกินยอดข้างบน
+    //    ผู้เรียกที่มีอยู่วันนี้บังเอิญกัน `valueSatang <= 0` ไว้เอง (crm/service.ts:303) แต่ใบนี้ประกาศ
+    //    ตัวเองเป็น "ประตูที่ตรวจให้" แล้ว และ C1.5 กำลังจะเพิ่มผู้เรียก ⇒ ตรวจที่นี่ ไม่ฝากความหวังไว้กับผู้เรียก
+    if (!isSatang(valueSatang))
+      return `มูลค่าดีลต้องเป็นจำนวนเต็มสตางค์ (ได้รับ ${String(valueSatang)})`;
+    if (valueSatang < 0)
+      return `มูลค่าดีลต้องเป็นศูนย์หรือมากกว่า (ได้รับ ฿${baht(valueSatang)})`;
+    if (valueSatang > MAX_SATANG)
+      return `มูลค่าดีลสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(valueSatang)})`;
   }
+  // ยอดรวมฐานของทุกบรรทัด: `subTotal` ก็เป็น int4 ⇒ หลายบรรทัดที่แต่ละบรรทัดไม่เกินเพดาน รวมกันทะลุได้
+  const baseSum = lines.reduce((sum, l) => sum + lineAmount(l), 0);
+  if (baseSum > MAX_SATANG)
+    return `ยอดรวมรายการสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(baseSum)}) — แยกออกเป็นหลายใบ`;
   if (discountAmount !== undefined && discountAmount !== null) {
     if (!isSatang(discountAmount))
       return `ส่วนลดท้ายบิลต้องเป็นจำนวนเต็มสตางค์ (ได้รับ ${String(discountAmount)})`;
     if (discountAmount < 0)
       return `ส่วนลดท้ายบิลต้องเป็นศูนย์หรือมากกว่า (ได้รับ ฿${baht(discountAmount)})`;
-    const baseSum = lines.reduce((sum, l) => sum + lineAmount(l), 0);
+    if (discountAmount > MAX_SATANG)
+      return `ส่วนลดท้ายบิลสูงเกินกว่าที่ระบบเก็บได้ (สูงสุด ฿${baht(MAX_SATANG)} · ได้รับ ฿${baht(discountAmount)})`;
     if (discountAmount > baseSum)
       return `ส่วนลดท้ายบิล ฿${baht(discountAmount)} มากกว่ายอดรวมรายการ ฿${baht(baseSum)} — ตรวจยอดส่วนลดอีกครั้ง`;
   }
@@ -479,7 +523,12 @@ export async function createExternalQuotation(input: {
     input.lines && input.lines.length > 0
       ? input.lines.map((l) => ({ ...l, qty: roundQty4(l.qty) }))
       : [{ description: input.title, qty: 1, unitPrice: input.valueSatang }];
-  const problem = externalQuotationProblem(lines, input.lines != null && input.lines.length > 0, input.discountAmount);
+  const problem = externalQuotationProblem(
+    lines,
+    input.lines != null && input.lines.length > 0,
+    input.discountAmount,
+    input.valueSatang,
+  );
   if (problem) return { ok: false, reason: problem };
 
   // 4) สร้างใบเสนอราคา (DRAFT — พนักงานตรวจ/ส่งเองในระบบบัญชี) + ผูก ref กลับดีล
@@ -540,20 +589,27 @@ export async function respondQuotation(
   // 🔴 หลักฐานเขียน **ในธุรกรรมเดียวกับการเปลี่ยนสถานะ** (ดูหมายเหตุที่ `setQuotationResponse`):
   //    ถ้าเขียนทีหลังผ่าน `writeAudit` (ซึ่งกลืน error ทุกชนิดโดยตั้งใจ) ใบที่ลูกค้ากดตอบรับจากพอร์ทัล
   //    อาจจบเป็น ACCEPTED โดยไม่มีบันทึกว่าใครเซ็น จาก ip ไหน ด้วยเบราว์เซอร์อะไร
-  return setQuotationResponse(ctx.tenantId, ctx.systemId, docId, accepted, {
-    audit: {
-      actorType: opts.by === "PORTAL" ? "SYSTEM" : "USER",
-      actorId: opts.by === "PORTAL" ? null : opts.actorUserId ?? null,
-      action: accepted ? "account.quotation.accept" : "account.quotation.reject",
-      after: {
-        accepted,
-        by: opts.by,
-        signer: opts.signer
-          ? { name: opts.signer.name, ipHash: opts.signer.ipHash, userAgent: opts.signer.userAgent }
-          : null,
+  //    …แต่ "ย้อนกลับทั้งใบ" ต้องออกมาเป็น `{ok:false, reason}` ภาษาไทย **ไม่ใช่ exception**:
+  //    ผู้เรียกคือหน้า/route ของพอร์ทัลลูกค้า ถ้าปล่อยให้หลุด ลูกค้าจะเจอหน้า 500 แทนข้อความที่บอกให้ลองใหม่
+  //    (`safeReason` กันข้อความเทคนิคของ Prisma หลุดไปโชว์ลูกค้า — ข้อความไทยที่เราเขียนเองผ่านได้ตามเดิม)
+  try {
+    return await setQuotationResponse(ctx.tenantId, ctx.systemId, docId, accepted, {
+      audit: {
+        actorType: opts.by === "PORTAL" ? "SYSTEM" : "USER",
+        actorId: opts.by === "PORTAL" ? null : opts.actorUserId ?? null,
+        action: accepted ? "account.quotation.accept" : "account.quotation.reject",
+        after: {
+          accepted,
+          by: opts.by,
+          signer: opts.signer
+            ? { name: opts.signer.name, ipHash: opts.signer.ipHash, userAgent: opts.signer.userAgent }
+            : null,
+        },
       },
-    },
-  });
+    });
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกคำตอบใบเสนอราคาไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
 }
 
 // ลิงก์+QR เก็บเงินของเอกสาร 1 ใบ (ยอด = ยอดคงค้างจริง ณ ตอนนี้ · ด่านชนิด/สถานะ/ช่องทางอยู่ใน service)
