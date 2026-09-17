@@ -1,0 +1,5 @@
+# C3.0 — Migration `crm_v2_c` (all tables of phase C3)
+Read `crm-brief-COMMON.md` first. Spec: blueprint §4.3 groups "ทีมขาย", "portal" + §15 (C15).
+
+Tables: `CrmQuota`, `CrmCommissionRule`, `CrmCommission` (amounts `BigInt`; unique `[dealId, ruleId, userId, refId]`), `CrmPortalAccess` (+ `inviteTokenHash`, `inviteExpiresAt`), `CrmPortalRequest`. Columns: `HrPayAdjustment.crmCommissionId String?`; **customer session for the portal (C15)**: `CustomerSession` += `subjectType String @default("MEMBER")` (`"MEMBER" | "CRM_CONTACT"`), `crmContactId String?`, `crmSystemId String?` — VERIFIED: `CustomerSession.customerId` is NOT NULL, so do NOT alter that table: add the sibling table `PortalSession` (same columns, `portalAccessId`, `crmContactId`, `crmSystemId`) per RESOLUTIONS R-C.5. `CustomerOtp` reused as is (target = e-mail/phone). Report schedules need NO table (RESOLUTIONS R-E.6: `settings.crm.reportSchedules[]`).
+Acceptance (oracle `qc-crm-c3.0`): applies on QC; scope registry; additive SQL only; `qc-member-m2.9`, `qc-member-m3.11`, `qc-member-fix-s1`, `qc-payroll`, `qc-hr-payadjust` green.

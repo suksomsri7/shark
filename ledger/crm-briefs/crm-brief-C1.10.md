@@ -1,0 +1,17 @@
+# C1.10 — REST + AI, first set (~50 ops · 14 tools) + webhooks
+Read `crm-brief-COMMON.md` first. Contract: CRM-RUN §2 "C1.10". Spec: `docs/api/CRM-API.md`, blueprint §8, mockup 14 (right).
+
+## Facts — reuse, do not rebuild
+Generic layer `src/lib/api/*`: `defineOp`, `dispatch` (danger ops need `confirm:true` + reason, `Idempotency-Key`), `withIdempotency`, `requireApi`/`ApiModuleConfig`, `respond` (envelope `{data, requestId}`, always 200 on success, `csvResponse` adds the BOM), `buildOpenApi`. Member binding to copy: `src/lib/modules/member/api/{op,actor,config,dispatch,registry,rate,serialize,openapi,tools,webhook-events}.ts` + `ops/*`, route `src/app/api/v1/member/[...path]/route.ts`. Scope bundles: `src/lib/api-keys/scopes.ts`. AI: `src/lib/ai/tools-member.ts`, `proposals.ts` (`ProposalKind` template literal — add `crm.${string}`), `skills.ts` (stub skill `crm`, one tool `crm_create_lead`). Fitness F13.7–9 are the member versions — add **F13.10–12** for crm. Docs generator to copy: `scripts/gen-member-api-docs.mts`.
+Audit lessons that are REQUIREMENTS here: (H1) a key with no `crm.*` scope is denied every CRM op and tool, including legacy `crm_create_lead`; (H3) assistant read tools run with scopes = assistant set ∩ what the asking human can do, and with THAT human's teams/units via a `viewerOf`-style resolver — never `unitAccess: []`; the assistant never sees sensitive member data.
+
+## Deliverables
+`src/lib/modules/crm/api/**` (12 files + `ops/{contacts,companies,deals,activities,objects,teams,settings}.ts`, ~50 ops, each with `test: "C1.10-S…"`, danger kinds for delete/merge/bulk/archive-with-records/export-all) · routes `/api/v1/crm/[...path]`, `/api/v1/crm/openapi.json` · dynamic object ops `/objects/{key}/records…` resolved at dispatch · 3 bundles (`crm.readonly|operate|admin`) + optional key filters `ownerUserId`/`teamId` enforced inside `visibleWhere` · `src/lib/ai/tools-crm.ts` + skill `crm` with 14 tools (read = immediate, write = proposal) · webhook event filter `crm.*`/`custom.record.*`/`team.*` · `scripts/gen-crm-api-docs.mts` + regenerate `docs/api/CRM-API.md` for implemented ops (keep the planned ones in a clearly marked "planned" section) · settings page `/settings/api` (keys, curl, skill manifest, webhooks + delivery log — reuse member components).
+
+## Files you own
+`src/lib/modules/crm/api/**` · `src/app/api/v1/crm/**` · `src/lib/ai/tools-crm.ts` + the crm entries in `src/lib/ai/skills.ts`/`proposals.ts` · `src/lib/api-keys/scopes.ts` (crm block) · `scripts/gen-crm-api-docs.mts`, `scripts/fitness.mts` F13.10–12 · `src/app/app/sys/[id]/crm/settings/api/**` · `docs/api/CRM-API.md`.
+
+## Acceptance (oracle `qc-crm-c1.10`, needs the QC server for HTTP checks — also provide in-process equivalents)
+CRM-RUN S1–S9 (24).
+X2 (full): key of another module / no scopes → 403/denied on every op + tool; readonly cannot write; `teamId`-filtered key sees only that team; assistant as thana lists only phuket; assistant as a STAFF with one narrow key cannot read reports · X1 ids of another tenant/system → 404 across all ops · X3 same `Idempotency-Key` twice in parallel → one row, same response · X6 CSV ops neutralised, page size caps, string caps in every input schema · X9 every danger op refuses without confirm+reason and audits with reason · X7 rate limits per key (read/write/report) enforced from the DB limiter.
+Regressions: `qc-member-m1.11` `m2.10` `m3.10`, `qc-member-fix-s1`, `qc-kanban-k3.5`, `qc-account-api-core`, `qc-account-api-keys`, `qc-ai-skills`, `qc-ai-tools`, `qc-ai-proposals`.

@@ -1,0 +1,16 @@
+# C3.5 — B2B customer portal (decisions C7, C15)
+Read `crm-brief-COMMON.md` first. Contract: CRM-RUN §2 "C3.5". Spec: blueprint §3.13 (mockup 12), §5.9 portal, §11.8.
+
+## Facts
+- `/p/[slug]` is TAKEN by the PAGES module → the portal lives at **`/b/[slug]/*`** (owner may rename — keep the base path in ONE constant).
+- Customer auth to reuse: `src/lib/modules/member/customer-session.ts` (`requestOtp`, `verifyOtp`, `loginWithLine`, `mintCustomerSession`, `getCustomerSession`, `revokeCustomerSession(s)`, `requireCustomer`, DB rate limits, `cs_` tokens, SUSPENDED rejected) + `customer-cookie.ts` + REST customer lane `src/lib/modules/member/api/customer-lane.ts`. Sessions are keyed to `Customer` — C3.0 added the portal subject (or `PortalSession`); extend the session module with a subject-aware path, do NOT fork the OTP/limiter logic.
+- There is NO public quotation-accept route today. Accounting: `respondQuotation(ctx, docId, accepted, {by:"PORTAL", signer})` (C0.3; doc must be `AWAITING_ACCEPT`), `createPaymentRequestForDoc` → public pay page `/pay/<token>`, `listDocsByParty`, `outstandingByContacts`. Shell template: `src/app/m/[slug]/layout.tsx` (430 px frame, shop branding).
+
+## Deliverables
+invite (single-use token, hashed, 7-day expiry; e-mail/LINE) · login EMAIL_OTP / LINE (LINE identity must match the contact's e-mail/phone, else a staff-approved request) · company switcher (one contact ↔ many companies) · home (outstanding, quotes awaiting answer, recent activity) · quotations list/PDF/accept/reject+reason (signer name, time, ip-hash, UA stored with accounting) → stage moves through the existing consumer · invoices + pay link + slip upload (PRIVATE file; goes into accounting's existing slip flow) · receipts/tax invoices · documents (shared files + `portalVisible` custom records of OWN company, only `portalVisible` fields; edits of `portalEditable` fields become requests) · requests (issue → kanban card on `settings.portal.issueBoardId` or plain `CrmPortalRequest`; contact/profile change → approval `crm.portal_request`) with status mapping from card columns · contacts of the company · staff side: invite/revoke/see last login in company 360 · revoke ⇒ sessions dead immediately · events `crm.portal.viewed` (first view per day) / `.quote.responded` / `.request.created`.
+
+## Acceptance (oracle `qc-crm-c3.5`, customer sessions minted in-process)
+CRM-RUN S1–S7 (30).
+X1 (critical): contact of company A requests quotation/invoice/document/record/request/file of company B by id → 404 everywhere (UI pages, REST customer lane, file route); internal deal data never in portal DTOs (`showDeals=false`) · X7 OTP request/verify + invite-accept limited by the DB limiter; unknown e-mail ⇒ same answer + same timing class as known; invite token single-use/expired ⇒ calm refusal; quote accept replay ⇒ idempotent; expired quotation cannot be answered · X10 slips/documents only via expiring links bound to the portal session · X8 portal pages never show other contacts' phone/e-mail beyond own company; cookie flags via `customerCookieOptions` · X9 staff invite/revoke audited.
+Parity: mockup 12 with a customer session at 390 and 1440; shop branding applied.
+Regressions: `qc-member-m2.9`, `qc-member-m3.11`, `qc-member-fix-s1`, `qc-pages` (`/p/[slug]` untouched), `qc-acc-v2-promptpay`, `qc-payment`, `qc-acc-v2-attachments`.

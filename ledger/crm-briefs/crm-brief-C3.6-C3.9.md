@@ -1,0 +1,19 @@
+# C3.6 — Integrations page, PAGES widgets, Team in member views
+Contract: CRM-RUN §2 "C3.6"; mockup 17. `/settings/integrations`: 24 systems (keys from `src/lib/systems.ts`), per system: enabled?, last CRM-relevant event time (from outbox), job health from the minute-job registry (C0.5), and the `settings.crm.targets` pickers (member/account/kanban/chat/inventory system when a tenant has several) — bridges MUST read targets through one resolver. PAGES widgets: "my deals", "today's tasks" (staff, behind staff session) and "portal" entry (customer). `MemberSavedView.teamId` honoured in member lists (TEAM scope = real team when `teamId` set; legacy rows keep tenant-wide meaning).
+X1: widgets respect visibility; targets cannot point to another tenant's system. Regressions: `qc-pages`, `qc-member-m1.5`, `qc-systems*`.
+
+# C3.7 — Mobile: responsive pass for C2–C3 pages + staff app
+Contract: CRM-RUN §2 "C3.7"; mockup 13. Web pages of C2–C3 at 390 px. Staff app (`apps/mobile`): new section `app/(app)/crm/` (`_layout.tsx` Stack + `index.tsx` my deals, `tasks.tsx`, `call-log.tsx`, `scan-card.tsx`) + one `Pressable testID="drawer-crm"` in `app/(app)/_layout.tsx`; server routes `src/app/api/mobile/crm/*` guarded by `requireMobile` (`src/lib/mobile/auth.ts:74`) + CRM visibility; push via existing registration. QC with the web-export harness: copy `apps/mobile/qc/shoot-member.mjs` → `shoot-crm.mjs` (mocks + `SCREENS`). NO EAS build, no `@react-navigation/*` imports (expo-router only; read the Expo SDK docs named in `apps/mobile/AGENTS.md`).
+X1: mobile routes 404 for invisible deals; X7: mobile routes rate-limited per user. Regressions: `qc-member-m3.9`, `qc-mobile-*`.
+
+# C3.8 — REST + AI, third set (~16 ops) + complete manifest + generated docs
+Contract: CRM-RUN §2 "C3.8". Ops: reports, quotas, commissions, portal (customer lane: `Authorization: Bearer cs_…`, only `/portal/*` paths), dynamic records for every object, integrations. `docs/api/CRM-API.md` now 100 % generated; skill manifest 32 tools; F13.10–12 strict.
+X2 FULL MATRIX generated from the registry: for every op and tool × {no-scope key, other-module key, readonly, operate, admin, team-filtered key, customer token, assistant-as-thana} → expected allow/deny asserted (no hand-written exceptions) · smoke every op once.
+
+# C3.9 — PDPA, retention, limits, penetration checks
+Contract: CRM-RUN §2 "C3.9"; blueprint §11.7, §11.9; decisions C20, C21.
+- NEW event `member.erased {customerId, partyId}` emitted by `eraseMember` alongside today's `member.updated`/`changedKeys:["erased"]` (3 registries) → CRM eraser. NEW CRM-side erase for contacts that are not members (request → approval → erase) keyed by Party.
+- Erase scope = EVERY table added in this run holding personal data (contact/company contact rows, consents, activities body/transcript/recording files, e-mails body+attachments, web sessions/events, tracked clicks, portal access/requests, custom record values flagged personal, notifications, AI proposals/prompts, `AutomationRun.payload`): anonymise identity, delete bodies/files, keep money/stage numbers. Export bundle covers the same list.
+- Lead retention (C21) job with 30-day warning; purge jobs for e-mail/web/recordings; limits from blueprint §11.9 enforced with "approaching limit" notices at 80 %.
+- Penetration oracle: thana across teams; portal across companies; tracking without consent; readonly key never gets e-mail bodies; SSRF on every server-side fetch; open redirects; CSV injection on every export; file links across viewers; rate limits on every public route; `"use server"` export scan; payload/log PII scan over a full scripted day of activity.
+Regressions: `qc-member-m1.7`, `qc-member-fix-s4`, `qc-pdpa`, everything CRM. Then the controller closes phase C3: full `qc:all`, journeys US7 + US10.

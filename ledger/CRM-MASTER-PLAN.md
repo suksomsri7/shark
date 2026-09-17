@@ -1,6 +1,8 @@
 # CRM-MASTER-PLAN — แผนงานละเอียด "CRM v2" ตั้งแต่ปรับฐานจนขึ้น production (53 ใบ · 7 เฟส)
 
 > เขียน 18 ก.ย. 2569 · Fable · ใช้สั่งงาน **Opus 5 (ผู้คุมงานใน Claude Code)** หรือ **Codex** ให้ทำจนครบ 100% แล้ว Fable ตรวจรอบสุดท้าย
+> 🔴 ข้อตัดสินที่ทับทุกเอกสาร (ผลตรวจไขว้ สเปก↔แผน↔ใบสั่ง): `ledger/crm-briefs/crm-brief-RESOLUTIONS.md`
+> ใบสั่งงานรายใบ (Fable เขียนไว้ครบ 53 ใบ พร้อมชื่อฟังก์ชัน/ไฟล์จริงที่ตรวจกับโค้ดแล้ว): `ledger/crm-briefs/` · prompt เปิดงาน: `ledger/CRM-KICKOFF-PROMPT.md`
 > เอกสารนี้ **อยู่เหนือ** `ledger/CRM-RUN.md` และ `ledger/CODEX-HANDOFF-CRM.md` เมื่อขัดกัน (สองไฟล์นั้นยังเป็นแหล่งสัญญารายใบ/กติกาโค้ด) · สเปก = `docs/modules/20-crm-v2.md` (+ §15 ภาคผนวก 18 ก.ย.) · API = `docs/api/CRM-API.md` · ภาพ = `ledger/design-crm/` · เหตุผลของทุกการแก้แผน = `ledger/REVIEW-CRM-DESIGN-2026-09-18.md`
 > ชื่อไฟล์ที่ **ยังไม่มี** เขียนในเครื่องหมาย «…» (ไม่ใช่ backtick) เพื่อไม่ให้ด่าน F7.1 แดง — ผู้ทำงานสร้างตามนั้น
 
@@ -93,7 +95,7 @@
 | ขั้น | ใคร | ทำอะไร |
 |---|---|---|
 | 1 | ผู้คุมงาน | `git pull --rebase origin main` · อ่านสัญญาใบ (`ledger/CRM-RUN.md` §2 + แถว "แก้จากเดิม" ใน §6 ของไฟล์นี้ + หัวข้อพิมพ์เขียว + ภาพ) · **เปิดโค้ดจริงที่จะแตะ** (ห้ามเชื่อชื่อฟังก์ชันในพิมพ์เขียว — ตารางชื่อจริงอยู่ใน REVIEW §3) |
-| 2 | ผู้คุมงาน | เขียนใบสั่ง «ledger/crm-briefs/crm-brief-<wo>.md» (อังกฤษ · สั้น): ขอบเขต · **รายการไฟล์ที่ builder เป็นเจ้าของ** · เกณฑ์รับ · กลุ่ม X ที่เกี่ยว · regression ที่ต้องเขียว · ข้อตัดสินล่วงหน้า |
+| 2 | ผู้คุมงาน | เปิดใบสั่งที่ Fable เขียนไว้แล้ว `ledger/crm-briefs/crm-brief-<wo>.md` (+ `crm-brief-COMMON.md`) → **ตรวจข้อเท็จจริงในใบกับโค้ด ณ วันนั้น** (ชื่อฟังก์ชัน/บรรทัดอาจเลื่อนหลังใบก่อนหน้า) → เติมหัวข้อ `## Controller addendum <วันที่>`: ไฟล์ที่ใบก่อนหน้าสร้างจริง · ข้อตัดสินใหม่ · รายการไฟล์เจ้าของฉบับสุดท้าย — ห้ามลบเกณฑ์รับ/กลุ่ม X ของ Fable ออก (ถ้าเห็นว่าผิด ให้เขียนแย้งใน addendum พร้อมหลักฐาน แล้วทำตามที่ปลอดภัยกว่า) |
 | 3 | ผู้เขียนข้อสอบ | เขียนข้อสอบ + spec ภาพใน «scripts/visual-crm.mts» → รันผ่าน iso → แดง/SKIPPED ด้วยเหตุผลที่ถูก → รายงาน |
 | 4 | ผู้คุมงาน | อ่านข้อสอบ (ตรงสัญญา? คืนสภาพข้อมูล? type-safe ใต้ `next build`?) → `git commit -m "test(crm): <wo> oracle N ข้อ"` |
 | 5 | builder | ทำงานตามใบสั่ง · รันข้อสอบ+regression ผ่าน iso · typecheck · รายงานต่อข้อ + คำขอ ORACLE-EDIT (ถ้ามี) |
@@ -123,13 +125,13 @@
 | **C0.2** | facade ของ CRM v1: สร้าง `index.ts` ของโมดูล crm (export เท่าที่โมดูลอื่นใช้วันนี้) · ย้าย `forms` และ `account` ให้ import ผ่าน facade · ยังไม่เปลี่ยนพฤติกรรม | F2 เขียว · ไม่มีไฟล์นอก crm import `crm/service` ตรง | `qc-crm` · ชุด forms · `qc-acc-v2-party` |
 | **C0.3** | facade ของโมดูลอื่นที่ CRM ต้องใช้ (additive ล้วน · ไม่แตะ tx เดิม): **บัญชี** — `createExternalQuotation` รับ `lines[]` (ของเดิมที่ส่งยอดเดียวต้องได้ผลเหมือนเดิมทุกไบต์) · `createInvoiceFromQuotation` · `setQuotationResponse` · `createPaymentRequest` · `outstandingByContacts` · `ensureAccountContact(partyId)` · `mergeContacts` ออกทาง `index.ts` · **แชท** — `sendLineToParty` · `listConversationsByParty` · **HR** — สร้าง `index.ts` (`requestAdjustment` · `employeeOfUser`) · **party** — `updateContactInfo` · **approval** — entityType `crm.discount` `crm.commission` `crm.reassign` `crm.portal_request` ลง 3 ที่ (labels · actions allowlist · `src/lib/approval-effects.ts` แบบ no-op รอใบเจ้าของ) · `ALLOWED_EDGES` เพิ่มพร้อมเหตุผล | ข้อสอบ facade ต่อฟังก์ชัน (ของเดิม byte-equal + ของใหม่) · X1 (ข้ามร้าน) · X4 (`ensureAccountContact` idempotent ยิงพร้อมกัน 10 ได้ 1 แถว) | บัญชี V2 ทั้งชุด (`qc-acc-v2-*` · `qc-account-api-*`) · `qc-pos-account` · ชุดแชท · `qc-approval-*` · ชุด HR payroll |
 | **C0.4** | ไฟล์ส่วนตัว (มติ C17): route เสิร์ฟไฟล์ที่ตรวจสิทธิ์+ลิงก์หมดอายุ (HMAC · 15 นาที) · `uploadFile` โหมด private (ไม่คืน URL CDN) · ใช้ได้ทั้งพนักงานและ session ลูกค้า · ลบไฟล์จริงเมื่อ erase | X10 ครบ: ไม่มี URL ถาวรใน DTO · ลิงก์หมดอายุ → 403 · ลิงก์ของคนอื่น/ร้านอื่น → 404 · traversal | ชุด storage · ชุดแชท (ไฟล์แนบ) |
-| **C0.5** | ตัวกระจายงานถี่ (มติ C16): «src/lib/platform/minute-jobs.ts» ถูกเรียกจาก `/api/cron/outbox` หลัง drain · ทะเบียนงาน (ชื่อ · ช่วงเวลา · ฟังก์ชัน) · แต่ละงานจับ error ของตัวเอง · งบเวลา/รอบ · แถวสถานะล่าสุดให้หน้า integrations อ่าน · ยังไม่มีงานจริง (ใบ C2.x มาลงทะเบียน) | X5 ที่ระดับตัวกระจาย (2 รอบซ้อน → งานละครั้ง) · งานหนึ่งล้มไม่ทำให้ outbox drain แดง | `qc-outbox*` · `qc-cron*` |
+| **C0.5** | ตัวกระจายงานถี่ (มติ C16 ฉบับแก้ — ดู RESOLUTIONS R-C.6: เส้น outbox ไม่มีตัวยิงรายนาทีที่ยืนยันได้ → เพิ่มตัวรัน «scripts/crm-cron.mts» แบบเดียวกับ cron บัญชีบน VPS · ติดตั้ง crontab จริงในใบ C6.1 หลังเจ้าของอนุญาต): «src/lib/platform/minute-jobs.ts» ถูกเรียกจาก `/api/cron/outbox` หลัง drain · ทะเบียนงาน (ชื่อ · ช่วงเวลา · ฟังก์ชัน) · แต่ละงานจับ error ของตัวเอง · งบเวลา/รอบ · แถวสถานะล่าสุดให้หน้า integrations อ่าน · ยังไม่มีงานจริง (ใบ C2.x มาลงทะเบียน) | X5 ที่ระดับตัวกระจาย (2 รอบซ้อน → งานละครั้ง) · งานหนึ่งล้มไม่ทำให้ outbox drain แดง | `qc-cron` · `qc-webhook` |
 
 ### เฟส C1 — โครง (12 ใบ)
 
 | ใบ | สัญญา | แก้จากเดิม | regression |
 |---|---|---|---|
-| **C1.1** | §2 C1.1 | migration `crm_v2_a` เพิ่ม **`CrmVisibilityPolicy`** · `TeamMember.acceptingLeads` · `CrmFileLink` · `CrmContactConsent` · `settings.crm.uiVersion` · partyId 5 คอลัมน์ตามชื่อจริง (`Appointment` `ShopOrder` `RentalBooking` `QueueTicket` `ClinicVisit`) + **เขียนค่าจริง 9 จุด** (รวม 4 ตารางที่มีคอลัมน์แล้วแต่ไม่มีใครเขียน) · `PosSale` ไม่เพิ่ม partyId (ไม่มีเบอร์ — ผูกผ่าน memberId) · 🔴 unique ของ `MemberSection/MemberField` ทำ 2 จังหวะ (R1): ใบนี้เพิ่ม `objectKey` default `customer` + unique ใหม่ **คู่กับ unique เก่า** · ถอด unique เก่าใน `crm_v2_b` | `qc-member-m1.2` `m1.3` `m1.4` `m1.5` · `qc-member-fix-s1` · F1/F8 |
+| **C1.1** | §2 C1.1 | migration `crm_v2_a` เพิ่ม **`CrmVisibilityPolicy`** · `TeamMember.acceptingLeads` · `CrmFileLink` · `CrmContactConsent` · `settings.crm.uiVersion` · partyId 5 คอลัมน์ตามชื่อจริง (`Appointment` `ShopOrder` `RentalBooking` `QueueTicket` `ClinicVisit`) + **เขียนค่าจริง 9 จุด** (รวม 4 ตารางที่มีคอลัมน์แล้วแต่ไม่มีใครเขียน) · `PosSale` ไม่เพิ่ม partyId (ไม่มีเบอร์ — ผูกผ่าน memberId) · unique ของ `MemberSection/MemberField` สลับใน migration เดียว (ตรวจแล้วไม่มีโค้ดใช้ selector `systemId_key` ของสองตารางนี้): ADD COLUMN `objectKey` default `customer` → CREATE UNIQUE ใหม่ → DROP unique เก่า (ลำดับนี้เท่านั้น) · 💰 มติ C28: คอลัมน์เงินใหม่เป็น BigInt (`paidSatang` `wonValueSatang`) · `valueSatang` เดิมคง Int + เพดาน ฿20 ล้าน/ดีล (หนี้) | `qc-member-m1.2` `m1.3` `m1.4` `m1.5` · `qc-member-fix-s1` · F1/F8 |
 | **C1.2a** | §2 C1.2 ครึ่ง engine | ชื่อฟังก์ชันจริง (`checkFieldValue` `listLayout` `fieldFilterWhere` `getFieldValues` `setFieldValues` `applyTemplate`) รับ `objectKey` (default `customer` = พฤติกรรมเดิมทุกไบต์) · adapter ค่าไป `CustomRecordValue` · ฟิลด์ `sensitive` ใช้นโยบาย D8 เดิม (X8) | สมาชิก `m1.2` `m1.3` `m1.5` `m1.6` `m3.9` · `fix-s1` (H2 ต้องยังเขียว) |
 | **C1.2b** | §2 C1.2 ครึ่ง objects | X3: `recordCount` · X1: วัตถุของระบบ CRM อื่นในร้านเดียวกัน → 404 | C1.2a |
 | **C1.3** | §2 C1.3 | ใช้ facade จาก C0.3 (`ensureAccountContact`) · X3: cache `openDealCount/wonValueSatang` · X4: consumer `crm.company.created` | บัญชี party/contact |
@@ -147,7 +149,7 @@
 
 | ใบ | สัญญา | แก้จากเดิม | regression |
 |---|---|---|---|
-| **C2.0** | (ใหม่) migration `crm_v2_b`: ตารางของ **ทั้งเฟส C2** (Score* · Assignment · Sequence* · Email* + `EmailDomain` · Tracked* · Web* · `PosSale.dealId` · `FormDef.crmSystemId/assignRuleId` · ถอด unique เก่าของ MemberSection/Field) + scope registry | SQL additive ล้วน (ยกเว้น DROP INDEX unique เก่า ซึ่งปลอดภัยเพราะ unique ใหม่ครอบแล้ว — เขียนเหตุผลใน wo-notes) · ซ้อมบนสำเนา prod ถ้า Q5 = ได้ | F1/F8 · สมาชิก `m1.2` `m1.3` |
+| **C2.0** | (ใหม่) migration `crm_v2_b`: ตารางของ **ทั้งเฟส C2** (Score* · Assignment · Sequence* · Email* + `EmailDomain` · Tracked* · Web* · **`CrmDealPayment`** · `CrmUserPref` · คอลัมน์ `FormDef`/`FormSubmission`) + scope registry · **มติ C29: ไม่เพิ่ม `PosSale.dealId`** (ตารางขายเป็นตารางร้อน) — บิลผูกดีลผ่านแถว `CrmDealPayment` ซึ่งเป็นธงกันนับซ้ำของ `recordPayment` ไปในตัว | SQL additive ล้วน · ซ้อมบนสำเนา prod ถ้า Q5 = ได้ | F1/F8 · สมาชิก `m1.2` `m1.3` |
 | **C2.1** | §2 C2.1 | **มติ C18**: ย้ายตัวรันแอ็กชันสื่อสาร + WAIT (lease) ออกจาก `src/lib/modules/member/journeys.ts` เป็นของกลาง แล้วสมาชิก+CRM ใช้ร่วม · แอ็กชัน `WEBHOOK` ผ่าน `webhookTargetProblem` (X6) · โควตา/loop-guard แยก scope | `qc-member-m3.3` · `fix-s3` · `qc-kanban-k2.9` · `qc-automation` |
 | **C2.2** | §2 C2.2 | วันหยุด (C25) · X5: `runDue` จอง lease + กู้แถวค้าง · X8: ตรวจ consent/optOut **ตอนทำขั้น** · X3: ACTIVE ได้ 1 · ลงทะเบียนงานใน C0.5 | C2.1 |
 | **C2.3** | §2 C2.3 | X3: round-robin 20 ทางพร้อมกันกระจายเท่ากัน · LEAST_OPEN ไม่ over-assign เมื่อยิงพร้อมกัน | — |
@@ -157,7 +159,7 @@
 | **C2.7** | §2 C2.7 | ใช้ facade C0.3 · **X4 เต็มรูป**: `recordPayment` ปักธงต่อ (deal, refType, refId) ก่อนบวก `paidSatang` ด้วย increment · void ลบเฉพาะที่เคยบวก · consumer เป็นของแถมของ `pos.sale.paid` (ไม่บล็อกบัญชี/สมาชิก) | POS ทั้งชุด · บัญชี V2 ทั้งชุด · `qc-member-m2.8` · `fix-s2` · `qc-kanban-k3.3` |
 | **C2.8** | §2 C2.8 | X3 `maxPerDay` ยิงพร้อมกัน · X4 · X5 decay | — |
 | **C2.9** | §2 C2.9 | event ใหม่ 6 ตัว emit **ใน tx** ของโมดูลเจ้าของ (`ticket.order.paid` `rental.returned` `school.enrolled` `hotel.checked_out` `clinic.visit.done` `queue.served`) · `booking.*` `shop.order.paid` มีแล้ว — เพิ่มแค่ consumer CRM · คลินิกส่งเฉพาะ "มีการเข้ารับบริการ" (X8) | ข้อสอบของ 6 โมดูลเจ้าของทั้งชุด |
-| **C2.10** | §2 C2.10 | ช่องทางรอบแรก push + อีเมล + ในแอป (LINE รอ Q3) · quiet hours ฝั่งพนักงาน · ตั้งค่ารายคน (C22) · งานถี่ลง C0.5 · X5 · ไม่แจ้งเรื่องที่ผู้รับมองไม่เห็น (X1) | `qc-kanban` notify |
+| **C2.10** | §2 C2.10 | ช่องทางรอบแรก push + อีเมล + ในแอป (LINE รอ Q3) · quiet hours ฝั่งพนักงาน · ตั้งค่ารายคน (C22) · งานถี่ลง C0.5 · X5 · ไม่แจ้งเรื่องที่ผู้รับมองไม่เห็น (X1) | `qc-kanban-notify` |
 | **C2.11** | §2 C2.11 | X2 · X9 (ส่งอีเมล/ลงทะเบียน sequence เป็นกลุ่ม = danger) | C1.10 |
 | **ปิด C2** | `qc:all` เต็ม · US1 US4 US5 US9 เดินจริง | | |
 
@@ -238,7 +240,7 @@ C6.1 ซ้อม migration + ตรวจ prod · C6.2 backfill prod (dry-run �
 
 | ใบ | ขั้นตอน |
 |---|---|
-| **C6.1** | ตรวจ `_prisma_migrations` บน prod ครบ `crm_v2_a/b/c` (`scripts/prodmig.cjs` แบบอ่านอย่างเดียว) · หน้า v1 บน prod ยังทำงาน (ค่า `uiVersion` = 1 ทุกร้าน) · ตรวจ `OpsEvent` ERROR ของ outbox 24 ชม. หลัง deploy ล่าสุด = 0 รายการใหม่จาก CRM |
+| **C6.1** | ขออนุญาตเจ้าของติดตั้ง crontab รายนาที/รายชั่วโมง/รายวันของ CRM บน VPS (แบบเดียวกับ cron บัญชี · RESOLUTIONS R-C.6) · ตรวจ `_prisma_migrations` บน prod ครบ `crm_v2_a/b/c` (`scripts/prodmig.cjs` แบบอ่านอย่างเดียว) · หน้า v1 บน prod ยังทำงาน (ค่า `uiVersion` = 1 ทุกร้าน) · ตรวจ `OpsEvent` ERROR ของ outbox 24 ชม. หลัง deploy ล่าสุด = 0 รายการใหม่จาก CRM |
 | **C6.2** | backfill prod: ทุกสคริปต์ `--dry-run` ก่อน → ส่งตัวเลขให้เจ้าของทาง Telegram → เจ้าของตอบ "ทำ" → รันจริงทีละร้าน → รันซ้ำรอบสองต้องได้ 0 (idempotent) |
 | **C6.3** | เปิด v2 ให้ร้านนำร่อง 1 ร้าน (เจ้าของเลือก) → ทดสอบบน prod ด้วย 5 บทบาท ตามรายการ §3 ของพิมพ์เขียวทุกหน้า (ถ่ายภาพ · ไม่เขียนข้อมูลจริงของร้าน — ใช้ผู้ติดต่อทดสอบ tag `qc-prod-` แล้วลบ) → เฝ้า 24 ชม. → เปิดร้านที่เหลือเมื่อเจ้าของสั่ง · **ทางถอย**: ตั้ง `uiVersion` กลับเป็น 1 (ข้อมูลไม่หายเพราะ additive) · ปิด consumer CRM ด้วยสวิตช์ `settings.crm.bridgesEnabled=false` |
 | **C6.4** | `ledger/HANDOVER-<วันที่>-CRM.md` (ตารางใบ · บั๊กจริงที่เจอ · ORACLE-EDIT ทั้งหมด · หนี้ · เรื่องรอเจ้าของ · วิธีถอย) · ชุดหลักฐาน §10 · memory · Telegram · **หยุด รอ Fable** |
@@ -262,23 +264,8 @@ Fable จะ: สุ่มรัน 5 ชุด + กลุ่ม X ทั้ง
 
 ## 11. Prompt พร้อมใช้ (อังกฤษ — ประหยัด token · ผู้ทำงานตอบเจ้าของเป็นไทย)
 
-### 11.1 Kick-off — Opus 5 controller (วางใน session ใหม่)
-```
-You are the CONTROLLER of the SHARK "CRM v2" run. Reply to the owner in Thai.
-Read, in order: /root/projects/shark-crm/ledger/CRM-MASTER-PLAN.md (whole file — it overrides older docs),
-ledger/REVIEW-CRM-DESIGN-2026-09-18.md, ledger/CRM-RUN.md, docs/modules/20-crm-v2.md (incl. §15 addendum),
-docs/api/CRM-API.md, ledger/CODEX-HANDOFF-CRM.md §3 (coding prohibitions), ledger/MEMBER-RUN.md §0–§0.1,
-ledger/AUDIT-2026-09-16-MEMBER.md (the bug classes you must not repeat).
-Work in worktree /root/projects/shark-crm, branch session/crm. Follow MASTER-PLAN §5 (14 steps per work order),
-§3 (12 gates), §4 (X-groups), §2 (machine/DB rules — every heavy command through `bash scripts/iso.sh`, DB-mutating
-oracles one at a time, never touch .env). Start at the first work order in §12 that is not ✅ (C0.1 if none).
-You never write product code yourself: spawn separate agents for oracle-writer, builder, reviewer (prompts §11.2–11.4).
-Re-run every oracle yourself on a fresh seed before accepting. Open every screenshot next to its mockup yourself.
-Push main only when a work order passes all 12 gates; then verify Vercel READY and prod migrations.
-When blocked on an owner decision: write it to ledger/CRM-OWNER-QUESTIONS.md, send it with `tg`, continue with
-work orders that do not depend on the answer. Keep §12 status, CRM-RUN §4 and the memory file current after every
-work order so a restarted session can resume. Do not stop until C6.4 is done or every remaining work order is blocked.
-```
+### 11.1 Kick-off — Opus 5 controller
+prompt ฉบับเต็ม (ออกแบบให้วางซ้ำเพื่อทำต่อจากที่ค้างได้) อยู่ที่ `ledger/CRM-KICKOFF-PROMPT.md` — ใช้ไฟล์นั้นเป็นหลัก
 
 ### 11.2 Oracle writer
 ```
@@ -334,6 +321,41 @@ Calibrate severity honestly: note mitigations that already exist.
 ใช้ `ledger/CODEX-HANDOFF-CRM.md` เป็นกติกาโค้ด + เอกสารนี้เป็นแผน · เปิด 3 session: **A** วาง §11.1 (แทนคำว่า "spawn separate agents" ด้วย "session B เขียนข้อสอบล่วงหน้า 1 ใบเสมอ · session C ตรวจ/ล่า — สื่อสารผ่าน `ledger/wo-notes/` เท่านั้น") · **B** วาง §11.2 แล้ววนทุกใบตามลำดับ §6 · **C** วาง §11.4 ต่อใบที่ A แจ้งว่าเสร็จ และ §11.5 ในเฟส C5 · Codex ทำงานบน branch `session/crm-codex` และ **ไม่ push main** — ผู้คุมงาน Opus/Fable เป็นคน merge+deploy ทีละเฟส (ด่าน D12 ของโหมด Codex = push branch + รอ merge)
 
 ---
+
+## 12A. แผนขนาน · จุดตรวจ · งบเวลา
+
+```
+C0.1 → C0.2 ∥ C0.4 ∥ C0.5 → C0.3 (แตก A–F ขนานได้ 3) → C1.1 → C1.2a → C1.2b → C1.3 → C1.4 → C1.5 → C1.6 → C1.7 → C1.8 → C1.9 ∥ C1.10 → C1.11 → ปิด C1
+C2.0 → C2.1 → C2.2 ∥ C2.3 → C2.4 ∥ C2.5a → C2.5b → C2.6 ∥ C2.7 → C2.8 ∥ C2.9 → C2.10 → C2.11 → ปิด C2
+C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 → C3.9 → ปิด C3 → C4.1 → C4.2 → C4.3 ∥ C4.4 → C5.1 ∥ C5.2 → C5.3 → C5.4 → C5.5 → C6.1 → C6.2 → C6.3 → C6.4
+```
+กติกาไฟล์เจ้าของเมื่อขนาน: `ledger/crm-briefs/crm-brief-RESOLUTIONS.md` R-D (โฟลเดอร์ crm-bridges แยกไฟล์ต่อใบ · บล็อกทะเบียนต่อใบ) · ผู้เขียนข้อสอบทำงานล่วงหน้า 1 ใบเสมอ (เขียนข้อสอบใบถัดไประหว่าง builder ทำใบปัจจุบัน)
+
+| จุดตรวจ | เมื่อ | ต้องส่ง Telegram ให้เจ้าของ |
+|---|---|---|
+| CP0 | จบ C0 | facade/ไฟล์ส่วนตัว/ตัวกระจายงาน พร้อม · คำถาม Q1–Q5 ที่ยังไม่ตอบ |
+| CP1 | ปิด C1 | ภาพหน้าหลัก 6 หน้า · `qc:all` · เปิดให้เจ้าของลอง v2 บนร้าน QC |
+| CP2 | ปิด C2 | วิดีโอ/ภาพเส้นทาง US1 US4 US5 US9 · สถานะ Q2/Q3 |
+| CP3 | ปิด C3 | portal ด้วย session ลูกค้า · คอมมิชชัน→payroll |
+| CP4 | จบ C4 | ทะเบียนปุ่ม passed = total |
+| CP5 | จบ C5 | ตารางข้อค้นพบ→ข้อสอบ→commit |
+| CP6 | จบ C6.1 | ขออนุมัติ backfill + ร้านนำร่อง |
+
+งบเวลาเดินเครื่องโดยประมาณ: C0 0.5 วัน · C1 2 วัน · C2 2.5 วัน · C3 2 วัน · C4 0.5 วัน · C5 1 วัน · C6 0.5 วัน (+ รอเจ้าของ) ≈ 9 วันปฏิทิน
+
+## 12B. คู่มือกู้สถานการณ์ (ผู้คุมงานเจอแน่ ๆ)
+
+| อาการ | สาเหตุที่เจอจริงใน RUN สมาชิก | ทำอย่างไร |
+|---|---|---|
+| session ตาย/รีสตาร์ทกลางงาน | คำสั่งหนักรันใน cgroup 5 GB | อ่าน §12 + `ledger/CRM-RUN.md` §4 + `git status` → ทำต่อจากขั้นที่ค้าง · งานยาวต้องอยู่ใน unit แยกและมี log ให้ poll |
+| ตัวแทนค้าง "stalled / no progress" | stream หลุด | `SendMessage` ไปที่ตัวแทนเดิม: บอกให้ดู `git diff --stat` แล้วทำต่อ — ห้ามปล่อยตัวใหม่ทับงานครึ่ง ๆ |
+| ข้อสอบแดงเฉพาะตอนรันรวม | ฐาน QC ใช้ร่วม: การเชื่อมต่อหมดเวลา · drain แย่ง event · ข้อมูลชั่วคราวของชุดอื่น | รันเดี่ยวซ้ำหลัง reseed · ถ้าเขียว = จดเป็น flake พร้อมสาเหตุที่พิสูจน์ได้ · แดงซ้ำ 2 ครั้ง = บั๊กจริง ห้ามข้าม |
+| จำนวนสมาชิก/ระดับใน seed เพี้ยน | ข้อสอบก่อนหน้าไม่คืนสภาพ | หาตัวการด้วยการรันทีละชุด + `qc-member-m1.9` คั่น → แก้ข้อสอบตัวนั้น (ORACLE-EDIT) |
+| build ผ่านในเครื่องแต่ Vercel ล้ม | `scripts/*.mts` ถูก type-check ตอน build · import โมดูลที่ยังไม่มี | ข้อสอบล่วงหน้าต้อง `await import("…" as string)` · typecheck ก่อน push ทุกครั้ง |
+| หน้า 500 ทั้งที่ build ผ่าน | `export type` ใน `"use server"` · client import ถึง prisma | ด่าน reviewer + grep ก่อน build |
+| คิว outbox ตัน | event ใหม่ไม่มี consumer/ไม่ลงทะเบียน | ดู `OutboxEvent.lastError` ก่อนอย่างอื่น |
+| builder รายงาน "ผ่าน" แต่รันซ้ำแดง | รันบนข้อมูลสกปรก/คนละลำดับ | ยึดผลของผู้คุมงานบน seed ใหม่เท่านั้น |
+| Telegram ส่งไม่ได้ | ตัวจัดสิทธิ์ของ session บล็อก `tg` | เขียนลง «ledger/CRM-OWNER-QUESTIONS.md» + สรุปท้ายข้อความในแชท แล้วทำงานต่อ |
 
 ## 12. สถานะสด (ผู้คุมงานแก้ทุกครั้งที่ปิดใบ)
 

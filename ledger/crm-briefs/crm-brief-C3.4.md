@@ -1,0 +1,7 @@
+# C3.4 — MEETING/KB bridges + in-page AI + remaining tools
+Read `crm-brief-COMMON.md` and `crm-brief-C1.10.md` first. Contract: CRM-RUN §2 "C3.4". Spec: blueprint §8, §9 rows MEETING/KB, mockups 14 (left), 13 (c).
+
+Deliverables: team-room notifications (deal won / hot lead / stale digest) into the MEETING module channel mapped per Team (find the meeting facade first; if no safe "post message as system" function exists, add one to ITS facade) + deal-link unfurl · AI in pages: deal (summary, why at risk, next step, draft follow-up e-mail), contact (why hot, closing message), company (summary, upsell from purchase history), home ("which deals are at risk this month" → table + proposal to create tasks) · KB grounding for drafts (`{{kb:slug}}` in templates + retrieval in prompts) · remaining 8 tools → total 32.
+Hard requirements (member audit H3): every AI read goes through the viewer-scoped actor (`visibleWhere` of the asking human; teams/units of that human); prompts contain no phone/e-mail/tax id (mask) and no sensitive member fields; every write is a proposal with 24 h expiry; proposals can be cancelled only by someone who could confirm them.
+Acceptance (oracle `qc-crm-c3.4`, fake AI provider): CRM-RUN (22) + X2 assistant-as-thana cannot surface krabi deals through ANY tool (enumerate all 32) · X8 prompt capture contains no PII patterns · X9 proposal confirm/cancel permission matrix.
+Regressions: `qc-ai-*` suites touching tools/proposals/skills, `qc-kb*`, `qc-meeting-invite`.
