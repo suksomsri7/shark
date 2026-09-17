@@ -41,7 +41,7 @@
 | D9 | ผู้ตรวจไม่มี BLOCKER | ✅ | รอบแรก: BLOCKER 1 + ควรแก้ 6 → แก้ครบ · รอบสอง (ไล่เฉพาะจุดที่แก้): **"no BLOCKERs remaining"** + ของใหม่ 2 จุดที่ปิดต่อแล้ว · ดู §7 |
 | D10 | เอกสาร/ทะเบียน | ✅ | N/A — ไม่มี op/สิทธิ์/event ใหม่ในใบนี้ (F13.x เขียวเท่าเดิม) |
 | D11 | wo-notes + ข้อมูล QC คืนสภาพ | ✅ | ไฟล์นี้ · `qc-member-m1.9` 26/26 หลังทุกอย่าง |
-| D12 | commit → push → Vercel READY | ✅ | ดู §10 |
+| D12 | commit → push → Vercel READY | ✅ | `b8fea3f` (+ `7fb1d76` บันทึก hash) · push `session/crm` + `main` 14:17 UTC · deploy ใหม่ขึ้นจริง 14:24 UTC (`dpl_By2r9…` → `dpl_33Xqe…` ใน header ของ shark.in.th) · `/api/health` 200 `{"ok":true,"db":true,"outboxPending":0}` · ไม่มี migration ในใบนี้ ⇒ ไม่ต้องตรวจ `_prisma_migrations` |
 
 ## 4. กลุ่มข้อสอบ X
 | กลุ่ม | เกี่ยวกับใบนี้? | เหตุผล |
