@@ -54,6 +54,7 @@ const enumVals = async (name: string) => (await q<{ enumlabel: string }>(`select
 const hasIdx = async (t: string, colsIn: string[], unique = false) => { const rows = await q<{ indexdef: string }>(`select indexdef from pg_indexes where tablename='${t}' and indexdef ${unique ? "" : "not "}ilike '%unique%'`); return rows.some((r) => { const body = r.indexdef.slice(r.indexdef.indexOf("(") + 1).replace(/"/g, "").toLowerCase(); return colsIn.every((c) => body.includes(c.toLowerCase())); }); };
 const P = prisma as Any;
 let tid = ""; let SYS = ""; let PT = "";
+let restoreTier21: (() => Promise<void>) | null = null;
 const tag = Date.now().toString(36);
 const made = { cards: [] as string[], customers: [] as string[], appts: [] as string[], sales: [] as string[], ledgerKeys: [] as string[] };
 const restore: (() => Promise<unknown>)[] = [];
@@ -274,6 +275,9 @@ try {
   const pos = (await import("@/lib/modules/pos/service" as string)) as Record<string, (...a: Any[]) => Any>;
   const svcPatong = await prisma.bookingService.findFirst({ where: { tenantId: tid, unitId: E.units.patong } });
   const I = await mk({ name: "การ์ด I ต่อชิ้น", slots: 10, ruleKind: "PER_ITEM", ruleConfig: { serviceIds: [svcPatong!.id], perDayMax: 2, allowAutoFromSale: true } });
+  // ORACLE-EDIT M2.3-S5.2 (Fable 16 ก.ย.): บิลนี้ทำให้สมาชิก seed คนที่ 21 มียอด 12 เดือน 420,000→1,180,000 ≥ เกณฑ์ silver → consumer เลื่อนระดับ · finally ลบบิลแต่ไม่คืนระดับ ⇒ m1.9 S1.1 นับ 29/16 (หนี้ M3.F ข้อ 4) · จำระดับก่อนขายไว้คืนตอนจบ
+  const m21Before = await prisma.customer.findUnique({ where: { id: m(21).id }, select: { tier: true, tierDefId: true } });
+  restoreTier21 = async () => { if (!m21Before) return; await prisma.customer.update({ where: { id: m(21).id }, data: { tier: m21Before.tier, tierDefId: m21Before.tierDefId } as Any }); await P.memberTierHistory.deleteMany({ where: { customerId: m(21).id, createdAt: { gte: new Date(Date.now() - 3600_000) }, reason: { in: ["RULE_UPGRADE", "RULE_KEEP"] } } }).catch(() => null); };
   const sale = (await prisma.$transaction((tx) => pos.createSale({ tenantId: tid, unitId: E.units.patong, systemId: scope.systems.POS, pointSystemId: PT, memberId: m(21).id, idempotencyKey: key("sale-i"), lines: [{ name: "ทริปดำน้ำครึ่งวัน", qty: 3, unitPriceSatang: 250_000, serviceId: svcPatong!.id }, { name: "ของที่ระลึก", qty: 1, unitPriceSatang: 10_000 }], payMethods: [{ type: "CASH", amountSatang: 760_000 }] }, tx))) as Any;
   made.sales.push(sale.saleId);
   const asI = await ST.autoStampFromSale(ctx, { saleId: sale.saleId });
@@ -361,6 +365,7 @@ try {
   console.error("💥", e);
   chk("M2.3-ERR", "ข้อสอบรันจนจบ", false, "จบ", String((e as Error)?.message ?? e).slice(0, 200));
 } finally {
+  if (restoreTier21) { try { await restoreTier21(); } catch { /* ignore */ } }
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ignore */ } };
   for (const r of restore) await d(r);
   // ล้าง progress/event ของการ์ดทดสอบ (ครอบคลุมสมาชิก seed ที่ถูกประทับด้วย)
