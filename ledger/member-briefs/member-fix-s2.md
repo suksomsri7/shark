@@ -1,0 +1,15 @@
+# S2 — money, points, outbox correctness
+Read `member-fix-COMMON.md` first, then the matching rows in `ledger/AUDIT-2026-09-16-MEMBER.md`.
+
+## Files this batch OWNS
+`src/lib/member-bridges.ts` · `src/lib/modules/member/service.ts` · `src/lib/modules/member/wallet.ts` · `src/lib/modules/point/lots.ts` · `src/lib/outbox-consumers.ts` · `src/lib/modules/booking/service.ts` · `src/lib/modules/crm/service.ts` · `src/lib/modules/shop/service.ts`
+Read-only: `src/lib/core/outbox.ts`, `history.ts`, `tiers.ts`.
+
+## Findings → acceptance criteria
+- **H5** `recordSpendOnce`: take the idempotency flag FIRST (`member.recordOnce(...)` under its advisory lock, inside the tx) and add to the total only when the flag row was created by this call; `recordSpend` uses an atomic `increment` (no read-modify-write). 10 parallel different bills for one member ⇒ total = exact sum; the same bill processed twice in parallel ⇒ counted once. v1 tier recompute (members without `tierDefId`) must still work from the post-increment value.
+- **M9** `burnFifo` (and any other spend path in `lots.ts`): balance check + decrement is one atomic conditional statement (`updateMany where balance >= points` → count===1) inside the tx; parallel redeems can never drive `PointBalance.balance` or a `PointLot.remaining` below 0; the loser gets the existing Thai "แต้มคงเหลือไม่พอ" error.
+- **M10** `compose(base, extra)`: a failing base (accounting step) must no longer starve member-side steps. Required semantics: run base; run every extra regardless; if anything failed, throw an aggregated error at the end so the event is retried — all steps are idempotent, verify that for each extra you now let run after a failed base and list them in the report. Also `withAutomation`/`withWebhooks` (journeys + webhooks) must fire when only the accounting step failed. VOID handling: `recordSpendOnce(…, "VOID")` subtracts only if the PURCHASE flag row exists for that sale (never subtract what was never added).
+- **M11** points of a voided bill: re-read the sale status immediately before `earnForSale`, and make the void reversal replay-safe so an EARN that lands after the reversal still gets reversed (e.g. idempotency key per reversed ledger entry instead of one key per sale). 
+- **M12** `booking DONE`, `crm deal won`, `shop order paid` events that grant value are emitted with `emitOutbox` INSIDE the same transaction as the state change (per the rule in `src/lib/core/outbox.ts:69-72`). If a call site has no tx, wrap minimal state-change + emit in one.
+- **L12** ops log: never write raw customer phone/e-mail into `OpsEvent.detail` — redact digits runs ≥7 and e-mail local parts in the logged message/stack. **L13** `approvalNotify` dedupes on retry (check-before-create keyed by event id / approval id).
+- **L15** `totalSpentSatang Int` → needs a migration ⇒ DEFERRED; instead guard: if the increment would exceed 2_147_483_647 clamp and log an OpsEvent (report this).
