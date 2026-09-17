@@ -5,6 +5,8 @@
 // 🔴 ตัวเลข/กติกาทั้งหมดเป็นสัญญาอยู่ที่ `scripts/crm-qc-env.mts` (CQC) — แก้ที่นั่นก่อนแก้ที่นี่
 // 🔴 idempotent: ลบ "ชั้น CRM" ของร้าน QC (crm* · team* · custom* · ผู้ใช้ nok) แล้วสร้างใหม่ — ไม่แตะข้อมูลสมาชิก
 // 🔴 ตารางที่ยังไม่มี (เฟสถัดไป: อีเมล/sequence/โควตา/คอมมิชชัน) ข้ามด้วย has(model) — seed โตตามเฟสได้โดยไม่ล้ม
+// 🔴 ชื่อตาราง partyId (C11) แก้แล้วในใบ C0.1: 9 ตารางจริง 2 กลุ่ม (PARTY_LINK_NEW_COLUMN / PARTY_LINK_EXISTING_COLUMN)
+//    — `HotelBooking`/`ClinicPatient` ไม่มีอยู่จริง · `PosSale` ไม่อยู่ในรายการ · เขียนลงเฉลยไว้ให้ข้อสอบอ่าน
 // 🔴 ท้ายสคริปต์ **รัน backfill 6 ตัวของ C1.1** กับร้านนี้ (ถ้ามีไฟล์) ⇒ DB อยู่ในสภาพหลัง backfill เหมือน prod
 //
 // โครงตาม ledger/CRM-RUN.md §0 ข้อ 1 + พิมพ์เขียว docs/modules/20-crm-v2.md §4
@@ -16,14 +18,20 @@ type Any = any;
 
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
-const cq = (await import("./crm-qc-env.mts" as string)) as { CQC: Any; dayFromToday: (n: number, h?: number) => Date; CRM_BACKFILLS: readonly string[] };
+const cq = (await import("./crm-qc-env.mts" as string)) as {
+  CQC: Any; dayFromToday: (n: number, h?: number) => Date; CRM_BACKFILLS: readonly string[];
+  PARTY_LINK_NEW_COLUMN: readonly string[]; PARTY_LINK_EXISTING_COLUMN: readonly string[]; PARTY_LINK_TABLES: readonly string[];
+};
 const mq = (await import("./member-qc-env.mts" as string)) as { MQC: Any; resolveMemberScope: (p: Any) => Promise<{ tenantId: string; systemId: string; systems: Record<string, string> } | null> };
 const { CQC, dayFromToday, CRM_BACKFILLS } = cq;
+const { PARTY_LINK_NEW_COLUMN, PARTY_LINK_EXISTING_COLUMN, PARTY_LINK_TABLES } = cq;
 
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 const sys = await import("@/lib/modules/system/service");
 const crm = await import("@/lib/modules/crm/service");
+// กติกาเดียวกับที่ moveDeal ใช้ (kind/closedAt/lifecycle) — เมล็ดข้อมูลลอกพฤติกรรม ไม่ลอกโค้ด
+const crmRules = await import("@/lib/modules/crm/rules");
 const t0 = Date.now();
 
 // model ที่มีใน client นี้ (ตารางของเฟสถัดไปยังไม่มี → ข้าม)
@@ -59,6 +67,7 @@ await delChildren("teamMember", "teamId", "team");
 for (const m of [
   "customRecord", "customObject",
   "crmCommission", "crmCommissionRule", "crmQuota", "crmVisibilityPolicy", "crmPortalRequest", "crmPortalAccess",
+  "crmFileLink", "crmContactConsent", // ตารางใหม่ของ crm_v2_a (ลูกของ contact/company/deal — ต้องลบก่อนแม่)
   "crmEmailMessage", "crmEmailTemplate", "crmEmailUserSetting", "crmSequenceEnrollment", "crmSequence",
   "crmAssignmentRule", "crmScoreRule", "crmTrackedLink", "crmWebSession",
   "crmActivity", "crmDeal", "crmStage", "crmPipeline", "crmCompany", "crmContact", "crmLostReason", "team",
@@ -179,11 +188,30 @@ for (let i = 1; i <= CQC.deals.total; i += 1) {
   const st = stageFor(i);
   const open = (i <= 45 ? b2bStages : retailStages).filter((s) => s.kind === "OPEN");
   const dl = await crm.createDeal(ctx, { contactId: contactIds[i - 1]!, pipelineId: i <= 45 ? b2b.id : retail.id, stageId: open[0]!.id, title: `ดีล QC ${String(i).padStart(2, "0")} — ${i <= 45 ? "แพ็กเกจดำน้ำองค์กร" : "คอร์สรายบุคคล"}`, valueSatang: CQC.deals.valueOf(i), expectedCloseAt: dayFromToday(i <= 15 ? -5 : (i % 60) + 3) });
-  if (st.id !== open[0]!.id) await crm.moveDeal(ctx, dl.id, st.id);
   dealIds.push(dl.id);
   const owner = CQC.contacts.ownerOf(i);
   const row = await P.crmDeal.findUnique({ where: { id: dl.id } });
   const patch: Record<string, unknown> = { ownerUserId: users[owner]!.userId };
+  // 🔴 ห้ามเรียก `crm.moveDeal` ในเมล็ดข้อมูล (เคยเรียกจนถึง 18 ก.ย. 2569 — เป็นบั๊ก):
+  //    moveDeal ยิง event `crm.deal.won` ใน tx เดียวกัน (src/lib/modules/crm/service.ts:163) และ consumer
+  //    `onCrmDealWon` (src/lib/member-bridges.ts:616) **สมัครสมาชิกให้ 1 คนต่อดีลที่ชนะ** ⇒ ชุดข้อมูลสมาชิก
+  //    ของร้าน QC บวมเงียบ ๆ 10 คน (source=CRM) ตอนที่ชุดข้อสอบอื่น drain outbox ทีหลัง →
+  //    `qc-member-m1.9` (ด่าน D11 ของทุกใบ) ตกจาก 30/15/10/5 เป็น 40/15/10/5 โดยไม่มีใครรู้ว่ามาจากไหน
+  //    ⇒ เมล็ดข้อมูล "สร้างสถานะ" เท่านั้น ห้ามปลอมเหตุการณ์ธุรกิจที่ไปแก้ข้อมูลของโมดูลอื่น
+  //    ดีล 1..15 จึงถูกวางไว้ในขั้นสุดท้ายด้วยการเขียนฟิลด์ชุดเดียวกับที่ moveDeal เขียน (stageId · kind · closedAt)
+  //    โดยคิดค่าจาก `rules.dealStateForStage` ตัวเดียวกัน (ห้าม hardcode) + ผลข้างเคียงฝั่งผู้ติดต่อของ WON
+  //    (`rules.lifecycleAfterDealWon`) — ต่างจากของเดิมแค่ "ไม่มี event" เท่านั้น
+  if (st.id !== open[0]!.id) {
+    const state = crmRules.dealStateForStage(st.kind as Any, new Date());
+    Object.assign(patch, { stageId: st.id, kind: state.kind, closedAt: state.closedAt });
+    if (st.kind === "WON") {
+      const c = await P.crmContact.findUnique({ where: { id: contactIds[i - 1]! } });
+      if (c) {
+        const next = crmRules.lifecycleAfterDealWon(c.lifecycleStage);
+        if (next !== c.lifecycleStage) await P.crmContact.update({ where: { id: c.id }, data: { lifecycleStage: next } });
+      }
+    }
+  }
   if (row && "stageEnteredAt" in row) {
     const stale = i >= 16 && i <= 21;
     Object.assign(patch, {
@@ -257,6 +285,22 @@ for (const s of CRM_BACKFILLS) {
   backfillRan.push(s);
 }
 
+// ═══════════════════ 10.5 ด่านกันเมล็ดข้อมูลไปแตะ "ชุดข้อมูลสมาชิก" (บทเรียน 18 ก.ย. 2569) ═══════════════════
+// 🔴 ด่าน D11 ของทุกใบใช้ `qc-member-m1.9` (30/15/10/5) เป็นตัวพิสูจน์ว่าข้อมูล QC ถูกคืนสภาพ
+//    ถ้าเมล็ดข้อมูล CRM ทำให้สมาชิกเพิ่มขึ้นแม้แต่คนเดียว ด่านนั้นพังทั้ง RUN และไปโผล่ในใบอื่นที่ไม่เกี่ยวเลย
+//    ⇒ ตรวจที่นี่ ทันที ดังๆ (exit 1) แทนที่จะให้ข้อสอบคนละชุดมาเจอทีหลังเป็นชั่วโมง
+const expectMembers: number = ME.counts?.members ?? 60;
+const memberTotal = await P.customer.count({ where: { tenantId } });
+const memberFromCrm = await P.customer.count({ where: { tenantId, source: "CRM" } });
+const wonEvents = await P.outboxEvent.count({ where: { tenantId, type: "crm.deal.won" } });
+const pendingMine = await P.outboxEvent.count({ where: { tenantId, createdAt: { gte: new Date(t0) }, status: { not: "DONE" } } });
+if (memberTotal !== expectMembers || memberFromCrm > 0 || wonEvents > 0) {
+  console.error(`❌ เมล็ดข้อมูล CRM ไปแตะชุดข้อมูลสมาชิก — หยุดก่อนที่ด่าน D11 (qc-member-m1.9) จะพังในใบอื่น`);
+  console.error(`   สมาชิกในร้าน ${memberTotal} คน (สัญญาของชุดข้อมูลสมาชิก = ${expectMembers}) · มาจาก source=CRM ${memberFromCrm} คน · event crm.deal.won ค้าง ${wonEvents} แถว`);
+  console.error(`   สาเหตุที่พบบ่อย: เรียก crm.moveDeal ในเมล็ดข้อมูล (ยิง crm.deal.won → consumer สมัครสมาชิกให้) — ดูคอมเมนต์ที่ขั้นตอน 7`);
+  process.exit(1);
+}
+
 // ═══════════════════ 11. เฉลย ═══════════════════
 const count = async (m: string, where: Record<string, unknown> = { tenantId }) => (has(m) ? P[m].count({ where }) : 0);
 const expected = {
@@ -266,6 +310,8 @@ const expected = {
   users: { owner: users.owner, manager: users.manager, thana: users.thana, pook: users.pook, kata: users.kata, nok: users.nok },
   pipelines: { b2b: { id: b2b.id, stages: b2bStages.map((s) => s.id) }, retail: { id: retail.id, stages: retailStages.map((s) => s.id) } },
   lostReasonIds, companyIds, contactIds, dealIds, contractObjectId,
+  /** ทะเบียน partyId (C11) ที่แก้ให้ตรงชื่อจริงในใบ C0.1 — ข้อสอบ C1.1 S5 อ่านจากที่นี่/crm-qc-env.mts */
+  partyLinkTables: { newColumn: [...PARTY_LINK_NEW_COLUMN], existingColumn: [...PARTY_LINK_EXISTING_COLUMN], all: [...PARTY_LINK_TABLES] },
   counts: {
     companies: companyIds.length, contacts: contactIds.length, deals: dealIds.length, dealsWon: CQC.deals.won, dealsLost: CQC.deals.lost, dealsOpen: CQC.deals.open,
     staleCandidates: CQC.deals.stale, activities: actCount, contractRecords, teams: Object.keys(teams).length,
@@ -275,5 +321,5 @@ const expected = {
   backfillRan,
 };
 writeFileSync(CQC.expectedPath, JSON.stringify(expected, null, 2));
-console.log(`\n✅ seed CRM: ร้าน ${tenantId} · ระบบ CRM ${SYS} · บริษัท ${companyIds.length} · ผู้ติดต่อ ${contactIds.length} · ดีล ${dealIds.length} · กิจกรรม ${actCount} · สัญญา ${contractRecords} · ทีม ${Object.keys(teams).length} · backfill ${backfillRan.length}/${CRM_BACKFILLS.length} · เฉลย ${CQC.expectedPath} · ${Math.round((Date.now() - t0) / 1000)}s`);
+console.log(`\n✅ seed CRM: ร้าน ${tenantId} · ระบบ CRM ${SYS} · บริษัท ${companyIds.length} · ผู้ติดต่อ ${contactIds.length} · ดีล ${dealIds.length} · กิจกรรม ${actCount} · สัญญา ${contractRecords} · ทีม ${Object.keys(teams).length} · backfill ${backfillRan.length}/${CRM_BACKFILLS.length} · สมาชิกในร้าน ${memberTotal} (CRM ${memberFromCrm}) · outbox ที่ยังไม่ DONE จากรอบนี้ ${pendingMine} · เฉลย ${CQC.expectedPath} · ${Math.round((Date.now() - t0) / 1000)}s`);
 await prisma.$disconnect();

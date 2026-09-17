@@ -63,7 +63,7 @@
 
 ## 2. สัญญารายใบ (สรุปที่ QC ใช้ — รายละเอียดเต็มดูพิมพ์เขียว §4–§9)
 
-### C1.1 — schema + Team core + partyId ทุกระบบ + backfill + seed (Opus · 26 ข้อ)
+### C1.1 — schema + Team core + partyId ทุกระบบ + backfill + seed (Opus · **50 ข้อ** — ขยายในใบ C0.1 · ของเดิม 26)
 - prisma: ทุกอย่างใน §4.1/§4.2/§4.3 กลุ่ม core+ตัวตน+วัตถุ (Score/Sequence/Email/Tracking/Quota/Commission/Portal ไปใบของตัวเอง) · `MemberSection/Field` unique ใหม่ · partyId บน Appointment/ShopOrder/RentalBooking/SchoolEnrollment/HotelBooking/ClinicPatient/QueueTicket (ชื่อจริงตรวจก่อน) · `core/teams.ts` · scope.ts ครบ (F1) · backfill: companies-from-text · stage-history-seed · party-links · contact-name-split · lost-reasons-seed · visibility-default · seed QC ตาม §0.1
 - oracle: S1 migration apply บน QC + ทุก model ใน scope registry (4) · S2 unique objectKey ไม่ชนข้อมูลสมาชิกเดิม + M1.2 ข้อสอบยังเขียว (3) · S3 backfill idempotent รัน 2 รอบผลเท่ากัน + dry-run ไม่เขียน (6) · S4 companies-from-text: "บริษัท ไทยทัวร์เอเชีย" 3 ผู้ติดต่อ → 1 CrmCompany 1 Party COMPANY (3) · S5 party-links ครอบ 7 ตาราง (นับแถวที่มีเบอร์ → partyId ไม่ null) (4) · S6 teams CRUD + teamsOf + unique name (4) · S7 seed ครบตามเฉลย (2)
 
@@ -177,7 +177,7 @@
 ### 3.1 ตารางสถานะสด
 | WO | สถานะ | commit | หมายเหตุ |
 |---|---|---|---|
-| C1.1 | 🟡 ข้อสอบพร้อม (26 ข้อ · SKIPPED) · seed พร้อม | — | รอ Codex ตาม CODEX-HANDOFF-CRM.md |
+| C1.1 | 🟡 ข้อสอบพร้อม (**50 ข้อ** · SKIPPED ถูกเหตุผล) · seed พร้อม (ยังขาดแถวธุรกิจ 9 ตาราง — สัญญา `CQC.businessRows`) | — | ต่อคิวหลัง C0.2–C0.5 ตาม MASTER-PLAN §12A |
 | C1.2–C1.11 | ⏸️ | — | Codex เขียนข้อสอบเองจาก §2 ก่อนทำ |
 | C2/C3 | ⏸️ | — | รอคำสั่ง · C2.1 รอสมาชิก M3.3 |
 
@@ -186,3 +186,9 @@
 - 11 ก.ย. 2569 — เขียนแผน 32 ใบจากพิมพ์เขียว 20-crm-v2 หลังมติเจ้าของ 10 ข้อ (DESIGN-CRM §9) · C7 portal เจ้าของยืนยัน "เอา" 11 ก.ย. → C3.5 อยู่ในแผนเต็ม
 - 18 ก.ย. 2569 — Fable ทบทวนแบบกับโค้ดจริง main `6fff98d` (Codex ยังไม่เริ่ม · branch ว่าง): `REVIEW-CRM-DESIGN-2026-09-18.md` + `CRM-MASTER-PLAN.md` + พิมพ์เขียว §15 (มติ C15–C27) · ผู้ทำงานคนถัดไปเริ่มที่ C0.1
 - 18 ก.ย. 2569 (ค่ำ) — Fable เขียนใบสั่งงานรายใบครบ 53 ใบ (`ledger/crm-briefs/` · ชื่อฟังก์ชัน/ไฟล์จริงตรวจกับโค้ด) + ตรวจไขว้ สเปก↔แผน↔ใบสั่ง โดยตัวตรวจอิสระ → `crm-brief-RESOLUTIONS.md` (เจ้าของหัวข้อที่ไม่มีคนรับ 17 ข้อ · ข้อขัดแย้ง 13 ข้อ · ความกำกวม 17 ข้อ · มติ C28–C30 · C15/C16 ฉบับแก้) + prompt เปิดงาน `ledger/CRM-KICKOFF-PROMPT.md` · 🔴 ตัวอักษร migration/เลขใบในตาราง §1–§2 ของไฟล์นี้ที่ไม่ตรงกับ MASTER-PLAN ให้ยึด MASTER-PLAN + RESOLUTIONS
+- 17 ก.ย. 2569 — **เริ่ม RUN จริง (ผู้คุมงาน Opus 5 · MASTER-PLAN §5)** · ใบ **C0.1** ปิด: เครื่องมือ QC ครบ (ข้อสอบ C1.1 ขยาย 26→50 ข้อ · เมล็ดข้อมูลแก้ชื่อตารางจริง · `scripts/visual-crm.mts` · `scripts/crm-ui-inventory.json` + ด่าน F14.1/F14.2 · แม่แบบ wo-notes 12 ด่าน + X1–X10) — รายละเอียด `ledger/wo-notes/crm-C0.1.md`
+  - **สัญญาข้อสอบ C1.1 เปลี่ยน** (ทับ §2 ด้านบน): 50 ข้อ · S5.6/S5.7 บังคับให้ทั้ง 9 ตารางธุรกิจมีแถวของ QC จริง ≥2 แถว **ที่ผูก partyId ไปยัง Party ของผู้ติดต่อ QC คนที่ระบุ** (สัญญาอยู่ที่ `CQC.businessRows` · ทุกคำสั่งกรอง `tenantId` ของร้าน QC) ⇒ C1.1 ต้องเพิ่มระบบธุรกิจใน `CQC.extraSystems` + สร้างแถวในเมล็ดข้อมูล ไม่งั้น S5.6/S5.7 แดง (ตั้งใจ)
+  - **มติผู้คุมงาน (ทับ RESOLUTIONS R-A เฉพาะจุดนี้)**: `src/lib/modules/crm/settings.ts` + `getCrmSettings({tenantId, systemId})` **เกิดในใบ C1.1** (เพราะ `settings.crm.uiVersion` เป็นของ C1.1 ตาม MASTER-PLAN §6) · ใบ C1.5 เป็นผู้ **ขยาย** (set/หมวด/หน้าตั้งค่า) ไม่ใช่ผู้สร้าง — ใบอื่นเพิ่มหมวดผ่านบริการนี้เท่านั้นตามเจตนาเดิมของ R-A
+  - **มติ**: การสลับ unique ของ `MemberSection/MemberField` ยึด MASTER-PLAN §6 (ADD COLUMN → CREATE UNIQUE ใหม่ → DROP unique เก่า ในไมเกรชันเดียว) ทับประโยคในใบสั่ง C0.1 ที่เขียนว่าของเก่ายังอยู่ · ข้อสอบ S2.4 ตรวจสถานะปลายทาง · S2.5 ตรวจลำดับใน SQL
+  - **บทเรียนเครื่องมือ**: `seed-member-qc.mts` สร้างร้าน QC ใหม่ทุกครั้ง (id ทุกตัวเปลี่ยน · ในฐานมีร้านเดียว ไม่มีของค้าง) ⇒ ทุกใบต้องถ่ายภาพ **หลัง** reseed รอบสุดท้ายของใบนั้น (ลำดับ §5 ขั้น 8 → 10 ถูกแล้ว)
+  - **ผู้ตรวจจับ BLOCKER 1 + ควรแก้ 6** (แก้ครบก่อน commit): ข้อสอบ partyId ไม่กรองร้าน + นับเฉพาะแถวที่มีเบอร์ ⇒ เขียวได้ทั้งที่ไม่มีใครเขียน partyId · S8.1/S8.2 grep คอมเมนต์แทนพฤติกรรม · ทะเบียนปุ่มแถว `foo-*` เดียวคลุมทุกปุ่ม · ปุ่มที่ `data-testid={ตัวแปร}`/`<X.Trigger>`/`onSelect` หลุดด่านเงียบ ๆ · `visual-crm` ไม่ตีตกหน้าที่ล้นขอบจอ (ผิด D7) · session หลุดค้างเมื่อ `process.exit` ข้าม `finally`

@@ -1,0 +1,35 @@
+{
+  "$schema": "ทะเบียนปุ่มของ CRM v2 — 1 แถวต่อ element ที่กดได้/กรอกได้ (CRM-MASTER-PLAN §7 · ด่าน D8 ของทุกใบ UI). ไม่ใช่ JSON Schema จริง แต่เป็นคำอธิบายในไฟล์ (JSON ใส่คอมเมนต์ไม่ได้) — ทุกคีย์ที่ขึ้นต้นด้วย $ คือเอกสาร ไม่ใช่ข้อมูล. ตัวตรวจอ่านเฉพาะ rows",
+  "$owner": "ทุกใบ UI เติมแถวของหน้าตัวเองก่อนปิดใบ (D8) · C4.1 แค่ปิดช่องที่เหลือ · ด่าน F14.1/F14.2 ใน scripts/fitness.mts บังคับให้ตรงกับโค้ดเสมอ",
+  "$fields": {
+    "page": "เส้นทางหน้าแบบย่อ (ตัดคำนำหน้า /app/sys/[id]/crm ออก) เช่น \"/deals/[id]\" · หน้า portal ใช้ \"/b/[slug]/...\"",
+    "testid": "ค่า data-testid ตรงตัวในโค้ด · ถ้าเป็นชื่อที่สร้างจากตัวแปร (`deal-card-${id}`) ให้เขียนเป็นแพตเทิร์นลงท้าย * เช่น \"deal-card-*\"",
+    "kind": "button | link | menu | tab | toggle | drag | form | input | select — ชนิดการโต้ตอบ",
+    "roles": "บทบาทที่ต้องเห็นและกดได้ (owner · manager · nok · thana · customer)",
+    "hiddenFor": "บทบาทที่ต้อง **ไม่เห็น** element นี้เลย (ตัวกดจะ fail ถ้าเห็น = hiddenLeak)",
+    "expect": "สิ่งที่ต้องเกิดเมื่อกด — { type: modal|navigate|mutation|download|toast|inline-error, target: \"<testid ของโมดัล> | <path> | op:<opId> | file:csv\", db: \"<ตาราง.คอลัมน์=ค่า> (ตรวจด้วย query หลังกด)\" }",
+    "wo": "ใบสั่งงานที่สร้าง element นี้ เช่น \"C1.5\"",
+    "oracle": "id ของข้อสอบที่กดจริง เช่น \"C4.2-deals-360-07\" (เว้นว่างได้จนกว่า C4 จะเขียนตัวกด)"
+  },
+  "$example": {
+    "page": "/deals/[id]",
+    "testid": "deal-lost-btn",
+    "kind": "button",
+    "roles": ["owner", "manager", "nok", "thana"],
+    "hiddenFor": ["thana"],
+    "expect": {
+      "type": "modal",
+      "target": "deal-lost-modal",
+      "db": "CrmDeal.kind=LOST (ตรวจด้วย query หลังกด)"
+    },
+    "wo": "C1.5",
+    "oracle": "C4.2-deals-360-07"
+  },
+  "$rules": [
+    "F14.1 — data-testid ที่กดได้/กรอกได้ทุกตัวในโฟลเดอร์ CRM ต้องมีแถวที่นี่ (ยกเว้นตัวที่อยู่ใน CRM_TESTID_BASELINE ของ fitness.mts = หนี้ v1 ที่ตรึงไว้)",
+    "F14.2 — ทุกแถวที่นี่ต้องมี testid นั้นจริงในโค้ด (ห้ามมีแถวผี) และ CRM_TESTID_BASELINE ต้องไม่เหลือตัวที่ปิดหนี้ไปแล้ว (ratchet)",
+    "แถวซ้ำ (page+testid เดียวกัน) = ผิด — 1 element 1 แถว",
+    "testid ตั้งชื่อเป็น kebab-case ภาษาอังกฤษ ขึ้นต้นด้วยชื่อหน้า/บล็อก เช่น deal-lost-btn · contacts-filter-owner"
+  ],
+  "rows": []
+}

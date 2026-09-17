@@ -805,6 +805,224 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   );
 }
 
+// ═══════════════════════════════════════════════════════════════
+// F14 — ทะเบียนปุ่ม CRM (CRM-MASTER-PLAN §7 · ด่าน D8 ของทุกใบ UI)
+//   เจตนา: "ทุกปุ่ม/ลิงก์/ฟอร์มของ CRM ถูกกดจริงด้วยข้อสอบ" เริ่มจากการมีทะเบียนที่ตรงกับโค้ดเสมอ
+//   F14.1 = ปุ่มในโค้ดต้องมีแถวในทะเบียน (ไม่มีปุ่มลอย · ไม่มี testid ที่อ่านค่าไม่ออก) ·
+//   F14.2 = ทะเบียนต้องซื่อสัตย์กับโค้ด (ไม่มีแถวผี/แถวซ้ำ/แถวพิการ · baseline ไม่เหลือตัวที่ปิดแล้ว)
+//   🔴 static ล้วน — อ่านไฟล์อย่างเดียว ไม่แตะ DB/เน็ต (ต้องผ่านทั้งแบบมี DATABASE_URL และ `env -u DATABASE_URL`)
+// ═══════════════════════════════════════════════════════════════
+console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่มทุกตัวมีแถว · แถวทุกแถวมีปุ่มจริง) ──");
+{
+  // ── ขอบเขต "โฟลเดอร์ UI ของ CRM" ── (เดิมเป็นรายชื่อตายตัว → พลาดโฟลเดอร์ที่ใบหลังสร้างโดยไม่มีใครมาเติมรายชื่อ)
+  //   (ก) ค้นหาเอง: ทุกโฟลเดอร์ที่มี segment ชื่อ "crm" ใต้ src/app · src/components · src/lib/modules
+  //       → C1.3 จะวาง UI ไว้ที่ src/components/crm/… หรือหน้าใหม่ใต้ .../crm/… ก็ถูกกวาดทันทีโดยไม่ต้องแก้ด่านนี้
+  //       (ชื่อโฟลเดอร์ต้องสะกดว่า "crm" เป๊ะ ๆ จึงลากโมดูลอื่นเข้ามาไม่ได้)
+  //   (ข) route สาธารณะของ CRM ที่ชื่อโฟลเดอร์ไม่ได้สะกดว่า crm (มติ RESOLUTIONS R-C §7 · C15) — ต้องระบุมือ
+  //       ⚠️ สามตัวนี้เป็น route ระดับบนสุด ไม่ใช่ของ CRM ผูกขาด: ถ้าโมดูลอื่นมาลงหน้าที่นี่ testid ของมันจะถูกนับเข้า
+  //       ทะเบียน CRM ด้วย (ยอมรับไว้ก่อน — ข้อความ finding บอกชื่อไฟล์เสมอจึงเห็นได้ทันทีว่ามาจากใคร)
+  const CRM_SEARCH_ROOTS = ["src/app", "src/components", "src/lib/modules"];
+  const CRM_PUBLIC_DIRS = [
+    "src/app/b",   // portal ลูกค้า /b/[slug]/* (มติ C15 · ใบ C3.5)
+    "src/app/u",   // ยกเลิกรับอีเมล /u/[token] — มีฟอร์ม+ปุ่ม (ใบ C2.5)
+    "src/app/t",   // ติดตามอีเมล/เว็บ + หน้ายินยอม /t/* (ใบ C2.5/C2.6)
+  ];
+  /** โฟลเดอร์ที่มีอยู่จริงและต้องสแกน (โฟลเดอร์ที่ยังไม่มี = ไม่มีข้อค้นพบ ไม่ใช่ error) */
+  function discoverCrmDirs(): string[] {
+    const out = new Set<string>();
+    for (const root of CRM_SEARCH_ROOTS) {
+      const abs = join(ROOT, root);
+      if (!existsSync(abs)) continue;
+      const stack = [abs];
+      while (stack.length) {
+        const d = stack.pop()!;
+        for (const e of readdirSync(d)) {
+          if (e === "node_modules" || e === ".next" || e === ".git") continue;
+          const child = join(d, e);
+          if (!statSync(child).isDirectory()) continue;
+          if (e === "crm") { out.add(rel(child)); continue; } // เจอรากของ CRM แล้ว — walk จะกวาดทั้งกิ่งเอง
+          stack.push(child);
+        }
+      }
+    }
+    for (const d of CRM_PUBLIC_DIRS) if (existsSync(join(ROOT, d))) out.add(d);
+    return [...out].sort();
+  }
+  // จุดยึดพิสูจน์ว่า "ตัวค้นหายังทำงาน": หน้า CRM ที่มีอยู่จริงวันนี้ต้องถูกค้นเจอเสมอ
+  const CRM_ANCHOR_DIRS = ["src/app/app/sys/[id]/crm", "src/lib/modules/crm"];
+  const INVENTORY = "scripts/crm-ui-inventory.json";
+
+  // ── ค่า data-testid ที่ "กดได้/กรอกได้" เท่านั้นที่ต้องลงทะเบียน (กล่องโครง/ป้ายไม่ต้อง) ──
+  const INTERACTIVE_TAGS = new Set(["button", "a", "input", "select", "textarea", "form", "summary", "option", "dialog"]);
+  // ชื่อคอมโพเนนต์ที่ "โดยธรรมชาติแล้วกดได้" — ตรวจทั้งชื่อเต็มและชื่อท้ายจุด (`Dialog.Trigger` → `Trigger`)
+  const INTERACTIVE_COMPONENT = /(Button|Btn|Link|Input|Textarea|Select|Form|Toggle|Switch|Checkbox|Radio|Tab|Tabs|Menu|Dropdown|Upload|Picker|Slider|Search|Combobox|Modal|Sheet|Drawer|Trigger|Item|Option|Action|Close|Cancel|Submit|Save)$/;
+  // prop ที่แปลว่า "มีคนกด/พิมพ์ใส่ได้" — รวมสไตล์ headless UI (onSelect/onValueChange/onOpenChange/onPress)
+  const INTERACTIVE_ATTR = /\bon(Click|Change|Input|Submit|KeyDown|KeyUp|KeyPress|Drag\w*|Drop|Toggle|Select|ValueChange|CheckedChange|OpenChange|Press|PointerDown|MouseDown)\s*=|\bhref\s*=|\baction\s*=|\brole\s*=\s*\{?["']?(button|tab|link|menuitem|switch|checkbox|option)\b|\btabIndex\s*=|\bdraggable\s*=|\bcontentEditable\s*=/;
+  // ค่าที่ "อ่านออก": "…" · '…' · {`…`} · {"…"} · {'…'}
+  const TESTID_RE = /data-testid\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*`([^`]*)`\s*\}|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\})/g;
+  // ทุกจุดที่เขียน data-testid (ใช้หาตัวที่ TESTID_RE อ่านไม่ออก เช่น `data-testid={someVar}` — ห้ามเงียบ)
+  const ANY_TESTID_RE = /data-testid\s*=/g;
+
+  /** ชื่อที่สร้างจากตัวแปร (`deal-card-${id}`) → แพตเทิร์น `deal-card-*` (ทะเบียนลงแถวเดียวคลุมทั้งชุดได้) */
+  const normId = (v: string) => v.replace(/\$\{[^}]*\}/g, "*").replace(/\*+/g, "*").trim();
+  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  /** `foo-*` → /^foo-.*$/ (ใช้จับคู่ "แพตเทิร์น ↔ ชื่อจริง" ทั้งสองทาง) */
+  const globRe = (g: string) => new RegExp("^" + g.split("*").map(escapeRe).join(".*") + "$");
+
+  /** แท็กที่ห่อ data-testid ตัวนี้ + ข้อความ attribute ทั้งก้อน (ข้ามวงเล็บปีกกา/สตริงถูกต้อง) */
+  function tagAround(src: string, at: number): { tag: string; attrs: string } {
+    let open = -1;
+    for (let i = at; i >= 0; i--) if (src[i] === "<" && /[A-Za-z]/.test(src[i + 1] ?? "")) { open = i; break; }
+    if (open < 0) return { tag: "", attrs: "" };
+    const tag = (/^<([A-Za-z][\w.]*)/.exec(src.slice(open, open + 80)) ?? [, ""])[1] as string;
+    let depth = 0, quote = "", end = src.length;
+    for (let i = open; i < src.length; i++) {
+      const c = src[i]!;
+      if (quote) { if (c === quote && src[i - 1] !== "\\") quote = ""; continue; }
+      if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth <= 0) { end = i; break; }
+    }
+    return { tag, attrs: src.slice(open, end) };
+  }
+  const isInteractive = (tag: string, attrs: string) =>
+    INTERACTIVE_TAGS.has(tag) ||
+    INTERACTIVE_TAGS.has(tag.split(".").pop() ?? "") ||          // `Dialog.Trigger` → ดูชื่อท้ายจุดด้วย
+    INTERACTIVE_COMPONENT.test(tag) ||
+    INTERACTIVE_COMPONENT.test(tag.split(".").pop() ?? "") ||
+    INTERACTIVE_ATTR.test(attrs);
+  const lineOf = (src: string, at: number) => src.slice(0, at).split("\n").length;
+
+  type Found = { id: string; file: string; interactive: boolean };
+  const found: Found[] = [];
+  const unreadable: { file: string; line: number; snippet: string; interactive: boolean }[] = [];
+  const dirsPresent = discoverCrmDirs();
+  let scannedFiles = 0;
+  for (const dir of dirsPresent) {
+    for (const f of walk(join(ROOT, dir), (p) => p.endsWith(".tsx") || p.endsWith(".ts"))) {
+      scannedFiles++;
+      const src = readFileSync(f, "utf8");
+      const readAt = new Set<number>();
+      for (const m of src.matchAll(TESTID_RE)) {
+        readAt.add(m.index ?? -1);
+        const raw = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? "";
+        const { tag, attrs } = tagAround(src, m.index ?? 0);
+        found.push({ id: normId(raw), file: rel(f), interactive: isInteractive(tag, attrs) });
+      }
+      // data-testid ที่อ่านค่าไม่ออก (มาจากตัวแปร/ฟังก์ชัน) — ลงทะเบียนไม่ได้ ⇒ ต้องรายงาน ไม่ใช่ทิ้งเงียบ
+      for (const m of src.matchAll(ANY_TESTID_RE)) {
+        const at = m.index ?? -1;
+        if (readAt.has(at)) continue;
+        const { tag, attrs } = tagAround(src, at);
+        unreadable.push({ file: rel(f), line: lineOf(src, at), snippet: src.slice(at, at + 60).split("\n")[0]!, interactive: isInteractive(tag, attrs) });
+      }
+    }
+  }
+
+  // ── ratchet baseline: หนี้ testid ที่ "มีอยู่ก่อนมีทะเบียน" — ห้ามเพิ่ม ลดได้อย่างเดียว ──
+  // ณ ใบ C0.1 (17 ก.ย. 2569): UI ของ CRM v1 (3 หน้า + src/lib/modules/crm/ui.tsx) **ไม่มี data-testid สักตัว**
+  // (ยืนยันด้วย grep = 0) ⇒ baseline ว่างตั้งแต่วันแรก และด่านนี้กัด "โค้ดใหม่" ทันทีตามเจตนาของใบ
+  // วิธีใช้ถ้าจำเป็นต้องตรึงหนี้: ["<testid>", "<เหตุผล + ใบที่จะปิด>"] แล้วถอดออกเมื่อลงทะเบียนจริง (F14.2 บังคับให้ถอด)
+  const CRM_TESTID_BASELINE = new Map<string, string>([]);
+
+  // 🔴 ประกาศเป็น unknown[] (ของที่ parse มาจาก JSON คือ unknown จริง ๆ) — ไม่ผูกชนิดล่วงหน้าแล้วต้องมาเทียบ null
+  let rows: unknown[] = [];
+  let invErr = "";
+  try {
+    const invPath = join(ROOT, INVENTORY);
+    if (!existsSync(invPath)) throw new Error(`ไม่พบ ${INVENTORY}`);
+    const parsed = JSON.parse(readFileSync(invPath, "utf8"));
+    const raw = Array.isArray(parsed) ? parsed : (parsed as { rows?: unknown })?.rows;
+    if (!Array.isArray(raw)) throw new Error(`${INVENTORY} ต้องมีคีย์ "rows" เป็น array`);
+    rows = raw;
+  } catch (e) {
+    invErr = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+
+  /** ค่า testid ที่ใช้ได้ของแถวนี้ (ไม่ใช่ออบเจ็กต์ · ไม่มีคีย์ · ว่าง · ไม่ใช่สตริง ⇒ null) */
+  const rowTestid = (r: unknown): string | null => {
+    if (typeof r !== "object" || r === null) return null;
+    const v = (r as { testid?: unknown }).testid;
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  // แถวพิการ ⇒ มองไม่เห็นทั้งสองด่านถ้าไม่ดัก (F14.2 จับ)
+  const malformed = rows.map((r, i) => ({ i, r })).filter(({ r }) => rowTestid(r) === null);
+  const rowIdsAll = rows.map(rowTestid).filter((x): x is string => x !== null);
+
+  // 🔴 แพตเทิร์นกว้างเกิน = ช่องโหว่แบบเดียวกับ `deal-*` คลุมปุ่มทั้งหน้า แต่แย่กว่า:
+  //    แถวเดียว `{"testid":"*"}` (หรือ `d-*`) จะคลุม testid ที่สร้างจากตัวแปร **ทั้งระบบ** และไม่เป็นแถวผีด้วย
+  //    ⇒ ตัดทิ้งจากการคุ้มครอง แล้วรายงานเป็นแถวพิการ (ไม่ใช่เงียบ)
+  const MIN_PATTERN_CHARS = 4;
+  const degenerate = rowIdsAll.filter((id) => id.includes("*") && id.replace(/\*/g, "").length < MIN_PATTERN_CHARS);
+  const rowIds = rowIdsAll.filter((id) => !degenerate.includes(id));
+
+  const rowExact = new Set(rowIds.filter((id) => !id.includes("*")));
+  const rowPatterns = rowIds.filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
+  const codeIds = found.map((f) => f.id);
+  const codeExact = new Set(codeIds.filter((id) => !id.includes("*")));
+  const codePatterns = codeIds.filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
+
+  /** testid ในโค้ดตัวนี้ มีแถวคลุมไหม
+   *  🔴 แถวแพตเทิร์น (`deal-*`) คลุมได้ **เฉพาะ** ชื่อที่โค้ดสร้างจากตัวแปรจริง (ชื่อที่ normalise แล้วมี `*`)
+   *     ชื่อที่เขียนตรง ๆ ในโค้ดต้องมีแถวตรงตัว — ไม่งั้นแถวเดียว `deal-*` จะกลืนปุ่มทั้งหน้า
+   *     แล้ว C4.2 ก็ไม่มี expect/roles/hiddenFor รายปุ่มให้กด (ซึ่งคือทั้งหมดของ §7) */
+  const registered = (id: string) =>
+    rowExact.has(id) || (id.includes("*") && rowPatterns.some((r) => r.re.test(id) || globRe(id).test(r.id)));
+
+  /** แถวนี้ชี้ไปที่ testid ที่มีจริงในโค้ดไหม (แถวแพตเทิร์นต้องคู่กับชื่อที่สร้างจากตัวแปรจริงเท่านั้น) */
+  const inCode = (id: string) =>
+    id.includes("*")
+      ? codePatterns.some((c) => c.re.test(id) || globRe(id).test(c.id))
+      : codeExact.has(id) || codePatterns.some((c) => c.re.test(id));
+
+  // F14.1 — ปุ่ม/ช่องกรอกในโฟลเดอร์ CRM ทุกตัวต้องมีแถวในทะเบียน (ยกเว้นหนี้ใน baseline)
+  const interactiveIds = [...new Map(found.filter((f) => f.interactive).map((f) => [`${f.id}@${f.file}`, f])).values()];
+  const unregistered = interactiveIds.filter((f) => !registered(f.id) && !CRM_TESTID_BASELINE.has(f.id));
+  const unreadableInteractive = unreadable.filter((u) => u.interactive);
+  // positive control ของตัวสแกนเอง (2 ชั้น): โฟลเดอร์ยึดต้องถูกค้นเจอ · และต้องสแกนได้ไฟล์จริง
+  const anchorMissed = CRM_ANCHOR_DIRS.filter((d) => existsSync(join(ROOT, d)) && !dirsPresent.includes(d));
+  const scanBroken = dirsPresent.length > 0 && scannedFiles === 0;
+  const f141Problems = [
+    invErr ? `อ่านทะเบียนไม่ได้ — ${invErr}` : "",
+    anchorMissed.length ? `ตัวค้นหาโฟลเดอร์ CRM พัง — หาโฟลเดอร์ที่มีอยู่จริงไม่เจอ: ${anchorMissed.join(", ")}` : "",
+    scanBroken ? `สแกนไม่เจอไฟล์เลยทั้งที่พบโฟลเดอร์ ${dirsPresent.join(", ")} — ตัวสแกนเพี้ยนจากของจริง` : "",
+    unregistered.length
+      ? `${unregistered.length} ตัวไม่มีแถว: ${unregistered.slice(0, 12).map((f) => `${f.id} (${f.file})`).join(" · ")}${unregistered.length > 12 ? " …" : ""} → เพิ่มแถวใน ${INVENTORY} ตาม §7 (ชื่อที่มาจากตัวแปรเท่านั้นที่ลงเป็นแพตเทิร์น เช่น deal-card-*)`
+      : "",
+    unreadableInteractive.length
+      ? `${unreadableInteractive.length} จุดเขียน data-testid ด้วยค่าที่อ่านไม่ออก (ลงทะเบียนไม่ได้): ${unreadableInteractive.slice(0, 8).map((u) => `${u.file}:${u.line} ${u.snippet}`).join(" · ")} → ใช้สตริงตรง ๆ หรือ {\`ชื่อ-\${id}\`}`
+      : "",
+  ].filter(Boolean);
+  chk(
+    "F14.1",
+    `data-testid ที่กดได้ในโฟลเดอร์ CRM (${interactiveIds.length} ตัว · สแกน ${scannedFiles} ไฟล์ใน ${dirsPresent.length} โฟลเดอร์: ${dirsPresent.join(", ") || "-"}) มีแถวใน ${INVENTORY} ครบ (หนี้เดิม ${CRM_TESTID_BASELINE.size})`,
+    f141Problems.length === 0,
+    f141Problems.length
+      ? f141Problems.join(" · ")
+      : `ครบ (ทะเบียน ${rowIds.length} แถว · สแกน ${scannedFiles} ไฟล์ · โฟลเดอร์ ${dirsPresent.length})`,
+    "CRITICAL",
+  );
+
+  // F14.2 — ทะเบียนต้องซื่อสัตย์กับโค้ด: ไม่มีแถวผี · ไม่มีแถวซ้ำ · ไม่มีแถวพิการ · baseline ไม่เหลือตัวที่ปิดหนี้ไปแล้ว (ratchet)
+  const ghosts = rowIds.filter((id) => !inCode(id));
+  const dupes = rowIds.filter((id, i) => rowIds.indexOf(id) !== i);
+  const healed = [...CRM_TESTID_BASELINE.keys()].filter((b) => !codeExact.has(b) || registered(b));
+  const problems = [
+    ghosts.length ? `แถวผี ${ghosts.length} (ไม่มี testid นี้ในโค้ด · แถวแพตเทิร์นต้องคู่กับชื่อที่สร้างจากตัวแปร): ${ghosts.slice(0, 12).join(", ")}${ghosts.length > 12 ? " …" : ""}` : "",
+    dupes.length ? `แถวซ้ำ: ${[...new Set(dupes)].join(", ")}` : "",
+    degenerate.length ? `แถวแพตเทิร์นกว้างเกินจนไร้ความหมาย ${degenerate.length} (ตัวอักษรที่ไม่ใช่ * ต้อง ≥ ${MIN_PATTERN_CHARS}): ${degenerate.join(", ")} — แถวเดียวจะกลืน testid ที่สร้างจากตัวแปรทั้งระบบ แล้ว C4.2 ไม่เหลือ expect/roles/hiddenFor รายปุ่มให้กด` : "",
+    malformed.length ? `แถวพิการ (ไม่มีคีย์ testid หรือค่าว่าง) ${malformed.length}: ${malformed.slice(0, 6).map((m) => `#${m.i} ${JSON.stringify(m.r).slice(0, 80)}`).join(" · ")}` : "",
+    healed.length ? `CRM_TESTID_BASELINE มีตัวที่ปิดแล้ว ถอดออก: ${healed.join(", ")}` : "",
+  ].filter(Boolean);
+  chk(
+    "F14.2",
+    `ทุกแถวใน ${INVENTORY} (${rowIds.length}) ชี้ไปที่ testid ที่มีจริงในโค้ด + baseline ไม่มีตัวที่ปิดแล้ว`,
+    invErr === "" && problems.length === 0,
+    invErr ? `อ่านทะเบียนไม่ได้ — ${invErr}` : problems.length ? problems.join(" · ") : "ตรง",
+  );
+}
+
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);
 const bySev = (s: Sev) => failed.filter((c) => c.sev === s).length;
