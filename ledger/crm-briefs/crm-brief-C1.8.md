@@ -19,3 +19,12 @@ Read `crm-brief-COMMON.md` first. Contract: CRM-RUN §2 "C1.8". Spec: blueprint 
 CRM-RUN S1–S7 (28).
 X4 — EVERY consumer added here: same event processed twice and twice in parallel ⇒ one lead / one activity / one stage move / one timeline row (flag-first under advisory lock, then write) · compose contract: make the CRM extra throw ⇒ base result unchanged, event not failed by the extra; make the base throw ⇒ CRM extra still ran · X8 payload scan: no phone/e-mail/name in any `crm.*` event row written during the oracle · X1 form of tenant A never creates a lead in tenant B/system B; chat contact of another tenant ignored · X3 two identical form submissions in parallel (same e-mail) → one contact + two activities.
 Regressions: `qc-member-m2.8`, `qc-member-fix-s2`, `qc-form`, `qc-forms-notify`, `qc-chat-member-autolink`, `qc-chat-core-v2`, `qc-automation`, `qc-webhook`, `qc-account-api-webhooks`, `qc-kanban-k3.3`, `qc-approval-wiring`.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c1.8` 81 checks)
+The CONTRACT BLOCK in the oracle header is the API. Rulings — binding:
+1. **Forms at uiVersion 1 keep the v1 lead** (every production shop is v1 — form→lead must not stop at deploy). Only the v2 behaviour (dedupe by e-mail/phone, one activity per submission, UTM) is gated to uiVersion 2. All other bridges are gated (R-E.14).
+2. `qc-form` FM-3.3 / `qc-forms-notify` FN-4 read the contact without draining: if they go red because the lead now comes from the consumer, REPORT them — the controller ORACLE-EDITs (add `drainAll()` before the read) with evidence.
+3. Owned files also: `src/lib/approval-effects.ts` (`crm.*` branch only — move the discount effect into a compose EXTRA so it runs when the notification step throws and never fails the event) · `crm/contacts.ts` (`briefFor(ctx, actor, key)` only) · `crm/settings.ts` (`chatToLead: false` default).
+4. `crm.reassign` resolves only (effect = C3.2). 5. `custom.record.created` uiVersion gate stays in C1.8.
+6. Not in this WO (debts): tier badge = live read (no column) · AccountContact name/taxId sync on `crm.company.updated` → **C2.7** · `onCrmDealWon` raw CRM reads → **C5** · pre-existing: `member.created` redelivery adds duplicate WELCOME `MemberNotification` rows (eventId dedupe in `notifications.send` fails) → **C5** (member side, recorded).
+Every event consumer: flag-first under an advisory lock, compose extra, ids-only payloads.
