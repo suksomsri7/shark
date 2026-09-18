@@ -12,3 +12,10 @@ Events `custom.record.created/updated/archived` (3 registries; consumer writes t
 CRM-RUN S1, S2, S5, S6, S8 (+S3 on records).
 X1 object/record of another tenant, of ANOTHER CRM SYSTEM of the same tenant → not found; parent of the wrong type/system → validation · X3 `recordCount` exact after 10 parallel creates + 5 parallel archives · X4 the record-created consumer run twice (and twice in parallel) writes one timeline row · X6 import caps (rows/size), CSV export through `csvRow` · X9 archive-with-records and bulk ops need confirm + reason at the action/op layer (expose the flag now; REST wiring is C1.10).
 Regressions: C1.2a oracle, `qc-member-m1.2`.
+
+## Controller addendum 2026-09-18
+- Depends on C1.2a's contract: `FieldCtx.objectKey` (default `"customer"`), non-customer fields owned by the CRM system (see the C1.2a addendum). The objects service calls the engine only through the member facade (`src/lib/modules/member/index.ts` `fields` namespace).
+- Tables exist (`crm_v2_a`): `CustomObject` (`recordCount Int @default(0)`, `titleFieldKey`, `showAsTab`, `templateKey`, `unitScoped`, unique `(systemId, key)`), `CustomRecord` (`parentType/parentId/partyId/status`), `CustomRecordValue`, `CustomRecordValueHistory`.
+- `recordCount` must be maintained with single-statement increments/decrements (X3 — "read → compute in app → write" is forbidden).
+- Events `custom.record.created/updated/archived`: idempotency keys `custom.record.<type>#<recordId>#<seq>` (R-C.8), payload ids only, emitted INSIDE the write transaction; consumer writes the parent's `MemberActivity` row idempotently (X4); CRM consumers follow the `compose` "extra" contract.
+- Scope rule carried from C1.1's review: a `CustomRecord`'s parent (CONTACT/COMPANY/DEAL) MUST belong to the same CRM `systemId` — assert it, the DB does not.
