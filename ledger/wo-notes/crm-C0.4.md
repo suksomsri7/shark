@@ -28,7 +28,7 @@
 | D9 | ผู้ตรวจไม่มี BLOCKER | ✅ | รอบตรวจความปลอดภัย: **BLOCKER 3 + SHOULD-FIX 7** → แก้ครบ (§7) |
 | D10 | เอกสาร | ✅ | ไม่มี op/event ใหม่ · แก้ RESOLUTIONS R-E 2 ที่เขียนผิด |
 | D11 | wo-notes + คืนสภาพ | ✅ | ไฟล์นี้ · `qc-member-m1.9` 26/26 |
-| D12 | commit → push → Vercel | ⏳ | §10 |
+| D12 | commit → push → Vercel | ✅ | `55c7a07` (+ `703e8af`) · deploy ขึ้นจริง (`dpl_DoRff…`) · **พิสูจน์ด้วยพฤติกรรมบน prod ไม่ใช่แค่รหัส deploy**: เส้นทางที่ไม่มีอยู่ → 404 แต่ `/api/files/abc123` → **403 + `cache-control: private, no-store`** = route ใหม่ของใบนี้ทำงานอยู่จริงและปฏิเสธคำขอที่ไม่มีลายเซ็น · `/api/health` 200 · ไม่มี migration |
 
 ## 3. ผลข้อสอบ
 `qc-crm-c0.4` 72/72 · `qc-crm-c0.3` 88/88 · typecheck สะอาด · fitness 29/29 ×2 · build exit 0 · m1.9 26/26
