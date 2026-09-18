@@ -22,3 +22,10 @@ export {
   setContactPartyId,
 } from "./service";
 export type { Ctx, CreateContactInput } from "./service";
+
+// CRM C1.2b ▸ วัตถุกำหนดเอง (`objects.ts`) — namespace เดียว: create/update/archive/restore/reorder/list/get/warnings ·
+//   records.{create,update,archive,get,list,move,bulk,import,export} · tabsFor · timelineFor · onRecordCreated (ตัวรับ event)
+//   ผู้ใช้ถัดไป: C1.3/C1.4 (แท็บใน 360) · C1.9 (หน้า UI) · C1.10 (REST/tool) · outbox-consumers (ไทม์ไลน์สมาชิก)
+//   ค่าคงที่/ชนิด/เทมเพลตสำหรับหน้า 'use client' อยู่ที่ `./objects-shared` (ไม่ลากกราฟ prisma)
+export * as objects from "./objects";
+// ◂ CRM C1.2b

@@ -145,6 +145,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   🔴 มี consumer (no-op) ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำ)
   { value: "team.updated", label: "เมื่อทีมหรือสมาชิกทีมเปลี่ยน" },
   // ◂ CRM C1.1
+  // CRM C1.2b ▸ วัตถุกำหนดเอง (`crm/objects.ts`) — payload: recordId · objectId · objectKey · parentType · parentId? · partyId? (id ล้วน)
+  //   🔴 มี consumer ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำ)
+  { value: "custom.record.created", label: "เมื่อเพิ่มรายการในวัตถุกำหนดเอง (CRM)" },
+  { value: "custom.record.updated", label: "เมื่อแก้ไขหรือย้ายรายการของวัตถุกำหนดเอง (CRM)" },
+  { value: "custom.record.archived", label: "เมื่อเก็บถาวรรายการของวัตถุกำหนดเอง (CRM)" },
+  // ◂ CRM C1.2b
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

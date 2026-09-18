@@ -916,6 +916,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   บรรทัดนี้ปิด event เป็น DONE (ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · C1.7/C2.3 ต่อยอด (ล้างแคชการมองเห็น/มอบหมาย)
   "team.updated": withAutomation(async () => {}),
   // ◂ CRM C1.1
+  // CRM C1.2b ▸ วัตถุกำหนดเอง (`crm/objects.ts`) — payload: recordId · objectId · objectKey · parentType · parentId? · partyId? (+ changed[]/moved)
+  //   ยิงใน tx เดียวกับการเขียนรายการ · idempotencyKey `custom.record.<type>#<recordId>#<seq>` (R-C.8)
+  //   created → ไทม์ไลน์สมาชิกของแม่ (1 แถว · recordOnce) เป็น "ของแถม" ใต้ compose: ล้ม = WARN ไม่ทำให้คิวตัน/ไม่ล้มงานหลัก
+  //   🔴 dynamic import (crm → member → … → scheduleDrain ที่ไฟล์นี้ = วงกลมถ้า import หัวไฟล์ — เหตุผลเดียวกับ memberBridge)
+  //   updated/archived → no-op (ปิด event เป็น DONE — ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค
+  "custom.record.created": withAutomation(
+    compose(async () => {}, async (evt) => {
+      const crm = await import("@/lib/modules/crm");
+      await crm.objects.onRecordCreated(evt);
+    }),
+  ),
+  "custom.record.updated": withAutomation(async () => {}),
+  "custom.record.archived": withAutomation(async () => {}),
+  // ◂ CRM C1.2b
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ
