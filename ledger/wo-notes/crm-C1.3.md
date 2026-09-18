@@ -44,3 +44,6 @@
 | ป้ายไทยของสิทธิ์ `crm.company.*` | **C1.7** |
 | AccountContact ไม่ถูกเปลี่ยนชื่อ/เลขภาษีตามบริษัท (ไม่มีฟังก์ชันใน facade บัญชี) | **C1.8** (สะพานบัญชี) |
 | custom values ของบริษัทที่ถูกรวมไม่ย้ายตาม | **C1.10** |
+
+## 3.2 D12 — push/deploy
+✅ push `4f8af9d` (+ ledger `3215db3`) → session/crm + main · deploy ใหม่ `dpl_3DxVs…` ขึ้นจริงหลัง 420 วิ (build บน Vercel ไม่ OOM) · `/api/health` `{ok:true,db:true,outboxPending:0}` · หน้าแรก 200 · ไม่มี migration · uiVersion ยัง 1 ทุกร้าน
