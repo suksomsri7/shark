@@ -151,6 +151,12 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "custom.record.updated", label: "เมื่อแก้ไขหรือย้ายรายการของวัตถุกำหนดเอง (CRM)" },
   { value: "custom.record.archived", label: "เมื่อเก็บถาวรรายการของวัตถุกำหนดเอง (CRM)" },
   // ◂ CRM C1.2b
+  // CRM C1.3 ▸ บริษัท (`crm/companies.ts`) — payload: created {companyId, partyId} · updated {companyId, changedKeys[], contactId?} ·
+  //   merged {keptId, mergedId} (id/คีย์ล้วน · X8) · 🔴 มี consumer ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำ)
+  { value: "crm.company.created", label: "เมื่อเพิ่มบริษัทใน CRM" },
+  { value: "crm.company.updated", label: "เมื่อแก้ไขข้อมูลบริษัทหรือผู้ติดต่อในบริษัท (CRM)" },
+  { value: "crm.company.merged", label: "เมื่อรวมบริษัทที่ซ้ำกัน (CRM)" },
+  // ◂ CRM C1.3
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

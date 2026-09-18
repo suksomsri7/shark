@@ -29,3 +29,11 @@ export type { Ctx, CreateContactInput } from "./service";
 //   ค่าคงที่/ชนิด/เทมเพลตสำหรับหน้า 'use client' อยู่ที่ `./objects-shared` (ไม่ลากกราฟ prisma)
 export * as objects from "./objects";
 // ◂ CRM C1.2b
+// CRM C1.3 ▸ บริษัท (`companies.ts`) — namespace เดียว: createCompany/updateCompany/archiveCompany/setOwner/setParent · getCompany360 ·
+//   listCompanies/exportCompanies · addContact/removeContact/setPrimary/setRole · findDuplicates/mergeCompanies ·
+//   importCompanies/importFromAccount · recomputeCaches · onCompanyCreated (ตัวรับ event)
+//   ผู้ใช้ถัดไป: C1.4 (บริษัทของผู้ติดต่อ) · C1.5 (recomputeCaches หลัง event ดีล) · C1.8 · C1.10 (REST/tool crm_company_360/crm_create_company)
+//   ค่าคงที่/ชนิด/ตัวตรวจสำหรับหน้า 'use client' อยู่ที่ `./companies-shared` · ขอบเขตการอ่าน `./where` (companyWhere)
+export * as companies from "./companies";
+export { companyWhere } from "./where";
+// ◂ CRM C1.3

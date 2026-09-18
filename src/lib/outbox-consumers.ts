@@ -930,6 +930,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "custom.record.updated": withAutomation(async () => {}),
   "custom.record.archived": withAutomation(async () => {}),
   // ◂ CRM C1.2b
+  // CRM C1.3 ▸ บริษัท (`crm/companies.ts`) — ยิงใน tx เดียวกับการเขียน · idempotencyKey `crm.company.<type>#<id>#<seq>` (R-C.8) · payload id ล้วน
+  //   created → ผู้ติดต่อฝั่งบัญชี (`ensureAccountContact` นอก tx · หนึ่ง Party = หนึ่งผู้ติดต่อต่อสมุด) + ไทม์ไลน์ CrmActivity 1 แถว
+  //     เป็น "ของแถม" ใต้ compose: ล้ม = WARN ไม่ทำให้คิวตัน/ไม่ล้มงานหลัก · ไม่มีสมุดบัญชีที่เชื่อม = ข้ามส่วนบัญชี
+  //   🔴 dynamic import (crm → member/account → … → scheduleDrain ที่ไฟล์นี้ = วงกลมถ้า import หัวไฟล์ — เหตุผลเดียวกับ C1.2b)
+  //   updated/merged → no-op (ปิด event เป็น DONE — ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · C1.8 ต่อยอด (re-point เมื่อบัญชีรวมผู้ติดต่อ)
+  "crm.company.created": withAutomation(
+    compose(async () => {}, async (evt) => {
+      const crm = await import("@/lib/modules/crm");
+      await crm.companies.onCompanyCreated(evt);
+    }),
+  ),
+  "crm.company.updated": withAutomation(async () => {}),
+  "crm.company.merged": withAutomation(async () => {}),
+  // ◂ CRM C1.3
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

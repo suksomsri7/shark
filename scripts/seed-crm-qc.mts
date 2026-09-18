@@ -392,6 +392,12 @@ const expected = {
   },
   backfillRan,
 };
+// แคชของบริษัท (C1.3) — seed เขียนดีล/กิจกรรมตรง ⇒ คำนวณแคชให้ตรงความจริงด้วยสูตรเดียวกับ companies.recomputeCaches (ไม่ยิง event)
+await prisma.$executeRawUnsafe(`UPDATE "CrmCompany" co SET
+  "openDealCount" = (SELECT count(*)::int FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'OPEN'),
+  "wonValueSatang" = (SELECT COALESCE(sum(COALESCE(d."wonValueSatang", d."valueSatang")), 0)::bigint FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'WON'),
+  "lastActivityAt" = (SELECT max(COALESCE(a."doneAt", a."startAt", a."createdAt")) FROM "CrmActivity" a LEFT JOIN "CrmDeal" d ON d."id" = a."dealId" WHERE a."companyId" = co."id" OR d."companyId" = co."id")
+  WHERE co."systemId" = $1`, SYS);
 writeFileSync(CQC.expectedPath, JSON.stringify(expected, null, 2));
 console.log(`\n✅ seed CRM: ร้าน ${tenantId} · ระบบ CRM ${SYS} · บริษัท ${companyIds.length} · ผู้ติดต่อ ${contactIds.length} · ดีล ${dealIds.length} · กิจกรรม ${actCount} · สัญญา ${contractRecords} · ทีม ${Object.keys(teams).length} · backfill ${backfillRan.length}/${CRM_BACKFILLS.length} · สมาชิกในร้าน ${memberTotal} (CRM ${memberFromCrm}) · outbox ที่ยังไม่ DONE จากรอบนี้ ${pendingMine} · เฉลย ${CQC.expectedPath} · ${Math.round((Date.now() - t0) / 1000)}s`);
 await prisma.$disconnect();

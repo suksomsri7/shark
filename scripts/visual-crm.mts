@@ -78,7 +78,37 @@ const TMP = { contactIds: [] as string[], dealIds: [] as string[], activityIds: 
 // แท็บย่อยของ CRM v1 (crmTabs ใน src/lib/modules/crm/ui.tsx) — ลิงก์จริงที่ต้องมีทุกหน้า
 const V1_TABS = ["a[href$='/crm/deals']", "a[href$='/crm/activities']", "a[href$='/crm/contacts']"];
 
+// C1.3 — บริษัทที่มีผู้ติดต่อมากที่สุดของระบบ CRM ใน seed (อ่านอย่างเดียว ⇒ ไม่มีอะไรต้องคืน)
+const C13_COMPANY: string | null = WO === "1.3"
+  ? ((await (prisma as Any).crmCompany.findMany({ where: { systemId: SYS, archivedAt: null }, select: { id: true, _count: { select: { contacts: true } } } }))
+      .sort((a: Any, b: Any) => b._count.contacts - a._count.contacts)[0]?.id ?? null)
+  : null;
+
 const SPECS: Record<string, Spec[]> = {
+  // C1.3 — บริษัท: รายการ · สร้างใหม่ · 360 (เทียบภาพ ledger/design-crm/04-company-360.png)
+  "1.3": isCustomer ? [] : [
+    {
+      name: `crm-companies-list-${userKey}`,
+      path: `${CRM_BASE}/companies`,
+      note: "รายการบริษัท: ค้นหา/ตัวกรอง/นำเข้า/ส่งออก/+เพิ่มบริษัท · ตาราง (1440) หรือการ์ด (390)",
+      expect: ["[data-testid=companies-page]", "[data-testid=companies-filter-form]", "[data-testid=companies-count]"],
+      steps: [{ waitFor: "[data-testid=companies-page]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-companies-new-${userKey}`,
+      path: `${CRM_BASE}/companies/new`,
+      note: "ฟอร์มสร้างบริษัท (ตรวจค่าแบบ inline)",
+      expect: ["form"],
+      steps: [{ waitFor: "form", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    ...(C13_COMPANY ? [{
+      name: `crm-company-360-${userKey}`,
+      path: `${CRM_BASE}/companies/${C13_COMPANY}`,
+      note: "Company 360: หัว + KPI 5 + แท็บ + ผู้ติดต่อ + แถบขวา — เทียบภาพ 04",
+      expect: ["[data-testid=company-360]", "[data-testid=company-360-header]", "[data-testid=company-360-kpis]", "[data-testid=company-360-tabs]"],
+      steps: [{ waitFor: "[data-testid=company-360]", timeoutMs: 20_000 }, { wait: 800 }],
+    } as Spec] : []),
+  ],
   // C0.1 — พิสูจน์ว่าฮาร์เนสถ่ายภาพใช้ได้จริงวันนี้ ด้วย "หน้า CRM v1 สามหน้าเท่าที่มี"
   //   (src/app/app/sys/[id]/crm/{contacts,deals,activities}/page.tsx → ส่วนเนื้อใน src/lib/modules/crm/ui.tsx)
   //   🔴 v1 ยังไม่มี data-testid สักตัว ⇒ selector ที่นี่ต้องเป็นของจริงตาม DOM (ชื่อ input / ลิงก์แท็บ / h1-h2)

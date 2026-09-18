@@ -234,7 +234,14 @@ try {
     logicHits.length ? `logic found in index.ts: ${logicHits.join(", ")}` : hasReexport ? "re-exports only" : "no `… from \"./…\"` re-export found at all",
   );
 
-  const extras = facade ? Object.keys(facade).filter((k) => k !== "default" && !DERIVED.includes(k)) : [];
+  // ORACLE-EDIT C0.2-S1.6 (controller, 18 Sep): later work orders legitimately widen the facade inside their own
+  //   marked blocks `// CRM C1.x ▸ … ◂ CRM C1.x` — exports declared there are owned by that WO, not "free" widening.
+  const woBlocks = [...fsrc.matchAll(/\/\/ CRM (C\d+\.\d+[a-z]?) ▸[\s\S]*?◂ CRM \1/g)].map((m) => m[0]).join("\n");
+  const woOwned = new Set<string>([
+    ...[...woBlocks.matchAll(/export\s+\*\s+as\s+(\w+)/g)].map((m) => m[1]!),
+    ...[...woBlocks.matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1]!.split(",").map((x) => x.trim().split(/\s+as\s+/).pop()!.replace(/^type\s+/, "")).filter(Boolean)),
+  ]);
+  const extras = facade ? Object.keys(facade).filter((k) => k !== "default" && !DERIVED.includes(k) && !woOwned.has(k)) : [];
   chk(
     "C0.2-S1.6",
     `the facade exports EXACTLY what outside code uses today (+ types, which are erased at runtime) — extra runtime exports widen the module surface for free and should be added by the work order that needs them`,

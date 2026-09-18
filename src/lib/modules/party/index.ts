@@ -164,3 +164,92 @@ export async function updateContactInfo(
 ): Promise<UpdateContactInfoResult> {
   return updateContactInfoInner(tenantId, partyId, input, client);
 }
+
+// CRM C1.3 ▸ ชื่อ/เลขภาษีของตัวตนกลางชนิดบริษัท (มติผู้คุมงาน C1.3 ข้อ 4) — `crm/companies.ts` เรียกใน tx เดียวกับการแก้บริษัท
+//   • เขียน **เฉพาะช่องที่ส่งมา** (`undefined` = ไม่แตะ) · id ที่ถูกรวมไปแล้วเด้งไปตัวปลายทางก่อนเขียน (กติกาเดียวกับ updateContactInfo)
+//   • เลขภาษี normalize เป็นตัวเลขล้วน (`normalizePartyTaxId`) · ว่าง/null = ล้าง · branchCode ว่าง = "00000"
+//   • เลขภาษี+สาขาไปชนกับ Party รายอื่นของร้าน = **บันทึกคู่ "อาจเป็นรายเดียวกัน" (TAX_ID)** ไม่ใช่ล้มคำสั่ง
+//   • `client` บังคับ (tx ของผู้เรียก) — rollback แล้วไม่มีอะไรเปลี่ยน · where ผูก tenantId ทุกคำสั่ง
+//   • ไม่ log ข้อมูลใด ๆ (PDPA X8)
+export async function updateCompanyIdentity(
+  tenantId: string,
+  partyId: string,
+  input: { name?: string | null; taxId?: string | null; branchCode?: string | null },
+  client: Prisma.TransactionClient,
+): Promise<{ ok: boolean; partyId?: string; changed: ("name" | "taxId" | "branchCode")[] }> {
+  // ok:false = ไม่พบ / ไม่ใช่ Party ชนิดบริษัท (ผู้เรียกต้องไม่แก้ตัวตนนั้น — ย้ายไปใช้ Party บริษัทของตัวเองแทน)
+  const asked = (partyId ?? "").trim();
+  if (!tenantId || !asked) return { ok: false, changed: [] };
+  const id = await resolveCanonicalInner(tenantId, asked, client);
+  const current = await client.party.findFirst({ where: { tenantId, id }, select: { id: true, kind: true, name: true, taxId: true, branchCode: true } });
+  if (!current) return { ok: false, changed: [] };
+  // 🔴 B1 (รีวิว C1.3): ตัวตนของ "คน" (PERSON — เช่น เลขบัตรประชาชนของเจ้าของกิจการคนเดียวใช้เป็นเลขภาษี) ห้ามถูกแก้จากฝั่งบริษัท
+  if (current.kind !== "COMPANY") return { ok: false, partyId: id, changed: [] };
+  const data: { name?: string; taxId?: string | null; branchCode?: string } = {};
+  const changed: ("name" | "taxId" | "branchCode")[] = [];
+  if (input.name !== undefined) {
+    const name = (input.name ?? "").trim();
+    if (name && name !== current.name) {
+      data.name = name;
+      changed.push("name");
+    }
+  }
+  if (input.taxId !== undefined) {
+    const taxId = normalizePartyTaxId(input.taxId) || null;
+    if (taxId !== current.taxId) {
+      data.taxId = taxId;
+      changed.push("taxId");
+    }
+  }
+  if (input.branchCode !== undefined) {
+    const branchCode = (input.branchCode ?? "").trim() || "00000";
+    if (branchCode !== (current.branchCode ?? "00000")) {
+      data.branchCode = branchCode;
+      changed.push("branchCode");
+    }
+  }
+  if (changed.length === 0) return { ok: true, partyId: id, changed };
+  await client.party.updateMany({ where: { tenantId, id }, data });
+  const taxAfter = data.taxId !== undefined ? data.taxId : current.taxId;
+  if (taxAfter && (changed.includes("taxId") || changed.includes("branchCode"))) {
+    const branchAfter = data.branchCode ?? current.branchCode ?? "00000";
+    const clash = await client.party.findMany({
+      where: { tenantId, taxId: taxAfter, branchCode: branchAfter, mergedIntoId: null, id: { not: id } },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: 5,
+    });
+    for (const c of clash) await recordMergeCandidatePairInner(tenantId, id, c.id, "TAX_ID", client);
+  }
+  return { ok: true, partyId: id, changed };
+}
+// ◂ CRM C1.3
+
+// CRM C1.3 ▸ หา/สร้าง Party **ชนิดบริษัทเท่านั้น** (B1 รีวิว C1.3) — `findOrCreate` เดิมไม่กรองชนิดและจับเบอร์ก่อนชื่อ
+//   ⇒ บริษัทอาจไปผูกกับตัวตนของ "คน" (เลขบัตรประชาชนของเจ้าของกิจการคนเดียว = เลขภาษี) แล้วการเปลี่ยนชื่อ/รวมบริษัท
+//   จะไปแก้/รวมตัวตนของคนคนนั้นทั้งร้าน · ตัวนี้จับคู่ได้ทางเดียว: เลขภาษี + สาขา + kind COMPANY + ยังไม่ถูกรวม
+//   ไม่มีเลขภาษี / ไม่พบ = สร้าง Party บริษัทใหม่ (ไม่จับด้วยชื่อ/เบอร์/อีเมล) · `client` บังคับ (tx ของผู้เรียก — ผู้เรียกถือล็อกเลขภาษี)
+export async function findOrCreateCompany(
+  tenantId: string,
+  input: { name: string; taxId?: string | null; branchCode?: string | null },
+  client: Prisma.TransactionClient,
+): Promise<{ id: string; created: boolean }> {
+  const name = (input.name ?? "").trim();
+  if (!tenantId || !name) throw new Error("party.findOrCreateCompany: ต้องมีร้านและชื่อบริษัท");
+  const taxId = normalizePartyTaxId(input.taxId);
+  const branchCode = (input.branchCode ?? "").trim() || "00000";
+  if (taxId) {
+    const hit = await client.party.findFirst({
+      where: { tenantId, taxId, branchCode, kind: "COMPANY", mergedIntoId: null },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (hit) return { id: hit.id, created: false };
+  }
+  const row = await client.party.create({
+    data: { tenantId, kind: "COMPANY", name, taxId: taxId || null, ...(taxId || input.branchCode ? { branchCode } : {}) },
+    select: { id: true },
+  });
+  return { id: row.id, created: true };
+}
+// ◂ CRM C1.3

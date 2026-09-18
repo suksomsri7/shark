@@ -653,7 +653,7 @@ try {
     const row = await ctRow(kid(r.v));
     const got = row?.sourceDetail ?? {};
     chk("C1.4-S1.5", "sourceDetail is stored complete: the 5 utm keys + formId + pageUrl + referrer, sourceKind WEB_FORM",
-      r.ok && row?.sourceKind === "WEB_FORM" && j(got?.utm) === j(sd.utm) && got?.formId === sd.formId && got?.pageUrl === sd.pageUrl && got?.referrer === sd.referrer,
+      r.ok && row?.sourceKind === "WEB_FORM" && j(Object.fromEntries(Object.entries(got?.utm ?? {}).sort())) === j(Object.fromEntries(Object.entries(sd.utm).sort())) && got?.formId === sd.formId && got?.pageUrl === sd.pageUrl && got?.referrer === sd.referrer,
       "utm ×5 + form/page/referrer", `${r.err} kind=${row?.sourceKind} detail=${cut(j(got), 200)}`);
   }
   {

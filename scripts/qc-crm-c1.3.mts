@@ -692,7 +692,7 @@ try {
   // ═════════════════════════════════════════════════════════════════════════════
   console.log("\n── S4 · merge ──");
   const coK = await fx(cA, { name: `บริษัทหลัก ${rand}`, taxId: taxOf() });
-  const coM = await fx(cA, { name: `บริษัทหลัก (ซ้ำ) ${rand}`, taxId: taxOf() });
+  const coM = await fx(cA, { name: `บริษัทหลัก (ซ้ำ) ${rand}` });
   const acK = await ensureAC(coK);
   const acM = await ensureAC(coM);
   const docM = await mkDoc(acM, "INVOICE", "AWAITING_PAYMENT", 1_000_000, 0, "INV-M");

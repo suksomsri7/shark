@@ -26,6 +26,10 @@ import { lineAmount, type LineInput } from "./totals";
 import { baht } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
+// CRM C1.3 ▸ `accountSystemForCrm` (ท้ายไฟล์) — tenantDb (ไม่ใช่ prisma ดิบ · F5) + ตาม Party ที่ถูกรวมไปตัวปลายทาง
+import { tenantDb as crmTenantDb } from "@/lib/core/db";
+import * as crmPartyFacade from "@/lib/modules/party";
+// ◂ CRM C1.3
 
 // ราคาขายสินค้า POS (master data — ไม่กระทบ GL) เปิดผ่าน facade ให้โมดูล pos เรียก
 export {
@@ -732,3 +736,65 @@ export async function createExpenseDoc(input: {
   });
   return { docId: doc.id, grandTotal: doc.grandTotal };
 }
+
+// CRM C1.3 ▸ ระบบบัญชีของระบบ CRM (มติผู้คุมงาน C1.3 ข้อ 2) — **อ่านอย่างเดียว** ฟังก์ชันเดียว
+//   = `AccountSystemLink{ linkedKind: "CRM", linkedId: crmSystemId, enabled, !archived }` ของร้านนี้ (null = ไม่ได้เชื่อม)
+//   ตัวเลือกเสริม (อ่านในสมุดเล่มนั้นเท่านั้น · ไม่ใช่ของร้าน/สมุดอื่น):
+//     • `partyId`    → ผู้ติดต่อฝั่งบัญชีที่ยังใช้งานของตัวตนนั้น (ตามสาย mergedIntoId ของ Party ก่อน) — ใช้ผูก accountContactId ตอนสร้างบริษัท
+//     • `contactIds` → ข้อมูลย่อของผู้ติดต่อที่ขอ (ยังใช้งาน · ไม่ถูกรวม) — ใช้ตอน "นำเข้าจากบัญชี"
+//   ผู้เรียก: `crm/companies.ts` (ผ่าน facade นี้เท่านั้น — ไม่มีโมดูลอื่นอ่านตาราง AccountSystemLink/AccountContact ตรง)
+export type CrmAccountContactBrief = {
+  id: string;
+  name: string;
+  taxId: string | null;
+  branchCode: string | null;
+  legalType: "PERSON" | "COMPANY";
+  partyId: string | null;
+  phone: string | null;
+  email: string | null;
+};
+export async function accountSystemForCrm(
+  tenantId: string,
+  crmSystemId: string,
+  opts: { partyId?: string | null; contactIds?: readonly string[] } = {},
+): Promise<{ systemId: string; contactOfParty: string | null; contacts: CrmAccountContactBrief[] } | null> {
+  if (!tenantId || !crmSystemId) return null;
+  // สมุดที่ยังใช้งาน (AppSystem.active) ของร้านนี้ เรียงเก่า → ใหม่ แล้วหาลิงก์ CRM ที่เปิดอยู่ · หลายเล่มผูกระบบ CRM เดียวกันได้
+  //   ⇒ เลือกลิงก์ที่สร้างก่อนสุด (ผลคงที่ทุกครั้ง ไม่ขึ้นกับลำดับที่ฐานคืนมา) · tenantDb ต่อเล่ม (AccountSystemLink = sys scope)
+  const books = await crmTenantDb({ tenantId }).appSystem.findMany({
+    where: { tenantId, type: "ACCOUNT", active: true },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  let link: { systemId: string; createdAt: Date } | null = null;
+  for (const b of books) {
+    const l = await crmTenantDb({ tenantId, systemId: b.id }).accountSystemLink.findFirst({
+      where: { tenantId, systemId: b.id, linkedKind: "CRM", linkedId: crmSystemId, enabled: true, archivedAt: null },
+      select: { systemId: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (l && (!link || l.createdAt < link.createdAt)) link = l;
+  }
+  if (!link) return null;
+  const db = crmTenantDb({ tenantId, systemId: link.systemId });
+  let contactOfParty: string | null = null;
+  const asked = (opts.partyId ?? "").trim();
+  if (asked) {
+    const partyId = await crmPartyFacade.resolveCanonical(tenantId, asked);
+    const hit = await db.accountContact.findFirst({
+      where: { tenantId, systemId: link.systemId, partyId, archivedAt: null, mergedIntoId: null },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    contactOfParty = hit?.id ?? null;
+  }
+  const ids = [...new Set((opts.contactIds ?? []).filter((x) => typeof x === "string" && x))].slice(0, 1_000);
+  const contacts = ids.length
+    ? await db.accountContact.findMany({
+        where: { tenantId, systemId: link.systemId, id: { in: ids }, archivedAt: null, mergedIntoId: null },
+        select: { id: true, name: true, taxId: true, branchCode: true, legalType: true, partyId: true, phone: true, email: true },
+      })
+    : [];
+  return { systemId: link.systemId, contactOfParty, contacts };
+}
+// ◂ CRM C1.3

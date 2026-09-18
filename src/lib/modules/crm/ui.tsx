@@ -61,6 +61,9 @@ export function crmTabs(systemId: string): { href: string; label: string }[] {
     { href: `${s}/crm/deals`, label: "ดีล" },
     { href: `${s}/crm/activities`, label: "งานติดตาม" },
     { href: `${s}/crm/contacts`, label: "ผู้ติดต่อ" },
+    // CRM C1.3 ▸ บริษัท (ตรงกับ CRM_NAV ใน crm/nav.ts)
+    { href: `${s}/crm/companies`, label: "บริษัท" },
+    // ◂ CRM C1.3
   ];
 }
 
