@@ -15,3 +15,7 @@ export {
    */
   submitForApproval,
 } from "./service";
+
+// CRM C1.5 ▸ ต้นทางยกเลิก entity → คำขอ PENDING เป็น CANCELLED (สถานะอื่น/ไม่พบ = false) — ผู้เรียก: `crm/deals.ts#deleteDeal`
+//   (ดีลที่ถูกลบขณะมีคำขออนุมัติส่วนลด `crm.discount` ค้างอยู่) · ห่อบาง ๆ ของ service เดิม ไม่มีตรรกะใหม่ ◂ CRM C1.5
+export { cancelRequest } from "./service";

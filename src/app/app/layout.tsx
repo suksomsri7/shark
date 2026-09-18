@@ -18,6 +18,8 @@ import { memberNavChildren } from "@/lib/modules/member/nav";
 import { toMemberActor } from "@/lib/modules/member/access";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
 import { evaluate } from "@/lib/core/rbac";
+// CRM uiVersion gate ▸ ตัวอ่าน settings.crm แบบบริสุทธิ์ (แปลงค่าจาก JSON · ค่าเริ่มต้น uiVersion 1) ◂
+import { parseCrmSettings } from "@/lib/modules/crm";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
@@ -52,6 +54,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getBrandingTokens(tenantId),
     getUserPreferences(auth.user.id),
   ]);
+
+  // CRM uiVersion gate ▸ ระบบ CRM ที่เปิดหน้าจอ v2 แล้ว (settings.crm.uiVersion = 2) — อ่านจากแถวที่โหลดข้างบน ไม่มี query เพิ่ม ◂
+  const crmV2 = new Set(appSystems.filter((x) => x.type === "CRM" && parseCrmSettings(x.settings).uiVersion === 2).map((x) => x.id));
 
   // "แตกฟังก์ชันย่อยในเมนู" — ทุกระบบที่มี sub-route จริงจะกาง submenu (accordion) ใต้ชื่อระบบ
   // business = ต่อด้วย slug (/app/u/<slug>/...) · feature = ต่อด้วย id (/app/sys/<id>/...)
@@ -146,13 +151,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/crm/deals`, label: "ดีล" },
           { href: `${s}/crm/activities`, label: "งานติดตาม" },
           { href: `${s}/crm/contacts`, label: "ผู้ติดต่อ" },
-          // CRM C1.3 ▸ บริษัท (รายชื่อ + เพิ่มบริษัท) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV · CRM_DEEP_NAV)
-          { href: `${s}/crm/companies`, label: "บริษัท" },
-          { href: `${s}/crm/companies/new`, label: "เพิ่มบริษัท" },
-          // ◂ CRM C1.3
-          // CRM C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อผู้ติดต่อข้างบนเป็นหน้า v2 แล้ว) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
-          { href: `${s}/crm/contacts/new`, label: "เพิ่มผู้ติดต่อ" },
-          // ◂ CRM C1.4
+          // CRM uiVersion gate ▸ เมนูของ CRM v2 (C1.3–C1.5) โผล่เฉพาะระบบที่ `settings.crm.uiVersion = 2` (มติ C23 · R-E.14)
+          //   uiVersion 1 (ทุกร้านบน prod จนกว่าเจ้าของเปิดเอง) = เมนูเดิมก่อน C1.3 ทุกตัวอักษร · อ่านจากแถว appSystems ที่โหลดอยู่แล้ว (ไม่มี query เพิ่ม)
+          ...(crmV2.has(slugOrId)
+            ? [
+              // CRM C1.3 ▸ บริษัท (รายชื่อ + เพิ่มบริษัท) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV · CRM_DEEP_NAV)
+              { href: `${s}/crm/companies`, label: "บริษัท" },
+              { href: `${s}/crm/companies/new`, label: "เพิ่มบริษัท" },
+              // ◂ CRM C1.3
+              // CRM C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อผู้ติดต่อข้างบนเป็นหน้า v2 แล้ว) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              { href: `${s}/crm/contacts/new`, label: "เพิ่มผู้ติดต่อ" },
+              // ◂ CRM C1.4
+              // CRM C1.5 ▸ ดีล v2 (เพิ่มดีล · pipeline · ตั้งค่า pipeline/ขั้น/เหตุผลที่แพ้) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              { href: `${s}/crm/deals/new`, label: "เพิ่มดีล" },
+              { href: `${s}/crm/pipelines`, label: "pipeline ทั้งหมด" },
+              // หน้าตั้งค่า = 404 สำหรับคนที่ไม่มี `crm.settings.manage` ⇒ ไม่โชว์ลิงก์ตาย (รีวิว C1.5)
+              ...(evaluate(membershipOf(auth), { module: "crm", action: "crm.settings.manage" })
+                ? [
+                    { href: `${s}/crm/settings/pipelines`, label: "ตั้งค่า pipeline" },
+                    { href: `${s}/crm/settings/stages`, label: "ตั้งค่าขั้นของดีล" },
+                    { href: `${s}/crm/settings/lost-reasons`, label: "เหตุผลที่แพ้" },
+                  ]
+                : []),
+              // ◂ CRM C1.5
+              ]
+            : []),
+          // ◂ CRM uiVersion gate
         ];
       case "MARKETING":
         // ระบบการตลาดมีฟังก์ชันจริงเดียว (แคมเปญ) — ไม่ฝืนแตกเกินจริง

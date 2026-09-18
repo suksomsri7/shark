@@ -574,6 +574,67 @@ export async function convertQuotationToInvoice(
   return res.ok ? { ok: true, docId: res.newId } : res;
 }
 
+// CRM C1.5 ▸ ใบแจ้งหนี้จากดีล (เพิ่มอย่างเดียว · แบบเดียวกับ `createExternalQuotation` ทุกด่าน) — ผู้เรียก: `crm/deals.ts#issueInvoice`
+//   ใช้เมื่อดีลยังไม่มีใบเสนอราคาที่ "ออกแล้ว" ให้แปลงต่อ (ร่างแปลงไม่ได้ — ด่านของ convertDocument) · idempotent ต่อ (refType, refId)
+//   ใบใหม่เป็น DRAFT (พนักงานตรวจ/ออกเองในระบบบัญชี) · ไม่เชื่อมบัญชี = ไม่ออก · ตรวจบรรทัด/ส่วนลดด้วยตัวตรวจเดียวกัน
+//   ⚠️ นอกไฟล์ที่ใบ C1.5 เป็นเจ้าของ — ผู้คุมงานตัดสิน (รายงานของ builder) · ใบ C2.7 (`createInvoiceFromLines`) รับช่วงต่อ
+export async function createExternalInvoice(input: {
+  tenantId: string;
+  sourceSystemId: string;
+  sourceKind: "CRM";
+  refType: string;
+  refId: string;
+  title: string;
+  valueSatang: number;
+  customer: { name: string; phone?: string | null; email?: string | null };
+  partyId?: string | null;
+  sourceContactId?: string | null;
+  lines?: LineInput[];
+  discountAmount?: number | null;
+  note?: string | null;
+  createdById?: string | null;
+}): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
+  const link = await findAccountLinkFor(input.tenantId, input.sourceKind, input.sourceSystemId);
+  if (!link) return { ok: false, reason: "ยังไม่เชื่อมระบบบัญชี" };
+  const ctx = { tenantId: input.tenantId, systemId: link.systemId };
+  const existing = await findDocByRef(ctx.systemId, "INVOICE", input.refType, input.refId);
+  if (existing) return { ok: true, docId: existing.id, created: false };
+  const contact = await findOrCreateCustomerContact(ctx, { ...input.customer, partyId: input.partyId ?? null });
+  const lines: LineInput[] =
+    input.lines && input.lines.length > 0
+      ? input.lines.map((l) => ({ ...l, qty: roundQty4(l.qty) }))
+      : [{ description: input.title, qty: 1, unitPrice: input.valueSatang }];
+  const problem = externalQuotationProblem(lines, input.lines != null && input.lines.length > 0, input.discountAmount, input.valueSatang);
+  if (problem) return { ok: false, reason: problem };
+  const doc = await createDocument({
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    docType: "INVOICE",
+    contactId: contact.id,
+    lines,
+    discountAmount: input.discountAmount ?? undefined,
+    note: input.note ?? undefined,
+    createdById: input.createdById ?? undefined,
+  });
+  await setDocExternalRef(doc.id, { refSystemId: input.sourceSystemId, refType: input.refType, refId: input.refId });
+  return { ok: true, docId: doc.id, created: true };
+}
+
+/**
+ * ใบแจ้งหนี้ที่ "แปลงมาจาก" ใบเสนอราคาใบนี้แล้ว (CONVERT · sourceDocId) และยังไม่ถูกยกเลิก — อ่านอย่างเดียว · ไม่พบ = null
+ * ผู้เรียก: `crm/deals.ts#issueInvoice` (รีวิว C1.5 S9 — ใช้ใบเดิมแทนการออกซ้ำ) · ผูก ctx ⇒ เอกสารร้าน/สมุดอื่น = null
+ */
+export async function invoiceConvertedFrom(ctx: AccountCtx, quotationDocId: string): Promise<{ docId: string } | null> {
+  if (!ctx.tenantId || !ctx.systemId || !quotationDocId) return null;
+  const doc = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountDocument.findFirst({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, docType: "INVOICE", sourceDocId: quotationDocId, status: { notIn: ["VOIDED", "CANCELLED"] } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  return doc ? { docId: doc.id } : null;
+}
+// ◂ CRM C1.5
+
 /**
  * ลูกค้าตอบใบเสนอราคา (ตอบรับ/ปฏิเสธ) + **เก็บหลักฐานผู้เซ็นไว้ในแถว audit ของเอกสารใบนั้น**
  * ยังบังคับสถานะ `AWAITING_ACCEPT` เหมือนเดิม (ตัวห่อไม่มีสิทธิ์ข้ามด่านของ `setQuotationResponse`)

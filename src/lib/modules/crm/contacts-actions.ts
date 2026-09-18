@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
+import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import {
   archiveContact,
   assignContact,
@@ -43,11 +44,14 @@ async function session(systemId: string, action: string) {
     { module: "crm", action },
   );
   const ctx: ContactsCtx = { tenantId: auth.active.tenantId, systemId: String(systemId ?? ""), actorUserId: auth.user.id };
+  // CRM uiVersion gate ▸ action ของหน้า v2 ใช้ได้เฉพาะระบบที่เปิด CRM ใหม่ (settings.crm.uiVersion = 2) — action v1 (`actions.ts`) ไม่ผ่านที่นี่ ◂
+  await assertCrmV2(ctx);
   return { ctx, actor: toMemberActor(auth.user.id, auth.active) };
 }
 
 /** `multiStep` = งานที่ commit เป็นหลายช่วง (นำเข้า · รวม) — ล้มกลางทางแล้ว **ห้าม** บอกว่า "ข้อมูลไม่เปลี่ยน" */
 function failOf(e: unknown, multiStep = false): Fail {
+  if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };
   // 🔴 ไม่ส่งรายละเอียดทางเทคนิค/ข้อมูลลูกค้าออกไป (log แค่ชนิด error)

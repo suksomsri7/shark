@@ -823,6 +823,14 @@ export async function linkAccountProduct(ctx: Ctx, itemId: string, accountProduc
   await syncLinkedAccountProduct(ctx, itemId);
 }
 
+// CRM C1.5 ▸ อ่านสินค้าหลายตัวในคำสั่งเดียว (scope tenant+system ผ่าน tenantDb · ของเลิกขาย/ข้ามระบบไม่คืน · ≤ 500 id)
+//   ผู้เรียก: `crm/deals.ts` (ตรวจ productId ของบรรทัดดีล + ป้าย "ราคาเปลี่ยน") — แทนการเรียก getItem ทีละตัว (รีวิว C1.5) ◂ CRM C1.5
+export async function getItemsByIds(ctx: Ctx, itemIds: string[]) {
+  const ids = [...new Set((itemIds ?? []).filter((x) => typeof x === "string" && x))].slice(0, 500);
+  if (ids.length === 0) return [];
+  return tenantDb(ctx).invItem.findMany({ where: { id: { in: ids }, archivedAt: null }, select: { id: true, priceSatang: true } });
+}
+
 export async function recentMovements(ctx: Ctx, take = 30) {
   return tenantDb(ctx).invMovement.findMany({
     orderBy: { createdAt: "desc" },

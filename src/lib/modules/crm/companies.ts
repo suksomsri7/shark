@@ -1932,3 +1932,28 @@ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids
   return prisma.crmCompany.findMany({ where: { AND: [companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.4
+
+// CRM C1.5 ▸ ทางเข้าแคชดีลของบริษัทที่ "เข้าร่วม tx ของผู้เรียก" (บริการดีล `deals.ts`) — SQL ของแคชยังเป็นของไฟล์นี้ที่เดียว
+//   ลำดับล็อก (หัวไฟล์): … → แถว CrmCompany (เรียง id) → แถว CrmContact → แถว CrmDeal ⇒ ดีลล็อกบริษัทก่อนเสมอด้วยตัวนี้
+//   AUDIT-CLASS X3: ผู้เรียกถือล็อกแถวบริษัทไว้ตลอด tx (lockCompanyRowsInTx) แล้วค่อยคำนวณ ⇒ แคชเท่ากับความจริงหลัง commit เสมอ
+/** ล็อกแถวบริษัท (FOR UPDATE · เรียง id · ขอบเขตร้าน+ระบบ) ใน tx ของผู้เรียก */
+export async function lockCompanyRowsInTx(tx: Tx, ctx: CompaniesCtx, ids: (string | null | undefined)[]): Promise<void> {
+  await lockCompanies(tx, ctx, ids.filter((x): x is string => typeof x === "string" && !!x));
+}
+/** คำนวณแคช openDealCount / wonValueSatang ใหม่ (outstanding คงค่าเดิม) — ผู้เรียกล็อกแถวบริษัทไว้แล้ว */
+export async function recomputeDealCachesInTx(tx: Tx, ctx: CompaniesCtx, ids: (string | null | undefined)[]): Promise<void> {
+  const uniq = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].sort();
+  for (const id of uniq) await recomputeCachesInTx(tx, ctx, id);
+}
+/**
+ * ชื่อบริษัทสำหรับบริการดีล — อ่านผ่าน companyWhere (actor จริง) หรือขอบเขตร้าน+ระบบ (ทางเข้าของระบบ: v1 wrapper/สายอนุมัติ)
+ * `db` = client ของผู้เรียก (tx ของ "แปลง lead" เห็นบริษัทที่เพิ่งสร้างใน tx นั้น) · `live` = เฉพาะที่ยังใช้งาน (ไม่ถูกรวม/เก็บถาวร)
+ * AUDIT-CLASS X1: id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/มองไม่เห็น (ไม่บอกว่ามีอยู่ที่อื่นไหม)
+ */
+export async function companyRefsInTx(db: Db, ctx: CompaniesCtx, actor: MemberActor | null, ids: (string | null | undefined)[], opts: { live?: boolean } = {}): Promise<{ id: string; name: string }[]> {
+  const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].slice(0, 5_000);
+  if (list.length === 0) return [];
+  const scope: Prisma.CrmCompanyWhereInput = actor ? companyWhere(ctx, actor) : identityScope(ctx);
+  return db.crmCompany.findMany({ where: { AND: [scope, { id: { in: list } }, ...(opts.live ? [{ mergedIntoId: null, archivedAt: null }] : [])] }, select: { id: true, name: true } });
+}
+// ◂ CRM C1.5

@@ -90,7 +90,22 @@ const C14_CONTACT: string | null = WO === "1.4"
       .sort((a: Any, b: Any) => b._count.deals - a._count.deals)[0]?.id ?? null)
   : null;
 
+// C1.5 — ดีลที่มีบรรทัดสินค้า/ประวัติมากที่สุด (อ่านอย่างเดียว)
+const C15_DEAL: string | null = WO === "1.5"
+  ? ((await (prisma as Any).crmDeal.findMany({ where: { systemId: SYS }, select: { id: true, _count: { select: { stageHistory: true } } } }))
+      .sort((a: Any, b: Any) => b._count.stageHistory - a._count.stageHistory)[0]?.id ?? null)
+  : null;
+
 const SPECS: Record<string, Spec[]> = {
+  // C1.5 — ดีล: กระดาน (crm-v2-deals) · ตาราง · พยากรณ์ · 360 · สร้าง · /pipelines (เทียบภาพ 02 กระดาน · 03 Deal 360)
+  "1.5": isCustomer ? [] : [
+    { name: `crm-v2-deals-board-${userKey}`, path: `${CRM_BASE}/deals`, note: "กระดานดีล v2", expect: ["[data-testid=deals-page]", "[data-testid=deal-board]"], steps: [{ waitFor: "[data-testid=deal-board]", timeoutMs: 20_000 }, { wait: 600 }] },
+    { name: `crm-v2-deals-table-${userKey}`, path: `${CRM_BASE}/deals?view=table`, note: "ตารางดีล", expect: ["[data-testid=deals-page]"], steps: [{ waitFor: "[data-testid=deals-page]", timeoutMs: 20_000 }, { wait: 600 }] },
+    { name: `crm-v2-deals-forecast-${userKey}`, path: `${CRM_BASE}/deals?view=forecast`, note: "พยากรณ์", expect: ["[data-testid=deals-page]"], steps: [{ waitFor: "[data-testid=deals-page]", timeoutMs: 20_000 }, { wait: 600 }] },
+    ...(C15_DEAL ? [{ name: `crm-deal-360-${userKey}`, path: `${CRM_BASE}/deals/${C15_DEAL}`, note: "Deal 360", expect: ["[data-testid=deal-360]", "[data-testid=deal-360-header]"], steps: [{ waitFor: "[data-testid=deal-360]", timeoutMs: 20_000 }, { wait: 800 }] } as Spec] : []),
+    { name: `crm-deals-new-${userKey}`, path: `${CRM_BASE}/deals/new`, note: "สร้างดีล /deals/new", expect: ["[data-testid=deal-new-form]"], steps: [{ waitFor: "[data-testid=deal-new-form]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: `crm-pipelines-${userKey}`, path: `${CRM_BASE}/pipelines`, note: "ภาพรวม pipelines", expect: ["[data-testid=pipelines-page]"], steps: [{ waitFor: "[data-testid=pipelines-page]", timeoutMs: 20_000 }, { wait: 500 }] },
+  ],
   // C1.4 — ผู้ติดต่อ: รายการ · สร้างใหม่ · 360 (เทียบภาพ ledger/design-crm/05-*.png)
   "1.4": isCustomer ? [] : [
     {

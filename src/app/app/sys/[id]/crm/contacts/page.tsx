@@ -19,6 +19,9 @@ import {
   type ContactListInput,
 } from "@/lib/modules/crm/contacts-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
+// CRM uiVersion gate ▸ uiVersion ≠ 2 = หน้า v1 เดิมทุกตัวอักษร (มติ C23 · R-E.14) ◂
+import { crmUiVersion, pickCrmPage } from "@/lib/modules/crm/ui-version";
+import { ContactsV1Page } from "./_components/ContactsV1Page";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { ContactExportButton, ContactImportButton, ContactTable, type ContactRowView } from "./_components/ContactListTools";
@@ -42,6 +45,7 @@ export default async function ContactsPage({
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "CRM" } });
   if (!sys) notFound();
+  if (pickCrmPage(await crmUiVersion({ tenantId, systemId: id })) === "v1") return <ContactsV1Page params={params} />;
   const actor = toMemberActor(auth.user.id, auth.active);
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");

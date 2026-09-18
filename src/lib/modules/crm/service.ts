@@ -1,12 +1,8 @@
 import { tenantDb } from "@/lib/core/db";
-import { emitOutbox } from "@/lib/core/outbox";
 import type { CrmActivityType, Prisma } from "@prisma/client";
-import {
-  DEFAULT_PIPELINE,
-  dealStateForStage,
-  lifecycleAfterDealWon,
-  weightedForecast,
-} from "./rules";
+import { DEFAULT_PIPELINE, weightedForecast } from "./rules";
+// CRM C1.5 ▸ ดีล v1 (สร้าง · ย้ายขั้น · ออกใบเสนอราคา) ย้ายไปบริการ v2 — ที่นี่เหลือตัวห่อที่ลายเซ็นเดิม ◂
+import { createDealFromLegacy, issueQuotationFromLegacy, moveDealFromLegacy } from "./deals";
 // CRM C1.4 ▸ การสร้างผู้ติดต่อย้ายไปบริการ v2 (Party ถูกผูกที่นั่น) ◂
 import { createContactFromLegacy } from "./contacts";
 
@@ -79,84 +75,16 @@ export type CreateDealInput = {
 };
 
 export async function createDeal(ctx: Ctx, input: CreateDealInput): Promise<{ id: string }> {
-  const db = tenantDb(ctx);
-  // อ่าน stage เพื่อสำเนา kind + คำนวณ closedAt จากกติกา (ห้ามตั้ง kind ตรง)
-  const stage = await db.crmStage.findFirst({ where: { id: input.stageId } });
-  if (!stage) throw new Error("ไม่พบขั้นตอนดีล");
-  const state = dealStateForStage(stage.kind, new Date());
-
-  const d = await db.crmDeal.create({
-    data: {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      contactId: input.contactId,
-      pipelineId: input.pipelineId,
-      stageId: input.stageId,
-      title: input.title.trim(),
-      valueSatang: Math.max(0, Math.round(input.valueSatang || 0)),
-      kind: state.kind,
-      closedAt: state.closedAt,
-      expectedCloseAt: input.expectedCloseAt ?? null,
-    },
-  });
-  return { id: d.id };
+  // CRM C1.5 ▸ ตัวห่อบาง ๆ ของ v1 รอบบริการ v2 `deals.ts` — ลายเซ็นเดิมทุกตัวอักษร
+  //   ได้แถวประวัติขั้นแรก + event crm.deal.created (ใน tx) + แคชบริษัท + audit จากบริการ v2 ◂ CRM C1.5
+  return createDealFromLegacy(ctx, input);
 }
 
 // ย้ายดีลเข้า stage ใหม่ → sync kind + closedAt ตามกติกา · WON → contact เป็น CUSTOMER
+// CRM C1.5 ▸ ตัวห่อบาง ๆ รอบ `deals.ts` (moveDealFromLegacy): event `crm.deal.won` ยังยิงใน transaction เดียวกับการเปลี่ยนขั้น
+//   (🔴 AUDIT M12 — ย้ายไปอยู่ใน deals.ts#moveCore พร้อมล็อกแถวต่อดีล ⇒ ยิงครั้งเดียวต่อการเข้า WON แม้กดพร้อมกันข้ามโพรเซส) ◂ CRM C1.5
 export async function moveDeal(ctx: Ctx, dealId: string, stageId: string): Promise<void> {
-  const db = tenantDb(ctx);
-  const [deal, stage] = await Promise.all([
-    db.crmDeal.findFirst({ where: { id: dealId } }),
-    db.crmStage.findFirst({ where: { id: stageId } }),
-  ]);
-  if (!deal || !stage) throw new Error("ไม่พบดีลหรือขั้นตอน");
-
-  const state = dealStateForStage(stage.kind, new Date());
-  // 🔴 AUDIT M12: ดีลที่ปิดได้ทำให้ลูกค้า "ได้ของ" (สมัครสมาชิกให้ + ไทม์ไลน์ + journey ของระบบสมาชิก)
-  //    ⇒ event ต้องเขียนใน transaction เดียวกับการเปลี่ยนขั้นดีล (กติกา core/outbox.ts:69-72)
-  //    ของเดิมยิงนอก tx: ดีลขึ้นเป็น WON แล้วโปรเซสถูกตัดก่อนยิง = ไม่มีใครรู้ ไม่มีแถวค้างให้ตามเก็บ
-  await db.$transaction(async (tx) => {
-    // `tenantDb` เป็น client ที่ `$extends` แล้ว ⇒ ชนิดของ tx ไม่ตรงกับ `Prisma.TransactionClient` ที่ core รับ
-    // (ต่างกันแค่ "ชนิด" จาก extension — ของจริงคือ transaction client ตัวเดียวกัน และยังฉีดขอบเขตร้านให้ทุก query)
-    // 🔴 โมดูล CRM เพิ่ม import prisma ดิบแทนไม่ได้ (fitness F5.1 เต็ม baseline พอดี) ⇒ แปลงชนิดที่จุดเดียวตรงนี้
-    const txc = tx as unknown as Prisma.TransactionClient;
-    await tx.crmDeal.update({
-      where: { id: deal.id },
-      data: { stageId: stage.id, kind: state.kind, closedAt: state.closedAt },
-    });
-    if (stage.kind !== "WON") return;
-
-    // ปิดสำเร็จ (WON) → เลื่อน lifecycle ของ contact เป็น CUSTOMER (จากกติกา)
-    const contact = await tx.crmContact.findFirst({ where: { id: deal.contactId } });
-    if (contact) {
-      const next = lifecycleAfterDealWon(contact.lifecycleStage);
-      if (next !== contact.lifecycleStage) {
-        await tx.crmContact.update({
-          where: { id: contact.id },
-          data: { lifecycleStage: next },
-        });
-      }
-    }
-    // M3.7 (ระบบสมาชิก v2 · §7.1) — ดีลปิดได้ → ไทม์ไลน์สมาชิก + ผูก/สมัครสมาชิกให้ผู้ติดต่อ (consumer ที่ composition root)
-    // 🔴 additive จุดเดียว: CRM ไม่รู้จักโมดูลสมาชิก — แค่ประกาศเหตุการณ์ · idempotencyKey ผูกดีล (ย้ายไป-กลับไม่ยิงซ้ำ)
-    // 🔴 ลง 3 ทะเบียนแล้ว (outbox-consumers · automation/labels · webhooks/labels ผ่าน spread)
-    await emitOutbox(txc, {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      type: "crm.deal.won",
-      idempotencyKey: `crm.deal.won#${deal.id}`,
-      payload: {
-        dealId: deal.id,
-        contactId: deal.contactId,
-        valueSatang: deal.valueSatang,
-        title: deal.title,
-        name: contact?.name ?? null,
-        partyId: contact?.partyId ?? null,
-        phone: contact?.phone ?? null,
-        email: contact?.email ?? null,
-      },
-    });
-  });
+  await moveDealFromLegacy(ctx, dealId, stageId);
 }
 
 // ── Activity / Follow-up ──
@@ -270,37 +198,12 @@ export async function listActivities(
 }
 
 // ── สะพาน CRM → บัญชี (WO-0010): Deal ออกใบเสนอราคาผ่าน account facade ──
-// CRM ไม่รู้เรื่องเลขบัญชี/VAT — ส่งลูกค้า+มูลค่าให้บัญชีจัดการ · idempotent ฝั่ง facade
-import { createExternalQuotation } from "@/lib/modules/account";
-
+// CRM C1.5 ▸ ตัวห่อบาง ๆ รอบ `deals.ts` (issueQuotationFromLegacy) — ลายเซ็น/รูปผลลัพธ์เดิม · ดีลที่มีรายการสินค้าได้ใบหลายบรรทัด ◂ CRM C1.5
 export async function issueQuotation(
   ctx: Ctx,
   dealId: string,
 ): Promise<{ ok: true; docId: string; created: boolean } | { ok: false; reason: string }> {
-  const db = tenantDb(ctx);
-  const deal = await db.crmDeal.findFirst({ where: { id: dealId }, include: { contact: true } });
-  if (!deal) return { ok: false, reason: "ไม่พบดีล" };
-  if (deal.valueSatang <= 0) return { ok: false, reason: "ดีลยังไม่มีมูลค่า — ใส่มูลค่าก่อนออกใบเสนอราคา" };
-
-  const res = await createExternalQuotation({
-    tenantId: ctx.tenantId,
-    sourceSystemId: ctx.systemId,
-    sourceKind: "CRM",
-    refType: "CrmDeal",
-    refId: deal.id,
-    title: deal.title,
-    valueSatang: deal.valueSatang,
-    customer: { name: deal.contact.name, phone: deal.contact.phone, email: deal.contact.email },
-    // WO 3.1 (MAP §F.5): ส่ง partyId ของ CrmContact ต้นทาง → account ใช้เป็นกุญแจจับคู่ตัวแรก
-    partyId: deal.contact.partyId,
-    sourceContactId: deal.contact.id,
-  });
-  if (!res.ok) return res;
-
-  if (deal.quotationDocId !== res.docId) {
-    await db.crmDeal.update({ where: { id: deal.id }, data: { quotationDocId: res.docId } });
-  }
-  return res;
+  return issueQuotationFromLegacy(ctx, dealId);
 }
 
 /**

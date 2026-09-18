@@ -49,3 +49,16 @@ export { contactWhere } from "./where";
 //   บริษัท (namespace `companies` ข้างบน) ได้ทางเข้าที่เข้าร่วม tx ของผู้เรียกเพิ่ม 4 ตัว (มติ C1.4 Option A):
 //   companies.createInTx · companies.linkContactInTx · companies.transferContactLinksInTx · companies.liveCompanyRefs
 // ◂ CRM C1.4
+// CRM C1.5 ▸ ดีล (`deals.ts`) — namespace เดียว: createDeal/moveDeal/reopenDeal/reassignDeal/setForecastCategory/setNextStep/
+//   setCollaborators/updateDeal · setLines (+ lines.set) · issueQuotation/issueInvoice · getDeal360/listDeals/getBoard/forecast ·
+//   bulkMove/bulkReassign/bulkTag/exportDeals · deleteDeal · changePipeline · applyDiscountDecision (ผลสายอนุมัติ crm.discount —
+//   ผู้เรียก: src/lib/approval-effects.ts) · moveOpenDealsOfContact (C1.4 ผู้ติดต่อย้ายบริษัท)
+//   ตั้งค่า pipeline/ขั้น (`pipelines.ts`) · เหตุผลที่แพ้ (`lost-reasons.ts`)
+//   ค่าคงที่/ชนิด/ตัวคำนวณสำหรับหน้า 'use client' อยู่ที่ `./deals-shared` · ขอบเขตการอ่าน `./where` (dealWhere)
+export * as deals from "./deals";
+export * as pipelines from "./pipelines";
+export * as lostReasons from "./lost-reasons";
+export { dealWhere } from "./where";
+// uiVersion gate: ตัวแปลง settings.crm (บริสุทธิ์) — ผู้เรียก: src/app/app/layout.tsx (เมนู CRM v2 โผล่เฉพาะระบบ uiVersion 2)
+export { parseCrmSettings } from "./settings";
+// ◂ CRM C1.5

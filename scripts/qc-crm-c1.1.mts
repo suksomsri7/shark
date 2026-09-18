@@ -418,8 +418,10 @@ try {
   const blankRead = blank?.id && getCrmSettings ? await getCrmSettings({ tenantId: tid, systemId: blank.id }).catch((e: Error) => ({ error: e.message })) : null;
   const liveRead = getCrmSettings ? await getCrmSettings({ tenantId: tid, systemId: SYS }).catch((e: Error) => ({ error: e.message })) : null;
   chk("C1.1-S8.1", "มติ C23 / R-E ข้อ 14: `crm/settings.ts` มี getCrmSettings({tenantId, systemId}) และคืน uiVersion = 1 สำหรับระบบที่ settings ว่างเปล่า (ค่าเริ่มต้นอยู่ในตัวอ่าน ไม่ใช่ในคอมเมนต์) · ระบบ CRM ของชุดข้อมูล QC ก็อ่านได้ 1",
-    typeof getCrmSettings === "function" && blankRead?.uiVersion === 1 && liveRead?.uiVersion === 1,
-    "getCrmSettings → uiVersion 1 (ทั้งระบบว่างและระบบ QC)", `มีฟังก์ชัน=${typeof getCrmSettings === "function"} · ว่าง=${JSON.stringify(blankRead)?.slice(0, 120)} · QC=${liveRead?.uiVersion ?? JSON.stringify(liveRead)?.slice(0, 80)}`);
+    // ORACLE-EDIT C1.1-S8.1 (controller, 18 Sep · uiVersion gate): the QC seed now deliberately sets the QC CRM system to 2
+    //   (v2 pages are gated; QC must exercise v2). The default for an empty system stays 1 — that is the invariant this check guards.
+    typeof getCrmSettings === "function" && blankRead?.uiVersion === 1 && liveRead?.uiVersion === 2,
+    "getCrmSettings → uiVersion 1 (ระบบว่าง) · 2 (ระบบ QC ที่ seed ตั้งไว้)", `มีฟังก์ชัน=${typeof getCrmSettings === "function"} · ว่าง=${JSON.stringify(blankRead)?.slice(0, 120)} · QC=${liveRead?.uiVersion ?? JSON.stringify(liveRead)?.slice(0, 80)}`);
   chk("C1.1-S8.2", "มติ C23: getCrmSettings คืน bridgesEnabled = true สำหรับระบบที่ settings ว่างเปล่า (สวิตช์ปิดสะพานเชื่อมโมดูลอื่นบน prod · ค่าเริ่มต้นคือเปิด)",
     blankRead?.bridgesEnabled === true, "true", `${JSON.stringify(blankRead?.bridgesEnabled) ?? "-"}`, "MAJOR");
 } catch (e) {

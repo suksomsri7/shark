@@ -120,6 +120,9 @@ for (const type of CQC.extraSystems as string[]) {
 }
 const SYS = systems.CRM!;
 const ctx = { tenantId, systemId: SYS };
+// CRM uiVersion gate ▸ ร้าน QC เปิด CRM v2 (settings.crm.uiVersion = 2) ให้ภาพ/ข้อสอบเห็นหน้าจอ v2 — ร้านจริงบน prod ยังเป็น 1 จนเจ้าของเปิดเอง
+//   เขียนผ่านตัวเขียน jsonb_set คำสั่งเดียวของ settings.ts (ไม่ทับคีย์อื่นของ settings) · idempotent ◂
+await ((await import("@/lib/modules/crm/settings" as string)) as { setCrmSettingsKey: (c: Any, k: string, v: unknown) => Promise<unknown> }).setCrmSettingsKey(ctx, "uiVersion", 2);
 
 // ═══════════════════ 3. ผู้ใช้ nok (หัวหน้าทีมกระบี่) + ทีม 2 ═══════════════════
 const nokUser = await prisma.user.create({ data: { email: CQC.users.nok.email, name: CQC.users.nok.name } });

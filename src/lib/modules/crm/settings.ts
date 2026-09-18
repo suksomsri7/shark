@@ -6,6 +6,8 @@
 //    ห้าม read-modify-write ทั้งก้อน `AppSystem.settings` (ช่องว่างเขียนทับกัน) — ใบ C1.5 เป็นคนเพิ่มตัวเขียน
 // 🔴 AUDIT-CLASS X1: หา `AppSystem` ด้วย id + tenantId + type CRM เสมอ — ระบบของร้านอื่น/ชนิดอื่น = ไม่พบ
 import { tenantDb } from "@/lib/core/db";
+// CRM C1.5 ▸ ตัวเขียน jsonb_set ใช้ client ของโมดูล (F5.1) ◂
+import { prisma as crmDb } from "./db";
 
 export type CrmUiVersion = 1 | 2;
 
@@ -38,3 +40,26 @@ export async function getCrmSettings(ctx: { tenantId: string; systemId: string }
   if (!sys) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
   return parseCrmSettings(sys.settings);
 }
+
+// CRM C1.5 ▸ ตัวเขียน `AppSystem.settings.crm.<key>` (RESOLUTIONS R-A — ใบอื่นเพิ่มหมวดของตัวเองผ่านบริการนี้เท่านั้น)
+//   🔴 คำสั่งเดียว (`jsonb_set` แบบ `writeMemberSettingsKey`) — ไม่อ่านทั้งก้อนมาแก้แล้วเขียนทับ (ช่องว่างเขียนทับคีย์ของคนอื่น)
+//   AUDIT-CLASS X1: เขียนเฉพาะแถว AppSystem ที่ id + tenantId + type CRM ตรงกัน · ไม่พบ = โยนข้อความไทย (ไม่เขียนอะไร)
+export type CrmSettingsKey = keyof CrmSettings;
+
+export async function setCrmSettingsKey<K extends CrmSettingsKey>(ctx: { tenantId: string; systemId: string }, key: K, value: CrmSettings[K]): Promise<CrmSettings> {
+  if (key === "uiVersion" && value !== 1 && value !== 2) throw new Error("รุ่นหน้าจอ CRM ต้องเป็น 1 หรือ 2");
+  if (key === "bridgesEnabled" && typeof value !== "boolean") throw new Error("สวิตช์สะพานเชื่อมต้องเป็นเปิดหรือปิด");
+  const json = JSON.stringify(value);
+  const n = await crmDb.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object(${key}::text, ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+  return getCrmSettings(ctx);
+}
+// ◂ CRM C1.5

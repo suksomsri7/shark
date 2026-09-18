@@ -148,6 +148,13 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   //      ยังถูกบันทึกครบในสายอนุมัติเอง (ApprovalRequest + แจ้งเตือน) · ใบเจ้าของเรื่องมาเติมกิ่งของตัวเอง
   //      ที่นี่ ห้ามแตะกิ่งของใบอื่น
   if (entityType === "crm.discount") {
+    // CRM C1.5 ▸ ส่วนลดเกินเพดานของดีล — entityId = `<dealId>:<รหัสการยื่น>` · รายการที่รออนุมัติพักไว้ที่ CrmDeal.pendingLines
+    //   อนุมัติ = ใช้รายการที่พักไว้ครั้งเดียว · ปฏิเสธ = ล้างของที่พักไว้ (รายการ/มูลค่าเดิมคงอยู่)
+    //   idempotent: บริการดีลทำเฉพาะเมื่อดีลยังรอ "คำขอใบนี้" อยู่ (ใต้ล็อกแถว) ⇒ drain ซ้ำ/พร้อมกันไม่ใช้ส่วนลดซ้ำ
+    //   dynamic import เหตุผลเดียวกับกิ่งของสมาชิกข้างบน (วงโหลดไฟล์ของ facade) ◂ CRM C1.5
+    if (!requestId) return;
+    const crm = await import("@/lib/modules/crm");
+    await crm.deals.applyDiscountDecision({ tenantId: evt.tenantId, requestId, entityId, approved });
     return;
   }
   if (entityType === "crm.commission") {

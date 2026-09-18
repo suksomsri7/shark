@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import type { CrmActivityType } from "@prisma/client";
@@ -13,6 +14,7 @@ import {
   type Ctx,
   issueQuotation,
 } from "./service";
+import { DealsError } from "./deals-shared";
 
 // ตรวจสิทธิ์โมดูล CRM (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "crm.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -53,6 +55,19 @@ const dateOrNull = (v: FormDataEntryValue | null): Date | null => {
 
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
 
+// CRM C1.5 ▸ ฟอร์ม v1 (ดีล) เรียกบริการดีล v2 ผ่าน service.ts — กติกา v2 ที่ปฏิเสธ (DealsError: ข้อความไทยไม่โทษผู้ใช้)
+//   ต้องไม่กลายเป็นหน้า error ⇒ พากลับหน้าดีลพร้อมข้อความ (`?notice=`) · error ชนิดอื่นโยนต่อตามเดิม ◂ CRM C1.5
+async function withDealNotice(systemId: string, f: () => Promise<unknown>): Promise<void> {
+  let notice: string | null = null;
+  try {
+    await f();
+  } catch (e) {
+    if (!(e instanceof DealsError)) throw e;
+    notice = e.message;
+  }
+  if (notice) redirect(`/app/sys/${encodeURIComponent(systemId)}/crm/deals?notice=${encodeURIComponent(notice.slice(0, 300))}`);
+}
+
 // ── สร้างผู้ติดต่อ (Lead) ──
 export async function createContactAction(formData: FormData) {
   const auth = await requireTenant();
@@ -80,14 +95,16 @@ export async function createDealAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   if (!systemId || !contactId || !pipelineId || !stageId || !title) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await createDeal(ctx, {
-    contactId,
-    pipelineId,
-    stageId,
-    title,
-    valueSatang: bahtToSatang(formData.get("value")),
-    expectedCloseAt: dateOrNull(formData.get("expectedCloseAt")),
-  });
+  await withDealNotice(systemId, () =>
+    createDeal(ctx, {
+      contactId,
+      pipelineId,
+      stageId,
+      title,
+      valueSatang: bahtToSatang(formData.get("value")),
+      expectedCloseAt: dateOrNull(formData.get("expectedCloseAt")),
+    }),
+  );
   revalidate(systemId);
 }
 
@@ -100,7 +117,7 @@ export async function moveDealAction(formData: FormData) {
   const stageId = String(formData.get("stageId") ?? "");
   if (!systemId || !dealId || !stageId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  await moveDeal(ctx, dealId, stageId);
+  await withDealNotice(systemId, () => moveDeal(ctx, dealId, stageId));
   revalidate(systemId);
 }
 
@@ -142,7 +159,7 @@ export async function issueQuotationAction(formData: FormData) {
   const dealId = String(formData.get("dealId") ?? "");
   const auth = await requireTenant();
   assertCrmCan(auth, "crm.deal.quote");
-  await issueQuotation({ tenantId: auth.active.tenantId, systemId }, dealId);
+  await withDealNotice(systemId, () => issueQuotation({ tenantId: auth.active.tenantId, systemId }, dealId));
   revalidate(systemId);
 }
 

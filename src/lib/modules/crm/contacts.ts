@@ -38,7 +38,9 @@ import * as companies from "./companies";
 import * as consents from "./consents";
 import * as objects from "./objects";
 import { CompaniesError } from "./companies-shared";
-import { canAdvanceLifecycle, dealStateForStage } from "./rules";
+import { canAdvanceLifecycle } from "./rules";
+// CRM C1.5 ▸ ดีลของ "แปลง lead" + ดีลเปิดที่ย้ายตามบริษัท เขียนผ่านบริการดีล (ผู้เขียนคอลัมน์ดีลที่เดียว) ◂
+import * as deals from "./deals";
 import {
   CONTACT_BULK_MAX,
   CONTACT_EXPORT_MAX_ROWS,
@@ -885,12 +887,8 @@ export async function updateContact(ctx: ContactsCtx, actor: MemberActor, id: st
  * แคชของทั้งสองบริษัทคำนวณใหม่ผ่านบริการบริษัท (ล็อกแถวบริษัทเอง)
  */
 async function moveOpenDeals(ctx: ContactsCtx, contactId: string, fromCompanyId: string, toCompanyId: string): Promise<number> {
-  const n = (await prisma.crmDeal.updateMany({ where: { ...identityScope(ctx), contactId, kind: "OPEN", companyId: fromCompanyId }, data: { companyId: toCompanyId } })).count;
-  if (n > 0) {
-    await companies.recomputeCaches(coCtx(ctx), fromCompanyId).catch(() => undefined);
-    await companies.recomputeCaches(coCtx(ctx), toCompanyId).catch(() => undefined);
-  }
-  return n;
+  // CRM C1.5 ▸ ผู้เขียนคอลัมน์ดีลคือ `deals.ts` ที่เดียว (ล็อกบริษัท → ดีล · แคชทั้งสองบริษัทใน tx เดียว · event crm.deal.updated) ◂
+  return deals.moveOpenDealsOfContact({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: actorId(ctx) }, contactId, fromCompanyId, toCompanyId);
 }
 
 // ═════════════════════════ คำสั่งเดี่ยว (สถานะ · แท็ก · ความยินยอม · มอบหมาย · เก็บถาวร) ═════════════════════════
@@ -1416,6 +1414,10 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
         companyId = co.id;
         companyCreated = co.created;
       }
+      // CRM C1.5 ▸ รีวิว C1.5 S4 (ลำดับล็อก บริษัท → ผู้ติดต่อ → ดีล): ล็อกบริษัทปัจจุบันของผู้ติดต่อ + บริษัทที่เลือก (เรียง id) ก่อนแถวผู้ติดต่อ
+      //   — ดีลที่สร้างใน ⑤ ผูกบริษัทใดบริษัทหนึ่งในชุดนี้ ⇒ บริการดีลไม่ต้องล็อกบริษัทใหม่หลังถือแถวผู้ติดต่อแล้ว ◂ CRM C1.5
+      const lockedCompanies = [pre.companyId, companyId].filter((x): x is string => !!x);
+      await companies.lockCompanyRowsInTx(tx, coCtx(ctx), lockedCompanies);
       if (companyId) await companies.linkContactInTx(tx, coCtx(ctx), companyId, pre.id, { primaryIfNone: true, jobTitle: pre.jobTitle });
 
       // ③ แถวผู้ติดต่อ (หลังแถวบริษัท · ล็อกซ้ำใน tx เดียวกันได้) แล้ว **อ่านใหม่** (รีวิว C1.4 S3): รวม/เก็บถาวร/แปลงด้วยคีย์อื่น
@@ -1475,28 +1477,31 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
         }
       }
 
-      // ⑤ ดีล (เขียนตรง · ไม่มี event crm.deal.* — มติ C1.4 ข้อ 5)
+      // ⑤ ดีล — CRM C1.5 ▸ ผ่านบริการดีล v2 ใน tx เดียวกัน (หนี้ C1.4 ข้อ 5): แถวประวัติขั้นแรก + แคชบริษัท +
+      //   event `crm.deal.created` หนึ่งตัวใน tx นี้ ⇒ event เขียนไม่ได้ = การแปลงทั้งก้อนย้อนกลับ ◂ CRM C1.5
       let dealId: string | null = null;
       if (dealPlan) {
-        const st = dealStateForStage(dealPlan.stageKind, now);
-        const d = await tx.crmDeal.create({
-          data: {
-            tenantId: ctx.tenantId,
-            systemId: ctx.systemId,
-            contactId: cur.id,
-            companyId,
+        // CRM C1.5 ▸ รีวิว C1.5 S4: ส่งบริษัทของดีลให้ชัด (บริษัทที่เลือก หรือบริษัทปัจจุบันของผู้ติดต่อที่อ่านใหม่หลังล็อก) ·
+        //   บริษัทปัจจุบันเปลี่ยนระหว่างรอล็อก (ไม่อยู่ในชุดที่ล็อกไว้) = ยกเลิกทั้งก้อน แทนการล็อกย้อนลำดับ ◂ CRM C1.5
+        const dealCompanyId = companyId ?? cur.companyId ?? null;
+        if (dealCompanyId && !lockedCompanies.includes(dealCompanyId)) {
+          throw fail("CONFLICT", "บริษัทของผู้ติดต่อนี้เพิ่งถูกเปลี่ยนระหว่างแปลง ระบบจึงยกเลิกให้ทั้งหมด (ข้อมูลไม่เปลี่ยน) — รีเฟรชหน้าแล้วลองใหม่");
+        }
+        const d = await deals.createDeal(
+          { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: actorId(ctx) },
+          a,
+          {
             pipelineId: dealPlan.pipelineId,
             stageId: dealPlan.stageId,
             title: dealPlan.title,
+            contactId: cur.id,
+            companyId: dealCompanyId,
             valueSatang: dealPlan.valueSatang,
-            kind: st.kind,
-            closedAt: st.closedAt,
             ownerUserId: cur.ownerUserId ?? actorId(ctx),
             sourceKind: cur.sourceKind,
-            stageEnteredAt: now,
           },
-        });
-        await tx.crmDealStageHistory.create({ data: { tenantId: ctx.tenantId, dealId: d.id, fromStageId: null, toStageId: dealPlan.stageId, byUserId: actorId(ctx), enteredAt: now } });
+          tx,
+        );
         dealId = d.id;
       }
 

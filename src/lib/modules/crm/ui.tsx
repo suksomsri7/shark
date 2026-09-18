@@ -23,6 +23,7 @@ import {
   completeActivityAction,
   issueQuotationAction,
 } from "./actions";
+import { crmUiVersion } from "./ui-version";
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -54,15 +55,16 @@ const fmtDue = (d: Date) =>
 
 // แท็บฟังก์ชันย่อยของระบบ CRM (ใช้ทั้งหน้า hub + ทุกหน้าย่อย ให้ตรงกันเสมอ)
 // ⚠️ ต้องตรงกับ childrenFor("CRM") ใน src/app/app/layout.tsx (ตรวจโดย qc-nav-functions.mts)
-export function crmTabs(systemId: string): { href: string; label: string }[] {
+// CRM uiVersion gate ▸ uiVersion 1 (ค่าเริ่มต้น) = แท็บเดิมก่อน C1.3 ทุกตัว · แท็บ "บริษัท" เป็นของ CRM v2 เท่านั้น ◂
+export function crmTabs(systemId: string, uiVersion: 1 | 2 = 1): { href: string; label: string }[] {
   const s = `/app/sys/${systemId}`;
   return [
     { href: s, label: "ภาพรวม" },
     { href: `${s}/crm/deals`, label: "ดีล" },
     { href: `${s}/crm/activities`, label: "งานติดตาม" },
     { href: `${s}/crm/contacts`, label: "ผู้ติดต่อ" },
-    // CRM C1.3 ▸ บริษัท (ตรงกับ CRM_NAV ใน crm/nav.ts)
-    { href: `${s}/crm/companies`, label: "บริษัท" },
+    // CRM C1.3 ▸ บริษัท (ตรงกับ CRM_NAV ใน crm/nav.ts) — เฉพาะระบบที่เปิด CRM v2
+    ...(uiVersion === 2 ? [{ href: `${s}/crm/companies`, label: "บริษัท" }] : []),
     // ◂ CRM C1.3
   ];
 }
@@ -356,11 +358,12 @@ export async function CrmHub({ systemId }: { systemId: string }) {
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
-  const [board, contacts, pending, forecastSatang] = await Promise.all([
+  const [board, contacts, pending, forecastSatang, uiVersion] = await Promise.all([
     getBoard(ctx),
     listContacts(ctx),
     listPendingActivities(ctx),
     forecast(ctx),
+    crmUiVersion(ctx),
   ]);
 
   const cards = [
@@ -386,7 +389,7 @@ export async function CrmHub({ systemId }: { systemId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <ModuleTabs items={crmTabs(systemId)} />
+      <ModuleTabs items={crmTabs(systemId, uiVersion)} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((c) => (
           <Link

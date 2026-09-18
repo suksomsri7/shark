@@ -134,7 +134,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "referral.joined", label: "เมื่อเพื่อนสมัครสมาชิกด้วยโค้ดแนะนำ" },
   { value: "referral.converted", label: "เมื่อแนะนำเพื่อนสำเร็จ (จ่ายรางวัลสองฝั่งแล้ว)" },
   // M3.7 (§7.1 · ไทม์ไลน์สมาชิก) — event ใหม่ 2 ตัว · ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว
-  //   `crm.deal.won`    ยิงจาก `crm/service.ts#moveDeal` เมื่อดีลเข้าขั้น WON (idempotencyKey ผูกดีล)
+  //   `crm.deal.won`    ยิงจาก `crm/deals.ts#moveCore` (C1.5) เมื่อดีล "เข้า" WON จากขั้นชนิดอื่น — ใน tx เดียวกับการย้าย ·
+  //                     key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
   //                     payload: dealId · contactId · valueSatang · title · name · partyId? · phone? · email?
   //   `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์
   //                     payload: orderId · unitId · code · customerName · customerPhone · totalSatang · posSaleId? · channel (SHOP|SHOPEE|LAZADA|TIKTOK)
@@ -164,6 +165,15 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.contact.converted", label: "เมื่อแปลง lead เป็นสมาชิก/บริษัท/ดีล (CRM)" },
   { value: "crm.contact.merged", label: "เมื่อรวมผู้ติดต่อที่ซ้ำกัน (CRM)" },
   // ◂ CRM C1.4
+  // CRM C1.5 ▸ ดีล (`crm/deals.ts`) — payload id/คีย์ล้วน (X8) · 🔴 มี consumer ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำ)
+  //   (`crm.deal.won` ประกาศไว้แล้วข้างบนตั้งแต่ M3.7 — ไม่ประกาศซ้ำ)
+  { value: "crm.deal.created", label: "เมื่อเปิดดีลใหม่ใน CRM" },
+  { value: "crm.deal.stage.changed", label: "เมื่อดีลย้ายขั้น (CRM)" },
+  { value: "crm.deal.lost", label: "เมื่อดีลปิดเป็นแพ้ (CRM)" },
+  { value: "crm.deal.reopened", label: "เมื่อเปิดดีลที่ปิดแล้วกลับมาใหม่ (CRM)" },
+  { value: "crm.deal.reassigned", label: "เมื่อโอนผู้ดูแลดีล (CRM)" },
+  { value: "crm.deal.updated", label: "เมื่อแก้ไขดีล รายการสินค้า หรือเอกสารของดีล (CRM)" },
+  // ◂ CRM C1.5
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

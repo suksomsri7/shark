@@ -21,6 +21,7 @@ import { MobileBoard } from "./MobileBoard";
 // K1.14 — ปุ่มลัดคีย์บอร์ด (§5.6) + "บอร์ดนี้มีของใหม่" (realtime/polling · D13)
 import { Shortcuts, type ShortcutCommand } from "./Shortcuts";
 import { useBoardLive } from "./useBoardLive";
+import { usePointerBoardDrag } from "@/components/shared/usePointerBoardDrag";
 import {
   archiveColumnAction,
   archiveWithUndoAction,
@@ -48,22 +49,6 @@ const CARD_GAP = 7;
 const DRAG_THRESHOLD_PX = 4;
 /** นิ้ว/ปากกา: กดค้างเท่านี้ก่อนถึงจะยกการ์ด (ไม่งั้นเลื่อนจอไม่ได้) */
 const HOLD_MS = 300;
-
-type CardDrag = {
-  card: BoardCardDto;
-  fromColumnId: string;
-  width: number;
-  height: number;
-  offsetX: number;
-  offsetY: number;
-  x: number;
-  y: number;
-  over: { columnId: string; index: number } | null;
-};
-
-type Pending =
-  | { kind: "card"; card: BoardCardDto; columnId: string; startX: number; startY: number; rect: DOMRect; touch: boolean }
-  | { kind: "column"; columnId: string; startX: number; startY: number; touch: boolean };
 
 const TOAST_MS = 4200;
 /** toast ปัดเสร็จ/เก็บ (K1.13) — โชว์ปุ่ม "เลิกทำ" 5 วิ ตามสัญญา (token จริงอยู่ได้ 5 นาที — `my-tasks.ts`) */
@@ -110,7 +95,6 @@ export function BoardView({
   const [starred, setStarred] = useState(board.starred);
   // K2.11 — คอลัมน์ที่ฉันติดตาม (ของส่วนตัว · โหลดมากับบอร์ด แล้วอัปเดตแบบ optimistic)
   const [watchedColumns, setWatchedColumns] = useState<string[]>(board.watchedColumnIds);
-  const [drag, setDrag] = useState<CardDrag | null>(null);
   const [colDragId, setColDragId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [openCardId, setOpenCardId] = useState<string | null>(initialCardId);
@@ -135,17 +119,8 @@ export function BoardView({
     setColumns(next);
   }, []);
 
-  const columnEls = useRef(new Map<string, HTMLElement>());
-  const cardEls = useRef(new Map<string, HTMLElement>());
-  const indicatorEl = useRef<HTMLElement | null>(null);
-  const pending = useRef<Pending | null>(null);
-  const dragRef = useRef<CardDrag | null>(null);
   const colDragRef = useRef<{ columnId: string; order: string[] } | null>(null);
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cleanup = useRef<(() => void) | null>(null);
-  /** เวลาที่เพิ่งวางการ์ดเสร็จ — กัน `click` ที่ตามหลัง pointerup ไปเปิดหลังการ์ดโดยไม่ได้ตั้งใจ */
-  const draggedAt = useRef(0);
 
   // เปิดตรงจาก URL (`?card=`) ตอนโหลดหน้าครั้งแรก — หา snapshot + คอลัมน์ปัจจุบันจากข้อมูลที่ได้มาตอนโหลด
   useEffect(() => {
@@ -340,132 +315,17 @@ export function BoardView({
     [commitMove, setCols],
   );
 
-  // ───────────────────────── เรขาคณิตของการลาก ─────────────────────────
-
-  /**
-   * หา "คอลัมน์ + ช่องที่จะตกลง" จากตำแหน่งเมาส์
-   * ⚠️ ชดเชยความสูงของเส้นวางที่แทรกอยู่ในกองแล้ว (ไม่งั้นการ์ดใต้เส้นถูกดันลง → index กระพริบสลับไปมา)
-   */
-  const targetAt = useCallback((x: number, y: number, cardId: string, current: CardDrag["over"]): CardDrag["over"] => {
-    let columnId: string | null = null;
-    for (const [id, el] of columnEls.current) {
-      const r = el.getBoundingClientRect();
-      if (x >= r.left - 8 && x <= r.right + 8) {
-        columnId = id;
-        break;
-      }
-    }
-    if (!columnId) return current; // ลากออกนอกแถวคอลัมน์ = คงตำแหน่งเดิมไว้
-    const col = columnsRef.current.find((c) => c.id === columnId);
-    if (!col) return current;
-    const list = col.cards.filter((c) => c.id !== cardId);
-    const shift =
-      current && current.columnId === columnId && indicatorEl.current
-        ? indicatorEl.current.getBoundingClientRect().height + CARD_GAP
-        : 0;
-    const shiftFrom = current && current.columnId === columnId ? current.index : Number.POSITIVE_INFINITY;
-    let index = list.length;
-    for (let i = 0; i < list.length; i++) {
-      const el = cardEls.current.get(list[i]!.id);
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      const top = i >= shiftFrom ? r.top - shift : r.top;
-      if (y < top + r.height / 2) {
-        index = i;
-        break;
-      }
-    }
-    return { columnId, index };
-  }, []);
-
-  const endPointer = useCallback(() => {
-    if (holdTimer.current) clearTimeout(holdTimer.current);
-    holdTimer.current = null;
-    cleanup.current?.();
-    cleanup.current = null;
-    pending.current = null;
-  }, []);
-
-  const beginCardDrag = useCallback((p: Extract<Pending, { kind: "card" }>, x: number, y: number) => {
-    const next: CardDrag = {
-      card: p.card,
-      fromColumnId: p.columnId,
-      width: p.rect.width,
-      height: p.rect.height,
-      offsetX: p.startX - p.rect.left,
-      offsetY: p.startY - p.rect.top,
-      x,
-      y,
-      over: {
-        columnId: p.columnId,
-        index: (columnsRef.current.find((c) => c.id === p.columnId)?.cards.findIndex((c) => c.id === p.card.id) ?? 0),
-      },
-    };
-    dragRef.current = next;
-    setDrag(next);
-  }, []);
-
-  const onCardPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLElement>, card: BoardCardDto, columnId: string) => {
-      if (!canEdit || e.button !== 0) return;
-      const el = e.target as HTMLElement;
-      if (el.closest("button, a, input, textarea, select")) return; // ปุ่มบนการ์ดยังกดได้ตามปกติ
-      const rect = e.currentTarget.getBoundingClientRect();
-      const touch = e.pointerType !== "mouse";
-      pending.current = { kind: "card", card, columnId, startX: e.clientX, startY: e.clientY, rect, touch };
-      if (touch) {
-        holdTimer.current = setTimeout(() => {
-          const p = pending.current;
-          if (p?.kind === "card") beginCardDrag(p, p.startX, p.startY);
-        }, HOLD_MS);
-      }
-
-      const onMove = (ev: PointerEvent) => {
-        const p = pending.current;
-        const active = dragRef.current;
-        if (active) {
-          ev.preventDefault();
-          const over = targetAt(ev.clientX, ev.clientY, active.card.id, active.over);
-          const next = { ...active, x: ev.clientX, y: ev.clientY, over };
-          dragRef.current = next;
-          setDrag(next);
-          return;
-        }
-        if (!p || p.kind !== "card") return;
-        const moved = Math.hypot(ev.clientX - p.startX, ev.clientY - p.startY);
-        if (p.touch) {
-          if (moved > 12 && holdTimer.current) {
-            clearTimeout(holdTimer.current); // นิ้วเลื่อนก่อนครบ 0.3 วิ = คนกำลังเลื่อนจอ ไม่ใช่จะลาก
-            holdTimer.current = null;
-            pending.current = null;
-          }
-          return;
-        }
-        if (moved > DRAG_THRESHOLD_PX) beginCardDrag(p, ev.clientX, ev.clientY);
-      };
-
-      const onUp = (ev: PointerEvent) => {
-        const active = dragRef.current;
-        endPointer();
-        if (!active) return; // ไม่ได้ลาก = ปล่อยให้ onClick เปิดหลังการ์ดตามปกติ
-        draggedAt.current = Date.now();
-        dragRef.current = null;
-        setDrag(null);
-        const over = targetAt(ev.clientX, ev.clientY, active.card.id, active.over) ?? active.over;
-        if (over) moveCardTo(active.card, active.fromColumnId, over.columnId, over.index);
-      };
-
-      window.addEventListener("pointermove", onMove, { passive: false });
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onUp);
-      cleanup.current = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
-      };
-    },
-    [beginCardDrag, canEdit, endPointer, moveCardTo, targetAt],
-  );
+  // ───────────────────────── การลากการ์ด ─────────────────────────
+  // CRM C1.5: เรขาคณิต + ตัวฟัง pointer ของการลากการ์ดย้ายไปอยู่ใน hook กลาง `usePointerBoardDrag` (ตรรกะเดิมทุกบรรทัด)
+  //   ⇒ กระดานดีลของ CRM ใช้ท่าลากตัวเดียวกัน · ค่าคงที่ของบอร์ดงาน (gap/เกณฑ์ลาก/กดค้าง) ยังอยู่ที่ไฟล์นี้
+  const { drag, onCardPointerDown, endPointer, cleanup, draggedAt, columnEls, cardEls, indicatorEl } = usePointerBoardDrag<BoardCardDto>({
+    columnsRef,
+    canDrag: canEdit,
+    gapPx: CARD_GAP,
+    thresholdPx: DRAG_THRESHOLD_PX,
+    holdMs: HOLD_MS,
+    onDrop: moveCardTo,
+  });
 
   // ── ลากคอลัมน์ (จับที่หัวคอลัมน์) — สลับลำดับสด ๆ แล้วยิง moveColumnAction ตอนปล่อย ──
   const onHeaderPointerDown = useCallback(

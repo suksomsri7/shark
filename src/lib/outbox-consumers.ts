@@ -900,7 +900,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "referral.converted": withAutomation(async () => {}),
   // ── ไทม์ไลน์สมาชิก: event ใหม่ของ M3.7 (§7.1) ──
   // 🔴 ทั้ง 2 ตัวลงครบ 3 ทะเบียน (ที่นี่ · AUTOMATION_EVENTS · WEBHOOK_EVENTS ผ่าน spread) — ขาด = คิวตันเงียบ
-  // `crm.deal.won` ยิงจาก `crm/service.ts#moveDeal` เมื่อดีลเข้าขั้น WON → หา/สมัครสมาชิก + ผูก CrmContact + แถว DEAL_WON
+  // `crm.deal.won` ยิงจาก `crm/deals.ts#moveCore` (C1.5) เมื่อดีล "เข้า" WON จากขั้นชนิดอื่น → หา/สมัครสมาชิก + ผูก CrmContact + แถว DEAL_WON
+  //   key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
   "crm.deal.won": withAutomation(memberBridge("onCrmDealWon")),
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
@@ -956,6 +957,20 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.contact.converted": withAutomation(async () => {}),
   "crm.contact.merged": withAutomation(async () => {}),
   // ◂ CRM C1.4
+  // CRM C1.5 ▸ ดีล (`crm/deals.ts`) — ยิงใน tx เดียวกับการเขียน · key `crm.deal.<type>#<dealId>#<seq>` (R-C.8) · payload id/คีย์ล้วน:
+  //   created {dealId, contactId, companyId, pipelineId, stageId, ownerUserId} · stage.changed {dealId, pipelineId, fromStageId, toStageId, kind} ·
+  //   lost {dealId, lostReasonId} · reopened {dealId, fromStageId, toStageId} · reassigned {dealId, ownerUserId, previousOwnerUserId} ·
+  //   updated {dealId, changedKeys[], approvalRequestId?/documentId?}
+  //   (`crm.deal.won` มีตัวรับเดิมข้างบน — สะพานสมาชิก M3.7 · payload คงรูป v1 ตามมติผู้คุมงาน C1.5 ข้อ 1)
+  //   ทั้ง 6 ตัวเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค — แคชบริษัท/ประวัติขั้น/lifecycle
+  //   เขียนครบใน tx ของบริการดีลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8 เติม "ของแถม" ใต้ compose
+  "crm.deal.created": withAutomation(async () => {}),
+  "crm.deal.stage.changed": withAutomation(async () => {}),
+  "crm.deal.lost": withAutomation(async () => {}),
+  "crm.deal.reopened": withAutomation(async () => {}),
+  "crm.deal.reassigned": withAutomation(async () => {}),
+  "crm.deal.updated": withAutomation(async () => {}),
+  // ◂ CRM C1.5
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

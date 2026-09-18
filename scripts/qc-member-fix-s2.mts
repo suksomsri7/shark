@@ -444,19 +444,24 @@ try {
   {
     const sites: { id: string; file: string; event: string; fn: string }[] = [
       { id: "S2-M12.1", file: "src/lib/modules/booking/service.ts", event: "booking.completed", fn: "setAppointmentStatus" },
-      { id: "S2-M12.2", file: "src/lib/modules/crm/service.ts", event: "crm.deal.won", fn: "moveDeal" },
+      // ORACLE-EDIT S2-M12.2 (CRM controller, 18 Sep · WO C1.5): v1 `service.ts#moveDeal` became a thin wrapper; the won emit moved to
+      //   `deals.ts#moveCore` as `emitDeal(tx, ctx, EVT.won, …)` inside `withDealLocks` (a `$transaction`) — same rule, new site.
+      //   `emitDeal` itself must call `emitOutbox(tx, …)` (checked below). Dynamic proof: qc-crm-c1.5 S9.2 (outbox trigger rolls back the move).
+      { id: "S2-M12.2", file: "src/lib/modules/crm/deals.ts", event: "crm.deal.won", fn: "moveCore" },
       { id: "S2-M12.3", file: "src/lib/modules/shop/service.ts", event: "shop.order.paid", fn: "confirmOrderPaid" },
     ];
     for (const s of sites) {
       const src = read(s.file);
-      const at = src.indexOf(`type: "${s.event}"`);
+      // deals.ts emits through a typed map: `EVT.won` = "crm.deal.won" and `emitDeal(tx, …)` wraps `emitOutbox(tx, …)`
+      const viaMap = s.id === "S2-M12.2" && src.includes(`won: "${s.event}"`) && /async function emitDeal\(tx[\s\S]{0,600}?emitOutbox\(\s*tx\s*,/.test(src);
+      const at = viaMap ? src.indexOf("emitDeal(tx, ctx, EVT.won") : src.indexOf(`type: "${s.event}"`);
       const head = at > 0 ? src.slice(Math.max(0, at - 600), at) : "";
       const lastOutside = head.lastIndexOf("emitOutboxOutsideTx(");
       const lastInTx = Math.max(head.lastIndexOf("emitOutbox("), head.lastIndexOf("emitOutboxMany("));
-      const inTx = at > 0 && lastInTx > lastOutside && /emitOutbox(Many)?\(\s*[A-Za-z_$][\w$]*\s*,/.test(head.slice(lastInTx));
+      const inTx = viaMap ? at > 0 && !head.includes("emitOutboxOutsideTx(") && /withDealLocks\(/.test(head + src.slice(src.indexOf(`function ${s.fn}`), at)) : at > 0 && lastInTx > lastOutside && /emitOutbox(Many)?\(\s*[A-Za-z_$][\w$]*\s*,/.test(head.slice(lastInTx));
       const fnAt = src.indexOf(`function ${s.fn}`);
       const fnBody = fnAt > 0 ? src.slice(fnAt, at > fnAt ? at + 400 : fnAt + 4000) : "";
-      const wrapped = /\$transaction\(|withTx\(/.test(fnBody);
+      const wrapped = /\$transaction\(|withTx\(/.test(fnBody) || (viaMap && /withDealLocks\(/.test(fnBody) && /async function withDealLocks[\s\S]{0,800}?\$transaction\(/.test(src));
       chk(
         s.id,
         `[static] ${s.file} · "${s.event}" ถูกยิงด้วย emitOutbox(tx, …) ใน transaction เดียวกับการเปลี่ยนสถานะใน ${s.fn} (ไม่ใช่ emitOutboxOutsideTx — กติกา core/outbox.ts:69-72)`,

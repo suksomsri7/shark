@@ -21,7 +21,7 @@ export type CrmNavEntry = {
 
 /** หมวดของโมดูล (ลำดับ = ลำดับที่ผู้ใช้เห็น) — ดีล/งานติดตาม/ผู้ติดต่อ = หน้า v1 เดิม · บริษัท = C1.3 */
 export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
-  { key: "deals", label: "ดีล", path: "/crm/deals", status: "ready" },
+  { key: "deals", label: "ดีล", path: "/crm/deals", status: "ready", wo: "C1.5" },
   { key: "activities", label: "งานติดตาม", path: "/crm/activities", status: "ready" },
   { key: "contacts", label: "ผู้ติดต่อ", path: "/crm/contacts", status: "ready", wo: "C1.4" },
   // C1.3 ▸ รายชื่อบริษัท + บริษัท 360 (`/crm/companies/[companyId]`) + เพิ่มบริษัท
@@ -36,6 +36,13 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "companies-new", label: "เพิ่มบริษัท", path: "/crm/companies/new", status: "ready", wo: "C1.3" },
   // C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อ `/crm/contacts` = หน้า v2 แล้ว · ผู้ติดต่อ 360 `/crm/contacts/[contactId]` เป็น [param] ไม่ขึ้นเมนู)
   { key: "contacts-new", label: "เพิ่มผู้ติดต่อ", path: "/crm/contacts/new", status: "ready", wo: "C1.4" },
+  // CRM C1.5 ▸ ดีล v2: เพิ่มดีล · pipeline ทั้งหมด · ตั้งค่า pipeline/ขั้น/เหตุผลที่แพ้ (กระดาน `/crm/deals` = หมวดข้างบน · ดีล 360 เป็น [param])
+  { key: "deals-new", label: "เพิ่มดีล", path: "/crm/deals/new", status: "ready", wo: "C1.5" },
+  { key: "pipelines", label: "pipeline ทั้งหมด", path: "/crm/pipelines", status: "ready", wo: "C1.5" },
+  { key: "settings-pipelines", label: "ตั้งค่า pipeline", path: "/crm/settings/pipelines", status: "ready", wo: "C1.5" },
+  { key: "settings-stages", label: "ตั้งค่าขั้นของดีล", path: "/crm/settings/stages", status: "ready", wo: "C1.5" },
+  { key: "settings-lost-reasons", label: "เหตุผลที่แพ้", path: "/crm/settings/lost-reasons", status: "ready", wo: "C1.5" },
+  // ◂ CRM C1.5
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */
