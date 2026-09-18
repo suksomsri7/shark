@@ -150,6 +150,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           { href: `${s}/crm/companies`, label: "บริษัท" },
           { href: `${s}/crm/companies/new`, label: "เพิ่มบริษัท" },
           // ◂ CRM C1.3
+          // CRM C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อผู้ติดต่อข้างบนเป็นหน้า v2 แล้ว) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+          { href: `${s}/crm/contacts/new`, label: "เพิ่มผู้ติดต่อ" },
+          // ◂ CRM C1.4
         ];
       case "MARKETING":
         // ระบบการตลาดมีฟังก์ชันจริงเดียว (แคมเปญ) — ไม่ฝืนแตกเกินจริง

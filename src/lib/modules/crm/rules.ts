@@ -31,9 +31,13 @@ export function lifecycleAfterDealWon(current: CrmLifecycleStage): CrmLifecycleS
 }
 
 /** เลื่อน lifecycle ได้ไหม (กันถอยหลังผิดทาง: CUSTOMER ห้ามกลับเป็น LEAD) */
-// CHURNED (crm_v2_a · C1.1): อันดับเดียวกับ CUSTOMER เป็นค่าชั่วคราว — กติกา lifecycle จริงเป็นของใบ C1.4
+// CRM C1.4 ▸ CHURNED (มติ C1 · ใบ C1.4 เป็นเจ้าของกติกา): "เคยเป็นลูกค้าแล้วเลิก" — เข้าได้จาก CUSTOMER เท่านั้น
+//   (LEAD/PROSPECT/LOST ยังไม่เคยซื้อ = เลิกเป็นลูกค้าไม่ได้) · ออกจาก CHURNED ได้ทางเดียว = กลับมาเป็น CUSTOMER (ซื้อซ้ำ)
+//   ค่าเดิมทุกคู่ของ LEAD/PROSPECT/CUSTOMER/LOST ไม่เปลี่ยน ◂ CRM C1.4
 const ORDER: Record<CrmLifecycleStage, number> = { LEAD: 0, PROSPECT: 1, CUSTOMER: 2, LOST: -1, CHURNED: 2 };
 export function canAdvanceLifecycle(from: CrmLifecycleStage, to: CrmLifecycleStage): boolean {
+  if (to === "CHURNED") return from === "CUSTOMER" || from === "CHURNED";
+  if (from === "CHURNED") return to === "CUSTOMER";
   if (to === "LOST") return from !== "CUSTOMER"; // ลูกค้าแล้วไม่นับ lost
   if (from === "LOST") return to === "LEAD" || to === "PROSPECT"; // กู้กลับมาได้
   return ORDER[to] >= ORDER[from];

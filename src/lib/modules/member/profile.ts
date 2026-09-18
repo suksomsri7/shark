@@ -675,8 +675,14 @@ async function findExisting(ctx: MemberCtx, keys: { phone?: string | null; email
  * ลำดับตายตัว: idempotencyKey → ซ้ำเบอร์/อีเมล → ผู้แนะนำ → สร้างทุกอย่างใน transaction เดียว
  * ซ้ำ = **ไม่สร้างแถวใหม่** และคืน `{ created: false, duplicate }` ให้หน้าจอถามคนใช้ว่า "ใช่คนนี้ไหม"
  * (การสร้างคนซ้ำเงียบ ๆ คือหนี้ที่ตามเก็บยากที่สุดของระบบสมาชิก)
+ *
+ * CRM C1.4 ▸ `tx` (ไม่บังคับ · มติผู้คุมงาน C1.4 ข้อ 1) = เข้าร่วม transaction ของผู้เรียก ("แปลง lead" ของ CRM สร้างสมาชิก +
+ *   บริษัท + ดีล ในธุรกรรมเดียว) — ไม่ส่ง = พฤติกรรมเดิมทุกตัวอักษร · ส่งมา = ทุกการอ่าน/เขียนวิ่งบน tx นั้น (ไม่เปิด connection ที่สอง)
+ *   และ **ผู้เรียกเขียน audit `member.created` เองหลัง commit** (audit เขียนนอก tx — เขียนก่อน commit แล้ว rollback = audit ของสมาชิกที่ไม่มีจริง) ·
+ *   การ์ดย่อของคนซ้ำ (`duplicate`) ไม่ถูกประกอบ (อ่านนอก tx) · ผู้แนะนำ: คิว `member.created` เป็นคนจ่ายรางวัล (ไม่เรียกทันที)
+ * ◂ CRM C1.4
  */
-export async function createMember(ctx: MemberCtx, actor: MemberActor, input: CreateMemberInput): Promise<CreateMemberResult> {
+export async function createMember(ctx: MemberCtx, actor: MemberActor, input: CreateMemberInput, tx?: Tx): Promise<CreateMemberResult> {
   requirePerm(actor, "member.customer.create", "เพิ่มสมาชิกใหม่");
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) throw new MemberInputError("ข้อมูลที่ส่งมายังไม่ครบตามแบบฟอร์มสมัครสมาชิก — ตรวจอีกครั้งแล้วลองใหม่");
@@ -708,7 +714,7 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
 
   const idempotencyKey = trimOrNull(input.idempotencyKey);
   if (idempotencyKey) {
-    const already = await prisma.customer.findFirst({
+    const already = await db(tx).customer.findFirst({
       where: {
         tenantId: ctx.tenantId,
         memberSystemId: ctx.systemId,
@@ -721,19 +727,19 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
         customerId: already.id,
         memberCode: already.memberCode ?? "",
         partyId: already.partyId,
-        duplicate: await briefOf(ctx, already),
+        duplicate: tx ? undefined : await briefOf(ctx, already),
       };
     }
   }
 
-  const existing = await findExisting(ctx, { phone, email });
+  const existing = await findExisting(ctx, { phone, email }, tx);
   if (existing) {
     return {
       created: false,
       customerId: existing.id,
       memberCode: existing.memberCode ?? "",
       partyId: existing.partyId,
-      duplicate: await briefOf(ctx, existing),
+      duplicate: tx ? undefined : await briefOf(ctx, existing),
     };
   }
 
@@ -756,7 +762,7 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
   let referrer: CustomerRow | null = null;
   const referralCode = trimOrNull(input.referralCode)?.toUpperCase() ?? null;
   if (referralCode) {
-    referrer = await prisma.customer.findFirst({
+    referrer = await db(tx).customer.findFirst({
       where: { tenantId: ctx.tenantId, memberSystemId: ctx.systemId, referralCode },
     });
     if (!referrer) {
@@ -768,11 +774,10 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
   const firstName = trimOrNull(input.firstName);
   const lastName = trimOrNull(input.lastName);
   const name = trimOrNull(input.name) ?? ([firstName, lastName].filter(Boolean).join(" ") || phone || email || "");
-  const tier = await defaultTier(ctx);
+  const tier = await defaultTier(ctx, tx);
   const now = new Date();
 
-  const result = await prisma.$transaction(
-    async (tx) => {
+  const run = async (tx: Tx) => {
       const memberCode = await uniqueMemberCode(tx, ctx.systemId);
       const ownReferral = await uniqueReferralCode(tx, ctx.tenantId);
       // ตัวตนกลาง (D12) — ล้มเหลวไม่ทำให้สมัครไม่ได้ (safeFindOrCreate คืน null)
@@ -898,9 +903,10 @@ export async function createMember(ctx: MemberCtx, actor: MemberActor, input: Cr
       });
 
       return { customerId: customer.id, memberCode, partyId };
-    },
-    { timeout: 30_000, maxWait: 15_000 },
-  );
+  };
+  const result = tx ? await run(tx) : await prisma.$transaction(run, { timeout: 30_000, maxWait: 15_000 });
+
+  if (tx) return { created: true, ...result };
 
   await writeAudit({
     tenantId: ctx.tenantId,

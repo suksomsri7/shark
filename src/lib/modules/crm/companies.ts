@@ -1814,3 +1814,121 @@ export async function onCompanyCreated(evt: OutboxEvt): Promise<void> {
     });
   }, TX_OPTS);
 }
+
+// CRM C1.4 ▸ ทางเข้าที่ "เข้าร่วม transaction ของผู้เรียก" (มติผู้คุมงาน C1.4 — Option A) ให้บริการผู้ติดต่อ (`contacts.ts`)
+//   ใช้ตอน "แปลง lead" (สมาชิก + บริษัท + ดีล ในธุรกรรมเดียว) และ "รวมผู้ติดต่อ" — ไฟล์นี้ยังเป็นเจ้าของการเขียน CrmCompany /
+//   CrmCompanyContact / แคช CrmContact.companyId ที่เดียว (contacts*.ts ไม่มีคำสั่งกับตารางบริษัทเลย)
+//   🔴 ลำดับล็อกเดิมของหัวไฟล์: ผู้เรียกถือ advisory ของ engine/การแปลงได้ · createInTx = ชั้น Party advisory ·
+//      linkContactInTx / transferContactLinksInTx = แถว CrmCompany (เรียง id) → แถว CrmContact (เรียง id)
+//      ⇒ ผู้เรียกต้องไม่ล็อกแถวผู้ติดต่อก่อนเรียกสองตัวหลัง (ล็อกซ้ำหลังจากนั้นได้ — FOR UPDATE ซ้อนใน tx เดียวกัน)
+//   🔴 ไม่ resolve ระบบ/ไม่ตรวจ actor — ผู้เรียก (บริการผู้ติดต่อ) ทำแล้วก่อนเปิด tx · ทุก where ผูก tenant + ระบบ (AUDIT-CLASS X1)
+
+/** สร้างบริษัทใหม่ (Party ชนิด COMPANY เท่านั้น — B1) ใน tx ของผู้เรียก · Party เดิมของระบบนี้ = คืนบริษัทเดิม · event created ใน tx เดียวกัน */
+export async function createInTx(tx: Tx, ctx: CompaniesCtx, input: { name: string; ownerUserId?: string | null }): Promise<{ id: string; partyId: string; created: boolean }> {
+  const name = textOrNull(input?.name, "ชื่อบริษัท", COMPANY_NAME_MAX);
+  if (!name) throw fail("VALIDATION", "ใส่ชื่อบริษัทก่อนบันทึก");
+  const partyId = (await party.findOrCreateCompany(ctx.tenantId, { name }, tx)).id;
+  await partyLock(tx, ctx, partyId);
+  const same = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId }, select: { id: true } });
+  if (same) return { id: same.id, partyId, created: false };
+  const row = await tx.crmCompany.create({
+    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, branchCode: "00000", ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
+  });
+  await emitCompanyEvent(tx, ctx, "created", row.id, "1", { companyId: row.id, partyId: row.partyId });
+  return { id: row.id, partyId, created: true };
+}
+
+/**
+ * ผูกผู้ติดต่อเข้าบริษัทใน tx ของผู้เรียก (แถวบริษัท → แถวผู้ติดต่อ) · ลิงก์ที่ใช้อยู่ = ไม่สร้างแถวที่สอง · ลิงก์ที่จบไปแล้ว = เปิดใหม่ ·
+ * `primaryIfNone` = เป็นผู้ติดต่อหลักเมื่อบริษัทยังไม่มีคนหลัก (ไม่แย่งหลักของคนอื่น) · แคช companyId ของผู้ติดต่อคำนวณใหม่ใน tx เดียวกัน
+ */
+export async function linkContactInTx(
+  tx: Tx,
+  ctx: CompaniesCtx,
+  companyId: string,
+  contactId: string,
+  opts: { primaryIfNone?: boolean; jobTitle?: string | null } = {},
+): Promise<{ created: boolean; isPrimary: boolean }> {
+  await lockCompanies(tx, ctx, [companyId]);
+  const co = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), id: companyId, mergedIntoId: null, archivedAt: null }, select: { id: true } });
+  if (!co) throw fail("NOT_FOUND", NOT_FOUND_MSG);
+  await lockContacts(tx, ctx, [contactId]);
+  const now = new Date();
+  const jobTitle = opts.jobTitle === undefined ? undefined : textOrNull(opts.jobTitle, "ตำแหน่ง", COMPANY_TEXT_MAX);
+  const link = await tx.crmCompanyContact.findUnique({ where: { companyId_contactId: { companyId, contactId } } });
+  const others = opts.primaryIfNone ? await tx.crmCompanyContact.count({ where: { companyId, isPrimary: true, endedAt: null, contactId: { not: contactId } } }) : 1;
+  const asPrimary = !!opts.primaryIfNone && others === 0;
+  let created = false;
+  let changed = false;
+  let isPrimary = false;
+  if (link && !link.endedAt) {
+    isPrimary = link.isPrimary;
+    if (asPrimary && !link.isPrimary) {
+      await tx.crmCompanyContact.update({ where: { id: link.id }, data: { isPrimary: true } });
+      isPrimary = changed = true;
+    }
+  } else if (link) {
+    await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null } });
+    isPrimary = asPrimary;
+    created = changed = true;
+  } else {
+    await tx.crmCompanyContact.create({ data: { tenantId: ctx.tenantId, companyId, contactId, role: "OTHER", jobTitle: jobTitle ?? null, isPrimary: asPrimary, startedAt: now } });
+    isPrimary = asPrimary;
+    created = changed = true;
+  }
+  if (changed) {
+    await recomputeContactCompanyCache(tx, ctx, [contactId]);
+    await emitCompanyEvent(tx, ctx, "updated", companyId, newSeq(), { companyId, changedKeys: ["contacts"], contactId });
+  }
+  return { created, isPrimary };
+}
+
+/**
+ * รวมผู้ติดต่อ: ย้ายบทบาทในบริษัทของ `fromContactId` ไป `toContactId` ใน tx ของผู้เรียก (แถวบริษัททุกแถวที่แตะ → แถวผู้ติดต่อทั้งสอง)
+ * บทบาทชน (บริษัทเดียวกัน) = แถวของคนที่เก็บไว้ชนะ และแถวของคนที่ถูกรวม **ถูกลบ** (1 แถวต่อบริษัท) · ลิงก์ที่จบแล้วของคนที่เก็บไว้
+ * แต่ของคนที่ถูกรวมยังใช้อยู่ = เปิดลิงก์ของคนที่เก็บไว้ใหม่ด้วยค่าของอีกฝั่ง · แคช companyId ทั้งสองคนคำนวณใหม่
+ */
+export async function transferContactLinksInTx(tx: Tx, ctx: CompaniesCtx, fromContactId: string, toContactId: string): Promise<{ moved: number; companyIds: string[] }> {
+  // รีวิว C1.4: ชุดบริษัทอ่านก่อนล็อก ⇒ อ่านซ้ำหลังล็อกบริษัท จนไม่มีบริษัทใหม่โผล่ (มีคนผูกเพิ่มระหว่างรอ) — ครบก่อนค่อยล็อกผู้ติดต่อ
+  const locked = new Set<string>();
+  for (let round = 0; round < 5; round += 1) {
+    const all = await tx.crmCompanyContact.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: [fromContactId, toContactId] } }, select: { companyId: true } });
+    const extra = [...new Set(all.map((l) => l.companyId))].filter((id) => !locked.has(id));
+    if (extra.length === 0) break;
+    await lockCompanies(tx, ctx, extra);
+    for (const id of extra) locked.add(id);
+  }
+  const companyIds = [...locked].sort();
+  await lockContacts(tx, ctx, [fromContactId, toContactId]);
+  const mLinks = await tx.crmCompanyContact.findMany({ where: { tenantId: ctx.tenantId, contactId: fromContactId } });
+  const kLinks = await tx.crmCompanyContact.findMany({ where: { tenantId: ctx.tenantId, contactId: toContactId } });
+  const kBy = new Map(kLinks.map((l) => [l.companyId, l]));
+  const now = new Date();
+  let moved = 0;
+  for (const l of mLinks) {
+    const kl = kBy.get(l.companyId);
+    if (kl) {
+      if (kl.endedAt && !l.endedAt) {
+        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: l.startedAt ?? now, role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: l.isPrimary } });
+      } else if (!kl.endedAt && !l.endedAt && l.isPrimary && !kl.isPrimary) {
+        // บทบาทชน: แถวของคนที่เก็บไว้ชนะ แต่ถ้าแถวที่ถูกลบเป็น "ผู้ติดต่อหลัก" — บริษัทต้องไม่เสียผู้ติดต่อหลัก ⇒ ยกธงหลักให้แถวที่เหลือ
+        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { isPrimary: true } });
+      }
+      await tx.crmCompanyContact.delete({ where: { id: l.id } });
+    } else {
+      await tx.crmCompanyContact.update({ where: { id: l.id }, data: { contactId: toContactId } });
+    }
+    moved += 1;
+  }
+  await recomputeContactCompanyCache(tx, ctx, [fromContactId, toContactId]);
+  return { moved, companyIds };
+}
+
+/** ชื่อบริษัทที่ยังใช้งาน (ไม่ถูกรวม/เก็บถาวร) ที่ actor มองเห็น — อ่านอย่างเดียว (companyWhere) · id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/ไม่ใช้งานแล้ว */
+export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids: string[]): Promise<{ id: string; name: string }[]> {
+  const a = await enter(ctx, actor);
+  const list = [...new Set((ids ?? []).filter((x) => typeof x === "string" && x))].slice(0, 5_000);
+  if (list.length === 0) return [];
+  return prisma.crmCompany.findMany({ where: { AND: [companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
+}
+// ◂ CRM C1.4

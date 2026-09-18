@@ -944,6 +944,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.company.updated": withAutomation(async () => {}),
   "crm.company.merged": withAutomation(async () => {}),
   // ◂ CRM C1.3
+  // CRM C1.4 ▸ ผู้ติดต่อ (`crm/contacts.ts` · `crm/consents.ts`) — ยิงใน tx เดียวกับการเขียน · key `crm.contact.<type>#<id>#<seq>` (R-C.8) ·
+  //   payload id/คีย์ล้วน: created {contactId, partyId} · updated {contactId, changedKeys[], channel?} ·
+  //   assigned {contactId, ownerUserId, previousOwnerUserId} · converted {contactId, customerId, companyId, dealId, partyId} ·
+  //   merged {keptId, mergedId}
+  //   ทั้ง 5 ตัวเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค — ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง
+  //   (AUDIT-CLASS X4) · ผลข้างเคียงจริง (ไทม์ไลน์สมาชิก · คะแนน · สะพานแชท/บัญชี) = ใบ C1.8/C2.8 เติมเป็น "ของแถม" ใต้ compose
+  "crm.contact.created": withAutomation(async () => {}),
+  "crm.contact.updated": withAutomation(async () => {}),
+  "crm.contact.assigned": withAutomation(async () => {}),
+  "crm.contact.converted": withAutomation(async () => {}),
+  "crm.contact.merged": withAutomation(async () => {}),
+  // ◂ CRM C1.4
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

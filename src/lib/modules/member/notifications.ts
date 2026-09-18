@@ -636,7 +636,16 @@ export async function runDue(ctx: MemberCtx, opts: { now?: Date; deps?: Notifica
     if (claimed.length === 0) continue;
 
     // H7 — ความยินยอม ณ เวลาส่งจริง (กติกาเดียวกับ `send`) · ถอนแล้ว = ไม่ส่ง ไม่ว่ารอมานานแค่ไหน
-    const consents = await consentMapOf(ctx, customerId);
+    // ACCEPTANCE-FIX (controller · CRM C1.4 D4): สมาชิกถูกลบ/ลบตาม PDPA ระหว่างรอส่ง ⇒ เดิม consentMapOf โยน MemberNotFoundError
+    //   แล้ว runDue ทั้งรอบล้ม = ไม่มีใครในร้านได้แจ้งเตือนเลย · ตอนนี้: แถวของคนนั้น SKIPPED แล้วไปคนถัดไป
+    let consents: Awaited<ReturnType<typeof consentMapOf>>;
+    try {
+      consents = await consentMapOf(ctx, customerId);
+    } catch (e) {
+      if (!(e instanceof MemberNotFoundError)) throw e;
+      await prisma.memberNotification.updateMany({ where: { id: { in: claimed.map((r) => r.id) } }, data: { status: "SKIPPED", reason: "ไม่ได้ส่ง — ไม่พบสมาชิกคนนี้แล้ว" } });
+      continue;
+    }
     const allowed: typeof claimed = [];
     for (const row of claimed) {
       if (consentAllows(settings, getNotifEvent(row.event)?.transactional === true, consents, channel)) {

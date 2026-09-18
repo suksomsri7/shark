@@ -7,8 +7,8 @@ import {
   lifecycleAfterDealWon,
   weightedForecast,
 } from "./rules";
-// WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.5): ตัวตนกลางระดับ tenant · เรียกผ่าน facade เท่านั้น (F2.2)
-import * as party from "@/lib/modules/party";
+// CRM C1.4 ▸ การสร้างผู้ติดต่อย้ายไปบริการ v2 (Party ถูกผูกที่นั่น) ◂
+import { createContactFromLegacy } from "./contacts";
 
 // CRM (ระบบที่ 19) — service ชั้นประกอบ (systemId-scoped)
 // ⚠️ กติกาทั้งหมดมาจาก rules.ts (สมอง FREEZE) — ที่นี่แค่เรียกใช้ + ผูก DB
@@ -63,29 +63,9 @@ export type CreateContactInput = {
 };
 
 export async function createContact(ctx: Ctx, input: CreateContactInput): Promise<{ id: string }> {
-  const name = input.name.trim();
-  // WO 3.1 (MAP §F.1): เชื่อม Party ตอนสร้างผู้ติดต่อ CRM — ล้มเหลว = partyId null (ไม่ throw)
-  const partyId = await party.safeFindOrCreate(ctx.tenantId, {
-    name,
-    phone: input.phone ?? null,
-    email: input.email ?? null,
-    kind: "PERSON",
-  });
-  const c = await tenantDb(ctx).crmContact.create({
-    data: {
-      tenantId: ctx.tenantId,
-      systemId: ctx.systemId,
-      name,
-      phone: input.phone?.trim() || null,
-      email: input.email?.trim() || null,
-      company: input.company?.trim() || null,
-      source: input.source?.trim() || null,
-      ownerUserId: input.ownerUserId || null,
-      partyId,
-      // lifecycleStage เริ่มต้น LEAD (default ใน schema)
-    },
-  });
-  return { id: c.id };
+  // CRM C1.4 ▸ ตัวห่อบาง ๆ ของ v1 (ฟอร์ม · เครื่องมือ AI crm_create_lead) รอบบริการ v2 `contacts.ts`
+  //   ลายเซ็นเดิมทุกตัวอักษร · ได้ Party PERSON + first/last + event crm.contact.created + audit จากบริการ v2 ◂ CRM C1.4
+  return createContactFromLegacy(ctx, input);
 }
 
 // ── Deal ──

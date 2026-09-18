@@ -23,7 +23,7 @@ export type CrmNavEntry = {
 export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "deals", label: "ดีล", path: "/crm/deals", status: "ready" },
   { key: "activities", label: "งานติดตาม", path: "/crm/activities", status: "ready" },
-  { key: "contacts", label: "ผู้ติดต่อ", path: "/crm/contacts", status: "ready" },
+  { key: "contacts", label: "ผู้ติดต่อ", path: "/crm/contacts", status: "ready", wo: "C1.4" },
   // C1.3 ▸ รายชื่อบริษัท + บริษัท 360 (`/crm/companies/[companyId]`) + เพิ่มบริษัท
   { key: "companies", label: "บริษัท", path: "/crm/companies", status: "ready", wo: "C1.3" },
 ] as const);
@@ -34,6 +34,8 @@ export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
  */
 export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "companies-new", label: "เพิ่มบริษัท", path: "/crm/companies/new", status: "ready", wo: "C1.3" },
+  // C1.4 ▸ เพิ่มผู้ติดต่อ (รายชื่อ `/crm/contacts` = หน้า v2 แล้ว · ผู้ติดต่อ 360 `/crm/contacts/[contactId]` เป็น [param] ไม่ขึ้นเมนู)
+  { key: "contacts-new", label: "เพิ่มผู้ติดต่อ", path: "/crm/contacts/new", status: "ready", wo: "C1.4" },
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

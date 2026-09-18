@@ -37,3 +37,15 @@ export * as objects from "./objects";
 export * as companies from "./companies";
 export { companyWhere } from "./where";
 // ◂ CRM C1.3
+// CRM C1.4 ▸ ผู้ติดต่อ (`contacts.ts`) — namespace เดียว: createContact/updateContact/getContact360/listContacts · convertContact ·
+//   assignContact/bulkAssign · setLeadStatus/setLifecycle/setTags/setOptOut/archiveContact · findDuplicates/mergeContacts ·
+//   importContacts/getImportJob/exportContacts · briefFor (การ์ดย่อจาก contactId/partyId ให้แชท/สมาชิก/บัญชี)
+//   ความยินยอม (มติ C20 · `consents.ts`) — `consents.set/current/history/canContact` · `canContact` = ตัวตัดสินตัวเดียวของผู้ส่งทุกเส้นทาง
+//   ค่าคงที่/ชนิด/ตัวตรวจสำหรับหน้า 'use client' อยู่ที่ `./contacts-shared` · ขอบเขตการอ่าน `./where` (contactWhere)
+export * as contacts from "./contacts";
+export * as consents from "./consents";
+export { canContact } from "./consents";
+export { contactWhere } from "./where";
+//   บริษัท (namespace `companies` ข้างบน) ได้ทางเข้าที่เข้าร่วม tx ของผู้เรียกเพิ่ม 4 ตัว (มติ C1.4 Option A):
+//   companies.createInTx · companies.linkContactInTx · companies.transferContactLinksInTx · companies.liveCompanyRefs
+// ◂ CRM C1.4

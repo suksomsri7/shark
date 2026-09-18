@@ -157,6 +157,13 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.company.updated", label: "เมื่อแก้ไขข้อมูลบริษัทหรือผู้ติดต่อในบริษัท (CRM)" },
   { value: "crm.company.merged", label: "เมื่อรวมบริษัทที่ซ้ำกัน (CRM)" },
   // ◂ CRM C1.3
+  // CRM C1.4 ▸ ผู้ติดต่อ (`crm/contacts.ts`) — payload id/คีย์ล้วน (X8) · 🔴 มี consumer ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำ)
+  { value: "crm.contact.created", label: "เมื่อเพิ่มผู้ติดต่อใน CRM" },
+  { value: "crm.contact.updated", label: "เมื่อแก้ไขข้อมูล สถานะ หรือความยินยอมของผู้ติดต่อ (CRM)" },
+  { value: "crm.contact.assigned", label: "เมื่อมอบหมายผู้ดูแลผู้ติดต่อ (CRM)" },
+  { value: "crm.contact.converted", label: "เมื่อแปลง lead เป็นสมาชิก/บริษัท/ดีล (CRM)" },
+  { value: "crm.contact.merged", label: "เมื่อรวมผู้ติดต่อที่ซ้ำกัน (CRM)" },
+  // ◂ CRM C1.4
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

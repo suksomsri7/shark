@@ -617,9 +617,10 @@ export async function acceptPolicy(
 // ───────────────────────── (ข) ความยินยอมรายช่องทาง (D19) ─────────────────────────
 
 /** ทุกช่องทางที่ขอความยินยอมได้ พร้อมสถานะของสมาชิกคนนี้ (ยังไม่เคยตั้ง = `granted: null`) */
-export async function getConsents(ctx: MemberCtx, customerId: string): Promise<ConsentDto[]> {
-  await loadMemberRow(ctx, customerId);
-  const rows = await prisma.memberConsent.findMany({ where: { tenantId: ctx.tenantId, customerId } });
+// CRM C1.4 ▸ `tx` (ไม่บังคับ) = อ่านใน transaction ของผู้เรียก (CRM ถอนความยินยอมตอนแปลง/รวมในธุรกรรมเดียว) · ไม่ส่ง = เหมือนเดิมทุกตัวอักษร ◂
+export async function getConsents(ctx: MemberCtx, customerId: string, tx?: Prisma.TransactionClient): Promise<ConsentDto[]> {
+  await loadMemberRow(ctx, customerId, tx);
+  const rows = await clientOf(tx).memberConsent.findMany({ where: { tenantId: ctx.tenantId, customerId } });
   const byChannel = new Map(rows.map((r) => [r.channel, r]));
   return consentChannels().map((def) => {
     const row = byChannel.get(def.key);
@@ -641,12 +642,16 @@ export async function getConsents(ctx: MemberCtx, customerId: string): Promise<C
  * · ลูกค้าเอง (role CUSTOMER) แก้ได้เฉพาะของตัวเอง และต้องบันทึกที่มาเป็น `CUSTOMER_SELF`
  * · พนักงานต้องมีสิทธิ์แก้ข้อมูลสมาชิก
  * · sync คอลัมน์เดิม `Customer.marketingConsent` = ยินยอมช่องใดช่องหนึ่งใน LINE/EMAIL/SMS (§4.5)
+ * CRM C1.4 ▸ `tx` (ไม่บังคับ · มติผู้คุมงาน C1.4) = เข้าร่วม transaction ของผู้เรียก (CRM ถอนความยินยอมตอนแปลง/รวมผู้ติดต่อ
+ *   ในธุรกรรมเดียว — ถอนไม่ได้ = ทั้งก้อนย้อนกลับ) · ไม่ส่ง = พฤติกรรมเดิมทุกตัวอักษร · ส่งมา = ทุกการอ่าน/เขียนบน tx นั้น และ
+ *   **ผู้เรียกเขียน audit เองหลัง commit** (audit เขียนนอก tx — เขียนก่อน commit แล้ว rollback = audit ของสิ่งที่ไม่เกิด) ◂ CRM C1.4
  */
 export async function setConsent(
   ctx: MemberCtx,
   actor: MemberActor,
   customerId: string,
   input: { channel: string; granted: boolean; source: string; policyVersion?: number | null },
+  tx?: Prisma.TransactionClient,
 ): Promise<ConsentDto> {
   const def = getChannel(input.channel);
   if (!def) {
@@ -670,13 +675,13 @@ export async function setConsent(
     throw new MemberForbiddenError("บัญชีของคุณยังไม่ได้รับสิทธิ์แก้ความยินยอมของสมาชิก — ขอสิทธิ์จากเจ้าของร้านก่อน");
   }
 
-  const customer = await loadMemberRow(ctx, customerId);
+  const customer = await loadMemberRow(ctx, customerId, tx);
   const byUserId = actor.role === "CUSTOMER" ? null : ctx.actorUserId ?? (actor.userId || null);
   const granted = input.granted === true;
   const now = new Date();
   const policyVersion = input.policyVersion ?? null;
 
-  const saved = await prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient) => {
     const row = await tx.memberConsent.upsert({
       where: { customerId_channel: { customerId, channel: def.key } },
       create: {
@@ -722,9 +727,10 @@ export async function setConsent(
       unitId: customer.homeUnitId,
     });
     return row;
-  });
+  };
+  const saved = tx ? await run(tx) : await prisma.$transaction(run);
 
-  await writeAudit({
+  if (!tx) await writeAudit({
     tenantId: ctx.tenantId,
     actorId: byUserId,
     action: "member.privacy.consent",
@@ -871,6 +877,10 @@ export async function listAccessLog(ctx: MemberCtx, actor: MemberActor, filter: 
       ...(filter.customerId ? { customerId: filter.customerId } : {}),
       ...(filter.userId ? { userId: filter.userId } : {}),
       ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
+      // CRM C1.4 ▸ หนี้รีวิว C1.2a S3: แถวของ CRM (`page = "crm.<objectKey>"` · customerId = id ผู้ติดต่อ/บริษัท/ดีล ไม่ใช่สมาชิก)
+      //   ไม่ใช่บันทึกของสมาชิก — เดิมโผล่เป็น "(สมาชิกที่ถูกลบ)" · page ว่าง (แถวเก่า) ยังแสดงตามเดิม (NOT LIKE ตัด NULL ทิ้ง จึงต้อง OR)
+      OR: [{ page: null }, { NOT: { page: { startsWith: "crm." } } }],
+      // ◂ CRM C1.4
     },
     orderBy: { createdAt: "desc" },
     take,

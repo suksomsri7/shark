@@ -84,7 +84,45 @@ const C13_COMPANY: string | null = WO === "1.3"
       .sort((a: Any, b: Any) => b._count.contacts - a._count.contacts)[0]?.id ?? null)
   : null;
 
+// C1.4 — ผู้ติดต่อที่มีดีลมากที่สุดของระบบ CRM ใน seed (อ่านอย่างเดียว)
+const C14_CONTACT: string | null = WO === "1.4"
+  ? ((await (prisma as Any).crmContact.findMany({ where: { systemId: SYS, archivedAt: null, mergedIntoId: null }, select: { id: true, _count: { select: { deals: true } } } }))
+      .sort((a: Any, b: Any) => b._count.deals - a._count.deals)[0]?.id ?? null)
+  : null;
+
 const SPECS: Record<string, Spec[]> = {
+  // C1.4 — ผู้ติดต่อ: รายการ · สร้างใหม่ · 360 (เทียบภาพ ledger/design-crm/05-*.png)
+  "1.4": isCustomer ? [] : [
+    {
+      name: `crm-contacts-list-${userKey}`,
+      path: `${CRM_BASE}/contacts`,
+      note: "รายการผู้ติดต่อ v2: ตัวกรอง · มุมมองที่บันทึก · นำเข้า/ส่งออก · มอบหมายหลายรายการ",
+      expect: ["[data-testid=contacts-filter-form]"],
+      steps: [{ waitFor: "[data-testid=contacts-filter-form]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-contacts-new-${userKey}`,
+      path: `${CRM_BASE}/contacts/new`,
+      note: "ฟอร์มผู้ติดต่อใหม่ + กล่องรายการซ้ำ",
+      expect: ["[data-testid=contact-new-form]"],
+      steps: [{ waitFor: "[data-testid=contact-new-form]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    ...(C14_CONTACT ? [{
+      name: `crm-contact-360-${userKey}`,
+      path: `${CRM_BASE}/contacts/${C14_CONTACT}`,
+      note: "Contact 360 — เทียบภาพ 05",
+      expect: ["[data-testid=contact-360]", "[data-testid=contact-360-header]", "[data-testid=contact-360-timeline]"],
+      steps: [{ waitFor: "[data-testid=contact-360]", timeoutMs: 20_000 }, { wait: 800 }],
+    } as Spec] : []),
+    ...(C14_CONTACT ? [{
+      name: `crm-contact-convert-${userKey}`,
+      path: `${CRM_BASE}/contacts/${C14_CONTACT}`,
+      note: "โมดัล 'แปลง lead' 3 ติ๊ก (สมาชิก/บริษัท/ดีล) — เทียบภาพ 05 (เปิดดูอย่างเดียว ไม่กดแปลง)",
+      onlyDevice: "desktop" as const,
+      expect: ["[data-testid=contact-convert-company-section]", "[data-testid=contact-convert-deal-section]"],
+      steps: [{ waitFor: "[data-testid=contact-convert-btn]", timeoutMs: 20_000 }, { click: "[data-testid=contact-convert-btn]" }, { waitFor: "[data-testid=contact-convert-deal-section]", timeoutMs: 10_000 }, { wait: 500 }],
+    } as Spec] : []),
+  ],
   // C1.3 — บริษัท: รายการ · สร้างใหม่ · 360 (เทียบภาพ ledger/design-crm/04-company-360.png)
   "1.3": isCustomer ? [] : [
     {
