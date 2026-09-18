@@ -27,3 +27,13 @@ Regressions: C1.2a oracle, `qc-member-m1.2`.
 4. The oracle's stricter-than-brief checks are ACCEPTED as the contract: key rename before records carries its fields (S9.1) · reserved keys `customer|contact|company|deal` refused (S9.5) · unknown filter key = VALIDATION, never "return everything" (S3.7) · title recomputed on update (S2.3) · every update gets a distinct idempotency `<seq>` (S12.3).
 5. The oracle's rollback checks (S12.5–S12.7) install a temporary trigger on the shared `OutboxEvent` table, scoped to its own throwaway tenant id and dropped in `finally` (stale ones dropped at start). Accepted: even if a run is killed, the trigger can only fire for a tenant that no longer exists.
 6. API contract for the builder = the shapes listed in the oracle writer's report, reproduced in the header of `scripts/qc-crm-c1.2b.mts` — the builder implements those names and signatures.
+
+## Controller rulings on the builder's decisions (18 Sep)
+1. `src/lib/modules/crm/db.ts` (re-export of core prisma, like member/kanban `db.ts`) — **accepted**. Every query through it must carry an explicit `tenantId` (or be by-id after a scoped check) — reviewer verifies.
+2. Lazy `import("@/lib/modules/member")` in objects.ts — accepted (breaks the F10.1 init cycle; facade-only).
+3. Key rename re-keys own MemberSection/MemberField rows only with zero records — accepted; engine-level rename + LOOKUP `options.objectKey` rewrite → debt **C1.10** (settings UI).
+4. Warnings computed live (`objects.warnings`) — accepted.
+5. Object design OWNER/MANAGER, records STAFF, CUSTOMER → NOT_FOUND — accepted; visibility → C1.7.
+6. Timeline via `member.recordOnce` on member-linked parents only — accepted.
+7. `uiVersion` gate on the created-consumer → **C1.11** (bridges WO).
+8. Idempotent record archive · required/defaults on create · archived parent = VALIDATION — accepted.
