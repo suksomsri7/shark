@@ -612,19 +612,25 @@ try {
     const exp = /[?&]exp=(\d+)/.exec(fresh)?.[1] ?? "";
     const sig = /[?&]sig=([^&]+)/.exec(fresh)?.[1] ?? "";
     const secret = process.env.SESSION_SECRET ?? "";
+    // 🔴 ORACLE-EDIT C0.4-S3.16 (ผู้คุมงาน · 18 ก.ย. 2569) — ข้อสอบเดิมลองเฉพาะ "กุญแจดิบ" `SESSION_SECRET`
+    //    แต่ผู้คุมงานสั่งให้ทำ domain separation (ผู้ตรวจข้อ 6): กุญแจจริงคือ `private-file:v1:${SESSION_SECRET}`
+    //    ตามแบบบ้านนี้ (`member/me.ts:336` ใช้ `member-card:${secret}`) เพื่อไม่ให้ลายเซ็นของเส้นทาง token
+    //    อีก 4 เส้นที่ RESOLUTIONS R-C.7 สั่งให้ทำใน C2.5/C3.5 กลายเป็นลายเซ็นไฟล์ที่ใช้ได้
+    //    ⇒ เพิ่ม "กุญแจที่ติดป้าย" เข้าไปในชุดที่ลอง · คงกุญแจดิบไว้เป็นตัวแรก เพื่อให้ยังจับได้ถ้าใครถอดป้ายออก
+    const keys = [secret, `private-file:v1:${secret}`];
     const vks = [staffA.id, `staff:${staffA.id}`, `STAFF:${staffA.id}`, `user:${staffA.id}`, `u:${staffA.id}`, `staff/${staffA.id}`,
       coreHash.sha256(staffA.id), `staff:${coreHash.sha256(staffA.id)}`];
     const encs: ("hex" | "base64url" | "base64")[] = ["hex", "base64url", "base64"];
-    let recipe: { vk: string; e: "hex" | "base64url" | "base64" } | null = null;
-    for (const vk of vks) for (const e of encs) {
-      const got = createHmac("sha256", secret).update(`${id}.${exp}.${vk}`).digest(e);
-      if (got === sig || encodeURIComponent(got) === sig) { recipe = { vk, e }; break; }
+    let recipe: { key: string; vk: string; e: "hex" | "base64url" | "base64" } | null = null;
+    for (const key of keys) for (const vk of vks) for (const e of encs) {
+      const got = createHmac("sha256", key).update(`${id}.${exp}.${vk}`).digest(e);
+      if (got === sig || encodeURIComponent(got) === sig) { recipe = { key, vk, e }; break; }
     }
-    chk("C0.4-S3.16", "the signature is HMAC-SHA256 over `${id}.${exp}.${viewerKey}` keyed with SESSION_SECRET — recovered from a real link, so the documented construction is the one actually shipped",
+    chk("C0.4-S3.16", "the signature is HMAC-SHA256 over `${id}.${exp}.${viewerKey}` keyed with SESSION_SECRET (กุญแจดิบหรือกุญแจที่ติดป้าย domain separation) — recovered from a real link, so the documented construction is the one actually shipped",
       recipe !== null, "recipe recovered", recipe ? `viewerKey=${recipe.vk.slice(0, 12)}… enc=${recipe.e}` : "no candidate matched", "MINOR");
     if (recipe) {
       const farExp = Math.floor(Date.now() / 1000) + 3600;
-      const forged = createHmac("sha256", secret).update(`${id}.${farExp}.${recipe.vk}`).digest(recipe.e);
+      const forged = createHmac("sha256", recipe.key).update(`${id}.${farExp}.${recipe.vk}`).digest(recipe.e);
       const r = await callRoute(`/api/files/${id}?exp=${farExp}&sig=${encodeURIComponent(forged)}`, staffA.cookie, id);
       chk("C0.4-S3.17", "a PERFECTLY signed link with a one-hour `exp` is still refused — the 15-minute ceiling is re-checked by the route, so anyone who can call the minting helper (a future bug, an AI tool) cannot mint an eternal link",
         r.status === 403 && !r.text.includes(MARKER), "403", `${r.status} · bytes=${r.bytes} ${r.threw}`, "MAJOR");
