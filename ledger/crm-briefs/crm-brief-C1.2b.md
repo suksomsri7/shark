@@ -19,3 +19,11 @@ Regressions: C1.2a oracle, `qc-member-m1.2`.
 - `recordCount` must be maintained with single-statement increments/decrements (X3 — "read → compute in app → write" is forbidden).
 - Events `custom.record.created/updated/archived`: idempotency keys `custom.record.<type>#<recordId>#<seq>` (R-C.8), payload ids only, emitted INSIDE the write transaction; consumer writes the parent's `MemberActivity` row idempotently (X4); CRM consumers follow the `compose` "extra" contract.
 - Scope rule carried from C1.1's review: a `CustomRecord`'s parent (CONTACT/COMPANY/DEAL) MUST belong to the same CRM `systemId` — assert it, the DB does not.
+
+### Controller rulings on the oracle's questions (2026-09-18)
+1. **Parent without a linked member → the created-consumer writes NO timeline row and does not throw** (`MemberActivity.customerId` is NOT NULL). CRM-only timelines are `CrmActivity`'s job (C1.6/C1.8), not `MemberActivity`'s. Oracle X4.3 stands.
+2. **The ">30 objects" warning is counted per CRM system**, not tenant-wide (S8.2).
+3. **confirm + reason (≥5 chars) are required for: archiving an object that has records, and `records.bulk`.** Not for single-record archive; `import` is governed by its caps (X6) instead.
+4. The oracle's stricter-than-brief checks are ACCEPTED as the contract: key rename before records carries its fields (S9.1) · reserved keys `customer|contact|company|deal` refused (S9.5) · unknown filter key = VALIDATION, never "return everything" (S3.7) · title recomputed on update (S2.3) · every update gets a distinct idempotency `<seq>` (S12.3).
+5. The oracle's rollback checks (S12.5–S12.7) install a temporary trigger on the shared `OutboxEvent` table, scoped to its own throwaway tenant id and dropped in `finally` (stale ones dropped at start). Accepted: even if a run is killed, the trigger can only fire for a tenant that no longer exists.
+6. API contract for the builder = the shapes listed in the oracle writer's report, reproduced in the header of `scripts/qc-crm-c1.2b.mts` — the builder implements those names and signatures.
