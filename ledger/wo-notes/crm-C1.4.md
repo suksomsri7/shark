@@ -43,3 +43,6 @@
 | แปลง lead สร้างบริษัทชื่อซ้ำโดยไม่เตือน | **C1.9** |
 | รวมผู้ติดต่อไม่ย้าย custom values | **C1.10** |
 | ข้อสอบที่ลบลูกค้าแต่ทิ้ง `MemberNotification` QUEUED | **C5** |
+
+## 3.2 D12 — push/deploy
+✅ push `919e7d6` (+ ledger `01714a1`) → session/crm + main · deploy ใหม่ `dpl_5MRwo…` ขึ้นจริงหลัง 510 วิ · `/api/health` `{ok:true,db:true,outboxPending:0}` · หน้าแรก 200 · ไม่มี migration · uiVersion ยัง 1 · 🔴 การแก้ `notifications.runDue` มีผลกับร้านจริงทันที (เป็นทางปลอดภัย: ข้ามแถวของสมาชิกที่ไม่มีแล้ว แทนการหยุดทั้งร้าน)
