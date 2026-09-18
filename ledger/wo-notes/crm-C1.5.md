@@ -31,3 +31,6 @@
 | กระดาน/ส่งออกยังไม่ผ่าน contactWhere/companyWhere | **C1.7** |
 | ผู้อนุมัติเห็นแค่ยอด ไม่เห็นบรรทัด | **C2.7** |
 | `CrmDeal.archivedAt` (soft delete) · enum `CrmActivitySource.KANBAN` | **C2.0** |
+
+## 3.2 D12 — push/deploy
+✅ push `a7312fb` (+ `cb7a6de`) → session/crm + main · deploy ใหม่ `dpl_FaUSs…` ขึ้นจริงหลัง 360 วิ (02:31 น. 19 ก.ย.) · health `{ok:true,db:true,outboxPending:0}` · หน้าแรก 200 · ไม่มี migration · **ประตู uiVersion มีผลบน prod ตั้งแต่ deploy นี้**: ร้านทั้งหมด (uiVersion 1) กลับเห็นหน้า/ลิ้นชัก/แท็บ CRM v1 ทุกไบต์ · ช่วงที่หลุด: 18 ก.ย. 21:22 (C1.3) → 19 ก.ย. 02:31 · ⚠️ ผู้คุมงานไม่มี session บน prod จึงยืนยันด้วยตาไม่ได้ — หลักฐาน = probe ประตู 14/14 (v1 component เทียบ `git show` ทุกไบต์ · ลิ้นชัก = ก่อน C1.3 · route v2 404 · action v2 ปฏิเสธ) · ตรวจด้วยตาบน prod ทำใน C6.2
