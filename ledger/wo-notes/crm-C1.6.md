@@ -28,3 +28,6 @@
 | enum `CrmActivitySource.KANBAN` (ตอนนี้อยู่ใน payload/audit) | **C2.0** |
 | m1.4 snapshot เมื่อแดง | **C5** |
 | resolver บอร์ดงาน + mention ต้องผ่าน visibility จริง | **C1.7** |
+
+## 3.2 D12 — push/deploy
+✅ push `9b971e3` (+ `d34f90f`) → session/crm + main · deploy ใหม่ `dpl_7qTLD…` ขึ้นจริง (ช้า ~36 นาทีจาก push — build คิว/ช้า ไม่ล้ม) · health ok · หน้าแรก 200 · ไม่มี migration · หน้า activities ของร้าน uiVersion 1 = v1 ทุกไบต์ (probe ประตู)
