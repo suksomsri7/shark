@@ -141,6 +141,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //   🔴 เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำที่นั่น)
   { value: "crm.deal.won", label: "เมื่อปิดดีล CRM สำเร็จ" },
   { value: "shop.order.paid", label: "เมื่อออเดอร์ออนไลน์ชำระเงินแล้ว" },
+  // CRM C1.1 ▸ ทีม (core · `src/lib/core/teams.ts`) — payload: teamId · change · userId? (id ล้วน)
+  //   🔴 มี consumer (no-op) ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำ)
+  { value: "team.updated", label: "เมื่อทีมหรือสมาชิกทีมเปลี่ยน" },
+  // ◂ CRM C1.1
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

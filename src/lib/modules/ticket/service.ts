@@ -7,6 +7,7 @@ import type {
   TicketOrderStatus,
 } from "@prisma/client";
 import * as pos from "@/lib/modules/pos/service";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import { resolvePublicUnit } from "@/lib/core/storefront";
@@ -287,6 +288,8 @@ export async function createOrder(
       return { orderId: order.id, orderNo, publicToken: order.publicToken, admissionCount: admissionData.length, totalSatang: total };
     });
 
+    // ผู้เรียกส่ง transaction ของตัวเองมา (client ≠ prisma) → ผูกผ่าน client เดียวกัน (แถวยังไม่ commit ให้ connection อื่นเห็น)
+    await linkPartyAfterCommit(ctx.tenantId, result.orderId, input.buyerName, input.buyerPhone, client); // CRM v2 C1.1 (C11)
     return { ok: true, ...result };
   } catch (e) {
     if (e instanceof Error) {
@@ -593,3 +596,21 @@ export async function promptpayForOrder(
 }
 
 export type OrderStatusFilter = TicketOrderStatus;
+
+// ───────── CRM v2 ใบ C1.1 (C11) — ผูก Party กลางให้ TicketOrder ─────────
+// 🔴 เรียก "หลัง commit" เท่านั้น: รายการที่ล้ม (เต็ม/ชน/ไม่พบ) ต้องไม่ทิ้ง Party ของคนที่ไม่ได้เป็นลูกค้า (PDPA · เก็บเท่าที่จำเป็น)
+//    และไม่ถือ connection ที่สองขณะ transaction ธุรกิจถือ lock อยู่
+// 🔴 กุญแจต้องเชื่อถือได้: เบอร์ normalize ≥ 9 หลัก — ไม่งั้นไม่ผูก (party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์ < 8 หลัก ⇒ Party ขยะ)
+// 🔴 ไม่มีวัน throw เข้าหาผู้เรียก · ล้ม = ปล่อย partyId ว่างให้ backfill party-links เก็บตก
+// AUDIT-CLASS X8: log แค่ชื่อตาราง + tenant ไม่มีเบอร์/อีเมล/ชื่อ
+async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined, db: Client = prisma): Promise<void> {
+  try {
+    const phoneOk = normalizePartyPhone(phone).length >= 9;
+    if (!phoneOk) return;
+    const partyId = await safeFindOrCreate(tenantId, { name: name?.trim() || "ลูกค้าไม่ระบุชื่อ", phone: phoneOk ? phone : null });
+    if (partyId) await db.ticketOrder.updateMany({ where: { id, tenantId, partyId: null }, data: { partyId } });
+    else console.warn(`[party-link] TicketOrder tenant=${tenantId}: ไม่ได้ partyId — ปล่อยว่าง`);
+  } catch {
+    console.warn(`[party-link] TicketOrder tenant=${tenantId}: ผูก Party ไม่สำเร็จ — ปล่อยว่าง`);
+  }
+}

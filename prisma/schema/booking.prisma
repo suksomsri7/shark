@@ -114,10 +114,13 @@ model Appointment {
   stampEventId   String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
+  // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
+  partyId        String?
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, unitId, startAt])
   @@index([staffId, startAt])
+  @@index([partyId])
 }
 
 // วันหยุด/เวลาพิเศษรายวัน (11 ส.ค. 2026 — เจ้าของทัก: เดิมตั้งได้แค่รายสัปดาห์)

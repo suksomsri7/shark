@@ -76,7 +76,10 @@ model ClinicVisit {
   billedAt     DateTime?
   refundedAt   DateTime? // คืนเงิน (BILLED→REFUNDED) — void PosSale + คืนยาเข้าคลัง (ห้ามลบ record)
   createdAt    DateTime      @default(now())
+  // CRM v2 (crm_v2_a · C11) — Party ของคนไข้ (คัดลอกจาก PatientRecord.partyId) · nullable · ไม่มี FK
+  partyId      String?
 
   @@index([tenantId, unitId, status])
   @@index([patientId, visitDate])
+  @@index([partyId])
 }

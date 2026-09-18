@@ -45,6 +45,7 @@ enum PartyMergeReason {
   TAX_ID
   PHONE
   NAME_SIMILAR
+  EMAIL // CRM v2 (crm_v2_a) — C0.3 พบว่าอีเมลชนถูกบันทึกเป็น NAME_SIMILAR เพราะไม่มีค่านี้
 }
 
 enum PartyMergeStatus {

@@ -8,6 +8,7 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as member from "@/lib/modules/member/service";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { listSystems } from "@/lib/modules/system/service";
 import { resolvePublicUnit } from "@/lib/core/storefront";
 
@@ -58,6 +59,7 @@ export async function createPatient(
       allergies: input.allergies?.trim() || null,
       note: input.note?.trim() || null,
       customerId,
+      partyId: await patientPartyId(ctx.tenantId, name, phone),
     },
   });
   return { id: p.id };
@@ -137,12 +139,27 @@ export async function createVisit(ctx: ClinicCtx, input: CreateVisitInput): Prom
       tenantId: ctx.tenantId,
       unitId: ctx.unitId,
       patientId: input.patientId,
+      // C11 — Party ของคนไข้ (คนไข้เก่าที่ยังไม่มี partyId → หาจากชื่อ+เบอร์ของคนไข้)
+      partyId: patient.partyId ?? (await patientPartyId(ctx.tenantId, patient.name, patient.phone)),
       symptom,
       diagnosis: input.diagnosis?.trim() || null,
       feeSatang,
     },
   });
   return { id: v.id };
+}
+
+/**
+ * CRM v2 C1.1 (C11) — Party กลางของคนไข้ · ไม่มี transaction ธุรกิจครอบ (create ตรง) และการตรวจค่าทั้งหมดทำก่อนถึงจุดนี้แล้ว
+ * (createPatient: ชื่อ/เบอร์ · createVisit: คนไข้/อาการ/ค่าบริการ) ⇒ เรียกที่จุดสร้างได้โดยไม่ทิ้ง Party ของรายการที่ล้ม
+ * 🔴 เบอร์ normalize < 9 หลัก (เช่นพนักงานพิมพ์ "-") = ไม่ผูก — party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์สั้น ⇒ Party ขยะ
+ * AUDIT-CLASS X8: ไม่ได้ Party = ปล่อยว่าง · log แค่ตาราง+tenant ไม่มีเบอร์ (backfill party-links เก็บตกทีหลัง)
+ */
+async function patientPartyId(tenantId: string, name: string, phone: string): Promise<string | null> {
+  if (normalizePartyPhone(phone).length < 9) return null;
+  const id = await safeFindOrCreate(tenantId, { name, phone }).catch(() => null);
+  if (!id) console.warn(`[party-link] PatientRecord/ClinicVisit tenant=${tenantId}: ไม่ได้ partyId — ปล่อยว่าง`);
+  return id;
 }
 
 export async function listVisits(ctx: ClinicCtx, patientId?: string) {

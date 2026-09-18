@@ -197,7 +197,11 @@ export type KanbanLinkKind =
   | "POS_SALE"
   | "SHOP_ORDER"
   | "RESTAURANT_ORDER"
-  | "URL";
+  | "URL"
+  // CRM v2 (crm_v2_a · C1.1) — enum ขยายแล้ว แต่ตัวแปลผลเป็น stub "ยังไม่เปิดใช้" จนใบ C1.6 (เจ้าของ) ทำจริง
+  | "DEAL"
+  | "COMPANY"
+  | "CUSTOM_RECORD";
 
 /** ความสัมพันธ์ของการเชื่อม: การ์ดเกิดจากของชิ้นนี้ / อ้างถึง / เป็นผลลัพธ์ของงานนี้ */
 export type KanbanLinkRole = "SOURCE" | "RELATED" | "RESULT";

@@ -650,10 +650,31 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     href: (linkId) => linkId,
     resolve: null,
   },
+  // CRM v2 (crm_v2_a · C1.1) — enum `KanbanLinkType` ขยายแล้วแต่ "ยังไม่เปิดใช้": เจ้าของตัวแปลผลจริงคือใบ C1.6
+  //   stub ปิดทุกทาง — ไม่มีสิทธิ์ดู (DTO มีแค่ป้ายชนิด) · ไม่มีหน้าให้เปิด · หาปลายทางไม่เจอเสมอ (addLink ปฏิเสธ)
+  //   และไม่อยู่ใน LINK_TYPE_KINDS ด้านล่าง ⇒ UI/REST/zod ยังเห็นชุดเดิม 20 ชนิดเท่าเดิม
+  DEAL: notAvailableYet("DEAL"),
+  COMPANY: notAvailableYet("COMPANY"),
+  CUSTOM_RECORD: notAvailableYet("CUSTOM_RECORD"),
 };
 
-/** ชนิดทั้งหมด (ทะเบียนเดียว — UI/API/บริการ อ่านจากที่นี่ที่เดียว) */
-export const LINK_TYPE_KINDS = Object.keys(LINK_TYPES) as KanbanLinkKind[];
+/** stub ของชนิดที่ยังไม่เปิดใช้ (CRM v2 · ใบ C1.6 เป็นเจ้าของของจริง) */
+function notAvailableYet(kind: "DEAL" | "COMPANY" | "CUSTOM_RECORD"): LinkTypeSpec {
+  return {
+    ...LINK_TYPE_META[kind],
+    modules: ["crm"],
+    action: null,
+    canView: () => false,
+    href: () => null,
+    resolve: async () => new Map<string, ResolvedTarget>(),
+  };
+}
+
+/** ชนิดที่ยังไม่เปิดให้ผูก (C1.6 ถอดออกจากชุดนี้เมื่อทำตัวแปลผลจริง) */
+const NOT_AVAILABLE_YET: ReadonlySet<KanbanLinkKind> = new Set<KanbanLinkKind>(["DEAL", "COMPANY", "CUSTOM_RECORD"]);
+
+/** ชนิดทั้งหมด (ทะเบียนเดียว — UI/API/บริการ อ่านจากที่นี่ที่เดียว) · ไม่รวมชนิดที่ยังไม่เปิดใช้ */
+export const LINK_TYPE_KINDS = (Object.keys(LINK_TYPES) as KanbanLinkKind[]).filter((k) => !NOT_AVAILABLE_YET.has(k));
 
 /** ป้ายชนิดภาษาไทย (ใช้ทั้งหลังการ์ดและมุมมองตาราง) */
 export function linkTypeLabel(kind: KanbanLinkKind): string {

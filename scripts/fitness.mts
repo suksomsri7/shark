@@ -403,6 +403,17 @@ const ALLOWED_EDGES = new Set([
   "crm→member",
   "crm→kanban",
   "crm→forms",
+  // CRM C1.1 ▸ partyId ทุกระบบ (C11 · พิมพ์เขียว 20-crm-v2 §4.1): จุดสร้างแถวธุรกรรม 9 จุดเรียก `party.safeFindOrCreate`
+  //   ด้วยชื่อ/เบอร์/อีเมลที่แถวมีอยู่แล้ว (นอก transaction ธุรกิจ · ไม่มีวัน throw) — ทิศเดียว <โมดูล>→party
+  "booking→party", // Appointment (ชื่อ+เบอร์ลูกค้า)
+  "shop→party", // ShopOrder (ชื่อ+เบอร์ผู้สั่ง)
+  "rental→party", // RentalBooking (ชื่อ+เบอร์ผู้เช่า)
+  "queue→party", // QueueTicket (ชื่อ/เบอร์/อีเมลที่กรอก — ไม่กรอกเบอร์ = ไม่ผูก)
+  "clinic→party", // PatientRecord + ClinicVisit (Party ของคนไข้)
+  "ticket→party", // TicketOrder (ชื่อ+เบอร์ผู้ซื้อ)
+  "school→party", // SchoolEnrollment (ชื่อ+เบอร์ผู้เรียน)
+  "hotel→party", // HotelReservation (ชื่อ+เบอร์/อีเมลผู้เข้าพัก)
+  // ◂ CRM C1.1
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

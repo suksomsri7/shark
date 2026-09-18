@@ -81,6 +81,34 @@ await d(() => P.user.deleteMany({ where: { email: CQC.users.nok.email } }));
 // Party COMPANY ของบริษัท QC (จับด้วยเลขภาษี/ชื่อ) — สมาชิกไม่ใช้
 await d(() => P.party.deleteMany({ where: { tenantId, kind: "COMPANY", OR: [{ taxId: { startsWith: "01055" } }, { name: { startsWith: "บริษัท คิวซี" } }, { name: CQC.companies.textCompany }] } }));
 
+// แถวธุรกรรม 9 ตาราง (C11 · CQC.businessRows) + ของประกอบ (ช่าง/บริการ/สินทรัพย์/ประเภทคิว/อีเวนต์/คอร์ส/ประเภทห้อง)
+//   จับด้วยป้าย `qc-crm-c11` เท่านั้น — แถวธุรกรรมอื่นของร้าน (ของชุดสมาชิก) ไม่แตะ
+const BR_TAG = CQC.businessRows.tag as string;
+const tagged = (col: string) => ({ tenantId, [col]: { contains: BR_TAG } });
+// 🔴 ลบแบบ "ล้มดัง ๆ พร้อมชื่อตาราง" (ไม่ใช่ d() ที่กลืน error) — แถวค้าง = รอบถัดไปชน unique QCC11/C11/SO-QC11-*
+//    แล้วพังกลางทางแบบหาต้นเหตุยาก ⇒ หยุดตรงนี้เลยพร้อมบอกว่าตารางไหน
+const must = async (table: string, f: () => Promise<unknown>) => {
+  try { await f(); } catch (e) { console.error(`❌ ลบแถวป้าย ${BR_TAG} ในตาราง ${table} ไม่สำเร็จ — ${(e as Error)?.message?.slice(0, 200)}`); process.exit(1); }
+};
+await must("appointment", () => P.appointment.deleteMany({ where: tagged("customerName") }));
+await must("bookingService", () => P.bookingService.deleteMany({ where: tagged("name") }));
+await must("bookingStaff", () => P.bookingStaff.deleteMany({ where: tagged("name") }));
+await must("shopOrder", () => P.shopOrder.deleteMany({ where: { OR: [tagged("customerName"), { tenantId, code: { startsWith: "SO-QC11-" } }] } }));
+await must("rentalBooking", () => P.rentalBooking.deleteMany({ where: tagged("customerName") }));
+await must("rentalAsset", () => P.rentalAsset.deleteMany({ where: tagged("name") }));
+await must("queueTicket", () => P.queueTicket.deleteMany({ where: tagged("contactName") }));
+await must("queueTicket(QCC11)", () => P.queueTicket.deleteMany({ where: { tenantId, type: { code: "QCC11" } } }));
+await must("queueType", () => P.queueType.deleteMany({ where: { OR: [tagged("name"), { tenantId, code: "QCC11" }, { tenantId, prefix: "C11" }] } }));
+await must("clinicVisit", () => P.clinicVisit.deleteMany({ where: tagged("symptom") }));
+await must("patientRecord", () => P.patientRecord.deleteMany({ where: tagged("name") }));
+await must("ticketOrder", () => P.ticketOrder.deleteMany({ where: { OR: [tagged("buyerName"), { tenantId, orderNo: { startsWith: "TO-QC11-" } }] } }));
+await must("ticketEvent", () => P.ticketEvent.deleteMany({ where: tagged("name") }));
+await must("schoolEnrollment", () => P.schoolEnrollment.deleteMany({ where: tagged("studentName") }));
+await must("schoolClass", () => P.schoolClass.deleteMany({ where: tagged("name") }));
+await must("schoolCourse", () => P.schoolCourse.deleteMany({ where: tagged("name") }));
+await must("hotelReservation", () => P.hotelReservation.deleteMany({ where: { OR: [tagged("guestName"), { tenantId, code: { startsWith: "HR-QC11-" } }] } }));
+await must("hotelRoomType", () => P.hotelRoomType.deleteMany({ where: tagged("name") }));
+
 // ═══════════════════ 2. ระบบเพิ่ม (CRM · INVENTORY · ACCOUNT) ═══════════════════
 const systems: Record<string, string> = { ...mscope.systems };
 const LABEL: Record<string, string> = { CRM: "CRM", INVENTORY: "สินค้า", ACCOUNT: "บัญชี" };
@@ -108,7 +136,7 @@ if (has("team")) {
     const row = await P.team.create({ data: { tenantId, name: t.name, leadUserId: users[t.lead]!.userId, unitIds: [units[t.unit]!] } });
     teams[t.key] = row.id;
     const memberKeys: string[] = Array.from(new Set([...t.members, t.lead]));
-    for (const k of memberKeys) await P.teamMember.create({ data: { teamId: row.id, userId: users[k]!.userId, role: k === t.lead ? "LEAD" : "MEMBER" } });
+    for (const k of memberKeys) await P.teamMember.create({ data: { tenantId, teamId: row.id, userId: users[k]!.userId, role: k === t.lead ? "LEAD" : "MEMBER" } });
   }
 }
 const teamOfUser = (k: string) => (k === "thana" || k === "pook" ? teams.phuket ?? null : k === "nok" || k === "kata" ? teams.krabi ?? null : null);
@@ -169,7 +197,7 @@ for (let i = 1; i <= CQC.contacts.total; i += 1) {
   });
   if (coIdx && has("crmCompanyContact") && companyIds[coIdx - 1]) {
     const primary = ((i - 1) % 3) === 0;
-    await P.crmCompanyContact.create({ data: { companyId: companyIds[coIdx - 1], contactId: c.id, role: primary ? "DECISION_MAKER" : ((i - 1) % 3) === 1 ? "COORDINATOR" : "BILLING", jobTitle: patch.jobTitle ?? null, isPrimary: primary } });
+    await P.crmCompanyContact.create({ data: { tenantId, companyId: companyIds[coIdx - 1], contactId: c.id, role: primary ? "DECISION_MAKER" : ((i - 1) % 3) === 1 ? "COORDINATOR" : "BILLING", jobTitle: patch.jobTitle ?? null, isPrimary: primary } });
     if (primary) patch.companyId = companyIds[coIdx - 1];
   }
   if (Object.keys(patch).length) await P.crmContact.update({ where: { id: c.id }, data: patch });
@@ -270,18 +298,62 @@ if (has("customObject") && has("memberSection") && companyIds.length) {
       ["valueSatang", { valueNumber: 100_000_00 * i }],
       ["autoRenew", { valueBool: i % 2 === 0 }],
     ];
-    for (const [k, v] of vals) await P.customRecordValue.create({ data: { recordType: "CUSTOM", recordId: rec.id, fieldId: fields[k]!, ...v } });
+    for (const [k, v] of vals) await P.customRecordValue.create({ data: { tenantId, recordType: "CUSTOM", recordId: rec.id, fieldId: fields[k]!, ...v } });
     contractRecords += 1;
   }
   await P.customObject.update({ where: { id: obj.id }, data: { recordCount: contractRecords } });
+}
+
+// ═══════════════════ 9.5 แถวธุรกรรม 9 ตาราง (C11 · สัญญา CQC.businessRows · ใบ C1.1) ═══════════════════
+// 🔴 สร้าง "สถานะ" ตรงด้วย prisma — ห้ามผ่าน service ของโมดูลเหล่านั้น: service ยิง event/สมัครสมาชิก
+//    (จองคิว → member.findOrCreate) ⇒ ชุดข้อมูลสมาชิกบวม (บทเรียน C0.1) · และ partyId **ปล่อยว่าง** โดยตั้งใจ
+//    ให้ backfill `party-links` ด้านล่างเป็นคนเติม — พิสูจน์ว่า backfill จับคู่ Party เดิมของผู้ติดต่อ QC ได้จริง
+// 🔴 ระบบเหล่านี้เป็น "ประเภทสาขา" (UnitType) ไม่ใช่ AppSystem (SystemType ไม่มี SHOP/RENTAL/…) ⇒ ใช้สาขา patong เดิม
+//    ไม่สร้างสาขา/ระบบใหม่ (CQC.extraSystems ไม่ต้องขยาย — ชุดข้อมูลสมาชิกไม่ถูกแตะ)
+// ป้ายรายแถว = คำเต็ม `qc-crm-c11:<ตาราง>:<j>` ในคอลัมน์ป้ายของตาราง (PARTY_LINK_IDENTITY[t].tagColumn)
+let businessRows = 0;
+{
+  const U = units.patong!;
+  const BR = CQC.businessRows;
+  const phoneFor = (t: string, j: number) => CQC.contacts.phoneOf(BR.contactIndexOf(t, j)) as string;
+  const label = (t: string, j: number) => `ลูกค้า QC ${BR.rowTagOf(t, j)}`;
+  const staff = await P.bookingStaff.create({ data: { tenantId, unitId: U, name: `ช่าง ${BR_TAG}` } });
+  const service = await P.bookingService.create({ data: { tenantId, unitId: U, name: `บริการ ${BR_TAG}`, durationMin: 60 } });
+  const asset = await P.rentalAsset.create({ data: { tenantId, unitId: U, name: `อุปกรณ์ ${BR_TAG}` } });
+  const qType = await P.queueType.create({ data: { tenantId, unitId: U, code: "QCC11", name: `คิว ${BR_TAG}`, prefix: "C11" } });
+  const event = await P.ticketEvent.create({ data: { tenantId, unitId: U, name: `อีเวนต์ ${BR_TAG}`, startAt: dayFromToday(10) } });
+  const course = await P.schoolCourse.create({ data: { tenantId, unitId: U, name: `คอร์ส ${BR_TAG}` } });
+  const klass = await P.schoolClass.create({ data: { tenantId, unitId: U, courseId: course.id, name: `รอบ ${BR_TAG}` } });
+  const roomType = await P.hotelRoomType.create({ data: { tenantId, unitId: U, name: `ห้อง ${BR_TAG}` } });
+  for (let j = 1; j <= BR.perTable; j += 1) {
+    const at = dayFromToday(3 + j, 10);
+    await P.appointment.create({ data: { tenantId, unitId: U, staffId: staff.id, serviceId: service.id, startAt: at, endAt: new Date(at.getTime() + 3_600_000), customerName: label("Appointment", j), customerPhone: phoneFor("Appointment", j), source: "STAFF" } });
+    await P.shopOrder.create({ data: { tenantId, unitId: U, code: `SO-QC11-${j}`, customerName: label("ShopOrder", j), customerPhone: phoneFor("ShopOrder", j) } });
+    await P.rentalBooking.create({ data: { tenantId, unitId: U, assetId: asset.id, customerName: label("RentalBooking", j), customerPhone: phoneFor("RentalBooking", j), startDate: dayFromToday(5 + j * 3), endDate: dayFromToday(6 + j * 3) } });
+    // QueueTicket: contactName เป็น optional ⇒ ต้องเขียนเสมอ (คอลัมน์ป้าย — crm-qc-env.mts PARTY_LINK_IDENTITY)
+    await P.queueTicket.create({ data: { tenantId, unitId: U, typeId: qType.id, businessDate: CQC.today, seq: j, number: `C11${String(j).padStart(3, "0")}`, priority: 0, channel: "STAFF", contactName: label("QueueTicket", j), contactPhone: phoneFor("QueueTicket", j) } });
+    await P.ticketOrder.create({ data: { tenantId, unitId: U, eventId: event.id, orderNo: `TO-QC11-${String(j).padStart(4, "0")}`, buyerName: label("TicketOrder", j), buyerPhone: phoneFor("TicketOrder", j) } });
+    await P.schoolEnrollment.create({ data: { tenantId, unitId: U, classId: klass.id, studentName: label("SchoolEnrollment", j), studentPhone: phoneFor("SchoolEnrollment", j) } });
+    await P.hotelReservation.create({ data: { tenantId, unitId: U, code: `HR-QC11-${String(j).padStart(4, "0")}`, guestName: label("HotelReservation", j), guestPhone: phoneFor("HotelReservation", j), roomTypeId: roomType.id, checkInDate: dayFromToday(20 + j * 3), checkOutDate: dayFromToday(21 + j * 3) } });
+    await P.patientRecord.create({ data: { tenantId, unitId: U, name: `ผู้ป่วย QC ${BR.rowTagOf("PatientRecord", j)}`, phone: phoneFor("PatientRecord", j) } });
+    // ClinicVisit ไม่มีเบอร์ในแถว — คนไข้ของ visit ถือเบอร์ของผู้ติดต่อตามสัญญา (ป้ายในชื่อไม่ใช่คำเต็มของตาราง PatientRecord)
+    const vp = await P.patientRecord.create({ data: { tenantId, unitId: U, name: `ผู้ป่วย QC ${BR_TAG}-visit-${j}`, phone: phoneFor("ClinicVisit", j) } });
+    await P.clinicVisit.create({ data: { tenantId, unitId: U, patientId: vp.id, symptom: `ตรวจทั่วไป ${BR.rowTagOf("ClinicVisit", j)}` } });
+    businessRows += 9;
+  }
 }
 
 // ═══════════════════ 10. backfill 6 ตัว (ถ้ามีไฟล์) ═══════════════════
 const backfillRan: string[] = [];
 for (const s of CRM_BACKFILLS) {
   if (!existsSync(`scripts/${s}`)) continue;
-  const r = spawnSync("pnpm", ["exec", "tsx", `scripts/${s}`, "--tenant", CQC.tenantSlug], { encoding: "utf8", env: process.env, timeout: 600_000 });
-  if (r.status !== 0) { console.error(`❌ backfill ${s} ล้ม\n${(r.stdout ?? "") + (r.stderr ?? "")}`.slice(-2000)); process.exit(1); }
+  // dry-run ก่อนแล้วค่อยรันจริง (พิมพ์บรรทัด BACKFILL_SUMMARY ของทั้งสองรอบ — หลักฐานว่า dry-run นับตรงกับของจริง)
+  for (const mode of [["--dry-run"], []]) {
+    const r = spawnSync("pnpm", ["exec", "tsx", `scripts/${s}`, "--tenant", CQC.tenantSlug, ...mode], { encoding: "utf8", env: process.env, timeout: 600_000 });
+    if (r.status !== 0) { console.error(`❌ backfill ${s} ล้ม\n${(r.stdout ?? "") + (r.stderr ?? "")}`.slice(-2000)); process.exit(1); }
+    const line = /BACKFILL_SUMMARY .*/.exec(r.stdout ?? "")?.[0];
+    if (line) console.log(`  ${line}`);
+  }
   backfillRan.push(s);
 }
 
@@ -316,7 +388,7 @@ const expected = {
     companies: companyIds.length, contacts: contactIds.length, deals: dealIds.length, dealsWon: CQC.deals.won, dealsLost: CQC.deals.lost, dealsOpen: CQC.deals.open,
     staleCandidates: CQC.deals.stale, activities: actCount, contractRecords, teams: Object.keys(teams).length,
     companyContacts: await count("crmCompanyContact", {}), stageHistory: await count("crmDealStageHistory", {}),
-    textCompanyContacts: CQC.contacts.textCompany, duplicatePairs: CQC.contacts.duplicates,
+    textCompanyContacts: CQC.contacts.textCompany, duplicatePairs: CQC.contacts.duplicates, businessRows,
   },
   backfillRan,
 };

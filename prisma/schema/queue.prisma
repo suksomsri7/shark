@@ -166,6 +166,8 @@ model QueueTicket {
   cancelledAt              DateTime?
   cancelReason             String? // CUSTOMER | STAFF | END_OF_DAY
   issuedBy                 String? // userId (channel STAFF/KIOSK)
+  // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
+  partyId        String?
 
   events QueueTicketEvent[]
 
@@ -179,6 +181,7 @@ model QueueTicket {
   @@index([refType, refId])
   @@index([memberId])
   @@index([unitId, contactPhone, businessDate, status]) // กันรับคิวซ้ำ
+  @@index([partyId])
 }
 
 // ทุก transition — audit + สถิติ

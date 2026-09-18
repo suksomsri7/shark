@@ -122,6 +122,10 @@ model MemberActivity {
   // `actorUserId` = พนักงานที่ทำ (null = ระบบ/ลูกค้าเอง)
   data        Json?
   actorUserId String?
+  // CRM v2 (crm_v2_a · §4.1) — ไทม์ไลน์กลางรู้จัก CRM
+  crmContactId String?
+  crmCompanyId String?
+  dealId       String?
 
   @@index([tenantId, customerId, createdAt])
   // แท็บ "ประวัติ" กรองตามโมดูลแล้วเรียงเวลา — เส้นอ่านหลักของหน้า 360
@@ -225,6 +229,18 @@ enum MemberLookupTarget {
   // M1.4 (`member_v2_b`) — ปลายทาง "ผู้ใช้ระบบ" (Customer.ownerUserId เก็บ User.id ไม่ใช่ HrEmployee.id)
   // ⇒ ฟิลด์ระบบ `ownerUserId` ต้องตรวจกับ Membership ของร้าน ไม่ใช่ทะเบียนพนักงาน HR
   USER
+  // CRM v2 (crm_v2_a · §4.2) — LOOKUP ไปวัตถุกำหนดเองใช้ options.objectKey
+  CONTACT
+  COMPANY
+  DEAL
+  CUSTOM
+}
+
+// CRM v2 (crm_v2_a · §4.2) — เจ้าของที่อยู่ใน MemberAddress
+enum MemberAddressOwner {
+  CUSTOMER
+  CONTACT
+  COMPANY
 }
 
 // ที่มาของการบันทึก (ยินยอม/แก้ฟิลด์/คำขอ PDPA) — "ใครเป็นคนกด" ในเชิงช่องทาง ไม่ใช่ตัวบุคคล
@@ -294,8 +310,10 @@ model MemberSection {
   collapsed   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // CRM v2 (crm_v2_a · §4.1) — ส่วนของวัตถุไหน ("customer" = สมาชิก · แถวเดิมทุกแถว) · แทน unique เดิม [systemId, key]
+  objectKey   String   @default("customer")
 
-  @@unique([systemId, key])
+  @@unique([systemId, objectKey, key])
   @@index([tenantId])
   @@index([systemId, sortOrder])
 }
@@ -328,10 +346,15 @@ model MemberField {
   archivedAt       DateTime?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
+  // CRM v2 (crm_v2_a · §4.1) — ฟิลด์ของวัตถุไหน ("customer" = สมาชิก) + สิทธิ์ใน portal B2B
+  objectKey        String          @default("customer")
+  portalVisible    Boolean         @default(false)
+  portalEditable   Boolean         @default(false)
 
-  values MemberFieldValue[]
+  values             MemberFieldValue[]
+  customRecordValues CustomRecordValue[]
 
-  @@unique([systemId, key])
+  @@unique([systemId, objectKey, key])
   @@index([tenantId])
   @@index([systemId, sectionId, sortOrder])
 }
@@ -397,6 +420,9 @@ model MemberAddress {
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // CRM v2 (crm_v2_a · §4.1) — ที่อยู่ของใคร (แถวเดิม = CUSTOMER)
+  ownerType   MemberAddressOwner @default(CUSTOMER)
+  ownerId     String?
 
   @@index([tenantId])
   @@index([customerId])
@@ -514,6 +540,9 @@ model MemberSavedView {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  // CRM v2 (crm_v2_a · §4.1) — มุมมองของวัตถุไหน + ทีมจริง (เดิม scope="TEAM" = ทั้งร้าน)
+  objectKey   String   @default("customer")
+  teamId      String?
 
   @@index([tenantId])
   @@index([systemId, scope])

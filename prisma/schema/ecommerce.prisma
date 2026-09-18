@@ -41,11 +41,14 @@ model ShopOrder {
   cancelledAt   DateTime?
   refundedAt    DateTime? // คืนเงิน (PAID→REFUNDED) — void PosSale + คืนสต็อก (ห้ามลบ order)
   createdAt     DateTime        @default(now())
+  // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
+  partyId        String?
 
   lines ShopOrderLine[]
 
   @@unique([unitId, code])
   @@index([tenantId, unitId, status])
+  @@index([partyId])
 }
 
 model ShopOrderLine {

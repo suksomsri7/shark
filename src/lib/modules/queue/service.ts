@@ -1,5 +1,6 @@
 import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma } from "@/lib/core/db";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import type {
   Prisma,
   QueueIssueChannel,
@@ -173,6 +174,7 @@ export async function issueTicket(input: {
       });
       return created;
     });
+    await linkPartyAfterCommit(tenantId, ticket.id, input.contact?.name, input.contact?.phone, input.contact?.email); // CRM v2 C1.1 (C11)
     return { ok: true, ticket };
   } catch (e) {
     if (e instanceof Error && e.message === "NO_TYPE") {
@@ -528,4 +530,24 @@ export async function expireSkipped(ctx: Ctx) {
     data: { status: "NO_SHOW" },
   });
   return { expired: expired.count };
+}
+
+// ───────── CRM v2 ใบ C1.1 (C11) — ผูก Party กลางให้ QueueTicket ─────────
+// 🔴 เรียก "หลัง commit" เท่านั้น: รายการที่ล้ม (เต็ม/ชน/ไม่พบ) ต้องไม่ทิ้ง Party ของคนที่ไม่ได้เป็นลูกค้า (PDPA · เก็บเท่าที่จำเป็น)
+//    และไม่ถือ connection ที่สองขณะ transaction ธุรกิจถือ lock อยู่
+// 🔴 กุญแจต้องเชื่อถือได้: เบอร์ normalize ≥ 9 หลัก หรืออีเมลที่ถูกรูป — ไม่งั้นไม่ผูก (party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์ < 8 หลัก ⇒ Party ขยะ)
+// 🔴 ไม่มีวัน throw เข้าหาผู้เรียก · ล้ม = ปล่อย partyId ว่างให้ backfill party-links เก็บตก
+// AUDIT-CLASS X8: log แค่ชื่อตาราง + tenant ไม่มีเบอร์/อีเมล/ชื่อ
+async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined, email?: string | null): Promise<void> {
+  try {
+    const phoneOk = normalizePartyPhone(phone).length >= 9;
+    const mail = email?.trim() ?? "";
+    const mailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail);
+    if (!phoneOk && !mailOk) return;
+    const partyId = await safeFindOrCreate(tenantId, { name: name?.trim() || "ลูกค้าไม่ระบุชื่อ", phone: phoneOk ? phone : null, email: mailOk ? mail : null });
+    if (partyId) await prisma.queueTicket.updateMany({ where: { id, tenantId, partyId: null }, data: { partyId } });
+    else console.warn(`[party-link] QueueTicket tenant=${tenantId}: ไม่ได้ partyId — ปล่อยว่าง`);
+  } catch {
+    console.warn(`[party-link] QueueTicket tenant=${tenantId}: ผูก Party ไม่สำเร็จ — ปล่อยว่าง`);
+  }
 }

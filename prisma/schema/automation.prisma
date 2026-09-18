@@ -28,6 +28,7 @@ enum AutomationScope {
   KANBAN
   MEMBER_TIER
   MEMBER_JOURNEY
+  CRM // CRM v2 (crm_v2_a · §4.1)
 }
 
 model AutomationRule {
@@ -75,6 +76,10 @@ model AutomationRule {
   holdoutPct    Int             @default(0)
   reentryDays   Int?
   trigger       Json?
+
+  // ── CRM v2 (crm_v2_a · §4.1) — กฎ scope CRM ──
+  crmSystemId String?
+  pipelineId  String?
 
   @@index([tenantId, event, enabled])
   // เส้นอ่านของเอนจินบอร์ดงาน: กฎที่เปิดอยู่ของบอร์ดใบเดียว (runForKanbanEvent/sweep/หน้าตั้งกฎ)

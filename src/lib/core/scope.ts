@@ -62,6 +62,24 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CrmStage: sys(),
   CrmDeal: sys(),
   CrmActivity: sys(),
+  // ── CRM v2 (crm_v2_a · ใบ C1.1 · พิมพ์เขียว 20-crm-v2 §4.3) — ตารางที่มี systemId ของระบบ CRM = sys()
+  //    ตารางลูก (แขวนกับแม่ · มี tenantId ของตัวเอง แบบ ShopOrderLine) = tenant
+  CrmCompany: sys(),
+  CrmCompanyContact: tenant, // ลูกของบริษัท — query ผ่าน companyId/contactId + tenantId
+  CrmDealContact: tenant, // ลูกของดีล
+  CrmDealLine: tenant, // ลูกของดีล
+  CrmDealStageHistory: tenant, // ลูกของดีล
+  CrmLostReason: sys(),
+  CrmVisibilityPolicy: sys(),
+  CrmFileLink: sys(),
+  CrmContactConsent: sys(),
+  CustomObject: sys(),
+  CustomRecord: sys(),
+  CustomRecordValue: tenant, // ค่าของรายการ/ผู้ติดต่อ/บริษัท/ดีล (recordType) — แบบ MemberFieldValue
+  CustomRecordValueHistory: tenant,
+  // ทีม (core · ของกลางทั้งแอป) — ไม่ผูกระบบ
+  Team: tenant,
+  TeamMember: tenant,
   // Inventory (ระบบ 18 — WO-0011)
   InvItem: sys(),
   InvCategory: sys(),

@@ -83,7 +83,10 @@ const snapshot = async (tid: string) => {
     history: await n("crmDealStageHistory", { deal: { tenantId: tid } }), lostReasons: await n("crmLostReason", { tenantId: tid }),
     visibility: await n("crmVisibilityPolicy", { tenantId: tid }), parties: await n("party", { tenantId: tid }),
     contactsNoFirst: await n("crmContact", { tenantId: tid, firstName: null }),
-    apptNoParty: await n("appointment", { tenantId: tid, partyId: null, customerPhone: { not: null } }),
+    // 🔴 ORACLE-EDIT C1.1-S3.x (ผู้คุมงาน · 18 ก.ย. 2569): `Appointment.customerPhone` เป็น NOT NULL (booking.prisma)
+    //    Prisma ปฏิเสธ `{ not: null }` บนคอลัมน์ NOT NULL ⇒ ทั้งรอบตายที่ S3.2 และข้อหลังจากนั้นไม่ถูกตรวจเลย
+    //    เจตนาเดิม = "นัดที่มีเบอร์แต่ยังไม่มี partyId" ⇒ เบอร์ไม่ว่าง = `{ not: "" }` (ความหมายเท่าเดิม ไม่ได้ผ่อน)
+    apptNoParty: await n("appointment", { tenantId: tid, partyId: null, customerPhone: { not: "" } }),
   };
 };
 
@@ -276,7 +279,9 @@ try {
   const cosWithTax = await P.crmCompany.count({ where: { tenantId: tid, systemId: SYS, taxId: { not: null } } });
   const partyCoWithTax = await P.party.count({ where: { tenantId: tid, kind: "COMPANY", taxId: { not: null } } });
   chk("C1.1-S5.3", `Party COMPANY ที่มีเลขภาษี = บริษัท QC ที่มีเลขภาษี (${CQC.companies.withTaxId}) — ไม่มี Party COMPANY ซ้ำ`, cosWithTax === CQC.companies.withTaxId && partyCoWithTax === CQC.companies.withTaxId, String(CQC.companies.withTaxId), `crm=${cosWithTax} party=${partyCoWithTax}`);
-  const allCoHaveParty = (await P.crmCompany.count({ where: { tenantId: tid, partyId: null } })) === 0;
+  // 🔴 ORACLE-EDIT C1.1-S5.4 (ผู้คุมงาน · 18 ก.ย. 2569): `CrmCompany.partyId` เป็น NOT NULL (crm.prisma · สเปก §4.3 "บังคับ")
+  //    Prisma ปฏิเสธ `partyId: null` บนคอลัมน์ NOT NULL · ทางเดียวที่บริษัทจะ "ไม่มี Party" ได้คือสตริงว่าง ⇒ ตรวจ `""`
+  const allCoHaveParty = (await P.crmCompany.count({ where: { tenantId: tid, partyId: "" } })) === 0;
   const contactsNoParty = await P.crmContact.count({ where: { tenantId: tid, partyId: null } });
   chk("C1.1-S5.4", "CrmCompany ทุกแถวมี partyId (บังคับ) · CrmContact ทุกแถวมี partyId หลัง backfill party-links", allCoHaveParty && contactsNoParty === 0, "0/0", `coNull=${!allCoHaveParty} contactNull=${contactsNoParty}`);
   // กลุ่ม A: คอลัมน์ต้องมาจาก crm_v2_a จริง ๆ และต้อง nullable (กติกา §2 ข้อ 5 — ห้าม NOT NULL ที่ไม่มี default)

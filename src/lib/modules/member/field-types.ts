@@ -77,6 +77,11 @@ export const LOOKUP_TARGET_LABELS: Record<MemberLookupTarget, string> = {
   CUSTOMER: "สมาชิกอื่น",
   // M1.4 (`member_v2_b`) — ผู้ใช้ระบบของร้าน (ฟิลด์ระบบ "ผู้ดูแล" ชี้มาที่นี่)
   USER: "ผู้ใช้ระบบ",
+  // CRM v2 (crm_v2_a · C1.1) — ป้ายเท่านั้น · ยังไม่อยู่ใน LOOKUP_TARGET_ORDER จนกว่าใบ C1.2a จะเปิดใช้
+  CONTACT: "ผู้ติดต่อ (CRM)",
+  COMPANY: "บริษัท (CRM)",
+  DEAL: "ดีล (CRM)",
+  CUSTOM: "วัตถุกำหนดเอง",
 };
 
 export const LOOKUP_TARGET_ORDER: readonly MemberLookupTarget[] = ["PRODUCT", "SERVICE", "EMPLOYEE", "UNIT", "CUSTOMER", "USER"];

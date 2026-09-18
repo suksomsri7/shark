@@ -912,6 +912,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "tenant.branding.updated": withAutomation(async (evt) => {
     invalidateBrandingCache(evt.tenantId);
   }),
+  // CRM C1.1 ▸ ทีม (core/teams.ts) — no-op: แถว Team/TeamMember เขียนครบใน tx ของ teams.ts แล้ว
+  //   บรรทัดนี้ปิด event เป็น DONE (ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · C1.7/C2.3 ต่อยอด (ล้างแคชการมองเห็น/มอบหมาย)
+  "team.updated": withAutomation(async () => {}),
+  // ◂ CRM C1.1
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

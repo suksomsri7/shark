@@ -55,7 +55,10 @@ model RentalBooking {
   depositSatang Int       @default(0) // snapshot มัดจำจาก asset ตอนจอง (0 = ไม่ต้องมัดจำ)
   depositPaidAt DateTime? // เวลาที่ร้านยืนยันรับมัดจำ (null = ยังไม่จ่าย)
   depositSaleId String? // PosSale.id ของบิลมัดจำ DEPOSIT (Dr 2110)
+  // CRM v2 (crm_v2_a · C11) — Party กลาง · nullable · ไม่มี FK (แบบ TicketOrder/HotelReservation)
+  partyId        String?
 
   @@index([tenantId, unitId, status])
   @@index([assetId, startDate])
+  @@index([partyId])
 }

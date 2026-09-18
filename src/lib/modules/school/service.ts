@@ -6,6 +6,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as member from "@/lib/modules/member/service";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { listSystems } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import { resolvePublicUnit } from "@/lib/core/storefront";
@@ -158,7 +159,7 @@ export async function enroll(ctx: SchoolCtx, input: EnrollInput): Promise<{ id: 
   //   ล็อกแถวรอบเรียน (pessimistic row-lock) ต้น tx → 2 request สมัครรอบเดียวกันพร้อมกัน serialize
   //   → count ภายใน tx เดียวกันเห็น enrollment ที่ commit แล้วของคนแรก → คนที่เกินโดน reject
   //   (ตาราง "SchoolClass" — schema ไม่มี @@map)
-  return prisma.$transaction(async (tx) => {
+  const res = await prisma.$transaction(async (tx) => {
     const cl = await tx.schoolClass.findFirst({
       where: { id: input.classId, tenantId: ctx.tenantId, unitId: ctx.unitId },
       include: { course: true },
@@ -188,6 +189,8 @@ export async function enroll(ctx: SchoolCtx, input: EnrollInput): Promise<{ id: 
     });
     return { id: en.id, publicToken: en.publicToken };
   });
+  await linkPartyAfterCommit(ctx.tenantId, res.id, name, phone); // CRM v2 C1.1 (C11)
+  return res;
 }
 
 // ── รับชำระค่าเรียน (ENROLLED → PAID) — เส้นเงิน C-2 ผ่าน pos.createSale ──
@@ -406,4 +409,22 @@ export async function promptpayForEnrollment(
   if (!profile?.promptpayId) return null;
   const payload = promptpayPayload({ id: profile.promptpayId, amountSatang: en.priceSatang });
   return { payload, displayName: profile.displayName ?? "" };
+}
+
+// ───────── CRM v2 ใบ C1.1 (C11) — ผูก Party กลางให้ SchoolEnrollment ─────────
+// 🔴 เรียก "หลัง commit" เท่านั้น: รายการที่ล้ม (เต็ม/ชน/ไม่พบ) ต้องไม่ทิ้ง Party ของคนที่ไม่ได้เป็นลูกค้า (PDPA · เก็บเท่าที่จำเป็น)
+//    และไม่ถือ connection ที่สองขณะ transaction ธุรกิจถือ lock อยู่
+// 🔴 กุญแจต้องเชื่อถือได้: เบอร์ normalize ≥ 9 หลัก — ไม่งั้นไม่ผูก (party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์ < 8 หลัก ⇒ Party ขยะ)
+// 🔴 ไม่มีวัน throw เข้าหาผู้เรียก · ล้ม = ปล่อย partyId ว่างให้ backfill party-links เก็บตก
+// AUDIT-CLASS X8: log แค่ชื่อตาราง + tenant ไม่มีเบอร์/อีเมล/ชื่อ
+async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined): Promise<void> {
+  try {
+    const phoneOk = normalizePartyPhone(phone).length >= 9;
+    if (!phoneOk) return;
+    const partyId = await safeFindOrCreate(tenantId, { name: name?.trim() || "ลูกค้าไม่ระบุชื่อ", phone: phoneOk ? phone : null });
+    if (partyId) await prisma.schoolEnrollment.updateMany({ where: { id, tenantId, partyId: null }, data: { partyId } });
+    else console.warn(`[party-link] SchoolEnrollment tenant=${tenantId}: ไม่ได้ partyId — ปล่อยว่าง`);
+  } catch {
+    console.warn(`[party-link] SchoolEnrollment tenant=${tenantId}: ผูก Party ไม่สำเร็จ — ปล่อยว่าง`);
+  }
 }

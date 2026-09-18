@@ -1087,6 +1087,11 @@ const LOOKUP_LABEL: Record<MemberLookupTarget, string> = {
   PRODUCT: "สินค้า",
   SERVICE: "บริการ",
   CUSTOMER: "สมาชิก",
+  // CRM v2 (crm_v2_a · C1.1) — ป้ายเท่านั้น · ใบ C1.2a เป็นเจ้าของการตรวจค่า LOOKUP ของปลายทางเหล่านี้
+  CONTACT: "ผู้ติดต่อ",
+  COMPANY: "บริษัท",
+  DEAL: "ดีล",
+  CUSTOM: "รายการ",
 };
 
 /**

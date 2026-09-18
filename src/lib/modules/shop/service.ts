@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import * as pos from "@/lib/modules/pos/service";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import * as inventory from "@/lib/modules/inventory/service";
 import { listSystems } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
@@ -172,6 +173,7 @@ export async function createOrder(ctx: ShopCtx, input: CreateOrderInput): Promis
         });
         return created;
       });
+      await linkPartyAfterCommit(ctx.tenantId, order.id, customerName, customerPhone); // CRM v2 C1.1 (C11)
       return { id: order.id, code: order.code, totalSatang };
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") continue;
@@ -389,4 +391,22 @@ export async function listOrders(ctx: ShopCtx, opts: { status?: "PENDING_PAYMENT
     include: { lines: true },
     take: 200,
   });
+}
+
+// ───────── CRM v2 ใบ C1.1 (C11) — ผูก Party กลางให้ ShopOrder ─────────
+// 🔴 เรียก "หลัง commit" เท่านั้น: รายการที่ล้ม (เต็ม/ชน/ไม่พบ) ต้องไม่ทิ้ง Party ของคนที่ไม่ได้เป็นลูกค้า (PDPA · เก็บเท่าที่จำเป็น)
+//    และไม่ถือ connection ที่สองขณะ transaction ธุรกิจถือ lock อยู่
+// 🔴 กุญแจต้องเชื่อถือได้: เบอร์ normalize ≥ 9 หลัก — ไม่งั้นไม่ผูก (party.findOrCreate สร้างใหม่ทุกครั้งเมื่อเบอร์ < 8 หลัก ⇒ Party ขยะ)
+// 🔴 ไม่มีวัน throw เข้าหาผู้เรียก · ล้ม = ปล่อย partyId ว่างให้ backfill party-links เก็บตก
+// AUDIT-CLASS X8: log แค่ชื่อตาราง + tenant ไม่มีเบอร์/อีเมล/ชื่อ
+async function linkPartyAfterCommit(tenantId: string, id: string, name: string | null | undefined, phone: string | null | undefined): Promise<void> {
+  try {
+    const phoneOk = normalizePartyPhone(phone).length >= 9;
+    if (!phoneOk) return;
+    const partyId = await safeFindOrCreate(tenantId, { name: name?.trim() || "ลูกค้าไม่ระบุชื่อ", phone: phoneOk ? phone : null });
+    if (partyId) await prisma.shopOrder.updateMany({ where: { id, tenantId, partyId: null }, data: { partyId } });
+    else console.warn(`[party-link] ShopOrder tenant=${tenantId}: ไม่ได้ partyId — ปล่อยว่าง`);
+  } catch {
+    console.warn(`[party-link] ShopOrder tenant=${tenantId}: ผูก Party ไม่สำเร็จ — ปล่อยว่าง`);
+  }
 }

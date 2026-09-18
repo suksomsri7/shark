@@ -1,0 +1,40 @@
+// ทีม (core · ของกลางทั้งแอป · แกน tenant) — CRM v2 `crm_v2_a` (พิมพ์เขียว 20-crm-v2 §4.3 กลุ่ม core + §15)
+// บริการ: src/lib/core/teams.ts · ผูกสาขาด้วย unitIds (BusinessUnit.id) · ชื่อไม่ซ้ำในร้าน
+
+enum TeamRole {
+  LEAD
+  MEMBER
+}
+
+model Team {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String
+  leadUserId  String?
+  unitIds     String[]  @default([])
+  color       String?
+  description String?
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members TeamMember[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, archivedAt])
+}
+
+model TeamMember {
+  id             String   @id @default(cuid())
+  tenantId       String
+  teamId         String
+  team           Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId         String
+  role           TeamRole @default(MEMBER)
+  acceptingLeads Boolean  @default(true) // §15 — round-robin ของ C2.3 ข้ามคนที่ปิดรับ
+  joinedAt       DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([tenantId])
+}

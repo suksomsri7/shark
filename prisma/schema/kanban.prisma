@@ -713,6 +713,10 @@ enum KanbanLinkType {
   SHOP_ORDER
   RESTAURANT_ORDER
   URL
+  // CRM v2 (crm_v2_a · §4.1) — CRM_CONTACT มีอยู่แล้ว
+  DEAL
+  COMPANY
+  CUSTOM_RECORD
 }
 
 model KanbanCardLink {

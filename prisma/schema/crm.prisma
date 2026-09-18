@@ -14,6 +14,7 @@ enum CrmLifecycleStage {
   PROSPECT // คุยแล้ว มีโอกาส
   CUSTOMER // ปิดการขายได้
   LOST // ไม่ไปต่อ
+  CHURNED // CRM v2 (crm_v2_a · §4.2) — เคยเป็นลูกค้าแล้วเลิก
 }
 
 enum CrmStageKind {
@@ -29,6 +30,103 @@ enum CrmActivityType {
   LINE
   TASK
   NOTE
+  // CRM v2 (crm_v2_a · §4.2) — +6
+  CHAT
+  SMS
+  WHATSAPP
+  VISIT
+  WEB
+  PORTAL
+}
+
+// ───────────── CRM v2 (crm_v2_a · พิมพ์เขียว docs/modules/20-crm-v2.md §4.2) — enum ใหม่ ─────────────
+enum CrmLeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  NURTURE
+}
+
+enum CrmScoreBand {
+  HOT
+  WARM
+  COLD
+}
+
+enum CrmContactRole {
+  DECISION_MAKER
+  INFLUENCER
+  COORDINATOR
+  BILLING
+  TECHNICAL
+  END_USER
+  OTHER
+}
+
+enum CrmForecastCategory {
+  PIPELINE
+  BEST_CASE
+  COMMIT
+  OMITTED
+}
+
+enum CrmDirection {
+  IN
+  OUT
+}
+
+enum CrmActivitySource {
+  MANUAL
+  AUTO
+  EMAIL
+  CHAT
+  CALENDAR
+  PORTAL
+  WEB
+  API
+  RULE
+}
+
+enum CrmPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum CrmCompanySize {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
+  ENTERPRISE
+}
+
+enum CrmPipelineKind {
+  SALES
+  RENEWAL
+  SERVICE
+}
+
+enum CrmVisibility {
+  OWN
+  TEAM
+  ALL
+}
+
+enum CustomParent {
+  CUSTOMER
+  CONTACT
+  COMPANY
+  DEAL
+  NONE
+}
+
+enum CustomRecordType {
+  CONTACT
+  COMPANY
+  DEAL
+  CUSTOM
 }
 
 model CrmContact {
@@ -50,13 +148,55 @@ model CrmContact {
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
-  deals      CrmDeal[]
-  activities CrmActivity[]
+  // ── CRM v2 (crm_v2_a · §4.1) — เพิ่มคอลัมน์ล้วน (nullable/default) · `name`/`company`/`source` เดิมคงไว้ ──
+  firstName        String? // แยกจาก name (backfill contact-names แยกที่ช่องว่างแรก)
+  lastName         String?
+  titleTh          String?
+  companyId        String? // cache ของ CrmCompanyContact.isPrimary — เขียนผ่าน companies.setPrimary เท่านั้น (ไม่มี FK: ตารางเดิม)
+  jobTitle         String?
+  department       String?
+  leadStatus       CrmLeadStatus     @default(NEW)
+  score            Int               @default(0)
+  scoreUpdatedAt   DateTime?
+  scoreBand        CrmScoreBand?
+  teamId           String?
+  lastActivityAt   DateTime?
+  nextActivityAt   DateTime?
+  emailOptOut      Boolean           @default(false)
+  emailBouncedAt   DateTime?
+  marketingOptOut  Boolean           @default(false)
+  convertedAt      DateTime?
+  assignedAt       DateTime?
+  assignedBy       String? // "USER:{id}" | "RULE:{id}" | "API" | "IMPORT"
+  sourceKind       MemberSource?
+  sourceChannel    String?
+  sourceDetail     Json? // {utm{…}, formId?, linkId?, pageUrl?, referrer?, chatContactId?, staffUserId?, importJobId?, campaignId?}
+  attributionId    String?
+  locale           String?           @default("th")
+  tags             String[]          @default([])
+  lineUserId       String?
+  portalAccessAt   DateTime?
+  mergedIntoId     String?
+  // RESOLUTIONS R-A — อีเมลเก่า (updateContact ของ C1.4 เก็บ · C2.5 ใช้จับคู่อีเมลขาเข้า)
+  previousEmails   String[]          @default([])
+
+  deals        CrmDeal[]
+  activities   CrmActivity[]
+  companyLinks CrmCompanyContact[]
+  dealLinks    CrmDealContact[]
 
   @@index([systemId, lifecycleStage])
   @@index([systemId, phone])
   @@index([tenantId])
   @@index([partyId])
+  @@index([systemId, ownerUserId])
+  @@index([systemId, teamId])
+  @@index([systemId, score])
+  @@index([systemId, companyId])
+  @@index([systemId, leadStatus])
+  @@index([systemId, lastActivityAt])
+  @@index([tenantId, email])
+  @@index([systemId, mergedIntoId])
 }
 
 model CrmPipeline {
@@ -67,6 +207,16 @@ model CrmPipeline {
   isDefault Boolean  @default(false)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
+
+  // ── CRM v2 (crm_v2_a · §4.1 + RESOLUTIONS R-A) ──
+  teamIds                String[]        @default([])
+  autoInvoiceOnWon       Boolean         @default(false)
+  currency               String          @default("THB")
+  kind                   CrmPipelineKind @default(SALES)
+  archivedAt             DateTime?
+  stageOnQuoteAcceptedId String? // R-A: ลูกค้ายอมรับใบเสนอราคา → ย้ายดีลไปขั้นนี้
+  stageOnQuoteRejectedId String? // R-A
+  autoWonOnPaid          Boolean         @default(false) // R-A
 
   stages CrmStage[]
   deals  CrmDeal[]
@@ -84,6 +234,14 @@ model CrmStage {
   kind        CrmStageKind @default(OPEN)
   probability Int          @default(0) // 0-100 (%) — ใช้คำนวณ weighted forecast
   sortOrder   Int          @default(0)
+
+  // ── CRM v2 (crm_v2_a · §4.1) ──
+  staleDays        Int?
+  requireFields    String[] @default([])
+  requireLines     Boolean  @default(false)
+  requireQuotation Boolean  @default(false)
+  color            String?
+  description      String?
 
   deals CrmDeal[]
 
@@ -112,11 +270,47 @@ model CrmDeal {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  activities CrmActivity[]
+  // ── CRM v2 (crm_v2_a · §4.1 + RESOLUTIONS R-A) — เพิ่มคอลัมน์ล้วน ──
+  // 💰 มติ C28: เงินใหม่เป็น BigInt · `valueSatang` เดิมคง Int (เปลี่ยนชนิด = ไคลเอนต์เก่าพังช่วง deploy)
+  companyId                String?
+  teamId                   String?
+  stageEnteredAt           DateTime            @default(now())
+  stalledAt                DateTime?
+  lastActivityAt           DateTime?
+  nextActivityAt           DateTime?
+  nextStep                 String?
+  forecastCategory         CrmForecastCategory @default(PIPELINE)
+  lostReasonId             String? // CrmLostReason · `lostReason` ข้อความเดิม = โน้ตเพิ่มเติม
+  sourceKind               MemberSource?
+  sourceDetail             Json?
+  invoiceDocId             String?
+  wonValueSatang           BigInt?
+  paidSatang               BigInt              @default(0)
+  collaboratorUserIds      String[]            @default([])
+  currency                 String              @default("THB")
+  discountBp               Int                 @default(0)
+  tags                     String[]            @default([])
+  probabilityOverride      Int?
+  reopenedCount            Int                 @default(0)
+  kanbanCardId             String?
+  pendingLines             Json? // R-A: ไลน์ที่เกินเพดานส่วนลด รออนุมัติ crm.discount
+  pendingApprovalRequestId String? // R-A
+
+  activities   CrmActivity[]
+  contacts     CrmDealContact[]
+  lines        CrmDealLine[]
+  stageHistory CrmDealStageHistory[]
 
   @@index([systemId, kind])
   @@index([systemId, stageId])
   @@index([contactId])
+  // [systemId, ownerUserId, kind] ของ §4.1 ถูกครอบด้วย index 4 คอลัมน์ของ R-A/§12 (prefix เดียวกัน) — ไม่สร้างซ้ำ
+  @@index([systemId, ownerUserId, kind, expectedCloseAt])
+  @@index([systemId, teamId, kind])
+  @@index([systemId, expectedCloseAt])
+  @@index([systemId, stalledAt])
+  @@index([systemId, companyId])
+  @@index([systemId, forecastCategory, expectedCloseAt])
 }
 
 model CrmActivity {
@@ -134,7 +328,329 @@ model CrmActivity {
   ownerUserId String?
   createdAt   DateTime        @default(now())
 
+  // ── CRM v2 (crm_v2_a · §4.1 + มติ C19) ──
+  companyId       String?
+  direction       CrmDirection?
+  channel         String?
+  startAt         DateTime?
+  endAt           DateTime?
+  durationSec     Int?
+  outcome         String?
+  body            String? // ≤ 8,000 ตัวอักษร (ตรวจใน service)
+  recordingFileId String?
+  transcript      String?
+  aiSummary       String?
+  aiNextStep      String?
+  attendees       Json? // {userIds[], contactIds[]}
+  location        String?
+  meetingUrl      String?
+  remindAt        DateTime?
+  source          CrmActivitySource @default(MANUAL)
+  sourceRef       String?
+  completedById   String?
+  kanbanCardId    String?
+  customRecordId  String?
+  priority        CrmPriority       @default(NORMAL)
+  pinned          Boolean           @default(false) // C19 โน้ตปักหมุด
+  mentions        String[]          @default([]) // C19 @mention (userId)
+
   @@index([systemId, doneAt, dueAt]) // งานค้างเรียงตามกำหนด
   @@index([contactId])
   @@index([dealId])
+  @@index([systemId, ownerUserId, startAt])
+  @@index([systemId, dueAt, doneAt])
+  @@index([companyId])
+  @@index([systemId, type, startAt])
+  @@index([customRecordId])
+}
+
+// ═════════════ CRM v2 — ตารางใหม่ของ crm_v2_a (§4.3 กลุ่ม "ตัวตน" + "วัตถุกำหนดเอง" + §15/C19/C20 + CrmVisibilityPolicy) ═════════════
+// 🔴 กติกา migration นี้: ตารางเดิมห้ามได้ FK ใหม่ (ADD CONSTRAINT บนตารางเดิม = นอกกรอบ additive ที่ผู้คุมงานอนุญาต)
+//    ⇒ คอลัมน์อ้างอิงบนตารางเดิม (CrmContact.companyId · CrmDeal.companyId/lostReasonId · CrmActivity.companyId/customRecordId)
+//    เป็น scalar ล้วน · FK มีเฉพาะจากตารางใหม่ และทุกตัวเป็น Cascade (โค้ดเก่าที่ลบแถวแม่ต้องไม่ติด FK)
+// ตารางลูกทุกตัวมี tenantId (แกน tenant ใน scope.ts — แบบ ShopOrderLine)
+
+model CrmCompany {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  systemId            String
+  partyId             String // บังคับ · Party kind=COMPANY (ไม่มี FK — แบบเดียวกับ partyId ทุกตาราง)
+  name                String
+  legalName           String?
+  taxId               String?
+  branchCode          String?           @default("00000")
+  industry            String?
+  size                CrmCompanySize?
+  website             String?
+  emailDomain         String? // lowercase · จับคู่อีเมลเข้า
+  phone               String?
+  email               String?
+  lineOaId            String?
+  lifecycleStage      CrmLifecycleStage @default(LEAD)
+  score               Int               @default(0)
+  ownerUserId         String?
+  teamId              String?
+  parentCompanyId     String?
+  accountContactId    String? // สะพานบัญชี (C1.3 · C1.8 re-point เมื่อ account.contact.merged)
+  memberCustomerId    String?
+  tags                String[]          @default([])
+  note                String?
+  logoFileId          String?
+  annualRevenueSatang BigInt? // 💰 C28
+  employeeCount       Int?
+  foundedYear         Int?
+  lastActivityAt      DateTime?
+  openDealCount       Int               @default(0) // cache (บวก/ลบแบบ atomic · X3)
+  wonValueSatang      BigInt            @default(0) // 💰 C28 cache
+  outstandingSatang   BigInt            @default(0) // 💰 C28 cache รายวัน
+  mergedIntoId        String?
+  archivedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  contacts CrmCompanyContact[]
+
+  @@unique([systemId, partyId])
+  @@index([tenantId])
+  @@index([systemId, taxId])
+  @@index([systemId, emailDomain])
+  @@index([systemId, ownerUserId])
+  @@index([systemId, teamId])
+  @@index([systemId, lifecycleStage])
+  @@index([systemId, name])
+  @@index([systemId, accountContactId])
+}
+
+model CrmCompanyContact {
+  id        String         @id @default(cuid())
+  tenantId  String
+  companyId String
+  company   CrmCompany     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      CrmContactRole @default(OTHER)
+  jobTitle  String?
+  isPrimary Boolean        @default(false)
+  startedAt DateTime?
+  endedAt   DateTime?
+  note      String?
+  createdAt DateTime       @default(now())
+
+  @@unique([companyId, contactId])
+  @@index([contactId])
+}
+
+model CrmDealContact {
+  id        String         @id @default(cuid())
+  tenantId  String
+  dealId    String
+  deal      CrmDeal        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   CrmContact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role      CrmContactRole @default(OTHER)
+  createdAt DateTime       @default(now())
+
+  @@unique([dealId, contactId])
+  @@index([contactId])
+}
+
+model CrmDealLine {
+  id              String   @id @default(cuid())
+  tenantId        String
+  dealId          String
+  deal            CrmDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  productId       String? // InvItem.id (ไม่มี FK — ข้ามโมดูล)
+  name            String
+  qty             Decimal  @default(1) @db.Decimal(12, 3)
+  unitPriceSatang Int
+  discountBp      Int      @default(0)
+  vatRateBp       Int?
+  sortOrder       Int      @default(0)
+  note            String?
+  createdAt       DateTime @default(now())
+
+  @@index([dealId, sortOrder])
+}
+
+model CrmDealStageHistory {
+  id          String            @id @default(cuid())
+  tenantId    String
+  dealId      String
+  deal        CrmDeal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStageId String? // ไม่มี FK — โค้ดเก่าลบขั้นได้ ประวัติต้องไม่ขวาง
+  toStageId   String
+  byUserId    String?
+  bySource    CrmActivitySource @default(MANUAL)
+  enteredAt   DateTime          @default(now())
+  leftAt      DateTime?
+  durationSec Int?
+  note        String?
+
+  @@index([dealId, enteredAt])
+  @@index([toStageId, enteredAt])
+}
+
+model CrmLostReason {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String
+  key       String
+  label     String
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([systemId, key])
+  @@index([tenantId])
+}
+
+// C9 — นโยบายการมองเห็น (ย้ายเข้า crm_v2_a เพราะ C1.7 ใช้) · null = "ทุก role/ทุกทีม/ทุก pipeline"
+// ⚠️ Postgres ถือ NULL ไม่ซ้ำกันใน unique ⇒ C1.7 ต้องเขียนแบบ find-then-write ใต้ lock (unique นี้กันซ้ำไม่ได้เมื่อมีช่อง null)
+model CrmVisibilityPolicy {
+  id         String        @id @default(cuid())
+  tenantId   String
+  systemId   String
+  role       Role?
+  teamId     String?
+  pipelineId String?
+  entity     String // "CONTACT" | "COMPANY" | "DEAL" | "ACTIVITY" | "REPORT"
+  visibility CrmVisibility
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([systemId, role, teamId, pipelineId, entity])
+  @@index([tenantId])
+}
+
+// C19 — ไฟล์แนบบนผู้ติดต่อ/บริษัท/ดีล/กิจกรรม/รายการวัตถุ (ไฟล์จริงอยู่ FileAsset · ส่วนตัวตาม R-E 2)
+model CrmFileLink {
+  id           String   @id @default(cuid())
+  tenantId     String
+  systemId     String
+  entityType   String // "CONTACT" | "COMPANY" | "DEAL" | "ACTIVITY" | "RECORD"
+  entityId     String
+  fileId       String // FileAsset.id
+  name         String
+  size         Int
+  mime         String
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([systemId, entityType, entityId])
+  @@index([tenantId])
+}
+
+// C20 — ความยินยอมรายช่องทางของผู้ติดต่อที่ยังไม่เป็นสมาชิก · append-only (สถานะปัจจุบัน = แถวล่าสุดต่อช่องทาง)
+// 🔴 ไม่มี unique (contactId, channel) โดยตั้งใจ — ต้องเก็บประวัติได้หลายแถว
+model CrmContactConsent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  contactId     String
+  channel       String
+  granted       Boolean
+  source        String
+  policyVersion Int?
+  note          String?
+  createdAt     DateTime @default(now())
+  createdById   String?
+
+  @@index([contactId, channel, createdAt])
+  @@index([tenantId])
+}
+
+// ─── วัตถุกำหนดเอง (C8 · §4.3) ───
+model CustomObject {
+  id               String       @id @default(cuid())
+  tenantId         String
+  systemId         String
+  key              String
+  label            String
+  labelPlural      String
+  icon             String?
+  parentType       CustomParent @default(NONE)
+  relation         String       @default("ONE_TO_MANY")
+  titleFieldKey    String
+  showAsTab        Boolean      @default(true)
+  portalVisible    Boolean      @default(false)
+  allowAttachments Boolean      @default(true)
+  allowActivities  Boolean      @default(true)
+  unitScoped       Boolean      @default(false)
+  sortOrder        Int          @default(0)
+  templateKey      String?
+  recordCount      Int          @default(0) // ตัวนับ — บวก/ลบแบบ atomic (X3)
+  archivedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  records CustomRecord[]
+
+  @@unique([systemId, key])
+  @@index([tenantId])
+}
+
+model CustomRecord {
+  id          String       @id @default(cuid())
+  tenantId    String
+  systemId    String
+  objectId    String
+  object      CustomObject @relation(fields: [objectId], references: [id], onDelete: Cascade)
+  parentType  CustomParent
+  parentId    String?
+  partyId     String?
+  title       String
+  unitId      String?
+  ownerUserId String?
+  createdById String?
+  status      String?
+  archivedAt  DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([objectId, parentId])
+  @@index([objectId, title])
+  @@index([partyId])
+  @@index([objectId, updatedAt])
+  @@index([tenantId])
+}
+
+// ค่าฟิลด์ของ ผู้ติดต่อ/บริษัท/ดีล/รายการวัตถุ (recordType) — ของสมาชิกยังอยู่ MemberFieldValue
+model CustomRecordValue {
+  id           String           @id @default(cuid())
+  tenantId     String
+  recordType   CustomRecordType
+  recordId     String // polymorphic ตาม recordType — ไม่มี FK
+  fieldId      String
+  field        MemberField      @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  valueText    String?
+  valueNumber  Decimal?         @db.Decimal(18, 4)
+  valueDate    DateTime?
+  valueBool    Boolean?
+  valueOptions String[]         @default([])
+  valueRef     String?
+  valueFileId  String?
+  updatedById  String?
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([recordId, fieldId])
+  @@index([fieldId, valueText])
+  @@index([fieldId, valueNumber])
+  @@index([fieldId, valueDate])
+  @@index([fieldId, valueRef])
+  @@index([tenantId])
+}
+
+model CustomRecordValueHistory {
+  id          String   @id @default(cuid())
+  tenantId    String
+  recordId    String
+  fieldId     String
+  oldValue    Json?
+  newValue    Json?
+  changedById String?
+  createdAt   DateTime @default(now())
+
+  @@index([recordId, fieldId, createdAt])
+  @@index([tenantId])
 }

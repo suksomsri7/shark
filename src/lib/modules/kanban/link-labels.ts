@@ -29,6 +29,10 @@ export const LINK_TYPE_META: Record<KanbanLinkKind, { label: string; icon: strin
   SHOP_ORDER: { label: "คำสั่งซื้อร้านออนไลน์", icon: "shop" },
   RESTAURANT_ORDER: { label: "ออร์เดอร์ร้านอาหาร", icon: "list" },
   URL: { label: "ลิงก์ภายนอก", icon: "link" },
+  // CRM v2 (crm_v2_a · C1.1) — ป้ายไว้ก่อน · การผูก/แปลผลจริงเป็นของใบ C1.6
+  DEAL: { label: "ดีล (CRM)", icon: "flag" },
+  COMPANY: { label: "บริษัท (CRM)", icon: "users" },
+  CUSTOM_RECORD: { label: "รายการวัตถุกำหนดเอง (CRM)", icon: "list" },
 };
 
 /** ป้ายชนิดจากค่าดิบ (ประวัติกิจกรรมเก็บ `data.linkType` เป็นสตริง) — ชนิดที่ไม่รู้จัก = คำกลาง ๆ */
