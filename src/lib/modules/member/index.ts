@@ -463,6 +463,11 @@ export {
 //   `src/lib/member-journey-senders.ts`) — โมดูลนี้เองไม่รู้จักแชท (F2)
 export * as notifications from "./notifications";
 
+// ── engine ฟิลด์ร่วม (CRM v2 · C1.2a · มติ C13 · พิมพ์เขียว 20-crm-v2 §5.1) ──
+// 🔴 โมดูลอื่น (CRM) เรียก engine ส่วน/ฟิลด์/ค่า ผ่าน namespace นี้เท่านั้น — สมาชิกของ namespace คือฟังก์ชันตัวจริงของ
+//    `fields.ts` (ไม่ห่อซ้ำ ⇒ ไม่มีทางทำ `ctx.objectKey`/`ctx.actor` หล่นกลางทาง) · วัตถุเลือกด้วย `ctx.objectKey`
+export * as fields from "./fields";
+
 // ── ไทม์ไลน์ประวัติ (M3.7 · §4.3 §8 · ภาพ 08 ซ้าย/กลาง) ──
 // 🔴 consumer ทุกโมดูล (ผ่าน composition root `src/lib/member-bridges.ts`) เขียนแถวด้วย `recordOnce`/`recordDaily`
 //    เท่านั้น — ห้ามยิง `memberActivity.create` เองจากนอกโมดูล (กันซ้ำ = สัญญาของไฟล์ history.ts)

@@ -55,6 +55,9 @@
 //   X8 PDPA — here (sensitive values dropped/shown by policy + MemberAccessLog).   X9 — n/a: engine calls,
 //   no user-facing op (confirm/reason belong to the op layer of C1.2b/C1.9).   X10 — n/a: no secrets/files.
 //
+// R — REVIEW FIXES (appended after the builder's first review): R.1 GOVERNED_CRM_SYSTEM_KEYS via the facade · R.2/R.3
+//   governed system columns refused whole-call (Thai, column unchanged) · R.4 sensitive filters on the CRM path ·
+//   R.5 lockRecordForFieldWrite blocks a separate process (--r5-worker) · R.6 plain PrismaClient as tx ⇒ fork-free history.
 // HOUSE RULES: throwaway tenants `qc-c12a-<rand>` (+`-b`), every table with a tenantId swept in `finally`
 //   (4 passes) + the Users created here; CLEAN proves 0 rows left. Shared member QC data is never touched.
 //   Last line JSON_SUMMARY. Modules that may not exist are imported with `await import("…" as string)`.
@@ -91,6 +94,30 @@ if (WORKER_AT >= 0) {
   );
   console.log(`X3WORKER ${JSON.stringify(out)}`);
   const dbw = (await import("@/lib/core/db")) as Any;
+  await dbw.prisma.$disconnect();
+  process.exit(0);
+}
+// ═══ R.5 WORKER MODE — one setFieldValues from a separate process, timed by the child's own clock ═══
+//   argv: --r5-worker <tenantId> <crmSystemId> <recordId> <fieldKey> <value> <startAtMs> <userId>
+const R5_AT = ARGV.indexOf("--r5-worker");
+if (R5_AT >= 0) {
+  const [wT, wS, wR, wK, wV, wStart, wU] = ARGV.slice(R5_AT + 1);
+  const FW = (await import("@/lib/modules/member/fields")) as Any;
+  const dbw = (await import("@/lib/core/db")) as Any;
+  // warm the pool first, so the call at startAt measures the lock wait and not a TCP/TLS handshake
+  await Promise.all([1, 2, 3].map(() => dbw.prisma.$queryRawUnsafe("SELECT 1")));
+  const waitMs = Number(wStart) - Date.now();
+  if (waitMs > 0) await new Promise<void>((r) => setTimeout(r, waitMs));
+  const t0 = Date.now();
+  let res = "";
+  try {
+    const r = await FW.setFieldValues({ tenantId: wT, systemId: wS, actorUserId: wU, objectKey: "contact" }, wR, { [wK]: wV }, { via: "STAFF" });
+    res = `OK:${JSON.stringify(r?.changed ?? null)}`;
+  } catch (e) {
+    res = `ERR:${e instanceof Error ? e.message : String(e)}`;
+  }
+  const t1 = Date.now();
+  console.log(`R5WORKER ${JSON.stringify({ t0, t1, res, late: waitMs <= 0 })}`);
   await dbw.prisma.$disconnect();
   process.exit(0);
 }
@@ -166,6 +193,7 @@ const PLAN_NEW: string[] = [
   ...range("S1", 1, 7), ...range("S2", 1, 6), ...range("S3", 1, 10), ...range("S4", 1, 3), ...range("S5", 1, 8),
   ...range("S6", 1, 4), ...range("S7", 1, 5), ...range("S8", 1, 1),
   ...range("X1", 1, 8), ...range("X3", 0, 4), ...range("X6", 1, 4), ...range("X8", 0, 6),
+  ...range("R", 1, 6), // review fixes S1/S2/S4 (group R — appended after the builder's first review)
 ];
 const PLAN_G1: string[] = range("G1", 0, 13);
 
@@ -549,9 +577,9 @@ async function groupS5() {
   chk("C1.2a-S5.5", "system fields are POINTERS: getFieldValues(contact) returns the CrmContact column value for every text system field (≥3 compared — positive control)",
     compared.length >= 3 && wrong.length === 0, "≥3 compared · 0 wrong", `compared=${compared.join(",")} wrong=${wrong.join(" ; ") || "-"}`);
   // S5.6 pointer write
-  const pick = ["jobTitle", "department", "note", "lastName", "firstName", "titleTh"]
+  const pick = ["jobTitle", "department", "note", "titleTh"]
     .map((k) => sysContact.find((f: Any) => f.systemKey === k && (f.type === "TEXT" || f.type === "LONG_TEXT"))).find(Boolean) as Any;
-  const w = pick ? await attempt(() => F.setFieldValues(cx("contact"), K.k2, { [pick.key]: "QC-แก้ผ่านฟิลด์ระบบ" }, { via: "STAFF" })) : { ok: false, v: null, err: "no text system field among jobTitle/department/note/lastName/firstName/titleTh" };
+  const w = pick ? await attempt(() => F.setFieldValues(cx("contact"), K.k2, { [pick.key]: "QC-แก้ผ่านฟิลด์ระบบ" }, { via: "STAFF" })) : { ok: false, v: null, err: "no text system field among jobTitle/department/note/titleTh" };
   const colAfter = pick ? ((await q(`select "${pick.systemKey}" as v from "CrmContact" where id='${K.k2}'`))[0] as Any)?.v : null;
   const sysIds = (await P.memberField.findMany({ where: { systemId: CRM1, isSystem: true }, select: { id: true } })).map((r: Any) => r.id);
   const copies = await P.customRecordValue.count({ where: { fieldId: { in: sysIds } } });
@@ -986,7 +1014,7 @@ async function groupX6() {
   const no4001 = await setV(cx("contact"), k, { cLong: "ง".repeat(4001) });
   const noMax = await setV(cx("contact"), k, { cMax: "x".repeat(21) });
   const t = (await P.customRecordValue.findFirst({ where: { recordId: k, fieldId: FLD.contact.cText } }))?.valueText ?? "";
-  const sysText = (await P.memberField.findMany({ where: { systemId: CRM1, objectKey: "contact", isSystem: true, type: "TEXT" } })).find((f: Any) => ["jobTitle", "department", "lastName", "firstName"].includes(f.systemKey)) as Any;
+  const sysText = (await P.memberField.findMany({ where: { systemId: CRM1, objectKey: "contact", isSystem: true, type: "TEXT" } })).find((f: Any) => ["jobTitle", "department", "titleTh"].includes(f.systemKey)) as Any;
   const noSys = sysText ? await setV(cx("contact"), k, { [sysText.key]: "จ".repeat(501) }) : { ok: true, v: null, err: "no text system field" };
   chk("C1.2a-X6.1", "length caps hold on CRM objects: TEXT 500 ok / 501 refused · LONG_TEXT 4000 ok / 4001 refused · options.maxLength 20 ⇒ 21 refused · a text SYSTEM field 501 refused — stored value stays the 500-char one",
     ok500.ok && refused(no501) && ok4000.ok && refused(no4001) && refused(noMax) && refused(noSys) && t.length === 500 && t.startsWith("ก"),
@@ -1161,6 +1189,168 @@ async function groupS6() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
+// R — review fixes (after the first review of the C1.2a builder)
+//   S1 GOVERNED_CRM_SYSTEM_KEYS: CRM-service-owned columns are refused by setFieldValues (Thai VALIDATION)
+//   S2 the CRM filter path refuses a sensitive field / a field of a sensitive section unless evaluateSensitiveAccess allows
+//   S4 lockRecordForFieldWrite(tx, recordId) exported (same advisory key) · a plain PrismaClient passed as tx ⇒ own transaction
+//   Every R check carries its own positive control inside its verdict (listed in the detail on failure).
+// ═══════════════════════════════════════════════════════════════════════════════════
+const GOVERNED_MSG = /แก้ได้จากหน้าข้อมูล/;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, Math.max(0, ms)));
+
+function spawnR5(argsList: string[][]): Promise<string[]> {
+  return Promise.all(argsList.map((args) => new Promise<string>((resolve) => {
+    const c = spawn("pnpm", ["exec", "tsx", "scripts/qc-crm-c1.2a.mts", "--r5-worker", ...args], { env: process.env });
+    let out = "";
+    const to = setTimeout(() => { try { c.kill("SIGKILL"); } catch { /* gone */ } }, 180_000);
+    c.stdout.on("data", (d: Any) => { out += String(d); });
+    c.stderr.on("data", (d: Any) => { out += String(d); });
+    c.on("error", (e: Any) => { clearTimeout(to); resolve(`SPAWN-ERROR ${String(e)}`); });
+    c.on("close", () => { clearTimeout(to); resolve(out); });
+  })));
+}
+
+async function groupR() {
+  const newContact = async (name: string, phone: string, extra: Record<string, Any> = {}) =>
+    (await P.crmContact.create({ data: { tenantId: T, systemId: CRM1, name, phone, email: `${phone}@example.test`, ...extra } })).id as string;
+  const sysKey = async (obj: string, systemKey: string) =>
+    ((await P.memberField.findFirst({ where: { tenantId: T, systemId: CRM1, objectKey: obj, isSystem: true, systemKey } })) as Any)?.key as string | undefined;
+
+  // ── R.1 facade export ──
+  const facade = (await import("@/lib/modules/member" as string)) as Any;
+  const G = facade?.fields?.GOVERNED_CRM_SYSTEM_KEYS as Any;
+  const WANT_GOV: Record<string, string[]> = {
+    contact: ["phone", "email", "marketingOptOut", "ownerUserId"],
+    company: ["name", "taxId"],
+    deal: ["valueSatang", "ownerUserId", "companyId", "stageId"],
+  };
+  const missingGov = Object.entries(WANT_GOV).flatMap(([o, ks]) => ks.filter((k) => !(G?.[o] instanceof Set && G[o].has(k))).map((k) => `${o}.${k}`));
+  // control: the set is not "everything" — plain keys the review left writable are NOT in it
+  const plainInGov = [["contact", "jobTitle"], ["contact", "department"], ["company", "industry"], ["deal", "nextStep"]].filter(([o, k]) => G?.[o]?.has?.(k)).map(([o, k]) => `${o}.${k}`);
+  chk("C1.2a-R.1", "GOVERNED_CRM_SYSTEM_KEYS is exported through the member facade (`fields` namespace, same object as fields.ts) and holds contact phone/email/marketingOptOut/ownerUserId · company name/taxId · deal valueSatang/ownerUserId/companyId/stageId — [control] plain keys jobTitle/department/industry/nextStep are NOT in it",
+    G && G === F.GOVERNED_CRM_SYSTEM_KEYS && missingGov.length === 0 && plainInGov.length === 0,
+    "exported · all present · plain keys absent", `facade=${!!G} same=${G === F.GOVERNED_CRM_SYSTEM_KEYS} missing=${missingGov.join(",") || "-"} plainInSet=${plainInGov.join(",") || "-"}`);
+
+  // ── R.2 governed keys refused, column unchanged · control: a plain system key in the same call pattern succeeds ──
+  const kPhone = await sysKey("contact", "phone");
+  const kOpt = await sysKey("contact", "marketingOptOut");
+  const kJob = await sysKey("contact", "jobTitle");
+  const kVal = await sysKey("deal", "valueSatang");
+  const kNext = await sysKey("deal", "nextStep");
+  const kTax = await sysKey("company", "taxId");
+  const kInd = await sysKey("company", "industry");
+  if (!kPhone || !kOpt || !kJob || !kVal || !kNext || !kTax || !kInd) throw new Error(`R fixture: system fields missing (phone=${kPhone} optOut=${kOpt} jobTitle=${kJob} valueSatang=${kVal} nextStep=${kNext} taxId=${kTax} industry=${kInd})`);
+  const kg = await newContact("ควบคุม คีย์", "0893330001", { marketingOptOut: true, jobTitle: "เดิม" });
+  const col = async (table: string, id: string, c: string) => ((await q(`select "${c}" as v from "${table}" where id='${id}'`))[0] as Any)?.v;
+  const before = { phone: await col("CrmContact", kg, "phone"), opt: await col("CrmContact", kg, "marketingOptOut"), val: await col("CrmDeal", DEAL, "valueSatang"), tax: await col("CrmCompany", CO.co1, "taxId") };
+  const gPhone = await setV(cx("contact"), kg, { [kPhone]: "0893339999" });
+  const gOpt = await setV(cx("contact"), kg, { [kOpt]: false });
+  const gVal = await setV(cx("deal"), DEAL, { [kVal]: 200000 });
+  const gTax = await setV(cx("company"), CO.co1, { [kTax]: "0105551234567" });
+  const after = { phone: await col("CrmContact", kg, "phone"), opt: await col("CrmContact", kg, "marketingOptOut"), val: await col("CrmDeal", DEAL, "valueSatang"), tax: await col("CrmCompany", CO.co1, "taxId") };
+  const gov = (r: Tried) => refused(r) && GOVERNED_MSG.test(r.err);
+  const cJob = await setV(cx("contact"), kg, { [kJob]: "ผู้จัดการ-R2" });
+  const cNext = await setV(cx("deal"), DEAL, { [kNext]: "โทรนัด-R2" });
+  const cInd = await setV(cx("company"), CO.co1, { [kInd]: "ท่องเที่ยว-R2" });
+  const ctl = { job: await col("CrmContact", kg, "jobTitle"), next: await col("CrmDeal", DEAL, "nextStep"), ind: await col("CrmCompany", CO.co1, "industry") };
+  chk("C1.2a-R.2", "setFieldValues (as OWNER) refuses governed system keys with the Thai governed-column message and leaves the column unchanged: contact phone · contact marketingOptOut true→false · deal valueSatang · company taxId — [control] plain system keys jobTitle / nextStep / industry in the same call pattern are written",
+    gov(gPhone) && gov(gOpt) && gov(gVal) && gov(gTax) && j(after) === j(before) && before.opt === true
+      && cJob.ok && cNext.ok && cInd.ok && ctl.job === "ผู้จัดการ-R2" && ctl.next === "โทรนัด-R2" && ctl.ind === "ท่องเที่ยว-R2",
+    "4 governed refusals · columns unchanged · 3 controls written",
+    `phone ${show(gPhone)} | optOut ${show(gOpt)} | value ${show(gVal)} | taxId ${show(gTax)} · before=${j(before)} after=${j(after)} · controls ${show(cJob)} ${show(cNext)} ${show(cInd)} → ${j(ctl)}`);
+
+  // ── R.3 mixed payload refused as a whole ──
+  const jobBefore = await col("CrmContact", kg, "jobTitle");
+  const mixed = await setV(cx("contact"), kg, { [kJob]: "ไม่ควรถูกเขียน-R3", [kPhone]: "0893338888" });
+  const mixedPlainCustom = await setV(cx("contact"), kg, { cText: "ไม่ควรถูกเขียน-R3", [kOpt]: false });
+  const jobAfter = await col("CrmContact", kg, "jobTitle");
+  const phoneAfter = await col("CrmContact", kg, "phone");
+  const cTextRows = await P.customRecordValue.count({ where: { recordId: kg, fieldId: FLD.contact.cText } });
+  const alone = await setV(cx("contact"), kg, { [kJob]: "ไม่ควรถูกเขียน-R3" });
+  const jobControl = await col("CrmContact", kg, "jobTitle");
+  chk("C1.2a-R.3", "a mixed payload {jobTitle, phone} (and {custom cText, marketingOptOut}) is refused as a whole — jobTitle column, phone column and the custom value row are all unchanged (no partial write) · [control] the same jobTitle value alone is then written",
+    gov(mixed) && gov(mixedPlainCustom) && jobAfter === jobBefore && phoneAfter === before.phone && cTextRows === 0 && alone.ok && jobControl === "ไม่ควรถูกเขียน-R3",
+    "refused ×2 · nothing written · control ok", `mixed ${show(mixed)} | mixed2 ${show(mixedPlainCustom)} · jobTitle ${j(jobBefore)}→${j(jobAfter)} · phone=${j(phoneAfter)} · cText rows=${cTextRows} · control ${show(alone)} → ${j(jobControl)}`);
+
+  // ── R.4 sensitive filter on the CRM path ──
+  //   ORACLE NOTE: X8's cSens / coSecret are NOT filterable (the engine refuses them as "not filterable" first, which would
+  //   make a refusal vacuous) and X8.6 left a policy that ALLOWS STAFF on cSens — so R.4 adds its own filterable fields
+  //   under the default policy: rSensF (sensitive FIELD, contact) and rCoSecF (plain field in the sensitive SECTION co_secret).
+  const fS = await F.createField(cx("contact"), { sectionId: SEC.sales, key: "rSensF", label: "ฟิลด์ อ่อนไหวกรองได้", type: "TEXT", sensitive: true, filterable: true });
+  const fC = await F.createField(cx("company"), { sectionId: SEC.co_secret, key: "rCoSecF", label: "ฟิลด์ ส่วนลับกรองได้", type: "TEXT", filterable: true });
+  const must = async (p: Promise<Tried>) => { const r = await p; if (!r.ok) throw new Error(`fixture write failed: ${r.err}`); };
+  await must(setV(cx("contact"), K.k1, { rSensF: "ลับกรอง-R4" }));
+  await must(setV(cx("company"), CO.co1, { rCoSecF: "ลับบริษัทกรอง-R4" }));
+  const noActor = (obj: string) => ({ tenantId: T, systemId: CRM1, actorUserId: null, objectKey: obj });
+  const sensRefused = (r: Tried) => refused(r) && /อ่อนไหว/.test(r.err);
+  const fStaff = await attempt(() => F.fieldFilterWhere(cx("contact", ACT.staff), { rSensF: "ลับกรอง-R4" }));
+  const fNone = await attempt(() => F.fieldFilterWhere(noActor("contact"), { rSensF: "ลับกรอง-R4" }));
+  const fOwner = await attempt(() => F.fieldFilterWhere(cx("contact", ACT.owner), { rSensF: "ลับกรอง-R4" }));
+  const cStaff = await attempt(() => F.fieldFilterWhere(cx("company", ACT.staff), { rCoSecF: "ลับบริษัทกรอง-R4" }));
+  const cNone = await attempt(() => F.fieldFilterWhere(noActor("company"), { rCoSecF: "ลับบริษัทกรอง-R4" }));
+  const cOwner = await attempt(() => F.fieldFilterWhere(cx("company", ACT.owner), { rCoSecF: "ลับบริษัทกรอง-R4" }));
+  const plainStaff = await attempt(() => F.fieldFilterWhere(cx("contact", ACT.staff), { cText: "Alpha Travel" }));
+  const hits = async (model: string, r: Tried) => r.ok ? ((await P[model].findMany({ where: { AND: [{ tenantId: T, systemId: CRM1 }, r.v] }, select: { id: true } })) as Any[]).map((x) => x.id) : ["<refused>"];
+  const ownerHits = await hits("crmContact", fOwner);
+  const ownerCoHits = await hits("crmCompany", cOwner);
+  const plainHits = await hits("crmContact", plainStaff);
+  chk("C1.2a-R.4", "fieldFilterWhere on the CRM path refuses a sensitive FIELD (contact rSensF) and a field of a sensitive SECTION (company co_secret) for STAFF (default policy) and for no actor, with the Thai sensitive message — [control] OWNER gets a working filter that selects exactly the record holding the value, and STAFF can still filter a non-sensitive field (customer-path filters: unchanged, proven by G1.7/G1.8/G1.13)",
+    fS?.id && fC?.id && sensRefused(fStaff) && sensRefused(fNone) && sensRefused(cStaff) && sensRefused(cNone)
+      && j(ownerHits) === j([K.k1]) && j(ownerCoHits) === j([CO.co1]) && plainHits.includes(K.k1),
+    "4 refusals · owner selects k1 / co1 · staff plain filter ok",
+    `staff ${show(fStaff)} | none ${show(fNone)} | co.staff ${show(cStaff)} | co.none ${show(cNone)} · owner→${j(ownerHits)} co.owner→${j(ownerCoHits)} · staff plain→${j(plainHits)}`);
+
+  // ── R.5 lockRecordForFieldWrite: a separate process waits for it on X, not on Y ──
+  const exported = typeof F.lockRecordForFieldWrite === "function" && facade?.fields?.lockRecordForFieldWrite === F.lockRecordForFieldWrite;
+  const X = await newContact("ล็อก X", "0893330005");
+  const Y = await newContact("ล็อก Y", "0893330006");
+  let r5: Any = { exported };
+  if (exported) {
+    const HOLD = 1_500;
+    const startAt = Date.now() + 30_000;
+    const kids = spawnR5([[T, CRM1, X, "cText2", "R5-X", String(startAt), U.owner], [T, CRM1, Y, "cText2", "R5-Y", String(startAt), U.owner]]);
+    await sleep(startAt - 250 - Date.now());
+    let lockAt = 0; let releaseLB = 0;
+    await P.$transaction(async (t: Any) => {
+      await F.lockRecordForFieldWrite(t, X);
+      lockAt = Date.now();
+      await sleep(startAt + HOLD - Date.now());
+      releaseLB = Date.now(); // the lock is released at COMMIT, i.e. no earlier than this instant
+    }, { timeout: 60_000 });
+    const outs = await kids;
+    const parse = (o: string) => { const m = /R5WORKER (\{.*\})/.exec(o); return m ? JSON.parse(m[1]) : { res: `NO-OUTPUT ${cut(o, 300)}` }; };
+    const [ox, oy] = outs.map(parse);
+    const vx = (await P.customRecordValue.findFirst({ where: { recordId: X, fieldId: FLD.contact.cText2 } }))?.valueText;
+    const vy = (await P.customRecordValue.findFirst({ where: { recordId: Y, fieldId: FLD.contact.cText2 } }))?.valueText;
+    r5 = { exported, lockAt, releaseLB, x: ox, y: oy, vx, vy };
+  }
+  const x = r5.x ?? {}; const y = r5.y ?? {};
+  const xStartedUnderLock = x.t0 >= r5.lockAt && x.t0 < r5.releaseLB;
+  const yStartedUnderLock = y.t0 >= r5.lockAt && y.t0 < r5.releaseLB;
+  chk("C1.2a-R.5", "lockRecordForFieldWrite is exported (fields.ts + facade) and uses the setFieldValues lock: a setFieldValues on record X from a SEPARATE PROCESS, started while X is held (~1.5 s), completes only after the release — [control] the same call on record Y, started in the same window, completes before the release",
+    exported && xStartedUnderLock && yStartedUnderLock && /^OK:/.test(x.res ?? "") && /^OK:/.test(y.res ?? "")
+      && x.t1 >= r5.releaseLB && y.t1 < r5.releaseLB && r5.vx === "R5-X" && r5.vy === "R5-Y",
+    "X waits past release · Y does not",
+    `exported=${exported} · lockAt=${r5.lockAt} release≥${r5.releaseLB} · X t0=${x.t0} t1=${x.t1} (${x.t1 - r5.releaseLB} ms after release) ${cut(String(x.res), 120)} · Y t0=${y.t0} t1=${y.t1} (${y.t1 - r5.releaseLB} ms vs release) ${cut(String(y.res), 120)} · stored X=${j(r5.vx)} Y=${j(r5.vy)}`);
+
+  // ── R.6 a plain PrismaClient passed as tx still gives a fork-free history ──
+  const H = await newContact("ประวัติ R6", "0893330007");
+  const res6 = await Promise.all(Array.from({ length: 6 }, (_x, i) =>
+    F.setFieldValues(cx("contact"), H, { cHist: `r6-${i}` }, { via: "STAFF" }, prisma).then(() => `OK:r6-${i}`).catch((e: Any) => `ERR:${e instanceof Error ? e.message : String(e)}`)));
+  const okValues = res6.filter((s) => s.startsWith("OK:")).map((s) => s.slice(3));
+  const rows6 = await P.customRecordValue.findMany({ where: { recordId: H, fieldId: FLD.contact.cHist } });
+  const h6 = (await P.customRecordValueHistory.findMany({ where: { recordId: H, fieldId: FLD.contact.cHist }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })) as Hist[];
+  const c6 = chainCheck(h6, okValues, rows6[0]?.valueText);
+  // control: the X3 chain checker really detects a fork (two writers that read the same old value)
+  const t = new Date();
+  const forked = chainCheck([{ oldValue: null, newValue: "a", createdAt: t }, { oldValue: null, newValue: "b", createdAt: t }], ["a", "b"], "b");
+  chk("C1.2a-R.6", "setFieldValues(ctx, X, {cHist}, opts, prisma) — a plain PrismaClient passed as tx — ×6 in parallel with distinct values: 6 OK, one value row, a complete history chain null→…→stored with no fork (each row's old value = the previous row's new value) — [control] the same chain checker flags a synthetic forked history",
+    okValues.length === 6 && rows6.length === 1 && c6.complete && c6.setOk && c6.len === 6 && !forked.complete && forked.forks === 1,
+    "6 ok · 1 row · complete chain · control detects fork",
+    `results=${j(res6.map((s) => cut(s, 80)))} · rows=${rows6.length} · hist=${c6.len} walked=${c6.walked} forks=${c6.forks} complete=${c6.complete} setOk=${c6.setOk} · control forks=${forked.forks} complete=${forked.complete}`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
 // 🔒 GOLDEN — frozen from session/crm BEFORE C1.2a (engine ignored objectKey). Regenerate only with
 //    --capture-golden, which refuses once the engine honours objectKey. Keys: see g1Snapshot().
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -1251,6 +1441,7 @@ try {
       await group("X8", groupX8);
       await group("X3", groupX3);
       await group("S6", groupS6);
+      await group("R", groupR);
     }
 
     // ── G1 again, after the CRM rows/values exist in the same tenant ──
