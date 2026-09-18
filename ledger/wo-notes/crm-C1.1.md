@@ -37,7 +37,7 @@
 | D9 | ผู้ตรวจไม่มี BLOCKER | ✅ | ไม่มี BLOCKER · SHOULD-FIX 5 + เพิ่ม 1 → แก้ครบ (§7) |
 | D10 | ทะเบียน/เอกสาร | ✅ | `team.updated` 3 ทะเบียน |
 | D11 | คืนสภาพ QC | ✅ | `qc-member-m1.9` 26/26 **ทันทีหลังข้อสอบของใบนี้** และ 26/26 **หลังจบทุกอย่าง** |
-| D12 | push → prod migration | ⏳ | §10 |
+| D12 | push → **prod migration** | ✅ | `ab2b006` (+ `80385c9`) push 04:53 UTC · deploy ใหม่ `dpl_DrR3w…` ขึ้นจริง 05:00:19 (428 วิ) · **หลักฐานว่า `crm_v2_a` ลง prod แล้ว**: `scripts/vercel-build.sh` รัน `migrate deploy` แล้ว `migrate status` ใต้ `set -euo pipefail` ⇒ deploy ใหม่จะขึ้นได้ก็ต่อเมื่อ migration ผ่านทั้งสองขั้น · `/api/health` ตอบ 200 **ทุก 30 วิ ตลอดช่วง build+migration** (ไม่มีการสะดุดที่มองเห็น) · หลัง deploy: health `{ok:true,db:true,outboxPending:0}` · หน้าแรก 200 · `/api/files` 403 ตามแบบ · ⚠️ `scripts/prodmig.cjs` ต้องรับ URL ของ prod เป็นอาร์กิวเมนต์ = ต้องอ่าน `.env` ซึ่งผู้คุมงานห้าม ⇒ ใช้หลักฐานจากด่านของ build แทน |
 
 ## 7. สิ่งที่เจอ/แก้/ตัดสิน
 - 🔴🔴 **ก่อนเริ่ม ผู้คุมงานเจอว่า Prisma CLI จะวิ่งบน production** (`prisma.config.ts` โหลด `.env` เมื่อไม่มี `DIRECT_URL` + `iso.sh` ไม่ส่งตัวแปรเข้า unit) และ `migrate dev` เคย reset ฐาน QC ⇒ สร้าง `scripts/qc-prisma.sh` (ยอมแค่ host QC · ห้ามคำสั่งอันตราย · พิสูจน์ทั้งสองทาง) — commit `ee3beca`
