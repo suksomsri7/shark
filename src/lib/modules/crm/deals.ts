@@ -27,6 +27,8 @@ import { activityWhere, contactWhere, dealWhere } from "./where";
 import * as companies from "./companies";
 import { CompaniesError } from "./companies-shared";
 import { dealStateForStage, lifecycleAfterDealWon } from "./rules";
+// CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
+import { dealKanbanCards, type DealKanbanCard } from "./activities";
 import {
   DEAL_BOARD_CARDS_MAX,
   DEAL_BULK_MAX,
@@ -1624,7 +1626,7 @@ export async function forecast(ctx: DealsCtx, actor: MemberActor, input: { pipel
 }
 
 /** ดีล 360 (ภาพ 03): หัว · stepper ขั้น · รายการ (+ป้ายราคาเปลี่ยน) · ประวัติขั้น · บริษัท · ผู้ติดต่อ · ผู้ร่วม · เอกสาร · ไทม์ไลน์ */
-export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string): Promise<Deal360> {
+export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string): Promise<Deal360 & { kanbanCards: DealKanbanCard[] } /* CRM C1.6 ▸ การ์ดบอร์ดงานของดีล ◂ */> {
   const a = await enter(ctx, actor);
   const did = str(id);
   // AUDIT-CLASS X1: อ่านผ่าน dealWhere — ดีลของระบบ/ร้านอื่น = ไม่พบ (ข้อความไม่สะท้อนข้อมูลของเขา)
@@ -1709,6 +1711,9 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
     timeline,
     quotationDiffers,
     daysInStage: Math.max(0, Math.floor((Date.now() - deal.stageEnteredAt.getTime()) / 86_400_000)),
+    // CRM C1.6 ▸ การ์ดบอร์ดงานที่ผูกดีลนี้ (ลิงก์ DEAL · อ่านผ่าน kanban/links.listCardsForTarget — กรองบอร์ดที่ผู้ดูเห็นเอง) · มติผู้คุมงาน C1.6 ข้อ 2
+    kanbanCards: await dealKanbanCards(ctx, a, deal.id),
+    // ◂ CRM C1.6
   };
 }
 

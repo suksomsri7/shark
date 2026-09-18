@@ -18,6 +18,9 @@ import {
   type CompanyDocRow,
 } from "@/lib/modules/crm/companies-shared";
 import { AddContactButton, CompanyContactsTable, CompanyMenu } from "../_components/Company360Actions";
+// CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
+import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
+import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 
 // บริษัท 360 (CRM v2 · ใบ C1.3 · พิมพ์เขียว §3.4 · ภาพ 04) — `/app/sys/{id}/crm/companies/{companyId}`
 // URL state: ?tab=overview|contacts|deals|documents|timeline|obj-<objectKey>
@@ -244,10 +247,16 @@ export default async function Company360Page({
               )}
             </section>
           )}
+          {/* CRM C1.6 ▸ กิจกรรมและโน้ต (แท็บภาพรวม/ไทม์ไลน์) */}
+          {(tab === "overview" || tab === "timeline") && <CrmActivityBlock ctx={ctx} actor={actor} target={{ companyId: c.id }} />}
+          {/* ◂ CRM C1.6 */}
         </div>
 
         {/* ── แถบขวา ── */}
         <aside className="flex w-full flex-col gap-3 lg:w-[300px] lg:shrink-0" data-testid="company-360-side">
+          {/* CRM C1.6 ▸ ไฟล์แนบ */}
+          <CrmFilesBlock ctx={ctx} actor={actor} entityType="COMPANY" entityId={c.id} />
+          {/* ◂ CRM C1.6 */}
           <div className="card flex flex-col gap-2 p-4">
             <span className="font-semibold">ผู้ช่วย AI</span>
             <SideSoon title="สรุปบริษัทนี้" hint="ดีล + เอกสารบัญชีทั้งหมด" />

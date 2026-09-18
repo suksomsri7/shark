@@ -451,6 +451,13 @@ const kanbanOutbound =
     await outbound[name](evt);
   };
 
+// CRM C1.6 ▸ การ์ดบอร์ดงานปิด → ปิดกิจกรรม CRM ที่ผูกการ์ด (dynamic import: crm → … → scheduleDrain ที่ไฟล์นี้ = วงกลมถ้า import หัวไฟล์)
+const crmKanbanCardCompleted: OutboxHandler = async (evt) => {
+  const crm = await import("@/lib/modules/crm");
+  await crm.activities.onKanbanCardCompleted(evt);
+};
+// ◂ CRM C1.6
+
 // M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → ไทม์ไลน์ของเจ้าของบัตร
 // M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onLoyaltyEvent` (recordOnce · เจ้าของว่าง/ถูกลบ = จบเงียบเหมือนเดิม)
 
@@ -650,7 +657,11 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // K3.4 (§9.3 "ย้อนกลับ"): + แปะบันทึกภายในในห้องแชทที่การ์ดผูกไว้ / รอยประวัติของเอกสารบัญชี
   //   🔴 ต่อท้ายด้วย `compose` เหมือนสะพานขาเข้า — ขาออกพังห้ามพา consumer หลักล้ม (WARN แล้วไปต่อ)
   // M3.7: + ไทม์ไลน์ CARD_COMPLETED ของสมาชิกที่การ์ดผูก PARTY ไว้ (ห่อ try/catch — ไม่พาขาออกล้ม)
-  "kanban.card.completed": withAutomation(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted"))),
+  // CRM C1.6 ▸ + ปิดกิจกรรม CRM ที่ผูกการ์ดนี้ (`crm.activities.onKanbanCardCompleted` · ของแถมใต้ compose — ล้ม = WARN ไม่พางานหลักล้ม ·
+  //   ปิดครั้งเดียวด้วย conditional update ใน tx เดียวกับ `crm.activity.completed` ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ผลเดียว — AUDIT-CLASS X4) ◂
+  "kanban.card.completed": withAutomation(
+    compose(compose(compose(async () => {}, kanbanOutbound("cardCompleted")), memberBridge("onKanbanCardCompleted")), crmKanbanCardCompleted),
+  ),
   // K1.7 — เช็คลิสต์ครบทุกข้อ (ยิงจาก `kanban/checklists.ts#toggleItem` ใน tx เดียวกับการติ๊ก)
   //   🔴 ผลข้างเคียง (done/doneAt/doneById) เกิดในโมดูลไปแล้ว — consumer เป็น no-op เพื่อ
   //      **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล — บทเรียน 30 ส.ค. 2026)
@@ -971,6 +982,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.deal.reassigned": withAutomation(async () => {}),
   "crm.deal.updated": withAutomation(async () => {}),
   // ◂ CRM C1.5
+  // CRM C1.6 ▸ กิจกรรม (`crm/activities.ts`) — ยิงใน tx เดียวกับการเขียน · key `crm.activity.<type>#<activityId>#<seq>` (R-C.8) ·
+  //   payload id/คีย์ล้วน { activityId, type, contactId, dealId, companyId, customRecordId, ownerUserId } — ไม่มีหัวเรื่อง/โน้ต (X8)
+  //   ผลข้างเคียง (lastActivityAt · แจ้งเตือน @กล่าวถึง · ปิดงาน) เขียนครบใน tx ของบริการแล้ว ⇒ consumer = no-op ปิด event เป็น DONE
+  //   (ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8/C2.8 เติมของแถมใต้ compose
+  "crm.activity.logged": withAutomation(async () => {}),
+  "crm.activity.completed": withAutomation(async () => {}),
+  // ◂ CRM C1.6
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

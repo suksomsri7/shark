@@ -18,6 +18,9 @@ import {
 } from "@/lib/modules/crm/contacts-shared";
 import { COMPANY_CONTACT_ROLE_LABEL, formatSatangBaht, relativeThai, type CompanyContactRole } from "@/lib/modules/crm/companies-shared";
 import { ConsentBlock, ContactMenu, ConvertButton } from "../_components/Contact360Actions";
+// CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
+import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
+import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -259,10 +262,16 @@ export default async function Contact360Page({
               </ul>
             )}
           </section>
+          {/* CRM C1.6 ▸ กิจกรรมและโน้ต */}
+          <CrmActivityBlock ctx={ctx} actor={actor} target={{ contactId: c.id }} />
+          {/* ◂ CRM C1.6 */}
         </div>
 
         {/* ── แถบขวา ── */}
         <aside className="flex w-full min-w-0 flex-col gap-4 lg:w-[320px] lg:shrink-0">
+          {/* CRM C1.6 ▸ ไฟล์แนบ */}
+          <CrmFilesBlock ctx={ctx} actor={actor} entityType="CONTACT" entityId={c.id} />
+          {/* ◂ CRM C1.6 */}
           <section className="card flex flex-col gap-2 p-4 text-sm" data-testid="contact-360-ai">
             <h2 className="font-semibold">✦ ผู้ช่วย AI</h2>
             <p className="text-xs text-[color:var(--color-muted)]">สรุปเหตุผลคะแนน · ร่างข้อความปิดการขาย — เปิดใช้เมื่อระบบคะแนนและผู้ช่วย AI ของ CRM พร้อม</p>

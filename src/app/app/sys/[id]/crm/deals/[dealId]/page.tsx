@@ -9,6 +9,10 @@ import { toMemberActor } from "@/lib/modules/member";
 import { dealFieldLayout, getDeal360, lostReasonOptions, ownerOptions, pipelineOptions } from "@/lib/modules/crm/deals";
 import { DealsError, FORECAST_CATEGORY_LABEL, formatBaht, formatThaiDay, type Deal360, type DealHistoryRow } from "@/lib/modules/crm/deals-shared";
 import { DealDocButtons, DealFieldsEditor, DealLinesEditor, DealMenu, DealStageStepper } from "../_components/Deal360Actions";
+// CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
+import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
+import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
+import { CrmDealCardsBlock } from "@/components/crm/activity/CrmDealCardsBlock";
 
 // ดีล 360 (CRM v2 · ใบ C1.5 · พิมพ์เขียว §3.3 · ภาพ 03) — `/app/sys/{id}/crm/deals/{dealId}`
 // URL state: ?tab=overview|lines|activities|docs|history
@@ -49,7 +53,8 @@ export default async function Deal360Page({
   const actor = toMemberActor(auth.user.id, auth.active);
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
 
-  const data: Deal360 | null = await getDeal360(ctx, actor, dealId).catch((e: unknown) => {
+  // CRM C1.6 ▸ ชนิดตามผลจริงของ getDeal360 (มี kanbanCards[] — การ์ดบอร์ดงานของดีลใช้จากที่นี่ ไม่ query ซ้ำ) ◂
+  const data: Awaited<ReturnType<typeof getDeal360>> | null = await getDeal360(ctx, actor, dealId).catch((e: unknown) => {
     if (e instanceof DealsError && e.code === "NOT_FOUND") return null;
     throw e;
   });
@@ -306,6 +311,11 @@ export default async function Deal360Page({
             </section>
           )}
 
+          {/* CRM C1.6 ▸ กิจกรรมและโน้ต (แท็บกิจกรรม) + การ์ดบอร์ดงานของดีล */}
+          {tab === "activities" && <CrmActivityBlock ctx={ctx} actor={actor} target={{ dealId: d.id }} />}
+          {tab === "activities" && <CrmDealCardsBlock cards={data.kanbanCards} />}
+          {/* ◂ CRM C1.6 */}
+
           {tab === "docs" && (
             <section className="card flex flex-col gap-2 p-4" data-testid="deal-360-docs">
               <h2 className="font-semibold">เอกสารบัญชี</h2>
@@ -322,6 +332,9 @@ export default async function Deal360Page({
         </div>
 
         <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]" data-testid="deal-360-rail">
+          {/* CRM C1.6 ▸ ไฟล์แนบ */}
+          <CrmFilesBlock ctx={ctx} actor={actor} entityType="DEAL" entityId={d.id} />
+          {/* ◂ CRM C1.6 */}
           <section className="card flex flex-col gap-2 p-4" data-testid="deal-360-people">
             <h2 className="font-semibold">ผู้ติดต่อและผู้ร่วมดูแล</h2>
             <p className="text-sm">

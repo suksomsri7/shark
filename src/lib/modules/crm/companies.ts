@@ -1957,3 +1957,16 @@ export async function companyRefsInTx(db: Db, ctx: CompaniesCtx, actor: MemberAc
   return db.crmCompany.findMany({ where: { AND: [scope, { id: { in: list } }, ...(opts.live ? [{ mergedIntoId: null, archivedAt: null }] : [])] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.5
+
+// CRM C1.6 ▸ `lastActivityAt` ของบริษัท (หนี้ C1.3 · มติผู้คุมงาน C1.6 ข้อ 3) — ผู้เขียน CrmCompany ยังมีที่เดียว (ไฟล์นี้)
+//   ผู้เรียก: `activities.ts#logActivity` ใน tx ของการบันทึกกิจกรรม (ถือล็อกแถวบริษัทแล้วตามลำดับ บริษัท → ผู้ติดต่อ → ดีล)
+//   AUDIT-CLASS X3: คำสั่งเดียวใน SQL — `GREATEST(ค่าเดิม, at)` ⇒ ยิงพร้อมกันกี่ทางก็ได้ค่าสูงสุดเสมอ ไม่ถอยหลัง
+//   (ไม่อ่าน → คิดในแอป → เขียน) · `at` ผู้เรียกบีบไม่ให้เกินเวลาปัจจุบันแล้ว · GREATEST ของ Postgres ข้าม NULL เอง
+/** ขยับ `CrmCompany.lastActivityAt` ไปที่ `at` ถ้าใหม่กว่าค่าเดิม (ขอบเขตร้าน+ระบบ) — คืนจำนวนแถวที่แตะ */
+export async function touchLastActivityInTx(tx: Tx, ctx: CompaniesCtx, ids: (string | null | undefined)[], at: Date): Promise<number> {
+  const sorted = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].sort();
+  if (sorted.length === 0 || !Number.isFinite(at.getTime())) return 0;
+  const iso = at.toISOString();
+  return tx.$executeRaw`UPDATE "CrmCompany" SET "lastActivityAt" = GREATEST("lastActivityAt", (${iso}::timestamptz AT TIME ZONE 'UTC')) WHERE "id" = ANY(${sorted}::text[]) AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
+}
+// ◂ CRM C1.6

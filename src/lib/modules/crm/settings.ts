@@ -63,3 +63,19 @@ export async function setCrmSettingsKey<K extends CrmSettingsKey>(ctx: { tenantI
   return getCrmSettings(ctx);
 }
 // ◂ CRM C1.5
+
+// CRM C1.6 ▸ ทะเบียนผลลัพธ์ของกิจกรรม `settings.crm.activityOutcomes[type]` (พิมพ์เขียว §4.5 · มติผู้คุมงาน C1.6 S8)
+//   ตัวอ่านแบบมีชนิด (อ่านอย่างเดียว — ตัวเขียนมากับหน้าตั้งค่ากิจกรรมในใบถัดไป ผ่าน jsonb_set คำสั่งเดียวแบบข้างบน)
+//   🔴 `[]` ที่ตั้งไว้ชัด = "ชนิดนี้ไม่มีผลลัพธ์ให้เลือก" (ไม่ใช่กลับไปใช้ค่าตั้งต้น) · ไม่ได้ตั้ง = ค่าตั้งต้นพิมพ์เขียว · ค่าเพี้ยน = ค่าตั้งต้น
+/** รายการผลลัพธ์ของชนิดกิจกรรม `type` — `null` = ชนิดนี้ไม่มีทะเบียน (ไม่รับผลลัพธ์) */
+export function activityOutcomesOf(raw: Json, type: string, defaults: Readonly<Partial<Record<string, readonly string[]>>>): readonly string[] | null {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  const reg = crm && isObj(crm.activityOutcomes) ? crm.activityOutcomes : null;
+  const own = reg ? reg[type] : undefined;
+  if (Array.isArray(own)) {
+    const list = [...new Set(own.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().slice(0, 60)))];
+    return list;
+  }
+  return defaults[type] ?? null;
+}
+// ◂ CRM C1.6

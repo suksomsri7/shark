@@ -1232,8 +1232,8 @@ try {
     const max = Math.max(...t1, ...t2);
     const got = { d: await lastMs("crmDeal", g.d), co: await lastMs("crmCompany", g.co) };
     chk("C1.6-X3.4a", "[positive control] the 4 lock-order worker PROCESSES ran (10 logs + 9 moves + 6 setPrimary = 25 calls)", w.spawned && flat.length === 25, "25", `${flat.length}`, "MAJOR");
-    chk("C1.6-X3.4", "LOCK ORDER (company → contact → deal): logActivity on a deal ∥ deals.moveDeal (C1.5) on that deal ∥ companies.setPrimary (C1.3) on its company, 4 PROCESSES ⇒ no 40P01/P2034 · logs OK · moves/setPrimary OK or CONFLICT · deal/company lastActivityAt = max",
-      flat.length === 25 && !flat.some((o) => DEAD.test(o)) && logs.every((o) => o === "OK") && [...w.outs[1], ...w.outs[2]].every((o) => o === "OK" || o.startsWith("ERR:CONFLICT")) && got.d === max && got.co === max,
+    chk("C1.6-X3.4", "LOCK ORDER (company → contact → deal): logActivity on a deal ∥ deals.moveDeal (C1.5) on that deal ∥ companies.setPrimary (C1.3) on its company, 4 PROCESSES ⇒ no 40P01/P2034 · logs OK · moves/setPrimary OK or CONFLICT · deal lastActivityAt ≥ max (C1.5 moveDeal stamps now — ORACLE-EDIT C1.6-X3.4) · company = max",
+      flat.length === 25 && !flat.some((o) => DEAD.test(o)) && logs.every((o) => o === "OK") && [...w.outs[1], ...w.outs[2]].every((o) => o === "OK" || o.startsWith("ERR:CONFLICT")) && got.d !== null && got.d >= max && got.d <= Date.now() + 1000 && got.co === max,
       "0 deadlocks", `dead=${flat.filter((o) => DEAD.test(o)).length} bad=${cut(flat.filter((o) => o !== "OK").slice(0, 3).join(" | "), 200)} ${j(got)} max=${max}`);
   }
 

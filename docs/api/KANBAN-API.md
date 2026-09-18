@@ -1045,7 +1045,7 @@ Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `linkType` | enum("PARTY", "CRM_CONTACT", "CHAT_CONVERSATION", "ACCOUNT_DOC", "APPROVAL_REQUEST", "HR_LEAVE", "HR_EMPLOYEE", "APPOINTMENT", "HOTEL_RESERVATION", "RENTAL_BOOKING", "SCHOOL_CLASS", "INV_ITEM", "QUEUE_TICKET", "TICKET_EVENT", "FORM_SUBMISSION", "KB_ARTICLE", "POS_SALE", "SHOP_ORDER", "RESTAURANT_ORDER", "URL") | yes | What kind of SHARK object the card points at. Use URL for a plain web link. |
+| `linkType` | enum("PARTY", "CRM_CONTACT", "CHAT_CONVERSATION", "ACCOUNT_DOC", "APPROVAL_REQUEST", "HR_LEAVE", "HR_EMPLOYEE", "APPOINTMENT", "HOTEL_RESERVATION", "RENTAL_BOOKING", "SCHOOL_CLASS", "INV_ITEM", "QUEUE_TICKET", "TICKET_EVENT", "FORM_SUBMISSION", "KB_ARTICLE", "POS_SALE", "SHOP_ORDER", "RESTAURANT_ORDER", "URL", "DEAL", "COMPANY", "CUSTOM_RECORD") | yes | What kind of SHARK object the card points at. Use URL for a plain web link. |
 | `linkId` | string | yes | Id of the target object in this shop. For linkType URL this is the URL itself and must start with http:// or https://. · min length 1 · max length 2000 |
 | `role` | enum("SOURCE", "RELATED", "RESULT") | no | SOURCE = the card was created out of this, RELATED = it refers to it, RESULT = it is the outcome of the work. |
 | `label` | string | no | Short caption typed by a person. Mostly used with URL links. · max length 120 |

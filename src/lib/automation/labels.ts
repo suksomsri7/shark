@@ -174,6 +174,10 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.deal.reassigned", label: "เมื่อโอนผู้ดูแลดีล (CRM)" },
   { value: "crm.deal.updated", label: "เมื่อแก้ไขดีล รายการสินค้า หรือเอกสารของดีล (CRM)" },
   // ◂ CRM C1.5
+  // CRM C1.6 ▸ กิจกรรม (`crm/activities.ts`) — payload id/คีย์ล้วน (X8) · 🔴 มี consumer ใน outbox-consumers.ts แล้ว · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำ)
+  { value: "crm.activity.logged", label: "เมื่อบันทึกกิจกรรม (โทร นัดพบ งาน โน้ต …) ใน CRM" },
+  { value: "crm.activity.completed", label: "เมื่อปิดกิจกรรมหรืองานติดตามใน CRM" },
+  // ◂ CRM C1.6
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

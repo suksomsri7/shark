@@ -166,6 +166,9 @@ const ACC_STATUS_TH: Record<string, string> = {
   OVERDUE: "เลยกำหนด",
 };
 
+// CRM C1.6 ▸ สถานะดีล (ตัวแปลผล DEAL) ◂
+const CRM_DEAL_KIND_TH: Record<string, string> = { OPEN: "เปิดอยู่", WON: "ชนะ", LOST: "แพ้" };
+
 /** แปลค่า enum เป็นไทยแบบไม่ล้ม (ค่าที่ยังไม่ได้แปล = แสดงค่าดิบ ดีกว่าแสดงค่าว่าง) */
 const th = (table: Record<string, string>, v: string | null | undefined): string | null =>
   v ? (table[v] ?? v) : null;
@@ -650,31 +653,69 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     href: (linkId) => linkId,
     resolve: null,
   },
-  // CRM v2 (crm_v2_a · C1.1) — enum `KanbanLinkType` ขยายแล้วแต่ "ยังไม่เปิดใช้": เจ้าของตัวแปลผลจริงคือใบ C1.6
-  //   stub ปิดทุกทาง — ไม่มีสิทธิ์ดู (DTO มีแค่ป้ายชนิด) · ไม่มีหน้าให้เปิด · หาปลายทางไม่เจอเสมอ (addLink ปฏิเสธ)
-  //   และไม่อยู่ใน LINK_TYPE_KINDS ด้านล่าง ⇒ UI/REST/zod ยังเห็นชุดเดิม 20 ชนิดเท่าเดิม
-  DEAL: notAvailableYet("DEAL"),
-  COMPANY: notAvailableYet("COMPANY"),
-  CUSTOM_RECORD: notAvailableYet("CUSTOM_RECORD"),
-};
-
-/** stub ของชนิดที่ยังไม่เปิดใช้ (CRM v2 · ใบ C1.6 เป็นเจ้าของของจริง) */
-function notAvailableYet(kind: "DEAL" | "COMPANY" | "CUSTOM_RECORD"): LinkTypeSpec {
-  return {
-    ...LINK_TYPE_META[kind],
+  // CRM C1.6 ▸ ตัวแปลผลจริงของ DEAL / COMPANY / CUSTOM_RECORD (enum ขยายใน crm_v2_a · C1.1 เคยเป็น stub "ยังไม่เปิดใช้")
+  //   ด่านเดียวกับ CRM_CONTACT (moduleGate ของโมดูล crm) · select เฉพาะชื่อ/สถานะ/ระบบ — ไม่มีเบอร์/อีเมล/เลขภาษี (§9.1 ข้อ 3)
+  //   ขอบเขต = ร้านของ ctx (scopeOf) ⇒ id ของร้านอื่นไม่มีวันถูกแปล (addLink/createCardFromExternal ข้ามแถวนั้น)
+  DEAL: {
+    ...LINK_TYPE_META.DEAL,
     modules: ["crm"],
     action: null,
-    canView: () => false,
-    href: () => null,
-    resolve: async () => new Map<string, ResolvedTarget>(),
-  };
-}
+    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    href: (linkId, t) => (t.systemId ? `/app/sys/${t.systemId}/crm/deals/${linkId}` : null),
+    resolve: async (ctx, ids) => {
+      const rows = await prisma.crmDeal.findMany({
+        where: { ...scopeOf(ctx), id: { in: ids } },
+        select: { id: true, title: true, systemId: true, kind: true },
+      });
+      return new Map(rows.map((r) => [r.id, { title: r.title, status: th(CRM_DEAL_KIND_TH, r.kind), systemId: r.systemId }]));
+    },
+  },
+  COMPANY: {
+    ...LINK_TYPE_META.COMPANY,
+    modules: ["crm"],
+    action: null,
+    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    href: (linkId, t) => (t.systemId ? `/app/sys/${t.systemId}/crm/companies/${linkId}` : null),
+    resolve: async (ctx, ids) => {
+      const rows = await prisma.crmCompany.findMany({
+        where: { ...scopeOf(ctx), id: { in: ids } },
+        select: { id: true, name: true, systemId: true, archivedAt: true },
+      });
+      return new Map(rows.map((r) => [r.id, { title: r.name, status: r.archivedAt ? "เก็บถาวร" : null, systemId: r.systemId }]));
+    },
+  },
+  CUSTOM_RECORD: {
+    ...LINK_TYPE_META.CUSTOM_RECORD,
+    modules: ["crm"],
+    action: null,
+    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    // หน้ารายการเดี่ยวมากับ C1.9 — ระหว่างนี้เปิดหน้า 360 ของแม่ (ผู้ติดต่อ/บริษัท/ดีล) ที่แสดงแท็บวัตถุอยู่แล้ว
+    href: (_linkId, t) => (t.systemId && t.pathHint ? `/app/sys/${t.systemId}/crm/${t.pathHint}` : null),
+    resolve: async (ctx, ids) => {
+      const rows = await prisma.customRecord.findMany({
+        where: { ...scopeOf(ctx), id: { in: ids } },
+        select: { id: true, title: true, systemId: true, parentType: true, parentId: true, archivedAt: true, object: { select: { label: true } } },
+      });
+      const parentPath: Record<string, string> = { CONTACT: "contacts", COMPANY: "companies", DEAL: "deals" };
+      return new Map(
+        rows.map((r) => [
+          r.id,
+          {
+            title: r.title,
+            subtitle: r.object?.label ?? null,
+            status: r.archivedAt ? "เก็บถาวร" : null,
+            systemId: r.systemId,
+            pathHint: r.parentId && parentPath[r.parentType] ? `${parentPath[r.parentType]}/${r.parentId}` : null,
+          },
+        ]),
+      );
+    },
+  },
+  // ◂ CRM C1.6
+};
 
-/** ชนิดที่ยังไม่เปิดให้ผูก (C1.6 ถอดออกจากชุดนี้เมื่อทำตัวแปลผลจริง) */
-const NOT_AVAILABLE_YET: ReadonlySet<KanbanLinkKind> = new Set<KanbanLinkKind>(["DEAL", "COMPANY", "CUSTOM_RECORD"]);
-
-/** ชนิดทั้งหมด (ทะเบียนเดียว — UI/API/บริการ อ่านจากที่นี่ที่เดียว) · ไม่รวมชนิดที่ยังไม่เปิดใช้ */
-export const LINK_TYPE_KINDS = (Object.keys(LINK_TYPES) as KanbanLinkKind[]).filter((k) => !NOT_AVAILABLE_YET.has(k));
+/** ชนิดทั้งหมด (ทะเบียนเดียว — UI/API/บริการ อ่านจากที่นี่ที่เดียว) · CRM C1.6: 23 ชนิด (DEAL/COMPANY/CUSTOM_RECORD เปิดใช้แล้ว) */
+export const LINK_TYPE_KINDS = Object.keys(LINK_TYPES) as KanbanLinkKind[];
 
 /** ป้ายชนิดภาษาไทย (ใช้ทั้งหลังการ์ดและมุมมองตาราง) */
 export function linkTypeLabel(kind: KanbanLinkKind): string {

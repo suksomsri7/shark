@@ -91,12 +91,29 @@ const C14_CONTACT: string | null = WO === "1.4"
   : null;
 
 // C1.5 — ดีลที่มีบรรทัดสินค้า/ประวัติมากที่สุด (อ่านอย่างเดียว)
-const C15_DEAL: string | null = WO === "1.5"
+const C15_DEAL: string | null = WO === "1.5" || WO === "1.6"
   ? ((await (prisma as Any).crmDeal.findMany({ where: { systemId: SYS }, select: { id: true, _count: { select: { stageHistory: true } } } }))
       .sort((a: Any, b: Any) => b._count.stageHistory - a._count.stageHistory)[0]?.id ?? null)
   : null;
 
 const SPECS: Record<string, Spec[]> = {
+  // C1.6 — กิจกรรม v2 · ปฏิทิน (สัปดาห์/เดือน · ทีม) · บล็อกกิจกรรม/ไฟล์ใน Deal 360 (เทียบภาพ 08)
+  "1.6": isCustomer ? [] : [
+    { name: `crm-activities-${userKey}`, path: `${CRM_BASE}/activities?scope=team`, note: "กิจกรรม v2 (ทีม · ค้าง)", expect: ["[data-testid=activities-list]"], steps: [{ waitFor: "[data-testid=activities-list]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: `crm-calendar-week-${userKey}`, path: `${CRM_BASE}/calendar?view=week&scope=team`, note: "ปฏิทินสัปดาห์ (+ นัด/โทร/งานชั่วคราว 4 รายการ ติดแท็ก qc-visual-crm)", steps: [{ wait: 1500 }],
+      before: async () => {
+        // ภาพเทียบ 08 ต้องมีรายการในสัปดาห์นี้ — seed มีกิจกรรมแค่ 2 รายการนอกสัปดาห์ ⇒ สร้างชั่วคราว แล้ว restoreSeed() ลบทิ้ง
+        const P = prisma as Any; const now = Date.now(); const H = 3_600_000; const day0 = Math.floor((now + 7 * H) / (24 * H)) * 24 * H - 7 * H; // 00:00 ไทยวันนี้ (ถูกทั้งก่อน/หลัง 07:00 ไทย)
+        const rows: [string, string, number, number][] = [["MEETING", "นัดสาธิตแพ็กเกจองค์กร", 0, 10], ["CALL", "โทรติดตามใบเสนอราคา", 1, 14], ["TASK", "ส่งสัญญาฉบับแก้ไข", 2, 9], ["VISIT", "เยี่ยมลูกค้าที่โรงแรม", -1, 15]];
+        for (const [type, title, d, h] of rows) {
+          const startAt = new Date(day0 + d * 24 * H + h * H);
+          const a = await P.crmActivity.create({ data: { tenantId: E.tenantId, systemId: SYS, contactId: E.contactIds?.[0] ?? null, type, title: `${title} · qc-visual-crm`, startAt, endAt: new Date(startAt.getTime() + H), dueAt: type === "TASK" ? startAt : null, ownerUserId: E.users.owner.userId } });
+          TMP.activityIds.push(a.id);
+        }
+      } },
+    { name: `crm-calendar-month-${userKey}`, path: `${CRM_BASE}/calendar?view=month&scope=team`, note: "ปฏิทินเดือน", expect: ["[data-testid=calendar-month]"], steps: [{ waitFor: "[data-testid=calendar-month]", timeoutMs: 20_000 }, { wait: 500 }] },
+    ...(C15_DEAL ? [{ name: `crm-deal-360-activity-${userKey}`, path: `${CRM_BASE}/deals/${C15_DEAL}?tab=activities`, note: "บล็อกกิจกรรม+การ์ดงาน+ไฟล์ใน Deal 360", expect: ["[data-testid=crm-activity-block]"], steps: [{ waitFor: "[data-testid=crm-activity-block]", timeoutMs: 20_000 }, { wait: 800 }] } as Spec] : []),
+  ],
   // C1.5 — ดีล: กระดาน (crm-v2-deals) · ตาราง · พยากรณ์ · 360 · สร้าง · /pipelines (เทียบภาพ 02 กระดาน · 03 Deal 360)
   "1.5": isCustomer ? [] : [
     { name: `crm-v2-deals-board-${userKey}`, path: `${CRM_BASE}/deals`, note: "กระดานดีล v2", expect: ["[data-testid=deals-page]", "[data-testid=deal-board]"], steps: [{ waitFor: "[data-testid=deal-board]", timeoutMs: 20_000 }, { wait: 600 }] },

@@ -34,3 +34,17 @@ export function activityWhere(ctx: CrmScopeCtx, actor: MemberActor): Prisma.CrmA
   if (!actor || actor.role === "CUSTOMER") return { id: { in: [] } };
   return { tenantId: ctx.tenantId, systemId: ctx.systemId };
 }
+
+// CRM C1.6 ▸ ไฟล์แนบของ CRM (`CrmFileLink` · มติ C19) — ขอบเขตการอ่านลิงก์ไฟล์ (R-A: C1.7 แทนไส้ใน)
+/** AUDIT-CLASS X1: ลิงก์ไฟล์ที่ actor อ่านได้ — ร้านอื่น/ระบบ CRM อื่นของร้านเดียวกันไม่มีวันโผล่ (files.ts ตรวจระเบียนแม่ซ้ำอีกชั้น) */
+export function fileWhere(ctx: CrmScopeCtx, actor: MemberActor): Prisma.CrmFileLinkWhereInput {
+  if (!actor || actor.role === "CUSTOMER") return { id: { in: [] } };
+  return { tenantId: ctx.tenantId, systemId: ctx.systemId };
+}
+
+/** AUDIT-CLASS X1: รายการวัตถุกำหนดเอง (CustomRecord) ที่ actor อ่านได้ — วันนี้ = ร้าน + ระบบ (C1.7 ใส่การมองเห็นตามแม่/เจ้าของ) */
+export function recordWhere(ctx: CrmScopeCtx, actor: MemberActor): Prisma.CustomRecordWhereInput {
+  if (!actor || actor.role === "CUSTOMER") return { id: { in: [] } };
+  return { tenantId: ctx.tenantId, systemId: ctx.systemId };
+}
+// ◂ CRM C1.6

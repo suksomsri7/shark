@@ -21,7 +21,9 @@ import { sanitizeDescription } from "./sanitize";
 import { createCard } from "./service";
 import { LINK_TYPES, targetExists } from "./link-resolvers";
 import type { KanbanCardSourceType } from "@prisma/client";
-import type { KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
+import type { KanbanActor, KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
+// CRM C1.6 ▸ ด่านการมองเห็นบอร์ดของโมดูลนี้เอง (visibleBoardOptions ท้ายไฟล์) · +KanbanActor ในบรรทัดบน ◂
+import { visibleBoardsWhere } from "./access";
 
 // ── ทางเข้าเดียว: ผู้เรียกทุกคน import จาก `@/lib/modules/kanban/links` ──
 export {
@@ -426,3 +428,22 @@ async function findBySourceKey(tenantId: string, sourceKey: string): Promise<str
   const row = await prisma.kanbanCard.findFirst({ where: { tenantId, sourceKey }, select: { id: true } });
   return row?.id ?? null;
 }
+
+// CRM C1.6 ▸ บอร์ดที่ "ผู้ดูคนนี้มองเห็น" (อ่านอย่างเดียว) — ให้โมดูลอื่น (CRM ปุ่มเปิดการ์ดงานของกิจกรรม) เลือกบอร์ดปลายทาง
+//   🔴 ใช้ `visibleBoardsWhere(actor)` ด่านเดียวกับหน้าบอร์ดงาน ⇒ ชื่อบอร์ดลับ/บอร์ดสาขาอื่นไม่หลุดไปโมดูลอื่น
+//   `boardId` ระบุ = ตรวจบอร์ดเดียว (ไม่เห็น/ไม่มี/ถูกเก็บ = รายการว่าง — ผู้เรียกตอบ "ไม่พบ")
+export async function visibleBoardOptions(
+  tenantId: string,
+  actor: KanbanActor,
+  opts: { boardId?: string | null } = {},
+): Promise<{ id: string; name: string; systemId: string }[]> {
+  return prisma.kanbanBoard.findMany({
+    where: {
+      AND: [{ tenantId, status: "ACTIVE", ...(opts.boardId ? { id: opts.boardId } : {}) }, visibleBoardsWhere(actor)],
+    },
+    select: { id: true, name: true, systemId: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    take: 200,
+  });
+}
+// ◂ CRM C1.6

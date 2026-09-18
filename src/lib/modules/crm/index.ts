@@ -62,3 +62,12 @@ export { dealWhere } from "./where";
 // uiVersion gate: ตัวแปลง settings.crm (บริสุทธิ์) — ผู้เรียก: src/app/app/layout.tsx (เมนู CRM v2 โผล่เฉพาะระบบ uiVersion 2)
 export { parseCrmSettings } from "./settings";
 // ◂ CRM C1.5
+// CRM C1.6 ▸ กิจกรรม v2 (`activities.ts`) — namespace เดียว: logActivity/completeActivity/rescheduleActivity/updateActivity/setPinned/
+//   deleteActivity/getActivity/listActivities/calendar/listNotes/openTaskCard · mentionOptions/outcomeOptions · onKanbanCardCompleted
+//   (ตัวรับ event) · dealKanbanCards · ไฟล์แนบ (`files.ts` · มติ C19 · ไฟล์ส่วนตัว C0.4) — attachFile/listFiles/removeFile
+//   ผู้ใช้ถัดไป: outbox-consumers (kanban.card.completed) · บล็อก src/components/crm/{activity,files} (server) · C1.10 (REST/tool crm_log_activity)
+//   ค่าคงที่/ชนิด/ตัวช่วยเวลาไทยสำหรับหน้า 'use client' อยู่ที่ `./activities-shared` · ขอบเขตการอ่าน `./where` (activityWhere · fileWhere)
+export * as activities from "./activities";
+export * as files from "./files";
+export { activityWhere, fileWhere, recordWhere } from "./where";
+// ◂ CRM C1.6

@@ -174,6 +174,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   ]
                 : []),
               // ◂ CRM C1.5
+              // CRM C1.6 ▸ ปฏิทินกิจกรรม (หน้า v2 ล้วน) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV)
+              { href: `${s}/crm/calendar`, label: "ปฏิทิน" },
+              // ◂ CRM C1.6
               ]
             : []),
           // ◂ CRM uiVersion gate
