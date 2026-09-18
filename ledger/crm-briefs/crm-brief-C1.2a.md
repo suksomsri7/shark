@@ -28,3 +28,13 @@ Regressions (must be identical counts): `qc-member-m1.2` `m1.3` `m1.5` `m1.6` `m
 - `evaluateSensitiveAccess` is at `src/lib/modules/member/privacy.ts:86` — reuse it for the D8 rule on non-customer objects; no second policy engine.
 - `crm_v2_a` is applied (QC + production): `MemberSection.objectKey` · `MemberField.objectKey/portalVisible/portalEditable` · `CustomRecordValue` · `CustomRecordValueHistory` · unique `(systemId, objectKey, key)` all exist.
 - **Files you own (final):** `src/lib/modules/member/fields.ts` · `src/lib/modules/member/field-types.ts` · `src/lib/modules/member/index.ts` (exports only).
+
+### Controller rulings on the oracle's assumptions K1–K6 + questions (2026-09-18) — binding
+- **K1** actor travels as `FieldCtx.actor?: MemberActor` (same style as `objectKey`). ✅
+- **K2** a non-customer read with NO actor drops sensitive values (fail-closed). ✅
+- **K3** access-log row for a non-customer record: follow the member rule (SECTION/FIELD target). ⚠️ First check whether `MemberAccessLog.customerId` is a foreign key to `Customer`: if it is, do NOT stuff a record id into it — log against the linked member when the contact has one, otherwise report the gap (no migration is allowed in C1.2a; if a column is genuinely needed it goes to `crm_v2_b`). The oracle accepts either the record id or the contact's partyId; tell me which you used and why.
+- **K4** the URL field is the COMPANY system field with `systemKey: "website"` — no new field type, no migration. ✅
+- **K5** a custom `objectKey` must name a live `CustomObject` of that CRM system. ✅
+- **K6** the 12-section cap is per object, not per system. ✅
+- **G1.10 stays MAJOR and binding**: do NOT add `"system"` to the member `TEMPLATES` registry — that registry feeds the template picker shop owners see today. Seed CRM system fields through a separate CRM-object path (e.g. a dedicated function the template call dispatches to for non-customer objectKeys).
+- System-field lists: blueprint §11.2 gives counts only (14/12/12); choose fields that map to real columns of CrmContact/CrmCompany/CrmDeal with fitting types (the oracle checks exactly that). Write the chosen list into a comment.
