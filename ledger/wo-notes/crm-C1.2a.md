@@ -41,3 +41,8 @@
 | actor สร้างผ่าน `toMemberActor`/`memberActorForKey` เท่านั้น · bundle API ตั้ง `apiRole` | **C1.4 · C1.10** |
 | `expectedCloseAt` ใช้เที่ยงคืน UTC แบบ engine | **C1.5** |
 | ตัวอ่าน `CustomRecordValueHistory` ต้องใช้ D8 | **C1.9 · C3.9** |
+
+## 3.2 D12 — push/deploy
+✅ push `a7a7bce` (C1.2a `479fbd7` + C1.2b `a7a7bce`) → session/crm + main 11:45 UTC · deploy ใหม่ `dpl_6FHj9…` ขึ้นจริงหลัง 420 วิ · `/api/health` `{ok:true,db:true,outboxPending:0}` · หน้าแรก 200 · `/api/files/abc123` 403 ตามแบบ · ไม่มี migration ในใบนี้ · `settings.crm.uiVersion` ยังเป็น 1 (ไม่มีร้านใดเห็น UI ใหม่)
+### 3.1 typecheck/fitness/build (worktree แยก)
+typecheck exit 0 · fitness 29/29 ทั้งสองโหมด · BUILD exit 0 · เซิร์ฟเวอร์ :3215 ขึ้นแล้วรัน m2.10/m3.10/m3.11/public: แดงเหลือแค่ `.claude/skills` (M2.10-S1.2 · M3.10-S2.3) และภาพ (M3.10-S4.3 · M3.11-S3.2) · m1.1 S3.1 = ชน seed CRM (หนี้เดิม · ตัดสินตอนปิดเฟส C1) · m1.9 26/26
