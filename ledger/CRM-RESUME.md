@@ -7,7 +7,9 @@
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · **เฟส C1 ครบ C1.1–C1.11** (C1.11 `02ba30bc` · dpl_AhGWw) (17/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
 - 🔨 **C2.0**: รวมเข้า tree หลักแล้ว (staged) · migration 2 ตัว **ลง QC1 + QC2 แล้ว** · client ของ tree หลัก generate แล้ว · unit `crm-c20-verify` (log `.qc-shots/crm/c20-verify.log`) · ผ่าน = commit + push (prod จะรัน migrate deploy เองใน vercel-build — additive ล้วน · ผู้คุมงานอ่านครบแล้ว)
-- 🔨 **C2.1** builder ทำต่อใน `shark-crm-c20` (ต่อจาก c98d0d80 · งาน C2.1 = uncommitted) · QC2
+- ✅(builder) **C2.1**: แก้ผู้ตรวจครบ 84/84 + probe 14/14 · commit local `827ecbdb` ใน c20 (ห้าม push) · รอรวมหลัง C2.0 commit
+- 🔨 **C2.2** builder ใน `shark-crm-c20` (ต่อจาก 827ecbdb · uncommitted) · QC2
+- 🔨 **C2.3** builder ใน **`/root/projects/shark-crm-c23`** (ฐาน 827ecbdb · node_modules = overlay `/root/projects/.ovl-c23`) · **QC3**
 - 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว · ผู้เขียนข้อสอบ C2.5 + C2.6 ทำงานใน `/root/projects/shark-crm-c12a` (ฐาน 02ba30bc · อ่านสคีมา C2.0 จาก c20)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
@@ -22,8 +24,9 @@
 🔴 ก่อนลบ worktree ใด: `umount <wt>/node_modules` แล้วเช็คว่าว่าง แล้ว `rmdir` ก่อน `git worktree remove` (ไม่งั้นลบ node_modules ของจริง)
 🔴 agent ตายไปกับ session แต่ไฟล์ใน worktree ยังอยู่ — session ใหม่: `git -C <wt> status` ดูงานค้าง แล้ว spawn builder ใหม่ให้ "ทำต่อจากสภาพไฟล์ปัจจุบัน" พร้อม brief + addendum
 
-## 3. ฐาน QC สองตัว
+## 3. ฐาน QC สามตัว
 - QC1 = `ep-plain-art…` (`.env.qc`) · QC2 = `wo-crm-qc2` `ep-cool-shadow…` (`.env.qc2`, แตกจาก QC1 · ไม่ใช่ prod)
+- QC3 = `wo-crm-qc3` `br-bold-cherry-aox2mvxk` `ep-weathered-river…` (`.env.qc3`, แตกจาก QC2 20 ก.ย. · มี C2.0 แล้ว) · `scripts/qc3.sh` · ล็อก `/tmp/shark-gate-qc3.lock` · ลบตอน C6.4
 - `scripts/qc2.sh <cmd>` = ไป QC2 + ล็อก `/tmp/shark-gate-qc2.lock` · typecheck/build/serve ใช้ล็อกเครื่องเดียวเสมอ
 - แต่ละ worktree ผูก branch เดียว · expected.json มาจากการ seed branch นั้น · ลบ QC2 ตอน C6.4
 
