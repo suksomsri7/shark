@@ -1,19 +1,21 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 19 ก.ย. 2569 ~15:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 19 ก.ย. 2569 ~16:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · dpl_57Wdn) (16/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- 🔨 **C1.11** builder ใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged · งาน C1.11 = unstaged) · QC2 · 66/66 (ต้องรันด้วย `env CRM_V2_SWITCH=all`) · ผู้ตรวจ: ไม่มี BLOCKER · SHOULD-FIX 7 ส่งกลับแก้แล้ว · ตอนรวม: patch = `git -C shark-crm-c111 diff` (unstaged) + untracked · ผู้คุมงานต้อง: เพิ่ม 3 หน้าใน probe V2_ONLY (contacts/import · contacts/duplicates · companies/duplicates) + ORACLE-EDIT C1.10-S11.8 (หน้า settings แยกสาขาเองได้) · หลังรับ = ปิดเฟส C1 ด้วย qc:all
-- ⏸️ C2.0 builder เริ่มหลังปิดเฟส C1 (qc:all)
+- 🔨 **C1.11**: แก้ผู้ตรวจครบ · **รวมเข้า tree หลักแล้ว (staged ไม่ commit)** + ORACLE-EDIT C1.11-X9.3 / C1.10-S11.8 + probe V2_ONLY +3 หน้า · unit `crm-c111-close` (log `.qc-shots/crm/c111-close.log`): ตรวจ C1.11 + build/ภาพ + **qc:all ปิดเฟส C1** (ทั้งหมดรันด้วย `CRM_V2_SWITCH=all` · probe ประตูรันแบบไม่มี env) · ถ้า session ตาย: ดู log · ยัง staged อยู่ไหม · รันสคริปต์ `scripts/pending/run-c111-close.sh` ใหม่
+- 🔨 **C2.0** builder ใน **`/root/projects/shark-crm-c20`** (ฐาน HEAD + C1.11) · QC2 · 🔴 node_modules = **overlayfs** (lower=tree หลัก · upper=`/root/projects/.ovl-c20/upper`) เพื่อ prisma generate ไม่ทับ client ของ tree หลัก · ก่อนลบ worktree: `umount` แล้วลบ `.ovl-c20` · migration: builder เขียน SQL → **ผู้คุมงานอ่านทุกบรรทัดแล้ว deploy QC2** (QC1 ตอนรวม)
+- 📝 ผู้เขียนข้อสอบ C2.3 + C2.4 ทำงานใน `/root/projects/shark-crm-c12a` (ฐาน HEAD + C1.11)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
 | path | หน้าที่ | ฐาน QC |
 |---|---|---|
 | `/root/projects/shark-crm` | tree หลัก · ผู้คุมงานตรวจ/commit/push | QC1 |
-| `/root/projects/shark-crm-c12a` | อดีตที่ทำ C1.8 (ตอนนี้ว่าง · มีสำเนา C1.8 ล่าสุด) | QC1 |
+| `/root/projects/shark-crm-c12a` | ผู้เขียนข้อสอบ C2.3/C2.4 | ไม่ใช้ DB |
+| `/root/projects/shark-crm-c20` | C2.0 builder (node_modules = overlay) | QC2 |
 | `/root/projects/shark-crm-c19` | อดีต C1.9 (commit แล้ว · มีไฟล์ค้างไม่ต้องใช้) | QC1 |
 | `/root/projects/shark-crm-c111` | C1.11 builder | QC2 |
 | `/root/projects/shark-crm-c110` | อดีต C1.10 (ว่าง) | QC2 |
