@@ -1,14 +1,14 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 19 ก.ย. 2569 ~16:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 19 ก.ย. 2569 ~23:00 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · dpl_57Wdn) (16/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- 🔨 **C1.11**: แก้ผู้ตรวจครบ · **รวมเข้า tree หลักแล้ว (staged ไม่ commit)** + ORACLE-EDIT C1.11-X9.3 / C1.10-S11.8 + probe V2_ONLY +3 หน้า · unit `crm-c111-close` (log `.qc-shots/crm/c111-close.log`): ตรวจ C1.11 + build/ภาพ + **qc:all ปิดเฟส C1** (ทั้งหมดรันด้วย `CRM_V2_SWITCH=all` · probe ประตูรันแบบไม่มี env) · ถ้า session ตาย: ดู log · ยัง staged อยู่ไหม · รันสคริปต์ `scripts/pending/run-c111-close.sh` ใหม่
-- 🔨 **C2.0** builder ใน **`/root/projects/shark-crm-c20`** (ฐาน HEAD + C1.11) · QC2 · 🔴 node_modules = **overlayfs** (lower=tree หลัก · upper=`/root/projects/.ovl-c20/upper`) เพื่อ prisma generate ไม่ทับ client ของ tree หลัก · ก่อนลบ worktree: `umount` แล้วลบ `.ovl-c20` · migration: builder เขียน SQL → **ผู้คุมงานอ่านทุกบรรทัดแล้ว deploy QC2** (QC1 ตอนรวม)
-- 📝 ผู้เขียนข้อสอบ C2.3 + C2.4 ทำงานใน `/root/projects/shark-crm-c12a` (ฐาน HEAD + C1.11)
+- 🔨 **C1.11**: รวมใน tree หลักแล้ว (staged) · ตรวจเดี่ยวผ่านครบ · wo-notes ร่างแล้ว · **qc:all ปิดเฟส C1 = 305/345** (`.qc-shots/crm/c1-qcall.log`) → กำลังรัน 40 ชุดที่แดงทีละชุดหลัง reseed + เซิร์ฟเวอร์ (`scripts/pending/run-c1-reds.sh` · log `c1-reds.log`) · เขียว = flake/สิ่งแวดล้อม · แดงซ้ำ = บั๊กจริง
+- ✅(builder) **C2.0** ใน `/root/projects/shark-crm-c20` เสร็จบน QC2 (73/73 · ถอยหลังเขียว) · migration 2 ตัว: `20261101000000_crm_v2_b` + `20261101000001_ai_credit_crm_assist` (ผู้คุมงานอ่านแล้ว · ลง QC2 แล้ว · **QC1 ยังไม่ลง**) · รอรวมหลัง C1.11 commit · node_modules ของ c20 = overlayfs
+- 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว `e8f25aca` (R2 ของ C2.4 → เครดิต CRM_ASSIST)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
 | path | หน้าที่ | ฐาน QC |
