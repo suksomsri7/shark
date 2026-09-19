@@ -4,9 +4,8 @@
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · dpl_57Wdn) (16/53)
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · **เฟส C1 ครบ C1.1–C1.11** (C1.11 `02ba30bc` · dpl_AhGWw) (17/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- 🔨 **C1.11**: รวมใน tree หลักแล้ว (staged) · ตรวจเดี่ยวผ่านครบ · qc:all 305/345 · รันเดี่ยวซ้ำแล้วยังแดง 39 ชุด (`c1-reds.log`) — ส่วนใหญ่อ่านภาพ `.qc-shots/member|kanban` ที่ถูกลบ / ไฟล์สกิล `.claude/skills` (gitignore) ที่ worktree ไม่มี · **debugger กำลังจำแนก E/R** → ผลที่ `ledger/crm-c1-close-reds.md` · ⚠️ acc-v2-security S5 (บันทึกชำระจาก webhook ไม่สำเร็จ) อาจเป็นบั๊กจริงจาก C1.x
 - ✅(builder) **C2.0** เสร็จบน QC2 · ใน `/root/projects/shark-crm-c20` เป็น **commit local (ห้าม push)**: `da4a43a2` = C1.11 · `c98d0d80` = C2.0 · migration 2 ตัวลง QC2 แล้ว QC1 ยังไม่ลง
 - 🔨 **C2.1** builder ทำต่อใน `shark-crm-c20` (ต่อจาก c98d0d80 · งาน C2.1 = uncommitted) · QC2
 - 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว `e8f25aca` (R2 ของ C2.4 → เครดิต CRM_ASSIST)
