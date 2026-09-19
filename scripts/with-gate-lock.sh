@@ -7,6 +7,10 @@ set -euo pipefail
 #    ยกให้ 3584MB เสมอ ยกเว้นผู้เรียกตั้ง NODE_OPTIONS มาเอง (จะไม่ถูกทับ)
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=3584}"
 if command -v flock >/dev/null 2>&1 && [ -z "${CI:-}${VERCEL:-}" ]; then
-  exec flock -w 1800 /tmp/shark-gate.lock "$@"
+  # CRM RUN (19 Sep): QC branch #2 has its own DB-suite lock (GATE_LOCK_FILE, set by scripts/qc2.sh) — but memory-heavy
+  #   work (typecheck / next build / serve) always queues on the ONE machine lock: 2 cores · 7 GB cannot hold two at once
+  LOCK="${GATE_LOCK_FILE:-/tmp/shark-gate.lock}"
+  case " $* " in *" typecheck "*|*"next build"*|*" build "*|*acc-v2-serve*|*" tsc "*) LOCK=/tmp/shark-gate.lock ;; esac
+  exec flock -w 1800 "$LOCK" "$@"
 fi
 exec "$@"
