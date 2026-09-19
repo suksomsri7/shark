@@ -15,3 +15,10 @@ Audit lessons that are REQUIREMENTS here: (H1) a key with no `crm.*` scope is de
 CRM-RUN S1–S9 (24).
 X2 (full): key of another module / no scopes → 403/denied on every op + tool; readonly cannot write; `teamId`-filtered key sees only that team; assistant as thana lists only phuket; assistant as a STAFF with one narrow key cannot read reports · X1 ids of another tenant/system → 404 across all ops · X3 same `Idempotency-Key` twice in parallel → one row, same response · X6 CSV ops neutralised, page size caps, string caps in every input schema · X9 every danger op refuses without confirm+reason and audits with reason · X7 rate limits per key (read/write/report) enforced from the DB limiter.
 Regressions: `qc-member-m1.11` `m2.10` `m3.10`, `qc-member-fix-s1`, `qc-kanban-k3.5`, `qc-account-api-core`, `qc-account-api-keys`, `qc-ai-skills`, `qc-ai-tools`, `qc-ai-proposals`.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c1.10` 66 checks)
+The CONTRACT BLOCK (op table + interfaces) in the oracle header is the API. Rulings — binding:
+1. Owned files also: `src/app/api/v1/teams/[...path]/route.ts` (delegates to the CRM registry) · `src/app/app/settings/staff/[membershipId]/AccessForm.tsx` (CRM text only — C1.7 debt) · `src/app/app/sys/[id]/crm/settings/page.tsx` (general settings page — C1.5 debt, v2-gated, `crm.settings.manage`) · `scripts/visual-crm.mts` ("1.10" spec) · `crm/nav.ts` + the drawer (inside `crmV2` gate) + `scripts/crm-ui-inventory.json` rows — marked `// CRM C1.10` blocks (C1.9 runs in parallel in another worktree and touches the same registries: keep edits to your own marked blocks).
+2. VALIDATION → 422 `validation` (shared core dispatcher) — accepted. 3. `ping` may answer 200 on uiVersion 1 (key health check); every other op 409 `crm_v2_disabled`.
+5. Tool argument names free (schema-driven). 6. Readonly bundle excludes `crm.commission.view` and readonly responses mask phone/e-mail — confirmed. 8. Assistant fails closed without a human actor — confirmed. 9. ids-only payload scan as written.
+Permanent rule: uiVersion-1 cases (S10) — the legacy `crm_create_lead` keeps working at v1.
