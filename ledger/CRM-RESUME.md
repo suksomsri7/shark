@@ -9,7 +9,7 @@
   - ถ้าผลตรวจเขียว → เขียน `ledger/wo-notes/crm-C1.8.md` → commit → push session/crm + main → poll deploy (`dpl_` ใน https://shark.in.th/login) → Telegram (`tg`) → memory
 - 🔨 **C1.9** (UI วัตถุกำหนดเอง): builder ทำงานใน worktree **`/root/projects/shark-crm-c19`** (ฐาน = HEAD + C1.8 ที่แก้แล้ว) · ใช้ **QC1** · ข้อสอบ `qc-crm-c1.9` 45 ข้อ
 - 🔨 **C1.10** (REST 57 op + AI 14 tools): builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
-- 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · ผู้เขียนข้อสอบกำลังทำ: C2.1 · C2.2 (tree หลัก)
+- 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.2 (65) · ผู้เขียนข้อสอบกำลังทำ: C2.1 (tree หลัก)
 - ⏸️ C1.11 builder เริ่มหลัง C1.9+C1.10 commit · C2.0 builder เริ่มหลังปิดเฟส C1 (migration แตะฐาน QC + Prisma client ที่ใช้ร่วม)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
