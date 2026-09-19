@@ -28,3 +28,6 @@
 | `onCrmDealWon` อ่านตาราง CRM ตรง | C5 |
 | `member.created` ส่งซ้ำ → WELCOME ซ้ำ (บั๊กเดิมฝั่งสมาชิก) | C5 |
 | แชทเลือกระบบ CRM แรกเท่านั้น | C2.4 |
+
+## 3.2 D12 — push/deploy
+✅ push `526895b` (+ `4e0ebd7`) → session/crm + main · deploy ใหม่ `dpl_GjC8s…` ขึ้นหลัง 450 วิ · health ok · ⚠️ `outboxPending: 1` ค้างหลัง deploy (ตัวนับรวม PENDING ที่รอ retry ด้วย · คิวบน prod ระบายเฉพาะเมื่อมีการกระทำ + ตาข่ายรายวัน) · ผู้คุมงานไม่มีสิทธิ์อ่าน DB prod จึงดูรายละเอียดไม่ได้ · เฝ้า 30 นาที (ผลในบรรทัดถัดไป)
