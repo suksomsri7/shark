@@ -17,3 +17,13 @@ Read `crm-brief-COMMON.md` first. Contract: CRM-RUN §2 "C2.1". Spec: blueprint 
 CRM-RUN S1–S7 (30).
 X1 rule of CRM system A never fires for system B / other tenant; actions cannot target stages/users/boards outside the tenant/system · X4 same event twice/parallel → one run per rule (unique eventKey) · X5 WAIT_THEN: overlapping `runDueWaits` → resumed once; crash after claim → resumed after lease · X6 WEBHOOK to 127.0.0.1/169.254.169.254/localhost refused; template variables escaped · X8 consent evaluated at send time (withdraw during WAIT → SKIPPED with Thai reason) · X9 rule enable/disable/delete audited; quota enforced.
 Regressions: `qc-member-m3.3`, `qc-member-fix-s3`, `qc-member-m3.6`, `qc-kanban-k2.9`, `qc-automation`, `qc-ai-automation`, C0.5 oracle.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c2.1` 84 checks)
+CONTRACT BLOCK (sections A–F) in the oracle header is binding. Rulings:
+1. S6 regression children may fail ONLY on screenshot checks that read `.qc-shots/` — accepted.
+2. SEND_EMAIL before C2.5: no real transport in C2.1 — the default (no injected dep) records the run step SKIPPED with a Thai reason ("ส่งอีเมลจากกฎยังไม่เปิด — มาพร้อมระบบอีเมล") ; C2.5 wires the transport. `crm-outbound.ts` stays in-app only (C1.8 check).
+3. `f.{key}` = contact custom field (`d.f.{key}` deal) — confirmed. 4. `crm.activity.overdue` = cron trigger until C2.10 — confirmed.
+5. Quota per TENANT (`Tenant.limits.crm.automationRunsPerMonth`, default 5,000) counting runs of all its CRM systems; member runs not counted.
+6. Contactless events (e.g. `crm.company.*`) MUST dedupe too: advisory lock on (ruleId, eventKey) + find-then-insert (the DB partial unique covers only contact runs). Add the case to the builder's probe.
+7. Extracting a shared builder component into `src/components/automation/**` is allowed ONLY as a move-only refactor; `qc-kanban-k2.9` must stay green.
+Permanent rule: uiVersion-1 (U.*). Builder starts after C2.0.
