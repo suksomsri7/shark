@@ -119,6 +119,14 @@ const SPECS: Record<string, Spec[]> = {
     { name: `crm-objects-list-${userKey}`, path: `${CRM_BASE}/objects/contract`, note: "รายการสัญญา", steps: [{ wait: 1200 }] },
     ...(C19_REC ? [{ name: `crm-objects-record-${userKey}`, path: `${CRM_BASE}/objects/contract/${C19_REC}`, note: "หน้าเรคคอร์ด", steps: [{ wait: 1200 }] } as Spec] : []),
   ],
+  // CRM C1.10 ▸ ตั้งค่า CRM (หน้ารวม) · API และ webhook (คีย์ · curl · เครื่องมือ AI · ฮุค + การส่งล่าสุด) — เทียบภาพ 14 ขวา
+  //   thana/nok/ผู้จัดการ = 404 (ไม่มี crm.settings.manage / crm.api.manage) — ภาพของเจ้าของร้านเท่านั้นที่มีเนื้อหา
+  "1.10": isCustomer ? [] : [
+    { name: `crm-settings-${userKey}`, path: `${CRM_BASE}/settings`, note: "ตั้งค่า CRM (ค่าปัจจุบัน + การ์ดไปหน้าตั้งค่าย่อย)", steps: [{ wait: 1500 }] },
+    { name: `crm-settings-api-${userKey}`, path: `${CRM_BASE}/settings/api`, note: "API และ webhook: คีย์ · curl · เครื่องมือ AI 14 ตัว · ปลายทาง webhook · การส่งล่าสุด", steps: [{ wait: 1500 }] },
+    { name: `crm-settings-api-new-key-${userKey}`, path: `${CRM_BASE}/settings/api`, note: "ฟอร์มสร้างคีย์ (ชุดสิทธิ์ 3 ชุด + ตัวกรองทีม)", onlyDevice: "desktop", steps: [{ wait: 1200 }, { click: "[data-testid=crm-api-new]" }, { wait: 500 }] },
+  ],
+  // ◂ CRM C1.10
   // C1.7 — ทีมขาย (/app/settings/teams · core) · สิทธิ์การมองเห็น (/crm/settings/visibility · v2) — เทียบภาพ 10 ซ้าย
   "1.7": isCustomer ? [] : [
     { name: `crm-teams-${userKey}`, path: `/app/settings/teams`, note: "ทีมขาย: การ์ดทีม + รายละเอียด", steps: [{ wait: 1500 }] },

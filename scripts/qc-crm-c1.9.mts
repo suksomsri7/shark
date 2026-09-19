@@ -934,9 +934,13 @@ try {
     const race = `race_${rand}`;
     const c = await act(owner, "updateObject", S, race, { key: `raced_${rand}` });
     const cRow = await P.customObject.count({ where: { tenantId: T, systemId: S, key: `raced_${rand}` } });
-    chk("C1.9-S7.2", "updateObjectAction rename: an object with records (gear) → VALIDATION · an object referenced by a LOOKUP field (lktarget ← gear.linkTo) → VALIDATION · keys unchanged · [positive control] an empty, unreferenced object renames fine",
-      aVal(a) && thai(a.msg) && aVal(b) && thai(b.msg) && keys.join(",") === "gear,lktarget" && c.ok && cRow === 1,
-      "2 refused · 1 renamed", `gear=${aDesc(a)} lookup=${aDesc(b)} keys=${keys.join(",")} empty=${aDesc(c)}/${cRow}`, "MAJOR");
+    // ORACLE-EDIT C1.9-S7.2 (controller · C1.10, 19 Sep): C1.10 pays C1.2b debt S11.5 (oracle qc-crm-c1.10 S11.5 demands it) —
+    //   renaming an EMPTY object that a LOOKUP points at now succeeds and rewrites the LOOKUP's options.objectKey in the same tx.
+    //   The two oracles contradicted each other; the later WO's contract wins. Records still block a rename (unchanged).
+    const lk = await P.memberField.findFirst({ where: { tenantId: T, systemId: S, key: "linkTo", type: "LOOKUP" }, select: { options: true } });
+    chk("C1.9-S7.2", "updateObjectAction rename: an object with records (gear) → VALIDATION, key unchanged · an empty object referenced by a LOOKUP (lktarget ← gear.linkTo) → renamed AND the LOOKUP now points at the new key (C1.10 S11.5) · [positive control] an empty, unreferenced object renames fine",
+      aVal(a) && thai(a.msg) && b.ok && keys.join(",") === "gear,lktarget2" && (lk?.options as Any)?.objectKey === "lktarget2" && c.ok && cRow === 1,
+      "1 refused · 2 renamed · lookup rewritten", `gear=${aDesc(a)} lookup=${aDesc(b)} keys=${keys.join(",")} lkTo=${(lk?.options as Any)?.objectKey} empty=${aDesc(c)}/${cRow}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

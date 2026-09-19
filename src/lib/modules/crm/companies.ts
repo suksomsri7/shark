@@ -1363,6 +1363,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
   const carryTax = !keep.taxId && drop.taxId ? { taxId: drop.taxId, branchCode: drop.branchCode ?? "00000" } : null;
   const choices = input.fieldChoices ?? {};
   const moved = { contacts: 0, contactsDeduped: 0, deals: 0, activities: 0, subsidiaries: 0, records: 0 };
+  let customValuesMoved = 0; // CRM C1.10 ▸ ค่าฟิลด์กำหนดเองที่ย้ายมา (ลง audit) ◂
   let keptAc: string | null = keep.accountContactId;
   await prisma.$transaction(async (tx) => {
     await treeLock(tx, ctx);
@@ -1405,6 +1406,13 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
     }
     moved.deals = (await tx.crmDeal.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: m.id }, data: { companyId: k.id } })).count;
     moved.activities = (await tx.crmActivity.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: m.id }, data: { companyId: k.id } })).count;
+    // CRM C1.10 ▸ หนี้ C1.3 (S11.6): ค่าฟิลด์กำหนดเองของบริษัทที่ถูกรวม ย้ายมาที่บริษัทที่เก็บไว้ **เฉพาะฟิลด์ที่ฝั่งที่เก็บยังไม่มีค่า**
+    //   (ค่าของฝั่งที่เก็บชนะเสมอ) · คำสั่งเดียวใน tx เดียวกัน (unique recordId+fieldId ไม่ชนเพราะ NOT EXISTS)
+    customValuesMoved = await tx.$executeRaw`
+      UPDATE "CustomRecordValue" v SET "recordId" = ${k.id}
+      WHERE v."tenantId" = ${ctx.tenantId} AND v."recordType" = 'COMPANY' AND v."recordId" = ${m.id}
+        AND NOT EXISTS (SELECT 1 FROM "CustomRecordValue" kv WHERE kv."recordId" = ${k.id} AND kv."fieldId" = v."fieldId")`;
+    // ◂ CRM C1.10
     if (children.length) {
       moved.subsidiaries = (await tx.crmCompany.updateMany({ where: { ...identityScope(ctx), id: { in: children }, parentCompanyId: m.id }, data: { parentCompanyId: k.id } })).count;
     }
@@ -1498,7 +1506,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
     warnings.push("ยังไม่ได้ย้ายรายการที่ผูกกับบริษัทที่ถูกรวม — ลองรวมผู้ติดต่อ/รายการเองภายหลัง");
   }
   await recomputeCaches(ctx, keep.id).catch(() => undefined);
-  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, accountMerge, accountMergeSkipped, warnings: warnings.length };
+  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, customValuesMoved /* CRM C1.10 */, accountMerge, accountMergeSkipped, warnings: warnings.length };
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.company.merge", targetType: "CrmCompany", targetId: keep.id, before: { mergedName: drop.name }, after: auditBody });
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.company.merged", targetType: "CrmCompany", targetId: drop.id, before: { mergedIntoId: null }, after: auditBody });
   return { keptId: keep.id, mergedId: drop.id, moved, accountMerge, accountMergeSkipped, warnings };

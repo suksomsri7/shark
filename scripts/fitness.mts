@@ -884,6 +884,54 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   );
 }
 
+// ─────────────────── F13 (ต่อ): ทะเบียน API ของ CRM (CRM C1.10) ───────────────────
+// เงื่อนไขเดียวกับบัญชี/บอร์ดงาน/สมาชิกเป๊ะ ๆ — ทุกใบของ CRM ที่เพิ่ม op (C2.11 · C3.4 · C3.8) ต้องลงทะเบียนใน `CRM_OPS`
+// แล้ว 3 ด่านนี้บังคับ "มีข้อสอบครอบ · คู่มือไม่เก่า · tool มีบ้านในสกิล `crm`" ตามมาเอง
+// 🔴 ไม่มี `--check` ของโฟลเดอร์สกิล (`.claude/skills/shark-crm-api` อยู่ใน .gitignore) — F13.11 เทียบเฉพาะ docs/api/CRM-API.md
+{
+  const { CRM_OPS } = await import("@/lib/modules/crm/api/registry");
+
+  // F13.10 — ทุก op มี test id ที่ปรากฏจริงในข้อสอบชุด qc-crm-*
+  const crmQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-crm-.*\.mts$/.test(f))
+    .map((f) => readFileSync(f, "utf8"))
+    .join("\n");
+  const untestedCrm = CRM_OPS.filter((o) => !o.test || !crmQcSrc.includes(`"${o.test}"`));
+  chk(
+    "F13.10",
+    `ทุก op ของ CRM (${CRM_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-crm-*.mts`,
+    untestedCrm.length === 0,
+    untestedCrm.length
+      ? `${untestedCrm.length} op ไม่มีข้อสอบครอบ: ${untestedCrm.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}`
+      : "ครบ",
+  );
+
+  // F13.11 — docs/api/CRM-API.md ตรงกับ generator (import ฟังก์ชันบริสุทธิ์ `renderDocs` ของ gen-crm-api-docs — ไม่ spawn ไม่เขียนไฟล์)
+  let crmDocsOk = true;
+  let crmDocsDetail = "ตรง";
+  try {
+    const { renderDocs } = await import("./gen-crm-api-docs.mjs");
+    const docPath = join(ROOT, "docs", "api", "CRM-API.md");
+    const onDisk = existsSync(docPath) ? readFileSync(docPath, "utf8") : "";
+    crmDocsOk = onDisk === renderDocs();
+    if (!crmDocsOk) crmDocsDetail = "docs/api/CRM-API.md ไม่ตรงกับทะเบียน — รัน: pnpm exec tsx scripts/gen-crm-api-docs.mts";
+  } catch (e) {
+    crmDocsOk = false;
+    crmDocsDetail = e instanceof Error ? e.message.slice(0, 300) : String(e);
+  }
+  chk("F13.11", "docs/api/CRM-API.md ตรงกับ generator (ไม่ stale)", crmDocsOk, crmDocsDetail);
+
+  // F13.12 — op ที่ประกาศ tool ต้องมีชื่อนั้นในทะเบียนสกิล (สกิล `crm`)
+  const crmWithTool = CRM_OPS.filter((o) => o.tool);
+  const skillsSrc4 = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
+  const crmOrphans = crmWithTool.filter((o) => !skillsSrc4.includes(`"${o.tool!.name}"`));
+  chk(
+    "F13.12",
+    `tool ของ op CRM (${crmWithTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,
+    crmOrphans.length === 0,
+    crmOrphans.length ? `${crmOrphans.length} tool ไม่มีในสกิล → AI เรียกไม่ได้: ${crmOrphans.map((o) => o.tool!.name).join(", ")}` : "ครบ",
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // F14 — ทะเบียนปุ่ม CRM (CRM-MASTER-PLAN §7 · ด่าน D8 ของทุกใบ UI)
 //   เจตนา: "ทุกปุ่ม/ลิงก์/ฟอร์มของ CRM ถูกกดจริงด้วยข้อสอบ" เริ่มจากการมีทะเบียนที่ตรงกับโค้ดเสมอ

@@ -1,194 +1,1034 @@
-# SHARK CRM API — ข้อกำหนด v2 (draft สำหรับสั่งทำ · 11 ก.ย. 2569)
+# SHARK CRM API
 
-> เอกสารนี้คือ **สัญญา API ทุกฟังก์ชันของ CRM v2** ที่ทะเบียน op (`registry.ts` (แผน · src/lib/modules/crm/api/)) ต้องทำให้ตรง — ตอนสร้างจริง generator (`gen-crm-api-docs.mts` (แผน · scripts/)) จะเขียนคู่มือเต็ม (อังกฤษ · shapes · curl · manifest) ทับไฟล์นี้จากทะเบียนจริง แบบเดียวกับ `KANBAN-API.md` / `ACCOUNT-API.md` / `MEMBER-API.md` (F13.x บังคับตรงกับ generator)
-> ผู้ใช้เป้าหมาย: นักพัฒนาภายนอก · เว็บ/แอปของร้าน · n8n/Zapier · **AI agent** (Claude/GPT/Gemini) ผ่าน skill manifest — ทุก op มี summary อังกฤษ (ประหยัด token) และป้ายไทย
-> พิมพ์เขียว: `docs/modules/20-crm-v2.md` · แบบ: `ledger/DESIGN-CRM.md` · แผนงาน: `ledger/CRM-RUN.md`
+<!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
-## 1. หลักการ (เหมือนบอร์ดงาน/บัญชี/สมาชิก)
-- Base URL `https://shark.in.th/api/v1/crm` · `Authorization: Bearer <API key>` · คีย์ผูกร้าน+ระบบ CRM · bundle 3 ชุด: `crm.readonly` (read ทั้งหมด ยกเว้นอีเมล body/ไฟล์เสียง/คอมมิชชัน) · `crm.operate` (read + write ที่พนักงานทำได้: lead/บริษัท/ดีล/กิจกรรม/อีเมล/sequence enroll/records) · `crm.admin` (ทั้งหมด + ตั้งค่า + danger)
-- คีย์กำหนดขอบเขตการมองเห็นได้: `asUserId` (มองเห็นเท่าผู้ใช้นั้น) หรือ `teamId` — ไม่ตั้ง = ALL ตาม bundle (เฉพาะ admin) · readonly/operate ที่ไม่ตั้ง = ALL แบบไม่มีอ่อนไหว
-- Class: **read** (ไม่เขียน ไม่ audit) · **write** (ต้องมี `Idempotency-Key` · audit ทุกครั้ง) · **danger** (write + ยืนยัน 2 ขั้น/approval: ลบ · รวม · โอนข้ามทีมเกินเพดาน · อนุมัติคอมมิชชัน · ลบวัตถุ · หมุน inbound key · ถอดสิทธิ์ portal)
-- รูปแบบตอบ `{ ok: true, data }` / `{ ok: false, error: { code, message(ไทย), details? } }` · แบ่งหน้า `take/cursor` · เวลาทั้งหมด ISO-8601 +07:00 · เงินสตางค์ (`*Satang`) · % เป็น basis point (`*Bp`)
-- error code: `UNAUTHORIZED · FORBIDDEN · NOT_FOUND (404-not-403 รวม visibility) · VALIDATION · CONFLICT (idempotency/unique/duplicate) · LIMIT · APPROVAL_REQUIRED (คืน approvalRequestId) · RATE_LIMITED · STAGE_REQUIREMENTS (คืน missing[]) · EMAIL_BLOCKED (optOut/bounced) · CHANNEL_NOT_CONNECTED · TRACKING_DISABLED · PORTAL_ACCESS_REVOKED`
-- ฟิลด์กำหนดเอง: `fields: { "<key>": value }` ของ contact/company/deal/record (key ของ MemberField objectKey นั้น) · ฟิลด์อ่อนไหวของสมาชิกไม่ออกทาง CRM API
-- ช่องทาง (D19): `channel` ใช้ key จาก `GET /api/v1/member/channels`
-- webhook: ทุก event §5 ส่ง `POST` พร้อม `X-Shark-Signature` (HMAC เดิม) · retry 5 ครั้ง
-- rate limit 600 req/นาที/คีย์ · tracking endpoints (public) 6,000/นาที/ระบบ · payload ≤ 1 MB · import/export/ถอดเสียง = async job
+Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 63 operations (25 read, 30 write, 8 danger) · 14 AI tools.
 
-## 2. ทะเบียน op (96 op · read 42 · write 46 · danger 8)
+## Conventions
 
-รูปแบบ: `op` — **METHOD path** — scope — class — ป้ายไทย — input หลัก → output หลัก — event
+REST API for the SHARK CRM module (contacts, companies, deals and pipelines, activities, custom object records, sales teams). One API key works inside one CRM system (AppSystem of type CRM) and sees what its bundle and filters allow.
 
-### 2.1 contacts (ผู้ติดต่อ · 16)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `contacts.list` | GET /contacts | crm.contact.read | read | รายชื่อผู้ติดต่อ | q · stage · leadStatus · owner · team · scoreBand · sourceKind · companyId · tag · `f.<key>` · savedViewId · sort · take/cursor → items[ContactBrief+listFields] · total (ตาม visibleWhere) |
-| `contacts.search` | GET /contacts/search | read | read | ค้นเร็ว (ชื่อ/เบอร์/อีเมล/บริษัท) | q ≥ 2 · take ≤ 20 → items[ContactBrief] |
-| `contacts.get` | GET /contacts/{id} | read | read | ผู้ติดต่อ 360 | include=timeline,links,score,sequence → Contact360 |
-| `contacts.create` | POST /contacts | crm.contact.create | write | เพิ่ม lead/ผู้ติดต่อ | {firstName, lastName?, phone?, email?, companyId?|company{name,taxId?}, jobTitle?, role?, sourceKind, sourceChannel?, sourceDetail?, fields{}, tags[], ownerUserId?|"auto", consents[]?} → {contactId, partyId, companyId?, assignedTo, duplicate?: ContactBrief} · `crm.contact.created` |
-| `contacts.update` | PATCH /contacts/{id} | crm.contact.update | write | แก้ข้อมูล | patch + fields{} → Contact360 · `crm.contact.updated` |
-| `contacts.setLeadStatus` · `contacts.setLifecycle` | PUT /contacts/{id}/lead-status · /lifecycle | update | write | สถานะ lead / lifecycle | {leadStatus} / {lifecycleStage, reason?} · `crm.contact.updated` |
-| `contacts.assign` | PUT /contacts/{id}/owner | update (reassign ถ้าข้ามทีม) | write | มอบหมาย | {userId|teamId|"rule"} → {ownerUserId, teamId, ruleId?} · `crm.contact.assigned` |
-| `contacts.convert` | POST /contacts/{id}/convert | crm.contact.convert | write | แปลง lead | {member?:{systemId?, welcome?}, company?:{id|new{…}}, deal?:{pipelineId, stageId?, title, valueSatang?, lines[]?}} → {customerId?, companyId?, dealId?} · `crm.contact.converted` |
-| `contacts.setTags` · `contacts.setOptOut` · `contacts.archive` | PUT /contacts/{id}/tags · /opt-out · POST /contacts/{id}/archive | update | write | แท็ก / ยกเลิกรับ / เก็บถาวร | {add[],remove[]} / {email?, marketing?, tracking?} |
-| `contacts.timeline` | GET /contacts/{id}/timeline | read | read | ไทม์ไลน์ (ทุกโมดูลผ่าน Party) | type[] · from/to · take/cursor → items[Activity] |
-| `contacts.duplicates.list` · `contacts.duplicates.dismiss` | GET /contacts/duplicates · POST /contacts/duplicates/{pairId}/dismiss | crm.contact.merge | read/write | ตัวซ้ำ | → pairs[{a,b,reason,score}] |
-| `contacts.merge` | POST /contacts/{keepId}/merge | merge | **danger** | รวมผู้ติดต่อ | {mergeId, fieldChoices{}, confirm:"MERGE"} → {keptId} · `crm.contact.merged` |
-| `contacts.import.start` · `contacts.import.status` | POST /contacts/import · GET /contacts/import/{jobId} | crm.contact.import | write/read | นำเข้า (async) | {fileId|rows[], mapping{}, options{onDuplicate, sourceKind, assignRuleId?, companyColumn?}} → {jobId, preview} |
-| `contacts.export` | POST /contacts/export | crm.contact.export | write | ส่งออก CSV (async) | {filters, columns[]} → {jobId} |
-| `contacts.brief` | GET /contacts/brief?ids= | read | read | หลายคน (≤100) | → items[ContactBrief] |
-| `contacts.byParty` | GET /contacts/by-party/{partyId} | read | read | ผู้ติดต่อของ Party (ให้แชท/สมาชิก/บัญชี) | → {contact?, company?, openDeals[], score} |
+Conventions that apply to every operation:
+1. Authentication is `Authorization: Bearer <api key>`. An operation answers 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`. A key with no `crm.*` scope at all (a key of another module, or an empty legacy key) is refused on every CRM operation.
+2. A key belongs to one of three bundles: `crm.readonly` reads only, `crm.operate` adds the work of a sales rep (contacts, companies, deals, lines, quotations, activities, records), `crm.admin` adds settings, teams, merging, archiving, deleting deals, export and cross-team reassignment. There is no implicit read: a key that only holds `crm.contact.create` cannot read contacts.
+3. Optional key filters narrow what a key sees: `crm.filter.team:<teamId>` (only that team's rows) and `crm.filter.owner:<userId>` (only that user's rows). Anything outside the filter answers 404, exactly like a record of another shop.
+4. **Read-only keys see phone numbers and e-mail addresses masked**, and read-only and operate keys never see values of fields the shop marked as sensitive.
+5. A record the key cannot see - another shop, another CRM system, another team - answers 404 `not_found`, never 403.
+6. **CRM v2 must be switched on.** While the shop still runs the previous CRM screens (`uiVersion` 1) every operation except `GET /ping` answers 409 `crm_v2_disabled` before anything is read or written.
+7. Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header. The same key with the same body replays the stored answer with `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`; a parallel duplicate gets 409 `idempotency_in_progress`.
+8. Operations marked `x-shark-kind: danger` (archive, merge, delete, export) also require `confirm: true` (a real boolean) and a `reason` of at least 5 characters; the reason is stored in the audit log.
+9. Moving a deal into a stage whose requirements are missing answers 409 `stage_requirements` with the missing items in `hint` (for example `missing: LINES`). Deal lines above the shop's discount cap answer 409 `approval_required` with `approvalRequestId=<id>` in `hint`; nothing is applied until the request is approved.
+10. Lists answer `{ items, nextCursor }`; send `take` (at most 100) and pass `nextCursor` back as `cursor` for the next page. Money is in satang (`*Satang`, 100 satang = 1 baht), discounts in basis points (`*Bp`), timestamps are ISO-8601.
+11. Rate limits are per key: 600 reads, 300 writes and 60 reports (forecast) per minute. A 429 carries `Retry-After`; successful answers carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
+12. Success is `{ data, requestId }` with HTTP 200 (also for creations). Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`.
+13. Outgoing webhooks: a shop endpoint can subscribe to `crm.deal.won`, `team.updated`, `custom.record.created`, `custom.record.updated`, `custom.record.archived`, `crm.company.created`, `crm.company.updated`, `crm.company.merged`, `crm.contact.created`, `crm.contact.updated`, `crm.contact.assigned`, `crm.contact.converted`, `crm.contact.merged`, `crm.deal.created`, `crm.deal.stage.changed`, `crm.deal.lost`, `crm.deal.reopened`, `crm.deal.reassigned`, `crm.deal.updated`, `crm.activity.logged`, `crm.activity.completed`. Payloads carry ids only (no phone, e-mail, name or deal title); every delivery is signed with `X-Shark-Signature` (HMAC-SHA256 of the body) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<X-Shark-Timestamp>.<body>`).
+14. Sales teams are tenant-wide: one team list per shop, shared by every CRM system of that shop (not per system). They are also served at `/api/v1/teams` with the same operations and key. A key that is not bound to a system may omit `X-Shark-System` only when the shop has a single CRM system.
+15. Request bodies are capped at 1 MB (10 MB for `POST /contacts/import`); larger bodies answer 413 `payload_too_large`. Exports (`POST /contacts/export`, `POST /objects/{key}/records/export`) need a `crm.admin` key.
+16. A key with an owner or team filter can only create or reassign records inside that filter; anything that would land outside answers 422 `validation`.
 
-### 2.2 companies (บริษัท · 12)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `companies.list` | GET /companies | crm.company.read | read | รายชื่อบริษัท | q · stage · owner · team · industry · size · hasOpenDeals · outstanding · `f.<key>` · sort · take/cursor |
-| `companies.get` | GET /companies/{id} | read | read | บริษัท 360 | include=contacts,deals,docs,objects,timeline,portal → Company360 |
-| `companies.create` | POST /companies | crm.company.create | write | เพิ่มบริษัท | {name, taxId?, branchCode?, emailDomain?, industry?, size?, website?, phone?, email?, address?, ownerUserId?, teamId?, parentCompanyId?, fields{}} → {companyId, partyId, accountContactId?, duplicate?} · `crm.company.created` |
-| `companies.update` · `companies.archive` · `companies.setOwner` · `companies.setParent` | PATCH /companies/{id} · POST …/archive · PUT …/owner · PUT …/parent | crm.company.update | write | — | `crm.company.updated` |
-| `companies.contacts.add` · `companies.contacts.remove` · `companies.contacts.setPrimary` · `companies.contacts.setRole` | POST /companies/{id}/contacts · DELETE …/contacts/{contactId} · PUT …/contacts/{contactId}/primary · PUT …/contacts/{contactId}/role | update | write | ผู้ติดต่อในบริษัท | {contactId|contact{…}, role, jobTitle?, isPrimary?} |
-| `companies.duplicates.list` · `companies.merge` | GET /companies/duplicates · POST /companies/{keepId}/merge | crm.company.merge | read / **danger** | ตัวซ้ำ/รวม | {mergeId, confirm:"MERGE"} · `crm.company.merged` |
-| `companies.import.start` · `companies.importFromAccount` | POST /companies/import · POST /companies/import-from-account | crm.company.create | write | นำเข้า / จากบัญชี | {accountContactIds[]} → {created, linked} |
-| `companies.outstanding` | GET /companies/{id}/outstanding | read | read | ค้างชำระ (จากบัญชี) | → {outstandingSatang, docs[]} |
+Every write needs `Idempotency-Key`; every danger operation needs `confirm: true` and a `reason` of at least 5 characters.
 
-### 2.3 deals (ดีล · 16)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `deals.list` | GET /deals | crm.deal.read | read | รายการดีล | pipelineId · view · owner · team · stageId · kind · closeFrom/To · stale · forecastCategory · companyId · contactId · tag · `f.<key>` · q · savedViewId · sort · take/cursor |
-| `deals.board` | GET /deals/board?pipelineId= | read | read | กระดาน | → columns[{stage, count, sumSatang, weightedSatang, deals[DealCard]}] |
-| `deals.get` | GET /deals/{id} | read | read | ดีล 360 | include=lines,history,timeline,emails,docs,cards → Deal360 |
-| `deals.create` | POST /deals | crm.deal.create | write | เปิดดีล | {pipelineId, stageId?, title, contactId, companyId?, valueSatang?|lines[], expectedCloseAt?, ownerUserId?, collaboratorUserIds[]?, forecastCategory?, sourceKind?, sourceDetail?, fields{}, tags[]} → {dealId} · `crm.deal.created` |
-| `deals.update` | PATCH /deals/{id} | crm.deal.update | write | แก้ | patch + fields{} · `crm.deal.updated` |
-| `deals.move` | PUT /deals/{id}/stage | crm.deal.move | write | ย้ายขั้น | {stageId, note?, lostReasonId?, requireFieldsValues{}?} → Deal360 · error `STAGE_REQUIREMENTS{missing[]}` · `crm.deal.stage.changed` (+won/lost) |
-| `deals.reopen` · `deals.reassign` · `deals.setForecast` · `deals.setNextStep` · `deals.setCollaborators` · `deals.archive` | POST …/reopen · PUT …/owner · PUT …/forecast · PUT …/next-step · PUT …/collaborators · POST …/archive | move / reassign / forecast / update | write | — | `crm.deal.reopened` / `.reassigned` / `.updated` |
-| `deals.lines.set` | PUT /deals/{id}/lines | crm.deal.lines | write | รายการสินค้า | {lines[{productId?, name, qty, unitPriceSatang, discountBp?, vatRateBp?}]} → {valueSatang, lines[]} · `APPROVAL_REQUIRED` เมื่อส่วนลด > เพดาน |
-| `deals.quote` | POST /deals/{id}/quotation | crm.deal.quote | write | ออกใบเสนอราคา (บัญชี) | {validDays?, note?} → {docId, docNo, publicUrl} |
-| `deals.invoice` | POST /deals/{id}/invoice | crm.deal.quote | write | ออกใบแจ้งหนี้ | {fromQuotation?:true} → {docId} |
-| `deals.history` | GET /deals/{id}/history | read | read | ประวัติขั้น | → items[{from,to,by,enteredAt,leftAt,durationSec}] |
-| `deals.forecast` | GET /deals/forecast | crm.report.view | read | forecast | period · groupBy=month|owner|team · pipelineId · teamId → rows[{key, pipelineSatang, bestCaseSatang, commitSatang, closedSatang, quotaSatang?}] |
-| `deals.stale` | GET /deals/stale | read | read | ดีลนิ่ง (ให้ AI/หน้าแรก) | team? · owner? · take → items[DealCard+staleDays] |
-| `pipelines.list` · `pipelines.create` · `pipelines.update` · `stages.upsert` · `lostReasons.list/upsert` | GET/POST /pipelines · PATCH /pipelines/{id} · PUT /pipelines/{id}/stages · GET/PUT /lost-reasons | read / crm.settings.manage | read/write | ตั้งค่า pipeline/ขั้น/เหตุผลแพ้ | stages[{id?, name, kind, probability, staleDays?, requireFields[], requireLines?, requireQuotation?, sortOrder}] |
+## Keys, bundles and filters
 
-### 2.4 activities · calendar (กิจกรรม · 9)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `activities.list` | GET /activities | crm.activity.read | read | รายการ | mine|owner|team · status=pending|today|week|overdue|done · type · contactId · dealId · companyId · from/to · take/cursor |
-| `activities.get` | GET /activities/{id} | read | read | รายละเอียด (+transcript/summary ถ้ามีสิทธิ์) | — |
-| `activities.log` | POST /activities | crm.activity.create | write | บันทึกกิจกรรม | {type, direction?, channel?, contactId?, companyId?, dealId?, customRecordId?, title, body?, startAt?, endAt?, durationSec?, outcome?, recordingFileId?, attendees?, location?, dueAt?, remindAt?, done?, nextTask?} → {activityId, aiJobId?} · `crm.activity.logged` |
-| `activities.complete` · `activities.reschedule` · `activities.update` · `activities.delete` | POST …/complete · PUT …/schedule · PATCH … · DELETE … | complete / create / delete | write | — | `crm.activity.completed` |
-| `activities.transcribe` | POST /activities/{id}/transcribe | create | write | ส่งไฟล์เสียงให้ AI (async · เป็น proposal) | → {jobId} → proposal เติม transcript/aiSummary/aiNextStep |
-| `calendar.list` | GET /calendar | read | read | ปฏิทิน (รวมนัดจากจอง/คลินิก/โรงเรียน อ่านอย่างเดียว) | from · to · team? · mine? → items[{source, activityId?, appointmentId?, title, startAt, endAt, contact, deal?}] |
-| `activities.outcomes` | GET /activities/outcomes | read | read | ทะเบียนผลสายต่อชนิด | → {CALL[], MEETING[], …} |
+Create keys in CRM > Settings > API. A key is bound to one CRM system and holds one bundle:
 
-### 2.5 emails (อีเมล · 12)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `emails.threads` | GET /emails | crm.email.read | read | กล่องรวม/ต่อผู้ติดต่อ | contactId? · companyId? · dealId? · unmatched? · q · take/cursor → threads[{threadKey, subject, last, count, contact?, unread}] |
-| `emails.thread` | GET /emails/threads/{threadKey} | read | read | thread | → messages[EmailMessage(+events)] (body เฉพาะ operate/admin) |
-| `emails.send` | POST /emails | crm.email.send | write | ส่งอีเมล | {contactId, dealId?, to[], cc[], subject, bodyHtml|templateId+vars{}, attachments[fileId], scheduledAt?, replyToThreadKey?} → {emailId, messageId, routing} · error `EMAIL_BLOCKED` · `crm.email.sent` |
-| `emails.attach` | POST /emails/{id}/attach | read+update | write | จับคู่มือ | {contactId|companyId|dealId} |
-| `emails.templates.list/create/update/archive` | GET/POST /emails/templates · PATCH/POST …/{id} | read / crm.email.settings | read/write | เทมเพลต | {name, subject, bodyHtml, category, variables[]} |
-| `emails.routing.get` · `emails.routing.set` | GET/PUT /emails/settings | crm.email.settings | read/write | ตั้งค่าเส้นทาง (C4 ระดับร้าน) | {fromMode, fromDomain?, fromName, replyToMode, replyToAddr?, copyToAddr?, copyMode, bccCaptureEnabled, strangerToLead, trackOpens, trackClicks, retentionDays, allowUserOverride} |
-| `emails.routing.me.get` · `emails.routing.me.set` | GET/PUT /emails/settings/me | crm.email.send | read/write | ทับต่อผู้ใช้ | {fromName?, fromAddr?, replyToMode, replyToAddr?, copyToAddr?, copyMode, signatureHtml?} |
-| `emails.routing.rotateKey` | POST /emails/settings/rotate-key | crm.email.settings | **danger** | หมุน inbound key | {confirm:"ROTATE"} → {inboundAddress} |
-| `emails.sendTest` | POST /emails/settings/test | crm.email.settings | write | ส่งทดสอบ | {to} → {ok, routing} |
-| `emails.domain.status` | GET /emails/settings/domain | crm.email.settings | read | สถานะ DNS โดเมนร้าน | → {domain, dkim, spf, verified, records[]} |
+| Bundle | Label | What it may do | Scopes |
+| --- | --- | --- | --- |
+| `crm.readonly` | CRM — อ่านอย่างเดียว | Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the key holder's own reports. Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written. | 6 |
+| `crm.operate` | CRM — งานของพนักงานขาย | Everything in crm.readonly plus the sales-rep work: create and edit contacts, companies and deals, move deals between stages, set deal lines, issue quotations, log and complete activities and write custom object records. No settings, no merging, no deleting deals, no export and no cross-team reassignment. | 23 |
+| `crm.admin` | CRM — ผู้ดูแล | Every CRM permission: settings, sales teams, visibility, merging and archiving contacts and companies, deleting deals, exporting, reassigning deals across teams and managing the CRM API keys. Designing custom objects is still only possible from the settings screen. | 51 |
 
-### 2.6 sequences · assignment · scoring (อัตโนมัติ · 12)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `sequences.list/get/create/update/archive` | GET/POST /sequences · GET/PATCH/POST /sequences/{id} | crm.sequence.enroll (read) / crm.sequence.manage | read/write | sequence | {name, steps[{kind, templateId?, subject?, body?, waitDays?, waitHours?, taskTitle?, channel?}], stopOnReply, stopOnWon, stopOnLost, businessDaysOnly, sendWindow} |
-| `sequences.enroll` | POST /sequences/{id}/enroll | crm.sequence.enroll | write | ลงทะเบียน | {contactId, dealId?, replace?:bool} → {enrollmentId, nextAt} · CONFLICT ถ้ามี ACTIVE · `crm.sequence.enrolled` |
-| `sequences.enrollments.list` · `sequences.stop` · `sequences.pause/resume` | GET /sequences/{id}/enrollments · POST /enrollments/{id}/stop · …/pause · …/resume | enroll | read/write | — | `crm.sequence.finished` |
-| `assignment.rules.list/upsert/reorder` · `assignment.simulate` | GET/PUT /assignment/rules · PUT /assignment/rules/order · POST /assignment/simulate | crm.assignment.manage | read/write | กฎมอบหมาย | rules[{name, conditions, mode, userIds[], teamId?, maxOpenPerUser?, active}] · simulate {rows[]} → assignments[] |
-| `scoring.rules.list/upsert` · `scoring.explain` · `scoring.recompute` | GET/PUT /scoring/rules · GET /contacts/{id}/score · POST /scoring/recompute | crm.score.manage (read: contact.read) | read/write | กฎคะแนน / เหตุผล / คำนวณใหม่ (dry-run ก่อน) | — |
-| `automation.rules.*` | (ใช้ op ของ automation เดิม scope=CRM: `/api/v1/kanban/automation` → ย้ายเป็น `/api/v1/automation/*` กลาง — ใบ C2.1 ตัดสิน) | crm.automation.manage | — | กฎอัตโนมัติ | trigger crm.* · action 14 · dry-run |
+Optional filters are stored with the key as extra scopes: `crm.filter.team:<teamId>` and `crm.filter.owner:<userId>`. They narrow every read and write of the key to that team's or that user's contacts, companies, deals and activities; anything else answers 404.
 
-### 2.7 objects · records (วัตถุกำหนดเอง · 9)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `objects.list` · `objects.get` | GET /objects · GET /objects/{key} | crm.record.read | read | วัตถุทั้งหมด (+layout) | → items[{key, label, labelPlural, parentType, titleFieldKey, showAsTab, portalVisible, recordCount, sections[FieldDef]}] |
-| `objects.create` · `objects.update` · `objects.archive` | POST /objects · PATCH /objects/{key} · POST /objects/{key}/archive | crm.object.manage | write / **danger** (archive มีรายการ) | สร้าง/แก้/เก็บถาวรวัตถุ | {key, label, labelPlural, icon?, parentType, titleFieldKey, showAsTab, portalVisible, templateKey?} |
-| `objects.fields.*` | (ใช้ op `fields.*` ของสมาชิก `/api/v1/member/fields?objectKey=<key>`) | crm.object.manage | — | ฟิลด์ของวัตถุ | engine เดียวกัน |
-| `records.list` | GET /objects/{key}/records | crm.record.read | read | รายการ | parentId? · q · `f.<key>` · savedViewId · sort · take/cursor |
-| `records.get` · `records.create` · `records.update` · `records.archive` · `records.move` | GET/POST /objects/{key}/records · PATCH/POST /objects/{key}/records/{id} · PUT …/parent | record.read / record.create / record.update / record.delete | read/write | รายการเดี่ยว | {parentId?, title?, values{}, unitId?, ownerUserId?} · `custom.record.*` |
-| `records.timeline` · `records.import` · `records.export` | GET …/{id}/timeline · POST /objects/{key}/records/import · POST …/export | read / create / read | read/write | — | — |
-| `records.byParent` | GET /objects/records?parentType=&parentId= | read | read | แท็บใน 360 (ทุกวัตถุของแม่) | → objects[{key, label, count, items[≤5]}] |
+Rate limits per key and minute: 600 reads, 300 writes, 60 reports.
 
-### 2.8 teams · visibility · quotas · commissions (ทีมขาย · 10)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `teams.list/get/create/update/archive` · `teams.members.set` | (core) GET/POST /api/v1/teams · GET/PATCH/POST /teams/{id} · PUT /teams/{id}/members | team.manage (read: ทุกคน) | read/write | ทีมกลาง | {name, leadUserId?, unitIds[], members[{userId, role, acceptingLeads}]} · `team.updated` |
-| `visibility.policies.list/set` | GET/PUT /visibility | crm.visibility.manage | read/write | นโยบายการมองเห็น | policies[{role?, teamId?, pipelineId?, entity, visibility}] |
-| `quotas.list/set` · `quotas.progress` | GET/PUT /quotas · GET /quotas/progress | crm.quota.manage (progress: report.view) | read/write | โควตา / ความคืบหน้า | {ownerType, ownerId, periodKey, targetSatang, targetDeals?, targetActivities?} → progress {won, paid, deals, activities, pct} |
-| `commissions.rules.list/upsert` | GET/PUT /commissions/rules | crm.commission.approve | read/write | กฎคอมมิชชัน | {name, basis, kind, config, pipelineId?, teamId?, productIds[], minDealSatang?, splitCollaboratorsBp, payoutDelayDays} |
-| `commissions.list` | GET /commissions | crm.commission.view | read | รายการ (ของฉัน/ทีม/ทั้งหมด ตาม visibility) | status · periodKey · userId · take/cursor |
-| `commissions.approve` · `commissions.reject` | POST /commissions/{id}/approve · …/reject | crm.commission.approve | **danger** (เกินเพดาน → APPROVAL_REQUIRED) | อนุมัติ/ปฏิเสธ | {note?} · `crm.commission.approved` |
-| `commissions.report` | GET /commissions/report | commission.view | read | สรุปต่อคน/งวด | periodKey · teamId → rows |
+## Errors
 
-### 2.9 tracking (ติดตาม · 8)
-| op | METHOD path | scope | class | ไทย | input → output |
-|---|---|---|---|---|---|
-| `tracking.links.list/create/update` · `tracking.links.stats` | GET/POST /tracking/links · PATCH …/{id} · GET …/{id}/stats | crm.tracking.manage (read: contact.read) | read/write | ลิงก์ติดตาม | {url, name, campaignId?, linkId?, channel?, expiresAt?} → {code, shortUrl, qrUrl} |
-| `tracking.settings.get/set` | GET/PUT /tracking/settings | crm.tracking.manage | read/write | ตั้งค่า (C6) | {web{enabled, domains[], consentText, consentVersion, retentionDays}, email{trackOpens, trackClicks}} |
-| `tracking.stats` | GET /tracking/stats | crm.report.view | read | สถิติ 30 วัน | → {emails{sent, openRate, clickRate, bounceRate}, web{sessions, consentRate, identified, leads}, links[]} |
-| `tracking.sessions` | GET /contacts/{id}/web | crm.contact.read | read | ไทม์ไลน์เว็บของผู้ติดต่อ | → sessions[{startedAt, pageViews, events[]}] |
-| public (ไม่ใช้คีย์): `GET /t/o/{token}.gif` · `GET /t/c/{token}` · `GET /l/{code}` · `GET /t/s/{systemKey}.js` · `POST /t/e` (web events) · `POST /t/consent` · `GET /u/{token}` (unsubscribe) | — | — | — | ตอบ gif/302/204 เท่านั้น |
+Failure body: `{ "error": { "code", "message_th", "message_en", "hint"?, "details"? }, "requestId" }`.
 
-### 2.10 portal (ลูกค้า · 10 · session ลูกค้า ไม่ใช่ API key)
-| op | METHOD path | scope | class | ไทย | input → output · event |
-|---|---|---|---|---|---|
-| `portal.invite` · `portal.access.list` · `portal.access.revoke` | POST /portal/invites · GET /companies/{id}/portal · DELETE /portal/access/{id} | crm.portal.manage | write/read/**danger** | เชิญ/ดู/ถอด (ฝั่งพนักงาน) | {companyId, contactId, role, method} → {inviteUrl} |
-| `p.me` | GET /p/me | portal session | read | ตัวฉัน + บริษัทที่เข้าได้ | → {contact, companies[], role} |
-| `p.quotations.list/get/respond` | GET /p/quotations · GET …/{docId} · POST …/{docId}/respond | portal APPROVE | read/write | ใบเสนอราคา | {action: ACCEPT|REJECT, reason?, name} · `crm.portal.quote.responded` |
-| `p.invoices.list/get` · `p.invoices.payLink` · `p.invoices.uploadSlip` | GET /p/invoices · GET …/{docId} · GET …/{docId}/pay · POST …/{docId}/slip | portal PAY | read/write | ใบแจ้งหนี้/ชำระ | → {payUrl, qr} |
-| `p.receipts.list` · `p.documents.list` | GET /p/receipts · GET /p/documents | portal VIEW | read | เอกสาร/สัญญา | → items |
-| `p.requests.create/list` | POST/GET /p/requests | portal VIEW | write/read | แจ้งเรื่อง/คำขอ | {kind, payload{}} → {requestId, status} · `crm.portal.request.created` |
-| `p.contacts.list` · `p.contacts.request` | GET /p/contacts · POST /p/contacts/request | portal ADMIN | read/write | ผู้ติดต่อของบริษัท | — |
+| Code | HTTP | Meaning |
+| --- | --- | --- |
+| `unauthorized` | 401 | No `Authorization: Bearer` header, or the key is unknown or revoked. |
+| `key_expired` | 401 | The key is past its expiry date. Rotate it in CRM > Settings > API. |
+| `system_required` | 400 | The key is not bound to a CRM system and no `X-Shark-System` header was sent (not needed for `/teams`). |
+| `system_mismatch` | 403 | `X-Shark-System` points at another system than the key is bound to, or at a system that is not a CRM of this shop. |
+| `scope_missing` | 403 | The key does not hold the scope in `x-shark-scope` (`hint` names it). Keys of other modules get this on every CRM operation. |
+| `forbidden` | 403 | The key sees the record but may not do this to it (for example a read-only key trying to write, or a reassignment across teams without `crm.deal.reassign`). |
+| `crm_v2_disabled` | 409 | The shop still runs the previous CRM screens (`uiVersion` 1). Every operation except `GET /ping` answers this; nothing is read or written. |
+| `invalid_json` | 400 | The body is not parseable JSON. |
+| `validation` | 422 | The payload does not match the schema (`details[]` names the fields) or a value is not acceptable (Thai reason in `message_th`). |
+| `idempotency_required` | 400 | A write was sent without the `Idempotency-Key` header. |
+| `idempotency_conflict` | 409 | The same `Idempotency-Key` was reused with a different body. |
+| `idempotency_in_progress` | 409 | A request with this key is still running; retry with the same key. |
+| `confirm_required` | 409 | A danger operation was called without `confirm: true` (a real boolean). |
+| `not_found` | 404 | No such operation, or the record does not exist inside what this key can see (other shop, other CRM system, other team, outside the key filter). |
+| `method_not_allowed` | 405 | The path exists but not with this method (`Allow` header lists the methods). |
+| `rate_limited` | 429 | Too many calls for this key and class; wait `Retry-After` seconds. |
+| `duplicate` | 409 | A conflicting record exists (for example another company already has this tax id). The message never names the other record. |
+| `state_conflict` | 409 | The record is not in a state that allows this (for example a closed deal, or a merge that stopped part-way). |
+| `stage_requirements` | 409 | The target stage needs things the deal does not have yet; `hint` lists them (`missing: LINES, expectedCloseAt`). |
+| `approval_required` | 409 | The change waits for the shop's approval chain (discount above the cap); `hint` carries `approvalRequestId=<id>`. Nothing was applied. |
+| `unprocessable` | 422 | A generic refusal with a Thai reason in `message_th`. |
+| `payload_too_large` | 413 | The request body is larger than 1 MB (10 MB for `POST /contacts/import`). Split it into several calls. |
 
-### 2.11 reports · settings · misc (11)
-| op | METHOD path | scope | class | ไทย | input → output |
-|---|---|---|---|---|---|
-| `reports.overview` · `reports.funnel` · `reports.reps` · `reports.activities` · `reports.lostReasons` · `reports.sources` · `reports.scores` | GET /reports/{tab} | crm.report.view (+team/all) | read | รายงาน 8 แท็บ (forecast อยู่ 2.3) | period · pipelineId · teamId · ownerUserId → rows/series |
-| `reports.export` · `reports.schedule` | POST /reports/{tab}/export · PUT /reports/{tab}/schedule | report.view / settings | write | ส่งออก/ตั้งเวลา | {filters} → {jobId} · {cron, emails[]} |
-| `settings.get` · `settings.set` | GET/PUT /settings | crm.settings.manage | read/write | ตั้งค่าระบบ (§4.5 ยกเว้น email/tracking ที่มี op เฉพาะ) | — |
-| `settings.targets.set` | PUT /settings/targets | settings | write | ระบบปลายทาง (ภาพ 17) | {memberSystemId?, accountSystemId?, kanbanSystemId?, chatSystemId?, inventorySystemId?} |
-| `settings.integrations.status` | GET /settings/integrations | settings | read | สถานะเชื่อม 24 ระบบ | → systems[{code, enabled, lastEventAt, events7d}] |
-| `templates.list` · `templates.apply` | GET /templates · POST /templates/apply | settings | read/write | เทมเพลตกิจการ 16 / วัตถุ 8 | {templateKey, parts[]} |
-| `savedViews.*` | (op `views.*` ของสมาชิกพร้อม objectKey=contact|company|deal|<key>) | — | — | มุมมองบันทึก | — |
+## Operations
 
-## 3. Shapes (สรุป · เต็มจาก generator)
-- `ContactBrief` {id, name, firstName, lastName, phone(masked ใน readonly), email(masked), companyId, companyName, jobTitle, lifecycleStage, leadStatus, score, scoreBand, ownerUserId, teamId, tags[], lastActivityAt, member?: {customerId, tierName}}
-- `Contact360` = ContactBrief + {fields{}, sections[], sourceKind, sourceChannel, sourceDetail, attribution{first,last}, scoreReasons[≤3], sequence?, links{chat, account, deals[]}, consents[], optOut{}, timeline[≤50], portalAccess[]}
-- `CompanyBrief` / `Company360` {…, stats{openDeals, wonDeals, wonValueSatang, outstandingSatang, lastActivityAt}, contacts[{contactId, role, jobTitle, isPrimary}], deals[], docs[], objects[], portal[], children[]}
-- `DealCard` {id, title, companyName, contactName, valueSatang, weightedSatang, stageId, ownerUserId, expectedCloseAt, staleDays?, score, nextActivity?, tags[], forecastCategory}
-- `Deal360` = DealCard + {lines[], history[], contacts[], collaborators[], docs{quotation?, invoice?, paidSatang}, cards[], emails[≤10], timeline[], fields{}, ai?{summary, risk, nextStep}}
-- `Activity` {id, type, direction, channel, title, body?, contactId, companyId, dealId, customRecordId, startAt, endAt, durationSec, outcome, dueAt, doneAt, ownerUserId, source, hasRecording, aiSummary?}
-- `EmailMessage` {id, direction, threadKey, subject, snippet, from, to[], sentAt|receivedAt, status, openCount, clickCount, attachments[], sequenceStepId?, body?(เฉพาะสิทธิ์)}
-- `Record` {id, objectKey, parentType, parentId, title, values{}, unitId, ownerUserId, updatedAt}
-- `Commission` {id, dealId, userId, amountSatang, basisSatang, basis, status, periodKey, refType, refId}
+### Health check and search
 
-## 4. AI tools (32 · จาก op ที่มี `tool` · skill `crm`)
-read ทันที: `crm_search` (contacts.search+companies) · `crm_contact_360` · `crm_company_360` · `crm_deal_360` · `crm_pipeline_summary` (deals.board สรุป) · `crm_forecast` · `crm_stale_deals` · `crm_activities_due` · `crm_email_thread` · `crm_records_query` · `crm_report` · `crm_score_explain` · `crm_quota_progress` · `crm_commissions_mine`
-write = proposal: `crm_create_lead` · `crm_create_company` · `crm_create_deal` · `crm_update_deal` · `crm_move_deal` · `crm_log_activity` · `crm_draft_email` (ร่างเท่านั้น ไม่ส่ง) · `crm_send_email` · `crm_enroll_sequence` · `crm_stop_sequence` · `crm_assign` · `crm_convert` · `crm_issue_quotation` · `crm_set_next_step` · `crm_create_record` · `crm_update_record` · `crm_create_task_card` (บอร์ดงาน) · `crm_transcribe_call`
-- manifest: `GET /api/v1/crm/manifest` (skill `crm` · tools + input schema + hint · risk read/write/danger) · เหมือน `KANBAN-API.md` §AI agents · proposal หมดอายุ 24 ชม.
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `ping` | `GET /ping` | read | `crm.contact.read` | Check that the API key works, and see which CRM system and permission bundle it is bound to. |
+| `search` | `GET /search` | read | `crm.contact.read` | Search contacts, companies and deals by text in one call (up to 10 of each). |
 
-## 5. Webhook events (26 + core 1)
-`crm.contact.created · crm.contact.updated · crm.contact.assigned · crm.contact.converted · crm.contact.merged · crm.company.created · crm.company.updated · crm.company.merged · crm.deal.created · crm.deal.stage.changed · crm.deal.won · crm.deal.lost · crm.deal.reopened · crm.deal.reassigned · crm.deal.updated · crm.deal.stale · crm.activity.logged · crm.activity.completed · crm.activity.overdue · crm.email.sent · crm.email.received · crm.email.opened · crm.email.clicked · crm.email.replied · crm.email.bounced · crm.sequence.enrolled · crm.sequence.finished · crm.score.changed · crm.score.threshold · crm.quota.reached · crm.commission.created · crm.commission.approved · crm.commission.reversed · crm.portal.viewed · crm.portal.quote.responded · crm.portal.request.created · crm.web.identified · custom.record.created · custom.record.updated · custom.record.archived · team.updated`
-(นับตามกลุ่มใน §7.1 ของพิมพ์เขียว = 26 กลุ่ม/41 ชื่อย่อย) · payload ตาม §7.1 · `X-Shark-Signature` HMAC-SHA256 · retry 5 · endpoint เลือก event ได้ (`eventsJson`)
+#### `GET /ping` — ping
 
-## 6. ตัวอย่าง (curl)
+Check that the API key works, and see which CRM system and permission bundle it is bound to. (ทดสอบการเชื่อมต่อ)
+
+#### `GET /search` — search
+
+Search contacts, companies and deals by text in one call (up to 10 of each). (ค้นหาใน CRM) AI tool: `crm_search`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `q` | string | yes | max 100 chars, min 1 |
+| `take` | integer |  | <= 100 |
+
+### Contacts
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `contacts.list` | `GET /contacts` | read | `crm.contact.read` | List the contacts this key can see, newest first, with filters and cursor paging. |
+| `contacts.search` | `GET /contacts/search` | read | `crm.contact.read` | Find contacts by name, phone or e-mail (up to 20 matches). |
+| `contacts.brief` | `GET /contacts/brief` | read | `crm.contact.read` | Short cards (no phone or e-mail) for up to 50 contact ids, comma separated. |
+| `contacts.duplicates.list` | `GET /contacts/duplicates` | read | `crm.contact.merge` | Pairs of contacts that look like the same person (same phone, e-mail or name). |
+| `contacts.import.start` | `POST /contacts/import` | write | `crm.contact.import` | Import up to 5,000 contact rows: rows are objects of column -> text, mapping says which column feeds which field. |
+| `contacts.export` | `POST /contacts/export` | **danger** | `crm.contact.export` | Export the contacts this key can see as CSV text (formula cells neutralised). Needs confirm: true and a reason. |
+| `contacts.byParty` | `GET /contacts/by-party/{partyId}` | read | `crm.contact.read` | The contact card linked to a shared customer identity (Party id), or null when this key cannot see one. |
+| `contacts.get` | `GET /contacts/{id}` | read | `crm.contact.read` | One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. |
+| `contacts.create` | `POST /contacts` | write | `crm.contact.create` | Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. |
+| `contacts.update` | `PATCH /contacts/{id}` | write | `crm.contact.update` | Change a contact's details or custom fields. moveOpenDeals also moves the open deals when the main company changes. |
+| `contacts.setLeadStatus` | `PUT /contacts/{id}/lead-status` | write | `crm.contact.update` | Set the lead status (NEW, CONTACTED, QUALIFIED, UNQUALIFIED, NURTURE). |
+| `contacts.assign` | `PUT /contacts/{id}/owner` | write | `crm.contact.update` | Give the contact to another owner (a user of this shop), or null for no owner. |
+| `contacts.setTags` | `PUT /contacts/{id}/tags` | write | `crm.contact.update` | Add and remove tags on a contact in one call. |
+| `contacts.setOptOut` | `PUT /contacts/{id}/opt-out` | write | `crm.contact.update` | Record that the contact does (true) or no longer does (false) refuse marketing messages. |
+| `contacts.archive` | `POST /contacts/{id}/archive` | **danger** | `crm.contact.delete` | Archive a contact (hidden from lists; history is kept). Needs confirm: true and a reason. |
+| `contacts.convert` | `POST /contacts/{id}/convert` | write | `crm.contact.convert` | Convert a lead: optionally make them a member, link or create a company and open a deal. The Idempotency-Key makes a retry return the same result. |
+| `contacts.merge` | `POST /contacts/{id}/merge` | **danger** | `crm.contact.merge` | Merge another contact (mergeId) into this one; deals, activities, companies and records move over. Needs confirm: true and a reason. |
+
+#### `GET /contacts` — contacts.list
+
+List the contacts this key can see, newest first, with filters and cursor paging. (รายชื่อผู้ติดต่อ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `q` | string |  | max 100 chars |
+| `stage` | `LEAD` \| `PROSPECT` \| `CUSTOMER` \| `LOST` \| `CHURNED` |  |  |
+| `leadStatus` | `NEW` \| `CONTACTED` \| `QUALIFIED` \| `UNQUALIFIED` \| `NURTURE` |  |  |
+| `owner` | string |  | max 64 chars |
+| `team` | string |  | max 64 chars |
+| `scoreBand` | `HOT` \| `WARM` \| `COLD` |  |  |
+| `source` | `WALK_IN` \| `POS` \| `BOOKING` \| `LINE_OA` \| `LIFF` \| `WEB_FORM` \| `CHAT` \| `REFERRAL` \| `IMPORT` \| `CRM` \| `CAMPAIGN` \| `API` \| `MARKETPLACE` \| `APP` \| `OTHER` |  |  |
+| `companyId` | string |  | max 64 chars, min 1 |
+| `includeArchived` | `0` \| `1` \| `true` \| `false` |  |  |
+| `sort` | `-createdAt` \| `createdAt` \| `name` \| `-lastActivityAt` \| `-score` |  |  |
+
+#### `GET /contacts/search` — contacts.search
+
+Find contacts by name, phone or e-mail (up to 20 matches). (ค้นหาผู้ติดต่อ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `q` | string | yes | max 100 chars, min 1 |
+| `take` | integer |  | <= 100 |
+
+#### `GET /contacts/brief` — contacts.brief
+
+Short cards (no phone or e-mail) for up to 50 contact ids, comma separated. (การ์ดย่อผู้ติดต่อ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `ids` | string | yes | max 3300 chars, min 1 |
+
+#### `GET /contacts/duplicates` — contacts.duplicates.list
+
+Pairs of contacts that look like the same person (same phone, e-mail or name). (ผู้ติดต่อที่อาจซ้ำ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `limit` | integer |  | <= 500 |
+
+#### `POST /contacts/import` — contacts.import.start
+
+Import up to 5,000 contact rows: rows are objects of column -> text, mapping says which column feeds which field. (นำเข้าผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `rows` | object[] | yes | max 5000 items |
+| `mapping` | object | yes |  |
+| `options` | object \| null |  |  |
+
+#### `POST /contacts/export` — contacts.export
+
+Export the contacts this key can see as CSV text (formula cells neutralised). Needs confirm: true and a reason. (ส่งออกผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `q` | string |  | max 100 chars |
+| `stage` | `LEAD` \| `PROSPECT` \| `CUSTOMER` \| `LOST` \| `CHURNED` |  |  |
+| `leadStatus` | `NEW` \| `CONTACTED` \| `QUALIFIED` \| `UNQUALIFIED` \| `NURTURE` |  |  |
+| `owner` | string |  | max 64 chars |
+| `companyId` | string |  | max 64 chars, min 1 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /contacts/by-party/{partyId}` — contacts.byParty
+
+The contact card linked to a shared customer identity (Party id), or null when this key cannot see one. (ผู้ติดต่อจากตัวตนลูกค้า)
+
+#### `GET /contacts/{id}` — contacts.get
+
+One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. (ผู้ติดต่อ 360) AI tool: `crm_contact_360`.
+
+#### `POST /contacts` — contacts.create
+
+Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. (เพิ่มผู้ติดต่อ (lead)) AI tool: `crm_create_lead`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `firstName` | string | yes | max 200 chars, min 1 |
+| `lastName` | string \| null |  | max 200 chars |
+| `titleTh` | string \| null |  | max 40 chars |
+| `phone` | string \| null |  | max 40 chars |
+| `email` | string \| null |  | max 200 chars |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `jobTitle` | string \| null |  | max 200 chars |
+| `department` | string \| null |  | max 200 chars |
+| `sourceKind` | `WALK_IN` \| `POS` \| `BOOKING` \| `LINE_OA` \| `LIFF` \| `WEB_FORM` \| `CHAT` \| `REFERRAL` \| `IMPORT` \| `CRM` \| `CAMPAIGN` \| `API` \| `MARKETPLACE` \| `APP` \| `OTHER` \| null |  |  |
+| `sourceChannel` | string \| null |  | max 60 chars |
+| `sourceDetail` | object \| null |  |  |
+| `fields` | object \| null |  |  |
+| `tags` | string[] \| null |  | max 50 items |
+| `ownerUserId` | string \| null |  | max 64 chars, min 1 |
+| `lineUserId` | string \| null |  | max 100 chars |
+| `force` | boolean |  |  |
+
+#### `PATCH /contacts/{id}` — contacts.update
+
+Change a contact's details or custom fields. moveOpenDeals also moves the open deals when the main company changes. (แก้ไขผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `firstName` | string \| null |  | max 200 chars |
+| `lastName` | string \| null |  | max 200 chars |
+| `titleTh` | string \| null |  | max 40 chars |
+| `phone` | string \| null |  | max 40 chars |
+| `email` | string \| null |  | max 200 chars |
+| `jobTitle` | string \| null |  | max 200 chars |
+| `department` | string \| null |  | max 200 chars |
+| `lineUserId` | string \| null |  | max 100 chars |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `moveOpenDeals` | boolean \| null |  |  |
+| `fields` | object \| null |  |  |
+
+#### `PUT /contacts/{id}/lead-status` — contacts.setLeadStatus
+
+Set the lead status (NEW, CONTACTED, QUALIFIED, UNQUALIFIED, NURTURE). (ตั้งสถานะ lead)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `leadStatus` | `NEW` \| `CONTACTED` \| `QUALIFIED` \| `UNQUALIFIED` \| `NURTURE` | yes |  |
+
+#### `PUT /contacts/{id}/owner` — contacts.assign
+
+Give the contact to another owner (a user of this shop), or null for no owner. (มอบผู้ติดต่อให้ผู้ดูแล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `userId` | string \| null | yes | max 64 chars, min 1 |
+
+#### `PUT /contacts/{id}/tags` — contacts.setTags
+
+Add and remove tags on a contact in one call. (ตั้งแท็กผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `add` | string[] |  | max 50 items |
+| `remove` | string[] |  | max 50 items |
+
+#### `PUT /contacts/{id}/opt-out` — contacts.setOptOut
+
+Record that the contact does (true) or no longer does (false) refuse marketing messages. (ตั้งไม่รับข่าวสาร)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `optOut` | boolean | yes |  |
+| `source` | `STAFF` \| `IMPORT` \| `API` \| `SIGNUP_FORM` \| `LIFF` \| `CUSTOMER_SELF` \| `WEB_FORM` \| `CHAT` \| `PORTAL` \| `UNSUBSCRIBE` |  |  |
+
+#### `POST /contacts/{id}/archive` — contacts.archive
+
+Archive a contact (hidden from lists; history is kept). Needs confirm: true and a reason. (เก็บถาวรผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `POST /contacts/{id}/convert` — contacts.convert
+
+Convert a lead: optionally make them a member, link or create a company and open a deal. The Idempotency-Key makes a retry return the same result. (แปลง lead) AI tool: `crm_convert`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `member` | object \| null |  |  |
+| `company` | object \| null |  |  |
+| `deal` | object \| null |  |  |
+
+#### `POST /contacts/{id}/merge` — contacts.merge
+
+Merge another contact (mergeId) into this one; deals, activities, companies and records move over. Needs confirm: true and a reason. (รวมผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `mergeId` | string | yes | max 64 chars, min 1 |
+| `fieldChoices` | object \| null |  |  |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Companies
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `companies.list` | `GET /companies` | read | `crm.company.read` | List the companies this key can see, with filters and cursor paging. |
+| `companies.duplicates.list` | `GET /companies/duplicates` | read | `crm.company.merge` | Pairs of companies that look like the same business (tax id, e-mail domain or name). |
+| `companies.get` | `GET /companies/{id}` | read | `crm.company.read` | One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. |
+| `companies.create` | `POST /companies` | write | `crm.company.create` | Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. |
+| `companies.update` | `PATCH /companies/{id}` | write | `crm.company.update` | Change a company's details or custom fields. A tax id that belongs to another company fails with 409. |
+| `companies.setOwner` | `PUT /companies/{id}/owner` | write | `crm.company.update` | Give the company to another owner (a user of this shop), or null for no owner. |
+| `companies.contacts.add` | `POST /companies/{id}/contacts` | write | `crm.company.update` | Link a contact to the company with a role; isPrimary makes it the contact's main company. |
+| `companies.contacts.remove` | `DELETE /companies/{id}/contacts/{contactId}` | write | `crm.company.update` | Unlink a contact from the company (the contact itself is kept). |
+| `companies.archive` | `POST /companies/{id}/archive` | **danger** | `crm.company.delete` | Archive a company (hidden from lists; contacts, deals and history are kept). Needs confirm: true and a reason. |
+| `companies.merge` | `POST /companies/{id}/merge` | **danger** | `crm.company.merge` | Merge another company (mergeId) into this one; contacts, deals and records move over. Needs confirm: true and a reason. |
+
+#### `GET /companies` — companies.list
+
+List the companies this key can see, with filters and cursor paging. (รายชื่อบริษัท)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `q` | string |  | max 100 chars |
+| `owner` | string |  | max 64 chars |
+| `team` | string |  | max 64 chars |
+| `industry` | string |  | max 100 chars |
+| `size` | `MICRO` \| `SMALL` \| `MEDIUM` \| `LARGE` \| `ENTERPRISE` |  |  |
+| `hasOpenDeals` | `0` \| `1` \| `true` \| `false` |  |  |
+| `includeArchived` | `0` \| `1` \| `true` \| `false` |  |  |
+| `sort` | `name` \| `-name` \| `createdAt` \| `-createdAt` \| `lastActivityAt` \| `-lastActivityAt` \| `openDealCount` \| `-openDealCount` \| `wonValueSatang` \| `-wonValueSatang` |  |  |
+
+#### `GET /companies/duplicates` — companies.duplicates.list
+
+Pairs of companies that look like the same business (tax id, e-mail domain or name). (บริษัทที่อาจซ้ำ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `limit` | integer |  | <= 500 |
+
+#### `GET /companies/{id}` — companies.get
+
+One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. (บริษัท 360) AI tool: `crm_company_360`.
+
+#### `POST /companies` — companies.create
+
+Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. (เพิ่มบริษัท) AI tool: `crm_create_company`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 200 chars, min 1 |
+| `legalName` | string \| null |  | max 200 chars |
+| `taxId` | string \| null |  | max 20 chars |
+| `branchCode` | string \| null |  | max 10 chars |
+| `emailDomain` | string \| null |  | max 200 chars |
+| `industry` | string \| null |  | max 200 chars |
+| `size` | `MICRO` \| `SMALL` \| `MEDIUM` \| `LARGE` \| `ENTERPRISE` \| null |  |  |
+| `website` | string \| null |  | max 500 chars, http(s) URL |
+| `phone` | string \| null |  | max 40 chars |
+| `email` | string \| null |  | max 200 chars |
+| `note` | string \| null |  | max 4000 chars |
+| `fields` | object \| null |  |  |
+| `ownerUserId` | string \| null |  | max 64 chars, min 1 |
+| `teamId` | string \| null |  | max 64 chars, min 1 |
+| `parentCompanyId` | string \| null |  | max 64 chars, min 1 |
+
+#### `PATCH /companies/{id}` — companies.update
+
+Change a company's details or custom fields. A tax id that belongs to another company fails with 409. (แก้ไขบริษัท)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string \| null |  | max 200 chars |
+| `legalName` | string \| null |  | max 200 chars |
+| `taxId` | string \| null |  | max 20 chars |
+| `branchCode` | string \| null |  | max 10 chars |
+| `emailDomain` | string \| null |  | max 200 chars |
+| `industry` | string \| null |  | max 200 chars |
+| `size` | `MICRO` \| `SMALL` \| `MEDIUM` \| `LARGE` \| `ENTERPRISE` \| null |  |  |
+| `website` | string \| null |  | max 500 chars, http(s) URL |
+| `phone` | string \| null |  | max 40 chars |
+| `email` | string \| null |  | max 200 chars |
+| `note` | string \| null |  | max 4000 chars |
+| `fields` | object \| null |  |  |
+
+#### `PUT /companies/{id}/owner` — companies.setOwner
+
+Give the company to another owner (a user of this shop), or null for no owner. (ตั้งผู้ดูแลบริษัท)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `userId` | string \| null | yes | max 64 chars, min 1 |
+
+#### `POST /companies/{id}/contacts` — companies.contacts.add
+
+Link a contact to the company with a role; isPrimary makes it the contact's main company. (เพิ่มผู้ติดต่อเข้าบริษัท)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `role` | `DECISION_MAKER` \| `INFLUENCER` \| `COORDINATOR` \| `BILLING` \| `TECHNICAL` \| `END_USER` \| `OTHER` \| null |  |  |
+| `jobTitle` | string \| null |  | max 200 chars |
+| `isPrimary` | boolean \| null |  |  |
+
+#### `DELETE /companies/{id}/contacts/{contactId}` — companies.contacts.remove
+
+Unlink a contact from the company (the contact itself is kept). (นำผู้ติดต่อออกจากบริษัท)
+
+#### `POST /companies/{id}/archive` — companies.archive
+
+Archive a company (hidden from lists; contacts, deals and history are kept). Needs confirm: true and a reason. (เก็บถาวรบริษัท)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `POST /companies/{id}/merge` — companies.merge
+
+Merge another company (mergeId) into this one; contacts, deals and records move over. Needs confirm: true and a reason. (รวมบริษัท)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `mergeId` | string | yes | max 64 chars, min 1 |
+| `fieldChoices` | object \| null |  |  |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Deals and pipelines
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `deals.list` | `GET /deals` | read | `crm.deal.read` | List the deals this key can see (all pipelines unless pipelineId is given), with filters and cursor paging. |
+| `deals.board` | `GET /deals/board` | read | `crm.deal.read` | The pipeline board: one column per stage with count, total and weighted value, and the deal cards in it. |
+| `deals.forecast` | `GET /deals/forecast` | read | `crm.report.view` | Forecast of open deals grouped by expected close month, owner or team, with weighted value. |
+| `pipelines.list` | `GET /pipelines` | read | `crm.deal.read` | The pipelines of this CRM system with their stages (id, name, kind, probability, requirements) and open deal counts. |
+| `deals.get` | `GET /deals/{id}` | read | `crm.deal.read` | One deal in full: stage and history, lines, documents, contacts, custom fields, timeline and linked task cards. |
+| `deals.create` | `POST /deals` | write | `crm.deal.create` | Open a deal for a contact in a pipeline (first stage unless stageId is given). Value above 20,000,000 baht is refused. |
+| `deals.update` | `PATCH /deals/{id}` | write | `crm.deal.update` | Change a deal's title, value, expected close date, probability, tags, next step, forecast category or custom fields. |
+| `deals.move` | `PUT /deals/{id}/stage` | write | `crm.deal.move` | Move a deal to another stage of its pipeline. Missing stage requirements fail with 409 stage_requirements; a lost stage takes lostReasonId. |
+| `deals.reassign` | `PUT /deals/{id}/owner` | write | `crm.deal.reassign` | Give the deal to another owner, optionally in another team. |
+| `deals.lines.set` | `PUT /deals/{id}/lines` | write | `crm.deal.lines` | Replace the product lines of a deal; the deal value is recalculated. A discount above the shop's cap waits for approval (409 approval_required). |
+| `deals.quote` | `POST /deals/{id}/quotation` | write | `crm.deal.quote` | Issue a quotation in the accounting book from the deal's lines (a repeat call returns the same document). |
+| `deals.delete` | `DELETE /deals/{id}` | **danger** | `crm.deal.delete` | Delete a deal for good. Needs confirm: true and a reason. |
+
+#### `GET /deals` — deals.list
+
+List the deals this key can see (all pipelines unless pipelineId is given), with filters and cursor paging. (รายการดีล)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `owner` | string |  | max 64 chars |
+| `team` | string |  | max 64 chars |
+| `stage` | string |  | max 64 chars, min 1 |
+| `closeFrom` | string |  | max 40 chars |
+| `closeTo` | string |  | max 40 chars |
+| `stale` | `0` \| `1` \| `true` \| `false` |  |  |
+| `tag` | string |  | max 64 chars |
+| `q` | string |  | max 100 chars |
+| `companyId` | string |  | max 64 chars, min 1 |
+| `contactId` | string |  | max 64 chars, min 1 |
+| `kind` | `OPEN` \| `WON` \| `LOST` |  |  |
+| `sort` | `-createdAt` \| `createdAt` \| `-valueSatang` \| `expectedCloseAt` \| `-stageEnteredAt` \| `title` |  |  |
+
+#### `GET /deals/board` — deals.board
+
+The pipeline board: one column per stage with count, total and weighted value, and the deal cards in it. (กระดานดีล) AI tool: `crm_pipeline_summary`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `owner` | string |  | max 64 chars |
+| `team` | string |  | max 64 chars |
+| `q` | string |  | max 100 chars |
+
+#### `GET /deals/forecast` — deals.forecast
+
+Forecast of open deals grouped by expected close month, owner or team, with weighted value. (พยากรณ์ยอดขาย) Uses the report rate bucket. AI tool: `crm_forecast`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `groupBy` | `month` \| `owner` \| `team` |  |  |
+| `category` | `PIPELINE` \| `BEST_CASE` \| `COMMIT` \| `OMITTED` |  |  |
+| `from` | string |  | max 40 chars |
+| `to` | string |  | max 40 chars |
+
+#### `GET /pipelines` — pipelines.list
+
+The pipelines of this CRM system with their stages (id, name, kind, probability, requirements) and open deal counts. (pipeline และขั้น)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `includeArchived` | `0` \| `1` \| `true` \| `false` |  |  |
+
+#### `GET /deals/{id}` — deals.get
+
+One deal in full: stage and history, lines, documents, contacts, custom fields, timeline and linked task cards. (ดีล 360) AI tool: `crm_deal_360`.
+
+#### `POST /deals` — deals.create
+
+Open a deal for a contact in a pipeline (first stage unless stageId is given). Value above 20,000,000 baht is refused. (เปิดดีล) AI tool: `crm_create_deal`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `pipelineId` | string | yes | max 64 chars, min 1 |
+| `stageId` | string \| null |  | max 64 chars, min 1 |
+| `title` | string | yes | max 200 chars, min 1 |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `valueSatang` | integer \| null |  |  |
+| `lines` | object[] \| null |  | max 200 items |
+| `discountBp` | integer \| null |  | <= 10000 |
+| `expectedCloseAt` | string \| null |  | max 40 chars |
+| `ownerUserId` | string \| null |  | max 64 chars, min 1 |
+| `collaboratorUserIds` | string[] \| null |  | max 20 items |
+| `forecastCategory` | `PIPELINE` \| `BEST_CASE` \| `COMMIT` \| `OMITTED` \| null |  |  |
+| `probabilityOverride` | integer \| null |  | <= 100 |
+| `nextStep` | string \| null |  | max 500 chars |
+| `fields` | object \| null |  |  |
+| `tags` | string[] \| null |  | max 50 items |
+
+#### `PATCH /deals/{id}` — deals.update
+
+Change a deal's title, value, expected close date, probability, tags, next step, forecast category or custom fields. (แก้ไขดีล) AI tool: `crm_update_deal`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `title` | string \| null |  | max 200 chars |
+| `expectedCloseAt` | string \| null |  | max 40 chars |
+| `valueSatang` | integer \| null |  |  |
+| `probabilityOverride` | integer \| null |  | <= 100 |
+| `tags` | string[] \| null |  | max 50 items |
+| `fields` | object \| null |  |  |
+| `nextStep` | string \| null |  | max 500 chars |
+| `forecastCategory` | `PIPELINE` \| `BEST_CASE` \| `COMMIT` \| `OMITTED` |  |  |
+
+#### `PUT /deals/{id}/stage` — deals.move
+
+Move a deal to another stage of its pipeline. Missing stage requirements fail with 409 stage_requirements; a lost stage takes lostReasonId. (ย้ายขั้นดีล) AI tool: `crm_move_deal`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `stageId` | string | yes | max 64 chars, min 1 |
+| `note` | string \| null |  | max 2000 chars |
+| `lostReasonId` | string \| null |  | max 64 chars, min 1 |
+| `lostNote` | string \| null |  | max 2000 chars |
+| `requireFieldsValues` | object \| null |  |  |
+
+#### `PUT /deals/{id}/owner` — deals.reassign
+
+Give the deal to another owner, optionally in another team. (โอนดีล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `ownerUserId` | string \| null | yes | max 64 chars, min 1 |
+| `teamId` | string \| null |  | max 64 chars, min 1 |
+
+#### `PUT /deals/{id}/lines` — deals.lines.set
+
+Replace the product lines of a deal; the deal value is recalculated. A discount above the shop's cap waits for approval (409 approval_required). (ตั้งรายการสินค้าในดีล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `lines` | object[] | yes | max 200 items |
+| `discountBp` | integer \| null |  | <= 10000 |
+
+#### `POST /deals/{id}/quotation` — deals.quote
+
+Issue a quotation in the accounting book from the deal's lines (a repeat call returns the same document). (ออกใบเสนอราคาจากดีล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `validDays` | integer \| null |  | <= 365 |
+| `note` | string \| null |  | max 2000 chars |
+
+#### `DELETE /deals/{id}` — deals.delete
+
+Delete a deal for good. Needs confirm: true and a reason. (ลบดีล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Activities and calendar
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `activities.list` | `GET /activities` | read | `crm.activity.read` | List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. |
+| `calendar.list` | `GET /calendar` | read | `crm.activity.read` | Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. |
+| `activities.get` | `GET /activities/{id}` | read | `crm.activity.read` | One activity. |
+| `activities.log` | `POST /activities` | write | `crm.activity.create` | Log an activity on a contact, company, deal or custom record (call, meeting, task, note, ...), optionally with a follow-up task. |
+| `activities.complete` | `POST /activities/{id}/complete` | write | `crm.activity.complete` | Mark an activity or task done, optionally with its outcome. |
+| `activities.reschedule` | `PUT /activities/{id}/schedule` | write | `crm.activity.create` | Move an activity to another start/end or due time. |
+| `activities.delete` | `DELETE /activities/{id}` | **danger** | `crm.activity.delete` | Delete an activity. Needs confirm: true and a reason. |
+
+#### `GET /activities` — activities.list
+
+List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. (รายการกิจกรรม)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `scope` | `mine` \| `team` |  |  |
+| `status` | `pending` \| `today` \| `week` \| `overdue` \| `done` |  |  |
+| `type` | `CALL` \| `MEETING` \| `EMAIL` \| `LINE` \| `TASK` \| `NOTE` \| `CHAT` \| `SMS` \| `WHATSAPP` \| `VISIT` \| `WEB` \| `PORTAL` |  |  |
+| `contactId` | string |  | max 64 chars, min 1 |
+| `companyId` | string |  | max 64 chars, min 1 |
+| `dealId` | string |  | max 64 chars, min 1 |
+| `customRecordId` | string |  | max 64 chars, min 1 |
+| `from` | string |  | max 40 chars |
+| `to` | string |  | max 40 chars |
+
+#### `GET /calendar` — calendar.list
+
+Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. (ปฏิทินกิจกรรม)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `from` | string | yes | max 40 chars |
+| `to` | string | yes | max 40 chars |
+| `mine` | `0` \| `1` \| `true` \| `false` |  |  |
+
+#### `GET /activities/{id}` — activities.get
+
+One activity. (กิจกรรม)
+
+#### `POST /activities` — activities.log
+
+Log an activity on a contact, company, deal or custom record (call, meeting, task, note, ...), optionally with a follow-up task. (บันทึกกิจกรรม) AI tool: `crm_log_activity`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `type` | `CALL` \| `MEETING` \| `EMAIL` \| `LINE` \| `TASK` \| `NOTE` \| `CHAT` \| `SMS` \| `WHATSAPP` \| `VISIT` \| `WEB` \| `PORTAL` | yes |  |
+| `title` | string | yes | max 300 chars, min 1 |
+| `body` | string \| null |  | max 8000 chars |
+| `direction` | `IN` \| `OUT` \| null |  |  |
+| `channel` | string \| null |  | max 40 chars |
+| `contactId` | string \| null |  | max 64 chars, min 1 |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `dealId` | string \| null |  | max 64 chars, min 1 |
+| `customRecordId` | string \| null |  | max 64 chars, min 1 |
+| `startAt` | string \| integer \| null |  | max 40 chars |
+| `endAt` | string \| integer \| null |  | max 40 chars |
+| `durationSec` | integer \| null |  | <= 86400 |
+| `outcome` | string \| null |  | max 60 chars |
+| `attendees` | object \| null |  |  |
+| `location` | string \| null |  | max 300 chars |
+| `dueAt` | string \| integer \| null |  | max 40 chars |
+| `remindAt` | string \| integer \| null |  | max 40 chars |
+| `done` | boolean \| null |  |  |
+| `priority` | `LOW` \| `NORMAL` \| `HIGH` \| null |  |  |
+| `pinned` | boolean \| null |  |  |
+| `mentions` | string[] \| null |  | max 20 items |
+| `nextTask` | object \| null |  |  |
+
+#### `POST /activities/{id}/complete` — activities.complete
+
+Mark an activity or task done, optionally with its outcome. (ปิดกิจกรรม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `outcome` | string \| null |  | max 60 chars |
+
+#### `PUT /activities/{id}/schedule` — activities.reschedule
+
+Move an activity to another start/end or due time. (เลื่อนนัด/กำหนดส่ง)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `dueAt` | string \| integer \| null |  | max 40 chars |
+| `startAt` | string \| integer \| null |  | max 40 chars |
+| `endAt` | string \| integer \| null |  | max 40 chars |
+
+#### `DELETE /activities/{id}` — activities.delete
+
+Delete an activity. Needs confirm: true and a reason. (ลบกิจกรรม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Custom objects and records
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `objects.list` | `GET /objects` | read | `crm.record.read` | The custom objects of this CRM system (key, labels, parent type, title field, record count). |
+| `records.list` | `GET /objects/{key}/records` | read | `crm.record.read` | Records of one custom object this key can see (follows the parent's visibility), with search and cursor paging. |
+| `records.export` | `POST /objects/{key}/records/export` | **danger** | `crm.record.read` | Export the records of one object as CSV text (formula cells neutralised). Needs confirm: true and a reason. |
+| `records.get` | `GET /objects/{key}/records/{id}` | read | `crm.record.read` | One record with its field values (sensitive values follow the shop's policy). |
+| `records.create` | `POST /objects/{key}/records` | write | `crm.record.create` | Create a record under its parent (contact, company, deal or member, per the object); the title comes from the object's title field. |
+| `records.update` | `PATCH /objects/{key}/records/{id}` | write | `crm.record.update` | Change a record's field values (only the keys sent are touched). |
+| `records.archive` | `POST /objects/{key}/records/{id}/archive` | write | `crm.record.delete` | Archive one record (kept for history, hidden from lists). |
+
+#### `GET /objects` — objects.list
+
+The custom objects of this CRM system (key, labels, parent type, title field, record count). (วัตถุกำหนดเอง)
+
+#### `GET /objects/{key}/records` — records.list
+
+Records of one custom object this key can see (follows the parent's visibility), with search and cursor paging. (รายการของวัตถุ) AI tool: `crm_records_query`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `parentId` | string |  | max 64 chars, min 1 |
+| `q` | string |  | max 100 chars |
+| `sort` | `title` \| `-title` \| `createdAt` \| `-createdAt` \| `updatedAt` \| `-updatedAt` |  |  |
+| `includeArchived` | `0` \| `1` \| `true` \| `false` |  |  |
+
+#### `POST /objects/{key}/records/export` — records.export
+
+Export the records of one object as CSV text (formula cells neutralised). Needs confirm: true and a reason. (ส่งออกรายการ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `parentId` | string |  | max 64 chars, min 1 |
+| `q` | string |  | max 100 chars |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /objects/{key}/records/{id}` — records.get
+
+One record with its field values (sensitive values follow the shop's policy). (รายการ 1 รายการ)
+
+#### `POST /objects/{key}/records` — records.create
+
+Create a record under its parent (contact, company, deal or member, per the object); the title comes from the object's title field. (เพิ่มรายการ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `parentId` | string \| null |  | max 64 chars, min 1 |
+| `title` | string \| null |  | max 200 chars |
+| `values` | object |  |  |
+| `unitId` | string \| null |  | max 64 chars, min 1 |
+| `ownerUserId` | string \| null |  | max 64 chars, min 1 |
+
+#### `PATCH /objects/{key}/records/{id}` — records.update
+
+Change a record's field values (only the keys sent are touched). (แก้ไขรายการ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `title` | string \| null |  | max 200 chars |
+| `values` | object |  |  |
+
+#### `POST /objects/{key}/records/{id}/archive` — records.archive
+
+Archive one record (kept for history, hidden from lists). (เก็บถาวรรายการ)
+
+### Sales teams (also at /api/v1/teams)
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `teams.list` | `GET /teams` | read | `crm.contact.read` | The sales teams of the shop (name, lead, branches). |
+| `teams.create` | `POST /teams` | write | `crm.team.manage` | Create a sales team (name unique in the shop), optionally with a lead and branches. |
+| `teams.get` | `GET /teams/{id}` | read | `crm.contact.read` | One sales team with its members (user id, role, accepting leads). |
+| `teams.update` | `PATCH /teams/{id}` | write | `crm.team.manage` | Rename a team or change its branches, colour or description. |
+| `teams.members.set` | `PUT /teams/{id}/members` | write | `crm.team.manage` | Set the team's members in one call: listed users are added or updated (role, accepting leads), everyone else is removed. |
+| `teams.archive` | `POST /teams/{id}/archive` | write | `crm.team.manage` | Archive a team (members and history are kept; it no longer appears in lists). |
+
+#### `GET /teams` — teams.list
+
+The sales teams of the shop (name, lead, branches). (ทีมขาย)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `includeArchived` | `0` \| `1` \| `true` \| `false` |  |  |
+
+#### `POST /teams` — teams.create
+
+Create a sales team (name unique in the shop), optionally with a lead and branches. (สร้างทีมขาย)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 80 chars, min 1 |
+| `leadUserId` | string \| null |  | max 64 chars, min 1 |
+| `unitIds` | string[] |  | max 50 items |
+| `color` | string \| null |  | max 20 chars |
+| `description` | string \| null |  | max 500 chars |
+
+#### `GET /teams/{id}` — teams.get
+
+One sales team with its members (user id, role, accepting leads). (ทีมขาย 1 ทีม)
+
+#### `PATCH /teams/{id}` — teams.update
+
+Rename a team or change its branches, colour or description. (แก้ไขทีมขาย)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string |  | max 80 chars, min 1 |
+| `unitIds` | string[] |  | max 50 items |
+| `color` | string \| null |  | max 20 chars |
+| `description` | string \| null |  | max 500 chars |
+
+#### `PUT /teams/{id}/members` — teams.members.set
+
+Set the team's members in one call: listed users are added or updated (role, accepting leads), everyone else is removed. (ตั้งสมาชิกทีม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `members` | object[] | yes | max 200 items |
+
+#### `POST /teams/{id}/archive` — teams.archive
+
+Archive a team (members and history are kept; it no longer appears in lists). (เก็บถาวรทีมขาย)
+
+### Settings
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `settings.get` | `GET /settings` | read | `crm.settings.manage` | The CRM system settings: uiVersion (2 = CRM v2 on), bridgesEnabled, chatToLead. |
+| `settings.set` | `PUT /settings` | write | `crm.settings.manage` | Change CRM settings: chatToLead (a chat from an unknown customer opens a lead) and bridgesEnabled (links to other modules). |
+
+#### `GET /settings` — settings.get
+
+The CRM system settings: uiVersion (2 = CRM v2 on), bridgesEnabled, chatToLead. (ตั้งค่า CRM)
+
+#### `PUT /settings` — settings.set
+
+Change CRM settings: chatToLead (a chat from an unknown customer opens a lead) and bridgesEnabled (links to other modules). (แก้ตั้งค่า CRM)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `chatToLead` | boolean |  |  |
+| `bridgesEnabled` | boolean |  |  |
+
+## AI tools (skill `crm`)
+
+The in-app assistant and outside agents (`POST https://shark.in.th/api/v1/ai/tools/<name>`, manifest `GET https://shark.in.th/api/v1/ai/skills/crm`) reach the CRM through these tools. Read tools run at once with the rights of the person asking (never more; without a known person they refuse). Write tools only create a proposal that a person confirms in the app. A key without any `crm.*` scope cannot use any of them, `crm_create_lead` included.
+
+| Tool | Kind | Operation | Scope |
+| --- | --- | --- | --- |
+| `crm_search` | read (runs at once) | `search` | `crm.contact.read` |
+| `crm_contact_360` | read (runs at once) | `contacts.get` | `crm.contact.read` |
+| `crm_create_lead` | write (proposal) | `contacts.create` | `crm.contact.create` |
+| `crm_convert` | write (proposal) | `contacts.convert` | `crm.contact.convert` |
+| `crm_company_360` | read (runs at once) | `companies.get` | `crm.company.read` |
+| `crm_create_company` | write (proposal) | `companies.create` | `crm.company.create` |
+| `crm_pipeline_summary` | read (runs at once) | `deals.board` | `crm.deal.read` |
+| `crm_forecast` | read (runs at once) | `deals.forecast` | `crm.report.view` |
+| `crm_deal_360` | read (runs at once) | `deals.get` | `crm.deal.read` |
+| `crm_create_deal` | write (proposal) | `deals.create` | `crm.deal.create` |
+| `crm_update_deal` | write (proposal) | `deals.update` | `crm.deal.update` |
+| `crm_move_deal` | write (proposal) | `deals.move` | `crm.deal.move` |
+| `crm_log_activity` | write (proposal) | `activities.log` | `crm.activity.create` |
+| `crm_records_query` | read (runs at once) | `records.list` | `crm.record.read` |
+
+`crm_create_lead` keeps its old name. On a shop that still runs the previous CRM screens it proposes the old `crm_create_lead` action (name, phone, e-mail) exactly as before.
+
+## Webhooks
+
+Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps. Deliveries are `POST` with a body `{ type, payload, sentAt }`, header `X-Shark-Event`, `X-Shark-Timestamp`, `X-Shark-Signature` (HMAC-SHA256 of the raw body with the endpoint secret, hex) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<timestamp>.<body>`). Delivery is at least once; handlers must be idempotent. Payloads carry ids only - read the record through this API.
+
+| Event | Payload (ids only) |
+| --- | --- |
+| `crm.deal.won` | `dealId`, related ids |
+| `team.updated` | `teamId`, `change` |
+| `custom.record.created` | `recordId`, `objectKey`, parent ids |
+| `custom.record.updated` | `recordId`, `objectKey`, parent ids |
+| `custom.record.archived` | `recordId`, `objectKey`, parent ids |
+| `crm.company.created` | `companyId`, related ids |
+| `crm.company.updated` | `companyId`, related ids |
+| `crm.company.merged` | `companyId`, related ids |
+| `crm.contact.created` | `contactId`, related ids |
+| `crm.contact.updated` | `contactId`, related ids |
+| `crm.contact.assigned` | `contactId`, related ids |
+| `crm.contact.converted` | `contactId`, related ids |
+| `crm.contact.merged` | `contactId`, related ids |
+| `crm.deal.created` | `dealId`, related ids |
+| `crm.deal.stage.changed` | `dealId`, related ids |
+| `crm.deal.lost` | `dealId`, related ids |
+| `crm.deal.reopened` | `dealId`, related ids |
+| `crm.deal.reassigned` | `dealId`, related ids |
+| `crm.deal.updated` | `dealId`, related ids |
+| `crm.activity.logged` | `activityId`, related ids |
+| `crm.activity.completed` | `activityId`, related ids |
+
+## Example
+
 ```bash
-# lead ใหม่จากเว็บ (n8n) — มอบหมายอัตโนมัติ
-curl -X POST https://shark.in.th/api/v1/crm/contacts -H "Authorization: Bearer shk_live_…" -H "Idempotency-Key: 7c1a-…" \
-  -d '{"firstName":"วรรณา","phone":"0812349988","email":"wanna@phuketsand.example.com","company":{"name":"โรงแรมภูเก็ตแซนด์ จำกัด","taxId":"0105563012345"},"sourceKind":"WEB_FORM","sourceDetail":{"utm":{"source":"facebook","campaign":"b2b_q4"}},"ownerUserId":"auto"}'
-# ดีลนิ่งของทีม → สร้างงาน
-curl "https://shark.in.th/api/v1/crm/deals/stale?team=tm_phuket" -H "Authorization: Bearer …"
-curl -X POST https://shark.in.th/api/v1/crm/activities -H "Idempotency-Key: …" -d '{"type":"TASK","dealId":"dl_…","title":"โทรติดตามใบเสนอราคา","dueAt":"2569-09-13T10:00:00+07:00"}'
-# รายการสินค้า → ใบเสนอราคา
-curl -X PUT https://shark.in.th/api/v1/crm/deals/dl_…/lines -d '{"lines":[{"productId":"itm_ow","name":"คอร์ส Open Water (กลุ่ม)","qty":10,"unitPriceSatang":950000,"discountBp":500}]}'
-curl -X POST https://shark.in.th/api/v1/crm/deals/dl_…/quotation -d '{"validDays":14}'
+# a new lead from a web form (every write needs an Idempotency-Key)
+curl -sS -X POST "https://shark.in.th/api/v1/crm/contacts" \
+  -H "Authorization: Bearer $SHARK_API_KEY" -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Somchai","phone":"0812345678","sourceKind":"WEB_FORM"}'
+
+# move a deal to the next stage
+curl -sS -X PUT "https://shark.in.th/api/v1/crm/deals/<dealId>/stage" \
+  -H "Authorization: Bearer $SHARK_API_KEY" -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" -d '{"stageId":"<stageId>"}'
 ```
 
-## 7. Glossary (ไทย ↔ อังกฤษ)
-ผู้ติดต่อ=contact · ผู้สนใจ/lead=lead · บริษัท=company · ดีล=deal · ขั้น=stage · pipeline=pipeline · กิจกรรม=activity · บันทึกสาย=call log · ดีลนิ่ง=stale deal · คะแนน lead=lead score · ร้อน/อุ่น/เย็น=hot/warm/cold · มอบหมายอัตโนมัติ=auto-assignment · round-robin · sequence · การมองเห็น=visibility (OWN/TEAM/ALL) · โควตา=quota · คอมมิชชัน=commission · วัตถุกำหนดเอง=custom object · รายการ=record · portal ลูกค้า=customer portal · ลิงก์ติดตาม=tracked link · ความยินยอมคุกกี้=cookie consent · ที่มา=source/attribution · แปลง=convert · รวม=merge
+## Planned (not available yet)
+
+These operations are designed but not registered yet; calling them answers 404. They move into the tables above when their work order lands.
+
+| Work order | Area | Planned operations |
+| --- | --- | --- |
+| C1.11 / C2.11 | Contacts | `contacts.setLifecycle`, `contacts.timeline`, `contacts.duplicates.dismiss`, `contacts.import.status` |
+| C2.11 | Companies | `companies.setParent`, `companies.contacts.setPrimary`, `companies.contacts.setRole`, `companies.import.start`, `companies.importFromAccount`, `companies.outstanding` |
+| C2.11 | Deals | `deals.reopen`, `deals.setCollaborators`, `deals.invoice`, `deals.history`, `deals.stale`, `pipelines.create`, `pipelines.update`, `stages.upsert`, `lostReasons.list` |
+| C2.11 | Activities | `activities.update`, `activities.outcomes`, `activities.transcribe` |
+| C2.11 | E-mail | `emails.threads`, `emails.thread`, `emails.send`, `emails.attach`, `emails.templates.*`, `emails.routing.*`, `emails.sendTest`, `emails.domain.status` |
+| C2.11 | Sequences, assignment and scoring | `sequences.*`, `sequences.enroll`, `sequences.stop`, `assignment.rules.*`, `assignment.simulate`, `scoring.rules.*`, `scoring.explain`, `scoring.recompute` |
+| C2.11 | Tracking | `tracking.links.*`, `tracking.settings.*`, `tracking.stats`, `tracking.sessions` |
+| C3.8 | Custom objects | `objects.get`, `records.move`, `records.timeline`, `records.import`, `records.byParent` |
+| C3.8 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `quotas.*`, `quotas.progress`, `commissions.rules.*`, `commissions.list`, `commissions.approve`, `commissions.reject`, `commissions.report` |
+| C3.5 / C3.8 | Portal (customer session) | `portal.invite`, `portal.access.list`, `portal.access.revoke`, `p.me`, `p.quotations.*`, `p.invoices.*`, `p.receipts.list`, `p.documents.list`, `p.requests.*`, `p.contacts.*` |
+| C3.8 | Reports and settings | `reports.*`, `reports.export`, `reports.schedule`, `settings.targets.set`, `settings.integrations.status`, `templates.list`, `templates.apply` |
+| C2.11 / C3.4 | AI tools (18 more) | `10 tools of C2.11 (e-mail, sequences, scoring)`, `8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card` |
+
+## Glossary (Thai <-> English)
+
+| ไทย | English | In the API |
+| --- | --- | --- |
+| ผู้ติดต่อ | contact | `/contacts` |
+| บริษัท | company | `/companies` |
+| ดีล | deal | `/deals` |
+| ขั้น (ของดีล) | stage | `stageId` |
+| pipeline | pipeline | `pipelineId` |
+| lead (ผู้สนใจ) | lead | `leadStatus`, `lifecycleStage: LEAD` |
+| กิจกรรม / งานติดตาม | activity / task | `/activities` |
+| ผู้ดูแล | owner | `ownerUserId` |
+| ทีมขาย | sales team | `/teams`, `teamId` |
+| วัตถุกำหนดเอง | custom object | `/objects/{key}` |
+| รายการ (ของวัตถุ) | record | `/objects/{key}/records` |
+| ไม่รับข่าวสาร | marketing opt-out | `marketingOptOut` |

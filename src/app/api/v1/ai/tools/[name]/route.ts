@@ -10,6 +10,7 @@ import { runTool, toolRegistry } from "@/lib/ai/tools";
 import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
 import { prisma } from "@/lib/core/db";
+import { crmApi } from "@/lib/modules/crm";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -27,7 +28,10 @@ export async function POST(
   // ── ขอบเขตสิทธิ์ของคีย์ (WO E2) ────────────────────────────────────────────
   // คีย์ที่ประกาศ scope ไว้ทำได้ไม่เกิน scope นั้น — เท่ากับ REST /api/v1/account/* เป๊ะ
   // (403 ไม่ใช่ 404 เพราะเครื่องมือ "มีอยู่จริง" แค่คีย์ใบนี้ไม่มีสิทธิ์ — ผู้เชื่อมต่อจะได้รู้ว่าต้องขอ scope เพิ่ม)
-  if (!toolAllowedForApiKey(name, auth.scopes)) {
+  // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` เปิดให้ทุกคีย์เหมือนก่อน C1.10 (ระบบ = ที่คีย์ผูก/ส่วนหัว/ระบบ CRM แรก) ◂
+  const crmLegacyLead =
+    name === "crm_create_lead" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get(HEADER_SYSTEM)?.trim() ?? null));
+  if (!toolAllowedForApiKey(name, auth.scopes, { crmLegacyLead })) {
     return apiJson(
       {
         error: "คีย์นี้ไม่มีสิทธิ์ใช้เครื่องมือนี้",

@@ -521,7 +521,7 @@ export async function create(ctx: ObjectsCtx, actor: MemberActor, input: CreateO
   return objectDto(row);
 }
 
-export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: string, patch: UpdateObjectInput): Promise<ObjectDto> {
+export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: string, patch: UpdateObjectInput): Promise<ObjectDto & { warning?: string }> {
   assertActor(actor);
   assertDesigner(actor);
   await resolveSystem(ctx);
@@ -530,6 +530,7 @@ export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};
   let row: CustomObject;
+  let retitle = false; // CRM C1.10 ▸ titleFieldKey เปลี่ยน ⇒ คำนวณชื่อรายการใหม่ ◂
   try {
     row = await prisma.$transaction(async (tx) => {
       // ล็อกแถววัตถุ: การตรวจ "มีรายการหรือยัง" กับการเปลี่ยน key/parentType ต้องเห็นโลกเดียวกัน
@@ -543,22 +544,20 @@ export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
         if (key !== obj.key) {
           // §11.2: key เปลี่ยนไม่ได้หลังมีรายการ (URL/ตัวกรอง/กฎที่อ้าง key จะพัง)
           if (await hasRecords()) throw fail("VALIDATION", `วัตถุ "${obj.label}" มีรายการแล้ว จึงเปลี่ยนชื่ออ้างอิง (key) ไม่ได้ — เปลี่ยนได้เฉพาะชื่อที่แสดง`);
-          // ฟิลด์ LOOKUP ในระบบนี้ที่ชี้วัตถุนี้ด้วย key เดิม ⇒ เปลี่ยน key แล้วจะชี้ไปที่ว่าง — ปฏิเสธจนกว่าจะแก้ฟิลด์นั้นก่อน
-          const refs = await tx.memberField.findMany({
-            where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "LOOKUP", options: { path: ["objectKey"], equals: obj.key } },
-            select: { label: true, objectKey: true },
-            take: 5,
-          });
-          if (refs.length > 0) {
-            const owners = await tx.customObject.findMany({ where: { systemId: ctx.systemId, key: { in: refs.map((r) => r.objectKey) } }, select: { key: true, label: true } });
-            const nameOf = (k: string) => owners.find((o) => o.key === k)?.label ?? k;
-            throw fail(
-              "VALIDATION",
-              `เปลี่ยนชื่ออ้างอิงไม่ได้: ฟิลด์ ${refs.map((r) => `"${r.label}" ของ${nameOf(r.objectKey)}`).join(", ")} เชื่อมมาที่วัตถุนี้ด้วยชื่อเดิม — เปลี่ยนปลายทางของฟิลด์นั้นก่อน (ฟิลด์ที่เก็บเข้าคลังก็นับ เพราะกู้คืนได้)`,
-            );
-          }
           const taken = await tx.customObject.findFirst({ where: { systemId: ctx.systemId, key }, select: { id: true } });
           if (taken) throw fail("DUPLICATE", `มีวัตถุที่ใช้ชื่ออ้างอิง "${key}" อยู่แล้วในระบบ CRM นี้ — ตั้งชื่ออ้างอิงอื่น`);
+          // CRM C1.10 ▸ หนี้ C1.2b (S11.5): ฟิลด์ LOOKUP ในระบบนี้ที่ชี้วัตถุนี้ด้วย key เดิม (รวมที่เก็บเข้าคลัง — กู้คืนได้)
+          //   ⇒ เขียน `options.objectKey` เป็น key ใหม่ใน tx เดียวกับการเปลี่ยน key (เดิม: ปฏิเสธจนกว่าผู้ใช้จะไปแก้ฟิลด์เอง)
+          const refs = await tx.memberField.findMany({
+            where: { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "LOOKUP", options: { path: ["objectKey"], equals: obj.key } },
+            select: { id: true, options: true },
+          });
+          for (const r of refs) {
+            const opts = r.options && typeof r.options === "object" && !Array.isArray(r.options) ? (r.options as Record<string, unknown>) : {};
+            await tx.memberField.update({ where: { id: r.id }, data: { options: { ...opts, objectKey: key } as Prisma.InputJsonValue } });
+          }
+          if (refs.length > 0) after.lookupsRewritten = refs.length;
+          // ◂ CRM C1.10
           // ฟิลด์/ส่วนของวัตถุผูกด้วย objectKey (นิยามของ engine) ⇒ ย้ายตาม key ใหม่ใน tx เดียวกัน (มติผู้คุมงาน ข้อ 4 · S9.1)
           //   ยังไม่มีรายการ ⇒ ไม่มีแถวค่าให้ย้าย (ค่าผูก fieldId ไม่ใช่ key อยู่แล้ว)
           await tx.memberSection.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: obj.key }, data: { objectKey: key } });
@@ -590,6 +589,8 @@ export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
           throw fail("VALIDATION", `ฟิลด์ "${tfk}" เป็นข้อมูลอ่อนไหว จึงใช้เป็นชื่อรายการไม่ได้ (ชื่อรายการแสดงให้ทุกคนเห็น) — เลือกฟิลด์อื่น`);
         }
         data.titleFieldKey = tfk;
+        // CRM C1.10 ▸ หนี้ C1.2b (S11.4): ชื่อรายการเดิมคำนวณใหม่หลัง commit (recomputeTitles — ทีละชุด + audit) ◂
+        if (tfk !== obj.titleFieldKey) retitle = true;
       }
       if (p.showAsTab !== undefined) data.showAsTab = !!p.showAsTab;
       if (p.portalVisible !== undefined) data.portalVisible = !!p.portalVisible;
@@ -610,8 +611,68 @@ export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   if (Object.keys(after).length > 0) {
     await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.update", targetType: "CustomObject", targetId: row.id, before, after });
   }
+  // CRM C1.10 ▸ คำนวณชื่อใหม่ล้มกลางทาง = การตั้งค่าวัตถุยังบันทึกแล้ว · คำตอบบอกเป็นคำเตือนไทย (ไม่ใช่ error) + WARN พร้อม id ◂
+  if (retitle) {
+    const warning = await recomputeTitles(ctx, actor, row).then(
+      () => null,
+      async (e: unknown) => {
+        await logOps("WARN", "crm.objects", "เปลี่ยนฟิลด์ชื่อรายการแล้ว แต่คำนวณชื่อรายการเดิมใหม่ไม่ครบ", {
+          tenantId: ctx.tenantId,
+          detail: `systemId=${ctx.systemId} objectId=${row.id} lastRecordId=${e instanceof RetitleError ? (e.lastId ?? "-") : "-"} changed=${e instanceof RetitleError ? e.changed : 0}`,
+        }).catch(() => undefined);
+        return "บันทึกการตั้งค่าแล้ว แต่ชื่อของรายการเดิมบางส่วนยังไม่เปลี่ยนตามฟิลด์ใหม่ — ลองบันทึกฟิลด์ชื่อรายการอีกครั้งภายหลัง";
+      },
+    );
+    if (warning) return { ...objectDto(row), warning };
+  }
   return objectDto(row);
 }
+
+// CRM C1.10 ▸ หนี้ C1.2b (S11.4) — เปลี่ยน titleFieldKey แล้วชื่อรายการเดิมต้องตาม (หน้ารายการ/แท็บ/การค้นหาใช้ `title`)
+//   ทีละ RETITLE_BATCH แถว (cursor id) · แก้เฉพาะแถวที่ชื่อเปลี่ยนจริง · รวมรายการที่เก็บถาวร · audit สรุป 1 แถว
+//   ฟิลด์ชื่อที่อ่อนไหวถูกปฏิเสธใน update แล้ว (D8) ⇒ ค่าที่อ่านมาใช้เป็นชื่อได้
+const RETITLE_BATCH = 200;
+/** ล้มกลางทาง — บอกว่าทำถึงแถวไหนแล้ว (ใส่ใน WARN ของ ops) */
+class RetitleError extends Error {
+  constructor(
+    readonly lastId: string | null,
+    readonly changed: number,
+  ) {
+    super("คำนวณชื่อรายการใหม่ไม่ครบ");
+    this.name = "RetitleError";
+  }
+}
+async function recomputeTitles(ctx: ObjectsCtx, actor: MemberActor, obj: CustomObject): Promise<number> {
+  let cursor: string | null = null;
+  let changed = 0;
+  try {
+  for (;;) {
+    const rows: { id: string; title: string }[] = await prisma.customRecord.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id },
+      orderBy: { id: "asc" },
+      take: RETITLE_BATCH,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: { id: true, title: true },
+    });
+    if (rows.length === 0) break;
+    const values = await valuesOf(ctx, obj, actor, rows.map((r) => r.id));
+    for (const r of rows) {
+      const next = titleOf(values[r.id]?.[obj.titleFieldKey]) ?? fallbackTitle(obj);
+      if (next === r.title) continue;
+      await prisma.customRecord.updateMany({ where: { id: r.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { title: next } });
+      changed += 1;
+    }
+    cursor = rows[rows.length - 1]!.id;
+    if (rows.length < RETITLE_BATCH) break;
+  }
+  } catch {
+    await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.retitle", targetType: "CustomObject", targetId: obj.id, after: { titleFieldKey: obj.titleFieldKey, changed, incomplete: true, lastRecordId: cursor } }).catch(() => undefined);
+    throw new RetitleError(cursor, changed);
+  }
+  await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action: "crm.object.retitle", targetType: "CustomObject", targetId: obj.id, after: { titleFieldKey: obj.titleFieldKey, changed } });
+  return changed;
+}
+// ◂ CRM C1.10
 
 /**
  * เก็บถาวรวัตถุ = ซ่อนทั้งแท็บ/หน้ารายการ/การเพิ่มรายการ (กู้ได้) · รายการ **ถูกเก็บไว้ครบ** (archive ≠ delete)
@@ -1177,7 +1238,12 @@ async function importRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   const layout = await viaEngine(async () => (await engine()).listLayout(fctx(ctx, obj.key, actor), {}));
   const typeOf = new Map<string, string>();
   for (const s of layout.sections) for (const f of s.fields) if (!f.isSystem) typeOf.set(f.key, f.type);
-  const unknown = table.headers.filter((h) => h && !typeOf.has(h) && h !== "title" && h !== "parentId");
+  // CRM C1.10 ▸ หนี้ C1.2b (S11.2/S11.3): คอลัมน์พิเศษขึ้นต้นด้วย `_` (`_title` `_parentId` `_unitId` `_ownerUserId`) — key ของฟิลด์
+  //   ขึ้นต้นด้วย `_` ไม่ได้ (KEY_RE ของ engine) ⇒ ฟิลด์ชื่อ `title`/`parentId` ไม่ชนคอลัมน์พิเศษอีก · ไฟล์รุ่นเก่า (`title`/`parentId`
+  //   ไม่มีขีด) ยังนำเข้าได้เมื่อวัตถุไม่มีฟิลด์ชื่อนั้น (ฟิลด์ชนะเสมอ) ◂
+  const SPECIAL = new Set<string>(RECORD_CSV_SPECIAL);
+  const specialOf = (h: string): string | null => (SPECIAL.has(h) ? h : !typeOf.has(h) && (h === "title" || h === "parentId") ? `_${h}` : null);
+  const unknown = table.headers.filter((h) => h && !typeOf.has(h) && !specialOf(h));
   if (unknown.length > 0) {
     throw fail("VALIDATION", `คอลัมน์ ${unknown.map((h) => `"${h}"`).join(", ")} ไม่ตรงกับฟิลด์ของ${obj.label} — ตั้งหัวคอลัมน์เป็นชื่ออ้างอิงของฟิลด์ (ส่งออกไฟล์ตัวอย่างดูได้)`);
   }
@@ -1189,16 +1255,23 @@ async function importRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
       const values: Record<string, unknown> = {};
       let title: string | null = null;
       let parentId: string | null = null;
+      let unitId: string | null = null;
+      let ownerUserId: string | null = null;
       for (const [c, h] of table.headers.entries()) {
         const raw = cells[c] ?? "";
-        if (typeOf.has(h)) {
+        const sp = specialOf(h);
+        if (sp === "_title") title = str(raw);
+        else if (sp === "_parentId") parentId = str(raw);
+        else if (sp === "_unitId") unitId = str(raw);
+        else if (sp === "_ownerUserId") ownerUserId = str(raw);
+        else if (typeOf.has(h)) {
           const v = coerceCsv(typeOf.get(h) as string, raw);
           if (v !== undefined) values[h] = v;
-        } else if (h === "title") title = str(raw);
-        else if (h === "parentId") parentId = str(raw);
+        }
       }
       try {
-        const made = await createRecordCore(ctx, actor, obj, { values, title, parentId }, "IMPORT");
+        // CRM C1.10 ▸ สาขา + ผู้ดูแลเดินทางไปกับไฟล์ (หนี้ C1.2b S11.2) — createRecordCore ตรวจสาขา/ผู้ดูแลเหมือนสร้างมือ ◂
+        const made = await createRecordCore(ctx, actor, obj, { values, title, parentId, unitId, ownerUserId }, "IMPORT");
         result.created += 1;
         lastCount = made.count;
       } catch (e) {
@@ -1229,6 +1302,9 @@ async function importRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   return result;
 }
 
+// CRM C1.10 ▸ คอลัมน์พิเศษของไฟล์รายการ (ส่งออก/นำเข้า) ◂
+const RECORD_CSV_SPECIAL = ["_title", "_parentId", "_unitId", "_ownerUserId"] as const;
+
 /** ค่า → ช่อง CSV (อาร์เรย์คั่นด้วยจุลภาค · ตัวเลขคงเป็นตัวเลข) — ทุกช่องผ่าน `csvRow` (กันสูตร) */
 function csvValue(v: ObjectValue | undefined): string | number | null {
   if (v === undefined || v === null) return null;
@@ -1250,7 +1326,8 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   const keys: string[] = [];
   for (const s of layout.sections) for (const f of s.fields) if (!f.isSystem) keys.push(f.key);
   const withParent = obj.parentType !== "NONE";
-  const lines = [csvRow(["title", ...(withParent ? ["parentId"] : []), ...keys])];
+  // CRM C1.10 ▸ คอลัมน์พิเศษขึ้นต้นด้วย `_` (ไม่ชนฟิลด์ `title`/`parentId`) + สาขา/ผู้ดูแล ⇒ ส่งออกแล้วนำเข้าได้รายการเหมือนเดิม ◂
+  const lines = [csvRow(["_title", ...(withParent ? ["_parentId"] : []), "_unitId", "_ownerUserId", ...keys])];
   const listInput = { ...(opts ?? {}), page: undefined, pageSize: undefined };
   // CRM C1.7 ▸ ผู้ถูกจำกัดการมองเห็น = นับ/อ่านเป็นหน้าในฐานข้อมูล (EXISTS ของแม่) · ไม่ถูกจำกัด = ทาง Prisma เดิม ◂
   const vis = await recordVisibilitySql(ctx, actor);
@@ -1273,7 +1350,7 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
     const values = await valuesOf(ctx, obj, actor, rows.map((r) => r.id));
     for (const r of rows) {
       const bag = values[r.id] ?? {};
-      lines.push(csvRow([r.title, ...(withParent ? [r.parentId] : []), ...keys.map((k) => csvValue(bag[k]))]));
+      lines.push(csvRow([r.title, ...(withParent ? [r.parentId] : []), r.unitId, r.ownerUserId, ...keys.map((k) => csvValue(bag[k]))]));
     }
     cursor = rows[rows.length - 1]?.id ?? null;
     if (rows.length < EXPORT_BATCH) break;

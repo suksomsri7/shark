@@ -186,6 +186,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // CRM C1.6 ▸ ปฏิทินกิจกรรม (หน้า v2 ล้วน) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV)
               { href: `${s}/crm/calendar`, label: "ปฏิทิน" },
               // ◂ CRM C1.6
+              // CRM C1.10 ▸ ตั้งค่า CRM (หน้ารวม · crm.settings.manage) · API และ webhook (crm.api.manage) — 404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย
+              ...(crmCan(membershipOf(auth), "crm.settings.manage") ? [{ href: `${s}/crm/settings`, label: "ตั้งค่า CRM" }] : []),
+              ...(crmCan(membershipOf(auth), "crm.api.manage") ? [{ href: `${s}/crm/settings/api`, label: "API และ webhook" }] : []),
+              // ◂ CRM C1.10
               ]
             : []),
           // ◂ CRM uiVersion gate

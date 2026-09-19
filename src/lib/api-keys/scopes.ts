@@ -15,8 +15,40 @@ export const NON_API_SCOPE_KEYS: readonly string[] = ["account.approve.limit"];
 
 /** คีย์นี้ใช้เป็น scope ของ API key ได้ไหม (ต้องเป็น permission key จริง · ไม่ใช่ค่าตัวเลข) */
 export function isApiScope(key: string): boolean {
+  // CRM C1.10 ▸ ตัวกรองของคีย์ CRM (มติ C30 · RESOLUTIONS R-C.3) เป็น "pseudo-scope" ที่เก็บใน scopesJson ⇒ รับได้ที่นี่ ◂
+  if (isCrmFilterScope(key)) return true;
   return isPermissionKey(key) && !isPermissionParamKey(key) && !NON_API_SCOPE_KEYS.includes(key);
 }
+
+// CRM C1.10 ▸ ตัวกรองของคีย์ API ของ CRM (มติ C30 · RESOLUTIONS R-C.3 — ไม่มีคอลัมน์ ApiKey.bundle/filter)
+//   `crm.filter.team:<teamId>` = คีย์เห็นเฉพาะข้อมูลของทีมนั้น · `crm.filter.owner:<userId>` = เห็นเฉพาะของผู้ใช้คนนั้น
+//   ผู้บังคับจริงคือ `visibleWhere` ของ `crm/visibility.ts` (อ่าน pseudo-scope จาก permissions ของ actor คีย์)
+//   🔴 ที่นี่ตรวจแค่ "รูปแบบ" (id แบบ cuid/uuid ไม่มีช่องว่าง) — ทีม/ผู้ใช้ต้องเป็นของร้านเดียวกับคีย์: ตรวจตอนออกคีย์
+//      (`crmFilterTargetsOf` ให้ผู้ออกคีย์เทียบกับฐาน) · ตัวกรองที่ชี้ของร้านอื่นหลุดเข้ามา = เห็นอะไรไม่ได้เลย (ปิดไว้ก่อน)
+export const CRM_FILTER_TEAM_PREFIX = "crm.filter.team:";
+export const CRM_FILTER_OWNER_PREFIX = "crm.filter.owner:";
+const CRM_FILTER_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
+/** scope นี้เป็นตัวกรองของคีย์ CRM ที่รูปแบบถูกต้องไหม */
+export function isCrmFilterScope(key: string): boolean {
+  for (const prefix of [CRM_FILTER_TEAM_PREFIX, CRM_FILTER_OWNER_PREFIX]) {
+    if (key.startsWith(prefix)) return CRM_FILTER_ID.test(key.slice(prefix.length));
+  }
+  return false;
+}
+
+/** ทีม/ผู้ใช้ที่ตัวกรองของคีย์อ้างถึง (ผู้ออกคีย์ใช้ตรวจว่าเป็นของร้านนี้จริง) */
+export function crmFilterTargetsOf(scopes: readonly string[]): { teamIds: string[]; ownerIds: string[] } {
+  const teamIds: string[] = [];
+  const ownerIds: string[] = [];
+  for (const s of scopes) {
+    if (!isCrmFilterScope(s)) continue;
+    if (s.startsWith(CRM_FILTER_TEAM_PREFIX)) teamIds.push(s.slice(CRM_FILTER_TEAM_PREFIX.length));
+    else ownerIds.push(s.slice(CRM_FILTER_OWNER_PREFIX.length));
+  }
+  return { teamIds, ownerIds };
+}
+// ◂ CRM C1.10
 
 /** permission key ของโมดูลบัญชีที่ใช้เป็น scope ได้ (ตัดค่าตั้ง/ค่าตัวเลขออก) — ที่มาเดียวคือทะเบียน PERMISSIONS */
 export const ACCOUNT_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
@@ -33,6 +65,11 @@ export const MEMBER_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
   (p) => p.module === "member" && isApiScope(p.key),
 ).map((p) => p.key);
 
+// CRM C1.10 ▸ permission key ของ CRM ที่ใช้เป็น scope ได้ — ที่มาเดียวคือทะเบียน PERMISSIONS (ตัวเลข `crm._*` ถูกตัดโดย isApiScope) ◂
+export const CRM_SCOPE_KEYS: readonly string[] = PERMISSIONS.filter(
+  (p) => p.module === "crm" && isApiScope(p.key),
+).map((p) => p.key);
+
 export type ApiScopeBundleId =
   // บัญชี (WO A1)
   | "read-only"
@@ -47,7 +84,11 @@ export type ApiScopeBundleId =
   // ระบบสมาชิก (M1.11 · §6.3 — read/operate ไม่เห็นข้อมูลอ่อนไหวเสมอ)
   | "member-read"
   | "member-operate"
-  | "member-admin";
+  | "member-admin"
+  // CRM C1.10 ▸ ระบบ CRM (read ⊂ operate ⊂ admin · ตัวชี้ขาด apiRole ของ `crm/api/actor.ts`) ◂
+  | "crm.readonly"
+  | "crm.operate"
+  | "crm.admin";
 
 export type ApiScopeBundle = {
   id: ApiScopeBundleId;
@@ -168,6 +209,48 @@ const MEMBER_ADMIN_SCOPES: readonly string[] = [
   ...MEMBER_SCOPE_KEYS.filter((k) => !MEMBER_OPERATE_SCOPES.includes(k as (typeof MEMBER_OPERATE_SCOPES)[number])),
 ];
 
+// CRM C1.10 ▸ ระบบ CRM (ใบ C1.10 · CRM-API §1 · มติผู้คุมงาน C1.10 ข้อ 6) — 3 ชุดซ้อนกันเป็นชั้น: readonly ⊂ operate ⊂ admin
+//   readonly → อ่านอย่างเดียว (ผู้ติดต่อ · บริษัท · ดีล · กิจกรรม · รายการวัตถุ · รายงานของตัวเอง) — **ไม่มี** crm.commission.view
+//              และคำตอบของคีย์ชุดนี้ปิดบังเบอร์/อีเมลเสมอ (`crm/api/serialize.ts`)
+//   operate  → + งานที่พนักงานขายทำได้ (ชุดค่าเริ่มต้น STAFF ของ §6.1) — ไม่มี *.manage / รวม / ลบ / ส่งออก / โอนข้ามทีม
+//   admin    → ทุกคีย์ของ §6.1 (ตั้งค่า · ทีม · ลบ · รวม · ส่งออก) — design ops ของวัตถุกำหนดเองก็ยังเรียกผ่านคีย์ไม่ได้ (C1.2b)
+const CRM_READONLY_SCOPES = [
+  "crm.contact.read",
+  "crm.company.read",
+  "crm.deal.read",
+  "crm.activity.read",
+  "crm.record.read",
+  "crm.report.view",
+] as const;
+
+const CRM_OPERATE_SCOPES = [
+  ...CRM_READONLY_SCOPES,
+  "crm.contact.create",
+  "crm.contact.update",
+  "crm.company.create",
+  "crm.company.update",
+  "crm.deal.create",
+  "crm.deal.update",
+  "crm.deal.move",
+  "crm.deal.lines",
+  "crm.deal.quote",
+  "crm.activity.create",
+  "crm.activity.complete",
+  "crm.activity.delete",
+  "crm.email.read",
+  "crm.email.send",
+  "crm.sequence.enroll",
+  "crm.record.create",
+  "crm.record.update",
+] as const;
+
+/** ทุกคีย์ `crm.*` ที่ใช้เป็น scope ได้ (ยกเว้น wildcard `crm.*`) — operate มาก่อน แล้วต่อด้วยที่เหลือ */
+const CRM_ADMIN_SCOPES: readonly string[] = [
+  ...CRM_OPERATE_SCOPES,
+  ...CRM_SCOPE_KEYS.filter((k) => k !== "crm.*" && !(CRM_OPERATE_SCOPES as readonly string[]).includes(k)),
+];
+// ◂ CRM C1.10
+
 /**
  * ชุดสำเร็จรูป 5 ชุด — ซ้อนกันเป็นชั้น: read-only ⊂ issue-and-collect ⊂ accountant
  * `danger` แยกออกจาก accountant เสมอ (ยกเลิก/เปิดงวด/รวมผู้ติดต่อ = กู้คืนยาก ต้องตั้งใจติ๊กเอง)
@@ -252,6 +335,29 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
       "Every member permission: settings and custom fields, privacy and PDPA, tiers and their rules, gift cards, erasing a member, and managing the member API keys. This is the only bundle that can see sensitive member data, and only as far as the shop's own policy allows.",
     scopes: MEMBER_ADMIN_SCOPES,
   },
+  // CRM C1.10 ▸ ระบบ CRM — 3 ชุด (ดูหัวข้อ CRM ข้างบน)
+  {
+    id: "crm.readonly",
+    label: "CRM — อ่านอย่างเดียว",
+    summary:
+      "Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the key holder's own reports. Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written.",
+    scopes: CRM_READONLY_SCOPES,
+  },
+  {
+    id: "crm.operate",
+    label: "CRM — งานของพนักงานขาย",
+    summary:
+      "Everything in crm.readonly plus the sales-rep work: create and edit contacts, companies and deals, move deals between stages, set deal lines, issue quotations, log and complete activities and write custom object records. No settings, no merging, no deleting deals, no export and no cross-team reassignment.",
+    scopes: CRM_OPERATE_SCOPES,
+  },
+  {
+    id: "crm.admin",
+    label: "CRM — ผู้ดูแล",
+    summary:
+      "Every CRM permission: settings, sales teams, visibility, merging and archiving contacts and companies, deleting deals, exporting, reassigning deals across teams and managing the CRM API keys. Designing custom objects is still only possible from the settings screen.",
+    scopes: CRM_ADMIN_SCOPES,
+  },
+  // ◂ CRM C1.10
 ];
 
 /** ชุดปริยายเมื่อสร้างคีย์จากหน้าบัญชี (เจ้าของเคาะ: ออกเอกสาร+รับเงิน · 365 วัน) */

@@ -23,6 +23,8 @@ import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { accountTools } from "./tools-account";
 import { kanbanTools } from "./tools-kanban";
 import { memberTools } from "./tools-member";
+// CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
+import { crmTools } from "./tools-crm";
 import { createProposal, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
@@ -1386,39 +1388,8 @@ const chatUnreadConversations: AiTool = {
 // resolve unit/course/asset/enrollment อยู่ใน dispatch (proposals.ts) — tool แค่รวบ payload แล้ว propose
 // ══════════════════════════════════════════════════════════════════
 
-// ── B2-A1) crm_create_lead — เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้า CRM ──
-const crmCreateLead: AiTool = {
-  action: true,
-  def: {
-    name: "crm_create_lead",
-    description:
-      "เสนอบันทึกลูกค้ามุ่งหวัง (lead) เข้าระบบ CRM (ยังไม่ทำทันที — สร้างข้อเสนอให้ผู้ใช้กดยืนยันก่อน) · ระบุ name (ชื่อผู้ติดต่อ) และ phone/email ถ้ามี",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "ชื่อผู้ติดต่อ/ลูกค้ามุ่งหวัง" },
-        phone: { type: "string", description: "เบอร์โทร (ถ้ามี)" },
-        email: { type: "string", description: "อีเมล (ถ้ามี)" },
-      },
-      required: ["name"],
-      additionalProperties: false,
-    },
-  },
-  async execute(ctx, args) {
-    const a = asRecord(args);
-    const name = String(a.name ?? "").trim();
-    if (!name) return JSON.stringify({ error: "ต้องระบุชื่อผู้ติดต่อ" });
-    const payload: Record<string, unknown> = { name };
-    const phone = String(a.phone ?? "").trim();
-    const email = String(a.email ?? "").trim();
-    const note = String(a.note ?? "").trim();
-    if (phone) payload.phone = phone;
-    if (email) payload.email = email;
-    if (note) payload.note = note;
-    const contact = phone ? ` (เบอร์ ${phone})` : email ? ` (อีเมล ${email})` : "";
-    return propose(ctx, "crm_create_lead", `บันทึกลูกค้ามุ่งหวัง "${name}"${contact}`, payload);
-  },
-};
+// ── B2-A1) crm_create_lead — CRM C1.10 ▸ ย้ายไปเป็น tool ของทะเบียน op REST CRM (`./tools-crm.ts` · ชื่อเดิม) ·
+//    ระบบ CRM รุ่นเดิม (uiVersion 1) ยังเสนอ kind เดิม `crm_create_lead` (payload name/phone/email) เหมือนตัวเดิมทุกประการ ◂
 
 // ── B2-A2) kb_create_article — เสนอเพิ่มบทความคลังความรู้ ──
 const kbCreateArticle: AiTool = {
@@ -2380,7 +2351,7 @@ export function toolRegistry(): AiTool[] {
     shopConfirmOrder,
     shopRefundOrder,
     // Phase B2 action — CRM / KB / โรงเรียน / คลินิก / เช่า / สายอนุมัติ / คลังตัดออก
-    crmCreateLead,
+    // CRM C1.10 ▸ `crm_create_lead` ย้ายไปอยู่ใน crmTools() ข้างล่าง (ชื่อเดิม · ระบบรุ่นเดิมยังเสนอ kind เดิม) ◂
     kbCreateArticle,
     schoolEnroll,
     schoolMarkPaid,
@@ -2401,6 +2372,8 @@ export function toolRegistry(): AiTool[] {
     // สกิลสมาชิก (M1.11) — สร้างจากทะเบียน op ของ REST ระบบสมาชิก ด้วยกติกาเดียวกัน (kind `member.*`)
     // 🔴 ต่อท้าย tool รุ่นแรกของสกิล `members` ที่ยังเขียนมืออยู่ข้างบน (ชื่อไม่ชนกัน — ดูหัว tools-member.ts)
     ...memberTools(),
+    // CRM C1.10 ▸ สกิล crm (R-E.4) — สร้างจากทะเบียน op ของ REST CRM ด้วยกติกาเดียวกัน (kind `crm.*`) ◂
+    ...crmTools(),
   ];
 }
 

@@ -17,6 +17,8 @@
 import { accountToolAllowedForScopes, accountToolNames } from "./account-ops";
 import { kanbanToolAllowedForScopes, kanbanToolNames } from "./kanban-ops";
 import { memberToolAllowedForScopes, memberToolNames } from "@/lib/modules/member/api/tools";
+// CRM C1.10 ▸ สกิล `crm` — 14 tool จากทะเบียน op ของ REST CRM (R-E.4) ◂
+import { crmApi } from "@/lib/modules/crm";
 import { toolRegistry } from "./tools";
 
 /** สกิล 1 ชุด — โครงนี้คือสิ่งที่จะกลายเป็น manifest สาธารณะสำหรับ AI ภายนอก */
@@ -195,7 +197,13 @@ export const SKILLS: Skill[] = [
     id: "crm",
     label: "ลูกค้ามุ่งหวังและการตลาด",
     summary: "Leads and marketing: recent leads, create a lead, launch a campaign, growth suggestions.",
-    tools: ["recent_leads", "crm_create_lead", "marketing_create_campaign", "growth_recommendations"],
+    // CRM C1.10 ▸ label/summary/ลำดับ 4 ตัวแรก = ของเดิมทุกไบต์ (ร้าน CRM รุ่นเดิม + คีย์รุ่นเก่าเห็น manifest เดิม — มติผู้คุมงาน "Production v1")
+    //   ต่อท้ายด้วย tool ของทะเบียน op REST CRM อีก 13 ตัว (R-E.4 รวม crm_create_lead = 14) — คีย์ต้องมี scope `crm.*` จึงเห็น ◂
+    tools: [
+      "recent_leads", "crm_create_lead", "marketing_create_campaign", "growth_recommendations",
+      "crm_search", "crm_contact_360", "crm_company_360", "crm_deal_360", "crm_pipeline_summary", "crm_forecast", "crm_records_query",
+      "crm_create_company", "crm_create_deal", "crm_move_deal", "crm_update_deal", "crm_log_activity", "crm_convert",
+    ],
     systems: ["CRM", "MARKETING"],
   },
   {
@@ -311,13 +319,20 @@ export function skillsForTenant(openedSystemTypes: string[]): Skill[] {
  * ประกาศ `action` (= permission key) ไว้ให้ทุกตัวอยู่แล้ว จึง derive ได้โดยไม่ต้องมีตารางที่สอง
  * สกิลอื่นยังไม่มีแผนที่ tool → permission key ⇒ ยังคงพฤติกรรมเดิม (คีย์ที่ยืนยันตัวตนได้เรียกได้)
  */
-export function toolAllowedForApiKey(toolName: string, scopes: string[]): boolean {
+export function toolAllowedForApiKey(
+  toolName: string,
+  scopes: string[],
+  // CRM C1.10 ▸ ร้านที่ระบบ CRM ยังเป็นรุ่นเดิม: `crm_create_lead` เปิดให้ทุกคีย์เหมือนก่อน C1.10 (ผู้เรียกคำนวณด้วย crmApi.crmLegacyLeadOpen) ◂
+  opts: { crmLegacyLead?: boolean } = {},
+): boolean {
   // สกิลที่ผูก scope รายเครื่องมือแล้วมี 3 สกิล: `account` (WO E2) · `tasks` (K1.15) · `members` (M1.11)
   // ทุกตัว derive จาก `op.action` ของทะเบียน API ของตัวเอง · tool นอกสามสกิลนี้คืน true ทั้งหมด
   return (
     accountToolAllowedForScopes(toolName, scopes) &&
     kanbanToolAllowedForScopes(toolName, scopes) &&
-    memberToolAllowedForScopes(toolName, scopes)
+    memberToolAllowedForScopes(toolName, scopes) &&
+    // CRM C1.10 ▸ AUDIT H1: คีย์ที่ไม่มี `crm.*` ใช้ tool ของ CRM ไม่ได้เลย (รวม crm_create_lead รุ่นเดิม) ◂
+    ((opts.crmLegacyLead === true && toolName === "crm_create_lead") || crmApi.crmToolAllowedForScopes(toolName, scopes))
   );
 }
 
@@ -325,8 +340,8 @@ export function toolAllowedForApiKey(toolName: string, scopes: string[]): boolea
  * เครื่องมือของสกิลนี้ที่คีย์ใบนี้เรียกได้จริง (manifest ต้องไม่โฆษณาสิ่งที่เรียกแล้วโดนปฏิเสธ)
  * ว่างเปล่า = คีย์ไม่มีสิทธิ์แตะสกิลนี้เลย ⇒ route ตอบ 404 เหมือนสกิลไม่มีอยู่
  */
-export function skillToolsForApiKey(skill: Skill, scopes: string[]): string[] {
-  return skill.tools.filter((n) => toolAllowedForApiKey(n, scopes));
+export function skillToolsForApiKey(skill: Skill, scopes: string[], opts: { crmLegacyLead?: boolean } = {}): string[] {
+  return skill.tools.filter((n) => toolAllowedForApiKey(n, scopes, opts));
 }
 
 /**
@@ -393,6 +408,11 @@ export function assertSkillRegistryComplete(): void {
   const declaredMember = new Set(SKILLS.find((s) => s.id === "members")?.tools ?? []);
   const missingMember = memberToolNames().filter((n) => !declaredMember.has(n));
   if (missingMember.length > 0) problems.push(`สกิล members ขาด tool ของทะเบียน: ${missingMember.join(", ")}`);
+
+  // CRM C1.10 ▸ สกิล crm — ทุกชื่อในทะเบียน op ของ CRM ต้องอยู่ในสกิล (ทางเดียว: สกิลนี้ถือ tool รุ่นแรก 3 ตัวด้วย) ◂
+  const declaredCrm = new Set(SKILLS.find((s) => s.id === "crm")?.tools ?? []);
+  const missingCrm = crmApi.crmToolNames().filter((n) => !declaredCrm.has(n));
+  if (missingCrm.length > 0) problems.push(`สกิล crm ขาด tool ของทะเบียน: ${missingCrm.join(", ")}`);
 
   if (problems.length > 0) {
     throw new Error(`ทะเบียนสกิลไม่ครบ/ขัดกัน:\n  - ${problems.join("\n  - ")}`);

@@ -253,6 +253,40 @@ export async function setAcceptingLeads(ctx: TeamCtx, teamId: string, userId: st
   await audit(ctx, "team.member.accepting_leads", teamId, { userId, accepting });
 }
 
+// CRM C1.10 ▸ ตั้งสมาชิกทั้งชุดในคำสั่งเดียว (REST `PUT /teams/{id}/members` · มติผู้คุมงาน C1.10 S2)
+//   ตรวจผู้ใช้ **ทุกคน** ก่อน (ไม่ใช่ของร้านนี้ = ไม่เขียนอะไรเลย) → tx เดียว: ล็อกแถวทีม · ลบคนที่ไม่อยู่ในรายการ · เพิ่ม/ปรับบทบาท ·
+//   รับลีด · หัวหน้าไม่เกิน 1 คน (ส่ง LEAD หลายคน = VALIDATION) · event `team.updated` **ครั้งเดียว** (id ล้วน) · audit 1 แถว
+export async function setMembers(
+  ctx: TeamCtx,
+  teamId: string,
+  members: { userId: string; role?: TeamRole; acceptingLeads?: boolean }[],
+): Promise<TeamMemberDto[]> {
+  const ids = members.map((m) => m.userId);
+  if (new Set(ids).size !== ids.length) throw new TeamError("รายชื่อสมาชิกมีคนซ้ำ — ใส่แต่ละคนครั้งเดียว", "VALIDATION");
+  const leads = members.filter((m) => m.role === "LEAD");
+  if (leads.length > 1) throw new TeamError("ทีมหนึ่งมีหัวหน้าได้คนเดียว — เลือกหัวหน้า 1 คน ที่เหลือเป็นสมาชิก", "VALIDATION");
+  await prisma.$transaction(async (tx) => {
+    const t = await lockTeam(tx, ctx, teamId);
+    await assertUsers(tx, ctx.tenantId, ids);
+    await tx.teamMember.deleteMany({ where: { teamId, ...(ids.length ? { userId: { notIn: ids } } : {}) } });
+    for (const m of members) {
+      const role: TeamRole = m.role === "LEAD" ? "LEAD" : "MEMBER";
+      await tx.teamMember.upsert({
+        where: { teamId_userId: { teamId, userId: m.userId } },
+        create: { tenantId: ctx.tenantId, teamId, userId: m.userId, role, ...(m.acceptingLeads !== undefined ? { acceptingLeads: m.acceptingLeads } : {}) },
+        update: { role, ...(m.acceptingLeads !== undefined ? { acceptingLeads: m.acceptingLeads } : {}) },
+      });
+    }
+    const lead = leads[0]?.userId ?? null;
+    if (lead) await applyLead(tx, ctx, teamId, lead);
+    else if (t.leadUserId) await tx.team.update({ where: { id: teamId }, data: { leadUserId: null } });
+    await changed(tx, ctx, teamId, "members.set");
+  });
+  await audit(ctx, "team.members.set", teamId, { members: members.map((m) => ({ userId: m.userId, role: m.role ?? "MEMBER", acceptingLeads: m.acceptingLeads ?? null })) });
+  return membersOf(ctx, teamId);
+}
+// ◂ CRM C1.10
+
 // ───────────────────────── อ่าน ─────────────────────────
 
 export async function listTeams(ctx: TeamCtx, opts: { includeArchived?: boolean } = {}): Promise<TeamDto[]> {

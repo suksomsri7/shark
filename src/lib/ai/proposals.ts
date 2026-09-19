@@ -56,6 +56,7 @@ import {
   memberDestructiveKinds,
   memberKindAccess,
 } from "@/lib/modules/member/api/tools";
+// CRM C1.10 ▸ kind `crm.*` เดินผ่านทะเบียน op ของ REST CRM (สะพานอยู่ในโมดูล `crm/api/tools.ts`) ◂
 import * as scheduledSvc from "./scheduled";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 
@@ -111,7 +112,7 @@ type StaticProposalKind =
  * kind ทั้งหมด — รวมของโมดูลบัญชีที่ derive จากทะเบียน op (`account.documents.create` ฯลฯ)
  * ไม่พิมพ์รายชื่อบัญชีซ้ำที่นี่: op เปลี่ยน/เพิ่มเมื่อไร ข้อเสนอเปลี่ยนตามทันที
  */
-export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}`;
+export type ProposalKind = StaticProposalKind | `account.${string}` | `kanban.${string}` | `member.${string}` | `crm.${string}`;
 
 type Ctx = { tenantId: string };
 
@@ -126,6 +127,8 @@ export const DESTRUCTIVE_KINDS = new Set<ProposalKind>([
   ...(kanbanDestructiveKinds() as ProposalKind[]),
   // ระบบสมาชิก (M1.11): ทุก op ชนิด `danger` ที่เปิดเป็นเครื่องมือ (รวมคนซ้ำ · ตั้งระดับด้วยมือ)
   ...(memberDestructiveKinds() as ProposalKind[]),
+  // CRM C1.10 ▸ ทุก op ชนิด danger ของ CRM ที่เปิดเป็นเครื่องมือ (ชุดแรกยังไม่มี — 14 tool เป็น read/write ล้วน) ◂
+  ...(crmSvc.crmApi.crmDestructiveKinds() as ProposalKind[]),
   "void_sale",
   "cancel_appointment",
   "cancel_reservation",
@@ -193,6 +196,8 @@ const KIND_ACCESS: Record<string, { module: string; action: string }> = {
   ...kanbanKindAccess(),
   // ระบบสมาชิก (M1.11) — เงื่อนไขเดียวกัน (kind `member.*` → `op.action` ของทะเบียน)
   ...memberKindAccess(),
+  // CRM C1.10 ▸ kind `crm.*` → `op.action` ของทะเบียน REST CRM (kind เดิม `crm_create_lead` คงอยู่ใน STATIC_KIND_ACCESS) ◂
+  ...crmSvc.crmApi.crmKindAccess(),
 };
 
 // ── payload ต่อ kind (server-side เท่านั้น) ──
@@ -476,6 +481,14 @@ async function dispatch(
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของระบบสมาชิกได้");
     return dispatchMemberKind(m, tenantId, proposalId, kind, payload, userId);
   }
+
+  // CRM C1.10 ▸ kind `crm.*` เดินผ่านทะเบียน op เดียวกับ REST (ระบบ CRM รุ่นเดิม = ปฏิเสธ ไม่เขียนอะไร)
+  //   🔴 kind รุ่นเก่า `crm_create_lead` (ขีดล่าง) ยังอยู่ข้างล่าง — ข้อเสนอค้างเก่า + ระบบ CRM รุ่นเดิม ใช้ทางนั้นต่อ ห้ามลบ
+  if (crmSvc.crmApi.isCrmKind(kind)) {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้");
+    return crmSvc.crmApi.dispatchCrmKind({ tenantId, ...m, userId: userId ?? null, proposalId }, kind, payload);
+  }
+  // ◂ CRM C1.10
 
   if (kind === "inventory_receive") {
     const p = payload as ReceivePayload;

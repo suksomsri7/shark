@@ -89,6 +89,9 @@ export async function evaluateSensitiveAccess(
   target: SensitiveTarget,
   tx?: Client,
 ): Promise<SensitiveDecision> {
+  // CRM C1.10 ▸ ผู้ช่วย AI (actor ที่ติด `noSensitive: true` — crm/api) ไม่เห็นข้อมูลอ่อนไหว **เสมอ** แม้เจ้าของร้านเป็นคนถาม
+  //   ปฏิเสธก่อนแตะฐานข้อมูล · shouldLog false ⇒ ไม่มีแถว MemberAccessLog (ไม่ได้เห็นอะไร) — ปิดไว้ก่อนที่ engine ไม่ใช่รูปคำตอบ ◂
+  if ((actor as { noSensitive?: unknown }).noSensitive === true) return { allowed: false, shouldLog: false, hrEmployeeId: null, hrPosition: null };
   const db = clientOf(tx);
   const policyRow = await db.memberSensitivePolicy.findFirst({
     where: {

@@ -78,3 +78,8 @@ export * as visibility from "./visibility";
 //   ตัวตัดสินคีย์ของ CRM (`access.ts`) — ผู้ใช้นอกโมดูล: หน้า core `/app/settings/teams` (ด่าน crm.team.manage) · drawer ใน layout
 export { crmCan, CRM_ROLE_DEFAULTS } from "./access";
 // ◂ CRM C1.7
+// CRM C1.10 ▸ REST + AI ชุดแรก (`api/`) — namespace เดียว `crmApi`: dispatch/dispatchTeams (route `/api/v1/crm/*` · `/api/v1/teams/*`) ·
+//   buildOpenApi · CRM_OPS · สะพานผู้ช่วย AI (crmToolInfos/runCrmTool/dispatchCrmKind/isCrmKind/crmKindAccess/crmToolAllowedForScopes …) ·
+//   crmWebhookEvents · ผู้ใช้: route ของ REST · src/lib/ai/{tools-crm,skills,proposals}.ts (F2.3 — ห้ามล้วง crm/api ตรง)
+export * as crmApi from "./api";
+// ◂ CRM C1.10

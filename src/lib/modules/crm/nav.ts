@@ -54,6 +54,10 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // รีวิว S3 + มติผู้คุมงาน: สารบัญ "ข้อมูลกำหนดเอง" อยู่ใน drawer เท่านั้น (layout.tsx ด่าน crm.record.read) — ไม่ขึ้นแถบแท็บ (ไม่มีลิงก์ที่ 404)
   { key: "objects", label: "ข้อมูลกำหนดเอง", path: "/crm/objects", status: "ready", wo: "C1.9" },
   // ◂ CRM C1.9
+  // CRM C1.10 ▸ ตั้งค่า CRM (หน้ารวมการ์ดตั้งค่า · หนี้ C1.5 R-A) · API และ webhook (คีย์ · curl · เครื่องมือ AI · ฮุค + ประวัติการส่ง)
+  { key: "settings", label: "ตั้งค่า CRM", path: "/crm/settings", status: "ready", wo: "C1.10" },
+  { key: "settings-api", label: "API และ webhook", path: "/crm/settings/api", status: "ready", wo: "C1.10" },
+  // ◂ CRM C1.10
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

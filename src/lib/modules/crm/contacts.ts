@@ -1064,6 +1064,8 @@ export async function setOptOut(ctx: ContactsCtx, actor: MemberActor, id: string
 
 export async function assignContact(ctx: ContactsCtx, actor: MemberActor, id: string, input: { userId: string | null }): Promise<ContactDto> {
   const a = await enter(ctx, actor);
+  // CRM C1.10 ▸ ผู้ติดต่อก่อน (การมองเห็น · มองไม่เห็น = NOT_FOUND) แล้วค่อยตรวจผู้ดูแลปลายทาง — ไม่บอกผลตรวจผู้ใช้กับระเบียนนอกขอบเขต ◂
+  await loadContact(ctx, a, id);
   const userId = str(input?.userId);
   if (userId) await assertMember(ctx, userId);
   return mutate(ctx, a, id, "crm.contact.assign", (pre) =>
@@ -1656,6 +1658,7 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
   if (keep.memberCustomerId && drop.memberCustomerId && keep.memberCustomerId !== drop.memberCustomerId) throw fail("VALIDATION", DIFF_MEMBER);
   const choices = (isObj(input?.fieldChoices) ? input.fieldChoices : {}) as Partial<Record<MergeChoiceField, "keep" | "merge">>;
   const moved = { deals: 0, activities: 0, companies: 0, dealContacts: 0, files: 0, records: 0 };
+  let customValuesMoved = 0; // CRM C1.10 ▸ ค่าฟิลด์กำหนดเองที่ย้ายมา (ลง audit) ◂
   let keepPartyAfter: string | null = keep.partyId;
   let memberRevoked: string[] = [];
   // ผลลัพธ์ที่จะผูกสมาชิก: หาระบบสมาชิกไว้ก่อนเปิด tx (ถอนความยินยอมใน tx ต้องไม่เปิด connection ที่สองระหว่างถือล็อก)
@@ -1704,6 +1707,13 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
       moved.deals = (await tx.crmDeal.updateMany({ where: { ...identityScope(ctx), contactId: m.id }, data: { contactId: k.id } })).count;
       moved.activities = (await tx.crmActivity.updateMany({ where: { ...identityScope(ctx), contactId: m.id }, data: { contactId: k.id } })).count;
       moved.files = (await tx.crmFileLink.updateMany({ where: { ...identityScope(ctx), entityType: "CONTACT", entityId: m.id }, data: { entityId: k.id } })).count;
+      // CRM C1.10 ▸ หนี้ C1.4 (S11.6): ค่าฟิลด์กำหนดเองของคนที่ถูกรวม ย้ายมาที่คนที่เก็บไว้ **เฉพาะฟิลด์ที่คนที่เก็บไว้ยังไม่มีค่า**
+      //   (ค่าของคนที่เก็บไว้ชนะเสมอ) · คำสั่งเดียวใน tx เดียวกัน (unique recordId+fieldId ไม่ชนเพราะ NOT EXISTS) · engine ล็อก keep ไว้แล้ว
+      customValuesMoved = await tx.$executeRaw`
+        UPDATE "CustomRecordValue" v SET "recordId" = ${k.id}
+        WHERE v."tenantId" = ${ctx.tenantId} AND v."recordType" = 'CONTACT' AND v."recordId" = ${m.id}
+          AND NOT EXISTS (SELECT 1 FROM "CustomRecordValue" kv WHERE kv."recordId" = ${k.id} AND kv."fieldId" = v."fieldId")`;
+      // ◂ CRM C1.10
 
       // ค่าของคนที่เก็บไว้: ผู้ใช้เลือก "merge" = ใช้ค่าของคนที่ถูกรวม · ค่าว่างของคนที่เก็บไว้ = เติมจากอีกฝั่ง
       const data: Prisma.CrmContactUpdateInput = {};
@@ -1813,7 +1823,7 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
   } catch {
     warnings.push("ยังไม่ได้ย้ายรายการที่ผูกกับผู้ติดต่อที่ถูกรวม — ย้ายเองได้จากหน้ารายการนั้น");
   }
-  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, keepPartyId: keepPartyAfter, memberConsentRevoked: memberRevoked, warnings: warnings.length };
+  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, customValuesMoved /* CRM C1.10 */, keepPartyId: keepPartyAfter, memberConsentRevoked: memberRevoked, warnings: warnings.length };
   if (memberPlanned && memberRevoked.length > 0) {
     await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action: "member.privacy.consent", targetType: "Customer", targetId: memberPlanned, after: { revoked: memberRevoked, granted: false, source: "STAFF", via: "crm.contact.merge" } });
   }

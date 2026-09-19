@@ -9,7 +9,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import { prisma, tenantDb } from "@/lib/core/db";
-import { DEFAULT_KEY_TTL_DAYS, isApiScope } from "./scopes";
+import { crmFilterTargetsOf, DEFAULT_KEY_TTL_DAYS, isApiScope } from "./scopes";
 
 export type ApiKeyCtx = { tenantId: string };
 
@@ -77,6 +77,18 @@ export async function createApiKey(
   const clean = name.trim();
   if (!clean) throw new Error("กรุณาตั้งชื่อคีย์");
   const scopes = normalizeScopes(opts.scopes);
+  // CRM C1.10 ▸ ตัวกรองของคีย์ CRM (`crm.filter.team:` / `crm.filter.owner:` · R-C.3) ต้องชี้ทีม/ผู้ใช้ของร้านนี้เท่านั้น
+  //   (tenantDb ผูก tenantId ให้แล้ว — ทีม/ผู้ใช้ของร้านอื่นนับได้ 0) · ชี้ของร้านอื่น = ไม่ออกคีย์ ◂
+  const filters = crmFilterTargetsOf(scopes);
+  if (filters.teamIds.length > 0) {
+    const n = await tenantDb(ctx).team.count({ where: { tenantId: ctx.tenantId, id: { in: [...new Set(filters.teamIds)] } } });
+    if (n !== new Set(filters.teamIds).size) throw new Error("ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อทีมของร้าน");
+  }
+  if (filters.ownerIds.length > 0) {
+    const n = await tenantDb(ctx).membership.count({ where: { tenantId: ctx.tenantId, userId: { in: [...new Set(filters.ownerIds)] } } });
+    if (n !== new Set(filters.ownerIds).size) throw new Error("ผู้ใช้ในตัวกรองของคีย์ไม่ได้อยู่ในร้านนี้ — เลือกผู้ใช้จากรายชื่อพนักงานของร้าน");
+  }
+  // ◂ CRM C1.10
   const systemId = await resolveSystemId(ctx, opts.systemId);
   const expiresAt = checkExpiry(opts.expiresAt);
   const { rawKey, prefix } = newRawKey();

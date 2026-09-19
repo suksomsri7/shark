@@ -206,6 +206,16 @@ try {
   const shapeBad: string[] = [];
   for (const s of DERIVED) {
     if (!facade || !(s in facade)) continue;
+    // ORACLE-EDIT C0.2-S1.4 (controller · C1.10, 19 Sep): C1.10 adds the namespace re-export `export * as crmApi from "./api"`
+    //   (REST/AI dispatch for /api/v1/crm/* routes). A namespace has no single owner among service/ui/rules/actions — compare it
+    //   member-by-member with crm/api instead (every binding identical ⇒ still a pure re-export).
+    if (s === "crmApi") {
+      const api = await load("@/lib/modules/crm/api");
+      const ns = facade[s] as Record<string, Any>;
+      const bad = !api ? ["crm/api failed to load"] : Object.keys(api).filter((k) => ns?.[k] !== (api as Record<string, Any>)[k]);
+      if (bad.length) shapeBad.push(`crmApi: not identical to crm/api for ${bad.join(",")}`);
+      continue;
+    }
     const owner = ownerOf(s);
     if (!owner) { shapeBad.push(`${s}: not found in service/ui/rules/actions (cannot compare)`); continue; }
     const src = (internals[owner] as Record<string, Any>)[s];
