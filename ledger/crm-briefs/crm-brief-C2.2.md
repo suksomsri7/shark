@@ -9,3 +9,6 @@ Events `crm.sequence.enrolled/finished`.
 CRM-RUN S1–S7 (28).
 X3 two parallel enrolls of the same contact → one ACTIVE · X5 two overlapping `runDue` → each due step executed once (count fake sends); kill after claim → re-run after lease; never claims by writing a terminal state · X8 consent/opt-out/bounce checked WHEN THE STEP RUNS (withdraw between enroll and step → skipped + reason; never sent) · X9 bulk enroll = danger (confirm + reason, ≤ 500) · X1 enroll a contact the actor cannot see → 404.
 Regressions: C2.1, C0.5, `qc-member-fix-s3`.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c2.2` 65 checks)
+CONTRACT BLOCK in the oracle header is binding. Rulings: `stopFor(ctx{tenantId, systemId?}, contactId, reason)` (tenant-scoped — overrides RESOLUTIONS' short form) and `runDue(now, {tenantIds?})` accepted · step semantics as the oracle states (stepIndex = next step · WAIT advances and pushes nextAt · non-WAIT sets nextAt = now) · a PAUSED enrollment also blocks a new enroll (CONFLICT, `replace` allowed) — service rule, DB unique stays on ACTIVE · S7.3 using the real `runMinuteJobs` on QC is accepted (outbound stubbed) · the builder adds the `"2.2"` spec to `scripts/visual-crm.mts` (owned) · S6 static only. Permanent rule: uiVersion-1 cases (S9). Builder starts after C2.0 (tables) is accepted.
