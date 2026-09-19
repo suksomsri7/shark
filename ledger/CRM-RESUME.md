@@ -1,13 +1,14 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 19 ก.ย. 2569 ~23:00 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 20 ก.ย. 2569 ~00:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · dpl_57Wdn) (16/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- 🔨 **C1.11**: รวมใน tree หลักแล้ว (staged) · ตรวจเดี่ยวผ่านครบ · wo-notes ร่างแล้ว · **qc:all ปิดเฟส C1 = 305/345** (`.qc-shots/crm/c1-qcall.log`) → กำลังรัน 40 ชุดที่แดงทีละชุดหลัง reseed + เซิร์ฟเวอร์ (`scripts/pending/run-c1-reds.sh` · log `c1-reds.log`) · เขียว = flake/สิ่งแวดล้อม · แดงซ้ำ = บั๊กจริง
-- ✅(builder) **C2.0** ใน `/root/projects/shark-crm-c20` เสร็จบน QC2 (73/73 · ถอยหลังเขียว) · migration 2 ตัว: `20261101000000_crm_v2_b` + `20261101000001_ai_credit_crm_assist` (ผู้คุมงานอ่านแล้ว · ลง QC2 แล้ว · **QC1 ยังไม่ลง**) · รอรวมหลัง C1.11 commit · node_modules ของ c20 = overlayfs
+- 🔨 **C1.11**: รวมใน tree หลักแล้ว (staged) · ตรวจเดี่ยวผ่านครบ · qc:all 305/345 · รันเดี่ยวซ้ำแล้วยังแดง 39 ชุด (`c1-reds.log`) — ส่วนใหญ่อ่านภาพ `.qc-shots/member|kanban` ที่ถูกลบ / ไฟล์สกิล `.claude/skills` (gitignore) ที่ worktree ไม่มี · **debugger กำลังจำแนก E/R** → ผลที่ `ledger/crm-c1-close-reds.md` · ⚠️ acc-v2-security S5 (บันทึกชำระจาก webhook ไม่สำเร็จ) อาจเป็นบั๊กจริงจาก C1.x
+- ✅(builder) **C2.0** เสร็จบน QC2 · ใน `/root/projects/shark-crm-c20` เป็น **commit local (ห้าม push)**: `da4a43a2` = C1.11 · `c98d0d80` = C2.0 · migration 2 ตัวลง QC2 แล้ว QC1 ยังไม่ลง
+- 🔨 **C2.1** builder ทำต่อใน `shark-crm-c20` (ต่อจาก c98d0d80 · งาน C2.1 = uncommitted) · QC2
 - 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว `e8f25aca` (R2 ของ C2.4 → เครดิต CRM_ASSIST)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
