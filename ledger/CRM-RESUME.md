@@ -1,14 +1,14 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 20 ก.ย. 2569 ~00:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 20 ก.ย. 2569 ~02:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · **เฟส C1 ครบ C1.1–C1.11** (C1.11 `02ba30bc` · dpl_AhGWw) (17/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- ✅(builder) **C2.0** เสร็จบน QC2 · ใน `/root/projects/shark-crm-c20` เป็น **commit local (ห้าม push)**: `da4a43a2` = C1.11 · `c98d0d80` = C2.0 · migration 2 ตัวลง QC2 แล้ว QC1 ยังไม่ลง
+- 🔨 **C2.0**: รวมเข้า tree หลักแล้ว (staged) · migration 2 ตัว **ลง QC1 + QC2 แล้ว** · client ของ tree หลัก generate แล้ว · unit `crm-c20-verify` (log `.qc-shots/crm/c20-verify.log`) · ผ่าน = commit + push (prod จะรัน migrate deploy เองใน vercel-build — additive ล้วน · ผู้คุมงานอ่านครบแล้ว)
 - 🔨 **C2.1** builder ทำต่อใน `shark-crm-c20` (ต่อจาก c98d0d80 · งาน C2.1 = uncommitted) · QC2
-- 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว `e8f25aca` (R2 ของ C2.4 → เครดิต CRM_ASSIST)
+- 📝 ข้อสอบ C2.3 (60) + C2.4 (78) commit แล้ว · ผู้เขียนข้อสอบ C2.5 + C2.6 ทำงานใน `/root/projects/shark-crm-c12a` (ฐาน 02ba30bc · อ่านสคีมา C2.0 จาก c20)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
 | path | หน้าที่ | ฐาน QC |
