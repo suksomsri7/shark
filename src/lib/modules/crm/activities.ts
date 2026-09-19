@@ -29,7 +29,8 @@ import { activityWhere, contactWhere, dealWhere, recordWhere } from "./where";
 import * as companies from "./companies";
 import { activityOutcomesOf, parseCrmSettings } from "./settings";
 import { logOps } from "@/lib/core/ops";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (แทน rbac.evaluate) ◂
+import { crmCan, crmForbiddenMessage } from "./access";
 import {
   ACTIVITY_ATTENDEES_MAX,
   ACTIVITY_BODY_MAX,
@@ -205,7 +206,7 @@ function outcomeRegistry(settings: unknown, type: ActivityType): readonly string
 /** AUDIT-CLASS X1: กิจกรรม 1 แถวผ่าน activityWhere — ระบบอื่น/ร้านอื่น = NOT_FOUND (ข้อความไม่สะท้อนข้อมูลของเขา) */
 async function loadActivity(ctx: ActivitiesCtx, a: MemberActor, id: unknown, db: Db = prisma): Promise<CrmActivity> {
   const aid = str(id);
-  const row = aid ? await db.crmActivity.findFirst({ where: { AND: [activityWhere(ctx, a), { id: aid }] } }) : null;
+  const row = aid ? await db.crmActivity.findFirst({ where: { AND: [await activityWhere(ctx, a, { db }), { id: aid }] } }) : null;
   if (!row) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   return row;
 }
@@ -394,14 +395,14 @@ async function resolveTargets(ctx: ActivitiesCtx, a: MemberActor, input: { conta
   let dealId: string | null = null;
   let customRecordId: string | null = null;
   if (dealIn) {
-    const d = await db.crmDeal.findFirst({ where: { AND: [dealWhere(ctx, a), { id: dealIn }] }, select: { id: true, contactId: true, companyId: true } });
+    const d = await db.crmDeal.findFirst({ where: { AND: [await dealWhere(ctx, a, { db }), { id: dealIn }] }, select: { id: true, contactId: true, companyId: true } });
     if (!d) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
     dealId = d.id;
     contactId = d.contactId;
     companyId = d.companyId;
   }
   if (contactIn && contactIn !== contactId) {
-    const k = await db.crmContact.findFirst({ where: { AND: [contactWhere(ctx, a), { id: contactIn }] }, select: { id: true, companyId: true } });
+    const k = await db.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, a, { db }), { id: contactIn }] }, select: { id: true, companyId: true } });
     if (!k) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
     contactId = k.id;
     if (!dealId) companyId = k.companyId;
@@ -418,7 +419,7 @@ async function resolveTargets(ctx: ActivitiesCtx, a: MemberActor, input: { conta
   }
   if (recordIn) {
     // รายการวัตถุกำหนดเอง: ขอบเขตร้าน + ระบบ (ตัวกรองการมองเห็นระดับรายการมากับ C1.7)
-    const r = await db.customRecord.findFirst({ where: { AND: [recordWhere(ctx, a), { id: recordIn, archivedAt: null }] }, select: { id: true } });
+    const r = await db.customRecord.findFirst({ where: { AND: [await recordWhere(ctx, a, { recordId: recordIn, db }), { archivedAt: null }] }, select: { id: true } });
     if (!r) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
     customRecordId = r.id;
   }
@@ -456,8 +457,13 @@ async function touchLastActivity(tx: Tx, ctx: ActivitiesCtx, t: Targets, at: Dat
 
 /** สิทธิ์ของ actor ตามทะเบียน RBAC (OWNER ผ่านเสมอ · ลูกค้าไม่ผ่าน) */
 function canDo(a: MemberActor, action: string): boolean {
-  if (a.role === "CUSTOMER") return false;
-  return evaluate({ role: a.role, unitAccess: a.unitAccess, permissions: a.permissions }, { module: "crm", action });
+  // CRM C1.7 ▸ ตัวตัดสินคีย์ตัวเดียวของ CRM (`crm/access.ts`) — MANAGER ปริยาย/อ่านโดยนัย/คีย์ API ตามสัญญาเดียวกันทั้งโมดูล ◂
+  return crmCan(a, action);
+}
+
+/** CRM C1.7 ▸ AUDIT-CLASS X2: หลังการมองเห็นเสมอ — เห็นแต่ไม่มีคีย์ = FORBIDDEN ข้อความไทย ◂ */
+function need(a: MemberActor, key: string): void {
+  if (!crmCan(a, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
 }
 
 function hasCrmAccess(a: MemberActor): boolean {
@@ -482,10 +488,10 @@ async function visibleMentions(db: Db, ctx: ActivitiesCtx, userIds: string[], t:
     const who = toMemberActor(m.userId, m);
     if (!hasCrmAccess(who)) continue;
     let sees = false;
-    if (t.dealId) sees = (await db.crmDeal.count({ where: { AND: [dealWhere(ctx, who), { id: t.dealId }] } })) > 0;
-    else if (t.contactId) sees = (await db.crmContact.count({ where: { AND: [contactWhere(ctx, who), { id: t.contactId }] } })) > 0;
+    if (t.dealId) sees = (await db.crmDeal.count({ where: { AND: [await dealWhere(ctx, who, { db }), { id: t.dealId }] } })) > 0;
+    else if (t.contactId) sees = (await db.crmContact.count({ where: { AND: [await contactWhere(ctx, who, { db }), { id: t.contactId }] } })) > 0;
     else if (t.companyId) sees = (await companies.companyRefsInTx(db, coCtx(ctx), who, [t.companyId])).length > 0;
-    else if (t.customRecordId) sees = (await db.customRecord.count({ where: { AND: [recordWhere(ctx, who), { id: t.customRecordId }] } })) > 0;
+    else if (t.customRecordId) sees = (await db.customRecord.count({ where: await recordWhere(ctx, who, { recordId: t.customRecordId, db }) })) > 0;
     if (sees) out.push(u);
   }
   return out;
@@ -586,7 +592,7 @@ async function scopeAttendees(ctx: ActivitiesCtx, a: MemberActor, att: Normalize
     ? (await prisma.membership.findMany({ where: { tenantId: ctx.tenantId, userId: { in: att.userIds } }, select: { userId: true } })).map((m) => m.userId)
     : [];
   const contacts = att.contactIds.length
-    ? (await prisma.crmContact.findMany({ where: { AND: [contactWhere(ctx, a), { id: { in: att.contactIds } }] }, select: { id: true } })).map((c) => c.id)
+    ? (await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: att.contactIds } }] }, select: { id: true } })).map((c) => c.id)
     : [];
   return { userIds: att.userIds.filter((u) => users.includes(u)), contactIds: att.contactIds.filter((c) => contacts.includes(c)) };
 }
@@ -611,6 +617,7 @@ export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input:
     try {
       // มติผู้คุมงาน C1.6 S1: หาเป้าหมายใหม่ทุกรอบ — รอบก่อนเจอบริษัท/ผู้ติดต่อเปลี่ยนระหว่างรอล็อก ⇒ รอบนี้ล็อกตัวใหม่
       const pre = await resolveTargets(ctx, a, input ?? {});
+      need(a, "crm.activity.create");
       const out = await prisma.$transaction(async (tx) => {
         // ลำดับล็อกของทั้งระบบ: แถว CrmCompany → แถว CrmContact → แถว CrmDeal (เรียง id ทุกชั้น)
         await companies.lockCompanyRowsInTx(tx, coCtx(ctx), [pre.companyId]);
@@ -713,6 +720,7 @@ function assertEditor(a: MemberActor, row: CrmActivity, what: string): void {
 export async function rescheduleActivity(ctx: ActivitiesCtx, actor: MemberActor, id: string, input: RescheduleInput): Promise<ActivityDto> {
   const { a } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, id);
+  need(a, "crm.activity.create");
   assertEditor(a, row, "เลื่อนนัด/กำหนดส่ง");
   const data: Prisma.CrmActivityUpdateManyMutationInput = {};
   if (input && "dueAt" in input) data.dueAt = toDate(input.dueAt, "วันครบกำหนด");
@@ -731,6 +739,7 @@ export async function rescheduleActivity(ctx: ActivitiesCtx, actor: MemberActor,
 export async function updateActivity(ctx: ActivitiesCtx, actor: MemberActor, id: string, patch: UpdateActivityInput): Promise<ActivityDto> {
   const { a, settings } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, id);
+  need(a, "crm.activity.create");
   assertEditor(a, row, "แก้ไขกิจกรรม");
   const type = row.type as ActivityType;
   const p = isObj(patch) ? patch : {};
@@ -765,6 +774,7 @@ export async function setPinned(ctx: ActivitiesCtx, actor: MemberActor, id: stri
   const row = await loadActivity(ctx, a, id);
   if (row.type !== "NOTE") throw fail("VALIDATION", "ปักหมุดได้เฉพาะโน้ต — กิจกรรมชนิดอื่นแสดงตามเวลาในไทม์ไลน์");
   // มติผู้คุมงาน C1.6 S5: ปักหมุด/ถอดหมุดได้เฉพาะผู้เขียนโน้ต หรือผู้จัดการ/เจ้าของร้าน
+  need(a, "crm.activity.create");
   assertEditor(a, row, "ปักหมุดโน้ต");
   const want = pinned === true;
   if (row.pinned !== want) {
@@ -781,6 +791,7 @@ export async function deleteActivity(ctx: ActivitiesCtx, actor: MemberActor, id:
   const reason = reasonOf(opts, "ลบกิจกรรม");
   const { a } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, id);
+  need(a, "crm.activity.delete");
   if (!isManager(a) && row.ownerUserId !== a.userId) {
     throw fail("FORBIDDEN", "ลบกิจกรรมได้เฉพาะเจ้าของกิจกรรมหรือผู้จัดการ — ขอให้ผู้จัดการช่วยลบให้");
   }
@@ -812,8 +823,8 @@ async function enrich(ctx: ActivitiesCtx, a: MemberActor, rows: CrmActivity[]): 
   const contactIds = [...new Set(rows.map((r) => r.contactId).filter((x): x is string => !!x))];
   const companyIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
   const [deals, contacts, cos, people] = await Promise.all([
-    dealIds.length ? prisma.crmDeal.findMany({ where: { AND: [dealWhere(ctx, a), { id: { in: dealIds } }] }, select: { id: true, title: true } }) : Promise.resolve([]),
-    contactIds.length ? prisma.crmContact.findMany({ where: { AND: [contactWhere(ctx, a), { id: { in: contactIds } }] }, select: { id: true, name: true } }) : Promise.resolve([]),
+    dealIds.length ? prisma.crmDeal.findMany({ where: { AND: [await dealWhere(ctx, a), { id: { in: dealIds } }] }, select: { id: true, title: true } }) : Promise.resolve([]),
+    contactIds.length ? prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: contactIds } }] }, select: { id: true, name: true } }) : Promise.resolve([]),
     companyIds.length ? companies.companyRefsInTx(prisma, coCtx(ctx), a, companyIds) : Promise.resolve([]),
     userNames(ctx, rows.map((r) => r.ownerUserId)),
   ]);
@@ -874,7 +885,7 @@ export async function listActivities(ctx: ActivitiesCtx, actor: MemberActor, inp
   const from = toDate(i.from, "วันเริ่มของช่วง");
   const to = toDate(i.to, "วันสุดท้ายของช่วง");
   const pageSize = Math.max(1, Math.min(ACTIVITY_PAGE_MAX, Math.floor(Number(i.pageSize ?? ACTIVITY_PAGE_DEFAULT)) || ACTIVITY_PAGE_DEFAULT));
-  const AND: Prisma.CrmActivityWhereInput[] = [activityWhere(ctx, a), targetFilter(i), statusFilter(status, Date.now())];
+  const AND: Prisma.CrmActivityWhereInput[] = [await activityWhere(ctx, a), targetFilter(i), statusFilter(status, Date.now())];
   if (i.scope === "mine") AND.push({ ownerUserId: a.userId });
   // scope "team": ก่อน C1.7 ไม่มีทีมในการมองเห็น ⇒ เท่ากับทั้งระบบที่ actor เห็น (C1.7 แทนไส้ในที่ where.ts)
   if (type) AND.push({ type: type as CrmActivityType });
@@ -935,7 +946,7 @@ export async function calendar(ctx: ActivitiesCtx, actor: MemberActor, input: Ca
   if (to.getTime() <= from.getTime()) throw fail("VALIDATION", "วันสุดท้ายต้องอยู่หลังวันเริ่ม");
   if (to.getTime() - from.getTime() > CALENDAR_MAX_SPAN_DAYS * DAY_MS) throw fail("VALIDATION", `ดูปฏิทินได้ครั้งละไม่เกิน ${CALENDAR_MAX_SPAN_DAYS} วัน — เลือกช่วงให้สั้นลง`);
   const range = { gte: from, lt: to };
-  const AND: Prisma.CrmActivityWhereInput[] = [activityWhere(ctx, a), { OR: [{ startAt: range }, { startAt: null, dueAt: range }] }];
+  const AND: Prisma.CrmActivityWhereInput[] = [await activityWhere(ctx, a), { OR: [{ startAt: range }, { startAt: null, dueAt: range }] }];
   if (input?.mine === true) AND.push({ ownerUserId: a.userId });
   const rows = await prisma.crmActivity.findMany({
     where: { AND },
@@ -951,7 +962,7 @@ export async function listNotes(ctx: ActivitiesCtx, actor: MemberActor, target: 
   const f = targetFilter(isObj(target) ? target : {});
   if (Object.keys(f).length === 0) throw fail("VALIDATION", "เลือกก่อนว่าจะดูโน้ตของผู้ติดต่อ บริษัท ดีล หรือรายการไหน");
   const rows = await prisma.crmActivity.findMany({
-    where: { AND: [activityWhere(ctx, a), f, { type: "NOTE" }] },
+    where: { AND: [await activityWhere(ctx, a), f, { type: "NOTE" }] },
     orderBy: [{ pinned: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     take: ACTIVITY_PAGE_MAX,
   });
@@ -1012,6 +1023,7 @@ function mapKanbanError(e: unknown): unknown {
 export async function openTaskCard(ctx: ActivitiesCtx, actor: MemberActor, input: OpenTaskCardInput): Promise<{ cardId: string; created: boolean }> {
   const { a } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, input?.activityId);
+  need(a, "crm.activity.create");
   const boardId = str(input?.boardId);
   const kActor = kanbanActorOf(a);
   // มติผู้คุมงาน C1.6 B1: บอร์ดต้องผ่านด่านการมองเห็นของโมดูลบอร์ดงานเอง (`visibleBoardOptions` ← visibleBoardsWhere)
@@ -1077,7 +1089,7 @@ export async function dealKanbanCards(ctx: ActivitiesCtx, actor: MemberActor, de
   // มติผู้คุมงาน C1.6 S6: ทางเข้าของตัวเอง — resolve ระบบใหม่ + ดีลต้องผ่าน dealWhere ของผู้ดู (ไม่พบ = NOT_FOUND)
   const { a } = await enter(ctx, actor);
   const did = str(dealId);
-  const deal = did ? await prisma.crmDeal.findFirst({ where: { AND: [dealWhere(ctx, a), { id: did }] }, select: { id: true } }) : null;
+  const deal = did ? await prisma.crmDeal.findFirst({ where: { AND: [await dealWhere(ctx, a), { id: did }] }, select: { id: true } }) : null;
   if (!deal) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
   const kActor = kanbanActorOf(a);
   if (!kActor) return [];
@@ -1110,8 +1122,8 @@ export async function searchTargets(ctx: ActivitiesCtx, actor: MemberActor, q: s
   const s = typeof q === "string" ? q.trim().slice(0, 100) : "";
   if (s.length < 1) return [];
   const [ks, ds, cs] = await Promise.all([
-    prisma.crmContact.findMany({ where: { AND: [contactWhere(ctx, a), { archivedAt: null, name: { contains: s, mode: "insensitive" } }] }, select: { id: true, name: true }, take: 8, orderBy: { name: "asc" } }),
-    prisma.crmDeal.findMany({ where: { AND: [dealWhere(ctx, a), { title: { contains: s, mode: "insensitive" } }] }, select: { id: true, title: true }, take: 8, orderBy: { createdAt: "desc" } }),
+    prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { archivedAt: null, name: { contains: s, mode: "insensitive" } }] }, select: { id: true, name: true }, take: 8, orderBy: { name: "asc" } }),
+    prisma.crmDeal.findMany({ where: { AND: [await dealWhere(ctx, a), { title: { contains: s, mode: "insensitive" } }] }, select: { id: true, title: true }, take: 8, orderBy: { createdAt: "desc" } }),
     companies.companyOptions(coCtx(ctx), a, { q: s }).then((r) => r.slice(0, 5)),
   ]);
   return [

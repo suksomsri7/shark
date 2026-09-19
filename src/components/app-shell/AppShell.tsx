@@ -28,6 +28,7 @@ export function AppShell({
   navTone,
   navCollapsed = false,
   chatSystemIds = [],
+  showTeams = false,
 }: {
   tenantName: string;
   userEmail: string;
@@ -44,6 +45,8 @@ export function AppShell({
   navCollapsed?: boolean;
   /** id ของระบบแชทที่ร้านเปิดใช้ (มาจาก layout — ว่าง = ไม่ถามตัวเลขข้อความค้างเลย) */
   chatSystemIds?: string[];
+  /** CRM C1.7 ▸ แสดงลิงก์ "ทีมขาย" ในหมวดตั้งค่าของเมนู (layout ตัดสิน: ร้านมี CRM + เจ้าของ/crm.team.manage) ◂ */
+  showTeams?: boolean;
 }) {
   const [drawer, setDrawer] = useState(false);
   // แผ่นแจ้งปัญหาที่เปิดจาก "ท้ายเมนู" (จอเล็ก/แอป) — ตัวที่เปิดจากปุ่มบนแถบบนอยู่ใน Topbar เอง
@@ -170,6 +173,7 @@ export function AppShell({
         }}
         memberships={memberships}
         activeTenantId={activeTenantId}
+        showTeams={showTeams}
       />
       {/* เว็บบนจอใหญ่ (≥ lg): แถบเมนูปักซ้าย 288px หรือรางไอคอน 56px ตามที่ผู้ใช้เลือก · ในแอปไม่ปักทั้งคู่
           🔴 หน้าบอร์ดงานบังคับราง ⇒ ปุ่ม › ที่นั่นเปิด "เมนูเต็มแบบ overlay" แทนการคลายค่า
@@ -205,6 +209,7 @@ export function AppShell({
           onAddSystem={() => setAddSystemOpen(true)}
           memberships={memberships}
           activeTenantId={activeTenantId}
+          showTeams={showTeams}
         />
       )}
       <AddSystemModal

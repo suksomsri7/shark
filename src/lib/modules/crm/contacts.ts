@@ -33,6 +33,8 @@ import * as party from "@/lib/modules/party";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, contactWhere, dealWhere } from "./where";
+// CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
+import { crmCan, crmForbiddenMessage } from "./access";
 import * as assignment from "./assignment";
 import * as companies from "./companies";
 import * as consents from "./consents";
@@ -215,10 +217,16 @@ async function enter(ctx: ContactsCtx, actor: MemberActor | null | undefined): P
   return actor;
 }
 
+// CRM C1.7 ▸ ลำดับ: ระบบ (enter) → การมองเห็น (loadContact · NOT_FOUND) → คีย์ (need · FORBIDDEN ข้อความไทย) ◂
+/** AUDIT-CLASS X2: คีย์สิทธิ์ผ่าน `crm/access.ts` เท่านั้น */
+function need(a: MemberActor, key: string): void {
+  if (!crmCan(a, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
+}
+
 /** AUDIT-CLASS X1: ผู้ติดต่อ 1 แถวผ่าน contactWhere เท่านั้น — ระบบอื่น/ร้านอื่น = NOT_FOUND (ข้อความไม่สะท้อนข้อมูลของเขา) */
 async function loadContact(ctx: ContactsCtx, actor: MemberActor, id: unknown, db: Db = prisma, opts: { live?: boolean } = {}): Promise<CrmContact> {
   const cid = str(id);
-  const row = cid ? await db.crmContact.findFirst({ where: { AND: [contactWhere(ctx, actor), { id: cid }] } }) : null;
+  const row = cid ? await db.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, actor, { db }), { id: cid }] } }) : null;
   if (!row) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   if (opts.live && row.mergedIntoId) throw fail("VALIDATION", MERGED_MSG);
   if (opts.live && row.archivedAt) throw fail("VALIDATION", ARCHIVED_MSG);
@@ -672,6 +680,7 @@ async function linkCompany(ctx: ContactsCtx, actor: MemberActor, companyId: stri
 
 export async function createContact(ctx: ContactsCtx, actor: MemberActor, input: CreateContactInput): Promise<CreateContactResult & { warnings: string[] }> {
   const a = await enter(ctx, actor);
+  need(a, "crm.contact.create");
   const { merged, custom } = await splitFields((input ?? {}) as CreateContactInput, input?.fields);
   const clean = cleanCreate(merged);
   if (clean.ownerUserId) await assertMember(ctx, clean.ownerUserId);
@@ -757,6 +766,7 @@ export async function updateContact(ctx: ContactsCtx, actor: MemberActor, id: st
     if (!PATCH_KEYS.has(k)) throw fail("VALIDATION", PATCH_FORBIDDEN_MSG(k));
   }
   const current = await loadContact(ctx, a, id, prisma, { live: true });
+  need(a, "crm.contact.update");
   const { merged, custom } = await splitFields(raw as UpdateContactPatch, raw.fields);
   // ── ตรวจทุกค่าก่อนแตะอะไร ──
   const data: Prisma.CrmContactUpdateInput = {};
@@ -916,6 +926,7 @@ async function mutate(
   opts: { allowArchived?: boolean; reason?: string } = {},
 ): Promise<ContactDto> {
   const current = await loadContact(ctx, actor, id, prisma, { live: !opts.allowArchived });
+  need(actor, action === "crm.contact.archive" || action === "crm.contact.restore" ? "crm.contact.delete" : "crm.contact.update");
   let audit: { before?: unknown; after?: unknown } | null = null;
   const row = await prisma.$transaction(async (tx) => {
     await lockContactRows(tx, ctx, [current.id]);
@@ -981,6 +992,9 @@ export async function setTags(ctx: ContactsCtx, actor: MemberActor, id: string, 
  */
 export async function setOptOut(ctx: ContactsCtx, actor: MemberActor, id: string, input: { optOut: boolean; source?: string | null }): Promise<ContactDto> {
   const a = await enter(ctx, actor);
+  // CRM C1.7 ▸ มองเห็น + คีย์ก่อนแตะฝั่งสมาชิก (การถอนความยินยอมของสมาชิกเกิดก่อน mutate) ◂
+  await loadContact(ctx, a, id);
+  need(a, "crm.contact.update");
   const optOut = input?.optOut === true;
   const source = String(input?.source ?? "STAFF").trim().toUpperCase() || "STAFF";
   if (!/^[A-Z_]{2,30}$/.test(source)) throw fail("VALIDATION", "ที่มาของการขอไม่รับข่าวสารไม่ถูกต้อง");
@@ -1035,12 +1049,13 @@ export async function bulkAssign(
 ): Promise<{ updated: number; ids: string[] }> {
   const reason = reasonOf(input, "โอนผู้ติดต่อเป็นกลุ่ม");
   const a = await enter(ctx, actor);
+  need(a, "crm.contact.update");
   const ids = [...new Set((Array.isArray(input?.ids) ? input.ids : []).map((x) => String(x ?? "").trim()).filter(Boolean))];
   if (ids.length === 0) throw fail("VALIDATION", "เลือกผู้ติดต่ออย่างน้อย 1 คนก่อนโอน");
   if (ids.length > CONTACT_BULK_MAX) throw fail("VALIDATION", `โอนได้ครั้งละไม่เกิน ${CONTACT_BULK_MAX.toLocaleString("th-TH")} คน — แบ่งเป็นหลายรอบ`);
   const userId = str(input?.userId);
   if (userId) await assertMember(ctx, userId);
-  const visible = await prisma.crmContact.findMany({ where: { AND: [contactWhere(ctx, a), { id: { in: ids }, mergedIntoId: null }] }, select: { id: true } });
+  const visible = await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: ids }, mergedIntoId: null }] }, select: { id: true } });
   if (visible.length !== ids.length) throw fail("NOT_FOUND", "มีผู้ติดต่อบางคนในรายการที่ไม่พบในระบบ CRM นี้ (อาจถูกลบหรือรวมไปแล้ว) — รีเฟรชหน้าแล้วเลือกใหม่");
   const changed: string[] = [];
   await prisma.$transaction(async (tx) => {
@@ -1110,13 +1125,13 @@ export async function getContact360(ctx: ContactsCtx, actor: MemberActor, id: st
       take: 50,
     }),
     prisma.crmDeal.findMany({
-      where: { AND: [dealWhere(ctx, a), { contactId: row.id }] },
+      where: { AND: [await dealWhere(ctx, a), { contactId: row.id }] },
       include: { stage: { select: { name: true } }, pipeline: { select: { name: true } } },
       orderBy: [{ createdAt: "desc" }],
       take: 100,
     }),
     prisma.crmActivity.findMany({
-      where: { AND: [activityWhere(ctx, a), { OR: [{ contactId: row.id }, { deal: { contactId: row.id } }] }] },
+      where: { AND: [await activityWhere(ctx, a), { OR: [{ contactId: row.id }, { deal: { contactId: row.id } }] }] },
       orderBy: [{ createdAt: "desc" }],
       take: 50,
     }),
@@ -1206,7 +1221,7 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
     flt = { ...vf, ...explicit, f: { ...(isObj(vf.f) ? (vf.f as Record<string, string>) : {}), ...(isObj(input?.f) ? input.f : {}) } };
   }
   // AUDIT-CLASS X1: ขอบเขตผ่าน contactWhere เสมอ · ผู้ติดต่อที่ถูกรวมไม่โผล่ (แถวคงอยู่เป็นประวัติ)
-  const AND: Prisma.CrmContactWhereInput[] = [contactWhere(ctx, actor), { mergedIntoId: null }];
+  const AND: Prisma.CrmContactWhereInput[] = [await contactWhere(ctx, actor), { mergedIntoId: null }];
   if (!flt.includeArchived) AND.push({ archivedAt: null });
   const q = str(flt.q)?.slice(0, 100);
   if (q) {
@@ -1266,7 +1281,7 @@ export async function listContacts(ctx: ContactsCtx, actor: MemberActor, input: 
   const orderBy = typeof sortKey === "string" && (CONTACT_SORTS as readonly string[]).includes(sortKey) ? SORTS[sortKey as ContactSort] : SORTS["-createdAt"];
   const cursor = str(input?.cursor);
   if (cursor) {
-    const ok = await prisma.crmContact.findFirst({ where: { AND: [contactWhere(ctx, a), { id: cursor }] }, select: { id: true } });
+    const ok = await prisma.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, a), { id: cursor }] }, select: { id: true } });
     if (!ok) throw fail("VALIDATION", "ลิงก์หน้าถัดไปหมดอายุแล้ว — กลับไปหน้าแรกของรายการ");
   }
   const rows = await prisma.crmContact.findMany({ where, orderBy, take: pageSize + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
@@ -1338,6 +1353,7 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
   if (!key || key.length > 200) throw fail("VALIDATION", "คำขอแปลงต้องมีรหัสกันกดซ้ำ (idempotencyKey) — รีเฟรชหน้าแล้วกดแปลงอีกครั้ง");
   const a = await enter(ctx, actor);
   const contact = await loadContact(ctx, a, id, prisma, { live: true });
+  need(a, "crm.contact.convert");
   const wantMember = isObj(input?.member);
   const wantCompany = isObj(input?.company);
   const wantDeal = isObj(input?.deal);
@@ -1552,7 +1568,7 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
 export async function findDuplicates(ctx: ContactsCtx, actor: MemberActor, opts: { limit?: number } = {}): Promise<{ items: DuplicatePairItem[] }> {
   const a = await enter(ctx, actor);
   const limit = Math.min(500, Math.max(1, Math.floor(Number(opts?.limit) || 200)));
-  const base: Prisma.CrmContactWhereInput[] = [contactWhere(ctx, a), { mergedIntoId: null, archivedAt: null }];
+  const base: Prisma.CrmContactWhereInput[] = [await contactWhere(ctx, a), { mergedIntoId: null, archivedAt: null }];
   const [phones, emails, names] = await Promise.all([
     prisma.crmContact.groupBy({ by: ["phone"], where: { AND: [...base, { phone: { not: null } }] }, having: { phone: { _count: { gt: 1 } } }, orderBy: { phone: "asc" }, take: 200 }),
     prisma.crmContact.groupBy({ by: ["email"], where: { AND: [...base, { email: { not: null } }] }, having: { email: { _count: { gt: 1 } } }, orderBy: { email: "asc" }, take: 200 }),
@@ -1596,6 +1612,7 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
   const a = await enter(ctx, actor);
   const keep = await loadContact(ctx, a, input?.keepId, prisma, { live: true });
   const drop = await loadContact(ctx, a, input?.mergeId, prisma, { live: true });
+  need(a, "crm.contact.merge");
   if (keep.id === drop.id) throw fail("VALIDATION", "เลือกผู้ติดต่อคนเดียวกันทั้งสองช่อง — เลือกคนที่จะรวมเป็นอีกคนหนึ่ง");
   const DIFF_MEMBER = "สองคนนี้เป็นสมาชิกคนละคนในระบบสมาชิก จึงรวมที่นี่ไม่ได้ — รวมสมาชิกที่หน้าระบบสมาชิกก่อน แล้วค่อยกลับมารวมผู้ติดต่อ";
   if (keep.memberCustomerId && drop.memberCustomerId && keep.memberCustomerId !== drop.memberCustomerId) throw fail("VALIDATION", DIFF_MEMBER);
@@ -1807,6 +1824,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   const mode = modeRaw as ImportDuplicateMode;
   const sourceKind = parseSource(input?.options?.source) ?? "IMPORT";
   const a = await enter(ctx, actor);
+  need(a, "crm.contact.import");
   await seedContactFields(ctx, a);
 
   const jobId = randomUUID();
@@ -1945,6 +1963,7 @@ export const importStatus = getImportJob;
 export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts: ContactListInput & DangerOpts = {}): Promise<string> {
   const reason = reasonOf(opts, "ส่งออกรายชื่อผู้ติดต่อ");
   const a = await enter(ctx, actor);
+  need(a, "crm.contact.export");
   const where = await listWhere(ctx, a, opts ?? {});
   const total = await prisma.crmContact.count({ where });
   if (total > CONTACT_EXPORT_MAX_ROWS) {

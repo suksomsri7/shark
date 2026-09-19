@@ -8,7 +8,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, ForbiddenError } from "@/lib/core/rbac";
+import { ForbiddenError } from "@/lib/core/rbac";
+import { assertCanCrm } from "./access";
 import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import {
@@ -42,14 +43,13 @@ type Fail = { ok: false; error: string; code?: string; missing?: string[] };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
-  assertCan(
-    { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> },
-    { module: "crm", action },
-  );
+  // CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: ด่านคีย์ผ่าน `crm/access.ts` (MANAGER ปริยายไม่ได้ 5 คีย์ตั้งค่า · อ่านโดยนัยของคน) ◂
+  const actor = toMemberActor(auth.user.id, auth.active);
+  assertCanCrm(actor, action);
   const ctx: DealsCtx = { tenantId: auth.active.tenantId, systemId: String(systemId ?? ""), actorUserId: auth.user.id };
   // CRM uiVersion gate ▸ action ของหน้า v2 ใช้ได้เฉพาะระบบที่เปิด CRM ใหม่ (settings.crm.uiVersion = 2) — action v1 (`actions.ts`) ไม่ผ่านที่นี่ ◂
   await assertCrmV2(ctx);
-  return { ctx, actor: toMemberActor(auth.user.id, auth.active) };
+  return { ctx, actor };
 }
 
 function failOf(e: unknown, multiStep = false): Fail {

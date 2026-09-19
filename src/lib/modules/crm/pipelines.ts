@@ -10,6 +10,8 @@ import type { CrmStage, CrmStageKind } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { crmCan, crmForbiddenMessage } from "./access";
+import { dealWhere } from "./where";
 import {
   DEAL_REASON_MAX,
   DEAL_REASON_MIN,
@@ -53,6 +55,14 @@ async function enter(ctx: PipelinesCtx, actor: MemberActor | null | undefined): 
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return actor;
+}
+
+// CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: งานตั้งค่า (pipeline · ขั้น · เหตุผลที่แพ้) = คีย์ `crm.settings.manage` ผ่าน `crm/access.ts`
+//   (OWNER · หรือได้รับชัดเจน — MANAGER ปริยายไม่ได้ §6.1) · AUDIT-CLASS X2 ◂
+async function enterManage(ctx: PipelinesCtx, actor: MemberActor | null | undefined): Promise<MemberActor> {
+  const a = await enter(ctx, actor);
+  if (!crmCan(a, "crm.settings.manage")) throw fail("FORBIDDEN", crmForbiddenMessage("crm.settings.manage"));
+  return a;
 }
 
 async function audit(ctx: PipelinesCtx, action: string, targetType: string, targetId: string, body: { before?: unknown; after?: unknown }): Promise<void> {
@@ -177,7 +187,7 @@ async function stageData(ctx: PipelinesCtx, actor: MemberActor, s: StageInput) {
 
 /** รายการ pipeline ของระบบนี้ (พร้อมขั้น) — includeArchived = รวมที่เก็บถาวร */
 export async function listPipelines(ctx: PipelinesCtx, actor: MemberActor, opts: { includeArchived?: boolean } = {}): Promise<(PipelineDto & { openDeals: number })[]> {
-  await enter(ctx, actor);
+  const a = await enter(ctx, actor);
   const rows = await prisma.crmPipeline.findMany({
     where: { ...scope(ctx), ...(opts.includeArchived ? {} : { archivedAt: null }) },
     include: { stages: true },
@@ -185,7 +195,8 @@ export async function listPipelines(ctx: PipelinesCtx, actor: MemberActor, opts:
     take: 100,
   });
   const counts = rows.length
-    ? await prisma.crmDeal.groupBy({ by: ["pipelineId"], where: { ...scope(ctx), kind: "OPEN", pipelineId: { in: rows.map((r) => r.id) } }, _count: { _all: true } })
+    ? // CRM C1.7 ▸ AUDIT-CLASS X1: จำนวนดีลที่เปิดอยู่ = เฉพาะดีลที่ผู้ดูเห็น (dealWhere) — ไม่บอกจำนวนดีลของทีมอื่น ◂
+      await prisma.crmDeal.groupBy({ by: ["pipelineId"], where: { AND: [await dealWhere(ctx, a), { kind: "OPEN", pipelineId: { in: rows.map((r) => r.id) } }] }, _count: { _all: true } })
     : [];
   const byPipe = new Map(counts.map((c) => [c.pipelineId, c._count._all]));
   return rows.map((r) => ({ ...toDto(r), openDeals: byPipe.get(r.id) ?? 0 }));
@@ -193,7 +204,7 @@ export async function listPipelines(ctx: PipelinesCtx, actor: MemberActor, opts:
 
 /** สร้าง pipeline + ขั้นตามลำดับที่ส่งมา (ต้องมีขั้นที่เปิดอยู่อย่างน้อย 1) */
 export async function createPipeline(ctx: PipelinesCtx, actor: MemberActor, input: { name: string; stages: StageInput[]; isDefault?: boolean | null }): Promise<PipelineDto> {
-  const a = await enter(ctx, actor);
+  const a = await enterManage(ctx, actor);
   const name = cleanName(input?.name, "ชื่อ pipeline");
   if (!Array.isArray(input?.stages) || input.stages.length === 0) throw fail("VALIDATION", "pipeline ต้องมีอย่างน้อย 1 ขั้น");
   if (input.stages.length > PIPELINE_STAGES_MAX) throw fail("VALIDATION", `pipeline หนึ่งมีได้ไม่เกิน ${PIPELINE_STAGES_MAX} ขั้น`);
@@ -222,7 +233,7 @@ export async function createPipeline(ctx: PipelinesCtx, actor: MemberActor, inpu
 
 /** แก้ชื่อ / ตั้งเป็นค่าเริ่มต้น */
 export async function updatePipeline(ctx: PipelinesCtx, actor: MemberActor, id: string, patch: { name?: string | null; isDefault?: boolean | null }): Promise<PipelineDto> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const cur = await loadPipe(ctx, id);
   const data: Prisma.CrmPipelineUpdateInput = {};
   if (patch?.name !== undefined && patch.name !== null) data.name = cleanName(patch.name, "ชื่อ pipeline");
@@ -244,7 +255,7 @@ export async function archivePipeline(ctx: PipelinesCtx, actor: MemberActor, id:
   const reason = String(opts?.reason ?? "").trim();
   if (reason.length < DEAL_REASON_MIN) throw fail("VALIDATION", `ใส่เหตุผลอย่างน้อย ${DEAL_REASON_MIN} ตัวอักษร เพื่อให้ทีมย้อนดูได้`);
   if (reason.length > DEAL_REASON_MAX) throw fail("VALIDATION", `เหตุผลยาวเกิน ${DEAL_REASON_MAX} ตัวอักษร`);
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const cur = await loadPipe(ctx, id);
   const row = await prisma.$transaction(async (tx) => {
     // ล็อกแถว pipeline แล้วนับดีลเปิดใต้ล็อก — ดีลใหม่ที่เข้ามาพร้อมกันเห็นว่า pipeline ถูกเก็บแล้ว (createDeal อ่าน archivedAt)
@@ -259,7 +270,7 @@ export async function archivePipeline(ctx: PipelinesCtx, actor: MemberActor, id:
 
 /** กู้คืน pipeline ที่เก็บถาวร */
 export async function restorePipeline(ctx: PipelinesCtx, actor: MemberActor, id: string): Promise<PipelineDto> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const cur = await loadPipe(ctx, id);
   const row = await prisma.crmPipeline.update({ where: { id: cur.id }, data: { archivedAt: null }, include: { stages: true } });
   await audit(ctx, "crm.pipeline.restore", "CrmPipeline", row.id, { after: { restored: true } });
@@ -268,7 +279,7 @@ export async function restorePipeline(ctx: PipelinesCtx, actor: MemberActor, id:
 
 /** เพิ่มขั้นท้าย pipeline */
 export async function addStage(ctx: PipelinesCtx, actor: MemberActor, pipelineId: string, input: StageInput): Promise<StageDto> {
-  const a = await enter(ctx, actor);
+  const a = await enterManage(ctx, actor);
   const pipe = await loadPipe(ctx, pipelineId);
   if (pipe.stages.length >= PIPELINE_STAGES_MAX) throw fail("VALIDATION", `pipeline หนึ่งมีได้ไม่เกิน ${PIPELINE_STAGES_MAX} ขั้น`);
   const data = await stageData(ctx, a, input);
@@ -283,7 +294,7 @@ export async function addStage(ctx: PipelinesCtx, actor: MemberActor, pipelineId
  * ชนิดของขั้นเปลี่ยนได้เฉพาะเมื่อไม่มีดีลอยู่ในขั้นนี้
  */
 export async function updateStage(ctx: PipelinesCtx, actor: MemberActor, stageId: string, patch: StagePatch): Promise<StageDto> {
-  const a = await enter(ctx, actor);
+  const a = await enterManage(ctx, actor);
   const cur = await loadStage(ctx, stageId);
   const data: Prisma.CrmStageUpdateInput = {};
   if (patch?.name !== undefined && patch.name !== null) data.name = cleanName(patch.name, "ชื่อขั้น", 60);
@@ -323,7 +334,7 @@ export async function updateStage(ctx: PipelinesCtx, actor: MemberActor, stageId
 
 /** เรียงขั้นใหม่ (ต้องส่ง id ครบทุกขั้นของ pipeline) */
 export async function reorderStages(ctx: PipelinesCtx, actor: MemberActor, pipelineId: string, ids: string[]): Promise<PipelineDto> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const pipe = await loadPipe(ctx, pipelineId);
   const want = Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : [];
   const have = pipe.stages.map((s) => s.id);
@@ -335,7 +346,7 @@ export async function reorderStages(ctx: PipelinesCtx, actor: MemberActor, pipel
 
 /** ลบขั้น — เฉพาะเมื่อไม่มีดีลอยู่ในขั้นนี้ และ pipeline ยังเหลือขั้นที่เปิดอยู่ (ประวัติขั้นเดิมยังอยู่ — ไม่มี FK) */
 export async function deleteStage(ctx: PipelinesCtx, actor: MemberActor, stageId: string): Promise<{ ok: true }> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const cur = await loadStage(ctx, stageId);
   try {
     await prisma.$transaction(async (tx) => {

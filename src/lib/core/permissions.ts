@@ -68,6 +68,8 @@ export type PermissionParamDef = {
    */
   factor?: number;
   hint?: string;
+  /** CRM C1.7 ▸ ค่าที่ระบบใช้เมื่อยังไม่ได้ตั้ง (เก็บในหน่วยของ DB) — ไม่มี = "ไม่จำกัด" ◂ */
+  default?: number;
 };
 
 type ModuleDef = {
@@ -394,14 +396,63 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     module: "crm",
     label: "งานขาย (CRM)",
     group: "customer",
+    // CRM C1.7 ▸ คีย์ครบตามพิมพ์เขียว §6.1 (51 คีย์) — 6 คีย์เดิม (contact.create · deal.create · deal.move · deal.quote ·
+    //   activity.create · activity.complete) คงชื่อเดิมทุกตัวอักษร · ค่าเริ่มต้นต่อบทบาท + read-โดยนัย อยู่ที่ `crm/access.ts`
+    //   (MANAGER ไม่ได้ settings/api/object/visibility/team.manage จนกว่าเจ้าของร้านให้เอง — ตัดสินใน access.ts ไม่ใช่ rbac.evaluate)
     actions: {
+      "crm.contact.read": "ดูผู้ติดต่อ",
       "crm.contact.create": "เพิ่มผู้ติดต่อ",
+      "crm.contact.update": "แก้ไขผู้ติดต่อ",
+      "crm.contact.delete": "ลบ/เก็บถาวรผู้ติดต่อ",
+      "crm.contact.convert": "แปลงผู้สนใจเป็นลูกค้า/ดีล",
+      "crm.contact.import": "นำเข้าผู้ติดต่อจากไฟล์",
+      "crm.contact.export": "ส่งออกรายชื่อผู้ติดต่อ",
+      "crm.contact.merge": "รวมผู้ติดต่อที่ซ้ำกัน",
+      "crm.company.read": "ดูบริษัท",
+      "crm.company.create": "เพิ่มบริษัท",
+      "crm.company.update": "แก้ไขบริษัท",
+      "crm.company.delete": "ลบ/เก็บถาวรบริษัท",
+      "crm.company.merge": "รวมบริษัทที่ซ้ำกัน",
+      "crm.deal.read": "ดูดีล",
       "crm.deal.create": "เปิดดีล",
+      "crm.deal.update": "แก้ไขดีล",
       "crm.deal.move": "ย้ายขั้นของดีล",
+      "crm.deal.delete": "ลบดีล",
       "crm.deal.quote": "ออกใบเสนอราคาจากดีล",
+      "crm.deal.reassign": "โอนดีลให้คนอื่น/ข้ามทีม",
+      "crm.deal.lines": "แก้รายการสินค้าและส่วนลดในดีล",
+      "crm.deal.forecast": "ตั้งหมวดพยากรณ์ยอดขายของดีล",
+      "crm.activity.read": "ดูกิจกรรมติดตาม",
       "crm.activity.create": "บันทึกกิจกรรมติดตาม",
       "crm.activity.complete": "ปิดกิจกรรมติดตาม",
+      "crm.activity.delete": "ลบกิจกรรมติดตาม",
+      "crm.email.read": "อ่านอีเมลของลูกค้าใน CRM",
+      "crm.email.send": "ส่งอีเมลหาลูกค้าจาก CRM",
+      "crm.email.settings": "ตั้งค่าอีเมลของ CRM",
+      "crm.sequence.manage": "สร้าง/แก้ลำดับการติดตามอัตโนมัติ",
+      "crm.sequence.enroll": "ใส่ลูกค้าเข้าลำดับการติดตาม",
+      "crm.automation.manage": "ตั้งกฎอัตโนมัติของ CRM",
+      "crm.score.manage": "ตั้งเกณฑ์ให้คะแนนลูกค้า",
+      "crm.assignment.manage": "ตั้งกติกาแจกลีดให้พนักงาน",
+      "crm.object.manage": "ออกแบบวัตถุกำหนดเอง",
+      "crm.record.read": "ดูรายการของวัตถุกำหนดเอง",
+      "crm.record.create": "เพิ่มรายการของวัตถุกำหนดเอง",
+      "crm.record.update": "แก้ไขรายการของวัตถุกำหนดเอง",
+      "crm.record.delete": "ลบรายการของวัตถุกำหนดเอง",
+      "crm.team.manage": "จัดการทีมขาย",
+      "crm.visibility.manage": "ตั้งค่าการมองเห็นข้อมูลขาย",
+      "crm.quota.manage": "ตั้งเป้ายอดขาย",
+      "crm.commission.view": "ดูค่าคอมมิชชัน",
+      "crm.commission.approve": "อนุมัติค่าคอมมิชชัน",
+      "crm.report.view": "ดูรายงานขายของตัวเอง",
+      "crm.report.team": "ดูรายงานขายทั้งทีม",
+      "crm.report.all": "ดูรายงานขายทั้งร้าน",
+      "crm.tracking.manage": "ตั้งค่าการติดตามเว็บ/ลิงก์",
+      "crm.portal.manage": "จัดการพอร์ทัลลูกค้าบริษัท",
+      "crm.settings.manage": "ตั้งค่าระบบ CRM (pipeline ขั้น เหตุผลที่แพ้)",
+      "crm.api.manage": "จัดการคีย์ API ของ CRM",
     },
+    // ◂ CRM C1.7
   },
   {
     module: "marketing",
@@ -679,6 +730,17 @@ const MODULE_DEFS: readonly ModuleDef[] = [
   },
 ] as const;
 
+// CRM C1.7 ▸ 5 คีย์ตั้งค่าของ CRM ที่ MANAGER ไม่ได้โดยปริยาย (§6.1) — ให้ได้เฉพาะเจ้าของร้าน (ผู้อ่าน: crm/access.ts ·
+//   staff/service.ts ด่านห้ามยกระดับ) · `crm.*` ครอบทั้งห้าคีย์ จึงให้ได้เฉพาะเจ้าของร้านเช่นกัน
+export const CRM_OWNER_ONLY_KEYS: readonly string[] = [
+  "crm.settings.manage",
+  "crm.api.manage",
+  "crm.object.manage",
+  "crm.visibility.manage",
+  "crm.team.manage",
+];
+// ◂ CRM C1.7
+
 /** ค่าตัวเลขของสิทธิ์ — อ่านผ่าน `permissionValue()` ใน core/rbac.ts */
 // วันนี้มีตัวเดียวที่โค้ดจริงอ่าน: account/expense-actions.ts:323
 // (`_maxDiscountBp` ที่เขียนไว้ในคอมเมนต์ของ rbac.ts เป็นแค่ตัวอย่าง ไม่มีโค้ดไหนอ่าน — ไม่ใส่)
@@ -692,6 +754,35 @@ export const PERMISSION_PARAMS: readonly PermissionParamDef[] = [
     factor: 100, // เก็บเป็นสตางค์ (ดู account/expense-actions.ts:323)
     hint: "ไม่กรอก = ไม่จำกัดวงเงิน",
   },
+  // CRM C1.7 ▸ ค่าตัวเลขของสิทธิ์ CRM (พิมพ์เขียว §6.1) — ผู้อ่าน: deals.ts (ส่วนลด · โอนข้ามทีม) · C3.3 (คอมมิชชัน)
+  {
+    key: "crm._maxDealDiscountBp",
+    module: "crm",
+    label: "เพดานส่วนลดในดีลที่ให้ได้เอง",
+    group: "customer",
+    unit: "%",
+    factor: 100, // เก็บเป็น basis point (1% = 100)
+    default: 1000, // = DEAL_DISCOUNT_CAP_BP_DEFAULT (10%) — เกินนี้ต้องขออนุมัติ crm.discount
+    hint: "ไม่กรอก = 10% · เกินเพดานต้องขออนุมัติ",
+  },
+  {
+    key: "crm._maxCommissionApproveSatang",
+    module: "crm",
+    label: "วงเงินอนุมัติค่าคอมมิชชันสูงสุด",
+    group: "customer",
+    unit: "บาท",
+    factor: 100,
+    hint: "ไม่กรอก = ไม่จำกัดวงเงิน",
+  },
+  {
+    key: "crm._maxReassignPerDay",
+    module: "crm",
+    label: "จำนวนดีลที่โอนข้ามทีมได้ต่อวัน",
+    group: "customer",
+    unit: "ดีล",
+    hint: "ไม่กรอก = ไม่จำกัด · เกินต้องขออนุมัติ",
+  },
+  // ◂ CRM C1.7
 ] as const;
 
 /** ค่าที่เก็บใน DB → ค่าที่โชว์ให้คนกรอก */

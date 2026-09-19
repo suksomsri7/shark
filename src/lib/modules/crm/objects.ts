@@ -27,6 +27,10 @@ const memberFacade = () => import("@/lib/modules/member");
 /** engine ฟิลด์ตัวเดียวของระบบ (member facade → namespace `fields` · ใบ C1.2a) */
 const engine = async () => (await memberFacade()).fields;
 import { prisma } from "./db";
+// CRM C1.7 ▸ การมองเห็นของรายการ = ตามแม่ (where.ts → visibility) · คีย์สิทธิ์ผ่าน access.ts ◂
+import { companyWhere, contactWhere, dealWhere, recordWhere } from "./where";
+import { recordVisibilitySql } from "./visibility";
+import { crmCan, crmForbiddenMessage } from "./access";
 import {
   OBJECT_BULK_MAX,
   OBJECT_EXPORT_MAX_ROWS,
@@ -153,6 +157,11 @@ function apiRoleOfActor(actor: MemberActor): "READONLY" | "OPERATE" | "ADMIN" | 
   return r === "READONLY" || r === "OPERATE" || r === "ADMIN" ? r : null;
 }
 
+/** CRM C1.7 ▸ AUDIT-CLASS X2: คีย์ของรายการ (หลังการมองเห็นเสมอ) — เห็นแต่ไม่มีคีย์ = FORBIDDEN ข้อความไทย ◂ */
+function need(actor: MemberActor, key: string): void {
+  if (!crmCan(actor, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
+}
+
 /** ทุกการเขียน (ออกแบบวัตถุ + รายการ): คีย์ API แบบอ่านอย่างเดียว = ปฏิเสธ */
 function assertCanWrite(actor: MemberActor): void {
   if (apiRoleOfActor(actor) === "READONLY") {
@@ -166,8 +175,9 @@ function assertDesigner(actor: MemberActor): void {
   if (apiRoleOfActor(actor) !== null) {
     throw fail("FORBIDDEN", "การตั้งค่าวัตถุกำหนดเองทำผ่านคีย์ API ไม่ได้ — ให้เจ้าของร้านหรือผู้จัดการตั้งค่าจากหน้าตั้งค่า CRM");
   }
-  if (actor.role !== "OWNER" && actor.role !== "MANAGER") {
-    throw fail("FORBIDDEN", "การตั้งค่าวัตถุกำหนดเองทำได้เฉพาะเจ้าของร้านหรือผู้จัดการ — ขอให้ผู้ดูแลช่วยตั้งค่าให้");
+  // CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: คีย์ `crm.object.manage` (OWNER · หรือได้รับชัดเจน — MANAGER ปริยายไม่ได้ §6.1) ◂
+  if (!crmCan(actor, "crm.object.manage")) {
+    throw fail("FORBIDDEN", crmForbiddenMessage("crm.object.manage"));
   }
 }
 
@@ -276,13 +286,16 @@ function isSensitiveField(layout: LayoutLike, key: string): boolean {
 }
 
 /** ขอบเขตสาขาของวัตถุที่ตั้ง `unitScoped` — actor ที่ถูกจำกัดสาขาเห็นเฉพาะรายการของสาขาตน + รายการที่ไม่ระบุสาขา */
+// CRM C1.7 ▸ unitAccess [] = ทั้งร้าน (แบบเดียวกับ member/access.ts#coversUnit) ◂
+const wholeShop = (actor: MemberActor) => actor.role === "OWNER" || actor.unitAccess.length === 0 || actor.unitAccess.includes("*");
+
 function unitWhere(obj: CustomObject, actor: MemberActor): Prisma.CustomRecordWhereInput {
-  if (!obj.unitScoped || actor.role === "OWNER" || actor.unitAccess.includes("*")) return {};
+  if (!obj.unitScoped || wholeShop(actor)) return {};
   return { OR: [{ unitId: null }, { unitId: { in: actor.unitAccess } }] };
 }
 
 function coversUnit(obj: CustomObject, actor: MemberActor, unitId: string | null): boolean {
-  if (!obj.unitScoped || !unitId || actor.role === "OWNER" || actor.unitAccess.includes("*")) return true;
+  if (!obj.unitScoped || !unitId || wholeShop(actor)) return true;
   return actor.unitAccess.includes(unitId);
 }
 
@@ -295,7 +308,7 @@ type ParentInfo = { parentId: string | null; partyId: string | null };
  * AUDIT-CLASS X1: แม่ชนิด CONTACT/COMPANY/DEAL ต้องอยู่ **ระบบ CRM เดียวกัน** (ฐานข้อมูลไม่มี FK ให้พึ่ง — ข้อสังเกตรีวิว C1.1)
  *   แม่ชนิด CUSTOMER = สมาชิกของร้านนี้ (ระบบสมาชิกไหนก็ได้) · แม่ที่ไม่พบ/ผิดชนิด/ของระบบอื่น = VALIDATION (ไม่บอกว่ามีอยู่ที่อื่น)
  */
-async function resolveParent(ctx: ObjectsCtx, parentType: ObjectParentType, rawParentId: unknown, db: Db): Promise<ParentInfo> {
+async function resolveParent(ctx: ObjectsCtx, parentType: ObjectParentType, rawParentId: unknown, db: Db, actor?: MemberActor): Promise<ParentInfo> {
   const parentId = str(rawParentId);
   if (parentType === "NONE") {
     if (parentId) throw fail("VALIDATION", "วัตถุนี้ตั้งไว้ว่า \"ไม่ผูกกับใคร\" จึงระบุเจ้าของรายการไม่ได้ — เอาช่องเจ้าของออกแล้วบันทึกใหม่");
@@ -307,19 +320,19 @@ async function resolveParent(ctx: ObjectsCtx, parentType: ObjectParentType, rawP
   const base = { id: parentId, tenantId: ctx.tenantId };
   switch (parentType) {
     case "CONTACT": {
-      const row = await db.crmContact.findFirst({ where: { ...base, systemId: ctx.systemId }, select: { partyId: true, archivedAt: true } });
+      const row = await db.crmContact.findFirst({ where: { AND: [{ ...base, systemId: ctx.systemId }, ...(actor ? [await contactWhere(ctx, actor, { db })] : [])] }, select: { partyId: true, archivedAt: true } });
       if (!row) throw notFound();
       if (row.archivedAt) throw fail("VALIDATION", "ผู้ติดต่อที่เลือกถูกเก็บถาวรแล้ว — กู้คืนผู้ติดต่อก่อน หรือเลือกคนอื่น");
       return { parentId, partyId: row.partyId };
     }
     case "COMPANY": {
-      const row = await db.crmCompany.findFirst({ where: { ...base, systemId: ctx.systemId }, select: { partyId: true, archivedAt: true } });
+      const row = await db.crmCompany.findFirst({ where: { AND: [{ ...base, systemId: ctx.systemId }, ...(actor ? [await companyWhere(ctx, actor, { db })] : [])] }, select: { partyId: true, archivedAt: true } });
       if (!row) throw notFound();
       if (row.archivedAt) throw fail("VALIDATION", "บริษัทที่เลือกถูกเก็บถาวรแล้ว — กู้คืนบริษัทก่อน หรือเลือกบริษัทอื่น");
       return { parentId, partyId: row.partyId };
     }
     case "DEAL": {
-      const row = await db.crmDeal.findFirst({ where: { ...base, systemId: ctx.systemId }, select: { contact: { select: { partyId: true } } } });
+      const row = await db.crmDeal.findFirst({ where: { AND: [{ ...base, systemId: ctx.systemId }, ...(actor ? [await dealWhere(ctx, actor, { db })] : [])] }, select: { contact: { select: { partyId: true } } } });
       if (!row) throw notFound();
       return { parentId, partyId: row.contact?.partyId ?? null };
     }
@@ -336,26 +349,26 @@ async function resolveParent(ctx: ObjectsCtx, parentType: ObjectParentType, rawP
 }
 
 /** แม่ที่ต้องเป็นของระบบนี้ (ใช้กับ tabsFor) — ไม่พบ = NOT_FOUND */
-async function assertParentVisible(ctx: ObjectsCtx, parentType: ObjectParentType, parentId: unknown): Promise<string> {
+async function assertParentVisible(ctx: ObjectsCtx, parentType: ObjectParentType, parentId: unknown, actor: MemberActor): Promise<string> {
   try {
-    return await resolveParentForRead(ctx, parentType, parentId);
+    return await resolveParentForRead(ctx, parentType, parentId, actor);
   } catch (e) {
     if (e instanceof ObjectsError) throw fail("NOT_FOUND", `ไม่พบ${OBJECT_PARENT_LABEL[parentType]}นี้ในระบบ CRM ที่เปิดอยู่`);
     throw e;
   }
 }
 
-async function resolveParentForRead(ctx: ObjectsCtx, parentType: ObjectParentType, rawParentId: unknown): Promise<string> {
+async function resolveParentForRead(ctx: ObjectsCtx, parentType: ObjectParentType, rawParentId: unknown, actor: MemberActor): Promise<string> {
   const parentId = str(rawParentId);
   if (!parentId || parentType === "NONE") throw fail("VALIDATION", "ต้องระบุเจ้าของ");
   const base = { id: parentId, tenantId: ctx.tenantId };
   const n =
     parentType === "CONTACT"
-      ? await prisma.crmContact.count({ where: { ...base, systemId: ctx.systemId } })
+      ? await prisma.crmContact.count({ where: { AND: [{ ...base, systemId: ctx.systemId }, await contactWhere(ctx, actor)] } })
       : parentType === "COMPANY"
-        ? await prisma.crmCompany.count({ where: { ...base, systemId: ctx.systemId } })
+        ? await prisma.crmCompany.count({ where: { AND: [{ ...base, systemId: ctx.systemId }, await companyWhere(ctx, actor)] } })
         : parentType === "DEAL"
-          ? await prisma.crmDeal.count({ where: { ...base, systemId: ctx.systemId } })
+          ? await prisma.crmDeal.count({ where: { AND: [{ ...base, systemId: ctx.systemId }, await dealWhere(ctx, actor)] } })
           : await prisma.customer.count({ where: base });
   if (n === 0) throw fail("VALIDATION", "ไม่พบเจ้าของ");
   return parentId;
@@ -711,10 +724,13 @@ export async function warnings(ctx: ObjectsCtx, actor: MemberActor): Promise<Obj
 
 // ═════════════════════════ รายการ ═════════════════════════
 
-async function findRecord(ctx: ObjectsCtx, obj: CustomObject, recordId: unknown, db: Db): Promise<CustomRecord> {
+async function findRecord(ctx: ObjectsCtx, obj: CustomObject, recordId: unknown, db: Db, actor?: MemberActor): Promise<CustomRecord> {
   const id = str(recordId);
   // AUDIT-CLASS X1: รายการของวัตถุนี้ในระบบ CRM นี้เท่านั้น — ของระบบอื่น/ร้านอื่น (key เดียวกัน) = ไม่พบ (ไม่ echo ชื่อรายการ)
-  const row = id ? await db.customRecord.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id } }) : null;
+  //   CRM C1.7: ส่ง actor = ต้องมองเห็นด้วย (recordWhere — ตามแม่ + คีย์ crm.record.read) · มองไม่เห็น = ไม่พบ
+  const row = id
+    ? await db.customRecord.findFirst({ where: { AND: [{ id, tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id }, ...(actor ? [await recordWhere(ctx, actor, { recordId: id, db })] : [])] } })
+    : null;
   if (!row) throw fail("NOT_FOUND", `ไม่พบรายการนี้ใน${obj.label}ของระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่`);
   return row;
 }
@@ -747,7 +763,7 @@ type CreateCore = { obj: CustomObject; row: CustomRecord; count: number };
 
 /** แกนของการสร้างรายการ (ใช้ร่วม create + import) — ไม่เขียน audit */
 async function createRecordCore(ctx: ObjectsCtx, actor: MemberActor, obj: CustomObject, input: CreateRecordInput, via: "STAFF" | "IMPORT"): Promise<CreateCore> {
-  const parent = await resolveParent(ctx, obj.parentType as ObjectParentType, input?.parentId, prisma);
+  const parent = await resolveParent(ctx, obj.parentType as ObjectParentType, input?.parentId, prisma, actor);
   const unitId = str(input?.unitId);
   if (unitId) {
     const unit = await prisma.businessUnit.count({ where: { id: unitId, tenantId: ctx.tenantId } });
@@ -817,6 +833,7 @@ async function createRecord(ctx: ObjectsCtx, actor: MemberActor, objectKey: stri
   assertCanWrite(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
+  need(actor, "crm.record.create");
   const { row, count } = await createRecordCore(ctx, actor, obj, input, "STAFF");
   await writeAudit({
     tenantId: ctx.tenantId,
@@ -835,8 +852,9 @@ async function updateRecord(ctx: ObjectsCtx, actor: MemberActor, objectKey: stri
   assertCanWrite(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
-  const current = await findRecord(ctx, obj, recordId, prisma);
+  const current = await findRecord(ctx, obj, recordId, prisma, actor);
   if (!coversUnit(obj, actor, current.unitId)) throw fail("NOT_FOUND", `ไม่พบรายการนี้ใน${obj.label}ของระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่`);
+  need(actor, "crm.record.update");
   if (current.archivedAt) throw fail("VALIDATION", "รายการนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้");
   const values: Record<string, unknown> = { ...(patch?.values ?? {}) };
   const explicitTitle = patch?.title === undefined || patch?.title === null ? null : titleOf(patch.title);
@@ -899,8 +917,9 @@ async function archiveRecord(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   assertCanWrite(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
-  const current = await findRecord(ctx, obj, recordId, prisma);
+  const current = await findRecord(ctx, obj, recordId, prisma, actor);
   if (!coversUnit(obj, actor, current.unitId)) throw fail("NOT_FOUND", `ไม่พบรายการนี้ใน${obj.label}ของระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่`);
+  need(actor, "crm.record.delete");
   const archived = await prisma.$transaction(async (tx) => {
     const done = await archiveInTx(tx, ctx, obj, current);
     // AUDIT-CLASS X3: ลดตัวนับด้วยคำสั่งเดียว เฉพาะรอบที่เก็บจริง
@@ -917,7 +936,7 @@ async function getRecord(ctx: ObjectsCtx, actor: MemberActor, objectKey: string,
   assertActor(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
-  const row = await findRecord(ctx, obj, recordId, prisma);
+  const row = await findRecord(ctx, obj, recordId, prisma, actor);
   if (!coversUnit(obj, actor, row.unitId)) throw fail("NOT_FOUND", `ไม่พบรายการนี้ใน${obj.label}ของระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่`);
   const values = await valuesOf(ctx, obj, actor, [row.id]);
   return recordDto(obj, row, values[row.id] ?? {});
@@ -937,6 +956,7 @@ async function recordsWhere(ctx: ObjectsCtx, actor: MemberActor, obj: CustomObje
     // AUDIT-CLASS X1: ขอบเขตร้าน + ระบบ CRM + วัตถุ ทุกครั้ง (C1.7 จะเติม visibleWhere ผ่าน crm/where.ts)
     { tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id },
     unitWhere(obj, actor),
+    // CRM C1.7: การมองเห็นตามแม่ไม่อยู่ใน where นี้ — ผู้เรียกที่ถูกจำกัด (recordVisibilitySql ≠ null) ใช้ visibleRecordPage (EXISTS ในฐานข้อมูล)
   ];
   if (!input?.includeArchived) AND.push({ archivedAt: null });
   const parentId = str(input?.parentId);
@@ -952,22 +972,82 @@ async function recordsWhere(ctx: ObjectsCtx, actor: MemberActor, obj: CustomObje
   return { AND };
 }
 
+// CRM C1.7 ▸ รายการ/ส่งออกของผู้ที่ถูกจำกัดการมองเห็น: กรองในฐานข้อมูลด้วย EXISTS ของแม่ที่เห็น (recordVisibilitySql) —
+//   ไม่ดึงรายการ id ของแม่ทั้งระบบ (รีวิว C1.7 ข้อ 2 · เพดาน bind 32,767 ของ Postgres) · นับ + หน้า = 2 คิวรี
+//   ตัวกรองฟิลด์ f.{key} ของ engine (where ของ Prisma) ใช้เป็นชุด id ตั้งต้นส่งเป็นอาร์เรย์พารามิเตอร์เดียว (= ANY) — มีเฉพาะเมื่อผู้ใช้กรองฟิลด์
+const SORT_SQL: Record<string, Prisma.Sql> = {
+  title: Prisma.sql`r."title" ASC, r."id" ASC`,
+  "-title": Prisma.sql`r."title" DESC, r."id" DESC`,
+  createdAt: Prisma.sql`r."createdAt" ASC, r."id" ASC`,
+  "-createdAt": Prisma.sql`r."createdAt" DESC, r."id" DESC`,
+  updatedAt: Prisma.sql`r."updatedAt" ASC, r."id" ASC`,
+  "-updatedAt": Prisma.sql`r."updatedAt" DESC, r."id" DESC`,
+};
+
+async function visibleRecordPage(
+  ctx: ObjectsCtx,
+  actor: MemberActor,
+  obj: CustomObject,
+  input: ListRecordsInput,
+  vis: Prisma.Sql,
+  sortKey: string,
+  page: { limit: number; offset: number } | null,
+): Promise<{ total: number; ids: string[] }> {
+  const cond: Prisma.Sql[] = [Prisma.sql`r."tenantId" = ${ctx.tenantId}`, Prisma.sql`r."systemId" = ${ctx.systemId}`, Prisma.sql`r."objectId" = ${obj.id}`];
+  if (!input?.includeArchived) cond.push(Prisma.sql`r."archivedAt" IS NULL`);
+  const parentId = str(input?.parentId);
+  if (parentId) cond.push(Prisma.sql`r."parentId" = ${parentId}`);
+  const q = str(input?.q);
+  if (q) cond.push(Prisma.sql`r."title" ILIKE ${`%${q.slice(0, 200).replace(/[\\%_]/g, (m) => `\\${m}`)}%`} ESCAPE '\\'`);
+  if (obj.unitScoped && !wholeShop(actor)) cond.push(Prisma.sql`(r."unitId" IS NULL OR r."unitId" = ANY(${actor.unitAccess}::text[]))`);
+  const filters = input?.f ?? {};
+  if (Object.keys(filters).length > 0) {
+    const frag = await viaEngine(async () => (await engine()).fieldFilterWhere({ ...fctx(ctx, obj.key, actor), objectKey: obj.key }, filters));
+    const ids = (await prisma.customRecord.findMany({ where: { AND: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id }, frag as Prisma.CustomRecordWhereInput] }, select: { id: true } })).map((r) => r.id);
+    cond.push(Prisma.sql`r."id" = ANY(${ids}::text[])`);
+  }
+  cond.push(vis);
+  const where = Prisma.join(cond, " AND ");
+  const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "CustomRecord" r WHERE ${where}`;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT r."id" FROM "CustomRecord" r WHERE ${where} ORDER BY ${SORT_SQL[sortKey] ?? SORT_SQL["-createdAt"]}
+    ${page ? Prisma.sql`LIMIT ${page.limit} OFFSET ${page.offset}` : Prisma.empty}`;
+  return { total: n, ids: rows.map((r) => r.id) };
+}
+
+async function rowsInOrder(ids: string[]): Promise<CustomRecord[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.customRecord.findMany({ where: { id: { in: ids } } });
+  const by = new Map(rows.map((r) => [r.id, r]));
+  return ids.map((id) => by.get(id)).filter((r): r is CustomRecord => !!r);
+}
+// ◂ CRM C1.7
+
 async function listRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: string, input: ListRecordsInput = {}): Promise<{ items: RecordDto[]; total: number; page: number; pageSize: number }> {
   assertActor(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
-  const where = await recordsWhere(ctx, actor, obj, input ?? {});
   const pageSize = Math.min(LIST_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
   const page = Math.max(1, Math.floor(Number(input?.page) || 1));
   const sortKey = input?.sort ?? "-createdAt";
   if (typeof sortKey !== "string" || !Object.hasOwn(SORTS, sortKey)) {
     throw fail("VALIDATION", `เรียงลำดับได้ตาม ${Object.keys(SORTS).join(" / ")} เท่านั้น`);
   }
-  const orderBy = SORTS[sortKey];
-  const [total, rows] = await Promise.all([
-    prisma.customRecord.count({ where }),
-    prisma.customRecord.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
-  ]);
+  // CRM C1.7 ▸ AUDIT-CLASS X1: การมองเห็นตามแม่ — null = เห็นทุกรายการ (ระบบ v1 · OWNER · ไม่ถูกจำกัด) ⇒ ทาง Prisma เดิม ◂
+  const vis = await recordVisibilitySql(ctx, actor);
+  let total: number;
+  let rows: CustomRecord[];
+  if (vis === null) {
+    const where = await recordsWhere(ctx, actor, obj, input ?? {});
+    [total, rows] = await Promise.all([
+      prisma.customRecord.count({ where }),
+      prisma.customRecord.findMany({ where, orderBy: SORTS[sortKey], skip: (page - 1) * pageSize, take: pageSize }),
+    ]);
+  } else {
+    const r = await visibleRecordPage(ctx, actor, obj, input ?? {}, vis, sortKey, { limit: pageSize, offset: (page - 1) * pageSize });
+    total = r.total;
+    rows = await rowsInOrder(r.ids);
+  }
   const values = await valuesOf(ctx, obj, actor, rows.map((r) => r.id));
   return { items: rows.map((r) => recordDto(obj, r, values[r.id] ?? {})), total, page, pageSize };
 }
@@ -977,11 +1057,12 @@ async function moveRecord(ctx: ObjectsCtx, actor: MemberActor, objectKey: string
   assertCanWrite(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
-  const current = await findRecord(ctx, obj, recordId, prisma);
+  const current = await findRecord(ctx, obj, recordId, prisma, actor);
   if (!coversUnit(obj, actor, current.unitId)) throw fail("NOT_FOUND", `ไม่พบรายการนี้ใน${obj.label}ของระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่`);
+  need(actor, "crm.record.update");
   if (current.archivedAt) throw fail("VALIDATION", "รายการนี้ถูกเก็บถาวรแล้ว จึงย้ายไม่ได้");
   // แม่ใหม่ต้องเป็นชนิดเดียวกับที่วัตถุกำหนด และอยู่ระบบ CRM นี้ (X1) · partyId รับช่วงจากแม่ใหม่
-  const parent = await resolveParent(ctx, obj.parentType as ObjectParentType, newParentId, prisma);
+  const parent = await resolveParent(ctx, obj.parentType as ObjectParentType, newParentId, prisma, actor);
   if (parent.parentId === current.parentId && parent.partyId === current.partyId) return getRecord(ctx, actor, obj.key, current.id);
   await prisma.$transaction(async (tx) => {
     const res = await tx.customRecord.updateMany({
@@ -1026,8 +1107,9 @@ async function bulkRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: strin
   if (input?.confirm !== true || !reason) {
     throw fail("CONFIRM_REQUIRED", `ยืนยันการเก็บถาวร ${ids.length} รายการ และใส่เหตุผลอย่างน้อย ${OBJECT_REASON_MIN} ตัวอักษร (รายการไม่ถูกลบ กู้คืนได้)`);
   }
+  need(actor, "crm.record.delete");
   const rows = await prisma.customRecord.findMany({
-    where: { AND: [{ id: { in: ids }, tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id, archivedAt: null }, unitWhere(obj, actor)] },
+    where: { AND: [{ id: { in: ids }, tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id, archivedAt: null }, unitWhere(obj, actor), await recordWhere(ctx, actor, { recordIds: ids })] },
     // ลำดับคงที่ ⇒ งานกลุ่มสองชุดที่ทับกันล็อกแถวตามลำดับเดียวกัน (ไม่ deadlock)
     orderBy: { id: "asc" },
   });
@@ -1084,6 +1166,7 @@ async function importRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   assertCanWrite(actor);
   await resolveSystem(ctx);
   const obj = await findObject(ctx, objectKey, prisma);
+  need(actor, "crm.record.create");
   const csv = typeof input?.csv === "string" ? input.csv : "";
   if (!csv.trim()) throw fail("VALIDATION", "ไฟล์ว่าง — ใส่แถวหัว (ชื่ออ้างอิงของฟิลด์) และข้อมูลอย่างน้อย 1 แถว");
   const bytes = Buffer.byteLength(csv, "utf8");
@@ -1172,9 +1255,12 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   for (const s of layout.sections) for (const f of s.fields) if (!f.isSystem) keys.push(f.key);
   const withParent = obj.parentType !== "NONE";
   const lines = [csvRow(["title", ...(withParent ? ["parentId"] : []), ...keys])];
-  const where = await recordsWhere(ctx, actor, obj, { ...(opts ?? {}), page: undefined, pageSize: undefined });
+  const listInput = { ...(opts ?? {}), page: undefined, pageSize: undefined };
+  // CRM C1.7 ▸ ผู้ถูกจำกัดการมองเห็น = นับ/อ่านเป็นหน้าในฐานข้อมูล (EXISTS ของแม่) · ไม่ถูกจำกัด = ทาง Prisma เดิม ◂
+  const vis = await recordVisibilitySql(ctx, actor);
+  const where = await recordsWhere(ctx, actor, obj, listInput);
   // AUDIT-CLASS X6: เพดานส่งออก — นับก่อนสร้างไฟล์ (ไฟล์ใหญ่เกิน = หน่วยความจำ/เวลาเกินของเครื่องเดียว)
-  const total = await prisma.customRecord.count({ where });
+  const total = vis === null ? await prisma.customRecord.count({ where }) : (await visibleRecordPage(ctx, actor, obj, listInput, vis, "createdAt", { limit: 0, offset: 0 })).total;
   if (total > OBJECT_EXPORT_MAX_ROWS) {
     throw fail(
       "VALIDATION",
@@ -1182,13 +1268,11 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
     );
   }
   let cursor: string | null = null;
-  for (;;) {
-    const rows: CustomRecord[] = await prisma.customRecord.findMany({
-      where,
-      orderBy: { id: "asc" },
-      take: EXPORT_BATCH,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+  for (let offset = 0; ; offset += EXPORT_BATCH) {
+    const rows: CustomRecord[] =
+      vis === null
+        ? await prisma.customRecord.findMany({ where, orderBy: { id: "asc" }, take: EXPORT_BATCH, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) })
+        : await rowsInOrder((await visibleRecordPage(ctx, actor, obj, listInput, vis, "createdAt", { limit: EXPORT_BATCH, offset })).ids);
     if (rows.length === 0) break;
     const values = await valuesOf(ctx, obj, actor, rows.map((r) => r.id));
     for (const r of rows) {
@@ -1221,7 +1305,18 @@ export async function tabsFor(ctx: ObjectsCtx, actor: MemberActor, parentType: O
   await resolveSystem(ctx);
   const type = normalizeParentType(parentType);
   if (type === "NONE") throw fail("VALIDATION", "วัตถุที่ไม่ผูกกับใครไม่มีแท็บในหน้ารายละเอียด");
-  const id = await assertParentVisible(ctx, type, parentId);
+  const id = await assertParentVisible(ctx, type, parentId, actor);
+  // CRM C1.7 ▸ แม่ผ่านการมองเห็นแล้ว (assertParentVisible) ⇒ รายการของแม่นี้เห็นทั้งหมดเมื่อมีคีย์ crm.record.read ·
+  //   แม่ชนิดอื่น (สมาชิก) = ขอบเขตสาขาของรายการ · ระบบ v1 / ไม่ถูกจำกัด = ไม่กรองเพิ่ม (ไม่มีรายการ id) ◂
+  const vis = await recordVisibilitySql(ctx, actor);
+  const recWhere: Prisma.CustomRecordWhereInput =
+    vis === null
+      ? {}
+      : !crmCan(actor, "crm.record.read")
+        ? { id: { in: [] } }
+        : type === "CONTACT" || type === "COMPANY" || type === "DEAL" || wholeShop(actor)
+          ? {}
+          : { OR: [{ unitId: null }, { unitId: { in: actor.unitAccess } }] };
   const objs = await prisma.customObject.findMany({
     where: { tenantId: ctx.tenantId, systemId: ctx.systemId, parentType: type as CustomParent, showAsTab: true, archivedAt: null },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -1229,7 +1324,7 @@ export async function tabsFor(ctx: ObjectsCtx, actor: MemberActor, parentType: O
   const counts = await Promise.all(
     objs.map((o) =>
       prisma.customRecord.count({
-        where: { AND: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: o.id, parentId: id, archivedAt: null }, unitWhere(o, actor)] },
+        where: { AND: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: o.id, parentId: id, archivedAt: null }, unitWhere(o, actor), recWhere] },
       }),
     ),
   );
@@ -1247,7 +1342,7 @@ export async function timelineFor(ctx: ObjectsCtx, actor: MemberActor, recordId:
   assertActor(actor);
   await resolveSystem(ctx);
   const id = str(recordId);
-  const rec = id ? await prisma.customRecord.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, include: { object: true } }) : null;
+  const rec = id ? await prisma.customRecord.findFirst({ where: { AND: [{ id, tenantId: ctx.tenantId, systemId: ctx.systemId }, await recordWhere(ctx, actor, { recordId: id })] }, include: { object: true } }) : null;
   // AUDIT-CLASS X1: รายการของระบบอื่น/ร้านอื่น/วัตถุที่เก็บถาวร = ไม่พบ
   if (!rec || rec.object.archivedAt || !coversUnit(rec.object, actor, rec.unitId)) {
     throw fail("NOT_FOUND", "ไม่พบรายการนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");

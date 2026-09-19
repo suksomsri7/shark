@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (MANAGER ปริยายไม่มี crm.settings.manage — §6.1) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
@@ -40,7 +41,7 @@ export default async function NewDealPage({
   const pipe = pipelines.find((p) => p.id === one("pipeline")) ?? pipelines[0];
   const stage = pipe?.stages.find((s) => s.id === one("stage") && s.kind === "OPEN");
   const def = systemDef(sys.type);
-  const canSettings = evaluate({ role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> }, { module: "crm", action: "crm.settings.manage" });
+  const canSettings = crmCan({ role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> }, "crm.settings.manage");
   return (
     <div className="flex min-w-0 max-w-3xl flex-col gap-4" data-testid="deal-new-page">
       <PageHeader

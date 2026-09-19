@@ -4,8 +4,7 @@
 //    (`crm/activities/_components/FilesPanel`) — ลิงก์ทุกแถวเป็นลิงก์ส่วนตัวที่ผูกกับผู้ดูคนนี้และหมดอายุ (X10)
 // 🔴 หน้า GET ไม่เขียนอะไร · ระเบียนที่ผู้ดูมองไม่เห็น = บริการตอบ NOT_FOUND (หน้า 360 ตัดไป 404 ก่อนถึงบล็อกนี้อยู่แล้ว)
 
-import { evaluate } from "@/lib/core/rbac";
-import { files } from "@/lib/modules/crm";
+import { crmCan, files } from "@/lib/modules/crm";
 import type { MemberActor } from "@/lib/modules/member";
 import { FilesPanel } from "@/app/app/sys/[id]/crm/activities/_components/FilesPanel";
 
@@ -13,8 +12,9 @@ type Ctx = { tenantId: string; systemId: string; actorUserId: string | null };
 
 export async function CrmFilesBlock({ ctx, actor, entityType, entityId }: { ctx: Ctx; actor: MemberActor; entityType: "CONTACT" | "COMPANY" | "DEAL" | "RECORD"; entityId: string }) {
   const list = await files.listFiles(ctx, actor, { entityType, entityId });
-  const canAttach =
-    actor.role !== "CUSTOMER" && evaluate({ role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions }, { module: "crm", action: "crm.activity.create" });
+  // CRM C1.7 ▸ ด่านเดียวกับบริการ `files.attachFile`: คีย์แก้ไขของระเบียนแม่ (crm.<entity>.update) ผ่าน crmCan ◂
+  const attachKey = { CONTACT: "crm.contact.update", COMPANY: "crm.company.update", DEAL: "crm.deal.update", RECORD: "crm.record.update" }[entityType];
+  const canAttach = crmCan(actor, attachKey);
   return (
     <FilesPanel
       systemId={ctx.systemId}

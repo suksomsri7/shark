@@ -18,6 +18,7 @@ import { ALLOWED_UPLOAD_TYPES, deleteFileAsset, normalizeUploadType, privateFile
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { contactWhere, dealWhere, fileWhere, recordWhere } from "./where";
+import { crmCan, crmForbiddenMessage } from "./access";
 import * as companies from "./companies";
 import {
   ActivitiesError,
@@ -68,10 +69,10 @@ async function assertEntity(ctx: FilesCtx, a: MemberActor, type: CrmFileEntityTy
   const id = str(idRaw);
   let found = false;
   if (id) {
-    if (type === "CONTACT") found = (await prisma.crmContact.count({ where: { AND: [contactWhere(ctx, a), { id }] } })) > 0;
+    if (type === "CONTACT") found = (await prisma.crmContact.count({ where: { AND: [await contactWhere(ctx, a), { id }] } })) > 0;
     else if (type === "COMPANY") found = (await companies.companyRefsInTx(prisma, { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null }, a, [id])).length > 0; // ผ่าน companies.ts (companyWhere)
-    else if (type === "DEAL") found = (await prisma.crmDeal.count({ where: { AND: [dealWhere(ctx, a), { id }] } })) > 0;
-    else found = (await prisma.customRecord.count({ where: { AND: [recordWhere(ctx, a), { id, archivedAt: null }] } })) > 0;
+    else if (type === "DEAL") found = (await prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, a), { id }] } })) > 0;
+    else found = (await prisma.customRecord.count({ where: { AND: [await recordWhere(ctx, a, { recordId: id }), { archivedAt: null }] } })) > 0;
   }
   if (!id || !found) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   return id;
@@ -110,11 +111,17 @@ function toDto(row: CrmFileLink, viewerUserId: string): FileLinkDto {
   };
 }
 
+// CRM C1.7 ▸ คีย์ที่ต้องมีเพื่อแนบไฟล์ = คีย์แก้ไขของระเบียนแม่ ◂
+const ATTACH_KEY: Readonly<Record<CrmFileEntityType, string>> = { CONTACT: "crm.contact.update", COMPANY: "crm.company.update", DEAL: "crm.deal.update", RECORD: "crm.record.update" };
+
 /** แนบไฟล์ 1 ชิ้นกับระเบียน — ตรวจครบก่อนแตะที่เก็บ (ปฏิเสธ = ไม่มี put / FileAsset / ลิงก์) */
 export async function attachFile(ctx: FilesCtx, actor: MemberActor, input: AttachFileInput, deps?: FileDeps): Promise<FileLinkDto> {
   const a = await enter(ctx, actor);
   const entityType = parseEntityType(input?.entityType);
   const entityId = await assertEntity(ctx, a, entityType, input?.entityId);
+  // CRM C1.7 ▸ มองเห็นแล้ว (404 ก่อน) → คีย์แก้ไขของระเบียนแม่ (เห็นแต่ไม่มีคีย์ = 403 ข้อความไทย) ◂
+  const key = ATTACH_KEY[entityType];
+  if (!crmCan(a, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
   const data = input?.data;
   if (!(data instanceof Uint8Array) || data.length === 0) throw fail("VALIDATION", "ไฟล์ว่างหรืออ่านไม่ได้ — เลือกไฟล์ใหม่อีกครั้ง");
   // AUDIT-CLASS X6: เพดานขนาด + ชนิดไฟล์ (ชุดย่อยของ storage ลบ SVG — สคริปต์ฝังใน SVG = stored XSS บนลิงก์ส่วนตัว)
@@ -158,7 +165,7 @@ export async function listFiles(ctx: FilesCtx, actor: MemberActor, input: { enti
   const entityType = parseEntityType(input?.entityType);
   const entityId = await assertEntity(ctx, a, entityType, input?.entityId);
   const rows = await prisma.crmFileLink.findMany({
-    where: { AND: [fileWhere(ctx, a), { entityType, entityId }] },
+    where: { AND: [await fileWhere(ctx, a, { entityType, entityId }), { entityType, entityId }] },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 200,
   });
@@ -172,7 +179,9 @@ export async function listFiles(ctx: FilesCtx, actor: MemberActor, input: { enti
 export async function removeFile(ctx: FilesCtx, actor: MemberActor, linkId: string, opts?: { confirm?: boolean | null; reason?: string | null } | null, deps?: FileDeps): Promise<{ ok: true }> {
   const a = await enter(ctx, actor);
   const id = str(linkId);
-  const row = id ? await prisma.crmFileLink.findFirst({ where: { AND: [fileWhere(ctx, a), { id }] } }) : null;
+  // CRM C1.7 ▸ หาลิงก์ในร้าน+ระบบก่อน แล้วตัดสินการมองเห็นจากระเบียนแม่ของมัน (fileWhere ต่อแม่ตัวเดียว — ไม่ดึงรายการ id ทั้งระบบ) ◂
+  const cand = id ? await prisma.crmFileLink.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { entityType: true, entityId: true } }) : null;
+  const row = cand ? await prisma.crmFileLink.findFirst({ where: { AND: [await fileWhere(ctx, a, cand), { id: id! }] } }) : null;
   if (!row) throw fail("NOT_FOUND", LINK_NOT_FOUND_MSG);
   // ระเบียนแม่ต้องยังมองเห็นได้ (C1.7 จำกัดการมองเห็นรายระเบียน — ลิงก์ของระเบียนที่มองไม่เห็น = ไม่พบ)
   await assertEntity(ctx, a, row.entityType as CrmFileEntityType, row.entityId).catch(() => {

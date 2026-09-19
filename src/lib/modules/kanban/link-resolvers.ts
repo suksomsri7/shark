@@ -48,6 +48,8 @@ export type ResolvedTarget = {
   pathHint?: string | null;
   /** ผู้ยื่นคำขอ (ชนิด APPROVAL_REQUEST) — เจ้าของคำขอเห็นของตัวเองได้เสมอ */
   ownerUserId?: string | null;
+  /** CRM C1.7 ▸ ผู้ดูคนนี้มองไม่เห็นระเบียน CRM นี้ (การมองเห็น OWN/TEAM/ALL ของ CRM) — ตั้งต่อผู้ดูใน `hideInvisibleCrm` ◂ */
+  crmHidden?: boolean;
 };
 
 type Resolver = (ctx: KanbanCtx, ids: string[]) => Promise<Map<string, ResolvedTarget>>;
@@ -192,7 +194,7 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     ...LINK_TYPE_META.CRM_CONTACT,
     modules: ["crm"],
     action: null,
-    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    canView: (actor, target) => !target?.crmHidden && moduleGate(actor, { modules: ["crm"], action: null }, target),
     href: (linkId, t) => (t.systemId ? `/app/sys/${t.systemId}/crm/contacts?c=${linkId}` : null),
     resolve: async (ctx, ids) => {
       const rows = await prisma.crmContact.findMany({
@@ -660,7 +662,7 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     ...LINK_TYPE_META.DEAL,
     modules: ["crm"],
     action: null,
-    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    canView: (actor, target) => !target?.crmHidden && moduleGate(actor, { modules: ["crm"], action: null }, target),
     href: (linkId, t) => (t.systemId ? `/app/sys/${t.systemId}/crm/deals/${linkId}` : null),
     resolve: async (ctx, ids) => {
       const rows = await prisma.crmDeal.findMany({
@@ -674,7 +676,7 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     ...LINK_TYPE_META.COMPANY,
     modules: ["crm"],
     action: null,
-    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    canView: (actor, target) => !target?.crmHidden && moduleGate(actor, { modules: ["crm"], action: null }, target),
     href: (linkId, t) => (t.systemId ? `/app/sys/${t.systemId}/crm/companies/${linkId}` : null),
     resolve: async (ctx, ids) => {
       const rows = await prisma.crmCompany.findMany({
@@ -688,7 +690,7 @@ export const LINK_TYPES: Record<KanbanLinkKind, LinkTypeSpec> = {
     ...LINK_TYPE_META.CUSTOM_RECORD,
     modules: ["crm"],
     action: null,
-    canView: (actor, target) => moduleGate(actor, { modules: ["crm"], action: null }, target),
+    canView: (actor, target) => !target?.crmHidden && moduleGate(actor, { modules: ["crm"], action: null }, target),
     // หน้ารายการเดี่ยวมากับ C1.9 — ระหว่างนี้เปิดหน้า 360 ของแม่ (ผู้ติดต่อ/บริษัท/ดีล) ที่แสดงแท็บวัตถุอยู่แล้ว
     href: (_linkId, t) => (t.systemId && t.pathHint ? `/app/sys/${t.systemId}/crm/${t.pathHint}` : null),
     resolve: async (ctx, ids) => {
@@ -839,6 +841,43 @@ export function toLinkDto(row: LinkRow, target: ResolvedTarget | null, actor: Ka
   };
 }
 
+// CRM C1.7 ▸ การมองเห็นของระเบียน CRM ต่อผู้ดู (DEAL · COMPANY · CRM_CONTACT · CUSTOM_RECORD)
+//   ตัวแปลผลคิดต่อร้าน (ไม่รู้จักผู้ดู) ⇒ หลังแปลผลแล้ว ถาม CRM ผ่าน facade ว่าผู้ดูคนนี้เห็นระเบียนไหนบ้าง (คิดใหม่ทุกครั้ง ไม่มีแคช)
+//   มองไม่เห็น ⇒ ติดธง `crmHidden` ⇒ canView false · ไม่มีชื่อ · href null (toLinkDto สร้าง DTO จากป้ายชนิดล้วน)
+//   crm↔kanban เป็นสองทางผ่าน facade ทั้งคู่ (crm→kanban: เปิดการ์ดจากกิจกรรม · kanban→crm: ที่นี่) ⇒ import แบบ lazy กันวงโหลด (TDZ)
+//   R-E.14: ระบบ CRM uiVersion 1 = ด่านโมดูลเดิมอย่างเดียว (visibleIdsForViewer คืนทุก id ของระบบ v1 — ไม่มีการซ่อนเพิ่ม)
+const CRM_LINK_ENTITY: Partial<Record<KanbanLinkKind, "DEAL" | "COMPANY" | "CONTACT" | "RECORD">> = {
+  DEAL: "DEAL",
+  COMPANY: "COMPANY",
+  CRM_CONTACT: "CONTACT",
+  CUSTOM_RECORD: "RECORD",
+};
+
+async function hideInvisibleCrm(
+  ctx: KanbanCtx,
+  actor: KanbanActor,
+  rows: readonly { linkType: KanbanLinkKind; linkId: string }[],
+  targets: Map<string, ResolvedTarget>,
+): Promise<void> {
+  const byKind = new Map<KanbanLinkKind, string[]>();
+  for (const r of rows) {
+    if (!CRM_LINK_ENTITY[r.linkType] || !targets.has(`${r.linkType}:${r.linkId}`)) continue;
+    byKind.set(r.linkType, [...(byKind.get(r.linkType) ?? []), r.linkId]);
+  }
+  if (byKind.size === 0) return;
+  const crm = await import("@/lib/modules/crm");
+  const viewer = { userId: actor.userId, role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions, apiKey: !!actor.apiRole };
+  for (const [kind, ids] of byKind) {
+    const seen = await crm.visibility.visibleIdsForViewer(ctx.tenantId, viewer, CRM_LINK_ENTITY[kind]!, ids);
+    for (const id of ids) {
+      const key = `${kind}:${id}`;
+      const t = targets.get(key);
+      if (t && !seen.has(id)) targets.set(key, { ...t, crmHidden: true });
+    }
+  }
+}
+// ◂ CRM C1.7
+
 // ───────────────────────── ฝั่งอ่าน ─────────────────────────
 
 /**
@@ -855,6 +894,7 @@ export async function listCardLinks(ctx: KanbanCtx, actor: KanbanActor, cardId: 
   });
   if (rows.length === 0) return [];
   const targets = await resolveTargets(ctx, rows);
+  await hideInvisibleCrm(ctx, actor, rows, targets);
   return rows.map((r) => toLinkDto(r, targets.get(`${r.linkType}:${r.linkId}`) ?? null, actor));
 }
 
@@ -888,6 +928,7 @@ export async function linkChipsOfCards(
   });
   if (rows.length === 0) return out;
   const targets = await resolveTargets(ctx, rows);
+  await hideInvisibleCrm(ctx, actor, rows, targets);
   for (const r of rows) {
     const dto = toLinkDto(r, targets.get(`${r.linkType}:${r.linkId}`) ?? null, actor);
     if (!dto.canView) continue;

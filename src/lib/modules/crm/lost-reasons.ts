@@ -10,6 +10,7 @@ import type { CrmLostReason } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { crmCan, crmForbiddenMessage } from "./access";
 import { DealsError, LOST_REASON_LABEL_MAX } from "./deals-shared";
 
 export type LostReasonsCtx = { tenantId: string; systemId: string; actorUserId: string | null };
@@ -27,6 +28,14 @@ async function enter(ctx: LostReasonsCtx, actor: MemberActor | null | undefined)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return actor;
+}
+
+// CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: งานตั้งค่า (pipeline · ขั้น · เหตุผลที่แพ้) = คีย์ `crm.settings.manage` ผ่าน `crm/access.ts`
+//   (OWNER · หรือได้รับชัดเจน — MANAGER ปริยายไม่ได้ §6.1) · AUDIT-CLASS X2 ◂
+async function enterManage(ctx: LostReasonsCtx, actor: MemberActor | null | undefined): Promise<MemberActor> {
+  const a = await enter(ctx, actor);
+  if (!crmCan(a, "crm.settings.manage")) throw fail("FORBIDDEN", crmForbiddenMessage("crm.settings.manage"));
+  return a;
 }
 
 function cleanLabel(v: unknown): string {
@@ -60,7 +69,7 @@ export async function listLostReasons(ctx: LostReasonsCtx, actor: MemberActor): 
 
 /** เพิ่มเหตุผล (key สร้างให้อัตโนมัติ — ไม่ซ้ำในระบบ) */
 export async function createLostReason(ctx: LostReasonsCtx, actor: MemberActor, input: { label: string }): Promise<LostReasonDto> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const label = cleanLabel(input?.label);
   const dup = await prisma.crmLostReason.findFirst({ where: { ...scope(ctx), label } });
   if (dup) throw fail("CONFLICT", "มีเหตุผลนี้อยู่แล้ว — ถ้าถูกปิดใช้อยู่ เปิดใช้งานเหตุผลเดิมแทน");
@@ -79,7 +88,7 @@ export async function createLostReason(ctx: LostReasonsCtx, actor: MemberActor, 
 
 /** แก้ข้อความ · เปิด/ปิดใช้งาน · ลำดับ */
 export async function updateLostReason(ctx: LostReasonsCtx, actor: MemberActor, id: string, patch: { label?: string | null; active?: boolean | null; sortOrder?: number | null }): Promise<LostReasonDto> {
-  await enter(ctx, actor);
+  await enterManage(ctx, actor);
   const cur = await load(ctx, id);
   const data: Prisma.CrmLostReasonUpdateInput = {};
   if (patch?.label !== undefined && patch.label !== null) data.label = cleanLabel(patch.label);

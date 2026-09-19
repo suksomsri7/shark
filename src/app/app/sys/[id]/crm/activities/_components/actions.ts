@@ -9,7 +9,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, ForbiddenError } from "@/lib/core/rbac";
+import { ForbiddenError } from "@/lib/core/rbac";
+import { assertCanCrm } from "@/lib/modules/crm/access";
 import { toMemberActor } from "@/lib/modules/member";
 import {
   completeActivity,
@@ -33,14 +34,13 @@ type Fail = { ok: false; error: string; code?: string };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
-  assertCan(
-    { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> },
-    { module: "crm", action },
-  );
+  // CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: ด่านคีย์ผ่าน `crm/access.ts` (MANAGER ปริยายไม่ได้ 5 คีย์ตั้งค่า · อ่านโดยนัยของคน) ◂
+  const actor = toMemberActor(auth.user.id, auth.active);
+  assertCanCrm(actor, action);
   const ctx = { tenantId: auth.active.tenantId, systemId: String(systemId ?? ""), actorUserId: auth.user.id };
   // uiVersion gate: action ของกิจกรรม v2 ทำงานเฉพาะระบบที่เปิด CRM v2 แล้ว — ระบบ v1 = FORBIDDEN ภาษาไทย (ui-version.ts)
   await assertCrmV2(ctx);
-  return { ctx, actor: toMemberActor(auth.user.id, auth.active) };
+  return { ctx, actor };
 }
 
 function failOf(e: unknown): Fail {

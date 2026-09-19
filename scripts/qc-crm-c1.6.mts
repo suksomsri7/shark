@@ -410,7 +410,7 @@ try {
   {
     const whereSrc = read("src/lib/modules/crm/where.ts");
     const uses = (aSrc.match(/\bactivityWhere\b/g) ?? []).length;
-    const fileWhereOk = /export\s+function\s+fileWhere\b/.test(whereSrc) && /\bfileWhere\b/.test(fSrc);
+    const fileWhereOk = /export\s+(async\s+)?function\s+fileWhere\b/.test(whereSrc) && /\bfileWhere\b/.test(fSrc);
     chk("C1.6-S0.5", "every read goes through where.ts (R-A — C1.7 rewrites its internals): activities.ts uses `activityWhere` ≥ 3× and the entity wheres (contact/company/deal) to resolve targets · where.ts exports `fileWhere`, used by files.ts [static]",
       uses >= 3 && /\b(dealWhere|contactWhere|companyWhere)\b/.test(aSrc) && fileWhereOk, "where.ts everywhere", `activityWhere=${uses} entityWheres=${/\b(dealWhere|contactWhere|companyWhere)\b/.test(aSrc)} fileWhere=${fileWhereOk}`, "MAJOR");
   }
@@ -571,6 +571,12 @@ try {
   await link(cA, coMain, kMain);
   const dMain = await fxDeal(cA, { pipelineId: pA.id, title: `ดีลหลัก ${rand}`, contactId: kMain, companyId: coMain, valueSatang: 100_000, ownerUserId: userSales });
   if ((await dealRow(dMain))?.ownerUserId !== userSales) await P.crmDeal.update({ where: { id: dMain }, data: { ownerUserId: userSales } });
+  // ORACLE-EDIT C1.6-S8.4/X10.2 (controller · C1.7 addendum 1): STAFF in no team sees only its own rows (strict C9) — put sales/sales2
+  //   in one team and give kMain/coMain that team, so the files checks exercise TEAM visibility instead of failing on it
+  const tSales = (await P.team.create({ data: { tenantId: tidA, name: `ทีมขาย ${rand}` } })).id as string;
+  for (const u of [userSales, userSales2]) await P.teamMember.create({ data: { tenantId: tidA, teamId: tSales, userId: u } });
+  await P.crmContact.update({ where: { id: kMain }, data: { teamId: tSales } });
+  await P.crmCompany.update({ where: { id: coMain }, data: { teamId: tSales } });
   const obj = await P.customObject.create({ data: { tenantId: tidA, systemId: crmA, key: `car${rand}`, label: "รถ", labelPlural: "รถ", parentType: "CONTACT", titleFieldKey: "plate" } });
   const rec = (await P.customRecord.create({ data: { tenantId: tidA, systemId: crmA, objectId: obj.id, parentType: "CONTACT", parentId: kMain, title: `ทะเบียน กข ${rand}` } })).id as string;
   // foreign graphs: crmA2 (same shop, other CRM system) · crmB (other shop)
@@ -1003,7 +1009,8 @@ try {
         !row && after === before && !c.ok && (await actRow(tc))?.doneAt === null && (await log({ type: "CALL", title: `${T} ควบคุม`, dealId: dL })).ok, "rolled back (control log commits)", `log=${r.ok ? "committed" : "failed"} row=${!!row} last ${before}→${after} complete=${c.ok ? "committed" : "failed"} doneAt=${j((await actRow(tc))?.doneAt)}`);
   }
   {
-    const t = await rawAct(cA, { dealId: dMain, title: `ปิดงาน ${rand}`, dueAt: new Date(NOW + DAY_MS) });
+    // ORACLE-EDIT C1.6-S9.3 (controller · C1.7 addendum 1): STAFF activity visibility = OWN ⇒ the activity sales completes is his own
+    const t = await rawAct(cA, { dealId: dMain, title: `ปิดงาน ${rand}`, dueAt: new Date(NOW + DAY_MS), ownerUserId: userSales });
     const c1 = await call(fns.complete, cSales, sales, t, { outcome: undefined });
     const row1 = await actRow(t);
     const c2 = await call(fns.complete, cA, owner, t);

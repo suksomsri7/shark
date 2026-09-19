@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (MANAGER ปริยายไม่มี crm.settings.manage — §6.1) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
@@ -63,9 +64,9 @@ export default async function DealsPage({
   if (companyId) redirect(`/app/sys/${id}/crm/deals/new?companyId=${encodeURIComponent(companyId)}`);
 
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
-  const canMove = evaluate(m, { module: "crm", action: "crm.deal.move" });
+  const canMove = crmCan(m, "crm.deal.move");
   const canReopen = actor.role === "OWNER" || actor.role === "MANAGER";
-  const canSettings = evaluate(m, { module: "crm", action: "crm.settings.manage" });
+  const canSettings = crmCan(m, "crm.settings.manage");
   const view: DealView = (DEAL_VIEWS as readonly string[]).includes(one("view")) ? (one("view") as DealView) : "board";
 
   const [pipelines, owners, savedViews, lostReasons, layout] = await Promise.all([

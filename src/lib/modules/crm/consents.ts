@@ -59,7 +59,7 @@ async function loadContact(ctx: ConsentsCtx, actor: MemberActor | null | undefin
   if (!actor || actor.role === "CUSTOMER") throw fail("NOT_FOUND", NOT_FOUND_MSG);
   await resolveSystem(ctx);
   const cid = str(id);
-  const row = cid ? await db.crmContact.findFirst({ where: { AND: [contactWhere(ctx, actor), { id: cid }] } }) : null;
+  const row = cid ? await db.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, actor, { db }), { id: cid }] } }) : null;
   if (!row) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   return row;
 }

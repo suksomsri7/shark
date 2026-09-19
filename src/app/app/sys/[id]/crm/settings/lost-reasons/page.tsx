@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (MANAGER ปริยายไม่มี crm.settings.manage — §6.1) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
@@ -23,7 +24,7 @@ export default async function LostReasonsPage({ params }: { params: Promise<{ id
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
-  if (!evaluate(m, { module: "crm", action: "crm.settings.manage" })) notFound();
+  if (!crmCan(m, "crm.settings.manage")) notFound();
   const actor = toMemberActor(auth.user.id, auth.active);
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const reasons = await listLostReasons(ctx, actor);

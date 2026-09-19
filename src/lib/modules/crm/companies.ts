@@ -35,6 +35,8 @@ import type { CrmAccountContactBrief } from "@/lib/modules/account";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, companyWhere, contactWhere, dealWhere } from "./where";
+// CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
+import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
 import {
   COMPANY_CONTACT_ROLES,
@@ -181,10 +183,16 @@ async function enter(ctx: CompaniesCtx, actor: MemberActor | null | undefined): 
   return actor;
 }
 
+// CRM C1.7 ▸ ลำดับ: ระบบ (enter) → การมองเห็น (loadCompany · NOT_FOUND) → คีย์ (need · FORBIDDEN ข้อความไทย) ◂
+/** AUDIT-CLASS X2: คีย์สิทธิ์ผ่าน `crm/access.ts` เท่านั้น */
+function need(a: MemberActor, key: string): void {
+  if (!crmCan(a, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
+}
+
 /** AUDIT-CLASS X1: อ่านบริษัท 1 แถวผ่าน companyWhere เท่านั้น — ระบบอื่น/ร้านอื่น = NOT_FOUND (ข้อความไม่สะท้อนข้อมูลของเขา) */
 async function loadCompany(ctx: CompaniesCtx, actor: MemberActor, id: unknown, db: Db = prisma, opts: { live?: boolean } = {}): Promise<CrmCompany> {
   const cid = str(id);
-  const row = cid ? await db.crmCompany.findFirst({ where: { AND: [companyWhere(ctx, actor), { id: cid }] } }) : null;
+  const row = cid ? await db.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, actor, { db }), { id: cid }] } }) : null;
   if (!row) throw fail("NOT_FOUND", NOT_FOUND_MSG);
   if (opts.live && row.mergedIntoId) throw fail("VALIDATION", "บริษัทนี้ถูกรวมเข้ากับบริษัทอื่นไปแล้ว — เปิดบริษัทที่เก็บไว้แทน");
   if (opts.live && row.archivedAt) throw fail("VALIDATION", "บริษัทนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ");
@@ -554,7 +562,7 @@ async function findCandidates(ctx: CompaniesCtx, actor: MemberActor, input: { na
   if (OR.length === 0) return [];
   // ผลลัพธ์ส่งกลับให้ผู้ใช้เห็นชื่อ ⇒ ใช้ขอบเขตการมองเห็น (companyWhere) ไม่ใช่ identityScope
   const rows = await prisma.crmCompany.findMany({
-    where: { AND: [companyWhere(ctx, actor), { mergedIntoId: null, archivedAt: null, OR }, ...(input.excludeId ? [{ id: { not: input.excludeId } }] : [])] },
+    where: { AND: [await companyWhere(ctx, actor), { mergedIntoId: null, archivedAt: null, OR }, ...(input.excludeId ? [{ id: { not: input.excludeId } }] : [])] },
     select: { id: true, name: true, emailDomain: true },
     take: 300,
     orderBy: { createdAt: "desc" },
@@ -662,6 +670,7 @@ async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): P
 
 export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput): Promise<CreateCompanyResult> {
   const a = await enter(ctx, actor);
+  need(a, "crm.company.create");
   const { merged, custom } = await splitFields(input ?? ({} as CreateCompanyInput));
   const clean = cleanPatch(merged, "create");
   const ownerUserId = str(merged.ownerUserId);
@@ -670,7 +679,7 @@ export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input
   if (teamId) await assertTeam(ctx, teamId);
   const parentCompanyId = str(merged.parentCompanyId);
   if (parentCompanyId) {
-    const parent = await prisma.crmCompany.findFirst({ where: { AND: [companyWhere(ctx, a), { id: parentCompanyId, mergedIntoId: null, archivedAt: null }] }, select: { id: true } });
+    const parent = await prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, a), { id: parentCompanyId, mergedIntoId: null, archivedAt: null }] }, select: { id: true } });
     if (!parent) throw fail("VALIDATION", "ไม่พบบริษัทแม่ที่เลือกในระบบ CRM นี้ — เลือกใหม่จากรายการ");
   }
   await seedCompanyFields(ctx, a);
@@ -699,6 +708,7 @@ const DIFF_KEYS: (keyof CleanPatch)[] = ["name", "legalName", "taxId", "branchCo
 export async function updateCompany(ctx: CompaniesCtx, actor: MemberActor, id: string, patch: UpdateCompanyInput): Promise<CompanyDto> {
   const a = await enter(ctx, actor);
   const current = await loadCompany(ctx, a, id, prisma, { live: true });
+  need(a, "crm.company.update");
   const { merged, custom } = await splitFields((patch ?? {}) as CompanyInput);
   const clean = cleanPatch(merged, "update");
   await seedCompanyFields(ctx, a);
@@ -826,6 +836,8 @@ async function simpleUpdate(
 export async function archiveCompany(ctx: CompaniesCtx, actor: MemberActor, id: string, opts: DangerOpts): Promise<CompanyDto> {
   const reason = reasonOf(opts, "เก็บถาวรบริษัท");
   const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, id);
+  need(a, "crm.company.delete");
   return simpleUpdate(
     ctx,
     a,
@@ -853,6 +865,7 @@ export async function restoreCompany(ctx: CompaniesCtx, actor: MemberActor, id: 
   const reason = reasonOf(opts, "กู้คืนบริษัท");
   const a = await enter(ctx, actor);
   const current = await loadCompany(ctx, a, id);
+  need(a, "crm.company.delete");
   if (current.mergedIntoId) throw fail("VALIDATION", "บริษัทนี้ถูกรวมเข้ากับบริษัทอื่นแล้ว จึงกู้คืนไม่ได้ — เปิดบริษัทที่เก็บไว้แทน");
   if (!current.archivedAt) return toDto(current);
   let changed = false;
@@ -884,6 +897,7 @@ export async function restoreCompany(ctx: CompaniesCtx, actor: MemberActor, id: 
 export async function setOwner(ctx: CompaniesCtx, actor: MemberActor, id: string, userId: string | null): Promise<CompanyDto> {
   const a = await enter(ctx, actor);
   await loadCompany(ctx, a, id, prisma, { live: true });
+  need(a, "crm.company.update");
   const next = str(userId);
   if (next) await assertMember(ctx, next);
   return simpleUpdate(ctx, a, id, "crm.company.owner", ["ownerUserId"], async (tx, row) => {
@@ -897,10 +911,11 @@ export async function setOwner(ctx: CompaniesCtx, actor: MemberActor, id: string
 export async function setParent(ctx: CompaniesCtx, actor: MemberActor, id: string, parentId: string | null): Promise<CompanyDto> {
   const a = await enter(ctx, actor);
   const child = await loadCompany(ctx, a, id, prisma, { live: true });
+  need(a, "crm.company.update");
   const next = str(parentId);
   if (next === child.id) throw fail("VALIDATION", "บริษัทเป็นบริษัทแม่ของตัวเองไม่ได้ — เลือกบริษัทอื่น");
   if (next) {
-    const parent = await prisma.crmCompany.findFirst({ where: { AND: [companyWhere(ctx, a), { id: next, mergedIntoId: null, archivedAt: null }] }, select: { id: true } });
+    const parent = await prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, a), { id: next, mergedIntoId: null, archivedAt: null }] }, select: { id: true } });
     if (!parent) throw fail("VALIDATION", "ไม่พบบริษัทแม่ที่เลือกในระบบ CRM นี้ — เลือกใหม่จากรายการ");
   }
   return simpleUpdate(
@@ -926,7 +941,7 @@ export async function setParent(ctx: CompaniesCtx, actor: MemberActor, id: strin
 async function loadContactInSystem(ctx: CompaniesCtx, actor: MemberActor, contactId: unknown, db: Db = prisma): Promise<{ id: string }> {
   const id = str(contactId);
   // AUDIT-CLASS X1: แม่ทั้งสองของลิงก์ต้องอยู่ระบบ CRM เดียวกัน (CRM-RUN §4 หมายเหตุ C1.1) — ผู้ติดต่อระบบอื่น/ร้านอื่น = ไม่พบ
-  const row = id ? await db.crmContact.findFirst({ where: { AND: [contactWhere(ctx, actor), { id, archivedAt: null, mergedIntoId: null }] }, select: { id: true } }) : null;
+  const row = id ? await db.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, actor, { db }), { id, archivedAt: null, mergedIntoId: null }] }, select: { id: true } }) : null;
   if (!row) throw fail("NOT_FOUND", "ไม่พบผู้ติดต่อนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return row;
 }
@@ -946,6 +961,7 @@ export async function addContact(ctx: CompaniesCtx, actor: MemberActor, companyI
   const a = await enter(ctx, actor);
   const company = await loadCompany(ctx, a, companyId, prisma, { live: true });
   const contact = await loadContactInSystem(ctx, a, input?.contactId);
+  need(a, "crm.company.update");
   const wantRole = input?.role === undefined || input?.role === null || input?.role === "" ? null : parseRole(input.role, null);
   const jobTitle = input?.jobTitle === undefined ? undefined : textOrNull(input.jobTitle, "ตำแหน่ง", COMPANY_TEXT_MAX);
   const wantPrimary = input?.isPrimary === true;
@@ -1032,6 +1048,8 @@ async function linkMutation(
 /** ถอดผู้ติดต่อ — แถวคงอยู่ (endedAt = ประวัติ) · หลุดจากการเป็นหลัก · แคช companyId ของเขาคำนวณใหม่ */
 export async function removeContact(ctx: CompaniesCtx, actor: MemberActor, companyId: string, contactId: string): Promise<{ ok: true }> {
   const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, companyId);
+  need(a, "crm.company.update");
   await linkMutation(ctx, a, companyId, contactId, "crm.company.contact.remove", async (tx, link) => {
     await tx.crmCompanyContact.updateMany({ where: { id: link.id, endedAt: null }, data: { endedAt: new Date(), isPrimary: false } });
     return { affected: [], changed: true, before: { role: link.role, isPrimary: link.isPrimary }, after: { endedAt: "now" } };
@@ -1041,6 +1059,8 @@ export async function removeContact(ctx: CompaniesCtx, actor: MemberActor, compa
 
 export async function setPrimary(ctx: CompaniesCtx, actor: MemberActor, companyId: string, contactId: string): Promise<{ ok: true }> {
   const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, companyId);
+  need(a, "crm.company.update");
   await linkMutation(ctx, a, companyId, contactId, "crm.company.contact.primary", async (tx, link) => {
     // คนนี้เป็นหลักอยู่แล้ว = ยังล้างหลักซ้อน (ถ้ามีจากข้อมูลเก่า) ให้เหลือคนเดียว
     const others = await makePrimaryInTx(tx, link.companyId, link.contactId);
@@ -1052,6 +1072,8 @@ export async function setPrimary(ctx: CompaniesCtx, actor: MemberActor, companyI
 export async function setRole(ctx: CompaniesCtx, actor: MemberActor, companyId: string, contactId: string, role: string): Promise<{ ok: true }> {
   const next = parseRole(role, null);
   const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, companyId);
+  need(a, "crm.company.update");
   await linkMutation(ctx, a, companyId, contactId, "crm.company.contact.role", async (tx, link) => {
     if (link.role === next) return { affected: [], changed: false };
     await tx.crmCompanyContact.update({ where: { id: link.id }, data: { role: next } });
@@ -1070,29 +1092,29 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
   // R-A (รีวิว SF8): ลิงก์/ดีล/กิจกรรมผ่านตัวช่วยของ where.ts — C1.7 เปลี่ยนการมองเห็นที่ไฟล์เดียว
   const [links, deals, agg, parent, subs, owner, team, activities] = await Promise.all([
     prisma.crmCompanyContact.findMany({
-      where: { companyId: row.id, tenantId: ctx.tenantId, endedAt: null, contact: contactWhere(ctx, a) },
+      where: { companyId: row.id, tenantId: ctx.tenantId, endedAt: null, contact: await contactWhere(ctx, a) },
       include: { contact: { select: { id: true, name: true, phone: true, email: true, lineUserId: true } } },
       orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
     }),
     prisma.crmDeal.findMany({
-      where: { AND: [dealWhere(ctx, a), { companyId: row.id }] },
+      where: { AND: [await dealWhere(ctx, a), { companyId: row.id }] },
       include: { stage: { select: { name: true } } },
       orderBy: [{ createdAt: "desc" }],
       take: 500,
     }),
     // R-E.8: ผลรวมข้ามดีลคำนวณในฐานข้อมูล (bigint) ไม่ใช่บวกใน JS
-    prisma.crmDeal.groupBy({ by: ["kind"], where: { AND: [dealWhere(ctx, a), { companyId: row.id }] }, _count: { _all: true }, _sum: { wonValueSatang: true } }),
+    prisma.crmDeal.groupBy({ by: ["kind"], where: { AND: [await dealWhere(ctx, a), { companyId: row.id }] }, _count: { _all: true }, _sum: { wonValueSatang: true } }),
     row.parentCompanyId
-      ? prisma.crmCompany.findFirst({ where: { AND: [companyWhere(ctx, a), { id: row.parentCompanyId }] }, select: { id: true, name: true } })
+      ? prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, a), { id: row.parentCompanyId }] }, select: { id: true, name: true } })
       : Promise.resolve(null),
-    prisma.crmCompany.findMany({ where: { AND: [companyWhere(ctx, a), { parentCompanyId: row.id, mergedIntoId: null }] }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
+    prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { parentCompanyId: row.id, mergedIntoId: null }] }, select: { id: true, name: true }, orderBy: { name: "asc" }, take: 200 }),
     row.ownerUserId
       ? prisma.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: row.ownerUserId }, select: { user: { select: { id: true, name: true } } } })
       : Promise.resolve(null),
     row.teamId ? prisma.team.findFirst({ where: { id: row.teamId, tenantId: ctx.tenantId }, select: { id: true, name: true } }) : Promise.resolve(null),
     // ไทม์ไลน์ = กิจกรรม "เกี่ยวกับบริษัทนี้" เท่านั้น (ผูกบริษัท หรือผูกดีลของบริษัท) — ไม่ใช่ทุกกิจกรรมของผู้ติดต่อ (SF8)
     prisma.crmActivity.findMany({
-      where: { AND: [activityWhere(ctx, a), { OR: [{ companyId: row.id }, { deal: { companyId: row.id } }] }] },
+      where: { AND: [await activityWhere(ctx, a), { OR: [{ companyId: row.id }, { deal: { companyId: row.id } }] }] },
       include: { contact: { select: { name: true } } },
       orderBy: [{ createdAt: "desc" }],
       take: 50,
@@ -1142,7 +1164,7 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
   const open = agg.find((g) => g.kind === "OPEN");
   const won = agg.find((g) => g.kind === "WON");
   // ACCEPTANCE-FIX (controller · C1.3 parity): ดีล WON ก่อน C1.5 ไม่มี wonValueSatang ⇒ นับ valueSatang แทน (สูตรเดียวกับ recompute)
-  const wonNoSnap = won ? await prisma.crmDeal.aggregate({ where: { AND: [dealWhere(ctx, a), { companyId: row.id, kind: "WON", wonValueSatang: null }] }, _sum: { valueSatang: true } }) : null;
+  const wonNoSnap = won ? await prisma.crmDeal.aggregate({ where: { AND: [await dealWhere(ctx, a), { companyId: row.id, kind: "WON", wonValueSatang: null }] }, _sum: { valueSatang: true } }) : null;
   return {
     company: toDto(row),
     owner: owner?.user ? { id: owner.user.id, name: owner.user.name ?? "ผู้ใช้" } : null,
@@ -1182,7 +1204,7 @@ const SORTS: Record<CompanySort, Prisma.CrmCompanyOrderByWithRelationInput[]> = 
 
 async function listWhere(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
   // AUDIT-CLASS X1: ขอบเขตผ่าน companyWhere เสมอ · บริษัทที่ถูกรวมไม่โผล่ในรายการ (แถวคงอยู่เป็นประวัติ)
-  const AND: Prisma.CrmCompanyWhereInput[] = [companyWhere(ctx, actor), { mergedIntoId: null }];
+  const AND: Prisma.CrmCompanyWhereInput[] = [await companyWhere(ctx, actor), { mergedIntoId: null }];
   if (!input.includeArchived) AND.push({ archivedAt: null });
   const q = str(input.q)?.slice(0, 100);
   if (q) {
@@ -1272,7 +1294,7 @@ const DUP_SCAN_MAX = 5_000;
 export async function findDuplicates(ctx: CompaniesCtx, actor: MemberActor, opts: { limit?: number } = {}): Promise<{ items: DuplicatePairDto[] }> {
   const a = await enter(ctx, actor);
   const rows = await prisma.crmCompany.findMany({
-    where: { AND: [companyWhere(ctx, a), { mergedIntoId: null, archivedAt: null }] },
+    where: { AND: [await companyWhere(ctx, a), { mergedIntoId: null, archivedAt: null }] },
     select: { id: true, name: true, taxId: true, branchCode: true, emailDomain: true },
     orderBy: { createdAt: "desc" },
     take: DUP_SCAN_MAX,
@@ -1333,6 +1355,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
   const a = await enter(ctx, actor);
   const keep = await loadCompany(ctx, a, input?.keepId, prisma, { live: true });
   const drop = await loadCompany(ctx, a, input?.mergeId, prisma, { live: true });
+  need(a, "crm.company.merge");
   if (keep.id === drop.id) throw fail("VALIDATION", "เลือกบริษัทเดียวกันทั้งสองช่อง — เลือกบริษัทที่จะรวมเป็นอีกบริษัทหนึ่ง");
   const differentEntity = (k: CrmCompany, m: CrmCompany) => !!k.taxId && !!m.taxId && k.taxId !== m.taxId;
   const DIFF_MSG = "สองบริษัทนี้มีเลขประจำตัวผู้เสียภาษีต่างกัน แปลว่าเป็นคนละนิติบุคคล จึงรวมกันไม่ได้ — ตรวจเลขภาษีของแต่ละบริษัทก่อน";
@@ -1541,6 +1564,7 @@ export async function importCompanies(ctx: CompaniesCtx, actor: MemberActor, inp
     throw fail("VALIDATION", `นำเข้าได้ครั้งละไม่เกิน ${COMPANY_IMPORT_MAX_ROWS.toLocaleString("th-TH")} แถว (ไฟล์นี้มี ${table.rows.length.toLocaleString("th-TH")} แถว) — แบ่งไฟล์แล้วนำเข้าทีละส่วน`);
   }
   const a = await enter(ctx, actor);
+  need(a, "crm.company.create");
   const idx = Object.fromEntries((Object.keys(IMPORT_COLUMNS) as RoutedKey[]).map((k) => [k, columnIndex(table.headers, IMPORT_COLUMNS[k])])) as Record<RoutedKey, number>;
   if (table.rows.length > 0 && idx.name < 0) throw fail("VALIDATION", "ไม่พบคอลัมน์ชื่อบริษัท — ใส่หัวคอลัมน์ name (หรือ ชื่อบริษัท) ในแถวแรกของไฟล์");
   if (table.rows.length > 0) await seedCompanyFields(ctx, a);
@@ -1612,6 +1636,7 @@ export async function importFromAccount(ctx: CompaniesCtx, actor: MemberActor, i
   const ids = Array.isArray(input?.accountContactIds) ? [...new Set(input.accountContactIds.filter((x) => typeof x === "string" && x))] : [];
   if (ids.length > COMPANY_IMPORT_ACCOUNT_MAX) throw fail("VALIDATION", `นำเข้าจากบัญชีได้ครั้งละไม่เกิน ${COMPANY_IMPORT_ACCOUNT_MAX} ราย — เลือกให้น้อยลงแล้วทำเป็นรอบ`);
   const a = await enter(ctx, actor);
+  need(a, "crm.company.create");
   const acct = await accountFacade();
   const acc = await acct.accountSystemForCrm(ctx.tenantId, ctx.systemId, { contactIds: ids });
   if (!acc) throw fail("VALIDATION", "ระบบ CRM นี้ยังไม่ได้เชื่อมกับระบบบัญชี — เชื่อมที่หน้าตั้งค่าการเชื่อมต่อของระบบบัญชีก่อน");
@@ -1691,7 +1716,7 @@ export async function contactOptions(ctx: CompaniesCtx, actor: MemberActor, comp
   return prisma.crmContact.findMany({
     where: {
       AND: [
-        contactWhere(ctx, a),
+        await contactWhere(ctx, a),
         { archivedAt: null, mergedIntoId: null, companyLinks: { none: { companyId: company.id, endedAt: null } } },
         ...(term ? [{ name: { contains: term, mode: "insensitive" as const } }] : []),
       ],
@@ -1721,7 +1746,7 @@ export async function companyOptions(ctx: CompaniesCtx, actor: MemberActor, opts
   return prisma.crmCompany.findMany({
     where: {
       AND: [
-        companyWhere(ctx, a),
+        await companyWhere(ctx, a),
         { mergedIntoId: null, archivedAt: null },
         ...(opts.excludeId ? [{ id: { not: opts.excludeId } }] : []),
         ...(term ? [{ OR: [{ name: { contains: term, mode: "insensitive" as const } }, ...(/^\d{3,13}$/.test(digits) ? [{ taxId: { contains: digits } }] : [])] }] : []),
@@ -1929,7 +1954,7 @@ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids
   const a = await enter(ctx, actor);
   const list = [...new Set((ids ?? []).filter((x) => typeof x === "string" && x))].slice(0, 5_000);
   if (list.length === 0) return [];
-  return prisma.crmCompany.findMany({ where: { AND: [companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
+  return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.4
 
@@ -1953,7 +1978,7 @@ export async function recomputeDealCachesInTx(tx: Tx, ctx: CompaniesCtx, ids: (s
 export async function companyRefsInTx(db: Db, ctx: CompaniesCtx, actor: MemberActor | null, ids: (string | null | undefined)[], opts: { live?: boolean } = {}): Promise<{ id: string; name: string }[]> {
   const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].slice(0, 5_000);
   if (list.length === 0) return [];
-  const scope: Prisma.CrmCompanyWhereInput = actor ? companyWhere(ctx, actor) : identityScope(ctx);
+  const scope: Prisma.CrmCompanyWhereInput = actor ? await companyWhere(ctx, actor, { db }) : identityScope(ctx);
   return db.crmCompany.findMany({ where: { AND: [scope, { id: { in: list } }, ...(opts.live ? [{ mergedIntoId: null, archivedAt: null }] : [])] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.5

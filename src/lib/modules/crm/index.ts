@@ -71,3 +71,10 @@ export * as activities from "./activities";
 export * as files from "./files";
 export { activityWhere, fileWhere, recordWhere } from "./where";
 // ◂ CRM C1.6
+// CRM C1.7 ▸ การมองเห็น OWN/TEAM/ALL (`visibility.ts`) — namespace เดียว: resolve · visibleWhere · canSee · visibleIdsAmong ·
+//   visibleIdsForViewer (ผู้ดูจากโมดูลอื่น — การ์ดบอร์ดงาน) · policies.{list,set,remove} · คีย์สิทธิ์ (`access.ts`) ใช้ภายในโมดูล
+//   ผู้ใช้: src/lib/modules/kanban/link-resolvers.ts (ลิงก์ DEAL/COMPANY/CRM_CONTACT/CUSTOM_RECORD) · C1.10 (REST/tool) · C3.x (รายงาน)
+export * as visibility from "./visibility";
+//   ตัวตัดสินคีย์ของ CRM (`access.ts`) — ผู้ใช้นอกโมดูล: หน้า core `/app/settings/teams` (ด่าน crm.team.manage) · drawer ใน layout
+export { crmCan, CRM_ROLE_DEFAULTS } from "./access";
+// ◂ CRM C1.7

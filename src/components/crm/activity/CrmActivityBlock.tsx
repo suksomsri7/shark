@@ -5,8 +5,7 @@
 // 🔴 หน้า GET ไม่เขียนอะไร — อ่านอย่างเดียว · ทุกการอ่านผ่าน where.ts ของผู้ดู (activityWhere ในบริการ)
 // 🔴 ctx.systemId ถูก resolve ใหม่ในบริการ (ระบบ CRM ของร้านนี้) · actor มาจาก `toMemberActor` ของหน้า
 
-import { evaluate } from "@/lib/core/rbac";
-import { activities } from "@/lib/modules/crm";
+import { activities, crmCan } from "@/lib/modules/crm";
 import type { MemberActor } from "@/lib/modules/member";
 import { ActivityPanel } from "@/app/app/sys/[id]/crm/activities/_components/ActivityPanel";
 
@@ -21,8 +20,8 @@ export async function CrmActivityBlock({ ctx, actor, target }: { ctx: Ctx; actor
     activities.mentionOptions(ctx, actor),
     activities.boardOptions(ctx, actor),
   ]);
-  const can = (action: string) =>
-    actor.role !== "CUSTOMER" && evaluate({ role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions }, { module: "crm", action });
+  // CRM C1.7 ▸ ด่านคีย์เดียวกับบริการ (crm/access.ts ผ่าน facade) ◂
+  const can = (action: string) => crmCan(actor, action);
   const canLog = can("crm.activity.create");
   const q = new URLSearchParams({ scope: "team", status: "pending" });
   for (const [k, v] of Object.entries(target)) if (typeof v === "string" && v) q.set(k, v);

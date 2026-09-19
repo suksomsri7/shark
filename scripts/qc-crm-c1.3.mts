@@ -344,7 +344,7 @@ try {
     // no scattered where-clauses: outside companies*.ts / where.ts nothing in the CRM module, its pages or components reads CrmCompany directly
     // (objects*.ts of C1.2b predates companyWhere and is not C1.3's file — excluded here, reported to the controller; C1.7 folds it)
     const files = [...walk("src/lib/modules/crm"), ...walk("src/app/app/sys/[id]/crm"), ...walk("src/components/crm")]
-      .filter((f) => !/\/crm\/companies[^/]*\.tsx?$/.test(f) && !/\/crm\/where\.ts$/.test(f) && !/\/crm\/objects[^/]*\.ts$/.test(f));
+      .filter((f) => !/\/crm\/companies[^/]*\.tsx?$/.test(f) && !/\/crm\/where\.ts$/.test(f) && !/\/crm\/objects[^/]*\.ts$/.test(f) && !/\/crm\/visibility\.ts$/.test(f)); // ORACLE-EDIT C1.3-S0.3 (C1.7): visibility.ts is the where engine
     const off = files.filter((f) => /\bcrmCompany\s*\.\s*(findFirst|findMany|findUnique|findFirstOrThrow|findUniqueOrThrow|count|aggregate|groupBy)\s*\(/.test(read(f)) || /FROM\s+"CrmCompany"/.test(read(f)));
     chk("C1.3-S0.3", "no scattered company reads: outside companies*.ts and where.ts, no file of the CRM module / CRM pages / CRM components queries CrmCompany directly (pages go through the service, the service through companyWhere) [static]",
       existsSync(CO_FILE) && off.length === 0, "0 files", off.join(", ") || (existsSync(CO_FILE) ? "-" : "companies.ts missing"), "MAJOR");

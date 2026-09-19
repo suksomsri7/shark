@@ -68,6 +68,7 @@ export function NavDrawer({
   onReportIssue,
   variant = "overlay",
   alwaysOverlay = false,
+  showTeams = false,
 }: {
   open: boolean;
   /** ในแอปมือถือ (WebView UA SharkApp) ไม่มีแถบปักซ้ายให้ใช้ — overlay ต้องโผล่ทุกความกว้าง
@@ -97,6 +98,8 @@ export function NavDrawer({
    * pinned  = ปักไว้ซ้ายจอถาวร ไม่มีฉากหลัง ไม่ปิดเมื่อกดลิงก์ (เว็บบนจอใหญ่ ≥ lg)
    */
   variant?: "overlay" | "pinned";
+  /** CRM C1.7 ▸ แสดงลิงก์ "ทีมขาย" (ร้านมีระบบ CRM + เจ้าของร้าน/คีย์ crm.team.manage — layout ตัดสิน) ◂ */
+  showTeams?: boolean;
 }) {
   const pathname = usePathname();
   // dropdown รายชื่อกิจการในหัว drawer — ปิดเมื่อกดสลับ/กดนอก
@@ -352,6 +355,8 @@ export function NavDrawer({
             // 31 ส.ค. — WO-CW2: หน้าจัดการผู้ใช้งานหน้าแรกของระบบ · ต้องมีลิงก์ตั้งแต่วันแรก
             // (บทเรียน 29 ส.ค.: /app/settings/webhooks เป็นหน้ากำพร้าอยู่หลายเดือนเพราะไม่มีลิงก์)
             { href: "/app/settings/staff", icon: "👥", label: "ผู้ใช้งานและสิทธิ์" },
+            // CRM C1.7 ▸ ทีมขาย (หัวหน้า · สมาชิก · สาขา · รับลีด) — หน้าเป็น 404 สำหรับคนที่ไม่ใช่เจ้าของ/ไม่มี crm.team.manage ◂
+            ...(showTeams ? [{ href: "/app/settings/teams", icon: "🧑‍🤝‍🧑", label: "ทีมขาย" }] : []),
             { href: "/app/settings/connections", icon: "🔗", label: "สาขาและการเชื่อมระบบ" },
             { href: "/app/settings/approval", icon: "🧾", label: "สายอนุมัติ" },
             { href: "/app/settings/automation", icon: "⚙️", label: "ระบบอัตโนมัติ" },

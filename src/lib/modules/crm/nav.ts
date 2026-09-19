@@ -46,6 +46,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "settings-stages", label: "ตั้งค่าขั้นของดีล", path: "/crm/settings/stages", status: "ready", wo: "C1.5" },
   { key: "settings-lost-reasons", label: "เหตุผลที่แพ้", path: "/crm/settings/lost-reasons", status: "ready", wo: "C1.5" },
   // ◂ CRM C1.5
+  // CRM C1.7 ▸ การมองเห็นข้อมูล (บทบาท × ชนิดข้อมูล + ตั้งทับต่อทีม/pipeline) — ทีมขายอยู่หน้า core `/app/settings/teams` (drawer ตั้งค่า)
+  { key: "settings-visibility", label: "การมองเห็นข้อมูล", path: "/crm/settings/visibility", status: "ready", wo: "C1.7" },
+  // ◂ CRM C1.7
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

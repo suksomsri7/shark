@@ -172,7 +172,8 @@ try {
     const n = await call(A.logActivity, cx(uOwner), owner, { type: "NOTE", title: `หมุด ${rand}`, dealId: d });
     const pinStaff = await call(A.setPinned, cx(uStaff), staff, n.v?.id, true);
     const pinOwner = await call(A.setPinned, cx(uOwner), owner, n.v?.id, true);
-    const t1 = await rawAct({ dealId: d, title: `ปิดสิทธิ์ ${rand}` });
+    // controller edit (C1.7): STAFF activity visibility = OWN ⇒ the activity the STAFF completes is his own
+    const t1 = await rawAct({ dealId: d, title: `ปิดสิทธิ์ ${rand}`, ownerUserId: uStaff });
     const cLim = await call(A.completeActivity, cx(uLimited), limited, t1);
     const cStaff = await call(A.completeActivity, cx(uStaff), staff, t1);
     const cAgain = await call(A.completeActivity, cx(uStaff), staff, t1);
@@ -183,7 +184,9 @@ try {
     const r2 = await P.crmActivity.findFirst({ where: { id: t2 } });
     const aud2 = await P.auditLog.findMany({ where: { tenantId: tid, targetId: t2, action: "crm.activity.complete" } });
     chk("S5.pos", pinOwner.ok && cStaff.ok && cAgain.ok && aud === 2 && !!r2?.doneAt && aud2.some((x: Any) => x.after?.via === "kanban" && x.actorId === null), `author pins=${pinOwner.ok} · crm.* staff completes (+ repeat)=${cStaff.ok}/${cAgain.ok} · audit rows on success=${aud} · kanban completion done=${!!r2?.doneAt} audit via kanban=${aud2.length}`);
-    chk("S5.neg", pinStaff.code === "FORBIDDEN" && cLim.code === "FORBIDDEN" && r2?.completedById === null, `non-author STAFF pin=${pinStaff.code || "allowed"} · STAFF without crm.activity.complete=${cLim.code || "allowed"} · kanban completedById=${r2?.completedById ?? "null"}`);
+    // controller edit (C1.7): an invisible row answers NOT_FOUND (404-not-403) — both refusals are correct
+    const refused = (c: string) => c === "FORBIDDEN" || c === "NOT_FOUND";
+    chk("S5.neg", refused(pinStaff.code) && refused(cLim.code) && r2?.completedById === null, `non-author STAFF pin=${pinStaff.code || "allowed"} · STAFF without crm.activity.complete=${cLim.code || "allowed"} · kanban completedById=${r2?.completedById ?? "null"}`);
   }
 
   // ── S7: custom records through where.ts recordWhere ──
@@ -197,7 +200,7 @@ try {
     const fBad = await call(F.attachFile, cx(uOwner), owner, { entityType: "RECORD", entityId: rec2, filename: "x.pdf", contentType: "application/pdf", data: new Uint8Array([37, 80, 68, 70]) }, deps);
     const whereSrc = read("src/lib/modules/crm/where.ts");
     const uses = (read("src/lib/modules/crm/activities.ts").match(/recordWhere\(/g) ?? []).length + (read("src/lib/modules/crm/files.ts").match(/recordWhere\(/g) ?? []).length;
-    chk("S7.pos", ok.ok && /export function recordWhere/.test(whereSrc) && uses >= 3, `record of this system accepted=${ok.ok || ok.msg} · recordWhere exported · call sites=${uses} (resolve · mention visibility · files)`);
+    chk("S7.pos", ok.ok && /export (async )?function recordWhere/.test(whereSrc) && uses >= 3, `record of this system accepted=${ok.ok || ok.msg} · recordWhere exported · call sites=${uses} (resolve · mention visibility · files)`);
     chk("S7.neg", bad.code === "NOT_FOUND" && fBad.code === "NOT_FOUND" && !/customRecord\.(findFirst|count|findMany)\(\{\s*where:\s*\{\s*(\.\.\.identityScope|tenantId)/.test(read("src/lib/modules/crm/activities.ts") + read("src/lib/modules/crm/files.ts")), `another system's record ⇒ log=${bad.code || "accepted"} · attach=${fBad.code || "accepted"} · no raw record scope left`);
   }
 

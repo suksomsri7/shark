@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (crm/access.ts) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { toMemberActor } from "@/lib/modules/member";
 import { dealFieldLayout, getDeal360, lostReasonOptions, ownerOptions, pipelineOptions } from "@/lib/modules/crm/deals";
@@ -62,7 +63,7 @@ export default async function Deal360Page({
 
   const [owners, lostReasons, pipelines, layout] = await Promise.all([ownerOptions(ctx, actor), lostReasonOptions(ctx, actor), pipelineOptions(ctx, actor), dealFieldLayout(ctx, actor)]);
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
-  const canEdit = evaluate(m, { module: "crm", action: "crm.deal.update" });
+  const canEdit = crmCan(m, "crm.deal.update");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
   const d = data.deal;
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as (typeof TABS)[number]["key"]) : "overview";

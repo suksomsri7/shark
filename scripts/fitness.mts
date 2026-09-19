@@ -338,6 +338,11 @@ const ALLOWED_EDGES = new Set([
   //   ⇒ ห้ามแตะตาราง `Party` ตรงตามพิมพ์เขียว §9.1 · ทิศเดียว kanban→party (party ไม่รู้จัก kanban)
   //   — Fable อนุมัติล่วงหน้า (ledger/KANBAN-RUN.md ท้าย §K3.2 กล่อง "เส้น import ข้ามโมดูลที่ Fable อนุมัติ")
   "kanban→party",
+  // chokepoint (CRM C1.7 — ผู้คุมงาน RUN CRM v2 อนุมัติ): ตัวแปลผลลิงก์ DEAL/COMPANY/CRM_CONTACT/CUSTOM_RECORD ของบอร์ดงาน
+  //   ถาม facade `crm` (visibility.visibleIdsForViewer · import แบบ lazy) ว่าผู้ดูมองเห็นเรคคอร์ดนั้นไหม — ซ่อนชื่อ/ลิงก์เมื่อมองไม่เห็น
+  //   (ไม่มีทางอื่น: บอร์ดงานต้องไม่รู้กติกา OWN/TEAM/ALL ของ CRM เอง) · เส้นนี้ทำให้ crm↔kanban เป็น **สองทาง** ผ่าน facade ทั้งคู่
+  //   (crm→kanban: activities.ts เรียก facade บอร์ดงานเปิดการ์ด · kanban→crm: ตัวแปลผลลิงก์) — import แบบ lazy ทั้งสองฝั่งกันวงโหลด (TDZ)
+  "kanban→crm",
   // chokepoint (M1.4 — ระบบสมาชิก v2 · ledger/MEMBER-RUN.md §2 M1.4):
   //   member→approval : "รวมสมาชิกซ้ำ" ของผู้จัดการต้องผ่านสายอนุมัติกลาง (submitForApproval)
   //                     ทิศเดียว · ผลกลับเข้าโมดูลสมาชิกเกิดที่ composition root (approval-effects.ts)

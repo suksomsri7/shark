@@ -32,6 +32,8 @@ import {
   type MembershipCtx,
 } from "@/lib/core/rbac";
 import {
+  // CRM C1.7 ▸ คีย์ CRM ที่ให้ได้เฉพาะเจ้าของร้าน ◂
+  CRM_OWNER_ONLY_KEYS,
   isPermissionKey,
   isPermissionParamKey,
   moduleOfPermissionKey,
@@ -46,7 +48,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_HINTS: Record<Role, string> = {
   OWNER: "ทำได้ทุกอย่างในร้าน รวมถึงตั้งสิทธิ์คนอื่น",
-  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล",
+  // CRM C1.7 ▸ ยกเว้น 5 คีย์ตั้งค่าของ CRM ที่เจ้าของร้านต้องให้เอง (§6.1) ◂
+  MANAGER: "ทำได้ทุกอย่างเฉพาะในสาขาที่ดูแล ยกเว้นงานตั้งค่าของระบบ CRM (ตั้งค่า pipeline · คีย์ API · วัตถุกำหนดเอง · การมองเห็น · ทีมขาย) ที่เจ้าของร้านต้องเปิดให้เอง",
   STAFF: "ทำได้เฉพาะข้อที่ติ๊กให้เท่านั้น",
 };
 
@@ -190,6 +193,11 @@ function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, next: P
       if (current[key] === true) continue; // มีอยู่แล้ว ไม่ใช่การเพิ่ม
       const moduleName = moduleOfPermissionKey(key);
       if (!moduleName) return fail(`ระบบไม่รู้จักสิทธิ์ “${key}” จึงยังบันทึกให้ไม่ได้`);
+      // CRM C1.7 ▸ 5 คีย์ตั้งค่าของ CRM (และ `crm.*` ที่ครอบมัน) ให้ได้เฉพาะเจ้าของร้าน — MANAGER ไม่มีคีย์เหล่านี้โดยปริยาย (§6.1)
+      //   แต่ rbac.evaluate ให้ MANAGER ผ่านทุกอย่าง ⇒ ถ้าไม่กันตรงนี้ ผู้จัดการจะแจกคีย์ที่ตัวเองไม่มีได้ (ยกระดับสิทธิ์) ◂
+      if ((key === "crm.*" || CRM_OWNER_ONLY_KEYS.includes(key)) && actor.role !== "OWNER") {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ของระบบ CRM ให้ได้เฉพาะเจ้าของร้าน — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`);
+      }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
           `คุณยังไม่มีสิทธิ์ “${permissionLabel(key)}” จึงมอบให้คนอื่นไม่ได้ — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`,

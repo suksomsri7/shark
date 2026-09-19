@@ -97,6 +97,12 @@ const C15_DEAL: string | null = WO === "1.5" || WO === "1.6"
   : null;
 
 const SPECS: Record<string, Spec[]> = {
+  // C1.7 — ทีมขาย (/app/settings/teams · core) · สิทธิ์การมองเห็น (/crm/settings/visibility · v2) — เทียบภาพ 10 ซ้าย
+  "1.7": isCustomer ? [] : [
+    { name: `crm-teams-${userKey}`, path: `/app/settings/teams`, note: "ทีมขาย: การ์ดทีม + รายละเอียด", steps: [{ wait: 1500 }] },
+    { name: `crm-visibility-${userKey}`, path: `${CRM_BASE}/settings/visibility`, note: "ตารางบทบาท × ข้อมูล + ข้อยกเว้นทีม/pipeline", steps: [{ wait: 1500 }] },
+    { name: `crm-v2-deals-board-${userKey}`, path: `${CRM_BASE}/deals`, note: "กระดานดีลตามสิทธิ์ผู้ดู (thana = ทีมภูเก็ตเท่านั้น)", expect: ["[data-testid=deal-board]"], steps: [{ waitFor: "[data-testid=deal-board]", timeoutMs: 20_000 }, { wait: 600 }] },
+  ],
   // C1.6 — กิจกรรม v2 · ปฏิทิน (สัปดาห์/เดือน · ทีม) · บล็อกกิจกรรม/ไฟล์ใน Deal 360 (เทียบภาพ 08)
   "1.6": isCustomer ? [] : [
     { name: `crm-activities-${userKey}`, path: `${CRM_BASE}/activities?scope=team`, note: "กิจกรรม v2 (ทีม · ค้าง)", expect: ["[data-testid=activities-list]"], steps: [{ waitFor: "[data-testid=activities-list]", timeoutMs: 20_000 }, { wait: 500 }] },

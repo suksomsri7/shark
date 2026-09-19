@@ -19,7 +19,7 @@ import { toMemberActor } from "@/lib/modules/member/access";
 // เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
 import { evaluate } from "@/lib/core/rbac";
 // CRM uiVersion gate ▸ ตัวอ่าน settings.crm แบบบริสุทธิ์ (แปลงค่าจาก JSON · ค่าเริ่มต้น uiVersion 1) ◂
-import { parseCrmSettings } from "@/lib/modules/crm";
+import { crmCan, parseCrmSettings } from "@/lib/modules/crm";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
@@ -166,7 +166,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               { href: `${s}/crm/deals/new`, label: "เพิ่มดีล" },
               { href: `${s}/crm/pipelines`, label: "pipeline ทั้งหมด" },
               // หน้าตั้งค่า = 404 สำหรับคนที่ไม่มี `crm.settings.manage` ⇒ ไม่โชว์ลิงก์ตาย (รีวิว C1.5)
-              ...(evaluate(membershipOf(auth), { module: "crm", action: "crm.settings.manage" })
+              // CRM C1.7: ด่านเดียวกับหน้าตั้งค่า (`crmCan` — MANAGER ปริยายไม่มี crm.settings.manage §6.1)
+              ...(crmCan(membershipOf(auth), "crm.settings.manage")
                 ? [
                     { href: `${s}/crm/settings/pipelines`, label: "ตั้งค่า pipeline" },
                     { href: `${s}/crm/settings/stages`, label: "ตั้งค่าขั้นของดีล" },
@@ -174,6 +175,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   ]
                 : []),
               // ◂ CRM C1.5
+              // CRM C1.7 ▸ การมองเห็นข้อมูล (404 สำหรับคนที่ไม่มี crm.visibility.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts`
+              ...(crmCan(membershipOf(auth), "crm.visibility.manage") ? [{ href: `${s}/crm/settings/visibility`, label: "การมองเห็นข้อมูล" }] : []),
+              // ◂ CRM C1.7
               // CRM C1.6 ▸ ปฏิทินกิจกรรม (หน้า v2 ล้วน) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV)
               { href: `${s}/crm/calendar`, label: "ปฏิทิน" },
               // ◂ CRM C1.6
@@ -292,6 +296,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // ได้มาจาก appSystems ที่ query ไปแล้วข้างบน ⇒ ไม่มี query เพิ่มใน layout เลย
   // ร้านที่ไม่ได้เปิดระบบแชท = ลิสต์ว่าง → ฝั่ง client ไม่ถามตัวเลขนี้เลย (ดู loadNavBadgesAction)
   const chatSystemIds = appSystems.filter((s) => s.type === "CHAT").map((s) => s.id);
+  // CRM C1.7 ▸ ลิงก์ "ทีมขาย" ในเมนูตั้งค่า: เฉพาะร้านที่มีระบบ CRM และผู้ใช้เป็นเจ้าของร้าน/ถือคีย์ crm.team.manage (หน้าเป็น 404 สำหรับคนอื่น) ◂
+  const showTeams = appSystems.some((x) => x.type === "CRM") && (auth.active.role === "OWNER" || crmCan(membershipOf(auth), "crm.team.manage"));
 
   return (
     <div className="min-h-full">
@@ -318,6 +324,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         soon={soon}
         openedCodes={openedCodes}
         chatSystemIds={chatSystemIds}
+        showTeams={showTeams}
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}

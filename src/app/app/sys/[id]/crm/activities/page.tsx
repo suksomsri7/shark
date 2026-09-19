@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (crm/access.ts) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
@@ -65,8 +66,8 @@ export default async function CrmActivitiesPage({
     boardOptions(ctx, actor),
   ]);
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
-  const canLog = evaluate(m, { module: "crm", action: "crm.activity.create" });
-  const canComplete = evaluate(m, { module: "crm", action: "crm.activity.complete" });
+  const canLog = crmCan(m, "crm.activity.create");
+  const canComplete = crmCan(m, "crm.activity.complete");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
   const base = `/app/sys/${id}/crm/activities`;
   const href = (patch: Record<string, string | null>) => {

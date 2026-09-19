@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
+// CRM C1.7 ▸ ด่านคีย์ของ CRM (MANAGER ปริยายไม่มี crm.settings.manage — §6.1) ◂
+import { crmCan } from "@/lib/modules/crm/access";
 import type { Role } from "@prisma/client";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
@@ -28,7 +29,7 @@ export default async function PipelinesPage({ params }: { params: Promise<{ id: 
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const pipelines = await listPipelines(ctx, actor);
   // ปุ่มไปหน้าตั้งค่า = เฉพาะคนที่มี `crm.settings.manage` (หน้าตั้งค่าเป็น 404 สำหรับคนอื่น — ไม่โชว์ลิงก์ตาย)
-  const canSettings = evaluate({ role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> }, { module: "crm", action: "crm.settings.manage" });
+  const canSettings = crmCan({ role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> }, "crm.settings.manage");
   const def = systemDef(sys.type);
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="pipelines-page">

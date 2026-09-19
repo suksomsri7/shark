@@ -430,7 +430,7 @@ try {
     const readers = ["getDeal360", "listDeals", "getBoard", "forecast"];
     const bad = readers.filter((n) => !/\bdealWhere\b/.test(fnBody(n)) && !/\bscopeOf|\bdealScope|\bvisible/.test(fnBody(n)));
     chk("C1.5-S0.9", "every deal read goes through where.ts `dealWhere(ctx, actor)` (R-A — C1.7 rewrites its internals): getDeal360 / listDeals / getBoard / forecast reference it, deals.ts uses it ≥ 4× [static]",
-      /export\s+function\s+dealWhere\b/.test(whereSrc) && (dSrc.match(/\bdealWhere\b/g) ?? []).length >= 4 && bad.length === 0,
+      /export\s+(async\s+)?function\s+dealWhere\b/.test(whereSrc) && (dSrc.match(/\bdealWhere\b/g) ?? []).length >= 4 && bad.length === 0,
       "dealWhere everywhere", `uses=${(dSrc.match(/\bdealWhere\b/g) ?? []).length} readersWithout=${bad.join(",") || "-"}`, "MAJOR");
   }
   chk("C1.5-S0.10", "implementation sites are marked `// AUDIT-CLASS X1` / `X3` / `X6` / `X8` / `X9` in deals*.ts [static]",
@@ -762,7 +762,8 @@ try {
   const AMT_A = [285_000, 500_000, 28_500];
   const lineRows = (id: string) => P.crmDealLine.findMany({ where: { dealId: id || NONE }, orderBy: { sortOrder: "asc" } }) as Promise<Any[]>;
   const lineAmt = (l: Any) => Math.round((Number(l.qty) * l.unitPriceSatang * (10_000 - (l.discountBp ?? 0))) / 10_000);
-  const dLn = await fxDeal({ pipelineId: pA.id, title: `ดีลมีรายการ ${rand}`, contactId: kMain, companyId: coMain, valueSatang: 0 });
+  // ORACLE-EDIT C1.5-S4.3/S4.4/S4.5/X4.8 (controller · C1.7 addendum 1): the STAFF `sales` must own the deal it edits (strict C9)
+  const dLn = await fxDeal({ pipelineId: pA.id, title: `ดีลมีรายการ ${rand}`, contactId: kMain, companyId: coMain, valueSatang: 0, ownerUserId: userSales });
   {
     const r = await call(fns.setLines, cA, owner, dLn, { lines: SET_A, discountBp: 200 });
     const rows = await lineRows(dLn);
