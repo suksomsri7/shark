@@ -10,3 +10,8 @@ Read `crm-brief-COMMON.md` first. Spec: blueprint §4.3 groups "คะแนน 
 ## Acceptance (oracle `qc-crm-c2.0`)
 migration applies on QC; every model in scope registry; SQL reviewed by the controller: CREATE/ADD only; existing suites unaffected.
 Regressions: `qc-form`, `qc-forms-notify`, `qc-marketing`, all C1 oracles, `qc-member-m1.2`.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c2.0` 73 checks)
+The CONTRACT BLOCK + rulings block in the oracle header are binding (see CRM-RUN §4 19 Sep "หนึ่งสถานะ สองความหมาย"). Key points: NO constraint that can fail on existing prod rows (all → C6.1) · the CrmCompanyContact one-primary unique is NOT in `crm_v2_b` · builder fixes `scripts/crm-backfill-companies-from-text.mts` (primary only for the first contact of a company that has none) and the seed if needed · `trackTokenHash` (no plaintext tokens) · enrollment partial unique on ACTIVE · step `version` · `CrmDealPayment.refType/status` text · CrmImportJob full shape · score-log `eventKey` partial unique · `AutomationRun.crmContactId` + partial unique · `CrmEmailEvent.providerEventId` partial unique.
+Owned files: `prisma/schema/*` (new C2 models + the listed existing-table columns only) · the new migration folder `prisma/migrations/<ts>_crm_v2_b/` · `src/lib/core/scope.ts` registrations · the backfill script above · `scripts/seed-crm-qc.mts` (only if needed for 0 duplicate primaries).
+Process: builder writes the SQL with `bash scripts/iso.sh bash scripts/qc-prisma.sh migrate diff --from-config-datasource --to-schema prisma/schema --script` (QC only · NEVER `migrate dev/reset/db push`) · the CONTROLLER reads every SQL line, then runs `qc-prisma.sh migrate deploy` on QC. The builder does NOT deploy.
