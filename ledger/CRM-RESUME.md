@@ -4,7 +4,7 @@
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · กำลัง poll deploy) (16/53)
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · dpl_57Wdn) (16/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
 - 🔨 **C1.11** builder ใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged · งาน C1.11 = unstaged) · QC2 · 66/66 (ต้องรันด้วย `env CRM_V2_SWITCH=all`) · ผู้ตรวจ: ไม่มี BLOCKER · SHOULD-FIX 7 ส่งกลับแก้แล้ว · ตอนรวม: patch = `git -C shark-crm-c111 diff` (unstaged) + untracked · ผู้คุมงานต้อง: เพิ่ม 3 หน้าใน probe V2_ONLY (contacts/import · contacts/duplicates · companies/duplicates) + ORACLE-EDIT C1.10-S11.8 (หน้า settings แยกสาขาเองได้) · หลังรับ = ปิดเฟส C1 ด้วย qc:all
 - ⏸️ C2.0 builder เริ่มหลังปิดเฟส C1 (qc:all)

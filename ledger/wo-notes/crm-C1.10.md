@@ -32,3 +32,6 @@ BLOCKER 1: ผู้ช่วย AI ได้ค่าฟิลด์อ่อ�
 |---|---|
 | ทีม = ทั้งร้าน (R-C.7) · recordCount ของคีย์ที่มีตัวกรอง · F13.10 อ่อน | C5 |
 | ส่งออกบริษัท/ดีล (ยังไม่มี op) | C2.x |
+
+## 3.2 D12 — push/deploy
+✅ push `41c8d2a0` → session/crm + main · deploy `dpl_57Wdn…` ขึ้นหลัง 330 วิ · health ok · `/api/v1/crm/ping` ไม่มีคีย์ = 401 (ถูก) · outboxPending 1 (ค่าเดิม)
