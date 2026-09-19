@@ -5,7 +5,7 @@
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1 · C1.2a · C1.2b · C1.3 · C1.4 · C1.5 · C1.6 · C1.7 (13/53)
-- 🔨 **C1.8** (เหตุการณ์+สะพาน): โค้ดสุดท้ายอยู่ใน **tree หลัก (uncommitted)** = สำเนาจาก c12a · รอบตรวจสุดท้าย unit `crm-c18-verify2` (log `.qc-shots/crm/c18-verify2.log`) · ข้อสอบ 81/81 + probe-c18-review 32/32 บน c12a · ผู้ตรวจ: ไม่มี BLOCKER · แก้ครบ · ORACLE-EDIT X4.12/X4.15 ทำแล้ว (ยังไม่ commit — อยู่ใน tree หลัก)
+- 🔨 **C1.8**: ข้อสอบ 81/81 บน tree หลัก · C0.2 แก้ ORACLE-EDIT แล้ว · build รันแยก (unit crm-c18-build) · ⚠️ รอผล debug m1.4 (thana เห็นสมาชิกกะตะ — ทำซ้ำได้ในสภาพข้อมูลปัจจุบัน · ห้าม reseed QC1 จนกว่า debugger จะรายงาน) ก่อน commit
   - ถ้าผลตรวจเขียว → เขียน `ledger/wo-notes/crm-C1.8.md` → commit → push session/crm + main → poll deploy (`dpl_` ใน https://shark.in.th/login) → Telegram (`tg`) → memory
 - 🔨 **C1.9** (UI วัตถุกำหนดเอง): builder แก้ตามผู้ตรวจ (BLOCKER ฟิลด์อ่อนไหวเขียนไม่ได้) · โค้ดอยู่ใน worktree **`/root/projects/shark-crm-c19`** (ฐาน = HEAD + C1.8 ที่แก้แล้ว) · ใช้ **QC1** · ข้อสอบ `qc-crm-c1.9` 45 ข้อ
 - 🔨 **C1.10** (REST 57 op + AI 14 tools): builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
