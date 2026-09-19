@@ -17,3 +17,14 @@ CRM-RUN S1–S5 (18) + S6 switch both ways keeps data.
 X1 chat panel shows nothing for a Party whose contact the staff cannot see · X3 `applyBusinessTemplate` twice in parallel → one set · X6 import UI: 10 MB / 50,000 rows refused politely; formula cells inert · X9 merge UI passes confirm + reason.
 Parity: mockup 13(a) + all C1 pages at 390 for owner/thana.
 Regressions: `qc-chat-member-autolink`, `qc-chat-v2-room`, `qc-chat-v2-context`, `qc-nav-functions`, `qc-crm`, `qc-crm-activity`, all C1 oracles. Then the controller closes phase C1 with a full `qc:all` and walks US2, US3, US6, US8 on the QC server.
+
+## Controller addendum (19 Sep · oracle `qc-crm-c1.11` 66 checks)
+The CONTRACT BLOCK (sections A–I) in the oracle header is the API. Rulings — binding:
+1. **The switch is NOT visible to production shops by default** (MASTER-PLAN: uiVersion stays 1 until the owner names a pilot · C6.3). Gate every switch surface (page, action, CrmHub link) behind `isCrmV2SwitchAllowed(tenantId)` = env `CRM_V2_SWITCH_TENANTS` (comma list of tenant ids) or `CRM_V2_SWITCH=all`; unset ⇒ page 404, action FORBIDDEN, no link. QC: the oracle sets `process.env.CRM_V2_SWITCH=all` in-process (report if a server-side check needs the QC server env — `.env.qc` may get `CRM_V2_SWITCH=all`, controller adds it). Entry = an OWNER-only link on CrmHub shown only when allowed ⇒ the v1 drawer stays byte-identical (probe V2.3). The switch page is exempt from probe V2_ONLY (controller edits the probe) and linked from CrmHub for qc-nav-functions.
+2. Score rules/sequences stay as template data + `settings.crm.businessTemplate` pointer; materialised into tables by C2.x WOs (C2.2 sequences · C2.8 scoring).
+3. Create-lead button works with `chatToLead` off (human click) — confirmed. 4. Panel = first CRM system, only at v2 — accepted until C2.4.
+5. Owned files also: the merge dialogs inside `Contact360Actions.tsx` / `Company360Actions.tsx` (fieldChoices + reason testid only, `// CRM C1.11` blocks).
+6. Import `onDuplicate: "update"` = fill blanks only, never overwrite existing values.
+7. `qc-member-m1.1` S3.1 conflict: controller decides at phase-C1 close (ORACLE-EDIT to exclude rows tagged by the CRM seed).
+8. Accepted.
+C1.11 builder starts after C1.9 and C1.10 are committed (touches the same pages).
