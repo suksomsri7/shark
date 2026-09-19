@@ -4,9 +4,7 @@
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1 · C1.2a · C1.2b · C1.3 · C1.4 · C1.5 · C1.6 · C1.7 (13/53)
-- 🔨 **C1.8**: ข้อสอบ 81/81 บน tree หลัก · C0.2 แก้ ORACLE-EDIT แล้ว · build รันแยก (unit crm-c18-build) · ⚠️ รอผล debug m1.4 (thana เห็นสมาชิกกะตะ — ทำซ้ำได้ในสภาพข้อมูลปัจจุบัน · ห้าม reseed QC1 จนกว่า debugger จะรายงาน) ก่อน commit
-  - ถ้าผลตรวจเขียว → เขียน `ledger/wo-notes/crm-C1.8.md` → commit → push session/crm + main → poll deploy (`dpl_` ใน https://shark.in.th/login) → Telegram (`tg`) → memory
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.7 · C1.8 (`526895b` · กำลัง poll deploy) (14/53)
 - 🔨 **C1.9** (UI วัตถุกำหนดเอง): builder แก้ตามผู้ตรวจ (BLOCKER ฟิลด์อ่อนไหวเขียนไม่ได้) · โค้ดอยู่ใน worktree **`/root/projects/shark-crm-c19`** (ฐาน = HEAD + C1.8 ที่แก้แล้ว) · ใช้ **QC1** · ข้อสอบ `qc-crm-c1.9` 45 ข้อ
 - 🔨 **C1.10** (REST 57 op + AI 14 tools): builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
