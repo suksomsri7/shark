@@ -4,7 +4,7 @@
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.8 · C1.9 (`b01b3b72` · กำลัง poll deploy) (15/53)
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.8 · C1.9 (`b01b3b72` · dpl_GhYWo) (15/53)
 - 🔨 **C1.10** (REST 63 op + AI 14 tools): แก้ผลผู้ตรวจครบ (BLOCKER ผู้ช่วย AI เห็นค่าอ่อนไหว) · **patch วางใน tree หลักแล้ว (staged ไม่ commit)** · กำลังตรวจ unit `crm-c110-verify` (log `.qc-shots/crm/c110-verify.log`) บน QC1 · ต้นทาง `/root/projects/shark-crm-c110` (QC2) · ถ้า session ตาย: `git -C /root/projects/shark-crm diff --cached --stat` ดูว่ายัง staged อยู่ แล้วรัน `scripts/pending/run-c110-verify.sh` ใหม่
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
 - 🔨 **C1.11** builder ทำงานใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged) · ใช้ **QC2** · ข้อสอบ 66 ข้อ + qc-crm-v1

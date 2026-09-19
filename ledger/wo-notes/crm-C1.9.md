@@ -30,3 +30,6 @@ BLOCKER 1: UI เขียนค่าฟิลด์อ่อนไหวไม
 | เรื่อง | เจ้าของ |
 |---|---|
 | ปุ่ม "ตัวอย่างมือถือ" + แผง "ใช้ในกฎ/segment" ของภาพ 06 | C4 (กฎ/segment ยังไม่มี) |
+
+## 3.2 D12 — push/deploy
+✅ push `b01b3b72` → session/crm + main · deploy `dpl_GhYWo…` ขึ้นหลัง 300 วิ · health ok · outboxPending 1 (ค่าเดิมตั้งแต่ C1.8 · ไม่เพิ่ม)
