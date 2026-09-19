@@ -27,6 +27,8 @@ import type { CardForTargetDto } from "@/lib/modules/kanban/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatThaiDate } from "@/lib/ui/date";
+// CRM C1.11 ▸ บล็อก CRM (ผู้ติดต่อ · บริษัท · ดีลเปิด) ของระบบ CRM ใหม่ (uiVersion 2) — ผ่านการมองเห็นของ CRM · ระบบ v1 ไม่เพิ่มอะไร ◂
+import { PartyCrmBlock } from "@/lib/modules/crm/ui";
 
 const KIND_LABEL: Record<string, string> = { PERSON: "บุคคล", COMPANY: "นิติบุคคล" };
 
@@ -138,6 +140,9 @@ export default async function PartyProfilePage({
           </dl>
         )}
       </section>
+
+      {/* CRM C1.11 ▸ บล็อก CRM (RESOLUTIONS R-A) — เฉพาะคนที่เห็นข้อมูลติดต่อ · ไม่มีรายการที่มองเห็นได้ = ไม่แสดงบล็อก ◂ */}
+      {canSeeContact && <PartyCrmBlock partyId={party.id} />}
 
       {/* ── งานที่เชื่อมกับผู้ติดต่อนี้ (ขาย้อนของ K3.1) ── */}
       <section className="flex flex-col gap-2" data-testid="party-cards">

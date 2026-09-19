@@ -110,7 +110,57 @@ const C19_REC: string | null = WO === "1.9"
     })()
   : null;
 
+// CRM C1.11 ▸ ห้องแชทของร้าน QC ที่ลูกค้าเป็นผู้ติดต่อใน CRM (แผงข้าง "CRM") — อ่านอย่างเดียว · ไม่มี = ข้ามภาพแผงแชท
+const C111_CHAT: { sysId: string; convId: string } | null = WO === "1.11"
+  ? await (async () => {
+      const P = prisma as Any;
+      const parties = (await P.crmContact.findMany({ where: { systemId: SYS, partyId: { not: null }, mergedIntoId: null }, select: { partyId: true }, take: 500 })).map((x: Any) => x.partyId);
+      const cc = await P.chatContact.findFirst({ where: { tenantId: E.tenantId, partyId: { in: parties } }, select: { id: true, systemId: true } });
+      const conv = cc ? await P.chatConversation.findFirst({ where: { tenantId: E.tenantId, contactId: cc.id }, orderBy: { lastMessageAt: "desc" }, select: { id: true } }) : null;
+      return cc && conv ? { sysId: cc.systemId as string, convId: conv.id as string } : null;
+    })()
+  : null;
+// C1.11 ▸ ตัวอย่างสำหรับหน้า 360 ที่ 390 (อ่านอย่างเดียว)
+const C111_IDS = WO === "1.11"
+  ? await (async () => {
+      const P = prisma as Any;
+      const contact = (await P.crmContact.findFirst({ where: { systemId: SYS, archivedAt: null, mergedIntoId: null, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
+      const company = (await P.crmCompany.findFirst({ where: { systemId: SYS, archivedAt: null, mergedIntoId: null, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
+      const deal = (await P.crmDeal.findFirst({ where: { systemId: SYS, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
+      return { contact, company, deal };
+    })()
+  : { contact: null, company: null, deal: null };
+// ◂ CRM C1.11
+
 const SPECS: Record<string, Spec[]> = {
+  // CRM C1.11 ▸ ทุกหน้า C1 ที่ 390 (owner/thana · D7 ไม่มีล้นแนวนอน) + หน้าใหม่ของ C1.11 ทั้งสองขนาด + แผงแชท (เดสก์ท็อป — คอลัมน์บริบทของแชทมีเฉพาะ lg ขึ้นไป)
+  //   + หน้าสลับ (เจ้าของร้าน · ต้องมี CRM_V2_SWITCH=all ในเซิร์ฟเวอร์ QC จึงเห็นการ์ดสวิตช์) · thana ไม่มีคีย์ตั้งค่า ⇒ หน้าตั้งค่าไม่อยู่ในชุดของ thana
+  "1.11": isCustomer ? [] : [
+    { name: `crm-home-${userKey}`, path: `/app/sys/${SYS}`, note: "หน้าแรก CRM ใหม่ (ภาพ 13(ก)): ดีลของฉัน + ชิปขั้น + ป้ายนิ่ง · งานของฉันวันนี้", expect: ["[data-testid=crm-home]", "[data-testid=crm-home-my-deals]", "[data-testid=crm-home-my-tasks]"], steps: [{ waitFor: "[data-testid=crm-home]", timeoutMs: 20_000 }, { wait: 600 }] },
+    { name: `crm-import-${userKey}`, path: `${CRM_BASE}/contacts/import`, note: "นำเข้าผู้ติดต่อ + บริษัท (จับคู่คอลัมน์ · 3 วิธีจัดการแถวซ้ำ)", expect: ["[data-testid=crm-import-page]", "[data-testid=crm-import-file]"], steps: [{ waitFor: "[data-testid=crm-import-page]", timeoutMs: 20_000 }, { wait: 400 }] },
+    { name: `crm-contact-duplicates-${userKey}`, path: `${CRM_BASE}/contacts/duplicates`, note: "ผู้ติดต่อที่น่าจะซ้ำ (การ์ดที่ 390 · ตารางที่ 1440)", expect: ["[data-testid=crm-contact-duplicates-page]"], steps: [{ waitFor: "[data-testid=crm-contact-duplicates-page]", timeoutMs: 20_000 }, { wait: 400 }] },
+    { name: `crm-company-duplicates-${userKey}`, path: `${CRM_BASE}/companies/duplicates`, note: "บริษัทที่น่าจะซ้ำ", expect: ["[data-testid=crm-company-duplicates-page]"], steps: [{ waitFor: "[data-testid=crm-company-duplicates-page]", timeoutMs: 20_000 }, { wait: 400 }] },
+    ...(userKey === "owner" ? [{ name: `crm-switch-${userKey}`, path: `${CRM_BASE}/settings`, note: "หน้าตั้งค่า CRM + สวิตช์หน้าจอ (เจ้าของร้าน)", expect: ["[data-testid=crm-settings-page]"], steps: [{ waitFor: "[data-testid=crm-settings-page]", timeoutMs: 20_000 }, { wait: 400 }] } as Spec] : []),
+    ...(C111_CHAT ? [{ name: `crm-chat-panel-${userKey}`, path: `/app/sys/${C111_CHAT.sysId}?c=${C111_CHAT.convId}`, note: "แผงข้าง CRM ในห้องแชท (ผู้ติดต่อ · บริษัท · ดีลเปิด · ปุ่ม 3)", onlyDevice: "desktop" as const, expect: ["[data-testid=crm-chat-panel]"], steps: [{ waitFor: "[data-testid=crm-chat-panel]", timeoutMs: 20_000 }, { wait: 600 }] } as Spec] : []),
+    // ── หน้า C1 เดิมที่ 390 ──
+    { name: `crm-390-contacts-${userKey}`, path: `${CRM_BASE}/contacts`, onlyDevice: "mobile", steps: [{ wait: 1200 }] },
+    { name: `crm-390-contacts-new-${userKey}`, path: `${CRM_BASE}/contacts/new`, onlyDevice: "mobile", steps: [{ wait: 800 }] },
+    ...(C111_IDS.contact ? [{ name: `crm-390-contact-360-${userKey}`, path: `${CRM_BASE}/contacts/${C111_IDS.contact}`, onlyDevice: "mobile" as const, steps: [{ wait: 1200 }] } as Spec] : []),
+    { name: `crm-390-companies-${userKey}`, path: `${CRM_BASE}/companies`, onlyDevice: "mobile", steps: [{ wait: 1200 }] },
+    { name: `crm-390-companies-new-${userKey}`, path: `${CRM_BASE}/companies/new`, onlyDevice: "mobile", steps: [{ wait: 800 }] },
+    ...(C111_IDS.company ? [{ name: `crm-390-company-360-${userKey}`, path: `${CRM_BASE}/companies/${C111_IDS.company}`, onlyDevice: "mobile" as const, steps: [{ wait: 1200 }] } as Spec] : []),
+    { name: `crm-390-deals-board-${userKey}`, path: `${CRM_BASE}/deals`, onlyDevice: "mobile", note: "กระดานปัดทีละขั้น (snap)", steps: [{ wait: 1500 }] },
+    { name: `crm-390-deals-table-${userKey}`, path: `${CRM_BASE}/deals?view=table`, onlyDevice: "mobile", steps: [{ wait: 1200 }] },
+    ...(C111_IDS.deal ? [{ name: `crm-390-deal-360-${userKey}`, path: `${CRM_BASE}/deals/${C111_IDS.deal}`, onlyDevice: "mobile" as const, steps: [{ wait: 1200 }] } as Spec] : []),
+    { name: `crm-390-deals-new-${userKey}`, path: `${CRM_BASE}/deals/new`, onlyDevice: "mobile", steps: [{ wait: 800 }] },
+    { name: `crm-390-pipelines-${userKey}`, path: `${CRM_BASE}/pipelines`, onlyDevice: "mobile", steps: [{ wait: 800 }] },
+    { name: `crm-390-activities-${userKey}`, path: `${CRM_BASE}/activities`, onlyDevice: "mobile", steps: [{ wait: 1200 }] },
+    { name: `crm-390-calendar-${userKey}`, path: `${CRM_BASE}/calendar`, onlyDevice: "mobile", steps: [{ wait: 1200 }] },
+    ...(userKey === "owner"
+      ? (["/settings/pipelines", "/settings/stages", "/settings/lost-reasons", "/settings/visibility", "/settings/objects", "/settings/api", "/objects"] as const).map((p) => ({ name: `crm-390${p.replace(/\//g, "-")}-${userKey}`, path: `${CRM_BASE}${p}`, onlyDevice: "mobile" as const, steps: [{ wait: 1000 }] }) as Spec)
+      : []),
+  ],
+  // ◂ CRM C1.11
   // C1.9 — ข้อมูลกำหนดเอง: ตั้งค่าวัตถุ (+ ตัวออกแบบฟิลด์) · ดัชนี · รายการ · เรคคอร์ด (เทียบภาพ 06)
   // thana/nok (STAFF ไม่มีคีย์ crm.record.read) = 404 ตามแบบ (ข้อสอบ C1.9 X2 คุมไว้) → ถ่ายเฉพาะ owner/manager
   "1.9": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [

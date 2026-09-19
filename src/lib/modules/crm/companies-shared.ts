@@ -84,6 +84,17 @@ export const DUPLICATE_REASON_LABEL: Record<DuplicateReason, string> = {
 /** ฟิลด์ที่เลือกได้ตอนรวมบริษัท ("keep" = ใช้ค่าของบริษัทที่เก็บไว้ · "merge" = ใช้ค่าของบริษัทที่ถูกรวม) */
 export const MERGE_CHOICE_FIELDS = ["legalName", "industry", "size", "website", "phone", "email", "emailDomain", "note"] as const;
 export type MergeChoiceField = (typeof MERGE_CHOICE_FIELDS)[number];
+// CRM C1.11 ▸ ป้ายไทยของฟิลด์ที่เลือกค่าได้ตอนรวม (หน้าบริษัทที่น่าจะซ้ำ · แผ่นรวมในบริษัท 360) ◂
+export const MERGE_CHOICE_LABEL: Record<MergeChoiceField, string> = {
+  legalName: "ชื่อตามทะเบียน",
+  industry: "ประเภทธุรกิจ",
+  size: "ขนาดกิจการ",
+  website: "เว็บไซต์",
+  phone: "เบอร์โทร",
+  email: "อีเมล",
+  emailDomain: "โดเมนอีเมล",
+  note: "โน้ต",
+};
 
 // ───────────────────────── DTO ─────────────────────────
 

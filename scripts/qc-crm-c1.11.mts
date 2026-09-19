@@ -1410,8 +1410,11 @@ try {
       p.ok && !s.includes(phN) && !s.includes(emN) && dirty.length === 0 && hasLeadEvt, "ids only", `panel=${aDesc(p)} phone=${s.includes(phN)} email=${s.includes(emN)} dirty=${dirty.map((e) => e.type).join(",") || "-"} control=${hasLeadEvt}`);
   }
   {
+    // ORACLE-EDIT C1.11-X9.3 (controller · 19 Sep): review SF-5 ruled the merge UIs must send the REAL confirm checkbox state
+    //   (a hard-coded `confirm: true` hides what the user did from the server-side guard). Accept `confirm: <checkbox state var>`
+    //   as well as `confirm: true`; `confirm: false` stays red. Server-side confirm is still exercised by C1.4/C1.3 dynamic checks.
     const ui = [...walkFiles(CRM_DIR), ...walkFiles("src/components/crm")].filter((x) => x.endsWith(".tsx") && /merge(Contacts|Companies)Action/.test(read(x)));
-    const bad = ui.filter((x) => { const s = read(x); return !/fieldChoices/.test(s) || !/confirm:\s*true/.test(s) || !/\breason\b/.test(s) || !/data-testid=["'`{][^"'`]*merge[^"'`]*reason|data-testid=["'`{][^"'`]*reason[^"'`]*merge/.test(s); });
+    const bad = ui.filter((x) => { const s = read(x); return !/fieldChoices/.test(s) || !/confirm:\s*(true|confirmed|confirmOk|checked|isConfirmed)\b|mergeId[^)\n]*[{,]\s*confirm\s*,/.test(s) || /confirm:\s*false\b/.test(s) || !/\breason\b/.test(s) || !/data-testid=["'`{][^"'`]*merge[^"'`]*reason|data-testid=["'`{][^"'`]*reason[^"'`]*merge/.test(s); });
     chk("C1.11-X9.3", "merge UI (contacts AND companies): the component that calls the merge action sends fieldChoices + confirm: true + reason and renders a reason input whose testid names merge + reason [static]",
       ui.some((x) => /mergeContactsAction/.test(read(x))) && ui.some((x) => /mergeCompaniesAction/.test(read(x))) && bad.length === 0, "confirm + reason + choices",
       `files=${ui.map((x) => x.split("/").slice(-2).join("/")).join(",") || "-"} bad=${bad.map((x) => x.split("/").pop()).join(",") || "-"}`, "MAJOR");

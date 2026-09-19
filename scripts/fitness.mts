@@ -408,6 +408,10 @@ const ALLOWED_EDGES = new Set([
   "crm→member",
   "crm→kanban",
   "crm→forms",
+  // CRM C1.11 ▸ chat→crm : แผงข้าง "CRM" ในห้องแชท (`chat/crm-panel-actions.ts`) อ่านการ์ดย่อผ่าน `crm.briefFor` (การมองเห็นของ CRM) ·
+  //   ปุ่มสร้าง lead/บันทึกกิจกรรมผ่าน `crm.contacts.leadFromBridge` / `crm.activities.logActivity` — facade index เท่านั้น (F2.3)
+  "chat→crm",
+  // ◂ CRM C1.11
   // CRM C1.1 ▸ partyId ทุกระบบ (C11 · พิมพ์เขียว 20-crm-v2 §4.1): จุดสร้างแถวธุรกรรม 9 จุดเรียก `party.safeFindOrCreate`
   //   ด้วยชื่อ/เบอร์/อีเมลที่แถวมีอยู่แล้ว (นอก transaction ธุรกิจ · ไม่มีวัน throw) — ทิศเดียว <โมดูล>→party
   "booking→party", // Appointment (ชื่อ+เบอร์ลูกค้า)

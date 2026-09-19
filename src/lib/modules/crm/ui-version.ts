@@ -42,3 +42,15 @@ export async function requireCrmV2Page(ctx: { tenantId: string; systemId: string
 export async function assertCrmV2(ctx: { tenantId: string; systemId: string }): Promise<void> {
   if ((await crmUiVersion(ctx)) !== 2) throw new CrmV2DisabledError();
 }
+
+// CRM C1.11 ▸ สวิตช์ v1↔v2 (มติ C23 · addendum ผู้คุมงาน C1.11 ข้อ 1) — ซ่อนจากร้านจริงโดยปริยาย
+//   ร้านจะเห็นหน้า/ลิงก์/ปุ่มสลับได้ก็ต่อเมื่อ env `CRM_V2_SWITCH=all` หรือ tenantId อยู่ใน `CRM_V2_SWITCH_TENANTS` (คั่นด้วย ,)
+//   ไม่ได้ตั้ง = หน้าสลับ 404 · action FORBIDDEN · ไม่มีลิงก์ (MASTER-PLAN: uiVersion คงเป็น 1 จนเจ้าของเลือกร้านนำร่อง · C6.3)
+//   อ่าน env ตรง ๆ ทุกครั้ง (ไม่ผ่าน @/lib/env — ไฟล์นี้ถูก import จากทะเบียนที่ต้องรันได้ในโหมดไร้ env)
+export function isCrmV2SwitchAllowed(tenantId: string | null | undefined): boolean {
+  if (!tenantId) return false;
+  if ((process.env.CRM_V2_SWITCH ?? "").trim().toLowerCase() === "all") return true;
+  const list = (process.env.CRM_V2_SWITCH_TENANTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return list.includes(tenantId);
+}
+// ◂ CRM C1.11

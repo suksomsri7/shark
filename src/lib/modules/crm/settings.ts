@@ -83,3 +83,15 @@ export function activityOutcomesOf(raw: Json, type: string, defaults: Readonly<P
   return defaults[type] ?? null;
 }
 // ◂ CRM C1.6
+
+// CRM C1.11 ▸ เทมเพลตกิจการที่ร้านเลือกแล้ว `settings.crm.businessTemplate = { key, appliedAt } | "none"` (ตัวอ่านบริสุทธิ์)
+//   ตัวเขียนอยู่ใน `templates.ts` (jsonb_set คำสั่งเดียวใน tx ของการ apply) · ใบ C2.2/C2.8 อ่าน key นี้ไปหา sequences/scoreRules
+export function crmBusinessTemplateOf(raw: Json): { key: string; appliedAt: string | null } | null {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  // SF-7: "none" = ร้านเลือก "ไม่ใช้เทมเพลต" (ตัวเลือกไม่ขึ้นอีก · ไม่มีเทมเพลตให้ C2.x อ่าน)
+  if (crm && crm.businessTemplate === "none") return { key: "none", appliedAt: null };
+  const bt = crm && isObj(crm.businessTemplate) ? crm.businessTemplate : null;
+  if (!bt || typeof bt.key !== "string" || !bt.key) return null;
+  return { key: bt.key, appliedAt: typeof bt.appliedAt === "string" ? bt.appliedAt : null };
+}
+// ◂ CRM C1.11

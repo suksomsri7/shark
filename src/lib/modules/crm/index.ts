@@ -83,3 +83,9 @@ export { crmCan, CRM_ROLE_DEFAULTS } from "./access";
 //   crmWebhookEvents · ผู้ใช้: route ของ REST · src/lib/ai/{tools-crm,skills,proposals}.ts (F2.3 — ห้ามล้วง crm/api ตรง)
 export * as crmApi from "./api";
 // ◂ CRM C1.10
+// CRM C1.11 ▸ การ์ดย่อ CRM ของ Party (`brief.ts`) — ผู้ใช้: แผงข้างห้องแชท `src/lib/modules/chat/crm-panel-actions.ts` (เส้น chat→crm) ·
+//   ประตูรุ่นหน้าจอ (`crmUiVersion`) ให้ผู้เรียกนอกโมดูลตัดสินเองก่อนแตะ CRM · สวิตช์ v1↔v2 ซ่อนจากร้านจริงโดยปริยาย (`isCrmV2SwitchAllowed`)
+export { briefFor, crmPanelTarget, partyBriefs } from "./brief";
+export type { CrmBrief, CrmBriefDeal, PartyCrmBrief } from "./brief";
+export { crmUiVersion, isCrmV2SwitchAllowed } from "./ui-version";
+// ◂ CRM C1.11

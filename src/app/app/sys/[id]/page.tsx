@@ -11,6 +11,8 @@ import { KanbanHub } from "@/lib/modules/kanban/ui";
 import { ChatInboxSection } from "@/lib/modules/chat/ui";
 import { canReadChat } from "@/lib/modules/chat/guard";
 import { CrmHub } from "@/lib/modules/crm/ui";
+// CRM C1.11 ▸ หน้าแรก CRM ใหม่ (uiVersion 2) — uiVersion 1 ยังเป็น CrmHub เดิม ◂
+import { CrmHomeV2, parseCrmSettings } from "@/lib/modules/crm/ui";
 import { InvHub } from "@/lib/modules/inventory/ui";
 import { HrHub } from "@/lib/modules/hr/ui";
 import { MarketingHub } from "@/lib/modules/marketing/ui";
@@ -111,7 +113,8 @@ export default async function SystemPage({
           )}
         </div>
       )}
-      {sys.type === "CRM" && <CrmHub systemId={id} />}
+      {/* CRM C1.11 ▸ ทางเข้าโมดูลตามรุ่นหน้าจอ (มติ C23): 2 = หน้าแรก CRM ใหม่ · อื่น ๆ = CrmHub เดิม ◂ */}
+      {sys.type === "CRM" && (parseCrmSettings(sys.settings).uiVersion === 2 ? <CrmHomeV2 systemId={id} /> : <CrmHub systemId={id} />)}
       {sys.type === "INVENTORY" && <InvHub systemId={id} />}
       {sys.type === "HR" && <HrHub systemId={id} />}
       {sys.type === "MARKETING" && <MarketingHub systemId={id} />}

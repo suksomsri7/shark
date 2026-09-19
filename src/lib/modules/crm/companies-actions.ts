@@ -21,6 +21,7 @@ import {
   exportCompanies,
   importCompanies,
   mergeCompanies,
+  visibleCompaniesByIds,
   removeContact,
   restoreCompany,
   setOwner,
@@ -30,6 +31,7 @@ import {
   updateCompany,
   type CompaniesCtx,
   type CreateCompanyInput,
+  type MergeCompaniesInput,
   type UpdateCompanyInput,
 } from "./companies";
 import { CompaniesError, type CompanyCandidate, type ImportCompaniesResult } from "./companies-shared";
@@ -172,13 +174,14 @@ export async function setRoleAction(systemId: string, companyId: string, contact
   }
 }
 
+// CRM C1.11 ▸ `fieldChoices` (เลือกค่าต่อฟิลด์ · หน้าตัวซ้ำ/แผ่นรวม) ส่งผ่านถึงบริการ C1.3 ตรง ๆ ◂
 export async function mergeCompaniesAction(
   systemId: string,
-  input: { keepId: string; mergeId: string; confirm: boolean; reason: string },
+  input: { keepId: string; mergeId: string; confirm: boolean; reason: string; fieldChoices?: Record<string, "keep" | "merge"> | null },
 ): Promise<{ ok: true; keptId: string; accountMergeFailed: string | null; accountMergeSkipped: "NO_PERMISSION" | null; warnings: string[] } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.company.merge");
-    const r = await mergeCompanies(ctx, actor, input);
+    const r = await mergeCompanies(ctx, actor, { ...input, fieldChoices: (input?.fieldChoices ?? null) as MergeCompaniesInput["fieldChoices"] }); // CRM C1.11 ◂
     revalidatePath(base(systemId));
     revalidatePath(`${base(systemId)}/${r.keptId}`);
     return {
@@ -245,6 +248,17 @@ export async function exportCompaniesAction(
     const { ctx, actor } = await session(systemId, "crm.company.export");
     const csv = await exportCompanies(ctx, actor, filters);
     return { ok: true, csv };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C1.11 ▸ (รีวิว SF-5) ค่าของทั้งสองบริษัทสำหรับแผ่นรวมในบริษัท 360 — ผ่านการมองเห็น (companyWhere) ◂
+export async function companyMergeValuesAction(systemId: string, aId: string, bId: string): Promise<{ ok: true; items: { id: string; name: string; values: Record<string, string | null> }[] } | Fail> {
+  try {
+    const { ctx, actor } = await session(systemId, "crm.company.merge");
+    const rows = await visibleCompaniesByIds(ctx, actor, [String(aId ?? ""), String(bId ?? "")]);
+    return { ok: true, items: rows.map(({ id, name, ...values }) => ({ id, name, values })) };
   } catch (e) {
     return failOf(e);
   }

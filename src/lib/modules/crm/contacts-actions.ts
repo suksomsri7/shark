@@ -23,6 +23,7 @@ import {
   exportContacts,
   importContacts,
   mergeContacts,
+  mergeValuesFor,
   restoreContact,
   setLeadStatus,
   setLifecycle,
@@ -31,6 +32,7 @@ import {
   updateContact,
   type ContactsCtx,
   type CreateContactInput,
+  type MergeContactsInput,
   type UpdateContactPatch,
 } from "./contacts";
 import { set as setConsent } from "./consents";
@@ -183,10 +185,11 @@ export async function convertContactAction(
   }
 }
 
-export async function mergeContactsAction(systemId: string, input: { keepId: string; mergeId: string; confirm: boolean; reason: string }): Promise<{ ok: true; keptId: string; warnings: string[] } | Fail> {
+// CRM C1.11 ▸ `fieldChoices` (เลือกค่าต่อฟิลด์ · หน้าตัวซ้ำ/แผ่นรวม) ส่งผ่านถึงบริการ C1.4 ตรง ๆ (บริการตรวจรายชื่อฟิลด์เอง) ◂
+export async function mergeContactsAction(systemId: string, input: { keepId: string; mergeId: string; confirm: boolean; reason: string; fieldChoices?: Record<string, "keep" | "merge"> | null }): Promise<{ ok: true; keptId: string; warnings: string[] } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.merge");
-    const r = await mergeContacts(ctx, actor, input);
+    const r = await mergeContacts(ctx, actor, { ...input, fieldChoices: (input?.fieldChoices ?? null) as MergeContactsInput["fieldChoices"] }); // CRM C1.11 ◂
     revalidatePath(base(systemId));
     revalidatePath(`${base(systemId)}/${r.keptId}`);
     return { ok: true, keptId: r.keptId, warnings: r.warnings };
@@ -248,6 +251,16 @@ export async function searchCompaniesAction(systemId: string, q: string): Promis
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     return { ok: true, items: await companyOptions(ctx, actor, q) };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C1.11 ▸ (รีวิว SF-5) ค่าของทั้งสองฝั่งสำหรับแผ่นรวมในผู้ติดต่อ 360 — ผ่านการมองเห็น (มองไม่เห็นฝั่งไหน = ไม่มีฝั่งนั้นในผล) ◂
+export async function contactMergeValuesAction(systemId: string, keepId: string, otherId: string): Promise<{ ok: true; items: { id: string; name: string; values: Record<string, string | null> }[] } | Fail> {
+  try {
+    const { ctx, actor } = await session(systemId, "crm.contact.merge");
+    return { ok: true, items: await mergeValuesFor(ctx, actor, [String(keepId ?? ""), String(otherId ?? "")]) };
   } catch (e) {
     return failOf(e);
   }

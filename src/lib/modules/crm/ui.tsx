@@ -24,6 +24,15 @@ import {
   issueQuotationAction,
 } from "./actions";
 import { crmUiVersion } from "./ui-version";
+// CRM C1.11 ▸ ลิงก์ไปหน้าสลับ CRM ใหม่ (เจ้าของร้าน · เฉพาะร้านที่เปิดให้เห็นสวิตช์) + ทางเข้าคอมโพเนนต์ v2 ของหน้านอกโมดูล
+//   (`/app/sys/[id]` · `/app/party/[partyId]` import ผ่าน `crm/ui` ได้ตาม F2.3 — ห้ามล้วงไฟล์ภายใน)
+import { isCrmV2SwitchAllowed } from "./ui-version";
+import { CrmSwitchLink } from "@/components/crm/settings/CrmSwitchLink";
+export { CrmHomeV2 } from "./home";
+export { PartyCrmBlock } from "./party-block";
+// รีวิว N-9: ตัวแปลง settings (บริสุทธิ์) ให้หน้า /app/sys/[id] — ไม่ลาก facade index ทั้งก้อน (F2.3 อนุญาตเฉพาะ crm/index · crm/ui)
+export { parseCrmSettings } from "./settings";
+// ◂ CRM C1.11
 
 const muted = "text-[color:var(--color-muted)]";
 
@@ -405,6 +414,8 @@ export async function CrmHub({ systemId }: { systemId: string }) {
           </Link>
         ))}
       </div>
+      {/* CRM C1.11 ▸ สวิตช์ CRM ใหม่: เจ้าของร้านเท่านั้น · ร้านที่ยังไม่เปิดให้เห็นสวิตช์ (ค่าเริ่มต้นของ prod) = ไม่มีลิงก์นี้ ⇒ หน้าเดิมทุกตัวอักษร ◂ */}
+      {auth.active.role === "OWNER" && isCrmV2SwitchAllowed(auth.active.tenantId) && <CrmSwitchLink systemId={systemId} uiVersion={uiVersion} />}
     </div>
   );
 }

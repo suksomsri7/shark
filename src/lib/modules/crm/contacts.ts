@@ -798,6 +798,14 @@ function legacyCreateArgs(
 const PATCH_KEYS = new Set(["firstName", "lastName", "titleTh", "phone", "email", "jobTitle", "department", "lineUserId", "companyId", "moveOpenDeals", "fields"]);
 
 export async function updateContact(ctx: ContactsCtx, actor: MemberActor, id: string, patch: UpdateContactPatch): Promise<ContactDto> {
+  return updateContactCore(ctx, actor, id, patch, false);
+}
+
+/**
+ * CRM C1.11 ▸ (มติผู้คุมงาน C1.11 ข้อ 6 · รีวิว SF-4) `fillBlanksOnly` = นำเข้าแบบ "อัปเดตคนเดิม": เขียนเฉพาะช่องที่คนเดิมยังว่าง
+ *   ตัดสินจากแถวที่อ่าน **หลังล็อกใน tx เดียวกับที่เขียน** (ฟิลด์ระบบ + ค่าฟิลด์กำหนดเองที่มีอยู่) — ไม่มีช่องว่างระหว่างอ่านกับเขียน ◂
+ */
+async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: string, patch: UpdateContactPatch, fillBlanksOnly: boolean): Promise<ContactDto> {
   const a = await enter(ctx, actor);
   const raw = (isObj(patch) ? patch : {}) as Record<string, unknown>;
   for (const k of Object.keys(raw)) {
@@ -808,10 +816,10 @@ export async function updateContact(ctx: ContactsCtx, actor: MemberActor, id: st
   const { merged, custom } = await splitFields(raw as UpdateContactPatch, raw.fields);
   // ── ตรวจทุกค่าก่อนแตะอะไร ──
   const data: Prisma.CrmContactUpdateInput = {};
-  const nextFirst = merged.firstName !== undefined ? cleanName(merged.firstName, "ชื่อจริง", true) : undefined;
-  const nextLast = merged.lastName !== undefined ? cleanName(merged.lastName, "นามสกุล", false) : undefined;
-  const nextPhone = merged.phone !== undefined ? cleanPhone(merged.phone) : undefined;
-  const nextEmail = merged.email !== undefined ? cleanEmail(merged.email) : undefined;
+  let nextFirst = merged.firstName !== undefined ? cleanName(merged.firstName, "ชื่อจริง", true) : undefined;
+  let nextLast = merged.lastName !== undefined ? cleanName(merged.lastName, "นามสกุล", false) : undefined;
+  let nextPhone = merged.phone !== undefined ? cleanPhone(merged.phone) : undefined;
+  let nextEmail = merged.email !== undefined ? cleanEmail(merged.email) : undefined;
   const simple: [keyof UpdateContactPatch, string, number][] = [["titleTh", "คำนำหน้า", 40], ["jobTitle", "ตำแหน่ง", CONTACT_TEXT_MAX], ["department", "แผนก", CONTACT_TEXT_MAX], ["lineUserId", "LINE user id", 100]];
   const simpleVals: Record<string, string | null> = {};
   for (const [k, label, max] of simple) if (merged[k] !== undefined) simpleVals[k] = textOrNull(merged[k], label, max);
@@ -836,6 +844,21 @@ export async function updateContact(ctx: ContactsCtx, actor: MemberActor, id: st
       if (!pre) throw fail("NOT_FOUND", NOT_FOUND_MSG);
       if (pre.mergedIntoId) throw fail("VALIDATION", MERGED_MSG);
       if (pre.archivedAt) throw fail("VALIDATION", ARCHIVED_MSG);
+      // CRM C1.11 ▸ fillBlanksOnly: ช่องที่คนเดิมมีค่าแล้ว = ไม่แตะ (ตัดสินจากแถวที่ล็อกอยู่) ◂
+      if (fillBlanksOnly) {
+        const has = (v: unknown) => v !== null && v !== undefined && String(v).trim() !== "";
+        if (has(pre.firstName)) nextFirst = undefined;
+        if (has(pre.lastName)) nextLast = undefined;
+        if (has(pre.phone)) nextPhone = undefined;
+        if (has(pre.email)) nextEmail = undefined;
+        for (const k of Object.keys(simpleVals)) if (has((pre as Record<string, unknown>)[k])) delete simpleVals[k];
+        const ck = Object.keys(custom);
+        if (ck.length > 0) {
+          const defs = await tx.memberField.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "contact", key: { in: ck } }, select: { id: true, key: true } });
+          const filled = new Set((await tx.customRecordValue.findMany({ where: { tenantId: ctx.tenantId, recordType: "CONTACT", recordId: pre.id, fieldId: { in: defs.map((d) => d.id) } }, select: { fieldId: true } })).map((v) => v.fieldId));
+          for (const d of defs) if (filled.has(d.id)) delete custom[d.key];
+        }
+      }
       const keys: string[] = [];
       const first = nextFirst !== undefined ? (nextFirst as string) : pre.firstName;
       const last = nextLast !== undefined ? nextLast : pre.lastName;
@@ -1866,6 +1889,15 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
       throw fail("VALIDATION", `คอลัมน์ "${header.slice(0, 40)}" จับคู่กับช่องที่ระบบไม่รู้จัก — เลือกช่องใหม่`);
     }
   }
+  // CRM C1.11 ▸ (รีวิว SF-4) `f.<key>` ของฟิลด์ระบบ (ชื่อ/เบอร์/อีเมล/ตำแหน่ง/แผนก/LINE/คำนำหน้า … และคอลัมน์ที่บริการเป็นเจ้าของ) ไม่ใช่ช่องกำหนดเอง
+  //   — ต้องจับคู่กับช่องของมันเอง (ที่ "อัปเดตคนเดิม" เติมเฉพาะช่องว่าง) ไม่งั้นทางลัดนี้จะเขียนทับค่าที่มีอยู่ได้ ◂
+  const governedKeys = (await engine()).GOVERNED_CRM_SYSTEM_KEYS.contact;
+  for (const [header, t] of targets) {
+    const k = t.startsWith("f.") ? t.slice(2) : "";
+    if (k && ((ROUTED_FIELD_KEYS as readonly string[]).includes(k) || governedKeys.has(k))) {
+      throw fail("VALIDATION", `คอลัมน์ "${header.slice(0, 40)}" จับคู่กับฟิลด์ระบบ "${k}" แบบฟิลด์กำหนดเอง — เลือกช่องของมันโดยตรงจากรายการแทน`);
+    }
+  }
   if (!targets.some(([, t]) => t === "firstName" || t === "lastName")) throw fail("VALIDATION", "จับคู่คอลัมน์ชื่อก่อน (ชื่อจริง หรือ นามสกุล) — ระบบต้องรู้ว่าคอลัมน์ไหนคือชื่อ");
   const modeRaw = str(input?.options?.onDuplicate) ?? "skip";
   if (!(IMPORT_DUPLICATE_MODES as readonly string[]).includes(modeRaw)) throw fail("VALIDATION", "เลือกวิธีจัดการแถวที่ซ้ำ: อัปเดตคนเดิม · ข้าม · สร้างเป็นคู่สงสัยซ้ำ");
@@ -1923,14 +1955,16 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
         const dup = await duplicateHits(prisma, ctx, { phone: clean.phone, email: clean.email });
         const target = dup.rows[0];
         if (target) {
+          // CRM C1.11 ▸ มติผู้คุมงาน C1.11 ข้อ 6: "อัปเดตคนเดิม" = เติมเฉพาะช่องที่คนเดิมยังว่าง — ตัดสินใน tx ของการเขียน (updateContactCore fillBlanksOnly)
           const patch: UpdateContactPatch = {
             ...(vals.lastName ? { lastName: clean.lastName } : {}),
-            ...(clean.email && !target.email ? { email: clean.email } : {}),
-            ...(clean.phone && !target.phone ? { phone: clean.phone } : {}),
+            ...(clean.email ? { email: clean.email } : {}),
+            ...(clean.phone ? { phone: clean.phone } : {}),
             ...(vals.jobTitle ? { jobTitle: clean.jobTitle } : {}),
             ...(Object.keys(custom).length > 0 ? { fields: custom } : {}),
           };
-          await updateContact(ctx, a, target.id, patch);
+          // ◂ CRM C1.11
+          await updateContactCore(ctx, a, target.id, patch, true); // CRM C1.11 ◂
           if (clean.tags.length > 0) {
             const merged = cleanTags([...target.tags, ...clean.tags]);
             if (!merged.problem) await setTags(ctx, a, target.id, merged.tags);
@@ -2131,6 +2165,10 @@ export type BridgeLeadInput = {
   sourceDetail?: Record<string, unknown> | null;
   /** FORM: หัวเรื่องกิจกรรม (ไม่มีข้อมูลบุคคล) */
   activityTitle?: string | null;
+  // CRM C1.11 ▸ (รีวิว SF-6) คนกดเอง (ปุ่ม "สร้าง lead จากแชท") — audit เป็น USER คนนี้ · ไม่ส่ง = SYSTEM (สะพานอัตโนมัติ) ◂
+  actorUserId?: string | null;
+  /** ช่องทางที่บันทึกใน audit (`after.via`) — ไม่ส่ง = "bridge" */
+  via?: "chat-panel" | null;
 };
 
 export type BridgeLeadResult = {
@@ -2205,12 +2243,13 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
     if (out.row) {
       await writeAudit({
         tenantId: ctx.tenantId,
-        actorId: null,
-        actorType: "SYSTEM",
+        // CRM C1.11 ▸ SF-6: คนกด = USER · สะพานอัตโนมัติ = SYSTEM ◂
+        actorId: str(input?.actorUserId) ?? null,
+        actorType: str(input?.actorUserId) ? "USER" : "SYSTEM",
         action: "crm.contact.create",
         targetType: "CrmContact",
         targetId: out.row.id,
-        after: { partyId: out.row.partyId, ownerUserId: out.row.ownerUserId, sourceKind: out.row.sourceKind, via: "bridge", kind },
+        after: { partyId: out.row.partyId, ownerUserId: out.row.ownerUserId, sourceKind: out.row.sourceKind, via: input?.via === "chat-panel" ? "chat-panel" : "bridge", kind },
       });
     }
     if (out.activity) await auditSystemActivity(ctx, out.activity, kind === "FORM" ? "forms.submission.received" : "bridge");
@@ -2314,3 +2353,20 @@ export async function customFieldLayout(ctx: ContactsCtx, actor: MemberActor): P
     .flatMap((s) => s.fields.filter((f) => !f.isSystem && !f.sensitive && ["TEXT", "LONG_TEXT", "NUMBER", "SELECT", "DATE", "BOOLEAN"].includes(f.type)))
     .map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required, choices: f.options?.choices ?? [] }));
 }
+
+// CRM C1.11 ▸ ค่าของฟิลด์ที่เลือกได้ตอนรวม (MERGE_CHOICE_FIELDS) ของผู้ติดต่อตาม id ที่ผู้ดูมองเห็น — ผู้ใช้: หน้าผู้ติดต่อที่น่าจะซ้ำ ·
+//   แผ่นรวมในผู้ติดต่อ 360 (แสดงค่าทั้งสองฝั่ง) · อ่านผ่าน contactWhere (AUDIT-CLASS X1 — มองไม่เห็น = ไม่มีในผล) · สูงสุด 500 id
+export async function mergeValuesFor(ctx: ContactsCtx, actor: MemberActor, ids: readonly string[]): Promise<{ id: string; name: string; values: Record<string, string | null> }[]> {
+  const a = await enter(ctx, actor);
+  const list = [...new Set(ids.filter((x) => typeof x === "string" && x))].slice(0, 500);
+  if (list.length === 0) return [];
+  const rows = await prisma.crmContact.findMany({
+    where: { AND: [await contactWhere(ctx, a), { ...identityScope(ctx), id: { in: list }, mergedIntoId: null }] },
+    select: { id: true, name: true, firstName: true, lastName: true, titleTh: true, phone: true, email: true, lineUserId: true, jobTitle: true, department: true },
+  });
+  return rows.map((r) => {
+    const bag = r as unknown as Record<string, string | null>;
+    return { id: r.id, name: r.name, values: Object.fromEntries(MERGE_CHOICE_FIELDS.map((f) => [f, bag[f] ?? null])) };
+  });
+}
+// ◂ CRM C1.11

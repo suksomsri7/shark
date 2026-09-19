@@ -4,12 +4,15 @@
 // เมนู "…" (แก้ไข · ผู้ดูแล · บริษัทแม่ · รวมบริษัท · เก็บถาวร)
 // 🔴 การกระทำอันตราย (รวม · เก็บถาวร) = ติ๊กยืนยัน + เหตุผล ≥ 5 ตัวอักษร (X9) · ข้อความผิดพลาดแสดงในกล่อง ไม่ใช้ alert()
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   COMPANY_CONTACT_ROLES,
   COMPANY_CONTACT_ROLE_LABEL,
   COMPANY_REASON_MIN,
+  // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
+  MERGE_CHOICE_FIELDS,
+  MERGE_CHOICE_LABEL,
   COMPANY_SIZES,
   COMPANY_SIZE_LABEL,
   emailDomainProblem,
@@ -23,6 +26,7 @@ import {
   addContactAction,
   archiveCompanyAction,
   mergeCompaniesAction,
+  companyMergeValuesAction,
   removeContactAction,
   setOwnerAction,
   setParentAction,
@@ -33,6 +37,8 @@ import {
   updateCompanyAction,
 } from "@/lib/modules/crm/companies-actions";
 import { ServerPicker } from "./ServerPicker";
+// CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
+import { MergeFieldChoices, choosableFields, toFieldChoices } from "@/components/crm/merge/MergeFieldChoices";
 
 type Opt = { id: string; name: string };
 
@@ -258,6 +264,8 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const live = !company.archivedAt && !company.mergedIntoId;
+  // CRM C1.11 ▸ ฟิลด์ที่ให้ใช้ค่าของบริษัทที่ถูกรวมแทน (fieldChoices = "merge") ◂
+  const [takeOther, setTakeOther] = useState<Record<string, boolean>>({});
 
   // แก้ไข
   const [edit, setEdit] = useState(() => ({
@@ -278,6 +286,24 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
   // รวม / เก็บถาวร
   const [other, setOther] = useState("");
   const [keepThis, setKeepThis] = useState(true);
+  // CRM C1.11 ▸ (รีวิว SF-5) ค่าของทั้งสองบริษัท (ผ่านการมองเห็น) — เสนอเฉพาะฟิลด์ที่อีกฝั่งมีค่าและต่างกัน ◂
+  const [coVals, setCoVals] = useState<Record<string, Record<string, string | null>> | null>(null);
+  useEffect(() => {
+    setTakeOther({});
+    setCoVals(null);
+    if (!other) return;
+    let live = true;
+    void companyMergeValuesAction(systemId, company.id, other).then((r) => {
+      if (!live || !r.ok) return;
+      if (r.items.length === 2) setCoVals(Object.fromEntries(r.items.map((x) => [x.id, x.values])));
+    });
+    return () => {
+      live = false;
+    };
+  }, [systemId, company.id, other]);
+  const coFieldList = MERGE_CHOICE_FIELDS.map((f) => ({ key: f, label: MERGE_CHOICE_LABEL[f] }));
+  const coKeep = coVals ? coVals[keepThis ? company.id : other] ?? null : null;
+  const coOther = coVals ? coVals[keepThis ? other : company.id] ?? null : null;
   const [confirm, setConfirm] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -491,14 +517,18 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
           <fieldset className="flex flex-col gap-1.5 text-sm">
             <legend className="mb-1 text-xs text-[color:var(--color-muted)]">เก็บบริษัทไหนไว้</legend>
             <label className="flex items-center gap-2">
-              <input type="radio" name="keep" checked={keepThis} onChange={() => setKeepThis(true)} data-testid="company-merge-keep-this" />
+              <input type="radio" name="keep" checked={keepThis} onChange={() => { setKeepThis(true); setTakeOther({}); }} data-testid="company-merge-keep-this" />
               เก็บบริษัทนี้ (&quot;{company.name}&quot;)
             </label>
             <label className="flex items-center gap-2">
-              <input type="radio" name="keep" checked={!keepThis} onChange={() => setKeepThis(false)} data-testid="company-merge-keep-other" />
+              <input type="radio" name="keep" checked={!keepThis} onChange={() => { setKeepThis(false); setTakeOther({}); }} data-testid="company-merge-keep-other" />
               เก็บบริษัทที่เลือก
             </label>
           </fieldset>
+          {/* CRM C1.11 ▸ เลือกค่าต่อฟิลด์ (ไม่ติ๊ก = ค่าของบริษัทที่เก็บไว้ · ช่องว่างเติมจากอีกบริษัทให้เอง) ◂ */}
+          {coKeep && coOther && (
+            <MergeFieldChoices fields={coFieldList} keepLabel="บริษัทที่เก็บไว้" otherLabel="บริษัทที่ถูกรวม" keep={coKeep} other={coOther} value={takeOther} onChange={setTakeOther} />
+          )}
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>เหตุผล (อย่างน้อย {COMPANY_REASON_MIN} ตัวอักษร)</span>
             <input value={reason} onChange={(e) => setReason(e.target.value)} className="input text-sm" placeholder="เช่น จดทะเบียนซ้ำ บริษัทเดียวกัน" data-testid="company-merge-reason" />
@@ -520,7 +550,8 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
               disabled={pending || !other || !confirm || reasonShort}
               onClick={() =>
                 start(async () => {
-                  const r = await mergeCompaniesAction(systemId, { keepId: keepThis ? company.id : other, mergeId: keepThis ? other : company.id, confirm, reason });
+                  const fieldChoices = coKeep && coOther ? toFieldChoices(takeOther, choosableFields(coFieldList, coKeep, coOther)) : {}; // CRM C1.11 ◂
+                  const r = await mergeCompaniesAction(systemId, { keepId: keepThis ? company.id : other, mergeId: keepThis ? other : company.id, confirm, reason, fieldChoices });
                   if (!r.ok) {
                     setError(r.error);
                     return;

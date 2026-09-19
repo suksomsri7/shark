@@ -83,6 +83,9 @@ const { Prisma } = await import("@prisma/client");
 
 /** โฮสต์ CDN ปลอมของข้อสอบ — ด่าน S1 ตัดสินจากค่านี้ ⇒ ต้องตั้งเองไม่ใช่พึ่ง .env ของเครื่อง */
 const QC_CDN = "https://qc-cdn.example.net";
+// ORACLE-EDIT chat-v2-voice VO-11.x (CRM controller · phase-C1 close, 19 Sep): CRM C0.4 made storagePathFromCdnUrl accept only
+//   real upload paths `t/<tenant>/<kind>/<name>` (src/lib/storage/paths.ts) — the old fixture `${QC_CDN}/chat/x.m4a` is a shape no
+//   real upload has, so it was refused as AUDIO_URL_NOT_CDN. Fixtures now use `${QC_CDN}/t/T1/chat/…` (tenant T1 of this suite).
 process.env.SHARK_BUNNY_CDN = QC_CDN;
 process.env.ABLY_API_KEY = ""; // ปิด realtime — ข้อสอบนี้ห้ามยิงเน็ตออกจริง
 
@@ -420,13 +423,13 @@ try {
       await line?.lineAdapter?.sendMessage?.({
         creds: { channelAccessToken: "tok-qc" },
         externalUserId: "U-line-1",
-        message: { type: "AUDIO", audioUrl: `${QC_CDN}/chat/a.m4a`, durationMs: 4200 },
+        message: { type: "AUDIO", audioUrl: `${QC_CDN}/t/T1/chat/a.m4a`, durationMs: 4200 },
       });
       audioBody = ((netCalls[0]?.body as Row)?.messages as Row[])?.[0] ?? null;
     } catch { /* แดงที่ chk ข้างล่าง ไม่ใช่ล้มทั้งหมวด */ }
     chk("VO-11.1b", "sendMessage(AUDIO) → body ของ LINE เป็น {type:'audio', originalContentUrl, duration(ms)}",
-      audioBody?.type === "audio" && audioBody?.originalContentUrl === `${QC_CDN}/chat/a.m4a` && audioBody?.duration === 4200,
-      `audio·${QC_CDN}/chat/a.m4a·4200`, j(audioBody));
+      audioBody?.type === "audio" && audioBody?.originalContentUrl === `${QC_CDN}/t/T1/chat/a.m4a` && audioBody?.duration === 4200,
+      `audio·${QC_CDN}/t/T1/chat/a.m4a·4200`, j(audioBody));
 
     // ── VO-11.2 · เสียง wav ในห้อง LINE = ค้าง PENDING ห้ามแตะ adapter ──
     seedLineRoom();
@@ -434,7 +437,7 @@ try {
     const wav = await chat!.sendReply({
       tenantId: "T1", systemId: "S1", conversationId: "conv-line", senderUserId: "U1",
       unitAccess: ["*"],
-      attachments: [{ url: `${QC_CDN}/chat/v1.wav`, mimeType: "audio/wav", fileName: "v1.wav", sizeBytes: 64000, durationMs: 4200 }],
+      attachments: [{ url: `${QC_CDN}/t/T1/chat/v1.wav`, mimeType: "audio/wav", fileName: "v1.wav", sizeBytes: 64000, durationMs: 4200 }],
     });
     const wavMsg = (tables.chatMessage ?? []).find((m) => m.id === wav.messageId) ?? null;
     chk("VO-11.2a", "🔴 เสียง wav ในห้อง LINE → บันทึกได้ (ok) แต่สถานะเป็น PENDING ไม่ใช่ SENT",
@@ -456,7 +459,7 @@ try {
     const m4a = await chat!.sendReply({
       tenantId: "T1", systemId: "S1", conversationId: "conv-line", senderUserId: "U1",
       unitAccess: ["*"],
-      attachments: [{ url: `${QC_CDN}/chat/v2.m4a`, mimeType: "audio/mp4", fileName: "v2.m4a", sizeBytes: 20000, durationMs: 3754 }],
+      attachments: [{ url: `${QC_CDN}/t/T1/chat/v2.m4a`, mimeType: "audio/mp4", fileName: "v2.m4a", sizeBytes: 20000, durationMs: 3754 }],
     });
     const m4aMsg = (tables.chatMessage ?? []).find((m) => m.id === m4a.messageId) ?? null;
     const m4aSent = ((netCalls[0]?.body as Row)?.messages as Row[])?.[0] ?? null;
@@ -473,9 +476,9 @@ try {
     seedLineRoom();
     resetNet();
     const NOW = new Date();
-    seedPending("p-m4a", { mimeType: "audio/mp4", url: `${QC_CDN}/chat/p1.m4a` }, new Date(NOW.getTime() - 60_000));
-    seedPending("p-wav-new", { mimeType: "audio/wav", url: `${QC_CDN}/chat/p2.wav` }, new Date(NOW.getTime() - 60_000));
-    seedPending("p-wav-old", { mimeType: "audio/wav", url: `${QC_CDN}/chat/p3.wav` }, new Date(NOW.getTime() - 45 * 60_000));
+    seedPending("p-m4a", { mimeType: "audio/mp4", url: `${QC_CDN}/t/T1/chat/p1.m4a` }, new Date(NOW.getTime() - 60_000));
+    seedPending("p-wav-new", { mimeType: "audio/wav", url: `${QC_CDN}/t/T1/chat/p2.wav` }, new Date(NOW.getTime() - 60_000));
+    seedPending("p-wav-old", { mimeType: "audio/wav", url: `${QC_CDN}/t/T1/chat/p3.wav` }, new Date(NOW.getTime() - 45 * 60_000));
     const res4 = await deliver({ limit: 10, now: NOW });
     const row = (id: string) => (tables.chatMessage ?? []).find((m) => m.id === id) ?? null;
     chk("VO-11.4b", "ไฟล์เป็น m4a แล้ว → ส่งเข้า LINE แล้วเป็น SENT",
@@ -495,7 +498,7 @@ try {
     seedLineRoom();
     resetNet();
     nextStatus = 500;
-    seedPending("p-fail", { mimeType: "audio/mp4", url: `${QC_CDN}/chat/p4.m4a` }, new Date(NOW.getTime() - 60_000));
+    seedPending("p-fail", { mimeType: "audio/mp4", url: `${QC_CDN}/t/T1/chat/p4.m4a` }, new Date(NOW.getTime() - 60_000));
     await deliver({ limit: 10, now: NOW });
     const failRow = row("p-fail");
     const failEvt = (tables.chatConversationEvent ?? []).filter((e) => e.type === "DELIVERY_FAILED");
@@ -506,7 +509,7 @@ try {
     seedLineRoom();
     resetNet();
     nextStatus = 401;
-    seedPending("p-token", { mimeType: "audio/mp4", url: `${QC_CDN}/chat/p5.m4a` }, new Date(NOW.getTime() - 60_000));
+    seedPending("p-token", { mimeType: "audio/mp4", url: `${QC_CDN}/t/T1/chat/p5.m4a` }, new Date(NOW.getTime() - 60_000));
     await deliver({ limit: 10, now: NOW });
     const conn = (tables.chatChannelConnection ?? []).find((c) => c.id === "conn-line") ?? null;
     chk("VO-11.5b", "🔴 TOKEN_EXPIRED → ปิดสถานะ connection เป็น ERROR (ไม่งั้นทีมยิงซ้ำเรื่อย ๆ โดยไม่รู้ว่าโทเคนหลุด)",

@@ -21,6 +21,7 @@ export function NewDealForm({
   defaultStageId,
   company,
   companyContacts,
+  contact = null,
 }: {
   systemId: string;
   pipelines: PipelineDto[];
@@ -31,12 +32,14 @@ export function NewDealForm({
   /** บริษัทตั้งต้น (resolve ฝั่งเซิร์ฟเวอร์จาก ?companyId=) */
   company: Opt | null;
   companyContacts: Opt[];
+  // CRM C1.11 ▸ ผู้ติดต่อตั้งต้น (resolve ฝั่งเซิร์ฟเวอร์จาก ?contactId= ผ่านการมองเห็น) — เลือกไว้ให้ก่อน ◂
+  contact?: Opt | null;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [q, setQ] = useState("");
-  const [contacts, setContacts] = useState<Opt[]>(companyContacts);
-  const [contactId, setContactId] = useState(companyContacts[0]?.id ?? "");
+  const [contacts, setContacts] = useState<Opt[]>(contact && !companyContacts.some((c) => c.id === contact.id) ? [contact, ...companyContacts] : companyContacts);
+  const [contactId, setContactId] = useState(contact?.id ?? companyContacts[0]?.id ?? "");
   const [companies, setCompanies] = useState<{ id: string; name: string; primary: boolean }[]>(company ? [{ ...company, primary: true }] : []);
   const [companyId, setCompanyId] = useState(company?.id ?? "");
   const [pipelineId, setPipelineId] = useState(defaultPipelineId);

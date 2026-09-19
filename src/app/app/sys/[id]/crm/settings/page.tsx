@@ -5,7 +5,12 @@ import { prisma } from "@/lib/core/db";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { parseCrmSettings } from "@/lib/modules/crm/settings";
-import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
+// CRM C1.11 ▸ หน้านี้เป็น "หน้าสลับรุ่นหน้าจอ" ด้วย (มติ C23) — เปิดได้ทั้งตอนเป็นหน้าจอเดิมและ CRM ใหม่ (แยกทางในหน้าเอง)
+//   ตอนเป็น 1: เจ้าของร้านของร้านที่เปิดให้เห็นสวิตช์เท่านั้น (อื่น ๆ = 404) · ตอนเป็น 2: หน้ารวมตั้งค่าเดิม + สวิตช์กลับ (เจ้าของร้านเสมอ · N-2)
+import { isCrmV2SwitchAllowed } from "@/lib/modules/crm/ui-version";
+import { setCrmUiVersionAction } from "@/lib/modules/crm/switch-actions";
+import { UiVersionToggle } from "@/components/crm/settings/UiVersionToggle";
+// ◂ CRM C1.11
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -23,10 +28,38 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "CRM" }, select: { id: true, name: true, settings: true } });
   if (!sys) notFound();
-  await requireCrmV2Page({ tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
-  if (!crmCan(actor, "crm.settings.manage")) notFound();
   const st = parseCrmSettings(sys.settings);
+  // CRM C1.11 ▸ สวิตช์: เจ้าของร้าน + ร้านที่เปิดให้เห็นสวิตช์ (env) · uiVersion 1 = หน้าสวิตช์อย่างเดียว (คนอื่น 404 — หน้า v2 ยังไม่มีสำหรับร้านนี้)
+  const canSwitch = auth.active.role === "OWNER" && (st.uiVersion === 2 || isCrmV2SwitchAllowed(tenantId));
+  const switchCard = canSwitch ? (
+    <section className="card flex min-w-0 flex-col gap-3 p-4" data-testid="crm-uiversion">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-sm font-medium">หน้าจอ CRM</h2>
+        <p className="text-sm">
+          ตอนนี้ร้านใช้: <strong>{st.uiVersion === 2 ? "CRM ใหม่" : "หน้าจอ CRM เดิม"}</strong>
+        </p>
+        <p className="text-xs text-[color:var(--color-muted)]">
+          CRM ใหม่เพิ่มรายชื่อบริษัท กระดานดีลตามขั้น ปฏิทินกิจกรรม การมองเห็นข้อมูลตามทีม วัตถุกำหนดเอง และ API — ใช้ข้อมูลผู้ติดต่อ ดีล และงานติดตามชุดเดิมทั้งหมด
+          ไม่มีอะไรถูกลบหรือย้าย · สลับกลับไปใช้หน้าจอเดิมได้ทุกเมื่อ ข้อมูลที่เพิ่มใน CRM ใหม่ยังอยู่ครบและกลับมาใช้ต่อได้เมื่อเปิดอีกครั้ง
+        </p>
+      </div>
+      <div data-testid="crm-uiversion-toggle">
+        <UiVersionToggle systemId={id} current={st.uiVersion} action={setCrmUiVersionAction} />
+      </div>
+    </section>
+  ) : null;
+  if (st.uiVersion !== 2) {
+    if (!switchCard) notFound();
+    return (
+      <div className="flex w-full max-w-3xl min-w-0 flex-col gap-5" data-testid="crm-settings-page">
+        <PageHeader title="ตั้งค่า CRM" back={{ href: `/app/sys/${id}`, label: sys.name }} desc="เลือกหน้าจอ CRM ของร้าน" />
+        {switchCard}
+      </div>
+    );
+  }
+  if (!crmCan(actor, "crm.settings.manage")) notFound();
+  // ◂ CRM C1.11
   const base = `/app/sys/${id}/crm`;
 
   const cards: Card[] = [
@@ -61,6 +94,8 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
         </dl>
         <p className="text-xs text-[color:var(--color-muted)]">เปลี่ยนค่าสองช่องหลังได้ผ่าน API (PUT /settings) ด้วยคีย์ชุดผู้ดูแล</p>
       </section>
+      {/* CRM C1.11 ▸ สวิตช์ (เจ้าของร้าน) ◂ */}
+      {switchCard}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards
           .filter((c) => c.show)

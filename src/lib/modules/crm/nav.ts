@@ -58,6 +58,11 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "settings", label: "ตั้งค่า CRM", path: "/crm/settings", status: "ready", wo: "C1.10" },
   { key: "settings-api", label: "API และ webhook", path: "/crm/settings/api", status: "ready", wo: "C1.10" },
   // ◂ CRM C1.10
+  // CRM C1.11 ▸ นำเข้าผู้ติดต่อ+บริษัท (CSV จับคู่คอลัมน์) · ผู้ติดต่อที่น่าจะซ้ำ · บริษัทที่น่าจะซ้ำ (รวมแบบเลือกค่าต่อฟิลด์)
+  { key: "contacts-import", label: "นำเข้าผู้ติดต่อ", path: "/crm/contacts/import", status: "ready", wo: "C1.11" },
+  { key: "contacts-duplicates", label: "ผู้ติดต่อที่น่าจะซ้ำ", path: "/crm/contacts/duplicates", status: "ready", wo: "C1.11" },
+  { key: "companies-duplicates", label: "บริษัทที่น่าจะซ้ำ", path: "/crm/companies/duplicates", status: "ready", wo: "C1.11" },
+  // ◂ CRM C1.11
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

@@ -114,10 +114,15 @@ if (needsSeed.length) {
     console.log(`   ↩︎ มีชุดข้อมูล QC ใน DB นี้อยู่แล้ว + เฉลยตรงกัน → ข้าม seed (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
   } else {
     // seed เขียนทับ acc-v2-expected.json ทั้งไฟล์ ⇒ ต้องสร้างคีย์ `dashboard` ใหม่ทุกครั้ง
-    const oracle = runStep("acc-v2-expected-dashboard.mts");
-    if (oracle.code !== 0) {
-      seedBlocked = "สร้างเฉลย dashboard ล้ม (scripts/acc-v2-expected-dashboard.mts) — ดู log ด้านบน";
-      console.log(oracle.out.split("\n").slice(-25).join("\n"));
+    // (CRM phase-C1 close, 19 Sep) + คีย์ contacts.groups / contactProfile ด้วย — เดิมสร้างแค่ dashboard ⇒ acc-v2-contacts/
+    //   contact-merge/contact-profile/seed-check + account-api-read-master แดงทุกครั้งหลัง seed ใหม่ (เฉลยค้าง)
+    for (const gen of ["acc-v2-expected-dashboard.mts", "acc-v2-expected-contacts.mts", "acc-v2-expected-contact-profile.mts"]) {
+      const oracle = runStep(gen);
+      if (oracle.code !== 0) {
+        seedBlocked = `สร้างเฉลยล้ม (scripts/${gen}) — ดู log ด้านบน`;
+        console.log(oracle.out.split("\n").slice(-25).join("\n"));
+        break;
+      }
     }
   }
   console.log(

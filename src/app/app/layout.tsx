@@ -190,6 +190,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ...(crmCan(membershipOf(auth), "crm.settings.manage") ? [{ href: `${s}/crm/settings`, label: "ตั้งค่า CRM" }] : []),
               ...(crmCan(membershipOf(auth), "crm.api.manage") ? [{ href: `${s}/crm/settings/api`, label: "API และ webhook" }] : []),
               // ◂ CRM C1.10
+              // CRM C1.11 ▸ นำเข้า/ตัวซ้ำ (404 สำหรับคนที่ไม่มีคีย์ของหน้านั้น ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.contact.import") ? [{ href: `${s}/crm/contacts/import`, label: "นำเข้าผู้ติดต่อ" }] : []),
+              ...(crmCan(membershipOf(auth), "crm.contact.merge") ? [{ href: `${s}/crm/contacts/duplicates`, label: "ผู้ติดต่อที่น่าจะซ้ำ" }] : []),
+              ...(crmCan(membershipOf(auth), "crm.company.merge") ? [{ href: `${s}/crm/companies/duplicates`, label: "บริษัทที่น่าจะซ้ำ" }] : []),
+              // ◂ CRM C1.11
               ]
             : []),
           // ◂ CRM uiVersion gate

@@ -5,10 +5,13 @@
 // 🔴 ไฟล์ client: import ได้เฉพาะ contacts-shared (บริสุทธิ์) + server actions — ไม่ลากโมดูลที่ถึง prisma
 // 🔴 การกระทำอันตราย (รวม · เก็บถาวร) = ติ๊กยืนยัน + เหตุผล ≥ 5 ตัวอักษร (X9) · ข้อผิดพลาดแสดงในกล่อง ไม่ใช้ alert()
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   CONTACT_REASON_MIN,
+  // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
+  MERGE_CHOICE_FIELDS,
+  MERGE_CHOICE_LABEL,
   LEAD_STATUSES,
   LEAD_STATUS_LABEL,
   LIFECYCLE_LABEL,
@@ -27,6 +30,7 @@ import {
   assignContactAction,
   convertContactAction,
   mergeContactsAction,
+  contactMergeValuesAction,
   searchCompaniesAction,
   searchContactsAction,
   setConsentAction,
@@ -36,6 +40,8 @@ import {
   updateContactAction,
 } from "@/lib/modules/crm/contacts-actions";
 import { ContactPicker } from "./ContactPicker";
+// CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
+import { MergeFieldChoices, choosableFields, toFieldChoices } from "@/components/crm/merge/MergeFieldChoices";
 
 type Opt = { id: string; name: string };
 
@@ -308,6 +314,26 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
   const [lead, setLead] = useState<string>(contact.leadStatus);
   const [tags, setTags] = useState(contact.tags.join(", "));
   const [mergeId, setMergeId] = useState("");
+  // CRM C1.11 ▸ ฟิลด์ที่ให้ใช้ค่าของผู้ติดต่อที่ถูกรวมแทน (fieldChoices = "merge") — ไม่ติ๊ก = ค่าของคนนี้ (ว่าง = เติมจากอีกคน) ◂
+  const [takeOther, setTakeOther] = useState<Record<string, boolean>>({});
+  // ค่าของทั้งสองฝั่ง (ผ่านการมองเห็นฝั่งเซิร์ฟเวอร์) — โหลดใหม่เมื่อเลือกผู้ติดต่อที่จะรวม
+  const [mergeVals, setMergeVals] = useState<{ keep: Record<string, string | null>; other: Record<string, string | null> } | null>(null);
+  useEffect(() => {
+    setTakeOther({});
+    setMergeVals(null);
+    if (!mergeId) return;
+    let live = true;
+    void contactMergeValuesAction(systemId, contact.id, mergeId).then((r) => {
+      if (!live || !r.ok) return;
+      const k = r.items.find((x) => x.id === contact.id);
+      const o = r.items.find((x) => x.id === mergeId);
+      if (k && o) setMergeVals({ keep: k.values, other: o.values });
+    });
+    return () => {
+      live = false;
+    };
+  }, [systemId, contact.id, mergeId]);
+  const mergeFieldList = MERGE_CHOICE_FIELDS.map((f) => ({ key: f, label: MERGE_CHOICE_LABEL[f] }));
   const [reason, setReason] = useState("");
   const [confirm, setConfirm] = useState(false);
   const base = `/app/sys/${systemId}/crm/contacts`;
@@ -497,13 +523,25 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
         <Sheet label="รวมกับผู้ติดต่อที่ซ้ำ" testid="contact-merge-modal" onClose={() => setSheet(null)}>
           <p className="text-xs text-[color:var(--color-muted)]">ผู้ติดต่อที่เลือกจะถูกรวมเข้าคนนี้ — ดีล กิจกรรม บทบาทในบริษัท ไฟล์ และรายการที่ผูกไว้ย้ายมาที่นี่ · แถวเดิมเก็บไว้เป็นประวัติ</p>
           <ContactPicker kind="merge" label="ผู้ติดต่อที่จะรวมเข้ามา" placeholder="พิมพ์ชื่อ เบอร์ หรืออีเมล" emptyLabel="— เลือกผู้ติดต่อ —" value={mergeId} onChange={setMergeId} search={(q) => searchContactsAction(systemId, contact.id, q)} />
-          {dangerFields("merge", "การรวมผู้ติดต่อ")}
+          {/* CRM C1.11 ▸ เลือกค่าต่อฟิลด์ + เหตุผล/ยืนยัน (AUDIT-CLASS X9) ◂ */}
+          {mergeVals && (
+            <MergeFieldChoices fields={mergeFieldList} keepLabel="คนนี้" otherLabel="ผู้ติดต่อที่ถูกรวม" keep={mergeVals.keep} other={mergeVals.other} value={takeOther} onChange={setTakeOther} />
+          )}
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            <span>เหตุผล (อย่างน้อย {CONTACT_REASON_MIN} ตัวอักษร)</span>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} className="input text-sm" data-testid="contact-merge-reason" />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} data-testid="contact-merge-confirm" />
+            ยืนยันการรวมผู้ติดต่อ
+          </label>
           <ErrorLine text={error} testid="contact-merge-error" />
           {footer("merge", "รวม", () => {
             if (!mergeId) return setError("เลือกผู้ติดต่อที่จะรวมก่อน");
             if (!danger("การรวมผู้ติดต่อ")) return;
+            const fieldChoices = mergeVals ? toFieldChoices(takeOther, choosableFields(mergeFieldList, mergeVals.keep, mergeVals.other)) : {};
             run(
-              () => mergeContactsAction(systemId, { keepId: contact.id, mergeId, confirm, reason }),
+              () => mergeContactsAction(systemId, { keepId: contact.id, mergeId, confirm, reason, fieldChoices }),
               () => router.push(`${base}/${contact.id}?merged=1`),
             );
           })}

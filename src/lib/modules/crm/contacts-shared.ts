@@ -265,6 +265,17 @@ export type ImportJob = { jobId: string; status: ImportJobStatus; result: Import
 export type DuplicatePairItem = { a: string; b: string; aName: string; bName: string; reason: "PHONE" | "EMAIL" | "NAME" };
 export const MERGE_CHOICE_FIELDS = ["firstName", "lastName", "titleTh", "phone", "email", "lineUserId", "jobTitle", "department"] as const;
 export type MergeChoiceField = (typeof MERGE_CHOICE_FIELDS)[number];
+// CRM C1.11 ▸ ป้ายไทยของฟิลด์ที่เลือกค่าได้ตอนรวม (หน้าตัวซ้ำ · แผ่นรวมในผู้ติดต่อ 360) ◂
+export const MERGE_CHOICE_LABEL: Record<MergeChoiceField, string> = {
+  firstName: "ชื่อ",
+  lastName: "นามสกุล",
+  titleTh: "คำนำหน้า",
+  phone: "เบอร์โทร",
+  email: "อีเมล",
+  lineUserId: "LINE",
+  jobTitle: "ตำแหน่ง",
+  department: "แผนก",
+};
 
 // ───────────────────────── ตัวช่วยบริสุทธิ์ ─────────────────────────
 

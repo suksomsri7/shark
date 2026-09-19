@@ -10,6 +10,8 @@ import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { companyContactOptions, companyRef, ownerOptions, pipelineOptions } from "@/lib/modules/crm/deals";
 import { crmNavItems } from "@/lib/modules/crm/nav";
+// CRM C1.11 ▸ ?contactId= (ปุ่ม "เปิดดีล" ของแผง CRM ในห้องแชท) — อ่านซ้ำผ่านการมองเห็น (briefFor → contactWhere) ◂
+import { briefFor as contactBrief } from "@/lib/modules/crm/contacts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { NewDealForm } from "../_components/NewDealForm";
@@ -38,6 +40,10 @@ export default async function NewDealPage({
   const companyId = one("companyId");
   const [pipelines, owners, company] = await Promise.all([pipelineOptions(ctx, actor), ownerOptions(ctx, actor), companyId ? companyRef(ctx, actor, companyId) : Promise.resolve(null)]);
   const companyContacts = company ? await companyContactOptions(ctx, actor, company.id) : [];
+  // CRM C1.11 ▸ ผู้ติดต่อจาก URL: มองไม่เห็น/ไม่มี/คนละระบบ = ไม่เติม (ไม่บอกว่ามีอยู่ไหม) ◂
+  const contactParam = one("contactId");
+  const cb = contactParam ? await contactBrief(ctx, actor, { contactId: contactParam }).catch(() => null) : null;
+  const contact = cb ? { id: cb.contactId, name: cb.name } : null;
   const pipe = pipelines.find((p) => p.id === one("pipeline")) ?? pipelines[0];
   const stage = pipe?.stages.find((s) => s.id === one("stage") && s.kind === "OPEN");
   const def = systemDef(sys.type);
@@ -69,6 +75,7 @@ export default async function NewDealPage({
           defaultStageId={stage?.id ?? ""}
           company={company}
           companyContacts={companyContacts}
+          contact={contact}
         />
       )}
     </div>

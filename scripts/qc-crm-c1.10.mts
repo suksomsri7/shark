@@ -1257,7 +1257,10 @@ try {
       af.length > 0 && (!/ผู้จัดการทำได้ทุกอย่าง/.test(af) || /CRM/.test(af)), "qualified text", cut((/.{0,60}ผู้จัดการ.{0,80}/.exec(af) ?? [""])[0], 160), "MINOR");
     const sp = read("src/app/app/sys/[id]/crm/settings/page.tsx");
     chk("C1.10-S11.8", "C1.5 debt (R-A): the general /crm/settings page exists and links the settings cards including /settings/api [static · see Q4]",
-      sp.length > 0 && /settings\/api/.test(sp) && /requireCrmV2Page/.test(sp), "page with api card", `exists=${sp.length > 0} api=${/settings\/api/.test(sp)}`, "MINOR");
+      // ORACLE-EDIT C1.10-S11.8 (controller · C1.11, 19 Sep): C1.11 makes /crm/settings also the v1↔v2 switch page, so it may not
+      //   call requireCrmV2Page (a v1 OWNER must reach the switch). Accept the page's own branch instead: uiVersion !== 2 ⇒
+      //   notFound() unless the switch card is allowed (C1.11 S6.10 + probe-c111-review N-2 cover the behaviour).
+      sp.length > 0 && /settings\/api/.test(sp) && (/requireCrmV2Page/.test(sp) || (/uiVersion !== 2/.test(sp) && /notFound\(\)/.test(sp))), "page with api card", `exists=${sp.length > 0} api=${/settings\/api/.test(sp)}`, "MINOR");
   });
 
   // ═════════════════════════════════════════════════════════════════════════════

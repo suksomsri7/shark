@@ -54,6 +54,19 @@ export default async function DealsPage({
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "CRM" } });
   if (!sys) notFound();
+  // CRM C1.11 ▸ หน้า v1: ข้อความจากฟอร์ม v1 (`?notice=` ของ withDealNotice ใน actions.ts) เคยมองไม่เห็น — มี param = แถบข้อความเหนือหน้า v1 เดิม
+  //   ไม่มี param = บรรทัดถัดไป (หน้า v1 เดิมทุกตัวอักษร) ◂
+  const v1Notice = typeof sp.notice === "string" ? sp.notice.trim().slice(0, 300) : "";
+  if (v1Notice && pickCrmPage(await crmUiVersion({ tenantId, systemId: id })) !== "v2") {
+    return (
+      <div className="flex max-w-2xl flex-col gap-3">
+        <p className="card p-3 text-sm" role="status" style={{ color: "var(--color-danger)" }} data-testid="deals-v1-notice">
+          {v1Notice}
+        </p>
+        <DealsV1Page params={params} />
+      </div>
+    );
+  }
   if (pickCrmPage(await crmUiVersion({ tenantId, systemId: id })) === "v1") return <DealsV1Page params={params} />;
   const actor = toMemberActor(auth.user.id, auth.active);
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };

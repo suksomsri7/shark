@@ -792,7 +792,12 @@ try {
   const storageSrc = readFileSync(join(ROOT, "src/lib/storage/service.ts"), "utf8");
   assert(
     "S8 path ที่เก็บบน storage ประกอบจาก tenantId + uuid + ext ของ allowlist (ไม่ใช้ชื่อไฟล์ผู้ใช้)",
-    /const path = `t\/\$\{ctx\.tenantId\}\/\$\{input\.kind\.toLowerCase\(\)\}\/\$\{id\}\.\$\{ext\}`/.test(storageSrc),
+    // ORACLE-EDIT acc-v2-security S8 (CRM controller · phase-C1 close, 19 Sep): CRM C0.4 (55c7a076) split the path into a
+    //   public/private ternary and uses `${newId()}` inline — same rule (tenantId + kind + server id + allowlisted ext, no user
+    //   file name). Accept the old single line OR the C0.4 form (public branch exact; private branch = tenantId + random name).
+    /const path = `t\/\$\{ctx\.tenantId\}\/\$\{input\.kind\.toLowerCase\(\)\}\/\$\{id\}\.\$\{ext\}`/.test(storageSrc) ||
+      (/: `t\/\$\{ctx\.tenantId\}\/\$\{input\.kind\.toLowerCase\(\)\}\/\$\{newId\(\)\}\.\$\{ext\}`/.test(storageSrc) &&
+        /\? `t\/\$\{ctx\.tenantId\}\/\$\{PRIVATE_PATH_SEGMENT\}\/\$\{newPrivateObjectName\(\)\}\.\$\{ext\}`/.test(storageSrc)),
   );
   assert(
     "S8 ext มาจากตาราง ALLOWED_TYPES เท่านั้น (ไม่มี fallback ให้ตกเป็นนามสกุลอื่น)",

@@ -28,6 +28,8 @@ import { chatTaskButtonConfig } from "@/lib/modules/kanban/integrations";
 import { evaluate } from "@/lib/core/rbac";
 import { listAnswerExamples } from "./learning";
 import { ChatInboxClient } from "./inbox-client";
+// CRM C1.11 ▸ ตัดสินว่าจะ mount แผงข้าง CRM ไหม (facade เท่านั้น · เส้น chat→crm) ◂
+import * as crm from "@/lib/modules/crm";
 import { CHANNEL_ORDER, ChannelChip } from "./channel-icon";
 import { ALLOWED_UPLOAD_TYPES, CHAT_ATTACHMENT_MAX_BYTES } from "@/lib/storage/service";
 import { RETENTION_MIN_DAYS, RETENTION_MAX_DAYS } from "./retention";
@@ -103,6 +105,9 @@ export async function ChatInboxSection({
     // 🔴 อ่านสดทุกครั้งที่เรนเดอร์ — ปิดสวิตช์แล้วรีเฟรชหน้าเดียว ปุ่มต้องหายทันที (ไม่มี cache)
     chatTaskButtonConfig(tenantId),
   ]);
+  // CRM C1.11 ▸ (รีวิว SF-2) แผงข้าง CRM: mount เฉพาะเมื่อระบบ CRM ตัวแรก (active) ของร้านเปิด CRM ใหม่ — ร้าน v1/ไม่มี CRM ไม่มีคำขอเพิ่มเลย ◂
+  const crmTarget = await crm.crmPanelTarget(tenantId);
+  const crmPanel = crmTarget ? (await crm.crmUiVersion({ tenantId, systemId: crmTarget.systemId })) === 2 : false;
 
   // ปุ่มที่ "กินเงินของร้าน" ต้องเปิดใช้ **และ** มีสิทธิ์ทั้งคู่ ไม่งั้นไม่ต้องโชว์เลย
   const canSuggest = setting.aiSuggestEnabled && can("chat.ai.suggest");
@@ -143,6 +148,7 @@ export async function ChatInboxSection({
         uploadTypes={ALLOWED_UPLOAD_TYPES}
         manageLinksHref={multiUnit ? "/app/settings/connections" : null}
         taskButton={taskButton ? { kanbanSystemId: taskButton.kanbanSystemId, boardId: taskButton.boardId } : null}
+        crmPanel={crmPanel}
       />
     </>
   );

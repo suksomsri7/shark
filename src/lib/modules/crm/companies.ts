@@ -1421,7 +1421,8 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
     for (const f of MERGE_CHOICE_FIELDS) {
       const kv = (k as Record<string, unknown>)[f] ?? null;
       const mv = (m as Record<string, unknown>)[f] ?? null;
-      if (choices[f] === "merge" || (kv === null && mv !== null)) if (mv !== kv) bag[f] = mv;
+      // CRM C1.11 ▸ (รีวิว SF-5) "merge" มีผลเฉพาะเมื่ออีกฝั่งมีค่า (แบบเดียวกับผู้ติดต่อ) — ไม่มีทางล้างค่าของบริษัทที่เก็บไว้ด้วยค่าว่าง ◂
+      if ((choices[f] === "merge" && mv !== null) || (kv === null && mv !== null)) if (mv !== kv) bag[f] = mv;
     }
     if (carryTax) {
       keepData.taxId = carryTax.taxId;
@@ -2029,3 +2030,17 @@ export async function touchLastActivityInTx(tx: Tx, ctx: CompaniesCtx, ids: (str
   return tx.$executeRaw`UPDATE "CrmCompany" SET "lastActivityAt" = GREATEST("lastActivityAt", (${iso}::timestamptz AT TIME ZONE 'UTC')) WHERE "id" = ANY(${sorted}::text[]) AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
 }
 // ◂ CRM C1.6
+
+// CRM C1.11 ▸ บริษัทตาม id ที่ผู้ดูมองเห็น (ชื่อ + ค่าที่เลือกได้ตอนรวม) — ผู้ใช้: หน้าบริษัทที่น่าจะซ้ำ (แผ่นรวมเลือกค่าต่อฟิลด์) ·
+//   การ์ดย่อ/หน้าแรก CRM ใหม่ (brief.ts) · อ่านผ่าน companyWhere (AUDIT-CLASS X1 — มองไม่เห็น = ไม่มีในผล) · สูงสุด 500 id ต่อครั้ง
+export type CompanyPickRow = { id: string; name: string; legalName: string | null; industry: string | null; size: string | null; website: string | null; phone: string | null; email: string | null; emailDomain: string | null; note: string | null };
+export async function visibleCompaniesByIds(ctx: CompaniesCtx, actor: MemberActor, ids: readonly string[]): Promise<CompanyPickRow[]> {
+  const a = await enter(ctx, actor);
+  const list = [...new Set(ids.filter((x) => typeof x === "string" && x))].slice(0, 500);
+  if (list.length === 0) return [];
+  return prisma.crmCompany.findMany({
+    where: { AND: [await companyWhere(ctx, a), { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: list }, mergedIntoId: null }] },
+    select: { id: true, name: true, legalName: true, industry: true, size: true, website: true, phone: true, email: true, emailDomain: true, note: true },
+  });
+}
+// ◂ CRM C1.11

@@ -187,6 +187,8 @@ export type ChatInboxClientProps = {
    *    และการซ่อนปุ่มไม่ใช่ด่าน: server action ปฏิเสธด้วยเงื่อนไขเดียวกันอีกชั้นเสมอ
    */
   taskButton?: { kanbanSystemId: string; boardId: string } | null;
+  // CRM C1.11 ▸ แผงข้าง CRM ในคอลัมน์บริบท — true เฉพาะร้านที่ระบบ CRM ตัวแรกเปิด CRM ใหม่ (ตัดสินฝั่ง server) ◂
+  crmPanel?: boolean;
 };
 
 // ความกว้างคอลัมน์ของกล่องแชท 3 คอลัมน์ (≥lg) — ปริยายตามแบบร่าง 320 | 1fr | 280 · ผู้ใช้ลากปรับได้
@@ -282,6 +284,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
     uploadTypes,
     manageLinksHref = null,
     taskButton = null,
+    crmPanel = false, // CRM C1.11 ◂
   } = props;
 
   const [rows, setRows] = useState<InboxRow[]>(initialRows);
@@ -2123,6 +2126,7 @@ export function ChatInboxClient(props: ChatInboxClientProps) {
               // M1.12 — ปุ่มด่วน "สร้างงาน" ของแผงสมาชิก เปิดแผงเดียวกับปุ่ม "สร้างงาน" ที่หัวห้อง (K3.2)
               // ไม่มีสวิตช์เปิดไว้ (taskButton null) = ไม่ส่ง handler ลงไป (ปุ่มในแผงสมาชิกจะไม่ทำงาน)
               onCreateTask={taskButton ? () => setTaskOpen(true) : undefined}
+              crmPanel={crmPanel} // CRM C1.11 ◂
             />
           </aside>
         )}

@@ -29,6 +29,8 @@ import { setConversationTagAction } from "./quick-reply-actions";
 // M1.12 (§3.14 §9.3 · ภาพ 26 · 28) — แผงข้าง "สมาชิก" (ระบบสมาชิก v2 · เพิ่มเข้ามาต่อยอดคอลัมน์นี้
 // ไม่ได้แทนที่บล็อกผูกสมาชิก v1 ข้างบน ทั้งสองระบบอยู่คู่กันได้ — ตัดสินใจ: ดู wo-notes/member-M1.12.md)
 import { ChatMemberPanel } from "@/components/member/ChatMemberPanel";
+// CRM C1.11 ▸ แผงข้าง "CRM" (ผู้ติดต่อ/บริษัท/ดีลเปิด/คะแนน + ปุ่ม 3) — ไม่แสดงอะไรเลยถ้าร้านยังไม่เปิด CRM ใหม่ หรือผู้ดูไม่มีคีย์ CRM ◂
+import { ChatCrmPanel } from "@/components/chat/crm/ChatCrmPanel";
 
 export type ContextPanelProps = {
   systemId: string;
@@ -37,6 +39,8 @@ export type ContextPanelProps = {
   onInsertText?: (text: string) => void;
   /** M1.12 — ปุ่มด่วน "สร้างงาน" ของแผงสมาชิก เปิดแผง K3.2 เดียวกับปุ่มที่หัวห้อง · undefined = ร้านไม่เปิดสวิตช์บอร์ดงาน */
   onCreateTask?: () => void;
+  // CRM C1.11 ▸ (รีวิว SF-2) ระบบ CRM ตัวแรกของร้านเปิด CRM ใหม่ (uiVersion 2) — ตัดสินฝั่ง server (ChatInboxSection) · false/ไม่ส่ง = ไม่ mount แผง CRM ◂
+  crmPanel?: boolean;
 };
 
 // ───────────────────────── เวลา (เขตเวลาไทยเสมอ) ─────────────────────────
@@ -171,7 +175,7 @@ const initialOf = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
 
 // ───────────────────────── ตัวคอลัมน์ ─────────────────────────
 
-export function ContextPanel({ systemId, conversationId, onInsertText, onCreateTask }: ContextPanelProps) {
+export function ContextPanel({ systemId, conversationId, onInsertText, onCreateTask, crmPanel = false }: ContextPanelProps) {
   const [ctx, setCtx] = useState<ConversationContext | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [showLink, setShowLink] = useState(false);
@@ -289,6 +293,8 @@ export function ContextPanel({ systemId, conversationId, onInsertText, onCreateT
     <aside className={shell}>
       {/* ── M1.12 (ภาพ 26 · 28) — แผงข้าง "สมาชิก" ระบบสมาชิก v2 (ผูกอัตโนมัติ/เลือก/สมัครจากแชท/ปุ่มด่วน) ── */}
       <ChatMemberPanel conversationId={conversationId} onCreateTask={onCreateTask} />
+      {/* CRM C1.11 ▸ ช่องเดียวของแผง CRM (ต่อจากแผงสมาชิก) ◂ */}
+      {crmPanel && <ChatCrmPanel conversationId={conversationId} />}
 
       {/* ── โปรไฟล์ + ผูกสมาชิก (แบบร่าง: avatar 60px มุม 18px + แบดจ์ช่องทาง) ── */}
       <div className="flex flex-col items-center gap-2 px-0 pb-[2px] pt-[6px]">

@@ -55,8 +55,12 @@ try {
     ...parse(body.slice(splitAt), "feature").map((e) => ({ ...e, kind: "feature" as const })),
   ];
   const regKeys = new Set(WIDGET_DEFS.map((w) => w.key));
+  // ORACLE-EDIT pages RG-1 (CRM controller · phase-C1 close, 19 Sep): CRM v2 menus (CRM_DEEP_NAV in src/lib/modules/crm/nav.ts)
+  //   are shown only to uiVersion-2 systems (drawer gate); every production shop is uiVersion 1, so a Page-builder widget for
+  //   them would be a link that 404s. They are exempt until the pilot — debt → CRM C5 (gated v2 widgets). v1 CRM menus still count.
+  const crmV2Paths = new Set([...readFileSync("src/lib/modules/crm/nav.ts", "utf8").matchAll(/path:\s*"(\/crm\/[^"]*)"/g)].map((x) => x[1]!));
   const missing = navEntries.filter(
-    (e) => !regKeys.has(`${e.kind === "business" ? "B" : "S"}:${e.type}${e.suffix}`),
+    (e) => !regKeys.has(`${e.kind === "business" ? "B" : "S"}:${e.type}${e.suffix}`) && !(e.type === "CRM" && crmV2Paths.has(e.suffix)),
   );
   chk("RG-1", `ทุกเมนูใน childrenFor มี widget ใน registry (${navEntries.length} เมนู)`,
     missing.length === 0, "ครบ", JSON.stringify(missing.slice(0, 5)));
