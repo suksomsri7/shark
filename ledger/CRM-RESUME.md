@@ -1,22 +1,23 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 19 ก.ย. 2569 ~10:40 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 19 ก.ย. 2569 ~13:40 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.7 · C1.8 (`526895b` · กำลัง poll deploy) (14/53)
-- 🔨 **C1.9** (UI วัตถุกำหนดเอง): แก้ครบ · รวมเข้า tree หลักแล้ว · รอบตรวจ unit crm-c19-verify · ต้นทางใน worktree **`/root/projects/shark-crm-c19`** (ฐาน = HEAD + C1.8 ที่แก้แล้ว) · ใช้ **QC1** · ข้อสอบ `qc-crm-c1.9` 45 ข้อ
-- 🔨 **C1.10** (REST 63 op + AI 14 tools): 66/66 บน QC2 · ผู้ตรวจกำลังอ่าน · รวมเข้า tree หลักด้วย patch เทียบ `526895b` (ฐาน C1.8) หลัง C1.9 commit · builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.8 · C1.9 (`b01b3b72` · กำลัง poll deploy) (15/53)
+- 🔨 **C1.10** (REST 63 op + AI 14 tools): แก้ผลผู้ตรวจครบ (BLOCKER ผู้ช่วย AI เห็นค่าอ่อนไหว) · **patch วางใน tree หลักแล้ว (staged ไม่ commit)** · กำลังตรวจ unit `crm-c110-verify` (log `.qc-shots/crm/c110-verify.log`) บน QC1 · ต้นทาง `/root/projects/shark-crm-c110` (QC2) · ถ้า session ตาย: `git -C /root/projects/shark-crm diff --cached --stat` ดูว่ายัง staged อยู่ แล้วรัน `scripts/pending/run-c110-verify.sh` ใหม่
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- ⏸️ C1.11 builder เริ่มหลัง C1.9+C1.10 commit · C2.0 builder เริ่มหลังปิดเฟส C1 (migration แตะฐาน QC + Prisma client ที่ใช้ร่วม)
+- 🔨 **C1.11** builder ทำงานใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged) · ใช้ **QC2** · ข้อสอบ 66 ข้อ + qc-crm-v1
+- ⏸️ C2.0 builder เริ่มหลังปิดเฟส C1 (qc:all)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
 | path | หน้าที่ | ฐาน QC |
 |---|---|---|
 | `/root/projects/shark-crm` | tree หลัก · ผู้คุมงานตรวจ/commit/push | QC1 |
 | `/root/projects/shark-crm-c12a` | อดีตที่ทำ C1.8 (ตอนนี้ว่าง · มีสำเนา C1.8 ล่าสุด) | QC1 |
-| `/root/projects/shark-crm-c19` | C1.9 builder | QC1 |
-| `/root/projects/shark-crm-c110` | C1.10 builder | QC2 |
+| `/root/projects/shark-crm-c19` | อดีต C1.9 (commit แล้ว · มีไฟล์ค้างไม่ต้องใช้) | QC1 |
+| `/root/projects/shark-crm-c111` | C1.11 builder | QC2 |
+| `/root/projects/shark-crm-c110` | อดีต C1.10 (ว่าง) | QC2 |
 🔴 ก่อนลบ worktree ใด: `umount <wt>/node_modules` แล้วเช็คว่าว่าง แล้ว `rmdir` ก่อน `git worktree remove` (ไม่งั้นลบ node_modules ของจริง)
 🔴 agent ตายไปกับ session แต่ไฟล์ใน worktree ยังอยู่ — session ใหม่: `git -C <wt> status` ดูงานค้าง แล้ว spawn builder ใหม่ให้ "ทำต่อจากสภาพไฟล์ปัจจุบัน" พร้อม brief + addendum
 
