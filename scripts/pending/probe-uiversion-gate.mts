@@ -34,7 +34,7 @@ const isNotFound = (e: Any) => !!e && /404|NOT_FOUND/i.test(String(e.digest ?? e
 const rand = Math.random().toString(36).slice(2, 8).replace(/[^a-z]/g, "q");
 const TAG = `qc-uvg-${rand}`;
 const PAGES = "src/app/app/sys/[id]/crm";
-const V2_ONLY = ["companies/page.tsx", "companies/[companyId]/page.tsx", "companies/new/page.tsx", "contacts/new/page.tsx", "contacts/[contactId]/page.tsx", "deals/new/page.tsx", "deals/[dealId]/page.tsx", "pipelines/page.tsx", "settings/pipelines/page.tsx", "settings/stages/page.tsx", "settings/lost-reasons/page.tsx", "settings/visibility/page.tsx"];
+const V2_ONLY = ["companies/page.tsx", "companies/[companyId]/page.tsx", "companies/new/page.tsx", "contacts/new/page.tsx", "contacts/[contactId]/page.tsx", "deals/new/page.tsx", "deals/[dealId]/page.tsx", "pipelines/page.tsx", "settings/pipelines/page.tsx", "settings/stages/page.tsx", "settings/lost-reasons/page.tsx", "settings/visibility/page.tsx", "settings/objects/page.tsx", "objects/page.tsx", "objects/[key]/page.tsx", "objects/[key]/[recordId]/page.tsx"];
 const V2_ACTIONS = ["companies-actions.ts", "contacts-actions.ts", "deals-actions.ts", "pipelines-actions.ts", "lost-reasons-actions.ts"];
 let tid = "";
 

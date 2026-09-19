@@ -31,6 +31,7 @@ export function Member360View({
   wallet,
   tabPanel,
   sideTop,
+  extraTabs,
 }: {
   systemId: string;
   member: Member360;
@@ -45,9 +46,13 @@ export function Member360View({
   tabPanel?: React.ReactNode;
   /** M3.4 — กล่องบนสุดของแถบขวาเฉพาะแท็บนี้ (ภาพ 08 ขวา: "รีวิวร้าน" · "แนะนำเพื่อน") */
   sideTop?: React.ReactNode;
+  /** CRM C1.9 — แท็บวัตถุกำหนดเองที่ผูกกับสมาชิก (`obj-<key>`) ต่อท้ายแท็บเดิม · ไม่ส่ง = แท็บเดิม 5 ตัวเหมือนเดิม · เนื้อหามาทาง tabPanel */
+  extraTabs?: { key: string; label: string }[];
 }) {
   void systemId;
-  const activeTab = TABS.some((t) => t.key === tab) ? tab : "profile";
+  // CRM C1.9 ▸ แท็บวัตถุ (ภาพ 06 ขวา "รถ (2)") อยู่ในแถบเดียวกับแท็บเดิม · ไม่มีวัตถุ = TABS เดิมตัวเดียวกัน ◂
+  const tabs = extraTabs && extraTabs.length > 0 ? [...TABS, ...extraTabs] : TABS;
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : "profile";
   const tabHref = (key: string) => `${basePath}?tab=${key}`;
 
   return (
@@ -56,7 +61,7 @@ export function Member360View({
         <Header member={member} />
         <Stats member={member} />
         <div data-testid="member-360-tabs" className="-mx-1 flex gap-1 overflow-x-auto border-b pb-px">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <Link
               key={t.key}
               href={tabHref(t.key)}

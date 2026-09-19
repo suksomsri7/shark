@@ -28,6 +28,25 @@ export const OBJECT_KEY_MAX = 40;
 /** key สงวน = objectKey ของ engine ฟิลด์เอง (วัตถุชื่อ "contact" จะไปใช้ฟิลด์ร่วมกับผู้ติดต่อ) */
 export const RESERVED_OBJECT_KEYS: readonly string[] = ["customer", "contact", "company", "deal"];
 
+// CRM C1.9 ▸ มติผู้คุมงาน C1.9 ข้อ 1 (ใบ C1.9 X6): กติกา key ของวัตถุ "ตัวเดียว" สำหรับ UI + REST ตอนสร้าง/เปลี่ยนชื่อ
+//   `^[a-z][a-z0-9_]{1,30}$` (พิมพ์เล็กล้วน 2–31 ตัว — อยู่ใน URL `/crm/objects/<key>` และตัวกรอง) + key สงวน 4 ตัวข้างบน
+//   🔴 `OBJECT_KEY_RE` ข้างบน **ยังคงเดิม** เพราะ objects.ts ใช้ตัวเดียวกันตรวจ `titleFieldKey` (= key ของฟิลด์ แบบ camelCase
+//      เช่น "petName" ของเทมเพลต 8 ชุด) — เปลี่ยนตัวนั้นเท่ากับเทมเพลตทุกชุดสร้างไม่ได้ (ดูรายงาน C1.9 · ผู้คุมงานตัดสิน)
+//   key เดิมที่ไม่ผ่านกติกานี้ยังอ่าน/ใช้งานได้ตามปกติ — ตรวจเฉพาะตอนสร้างและเปลี่ยนชื่อ
+export const OBJECT_KEY_STRICT_RE = /^[a-z][a-z0-9_]{1,30}$/;
+/** AUDIT-CLASS X6: key ของวัตถุใช้ไม่ได้เพราะอะไร (ภาษาไทย ไม่โทษผู้ใช้) · ใช้ได้ = null */
+export function objectKeyProblem(raw: unknown): string | null {
+  const key = typeof raw === "string" ? raw.trim() : "";
+  if (RESERVED_OBJECT_KEYS.includes(key)) {
+    return `ชื่ออ้างอิง "${key}" สงวนไว้ให้ข้อมูลหลักของระบบ (สมาชิก/ผู้ติดต่อ/บริษัท/ดีล) — ตั้งชื่ออื่น เช่น "${key}_info"`;
+  }
+  if (!OBJECT_KEY_STRICT_RE.test(key)) {
+    return "ชื่ออ้างอิง (key) ของวัตถุใช้ได้เฉพาะ a–z ตัวพิมพ์เล็ก ตัวเลข และ _ ขึ้นต้นด้วยตัวอักษร ยาว 2–31 ตัว — เช่น \"vehicle\" หรือ \"pet_record\"";
+  }
+  return null;
+}
+// ◂ CRM C1.9
+
 export type ObjectParentType = "CUSTOMER" | "CONTACT" | "COMPANY" | "DEAL" | "NONE";
 export const OBJECT_PARENT_TYPES: readonly ObjectParentType[] = ["CUSTOMER", "CONTACT", "COMPANY", "DEAL", "NONE"];
 export const OBJECT_PARENT_LABEL: Record<ObjectParentType, string> = {

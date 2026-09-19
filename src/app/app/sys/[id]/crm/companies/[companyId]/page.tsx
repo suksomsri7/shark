@@ -21,6 +21,9 @@ import { AddContactButton, CompanyContactsTable, CompanyMenu } from "../_compone
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
+// CRM C1.9 ▸ แผงแท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
+import { CrmObjectTabPanel } from "@/components/crm/objects/ObjectTabs";
+import { crmCan } from "@/lib/modules/crm/access";
 
 // บริษัท 360 (CRM v2 · ใบ C1.3 · พิมพ์เขียว §3.4 · ภาพ 04) — `/app/sys/{id}/crm/companies/{companyId}`
 // URL state: ?tab=overview|contacts|deals|documents|timeline|obj-<objectKey>
@@ -70,7 +73,9 @@ export default async function Company360Page({
   const base = `/app/sys/${id}/crm/companies`;
   const self = `${base}/${c.id}`;
   const tabRaw = typeof sp.tab === "string" ? sp.tab : "overview";
-  const objTab = tabRaw.startsWith("obj-") ? data.objectTabs.find((t) => `obj-${t.objectKey}` === tabRaw) ?? null : null;
+  // CRM C1.9 ▸ รีวิว S2: ไม่มีคีย์อ่านรายการวัตถุ = ไม่มีแท็บวัตถุ (ไม่โชว์แท็บจำนวน 0) ◂
+  const objectTabs = crmCan(actor, "crm.record.read") ? data.objectTabs : [];
+  const objTab = tabRaw.startsWith("obj-") ? objectTabs.find((t) => `obj-${t.objectKey}` === tabRaw) ?? null : null;
   const tab = ["overview", "contacts", "deals", "documents", "timeline"].includes(tabRaw) || objTab ? tabRaw : "overview";
   const objRows = objTab
     ? await records.list(ctx, actor, objTab.objectKey, { parentId: c.id, pageSize: 50 }).catch(() => ({ items: [], total: 0, page: 1, pageSize: 50 }))
@@ -84,7 +89,7 @@ export default async function Company360Page({
     { key: "contacts", label: "ผู้ติดต่อ", count: data.contacts.length },
     { key: "deals", label: "ดีล", count: data.deals.length },
     { key: "documents", label: "เอกสารบัญชี" },
-    ...data.objectTabs.map((t) => ({ key: `obj-${t.objectKey}`, label: t.labelPlural || t.label, count: t.count, custom: true })),
+    ...objectTabs.map((t) => ({ key: `obj-${t.objectKey}`, label: t.labelPlural || t.label, count: t.count, custom: true })),
     { key: "timeline", label: "ไทม์ไลน์" },
   ];
 
@@ -200,26 +205,11 @@ export default async function Company360Page({
           )}
           {tab === "deals" && <DealsCard deals={data.deals} open={openDeals} won={wonDeals} />}
           {tab === "documents" && <DocsCard docs={data.documents} linked={data.accountLinked} />}
+          {/* CRM C1.9 ▸ แท็บวัตถุกำหนดเอง: รายการของบริษัทนี้ ลิงก์ไปหน้ารายการเดี่ยว + ปุ่มเพิ่ม (บล็อกของใบ C1.9) */}
           {objTab && objRows && (
-            <section className="card flex flex-col gap-2 p-4" data-testid="company-360-object">
-              <h2 className="flex items-center gap-2 font-semibold">
-                {objTab.labelPlural || objTab.label}
-                <span className="rounded-md border px-1.5 text-xs font-normal text-[color:var(--color-muted)]">วัตถุกำหนดเอง</span>
-              </h2>
-              {objRows.items.length === 0 ? (
-                <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการของบริษัทนี้</p>
-              ) : (
-                <ul className="flex flex-col divide-y text-sm">
-                  {objRows.items.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-2 py-2">
-                      <span className="min-w-0 break-words font-medium">{r.title}</span>
-                      <span className="shrink-0 text-xs text-[color:var(--color-muted)]">{relativeThai(r.createdAt, now)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
+            <CrmObjectTabPanel ctx={ctx} actor={actor} objectKey={objTab.objectKey} label={objTab.labelPlural || objTab.label} parentId={c.id} items={objRows.items} total={objRows.total} />
           )}
+          {/* ◂ CRM C1.9 */}
           {(tab === "overview" || tab === "timeline") && (
             <section className="card flex flex-col gap-1 p-4" data-testid="company-360-timeline">
               <h2 className="font-semibold">

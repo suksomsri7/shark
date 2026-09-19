@@ -13,6 +13,8 @@ import { DealDocButtons, DealFieldsEditor, DealLinesEditor, DealMenu, DealStageS
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
+// CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
+import { CrmObjectTabs } from "@/components/crm/objects/ObjectTabs";
 import { CrmDealCardsBlock } from "@/components/crm/activity/CrmDealCardsBlock";
 
 // ดีล 360 (CRM v2 · ใบ C1.5 · พิมพ์เขียว §3.3 · ภาพ 03) — `/app/sys/{id}/crm/deals/{dealId}`
@@ -66,7 +68,13 @@ export default async function Deal360Page({
   const canEdit = crmCan(m, "crm.deal.update");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
   const d = data.deal;
-  const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as (typeof TABS)[number]["key"]) : "overview";
+  // CRM C1.9 ▸ มติผู้คุมงาน C1.9 ข้อ 2: `?tab=obj-<key>` = แท็บวัตถุกำหนดเอง (รู้จักแท็บนี้ ⇒ ภาพรวมไม่แสดงใต้แผงวัตถุ) ◂
+  const tab: (typeof TABS)[number]["key"] | "object" = TABS.some((t) => t.key === sp.tab)
+    ? (sp.tab as (typeof TABS)[number]["key"])
+    : typeof sp.tab === "string" && sp.tab.startsWith("obj-")
+      ? "object"
+      : "overview";
+  // ◂ CRM C1.9
   const base = `/app/sys/${id}/crm/deals`;
   const stage = data.stages.find((s) => s.current);
   const fieldLabels = Object.fromEntries(layout.map((x) => [x.key, x.label]));
@@ -217,6 +225,9 @@ export default async function Deal360Page({
               </Link>
             ))}
           </nav>
+          {/* CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (วัตถุที่ผูกกับดีล · showAsTab) — `?tab=obj-<key>` เปิดรายการของดีลนี้ */}
+          <CrmObjectTabs ctx={ctx} actor={actor} parentType="DEAL" parentId={d.id} selfHref={`${base}/${d.id}`} tab={sp.tab} />
+          {/* ◂ CRM C1.9 */}
 
           {tab === "overview" && (
             <>

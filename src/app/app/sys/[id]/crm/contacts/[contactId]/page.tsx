@@ -21,6 +21,8 @@ import { ConsentBlock, ContactMenu, ConvertButton } from "../_components/Contact
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
+// CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
+import { CrmObjectTabs } from "@/components/crm/objects/ObjectTabs";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -195,6 +197,9 @@ export default async function Contact360Page({
             {c.convertedAt && <p className="text-xs text-[color:var(--color-muted)]">แปลงแล้วเมื่อ {relativeThai(c.convertedAt, now)}</p>}
           </section>
 
+          {/* CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (วัตถุที่ผูกกับผู้ติดต่อ · showAsTab) — `?tab=obj-<key>` เปิดรายการของผู้ติดต่อนี้ */}
+          <CrmObjectTabs ctx={ctx} actor={actor} parentType="CONTACT" parentId={c.id} selfHref={`${base}/${c.id}`} tab={sp.tab} tabs={data.objectTabs} />
+          {/* ◂ CRM C1.9 */}
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="card flex flex-col gap-2 p-4" data-testid="contact-360-info">
               <h2 className="font-semibold">ข้อมูลติดต่อ</h2>

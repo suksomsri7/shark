@@ -57,6 +57,77 @@ import { TemplatePreviewPanel } from "./TemplatePreview";
 
 const ALL_TEMPLATE_PARTS: TemplatePart[] = ["fields", "tiers", "stamps", "journeys"];
 
+// CRM C1.9 ▸ ตัวสลับ "วัตถุ:" (ใบ C1.9 · ภาพ ledger/design-crm/06-custom-objects.png กลาง) — prop `object` ตัวเดียว ไม่บังคับ
+//   ไม่ส่ง = หน้าตั้งค่าฟิลด์สมาชิกเดิมทุกอย่าง (ชุด action ของสมาชิก 11 ตัวเดิม · ไม่มีตัวสลับ) · ส่ง = หน้า CRM `/settings/objects`
+//   ส่งชุด action ของวัตถุ CRM (payload เดียวกับของสมาชิก + objectKey) มาแทน แล้วตัวออกแบบเติม objectKey ของวัตถุที่เลือกให้เอง
+const MEMBER_FIELD_ACTIONS = {
+  applyTemplateAction,
+  archiveFieldAction,
+  createFieldAction,
+  createSectionAction,
+  deleteSectionAction,
+  previewTemplateAction,
+  reorderFieldsAction,
+  reorderSectionsAction,
+  restoreFieldAction,
+  updateFieldAction,
+  updateSectionAction,
+};
+type MemberFieldActions = typeof MEMBER_FIELD_ACTIONS;
+type WithObjectKey<F> = F extends (input: infer I) => infer R ? (input: I & { objectKey: string }) => R : never;
+export type FieldDesignerObject = {
+  /** objectKey ที่กำลังออกแบบ (contact · company · deal · key ของวัตถุกำหนดเอง) */
+  current: string;
+  options: { key: string; label: string; href: string }[];
+  actions: { [K in keyof MemberFieldActions]?: WithObjectKey<MemberFieldActions[K]> };
+};
+const OBJECT_TEMPLATE_UNAVAILABLE = "เทมเพลตของระบบสมาชิกใช้กับวัตถุ CRM ไม่ได้ — ใช้ \"เทมเพลตกิจการ\" ในแผงวัตถุแทน";
+function objectFieldActions(o: FieldDesignerObject): MemberFieldActions {
+  const a = o.actions;
+  const k = o.current;
+  const none = async () => ({ ok: false as const, reason: OBJECT_TEMPLATE_UNAVAILABLE });
+  return {
+    applyTemplateAction: a.applyTemplateAction ? (i) => a.applyTemplateAction!({ ...i, objectKey: k }) : none,
+    archiveFieldAction: a.archiveFieldAction ? (i) => a.archiveFieldAction!({ ...i, objectKey: k }) : none,
+    createFieldAction: a.createFieldAction ? (i) => a.createFieldAction!({ ...i, objectKey: k }) : none,
+    createSectionAction: a.createSectionAction ? (i) => a.createSectionAction!({ ...i, objectKey: k }) : none,
+    deleteSectionAction: a.deleteSectionAction ? (i) => a.deleteSectionAction!({ ...i, objectKey: k }) : none,
+    previewTemplateAction: a.previewTemplateAction ? (i) => a.previewTemplateAction!({ ...i, objectKey: k }) : none,
+    reorderFieldsAction: a.reorderFieldsAction ? (i) => a.reorderFieldsAction!({ ...i, objectKey: k }) : none,
+    reorderSectionsAction: a.reorderSectionsAction ? (i) => a.reorderSectionsAction!({ ...i, objectKey: k }) : none,
+    restoreFieldAction: a.restoreFieldAction ? (i) => a.restoreFieldAction!({ ...i, objectKey: k }) : none,
+    updateFieldAction: a.updateFieldAction ? (i) => a.updateFieldAction!({ ...i, objectKey: k }) : none,
+    updateSectionAction: a.updateSectionAction ? (i) => a.updateSectionAction!({ ...i, objectKey: k }) : none,
+  };
+}
+
+function ObjectSwitcher({ object }: { object: FieldDesignerObject }) {
+  const router = useRouter();
+  return (
+    <label className="flex items-center gap-2" style={{ fontSize: 12, color: "var(--color-muted)" }}>
+      <span>วัตถุ:</span>
+      <select
+        data-testid="field-object-switcher"
+        aria-label="เลือกวัตถุที่จะออกแบบฟิลด์"
+        value={object.current}
+        onChange={(e) => {
+          const next = object.options.find((x) => x.key === e.target.value);
+          if (next) router.push(next.href);
+        }}
+        className="rounded-lg border px-2.5 py-1.5 text-sm"
+        style={{ borderColor: "var(--color-accent)", color: "var(--color-accent)" }}
+      >
+        {object.options.map((x) => (
+          <option key={x.key} value={x.key}>
+            {x.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+// ◂ CRM C1.9
+
 // ปลายทางของฟิลด์ LOOKUP (§4.2 `MemberLookupTarget`) — เขียนตรงตัวไว้ที่นี่ (ไม่ใช่แค่ import) เพราะแผงขวา
 // ต้องมีปุ่มเลือกทั้ง 5 แบบจริง ๆ ไม่ใช่แค่รู้จักชื่อชนิด
 const LOOKUP_TARGETS: { value: MemberLookupTarget; label: string }[] = [
@@ -634,12 +705,29 @@ export function FieldDesigner({
   systemId,
   initialSections,
   templates,
+  object,
 }: {
   systemId: string;
   initialSections: SectionDef[];
   templates: TemplateOption[];
+  /** CRM C1.9 — ตัวสลับวัตถุ + ชุด action ของวัตถุ CRM (ไม่ส่ง = ตัวออกแบบฟิลด์สมาชิกเดิม) */
+  object?: FieldDesignerObject;
 }) {
   const router = useRouter();
+  // CRM C1.9 ▸ ชื่อ action เดิมทั้ง 11 ตัวถูกบังด้วยชุดของวัตถุเมื่อส่ง `object` มา (ไม่ส่ง = ชุดของสมาชิกตัวเดิม) ◂
+  const {
+    applyTemplateAction,
+    archiveFieldAction,
+    createFieldAction,
+    createSectionAction,
+    deleteSectionAction,
+    previewTemplateAction,
+    reorderFieldsAction,
+    reorderSectionsAction,
+    restoreFieldAction,
+    updateFieldAction,
+    updateSectionAction,
+  } = useMemo(() => (object ? objectFieldActions(object) : MEMBER_FIELD_ACTIONS), [object]);
   const [sections, setSections] = useState<SectionDef[]>(initialSections);
   useEffect(() => setSections(initialSections), [initialSections]);
 
@@ -703,6 +791,11 @@ export function FieldDesigner({
   }
 
   async function handleAddField(sectionId: string, type: MemberFieldType) {
+    // CRM C1.9 ▸ ข้อความเพดานของโหมดวัตถุ CRM (ไม่ใช่ "ระบบสมาชิกนี้") ◂
+    if (object && activeFieldCount >= MEMBER_LIMITS.fields) {
+      showError(`วัตถุนี้มีฟิลด์ครบ ${MEMBER_LIMITS.fields} ฟิลด์แล้ว — เก็บฟิลด์ที่ไม่ใช้เข้าคลังก่อน แล้วเพิ่มใหม่`);
+      return;
+    }
     if (activeFieldCount >= MEMBER_LIMITS.fields) {
       showError(`ระบบสมาชิกนี้มีฟิลด์ครบ ${MEMBER_LIMITS.fields} ฟิลด์แล้ว`);
       return;
@@ -875,7 +968,10 @@ export function FieldDesigner({
 
   return (
     <div data-testid="field-designer" className="flex flex-col gap-3">
+      {object && <ObjectSwitcher object={object} />}
       <div className="flex flex-wrap items-center gap-2">
+        {/* CRM C1.9 ▸ เทมเพลตของระบบสมาชิกไม่แสดงในโหมดวัตถุ CRM (เทมเพลตกิจการอยู่แผงวัตถุ) ◂ */}
+        {!object && (<>
         <span style={{ fontSize: 12, color: "var(--color-muted)" }}>เทมเพลต:</span>
         <select
           data-testid="field-template-select"
@@ -902,10 +998,14 @@ export function FieldDesigner({
             action={confirmApplyTemplate}
           />
         )}
+        </>)}
         <span className="flex-1" />
+        {/* CRM C1.9 ▸ ตัวอย่างมือถือ (หน้าสมาชิกฝั่งลูกค้า) ไม่เกี่ยวกับวัตถุ CRM ◂ */}
+        {!object && (
         <button type="button" onClick={() => setMobilePreviewOpen((o) => !o)} className="btn btn-ghost btn-sm">
           <MemberIcon name="cam" size="xs" /> ตัวอย่างมือถือ
         </button>
+        )}
         {dirty && (
           <span style={{ fontSize: 11.5, color: "var(--color-accent)" }}>มีการแก้ไขที่ยังไม่บันทึก</span>
         )}

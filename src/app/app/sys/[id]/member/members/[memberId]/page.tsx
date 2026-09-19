@@ -16,6 +16,9 @@ import { ReferralMemberTab } from "@/components/member/ReferralMemberCard";
 import { historyUnitOptions, listHistory, toHistoryPageView } from "@/lib/modules/member/history";
 import { HISTORY_DEFAULT_RANGE, HISTORY_PAGE_SIZE, historyRangeFrom } from "@/lib/modules/member/history-kinds";
 import { MemberHistory } from "@/components/member/MemberHistory";
+// CRM C1.9 ▸ แท็บวัตถุกำหนดเองที่ผูกกับสมาชิก — จากระบบ CRM ที่เปิด CRM ใหม่ (uiVersion 2) เท่านั้น · ไม่มี = ไม่แสดงอะไรเลย ◂
+import { CrmObjectTabPanel } from "@/components/crm/objects/ObjectTabs";
+import { memberObjectTabs } from "@/components/crm/objects/server";
 
 // สมาชิก 360° (M1.5 · ภาพ 02) — `/app/sys/{id}/member/members/{memberId}`
 // URL state: `?tab=profile|wallet|history|reviews|referrals`
@@ -94,11 +97,21 @@ export default async function Member360Page({
       />
     ) : undefined;
 
+  // CRM C1.9 ▸ แท็บวัตถุกำหนดเองที่ผูกกับสมาชิก (ภาพ 06 ขวา) — จากระบบ CRM uiVersion 2 เท่านั้น · ไม่มี = [] (หน้าเดิมทุกอย่าง)
+  const objTabs = await memberObjectTabs(tenantId, actor, member.profile.id);
+  const objName = (t: (typeof objTabs)[number]) => `${t.labelPlural || t.label}${t.shared ? ` · ${t.systemName}` : ""}`;
+  const objActive = objTabs.find((t) => t.tabId === tab) ?? null;
+  const objectPanel = objActive ? (
+    <CrmObjectTabPanel ctx={{ tenantId, systemId: objActive.systemId, actorUserId: auth.user.id }} actor={actor} objectKey={objActive.objectKey} label={objName(objActive)} parentId={member.profile.id} />
+  ) : undefined;
+  const objectTabs = objTabs.length > 0 ? objTabs.map((t) => ({ key: t.tabId, label: `${objName(t)} (${t.count.toLocaleString("th-TH")})` })) : undefined;
+  // ◂ CRM C1.9
+
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={member.profile.name || member.profile.memberCode} back={{ href: `/app/sys/${id}/member/members`, label: "สมาชิก" }} />
       <MemberTabs systemId={id} actor={actor} />
-      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} tabPanel={reviewPanel ?? referralPanel ?? historyPanel} sideTop={reviewSide} />
+      <Member360View systemId={id} member={member} tab={tab} basePath={basePath} wallet={wallet} tabPanel={reviewPanel ?? referralPanel ?? historyPanel ?? objectPanel} sideTop={reviewSide} extraTabs={objectTabs} />
     </div>
   );
 }

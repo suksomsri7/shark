@@ -178,6 +178,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // CRM C1.7 ▸ การมองเห็นข้อมูล (404 สำหรับคนที่ไม่มี crm.visibility.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts`
               ...(crmCan(membershipOf(auth), "crm.visibility.manage") ? [{ href: `${s}/crm/settings/visibility`, label: "การมองเห็นข้อมูล" }] : []),
               // ◂ CRM C1.7
+              // CRM C1.9 ▸ วัตถุกำหนดเอง (404 สำหรับคนที่ไม่มี crm.object.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.object.manage") ? [{ href: `${s}/crm/settings/objects`, label: "วัตถุกำหนดเอง" }] : []),
+              // รีวิว S3: สารบัญข้อมูลกำหนดเอง (ทุกคนที่มี crm.record.read · 404 สำหรับคนอื่น ⇒ ไม่โชว์ลิงก์ตาย)
+              ...(crmCan(membershipOf(auth), "crm.record.read") ? [{ href: `${s}/crm/objects`, label: "ข้อมูลกำหนดเอง" }] : []),
+              // ◂ CRM C1.9
               // CRM C1.6 ▸ ปฏิทินกิจกรรม (หน้า v2 ล้วน) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV)
               { href: `${s}/crm/calendar`, label: "ปฏิทิน" },
               // ◂ CRM C1.6

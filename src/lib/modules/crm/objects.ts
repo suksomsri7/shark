@@ -38,6 +38,7 @@ import {
   OBJECT_IMPORT_MAX_ROWS,
   OBJECT_KEY_MAX,
   OBJECT_KEY_RE,
+  objectKeyProblem,
   OBJECT_PARENT_LABEL,
   OBJECT_PARENT_TYPES,
   OBJECT_REASON_MIN,
@@ -45,7 +46,6 @@ import {
   OBJECT_WARN_AT,
   ObjectsError,
   RECORD_WARN_AT,
-  RESERVED_OBJECT_KEYS,
   type ObjectDto,
   type ObjectParentType,
   type ObjectTab,
@@ -228,19 +228,15 @@ function objectDto(row: CustomObject): ObjectDto {
   };
 }
 
+// CRM C1.9 ▸ มติผู้คุมงาน C1.9 ข้อ 1: key ของวัตถุ (สร้าง/เปลี่ยนชื่อ) = กติกาเดียวกับ UI + REST (`objectKeyProblem` ใน objects-shared)
+//   `^[a-z][a-z0-9_]{1,30}$` + key สงวน · key เดิมที่ไม่ผ่านยังอ่าน/ใช้ได้ (findObject ไม่ตรวจรูปแบบ) · titleFieldKey ยังใช้กติกา key ฟิลด์ (camelCase) ◂
 function normalizeObjectKey(raw: unknown): string {
   const key = typeof raw === "string" ? raw.trim() : "";
-  if (!key || key.length > OBJECT_KEY_MAX || !OBJECT_KEY_RE.test(key)) {
-    throw fail(
-      "VALIDATION",
-      `ชื่ออ้างอิง (key) ของวัตถุใช้ได้เฉพาะ a–z, A–Z, 0–9 และ _ โดยขึ้นต้นด้วยตัวพิมพ์เล็ก ยาวไม่เกิน ${OBJECT_KEY_MAX} ตัว — เช่น "vehicle"`,
-    );
-  }
-  if (RESERVED_OBJECT_KEYS.includes(key)) {
-    throw fail("VALIDATION", `ชื่ออ้างอิง "${key}" สงวนไว้ให้ข้อมูลหลักของระบบ (สมาชิก/ผู้ติดต่อ/บริษัท/ดีล) — ตั้งชื่ออื่น เช่น "${key}Info"`);
-  }
+  const problem = objectKeyProblem(key);
+  if (problem) throw fail("VALIDATION", problem);
   return key;
 }
+// ◂ CRM C1.9
 
 function normalizeText(raw: unknown, what: string, max = 120): string {
   const text = typeof raw === "string" ? raw.trim() : "";

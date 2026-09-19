@@ -96,7 +96,29 @@ const C15_DEAL: string | null = WO === "1.5" || WO === "1.6"
       .sort((a: Any, b: Any) => b._count.stageHistory - a._count.stageHistory)[0]?.id ?? null)
   : null;
 
+// C1.9 — seed object `contract` + its newest record (read-only)
+const C19_REC: string | null = WO === "1.9"
+  // parent = บริษัทที่เจ้าของเป็น OWNER หรือคนในหน่วยของ manager (ป่าตอง) — บริษัทของ nok (กระบี่) manager มองไม่เห็นตามหน่วย = 404 ถูกต้อง
+  ? await (async () => {
+      const P = prisma as Any;
+      const mgr = await P.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.manager.userId }, select: { unitAccess: true } });
+      const mu: string[] = Array.isArray(mgr?.unitAccess) ? mgr.unitAccess : [];
+      const bosses = (await P.membership.findMany({ where: { tenantId: E.tenantId }, select: { userId: true, role: true, unitAccess: true } }))
+        .filter((x: Any) => x.role === "OWNER" || (Array.isArray(x.unitAccess) && x.unitAccess.some((u: string) => mu.includes(u)))).map((x: Any) => x.userId);
+      const cos = (await P.crmCompany.findMany({ where: { systemId: SYS, ownerUserId: { in: bosses }, archivedAt: null }, select: { id: true } })).map((x: Any) => x.id);
+      return ((await P.customRecord.findFirst({ where: { systemId: SYS, archivedAt: null, object: { key: "contract" }, parentType: "COMPANY", parentId: { in: cos } }, orderBy: { createdAt: "desc" }, select: { id: true } }))?.id ?? null) as string | null;
+    })()
+  : null;
+
 const SPECS: Record<string, Spec[]> = {
+  // C1.9 — ข้อมูลกำหนดเอง: ตั้งค่าวัตถุ (+ ตัวออกแบบฟิลด์) · ดัชนี · รายการ · เรคคอร์ด (เทียบภาพ 06)
+  // thana/nok (STAFF ไม่มีคีย์ crm.record.read) = 404 ตามแบบ (ข้อสอบ C1.9 X2 คุมไว้) → ถ่ายเฉพาะ owner/manager
+  "1.9": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    { name: `crm-objects-settings-${userKey}`, path: `${CRM_BASE}/settings/objects?object=contract`, note: "ตั้งค่าวัตถุ + ตัวออกแบบฟิลด์", steps: [{ wait: 1500 }] },
+    { name: `crm-objects-index-${userKey}`, path: `${CRM_BASE}/objects`, note: "ดัชนีข้อมูลกำหนดเอง", steps: [{ wait: 1000 }] },
+    { name: `crm-objects-list-${userKey}`, path: `${CRM_BASE}/objects/contract`, note: "รายการสัญญา", steps: [{ wait: 1200 }] },
+    ...(C19_REC ? [{ name: `crm-objects-record-${userKey}`, path: `${CRM_BASE}/objects/contract/${C19_REC}`, note: "หน้าเรคคอร์ด", steps: [{ wait: 1200 }] } as Spec] : []),
+  ],
   // C1.7 — ทีมขาย (/app/settings/teams · core) · สิทธิ์การมองเห็น (/crm/settings/visibility · v2) — เทียบภาพ 10 ซ้าย
   "1.7": isCustomer ? [] : [
     { name: `crm-teams-${userKey}`, path: `/app/settings/teams`, note: "ทีมขาย: การ์ดทีม + รายละเอียด", steps: [{ wait: 1500 }] },

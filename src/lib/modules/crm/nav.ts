@@ -49,6 +49,11 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C1.7 ▸ การมองเห็นข้อมูล (บทบาท × ชนิดข้อมูล + ตั้งทับต่อทีม/pipeline) — ทีมขายอยู่หน้า core `/app/settings/teams` (drawer ตั้งค่า)
   { key: "settings-visibility", label: "การมองเห็นข้อมูล", path: "/crm/settings/visibility", status: "ready", wo: "C1.7" },
   // ◂ CRM C1.7
+  // CRM C1.9 ▸ วัตถุกำหนดเอง (รายการวัตถุ + ตัวออกแบบฟิลด์) — หน้ารายการ `/crm/objects/[key]` และรายการเดี่ยวเป็น [param] ไม่ขึ้นเมนู
+  { key: "settings-objects", label: "วัตถุกำหนดเอง", path: "/crm/settings/objects", status: "ready", wo: "C1.9" },
+  // รีวิว S3 + มติผู้คุมงาน: สารบัญ "ข้อมูลกำหนดเอง" อยู่ใน drawer เท่านั้น (layout.tsx ด่าน crm.record.read) — ไม่ขึ้นแถบแท็บ (ไม่มีลิงก์ที่ 404)
+  { key: "objects", label: "ข้อมูลกำหนดเอง", path: "/crm/objects", status: "ready", wo: "C1.9" },
+  // ◂ CRM C1.9
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */
