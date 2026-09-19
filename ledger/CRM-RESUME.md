@@ -6,7 +6,7 @@
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
 - ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.7 · C1.8 (`526895b` · กำลัง poll deploy) (14/53)
 - 🔨 **C1.9** (UI วัตถุกำหนดเอง): แก้ครบ · รวมเข้า tree หลักแล้ว · รอบตรวจ unit crm-c19-verify · ต้นทางใน worktree **`/root/projects/shark-crm-c19`** (ฐาน = HEAD + C1.8 ที่แก้แล้ว) · ใช้ **QC1** · ข้อสอบ `qc-crm-c1.9` 45 ข้อ
-- 🔨 **C1.10** (REST 57 op + AI 14 tools): builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
+- 🔨 **C1.10** (REST 63 op + AI 14 tools): 66/66 บน QC2 · ผู้ตรวจกำลังอ่าน · รวมเข้า tree หลักด้วย patch เทียบ `526895b` (ฐาน C1.8) หลัง C1.9 commit · builder ใน **`/root/projects/shark-crm-c110`** · ใช้ **QC2** (ทุกคำสั่ง DB ผ่าน `scripts/qc2.sh`) · ข้อสอบ `qc-crm-c1.10` 66 ข้อ
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
 - ⏸️ C1.11 builder เริ่มหลัง C1.9+C1.10 commit · C2.0 builder เริ่มหลังปิดเฟส C1 (migration แตะฐาน QC + Prisma client ที่ใช้ร่วม)
 
