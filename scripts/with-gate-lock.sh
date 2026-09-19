@@ -14,7 +14,7 @@ if command -v flock >/dev/null 2>&1 && [ -z "${CI:-}${VERCEL:-}" ]; then
     *" typecheck "*|*"next build"*|*" build "*|*acc-v2-serve*|*" tsc "*)
       # heavy: hold BOTH locks so neither QC lane runs suites during it (19 Sep: global OOM killed next build twice
       #   while QC2 suites ran beside it on a 7 GB box)
-      exec flock -w 3600 /tmp/shark-gate.lock flock -w 3600 /tmp/shark-gate-qc2.lock "$@" ;;
+      exec flock -w 3600 /tmp/shark-gate.lock flock -w 3600 /tmp/shark-gate-qc2.lock flock -w 3600 /tmp/shark-gate-qc3.lock "$@" ;;
   esac
   exec flock -w 1800 "$LOCK" "$@"
 fi

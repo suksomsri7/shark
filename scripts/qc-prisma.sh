@@ -28,7 +28,7 @@ POOLED="$(grep -m1 '^DATABASE_URL=' "$ENVF" | cut -d= -f2- | sed -e 's/^"//' -e 
 # ด่าน host: ต้องไม่ใช่ production และต้องเป็น branch QC
 for U in "$DIRECT" "$POOLED"; do
   case "$U" in *ep-royal-night*) echo "🔴 qc-prisma: หยุด! URL ชี้ production branch" >&2; exit 4 ;; esac
-  case "$U" in *ep-plain-art*|*ep-cool-shadow*) : ;; *) echo "🔴 qc-prisma: หยุด! URL ไม่ใช่ branch QC (ep-plain-art)" >&2; exit 4 ;; esac
+  case "$U" in *ep-plain-art*|*ep-cool-shadow*|*ep-weathered-river*) : ;; *) echo "🔴 qc-prisma: หยุด! URL ไม่ใช่ branch QC (ep-plain-art)" >&2; exit 4 ;; esac
 done
 
 echo "▶ qc-prisma: host = $(echo "$DIRECT" | sed -E 's#^[a-z]+://[^@]*@([^.]+).*#\1#') (QC) · คำสั่ง: prisma $*" >&2
