@@ -1037,9 +1037,15 @@ try {
     let r: Res = { ok: false, v: undefined, err: "not run", code: "", msg: "" };
     try { await failWrites(tidL, "CrmContact"); r = await consume(formEvt(tidL, fL.id, s)); } finally { await dropTriggers(); }
     const warns = await opsSince(tidL, t0);
-    chk("C1.8-X4.12", "compose — the forms extra THROWS (CrmContact insert forced to fail) ⇒ the event is NOT failed (consumer resolves) · a WARN OpsEvent names it · nothing half-written (no contact, crmContactId null)",
-      r.ok && warns.length >= 1 && (await P.crmContact.count({ where: { tenantId: tidL, email: mailOf("lab-form") } })) === 0 && (await subRow(s))?.crmContactId === null,
-      "resolves + WARN", `${r.err || "resolved"} warns=${warns.length}`);
+    // ORACLE-EDIT C1.8-X4.12 (controller · addendum ruling 2, 19 Sep): the lead step is a RETRYING first step (a lost lead is
+    //   a production regression for v1 shops) ⇒ a transient failure FAILS the event with nothing half-written, and a
+    //   redelivery (trigger gone) creates exactly ONE contact — the compose-extra "WARN only" contract moved to the timeline extra
+    const noneYet = (await P.crmContact.count({ where: { tenantId: tidL, email: mailOf("lab-form") } })) === 0 && (await subRow(s))?.crmContactId === null;
+    const r2 = await consume(formEvt(tidL, fL.id, s));
+    const after = await P.crmContact.count({ where: { tenantId: tidL, email: mailOf("lab-form") } });
+    chk("C1.8-X4.12", "forms lead step THROWS (CrmContact insert forced to fail) ⇒ the event FAILS for retry · nothing half-written · redelivery creates exactly one contact + crmContactId",
+      !r.ok && noneYet && r2.ok && after === 1 && !!(await subRow(s))?.crmContactId,
+      "fails · retry ⇒ 1", `${r.ok ? "resolved (lead lost!)" : "failed"} noneYet=${noneYet} retry=${r2.ok ? "ok" : r2.err} contacts=${after} warns=${warns.length}`);
   }
   {
     const qt = await mkDoc(tidL, accL, "QUOTATION");
@@ -1066,9 +1072,14 @@ try {
     try { await failWrites(tidL, "CrmDealLine"); r = await consume(apEvt(tidL, "approval.request.approved", "crm.discount", `${a.d}:s1`, a.req)); } finally { await dropTriggers(); }
     const n1 = await P.appNotification.count({ where: { tenantId: tidL } });
     const warns = await opsSince(tidL, t0);
-    chk("C1.8-X4.15", "compose — the CRM discount extra THROWS (deal-line insert forced to fail) ⇒ the event is NOT failed · the base result is intact (the approval notification was written) · WARN · the deal still waits for that request",
-      r.ok && n1 === n0 + 1 && warns.length >= 1 && (await dealRow(a.d))?.pendingApprovalRequestId === a.req, "resolves · base intact",
-      `${r.err || "resolved"} notifications ${n0}→${n1} warns=${warns.length} pending=${(await dealRow(a.d))?.pendingApprovalRequestId === a.req}`);
+    // ORACLE-EDIT C1.8-X4.15 (controller · addendum ruling 6, 19 Sep): the discount effect is a RETRYING first step (an approved
+    //   discount must never be lost) ⇒ failure fails the event BEFORE the notification · redelivery applies once + one notification
+    const pendingStill = (await dealRow(a.d))?.pendingApprovalRequestId === a.req;
+    const r2 = await consume(apEvt(tidL, "approval.request.approved", "crm.discount", `${a.d}:s1`, a.req));
+    const n2 = await P.appNotification.count({ where: { tenantId: tidL } });
+    chk("C1.8-X4.15", "discount step THROWS (deal-line insert forced to fail) ⇒ the event FAILS for retry · no notification yet · still pending · redelivery applies the lines once + exactly one notification",
+      !r.ok && n1 === n0 && pendingStill && r2.ok && (await lineCount(a.d)) === 1 && (await dealRow(a.d))?.pendingApprovalRequestId === null && n2 === n0 + 1,
+      "fails · retry ⇒ applied once", `${r.ok ? "resolved" : "failed"} notifications ${n0}→${n1}→${n2} pending=${pendingStill} retry=${r2.ok ? "ok" : r2.err} lines=${await lineCount(a.d)} warns=${warns.length}`);
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

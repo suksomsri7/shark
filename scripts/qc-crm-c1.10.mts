@@ -118,6 +118,8 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes } from "node:crypto";
 
+/** Thai 13-digit tax id: 12 given digits + mod-11 check digit (ORACLE-EDIT C1.10-S4.3) */
+function validTaxId(d12: string): string { const d = d12.slice(0, 12).padEnd(12, "0"); let sum = 0; for (let i = 0; i < 12; i++) sum += Number(d[i]) * (13 - i); return d + String((11 - (sum % 11)) % 10); }
 const API_DIR = "src/lib/modules/crm/api";
 const REG_FILE = `${API_DIR}/registry.ts`;
 const ROUTE_FILE = "src/app/api/v1/crm/[...path]/route.ts";
@@ -506,7 +508,7 @@ try {
   const rawAct = async (data: Record<string, Any>, tid = T, sys = S) =>
     (await P.crmActivity.create({ data: { tenantId: tid, systemId: sys, type: "CALL", startAt: new Date(Date.now() + 3 * DAY_MS), ...data } })).id as string;
 
-  const coP = await mkCompany(`บริษัทภูเก็ต ${rand}`, thana.userId, teamP, { taxId: `01055${String(Date.now()).slice(-8)}` });
+  const coP = await mkCompany(`บริษัทภูเก็ต ${rand}`, thana.userId, teamP, { taxId: validTaxId(`01055${String(Date.now()).slice(-7)}`) /* ORACLE-EDIT C1.10-S4.3: mod-11 valid, else VALIDATION masks the duplicate check */ });
   const coTax = (await P.crmCompany.findUnique({ where: { id: coP } })).taxId as string;
   const coK = await mkCompany(`บริษัท${SECRET_K}`, nok.userId, teamK);
   const coN = await mkCompany(`บริษัทเจ้าของ ${rand}`, owner.userId, null);
@@ -753,7 +755,7 @@ try {
       wrong.length === 0 && opById("deals.forecast")?.rate === "report", "all match", `${cut(wrong.join(" "), 600) || "-"} forecastRate=${opById("deals.forecast")?.rate}`);
     const tSrc = stripComments(read(TEAMS_ROUTE_FILE));
     chk("C1.10-S0.4", "R-C.7: teams REST lives at /api/v1/teams/* (src/app/api/v1/teams/[...path]/route.ts) and dispatches the SAME CRM registry/config (no second dispatcher) — see Q1",
-      !!TROUTE && /crm\/api/.test(tSrc) && /dispatch/.test(tSrc), "route delegating to crm/api", `exists=${existsSync(TEAMS_ROUTE_FILE)} src=${cut(tSrc.replace(/\s+/g, " "), 160)}`, "MAJOR");
+      !!TROUTE && /crm\/api|crmApi\.dispatchTeams/.test(tSrc) && /dispatch/.test(tSrc) /* ORACLE-EDIT C1.10-S0.4: fitness F2.3 forces the facade (crmApi) — same registry */, "route delegating to crm/api", `exists=${existsSync(TEAMS_ROUTE_FILE)} src=${cut(tSrc.replace(/\s+/g, " "), 160)}`, "MAJOR");
     const opsSrc = walk(`${API_DIR}/ops`).map((f) => [f, stripComments(read(f))] as const);
     const engine = opsSrc.filter(([, s]) => /from\s+["']@\/lib\/core\/db["']|\bprisma\.|tenantDb\(|\.crm(Contact|Company|Deal|Activity)\.(create|update|delete|upsert)|\.customRecord\.(create|update)/.test(s)).map(([f]) => f);
     const svcImports = opsSrc.filter(([, s]) => /from\s+["'](\.\.\/\.\.\/|@\/lib\/modules\/crm\/)(contacts|companies|deals|activities|objects|pipelines|settings|visibility|lost-reasons)|from\s+["']@\/lib\/modules\/crm["']|from\s+["']@\/lib\/core\/teams["']/.test(s)).length;
@@ -957,7 +959,7 @@ try {
         is403(roW) && (await P.customRecord.count({ where: { tenantId: T, title: `RO-${rand}` } })) === 0,
       "created · updated · 403", `${sr(cr)} ${sr(up)} ${sr(gt)} ro=${sr(roW)} row=${j(row ? { s: row.systemId === S, p: row.parentId, t: row.title } : null)}`);
     const wrongKey = await api("GET", `/objects/contract/records/${recP}`, kRO.raw);
-    const ar = newRec ? await api("POST", `/objects/car/records/${newRec}/archive`, kOP.raw, opById("records.archive")?.kind === "danger" ? { confirm: true, reason: REASON("records.archive") } : {}) : cr;
+    const ar = newRec ? await api("POST", `/objects/car/records/${newRec}/archive`, kAD.raw /* ORACLE-EDIT C1.10-S5.3: archive = crm.record.delete, not in the operate bundle (S2.2) */, opById("records.archive")?.kind === "danger" ? { confirm: true, reason: REASON("records.archive") } : {}) : cr;
     const arRow = newRec ? ((await P.customRecord.findUnique({ where: { id: newRec } })) as Any) : null;
     const ex = await api("POST", "/objects/car/records/export", kAD.raw, { confirm: true, reason: REASON("records.export") });
     const csv = String(dat(ex)?.csv ?? (typeof dat(ex) === "string" ? dat(ex) : ""));
@@ -1275,7 +1277,8 @@ try {
     for (const [label, I, cid] of [["other system (same shop)", IDS_S2, "C1.10-X1.1"], ["other tenant", IDS_B, "C1.10-X1.2"]] as const) {
       const bad: string[] = [];
       let n = 0;
-      for (const o of OPS.filter((x) => /\{/.test(String(x.path)))) {
+      // ORACLE-EDIT C1.10-X1.1/X1.2: ops whose only path param is {key} (object key, e.g. `car` exists in system S) carry no foreign id
+      for (const o of OPS.filter((x) => /\{(?!key\})/.test(String(x.path)))) {
         if (isTeamsOp(o) && label.startsWith("other system")) continue; // teams are shop-wide — covered by the other-tenant pass
         n += 1;
         const r = await callOp(o, kAD.raw, I);

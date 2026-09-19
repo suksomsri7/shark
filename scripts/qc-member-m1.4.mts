@@ -64,7 +64,11 @@ try {
   const outbox = (type: string, pred: (p: Any) => boolean) => P.outboxEvent.findMany({ where: { tenantId: tid, type }, orderBy: { createdAt: "desc" }, take: 20 }).then((rows: Any[]) => rows.find((r) => pred(r.payload)));
   // สมาชิกที่มองเห็นได้เฉพาะสาขาตน (ไม่มีกิจกรรมข้ามสาขา) — เลือกจาก DB จริง ไม่เดาจาก index
   const pOnly = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, homeUnitId: units.patong, status: "ACTIVE" as Any, activities: { none: { unitId: units.kata } } } as Any, orderBy: { memberCode: "asc" } }))!;
-  const kOnly = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, homeUnitId: units.kata, status: "ACTIVE" as Any, activities: { none: { unitId: units.patong } } } as Any, orderBy: { memberCode: "desc" } }))!;
+  // ORACLE-EDIT M1.4-S3.5/S5.1/S5.2 (CRM controller · 19 Sep · root cause proven by probe-m14-rootcause): memberCode is random ⇒
+  //   ~1 reseed in 20 this picked m(41), which S3.5 (line ~198) then gives a patong visit ⇒ thana legitimately sees it ⇒ false
+  //   CRITICALs. kOnly must never be m(41); a clash is a setup error, not a finding.
+  const kOnly = (await prisma.customer.findFirst({ where: { memberSystemId: SYS, homeUnitId: units.kata, status: "ACTIVE" as Any, id: { notIn: [m(41).id] }, activities: { none: { unitId: units.patong } } } as Any, orderBy: { memberCode: "desc" } }))!;
+  if (!kOnly || kOnly.id === m(41).id) throw new Error("setup: kOnly must be a kata-only member other than m(41)");
 
   // ═══ S0.0 migration member_v2_b (หนี้จาก M1.2): phone2/facebook + MemberLookupTarget.USER ═══
   const custCols = new Set(((await prisma.$queryRawUnsafe(`select column_name from information_schema.columns where table_name='Customer'`)) as { column_name: string }[]).map((c) => c.column_name));

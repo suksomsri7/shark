@@ -10,7 +10,12 @@ if command -v flock >/dev/null 2>&1 && [ -z "${CI:-}${VERCEL:-}" ]; then
   # CRM RUN (19 Sep): QC branch #2 has its own DB-suite lock (GATE_LOCK_FILE, set by scripts/qc2.sh) — but memory-heavy
   #   work (typecheck / next build / serve) always queues on the ONE machine lock: 2 cores · 7 GB cannot hold two at once
   LOCK="${GATE_LOCK_FILE:-/tmp/shark-gate.lock}"
-  case " $* " in *" typecheck "*|*"next build"*|*" build "*|*acc-v2-serve*|*" tsc "*) LOCK=/tmp/shark-gate.lock ;; esac
+  case " $* " in
+    *" typecheck "*|*"next build"*|*" build "*|*acc-v2-serve*|*" tsc "*)
+      # heavy: hold BOTH locks so neither QC lane runs suites during it (19 Sep: global OOM killed next build twice
+      #   while QC2 suites ran beside it on a 7 GB box)
+      exec flock -w 3600 /tmp/shark-gate.lock flock -w 3600 /tmp/shark-gate-qc2.lock "$@" ;;
+  esac
   exec flock -w 1800 "$LOCK" "$@"
 fi
 exec "$@"

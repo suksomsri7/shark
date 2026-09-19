@@ -31,3 +31,6 @@ export {
    */
   listConversationsByParty,
 } from "./party-bridge";
+
+// CRM C1.8 ▸ ผูก ChatContact → Party (ครั้งเดียว · มี audit) — ผู้เรียก: สะพาน CRM `platform/crm-bridges/chat.ts` ◂
+export { linkChatContactParty } from "./party-bridge";

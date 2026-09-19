@@ -7,6 +7,7 @@
 //   (เหมือน pos/account-bridge). ทุก write เป็น updateMany + guard สถานะ → idempotent (drain ซ้ำปลอดภัย)
 
 import { prisma } from "@/lib/core/db";
+import { logOps } from "@/lib/core/ops";
 
 export type ApprovalEffectEvent = {
   tenantId: string;
@@ -147,23 +148,10 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   //   🔴 วันนี้เป็น **NO-OP เงียบ ๆ โดยตั้งใจ**: ไม่ throw และไม่เขียนอะไรเลย — คำขอที่ถูกอนุมัติ/ปฏิเสธ
   //      ยังถูกบันทึกครบในสายอนุมัติเอง (ApprovalRequest + แจ้งเตือน) · ใบเจ้าของเรื่องมาเติมกิ่งของตัวเอง
   //      ที่นี่ ห้ามแตะกิ่งของใบอื่น
-  if (entityType === "crm.discount") {
-    // CRM C1.5 ▸ ส่วนลดเกินเพดานของดีล — entityId = `<dealId>:<รหัสการยื่น>` · รายการที่รออนุมัติพักไว้ที่ CrmDeal.pendingLines
-    //   อนุมัติ = ใช้รายการที่พักไว้ครั้งเดียว · ปฏิเสธ = ล้างของที่พักไว้ (รายการ/มูลค่าเดิมคงอยู่)
-    //   idempotent: บริการดีลทำเฉพาะเมื่อดีลยังรอ "คำขอใบนี้" อยู่ (ใต้ล็อกแถว) ⇒ drain ซ้ำ/พร้อมกันไม่ใช้ส่วนลดซ้ำ
-    //   dynamic import เหตุผลเดียวกับกิ่งของสมาชิกข้างบน (วงโหลดไฟล์ของ facade) ◂ CRM C1.5
-    if (!requestId) return;
-    const crm = await import("@/lib/modules/crm");
-    await crm.deals.applyDiscountDecision({ tenantId: evt.tenantId, requestId, entityId, approved });
-    return;
-  }
-  if (entityType === "crm.commission") {
-    return;
-  }
-  if (entityType === "crm.reassign") {
-    return;
-  }
-  if (entityType === "crm.portal_request") {
+  // CRM C1.8 ▸ กิ่ง `crm.*` ย้ายออกไปเป็น "ขั้นแรกที่ retry ได้" (`applyCrmApprovalEffect` ข้างล่าง · `crmFirst` ใน outbox-consumers.ts)
+  //   เหตุผล: ที่นี่วิ่ง **หลัง** แจ้งเตือนสำเร็จเท่านั้น (withApprovalEffect) ⇒ แจ้งเตือนล้ม = ส่วนลดไม่ถูกใช้ · และส่วนลดล้ม = event ล้มทั้งใบ
+  //   ทั้งสองอย่างผิดสัญญา compose (มติผู้คุมงาน C1.8 ข้อ 3) ⇒ ที่นี่ไม่ทำอะไรกับ crm.* อีก (ห้ามทำซ้ำสองที่) ◂
+  if (entityType.startsWith("crm.")) {
     return;
   }
 
@@ -176,3 +164,33 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   }
   // entityType อื่น → เงียบ ๆ
 }
+
+// CRM C1.8 ▸ ผลของการอนุมัติชนิด `crm.*` — **ขั้นแรกที่ retry ได้** ของ `approval.request.approved|rejected` (มติผู้คุมงาน C1.8 ข้อ 6)
+//   ผู้เรียกวิ่งขั้นนี้ก่อนแจ้งเตือน/automation/บอร์ดงาน: ล้มชั่วคราว ⇒ event ล้ม ⇒ ส่งใหม่ (ยังไม่มีแจ้งเตือน/automation ซ้ำ เพราะยังไม่ได้วิ่ง) ·
+//   ใช้เฉพาะคำขอที่ดีลรออยู่ "ใบนี้" ใต้ล็อกแถวดีล (applyDiscountDecision) ⇒ ส่งซ้ำไม่ใช้ส่วนลดซ้ำ · ข้อมูลใช้ไม่ได้ถาวร = WARN แล้วจบ
+//   · crm.discount       → ใบ C1.5: entityId = `<dealId>:<รหัสการยื่น>` · อนุมัติ = ใช้รายการที่พักไว้ที่ CrmDeal.pendingLines ครั้งเดียว ·
+//                          ปฏิเสธ = ล้างของที่พักไว้ · AUDIT-CLASS X4: บริการดีลทำเฉพาะเมื่อดีลยังรอ "คำขอใบนี้" อยู่ (ใต้ล็อกแถว)
+//                          ⇒ drain ซ้ำ/พร้อมกันไม่ใช้ส่วนลดซ้ำ
+//   · crm.reassign       → รับทราบเท่านั้น (ผลจริง = ใบ C3.2 · มติผู้คุมงาน C1.7 ข้อ 7)
+//   · crm.commission     → ใบ C3.3 · crm.portal_request → ใบ C3.5 (วันนี้ไม่ทำอะไร)
+//   dynamic import: crm facade → … → scheduleDrain ที่ outbox-consumers = วงโหลดไฟล์ (เหตุผลเดียวกับกิ่งสมาชิกข้างบน)
+export async function applyCrmApprovalEffect(evt: ApprovalEffectEvent): Promise<void> {
+  const { entityType, entityId, requestId } = metaOf(evt.payload);
+  if (!entityId || !entityType.startsWith("crm.")) return;
+  const approved = evt.type === "approval.request.approved";
+  if (entityType === "crm.discount") {
+    if (!requestId) return;
+    const crm = await import("@/lib/modules/crm");
+    try {
+      await crm.deals.applyDiscountDecision({ tenantId: evt.tenantId, requestId, entityId, approved });
+    } catch (e) {
+      // ข้อมูลใช้ไม่ได้ถาวร (DealsError — ดีลหาย/ปิด/ไม่ตรงเงื่อนไข) = ส่งซ้ำก็ไม่ผ่าน ⇒ WARN (id ล้วน) แล้วจบ
+      // ล้มชั่วคราว (ฐานข้อมูล) ⇒ โยนต่อ ⇒ ผู้เรียกทำให้ event ล้มเพื่อ retry (มติผู้คุมงาน C1.8 ข้อ 6)
+      if (!(e instanceof crm.deals.DealsError)) throw e;
+      await logOps("WARN", "crm", `ใช้ผลอนุมัติส่วนลดกับดีลไม่ได้ (${e.code}) — คำขอ ${requestId}`, { tenantId: evt.tenantId });
+    }
+    return;
+  }
+  // crm.reassign · crm.commission · crm.portal_request · อื่น ๆ → ไม่ทำอะไร (ใบเจ้าของเรื่องมาเติม)
+}
+// ◂ CRM C1.8

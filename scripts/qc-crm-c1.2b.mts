@@ -289,6 +289,8 @@ try {
   const unit2 = await P.businessUnit.create({ data: { tenantId: tidA, type: "SHOP", name: "สาขา 2", slug: `${TAG}-u2` } });
   const mk = async (tid: string, type: string, label: string) => (await sysSvc.createSystem(tid, type, `${label} ${TAG}`)).id as string;
   const crmA = await mk(tidA, "CRM", "CRM");
+  // ORACLE-EDIT C1.2b-X4.x (controller · C1.8): the custom.record.created timeline extra runs only for uiVersion-2 systems (C1.2b ruling 7)
+  await P.appSystem.update({ where: { id: crmA }, data: { settings: { crm: { uiVersion: 2, bridgesEnabled: true } } } });
   const crmA2 = await mk(tidA, "CRM", "CRM สอง");
   const crmA3 = await mk(tidA, "CRM", "CRM สาม");
   const crmTpl = await mk(tidA, "CRM", "CRM เทมเพลต");

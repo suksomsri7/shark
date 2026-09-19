@@ -43,6 +43,7 @@ import { CompaniesError } from "./companies-shared";
 import { canAdvanceLifecycle } from "./rules";
 // CRM C1.5 ▸ ดีลของ "แปลง lead" + ดีลเปิดที่ย้ายตามบริษัท เขียนผ่านบริการดีล (ผู้เขียนคอลัมน์ดีลที่เดียว) ◂
 import * as deals from "./deals";
+import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
 import {
   CONTACT_BULK_MAX,
   CONTACT_EXPORT_MAX_ROWS,
@@ -334,10 +335,15 @@ const seededSystems = new Set<string>();
  */
 export async function ensureContactFields(ctx: ContactsCtx, actor: MemberActor): Promise<void> {
   const a = await enter(ctx, actor);
+  await applyContactFieldTemplate(ctx, a);
+}
+
+/** CRM C1.8 ▸ ตัว seed จริง — ใช้ร่วมระหว่างทางที่มีคน (ensureContactFields) กับทางของสะพาน (actor = null · engine ไม่ต้องการ actor สำหรับเทมเพลตระบบ) ◂ */
+async function applyContactFieldTemplate(ctx: ContactsCtx, actor: MemberActor | null): Promise<void> {
   try {
     await prisma.$transaction(async (tx) => {
       await lockKey(tx, `crm:contact-fields:${ctx.systemId}`);
-      await (await engine()).applyTemplate(fctx(ctx, a), "system", {}, tx);
+      await (await engine()).applyTemplate(fctx(ctx, actor), "system", {}, tx);
     }, TX_OPTS);
     seededSystems.add(ctx.systemId);
   } catch (e) {
@@ -347,9 +353,9 @@ export async function ensureContactFields(ctx: ContactsCtx, actor: MemberActor):
 }
 
 /** best-effort: seed ไม่ได้ห้ามทำให้การสร้าง/แก้ผู้ติดต่อล้ม */
-async function seedContactFields(ctx: ContactsCtx, actor: MemberActor): Promise<void> {
+async function seedContactFields(ctx: ContactsCtx, actor: MemberActor | null): Promise<void> {
   if (seededSystems.has(ctx.systemId)) return;
-  await ensureContactFields(ctx, actor).catch(() => undefined);
+  await applyContactFieldTemplate(ctx, actor).catch(() => undefined);
 }
 
 // ───────────────────────── ตรวจค่าที่กรอก (AUDIT-CLASS X6: ตัวตรวจชุดเดียวของสร้าง · แก้ · นำเข้า) ─────────────────────────
@@ -421,7 +427,8 @@ function parseChannelKey(v: unknown): string | null {
 }
 
 const UTM_KEYS = ["source", "medium", "campaign", "term", "content"] as const;
-const SOURCE_DETAIL_KEYS = ["formId", "linkId", "pageUrl", "referrer", "chatContactId", "staffUserId", "importJobId", "campaignId"] as const;
+// CRM C1.8 ▸ + submissionId (ลีดจากฟอร์มชี้คำตอบที่ทำให้เกิด — สะพานฟอร์ม · สัญญาข้อสอบ C1.8 S2.2) ◂
+const SOURCE_DETAIL_KEYS = ["formId", "submissionId", "linkId", "pageUrl", "referrer", "chatContactId", "staffUserId", "importJobId", "campaignId"] as const;
 
 /** AUDIT-CLASS X6: sourceDetail เก็บเฉพาะคีย์ที่รู้จัก · ค่าข้อความ ≤ 500 · url เฉพาะ http/https · utm 5 คีย์เรียงคงที่ */
 function cleanSourceDetail(raw: unknown): Record<string, unknown> | null {
@@ -521,6 +528,12 @@ function cleanCreate(input: CreateContactInput): CreateClean {
  *    ผ่าน `updateContactInfo` (ค่าชนกับรายอื่น = บันทึกคู่ "อาจเป็นคนเดียวกัน" ไม่ใช่ล้ม)
  */
 async function personParty(tx: Tx, tenantId: string, input: { name: string; phone: string | null; email: string | null }): Promise<string> {
+  // CRM C1.8 ▸ AUDIT-CLASS X3: เบอร์/อีเมลเดียวกันจากหลายทาง (คนละระบบ CRM · สะพานแชท · คนละโพรเซส) ⇒ Party เดียว —
+  //   advisory lock ระดับร้านต่อ (เบอร์ normalize) / (อีเมล) เรียงคีย์ ก่อนหา/สร้าง · ลำดับล็อกของทั้งไฟล์: ตัวตนระบบ (`crm:contact-ident:*`) → Party ◂
+  const pKeys: string[] = [];
+  if (input.phone) pKeys.push(`crm:person-party:${tenantId}:p:${party.normalizePartyPhone(input.phone) || input.phone}`);
+  if (input.email) pKeys.push(`crm:person-party:${tenantId}:e:${input.email.toLowerCase()}`);
+  for (const k of pKeys.sort()) await lockKey(tx, k);
   const hit = await party.findOrCreate(tenantId, { name: input.name, phone: input.phone, email: input.email, kind: "PERSON" }, tx);
   const prof = await party.getProfile(tenantId, hit.id, tx);
   if (prof && prof.kind !== "COMPANY" && !prof.mergedIntoId) return hit.id;
@@ -608,57 +621,72 @@ type CreateCoreResult = { row: CrmContact; created: boolean; duplicates: Duplica
  *   อ่านตัวซ้ำหลังได้ล็อก (READ COMMITTED = เห็นของคนก่อนหน้า) ⇒ ได้แถวเดียว ผู้แพ้ได้ `created:false` + ตัวซ้ำ
  */
 async function createCore(ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: CreateCoreOpts): Promise<CreateCoreResult> {
-  // "คนที่สร้าง" = actor ที่ยืนยันตัวแล้ว (ctx.actorUserId เป็นแค่สำเนา — ไม่ตรงกัน ให้ actor ชนะ) · ไม่มี actor (v1/ฟอร์ม) = ctx
-  const pick = assignment.pick(ctx, { fixedOwnerUserId: c.ownerUserId, creatorUserId: actor?.userId || actorId(ctx), via: opts.via });
-  const name = opts.legacy?.name ?? joinName(c.firstName, c.lastName);
-  const custom = opts.custom ?? {};
   try {
     return await prisma.$transaction(async (tx) => {
-      const keys: string[] = [];
-      if (c.phone) keys.push(`crm:contact-ident:${ctx.systemId}:p:${party.normalizePartyPhone(c.phone) || c.phone}`);
-      if (c.email) keys.push(`crm:contact-ident:${ctx.systemId}:e:${c.email.toLowerCase()}`);
-      for (const k of keys.sort()) await lockKey(tx, k);
+      for (const k of identKeys(ctx, c.phone, c.email)) await lockKey(tx, k);
       const dup = await duplicateHits(tx, ctx, { phone: c.phone, email: c.email });
       if (dup.hits.length > 0 && !opts.force) return { row: dup.rows[0] as CrmContact, created: false, duplicates: dup.hits };
-      const partyId = await personParty(tx, ctx.tenantId, { name, phone: c.phone, email: c.email });
-      const now = new Date();
-      const row = await tx.crmContact.create({
-        data: {
-          tenantId: ctx.tenantId,
-          systemId: ctx.systemId,
-          name,
-          firstName: c.firstName,
-          lastName: c.lastName,
-          titleTh: c.titleTh,
-          phone: c.phone,
-          email: c.email,
-          jobTitle: c.jobTitle,
-          department: c.department,
-          lineUserId: c.lineUserId,
-          company: opts.legacy?.company ?? null,
-          source: opts.legacy?.source ?? null,
-          note: opts.legacy?.note ?? null,
-          sourceKind: c.sourceKind,
-          sourceChannel: c.sourceChannel,
-          sourceDetail: (c.sourceDetail ?? undefined) as Prisma.InputJsonValue | undefined,
-          tags: c.tags,
-          ownerUserId: pick.ownerUserId,
-          assignedAt: pick.ownerUserId ? now : null,
-          assignedBy: pick.ownerUserId ? pick.assignedBy : null,
-          partyId,
-        },
-      });
-      if (Object.keys(custom).length > 0) {
-        await (await engine()).lockRecordForFieldWrite(tx, row.id);
-        await (await engine()).setFieldValues(fctx(ctx, actor), row.id, custom, { via: opts.via === "IMPORT" ? "IMPORT" : opts.via === "API" ? "API" : "STAFF", byUserId: actorId(ctx) }, tx);
-      }
-      await emitContactEvent(tx, ctx, "created", row.id, "1", { contactId: row.id, partyId: row.partyId });
-      if (row.ownerUserId) await emitContactEvent(tx, ctx, "assigned", row.id, "1", { contactId: row.id, ownerUserId: row.ownerUserId, previousOwnerUserId: null });
+      const row = await insertContactInTx(tx, ctx, actor, c, opts);
       return { row, created: true, duplicates: dup.hits };
     }, TX_OPTS);
   } catch (e) {
     throw mapError(e);
   }
+}
+
+/** กุญแจ advisory ของตัวตนในระบบนี้ (เบอร์ normalize · อีเมลตัวเล็ก) เรียงแล้ว — ใช้ทุกทางที่สร้างผู้ติดต่อ (AUDIT-CLASS X3) */
+function identKeys(ctx: ContactsCtx, phone: string | null, email: string | null): string[] {
+  const keys: string[] = [];
+  if (phone) keys.push(`crm:contact-ident:${ctx.systemId}:p:${party.normalizePartyPhone(phone) || phone}`);
+  if (email) keys.push(`crm:contact-ident:${ctx.systemId}:e:${email.toLowerCase()}`);
+  return keys.sort();
+}
+
+/**
+ * เขียนแถวผู้ติดต่อใหม่ 1 แถวใน tx ของผู้เรียก (ผู้เรียกถือล็อกตัวตนแล้ว) — ผู้เขียนแถวใหม่ที่เดียวของไฟล์:
+ * ผู้ดูแลจาก `assignment.pick` (ใบ C2.3 เปลี่ยนตัวเลือก) · Party (ส่งมา = ผูกตรง · ไม่ส่ง = `personParty`) · ฟิลด์กำหนดเอง ·
+ * event `crm.contact.created` (+ `crm.contact.assigned` เมื่อได้ผู้ดูแล) ใน tx เดียวกัน
+ */
+async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: Omit<CreateCoreOpts, "force"> & { partyId?: string | null }): Promise<CrmContact> {
+  // "คนที่สร้าง" = actor ที่ยืนยันตัวแล้ว (ctx.actorUserId เป็นแค่สำเนา — ไม่ตรงกัน ให้ actor ชนะ) · ไม่มี actor (v1/ฟอร์ม/สะพาน) = ctx
+  const pick = assignment.pick(ctx, { fixedOwnerUserId: c.ownerUserId, creatorUserId: actor?.userId || actorId(ctx), via: opts.via });
+  const name = opts.legacy?.name ?? joinName(c.firstName, c.lastName);
+  const custom = opts.custom ?? {};
+  const partyId = opts.partyId ?? (await personParty(tx, ctx.tenantId, { name, phone: c.phone, email: c.email }));
+  const now = new Date();
+  const row = await tx.crmContact.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      name,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      titleTh: c.titleTh,
+      phone: c.phone,
+      email: c.email,
+      jobTitle: c.jobTitle,
+      department: c.department,
+      lineUserId: c.lineUserId,
+      company: opts.legacy?.company ?? null,
+      source: opts.legacy?.source ?? null,
+      note: opts.legacy?.note ?? null,
+      sourceKind: c.sourceKind,
+      sourceChannel: c.sourceChannel,
+      sourceDetail: (c.sourceDetail ?? undefined) as Prisma.InputJsonValue | undefined,
+      tags: c.tags,
+      ownerUserId: pick.ownerUserId,
+      assignedAt: pick.ownerUserId ? now : null,
+      assignedBy: pick.ownerUserId ? pick.assignedBy : null,
+      partyId,
+    },
+  });
+  if (Object.keys(custom).length > 0) {
+    await (await engine()).lockRecordForFieldWrite(tx, row.id);
+    await (await engine()).setFieldValues(fctx(ctx, actor), row.id, custom, { via: opts.via === "IMPORT" ? "IMPORT" : opts.via === "API" ? "API" : "STAFF", byUserId: actorId(ctx) }, tx);
+  }
+  await emitContactEvent(tx, ctx, "created", row.id, "1", { contactId: row.id, partyId: row.partyId });
+  if (row.ownerUserId) await emitContactEvent(tx, ctx, "assigned", row.id, "1", { contactId: row.id, ownerUserId: row.ownerUserId, previousOwnerUserId: null });
+  return row;
 }
 
 /** ตรวจบริษัทที่เลือกให้ผู้ติดต่อ (ระบบเดียวกัน · ยังใช้งาน) */
@@ -714,12 +742,28 @@ export async function createContactFromLegacy(
   input: { name: string; phone?: string | null; email?: string | null; company?: string | null; source?: string | null; ownerUserId?: string | null },
 ): Promise<{ id: string }> {
   await resolveSystem(ctx);
+  const owner = str(input?.ownerUserId);
+  if (owner) await assertMember(ctx, owner);
+  const legacySource = str(input?.source);
+  const args = legacyCreateArgs(input, owner);
+  const res = await createCore(ctx, null, args.clean, { force: true, via: legacySource === "AI" ? "API" : "USER", legacy: args.legacy });
+  await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action: "crm.contact.create", targetType: "CrmContact", targetId: res.row.id, after: { partyId: res.row.partyId, via: "v1", source: legacySource } });
+  return { id: res.row.id };
+}
+
+/**
+ * ค่าที่ทางเข้า v1 ส่งให้ `createCore` (ใช้ร่วมกับสะพานฟอร์ม C1.8 — ฟอร์มสาธารณะต้องเข้า CRM ได้เสมอ ไม่ว่าจะพิมพ์เบอร์/อีเมลรูปแบบไหน)
+ * ชื่อเต็มแยกที่ช่องว่างแรก · v1 ไม่เคยตรวจรูปแบบเบอร์/อีเมล · รีวิว C1.4 S7: ค่าที่รูปแบบผิด **ไม่ทิ้ง** — เก็บตามที่พิมพ์ไว้ในโน้ต
+ * (ไม่ใช้จับคู่ Party/ตัวซ้ำ) ให้พนักงานแก้เอง
+ */
+function legacyCreateArgs(
+  input: { name: string; phone?: string | null; email?: string | null; company?: string | null; source?: string | null },
+  owner: string | null,
+): { clean: CreateClean; legacy: NonNullable<CreateCoreOpts["legacy"]> } {
   const full = String(input?.name ?? "").trim().replace(/\s+/g, " ");
   const at = full.indexOf(" ");
   const firstName = (at < 0 ? full : full.slice(0, at)).slice(0, CONTACT_NAME_MAX);
   const lastName = at < 0 ? null : full.slice(at + 1).slice(0, CONTACT_NAME_MAX) || null;
-  // v1 ไม่เคยตรวจรูปแบบเบอร์/อีเมล — lead ต้องเข้า CRM ได้เสมอ (ไม่ทำให้ฟอร์มลูกค้าล้ม) · รีวิว C1.4 S7: ค่าที่ตรวจไม่ผ่าน
-  //   **ไม่ทิ้ง** — เก็บตามที่พิมพ์ไว้ในโน้ต (ไม่ใช้จับคู่ Party/ตัวซ้ำ) ให้พนักงานแก้เอง
   const rawPhone = str(input?.phone);
   const rawEmail = str(input?.email);
   const phone = rawPhone && !contactPhoneProblem(rawPhone) ? storePhone(rawPhone) : null;
@@ -728,12 +772,8 @@ export async function createContactFromLegacy(
   const note = kept.length > 0 ? `ข้อมูลติดต่อจากฟอร์มที่รูปแบบยังไม่ถูกต้อง (เก็บตามที่กรอก) — ${kept.join(" · ")}` : null;
   const legacySource = str(input?.source);
   const sourceKind: MemberSource = legacySource === "FORM" ? "WEB_FORM" : legacySource === "AI" ? "API" : "CRM";
-  const owner = str(input?.ownerUserId);
-  if (owner) await assertMember(ctx, owner);
-  const res = await createCore(
-    ctx,
-    null,
-    {
+  return {
+    clean: {
       firstName: firstName || "ไม่ระบุชื่อ",
       lastName,
       titleTh: null,
@@ -749,10 +789,8 @@ export async function createContactFromLegacy(
       ownerUserId: owner,
       companyId: null,
     },
-    { force: true, via: legacySource === "AI" ? "API" : "USER", legacy: { company: str(input?.company)?.slice(0, CONTACT_TEXT_MAX) ?? null, source: legacySource, name: full || "ไม่ระบุชื่อ", note } },
-  );
-  await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action: "crm.contact.create", targetType: "CrmContact", targetId: res.row.id, after: { partyId: res.row.partyId, via: "v1", source: legacySource } });
-  return { id: res.row.id };
+    legacy: { company: str(input?.company)?.slice(0, CONTACT_TEXT_MAX) ?? null, source: legacySource, name: full || "ไม่ระบุชื่อ", note },
+  };
 }
 
 // ═════════════════════════ แก้ไข ═════════════════════════
@@ -2028,9 +2066,11 @@ export type ContactBrief = {
 
 /**
  * การ์ดย่อของผู้ติดต่อในระบบ CRM นี้จาก contactId หรือ partyId (ไม่มีข้อมูลติดต่อ) — Party ของร้านอื่น/ระบบอื่น = null
- * ผู้เรียก (โมดูลอื่น) ตรวจสิทธิ์ของตัวเองมาก่อน · ขอบเขต = ร้าน + ระบบที่ resolve ใหม่
+ * CRM C1.8 ▸ (หนี้ C1.4) `actor` **บังคับ** และการอ่านผ่าน `contactWhere` (การมองเห็นของ C1.7) — ไม่มี actor / ลูกค้า = null
+ *   มองไม่เห็นผู้ติดต่อ = null เหมือน "ไม่มี" (AUDIT-CLASS X1: ไม่บอกว่ามีอยู่นอกขอบเขต) ◂
  */
-export async function briefFor(ctx: ContactsCtx, key: { contactId?: string | null; partyId?: string | null }): Promise<ContactBrief | null> {
+export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | undefined, key: { contactId?: string | null; partyId?: string | null }): Promise<ContactBrief | null> {
+  if (!actor || actor.role === "CUSTOMER") return null;
   await resolveSystem(ctx);
   const cid = str(key?.contactId);
   const pid = str(key?.partyId);
@@ -2038,12 +2078,11 @@ export async function briefFor(ctx: ContactsCtx, key: { contactId?: string | nul
   let partyIds: string[] = [];
   if (!cid && pid) partyIds = [...new Set([pid, await party.resolveCanonical(ctx.tenantId, pid)])];
   const row = await prisma.crmContact.findFirst({
-    where: { ...identityScope(ctx), mergedIntoId: null, ...(cid ? { id: cid } : { partyId: { in: partyIds }, archivedAt: null }) },
+    where: { AND: [await contactWhere(ctx, actor), { ...identityScope(ctx), mergedIntoId: null, ...(cid ? { id: cid } : { partyId: { in: partyIds }, archivedAt: null }) }] },
     orderBy: [{ createdAt: "asc" }],
   });
   if (!row) return null;
-  // ไม่มี actor ⇒ ไม่อ่านตารางบริษัท (ชื่ออ่านผ่านบริการบริษัทได้เฉพาะเมื่อมีคนดู) — การ์ดย่อให้ companyId + ชื่อข้อความเดิม (v1)
-  const open = await prisma.crmDeal.count({ where: { ...identityScope(ctx), contactId: row.id, kind: "OPEN" } });
+  const open = await prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } });
   return {
     contactId: row.id,
     name: contactLabel(row),
@@ -2057,6 +2096,192 @@ export async function briefFor(ctx: ContactsCtx, key: { contactId?: string | nul
     openDealCount: open,
   };
 }
+
+// CRM C1.8 ▸ ทางเข้าของสะพาน (composition root `src/lib/platform/crm-bridges/`) — ไม่มี actor คน · ผู้เรียกตัดสินประตูมาก่อนแล้ว
+//   (uiVersion · bridgesEnabled · ระบบปลายทาง `resolveFormCrmSystem`) · ที่นี่ resolve ระบบ CRM ของร้านใหม่เสมอ (AUDIT-CLASS X1)
+
+export type BridgeLeadKind =
+  /** ฟอร์ม v2: ผู้ติดต่อเดิม (อีเมลไม่สนตัวพิมพ์ / เบอร์) = ใช้ตัวเดิม · ไม่มี = lead ใหม่ · กิจกรรม WEB 1 รายการต่อคำตอบ */
+  | "FORM"
+  /** ฟอร์มของระบบ uiVersion 1: พฤติกรรม v1 เดิม — ผู้ติดต่อใหม่ 1 รายต่อคำตอบ (ไม่จับคู่ตัวซ้ำ · ไม่มีกิจกรรม) */
+  | "FORM_V1"
+  /** แชท: ผู้ติดต่อของ Party นี้มีแล้ว = ตัวเดิม · ไม่มี = lead ใหม่ที่ผูก Party ของห้องแชท (ไม่มีกิจกรรมต่อข้อความ) */
+  | "CHAT";
+
+export type BridgeLeadInput = {
+  kind: BridgeLeadKind;
+  /** ชื่อตามที่ลูกค้าพิมพ์/ชื่อที่แชทรู้ (ว่าง = "ไม่ระบุชื่อ") */
+  name: string | null;
+  phone?: string | null;
+  email?: string | null;
+  /** CHAT: Party ของผู้ติดต่อแชท (บังคับ) */
+  partyId?: string | null;
+  /** FORM/FORM_V1: คำตอบฟอร์มที่ทำให้เกิด (บังคับ — เป็น "ธง" ของการประมวลผลครั้งเดียว) */
+  submissionId?: string | null;
+  sourceDetail?: Record<string, unknown> | null;
+  /** FORM: หัวเรื่องกิจกรรม (ไม่มีข้อมูลบุคคล) */
+  activityTitle?: string | null;
+};
+
+export type BridgeLeadResult = {
+  contactId: string;
+  /** สร้างผู้ติดต่อใหม่ในรอบนี้ */
+  created: boolean;
+  /** event เดิมถูกประมวลผลไปแล้ว (ส่งซ้ำ) — ไม่มีอะไรถูกเขียนในรอบนี้ */
+  repeated: boolean;
+  memberCustomerId: string | null;
+};
+
+const formsFacade = () => import("@/lib/modules/forms");
+
+/**
+ * ลีดจากสะพาน (ฟอร์ม/แชท) — ธุรกรรมเดียว: advisory lock (ธง + ตัวตน) → ตรวจธง → จับคู่/สร้างผู้ติดต่อ → กิจกรรม → ผูกธง → event
+ * AUDIT-CLASS X4 (H5): ธงของฟอร์ม (ทั้ง v1 และ v2) = `FormSubmission.crmContactId` อ่าน/เขียนผ่าน facade ฟอร์ม **ใน tx เดียวกัน**
+ *   ใต้ล็อก `crm:bridge-lead:<ระบบ>:forms.submission#<คำตอบ>` · ธงของแชท = ผู้ติดต่อที่ยังใช้งานของ Party (canonical) ใต้ล็อก
+ *   `crm:contact-party:<ระบบ>:<Party canonical>` ⇒ ส่งซ้ำ/พร้อมกันกี่รอบ = ผลครั้งเดียว · ล้มกลางทาง = ไม่มีอะไรถูกเขียนเลย (คิวส่งใหม่ได้)
+ * AUDIT-CLASS X3: ฟอร์มทั้ง v1 และ v2 ถือล็อกตัวตน (`crm:contact-ident:*` เรียงคีย์) ก่อน `personParty` ⇒ เบอร์/อีเมลเดียวกันพร้อมกัน
+ *   (คนละโพรเซส) = Party เดียว · v2 = ผู้ติดต่อเดียว + กิจกรรมตามจำนวนคำตอบ
+ * แถวผู้ติดต่อเขียนผ่าน `insertContactInTx` (ตัวเดียวกับ createContact: assignment.pick · ผู้ดูแล · crm.contact.assigned) ·
+ *   กิจกรรมผ่าน `activities.recordSystemActivityInTx` (ไม่ยิง crm.activity.logged — กันไทม์ไลน์ซ้ำ) · audit ทั้งสองแถวหลัง commit
+ * AUDIT-CLASS X8: ไม่ log ชื่อ/เบอร์/อีเมล · event เป็น id ล้วน
+ */
+export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): Promise<BridgeLeadResult> {
+  await resolveSystem(ctx);
+  const kind = input?.kind;
+  const subId = str(input?.submissionId);
+  const partyIn = str(input?.partyId);
+  if ((kind === "FORM" || kind === "FORM_V1") && !subId) throw fail("VALIDATION", "ไม่พบรหัสคำตอบของฟอร์ม — ข้ามรายการนี้");
+  if (kind === "CHAT" && !partyIn) throw fail("VALIDATION", "ไม่พบตัวตนกลางของผู้ติดต่อแชท — ข้ามรายการนี้");
+  const base = legacyCreateArgs({ name: str(input?.name) ?? "ไม่ระบุชื่อ", phone: input?.phone ?? null, email: input?.email ?? null, source: kind === "CHAT" ? null : "FORM" }, null);
+  const clean: CreateClean = { ...base.clean, sourceKind: kind === "CHAT" ? "CHAT" : "WEB_FORM", sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null) };
+  const legacy = { ...base.legacy, source: kind === "CHAT" ? null : "FORM", note: kind === "CHAT" ? null : base.legacy.note };
+  const canonical = kind === "CHAT" ? await party.resolveCanonical(ctx.tenantId, partyIn as string) : null;
+  const flagRef = kind === "CHAT" ? `chat.party#${canonical}` : `forms.submission#${subId}`;
+  const forms = kind === "CHAT" ? null : await formsFacade();
+  await seedContactFields(ctx, null);
+  try {
+    const out = await prisma.$transaction(async (tx) => {
+      const keys = kind === "CHAT" ? [`crm:contact-party:${ctx.systemId}:${canonical}`] : [`crm:bridge-lead:${ctx.systemId}:${flagRef}`, ...identKeys(ctx, clean.phone, clean.email)];
+      for (const k of [...new Set(keys)].sort()) await lockKey(tx, k);
+      const memberOf = async (id: string) => (await tx.crmContact.findFirst({ where: { ...identityScope(ctx), id }, select: { memberCustomerId: true } }))?.memberCustomerId ?? null;
+
+      // ── ธง ──
+      let existing: CrmContact | null = null;
+      if (forms) {
+        const linked = await forms.submissionCrmContactId(tx, ctx.tenantId, subId as string);
+        if (linked) return { contactId: linked, created: false, repeated: true, memberCustomerId: await memberOf(linked), row: null, activity: null };
+        if (kind === "FORM") existing = (await duplicateHits(tx, ctx, { phone: clean.phone, email: clean.email })).rows[0] ?? null;
+      } else {
+        const hit = await tx.crmContact.findFirst({
+          where: { ...identityScope(ctx), partyId: { in: [...new Set([partyIn as string, canonical as string])] }, mergedIntoId: null, archivedAt: null },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true, memberCustomerId: true },
+        });
+        if (hit) return { contactId: hit.id, created: false, repeated: true, memberCustomerId: hit.memberCustomerId, row: null, activity: null };
+      }
+
+      // ── ผู้ติดต่อ (ตัวเขียนเดียวกับ createContact) ──
+      const row = existing ?? (await insertContactInTx(tx, ctx, null, clean, { via: "API", legacy, partyId: kind === "CHAT" ? canonical : null }));
+      const created = !existing;
+
+      // ── กิจกรรม (ฟอร์ม v2 · 1 รายการต่อคำตอบ) + ธงของฟอร์ม ──
+      const activity =
+        kind === "FORM"
+          ? await recordSystemActivityInTx(tx, ctx, { type: "WEB", source: "WEB", sourceRef: flagRef, title: str(input?.activityTitle) ?? "ลูกค้ากรอกฟอร์มเข้ามา", contactId: row.id, companyId: row.companyId, dealId: null })
+          : null;
+      if (forms) await forms.linkSubmissionCrmContact(tx, ctx.tenantId, subId as string, row.id);
+      return { contactId: row.id, created, repeated: false, memberCustomerId: row.memberCustomerId, row: created ? row : null, activity };
+    }, TX_OPTS);
+    if (out.row) {
+      await writeAudit({
+        tenantId: ctx.tenantId,
+        actorId: null,
+        actorType: "SYSTEM",
+        action: "crm.contact.create",
+        targetType: "CrmContact",
+        targetId: out.row.id,
+        after: { partyId: out.row.partyId, ownerUserId: out.row.ownerUserId, sourceKind: out.row.sourceKind, via: "bridge", kind },
+      });
+    }
+    if (out.activity) await auditSystemActivity(ctx, out.activity, kind === "FORM" ? "forms.submission.received" : "bridge");
+    return { contactId: out.contactId, created: out.created, repeated: out.repeated, memberCustomerId: out.memberCustomerId };
+  } catch (e) {
+    throw mapError(e);
+  }
+}
+
+/**
+ * `member.created` → ผู้ติดต่อที่ยังใช้งานของระบบนี้ที่ Party เดียวกันและยังไม่ผูกสมาชิก ⇒ `memberCustomerId` (ผูกแล้ว = ไม่ทับ)
+ * ผู้เรียก (สะพาน) ตรวจประตู + สมาชิกเป็นของร้านนี้มาแล้ว · AUDIT-CLASS X4: advisory lock ต่อ (ระบบ, Party) + conditional updateMany ·
+ * event `crm.contact.updated#<id>#member-<สมาชิก>` + แถว audit เฉพาะแถวที่เปลี่ยนจริง · คืนจำนวนที่ผูก
+ */
+export async function linkMemberFromBridge(ctx: { tenantId: string; systemId: string }, input: { customerId: string; partyIds: string[] }): Promise<number> {
+  const c: ContactsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const customerId = str(input?.customerId);
+  const partyIds = [...new Set((input?.partyIds ?? []).filter((x): x is string => typeof x === "string" && !!x))].sort();
+  if (!customerId || partyIds.length === 0) return 0;
+  await resolveSystem(c);
+  const changed = await prisma.$transaction(async (tx) => {
+    for (const pid of partyIds) await lockKey(tx, `crm:member-link:${c.systemId}:${pid}`);
+    const rows = await tx.crmContact.findMany({ where: { ...identityScope(c), partyId: { in: partyIds }, memberCustomerId: null, mergedIntoId: null }, select: { id: true } });
+    const done: string[] = [];
+    for (const r of rows) {
+      const n = await tx.crmContact.updateMany({ where: { ...identityScope(c), id: r.id, memberCustomerId: null }, data: { memberCustomerId: customerId } });
+      if (n.count !== 1) continue;
+      done.push(r.id);
+      await emitContactEvent(tx, c, "updated", r.id, `member-${customerId}`, { contactId: r.id, changedKeys: ["memberCustomerId"] });
+    }
+    return done;
+  }, TX_OPTS);
+  for (const id of changed) {
+    await writeAudit({ tenantId: c.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.contact.member.link", targetType: "CrmContact", targetId: id, after: { memberCustomerId: customerId, via: "member.created" } });
+  }
+  return changed.length;
+}
+
+/**
+ * `member.merged` → ผู้ติดต่อของระบบนี้ที่ชี้สมาชิกที่ถูกรวม ⇒ ชี้ตัวที่เก็บไว้ (หนี้ C1.4 · canContact อ่านความยินยอมของตัวที่เหลือ)
+ * AUDIT-CLASS X4: advisory lock ต่อ (ระบบ, สมาชิกที่ถูกรวม) + conditional updateMany · event + audit เฉพาะแถวที่เปลี่ยนจริง
+ */
+export async function repointMemberFromBridge(ctx: { tenantId: string; systemId: string }, input: { keepId: string; mergedId: string }): Promise<number> {
+  const c: ContactsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const keepId = str(input?.keepId);
+  const mergedId = str(input?.mergedId);
+  if (!keepId || !mergedId || keepId === mergedId) return 0;
+  await resolveSystem(c);
+  const changed = await prisma.$transaction(async (tx) => {
+    await lockKey(tx, `crm:member-merge:${c.systemId}:${mergedId}`);
+    const rows = await tx.crmContact.findMany({ where: { ...identityScope(c), memberCustomerId: mergedId }, select: { id: true } });
+    const done: string[] = [];
+    for (const r of rows) {
+      const n = await tx.crmContact.updateMany({ where: { ...identityScope(c), id: r.id, memberCustomerId: mergedId }, data: { memberCustomerId: keepId } });
+      if (n.count !== 1) continue;
+      done.push(r.id);
+      await emitContactEvent(tx, c, "updated", r.id, `member-${keepId}`, { contactId: r.id, changedKeys: ["memberCustomerId"] });
+    }
+    return done;
+  }, TX_OPTS);
+  for (const id of changed) {
+    await writeAudit({ tenantId: c.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.contact.member.repoint", targetType: "CrmContact", targetId: id, after: { from: mergedId, to: keepId, via: "member.merged" } });
+  }
+  return changed.length;
+}
+
+/**
+ * Party ชนิด "คน" จากเบอร์/อีเมล (ตรรกะเดียวกับ `personParty` — ไม่มีวันคืน Party บริษัท) ในธุรกรรมของตัวเอง ·
+ * ผู้เรียก: สะพานแชท (ห้องที่ยังไม่รู้ว่าเป็นใคร) · AUDIT-CLASS X3: ล็อก Party ระดับร้านใน `personParty` ⇒ พร้อมกันกี่ทาง = Party เดียว
+ * ไม่มีทั้งเบอร์และอีเมล = null (ระบบไม่เดาจากชื่อ)
+ */
+export async function personPartyFor(tenantId: string, input: { name: string | null; phone: string | null; email: string | null }): Promise<string | null> {
+  const rawPhone = str(input?.phone);
+  const rawEmail = str(input?.email);
+  const phone = rawPhone && !contactPhoneProblem(rawPhone) ? storePhone(rawPhone) : null;
+  const email = rawEmail && !emailProblem(rawEmail) ? rawEmail.toLowerCase() : null;
+  if (!tenantId || (!phone && !email)) return null;
+  const name = str(input?.name) ?? phone ?? email ?? "ไม่ระบุชื่อ";
+  return prisma.$transaction((tx) => personParty(tx, tenantId, { name, phone, email }), TX_OPTS);
+}
+// ◂ CRM C1.8
 
 /** ตัวเลือกผู้ดูแล (สมาชิกของร้าน) — ใช้ของบริการบริษัทตัวเดียวกัน */
 export async function ownerOptions(ctx: ContactsCtx, actor: MemberActor): Promise<{ id: string; name: string }[]> {

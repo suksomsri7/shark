@@ -16,9 +16,11 @@ export type CrmSettings = {
   uiVersion: CrmUiVersion;
   /** สวิตช์ปิดสะพานเชื่อมโมดูลอื่นบน prod (ทางถอย) — ค่าเริ่มต้นเปิด */
   bridgesEnabled: boolean;
+  // CRM C1.8 ▸ แชทจาก Party ที่ยังไม่มีผู้ติดต่อ → เปิด lead ใหม่ (source CHAT) · ค่าเริ่มต้น **ปิด** (ร้านเปิดเอง — ลูกค้าทักถามทางแชทไม่ใช่ lead ทุกคน) ◂
+  chatToLead: boolean;
 };
 
-export const CRM_SETTINGS_DEFAULTS: Readonly<CrmSettings> = Object.freeze({ uiVersion: 1, bridgesEnabled: true });
+export const CRM_SETTINGS_DEFAULTS: Readonly<CrmSettings> = Object.freeze({ uiVersion: 1, bridgesEnabled: true, chatToLead: false });
 
 type Json = unknown;
 const isObj = (v: Json): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -29,6 +31,7 @@ export function parseCrmSettings(raw: Json): CrmSettings {
   return {
     uiVersion: crm.uiVersion === 2 ? 2 : CRM_SETTINGS_DEFAULTS.uiVersion,
     bridgesEnabled: typeof crm.bridgesEnabled === "boolean" ? crm.bridgesEnabled : CRM_SETTINGS_DEFAULTS.bridgesEnabled,
+    chatToLead: crm.chatToLead === true, // CRM C1.8 ▸ ค่าเพี้ยน/ไม่ได้ตั้ง = ปิด ◂
   };
 }
 
@@ -49,6 +52,7 @@ export type CrmSettingsKey = keyof CrmSettings;
 export async function setCrmSettingsKey<K extends CrmSettingsKey>(ctx: { tenantId: string; systemId: string }, key: K, value: CrmSettings[K]): Promise<CrmSettings> {
   if (key === "uiVersion" && value !== 1 && value !== 2) throw new Error("รุ่นหน้าจอ CRM ต้องเป็น 1 หรือ 2");
   if (key === "bridgesEnabled" && typeof value !== "boolean") throw new Error("สวิตช์สะพานเชื่อมต้องเป็นเปิดหรือปิด");
+  if (key === "chatToLead" && typeof value !== "boolean") throw new Error("สวิตช์เปิด lead จากแชทต้องเป็นเปิดหรือปิด"); // CRM C1.8 ◂
   const json = JSON.stringify(value);
   const n = await crmDb.$executeRaw`
     UPDATE "AppSystem"

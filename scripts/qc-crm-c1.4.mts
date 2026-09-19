@@ -1166,9 +1166,10 @@ try {
     chk("C1.4-S9.9", "findDuplicates reports the phone pair created by force:true in S1.4 (reason PHONE)", fd.ok && hasPair, "pair", `${fd.err} n=${items.length}`, "MAJOR");
   }
   {
-    const b1 = await call(fns.brief, cA, { contactId: c1 });
-    const b2 = await call(fns.brief, cA, { partyId: c1Row?.partyId });
-    const bx = await call(fns.brief, cB, { partyId: c1Row?.partyId });
+    // ORACLE-EDIT C1.4-S9.10 (controller · C1.8): briefFor now requires the actor (C1.4 debt, C1.8-S8.12)
+    const b1 = await call(fns.brief, cA, actor, { contactId: c1 });
+    const b2 = await call(fns.brief, cA, actor, { partyId: c1Row?.partyId });
+    const bx = await call(fns.brief, cB, actor, { partyId: c1Row?.partyId });
     chk("C1.4-S9.10", "briefFor({contactId}) and ({partyId}) return the contact; the same Party asked from another shop's CRM ⇒ null",
       b1.ok && kid(b1.v) === c1 && b2.ok && kid(b2.v) === c1 && (bx.ok ? bx.v == null || kid(bx.v) === NONE : isScopeRefusal(bx)), "brief · null", `${b1.err}${b2.err} b1=${kid(b1.v)} b2=${kid(b2.v)} foreign=${bx.err || j(bx.v)}`, "MAJOR");
   }

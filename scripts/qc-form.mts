@@ -56,6 +56,9 @@ try {
     let thReq = false; try { await fm.submitPublicForm(f1.publicToken, { name: "ก" }); } catch { thReq = true; } // ขาด phone (required)
     chk("FM-3.1", "required ไม่กรอก → throw", thReq, "throw", "?");
     const sub = await fm.submitPublicForm(f1.publicToken, { name: "คุณลีด", phone: "0801112222", email: "lead@x.com", topic: "คอร์ส A", hack: "ตัดทิ้ง" }, { ip: "1.2.3.4" });
+    // ORACLE-EDIT FM-3.3 (CRM controller · C1.8 addendum 2): the CRM lead now comes from the forms.submission.received consumer
+    //   (still triggered right after submit via scheduleDrain) ⇒ drain before reading crmContactId
+    await (await import("@/lib/outbox-consumers")).drainAll();
     const row = await prisma.formSubmission.findUnique({ where: { id: sub.id as string } });
     const ans = (row?.answersJson ?? {}) as Record<string, unknown>;
     chk("FM-3.2", "บันทึก answers ตาม fields + ตัด key แปลกปลอม", ans.name === "คุณลีด" && ans.phone === "0801112222" && !("hack" in ans), "ครบ+ตัด hack", JSON.stringify(ans).slice(0, 60));

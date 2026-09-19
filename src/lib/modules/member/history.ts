@@ -59,6 +59,10 @@ export type RecordOnceInput = {
   actorUserId?: string | null;
   /** เวลาเหตุการณ์จริง (ไม่ส่ง = ตอนนี้) — แถวย้อนหลัง/นำเข้า */
   at?: Date | null;
+  // CRM C1.8 ▸ ไทม์ไลน์กลางรู้จัก CRM (คอลัมน์ของ crm_v2_a §4.1) — สะพาน CRM ใส่ id ผู้ติดต่อ/บริษัท/ดีลของแถว ◂
+  crmContactId?: string | null;
+  crmCompanyId?: string | null;
+  dealId?: string | null;
 };
 
 export type RecordOnceResult = { id: string; created: boolean };
@@ -170,6 +174,9 @@ export async function recordOnce(ctx: { tenantId: string }, input: RecordOnceInp
         actorUserId: input.actorUserId ?? null,
         ...(input.data ? { data: input.data as Prisma.InputJsonValue } : {}),
         ...(input.at ? { createdAt: input.at } : {}),
+        ...(input.crmContactId ? { crmContactId: input.crmContactId } : {}),
+        ...(input.crmCompanyId ? { crmCompanyId: input.crmCompanyId } : {}),
+        ...(input.dealId ? { dealId: input.dealId } : {}),
       },
       select: { id: true },
     });

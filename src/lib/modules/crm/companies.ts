@@ -1840,6 +1840,32 @@ export async function onCompanyCreated(evt: OutboxEvt): Promise<void> {
   }, TX_OPTS);
 }
 
+// CRM C1.8 ▸ ทางเข้าของสะพาน `account.contact.merged` (composition root `src/lib/platform/crm-bridges/core.ts` · R-A)
+//   ไฟล์นี้ยังเป็นผู้เขียน CrmCompany ที่เดียว (หนี้ C1.3 · ข้อสอบ C1.6-S0.6) — สะพานตรวจประตู + ผู้ติดต่อบัญชีที่เก็บไว้ว่าเป็นของร้านนี้มาก่อนแล้ว
+/**
+ * `CrmCompany.accountContactId` ที่ชี้ผู้ติดต่อบัญชีที่ถูกรวม (`mergedId`) ⇒ ชี้ตัวที่เก็บไว้ (`keepId`) — ในระบบนี้เท่านั้น (AUDIT-CLASS X1)
+ * AUDIT-CLASS X4: advisory lock ต่อ (ระบบ, ตัวที่ถูกรวม) + updateMany แบบมีเงื่อนไข ⇒ ส่งซ้ำ/พร้อมกัน = เขียนครั้งเดียว + `crm.company.updated` ครั้งเดียว
+ */
+export async function repointAccountContactFromBridge(ctx: { tenantId: string; systemId: string }, input: { keepId: string; mergedId: string }): Promise<number> {
+  const keepId = str(input?.keepId);
+  const mergedId = str(input?.mergedId);
+  if (!keepId || !mergedId || keepId === mergedId) return 0;
+  const c: CompaniesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  return prisma.$transaction(async (tx) => {
+    await lockKey(tx, `crm:account-contact-merge:${c.systemId}:${mergedId}`);
+    const rows = await tx.crmCompany.findMany({ where: { ...identityScope(c), accountContactId: mergedId }, select: { id: true } });
+    let n = 0;
+    for (const r of rows) {
+      const u = await tx.crmCompany.updateMany({ where: { ...identityScope(c), id: r.id, accountContactId: mergedId }, data: { accountContactId: keepId } });
+      if (u.count !== 1) continue;
+      n += 1;
+      await emitCompanyEvent(tx, c, "updated", r.id, `account-${keepId}`, { companyId: r.id, changedKeys: ["accountContactId"] });
+    }
+    return n;
+  }, TX_OPTS);
+}
+// ◂ CRM C1.8
+
 // CRM C1.4 ▸ ทางเข้าที่ "เข้าร่วม transaction ของผู้เรียก" (มติผู้คุมงาน C1.4 — Option A) ให้บริการผู้ติดต่อ (`contacts.ts`)
 //   ใช้ตอน "แปลง lead" (สมาชิก + บริษัท + ดีล ในธุรกรรมเดียว) และ "รวมผู้ติดต่อ" — ไฟล์นี้ยังเป็นเจ้าของการเขียน CrmCompany /
 //   CrmCompanyContact / แคช CrmContact.companyId ที่เดียว (contacts*.ts ไม่มีคำสั่งกับตารางบริษัทเลย)

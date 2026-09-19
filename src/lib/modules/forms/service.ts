@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
-import { createContact } from "@/lib/modules/crm";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 
@@ -191,40 +190,10 @@ export async function submitPublicForm(
     if (!empty) clean[fld.key] = val;
   }
 
-  const tdb = tenantDb({ tenantId: form.tenantId });
-
-  // ส่ง lead เข้า CRM (ถ้าเปิด + tenant มีระบบ CRM ตัวแรก) — ไม่มีระบบ CRM → ข้ามเงียบ ๆ
-  let crmContactId: string | null = null;
-  if (form.crmEnabled) {
-    const crmSystem = await tdb.appSystem.findFirst({
-      where: { type: "CRM" },
-      orderBy: { createdAt: "asc" },
-    });
-    if (crmSystem) {
-      const nameField = fields.find((f) => f.key === "name") ?? fields.find((f) => f.type === "text");
-      const nameVal = nameField ? clean[nameField.key] : undefined;
-      const contact = await createContact(
-        { tenantId: form.tenantId, systemId: crmSystem.id },
-        {
-          name: typeof nameVal === "string" && nameVal ? nameVal : "ไม่ระบุชื่อ",
-          phone: typeof clean.phone === "string" ? clean.phone : null,
-          email: typeof clean.email === "string" ? clean.email : null,
-          source: "FORM",
-        },
-      );
-      crmContactId = contact.id;
-    }
-  }
-
-  const sub = await tdb.formSubmission.create({
-    data: {
-      tenantId: form.tenantId, // ใส่ตรง ๆ (กติกา) — guard re-inject ค่าเดิม
-      formId: form.id,
-      answersJson: asJson(clean),
-      crmContactId,
-      ip: meta?.ip ?? null,
-    },
-  });
+  // CRM C1.8 ▸ lead เข้า CRM ย้ายไปเป็น consumer ของ `forms.submission.received` (`src/lib/platform/crm-bridges/forms.ts`)
+  //   ระบบปลายทาง = `resolveFormCrmSystem(form)` · ผู้รับเป็นคนเขียน `FormSubmission.crmContactId` · ไม่มีระบบ CRM = ข้ามเงียบ ๆ เหมือนเดิม
+  //   🔴 คำตอบ + แจ้งเตือน + event อยู่ใน **ธุรกรรมเดียว** (COMMON: emit ใน tx ของการเขียน) — ไม่มีคำตอบที่ไม่มี event (lead หาย)
+  //      และไม่มี event ที่ชี้คำตอบที่ไม่มีอยู่ ◂
 
   // แจ้งเจ้าของว่ามี lead ใหม่ (ปิด "โมดูลเงียบ" — เดิม submit แล้วเงียบ ตกหล่น)
   // pattern เดียวกับ chat.announceInbound: AppNotification + emitOutbox (1 submission = 1 lead จริง)
@@ -232,22 +201,50 @@ export async function submitPublicForm(
     (typeof clean.name === "string" && clean.name) ||
     (typeof clean.phone === "string" && clean.phone) ||
     "ไม่ระบุชื่อ";
-  await prisma.$transaction(async (tx) => {
+  const sub = await prisma.$transaction(async (tx) => {
+    const row = await tx.formSubmission.create({
+      data: {
+        tenantId: form.tenantId, // ใส่ตรง ๆ (กติกา) · ค้นฟอร์มด้วย token แล้ว = ร้านของฟอร์มนี้
+        formId: form.id,
+        answersJson: asJson(clean),
+        ip: meta?.ip ?? null,
+      },
+    });
     await emitOutbox(tx, {
       tenantId: form.tenantId,
       type: "forms.submission.received",
-      idempotencyKey: `forms.sub.${sub.id}`,
-      payload: { formId: form.id, submissionId: sub.id, crmContactId },
+      idempotencyKey: `forms.sub.${row.id}`,
+      // CRM C1.8 ▸ AUDIT-CLASS X8: id ล้วน (crmContactId ยังไม่มีตอนนี้ — ผู้รับ CRM เขียนลงคำตอบเอง) ◂
+      payload: { formId: form.id, submissionId: row.id },
     });
     await tx.appNotification.create({
       data: {
         tenantId: form.tenantId,
         title: "มีคนกรอกฟอร์มเข้ามา",
-        body: `${form.name}: ${leadName}${crmContactId ? " (เข้าลูกค้าใน CRM แล้ว)" : ""} · ดูข้อมูล /app/forms/${form.id}`,
+        body: `${form.name}: ${leadName} · ดูข้อมูล /app/forms/${form.id}`,
       },
     });
+    return row;
   });
   scheduleDrain();
 
   return { id: sub.id };
 }
+
+// CRM C1.8 ▸ ทางเชื่อม "คำตอบฟอร์ม ↔ ผู้ติดต่อ CRM" (ออกทาง facade `forms/index.ts` · ผู้เรียก = บริการผู้ติดต่อของ CRM)
+//   รับ client ของธุรกรรมผู้เรียก ⇒ ธง (`crmContactId`) ถูกอ่าน/เขียนใต้ล็อกเดียวกับการสร้างผู้ติดต่อ (AUDIT-CLASS X4)
+//   AUDIT-CLASS X1: ทุกคำสั่งผูก id + tenantId ของคำตอบ
+type FormsDb = Pick<Prisma.TransactionClient, "formSubmission">;
+
+/** ผู้ติดต่อ CRM ที่คำตอบนี้ผูกไว้แล้ว (ธงของสะพาน) — คำตอบไม่พบ/ร้านอื่น = null */
+export async function submissionCrmContactId(db: FormsDb, tenantId: string, submissionId: string): Promise<string | null> {
+  const row = await db.formSubmission.findFirst({ where: { id: submissionId, tenantId }, select: { crmContactId: true } });
+  return row?.crmContactId ?? null;
+}
+
+/** ผูกคำตอบกับผู้ติดต่อ CRM ครั้งเดียว (มีแล้ว = ไม่ทับ) — คืน true เมื่อเขียนจริง */
+export async function linkSubmissionCrmContact(db: FormsDb, tenantId: string, submissionId: string, contactId: string): Promise<boolean> {
+  const n = await db.formSubmission.updateMany({ where: { id: submissionId, tenantId, crmContactId: null }, data: { crmContactId: contactId } });
+  return n.count === 1;
+}
+// ◂ CRM C1.8

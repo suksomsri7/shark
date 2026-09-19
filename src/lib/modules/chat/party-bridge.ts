@@ -7,6 +7,7 @@
 // 🔴 prisma เข้าทาง `./db` (chokepoint ของโมดูล · fitness F5.1) และ **ทุก where ผูก `tenantId` ตรง ๆ**
 // 🔴 PDPA (กลุ่ม X8): ไฟล์นี้ไม่พิมพ์เบอร์/อีเมล/เนื้อข้อความลง log เลย
 
+import { writeAudit } from "@/lib/core/audit";
 import { prisma } from "./db";
 import { pushToContact } from "./push";
 import { canAccessConvUnit, unitAccessWhere } from "./service";
@@ -147,3 +148,27 @@ export async function listConversationsByParty(
       href: `/app/sys/${r.systemId}/chat?c=${r.id}`,
     }));
 }
+
+// CRM C1.8 ▸ ผูก "ผู้ติดต่อแชท ↔ ตัวตนกลาง (Party)" ครั้งเดียว — ผู้เรียก: สะพาน CRM (`platform/crm-bridges/chat.ts`)
+//   เมื่อห้องแชทยังไม่รู้ว่าเป็นใคร แต่แชทรู้เบอร์/อีเมล (CRM หา Party ชนิด "คน" ให้แล้ว — ไม่เคยได้ Party บริษัท)
+/**
+ * เขียน `ChatContact.partyId` เฉพาะเมื่อยังว่าง (มีแล้ว = ไม่ทับ — ผูกโดยสมาชิก/คนก่อนหน้าชนะ) แล้วคืนค่าที่อยู่ในแถวจริง
+ * AUDIT-CLASS X1: ผู้ติดต่อแชทค้นด้วย id + tenantId · Party ต้องเป็นของร้านเดียวกัน (ของร้านอื่น = ไม่เขียน คืน null)
+ * AUDIT-CLASS X4: conditional updateMany ⇒ ยิงซ้ำ/พร้อมกันได้ค่าเดียว · แถว audit เฉพาะรอบที่เขียนจริง
+ * AUDIT-CLASS X8: audit เก็บแค่ id (ไม่มีชื่อที่แชทแสดง/เบอร์/อีเมล)
+ */
+export async function linkChatContactParty(ctx: ChatPartyCtx, input: { chatContactId: string; partyId: string }): Promise<string | null> {
+  const tenantId = (ctx?.tenantId ?? "").trim();
+  const chatContactId = (input?.chatContactId ?? "").trim();
+  const partyId = (input?.partyId ?? "").trim();
+  if (!tenantId || !chatContactId || !partyId) return null;
+  const p = await prisma.party.findFirst({ where: { id: partyId, tenantId }, select: { id: true } });
+  if (!p) return null;
+  const n = await prisma.chatContact.updateMany({ where: { id: chatContactId, tenantId, partyId: null }, data: { partyId } });
+  if (n.count === 1) {
+    await writeAudit({ tenantId, actorId: ctx.actorUserId ?? null, actorType: ctx.actorUserId ? "USER" : "SYSTEM", action: "chat.contact.party.link", targetType: "ChatContact", targetId: chatContactId, after: { partyId, via: "crm-bridge" } });
+  }
+  const row = await prisma.chatContact.findFirst({ where: { id: chatContactId, tenantId }, select: { partyId: true } });
+  return row?.partyId ?? null;
+}
+// ◂ CRM C1.8

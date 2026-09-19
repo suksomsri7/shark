@@ -88,7 +88,9 @@ const nonEmpty = (v: Any) => (v instanceof Set ? v.size > 0 : Array.isArray(v) ?
 //   builder พิสูจน์แล้วว่าถอดบรรทัดเดียวนี้ออก fitness กลับเขียวทั้งสองโหมด
 const OUTSIDE_IMPORTERS = [
   "src/lib/ai/proposals.ts",
-  "src/lib/modules/forms/service.ts",
+  // ORACLE-EDIT C0.2-S1.1/S2.3 (controller · C1.8, 19 Sep): forms/service.ts no longer calls CRM at all — C1.8 moved the
+  //   form→lead step into the forms.submission.received consumer (crm-bridges/forms.ts); qc-crm-c1.8 S0 asserts forms/service
+  //   has no CRM import. The facade rule still holds for every remaining outside importer below.
   "src/lib/modules/account/contacts-list.ts",
   "src/lib/modules/account/contact-links.ts",
   "src/lib/modules/account/contact-profile.ts",
@@ -99,7 +101,6 @@ const OUTSIDE_IMPORTERS = [
 // symbol the oracle must demand it too, but if the regex below ever rots to `[]` this baseline turns red.
 const SYMBOL_BASELINE: Record<string, string[]> = {
   "src/lib/ai/proposals.ts": ["createContact"],
-  "src/lib/modules/forms/service.ts": ["createContact"],
   "src/lib/modules/account/contacts-list.ts": ["listPartyIdsWithContact"],
   "src/lib/modules/account/contact-links.ts": ["findContactsForLink", "setContactPartyId"],
   "src/lib/modules/account/contact-profile.ts": ["findContactByPartyId", "findLatestDealForContact"],

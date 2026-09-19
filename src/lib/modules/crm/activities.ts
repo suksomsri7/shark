@@ -1142,3 +1142,51 @@ export async function boardOptions(ctx: ActivitiesCtx, actor: MemberActor): Prom
   const rows = await (await kanbanLinks()).visibleBoardOptions(ctx.tenantId, kActor);
   return rows.map((r) => ({ id: r.id, name: r.name }));
 }
+
+// CRM C1.8 ▸ กิจกรรมที่ "ระบบ" เขียนจากสะพาน (ฟอร์มเว็บ = WEB · ย้ายขั้นจากใบเสนอราคา = AUTO) — ผู้เขียน CrmActivity ที่เดียวของโมดูล
+//   🔴 ไม่ยิง `crm.activity.logged` โดยตั้งใจ: สะพานเขียนไทม์ไลน์สมาชิกของเหตุการณ์ต้นทางเองแล้ว (ยิง = ไทม์ไลน์ซ้ำสองแถว)
+//      เหมือนแถว AUTO ของ C1.3 (`companies.onCompanyCreated`)
+//   ผู้เรียกถือ tx + ล็อกของตัวเอง (ธงของสะพาน) · ที่นี่เขียนแถว + lastActivityAt (GREATEST คำสั่งเดียว · AUDIT-CLASS X3)
+//   AUDIT-CLASS X1: แถวผูกร้าน + ระบบของ ctx · id ของเป้าหมายมาจากบริการที่ resolve ใต้ขอบเขตเดียวกันแล้ว
+//   AUDIT-CLASS X8: หัวเรื่องมาจากผู้เรียก (ไม่มีข้อมูลบุคคล) · audit เก็บแค่ชนิด/ที่มา/id
+export type SystemActivityInput = {
+  type: "WEB" | "NOTE";
+  source: "WEB" | "AUTO";
+  /** กุญแจของเหตุการณ์ต้นทาง (ธงของสะพาน) */
+  sourceRef: string;
+  title: string;
+  contactId: string | null;
+  companyId: string | null;
+  dealId: string | null;
+  at?: Date;
+};
+
+export async function recordSystemActivityInTx(tx: Tx, ctx: { tenantId: string; systemId: string }, input: SystemActivityInput): Promise<CrmActivity> {
+  const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const now = new Date();
+  const at = new Date(Math.min((input.at ?? now).getTime(), now.getTime()));
+  const row = await tx.crmActivity.create({
+    data: {
+      ...identityScope(c),
+      contactId: input.contactId,
+      companyId: input.companyId,
+      dealId: input.dealId,
+      type: input.type as CrmActivityType,
+      title: input.title.slice(0, 200),
+      source: input.source,
+      sourceRef: input.sourceRef,
+      startAt: at,
+      doneAt: at,
+    },
+  });
+  await touchLastActivity(tx, c, { contactId: input.contactId, companyId: input.companyId, dealId: input.dealId, customRecordId: null }, at);
+  return row;
+}
+
+/** แถว audit ของกิจกรรมที่ระบบเขียน (เรียกหลัง tx ของผู้เรียก commit) */
+export async function auditSystemActivity(ctx: { tenantId: string; systemId: string }, row: Pick<CrmActivity, "id" | "type" | "source" | "contactId" | "dealId" | "companyId">, via: string): Promise<void> {
+  await audit({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null }, "crm.activity.log", row.id, {
+    after: { type: row.type, source: row.source, contactId: row.contactId, dealId: row.dealId, companyId: row.companyId, via },
+  });
+}
+// ◂ CRM C1.8

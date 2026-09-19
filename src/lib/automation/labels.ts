@@ -136,7 +136,7 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // M3.7 (§7.1 · ไทม์ไลน์สมาชิก) — event ใหม่ 2 ตัว · ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว
   //   `crm.deal.won`    ยิงจาก `crm/deals.ts#moveCore` (C1.5) เมื่อดีล "เข้า" WON จากขั้นชนิดอื่น — ใน tx เดียวกับการย้าย ·
   //                     key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
-  //                     payload: dealId · contactId · valueSatang · title · name · partyId? · phone? · email?
+  //                     payload (CRM C1.8 ▸ id ล้วน — ไม่มีชื่อ/เบอร์/อีเมล/ชื่อดีลแล้ว ◂): dealId · contactId · companyId? · partyId? · valueSatang · ownerUserId?
   //   `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์
   //                     payload: orderId · unitId · code · customerName · customerPhone · totalSatang · posSaleId? · channel (SHOP|SHOPEE|LAZADA|TIKTOK)
   //   🔴 เว็บฮุคได้จาก spread ใน webhooks/labels.ts (ห้ามประกาศซ้ำที่นั่น)

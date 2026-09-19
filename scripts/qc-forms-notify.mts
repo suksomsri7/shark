@@ -52,6 +52,8 @@ try {
   chk("FN-3", "emitOutbox forms.submission.received ≥1", (await outboxCount(tid)) >= 1);
 
   // lead เข้า CRM
+  // ORACLE-EDIT FN-4 (CRM controller · C1.8 addendum 2): lead is created by the consumer ⇒ drain first
+  await (await import("@/lib/outbox-consumers")).drainAll();
   const contactCount = await prisma.crmContact.count({ where: { tenantId: tid, systemId: crmSys.id } });
   chk("FN-4", "lead เข้า CRM (crmEnabled)", contactCount >= 1, "≥1", String(contactCount));
 

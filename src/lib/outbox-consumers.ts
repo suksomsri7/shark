@@ -12,7 +12,7 @@ import { ingestInboxFiles as ingestInboxFilesToAccount } from "@/lib/modules/acc
 import { runForEvent } from "@/lib/automation/engine";
 import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
-import { applyApprovalEffect } from "@/lib/approval-effects";
+import { applyApprovalEffect, applyCrmApprovalEffect } from "@/lib/approval-effects";
 import { logOps as logOpsRaw } from "@/lib/core/ops";
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
@@ -62,8 +62,18 @@ async function logOps(
   });
 }
 
-/** ข้อความของ error (ใช้ stack ถ้ามี) — รูปเดียวกันทุกจุดที่เขียน detail ของ OpsEvent */
-const errDetail = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.message) : String(e));
+/**
+ * ข้อความของ error (ใช้ stack ถ้ามี) — รูปเดียวกันทุกจุดที่เขียน detail ของ OpsEvent
+ * CRM C1.8 ▸ AUDIT-CLASS X8: error ของ Prisma/driver adapter (validation · known request · DriverAdapterError · …) พาค่าของฟิลด์ (ชื่อ/เบอร์/อีเมล/คำตอบฟอร์ม) ติดมาใน
+ *   message/stack ได้ ⇒ เก็บแค่ "ชื่อชนิด + code" · error อื่นยังผ่าน redactPii ของ `logOps` ตามเดิม ◂
+ */
+const errDetail = (e: unknown): string => {
+  if (e instanceof Error && /^(PrismaClient|DriverAdapter)/.test(e.name)) {
+    const code = (e as { code?: unknown }).code;
+    return `${e.name}${typeof code === "string" ? ` ${code}` : ""}`;
+  }
+  return e instanceof Error ? (e.stack ?? e.message) : String(e);
+};
 
 // ── การแจ้งเตือนสมาชิก (M3.6 · §5.10 §8.x) ──────────────────────────────────
 // 🔴 event เหล่านี้ (แต้ม/สแตมป์/voucher) ถูกยิงด้วย `systemId` ของระบบต้นทาง (POINT/STAMP อาจไม่ใช่
@@ -458,6 +468,50 @@ const crmKanbanCardCompleted: OutboxHandler = async (evt) => {
 };
 // ◂ CRM C1.6
 
+// CRM C1.8 ▸ สะพาน "โมดูลอื่น ⇄ CRM v2" (`src/lib/platform/crm-bridges/` · พิมพ์เขียว §7.1 §7.2 §9 · มติ C11 C12)
+//   🔴 ทุกตัวเป็น "ของแถม" ใต้ `compose` เสมอ: ล้ม = WARN (ของ compose) ไม่ทำให้ event ล้ม · งานหลักล้ม = ของแถมยังวิ่ง
+//   🔴 dynamic import (crm/member/account → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์ — เหตุผลเดียวกับ kanbanBridge/memberBridge)
+//   🔴 ประตู (uiVersion 2 + settings.crm.bridgesEnabled · R-E.14) อยู่ในตัวสะพานเอง — ยกเว้น lead จากฟอร์มของระบบ v1 (มติผู้คุมงาน C1.8 ข้อ 1)
+//      และสะพานสมาชิกเดิม `onCrmDealWon` (ไม่ผ่านที่นี่)
+type CrmBridgeName =
+  | "onFormLead"
+  | "onFormTimeline"
+  | "onChatMessage"
+  | "onQuotationResponded"
+  | "onDocumentIssued"
+  | "onAccountContactMerged"
+  | "onMemberCreated"
+  | "onMemberMerged"
+  | "onCrmTimelineEvent"
+  | "onCustomRecordCreated";
+
+const crmBridge =
+  (name: CrmBridgeName): OutboxHandler =>
+  async (evt) => {
+    const bridges = await import("@/lib/platform/crm-bridges");
+    await bridges[name](evt);
+  };
+
+/**
+ * ขั้นแรกที่ retry ได้ (มติผู้คุมงาน C1.8 ข้อ 2 · 6): `first` วิ่งก่อนทุกชั้น — ล้ม ⇒ โยนทันที ⇒ event ล้ม ⇒ คิวส่งใหม่
+ *   และ `rest` (งานหลักเดิม + automation + journey + ของแถม) ยังไม่ได้วิ่ง ⇒ ไม่มี automation/แจ้งเตือนซ้ำตอน retry ·
+ *   เว็บฮุคยิงรอบแรกของ event ครั้งเดียวอยู่แล้ว (`withWebhooks` · attempts === 0)
+ * 🔴 `first` ต้อง idempotent (ธงใต้ล็อก) และต้องโยนเฉพาะความล้มชั่วคราว — ข้อมูลใช้ไม่ได้ถาวรให้ WARN แล้วจบเอง (ไม่งั้นขวาง `rest` ถึง FAILED)
+ */
+const crmFirst =
+  (first: OutboxHandler, rest: OutboxHandler): OutboxHandler =>
+  async (evt) => {
+    await first(evt);
+    await rest(evt);
+  };
+
+/** ผลอนุมัติชนิด `crm.*` (ส่วนลดเกินเพดานของดีล · crm.reassign รับทราบ) — ขั้นแรกที่ retry ได้ (ดู `crmFirst`) */
+const crmApprovalEffect: OutboxHandler = async (evt) => {
+  if (evt.type !== "approval.request.approved" && evt.type !== "approval.request.rejected") return;
+  await applyCrmApprovalEffect({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+};
+// ◂ CRM C1.8
+
 // M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → ไทม์ไลน์ของเจ้าของบัตร
 // M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onLoyaltyEvent` (recordOnce · เจ้าของว่าง/ถูกลบ = จบเงียบเหมือนเดิม)
 
@@ -505,7 +559,7 @@ const memberSaleBridge =
     } catch (e) {
       await logOps("WARN", "member", `สะพานสมาชิกของ "${evt.type}" ล้มเหลว (บิล ${saleId}) — บิลและบัญชีไม่กระทบ`, {
         tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        detail: errDetail(e),
       });
     }
   };
@@ -537,7 +591,7 @@ const memberBridge =
     } catch (e) {
       await logOps("WARN", "member", `ไทม์ไลน์สมาชิกของ "${evt.type}" บันทึกไม่สำเร็จ — งานหลักของเหตุการณ์ไม่กระทบ`, {
         tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        detail: errDetail(e),
       });
     }
   };
@@ -555,7 +609,7 @@ const memberApptBridge =
     } catch (e) {
       await logOps("WARN", "member", `ไทม์ไลน์สมาชิกของ "${evt.type}" บันทึกไม่สำเร็จ (นัด ${appointmentId})`, {
         tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        detail: errDetail(e),
       });
     }
   };
@@ -589,8 +643,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // K3.3: + การ์ดติดตามคำขออนุมัติ (มอบหมายผู้ยื่น) — ต่อท้าย notify เดิม
   "approval.request.submitted": withAutomation(compose(approvalSubmitted, kanbanBridge("onApprovalSubmitted"))),
   // K3.3: + ความเห็น "ผลอนุมัติ: …" ที่การ์ดติดตาม + ปิดการ์ดเมื่อผ่าน (ต่อท้าย notify+effect เดิม)
-  "approval.request.approved": withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided"))),
-  "approval.request.rejected": withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided"))),
+  // CRM C1.8 ▸ + ผลอนุมัติ crm.* เป็นขั้นแรกที่ retry ได้ (crmFirst) — applyApprovalEffect ไม่แตะ crm.* แล้ว (ไม่ทำซ้ำสองที่) ◂
+  "approval.request.approved": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalApproved), kanbanBridge("onApprovalDecided")))),
+  "approval.request.rejected": crmFirst(crmApprovalEffect, withAutomation(compose(withApprovalEffect(approvalRejected), kanbanBridge("onApprovalDecided")))),
   // WO-0038: AppNotification ถูกสร้างแล้วใน sweepExpiringLots — consumer นี้มีไว้ปิด event เป็น DONE
   // (ไม่งั้นค้าง PENDING โดน drain วนตลอด) + เป็นจุดให้ Automation rules ยิงตามกติกาที่ร้านตั้ง
   "inventory.lot.expiring": withAutomation(async () => {}),
@@ -598,18 +653,19 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
   //   งานนี้ต้อง **ไม่ทำให้ consumer ล้ม** ถ้าฝั่งบัญชีมีปัญหา (ไม่งั้น event แชทค้าง PENDING ทั้งคิว)
-  "chat.message.received": withAutomation(async (evt) => {
+  // CRM C1.8 ▸ + ห้องแชท → Party → ผู้ติดต่อ CRM / lead (ถ้าร้านเปิด chatToLead) เป็นของแถมใต้ compose ◂
+  "chat.message.received": withAutomation(compose(async (evt) => {
     try {
       await chatInboundToAccountInbox(evt);
     } catch (e) {
       await logOps("WARN", "outbox", "ดูดไฟล์จากแชทเข้ากล่องขาเข้าบัญชีไม่สำเร็จ", {
         tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        detail: errDetail(e),
       });
     }
     // M3.7 — ห้องที่ผูกสมาชิก → ไทม์ไลน์ "แชท" 1 แถวต่อห้องต่อวันไทย (memberBridge กลืน error เอง ไม่ล้มคิว)
     await memberBridge("onChatMessageReceived")(evt);
-  }),
+  }, crmBridge("onChatMessage"))),
   // WO-C2 (§3.4): แอดมินตอบ / เธรดเปลี่ยนสถานะ — ผลข้างเคียงเกิดใน service ไปแล้ว
   // consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล
   // พร้อม lastError "ไม่มี consumer…" — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
@@ -633,7 +689,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // Wave4-B: AppNotification "มีคนกรอกฟอร์ม" ถูกสร้างแล้วใน submitPublicForm —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย lead ใหม่
   // K3.3: + เปิดการ์ดจากฟอร์ม (คำตอบทุกข้ออยู่ในรายละเอียดการ์ด) เฉพาะร้านที่เปิดสวิตช์
-  "forms.submission.received": withAutomation(compose(async () => {}, kanbanBridge("onFormSubmission"))),
+  // CRM C1.8 ▸ lead เข้า CRM (ย้ายจากการเรียกตรงใน forms/service) = ขั้นแรกที่ retry ได้ (crmFirst · lead ต้องไม่หายเพราะล้มชั่วคราว)
+  //   ระบบ = resolveFormCrmSystem(form) · crmContactId เขียนใน tx เดียวกับ lead · ไทม์ไลน์สมาชิก = ของแถมใต้ compose ◂
+  "forms.submission.received": crmFirst(
+    crmBridge("onFormLead"),
+    withAutomation(compose(compose(async () => {}, kanbanBridge("onFormSubmission")), crmBridge("onFormTimeline"))),
+  ),
   // Wave4-C: AppNotification "ได้รับมอบหมายงาน" ถูกสร้างแล้วใน kanban.notifyAssignment —
   // consumer ปิด event DONE + จุดให้ Automation/Webhooks ยิงเมื่อมอบหมายการ์ด
   "kanban.card.assigned": withAutomation(async () => {}),
@@ -703,7 +764,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
     } catch (e) {
       await logOps("WARN", "outbox", "เพิ่มรายการกล่องงานเข้าจาก event ไม่สำเร็จ", {
         tenantId: evt.tenantId,
-        detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+        detail: errDetail(e),
       });
     }
   }),
@@ -723,15 +784,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)
-  "account.document.issued": withAutomation(async () => {}),
+  "account.document.issued": withAutomation(compose(async () => {}, crmBridge("onDocumentIssued"))), // CRM C1.8 ▸ ใบแจ้งหนี้จากใบเสนอราคาของดีล → invoiceDocId ◂
   "account.document.voided": withAutomation(async () => {}),
-  "account.quotation.responded": withAutomation(async () => {}),
+  "account.quotation.responded": withAutomation(compose(async () => {}, crmBridge("onQuotationResponded"))), // CRM C1.8 ▸ ดีลย้ายขั้นตาม pipeline ◂
   "account.payment.voided": withAutomation(async () => {}),
   "account.payment_request.paid": withAutomation(async () => {}),
   "account.payment_request.expired": withAutomation(async () => {}),
   "account.contact.created": withAutomation(async () => {}),
   "account.contact.updated": withAutomation(async () => {}),
-  "account.contact.merged": withAutomation(async () => {}),
+  "account.contact.merged": withAutomation(compose(async () => {}, crmBridge("onAccountContactMerged"))), // CRM C1.8 ▸ CrmCompany.accountContactId → ตัวที่เก็บ ◂
   "account.product.created": withAutomation(async () => {}),
   "account.product.updated": withAutomation(async () => {}),
   // WO D4 — เหตุการณ์บัญชีชุดที่ 3 (เช็ค/กระทบยอด/งวด/สินทรัพย์/เอกสารประจำ — ดู modules/account/events.ts)
@@ -749,7 +810,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //    (2) เป็นจุดให้กฎอัตโนมัติ/journey ยิง (withAutomation)  (3) ยิงเว็บฮุคออกนอกระบบ (withWebhooks)
   //    ผลข้างเคียงจริง (แต้มต้อนรับ · แนะนำเพื่อน · sync ชื่อไปแชท/CRM) มาที่ M1.8/M1.9/M3.x
   //    ผ่าน composition root `member-bridges.ts` — ตอนนั้นค่อยต่อท้ายด้วย compose() เหมือนบอร์ดงาน
-  "member.created": withAutomation(async (evt) => {
+  "member.created": withAutomation(compose(async (evt) => {
     // M3.6 — ต้อนรับสมาชิกใหม่ (notifications.send ผ่าน notifyMember ท้ายบล็อกนี้)
     // M3.5 — แนะนำเพื่อน (payload.referrerId): ผูก referral + ประเมิน SIGNUP · `createMember` ทำไปแล้วทันที
     //   ตัวนี้คือตาข่ายเก็บตก (idempotent) · ข้อมูลใช้ไม่ได้ (โค้ด/คนหาย) = WARN แล้วจบ ไม่ให้คิวค้าง
@@ -767,9 +828,9 @@ const baseConsumers: Record<string, OutboxHandler> = {
     // M3.6 — ต้อนรับสมาชิกใหม่ (notifications.send เช็คยินยอม/quiet hours/สวิตช์เปิดปิดเองครบ)
     const p = evt.payload as { customerId?: unknown } | null;
     if (p && typeof p.customerId === "string") await notifyMember(evt, p.customerId, "WELCOME");
-  }),
+  }, crmBridge("onMemberCreated"))), // CRM C1.8 ▸ ผู้ติดต่อ CRM v2 ที่ Party เดียวกัน → memberCustomerId (ไม่ทับของเดิม) ◂
   "member.updated": withAutomation(async () => {}),
-  "member.merged": withAutomation(async () => {}),
+  "member.merged": withAutomation(compose(async () => {}, crmBridge("onMemberMerged"))), // CRM C1.8 ▸ ผู้ติดต่อที่ชี้สมาชิกที่ถูกรวม → ตัวที่เก็บ ◂
   "member.identity.linked": withAutomation(async () => {}),
   // ── ระดับสมาชิก (M1.9 · §7.1) ──
   // 🔴 no-op เหมือนกลุ่มบน: ประวัติระดับ (MemberTierHistory) + คอลัมน์ของ Customer ถูกเขียนครบใน
@@ -933,12 +994,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   created → ไทม์ไลน์สมาชิกของแม่ (1 แถว · recordOnce) เป็น "ของแถม" ใต้ compose: ล้ม = WARN ไม่ทำให้คิวตัน/ไม่ล้มงานหลัก
   //   🔴 dynamic import (crm → member → … → scheduleDrain ที่ไฟล์นี้ = วงกลมถ้า import หัวไฟล์ — เหตุผลเดียวกับ memberBridge)
   //   updated/archived → no-op (ปิด event เป็น DONE — ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค
-  "custom.record.created": withAutomation(
-    compose(async () => {}, async (evt) => {
-      const crm = await import("@/lib/modules/crm");
-      await crm.objects.onRecordCreated(evt);
-    }),
-  ),
+  // CRM C1.8 ▸ ตัวเขียนเดิม (crm.objects.onRecordCreated) ผ่านสะพาน — ประตู uiVersion 2 + bridgesEnabled (มติ C1.2b ข้อ 7) ◂
+  "custom.record.created": withAutomation(compose(async () => {}, crmBridge("onCustomRecordCreated"))),
   "custom.record.updated": withAutomation(async () => {}),
   "custom.record.archived": withAutomation(async () => {}),
   // ◂ CRM C1.2b
@@ -964,7 +1021,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   (AUDIT-CLASS X4) · ผลข้างเคียงจริง (ไทม์ไลน์สมาชิก · คะแนน · สะพานแชท/บัญชี) = ใบ C1.8/C2.8 เติมเป็น "ของแถม" ใต้ compose
   "crm.contact.created": withAutomation(async () => {}),
   "crm.contact.updated": withAutomation(async () => {}),
-  "crm.contact.assigned": withAutomation(async () => {}),
+  "crm.contact.assigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.contact.converted": withAutomation(async () => {}),
   "crm.contact.merged": withAutomation(async () => {}),
   // ◂ CRM C1.4
@@ -975,18 +1032,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   (`crm.deal.won` มีตัวรับเดิมข้างบน — สะพานสมาชิก M3.7 · payload คงรูป v1 ตามมติผู้คุมงาน C1.5 ข้อ 1)
   //   ทั้ง 6 ตัวเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค — แคชบริษัท/ประวัติขั้น/lifecycle
   //   เขียนครบใน tx ของบริการดีลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8 เติม "ของแถม" ใต้ compose
-  "crm.deal.created": withAutomation(async () => {}),
-  "crm.deal.stage.changed": withAutomation(async () => {}),
+  "crm.deal.created": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
+  "crm.deal.stage.changed": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.lost": withAutomation(async () => {}),
-  "crm.deal.reopened": withAutomation(async () => {}),
-  "crm.deal.reassigned": withAutomation(async () => {}),
+  "crm.deal.reopened": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
+  "crm.deal.reassigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.updated": withAutomation(async () => {}),
   // ◂ CRM C1.5
   // CRM C1.6 ▸ กิจกรรม (`crm/activities.ts`) — ยิงใน tx เดียวกับการเขียน · key `crm.activity.<type>#<activityId>#<seq>` (R-C.8) ·
   //   payload id/คีย์ล้วน { activityId, type, contactId, dealId, companyId, customRecordId, ownerUserId } — ไม่มีหัวเรื่อง/โน้ต (X8)
   //   ผลข้างเคียง (lastActivityAt · แจ้งเตือน @กล่าวถึง · ปิดงาน) เขียนครบใน tx ของบริการแล้ว ⇒ consumer = no-op ปิด event เป็น DONE
   //   (ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8/C2.8 เติมของแถมใต้ compose
-  "crm.activity.logged": withAutomation(async () => {}),
+  "crm.activity.logged": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.activity.completed": withAutomation(async () => {}),
   // ◂ CRM C1.6
 };

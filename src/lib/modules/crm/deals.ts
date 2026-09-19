@@ -21,6 +21,7 @@ import type { CrmDeal, CrmForecastCategory, CrmStage, CrmStageKind } from "@pris
 import { writeAudit } from "@/lib/core/audit";
 import { csvRow } from "@/lib/core/csv";
 import { emitOutbox } from "@/lib/core/outbox";
+import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, contactWhere, dealWhere } from "./where";
@@ -30,7 +31,7 @@ import * as companies from "./companies";
 import { CompaniesError } from "./companies-shared";
 import { dealStateForStage, lifecycleAfterDealWon } from "./rules";
 // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
-import { dealKanbanCards, type DealKanbanCard } from "./activities";
+import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
 import {
   DEAL_BOARD_CARDS_MAX,
   DEAL_BULK_MAX,
@@ -243,7 +244,7 @@ function fctx(ctx: DealsCtx, who: Who) {
 /**
  * AUDIT-CLASS X4: idempotencyKey `crm.deal.<type>#<dealId>#<seq>` (R-C.8) · emit ใน tx ของการเขียน
  * ⇒ เขียนไม่สำเร็จ = ไม่มี event · event เขียนไม่ได้ = การเขียนทั้งก้อนถูกยกเลิก
- * AUDIT-CLASS X8: payload = id/คีย์ล้วน (ไม่มีชื่อดีล/ชื่อคน/เบอร์/อีเมล/โน้ต) — ยกเว้น `crm.deal.won` ที่คงรูป v1 ตามมติผู้คุมงาน C1.5 ข้อ 1
+ * AUDIT-CLASS X8: payload = id/คีย์ล้วน (ไม่มีชื่อดีล/ชื่อคน/เบอร์/อีเมล/โน้ต) — รวม `crm.deal.won` (ล้างเป็น id ล้วนในใบ C1.8)
  */
 async function emitDeal(tx: Tx, ctx: DealsCtx, type: (typeof EVT)[keyof typeof EVT], dealId: string, seq: string | null, payload: Record<string, unknown>): Promise<void> {
   // seq = null ⇒ key ต่อดีล (`<type>#<dealId>`) — ใช้เฉพาะ `crm.deal.won` ของทางเข้า v1 (คงพฤติกรรมเดิม: ยิงครั้งเดียวต่อดีลตลอดอายุ)
@@ -738,7 +739,7 @@ export async function moveDeal(ctx: DealsCtx, actor: MemberActor, id: string, in
 
 type MoveOutcome = { deal: DealDto; changed: boolean; fromStageId: string; histId: string | null; reopened: boolean };
 
-async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInput, opts: { legacy?: boolean; reopenReason?: string }): Promise<MoveOutcome> {
+async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInput, opts: { legacy?: boolean; reopenReason?: string; flag?: BridgeMoveFlag }): Promise<MoveOutcome> {
   const stageId = str(input?.stageId);
   if (!stageId) throw fail("VALIDATION", "เลือกขั้นปลายทางก่อน");
   // AUDIT-CLASS X1: ขั้นต้องเป็นของระบบนี้ (ขั้นของระบบ/ร้านอื่น = ไม่พบ) · ต้องอยู่ใน pipeline ของดีล (ตรวจใต้ล็อก)
@@ -752,7 +753,7 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
       if (!row) throw fail("NOT_FOUND", "ไม่พบเหตุผลที่แพ้นี้ในระบบ CRM นี้ — เลือกใหม่จากรายการ");
       if (!row.active) throw fail("VALIDATION", "เหตุผลนี้ถูกปิดใช้งานแล้ว — เลือกเหตุผลอื่นจากรายการ");
       lostReasonId = row.id;
-    } else if (!opts.legacy) {
+    } else if (!opts.legacy && !opts.flag) {
       throw fail("VALIDATION", "ก่อนปิดดีลเป็น \"แพ้\" เลือกเหตุผลที่แพ้ก่อน — ทีมจะใช้ดูว่าเสียดีลเพราะอะไรบ่อยที่สุด");
     }
   }
@@ -764,6 +765,14 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
 
   const out = await withDealLocks(ctx, who, id, { contact: target.kind === "WON", engine: hasCustom }, async (tx, deal) => {
     if (target.pipelineId !== deal.pipelineId) throw fail("NOT_FOUND", "ขั้นนี้ไม่ได้อยู่ใน pipeline ของดีลนี้ — เลือกขั้นจากกระดานของดีลนี้");
+    // CRM C1.8 ▸ AUDIT-CLASS X4 (H5): ย้ายจากสะพาน = "ตรวจธงก่อน" ใต้ advisory lock ต่อธง + ล็อกแถวดีล — ธงมีแล้ว = ไม่ทำอะไร ·
+    //   แถวธง (กิจกรรม AUTO `sourceRef` = ธง) เขียน **ใน tx เดียวกับการย้าย และเฉพาะเมื่อย้ายจริง** (ไม่ย้าย = ไม่มีโน้ต) ·
+    //   ย้ายล้ม (เงื่อนไขขั้น/ฐานข้อมูล) = ไม่มีทั้งการย้ายและธง ◂
+    if (opts.flag) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:deal-bridge:${deal.id}:${opts.flag.ref}`}, 0))`;
+      const done = await tx.crmActivity.findFirst({ where: { ...identityScope(ctx), dealId: deal.id, source: "AUTO", sourceRef: opts.flag.ref }, select: { id: true } });
+      if (done) return { row: deal, changed: false, histId: null, from: deal.stageId, reopened: false };
+    }
     // รีวิว C1.5 S7: อ่านชนิดของขั้นแบบ FOR SHARE (updateStage/deleteStage ล็อก FOR UPDATE) — ถูกเปลี่ยน/ลบระหว่างรอ = ไม่ย้าย
     const fresh = await tx.$queryRaw<{ kind: string; pipelineId: string }[]>`SELECT "kind"::text AS "kind", "pipelineId" FROM "CrmStage" WHERE "id" = ${target.id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR SHARE`;
     if (fresh.length === 0 || fresh[0]!.kind !== target.kind || fresh[0]!.pipelineId !== deal.pipelineId) {
@@ -823,23 +832,27 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
     await companies.recomputeDealCachesInTx(tx, coCtx(ctx), [row.companyId]);
     await emitDeal(tx, ctx, EVT.stageChanged, row.id, hist.id, { dealId: row.id, pipelineId: row.pipelineId, fromStageId: deal.stageId, toStageId: target.id, kind: row.kind });
     if (intoWon) {
-      // มติผู้คุมงาน C1.5 ข้อ 1: payload ของ `crm.deal.won` คงรูป v1 (ผู้สมัครเว็บฮุคภายนอกอ่านอยู่) — ใบ C1.8 เป็นคนล้างเป็น id ล้วน
+      // CRM C1.8 ▸ AUDIT-CLASS X8: payload ของ `crm.deal.won` เป็น id ล้วน (มติผู้คุมงาน C1.5 ข้อ 1 · R-C.8) — ไม่มีชื่อ/เบอร์/อีเมล/ชื่อดีล
+      //   ผู้รับ (สะพานสมาชิก `onCrmDealWon`) โหลดทุกอย่างจากฐานด้วย id เอง ◂
       // รีวิว C1.5 S2: ทาง v1 = key ต่อดีล (`crm.deal.won#<dealId>` — ยิงครั้งเดียวต่อดีลตลอดอายุ เหมือนก่อน C1.5) · ทาง v2 = ต่อการเข้า WON (`#<histId>`)
       await emitDeal(tx, ctx, EVT.won, row.id, opts.legacy ? null : hist.id, {
         dealId: row.id,
         contactId: row.contactId,
-        valueSatang: row.valueSatang,
-        title: row.title,
-        name: contact?.name ?? null,
+        companyId: row.companyId,
         partyId: contact?.partyId ?? null,
-        phone: contact?.phone ?? null,
-        email: contact?.email ?? null,
+        valueSatang: row.valueSatang,
+        ownerUserId: row.ownerUserId,
       });
     }
     if (intoLost) await emitDeal(tx, ctx, EVT.lost, row.id, hist.id, { dealId: row.id, lostReasonId });
     if (reopened) await emitDeal(tx, ctx, EVT.reopened, row.id, hist.id, { dealId: row.id, fromStageId: deal.stageId, toStageId: target.id });
-    return { row, changed: true, histId: hist.id, from: deal.stageId, reopened };
+    // CRM C1.8 ▸ ธงของสะพาน = กิจกรรม AUTO ผ่านผู้เขียนกิจกรรมที่เดียว (`activities.recordSystemActivityInTx` · ไม่ยิง crm.activity.logged) ◂
+    const flagNote = opts.flag
+      ? await recordSystemActivityInTx(tx, ctx, { type: "NOTE", source: "AUTO", sourceRef: opts.flag.ref, title: opts.flag.title, contactId: row.contactId, companyId: row.companyId, dealId: row.id })
+      : null;
+    return { row, changed: true, histId: hist.id, from: deal.stageId, reopened, flagNote };
   });
+  if (out.changed && "flagNote" in out && out.flagNote) await auditSystemActivity(ctx, out.flagNote, "account.quotation.responded");
   if (out.changed) {
     await audit(ctx, out.reopened ? "crm.deal.reopen" : "crm.deal.move", out.row.id, {
       before: { stageId: out.from },
@@ -849,9 +862,9 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
   return { deal: toDto(out.row), changed: out.changed, fromStageId: out.from, histId: out.histId, reopened: out.reopened };
 }
 
-/** WON → เลื่อน lifecycle ของผู้ติดต่อ (เขียนคอลัมน์ lifecycleStage คอลัมน์เดียว) แล้วคืนข้อมูลที่ payload ของ `crm.deal.won` (รูป v1) ต้องใช้ */
-async function advanceLifecycleOnWin(tx: Tx, ctx: DealsCtx, contactId: string): Promise<{ name: string; phone: string | null; email: string | null; partyId: string | null } | null> {
-  const c = await tx.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { id: true, lifecycleStage: true, name: true, phone: true, email: true, partyId: true } });
+/** WON → เลื่อน lifecycle ของผู้ติดต่อ (เขียนคอลัมน์ lifecycleStage คอลัมน์เดียว) แล้วคืน partyId ที่ payload (id ล้วน) ของ `crm.deal.won` ใช้ */
+async function advanceLifecycleOnWin(tx: Tx, ctx: DealsCtx, contactId: string): Promise<{ partyId: string | null } | null> {
+  const c = await tx.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { id: true, lifecycleStage: true, partyId: true } });
   if (!c) return null;
   const next = lifecycleAfterDealWon(c.lifecycleStage);
   if (next !== c.lifecycleStage) await tx.crmContact.updateMany({ where: { id: c.id, tenantId: ctx.tenantId }, data: { lifecycleStage: next } });
@@ -1979,3 +1992,81 @@ export async function issueQuotationFromLegacy(ctx: { tenantId: string; systemId
     throw e;
   }
 }
+
+// CRM C1.8 ▸ ทางเข้าของสะพาน (composition root `src/lib/platform/crm-bridges/`) — ไม่มี actor คน · ผู้เรียกตัดสินประตู
+//   (uiVersion 2 · bridgesEnabled) มาก่อนแล้ว · AUDIT-CLASS X1: ทุกคำสั่งผูกร้าน + ระบบที่ resolve ใหม่ (resolveSystem)
+
+/** ธงของการย้ายจากสะพาน: `ref` = กุญแจของเหตุการณ์ต้นทาง (หนึ่งธง = ย้ายได้ครั้งเดียว) · `title` = หัวเรื่องกิจกรรม AUTO (ไม่มีข้อมูลบุคคล) */
+type BridgeMoveFlag = { ref: string; title: string };
+
+/**
+ * `account.quotation.responded` → ดีลที่เปิดอยู่ของระบบนี้ที่ `quotationDocId` = ใบนั้น ย้ายไปขั้นที่ pipeline ตั้งไว้
+ * (`stageOnQuoteAcceptedId` / `stageOnQuoteRejectedId` · ไม่ได้ตั้ง = ไม่ย้าย) ผ่าน moveCore (แถวประวัติ + `crm.deal.stage.changed` ใน tx เดียว)
+ * AUDIT-CLASS X4: ครั้งเดียวต่อ (เอกสาร, คำตอบ) — ธง `account.quotation.responded#<docId>#<A|R>` ปักใน tx เดียวกับการย้าย
+ * คืนจำนวนดีลที่ย้ายจริง
+ */
+export async function applyQuotationResponse(ctx: { tenantId: string; systemId: string }, input: { documentId: string; accepted: boolean }): Promise<number> {
+  const c: DealsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const docId = str(input?.documentId);
+  if (!docId) return 0;
+  await resolveSystem(c);
+  const rows = await prisma.crmDeal.findMany({
+    where: { ...identityScope(c), quotationDocId: docId, kind: "OPEN" },
+    select: { id: true, pipeline: { select: { stageOnQuoteAcceptedId: true, stageOnQuoteRejectedId: true } } },
+    orderBy: { id: "asc" },
+  });
+  let moved = 0;
+  let firstError: unknown = null;
+  for (const d of rows) {
+    const stageId = input.accepted ? d.pipeline.stageOnQuoteAcceptedId : d.pipeline.stageOnQuoteRejectedId;
+    if (!stageId) continue;
+    const flag: BridgeMoveFlag = {
+      ref: `account.quotation.responded#${docId}#${input.accepted ? "A" : "R"}`,
+      title: input.accepted ? "ลูกค้าตอบรับใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้" : "ลูกค้าปฏิเสธใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้",
+    };
+    // ดีลหนึ่งย้ายไม่ได้ (เงื่อนไขของขั้น/ชนกัน) ต้องไม่ขวางดีลอื่นของใบเดียวกัน — ล้มตัวแรกโยนต่อท้ายสุด (ผู้เรียกบันทึก WARN)
+    try {
+      const out = await moveCore(c, null, d.id, { stageId }, { flag });
+      if (out.changed) moved += 1;
+    } catch (e) {
+      // เงื่อนไขของขั้นปลายทางไม่ครบ = ส่งซ้ำก็ไม่ผ่าน ⇒ บันทึก WARN (id ล้วน · AUDIT-CLASS X8) แล้วไปดีลถัดไป — ไม่ใช่ความล้มชั่วคราว
+      if (e instanceof DealsError && (e.code === "STAGE_REQUIREMENTS" || e.code === "VALIDATION" || e.code === "NOT_FOUND")) {
+        await logOps("WARN", "crm", `ย้ายดีลตามคำตอบใบเสนอราคาไม่ได้ (${e.code}) — ดีล ${d.id} · เอกสาร ${docId} · ขั้น ${stageId}`, { tenantId: c.tenantId });
+        continue;
+      }
+      firstError ??= e;
+    }
+  }
+  if (firstError) throw firstError;
+  return moved;
+}
+
+/**
+ * `account.document.issued` (ใบแจ้งหนี้ที่แปลงมาจากใบเสนอราคาของดีล) → `CrmDeal.invoiceDocId` ของดีลในระบบนี้
+ * AUDIT-CLASS X4: conditional updateMany (`invoiceDocId IS NULL`) ต่อดีลใต้ล็อกแถว ⇒ ส่งซ้ำ/พร้อมกัน = เขียนครั้งเดียว + event ครั้งเดียว
+ * ดีลที่มีใบแจ้งหนี้อยู่แล้ว = ไม่ทับ · คืนจำนวนดีลที่ผูก
+ */
+export async function linkInvoiceFromBridge(ctx: { tenantId: string; systemId: string }, input: { quotationDocId: string; invoiceDocId: string }): Promise<number> {
+  const c: DealsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const qt = str(input?.quotationDocId);
+  const inv = str(input?.invoiceDocId);
+  if (!qt || !inv) return 0;
+  await resolveSystem(c);
+  const rows = await prisma.crmDeal.findMany({ where: { ...identityScope(c), quotationDocId: qt, invoiceDocId: null }, select: { id: true }, orderBy: { id: "asc" } });
+  let linked = 0;
+  for (const d of rows) {
+    const done = await prisma.$transaction(async (tx) => {
+      await lockDealRows(tx, c, [d.id]);
+      const n = await tx.crmDeal.updateMany({ where: { ...identityScope(c), id: d.id, quotationDocId: qt, invoiceDocId: null }, data: { invoiceDocId: inv } });
+      if (n.count !== 1) return false;
+      await emitDeal(tx, c, EVT.updated, d.id, `invoice-${inv}`, { dealId: d.id, changedKeys: ["invoiceDocId"], documentId: inv });
+      return true;
+    }, TX_OPTS);
+    if (done) {
+      linked += 1;
+      await audit(c, "crm.deal.invoice.link", d.id, { after: { invoiceDocId: inv, via: "account.document.issued" } });
+    }
+  }
+  return linked;
+}
+// ◂ CRM C1.8
