@@ -1,13 +1,12 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อัปเดตทุกครั้งที่สถานะเปลี่ยน · อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: 19 ก.ย. 2569 ~13:40 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
+> อัปเดตล่าสุด: 19 ก.ย. 2569 ~15:30 น. (ไทย) · ผู้คุมงาน Opus 5 · branch `session/crm`
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → ท้าย `ledger/CRM-RUN.md` §4 → brief ของใบที่กำลังทำ (มี "Controller addendum" = ข้อตัดสินผูกพัน)
 
 ## 1. สถานะใบ (ความจริง = MASTER-PLAN §12)
-- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.8 · C1.9 (`b01b3b72` · dpl_GhYWo) (15/53)
-- 🔨 **C1.10** (REST 63 op + AI 14 tools): แก้ผลผู้ตรวจครบ (BLOCKER ผู้ช่วย AI เห็นค่าอ่อนไหว) · **patch วางใน tree หลักแล้ว (staged ไม่ commit)** · กำลังตรวจ unit `crm-c110-verify` (log `.qc-shots/crm/c110-verify.log`) บน QC1 · ต้นทาง `/root/projects/shark-crm-c110` (QC2) · ถ้า session ตาย: `git -C /root/projects/shark-crm diff --cached --stat` ดูว่ายัง staged อยู่ แล้วรัน `scripts/pending/run-c110-verify.sh` ใหม่
+- ✅ ขึ้น prod แล้ว: C0.1–C0.5 · C1.1–C1.9 · C1.10 (`41c8d2a0` · กำลัง poll deploy) (16/53)
 - 📝 ข้อสอบพร้อม (commit แล้ว): C1.11 (66) · C2.0 (73) · C2.1 (84) · C2.2 (65)
-- 🔨 **C1.11** builder ทำงานใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged) · ใช้ **QC2** · ข้อสอบ 66 ข้อ + qc-crm-v1
+- 🔨 **C1.11** builder ใน **`/root/projects/shark-crm-c111`** (ฐาน b01b3b72 + C1.10 staged · งาน C1.11 = unstaged) · QC2 · 66/66 (ต้องรันด้วย `env CRM_V2_SWITCH=all`) · ผู้ตรวจ: ไม่มี BLOCKER · SHOULD-FIX 7 ส่งกลับแก้แล้ว · ตอนรวม: patch = `git -C shark-crm-c111 diff` (unstaged) + untracked · ผู้คุมงานต้อง: เพิ่ม 3 หน้าใน probe V2_ONLY (contacts/import · contacts/duplicates · companies/duplicates) + ORACLE-EDIT C1.10-S11.8 (หน้า settings แยกสาขาเองได้) · หลังรับ = ปิดเฟส C1 ด้วย qc:all
 - ⏸️ C2.0 builder เริ่มหลังปิดเฟส C1 (qc:all)
 
 ## 2. Worktree (ทุกตัว detached · node_modules = bind mount ของ tree หลัก)
