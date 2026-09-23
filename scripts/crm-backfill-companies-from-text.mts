@@ -6,7 +6,8 @@
 //     🔴 ไม่ใช้ Party เดิมจาก "ชื่อเปล่า" (บริษัทต่างนิติบุคคลชื่อซ้ำกันได้ · กติกาของ Party: ห้ามจับคู่ด้วยชื่ออย่างเดียว)
 //        ข้อความในช่องบริษัทไม่มีเลขภาษี (กุญแจเดียวที่เชื่อถือได้) ⇒ สร้าง Party ใหม่เสมอ — รวมทีหลังได้ที่หน้ารวมบริษัทซ้ำ
 //   🔴 ข้ามข้อความที่ไม่ใช่ชื่อบริษัท: รายการคำแทน ("-" "ไม่มี" "ส่วนตัว" "n/a" "freelance" …) และข้อความที่มีตัวอักษร < 2 ตัว
-//   → ผูกผู้ติดต่อทุกคนในกลุ่ม: แถว CrmCompanyContact (isPrimary = บริษัทหลักของผู้ติดต่อคนนั้น) + cache CrmContact.companyId
+//   → ผูกผู้ติดต่อทุกคนในกลุ่ม: แถว CrmCompanyContact + cache CrmContact.companyId
+//     isPrimary = "ผู้ติดต่อหลักของบริษัท" — เฉพาะคนแรกของกลุ่ม และเฉพาะบริษัทที่ยังไม่มีผู้ติดต่อหลัก (C2.0 · ย้าย unique ไป C6.1)
 //   "mapping" = แถว CrmCompanyContact เอง · ข้อความ `company` เดิมไม่ลบ (หน้า v1 ยังแสดง)
 // 🔴 idempotent: ผู้ติดต่อที่ผูกแล้วไม่ถูกเลือกซ้ำ · บริษัทที่สร้างแล้วถูกหาเจอด้วยชื่อในรอบถัดไป
 // 🔴 AUDIT-CLASS X3: ทีละระบบใต้ `pg_advisory_xact_lock` ทั้งก้อน (หา→สร้าง Party→สร้างบริษัท→ผูก อยู่ใน tx เดียว)
@@ -86,8 +87,17 @@ async function run(db: Any, tenantId: string, systemId: string, write: boolean) 
     }
     res.linked += members.length;
     if (!write || !companyId) continue;
+    // 🔴 C2.0 (ผู้คุมงาน 19 ก.ย. · "หนึ่งสถานะ สองความหมาย"): `isPrimary` = "ผู้ติดต่อหลักคนเดียวของบริษัท" (ความหมายของ companies.ts)
+    //    ⇒ ตั้งให้เฉพาะคนแรกของกลุ่ม และเฉพาะเมื่อบริษัทยังไม่มีผู้ติดต่อหลักที่ยังสังกัดอยู่ (บริษัทเดิมที่ใช้ซ้ำอาจมีแล้ว)
+    //    คนที่เหลือผูกเป็นผู้ติดต่อธรรมดา — ข้อมูลหลัง backfill จึงผ่าน unique "หนึ่งบริษัทหนึ่งผู้ติดต่อหลัก" ที่ C6.1 จะใส่
+    //    (อ่านใต้ advisory lock ของระบบนี้ใน tx เดียวกัน ⇒ ไม่มีรอบอื่นของสคริปต์นี้แทรกระหว่างอ่านกับเขียน)
+    const currentPrimary = await db.crmCompanyContact.count({ where: { companyId, isPrimary: true, endedAt: null } });
+    let primaryFree = currentPrimary === 0;
     for (const c of members) {
-      await db.crmCompanyContact.create({ data: { tenantId, companyId, contactId: c.id, isPrimary: true, jobTitle: c.jobTitle ?? null } });
+      const isPrimary = primaryFree;
+      primaryFree = false;
+      await db.crmCompanyContact.create({ data: { tenantId, companyId, contactId: c.id, isPrimary, jobTitle: c.jobTitle ?? null } });
+      // cache บริษัทของผู้ติดต่อ (คนนี้ยังไม่ผูกบริษัทใด — เงื่อนไขเลือกของ run) · ไม่ขึ้นกับว่าเป็นผู้ติดต่อหลักของบริษัทหรือไม่
       await db.crmContact.updateMany({ where: { id: c.id, companyId: null }, data: { companyId } });
     }
   }

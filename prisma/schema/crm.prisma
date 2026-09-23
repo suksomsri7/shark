@@ -86,6 +86,7 @@ enum CrmActivitySource {
   WEB
   API
   RULE
+  KANBAN // crm_v2_b (C2.0 · หนี้ C1.5/C1.6) — เพิ่มด้วย ALTER TYPE ADD VALUE · 🔴 ห้ามใช้เป็น default ใน migration เดียวกัน
 }
 
 enum CrmPriority {
@@ -179,11 +180,16 @@ model CrmContact {
   mergedIntoId     String?
   // RESOLUTIONS R-A — อีเมลเก่า (updateContact ของ C1.4 เก็บ · C2.5 ใช้จับคู่อีเมลขาเข้า)
   previousEmails   String[]          @default([])
+  // ── crm_v2_b (C2.0 · C2.6) — ผู้ติดต่อขอไม่ให้ติดตามเว็บ/เปิดอีเมล · default false = แถวเดิมไม่เปลี่ยนพฤติกรรม
+  trackingOptOut   Boolean           @default(false)
 
   deals        CrmDeal[]
   activities   CrmActivity[]
   companyLinks CrmCompanyContact[]
   dealLinks    CrmDealContact[]
+  // crm_v2_b — FK อยู่ที่ตารางใหม่ (ไม่มี SQL บนตาราง CrmContact นอกจาก ADD COLUMN ข้างบน)
+  scoreLogs          CrmScoreLog[]
+  sequenceEnrollments CrmSequenceEnrollment[]
 
   @@index([systemId, lifecycleStage])
   @@index([systemId, phone])
@@ -295,11 +301,14 @@ model CrmDeal {
   kanbanCardId             String?
   pendingLines             Json? // R-A: ไลน์ที่เกินเพดานส่วนลด รออนุมัติ crm.discount
   pendingApprovalRequestId String? // R-A
+  // ── crm_v2_b (C2.0 · หนี้ C1.5) — เก็บดีลแทนการลบถาวร · nullable = แถวเดิมไม่เปลี่ยน
+  archivedAt               DateTime?
 
   activities   CrmActivity[]
   contacts     CrmDealContact[]
   lines        CrmDealLine[]
   stageHistory CrmDealStageHistory[]
+  payments     CrmDealPayment[] // crm_v2_b — FK อยู่ที่ CrmDealPayment
 
   @@index([systemId, kind])
   @@index([systemId, stageId])
@@ -653,4 +662,486 @@ model CustomRecordValueHistory {
 
   @@index([recordId, fieldId, createdAt])
   @@index([tenantId])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// crm_v2_b — ใบ C2.0 (migration ที่ 2 จาก 3 · RESOLUTIONS R-C.1) · ตารางของทั้งเฟส C2 · พิมพ์เขียว §4.2 §4.3 §15
+// กติกา: additive ล้วน · ไม่มี constraint ที่ล้มได้กับแถว prod เดิม (unique/NOT NULL/FK บนแถวเดิม → C6.1)
+// scope (F1): ตารางที่มี systemId = sys() · ตารางลูก (มี tenantId ของตัวเอง) = tenant
+// unique แบบมีเงื่อนไข (partial) 3 ตัวประกาศเฉพาะใน migration.sql เพราะ Prisma schema ไม่รองรับ WHERE:
+//   CrmSequenceEnrollment (sequenceId, contactId) WHERE status = 'ACTIVE'   (R3 — ลงทะเบียนซ้ำได้หลัง DONE/STOPPED)
+//   CrmScoreLog (ruleId, eventKey) WHERE ทั้งคู่ NOT NULL                  (R6 — event เดิมซ้ำ/พร้อมกัน = log เดียว)
+//   AutomationRun (ruleId, crmContactId, eventKey) WHERE crmContactId NOT NULL (R7a — อยู่ใน automation.prisma)
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum CrmAssignMode {
+  FIXED
+  ROUND_ROBIN
+  TEAM_LEAD
+  LEAST_OPEN
+}
+
+enum CrmSeqStepKind {
+  EMAIL
+  LINE
+  TASK
+  WAIT
+  SMS
+}
+
+enum CrmEnrollStatus {
+  ACTIVE
+  PAUSED
+  DONE
+  STOPPED
+}
+
+enum CrmEmailStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  OPENED
+  BOUNCED
+  FAILED
+  RECEIVED
+}
+
+enum CrmEmailEventKind {
+  OPEN
+  CLICK
+  BOUNCE
+  COMPLAINT
+  REPLY
+  UNSUBSCRIBE
+}
+
+enum CrmWebEventKind {
+  PAGEVIEW
+  CLICK
+  FORM_VIEW
+  FORM_SUBMIT
+  IDENTIFY
+  CONSENT
+}
+
+// ─── คะแนน · มอบหมาย · อัตโนมัติ ───
+model CrmScoreRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  systemId    String
+  name        String
+  event       String // key จาก AUTOMATION_EVENTS
+  conditions  Json?
+  points      Int
+  expiresDays Int?
+  maxPerDay   Int?
+  active      Boolean  @default(true)
+  isSystem    Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([systemId, event])
+  @@index([tenantId])
+}
+
+// 🔴 R6: partial unique (ruleId, eventKey) WHERE "ruleId" IS NOT NULL AND "eventKey" IS NOT NULL — ใน migration.sql
+//    แถวให้คะแนนมือ (ruleId/eventKey = NULL) ไม่ถูกตรวจ · ruleId ไม่มี FK (ลบกฎแล้ว log ยังเป็นประวัติ)
+model CrmScoreLog {
+  id        String     @id @default(cuid())
+  tenantId  String
+  contactId String
+  contact   CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  ruleId    String?
+  points    Int
+  reason    String
+  refType   String?
+  refId     String?
+  eventKey  String? // idempotencyKey ของ event ต้นทาง (C2.8 X4)
+  expiresAt DateTime?
+  expired   Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  @@index([contactId, createdAt])
+  @@index([expiresAt, expired])
+}
+
+model CrmAssignmentRule {
+  id             String        @id @default(cuid())
+  tenantId       String
+  systemId       String
+  name           String
+  conditions     Json
+  mode           CrmAssignMode
+  // 🔴 NOT NULL เติมมือใน migration.sql (Prisma ออก TEXT[] แบบ nullable เสมอ · schema ไม่มีทางบอก NOT NULL ของ list)
+  userIds        String[]      @default([])
+  teamId         String?
+  rrCursor       Int           @default(0) // X3: เลื่อนด้วย UPDATE … SET "rrCursor" = "rrCursor" + 1 คำสั่งเดียว
+  maxOpenPerUser Int?
+  sortOrder      Int           @default(0)
+  active         Boolean       @default(true)
+  stats          Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([systemId, sortOrder])
+  @@index([tenantId])
+}
+
+// "แก้ = เวอร์ชันใหม่" (C2.2): version ของลำดับขั้น · enrollment จำ sequenceVersion ของตอนลงทะเบียน
+model CrmSequence {
+  id               String    @id @default(cuid())
+  tenantId         String
+  systemId         String
+  name             String
+  description      String?
+  stopOnReply      Boolean   @default(true)
+  stopOnWon        Boolean   @default(true)
+  stopOnLost       Boolean   @default(true)
+  businessDaysOnly Boolean   @default(true)
+  sendWindow       Json? // {from:"09:00", to:"18:00"}
+  maxActive        Int?
+  active           Boolean   @default(true)
+  stats            Json?
+  createdById      String?
+  archivedAt       DateTime?
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  steps       CrmSequenceStep[]
+  enrollments CrmSequenceEnrollment[]
+
+  @@index([systemId, active])
+  @@index([tenantId])
+}
+
+model CrmSequenceStep {
+  id         String          @id @default(cuid())
+  tenantId   String
+  sequenceId String
+  sequence   CrmSequence     @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  version    Int // R2 — ขั้นของเวอร์ชันเก่าไม่ถูกเขียนทับ
+  index      Int
+  kind       CrmSeqStepKind
+  templateId String?
+  subject    String?
+  body       String? // ตัวแปร {{contact.firstName}} …
+  waitDays   Int?
+  waitHours  Int?
+  taskTitle  String?
+  taskType   CrmActivityType?
+  channel    String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([sequenceId, version, index])
+}
+
+// 🔴 R3: partial unique (sequenceId, contactId) WHERE status = 'ACTIVE' — ใน migration.sql (ไม่มี unique เต็ม)
+model CrmSequenceEnrollment {
+  id              String          @id @default(cuid())
+  tenantId        String
+  sequenceId      String
+  sequence        CrmSequence     @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         CrmContact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  dealId          String?
+  enrolledById    String?
+  enrolledBy      String // "USER:<id>" | "RULE:<id>" | "API"
+  sequenceVersion Int
+  stepIndex       Int             @default(0)
+  nextAt          DateTime?
+  status          CrmEnrollStatus @default(ACTIVE)
+  stoppedReason   String?
+  stoppedAt       DateTime?
+  stats           Json?
+  leaseUntil      DateTime? // X5 — runDue จองแถวด้วยเงื่อนไขบน lease (ไม่ใช่สถานะปลายทาง)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([status, nextAt])
+  @@index([contactId])
+}
+
+// ─── อีเมล (C4) ───
+// 🔴 X7: เก็บเฉพาะ hash ของ token ติดตาม (trackTokenHash) — token จริงอยู่ในลิงก์/พิกเซลเท่านั้น
+model CrmEmailMessage {
+  id             String         @id @default(cuid())
+  tenantId       String
+  systemId       String
+  contactId      String?
+  companyId      String?
+  dealId         String?
+  direction      CrmDirection
+  messageId      String         @unique // RFC Message-ID (ขาออกสร้างเอง) — X4 กันซ้ำ
+  inReplyTo      String?
+  references     String[]       @default([])
+  threadKey      String
+  fromAddr       String
+  fromName       String?
+  toAddrs        String[]       @default([])
+  ccAddrs        String[]       @default([])
+  bccAddrs       String[]       @default([])
+  subject        String
+  bodyHtml       String?
+  bodyText       String?
+  snippet        String?
+  attachments    Json? // {fileId,name,size,mime}[]
+  sentById       String?
+  sentAt         DateTime?
+  receivedAt     DateTime?
+  scheduledAt    DateTime?
+  status         CrmEmailStatus
+  providerId     String? // Resend id
+  providerError  String?
+  sequenceStepId String?
+  campaignId     String?
+  templateId     String?
+  trackTokenHash String         @unique
+  openCount      Int            @default(0)
+  clickCount     Int            @default(0)
+  firstOpenedAt  DateTime?
+  lastOpenedAt   DateTime?
+  repliedAt      DateTime?
+  routing        Json? // {replyTo, copyTo[], via:"SHARK"|"STAFF"|"PROVIDER"}
+  matchedBy      String? // "EMAIL"|"DOMAIN"|"MANUAL"|"NONE"
+  purgedAt       DateTime?
+  leaseUntil     DateTime? // X5 — ส่งตามเวลา (scheduled send)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  events CrmEmailEvent[]
+
+  @@index([contactId, sentAt])
+  @@index([threadKey, sentAt])
+  @@index([systemId, direction, sentAt])
+  @@index([systemId, matchedBy])
+  @@index([scheduledAt, status])
+}
+
+// R7b: providerEventId unique (Postgres ถือ NULL ไม่ซ้ำกัน ⇒ = unique เฉพาะแถวที่มีค่า) — webhook ยิงซ้ำ = event เดียว
+model CrmEmailEvent {
+  id              String            @id @default(cuid())
+  tenantId        String
+  emailId         String
+  email           CrmEmailMessage   @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  kind            CrmEmailEventKind
+  providerEventId String?           @unique
+  url             String?
+  userAgent       String? // ตัดสั้น
+  at              DateTime          @default(now())
+
+  @@index([emailId, at])
+  @@index([kind, at])
+}
+
+model CrmEmailTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  systemId  String
+  name      String
+  subject   String
+  bodyHtml  String
+  category  String? // FOLLOW_UP | QUOTE | INTRO | RENEWAL
+  variables String[] @default([])
+  active    Boolean  @default(true)
+  isSystem  Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([systemId, name])
+  @@index([tenantId])
+}
+
+// C4 — ตั้งค่าอีเมลรายผู้ใช้ (ทับค่าของระบบ)
+model CrmEmailUserSetting {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  userId        String
+  fromName      String?
+  fromAddr      String?
+  replyToMode   String   @default("SHARK") // "SHARK" | "SELF" | "CUSTOM"
+  replyToAddr   String?
+  copyToAddr    String?
+  copyMode      String   @default("NONE") // "NONE" | "IN" | "OUT" | "BOTH"
+  signatureHtml String?
+  providerId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([systemId, userId])
+  @@index([tenantId])
+}
+
+// 🔜 โครงเท่านั้น — X10: ไม่เก็บ secret ในตาราง (tokenRef = ตัวอ้างไปที่เก็บความลับ)
+model CrmMailProvider {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  userId     String?
+  kind       String // "GMAIL" | "OUTLOOK" | "IMAP"
+  status     String
+  tokenRef   String?
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([systemId, userId, kind])
+  @@index([tenantId])
+}
+
+// §15 — โดเมนผู้ส่งที่ยืนยันแล้วของร้าน (ระดับร้าน · ไม่ผูกระบบ ⇒ scope tenant)
+model EmailDomain {
+  id         String    @id @default(cuid())
+  tenantId   String
+  domain     String // lowercase
+  status     String    @default("PENDING") // "PENDING" | "VERIFIED" | "FAILED"
+  providerId String?
+  records    Json? // DNS records ที่ต้องตั้ง
+  verifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([tenantId, domain])
+}
+
+// ─── ติดตาม (C6 + อีเมล) ───
+model CrmTrackedLink {
+  id           String    @id @default(cuid())
+  tenantId     String
+  systemId     String
+  code         String    @unique
+  url          String
+  name         String?
+  campaignId   String?
+  linkId       String? // AcquisitionLink.id
+  channel      String?
+  clicks       Int       @default(0)
+  uniqueClicks Int       @default(0)
+  active       Boolean   @default(true)
+  expiresAt    DateTime? // R-E.16: ไม่มี job หมดอายุในรอบนี้
+  createdById  String?
+  createdAt    DateTime  @default(now())
+
+  clickRows CrmTrackedClick[]
+
+  @@index([systemId, createdAt])
+}
+
+model CrmTrackedClick {
+  id           String         @id @default(cuid())
+  tenantId     String
+  linkId       String
+  link         CrmTrackedLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  contactId    String?
+  emailId      String?
+  webSessionId String?
+  userAgent    String?
+  at           DateTime       @default(now())
+
+  @@index([linkId, at])
+}
+
+// X8: ไม่เก็บ IP ดิบ — ipHash (sha256 + salt) เท่านั้น
+model CrmWebSession {
+  id             String    @id @default(cuid())
+  tenantId       String
+  systemId       String
+  visitorId      String // cookie · uuid
+  contactId      String?
+  consentVersion Int?
+  consentAt      DateTime?
+  firstUrl       String?
+  referrer       String?
+  utm            Json?
+  userAgent      String? // ตัดสั้น
+  ipHash         String?
+  startedAt      DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  pageViews      Int       @default(0)
+  identifiedBy   String? // "FORM" | "EMAIL_CLICK" | "PORTAL" | "LINK"
+  purgedAt       DateTime?
+
+  events CrmWebEvent[]
+
+  @@index([systemId, visitorId])
+  @@index([contactId, startedAt])
+  @@index([lastSeenAt])
+}
+
+model CrmWebEvent {
+  id          String          @id @default(cuid())
+  tenantId    String
+  sessionId   String
+  session     CrmWebSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  kind        CrmWebEventKind
+  url         String?
+  title       String?
+  durationSec Int?
+  meta        Json?
+  at          DateTime        @default(now())
+
+  @@index([sessionId, at])
+}
+
+// ─── เงินของดีล (มติ C29 · R-C.4) ───
+// แถวนี้เป็นทั้ง "ลิงก์ POS/ใบแจ้งหนี้ ↔ ดีล" และ "ธงกันนับซ้ำ" ของ recordPayment (ไม่มี PosSale.dealId)
+// refType/status เป็นข้อความ (R4 — ตรวจในแอป): refType "PAYMENT" | "POS_SALE" · status "LINKED" | "COUNTED" | "REVERSED"
+model CrmDealPayment {
+  id         String    @id @default(cuid())
+  tenantId   String
+  systemId   String
+  dealId     String
+  deal       CrmDeal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  refType    String
+  refId      String
+  satang     BigInt
+  status     String
+  countedAt  DateTime?
+  reversedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([dealId, refType, refId])
+  @@index([refType, refId]) // consumer ของ pos.sale.paid / account.payment.* หาแถวจากของที่จ่าย
+  @@index([systemId, status])
+}
+
+// มติ C22 — ตั้งค่าแจ้งเตือนรายผู้ใช้ + ช่วงเงียบ
+model CrmUserPref {
+  id            String   @id @default(cuid())
+  tenantId      String
+  systemId      String
+  userId        String
+  notifications Json     @default("{}")
+  quietHours    Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([systemId, userId])
+  @@index([tenantId])
+}
+
+// หนี้ C1.4 (R5) — งานนำเข้าเบื้องหลัง · X5: จองงานด้วย leaseUntil
+model CrmImportJob {
+  id            String    @id @default(cuid())
+  tenantId      String
+  systemId      String
+  kind          String // "CONTACTS" | "COMPANIES" | …
+  status        String // "QUEUED" | "RUNNING" | "DONE" | "FAILED"
+  createdById   String?
+  fileId        String? // FileAsset.id ของไฟล์ต้นทาง (ส่วนตัว · R-E.2)
+  options       Json? // การจับคู่คอลัมน์ / โหมดซ้ำ ฯลฯ
+  totalRows     Int       @default(0)
+  processedRows Int       @default(0)
+  result        Json?
+  error         String?
+  leaseUntil    DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, leaseUntil])
+  @@index([systemId, createdAt])
 }

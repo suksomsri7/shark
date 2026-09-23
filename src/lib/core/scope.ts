@@ -77,6 +77,26 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CustomRecord: sys(),
   CustomRecordValue: tenant, // ค่าของรายการ/ผู้ติดต่อ/บริษัท/ดีล (recordType) — แบบ MemberFieldValue
   CustomRecordValueHistory: tenant,
+  // ── CRM v2 (crm_v2_b · ใบ C2.0 · พิมพ์เขียว §4.3 + §15) — มี systemId ของระบบ CRM = sys() · ตารางลูก = tenant
+  CrmScoreRule: sys(),
+  CrmScoreLog: tenant, // ลูกของผู้ติดต่อ
+  CrmAssignmentRule: sys(),
+  CrmSequence: sys(),
+  CrmSequenceStep: tenant, // ลูกของ sequence
+  CrmSequenceEnrollment: tenant, // ลูกของ sequence (cron runDue กวาดข้ามระบบ · tenantId ของตัวเอง)
+  CrmEmailMessage: sys(),
+  CrmEmailEvent: tenant, // ลูกของอีเมล
+  CrmEmailTemplate: sys(),
+  CrmEmailUserSetting: sys(),
+  CrmMailProvider: sys(),
+  EmailDomain: tenant, // โดเมนผู้ส่งระดับร้าน (ไม่ผูกระบบ)
+  CrmTrackedLink: sys(),
+  CrmTrackedClick: tenant, // ลูกของลิงก์
+  CrmWebSession: sys(),
+  CrmWebEvent: tenant, // ลูกของ session
+  CrmDealPayment: sys(),
+  CrmUserPref: sys(),
+  CrmImportJob: sys(),
   // ทีม (core · ของกลางทั้งแอป) — ไม่ผูกระบบ
   Team: tenant,
   TeamMember: tenant,

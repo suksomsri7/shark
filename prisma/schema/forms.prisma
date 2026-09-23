@@ -11,6 +11,14 @@ model FormDef {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // ── crm_v2_b (C2.0 · ใช้โดย C2.6) — เพิ่มคอลัมน์ล้วน (nullable/default) · ไม่มี FK (ข้ามโมดูล · แถวเดิมไม่ถูกตรวจ)
+  crmSystemId            String? // ระบบ CRM ปลายทาง (null = กติกาเดิม resolveFormCrmSystem: ระบบ CRM แรกของร้าน)
+  assignRuleId           String? // CrmAssignmentRule.id
+  utmCapture             Boolean @default(true)
+  scoreOnSubmit          Int?
+  createCompanyFromField String? // key ของฟิลด์ที่ใช้สร้างบริษัท
+  spamGuard              Json? // {honeypot, minSeconds, rateLimit…} (C24)
+
   submissions FormSubmission[]
 
   @@index([tenantId, active])
@@ -25,6 +33,11 @@ model FormSubmission {
   crmContactId String? // CrmContact ที่เกิด (ถ้า crmEnabled)
   ip           String?
   createdAt    DateTime @default(now())
+  // ── crm_v2_b (C2.0 · C2.6) — ที่มาของการส่งฟอร์ม · nullable ทั้งหมด
+  utm          Json?
+  pageUrl      String?
+  referrer     String?
+  webSessionId String? // CrmWebSession.id (ไม่มี FK)
 
   @@index([formId, createdAt])
   @@index([tenantId])

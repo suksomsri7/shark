@@ -18,6 +18,13 @@ const SOURCE_LABEL: Record<string, string> = {
   DNA_INTERVIEW: "สัมภาษณ์ธุรกิจ",
   AUTO_TITLE: "ตั้งชื่อห้องแชท",
   SUPPORT_DRAFT: "ร่างคำตอบเคส",
+  // CRM C2.0 ▸ ช่องที่เคยแสดงเป็นรหัสดิบ + ช่องใหม่ของ CRM
+  CHAT_TRANSLATE: "แปลข้อความแชทลูกค้า",
+  CHAT_SUGGEST: "AI แนะนำคำตอบแชท",
+  ACCOUNT_INBOX: "อ่านบิลกล่องขาเข้า",
+  MEMBER_ASSIST: "ผู้ช่วย AI งานสมาชิก",
+  CRM_ASSIST: "ผู้ช่วย AI งาน CRM",
+  // ◂ CRM C2.0
   TOPUP: "เติมเครดิต",
   GRANT: "เครดิตต้อนรับ",
   ADJUST: "ปรับโดยแอดมิน",

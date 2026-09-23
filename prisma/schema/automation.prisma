@@ -119,6 +119,11 @@ model AutomationRun {
   finishedAt  DateTime?
   payload     Json?
   eventKey    String?
+  // ── crm_v2_b (C2.0 · R7a · ใช้โดย C2.1) — ผู้ติดต่อ CRM ที่กฎทำงานให้ (ไม่มี default · ไม่มี FK)
+  // 🔴 ตัวกันวนของ CRM = **partial unique** (ruleId, crmContactId, eventKey) WHERE "crmContactId" IS NOT NULL
+  //    ประกาศเฉพาะใน migration.sql (Prisma schema ไม่รองรับ WHERE) · ปลอดภัยกับแถวเดิม: ทุกแถวเดิมเป็น NULL
+  //    แถวของสมาชิก/บอร์ดงาน (crmContactId = NULL) ไม่ถูกตัวนี้ตรวจ — ใช้ unique(ruleId, customerId, eventKey) เดิมต่อ
+  crmContactId String?
 
   @@unique([ruleId, customerId, eventKey])
   @@index([tenantId, createdAt])
