@@ -382,7 +382,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C2 | C2.0 | ✅ | (ใบนี้) | migration `crm_v2_b` (604 บรรทัด · sha `33e25d71…`) ตารางทั้งเฟส C2 + `ai_credit_crm_assist` (`CRM_ASSIST`) · scope 19 โมเดล · ป้ายช่องเครดิตไทย · additive ล้วน (ไม่มีคำสั่งที่ล้มได้กับแถว prod) · ข้อสอบ 73/73 · `wo-notes/crm-C2.0.md` |
 | C2 | C2.1 | 🔨 | — | รวมเข้าทรีหลักแล้ว (staged) · ข้อสอบ 84/84 ×2 รอบ · ACCEPTANCE-FIX เมนู "กฎอัตโนมัติ" ที่เข้าไม่ถึง · รอผล `c21-verify3.log` แล้ว commit+push |
 | C2 | C2.2 | 🔨 | — | builder จบ + ผู้ตรวจอิสระจบ (ไม่มี BLOCKER · แก้ 8 SHOULD-FIX ครบพร้อมหลักฐาน) · uncommitted ใน `shark-crm-c20` · รอผู้คุมงานรวม+ตรวจเอง |
-| C2 | C2.3 | 🔨 | — | builder จบ (60/60 หลัง ORACLE-EDIT S4.1) · uncommitted ใน `shark-crm-c23` · **ยังไม่มีผู้ตรวจอิสระ** |
+| C2 | C2.3 | 🔨 | — | builder จบ (60/60 หลัง ORACLE-EDIT S4.1) · **ผู้ตรวจอิสระจบ: ไม่มี BLOCKER แต่ 11 จุดต้องแก้ + 5 ORACLE-EDIT ของผู้คุมงาน** (ท้าย brief C2.3) · uncommitted ใน `shark-crm-c23` |
 | C2 | C2.4–C2.11 | ⏸️ | — | ข้อสอบพร้อม: C2.4(78) C2.5(94) C2.6(82)+web(34) C2.7(55) · C2.6/C2.7 ยังอยู่ใน `shark-crm-c12a` |
 | C3 | C3.0–C3.9 | ⏸️ | — | |
 | C4 | C4.1–C4.4 | ⏸️ | — | |

@@ -25,11 +25,13 @@
 - ⚠️ C2.2 กับ C2.3 แตกจากฐานเดียวกันและแตะไฟล์ร่วมกันหลายตัว (`crm/index.ts` · `settings.ts` · `nav.ts` · `layout.tsx` · `crm-ui-inventory.json` · `visual-crm.mts`) ⇒ **รวม C2.2 ก่อน แล้วค่อย C2.3 ด้วย `-3`** และตรวจ conflict ทีละไฟล์
 - แล้วรันตรวจเอง (แบบเดียวกับ C2.1) + ภาพ spec `"2.2"` + PARITY กับ mockup 07 (ล่าง) ใน `ledger/design-crm/`
 
-### 0.4 C2.3 (builder เสร็จ · **ยังไม่มีผู้ตรวจอิสระ** — ตัวที่ปล่อยไว้ตายไปกับ session)
-- งาน **uncommitted ใน `/root/projects/shark-crm-c23`** (22 ไฟล์ · ฐาน `827ecbdb`) · ข้อสอบ **59/60 → 60/60 หลัง ORACLE-EDIT C2.3-S4.1 ที่ผู้คุมงานทำแล้ว** (ไฟล์ข้อสอบในทรีหลักและใน c23 แก้แล้วทั้งคู่)
-- 🔴 **ต้อง spawn ผู้ตรวจอิสระใหม่ (model: opus)** ก่อนรับงาน · โฟกัส: `contacts.ts` (ไฟล์ที่สร้างลีดทุกเส้นรวมทั้งร้าน v1 + เครื่องมือ AI `crm_create_lead`) · round-robin/เพดานใต้การยิงพร้อมกัน · advisory lock ครอบช่วง read-decide-write และแยกต่อระบบ · `Party.address` (จังหวัด) ต้องไม่หลุดออกไปใน payload/log/แจ้งเตือน
-- ที่ builder แจ้งไว้และผู้คุมงานยังไม่ตัดสิน: (ก) server actions อยู่ที่ `src/app/app/sys/[id]/crm/settings/assignment/actions.ts` ไม่ใช่ `crm/assignment-actions.ts` ตาม R12 (อ้างว่าติดด่าน F2.3) — ให้ผู้ตรวจยืนยันว่าเหตุผลจริงและไม่มีอะไรรั่วไปฝั่ง client · (ข) `pageData` คืน `contactFields` เพิ่ม (1 query) — ต้องเช็กว่า scope ตามร้านและตรวจสิทธิ์
-- ไฟล์หลักฐานที่ builder ทิ้งไว้ลบได้: `/root/projects/shark-crm-c23/scripts/probe-c23-s41.mts`
+### 0.4 C2.3 (builder จบ · **ผู้ตรวจอิสระจบแล้ว** · 🔴 **builder ต้องแก้อีกรอบก่อนรับงาน**)
+- งาน **uncommitted ใน `/root/projects/shark-crm-c23`** (22 ไฟล์ · ฐาน `827ecbdb`) · ข้อสอบ 59/60 → 60/60 หลัง ORACLE-EDIT `C2.3-S4.1` ที่ทำแล้ว
+- **คำตัดสินผูกพันทั้งหมดอยู่ท้าย `ledger/crm-briefs/crm-brief-C2.3.md`** (หัวข้อ "Controller ruling 24 ก.ย.") — ผู้ตรวจไม่เจอ BLOCKER ฝั่งร้าน v1 และฝั่งการยิงพร้อมกัน แต่เจอ **11 จุดต้องแก้**
+- ▶️ **ทำต่อ: spawn builder C2.3 ตัวใหม่ (model opus) ให้แก้ 11 ข้อตามลำดับในไฟล์นั้น** สั่งให้ส่งหลักฐานแบบ "ทำบั๊กเดิมให้เกิดซ้ำ แล้วแสดงว่าของใหม่ไม่เป็น" · ข้อที่ห้ามมองข้าม: **B1** (สถานะการลาหลุดถึงคนที่ไม่มีคีย์ HR) · **S2** (เงื่อนไข `language` ตายสนิทบนเส้นทางจริง = 1 ใน 6 ชนิดที่สัญญาบังคับ) · **S8** (ปั๊ม teamId ของกฎทำให้คนนอกทีมอ่านลีดข้ามทีมได้)
+- 🔴 **ผู้คุมงานต้องทำเอง 5 ORACLE-EDIT** (ยังไม่ทำ · รายละเอียดในไฟล์เดียวกัน): เพิ่มสัญญา+ข้อสอบของ `pageData` (พื้นที่ที่ 3 จุดใหญ่ซ่อนอยู่โดยไม่มีข้อสอบเลย) · `U.2` เพิ่มกรณีร้าน v2 ของ `createContactFromLegacy` (เครื่องมือ AI `crm_create_lead` + ฟอร์ม v1 เดินกฎได้แล้ว = พฤติกรรมเปลี่ยนจริง ไม่มีใครคุม) · `X3.x` เพิ่มคู่ ROUND_ROBIN + เพดาน · `S6.4` ตรวจจำนวน testid ไม่ใช่แค่ `includes` · `S6.5` ตามขอบ import ที่ใช้จริง
+- 🔴 **กติกาใหม่จากคืนนี้: ก่อน spawn builder ทุกครั้ง ก๊อป `ledger/crm-briefs/` จากทรีหลักเข้า worktree นั้นก่อน** — สำเนาใน `shark-crm-c23` **ไม่มี Controller addendum (R1–R12)** ⇒ builder ตัวก่อนอาจทำงานโดยไม่เห็นคำตัดสินผูกพัน
+- ไฟล์หลักฐานที่ลบได้: `/root/projects/shark-crm-c23/scripts/probe-c23-s41.mts`
 
 ### 0.5 ถัดไปตามลำดับ
 C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2.0) → C2.5 ∥ C2.6 → C2.7 … C2.11 → ปิดเฟส C2 ด้วย `qc:all` (**ต้องส่ง DATABASE_URL/DIRECT_URL เข้าไปด้วย** ดู `scripts/pending/run-c1-qcall.sh`) → C3.0 (migration) …
