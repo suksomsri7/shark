@@ -16,6 +16,9 @@ type Any = any;
 
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
+// 🔴 ด่านผู้คุมงาน 24 ก.ย.: worktree อื่นห้าม reseed QC1 (ดูเหตุผลเต็มใน scripts/qc-owner-guard.mts)
+const ownerGuard = (await import("./qc-owner-guard.mts" as string)) as { assertMayReseed: (s: string) => void };
+ownerGuard.assertMayReseed("seed-member-qc.mts");
 const mq = (await import("./member-qc-env.mts" as string)) as {
   MQC: Any;
   SYSTEM_FIELD_KEYS: readonly string[];

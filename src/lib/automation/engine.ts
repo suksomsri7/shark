@@ -15,7 +15,8 @@ import { tenantDb } from "@/lib/core/db";
 import { formatBaht } from "@/lib/ui/money";
 import { eventLabel } from "./labels";
 
-export type AutomationEvent = { tenantId: string; type: string; payload: unknown };
+// CRM C2.1 ▸ event อาจพก `id` (OutboxEvent.id → กุญแจกันซ้ำ) · `systemId` (ระบบของ event) · `idempotencyKey` — เอนจิน v1 ไม่ใช้ช่องเหล่านี้ ◂
+export type AutomationEvent = { tenantId: string; type: string; payload: unknown; id?: string | null; systemId?: string | null; idempotencyKey?: string | null };
 export type AutomationDeps = { post?: (url: string, body: unknown) => Promise<void> };
 
 // ดึง amountSatang จาก payload แบบปลอดภัย (event ที่ไม่มียอด → null)
@@ -101,6 +102,19 @@ export async function runForEvent(evt: AutomationEvent, deps?: AutomationDeps): 
     const { runForKanbanEvent } = await import("@/lib/modules/kanban/automation");
     fired += await runForKanbanEvent(evt, deps);
   }
+
+  // CRM C2.1 ▸ กฎของ CRM (scope CRM + crmSystemId) มีเอนจินของตัวเองในโมดูล — delegation แบบเดียวกับบอร์ดงานข้างบน
+  //   lazy import กัน import วงกลม (crm/automation → contacts/deals → … → outbox-consumers → engine) · `runForCrmEvent` ห้าม throw
+  //   AUDIT-CLASS X1: เอนจิน CRM เห็นเฉพาะกฎ scope "CRM" ของระบบของ event (โหลดตัวตนด้วย id ในร้านนั้น) — ตัวกรอง v1 ข้างบนไม่เปลี่ยน
+  //   N1 ทางลัด: ร้านไม่มีกฎ CRM ที่เปิดอยู่สำหรับ event นี้ = ไม่โหลดกราฟของโมดูล CRM เลย (index [tenantId, event, enabled])
+  if (
+    (evt.type.startsWith("crm.") || evt.type.startsWith("custom.record.")) &&
+    (await db.automationRule.findFirst({ where: { event: evt.type, enabled: true, scope: "CRM" }, select: { id: true } }))
+  ) {
+    const { runForCrmEvent } = await import("@/lib/modules/crm/automation");
+    fired += (await runForCrmEvent(evt, deps?.post ? { deps: { post: deps.post } } : {})).runs;
+  }
+  // ◂ CRM C2.1
 
   return fired;
 }

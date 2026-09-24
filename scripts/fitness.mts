@@ -480,10 +480,18 @@ chk(
 const CRM_SELF_DIRS = ["src/lib/modules/crm/", "src/app/app/sys/[id]/crm/"];
 const CRM_DEEP_RE = /(?:from\s*|import\s*\(\s*|require\s*\(\s*|import\s+)["'][^"']*modules\/crm\/(?!index["'])(?!ui["'])/g;
 // รายงานเป็น `ไฟล์:บรรทัด` — คนที่เจอด่านแดงต้องกระโดดไปบรรทัดนั้นได้ทันที
+// CRM C2.1 ▸ ข้อยกเว้นรายเส้น (ไฟล์ → specifier ตรงตัว) ที่สัญญาใบงานบังคับ — ไม่ใช่รายการยกเว้นรายโฟลเดอร์:
+//   src/lib/automation/engine.ts → "@/lib/modules/crm/automation" : สัญญา C2.1 ข้อ E (ข้อสอบ qc-crm-c2.1 S0.6) ให้เอนจินกลาง
+//   delegate แบบ lazy import ตรงไฟล์ "แบบเดียวกับบอร์ดงาน" (`@/lib/modules/kanban/automation`) — facade ลากทั้งโมดูล CRM
+//   (บัญชี/แชท/สมาชิก) เข้ากราฟของทุก event ที่ขึ้นต้น crm.* โดยไม่จำเป็น · specifier อื่นในไฟล์เดียวกันยังโดนจับตามปกติ
+const CRM_DEEP_ALLOWED: ReadonlyMap<string, string> = new Map([["src/lib/automation/engine.ts", "@/lib/modules/crm/automation"]]);
+// ◂ CRM C2.1
 const deepCrmImports = walk(join(ROOT, "src"), (p) => p.endsWith(".ts") || p.endsWith(".tsx"))
   .filter((f) => !CRM_SELF_DIRS.some((d) => rel(f).startsWith(d)))
   .flatMap((f) =>
-    [...readFileSync(f, "utf8").matchAll(CRM_DEEP_RE)].map(
+    [...readFileSync(f, "utf8").matchAll(CRM_DEEP_RE)]
+      .filter((m) => !(CRM_DEEP_ALLOWED.has(rel(f)) && readFileSync(f, "utf8").slice((m.index ?? 0) + m[0].search(/["']/) + 1).startsWith(`${CRM_DEEP_ALLOWED.get(rel(f))}${m[0][m[0].search(/["']/)]}`))) // CRM C2.1 ◂
+      .map(
       (m) => `${rel(f)}:${readFileSync(f, "utf8").slice(0, m.index ?? 0).split("\n").length}`,
     ),
   );

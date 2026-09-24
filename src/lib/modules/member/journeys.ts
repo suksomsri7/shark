@@ -24,6 +24,19 @@
 import { Prisma } from "@prisma/client";
 import { sha256 } from "@/lib/core/hash";
 import { emitOutboxMany } from "@/lib/core/outbox";
+// C2.1 (มติ C18) — ตัวรันการกระทำกลาง: ลำดับขั้น · ส่งข้อความ + ยินยอม ณ เวลาส่ง · WAIT_THEN · lease ของขั้นที่รอ · กุญแจกันซ้ำ
+//   ย้ายออกจากไฟล์นี้ไปอยู่ที่ `src/lib/automation/action-runner.ts` (move-only) — journey = adapter "customer" ของตัวรันนั้น
+import {
+  cancelWaiting,
+  closeWait,
+  eventKeyOf,
+  executeActions as runSteps,
+  registerSubjectAdapter,
+  runDueWaits as runDueWaitsShared,
+  type StepOutcome as RunnerStepOutcome,
+  type SubjectAdapter,
+  type WaitRow,
+} from "@/lib/automation/action-runner";
 import { issue as issueVoucher, VOUCHER_SYSTEM_ACTOR } from "@/lib/modules/voucher";
 import { earnWithLot, getBalance, resolvePointSystemIds } from "@/lib/modules/point";
 import { prisma } from "./db";
@@ -36,7 +49,6 @@ import { describeDefinition, parseDefinition, type SegmentDefinition } from "./s
 import type { MemberCtx } from "./profile";
 import { JOURNEY_PRESETS, TIER_AT_LEAST_PREFIX, journeyPreset } from "./journey-presets";
 import {
-  JOURNEY_ACTION_CHANNEL,
   JOURNEY_ACTION_TYPES,
   JOURNEY_ATTRIBUTION_DAYS,
   JOURNEY_CHANNEL_COST_SATANG,
@@ -100,13 +112,6 @@ function thaiMonthDay(now: Date, offsetDays: number): string {
 /** ตำแหน่งของสมาชิกบนเส้น 0–100 ของ journey นี้ (คงที่ตลอดกาล · สูตรเดียวกับแคมเปญ M3.2) */
 function hashPct(ruleId: string, customerId: string): number {
   return (parseInt(sha256(`${ruleId}:${customerId}`).slice(0, 8), 16) % 10000) / 100;
-}
-
-function stableJson(v: unknown): string {
-  if (v === null || typeof v !== "object") return JSON.stringify(v ?? null);
-  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
-  const o = v as Record<string, unknown>;
-  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(",")}}`;
 }
 
 const asJson = (v: unknown): Prisma.InputJsonValue => (v ?? {}) as Prisma.InputJsonValue;
@@ -191,16 +196,8 @@ const CUSTOMER_SELECT = {
 const displayName = (c: { name: string | null; firstName: string | null; lastName: string | null }): string =>
   [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || c.name || "สมาชิก";
 
-/** ผลของ 1 ขั้น (เก็บใน payload.steps ของแถว run — สถิติรายขั้น/ต้นทุนข้อความอ่านจากตรงนี้) */
-type StepOutcome = {
-  i: number;
-  type: string;
-  ok: boolean;
-  skipped?: boolean;
-  note: string;
-  channel?: JourneyChannel;
-  voucherId?: string;
-};
+/** ผลของ 1 ขั้น (เก็บใน payload.steps ของแถว run — สถิติรายขั้น/ต้นทุนข้อความอ่านจากตรงนี้) — ชนิดกลางของตัวรัน */
+type StepOutcome = RunnerStepOutcome;
 
 type JourneyEventRef = { type: string; payload: unknown };
 
@@ -464,14 +461,6 @@ export async function updateJourney(ctx: MemberCtx, actor: MemberActor, id: stri
   return { id: row.id };
 }
 
-async function cancelWaiting(ruleId: string, detail: string): Promise<number> {
-  const r = await prisma.automationRun.updateMany({
-    where: { ruleId, status: "WAITING" },
-    data: { status: "CANCELLED", finishedAt: new Date(), detail },
-  });
-  return r.count;
-}
-
 /** เปิด/ปิด — ปิดแล้ว "ขั้นที่รออยู่" ทุกแถวถูกยกเลิกทันที (§11.6) */
 export async function toggleJourney(ctx: MemberCtx, actor: MemberActor, id: string, enabled: boolean): Promise<{ enabled: boolean; cancelled: number }> {
   requireManage(actor);
@@ -618,16 +607,6 @@ async function resolveCustomerId(tenantId: string, payload: unknown): Promise<st
     if (g?.ownerCustomerId) return g.ownerCustomerId;
   }
   return null;
-}
-
-async function eventKeyOf(evt: JourneyEvent): Promise<string> {
-  const direct = str(evt.idempotencyKey);
-  if (direct) return direct.slice(0, 190);
-  if (evt.id) {
-    const row = await prisma.outboxEvent.findFirst({ where: { id: evt.id, tenantId: evt.tenantId }, select: { idempotencyKey: true } });
-    if (row?.idempotencyKey) return row.idempotencyKey.slice(0, 190);
-  }
-  return `evt:${evt.type}:${sha256(stableJson(evt.payload)).slice(0, 24)}`;
 }
 
 /** พารามิเตอร์ของทริกเกอร์ตรงกับ event ไหม (วันเกิด 7 วัน ≠ วันเกิด 3 วัน) */
@@ -798,7 +777,7 @@ async function enterJourney(rule: RuleRow, customer: CustomerRow, event: Journey
   if (!runId) return false;
   try {
     const res = await executeActions(
-      { rule, customer, runId, event, now, deps, voucherId: null, voucherCode: null },
+      { rule, customer, subject: customer, runId, event, now, deps, voucherId: null, voucherCode: null },
       actionsOf(rule),
       0,
       0,
@@ -821,6 +800,8 @@ async function enterJourney(rule: RuleRow, customer: CustomerRow, event: Journey
 type ExecEnv = {
   rule: RuleRow;
   customer: CustomerRow;
+  /** ตัวตนของตัวรันกลาง (= customer) */
+  subject: CustomerRow;
   runId: string;
   event: JourneyEventRef;
   now: Date;
@@ -943,37 +924,7 @@ async function runAction(env: ExecEnv, action: JourneyAction, index: number, dep
         return { ...base, ok: false, note: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
       }
     }
-    case "SEND_LINE":
-    case "SEND_EMAIL":
-    case "SEND_SMS":
-    case "SEND_PUSH": {
-      const channel = JOURNEY_ACTION_CHANNEL[action.type] as JourneyChannel;
-      const label = JOURNEY_CHANNEL_LABELS[channel];
-      const consent = await consentOf(c.id, channel);
-      if (consent === "REVOKED") return { ...base, ok: false, skipped: true, channel, note: `ลูกค้าถอนความยินยอมรับข่าวสารทาง${label}แล้ว` };
-      const template = str(p.template);
-      const vars = await varsFor(env, `${template} ${str(p.subject)} ${str(p.title)}`);
-      const sender = env.deps[channel.toLowerCase() as "line" | "email" | "sms" | "push"] ?? NO_SENDER;
-      let res: JourneySendResult;
-      try {
-        res = await sender({
-          tenantId: c.tenantId,
-          memberSystemId: c.memberSystemId,
-          journeyId: env.rule.id,
-          runId: env.runId,
-          customerId: c.id,
-          channel,
-          to: await addressOf(c, channel),
-          consent,
-          body: renderJourneyMessage(template, vars),
-          ...(action.type === "SEND_EMAIL" ? { subject: renderJourneyMessage(str(p.subject), vars) } : {}),
-          ...(action.type === "SEND_PUSH" ? { title: renderJourneyMessage(str(p.title), vars) } : {}),
-        });
-      } catch (e) {
-        res = { ok: false, error: (e instanceof Error ? e.message : String(e)).slice(0, 200) };
-      }
-      return { ...base, ok: res.ok, ...(res.skipped ? { skipped: true } : {}), channel, note: res.ok ? `ส่งทาง${label}แล้ว` : (res.error ?? "ส่งไม่สำเร็จ") };
-    }
+    // SEND_LINE / SEND_EMAIL / SEND_SMS / SEND_PUSH → ตัวรันกลาง (ยินยอม ณ เวลาส่ง · ตัวส่งผ่าน MEMBER_ADAPTER.send)
     case "ADD_TAG":
     case "REMOVE_TAG": {
       const tag = str(p.tag);
@@ -983,34 +934,7 @@ async function runAction(env: ExecEnv, action: JourneyAction, index: number, dep
       if (next.length !== tags.length) await prisma.customer.update({ where: { id: c.id }, data: { tags: next } });
       return { ...base, ok: true, note: action.type === "ADD_TAG" ? `แท็ก "${tag}"` : `เอาแท็ก "${tag}" ออก` };
     }
-    case "WAIT_THEN": {
-      const days = Math.round(numOr(p.days, 1));
-      const scheduledAt = new Date(env.now.getTime() + days * DAY_MS);
-      const payload: WaitPayload = {
-        thenActions: thenActionsOf(action),
-        ifVoucherUnused: p.ifVoucherUnused === true,
-        voucherId: env.voucherId,
-        voucherCode: env.voucherCode,
-        event: env.event,
-        parentRunId: env.runId,
-        baseIndex: index + 1,
-        depth: depth + 1,
-      };
-      await prisma.automationRun.create({
-        data: {
-          tenantId: c.tenantId,
-          ruleId: env.rule.id,
-          journeyId: env.rule.id,
-          customerId: c.id,
-          status: "WAITING",
-          stepIndex: index,
-          scheduledAt,
-          detail: `รอถึง ${thaiDate(scheduledAt)} แล้วค่อยทำต่อ${payload.ifVoucherUnused ? " (เฉพาะเมื่อยังไม่ใช้ voucher)" : ""}`,
-          payload: asJson(payload),
-        },
-      });
-      return { ...base, ok: true, note: `รอถึง ${thaiDate(scheduledAt)}` };
-    }
+    // WAIT_THEN → ตัวรันกลาง (แถว WAITING · ของเฉพาะสมาชิกผ่าน MEMBER_ADAPTER.waitExtras)
     case "OPEN_KANBAN_CARD": {
       const sender = env.deps.kanban;
       if (!sender) return { ...base, ok: false, skipped: true, note: "ยังไม่ได้เชื่อมบอร์ดงาน" };
@@ -1081,18 +1005,57 @@ async function runAction(env: ExecEnv, action: JourneyAction, index: number, dep
   }
 }
 
-/** ทำขั้นตามลำดับ · `baseIndex` = เลขขั้นแบบไล่ลึกของขั้นแรกในรายการนี้ (ตรงกับ flattenActions) */
+/** ทำขั้นตามลำดับ (ตัวรันกลาง `action-runner.executeActions` ด้วย adapter ของสมาชิก) · `baseIndex` = เลขขั้นแบบไล่ลึกของขั้นแรกในรายการนี้ (ตรงกับ flattenActions) */
 async function executeActions(env: ExecEnv, actions: JourneyAction[], baseIndex: number, depth: number): Promise<{ steps: StepOutcome[]; voucherId: string | null }> {
-  const steps: StepOutcome[] = [];
-  let index = baseIndex;
-  for (const action of actions) {
-    const outcome = await runAction(env, action, index, depth);
-    steps.push(outcome);
-    if (outcome.ok) await logStep(env, index, action, outcome.note, env.runId).catch(() => null);
-    index += 1 + countActions(thenActionsOf(action));
-  }
+  const { steps } = await runSteps(env, actions, baseIndex, depth, MEMBER_ADAPTER);
   return { steps, voucherId: env.voucherId };
 }
+
+// ───────────────────────── adapter "customer" ของตัวรันกลาง (มติ C18) ─────────────────────────
+//   ส่งข้อความ (ยินยอม ณ เวลาส่ง) · WAIT_THEN · lease อยู่ที่ตัวรันกลาง — ที่นี่เหลือเฉพาะของที่ผูกกับสมาชิก:
+//   ตัวตน (Customer) · ที่อยู่/ความยินยอม (MemberChannelIdentity/MemberConsent) · การกระทำของโลกสมาชิก (`runAction`)
+
+const MEMBER_ADAPTER: SubjectAdapter<CustomerRow, ExecEnv> = {
+  scope: SCOPE,
+  resolveSubject: async (evt) => {
+    const customerId = await resolveCustomerId(evt.tenantId, evt.payload);
+    if (!customerId) return null;
+    return (await prisma.customer.findFirst({ where: { id: customerId, tenantId: evt.tenantId }, select: CUSTOMER_SELECT })) as CustomerRow | null;
+  },
+  addressOf: (c, channel) => addressOf(c, channel),
+  consentOf: (c, channel) => consentOf(c.id, channel),
+  runDomainAction: (_kind, _params, env, at) => runAction(env, at.action, at.index, at.depth),
+  channelLabel: (channel) => JOURNEY_CHANNEL_LABELS[channel],
+  consentBlockedNote: (_channel, label) => `ลูกค้าถอนความยินยอมรับข่าวสารทาง${label}แล้ว`,
+  messageVars: async (env, text) => (await varsFor(env, text)) as Record<string, string | undefined>,
+  render: (template, vars) => renderJourneyMessage(template, vars as Partial<JourneyMessageVars>),
+  send: async (env, core) => {
+    const c = env.customer;
+    const sender = env.deps[core.channel.toLowerCase() as "line" | "email" | "sms" | "push"] ?? NO_SENDER;
+    return sender({
+      tenantId: c.tenantId,
+      memberSystemId: c.memberSystemId,
+      journeyId: env.rule.id,
+      runId: env.runId,
+      customerId: c.id,
+      channel: core.channel,
+      to: core.to,
+      consent: core.consent,
+      body: core.body,
+      ...(core.subject !== undefined ? { subject: core.subject } : {}),
+      ...(core.title !== undefined ? { title: core.title } : {}),
+    });
+  },
+  waitColumns: (c) => ({ customerId: c.id }),
+  waitExtras: (env, p) => ({
+    payload: { ifVoucherUnused: p.ifVoucherUnused === true, voucherId: env.voucherId, voucherCode: env.voucherCode },
+    note: p.ifVoucherUnused === true ? " (เฉพาะเมื่อยังไม่ใช้ voucher)" : "",
+  }),
+  onStepDone: (env, index, action, note) => logStep(env, index, action, note, env.runId),
+  // CRM C2.1 ▸ กฎ CRM เรียกการกระทำของสมาชิก (GIVE_POINTS / ISSUE_VOUCHER · RESOLUTIONS R-A) ผ่าน adapter นี้ — ไม่มีตัวส่ง (deps ว่าง) ◂
+  makeEnv: (c, base) => ({ ...base, rule: base.rule as RuleRow, customer: c, subject: c, deps: {}, voucherId: null, voucherCode: null }),
+};
+registerSubjectAdapter(MEMBER_ADAPTER);
 
 // ───────────────────────── cron รายชั่วโมง: ขั้นที่รอเวลา ─────────────────────────
 
@@ -1111,55 +1074,22 @@ function waitPayloadOf(v: Prisma.JsonValue | null): WaitPayload {
   };
 }
 
-/** อายุการจองขั้นที่รอเวลา — cron ที่จองไว้แล้วตายกลางทาง แถวจะถูกหยิบใหม่หลังหมดเวลานี้ */
-const WAIT_LEASE_MS = 15 * 60_000;
-
 /**
  * ขั้น "รอ n วัน" ที่ถึงเวลาแล้ว (ทุกร้าน · cron รายชั่วโมง) — journey ปิด/ลบ → ยกเลิก · ใช้ voucher แล้ว (ifVoucherUnused) → ข้าม
- * 🔴 AUDIT M7: จองแบบ **lease** — เลื่อน `scheduledAt` ออกไป 15 นาที โดยเทียบกับค่าเดิม (updateMany เงื่อนไข
- *    "ยังรอ + scheduledAt ยังเป็นค่าเดิม") ⇒ cron 2 ตัวซ้อนกันได้ตัวเดียว · เครื่องดับกลางทาง = รอบถัดไป
- *    (หลังหมด lease) หยิบไปทำต่อได้เอง · `finishedAt` เป็น "ทำจบแล้วจริง" เท่านั้น ไม่ใช่ตัวจอง
- *    แถวที่ค้างจากบั๊กเดิม (WAITING + finishedAt ถูกเซ็ตตอนจอง) จึงถูกกู้ด้วยรอบเดียวกันนี้
+ * 🔴 AUDIT M7: จองแบบ **lease** ที่ตัวรันกลาง (`action-runner.runDueWaits` · WAIT_LEASE_MS 15 นาที) — cron 2 ตัวซ้อนกันได้ตัวเดียว ·
+ *    เครื่องดับกลางทาง = รอบถัดไป (หลังหมด lease) หยิบไปทำต่อได้เอง · `finishedAt` เป็น "ทำจบแล้วจริง" เท่านั้น ไม่ใช่ตัวจอง
+ *    ที่นี่ส่งเฉพาะ handler ของ journey ⇒ แถวของกฎ CRM ไม่ถูกแตะ (และตัวเก็บของ CRM ไม่แตะแถวของ journey)
  */
 export async function runDueWaits(opts: { now?: Date; deps?: JourneyDeps; tenantId?: string; limit?: number } = {}): Promise<{ ran: number }> {
-  const now = opts.now ?? new Date();
-  const due = await prisma.automationRun.findMany({
-    where: { status: "WAITING", scheduledAt: { lte: now }, journeyId: { not: null }, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
-    orderBy: { scheduledAt: "asc" },
-    take: Math.min(Math.max(opts.limit ?? 500, 1), 2000),
-    select: { id: true, tenantId: true, ruleId: true, customerId: true, stepIndex: true, scheduledAt: true, payload: true },
-  });
-  let ran = 0;
-  for (const w of due) {
-    const claimed = await prisma.automationRun.updateMany({
-      where: { id: w.id, status: "WAITING", scheduledAt: w.scheduledAt },
-      data: { scheduledAt: new Date(now.getTime() + WAIT_LEASE_MS), finishedAt: null },
-    });
-    if (claimed.count !== 1) continue;
-    ran += 1;
-    try {
-      await finishWait(w, now, opts.deps ?? {});
-    } catch (e) {
-      await prisma.automationRun.update({
-        where: { id: w.id },
-        data: { status: "FAILED", finishedAt: new Date(), detail: `ทำขั้นหลังรอไม่สำเร็จ — ${(e instanceof Error ? e.message : String(e)).slice(0, 300)}` },
-      }).catch(() => null);
-    }
-  }
-  return { ran };
+  return runDueWaitsShared(
+    { now: opts.now, tenantId: opts.tenantId, limit: opts.limit },
+    { [SCOPE]: { resume: (w, now) => finishWait(w, now, opts.deps ?? {}) } },
+  );
 }
 
-async function finishWait(
-  w: { id: string; tenantId: string; ruleId: string; customerId: string | null; payload: Prisma.JsonValue | null },
-  now: Date,
-  deps: JourneyDeps,
-): Promise<void> {
-  // 🔴 AUDIT M7: ทุกทางออกของขั้นที่รอ = "จบจริง" ⇒ ต้องปิด `finishedAt` ที่นี่ (ตัวจองไม่ได้ปิดให้อีกแล้ว)
-  const done = (status: "OK" | "SKIPPED" | "CANCELLED", detail: string, extra: Record<string, unknown> = {}) =>
-    prisma.automationRun.update({
-      where: { id: w.id },
-      data: { status, detail, finishedAt: new Date(), payload: asJson({ ...(w.payload as Record<string, unknown> ?? {}), ...extra }) },
-    });
+async function finishWait(w: WaitRow, now: Date, deps: JourneyDeps): Promise<void> {
+  // 🔴 AUDIT M7: ทุกทางออกของขั้นที่รอ = "จบจริง" ⇒ ต้องปิด `finishedAt` ที่นี่ (ตัวจองไม่ได้ปิดให้อีกแล้ว) — `closeWait` ของตัวรันกลาง
+  const done = (status: "OK" | "SKIPPED" | "CANCELLED", detail: string, extra: Record<string, unknown> = {}) => closeWait(w, status, detail, extra);
 
   const rule = (await prisma.automationRule.findFirst({ where: { id: w.ruleId, tenantId: w.tenantId }, select: RULE_SELECT })) as RuleRow | null;
   if (!rule || !rule.enabled) {
@@ -1181,7 +1111,7 @@ async function finishWait(
       return;
     }
   }
-  const env: ExecEnv = { rule, customer, runId: w.id, event: p.event, now, deps, voucherId: p.voucherId, voucherCode: p.voucherCode };
+  const env: ExecEnv = { rule, customer, subject: customer, runId: w.id, event: p.event, now, deps, voucherId: p.voucherId, voucherCode: p.voucherCode };
   const res = await executeActions(env, p.thenActions, p.baseIndex, p.depth);
   await done("OK", summarize(res.steps), { steps: res.steps });
 }

@@ -63,6 +63,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "contacts-duplicates", label: "ผู้ติดต่อที่น่าจะซ้ำ", path: "/crm/contacts/duplicates", status: "ready", wo: "C1.11" },
   { key: "companies-duplicates", label: "บริษัทที่น่าจะซ้ำ", path: "/crm/companies/duplicates", status: "ready", wo: "C1.11" },
   // ◂ CRM C1.11
+  // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ตัวสร้างกฎประโยคไทย · กฎเริ่มต้น 6 · ทดลองรัน · บันทึกการทำงาน — ภาพ 07 บน)
+  { key: "settings-automation", label: "กฎอัตโนมัติ", path: "/crm/settings/automation", status: "ready", wo: "C2.1" },
+  // ◂ CRM C2.1
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

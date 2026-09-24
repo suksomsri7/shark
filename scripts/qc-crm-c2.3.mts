@@ -562,12 +562,17 @@ try {
   {
     await resetRules(crmA);
     const fullLeads = [await rawContact(tidA, crmA, uFull, { lifecycleStage: "LEAD", leadStatus: "NEW" }), await rawContact(tidA, crmA, uFull, { lifecycleStage: "LEAD", leadStatus: "NEW" })];
-    await mkRule(cA, { name: `เพดาน ${TAG}`, mode: "FIXED", userIds: [uFull, U[1]], maxOpenPerUser: 2, conditions: { items: [] } });
+    // ORACLE-EDIT C2.3-S4.1 (ผู้คุมงาน · 24 ก.ย. 2569): ผู้สมัครสำรองเดิมคือ U[1] ซึ่ง "ว่าง" เฉพาะตอนเขียนข้อสอบ
+    //   S3.1 (ข้อก่อนหน้า ระบบเดียวกัน) ยืนยัน openLoadOf ของ U[1] = 1 แล้ว **แจกลีดให้ U[1] อีกใบด้วย pick()** ⇒ ถึงตอน S4.1 U[1] มี 2 = ชนเพดานพอดี
+    //   ⇒ ทั้ง uFull และ U[1] ถูกข้าม ⇒ reason NOBODY ⇒ ข้อนี้ไม่มีโค้ดใดทำให้เขียวได้พร้อมกับ S3.1 (บั๊กข้อสอบ ไม่ใช่บั๊กสินค้า)
+    //   หลักฐาน: actual ที่ builder รายงาน `atCap=-1 below=uFull` (= NOBODY แล้วตัวคุมบวกทำงาน) + probe ที่แก้เฉพาะ 2 บรรทัดนี้ = 60/60
+    //   แก้เป็น U[3] ที่ "ไม่ถือลีดใน crmA เลย" ⇒ ข้อนี้ไม่ผูกกับจำนวนลีดที่ข้ออื่นแจกไปแล้ว (บทเรียน: ข้อสอบที่อาศัยสถานะสะสมของข้อก่อนหน้าจะเน่า)
+    await mkRule(cA, { name: `เพดาน ${TAG}`, mode: "FIXED", userIds: [uFull, U[3]], maxOpenPerUser: 2, conditions: { items: [] } });
     const atCap = await pick(cA, {});
     await P.crmContact.update({ where: { id: fullLeads[0] }, data: { archivedAt: new Date() } });
     const below = await pick(cA, {});
-    chk("C2.3-S4.1", "maxOpenPerUser 2: uFull holds 2 open leads ⇒ skipped ⇒ next candidate U1 · [positive control] one of them archived (load 1) ⇒ uFull again",
-      ownerOf(atCap) === U[1] && ownerOf(below) === uFull, "U1 then uFull", `atCap=${ownerOf(atCap) === uFull ? "uFull" : U.indexOf(ownerOf(atCap))} below=${ownerOf(below) === uFull ? "uFull" : ownerOf(below)}`);
+    chk("C2.3-S4.1", "maxOpenPerUser 2: uFull holds 2 open leads ⇒ skipped ⇒ next candidate U3 (ถือ 0 ลีดใน crmA) · [positive control] one of them archived (load 1) ⇒ uFull again",
+      ownerOf(atCap) === U[3] && ownerOf(below) === uFull, "U3 then uFull", `atCap=${ownerOf(atCap) === uFull ? "uFull" : U.indexOf(ownerOf(atCap))} below=${ownerOf(below) === uFull ? "uFull" : ownerOf(below)}`);
   }
   {
     await resetRules(crmA);

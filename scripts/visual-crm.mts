@@ -133,6 +133,13 @@ const C111_IDS = WO === "1.11"
 // ◂ CRM C1.11
 
 const SPECS: Record<string, Spec[]> = {
+  // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ภาพ 07 บน): รายการกฎ + ชิปโควตา · ตัวสร้างกฎประโยคไทย (เปิดด้วย "สร้างกฎใหม่") ทั้ง 1440 และ 390
+  //   thana/nok (STAFF ไม่มีคีย์ crm.automation.manage) = 404 ตามแบบ (ข้อสอบ C2.1 X1.4) → ถ่ายเฉพาะ owner/manager
+  "2.1": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    { name: `crm-automation-${userKey}`, path: `${CRM_BASE}/settings/automation`, note: "กฎอัตโนมัติ CRM — รายการกฎ (รันแล้ว · เดือนนี้ · เปิด/ปิด) + บันทึกการทำงาน", expect: ["[data-testid=crm-auto-page]", "[data-testid=crm-auto-usage]"], steps: [{ waitFor: "[data-testid=crm-auto-page]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: `crm-automation-builder-${userKey}`, path: `${CRM_BASE}/settings/automation`, note: "ตัวสร้างกฎประโยคไทย: เมื่อ / และถ้า / ให้ทำ + ทดลองรัน", expect: ["[data-testid=crm-auto-trigger]"], steps: [{ waitFor: "[data-testid=crm-auto-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-auto-new]" }, { wait: 300 }, { click: "[data-testid=crm-auto-add-condition]" }, { wait: 300 }] },
+  ],
+  // ◂ CRM C2.1
   // CRM C1.11 ▸ ทุกหน้า C1 ที่ 390 (owner/thana · D7 ไม่มีล้นแนวนอน) + หน้าใหม่ของ C1.11 ทั้งสองขนาด + แผงแชท (เดสก์ท็อป — คอลัมน์บริบทของแชทมีเฉพาะ lg ขึ้นไป)
   //   + หน้าสลับ (เจ้าของร้าน · ต้องมี CRM_V2_SWITCH=all ในเซิร์ฟเวอร์ QC จึงเห็นการ์ดสวิตช์) · thana ไม่มีคีย์ตั้งค่า ⇒ หน้าตั้งค่าไม่อยู่ในชุดของ thana
   "1.11": isCustomer ? [] : [

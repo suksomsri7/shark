@@ -89,3 +89,9 @@ export { briefFor, crmPanelTarget, partyBriefs } from "./brief";
 export type { CrmBrief, CrmBriefDeal, PartyCrmBrief } from "./brief";
 export { crmUiVersion, isCrmV2SwitchAllowed } from "./ui-version";
 // ◂ CRM C1.11
+// CRM C2.1 ▸ กฎอัตโนมัติ CRM (`automation.ts` · scope CRM บนตัวรันกลาง `@/lib/automation/action-runner`) — namespace เดียว:
+//   createRule/updateRule/toggleRule/deleteRule/listRules/listRuns/usageThisMonth/applyStarterRules/dryRun/builderOptions ·
+//   runForCrmEvent (ผู้เรียก: src/lib/automation/engine.ts — lazy import แบบเดียวกับบอร์ดงาน) · runDueWaits/runCronTriggers
+//   (ผู้เรียก: งานตามเวลา `src/lib/platform/minute-jobs.ts` crm.automation.*) · ทะเบียน trigger/action/กฎเริ่มต้นอยู่ที่ `./automation-shared`
+export * as automation from "./automation";
+// ◂ CRM C2.1

@@ -311,7 +311,13 @@ try {
   console.log("\n── S4: fitness F2.3 (\"other modules touch crm only via crm/index\") ──");
   const fit = read("scripts/fitness.mts");
   const f23Idx = fit.indexOf('"F2.3"');
-  const f23From = f23Idx < 0 ? 0 : fit.lastIndexOf("const", f23Idx) >= 0 ? Math.max(0, fit.lastIndexOf("const", f23Idx) - 600) : Math.max(0, f23Idx - 900);
+  // ORACLE-EDIT C0.2-S4.2 / C0.2-S4.3 (controller · 23 ก.ย. 2569): หน้าต่างเดิมย้อนหลังจาก chk("F2.3") แค่ ~600 ตัวอักษร
+  //   ⇒ พอใบ C2.1 แทรกคอมเมนต์อธิบาย CRM_DEEP_ALLOWED (~900 ตัวอักษร) คั่นระหว่าง `CRM_DEEP_RE` กับ chk ตัวจริง
+  //   regex ของกฎก็หลุดออกนอกหน้าต่าง → ข้อสอบรายงาน "no regex literal mentioning modules/crm found" ทั้งที่กฎยังอยู่และยังจับจริง
+  //   (พิสูจน์: ไฟล์ล่อ 2 ตัวนอกโฟลเดอร์ CRM ที่ import `crm/service` และ `crm/automation` ⇒ F2.3 แดงและชี้บรรทัดถูก · ลบไฟล์ล่อแล้วเขียว 32/32)
+  //   แก้ให้ยึดจากจุดประกาศของกฎ (`const CRM_SELF_DIRS`) แทนการนับตัวอักษร ⇒ คอมเมนต์ที่แทรกทีหลังไม่ทำให้ข้อสอบเน่า
+  const f23DeclIdx = fit.lastIndexOf("const CRM_SELF_DIRS", f23Idx);
+  const f23From = f23Idx < 0 ? 0 : f23DeclIdx >= 0 ? f23DeclIdx : Math.max(0, f23Idx - 3000);
   const f23Block = f23Idx < 0 ? "" : fit.slice(f23From, f23Idx + 500);
   chk(
     "C0.2-S4.1",

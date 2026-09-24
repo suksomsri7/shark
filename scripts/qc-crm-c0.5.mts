@@ -103,7 +103,11 @@ const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () =
 const { host } = accEnv.loadQcEnv();
 // every child (workers AND the runner under test) inherits these: QC env file, and no owner alert e-mails
 // for the failures this file provokes on purpose (logOps ERROR would mail OPS_ALERT_EMAIL).
-process.env.QC_ENV_FILE = ".env.qc";
+// ORACLE-EDIT C0.5-S4.4 / S4.5a / S4.5b (controller · 23 ก.ย. 2569): บรรทัดนี้เคยตั้งตายตัวเป็น ".env.qc" (QC1)
+//   ⇒ เวลารันบน QC2/QC3 (ผ่าน scripts/qc2.sh / qc3.sh) ลูกที่ถูก spawn จะได้ไฟล์ env ของ QC1 แต่ได้ DATABASE_URL ของ QC2/QC3
+//   ด่านกันพลาดใน scripts/crm-cron.mts (ของใบ C0.5 เอง) เห็นสองค่าไม่ตรงกันจึงปฏิเสธแล้ว exit 4 = แดงทุกใบที่รันบนฐานที่สอง/สาม
+//   แก้: เคารพค่าที่ผู้เรียกตั้งมาแล้ว ถ้าไม่มีค่อย default เป็น QC1 (พฤติกรรมเดิมทุกไบต์เมื่อรันบน QC1)
+process.env.QC_ENV_FILE = process.env.QC_ENV_FILE || ".env.qc";
 delete process.env.OPS_ALERT_EMAIL;
 
 const out = (s: string) => {

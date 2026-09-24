@@ -201,7 +201,8 @@ const withAutomation =
       failure = e;
     }
     try {
-      await runForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
+      // CRM C2.1 ▸ ส่ง id (กุญแจกันซ้ำจาก OutboxEvent) + systemId (ระบบของ event) ต่อให้เอนจิน — กฎ CRM ใช้ทั้งสองช่อง · v1 ไม่อ่าน ◂
+      await runForEvent({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload, id: evt.id, systemId: evt.systemId });
     } catch (e) {
       // automation ล้มเหลว = เรื่องรอง — event หลัก DONE ตามปกติ · แค่บันทึก WARN
       await logOps("WARN", "outbox", `automation ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });

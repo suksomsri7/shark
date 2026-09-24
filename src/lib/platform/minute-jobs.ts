@@ -122,6 +122,33 @@ export function registerMinuteJob(job: MinuteJob): void {
 //   หน้า integrations จะขึ้นว่าปกติทั้งที่ crontab หายไปแล้ว
 registerMinuteJob({ name: "crm.heartbeat", everyMinutes: 5, vpsOnly: true, run: async () => {} });
 
+// CRM C2.1 ▸ กฎอัตโนมัติ CRM (ใบ C2.1 · §7.3) — ขั้น "รอ n วัน" ที่ถึงเวลา (รายชั่วโมง) · trigger ตามรอบเวลา (รายวัน 00:00 ไทย)
+//   ทั้งสองงาน idempotent: ขั้นที่รอจองแบบ lease ที่ตัวรันกลาง (action-runner) · trigger ตามรอบเวลามีกุญแจกันซ้ำต่อ (กฎ, รายการ, วัน/ช่วง)
+//   โหลด CRM ผ่าน facade ตอนรันเท่านั้น (ไฟล์นี้ถูก import จาก route/crm-cron.mts — ห้ามลากกราฟ CRM ตอนโหลด)
+//   ประตู uiVersion (กติกาถาวร R-E.14) อยู่ในตัวงานเอง: ทั้งสองกรองเฉพาะระบบ settings.crm.uiVersion = 2 ใน SQL — ระบบ uiVersion 1 = ไม่ทำอะไร
+//   (ขั้นที่รอคงสถานะ WAITING · trigger ตามรอบเวลาถูกข้ามทั้งระบบ) จนกว่าจะเปิด 2 อีกครั้ง
+registerMinuteJob({
+  name: "crm.automation.waits",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { automation } = await import("@/lib/modules/crm");
+    await automation.runDueWaits({ now, signal: ctrl.signal, deadline: ctrl.deadline });
+  },
+});
+registerMinuteJob({
+  name: "crm.automation.cron",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { automation } = await import("@/lib/modules/crm");
+    // ถูกตัดงบกลางทาง = คืน cutOff (ไม่ throw) — กุญแจของ close_due/field_due ผูกกับวันที่ของรายการ และรอบถัดไปย้อนเก็บได้ 7 วัน
+    //   ⇒ ของที่รอบนี้ยังไม่ได้ทำไม่หาย (SF-2)
+    await automation.runCronTriggers({ now, signal: ctrl.signal, deadline: ctrl.deadline });
+  },
+});
+// ◂ CRM C2.1
+
 function errorText(e: unknown): string {
   let s: string;
   if (e instanceof Error) s = e.stack && e.stack.includes(e.message) ? e.stack : `${e.name}: ${e.message}`;

@@ -15,6 +15,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { KanbanIcon } from "./KanbanIcon";
 import { AutomationSuggestions, type AutomationSuggestionRow } from "./AutomationSuggestions";
+// CRM C2.1 ▸ ชิ้นส่วนประโยค (select/การ์ด/สไตล์) ใช้ร่วมกับตัวสร้างกฎ CRM — ย้ายออกไปแบบ move-only ◂
+import { Card, Pick, selCls, selStyle, tagStyle, type Opt } from "@/components/automation/SentenceParts";
 import {
   createRuleAction,
   deleteRuleAction,
@@ -25,7 +27,6 @@ import {
 
 // ───────────────────────── ชนิดของข้อมูลที่ server ส่งมา ─────────────────────────
 
-type Opt = { id: string; name: string };
 
 export type AutomationRuleRow = {
   id: string;
@@ -309,44 +310,7 @@ function draftOfRule(rule: AutomationRuleRow, defaultEvent: string): Draft {
 }
 
 // ───────────────────────── ชิ้นส่วนเล็ก ๆ ─────────────────────────
-
-const selCls = "rounded-lg border px-2";
-const selStyle: React.CSSProperties = { height: 30, fontSize: 12.5, borderColor: "var(--color-line)", background: "var(--color-surface)", maxWidth: 230 };
-const tagStyle: React.CSSProperties = {
-  height: 26,
-  padding: "0 9px",
-  borderRadius: 7,
-  fontSize: 12,
-  fontWeight: 700,
-  background: "var(--color-surface-2)",
-  color: "var(--color-ink-soft)",
-  border: "1px solid var(--color-line)",
-};
-
-function Pick({ value, onChange, options, placeholder, ariaLabel }: { value: string; onChange: (v: string) => void; options: Opt[]; placeholder: string; ariaLabel: string }) {
-  return (
-    <select aria-label={ariaLabel} className={selCls} style={selStyle} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{placeholder}</option>
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.name}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function Card({ children, testId, className }: { children: React.ReactNode; testId?: string; className?: string }) {
-  return (
-    <section
-      data-testid={testId}
-      className={`flex flex-col rounded-xl ${className ?? ""}`}
-      style={{ background: "var(--color-surface)", border: "1px solid var(--color-line)", padding: 14, gap: 10 }}
-    >
-      {children}
-    </section>
-  );
-}
+// CRM C2.1 ▸ ย้ายไป `src/components/automation/SentenceParts.tsx` (move-only · addendum 7) — ตัวสร้างกฎ CRM ใช้ชุดเดียวกัน ◂
 
 // ───────────────────────── ตัวหลัก ─────────────────────────
 

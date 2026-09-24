@@ -1053,7 +1053,10 @@ try {
         await P.$executeRawUnsafe(`INSERT INTO "AutomationRun" ("id","tenantId","ruleId","status","crmContactId","eventKey","createdAt") VALUES ($1,$2,$3,'SKIPPED',$4,$5,now())`,
           `${TAG}-dup-${i}`, tidA, RX, x1.id, `${TAG}-dupkey`);
       dup = "both inserted";
-    } catch (e) { dup = String((e as Any)?.meta?.code ?? (e as Any)?.code ?? (e as Error).message); }
+    // ORACLE-EDIT C2.1-X4.4 (controller · 20 Sep): with the pg driver adapter Prisma raises P2010 and the Postgres code sits in
+    //   meta.driverAdapterError.cause.originalCode (meta.code is undefined) — read that plus the message; the DB rejection itself
+    //   is unchanged (builder evidence: "Raw query failed. Code: `23505` … unique constraint").
+    } catch (e) { dup = `${(e as Any)?.meta?.driverAdapterError?.cause?.originalCode ?? (e as Any)?.meta?.code ?? ""} ${(e as Error).message}`; }
     chk("C2.1-X4.4", "the dedupe lives in the database (C2.0 partial UNIQUE(ruleId, crmContactId, eventKey)): a second raw row with the same triple is rejected (23505)",
       /23505|unique/i.test(dup), "23505", cut(dup, 120));
     const x5 = await mkX("e");
