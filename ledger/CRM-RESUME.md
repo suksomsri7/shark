@@ -1,6 +1,6 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: **24 ก.ย. 2569 ~01:30 (ไทย)** · ผู้คุมงาน Opus 5 · branch `session/crm` · ⏸️ **หยุดพักตามคำสั่งเจ้าของ**
+> อัปเดตล่าสุด: **24 ก.ย. 2569 08:15 (ไทย · 01:15 UTC)** · ผู้คุมงาน **Fable 5.1** (รับช่วงจาก Opus 5 — เจ้าของสั่งหยุด session Opus เพราะวนซ้ำ · 🔴 ถ้าเห็น commit ที่ไม่ใช่ของตัวเองโผล่ = session เก่ายังไม่ปิด แจ้งเจ้าของทันที) · branch `session/crm` · ▶️ กำลังเดิน
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → **ท้าย `ledger/CRM-RUN.md` §4 (บันทึก 23–24 ก.ย. สำคัญมาก)** → brief ของใบที่ทำ (มี "Controller ruling/addendum" = ผูกพัน)
 
 ## 0. ▶️ ทำต่อจากตรงนี้ (session ใหม่ · ทำตามลำดับ)
@@ -11,22 +11,13 @@
   `awk '/^== /{n=$0} /^exit=/{print n" -> "$0}' .qc-shots/crm/c21-verify3.log` และ `grep JSON_SUMMARY`
 - `ls /tmp/shark-gate*.lock` + `fuser /tmp/shark-gate.lock` ต้องไม่มีใครถือ
 
-### 0.2 ปิดใบ C2.1 — ✅ **ชุดตรวจเขียวหมดแล้ว เหลือแค่ PARITY + commit + push**
-ยูนิต `crm-c21-verify3` **จบครบ 26 ขั้น exit=0 ทั้งหมด + ALLDONE** (`.qc-shots/crm/c21-verify3.log`) บน seed ใหม่ที่สะอาด:
-`qc-crm-c2.1` **84/84** · `probe-c21-builder` 14/14 · `qc-automation` 13/13 · `qc-kanban-k2.9` 25/26 (`K2.9-S11.7` = ข้อภาพ คลาส E · ข้อ `C2.1-S6.1` ของใบนี้ยอมให้แดงเฉพาะข้อนี้โดยระบุชื่อ) · `qc-member-fix-s2` 25/25 · `fix-s3` 14/14 · `qc-member-m1.1` **28/28** · `qc-crm-c1.8` 81/81 · `c1.11` 66/66 · **`qc-crm-c2.0` 73/73** · `qc-crm-v1` 17/17 · **`qc-crm-c0.2` 27/27** · `qc-nav-functions` **11/11** · `probe-uiversion-gate` 14/14 (ไม่ตั้ง env) · typecheck · fitness 32/32 ×2 · build+serve · **ภาพ 2.1 ออกครบ 4 ไฟล์** · `qc-member-m1.9` 26/26
-> ⚠️ แก้ความเข้าใจผิดของบันทึกก่อนหน้า: `C0.2-S3.6` **ไม่ใช่แดงมาก่อน** — มันแดงเพราะข้อมูล CRM ถูก m1.1 ลบ · บน seed สะอาด **27/27** ⇒ ถ้า session ใหม่เห็น S3.6 แดง = ข้อมูลถูกลบไปแล้ว ให้ reseed ไม่ใช่รับว่าเป็นของเดิม
-
-**เหลือทำ 5 ขั้น (ไม่ต้องรันชุดตรวจใหม่)**
-1. **PARITY ด้วยตา**: `.qc-shots/crm/2.1/crm-automation-owner-{desktop,mobile}.png` + `crm-automation-builder-owner-{desktop,mobile}.png` เทียบ `ledger/design-crm/07-automation-sequence.png` (ครึ่งบน = กฎอัตโนมัติ · ครึ่งล่างเป็นของ C2.2) — ถ้าไม่ตรงและแก้ได้ ≤20 บรรทัด ทำเป็น ACCEPTANCE-FIX แล้วบันทึกใน wo-notes
-2. `git checkout -- scripts/crm-expected.json scripts/member-expected.json` (ผลพลอยได้ของ seed · **ตอนนี้ยังไม่ revert เพราะรอ PARITY**)
-3. เขียน `ledger/wo-notes/crm-C2.1.md` (แม่แบบ `ledger/wo-notes/TEMPLATE-crm.md` · ใส่ ORACLE-EDIT C2.1-X4.4 ของ session ก่อน + ACCEPTANCE-FIX เมนู + ตาราง D2/D4/D5/D6/D7) · อัปเดต MASTER-PLAN §12 แถว C2.1 เป็น ✅
-4. commit + **push session/crm + main** → poll `dpl_` ที่ https://shark.in.th/login (รอบก่อน 444 วิ) + `/api/health`
-5. `tg "…"` + อัปเดต memory (19/53)
+### 0.2 ปิดใบ C2.1 — ✅ รับงานแล้ว 24 ก.ย. (Fable) · `wo-notes/crm-C2.1.md` · push main แล้ว (dpl ดูใน wo-notes §3 D12)
 
 ### 0.3 รวม C2.2 (ผ่านผู้ตรวจแล้ว · รอผู้คุมงานตรวจเอง)
 - งานอยู่ **uncommitted ใน `/root/projects/shark-crm-c20`** (32 ไฟล์ · ฐาน `827ecbdb`) · ข้อสอบ `qc-crm-c2.2` **65/65** (ตัวเลขของ builder — **ต้องรันเอง**)
 - ผู้ตรวจอิสระ: ไม่มี BLOCKER · SHOULD-FIX 8 + NOTE 4 → builder แก้ครบพร้อมหลักฐาน "ทำบั๊กเดิมเกิดซ้ำแล้วแสดงว่าหาย" · **คำตัดสินผูกพันอยู่ท้าย `ledger/crm-briefs/crm-brief-C2.2.md`**
-- วิธีรวม: `git -C /root/projects/shark-crm-c20 diff --binary 827ecbdb -- . ':!scripts/*expected*.json' ':!scripts/qc-prisma.sh' ':!scripts/with-gate-lock.sh' ':!scripts/qc3.sh' ':!scripts/qc-owner-guard.mts' ':!scripts/seed-*.mts' ':!scripts/qc-crm-c0.5.mts' > /tmp/c22.patch` → `git apply --index -3 /tmp/c22.patch` ในทรีหลัก
+- 🔴 **สูตรเดิมด้านล่างขาดไฟล์ใหม่ (untracked) ทั้งหมด = โมดูล sequences หายทั้งก้อน** — Fable ทำ `git -C shark-crm-c20 add -N <ไฟล์/โฟลเดอร์ใหม่ 7 รายการ>` แล้ว diff ใหม่ได้ครบ **32 ไฟล์** ที่ `/tmp/c22-full.patch` (`git apply --check` สะอาดกับทรีหลัก ณ `6f9a2800`) · ถ้า /tmp หาย: ทำ `add -N` ซ้ำแล้ว diff ด้วยสูตรเดิม
+- วิธีรวม (เดิม): `git -C /root/projects/shark-crm-c20 diff --binary 827ecbdb -- . ':!scripts/*expected*.json' ':!scripts/qc-prisma.sh' ':!scripts/with-gate-lock.sh' ':!scripts/qc3.sh' ':!scripts/qc-owner-guard.mts' ':!scripts/seed-*.mts' ':!scripts/qc-crm-c0.5.mts' > /tmp/c22.patch` → `git apply --index -3 /tmp/c22.patch` ในทรีหลัก
   (ไฟล์ที่ยกเว้น = ของผู้คุมงานที่ก๊อปเข้าไป หรือผลพลอยได้ของ seed — ทรีหลักมีของจริงอยู่แล้ว)
 - ⚠️ C2.2 กับ C2.3 แตกจากฐานเดียวกันและแตะไฟล์ร่วมกันหลายตัว (`crm/index.ts` · `settings.ts` · `nav.ts` · `layout.tsx` · `crm-ui-inventory.json` · `visual-crm.mts`) ⇒ **รวม C2.2 ก่อน แล้วค่อย C2.3 ด้วย `-3`** และตรวจ conflict ทีละไฟล์
 - แล้วรันตรวจเอง (แบบเดียวกับ C2.1) + ภาพ spec `"2.2"` + PARITY กับ mockup 07 (ล่าง) ใน `ledger/design-crm/`
@@ -34,7 +25,8 @@
 ### 0.4 C2.3 (builder จบ · **ผู้ตรวจอิสระจบแล้ว** · 🔴 **builder ต้องแก้อีกรอบก่อนรับงาน**)
 - งาน **uncommitted ใน `/root/projects/shark-crm-c23`** (22 ไฟล์ · ฐาน `827ecbdb`) · ข้อสอบ 59/60 → 60/60 หลัง ORACLE-EDIT `C2.3-S4.1` ที่ทำแล้ว
 - **คำตัดสินผูกพันทั้งหมดอยู่ท้าย `ledger/crm-briefs/crm-brief-C2.3.md`** (หัวข้อ "Controller ruling 24 ก.ย.") — ผู้ตรวจไม่เจอ BLOCKER ฝั่งร้าน v1 และฝั่งการยิงพร้อมกัน แต่เจอ **11 จุดต้องแก้**
-- ▶️ **ทำต่อ: spawn builder C2.3 ตัวใหม่ (model opus) ให้แก้ 11 ข้อตามลำดับในไฟล์นั้น** สั่งให้ส่งหลักฐานแบบ "ทำบั๊กเดิมให้เกิดซ้ำ แล้วแสดงว่าของใหม่ไม่เป็น" · ข้อที่ห้ามมองข้าม: **B1** (สถานะการลาหลุดถึงคนที่ไม่มีคีย์ HR) · **S2** (เงื่อนไข `language` ตายสนิทบนเส้นทางจริง = 1 ใน 6 ชนิดที่สัญญาบังคับ) · **S8** (ปั๊ม teamId ของกฎทำให้คนนอกทีมอ่านลีดข้ามทีมได้)
+- ▶️ 24 ก.ย. 01:00 UTC Fable spawn แล้ว 2 ตัวใน c23 (คู่ขนาน · ห้ามรันของหนักจน verify3 จบ): **builder opus** แก้ 11 ข้อ + หลักฐาน before/after ที่ `shark-crm-c23/.qc-shots/c23-r2/` · **ผู้เขียนข้อสอบ opus** ทำ 5 ORACLE-EDIT ลง `scripts/qc-crm-c2.3.mts` เท่านั้น · ก๊อป briefs เข้า c23 แล้ว (diff -rq ว่าง) · ถ้า session ตาย: `git -C shark-crm-c23 status` + ดู `.qc-shots/c23-r2/` แล้ว spawn ใหม่ให้ทำต่อ
+- (คำสั่งเดิม) spawn builder C2.3 ตัวใหม่ (model opus) ให้แก้ 11 ข้อตามลำดับในไฟล์นั้น สั่งให้ส่งหลักฐานแบบ "ทำบั๊กเดิมให้เกิดซ้ำ แล้วแสดงว่าของใหม่ไม่เป็น" · ข้อที่ห้ามมองข้าม: **B1** (สถานะการลาหลุดถึงคนที่ไม่มีคีย์ HR) · **S2** (เงื่อนไข `language` ตายสนิทบนเส้นทางจริง = 1 ใน 6 ชนิดที่สัญญาบังคับ) · **S8** (ปั๊ม teamId ของกฎทำให้คนนอกทีมอ่านลีดข้ามทีมได้)
 - 🔴 **ผู้คุมงานต้องทำเอง 5 ORACLE-EDIT** (ยังไม่ทำ · รายละเอียดในไฟล์เดียวกัน): เพิ่มสัญญา+ข้อสอบของ `pageData` (พื้นที่ที่ 3 จุดใหญ่ซ่อนอยู่โดยไม่มีข้อสอบเลย) · `U.2` เพิ่มกรณีร้าน v2 ของ `createContactFromLegacy` (เครื่องมือ AI `crm_create_lead` + ฟอร์ม v1 เดินกฎได้แล้ว = พฤติกรรมเปลี่ยนจริง ไม่มีใครคุม) · `X3.x` เพิ่มคู่ ROUND_ROBIN + เพดาน · `S6.4` ตรวจจำนวน testid ไม่ใช่แค่ `includes` · `S6.5` ตามขอบ import ที่ใช้จริง
 - 🔴 **กติกาใหม่จากคืนนี้: ก่อน spawn builder ทุกครั้ง ก๊อป `ledger/crm-briefs/` จากทรีหลักเข้า worktree นั้นก่อน** — สำเนาใน `shark-crm-c23` **ไม่มี Controller addendum (R1–R12)** ⇒ builder ตัวก่อนอาจทำงานโดยไม่เห็นคำตัดสินผูกพัน
 - ไฟล์หลักฐานที่ลบได้: `/root/projects/shark-crm-c23/scripts/probe-c23-s41.mts`

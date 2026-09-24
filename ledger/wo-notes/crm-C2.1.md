@@ -31,13 +31,13 @@
 | D3 | กลุ่ม X | ✅ | §4 |
 | D4 | regression | ✅ | §5 — 13 ชุดเขียว (ยอมรับ 1 ข้อคลาส E ที่จำแนกแล้ว) |
 | D5 | typecheck · fitness ×2 | ✅ | `typecheck exit=0` · `fitness` 32/32 · `fitness-noenv` 32/32 |
-| D6 | build | ⏳FILL | `BUILD+serve` |
-| D7 | ภาพ + PARITY | ⏳FILL | §6 |
+| D6 | build | ✅ | `BUILD+serve exit=0` · พอร์ต 3215 ตอบ HTTP 200 (unit `crm-c21-verify3`) |
+| D7 | ภาพ + PARITY | ✅ | §6 — ผู้คุมงาน (Fable) เปิดดู 4 ใบเทียบ mockup 07 บน เอง |
 | D8 | testid + ทะเบียน | ✅ | `crm-ui-inventory.json` +51 · F14.1/F14.2 ใน fitness 32/32 · `qc-nav-functions` **11/11** (หลัง ACCEPTANCE-FIX) |
 | D9 | ผู้ตรวจอิสระ | ✅ | 20 ก.ย.: ไม่มี BLOCKER · SHOULD-FIX 4 (loop-guard ระดับผู้ติดต่อ · cron ติด 500 แถวแรก · WAIT ของระบบที่กลับเป็น v1 · คำเตือนไทยเมื่อไม่มีตัวจับเวลา) → builder แก้ครบ · ผู้ตรวจยืนยัน journeys สมาชิก/บอร์ดงาน/ร้าน v1 เหมือนเดิม |
 | D10 | เอกสาร/ทะเบียน | ✅ | ไม่มี event/op ใหม่ · fitness F13.x เขียว |
-| D11 | wo-notes + คืนสภาพ QC | ⏳FILL | ไฟล์นี้ · `qc-member-m1.9` |
-| D12 | push main → deploy | ⏳FILL | |
+| D11 | wo-notes + คืนสภาพ QC | ✅ | ไฟล์นี้ · `qc-member-m1.9` `{"total":26,"passed":26}` |
+| D12 | push main → deploy | ⏳ | รอ push (เติม hash + `dpl_` หลัง deploy READY) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล |
@@ -60,10 +60,17 @@
 - `probe-c21-builder`: 14/14 (สคริปต์พิสูจน์ของผู้คุมงาน: dedupe event ไม่มีผู้ติดต่อ · loop-guard · quota)
 - regressions: `qc-automation` 13/13 · `qc-kanban-k2.9` **25/26** (`K2.9-S11.7` = ข้อภาพอ่าน `.qc-shots/kanban/2.9` ที่ถูกลบตอนเคลียร์ดิสก์ — คลาส E ตาม `ledger/crm-c1-close-reds.md` · addendum ข้อ 1 ยอมรับ) · `qc-member-fix-s2` 25/25 · `qc-member-fix-s3` 14/14 · `qc-crm-c1.8` 81/81 · `qc-crm-c1.11` 66/66 (รวม `qc-crm-v1` ลูก) · `qc-crm-c2.0` 73/73 · `qc-crm-v1` 17/17 · `qc-crm-c0.2` **27/27** · `qc-nav-functions` 11/11 · `probe-uiversion-gate` (ไม่ตั้ง env) 14/14
 - `typecheck` exit 0 · `fitness` 32/32 · `fitness-noenv` 32/32
-- ⏳FILL build · shots · `qc-member-m1.9`
+- `BUILD+serve` exit 0 · `shots 2.1` exit 0 (4 ใบ) · `serve stop` exit 0 · `qc-member-m1.9`: `JSON_SUMMARY {"total":26,"passed":26,"findings":[]}` · `ALLDONE`
 
 ## 6. ภาพ (D7)
-⏳FILL
+คำสั่ง: `bash scripts/acc-v2-serve.sh` → `pnpm exec tsx scripts/visual-crm.mts 2.1` (ใน unit verify3 · owner เท่านั้น — thana/nok ไม่มีคีย์ `crm.automation.manage` = 404 ตามแบบ X1.4 · manager ใช้หน้าเดียวกับ owner)
+| หน้า | mockup | ภาพจริง | ผู้ใช้ | จอ | overflow | จุดต่างที่เห็นเอง |
+|---|---|---|---|---|---|---|
+| รายการกฎ + ชิปโควตา + บันทึกการทำงาน | 07 บน (ซ้าย-ล่าง) | `.qc-shots/crm/2.1/crm-automation-owner-desktop.png` | owner | 1440 | ไม่มี | mockup มีกฎ 5 ข้อ+สถิติ · ของจริง "0 กฎ" เพราะ seed ไม่ apply กฎเริ่มต้น (ปุ่ม "ใช้กฎเริ่มต้น 6 กฎ" มีตามแบบ) · มีแถบเตือน "ตัวจับเวลาของระบบยังไม่ทำงาน" (มติผู้ตรวจ 20 ก.ย.) ซึ่ง mockup ไม่มี — ตั้งใจ |
+| เดียวกัน | 07 บน | `…owner-mobile.png` | owner | 390 | ไม่มี (แถบแท็บ CRM เลื่อนแนวนอนตามแบบเดิมตั้งแต่ C1.x) | ปุ่ม "ใช้กฎเริ่มต้น"/"สร้างกฎใหม่" ตกบรรทัดใหม่ — อ่านได้ |
+| ตัวสร้างกฎประโยคไทย (เมื่อ / และถ้า / ให้ทำ + ทดลองรัน · ยกเลิก · บันทึกกฎ) | 07 บน (การ์ด "กฎใหม่") | `…builder-owner-desktop.png` | owner | 1440 | ไม่มี | ตรงแบบ: ชิป เมื่อ/และถ้า/ให้ทำ · "+ เพิ่มเงื่อนไข" · "+ เพิ่มการกระทำ (19 ชนิด)" (แบบเขียน 12 · ของจริงตามสัญญา 14+CREATE_DEAL+…) · ช่องชื่อกฎ · 3 ปุ่มท้าย |
+| เดียวกัน | 07 บน | `…builder-owner-mobile.png` | owner | 390 | ไม่มี | select ยาวถูกตัดด้วย ellipsis ("เกิน n") — ยอมรับ |
+- `PARITY: ผ่าน` — โครง/ลำดับ/ปุ่มครบตามแบบ · ต่างเฉพาะข้อมูลตัวอย่างและแถบเตือนที่ตั้งใจเพิ่ม · หนี้: ภาพรายการกฎแบบมีข้อมูล (หลัง apply กฎเริ่มต้น) ถ่ายตอน CP2
 
 ## 7. ข้อแย้ง / มติ (ทั้งหมดบันทึกใน `ledger/CRM-RUN.md` §4 แล้ว)
 - **ORACLE-EDIT `C2.1-X4.4`** (20 ก.ย.): Prisma + pg adapter โยน P2010 และรหัส Postgres อยู่ที่ `meta.driverAdapterError.cause.originalCode` ไม่ใช่ `meta.code` · DB ปฏิเสธแถวซ้ำจริง (23505) — ข้อสอบอ่านผิดที่
@@ -83,5 +90,5 @@
 | ข้อสอบข้อ `C0.2-S3.6` เคยแดง (0 ผู้ติดต่อ CRM ที่มี partyId) เมื่อ m1.1 ล้างข้อมูล | ต้นเหตุ = ลำดับ m1.1 · แก้ลำดับแล้ว = 27/27 | ปิดแล้ว |
 
 ## 9. คืนสภาพ QC
-- ข้อสอบใช้ร้านชั่วคราว `qc-c21-*` ทั้งหมด · CLEAN 22 ข้อเขียว · ⏳FILL `qc-member-m1.9` (30/15/10/5)
+- ข้อสอบใช้ร้านชั่วคราว `qc-c21-*` ทั้งหมด · CLEAN เขียว · `qc-member-m1.9` 26/26 หลังทั้งชุด (30/15/10/5 คงเดิม) · `crm-expected.json`/`member-expected.json` revert แล้วก่อน commit
 - 🔴 บทเรียนถาวรจากใบนี้ (ดู CRM-RESUME §1): `qc-member-m1.1` รัน seed ซ้ำเอง ⇒ ต้องอยู่หลัง reseed member และก่อน seed CRM เท่านั้น · ห้ามแก้สคริปต์ที่ unit กำลังรัน · `qc-owner-guard` กัน reseed QC1 จาก worktree อื่น
