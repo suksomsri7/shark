@@ -748,7 +748,10 @@ try {
   out("\n── S3 · รับเงิน → paidSatang · wonValue · lifecycle ──");
   const mkCompanyDeal = async () => {
     const ct = await mkContact(tidA, crmA, "คุณจ่ายเงิน", userA);
-    const co = await P.crmCompany.create({ data: { tenantId: tidA, systemId: crmA, name: pii(`บริษัท ${TAG}-${nx()}`), ownerUserId: userA } });
+    // ORACLE-EDIT (controller · 24 Sep): CrmCompany.partyId is mandatory (prisma/schema/crm.prisma:386 + @@unique([systemId, partyId])) — the fixture threw PrismaClientValidationError ⇒ C2.7-FATAL before S3
+    const coName = pii(`บริษัท ${TAG}-${nx()}`);
+    const coParty = await P.party.create({ data: { tenantId: tidA, name: coName, kind: "COMPANY" } });
+    const co = await P.crmCompany.create({ data: { tenantId: tidA, systemId: crmA, partyId: coParty.id, name: coName, ownerUserId: userA } });
     await P.crmCompanyContact.create({ data: { tenantId: tidA, systemId: crmA, companyId: co.id, contactId: ct.id, isPrimary: true } }).catch(() => null);
     const d = await mkDeal(cA, ct, pQuote, { lines: LINES });
     await P.crmDeal.update({ where: { id: d }, data: { companyId: co.id } }).catch(() => null);
@@ -798,7 +801,9 @@ try {
     await pump([tidA]);
     const after = (await P.crmDealPayment.count({ where: { systemId: crmA } }).catch(() => 0)) as number;
     // chain: a RECEIPT whose sourceDocId points at the deal's invoice still counts on the deal (the event carries no sourceDocId)
-    const rc = await mkDocReal(tidA, accA, "RECEIPT", 200_00, { sourceDocId: F.inv });
+    // ORACLE-EDIT C2.7-S3.3 (controller · 24 Sep): an issued RECEIPT is already PAID (account/service.ts ISSUE_STATUS.RECEIPT) ⇒ recordPayment refuses it and no
+    //   account.payment.recorded is ever emitted — the intent (a payable document attributable only through the sourceDocId chain) needs a payable type
+    const rc = await mkDocReal(tidA, accA, "DEPOSIT_RECEIPT", 200_00, { sourceDocId: F.inv });
     const paidBefore = B((await dealRow(F.d))?.paidSatang);
     const pr2 = await payDoc(tidA, accA, rc.id, 200_00, finA);
     await pump([tidA]);
@@ -1062,6 +1067,8 @@ try {
     const ctL = await mkContact(tidL, crmL, "คุณคอมโพส", userA);
     const dL = await mkDeal(cL, ctL, pL, { value: 500_00 });
     const sL = await sell(tidL, unitL, posL, 150_00);
+// ORACLE-EDIT C2.7-S7.6 (controller · 24 Sep): pos.createSale schedules a tenant-unscoped background drain — settle it before the trigger lab so the hand-delivered event is the only delivery that can count
+await pump([tidL]);
     const saleL = sL.saleId;
     await P.crmDealPayment?.create?.({ data: { tenantId: tidL, systemId: crmL, dealId: dL, refType: "POS_SALE", refId: saleL, satang: BigInt(sL.grand), status: "LINKED" } }).catch(() => null);
     const ev = await lastEvent(tidL, "pos.sale.paid", saleL);
@@ -1074,6 +1081,7 @@ try {
     // and the other direction: the accounting base fails ⇒ the CRM extra still runs
     let r2: Res = { ok: false, v: undefined, err: "not run", code: "", msg: "", name: "" };
     const s2 = await sell(tidL, unitL, posL, 220_00);
+await pump([tidL]);
     const sale2 = s2.saleId;
     await P.crmDealPayment?.create?.({ data: { tenantId: tidL, systemId: crmL, dealId: dL, refType: "POS_SALE", refId: sale2, satang: BigInt(s2.grand), status: "LINKED" } }).catch(() => null);
     const ev2 = await lastEvent(tidL, "pos.sale.paid", sale2);
