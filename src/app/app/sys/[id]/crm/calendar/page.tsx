@@ -14,7 +14,7 @@ import { CALENDAR_VIEWS, CALENDAR_VIEW_LABEL, CalendarBody, calendarWindow, shif
 
 // ปฏิทินกิจกรรม CRM (ใบ C1.6 · พิมพ์เขียว §3.8 · ภาพ 08 ขวา) — `/app/sys/{id}/crm/calendar`
 // URL state: ?view=day|week|month · ?date=YYYY-MM-DD (วันไทย) · ?scope=mine|team
-// ใบนี้แสดงเฉพาะกิจกรรม CRM (นัดจากโมดูลจอง/คลินิก/โรงเรียนรวมเข้ามาในใบ C2.4)
+// CRM C2.4 ▸ รวม "นัดของ Party เดียวกัน" จากโมดูลจอง · คลินิก · โรงเรียน เข้ามาด้วย (อ่านอย่างเดียว — แก้ที่โมดูลต้นทาง) ◂
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ = notFound() · ข้อมูลมาจาก `activities.calendar` (activityWhere) · หน้า GET ไม่เขียนอะไร
 
 export default async function CrmCalendarPage({
@@ -47,7 +47,7 @@ export default async function CrmCalendarPage({
   const res = await calendar(ctx, actor, { from: new Date(start), to: new Date(start + days * DAY_MS), mine: scope === "mine", team: scope === "team" }).catch((e: unknown) => {
     if (e instanceof ActivitiesError && e.code === "VALIDATION") {
       notice.text = e.message;
-      return { items: [] };
+      return { items: [], appointments: [], appointmentsTruncated: false };
     }
     throw e;
   });
@@ -103,16 +103,21 @@ export default async function CrmCalendarPage({
             </Link>
           </div>
         </div>
-        <p className="flex items-center gap-2 text-xs text-[color:var(--color-muted)]">
+        <p className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--color-muted)]">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--color-fg, #111)" }} /> นัด/โทร/งาน (CRM)
-          <span className="ml-2">· {res.items.length.toLocaleString("th-TH")} รายการ</span>
+          <span>· {res.items.length.toLocaleString("th-TH")} รายการ</span>
+          {/* CRM C2.4 ▸ ป้ายอธิบายชิปเส้นประ: นัดจากระบบอื่นของร้าน (จอง · คลินิก · โรงเรียน) — อ่านอย่างเดียว ◂ */}
+          <span className="inline-block h-2.5 w-2.5 rounded-sm border border-dashed" style={{ borderColor: "var(--color-muted)" }} /> นัดจากระบบอื่น (จอง · คลินิก · โรงเรียน) — อ่านอย่างเดียว
+          <span>· {res.appointments.length.toLocaleString("th-TH")} รายการ</span>
+          {/* ชนเพดานแถวนัด (F5) — บอกตรง ๆ ว่ายังมีต่อ ดีกว่าโชว์ครึ่งเดียวเงียบ ๆ */}
+          {res.appointmentsTruncated && <span data-testid="calendar-appointments-truncated">· แสดงเท่าที่พอดีกับหน้าจอ — เลือกช่วงวันที่สั้นลงเพื่อดูครบ</span>}
         </p>
         {notice.text && (
           <p className="rounded-lg border px-3 py-2 text-sm" role="status" data-testid="calendar-notice">
             {notice.text}
           </p>
         )}
-        <CalendarBody systemId={id} view={view} anchorMs={anchor} items={res.items} />
+        <CalendarBody systemId={id} view={view} anchorMs={anchor} items={res.items} appointments={res.appointments} />
       </section>
     </div>
   );

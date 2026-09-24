@@ -16,6 +16,14 @@ import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 // CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
 import { CrmObjectTabs } from "@/components/crm/objects/ObjectTabs";
 import { CrmDealCardsBlock } from "@/components/crm/activity/CrmDealCardsBlock";
+// CRM C2.4 ▸ บันทึกการโทรของดีล (โมดัลเดียวกับผู้ติดต่อ 360) — ใบ C2.4 เป็นเจ้าของ
+//   🔴 ไม่ส่งเบอร์มาที่นี่โดยเจตนา: `getDeal360` ไม่คืนเบอร์ของผู้ติดต่อ (และหน้านี้ห้าม query ตารางผู้ติดต่อเอง) ⇒
+//      ปุ่มบนหน้าดีลคือ "บันทึกสาย" · การกดโทรจริงอยู่บนผู้ติดต่อ 360 ที่โหลดเบอร์มาแล้ว ◂
+import { CrmClickToCall } from "@/components/crm/call/CrmClickToCall";
+import { callAiStatus } from "@/lib/modules/crm/calls";
+import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
+import { ACTIVITY_OUTCOMES_DEFAULT } from "@/lib/modules/crm/activities-shared";
+import { outcomeOptions } from "@/lib/modules/crm/activities";
 
 // ดีล 360 (CRM v2 · ใบ C1.5 · พิมพ์เขียว §3.3 · ภาพ 03) — `/app/sys/{id}/crm/deals/{dealId}`
 // URL state: ?tab=overview|lines|activities|docs|history
@@ -64,6 +72,13 @@ export default async function Deal360Page({
   if (!data) notFound();
 
   const [owners, lostReasons, pipelines, layout] = await Promise.all([ownerOptions(ctx, actor), lostReasonOptions(ctx, actor), pipelineOptions(ctx, actor), dealFieldLayout(ctx, actor)]);
+  // CRM C2.4 ▸ ของที่โมดัลบันทึกการโทรต้องรู้ (อ่านล้ม/ไม่มีสิทธิ์ = ค่าปลอดภัย · หน้าไม่ล้ม) ◂
+  const [callOutcomes, callAi] = await Promise.all([
+    outcomeOptions(ctx, actor)
+      .then((r) => r.CALL ?? [...(ACTIVITY_OUTCOMES_DEFAULT.CALL ?? [])])
+      .catch(() => [...(ACTIVITY_OUTCOMES_DEFAULT.CALL ?? [])]),
+    callAiStatus(ctx, actor).catch(() => ({ state: "OFF" as const, message: "" })),
+  ]);
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
   const canEdit = crmCan(m, "crm.deal.update");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
@@ -132,7 +147,18 @@ export default async function Deal360Page({
           </Link>
           <h1 className="min-w-0 truncate text-lg font-semibold sm:text-xl">ดีล 360 — {d.title}</h1>
         </div>
-        {canEdit && <DealMenu systemId={id} dealId={d.id} pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))} currentPipelineId={d.pipelineId} canManage={canManage} deletable={d.kind !== "WON" && !d.quotationDocId && !d.invoiceDocId} />}
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {/* CRM C2.4 ▸ บันทึกการโทรของดีลนี้ (ผูกทั้งดีลและผู้ติดต่อหลัก) ◂ */}
+          <CrmClickToCall
+            systemId={id}
+            target={{ dealId: d.id, contactId: data.contact.id, companyId: d.companyId }}
+            outcomes={callOutcomes}
+            maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
+            aiState={callAi.state}
+            aiMessage={callAi.message}
+          />
+          {canEdit && <DealMenu systemId={id} dealId={d.id} pipelines={pipelines.map((p) => ({ id: p.id, name: p.name }))} currentPipelineId={d.pipelineId} canManage={canManage} deletable={d.kind !== "WON" && !d.quotationDocId && !d.invoiceDocId} />}
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -324,7 +350,7 @@ export default async function Deal360Page({
           )}
 
           {/* CRM C1.6 ▸ กิจกรรมและโน้ต (แท็บกิจกรรม) + การ์ดบอร์ดงานของดีล */}
-          {tab === "activities" && <CrmActivityBlock ctx={ctx} actor={actor} target={{ dealId: d.id }} />}
+          {tab === "activities" && <CrmActivityBlock ctx={ctx} actor={actor} target={{ dealId: d.id }} recordings="deal" />}
           {tab === "activities" && <CrmDealCardsBlock cards={data.kanbanCards} />}
           {/* ◂ CRM C1.6 */}
 

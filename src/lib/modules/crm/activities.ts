@@ -30,7 +30,7 @@ import * as companies from "./companies";
 import { activityOutcomesOf, parseCrmSettings } from "./settings";
 import { logOps } from "@/lib/core/ops";
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (แทน rbac.evaluate) ◂
-import { crmCan, crmForbiddenMessage } from "./access";
+import { crmCan, crmForbiddenMessage, isApiActor } from "./access";
 import {
   ACTIVITY_ATTENDEES_MAX,
   ACTIVITY_BODY_MAX,
@@ -50,6 +50,10 @@ import {
   ACTIVITY_TYPES,
   ACTIVITY_TYPE_LABEL,
   ActivitiesError,
+  // CRM C2.4 ▸ ปฏิทินรวมนัดจากโมดูลจอง/คลินิก/โรงเรียน ◂
+  type CalendarAppointment,
+  type PartyAppointment,
+  CALENDAR_MAX_APPOINTMENTS,
   CALENDAR_MAX_ITEMS,
   INVISIBLE_CHARS_RE,
   CALENDAR_MAX_SPAN_DAYS,
@@ -276,6 +280,8 @@ export function toActivityDto(row: CrmActivity): ActivityDto {
     kanbanCardId: row.kanbanCardId,
     source: row.source,
     createdAt: row.createdAt.toISOString(),
+    // CRM C2.4 ▸ AUDIT-CLASS X10: ธงเดียว — ลิงก์ฟังเสียงออกทาง `calls.getRecording` (ตรวจการมองเห็นก่อนออกใบผ่าน) ◂
+    hasRecording: !!row.recordingFileId,
   };
 }
 
@@ -937,9 +943,16 @@ function afterCursor(key: SortKey, dir: "asc" | "desc", c: Cursor): Prisma.CrmAc
     : { OR: [{ [key]: { gt: at } }, { [key]: at, id: { gt: c.id } }] };
 }
 
-/** ปฏิทิน (ภาพ 08 ขวา · §3.8): กิจกรรม CRM ที่ (startAt ?? dueAt) อยู่ใน [from, to) · mine = ของฉัน · team = ทั้งทีม (ก่อน C1.7 = ทั้งระบบที่เห็น) */
-export async function calendar(ctx: ActivitiesCtx, actor: MemberActor, input: CalendarInput): Promise<{ items: ActivityListItem[] }> {
-  const { a } = await enter(ctx, actor);
+/**
+ * ปฏิทิน (ภาพ 08 ขวา · §3.8): กิจกรรม CRM ที่ (startAt ?? dueAt) อยู่ใน [from, to) · mine = ของฉัน · team = ทั้งทีม (ก่อน C1.7 = ทั้งระบบที่เห็น)
+ * CRM C2.4 ▸ เพิ่มช่อง `appointments` = นัดของ **Party เดียวกัน** จากโมดูลจอง/คลินิก/โรงเรียน (อ่านอย่างเดียว) — รูป `items` เดิมไม่เปลี่ยน ◂
+ */
+export async function calendar(
+  ctx: ActivitiesCtx,
+  actor: MemberActor,
+  input: CalendarInput,
+): Promise<{ items: ActivityListItem[]; appointments: CalendarAppointment[]; appointmentsTruncated: boolean }> {
+  const { a, settings } = await enter(ctx, actor);
   const from = toDate(input?.from, "วันเริ่มของปฏิทิน");
   const to = toDate(input?.to, "วันสุดท้ายของปฏิทิน");
   if (!from || !to) throw fail("VALIDATION", "เลือกช่วงวันของปฏิทินก่อน");
@@ -953,8 +966,122 @@ export async function calendar(ctx: ActivitiesCtx, actor: MemberActor, input: Ca
     orderBy: [{ startAt: { sort: "asc", nulls: "last" } }, { dueAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
     take: CALENDAR_MAX_ITEMS,
   });
-  return { items: await enrich(ctx, a, rows) };
+  const merged = await mergedAppointments(ctx, a, settings, { from, to, mine: input?.mine === true });
+  // `appointmentsTruncated` = ชนเพดานแถวนัด (F5) ⇒ หน้าจอบอกผู้ใช้ได้ว่ายังมีต่อ — ไม่ใช่ตัดทิ้งเงียบ ๆ
+  return { items: await enrich(ctx, a, rows), appointments: merged.rows, appointmentsTruncated: merged.truncated };
 }
+
+// CRM C2.4 ▸ นัดจากโมดูลอื่นบนปฏิทิน CRM (มติผู้คุมงาน C2.4 ข้อ 8 · พิมพ์เขียว §3.8)
+//   🔴 อ่านผ่าน **facade ของโมดูลต้นทาง** เท่านั้น (`booking/clinic/school` → `appointmentsByParty` · เส้น crm→booking/clinic/school
+//      ใน ALLOWED_EDGES) — CRM ไม่แตะตาราง Appointment/ClinicVisit/SchoolEnrollment เอง และไม่มีทางเขียนอะไรกลับ
+//   🔴 โหลดตอนใช้ (dynamic import): booking/service → pos → account → … → crm facade = วงโหลดถ้า import หัวไฟล์
+//      (เหตุผลเดียวกับ `kanbanLinks` / `memberFacade` ข้างบน)
+//   AUDIT-CLASS X1: ขอบเขต = Party ของ "ผู้ติดต่อที่ actor มองเห็น" (contactWhere) ∩ สาขาที่ actor ดูแล ∩ [from, to)
+//     ⇒ พนักงานที่เห็นแต่ลูกค้าของตัวเองไม่มีวันเห็นนัดของลูกค้าคนอื่น · แถวของร้านอื่นที่ชี้ Party เดียวกันถูกตัดที่ facade (tenantId)
+//   AUDIT-CLASS X8: DTO ไม่มีชื่อ/เบอร์ของลูกค้าจากโมดูลต้นทาง · คลินิกไม่มีอาการ/การวินิจฉัย/ค่ารักษา (ข้อมูลสุขภาพ)
+//   R-E.14: ระบบที่ยัง uiVersion 1 = ไม่รวมอะไรเลย (หน้าจอ v2 ยังไม่เปิด ⇒ ไม่มีของใหม่โผล่)
+const bookingFacade = () => import("@/lib/modules/booking");
+const clinicFacade = () => import("@/lib/modules/clinic");
+const schoolFacade = () => import("@/lib/modules/school");
+
+/** สาขาที่ actor ดูแล — `"*"` = ทุกสาขา (OWNER · unitAccess ["*"] หรือ [] แบบเดียวกับ `visibility.ts`) */
+function unitScopeOf(a: MemberActor): string[] | "*" {
+  if (a.role === "OWNER" || a.unitAccess.length === 0 || a.unitAccess.includes("*")) return "*";
+  return [...a.unitAccess];
+}
+
+async function mergedAppointments(
+  ctx: ActivitiesCtx,
+  a: MemberActor,
+  settings: unknown,
+  win: { from: Date; to: Date; mine: boolean },
+): Promise<{ rows: CalendarAppointment[]; truncated: boolean }> {
+  const none = { rows: [] as CalendarAppointment[], truncated: false };
+  if (parseCrmSettings(settings).uiVersion !== 2) return none;
+  /**
+   * 🔴 มติผู้คุมงาน (รอบ 2 · ข้อ F6): **คีย์ API ไม่ได้นัดรวมเลย** (`appointments: []`)
+   *    นัดเป็นของโมดูลจอง/คลินิก/โรงเรียน ซึ่งมี scope ของคีย์ตัวเอง — คีย์ที่ถือแค่ `crm.activity.read` ไม่ควรได้แถวของ
+   *    คลินิก/คอร์สเรียนติดมาด้วยทางประตูหลังของ CRM · ระบบภายนอกที่ต้องใช้ ให้ถามโมดูลนั้นตรง ๆ ด้วยคีย์ของมัน
+   *    (ผลข้างเคียงที่ตั้งใจ: `unitAccess ["*"]` ของคีย์จะไม่กลายเป็น "เห็นทุกสาขา" ในข้อมูลสุขภาพ/คอร์สเรียน)
+   */
+  if (isApiActor(a)) return none;
+  const unitIds = unitScopeOf(a);
+  if (Array.isArray(unitIds) && unitIds.length === 0) return none;
+  const range = { from: win.from, to: win.to };
+  const cap = CALENDAR_MAX_APPOINTMENTS;
+  // ถาม "ช่วงเวลา" ก่อน (ไม่ส่งรายชื่อ Party) ⇒ เพดานอยู่ที่แถวนัด ไม่ใช่จำนวนลูกค้า (F5)
+  const opts = { unitIds, take: cap + 1 };
+  const lists = await Promise.all([
+    readFacade("BOOKING", ctx, () => bookingFacade().then((m) => m.appointmentsByParty(ctx.tenantId, null, range, opts))),
+    readFacade("CLINIC", ctx, () => clinicFacade().then((m) => m.appointmentsByParty(ctx.tenantId, null, range, opts))),
+    readFacade("SCHOOL", ctx, () => schoolFacade().then((m) => m.appointmentsByParty(ctx.tenantId, null, range, opts))),
+  ]);
+  const all = lists.flat();
+  if (all.length === 0) return none;
+  // การมองเห็น: แถวจะอยู่บนปฏิทินก็ต่อเมื่อ Party ของมันมีผู้ติดต่อที่ actor **มองเห็น** (X1) · `mine` = เฉพาะผู้ติดต่อของฉัน
+  const partyIds = [...new Set(all.map((r) => r.partyId).filter((x): x is string => typeof x === "string" && !!x))];
+  const where = await contactWhere(ctx, a);
+  const byParty = new Map<string, { id: string; name: string }>();
+  for (let i = 0; i < partyIds.length; i += PARTY_LOOKUP_CHUNK) {
+    const chunk = partyIds.slice(i, i + PARTY_LOOKUP_CHUNK);
+    const contacts = await prisma.crmContact.findMany({
+      where: { AND: [where, { partyId: { in: chunk } }, ...(win.mine ? [{ ownerUserId: a.userId }] : [])] },
+      select: { id: true, name: true, partyId: true },
+      orderBy: { id: "asc" },
+    });
+    // Party เดียวอาจมีผู้ติดต่อหลายคนในระบบเดียว — เรียงตาม id ให้ผลคงที่ (คนแรกที่เห็นชนะ)
+    for (const c of contacts) if (c.partyId && !byParty.has(c.partyId)) byParty.set(c.partyId, { id: c.id, name: c.name });
+  }
+  if (byParty.size === 0) return none;
+  const out: CalendarAppointment[] = [];
+  for (const r of all) {
+    const c = byParty.get(r.partyId);
+    if (!c) continue;
+    out.push({
+      key: `${r.source}:${r.id}`,
+      source: r.source,
+      id: r.id,
+      startAt: r.startAt.toISOString(),
+      endAt: r.endAt ? r.endAt.toISOString() : null,
+      title: r.title,
+      status: r.status,
+      contactId: c.id,
+      contactName: c.name,
+      readOnly: true,
+      href: `/app/sys/${ctx.systemId}/crm/contacts/${c.id}`,
+    });
+  }
+  out.sort((x, y) => (x.startAt === y.startAt ? x.key.localeCompare(y.key) : x.startAt.localeCompare(y.startAt)));
+  // ชนเพดาน = บอกออกมา (ต้นทางส่งมาเกิน cap หรือของที่มองเห็นเองเกิน cap)
+  const truncated = lists.some((l) => l.length > cap) || out.length > cap;
+  return { rows: truncated ? out.slice(0, cap) : out, truncated };
+}
+
+/** จำนวน Party ต่อคิวรีค้นผู้ติดต่อ (กัน `IN (...)` ยาวเกินไปเมื่อช่วงเวลามีนัดหลายพันแถว) */
+const PARTY_LOOKUP_CHUNK = 500;
+
+/**
+ * อ่าน facade ของโมดูลอื่นแบบ "ล้มแล้วปฏิทินยังขึ้น" — แต่ **ไม่เงียบ** (ใบ C2.4 รอบ 2 · ข้อ N20)
+ * 🔴 ของเดิมเป็น `.catch(() => [])` ล้วน: โมดูลจองพังทั้งวัน = ปฏิทินโชว์ "ไม่มีนัด" เนียน ๆ ไม่มีใครรู้
+ *    ⇒ ล้ม = WARN ผ่าน logOps พร้อม **id ล้วน** (ชื่อโมดูล + ชนิด error) แล้วค่อยคืนรายการว่างของแหล่งนั้นแหล่งเดียว
+ * AUDIT-CLASS X8: log ไม่มีชื่อ/เบอร์/ข้อมูลสุขภาพ — มีแค่ชื่อแหล่งกับชนิดข้อผิดพลาด
+ */
+async function readFacade(
+  source: "BOOKING" | "CLINIC" | "SCHOOL",
+  ctx: ActivitiesCtx,
+  run: () => Promise<PartyAppointment[]>,
+): Promise<PartyAppointment[]> {
+  try {
+    return await run();
+  } catch (e) {
+    await logOps("WARN", "crm.calendar", "อ่านนัดจากโมดูลอื่นไม่สำเร็จ — ปฏิทินแสดงเฉพาะแหล่งที่อ่านได้", {
+      tenantId: ctx.tenantId,
+      detail: `source:${source} system:${ctx.systemId} ${e instanceof Error ? e.name : "unknown"}`,
+    });
+    return [];
+  }
+}
+// ◂ CRM C2.4
 
 /** โน้ตของระเบียน (มติ C19): NOTE เท่านั้น · ที่ปักหมุดขึ้นก่อน แล้วใหม่สุดก่อน */
 export async function listNotes(ctx: ActivitiesCtx, actor: MemberActor, target: NotesTarget): Promise<{ items: ActivityListItem[] }> {
@@ -1149,15 +1276,20 @@ export async function boardOptions(ctx: ActivitiesCtx, actor: MemberActor): Prom
 //   ผู้เรียกถือ tx + ล็อกของตัวเอง (ธงของสะพาน) · ที่นี่เขียนแถว + lastActivityAt (GREATEST คำสั่งเดียว · AUDIT-CLASS X3)
 //   AUDIT-CLASS X1: แถวผูกร้าน + ระบบของ ctx · id ของเป้าหมายมาจากบริการที่ resolve ใต้ขอบเขตเดียวกันแล้ว
 //   AUDIT-CLASS X8: หัวเรื่องมาจากผู้เรียก (ไม่มีข้อมูลบุคคล) · audit เก็บแค่ชนิด/ที่มา/id
+// CRM C2.5 ▸ เพิ่มชนิด/ที่มา `EMAIL` + `direction` — จดหมายเข้า/ออกของระบบอีเมล (`crm/emails.ts`) เขียนกิจกรรม
+//   ผ่านตัวเขียนตัวเดียวกันนี้ (ไม่มีผู้เขียน CrmActivity ชุดที่สองในโมดูล) · ยังไม่ยิง `crm.activity.logged`
+//   เหมือนแถวของสะพานอื่น (ไทม์ไลน์ของจดหมายมาจาก `crm.email.*` แล้ว — ยิงซ้ำ = สองแถวในไทม์ไลน์เดียว) ◂
 export type SystemActivityInput = {
-  type: "WEB" | "NOTE";
-  source: "WEB" | "AUTO";
-  /** กุญแจของเหตุการณ์ต้นทาง (ธงของสะพาน) */
+  type: "WEB" | "NOTE" | "EMAIL";
+  source: "WEB" | "AUTO" | "EMAIL";
+  /** กุญแจของเหตุการณ์ต้นทาง (ธงของสะพาน · ระบบอีเมลใช้ `CrmEmailMessage.id`) */
   sourceRef: string;
   title: string;
   contactId: string | null;
   companyId: string | null;
   dealId: string | null;
+  /** CRM C2.5 ▸ ทิศทางของข้อความ (อีเมลเท่านั้น — สะพานอื่นไม่มีทิศทาง) ◂ */
+  direction?: "IN" | "OUT" | null;
   at?: Date;
 };
 
@@ -1175,6 +1307,7 @@ export async function recordSystemActivityInTx(tx: Tx, ctx: { tenantId: string; 
       title: input.title.slice(0, 200),
       source: input.source,
       sourceRef: input.sourceRef,
+      ...(input.direction ? { direction: input.direction, channel: "EMAIL" } : {}), // CRM C2.5 ◂
       startAt: at,
       doneAt: at,
     },
@@ -1234,3 +1367,81 @@ export async function createSequenceTaskOnce(ctx: { tenantId: string; systemId: 
   return { id: out.id, created: out.created };
 }
 // ◂ CRM C2.2
+
+// CRM C2.4 ▸ กิจกรรม "แชท" 1 รายการต่อห้อง (สะพาน `crm-bridges/chat.ts` ตอนห้องถูกปิดเป็น RESOLVED) + ตัวแตะ lastActivityAt จากแชท
+//   🔴 ผู้เขียน `CrmActivity` / `CrmContact.lastActivityAt` มีที่เดียวคือไฟล์นี้ — สะพานห้ามยิง prisma ใส่ตารางของ CRM เอง
+//      (กติกาข้อ 6 ของ `crm-bridges/core.ts`) ⇒ สะพานเรียกสองฟังก์ชันนี้ผ่าน facade `@/lib/modules/crm`
+//   AUDIT-CLASS X4: กันซ้ำ "ทั้งร้าน" ด้วย advisory lock ของห้อง + ตรวจการมีอยู่จาก (tenantId, source CHAT, sourceRef = conversationId)
+//     ⇒ ส่ง event ซ้ำ · ยิงพร้อมกัน 10 ทาง · วนเปิด–ปิดห้องใหม่ = กิจกรรมใบเดียวตลอดไป (และ event `crm.activity.logged` ใบเดียว)
+//     🔴 ตรวจ "ทั้งร้าน" ไม่ใช่แค่ระบบเดียว: Party ที่มีผู้ติดต่อในสองระบบ CRM ต้องไม่ได้กิจกรรมสองใบจากห้องเดียว
+//   AUDIT-CLASS X8: หัวเรื่องมาจากค่าคงที่ของผู้เรียก (ไม่มีชื่อ/เบอร์/อีเมล/ข้อความแชท) · payload ของ event = id ล้วน
+export type ChatActivityInput = {
+  /** `ChatConversation.id` — ธงกันซ้ำ */
+  conversationId: string;
+  contactId: string;
+  title: string;
+  /** ช่องทางของห้อง (LINE · FB · เว็บ) — ป้ายของช่องทาง ไม่ใช่ข้อมูลบุคคล */
+  channel?: string | null;
+  at?: Date;
+};
+
+export async function createChatActivityOnce(ctx: { tenantId: string; systemId: string }, input: ChatActivityInput): Promise<{ id: string; created: boolean }> {
+  const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const now = new Date();
+  const at = new Date(Math.min((input.at ?? now).getTime(), now.getTime()));
+  const out = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.chat.activity:${ctx.tenantId}:${input.conversationId}`}, 0))`;
+    const prior = await tx.crmActivity.findFirst({ where: { tenantId: ctx.tenantId, source: "CHAT", sourceRef: input.conversationId }, select: { id: true } });
+    if (prior) return { id: prior.id, created: false, row: null as CrmActivity | null };
+    const row = await tx.crmActivity.create({
+      data: {
+        ...identityScope(c),
+        contactId: input.contactId,
+        type: "CHAT" as CrmActivityType,
+        title: input.title.slice(0, ACTIVITY_TITLE_MAX),
+        channel: input.channel ? input.channel.slice(0, ACTIVITY_CHANNEL_MAX) : null,
+        source: "CHAT",
+        sourceRef: input.conversationId,
+        startAt: at,
+        doneAt: at,
+      },
+    });
+    await touchLastActivity(tx, c, { contactId: input.contactId, companyId: null, dealId: null, customRecordId: null }, at);
+    await emitActivity(tx, c, EVT.logged, row, { via: "chat" });
+    return { id: row.id, created: true, row };
+  }, TX_OPTS);
+  if (out.row) await audit(c, "crm.activity.log", out.row.id, { after: { type: out.row.type, source: out.row.source, contactId: out.row.contactId, via: "chat" } });
+  return { id: out.id, created: out.created };
+}
+
+/**
+ * เขียน `aiSummary` ของกิจกรรมแชทที่ระบบเพิ่งสร้าง (ไม่มีคนในลูป ⇒ ไม่ใช่ข้อเสนอ · มติผู้คุมงาน C2.4 ข้อ 7)
+ * AUDIT-CLASS X8: ข้อความสรุปอยู่ใน **แถวกิจกรรม** เท่านั้น — ไม่ลง event ไม่ลง audit ไม่ลง log
+ * เขียนแบบมีเงื่อนไข (`aiSummary IS NULL`) ⇒ เรียกซ้ำไม่ทับของเดิม
+ */
+export async function setChatAiSummary(ctx: { tenantId: string; systemId: string }, activityId: string, summary: string): Promise<boolean> {
+  const s = typeof summary === "string" ? summary.trim().slice(0, ACTIVITY_BODY_MAX) : "";
+  if (!s) return false;
+  const r = await prisma.crmActivity.updateMany({
+    where: { id: activityId, tenantId: ctx.tenantId, systemId: ctx.systemId, source: "CHAT", aiSummary: null },
+    data: { aiSummary: s },
+  });
+  return r.count === 1;
+}
+
+/**
+ * ลูกค้าตอบกลับในแชท ⇒ `CrmContact.lastActivityAt := GREATEST(ค่าเดิม, now)` (ไม่สร้างกิจกรรมต่อข้อความ · ไม่ยิง event)
+ * AUDIT-CLASS X3: คำสั่งเดียวต่อผู้ติดต่อ ⇒ ข้อความรัว ๆ / ส่งซ้ำ / ยิงพร้อมกัน ได้ค่าสูงสุดเสมอ ไม่มี lost update
+ * AUDIT-CLASS X1: ผูกร้าน + ระบบของ ctx (id ของผู้ติดต่อมาจากคิวรีที่ผูกขอบเขตเดียวกันแล้ว)
+ */
+export async function touchContactsFromChat(ctx: { tenantId: string; systemId: string }, contactIds: string[], at: Date): Promise<number> {
+  const ids = [...new Set((contactIds ?? []).filter((x): x is string => typeof x === "string" && !!x))].sort();
+  if (ids.length === 0) return 0;
+  const ts = new Date(Math.min(at.getTime(), Date.now())).toISOString();
+  let n = 0;
+  for (const id of ids) {
+    n += await prisma.$executeRaw`UPDATE "CrmContact" SET "lastActivityAt" = GREATEST("lastActivityAt", (${ts}::timestamptz AT TIME ZONE 'UTC')) WHERE "id" = ${id} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}`;
+  }
+  return n;
+}
+// ◂ CRM C2.4

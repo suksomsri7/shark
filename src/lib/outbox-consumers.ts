@@ -488,7 +488,9 @@ type CrmBridgeName =
   // CRM C2.2 ▸ หยุดลำดับการติดตามอัตโนมัติ (crm-bridges/sequences.ts) ◂
   | "onDealWonStopSequences"
   | "onDealLostStopSequences"
-  | "onContactOptOutStopSequences";
+  | "onContactOptOutStopSequences"
+  // CRM C2.4 ▸ ห้องแชทปิด → กิจกรรมชนิด CHAT ใบเดียวต่อห้อง (crm-bridges/chat.ts) ◂
+  | "onChatConversationStatus";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -682,7 +684,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // และวนลูปได้ · ตัวนี้แปลว่า "คัดลอกเข้ามาแล้ว ไม่ต้องส่งอะไรต่อ" — no-op เพื่อปิด event เป็น DONE
   // (ไม่มี handler = ค้าง PENDING ตลอดกาล — outbox.ts:111) + เป็นจุดให้ Automation/Webhooks ยิงต่อ
   "chat.message.mirrored": withAutomation(async () => {}),
-  "chat.conversation.status": withAutomation(async () => {}),
+  // CRM C2.4 ▸ ห้องแชทถูกปิด (RESOLVED) → กิจกรรมชนิด CHAT **ใบเดียวต่อห้อง** ในระบบ CRM ที่มีผู้ติดต่อของ Party นั้น
+  //   (+ สรุปด้วย AI เมื่อร้านเปิด `settings.crm.ai.chatSummary`) · เป็น "ของแถม" ใต้ compose: ล้ม = WARN ไม่ทำให้ event ล้ม
+  //   งานหลักของ event นี้ยังเป็น no-op เหมือนเดิม (ผลข้างเคียงเกิดใน service ของแชทไปแล้ว — ที่นี่แค่ปิด event เป็น DONE) ◂
+  "chat.conversation.status": withAutomation(compose(async () => {}, crmBridge("onChatConversationStatus"))),
   // 🔴 30 ส.ค. 2026 — เพิ่ม type ใหม่แล้ว **ลืมลงทะเบียนตรงนี้** ⇒ event ค้าง PENDING
   //    พร้อม lastError "ไม่มี consumer…" · webhook ไม่เคยถูกยิง ⇒ ติ๊กคู่ ✓✓ ไม่มีวันขึ้น
   //    (ข้อสอบ CP-6 สแกนซอร์สแล้วเทียบกับตารางนี้ ห้ามให้เกิดซ้ำ)
@@ -1058,6 +1063,27 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.sequence.enrolled": withAutomation(async () => {}),
   "crm.sequence.finished": withAutomation(async () => {}),
   // ◂ CRM C2.2
+  // CRM C2.4 ▸ เตือนงาน/นัดที่ถึงเวลา (`crm/reminders.ts#remindDue`) — key `crm.activity.reminder#<activityId>#<remindAtMs>`
+  //   🔴 แถว event นี้คือ **ธงกันซ้ำ** ของงานรายนาที: มันถูกเขียนใน tx เดียวกับแถว `AppNotification` ⇒ สองรอบทับกัน/รอบถัดไป/
+  //      push ที่โยน = แจ้งเตือนใบเดียว ไม่หาย ไม่ซ้ำ ⇒ ผลข้างเคียงทั้งหมดเกิดครบแล้วก่อน event ถูก drain
+  //   ⇒ consumer = no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + เป็นจุดให้เว็บฮุคของร้านยิงต่อ
+  //   payload = id ล้วน { activityId, activityType, ownerUserId, contactId, dealId, companyId } — ไม่มีหัวเรื่อง/ชื่อ/เบอร์ (X8)
+  "crm.activity.reminder": withAutomation(async () => {}),
+  // ◂ CRM C2.4
+  // CRM C2.5 ▸ อีเมล (`crm/emails.ts`) — ยิงใน tx เดียวกับการเขียนแถว/เหตุการณ์ · key `crm.email.<type>#<emailId>#<seq>`
+  //   (R-C.8) · payload **id ล้วน** { emailId, contactId?, dealId?, companyId?, threadKey, sequenceStepId? } —
+  //   ไม่มีที่อยู่ หัวเรื่อง เนื้อความ หรือ URL ที่ถูกคลิก (URL อยู่ใน `CrmEmailEvent` เท่านั้น · มติผู้คุมงาน ข้อ 4)
+  //   ทั้ง 6 ตัวเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค —
+  //   ผลข้างเคียงจริง (แถวอีเมล · กิจกรรม · `repliedAt` · ธงตีกลับ/ขอไม่รับ · การหยุดลำดับการติดตามผ่าน
+  //   `sequences.stopFor`) เขียนครบใน tx/ทางเดินของบริการอีเมลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียงเพิ่ม
+  //   (AUDIT-CLASS X4 · ข้อสอบ C2.5-X4.5 บริโภคซ้ำสองครั้งและสองครั้งพร้อมกัน)
+  "crm.email.sent": withAutomation(async () => {}),
+  "crm.email.received": withAutomation(async () => {}),
+  "crm.email.opened": withAutomation(async () => {}),
+  "crm.email.clicked": withAutomation(async () => {}),
+  "crm.email.replied": withAutomation(async () => {}),
+  "crm.email.bounced": withAutomation(async () => {}),
+  // ◂ CRM C2.5
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

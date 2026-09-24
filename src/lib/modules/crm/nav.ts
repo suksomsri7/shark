@@ -29,6 +29,10 @@ export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C1.6 ▸ ปฏิทินกิจกรรม (วัน | สัปดาห์ | เดือน · ของฉัน/ทีม) — หน้า "งานติดตาม" ข้างบนเป็นกิจกรรม v2 แล้ว
   { key: "calendar", label: "ปฏิทิน", path: "/crm/calendar", status: "ready", wo: "C1.6" },
   // ◂ CRM C1.6
+  // CRM C2.5 ▸ กล่องจดหมาย (จดหมายเข้า/ออกของลูกค้า + กล่อง "ยังไม่จับคู่") — เธรด `/crm/emails/[threadKey]`
+  //   เป็น [param] จึงไม่ขึ้นเมนู · คีย์ `crm.email.read` (STAFF ได้ปริยาย §6.1 ⇒ แท็บนี้ไม่ใช่ลิงก์ตายสำหรับพนักงาน)
+  { key: "emails", label: "อีเมล", path: "/crm/emails", status: "ready", wo: "C2.5" },
+  // ◂ CRM C2.5
 ] as const);
 
 /**
@@ -74,6 +78,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C2.3 ▸ มอบหมาย lead อัตโนมัติ (กฎตามลำดับ · วิธีแจก 4 แบบ · ผู้รับสำรอง · ทดลอง — ภาพ 07 ขวา)
   { key: "settings-assignment", label: "มอบหมายอัตโนมัติ", path: "/crm/settings/assignment", status: "ready", wo: "C2.3" },
   // ◂ CRM C2.3
+  // CRM C2.5 ▸ ตั้งค่าอีเมล (เส้นทางส่ง/รับ · โดเมนผู้ส่ง · สำเนา · การติดตาม · ทับค่าต่อผู้ใช้ · แม่แบบ — ภาพ 15)
+  { key: "settings-email", label: "ตั้งค่าอีเมล", path: "/crm/settings/email", status: "ready", wo: "C2.5" },
+  // ◂ CRM C2.5
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

@@ -88,7 +88,6 @@ const DEAL_NOT_FOUND = "ไม่พบดีลนี้ในระบบ CRM 
 const ENR_NOT_FOUND = "ไม่พบการลงทะเบียนนี้ในระบบ CRM นี้ (อาจถูกลบไปแล้ว) — รีเฟรชหน้าแล้วลองใหม่";
 const ALREADY_IN = "ผู้ติดต่อนี้อยู่ในลำดับการติดตามนี้อยู่แล้ว — ถ้าต้องการเริ่มใหม่ตั้งแต่ขั้นแรก เลือก \"ลงทะเบียนใหม่แทนของเดิม\"";
 const OPTED_OUT = "ผู้ติดต่อนี้ขอไม่รับข่าวสารไว้ — ระบบจึงไม่ใส่เข้าลำดับการติดตาม";
-const EMAIL_NOT_READY = "ส่งอีเมลจากลำดับการติดตามยังไม่เปิด — มาพร้อมระบบอีเมลของ CRM";
 const SMS_NOT_READY = "ร้านนี้ยังไม่มีผู้ให้บริการส่ง SMS — ขั้นนี้จึงถูกข้าม";
 const MANAGE_KEY = "crm.sequence.manage";
 const ENROLL_KEY = "crm.sequence.enroll";
@@ -1094,7 +1093,9 @@ export async function importThaiHolidays(ctx: SequencesCtx, actor: MemberActor, 
 
 // ───────────────────────── runDue: ขั้นที่ถึงเวลา ─────────────────────────
 
-type SeqSubject = { tenantId: string; systemId: string; contact: CrmContact; dealId: string | null; enrollmentId: string; sequenceId: string; version: number };
+// CRM C2.5 ▸ `stepId` = แถวขั้นที่กำลังทำ — ตัวส่งอีเมลปริยาย (emails.sendAsSystem) เก็บลง
+//   `CrmEmailMessage.sequenceStepId` เพื่อให้สถิติต่อขั้นและไทม์ไลน์ชี้กลับมาที่ขั้นนี้ได้ ◂
+type SeqSubject = { tenantId: string; systemId: string; contact: CrmContact; dealId: string | null; enrollmentId: string; sequenceId: string; version: number; stepId: string | null };
 type SeqEnv = RunnerEnv<SeqSubject> & { deps: SequenceDeps | null };
 
 const CHANNEL_LABEL: Record<RunnerChannel, string> = { LINE: "LINE", EMAIL: "อีเมล", SMS: "SMS", PUSH: "แจ้งเตือน" };
@@ -1115,9 +1116,43 @@ async function tenantOwnerId(tenantId: string): Promise<string | null> {
   return m?.userId ?? null;
 }
 
-/** ผู้ส่งปริยายเมื่อไม่ได้ฉีด deps — อีเมล: ข้าม (ยังไม่มีจนถึง C2.5 · R-E.5 + addendum 2 ของ C2.1) · LINE: ตัวส่งของกฎ CRM (แชท) · SMS: ข้าม */
-function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSendCore): Promise<RunnerSendResult> {
-  if (channel === "EMAIL") return Promise.resolve({ ok: false, skipped: true, error: EMAIL_NOT_READY });
+/**
+ * ผู้ส่งปริยายเมื่อไม่ได้ฉีด deps — LINE: ตัวส่งของกฎ CRM (แชท) · SMS: ข้าม
+ * CRM C2.5 ▸ อีเมล: `emails.sendAsSystem` (R-E.5 — ตัวยึด "ยังไม่เปิด" ของ C2.2 ถูกแทนแล้ว)
+ *   🔴 import ตอนใช้: `crm/emails.ts` เรียก `sequences.stopFor` กลับมาที่ไฟล์นี้ ⇒ import แบบ static สองทาง = วงจร
+ *   🔴 ความยินยอมถูกถามสองชั้นโดยเจตนา (ตัวรันกลางถามก่อนเรียกตัวส่ง · `sendAsSystem` ถามอีกครั้งตอนส่งจริง)
+ *      — ชั้นที่สองคือชั้นที่ผูกกับ "การส่งจริง" ตาม AUDIT-CLASS X8 ◂
+ */
+async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSendCore): Promise<RunnerSendResult> {
+  if (channel === "EMAIL") {
+    try {
+      const emails = await import("./emails");
+      const body = String(core.body ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      const r = await emails.sendAsSystem(
+        { tenantId: env.subject.tenantId, systemId: env.subject.systemId },
+        {
+          contactId: env.subject.contact.id,
+          dealId: env.subject.dealId,
+          to: [core.to],
+          subject: core.subject ?? "",
+          bodyHtml: `<p>${body}</p>`,
+          ...(env.subject.stepId ? { sequenceStepId: env.subject.stepId } : {}),
+        },
+      );
+      if (r.status === "FAILED") return { ok: false, error: "ส่งอีเมลไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป" };
+      return { ok: true };
+    } catch (e) {
+      const code = (e as { code?: unknown })?.code;
+      const msg = errText(e, "ส่งอีเมลไม่สำเร็จ");
+      // ถูกกติกาความยินยอม/ข้อมูลปฏิเสธ = ข้ามขั้น (ไม่ใช่ความล้มเหลวที่ต้องลองใหม่)
+      if (code === "EMAIL_BLOCKED" || code === "VALIDATION" || code === "NOT_FOUND") return { ok: false, skipped: true, error: msg };
+      return { ok: false, error: msg };
+    }
+  }
   if (channel === "LINE")
     return CRM_DEFAULT_DEPS.line({
       tenantId: env.subject.tenantId,
@@ -1374,7 +1409,7 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
       : { type: kind === "EMAIL" ? "SEND_EMAIL" : kind === "LINE" ? "SEND_LINE" : "SEND_SMS", params: { template: step.body ?? "", subject: step.subject ?? "" } };
   const env: SeqEnv = {
     rule: { id: seq.id, tenantId: seq.tenantId, name: seq.name },
-    subject: { tenantId: e.tenantId, systemId: seq.systemId, contact, dealId: e.dealId, enrollmentId: e.id, sequenceId: seq.id, version: e.sequenceVersion },
+    subject: { tenantId: e.tenantId, systemId: seq.systemId, contact, dealId: e.dealId, enrollmentId: e.id, sequenceId: seq.id, version: e.sequenceVersion, stepId: step.id },
     runId: e.id,
     event: { type: "crm.sequence.step", payload: { enrollmentId: e.id, index: c.stepIndex } },
     now,

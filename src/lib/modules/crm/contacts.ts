@@ -2205,7 +2205,12 @@ export type BridgeLeadKind =
   /** ฟอร์มของระบบ uiVersion 1: พฤติกรรม v1 เดิม — ผู้ติดต่อใหม่ 1 รายต่อคำตอบ (ไม่จับคู่ตัวซ้ำ · ไม่มีกิจกรรม) */
   | "FORM_V1"
   /** แชท: ผู้ติดต่อของ Party นี้มีแล้ว = ตัวเดิม · ไม่มี = lead ใหม่ที่ผูก Party ของห้องแชท (ไม่มีกิจกรรมต่อข้อความ) */
-  | "CHAT";
+  | "CHAT"
+  // CRM C2.5 ▸ อีเมลขาเข้าจากคนแปลกหน้า (`crm/emails.ts#ingestInbound` · สวิตช์ `settings.crm.email.strangerToLead`):
+  //   ผู้ติดต่อที่อีเมลนี้มีแล้ว = ตัวเดิม · ไม่มี = lead ใหม่ (`source`/`sourceChannel` = EMAIL · leadStatus NEW)
+  //   ไม่มีกิจกรรมที่นี่ — กิจกรรม EMAIL/IN ถูกเขียนโดยตัวเก็บจดหมายในธุรกรรมของแถวจดหมายเอง
+  /** อีเมล: จับคู่ด้วยอีเมลของผู้ส่ง (ไม่สนตัวพิมพ์) — `email` บังคับ ◂ */
+  | "EMAIL";
 
 export type BridgeLeadInput = {
   kind: BridgeLeadKind;
@@ -2262,10 +2267,15 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
   const partyIn = str(input?.partyId);
   if ((kind === "FORM" || kind === "FORM_V1") && !subId) throw fail("VALIDATION", "ไม่พบรหัสคำตอบของฟอร์ม — ข้ามรายการนี้");
   if (kind === "CHAT" && !partyIn) throw fail("VALIDATION", "ไม่พบตัวตนกลางของผู้ติดต่อแชท — ข้ามรายการนี้");
-  const base = legacyCreateArgs({ name: str(input?.name) ?? "ไม่ระบุชื่อ", phone: input?.phone ?? null, email: input?.email ?? null, source: kind === "CHAT" ? null : "FORM" }, null);
+  // CRM C2.5 ▸ ทางอีเมลต้องมีอีเมลของผู้ส่ง (ตัวจับคู่/กุญแจกันซ้ำของทางนี้คืออีเมล) ◂
+  if (kind === "EMAIL" && !str(input?.email)) throw fail("VALIDATION", "ไม่พบอีเมลของผู้ส่ง — ข้ามรายการนี้");
+  const sourceWord = kind === "CHAT" ? null : kind === "EMAIL" ? "EMAIL" : "FORM";
+  const base = legacyCreateArgs({ name: str(input?.name) ?? "ไม่ระบุชื่อ", phone: input?.phone ?? null, email: input?.email ?? null, source: sourceWord }, null);
   const clean: CreateClean = {
     ...base.clean,
-    sourceKind: kind === "CHAT" ? "CHAT" : "WEB_FORM",
+    sourceKind: kind === "CHAT" ? "CHAT" : kind === "EMAIL" ? "OTHER" : "WEB_FORM",
+    // CRM C2.5 ▸ ช่องทางที่มาของ lead จากอีเมล (ทะเบียนช่องทางกลาง D19 มี EMAIL อยู่แล้ว) ◂
+    sourceChannel: kind === "EMAIL" ? "EMAIL" : base.clean.sourceChannel,
     sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null),
     locale: cleanLocale(input?.locale ?? null), // CRM C2.3 ◂
   };
@@ -2287,10 +2297,11 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
       : new Set<string>();
     for (const k of wanted) if (known.has(k)) bridgeCustom[k] = (input.fields as Record<string, unknown>)[k];
   }
-  const legacy = { ...base.legacy, source: kind === "CHAT" ? null : "FORM", note: kind === "CHAT" ? null : base.legacy.note };
+  const legacy = { ...base.legacy, source: sourceWord, note: kind === "CHAT" ? null : base.legacy.note };
   const canonical = kind === "CHAT" ? await party.resolveCanonical(ctx.tenantId, partyIn as string) : null;
-  const flagRef = kind === "CHAT" ? `chat.party#${canonical}` : `forms.submission#${subId}`;
-  const forms = kind === "CHAT" ? null : await formsFacade();
+  const flagRef = kind === "CHAT" ? `chat.party#${canonical}` : kind === "EMAIL" ? `crm.email#${clean.email ?? ""}` : `forms.submission#${subId}`;
+  // CRM C2.5 ▸ ทางอีเมลไม่เกี่ยวกับฟอร์ม — ไม่โหลด facade ฟอร์ม (และไม่ผูกธงคำตอบฟอร์ม) ◂
+  const forms = kind === "CHAT" || kind === "EMAIL" ? null : await formsFacade();
   await seedContactFields(ctx, null);
   // CRM C2.3 ▸ สะพาน (ไม่มีคนสร้าง) = ทางอัตโนมัติ ⇒ อ่านสถานะลาก่อนเปิด tx · คนกดเอง (chat-panel) = คนนั้นเป็นผู้ดูแลตามเดิม ◂
   const leave = await autoLeave(ctx, null, clean, {});
@@ -2302,7 +2313,12 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
 
       // ── ธง ──
       let existing: CrmContact | null = null;
-      if (forms) {
+      if (kind === "EMAIL") {
+        // CRM C2.5 ▸ กันซ้ำด้วย "ตัวตน" (อีเมลของผู้ส่ง) — ล็อก `crm:contact-ident:*` ถือไว้แล้วข้างบน
+        //   ⇒ จดหมายของคนแปลกหน้าคนเดียวกันที่เข้ามาพร้อมกันหลายฉบับได้ lead **รายเดียว** ◂
+        existing = (await duplicateHits(tx, ctx, { phone: clean.phone, email: clean.email })).rows[0] ?? null;
+        if (existing) return { contactId: existing.id, created: false, repeated: true, memberCustomerId: existing.memberCustomerId, row: null, activity: null };
+      } else if (forms) {
         const linked = await forms.submissionCrmContactId(tx, ctx.tenantId, subId as string);
         if (linked) return { contactId: linked, created: false, repeated: true, memberCustomerId: await memberOf(linked), row: null, activity: null };
         if (kind === "FORM") existing = (await duplicateHits(tx, ctx, { phone: clean.phone, email: clean.email })).rows[0] ?? null;
@@ -2460,3 +2476,43 @@ export async function mergeValuesFor(ctx: ContactsCtx, actor: MemberActor, ids: 
   });
 }
 // ◂ CRM C1.11
+
+// CRM C2.5 ▸ ตัวเขียนแคบ ๆ ของ "ธงอีเมลของผู้ติดต่อ" ที่ระบบอีเมล (ใบ C2.5) เรียกในธุรกรรมของตัวเอง
+//   กติกาถาวร (ข้อสอบ C1.4-S0.8): คอลัมน์ที่มีเจ้าของ (`emailOptOut` · `email` · `phone` · `tags` …) เขียนได้จาก
+//   `contacts*.ts` / `consents.ts` เท่านั้น — ไม่ใช่เรื่องรูปแบบ: ธง "ขอไม่รับ" ต้องพลิกแบบมีเงื่อนไข
+//   (คนละคำสั่ง ๆ กัน) และต้องพลิก "ครั้งเดียว" เท่านั้น เพราะผู้เรียกเอาค่า "พลิกจริงไหม"
+//   ไปตัดสินว่าจะลงแถวความยินยอม/หยุดลำดับการติดตามหรือเปล่า
+//   🔴 แถวประวัติความยินยอม **ไม่** อยู่ที่นี่: มันเป็นของ `consents.set` ตัวเดียวของระบบ (ผู้ติดต่อ
+//     ที่ผูกบัญชีสมาชิกแล้ว ต้องลงที่ฝั่งสมาชิก ไม่ใช่แถว CrmContactConsent) — ผู้เรียกเรียกต่อหลังจาก tx สำเร็จ
+
+/** ธง "ขอไม่รับอีเมล" (governed column) — คืน true เมื่อรอบนี้เป็นคนพลิกจริง */
+export async function markEmailOptOutInTx(
+  tx: Tx,
+  ctx: { tenantId: string; systemId: string },
+  contactId: string,
+): Promise<boolean> {
+  const id = String(contactId ?? "");
+  if (!id || !ctx?.tenantId) return false;
+  const n = await tx.crmContact.updateMany({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, emailOptOut: false },
+    data: { emailOptOut: true },
+  });
+  return n.count === 1;
+}
+
+/** ธง "อีเมลนี้ตีกลับถาวร" — คืน true เมื่อรอบนี้เป็นคนพลิกจริง (อยู่ที่นี่คู่กันกับที่เหลือ) */
+export async function markEmailBouncedInTx(
+  tx: Tx,
+  ctx: { tenantId: string; systemId: string },
+  contactId: string,
+  at: Date,
+): Promise<boolean> {
+  const id = String(contactId ?? "");
+  if (!id || !ctx?.tenantId) return false;
+  const n = await tx.crmContact.updateMany({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, emailBouncedAt: null },
+    data: { emailBouncedAt: at instanceof Date && !Number.isNaN(at.getTime()) ? at : new Date() },
+  });
+  return n.count === 1;
+}
+// ◂ CRM C2.5

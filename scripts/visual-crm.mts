@@ -77,9 +77,14 @@ const TMP = {
   contactIds: [] as string[], dealIds: [] as string[], activityIds: [] as string[], companyIds: [] as string[],
   // CRM C2.2/C2.3 ▸ ของที่สร้างผ่าน facade จริงเพื่อให้ภาพ "มีของ" เหมือนแบบ (ลบครบใน restoreSeed) ◂
   sequenceIds: [] as string[], enrollmentIds: [] as string[], ruleIds: [] as string[],
+  // CRM C2.4 ▸ นัดของโมดูลจอง/คลินิก/โรงเรียนที่ต้องโผล่บนปฏิทิน CRM (โมดูลพวกนั้น "ไม่มี" facade ฝั่งเขียน — ใบนี้เปิดแค่ขาอ่าน
+  //   ⇒ แถวนัดสร้างด้วย prisma ตรง ๆ แล้วลบครบใน restoreSeed · ฝั่ง CRM (ผู้ติดต่อ) ยังสร้างผ่าน facade เหมือนใบอื่น) ◂
+  unitIds: [] as string[], bookingIds: [] as string[], clinicIds: [] as string[], schoolIds: [] as string[], partyIds: [] as string[],
+  // CRM C2.5 ▸ เธรดจดหมาย 1 ชุด (ขาเข้ามี HTML + ไฟล์แนบ) · แม่แบบ 1 ใบ · ทับค่าต่อผู้ใช้ 1 แถว (ลบครบใน restoreSeed) ◂
+  emailIds: [] as string[], emailTemplateIds: [] as string[], emailUserSettingIds: [] as string[], emailFileIds: [] as string[],
 };
 /** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
-const BEFORE = { sequences: -1, rules: -1 };
+const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1 };
 
 // แท็บย่อยของ CRM v1 (crmTabs ใน src/lib/modules/crm/ui.tsx) — ลิงก์จริงที่ต้องมีทุกหน้า
 const V1_TABS = ["a[href$='/crm/deals']", "a[href$='/crm/activities']", "a[href$='/crm/contacts']"];
@@ -146,7 +151,38 @@ const C22_CONTACT: string | null = WO === "2.2"
     }))?.id ?? null)
   : null;
 
+// CRM C2.5 ▸ เธรดที่จะถ่าย (ตั้งค่าในบล็อก "เตรียมของ" ด้านล่าง — ที่นี่ประกาศไว้ให้ SPECS อ้างถึงได้) ◂
+let C25_THREAD: string | null = null;
+
 const SPECS: Record<string, Spec[]> = {
+  // CRM C2.4 ▸ บันทึกการโทร (ภาพ 08 ซ้าย) + ปฏิทินที่รวมนัดของโมดูลอื่น (ภาพ 08 ขวา) — เจ้าของร้าน + ผู้จัดการ · 1440 และ 390
+  //   ชุดนี้ต้องมี "ของจริง" ทั้งสองฝั่ง: ผู้ติดต่อที่มีเบอร์ (ปุ่มโทรจึงขึ้น) + นัดในสัปดาห์นี้ที่ผูก Party เดียวกัน
+  //   ⇒ บล็อก "เตรียมของ C2.4" ด้านล่างสร้างให้ แล้ว splice สเปคของผู้ติดต่อ 360 เข้ามา (พาธต้องมี id)
+  //   thana/nok (STAFF) เห็นเฉพาะลูกค้าของตัวเอง ⇒ ผู้ติดต่อชั่วคราวของเจ้าของร้านจะ 404 สำหรับพวกเขา — ไม่อยู่ในชุด
+  "2.4": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    {
+      name: `crm-calendar-merged-${userKey}`,
+      path: `${CRM_BASE}/calendar?view=week&scope=team`,
+      note: "ปฏิทินสัปดาห์ที่รวมนัดของ Party เดียวกันจากระบบจอง · คลินิก · โรงเรียน (ชิปเส้นประ = อ่านอย่างเดียว) — เทียบภาพ 08 ขวา",
+      expect: ["[data-testid=crm-calendar-page]", "[data-testid=crm-calendar-appointment]"],
+      steps: [{ waitFor: "[data-testid=crm-calendar-appointment]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+  ],
+  // ◂ CRM C2.4
+  // CRM C2.5 ▸ อีเมล (ภาพ 08 กลาง + ภาพ 15): กล่องจดหมาย · กล่อง "ยังไม่จับคู่" · เธรด (จดหมายขาเข้าใน iframe ทึบ
+  //   + ปุ่มแสดงรูป + ไฟล์แนบ) · ช่องเขียนจดหมาย (แม่แบบ/แนบ/ตั้งเวลา) · ตั้งค่าอีเมล — ทั้ง 1440 และ 390
+  //   thana/nok (STAFF) เห็นกล่องจดหมายได้ (คีย์ crm.email.read ปริยาย) แต่หน้าตั้งค่า = 404 (ต้อง crm.email.settings)
+  //   ⚠️ ไม่กดปุ่มที่ส่งจดหมายจริง — ชุดนี้ถ่ายรูปอย่างเดียว
+  "2.5": isCustomer ? [] : [
+    { name: `crm-emails-${userKey}`, path: `${CRM_BASE}/emails`, note: "กล่องจดหมาย — รายการเธรด (ผู้ติดต่อ · หัวข้อ · ข้อความย่อ · เข้า/ออก · เวลา) + ช่องค้นหา", expect: ["[data-testid=crm-emails-page]", "[data-testid=crm-emails-inbox]", "[data-testid=crm-emails-search]"], steps: [{ waitFor: "[data-testid=crm-emails-inbox]", timeoutMs: 20_000 }, { wait: 500 }] },
+    ...(userKey === "owner" || userKey === "manager"
+      ? ([
+          { name: `crm-emails-unmatched-${userKey}`, path: `${CRM_BASE}/emails?box=unmatched`, note: "กล่อง \"ยังไม่จับคู่\" (เปิดได้เฉพาะคนที่เห็นผู้ติดต่อทั้งระบบ/ผู้จัดการขึ้นไป)", expect: ["[data-testid=crm-emails-tab-unmatched]"], steps: [{ waitFor: "[data-testid=crm-emails-inbox]", timeoutMs: 20_000 }, { wait: 400 }] },
+          { name: `crm-email-settings-${userKey}`, path: `${CRM_BASE}/settings/email`, note: "ตั้งค่า — อีเมล (เส้นทางส่ง/รับ) ตามภาพ 15: กล่องรับ + หมุนกุญแจ · ผู้ส่ง + โดเมน/DNS · Reply-To · สำเนา · BCC/ติดตาม/อายุเก็บ · ทับค่าต่อผู้ใช้ · แม่แบบ", expect: ["[data-testid=crm-email-settings]", "[data-testid=crm-email-inbound-address]", "[data-testid=crm-email-user-overrides]", "[data-testid=crm-email-domain-records]"], steps: [{ waitFor: "[data-testid=crm-email-settings]", timeoutMs: 20_000 }, { wait: 500 }] },
+        ] as Spec[])
+      : []),
+  ],
+  // ◂ CRM C2.5
   // CRM C2.3 ▸ มอบหมายอัตโนมัติ (ภาพ 07 ขวา): ตารางกฎตามลำดับ + ป้าย "คิวถัดไป" + ผู้รับสำรอง + ทดลอง · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎ") ทั้ง 1440 และ 390
   //   thana/nok (STAFF ไม่มีคีย์ crm.assignment.manage) = 404 ตามแบบ (ข้อสอบ C2.3 X1.6) → ถ่ายเฉพาะ owner/manager
   "2.3": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
@@ -366,11 +402,65 @@ async function restoreSeed(): Promise<void> {
     }
     if (ru.length) await P.crmAssignmentRule.deleteMany({ where: { id: { in: ru } } });
   }
+  // CRM C2.5 ▸ คืนสภาพของที่บล็อก "เตรียมของ" ของอีเมลสร้าง — จากใบนอกเข้าใน:
+  //   event (key มี emailId) → audit → กิจกรรมที่ชี้จดหมาย → CrmEmailEvent → แถวจดหมาย → ไฟล์แนบ → แม่แบบ → ทับค่าต่อผู้ใช้
+  //   🔴 ลบแถวตรง ๆ (ไม่เรียกบริการ) เพราะทางนั้นเขียน event/audit เพิ่มอีกชุดระหว่างกำลังเก็บกวาด
+  {
+    const { emailIds: em, emailTemplateIds: tp, emailUserSettingIds: us, emailFileIds: fi } = TMP;
+    if (em.length) {
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: em.map((id) => ({ idempotencyKey: { contains: id } })) } });
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, OR: em.map((id) => ({ targetType: "CrmEmailMessage", targetId: id })) } });
+      await P.crmActivity.deleteMany({ where: { tenantId: E.tenantId, sourceRef: { in: em } } });
+      await P.crmEmailEvent.deleteMany({ where: { emailId: { in: em } } });
+      await P.crmEmailMessage.deleteMany({ where: { id: { in: em } } });
+    }
+    if (fi.length) await P.fileAsset.deleteMany({ where: { id: { in: fi } } });
+    if (tp.length) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, OR: tp.map((id) => ({ targetType: "CrmEmailTemplate", targetId: id })) } });
+      await P.crmEmailTemplate.deleteMany({ where: { id: { in: tp } } });
+    }
+    if (us.length) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, OR: us.map((id) => ({ targetType: "CrmEmailUserSetting", targetId: id })) } });
+      await P.crmEmailUserSetting.deleteMany({ where: { id: { in: us } } });
+    }
+  }
+  // CRM C2.4 ▸ คืนสภาพ: event/ประวัติของผู้ติดต่อชั่วคราว → นัด → แม่ของนัด → สาขาที่ใบนี้สร้างเอง → Party
+  //   (สาขาที่มีอยู่ก่อนไม่ถูกแตะ — เก็บ id เฉพาะที่สร้างใหม่)
+  {
+    const { bookingIds: bk, clinicIds: cl, schoolIds: sc, unitIds: un, partyIds: pt, contactIds: ct24 } = TMP;
+    if (ct24.length) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetType: "CrmContact", targetId: { in: ct24 } } }).catch(() => null);
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: ct24.map((id: string) => ({ idempotencyKey: { contains: id } })) } }).catch(() => null);
+    }
+    if (bk.length) {
+      await P.appointment?.deleteMany?.({ where: { id: { in: bk } } }).catch(() => null);
+      await P.bookingService?.deleteMany?.({ where: { id: { in: bk } } }).catch(() => null);
+      await P.bookingStaff?.deleteMany?.({ where: { id: { in: bk } } }).catch(() => null);
+    }
+    if (cl.length) {
+      await P.clinicVisit?.deleteMany?.({ where: { id: { in: cl } } }).catch(() => null);
+      await P.patientRecord?.deleteMany?.({ where: { id: { in: cl } } }).catch(() => null);
+    }
+    if (sc.length) {
+      await P.schoolEnrollment?.deleteMany?.({ where: { id: { in: sc } } }).catch(() => null);
+      await P.schoolClass?.deleteMany?.({ where: { id: { in: sc } } }).catch(() => null);
+      await P.schoolCourse?.deleteMany?.({ where: { id: { in: sc } } }).catch(() => null);
+    }
+    if (un.length) await P.businessUnit?.deleteMany?.({ where: { id: { in: un } } }).catch(() => null);
+    if (pt.length) await P.party?.deleteMany?.({ where: { id: { in: pt }, tenantId: E.tenantId } }).catch(() => null);
+  }
   if (BEFORE.sequences >= 0) {
     const seqNow = await P.crmSequence.count({ where: { tenantId: E.tenantId, systemId: SYS } });
     const ruleNow = await P.crmAssignmentRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
     const ok = seqNow === BEFORE.sequences && ruleNow === BEFORE.rules;
     console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ลำดับ ${BEFORE.sequences} → ${seqNow} · กฎมอบหมาย ${BEFORE.rules} → ${ruleNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
+  }
+  // CRM C2.5 ▸ พิสูจน์ว่าจำนวนจดหมาย/แม่แบบกลับมาเท่าเดิม (แบบเดียวกับ C2.2/C2.3) ◂
+  if (BEFORE.emails >= 0) {
+    const emailNow = await P.crmEmailMessage.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const tplNow = await P.crmEmailTemplate.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const ok = emailNow === BEFORE.emails && tplNow === BEFORE.emailTemplates;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: จดหมาย ${BEFORE.emails} → ${emailNow} · แม่แบบ ${BEFORE.emailTemplates} → ${tplNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
   }
 }
 
@@ -477,6 +567,196 @@ if (WO === "2.2" || WO === "2.3") {
   }
 }
 // ◂ เตรียมของจริงของ C2.2 / C2.3
+
+// ── เตรียมของจริงของ C2.5 (ภาพ 08 กลาง + ภาพ 15) ────────────────────────────────────────────────
+// 🔴 ทำไมต้องมีบล็อกนี้: seed QC ไม่มีจดหมายสักฉบับ ⇒ กล่องจดหมาย/เธรดถ่ายได้แต่ "กล่องว่าง" ซึ่งเทียบ parity
+//    กับภาพ 08 กลาง (บับเบิลเข้า/ออก + ชิป "เปิด n ครั้ง" + ช่องเขียนจดหมาย) ไม่ได้เลย
+// 🔴 สร้างผ่าน facade จริง (`emails.ingestInbound` / `emails.sendEmail` / `saveTemplate` / `setUserSetting`) เท่านั้น —
+//    ยัดแถวดิบจะได้ภาพของข้อมูลที่บริการไม่มีวันสร้าง (เช่นเธรดที่ไม่มี token/กิจกรรม)
+// 🔴 **ไม่มีทางที่จะยิงถึง Resend/Bunny จริง**: ฉีด `transport`/`put` ปลอมเข้าไปทุกครั้ง (ของจริงอ่าน env ไม่เจอก็จริง
+//    แต่พึ่ง "ไม่มี key" เป็นเกราะไม่ได้ — วันหนึ่งเครื่อง QC จะมี key)
+// 🔴 ตำแหน่ง: หลังด่าน QC server และก่อน try/finally ⇒ ทุกชิ้นถูกคืนใน restoreSeed()
+if (WO === "2.5") {
+  const P = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const mem = await P.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  BEFORE.emails = await P.crmEmailMessage.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  BEFORE.emailTemplates = await P.crmEmailTemplate.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+
+  // ตัวส่ง/ที่เก็บปลอม — ภาพต้องมี "จดหมายที่ส่งแล้ว" โดยไม่มีอะไรออกเน็ตเลย
+  const deps = { transport: async () => ({ ok: true, providerId: `visual-${Date.now().toString(36)}` }), put: async () => {}, del: async () => 200 };
+  const settings = await crm.emails.getEmailSettings(ctx, ownerActor);
+  const target = (await P.crmContact.findFirst({
+    where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, marketingOptOut: false, emailOptOut: false, emailBouncedAt: null, email: { not: null }, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, email: true, name: true },
+  })) as Any;
+
+  if (!target?.email) {
+    console.log("⚠️ เตรียมของ C2.5 ข้าม — ไม่พบผู้ติดต่อที่มีอีเมลและยินยอมรับข่าวสารในเฉลย ⇒ กล่องจดหมายยังเป็นกล่องว่าง");
+  } else {
+    // 1) จดหมายขาเข้า 1 ฉบับ (HTML + รูปจากภายนอก + ไฟล์แนบ) — เปิดเธรด
+    const rfc = `<visual-${Date.now().toString(36)}@mail.example>`;
+    const inbound = await crm.emails.ingestInbound(
+      {
+        messageId: rfc,
+        from: `"${target.name}" <${target.email}>`,
+        to: [settings.inboundAddress],
+        subject: "ขอใบเสนอราคาแพ็กเกจดำน้ำกลุ่ม 25 คน",
+        text: "สวัสดีค่ะ สนใจแพ็กเกจดำน้ำสำหรับพนักงานโรงแรม 25 ท่าน ช่วงต้นเดือน พ.ย. รบกวนส่งใบเสนอราคาให้ด้วยนะคะ",
+        html: '<p>สวัสดีค่ะ สนใจแพ็กเกจดำน้ำสำหรับพนักงานโรงแรม <b>25 ท่าน</b> ช่วงต้นเดือน พ.ย. รบกวนส่งใบเสนอราคาให้ด้วยนะคะ</p><p><img src="https://example.invalid/logo.png" alt="โลโก้บริษัท" width="120"></p>',
+        headers: {},
+        attachments: [{ filename: "รายชื่อผู้ร่วมทริป.pdf", content_type: "application/pdf", contentType: "application/pdf", content: Buffer.from(new Uint8Array(2048).fill(37)).toString("base64") }],
+      } as Any,
+      deps as Any,
+    );
+    if (inbound?.emailId) TMP.emailIds.push(inbound.emailId);
+    const inRow = inbound?.emailId ? await P.crmEmailMessage.findFirst({ where: { id: inbound.emailId }, select: { threadKey: true, attachments: true } }) : null;
+    for (const a of (inRow?.attachments ?? []) as Any[]) if (typeof a?.fileId === "string") TMP.emailFileIds.push(a.fileId);
+
+    // 2) คำตอบของร้าน 1 ฉบับในเธรดเดียวกัน (ให้ภาพมีบับเบิลทั้งเข้าและออกเหมือนภาพ 08)
+    if (inbound?.emailId) {
+      const out = await crm.emails.sendEmail(
+        ctx,
+        ownerActor,
+        {
+          contactId: target.id,
+          subject: "ตอบ: ขอใบเสนอราคาแพ็กเกจดำน้ำกลุ่ม 25 คน",
+          bodyHtml: "<p>สวัสดีค่ะ ขอบคุณที่สนใจค่ะ แนบใบเสนอราคาเบื้องต้นมาให้ก่อนนะคะ หากต้องการปรับจำนวนวันหรือรอบเรือ แจ้งได้เลยค่ะ</p>",
+          replyToEmailId: inbound.emailId,
+        },
+        deps as Any,
+      );
+      TMP.emailIds.push(out.emailId);
+      C25_THREAD = inRow?.threadKey ?? out.threadKey;
+    }
+
+    // 3) แม่แบบจดหมาย 1 ใบ (ให้ช่อง "แม่แบบ" ในหน้าเขียนจดหมายมีของให้เลือก + ตารางแม่แบบในหน้าตั้งค่ามีแถว)
+    const tpl = await crm.emails
+      .saveTemplate(ctx, ownerActor, {
+        name: "ส่งใบเสนอราคา (ภาพตัวอย่าง)",
+        subject: "ใบเสนอราคาจากสยามไดฟ์เซ็นเตอร์",
+        bodyHtml: "<p>เรียนคุณ {{contact.firstName}} แนบใบเสนอราคามาให้แล้วนะคะ หากมีข้อสงสัยตอบกลับอีเมลนี้ได้เลยค่ะ</p>",
+        category: "QUOTE",
+      })
+      .catch(() => null);
+    if (tpl?.id) TMP.emailTemplateIds.push(tpl.id);
+
+    // 4) ทับค่าต่อผู้ใช้ 1 แถว (ตาราง "ทับค่าต่อผู้ใช้" ของภาพ 15 ต้องมีอย่างน้อยหนึ่งแถวที่ตั้งค่าจริง)
+    const other = (E.users?.thana?.userId ?? E.users?.manager?.userId) as string | undefined;
+    if (other) {
+      await crm.emails.setUserSetting(ctx, ownerActor, { userId: other, fromName: "ฝ่ายขาย (ภาพตัวอย่าง)", replyToMode: "SELF" }).catch(() => null);
+      const row = await P.crmEmailUserSetting.findFirst({ where: { systemId: SYS, userId: other }, select: { id: true } });
+      if (row?.id) TMP.emailUserSettingIds.push(row.id);
+    }
+
+    console.log(`🧪 เตรียมของ C2.5: เธรด ${C25_THREAD ?? "-"} (ขาเข้า+ขาออก ${TMP.emailIds.length} ฉบับ) · แม่แบบ ${TMP.emailTemplateIds.length} ใบ · ทับค่าต่อผู้ใช้ ${TMP.emailUserSettingIds.length} แถว`);
+    if (C25_THREAD) {
+      specs.splice(1, 0, {
+        name: `crm-email-thread-${userKey}`,
+        path: `${CRM_BASE}/emails/${encodeURIComponent(C25_THREAD)}`,
+        note: "เธรดจดหมาย (ภาพ 08 กลาง): บับเบิลเข้า/ออก · เนื้อจดหมายขาเข้าในกล่องทึบ (รูปจากภายนอกปิดไว้ก่อน + ปุ่มแสดงรูป) · ไฟล์แนบเป็นลิงก์ที่ออกตอนกด · ช่องเขียนจดหมาย (แม่แบบ/แนบ/ตั้งเวลา)",
+        expect: ["[data-testid=crm-email-thread-page]", "[data-testid=crm-email-composer]", "[data-testid=crm-email-send]"],
+        steps: [{ waitFor: "[data-testid=crm-email-thread-page]", timeoutMs: 20_000 }, { wait: 600 }],
+      });
+      specs.push({
+        name: `crm-email-composer-${userKey}`,
+        path: `${CRM_BASE}/emails/${encodeURIComponent(C25_THREAD)}`,
+        note: "ช่องเขียนจดหมายหลังเลือกแม่แบบ — หัวข้อ/เนื้อความถูกเติมจากแม่แบบ (ยังไม่กดส่ง)",
+        expect: ["[data-testid=crm-email-composer]", "[data-testid=crm-email-body]"],
+        steps: [
+          { waitFor: "[data-testid=crm-email-template]", timeoutMs: 20_000 },
+          { scrollTo: "[data-testid=crm-email-composer]" },
+          { wait: 600 },
+        ],
+      });
+    }
+  }
+}
+// ◂ เตรียมของจริงของ C2.5
+
+// CRM C2.4 ▸ เตรียมของจริง: ผู้ติดต่อที่มีเบอร์ (ผ่าน facade) + นัดในสัปดาห์นี้ของ Party เดียวกัน 3 ระบบ (แถวตรง — ไม่มี facade ฝั่งเขียน)
+//   🔴 ตำแหน่ง: หลังด่าน QC server และก่อน try/finally เดียวกับ C2.2/C2.3 ⇒ ของทุกชิ้นถูกคืนใน restoreSeed() เสมอ
+if (WO === "2.4") {
+  const P24 = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const mem = await P24.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  // ผู้ติดต่อชั่วคราว: ต้องมีเบอร์ (ปุ่ม "โทร" ขึ้นเฉพาะเมื่อมีเบอร์) และมี Party (ปุ่มจองคิว + การจับคู่นัดใช้ Party)
+  const made = await crm.contacts.createContact(ctx, ownerActor as Any, {
+    firstName: "ณิชา",
+    lastName: "ทดสอบภาพ qc-visual-crm",
+    phone: "0812340024",
+    email: "nicha.qc-visual-crm@example.com",
+    jobTitle: "ผู้จัดการจัดซื้อ",
+    force: true,
+  });
+  TMP.contactIds.push(made.contact.id);
+  const partyId = (await P24.crmContact.findFirst({ where: { id: made.contact.id }, select: { partyId: true } }))?.partyId as string | null;
+  if (partyId) TMP.partyIds.push(partyId);
+  // นัดในสัปดาห์นี้ (พรุ่งนี้ 10:00 / 13:00 / วันเริ่มรอบเรียน) — เวลาไทยคิดจาก epoch ตรง ๆ
+  const H = 3_600_000;
+  const day0 = Math.floor((Date.now() + 7 * H) / (24 * H)) * 24 * H - 7 * H;
+  const at = (d: number, h: number) => new Date(day0 + d * 24 * H + h * H);
+  if (!partyId) {
+    console.log("⚠️ เตรียมของ C2.4 ข้าม (นัด) — ผู้ติดต่อชั่วคราวไม่ได้ partyId ⇒ ปฏิทินจะไม่มีชิปนัด");
+  } else {
+    const unit = async (type: string, name: string) => {
+      const found = await P24.businessUnit.findFirst({ where: { tenantId: E.tenantId, type, status: "ACTIVE" }, select: { id: true } });
+      if (found) return found.id as string;
+      const row = await P24.businessUnit.create({ data: { tenantId: E.tenantId, type, name: `${name} qc-visual-crm`, slug: `qc-visual-crm-${type.toLowerCase()}` } });
+      TMP.unitIds.push(row.id);
+      return row.id as string;
+    };
+    const uBook = await unit("BOOKING", "จองคิว");
+    const svc = await P24.bookingService.create({ data: { tenantId: E.tenantId, unitId: uBook, name: "ปรึกษาแพ็กเกจดำน้ำ qc-visual-crm", durationMin: 60 } });
+    const stf = await P24.bookingStaff.create({ data: { tenantId: E.tenantId, unitId: uBook, name: "ครูฝึก qc-visual-crm" } });
+    const appt = await P24.appointment.create({
+      data: { tenantId: E.tenantId, unitId: uBook, serviceId: svc.id, staffId: stf.id, partyId, startAt: at(1, 10), endAt: at(1, 11), status: "CONFIRMED", customerName: "ณิชา qc-visual-crm", customerPhone: "0812340024" },
+    });
+    TMP.bookingIds.push(appt.id, svc.id, stf.id);
+    const uClinic = await unit("CLINIC", "คลินิก");
+    const pat = await P24.patientRecord.create({ data: { tenantId: E.tenantId, unitId: uClinic, name: "ณิชา qc-visual-crm", phone: "0812340024", partyId } });
+    const visit = await P24.clinicVisit.create({ data: { tenantId: E.tenantId, unitId: uClinic, patientId: pat.id, visitDate: at(1, 13), symptom: "ตรวจก่อนดำน้ำ qc-visual-crm", partyId } });
+    TMP.clinicIds.push(visit.id, pat.id);
+    const uSchool = await unit("SCHOOL", "โรงเรียน");
+    const course = await P24.schoolCourse.create({ data: { tenantId: E.tenantId, unitId: uSchool, name: "คอร์ส Open Water qc-visual-crm" } });
+    const klass = await P24.schoolClass.create({ data: { tenantId: E.tenantId, unitId: uSchool, courseId: course.id, name: "รอบเช้า qc-visual-crm", startDate: at(2, 0) } });
+    const enr = await P24.schoolEnrollment.create({ data: { tenantId: E.tenantId, unitId: uSchool, classId: klass.id, studentName: "ณิชา qc-visual-crm", studentPhone: "0812340024", status: "PAID", partyId } });
+    TMP.schoolIds.push(enr.id, klass.id, course.id);
+    console.log(`🧪 เตรียมของ C2.4: ผู้ติดต่อ 1 คน (มีเบอร์ + Party) + นัดจอง 1 · คลินิก 1 · รอบเรียน 1 ในสัปดาห์นี้`);
+  }
+  specs.unshift(
+    {
+      name: `crm-call-log-modal-${userKey}`,
+      path: `${CRM_BASE}/contacts/${made.contact.id}`,
+      note: "โมดัลบันทึกการโทรที่เปิดจากปุ่ม \"โทร\" บนผู้ติดต่อ 360 — ผลสาย · ระยะเวลา · ทิศทาง · โน้ต · งานถัดไป · ไฟล์เสียง (เทียบภาพ 08 ซ้าย)",
+      expect: ["[data-testid=crm-call-log-modal]", "[data-testid=crm-call-outcome]", "[data-testid=crm-call-recording-input]", "[data-testid=crm-call-save]"],
+      steps: [{ waitFor: "[data-testid=crm-call-tel]", timeoutMs: 20_000 }, { click: "[data-testid=crm-call-tel]" }, { waitFor: "[data-testid=crm-call-log-modal]", timeoutMs: 10_000 }, { wait: 400 }],
+    },
+    {
+      name: `crm-contact-360-call-${userKey}`,
+      path: `${CRM_BASE}/contacts/${made.contact.id}`,
+      note: "ผู้ติดต่อ 360 พร้อมปุ่ม \"โทร\" (เปิดสาย + บันทึกสาย) และปุ่ม \"จองผ่านระบบจองคิว\" (R-A)",
+      expect: ["[data-testid=contact-360]", "[data-testid=crm-call-tel]"],
+      steps: [{ waitFor: "[data-testid=contact-360]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+  );
+}
+// ◂ เตรียมของจริงของ C2.4
 
 // ── mint session (เรียกจากในกรอบ try เท่านั้น — ดูหมายเหตุหัวไฟล์) ──
 const UA = "qc-visual-crm";

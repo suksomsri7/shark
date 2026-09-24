@@ -75,6 +75,19 @@ export async function canSpend(tenantId: string): Promise<boolean> {
   return (await balanceOf(tenantId)).valueOf() > 0;
 }
 
+/**
+ * พอจ่ายไหม โดย **ไม่เปิดกระเป๋าและไม่แจกเครดิตต้อนรับ** — ใช้ในเส้นทาง "อ่านสถานะ" (GET/หน้าจอ)
+ * 🔴 ทำไมต้องมีตัวนี้: `canSpend` → `balanceOf` → `ensureWallet` ซึ่ง **เขียน** กระเป๋า + แถว GRANT
+ *    ⇒ การอ่านสถานะปุ่ม (เช่น `crm/calls.callAiStatus`) จะพาร้านที่ยังไม่เคยใช้ AI เข้าระบบเครดิตเงียบ ๆ ทุกครั้งที่เปิดหน้า
+ *    (เขียนใน GET · แถว GRANT ที่ไม่มีใครขอ · ยอดของทั้งแพลตฟอร์มเพี้ยน)
+ * ยังไม่มีกระเป๋า = จะได้เครดิตต้อนรับตอนใช้จริง ⇒ ตอบว่า "พอจ่าย" ถ้าเครดิตต้อนรับมากกว่า 0 (ไม่เขียนอะไรเลย)
+ */
+export async function canSpendPeek(tenantId: string): Promise<boolean> {
+  const w = await prisma.aiCreditWallet.findUnique({ where: { tenantId }, select: { balanceMicro: true } });
+  if (!w) return welcomeGrantMicro() > 0;
+  return w.balanceMicro > 0;
+}
+
 export type ChargeInput = {
   source: AiCreditSource;
   model: string;
@@ -83,7 +96,20 @@ export type ChargeInput = {
   conversationId?: string;
   userId?: string;
   note?: string;
+  /**
+   * ค่าใช้จ่ายที่ **ไม่ใช่ token ของโมเดล** และผู้เรียกรู้ค่าเอง (ไมโครดอลลาร์ ≥ 0) — บวกเข้ากับค่า token ในแถวเดียว
+   * 🔴 ใบ CRM v2 C2.4: ผู้ให้บริการถอดเสียงคิดเงินตามนาทีเสียง ไม่ใช่ token ⇒ ถ้าไม่มีช่องนี้ ค่าถอดเสียงจะหายไป
+   *    จากบิลของร้านทั้งก้อน (เรียกใช้บริการแล้วแต่ไม่ได้คิดเงิน) · ไม่ส่งมา = 0 ⇒ พฤติกรรมเดิมทุกจุดที่ไม่ได้ตั้งค่านี้
+   */
+  extraMicroUsd?: number;
 };
+
+/** ค่าที่ต้องหักจริงของรายการนี้ = ค่า token ของโมเดล + ค่าที่ผู้เรียกรายงานเพิ่ม (ปัดเป็นจำนวนเต็ม ≥ 0) */
+function totalCostMicro(input: ChargeInput): number {
+  const model = costMicroUsd(input.model, input.tokensIn, input.tokensOut);
+  const extra = Math.max(0, Math.round(Number(input.extraMicroUsd ?? 0) || 0));
+  return model + extra;
+}
 
 /**
  * หักค่าใช้จ่ายหลังเรียก AI สำเร็จ — คืนจำนวนที่หักจริง (ไมโครดอลลาร์)
@@ -91,7 +117,7 @@ export type ChargeInput = {
  * - ล้ม = โยนต่อให้ผู้เรียกจัดการ (ชั้นบน catch แล้ว log — คำตอบต้องไม่หาย)
  */
 export async function chargeUsage(ctx: Ctx, input: ChargeInput): Promise<number> {
-  const cost = costMicroUsd(input.model, input.tokensIn, input.tokensOut);
+  const cost = totalCostMicro(input);
   if (cost <= 0) return 0;
 
   await prisma.$transaction(async (tx) => {
@@ -138,7 +164,7 @@ export async function chargeUsageSafe(ctx: Ctx, input: ChargeInput): Promise<num
 
 /** ลงค่าใช้จ่ายที่แพลตฟอร์มออกให้ (ไม่แตะกระเป๋าร้าน) — มิเตอร์ระดับแพลตฟอร์มที่เดิมไม่มีเลย */
 export async function chargePlatform(input: ChargeInput & { forTenantId?: string }): Promise<number> {
-  const cost = costMicroUsd(input.model, input.tokensIn, input.tokensOut);
+  const cost = totalCostMicro(input);
   if (cost <= 0) return 0;
   const w = await ensureWallet(PLATFORM_LEDGER_ID);
   await prisma.$transaction(async (tx) => {

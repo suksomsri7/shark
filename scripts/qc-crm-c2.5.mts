@@ -199,10 +199,51 @@
 //        crm-email-domain-add · crm-email-domain-records · crm-email-test-send · "use server" `crm/emails-actions.ts` (async exports
 //        only, assertCrmV2 + assertCanCrm/crmCan) · nav: "/crm/emails" in CRM_NAV (ready, wo C2.5) + "/crm/settings/email" in
 //        CRM_DEEP_NAV · every literal testid has a row (wo "C2.5") in scripts/crm-ui-inventory.json
+//   G. CONTROLLER REVIEW ROUND 3 (24 Sep · the reviewer's findings F1–F9 · (h) · N6/N7 — group `C2.5-S10.*`, RED until the builder
+//      lands them; wherever G and A–F can be read differently, G wins because it is the later ruling):
+//      G.1  (F1) `+t<short>` matches the thread short EXACTLY (`threadShortOf` length) — never "startsWith": a stranger writing to
+//           `crm+<key>+ta@shark.in.th` must land in a thread of its own, not in the first thread whose key starts with `a`. [S10.1]
+//      G.2  (F2) getThread / listThreads filter PER MESSAGE, not per thread: a thread holding two contacts shows an actor only the
+//           messages of the contacts it may see (nothing of the others — no address, name, subject, body, attachment); none visible
+//           ⇒ NOT_FOUND · OWNER sees all.                                                                               [S10.2]
+//      G.3  (F3) retention counts from sentAt ?? receivedAt — a row that has not left yet (QUEUED, e.g. scheduled far ahead) keeps
+//           its body however old its createdAt is.                                                                      [S10.3]
+//      G.4  (F4) every transport hand-off carries an `Idempotency-Key` derived from the message (RichEmail.idempotencyKey or the
+//           `Idempotency-Key` header) · an unexpected failure while COMPLETING a claimed SCHEDULED send leaves the row QUEUED, and
+//           the retry after the lease presents the SAME key (X5.3 + provider-side dedupe = delivered once).              [S10.4]
+//      G.5  (F5) a QUEUED OUT row with `scheduledAt = null` and an expired lease = an immediate send whose process died: runScheduled
+//           picks it up (today nothing does) and CLOSES it — status FAILED + a Thai providerError + lease cleared — and never hands
+//           it to the transport again (unlike G.4, nobody can prove the provider did not already take it).               [S10.5]
+//      G.6  (F6) `to` may only hold addresses of that contact (email / previousEmails), else VALIDATION with nothing written or sent ·
+//           an outsider in `cc`/`bcc` needs `crm.email.settings`.                                                        [S10.6]
+//      G.7  (F7) the inbound OUT branch (BCC capture · sentById) needs PROOF of the From — a passing `authentication-results`
+//           (spf/dkim for the From domain) or a From on a VERIFIED EmailDomain of the tenant; otherwise the mail is an ordinary IN
+//           message under the stranger rules (sentById null).                                                            [S10.7]
+//      G.8  (F8) `/u/<token>/one-click` and the provider webhook honour checkRateLimitDb (perIp/perToken) like `/t/o` and `/t/c`:
+//           over the limit ⇒ refused (same answer shape or 429) and nothing written · the webhook gate runs AFTER the signature check,
+//           so a bad signature writes nothing at all — not even a ChatRateBucket row.                                     [S10.8]
+//      G.9  (F9) an inbound attachment delivered as a `url` is fetched (stubbed) and stored PRIVATE under the same caps; the fetch is
+//           SSRF-guarded (loopback / link-local / private ranges never requested) and refusals are counted in the ingest result's
+//           `attachmentsDropped`.                                                                                        [S10.9]
+//      G.10 (h) opened / clicked / replied / bounced write counter-or-state + CrmEmailEvent + outbox row in ONE transaction
+//           (identical xmin — the proof qc-crm-c2.2 X9.5 uses).                                                          [S10.10]
+//      G.11 (N6/N7) `email.complained` also writes a CrmContactConsent row (EMAIL · granted false · source COMPLAINT|UNSUBSCRIBE) ·
+//           a transient DB error on the event insert ⇒ 5xx (the provider retries); only a unique violation is a "replay". [S10.11]
+//      G.12 (static · controller ruling 24 Sep: NO fitness exception) the inbound-address matcher — `isCrmInboundAddress` +
+//           `CRM_RECIPIENT_RE` — lives in **`src/lib/core/inbound-address.ts`** (core · pure · zero CRM/prisma/next imports),
+//           declared there ONCE; `emails-shared.ts` re-exports it for the module and `emails.ts` for the facade (same binding, not a
+//           copy — no second grammar anywhere).  The inbound route imports ONLY that core file and splits recipients with it BEFORE
+//           any `import("@/lib/modules/crm")`, so board mail never depends on the CRM module importing cleanly and fitness F2.3 stays
+//           green with no `CRM_DEEP_ALLOWED` entry · every `/settings/email` inventory row has roles owner+manager (MANAGER holds
+//           `crm.email.settings` — only `crm.settings.manage` is owner-only) and none hides the page from manager.        [S10.12]
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT THIS FILE PROVES: S0 structure · S1–S8 of CRM-RUN (34) · S9 brief extras · U PERMANENT RULE (uiVersion 1) · X1 X2 X3 X4 X5 X6 X7
-//   X8 X9 X10 · CLEAN.  S8 ("UI 5") is STATIC here; parity against mockups 08/15 at 1440/390 is the controller's gate D7.
+// WHAT THIS FILE PROVES: S0 structure 6 · S1–S8 of CRM-RUN (34) · S9 brief extras 10 · U PERMANENT RULE (uiVersion 1) 5 · X1 5 · X2 1 ·
+//   X3 3 · X4 5 · X5 3 · X6 6 · X7 6 · X8 6 · X9 1 · X10 1 · **S10 = contract block G, controller review round 3: 12** · CLEAN
+//   = 105 checks (+ C2.5-FATAL when the oracle itself dies).  S8 ("UI 5") is STATIC here; parity against mockups 08/15 at 1440/390 is
+//   the controller's gate D7.  S10 is RED until the builder lands ruling G (S10.1–S10.2 CRITICAL · S10.3–S10.10 MAJOR ·
+//   S10.11–S10.12 MINOR); its fixtures live in their own throwaway system `crmS`, and the DB triggers it uses to inject a failing
+//   status write / a transient DB error are dropped in `finally`.
 // HOUSE RULES: SKIP guard before any DB connection · throwaway tenants swept in `finally` (every table with tenantId, 4 passes) + users +
 //   our rate buckets · no drainOutbox (own pump over OUR tenants) · EVERY outbound fetch stubbed (Resend emails/domains, storage) — no
 //   real provider is ever reached · fake secrets set BEFORE the QC env loads · last line JSON_SUMMARY.
@@ -216,6 +257,8 @@ const EMAILS = "src/lib/modules/crm/emails.ts";
 const EMAILS_SH = "src/lib/modules/crm/emails-shared.ts";
 const EMAILS_ACT = "src/lib/modules/crm/emails-actions.ts";
 const CORE_EMAIL = "src/lib/core/email.ts";
+// ruling G.12 (controller · review round 3): ตัวจับที่อยู่ขาเข้าอยู่ใน core (ไม่มี import ของ CRM เลย) — F2.3 ไม่มีข้อยกเว้น
+const CORE_INBOUND = "src/lib/core/inbound-address.ts";
 const CRM_INDEX = "src/lib/modules/crm/index.ts";
 const CONS_FILE = "src/lib/outbox-consumers.ts";
 const CRON = "scripts/crm-cron.mts";
@@ -284,6 +327,8 @@ process.env.EMAIL_INBOUND_SECRET = `qc-c25-inbound-${randomBytes(12).toString("h
 process.env.RESEND_WEBHOOK_SECRET = `whsec_${WH_KEY_B64}`;
 delete process.env.OPS_ALERT_EMAIL;
 const CDN = "https://qc-c25-cdn.invalid";
+/** โฮสต์สมมติของไฟล์แนบ "แบบลิงก์" (S10.9) — ทุกคำขอถูกดักโดย stub ด้านล่าง */
+const ATT_HOST = "https://qc-c25-att.invalid";
 process.env.SHARK_BUNNY_CDN = CDN;
 process.env.SHARK_BUNNY_ZONE = `${TAG}-zone`;
 process.env.SHARK_BUNNY_KEY = `qc-c25-key-${randomBytes(8).toString("hex")}`;
@@ -330,6 +375,8 @@ globalThis.fetch = (async (input: Any, init?: Any): Promise<Response> => {
   }
   const dm = url.match(/^https:\/\/api\.resend\.com\/domains\/([^/?]+)(\/verify)?$/);
   if (dm) return jsonRes({ id: dm[1], name: DOMAIN_NAMES.get(dm[1]) ?? "", status: "verified", region: "ap-northeast-1", records: DOMAIN_RECORDS("verified") });
+  // S10.9: ไฟล์แนบขาเข้าที่ผู้ให้บริการส่งมาเป็น "ลิงก์" — โฮสต์สมมติของข้อสอบตอบเป็น PDF จริง (ไม่มีเครือข่ายจริงถูกแตะ)
+  if (url.startsWith(`${ATT_HOST}/`)) return new Response(Buffer.from(new Uint8Array(1024).fill(7)), { status: 200, headers: { "content-type": "application/pdf" } });
   return jsonRes({});
 }) as typeof fetch;
 const resendCalls = () => FETCHES.filter((f) => f.method === "POST" && /api\.resend\.com\/emails/.test(f.url));
@@ -392,6 +439,8 @@ const USERS: string[] = [];
 const PII: string[] = [];
 const pii = <T extends string>(s: T): T => { PII.push(s); return s; };
 const OPS_IDS: string[] = [];
+/** trigger ที่ S10 หย่อนลงฐานเพื่อฉีดความล้มเหลว (เขียนสถานะไม่ลง / ฐานสะดุด) — ถอนทิ้งใน finally เสมอ */
+const TRIGGERS: { name: string; table: string }[] = [];
 const RATE_REQ: { route: "o" | "c" | "u" | "wh"; ip: string; token?: string }[] = [];
 let seq = 0;
 const nx = () => `${++seq}`;
@@ -412,6 +461,7 @@ try {
   const EM = await imp("@/lib/modules/crm/emails");
   const ESH = await imp("@/lib/modules/crm/emails-shared");
   const CORE = await imp("@/lib/core/email");
+  const CIN = await imp("@/lib/core/inbound-address");
   const SAN = await imp("@/lib/core/sanitize");
   const CRM = await imp("@/lib/modules/crm");
   const SEQ = (CRM.sequences ?? (await imp("@/lib/modules/crm/sequences"))) as Any;
@@ -674,11 +724,11 @@ try {
       method, headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": ip }, ...(method === "POST" ? { body: "List-Unsubscribe=One-Click" } : {}) }), { token: tok });
   };
   const whSign = (id: string, ts: string, body: string) => `v1,${createHmac("sha256", Buffer.from(WH_KEY_B64, "base64")).update(`${id}.${ts}.${body}`).digest("base64")}`;
-  const postWh = (payload: unknown, o: { id?: string; ts?: number; sig?: string | null; raw?: string } = {}) => {
+  const postWh = (payload: unknown, o: { id?: string; ts?: number; sig?: string | null; raw?: string; ip?: string } = {}) => {
     const body = o.raw ?? JSON.stringify(payload);
     const id = o.id ?? `msg_${TAG}_${nx()}`;
     const ts = String(o.ts ?? Math.floor(Date.now() / 1000));
-    const ip = ipN();
+    const ip = o.ip ?? ipN();
     RATE_REQ.push({ route: "wh", ip });
     const headers: Record<string, string> = { "content-type": "application/json", "x-forwarded-for": ip };
     if (o.sig !== null) { headers["svix-id"] = id; headers["svix-timestamp"] = ts; headers["svix-signature"] = o.sig ?? whSign(id, ts, body); }
@@ -941,12 +991,16 @@ try {
   }
   {
     const unknown = mailOf("staff-to-unknown");
-    const r1 = await ingest(inMail({ from: `"พนักงาน" <${uS.email}>`, to: [kStaff.email, inA], subject: subj("สำเนา BCC") }));
-    const r2 = await ingest(inMail({ from: uS.email, to: [unknown, inA], subject: subj("BCC ไม่รู้จัก") }));
+    // ORACLE-EDIT (ruling G.7 · review round 3): the OUT branch now needs a PROVEN From — the fixture carries the
+    //   `authentication-results` an MTA would add.  The spoofed twin (no proof ⇒ IN) is C2.5-S10.7.
+    const staffDom = String(uS.email.split("@")[1] ?? "");
+    const AUTH_OK = { "authentication-results": `mx.shark.in.th; spf=pass smtp.mailfrom=${staffDom}; dkim=pass header.d=${staffDom}` };
+    const r1 = await ingest(inMail({ from: `"พนักงาน" <${uS.email}>`, to: [kStaff.email, inA], subject: subj("สำเนา BCC"), headers: AUTH_OK }));
+    const r2 = await ingest(inMail({ from: uS.email, to: [unknown, inA], subject: subj("BCC ไม่รู้จัก"), headers: AUTH_OK }));
     const w1 = await row(r1.v?.emailId ?? NONE);
     const w2 = await row(r2.v?.emailId ?? NONE);
     const cs = await contactsByEmail(crmA, unknown);
-    chk("C2.5-S3.4", "staff BCC capture: From = a staff member of the tenant ⇒ stored as OUT, sentById = that staff, contactId = the To contact · staff to an unknown address ⇒ OUT, contactId null, NO lead created for the recipient",
+    chk("C2.5-S3.4", "staff BCC capture: From = a staff member of the tenant WITH a passing authentication-results (ruling G.7) ⇒ stored as OUT, sentById = that staff, contactId = the To contact · staff to an unknown address ⇒ OUT, contactId null, NO lead created for the recipient",
       r1.ok && w1?.direction === "OUT" && w1?.sentById === uS.id && w1?.contactId === kStaff.id && r2.ok && w2?.direction === "OUT" && !w2?.contactId && cs.length === 0,
       "OUT captured", `r1=${rd(r1)} dir=${w1?.direction} by=${w1?.sentById === uS.id} contact=${w1?.contactId === kStaff.id} r2=${rd(r2)} dir2=${w2?.direction} c2=${w2?.contactId} leads=${cs.length}`);
   }
@@ -1879,6 +1933,372 @@ try {
         u.ok && /\/api\/files\/[^?]+\?exp=\d+&sig=/.test(String(u.v?.url ?? "")) && exp > 0 && exp <= 15 * 60_000 + 5_000 && refused(us, "NOT_FOUND"),
       "private", `${rd(r)} path=${cut(fa?.path, 50)} cdn=${cut(fa?.cdnUrl, 30)} dtoLeak=${/private:\/\/|qc-c25-cdn|\/private\//.test(dto)} url=${cut(u.v?.url, 60)} exp=${exp} staff=${rd(us)}`);
   }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S10 — CONTROLLER REVIEW ROUND 3 (addendum G): the gaps the reviewer found that this oracle could not see.
+  //   Own throwaway CRM system `crmS` (STAFF visibility OWN) so none of these fixtures can disturb S1–X10 above.
+  // ═════════════════════════════════════════════════════════════════════════════
+  out("── S10 · controller review round 3 ──");
+  const crmS = await mk(tidA, "CRM ตรวจรอบสาม");
+  KEY[crmS] = key8();
+  await setCrm(crmS, { uiVersion: 2, bridgesEnabled: true, qcMarker: TAG, visibility: { STAFF: "OWN" } });
+  await setMail(crmS, {
+    inboundKey: KEY[crmS], inboundEnabled: true, strangerToLead: true, trackOpens: true, trackClicks: true,
+    fromMode: "SHARK", replyToMode: "SHARK", copyMode: "NONE", copyToAddr: null, allowUserOverride: true, retentionDays: 730,
+  });
+  const cS = { tenantId: tidA, systemId: crmS, actorUserId: uA.id };
+  const cSs = { ...cS, actorUserId: uS.id };
+  const inS = INADDR(KEY[crmS]);
+  const setThreadKey = (id: string, key: string) => P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "threadKey" = $1 WHERE id = $2`, key, id);
+  const backdateCreated = (id: string, ms: number) => P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "createdAt" = $1::timestamp WHERE id = $2`, new Date(Date.now() - ms), id);
+  const expireLease = (id: string, ms = 5 * 60_000) => P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "leaseUntil" = $1::timestamp WHERE id = $2`, new Date(Date.now() - ms), id);
+  /** xmin ของแถว = รหัสธุรกรรมที่เขียนมันครั้งล่าสุด — เท่ากันคือ "เขียนใน tx เดียวกัน" แบบพิสูจน์ได้ (เหมือน qc-crm-c2.2 X9.5) */
+  const xminOf = async (table: string, id: string) =>
+    String(((await P.$queryRawUnsafe(`SELECT xmin::text AS x FROM "${table}" WHERE id = $1`, id).catch(() => [])) as Any[])[0]?.x ?? "");
+  const sqlLit = (s: string) => `'${String(s).replace(/'/g, "''")}'`;
+  /** ฉีด "เขียนสถานะไม่ลง" แบบพิสูจน์ได้: trigger ที่ระเบิดเมื่อจดหมายหัวข้อนี้ถูกเขียนเป็น SENT (ถอนทิ้งใน finally) */
+  const failOnSent = async (tag: string, subject: string): Promise<string> => {
+    const name = `qc_c25_${rand}_${tag}`;
+    try {
+      await P.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $qc$ BEGIN IF NEW."status" = 'SENT' AND NEW."subject" = ${sqlLit(subject)} THEN RAISE EXCEPTION 'qc-c25 forced status write failure'; END IF; RETURN NEW; END $qc$`);
+      await P.$executeRawUnsafe(`CREATE TRIGGER ${name} BEFORE UPDATE ON "CrmEmailMessage" FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+      TRIGGERS.push({ name, table: "CrmEmailMessage" });
+      return name;
+    } catch {
+      return "";
+    }
+  };
+  /** ฉีด "ฐานสะดุดชั่วคราว" ตอน insert CrmEmailEvent ของจดหมายฉบับนี้ */
+  const failOnEventInsert = async (tag: string, emailId: string): Promise<string> => {
+    const name = `qc_c25_${rand}_${tag}`;
+    try {
+      await P.$executeRawUnsafe(`CREATE OR REPLACE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $qc$ BEGIN IF NEW."emailId" = ${sqlLit(emailId)} THEN RAISE EXCEPTION 'qc-c25 forced transient db error'; END IF; RETURN NEW; END $qc$`);
+      await P.$executeRawUnsafe(`CREATE TRIGGER ${name} BEFORE INSERT ON "CrmEmailEvent" FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+      TRIGGERS.push({ name, table: "CrmEmailEvent" });
+      return name;
+    } catch {
+      return "";
+    }
+  };
+  const dropTrig = async (name: string, table: string) => {
+    if (!name) return;
+    await P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${name} ON "${table}"`).catch(() => 0);
+    await P.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${name}()`).catch(() => 0);
+  };
+  /** กุญแจกันซ้ำที่ส่งถึงผู้ให้บริการ — รับได้ทั้งรูป option (`idempotencyKey`) และรูปหัวจดหมาย (`Idempotency-Key`) */
+  const idemOf = (m: Any) => String(m?.idempotencyKey ?? "") || hdr(m, "Idempotency-Key");
+
+  // ── S10.1 · F1: `+t<short>` ต้องตรงทั้งค่า ไม่ใช่ "ขึ้นต้นด้วย" ──
+  {
+    const kVic = await consenting(tidA, crmS, "เธรดเหยื่อ");
+    const SV = subj("เธรดเหยื่อ");
+    const oVic = await send(cS, owner, { contactId: kVic.id, subject: SV });
+    const victimKey = `a${randomBytes(16).toString("hex").slice(1)}`;
+    await setThreadKey(idOf(oVic), victimKey);
+    const short = victimKey.slice(0, 12);
+    const inThread = () => M("crmEmailMessage").count({ where: { systemId: crmS, threadKey: victimKey } });
+    const probe = async (t: string, label: string) => {
+      const r = await ingest(inMail({ from: `"คนนอก ${label}" <${mailOf(`hijack-${label}`)}>`, to: [`crm+${KEY[crmS]}+t${t}@shark.in.th`], subject: subj(`แอบต่อเธรด ${label}`) }));
+      return { r, w: await row(r.v?.emailId ?? NONE) };
+    };
+    const one = await probe("a", "1ตัว");
+    const part = await probe(short.slice(0, 6), "สั้นกว่า");
+    const afterBad = await inThread();
+    const exact = await probe(short, "ครบ");
+    const afterGood = await inThread();
+    chk("C2.5-S10.1", "ruling G.1 (F1): the `+t<short>` threading fallback matches the thread short EXACTLY — a stranger writing to `crm+<key>+ta@shark.in.th` (1 char) or with a right-prefix-wrong-length short lands in a thread of its OWN (fresh threadKey / its own stranger lead), never in the victim's thread · [positive control] the exact 12-char short joins it",
+      oVic.ok && one.r.ok && one.r.v?.handled === true && part.r.ok && part.r.v?.handled === true &&
+        !!one.w?.threadKey && one.w.threadKey !== victimKey && !!part.w?.threadKey && part.w.threadKey !== victimKey && afterBad === 1 &&
+        exact.r.ok && exact.w?.threadKey === victimKey && afterGood === 2,
+      "prefix never joins", `victim=${victimKey.slice(0, 8)}… one=${one.w?.threadKey === victimKey ? "HIJACKED" : cut(one.w?.threadKey, 8)} partial=${part.w?.threadKey === victimKey ? "HIJACKED" : cut(part.w?.threadKey, 8)} inThread=${afterBad}→${afterGood} exact=${exact.w?.threadKey === victimKey}`);
+  }
+
+  // ── S10.2 · F2: การมองเห็นเป็นราย "ข้อความ" ไม่ใช่ราย "เธรด" ──
+  const kX = await consenting(tidA, crmS, "ของพนักงาน", uS.id);
+  {
+    const kY = await consenting(tidA, crmS, "ของผู้จัดการ", uM.id);
+    const SX = subj("ข้อความที่พนักงานเห็นได้");
+    const SY = `ลับของผู้จัดการ ${SUBJ_MARK} ${TAG}-${nx()}`;
+    const oX = await send(cS, owner, { contactId: kX.id, subject: SX });
+    const oY = await send(cS, owner, { contactId: kY.id, subject: SY, bodyHtml: `<p>ความลับ ${BODY_MARK}</p>` });
+    const th = (await row(idOf(oX)))?.threadKey ?? NONE;
+    await setThreadKey(idOf(oY), th);
+    const gS = await call(EM.getThread, cSs, staff, th);
+    const gO = await call(EM.getThread, cS, owner, th);
+    const lS = await call(EM.listThreads, cSs, staff, {});
+    const lO = await call(EM.listThreads, cS, owner, {});
+    const msgs = (gS.v?.messages ?? []) as Any[];
+    const leak = [SY, kY.email, kY.name, idOf(oY)].filter((x) => x && j(gS.v).includes(String(x)));
+    const listLeak = [SY, kY.email].filter((x) => j(lS.v).includes(String(x)));
+    const itS = ((lS.v?.items ?? []) as Any[]).find((i) => i?.threadKey === th);
+    const itO = ((lO.v?.items ?? []) as Any[]).find((i) => i?.threadKey === th);
+    chk("C2.5-S10.2", "ruling G.2 (F2): one thread holding messages of two contacts is filtered PER MESSAGE — a STAFF actor (visibility OWN) who may see contact X only gets X's message and nothing of contact Y (no address, name, subject, body or attachment of Y anywhere in the DTO) · listThreads counts only the messages that actor may see · [positive control] the OWNER sees both",
+      oX.ok && oY.ok && th !== NONE && gS.ok && msgs.length === 1 && msgs[0]?.id === idOf(oX) && leak.length === 0 &&
+        gO.ok && ((gO.v?.messages ?? []) as Any[]).length === 2 && lS.ok && itS?.count === 1 && listLeak.length === 0 && lO.ok && itO?.count === 2,
+      "per-message", `staff=${rd(gS)} msgs=${msgs.length} leak=${leak.length ? cut(leak[0], 40) : "-"} owner=${((gO.v?.messages ?? []) as Any[]).length} listStaff=${itS?.count ?? "-"}/${listLeak.length} listOwner=${itO?.count ?? "-"}`);
+  }
+
+  // ── S10.3 · F3: จดหมายที่ยัง "ไม่ถูกส่ง" ห้ามถูกล้างเนื้อความตามอายุของวันที่สร้าง ──
+  {
+    await setMail(crmS, { retentionDays: 30 });
+    const kQ = await consenting(tidA, crmS, "ตั้งเวลาไกล");
+    const SQ = subj("ตั้งเวลา 60 วันข้างหน้า");
+    const q = await send(cS, owner, { contactId: kQ.id, subject: SQ, scheduledAt: new Date(Date.now() + 60 * DAY).toISOString() });
+    const qId = idOf(q);
+    await backdateCreated(qId, 31 * DAY);
+    const kP = await consenting(tidA, crmS, "ส่งแล้วเก่า");
+    const SP = subj("ส่งไปแล้ว 31 วัน");
+    const p = await send(cS, owner, { contactId: kP.id, subject: SP });
+    await backdate(idOf(p), 31 * DAY);
+    const r = await call(EM.purgeBodies, new Date(), { tenantIds: [tidA], deps: { del: storeDeps.del } });
+    const q1 = await row(qId);
+    const p1 = await row(idOf(p));
+    await setMail(crmS, { retentionDays: 730 });
+    chk("C2.5-S10.3", "ruling G.3 (F3): retention counts from the moment the mail LEFT (sentAt) or ARRIVED (receivedAt) — a QUEUED mail created 31 days ago but scheduled 60 days ahead keeps its body (purging it would send an empty letter) · [positive control] a SENT mail of the same age is purged",
+      q.ok && q1?.status === "QUEUED" && String(q1?.bodyHtml ?? "").includes(BODY_MARK) && !q1?.purgedAt && !!q1?.scheduledAt &&
+        r.ok && p1?.bodyHtml == null && !!p1?.purgedAt,
+      "queued survives", `purge=${rd(r)} queued=${q1?.status}/body=${String(q1?.bodyHtml ?? "").includes(BODY_MARK)}/purgedAt=${!!q1?.purgedAt} sent=${p1?.bodyHtml == null}/${!!p1?.purgedAt}`, "MAJOR");
+  }
+
+  // ── S10.4 · F4: การส่งซ้ำหลังสัญญาเช่าหมด ต้องถือกุญแจกันซ้ำของผู้ให้บริการ "ใบเดิม" ──
+  {
+    const kI = await consenting(tidA, crmS, "กุญแจกันซ้ำ");
+    const SI = subj("จองแล้วเขียนสถานะไม่ลง");
+    const keys: string[] = [];
+    const tpKey = tp(0, (m) => { keys.push(idemOf(m)); });
+    const trig = await failOnSent("idem", SI);
+    const at = Date.now() + 60_000;
+    const e = idOf(await send(cS, owner, { contactId: kI.id, subject: SI, scheduledAt: new Date(at).toISOString() }, { transport: tpKey, ...storeDeps }));
+    const run1 = await call(EM.runScheduled, new Date(at + 60_000), { tenantIds: [tidA], deps: { transport: tpKey, ...storeDeps } });
+    const mid1 = await row(e);
+    await dropTrig(trig, "CrmEmailMessage");
+    const run2 = await call(EM.runScheduled, new Date(at + 16 * 60_000), { tenantIds: [tidA], deps: { transport: tpKey, ...storeDeps } });
+    const end = await row(e);
+    await call(EM.runScheduled, new Date(at + 40 * 60_000), { tenantIds: [tidA], deps: { transport: tpKey, ...storeDeps } });
+    const other: string[] = [];
+    const kI2 = await consenting(tidA, crmS, "กุญแจอีกใบ");
+    const o2 = await send(cS, owner, { contactId: kI2.id, subject: subj("อีกฉบับ") }, { transport: tp(0, (m) => { other.push(idemOf(m)); }), ...storeDeps });
+    chk("C2.5-S10.4", "ruling G.4 (F4): every hand-off to the transport carries an `Idempotency-Key` derived from the message · the status write of a claimed SCHEDULED mail failing leaves the row QUEUED (never FAILED-by-accident), and the retry after the lease expires presents the SAME key (so the provider delivers once) · exactly two attempts, no third send · a different message gets a different key",
+      e !== NONE && !!trig && keys.length === 2 && !!keys[0] && keys[0].length >= 8 && keys[0] === keys[1] && mid1?.status === "QUEUED" &&
+        run2.ok && end?.status === "SENT" && o2.ok && !!other[0] && other[0] !== keys[0],
+      "same key twice", `trig=${!!trig} keys=${keys.length}[${keys.map((k) => cut(k, 24) || "-").join(" | ")}] mid=${mid1?.status} run1=${cut(rd(run1), 40)} end=${end?.status} other=${cut(other[0], 24) || "-"}`, "MAJOR");
+  }
+
+  // ── S10.5 · F5: จดหมาย "ส่งทันที" ที่ค้างเพราะเครื่องดับ ต้องถูกปิดงาน ไม่ค้าง QUEUED ตลอดกาล ──
+  {
+    const kG = await consenting(tidA, crmS, "ค้างกลางทาง");
+    const SG = subj("ส่งทันทีแล้วเครื่องดับ");
+    const trig = await failOnSent("hang", SG);
+    const g = await send(cS, owner, { contactId: kG.id, subject: SG });
+    const gid = (await M("crmEmailMessage").findFirst({ where: { systemId: crmS, subject: SG } }))?.id ?? NONE;
+    await dropTrig(trig, "CrmEmailMessage");
+    const mid0 = await row(gid);
+    await expireLease(gid, 20 * 60_000);
+    const n0 = sentWith(SG).length;
+    const r1 = await call(EM.runScheduled, new Date(), { tenantIds: [tidA], deps: deps() });
+    const w1 = await row(gid);
+    const r2 = await call(EM.runScheduled, new Date(Date.now() + 60 * 60_000), { tenantIds: [tidA], deps: deps() });
+    const w2 = await row(gid);
+    chk("C2.5-S10.5", "ruling G.5 (F5): an IMMEDIATE send whose process died mid-transport (row QUEUED · scheduledAt null · lease expired) is closed by the next runScheduled — status FAILED with a THAI reason a human can read, lease cleared, and the letter is NEVER handed to the transport again (nobody can prove the provider did not already take it) · no crm.email.sent",
+      !!trig && gid !== NONE && !g.ok && mid0?.status === "QUEUED" && !mid0?.scheduledAt && r1.ok && w1?.status === "FAILED" && thai(w1?.providerError) &&
+        !w1?.leaseUntil && sentWith(SG).length === n0 && (await outboxOf("crm.email.sent", gid)).length === 0 && r2.ok && w2?.status === "FAILED",
+      "closed as FAILED", `trig=${!!trig} send=${cut(rd(g), 40)} mid=${mid0?.status}/sched=${!!mid0?.scheduledAt} run=${rd(r1)} status=${w1?.status} reason=${cut(w1?.providerError, 60)} thai=${thai(w1?.providerError)} sends=${n0}→${sentWith(SG).length}`, "MAJOR");
+  }
+
+  // ── S10.6 · F6: ที่อยู่ผู้รับต้องเป็นของผู้ติดต่อรายนั้น ──
+  {
+    const outsider = mailOf("outsider");
+    const rows0 = await M("crmEmailMessage").count({ where: { tenantId: tidA } });
+    const n0 = SENT.length;
+    const bad = await send(cS, owner, { contactId: kX.id, subject: subj("ยิงออกนอก"), to: [outsider] });
+    const rows1 = await M("crmEmailMessage").count({ where: { tenantId: tidA } });
+    const n1 = SENT.length;
+    const good = await send(cS, owner, { contactId: kX.id, subject: subj("ถึงเจ้าตัว"), to: [kX.email] });
+    const ccStaff = await send(cSs, staff, { contactId: kX.id, subject: subj("สำเนาคนนอกโดยพนักงาน"), cc: [outsider] });
+    const ccOwner = await send(cS, owner, { contactId: kX.id, subject: subj("สำเนาคนนอกโดยเจ้าของ"), cc: [outsider] });
+    chk("C2.5-S10.6", "ruling G.6 (F6): `to` may only hold addresses that belong to the contact (email / previousEmails) — an outside address ⇒ VALIDATION with nothing written and nothing sent (the consent of one customer must never buy a delivery to a stranger) · [positive control] to = contact.email works · an outsider in `cc` needs `crm.email.settings` (staff refused, owner allowed)",
+      refused(bad, "VALIDATION") && rows1 === rows0 && n1 === n0 && good.ok && refused(ccStaff, ["FORBIDDEN", "VALIDATION"]) && ccOwner.ok,
+      "contact-owned only", `bad=${cut(rd(bad), 40)} rows ${rows0}→${rows1} sentByBad=${n1 - n0} good=${rd(good)} ccStaff=${cut(rd(ccStaff), 30)} ccOwner=${rd(ccOwner)}`, "MAJOR");
+  }
+
+  // ── S10.7 · F7: From ที่อ้างว่าเป็นพนักงาน ต้องมีหลักฐานการยืนยันตัวตนของจดหมาย ──
+  {
+    const kSp = await consenting(tidA, crmS, "ลูกค้าที่ถูกปลอมถึง");
+    const spoof = await ingest(inMail({ from: `"พนักงาน" <${uS.email}>`, to: [kSp.email, inS], subject: subj("ปลอมเป็นพนักงาน") }));
+    const w1 = await row(spoof.v?.emailId ?? NONE);
+    const dom = String(uS.email.split("@")[1] ?? "");
+    const authed = await ingest(inMail({
+      from: `"พนักงาน" <${uS.email}>`, to: [kSp.email, inS], subject: subj("พนักงานตัวจริง"),
+      headers: { "authentication-results": `mx.shark.in.th; spf=pass smtp.mailfrom=${dom}; dkim=pass header.d=${dom}; dmarc=pass header.from=${dom}` },
+    }));
+    const w2 = await row(authed.v?.emailId ?? NONE);
+    chk("C2.5-S10.7", "ruling G.7 (F7): the OUT branch (BCC capture · sentById = that staff) opens only when the delivery PROVES the From — a passing `authentication-results` (spf/dkim for the From domain) or a From on a VERIFIED EmailDomain of the tenant · a mail that merely writes a staff address in From with no such header is stored as an ordinary IN message (sentById null, stranger rules), never as something the staff 'sent'",
+      spoof.ok && spoof.v?.handled === true && w1?.direction === "IN" && !w1?.sentById &&
+        authed.ok && w2?.direction === "OUT" && w2?.sentById === uS.id && w2?.contactId === kSp.id,
+      "IN unless proven", `spoof=${rd(spoof)} dir=${w1?.direction} by=${w1?.sentById ?? "-"} authed=${rd(authed)} dir2=${w2?.direction} by2=${w2?.sentById === uS.id}`, "MAJOR");
+  }
+
+  // ── S10.8 · F8: เพดานความถี่ของ one-click + webhook (และลายเซ็นผิดต้องไม่เขียนแม้แถวถังความถี่) ──
+  {
+    const lim = Number(ESH.CRM_TRACK_RATE_LIMITS?.perIp?.limit ?? 0);
+    const burnable = lim > 0 && lim <= 200;
+    const kU = await consenting(tidA, crmS, "เลิกรับเต็มเพดาน");
+    const SU = subj("เลิกรับเต็มเพดาน");
+    await send(cS, owner, { contactId: kU.id, subject: SU });
+    const tU = unsubTok(sentWith(SU)[0]?.html ?? "");
+    TOKENS.push(tU);
+    const ipU = ipN();
+    const burnU: Rr[] = [];
+    for (let i = 0; burnable && i < lim; i += 1) burnU.push(await postU(randomBytes(24).toString("base64url"), "POST", ipU));
+    const overU = await postU(tU, "POST", ipU);
+    const kU1 = await P.crmContact.findFirst({ where: { id: kU.id } });
+    const freshU = await postU(tU, "POST", ipN());
+    const kU2 = await P.crmContact.findFirst({ where: { id: kU.id } });
+    const kW = await consenting(tidA, crmS, "เด้งเต็มเพดาน");
+    const SW = subj("เด้งเต็มเพดาน");
+    const oW = await send(cS, owner, { contactId: kW.id, subject: SW });
+    const pW = (await row(idOf(oW)))?.providerId ?? "none";
+    const bpl = { type: "email.bounced", created_at: new Date().toISOString(), data: { email_id: pW, bounce: { type: "Permanent", subType: "General" } } };
+    const ipW = ipN();
+    const burnW: Rr[] = [];
+    for (let i = 0; burnable && i < lim; i += 1) burnW.push(await postWh({ type: "email.delivered", created_at: new Date().toISOString(), data: { email_id: `re_unknown_${TAG}_${i}` } }, { ip: ipW }));
+    const overW = await postWh(bpl, { ip: ipW });
+    const w1 = await row(idOf(oW));
+    const okW = await postWh(bpl, { ip: ipN() });
+    const w2 = await row(idOf(oW));
+    const ipBad = ipN();
+    const badSig = await postWh(bpl, { sig: null, ip: ipBad });
+    const keysOf = (ip: string) => (typeof EM.trackRateKeys === "function" ? (EM.trackRateKeys("wh", { ip }) as string[]) : []);
+    const bucketsBad = keysOf(ipBad).length ? await P.chatRateBucket.count({ where: { key: { in: keysOf(ipBad) } } }) : -1;
+    const bucketsW = keysOf(ipW).length ? await P.chatRateBucket.count({ where: { key: { in: keysOf(ipW) } } }) : -1;
+    const shape = (a: Rr, b: Rr) => a.status === 429 || a.status === b.status;
+    chk("C2.5-S10.8", "ruling G.8 (F8): `/u/<token>/one-click` and the provider webhook obey checkRateLimitDb like the pixel does — after perIp.limit calls from one IP the next one is REFUSED (same answer shape or 429) and performs nothing (the customer is not unsubscribed, the message is not flagged BOUNCED) · [positive controls] the same token/payload from a fresh IP works · a webhook with a bad signature is 401 and writes NOTHING — not even a ChatRateBucket row (the gate runs AFTER the signature)",
+      burnable && burnU.every((x) => x.status === burnU[0].status && x.status >= 200 && x.status < 300) && shape(overU, freshU) && kU1?.emailOptOut === false && kU2?.emailOptOut === true &&
+        burnW.every((x) => x.status === burnW[0].status) && shape(overW, okW) && w1?.status !== "BOUNCED" && (await evRows(idOf(oW), "BOUNCE")).length <= 1 && w2?.status === "BOUNCED" &&
+        badSig.status === 401 && bucketsBad === 0 && bucketsW >= 1,
+      "gated", `limit=${lim} u=${burnU.length}×${burnU[0]?.status ?? "-"} over=${overU.status}/optOut=${kU1?.emailOptOut} fresh=${freshU.status}/${kU2?.emailOptOut} wh=${burnW.length}×${burnW[0]?.status ?? "-"} over=${overW.status}/status=${w1?.status} ok=${okW.status}/${w2?.status} badSig=${badSig.status} buckets bad=${bucketsBad} signed=${bucketsW}`, "MAJOR");
+  }
+
+  // ── S10.9 · F9: ไฟล์แนบที่ผู้ให้บริการส่งมาเป็น "ลิงก์" (และด่าน SSRF) ──
+  {
+    const ATT = `${ATT_HOST}/qc-${rand}-${nx()}.pdf`;
+    const p0 = PUTS.length;
+    const f0 = FETCHES.length;
+    const r1 = await ingest(inMail({ from: kX.email, to: [inS], subject: subj("แนบมาเป็นลิงก์"), attachments: [{ filename: "ใบเสร็จ.pdf", content_type: "application/pdf", contentType: "application/pdf", url: ATT, size: 1024 }] }));
+    const w1 = await row(r1.v?.emailId ?? NONE);
+    const l1 = (w1?.attachments ?? []) as Any[];
+    const fa = l1[0]?.fileId ? await P.fileAsset.findFirst({ where: { id: l1[0].fileId } }) : null;
+    const pulled = FETCHES.slice(f0).filter((f) => f.url === ATT).length;
+    const SSRF = "http://127.0.0.1:9/secret.pdf";
+    const r2 = await ingest(inMail({ from: kX.email, to: [inS], subject: subj("แนบลิงก์ในบ้าน"), attachments: [{ filename: "หลุด.pdf", content_type: "application/pdf", contentType: "application/pdf", url: SSRF, size: 1024 }] }));
+    const w2 = await row(r2.v?.emailId ?? NONE);
+    const l2 = (w2?.attachments ?? []) as Any[];
+    const local = FETCHES.filter((f) => /127\.0\.0\.1|localhost|\[::1\]|169\.254\.|:\/\/10\.|:\/\/192\.168\./.test(f.url)).length;
+    chk("C2.5-S10.9", "ruling G.9 (F9): an inbound attachment delivered as a `url` (Resend/Cloudflare do this for big files) is fetched and stored PRIVATE like a base64 one — same mime/size caps, path `t/<tid>/private/…` · the fetch is SSRF-guarded: a loopback/private-network URL is never requested and is counted in the result's `attachmentsDropped`",
+      r1.ok && l1.length === 1 && pulled === 1 && !!fa && /\/private\//.test(String(fa?.path ?? "")) && String(fa?.cdnUrl ?? "").startsWith("private://") && PUTS.length > p0 &&
+        r2.ok && l2.length === 0 && local === 0 && Number(r2.v?.attachmentsDropped) >= 1,
+      "private + SSRF-safe", `url=${rd(r1)} stored=${l1.length} fetched=${pulled} path=${cut(fa?.path, 40)} ssrf=${rd(r2)} stored2=${l2.length} localHits=${local} dropped=${r2.v?.attachmentsDropped ?? "-"}`, "MAJOR");
+  }
+
+  // ── S10.10 · (h): event ของ opened/clicked/replied/bounced อยู่ใน tx เดียวกับตัวนับ/สถานะ ──
+  {
+    const probs: string[] = [];
+    const same = async (what: string, outboxType: string, emailId: string, evId: string | null, msgId: string | null) => {
+      const ob = (await outboxOf(outboxType, emailId))[0];
+      if (!ob) { probs.push(`${what}: no ${outboxType}`); return; }
+      const xo = await xminOf("OutboxEvent", String(ob.id));
+      const xe = evId ? await xminOf("CrmEmailEvent", evId) : "";
+      const xm = msgId ? await xminOf("CrmEmailMessage", msgId) : "";
+      if (evId && (!xe || xe !== xo)) probs.push(`${what}: event ${xe || "-"} ≠ outbox ${xo || "-"}`);
+      if (msgId && (!xm || xm !== xo)) probs.push(`${what}: row ${xm || "-"} ≠ outbox ${xo || "-"}`);
+    };
+    const kOp = await consenting(tidA, crmS, "tx เปิดอ่าน");
+    const SO = subj("tx เปิดอ่าน");
+    const rO = await send(cS, owner, { contactId: kOp.id, subject: SO });
+    const tO = pixTok(sentWith(SO)[0]?.html ?? "");
+    TOKENS.push(tO);
+    await backdate(idOf(rO), 60_000);
+    await getO(tO);
+    await same("opened", "crm.email.opened", idOf(rO), (await evRows(idOf(rO), "OPEN"))[0]?.id ?? null, idOf(rO));
+    const kCl = await consenting(tidA, crmS, "tx คลิก");
+    const SC = subj("tx คลิก");
+    const rC = await send(cS, owner, { contactId: kCl.id, subject: SC });
+    const tC = clickToks(sentWith(SC)[0]?.html ?? "")[0]?.tok ?? "";
+    TOKENS.push(tC);
+    await getC(tC);
+    await same("clicked", "crm.email.clicked", idOf(rC), (await evRows(idOf(rC), "CLICK"))[0]?.id ?? null, idOf(rC));
+    const kRp = await consenting(tidA, crmS, "tx ตอบกลับ");
+    const SR = subj("tx ตอบกลับ");
+    const rR = await send(cS, owner, { contactId: kRp.id, subject: SR });
+    const pRow = await row(idOf(rR));
+    await ingest(inMail({ from: kRp.email, to: [inS], subject: `Re: ${SR}`, headers: { "in-reply-to": `<${bare(pRow?.messageId)}>` } }));
+    await same("replied", "crm.email.replied", idOf(rR), null, idOf(rR));
+    const kBo = await consenting(tidA, crmS, "tx เด้ง");
+    const SBn = subj("tx เด้ง");
+    const rB = await send(cS, owner, { contactId: kBo.id, subject: SBn });
+    const pB = (await row(idOf(rB)))?.providerId ?? "none";
+    await postWh({ type: "email.bounced", created_at: new Date().toISOString(), data: { email_id: pB, bounce: { type: "Permanent" } } });
+    await same("bounced", "crm.email.bounced", idOf(rB), (await evRows(idOf(rB), "BOUNCE"))[0]?.id ?? null, idOf(rB));
+    chk("C2.5-S10.10", "ruling G.10 (h): opened · clicked · replied · bounced each write their counter/state AND their CrmEmailEvent AND the outbox row in ONE transaction (identical xmin — createdAt cannot prove it) · a crash between the counter and the event may never leave a counted open with no event, or a BOUNCED row nobody is told about",
+      probs.length === 0, "one tx each", cut(probs.join(" · "), 300) || "-", "MAJOR");
+  }
+
+  // ── S10.11 · N6/N7: แจ้งสแปม = ความยินยอมถูกเพิกถอนในสมุด · ฐานสะดุด ≠ "ยิงซ้ำ" ──
+  {
+    const kC = await consenting(tidA, crmS, "แจ้งสแปม");
+    const SCp = subj("จะถูกแจ้งสแปม");
+    const oC = await send(cS, owner, { contactId: kC.id, subject: SCp });
+    const eC = idOf(oC);
+    const pC = (await row(eC))?.providerId ?? "none";
+    const cpl = { type: "email.complained", created_at: new Date().toISOString(), data: { email_id: pC } };
+    const trig = await failOnEventInsert("complain", eC);
+    const boom = await postWh(cpl);
+    const k0 = await P.crmContact.findFirst({ where: { id: kC.id } });
+    const ev0 = await evRows(eC);
+    await dropTrig(trig, "CrmEmailEvent");
+    const okWh = await postWh(cpl);
+    const k1 = await P.crmContact.findFirst({ where: { id: kC.id } });
+    const ev1 = await evRows(eC, "COMPLAINT");
+    const cons = (await P.crmContactConsent.findMany({ where: { contactId: kC.id, channel: "EMAIL" }, orderBy: { createdAt: "desc" } })) as Any[];
+    chk("C2.5-S10.11", "ruling G.11 (N6/N7): `email.complained` leaves the same paper trail as a one-click opt-out — a CrmContactConsent row (EMAIL · granted false · source COMPLAINT|UNSUBSCRIBE) next to emailOptOut, so the consent book answers \"why is this customer muted\" · a TRANSIENT db error while inserting the event answers 5xx (the provider retries), never 2xx \"replay\" — only a unique violation is a replay",
+      oC.ok && !!trig && boom.status >= 500 && ev0.length === 0 && k0?.emailOptOut === false &&
+        okWh.status >= 200 && okWh.status < 300 && ev1.length === 1 && k1?.emailOptOut === true &&
+        cons[0]?.granted === false && ["COMPLAINT", "UNSUBSCRIBE"].includes(String(cons[0]?.source ?? "")),
+      "consent row + 5xx", `trig=${!!trig} boom=${boom.status} ev0=${ev0.length} optOut0=${k0?.emailOptOut} ok=${okWh.status} ev1=${ev1.length} optOut1=${k1?.emailOptOut} consent=${cons[0]?.granted}/${cons[0]?.source ?? "-"}`, "MINOR");
+  }
+
+  // ── S10.12 · static (ruling G.12): ตัวจับที่อยู่ขาเข้าอยู่ใน core · route แยกผู้รับก่อนโหลดโมดูล CRM · แถวทะเบียนหน้าตั้งค่า ──
+  {
+    const cinSrc = read(CORE_INBOUND);
+    const rSrc = read(ROUTES.inbound);
+    // ความบริสุทธิ์ตัดสินจาก "specifier จริง" — ลบคอมเมนต์ก่อน (ไฟล์ที่อธิบายตัวเองว่าเคยต้อง import อะไร ไม่ใช่ไฟล์ที่ import)
+    const noComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "");
+    const impure = /(?:from\s*|import\s*\(\s*|require\s*\(\s*)["'][^"']*(?:modules\/|@prisma\/client|@\/lib\/core\/db|@\/lib\/env|next\/|server-only)/.test(noComments(cinSrc));
+    const reOk = CIN.CRM_RECIPIENT_RE instanceof RegExp || /CRM_RECIPIENT_RE\s*=/.test(cinSrc);
+    const oneCopy = !/CRM_RECIPIENT_RE\s*=\s*new RegExp/.test(emSrc) && !/CRM_RECIPIENT_RE\s*=\s*new RegExp/.test(shSrc);
+    const reExported = typeof ESH.isCrmInboundAddress === "function" && ESH.isCrmInboundAddress === CIN.isCrmInboundAddress &&
+      typeof EM.isCrmInboundAddress === "function" && EM.isCrmInboundAddress === CIN.isCrmInboundAddress;
+    // ลำดับตัดสินจากโค้ดจริงเช่นกัน — คอมเมนต์ที่เล่าว่า "เดิมเคย import อะไร" ไม่ใช่การ import
+    const rClean = noComments(rSrc);
+    const coreImport = /from\s+["']@\/lib\/core\/inbound-address["']/.test(rClean);
+    const testPos = rClean.search(/isCrmInboundAddress\s*\(/);
+    const facadePos = rClean.search(/["'][^"']*modules\/crm["']/);
+    const deepCrm = /["'][^"']*modules\/crm\//.test(rClean);
+    const orderOk = coreImport && !deepCrm && testPos >= 0 && (facadePos < 0 || testPos < facadePos) && !/emails\.isCrmInboundAddress/.test(rClean);
+    let inv: Any[] = [];
+    try { const raw = JSON.parse(read(INVENTORY) || "[]"); inv = Array.isArray(raw?.rows) ? raw.rows : []; } catch { inv = []; }
+    const setRows = inv.filter((r: Any) => String(r?.page ?? "") === "/settings/email");
+    const badRoles = setRows.filter((r: Any) => {
+      const roles = (Array.isArray(r?.roles) ? r.roles : []).map((x: Any) => String(x));
+      const hidden = (Array.isArray(r?.hiddenFor) ? r.hiddenFor : []).map((x: Any) => String(x));
+      return !roles.includes("owner") || !roles.includes("manager") || hidden.includes("manager");
+    });
+    chk("C2.5-S10.12", "ruling G.12 (static · controller review round 3, no fitness exception): the inbound-address matcher (`isCrmInboundAddress` + `CRM_RECIPIENT_RE`) lives in `src/lib/core/inbound-address.ts` — core, pure, zero CRM/prisma/next imports — declared THERE ONCE and re-exported by emails-shared.ts and emails.ts (same binding, not a copy) · the inbound route imports ONLY that core file and splits recipients with it BEFORE any `import(\"@/lib/modules/crm\")`, so board mail never depends on the CRM module importing cleanly, and F2.3 stays satisfied without an exception · every `/settings/email` inventory row carries roles owner+manager (MANAGER holds `crm.email.settings` — only `crm.settings.manage` is owner-only) and none hides the page from manager",
+      cinSrc.length > 0 && !impure && typeof CIN.isCrmInboundAddress === "function" && reOk && oneCopy && reExported &&
+        orderOk && setRows.length > 0 && badRoles.length === 0,
+      "core + route order + inventory", `core=${cinSrc.length > 0}/pure=${!impure}/fn=${typeof CIN.isCrmInboundAddress}/re=${reOk}/onceOnly=${oneCopy} reExport=${reExported} route core=${coreImport} deepCrm=${deepCrm} test@${testPos} facade@${facadePos} order=${orderOk} rows=${setRows.length} badRoles=${cut(badRoles.map((r: Any) => String(r?.testid ?? "?")).join(","), 100) || "-"}`, "MINOR");
+  }
+
   void manager; void tplA; void thMain;
 } catch (e) {
   chk("C2.5-FATAL", "the oracle ran to the end without an unexpected exception", false, "no exception", cut(e instanceof Error ? `${e.name}: ${e.message}\n${e.stack ?? ""}` : String(e), 600));
@@ -1888,6 +2308,11 @@ try {
   // ═════════════════════════════════════════════════════════════════════════════
   const ids = TENANTS.filter((x) => /^[a-z0-9]+$/i.test(x));
   const del = async (fn: () => Promise<unknown>) => { try { await fn(); } catch { /* order/FK — retried next pass */ } };
+  // S10: ถอน trigger ที่ใช้ฉีดความล้มเหลวออกก่อนอื่น (ค้างไว้ = ฐาน QC ของคนถัดไปเพี้ยนเงียบ ๆ)
+  for (const t of TRIGGERS) {
+    await del(() => P.$executeRawUnsafe(`DROP TRIGGER IF EXISTS ${t.name} ON "${t.table}"`));
+    await del(() => P.$executeRawUnsafe(`DROP FUNCTION IF EXISTS ${t.name}()`));
+  }
   try {
     const EMx = (await import("@/lib/modules/crm/emails" as string).catch(() => ({}))) as Any;
     if (typeof EMx.trackRateKeys === "function") {

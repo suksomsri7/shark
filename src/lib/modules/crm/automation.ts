@@ -123,7 +123,6 @@ const BKK_MS = 7 * 3_600_000;
 const MANAGE_KEY = "crm.automation.manage";
 const SYSTEM_NOT_FOUND = "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่";
 const RULE_NOT_FOUND = "ไม่พบกฎนี้ในระบบ CRM นี้ (อาจถูกลบไปแล้ว) — รีเฟรชหน้าแล้วลองใหม่";
-const EMAIL_NOT_READY = "ส่งอีเมลจากกฎยังไม่เปิด — มาพร้อมระบบอีเมล";
 const ACTIVITY_TYPES = new Set(["CALL", "MEETING", "EMAIL", "LINE", "TASK", "NOTE", "CHAT", "SMS", "WHATSAPP", "VISIT", "WEB", "PORTAL"]);
 const CHANNEL_LABEL: Record<RunnerChannel, string> = { LINE: "LINE", EMAIL: "อีเมล", SMS: "SMS", PUSH: "แจ้งเตือนบนมือถือของผู้ดูแล" };
 
@@ -1065,8 +1064,31 @@ const defaultKanban: CrmKanbanFn = async (req) => {
 };
 
 export const CRM_DEFAULT_DEPS: Required<Omit<CrmRuleDeps, "kanban" | "post">> & Pick<CrmRuleDeps, "kanban" | "post"> = {
-  // R-E.5 + addendum 2: อีเมลจากกฎยังไม่มีทางส่งจริงจนถึงใบ C2.5 — ขั้นถูก "ข้าม" พร้อมเหตุผล (ไม่ใช่ล้ม)
-  email: async () => ({ ok: false, skipped: true, error: EMAIL_NOT_READY }),
+  // CRM C2.5 ▸ R-E.5: การกระทำ SEND_EMAIL ของกฎส่งผ่าน `emails.sendAsSystem` (ตัวยึด "ยังไม่เปิด" ของ C2.1 ถูกแทนแล้ว)
+  //   🔴 import ตอนใช้: `crm/emails.ts` เรียกกลับมาที่โมดูลนี้ (ทะเบียนการกระทำ) ⇒ static สองทาง = วงจร
+  //   🔴 ไม่มีผู้ติดต่อ (กฎที่ยิงจากเหตุการณ์ที่ไม่ผูกคน) = ข้ามขั้น — ระบบอีเมลของ CRM ผูกกับผู้ติดต่อเสมอ ◂
+  email: async (req) => {
+    if (!req.contactId) return { ok: false, skipped: true, error: "ไม่มีผู้ติดต่อปลายทางของอีเมลนี้ จึงข้ามขั้นนี้" };
+    try {
+      const emails = await import("./emails");
+      const body = String(req.body ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      const r = await emails.sendAsSystem(
+        { tenantId: req.tenantId, systemId: req.systemId },
+        { contactId: req.contactId, ...(req.to ? { to: [req.to] } : {}), subject: req.subject ?? "", bodyHtml: `<p>${body}</p>` },
+      );
+      if (r.status === "FAILED") return { ok: false, error: "ส่งอีเมลไม่สำเร็จ — ระบบจะลองกฎนี้อีกครั้งในรอบถัดไป" };
+      return { ok: true };
+    } catch (e) {
+      const code = (e as { code?: unknown })?.code;
+      const msg = errText(e, "ส่งอีเมลไม่สำเร็จ");
+      if (code === "EMAIL_BLOCKED" || code === "VALIDATION" || code === "NOT_FOUND") return { ok: false, skipped: true, error: msg };
+      return { ok: false, error: msg };
+    }
+  },
   line: async (req) => {
     if (req.consent !== "GRANTED") return { ok: false, skipped: true, error: "ผู้ติดต่อยังไม่ได้ยินยอมรับข่าวสารทาง LINE" };
     try {

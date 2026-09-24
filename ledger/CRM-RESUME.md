@@ -1,6 +1,6 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: **24 ก.ย. 2569 12:40 (ไทย · 05:40 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
+> อัปเดตล่าสุด: **24 ก.ย. 2569 19:00 (ไทย · 12:00 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → **ท้าย `ledger/CRM-RUN.md` §4 (บันทึก 23–24 ก.ย. สำคัญมาก)** → brief ของใบที่ทำ (มี "Controller ruling/addendum" = ผูกพัน)
 
 ## 0. ▶️ ทำต่อจากตรงนี้ (session ใหม่ · ทำตามลำดับ)
@@ -11,19 +11,12 @@
   `awk '/^== /{n=$0} /^exit=/{print n" -> "$0}' .qc-shots/crm/c21-verify3.log` และ `grep JSON_SUMMARY`
 - `ls /tmp/shark-gate*.lock` + `fuser /tmp/shark-gate.lock` ต้องไม่มีใครถือ
 
-### 0.2–0.4 C2.1 · C2.2 · C2.3 — ✅ รับงานแล้วทั้ง 3 ใบ (21/53) · commit ในทรีหลัก · 🔴 **ยังไม่ push** (session Fable ถูกตัวกรองสิทธิ์บล็อก `git push` — เจ้าของต้องกด)
-- คำสั่งที่เจ้าของต้องรัน: `cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main` แล้ว poll `dpl_` ที่ https://shark.in.th/login + `/api/health` (มีเจ้าของอนุมัติแล้วเท่านั้น · ห้ามใช้ session อื่น push แทน = permission laundering)
-- หลัง deploy READY: เติม D12 ใน `wo-notes/crm-C2.1.md` `crm-C2.2.md` `crm-C2.3.md` (hash + dpl) · `tg`
-- worktree `shark-crm-c20` (C2.2) และ `shark-crm-c23` (C2.3) มีงานที่รวมแล้ว + probe/หลักฐาน `.qc-shots/c22-r2` `.qc-shots/c23-r2` `.qc-shots/c23-r3` — ก่อนใช้ worktree ซ้ำสำหรับใบถัดไป: `git -C <wt> checkout -- . && git -C <wt> clean -fd -e .qc-shots -e node_modules` แล้ว `git -C <wt> checkout --detach <HEAD ใหม่ของทรีหลัก>` (node_modules เป็น bind mount ห้าม rm)
-
-### 0.5 กำลังเดิน (spawn ใหม่ 24 ก.ย. 08:25 UTC หลังโควตา Opus รีเซ็ต · Fable)
-- **C2.4 รอบ 2** builder opus ใน `shark-crm-c20` (QC2) — BLOCKER 2 + SHOULD-FIX 9 + NOTE (brief C2.4 "ruling round 2") · หลักฐาน `.qc-shots/c24-r2/` (รวม log ทุก suite) ∥ ผู้เขียนข้อสอบเติม `C2.4-S9.*` ในไฟล์ oracle ของ c20 (diff บางส่วนค้างจาก agent ที่ตาย)
-- **C2.5 รอบ 2** builder opus ใน `shark-crm-c23` (QC3) — BLOCKER 2 (threading `+t` prefix · getThread ทั้งเธรด) + SHOULD-FIX 13 (brief C2.5 "ruling round 2") · หลักฐาน `.qc-shots/c25-r2/` ∥ ผู้เขียนข้อสอบเติม `C2.5-S10.*`
-- หลังทั้งสองจบ: รวมทรีหลัก (C2.4 จาก c20 + C2.5 จาก c23 · ไฟล์ร่วม: `index.ts` `nav.ts` `settings.ts` `layout.tsx` `inventory` `visual-crm` `outbox-consumers` `minute-jobs` `crm-cron` `webhooks/labels` `contacts.ts` `activities.ts` `sequences.ts`) → unit ตรวจรวม (สคริปต์ชื่อใหม่ · ถอยหลังรวม c1.11 + ชุด chat/ai/kanban/member ที่ทั้งสองใบแตะ) → ภาพ 2.4/2.5 ต้องมีข้อมูลตัวอย่าง → PARITY (mockup 08 กลาง/ซ้าย/ขวา · 13 · 15) → wo-notes → commit
-- ข้อสอบพร้อมถึง **C3.0** แล้ว (C2.8 54 · C2.9 47 · C2.10 40 · C2.11 47 · C3.0 33 — เคาะ addendum ทุกใบ) · ตอนรับ C2.8 ต้อง ORACLE-EDIT `C2.1-S4.6`
-- 🔴 โควตา Opus ของ session ชนเพดานได้ (24 ก.ย. ~08:00 UTC) — agent ตายกลางงาน · ไฟล์ใน worktree ยังอยู่ · spawn ใหม่ "ทำต่อจากสภาพไฟล์" ได้ทันที
-- ถ้า session ตาย: `git -C <wt> status` + `.qc-shots/<wo>-r2/` แล้ว spawn ใหม่ พร้อม brief จากทรีหลัก
-- วงจรรับงาน (ใช้ได้ผล): builder → **ผู้ตรวจอ่านอย่างเดียว (opus)** → ORACLE-EDIT + builder แก้ (before/after + log ทุก suite) → รวม → unit ตรวจรวม → ภาพมีข้อมูล → PARITY → wo-notes → commit
+### 0.2–0.5 C2.1 · C2.2 · C2.3 · C2.4 · C2.5 — ✅ รับงานแล้วทั้ง 5 ใบ (23/53 = 43%) · commit ในทรีหลัก · 🔴 **ยังไม่ push** (session Fable ถูกตัวกรองสิทธิ์บล็อก — เจ้าของกด: `cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main`)
+- หลัง deploy READY: เติม D12 ใน wo-notes C2.1–C2.5 (hash + dpl) · `tg` · 🔴 prod ต้องมี `RESEND_WEBHOOK_SECRET` (ไม่ตั้ง = webhook ปิด 401 ปลอดภัย) · Q7 ฟุตเตอร์ยกเลิกรับ (ค่าเริ่มต้น "มี")
+- worktree c20/c23/c12a: รีเซ็ตเป็น HEAD ใหม่ก่อนใช้ (`git checkout -- . && git clean -fd -e .qc-shots -e node_modules -e '.env.*' && git checkout --detach <HEAD>`) · หลักฐาน `.qc-shots/c24*`, `.qc-shots/c25*` ยังอยู่
+- ข้อสอบพร้อม: C2.6 (82 + web 34) · C2.7 (55 — **8 ข้อรอเคาะท้าย addendum brief C2.7**) · C2.8 (54) · C2.9 (47) · C2.10 (40) · C2.11 (47) · C3.0 (33) — ทุกใบยกเว้น C2.6/C2.7 เคาะแล้ว
+- ถัดไป: **C2.6 (c20/QC2) ∥ C2.7 (c23/QC3)** → C2.8 ∥ C2.9 → C2.10 → C2.11 → ปิดเฟส C2 (`qc:all` ส่ง DATABASE_URL/DIRECT_URL) → C3.0 migration
+- วงจรที่ใช้ได้ผล (5 ใบ): builder (log ทุก suite) → **ผู้ตรวจอ่านอย่างเดียว opus** → ORACLE-EDIT + builder แก้ (before/after) → รวม (ไฟล์ร่วม: patch --fuzz + เช็คสมดุลวงเล็บ · inventory รวมตาม wo · docs regen ก่อน suite) → unit ตรวจรวม (ชื่อสคริปต์ใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูล → PARITY → wo-notes → commit
 
 ### 0.6 ถัดไปตามลำดับ
 C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2.0) → C2.5 ∥ C2.6 → C2.7 … C2.11 → ปิดเฟส C2 ด้วย `qc:all` (**ต้องส่ง DATABASE_URL/DIRECT_URL เข้าไปด้วย** ดู `scripts/pending/run-c1-qcall.sh`) → C3.0 (migration) …

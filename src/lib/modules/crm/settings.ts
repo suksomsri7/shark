@@ -18,9 +18,17 @@ export type CrmSettings = {
   bridgesEnabled: boolean;
   // CRM C1.8 ▸ แชทจาก Party ที่ยังไม่มีผู้ติดต่อ → เปิด lead ใหม่ (source CHAT) · ค่าเริ่มต้น **ปิด** (ร้านเปิดเอง — ลูกค้าทักถามทางแชทไม่ใช่ lead ทุกคน) ◂
   chatToLead: boolean;
+  // CRM C2.4 ▸ ผู้ช่วย AI ของงานติดต่อ (R-E.15: ค่าเริ่มต้น **ปิดทั้งคู่** — อะไรที่ระบบทำเองแล้วหักเครดิตร้านต้องปิดไว้ก่อน) ◂
+  ai: { callTranscribe: boolean; chatSummary: boolean };
 };
 
-export const CRM_SETTINGS_DEFAULTS: Readonly<CrmSettings> = Object.freeze({ uiVersion: 1, bridgesEnabled: true, chatToLead: false });
+export const CRM_SETTINGS_DEFAULTS: Readonly<CrmSettings> = Object.freeze({
+  uiVersion: 1,
+  bridgesEnabled: true,
+  chatToLead: false,
+  // CRM C2.4 ▸ R-E.15 ◂
+  ai: Object.freeze({ callTranscribe: false, chatSummary: false }),
+});
 
 type Json = unknown;
 const isObj = (v: Json): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -32,8 +40,67 @@ export function parseCrmSettings(raw: Json): CrmSettings {
     uiVersion: crm.uiVersion === 2 ? 2 : CRM_SETTINGS_DEFAULTS.uiVersion,
     bridgesEnabled: typeof crm.bridgesEnabled === "boolean" ? crm.bridgesEnabled : CRM_SETTINGS_DEFAULTS.bridgesEnabled,
     chatToLead: crm.chatToLead === true, // CRM C1.8 ▸ ค่าเพี้ยน/ไม่ได้ตั้ง = ปิด ◂
+    // CRM C2.4 ▸ ค่าเพี้ยน/ไม่ได้ตั้ง = ปิด (เปิดต้องเป็น `true` ตรง ๆ เท่านั้น) ◂
+    ai: crmAiSettingsOf(raw),
   };
 }
+
+// CRM C2.4 ▸ ผู้ช่วย AI ของ CRM `settings.crm.ai = { callTranscribe, chatSummary }` + อายุเก็บเสียง `settings.crm.retention.recordingDays`
+//   🔴 ตัวอ่านบริสุทธิ์ (ค่าเพี้ยน = ค่าเริ่มต้น ไม่ throw) · ตัวเขียน = jsonb ซ้อนสองชั้นในคำสั่งเดียว (แบบเดียวกับ `assignment` ของ C2.3)
+//      ⇒ คีย์อื่นของ `crm` (uiVersion · bridgesEnabled …) และคีย์อื่นของ `ai`/`retention` รอดเสมอ (ไม่มี read-modify-write)
+export type CrmAiSettings = { callTranscribe: boolean; chatSummary: boolean };
+
+export function crmAiSettingsOf(raw: Json): CrmAiSettings {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  const ai = crm && isObj(crm.ai) ? crm.ai : null;
+  return { callTranscribe: ai?.callTranscribe === true, chatSummary: ai?.chatSummary === true };
+}
+
+/** อายุเก็บเสียงบันทึกการโทร (วัน) — ไม่ได้ตั้ง/เพี้ยน/≤ 0 = ค่าเริ่มต้นที่ผู้เรียกส่งมา (730 วัน · พิมพ์เขียว §C6) */
+export function crmRecordingDaysOf(raw: Json, fallback: number): number {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  const ret = crm && isObj(crm.retention) ? crm.retention : null;
+  const v = ret?.recordingDays;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
+}
+
+export async function setCrmAiKey<K extends keyof CrmAiSettings>(
+  ctx: { tenantId: string; systemId: string },
+  key: K,
+  value: CrmAiSettings[K],
+  db: CrmSettingsDb = crmDb,
+): Promise<void> {
+  if (typeof value !== "boolean") throw new Error("สวิตช์ผู้ช่วย AI ต้องเป็นเปิดหรือปิด");
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('ai',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'ai') = 'object' THEN "settings"->'crm'->'ai' ELSE '{}'::jsonb END)
+               || jsonb_build_object(${key}::text, ${JSON.stringify(value)}::jsonb)),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+
+export async function setCrmRecordingDays(ctx: { tenantId: string; systemId: string }, days: number, db: CrmSettingsDb = crmDb): Promise<void> {
+  if (!Number.isFinite(days) || days <= 0 || days > 3650) throw new Error("อายุเก็บไฟล์เสียงต้องเป็นจำนวนวันตั้งแต่ 1 ถึง 3650");
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('retention',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'retention') = 'object' THEN "settings"->'crm'->'retention' ELSE '{}'::jsonb END)
+               || jsonb_build_object('recordingDays', ${JSON.stringify(Math.floor(days))}::jsonb)),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+// ◂ CRM C2.4
 
 export async function getCrmSettings(ctx: { tenantId: string; systemId: string }): Promise<CrmSettings> {
   const sys = await tenantDb({ tenantId: ctx.tenantId }).appSystem.findFirst({
@@ -192,3 +259,120 @@ export async function setCrmAssignmentKey<K extends keyof CrmAssignmentSettings>
   if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
 }
 // ◂ CRM C2.3
+
+// CRM C2.5 ▸ ตั้งค่าอีเมล `settings.crm.email` (พิมพ์เขียว §4.5 + มติผู้คุมงาน 24 ก.ย. ข้อ 3: `fromAddr` ·
+//   `retentionDays 730` · `allowUserOverride`) — ตัวอ่านบริสุทธิ์ + ตัวเขียน **คำสั่งเดียว**
+//   🔴 เขียนแบบ merge สองชั้น (crm → email → คีย์): คีย์อื่นของ `settings.crm` (uiVersion · bridgesEnabled ·
+//      holidays …) และคีย์อื่นของ `settings.crm.email` (`inboundKey` !) ต้องรอดทุกครั้ง — ไม่มี read-modify-write
+//   🔴 กุญแจกล่องขาเข้าเขียนด้วยคำสั่งที่ "เขียนเฉพาะเมื่อยังว่าง" (สองคำขอพร้อมกันไม่ทำให้กุญแจเปลี่ยนไปมา)
+export type CrmEmailStoredSettings = {
+  inboundEnabled: boolean;
+  fromMode: "SHARK" | "DOMAIN";
+  fromName: string | null;
+  fromAddr: string | null;
+  replyToMode: "SHARK" | "STAFF" | "SELF" | "CUSTOM";
+  replyToAddr: string | null;
+  copyToAddr: string | null;
+  copyMode: "NONE" | "IN" | "OUT" | "BOTH";
+  bccCaptureEnabled: boolean;
+  strangerToLead: boolean;
+  trackOpens: boolean;
+  trackClicks: boolean;
+  retentionDays: number;
+  allowUserOverride: boolean;
+  inboundKey: string | null;
+};
+
+const CRM_EMAIL_STORED_DEFAULTS: Readonly<CrmEmailStoredSettings> = Object.freeze({
+  inboundEnabled: true,
+  fromMode: "SHARK",
+  fromName: null,
+  fromAddr: null,
+  replyToMode: "SHARK",
+  replyToAddr: null,
+  copyToAddr: null,
+  copyMode: "NONE",
+  bccCaptureEnabled: true,
+  strangerToLead: true,
+  trackOpens: true,
+  trackClicks: true,
+  retentionDays: 730,
+  allowUserOverride: true,
+  inboundKey: null,
+});
+
+const boolOr = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
+const textOr = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+const oneOf = <T extends string>(v: unknown, list: readonly T[], d: T): T => (list.includes(String(v) as T) ? (String(v) as T) : d);
+
+/** ค่าตั้งค่าอีเมลของระบบ (ค่าเพี้ยน/ไม่ได้ตั้ง = ค่าเริ่มต้น · ไม่ throw) */
+export function crmEmailSettingsOf(raw: Json): CrmEmailStoredSettings {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : {};
+  const e = isObj(crm.email) ? crm.email : {};
+  const d = CRM_EMAIL_STORED_DEFAULTS;
+  const days = Number(e.retentionDays);
+  const key = typeof e.inboundKey === "string" && /^[a-z2-7]{8}$/.test(e.inboundKey) ? e.inboundKey : null;
+  return {
+    inboundEnabled: boolOr(e.inboundEnabled, d.inboundEnabled),
+    fromMode: oneOf(e.fromMode, ["SHARK", "DOMAIN"] as const, d.fromMode),
+    fromName: textOr(e.fromName),
+    fromAddr: textOr(e.fromAddr),
+    replyToMode: oneOf(e.replyToMode, ["SHARK", "STAFF", "SELF", "CUSTOM"] as const, d.replyToMode),
+    replyToAddr: textOr(e.replyToAddr),
+    copyToAddr: textOr(e.copyToAddr),
+    copyMode: oneOf(e.copyMode, ["NONE", "IN", "OUT", "BOTH"] as const, d.copyMode),
+    bccCaptureEnabled: boolOr(e.bccCaptureEnabled, d.bccCaptureEnabled),
+    strangerToLead: boolOr(e.strangerToLead, d.strangerToLead),
+    trackOpens: boolOr(e.trackOpens, d.trackOpens),
+    trackClicks: boolOr(e.trackClicks, d.trackClicks),
+    retentionDays: Number.isInteger(days) && days >= 30 && days <= 3650 ? days : d.retentionDays,
+    allowUserOverride: boolOr(e.allowUserOverride, d.allowUserOverride),
+    inboundKey: key,
+  };
+}
+
+/** เขียนคีย์ใน `settings.crm.email` ด้วยคำสั่งเดียว (merge — คีย์อื่นรอดทั้งหมด) */
+export async function setCrmEmailKeys(
+  ctx: { tenantId: string; systemId: string },
+  patch: Record<string, unknown>,
+  db: CrmSettingsDb = crmDb,
+): Promise<void> {
+  if (!patch || Object.keys(patch).length === 0) return;
+  const json = JSON.stringify(patch);
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('email',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'email') = 'object' THEN "settings"->'crm'->'email' ELSE '{}'::jsonb END)
+               || ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+
+/** ตั้งกุญแจกล่องขาเข้า **เฉพาะเมื่อยังไม่มี** (คำสั่งเดียว — สองคำขอพร้อมกันได้กุญแจเดียว) */
+export async function ensureCrmInboundKeySql(
+  ctx: { tenantId: string; systemId: string },
+  candidate: string,
+  db: CrmSettingsDb = crmDb,
+): Promise<void> {
+  await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('email',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'email') = 'object' THEN "settings"->'crm'->'email' ELSE '{}'::jsonb END)
+               || jsonb_build_object('inboundKey',
+                    COALESCE(
+                      NULLIF("settings"->'crm'->'email'->>'inboundKey', ''),
+                      ${candidate}
+                    ))),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+}
+// ◂ CRM C2.5

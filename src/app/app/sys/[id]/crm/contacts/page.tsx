@@ -28,6 +28,10 @@ import { ContactExportButton, ContactImportButton, ContactTable, type ContactRow
 // CRM C2.2 ▸ ใส่ผู้ติดต่อที่เห็นอยู่ในหน้านี้เข้าลำดับการติดตามเป็นกลุ่ม (อันตราย: ยืนยัน + เหตุผล — X9) ◂
 import { sequenceOptions } from "@/lib/modules/crm/sequences";
 import { SequenceBulkEnroll } from "@/components/crm/sequences/SequenceBulkEnroll";
+// CRM C2.4 ▸ อ่านนามบัตรด้วย AI → ข้อเสนอผู้ติดต่อใหม่ของระบบนี้ (รูปไม่ถูกเก็บ) — ใบ C2.4 เป็นเจ้าของ ◂
+import { CrmCardScanButton } from "@/components/crm/call/CrmCardScanButton";
+import { crmCan } from "@/lib/modules/crm/access";
+import { CRM_CARD_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 
 // รายชื่อผู้ติดต่อ (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5/§3.17) — `/app/sys/{id}/crm/contacts`
 // URL state: ?q · stage · lead · owner · source · band · view (มุมมองบันทึก) · archived=1 · sort · cursor (ลิงก์แชร์ได้ · ย้อนกลับได้)
@@ -145,6 +149,13 @@ export default async function ContactsPage({
         }
       />
       <ModuleTabs items={crmNavItems(id)} />
+
+      {/* CRM C2.4 ▸ นามบัตร → ผู้ติดต่อใหม่ (ต้องมีคีย์ crm.contact.create — คนที่ไม่มีสิทธิ์ไม่เห็นกล่องนี้เลย) ◂ */}
+      {crmCan(actor, "crm.contact.create") && (
+        <section className="card flex flex-col gap-2 p-3" data-testid="crm-card-scan-block">
+          <CrmCardScanButton systemId={id} maxCardBytes={CRM_CARD_MAX_BYTES} />
+        </section>
+      )}
 
       <form method="get" action={base} className="card flex flex-wrap items-end gap-2 p-3" data-testid="contacts-filter-form">
         <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">

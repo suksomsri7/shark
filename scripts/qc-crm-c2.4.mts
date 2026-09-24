@@ -56,7 +56,8 @@
 //      callAiStatus(ctx, actor, deps?: { transcriber? }) → { state: "OFF" | "NO_PROVIDER" | "NO_CREDIT" | "READY"; message: string (Thai) }
 //        OFF = settings.crm.ai.callTranscribe !== true · NO_PROVIDER = no deps.transcriber and getCrmTranscriber() null — message
 //        contains "ยังไม่ได้เชื่อมบริการถอดเสียง" (calm, no error wording) · NO_CREDIT = !canSpend(tenantId) · READY otherwise
-//      transcribeCall(ctx, actor, activityId, deps?: { transcriber?: CrmTranscriber; ai?: AiProvider }) → { proposalId; reused: boolean }
+//      transcribeCall(ctx, actor, activityId, deps?: { transcriber?: CrmTranscriber; ai?: AiProvider }) → { proposalId; reused: boolean;
+//        working?: boolean } (addendum H3/H4: a job of the same activity already in flight ⇒ that same job back, 15-minute lease)
 //        key crm.activity.create · order: v2 → visibility → key → CALL with a recording (else VALIDATION) → settings.crm.ai.callTranscribe
 //        (else AI_DISABLED) → transcriber (deps ?? registry, else NOT_CONFIGURED) → canSpend (else NO_CREDIT) — every refusal calls
 //        NOTHING (no transcriber, no AI, no proposal, no charge) · then transcriber.transcribe({ tenantId, activityId, fileId, mime,
@@ -88,7 +89,8 @@
 //      chatSummary: false }` defaults surfaced by parseCrmSettings(raw).ai (R-E.15) · `settings.crm.retention.recordingDays` (730)
 //   C. ADAPTERS (stubs — R-B: no STT/VoIP provider in this run)
 //      `src/lib/modules/crm/transcriber.ts`: `export interface CrmTranscriber { key: string; transcribe(input: { tenantId; activityId;
-//        fileId; mime; open: () => Promise<Uint8Array | null> }): Promise<{ text: string; language?: string; model?: string }> }` ·
+//        fileId; mime; open: () => Promise<Uint8Array | null> }): Promise<{ text: string; language?: string; model?: string;
+//        costMicroUsd?: number (addendum H13 — when present the ONE charge includes it) }> }` ·
 //        registerCrmTranscriber(t | null) · getCrmTranscriber() → null by default
 //      `src/lib/modules/crm/call-provider.ts`: `export interface CrmCallProvider { key; parseWebhook(input: { headers; body }):
 //        CallWebhookEvent | null; placeCall?(…) }` · CallWebhookEvent = { provider; providerCallId; direction: "IN" | "OUT"; from; to;
@@ -137,15 +139,54 @@
 //        modal · rendered on contact 360 and deal 360 (v2 pages)
 //      `src/lib/modules/crm/calls-actions.ts` ("use server" — async exports only, each: requireTenant → assertCrmV2 → assertCanCrm/crmCan →
 //        calls.*): logCallAction · transcribeCallAction · acceptCallAiAction · rejectCallAiAction · removeRecordingAction ·
-//        scanBusinessCardAction · acceptLeadProposalAction
+//        scanBusinessCardAction · acceptLeadProposalAction · getRecordingAction (addendum H6 — mints the expiring link per click)
 //      calendar `_components/CalendarViews.tsx` renders appointments with data-testid="crm-calendar-appointment" marked read-only
 //        ("อ่านอย่างเดียว" or aria-readonly) · business-card entry `crm-card-scan` · booking button `crm-book-via-booking`
 //      every literal testid has a row (wo "C2.4") in scripts/crm-ui-inventory.json
+//   H. ORACLE-EDIT ADDENDUM (ผู้คุมงาน · 24 ก.ย. 2569 · ruling round 2 after the independent review — S9.*, X8.6, N16 and F7 judge
+//      exactly this and nothing more)
+//      H1 remindDue delivers EVERY due activity of the window: 205 due rows in ONE system ⇒ at most three runs, each activity notified
+//         exactly once (a fixed page that never advances starves the rest for ever) · done / future ⇒ none
+//      H2 the reminder's AppNotification.title and the push payload carry NO phone number out of the activity title (a notification
+//         title leaves the product through the digest e-mail) — the owner still gets exactly ONE notification per (activityId, remindAt)
+//      H3 transcribeCall while a job of the SAME activity is in flight ⇒ that same job back (`reused: true`, or `working: true` with no
+//         usable proposal yet), never a second transcriber call · accepting that activity's card meanwhile ⇒ CONFLICT (calm Thai) · the
+//         transcript/aiSummary/aiNextStep a human ACCEPTED earlier are never nulled to make room for the new job · when the job ends:
+//         exactly ONE more charge and its own text inside the new PENDING proposal
+//      H4 a claim left behind by a dead process is leased for 15 minutes: after that the next transcribeCall RETRIES (the transcriber
+//         runs again) and hands back a usable card instead of a "still working" card that never clears · ≤ 1 PENDING ai_fill per activity
+//      H5 a month cell shows three rows plus a "+<n> รายการ" counter for everything it did not show (4 activities + 0 appointments ⇒
+//         three chips and "+1 รายการ"); nothing is dropped with nothing on screen to say so
+//      H6 the recording is reachable where the human stands: contact 360 AND deal 360 carry "ฟังไฟล์เสียง" (server action
+//         `getRecordingAction` → calls.getRecording — the link is minted per click, never stored) and "ลบไฟล์เสียง" (danger: confirm +
+//         reason ≥ 5 → `removeRecordingAction`), testids `crm-call-recording-play|listen` and `crm-call-recording-delete|remove`, with
+//         inventory rows (wo C2.4) for `/contacts/[contactId]` AND `/deals/[dealId]` ⇒ CONTRACT G gains `getRecordingAction`
+//      H7 calendar() puts no silent cap on the Parties it asks the facades about: 1,050 visible contacts each with one in-window
+//         appointment ⇒ all 1,050 rows come back
+//      H8 an API-key actor gets `appointments: []` (those rows belong to booking/clinic/school — an integration asks those modules
+//         directly) while a human with unit access gets them
+//      H9 acceptLeadProposal that fails for something that is not the caller's fault leaves the proposal PENDING and the retry creates
+//         the contact exactly once (a validation failure is still refused)
+//      H10 the chat bridge scans EVERY open CRM system of the tenant (never `gates[0]`): a shop whose OLDEST CRM system is still
+//         uiVersion 1 still gets the v2 contact's lastActivityAt bumped and its waiting sequence stopped
+//      H11 a RESOLVED that arrives before the Party has any contact writes nothing and is not lost: once the contact exists the next
+//         RESOLVED writes exactly ONE CHAT activity for that conversation
+//      H12 callAiStatus creates no AiCreditWallet and no GRANT transaction (reading a state never enrols the shop in the credit system)
+//      H13 the CrmTranscriber result MAY carry `costMicroUsd?: number` — when it does, the ONE charge of that transcription includes it
+//         (F7 · MINOR: the field is optional, the charge must not silently drop a cost the provider reported)
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT THIS FILE PROVES: S0 structure · S1–S7 of CRM-RUN (24) · S8 brief extras · U PERMANENT RULE (uiVersion 1) · X1 X2 X3 X4 X5 X6 X8
-//   X9 X10 · CLEAN.   N/A: X7 — no public endpoint in C2.4 (the call-webhook route is deliberately not built; files go through the C0.4
-//   route which qc-crm-c0.4 covers).
+// WHAT THIS FILE PROVES: S0 structure · S1–S7 of CRM-RUN (24) · S8 brief extras · S9 the reviewer's findings (ORACLE-EDIT below) ·
+//   U PERMANENT RULE (uiVersion 1) · X1 X2 X3 X4 X5 X6 X8 X9 X10 · CLEAN.   N/A: X7 — no public endpoint in C2.4 (the call-webhook
+//   route is deliberately not built; files go through the C0.4 route which qc-crm-c0.4 covers).
+// CHECK INVENTORY: 91 checks = the original 78 + 13 added by the ORACLE-EDIT of ผู้คุมงาน (24 ก.ย. 2569) after the independent review:
+//   S9.1 reminders never starve (205 due rows) · S9.2 the in-flight transcription card (fields kept · B refused · one extra charge) ·
+//   S9.3 a stale 15-minute claim is released and retried · S9.4 the month view never swallows the 4th row · S9.5 ฟัง/ลบไฟล์เสียง
+//   reachable from contact 360 AND deal 360 · S9.6 the calendar is not capped at the oldest 1,000 contacts · S9.7 an API key gets no
+//   merged appointments · S9.8 a failed lead acceptance leaves the proposal PENDING (retry works) · S9.9 the chat gate reads every open
+//   CRM system (not gates[0]) · S9.10 a RESOLVED that arrives before the contact still yields exactly one CHAT activity ·
+//   X8.6 no customer phone from the activity title in the reminder push/notification · N16 callAiStatus creates no wallet/GRANT ·
+//   F7 the charge includes the transcriber's reported cost (MINOR — depends on `costMicroUsd?` entering the CONTRACT).
 // S7 ("ภาพ" 6) is proven here STATICALLY (testids · Thai section labels · responsive classes · read-only calendar markers); the PARITY
 //   verdict against mockup 08 at 1440/390 is the controller's gate D7 (screenshots), not this file.
 // HOUSE RULES: SKIP guard before any DB connection · throwaway tenants swept in `finally` (every table with tenantId, 4 passes) + users ·
@@ -1013,7 +1054,9 @@ try {
     let inv: Any[] = [];
     try { inv = (JSON.parse(read(INVENTORY)).rows ?? []) as Any[]; } catch { inv = []; }
     const rows = inv.filter((r) => r?.wo === "C2.4");
-    const uiSrc = [callUi, ...walk(CAL_DIR).map(read), ...walk(`${CRM_PAGES}/contacts`).map(read), ...walk("src/components/crm").map(read)].join("\n");
+    // the whole v2 page tree (calendar · contacts · deals · …) + the CRM components: a row for a testid that lives on the deal 360
+    //   (S9.5 asks for the recording controls there) must NOT be called an orphan
+    const uiSrc = [callUi, ...walk(CRM_PAGES).map(read), ...walk("src/components/crm").map(read)].join("\n");
     const orphan = rows.filter((r) => !uiSrc.includes(String(r.testid ?? "")));
     const need = [...MODAL_TIDS, "crm-call-tel", "crm-call-recording-player", "crm-calendar-appointment", "crm-card-scan", "crm-book-via-booking"];
     const noRow = need.filter((t) => !rows.some((r) => r.testid === t));
@@ -1442,6 +1485,350 @@ try {
     const ai = FETCHES.filter((f) => /openrouter|anthropic|openai/i.test(f));
     chk("C2.4-X8.5", "no real external API was reached: zero requests to an AI provider (OpenRouter/Anthropic/OpenAI) — every AI/STT call went through the injected fakes (all fetch is stubbed; non-storage fetches listed)",
       ai.length === 0, "0 AI requests", `ai=${ai.length} other=${cut(net.join(" | "), 200) || "-"}`);
+  }
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S9 — ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569 · หลังผู้ตรวจอิสระ): ช่องที่ผู้ตรวจเจอ — เขียนตาม "พฤติกรรมที่เคาะแล้ว"
+  //   S9.1 reminders starvation (205 ใบในหน้าต่างเดียว) · S9.2/S9.3 การ์ด AI ที่กำลังทำงาน + claim ค้าง 15 นาที ·
+  //   S9.4 มุมมองเดือนซ่อนรายการที่ 4 · S9.5 ปุ่มฟัง/ลบไฟล์เสียงต้องกดได้จริง · S9.6 เพดานปฏิทิน 1,000 ผู้ติดต่อ ·
+  //   S9.7 คีย์ API กับปฏิทิน · S9.8 ลองใหม่ได้เมื่อรับข้อเสนอลีดล้ม · S9.9 ประตูแชทเมื่อระบบแรกเป็น v1 · S9.10 RESOLVED มาก่อนผู้ติดต่อ
+  // ═════════════════════════════════════════════════════════════════════════════
+  out("\n── S9 · reviewer findings (ORACLE-EDIT) ──");
+  {
+    // S9.1 — 205 due reminders in ONE system: every single one must be delivered exactly once (no page-size starvation)
+    //   the notification is located the same way S5.2 locates it: by the activity TITLE the reminder carries (or by the activity id,
+    //   whichever the builder puts in title/body — AppNotification has no data/link column) · the marker is DELIMITED (`#001#`) so the
+    //   row of activity 1 can never be counted as a hit of activity 10.
+    const MANY = 205;
+    const NOWM = new Date();
+    const pad = (i: number) => String(i).padStart(3, "0");
+    const manyIds = Array.from({ length: MANY }, (_x, i) => `${TAG}-many-${pad(i)}`);
+    const manyMark = (i: number) => `เตือนจำนวนมาก${rand}#${pad(i)}#`;
+    const markDone = `เตือนเสร็จแล้ว${rand}#`;
+    const markFuture = `เตือนอนาคต${rand}#`;
+    await P.crmActivity.createMany({
+      data: manyIds.map((id, i) => ({
+        id, tenantId: tidA, systemId: crmA, contactId: ctMain.id, type: "TASK", title: manyMark(i),
+        ownerUserId: userA, dueAt: new Date(NOWM.getTime() + DAY), remindAt: new Date(NOWM.getTime() - 60_000 - i * 1_000),
+      })),
+    });
+    const idDone = `${TAG}-many-done`;
+    const idFuture = `${TAG}-many-future`;
+    await P.crmActivity.createMany({
+      data: [
+        { id: idDone, tenantId: tidA, systemId: crmA, type: "TASK", title: markDone, ownerUserId: userA, dueAt: new Date(NOWM.getTime() + DAY), remindAt: new Date(NOWM.getTime() - 60_000), doneAt: new Date() },
+        { id: idFuture, tenantId: tidA, systemId: crmA, type: "TASK", title: markFuture, ownerUserId: userA, dueAt: new Date(NOWM.getTime() + 2 * DAY), remindAt: new Date(NOWM.getTime() + 6 * 3_600_000) },
+      ],
+    });
+    const runs: Res[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      runs.push(await call(RM.remindDue, new Date(NOWM.getTime() + i * 60_000), { tenantIds: [tidA], deps: pushDeps }));
+      await pump([tidA]);
+    }
+    const notes = ((await P.appNotification.findMany({ where: { tenantId: tidA, recipientUserId: userA } })) as Any[]).map((n) => `${n.title} ${n.body}`);
+    const per = manyIds.map((id, i) => notes.filter((t) => t.includes(manyMark(i)) || t.includes(id)).length);
+    const missing = per.filter((k) => k === 0).length;
+    const dupes = per.filter((k) => k > 1).length;
+    const controls = [markDone, markFuture].map((m, i) => notes.filter((t) => t.includes(m) || t.includes([idDone, idFuture][i])).length);
+    chk("C2.4-S9.1", `reminders never starve: ${MANY} open activities whose remindAt is already past in ONE system ⇒ after at most three remindDue runs (+ our pump) EVERY one has exactly ONE notification for its owner — none missing (a 100/200-row page that never advances loses the rest for ever) and none doubled · [positive controls] a DONE task and a reminder 6 hours in the future get none`,
+      runs.every((r) => r.ok) && missing === 0 && dupes === 0 && controls.every((k) => k === 0),
+      `${MANY} × exactly 1`, `runs=${runs.map(rd).join("/")} missing=${missing} duplicated=${dupes} delivered=${per.filter((k) => k === 1).length}/${MANY} controls=${controls.join(",")}`);
+  }
+  // ─── S9.2 / S9.3 · the in-flight transcription card ───
+  const zCall = await mkCall(cA, ctMain.id);
+  {
+    let releaseA: () => void = () => {};
+    const gate = new Promise<void>((res) => { releaseA = res; });
+    const slowTr = { key: "qc-slow", transcribe: async (input: Any) => { TR_CALLS.push(String(input?.activityId ?? "")); await gate; return { text: TRANSCRIPT, language: "th" }; } };
+    // round 1: a normal transcribe + accept ⇒ the activity really holds an accepted transcript/summary/next step
+    const p1 = await call(CL.transcribeCall, cA, owner, zCall.id, trDeps(0));
+    const acc1 = p1.ok ? await call(CL.acceptCallAiProposal, cA, owner, String(p1.v?.proposalId ?? NONE)) : p1;
+    const beforeRow = await actRow(zCall.id);
+    const note = `crm.call.transcribe#${zCall.id}`;
+    const chargesBefore = (await usageFor(tidA, note)).length;
+    // round 2: A starts a SLOW transcription, B arrives while it runs
+    const trBefore = TR_CALLS.length;
+    const pA = call(CL.transcribeCall, cA, owner, zCall.id, { transcriber: slowTr, ai: fakeAi("transcribe", AI_JSON) });
+    for (let i = 0; i < 60 && TR_CALLS.length === trBefore; i += 1) await sleep(100);
+    const started = TR_CALLS.length > trBefore;
+    const b = await call(CL.transcribeCall, cA, owner, zCall.id, trDeps(0));
+    const bSaysWorking = b.ok && (b.v?.working === true || b.v?.reused === true);
+    const noSecondRun = TR_CALLS.length === trBefore + 1;
+    const midRow = await actRow(zCall.id);
+    const bAccept = await call(CL.acceptCallAiProposal, cA, owner, String(b.v?.proposalId ?? p1.v?.proposalId ?? NONE));
+    releaseA();
+    const aDone = await pA;
+    const chargesAfter = (await usageFor(tidA, note)).length;
+    const props = await proposalsOf(tidA, zCall.id);
+    const fresh = props.find((x) => String(x.status) === "PENDING");
+    const kept = !!midRow && String(midRow.transcript ?? "").includes(MARK_T) && String(midRow.aiSummary ?? "").includes(MARK_S) && String(midRow.aiNextStep ?? "").includes(MARK_N);
+    chk("C2.4-S9.2", "the in-flight card: while connection A is still transcribing, connection B gets `working: true` (or the same job reused) instead of a second transcriber run, B's accept is refused with CONFLICT in a calm Thai message (the job is still running — the wording is the builder's), and the transcript/summary/next step the shop ACCEPTED earlier are still there (never nulled to make room for the new job) · when A finishes it charges exactly once more and its own text is in the new proposal",
+      p1.ok && acc1.ok && !!beforeRow && started && bSaysWorking && noSecondRun && kept && refused(bAccept, "CONFLICT") && aDone.ok && chargesAfter - chargesBefore === 1 && !!fresh && String(fresh?.payload?.transcript ?? "").includes(MARK_T),
+      "working · fields kept · 1 charge",
+      `round1=${rd(p1)}/${rd(acc1)} started=${started} b=${b.ok ? j(b.v) : b.err} secondRun=${!noSecondRun} fieldsKept=${kept} bAccept=${b.ok ? bAccept.code || rd(bAccept) : "-"} msg=${cut(bAccept.msg, 60) || "-"} a=${rd(aDone)} charges+${chargesAfter - chargesBefore} freshProposal=${!!fresh}`);
+  }
+  {
+    // S9.3 — a claim that was left behind (process died mid-job) must be released after 15 minutes, not block the card for ever
+    const wCall = await mkCall(cA, ctMain.id);
+    let releaseW: () => void = () => {};
+    const stuck = new Promise<void>((res) => { releaseW = res; });
+    const hangTr = { key: "qc-hang", transcribe: async (input: Any) => { TR_CALLS.push(String(input?.activityId ?? "")); await stuck; return { text: TRANSCRIPT, language: "th" }; } };
+    const trBefore = TR_CALLS.length;
+    const hanging = call(CL.transcribeCall, cA, owner, wCall.id, { transcriber: hangTr, ai: fakeAi("transcribe", AI_JSON) });
+    for (let i = 0; i < 60 && TR_CALLS.length === trBefore; i += 1) await sleep(100);
+    // Age the claim of that dead job by 20 minutes — whatever the builder stamps the lease with, shape-agnostic:
+    //   the columns it may lease on (createdAt · updatedAt · a `claimedAt` it added — a column that does not exist just fails and is
+    //   ignored) AND every timestamp the claim row carries in its own bookkeeping note (epoch-ms or ISO). `expiresAt` is left alone on
+    //   purpose: the card must be STALE, not expired — that is the case a human is stuck in front of.
+    const AGE = 20 * 60_000;
+    for (const col of ["createdAt", "updatedAt", "claimedAt"])
+      await P.$executeRawUnsafe(`UPDATE "AiProposal" SET "${col}" = now() - interval '20 minutes' WHERE "tenantId" = $1 AND "conversationId" = $2`, tidA, `crm:activity:${wCall.id}`).catch(() => 0);
+    for (const row of (await P.aiProposal.findMany({ where: { tenantId: tidA, conversationId: `crm:activity:${wCall.id}` } })) as Any[]) {
+      const note = typeof row?.resultNote === "string" ? (row.resultNote as string) : "";
+      const aged = note
+        .replace(/\d{13}/g, (m) => String(Number(m) - AGE))
+        .replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, (m) => new Date(Date.parse(m) - AGE).toISOString());
+      if (aged && aged !== note) await P.aiProposal.update({ where: { id: row.id }, data: { resultNote: aged } }).catch(() => null);
+    }
+    const trAfterBackdate = TR_CALLS.length;
+    const retry = await call(CL.transcribeCall, cA, owner, wCall.id, trDeps(0));
+    const retried = TR_CALLS.length > trAfterBackdate;
+    const usable = retry.ok && typeof retry.v?.proposalId === "string" && String(retry.v?.proposalId ?? "") !== "" && retry.v?.working !== true;
+    releaseW();
+    await hanging.catch(() => null);
+    const props = await proposalsOf(tidA, wCall.id);
+    const pending = props.filter((x) => String(x.status) === "PENDING").length;
+    chk("C2.4-S9.3", "a STALE claim is released: with the claim of a dead job backdated 20 minutes (over the 15-minute lease), the next transcribeCall RETRIES the job (the transcriber runs again) and hands back a usable proposal instead of an empty \"still working\" card that would never clear · at most one PENDING proposal remains for that activity",
+      retried && usable && pending <= 1, "retried · usable card", `retried=${retried} retry=${retry.ok ? j(retry.v) : retry.err} pendingProposals=${pending}`);
+  }
+  {
+    // S9.4 — month view: 4 activities on one day, 0 appointments ⇒ 3 chips + "+1 รายการ"
+    const CV = (await import("@/app/app/sys/[id]/crm/calendar/_components/CalendarViews" as string).catch(() => ({}))) as Any;
+    const body = typeof CV?.CalendarBody === "function" ? CV.CalendarBody : null;
+    const day = at(2, 9);
+    const items = Array.from({ length: 4 }, (_x, i) => ({
+      id: `${TAG}-mv-${i}`, type: "TASK", title: `งานเดือน ${TAG}-${i}`, startAt: new Date(day.getTime() + i * 60_000).toISOString(), dueAt: null, doneAt: null,
+      createdAt: new Date(day.getTime()).toISOString(), contactId: ctMain.id, companyId: null, dealId: null, ownerUserId: userA, direction: null, channel: null,
+      outcome: null, durationSec: null, body: null, pinned: false, priority: "NORMAL", hasRecording: false, contactName: null, companyName: null, dealTitle: null, ownerName: null,
+    })) as Any[];
+    // We do NOT render (a chip is a next/link that wants a router): we walk the element tree the server component returned.
+    //   Every activity that reached a chip shows up in that chip's own props (`item`) ⇒ how many rows the day really shows, whatever
+    //   the chip component is called; every literal string/number child is text a human reads ⇒ the counter.
+    let text = "";
+    const shown = new Set<string>();
+    let ran = false;
+    if (body) {
+      try {
+        const tree = body({ systemId: crmA, view: "month", anchorMs: day.getTime(), items, appointments: [] });
+        ran = true;
+        const scan = (v: Any, depth: number): void => { // props of a node (never `children`, never React's internals)
+          if (v === null || v === undefined || depth > 6) return;
+          if (typeof v === "string") { for (const it of items) if (v.includes(String(it.id))) shown.add(String(it.id)); return; }
+          if (Array.isArray(v)) { for (const x of v) scan(x, depth + 1); return; }
+          if (typeof v === "object") for (const [k, x] of Object.entries(v as Record<string, Any>)) { if (k === "children" || k.startsWith("_")) continue; scan(x, depth + 1); }
+        };
+        const walkEl = (node: Any, depth: number): void => {
+          if (node === null || node === undefined || typeof node === "boolean" || depth > 40) return;
+          if (Array.isArray(node)) { for (const n of node) walkEl(n, depth + 1); return; }
+          if (typeof node === "string") { text += node; return; }
+          if (typeof node === "number") { text += String(node); return; }
+          if (typeof node !== "object") return;
+          const props = ((node as Any).props ?? {}) as Record<string, Any>;
+          scan(Object.fromEntries(Object.entries(props).filter(([k]) => k !== "children")), 0);
+          walkEl(props.children, depth + 1);
+        };
+        walkEl(tree, 0);
+      } catch { ran = false; }
+    }
+    const chips = shown.size;
+    const counter = text.replace(/\s+/g, " ");
+    const counterOk = /\+\s*1\s*รายการ/.test(counter);
+    const src = read(`${CAL_DIR}/_components/CalendarViews.tsx`);
+    const monthAt = src.indexOf('view === "month"');
+    const monthBody = monthAt < 0 ? "" : src.slice(monthAt, monthAt + 2200);
+    const gatedOnFive = /length\s*\+\s*appts\.length\s*>\s*5/.test(monthBody) || />\s*5\s*&&/.test(monthBody);
+    const staticOk = monthAt >= 0 && !gatedOnFive && /รายการ/.test(monthBody);
+    chk("C2.4-S9.4", `month view never swallows a row: a day holding FOUR activities and no appointments shows exactly three of them AND a "+1 รายการ" counter ${ran ? "(RUNTIME: the server component was called and its element tree walked — the chips are counted by the activities that actually reached one)" : "(STATIC: the month branch must not gate the counter on a literal \"> 5\" — it counts what it actually rendered)"} — with the old rule (> 5) the fourth row disappeared with nothing on screen to say so`,
+      ran ? chips === 3 && counterOk : staticOk,
+      ran ? "3 chips + +1 รายการ" : "counter not gated on > 5", `mode=${ran ? "runtime" : "static"} chips=${chips}/4 counter=${counterOk} text=${cut(counter.replace(/[^0-9+ ก-๙]/g, ""), 80) || "-"} gatedOnFive=${gatedOnFive}`, "MAJOR");
+  }
+  {
+    // S9.5 — the recording must be reachable AND removable from the timeline / activity detail
+    const compAll = [...walk("src/components/crm"), ...walk(`${CRM_PAGES}/contacts`), ...walk(`${CRM_PAGES}/deals`)].map(read).join("\n");
+    const playTid = /crm-call-recording-(?:play|listen)(?![a-z])/.test(compAll); // NOT crm-call-recording-player (that is the modal's <audio>)
+    const delTid = /crm-call-recording-(delete|remove)/.test(compAll);
+    const labels = /ฟังไฟล์เสียง/.test(compAll) && /ลบไฟล์เสียง/.test(compAll);
+    const wiredGet = /getRecording(Action)?\s*\(/.test(compAll);
+    const wiredDel = /removeRecording(Action)?\s*\(/.test(compAll);
+    const reason = /crm-call-recording-reason|เหตุผล/.test(compAll);
+    const actSrc = read(CALLS_ACT); // the link is minted server-side: CONTRACT G gains getRecordingAction (ORACLE-EDIT · addendum H)
+    const action = /getRecordingAction/.test(actSrc) && /removeRecordingAction/.test(actSrc);
+    let inv: Any[] = [];
+    try { inv = (JSON.parse(read(INVENTORY)).rows ?? []) as Any[]; } catch { inv = []; }
+    const rowsFor = (page: string) => // the modal's `crm-call-recording-player` row does not count — these are the two controls of the 360 page
+      inv.filter((r) => r?.wo === "C2.4" && String(r?.page ?? "") === page && /recording-(?:play|listen|delete|remove)(?![a-z])/.test(String(r?.testid ?? "")));
+    const pages = ["/contacts/[contactId]", "/deals/[dealId]"];
+    const noRows = pages.filter((pg) => rowsFor(pg).length < 2);
+    chk("C2.4-S9.5", "a recording is reachable and removable from the places a human actually stands: the contact 360 and the deal 360 carry a \"ฟังไฟล์เสียง\" control that mints the expiring link through the server action (getRecording — never a stored URL) and a \"ลบไฟล์เสียง\" DANGER control wired to removeRecording (confirm + reason), and both testids have inventory rows (wo C2.4) for `/contacts/[contactId]` AND `/deals/[dealId]`",
+      playTid && delTid && labels && wiredGet && wiredDel && action && reason && noRows.length === 0,
+      "2 controls · rows on both pages", `play=${playTid} delete=${delTid} labels=${labels} getRecording=${wiredGet} removeRecording=${wiredDel} actions=${action} reason=${reason} pagesMissingRows=${noRows.join(",") || "-"}`, "MAJOR");
+  }
+  {
+    // S9.6 — 1,050 visible contacts, each with one in-window booking appointment
+    const BIG = 1050;
+    const parties = Array.from({ length: BIG }, (_x, i) => ({ id: `${TAG}-bp-${i}`, tenantId: tidA, name: `ปาร์ตี้จำนวนมาก ${TAG}-${i}`, kind: "PERSON" }));
+    await P.party.createMany({ data: parties });
+    await P.crmContact.createMany({
+      data: parties.map((pt, i) => ({ id: `${TAG}-bc-${i}`, tenantId: tidA, systemId: crmA, name: `ผู้ติดต่อจำนวนมาก ${TAG}-${i}`, firstName: `ผู้ติดต่อจำนวนมาก ${TAG}-${i}`, partyId: pt.id, ownerUserId: userA })),
+    });
+    const start = at(3, 4);
+    await P.appointment.createMany({
+      data: parties.map((pt, i) => ({
+        id: `${TAG}-ba-${i}`, tenantId: tidA, unitId: uBook.id, serviceId: svc.id, staffId: bst.id, partyId: pt.id,
+        startAt: new Date(start.getTime() + i * 1_000), endAt: new Date(start.getTime() + i * 1_000 + 1_800_000), status: "CONFIRMED",
+        customerName: `ลูกค้าจำนวนมาก ${TAG}-${i}`, customerPhone: "0800000000",
+      })),
+    });
+    const big = await call(ACT.calendar, cA, owner, { from: new Date(start.getTime() - DAY), to: new Date(start.getTime() + DAY) });
+    const apps = (big.v?.appointments ?? []) as Any[];
+    const mine = apps.filter((a) => String(a?.id ?? "").startsWith(`${TAG}-ba-`)).length;
+    const truncated = big.v?.appointmentsTruncated === true || typeof big.v?.appointmentsCap === "number";
+    chk("C2.4-S9.6", `the calendar does not stop at the oldest 1,000 contacts (ruling round 2): with ${BIG} visible contacts each holding ONE booking appointment inside the window, EVERY in-window appointment comes back — a 1,000-Party page hides tomorrow's appointments from a shop with a long customer list, and a flag that admits the cut is not a fix (the week must be complete)`,
+      big.ok && mine >= BIG, `${BIG} rows`, `cal=${rd(big)} mine=${mine}/${BIG} total=${apps.length} truncatedFlag=${truncated}`, "MAJOR");
+  }
+  {
+    // S9.7 — an API key never gets the merged appointments (ruling); a human with unit access does
+    const keyCal = await call(ACT.calendar, cA, apiRead, range);
+    const humanCal = await call(ACT.calendar, cA, owner, range);
+    const keyApps = (keyCal.v?.appointments ?? []) as Any[];
+    const humanApps = (humanCal.v?.appointments ?? []) as Any[];
+    chk("C2.4-S9.7", "the merged appointments are for people, not for keys (ruling): an API-key actor holding only `crm.activity.read` gets `appointments: []` (the booking/clinic/school rows belong to those modules' own scopes and an integration must ask them directly) while the human OWNER on the same range gets the rows",
+      keyCal.ok && keyApps.length === 0 && humanCal.ok && humanApps.length > 0,
+      "[] for the key · rows for the human", `key=${rd(keyCal)} keyApps=${keyApps.length} human=${rd(humanCal)} humanApps=${humanApps.length}`, "MAJOR");
+  }
+  {
+    // S9.8 — a failed acceptance must leave the proposal usable
+    const scan = await call(CL.scanBusinessCard, cA, owner, { filename: "card-retry.jpg", contentType: "image/jpeg", data: audio(2048) }, { ai: fakeAi("card", JSON.stringify({ name: `นามบัตรลองใหม่ ${TAG}`, phone: phoneOf(), email: mailOf("retry"), company: `บริษัท ${TAG}`, jobTitle: "ผู้จัดการ" })) });
+    const pid = String(scan.v?.proposalId ?? NONE);
+    const statusOf = async () => String(((await P.aiProposal.findFirst({ where: { id: pid } })) as Any)?.status ?? "-");
+    await setCrm(crmA, { uiVersion: 1 });
+    const failed = await call(CL.acceptLeadProposal, cA, owner, pid);
+    const afterFail = await statusOf();
+    await setCrm(crmA, { uiVersion: 2 });
+    const retry = await call(CL.acceptLeadProposal, cA, owner, pid);
+    const afterRetry = await statusOf();
+    const contactId = String(retry.v?.contactId ?? "");
+    const created = contactId ? await P.crmContact.count({ where: { id: contactId } }) : 0;
+    const bogus = await call(CL.acceptLeadProposal, cA, owner, `${TAG}-no-such-proposal`);
+    const src = read(CALLS);
+    const at0 = src.search(/(export\s+)?(async\s+)?function\s+acceptLeadProposal\b|acceptLeadProposal\s*=\s*async/); // the DEFINITION, not the header comment
+    const fnBody = at0 < 0 ? "" : src.slice(at0, at0 + 2600);
+    const releases = /\$transaction/.test(fnBody) || /status:\s*"PENDING"/.test(fnBody) || /catch/.test(fnBody);
+    chk("C2.4-S9.8", "a failed acceptance does not burn the proposal: an attempt that fails for a reason that is NOT the caller's fault (here the shop's CRM v2 gate closing between the scan and the accept — the only non-validation failure an oracle can inject from outside) leaves the proposal PENDING, and the retry afterwards creates the contact exactly once · a proposal id that does not exist is still refused · [static] the PENDING→EXECUTED claim sits in the same transaction as the contact creation, or the claim is released in a catch",
+      scan.ok && !failed.ok && afterFail === "PENDING" && retry.ok && !!contactId && created === 1 && afterRetry === "EXECUTED" && !bogus.ok && releases,
+      "PENDING after the failure · retry works", `scan=${rd(scan)} failed=${failed.ok ? "ACCEPTED" : failed.code || failed.err} afterFail=${afterFail} retry=${rd(retry)} created=${created} afterRetry=${afterRetry} bogus=${bogus.ok ? "ACCEPTED" : bogus.code} claimSafe=${releases}`, "MAJOR");
+  }
+  {
+    // S9.9 — the chat gate must look at every open CRM system, not only the oldest one
+    const tidG = await mkTenant("gate");
+    const chatG = await mk(tidG, "CHAT", "แชท-เกต");
+    const crmOld = await mk(tidG, "CRM", "CRM เก่า v1");
+    const crmNew = await mk(tidG, "CRM", "CRM ใหม่ v2");
+    {
+      const a = await P.appSystem.findFirst({ where: { id: crmOld } });
+      await P.appSystem.update({ where: { id: crmNew }, data: { createdAt: new Date(new Date(a.createdAt).getTime() + 1000) } });
+    }
+    await setCrm(crmOld, { uiVersion: 1, bridgesEnabled: true });
+    await setCrm(crmNew, { uiVersion: 2, bridgesEnabled: true });
+    await wallet(tidG, 5_000_000);
+    const pG = await mkParty(tidG, pii(`สองระบบเกต ${TAG}`));
+    const ctOld = await rawContact(tidG, crmOld, "ในระบบเก่า", userA, pG);
+    const ctNew = await rawContact(tidG, crmNew, "ในระบบใหม่", userA, pG);
+    const cG = { tenantId: tidG, systemId: crmNew, actorUserId: userA };
+    const convG = await mkConv(tidG, chatG, pG);
+    const before = await P.crmContact.findFirst({ where: { id: ctNew.id } });
+    let stopped = "-";
+    if (typeof SEQ?.createSequence === "function" && typeof SEQ?.enroll === "function") {
+      const sG = idOf((await call(SEQ.createSequence, cG, owner, { name: `ลำดับเกต ${TAG}`, stopOnReply: true, steps: [{ kind: "WAIT", waitDays: 30 }, { kind: "TASK", taskTitle: `งาน ${TAG}` }] })).v);
+      const enG = await call(SEQ.enroll, cG, owner, { sequenceId: sG, contactId: ctNew.id });
+      const enId = String(enG.v?.enrollmentId ?? enG.v?.id ?? NONE);
+      await consume(chatEvt(tidG, chatG, "chat.message.received", { conversationId: convG.id, channel: "LINE" }));
+      stopped = String(((await P.crmSequenceEnrollment.findFirst({ where: { id: enId } })) as Any)?.status ?? "-");
+    } else {
+      await consume(chatEvt(tidG, chatG, "chat.message.received", { conversationId: convG.id, channel: "LINE" }));
+    }
+    const after = await P.crmContact.findFirst({ where: { id: ctNew.id } });
+    const oldRow = await P.crmContact.findFirst({ where: { id: ctOld.id } });
+    const moved = !!after?.lastActivityAt && (!before?.lastActivityAt || new Date(after.lastActivityAt).getTime() > new Date(before.lastActivityAt).getTime());
+    chk("C2.4-S9.9", "the chat bridge asks EVERY open CRM system, not just the oldest: a shop whose FIRST CRM system is still uiVersion 1 and whose second is on 2 (both holding a contact of the same Party) still gets the v2 contact's lastActivityAt bumped and its waiting sequence stopped by a customer reply — a `gates[0]`-style shortcut silences the whole pilot shop · the v1 system's own contact is left alone",
+      moved && (stopped === "STOPPED" || stopped === "-") && !oldRow?.lastActivityAt,
+      "v2 contact touched · v1 untouched", `moved=${moved} enrollment=${stopped} v1LastActivity=${oldRow?.lastActivityAt ? "TOUCHED" : "untouched"}`, "MAJOR");
+  }
+  {
+    // S9.10 — RESOLVED arrives before the contact exists
+    const convE = await mkConv(tidA, chatA, pNoContact);
+    await resolveConv(convE.id);
+    const first = await call(BR.onChatConversationStatus, statusEvt(tidA, chatA, convE.id, "RESOLVED"), { ai: fakeAi("chat", JSON.stringify({ summary: MARK_CS })) });
+    const none = await chatActs(convE.id);
+    // the contact for that Party appears only now (the shop links the chat, or the next message creates the lead)
+    const ctLate = await rawContact(tidA, crmA, "ผู้ติดต่อมาช้า", userA, pNoContact);
+    await consume(chatEvt(tidA, chatA, "chat.message.received", { conversationId: convE.id, channel: "LINE" }));
+    const again = await call(BR.onChatConversationStatus, statusEvt(tidA, chatA, convE.id, "RESOLVED"), { ai: fakeAi("chat", JSON.stringify({ summary: MARK_CS })) });
+    const acts = await chatActs(convE.id);
+    chk("C2.4-S9.10", "a room resolved BEFORE anybody was a contact is not lost: the first RESOLVED writes nothing (no Party contact yet) and once the contact exists the caught-up RESOLVED writes EXACTLY ONE CHAT activity for that conversation — never zero (the visit vanishes) and never two (one per delivery)",
+      first.ok && none.length === 0 && again.ok && acts.length === 1 && String(acts[0]?.contactId ?? "") === ctLate.id,
+      "0 then exactly 1", `first=${rd(first)} before=${none.length} again=${rd(again)} after=${acts.length} onContact=${String(acts[0]?.contactId ?? "-") === ctLate.id}`, "MAJOR");
+  }
+  {
+    // X8.6 — a reminder must not carry the customer's phone number out of the activity title
+    const phone = phoneOf();
+    const idPii = `${TAG}-pii-remind`;
+    await P.crmActivity.create({ data: { id: idPii, tenantId: tidA, systemId: crmA, contactId: ctMain.id, type: "TASK", title: `โทรกลับ ${fmtPhone(phone)} ${phone}`, ownerUserId: userA, dueAt: new Date(Date.now() + DAY), remindAt: new Date(Date.now() - 60_000) } });
+    const pushBefore = PUSHES.length;
+    // AppNotification has no id/link column ⇒ the notification of THIS activity is the row that did not exist before the run
+    //   (every other reminder of tenant A was delivered by the runs above), so the positive control never depends on the wording.
+    const before = new Set(((await P.appNotification.findMany({ where: { tenantId: tidA } })) as Any[]).map((n) => String(n.id)));
+    const rr = await call(RM.remindDue, new Date(), { tenantIds: [tidA], deps: pushDeps });
+    await pump([tidA]);
+    const notes = ((await P.appNotification.findMany({ where: { tenantId: tidA } })) as Any[]).filter((n) => !before.has(String(n.id)));
+    const pushes = PUSHES.slice(pushBefore);
+    const has = (s: unknown) => String(s ?? "").includes(phone) || String(s ?? "").includes(fmtPhone(phone));
+    const inTitle = notes.some((n) => has(n.title));
+    const inBody = notes.some((n) => has(n.body));
+    const inPush = pushes.some((p) => has(j(p)));
+    chk("C2.4-X8.6", "X8 for reminders: the activity title is the shop's free text and may hold a customer's phone number, and the title of a notification leaves the product (notification lists · the hourly e-mail digest of AppNotification.emailedAt) ⇒ neither the push payload nor AppNotification.title may copy that phone number — the reminder still reaches the owner (positive control: exactly ONE new notification for this activity, its recipient is the owner)",
+      rr.ok && notes.length === 1 && String(notes[0]?.recipientUserId ?? "") === userA && !inTitle && !inPush,
+      "1 notification · no phone in the title or the push", `run=${rd(rr)} notes=${notes.length} rcpt=${String(notes[0]?.recipientUserId ?? "-") === userA} phoneInTitle=${inTitle} phoneInPush=${inPush} pushes=${pushes.length} [fyi phoneInBody=${inBody}]`, "MAJOR");
+  }
+  {
+    // N16 — callAiStatus must not create a wallet (a read must never grant credit)
+    const tidW = await mkTenant("nowallet");
+    const crmW = await mk(tidW, "CRM", "CRM ไม่มีกระเป๋า");
+    await setCrm(crmW, { uiVersion: 2, bridgesEnabled: true, ai: { callTranscribe: true, chatSummary: false } });
+    const ctW = await rawContact(tidW, crmW, "ลูกค้าไม่มีกระเป๋า", userA);
+    const cW = { tenantId: tidW, systemId: crmW, actorUserId: userA };
+    const wallets0 = await P.aiCreditWallet.count({ where: { tenantId: tidW } });
+    const st = await call(CL.callAiStatus, cW, owner, trDeps(0));
+    const wallets1 = await P.aiCreditWallet.count({ where: { tenantId: tidW } });
+    const grants = await P.aiCreditTxn.count({ where: { tenantId: tidW } });
+    void ctW;
+    chk("C2.4-N16", "reading the AI state never spends or grants anything: `callAiStatus` on a shop that has no AI wallet at all answers a state (NO_CREDIT or READY per the credit service) and creates NO AiCreditWallet row and NO GRANT transaction — a status read must not quietly enrol the shop in the credit system",
+      st.ok && wallets0 === 0 && wallets1 === 0 && grants === 0,
+      "no wallet · no txn", `status=${st.ok ? j(st.v?.state ?? st.v) : st.err} wallets=${wallets0}→${wallets1} txns=${grants}`, "MAJOR");
+  }
+  {
+    // F7 — the transcriber may report what the STT cost; the single charge must include it (depends on the CONTRACT gaining costMicroUsd?)
+    const fCall = await mkCall(cA, ctMain.id);
+    const COST = 4321;
+    const costTr = { key: "qc-cost", transcribe: async (input: Any) => { TR_CALLS.push(String(input?.activityId ?? "")); return { text: TRANSCRIPT, language: "th", costMicroUsd: COST }; } };
+    const note = `crm.call.transcribe#${fCall.id}`;
+    const before = await balance(tidA);
+    const r = await call(CL.transcribeCall, cA, owner, fCall.id, { transcriber: costTr, ai: fakeAi("transcribe", AI_JSON) });
+    const txns = await usageFor(tidA, note);
+    const after = await balance(tidA);
+    const amount = Number(txns[0]?.amountMicro ?? txns[0]?.amount ?? 0);
+    chk("C2.4-F7", "the speech-to-text bill is not free: when the transcriber reports `costMicroUsd` the ONE usage charge of that transcription includes it (charge ≥ the reported cost, balance down by the same) — DEPENDS ON THE BUILDER'S SHAPE: this check only bites once `costMicroUsd?` is part of the CrmTranscriber result in the CONTRACT; while the field is ignored the charge is only the AI cost and this stays red as a reminder to rule on it",
+      r.ok && txns.length === 1 && Math.abs(amount) >= COST && before - after >= COST,
+      `charge ≥ ${COST}`, `transcribe=${rd(r)} txns=${txns.length} amount=${amount} balance ${before}→${after}`, "MINOR");
   }
   void manager; void apCancel;
 } catch (e) {

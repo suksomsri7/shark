@@ -423,6 +423,16 @@ const ALLOWED_EDGES = new Set([
   "school→party", // SchoolEnrollment (ชื่อ+เบอร์ผู้เรียน)
   "hotel→party", // HotelReservation (ชื่อ+เบอร์/อีเมลผู้เข้าพัก)
   // ◂ CRM C1.1
+  // CRM C2.4 ▸ ปฏิทิน CRM รวม "นัดของ Party เดียวกัน" จากสามโมดูลธุรกิจ (พิมพ์เขียว §3.8 · มติผู้คุมงาน C2.4 ข้อ 8)
+  //   crm→booking : `booking/index.appointmentsByParty` — Appointment ที่ไม่ถูกยกเลิก (ชื่อบริการ + เวลา)
+  //   crm→clinic  : `clinic/index.appointmentsByParty`  — ClinicVisit (เวลา + สถานะเท่านั้น · **ไม่มี**อาการ/การวินิจฉัย/ค่ารักษา)
+  //   crm→school  : `school/index.appointmentsByParty`  — SchoolEnrollment ENROLLED|PAID ที่วันเริ่มของรอบเรียน
+  //   🔴 ทิศเดียวและ **อ่านอย่างเดียว**: facade ทั้งสามใบไม่มีคำสั่งเขียนเลย (ข้อสอบ C2.4-S4.3 เทียบแถวก่อน/หลัง) ·
+  //      CRM โหลดแบบ lazy import ตอนใช้ (booking/service → pos → account → … → crm facade = วงโหลดถ้า import หัวไฟล์)
+  "crm→booking",
+  "crm→clinic",
+  "crm→school",
+  // ◂ CRM C2.4
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

@@ -164,6 +164,37 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.2
+// CRM C2.4 ▸ เตือนงาน/นัดที่ถึงเวลา (ใบ C2.4 · พิมพ์เขียว §5.5 "remind cron 5 นาที") — ทุก 5 นาที
+//   🔴 ลงทะเบียน "ตรงนี้" เหมือน C2.1/C2.2 (มติผู้คุมงานรีวิว C2.2 ข้อ 6): ทั้ง `/api/cron/outbox` และ `scripts/crm-cron.mts`
+//      ต้องเห็นงานนี้เสมอ ไม่ว่าโพรเซสจะอุ่นหรือเย็น · `crm/reminders.ts` import ไฟล์นี้ด้วย ⇒ "import โมดูล = ทะเบียนพร้อม"
+//   ประตู uiVersion อยู่ในตัวงาน (`remindDue` กรองเฉพาะระบบที่ settings.crm.uiVersion = 2 — R-E.14 แถวคงอยู่ เตือนต่อเมื่อเปิด 2)
+//   idempotent: ธงคือแถว OutboxEvent คีย์ `crm.activity.reminder#<activityId>#<remindAtMs>` ใต้ advisory lock ⇒ ยิงซ้อนกี่ทางก็ใบเดียว
+//   ไม่ vpsOnly: route ยิงมาช่วยได้ (ธงกันซ้ำให้อยู่แล้ว) — งานพิสูจน์สัญญาณชีพคือ `crm.heartbeat` ตัวเดียว
+registerMinuteJob({
+  name: "crm.activity.remind",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { reminders } = await import("@/lib/modules/crm");
+    await reminders.remindDue(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C2.4
+// CRM C2.5 ▸ อีเมลตั้งเวลา (ใบ C2.5 · §5.6) — ส่งจดหมายที่ถึงเวลา **ทุก 1 นาที** (พนักงานตั้ง "ส่ง 09:00" ไว้
+//   ต้องออกที่ 09:00 ไม่ใช่ 09:05) · ไม่ใช่ vpsOnly (route เรียกซ้ำได้โดยไม่เสียหาย)
+//   🔴 ลงทะเบียน "ตรงนี้" เหมือน C2.1/C2.2 (มติผู้คุมงานรีวิว C2.2 ข้อ 6) · `crm/emails-job.ts` เป็นแค่ทางเข้าแบบ import
+//   idempotent + AUDIT-CLASS X5: ทุกแถวถูกจองด้วย **lease** (สถานะคง QUEUED) ⇒ crontab + route ยิงพร้อมกัน
+//   ก็ส่งฉบับละครั้งเดียว · ประตู uiVersion อยู่ในตัวงาน (runScheduled กรองเฉพาะระบบที่ = 2 — R-E.14)
+registerMinuteJob({
+  name: "crm.email.scheduled",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { emails } = await import("@/lib/modules/crm");
+    await emails.runScheduled(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C2.5
 
 function errorText(e: unknown): string {
   let s: string;

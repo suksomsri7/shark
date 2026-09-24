@@ -70,6 +70,10 @@ export { parseCrmSettings } from "./settings";
 export * as activities from "./activities";
 export * as files from "./files";
 export { activityWhere, fileWhere, recordWhere } from "./where";
+// CRM C2.4 (รอบ 2) ▸ ตัวจัดรูปเวลาไทยของกิจกรรม เปิดผ่าน facade ให้บล็อกใน `src/components/crm/**` ใช้ได้
+//   (ด่าน F2.3 ห้าม components import `./activities-shared` ตรง ๆ · ไฟล์นั้นบริสุทธิ์ ⇒ re-export ไม่ลากอะไรเข้ากราฟ)
+//   🔴 ห้ามทำสูตรเวลาไทยชุดที่สองในคอมโพเนนต์ (ข้อที่เพี้ยนแล้วหาไม่เจอที่สุดคือเวลา) ⇒ ทางนี้ทางเดียว
+export { thaiDateLabel, thaiTimeLabel } from "./activities-shared";
 // ◂ CRM C1.6
 // CRM C1.7 ▸ การมองเห็น OWN/TEAM/ALL (`visibility.ts`) — namespace เดียว: resolve · visibleWhere · canSee · visibleIdsAmong ·
 //   visibleIdsForViewer (ผู้ดูจากโมดูลอื่น — การ์ดบอร์ดงาน) · policies.{list,set,remove} · คีย์สิทธิ์ (`access.ts`) ใช้ภายในโมดูล
@@ -110,3 +114,27 @@ export * as sequences from "./sequences";
 //      และยังไม่มีผู้เรียกนอกโมดูล — C2.11/C3.2 จะเปิดให้พร้อม actor + คีย์ตอนที่ต้องใช้จริง (ยัง export จาก `assignment.ts`)
 export { assignmentFacade as assignment } from "./assignment";
 // ◂ CRM C2.3
+// CRM C2.4 ▸ บันทึกการโทร + ผู้ช่วย AI ของสาย (`calls.ts`) — namespace เดียว:
+//   logCall/attachRecording/getRecording/removeRecording/purgeRecordings (เสียงบนทางไฟล์ส่วนตัว C0.4) ·
+//   callAiStatus/transcribeCall/pendingCallAiProposal/acceptCallAiProposal/rejectCallAiProposal (ถอดเสียง → สรุป → **ข้อเสนอ**) ·
+//   scanBusinessCard/acceptLeadProposal (นามบัตร → ข้อเสนอ lead ของระบบนี้) · bookingLinkFor (R-A "จองผ่านระบบจองคิว")
+//   ผู้ใช้ถัดไป: `calls-actions.ts` (หน้า v2) · C2.10 (ลงทะเบียน purgeRecordings เป็นงานรายวัน)
+//   ค่าคงที่/ชนิด/ตัวปิดเบอร์-อีเมลสำหรับหน้า 'use client' และสะพานแชทอยู่ที่ `./calls-shared`
+//   อะแดปเตอร์: `./transcriber` (CrmTranscriber — ทะเบียนว่างตาม R-B) · `./call-provider` (CrmCallProvider + ตัวตรวจ webhook บริสุทธิ์)
+//   `reminders.ts` (เตือนงาน/นัดที่ถึงเวลา) อยู่บน facade ด้วย เพราะทะเบียนงานรายนาที (`platform/minute-jobs.ts`) อยู่นอกโมดูล
+//   ⇒ ต้องเรียกผ่าน facade เหมือน C2.1/C2.2 (ด่าน F2.3 ห้ามโค้ดนอกโมดูล import ไฟล์ภายในของ CRM)
+//   ⚠️ ผลพลอยได้: import facade = โหลดทะเบียนงานรายนาทีด้วย (reminders.ts import ทะเบียนไว้ให้ข้อสอบ S5.1) — ทะเบียนนั้น
+//      พา prisma + ops มาเท่านั้น (ตัวงานโหลด CRM แบบ dynamic ตอนรัน) จึงไม่มีวงโหลดและไม่ลากกราฟเพิ่ม
+export * as calls from "./calls";
+export * as reminders from "./reminders";
+// ◂ CRM C2.4
+// CRM C2.5 ▸ ระบบอีเมล (`emails.ts`) — namespace เดียว: resolveRouting · getEmailSettings/setEmailSettings ·
+//   getUserSetting/setUserSetting/listUserSettings · rotateInboundKey · sendEmail/sendAsSystem (ทางเข้าของ C2.1 SEND_EMAIL
+//   และขั้น EMAIL ของ C2.2 — R-E.5) · runScheduled (งานรายนาที "crm.email.scheduled") · ingestInbound (route อีเมลขาเข้า
+//   แยกทาง `crm+<key>@` มาที่นี่ก่อนบอร์ดงาน) · listThreads/getThread/attachmentUrl/attachToContact ·
+//   listTemplates/saveTemplate/deleteTemplate · addDomain/refreshDomain/listDomains · sendTest ·
+//   trackOpen/trackClick/trackRateKeys/trackGate/unsubscribe/providerWebhook (route `/t/o` `/t/c` `/u` webhook เรียกผ่าน
+//   facade นี้เท่านั้น — fitness F2.3 จงใจไม่ยกเว้นโฟลเดอร์พวกนั้น) · purgeBodies (C2.10 ลงทะเบียนเป็นงานรายวัน — R-A)
+//   ค่าคงที่/ชนิด/ตัวช่วยบริสุทธิ์สำหรับหน้า 'use client' อยู่ที่ `./emails-shared`
+export * as emails from "./emails";
+// ◂ CRM C2.5

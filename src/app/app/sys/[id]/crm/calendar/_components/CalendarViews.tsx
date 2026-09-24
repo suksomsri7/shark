@@ -5,6 +5,7 @@
 import Link from "next/link";
 import {
   ACTIVITY_TYPE_LABEL,
+  CALENDAR_APPOINTMENT_SOURCE_LABEL,
   DAY_MS,
   TH_WEEKDAYS_SHORT,
   thaiDateLabel,
@@ -13,6 +14,7 @@ import {
   thaiTimeLabel,
   thaiWeekday,
   type ActivityListItem,
+  type CalendarAppointment,
 } from "@/lib/modules/crm/activities-shared";
 
 export type CalendarView = "day" | "week" | "month";
@@ -28,6 +30,25 @@ function hrefOf(systemId: string, i: ActivityListItem): string | null {
   if (i.contactId) return `/app/sys/${systemId}/crm/contacts/${i.contactId}`;
   if (i.companyId) return `/app/sys/${systemId}/crm/companies/${i.companyId}`;
   return null;
+}
+
+// CRM C2.4 ▸ นัดจากโมดูลจอง/คลินิก/โรงเรียน (ภาพ 08 ขวา) — **อ่านอย่างเดียว**: ไม่มีปุ่มแก้/ลบ · `aria-readonly` + ป้ายบอกที่มา
+//   🔴 แก้ต้องไปที่โมดูลต้นทาง (ปฏิทิน CRM ไม่ใช่เจ้าของนัด) ⇒ ชิปลิงก์ไปที่ "ผู้ติดต่อ" ของ CRM เท่านั้น ไม่ลิงก์เข้าหน้าจัดการนัด
+//   🔴 ไม่มีชื่อ/เบอร์ของลูกค้าจากโมดูลต้นทาง และคลินิกไม่มีอาการ/การวินิจฉัย/ค่ารักษา (ตัดที่ facade ตั้งแต่ต้นทาง — X8) ◂
+function ApptChip({ appt, compact = false }: { appt: CalendarAppointment; compact?: boolean }) {
+  const label = `${thaiTimeLabel(Date.parse(appt.startAt))} ${CALENDAR_APPOINTMENT_SOURCE_LABEL[appt.source]} · ${appt.title}`;
+  const cls = `block min-w-0 truncate rounded-md border border-dashed px-1.5 py-0.5 text-[11px] leading-tight ${compact ? "" : "sm:whitespace-normal"}`;
+  const style = { background: "transparent", color: "var(--color-muted)", borderColor: "var(--color-border, currentColor)" };
+  const title = `${label} · อ่านอย่างเดียว (แก้ที่ระบบ${CALENDAR_APPOINTMENT_SOURCE_LABEL[appt.source]})`;
+  return appt.href ? (
+    <Link href={appt.href} className={cls} style={style} title={title} aria-readonly="true" data-testid="crm-calendar-appointment">
+      {label}
+    </Link>
+  ) : (
+    <span className={cls} style={style} title={title} aria-readonly="true" data-testid="crm-calendar-appointment">
+      {label}
+    </span>
+  );
 }
 
 function Chip({ systemId, item, compact = false }: { systemId: string; item: ActivityListItem; compact?: boolean }) {
@@ -50,20 +71,28 @@ function Chip({ systemId, item, compact = false }: { systemId: string; item: Act
 }
 
 /** รายการตามวัน (มือถือ + มุมมองวัน) */
-function Agenda({ systemId, days, byDay }: { systemId: string; days: number[]; byDay: Map<string, ActivityListItem[]> }) {
+function Agenda({ systemId, days, byDay, apptByDay }: { systemId: string; days: number[]; byDay: Map<string, ActivityListItem[]>; apptByDay: Map<string, CalendarAppointment[]> }) {
   return (
     <ul className="flex flex-col divide-y">
       {days.map((d) => {
         const items = byDay.get(thaiDayKey(d)) ?? [];
+        const appts = apptByDay.get(thaiDayKey(d)) ?? [];
         return (
           <li key={d} className="flex flex-col gap-1 py-2">
             <span className="text-xs font-semibold">
               {TH_WEEKDAYS_SHORT[thaiWeekday(d)]} {thaiDateLabel(d)}
             </span>
-            {items.length === 0 ? (
+            {items.length === 0 && appts.length === 0 ? (
               <span className="text-xs text-[color:var(--color-muted)]">ว่าง</span>
             ) : (
-              items.map((i) => <Chip key={i.id} systemId={systemId} item={i} />)
+              <>
+                {items.map((i) => (
+                  <Chip key={i.id} systemId={systemId} item={i} />
+                ))}
+                {appts.map((a) => (
+                  <ApptChip key={a.key} appt={a} />
+                ))}
+              </>
             )}
           </li>
         );
@@ -73,7 +102,7 @@ function Agenda({ systemId, days, byDay }: { systemId: string; days: number[]; b
 }
 
 /** ตารางชั่วโมง 07–20 × วัน (≥ 640 px) · ก่อน 7 โมง/หลัง 2 ทุ่ม รวมไว้แถวบน/ล่าง */
-function HourGrid({ systemId, days, byDay, todayKey }: { systemId: string; days: number[]; byDay: Map<string, ActivityListItem[]>; todayKey: string }) {
+function HourGrid({ systemId, days, byDay, apptByDay, todayKey }: { systemId: string; days: number[]; byDay: Map<string, ActivityListItem[]>; apptByDay: Map<string, CalendarAppointment[]>; todayKey: string }) {
   const rows: { key: string; label: string; match: (h: number) => boolean }[] = [
     { key: "early", label: "ก่อน 07", match: (h) => h < 7 },
     ...HOURS.map((h) => ({ key: String(h), label: String(h).padStart(2, "0"), match: (x: number) => x === h })),
@@ -92,10 +121,14 @@ function HourGrid({ systemId, days, byDay, todayKey }: { systemId: string; days:
           <div className="border-t px-1 py-1 text-[color:var(--color-muted)]">{r.label}</div>
           {days.map((d) => {
             const items = (byDay.get(thaiDayKey(d)) ?? []).filter((i) => r.match(hourOf(atOf(i))));
+            const appts = (apptByDay.get(thaiDayKey(d)) ?? []).filter((a) => r.match(hourOf(Date.parse(a.startAt))));
             return (
               <div key={d} className="flex min-h-[2.25rem] min-w-0 flex-col gap-0.5 border-l border-t p-0.5">
                 {items.map((i) => (
                   <Chip key={i.id} systemId={systemId} item={i} compact />
+                ))}
+                {appts.map((a) => (
+                  <ApptChip key={a.key} appt={a} compact />
                 ))}
               </div>
             );
@@ -106,11 +139,29 @@ function HourGrid({ systemId, days, byDay, todayKey }: { systemId: string; days:
   );
 }
 
-export function CalendarBody({ systemId, view, anchorMs, items }: { systemId: string; view: CalendarView; anchorMs: number; items: ActivityListItem[] }) {
+export function CalendarBody({
+  systemId,
+  view,
+  anchorMs,
+  items,
+  // CRM C2.4 ▸ นัดของ Party เดียวกันจากโมดูลจอง/คลินิก/โรงเรียน (อ่านอย่างเดียว) — ไม่ส่งมา = ปฏิทินเดิมทุกตัวอักษร ◂
+  appointments = [],
+}: {
+  systemId: string;
+  view: CalendarView;
+  anchorMs: number;
+  items: ActivityListItem[];
+  appointments?: CalendarAppointment[];
+}) {
   const byDay = new Map<string, ActivityListItem[]>();
   for (const i of [...items].sort((a, b) => atOf(a) - atOf(b))) {
     const k = thaiDayKey(atOf(i));
     byDay.set(k, [...(byDay.get(k) ?? []), i]);
+  }
+  const apptByDay = new Map<string, CalendarAppointment[]>();
+  for (const a of [...appointments].sort((x, y) => Date.parse(x.startAt) - Date.parse(y.startAt))) {
+    const k = thaiDayKey(Date.parse(a.startAt));
+    apptByDay.set(k, [...(apptByDay.get(k) ?? []), a]);
   }
   const todayKey = thaiDayKey(Date.now());
   if (view === "month") {
@@ -126,15 +177,26 @@ export function CalendarBody({ systemId, view, anchorMs, items }: { systemId: st
         {Array.from({ length: days }, (_x, n) => start + n * DAY_MS).map((d) => {
           const key = thaiDayKey(d);
           const list = byDay.get(key) ?? [];
+          const appts = apptByDay.get(key) ?? [];
+          // 🔴 ใบ C2.4 รอบ 2 (F3): ตัวนับต้องมาจาก "จำนวนที่ซ่อนจริง" ไม่ใช่เพดานรวมที่เดาไว้
+          //    ของเดิมโชว์ตัวนับเมื่อ `list + appts > 5` ทั้งที่ช่องแสดงได้แค่ 3 กิจกรรม + 2 นัด
+          //    ⇒ วันที่มี 4–5 กิจกรรม (ไม่มีนัด) ซ่อนรายการที่ 4 หายไปเงียบ ๆ โดยไม่มีอะไรบอกบนหน้าจอ
+          const shownItems = list.slice(0, 3);
+          const shownAppts = appts.slice(0, 2);
+          const hidden = list.length - shownItems.length + (appts.length - shownAppts.length);
           return (
             <div key={d} className="flex min-h-[4.5rem] min-w-0 flex-col gap-0.5 border-l border-t p-0.5" style={key.slice(0, 7) !== monthKey ? { opacity: 0.45 } : undefined}>
               <span className="text-[11px]" style={key === todayKey ? { color: "var(--color-accent)", fontWeight: 700 } : undefined}>
                 {new Date(d + 7 * 3600_000).getUTCDate()}
               </span>
-              {list.slice(0, 3).map((i) => (
+              {shownItems.map((i) => (
                 <Chip key={i.id} systemId={systemId} item={i} compact />
               ))}
-              {list.length > 3 && <span className="text-[10px] text-[color:var(--color-muted)]">+{list.length - 3} รายการ</span>}
+              {shownAppts.map((a) => (
+                <ApptChip key={a.key} appt={a} compact />
+              ))}
+              {/* ข้อความเดียวต่อเนื่อง (ไม่แตกเป็นสามชิ้น) — คนอ่านและตัวตรวจอ่านได้ตรงกันว่า "+N รายการ" */}
+              {hidden > 0 && <span className="text-[10px] text-[color:var(--color-muted)]">{`+${hidden} รายการ`}</span>}
             </div>
           );
         })}
@@ -146,10 +208,10 @@ export function CalendarBody({ systemId, view, anchorMs, items }: { systemId: st
   return (
     <div data-testid={view === "day" ? "calendar-day" : "calendar-week"}>
       <div className="sm:hidden">
-        <Agenda systemId={systemId} days={dayList} byDay={byDay} />
+        <Agenda systemId={systemId} days={dayList} byDay={byDay} apptByDay={apptByDay} />
       </div>
       <div className="hidden sm:block">
-        <HourGrid systemId={systemId} days={dayList} byDay={byDay} todayKey={todayKey} />
+        <HourGrid systemId={systemId} days={dayList} byDay={byDay} apptByDay={apptByDay} todayKey={todayKey} />
       </div>
     </div>
   );

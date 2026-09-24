@@ -27,6 +27,13 @@ export const ACTIVITY_PAGE_MAX = 200;
 /** ช่วงปฏิทินยาวสุดต่อคำขอ (เดือน 6 สัปดาห์ + ช่วงรายการ 60 วัน) */
 export const CALENDAR_MAX_SPAN_DAYS = 93;
 export const CALENDAR_MAX_ITEMS = 1000;
+/**
+ * เพดาน "นัดจากโมดูลจอง/คลินิก/โรงเรียน" ที่ปฏิทินตอบได้ต่อครั้ง (ใบ C2.4 รอบ 2 · ข้อ F5)
+ * 🔴 เพดานอยู่ที่ **จำนวนแถวนัดในช่วงเวลา** ไม่ใช่จำนวนลูกค้าที่หยิบมาก่อน: ของเดิมหยิบผู้ติดต่อ 1,000 คนแรก
+ *    แล้วถามนัดของคนกลุ่มนั้น ⇒ ร้านที่มีลูกค้ามากกว่านั้นไม่เห็นนัดพรุ่งนี้ของลูกค้าคนที่ 1,001 ขึ้นไป โดยไม่มีสัญญาณอะไรเลย
+ * 🔴 ถ้าชนเพดานจริง คำตอบจะบอกออกมาตรง ๆ ผ่าน `appointmentsTruncated: true` (หน้าจอบอกผู้ใช้ได้ว่า "ยังมีต่อ")
+ */
+export const CALENDAR_MAX_APPOINTMENTS = 3000;
 
 /** ไฟล์แนบ CRM (มติ C19 · ไฟล์ส่วนตัว C0.4) — ≤ 10 MiB · ชื่อ ≤ 200 ตัวอักษร */
 export const CRM_FILE_MAX_BYTES = 10 * 1024 * 1024;
@@ -147,7 +154,53 @@ export type ActivityDto = {
   kanbanCardId: string | null;
   source: string;
   createdAt: string;
+  // CRM C2.4 ▸ AUDIT-CLASS X10: มีไฟล์เสียงไหม — **ธงเดียว** ไม่มีลิงก์/ที่อยู่ไฟล์ใน DTO
+  //   ลิงก์ฟังเสียงออกทาง `calls.getRecording` ที่ตรวจการมองเห็นก่อนออกใบผ่านทุกครั้ง ◂
+  hasRecording: boolean;
 };
+
+// CRM C2.4 ▸ ปฏิทินรวม "นัดของ Party เดียวกัน" จากโมดูลจอง/คลินิก/โรงเรียน (ภาพ 08 ขวา · มติผู้คุมงาน C2.4 ข้อ 8)
+/** ที่มาของนัดที่รวมเข้าปฏิทิน CRM — อ่านอย่างเดียวทั้งสามทาง */
+export const CALENDAR_APPOINTMENT_SOURCES = ["BOOKING", "CLINIC", "SCHOOL"] as const;
+export type CalendarAppointmentSource = (typeof CALENDAR_APPOINTMENT_SOURCES)[number];
+export const CALENDAR_APPOINTMENT_SOURCE_LABEL: Record<CalendarAppointmentSource, string> = {
+  BOOKING: "จอง",
+  CLINIC: "คลินิก",
+  SCHOOL: "โรงเรียน",
+};
+
+/**
+ * 🔴 สัญญาของ facade `appointmentsByParty` ของโมดูล booking/clinic/school (ประกาศไว้ที่นี่เพราะ CRM เป็นผู้อ่าน —
+ *    โมดูลปลายทาง **ห้าม** import ชนิดจาก crm ซึ่งจะเป็นเส้น booking→crm ⇒ แต่ละโมดูลประกาศรูปเดียวกันของตัวเอง)
+ * AUDIT-CLASS X8: ไม่มี `customerName` / `customerPhone` / `studentPhone` / `symptom` / `diagnosis` / ค่ารักษา — ห้ามเพิ่ม
+ */
+export type PartyAppointment = {
+  source: CalendarAppointmentSource;
+  id: string;
+  partyId: string;
+  unitId: string;
+  startAt: Date;
+  endAt: Date | null;
+  title: string;
+  status: string;
+};
+
+/** แถวนัดในปฏิทิน CRM — `readOnly: true` เสมอ (แก้ต้องไปที่โมดูลต้นทาง) */
+export type CalendarAppointment = {
+  /** คีย์สำหรับ React (`<source>:<id>`) — id ของคนละโมดูลอาจชนกันได้ */
+  key: string;
+  source: CalendarAppointmentSource;
+  id: string;
+  startAt: string;
+  endAt: string | null;
+  title: string;
+  status: string;
+  contactId: string;
+  contactName: string | null;
+  readOnly: true;
+  href: string | null;
+};
+// ◂ CRM C2.4
 
 /** แถวในรายการ/ปฏิทิน = DTO + ชื่อสำหรับแสดง (อ่านผ่าน where.ts ของผู้ดู — มองไม่เห็น = null) */
 export type ActivityListItem = ActivityDto & {

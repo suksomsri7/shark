@@ -27,6 +27,12 @@ import { CrmObjectTabs } from "@/components/crm/objects/ObjectTabs";
 import { listEnrollments, sequenceOptions } from "@/lib/modules/crm/sequences";
 import { SEQ_STATUS_LABEL, type SeqEnrollStatus } from "@/lib/modules/crm/sequences-shared";
 import { SequenceEnrollButton } from "@/components/crm/sequences/SequenceEnrollButton";
+// CRM C2.4 ▸ กดโทร + โมดัลบันทึกการโทร · ลิงก์ "จองผ่านระบบจองคิว" (R-A) — ใบ C2.4 เป็นเจ้าของ ◂
+import { CrmClickToCall } from "@/components/crm/call/CrmClickToCall";
+import { bookingLinkFor, callAiStatus } from "@/lib/modules/crm/calls";
+import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
+import { ACTIVITY_OUTCOMES_DEFAULT } from "@/lib/modules/crm/activities-shared";
+import { outcomeOptions } from "@/lib/modules/crm/activities";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -71,6 +77,15 @@ export default async function Contact360Page({
       .catch(() => []),
   ]);
   // ◂ CRM C2.2
+  // CRM C2.4 ▸ ของที่โมดัลบันทึกการโทรต้องรู้ + ลิงก์จองคิว (อ่านล้ม/ไม่มีสิทธิ์ = ค่าปลอดภัย · หน้าไม่ล้ม)
+  const [callOutcomes, callAi, bookingLink] = await Promise.all([
+    outcomeOptions(ctx, actor)
+      .then((r) => r.CALL ?? [...(ACTIVITY_OUTCOMES_DEFAULT.CALL ?? [])])
+      .catch(() => [...(ACTIVITY_OUTCOMES_DEFAULT.CALL ?? [])]),
+    callAiStatus(ctx, actor).catch(() => ({ state: "OFF" as const, message: "" })),
+    bookingLinkFor(ctx, actor, { contactId: c.id }).catch(() => null),
+  ]);
+  // ◂ CRM C2.4
   const base = `/app/sys/${id}/crm/contacts`;
   const name = contactLabel(c);
   const now = new Date();
@@ -182,10 +197,21 @@ export default async function Contact360Page({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {c.phone && (
-                  <a href={`tel:${c.phone}`} className="btn btn-ghost text-sm" data-testid="contact-call-link">
-                    โทร
-                  </a>
+                {/* CRM C2.4 ▸ กดโทรแล้วเปิดโมดัลบันทึกการโทรพร้อมกัน (แทนลิงก์ tel: เปล่า ๆ ของ C1.4 — ทำได้ทุกอย่างที่ตัวเดิมทำ และบันทึกผลสายต่อได้ทันที) ◂ */}
+                <CrmClickToCall
+                  systemId={id}
+                  target={{ contactId: c.id, companyId: c.companyId }}
+                  phone={c.phone}
+                  outcomes={callOutcomes}
+                  maxRecordingBytes={CRM_RECORDING_MAX_BYTES}
+                  aiState={callAi.state}
+                  aiMessage={callAi.message}
+                  page="contact"
+                />
+                {bookingLink && (
+                  <Link href={bookingLink.href} className="btn btn-ghost text-sm" data-testid="crm-book-via-booking">
+                    📅 จองผ่านระบบจองคิว
+                  </Link>
                 )}
                 {c.email && (
                   <a href={`mailto:${c.email}`} className="btn btn-ghost text-sm" data-testid="contact-email-link">
@@ -280,7 +306,7 @@ export default async function Contact360Page({
             )}
           </section>
           {/* CRM C1.6 ▸ กิจกรรมและโน้ต */}
-          <CrmActivityBlock ctx={ctx} actor={actor} target={{ contactId: c.id }} />
+          <CrmActivityBlock ctx={ctx} actor={actor} target={{ contactId: c.id }} recordings="contact" />
           {/* ◂ CRM C1.6 */}
         </div>
 

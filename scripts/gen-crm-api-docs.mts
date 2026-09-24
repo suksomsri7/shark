@@ -224,7 +224,9 @@ export function renderDocs(): string {
   );
   for (const e of crmWebhookEvents()) {
     // CRM C2.2 ▸ ตระกูล `crm.sequence.*` (ลำดับการติดตาม) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด ◂
-    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
+    // CRM C2.5 ▸ ตระกูล `crm.email.*` (ระบบอีเมล) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยายซึ่งผิด ·
+    //   payload id ล้วนตามมติผู้คุมงาน ข้อ 4 (URL ที่ถูกคลิกอยู่ใน CrmEmailEvent เท่านั้น ไม่เคยอยู่ใน payload) ◂
+    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }
   push(

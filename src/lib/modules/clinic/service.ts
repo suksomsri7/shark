@@ -429,3 +429,69 @@ export async function completeAppointment(ctx: ClinicCtx, apptId: string): Promi
   });
   return res.count > 0;
 }
+
+// CRM C2.4 ▸ facade อ่านอย่างเดียว "การเข้าพบคลินิกของ Party นี้" ให้ปฏิทิน CRM (มติผู้คุมงาน C2.4 ข้อ 8 · เส้น crm→clinic)
+//   🔴 ใช้ `ClinicVisit` **ไม่ใช่** `ClinicAppointment` — ตารางคำขอนัดสาธารณะไม่มี `partyId` (จับคู่ผู้ติดต่อไม่ได้)
+//   🔴 AUDIT-CLASS X8 (ข้อมูลสุขภาพ): คืนแค่ id · เวลา · สถานะ + หัวเรื่องคงที่ภาษาไทย — **ห้าม** `symptom` /
+//      `diagnosis` / `feeSatang` / `dispenseJson` / ชื่อ–เบอร์คนไข้ ออกจากฟังก์ชันนี้เด็ดขาด (ปฏิทิน CRM ไม่ใช่เวชระเบียน)
+//   🔴 AUDIT-CLASS X1: ผูก `tenantId` ของผู้เรียก + กรองสาขาตามขอบเขตของผู้ดู ⇒ พนักงานที่ไม่ได้ดูแลสาขาคลินิกจะไม่เห็นแถวนี้เลย
+//   รูปข้อมูลตรงกับ `PartyAppointment` ใน `src/lib/modules/crm/activities-shared.ts` (ประกาศซ้ำ — clinic ห้าม import จาก crm)
+export type PartyAppointmentRow = {
+  source: "CLINIC";
+  id: string;
+  partyId: string;
+  unitId: string;
+  startAt: Date;
+  endAt: Date | null;
+  title: string;
+  status: string;
+};
+
+/** หัวเรื่องคงที่ — ไม่มีข้อมูลสุขภาพใด ๆ (ดูรายละเอียดต้องเข้าโมดูลคลินิกที่มีด่านสิทธิ์ของตัวเอง) */
+const CLINIC_VISIT_TITLE = "นัดที่คลินิก";
+
+/**
+ * ใบ C2.4 รอบ 2 (F5): `partyIds` รับ `null` = **ทุก Party ในหน้าต่างเวลานี้** (ผู้เรียกกรองด้วยการมองเห็นทีหลัง)
+ * 🔴 ทำไมต้องมีทาง `null`: ของเดิมผู้เรียกต้องส่งรายชื่อ Party มาก่อน ⇒ ปฏิทิน CRM ต้องหยิบผู้ติดต่อ 1,000 คนแรกมาทำรายชื่อ
+ *    ร้านที่มีลูกค้า 5,000 คนจะไม่เห็นนัดของลูกค้าคนที่ 1,001 ขึ้นไป **เงียบ ๆ** (นัดพรุ่งนี้หายจากปฏิทิน)
+ *    ⇒ ทางที่ถูกคือ "ถามช่วงเวลาก่อน แล้วค่อยตัดด้วยการมองเห็น" — เพดานอยู่ที่จำนวนแถวที่ตอบ (`opts.take`) ไม่ใช่จำนวนลูกค้า
+ * `partyIds = []` (อาร์เรย์ว่าง) = ไม่มีอะไรให้ถาม ⇒ คืน [] เหมือนเดิม
+ */
+export async function appointmentsByParty(
+  tenantId: string,
+  partyIds: string[] | null | undefined,
+  range: { from: Date; to: Date },
+  opts?: { unitIds?: string[] | "*"; take?: number },
+): Promise<PartyAppointmentRow[]> {
+  const all = partyIds === null || partyIds === undefined;
+  const ids = all ? [] : [...new Set(partyIds.filter((x): x is string => typeof x === "string" && !!x))];
+  if (!tenantId || (!all && ids.length === 0)) return [];
+  const units = opts?.unitIds;
+  if (Array.isArray(units) && units.length === 0) return [];
+  const take = Math.min(Math.max(Math.round(Number(opts?.take ?? 500) || 500), 1), 5_000);
+  const rows = await prisma.clinicVisit.findMany({
+    where: {
+      tenantId,
+      ...(all ? { partyId: { not: null } } : { partyId: { in: ids } }),
+      status: { not: "CANCELLED" },
+      visitDate: { gte: range.from, lt: range.to },
+      ...(Array.isArray(units) ? { unitId: { in: units } } : {}),
+    },
+    select: { id: true, unitId: true, partyId: true, visitDate: true, status: true },
+    orderBy: [{ visitDate: "asc" }, { id: "asc" }],
+    take,
+  });
+  return rows
+    .filter((r): r is typeof r & { partyId: string } => !!r.partyId)
+    .map((r) => ({
+      source: "CLINIC" as const,
+      id: r.id,
+      partyId: r.partyId,
+      unitId: r.unitId,
+      startAt: r.visitDate,
+      endAt: null,
+      title: CLINIC_VISIT_TITLE,
+      status: r.status,
+    }));
+}
+// ◂ CRM C2.4

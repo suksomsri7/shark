@@ -21,6 +21,8 @@ export {
 } from "./core";
 export { resolveFormCrmSystem, onFormLead, onFormTimeline } from "./forms";
 export { onChatMessage } from "./chat";
+// CRM C2.4 ▸ ห้องแชทถูกปิด (RESOLVED) → กิจกรรมชนิด CHAT ใบเดียวต่อห้อง (+ สรุป AI ถ้าร้านเปิด `settings.crm.ai.chatSummary`) ◂
+export { onChatConversationStatus } from "./chat";
 // CRM C2.2 ▸ หยุดลำดับการติดตามอัตโนมัติ (ชนะ/แพ้/ขอไม่รับข่าวสาร) — เรียก `crm.sequences.stopFor` (R-A · R-D)
 export { onDealWonStopSequences, onDealLostStopSequences, onContactOptOutStopSequences } from "./sequences";
 // ◂ CRM C2.2

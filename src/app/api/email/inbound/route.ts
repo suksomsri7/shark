@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { emailInboundSecret } from "@/lib/env";
+import { isCrmInboundAddress } from "@/lib/core/inbound-address";
 import { ingestInboundEmail, type InboundEmailAttachment, type InboundEmailPayload } from "@/lib/platform/kanban-email-in";
 
 // POST /api/email/inbound — อีเมลเข้าบอร์ดงาน (K3.9 · สัญญา `ledger/KANBAN-RUN.md` §K3.9)
@@ -92,6 +93,34 @@ function normalizeProviderPayload(raw: unknown): InboundEmailPayload | null {
   };
 }
 
+// CRM C2.5 ▸ ส่วนเพิ่มของ CRM: สำเนา (Cc) และหัวจดหมายที่ตัวจับคู่เธรดต้องใช้ (In-Reply-To · References ·
+//   Auto-Submitted · Precedence · Reply-To) — ตัวเก็บของบอร์ดงานไม่เคยใช้สองอย่างนี้ จึงไม่ได้ถูกแกะมาก่อน
+//   🔴 คีย์ถูกทำเป็นตัวพิมพ์เล็กที่นี่ที่เดียว (ผู้ให้บริการแต่ละรายสะกดคนละแบบ: `In-Reply-To` / `in-reply-to`)
+function crmExtras(raw: unknown): { cc: string[]; headers: Record<string, string> } {
+  const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
+  const rawHeaders = data.headers && typeof data.headers === "object" ? (data.headers as Record<string, unknown>) : {};
+  const headers: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawHeaders)) {
+    if (typeof v === "string" || typeof v === "number") headers[k.trim().toLowerCase()] = String(v);
+  }
+  return { cc: toRecipients(data.cc ?? data.Cc), headers };
+}
+
+// CRM C2.5 ▸ "ที่อยู่นี้ควรเข้าทาง CRM ไหม" — ตัดสิน **ก่อนแตะโมดูล CRM เลย**
+//   🔴 เดิมฟังก์ชันนี้ `await import("@/lib/modules/crm")` เพื่อถาม `isCrmInboundAddress` ⇒ จดหมายเข้า
+//      **บอร์ดงาน** (เส้นเดิมที่ไม่เกี่ยวกับ CRM เลย) ขึ้นอยู่กับว่าโมดูล CRM โหลดสำเร็จไหม: CRM พังตอนโหลด
+//      = จดหมายงานของทุกร้านหายทั้งสาย (route จับ throw แล้วตอบ `{ok:false}` เงียบ ๆ)
+//   🔴 ตัวจับตัวจริงย้ายไปอยู่ `@/lib/core/inbound-address` (ไฟล์บริสุทธิ์ ไม่มี import ใด ๆ) แล้ว
+//      `crm/emails-shared.ts` re-export ต่อ ⇒ มีตัวจับ **ชุดเดียว** ในระบบ และ route นี้ import ได้โดยไม่ชน
+//      ด่าน fitness F2.3 (ห้ามโค้ดนอกโฟลเดอร์ CRM ล้วงไฟล์ภายในของโมดูล · ห้ามขยายรายการยกเว้น)
+function crmRecipients(to: string[]): { mine: string[]; others: string[] } {
+  const mine: string[] = [];
+  const others: string[] = [];
+  for (const one of to) (isCrmInboundAddress(one) ? mine : others).push(one);
+  return { mine, others };
+}
+
 export async function POST(req: Request): Promise<Response> {
   // ── ด่าน 1: เปิดบริการหรือยัง ──
   if (!emailInboundSecret) {
@@ -124,8 +153,30 @@ export async function POST(req: Request): Promise<Response> {
     const parsed: unknown = raw ? JSON.parse(raw) : {};
     const payload = normalizeProviderPayload(parsed);
     if (!payload) return NextResponse.json({ ok: false, created: false });
-    const res = await ingestInboundEmail(payload);
-    return NextResponse.json({ ok: res.ok, created: res.created ?? false });
+    // CRM C2.5 ▸ แยกทาง: ผู้รับที่เป็นกล่อง CRM (`crm+<key>@shark.in.th`) เข้า `emails.ingestInbound` **ก่อน** ·
+    //   ผู้รับที่เหลือส่งต่อ `ingestInboundEmail` ของบอร์ดงาน **เหมือนเดิมทุกตัวอักษร** (คำตอบยังเป็น { ok, created })
+    //   🔴 โหลดโมดูล CRM แบบ lazy: จดหมายเข้าบอร์ดงาน (เส้นเดิม) ต้องไม่ลากกราฟ CRM เข้ามาเลย
+    const { mine, others } = crmRecipients(payload.to);
+    if (mine.length === 0) {
+      const res = await ingestInboundEmail(payload);
+      return NextResponse.json({ ok: res.ok, created: res.created ?? false });
+    }
+    // 🔴 โมดูล CRM ถูกโหลด **หลัง** รู้แล้วว่ามีผู้รับของ CRM จริง และล้อมด้วย try ของตัวเอง — ถ้าโหลด/ทำงานพัง
+    //    ผู้รับที่เหลือ (บอร์ดงาน) ต้องยังได้รับจดหมายตามปกติ
+    let crmOk = false;
+    let crmHandled = false;
+    try {
+      const { emails } = await import("@/lib/modules/crm");
+      const extras = crmExtras(parsed);
+      const crmRes = await emails.ingestInbound({ ...payload, to: payload.to, cc: extras.cc, headers: extras.headers });
+      crmOk = crmRes.ok;
+      crmHandled = crmRes.handled;
+    } catch {
+      crmOk = false;
+    }
+    if (others.length === 0) return NextResponse.json({ ok: crmOk, handled: crmHandled });
+    const res = await ingestInboundEmail({ ...payload, to: others });
+    return NextResponse.json({ ok: res.ok, created: res.created ?? false, handled: crmHandled });
   } catch {
     // JSON เพี้ยน/ตัวประมวลผลพังแบบไม่คาดคิด — ไม่ใช่เหตุให้ผู้ให้บริการปิดสายอีเมลของทั้งระบบ
     return NextResponse.json({ ok: false, created: false });

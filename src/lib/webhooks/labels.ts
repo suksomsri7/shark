@@ -58,6 +58,20 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "crm.sequence.enrolled", label: "เมื่อใส่ผู้ติดต่อเข้าลำดับการติดตาม (CRM)" },
   { value: "crm.sequence.finished", label: "เมื่อลำดับการติดตามของผู้ติดต่อจบหรือถูกหยุด (CRM)" },
   // ◂ CRM C2.2
+  // CRM C2.4 ▸ เตือนงาน/นัดที่ถึงเวลา — ประกาศที่นี่ที่เดียว (ไม่ใส่ `AUTOMATION_EVENTS` โดยเจตนา: มันคือ "ธงกันซ้ำ" ของงาน
+  //   รายนาที ไม่ใช่เหตุการณ์ทางธุรกิจที่ร้านจะตั้งกฎต่อ — และ `CRM_RULE_TRIGGERS` ของ C2.1 ผูกกับรายการนั้นทั้งก้อน)
+  //   payload = id ล้วน (activityId · activityType · ownerUserId · contactId · dealId · companyId) · consumer อยู่ใน outbox-consumers.ts
+  { value: "crm.activity.reminder", label: "เมื่อถึงเวลาเตือนงานหรือนัดใน CRM" },
+  // ◂ CRM C2.4
+  // CRM C2.5 ▸ อีเมล — ประกาศที่นี่ที่เดียว (ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ CRM · consumer อยู่ใน outbox-consumers.ts)
+  //   ร้านที่ต่อระบบอื่นอยู่ (ศูนย์บริการลูกค้า · แดชบอร์ดของตัวเอง) ต้องรู้ว่า "ลูกค้าตอบจดหมายแล้ว" ได้ทันที
+  { value: "crm.email.sent", label: "เมื่อส่งอีเมลถึงผู้ติดต่อ (CRM)" },
+  { value: "crm.email.received", label: "เมื่อมีอีเมลเข้ามาที่กล่อง CRM" },
+  { value: "crm.email.opened", label: "เมื่อผู้ติดต่อเปิดอ่านอีเมล (CRM)" },
+  { value: "crm.email.clicked", label: "เมื่อผู้ติดต่อกดลิงก์ในอีเมล (CRM)" },
+  { value: "crm.email.replied", label: "เมื่อผู้ติดต่อตอบอีเมลกลับมา (CRM)" },
+  { value: "crm.email.bounced", label: "เมื่ออีเมลถึงผู้ติดต่อตีกลับถาวร (CRM)" },
+  // ◂ CRM C2.5
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

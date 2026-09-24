@@ -209,6 +209,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // CRM C2.3 ▸ มอบหมายอัตโนมัติ (404 สำหรับคนที่ไม่มี crm.assignment.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
               ...(crmCan(membershipOf(auth), "crm.assignment.manage") ? [{ href: `${s}/crm/settings/assignment`, label: "มอบหมายอัตโนมัติ" }] : []),
               // ◂ CRM C2.3
+              // CRM C2.5 ▸ กล่องจดหมาย (crm.email.read — STAFF ได้ปริยาย) · ตั้งค่าอีเมล (crm.email.settings — เจ้าของร้านให้เอง)
+              //   404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_NAV · CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.email.read") ? [{ href: `${s}/crm/emails`, label: "อีเมล" }] : []),
+              ...(crmCan(membershipOf(auth), "crm.email.settings") ? [{ href: `${s}/crm/settings/email`, label: "ตั้งค่าอีเมล" }] : []),
+              // ◂ CRM C2.5
               ]
             : []),
           // ◂ CRM uiVersion gate
