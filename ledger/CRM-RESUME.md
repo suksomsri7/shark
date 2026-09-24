@@ -16,13 +16,14 @@
 - หลัง deploy READY: เติม D12 ใน `wo-notes/crm-C2.1.md` `crm-C2.2.md` `crm-C2.3.md` (hash + dpl) · `tg`
 - worktree `shark-crm-c20` (C2.2) และ `shark-crm-c23` (C2.3) มีงานที่รวมแล้ว + probe/หลักฐาน `.qc-shots/c22-r2` `.qc-shots/c23-r2` `.qc-shots/c23-r3` — ก่อนใช้ worktree ซ้ำสำหรับใบถัดไป: `git -C <wt> checkout -- . && git -C <wt> clean -fd -e .qc-shots -e node_modules` แล้ว `git -C <wt> checkout --detach <HEAD ใหม่ของทรีหลัก>` (node_modules เป็น bind mount ห้าม rm)
 
-### 0.5 กำลังเดิน (spawn 24 ก.ย. 05:50 UTC · Fable)
-- **C2.4** builder opus ใน `shark-crm-c20` (QC2) — brief R1–R13 (R2 = `CRM_ASSIST`) · ข้อสอบ 78 (+ORACLE-EDIT S2.3) · หลักฐาน `.qc-shots/c24/`
-- **C2.5a ✅ builder จบ 07:20 UTC** (88/93 · แดง 5 = UI · ถอยหลัง 13 ชุดเขียว · TTL จริง 15 นาทีตรงข้อสอบ · ORACLE-EDIT `backdate` ทำแล้ว `7eaf67ad`) → **C2.5b (UI) builder ตัวเดิมทำต่อใน c23** (สั่ง 07:25 UTC) · หลัง b: ผู้ตรวจอ่านอย่างเดียวทั้ง a+b → รวมทรีหลัก (ไฟล์ร่วมกับ C2.4: `index.ts` `nav.ts` `settings.ts` `layout.tsx` `inventory` `visual-crm` `outbox-consumers` `minute-jobs` `crm-cron`) → unit ตรวจรวม C2.4+C2.5
-- **ข้อสอบพร้อมแล้ว**: C2.8 (54 · `ba677eb1` · เคาะ 26 ข้อแล้ว) · C2.9 (47 · `0e585c10` · เคาะ 19 ข้อแล้ว) · ผู้เขียนข้อสอบตัวเดิมกำลังทำ **C2.10 → C2.11** ใน c12a
-- ตอนรับ C2.8 ผู้คุมงานต้องทำ ORACLE-EDIT `C2.1-S4.6` (ADJUST_SCORE เลิกเป็น stub)
-- ถ้า session ตาย: `git -C <wt> status` ดูงานค้าง + `.qc-shots/<wo>/` แล้ว spawn ใหม่ "ทำต่อจากสภาพไฟล์" พร้อม brief จากทรีหลัก
-- วงจรรับงาน (ใช้ได้ผลกับ C2.2/C2.3): builder จบ → **ผู้ตรวจอ่านอย่างเดียว (opus) ยืนยันทุกข้อ + ล่าบั๊ก** → ORACLE-EDIT ปิดช่องที่ผู้ตรวจชี้ → builder แก้ (before/after) → รวมทรีหลัก (ไฟล์ใบเดียวก๊อปทับ · ไฟล์ร่วมเก็บทั้งสองบล็อก) → unit ตรวจรวม (สคริปต์ชื่อใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูลตัวอย่าง → PARITY ด้วยตา → wo-notes → commit
+### 0.5 กำลังเดิน (spawn ใหม่ 24 ก.ย. 08:25 UTC หลังโควตา Opus รีเซ็ต · Fable)
+- **C2.4 รอบ 2** builder opus ใน `shark-crm-c20` (QC2) — BLOCKER 2 + SHOULD-FIX 9 + NOTE (brief C2.4 "ruling round 2") · หลักฐาน `.qc-shots/c24-r2/` (รวม log ทุก suite) ∥ ผู้เขียนข้อสอบเติม `C2.4-S9.*` ในไฟล์ oracle ของ c20 (diff บางส่วนค้างจาก agent ที่ตาย)
+- **C2.5 รอบ 2** builder opus ใน `shark-crm-c23` (QC3) — BLOCKER 2 (threading `+t` prefix · getThread ทั้งเธรด) + SHOULD-FIX 13 (brief C2.5 "ruling round 2") · หลักฐาน `.qc-shots/c25-r2/` ∥ ผู้เขียนข้อสอบเติม `C2.5-S10.*`
+- หลังทั้งสองจบ: รวมทรีหลัก (C2.4 จาก c20 + C2.5 จาก c23 · ไฟล์ร่วม: `index.ts` `nav.ts` `settings.ts` `layout.tsx` `inventory` `visual-crm` `outbox-consumers` `minute-jobs` `crm-cron` `webhooks/labels` `contacts.ts` `activities.ts` `sequences.ts`) → unit ตรวจรวม (สคริปต์ชื่อใหม่ · ถอยหลังรวม c1.11 + ชุด chat/ai/kanban/member ที่ทั้งสองใบแตะ) → ภาพ 2.4/2.5 ต้องมีข้อมูลตัวอย่าง → PARITY (mockup 08 กลาง/ซ้าย/ขวา · 13 · 15) → wo-notes → commit
+- ข้อสอบพร้อมถึง **C3.0** แล้ว (C2.8 54 · C2.9 47 · C2.10 40 · C2.11 47 · C3.0 33 — เคาะ addendum ทุกใบ) · ตอนรับ C2.8 ต้อง ORACLE-EDIT `C2.1-S4.6`
+- 🔴 โควตา Opus ของ session ชนเพดานได้ (24 ก.ย. ~08:00 UTC) — agent ตายกลางงาน · ไฟล์ใน worktree ยังอยู่ · spawn ใหม่ "ทำต่อจากสภาพไฟล์" ได้ทันที
+- ถ้า session ตาย: `git -C <wt> status` + `.qc-shots/<wo>-r2/` แล้ว spawn ใหม่ พร้อม brief จากทรีหลัก
+- วงจรรับงาน (ใช้ได้ผล): builder → **ผู้ตรวจอ่านอย่างเดียว (opus)** → ORACLE-EDIT + builder แก้ (before/after + log ทุก suite) → รวม → unit ตรวจรวม → ภาพมีข้อมูล → PARITY → wo-notes → commit
 
 ### 0.6 ถัดไปตามลำดับ
 C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2.0) → C2.5 ∥ C2.6 → C2.7 … C2.11 → ปิดเฟส C2 ด้วย `qc:all` (**ต้องส่ง DATABASE_URL/DIRECT_URL เข้าไปด้วย** ดู `scripts/pending/run-c1-qcall.sh`) → C3.0 (migration) …
