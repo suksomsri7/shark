@@ -16,7 +16,14 @@
 - หลัง deploy READY: เติม D12 ใน `wo-notes/crm-C2.1.md` `crm-C2.2.md` `crm-C2.3.md` (hash + dpl) · `tg`
 - worktree `shark-crm-c20` (C2.2) และ `shark-crm-c23` (C2.3) มีงานที่รวมแล้ว + probe/หลักฐาน `.qc-shots/c22-r2` `.qc-shots/c23-r2` `.qc-shots/c23-r3` — ก่อนใช้ worktree ซ้ำสำหรับใบถัดไป: `git -C <wt> checkout -- . && git -C <wt> clean -fd -e .qc-shots -e node_modules` แล้ว `git -C <wt> checkout --detach <HEAD ใหม่ของทรีหลัก>` (node_modules เป็น bind mount ห้าม rm)
 
-### 0.5 ถัดไปตามลำดับ
+### 0.5 กำลังเดิน (spawn 24 ก.ย. 05:50 UTC · Fable)
+- **C2.4** builder opus ใน `shark-crm-c20` (QC2) — brief R1–R13 (R2 = `CRM_ASSIST`) · ข้อสอบ 78 (+ORACLE-EDIT S2.3) · หลักฐาน `.qc-shots/c24/`
+- **C2.5a** builder opus ใน `shark-crm-c23` (QC3) — transport/inbound/tracking/webhook/consumers · ข้อสอบ 94 (ข้อ UI แดงไว้ให้ C2.5b) · หลักฐาน `.qc-shots/c25a/` · **ต้องรายงาน TTL จริงของ privateFileUrl** (ข้อสอบ X10.1 สมมติ 15 นาที) · C2.5b spawn ต่อจากสภาพไฟล์ของ a
+- **ผู้เขียนข้อสอบ C2.8** opus ใน `shark-crm-c12a` (ไม่ใช้ DB) — `scripts/qc-crm-c2.8.mts` + addendum ใน brief C2.8 (ต้องเคาะก่อน spawn builder)
+- ถ้า session ตาย: `git -C <wt> status` ดูงานค้าง + `.qc-shots/<wo>/` แล้ว spawn ใหม่ "ทำต่อจากสภาพไฟล์" พร้อม brief จากทรีหลัก
+- วงจรรับงาน (ใช้ได้ผลกับ C2.2/C2.3): builder จบ → **ผู้ตรวจอ่านอย่างเดียว (opus) ยืนยันทุกข้อ + ล่าบั๊ก** → ORACLE-EDIT ปิดช่องที่ผู้ตรวจชี้ → builder แก้ (before/after) → รวมทรีหลัก (ไฟล์ใบเดียวก๊อปทับ · ไฟล์ร่วมเก็บทั้งสองบล็อก) → unit ตรวจรวม (สคริปต์ชื่อใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูลตัวอย่าง → PARITY ด้วยตา → wo-notes → commit
+
+### 0.6 ถัดไปตามลำดับ
 C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2.0) → C2.5 ∥ C2.6 → C2.7 … C2.11 → ปิดเฟส C2 ด้วย `qc:all` (**ต้องส่ง DATABASE_URL/DIRECT_URL เข้าไปด้วย** ดู `scripts/pending/run-c1-qcall.sh`) → C3.0 (migration) …
 - ข้อสอบที่พร้อมแล้ว (commit แล้วในทรีหลัก): C2.4 (78) · **C2.5 (94)** · **C2.6 (82)** · ยังอยู่ใน `shark-crm-c12a` รอ copy+commit: **`qc-crm-c2.6-web.mts` (34 · ตัว headless)** + **`qc-crm-c2.7.mts` (55)** พร้อม addendum ในสอง brief — **ต้อง typecheck ในทรีหลักก่อน commit**
 - 🔴 C2.6 **ห้ามรับงานด้วยข้อสอบฝั่ง server ตัวเดียว** ต้องมีตัว headless ด้วย (คำตัดสิน 23 ก.ย. ท้าย brief C2.6)
