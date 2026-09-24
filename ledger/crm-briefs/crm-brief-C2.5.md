@@ -42,3 +42,10 @@ Oracle: `scripts/qc-crm-c2.5.mts` (**94 checks** · S0 6 · S1–S8 = the 34 of 
 - ข้อ 13(c): TTL ของ `attachmentUrl` ต้องเท่ากับ TTL จริงของ C0.4 (`privateFileUrl`) — builder อ่านค่าจริงแล้วรายงาน · ถ้าไม่ใช่ 15 นาที = ORACLE-EDIT `C2.5-X10.1` โดยผู้คุมงาน
 - **แบ่ง 2 builder ตาม R-D**: C2.5a (transport `sendEmailRich` · `emails.ts` routing/send/scheduled/inbound/tracking/unsubscribe/webhook · consumers/labels · cron import) ก่อน → C2.5b (UI `/emails` · thread · composer · `/settings/email` · templates · per-user override · inventory · visual spec "2.5") ต่อจากสภาพไฟล์ของ a · ข้อสอบเดียว 94 ข้อ ตรวจตอน b จบ
 - ถอยหลังบังคับ: `qc-kanban-k3.9` · `qc-kanban-notify` · `qc-member-m3.6` · `qc-member-fix-s1` · `qc-marketing` · `qc-forms-notify` · `qc-onboarding-drip` · `qc-crm-c2.1` (SEND_EMAIL) · `qc-crm-c2.2` (EMAIL step) · **`qc-crm-c1.11`** (กฎถาวร) · ทุก suite ที่ stub `sendEmail`
+
+## Controller ruling — หลัง C2.5a (24 ก.ย. · Fable · binding)
+- **ORACLE-EDIT `backdate` helper** (`qc-crm-c2.5.mts:647`): `$1` ถูกอนุมานเป็น text ใน `CASE … ELSE $1` ⇒ 42P08 ข้อสอบตายที่ FATAL หลัง S2.4 · แก้ใส่ `::timestamp` (ความหมายเดิม) — builder พิสูจน์ด้วย 3 statement แยก (`.qc-shots/c25a/ORACLE-EDIT-c25-backdate.md`)
+- ยืนยันการตัดสินใจของ builder a: token 3 ตระกูล `<emailId>~<192-bit>` เก็บเฉพาะ hash (`trackTokenHash` · `routing.links[].h` · `routing.unsub`) ไม่ใช้ `CrmTrackedLink` (ของ C2.6) · `sanitize.ts` ขยายแบบ opt-in (`allowImages`/`allowLinkSchemes` · ค่าเริ่มต้นเหมือนเดิมทุกไบต์ S9.10) · `leadFromBridge kind:"EMAIL"` · `recordSystemActivityInTx type EMAIL + direction` · `SeqSubject.stepId` · `purgeBodies` ครอบร้าน v1 ด้วย (PDPA ไม่ขึ้นกับสวิตช์) · label ใน `webhooks/labels.ts` เท่านั้น + `gen-crm-api-docs` รู้จัก payload `crm.email.*` · แถว inventory `crm-unsub-confirm`
+- TTL จริง `PRIVATE_FILE_MAX_TTL_SEC = 900` = ตรง X10.1 ไม่ต้องแก้
+- 🔴 **กติกา iso.sh**: `CRM_V2_SWITCH=all bash scripts/iso.sh …` ถูกทิ้งเงียบ (systemd-run ส่งเฉพาะ --setenv) ⇒ ต้อง `bash scripts/iso.sh env CRM_V2_SWITCH=all …`
+- ส่วน b (UI) เริ่มต่อจากสภาพไฟล์ของ a ใน c23 · หลัง b: ผู้ตรวจอ่านอย่างเดียว (ทั้ง a+b) ก่อนรวม

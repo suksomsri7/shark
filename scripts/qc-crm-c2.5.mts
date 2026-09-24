@@ -644,7 +644,8 @@ try {
   const clickToks = (h: string) => [...String(h ?? "").matchAll(/href="([^"]*\/t\/c\/([^"?#/]+)[^"]*)"/g)].map((m) => ({ href: m[1], tok: decodeURIComponent(m[2]) }));
   const unsubTok = (h: string) => (String(h ?? "").match(/\/u\/([A-Za-z0-9_.~-]+)/) ?? [])[1] ?? "";
   const TOKENS: string[] = [];
-  const backdate = (id: string, ms: number) => P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "sentAt" = $1, "receivedAt" = CASE WHEN "receivedAt" IS NULL THEN NULL ELSE $1 END, "createdAt" = $1 WHERE id = $2`, new Date(Date.now() - ms), id);
+  // ORACLE-EDIT (controller · 24 Sep): `$1` deduced as text inside `CASE … ELSE $1` ⇒ Postgres 42P08 on this driver — explicit ::timestamp casts (same semantics)
+  const backdate = (id: string, ms: number) => P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "sentAt" = $1::timestamp, "receivedAt" = CASE WHEN "receivedAt" IS NULL THEN NULL ELSE $1::timestamp END, "createdAt" = $1::timestamp WHERE id = $2`, new Date(Date.now() - ms), id);
 
   // route callers — a missing route answers status -1 (never a crash)
   type Rr = { status: number; ct: string; cache: string; loc: string; hex: string; text: string };
