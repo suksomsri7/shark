@@ -18,8 +18,9 @@
 
 ### 0.5 กำลังเดิน (spawn 24 ก.ย. 05:50 UTC · Fable)
 - **C2.4** builder opus ใน `shark-crm-c20` (QC2) — brief R1–R13 (R2 = `CRM_ASSIST`) · ข้อสอบ 78 (+ORACLE-EDIT S2.3) · หลักฐาน `.qc-shots/c24/`
-- **C2.5a** builder opus ใน `shark-crm-c23` (QC3) — transport/inbound/tracking/webhook/consumers · ข้อสอบ 94 (ข้อ UI แดงไว้ให้ C2.5b) · หลักฐาน `.qc-shots/c25a/` · **ต้องรายงาน TTL จริงของ privateFileUrl** (ข้อสอบ X10.1 สมมติ 15 นาที) · C2.5b spawn ต่อจากสภาพไฟล์ของ a
-- **ผู้เขียนข้อสอบ C2.8** opus ใน `shark-crm-c12a` (ไม่ใช้ DB) — `scripts/qc-crm-c2.8.mts` + addendum ใน brief C2.8 (ต้องเคาะก่อน spawn builder)
+- **C2.5a ✅ builder จบ 07:20 UTC** (88/93 · แดง 5 = UI · ถอยหลัง 13 ชุดเขียว · TTL จริง 15 นาทีตรงข้อสอบ · ORACLE-EDIT `backdate` ทำแล้ว `7eaf67ad`) → **C2.5b (UI) builder ตัวเดิมทำต่อใน c23** (สั่ง 07:25 UTC) · หลัง b: ผู้ตรวจอ่านอย่างเดียวทั้ง a+b → รวมทรีหลัก (ไฟล์ร่วมกับ C2.4: `index.ts` `nav.ts` `settings.ts` `layout.tsx` `inventory` `visual-crm` `outbox-consumers` `minute-jobs` `crm-cron`) → unit ตรวจรวม C2.4+C2.5
+- **ข้อสอบพร้อมแล้ว**: C2.8 (54 · `ba677eb1` · เคาะ 26 ข้อแล้ว) · C2.9 (47 · `0e585c10` · เคาะ 19 ข้อแล้ว) · ผู้เขียนข้อสอบตัวเดิมกำลังทำ **C2.10 → C2.11** ใน c12a
+- ตอนรับ C2.8 ผู้คุมงานต้องทำ ORACLE-EDIT `C2.1-S4.6` (ADJUST_SCORE เลิกเป็น stub)
 - ถ้า session ตาย: `git -C <wt> status` ดูงานค้าง + `.qc-shots/<wo>/` แล้ว spawn ใหม่ "ทำต่อจากสภาพไฟล์" พร้อม brief จากทรีหลัก
 - วงจรรับงาน (ใช้ได้ผลกับ C2.2/C2.3): builder จบ → **ผู้ตรวจอ่านอย่างเดียว (opus) ยืนยันทุกข้อ + ล่าบั๊ก** → ORACLE-EDIT ปิดช่องที่ผู้ตรวจชี้ → builder แก้ (before/after) → รวมทรีหลัก (ไฟล์ใบเดียวก๊อปทับ · ไฟล์ร่วมเก็บทั้งสองบล็อก) → unit ตรวจรวม (สคริปต์ชื่อใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูลตัวอย่าง → PARITY ด้วยตา → wo-notes → commit
 
