@@ -49,3 +49,7 @@ Oracle: `scripts/qc-crm-c2.5.mts` (**94 checks** · S0 6 · S1–S8 = the 34 of 
 - TTL จริง `PRIVATE_FILE_MAX_TTL_SEC = 900` = ตรง X10.1 ไม่ต้องแก้
 - 🔴 **กติกา iso.sh**: `CRM_V2_SWITCH=all bash scripts/iso.sh …` ถูกทิ้งเงียบ (systemd-run ส่งเฉพาะ --setenv) ⇒ ต้อง `bash scripts/iso.sh env CRM_V2_SWITCH=all …`
 - ส่วน b (UI) เริ่มต่อจากสภาพไฟล์ของ a ใน c23 · หลัง b: ผู้ตรวจอ่านอย่างเดียว (ทั้ง a+b) ก่อนรวม
+
+## Controller ruling — หลัง C2.5b (24 ก.ย. · Fable · binding)
+builder b จบ 93/93 · c1.11 66/66 (แก้ 2 ข้อจริง: page-local actions ไม่อ่านประตูเอง · 7 element ไม่มี testid) · nav 11 · typecheck · fitness · หลักฐาน static iframe (`sandbox=""` · referrerPolicy · srcDoc · 0 allow-* · 0 dangerouslySetInnerHTML) + 390 (`.qc-shots/c25b/`) · ยืนยัน 6 ข้อ: ไฟล์ action 2 ชั้น (`crm/emails-actions.ts` = ของจริง · page-local wrapper แค่ประตู เพราะ F2.3) · testid ซ้ำแบบ literal + data attribute (สัญญาข้อสอบ `includes` — C4.2 กดด้วย `[data-thread-key]`) · `ThreadMessageDto` +contactId/companyId/dealId · composer อยู่ในเธรด (mockup 08) ไม่มี "เขียนใหม่" จาก inbox · thana/nok ไม่ถ่ายหน้าตั้งค่า (404 ตาม X1) · HTML 2 เวอร์ชัน (รูปปิด/เปิด) คำนวณฝั่ง server ส่งทั้งคู่ (ยอมรับที่ body ≤500 KB — หนี้ lazy-load ถ้าโตกว่านี้)
+→ ผู้ตรวจอ่านอย่างเดียว a+b (สั่ง 08:50 UTC)
