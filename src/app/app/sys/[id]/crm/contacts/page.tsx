@@ -25,6 +25,9 @@ import { ContactsV1Page } from "./_components/ContactsV1Page";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { ContactExportButton, ContactImportButton, ContactTable, type ContactRowView } from "./_components/ContactListTools";
+// CRM C2.2 ▸ ใส่ผู้ติดต่อที่เห็นอยู่ในหน้านี้เข้าลำดับการติดตามเป็นกลุ่ม (อันตราย: ยืนยัน + เหตุผล — X9) ◂
+import { sequenceOptions } from "@/lib/modules/crm/sequences";
+import { SequenceBulkEnroll } from "@/components/crm/sequences/SequenceBulkEnroll";
 
 // รายชื่อผู้ติดต่อ (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5/§3.17) — `/app/sys/{id}/crm/contacts`
 // URL state: ?q · stage · lead · owner · source · band · view (มุมมองบันทึก) · archived=1 · sort · cursor (ลิงก์แชร์ได้ · ย้อนกลับได้)
@@ -73,7 +76,13 @@ export default async function ContactsPage({
     includeArchived: archived,
     sort,
   };
-  const [owners, views, customFields] = await Promise.all([ownerOptions(ctx, actor), savedViewOptions(ctx, actor), customFieldLayout(ctx, actor).catch(() => [])]);
+  const [owners, views, customFields, seqOptions] = await Promise.all([
+    ownerOptions(ctx, actor),
+    savedViewOptions(ctx, actor),
+    customFieldLayout(ctx, actor).catch(() => []),
+    // CRM C2.2 ▸ ไม่มีคีย์ลงทะเบียน = [] (ปุ่มไม่แสดง) · อ่านล้ม = ไม่ทำให้หน้ารายชื่อล้ม ◂
+    sequenceOptions(ctx, actor).catch(() => []),
+  ]);
   const failed = { message: null as string | null };
   const list = await listContacts(ctx, actor, { ...filters, cursor: cursor || null, pageSize: PAGE_SIZE }).catch((e: unknown) => {
     // ตัวกรอง/มุมมอง/ลิงก์หน้าถัดไปที่ใช้ไม่ได้แล้ว = บอกในหน้า (ไม่ใช่หน้า error)
@@ -127,6 +136,8 @@ export default async function ContactsPage({
           <>
             <ContactImportButton systemId={id} customFields={customFields.map((f) => ({ id: f.key, name: f.label }))} />
             <ContactExportButton systemId={id} filters={filters} />
+            {/* CRM C2.2 ▸ ใส่เข้าลำดับการติดตามเป็นกลุ่ม (bulkEnroll — ยืนยัน + เหตุผล ในตัวคอมโพเนนต์) */}
+            <SequenceBulkEnroll systemId={id} sequences={seqOptions} contactIds={rows.map((r) => r.id)} />
             <Link href={`${base}/new`} className="btn btn-primary text-sm" data-testid="contacts-new-btn">
               + เพิ่มผู้ติดต่อ
             </Link>

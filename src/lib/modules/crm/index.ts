@@ -95,3 +95,18 @@ export { crmUiVersion, isCrmV2SwitchAllowed } from "./ui-version";
 //   (ผู้เรียก: งานตามเวลา `src/lib/platform/minute-jobs.ts` crm.automation.*) · ทะเบียน trigger/action/กฎเริ่มต้นอยู่ที่ `./automation-shared`
 export * as automation from "./automation";
 // ◂ CRM C2.1
+// CRM C2.2 ▸ ลำดับการติดตาม (`sequences.ts` · ตัวรันกลาง `@/lib/automation/action-runner`) — namespace เดียว:
+//   createSequence/updateSequence/archiveSequence/listSequences/getSequence/sequenceOptions · enroll/bulkEnroll/stop/pause/resume ·
+//   getEnrollment/listEnrollments/stats · ปฏิทิน calendarSettings/setBusinessDays/addHoliday/removeHoliday/importThaiHolidays ·
+//   runDue (งานรายนาที "crm.sequences" — ลงทะเบียนตอน import) · stopFor = ทางเข้าเดียวของการหยุดอัตโนมัติ (R-A: C2.4/C2.5 เรียกตัวนี้ ·
+//   ตัวรับ event ชนะ/แพ้/opt-out อยู่ที่ `src/lib/platform/crm-bridges/sequences.ts`) · ค่าคงที่/ตัวตรวจอยู่ที่ `./sequences-shared`
+export * as sequences from "./sequences";
+// ◂ CRM C2.2
+// CRM C2.3 ▸ มอบหมาย lead อัตโนมัติ (`assignment.ts`) — namespace เดียว `assignment` = `assignmentFacade` ที่ประกาศในไฟล์นั้น:
+//   pick (ผู้เรียก: contacts.ts ใน tx ของการสร้าง) · listRules/createRule/updateRule/toggleRule/deleteRule/reorderRules ·
+//   getAssignmentSettings/setFallbackUser · simulate · pageData/assertAssignmentAccess (หน้า `/crm/settings/assignment`) ·
+//   leaveSnapshot/notifyUnassigned (ทางสร้างผู้ติดต่อ) · ทะเบียนโหมด/เงื่อนไขสำหรับหน้า 'use client' อยู่ที่ `./assignment-shared`
+//   🔴 `openLoadOf` ไม่อยู่บน facade (มติผู้คุมงาน 24 ก.ย. 2569 · ข้อ S5 ของผู้ตรวจ): ยังไม่มี actor/คีย์/ประตู/ตัวกรองการมองเห็น
+//      และยังไม่มีผู้เรียกนอกโมดูล — C2.11/C3.2 จะเปิดให้พร้อม actor + คีย์ตอนที่ต้องใช้จริง (ยัง export จาก `assignment.ts`)
+export { assignmentFacade as assignment } from "./assignment";
+// ◂ CRM C2.3

@@ -1190,3 +1190,47 @@ export async function auditSystemActivity(ctx: { tenantId: string; systemId: str
   });
 }
 // ◂ CRM C1.8
+
+// CRM C2.2 ▸ งานติดตามที่ "ลำดับการติดตาม" สร้าง (ขั้น TASK · `sequences.ts#runDue`) — ผู้เขียน CrmActivity ที่เดียวของโมดูล
+//   AUDIT-CLASS X4: กันซ้ำต่อ (enrollment, version, index) ด้วย sourceRef + advisory lock ของ sourceRef ใน tx เดียว
+//     ⇒ ขั้นเดิมถูกทำซ้ำ (เครื่องดับหลังเขียนงาน ก่อนเลื่อนขั้น · lease หมดแล้วรอบใหม่หยิบ) ไม่มีงานแถวที่สอง
+//   ยิง `crm.activity.logged` ใน tx เดียวกับแถว (งานเป็นกิจกรรมจริง — กฎ/ไทม์ไลน์เห็นเหมือนงานที่คนสร้าง) · source AUTO (ไม่ใช่ MANUAL)
+//   AUDIT-CLASS X8: หัวเรื่องมาจากขั้นที่เจ้าของร้านเขียน · payload/audit มีแต่ id และชนิด
+export type SequenceTaskInput = {
+  sourceRef: string;
+  type: string;
+  title: string;
+  body?: string | null;
+  contactId: string;
+  dealId: string | null;
+  ownerUserId: string | null;
+  dueAt: Date;
+};
+
+export async function createSequenceTaskOnce(ctx: { tenantId: string; systemId: string }, input: SequenceTaskInput): Promise<{ id: string; created: boolean }> {
+  const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const out = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.seq.task:${ctx.tenantId}:${input.sourceRef}`}, 0))`;
+    const prior = await tx.crmActivity.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: input.contactId, sourceRef: input.sourceRef }, select: { id: true } });
+    if (prior) return { id: prior.id, created: false, row: null as CrmActivity | null };
+    const row = await tx.crmActivity.create({
+      data: {
+        ...identityScope(c),
+        contactId: input.contactId,
+        dealId: input.dealId,
+        type: input.type as CrmActivityType,
+        title: input.title.slice(0, ACTIVITY_TITLE_MAX),
+        body: input.body ? input.body.slice(0, ACTIVITY_BODY_MAX) : null,
+        ownerUserId: input.ownerUserId,
+        dueAt: input.dueAt,
+        source: "AUTO",
+        sourceRef: input.sourceRef,
+      },
+    });
+    await emitActivity(tx, c, EVT.logged, row, { via: "sequence" });
+    return { id: row.id, created: true, row };
+  });
+  if (out.row) await audit(c, "crm.activity.log", out.row.id, { after: { type: out.row.type, source: out.row.source, contactId: out.row.contactId, dealId: out.row.dealId, via: "sequence" } });
+  return { id: out.id, created: out.created };
+}
+// ◂ CRM C2.2

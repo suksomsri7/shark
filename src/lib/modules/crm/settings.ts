@@ -95,3 +95,100 @@ export function crmBusinessTemplateOf(raw: Json): { key: string; appliedAt: stri
   return { key: bt.key, appliedAt: typeof bt.appliedAt === "string" ? bt.appliedAt : null };
 }
 // ◂ CRM C1.11
+
+// CRM C2.2 ▸ ปฏิทินวันทำการของลำดับการติดตาม `settings.crm.businessDays` (0=อา … 6=ส) · `settings.crm.holidays` ({date,name}[])
+//   🔴 ทุกตัวเขียน = คำสั่ง SQL เดียว (jsonb_set) — คีย์อื่นของ settings.crm ไม่ถูกแตะ · รวมวันหยุด/ลบวันหยุดคำนวณในคำสั่งเดียวกัน
+//      (ไม่อ่านรายการมาแก้แล้วเขียนทับ = สองคนกดพร้อมกันไม่ทำรายการหาย · AUDIT-CLASS X3)
+//   AUDIT-CLASS X1: เขียนเฉพาะแถว AppSystem ที่ id + tenantId + type CRM ตรงกัน · ไม่พบ = 0 แถว (ผู้เรียกแปลงเป็น NOT_FOUND)
+//   🔴 รับ `db` เข้ามาได้ (ธุรกรรมของผู้เรียก) — ผู้เรียกเขียนแถว AuditLog ใน tx เดียวกับการเปลี่ยนค่าได้ ⇒ ไม่มีช่องที่ค่าเปลี่ยนแล้วไม่มีประวัติ
+export type CrmSettingsDb = Pick<typeof crmDb, "$executeRaw">;
+
+export async function setCrmBusinessDays(ctx: { tenantId: string; systemId: string }, days: readonly number[], db: CrmSettingsDb = crmDb): Promise<number> {
+  const json = JSON.stringify([...new Set(days)].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6).sort());
+  return db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('businessDays', ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+}
+
+/** รวมวันหยุดเข้ารายการเดิม (วันที่ซ้ำ = คงของเดิม) · ของเดิมที่เป็นสตริงเปล่าถูกแปลงเป็น {date,name:""} · เรียงตามวันที่ */
+export async function mergeCrmHolidays(ctx: { tenantId: string; systemId: string }, items: readonly { date: string; name: string }[], db: CrmSettingsDb = crmDb): Promise<number> {
+  const add = JSON.stringify(items.filter((h) => /^\d{4}-\d{2}-\d{2}$/.test(h.date)).map((h) => ({ date: h.date, name: String(h.name ?? "").slice(0, 120) })));
+  return db.$executeRaw`
+    UPDATE "AppSystem" a
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof(a."settings") = 'object' THEN a."settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof(a."settings"->'crm') = 'object' THEN a."settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('holidays', (
+          SELECT COALESCE(jsonb_agg(x.item ORDER BY x.d), '[]'::jsonb) FROM (
+            SELECT DISTINCT ON (u.d) u.d, u.item FROM (
+              SELECT 0 AS pri, (CASE WHEN jsonb_typeof(e) = 'string' THEN e #>> '{}' ELSE e->>'date' END) AS d,
+                     (CASE WHEN jsonb_typeof(e) = 'string' THEN jsonb_build_object('date', e #>> '{}', 'name', '') ELSE e END) AS item
+                FROM jsonb_array_elements(CASE WHEN jsonb_typeof(a."settings"->'crm'->'holidays') = 'array' THEN a."settings"->'crm'->'holidays' ELSE '[]'::jsonb END) e
+              UNION ALL
+              SELECT 1 AS pri, n->>'date' AS d, n AS item FROM jsonb_array_elements(${add}::jsonb) n
+            ) u WHERE u.d ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' ORDER BY u.d, u.pri
+          ) x)),
+      true)
+    WHERE a."id" = ${ctx.systemId} AND a."tenantId" = ${ctx.tenantId} AND a."type" = 'CRM'`;
+}
+
+/** ลบวันหยุดตามวันที่ (คำสั่งเดียว) */
+export async function removeCrmHoliday(ctx: { tenantId: string; systemId: string }, date: string, db: CrmSettingsDb = crmDb): Promise<number> {
+  return db.$executeRaw`
+    UPDATE "AppSystem" a
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof(a."settings") = 'object' THEN a."settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof(a."settings"->'crm') = 'object' THEN a."settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('holidays', (
+          SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
+            FROM jsonb_array_elements(CASE WHEN jsonb_typeof(a."settings"->'crm'->'holidays') = 'array' THEN a."settings"->'crm'->'holidays' ELSE '[]'::jsonb END) e
+           WHERE (CASE WHEN jsonb_typeof(e) = 'string' THEN e #>> '{}' ELSE e->>'date' END) IS DISTINCT FROM ${date})),
+      true)
+    WHERE a."id" = ${ctx.systemId} AND a."tenantId" = ${ctx.tenantId} AND a."type" = 'CRM'`;
+}
+// ◂ CRM C2.2
+
+// CRM C2.3 ▸ มอบหมายอัตโนมัติ `settings.crm.assignment = { fallbackUserId }` (มติ R10 · notifyChannel มากับ C2.10)
+//   ตัวอ่านบริสุทธิ์ (ค่าเพี้ยน = null) + ตัวเขียนคำสั่งเดียว: jsonb ซ้อนสองชั้น (crm → assignment → key) ใน UPDATE เดียว
+//   ⇒ คีย์อื่นของ crm (uiVersion · bridgesEnabled …) และคีย์อื่นของ assignment รอดเสมอ (ไม่มี read-modify-write)
+//   🔴 ไม่เพิ่มช่องใน `CrmSettings` (ชนิดนั้นถูกเทียบรูปทั้งก้อนในข้อสอบเก่า) — ผู้ใช้อ่านผ่าน `crmAssignmentSettingsOf`
+export type CrmAssignmentSettings = { fallbackUserId: string | null };
+
+export function crmAssignmentSettingsOf(raw: Json): CrmAssignmentSettings {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  const a = crm && isObj(crm.assignment) ? crm.assignment : null;
+  const fb = a && typeof a.fallbackUserId === "string" && a.fallbackUserId.trim() ? a.fallbackUserId.trim() : null;
+  return { fallbackUserId: fb };
+}
+
+export async function setCrmAssignmentKey<K extends keyof CrmAssignmentSettings>(
+  ctx: { tenantId: string; systemId: string },
+  key: K,
+  value: CrmAssignmentSettings[K],
+  /** tx ของผู้เรียก — ให้ค่าใน settings กับแถวประวัติ (AuditLog) commit พร้อมกัน (รอบ 3 · S5) · ไม่ส่ง = client ของโมดูล */
+  db: { $executeRaw: typeof crmDb.$executeRaw } = crmDb,
+): Promise<void> {
+  if (key === "fallbackUserId" && value !== null && typeof value !== "string") throw new Error("ผู้รับสำรองต้องเป็นรหัสพนักงานหรือว่าง");
+  const json = JSON.stringify(value ?? null);
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('assignment',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'assignment') = 'object' THEN "settings"->'crm'->'assignment' ELSE '{}'::jsonb END)
+               || jsonb_build_object(${key}::text, ${json}::jsonb)),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+// ◂ CRM C2.3

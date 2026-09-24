@@ -25,11 +25,13 @@ export async function onChatMessage(evt: BridgeEvent): Promise<void> {
   // ประตูก่อนอ่านอะไรของแชท: ระบบ CRM ปลายทาง (ตัวแรกของร้าน) ต้องเปิดสะพาน v2
   const target = (await crmGates(evt.tenantId))[0] ?? null;
   if (!bridgeOpen(target)) return;
-  const conv = await prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId: evt.tenantId }, select: { contactId: true } });
+  // CRM C2.3 ▸ `meta` ของห้อง (`{ lang }` ของเว็บแชท) มาด้วย — ใช้เป็นภาษาของลูกค้าเมื่อ ChatContact.lang ว่าง ◂
+  const conv = await prisma.chatConversation.findFirst({ where: { id: conversationId, tenantId: evt.tenantId }, select: { contactId: true, meta: true } });
   if (!conv?.contactId) return;
   const cc = await prisma.chatContact.findFirst({
     where: { id: conv.contactId, tenantId: evt.tenantId },
-    select: { id: true, partyId: true, displayName: true, phone: true, email: true },
+    // CRM C2.3 ▸ `lang` = ภาษาที่ลูกค้าใช้ (ช่องของแชทเอง) → ส่งต่อเป็น `locale` ของลีด ◂
+    select: { id: true, partyId: true, displayName: true, phone: true, email: true, lang: true },
   });
   if (!cc) return;
 
@@ -47,9 +49,13 @@ export async function onChatMessage(evt: BridgeEvent): Promise<void> {
   }
   if (!target.chatToLead) return; // ร้านไม่ได้เปิด "แชท → lead" = ผูก Party อย่างเดียว
 
+  // CRM C2.3 ▸ ภาษาของลูกค้า: ช่อง `lang` ของผู้ติดต่อแชท (ที่ช่องทางบันทึกไว้) · ไม่มี = `meta.lang` ของห้อง (เว็บแชทส่งมาใน §3.3)
+  //   เงื่อนไข "ภาษา" ของกฎมอบหมายอ่านค่านี้ ⇒ ร้านที่ตั้งกฎ "ลูกค้าอังกฤษ → เซลส์ที่พูดอังกฤษ" ทำงานได้จริงบนแชท
+  //   ค่าที่อ่านไม่ออกถูกทิ้งเงียบ ๆ ในบริการผู้ติดต่อ (ลีดไม่หล่นเพราะภาษาเพี้ยน) ◂
+  const lang = str(cc.lang) ?? str(payloadOf(conv.meta).lang);
   const res = await crm.contacts.leadFromBridge(
     { tenantId: evt.tenantId, systemId: target.systemId, actorUserId: null },
-    { kind: "CHAT", name: str(cc.displayName), phone: str(cc.phone), email: str(cc.email), partyId, sourceDetail: { chatContactId: cc.id } },
+    { kind: "CHAT", name: str(cc.displayName), phone: str(cc.phone), email: str(cc.email), partyId, sourceDetail: { chatContactId: cc.id }, locale: lang /* CRM C2.3 ◂ */ },
   );
   if (res.created) await notifyNewLeadInApp({ tenantId: evt.tenantId, systemId: target.systemId, contactId: res.contactId, via: "CHAT" });
 }

@@ -88,6 +88,10 @@ export async function onFormLead(evt: BridgeEvent): Promise<void> {
         submissionId: sub.id,
         sourceDetail: { formId: form.id, submissionId: sub.id, ...(Object.keys(utm).length > 0 ? { utm } : {}) },
         activityTitle: `ลูกค้ากรอกฟอร์ม “${form.name}”`,
+        // CRM C2.3 ▸ ภาษาของลูกค้า → เงื่อนไข "ภาษา" ของกฎมอบหมาย · `FormDef`/`FormSubmission` ยังไม่มีคอลัมน์ภาษา (ตรวจสคีมาแล้ว)
+        //   ⇒ อ่านจากคำตอบของฟอร์มเมื่อร้านตั้งช่องไว้ (`locale` · `language` · `ภาษา`) · ไม่มีช่องนั้น = ไม่ส่ง (คอลัมน์ใช้ค่าเริ่มต้นเดิม)
+        //   ช่องภาษาของตัวฟอร์มเอง (เลือกภาษาตอนเปิดลิงก์) เป็นงานของใบ C2.6 ◂
+        locale: str(answers.locale) ?? str(answers.language) ?? str(answers["ภาษา"]),
       },
     );
   } catch (e) {

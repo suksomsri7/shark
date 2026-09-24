@@ -90,6 +90,21 @@
 //   minute job: registerMinuteJob({ name: "crm.sequences", everyMinutes: 5, cadence "minute", NOT vpsOnly, run: (now, budget, ctrl) =>
 //     runDue(now, { deadline: ctrl.deadline, signal: ctrl.signal }) }) — registered when `@/lib/modules/crm/sequences` (or
 //     `@/lib/modules/crm/sequences-job`) is imported · scripts/crm-cron.mts imports it
+//   ══ มติผู้คุมงาน 24 ก.ย. 2569 (หลังผู้ตรวจอิสระ · rulings 1 · 4 · 5 · 8) — ข้อสอบ X3.3/X3.4 · S10.1/S10.2 · S9.5/S9.6 · X9.5/X9.6 ══
+//   maxActive (ruling 5): the cap is decided BY THE DATABASE in ONE statement (INSERT … SELECT … WHERE (count ACTIVE) < cap) + an
+//     advisory lock per sequence ⇒ N parallel enrolls of N DIFFERENT contacts can never exceed it (a partial UNIQUE cannot cap a
+//     population; "count then insert" lets all N through) · the losers answer CONFLICT with a Thai message, never a 500
+//   archiveSequence(ctx, actor, id, { confirm, reason }) → { stopped, remaining } (ruling 8): flag FIRST (archivedAt + active=false, one
+//     statement ⇒ nobody can be enrolled while the stopping runs), then stop the live enrollments in batches of ≤ 500 LOOPING until none
+//     is left ⇒ ONE call finishes the job (stopped = all, remaining = 0) · a second call is a no-op (stopped 0) and writes NO second
+//     `crm.sequence.archive` audit row · an archived sequence stays loadable for its editor page (getSequence + an "include archived"
+//     flag) with its step rows intact, and runDue never claims a row of it
+//   bridge gate (ruling 1 · R-E.14): crm-bridges/sequences.ts reads the gate of the row's own system BEFORE anything — uiVersion 1 or
+//     bridgesEnabled false ⇒ no stop, no event, rows kept (no third exception to "the gate comes first" of crm-bridges/core.ts) ·
+//     back at uiVersion 2 the same event stops the enrollment (STOPPED + exactly one crm.sequence.finished)
+//   audit (ruling 4): every stop the ENGINE decides itself (OPT_OUT · CONTACT_GONE · FAILED after MAX_STEP_ATTEMPTS) writes ONE AuditLog
+//     `crm.sequence.auto_stop` on the enrollment in the SAME transaction as the status write · bulkEnroll writes its
+//     `crm.sequence.bulk_enroll` audit row (carrying the typed reason) BEFORE the loop, so it survives a call that dies half-way
 //   events (3 registries, ids only, key `<type>#<enrollmentId>#<n>`, systemId = the CRM system):
 //     crm.sequence.enrolled { enrollmentId, sequenceId, contactId, dealId?, sequenceVersion }
 //     crm.sequence.finished { enrollmentId, sequenceId, contactId, status: "DONE"|"STOPPED", reason?: CODE }
@@ -107,6 +122,11 @@
 //   X1 scope · X3 races · X4 redelivery · X5 overlap + crash after claim (real SIGKILL of a worker process) · X6 header/window input ·
 //   X8 consent at step time + payload/OpsEvent scan + no real transport · X9 bulk enroll danger · CLEAN.
 //   N/A: X2 (no REST op / AI tool in C2.2 — crm_stop_sequence is C3.4) · X7 (no public endpoint) · X10 (no file/secret).
+//   ORACLE-EDIT 24 ก.ย. 2569 (+8 ⇒ 73 checks): X3.3 maxActive cap race (10 parallel / cap 3 × 3 rounds) · X3.4 state + stats after it ·
+//   S10.1 archive of a 600-enrollment sequence in one call + repeat = no-op with no duplicate audit · S10.2 archived sequence still
+//   loadable for the editor + runDue never claims it · S9.5 the auto-stop bridge is gated for a uiVersion-1 shop (rows kept, 0 events) ·
+//   S9.6 positive control with the gate open · X9.5 `crm.sequence.auto_stop` for OPT_OUT / CONTACT_GONE / FAILED in the status tx ·
+//   X9.6 `crm.sequence.bulk_enroll` audit written BEFORE the loop.
 // HOUSE RULES: SKIP guard (no DB before it) · throwaway tenants `qc-c22-<rand>-*` swept in `finally` · outbound fetch stubbed (a real
 //   Resend/LINE call is counted and fails X8.6) · fake senders injected through `deps` · synthetic clocks are in the PAST (Sep 2026) ·
 //   the shared minute-job state rows of `crm.sequences` (OpsAlertState `minute-job:*:crm.sequences`) are snapshotted and restored ·
@@ -268,6 +288,8 @@ const mailOf = (s: string) => `${TAG}-${s}@qc-crm.example`;
 const OPS_KEYS = [`minute-job:lease:${JOB}`, `minute-job:run:${JOB}`, `minute-job:ok:${JOB}`];
 let opsSnap: { source: string; lastAlertAt: Date }[] | null = null;
 const KIDS: ChildProcess[] = [];
+/** OpsEvent rows the engine writes with NO tenantId (runDue WARN) — cleaned by enrollment id in `finally` (they are not tenant-scoped) */
+const OPS_IDS: string[] = [];
 
 /** fake senders — every call is recorded (the ATTEMPT is what "exactly once" counts) */
 type Sent = { channel: string; to: string; subject: string; body: string; enrollmentId: string; contactId: string };
@@ -1369,6 +1391,268 @@ try {
     chk("C2.2-X8.7", "hygiene: rows the engine finished itself (DONE / STOPPED, excluding the oracle's own parking) never keep a lease — a stale lease on a finished row is what a \"claim by terminal state\" shortcut leaves behind · [positive control] ≥ 10 such rows exist",
       Number(fin) >= 10 && Number(lease) === 0, "≥ 10 finished · 0 leases", `finished=${fin} withLease=${lease}${ABSENT}`, "MINOR");
   }
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT 24 ก.ย. 2569 (ผู้คุมงาน Opus 5 · หลังผู้ตรวจอิสระ) — 4 ช่องที่ "มติออกแล้วแต่ยังไม่มีข้อสอบ"
+  //   X3.3 · X3.4  เพดาน `maxActive` ต้องให้ฐานข้อมูลตัดสินในคำสั่งเดียว + advisory lock (มติข้อ 5)
+  //   S10.1 · S10.2 เก็บลำดับใหญ่ (มติข้อ 8) — 600 คน จบในการเรียกครั้งเดียว · กดซ้ำ = ไม่ทำอะไรและไม่มี audit ซ้ำ ·
+  //                 ลำดับที่เก็บแล้วยังเปิดหน้าแก้ไขได้ · runDue ไม่จองแถวของลำดับที่เก็บแล้ว
+  //   S9.5 · S9.6  ประตูของสะพาน `crm-bridges/sequences.ts` (มติข้อ 1 · R-E.14) — ร้าน v1 = ไม่แตะ ไม่มี event ·
+  //                 ตัวคุมบวก: เปิดประตูแล้ว event เดิม (คีย์กันซ้ำใหม่) หยุดจริง
+  //   X9.5 · X9.6  สมุดตรวจครบ (มติข้อ 4) — `crm.sequence.auto_stop` ของ OPT_OUT / CONTACT_GONE / FAILED ใน tx เดียว
+  //                 กับการเขียนสถานะ · `crm.sequence.bulk_enroll` ต้องถูกเขียน **ก่อนลูป** (มีแม้การเรียกล้มกลางทาง)
+  // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+  console.log("\n── X3 · maxActive cap race (ruling 5) ──");
+  await park(tidA);
+  let capStats: Any = null;
+  let capOrphans = -1;
+  let capNoLease = -1;
+  {
+    const CAP = 3;
+    const ROUNDS = 3;
+    const seqCap = await mkSeq(cA, "เพดานผู้ลงทะเบียน", [WAIT(1), TASK(`หลังเพดาน ${rand}`)], { maxActive: CAP });
+    const probs: string[] = [];
+    for (let round = 1; round <= ROUNDS; round += 1) {
+      const ks = await Promise.all(Array.from({ length: 10 }, (_, i) => mkContact(tidA, crmA, `เพดาน${round}ค${i}`)));
+      // 10 ผู้ติดต่อ **คนละคน** ยิงพร้อมกัน (คนละ connection ของ pool) — partial UNIQUE ช่วยไม่ได้เลย เพดานต้องถูกฐานบังคับ
+      const rs = await Promise.all(ks.map((k) => enroll(cA, owner, seqCap.id, k.id)));
+      const oks = rs.filter((x) => x.ok).length;
+      const confl = rs.filter((x) => !x.ok && x.code === "CONFLICT" && thai(x.msg)).length;
+      const other = rs.filter((x) => !x.ok && x.code !== "CONFLICT");
+      const act = Number((await q(`SELECT count(*)::int AS n FROM "CrmSequenceEnrollment" WHERE "sequenceId" = $1 AND status::text = 'ACTIVE'`, seqCap.id))[0]?.n ?? -1);
+      if (act !== CAP || oks !== CAP || confl !== 10 - CAP || other.length > 0) probs.push(`r${round}: active=${act} ok=${oks} conflictTH=${confl} other=${cut(other[0]?.err, 70)}`);
+      if (round === ROUNDS) {
+        capStats = (await call(SEQ.stats, cA, owner, seqCap.id)).v;
+        capOrphans = Number((await q(
+          `SELECT count(*)::int AS n FROM "CrmSequenceEnrollment" e WHERE e."sequenceId" = $1
+             AND NOT EXISTS (SELECT 1 FROM "CrmSequenceStep" s WHERE s."sequenceId" = e."sequenceId" AND s."version" = e."sequenceVersion")`,
+          seqCap.id))[0]?.n ?? -1);
+        capNoLease = Number((await q(`SELECT count(*)::int AS n FROM "CrmSequenceEnrollment" WHERE "sequenceId" = $1 AND status::text = 'ACTIVE' AND "leaseUntil" IS NULL AND "stepIndex" = 0`, seqCap.id))[0]?.n ?? -1);
+      }
+      await P.$executeRawUnsafe(`UPDATE "CrmSequenceEnrollment" SET status='STOPPED', "stoppedReason"='QC_PARK', "nextAt"=NULL WHERE "sequenceId" = $1 AND status::text IN ('ACTIVE','PAUSED')`, seqCap.id).catch(() => 0);
+    }
+    chk("C2.2-X3.3", `X3: the maxActive cap is decided BY THE DATABASE — a sequence with maxActive 3 receiving 10 parallel enrolls of 10 DIFFERENT visible contacts (3 rounds, rows parked between rounds) ends with exactly 3 ACTIVE, 3 successes and 7 Thai CONFLICT refusals every round (never a 500, never 10 rows: the partial UNIQUE cannot cap a population — "count then insert" lets all 10 through)`,
+      probs.length === 0 && typeof SEQ.enroll === "function", "3 ACTIVE · 7 CONFLICT × 3 rounds", `${probs.join(" · ") || "-"}${ABSENT}`);
+    const steps = Array.isArray(capStats?.steps) ? (capStats.steps as Any[]) : [];
+    const active0 = Number(steps[0]?.active ?? -1);
+    const totalActive = Number(capStats?.totals?.ACTIVE ?? -1);
+    chk("C2.2-X3.4", "X3: the capped race leaves sane state — every enrollment row points at a version that HAS step rows (no row without steps), the 3 winners sit at step 0 with no lease left behind, and stats() counts exactly 3 (steps[0].active = 3 · totals.ACTIVE = 3: no JSON counter read-modify-write)",
+      capOrphans === 0 && capNoLease === 3 && active0 === 3 && totalActive === 3, "0 orphans · 3 at step 0 · stats 3",
+      `orphans=${capOrphans} step0NoLease=${capNoLease} stats.steps[0].active=${active0} stats.totals.ACTIVE=${totalActive}${ABSENT}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S10 — archiveSequence on a BIG sequence (ruling 8: flag first, stop in batches ≤ 500, repeatable, one audit row)
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S10 · archive (ruling 8) ──");
+  {
+    const N = 600;
+    const seqA = await mkSeq(cA, "เก็บลำดับใหญ่", [EMAIL("ปิดท้าย {{contact.firstName}}"), WAIT(1)]);
+    const mark = `เก็บใหญ่${rand}`;
+    // 600 ผู้ติดต่อ + 600 แถวลงทะเบียน ACTIVE (ใส่ตรงเพื่อความเร็ว — บริการที่อยู่ใต้กล้องคือ archiveSequence ไม่ใช่ enroll)
+    await P.crmContact.createMany({
+      data: Array.from({ length: N }, (_, i) => ({ tenantId: tidA, systemId: crmA, name: `${mark} ${i}`, firstName: mark, ownerUserId: userA })),
+    }).catch(() => 0);
+    const tsNow = (await udtOf("CrmSequenceEnrollment", "nextAt")) === "timestamptz" ? "now()" : "(now() AT TIME ZONE 'UTC')";
+    await P.$executeRawUnsafe(
+      `INSERT INTO "CrmSequenceEnrollment" ("id","tenantId","sequenceId","contactId","enrolledById","enrolledBy","sequenceVersion","stepIndex","nextAt","status","createdAt","updatedAt")
+       SELECT gen_random_uuid()::text, $1, $2, c."id", $3, $4, 1, 0, ${tsNow} + interval '2 days', 'ACTIVE'::"CrmEnrollStatus", ${tsNow}, ${tsNow}
+         FROM "CrmContact" c WHERE c."tenantId" = $1 AND c."systemId" = $5 AND c."name" LIKE $6`,
+      tidA, seqA.id, userA, `USER:${userA}`, crmA, `${mark} %`).catch(() => 0);
+    const liveOf = async () => Number((await q(`SELECT count(*)::int AS n FROM "CrmSequenceEnrollment" WHERE "sequenceId" = $1 AND status::text IN ('ACTIVE','PAUSED')`, seqA.id))[0]?.n ?? -1);
+    const seeded = await liveOf();
+    const archAud = async () => Number((await q(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "tenantId" = $1 AND action LIKE 'crm.sequence.archive%' AND "targetId" = $2`, tidA, seqA.id))[0]?.n ?? -1);
+    const t0 = Date.now();
+    const r1 = await call(SEQ.archiveSequence, cA, owner, seqA.id, { confirm: true, reason: `เลิกใช้ลำดับนี้แล้ว ${rand}` });
+    const took = Date.now() - t0;
+    const left1 = await liveOf();
+    const aud1 = await archAud();
+    const head = (await q(`SELECT ("archivedAt" IS NOT NULL) AS flagged, active FROM "CrmSequence" WHERE id = $1`, seqA.id))[0] ?? null;
+    const r2 = await call(SEQ.archiveSequence, cA, owner, seqA.id, { confirm: true, reason: `กดซ้ำอีกครั้ง ${rand}` });
+    const aud2 = await archAud();
+    const left2 = await liveOf();
+    chk("C2.2-S10.1", `archiveSequence on a sequence with ${N} ACTIVE enrollments finishes the whole job in ONE call (stopped = ${N} · remaining = 0 · zero rows left ACTIVE/PAUSED · archivedAt set + active false — the flag goes first so nobody can be enrolled while the stopping runs) · calling it a SECOND time is a no-op: stopped 0 and still exactly ONE crm.sequence.archive audit row (no duplicate history entry)`,
+      seeded === N && r1.ok && Number(r1.v?.stopped) === N && Number(r1.v?.remaining) === 0 && left1 === 0 && head?.flagged === true && head?.active === false &&
+        aud1 === 1 && r2.ok && Number(r2.v?.stopped) === 0 && Number(r2.v?.remaining) === 0 && left2 === 0 && aud2 === 1,
+      `${N} stopped · remaining 0 · 1 audit twice`,
+      `seeded=${seeded} first=${r1.ok ? j(r1.v) : r1.err} left=${left1} flagged=${head?.flagged} active=${head?.active} audit=${aud1} second=${r2.ok ? j(r2.v) : r2.err} left=${left2} audit2=${aud2} took=${took}ms${ABSENT}`);
+    // หน้าแก้ไขต้องยังเปิดลำดับที่เก็บแล้วได้ (ประวัติ/สถิติยังต้องอ่านได้) — ยอมรับทุกธงที่ผู้สร้างเลือกใช้
+    const flags: Any[] = [{ includeArchived: true }, { withArchived: true }, { archived: true }, { includeArchived: true, version: 1 }, undefined];
+    let loaded: Any = null;
+    let usedFlag = "-";
+    for (const o of flags) {
+      const rr = o === undefined ? await call(SEQ.getSequence, cA, owner, seqA.id) : await call(SEQ.getSequence, cA, owner, seqA.id, o);
+      if (rr.ok && String(rr.v?.id ?? "") === seqA.id) {
+        loaded = rr.v;
+        usedFlag = o ? Object.keys(o).join("+") : "no flag";
+        break;
+      }
+    }
+    const stepsLeft = (await stepRows(seqA.id)).length;
+    // แถวที่ "หลุด" กลับมา ACTIVE (เช่น หมดเวลากลางทางรอบก่อน) ต้องไม่ถูก runDue จอง — ลำดับที่เก็บแล้วไม่ถูกหยิบเลย
+    const ghost = String((await q(`SELECT id FROM "CrmSequenceEnrollment" WHERE "sequenceId" = $1 ORDER BY id ASC LIMIT 1`, seqA.id))[0]?.id ?? NONE);
+    await P.$executeRawUnsafe(`UPDATE "CrmSequenceEnrollment" SET status='ACTIVE', "stoppedReason"=NULL, "stoppedAt"=NULL, "stepIndex"=0, "leaseUntil"=NULL WHERE id = $1`, ghost).catch(() => 0);
+    await setTs(ghost, "nextAt", new Date(Date.now() - 60_000));
+    const sentBefore = SENT.length;
+    const rd = await runDue(new Date(Date.now() + 1_000));
+    const after = await enr(ghost);
+    const untouched = after?.status === "ACTIVE" && Number(after?.stepIndex) === 0 && after?.leaseMs == null && SENT.length === sentBefore;
+    chk("C2.2-S10.2", "an ARCHIVED sequence is still loadable for the editor page (getSequence with the builder's \"include archived\" flag — the history of the people who walked it must stay readable), its step rows are never deleted, and runDue never claims a row of it (a row that escaped back to ACTIVE stays untouched: no lease, no step advance, nothing sent)",
+      !!loaded && Array.isArray(loaded?.steps) && loaded.steps.length === 2 && stepsLeft === 2 && ghost !== NONE && rd.ok && untouched,
+      "loadable · 2 steps kept · not claimed", `loaded=${loaded ? `ok(${usedFlag})` : "NOT_FOUND with every flag"} steps=${Array.isArray(loaded?.steps) ? loaded.steps.length : "-"}/${stepsLeft} runDue=${rd.ok ? "ok" : rd.err} ghost=${enrTxt(after)} sends=${SENT.length - sentBefore}${ABSENT}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S9 (cont.) — the BRIDGE gate (ruling 1 · R-E.14): a v1 shop keeps its rows and its sequences walk on when it is 2 again
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S9 · bridge gate (ruling 1) ──");
+  {
+    const crmG = await mk(tidV, "CRM", "CRM-ประตู");
+    await setCrm(crmG, { uiVersion: 2, bridgesEnabled: true, ...CAL });
+    const cG = { tenantId: tidV, systemId: crmG, actorUserId: userA };
+    const seqG = await mkSeq(cG, "หยุดเมื่อแพ้ดีล", [EMAIL("ตามต่อ {{contact.firstName}}"), WAIT(1)]);
+    const kG = await mkContact(tidV, crmG, "ประตูสะพาน");
+    const pipeG = (await P.crmPipeline.create({
+      data: { tenantId: tidV, systemId: crmG, name: `ขายประตู ${TAG}`, stages: { create: STD.map((s, i) => ({ tenantId: tidV, systemId: crmG, sortOrder: i, ...s })) } },
+      include: { stages: true },
+    })) as Any;
+    const SG = [...(pipeG.stages as Any[])].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => s.id as string);
+    const lostG = (await P.crmLostReason.create({ data: { tenantId: tidV, systemId: crmG, key: `price-g-${rand}`, label: "ราคาสูงไป" } })).id as string;
+    const titleG = `ดีลประตู ${rand}`;
+    const crG = await call(D.createDeal, cG, owner, { pipelineId: pipeG.id, stageId: SG[0], title: titleG, contactId: kG.id, valueSatang: 100_000 });
+    let dealG = String(crG.v?.deal?.id ?? crG.v?.id ?? "");
+    if (!dealG || !(await P.crmDeal.findFirst({ where: { id: dealG } }))) {
+      dealG = (await P.crmDeal.create({ data: { tenantId: tidV, systemId: crmG, contactId: kG.id, pipelineId: pipeG.id, stageId: SG[0], title: titleG, valueSatang: 100_000, ownerUserId: userA } })).id as string;
+    }
+    const eG = await enrolled(cG, seqG.id, kG.id, { dealId: dealG });
+    const since = new Date(Date.now() - 1_000);
+    const mv = await call(D.moveDeal, cG, owner, dealG, { stageId: SG[3], lostReasonId: lostG });
+    const lostRow = ((await P.outboxEvent.findMany({ where: { tenantId: tidV, type: "crm.deal.lost", createdAt: { gte: since } }, orderBy: { createdAt: "asc" } })) as Any[]).find((x) => x.payload?.dealId === dealG) ?? null;
+    // ประตูปิด (ร้านสลับกลับเป็นรุ่น 1 ขณะคนกำลังเดิน)
+    await setCrm(crmG, { uiVersion: 1 });
+    const closed = lostRow ? await consume(evtOf(lostRow)) : { ok: false, v: undefined, err: "no crm.deal.lost event", code: "", msg: "" };
+    const mid = await enr(eG);
+    const finClosed = await finishedOf(eG);
+    chk("C2.2-S9.5", "ruling 1 / R-E.14: the auto-stop BRIDGE is gated like every other bridge — a shop switched back to uiVersion 1 gets its crm.deal.lost delivered through the real consumer and NOTHING happens: the enrollment is still ACTIVE at its step and zero crm.sequence.finished rows exist for it (without the gate the row would be STOPPED/LOST for ever and a webhook would fire while v2 is off)",
+      mv.ok && !!lostRow && closed.ok && mid?.status === "ACTIVE" && Number(mid?.stepIndex) === 0 && finClosed.length === 0, "ACTIVE · 0 events",
+      `move=${mv.ok ? "ok" : mv.err} evt=${!!lostRow} consume=${closed.ok ? "ok" : closed.err} row=${enrTxt(mid)} finished=${finClosed.length}${ABSENT}`);
+    // ประตูเปิด = ตัวคุมบวก (event เดิม ส่งใหม่ด้วยคีย์กันซ้ำใหม่)
+    await setCrm(crmG, { uiVersion: 2, bridgesEnabled: true });
+    const copy = lostRow
+      ? ((await P.outboxEvent.create({
+          data: { tenantId: lostRow.tenantId, type: lostRow.type, idempotencyKey: `${lostRow.idempotencyKey}#${TAG}-again`, payload: lostRow.payload, systemId: lostRow.systemId, unitId: lostRow.unitId },
+        })) as Any)
+      : null;
+    const opened = copy ? await consume(evtOf(copy)) : { ok: false, v: undefined, err: "no event", code: "", msg: "" };
+    const end = await enr(eG);
+    const finOpen = await finishedOf(eG);
+    chk("C2.2-S9.6", "[positive control] with the gate open again (uiVersion 2 + bridgesEnabled) the SAME event re-delivered under a new idempotency key does stop the enrollment: STOPPED reason LOST + exactly ONE crm.sequence.finished — so S9.5 proves the gate, not a broken consumer",
+      !!copy && opened.ok && end?.status === "STOPPED" && /LOST/i.test(String(end?.stoppedReason ?? "")) && finOpen.length === 1, "STOPPED LOST · 1 event",
+      `consume=${opened.ok ? "ok" : opened.err} row=${enrTxt(end)} finished=${finOpen.length}${ABSENT}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // X9 (cont.) — audit completeness (ruling 4: engine-decided stops) · bulk_enroll audit written BEFORE the loop
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── X9 · audit completeness (ruling 4) ──");
+  await park(tidA);
+  {
+    const seqAS = await mkSeq(cA, "สมุดตรวจหยุดเอง", [EMAIL("ทักครั้งแรก {{contact.firstName}}"), WAIT(1)]);
+    /** xmin ของแถว = รหัสธุรกรรมที่เขียนมันครั้งล่าสุด — เท่ากันคือ "เขียนใน tx เดียวกัน" แบบพิสูจน์ได้จริง
+     *  (เวลา createdAt เทียบกันไม่ได้: Prisma เติมค่าปริยาย `now()` ตอน "ต่อคำสั่ง" ⇒ แถวใน tx เดียวกันต่างกันไม่กี่มิลลิวินาที) */
+    const xminOf = async (table: string, id: string) => String((await q(`SELECT xmin::text AS x FROM "${table}" WHERE id = $1`, id))[0]?.x ?? "");
+    const opsFor = async (id: string) =>
+      ((await P.opsEvent.findMany({ where: { source: JOB, detail: { contains: id } }, orderBy: { createdAt: "asc" }, take: 3 }).catch(() => [])) as Any[])
+        .map((o) => `${o.level}:${cut(o.message, 40)}|${cut(o.detail, 120)}`)
+        .join(" ; ");
+    const statsOf = async (id: string) => cut(j((await q(`SELECT "stats" FROM "CrmSequenceEnrollment" WHERE id = $1`, id))[0]?.stats), 200);
+    const attemptsOf = async (id: string) => Number((await q(`SELECT COALESCE(("stats"->'attempts'->>'v1:0')::int, -1) AS n FROM "CrmSequenceEnrollment" WHERE id = $1`, id))[0]?.n ?? -2);
+    // (ก) OPT_OUT — ขอไม่รับข่าวสารหลังลงทะเบียน (ไม่ผ่านตัวรับ event: เครื่องยนต์ต้องตัดสินเองตอนขั้นทำงาน)
+    const kO = await mkContact(tidA, crmA, "ปิดรับเอง");
+    await granted(tidA, crmA, kO, "EMAIL");
+    const eO = await enrolled(cA, seqAS.id, kO.id);
+    await P.$executeRawUnsafe(`UPDATE "CrmContact" SET "marketingOptOut" = true WHERE id = $1`, kO.id).catch(() => 0);
+    // (ข) CONTACT_GONE — ผู้ติดต่อถูกเก็บเข้ากล่องเก็บหลังลงทะเบียน
+    const kX = await mkContact(tidA, crmA, "ผู้ติดต่อหาย");
+    await granted(tidA, crmA, kX, "EMAIL");
+    const eX = await enrolled(cA, seqAS.id, kX.id);
+    await P.$executeRawUnsafe(`UPDATE "CrmContact" SET "archivedAt" = now() WHERE id = $1`, kX.id).catch(() => 0);
+    // (ค) FAILED — ต้องมีขั้นที่ "โยน exception ทุกครั้งที่ลอง" · สองเส้นทาง (เส้นแรกไม่ล้มก็ใช้เส้นสอง)
+    //     A: ข้อมูลขั้นพัง — จำนวนวันที่รอเกินช่วงเวลาที่แทนค่าได้ ⇒ nextAt ใช้การไม่ได้ตอนเลื่อนขั้น
+    //     B: ตัวส่งคืนข้อความผิดพลาดที่มีอักขระ NUL ⇒ เขียนบันทึกขั้น (jsonb) ไม่ได้ ⇒ ธุรกรรมเลื่อนขั้นล้มทั้งใบ
+    const seqF = await mkSeq(cA, "ขั้นที่ทำไม่ได้", [WAIT(1), TASK(`ไม่ควรมาถึง ${rand}`)]);
+    const kF = await mkContact(tidA, crmA, "ขั้นพัง");
+    const eF1 = await enrolled(cA, seqF.id, kF.id);
+    OPS_IDS.push(eF1);
+    await P.$executeRawUnsafe(`UPDATE "CrmSequenceStep" SET "waitDays" = 2000000000 WHERE "sequenceId" = $1 AND "index" = 0`, seqF.id).catch(() => 0);
+    const base = Date.now() + 1_000;
+    const sums: string[] = [];
+    let roundsA = 0;
+    for (let i = 0; i < 6; i += 1) {
+      roundsA += 1;
+      const rr = await runDue(new Date(base + i * 16 * 60_000)); // lease 15 นาที ⇒ เดินนาฬิกาให้พ้น lease ทุกรอบ
+      if (i === 0) sums.push(`A0=${cut(j(rr.v), 90)}`);
+      if ((await enr(eF1))?.status !== "ACTIVE") break;
+    }
+    let route = "A(waitDays)";
+    let eFail = eF1;
+    let roundsB = 0;
+    const diagA = `attemptsA=${await attemptsOf(eF1)} statsA=${await statsOf(eF1)} opsA=[${await opsFor(eF1)}]`;
+    if ((await enr(eF1))?.status === "ACTIVE") {
+      route = "B(sender-NUL)";
+      const nul = String.fromCharCode(0);
+      const bad = async (_r: Any) => ({ ok: false, error: `ส่งไม่สำเร็จ${nul}ปลายทางปฏิเสธ` });
+      const seqF2 = await mkSeq(cA, "ตัวส่งพัง", [EMAIL("ทดสอบตัวส่ง {{contact.firstName}}"), TASK(`ไม่ควรมาถึงสอง ${rand}`)]);
+      const kF2 = await mkContact(tidA, crmA, "ตัวส่งพัง");
+      await granted(tidA, crmA, kF2, "EMAIL");
+      eFail = await enrolled(cA, seqF2.id, kF2.id);
+      OPS_IDS.push(eFail);
+      const base2 = Date.now() + 1_000;
+      for (let i = 0; i < 6; i += 1) {
+        roundsB += 1;
+        const rr = await call(SEQ.runDue, new Date(base2 + i * 16 * 60_000), { deps: { email: bad, line: bad, sms: bad }, tenantIds: [tidA] });
+        if (i === 0) sums.push(`B0=${cut(j(rr.v), 90)}`);
+        if ((await enr(eFail))?.status !== "ACTIVE") break;
+      }
+    }
+    const attempts = await attemptsOf(eFail);
+    const auto = (await P.auditLog.findMany({ where: { tenantId: { in: MY }, action: "crm.sequence.auto_stop" }, orderBy: { createdAt: "asc" } })) as Any[];
+    const finAll = await evts(MY, "crm.sequence.finished");
+    const probs: string[] = [];
+    for (const c of [{ id: eO, re: /OPT.?OUT/i, what: "OPT_OUT" }, { id: eX, re: /CONTACT.?GONE/i, what: "CONTACT_GONE" }, { id: eFail, re: /FAILED/i, what: `FAILED ${route}` }]) {
+      const row = await enr(c.id);
+      const aud = auto.filter((x) => String(x.targetId) === c.id);
+      const fin = finAll.filter((x) => x.payload?.enrollmentId === c.id);
+      const xA = aud.length === 1 ? await xminOf("AuditLog", String(aud[0].id)) : "";
+      const xE = fin.length === 1 ? await xminOf("OutboxEvent", String(fin[0].id)) : "";
+      const xR = await xminOf("CrmSequenceEnrollment", c.id);
+      const sameTx = !!xA && xA === xE && xA === xR;
+      if (!(row?.status === "STOPPED" && c.re.test(String(row?.stoppedReason ?? "")) && aud.length === 1 && fin.length === 1 && sameTx && String(aud[0]?.targetType ?? "") === "CrmSequenceEnrollment")) {
+        probs.push(`${c.what}: ${enrTxt(row)} audit=${aud.length}${aud[0] ? `(${cut(j(aud[0].after), 60)})` : ""} finished=${fin.length} xmin audit/event/row=${xA || "-"}/${xE || "-"}/${xR || "-"}`);
+      }
+    }
+    // ไม่มี finished ที่เครื่องยนต์ตัดสินเองแถวไหน "ไม่มีบรรทัดในสมุดตรวจ"
+    const engine = finAll.filter((x) => /^(OPT_OUT|CONTACT_GONE|FAILED)$/.test(String(x.payload?.reason ?? "")));
+    const orphanEvents = engine.filter((x) => !auto.some((a) => String(a.targetId) === String(x.payload?.enrollmentId ?? "")));
+    chk("C2.2-X9.5", "ruling 4: every stop the ENGINE decides by itself is answerable from the audit book — an OPT_OUT stop, a CONTACT_GONE stop and a FAILED stop (attempt counter full on a step that throws every time) each carry exactly ONE AuditLog `crm.sequence.auto_stop` row on the enrollment, written in the SAME transaction as the status write and the event (identical xmin on audit row / finished event / enrollment row — createdAt cannot prove it: Prisma stamps its now() default per statement) · no engine-decided finished event of this run lacks its audit row",
+      probs.length === 0 && attempts === 5 && engine.length >= 3 && orphanEvents.length === 0, "3 × (1 audit, same xmin) · attempts 5 · 0 orphan events",
+      `${probs.join(" · ") || "-"} route=${route} attempts=${attempts} roundsA=${roundsA} roundsB=${roundsB} engineEvents=${engine.length} orphanEvents=${orphanEvents.length} ${diagA} attemptsFail=${await statsOf(eFail)} opsFail=[${await opsFor(eFail)}] ${sums.join(" ")}${ABSENT}`);
+  }
+  {
+    // bulkEnroll: เหตุผลต้องลงสมุดตรวจ **ก่อน** เริ่มลูป — ล้มกลางทาง/หมดเวลา แล้วยังต้องตอบได้ว่า "ใครสั่ง ทำอะไร เพราะอะไร"
+    const seqB = await mkSeq(cA, "สมุดตรวจกลุ่ม", [WAIT(2), TASK(`งานกลุ่มตรวจ ${rand}`)]);
+    const ks = await Promise.all(Array.from({ length: 5 }, (_, i) => mkContact(tidA, crmA, `กลุ่มสมุด${i}`)));
+    const idsB = [ks[0].id, ks[1].id, ks[2].id, `${TAG}-ghost-contact`, ks[3].id, ks[4].id]; // ตัวที่ 4 = id ที่ไม่มี/มองไม่เห็น
+    const reasonB = `ใส่กลุ่มงานแฟร์ตรวจสมุด ${rand}`;
+    // ถ้าผู้สร้างเปิดช่องฉีดความล้มเหลวไว้ (ชื่อใดชื่อหนึ่ง) ก็ใช้ — ไม่มีก็เรียกตามปกติ แล้วตัดสินจากลำดับเวลาที่เขียนสมุดตรวจ
+    const rB = await call(SEQ.bulkEnroll, cA, owner, { sequenceId: seqB.id, contactIds: idsB, confirm: true, reason: reasonB, __qcFailAt: 4, failAfter: 3 });
+    const audB = ((await P.auditLog.findMany({ where: { tenantId: tidA, action: "crm.sequence.bulk_enroll" }, orderBy: { createdAt: "asc" } })) as Any[]).filter((x) => j({ a: x.after, b: x.before }).includes(reasonB));
+    const mineEv = (await evts([tidA], "crm.sequence.enrolled")).filter((x) => x.payload?.sequenceId === seqB.id);
+    const firstEnrollMs = mineEv.length ? Math.min(...mineEv.map((x) => new Date(x.createdAt).getTime())) : 0;
+    const audMs = audB.length ? new Date(audB[0].createdAt).getTime() : 0;
+    const beforeLoop = audB.length >= 1 && mineEv.length > 0 && audMs <= firstEnrollMs;
+    chk("C2.2-X9.6", "X9: the bulkEnroll danger audit is written BEFORE the loop — after a bulk of 6 ids (the 4th unseeable) an AuditLog `crm.sequence.bulk_enroll` row carrying the typed reason exists and the EARLIEST one is not later than the first enrollment of that call (both DB-clock: the crm.sequence.enrolled events) · written after the loop it is lost whenever the call dies half-way",
+      beforeLoop, "1 audit with the reason, written first", `call=${rB.ok ? `ok(${cut(j(rB.v), 80)})` : rB.err} audit=${audB.length} auditAt=${audMs ? new Date(audMs).toISOString() : "-"} firstEnrollAt=${firstEnrollMs ? new Date(firstEnrollMs).toISOString() : "-"} enrolledEvents=${mineEv.length}${ABSENT}`);
+  }
 } catch (e) {
   chk("C2.2-FATAL", "the oracle ran to the end without an unexpected exception", false, "no exception", cut(e instanceof Error ? `${e.name}: ${e.message}\n${e.stack ?? ""}` : String(e), 600));
 } finally {
@@ -1381,6 +1665,7 @@ try {
   const del = async (fn: () => Promise<unknown>) => {
     try { await fn(); } catch { /* order/FK — retried next pass */ }
   };
+  for (const id of OPS_IDS) await del(() => P.opsEvent.deleteMany({ where: { tenantId: null, source: JOB, detail: { contains: id } } }));
   let opsOk = true;
   if (opsSnap) {
     await del(() => P.opsAlertState.deleteMany({ where: { source: { in: OPS_KEYS } } }));

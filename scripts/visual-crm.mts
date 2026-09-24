@@ -73,7 +73,13 @@ type Spec = {
 // ── ของชั่วคราวต่อ WO (จำไว้คืนใน restoreSeed) ──
 // C0.1 ไม่เตรียมข้อมูลอะไรเลย (อ่านอย่างเดียว) — ใบถัดไปเพิ่มบล็อก `if (WO === "1.x") { … }` ตรงนี้
 // แล้วเก็บ id ที่สร้างไว้ใน TMP เพื่อให้ restoreSeed() ลบทิ้งได้ · ทุกแถวชั่วคราวติดแท็ก `qc-visual-crm`
-const TMP = { contactIds: [] as string[], dealIds: [] as string[], activityIds: [] as string[], companyIds: [] as string[] };
+const TMP = {
+  contactIds: [] as string[], dealIds: [] as string[], activityIds: [] as string[], companyIds: [] as string[],
+  // CRM C2.2/C2.3 ▸ ของที่สร้างผ่าน facade จริงเพื่อให้ภาพ "มีของ" เหมือนแบบ (ลบครบใน restoreSeed) ◂
+  sequenceIds: [] as string[], enrollmentIds: [] as string[], ruleIds: [] as string[],
+};
+/** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
+const BEFORE = { sequences: -1, rules: -1 };
 
 // แท็บย่อยของ CRM v1 (crmTabs ใน src/lib/modules/crm/ui.tsx) — ลิงก์จริงที่ต้องมีทุกหน้า
 const V1_TABS = ["a[href$='/crm/deals']", "a[href$='/crm/activities']", "a[href$='/crm/contacts']"];
@@ -131,8 +137,23 @@ const C111_IDS = WO === "1.11"
     })()
   : { contact: null, company: null, deal: null };
 // ◂ CRM C1.11
+// CRM C2.2 ▸ ผู้ติดต่อตัวอย่างสำหรับบล็อก "ลำดับการติดตาม" บนหน้า 360 (อ่านอย่างเดียว · thana เห็นแต่คนของตัวเอง) ◂
+const C22_CONTACT: string | null = WO === "2.2"
+  ? ((await (prisma as Any).crmContact.findFirst({
+      where: { systemId: SYS, archivedAt: null, mergedIntoId: null, marketingOptOut: false, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    }))?.id ?? null)
+  : null;
 
 const SPECS: Record<string, Spec[]> = {
+  // CRM C2.3 ▸ มอบหมายอัตโนมัติ (ภาพ 07 ขวา): ตารางกฎตามลำดับ + ป้าย "คิวถัดไป" + ผู้รับสำรอง + ทดลอง · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎ") ทั้ง 1440 และ 390
+  //   thana/nok (STAFF ไม่มีคีย์ crm.assignment.manage) = 404 ตามแบบ (ข้อสอบ C2.3 X1.6) → ถ่ายเฉพาะ owner/manager
+  "2.3": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    { name: `crm-assignment-${userKey}`, path: `${CRM_BASE}/settings/assignment`, note: "มอบหมายอัตโนมัติ — กฎตามลำดับ (วิธีแจก · คนที่รับ · คิวถัดไป) + ผู้รับสำรอง + ทดลอง + คิวของพนักงาน", expect: ["[data-testid=crm-assign-page]", "[data-testid=crm-assign-rule-list]", "[data-testid=crm-assign-fallback]"], steps: [{ waitFor: "[data-testid=crm-assign-page]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: `crm-assignment-editor-${userKey}`, path: `${CRM_BASE}/settings/assignment`, note: "ตัวแก้กฎ: ชื่อ/วิธีแจก/ทีม/เพดาน + คนที่รับ + เงื่อนไข (และ/หรือ)", expect: ["[data-testid=crm-assign-rule-mode]"], steps: [{ waitFor: "[data-testid=crm-assign-rule-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-assign-rule-new]" }, { wait: 300 }, { click: "[data-testid=crm-assign-cond-add]" }, { wait: 300 }] },
+  ],
+  // ◂ CRM C2.3
   // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ภาพ 07 บน): รายการกฎ + ชิปโควตา · ตัวสร้างกฎประโยคไทย (เปิดด้วย "สร้างกฎใหม่") ทั้ง 1440 และ 390
   //   thana/nok (STAFF ไม่มีคีย์ crm.automation.manage) = 404 ตามแบบ (ข้อสอบ C2.1 X1.4) → ถ่ายเฉพาะ owner/manager
   "2.1": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
@@ -140,6 +161,24 @@ const SPECS: Record<string, Spec[]> = {
     { name: `crm-automation-builder-${userKey}`, path: `${CRM_BASE}/settings/automation`, note: "ตัวสร้างกฎประโยคไทย: เมื่อ / และถ้า / ให้ทำ + ทดลองรัน", expect: ["[data-testid=crm-auto-trigger]"], steps: [{ waitFor: "[data-testid=crm-auto-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-auto-new]" }, { wait: 300 }, { click: "[data-testid=crm-auto-add-condition]" }, { wait: 300 }] },
   ],
   // ◂ CRM C2.1
+  // CRM C2.2 ▸ ลำดับการติดตาม (ภาพ 07 ล่าง): รายการลำดับ · ฟอร์มสร้างลำดับใหม่ · ตัวแก้ไข (ขั้น + สถิติต่อขั้น + ผู้ลงทะเบียน)
+  //   · วันทำการ/วันหยุด (มีปุ่ม "นำเข้าวันหยุดราชการไทย") · ปุ่มใส่เข้าลำดับบนผู้ติดต่อ 360 · ใส่เป็นกลุ่มจากรายชื่อผู้ติดต่อ
+  //   thana/nok (STAFF มีแต่คีย์ crm.sequence.enroll) เห็นหน้ารายการ/ตัวแก้ไขได้แบบอ่าน แต่หน้าวันหยุด = 404 (ต้องมี crm.sequence.manage)
+  //   ⚠️ ไม่กดปุ่มที่เขียนฐาน (สร้าง/ใส่เข้าลำดับ) — ชุดนี้ถ่ายรูปอย่างเดียว ไม่แก้ข้อมูลเฉลย
+  "2.2": isCustomer ? [] : [
+    { name: `crm-sequences-${userKey}`, path: `${CRM_BASE}/settings/sequences`, note: "ลำดับการติดตาม — รายการลำดับ (จำนวนขั้น · เวอร์ชัน · กำลังเดิน/พัก/จบ/หยุด)", expect: ["[data-testid=crm-sequences-page]", "[data-testid=crm-seq-list]"], steps: [{ waitFor: "[data-testid=crm-sequences-page]", timeoutMs: 20_000 }, { wait: 500 }] },
+    ...(userKey === "owner" || userKey === "manager"
+      ? ([
+          { name: `crm-sequences-new-${userKey}`, path: `${CRM_BASE}/settings/sequences`, note: "ฟอร์มสร้างลำดับใหม่ (ชื่อ + ขั้นแรก: อีเมล/LINE/งาน/รอ)", expect: ["[data-testid=crm-seq-new-form]", "[data-testid=crm-seq-step-kind-new]"], steps: [{ waitFor: "[data-testid=crm-seq-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-seq-new]" }, { wait: 400 }] },
+          { name: `crm-sequences-holidays-${userKey}`, path: `${CRM_BASE}/settings/holidays`, note: "วันทำการและวันหยุด + นำเข้าวันหยุดราชการไทยของปี N", expect: ["[data-testid=crm-seq-calendar]", "[data-testid=crm-seq-holiday-import]"], steps: [{ waitFor: "[data-testid=crm-seq-calendar]", timeoutMs: 20_000 }, { wait: 400 }] },
+        ] as Spec[])
+      : []),
+    { name: `crm-contacts-bulk-enroll-${userKey}`, path: `${CRM_BASE}/contacts`, note: "ใส่ผู้ติดต่อเข้าลำดับเป็นกลุ่ม (ยืนยัน + เหตุผล — X9)", expect: ["[data-testid=contacts-page]"], steps: [{ waitFor: "[data-testid=contacts-page]", timeoutMs: 20_000 }, { wait: 600 }] },
+    ...(C22_CONTACT
+      ? ([{ name: `crm-contact-360-sequences-${userKey}`, path: `${CRM_BASE}/contacts/${C22_CONTACT}`, note: "บล็อกลำดับการติดตามบนผู้ติดต่อ 360 + ปุ่มใส่เข้าลำดับ", expect: ["[data-testid=contact-360-sequences]"], steps: [{ waitFor: "[data-testid=contact-360-sequences]", timeoutMs: 20_000 }, { wait: 500 }] }] as Spec[])
+      : []),
+  ],
+  // ◂ CRM C2.2
   // CRM C1.11 ▸ ทุกหน้า C1 ที่ 390 (owner/thana · D7 ไม่มีล้นแนวนอน) + หน้าใหม่ของ C1.11 ทั้งสองขนาด + แผงแชท (เดสก์ท็อป — คอลัมน์บริบทของแชทมีเฉพาะ lg ขึ้นไป)
   //   + หน้าสลับ (เจ้าของร้าน · ต้องมี CRM_V2_SWITCH=all ในเซิร์ฟเวอร์ QC จึงเห็นการ์ดสวิตช์) · thana ไม่มีคีย์ตั้งค่า ⇒ หน้าตั้งค่าไม่อยู่ในชุดของ thana
   "1.11": isCustomer ? [] : [
@@ -308,6 +347,31 @@ async function restoreSeed(): Promise<void> {
   if (TMP.dealIds.length) await P.crmDeal?.deleteMany?.({ where: { id: { in: TMP.dealIds } } }).catch(() => null);
   if (TMP.contactIds.length) await P.crmContact?.deleteMany?.({ where: { id: { in: TMP.contactIds } } }).catch(() => null);
   if (TMP.companyIds.length) await P.crmCompany?.deleteMany?.({ where: { id: { in: TMP.companyIds } } }).catch(() => null);
+  // CRM C2.2/C2.3 ▸ คืนสภาพของที่บล็อก "เตรียมของ" สร้าง — ลบจากใบนอกเข้าใน: event → audit → ผู้ลงทะเบียน → ขั้น → ลำดับ → กฎ
+  //   🔴 ลบแถวตรง ๆ (ไม่เรียก stop/archive ของบริการ) เพราะทางนั้นเขียน event + audit เพิ่มอีกชุดระหว่างกำลังเก็บกวาด
+  //   🔴 outbox จับด้วย idempotencyKey ที่มี id ของผู้ลงทะเบียนอยู่ (`<type>#<enrollmentId>#<n>`) ⇒ ครอบทั้ง enrolled/finished
+  {
+    const { sequenceIds: sq, enrollmentIds: en, ruleIds: ru } = TMP;
+    if (en.length) await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: en.map((id) => ({ idempotencyKey: { contains: id } })) } });
+    const targets = [
+      ...sq.map((id) => ({ targetType: "CrmSequence", targetId: id })),
+      ...en.map((id) => ({ targetType: "CrmSequenceEnrollment", targetId: id })),
+      ...ru.map((id) => ({ targetType: "CrmAssignmentRule", targetId: id })),
+    ];
+    if (targets.length) await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, OR: targets } });
+    if (sq.length) {
+      await P.crmSequenceEnrollment.deleteMany({ where: { sequenceId: { in: sq } } });
+      await P.crmSequenceStep.deleteMany({ where: { sequenceId: { in: sq } } });
+      await P.crmSequence.deleteMany({ where: { id: { in: sq } } });
+    }
+    if (ru.length) await P.crmAssignmentRule.deleteMany({ where: { id: { in: ru } } });
+  }
+  if (BEFORE.sequences >= 0) {
+    const seqNow = await P.crmSequence.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const ruleNow = await P.crmAssignmentRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const ok = seqNow === BEFORE.sequences && ruleNow === BEFORE.rules;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ลำดับ ${BEFORE.sequences} → ${seqNow} · กฎมอบหมาย ${BEFORE.rules} → ${ruleNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
+  }
 }
 
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
@@ -325,6 +389,94 @@ if (specs.length === 0) {
   }
   console.log(`🌐 QC server ${BASE} ตอบ HTTP ${ping.status}`);
 }
+
+// ── เตรียมของจริงของ C2.2 / C2.3 (ภาพ 07) ──────────────────────────────────────────────────────
+// 🔴 ทำไมต้องมีบล็อกนี้: seed QC ไม่มีลำดับการติดตามและไม่มีกฎมอบหมายเลย ⇒ สองใบนี้ถ่ายได้แต่ "กล่องว่าง"
+//    ซึ่งเทียบ parity กับภาพ 07 (5 การ์ดขั้น + ผู้ลงทะเบียน 4 คน · ตารางกฎ + คิวถัดไป) ไม่ได้
+// 🔴 สร้างผ่าน facade จริง (`@/lib/modules/crm`) เท่านั้น — ยัดแถวดิบจะได้ภาพของข้อมูลที่บริการไม่มีวันสร้าง
+// 🔴 ตำแหน่ง: **หลัง** ด่าน QC server (ไม่งั้นเซิร์ฟเวอร์ล่ม = ของค้างในฐาน) และก่อน try/finally ที่ไม่มี
+//    ทางออกอื่นคั่นกลาง ⇒ ของทุกชิ้นถูกคืนใน restoreSeed() เสมอ (ดูหมายเหตุหัวไฟล์)
+if (WO === "2.2" || WO === "2.3") {
+  const P = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const mem = await P.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  BEFORE.sequences = await P.crmSequence.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  BEFORE.rules = await P.crmAssignmentRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  if (WO === "2.2") {
+    // ภาพ 07 ล่าง: "ติดตามใบเสนอราคา" — อีเมลวันที่ 0 → รอ 3 วันทำการ → LINE → รอ 4 → งานโทร
+    const seq = await crm.sequences.createSequence(ctx, ownerActor, {
+      name: "ติดตามใบเสนอราคา",
+      description: "ติดตามลูกค้าที่ได้รับใบเสนอราคาแล้ว — หยุดเมื่อ ตอบกลับ · ดีลชนะ · ดีลแพ้ · ขอไม่รับข่าวสาร",
+      stopOnReply: true,
+      stopOnWon: true,
+      stopOnLost: true,
+      businessDaysOnly: true,
+      sendWindow: { from: "09:00", to: "18:00" },
+      steps: [
+        { kind: "EMAIL", subject: "ใบเสนอราคาจากสยามไดฟ์เซ็นเตอร์", body: "เรียนคุณ {{contact.firstName}} แนบใบเสนอราคามาให้แล้วนะคะ หากมีข้อสงสัยตอบกลับอีเมลนี้ได้เลยค่ะ" },
+        { kind: "WAIT", waitDays: 3 },
+        { kind: "LINE", body: "รบกวนสอบถามความคืบหน้าใบเสนอราคาที่ส่งไปนะคะ ต้องการให้ปรับอะไรเพิ่มแจ้งได้เลยค่ะ" },
+        { kind: "WAIT", waitDays: 4 },
+        { kind: "TASK", taskTitle: "โทรติดตามใบเสนอราคา", taskType: "CALL" },
+      ],
+    });
+    TMP.sequenceIds.push(seq.id);
+    // ผู้ลงทะเบียน 4 คน (ภาพ 07: "ลงทะเบียนอยู่ 4 คน") — ผู้ติดต่อเก่าสุดที่ยังไม่ขอหยุดรับข่าวสาร
+    const targets = (await P.crmContact.findMany({
+      where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, marketingOptOut: false },
+      orderBy: { createdAt: "asc" }, take: 4, select: { id: true },
+    })) as { id: string }[];
+    for (const c of targets) {
+      const r = (await crm.sequences.enroll(ctx, ownerActor, { sequenceId: seq.id, contactId: c.id })) as Any;
+      const eid = r?.enrollmentId ?? r?.id;
+      if (typeof eid === "string" && eid) TMP.enrollmentIds.push(eid);
+    }
+    console.log(`🧪 เตรียมของ C2.2: ลำดับ "${seq.name}" (${seq.steps.length} ขั้น) + ผู้ลงทะเบียน ${TMP.enrollmentIds.length} คน`);
+    specs.splice(1, 0, {
+      name: `crm-sequence-editor-${userKey}`,
+      path: `${CRM_BASE}/settings/sequences/${seq.id}`,
+      note: "ตัวแก้ไขลำดับ \"ติดตามใบเสนอราคา\": การ์ดขั้น 5 ใบ (อีเมล → รอ 3 วัน → LINE → รอ 4 วัน → งานโทร) + สถิติต่อขั้น + ผู้ลงทะเบียน 4 คน — เทียบภาพ 07 ล่าง",
+      expect: ["[data-testid=crm-sequence-editor-page]", "[data-testid=crm-seq-editor]", "[data-testid=crm-seq-stats]", "[data-testid=crm-seq-enrollments]"],
+      steps: [{ waitFor: "[data-testid=crm-seq-editor]", timeoutMs: 20_000 }, { wait: 600 }],
+    });
+  } else {
+    // ภาพ 07 ขวา: "มอบหมายอัตโนมัติ — Round-robin" (ทีมขายองค์กร B2B · ชิปพนักงาน + ป้ายคิวถัดไป)
+    // 🔴 ผู้รับต้อง "มองเห็นผู้ติดต่อได้" (คีย์ crm.contact.read) ไม่งั้นตารางกฎขึ้นว่า "พนักงานที่ถูกเอาออก" — หน้าปั้นชื่อจากรายชื่อพนักงานที่เข้า CRM ได้เท่านั้น
+    const wanted = (["thana", "nok", "kata", "manager", "pook"] as const).map((k) => E.users?.[k]?.userId as string | undefined).filter((u): u is string => typeof u === "string" && !!u);
+    const rows = (await P.membership.findMany({ where: { tenantId: E.tenantId, userId: { in: wanted }, acceptedAt: { not: null } }, select: { userId: true, role: true, permissions: true } })) as Any[];
+    const okIds = new Set(rows.filter((m) => crm.crmCan({ role: m.role, permissions: (m.permissions ?? {}) as Record<string, unknown> }, "crm.contact.read")).map((m) => m.userId as string));
+    const staff = wanted.filter((u) => okIds.has(u)).slice(0, 4);
+    if (staff.length < 3) {
+      console.log(`⚠️ เตรียมของ C2.3 ข้าม — หาพนักงานในเฉลยได้ ${staff.length} คน (ต้อง ≥ 3) ⇒ ตารางกฎยังเป็นกล่องว่าง`);
+    } else {
+      const rule = await crm.assignment.createRule(ctx, ownerActor, {
+        name: "lead ใหม่ — ทีมขายองค์กร (round-robin)",
+        mode: "ROUND_ROBIN",
+        userIds: staff,
+        maxOpenPerUser: null, // เว้นว่าง = ไม่จำกัด (ตามแบบ)
+        conditions: { mode: "AND", items: [{ field: "sourceKind", op: "eq", value: "WEB_FORM" }] },
+        active: true,
+      });
+      TMP.ruleIds.push(rule.id);
+      console.log(`🧪 เตรียมของ C2.3: กฎ "${rule.name}" (${rule.mode} · ผู้รับ ${rule.userIds.length} คน)`);
+      specs.push({
+        name: `crm-assignment-rule-editor-${userKey}`,
+        path: `${CRM_BASE}/settings/assignment`,
+        note: "ตัวแก้กฎที่เปิดจากกฎจริง \"lead ใหม่ — ทีมขายองค์กร (round-robin)\" (ปุ่ม \"แก้\" ในแถว) — ชื่อ/วิธีแจก/ผู้รับ/เงื่อนไข ช่องทางที่มา = ฟอร์มบนเว็บ",
+        expect: ["[data-testid=crm-assign-editor]", "[data-testid=crm-assign-rule-mode]"],
+        steps: [{ waitFor: `[data-testid=crm-assign-rule-edit-${rule.id}]`, timeoutMs: 20_000 }, { click: `[data-testid=crm-assign-rule-edit-${rule.id}]` }, { wait: 400 }],
+      });
+    }
+  }
+}
+// ◂ เตรียมของจริงของ C2.2 / C2.3
 
 // ── mint session (เรียกจากในกรอบ try เท่านั้น — ดูหมายเหตุหัวไฟล์) ──
 const UA = "qc-visual-crm";

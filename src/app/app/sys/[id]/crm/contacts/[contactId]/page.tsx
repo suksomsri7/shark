@@ -23,6 +23,10 @@ import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 // CRM C1.9 ▸ แท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
 import { CrmObjectTabs } from "@/components/crm/objects/ObjectTabs";
+// CRM C2.2 ▸ ลำดับการติดตาม: ปุ่มใส่เข้าลำดับ + สถานะของผู้ติดต่อคนนี้ (ใบ C2.2 เป็นเจ้าของ) ◂
+import { listEnrollments, sequenceOptions } from "@/lib/modules/crm/sequences";
+import { SEQ_STATUS_LABEL, type SeqEnrollStatus } from "@/lib/modules/crm/sequences-shared";
+import { SequenceEnrollButton } from "@/components/crm/sequences/SequenceEnrollButton";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -59,6 +63,14 @@ export default async function Contact360Page({
   const live = !c.archivedAt && !c.mergedIntoId;
   const noOptions: ConvertOptions = { memberSystems: [], pipelines: [] };
   const [owners, options]: [{ id: string; name: string }[], ConvertOptions] = live ? await Promise.all([ownerOptions(ctx, actor), convertOptions(ctx, actor)]) : [[], noOptions];
+  // CRM C2.2 ▸ ลำดับการติดตามของผู้ติดต่อคนนี้ (อ่านล้ม/ไม่มีคีย์ = ไม่แสดงบล็อก · หน้าไม่ล้ม)
+  const [seqOptions, seqEnrollments] = await Promise.all([
+    sequenceOptions(ctx, actor).catch(() => []),
+    listEnrollments(ctx, actor, { contactId: c.id, take: 20 })
+      .then((r) => r.items)
+      .catch(() => []),
+  ]);
+  // ◂ CRM C2.2
   const base = `/app/sys/${id}/crm/contacts`;
   const name = contactLabel(c);
   const now = new Date();
@@ -335,6 +347,31 @@ export default async function Contact360Page({
             )}
           </section>
 
+          {/* CRM C2.2 ▸ ลำดับการติดตาม: สถานะของคนนี้ + ปุ่มใส่เข้าลำดับ (ผู้ที่ขอไม่รับข่าวสารถูกข้ามในบริการ) */}
+          <section className="card flex flex-col gap-2 p-4 text-sm" data-testid="contact-360-sequences">
+            <h2 className="font-semibold">↻ ลำดับการติดตาม</h2>
+            {seqEnrollments.length === 0 ? (
+              <p className="text-xs text-[color:var(--color-muted)]">ยังไม่อยู่ในลำดับการติดตามใด</p>
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {seqEnrollments.map((e) => (
+                  <li key={e.id} className="flex flex-col gap-0.5 py-2" data-testid={`contact-360-seq-${e.id}`}>
+                    <span className="break-words font-medium">{e.sequenceName}</span>
+                    <span className="text-xs text-[color:var(--color-muted)]">
+                      {SEQ_STATUS_LABEL[e.status as SeqEnrollStatus] ?? e.status} · ขั้นที่ {Math.min(e.stepIndex + 1, Math.max(e.stepCount, 1)).toLocaleString("th-TH")}/{e.stepCount.toLocaleString("th-TH")}
+                      {e.currentStep ? ` · ${e.currentStep}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {c.marketingOptOut ? (
+              <p className="text-xs text-[color:var(--color-muted)]">ผู้ติดต่อนี้ขอไม่รับข่าวสารไว้ — ระบบจะไม่ใส่เข้าลำดับการติดตาม</p>
+            ) : (
+              <SequenceEnrollButton systemId={id} contactId={c.id} sequences={seqOptions} disabled={!live} />
+            )}
+          </section>
+          {/* ◂ CRM C2.2 */}
           <ConsentBlock systemId={id} contactId={c.id} consent={data.consent} disabled={!live} />
         </aside>
       </div>

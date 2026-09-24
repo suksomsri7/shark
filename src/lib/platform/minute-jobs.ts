@@ -148,6 +148,22 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.1
+// CRM C2.2 ▸ ลำดับการติดตาม (ใบ C2.2 · §5.7) — ทำขั้นที่ถึงเวลา ทุก 5 นาที (≤ 200 แถว/ชุด · วนจนเงียบภายในงบของตัวรัน)
+//   🔴 ลงทะเบียน "ตรงนี้" เหมือนงานของ C2.1 โดยตั้งใจ (มติผู้คุมงานรีวิว C2.2 ข้อ 6): เดิมลงทะเบียนเป็นผลข้างเคียงของการ
+//      import `crm/sequences` ⇒ `/api/cron/outbox` ที่เรียก runMinuteJobs โดยไม่ได้ import โมดูล CRM จะ "มี" งานนี้เฉพาะใน
+//      โพรเซสที่อุ่นอยู่แล้วเท่านั้น (เย็น = ไม่มี) — จังหวะการทำงานจริงขึ้นกับลำดับการโหลด และป้าย "ตัวจับเวลายังไม่เดิน" เชื่อไม่ได้
+//   โหลด CRM ผ่าน facade ตอนรันเท่านั้น (ห้ามลากกราฟ CRM ตอนโหลดไฟล์นี้) · ประตู uiVersion อยู่ในตัวงาน (runDue กรองเฉพาะระบบที่ = 2)
+//   idempotent: ทุกแถวถูกจองด้วย lease ในฐาน ⇒ route + crontab ยิงพร้อมกันก็ทำขั้นละครั้งเดียว (AUDIT-CLASS X5)
+registerMinuteJob({
+  name: "crm.sequences",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { sequences } = await import("@/lib/modules/crm");
+    await sequences.runDue(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C2.2
 
 function errorText(e: unknown): string {
   let s: string;

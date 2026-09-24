@@ -199,6 +199,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ...(crmCan(membershipOf(auth), "crm.contact.merge") ? [{ href: `${s}/crm/contacts/duplicates`, label: "ผู้ติดต่อที่น่าจะซ้ำ" }] : []),
               ...(crmCan(membershipOf(auth), "crm.company.merge") ? [{ href: `${s}/crm/companies/duplicates`, label: "บริษัทที่น่าจะซ้ำ" }] : []),
               // ◂ CRM C1.11
+              // CRM C2.2 ▸ ลำดับการติดตาม (crm.sequence.manage หรือ crm.sequence.enroll) · วันทำการและวันหยุด (crm.sequence.manage)
+              //   — 404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.sequence.manage") || crmCan(membershipOf(auth), "crm.sequence.enroll")
+                ? [{ href: `${s}/crm/settings/sequences`, label: "ลำดับการติดตาม" }]
+                : []),
+              ...(crmCan(membershipOf(auth), "crm.sequence.manage") ? [{ href: `${s}/crm/settings/holidays`, label: "วันทำการและวันหยุด" }] : []),
+              // ◂ CRM C2.2
+              // CRM C2.3 ▸ มอบหมายอัตโนมัติ (404 สำหรับคนที่ไม่มี crm.assignment.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.assignment.manage") ? [{ href: `${s}/crm/settings/assignment`, label: "มอบหมายอัตโนมัติ" }] : []),
+              // ◂ CRM C2.3
               ]
             : []),
           // ◂ CRM uiVersion gate

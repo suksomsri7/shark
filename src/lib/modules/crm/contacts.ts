@@ -144,6 +144,9 @@ export type CreateContactInput = {
   ownerUserId?: string | null;
   lineUserId?: string | null;
   force?: boolean | null;
+  // CRM C2.3 ▸ ภาษาที่ใช้คุยกับลูกค้า (`CrmContact.locale`) — เงื่อนไข "ภาษา" ของกฎมอบหมายอ่านค่านี้ ⇒ ต้องมาถึงตัวเลือกผู้ดูแล
+  //   ก่อนแถวถูกเขียน (ส่งมาใน `fields: { locale }` ก็ได้ — ฟิลด์ระบบตัวเดียวกัน) · ไม่ส่ง = คอลัมน์ใช้ค่าเริ่มต้นเดิม ◂
+  locale?: string | null;
 };
 
 export type UpdateContactPatch = {
@@ -495,7 +498,19 @@ type CreateClean = {
   tags: string[];
   ownerUserId: string | null;
   companyId: string | null;
+  /** CRM C2.3 ▸ ภาษาของลูกค้า — ลงคอลัมน์ `locale` และเข้าร่าง lead ของกฎมอบหมาย (null = ใช้ค่าเริ่มต้นของคอลัมน์) ◂ */
+  locale: string | null;
 };
+
+// CRM C2.3 ▸ รหัสภาษาของลูกค้า: BCP-47 หลายส่วนก็ได้ (`th` · `en` · `zh-hans` · `zh-hant-tw` — ตัวเล็กทั้งหมด · `_` แปลงเป็น `-`)
+//   ผิดรูป/ว่าง = null
+//   🔴 ไม่ throw: นี่คือทางรับ lead (ฟอร์ม/แชท/ระบบภายนอก) — ค่าที่อ่านไม่ออกต้องไม่ทำให้ลีดของร้านหล่นหาย
+//      ผลของ null = เหมือนเดิมทุกไบต์ (คอลัมน์ใช้ default "th" · เงื่อนไขภาษาอ่านได้ "th")
+function cleanLocale(v: unknown): string | null {
+  const s = (str(v) ?? "").toLowerCase().replace(/_/g, "-");
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(s) ? s.slice(0, 35) : null;
+}
+// ◂ CRM C2.3
 
 function cleanCreate(input: CreateContactInput): CreateClean {
   const firstName = cleanName(input.firstName, "ชื่อจริง", true) as string;
@@ -517,6 +532,7 @@ function cleanCreate(input: CreateContactInput): CreateClean {
     tags: tags.tags,
     ownerUserId: str(input.ownerUserId),
     companyId: str(input.companyId),
+    locale: cleanLocale(input.locale), // CRM C2.3 ◂
   };
 }
 
@@ -612,6 +628,9 @@ type CreateCoreOpts = {
   custom?: Record<string, unknown>;
   /** ช่องข้อความเดิมของ v1 (`company` · `source`) — ใช้โดยตัวห่อ v1 เท่านั้น */
   legacy?: { company?: string | null; source?: string | null; name?: string | null; note?: string | null };
+  // CRM C2.3 ▸ `auto` = ใช้กฎมอบหมายแม้มีคนสร้าง (`ownerUserId: "auto"`) · `leave` = "ใครลาอยู่" ที่อ่านก่อนเปิด tx (assignment.leaveSnapshot) ◂
+  auto?: boolean;
+  leave?: assignment.AssignmentLeaveSnapshot | null;
 };
 type CreateCoreResult = { row: CrmContact; created: boolean; duplicates: DuplicateHit[] };
 
@@ -621,12 +640,14 @@ type CreateCoreResult = { row: CrmContact; created: boolean; duplicates: Duplica
  *   อ่านตัวซ้ำหลังได้ล็อก (READ COMMITTED = เห็นของคนก่อนหน้า) ⇒ ได้แถวเดียว ผู้แพ้ได้ `created:false` + ตัวซ้ำ
  */
 async function createCore(ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: CreateCoreOpts): Promise<CreateCoreResult> {
+  // CRM C2.3 ▸ ทางอัตโนมัติ: อ่านสถานะลาก่อนเปิด tx (ใน tx ห้ามยืม connection ที่สอง) ◂
+  const leave = opts.leave !== undefined ? opts.leave : await autoLeave(ctx, actor, c, opts);
   try {
     return await prisma.$transaction(async (tx) => {
       for (const k of identKeys(ctx, c.phone, c.email)) await lockKey(tx, k);
       const dup = await duplicateHits(tx, ctx, { phone: c.phone, email: c.email });
       if (dup.hits.length > 0 && !opts.force) return { row: dup.rows[0] as CrmContact, created: false, duplicates: dup.hits };
-      const row = await insertContactInTx(tx, ctx, actor, c, opts);
+      const row = await insertContactInTx(tx, ctx, actor, c, { ...opts, leave });
       return { row, created: true, duplicates: dup.hits };
     }, TX_OPTS);
   } catch (e) {
@@ -648,11 +669,24 @@ function identKeys(ctx: ContactsCtx, phone: string | null, email: string | null)
  * event `crm.contact.created` (+ `crm.contact.assigned` เมื่อได้ผู้ดูแล) ใน tx เดียวกัน
  */
 async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: Omit<CreateCoreOpts, "force"> & { partyId?: string | null }): Promise<CrmContact> {
-  // "คนที่สร้าง" = actor ที่ยืนยันตัวแล้ว (ctx.actorUserId เป็นแค่สำเนา — ไม่ตรงกัน ให้ actor ชนะ) · ไม่มี actor (v1/ฟอร์ม/สะพาน) = ctx
-  const pick = assignment.pick(ctx, { fixedOwnerUserId: c.ownerUserId, creatorUserId: actor?.userId || actorId(ctx), via: opts.via });
   const name = opts.legacy?.name ?? joinName(c.firstName, c.lastName);
   const custom = opts.custom ?? {};
   const partyId = opts.partyId ?? (await personParty(tx, ctx.tenantId, { name, phone: c.phone, email: c.email }));
+  // CRM C2.3 ▸ ตัวเลือกผู้ดูแลจริง (แทน stub C1.4) — await ใน tx นี้ (cursor round-robin/เพดานงานค้างถอยพร้อม tx) · ร่าง lead ให้เงื่อนไขของกฎ
+  //   "คนที่สร้าง" = actor ที่ยืนยันตัวแล้ว (ctx.actorUserId เป็นแค่สำเนา — ไม่ตรงกัน ให้ actor ชนะ) · ไม่มี actor (v1/ฟอร์ม/สะพาน) = ctx
+  const pick = await assignment.pick(
+    ctx,
+    {
+      fixedOwnerUserId: c.ownerUserId,
+      creatorUserId: actor?.userId || actorId(ctx),
+      via: opts.via,
+      auto: opts.auto === true,
+      draft: { sourceKind: c.sourceKind, sourceChannel: c.sourceChannel, locale: c.locale, partyId, companyId: c.companyId, fields: custom },
+      leave: opts.leave ?? null,
+    },
+    tx,
+  );
+  // ◂ CRM C2.3
   const now = new Date();
   const row = await tx.crmContact.create({
     data: {
@@ -672,11 +706,14 @@ async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | 
       note: opts.legacy?.note ?? null,
       sourceKind: c.sourceKind,
       sourceChannel: c.sourceChannel,
+      // CRM C2.3 ▸ ภาษาของลูกค้า — `undefined` (ไม่ส่งค่า) = คอลัมน์ใช้ default เดิม "th" ⇒ แถวของร้านที่ไม่ส่งภาษาเหมือนเดิมทุกไบต์ ◂
+      locale: c.locale ?? undefined,
       sourceDetail: (c.sourceDetail ?? undefined) as Prisma.InputJsonValue | undefined,
       tags: c.tags,
       ownerUserId: pick.ownerUserId,
       assignedAt: pick.ownerUserId ? now : null,
       assignedBy: pick.ownerUserId ? pick.assignedBy : null,
+      teamId: pick.ownerUserId ? pick.teamId : null, // CRM C2.3 ◂
       partyId,
     },
   });
@@ -686,8 +723,18 @@ async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | 
   }
   await emitContactEvent(tx, ctx, "created", row.id, "1", { contactId: row.id, partyId: row.partyId });
   if (row.ownerUserId) await emitContactEvent(tx, ctx, "assigned", row.id, "1", { contactId: row.id, ownerUserId: row.ownerUserId, previousOwnerUserId: null });
+  // CRM C2.3 ▸ ไม่มีใครรับได้บนทางอัตโนมัติ (v2 เท่านั้น) ⇒ แจ้ง OWNER/MANAGER ใน tx นี้ (ผู้ติดต่อเกิดครั้งเดียว = แจ้งครั้งเดียว · id ล้วน) ◂
+  if (pick.reason === "NOBODY") await assignment.notifyUnassigned(tx, ctx, row.id);
   return row;
 }
+
+// CRM C2.3 ▸ "ใครลาอยู่" ของทางอัตโนมัติ (ไม่มีผู้ดูแลที่เลือก · ไม่มีคนสร้างหรือขอ auto) — อ่านก่อนเปิด tx · ทางอื่น = null (ไม่อ่านอะไร)
+async function autoLeave(ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: { auto?: boolean }): Promise<assignment.AssignmentLeaveSnapshot | null> {
+  if (c.ownerUserId) return null;
+  if ((actor?.userId || actorId(ctx)) && opts.auto !== true) return null;
+  return assignment.leaveSnapshot(ctx);
+}
+// ◂ CRM C2.3
 
 /** ตรวจบริษัทที่เลือกให้ผู้ติดต่อ (ระบบเดียวกัน · ยังใช้งาน) */
 async function assertCompany(ctx: ContactsCtx, actor: MemberActor, companyId: string): Promise<void> {
@@ -710,11 +757,18 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
   const a = await enter(ctx, actor);
   need(a, "crm.contact.create");
   const { merged, custom } = await splitFields((input ?? {}) as CreateContactInput, input?.fields);
-  const clean = cleanCreate(merged);
+  // CRM C2.3 ▸ `ownerUserId: "auto"` (พิมพ์เขียว §5.3) = ให้กฎมอบหมายเลือก · ระบุคน = คนนั้น · ไม่ระบุ = คนที่สร้าง (C1.4 เดิม)
+  //   ภาษาของลูกค้าส่งมาได้ทั้ง `locale` ตรง ๆ และใน `fields: { locale }` (ฟิลด์ระบบตัวเดียวกัน) — อ่านค่าไว้ใช้ตัดสินผู้ดูแล
+  //   โดย **ไม่ย้ายออกจาก bag** (engine ยังเป็นผู้เขียนค่าฟิลด์รอบหลัง insert เหมือนเดิม · ค่าเดียวกัน คอลัมน์เดียวกัน) ◂
+  const auto = str(merged.ownerUserId) === "auto";
+  const localeIn = merged.locale ?? (typeof custom.locale === "string" ? custom.locale : null);
+  const clean = cleanCreate({ ...merged, locale: localeIn, ...(auto ? { ownerUserId: null } : {}) });
+  // ค่าที่มาทาง `fields.locale` ต้องลงคอลัมน์เป็นรูปเดียวกับที่ใช้ตัดสิน (engine เขียนทับรอบหลัง insert — "EN" ต้องไม่ชนะ "en")
+  if (typeof custom.locale === "string" && clean.locale) custom.locale = clean.locale;
   if (clean.ownerUserId) await assertMember(ctx, clean.ownerUserId);
   if (clean.companyId) await assertCompany(ctx, a, clean.companyId);
   await seedContactFields(ctx, a);
-  const res = await createCore(ctx, a, { ...clean, sourceKind: clean.sourceKind ?? "CRM" }, { force: input?.force === true, via: "USER", custom });
+  const res = await createCore(ctx, a, { ...clean, sourceKind: clean.sourceKind ?? "CRM" }, { force: input?.force === true, via: "USER", custom, auto });
   if (!res.created) return { contact: toDto(res.row), created: false, duplicates: res.duplicates, warnings: [] };
   const warnings: string[] = [];
   if (clean.companyId) {
@@ -788,6 +842,7 @@ function legacyCreateArgs(
       tags: [],
       ownerUserId: owner,
       companyId: null,
+      locale: null, // CRM C2.3 ▸ ทางห่อ v1/สะพานไม่รู้ภาษา (คอลัมน์ใช้ค่าเริ่มต้นเดิม) — สะพานที่รู้ภาษาส่งผ่าน `BridgeLeadInput.locale` ◂
     },
     legacy: { company: str(input?.company)?.slice(0, CONTACT_TEXT_MAX) ?? null, source: legacySource, name: full || "ไม่ระบุชื่อ", note },
   };
@@ -2165,6 +2220,13 @@ export type BridgeLeadInput = {
   sourceDetail?: Record<string, unknown> | null;
   /** FORM: หัวเรื่องกิจกรรม (ไม่มีข้อมูลบุคคล) */
   activityTitle?: string | null;
+  // CRM C2.3 ▸ ภาษาที่ลูกค้าใช้ (ถ้าสะพานรู้ เช่น `ChatContact.lang` / คำตอบช่องภาษาของฟอร์ม) — ลงคอลัมน์ `locale` และเข้าเงื่อนไข "ภาษา" ของกฎ
+  locale?: string | null;
+  /**
+   * CRM C2.3 ▸ ค่าฟิลด์กำหนดเองที่มากับสะพาน (คีย์ = key ของฟิลด์) — ไหลเข้าทางเดียวกับ `createContact({ fields })`
+   * 🔴 การ "จับคู่คำตอบฟอร์ม → ฟิลด์กำหนดเอง" เป็นของใบ C2.6 · ที่นี่แค่เปิดทางให้ค่าที่ผู้เรียกจับคู่มาแล้วไม่ตกหาย ◂
+   */
+  fields?: Record<string, unknown> | null;
   // CRM C1.11 ▸ (รีวิว SF-6) คนกดเอง (ปุ่ม "สร้าง lead จากแชท") — audit เป็น USER คนนี้ · ไม่ส่ง = SYSTEM (สะพานอัตโนมัติ) ◂
   actorUserId?: string | null;
   /** ช่องทางที่บันทึกใน audit (`after.via`) — ไม่ส่ง = "bridge" */
@@ -2201,12 +2263,37 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
   if ((kind === "FORM" || kind === "FORM_V1") && !subId) throw fail("VALIDATION", "ไม่พบรหัสคำตอบของฟอร์ม — ข้ามรายการนี้");
   if (kind === "CHAT" && !partyIn) throw fail("VALIDATION", "ไม่พบตัวตนกลางของผู้ติดต่อแชท — ข้ามรายการนี้");
   const base = legacyCreateArgs({ name: str(input?.name) ?? "ไม่ระบุชื่อ", phone: input?.phone ?? null, email: input?.email ?? null, source: kind === "CHAT" ? null : "FORM" }, null);
-  const clean: CreateClean = { ...base.clean, sourceKind: kind === "CHAT" ? "CHAT" : "WEB_FORM", sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null) };
+  const clean: CreateClean = {
+    ...base.clean,
+    sourceKind: kind === "CHAT" ? "CHAT" : "WEB_FORM",
+    sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null),
+    locale: cleanLocale(input?.locale ?? null), // CRM C2.3 ◂
+  };
+  // CRM C2.3 ▸ ค่าฟิลด์กำหนดเองที่สะพานจับคู่มาแล้ว (ไม่มี = {} เหมือนเดิม)
+  //   🔴 เก็บเฉพาะคีย์ที่ร้านนี้ "มีฟิลด์นั้นจริง" (ไม่ใช่ฟิลด์ระบบ · ไม่เก็บเข้าคลัง) — คีย์ที่ไม่รู้จักถูกทิ้งเงียบ ๆ
+  //      เพราะ engine จะปฏิเสธทั้งรายการ ⇒ **ลีดจากฟอร์ม/แชทจะหล่นหาย** เพียงเพราะการจับคู่ของใบ C2.6 ยังไม่ตรง ◂
+  const bridgeCustom: Record<string, unknown> = {};
+  if (isObj(input?.fields)) {
+    const wanted = Object.keys(input.fields as Record<string, unknown>).slice(0, 50);
+    const known = wanted.length
+      ? new Set(
+          (
+            await prisma.memberField.findMany({
+              where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "contact", key: { in: wanted }, isSystem: false, archivedAt: null },
+              select: { key: true },
+            })
+          ).map((f) => f.key),
+        )
+      : new Set<string>();
+    for (const k of wanted) if (known.has(k)) bridgeCustom[k] = (input.fields as Record<string, unknown>)[k];
+  }
   const legacy = { ...base.legacy, source: kind === "CHAT" ? null : "FORM", note: kind === "CHAT" ? null : base.legacy.note };
   const canonical = kind === "CHAT" ? await party.resolveCanonical(ctx.tenantId, partyIn as string) : null;
   const flagRef = kind === "CHAT" ? `chat.party#${canonical}` : `forms.submission#${subId}`;
   const forms = kind === "CHAT" ? null : await formsFacade();
   await seedContactFields(ctx, null);
+  // CRM C2.3 ▸ สะพาน (ไม่มีคนสร้าง) = ทางอัตโนมัติ ⇒ อ่านสถานะลาก่อนเปิด tx · คนกดเอง (chat-panel) = คนนั้นเป็นผู้ดูแลตามเดิม ◂
+  const leave = await autoLeave(ctx, null, clean, {});
   try {
     const out = await prisma.$transaction(async (tx) => {
       const keys = kind === "CHAT" ? [`crm:contact-party:${ctx.systemId}:${canonical}`] : [`crm:bridge-lead:${ctx.systemId}:${flagRef}`, ...identKeys(ctx, clean.phone, clean.email)];
@@ -2229,7 +2316,10 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
       }
 
       // ── ผู้ติดต่อ (ตัวเขียนเดียวกับ createContact) ──
-      const row = existing ?? (await insertContactInTx(tx, ctx, null, clean, { via: "API", legacy, partyId: kind === "CHAT" ? canonical : null }));
+      // CRM C2.3 ▸ `fields` ของสะพานไหลเข้า engine ฟิลด์ทางเดียวกับ createContact (ไม่ส่ง = ไม่มีอะไรเปลี่ยน) ◂
+      const row =
+        existing ??
+        (await insertContactInTx(tx, ctx, null, clean, { via: "API", legacy, partyId: kind === "CHAT" ? canonical : null, leave, custom: bridgeCustom /* CRM C2.3 ◂ */ }));
       const created = !existing;
 
       // ── กิจกรรม (ฟอร์ม v2 · 1 รายการต่อคำตอบ) + ธงของฟอร์ม ──

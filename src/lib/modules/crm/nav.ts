@@ -66,6 +66,14 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C2.1 ▸ กฎอัตโนมัติ CRM (ตัวสร้างกฎประโยคไทย · กฎเริ่มต้น 6 · ทดลองรัน · บันทึกการทำงาน — ภาพ 07 บน)
   { key: "settings-automation", label: "กฎอัตโนมัติ", path: "/crm/settings/automation", status: "ready", wo: "C2.1" },
   // ◂ CRM C2.1
+  // CRM C2.2 ▸ ลำดับการติดตาม (รายการ + ตัวแก้ไข `/crm/settings/sequences/[sequenceId]` เป็น [param] ไม่ขึ้นเมนู)
+  //   + วันทำการ/วันหยุดที่ขั้น "รอ" ใช้นับ (ภาพ 07 ล่าง)
+  { key: "settings-sequences", label: "ลำดับการติดตาม", path: "/crm/settings/sequences", status: "ready", wo: "C2.2" },
+  { key: "settings-holidays", label: "วันทำการและวันหยุด", path: "/crm/settings/holidays", status: "ready", wo: "C2.2" },
+  // ◂ CRM C2.2
+  // CRM C2.3 ▸ มอบหมาย lead อัตโนมัติ (กฎตามลำดับ · วิธีแจก 4 แบบ · ผู้รับสำรอง · ทดลอง — ภาพ 07 ขวา)
+  { key: "settings-assignment", label: "มอบหมายอัตโนมัติ", path: "/crm/settings/assignment", status: "ready", wo: "C2.3" },
+  // ◂ CRM C2.3
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

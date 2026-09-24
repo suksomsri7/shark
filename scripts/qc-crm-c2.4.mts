@@ -630,9 +630,12 @@ try {
     const txns = await usageFor(tidA, `crm.call.transcribe#${callId}`);
     const bal1 = await balance(tidA);
     const noPii = txns.every((t) => !PII.some((p) => j(t).includes(p)));
-    chk("C2.4-S2.3", "AI credit: exactly ONE AiCreditTxn USAGE with note `crm.call.transcribe#<activityId>` (amount < 0, ids only) and the wallet went down by that amount",
-      txns.length === 1 && Number(txns[0].amountMicro) < 0 && bal0 - bal1 === -Number(txns[0].amountMicro) && noPii, "1 charge",
-      `txns=${txns.length} amount=${txns[0]?.amountMicro ?? "-"} Δwallet=${bal0 - bal1} noPii=${noPii}`);
+    // ORACLE-EDIT C2.4-S2.3 (controller · 24 Sep): ruling R2 REPLACED — CRM AI is charged under source `CRM_ASSIST` (added by C2.0),
+    //   not MEMBER_ASSIST; the oracle must assert the source, otherwise a charge under any source passes.
+    const srcOk = txns.every((t) => String(t.source ?? "") === "CRM_ASSIST");
+    chk("C2.4-S2.3", "AI credit: exactly ONE AiCreditTxn USAGE with note `crm.call.transcribe#<activityId>` (amount < 0, ids only) · source = CRM_ASSIST (controller ruling R2, C2.0 enum) · and the wallet went down by that amount",
+      txns.length === 1 && Number(txns[0].amountMicro) < 0 && bal0 - bal1 === -Number(txns[0].amountMicro) && noPii && srcOk, "1 charge · source CRM_ASSIST",
+      `txns=${txns.length} amount=${txns[0]?.amountMicro ?? "-"} source=${txns[0]?.source ?? "-"} Δwallet=${bal0 - bal1} noPii=${noPii}`);
   }
   // refusal fixtures: N (no credit, setting on) · A2 (setting off) · A with no transcriber
   const callN = await mkCall(cN, ctN.id);

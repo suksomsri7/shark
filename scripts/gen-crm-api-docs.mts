@@ -223,7 +223,8 @@ export function renderDocs(): string {
     "| --- | --- |",
   );
   for (const e of crmWebhookEvents()) {
-    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
+    // CRM C2.2 ▸ ตระกูล `crm.sequence.*` (ลำดับการติดตาม) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด ◂
+    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }
   push(

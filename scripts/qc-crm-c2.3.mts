@@ -78,6 +78,12 @@
 //        tenant else VALIDATION · stored at AppSystem.settings.crm.assignment.fallbackUserId with ONE jsonb_set statement (other crm keys
 //        survive) · audited
 //      openLoadOf(ctx, userIds: string[]) → Record<userId, number> (the OPEN LOAD above — the UI "คิว" column reads it)
+//      pageData(ctx, actor) → { rules (+ nextUserId · candidateIds) · fallbackUserId · users · teams · contactFields } — the read model of
+//        the page (ORACLE-EDIT 24 ก.ย. 2569 · ruling B1 · S1 · S6 · NOTE 1): `crm.assignment.manage` else refused in Thai (404/403 — never
+//        data) · contactFields = ONLY the non-system, non-sensitive custom fields of THIS system (a `f.<key>` a rule can really match) and
+//        the label of a `sensitive` field appears NOWHERE in the payload · member rows carry NO e-mail (name only) · `onLeave` exists ONLY
+//        for a viewer holding `hr.leave.read` — without the key the KEY ITSELF IS ABSENT from every row · the "คิว" numbers pass through
+//        `visibleWhere` (under an OWN policy other people's records are not counted)
 //      error class AssignmentError (code VALIDATION | NOT_FOUND | FORBIDDEN | CRM_V2_DISABLED) — CrmForbiddenError / CrmV2DisabledError accepted
 //   B. `src/lib/modules/crm/assignment-shared.ts` — pure (no prisma / next / server-only / ./db): ASSIGN_MODES (4) ·
 //      ASSIGN_CONDITION_FIELDS ⊇ sourceKind sourceChannel province companySize language (+ the "f." prefix) · ASSIGN_OPS eq neq in contains ·
@@ -88,13 +94,25 @@
 //      reason NOBODY on the automatic path ⇒ ONE AppNotification per accepted OWNER/MANAGER membership of the tenant (recipientUserId set,
 //      Thai title, body = a link with the contact id — no name/phone/e-mail), at most once per contact (X4) · crm.contact.assigned stays
 //      the only event (payload ids only; may add ruleId/teamId) — NO new outbox event type in C2.3.
-//   D. facade `src/lib/modules/crm/index.ts`: `export * as assignment from "./assignment"` inside `// CRM C2.3 ▸ … ◂`
+//   D. facade `src/lib/modules/crm/index.ts`: the namespace `assignment` inside `// CRM C2.3 ▸ … ◂` — `export * as assignment from
+//      "./assignment"` OR (ruling of 24 ก.ย. 2569, item S5) a re-exported facade OBJECT declared in assignment.ts, because a namespace
+//      export cannot hide one member and that ruling takes `openLoadOf` OFF the facade (no actor / key / gate / visibility filter yet;
+//      it stays exported from assignment.ts so the oracle can call it — C2.11/C3.2 will publish it with an actor + key)
 //   E. UI `/app/sys/[id]/crm/settings/assignment` (page.tsx: CRM guard type "CRM" → requireCrmV2Page → crmCan(… "crm.assignment.manage")
 //      else notFound()) · nav entry path "/crm/settings/assignment" status "ready" wo "C2.3" · testids (rows in scripts/crm-ui-inventory.json,
 //      page "/settings/assignment", wo "C2.3", ≥ 6): crm-assign-rule-list · crm-assign-rule-new · crm-assign-rule-row-* · crm-assign-rule-
 //      toggle-* · crm-assign-rule-delete-* · crm-assign-rule-move-* · crm-assign-fallback · crm-assign-simulate-run · crm-assign-simulate-
 //      result · crm-assign-next-* (mockup "คิวถัดไป") · "use server" actions: async exports only + assertCrmV2 · client files never reach prisma.
 //
+// CHECK INVENTORY: 80 checks · S0 5 · S1–S6 22 · S7 7 · S8 7 · S9 3 · S10 6 · X1 6 · X3 8 · X4 3 · X8 2 · X9 3 · U 7 · CLEAN
+//   (ORACLE-EDIT ผู้คุมงาน 24 ก.ย. 2569 — ของใหม่ 11 ข้อ: S8.1–S8.6 = `pageData` (ด่านสิทธิ์ · ฟิลด์ที่เสนอ · label อ่อนไหว · การลา ·
+//    อีเมลพนักงาน · คิวใต้ visibleWhere) · S8.7 = เงื่อนไข `language` ผ่านเส้นทางสร้างจริง (S2) · X3.5/X3.6 = ROUND_ROBIN + maxOpenPerUser ·
+//    U.6/U.7 = `createContactFromLegacy` บนร้าน uiVersion 2 · แก้ให้แน่นขึ้น: S0.1 (pageData ในสัญญา) · S6.4 (นับจำนวนครั้งที่ render) ·
+//    S6.5 (เดินกราฟ import จริง 2 ชั้น)) · รอบสอง (ผู้คุมงาน 24 ก.ย. 2569): S9.1 = กฎ {teamId, userIds} ที่ผู้รับไม่ได้อยู่ในทีมนั้น (S8) ·
+//    S9.2 = server action ของปุ่ม "ทดลอง" ต้องส่งต่อทุกช่องที่จอกรอกได้ (S3) · S9.3 = ไม่พิมพ์เพดาน simMax ซ้ำเป็นเลขลอย (S10)
+//    รอบสาม (ผู้คุมงาน · ผู้ตรวจรอบสอง 24 ก.ย. 2569): S10.1 = การลาต้องไม่รั่วทาง `nextUserId`/`simulate` (B1-bis · S8.4 รัดเพิ่ม) ·
+//    S10.2 = กฎห้ามอ้าง `f.<key>` ที่เป็นฟิลด์อ่อนไหว/ฟิลด์ระบบ · S10.3 = "ปิดรับ lead" ของทีมตัวเองต้องนับด้วยแม้กฎอ้างทีมอื่น ·
+//    S10.4 = ร้านที่ยังไม่ตั้งกฎเลยต้องไม่ถูกแจ้งเตือนรายใบ · S10.5 = ผู้รับสำรองต้องมีคีย์อ่านผู้ติดต่อ · S10.6 = locale ผ่านสะพาน
 // WHAT THIS FILE PROVES: S0 structure · S1–S6 (22, CRM-RUN) · S7 brief extras · U uiVersion-1 PERMANENT RULE · X1 X3 (in-process AND worker
 //   PROCESSES) X4 X8 X9 · CLEAN.  n/a: X2 (no REST op / AI tool — C2.11) · X5 (no cron pick-up) · X6 (no free-text input reaches a sink:
 //   conditions are enum/keys, values compared only) · X7 (no public endpoint) · X10 (no file / secret).
@@ -103,7 +121,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 
 const A_FILE = "src/lib/modules/crm/assignment.ts";
@@ -283,16 +301,17 @@ try {
   const getSettingsF = fnOf(AS, "getAssignmentSettings");
   const setFallbackF = fnOf(AS, "setFallbackUser");
   const openLoadF = fnOf(AS, "openLoadOf");
+  const pageDataF = fnOf(AS, "pageData"); // ORACLE-EDIT 24 ก.ย. 2569: `pageData` เข้าสัญญา (เดิมเป็น "ของแถม" ที่ไม่มีข้อสอบข้อไหนแตะ)
   {
     const need: [string, Any][] = [["pick", pickF], ["simulate", simulateF], ["listRules", listRulesF], ["createRule", createRuleF], ["updateRule", updateRuleF], ["toggleRule", toggleRuleF],
-      ["deleteRule", deleteRuleF], ["reorderRules", reorderRulesF], ["getAssignmentSettings", getSettingsF], ["setFallbackUser", setFallbackF], ["openLoadOf", openLoadF]];
+      ["deleteRule", deleteRuleF], ["reorderRules", reorderRulesF], ["getAssignmentSettings", getSettingsF], ["setFallbackUser", setFallbackF], ["openLoadOf", openLoadF], ["pageData", pageDataF]];
     const missing = need.filter(([, f]) => typeof f !== "function").map(([n]) => n);
     const shImpure = /from\s+["'](@prisma\/client|@\/lib\/core\/db|next\/[^"']+|server-only|\.\/db|\.\/assignment)["']/.test(shSrc);
     const modes = Array.isArray(ASH.ASSIGN_MODES) ? [...ASH.ASSIGN_MODES].map(String).sort().join(",") : "";
     const fields = Array.isArray(ASH.ASSIGN_CONDITION_FIELDS) ? (ASH.ASSIGN_CONDITION_FIELDS as Any[]).map((x) => String(x?.value ?? x?.key ?? x)) : [];
-    chk("C2.3-S0.1", "assignment.ts exports the 11 contract functions (pick · simulate · listRules/createRule/updateRule/toggleRule/deleteRule/reorderRules · getAssignmentSettings/setFallbackUser · openLoadOf) · assignment-shared.ts is pure and exports ASSIGN_MODES (the 4 modes) + ASSIGN_CONDITION_FIELDS (⊇ the 5 fixed fields) + ASSIGN_OPS",
+    chk("C2.3-S0.1", "assignment.ts exports the 12 contract functions (pick · simulate · listRules/createRule/updateRule/toggleRule/deleteRule/reorderRules · getAssignmentSettings/setFallbackUser · openLoadOf · pageData — the read model of the page, in the contract since the ruling of 24 Sep) · assignment-shared.ts is pure and exports ASSIGN_MODES (the 4 modes) + ASSIGN_CONDITION_FIELDS (⊇ the 5 fixed fields) + ASSIGN_OPS",
       missing.length === 0 && shSrc.length > 0 && !shImpure && modes === "FIXED,LEAST_OPEN,ROUND_ROBIN,TEAM_LEAD" && ["sourceKind", "sourceChannel", "province", "companySize", "language"].every((f) => fields.includes(f)) && Array.isArray(ASH.ASSIGN_OPS),
-      "11 fns · pure shared", `missing=${missing.join(",") || "-"} shared=${shSrc.length > 0} impure=${shImpure} modes=${modes || "-"} fields=${fields.join(",") || "-"}`);
+      "12 fns · pure shared", `missing=${missing.join(",") || "-"} shared=${shSrc.length > 0} impure=${shImpure} modes=${modes || "-"} fields=${fields.join(",") || "-"}`);
   }
   chk("C2.3-S0.2", "the C1.4 stub is gone: pick is async (returns a Promise) and contacts.ts awaits assignment.pick(…) passing its transaction client, inside a `// CRM C2.3 ▸` block [static]",
     /export\s+async\s+function\s+pick\s*\(/.test(aSrc) && !/stub บริสุทธิ์|stub FIXED/.test(aSrc) && /await\s+assignment\.pick\([^;]*\btx\b/.test(ctSrc) && /CRM C2\.3 ▸/.test(ctSrc),
@@ -300,9 +319,16 @@ try {
   chk("C2.3-S0.3", "leave is read through the hr FACADE (import from \"@/lib/modules/hr\" — isOnLeave), never from hr/service or the HrLeave table directly [static]",
     /from\s+["']@\/lib\/modules\/hr["']/.test(aSrc) && /isOnLeave/.test(aSrc) && !/modules\/hr\/(service|rules)/.test(aSrc) && !/hrLeave\./.test(aSrc),
     "facade", `facade=${/from\s+["']@\/lib\/modules\/hr["']/.test(aSrc)} direct=${/modules\/hr\/(service|rules)/.test(aSrc) || /hrLeave\./.test(aSrc)}`, "MAJOR");
-  chk("C2.3-S0.4", "facade: crm/index.ts exports `assignment` inside a `// CRM C2.3 ▸ … ◂` block (C0.2-S1.6 keeps passing) [static]",
-    /CRM C2\.3 ▸[\s\S]*export\s+\*\s+as\s+assignment\s+from\s+["']\.\/assignment["'][\s\S]*◂/.test(read(INDEX_FILE)) && typeof CRM?.assignment?.pick === "function",
-    "export * as assignment", `block=${/CRM C2\.3 ▸/.test(read(INDEX_FILE))} runtime=${typeof CRM?.assignment?.pick}`, "MAJOR");
+  {
+    // ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569 · รอบสอง): คำตัดสินข้อ S5 สั่ง "ถอด `openLoadOf` ออกจาก `crm/index.ts`" ซึ่งทำกับ
+    //   `export * as` ไม่ได้ (namespace export ซ่อนสมาชิกรายตัวไม่ได้) ⇒ ข้อสอบรับทั้งสองรูป และเพิ่มข้อบังคับของคำตัดสินเข้าไปด้วย
+    const idxSrc = read(INDEX_FILE);
+    const nsForm = /CRM C2\.3 ▸[\s\S]*export\s+\*\s+as\s+assignment\s+from\s+["']\.\/assignment["'][\s\S]*◂/.test(idxSrc);
+    const objForm = /CRM C2\.3 ▸[\s\S]*export\s*\{[^}]*\bas\s+assignment\b[^}]*\}\s*from\s+["']\.\/assignment["'][\s\S]*◂/.test(idxSrc);
+    chk("C2.3-S0.4", "facade: crm/index.ts exports the `assignment` namespace inside a `// CRM C2.3 ▸ … ◂` block — `export * as assignment` or a re-exported facade object declared in assignment.ts (C0.2-S1.6 keeps passing) · pick is reachable through it · `openLoadOf` is NOT reachable on the facade (ruling S5 of 24 Sep — it has no actor/key/gate/visibility filter yet and stays exported from assignment.ts only) [static + runtime]",
+      (nsForm || objForm) && typeof CRM?.assignment?.pick === "function" && typeof CRM?.assignment?.openLoadOf !== "function",
+      "assignment on the facade · no openLoadOf", `block=${/CRM C2\.3 ▸/.test(idxSrc)} ns=${nsForm} obj=${objForm} pick=${typeof CRM?.assignment?.pick} openLoadOf=${typeof CRM?.assignment?.openLoadOf}`, "MAJOR");
+  }
   {
     const miss = ["X1", "X3", "X9"].filter((x) => !new RegExp(`AUDIT-CLASS ${x}\\b`).test(aSrc));
     chk("C2.3-S0.5", "implementation sites marked `// AUDIT-CLASS X1 X3 X9` in assignment.ts [static]", miss.length === 0, "3 markers", miss.join(",") || "-", "MINOR");
@@ -335,6 +361,12 @@ try {
   const uFull = await mkUser("-full"); // maxOpenPerUser reached
   const uFb = await mkUser("-fallback");
   const uB = await mkUser("-foreign"); // member of tenant B only
+  const uT2 = await mkUser("-team2"); // S10.3: อยู่ทีม T2 เท่านั้น (ไม่ใช่ทีม T ที่กฎอ้าง)
+  // ORACLE-EDIT 24 ก.ย. 2569 (ruling B1 · NOTE 1): ผู้ดูหน้าตั้งค่าสองแบบ — ถือ `crm.assignment.manage` ทั้งคู่ ต่างกันที่ `hr.leave.read`
+  const uHrK = await mkUser("-leavekey"); // STAFF: manage + hr.leave.read (ควบคุมบวกของ S8.4)
+  const uNoName = ((await P.user.create({ data: { email: `${TAG}-noname@qc.invalid`, name: null } })) as Any).id as string; // ไม่มีชื่อ ⇒ ชื่อสำรองเดิมคืออีเมล
+  USERS.push(uNoName);
+  const STAFF_MAILS = [`${TAG}-noname@qc.invalid`, `${TAG}-leavekey@qc.invalid`];
   const mkTenant = async (suffix: string) => {
     const t = await P.tenant.create({ data: { name: `${TAG}-${suffix}`, slug: `${TAG}-${suffix}` } });
     TENANTS.push(t.id);
@@ -352,6 +384,7 @@ try {
   const manager = managerActor(userM);
   const staff = staffActor(userS, { "crm.contact.read": true, "crm.deal.read": true });
   const staffKeyed = staffActor(userK, { "crm.contact.read": true, "crm.assignment.manage": true });
+  const staffLeaveKeyed = staffActor(uHrK, { "crm.contact.read": true, "crm.assignment.manage": true, "hr.leave.read": true });
 
   const tidA = await mkTenant("a");
   await member(tidA, userA, "OWNER");
@@ -360,6 +393,9 @@ try {
   await member(tidA, userK, "STAFF", { "crm.contact.read": true, "crm.assignment.manage": true });
   for (const u of [...U, uLead, uOff, uLeave, uPendLeave, uPastLeave, uPend, uGone, uFull, uFb]) await member(tidA, u, "STAFF", SALES_PERMS);
   await member(tidA, uNoKey, "STAFF", {});
+  await member(tidA, uHrK, "STAFF", { "crm.contact.read": true, "crm.assignment.manage": true, "hr.leave.read": true });
+  await member(tidA, uNoName, "STAFF", SALES_PERMS);
+  await member(tidA, uT2, "STAFF", SALES_PERMS);
   const crmA = await mk(tidA, "CRM", "CRM"); // functional (first CRM of the tenant)
   const crmA2 = await mk(tidA, "CRM", "CRM สอง"); // same tenant, other system (X1)
   const crmR = await mk(tidA, "CRM", "CRM round-robin"); // RR races
@@ -367,17 +403,36 @@ try {
   const crmL2 = await mk(tidA, "CRM", "CRM least-open 2"); // LEAST_OPEN race, processes
   const crmF = await mk(tidA, "CRM", "CRM ฟอร์ม"); // form bridge (X4)
   const crmN = await mk(tidA, "CRM", "CRM ไม่มีใคร"); // nobody / notification
+  const crmP = await mk(tidA, "CRM", "CRM หน้าตั้งค่า"); // S8: pageData (ฟิลด์ · การลา · อีเมล · คิวใต้ OWN)
+  const crmRC = await mk(tidA, "CRM", "CRM วนคิว+เพดาน"); // X3.5/X3.6: ROUND_ROBIN + maxOpenPerUser
+  const crmLG = await mk(tidA, "CRM", "CRM ทางเข้าเดิม"); // U.6/U.7: createContactFromLegacy บนร้าน v2
+  const crmLC = await mk(tidA, "CRM", "CRM ภาษา"); // S8.7: เงื่อนไข language ผ่านเส้นทางสร้างจริง
+  const crmTM = await mk(tidA, "CRM", "CRM ทีมกับรายชื่อ"); // S9.1: กฎที่ userIds ไม่ได้อยู่ในทีมของกฎ
+  const crmSim = await mk(tidA, "CRM", "CRM ปุ่มทดลอง"); // S9.2: server action ของปุ่ม "ทดลอง"
+  const crmBR = await mk(tidA, "CRM", "CRM สะพานแชท"); // S10.6: locale ผ่าน leadFromBridge
   const hrA = await mk(tidA, "HR", "HR");
   const tidB = await mkTenant("b");
   await member(tidB, userA, "OWNER");
   await member(tidB, uB, "STAFF", SALES_PERMS);
   const crmB = await mk(tidB, "CRM", "CRM-B");
+  // S10.4: ร้านใหม่ที่ยังไม่ตั้งกฎอะไรเลย — OWNER 1 + MANAGER 2 = ผู้รับแจ้งเตือน 3 คน (ร้าน A มี 2 คน · ข้ออื่นนับไว้แล้ว ห้ามแตะ)
+  const uZ1 = await mkUser("-zmgr1");
+  const uZ2 = await mkUser("-zmgr2");
+  const uZR = await mkUser("-zrep");
+  const tidZ = await mkTenant("z");
+  await member(tidZ, userA, "OWNER");
+  await member(tidZ, uZ1, "MANAGER");
+  await member(tidZ, uZ2, "MANAGER");
+  await member(tidZ, uZR, "STAFF", SALES_PERMS);
+  const crmZ = await mk(tidZ, "CRM", "CRM ร้านใหม่"); // ไม่มีกฎเลย
+  const crmZ2 = await mk(tidZ, "CRM", "CRM ร้านใหม่ สอง"); // มีกฎที่ไม่ตรงอะไรเลย
+  for (const s of [crmZ, crmZ2]) await setCrm(s, { uiVersion: 2, bridgesEnabled: true });
   const tidV = await mkTenant("v1");
   await member(tidV, userA, "OWNER");
   await member(tidV, userM, "MANAGER");
   await member(tidV, U[0], "STAFF", SALES_PERMS);
   const crmV = await mk(tidV, "CRM", "CRM-V1");
-  for (const s of [crmA, crmA2, crmR, crmL, crmL2, crmF, crmN, crmB]) await setCrm(s, { uiVersion: 2, bridgesEnabled: true });
+  for (const s of [crmA, crmA2, crmR, crmL, crmL2, crmF, crmN, crmP, crmRC, crmLG, crmLC, crmTM, crmSim, crmBR, crmB]) await setCrm(s, { uiVersion: 2, bridgesEnabled: true });
   await setCrm(crmV, { uiVersion: 2, bridgesEnabled: true }); // flipped to 1 in section U after its rule exists
   const ctxOf = (tid: string, sys: string, uid = userA) => ({ tenantId: tid, systemId: sys, actorUserId: uid });
   const cA = ctxOf(tidA, crmA);
@@ -387,6 +442,15 @@ try {
   const cL2 = ctxOf(tidA, crmL2);
   const cF = ctxOf(tidA, crmF);
   const cN = ctxOf(tidA, crmN);
+  const cP = ctxOf(tidA, crmP);
+  const cRC = ctxOf(tidA, crmRC);
+  const cLG = ctxOf(tidA, crmLG);
+  const cLC = ctxOf(tidA, crmLC);
+  const cTM = ctxOf(tidA, crmTM);
+  const cSim = ctxOf(tidA, crmSim);
+  const cBR = ctxOf(tidA, crmBR);
+  const cZ = ctxOf(tidZ, crmZ); // S10.4: ร้านใหม่ที่ยังไม่มีกฎ
+  const cZ2 = ctxOf(tidZ, crmZ2); // S10.4: ควบคุมบวก (มีกฎแต่ไม่ตรง)
   const cB = ctxOf(tidB, crmB);
   const cV = ctxOf(tidV, crmV);
 
@@ -401,6 +465,8 @@ try {
   const teamT = await mkTeam(tidA, "ทีมภูเก็ต", uLead, [U[0], U[1], uOff]);
   await P.teamMember.updateMany({ where: { teamId: teamT, userId: uOff }, data: { acceptingLeads: false } });
   const teamB = await mkTeam(tidB, "ทีม-B", null, [uB]);
+  // S10.3: ทีมที่สองของร้าน A — uT2 อยู่ทีมนี้เท่านั้น (แถว acceptingLeads ของเขาอยู่ที่ทีมนี้ ไม่ใช่ทีม T ที่กฎจะอ้าง)
+  const teamT2 = await mkTeam(tidA, "ทีมกระบี่", null, [uT2]);
 
   // HR: leave fixtures (Thai calendar days · @db.Date = UTC midnight of the Thai day)
   const mkEmp = async (u: string, label: string) => (await P.hrEmployee.create({ data: { tenantId: tidA, systemId: hrA, name: `${label} ${TAG}`, linkedUserId: u } })).id as string;
@@ -682,20 +748,119 @@ try {
     let inv: Any[] = [];
     try { inv = (JSON.parse(read(INVENTORY)).rows ?? []) as Any[]; } catch { inv = []; }
     const rows = inv.filter((r) => r?.wo === "C2.3" && /\/settings\/assignment/.test(String(r?.page ?? "")));
-    const uiSrc = [page, ...walk(PAGE_DIR).map(read), ...walk(COMP_DIR).map(read)].join("\n");
-    const orphan = rows.filter((r) => !uiSrc.includes(String(r.testid ?? "").replace(/\*$/, "")));
+    const uiFiles = [...new Set([PAGE, ...walk(PAGE_DIR), ...walk(COMP_DIR)])].filter((f) => read(f).length > 0);
+    const uiSrc = uiFiles.map(read).join("\n");
     const needIds = ["crm-assign-rule-list", "crm-assign-rule-new", "crm-assign-fallback", "crm-assign-simulate-run", "crm-assign-simulate-result"];
     const missIds = needIds.filter((t) => !uiSrc.includes(t));
-    chk("C2.3-S6.4", "nav: CRM_DEEP_NAV has path /crm/settings/assignment (status ready, wo C2.3) · inventory ≥ 6 rows (page /settings/assignment, wo C2.3) all present in the page/components · the 5 core testids (rule list · new · fallback · simulate run · simulate result) exist [static]",
-      /path:\s*"\/crm\/settings\/assignment"[^}]*status:\s*"ready"[^}]*wo:\s*"C2\.3"/.test(nav) && rows.length >= 6 && orphan.length === 0 && missIds.length === 0, "nav + rows",
-      `nav=${/\/crm\/settings\/assignment/.test(nav)} rows=${rows.length} orphan=${orphan.map((r) => r.testid).join(",") || "-"} missing=${missIds.join(",") || "-"}`, "MAJOR");
+    // ─── ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569): เดิมเป็น `uiSrc.includes(testid)` ⇒ id ที่ render ซ้ำ N ครั้งผ่านเหมือน render ครั้งเดียว
+    //     (ต้นเหตุที่ S7 หลุด: `crm-assign-cond-field/op/value` อยู่ใน `.map(` โดยไม่มีเลขกำกับ ⇒ id ซ้ำใน DOM) ⇒ **นับจำนวนครั้ง**
+    //     กติกา: แถวทะเบียนที่ลงท้าย `*` = แบบมีเลขกำกับ (ต้องเขียนเป็น template `data-testid={`<prefix>${…}`}` ≥ 1 ที่ · นับเป็น 1 แบบ) ·
+    //            แถวคงที่ = ต้องปรากฏ `data-testid="<id>"` **พอดี 1 ที่** และห้ามอยู่ในตัว `.map(` (อยู่ในนั้น = render หลายครั้ง id เดียว)
+    //     สำเนา codeOnly = ลบเนื้อในสตริง/คอมเมนต์แต่คงความยาว (ดัชนีตรงกับต้นฉบับ) เพื่อจับคู่วงเล็บของ `.map(` ได้
+    const codeOnly = (src: string): string => {
+      const out = src.split("");
+      let st = "";
+      for (let i = 0; i < src.length; i += 1) {
+        const c = src[i];
+        if (st === "") {
+          if (c === "/" && src[i + 1] === "/") { st = "lc"; out[i] = " "; out[i + 1] = " "; i += 1; continue; }
+          if (c === "/" && src[i + 1] === "*") { st = "bc"; out[i] = " "; out[i + 1] = " "; i += 1; continue; }
+          if (c === '"') st = "dq";
+          else if (c === "'") st = "sq";
+          continue;
+        }
+        if (st === "lc") { if (c === "\n") st = ""; else out[i] = " "; continue; }
+        if (st === "bc") { if (c === "*" && src[i + 1] === "/") { out[i] = " "; out[i + 1] = " "; st = ""; i += 1; } else if (c !== "\n") out[i] = " "; continue; }
+        if (c === "\\") { out[i] = " "; if (i + 1 < src.length) out[i + 1] = " "; i += 1; continue; }
+        if ((st === "dq" && c === '"') || (st === "sq" && c === "'")) { st = ""; continue; }
+        out[i] = " ";
+      }
+      return out.join("");
+    };
+    const mapSpans = (code: string): [number, number][] => {
+      const spans: [number, number][] = [];
+      const re = /\.map\s*\(/g;
+      for (let m = re.exec(code); m; m = re.exec(code)) {
+        let depth = 0;
+        for (let k = m.index + m[0].length - 1; k < code.length; k += 1) {
+          if (code[k] === "(") depth += 1;
+          else if (code[k] === ")") { depth -= 1; if (depth === 0) { spans.push([m.index, k]); break; } }
+        }
+      }
+      return spans;
+    };
+    const dupTestids: string[] = [];
+    for (const r of rows) {
+      const idStr = String(r.testid ?? "");
+      const isPat = idStr.endsWith("*");
+      const base = isPat ? idStr.slice(0, -1) : idStr;
+      if (!/^[A-Za-z0-9._-]+$/.test(base)) { dupTestids.push(`${idStr || "(empty)"}:bad-id`); continue; }
+      let statics = 0;
+      let dyn = 0;
+      let inMap = 0;
+      for (const f of uiFiles) {
+        const src = read(f);
+        const spans = mapSpans(codeOnly(src));
+        const sRe = new RegExp(`data-testid=\\{?["'\`]${base}["'\`]`, "g");
+        for (let m = sRe.exec(src); m; m = sRe.exec(src)) {
+          const at = m.index;
+          statics += 1;
+          if (spans.some(([a, b]) => at > a && at < b)) inMap += 1;
+        }
+        const dRe = new RegExp("data-testid=\\{`" + base + "\\$\\{", "g");
+        for (let m = dRe.exec(src); m; m = dRe.exec(src)) dyn += 1;
+      }
+      if (isPat) { if (dyn < 1 || statics > 0) dupTestids.push(`${idStr}:indexed pattern but static=${statics} dynamic=${dyn}`); }
+      else if (statics !== 1 || inMap > 0) dupTestids.push(`${idStr}:rendered ${statics}×${inMap > 0 ? " inside .map() without an index suffix ⇒ duplicate ids in the DOM" : ""}`);
+    }
+    chk("C2.3-S6.4", "nav: CRM_DEEP_NAV has path /crm/settings/assignment (status ready, wo C2.3) · inventory ≥ 6 rows (page /settings/assignment, wo C2.3) · EVERY row is rendered the right NUMBER of times: a static id exactly once and never inside a `.map(` body (an id inside a map without an index suffix = the same id twice in the DOM — a UI test can never touch the second row), an indexed row (`…-*`) as a template `data-testid={`prefix${…}`}` · the 5 core testids exist [static]",
+      /path:\s*"\/crm\/settings\/assignment"[^}]*status:\s*"ready"[^}]*wo:\s*"C2\.3"/.test(nav) && rows.length >= 6 && uiFiles.length > 0 && dupTestids.length === 0 && missIds.length === 0, "nav + rows · 1 render each",
+      `nav=${/\/crm\/settings\/assignment/.test(nav)} rows=${rows.length} bad=${cut(dupTestids.join(" | "), 260) || "-"} missing=${missIds.join(",") || "-"}`, "MAJOR");
+    // ─── ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569): เดิมเป็น regex ชั้นเดียวบนไฟล์ `'use client'` ⇒ client ที่ import ผ่าน
+    //     `…/assignment/actions` (ปลอดภัยจริง) ไม่ได้ถูกพิสูจน์อะไรเลย และของที่ไม่ปลอดภัยผ่าน re-export ชั้นเดียวก็หลุด
+    //     ⇒ เดิน **กราฟ import จริง 2 ชั้น**: ไฟล์ client → ไฟล์ที่มันอ้าง → ไฟล์ที่ไฟล์นั้นอ้าง · `"use server"` = ขอบที่ปลอดภัย
+    //     (Next แทนด้วย client reference ตอน build) · `*-shared.ts` = ไฟล์บริสุทธิ์ตามสัญญา (S0.1 ตรวจแล้ว) ⇒ ทั้งสองไม่ต้องเดินต่อ
     const files = [...walk(PAGE_DIR), ...walk(COMP_DIR), ...walk("src/lib/modules/crm").filter((f) => /assignment/.test(f))];
-    const clientBad = files.filter((f) => /^\s*["']use client["']/.test(read(f)) && /from\s+["'](@\/lib\/core\/db|@prisma\/client|@\/lib\/modules\/crm(\/(?!.*-shared)[^"']*)?)["']/.test(read(f)));
-    const serverFiles = files.filter((f) => /^\s*["']use server["']/.test(read(f)));
+    const isClient = (f: string) => /^\s*["']use client["']/.test(read(f));
+    const isServerFile = (f: string) => /^\s*["']use server["']/.test(read(f));
+    const noComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+    const specsOf = (src: string): string[] => {
+      const out: string[] = [];
+      const re = /(?:from|import)\s*\(?\s*["']([^"']+)["']/g;
+      for (let m = re.exec(src); m; m = re.exec(src)) out.push(m[1]);
+      return out;
+    };
+    const REACHES_PRISMA = (spec: string) => spec === "@prisma/client" || spec === "@/lib/core/db" || /^@\/lib\/modules\/crm(\/(?!.*-shared$).*)?$/.test(spec);
+    const resolveSpec = (fromFile: string, spec: string): string | null => {
+      const base = spec.startsWith("@/") ? join("src", spec.slice(2)) : /^\.\.?\//.test(spec) ? join(dirname(fromFile), spec) : "";
+      if (!base) return null;
+      for (const c of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]) if (existsSync(c) && statSync(c).isFile()) return c;
+      return null;
+    };
+    const clientFiles = files.filter(isClient);
+    const badEdges: string[] = [];
+    const serverEdges: string[] = [];
+    const seen = new Set<string>();
+    const visitImports = (f: string, depth: number): void => {
+      if (seen.has(`${f}#${depth}`)) return;
+      seen.add(`${f}#${depth}`);
+      const specs = specsOf(noComments(read(f)));
+      for (const sp of specs) if (REACHES_PRISMA(sp)) badEdges.push(`${f} → ${sp}`);
+      if (depth >= 2) return;
+      for (const sp of specs) {
+        const t = resolveSpec(f, sp);
+        if (!t) continue;
+        if (isServerFile(t)) { serverEdges.push(`${f} → ${t}`); continue; }
+        if (/-shared\.tsx?$/.test(t)) continue;
+        visitImports(t, depth + 1);
+      }
+    };
+    for (const f of clientFiles) visitImports(f, 0);
+    const serverFiles = files.filter(isServerFile);
     const serverBad = serverFiles.filter((f) => /export\s+(type|interface|const|let|function\s)/.test(read(f)) || !/assertCrmV2|crmUiVersion/.test(read(f)));
-    chk("C2.3-S6.5", "client files never import prisma-reaching modules (only *-shared) · \"use server\" files export async functions only and call assertCrmV2 [static]",
-      files.length > 0 && clientBad.length === 0 && serverFiles.length >= 1 && serverBad.length === 0, "safe",
-      `files=${files.length} clientBad=${clientBad.join(",") || "-"} server=${serverFiles.length} serverBad=${serverBad.join(",") || "-"}`, "MAJOR");
+    chk("C2.3-S6.5", "no `'use client'` file REACHES prisma along the real import graph (2 levels of its own relative/@ imports, `\"use server\"` files and `*-shared` treated as safe boundaries): nothing on the way imports @/lib/core/db · @prisma/client · @/lib/modules/crm/<non-shared> · [positive control] at least one client→\"use server\" edge was actually followed · \"use server\" files export async functions only and call assertCrmV2 [static]",
+      clientFiles.length >= 1 && badEdges.length === 0 && serverEdges.length >= 1 && serverFiles.length >= 1 && serverBad.length === 0, "clean graph",
+      `client=${clientFiles.length} visited=${seen.size} bad=${cut(badEdges.join(" | "), 240) || "-"} serverEdges=${serverEdges.length} server=${serverFiles.length} serverBad=${serverBad.join(",") || "-"}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -949,6 +1114,28 @@ try {
     chk("C2.3-X3.4", "LEAST_OPEN cap across 2 SEPARATE PROCESSES (5 parallel creations each) ⇒ exactly 2 per rep, 2 unassigned, nobody above 2",
       rows.length === 10 && U.every((u) => by[u] === 2) && (by.NULL ?? 0) === 2, "2/2/2/2 + 2", `${U.map((u) => by[u] ?? 0).join("/")} null=${by.NULL ?? 0}`);
   }
+  // ─── ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569): X3.3/X3.4 พิสูจน์เพดานเฉพาะใต้ LEAST_OPEN · **ROUND_ROBIN + maxOpenPerUser** ไม่มีใครทดสอบ
+  //     ซึ่งเป็นคู่ที่ `n = eligible.length` หดลงเมื่อคนชนเพดาน ขณะที่ `rrCursor` เก็บเป็น modulo ของ n ที่หดอยู่ ⇒ ความหมายของ cursor
+  //     เปลี่ยนระหว่างการหยิบ (และถ้าเผลอเลื่อน cursor ตอนไม่มีใครเหลือ = modulo ด้วยศูนย์)
+  {
+    await resetRules(crmRC);
+    const rr2 = await mkRule(cRC, { name: `วนคิว เพดาน 2 ${TAG}`, mode: "ROUND_ROBIN", userIds: [...U], maxOpenPerUser: 2, conditions: { items: [] } });
+    const made = await Promise.all(Array.from({ length: 10 }, () => createAuto(cRC)));
+    const owners = made.map((m) => (m.row?.ownerUserId as string | null) ?? "NULL");
+    const by = countBy(owners);
+    const load = await call(openLoadF, { tenantId: tidA, systemId: crmRC }, [...U]);
+    const cur = await cursorOf(rr2);
+    chk("C2.3-X3.5", "ROUND_ROBIN + maxOpenPerUser 2 over 4 reps, 10 PARALLEL createContact(auto) on separate pool connections ⇒ all 10 rows created · exactly 2 each (8 assigned, nobody over the cap · openLoadOf agrees) · the remaining 2 find nobody and stay unassigned (no fallback set)",
+      made.every((m) => m.r.ok) && U.every((u) => by[u] === 2) && (by.NULL ?? 0) === 2 && U.every((u) => Number(load.v?.[u]) === 2),
+      "2/2/2/2 + 2 null", `${U.map((u) => by[u] ?? 0).join("/")} null=${by.NULL ?? 0} load=${load.ok ? U.map((u) => load.v?.[u] ?? "-").join("/") : load.err} errs=${made.filter((m) => !m.r.ok).map((m) => m.r.err).slice(0, 2).join(" | ") || "-"}`);
+    const setFb = await call(setFallbackF, cRC, owner, uFb);
+    const afterCap = await createAuto(cRC);
+    const cur2 = await cursorOf(rr2);
+    await call(setFallbackF, cRC, owner, null);
+    chk("C2.3-X3.6", "the rrCursor survives a shrinking candidate list: after the 10-way race it is still a VALID index of the rule (an integer in [0, 4) — no NaN, no negative, no modulo-by-zero) and it does NOT move while every rep is at the cap · with a fallback user set the next automatic lead goes to the fallback (assignedBy RULE:fallback), not to a rep over the cap",
+      Number.isInteger(cur) && cur >= 0 && cur < U.length && setFb.ok && afterCap.r.ok && afterCap.row?.ownerUserId === uFb && afterCap.row?.assignedBy === "RULE:fallback" && cur2 === cur,
+      "cursor ∈ [0,4) · uFb", `cursor=${cur}→${cur2} fallbackLead=${afterCap.row?.ownerUserId === uFb ? `uFb/${afterCap.row?.assignedBy}` : (afterCap.row?.ownerUserId ?? afterCap.r.err)}`);
+  }
 
   // ═════════════════════════════════════════════════════════════════════════════
   // X4 + X8 — the form bridge on v2 (consumer redelivery) · payload / notification PII
@@ -1061,6 +1248,306 @@ try {
     const row2 = link2 ? await P.crmContact.findFirst({ where: { id: link2 } }) : null;
     chk("C2.3-U.5", "flip back to uiVersion 2 ⇒ the kept rule resumes: the next form lead is assigned to U0 (assignedBy RULE:<rule>)",
       r2.ok && row2?.ownerUserId === U[0] && row2?.assignedBy === `RULE:${ruleV}`, "U0", `consume=${r2.ok ? "ok" : r2.err} owner=${row2?.ownerUserId === U[0]} by=${row2?.assignedBy}`);
+    // ─── ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569): U.2 คุม `createContactFromLegacy` แค่บนร้าน uiVersion 1 · ฟังก์ชันเดียวกันบนร้าน **v2**
+    //     (เครื่องมือ AI `crm_create_lead` + ฟอร์มสาธารณะ v1) ไม่มีคนสร้าง ⇒ ทางอัตโนมัติ (R1) ⇒ เดินกฎมอบหมายและยิง notifyUnassigned ได้
+    //     = พฤติกรรมเปลี่ยนจริงสำหรับร้านนำร่อง โดยไม่มีข้อสอบข้อไหนคุม (ร้าน A ระบบ crmLG = v2)
+    {
+      await resetRules(crmLG);
+      const rLg = await mkRule(cLG, { name: `ทางเข้าเดิม v2 ${TAG}`, mode: "FIXED", userIds: [U[0]], conditions: { items: [] } });
+      const lgCtx = { tenantId: tidA, systemId: crmLG, actorUserId: null };
+      const lgAuto = await call(CT.createContactFromLegacy, lgCtx, { name: pii(`เอไอ v2 ${TAG}`), phone: phoneOf(), source: "AI" });
+      const lgAutoRow = lgAuto.ok ? await P.crmContact.findFirst({ where: { id: lgAuto.v?.id ?? NONE } }) : null;
+      const lgOwned = await call(CT.createContactFromLegacy, lgCtx, { name: pii(`เอไอ v2 เลือกเอง ${TAG}`), phone: phoneOf(), source: "AI", ownerUserId: U[3] });
+      const lgOwnedRow = lgOwned.ok ? await P.crmContact.findFirst({ where: { id: lgOwned.v?.id ?? NONE } }) : null;
+      chk("C2.3-U.6", "the SAME legacy entry on a uiVersion-2 system (crm_create_lead / v1 public form — no human creator ⇒ the automatic path, R1): one matching FIXED rule ⇒ the lead is assigned to U0 with assignedBy RULE:<ruleId> and assignedAt set · [control] an explicit owner still wins over the rule (U3)",
+        !!lgAutoRow && lgAutoRow.ownerUserId === U[0] && lgAutoRow.assignedBy === `RULE:${rLg}` && !!lgAutoRow.assignedAt && !!lgOwnedRow && lgOwnedRow.ownerUserId === U[3],
+        "U0 by rule · U3", `auto=${lgAutoRow ? `${U.indexOf(lgAutoRow.ownerUserId)}/${lgAutoRow.assignedBy}/at=${!!lgAutoRow.assignedAt}` : lgAuto.err} owned=${lgOwnedRow ? U.indexOf(lgOwnedRow.ownerUserId) : lgOwned.err}`);
+      await resetRules(crmLG);
+      await mkRule(cLG, { name: `ทางเข้าเดิม v2 ไม่มีใคร ${TAG}`, mode: "FIXED", userIds: [uLeave], conditions: { items: [] } });
+      const lgNb = await call(CT.createContactFromLegacy, lgCtx, { name: pii(`เอไอ v2 ไม่มีใคร ${TAG}`), phone: phoneOf(), source: "AI" });
+      const lgNbId = (typeof lgNb.v?.id === "string" ? (lgNb.v.id as string) : NONE) as string;
+      const lgNbRow = lgNbId !== NONE ? await P.crmContact.findFirst({ where: { id: lgNbId } }) : null;
+      const lgNotes = lgNbId !== NONE ? ((await P.appNotification.findMany({ where: { tenantId: tidA, body: { contains: lgNbId }, recipientUserId: { not: null } } })) as Any[]) : [];
+      const lgRecips = lgNotes.map((n) => n.recipientUserId as string).sort();
+      const lgText = lgNotes.map((n) => `${n.title} ${n.body}`).join(" ");
+      chk("C2.3-U.7", "the same legacy entry with NO eligible candidate (its only candidate is on approved leave today) ⇒ the lead is created UNASSIGNED (assignedBy null) and EXACTLY ONE AppNotification per accepted OWNER/MANAGER membership (userA, userM — nothing to STAFF), Thai title, body = a link carrying the contact id, no name/phone of the lead",
+        !!lgNbRow && lgNbRow.ownerUserId === null && lgNbRow.assignedBy === null && lgNotes.length === 2 && j(lgRecips) === j([userA, userM].sort()) && lgNotes.every((n) => thai(n.title) && String(n.body ?? "").includes(lgNbId)) && !PII.some((x) => lgText.includes(x)),
+        "null · 2 notifications", `owner=${lgNbRow?.ownerUserId} by=${lgNbRow?.assignedBy} notes=${lgNotes.length} recips=${lgRecips.map((r) => (r === userA ? "owner" : r === userM ? "mgr" : r)).join(",") || "-"} pii=${PII.filter((x) => lgText.includes(x)).length}`);
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S8 — ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569 · คำตัดสินหลังผู้ตรวจอิสระ): `pageData` — ประตูสิทธิ์ · ฟิลด์ที่เสนอให้ตั้งเงื่อนไข ·
+  //   ห้ามเปิดเผยข้อเท็จจริงเรื่อง "ลาอยู่วันนี้" (B1) และอีเมลพนักงาน (NOTE 1) · ตัวเลขคิวต้องผ่าน `visibleWhere` (S6) · ฟิลด์ระบบ/อ่อนไหว (S1)
+  //   ทั้งหมดอยู่ในพื้นที่ที่ไม่มีข้อสอบข้อไหนแตะมาก่อน (ทุกข้อทำบนระบบ crmP ของร้าน A ที่สร้างไว้เฉพาะหัวข้อนี้)
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S8 · pageData (ประตู · ฟิลด์ · การลา · คิว) ──");
+  {
+    const gateStaff = await call(pageDataF, cP, staff); // STAFF ถืออ่านผู้ติดต่อ แต่ไม่มี crm.assignment.manage
+    const gateNone = await call(pageDataF, cP, null);
+    const okOwner = await call(pageDataF, cP, owner);
+    const okKeyed = await call(pageDataF, cP, staffKeyed);
+    chk("C2.3-S8.1", "pageData is gated like the page: a member WITHOUT crm.assignment.manage (STAFF holding only the read keys) is refused in Thai without blaming the user (404 NOT_FOUND / 403 FORBIDDEN — never the payload) · no actor at all ⇒ refused · [positive controls] OWNER and a STAFF holding the key both get { rules, fallbackUserId, users, teams, contactFields }",
+      refusedAs(gateStaff, ["FORBIDDEN", "NOT_FOUND"]) && refusedAs(gateNone, ["FORBIDDEN", "NOT_FOUND"]) && okOwner.ok && Array.isArray(okOwner.v?.rules) && Array.isArray(okOwner.v?.users) && Array.isArray(okOwner.v?.teams) && Array.isArray(okOwner.v?.contactFields) && okKeyed.ok,
+      "refused ×2 · payload ×2", `staff=${gateStaff.ok ? "ACCEPTED" : gateStaff.err} none=${gateNone.ok ? "ACCEPTED" : gateNone.err} owner=${okOwner.ok ? "ok" : okOwner.err} keyed=${okKeyed.ok ? "ok" : okKeyed.err}`);
+  }
+  const SENS_LABEL = `ลับเฉพาะ ${TAG}`;
+  const FKEY_SENS = `qcsecret${rand}`; // ฟิลด์ผู้ติดต่อที่ตั้ง sensitive
+  const FKEY_PLAIN = `qcproduct${rand}`; // ฟิลด์ธรรมดา ("สินค้าที่สนใจ")
+  const FKEY_SYS = "sourceKind"; // คีย์ที่ service เป็นเจ้าของ (GOVERNED_CRM_SYSTEM_KEYS.contact) + isSystem
+  {
+    // ฟิลด์ของผู้ติดต่อ 3 แบบในระบบเดียว: คีย์ที่ service เป็นเจ้าของ (GOVERNED_CRM_SYSTEM_KEYS.contact) · อ่อนไหว · ธรรมดา
+    const sec = (await P.memberSection.create({ data: { tenantId: tidA, systemId: crmP, objectKey: "contact", key: `qcsec${rand}`, label: `ชุดฟิลด์ ${TAG}` } })) as Any;
+    const mkField = (key: string, label: string, extra: Record<string, Any> = {}) =>
+      P.memberField.create({ data: { tenantId: tidA, systemId: crmP, sectionId: sec.id, objectKey: "contact", key, label, type: "TEXT", ...extra } });
+    await mkField(FKEY_SYS, `ที่มา (ฟิลด์ระบบ) ${TAG}`, { isSystem: true, systemKey: "sourceKind" });
+    await mkField(FKEY_SENS, SENS_LABEL, { sensitive: true });
+    await mkField(FKEY_PLAIN, `สินค้าที่สนใจ ${TAG}`, {});
+    const p = await call(pageDataF, cP, owner);
+    const keys = ((p.v?.contactFields ?? []) as Any[]).map((f) => String(f?.key ?? f));
+    const text = p.ok ? j(p.v) : "";
+    chk("C2.3-S8.2", "contactFields offers ONLY plain custom fields (`!isSystem && !sensitive` — the rule the module already follows in contacts.ts/companies.ts): the field on a system-governed key (isSystem · systemKey sourceKind — splitFields takes it as a column, so `f.sourceKind` could NEVER match and every web-form lead would fall through to the fallback/NOBODY) and the `sensitive` field are left out · the plain one is offered",
+      p.ok && keys.includes(FKEY_PLAIN) && !keys.includes(FKEY_SYS) && !keys.includes(FKEY_SENS),
+      "the plain field only", p.ok ? `keys=${keys.join(",") || "-"}` : p.err);
+    chk("C2.3-S8.3", "the LABEL of the `sensitive` field never reaches the client payload: it occurs nowhere in JSON.stringify(pageData) — not in contactFields, not in a leftover list the page does not draw",
+      p.ok && !text.includes(SENS_LABEL), "absent", p.ok ? (text.includes(SENS_LABEL) ? `the sensitive label "${SENS_LABEL}" is in the payload` : "-") : p.err);
+  }
+  {
+    const noHr = await call(pageDataF, cP, staffKeyed); // manage ✔ · hr.leave.read ✘
+    const withHr = await call(pageDataF, cP, staffLeaveKeyed); // manage ✔ · hr.leave.read ✔
+    const noHrText = noHr.ok ? j(noHr.v) : "";
+    const rowsWith = (withHr.v?.users ?? []) as Any[];
+    const leaveRow = rowsWith.find((u) => u?.id === uLeave);
+    // ORACLE-EDIT รอบสาม: ไม่ผูกกับสตริง "onLeave" ตัวเดียวอีกแล้ว — **ห้ามมีคีย์ไหนในก้อนที่มีคำว่า leave** (เปลี่ยนชื่อฟิลด์ก็ไม่รอด)
+    //   และการรั่วทางอ้อม (ป้าย "คิวถัดไป" · ผลการทดลอง) พิสูจน์ที่ C2.3-S10.1
+    const leaveKey = /"[^"]*leave[^"]*"\s*:/i.test(noHrText);
+    chk("C2.3-S8.4", "B1 (ruling 24 Sep): a viewer holding crm.assignment.manage but NOT hr.leave.read gets NO leave fact in the payload — NO KEY whose name contains \"leave\" in any case occurs anywhere in it (renaming the field does not defeat the check; the DERIVED leak through nextUserId / simulate is proven by C2.3-S10.1) · [positive control] the same page for a viewer holding hr.leave.read does carry onLeave and flags the rep on APPROVED leave today as true",
+      noHr.ok && !noHrText.includes("onLeave") && !leaveKey && withHr.ok && rowsWith.length > 0 && Object.prototype.hasOwnProperty.call(leaveRow ?? {}, "onLeave") && leaveRow?.onLeave === true,
+      "no *leave* key · flagged true", `noHr=${noHr.ok ? (noHrText.includes("onLeave") ? "onLeave PRESENT" : leaveKey ? "another *leave* key PRESENT" : "absent") : noHr.err} withHr=${withHr.ok ? `rows=${rowsWith.length} leaveRow=${leaveRow ? j({ onLeave: leaveRow.onLeave }) : "missing"}` : withHr.err}`);
+  }
+  {
+    const p = await call(pageDataF, cP, owner);
+    const users = (p.v?.users ?? []) as Any[];
+    const usersText = j(users);
+    const noNameRow = users.find((u) => u?.id === uNoName);
+    chk("C2.3-S8.5", "NOTE 1: no member row carries an e-mail address — /@/ does not match the stringified member list and none of this run's staff e-mails is in it · [positive control] the member whose User.name is empty is still listed with a human label (the old fallback `m.user?.email` put staff e-mails into a client payload)",
+      p.ok && users.length > 0 && !/@/.test(usersText) && !STAFF_MAILS.some((m) => usersText.includes(m)) && !!noNameRow && typeof noNameRow?.name === "string" && noNameRow.name.length > 0 && !noNameRow.name.includes("@"),
+      "no @ · labelled", p.ok ? `users=${users.length} at=${/@/.test(usersText)} noName=${cut(j(noNameRow?.name), 60)}` : p.err, "MAJOR");
+  }
+  {
+    // คิวใต้นโยบาย OWN (C1.7): U0 ถือ 2 lead เปิด · ผู้จัดการถือ 1 lead + 1 ดีลเปิด = 2
+    const pP = await mkPipe(tidA, crmP);
+    await rawContact(tidA, crmP, U[0], { lifecycleStage: "LEAD", leadStatus: "NEW" });
+    await rawContact(tidA, crmP, U[0], { lifecycleStage: "LEAD", leadStatus: "NEW" });
+    const hostP = await rawContact(tidA, crmP, userM, { lifecycleStage: "LEAD", leadStatus: "NEW" });
+    await rawDeal(tidA, crmP, pP, hostP, userM, 0, "OPEN");
+    const loadOf = (r: Res, uid: string) => Number(((r.v?.users ?? []) as Any[]).find((u) => u?.id === uid)?.load ?? -1);
+    const wide = await call(pageDataF, cP, manager);
+    for (const entity of ["CONTACT", "DEAL"]) await P.crmVisibilityPolicy.create({ data: { tenantId: tidA, systemId: crmP, role: "MANAGER", teamId: null, pipelineId: null, entity, visibility: "OWN" } });
+    const own = await call(pageDataF, cP, manager);
+    await P.crmVisibilityPolicy.deleteMany({ where: { systemId: crmP } });
+    chk("C2.3-S8.6", "S6: the \"คิว\" numbers pass through visibleWhere (C1.7): [positive control] under the default policy the MANAGER sees U0's 2 open leads · after an OWN policy for MANAGER (CONTACT + DEAL) the very same page shows 0 for U0 (records the viewer cannot open are not counted) while the MANAGER's own row still counts its own lead + open deal (2)",
+      wide.ok && loadOf(wide, U[0]) === 2 && own.ok && loadOf(own, U[0]) === 0 && loadOf(own, userM) === 2,
+      "2 → 0 · own 2", `wide=${wide.ok ? loadOf(wide, U[0]) : wide.err} own=${own.ok ? `U0=${loadOf(own, U[0])} mgr=${loadOf(own, userM)}` : own.err}`, "MAJOR");
+  }
+  {
+    // ─── ORACLE-EDIT: S2 — เงื่อนไข `language` ต้องใช้งานได้บน **เส้นทางสร้างจริง** (S1.6 พิสูจน์แค่ pick() ตรง ๆ)
+    await resetRules(crmLC);
+    const rEn = await mkRule(cLC, { name: `ลูกค้าอังกฤษ ${TAG}`, mode: "FIXED", userIds: [U[2]], conditions: { items: [{ field: "language", op: "eq", value: "en" }] } });
+    await mkRule(cLC, { name: `ที่เหลือ ภาษา ${TAG}`, mode: "FIXED", userIds: [U[3]], conditions: { items: [] } });
+    const mkLead = async (extra: Record<string, Any>) => {
+      const r = await call(CT.createContact, cLC, owner, { firstName: pii(`ลีดภาษา ${TAG}-${nx()}`), phone: phoneOf(), ownerUserId: "auto", ...extra });
+      const id = r.v?.contact?.id ?? r.v?.id;
+      const row = typeof id === "string" ? await P.crmContact.findFirst({ where: { id } }) : null;
+      return { r, row: row as Any };
+    };
+    let en = await mkLead({ locale: "en" });
+    if (!(en.row && en.row.ownerUserId === U[2])) en = await mkLead({ language: "en" }); // ชื่อช่องอีกแบบที่ทางสร้างอาจรับ
+    const th = await mkLead({});
+    chk("C2.3-S8.7", "S2 (ruling 24 Sep): the `language` condition works through the REAL creation path, not only a direct pick — createContact(ownerUserId \"auto\") for an English-speaking lead ⇒ the English rep U2 (assignedBy RULE:<rule>) and CrmContact.locale is stored as \"en\" · [positive control] the same call with no language ⇒ the catch-all rule (U3), so the rule is not matching everything",
+      !!en.row && en.row.ownerUserId === U[2] && en.row.assignedBy === `RULE:${rEn}` && en.row.locale === "en" && !!th.row && th.row.ownerUserId === U[3],
+      "U2 · locale en · U3", `en=${en.row ? `${U.indexOf(en.row.ownerUserId)}/by=${en.row.assignedBy}/locale=${en.row.locale}` : en.r.err} th=${th.row ? U.indexOf(th.row.ownerUserId) : th.r.err}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S9 — ORACLE-EDIT รอบสอง (ผู้คุมงาน · 24 ก.ย. 2569): ช่องที่คำตัดสินสั่งแก้แต่ยังไม่มีข้อสอบข้อไหนคุม —
+  //   S8 (ปั๊ม teamId ของกฎลงผู้ติดต่อโดยไม่ดูว่าผู้รับอยู่ทีมนั้นจริงไหม ⇒ ทีมอื่นอ่านลีดคนนอกทีมได้ใต้นโยบาย TEAM) ·
+  //   S3 (ปุ่ม "ทดลอง" ส่งต่อเงื่อนไขได้แค่ 3 จาก 6 ชนิด ⇒ คำตอบตรงข้ามกับของจริงโดยร้านไม่มีทางรู้) ·
+  //   S10 (เพดาน simMax พิมพ์ซ้ำเป็นเลขลอยในหน้า ขณะที่ค่าจริงอยู่ใน assignment-shared)
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S9 · teamId ปั๊มถูกคน · ปุ่มทดลอง · เพดานที่ไม่พิมพ์ซ้ำ ──");
+  {
+    // U2 ไม่ได้อยู่ทีม T (สมาชิกทีม T = uLead · U0 · U1 · uOff) — กฎอ้างทีม T แต่รายชื่อผู้รับเป็นคนนอกทีม
+    const canSeeF = fnOf(VIS, "canSee");
+    const u2Teams = ((await P.teamMember.findMany({ where: { tenantId: tidA, userId: U[2] }, select: { teamId: true } })) as Any[]).map((r) => String(r.teamId));
+    await P.crmVisibilityPolicy.create({ data: { tenantId: tidA, systemId: crmTM, role: "STAFF", teamId: null, pipelineId: null, entity: "CONTACT", visibility: "TEAM" } });
+    await resetRules(crmTM);
+    await mkRule(cTM, { name: `คนนอกทีม ${TAG}`, mode: "FIXED", teamId: teamT, userIds: [U[2]], conditions: { items: [] } });
+    const outsider = await createAuto(cTM);
+    await resetRules(crmTM);
+    await mkRule(cTM, { name: `คนในทีม ${TAG}`, mode: "ROUND_ROBIN", teamId: teamT, userIds: [U[0]], conditions: { items: [] } });
+    const insider = await createAuto(cTM);
+    const mateSeesOutsider = outsider.row ? await call(canSeeF, cTM, staffActor(U[1], SALES_PERMS), "CONTACT", outsider.id) : ({ ok: false, v: undefined, err: "no row", code: "", msg: "" } as Res);
+    const mateSeesInsider = insider.row ? await call(canSeeF, cTM, staffActor(U[1], SALES_PERMS), "CONTACT", insider.id) : ({ ok: false, v: undefined, err: "no row", code: "", msg: "" } as Res);
+    await P.crmVisibilityPolicy.deleteMany({ where: { systemId: crmTM } });
+    const stamped = (outsider.row?.teamId as string | null) ?? null;
+    const okStamp = stamped === null || u2Teams.includes(stamped);
+    chk("C2.3-S9.1", "S8: a rule { teamId: T, userIds: [U2] } whose listed assignee is NOT a member of T — the lead really goes to U2 but the rule's team is NOT stamped on the contact (null, or a team U2 is actually in; T is refused), so under a TEAM visibility policy a member of T cannot read the lead of someone outside the team · [positive controls] the same shape with a real member of T stamps teamId = T and a teammate CAN read that one",
+      !!outsider.row && outsider.row.ownerUserId === U[2] && okStamp && mateSeesOutsider.ok && mateSeesOutsider.v === false && !!insider.row && insider.row.ownerUserId === U[0] && insider.row.teamId === teamT && mateSeesInsider.ok && mateSeesInsider.v === true,
+      "owner U2 · teamId ≠ T · teammate blind · control T + visible",
+      `outsider=${outsider.row ? `${U.indexOf(outsider.row.ownerUserId)}/team=${stamped === teamT ? "T(!)" : stamped ?? "null"}` : outsider.r.err} mateSeesOutsider=${mateSeesOutsider.ok ? mateSeesOutsider.v : mateSeesOutsider.err} insider=${insider.row ? `${U.indexOf(insider.row.ownerUserId)}/team=${insider.row.teamId === teamT}` : insider.r.err} mateSeesInsider=${mateSeesInsider.ok ? mateSeesInsider.v : mateSeesInsider.err}`);
+  }
+  {
+    // ปุ่ม "ทดลอง": กฎ 1 = จังหวัด (ที่อยู่ Party) · กฎ 2 = สินค้าที่สนใจ (f.<key>) · กฎ 3 = ขนาดบริษัท · กฎ 4 = รับทุกใบ
+    await resetRules(crmSim);
+    const pPhuket2 = await mkParty(tidA, pii(`ที่อยู่ภูเก็ต ทดลอง ${TAG}`), { address: "9 ถ.ทวีวงศ์ ต.ป่าตอง อ.กะทู้ จ.ภูเก็ต 83150" });
+    const coBig = await (async () => {
+      const pid = await mkParty(tidA, `บริษัทใหญ่ ทดลอง ${TAG}`, { kind: "COMPANY" });
+      return (await P.crmCompany.create({ data: { tenantId: tidA, systemId: crmSim, name: `บริษัทใหญ่ ทดลอง ${TAG}`, partyId: pid, size: "LARGE" } })).id as string;
+    })();
+    const rProv = await mkRule(cSim, { name: `ภูเก็ต ${TAG}`, mode: "FIXED", userIds: [U[0]], conditions: { items: [{ field: "province", op: "contains", value: "ภูเก็ต" }] } });
+    const rField = await mkRule(cSim, { name: `สินค้าที่สนใจ ${TAG}`, mode: "FIXED", userIds: [U[1]], conditions: { items: [{ field: "f.product", op: "eq", value: "ดำน้ำลึก" }] } });
+    const rSize = await mkRule(cSim, { name: `บริษัทใหญ่ ${TAG}`, mode: "FIXED", userIds: [U[2]], conditions: { items: [{ field: "companySize", op: "in", value: ["LARGE", "ENTERPRISE"] }] } });
+    const rAny = await mkRule(cSim, { name: `รับทุกใบ ${TAG}`, mode: "FIXED", userIds: [U[3]], conditions: { items: [] } });
+    const simRows = [{ partyId: pPhuket2 }, { fields: { product: "ดำน้ำลึก" } }, { companyId: coBig }];
+    const wantRules = [rProv, rField, rSize];
+    // ทางที่ 1 (ที่อยาก): เรียก server action จริง — ได้เฉพาะถ้าโมดูล "use server" โหลดและตอบได้ใต้ tsx (requireTenant ต้องมี request)
+    const ACT = (await import("@/app/app/sys/[id]/crm/settings/assignment/actions" as string).catch(() => ({}))) as Any;
+    const simAction = fnOf(ACT, "simulateCrmAssignAction");
+    const live = simAction ? await call(simAction, crmSim, simRows) : ({ ok: false, v: undefined, err: "MISSING_FUNCTION", code: "", msg: "" } as Res);
+    const liveRules = ((live.v?.results ?? []) as Any[]).map((x) => String(x?.ruleId ?? ""));
+    const RUNTIME = live.ok && live.v?.ok === true && liveRules.length === simRows.length;
+    // ทางที่ 2 (สำรอง · แบบสถิต): ตัวสร้าง payload ของ action ต้องส่งต่อช่องที่จอกรอกได้ + หน้าจอต้องเขียนไทยว่าการทดลองยังไม่ครอบอะไร
+    const actSrc = read(join(PAGE_DIR, "actions.ts"));
+    const actCode = actSrc.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+    const at = actCode.indexOf("simulateCrmAssignAction");
+    const tail = at < 0 ? "" : actCode.slice(at);
+    const nextExport = tail.indexOf("\nexport ");
+    const body = nextExport < 0 ? tail : tail.slice(0, nextExport);
+    const fwd = { party: /\bpartyId\b|\baddress\b/.test(body), company: /\bcompanyId\b|\bcompanySize\b/.test(body), fields: /\bfields\b/.test(body) };
+    const uiCode = [PAGE, ...walk(PAGE_DIR), ...walk(COMP_DIR)].map(read).join("\n").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+    const caveat = uiCode.split("\n").some((l) => /ทดลอง/.test(l) && /(ยังไม่|ไม่ครอบ|ไม่รวม|ไม่ได้รวม|ไม่คิด)/.test(l));
+    const staticOk = at >= 0 && fwd.party && fwd.company && fwd.fields && caveat;
+    chk("C2.3-S9.2", `S3: the "ทดลอง" button must reach all six condition kinds, not three — ${RUNTIME ? "RUNTIME MODE: the server action itself was called and each row whose ONLY matching rule is province (Party address) / f.<key> / companySize came back naming that very rule" : "STATIC MODE (the \"use server\" module cannot answer under tsx — no request scope): the action's payload builder forwards partyId|address · companyId|companySize · fields, and the screen says in Thai what the simulation does not cover"}`,
+      RUNTIME ? j(liveRules) === j(wantRules) : staticOk,
+      RUNTIME ? "rule1 · rule2 · rule3" : "forwards party/company/fields + Thai caveat",
+      RUNTIME
+        ? `live=${liveRules.map((r) => (r === rProv ? "province" : r === rField ? "field" : r === rSize ? "size" : r === rAny ? "catch-all(!)" : r || "null")).join(",")}`
+        : `action=${simAction ? (live.ok ? `answered ${j(live.v?.code ?? live.v?.error ?? "-").slice(0, 60)}` : live.err) : "not exported"} found=${at >= 0} party=${fwd.party} company=${fwd.company} fields=${fwd.fields} caveat=${caveat}`,
+      "MAJOR");
+  }
+  {
+    const pageSrc = read(PAGE);
+    const pageCode = pageSrc.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+    const literal = /simMax\s*:\s*\d/.test(pageCode);
+    const fromShared = /ASSIGN_SIMULATE_MAX_ROWS/.test(pageCode) && /from\s+["'][^"']*assignment-shared["']/.test(pageCode);
+    chk("C2.3-S9.3", "S10: the page does not re-type the simulate limit as a bare number (no `simMax: <digits>` anywhere in it) — it imports ASSIGN_SIMULATE_MAX_ROWS from assignment-shared and passes that · the shared constant is 200 (the real bound the service enforces) [static]",
+      pageSrc.length > 0 && !literal && fromShared && Number(ASH?.ASSIGN_SIMULATE_MAX_ROWS) === 200,
+      "no literal · 200", `literal=${literal} shared=${fromShared} value=${String(ASH?.ASSIGN_SIMULATE_MAX_ROWS)}`, "MINOR");
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S10 — ORACLE-EDIT รอบสาม (ผู้คุมงาน · ผู้ตรวจรอบสอง 24 ก.ย. 2569): ช่องที่เหลือหลังรับงานรอบสอง —
+  //   B1-bis (ตัดฟิลด์ `onLeave` ออกแล้ว แต่ความจริงเรื่องการลายังรั่วทางป้าย "คิวถัดไป" และผลการทดลอง) ·
+  //   S1-bis (กฎยังอ้าง `f.<key>` ที่เป็นฟิลด์อ่อนไหว/ฟิลด์ระบบได้) · S2-bis ("ปิดรับ lead" ของทีมตัวเองไม่ถูกนับเมื่อกฎอ้างทีมอื่น) ·
+  //   S3-bis (ร้านที่ยังไม่ตั้งกฎเลยถูกแจ้งเตือนทุกใบ) · S4-bis (ผู้รับสำรองไม่ต้องมีคีย์อ่านผู้ติดต่อ) · B2 (locale ทางสะพาน)
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S10 · การลาไม่รั่วทางอ้อม · ฟิลด์ที่อ้างได้ · ปิดรับ · ร้านที่ยังไม่ตั้งกฎ · ผู้รับสำรอง · สะพาน ──");
+  {
+    await resetRules(crmP);
+    const rLv = await mkRule(cP, { name: `ลาแล้วถึงคิวถัดไป ${TAG}`, mode: "FIXED", userIds: [uLeave, U[0]], conditions: { items: [] } });
+    const rowOf = (r: Res) => ((r.v?.rules ?? []) as Any[]).find((x) => x?.id === rLv) ?? null;
+    const noHr = await call(pageDataF, cP, staffKeyed); // manage ✔ · hr.leave.read ✘
+    const withHr = await call(pageDataF, cP, staffLeaveKeyed); // manage ✔ · hr.leave.read ✔
+    const rNo = rowOf(noHr);
+    const rYes = rowOf(withHr);
+    const hasNext = !!rNo && Object.prototype.hasOwnProperty.call(rNo, "nextUserId");
+    const nextNo = (rNo?.nextUserId as string | null) ?? null;
+    const simNo = await call(simulateF, cP, staffKeyed, [{}]);
+    const simYes = await call(simulateF, cP, staffLeaveKeyed, [{}]);
+    const res0 = ((simNo.v?.results ?? []) as Any[])[0] ?? null;
+    const simNoOwner = (res0?.ownerUserId as string | null) ?? "NULL";
+    const simNoFlag = !!res0 && Object.keys(res0).some((k) => /leave/i.test(k));
+    const simYesOwner = (((simYes.v?.results ?? []) as Any[])[0]?.ownerUserId as string | null) ?? "NULL";
+    chk("C2.3-S10.1", "B1-bis: the leave fact must not leak the LONG way round either. Rule FIXED [uLeave (approved leave today), U0], no cap, both accepting — for a viewer with crm.assignment.manage but WITHOUT hr.leave.read the \"คิวถัดไป\" of that rule is absent/null or uLeave (leave simply not applied for that viewer) and NEVER U0, because naming U0 says out loud that uLeave is on leave today; the same viewer's simulate must not name U0 either (unless the result carries an explicit *leave* flag saying leave was not considered) · [positive control] the viewer holding hr.leave.read gets nextUserId = U0 and simulate = U0",
+      noHr.ok && !!rNo && (!hasNext || nextNo === null || nextNo === uLeave) && simNo.ok && (simNoOwner === uLeave || simNoFlag) && withHr.ok && rYes?.nextUserId === U[0] && simYes.ok && simYesOwner === U[0],
+      "no U0 for the blind viewer · U0 for the keyed one",
+      `noHr: next=${hasNext ? (nextNo === U[0] ? "U0 (LEAK)" : nextNo === uLeave ? "uLeave" : nextNo ?? "null") : "absent"} sim=${simNoOwner === U[0] ? "U0 (LEAK)" : simNoOwner === uLeave ? "uLeave" : simNoOwner}${simNoFlag ? " +leaveFlag" : ""} | withHr: next=${rYes?.nextUserId === U[0] ? "U0" : rYes?.nextUserId ?? "-"} sim=${simYesOwner === U[0] ? "U0" : simYesOwner}`);
+  }
+  {
+    await resetRules(crmP);
+    const n0 = (await P.crmAssignmentRule.count({ where: { systemId: crmP } })) as number;
+    const cond = (key: string) => ({ items: [{ field: `f.${key}`, op: "eq", value: "x" }] });
+    const badSens = await call(createRuleF, cP, owner, { name: `อ้างฟิลด์อ่อนไหว ${TAG}`, mode: "FIXED", userIds: [U[0]], conditions: cond(FKEY_SENS) });
+    const badSys = await call(createRuleF, cP, owner, { name: `อ้างฟิลด์ระบบ ${TAG}`, mode: "FIXED", userIds: [U[0]], conditions: cond(FKEY_SYS) });
+    const good = await call(createRuleF, cP, owner, { name: `อ้างฟิลด์ธรรมดา ${TAG}`, mode: "FIXED", userIds: [U[0]], conditions: cond(FKEY_PLAIN) });
+    const n1 = (await P.crmAssignmentRule.count({ where: { systemId: crmP } })) as number;
+    const patch = good.ok ? await call(updateRuleF, cP, owner, good.v?.id ?? NONE, { conditions: cond(FKEY_SENS) }) : ({ ok: false, v: undefined, err: "no rule", code: "", msg: "" } as Res);
+    const stored = good.ok ? await P.crmAssignmentRule.findFirst({ where: { id: good.v?.id ?? NONE } }) : null;
+    const storedFields = j((stored?.conditions as Any)?.items ?? []);
+    chk("C2.3-S10.2", "S1-bis: a rule may only condition on a custom field a lead can actually carry — `f.<key>` of a SENSITIVE field and `f.<key>` of a system/governed field (isSystem · systemKey sourceKind) are both refused with a Thai VALIDATION that does not blame the user, and nothing is written · [positive controls] the plain custom field is accepted (exactly 1 row more) and updateRule cannot smuggle the sensitive key in afterwards (stored conditions unchanged)",
+      refusedAs(badSens, ["VALIDATION"]) && refusedAs(badSys, ["VALIDATION"]) && good.ok && n1 === n0 + 1 && refusedAs(patch, ["VALIDATION"]) && !storedFields.includes(FKEY_SENS) && storedFields.includes(FKEY_PLAIN),
+      "refused ×2 · accepted · patch refused", `sens=${badSens.ok ? "ACCEPTED" : badSens.err} sys=${badSys.ok ? "ACCEPTED" : badSys.err} plain=${good.ok ? "ok" : good.err} rows ${n0}→${n1} patch=${patch.ok ? "ACCEPTED" : patch.err} stored=${cut(storedFields, 120)}`, "MAJOR");
+    await resetRules(crmP);
+  }
+  {
+    await resetRules(crmTM);
+    await mkRule(cTM, { name: `ปิดรับที่ทีมตัวเอง ${TAG}`, mode: "FIXED", teamId: teamT, userIds: [uT2, U[3]], conditions: { items: [] } });
+    await P.teamMember.updateMany({ where: { teamId: teamT2, userId: uT2 }, data: { acceptingLeads: false } });
+    const closed = await pick(cTM, {});
+    await P.teamMember.updateMany({ where: { teamId: teamT2, userId: uT2 }, data: { acceptingLeads: true } });
+    const open = await pick(cTM, {});
+    chk("C2.3-S10.3", "S2-bis: \"ปิดรับ lead\" is a fact about the PERSON, not about the rule's team — a rule { teamId: T, userIds: [uT2, U3] } where uT2 is not in T and has acceptingLeads=false on his OWN team row (T2) skips uT2 ⇒ U3 · [positive control] the same rule with that row flipped to accepting ⇒ uT2 (first candidate)",
+      ownerOf(closed) === U[3] && ownerOf(open) === uT2, "U3 then uT2",
+      `closed=${ownerOf(closed) === uT2 ? "uT2 (NOT SKIPPED)" : U.indexOf(ownerOf(closed)) >= 0 ? `U${U.indexOf(ownerOf(closed))}` : ownerOf(closed)} open=${ownerOf(open) === uT2 ? "uT2" : ownerOf(open)}`, "MAJOR");
+    await resetRules(crmTM);
+  }
+  {
+    // ร้าน Z: OWNER 1 + MANAGER 2 = 3 คนที่จะได้รับแจ้งเตือนถ้ามีอะไรให้แจ้ง
+    await resetRules(crmZ);
+    const zero = await Promise.all(Array.from({ length: 5 }, () => createAuto(cZ)));
+    const zeroIds = zero.map((m) => m.id).filter((x) => x !== NONE);
+    const zeroNotes = zeroIds.length > 0 ? ((await P.appNotification.findMany({ where: { tenantId: tidZ, recipientUserId: { not: null } } })) as Any[]).filter((n) => zeroIds.some((id) => String(n.body ?? "").includes(id))) : [];
+    await resetRules(crmZ2);
+    await mkRule(cZ2, { name: `เฉพาะ POS ${TAG}`, mode: "FIXED", userIds: [uZR], conditions: { items: [{ field: "sourceKind", op: "eq", value: "POS" }] } });
+    const one = await createAuto(cZ2);
+    const oneNotes = one.id !== NONE ? ((await P.appNotification.findMany({ where: { tenantId: tidZ, body: { contains: one.id }, recipientUserId: { not: null } } })) as Any[]) : [];
+    const oneRecips = [...new Set(oneNotes.map((n) => String(n.recipientUserId)))].sort();
+    chk("C2.3-S10.4", "S3-bis: a shop that has not configured assignment at all must not be spammed — v2 system with ZERO rules and no fallback, 5 automatic leads (createContact auto) ⇒ all 5 created unassigned and ZERO AppNotification rows about them (nothing to act on: there is no rule to fix) · [positive control] the same shop's other system WITH one active rule that matches nothing and no fallback ⇒ the single lead does produce exactly 3 notifications, one per accepted OWNER/MANAGER (U.7 semantics preserved — the shop asked for rules and they did not catch)",
+      zero.every((m) => m.r.ok && m.row && m.row.ownerUserId === null) && zeroNotes.length === 0 && one.r.ok && !!one.row && one.row.ownerUserId === null && oneNotes.length === 3 && oneRecips.length === 3,
+      "0 notifications · then 3", `zero=${zero.filter((m) => m.r.ok).length}/5 created, notes=${zeroNotes.length} | control=${one.r.ok ? "ok" : one.r.err} notes=${oneNotes.length} recips=${oneRecips.length}`, "MAJOR");
+  }
+  {
+    const before = await call(getSettingsF, cP, owner);
+    const noRead = await call(setFallbackF, cP, owner, uNoKey); // สมาชิกจริง แต่ไม่มีคีย์อ่านผู้ติดต่อ
+    const mid = await call(getSettingsF, cP, owner);
+    const withRead = await call(setFallbackF, cP, owner, uFb);
+    const after = await call(getSettingsF, cP, owner);
+    await call(setFallbackF, cP, owner, null);
+    chk("C2.3-S10.5", "S4-bis: the fallback user must be able to SEE what is handed to him — setFallbackUser refuses a member of this shop who holds no crm.contact.read (Thai VALIDATION, no blame, the stored value does not change; otherwise every un-caught lead lands on someone whose own list hides it) · [positive control] a member holding the read key is accepted and stored",
+      refusedAs(noRead, ["VALIDATION"]) && mid.ok && (mid.v?.fallbackUserId ?? null) === (before.v?.fallbackUserId ?? null) && withRead.ok && after.v?.fallbackUserId === uFb,
+      "refused · unchanged · accepted", `noRead=${noRead.ok ? "ACCEPTED" : noRead.err} value=${before.v?.fallbackUserId ?? "null"}→${mid.v?.fallbackUserId ?? "null"} withRead=${withRead.ok ? (after.v?.fallbackUserId === uFb ? "stored" : String(after.v?.fallbackUserId)) : withRead.err}`, "MAJOR");
+  }
+  {
+    // B2: สะพาน — วันนี้ `crm-bridges/chat.ts` และ `forms.ts` ยังไม่ส่ง locale เลย (ผู้เรียกฝั่งนั้นเป็นงาน C2.4/C2.6) ⇒
+    //   ข้อนี้ขับที่ปากทางของสะพานเอง (`contacts.leadFromBridge` · kind CHAT ที่รู้ภาษาห้องแชท) ซึ่งเป็นตัวที่สะพานทั้งสองเรียก
+    await resetRules(crmBR);
+    const rEnB = await mkRule(cBR, { name: `แชทอังกฤษ ${TAG}`, mode: "FIXED", userIds: [U[2]], conditions: { items: [{ field: "language", op: "eq", value: "en" }] } });
+    await mkRule(cBR, { name: `แชทที่เหลือ ${TAG}`, mode: "FIXED", userIds: [U[3]], conditions: { items: [] } });
+    const bridgeLead = async (locale: string | null) => {
+      const pid = await mkParty(tidA, pii(`ห้องแชท ${TAG}-${nx()}`));
+      // ctx ของสะพานอัตโนมัติ = ไม่มีคนสร้าง (actorUserId null) — เหมือนที่ตัวสะพานสร้างให้ · มีคนกดเอง = คนนั้นเป็นผู้ดูแล (C1.11)
+      const r = await call(CT.leadFromBridge, { tenantId: tidA, systemId: crmBR, actorUserId: null }, { kind: "CHAT", name: pii(`ลูกค้าแชท ${TAG}-${nx()}`), phone: phoneOf(), partyId: pid, ...(locale ? { locale } : {}) });
+      const id = r.v?.contactId;
+      const row = typeof id === "string" ? await P.crmContact.findFirst({ where: { id } }) : null;
+      return { r, row: row as Any };
+    };
+    const en = await bridgeLead("en");
+    const th = await bridgeLead(null);
+    chk("C2.3-S10.6", "B2: the bridge entry point carries the language — contacts.leadFromBridge(kind CHAT, locale \"en\") writes CrmContact.locale \"en\" AND the `language eq en` rule assigns the English rep U2 · [positive control] the same bridge call with no locale ⇒ the catch-all rule U3 · NOTE: neither crm-bridges/chat.ts nor forms.ts supplies a locale yet (no locale source exists on those callers today — C2.4/C2.6 work), so this drives the function both bridges call, not the bridge modules themselves",
+      !!en.row && en.row.locale === "en" && en.row.ownerUserId === U[2] && en.row.assignedBy === `RULE:${rEnB}` && !!th.row && th.row.ownerUserId === U[3],
+      "locale en · U2 · U3", `en=${en.row ? `locale=${en.row.locale}/${U.indexOf(en.row.ownerUserId)}` : en.r.err} th=${th.row ? `locale=${th.row.locale}/${U.indexOf(th.row.ownerUserId)}` : th.r.err}`);
+    await resetRules(crmBR);
   }
   if (RAW_RULES.length > 0) console.log(`  ℹ️  ${RAW_RULES.length} rule(s) had to be inserted raw (createRule absent/refused) — pick checks still meaningful`);
 } catch (e) {

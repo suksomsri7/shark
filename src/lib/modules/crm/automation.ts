@@ -1617,3 +1617,8 @@ export async function builderOptions(ctx: CrmAutomationCtx, actor: MemberActor):
     contactFields: fields.filter((f) => f.objectKey === "contact").map((f) => ({ key: f.key, label: f.label })),
   };
 }
+
+// CRM C2.2 ▸ ลำดับการติดตาม (`sequences.ts`) ส่งผ่านตัวรันกลางด้วย adapter ของตัวเอง แต่ใช้ "ที่อยู่ LINE" ชุดเดียวกับกฎ CRM
+//   (lineUserId ของ CRM ก่อน · ไม่มี = ตัวตน LINE ของสมาชิกที่ผูกไว้) — ไม่มีตัวหาที่อยู่ชุดที่สอง
+export const crmLineAddressOf = lineAddressOf;
+// ◂ CRM C2.2

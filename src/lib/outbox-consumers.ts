@@ -484,7 +484,11 @@ type CrmBridgeName =
   | "onMemberCreated"
   | "onMemberMerged"
   | "onCrmTimelineEvent"
-  | "onCustomRecordCreated";
+  | "onCustomRecordCreated"
+  // CRM C2.2 ▸ หยุดลำดับการติดตามอัตโนมัติ (crm-bridges/sequences.ts) ◂
+  | "onDealWonStopSequences"
+  | "onDealLostStopSequences"
+  | "onContactOptOutStopSequences";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -975,7 +979,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // 🔴 ทั้ง 2 ตัวลงครบ 3 ทะเบียน (ที่นี่ · AUTOMATION_EVENTS · WEBHOOK_EVENTS ผ่าน spread) — ขาด = คิวตันเงียบ
   // `crm.deal.won` ยิงจาก `crm/deals.ts#moveCore` (C1.5) เมื่อดีล "เข้า" WON จากขั้นชนิดอื่น → หา/สมัครสมาชิก + ผูก CrmContact + แถว DEAL_WON
   //   key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
-  "crm.deal.won": withAutomation(memberBridge("onCrmDealWon")),
+  // CRM C2.2 ▸ + หยุดลำดับการติดตามของดีลนี้ (stopOnWon) เป็นของแถมใต้ compose — ล้ม = WARN · สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิม ◂
+  "crm.deal.won": withAutomation(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences"))),
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   "shop.order.paid": withAutomation(memberBridge("onShopOrderPaid")),
@@ -1021,7 +1026,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ทั้ง 5 ตัวเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค — ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง
   //   (AUDIT-CLASS X4) · ผลข้างเคียงจริง (ไทม์ไลน์สมาชิก · คะแนน · สะพานแชท/บัญชี) = ใบ C1.8/C2.8 เติมเป็น "ของแถม" ใต้ compose
   "crm.contact.created": withAutomation(async () => {}),
-  "crm.contact.updated": withAutomation(async () => {}),
+  "crm.contact.updated": withAutomation(compose(async () => {}, crmBridge("onContactOptOutStopSequences"))), // CRM C2.2 ▸ ขอไม่รับข่าวสาร ⇒ หยุดลำดับการติดตาม ◂
   "crm.contact.assigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.contact.converted": withAutomation(async () => {}),
   "crm.contact.merged": withAutomation(async () => {}),
@@ -1035,7 +1040,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   เขียนครบใน tx ของบริการดีลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8 เติม "ของแถม" ใต้ compose
   "crm.deal.created": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.stage.changed": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
-  "crm.deal.lost": withAutomation(async () => {}),
+  "crm.deal.lost": withAutomation(compose(async () => {}, crmBridge("onDealLostStopSequences"))), // CRM C2.2 ▸ หยุดลำดับการติดตามของดีลนี้ (stopOnLost) ◂
   "crm.deal.reopened": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.reassigned": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.deal.updated": withAutomation(async () => {}),
@@ -1047,6 +1052,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.activity.logged": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
   "crm.activity.completed": withAutomation(async () => {}),
   // ◂ CRM C1.6
+  // CRM C2.2 ▸ ลำดับการติดตาม (`crm/sequences.ts`) — ยิงใน tx เดียวกับการเขียน · key `<type>#<enrollmentId>#1` (R-C.8) · payload id/โค้ดล้วน:
+  //   enrolled {enrollmentId, sequenceId, contactId, dealId, sequenceVersion} · finished {enrollmentId, sequenceId, contactId, status, reason?}
+  //   ทั้งสองเป็น no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค — ส่งซ้ำ/พร้อมกันไม่มีผลข้างเคียง (AUDIT-CLASS X4)
+  "crm.sequence.enrolled": withAutomation(async () => {}),
+  "crm.sequence.finished": withAutomation(async () => {}),
+  // ◂ CRM C2.2
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

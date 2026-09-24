@@ -10,7 +10,7 @@ X3 20 parallel `pick` calls over 4 users → 5 each (exact); LEAST_OPEN under 10
 Regressions: C1.4, C1.7, `qc-hr-leave-booking`.
 
 ## Controller addendum (oracle author · 19 Sep 2569) — rulings R1–R12 CONFIRMED by the controller 19 Sep (binding)
-Oracle: `scripts/qc-crm-c2.3.mts` (60 checks · S0 5 · S1–S6 22 · S7 7 · X1 6 · X3 6 · X4 3 · X8 2 · X9 3 · U 5 · CLEAN). Every item below is **CONFIRMED (controller 19 Sep)** — it is what the oracle currently asserts; the controller confirms or changes it (then ORACLE-EDIT the listed checks).
+Oracle: `scripts/qc-crm-c2.3.mts` (**74 checks after ORACLE-EDIT 24 Sep** · S0 5 · S1–S6 22 · S7 7 · S8 7 · S9 3 · X1 6 · X3 8 · X4 3 · X8 2 · X9 3 · U 7 · CLEAN — was 60). Every item below is **CONFIRMED (controller 19 Sep)** — it is what the oracle currently asserts; the controller confirms or changes it (then ORACLE-EDIT the listed checks).
 - **R1 CONFIRMED (controller 19 Sep) — when rules run.** `pick` stays one function: explicit owner ⇒ FIXED; a human creator and no `auto` ⇒ CREATOR (C1.4 behaviour unchanged, `qc-crm-c1.4` stays green); rules run only on the automatic path = no human creator (form/chat bridges, API without a user) or `createContact({ ownerUserId: "auto" })` (blueprint §5.3 `ownerUserId?|auto`). Mockup "ใช้ทุกทางเข้า lead ใหม่" is read as "every automatic entry". Checks: S7.1 S7.7.
 - **R2 CONFIRMED (controller 19 Sep) — pick is async and runs inside the caller's transaction** (`pick(ctx, input, db?)`, contacts.ts awaits it with `tx`). Needed so LEAST_OPEN/maxOpenPerUser can serialise per rule and see the load the same tx writes. The C1.4 comment "signature unchanged" is superseded (async). Checks: S0.2 X3.3 X3.4.
 - **R3 CONFIRMED (controller 19 Sep) — first MATCHING rule decides** (no fall-through to later rules); its candidates exhausted ⇒ settings fallback ⇒ NOBODY (blueprint §11.5 wording). Alternative (fall through to the next matching rule) = change S7.5 only.
@@ -56,3 +56,16 @@ Oracle: `scripts/qc-crm-c2.3.mts` (60 checks · S0 5 · S1–S6 22 · S7 7 · X1
 
 ### 🔴 กติกากระบวนการที่เพิ่งได้ (ผู้ตรวจจับได้)
 **brief ในกลุ่ม worktree ไม่ตรงกับทรีหลัก** — สำเนา `crm-brief-C2.3.md` ใน `shark-crm-c23` **ไม่มี Controller addendum (R1–R12)** เลย ⇒ ถ้า builder อ่านแต่สำเนาในกลุ่มตัวเอง มันทำงานโดยไม่เห็นคำตัดสินผูกพัน · **ก่อน spawn builder ทุกครั้ง: ก๊อป `ledger/crm-briefs/` จากทรีหลักเข้า worktree นั้น** (หรือสั่งให้ agent อ่าน path ของทรีหลักเสมอ)
+
+## Controller ruling round 3 (24 ก.ย. 2569 · Fable 5.1 · binding — หลังผู้ตรวจของผู้คุมงานยืนยัน 11 ข้อแก้จริง)
+- **B1-bis (BLOCKER)** สถานะลายังรั่วผ่าน `nextUserId` ของทุกกฎ (คำนวณด้วย env ที่รู้ว่าใครลา) และปุ่มทดลอง ⇒ ผู้ดูที่ไม่มี `hr.leave.read` เห็น "คิวถัดไป: B" = รู้ว่า A ลา · แก้: ผู้ดูที่ไม่มีคีย์ → คำนวณด้วย env ที่ไม่มีข้อมูลลา (หรือตัด `nextUserId`) · simulate เช่นกัน · ข้อสอบ S8.4 เดิม grep แค่สตริง `"onLeave"` จึงไม่จับ → ORACLE-EDIT S10.1
+- **B2 (BLOCKER)** `BridgeLeadInput.locale` ไม่มีผู้เรียกเลย (forms.ts · chat.ts · crm-panel-actions.ts) ⇒ เงื่อนไข `language` ยังตายบนเส้นทางที่กฎทำงานจริง (R1) — คำตัดสิน S2 รอบก่อนยังไม่บรรลุ · แก้: บล็อก `// CRM C2.3 ▸` ในสะพาน chat/forms ส่ง locale จากแหล่งที่มีจริง (ห้องแชท/ภาษาบัญชี LINE · FormDef/FormSubmission/คำตอบ locale) · ถ้าฟอร์มไม่มีแหล่งจริง = หนี้ C2.6 (ต้องรายงานว่าอ่านโมเดลแล้ว)
+- **B3** `f.<key>` ไม่ถึงลีดจากสะพาน (`insertContactInTx` จาก `leadFromBridge` ไม่ส่ง `custom`) → **ไม่บล็อก C2.3**: การแมปคำตอบฟอร์ม→ฟิลด์เป็นของ C2.6 · C2.3 แค่เปิดช่อง `fields` ใน `BridgeLeadInput` ให้ไหลเข้า custom
+- **S1** บันทึกกฎ `f.<ฟิลด์ลับ>` ได้และทำงานจริง ⇒ MANAGER ที่ไม่มีสิทธิ์อ่านฟิลด์ลับ อ่านค่าได้จากว่าลีดตกมาหาใคร · แก้: `cleanRule` ตรวจกับ `customFieldLayout` ปฏิเสธ sensitive/isSystem → ORACLE-EDIT S10.2
+- **S2** ผู้รับที่อยู่นอกทีมของกฎ ปิดรับ lead ในทีมตัวเองแล้วยังได้ lead (query `closed` กรองด้วย `rule.teamId`) · แก้: มี `userIds` = ไม่กรองทีม → S10.3
+- **S3** ร้าน v2 ที่ยังไม่ตั้งกฎเลย: ทุกลีด = NOBODY = แจ้งเตือน OWNER/MANAGER ทุกคน (แคมเปญ 100 ใบ × 3 คน = 300 แจ้งเตือน) · แก้: ไม่มีกฎที่เปิดอยู่เลย = ไม่แจ้ง · มีกฎแต่ไม่แมตช์/ไม่มีคน = แจ้งตามเดิม → S10.4
+- **S4** `setFallbackUser` ตรวจแค่ membership ไม่ตรวจ `crm.contact.read` ⇒ ผู้รับสำรองตาย ทุกลีดตก NOBODY · แก้: ใช้ `readableMembers` → S10.5
+- **S5** ทุก mutation ของกฎเขียน audit นอก tx · แก้: `$transaction` + ส่ง tx ให้ `writeAudit`
+- N1 simulate 200 แถว = ~1,000+ query → memoise ต่อกฎ (ทำถ้าถูก) · N2 `leaveSnapshot` ≤75 round-trip/ลีด (300 คน) → หนี้ C5 · N3 คอมเมนต์เก่า :514 · `expect.target` ของ `crm-assign-cond-add` · `cleanLocale` เก็บค่า normalised + รับ BCP-47 → แก้
+- รับไว้/ไม่แก้: RR cursor หารศูนย์ไม่ได้ (return ก่อนเมื่อ eligible ว่าง) · LEAST_OPEN tie-break กำหนดได้ · เพดานใช้กับ FIXED/TEAM_LEAD ด้วย · ลำดับล็อก advisory→row ไม่มี cycle · v1 ไม่แตะ · มือถือ 390 ผ่าน · testid 40 = แถวทะเบียน 40
+- 🔴 กระบวนการ: `regressions.log` ของ builder ไม่ครบ (c1.4/c1.7/c1.11 ไม่มี · c1.8/forms-notify ไม่มี JSON_SUMMARY) — คำว่า "regression เขียว" ของ agent ไม่ใช่หลักฐาน · unit `crm-c22c23-verify` ของผู้คุมงานครอบทั้งหมด

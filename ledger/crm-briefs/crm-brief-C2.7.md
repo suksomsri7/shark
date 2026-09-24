@@ -19,3 +19,34 @@ crm `deals*.ts`, `payments.ts` (new), `crm-bridges.ts` money consumers · ONE hu
 CRM-RUN S1–S8 (28).
 X4 every money consumer twice AND twice in parallel → counted once; void before paid → nothing subtracted; void after paid → subtracted once; re-void → no change · X3 10 different payments of one deal in parallel → `paidSatang` = exact sum (BigInt) · compose contract: CRM extra throwing does not fail `pos.sale.paid`/account consumers; failing accounting base still lets CRM run · X1 deal select lists only deals the cashier can see, of the same tenant; `linkSaleToDeal` with a foreign sale/deal → 404 · X9 auto-WON and auto-invoice audited.
 Regressions (FULL): every `qc-acc-v2-*`, every `qc-account-api-*`, `qc-pos-account`, `qc-pos-register`, `qc-pos-products`, `qc-pos-inventory`, `qc-pos-closeday`, `qc-pos-coupon`, `qc-acc-v2-pos-lines`, `qc-restaurant*`, `qc-member-m2.8`, `qc-member-fix-s2`, `qc-kanban-k3.3`.
+
+## Addendum (written by the C2.7 oracle author, 23 Sep · **needs the controller's ruling**)
+Oracle: `scripts/qc-crm-c2.7.mts` (**55 checks** · S0 6 · S1–S8 = the 28 of CRM-RUN §2 · U 4 uiVersion-1 · X1 3 · X3 3 · X4 4 · X6 1 ·
+X8 2 · X9 2 · FATAL · CLEAN · **the CONTRACT BLOCK A–F at the top of that file is authoritative** for every name, signature and shape;
+where it and this brief differ, the contract block wins). X2 · X5 · X7 · X10 are N/A with a reason each (no REST op / AI tool, no
+scheduled job, no public endpoint, no file or secret). Points that no document settled and that the controller must rule on:
+1. **No migration, no new column, no new event** (R-C.1 · C29 win over the CRM-RUN §1 row that still says `crm_v2_c (PosSale.dealId)`):
+   the sale↔deal link lives in `CrmDealPayment(dealId, "POS_SALE", saleId)` only, and the money path emits already-registered events.
+   `C2.7-S0.4` checks this mechanically (registries + `information_schema` + the migrations folder).
+2. 🔴 **`linkSaleToDeal` must COUNT an already-PAID sale in the same transaction.** The brief's order ("called right after a successful
+   sale") loses the money otherwise: `createSale` emits `pos.sale.paid` inside its transaction and drains right after commit, so the
+   consumer usually runs BEFORE the link row exists and finds nothing. Both paths converge on the unique key
+   `(dealId, "POS_SALE", saleId)`; whichever arrives first counts, the other is a no-op. Checks `C2.7-S5.1` · `C2.7-S5.2`.
+3. **"deal flag: document voided" = `CrmDeal.tags` gains `DEAL_VOIDED_TAG = "เอกสารถูกยกเลิก"` (idempotent) + ONE AUTO activity +
+   `dealMoney().documentVoided`** — there is no column and C2.7 may not add one. **Oracle-proposed**; the controller may pick another
+   carrier, which is an ORACLE-EDIT of `C2.7-S4.2`.
+4. **`dealForDoc(tenantId, docId, actor?)`** — the brief writes `crm.dealForDoc(docId)`, but a tenant-less lookup cannot satisfy X1 and
+   an actor-less one leaks a deal the reader may not see. Signature **oracle-proposed**.
+5. **`recordDocPayment` resolves the deal through the document CHAIN** (`invoiceDocId`, `quotationDocId`, or any document whose
+   `sourceDocId` chain reaches one of them) because account events carry no `sourceDocId` and no `partyId` (COMMON). `C2.7-S3.3` pays a
+   RECEIPT of the invoice and demands it counts.
+6. **uiVersion 1 (every real shop today) is skipped by the money bridge and NOT caught up later**: a payment that arrives while the shop
+   is on v1 is never counted retroactively when the shop is switched to 2 (`C2.7-U.4` pins this as the accepted semantics and the
+   positive control proves the gate is read live). If the owner wants a catch-up, it needs a recompute step nobody owns yet — controller
+   decision.
+7. **S7 (6 items) proves the invariants the FULL regression list protects** — `pos/service.ts` and the account transaction functions
+   byte-identical, no new column, the consumer chains of `pos.sale.paid`/`pos.sale.voided` keeping every existing step with CRM appended
+   LAST, the member/stamp steps still running when the CRM extra throws (trigger lab), and the `linkSaleToDeal` call in
+   `registerSaleAction` wrapped so a CRM failure never fails a paid bill. The suites themselves stay the controller's D4 duty.
+8. **Permission keys used**: `crm.deal.update` for `linkSaleToDeal`, `crm.deal.read` for the deal select (an actor without it gets `[]`,
+   never an exception — the POS screen must keep selling). Testids: `pos-deal-select` · `pos-deal-hint` · `acc-doc-crm-deal`.

@@ -70,6 +70,8 @@ console.log(`[crm-cron] เริ่ม ${startedAt.toISOString()} · โหม�
 
 // ทะเบียนเดียวกับที่ route ใช้ — import นี้ลงทะเบียน crm.heartbeat เอง (C2.x จะเพิ่ม import ของงานตัวเองที่นี่)
 const { runMinuteJobs, settleOutstandingMinuteJobs } = await import("@/lib/platform/minute-jobs");
+// CRM C2.2 ▸ งานรายนาที "crm.sequences" (ทำขั้นของลำดับการติดตามที่ถึงเวลา) — ลงทะเบียนตอน import ◂
+await import("@/lib/modules/crm/sequences-job");
 
 let code = 0;
 try {
