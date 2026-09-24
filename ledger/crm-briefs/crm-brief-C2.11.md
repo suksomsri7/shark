@@ -80,3 +80,18 @@ before the builder starts).
 - ตาราง MUST 30 op (id/path/action/kind) **CONFIRMED** — path ตามแบบ C1.10 (`/resource/{id}/sub`) · `scoring.explain = GET /contacts/{id}/score` ด้วย `crm.contact.read` · `sequences.stop = POST /sequences/enrollments/{id}/stop` · `assignment.simulate`/`automation.dryRun` เป็น `kind: "read"` แม้ POST (ข้อสอบยืนยันไม่เขียน) · danger = `emails.inbound.rotate` · `sequences.bulkEnroll` · `scoring.recompute{all}` · webhook event C2 11 ตัว (consumer + ป้ายไทย) · `test:` id ครบตามข้อสอบ · ไม่มีคีย์/หน้า/migration ใหม่ · `S1.1` = ประตูของทั้งไฟล์ (404 ของ dispatcher ทำให้ X2.2/U.*/S7.1 เขียวหลอกตอนยังไม่มี op — ผู้คุมงานอ่าน S1.1 ก่อนเสมอ)
 - **แก้ 1 ข้อ (ORACLE-EDIT โดยผู้เขียนข้อสอบ)**: แยก `emails.sendBulk` (`POST /emails/send-bulk` · kind danger · ≤500 ผู้รับ · confirm+reason) ออกจาก `emails.send` ซึ่งรับผู้รับ **คนเดียวเท่านั้น** (>1 = VALIDATION) — op เดียวที่บางครั้งต้อง confirm ทำให้ผู้ใช้ API งง · MUST = 31
 - ถอยหลังบังคับ: `qc-crm-c1.10` (REST ชุดแรก) · `qc-account-api-keys` · `qc-crm-c2.1` · `qc-crm-c2.2` · `qc-crm-c2.3` · `qc-crm-c2.5` · `qc-crm-c2.8` · `qc-crm-c2.10` · **`qc-crm-c1.11`** · fitness F13.x
+
+### ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569) — the multi-recipient send gets its own door
+Applied to `scripts/qc-crm-c2.11.mts`; **MUST goes from 30 to 31 ops** (emails 11 · sequences 7 · assignment 3 · scoring 4 ·
+tracking 3 · notifications 2 · automation 2). Decision 5 of the addendum is superseded by this ruling.
+- `emails.send` — `POST /emails/send` · `crm.email.send` · **kind `write`** · **EXACTLY ONE recipient**; a body naming more than one
+  answers VALIDATION (400/422). Its input schema must NOT carry `recipients[]` / `contactIds[]` and must not grow a `confirm` flag.
+- `emails.sendBulk` — **`POST /emails/send-bulk`** · `crm.email.send` · **kind `danger`** · `confirm: true` + `reason` ≥ 5 chars ·
+  **≤ 500 recipients** (a longer list is refused even with confirm) · audited like every danger op.
+- Checks changed: `C2.11-S1.1` (31 ops · the new row in the MUST table) · `C2.11-X2.2` (readonly is now refused on five doors, send-bulk
+  included) · `C2.11-X6.2` (the array cap is proven on `sequences.bulkEnroll` AND `emails.send-bulk`) · `C2.11-X9.1` (the danger list is
+  now four ops and `emails.send` must stay a plain single-recipient write) · `C2.11-X9.2` (rewritten: two recipients on `/emails/send`
+  ⇒ 400/422 · `/emails/send-bulk` without confirm ⇒ refused · with confirm ⇒ accepted · 501 recipients ⇒ refused · short reason on
+  recompute-all ⇒ refused). The check-id list (`TEST_IDS`) and the total (47 checks) are unchanged.
+- Re-run after the edit: `JSON_SUMMARY {"total":47,"passed":16,...}` — same balance, the five touched checks still red for the right
+  reason (the ops do not exist yet) except `X2.2`, which stays green because the dispatcher answers 404 while they are absent.

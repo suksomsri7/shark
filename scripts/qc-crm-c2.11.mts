@@ -24,12 +24,13 @@
 //   F13.12 · src/lib/modules/crm/api/{registry,dispatch,tools,webhook-events,config}.ts.
 //
 // ══════════════════════════════════ CONTRACT (the builder implements exactly this) ══════════════════════════════════
-//   A. THE 30 MUST OPS (id · METHOD path · action · kind · the service it calls — no second engine, the ops only call these services).
+//   A. THE 31 MUST OPS (id · METHOD path · action · kind · the service it calls — no second engine, the ops only call these services).
 //      Every one of them carries `test: "<a check id of THIS file>"` (F13.10), a strict input schema (additionalProperties false),
 //      every string capped, every array capped, list `take` ≤ 100, lists answer `data: { items[], nextCursor }` and accept `cursor`.
 //        emails.threads.list      GET    /emails/threads                        crm.email.read        read   emails.listThreads
 //        emails.thread.get        GET    /emails/threads/{threadKey}            crm.email.read        read   emails.getThread
-//        emails.send              POST   /emails/send                           crm.email.send        write  emails.sendEmail   (danger when >1 recipient)
+//        emails.send              POST   /emails/send                           crm.email.send        write  emails.sendEmail   (EXACTLY ONE recipient — more ⇒ VALIDATION)
+//        emails.sendBulk          POST   /emails/send-bulk                      crm.email.send        danger emails.sendBulk    (≤ 500 recipients · confirm + reason)
 //        emails.schedule          POST   /emails/schedule                       crm.email.send        write  emails.scheduleEmail
 //        emails.userSettings.get  GET    /emails/user-settings                  crm.email.settings    read   emails.getUserSetting
 //        emails.userSettings.set  PUT    /emails/user-settings                  crm.email.settings    write  emails.setUserSetting
@@ -62,8 +63,10 @@
 //        scoring.rules.update/delete · scoring.seed · tracking.web.get/set · notifications.templates.get/set · automation.rules.get/
 //        create/update/toggle/delete · stale.list. Whatever is added obeys the same rules (test id · strict schema · danger list).
 //   B. DANGER LIST (X9 — `confirm: true` + `reason` ≥ 5 chars in the body, else refused with NOTHING written, and an audit row):
-//      `emails.send` with more than one recipient · `sequences.bulkEnroll` · `scoring.recompute` with `{ all: true }` ·
-//      `emails.inbound.rotate` · deleting an e-mail template that is in use. A single-recipient `emails.send` stays a plain write.
+//      `emails.sendBulk` (ORACLE-EDIT of the controller, 24 ก.ย. 2569: the multi-recipient path is its OWN op — `emails.send` takes
+//      EXACTLY ONE recipient and answers VALIDATION for more, so a bulk blast can never slip through the single-send door) ·
+//      `sequences.bulkEnroll` · `scoring.recompute` with `{ all: true }` · `emails.inbound.rotate` · deleting an e-mail template
+//      that is in use. `emails.sendBulk` caps the list at 500 recipients and demands `confirm: true` + `reason` ≥ 5 chars.
 //   C. KEYS / SCOPES (X2 — the C1.10 machine, unchanged): a key with NO `crm.*` scope is refused on EVERY new op and EVERY crm tool ·
 //      `crm.readonly` cannot send/enroll/recompute/rotate (403 forbidden|scope_missing) · `crm.operate` can do the STAFF writes but not
 //      the `*.manage` groups (sequences/assignment/scoring/tracking/automation settings) · `crm.admin` can do all of it ·
@@ -133,6 +136,7 @@ const MUST: Must[] = [
   { id: "emails.threads.list", m: "GET", p: "/emails/threads", action: "crm.email.read", kind: "read", group: "emails" },
   { id: "emails.thread.get", m: "GET", p: "/emails/threads/{threadKey}", action: "crm.email.read", kind: "read", group: "emails" },
   { id: "emails.send", m: "POST", p: "/emails/send", action: "crm.email.send", kind: "write", group: "emails" },
+  { id: "emails.sendBulk", m: "POST", p: "/emails/send-bulk", action: "crm.email.send", kind: "danger", group: "emails" },
   { id: "emails.schedule", m: "POST", p: "/emails/schedule", action: "crm.email.send", kind: "write", group: "emails" },
   { id: "emails.userSettings.get", m: "GET", p: "/emails/user-settings", action: "crm.email.settings", kind: "read", group: "emails" },
   { id: "emails.userSettings.set", m: "PUT", p: "/emails/user-settings", action: "crm.email.settings", kind: "write", group: "emails" },
@@ -179,7 +183,7 @@ const TEST_IDS = [
 const opsSrcAll = walk(OPS_DIR).map(read).join("\n");
 const BUILT = MUST.filter((o) => opsSrcAll.includes(`"${o.id}"`)).length >= 5;
 if (!FORCE && !BUILT) {
-  console.log(`⚠️  SKIPPED — WO C2.11 not built yet (fewer than 5 of the 30 MUST op ids appear in ${OPS_DIR}) (run with --force-run to exercise the fixtures, the registry facts and the cleanup)`);
+  console.log(`⚠️  SKIPPED — WO C2.11 not built yet (fewer than 5 of the 31 MUST op ids appear in ${OPS_DIR}) (run with --force-run to exercise the fixtures, the registry facts and the cleanup)`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
   process.exit(0);
 }
@@ -264,9 +268,9 @@ try {
       for (const o of OPS) { const k = `${o.method} ${o.path}`; if (seen.has(k)) bad.push(`${k} (${seen.get(k)} vs ${o.id})`); else seen.set(k, String(o.id)); }
       return bad;
     })();
-    chk("C2.11-S1.1", `the 30 MUST ops are in CRM_OPS with the exact method + path + action + kind of the contract, each carrying a \`test:\` id that really exists in this file (fitness F13.10), and no two ops of the whole registry share a METHOD path`,
+    chk("C2.11-S1.1", `the 31 MUST ops are in CRM_OPS with the exact method + path + action + kind of the contract, each carrying a \`test:\` id that really exists in this file (fitness F13.10), and no two ops of the whole registry share a METHOD path`,
       missing.length === 0 && wrong.length === 0 && noTest.length === 0 && dupPath.length === 0,
-      "30 ops · test ids · unique paths", `registry=${OPS.length} missing=${cut(missing.join(","), 260) || "-"} wrong=${cut(wrong.join(" | "), 160) || "-"} badTest=${noTest.join(",") || "-"} dupPaths=${dupPath.join(" | ") || "-"}${ABSENT}`);
+      "31 ops · test ids · unique paths", `registry=${OPS.length} missing=${cut(missing.join(","), 260) || "-"} wrong=${cut(wrong.join(" | "), 160) || "-"} badTest=${noTest.join(",") || "-"} dupPaths=${dupPath.join(" | ") || "-"}${ABSENT}`);
   }
   {
     const bad: string[] = [];
@@ -663,10 +667,11 @@ try {
     const enroll = await api("POST", `/sequences/${TAG}-any/enroll`, kRO, { contactId });
     const recompute = await api("POST", "/scoring/recompute", kRO, { all: true, confirm: true, reason: REASON });
     const rotate = await api("POST", "/emails/inbound/rotate-key", kRO, { confirm: true, reason: REASON });
-    const codes = [send, enroll, recompute, rotate].map((r) => `${r.status}/${ecode(r)}`);
-    chk("C2.11-X2.2", "the readonly bundle cannot write: send · enroll · recompute · rotate-key all answer 403 (forbidden|scope_missing) — a confirm+reason in the body does not buy a scope",
-      [send, enroll, recompute, rotate].every((r) => r.status === 403 || (r.status === 404 && ecode(r) === "not_found")),
-      "4 × 403", `codes=${codes.join(" · ")}${ABSENT}`);
+    const bulk = await api("POST", "/emails/send-bulk", kRO, { contactIds: [contactId], subject: "x", body: "y", confirm: true, reason: REASON });
+    const codes = [send, enroll, recompute, rotate, bulk].map((r) => `${r.status}/${ecode(r)}`);
+    chk("C2.11-X2.2", "the readonly bundle cannot write: send · enroll · recompute · rotate-key · send-bulk all answer 403 (forbidden|scope_missing) — a confirm+reason in the body does not buy a scope",
+      [send, enroll, recompute, rotate, bulk].every((r) => r.status === 403 || (r.status === 404 && ecode(r) === "not_found")),
+      "5 × 403", `codes=${codes.join(" · ")}${ABSENT}`);
   }
   {
     const seqList = await api("GET", "/sequences", kOP);
@@ -726,9 +731,10 @@ try {
     const long = "ก".repeat(5000);
     const big = await api("POST", "/emails/send", kOP, { contactId, subject: long, body: "x" });
     const arr = await api("POST", "/sequences/x/bulk-enroll", kAD, { contactIds: Array.from({ length: 2000 }, () => contactId), confirm: true, reason: REASON });
-    chk("C2.11-X6.2", "every string is capped and every array is capped: a 5,000-character subject and a 2,000-id bulk enroll are both refused with a validation error instead of being passed to the engine",
-      [400, 422].includes(big.status) && [400, 404, 422].includes(arr.status) && arr.status !== 200,
-      "400/422", `subject=${big.status}/${ecode(big)} bulk=${arr.status}/${ecode(arr)}${ABSENT}`);
+    const arrMail = await api("POST", "/emails/send-bulk", kAD, { contactIds: Array.from({ length: 2000 }, () => contactId), subject: "x", body: "y", confirm: true, reason: REASON });
+    chk("C2.11-X6.2", "every string is capped and every array is capped: a 5,000-character subject, a 2,000-id bulk enroll and a 2,000-recipient send-bulk are all refused with a validation error instead of being passed to the engine",
+      [400, 422].includes(big.status) && [400, 404, 422].includes(arr.status) && arr.status !== 200 && [400, 404, 422].includes(arrMail.status) && arrMail.status !== 200,
+      "400/422 ×3", `subject=${big.status}/${ecode(big)} bulkEnroll=${arr.status}/${ecode(arr)} sendBulk=${arrMail.status}/${ecode(arrMail)}${ABSENT}`);
   }
   {
     const over = await api("GET", "/sequences?take=1000", kAD);
@@ -784,23 +790,27 @@ try {
       hits.length === 0, "no PII", `events=${evs.length} hits=${hits.slice(0, 3).join(",") || "-"} sample=${cut(text, 140)}${ABSENT}`, "MAJOR");
   }
   {
-    const dangerIds = ["emails.inbound.rotate", "sequences.bulkEnroll", "scoring.recompute"];
+    const dangerIds = ["emails.inbound.rotate", "sequences.bulkEnroll", "scoring.recompute", "emails.sendBulk"];
     const wrong = dangerIds.filter((id) => byId.has(id) && String((byId.get(id) as Any).kind) !== "danger");
     const sendOp = byId.get("emails.send") as Any;
     const sendShapeRaw = sendOp ? (sendOp.input as Any)?._def?.shape : null;
     const sendShape = sendOp ? j(Object.keys((typeof sendShapeRaw === "function" ? sendShapeRaw() : (sendShapeRaw ?? (sendOp.input as Any)?.shape ?? {})) as Record<string, unknown>)) : "";
-    const multiAware = !sendOp || /confirm|recipients|to\b/.test(sendShape) || /confirm/.test(read(`${OPS_DIR}/emails.ts`));
-    chk("C2.11-X9.1", "the danger list of the brief is declared as such in the registry: rotate inbound key · bulk enroll · recompute-all are kind `danger` (so the dispatcher demands confirm + reason), and `emails.send` knows about the multi-recipient case (a send to more than one address is the danger path, a single recipient is a plain write)",
-      dangerIds.every((id) => byId.has(id)) && wrong.length === 0 && multiAware,
-      "3 danger · send aware", `missing=${dangerIds.filter((id) => !byId.has(id)).join(",") || "-"} wrongKind=${wrong.join(",") || "-"} sendAware=${multiAware}${ABSENT}`);
+    const sendIsWrite = !sendOp || String(sendOp.kind) === "write";
+    // `emails.send` must NOT grow a recipients[] / confirm field — the multi path is `emails.sendBulk` (controller ORACLE-EDIT)
+    const singleOnly = !sendOp || (!/recipients/i.test(sendShape) && !/contactIds/i.test(sendShape));
+    chk("C2.11-X9.1", "the danger list is declared in the registry (controller ORACLE-EDIT 24 ก.ย. 2569): `emails.sendBulk` · `sequences.bulkEnroll` · `scoring.recompute` · `emails.inbound.rotate` are all kind `danger` (so the dispatcher demands confirm + reason) while `emails.send` stays a plain `write` for ONE recipient and carries no recipients[]/contactIds[] field at all — the bulk blast has its own door, it is not a flag on the single send",
+      dangerIds.every((id) => byId.has(id)) && wrong.length === 0 && sendIsWrite && singleOnly,
+      "4 danger · send single-only", `missing=${dangerIds.filter((id) => !byId.has(id)).join(",") || "-"} wrongKind=${wrong.join(",") || "-"} sendKind=${String(sendOp?.kind ?? "-")} singleOnly=${singleOnly} shape=${cut(sendShape, 90)}${ABSENT}`);
   }
   {
-    const multi = await api("POST", "/emails/send", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x" });
-    const multiOk = await api("POST", "/emails/send", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x", confirm: true, reason: REASON });
+    const multiOnSingle = await api("POST", "/emails/send", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x" });
+    const bulkNoConfirm = await api("POST", "/emails/send-bulk", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x" });
+    const bulkOk = await api("POST", "/emails/send-bulk", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x", confirm: true, reason: REASON });
+    const bulkOverCap = await api("POST", "/emails/send-bulk", kAD, { contactIds: Array.from({ length: 501 }, () => contactId), subject: `เกิน ${TAG}`, body: "x", confirm: true, reason: REASON });
     const shortReason = await api("POST", "/scoring/recompute", kAD, { all: true, confirm: true, reason: "สั้น" });
-    chk("C2.11-X9.2", "the danger guard really bites through the API: a multi-recipient send without confirm+reason is refused, the same call with them is accepted, and a reason shorter than 5 characters is refused on recompute-all — the guard is the dispatcher's, not the caller's good manners",
-      reachable(multi) && ![200, 201, 202].includes(multi.status) && [200, 201, 202, 409, 422].includes(multiOk.status) && ![200, 201, 202].includes(shortReason.status),
-      "refused · accepted · refused", `noConfirm=${multi.status}/${ecode(multi)} confirmed=${multiOk.status} shortReason=${shortReason.status}/${ecode(shortReason)}${ABSENT}`);
+    chk("C2.11-X9.2", "the danger guard bites at the right door: `POST /emails/send` with TWO recipients is a VALIDATION error (400/422 — the single send never blasts), `POST /emails/send-bulk` without confirm+reason is refused, the same bulk WITH them is accepted, a list over the 500 cap is refused even with confirm, and a reason shorter than 5 characters is refused on recompute-all",
+      reachable(multiOnSingle) && [400, 422].includes(multiOnSingle.status) && reachable(bulkNoConfirm) && ![200, 201, 202].includes(bulkNoConfirm.status) && [200, 201, 202, 409, 422].includes(bulkOk.status) && ![200, 201, 202].includes(bulkOverCap.status) && ![200, 201, 202].includes(shortReason.status),
+      "400 · refused · accepted · capped · refused", `singleWithTwo=${multiOnSingle.status}/${ecode(multiOnSingle)} bulkNoConfirm=${bulkNoConfirm.status}/${ecode(bulkNoConfirm)} bulkConfirmed=${bulkOk.status} overCap=${bulkOverCap.status}/${ecode(bulkOverCap)} shortReason=${shortReason.status}/${ecode(shortReason)}${ABSENT}`);
   }
   {
     const before = (await P.auditLog.count({ where: { tenantId: tidA } })) as number;
