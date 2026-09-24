@@ -15,7 +15,8 @@
 - หลัง deploy READY: เติม D12 ใน wo-notes C2.1–C2.5 (hash + dpl) · `tg` · 🔴 prod ต้องมี `RESEND_WEBHOOK_SECRET` (ไม่ตั้ง = webhook ปิด 401 ปลอดภัย) · Q7 ฟุตเตอร์ยกเลิกรับ (ค่าเริ่มต้น "มี")
 - worktree c20/c23/c12a: รีเซ็ตเป็น HEAD ใหม่ก่อนใช้ (`git checkout -- . && git clean -fd -e .qc-shots -e node_modules -e '.env.*' && git checkout --detach <HEAD>`) · หลักฐาน `.qc-shots/c24*`, `.qc-shots/c25*` ยังอยู่
 - ข้อสอบพร้อม: C2.6 (82 + web 34) · C2.7 (55 — **8 ข้อรอเคาะท้าย addendum brief C2.7**) · C2.8 (54) · C2.9 (47) · C2.10 (40) · C2.11 (47) · C3.0 (33) — ทุกใบยกเว้น C2.6/C2.7 เคาะแล้ว
-- ถัดไป: **C2.6 (c20/QC2) ∥ C2.7 (c23/QC3)** → C2.8 ∥ C2.9 → C2.10 → C2.11 → ปิดเฟส C2 (`qc:all` ส่ง DATABASE_URL/DIRECT_URL) → C3.0 migration
+- **กำลังเดิน (spawn 24 ก.ย. 12:20 UTC)**: builder **C2.6** opus ใน c20/QC2 (หลักฐาน `.qc-shots/c26/` · ข้อสอบ 82 + headless 34 ที่ผู้คุมงานรันตอน verify: serve → `qc-crm-c2.6-web` → stop) ∥ builder **C2.7** opus ใน c23/QC3 (`.qc-shots/c27/` · 55) · หลังจบ: ผู้ตรวจอ่านอย่างเดียวทั้งสองใบ → แก้ → รวม → unit → PARITY (mockup 11/16 · —) → รับ
+- ถัดไป: C2.8 ∥ C2.9 → C2.10 → C2.11 → ปิดเฟส C2 (`qc:all` ส่ง DATABASE_URL/DIRECT_URL) → C3.0 migration
 - วงจรที่ใช้ได้ผล (5 ใบ): builder (log ทุก suite) → **ผู้ตรวจอ่านอย่างเดียว opus** → ORACLE-EDIT + builder แก้ (before/after) → รวม (ไฟล์ร่วม: patch --fuzz + เช็คสมดุลวงเล็บ · inventory รวมตาม wo · docs regen ก่อน suite) → unit ตรวจรวม (ชื่อสคริปต์ใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูล → PARITY → wo-notes → commit
 
 ### 0.6 ถัดไปตามลำดับ
