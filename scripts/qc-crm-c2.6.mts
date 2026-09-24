@@ -584,6 +584,9 @@ try {
     } catch (e) { return httpErr(e); }
   };
   const loc = (r: HttpRes) => r.h.get("location") ?? "";
+  // ORACLE-EDIT (controller · 24 Sep): a Location header is a ByteString — a stored URL with Thai characters must be sent percent-encoded (RFC 3986;
+  //   `new Response(…, {headers:{location: URL1}})` throws for char > 0xFF). The stored url stays byte-exact (S1.1); the header may equal encodeURI(url).
+  const locEq = (r: HttpRes, url: string) => { const l = loc(r); return l === url || l === encodeURI(url); };
   const acao = (r: HttpRes) => r.h.get("access-control-allow-origin");
   const is204Empty = (r: HttpRes) => r.status === 204 && r.text === "";
 
@@ -647,7 +650,7 @@ try {
   {
     const sc = g1.h.get("set-cookie") ?? "";
     chk("C2.6-S1.2", "GET /l/<code> → 302 Location = the stored url (byte-exact) · Cache-Control no-store · empty body · Set-Cookie sd_u=1 Path=/l/<code> HttpOnly Secure · ONE click row · clicks 1 · uniqueClicks 1",
-      g1.status === 302 && loc(g1) === URL1 && /no-store/.test(g1.h.get("cache-control") ?? "") && g1.text === "" &&
+      g1.status === 302 && locEq(g1, URL1) && /no-store/.test(g1.h.get("cache-control") ?? "") && g1.text === "" &&
         /sd_u=1/.test(sc) && new RegExp(`Path=/l/${code1}`, "i").test(sc) && /HttpOnly/i.test(sc) && /Secure/i.test(sc) &&
         afterG1?.clicks === 1 && afterG1?.uniqueClicks === 1 && (await clickRows(L1.id ?? "-")).length === 1,
       "302 + counted", `status=${g1.status} loc=${cut(loc(g1), 120)} cc=${g1.h.get("cache-control")} cookie=${cut(sc, 120)} row=${afterG1?.clicks}/${afterG1?.uniqueClicks} body=${cut(g1.text, 60)}`);
@@ -661,7 +664,7 @@ try {
     const byDay = Array.isArray(st1.v?.byDay) ? st1.v.byDay : [];
     const todayN = Number(byDay.find((d: Any) => String(d?.date ?? "").slice(0, 10) === today)?.clicks ?? -1);
     chk("C2.6-S1.3", "repeat click WITH the sd_u cookie ⇒ clicks 2, uniqueClicks stays 1 · bot UA ⇒ same 302 to the stored url, nothing counted · linkStats { clicks 2, uniqueClicks 1, byDay today 2 }",
-      g2.status === 302 && loc(g2) === URL1 && gBot.status === 302 && loc(gBot) === URL1 && afterG2?.clicks === 2 && afterG2?.uniqueClicks === 1 &&
+      g2.status === 302 && locEq(g2, URL1) && gBot.status === 302 && locEq(gBot, URL1) && afterG2?.clicks === 2 && afterG2?.uniqueClicks === 1 &&
         st1.ok && st1.v?.clicks === 2 && st1.v?.uniqueClicks === 1 && todayN === 2,
       "2/1", `g2=${g2.status} bot=${gBot.status}/${cut(loc(gBot), 60)} row=${afterG2?.clicks}/${afterG2?.uniqueClicks} stats=${cut(j(st1.v ?? st1.err), 160)}`);
   }
@@ -702,7 +705,7 @@ try {
     const rs: HttpRes[] = [];
     for (const q of qs) rs.push(await getLink(code1, { ip: ipNew(), cookie: "sd_u=1", query: q }));
     chk("C2.6-X6.2", "open redirect: /l/<code> with ?url= / ?to= / ?redirect= / ?next= / ?u= always redirects to the STORED url (byte-exact)",
-      rs.every((r) => r.status === 302 && loc(r) === URL1), URL1, rs.map((r) => `${r.status}:${cut(loc(r), 50)}`).join(" | "));
+      rs.every((r) => r.status === 302 && locEq(r, URL1)), URL1, rs.map((r) => `${r.status}:${cut(loc(r), 50)}`).join(" | "));
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -1016,6 +1019,9 @@ try {
   out("\n── S2 · e-mail pixel/click ──");
   {
     const ctE = await rawContact(tidA, crmA, "ลูกค้าอีเมล", userA);
+    // ORACLE-EDIT (controller · 24 Sep): C2.5 sendEmail decides consent at send time — a non-member contact needs a granted EMAIL consent row
+    //   (same fixture as qc-crm-c2.5.mts:623); without it S2.0–S2.4 measured EMAIL_BLOCKED and proved nothing
+    await P.crmContactConsent.create({ data: { tenantId: tidA, systemId: crmA, contactId: ctE.id, channel: "EMAIL", granted: true, source: "STAFF" } });
     const OFFER = `https://${DOM_A}/offer?utm_source=email`;
     const DOC = `https://elsewhere-${rand}.example.org/doc`;
     const f0 = FETCHES.length;
