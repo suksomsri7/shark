@@ -31,6 +31,11 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - โควตา Opus ชนเพดานทุก ~4–5 ชม. เมื่อรัน 4 ตัวขนาน (24 ก.ย. ชน 3 ครั้ง: 08:00 · 13:00 · 18:00 UTC) ⇒ **รันขนานไม่เกิน 3 ตัว** · ก่อนชนเพดานให้ agent เซฟ log/หลักฐานเป็นระยะ (ทำอยู่แล้ว)
 - ย้าย session ได้เฉพาะตอนไม่มี agent ค้าง (agent ตายพร้อม session) — จุดปลอดภัย = หลังรับใบ · RESUME นี้พอสำหรับเริ่มใหม่
 
+### 0.10 สถานะ 25 ก.ย. 03:15 (Fable)
+- C2.9 (c23 · QC3): builder รอบ 3 **จบ** · ข้อสอบ 52/52 ×2 (S10.4–S10.8 ORACLE-EDIT บันทึกแล้ว) · พร้อมรวม · ไฟล์ทับกับ C2.8 = `automation/labels.ts` · `outbox-consumers.ts` · `crm-bridges/index.ts` (บล็อกเพิ่มคนละก้อน keep-both · บรรทัด union `CrmBridgeName` ต้องรวมมือให้มีทั้ง `onScoringEvent` + `onBusinessEvent`)
+- C2.8 (c20 · QC2): builder กำลังปิด · ข้อสอบล่าสุด 49/54 (แดง S2.1 S5.2 S8.2 S8.6 X5.3 — รอคำอธิบาย bug/oracle) · c1.11 S1.6 แดงจาก `CrmScoringManager.tsx:min-w-[640px]` สั่งแก้แล้ว · reviewer read-only กำลังอ่าน
+- สคริปต์ตรวจรับรวมเตรียมไว้: `scripts/pending/run-c28c29-verify.sh` (docs regen ก่อน m1.1 · c2.8/c2.9 ×2 · ถดถอย + โมดูล 15 ชุด · build+shots 2.8 + c2.6-web)
+
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว
 2. 🔴 **ห้ามห่อ build/typecheck/acc-v2-serve ด้วย flock เพิ่ม** — `with-gate-lock.sh` ถือ gate→qc2→qc3 ครบแล้ว ห่อซ้ำ = deadlock ทุก lane (Fable ทำพลาด 24 ก.ย. เสีย 40 นาที)
