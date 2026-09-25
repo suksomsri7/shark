@@ -215,7 +215,8 @@ const SPECS: Record<string, Spec[]> = {
       name: `crm-notify-settings-${userKey}`,
       path: `${CRM_BASE}/settings/notifications`,
       note: "ตั้งค่าการแจ้งเตือน — เรื่องแจ้งเตือน 10 เรื่อง × 3 ช่องทาง (ในแอป/มือถือ/อีเมล) + ช่วงห้ามรบกวน + ชั่วโมงส่งสรุป (แท็บของร้าน · owner/manager เท่านั้น)",
-      expect: userKey === "owner" || userKey === "manager"
+      // Fable 25 ก.ย.: ผู้จัดการใน seed QC ไม่มี `crm.settings.manage` ⇒ เห็นแท็บ "ของฉัน" อย่างเดียว (ถูกตามประตูของหน้า) — คาดแท็บร้านเฉพาะ owner
+      expect: userKey === "owner"
         ? ["[data-testid=crm-notify-page]", "[data-testid=crm-notify-tab-shop]", "[data-testid=crm-notify-tab-mine]", "[data-testid=crm-notify-quiet-from]", "[data-testid=crm-notify-quiet-to]", "[data-testid=crm-notify-save]"]
         : ["[data-testid=crm-notify-page]", "[data-testid=crm-notify-tab-mine]", "[data-testid=crm-notify-my-save]"],
       steps: [{ waitFor: "[data-testid=crm-notify-page]", timeoutMs: 20_000 }, { wait: 500 }],
@@ -239,7 +240,7 @@ const SPECS: Record<string, Spec[]> = {
       name: `crm-settings-api-c211-${userKey}`,
       path: `${CRM_BASE}/settings/api`,
       note: "API และ webhook หลังชุดที่สอง: จำนวน op/เครื่องมือ AI · ช่องติ๊กเหตุการณ์ของเฟส C2 (ลำดับการติดตาม · อีเมล · คะแนน · ดีลนิ่ง · งานเลยกำหนด) — เทียบภาพ 14 ขวา",
-      expect: ["[data-testid=crm-api-page]", "[data-testid=crm-api-keys]", "[data-testid=crm-api-curl]", "[data-testid=crm-api-webhooks]", "[data-testid=crm-api-hook-event-crm.email.sent]", "[data-testid=crm-api-hook-event-crm.sequence.enrolled]", "[data-testid=crm-api-hook-event-crm.deal.stale]"],
+      expect: ["[data-testid=crm-api-page]", "[data-testid=crm-api-keys]", "[data-testid=crm-api-curl]", "[data-testid=crm-api-webhooks]", "[data-testid="crm-api-hook-event-crm.email.sent"]", "[data-testid="crm-api-hook-event-crm.sequence.enrolled"]", "[data-testid="crm-api-hook-event-crm.deal.stale"]"],
       steps: [{ waitFor: "[data-testid=crm-api-page]", timeoutMs: 20_000 }, { wait: 800 }],
     },
     {
@@ -247,7 +248,7 @@ const SPECS: Record<string, Spec[]> = {
       path: `${CRM_BASE}/settings/api`,
       note: "ฟอร์มสร้างคีย์: บรรทัดช่วยของชุดสิทธิ์ 3 ชุด ต่อท้ายด้วย \" · N สิทธิ์ (รวม อีเมล · ลำดับการติดตาม · …)\" จากทะเบียนจริง — ผู้คุมงานเทียบความยาวบรรทัดกับภาพ 14 ขวา",
       onlyDevice: "desktop",
-      expect: ["[data-testid=crm-api-key-form]", "[data-testid=crm-api-key-bundle-crm.readonly]", "[data-testid=crm-api-key-bundle-crm.operate]", "[data-testid=crm-api-key-bundle-crm.admin]", "[data-testid=crm-api-key-team]"],
+      expect: ["[data-testid=crm-api-key-form]", "[data-testid="crm-api-key-bundle-crm.readonly"]", "[data-testid="crm-api-key-bundle-crm.operate"]", "[data-testid="crm-api-key-bundle-crm.admin"]", "[data-testid=crm-api-key-team]"],
       steps: [{ waitFor: "[data-testid=crm-api-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-api-new]" }, { wait: 600 }],
     },
   ],

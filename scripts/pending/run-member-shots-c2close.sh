@@ -14,7 +14,10 @@ r "visual-member 3.3 (thana)" bash scripts/with-gate-lock.sh pnpm exec tsx scrip
 r "visual-member 3.6 (owner)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-member.mts 3.6
 r "visual-member 3.7 (owner)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-member.mts 3.7
 r "visual-member 3.7 (thana)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-member.mts 3.7 --user thana
-for s in qc-member-m3.3 qc-member-m3.6 qc-member-m3.7; do r "$s (shots present)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/$s.mts; done
+r "visual-member 3.10 (owner)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-member.mts 3.10
+r "shots 2.10 (manager · spec fixed)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-crm.mts 2.10 --user manager
+r "shots 2.11 (owner · selectors quoted)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/visual-crm.mts 2.11
+for s in qc-member-m3.3 qc-member-m3.6 qc-member-m3.7 qc-member-m3.10; do r "$s (shots present)" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/$s.mts; done
 r "serve stop" bash scripts/acc-v2-serve.sh stop
 r "qc-member-m1.9" bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-member-m1.9.mts
 echo ALLDONE | tee -a "$L"
