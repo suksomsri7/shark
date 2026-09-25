@@ -31,11 +31,13 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - โควตา Opus ชนเพดานทุก ~4–5 ชม. เมื่อรัน 4 ตัวขนาน (24 ก.ย. ชน 3 ครั้ง: 08:00 · 13:00 · 18:00 UTC) ⇒ **รันขนานไม่เกิน 3 ตัว** · ก่อนชนเพดานให้ agent เซฟ log/หลักฐานเป็นระยะ (ทำอยู่แล้ว)
 - ย้าย session ได้เฉพาะตอนไม่มี agent ค้าง (agent ตายพร้อม session) — จุดปลอดภัย = หลังรับใบ · RESUME นี้พอสำหรับเริ่มใหม่
 
-### 0.10 สถานะ 25 ก.ย. 15:10 (Fable) — รับ C2.10 + C2.11 แล้ว = **29/53 (55%)** · phase C2 ครบทุกใบ
-- main = C2.1–C2.11 ✅ · ทรีสะอาด · **รอเจ้าของ push** (`cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main`) → เติม D12 ใน wo-notes C2.10/C2.11 (วิธีหา dpl: header `Link` ของ `https://shark.in.th/` มี `?dpl=`)
-- ▶️ **ปิด phase C2**: unit `crm-c2-qcall` (`scripts/pending/run-c2-qcall.sh` · log `.qc-shots/crm/c2-qcall.log` · เริ่ม 15:20 UTC) กำลังรัน → บันทึกผลใน CRM-RUN §4 + MASTER-PLAN §12
-- ▶️ **C3.0 migration `crm_v2_c`** builder (opus) ใน c20/QC2 (log `.qc-shots/c30/`) — **create-only เท่านั้น** (schema + `migration.sql` + diff-vs-QC2 + probe static) · ห้าม deploy · ขั้นถัดไปของ Fable: อ่าน SQL ทุกบรรทัด → `qc-prisma.sh migrate deploy` บน QC2 → รัน `qc-crm-c3.0` (33) → QC1/QC3 → regressions ตาม brief (m2.9 · m3.11 · fix-s1 · payroll ×2 · hr-payadjust · hr · c2.0 · c1.*/c2.* · pages · fitness ×2 · m1.9 · reseed) · candidate ที่ **ไม่**เข้า C3.0 (ผิด ruling ตารางเดิมตัวเดียว): คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` → C6.1
-- c20/c23 รีเซ็ตที่ HEAD ล่าสุด · 🔴 เปิดเลนใหม่ต้องให้ builder reseed member+CRM บน QC ของตัวเองก่อน (expected json ของ worktree = QC1)
+### 0.10 สถานะ 25 ก.ย. 15:40 UTC (Fable) — ⏸️ พักตามคำสั่งเจ้าของ (ใกล้ weekly limit) · รับแล้ว **29/53 = 55%** · phase C2 ครบทุกใบ
+**เริ่มใหม่ทำตามลำดับนี้:**
+1. `cd /root/projects/shark-crm && git status` ต้องสะอาด (HEAD = C2.1–C2.11 ✅ + ledger) · **เจ้าของ push**: `git push -u origin session/crm && git push origin HEAD:main` → เติม D12 ใน wo-notes C2.10/C2.11 (dpl จาก header `Link` ของ `https://shark.in.th/` · เฝ้าจน dpl เปลี่ยน)
+2. อ่านผล **qc:all ปิด C2**: `.qc-shots/crm/c2-qcall.log` (unit `crm-c2-qcall` — ตอนพักยังรันอยู่ · จบด้วย `exit=` + ALLDONE) → บันทึกสรุป (จำนวนชุด/ผ่าน/แดง) ใน CRM-RUN §4 + MASTER-PLAN §12 บรรทัดปิด C2 · แดงที่รู้จัก = ข้อภาพ member ที่ต้องถ่ายผู้ใช้เพิ่ม (m3.3 noperm · m3.6 thana) + ชุดที่ต้อง server
+3. **C3.0 migration `crm_v2_c`** — builder รอบแรกถูกหยุด (เพิ่งเริ่ม · รัน `prisma format` แล้วทำ schema ทุกไฟล์เปลี่ยนรูปแบบ) · c20 ต้องรีเซ็ต (`git reset --hard && git clean -fd -e .qc-shots`) ก่อนเปิดใหม่ · prompt ใหม่ต้องสั่ง **ห้าม `prisma format` ทั้งชุด** (แก้เฉพาะ `crm.prisma` + ไฟล์ที่มี `HrPayAdjustment` + `PortalSession` ใหม่) · create-only เท่านั้น · Fable อ่าน SQL ทุกบรรทัด → `qc-prisma.sh migrate deploy` QC2 → `qc-crm-c3.0` (33) → QC1/QC3 → regressions ตาม brief §"Regressions the controller runs"
+4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
+5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว
