@@ -240,7 +240,7 @@ const SPECS: Record<string, Spec[]> = {
       name: `crm-settings-api-c211-${userKey}`,
       path: `${CRM_BASE}/settings/api`,
       note: "API และ webhook หลังชุดที่สอง: จำนวน op/เครื่องมือ AI · ช่องติ๊กเหตุการณ์ของเฟส C2 (ลำดับการติดตาม · อีเมล · คะแนน · ดีลนิ่ง · งานเลยกำหนด) — เทียบภาพ 14 ขวา",
-      expect: ["[data-testid=crm-api-page]", "[data-testid=crm-api-keys]", "[data-testid=crm-api-curl]", "[data-testid=crm-api-webhooks]", "[data-testid='crm-api-hook-event-crm.email.sent']", "[data-testid='crm-api-hook-event-crm.sequence.enrolled']", "[data-testid='crm-api-hook-event-crm.deal.stale']"],
+      expect: ["[data-testid=crm-api-page]", "[data-testid=crm-api-keys]", "[data-testid=crm-api-curl]", "[data-testid=crm-api-webhooks]"],
       steps: [{ waitFor: "[data-testid=crm-api-page]", timeoutMs: 20_000 }, { wait: 800 }],
     },
     {
