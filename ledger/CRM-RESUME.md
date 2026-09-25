@@ -31,11 +31,10 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - โควตา Opus ชนเพดานทุก ~4–5 ชม. เมื่อรัน 4 ตัวขนาน (24 ก.ย. ชน 3 ครั้ง: 08:00 · 13:00 · 18:00 UTC) ⇒ **รันขนานไม่เกิน 3 ตัว** · ก่อนชนเพดานให้ agent เซฟ log/หลักฐานเป็นระยะ (ทำอยู่แล้ว)
 - ย้าย session ได้เฉพาะตอนไม่มี agent ค้าง (agent ตายพร้อม session) — จุดปลอดภัย = หลังรับใบ · RESUME นี้พอสำหรับเริ่มใหม่
 
-### 0.10 สถานะ 25 ก.ย. 11:00 (Fable) — 27/53 · C2.10 รวม main แล้ว (รอตรวจรับรวม) · C2.11 รอบ 2 กำลังเดิน
-- main = C2.1–C2.9 ✅ + **C2.10 รวมแล้ว `a747d4b1`** (ยังไม่นับรับ — รอ unit ตรวจรับรวมกับ C2.11) · push ล่าสุด `0d638f15` (prod dpl_8aHf55) · ตั้งแต่นั้นมีของใหม่ C2.10 + ledger รอ push รอบหน้า
-- ▶️ **C2.11 รอบ 2** builder (opus) ใน c23/QC3 (c23 = `a747d4b1` + patch รอบ 1 · log `.qc-shots/c211-r2/`) — งาน: ถอนแถวซ้ำ outbox/labels (C2.10 เป็นเจ้าของ) · 2 op notifications.prefs · A1 replyToEmailId (consent bypass · แก้ใน `emails.ts` sendCore) · B1 rate bucket · B2 bulk ไม่ล้มทั้ง op · B3 mask PII ให้ assistant · B4 hint · minor 8/12 · spec ภาพ "2.11" · คาดข้อสอบ 47/47
-- หลัง C2.11 รอบ 2: Fable รันข้อสอบ+regressions บน QC3 → reviewer เฉพาะจุดแก้ (A1) → รวม main (ไฟล์ทับ C2.10: outbox-consumers/labels ต้องเหลือของ C2.10) → unit ตรวจรับรวม `run-c210c211-verify.sh` (ใหม่ · systemd-run path เต็ม · ต้องมี m3.10/m3.6/fix-s3/m3.3 บน QC1 + serve + ภาพ 2.10/2.11) → PARITY mockup 01/14 → wo-notes → 29/53 → ปิด C2 ด้วย `qc:all` → C3.0
-- c20 ว่าง (ที่ `455623ec` + งาน C2.10 ยังไม่รีเซ็ต — รีเซ็ตหลังตรวจรับ) · 🔴 QC2/QC3 member seed เก่า — member suites รันบน QC1 เท่านั้น
+### 0.10 สถานะ 25 ก.ย. 11:55 (Fable) — 27/53 · C2.10 + C2.11 รวม main แล้ว · unit ตรวจรับรวมกำลังรัน
+- main = C2.1–C2.9 ✅ + C2.10 (`a747d4b1`) + C2.11 (`a2b547ca`) รอรับ · ▶️ **unit `crm-c210c211-verify`** (QC1 · log `.qc-shots/crm/c210c211-verify.log` · ~2.5 ชม.) — ถ้า session ตาย: `systemctl is-active crm-c210c211-verify` · ทุก `exit=` ต้อง 0 (ยกเว้น `qc-member-m3.7` S6.2 = ENV summary visual-member) · จบ ALLDONE
+- หลัง unit ผ่าน: ดูภาพ `.qc-shots/crm/2.10/*` เทียบ mockup 01 "ดีลที่ต้องดู" + `.qc-shots/crm/2.11/*` เทียบ mockup 14 (ขวา · บรรทัดช่วยชุดสิทธิ์) → เติม wo-notes C2.10/C2.11 §5 → MASTER-PLAN (29/53) → commit → `tg` → memory → รีเซ็ต c20/c23 → **ปิด phase C2**: `qc:all` (ส่ง DATABASE_URL/DIRECT_URL ของ QC1) → C3.0 migration (`crm_v2_c` · Fable อ่าน SQL ทุกบรรทัด)
+- รอเจ้าของ push (`git push -u origin session/crm && git push origin HEAD:main`) หลังรับ 29/53 · 🔴 QC2/QC3 member seed เก่า — member suites รันบน QC1 เท่านั้น
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว
