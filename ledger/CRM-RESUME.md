@@ -33,7 +33,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 ### 0.10 สถานะ 25 ก.ย. 15:10 (Fable) — รับ C2.10 + C2.11 แล้ว = **29/53 (55%)** · phase C2 ครบทุกใบ
 - main = C2.1–C2.11 ✅ · ทรีสะอาด · **รอเจ้าของ push** (`cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main`) → เติม D12 ใน wo-notes C2.10/C2.11 (วิธีหา dpl: header `Link` ของ `https://shark.in.th/` มี `?dpl=`)
-- ถัดไป: **ปิด phase C2** = รัน `qc:all` บน QC1 (ส่ง DATABASE_URL/DIRECT_URL ของ `.env.qc` ผ่าน grep|cut · เป็น unit ชื่อใหม่) → บันทึกผลใน CRM-RUN §4 + MASTER-PLAN §12 → **C3.0 migration `crm_v2_c`** (brief `crm-brief-C3.0.md` ruling แล้ว · Fable อ่าน SQL ทุกบรรทัด · candidate จาก C2.10: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` additive)
+- ▶️ **ปิด phase C2**: unit `crm-c2-qcall` (`scripts/pending/run-c2-qcall.sh` · log `.qc-shots/crm/c2-qcall.log` · เริ่ม 15:20 UTC) กำลังรัน → บันทึกผลใน CRM-RUN §4 + MASTER-PLAN §12
+- ▶️ **C3.0 migration `crm_v2_c`** builder (opus) ใน c20/QC2 (log `.qc-shots/c30/`) — **create-only เท่านั้น** (schema + `migration.sql` + diff-vs-QC2 + probe static) · ห้าม deploy · ขั้นถัดไปของ Fable: อ่าน SQL ทุกบรรทัด → `qc-prisma.sh migrate deploy` บน QC2 → รัน `qc-crm-c3.0` (33) → QC1/QC3 → regressions ตาม brief (m2.9 · m3.11 · fix-s1 · payroll ×2 · hr-payadjust · hr · c2.0 · c1.*/c2.* · pages · fitness ×2 · m1.9 · reseed) · candidate ที่ **ไม่**เข้า C3.0 (ผิด ruling ตารางเดิมตัวเดียว): คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` → C6.1
 - c20/c23 รีเซ็ตที่ HEAD ล่าสุด · 🔴 เปิดเลนใหม่ต้องให้ builder reseed member+CRM บน QC ของตัวเองก่อน (expected json ของ worktree = QC1)
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
