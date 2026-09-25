@@ -37,7 +37,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | 20 ก.ย.: ไม่มี BLOCKER · SHOULD-FIX 4 (loop-guard ระดับผู้ติดต่อ · cron ติด 500 แถวแรก · WAIT ของระบบที่กลับเป็น v1 · คำเตือนไทยเมื่อไม่มีตัวจับเวลา) → builder แก้ครบ · ผู้ตรวจยืนยัน journeys สมาชิก/บอร์ดงาน/ร้าน v1 เหมือนเดิม |
 | D10 | เอกสาร/ทะเบียน | ✅ | ไม่มี event/op ใหม่ · fitness F13.x เขียว |
 | D11 | wo-notes + คืนสภาพ QC | ✅ | ไฟล์นี้ · `qc-member-m1.9` `{"total":26,"passed":26}` |
-| D12 | push main → deploy | ⏳ | รอ push (เติม hash + `dpl_` หลัง deploy READY) |
+| D12 | push → deploy | ✅ | เจ้าของ push `session/crm` + `main` → `0d638f15` (25 ก.ย. ~05:56 UTC · ไม่มี migration ในช่วง 965c0bbd..0d638f15) · deploy ใหม่ขึ้นจริง 06:01:06 UTC (`dpl_FFKFz…` → `dpl_8aHf55…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน (ไม่เปิด v2 ก่อน C6.1) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | check ids / เหตุผล |

@@ -30,7 +30,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | รอบ 1 (opus 23 ก.ย.): ไม่มี BLOCKER · SHOULD-FIX 8 → แก้ครบ · **รอบ 2 (opus 24 ก.ย. อ่านอย่างเดียว): ยืนยัน 8 ข้อแก้จริง file:line · ไม่มี BLOCKER · SHOULD-FIX 3 + NOTE 9** → แก้ครบ (§7) |
 | D10 | เอกสาร/ทะเบียน | ✅ | event 2 ตัวใน `webhooks/labels.ts` เท่านั้น + consumer + emit ใน tx · docs regen |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 หลังทั้งชุด |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push (session นี้ push ไม่ได้) |
+| D12 | push → deploy | ✅ | เจ้าของ push `session/crm` + `main` → `0d638f15` (25 ก.ย. ~05:56 UTC · ไม่มี migration ในช่วง 965c0bbd..0d638f15) · deploy ใหม่ขึ้นจริง 06:01:06 UTC (`dpl_FFKFz…` → `dpl_8aHf55…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน (ไม่เปิด v2 ก่อน C6.1) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |

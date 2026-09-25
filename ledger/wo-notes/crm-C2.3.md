@@ -29,7 +29,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | รอบ 1: 11 จุด → แก้ครบ (`c23-r2/`) · **รอบ 2 (ผู้ตรวจของผู้คุมงาน)**: ยืนยัน 11 ข้อแก้จริง + พบ BLOCKER 3 / SHOULD-FIX 5 / NOTE 3 → **รอบ 3 แก้ครบ 10 ข้อ** (`c23-r3/` · before/after ทุกข้อ · 80/80 · c1.4 110 · c1.7 57 · c1.8 81 · form 10 · forms-notify 9 · chat-core-v2 47) |
 | D10 | เอกสาร/ทะเบียน | ✅ | ไม่มี event ใหม่ (`crm.contact.assigned` เดิม + ruleId/teamId) · ไม่มี op ใหม่ (C2.11) |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 หลังทั้งชุด |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push |
+| D12 | push → deploy | ✅ | เจ้าของ push `session/crm` + `main` → `0d638f15` (25 ก.ย. ~05:56 UTC · ไม่มี migration ในช่วง 965c0bbd..0d638f15) · deploy ใหม่ขึ้นจริง 06:01:06 UTC (`dpl_FFKFz…` → `dpl_8aHf55…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน (ไม่เปิด v2 ก่อน C6.1) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |

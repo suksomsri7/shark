@@ -30,7 +30,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | ผู้ตรวจของผู้คุมงาน (opus อ่านอย่างเดียว): (a)–(k) ยืนยัน · **BLOCKER 2 ด้านเงิน** + SHOULD-FIX 5 + NOTE 12 · ชี้ว่า 55/55 มาจากสำเนา → รอบ 2 แก้ครบ + ไฟล์จริง 63/63 ×2 (`shark-crm-c23/.qc-shots/c27-r2/`) |
 | D10 | เอกสาร/ทะเบียน | ✅ | ไม่มี event/op ใหม่ · edge `pos→crm` มีเหตุผล |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push (เติม hash + dpl หลัง deploy) |
+| D12 | push → deploy | ✅ | เจ้าของ push `session/crm` + `main` → `0d638f15` (25 ก.ย. ~05:56 UTC · ไม่มี migration ในช่วง 965c0bbd..0d638f15) · deploy ใหม่ขึ้นจริง 06:01:06 UTC (`dpl_FFKFz…` → `dpl_8aHf55…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน (ไม่เปิด v2 ก่อน C6.1) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |

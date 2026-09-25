@@ -30,7 +30,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | ผู้ตรวจของผู้คุมงาน (opus อ่าน a+b): (a)–(k) ยืนยัน · **BLOCKER 2** (threading prefix · getThread ทั้งเธรด) + SHOULD-FIX 13 + NOTE 12 → รอบ 2 แก้ครบ (before/after `shark-crm-c23/.qc-shots/c25-r2/` + log ทุก suite) |
 | D10 | เอกสาร/ทะเบียน | ✅ | event 6 ตัว label เดียว (`webhooks/labels.ts`) + consumer + emit ใน tx · docs regen รู้จัก payload `crm.email.*` |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 (ทั้ง 3 รอบ) |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push · 🔴 prod ต้องมี `RESEND_WEBHOOK_SECRET` (ไม่ตั้ง = route ปิด 401) และ DNS ของ `crm+…@shark.in.th` ชี้ inbound เดิม |
+| D12 | push → deploy | ✅ | เจ้าของ push `session/crm` + `main` → `0d638f15` (25 ก.ย. ~05:56 UTC · ไม่มี migration ในช่วง 965c0bbd..0d638f15) · deploy ใหม่ขึ้นจริง 06:01:06 UTC (`dpl_FFKFz…` → `dpl_8aHf55…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน (ไม่เปิด v2 ก่อน C6.1) |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |
