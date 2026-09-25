@@ -6,6 +6,7 @@ import type {
   TicketEventStatus,
   TicketOrderStatus,
 } from "@prisma/client";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "ออเดอร์บัตรชำระแล้ว" ใน tx เดียวกับสถานะ ◂
 import * as pos from "@/lib/modules/pos/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { systemForUnit } from "@/lib/modules/system/service";
@@ -330,10 +331,29 @@ export async function markPaid(ctx: Ctx, orderId: string) {
   });
   if (!order) throw new Error("ORDER_NOT_FOUND");
   if (order.status !== "PENDING") return; // idempotent — PAID/CANCELLED แล้วไม่ post ซ้ำ
-  await db.ticketOrder.update({
-    where: { id: orderId },
-    data: { status: "PAID", paidAt: new Date() },
+  // CRM C2.9 ▸ (มติ C11 · ใบ C2.9) เหตุการณ์ "ออเดอร์บัตรชำระแล้ว" ต้องเกิดพร้อมการเปลี่ยนสถานะเสมอ:
+  //   ห่อ **เฉพาะ** การ claim อะตอมมิก (PENDING → PAID) + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน —
+  //   `pos.createSale` (ซึ่งเปิด tx + ระบายคิวของตัวเอง) ยังอยู่ "นอก tx" เหมือนเดิมทุกประการ ⇒ ไม่มี nested tx
+  //   🔴 ทำไมต้องอยู่ใน tx: เขียนสถานะแล้วโปรเซสถูกตัดก่อนยิง = เก็บเงินค่าบัตรแล้วแต่ไม่มีใครรู้ (ไทม์ไลน์ลูกค้าหาย
+  //      และไม่มีแถวค้างในคิวให้ตามเก็บ) · payload = id ล้วน + ยอดสตางค์ (X8: ไม่มีชื่อ/เบอร์ผู้ซื้อ)
+  //   claim แบบมีเงื่อนไขทำให้การกดซ้ำ/ยิงพร้อมกันเหลือผู้ชนะรายเดียว (คนที่แพ้ = ไม่ post บัญชีซ้ำ ไม่ยิง event ซ้ำ)
+  const paidNow = await prisma.$transaction(async (tx) => {
+    const claim = await tx.ticketOrder.updateMany({
+      where: { id: orderId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "PENDING" },
+      data: { status: "PAID", paidAt: new Date() },
+    });
+    if (claim.count === 0) return false;
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      type: "ticket.order.paid",
+      idempotencyKey: `ticket.order.paid#${orderId}`,
+      payload: { orderId, unitId: ctx.unitId, partyId: order.partyId, eventId: order.eventId, totalSatang: order.totalSatang },
+    });
+    return true;
   });
+  if (!paidNow) return; // แพ้แข่ง (อีกคนเพิ่งยืนยันไปแล้ว) — งานเส้นเงินเป็นของผู้ชนะ
+  // ◂ CRM C2.9
 
   // ต่อสายเข้าบัญชี: ถ้า unit ผูกระบบ POS ไว้ → บันทึกการขาย (POS จะ post บัญชีตาม contract)
   // ถ้าไม่ผูก POS = ข้าม (ตั๋วขายได้แม้ standalone) · createSale idempotent + มี drainAll ในตัว (M1)

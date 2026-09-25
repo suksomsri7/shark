@@ -3,8 +3,9 @@
 //   (รอ DEPOSIT mapping WO-0040 · follow-up 0050b)
 //
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type RENTAL
-// เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยน + revert)
+// เงินต้องเข้าเสมอ: คืนของ = ปิดบิลค่าเช่า(+ค่าปรับ) ผ่าน POS (บังคับ · ไม่มี POS = โยนก่อนแตะสถานะ — CRM C2.9)
 import { prisma, tenantDb } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "คืนของเช่า" ใน tx เดียวกับสถานะ ◂
 import * as pos from "@/lib/modules/pos/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { listSystems, systemForUnit } from "@/lib/modules/system/service";
@@ -202,23 +203,40 @@ export async function returnAsset(
   const quoteSatang = days * asset.dailyRateSatang;
   const totalSatang = quoteSatang + lateFeeSatang;
 
-  // 1) claim อะตอมมิก: PICKED_UP → RETURNED (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
-  const claim = await db.rentalBooking.updateMany({
-    where: { id: bookingId, status: "PICKED_UP" },
-    data: { status: "RETURNED", returnedAt: new Date(), lateFeeSatang, totalSatang },
-  });
-  if (claim.count === 0) return { ok: false, totalSatang: 0 };
-
-  // 2) หา AppSystem type POS ตัวแรกของ tenant — ไม่มี = revert แล้วโยน (เงินเข้าไม่ได้ถ้าไม่มีจุดตัดเงิน)
+  // CRM C2.9 ▸ (มติผู้คุมงาน · ใบ C2.9) ด่าน POS ต้องอยู่ **ก่อน** การ claim:
+  //   เดิมฟังก์ชันนี้ claim (PICKED_UP→RETURNED) + ยิง event ก่อน แล้วจึงหา AppSystem type POS · ไม่มี POS =
+  //   revert สถานะกลับ + โยน ⇒ การคืนที่ถูกยกเลิกไปแล้วยังทิ้ง event ค้างไว้ในคิว (และกิจกรรม VISIT ใน CRM
+  //   หลังคิวระบาย) — ไทม์ไลน์ลูกค้าจึงโกหกว่า "คืนของแล้ว" ทั้งที่ของยังไม่ได้คืน
+  //   แก้โดยย้ายด่านขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
+  //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ PICKED_UP / ไม่พบสินทรัพย์ → ok:false มาก่อนด่าน POS
   const posSystems = await listSystems(ctx.tenantId, "POS");
   const posSys = posSystems[0];
-  if (!posSys) {
-    await db.rentalBooking.updateMany({
-      where: { id: bookingId, status: "RETURNED", posSaleId: null },
-      data: { status: "PICKED_UP", returnedAt: null, lateFeeSatang: 0, totalSatang: 0 },
+  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์");
+
+  // 1) claim อะตอมมิก: PICKED_UP → RETURNED (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
+  //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒
+  //   คืนของสำเร็จ = มี event เสมอ · event เขียนไม่ได้ = การคืนถูกยกเลิกทั้งก้อน (ของยังอยู่สถานะ PICKED_UP)
+  //   `pos.createSale` / การผูก posSaleId ยังอยู่ "นอก tx" เหมือนเดิมทุกประการ (ไม่มี nested tx)
+  //   payload = id ล้วน + ยอดสตางค์ (X8: ไม่มีชื่อ/เบอร์ผู้เช่า)
+  const claimed = await prisma.$transaction(async (tx) => {
+    const claim = await tx.rentalBooking.updateMany({
+      where: { id: bookingId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "PICKED_UP" },
+      data: { status: "RETURNED", returnedAt: new Date(), lateFeeSatang, totalSatang },
     });
-    throw new Error("เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์");
-  }
+    if (claim.count === 0) return false;
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      type: "rental.returned",
+      idempotencyKey: `rental.returned#${bookingId}`,
+      payload: { bookingId, unitId: ctx.unitId, partyId: bk.partyId, assetId: bk.assetId, totalSatang },
+    });
+    return true;
+  });
+  if (!claimed) return { ok: false, totalSatang: 0 };
+  // ◂ CRM C2.9
+
+  // 2) ด่าน POS ผ่านแล้วตั้งแต่ก่อน claim (บล็อก CRM C2.9 ด้านบน) — ไม่มีการ revert สถานะหลังยิง event อีกต่อไป
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `rental-<bookingId>`)
   const lines = [{ name: `ค่าเช่า ${asset.name} (${days} วัน)`, qty: 1, unitPriceSatang: quoteSatang }];

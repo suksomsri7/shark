@@ -1445,3 +1445,66 @@ export async function touchContactsFromChat(ctx: { tenantId: string; systemId: s
   return n;
 }
 // ◂ CRM C2.4
+
+// CRM C2.9 ▸ กิจกรรมที่เกิดจาก "เหตุการณ์ธุรกิจ" ของ 8 โมดูล (ตั๋ว · เช่า · เรียน · ที่พัก · คลินิก · คิว · นัด · ร้านค้าออนไลน์)
+//   ผู้เรียกเดียว = สะพาน `crm-bridges/business.ts#onBusinessEvent` (กติกาข้อ 6 ของโฟลเดอร์: สะพานห้ามยิง prisma ใส่ตาราง CRM เอง)
+//   🔴 ชนิด `VISIT` + ที่มา `AUTO` ทั้ง 8 ชนิดเหตุการณ์ — enum `CrmActivityType` ไม่มีค่า PURCHASE และ `CrmActivitySource`
+//      ไม่มีค่า BUSINESS และใบ C2.9 **ไม่มี migration** (R-C.1) ⇒ "ซื้อ/มาใช้บริการ" ทั้งหมดลงเป็น VISIT + หัวเรื่องไทยต่อโมดูล
+//   AUDIT-CLASS X4: 1 แถวต่อ (ระบบ, ผู้ติดต่อ, sourceRef = id ของแถวต้นทาง) — advisory lock ของกุญแจนั้น + ตรวจแถวก่อนเขียน
+//      ในธุรกรรมเดียวกัน (แบบเดียวกับ `createSequenceTaskOnce` / `createChatActivityOnce`) ⇒ ส่ง event ซ้ำ · ยิงพร้อมกัน 4 ทาง
+//      · คิวระบายซ้ำ = กิจกรรมใบเดียวตลอดไป · ธงคือ "แถวต้นทาง" ไม่ใช่ "เคยเห็น OutboxEvent ใบนี้ไหม" ⇒ ผู้ติดต่อที่มาทีหลัง
+//      ยังได้กิจกรรมของบิลเดิมตอนส่งซ้ำ
+//   🔴 ไม่ยิง `crm.activity.logged` (เหมือนแถว AUTO ของ C1.8/C1.3): โมดูลต้นทางประกาศเหตุการณ์ของตัวเองไปแล้ว —
+//      ยิงอีกใบ = ไทม์ไลน์สมาชิกได้สองแถวต่อเหตุการณ์เดียว
+//   AUDIT-CLASS X8: หัวเรื่องมาจากตารางค่าคงที่ของสะพาน (ไม่มีชื่อ/เบอร์/อีเมล) · `body` ว่างเสมอ (ห้ามมีอาการ/ข้อมูลสุขภาพของคลินิก) ·
+//      แถว audit เก็บแค่ชนิด/ที่มา/ id · `refType/refId` ที่ผู้เรียกส่งมาลงได้แค่แถว audit — `CrmActivity` ไม่มีคอลัมน์นั้น (ไม่มี migration)
+export type BusinessActivityInput = {
+  /** ธงกันซ้ำ = id ของแถวต้นทาง (มีชนิดเหตุการณ์นำหน้า) */
+  sourceRef: string;
+  title: string;
+  contactId: string;
+  /** เวลาที่เหตุการณ์เกิด (createdAt ของ event ในคิว) — ไม่มี = ตอนนี้ · ไม่มีวันเลยเวลาปัจจุบัน */
+  at?: Date;
+  /** ชนิด/ id ของแถวต้นทาง (ลงแถว audit เท่านั้น) */
+  refType?: string | null;
+  refId?: string | null;
+};
+
+export async function recordBusinessActivityOnce(ctx: { tenantId: string; systemId: string }, input: BusinessActivityInput): Promise<{ id: string; created: boolean }> {
+  const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const sourceRef = str(input?.sourceRef);
+  const contactId = str(input?.contactId);
+  const title = str(input?.title);
+  if (!sourceRef || !contactId || !title) throw fail("VALIDATION", "บันทึกกิจกรรมจากเหตุการณ์ธุรกิจไม่ได้ — ข้อมูลอ้างอิงไม่ครบ");
+  // AUDIT-CLASS X1 (ผู้ตรวจรอบ 3 · N8): ด่านเดียวกับพี่น้องของมัน `crm.contacts.markCustomerFromBridge` —
+  //   `ctx.systemId` ต้องเป็นระบบ **CRM ของร้านนี้** จริง ก่อนจะเขียนอะไรทั้งสิ้น (ระบบร้านอื่น/ชนิดอื่น = NOT_FOUND)
+  await resolveSystem(c);
+  const now = new Date();
+  const at = new Date(Math.min((input.at instanceof Date && !Number.isNaN(input.at.getTime()) ? input.at : now).getTime(), now.getTime()));
+  const out = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.biz.activity:${ctx.tenantId}:${ctx.systemId}:${contactId}:${sourceRef}`}, 0))`;
+    const prior = await tx.crmActivity.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId, sourceRef }, select: { id: true } });
+    if (prior) return { id: prior.id, created: false, row: null as CrmActivity | null };
+    const row = await tx.crmActivity.create({
+      data: {
+        ...identityScope(c),
+        contactId,
+        type: "VISIT" as CrmActivityType,
+        title: title.slice(0, ACTIVITY_TITLE_MAX),
+        source: "AUTO",
+        sourceRef,
+        startAt: at,
+        doneAt: at,
+      },
+    });
+    await touchLastActivity(tx, c, { contactId, companyId: null, dealId: null, customRecordId: null }, at);
+    return { id: row.id, created: true, row };
+  }, TX_OPTS);
+  if (out.row) {
+    await audit(c, "crm.activity.log", out.row.id, {
+      after: { type: out.row.type, source: out.row.source, contactId: out.row.contactId, sourceRef, refType: str(input?.refType), refId: str(input?.refId), via: "business" },
+    });
+  }
+  return { id: out.id, created: out.created };
+}
+// ◂ CRM C2.9

@@ -178,6 +178,25 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.activity.logged", label: "เมื่อบันทึกกิจกรรม (โทร นัดพบ งาน โน้ต …) ใน CRM" },
   { value: "crm.activity.completed", label: "เมื่อปิดกิจกรรมหรืองานติดตามใน CRM" },
   // ◂ CRM C1.6
+  // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 6 โมดูล (มติ C11 · ใบ C2.9) — ยิง **ใน transaction เดียวกับการเปลี่ยนสถานะ** ของโมดูลนั้น ·
+  //   คีย์ `<type>#<id ของแถว>` (R-C.8) · payload = id + `unitId` + `partyId?` + จำนวนสตางค์ ตามแต่ละแถว (id ล้วน — X8:
+  //   ไม่มีชื่อ/เบอร์/อีเมล และคลินิกไม่มีอาการ/การวินิจฉัย/ยา/ค่าบริการ)
+  //     ticket.order.paid   ← `ticket/service.ts#markPaid`      (PENDING → PAID)
+  //     rental.returned     ← `rental/service.ts#returnAsset`   (PICKED_UP → RETURNED)
+  //     school.enrolled     ← `school/service.ts#markPaid`      (ENROLLED → PAID · R-B: ไม่มี `school.completed` ในรอบนี้)
+  //     hotel.checked_out   ← `hotel/service.ts#checkOut`       (CHECKED_IN → CHECKED_OUT)
+  //     clinic.visit.done   ← `clinic/service.ts#billVisit`     (OPEN → BILLED — "มีการมารับบริการ" เท่านั้น)
+  //     queue.served        ← `queue/service.ts#markDone`       (CALLED|SERVING → DONE)
+  //   🔴 ทั้ง 6 ตัวมี consumer ใน `outbox-consumers.ts` แล้ว (ไม่มี consumer = แถวค้าง PENDING ตลอดกาล คิวตันเงียบ ๆ) ·
+  //      เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น) · ไม่เข้า `CRM_RULE_TRIGGERS` (ไม่ใช่ event `crm.*`)
+  //   (`booking.completed` / `shop.order.paid` = อีกสองระบบของ "8 × 3" ประกาศไว้ข้างบนแล้วตั้งแต่ M3.7 — ไม่ประกาศซ้ำ)
+  { value: "ticket.order.paid", label: "เมื่อออเดอร์บัตรเข้างานชำระเงินแล้ว" },
+  { value: "rental.returned", label: "เมื่อลูกค้าคืนของที่เช่าแล้ว" },
+  { value: "school.enrolled", label: "เมื่อผู้เรียนชำระค่าเรียนของรอบเรียนแล้ว" },
+  { value: "hotel.checked_out", label: "เมื่อผู้เข้าพักเช็คเอาท์แล้ว" },
+  { value: "clinic.visit.done", label: "เมื่อปิดการเข้ารับบริการของคลินิก (เก็บเงินแล้ว)" },
+  { value: "queue.served", label: "เมื่อคิวได้รับบริการเสร็จแล้ว" },
+  // ◂ CRM C2.9
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

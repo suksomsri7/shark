@@ -498,7 +498,9 @@ type CrmBridgeName =
   | "onDocumentVoided"
   | "onPosSalePaid"
   | "onPosSaleVoided"
-  | "onDealWonAutoInvoice";
+  | "onDealWonAutoInvoice"
+  // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 8 โมดูล — ตัวรับ **ตัวเดียว** (crm-bridges/business.ts) ◂
+  | "onBusinessEvent";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -653,7 +655,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   ),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
-  "booking.completed": withAutomation(compose(stampFromVisit, memberApptBridge("onBookingCompleted"))),
+  // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกนัด (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
+  //   สแตมป์ (M2.3) และไทม์ไลน์สมาชิก (M3.7) วิ่งก่อนเหมือนเดิมทุกประการ · ล้ม = WARN ไม่ทำให้ event ล้ม
+  //   🔴 `booking.no_show` **ไม่** ต่อสะพานนี้: คนไม่มาตามนัด ไม่ใช่ "มาใช้บริการ" ⇒ ไม่มีกิจกรรม VISIT และห้ามเลื่อนขั้นเป็นลูกค้า ◂
+  "booking.completed": withAutomation(compose(compose(stampFromVisit, memberApptBridge("onBookingCompleted")), crmBridge("onBusinessEvent"))),
   // M3.3 (§7.1) — นัดเปลี่ยนเป็น "ไม่มาตามนัด" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   //   ปิด event เป็น DONE (ไม่ให้คิวตัน) + เป็นทริกเกอร์ของ journey "จองแล้วไม่มา" + เว็บฮุค
   // M3.7: + ไทม์ไลน์ NO_SHOW (ห่อ try/catch — พังไม่ค้างคิว)
@@ -1002,7 +1007,22 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.deal.won": withAutomation(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice"))),
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
-  "shop.order.paid": withAutomation(memberBridge("onShopOrderPaid")),
+  // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกออเดอร์ (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
+  //   สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิมทุกประการ · CRM อ่าน **แต่ id** (ไม่แตะ customerName/customerPhone ใน payload — R-E.17) ◂
+  "shop.order.paid": withAutomation(compose(memberBridge("onShopOrderPaid"), crmBridge("onBusinessEvent"))),
+  // CRM C2.9 ▸ เหตุการณ์ธุรกิจอีก 6 โมดูล (มติ C11) — ยิงใน transaction เดียวกับการเปลี่ยนสถานะของโมดูลนั้น
+  //   งานหลัก = **no-op**: โมดูลต้นทางเขียนของมันครบใน tx ของตัวเองแล้ว · บรรทัดพวกนี้มีไว้ (ก) ปิด event เป็น DONE
+  //   — ขาดไปแม้ตัวเดียว = แถวค้าง PENDING ตลอดกาลและคิวทั้งระบบตันเงียบ ๆ [[reference_outbox_new_event_needs_consumer]] ·
+  //   (ข) เป็นทริกเกอร์ของกฎอัตโนมัติ + เว็บฮุคของร้าน · (ค) ที่แขวน "ของแถม" ของ CRM
+  //   ของแถม = `onBusinessEvent` ตัวเดียวทั้ง 6 ชนิด: แถวต้นทาง → Party → ผู้ติดต่อ ⇒ กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า
+  //   (ล้ม = WARN ของ compose ไม่ทำให้ event ล้ม · ร้านที่ยังเป็น CRM รุ่น 1 = สะพานไม่เขียนอะไร แต่ event ยัง DONE)
+  "ticket.order.paid": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  "rental.returned": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  "school.enrolled": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  "hotel.checked_out": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  "clinic.visit.done": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  "queue.served": withAutomation(compose(async () => {}, crmBridge("onBusinessEvent"))),
+  // ◂ CRM C2.9
   // B1 — ธีม/ตราสินค้าของกิจการเปลี่ยน (ยิงจาก `branding/service.ts#setBranding` ใน tx เดียวกับแถว)
   //   ทำงานจริง 1 อย่าง: ล้างแคชธีมของ **อินสแตนซ์ที่ระบายคิว** (อินสแตนซ์ที่กดบันทึกล้างไปแล้วเอง)
   //   ที่เหลือปล่อยให้ `withWebhooks` ยิงต่อ → แอป/ระบบภายนอกที่แคชโลโก้-สีไว้จะได้รู้ว่าต้องดึงใหม่

@@ -1,9 +1,10 @@
 // School/คอร์สเรียน (WO-0051) — คอร์ส·รอบเรียน·สมัคร·ชำระ→เส้นเงิน C-2·เช็คชื่อ
 //
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type SCHOOL
-// เงินต้องเข้าเสมอ: รับชำระค่าเรียน = เปิดบิลผ่าน POS (บังคับ · ไม่มี POS = โยน + revert)
+// เงินต้องเข้าเสมอ: รับชำระค่าเรียน = เปิดบิลผ่าน POS (บังคับ · ไม่มี POS = โยนก่อนแตะสถานะ — CRM C2.9)
 // มีระบบสมาชิก (MEMBER) → ผูกนักเรียนเข้า Customer จากเบอร์ · ไม่มี = customerId null (ไม่บังคับ)
 import { prisma, tenantDb } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "ชำระค่าเรียนแล้ว" ใน tx เดียวกับสถานะ ◂
 import * as pos from "@/lib/modules/pos/service";
 import * as member from "@/lib/modules/member/service";
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
@@ -203,23 +204,39 @@ export async function markPaid(
   const en = await db.schoolEnrollment.findFirst({ where: { id: enrollmentId }, include: { class: { include: { course: true } } } });
   if (!en || en.status !== "ENROLLED") return { ok: false };
 
-  // 1) claim อะตอมมิก: ENROLLED → PAID (แพ้แข่ง/จ่ายแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
-  const claim = await db.schoolEnrollment.updateMany({
-    where: { id: enrollmentId, status: "ENROLLED" },
-    data: { status: "PAID", paidAt: new Date() },
-  });
-  if (claim.count === 0) return { ok: false };
-
-  // 2) หา AppSystem type POS ตัวแรก — ไม่มี = revert แล้วโยน (เงินเข้าไม่ได้ถ้าไม่มีจุดตัดเงิน)
+  // CRM C2.9 ▸ (มติผู้คุมงาน · ใบ C2.9) ด่าน POS ต้องอยู่ **ก่อน** การ claim:
+  //   เดิม claim (ENROLLED→PAID) + ยิง event ก่อน แล้วจึงหา AppSystem type POS · ไม่มี POS = revert + โยน ⇒
+  //   การรับชำระที่ถูกยกเลิกไปแล้วยังทิ้ง event ค้างไว้ (และกิจกรรม VISIT ใน CRM หลังคิวระบาย) = ไทม์ไลน์โกหกว่าจ่ายแล้ว
+  //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
+  //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ ENROLLED → ok:false มาก่อนด่าน POS
   const posSystems = await listSystems(ctx.tenantId, "POS");
   const posSys = posSystems[0];
-  if (!posSys) {
-    await db.schoolEnrollment.updateMany({
-      where: { id: enrollmentId, status: "PAID", posSaleId: null },
-      data: { status: "ENROLLED", paidAt: null },
+  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน");
+
+  // 1) claim อะตอมมิก: ENROLLED → PAID (แพ้แข่ง/จ่ายแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
+  //   (มติ C11 · ใบ C2.9 · R-B: โมดูลเรียนยิงเหตุการณ์เดียว = ตอน "ชำระค่าเรียนแล้ว" ไม่มี `school.completed`)
+  //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒ รับเงินสำเร็จ = มี event เสมอ ·
+  //   event เขียนไม่ได้ = การรับชำระถูกยกเลิกทั้งก้อน (ยังเป็น ENROLLED) · `pos.createSale` ยังอยู่นอก tx เหมือนเดิม
+  //   payload = id ล้วน + ราคาสตางค์ที่ snapshot ไว้ (X8: ไม่มีชื่อ/เบอร์นักเรียน)
+  const claimed = await prisma.$transaction(async (tx) => {
+    const claim = await tx.schoolEnrollment.updateMany({
+      where: { id: enrollmentId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "ENROLLED" },
+      data: { status: "PAID", paidAt: new Date() },
     });
-    throw new Error("เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน");
-  }
+    if (claim.count === 0) return false;
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      type: "school.enrolled",
+      idempotencyKey: `school.enrolled#${enrollmentId}`,
+      payload: { enrollmentId, unitId: ctx.unitId, partyId: en.partyId, classId: en.classId, priceSatang: en.priceSatang },
+    });
+    return true;
+  });
+  if (!claimed) return { ok: false };
+  // ◂ CRM C2.9
+
+  // 2) ด่าน POS ผ่านแล้วตั้งแต่ก่อน claim (บล็อก CRM C2.9 ด้านบน) — ไม่มีการ revert สถานะหลังยิง event อีกต่อไป
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `school-<enrollmentId>`)
   const sale = await pos.createSale({

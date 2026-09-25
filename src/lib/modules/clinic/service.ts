@@ -2,12 +2,13 @@
 //
 // ctx = { tenantId, unitId } — ทุก query ผ่าน tenantDb(ctx) (defense-in-depth ชั้น 2) · unit type CLINIC
 // PDPA: เก็บข้อมูลเท่าที่จำเป็น (ชื่อ/เบอร์/ปีเกิด/แพ้ยา/หมายเหตุ) · ลบร้าน = ลบตาม (WO-0042)
-// เงินต้องเข้าเสมอ: เก็บเงิน visit = เปิดบิลผ่าน POS (บังคับเมื่อมีค่าบริการ · ไม่มี POS = โยน + revert)
+// เงินต้องเข้าเสมอ: เก็บเงิน visit = เปิดบิลผ่าน POS (บังคับเมื่อมีค่าบริการ · ไม่มี POS = โยนก่อนแตะสถานะ — CRM C2.9)
 // จ่ายยา = ตัดสต็อกจริงผ่าน INVENTORY (idempotent ต่อรายการ · ไม่มีคลัง = โยน)
 import { prisma, tenantDb } from "@/lib/core/db";
 import * as pos from "@/lib/modules/pos/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as member from "@/lib/modules/member/service";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "ปิดการเข้ารับบริการ" ใน tx เดียวกับสถานะ ◂
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { listSystems } from "@/lib/modules/system/service";
 import { resolvePublicUnit } from "@/lib/core/storefront";
@@ -232,27 +233,42 @@ export async function billVisit(
   const visit = await db.clinicVisit.findFirst({ where: { id: visitId } });
   if (!visit || visit.status !== "OPEN") return { ok: false };
 
+  // CRM C2.9 ▸ (มติผู้คุมงาน · ใบ C2.9) ด่าน POS ต้องอยู่ **ก่อน** การ claim:
+  //   เดิม claim (OPEN→BILLED) + ยิง event ก่อน แล้วจึงหา AppSystem type POS · ไม่มี POS = revert + โยน ⇒
+  //   การเก็บเงินที่ถูกยกเลิกไปแล้วยังทิ้ง event ค้างไว้ (และกิจกรรม VISIT ใน CRM หลังคิวระบาย) = ไทม์ไลน์โกหกว่ามารับบริการจบแล้ว
+  //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
+  //   ข้อความไทยเดิมทุกตัวอักษร · เงื่อนไขเดิมคงไว้: ค่าบริการ 0 = BILLED โดยไม่เปิดบิล ⇒ **ไม่ต้องมี POS** (ไม่โยน)
+  const feeSatang = visit.feeSatang;
+  const posSys = feeSatang > 0 ? (await listSystems(ctx.tenantId, "POS"))[0] : null;
+  if (feeSatang > 0 && !posSys) throw new Error("เปิดระบบขาย (POS) ก่อนเก็บเงิน");
+
   // 1) claim อะตอมมิก: OPEN → BILLED (แพ้แข่ง/เก็บแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
-  const claim = await db.clinicVisit.updateMany({
-    where: { id: visitId, status: "OPEN" },
-    data: { status: "BILLED", billedAt: new Date() },
+  //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒
+  //   ปิดการเข้ารับบริการสำเร็จ = มี event เสมอ · event เขียนไม่ได้ = ยกเลิกทั้งก้อน (ยัง OPEN) ·
+  //   `pos.createSale` / การผูก posSaleId ยังอยู่นอก tx เหมือนเดิม
+  //   🔴 X8 (มติผู้คุมงาน C2.9 ข้อ 15) — payload บอกแค่ "มีการมารับบริการหนึ่งครั้ง": visitId · unitId · partyId · patientId
+  //      **ห้าม** มีอาการ/การวินิจฉัย/ยาที่จ่าย/ค่าบริการ — ข้อมูลสุขภาพต้องไม่ไหลเข้าไทม์ไลน์ขายหรือเว็บฮุคของร้าน
+  const claimed = await prisma.$transaction(async (tx) => {
+    const claim = await tx.clinicVisit.updateMany({
+      where: { id: visitId, tenantId: ctx.tenantId, unitId: ctx.unitId, status: "OPEN" },
+      data: { status: "BILLED", billedAt: new Date() },
+    });
+    if (claim.count === 0) return false;
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      type: "clinic.visit.done",
+      idempotencyKey: `clinic.visit.done#${visitId}`,
+      payload: { visitId, unitId: ctx.unitId, partyId: visit.partyId, patientId: visit.patientId },
+    });
+    return true;
   });
-  if (claim.count === 0) return { ok: false };
+  if (!claimed) return { ok: false };
+  // ◂ CRM C2.9
 
   // ค่าบริการ 0 → BILLED โดยไม่สร้างบิล (posSaleId คงเป็น null)
-  const feeSatang = visit.feeSatang;
-  if (feeSatang <= 0) return { ok: true };
-
-  // 2) หา AppSystem type POS ตัวแรก — ไม่มี = revert แล้วโยน (เงินเข้าไม่ได้ถ้าไม่มีจุดตัดเงิน)
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) {
-    await db.clinicVisit.updateMany({
-      where: { id: visitId, status: "BILLED", posSaleId: null },
-      data: { status: "OPEN", billedAt: null },
-    });
-    throw new Error("เปิดระบบขาย (POS) ก่อนเก็บเงิน");
-  }
+  // 2) ด่าน POS ผ่านแล้วตั้งแต่ก่อน claim (บล็อก CRM C2.9 ด้านบน · fee > 0 ⇒ posSys ไม่เป็น null แน่นอน)
+  if (feeSatang <= 0 || !posSys) return { ok: true };
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `clinic-<visitId>`)
   const sale = await pos.createSale({

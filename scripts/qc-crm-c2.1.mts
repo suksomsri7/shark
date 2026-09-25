@@ -756,8 +756,10 @@ try {
     chk("C2.1-S4.5", "NOTIFY_STAFF → an in-app notification for the listed user carrying the text · OPEN_KANBAN_CARD → the kanban sender is called once with the board of this tenant",
       note >= 1 && SENT.filter((s) => s.ch === "KANBAN" && j(s.req).includes(boardA)).length === 1, "notified · card", `notify=${note} kanban=${SENT.filter((s) => s.ch === "KANBAN").length}`);
     const main = (await mainRuns(R4, ["OK", "FAILED"]))[0];
-    chk("C2.1-S4.6", "ENROLL_SEQUENCE / STOP_SEQUENCE / ADJUST_SCORE are no-op stubs until C2.2/C2.8: steps recorded, the main run is OK (not FAILED), the score is unchanged",
-      main?.status === "OK" && /ENROLL_SEQUENCE|ลำดับ|sequence/i.test(j(main)) && cRow?.score === scoreBefore, "OK · stubs", `run=${main?.status ?? "-"} score=${scoreBefore}→${cRow?.score}`, "MAJOR");
+    // ORACLE-EDIT 25 ก.ย. (Fable · C2.8 accepted): ADJUST_SCORE is no longer a stub — the step goes through `crm.scoring.adjust` (+5 here,
+    //   one CrmScoreLog, single-statement bump); ENROLL/STOP_SEQUENCE were wired by C2.2. The main run must still be OK.
+    chk("C2.1-S4.6", "ENROLL_SEQUENCE / STOP_SEQUENCE (C2.2) and ADJUST_SCORE (C2.8) are real steps: the main run is OK (not FAILED) and ADJUST_SCORE {points 5} moves the contact's score by exactly +5",
+      main?.status === "OK" && /ENROLL_SEQUENCE|ลำดับ|sequence/i.test(j(main)) && Number(cRow?.score) === Number(scoreBefore) + 5, "OK · +5", `run=${main?.status ?? "-"} score=${scoreBefore}→${cRow?.score}`, "MAJOR");
     const w = await waitingOf(R4);
     const wOk = w.length === 1 && (w[0] as Any).crmContactId === c4 && Math.abs(new Date(w[0].scheduledAt).getTime() - (NOW.getTime() + 2 * DAY)) < 3_600_000;
     await waits({ now: new Date(NOW.getTime() + 3 * DAY), tenantId: tidA });

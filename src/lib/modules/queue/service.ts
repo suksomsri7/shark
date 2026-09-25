@@ -1,5 +1,6 @@
 import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma } from "@/lib/core/db";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "คิวได้รับบริการเสร็จ" ใน tx เดียวกับสถานะ ◂
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import type {
   Prisma,
@@ -270,18 +271,22 @@ export async function callNext(
 }
 
 // ── transition ทั่วไป: อ่านบัตร (scoped) → ตรวจ status ที่อนุญาต → อัปเดต + event ──
+// CRM C2.9 ▸ พารามิเตอร์ตัวที่หก `emit` — ให้ตัวเรียกยิง outbox event **ใน tx เดียวกับการเปลี่ยนสถานะ** ได้
+//   (วันนี้มีผู้ใช้รายเดียว = `markDone` · ตัวอื่นส่ง undefined ⇒ พฤติกรรมเดิมทุกไบต์)
 async function transition(
   ctx: Ctx,
   ticketId: string,
   allowed: QueueTicketStatus[],
   data: Prisma.QueueTicketUncheckedUpdateInput,
   event: { action: string; counterId?: string | null; actorId?: string; detail?: Prisma.InputJsonValue },
+  emit?: (tx: Prisma.TransactionClient, ticket: QueueTicket) => Promise<void>,
 ): Promise<{ ok: true; ticket: QueueTicket } | { ok: false; code: "NOT_FOUND" | "BAD_STATE" }> {
   return prisma.$transaction(async (tx) => {
     const cur = await tx.queueTicket.findFirst({ where: { ...ctx, id: ticketId } });
     if (!cur) return { ok: false as const, code: "NOT_FOUND" as const };
     if (!allowed.includes(cur.status)) return { ok: false as const, code: "BAD_STATE" as const };
     const ticket = await tx.queueTicket.update({ where: { id: ticketId }, data });
+    if (emit) await emit(tx, ticket);
     await tx.queueTicketEvent.create({
       data: {
         tenantId: ctx.tenantId,
@@ -335,10 +340,27 @@ export function serve(ctx: Ctx, ticketId: string, actorId?: string) {
 
 // จบบริการ — CALLED/SERVING → DONE
 export function markDone(ctx: Ctx, ticketId: string, actorId?: string) {
-  return transition(ctx, ticketId, ["CALLED", "SERVING"], { status: "DONE", doneAt: new Date() }, {
-    action: "DONE",
-    actorId,
-  });
+  return transition(
+    ctx,
+    ticketId,
+    ["CALLED", "SERVING"],
+    { status: "DONE", doneAt: new Date() },
+    { action: "DONE", actorId },
+    // CRM C2.9 ▸ (มติ C11 · ใบ C2.9) "คิวได้รับบริการเสร็จแล้ว" — ยิงตอน **DONE** (ไม่ใช่ตอนเรียก/ตอนเริ่มบริการ:
+    //   การมาใช้บริการเกิดขึ้นจริงเมื่อจบงาน) · อยู่ใน tx เดียวกับการเปลี่ยนสถานะ + แถวประวัติของบัตร ⇒
+    //   จบบริการสำเร็จ = มี event เสมอ · event เขียนไม่ได้ = ยกเลิกทั้งก้อน (บัตรยัง CALLED/SERVING)
+    //   payload = id ล้วน (X8: ไม่มีชื่อ/เบอร์ที่ลูกค้าฝากไว้ตอนกดรับบัตร)
+    async (tx, ticket) => {
+      await emitOutbox(tx, {
+        tenantId: ctx.tenantId,
+        unitId: ctx.unitId,
+        type: "queue.served",
+        idempotencyKey: `queue.served#${ticketId}`,
+        payload: { ticketId, unitId: ctx.unitId, partyId: ticket.partyId, typeId: ticket.typeId, counterId: ticket.counterId },
+      });
+    },
+    // ◂ CRM C2.9
+  );
 }
 
 // ยกเลิก — จากสถานะ active ใดๆ

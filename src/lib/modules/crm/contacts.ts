@@ -2529,3 +2529,59 @@ export async function markEmailBouncedInTx(
   return n.count === 1;
 }
 // ◂ CRM C2.5
+
+// CRM C2.9 ▸ "ลูกค้าคนนี้ทำธุรกรรมจริงแล้ว" จากสะพานเหตุการณ์ธุรกิจ (`crm-bridges/business.ts`) — ผู้เขียนคอลัมน์
+//   `lifecycleStage` ยังมีที่เดียวคือไฟล์นี้ (กติกาถาวรของ C1.4 · กติกาข้อ 6 ของโฟลเดอร์สะพาน)
+//   🔴 เดินหน้าทางเดียว: LEAD | PROSPECT | CHURNED ⇒ CUSTOMER · CUSTOMER อยู่เฉย ๆ (ไม่เขียนซ้ำ ไม่มี event ซ้ำ) ·
+//      **LOST ปล่อยไว้ LOST** (มติผู้คุมงาน C2.9 ข้อ 11: คนที่ทีมขายปิดว่า "แพ้" แล้วกลับมาซื้อ = เรื่องที่ร้านต้องเห็นและตัดสินเอง
+//      การเลื่อนขั้นเงียบ ๆ จะกลบมันหายไป) ⇒ เงื่อนไขเป็นรายการขั้นที่อนุญาต ไม่ใช่ "ไม่ใช่ CUSTOMER"
+//   AUDIT-CLASS X4: คำสั่งเดียวแบบมีเงื่อนไข (`updateMany` + `lifecycleStage in (…)`) ⇒ ส่ง event ซ้ำ/ยิงพร้อมกันกี่ทาง
+//      เลื่อนขั้นครั้งเดียว · event `crm.contact.updated` + แถว audit เกิดเฉพาะรอบที่เปลี่ยนจริง (คืน 0 = ไม่มีอะไรเกิดขึ้น)
+//   AUDIT-CLASS X1: ระบบต้องเป็นระบบ CRM ของร้านนี้ (resolveSystem) · แถวผูก (ร้าน, ระบบ) เสมอ
+//   AUDIT-CLASS X8: ไม่มีข้อมูลบุคคลในผู้ใช้/audit/event — id ล้วน
+/** ขั้นที่เลื่อนขึ้น CUSTOMER ได้ — **อนุมานจาก `canAdvanceLifecycle` ตัวเดียวของระบบ** (COMMON: ห้ามมีเครื่องกติกาตัวที่สอง)
+ *  ⇒ LOST หลุดออกเองเพราะกติกาห้าม LOST→CUSTOMER (มติผู้คุมงาน C2.9 ข้อ 11) · CUSTOMER ตัดออกเพราะ "อยู่เฉย ๆ"
+ *    (ไม่เขียนซ้ำ ไม่มี event ซ้ำ) · แก้กติกาใน `rules.ts` วันหลัง = ที่นี่เดินตามทันทีโดยไม่ต้องแก้ */
+const BRIDGE_PROMOTABLE_STAGES: CrmLifecycleStage[] = (LIFECYCLE_STAGES as readonly CrmLifecycleStage[]).filter(
+  (from) => from !== "CUSTOMER" && canAdvanceLifecycle(from, "CUSTOMER"),
+);
+
+export async function markCustomerFromBridge(ctx: { tenantId: string; systemId: string }, input: { contactId: string }): Promise<number> {
+  const c: ContactsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const contactId = str(input?.contactId);
+  if (!contactId) return 0;
+  await resolveSystem(c);
+  const out = await prisma.$transaction(async (tx) => {
+    // ขั้นก่อนหน้าอ่าน **ในธุรกรรมเดียวกับการเลื่อนขั้น** → แถว audit มี before จริง (ผู้ตรวจต้องเห็นว่ามาจาก LEAD/PROSPECT
+    //   หรือกลับมาจาก CHURNED — "after เพียว ๆ" ตอบคำถามนี้ไม่ได้ และไล่ย้อนจากที่อื่นไม่ได้เพราะค่าถูกทับแล้ว)
+    const pre = await tx.crmContact.findFirst({
+      where: { ...identityScope(c), id: contactId, mergedIntoId: null },
+      select: { lifecycleStage: true },
+    });
+    const n = await tx.crmContact.updateMany({
+      where: { ...identityScope(c), id: contactId, mergedIntoId: null, lifecycleStage: { in: BRIDGE_PROMOTABLE_STAGES } },
+      data: { lifecycleStage: "CUSTOMER" },
+    });
+    if (n.count !== 1) return { changed: 0, before: null as CrmLifecycleStage | null };
+    // 🔴 seq ต้องใหม่ทุกครั้ง (`newSeq()` เหมือนจุด "updated" อื่นทั้งหมด) — ห้ามใช้ค่าคงที่:
+    //   ลูกค้าที่ซื้อ → CUSTOMER → ร้านตั้งเป็น CHURNED เอง → กลับมาซื้ออีก = เลื่อนขั้นครั้งที่สอง ถ้า key ซ้ำใบเดิม
+    //   (`crm.contact.updated#<id>#lifecycle-customer`) คิวจะกลืนทิ้งเงียบ ⇒ แถว+audit เปลี่ยนแต่ **ไม่มี event** ⇒
+    //   กติกา/เว็บฮุค "ลูกค้ากลับมา" (win-back) ไม่ทำงานเลย
+    await emitContactEvent(tx, c, "updated", contactId, newSeq(), { contactId, changedKeys: ["lifecycleStage"] });
+    return { changed: 1, before: pre?.lifecycleStage ?? null };
+  }, TX_OPTS);
+  if (out.changed === 1) {
+    await writeAudit({
+      tenantId: c.tenantId,
+      actorId: null,
+      actorType: "SYSTEM",
+      action: "crm.contact.lifecycle",
+      targetType: "CrmContact",
+      targetId: contactId,
+      before: { lifecycleStage: out.before },
+      after: { lifecycleStage: "CUSTOMER", via: "business" },
+    });
+  }
+  return out.changed;
+}
+// ◂ CRM C2.9

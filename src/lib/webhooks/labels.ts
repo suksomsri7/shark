@@ -72,6 +72,8 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "crm.email.replied", label: "เมื่อผู้ติดต่อตอบอีเมลกลับมา (CRM)" },
   { value: "crm.email.bounced", label: "เมื่ออีเมลถึงผู้ติดต่อตีกลับถาวร (CRM)" },
   // ◂ CRM C2.5
+  // CRM C2.9 ▸ เหตุการณ์ธุรกิจ 6 ตัว (ตั๋ว · เช่า · เรียน · ที่พัก · คลินิก · คิว) ประกาศที่ `AUTOMATION_EVENTS` (spread ข้างบน) ·
+  //   ห้ามประกาศซ้ำที่นี่ (ช่องติ๊ก 2 แถวต่อ event) — `booking.completed` / `shop.order.paid` ก็สมัครฮุคได้อยู่แล้วตั้งแต่ M3.7 ◂
   // CRM C2.6 ▸ ติดตามเว็บ — ประกาศที่นี่ที่เดียว (ไม่ใส่ `AUTOMATION_EVENTS`: ทะเบียนนั้นผูกกับ `CRM_RULE_TRIGGERS` ของ C2.1
   //   ทั้งก้อน · ตัวบริโภคจริงคือใบ C2.8 คะแนน) · payload id/ตัวเลขล้วน
   { value: "crm.web.identified", label: "เมื่อรู้ว่าผู้เข้าชมเว็บคือลูกค้าคนไหน (CRM)" },

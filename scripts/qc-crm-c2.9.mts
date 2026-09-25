@@ -69,7 +69,8 @@
 //          (AUDIT-CLASS X4, the `createSequenceTaskOnce` pattern) · type `VISIT` and source `AUTO` (the enums have no PURCHASE and no
 //          BUSINESS value and C2.9 has NO migration) · doneAt/startAt = the event time · `lastActivityAt` of the contact moves in the
 //          same statement-set · Thai title from a fixed table (no customer data)
-//        `crm.contacts.markCustomerFromBridge(ctx, { contactId, at })` → number — ONE conditional `updateMany`:
+//        `crm.contacts.markCustomerFromBridge(ctx, { contactId })` → number — ONE conditional `updateMany`:
+//          (`at` dropped 25 ก.ย. 2569 by controller ruling — the activity writer owns `lastActivityAt`, the lifecycle column keeps no time)
 //          lifecycleStage LEAD | PROSPECT | CHURNED ⇒ CUSTOMER (CUSTOMER stays CUSTOMER, LOST is left alone), never a downgrade
 //        both are audited through the module's own audit writer (actorType SYSTEM) and carry no customer PII
 //   E. `partyId` (C1.1, verified by this oracle — no migration, no new column): every one of the 9 write sites keeps writing the Party
@@ -79,13 +80,32 @@
 //      D7 image gate here; `CrmActivityType` / `CrmActivitySource` / `CrmLifecycleStage` must be UNCHANGED (checked against pg_enum).
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY: 47 checks = S0 4 (structure · enums untouched · registry hygiene · gate-first) · S1–S8 24 (the 8 modules × 3:
+// CHECK INVENTORY: 52 checks = S0 4 (structure · enums untouched · registry hygiene · gate-first) · S1–S8 24 (the 8 modules × 3:
 //   .1 emit in the tx — proven with a REAL fault injected on the OutboxEvent insert · .2 the 3 registries · .3 the CRM effect) ·
-//   S9 3 (partyId at creation ×2 + one Party across modules) · S10 3 (activity shape · lifecycle only forward · no contact ⇒ nothing) ·
+//   S9 3 (partyId at creation ×2 + one Party across modules) · S10 8 (activity shape · lifecycle only forward · no contact ⇒ nothing ·
+//   + ORACLE-EDIT 25 ก.ย.: win-back re-emit · one VISIT per OPEN CRM system · the no-POS pre-gate of the three POS-backed state changes ·
+//   a source row whose Party is not linked yet · the two static rules of the CRM writers) ·
 //   X1 3 · X4 2 + COMPOSE 1 · X8 3 · U 3 · CLEAN  (C2.9-FATAL only when something throws).
 //   n/a: X2 (no REST op / AI tool — C2.11) · X3 (no shared counter of this work order; the claims are the modules' own, covered by
 //   their suites) · X5 (no cron pick-up — R-B kills the overdue sweep) · X6/X7 (no new input surface / public endpoint) ·
 //   X9 (no danger op) · X10 (no file/secret).
+// ORACLE-EDIT (controller review · 25 ก.ย. 2569 · +5 checks, 47 → 52) — the five gaps the reviewer found are appended to the S10 group
+//   as S10.4–S10.8 (the ids CONTINUE the group: S10.1/.2/.3 keep the meanings the brief's addendum 11/12/14 fixed, so re-using those
+//   numbers would have deleted required coverage). What they add on top of the 47:
+//     S10.4 MAJOR — a contact that came back: CUSTOMER → CHURNED (through `crm.contacts.setLifecycle`) → a second business event on
+//                   another source row must promote AGAIN and ANNOUNCE it (a new `crm.contact.updated` row with a DISTINCT idempotency
+//                   key — a fixed key per contact makes every later win-back silent) + an audit row with `before.lifecycleStage=CHURNED`
+//     S10.5 MAJOR — TWO open CRM systems holding a contact of the SAME Party ⇒ 1 VISIT in EACH (2 in the tenant, not 1 and not 4),
+//                   1 lifecycle audit per contact, replay + 3-parallel add nothing in either system
+//     S10.6 MAJOR — the POS pre-gate: a shop without POS must see `rental.returnAsset` / `school.markPaid` / `clinic.billVisit` (fee > 0)
+//                   refuse in Thai BEFORE the claim (status unchanged · 0 events · 0 activities after a FULL outbox drain) — a gate after
+//                   the claim+emit leaves a cancelled transaction announced in the queue and the timeline lies · clinic fee 0 needs no POS
+//                   (BILLED + 1 event) · positive control = the same return in the tenant that HAS POS
+//     S10.7 MINOR — a source row whose `partyId` is still null: nothing written, event resolves, and ONE WARN OpsEvent (ids only, Thai)
+//                   names the row so the `party-links` backfill can come back for it
+//     S10.8 MINOR — static: `markCustomerFromBridge` derives its promotable set from `canAdvanceLifecycle` (no literal
+//                   ["LEAD","PROSPECT","CHURNED"] array in the body) · `recordBusinessActivityOnce` asks `resolveSystem` (the X1 door of
+//                   every other writer of `crm/activities.ts`) before it opens its write transaction
 // HOUSE RULES: SKIP guard before any DB connection · throwaway tenants `qc-c29-<rand>-*` swept in `finally` (every table with tenantId,
 //   4 passes) + users · the fault injector is a Postgres trigger on "OutboxEvent" that raises ONLY for our tenant + our event type and
 //   is dropped in `finally` · `pos.createSale` (rental/school/shop) drains the outbox globally by design, so every effect assertion is
@@ -663,6 +683,187 @@ END $qc$ LANGUAGE plpgsql`);
     chk("C2.9-S10.3", "a transaction whose Party has NO CRM contact (a walk-in buyer): the consumer resolves without error and writes NOTHING — no lead is invented (turning every walk-in into a lead is C2.4/C2.6 work, behind their own switches) and no orphan activity is created",
       !!ev && d.ok && after === before && afterActs === beforeActs,
       "0 contacts · 0 activities", `event=${!!ev} deliver=${d.ok ? "ok" : d.err} contacts ${before}→${after} activities ${beforeActs}→${afterActs}${ABSENT}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT · S10.4–S10.8 (controller review · 25 ก.ย. 2569) — five gaps the reviewer found, APPENDED to the S10 group.
+  //   The ids continue the group on purpose: `C2.9-S10.1/.2/.3` already carry the three meanings the brief's addendum
+  //   fixed (11 lifecycle-forward-only · 12 no-contact-⇒-nothing · 14 no `crm.activity.logged`), so the new checks are
+  //   S10.4 win-back re-emit · S10.5 one VISIT per OPEN CRM system · S10.6 the no-POS pre-gate of the three POS-backed
+  //   state changes · S10.7 a source row whose Party is not linked yet · S10.8 the two static rules of the CRM writers.
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── S10.4–S10.8 · win-back · per-system · no-POS gate · late Party · static ──");
+  {
+    // S10.4 — WIN-BACK: promoted to CUSTOMER by a business event, sent back to CHURNED through the CRM service
+    //   (`crm.contacts.setLifecycle` — CUSTOMER → CHURNED is the only legal way in, `canAdvanceLifecycle`), then a
+    //   SECOND business event on a DIFFERENT source row must promote again AND announce it (a new outbox row with a
+    //   DISTINCT idempotency key — the fixed seq of the first promotion silently swallows the second one) and leave an
+    //   audit row that says where the contact came back FROM (`before.lifecycleStage = CHURNED`).
+    const phone = phoneOf();
+    const row1 = await SPECS[0].mk(tidA, unitA, pA, phone); // ticket order #1 (amount 0 — no POS money line)
+    const contactId = await mkContact(tidA, crmA, phone);
+    await SPECS[0].go(tidA, unitA, row1.rowId);
+    const ev1 = (await eventsOf(tidA, SPECS[0].type, row1.rowId))[0];
+    if (ev1) await deliver(tidA, SPECS[0].type, ev1);
+    const afterFirst = await contactRow(contactId);
+    const churn = await call(contactsSvc.setLifecycle, crmCtx(tidA, crmA), owner, contactId, "CHURNED");
+    if (!churn.ok) {
+      note(`setLifecycle CHURNED unavailable (${cut(churn.err, 70)}) → raw update (no service path)`);
+      await P.crmContact.update({ where: { id: contactId }, data: { lifecycleStage: "CHURNED" } }).catch(() => null);
+    }
+    const churned = await contactRow(contactId);
+    const updatedKeys = async () =>
+      new Set(((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.contact.updated" } })) as Any[])
+        .filter((e) => j(e.payload).includes(contactId)).map((e) => String(e.idempotencyKey)));
+    const keysBefore = await updatedKeys();
+    const row2 = await SPECS[0].mk(tidA, unitA, pA, phone); // a DIFFERENT source row, the SAME Party
+    await SPECS[0].go(tidA, unitA, row2.rowId);
+    const ev2 = (await eventsOf(tidA, SPECS[0].type, row2.rowId))[0];
+    const d2 = ev2 ? await deliver(tidA, SPECS[0].type, ev2) : MISSING;
+    const again = await contactRow(contactId);
+    const newKeys = [...(await updatedKeys())].filter((k) => !keysBefore.has(k));
+    const winAudits = ((await P.auditLog.findMany({ where: { tenantId: tidA, targetType: "CrmContact", targetId: contactId } })) as Any[])
+      .filter((a) => String((a.before as Any)?.lifecycleStage ?? "") === "CHURNED" && String((a.after as Any)?.lifecycleStage ?? "") === "CUSTOMER" && String(a.actorType) === "SYSTEM");
+    const acts2 = await actsOf(contactId, row2.rowId);
+    chk("C2.9-S10.4", "win-back: a contact promoted to CUSTOMER by one business event, put back to CHURNED through the CRM service, is promoted AGAIN by a second business event on another source row — and the second promotion is ANNOUNCED like the first: a NEW `crm.contact.updated` outbox row with a DISTINCT idempotency key (a fixed key per contact makes `emitOutbox` swallow every later win-back silently ⇒ automations/webhooks/journeys never hear that the customer came back) and an AuditLog row with actorType SYSTEM whose `before.lifecycleStage` is CHURNED (the audit must say where the contact came back FROM)",
+      !!ev1 && !!ev2 && d2.ok && afterFirst?.lifecycleStage === "CUSTOMER" && churned?.lifecycleStage === "CHURNED" && again?.lifecycleStage === "CUSTOMER" && acts2.length === 1 && newKeys.length === 1 && winAudits.length === 1,
+      "CUSTOMER again · 1 new event key · 1 audit before=CHURNED",
+      `first=${afterFirst?.lifecycleStage} churn=${churn.ok ? "service" : `raw (${cut(churn.err, 40)})`}→${churned?.lifecycleStage} second=${again?.lifecycleStage} activities=${acts2.length} newUpdatedKeys=${newKeys.length}${newKeys.length ? ` (${cut(newKeys[0], 70)})` : ""} auditBeforeChurned=${winAudits.length} deliver=${d2.ok ? "ok" : d2.err}${ABSENT}`, "MAJOR");
+  }
+  {
+    // S10.5 — ONE VISIT PER OPEN CRM SYSTEM: two CRM systems of the SAME tenant, both holding a contact of the SAME
+    //   Party ⇒ one business event = one activity in EACH system (2 in the tenant), one lifecycle audit per contact,
+    //   and replay/parallel adds nothing in either system (the X4 flag is per (system, contact, sourceRef)).
+    const crmA3 = await mk(tidA, "CRM", "CRM สาม");
+    await setCrm(crmA3, { uiVersion: 2, bridgesEnabled: true });
+    const phone = phoneOf();
+    const row = await SPECS[5].mk(tidA, unitA, pA, phone); // queue — no POS money line, no auto-drain
+    const c1 = await mkContact(tidA, crmA, phone);
+    const c2 = await mkContact(tidA, crmA3, phone);
+    const r1 = await contactRow(c1);
+    const r2 = await contactRow(c2);
+    const sameParty = !!r1?.partyId && r1.partyId === r2?.partyId;
+    await SPECS[5].go(tidA, unitA, row.rowId);
+    const ev = (await eventsOf(tidA, SPECS[5].type, row.rowId))[0];
+    const d1 = ev ? await deliver(tidA, SPECS[5].type, ev) : MISSING;
+    const dAgain = ev ? await deliver(tidA, SPECS[5].type, ev) : MISSING;
+    const dp = ev ? await Promise.all([0, 1, 2].map(() => deliver(tidA, SPECS[5].type, ev))) : [];
+    const a1 = await actsOf(c1, row.rowId);
+    const a2 = await actsOf(c2, row.rowId);
+    const inTenant = (await P.crmActivity.count({ where: { tenantId: tidA, sourceRef: { contains: row.rowId } } })) as number;
+    const lifeAudits = ((await P.auditLog.findMany({ where: { tenantId: tidA, targetType: "CrmContact", targetId: { in: [c1, c2] } } })) as Any[])
+      .filter((a) => String(a.actorType) === "SYSTEM" && String((a.after as Any)?.lifecycleStage ?? "") === "CUSTOMER");
+    const per = [c1, c2].map((id) => lifeAudits.filter((a) => String(a.targetId) === id).length);
+    const s1 = await contactRow(c1);
+    const s2 = await contactRow(c2);
+    chk("C2.9-S10.5", "a shop running TWO CRM systems (both uiVersion 2 with the bridges on) whose contacts point at the SAME Party: ONE business event writes exactly ONE VISIT activity in EACH system — 2 in the tenant, never 1 (the first system winning the flag) and never 4 (a per-contact loop that re-reads the same flag) — promotes BOTH contacts to CUSTOMER with exactly ONE lifecycle audit each, and delivering the event again plus 3× in parallel adds nothing in either system",
+      sameParty && !!ev && d1.ok && dAgain.ok && dp.every((x) => x.ok) && a1.length === 1 && a2.length === 1 && inTenant === 2 && per[0] === 1 && per[1] === 1 && s1?.lifecycleStage === "CUSTOMER" && s2?.lifecycleStage === "CUSTOMER",
+      "1 + 1 activity · 1 audit each",
+      `sameParty=${sameParty} event=${!!ev} deliver=${d1.ok ? "ok" : d1.err} again=${dAgain.ok ? "ok" : dAgain.err} parallel=${dp.filter((x) => x.ok).length}/3 sys1=${a1.length} sys2=${a2.length} tenantTotal=${inTenant} audits=${per.join("/")} lifecycle=${s1?.lifecycleStage}/${s2?.lifecycleStage}${ABSENT}`, "MAJOR");
+  }
+  {
+    // S10.6 — THE NO-POS PRE-GATE: the three state changes that open a POS bill must refuse BEFORE they touch the row.
+    //   A gate that runs AFTER the claim + emit leaves a cancelled transaction with an event in the queue ⇒ the customer
+    //   timeline later says "returned / paid / visit done" for something that never happened.
+    const tidN = await mkTenant("nopos");
+    await P.membership.create({ data: { userId: userA, tenantId: tidN, role: "OWNER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+    const crmN = await mk(tidN, "CRM", "CRM ไม่มีขาย");
+    await setCrm(crmN, { uiVersion: 2, bridgesEnabled: true });
+    const unitN = await mkUnit(tidN, "สาขาไม่มีระบบขาย", [crmN]); // 🔴 no POS AppSystem in this tenant at all
+    const pN = await mkParents(tidN, unitN);
+    type Case = { name: string; type: string; table: string; pre: string; rowId: string; res: Res; contactId: string };
+    const cases: Case[] = [];
+    for (const idx of [1, 2]) { // rental.returnAsset (PICKED_UP) · school.markPaid (ENROLLED)
+      const s = SPECS[idx];
+      const ph = phoneOf();
+      const rw = await s.mk(tidN, unitN, pN, ph);
+      const cid = await mkContact(tidN, crmN, ph);
+      const res = rw.rowId === NONE ? MISSING : await s.go(tidN, unitN, rw.rowId);
+      cases.push({ name: s.name, type: s.type, table: s.table, pre: s.preState, rowId: rw.rowId, res, contactId: cid });
+    }
+    // clinic with a real fee (> 0) needs the bill ⇒ must refuse · clinic with fee 0 opens no bill ⇒ must still work
+    const phFee = phoneOf();
+    const ptFee = await call(M.clinic.createPatient, { tenantId: tidN, unitId: unitN }, { name: pii(`คนไข้ ${TAG}-${nx()}`), phone: phFee });
+    const vFee = ptFee.ok ? await call(M.clinic.createVisit, { tenantId: tidN, unitId: unitN }, { patientId: ptFee.v?.id, symptom: `ตรวจทั่วไป ${TAG}`, feeSatang: 50_000 }) : MISSING;
+    const cFee = await mkContact(tidN, crmN, phFee);
+    const feeRow = (vFee.v?.id as string) ?? NONE;
+    if (!vFee.ok) note(`clinic.createVisit(fee>0): ${vFee.err}`);
+    const feeRes = feeRow === NONE ? MISSING : await call(M.clinic.billVisit, { tenantId: tidN, unitId: unitN }, feeRow);
+    cases.push({ name: "clinic(fee>0)", type: "clinic.visit.done", table: "ClinicVisit", pre: "OPEN", rowId: feeRow, res: feeRes, contactId: cFee });
+    const phFree = phoneOf();
+    const free = await SPECS[4].mk(tidN, unitN, pN, phFree); // clinic visit, fee 0
+    await mkContact(tidN, crmN, phFree);
+    const freeRes = free.rowId === NONE ? MISSING : await SPECS[4].go(tidN, unitN, free.rowId);
+    // drain the queue: an event that slipped past the gate would become a VISIT activity right here
+    const drained = await call(OBX.drainAll);
+    const bad: string[] = [];
+    for (const c of cases) {
+      const st = c.rowId === NONE ? "-" : await statusOf(c.table, c.rowId);
+      const evs = c.rowId === NONE ? [] : await eventsOf(tidN, c.type, c.rowId);
+      const acts = await actsOf(c.contactId);
+      const thaiPosError = !c.res.ok && thai(c.res.msg) && /POS/.test(c.res.msg);
+      if (!(thaiPosError && st === c.pre && evs.length === 0 && acts.length === 0))
+        bad.push(`${c.name}: status=${st}/want ${c.pre} events=${evs.length} activities=${acts.length} err=${cut(c.res.err, 70) || "RESOLVED(no throw)"}`);
+    }
+    const freeStatus = free.rowId === NONE ? "-" : await statusOf("ClinicVisit", free.rowId);
+    const freeEvs = free.rowId === NONE ? [] : await eventsOf(tidN, "clinic.visit.done", free.rowId);
+    // positive control — the SAME state change in the tenant that DOES have POS goes through and emits its one event
+    const ctl = await SPECS[1].mk(tidA, unitA, pA, phoneOf());
+    const ctlRes = ctl.rowId === NONE ? MISSING : await SPECS[1].go(tidA, unitA, ctl.rowId);
+    const ctlStatus = ctl.rowId === NONE ? "-" : await statusOf("RentalBooking", ctl.rowId);
+    const ctlEvs = ctl.rowId === NONE ? [] : await eventsOf(tidA, "rental.returned", ctl.rowId);
+    chk("C2.9-S10.6", "a shop that never opened POS: `rental.returnAsset` (PICKED_UP) · `school.markPaid` (ENROLLED) · `clinic.billVisit` with a fee > 0 (OPEN) all refuse with the Thai \"เปิดระบบขาย (POS) …\" message BEFORE touching anything — the status is unchanged, ZERO events of that type exist and a full outbox drain produces ZERO VISIT activities (a gate placed AFTER the claim + emit would leave a cancelled transaction announced in the queue, and the customer timeline would say \"returned / paid / visit done\" for something that never happened) · `clinic.billVisit` with fee 0 opens no bill so it needs no POS ⇒ BILLED + exactly 1 event · positive control: the same rental return in the tenant that HAS POS reaches RETURNED and emits its one event",
+      bad.length === 0 && freeStatus === "BILLED" && freeEvs.length === 1 && (ctlRes.ok || ctlRes.v?.ok === true) && ctlStatus === "RETURNED" && ctlEvs.length === 1,
+      "3 refusals · fee0 works · control works",
+      `blocked: ${bad.join(" | ") || "all 3 refused before writing"} | fee0 ${freeStatus} events=${freeEvs.length} go=${freeRes.ok ? "ok" : freeRes.err} | drain=${drained.ok ? j(drained.v) : drained.err} | control ${ctlStatus} events=${ctlEvs.length} go=${ctlRes.ok ? "ok" : ctlRes.err}${ABSENT}`, "MAJOR");
+  }
+  {
+    // S10.7 — LATE PARTY: the row is real and its shop is right, but `partyId` is still null (blank phone, or the
+    //   swallow-its-own-failure linker of C1.1 lost). Nothing may be written and the event must resolve — but it must
+    //   not vanish without a trace either: one WARN line in the ops log, ids only, so `party-links` can come back for it.
+    const phone = phoneOf();
+    const row = await SPECS[0].mk(tidA, unitA, pA, phone); // ticket
+    const contactId = await mkContact(tidA, crmA, phone);  // the contact EXISTS — only the Party link is missing
+    const cleared = row.rowId === NONE ? 0 : Number(await P.$executeRawUnsafe(`UPDATE "TicketOrder" SET "partyId" = NULL WHERE "id" = $1`, row.rowId).catch(() => 0));
+    await SPECS[0].go(tidA, unitA, row.rowId);
+    const ev = (await eventsOf(tidA, SPECS[0].type, row.rowId))[0];
+    const d = ev ? await deliver(tidA, SPECS[0].type, ev) : MISSING;
+    const acts = await actsOf(contactId);
+    const c = await contactRow(contactId);
+    const ops = ((await P.opsEvent.findMany({ where: { tenantId: tidA } }).catch(() => [])) as Any[])
+      .filter((o) => `${o.message ?? ""} ${o.detail ?? ""}`.includes(row.rowId));
+    const opsPii = PII.filter((p) => j(ops.map((o) => [o.message, o.detail])).includes(p));
+    chk("C2.9-S10.7", "a business event whose source row has NO `partyId` yet (the C1.1 linker swallows its own failure by design): the bridge writes NOTHING (0 activities, the contact of that very phone keeps its LEAD stage — it must not be found by name/phone instead) and the event RESOLVES, but it does not disappear silently either — exactly ONE WARN OpsEvent of this run names that row so the `party-links` backfill can pick it up, and it carries ids only (no name/phone/e-mail · Thai message)",
+      !!ev && cleared === 1 && d.ok && acts.length === 0 && c?.lifecycleStage === "LEAD" && ops.length === 1 && String(ops[0]?.level) === "WARN" && thai(ops[0]?.message) && opsPii.length === 0,
+      "0 writes · 1 WARN (ids only)",
+      `partyCleared=${cleared} event=${!!ev} deliver=${d.ok ? "ok" : d.err} activities=${acts.length} lifecycle=${c?.lifecycleStage} opsLines=${ops.length} level=${ops[0]?.level ?? "-"} msg=${cut(ops[0]?.message, 90)} opsPii=${opsPii.length}${ABSENT}`, "MINOR");
+  }
+  {
+    // S10.8 — the two static rules of the CRM writers themselves (no DB): one source of truth for the lifecycle rule,
+    //   and the same X1 door every other CRM writer stands behind.
+    const bodyOf = (src: string, fn: string): string => {
+      const at = src.search(new RegExp(`export\\s+async\\s+function\\s+${fn}\\b`));
+      if (at < 0) return "";
+      const end = src.indexOf("\nexport ", at + 1);
+      return (end < 0 ? src.slice(at) : src.slice(at, end)).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:"'`\\])\/\/[^\n]*/g, "$1");
+    };
+    const contactsSrc = read(CONTACTS_FILE);
+    const mcb = bodyOf(contactsSrc, "markCustomerFromBridge");
+    const literalStages = [...mcb.matchAll(/["'](LEAD|PROSPECT|CHURNED)["']/g)].map((m) => m[1]);
+    // the promotable set may be computed inline OR held in a named constant of the same file — either shape is fine,
+    // as long as `canAdvanceLifecycle` is what computes it (no second rule engine)
+    const via = /lifecycleStage:\s*\{\s*in:\s*([A-Za-z_$][\w$]*)\s*\}/.exec(mcb)?.[1] ?? "";
+    const declAt = via ? contactsSrc.search(new RegExp(`(const|let|var)\\s+${via}\\b`)) : -1;
+    const viaDecl = declAt >= 0 ? contactsSrc.slice(declAt, declAt + 500) : "";
+    const derives = /canAdvanceLifecycle/.test(mcb) || /canAdvanceLifecycle/.test(viaDecl);
+    const rba = bodyOf(read(ACT_FILE), "recordBusinessActivityOnce");
+    const gateAt = rba.indexOf("resolveSystem");
+    const writeAt = Math.min(...["crmActivity.create", "touchLastActivity", "$transaction"].map((w) => { const i = rba.indexOf(w); return i < 0 ? Number.POSITIVE_INFINITY : i; }));
+    const gateFirst = gateAt >= 0 && gateAt < writeAt;
+    chk("C2.9-S10.8", "ONE source of truth for each rule [static]: `markCustomerFromBridge` decides which stages it may promote by asking `canAdvanceLifecycle` (`crm/rules.ts` — the owner of the lifecycle rule since C1.4) instead of repeating a literal [\"LEAD\",\"PROSPECT\",\"CHURNED\"] array that the next lifecycle ruling would silently leave behind · `recordBusinessActivityOnce` asks `resolveSystem` (the AUDIT-CLASS X1 door of every other writer in `crm/activities.ts`: the systemId must be a CRM system OF THAT TENANT) BEFORE it opens its write transaction, so a bridge handed a foreign or non-CRM systemId writes nothing",
+      mcb.length > 0 && rba.length > 0 && derives && literalStages.length === 0 && gateFirst,
+      "canAdvanceLifecycle · no literal stage array · resolveSystem first",
+      `markCustomerFromBridge: found=${mcb.length > 0} canAdvanceLifecycle=${derives} (via=${via || "inline"}) literalStages=${literalStages.join(",") || "-"} | recordBusinessActivityOnce: found=${rba.length > 0} resolveSystemAt=${gateAt} firstWriteAt=${Number.isFinite(writeAt) ? writeAt : -1} gateFirst=${gateFirst}${ABSENT}`, "MINOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

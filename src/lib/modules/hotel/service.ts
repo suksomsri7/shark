@@ -1,6 +1,7 @@
 import { prisma, tenantDb } from "@/lib/core/db";
 import { registerScopes } from "@/lib/core/scope";
 import * as pos from "@/lib/modules/pos/service";
+import { emitOutbox } from "@/lib/core/outbox"; // CRM C2.9 ▸ เหตุการณ์ "เช็คเอาท์แล้ว" ใน tx เดียวกับสถานะ ◂
 import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
@@ -426,6 +427,17 @@ export async function checkOut(
         // ห้องต้องทำความสะอาดก่อนขายใหม่
         await tx.hotelRoom.update({ where: { id: rv.roomId }, data: { status: "CLEANING" } });
       }
+      // CRM C2.9 ▸ (มติ C11 · ใบ C2.9) "เช็คเอาท์แล้ว" ยิงใน tx เดียวกับการเปลี่ยนสถานะที่มีอยู่แล้วของฟังก์ชันนี้ ⇒
+      //   เช็คเอาท์สำเร็จ = มี event เสมอ · event เขียนไม่ได้ = เช็คเอาท์ถูกยกเลิกทั้งก้อน (ยัง CHECKED_IN · ห้องไม่ถูกสั่งทำความสะอาด)
+      //   `pos.createSale` ยังอยู่นอก tx นี้เหมือนเดิม · payload = id ล้วน + จำนวนคืน/ยอดสตางค์ (X8: ไม่มีชื่อ/เบอร์ผู้เข้าพัก)
+      await emitOutbox(tx, {
+        tenantId,
+        unitId,
+        type: "hotel.checked_out",
+        idempotencyKey: `hotel.checked_out#${reservationId}`,
+        payload: { reservationId, unitId, partyId: rv.partyId, nights: rv.nights, totalSatang: rv.totalSatang },
+      });
+      // ◂ CRM C2.9
       return { totalSatang: rv.totalSatang, nights: rv.nights, customerId: rv.customerId };
     });
 
