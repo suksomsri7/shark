@@ -389,7 +389,8 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C2 | C2.7 | ✅ | (ใบนี้) | สะพานบัญชี/POS: quote จากดีล · responded → ขั้น · เงินผ่าน chain (INVOICE/DEPOSIT_RECEIPT) · WHT `DOC_SETTLE` · void เฉพาะเอกสาร · POS link (บิลเดียวดีลเดียว · gift card ไม่นับ) · **ประตูหยุดนับได้ ห้ามหยุดถอน** · auto invoice/WON · ข้อสอบ **63/63** (55+8) · ผู้ตรวจ: BLOCKER 2 → แก้ · `wo-notes/crm-C2.7.md` |
 | C2 | C2.8 | ✅ | (ใบนี้) | คะแนนผู้ติดต่อ: กฎ seed 8 · maxPerDay/วันไทย · ระดับ+event threshold ครั้งเดียว (ทางเดียว—ตัด cron poller C2.1) · decay claim+reconcile tx เดียว · explain/recompute/adjust · `crm.deal.quotation.issued` ยิง+consumer · หน้าตั้งค่า+ป้าย 360 (mockup 05) · ข้อสอบ 54/54 ×2 QC1 · wo-notes `crm-C2.8.md` |
 | C2 | C2.9 | ✅ | (ใบนี้) | เหตุการณ์ธุรกิจ 8 โมดูล → VISIT ใบเดียว/sourceRef + ขั้น CUSTOMER ผ่าน Party · 6 event ใหม่ยิงใน tx · win-back ไม่ถูกคิวกลืน · ข้อสอบ 52/52 ×2 QC1 · wo-notes `crm-C2.9.md` |
-| C2 | C2.10–C2.11 | ⏸️ | — | ข้อสอบพร้อม (C2.10 40 · C2.11 47 — เคาะ addendum แล้ว) |
+| C2 | C2.10 | ✅ | (ใบนี้) | ดีลนิ่ง `markStale` (คีย์ = ธง = คีย์ poller C2.1 · `days` เป็น match key) · แจ้งเตือนพนักงาน 10 เรื่อง × in-app/push/e-mail · quiet hours ผู้ใช้ชนะร้าน เลื่อนไม่ทิ้ง · dedupe 5 ส่วน · งาน cron 7 ตัว · การ์ด "ดีลที่ต้องดู" (mockup 01) · ข้อสอบ 41/41 ×2 QC1 · wo-notes `crm-C2.10.md` |
+| C2 | C2.11 | ✅ | (ใบนี้) | REST ชุด 2: 32 MUST op + 6 R · tool 10 · send 1 คน/send-bulk ≤500 danger · notifications prefs · A1 replyTo ต้องเป็นเธรดของผู้ติดต่อคนเดียวกัน (ปิด consent bypass เดิม) · assistant เห็น PII แบบ mask · ข้อสอบ 47/47 ×2 QC1 · c1.10 66/66 · wo-notes `crm-C2.11.md` |
 | C3 | C3.0–C3.9 | ⏸️ | — | |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
