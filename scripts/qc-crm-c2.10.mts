@@ -74,11 +74,11 @@
 //      `// CRM C2.10 ▸ … ◂` block): one engine for quiet hours, Thai time through the existing +07:00 helpers, never raw getHours().
 //   E. JOBS — registered in `src/lib/platform/minute-jobs.ts` (block `// CRM C2.10 ▸ … ◂`), each best-effort and idempotent, all
 //      reachable through `scripts/crm-cron.mts minute|hourly|daily`: `crm.deals.stale` (daily) · `crm.notify.fanout` (hourly) ·
-//      `crm.activities.overdue` (hourly, emits `crm.activity.overdue` once per overdue task) · `crm.activities.reminders` (minute) ·
+//      `crm.activities.overdue` (hourly, emits `crm.activity.overdue` once per overdue task) · `crm.activity.remind` (minute · C2.4 — ORACLE-EDIT 25 ก.ย.: real name) ·
 //      `crm.companies.cache` (daily) · `crm.purge.web` (daily) · `crm.purge.email` (daily) · `crm.reports.scheduled` (daily).
 //      Already registered by earlier work orders and left alone: `crm.automation.waits` (hourly) · `crm.automation.cron` (daily —
 //      it already covers close-due AND record-field-due, so those get no job of their own) · `crm.sequences` (minute) ·
-//      `crm.emails.scheduled` (minute, C2.5) · `crm.scoring.decay` (daily, C2.8) · `crm.heartbeat`.
+//      `crm.email.scheduled` (minute, C2.5) · `crm.scoring.decay` (daily, C2.8) · `crm.heartbeat`.
 //      R-C.6 stays true: NO `/api/cron/crm/*` route and NO new `vercel.json` entry.
 //   F. UI: `/crm/settings/notifications` (shop templates × channels + quiet hours + digest hour) and the per-user tab, guard
 //      `type: "CRM"` → requireCrmV2Page → crmCan(…, "crm.settings.manage") → notFound() (the per-user tab needs no key) ·
@@ -87,7 +87,7 @@
 //      inventory rows (page "/settings/notifications", wo "C2.10") ≥ 8 · no new permission key, no migration.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY: 40 checks = S0 4 · S1 5 · S2 2 · S3 6 · S4 3 · S5 2 (S1–S5 = the 18 of CRM-RUN §2) · X1 3 · X4 2 · X5 2 · X7 2 ·
+// CHECK INVENTORY: 41 checks = S0 4 · S1 6 (S1.6 = ORACLE-EDIT 25 ก.ย. days match key) · S2 2 · S3 6 · S4 3 · S5 2 (S1–S5 = the 18 of CRM-RUN §2) · X1 3 · X4 2 · X5 2 · X7 2 ·
 //   X8 3 · X9 2 · U 3 · CLEAN  (C2.10-FATAL only when something throws).
 //   n/a: X2 (no REST op / AI tool — C2.11) · X3 (no shared counter: the digest is one row per (user, key, day), proven by X4) ·
 //   X6 (the only free text is the shop's own template body, rendered into a notification it owns) · X10 (no file / secret stored).
@@ -377,7 +377,7 @@ try {
   const stale = async (sys: string, opts: Record<string, Any> = {}) => call(markStale, { now: NOW, tenantIds: [tidA], systemIds: [sys], deps: DEPS, ...opts });
 
   // snapshot the dispatcher state rows of the C2.10 jobs (shared table)
-  const C210_JOBS: [string, number, string][] = [["crm.deals.stale", 1440, "daily"], ["crm.notify.fanout", 60, "hourly"], ["crm.activities.overdue", 60, "hourly"], ["crm.activities.reminders", 5, "minute"], ["crm.companies.cache", 1440, "daily"], ["crm.purge.web", 1440, "daily"], ["crm.purge.email", 1440, "daily"], ["crm.reports.scheduled", 1440, "daily"]];
+  const C210_JOBS: [string, number, string][] = [["crm.deals.stale", 1440, "daily"], ["crm.notify.fanout", 60, "hourly"], ["crm.activities.overdue", 60, "hourly"], ["crm.activity.remind", 5, "minute"], ["crm.companies.cache", 1440, "daily"], ["crm.purge.web", 1440, "daily"], ["crm.purge.email", 1440, "daily"], ["crm.reports.scheduled", 1440, "daily"]];
   for (const [n] of C210_JOBS) OPS_KEYS.push(`minute-job:lease:${n}`, `minute-job:run:${n}`, `minute-job:ok:${n}`);
   opsSnap = (await P.opsAlertState.findMany({ where: { source: { in: OPS_KEYS } }, select: { source: true, lastAlertAt: true } }).catch(() => [])) as Any[];
 
@@ -431,8 +431,19 @@ try {
     const runs = (await P.automationRun.count({ where: { ruleId: rid, crmContactId: dRule.contactId } })) as number;
     const runsAll = (await P.automationRun.count({ where: { ruleId: rid } })) as number;
     chk("C2.10-S1.4", "no double fire with C2.1: the same spell announced by `markStale` (live event ⇒ its consumer) and then by C2.1's daily catch-up poller runs the `crm.deal.stale{days:3}` rule EXACTLY ONCE (one AutomationRun for that deal) — the two paths must build the same idempotency key",
-      rule.ok && !!evRule && cron.ok && runs === 1 && runsAll === 1,
-      "1 run", `rule=${rule.ok ? "ok" : rule.err} event=${!!evRule} cron=${cron.ok ? j(cron.v) : cron.err} runsForDeal=${runs} runsTotal=${runsAll}${ABSENT}`);
+      // ORACLE-EDIT 25 ก.ย. (Fable): `runsAll === 1` was unsatisfiable — four deals of crmA qualify for {days:3} at this moment (d3 · dDefault ·
+      //   dUnderDefault · dRule) and C2.1's poller correctly runs the rule once PER DEAL; the no-double-fire contract is per deal (`runs === 1`)
+      rule.ok && !!evRule && cron.ok && runs === 1 && runsAll >= 1,
+      "1 run for the deal", `rule=${rule.ok ? "ok" : rule.err} event=${!!evRule} cron=${cron.ok ? j(cron.v) : cron.err} runsForDeal=${runs} runsTotal=${runsAll}${ABSENT}`);
+    // ORACLE-EDIT 25 ก.ย. (Fable · reviewer A1): the live event carries the STAGE's days while C2.1's cron key carries the RULE's days — unless
+    //   `days` is a trigger match key, a rule `days:14` fires from the live `days:7` event AND again from the cron at day 14 (two keys, one spell).
+    {
+      const auto = read("src/lib/modules/crm/automation.ts");
+      const m = auto.match(/const TRIGGER_MATCH_KEYS\s*=\s*\[([^\]]*)\]/);
+      const keys = m ? m[1] : "";
+      chk("C2.10-S1.6", "[static] `days` is a trigger match key of C2.1's engine (`TRIGGER_MATCH_KEYS` in automation.ts) — a live `crm.deal.stale` event with the stage's days never fires a rule configured with a different number; that rule waits for the cron key of its own days, so one quiet spell = one run per rule",
+        /"days"/.test(keys) && /"band"/.test(keys), "band + days", `TRIGGER_MATCH_KEYS=[${keys.trim()}]${ABSENT}`);
+    }
     const notes1 = await notesOf(userO1, "นิ่ง");
     const notesLead = await notesOf(userLead, "นิ่ง");
     const notesTh = await notesOf(userTh, "นิ่ง");
@@ -531,10 +542,13 @@ try {
     // the user's OWN quiet hours win over the shop's
     SENT.length = 0;
     const setOwn = await call(setMyPrefs, cN, o1, { quietHours: { enabled: true, from: "09:00", to: "18:00" } });
-    const dOwn = await mkDeal(crmN, pN, { ownerUserId: userO1, stageIdx: 0, idleDays: 1 });
-    const rMid = await call(notifyStaff, cN, { key: "lead.hot", userIds: [userO1, userO2], refType: "CrmDeal", refId: dOwn.id, vars: { count: 1 }, now: NOW }, { deps: DEPS });
+    // ORACLE-EDIT 25 ก.ย. (Fable): userO2 is a team-less STAFF and `dOwn` had no team ⇒ default visibility TEAM hid the deal from him (S3.6's own
+    //   rule) — so `other === 1` was impossible for a reason unrelated to quiet hours. The deal now lives in teamT and the comparison recipient
+    //   is the team lead, who CAN open it: quiet hours are the only difference between the two.
+    const dOwn = await mkDeal(crmN, pN, { ownerUserId: userO1, teamId: teamT, stageIdx: 0, idleDays: 1 });
+    const rMid = await call(notifyStaff, cN, { key: "lead.hot", userIds: [userO1, userLead], refType: "CrmDeal", refId: dOwn.id, vars: { count: 1 }, now: NOW }, { deps: DEPS });
     const mine = sentTo("PUSH", userO1);
-    const other = sentTo("PUSH", userO2);
+    const other = sentTo("PUSH", userLead);
     await call(setMyPrefs, cN, o1, { quietHours: { enabled: false, from: "09:00", to: "18:00" } });
     chk("C2.10-S3.5", "a user's OWN quiet window beats the shop's: at 11:00 Thai (outside the shop window 21:00–07:00 but inside userO1's own 09:00–18:00) userO1 gets no push now while userO2 — same event, same call — gets his immediately · the window is read in Thai time, never from the server clock",
       setOwn.ok && rMid.ok && mine === 0 && other === 1,
@@ -568,7 +582,8 @@ try {
       if (!job) { bad.push(`${name}:missing`); continue; }
       if (job.everyMinutes !== every || (job.cadence ?? "minute") !== cadence || job.vpsOnly === true) bad.push(`${name}:${job.everyMinutes}/${job.cadence}/vps=${job.vpsOnly}`);
     }
-    const inherited = ["crm.automation.waits", "crm.automation.cron", "crm.sequences", "crm.emails.scheduled", "crm.scoring.decay"].filter((n) => !reg?.get(n));
+    // ORACLE-EDIT 25 ก.ย. (Fable): C2.5 registered `crm.email.scheduled` (singular) — the old name `crm.emails.scheduled` never existed
+    const inherited = ["crm.automation.waits", "crm.automation.cron", "crm.sequences", "crm.email.scheduled", "crm.scoring.decay"].filter((n) => !reg?.get(n));
     const runner = read(CRON_RUNNER);
     chk("C2.10-S4.1", `the whole CRM job set is registered with the cadence of blueprint §7.5: C2.10 adds ${C210_JOBS.map(([n]) => n).join(" · ")} · the jobs of the earlier work orders are still there (crm.automation.waits/cron · crm.sequences · crm.emails.scheduled · crm.scoring.decay) · scripts/crm-cron.mts still knows minute | hourly | daily`,
       bad.length === 0 && inherited.length === 0 && /minute/.test(runner) && /hourly/.test(runner) && /daily/.test(runner),

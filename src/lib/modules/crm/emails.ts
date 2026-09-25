@@ -2412,19 +2412,39 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
 
 // ───────────────────────── ล้างเนื้อความตามอายุเก็บ (ผู้ลงทะเบียนงานรายวัน = C2.10 · R-A) ─────────────────────────
 
-export async function purgeBodies(now: Date, opts: { tenantIds?: string[]; deps?: { del?: DeleteDeps["del"] } } = {}): Promise<{ purged: number }> {
+/**
+ * CRM C2.10 ▸ ล้างเนื้อจดหมายที่เกินอายุเก็บของแต่ละระบบ (มติผู้คุมงานรอบแก้ 25 ก.ย. 2569 ข้อ 6 — B4)
+ *   🔴 เฉพาะระบบ `settings.crm.uiVersion = 2` **กรองใน SQL** แบบเดียวกับรอบกวาดใหม่ทั้งสามของใบ C2.10
+ *      (R-E.14 = ประตูของทุกงานในใบนี้ · งานรายวัน `crm.purge.email` เป็นผู้เรียกจริงตัวเดียว)
+ *      ต่างจาก `tracking.purgeWeb` ที่ค่าปริยายยังครอบระบบ v1 เพราะมติ C2.6 ข้อ 7 + ข้อสอบ `C2.6-U.5` สั่งไว้ชัด
+ *   🔴 งบเวลา: เคารพ `deadline`/`signal` — หยุด **ระหว่างรอบย่อย 200 ฉบับ** (ไม่มีสถานะค้างกลางฉบับ) ◂
+ */
+export async function purgeBodies(
+  now: Date,
+  opts: { tenantIds?: string[]; systemIds?: string[]; deps?: { del?: DeleteDeps["del"] }; deadline?: number; signal?: AbortSignal } = {},
+): Promise<{ purged: number }> {
   const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
   const tenantIds = Array.isArray(opts.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : undefined;
-  if (tenantIds && tenantIds.length === 0) return { purged: 0 };
+  const systemIds = Array.isArray(opts.systemIds) ? opts.systemIds.filter((x) => typeof x === "string" && x) : undefined;
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return { purged: 0 };
+  const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
   const systems = await prisma.appSystem.findMany({
-    where: { type: "CRM", ...(tenantIds ? { tenantId: { in: tenantIds } } : {}) },
+    where: {
+      type: "CRM",
+      // 🔴 มติผู้คุมงาน 25 ก.ย. (กลับมติ B4 ตาม C2.6 ข้อ 7): การล้างเนื้ออีเมลเป็น **หน้าที่ตามกฎหมาย (retention)** จึงครอบทุกระบบ CRM
+      //    รวมร้านที่ยังเป็นรุ่น 1 (ร้านที่เคยเปิดรุ่น 2 แล้วปิดกลับ ต้องไม่เก็บเนื้อหาเกินกำหนด) — ไม่กรอง uiVersion ที่นี่
+      ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      ...(systemIds ? { id: { in: systemIds } } : {}),
+    },
     select: { id: true, tenantId: true, settings: true },
   });
   let purged = 0;
   for (const sys of systems) {
+    if (stop()) return { purged };
     const days = crmEmailSettingsOf(sys.settings).retentionDays;
     const cutoff = new Date(at.getTime() - days * 86_400_000);
     for (let round = 0; round < 50; round += 1) {
+      if (stop()) return { purged };
       // 🔴 ห้ามล้างจดหมายที่ **ยังไม่ได้ส่ง**: แถว QUEUED ไม่มี sentAt/receivedAt ⇒ `createdAt` เป็นตัวตัดสิน ⇒
       //    จดหมายที่พนักงานตั้งเวลาไว้ไกลกว่าอายุการเก็บ (เช่น ตั้งล่วงหน้า 1 ปี ในร้านที่เก็บ 30 วัน) เคยถูกล้าง
       //    เนื้อความทิ้งก่อนถึงเวลาส่ง แล้วงานตามเวลาก็ส่งจดหมายเปล่าออกไปให้ลูกค้า

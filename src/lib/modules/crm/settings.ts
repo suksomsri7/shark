@@ -430,3 +430,83 @@ export async function setCrmScoringKeys(
     WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
 }
 // ◂ CRM C2.8
+
+// CRM C2.10 ▸ แจ้งเตือนพนักงาน `settings.crm.notifications` + จำนวนวันที่ถือว่าดีลนิ่งปริยาย `settings.crm.staleDaysDefault`
+//   (ใบ C2.10 · พิมพ์เขียว §7.4/§7.5 · มติ C22 · R-A "ตั้งค่าอยู่ใน settings.crm เท่านั้น" · R-C.1 ไม่มีตาราง/คอลัมน์ใหม่)
+//   🔴 ตัวอ่านบริสุทธิ์อยู่ที่ `./notifications-shared.ts` (`parseCrmNotifSettings`) — ที่นี่มีแต่ทางเข้าฐาน
+//   🔴 ตัวเขียน = jsonb ซ้อนสองชั้น **คำสั่งเดียว** (แบบ `setCrmScoringKeys` ของ C2.8) ⇒ `uiVersion`/`bridgesEnabled`
+//      และคีย์อื่นของ `notifications` รอดเสมอ (ไม่มี read-modify-write = ไม่มีช่องเขียนทับกัน)
+//   AUDIT-CLASS X1: เขียนเฉพาะแถวที่ id + tenantId + type CRM ตรงกัน · ไม่ตรง = 0 แถว (ผู้เรียกแปลงเป็นข้อความไทย)
+
+/** ค่าดิบของ `settings.crm.notifications` (ยังไม่ผ่านตัวอ่านบริสุทธิ์) */
+export function crmNotifSettingsRaw(raw: Json): Json {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : {};
+  return crm.notifications;
+}
+
+/** จำนวนวันที่ถือว่า "ดีลนิ่ง" เมื่อขั้นนั้นไม่ได้ตั้งค่าเอง — ค่าเพี้ยน/ไม่ได้ตั้ง = `fallback` (14) */
+export function crmStaleDaysDefaultOf(raw: Json, fallback: number): number {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : {};
+  const n = Number(crm.staleDaysDefault);
+  return Number.isInteger(n) && n >= 1 && n <= 365 ? n : fallback;
+}
+
+/** เขียนคีย์ใน `settings.crm.notifications` ด้วยคำสั่งเดียว (merge ระดับคีย์ที่ส่งมา) · คืนจำนวนแถวที่แก้ */
+export async function setCrmNotifSettingsJson(
+  ctx: { tenantId: string; systemId: string },
+  patch: Record<string, unknown>,
+  db: CrmSettingsDb = crmDb,
+): Promise<number> {
+  if (!patch || Object.keys(patch).length === 0) return 0;
+  const json = JSON.stringify(patch);
+  return db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('notifications',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'notifications') = 'object' THEN "settings"->'crm'->'notifications' ELSE '{}'::jsonb END)
+               || ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+}
+
+/**
+ * เขียนเทมเพลต 1 ตัวใน `settings.crm.notifications.templates.<key>` ด้วยคำสั่งเดียว (merge ลึก 3 ชั้น)
+ * 🔴 ทำไมต้องซ้อนสามชั้น: เทมเพลตอื่น (อีก 9 ตัว) และ `quietHours`/`digestHour` ต้องไม่ถูกแตะ
+ *    และช่องทางที่ไม่ได้ส่งมาต้องคงค่าเดิม ⇒ merge ทั้ง `templates` และ `templates.<key>` ในคำสั่งเดียวกัน
+ */
+export async function setCrmNotifTemplateJson(
+  ctx: { tenantId: string; systemId: string },
+  key: string,
+  patch: { title?: string; body?: string; channels?: Record<string, boolean> },
+  db: CrmSettingsDb = crmDb,
+): Promise<number> {
+  const text: Record<string, string> = {};
+  if (patch?.title !== undefined) text.title = patch.title;
+  if (patch?.body !== undefined) text.body = patch.body;
+  const chans = patch?.channels ?? {};
+  if (Object.keys(text).length === 0 && Object.keys(chans).length === 0) return 0;
+  const json = JSON.stringify(text);
+  const chanJson = JSON.stringify(chans);
+  return db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('notifications',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'notifications') = 'object' THEN "settings"->'crm'->'notifications' ELSE '{}'::jsonb END)
+               || jsonb_build_object('templates',
+                    (CASE WHEN jsonb_typeof("settings"->'crm'->'notifications'->'templates') = 'object' THEN "settings"->'crm'->'notifications'->'templates' ELSE '{}'::jsonb END)
+                      || jsonb_build_object(${key}::text,
+                           (CASE WHEN jsonb_typeof("settings"->'crm'->'notifications'->'templates'->${key}) = 'object' THEN "settings"->'crm'->'notifications'->'templates'->${key} ELSE '{}'::jsonb END)
+                             || ${json}::jsonb
+                             || jsonb_build_object('channels',
+                                  (CASE WHEN jsonb_typeof("settings"->'crm'->'notifications'->'templates'->${key}->'channels') = 'object' THEN "settings"->'crm'->'notifications'->'templates'->${key}->'channels' ELSE '{}'::jsonb END)
+                                    || ${chanJson}::jsonb)))),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+}
+// ◂ CRM C2.10

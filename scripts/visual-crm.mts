@@ -88,9 +88,13 @@ const TMP = {
   accLinkIds: [] as string[], docIds: [] as string[], posSaleIds: [] as string[],
   // CRM C2.8 ▸ กฎคะแนนเริ่มต้น (เฉพาะใบที่รอบนี้สร้างเอง) + แถวแต้มของผู้ติดต่อตัวอย่าง (ลบครบใน restoreSeed · คะแนนเดิมของคนนั้นเขียนคืน) ◂
   scoreRuleIds: [] as string[], scoreLogIds: [] as string[],
+  // CRM C2.10 ▸ ดีลที่ `markStale` ปัก `stalledAt` ให้ (เก็บค่าเดิมทุกใบเพื่อเขียนคืน) + ใบแจ้งเตือน/event ที่รอบนี้ทำเกิด ◂
+  staleBefore: [] as { id: string; stalledAt: Date | null }[],
 };
 /** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
-const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1, scoreRules: -1, scoreLogs: -1 };
+const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1, scoreRules: -1, scoreLogs: -1, notifications: -1, staleEvents: -1 };
+// CRM C2.10 ▸ เวลาเริ่มรอบ (ลบใบแจ้งเตือน/event/audit ที่รอบนี้ทำเกิดเท่านั้น — ของเดิมของร้าน QC ไม่ถูกแตะ) ◂
+const C210_START = new Date();
 // CRM C2.8 ▸ คะแนน/ระดับเดิมของผู้ติดต่อตัวอย่าง (null = ใบนี้ไม่ได้แตะ) + เวลาเริ่มรอบ (ลบ audit `crm.score.*` ของรอบนี้) ◂
 let C28_SCORE_BEFORE: { id: string; score: number; scoreBand: string | null; scoreUpdatedAt: Date | null } | null = null;
 const C28_START = new Date();
@@ -194,6 +198,37 @@ const SPECS: Record<string, Spec[]> = {
     },
   ],
   // ◂ CRM C2.8
+  // CRM C2.10 ▸ แจ้งเตือนพนักงาน (ภาพ 01 "ดีลที่ต้องดู" + หน้าตั้งค่าการแจ้งเตือน) — ทั้ง 1440 และ 390
+  //   หน้าตั้งค่า: owner/manager ที่มีคีย์ `crm.settings.manage` เห็น **สองแท็บ** (ของร้าน + ของฉัน) ·
+  //   thana/nok (STAFF ไม่มีคีย์ตั้งค่า) เห็นแท็บ "ของฉัน" อย่างเดียว — ทั้งคู่เป็นภาพที่ต้องดู (สิทธิ์ต่างกันจริง)
+  //   หน้าแรก: บล็อก "ดีลที่ต้องดู" ต้อง **มีของจริง** ⇒ บล็อก "เตรียมของ C2.10" ด้านล่างเรียก `deals.markStale`
+  //   ผ่าน facade (ตัวปัก `stalledAt` ตัวจริงของ prod) แล้วคืนค่าทุกไบต์ใน restoreSeed()
+  "2.10": isCustomer ? [] : [
+    {
+      name: `crm-home-stale-${userKey}`,
+      path: `/app/sys/${SYS}`,
+      note: "หน้าแรก CRM: การ์ด \"ดีลที่ต้องดู\" (หัว ⚠ + \"ดูทั้งหมด\" · ป้ายนิ่ง N วัน 3 สถานะ · ชื่อดีล · บริษัท · ฿มูลค่า · ปุ่ม \"ดู\" ท้ายแถว · 4 แถว) คู่กับ \"งานของฉันวันนี้\" — เทียบภาพ 01",
+      expect: ["[data-testid=crm-home]", "[data-testid=crm-home-stale-list]", "[data-testid=crm-home-stale-all]"],
+      steps: [{ waitFor: "[data-testid=crm-home-stale-list]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-notify-settings-${userKey}`,
+      path: `${CRM_BASE}/settings/notifications`,
+      note: "ตั้งค่าการแจ้งเตือน — เรื่องแจ้งเตือน 10 เรื่อง × 3 ช่องทาง (ในแอป/มือถือ/อีเมล) + ช่วงห้ามรบกวน + ชั่วโมงส่งสรุป (แท็บของร้าน · owner/manager เท่านั้น)",
+      expect: userKey === "owner" || userKey === "manager"
+        ? ["[data-testid=crm-notify-page]", "[data-testid=crm-notify-tab-shop]", "[data-testid=crm-notify-tab-mine]", "[data-testid=crm-notify-quiet-from]", "[data-testid=crm-notify-quiet-to]", "[data-testid=crm-notify-save]"]
+        : ["[data-testid=crm-notify-page]", "[data-testid=crm-notify-tab-mine]", "[data-testid=crm-notify-my-save]"],
+      steps: [{ waitFor: "[data-testid=crm-notify-page]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-notify-mine-${userKey}`,
+      path: `${CRM_BASE}/settings/notifications`,
+      note: "แท็บ \"ของฉัน\" — ทับค่าร้านรายคน + ช่วงห้ามรบกวนของตัวเอง (พนักงานทุกคนตั้งได้ ไม่ต้องมีคีย์)",
+      expect: ["[data-testid=crm-notify-my-quiet-own]", "[data-testid=crm-notify-my-save]"],
+      steps: [{ waitFor: "[data-testid=crm-notify-tab-mine]", timeoutMs: 20_000 }, { click: "[data-testid=crm-notify-tab-mine]" }, { wait: 400 }],
+    },
+  ],
+  // ◂ CRM C2.10
   // CRM C2.7 ▸ ทางเดินเงิน (พิมพ์เขียว §7.2 · ภาพ 06): ช่อง "ดีล" ข้างช่องสมาชิกบนหน้าขาย · บล็อก "ดีล" บนหน้าเอกสารบัญชี ·
   //   ดีล 360 ที่มีรายการสินค้า + บิลหน้าร้านที่ผูกไว้ (บล็อก "เตรียมของ C2.7" ด้านล่างสร้างให้ แล้ว unshift สเปคที่ต้องใช้ id)
   //   ภาพแรกเป็น "ตัวคุม": ยังไม่เลือกสมาชิก ⇒ ช่องดีลต้องไม่โผล่ (ร้านที่ไม่ได้ใช้ CRM v2 เห็นหน้าขายเดิมทุกตัวอักษร)
@@ -635,6 +670,31 @@ async function restoreSeed(): Promise<void> {
     console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: กฎคะแนน ${BEFORE.scoreRules} → ${ruleNow} · แถวแต้ม ${BEFORE.scoreLogs} → ${logNow} · คะแนนผู้ติดต่อตัวอย่าง ${sameScore ? "เท่าเดิม" : "ไม่เท่าเดิม!"}${ok ? " (เท่าเดิม)" : ""}`);
   }
   // ◂ CRM C2.8
+  // CRM C2.10 ▸ คืนสภาพของ "ดีลที่ต้องดู" — จากใบนอกเข้าใน: ใบแจ้งเตือนสรุป → event `crm.deal.stale` ของรอบนี้
+  //   → `stalledAt` เดิมของทุกใบในระบบนี้ (เขียนคืนเฉพาะใบที่ค่าเปลี่ยน)
+  //   🔴 ลบด้วย `createdAt >= C210_START` เท่านั้น ⇒ ใบ/event ที่มีอยู่ก่อนรอบนี้ไม่ถูกแตะ
+  if (TMP.staleBefore.length) {
+    await P.appNotification.deleteMany({ where: { tenantId: E.tenantId, createdAt: { gte: C210_START }, body: { contains: "?n=deal.stale.digest" } } }).catch(() => null);
+    await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, type: "crm.deal.stale", createdAt: { gte: C210_START } } }).catch(() => null);
+    const now = (await P.crmDeal.findMany({ where: { tenantId: E.tenantId, systemId: SYS }, select: { id: true, stalledAt: true } })) as Any[];
+    const was = new Map(TMP.staleBefore.map((d) => [d.id, d.stalledAt]));
+    for (const d of now) {
+      if (!was.has(d.id as string)) continue;
+      const before = was.get(d.id as string) ?? null;
+      const after = (d.stalledAt ?? null) as Date | null;
+      if ((before?.getTime() ?? 0) === (after?.getTime() ?? 0)) continue;
+      await P.crmDeal.update({ where: { id: d.id }, data: { stalledAt: before } }).catch(() => null);
+    }
+  }
+  if (BEFORE.notifications >= 0) {
+    const noteNow = await P.appNotification.count({ where: { tenantId: E.tenantId } });
+    const evNow = await P.outboxEvent.count({ where: { tenantId: E.tenantId, type: "crm.deal.stale" } });
+    const stalledNow = await P.crmDeal.count({ where: { tenantId: E.tenantId, systemId: SYS, stalledAt: { not: null } } });
+    const stalledBefore = TMP.staleBefore.filter((d) => d.stalledAt !== null).length;
+    const ok = noteNow === BEFORE.notifications && evNow === BEFORE.staleEvents && stalledNow === stalledBefore;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ใบแจ้งเตือน ${BEFORE.notifications} → ${noteNow} · event ดีลนิ่ง ${BEFORE.staleEvents} → ${evNow} · ดีลที่มีป้ายนิ่ง ${stalledBefore} → ${stalledNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
+  }
+  // ◂ CRM C2.10
   // CRM C2.5 ▸ พิสูจน์ว่าจำนวนจดหมาย/แม่แบบกลับมาเท่าเดิม (แบบเดียวกับ C2.2/C2.3) ◂
   if (BEFORE.emails >= 0) {
     const emailNow = await P.crmEmailMessage.count({ where: { tenantId: E.tenantId, systemId: SYS } });
@@ -1259,6 +1319,30 @@ if (WO === "2.8") {
   }
 }
 // ◂ เตรียมของจริงของ C2.8
+
+// ── เตรียมของจริงของ C2.10 (ดีลที่ต้องดู) ──
+// 🔴 ใช้ **ตัวจริงของ prod** (`crm.deals.markStale` ผ่าน facade) ปัก `stalledAt` ให้ดีลที่นิ่งอยู่แล้วในเฉลย QC
+//    — ไม่เขียน `stalledAt` เองด้วย prisma (ภาพต้องมาจากทางเดินเดียวกับของจริง · [[feedback_ui_must_match_approved_mockups]])
+// 🔴 คืนสภาพ: เก็บ `stalledAt` เดิมของ **ทุกใบในระบบนี้** ก่อนรัน แล้วเขียนคืนใน restoreSeed() ·
+//    ใบแจ้งเตือน "สรุปดีลที่ต้องดู" + event `crm.deal.stale` ที่รอบนี้ทำเกิด ถูกลบด้วย `createdAt >= C210_START`
+if (WO === "2.10") {
+  const P210 = prisma as Any;
+  const crm210 = await import("@/lib/modules/crm");
+  BEFORE.notifications = await P210.appNotification.count({ where: { tenantId: E.tenantId } });
+  BEFORE.staleEvents = await P210.outboxEvent.count({ where: { tenantId: E.tenantId, type: "crm.deal.stale" } });
+  TMP.staleBefore = ((await P210.crmDeal.findMany({ where: { tenantId: E.tenantId, systemId: SYS }, select: { id: true, stalledAt: true } })) as Any[])
+    .map((d: Any) => ({ id: d.id as string, stalledAt: (d.stalledAt ?? null) as Date | null }));
+  const marked = await (crm210 as Any).deals
+    .markStale({ now: new Date(), tenantIds: [E.tenantId], systemIds: [SYS], deps: { push: async () => ({ ok: true }), email: async () => ({ ok: true }) } })
+    .catch((e: unknown) => {
+      console.log(`⚠️ เตรียมของ C2.10: ปักดีลนิ่งไม่ได้ — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+      return { marked: 0, digests: 0 };
+    });
+  const stalledNow = await P210.crmDeal.count({ where: { tenantId: E.tenantId, systemId: SYS, stalledAt: { not: null } } });
+  console.log(`🧪 เตรียมของ C2.10: markStale ปัก ${marked.marked} ใบ (สรุป ${marked.digests} ฉบับ) · ดีลที่มีป้าย "นิ่ง" ในระบบนี้ตอนนี้ ${stalledNow} ใบ`);
+  if (stalledNow === 0) console.log(`⚠️ เตรียมของ C2.10: เฉลย QC ไม่มีดีลที่นิ่งเกินกำหนดเลย ⇒ การ์ด "ดีลที่ต้องดู" จะขึ้นข้อความว่าง (ยังเป็นภาพที่ถูกต้องของสถานะนั้น)`);
+}
+// ◂ เตรียมของจริงของ C2.10
 
 // ── mint session (เรียกจากในกรอบ try เท่านั้น — ดูหมายเหตุหัวไฟล์) ──
 const UA = "qc-visual-crm";

@@ -34,6 +34,10 @@ import { dealStateForStage, lifecycleAfterDealWon } from "./rules";
 import { DEAL_VOIDED_TAG } from "./payments-shared";
 // CRM C2.7 ▸ มติรอบ 2 (SF-3): ประตู uiVersion ของ "มูลค่าที่รับเงินจริง" ใน `moveCore` (ร้าน v1 = พฤติกรรมเดิมของ C1.5) ◂
 import { crmUiVersion } from "./ui-version";
+// CRM C2.10 ▸ ดีลนิ่ง: ตัวแจ้งเตือนพนักงาน (สรุปรายวัน) + ค่า `staleDaysDefault` ของร้าน ◂
+import { notifyStaff, type CrmNotifyDeps } from "./notifications";
+import { CRM_STALE_DAYS_DEFAULT } from "./notifications-shared";
+import { crmStaleDaysDefaultOf } from "./settings";
 // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
 import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
 import {
@@ -2199,3 +2203,187 @@ export async function autoWinOnPaidFromBridge(ctx: { tenantId: string; systemId:
   return { won: out.changed };
 }
 // ◂ CRM C2.7
+
+// CRM C2.10 ▸ ดีลนิ่ง — งานรายวัน `crm.deals.stale` (พิมพ์เขียว §7.5 "stale 06:00 ไทย") + "สรุปดีลที่ต้องดู" รายวัน
+//
+// 🔴 **ไม่มีคอลัมน์ธง** (R-C.1: ใบนี้ไม่มี migration): ธง "ประกาศไปแล้ว" คือ **คีย์กันซ้ำของ OutboxEvent**
+//    `crm.deal.stale#<days>#<dealId>#<(lastActivityAt ?? stageEnteredAt).toISOString()>`
+//    ซึ่งเป็น **คีย์เดียวกันเป๊ะ** กับที่ตัวตามเก็บรายวันของ C2.1 (`automation.ts#cronCandidatePages`) สร้าง
+//    ⇒ ได้สามอย่างฟรี: (ก) 1 ใบต่อ "ช่วงที่นิ่ง" (emitOutbox กันซ้ำที่ (tenantId, idempotencyKey))
+//       (ข) มีกิจกรรมใหม่ = จุดยึดขยับ = เริ่มช่วงใหม่ ประกาศได้อีกครั้ง
+//       (ค) **C2.1 กับ C2.10 ไม่มีทางทำให้กฎเดียวกันทำงานสองรอบ** (AutomationRun กันซ้ำที่ (ruleId, eventKey))
+//    นี่คือบทเรียนตรงข้ามของ `crm.score.threshold` ที่ C2.8 ต้องถอด cron ออกเพราะคีย์สองทางไม่ตรงกัน
+// 🔴 `stalledAt` (คอลัมน์ที่มีอยู่แล้วตั้งแต่ C1.5 · ตัวล้างคือ `activities.ts#touchDeal`) ถูก **ปัก** ที่นี่ —
+//    ก่อนใบนี้ไม่มีใครปักเลย ⇒ ตัวกรอง "ดีลนิ่ง" ของหน้ารายการ (C1.5) และบล็อก "ดีลที่ต้องดู" ของหน้าแรก (C1.11)
+//    ว่างเปล่าตลอด · ปักด้วย conditional update (`stalledAt IS NULL`) ⇒ ยิงซ้อนกี่รอบก็ค่าเดียว
+// 🔴 AUDIT-CLASS X4/X5: ยิงพร้อมกันหลายรอบ = event ใบเดียว + สรุปใบเดียว (คีย์ outbox + กันซ้ำรายวันของ
+//    `notifications.ts`) · รอบที่ตายกลางทางถูกซ่อมโดยรอบถัดไป (ไม่มีสถานะปลายทางถูกเขียนก่อนงานเสร็จ)
+// 🔴 R-E.14: เฉพาะระบบ `settings.crm.uiVersion = 2` (กรองใน SQL) — ระบบรุ่น 1 ไม่ถูกแตะเลย
+
+/** ตัวเลือกของงานกวาดดีลนิ่ง (`tenantIds`/`systemIds` = ขอบเขต · งานรายวันไม่ส่งมา · ข้อสอบส่งเสมอ) */
+export type MarkStaleOpts = {
+  now?: Date;
+  tenantIds?: string[];
+  systemIds?: string[];
+  deps?: CrmNotifyDeps;
+  deadline?: number;
+  signal?: AbortSignal;
+};
+
+export type MarkStaleResult = { marked: number; digests: number; cutOff: boolean };
+
+const STALE_PAGE = 500;
+/** เพดานรหัสดีลที่ใช้นับ "กี่ใบที่คนนี้เห็น" ในคิวรีเดียว (สรุปคือจำนวน ไม่ใช่รายงาน) */
+const STALE_DIGEST_MAX = 1_000;
+
+type StaleRow = { id: string; ownerUserId: string | null; teamId: string | null };
+
+/** ระบบ CRM ที่เปิด uiVersion 2 ในขอบเขตที่ขอ (R-E.14 — กรองใน SQL ไม่ใช่ใน JS) */
+async function staleSystems(tenantIds?: string[], systemIds?: string[]): Promise<{ id: string; tenantId: string; settings: unknown }[]> {
+  return prisma.appSystem.findMany({
+    where: {
+      type: "CRM",
+      settings: { path: ["crm", "uiVersion"], equals: 2 },
+      ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      ...(systemIds ? { id: { in: systemIds } } : {}),
+    },
+    select: { id: true, tenantId: true, settings: true },
+  });
+}
+
+/**
+ * กวาดดีลที่ "นิ่งเกินกำหนด" แล้วประกาศ 1 ใบต่อช่วงที่นิ่ง + ส่ง **สรุปใบเดียวต่อคน** (ไม่ใช่ใบต่อดีล)
+ *
+ * นิ่ง = kind OPEN · ยังไม่ถูกเก็บ (`archivedAt` null) · `(lastActivityAt ?? stageEnteredAt) ≤ now − staleDays`
+ * โดย `staleDays` = ของขั้นนั้น (`CrmStage.staleDays`) ถ้าไม่ได้ตั้ง = ค่าของร้าน (`settings.crm.staleDaysDefault`, ปริยาย 14)
+ * ผู้รับสรุป = ผู้ดูแลของดีลที่นิ่ง + หัวหน้าทีมของดีลนั้น — **กรองด้วยสิ่งที่คนนั้นเห็นจริง** (`dealWhere`) เสมอ
+ */
+export async function markStale(opts: MarkStaleOpts = {}): Promise<MarkStaleResult> {
+  const now = opts.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
+  const tenantIds = Array.isArray(opts.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : undefined;
+  const systemIds = Array.isArray(opts.systemIds) ? opts.systemIds.filter((s) => typeof s === "string" && s) : undefined;
+  const out: MarkStaleResult = { marked: 0, digests: 0, cutOff: false };
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
+  const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
+  const systems = await staleSystems(tenantIds, systemIds);
+  const { toMemberActor } = await memberFacade();
+
+  for (const sys of systems) {
+    if (stop()) {
+      out.cutOff = true;
+      return out;
+    }
+    const scope = { tenantId: sys.tenantId, systemId: sys.id };
+    const defDays = crmStaleDaysDefaultOf(sys.settings, CRM_STALE_DAYS_DEFAULT);
+    const stages = await prisma.crmStage.findMany({ where: scope, select: { id: true, staleDays: true } });
+    if (stages.length === 0) continue;
+    // จัดขั้นเป็นกลุ่มตามจำนวนวัน ⇒ 1 คิวรีต่อกลุ่ม (ไม่ใช่ 1 คิวรีต่อขั้น และไม่กรองในหน่วยความจำ)
+    const byDays = new Map<number, string[]>();
+    for (const s of stages) {
+      const d = Math.trunc(Number(s.staleDays ?? defDays));
+      if (!Number.isInteger(d) || d <= 0) continue;
+      const list = byDays.get(d) ?? [];
+      list.push(s.id);
+      byDays.set(d, list);
+    }
+    const stale: StaleRow[] = [];
+    for (const [days, stageIds] of byDays) {
+      const cutoff = new Date(now.getTime() - days * 86_400_000);
+      for (let cursor: string | null = null; ; ) {
+        if (stop()) {
+          out.cutOff = true;
+          break;
+        }
+        const rows: { id: string; stageId: string; ownerUserId: string | null; teamId: string | null; lastActivityAt: Date | null; stageEnteredAt: Date }[] = await prisma.crmDeal.findMany({
+          where: {
+            ...scope,
+            kind: "OPEN",
+            archivedAt: null,
+            stageId: { in: stageIds },
+            OR: [{ lastActivityAt: { lte: cutoff } }, { lastActivityAt: null, stageEnteredAt: { lte: cutoff } }],
+            ...(cursor ? { id: { gt: cursor } } : {}),
+          },
+          orderBy: { id: "asc" },
+          take: STALE_PAGE,
+          select: { id: true, stageId: true, ownerUserId: true, teamId: true, lastActivityAt: true, stageEnteredAt: true },
+        });
+        for (const row of rows) {
+          const anchor = row.lastActivityAt ?? row.stageEnteredAt;
+          const key = `crm.deal.stale#${days}#${row.id}#${anchor.toISOString()}`;
+          try {
+            await prisma.$transaction(async (tx) => {
+              // 🔴 มติผู้คุมงานรอบแก้ ข้อ 8(4): ล็อกต่อดีลแบบเดียวกับ `activities.ts#overdueSweep` — `emitOutbox`
+              //    กันซ้ำที่ (tenantId, idempotencyKey) อยู่แล้ว แต่รอบที่วิ่งซ้อนกันจะชนกันที่ unique index
+              //    (ทรานแซกชันหนึ่งพัง ⇒ `stalledAt` ของดีลใบนั้นไม่ถูกปักในรอบนี้ และมี WARN ใน OpsEvent ฟรี ๆ)
+              //    ⇒ เข้าคิวที่ล็อก แล้วเช็กก่อนว่ามีใบของช่วงนี้อยู่แล้วหรือยัง
+              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:deal-stale:${row.id}`}, 0))`;
+              const already = await tx.outboxEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId: sys.tenantId, idempotencyKey: key } }, select: { id: true } });
+              if (already) {
+                // ช่วงนี้ประกาศไปแล้ว — ยังต้องปัก `stalledAt` ให้ครบ (รอบก่อนอาจตายหลังยิง event)
+                await tx.crmDeal.updateMany({ where: { id: row.id, stalledAt: null }, data: { stalledAt: anchor } });
+                return;
+              }
+              // AUDIT-CLASS X8: payload = รหัสล้วน (ผู้รับ event โหลดของที่ต้องใช้เองด้วยรหัส)
+              await emitOutbox(tx, {
+                tenantId: sys.tenantId,
+                systemId: sys.id,
+                type: "crm.deal.stale",
+                idempotencyKey: key,
+                payload: { dealId: row.id, days, stageId: row.stageId, ownerUserId: row.ownerUserId, teamId: row.teamId },
+              });
+              await tx.crmDeal.updateMany({ where: { id: row.id, stalledAt: null }, data: { stalledAt: anchor } });
+            }, TX_OPTS);
+          } catch (e) {
+            // ดีลใบเดียวพลาด ห้ามตัดทั้งรอบ (รอบถัดไปเก็บได้ — คีย์ผูกกับช่วงที่นิ่ง ไม่ใช่วันที่ cron วิ่ง)
+            await logOps("WARN", "crm.deals.stale", `ประกาศดีลนิ่ง ${row.id} ไม่สำเร็จ`, { tenantId: sys.tenantId, detail: e instanceof Error ? e.message.slice(0, 300) : String(e) }).catch(() => {});
+            continue;
+          }
+          out.marked += 1;
+          stale.push({ id: row.id, ownerUserId: row.ownerUserId, teamId: row.teamId });
+        }
+        if (rows.length < STALE_PAGE) break;
+        cursor = rows[rows.length - 1]!.id;
+      }
+      if (out.cutOff) return out;
+    }
+    if (stale.length === 0) continue;
+
+    // ── สรุป: 1 ใบต่อคน (ไม่ใช่ใบต่อดีล) ⇒ คนที่มีดีลนิ่ง 20 ใบได้ข้อความเดียวที่บอกว่า 20 ──
+    const ownerIds = [...new Set(stale.map((d) => d.ownerUserId).filter((x): x is string => !!x))];
+    const teamIds = [...new Set(stale.map((d) => d.teamId).filter((x): x is string => !!x))];
+    const leads = teamIds.length
+      ? await prisma.team.findMany({ where: { tenantId: sys.tenantId, id: { in: teamIds } }, select: { leadUserId: true } })
+      : [];
+    const recipients = [...new Set([...ownerIds, ...leads.map((t) => t.leadUserId).filter((x): x is string => !!x)])];
+    const ids = stale.slice(0, STALE_DIGEST_MAX).map((d) => d.id);
+    for (const userId of recipients) {
+      if (stop()) {
+        out.cutOff = true;
+        return out;
+      }
+      const membership = await prisma.membership.findFirst({
+        where: { tenantId: sys.tenantId, userId, acceptedAt: { not: null } },
+        select: { role: true, unitAccess: true, permissions: true },
+      });
+      if (!membership) continue;
+      const actor = toMemberActor(userId, membership);
+      if (!crmCan(actor, "crm.deal.read")) continue;
+      // AUDIT-CLASS X1: จำนวนในสรุป = จำนวนที่ **คนนี้เปิดดูได้จริง** (คิวรีเดียวต่อคน · ไม่ใช่ต่อดีล)
+      const count = await prisma.crmDeal.count({ where: { AND: [await dealWhere(scope, actor), { id: { in: ids } }] } });
+      if (count === 0) continue;
+      // 🔴 มติผู้คุมงานรอบแก้ ข้อ 8(3): จำนวนที่นับมาจากรหัสที่ถูกตัดไว้ที่ 1,000 ใบ ⇒ ถ้าเต็มเพดานต้องบอกว่า
+      //    "1000+" ไม่ใช่ "1000" (สรุปคือจำนวน ไม่ใช่รายงาน — แต่ต้องไม่โกหกว่านับครบแล้ว)
+      const capped = stale.length > STALE_DIGEST_MAX && count >= STALE_DIGEST_MAX;
+      const res = await notifyStaff(
+        { tenantId: sys.tenantId, systemId: sys.id, actorUserId: null },
+        { key: "deal.stale.digest", userIds: [userId], refType: "CrmStaleDeals", refId: sys.id, vars: { count: capped ? `${STALE_DIGEST_MAX}+` : count, systemId: sys.id }, now },
+        { deps: opts.deps },
+      );
+      // 🔴 มติผู้คุมงานรอบแก้ ข้อ 8(2): นับ "ผู้รับที่ได้ข่าวนี้ทางใดก็ได้" — ก่อนแก้นับแต่ `inApp` ⇒ คนที่ปิด
+      //    "ในแอป" แล้วรับทาง push/อีเมลไม่ถูกนับ (ตัวเลขที่รายงานต่ำกว่าความจริง)
+      if (res.inApp + res.push + res.email + res.deferred > 0) out.digests += 1;
+    }
+  }
+  return out;
+}
+// ◂ CRM C2.10

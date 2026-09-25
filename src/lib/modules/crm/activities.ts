@@ -1508,3 +1508,83 @@ export async function recordBusinessActivityOnce(ctx: { tenantId: string; system
   return { id: out.id, created: out.created };
 }
 // ◂ CRM C2.9
+
+// CRM C2.10 ▸ งานรายชั่วโมง `crm.activities.overdue` (พิมพ์เขียว §7.5 "activities ทุกชั่วโมง = overdue")
+//   ประกาศ `crm.activity.overdue` **ครั้งเดียวต่องานที่เลยกำหนด** ด้วยคีย์ `crm.activity.overdue#<activityId>`
+//   🔴 คีย์นี้คือคีย์เดียวกันเป๊ะกับที่ตัวตามเก็บของ C2.1 สร้าง (`automation.ts#cronCandidatePages`) ⇒ สองทางนี้
+//      ไม่มีวันทำให้กฎเดียวกันทำงานสองรอบ (AutomationRun กันซ้ำที่ (ruleId, eventKey)) — บทเรียนของ C2.8
+//   🔴 "ครั้งเดียวต่องาน" ไม่ใช่ "ทุกวัน": งานค้างใบเดียวไม่ควรเตือนซ้ำไม่รู้จบ (กติกาเดียวกับ C2.1)
+//   R-E.14: เฉพาะระบบ `settings.crm.uiVersion = 2` · AUDIT-CLASS X4/X5: ธงคือแถว OutboxEvent ใต้ advisory lock
+//   ⇒ รอบที่วิ่งซ้อนกัน/โพรเซสที่ตายกลางทางก็ได้ใบเดียว
+export const OVERDUE_EVENT = "crm.activity.overdue";
+/** ย้อนหลังของงานที่ยังนับว่า "เลยกำหนด" (เท่ากับ C2.1 — เก่ากว่านี้ถือว่าเลิกตามแล้ว) */
+const OVERDUE_LOOKBACK_DAYS = 60;
+const OVERDUE_PAGE = 200;
+
+export async function overdueSweep(
+  now: Date = new Date(),
+  opts: { tenantIds?: string[]; systemIds?: string[]; deadline?: number; signal?: AbortSignal } = {},
+): Promise<{ marked: number; scanned: number; cutOff: boolean }> {
+  const at = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
+  const tenantIds = Array.isArray(opts.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : undefined;
+  const systemIds = Array.isArray(opts.systemIds) ? opts.systemIds.filter((s) => typeof s === "string" && s) : undefined;
+  const out = { marked: 0, scanned: 0, cutOff: false };
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
+  const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
+  const systems = await prisma.appSystem.findMany({
+    where: {
+      type: "CRM",
+      settings: { path: ["crm", "uiVersion"], equals: 2 },
+      ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      ...(systemIds ? { id: { in: systemIds } } : {}),
+    },
+    select: { id: true, tenantId: true },
+  });
+  const floor = new Date(at.getTime() - OVERDUE_LOOKBACK_DAYS * 86_400_000);
+  for (const sys of systems) {
+    for (let cursor: string | null = null; ; ) {
+      if (stop()) {
+        out.cutOff = true;
+        return out;
+      }
+      const rows: { id: string; type: CrmActivityType; ownerUserId: string | null; contactId: string | null; dealId: string | null; companyId: string | null }[] =
+        await prisma.crmActivity.findMany({
+          where: { tenantId: sys.tenantId, systemId: sys.id, doneAt: null, dueAt: { lt: at, gte: floor }, ...(cursor ? { id: { gt: cursor } } : {}) },
+          orderBy: { id: "asc" },
+          take: OVERDUE_PAGE,
+          select: { id: true, type: true, ownerUserId: true, contactId: true, dealId: true, companyId: true },
+        });
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        if (stop()) {
+          out.cutOff = true;
+          return out;
+        }
+        out.scanned += 1;
+        const key = `${OVERDUE_EVENT}#${row.id}`;
+        try {
+          const made = await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:activity-overdue:${row.id}`}, 0))`;
+            const already = await tx.outboxEvent.findUnique({ where: { tenantId_idempotencyKey: { tenantId: sys.tenantId, idempotencyKey: key } }, select: { id: true } });
+            if (already) return false;
+            // AUDIT-CLASS X8: payload = รหัสล้วน (ไม่มีหัวเรื่อง/ชื่อ/เบอร์)
+            await emitOutbox(tx, {
+              tenantId: sys.tenantId,
+              systemId: sys.id,
+              type: OVERDUE_EVENT,
+              idempotencyKey: key,
+              payload: { activityId: row.id, activityType: row.type, ownerUserId: row.ownerUserId, contactId: row.contactId, dealId: row.dealId, companyId: row.companyId },
+            });
+            return true;
+          });
+          if (made) out.marked += 1;
+        } catch (e) {
+          await logOps("WARN", "crm.activities.overdue", `ประกาศงานเลยกำหนด ${row.id} ไม่สำเร็จ`, { tenantId: sys.tenantId, detail: e instanceof Error ? e.message.slice(0, 300) : String(e) }).catch(() => {});
+        }
+      }
+      cursor = rows[rows.length - 1]!.id;
+    }
+  }
+  return out;
+}
+// ◂ CRM C2.10

@@ -2046,3 +2046,78 @@ export async function visibleCompaniesByIds(ctx: CompaniesCtx, actor: MemberActo
   });
 }
 // ◂ CRM C1.11
+
+// CRM C2.10 ▸ งานรายวัน `crm.companies.cache` (พิมพ์เขียว §7.5 "company-cache 04:00 ไทย") — ซ่อมตัวเลขสรุปของบริษัท
+//   ทำไมต้องมีทั้งที่ทุกตัวเขียนอัปเดตแคชใน tx ของตัวเองอยู่แล้ว: ตัวเลข `outstandingSatang` มาจาก **เอกสารบัญชี**
+//   ซึ่งเปลี่ยนได้จากฝั่งบัญชีโดยไม่ผ่าน CRM (รับเงิน · ยกเลิกบิล · แก้ยอด) ⇒ รอบรายวันคือด่านสุดท้ายที่ทำให้
+//   การ์ดบริษัทไม่โกหก · idempotent ล้วน (คำนวณใหม่จากของจริงทุกครั้ง · ไม่มีสถานะสะสม) ⇒ ยิงซ้อนกี่รอบก็ค่าเดียว
+//   R-E.14: เฉพาะระบบ `settings.crm.uiVersion = 2`
+//   🔴 **หมุนเวียน "เก่าก่อน"** (มติผู้คุมงานรอบแก้ 25 ก.ย. 2569 ข้อ 7 — B5): เพดาน 2,000 บริษัทต่อรอบ + เรียงตาม `id`
+//      ทำให้ร้านที่มีบริษัทมากกว่า 2,000 แห่ง **ซ่อมได้แต่ 2,000 ตัวแรกตลอดชีวิต** (ตัวที่เหลือค้างโกหกอยู่อย่างนั้น)
+//      ⇒ เรียง `updatedAt asc` (เก่าสุดก่อน) แล้ว **ประทับ `updatedAt`** ให้บริษัทที่ซ่อมแล้วไปอยู่ท้ายคิว
+//      ⇒ รอบต่อ ๆ ไปกวาดได้ครบทุกแห่งโดยไม่ต้องมี cursor ถาวร (R-C.1: ไม่มีคอลัมน์ `cacheUpdatedAt` ให้ใช้ —
+//         `updatedAt` **คือ** ตัวนั้นสำหรับงานนี้ · การแก้บริษัทโดยคนก็ขยับมันเหมือนกัน ซึ่งถูกต้อง: ทางเขียนนั้น
+//         คำนวณแคชใหม่ไปแล้วในทรานแซกชันของตัวเอง)
+//      🔴 ตราใช้ **นาฬิกาของฐาน** (`now()`) ไม่ใช่ `now` ของผู้เรียก: รอบที่รันย้อนหลัง/ข้อสอบนาฬิกาสมมุติจะประทับ
+//         เวลาในอดีต ⇒ บริษัทเดิมค้างหัวคิวตลอดไป (คิวหมุนไม่ได้เลย)
+/** ขนาดหน้าของรอบกวาดแคชบริษัท (เพดานต่อรอบมาจาก `opts.limit` ปริยาย 2,000) */
+const COMPANY_CACHE_BATCH = 200;
+
+export async function recomputeCachesSweep(
+  now: Date = new Date(),
+  opts: { tenantIds?: string[]; systemIds?: string[]; limit?: number; deadline?: number; signal?: AbortSignal } = {},
+): Promise<{ scanned: number; cutOff: boolean }> {
+  void now;
+  const tenantIds = Array.isArray(opts.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : undefined;
+  const systemIds = Array.isArray(opts.systemIds) ? opts.systemIds.filter((s) => typeof s === "string" && s) : undefined;
+  const out = { scanned: 0, cutOff: false };
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
+  const cap = Math.min(Math.max(Math.trunc(opts.limit ?? 2_000), 1), 20_000);
+  const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
+  const systems = await prisma.appSystem.findMany({
+    where: {
+      type: "CRM",
+      settings: { path: ["crm", "uiVersion"], equals: 2 },
+      ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      ...(systemIds ? { id: { in: systemIds } } : {}),
+    },
+    select: { id: true, tenantId: true },
+  });
+  for (const sys of systems) {
+    // ตัวที่แตะแล้วในรอบนี้ (รวมตัวที่พลาด — ตัวพลาดไม่ถูกประทับ ⇒ ถ้าไม่กันไว้จะวนซ้ำตัวเดิมไม่จบ)
+    const touched: string[] = [];
+    while (out.scanned < cap) {
+      if (stop()) {
+        out.cutOff = true;
+        return out;
+      }
+      const rows: { id: string }[] = await prisma.crmCompany.findMany({
+        where: { tenantId: sys.tenantId, systemId: sys.id, mergedIntoId: null, ...(touched.length > 0 ? { id: { notIn: touched } } : {}) },
+        // B5: เก่าสุดก่อน (`updatedAt` = "แคชถูกซ่อมครั้งล่าสุดเมื่อไร") · `id` เป็นตัวตัดเสมอให้ลำดับนิ่ง
+        orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+        take: Math.min(COMPANY_CACHE_BATCH, cap - out.scanned),
+        select: { id: true },
+      });
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        if (stop()) {
+          out.cutOff = true;
+          return out;
+        }
+        touched.push(row.id);
+        try {
+          await recomputeCaches({ tenantId: sys.tenantId, systemId: sys.id, actorUserId: null }, row.id);
+          // ไปอยู่ท้ายคิว (ตัวเขียนแคชเป็น SQL ดิบ ⇒ `@updatedAt` ของ Prisma ไม่ขยับให้เอง)
+          await prisma.$executeRaw`UPDATE "CrmCompany" SET "updatedAt" = now() WHERE "id" = ${row.id} AND "tenantId" = ${sys.tenantId} AND "systemId" = ${sys.id}`;
+          out.scanned += 1;
+        } catch (e) {
+          // บริษัทใบเดียวพลาด (แถวถูกลบระหว่างรอบ/ล็อกชน) ห้ามตัดทั้งรอบ — รอบถัดไปเก็บ
+          await logOps("WARN", "crm.companies.cache", `คำนวณตัวเลขสรุปของบริษัท ${row.id} ใหม่ไม่สำเร็จ`, { tenantId: sys.tenantId, detail: e instanceof Error ? e.message.slice(0, 300) : String(e) }).catch(() => {});
+        }
+        if (out.scanned >= cap) return out;
+      }
+    }
+  }
+  return out;
+}
+// ◂ CRM C2.10

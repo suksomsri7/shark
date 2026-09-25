@@ -1331,18 +1331,38 @@ async function enterRule(rule: RuleRow, s: CrmSubject, evt: { type: string; payl
 //      ลูกค้ากลายเป็น **ร้อน** ด้วย (event `crm.score.threshold` ชนิดเดียวกัน ต่างกันแต่ `payload.band`)
 //   ทั่วไปโดยเจตนา: กฎที่ trigger ไม่มี params (กฎส่วนใหญ่) ไม่ถูกแตะเลย · payload ที่ไม่มีคีย์นั้น = ไม่กรอง
 //      (ทางเก็บย้อนหลังรายวันของ C2.1 ยิงเองด้วย payload ที่ใส่ `band` มาให้ตรงกับกฎอยู่แล้ว)
-const TRIGGER_MATCH_KEYS = ["band"] as const;
+// CRM C2.10 ▸ เพิ่ม `days` เข้าชุดที่ต้องแมตช์ (มติผู้คุมงานรอบแก้ 25 ก.ย. 2569 ข้อ 1 — A1 "ยิงซ้ำ live ↔ cron")
+//   🔴 อาการที่แก้: `crm.deal.stale` มีสองทางเข้าที่ **ไม่ได้ใช้เลข `days` เดียวกัน** — event สดของ `deals.ts#markStale`
+//      พา `days` = `staleDays` **ของขั้นนั้น** (เช่น 7) ส่วนตัวตามเก็บรายวันของ C2.1 พา `days` = `params.days` **ของกฎ**
+//      (เช่น 14) ⇒ ก่อนแก้: กฎ `days:14` ทำงานตอนดีลนิ่งครบ 7 วันจาก event สด (คีย์ `#7#…`) แล้ว **ทำงานอีกครั้ง**
+//      ตอนครบ 14 วันจาก cron (คีย์ `#14#…`) — AutomationRun กันซ้ำที่ (ruleId, eventKey) ช่วยไม่ได้เพราะคีย์ไม่ใช่ตัวเดียวกัน
+//   หลังแก้: event สด `days:7` แมตช์เฉพาะกฎที่ตั้ง `days:7` · กฎ `days:14` รอ cron ของวันที่ 14 (คีย์ `#14#…`) ·
+//      กฎ `days:7` เจอทั้งสองทางด้วย **คีย์เดียวกันเป๊ะ** ⇒ AutomationRun กันซ้ำให้เหลือครั้งเดียวตามสัญญาเดิม
+//   🔴 ห้ามตัด cron branch ของ `crm.deal.stale` (สัญญา C2.1 `crm.deal.stale{days}` — กฎที่ตั้งวันมากกว่าเกณฑ์ของขั้น
+//      ต้องยังทำงานได้ และ cron เป็นทางเดียวที่รู้จักเลขของกฎ) ◂
+const TRIGGER_MATCH_KEYS = ["band", "days"] as const;
+
+/**
+ * CRM C2.10 ▸ ค่าที่เอามาเทียบกัน — **ตัวเลขต้องเทียบได้ด้วย** (มติรอบแก้ข้อ 1)
+ *   🔴 `str()` ของไฟล์นี้คืนสตริงว่างสำหรับทุกอย่างที่ไม่ใช่สตริง ⇒ ถ้าใช้ `str()` ตรง ๆ กับ `days` (ตัวเลข)
+ *      ทั้งสองข้างจะกลายเป็น "" แล้ว "แมตช์ตลอด" = ตัวกรองไม่ทำงานเลย (ของ `band` รอดเพราะเป็นสตริงอยู่แล้ว) ◂
+ */
+function matchValue(v: unknown): string {
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "";
+  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
+  return str(v).toUpperCase();
+}
 
 function triggerParamsMatch(rule: Pick<RuleRow, "trigger">, payload: unknown): boolean {
   const t = isObj(rule.trigger) ? rule.trigger : {};
   const p = isObj(t.params) ? t.params : {};
   const body = isObj(payload) ? payload : {};
   for (const k of TRIGGER_MATCH_KEYS) {
-    const want = p[k];
-    if (want === undefined || want === null || want === "") continue;
-    const got = body[k];
-    if (got === undefined || got === null || got === "") continue;
-    if (str(want).toUpperCase() !== str(got).toUpperCase()) return false;
+    const want = matchValue(p[k]);
+    if (!want) continue;
+    const got = matchValue(body[k]);
+    if (!got) continue;
+    if (want !== got) return false;
   }
   return true;
 }

@@ -172,3 +172,11 @@ export type { DealForDoc, DealMoney, OpenDealOption } from "./payments-shared";
 //   ค่าคงที่/ชนิด/`bandOf` สำหรับหน้า 'use client' อยู่ที่ `./scoring-shared`
 export * as scoring from "./scoring";
 // ◂ CRM C2.8
+// CRM C2.10 ▸ แจ้งเตือนพนักงาน (`notifications.ts`) — namespace เดียว `notifications`:
+//   notifyStaff (จุดเดียวที่ CRM v2 แจ้งเตือนคน) · runFanout (งานรายชั่วโมง `crm.notify.fanout` — เก็บส่งของที่เลื่อน
+//   เพราะ quiet hours) · getNotificationSettings/setTemplate/setNotificationSettings (ค่าของร้าน · คีย์ `crm.settings.manage`) ·
+//   getMyPrefs/setMyPrefs (ค่าของแต่ละคนใน `CrmUserPref` — ไม่ต้องมีคีย์ · ไม่มีทางเขียนของคนอื่น)
+//   ทะเบียนเทมเพลต 10 ตัว/ช่องทาง 3 ตัว/ตัวตรวจค่า สำหรับหน้า 'use client' อยู่ที่ `./notifications-shared`
+//   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
+export * as notifications from "./notifications";
+// ◂ CRM C2.10

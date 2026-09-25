@@ -105,7 +105,16 @@ export async function partyBriefs(tenantId: string, actor: MemberActor, partyId:
 
 export type CrmHomeDeal = { id: string; title: string; valueSatang: number; stageId: string; stageName: string; companyName: string | null; stalledDays: number | null };
 export type CrmHomeTask = { id: string; title: string; type: string; dueAt: string | null; overdue: boolean };
-export type CrmHomeData = { deals: CrmHomeDeal[]; stages: { id: string; name: string }[]; tasks: CrmHomeTask[] };
+// CRM C2.10 ▸ บล็อก "ดีลที่ต้องดู" ของภาพ 01 — ดีลที่งานรายวัน `crm.deals.stale` ปัก `stalledAt` ไว้
+//   (ต่างจาก `deals` ข้างบนที่เป็น "ดีลของฉัน": บล็อกนี้คือ **ทุกใบที่ผู้ดูเห็นและนิ่ง** เรียงนิ่งนานที่สุดก่อน) ◂
+// CRM C2.10 ▸ (รอบแก้ ข้อ 9 — PARITY ภาพ 01) `stageStaleDays` = เกณฑ์ของขั้นนั้น (null = ให้ผู้เรียกใช้ค่าปริยายของร้าน)
+//   หน้าจอใช้เทียบ 3 สถานะของป้าย: แดง = นิ่ง ≥ 2× เกณฑ์ · เหลือง = เกินเกณฑ์แต่ยังไม่ถึง 2× · เทา = ต่ำกว่าเกณฑ์
+//   (`stageName` ยังคืนไว้เพื่อผู้เรียกอื่น — บรรทัดรองของภาพ 01 ใช้ "บริษัท · ฿มูลค่า" ไม่มีชื่อขั้น) ◂
+export type CrmHomeStaleDeal = { id: string; title: string; valueSatang: number; stageName: string; stageStaleDays: number | null; companyName: string | null; stalledDays: number };
+export type CrmHomeData = { deals: CrmHomeDeal[]; stages: { id: string; name: string }[]; tasks: CrmHomeTask[]; stale: CrmHomeStaleDeal[] };
+
+/** จำนวนแถวสูงสุดของบล็อก "ดีลที่ต้องดู" (ภาพ 01 แสดง **4 แถว** พอดี แล้วมีลิงก์ "ดูทั้งหมด" — การ์ดคือสรุป ไม่ใช่รายงาน) */
+export const HOME_STALE_MAX = 4;
 
 const DAY_MS = 86_400_000;
 
@@ -132,6 +141,18 @@ export async function homeFor(ctx: CrmBriefCtx, actor: MemberActor): Promise<Crm
   const coName = new Map(cos.map((c) => [c.id, c.name]));
   const stageMap = new Map<string, { id: string; name: string; sortOrder: number }>();
   for (const d of deals) stageMap.set(d.stage.id, d.stage);
+  // CRM C2.10 ▸ "ดีลที่ต้องดู" — ดีลเปิดที่ถูกปัก `stalledAt` แล้ว (ทุกใบที่ผู้ดูเห็น ไม่ใช่เฉพาะของตัวเอง) ◂
+  const staleRows = crmCan(actor, "crm.deal.read")
+    ? await prisma.crmDeal.findMany({
+        where: { AND: [await dealWhere(scope, actor), { ...scope, kind: "OPEN", archivedAt: null, stalledAt: { not: null } }] },
+        orderBy: [{ stalledAt: "asc" }, { id: "asc" }],
+        take: HOME_STALE_MAX,
+        select: { id: true, title: true, valueSatang: true, companyId: true, stalledAt: true, stage: { select: { name: true, staleDays: true } } },
+      })
+    : [];
+  const staleCoIds = [...new Set(staleRows.map((d) => d.companyId).filter((x): x is string => !!x))].filter((x) => !coIds.includes(x));
+  const staleCos = staleCoIds.length && crmCan(actor, "crm.company.read") ? await visibleCompaniesByIds({ ...scope, actorUserId: ctx.actorUserId ?? null }, actor, staleCoIds) : [];
+  for (const c of staleCos) coName.set(c.id, c.name);
   const tasks = crmCan(actor, "crm.activity.read")
     ? await prisma.crmActivity.findMany({
         where: { AND: [await activityWhere(scope, actor), { ...scope, ownerUserId: actor.userId, doneAt: null, dueAt: { lte: endOfTodayThai(now) } }] },
@@ -152,5 +173,15 @@ export async function homeFor(ctx: CrmBriefCtx, actor: MemberActor): Promise<Crm
     })),
     stages: [...stageMap.values()].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => ({ id: s.id, name: s.name })),
     tasks: tasks.map((t) => ({ id: t.id, title: t.title, type: t.type, dueAt: t.dueAt ? t.dueAt.toISOString() : null, overdue: !!t.dueAt && t.dueAt.getTime() < now.getTime() })),
+    // CRM C2.10 ▸ ภาพ 01 "ดีลที่ต้องดู" ◂
+    stale: staleRows.map((d) => ({
+      id: d.id,
+      title: d.title,
+      valueSatang: d.valueSatang,
+      stageName: d.stage.name,
+      stageStaleDays: Number.isInteger(d.stage.staleDays) ? Number(d.stage.staleDays) : null,
+      companyName: d.companyId ? (coName.get(d.companyId) ?? null) : null,
+      stalledDays: Math.max(0, Math.floor((now.getTime() - (d.stalledAt as Date).getTime()) / DAY_MS)),
+    })),
   };
 }

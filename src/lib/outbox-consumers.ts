@@ -1154,6 +1154,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      + สะพานคะแนนใต้ compose ⇒ กฎเริ่มต้น "ได้รับใบเสนอราคา" (+8) ได้แต้มครั้งเดียวต่อ (ดีล, เอกสาร)
   "crm.deal.quotation.issued": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
   // ◂ CRM C2.8
+  // CRM C2.10 ▸ ดีลนิ่ง + งานติดตามเลยกำหนด (ยิงจากงานเบื้องหลัง — `crm/deals.ts#markStale` · `crm/activities.ts#overdueSweep`)
+  //   key `crm.deal.stale#<days>#<dealId>#<จุดยึด ISO>` · `crm.activity.overdue#<activityId>` (คีย์เดียวกับตัวตามเก็บของ C2.1)
+  //   งานหลักไม่มีอะไรต้องทำ: การแจ้งเตือนคนเกิดที่ตัวงานเองแล้ว (สรุปรายวันของ `markStale`) และการทำงานของ
+  //   "กฎอัตโนมัติ" เกิดจาก `withAutomation` ที่ห่อ consumer นี้อยู่ ⇒ no-op ปิด event เป็น DONE
+  //   🔴 ขาด consumer = คิวตันทั้งระบบเงียบ ๆ (บทเรียน 30 ส.ค. · [[reference_outbox_new_event_needs_consumer]])
+  "crm.deal.stale": withAutomation(async () => {}),
+  "crm.activity.overdue": withAutomation(async () => {}),
+  // ◂ CRM C2.10
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

@@ -29,6 +29,8 @@ import {
   type NotificationSettingsView,
   type NotifQuietHours,
 } from "./notifications-shared";
+// CRM C2.10 ▸ เอนจิน quiet hours ตัวกลาง (ยกมาจากไฟล์นี้) ◂
+import { inQuietWindow, nextQuietEnd } from "@/lib/core/quiet-hours";
 import { getSmsProvider, sendSms } from "@/lib/core/sms";
 import { sendPushToCustomerTokens } from "@/lib/core/push";
 import { publicOrigin } from "@/lib/core/origin";
@@ -60,33 +62,10 @@ function bkkAt(base: Date, hour: number, minute = 0, dayOffset = 0): Date {
   return new Date(Date.UTC(t.y, t.mo, t.day + dayOffset, hour - 7, minute, 0, 0));
 }
 
-function parseHM(s: string): { h: number; m: number } {
-  const [h, m] = String(s ?? "0:0").split(":").map((x) => Number(x) || 0);
-  return { h, m };
-}
-
-/** เวลาไทยตอนนี้อยู่ในช่วง [from, to) ไหม — รองรับช่วงข้ามเที่ยงคืน (from > to) */
-function inQuietWindow(now: Date, from: string, to: string): boolean {
-  const t = bkkParts(now);
-  const cur = t.h * 60 + t.mi;
-  const f = parseHM(from);
-  const g = parseHM(to);
-  const fm = f.h * 60 + f.m;
-  const tm = g.h * 60 + g.m;
-  if (fm === tm) return false;
-  if (fm < tm) return cur >= fm && cur < tm;
-  return cur >= fm || cur < tm;
-}
-
-/** เวลาที่ควรเลื่อนไปส่ง เมื่อโดนกันด้วย quiet hours ("to" ของวันนี้ ถ้ายังไม่ถึง / ของพรุ่งนี้ ถ้าผ่านไปแล้ว) */
-function nextQuietEnd(now: Date, to: string): Date {
-  const t = bkkParts(now);
-  const g = parseHM(to);
-  const cur = t.h * 60 + t.mi;
-  const tm = g.h * 60 + g.m;
-  const dayOffset = cur < tm ? 0 : 1;
-  return bkkAt(now, g.h, g.m, dayOffset);
-}
+// CRM C2.10 ▸ `parseHM` / `inQuietWindow` / `nextQuietEnd` **ย้ายออกไปแล้ว** ที่ `@/lib/core/quiet-hours`
+//   (สำเนาส่วนตัวของไฟล์นี้ถูกลบ ไม่ใช่คัดลอก) — ใบ C2.10 ต้องใช้กติกา quiet hours เดียวกันเป๊ะ ๆ กับฝั่งสมาชิก
+//   ⇒ กติกา COMMON "ห้ามมีเอนจินที่สอง" · พฤติกรรมเดิมทุกตัวอักษร (ข้อสอบ M3.6 / fix-s3 เป็นตัวยืนยัน)
+//   `bkkParts`/`bkkAt` ยังอยู่ที่นี่เพราะ `nextDigestTime`/`monthRangeBkk` ใช้ต่อ (ตัวกลางก็ export ให้เหมือนกัน) ◂
 
 /** รอบ digest ถัดไป (รอบของวันนี้ผ่านไปแล้ว = พรุ่งนี้) */
 function nextDigestTime(now: Date, hour: number): Date {

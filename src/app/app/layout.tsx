@@ -227,6 +227,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               //   404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
               ...(crmCan(membershipOf(auth), "crm.score.manage") ? [{ href: `${s}/crm/settings/scoring`, label: "คะแนนผู้ติดต่อ" }] : []),
               // ◂ CRM C2.8
+              // CRM C2.10 ▸ การแจ้งเตือน — หน้าเดียวสองแท็บ: "ของร้าน" ต้องมี `crm.settings.manage` · "ของฉัน" ใครก็ตั้งได้
+              //   ⇒ ลิงก์โผล่ให้ทุกคนที่อ่าน CRM ได้อย่างน้อยหนึ่งชนิด (ด่านเดียวกับหน้า — คนที่อ่านไม่ได้เลย = 404
+              //   ⇒ ไม่โชว์ลิงก์ตาย) · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.settings.manage") ||
+              crmCan(membershipOf(auth), "crm.deal.read") ||
+              crmCan(membershipOf(auth), "crm.contact.read") ||
+              crmCan(membershipOf(auth), "crm.activity.read")
+                ? [{ href: `${s}/crm/settings/notifications`, label: "การแจ้งเตือน" }]
+                : []),
+              // ◂ CRM C2.10
               ]
             : []),
           // ◂ CRM uiVersion gate

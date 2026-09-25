@@ -197,6 +197,20 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //      consumer ใน `outbox-consumers.ts` (no-op + สะพานคะแนน) — ขาดตัวใดตัวหนึ่ง = คิวตันหรือกฎไม่ทำงาน
   { value: "crm.deal.quotation.issued", label: "เมื่อออกใบเสนอราคาจากดีล (CRM)" },
   // ◂ CRM C2.8
+  // CRM C2.10 ▸ ดีลนิ่ง + งานเลยกำหนด (ใบ C2.10 · พิมพ์เขียว §7.5) — ยิงจากงานเบื้องหลัง ไม่ใช่จากการกดของคน:
+  //   `crm.deal.stale#<days>#<dealId>#<จุดยึดของช่วงที่นิ่ง ISO>`  payload { dealId, days, stageId, ownerUserId, teamId }
+  //     ตัวยิง = `crm/deals.ts#markStale` (งานรายวัน `crm.deals.stale`) · 1 ใบต่อ "ช่วงที่นิ่ง" (มีกิจกรรมใหม่ = ช่วงใหม่)
+  //   `crm.activity.overdue#<activityId>`                        payload { activityId, activityType, ownerUserId, contactId, dealId, companyId }
+  //     ตัวยิง = `crm/activities.ts#overdueSweep` (งานรายชั่วโมง `crm.activities.overdue`) · ครั้งเดียวต่องาน
+  //   🔴 ทั้งคู่เป็น **trigger ตามรอบเวลา** ของ C2.1 อยู่แล้ว (`CRM_CRON_TRIGGERS` · cron: true + params) และคีย์ที่
+  //      งานของใบนี้สร้าง **ตรงกับคีย์ที่ตัวตามเก็บของ C2.1 สร้างเป๊ะ** ⇒ สองทางไม่มีวันทำให้กฎเดียวกันทำงานสองรอบ
+  //      (บทเรียนตรงข้ามของ `crm.score.threshold` ที่ C2.8 ต้องถอด cron ออก) · `CRM_RULE_TRIGGERS` ข้ามค่าที่อยู่ใน
+  //      ทะเบียน cron เวลา spread รายการนี้ ⇒ ไม่มีแถวซ้ำในตัวเลือก trigger ของหน้ากฎอัตโนมัติ
+  //   🔴 มี consumer ใน `outbox-consumers.ts` ทั้งคู่ (ขาด consumer = คิวตันทั้งระบบเงียบ ๆ · บทเรียน 30 ส.ค.) ·
+  //      เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "crm.deal.stale", label: "เมื่อดีลนิ่ง (ไม่มีความเคลื่อนไหว) เกินกำหนดของขั้นนั้น (CRM)" },
+  { value: "crm.activity.overdue", label: "เมื่องานติดตามเลยกำหนดแล้วยังไม่เสร็จ (CRM)" },
+  // ◂ CRM C2.10
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 6 โมดูล (มติ C11 · ใบ C2.9) — ยิง **ใน transaction เดียวกับการเปลี่ยนสถานะ** ของโมดูลนั้น ·
   //   คีย์ `<type>#<id ของแถว>` (R-C.8) · payload = id + `unitId` + `partyId?` + จำนวนสตางค์ ตามแต่ละแถว (id ล้วน — X8:
   //   ไม่มีชื่อ/เบอร์/อีเมล และคลินิกไม่มีอาการ/การวินิจฉัย/ยา/ค่าบริการ)

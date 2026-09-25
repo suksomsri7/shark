@@ -87,6 +87,10 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C2.8 ▸ คะแนนผู้ติดต่อ (กฎให้คะแนน · ระดับ ร้อน/อุ่น/เย็น · อายุของแต้ม · คำนวณใหม่) — คีย์ `crm.score.manage` ◂
   { key: "settings-scoring", label: "คะแนนผู้ติดต่อ", path: "/crm/settings/scoring", status: "ready", wo: "C2.8" },
   // ◂ CRM C2.6
+  // CRM C2.10 ▸ ตั้งค่าการแจ้งเตือน (เทมเพลต 10 เรื่อง × 3 ช่องทาง + ช่วงห้ามรบกวนของร้าน = คีย์ `crm.settings.manage`
+  //   · แท็บ "ของฉัน" ไม่ต้องมีคีย์ — พนักงานทุกคนตั้งค่าของตัวเองได้ · มติ C22) ◂
+  { key: "settings-notifications", label: "การแจ้งเตือน", path: "/crm/settings/notifications", status: "ready", wo: "C2.10" },
+  // ◂ CRM C2.10
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

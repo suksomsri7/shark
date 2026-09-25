@@ -950,17 +950,36 @@ export type PurgeResult = { sessionsDeleted: number; sessionsSummarised: number;
  * ล้างข้อมูลการเข้าชมที่เกินอายุเก็บของแต่ละระบบ (ค่าเริ่มต้น 180 วัน · นับจาก `lastSeenAt`)
  *   ไม่รู้ว่าเป็นใคร ⇒ ลบทั้งการเข้าชม (เหตุการณ์ตามไปด้วย) · รู้ว่าเป็นใคร ⇒ ลบเหตุการณ์ เหลือสรุป (จำนวนหน้า/หน้าแรก)
  *   และล้าง `ipHash`/`userAgent` ทิ้ง · กิจกรรม WEB ในไทม์ไลน์ของลูกค้าไม่ถูกแตะ
- * 🔴 ครอบระบบที่ยัง uiVersion 1 ด้วย (มติผู้คุมงาน ข้อ 7: การเก็บข้อมูลเกินอายุเป็นเรื่องกฎหมาย ไม่ใช่ฟีเจอร์ของหน้าจอ)
+ * 🔴 ครอบระบบที่ยัง uiVersion 1 ด้วย (มติผู้คุมงาน C2.6 ข้อ 7 + ข้อสอบ `C2.6-U.5`: การเก็บข้อมูลเกินอายุเป็นเรื่อง
+ *    กฎหมาย ไม่ใช่ฟีเจอร์ของหน้าจอ) — **ยกเว้น** ผู้เรียกที่ขอ `v2Only` มาเอง
+ * CRM C2.10 ▸ `v2Only` + `deadline`/`signal` (มติผู้คุมงานรอบแก้ 25 ก.ย. 2569 ข้อ 6 — B4)
+ *   งานรายวัน `crm.purge.web` ที่ใบ C2.10 ลงทะเบียน ต้องไม่แตะระบบ uiVersion 1 (R-E.14 — ประตูของทุกงานในใบนี้)
+ *   ⇒ ตัวงานส่ง `v2Only: true` และตัวกรองอยู่ **ใน SQL** แบบเดียวกับรอบกวาดใหม่ทั้งสามของใบนี้
+ *   🔴 ค่าปริยายยังเป็น "ครอบทุกระบบ" โดยตั้งใจ: กลับค่าปริยายคือกลับมติ C2.6 ข้อ 7 และทำให้ `C2.6-U.5` แดง
+ *      (ผู้เรียกตรง ๆ = หน้าที่ตามกฎหมาย · ผู้เรียกที่เป็นงานของ CRM v2 = ขอบเขต v2) — ดูรายงานรอบแก้ของใบ C2.10
+ *   🔴 งบเวลา: หยุด **ระหว่างระบบ** (ทุกคำสั่งของระบบหนึ่งเป็น SQL ก้อนเดียวที่ตัดครึ่งไม่ได้) ⇒ ไม่มีสถานะค้าง
  * 🔴 AUDIT-CLASS X5: ทุกคำสั่งมีเงื่อนไข + RETURNING ⇒ รันซ้อนกันสองรอบ ผลรวมยังเท่าของจริง (รอบหลังได้ 0)
  */
-export async function purgeWeb(now: Date = new Date(), opts: { tenantIds?: string[] } = {}): Promise<PurgeResult> {
+export async function purgeWeb(
+  now: Date = new Date(),
+  opts: { tenantIds?: string[]; systemIds?: string[]; v2Only?: boolean; deadline?: number; signal?: AbortSignal } = {},
+): Promise<PurgeResult> {
   const tenantIds = Array.isArray(opts?.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : null;
+  const systemIds = Array.isArray(opts?.systemIds) ? opts.systemIds.filter((x) => typeof x === "string" && x) : null;
+  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0 };
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
+  const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
   const systems = await prisma.appSystem.findMany({
-    where: { type: "CRM", ...(tenantIds ? { tenantId: { in: tenantIds } } : {}) },
+    where: {
+      type: "CRM",
+      ...(opts.v2Only === true ? { settings: { path: ["crm", "uiVersion"], equals: 2 } } : {}),
+      ...(tenantIds ? { tenantId: { in: tenantIds } } : {}),
+      ...(systemIds ? { id: { in: systemIds } } : {}),
+    },
     select: { id: true, tenantId: true, settings: true },
   });
-  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0 };
   for (const sys of systems) {
+    if (stop()) return out;
     const days = webSettingsOf(sys.settings).retentionDays;
     const cutoff = new Date(now.getTime() - days * DAY_MS);
     const events = await prisma.$executeRaw`

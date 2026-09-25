@@ -3,6 +3,7 @@
 // 🔴 ไม่ import โมดูล CRM (F2.3) · testid ของแต่ละส่วนอยู่บน element ของไฟล์นี้ (ชิ้น client รับข้อมูลทาง props)
 // 🔴 390 px: ทุกบล็อกเต็มความกว้าง · ข้อความยาวตัดด้วย truncate · ไม่มีความกว้างตายตัว
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ModuleTabs } from "@/components/module-tabs";
 import { MyDealsList, type MyDealCard } from "./MyDealsList";
@@ -19,6 +20,7 @@ export function CrmHomeView({
   deals,
   stages,
   tasks,
+  stale,
 }: {
   systemId: string;
   navItems: { href: string; label: string }[];
@@ -31,6 +33,15 @@ export function CrmHomeView({
   deals: MyDealCard[];
   stages: { id: string; name: string }[];
   tasks: CrmHomeTaskView[];
+  /**
+   * CRM C2.10 ▸ ช่องของการ์ด "ดีลที่ต้องดู" (ภาพ 01) — วาดมาจาก `crm/home.tsx` เพราะ `data-testid` ของบล็อกนี้
+   *   ต้องเป็นสตริงตรง ๆ ในไฟล์เดียวกับตัวโหลดข้อมูล (ทะเบียนปุ่ม + ด่าน F14 อ่านจากโค้ด ไม่ใช่จาก props)
+   *   `null` = ไม่แสดงการ์ด (หน้าที่ไม่ได้ส่งมา เช่นหน้าอื่นที่ยืม view นี้)
+   *   ของในการ์ด (รอบแก้ ข้อ 9 · ภาพ 01 บรรทัด 77–85): หัว ⚠ + "ดีลที่ต้องดู" + "ดูทั้งหมด →" (ไปรายการดีล
+   *   ที่กรอง `?stale=1` ของ C1.5) · 4 แถว (`HOME_STALE_MAX`) · ป้าย "นิ่ง N วัน" 3 สถานะ (แดง/เหลือง/เทา) ·
+   *   บรรทัดรอง "บริษัท · ฿มูลค่า" · ปุ่ม "ดู" ท้ายแถว
+   */
+  stale?: ReactNode;
 }) {
   const base = `/app/sys/${systemId}`;
   return (
@@ -59,26 +70,30 @@ export function CrmHomeView({
         <MyDealsList systemId={systemId} deals={deals} stages={stages} />
       </section>
 
-      <section className="flex min-w-0 flex-col gap-3" data-testid="crm-home-my-tasks">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-base font-semibold">งานของฉันวันนี้</h2>
-          <Link href={`${base}/crm/activities`} className="text-sm text-[color:var(--color-accent)]" data-testid="crm-home-all-tasks">
-            งานทั้งหมด →
-          </Link>
-        </div>
-        {tasks.length === 0 ? (
-          <p className={`text-sm ${muted}`}>วันนี้ไม่มีงานค้าง</p>
-        ) : (
-          <ul className="card flex min-w-0 flex-col divide-y p-0">
-            {tasks.map((t) => (
-              <li key={t.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3">
-                <span className="min-w-0 truncate text-sm">{t.title}</span>
-                <span className={`shrink-0 text-xs ${t.overdue ? "text-[color:var(--color-danger)]" : muted}`}>{t.dueLabel}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* ภาพ 01: "งานวันนี้" กับ "ดีลที่ต้องดู" วางคู่กันบนจอกว้าง · 390 px ซ้อนกันเต็มความกว้าง */}
+      <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-2">
+        <section className="flex min-w-0 flex-col gap-3" data-testid="crm-home-my-tasks">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-semibold">งานของฉันวันนี้</h2>
+            <Link href={`${base}/crm/activities`} className="text-sm text-[color:var(--color-accent)]" data-testid="crm-home-all-tasks">
+              งานทั้งหมด →
+            </Link>
+          </div>
+          {tasks.length === 0 ? (
+            <p className={`text-sm ${muted}`}>วันนี้ไม่มีงานค้าง</p>
+          ) : (
+            <ul className="card flex min-w-0 flex-col divide-y p-0">
+              {tasks.map((t) => (
+                <li key={t.id} className="flex min-w-0 items-center justify-between gap-3 px-4 py-3">
+                  <span className="min-w-0 truncate text-sm">{t.title}</span>
+                  <span className={`shrink-0 text-xs ${t.overdue ? "text-[color:var(--color-danger)]" : muted}`}>{t.dueLabel}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+        {stale ?? null}
+      </div>
     </div>
   );
 }

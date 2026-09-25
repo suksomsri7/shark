@@ -213,6 +213,102 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.8
+// CRM C2.10 ▸ งานที่เหลือทั้งชุดของ CRM v2 (ใบ C2.10 · พิมพ์เขียว §7.5) — ลงทะเบียน "ตรงนี้" เหมือนทุกใบก่อนหน้า
+//   (มติผู้คุมงานรีวิว C2.2 ข้อ 6): ทั้ง `/api/cron/outbox` และ `scripts/crm-cron.mts` ต้องเห็นงานครบ ไม่ว่าโพรเซสจะอุ่นหรือเย็น
+//
+//   ตารางของพิมพ์เขียว §7.5 → ทะเบียนนี้
+//     `stale` 06:00 ไทย        → `crm.deals.stale`        (daily)
+//     — (ใหม่ในใบนี้)          → `crm.notify.fanout`      (hourly · เก็บส่งของที่เลื่อนเพราะ quiet hours)
+//     `activities` รายชั่วโมง   → `crm.activities.overdue` (hourly · ประกาศ `crm.activity.overdue` ครั้งเดียวต่องาน)
+//     `activities` 5 นาที       → `crm.activities.reminders` (minute · เตือนงาน/นัดที่ถึงเวลา)
+//     `company-cache` 04:00     → `crm.companies.cache`    (daily)
+//     `web-purge` 02:00         → `crm.purge.web`          (daily)
+//     `email-purge` 02:00       → `crm.purge.email`        (daily · + เสียงบันทึกสายตามอายุเก็บของ C2.4)
+//     `reports-scheduled`       → `crm.reports.scheduled`  (daily · ตัวเกาะ — ตัวส่งจริงมากับใบ C3.1)
+//     `close-due` · `record-field-due` 07:00 → **ไม่มีงานของตัวเอง**: `crm.automation.cron` ของ C2.1 ครอบทั้งสอง
+//       trigger อยู่แล้ว (พิมพ์เขียวแยกบรรทัดไว้ แต่ทำซ้ำ = กฎเดียวกันทำงานสองรอบ)
+//
+//   🔴 **หนี้ที่รู้ตัว (เหมือน C2.8)**: พิมพ์เขียวระบุ "06:00 / 04:00 / 02:00 ไทย" แต่ตัวกระจายงานของ C0.5 รู้จักแต่
+//      หน้าต่างที่นับจากเที่ยงคืนไทย ⇒ ระบุชั่วโมงไม่ได้ในวันนี้ · cadence = "daily" (everyMinutes 1440) และใบ C6.1
+//      ตั้งบรรทัด crontab ตามชั่วโมงที่ต้องการได้ (มติผู้คุมงาน 24 ก.ย. 2569)
+//   🔴 ทุกงาน best-effort + idempotent + เริ่มใหม่ได้ทุกคำสั่ง: ธงของแต่ละงานอยู่ในตัวงานเอง (คีย์ outbox ·
+//      `emailedAt` · การคำนวณใหม่จากของจริง) ⇒ route + crontab ยิงพร้อมกันก็ได้ผลเดียว · ไม่มีตัวไหน vpsOnly
+//      (งานพิสูจน์สัญญาณชีพคือ `crm.heartbeat` ตัวเดียว)
+//   🔴 ประตู uiVersion (R-E.14) อยู่ในตัวงานทุกตัว: กรองเฉพาะระบบ `settings.crm.uiVersion = 2` ใน SQL
+//   🔴 โหลด CRM ผ่าน facade **ตอนรันเท่านั้น** (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ CRM ตอนโหลด)
+registerMinuteJob({
+  name: "crm.deals.stale",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { deals } = await import("@/lib/modules/crm");
+    await deals.markStale({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+registerMinuteJob({
+  name: "crm.notify.fanout",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { notifications } = await import("@/lib/modules/crm");
+    await notifications.runFanout({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+registerMinuteJob({
+  name: "crm.activities.overdue",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { activities } = await import("@/lib/modules/crm");
+    await activities.overdueSweep(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// 🔴 ชื่อคู่ของ C2.4: งานเตือนงาน/นัดถูกลงทะเบียนไว้แล้วในชื่อ `crm.activity.remind` (บล็อก C2.4 ข้างบน) —
+//    ใบนี้ **ไม่ลงทะเบียนซ้ำ** ด้วยชื่อ `crm.activities.reminders` เพราะสองทะเบียนที่เรียกฟังก์ชันเดียวกัน
+//    = กวาดตารางเดิมสองเท่าทุก 5 นาที (เอนจินที่สอง — ผิดกติกา COMMON) ดูรายงานของใบนี้ข้อ ORACLE-EDIT
+registerMinuteJob({
+  name: "crm.companies.cache",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { companies } = await import("@/lib/modules/crm");
+    await companies.recomputeCachesSweep(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+registerMinuteJob({
+  name: "crm.purge.web",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { tracking } = await import("@/lib/modules/crm");
+    // 🔴 มติผู้คุมงาน 25 ก.ย. (กลับมติ B4 ตาม C2.6 ข้อ 7): งานล้างข้อมูล = หน้าที่ตามกฎหมาย ครอบทุกระบบ CRM รวมรุ่น 1 (`C2.6-U.5`) —
+    //    ไม่ส่ง `v2Only` (ธงยังมีให้ผู้เรียกอื่นใช้) · งานที่ "สร้างของ" (stale/overdue/cache/notify) ต่างหากที่ต้องหยุดที่ประตู R-E.14
+    await tracking.purgeWeb(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+registerMinuteJob({
+  name: "crm.purge.email",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { emails, calls } = await import("@/lib/modules/crm");
+    // อายุเก็บของ "เนื้อจดหมาย" (C2.5) และ "ไฟล์เสียงบันทึกสาย" (C2.4) เป็นหนี้ retention ก้อนเดียวกันในสายตาเจ้าของร้าน
+    await emails.purgeBodies(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+    await calls.purgeRecordings(now, {});
+  },
+});
+registerMinuteJob({
+  name: "crm.reports.scheduled",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async () => {
+    // ตัวเกาะของ "ส่งรายงานตามกำหนด" (พิมพ์เขียว §7.5) — ตัวส่งจริงเป็นของใบ C3.1 (รายงาน)
+    // 🔴 ลงทะเบียนไว้ตั้งแต่ตอนนี้โดยตั้งใจ: ใบ C3.1 จะได้ไม่ต้องแตะทะเบียนงาน (เปลี่ยนจังหวะของงานที่มีอยู่แล้ว
+    //    นอก dev = registerMinuteJob โยนทิ้ง) และหน้า integrations (C3.6) เห็นงานนี้ตั้งแต่วันนี้ว่า "ยังไม่มีอะไรให้ส่ง"
+    return;
+  },
+});
+// ◂ CRM C2.10
 
 function errorText(e: unknown): string {
   let s: string;
