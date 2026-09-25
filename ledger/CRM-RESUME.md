@@ -31,11 +31,10 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - โควตา Opus ชนเพดานทุก ~4–5 ชม. เมื่อรัน 4 ตัวขนาน (24 ก.ย. ชน 3 ครั้ง: 08:00 · 13:00 · 18:00 UTC) ⇒ **รันขนานไม่เกิน 3 ตัว** · ก่อนชนเพดานให้ agent เซฟ log/หลักฐานเป็นระยะ (ทำอยู่แล้ว)
 - ย้าย session ได้เฉพาะตอนไม่มี agent ค้าง (agent ตายพร้อม session) — จุดปลอดภัย = หลังรับใบ · RESUME นี้พอสำหรับเริ่มใหม่
 
-### 0.10 สถานะ 25 ก.ย. 05:30 (Fable)
-- **C2.8 + C2.9 รวมเข้า main แล้ว** (`56575407` C2.9 · `809999fa` C2.8 · ทรีสะอาด) · ข้อสอบ c2.8 54/54 (QC2 · Fable รันเอง หลัง ORACLE-EDIT 6 ข้อ) · c2.9 52/52 (QC3 · builder ×2)
-- ▶️ **unit `crm-c28c29-verify` กำลังรันบน QC1** (`scripts/pending/run-c28c29-verify.sh` · log `.qc-shots/crm/c28c29-verify.log` · เริ่ม 05:25 UTC · ~2 ชม.) — ถ้า session ตาย: `systemctl is-active crm-c28c29-verify` · อ่าน log · ทุกบรรทัด `exit=` ต้อง 0 ยกเว้น `qc-member-m1.1` (M1.1-S4.2 รู้จัก) · จบด้วย ALLDONE
-- หลัง unit ผ่าน: ดูภาพ `.qc-shots/crm/2.8-*.png` เทียบ `ledger/design-crm/05-contact-360-convert.body.html` (ป้าย 🔥 ร้อน 72 · "ทำไมถึงร้อน 72" · "ดูเหตุผลคะแนนทั้งหมด") → เติม wo-notes C2.8/C2.9 §5 → MASTER-PLAN §12 (C2.8 ✅ C2.9 ✅ = 27/53) → commit → `tg` → memory → รีเซ็ต c20/c23 (`git checkout -- . && git clean -fd` ยกเว้น node_modules bind mount) → เปิดเลน C2.10 (c20/QC2) ∥ C2.11 (c23/QC3)
-- ค้างเจ้าของ: push (`git push -u origin session/crm && git push origin HEAD:main`) · Q7/Q8
+### 0.10 สถานะ 25 ก.ย. 06:40 (Fable) — รับ C2.8 + C2.9 แล้ว = 27/53 (51%)
+- main tree = C2.1–C2.9 ✅ · ทรีสะอาด · **รอเจ้าของ push** (`git push -u origin session/crm && git push origin HEAD:main`) → เติม D12 ใน wo-notes C2.1–C2.9
+- ถัดไป: รีเซ็ต c20/c23 ไปที่ HEAD ใหม่ → เปิดเลน **C2.10** (c20 · QC2 · brief `crm-brief-C2.10.md` ruling แล้ว · ข้อสอบ `qc-crm-c2.10.mts` 40) ∥ **C2.11** (c23 · QC3 · REST · ข้อสอบ 47 · sendBulk split) → รวม → unit ตรวจรับรวม (แม่แบบ `run-c28c29-verify.sh` · เปลี่ยนชื่อไฟล์ทุกรอบ · systemd-run ต้องใช้ path เต็ม) → ปิด C2 ด้วย `qc:all` → C3.0 migration
+- ENV ที่รู้จัก: `qc-member-m3.7` S6.2 อ่าน summary ของ visual-member 3.7 (ต้องรัน visual-member 3.7 ก่อนถ้าอยากเขียว) · `qc-member-m1.1` S4.2 ไม่แดงแล้วรอบนี้
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว

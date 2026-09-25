@@ -1217,11 +1217,12 @@ if (WO === "2.8") {
   }
 
   // (2) ผู้ติดต่อตัวอย่างที่ "มีแต้มจริง" — 4 แถวแต้ม (3 ใบแรกเป็นชิปตามภาพ 05 · ใบที่ 4 อยู่ในรายการเต็ม) + คะแนน/ระดับ
-  const target = (await P28.crmContact.findFirst({
-    where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, ownerUserId: ownerActor.userId },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, score: true, scoreBand: true, scoreUpdatedAt: true },
-  })) as Any;
+  // 🔴 Fable 25 ก.ย.: seed QC1 ไม่มีผู้ติดต่อที่ owner เป็นเจ้าของ ⇒ รอบแรกไม่ได้ภาพการ์ด 360 เลย — เจ้าของเห็นทุกแถวอยู่แล้ว
+  //    (visibility ALL) จึงเลือกของ owner ก่อน ไม่มีค่อยถอยไปแถวแรกของระบบ
+  const c28Where = { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null };
+  const c28Sel = { id: true, score: true, scoreBand: true, scoreUpdatedAt: true };
+  const target = ((await P28.crmContact.findFirst({ where: { ...c28Where, ownerUserId: ownerActor.userId }, orderBy: { createdAt: "asc" }, select: c28Sel }))
+    ?? (await P28.crmContact.findFirst({ where: c28Where, orderBy: { createdAt: "asc" }, select: c28Sel }))) as Any;
   if (target) {
     C28_SCORE_BEFORE = { id: target.id as string, score: Number(target.score ?? 0), scoreBand: (target.scoreBand ?? null) as string | null, scoreUpdatedAt: (target.scoreUpdatedAt ?? null) as Date | null };
     const day = 86_400_000;

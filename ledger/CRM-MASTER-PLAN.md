@@ -387,7 +387,9 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C2 | C2.5 | ✅ | (ใบนี้) | ระบบอีเมล a+b: sendEmailRich · routing · send/scheduled LEASE · inbound crm+key (threading เทียบเท่ากัน · OUT ต้องผ่าน DKIM/SPF · มองเห็นรายข้อความ) · tracking token hash · unsubscribe · webhook Svix · UI inbox/thread/composer/settings · ข้อสอบ **105/105** (93+12) · ผู้ตรวจ: BLOCKER 2 → แก้ · มติ C31 · PARITY ผ่าน · `wo-notes/crm-C2.5.md` |
 | C2 | C2.6 | ✅ | (ใบนี้) | tracking: ลิงก์/QR `/l` · shark.js + consent (server truth) · identify ticket AES-GCM ครั้งเดียว 15 นาที · collectors CORS/limiter/413 ก่อนอ่าน · ฟอร์ม spam guard (ชื่อสงวน `_sd_` · nonce · honeypot นับ) · UTM/assign/score/company · locale+fields → C2.3 · purge · ข้อสอบ **87/87** (81+6) + headless **35/35** · ผู้ตรวจ: BLOCKER 1 → แก้ · PARITY ผ่าน · `wo-notes/crm-C2.6.md` |
 | C2 | C2.7 | ✅ | (ใบนี้) | สะพานบัญชี/POS: quote จากดีล · responded → ขั้น · เงินผ่าน chain (INVOICE/DEPOSIT_RECEIPT) · WHT `DOC_SETTLE` · void เฉพาะเอกสาร · POS link (บิลเดียวดีลเดียว · gift card ไม่นับ) · **ประตูหยุดนับได้ ห้ามหยุดถอน** · auto invoice/WON · ข้อสอบ **63/63** (55+8) · ผู้ตรวจ: BLOCKER 2 → แก้ · `wo-notes/crm-C2.7.md` |
-| C2 | C2.8–C2.11 | ⏸️ | — | ข้อสอบพร้อมทุกใบ (C2.8 54 · C2.9 47 · C2.10 40 · C2.11 47 — เคาะ addendum แล้ว) |
+| C2 | C2.8 | ✅ | (ใบนี้) | คะแนนผู้ติดต่อ: กฎ seed 8 · maxPerDay/วันไทย · ระดับ+event threshold ครั้งเดียว (ทางเดียว—ตัด cron poller C2.1) · decay claim+reconcile tx เดียว · explain/recompute/adjust · `crm.deal.quotation.issued` ยิง+consumer · หน้าตั้งค่า+ป้าย 360 (mockup 05) · ข้อสอบ 54/54 ×2 QC1 · wo-notes `crm-C2.8.md` |
+| C2 | C2.9 | ✅ | (ใบนี้) | เหตุการณ์ธุรกิจ 8 โมดูล → VISIT ใบเดียว/sourceRef + ขั้น CUSTOMER ผ่าน Party · 6 event ใหม่ยิงใน tx · win-back ไม่ถูกคิวกลืน · ข้อสอบ 52/52 ×2 QC1 · wo-notes `crm-C2.9.md` |
+| C2 | C2.10–C2.11 | ⏸️ | — | ข้อสอบพร้อม (C2.10 40 · C2.11 47 — เคาะ addendum แล้ว) |
 | C3 | C3.0–C3.9 | ⏸️ | — | |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |

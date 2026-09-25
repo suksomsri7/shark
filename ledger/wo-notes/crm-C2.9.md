@@ -20,16 +20,16 @@
 | # | ด่าน | ผ่าน? | หลักฐาน |
 |---|---|---|---|
 | D1 | ข้อสอบก่อนโค้ด · เคยแดง | ✅ | รอบ 1 45/47 (X4.1/X4.2 fixture ชนทรัพยากร → ORACLE-EDIT own asset/room) · รอบ 2 47/47 · รอบ 3 52/52 |
-| D2 | เขียวเมื่อผู้คุมงานรันเอง | ⏳ | unit `crm-c28c29-verify` (QC1) — §5 |
+| D2 | เขียวเมื่อผู้คุมงานรันเอง | ✅ | unit `crm-c28c29-verify` (QC1) — §5 |
 | D3 | กลุ่ม X | ✅ | §4 |
-| D4 | regression | ⏳ | §5 |
-| D5 | typecheck · fitness ×2 | ⏳ | §5 (builder: typecheck clean · fitness 32/32 ×2) |
-| D6 | build | ⏳ | §5 |
+| D4 | regression | ✅ | §5 — 45 ชุดเขียว (m3.7 S6.2 = ENV) |
+| D5 | typecheck · fitness ×2 | ✅ | §5 (builder: typecheck clean · fitness 32/32 ×2) |
+| D6 | build | ✅ | BUILD+serve exit 0 · c2.6-web 35/35 |
 | D7 | ภาพ + PARITY | N-A | ไม่มี UI ใหม่ (กิจกรรม VISIT ขึ้นในไทม์ไลน์ C1.4 เดิม) |
 | D8 | testid + ทะเบียน | N-A | ไม่มี control ใหม่ |
 | D9 | ผู้ตรวจอิสระ | ✅ | ผู้ตรวจ read-only (opus) รอบ 2: F1 seq คงที่ = win-back เงียบ (**BLOCKER** · probe ก่อน 7/10 → หลัง 10/10) · F2 audit ไม่มี before · F3 stage set ซ้ำ · F4 partyId null เงียบ · N5/N8/N9 — แก้ครบ |
 | D10 | เอกสาร/ทะเบียน | ✅ | event 6 ตัวมี consumer + ป้าย · ไม่มี op ใหม่ · `gen-crm-api-docs` ใน unit |
-| D11 | wo-notes + คืนสภาพ | ⏳ | `qc-member-m1.9` ใน unit |
+| D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 ×2 |
 | D12 | push → deploy | ⏳ | รอเจ้าของ push (เติม hash + dpl หลัง deploy) |
 
 ## 4. กลุ่ม X
@@ -48,4 +48,73 @@
 | ร้าน uiVersion 1 | ใช้ | `U.1–U.3` (event ยัง DONE · สะพานไม่เขียน · ไม่โยน) |
 
 ## 5. ผลข้อสอบ
-_(รอ unit `crm-c28c29-verify` บน QC1 — เติมหลังรัน)_
+**unit `crm-c28c29-verify` (QC1 seed ใหม่ · 25 ก.ย. 04:20–06:05 UTC · ALLDONE · main tree `809999fa` + C2.9 `56575407`):**
+- `migrate diff (must be empty)`: exit=0 · `-`
+- `gen-crm-api-docs (early · before m1.1)`: exit=0 · `-`
+- `reseed member`: exit=0 · `-`
+- `qc-member-m1.1`: exit=0 · `{"total":28,"passed":28,"findings":[]}`
+- `seed crm #1`: exit=0 · `-`
+- `seed crm #2`: exit=0 · `-`
+- `DRAIN`: exit=0 · `{"total":4,"passed":4,"findings":[]}`
+- `qc-crm-c2.8`: exit=0 · `{"total":54,"passed":54,"findings":[]}`
+- `qc-crm-c2.9`: exit=0 · `{"total":52,"passed":52,"findings":[]}`
+- `qc-crm-c2.8`: exit=0 · `{"total":54,"passed":54,"findings":[]}`
+- `qc-crm-c2.9`: exit=0 · `{"total":52,"passed":52,"findings":[]}`
+- `qc-crm-c2.1`: exit=0 · `{"total":84,"passed":84,"findings":[]}`
+- `qc-crm-c2.2`: exit=0 · `{"total":73,"passed":73,"findings":[]}`
+- `qc-crm-c2.3`: exit=0 · `{"total":80,"passed":80,"findings":[]}`
+- `qc-crm-c2.4`: exit=0 · `{"total":91,"passed":91,"findings":[]}`
+- `qc-crm-c2.5`: exit=0 · `{"total":105,"passed":105,"findings":[]}`
+- `qc-crm-c2.6`: exit=0 · `{"total":87,"passed":87,"findings":[]}`
+- `qc-crm-c2.7`: exit=0 · `{"total":63,"passed":63,"findings":[]}`
+- `qc-crm-c0.5`: exit=0 · `{"total":50,"passed":50,"findings":[],"unproven":[],"info":{"leaseStyle":"row lease (re-run at +16m)","dueMode`
+- `qc-crm-c1.2b`: exit=0 · `{"total":93,"passed":93,"findings":[]}`
+- `qc-crm-c1.4`: exit=0 · `{"total":110,"passed":110,"findings":[]}`
+- `qc-crm-c1.5`: exit=0 · `{"total":103,"passed":103,"findings":[]}`
+- `qc-crm-c1.6`: exit=0 · `{"total":79,"passed":79,"findings":[],"skippedChecks":[]}`
+- `qc-crm-c1.8`: exit=0 · `{"total":81,"passed":81,"findings":[]}`
+- `qc-crm-c1.11`: exit=0 · `{"total":66,"passed":66,"findings":[]}`
+- `qc-crm-c2.0`: exit=0 · `{"total":73,"passed":73,"findings":[]}`
+- `qc-crm-v1`: exit=0 · `{"total":17,"passed":17,"findings":[]}`
+- `qc-crm-c0.2`: exit=0 · `{"total":27,"passed":27,"findings":[]}`
+- `qc-form`: exit=0 · `{"total":10,"passed":10,"findings":[]}`
+- `qc-forms-notify`: exit=0 · `-`
+- `qc-public-links`: exit=0 · `{"total":11,"passed":11,"findings":[]}`
+- `qc-pages`: exit=0 · `{"total":31,"passed":31,"findings":[]}`
+- `qc-pos-register`: exit=0 · `{"total":42,"passed":42,"findings":[]}`
+- `qc-pos-account`: exit=0 · `{"total":16,"passed":16,"findings":[]}`
+- `qc-acc-v2-payments`: exit=0 · `-`
+- `qc-account-api-write-payments`: exit=0 · `{"total":32,"passed":32,"findings":[]}`
+- `qc-member-fix-s3`: exit=0 · `{"total":14,"passed":14,"findings":[]}`
+- `qc-chat-core-v2`: exit=0 · `{"total":47,"passed":47,"findings":[]}`
+- `qc-member-m3.7`: exit=1 · `{"total":23,"passed":22,"findings":[{"id":"M3.7-S6.2","sev":"CRITICAL"}]}`
+- `qc-ticket-money`: exit=0 · `{"total":6,"passed":6,"findings":[]}`
+- `qc-ticket-cancel`: exit=0 · `{"total":10,"passed":10,"findings":[]}`
+- `qc-rental`: exit=0 · `{"total":11,"passed":11,"findings":[]}`
+- `qc-rental-race`: exit=0 · `{"total":6,"passed":6,"findings":[]}`
+- `qc-rental-refund`: exit=0 · `{"total":11,"passed":11,"findings":[]}`
+- `qc-school`: exit=0 · `{"total":7,"passed":7,"findings":[]}`
+- `qc-school-refund`: exit=0 · `{"total":11,"passed":11,"findings":[]}`
+- `qc-hotel-money`: exit=0 · `{"total":5,"passed":5,"findings":[]}`
+- `qc-hotel-refund`: exit=0 · `{"total":15,"passed":15,"findings":[]}`
+- `qc-clinic`: exit=0 · `{"total":8,"passed":8,"findings":[]}`
+- `qc-clinic-refund`: exit=0 · `{"total":13,"passed":13,"findings":[]}`
+- `qc-queue-public`: exit=0 · `{"total":20,"passed":20,"findings":[]}`
+- `qc-shop`: exit=0 · `{"total":15,"passed":15,"findings":[]}`
+- `qc-booking-race`: exit=0 · `{"total":8,"passed":8,"findings":[]}`
+- `qc-nav-functions`: exit=0 · `-`
+- `probe-uiversion-gate (no env)`: exit=0 · `{"total":14,"passed":14,"findings":[]}`
+- `gen-crm-api-docs`: exit=0 · `-`
+- `typecheck`: exit=0 · `-`
+- `fitness`: exit=0 · `{"total":32,"passed":32,"findings":[]}`
+- `fitness-noenv`: exit=0 · `{"total":32,"passed":32,"findings":[]}`
+- `BUILD+serve`: exit=0 · `-`
+- `shots 2.8`: exit=0 · `{"wo":"2.8","user":"owner","shots":[".qc-shots/crm/2.8/crm-scoring-owner-desktop.png",".qc-shots/crm/2.8/crm-s`
+- `qc-crm-c2.6-web (headless)`: exit=0 · `{"total":35,"passed":35,"findings":[]}`
+- `serve stop`: exit=0 · `-`
+- `qc-member-m1.9`: exit=0 · `{"total":26,"passed":26,"findings":[]}`
+
+- `qc-member-m3.7` exit=1 = `M3.7-S6.2` ข้อภาพหน้าจอ (`act undefined` — ชุดรันก่อน BUILD+serve) · 22 ข้อฟังก์ชันรวมสัญญา consumer ผ่าน · รันซ้ำหลัง serve ขึ้นใน unit `crm-c28-shots2` (ดูด้านล่าง)
+
+**unit `crm-c28-shots2`:** ไม่มีภาพของใบนี้ (ไม่มี UI ใหม่) · `qc-member-m3.7` 22/23 (S6.2 = ENV ดู C2.8 §5) · `qc-member-m1.9` 26/26
+
