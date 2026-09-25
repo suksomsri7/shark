@@ -382,4 +382,5 @@
   - แผน: รวม C2.10 → main ก่อน → รีเซ็ต c23 บน main ใหม่ + ยกงาน C2.11 (patch) → **รอบ 2**: 2 op notifications + A1 + ถอนแถว/consumer ซ้ำ (A3) + B1–B4 + minor 8/12 + spec ภาพ "2.11"
 - 25 ก.ย. 09:05 · Fable รันซ้ำหลัง ORACLE-EDIT: `qc-crm-c2.10` **40/40** (QC2 · S4.1 ต้องแก้คอมเมนต์ที่กลืน `.filter` รอบแรก 39/40) · `qc-crm-c2.11` **43/47** (QC3 · แดง = notifications 3 + X7.1 ที่เข้มขึ้นจับ bulk บน `report` ได้จริง · X9.1/X9.3 ที่เข้มขึ้นผ่าน) · รอ reviewer C2.10
 - 25 ก.ย. 09:20 · **reviewer อิสระ C2.10** — BLOCKER A1 ยิงซ้ำ live↔cron เมื่อ days กฎ ≠ stage (TRIGGER_MATCH_KEYS ไม่จับ days) · A2 body 400 ตัดลิงก์กันซ้ำ ⇒ X4/defer พัง · MAJOR B1 readAt=now ยังโผล่ในรายการ (รับ+C3.0) · B2 ประทับ emailedAt ก่อนส่ง · B3 dedupe ไม่มี refId บาง refType · B4 purge แตะ v1 · B5 cache cap ไม่หมุน · parity 5 จุด · เห็นพ้อง ORACLE-EDIT 3 ข้อ · มติเต็มใน brief C2.10 ท้ายไฟล์ → builder รอบแก้
+- 25 ก.ย. 09:30 · **ORACLE-EDIT C2.10-S1.6 (ใหม่ · 40→41)**: static — `TRIGGER_MATCH_KEYS` ต้องมี `days` (กัน A1 ถอยหลัง) · builder รอบแก้ C2.10 กำลังทำ (มติ 1–9 ใน brief) · patch งาน C2.11 รอบ 1 เก็บไว้ `/tmp/c211-r1.patch` (24 ไฟล์ +2293/−38) เพื่อยกไปวางบน main หลังรวม C2.10
 

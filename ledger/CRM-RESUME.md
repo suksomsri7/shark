@@ -33,7 +33,7 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 ### 0.10 สถานะ 25 ก.ย. 07:00 (Fable) — 27/53 (51%) · เลน C2.10 ∥ C2.11 กำลังเดิน
 - main tree = C2.1–C2.9 ✅ · **push แล้ว 25 ก.ย. (`0d638f15` · prod `dpl_8aHf55…` 06:01 UTC)** · D12 C2.1–C2.9 เติมแล้ว · c20/c23 รีเซ็ตที่ `455623ec`
-- ▶️ **C2.10** builder (opus) ใน c20/QC2 — log `.qc-shots/c210/` · brief ruling 21 ข้อ · ข้อสอบ 40 · ถอยหลังบังคับ m3.6/fix-s3/c2.1/c0.5/c1.5/c1.6/c2.4/c1.11/c2.8/kanban-notify/push/cron
+- ▶️ **C2.10 รอบแก้ 2** builder (opus) ใน c20/QC2 — log `.qc-shots/c210-r2/` · รอบ 1 ข้อสอบ 40/40 (หลัง ORACLE-EDIT S4.1/S1.4/S3.5) · reviewer พบ A1 (days กฎ≠stage ยิงซ้ำ) A2 (body ตัดลิงก์) B1–B5 · มติใน brief ท้ายไฟล์ · ข้อสอบตอนนี้ 41 (S1.6 static days) · 🔴 QC2/QC3 member seed เก่า — member suites รันบน QC1 เท่านั้น
 - ✅ **C2.11 รอบ 1 จบ** (c23/QC3 · log `.qc-shots/c211/`) — ข้อสอบ 44/47 หลัง ORACLE-EDIT 4 จุด (Fable รันเอง) · เหลือ `notifications.prefs.get/set` 2 op (MUST จริง 32) รอรวม C2.10 → รอบ 2 · reviewer read-only กำลังอ่าน · ถอยหลัง m3.10 ต้องรันใน unit ที่มี server
 - ลำดับรับ: C2.10 → reviewer read-only → แก้ → รวม main → (C2.11 รอบ 2 เติม 2 op บนทรีที่มี C2.10) → reviewer C2.11 → รวม → unit ตรวจรับรวม (ชื่อใหม่ `run-c210c211-verify.sh` · systemd-run path เต็ม) → ปิด C2 ด้วย `qc:all` → C3.0
 - ENV ที่รู้จัก: `qc-member-m3.7` S6.2 อ่าน summary ของ visual-member 3.7
