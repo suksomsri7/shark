@@ -83,7 +83,7 @@ before the builder starts).
 
 ### ORACLE-EDIT (ผู้คุมงาน · 24 ก.ย. 2569) — the multi-recipient send gets its own door
 Applied to `scripts/qc-crm-c2.11.mts`; **MUST goes from 30 to 31 ops** (emails 11 · sequences 7 · assignment 3 · scoring 4 ·
-tracking 3 · notifications 2 · automation 2). Decision 5 of the addendum is superseded by this ruling.
+tracking 3 · notifications 2 · automation 2 — ⚠️ แก้ 25 ก.ย.: ผลรวมจริงของตาราง = **32** แถว; ตัวเลข 31 ในข้อความเป็น off-by-one · อาร์เรย์ `MUST` ในข้อสอบคือความจริง). Decision 5 of the addendum is superseded by this ruling.
 - `emails.send` — `POST /emails/send` · `crm.email.send` · **kind `write`** · **EXACTLY ONE recipient**; a body naming more than one
   answers VALIDATION (400/422). Its input schema must NOT carry `recipients[]` / `contactIds[]` and must not grow a `confirm` flag.
 - `emails.sendBulk` — **`POST /emails/send-bulk`** · `crm.email.send` · **kind `danger`** · `confirm: true` + `reason` ≥ 5 chars ·
@@ -95,3 +95,7 @@ tracking 3 · notifications 2 · automation 2). Decision 5 of the addendum is su
   recompute-all ⇒ refused). The check-id list (`TEST_IDS`) and the total (47 checks) are unchanged.
 - Re-run after the edit: `JSON_SUMMARY {"total":47,"passed":16,...}` — same balance, the five touched checks still red for the right
   reason (the ops do not exist yet) except `X2.2`, which stays green because the dispatcher answers 404 while they are absent.
+
+## มติผู้คุมงานหลัง builder รอบ 1 (Fable · 25 ก.ย. 06:40)
+1. รอบ 2: เติม `notifications.prefs.get/set` หลังรวม C2.10 (ห้าม stub) · 2. ตัวยิง `crm.deal.stale`/`crm.activity.overdue` = C2.10 (consumer/ป้ายของ C2.11 รวมกับของ C2.10 ตอน merge — ประกาศครั้งเดียว) · 3. `emails.routing.*` ↔ get/setEmailSettings · `SHARED` = alias `SHARK` · 4. routing GET คืน `inboundAddress` ไม่คืน `inboundKey` · 5. MUST = 32 · 6. `sendBulk` เป็น service ใน `emails.ts` · 7. ORACLE-EDIT S2.10 · S3.2 · C1.10-S0.2 · C1.10-X1.1/X1.2 (ดู CRM-RUN §4)
+
