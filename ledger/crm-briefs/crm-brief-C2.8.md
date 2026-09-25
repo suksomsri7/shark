@@ -131,3 +131,12 @@ this oracle touches no seeded tenant).
 - ข้อ 13 CONFIRMED: `CRM_RULE_TRIGGERS` ต้องไม่ list `crm.score.threshold` ซ้ำ (ข้าม value ที่อยู่ใน `CRM_CRON_TRIGGER_VALUES` แล้ว) · `C2.1-S9.1` ต้องยังเขียว
 - **ORACLE-EDIT ที่ผู้คุมงานจะทำตอนรับ C2.8**: `C2.1-S4.6` (ADJUST_SCORE เลิกเป็น stub) — builder ห้ามแก้เอง แค่รายงานว่าข้อนี้แดงเพราะเหตุนี้
 - ถอยหลังบังคับ: `qc-crm-c2.1` · `qc-crm-c1.4` · `qc-crm-c1.8` · `qc-crm-c2.2` · `qc-crm-c2.3` · `qc-form` · `qc-crm-v1` · **`qc-crm-c1.11`**
+
+## มติผู้คุมงานรอบแก้ (Fable · 25 ก.ย. 03:40 · หลัง reviewer อิสระ)
+1. **B1 decay atomic** — claim (`FOR UPDATE SKIP LOCKED … RETURNING`) และ reconcile ของทุก contact ในชุดนั้นอยู่ใน `prisma.$transaction` เดียว · ตายกลางทาง = rollback ทั้ง claim ⇒ รอบถัดไปเก็บต่อได้เอง · X5.2 (แถวถูก flag แล้ว + แถวที่ยังค้าง) ยังต้องผ่าน
+2. **B2 ทางเดียว** — ลบ `case "crm.score.threshold"` ออกจาก cron poller ของ C2.1 (`automation.ts` ~1546) · ทะเบียน trigger/params `band` คงเดิม · กติกาทำงานผ่าน `runForCrmEvent` จาก event สดของ C2.8 เท่านั้น · ถ้าข้อสอบ c2.1 แดง → รายงาน id + บรรทัด ห้ามแก้เอง
+3. **B3 quotation** — ยิง `crm.deal.quotation.issued` ใน `deals.ts` ที่จุดผูก `quotationDocId` (tx เดียวกับ update · คีย์ `crm.deal.quotation.issued#<dealId>#<docId>` · payload `{ dealId, contactId, docId }` ids ล้วน · ยิงครั้งเดียวต่อ doc) + consumer `withAutomation(compose(async()=>{}, crmBridge("onScoringEvent")))` + เพิ่มเข้า `SCORE_BRIDGE_EVENTS` + ป้ายใน `automation/labels.ts` (เว็บฮุคได้จาก spread) · bridge หา contactId จาก payload/ดีล
+4. MAJOR — `adjust`: audit ใน tx เดียวกับ `applyPoints` · `recompute` (จริง): ยิง `crm.score.changed` เมื่อคะแนนเปลี่ยน และ `crm.score.threshold` เมื่อระดับเปลี่ยน (คีย์ท้าย `#recompute-<runId>`) · `emitScoreEvents`: ไม่ยิง `changed` เมื่อ from===to · `createRule/updateRule`: event ต้องอยู่ใน `SCORE_BRIDGE_EVENTS` ไม่งั้น error ไทย + ตัวเลือกใน UI แสดงเฉพาะชุดนี้
+5. PARITY mockup 05 (`ledger/design-crm/05-contact-360-convert.body.html`): ป้าย `🔥 ร้อน 72` (emoji ต่อระดับ 🔥/🌤/❄ ใน `SCORE_BAND_LABELS` หรือ badge) · หัวเรื่อง "ทำไมถึงร้อน 72" เหนือชิป · ปุ่ม "ดูเหตุผลคะแนนทั้งหมด"
+6. รับตามเดิม: fan-out ทุกระบบ CRM ของร้านเมื่อ event ไม่ระบุ systemId · forms eventKey ใหม่ · `scripts/expected*.json` ไม่เข้า main
+
