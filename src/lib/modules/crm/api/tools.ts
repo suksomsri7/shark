@@ -28,7 +28,9 @@ import { CRM_OPS } from "./registry";
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** ชุดอ่านของผู้ช่วย — ตัดกับสิทธิ์จริงของคนที่ถามทุกครั้ง (คนที่ไม่มีคีย์อ่านรายงาน = ผู้ช่วยก็อ่านรายงานให้ไม่ได้) */
-const ASSISTANT_READ_SCOPES = ["crm.contact.read", "crm.company.read", "crm.deal.read", "crm.activity.read", "crm.record.read", "crm.report.view"] as const;
+// CRM C2.11 ▸ + `crm.email.read` — tool `crm_email_thread` / `crm_draft_email` ต้องอ่านเธรดจดหมายได้เมื่อ **คนที่ถาม**
+//   มีสิทธิ์นั้นจริง (ตัดกับสิทธิ์ของเขาทุกครั้ง — พนักงานที่ไม่มีคีย์อ่านอีเมล ผู้ช่วยก็อ่านให้ไม่ได้ · ข้อสอบ X2.5) ◂
+const ASSISTANT_READ_SCOPES = ["crm.contact.read", "crm.company.read", "crm.deal.read", "crm.activity.read", "crm.record.read", "crm.report.view", "crm.email.read"] as const;
 
 /** "ใครกำลังเรียก tool นี้" — ก้อนเดียวใช้ทั้งตอนผู้ช่วยเสนอและตอนคนกดยืนยัน */
 export type CrmToolCtx = {
@@ -285,6 +287,11 @@ function summarize(p: Prepared): string {
   if (typeof b.nextStep === "string" && b.nextStep) parts.push(`ขั้นถัดไป: ${b.nextStep.length > 60 ? `${b.nextStep.slice(0, 60)}…` : b.nextStep}`);
   if (isRecord(b.deal) && typeof b.deal.title === "string") parts.push(`เปิดดีล "${b.deal.title}"`);
   if (isRecord(b.company) && isRecord(b.company.new) && typeof b.company.new.name === "string") parts.push(`สร้างบริษัท "${b.company.new.name}"`);
+  // CRM C2.11 ▸ ข้อเสนอของชุดที่สอง: หัวข้อจดหมาย · ลำดับที่จะใส่ · ผู้ดูแลที่จะมอบให้ (การ์ดยืนยันต้องบอกว่ากำลังจะทำอะไรกับใคร) ◂
+  if (typeof b.subject === "string" && b.subject) parts.push(`หัวข้อ "${b.subject.length > 60 ? `${b.subject.slice(0, 60)}…` : b.subject}"`);
+  if (typeof b.sequenceId === "string" && b.sequenceId) parts.push("เข้าลำดับการติดตามที่เลือก");
+  if (typeof b.userId === "string" && b.userId) parts.push("มอบให้ผู้ดูแลที่เลือก");
+  if (b.userId === null) parts.push("เอาผู้ดูแลออก");
   return parts.join(" · ");
 }
 

@@ -32,6 +32,10 @@ const EN: Record<string, string> = {
   CONFIRM_REQUIRED: "This operation needs confirm: true and a reason.",
   STAGE_REQUIREMENTS: "The deal is missing what the target stage requires.",
   APPROVAL_REQUIRED: "The change waits for approval; nothing was applied yet.",
+  // CRM C2.11 ▸ รหัสของบริการชุดที่สอง (อีเมล · มอบหมาย · คะแนน) ◂
+  EMAIL_BLOCKED: "The customer asked not to be contacted by e-mail, so nothing was sent.",
+  NOT_CONFIGURED: "The shop has not finished setting this up yet, so the request cannot be carried out.",
+  CRM_V2_DISABLED: "This CRM system still runs the previous version.",
 };
 
 function thai(m: unknown): string | null {
@@ -74,6 +78,15 @@ export function toCrmApiError(e: unknown): unknown {
       return crmApiError(409, "state_conflict", th, EN[code]!);
     case "CONFIRM_REQUIRED":
       return crmApiError(409, "confirm_required", th, EN.CONFIRM_REQUIRED!);
+    // CRM C2.11 ▸ บริการอีเมล (`EmailError`) มีรหัสของตัวเองอีก 2 ตัว · มอบหมาย/คะแนนมี `CRM_V2_DISABLED`
+    //   🔴 ไม่แปลที่นี่ = `mapError` ของแกนเดาไม่ออก ⇒ ผู้เรียกได้ 500 ทั้งที่เป็นสถานะปกติของร้าน
+    //      (ยังไม่ตั้งค่าผู้ส่ง / ลูกค้าขอไม่รับอีเมล) — 500 ทำให้ผู้เชื่อมต่อ retry ทั้งที่ retry ไม่ช่วย ◂
+    case "EMAIL_BLOCKED":
+      return crmApiError(409, "state_conflict", th, EN.EMAIL_BLOCKED!);
+    case "NOT_CONFIGURED":
+      return crmApiError(409, "state_conflict", th, EN.NOT_CONFIGURED!);
+    case "CRM_V2_DISABLED":
+      return crmApiError(409, "crm_v2_disabled", th, EN.CRM_V2_DISABLED!);
     case "STAGE_REQUIREMENTS": {
       const missing = Array.isArray((e as { missing?: unknown }).missing) ? ((e as { missing: unknown[] }).missing.filter((x): x is string => typeof x === "string")) : [];
       return crmApiError(409, "stage_requirements", th, EN.STAGE_REQUIREMENTS!, missing.length ? `missing: ${missing.join(", ")}` : undefined,

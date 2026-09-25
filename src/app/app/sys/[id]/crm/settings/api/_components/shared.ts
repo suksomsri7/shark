@@ -23,6 +23,13 @@ export type CrmKeyResult = { ok: true; rawKey: string } | { ok: false; reason: s
 export type CrmActionResult = { ok: true } | { ok: false; reason: string };
 export type CrmWebhookCreateResult = { ok: true; id: string; secret: string } | { ok: false; reason: string };
 
+/**
+ * CRM C2.11 ▸ จำนวนคีย์สิทธิ์ที่แต่ละชุดถืออยู่ **จริง** (อ่านจาก `API_SCOPE_BUNDLES` ฝั่งเซิร์ฟเวอร์ตอนเรนเดอร์หน้า)
+ *   🔴 ทำไมไม่พิมพ์ไว้ในคำอธิบาย: ทุกใบที่เพิ่มคีย์ใหม่ (ใบนี้เพิ่มอีเมล · ลำดับการติดตาม · คะแนน · ลิงก์ติดตาม · กฎอัตโนมัติ)
+ *      จะทำให้ข้อความที่พิมพ์มือเก่าทันที ⇒ เจ้าของร้านอ่านแล้วเข้าใจผิดว่าคีย์ทำได้แค่ของเดิม ◂
+ */
+export type CrmBundleScopeRow = { id: string; count: number; newInC2: string[] };
+
 /** ชุดสิทธิ์ที่หน้านี้ออกให้ได้ (id ตรงกับ `API_SCOPE_BUNDLES` ของ scopes.ts) + คำอธิบายไทย */
 export const CRM_KEY_BUNDLES: readonly { id: "crm.readonly" | "crm.operate" | "crm.admin"; label: string; help: string }[] = [
   { id: "crm.readonly", label: "อ่านอย่างเดียว", help: "อ่านผู้ติดต่อ บริษัท ดีล กิจกรรม และรายการวัตถุ · เบอร์และอีเมลถูกปิดบังเสมอ · เขียนอะไรไม่ได้" },

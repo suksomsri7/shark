@@ -734,7 +734,8 @@ try {
       if (typeof o.action !== "string" || !o.action.startsWith("crm.") || (typeof SC.isApiScope === "function" && !SC.isApiScope(o.action))) bad.push(`${o.id}:action=${o.action}`);
       if (typeof o.summary !== "string" || !o.summary.trim() || /[^\x20-\x7e]/.test(o.summary)) bad.push(`${o.id}:summary`);
       if (!thai(o.label)) bad.push(`${o.id}:label`);
-      if (!/^C1\.10-(S|X)\d+(\.\d+)?$/.test(String(o.test ?? ""))) bad.push(`${o.id}:test=${o.test}`);
+      // ORACLE-EDIT 25 ก.ย. (Fable): later REST work orders (C2.11 · C3.4 · C3.8) register ops that carry THEIR oracle's id (F13.10) — any `C<n>.<m>-…` id is fine
+      if (!/^C\d+\.\d+-(S|X|U)\d+(\.\d+)?$/.test(String(o.test ?? ""))) bad.push(`${o.id}:test=${o.test}`);
       if (o.input && typeof OA.jsonSchemaOf === "function") {
         try { const js = OA.jsonSchemaOf(o.input, "input"); if (js?.type === "object" && js.additionalProperties !== false) bad.push(`${o.id}:not-strict`); } catch { bad.push(`${o.id}:schema`); }
       }
@@ -1286,7 +1287,10 @@ try {
         n += 1;
         const r = await callOp(o, kAD.raw, I);
         const okByParty = o.id === "contacts.byParty" && r.status === 200 && !dat(r)?.contact && !dat(r)?.id;
-        if (!(is404(r) || okByParty) || r.text.includes(SECRET_F)) bad.push(`${o.id}:${sr(r)}${r.text.includes(SECRET_F) ? ":LEAK" : ""}`);
+        // ORACLE-EDIT 25 ก.ย. (Fable · X1.1/X1.2): ops with a REQUIRED body field (e.g. sequences.enroll needs contactId) answer 422 validation from the
+        //   core dispatcher before the handler — that is "refused, no leak" exactly like X1.3 already accepts ([400, 404, 422]); never 403/200
+        const refused = is404(r) || [400, 422].includes(r.status);
+        if (!(refused || okByParty) || r.text.includes(SECRET_F)) bad.push(`${o.id}:${sr(r)}${r.text.includes(SECRET_F) ? ":LEAK" : ""}`);
       }
       chk(cid, `🔴 every registry op with a path id, called by an ADMIN key of system S with ids of the ${label} → 404 (never 403/200) and no foreign name in the body`,
         OPS.length > 0 && n > 0 && bad.length === 0, "all 404", `ops=${n} bad=${cut(bad.join(" "), 400) || "-"}`);

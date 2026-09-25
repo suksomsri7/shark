@@ -203,6 +203,12 @@ export const SKILLS: Skill[] = [
       "recent_leads", "crm_create_lead", "marketing_create_campaign", "growth_recommendations",
       "crm_search", "crm_contact_360", "crm_company_360", "crm_deal_360", "crm_pipeline_summary", "crm_forecast", "crm_records_query",
       "crm_create_company", "crm_create_deal", "crm_move_deal", "crm_update_deal", "crm_log_activity", "crm_convert",
+      // CRM C2.11 ▸ ชุดที่สอง 10 ตัว (R-E.4) — `crm_records_query` นับอยู่ในบรรทัดข้างบนแล้ว (op เดียวกัน) ⇒ ที่นี่ 9 ชื่อ
+      //   อ่านทันที: crm_email_thread · crm_score_explain · crm_stale_deals · crm_activities_due
+      //   ร่างเท่านั้น (ไม่เคยกลายเป็นการส่ง): crm_draft_email
+      //   ข้อเสนอให้คนกดยืนยัน: crm_send_email · crm_enroll_sequence · crm_assign · crm_set_next_step ◂
+      "crm_email_thread", "crm_score_explain", "crm_stale_deals", "crm_activities_due", "crm_draft_email",
+      "crm_send_email", "crm_enroll_sequence", "crm_assign", "crm_set_next_step",
     ],
     systems: ["CRM", "MARKETING"],
   },

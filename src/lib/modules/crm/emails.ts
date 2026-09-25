@@ -688,13 +688,29 @@ export async function saveTemplate(
   }
 }
 
-export async function deleteTemplate(ctx: EmailsCtx, actor: MemberActor, id: string): Promise<{ ok: true }> {
+/**
+ * ลบแม่แบบจดหมาย
+ *
+ * 🔴 รอบแก้ 25 ก.ย. 2569 (ผู้ตรวจอิสระ MINOR 8): "แม่แบบที่ยังถูกใช้" อยู่ในรายการคำสั่งอันตรายของใบงาน แต่ของเดิมลบเงียบ ๆ
+ *    โดยไม่บอกว่ามีอะไรพังตามไปด้วย ⇒ นับให้เห็นก่อนลบ แล้วคืน/บันทึกเป็น `inUse` (ขั้นของลำดับการติดตาม + จดหมายที่ตั้งเวลา
+ *    ไว้แต่ยังไม่ส่ง) · ยังเป็น danger + ต้องยืนยันเหมือนเดิม — ตัวเลขนี้คือสิ่งที่คนกดต้องได้เห็นในบันทึกภายหลังว่า
+ *    "ตอนลบมีของที่อ้างถึงกี่ชิ้น" (แถว audit เก็บทั้ง before และ after)
+ */
+export async function deleteTemplate(ctx: EmailsCtx, actor: MemberActor, id: string): Promise<{ ok: true; inUse: { sequences: number; scheduled: number } }> {
   await enter(ctx, actor, KEY_SETTINGS);
   const prior = await prisma.crmEmailTemplate.findFirst({ where: { id: str(id), tenantId: ctx.tenantId, systemId: ctx.systemId } });
   if (!prior) throw fail("NOT_FOUND", TEMPLATE_NOT_FOUND);
+  const [sequences, scheduled] = await Promise.all([
+    prisma.crmSequenceStep.count({ where: { tenantId: ctx.tenantId, templateId: prior.id, sequence: { systemId: ctx.systemId } } }),
+    prisma.crmEmailMessage.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, templateId: prior.id, status: "QUEUED", sentAt: null } }),
+  ]);
+  const inUse = { sequences, scheduled };
   await prisma.crmEmailTemplate.delete({ where: { id: prior.id } });
-  await writeAudit({ tenantId: ctx.tenantId, actorId: str(ctx.actorUserId) || null, action: "crm.email.template.delete", targetType: "CrmEmailTemplate", targetId: prior.id, before: { name: prior.name } });
-  return { ok: true };
+  await writeAudit({
+    tenantId: ctx.tenantId, actorId: str(ctx.actorUserId) || null, action: "crm.email.template.delete",
+    targetType: "CrmEmailTemplate", targetId: prior.id, before: { name: prior.name, inUse }, after: { deleted: true, inUse },
+  });
+  return { ok: true, inUse };
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -967,13 +983,46 @@ function cleanAddrList(raw: unknown, label: string): string[] {
   return uniq(out);
 }
 
-/** R-E.11: "ตอบในเธรดที่ลูกค้าเริ่ม" = จดหมายอ้างอิงอยู่ในเธรดที่มีข้อความขาเข้าอยู่แล้ว */
-async function isTransactionalReply(systemId: string, replyToEmailId: string | null): Promise<{ transactional: boolean; parent: CrmEmailMessage | null }> {
+const REPLY_PARENT_NOT_FOUND =
+  "ไม่พบจดหมายที่จะตอบกลับในเธรดของผู้ติดต่อรายนี้ (อาจเป็นจดหมายของลูกค้าคนอื่น อยู่คนละระบบ หรือบัญชีนี้ยังมองไม่เห็น) — เปิดเธรดของผู้ติดต่อรายนี้แล้วกดตอบจากในเธรดนั้น";
+
+/**
+ * R-E.11: "ตอบในเธรดที่ลูกค้าเริ่ม" = จดหมายอ้างอิงอยู่ในเธรดที่มีข้อความขาเข้าอยู่แล้ว
+ *
+ * 🔴 AUDIT-CLASS X1/X8 (รอบแก้ 25 ก.ย. 2569 · ผู้ตรวจอิสระ A1 = BLOCKER): ของเดิมรับ `replyToEmailId` **ตัวไหนก็ได้ในระบบ**
+ *    แล้วดูแค่ว่า "เธรดนั้นมีข้อความขาเข้าไหม" ⇒ ใครก็หยิบ id ข้อความขาเข้าของลูกค้า **คนอื่น** มาแปะได้ ผลคือ
+ *      (1) `transactional = true` ⇒ ข้ามด่านความยินยอมของลูกค้าที่กำลังจะถูกส่งถึง (คนที่กด "ขอไม่รับอีเมล" ได้จดหมายอยู่ดี)
+ *      (2) `threadKey` ของจดหมายใหม่กลายเป็นเธรดของลูกค้าคนอื่น ⇒ จดหมายของลูกค้า A ไปโผล่ในเธรดของลูกค้า B
+ *          (คนที่เห็นเธรด B อ่านเนื้อความที่เขียนถึง A ได้ทั้งฉบับ) และคำตอบของ B ก็ไหลกลับมาผิดคน
+ *    ⇒ กติกาใหม่ (ทั้ง `emails.send` และ `emails.schedule` เดินทางนี้เส้นเดียวกัน):
+ *      (ก) เธรดของจดหมายที่อ้างต้องเป็นเธรดของ **ผู้ติดต่อรายเดียวกันกับที่กำลังส่งถึง**
+ *      (ข) บัญชี/คีย์ที่สั่งส่งต้อง **มองเห็นจดหมายฉบับนั้นจริง** (ด่านเดียวกับ `getThread` — `rowVisibleFilter`)
+ *      ไม่ผ่านข้อใดข้อหนึ่ง = NOT_FOUND (404) **ไม่ใช่การเงียบ ๆ แล้วเปิดเธรดใหม่**: การกลืนเงียบทำให้ผู้เรียกเข้าใจว่า
+ *      "ตอบในเธรดแล้ว" ทั้งที่ระบบเพิ่งเริ่มเธรดใหม่ (และความยินยอมถูกตัดสินคนละแบบกับที่เขาคิด)
+ *      id ของ **อีกระบบ CRM** ก็ 404 ด้วยข้อความเดียวกัน (ไม่บอกว่ามีอยู่จริงที่อื่น)
+ */
+async function isTransactionalReply(
+  ctx: EmailsCtx,
+  actor: MemberActor | null,
+  contact: CrmContact,
+  replyToEmailId: string | null,
+): Promise<{ transactional: boolean; parent: CrmEmailMessage | null }> {
   if (!replyToEmailId) return { transactional: false, parent: null };
-  const parent = await prisma.crmEmailMessage.findFirst({ where: { id: replyToEmailId, systemId } });
-  if (!parent) return { transactional: false, parent: null };
-  const inbound = await prisma.crmEmailMessage.count({ where: { systemId, threadKey: parent.threadKey, direction: "IN" } });
-  return { transactional: inbound > 0, parent };
+  const parent = await prisma.crmEmailMessage.findFirst({ where: { id: replyToEmailId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+  if (!parent) throw fail("NOT_FOUND", REPLY_PARENT_NOT_FOUND);
+  const thread = await prisma.crmEmailMessage.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, threadKey: parent.threadKey },
+    select: { contactId: true, companyId: true, direction: true },
+    take: 500,
+  });
+  // (ก) เธรดต้องเป็นของผู้ติดต่อรายนี้ (ฉบับที่อ้างเอง หรืออย่างน้อยฉบับใดฉบับหนึ่งในเธรดเดียวกัน)
+  if (parent.contactId !== contact.id && !thread.some((r) => r.contactId === contact.id)) throw fail("NOT_FOUND", REPLY_PARENT_NOT_FOUND);
+  // (ข) ต้องมองเห็นจดหมายฉบับนั้นจริง (คีย์ที่ถูกกรองด้วยเจ้าของ/ทีม · พนักงานที่เห็นแค่ของตัวเอง)
+  if (actor) {
+    const visible = await rowVisibleFilter(ctx, actor, [parent]);
+    if (!visible(parent)) throw fail("NOT_FOUND", REPLY_PARENT_NOT_FOUND);
+  }
+  return { transactional: thread.some((r) => r.direction === "IN"), parent };
 }
 
 async function renderTemplate(
@@ -1068,7 +1117,7 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   // ── ความยินยอม "ตอนส่ง" (AUDIT-CLASS X8) — ปฏิเสธแล้วไม่เขียน/ไม่อัป/ไม่ส่งอะไรเลย ──
   const replyToEmailId = strOrNull(input?.replyToEmailId);
-  const { transactional, parent } = await isTransactionalReply(ctx.systemId, replyToEmailId);
+  const { transactional, parent } = await isTransactionalReply(ctx, actor, contact, replyToEmailId);
   if (!(await canContact(contact, "EMAIL", { transactional }))) throw fail("EMAIL_BLOCKED", BLOCKED_MSG);
 
   const senderUserId = actor ? str(actor.userId) || null : strOrNull(input?.senderUserId);
@@ -1299,6 +1348,104 @@ async function emitEmailEvent(
 
 export async function sendEmail(ctx: EmailsCtx, actor: MemberActor, input: SendInput, deps?: EmailDeps): Promise<SendResult> {
   return sendCore(ctx, actor, input, deps);
+}
+
+// CRM C2.11 ▸ ส่งถึงหลายคนในคำสั่งเดียว = "ประตูของตัวเอง" (มติผู้คุมงาน ORACLE-EDIT 24 ก.ย. 2569)
+//   🔴 ทำไมไม่เป็นธงบน `sendEmail`: op เดียวที่ "บางครั้งต้องยืนยัน" ทำให้ผู้เชื่อมต่อเดาไม่ถูกว่าเมื่อไหร่ต้องส่ง confirm
+//      ⇒ `sendEmail` รับผู้รับ **คนเดียว** ตลอดกาล · การยิงเป็นกลุ่มมาทางนี้ซึ่งเป็นการกระทำอันตราย (ยืนยัน + เหตุผล)
+//   🔴 ไม่มีเอนจินที่สอง: วนเรียก `sendCore` ทีละคน ⇒ กติกาความยินยอม (`canContact`) · การมองเห็นผู้ติดต่อ ·
+//      ผู้รับต้องเป็นอีเมลของผู้ติดต่อรายนั้น · ตัวกันซ้ำระดับจดหมาย (Message-ID) เหมือนการส่งทีละฉบับเป๊ะ ๆ
+//   🔴 กุญแจกันซ้ำต่อคน = `<กุญแจของคำขอ>:<contactId>` ⇒ ยิงคำสั่งเดิมซ้ำ (เน็ตหลุด) ไม่ทำให้ลูกค้าได้จดหมายสองฉบับ
+export const CRM_EMAIL_BULK_MAX = 500;
+
+export type BulkSendInput = {
+  contactIds: string[];
+  subject?: string | null;
+  bodyHtml?: string | null;
+  templateId?: string | null;
+  vars?: Record<string, string>;
+  scheduledAt?: Date | string | null;
+  confirm?: boolean | null;
+  reason?: string | null;
+  /** กุญแจกันซ้ำของคำขอ (REST ส่ง `Idempotency-Key` ต่อลงมา) */
+  idempotencyKey?: string | null;
+};
+export type BulkSendResult = {
+  requested: number;
+  sent: number;
+  queued: number;
+  /**
+   * คนที่ "ส่งไม่สำเร็จ" — ตัวส่งล้ม หรือเกิดข้อผิดพลาดที่ไม่คาดคิดกับผู้รับรายนั้น
+   * 🔴 AUDIT-CLASS X8: `reason` เป็นข้อความคงที่ + `code` เป็นรหัสล้วน ๆ (ไม่เอาข้อความของ error ดิบมาใส่ —
+   *    error ของฐาน/ผู้ให้บริการอาจมีที่อยู่อีเมลหรือค่าที่ลูกค้ากรอกติดมา)
+   */
+  failed: { contactId: string; reason: string; code: string }[];
+  /** คนที่ระบบไม่ส่งให้ + เหตุผลไทย (ขอไม่รับ · ไม่มีอีเมล · มองไม่เห็น) — ของที่ตกด่านห้ามหายเงียบ ๆ */
+  skipped: { contactId: string; reason: string }[];
+};
+
+/** รหัสของ error ที่ไม่ใช่ EmailError — เอาแต่ "รหัส/ชื่อชนิด" ไม่เอาข้อความ (X8) */
+function bulkFailCode(e: unknown): string {
+  const c = (e as { code?: unknown } | null)?.code;
+  if (typeof c === "string" && c) return c.slice(0, 40);
+  return (e instanceof Error ? e.name : typeof e).slice(0, 40) || "UNKNOWN";
+}
+const BULK_FAILED_TH = "ส่งจดหมายให้ผู้ติดต่อรายนี้ไม่สำเร็จรอบนี้ — สั่งส่งอีกครั้งเฉพาะคนนี้ได้เลย (คนอื่นในชุดนี้ส่งไปแล้ว)";
+
+export async function sendBulk(ctx: EmailsCtx, actor: MemberActor, input: BulkSendInput, deps?: EmailDeps): Promise<BulkSendResult> {
+  await enter(ctx, actor, KEY_SEND);
+  const reason = str(input?.reason);
+  // AUDIT-CLASS X9: ตรวจก่อนแตะอะไรทั้งหมด — ไม่ผ่าน = ไม่มีจดหมายฉบับไหนถูกสร้าง
+  if (input?.confirm !== true || reason.length < 5) {
+    throw fail("CONFIRM_REQUIRED", "การส่งจดหมายถึงหลายคนพร้อมกันย้อนกลับไม่ได้ — ยืนยันและพิมพ์เหตุผลอย่างน้อย 5 ตัวอักษรก่อนส่ง");
+  }
+  const raw = Array.isArray(input?.contactIds) ? input.contactIds : [];
+  const ids = [...new Set(raw.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()))];
+  if (ids.length === 0) throw fail("VALIDATION", "ยังไม่ได้เลือกผู้รับ — เลือกผู้ติดต่ออย่างน้อย 1 รายแล้วส่งอีกครั้ง");
+  if (raw.length > CRM_EMAIL_BULK_MAX || ids.length > CRM_EMAIL_BULK_MAX) {
+    throw fail("VALIDATION", `ส่งเป็นกลุ่มได้ครั้งละไม่เกิน ${CRM_EMAIL_BULK_MAX.toLocaleString("th-TH")} คน — แบ่งเป็นหลายรอบแล้วลองอีกครั้ง`);
+  }
+  const key = str(input?.idempotencyKey) || null;
+  const out: BulkSendResult = { requested: ids.length, sent: 0, queued: 0, failed: [], skipped: [] };
+  await auditEmail(ctx, "crm.email.send_bulk", undefined, { after: { stage: "started", contacts: ids.length, reason: reason.slice(0, 200) } });
+  for (const contactId of ids) {
+    try {
+      const r = await sendCore(
+        ctx,
+        actor,
+        {
+          contactId,
+          subject: input?.subject ?? null,
+          bodyHtml: input?.bodyHtml ?? null,
+          templateId: input?.templateId ?? null,
+          ...(input?.vars ? { vars: input.vars } : {}),
+          scheduledAt: input?.scheduledAt ?? null,
+          idempotencyKey: key ? `${key}:${contactId}` : null,
+        },
+        deps,
+      );
+      if (r.status === "QUEUED") out.queued += 1;
+      else if (r.status === "FAILED") out.failed.push({ contactId, reason: BULK_FAILED_TH, code: "SEND_FAILED" });
+      else out.sent += 1;
+    } catch (e) {
+      // ผู้ติดต่อรายหนึ่งส่งไม่ได้ (ขอไม่รับ · ไม่มีอีเมล · มองไม่เห็น) ต้องไม่ล้มทั้งชุด — บอกเป็นรายคน
+      if (e instanceof EmailError) out.skipped.push({ contactId, reason: e.message });
+      // 🔴 รอบแก้ 25 ก.ย. 2569 (ผู้ตรวจอิสระ B2): ของเดิม `throw e` ⇒ error ที่ไม่ใช่ EmailError ของผู้รับ **คนเดียว**
+      //    (ฐานสะดุด · ผู้ให้บริการที่เก็บไฟล์ล้ม · บั๊กที่ไม่คาดคิด) ทำให้ทั้งคำสั่งล้มกลางทาง: คนที่ 1–k ได้จดหมายไปแล้ว
+      //    แต่ผู้เรียกได้ 500 ⇒ เขา retry ด้วยกุญแจใหม่แล้วลูกค้ากลุ่มแรกได้จดหมายซ้ำ (กุญแจกันซ้ำรายคนช่วยได้แค่เมื่อ
+      //    กุญแจของคำขอเดิม) ⇒ จับทุก error ต่อคน · ตอบ 200 พร้อม summary เสมอ · คนที่ล้มอยู่ใน `failed[]` ให้สั่งซ้ำเฉพาะคน
+      else out.failed.push({ contactId, reason: BULK_FAILED_TH, code: bulkFailCode(e) });
+    }
+  }
+  await auditEmail(ctx, "crm.email.send_bulk", undefined, {
+    after: {
+      stage: "done", requested: out.requested, sent: out.sent, queued: out.queued, failed: out.failed.length, skipped: out.skipped.length,
+      // รหัสความล้มเหลว (ไม่ใช่ข้อความ) — เจ้าของร้าน/ผู้ดูแลระบบตามเรื่องต่อได้โดยไม่มี PII ในแถวประวัติ
+      ...(out.failed.length ? { failedCodes: [...new Set(out.failed.map((f) => f.code))].slice(0, 10) } : {}),
+      reason: reason.slice(0, 200),
+    },
+  });
+  return out;
 }
 
 /**
@@ -1909,7 +2056,9 @@ async function visibleThreadWhere(ctx: EmailsCtx, actor: MemberActor): Promise<P
 export async function listThreads(
   ctx: EmailsCtx,
   actor: MemberActor,
-  input: { contactId?: string | null; companyId?: string | null; dealId?: string | null; unmatched?: boolean; q?: string | null; page?: number } = {},
+  // CRM C2.11 ▸ `pageSize` (1–100 · ปริยาย 50 = ของเดิมทุกไบต์) — REST `GET /emails/threads` ต้องเคารพ `take` ของผู้เรียก
+  //   ถ้าไม่มีช่องนี้ op จะต้องหั่นผลของหน้า 50 แถวทิ้ง ⇒ `nextCursor` โกหก (ข้ามเธรดที่ 6–50 ของหน้านั้น) ◂
+  input: { contactId?: string | null; companyId?: string | null; dealId?: string | null; unmatched?: boolean; q?: string | null; page?: number; pageSize?: number } = {},
 ): Promise<{ items: ThreadListItem[]; total: number }> {
   await enter(ctx, actor, KEY_READ);
   const unmatched = input?.unmatched === true;
@@ -1966,7 +2115,8 @@ export async function listThreads(
   }
   const all = [...byThread.values()].sort((a, b) => b._at - a._at);
   const page = Math.max(1, Math.floor(Number(input?.page ?? 1)) || 1);
-  const size = 50;
+  // CRM C2.11 ▸ ขนาดหน้า 1–100 (ไม่ส่ง = 50 เหมือนเดิม) ◂
+  const size = Math.min(Math.max(1, Math.floor(Number(input?.pageSize ?? 50)) || 50), 100);
   const items = all.slice((page - 1) * size, page * size).map(({ _at, ...rest }) => {
     void _at;
     return rest;

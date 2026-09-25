@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { listTeams } from "@/lib/core/teams";
-import { bundleLabelForScopes, crmFilterTargetsOf } from "@/lib/api-keys/scopes";
+import { API_SCOPE_BUNDLES, bundleLabelForScopes, crmFilterTargetsOf } from "@/lib/api-keys/scopes";
 import { listDeliveries, listEndpoints } from "@/lib/webhooks/service";
 import { webhookEventLabel } from "@/lib/webhooks/labels";
 import { toMemberActor } from "@/lib/modules/member";
@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { createCrmApiKeyAction, createCrmWebhookAction, deleteCrmWebhookAction, revokeCrmApiKeyAction, toggleCrmWebhookAction } from "./actions";
 import { CrmApiSettings } from "./_components/CrmApiSettings";
-import type { CrmApiKeyRow, CrmApiToolRow, CrmWebhookDeliveryRow, CrmWebhookRow } from "./_components/shared";
+import type { CrmApiKeyRow, CrmApiToolRow, CrmBundleScopeRow, CrmWebhookDeliveryRow, CrmWebhookRow } from "./_components/shared";
 
 // หน้า "CRM › ตั้งค่า › API" (ใบ C1.10 · ภาพ 14 ขวา) — `/app/sys/{id}/crm/settings/api`
 // 🔴 404-not-403: ระบบไม่ใช่ CRM ของร้านนี้ · ยังไม่เปิด CRM ใหม่ · ไม่มีคีย์ `crm.api.manage` (OWNER หรือได้รับชัดเจน) = notFound()
@@ -71,6 +71,15 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
     label: opById.get(t.opId)?.label ?? "",
   }));
 
+  // CRM C2.11 ▸ ชุดสิทธิ์ 3 ชุด (`crm.readonly` ⊂ `crm.operate` ⊂ `crm.admin`) พร้อม "ของที่เพิ่มมาในเฟส C2"
+  //   (อีเมล · ลำดับการติดตาม · แจกลีด · คะแนน · ลิงก์ติดตาม · กฎอัตโนมัติ) — อ่านจากทะเบียนจริง ไม่พิมพ์มือ ◂
+  const C2_SCOPE_RE = /^crm\.(email|sequence|assignment|score|tracking|automation)\./;
+  const bundleScopes: CrmBundleScopeRow[] = API_SCOPE_BUNDLES.filter((b) => b.id.startsWith("crm.")).map((b) => ({
+    id: b.id,
+    count: b.scopes.length,
+    newInC2: b.scopes.filter((sc) => C2_SCOPE_RE.test(sc)),
+  }));
+
   const allowed = new Set(crmWebhookEvents());
   const events = [...allowed].map((value) => ({ value, label: webhookEventLabel(value) }));
   const endpointRows = endpointsAll.filter((e) => isCrmWebhookEndpoint(e.eventsJson, allowed));
@@ -107,6 +116,7 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
         teams={teams.map((t) => ({ id: t.id, name: t.name }))}
         tools={tools}
         opCount={CRM_OPS.length}
+        bundleScopes={bundleScopes}
         events={events}
         webhooks={webhooks}
         deliveries={deliveries}

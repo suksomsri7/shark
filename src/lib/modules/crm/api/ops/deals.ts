@@ -178,7 +178,10 @@ const update = defineCrmOp({
       forecastCategory: z.enum(FORECAST_CATEGORIES).optional(),
     })
     .strict(),
-  tool: { name: "crm_update_deal", hint: "Use to change a deal's value, close date, next step or tags." },
+  // CRM C2.11 ▸ B4 (ผู้ตรวจอิสระ 25 ก.ย.): ตัดคำว่า "next step" ออกจากคำใบ้ — ขั้นถัดไปมีประตูของตัวเองแล้ว
+  //   (`crm_set_next_step` → `PUT /deals/{id}/next-step`) · สองประตูที่คำใบ้พูดเรื่องเดียวกัน = โมเดลเลือกสุ่ม
+  //   ⇒ ช่อง `nextStep` ของ op นี้ยังรับได้เหมือนเดิม (ผู้เรียก REST แก้หลายช่องในคำขอเดียวได้) แต่ "ประตูที่ชัด" มีหนึ่งเดียว ◂
+  tool: { name: "crm_update_deal", hint: "Use to change a deal's value, close date, owner or tags." },
   test: "C1.10-S2.3",
   async handler({ actor, params, input }) {
     const c = crmCtxOf(actor);

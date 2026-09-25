@@ -38,6 +38,14 @@ const SECTIONS: { key: string; title: string; match: (op: ApiOp) => boolean }[] 
   { key: "activities", title: "Activities and calendar", match: (o) => o.path.startsWith("/activities") || o.path.startsWith("/calendar") },
   { key: "objects", title: "Custom objects and records", match: (o) => o.path.startsWith("/objects") },
   { key: "teams", title: "Sales teams (also at /api/v1/teams)", match: (o) => o.path.startsWith("/teams") },
+  // CRM C2.11 ▸ หมวดของชุดที่สอง — op ที่ไม่ตรงหมวดไหนเลยจะ **หายจากคู่มือเงียบ ๆ** (ตัวสร้างเดินตามรายการนี้) ◂
+  { key: "emails", title: "E-mail", match: (o) => o.path.startsWith("/emails") },
+  { key: "sequences", title: "Follow-up sequences", match: (o) => o.path.startsWith("/sequences") },
+  { key: "assignment", title: "Lead assignment", match: (o) => o.path.startsWith("/assignment") },
+  { key: "scoring", title: "Scoring", match: (o) => o.path.startsWith("/scoring") },
+  { key: "tracking", title: "Tracked links", match: (o) => o.path.startsWith("/tracking") },
+  { key: "automation", title: "Automation rules", match: (o) => o.path.startsWith("/automation") },
+  { key: "notifications", title: "Notification preferences", match: (o) => o.path.startsWith("/notifications") },
   { key: "settings", title: "Settings", match: (o) => o.path.startsWith("/settings") },
 ];
 
@@ -71,16 +79,20 @@ const ERROR_DOCS: [code: string, status: string, meaning: string][] = [
 const PLANNED: { wo: string; area: string; ops: string[] }[] = [
   { wo: "C1.11 / C2.11", area: "Contacts", ops: ["contacts.setLifecycle", "contacts.timeline", "contacts.duplicates.dismiss", "contacts.import.status"] },
   { wo: "C2.11", area: "Companies", ops: ["companies.setParent", "companies.contacts.setPrimary", "companies.contacts.setRole", "companies.import.start", "companies.importFromAccount", "companies.outstanding"] },
-  { wo: "C2.11", area: "Deals", ops: ["deals.reopen", "deals.setCollaborators", "deals.invoice", "deals.history", "deals.stale", "pipelines.create", "pipelines.update", "stages.upsert", "lostReasons.list"] },
+  { wo: "C2.11", area: "Deals", ops: ["deals.reopen", "deals.setCollaborators", "deals.invoice", "deals.history", "pipelines.create", "pipelines.update", "stages.upsert", "lostReasons.list"] },
   { wo: "C2.11", area: "Activities", ops: ["activities.update", "activities.outcomes", "activities.transcribe"] },
-  { wo: "C2.11", area: "E-mail", ops: ["emails.threads", "emails.thread", "emails.send", "emails.attach", "emails.templates.*", "emails.routing.*", "emails.sendTest", "emails.domain.status"] },
-  { wo: "C2.11", area: "Sequences, assignment and scoring", ops: ["sequences.*", "sequences.enroll", "sequences.stop", "assignment.rules.*", "assignment.simulate", "scoring.rules.*", "scoring.explain", "scoring.recompute"] },
-  { wo: "C2.11", area: "Tracking", ops: ["tracking.links.*", "tracking.settings.*", "tracking.stats", "tracking.sessions"] },
+  // CRM C2.11 ▸ ที่ส่งแล้วถูกตัดออกจากรายการนี้ · ที่เหลือคือของที่ยังไม่ทำจริง ◂
+  { wo: "C2.11", area: "E-mail", ops: ["emails.attach", "emails.sendTest", "emails.domain.status"] },
+  { wo: "C2.11", area: "Sequences and assignment", ops: ["sequences.update", "sequences.archive", "sequences.enrollments.list", "assignment.rules.update", "assignment.rules.delete", "assignment.rules.reorder"] },
+  { wo: "C2.11", area: "Scoring", ops: ["scoring.rules.update", "scoring.rules.delete", "scoring.rules.reorder", "scoring.seed", "scoring.settings.get", "scoring.settings.set"] },
+  { wo: "C2.11", area: "Tracking", ops: ["tracking.links.update", "tracking.links.delete", "tracking.web.get", "tracking.web.set", "tracking.stats", "tracking.sessions"] },
+  { wo: "C2.10 + C2.11", area: "Notification preferences", ops: ["notifications.prefs.get", "notifications.prefs.set", "notifications.templates.get", "notifications.templates.set"] },
+  { wo: "C2.11", area: "Automation", ops: ["automation.rules.get", "automation.rules.create", "automation.rules.update", "automation.rules.toggle", "automation.rules.delete", "automation.runs.list"] },
   { wo: "C3.8", area: "Custom objects", ops: ["objects.get", "records.move", "records.timeline", "records.import", "records.byParent"] },
   { wo: "C3.8", area: "Visibility, quotas and commissions", ops: ["visibility.policies.list", "visibility.policies.set", "quotas.*", "quotas.progress", "commissions.rules.*", "commissions.list", "commissions.approve", "commissions.reject", "commissions.report"] },
   { wo: "C3.5 / C3.8", area: "Portal (customer session)", ops: ["portal.invite", "portal.access.list", "portal.access.revoke", "p.me", "p.quotations.*", "p.invoices.*", "p.receipts.list", "p.documents.list", "p.requests.*", "p.contacts.*"] },
   { wo: "C3.8", area: "Reports and settings", ops: ["reports.*", "reports.export", "reports.schedule", "settings.targets.set", "settings.integrations.status", "templates.list", "templates.apply"] },
-  { wo: "C2.11 / C3.4", area: "AI tools (18 more)", ops: ["10 tools of C2.11 (e-mail, sequences, scoring)", "8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card"] },
+  { wo: "C3.4", area: "AI tools (8 more)", ops: ["8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card"] },
 ];
 
 const GLOSSARY: [string, string, string][] = [
@@ -96,6 +108,15 @@ const GLOSSARY: [string, string, string][] = [
   ["วัตถุกำหนดเอง", "custom object", "`/objects/{key}`"],
   ["รายการ (ของวัตถุ)", "record", "`/objects/{key}/records`"],
   ["ไม่รับข่าวสาร", "marketing opt-out", "`marketingOptOut`"],
+  // CRM C2.11 ▸ คำของชุดที่สอง ◂
+  ["เธรดอีเมล", "e-mail thread", "`/emails/threads`, `threadKey`"],
+  ["แม่แบบจดหมาย", "e-mail template", "`/emails/templates`, `templateId`"],
+  ["ลำดับการติดตาม", "follow-up sequence", "`/sequences`"],
+  ["การลงทะเบียน (ในลำดับ)", "enrollment", "`/sequences/enrollments/{id}/stop`, `enrollmentId`"],
+  ["กฎแจกลีด", "lead assignment rule", "`/assignment/rules`"],
+  ["คะแนนผู้ติดต่อ", "contact score", "`/contacts/{id}/score`, `score`, `band`"],
+  ["ลิงก์ติดตาม", "tracked link", "`/tracking/links`"],
+  ["กฎอัตโนมัติ", "automation rule", "`/automation/rules`"],
 ];
 
 // ── ตัวช่วย ────────────────────────────────────────────────────────────────
@@ -232,6 +253,8 @@ export function renderDocs(): string {
     //   payload เป็น id/ตัวเลข/ระดับล้วน (ไม่มีชื่อ เบอร์ อีเมล เหตุผลของลูกค้า — AUDIT-CLASS X8) ◂
     const ids = e.startsWith("crm.score.")
       ? "`contactId`, `band` (+ `from`, `to`, `ruleId` on `crm.score.changed`) — numbers and ids only"
+      : e === "crm.deal.stale" ? "`dealId`, `days` - ids and numbers only"
+      : e === "crm.activity.overdue" ? "`activityId`, related ids"
       : e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("crm.web.") ? "`contactId`, `systemId`, `visitorId`, `sessionCount`, `pageViews`, `by` (never a name, address or raw IP)" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }

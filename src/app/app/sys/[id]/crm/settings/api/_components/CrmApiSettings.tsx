@@ -8,7 +8,7 @@
 // 🔴 ไฟล์ 'use client' — import ได้เฉพาะชนิดบริสุทธิ์ (`./shared`) · action มาทาง props
 
 import { useState, useTransition } from "react";
-import { CRM_KEY_BUNDLES, type CrmActionResult, type CrmApiKeyRow, type CrmApiToolRow, type CrmKeyResult, type CrmWebhookCreateResult, type CrmWebhookDeliveryRow, type CrmWebhookRow } from "./shared";
+import { CRM_KEY_BUNDLES, type CrmActionResult, type CrmApiKeyRow, type CrmApiToolRow, type CrmBundleScopeRow, type CrmKeyResult, type CrmWebhookCreateResult, type CrmWebhookDeliveryRow, type CrmWebhookRow } from "./shared";
 
 type Props = {
   systemId: string;
@@ -16,6 +16,8 @@ type Props = {
   teams: { id: string; name: string }[];
   tools: CrmApiToolRow[];
   opCount: number;
+  /** CRM C2.11 ▸ จำนวนคีย์สิทธิ์จริงของแต่ละชุด + คีย์ที่เฟส C2 เพิ่มเข้ามา (อีเมล · ลำดับ · คะแนน · ลิงก์ · กฎ) ◂ */
+  bundleScopes: CrmBundleScopeRow[];
   events: { value: string; label: string }[];
   webhooks: CrmWebhookRow[];
   deliveries: CrmWebhookDeliveryRow[];
@@ -46,6 +48,26 @@ const CURL = [
   "# ดีลในกระดาน (ต่อขั้น)",
   'curl -sS "https://shark.in.th/api/v1/crm/deals/board" -H "Authorization: Bearer $SHARK_API_KEY"',
 ].join("\n");
+
+/**
+ * CRM C2.11 ▸ " · N สิทธิ์ (เฟส C2 เพิ่ม: อีเมล ลำดับการติดตาม คะแนน …)" ต่อท้ายคำอธิบายของชุดสิทธิ์
+ *   ตัวเลขและรายชื่อมาจาก `API_SCOPE_BUNDLES` ตัวจริง (คำนวณฝั่งเซิร์ฟเวอร์) — ไม่มีรายการที่พิมพ์มือให้เก่า ◂
+ */
+const C2_GROUP_TH: Record<string, string> = {
+  email: "อีเมล",
+  sequence: "ลำดับการติดตาม",
+  assignment: "แจกลีด",
+  score: "คะแนนลูกค้า",
+  tracking: "ลิงก์/เว็บ",
+  automation: "กฎอัตโนมัติ",
+};
+
+function scopeNote(rows: CrmBundleScopeRow[], id: string): string {
+  const row = rows.find((r) => r.id === id);
+  if (!row) return "";
+  const groups = [...new Set(row.newInC2.map((s) => s.split(".")[1] ?? ""))].map((g) => C2_GROUP_TH[g] ?? g).filter(Boolean);
+  return ` · ${row.count} สิทธิ์${groups.length > 0 ? ` (รวม ${groups.join(" · ")})` : ""}`;
+}
 
 export function CrmApiSettings(p: Props) {
   const [pending, start] = useTransition();
@@ -121,7 +143,11 @@ export function CrmApiSettings(p: Props) {
                   <input type="radio" name="bundlePick" value={b.id} checked={bundle === b.id} onChange={() => setBundle(b.id)} data-testid={`crm-api-key-bundle-${b.id}`} />
                   <span>
                     <span className="font-medium">{b.label}</span>
-                    <span className={`block ${help}`}>{b.help}</span>
+                    {/* CRM C2.11 ▸ ต่อท้ายคำอธิบายเดิมด้วยตัวเลขจริงจากทะเบียนชุดสิทธิ์ (ไม่เพิ่มแถวใหม่ — ภาพ 14 ขวาคงรูปเดิม) ◂ */}
+                    <span className={`block ${help}`}>
+                      {b.help}
+                      {scopeNote(p.bundleScopes, b.id)}
+                    </span>
                   </span>
                 </label>
               ))}

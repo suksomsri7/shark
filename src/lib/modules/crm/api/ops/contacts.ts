@@ -217,6 +217,8 @@ const assign = defineCrmOp({
   summary: "Give the contact to another owner (a user of this shop), or null for no owner.",
   label: "มอบผู้ติดต่อให้ผู้ดูแล",
   input: z.object({ userId: idStr.nullable() }).strict(),
+  // CRM C2.11 ▸ tool `crm_assign` (ข้อเสนอ) — ไม่เปิดประตูที่สอง: ใช้ op เดิมของใบ C1.10 ตัวนี้ตรง ๆ ◂
+  tool: { name: "crm_assign", hint: "Use to propose giving a contact to another owner (a user of this shop); send userId null to take the owner away." },
   test: "C1.10-X1.3",
   async handler({ actor, params, input }) {
     // AUDIT-CLASS X1: บริการโหลดผู้ติดต่อผ่านการมองเห็นก่อนตรวจผู้ดูแลปลายทาง (มองไม่เห็น = 404) · X2: ผู้ดูแลใหม่ต้องอยู่ในตัวกรองของคีย์

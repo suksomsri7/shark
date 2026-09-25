@@ -78,6 +78,8 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   //   ทั้งก้อน · ตัวบริโภคจริงคือใบ C2.8 คะแนน) · payload id/ตัวเลขล้วน
   { value: "crm.web.identified", label: "เมื่อรู้ว่าผู้เข้าชมเว็บคือลูกค้าคนไหน (CRM)" },
   // ◂ CRM C2.6
+  // CRM C2.11 ▸ `crm.deal.stale` / `crm.activity.overdue` ประกาศที่ `AUTOMATION_EVENTS` ของใบ C2.10 (spread ข้างบน) — ห้ามประกาศซ้ำที่นี่
+  //   ไม่งั้นหน้าตั้งค่าฮุคมีช่องติ๊ก 2 แถวต่อ event เดียว (บทเรียนของบอร์ดงาน · ข้อสอบ C2.11-S4.2 จับ duplicate ทั้งทะเบียน) ◂
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

@@ -229,6 +229,29 @@ const SPECS: Record<string, Spec[]> = {
     },
   ],
   // ◂ CRM C2.10
+  // CRM C2.11 ▸ REST/AI ชุดที่สอง — ไม่มีหน้าใหม่: หน้า `/crm/settings/api` ของใบ C1.10 ถูกต่อของเพิ่ม (บรรทัดช่วยของ
+  //   ชุดสิทธิ์บอกจำนวนคีย์จริง + กลุ่มที่เฟส C2 เพิ่ม · ช่องติ๊กเหตุการณ์เว็บฮุคมีของเฟส C2 ครบ · จำนวน op/เครื่องมือ AI โตขึ้น)
+  //   ⇒ ถ่าย 2 ภาพของหน้าเดิม (owner เท่านั้น — หน้านี้ต้องมีคีย์ `crm.api.manage`) ให้ผู้คุมงานเทียบกับภาพ 14 (ขวา)
+  //   🔴 บรรทัดช่วยของชุดสิทธิ์อยู่ใน **ฟอร์มสร้างคีย์** ⇒ ภาพที่สองต้องกด `crm-api-new` ก่อน (เดสก์ท็อป — แบบเดียวกับ C1.10)
+  //   🔴 ไม่เพิ่ม testid ใหม่ · ไม่แตะ `scripts/crm-ui-inventory.json` (ใบนี้ไม่เพิ่มของบนหน้าจอที่ต้องขึ้นทะเบียน)
+  "2.11": isCustomer || userKey !== "owner" ? [] : [
+    {
+      name: `crm-settings-api-c211-${userKey}`,
+      path: `${CRM_BASE}/settings/api`,
+      note: "API และ webhook หลังชุดที่สอง: จำนวน op/เครื่องมือ AI · ช่องติ๊กเหตุการณ์ของเฟส C2 (ลำดับการติดตาม · อีเมล · คะแนน · ดีลนิ่ง · งานเลยกำหนด) — เทียบภาพ 14 ขวา",
+      expect: ["[data-testid=crm-api-page]", "[data-testid=crm-api-keys]", "[data-testid=crm-api-curl]", "[data-testid=crm-api-webhooks]", "[data-testid=crm-api-hook-event-crm.email.sent]", "[data-testid=crm-api-hook-event-crm.sequence.enrolled]", "[data-testid=crm-api-hook-event-crm.deal.stale]"],
+      steps: [{ waitFor: "[data-testid=crm-api-page]", timeoutMs: 20_000 }, { wait: 800 }],
+    },
+    {
+      name: `crm-settings-api-c211-bundles-${userKey}`,
+      path: `${CRM_BASE}/settings/api`,
+      note: "ฟอร์มสร้างคีย์: บรรทัดช่วยของชุดสิทธิ์ 3 ชุด ต่อท้ายด้วย \" · N สิทธิ์ (รวม อีเมล · ลำดับการติดตาม · …)\" จากทะเบียนจริง — ผู้คุมงานเทียบความยาวบรรทัดกับภาพ 14 ขวา",
+      onlyDevice: "desktop",
+      expect: ["[data-testid=crm-api-key-form]", "[data-testid=crm-api-key-bundle-crm.readonly]", "[data-testid=crm-api-key-bundle-crm.operate]", "[data-testid=crm-api-key-bundle-crm.admin]", "[data-testid=crm-api-key-team]"],
+      steps: [{ waitFor: "[data-testid=crm-api-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-api-new]" }, { wait: 600 }],
+    },
+  ],
+  // ◂ CRM C2.11
   // CRM C2.7 ▸ ทางเดินเงิน (พิมพ์เขียว §7.2 · ภาพ 06): ช่อง "ดีล" ข้างช่องสมาชิกบนหน้าขาย · บล็อก "ดีล" บนหน้าเอกสารบัญชี ·
   //   ดีล 360 ที่มีรายการสินค้า + บิลหน้าร้านที่ผูกไว้ (บล็อก "เตรียมของ C2.7" ด้านล่างสร้างให้ แล้ว unshift สเปคที่ต้องใช้ id)
   //   ภาพแรกเป็น "ตัวคุม": ยังไม่เลือกสมาชิก ⇒ ช่องดีลต้องไม่โผล่ (ร้านที่ไม่ได้ใช้ CRM v2 เห็นหน้าขายเดิมทุกตัวอักษร)

@@ -53,7 +53,7 @@ const calendar = defineCrmOp({
   summary:
     "Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. " +
     "The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; " +
-    "for API keys `appointments` is always empty — those rows belong to the booking, clinic and school modules, so ask those modules with their own key.",
+    "for API keys `appointments` is always empty - those rows belong to the booking, clinic and school modules, so ask those modules with their own key.",
   label: "ปฏิทินกิจกรรม",
   input: z.object({ from: isoDate, to: isoDate, mine: flag }).strict(),
   test: "C1.10-X1.1",

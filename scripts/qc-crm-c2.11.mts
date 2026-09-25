@@ -24,7 +24,7 @@
 //   F13.12 · src/lib/modules/crm/api/{registry,dispatch,tools,webhook-events,config}.ts.
 //
 // ══════════════════════════════════ CONTRACT (the builder implements exactly this) ══════════════════════════════════
-//   A. THE 31 MUST OPS (id · METHOD path · action · kind · the service it calls — no second engine, the ops only call these services).
+//   A. THE 32 MUST OPS (ORACLE-EDIT 25 ก.ย.: the table always had 32 rows — "31" was an off-by-one in the prose) (id · METHOD path · action · kind · the service it calls — no second engine, the ops only call these services).
 //      Every one of them carries `test: "<a check id of THIS file>"` (F13.10), a strict input schema (additionalProperties false),
 //      every string capped, every array capped, list `take` ≤ 100, lists answer `data: { items[], nextCursor }` and accept `cursor`.
 //        emails.threads.list      GET    /emails/threads                        crm.email.read        read   emails.listThreads
@@ -183,7 +183,7 @@ const TEST_IDS = [
 const opsSrcAll = walk(OPS_DIR).map(read).join("\n");
 const BUILT = MUST.filter((o) => opsSrcAll.includes(`"${o.id}"`)).length >= 5;
 if (!FORCE && !BUILT) {
-  console.log(`⚠️  SKIPPED — WO C2.11 not built yet (fewer than 5 of the 31 MUST op ids appear in ${OPS_DIR}) (run with --force-run to exercise the fixtures, the registry facts and the cleanup)`);
+  console.log(`⚠️  SKIPPED — WO C2.11 not built yet (fewer than 5 of the 32 MUST op ids appear in ${OPS_DIR}) (run with --force-run to exercise the fixtures, the registry facts and the cleanup)`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
   process.exit(0);
 }
@@ -268,9 +268,9 @@ try {
       for (const o of OPS) { const k = `${o.method} ${o.path}`; if (seen.has(k)) bad.push(`${k} (${seen.get(k)} vs ${o.id})`); else seen.set(k, String(o.id)); }
       return bad;
     })();
-    chk("C2.11-S1.1", `the 31 MUST ops are in CRM_OPS with the exact method + path + action + kind of the contract, each carrying a \`test:\` id that really exists in this file (fitness F13.10), and no two ops of the whole registry share a METHOD path`,
+    chk("C2.11-S1.1", `the 32 MUST ops are in CRM_OPS with the exact method + path + action + kind of the contract, each carrying a \`test:\` id that really exists in this file (fitness F13.10), and no two ops of the whole registry share a METHOD path`,
       missing.length === 0 && wrong.length === 0 && noTest.length === 0 && dupPath.length === 0,
-      "31 ops · test ids · unique paths", `registry=${OPS.length} missing=${cut(missing.join(","), 260) || "-"} wrong=${cut(wrong.join(" | "), 160) || "-"} badTest=${noTest.join(",") || "-"} dupPaths=${dupPath.join(" | ") || "-"}${ABSENT}`);
+      "32 ops · test ids · unique paths", `registry=${OPS.length} missing=${cut(missing.join(","), 260) || "-"} wrong=${cut(wrong.join(" | "), 160) || "-"} badTest=${noTest.join(",") || "-"} dupPaths=${dupPath.join(" | ") || "-"}${ABSENT}`);
   }
   {
     const bad: string[] = [];
@@ -314,6 +314,9 @@ try {
   // ═════════════════════════════════════════════════════════════════════════════
   const sysSvc = (await import("@/lib/modules/system/service" as string)) as Any;
   const CRM = (await import("@/lib/modules/crm" as string).catch(() => ({}))) as Any;
+  // ORACLE-EDIT 25 ก.ย. (Fable · S3.2): this fixture created no custom object, yet S3.2 asked `crm_records_query` for `car` ⇒ NOT_FOUND was the
+  //   CORRECT answer (C1.10's 404 contract). Seed one object like the C1.10 oracle does, so the tool has something real to read.
+  const OBJ_KEY = "car";
   const mkUser = async (suffix: string) => {
     const u = await P.user.create({ data: { email: `${TAG}${suffix}@qc.invalid`, name: `QC ${suffix || "owner"} ${TAG}` } });
     USERS.push(u.id);
@@ -481,7 +484,9 @@ try {
   {
     const no = await api("POST", "/scoring/recompute", kAD, { all: true });
     const yes = await api("POST", "/scoring/recompute", kAD, { all: true, confirm: true, reason: REASON });
-    const dry = await api("POST", "/scoring/recompute", kAD, { all: true, dryRun: true });
+    // ORACLE-EDIT 25 ก.ย. (Fable): the op is DANGER (X9.1) ⇒ the core dispatcher (`src/lib/api/dispatch.ts`) answers 409 confirm_required before
+    //   the schema and before the handler for ANY body without confirm — a dry run is still a danger call; what it must prove is "writes nothing"
+    const dry = await api("POST", "/scoring/recompute", kAD, { all: true, dryRun: true, confirm: true, reason: REASON });
     chk("C2.11-S2.10", "`POST /scoring/recompute { all: true }` is a DANGER op: refused without confirm+reason (nothing recomputed), accepted with them, and a `dryRun` answers the diff without writing — the whole-shop recompute can never happen by accident through a key",
       reachable(no) && ![200, 201, 202].includes(no.status) && [200, 201, 202].includes(yes.status) && [200, 201, 202].includes(dry.status),
       "refused · 200 · 200", `noConfirm=${no.status}/${ecode(no)} confirmed=${yes.status} dryRun=${dry.status}${ABSENT}`);
@@ -512,6 +517,11 @@ try {
   // ═════════════════════════════════════════════════════════════════════════════
   console.log("\n── S3 · AI tools ──");
   const toolNames = (() => { const f = TOOLS.crmToolNames; return typeof f === "function" ? ((f() as string[]) ?? []) : []; })();
+  {
+    const OB = CRM?.objects ?? {};
+    const mk = await call(OB.create, cS, owner, { key: OBJ_KEY, label: "รถ", labelPlural: "รถ", parentType: "CONTACT", titleFieldKey: "plate", showAsTab: true });
+    if (!mk.ok) throw new Error(`S3.2 fixture: objects.create failed — ${cut(String(mk.err ?? ""), 160)}`); // ORACLE-EDIT 25 ก.ย.: FATAL, never a silent warning
+  }
   const runTool = TOOLS.runCrmTool as Any;
   const aiCtx = { tenantId: tidA, systemId: S, userId: userA, role: "OWNER", unitAccess: ["*"], permissions: {} as Record<string, unknown> };
   {
@@ -526,7 +536,7 @@ try {
   }
   {
     const results: Record<string, Any> = {};
-    for (const [name, args] of [["crm_score_explain", { contactId }], ["crm_stale_deals", {}], ["crm_activities_due", {}], ["crm_records_query", { objectKey: "car" }], ["crm_email_thread", { contactId }]] as [string, Any][]) {
+    for (const [name, args] of [["crm_score_explain", { contactId }], ["crm_stale_deals", {}], ["crm_activities_due", {}], ["crm_records_query", { objectKey: OBJ_KEY }], ["crm_email_thread", { contactId }]] as [string, Any][]) {
       results[name] = await call(runTool, aiCtx, name, args);
     }
     const bad = Object.entries(results).filter(([, r]) => !(r as Res).ok || String((r as Res).v?.mode) !== "read").map(([k, r]) => `${k}:${(r as Res).ok ? (r as Res).v?.mode : (r as Res).err}`);
@@ -747,9 +757,12 @@ try {
     const cfg = (CFG.CRM_API_CONFIG ?? {}) as Any;
     const limits = cfg.rateLimits ?? {};
     const rateKinds = present.filter((m) => { const o = byId.get(m.id) as Any; return o && o.rate === undefined && m.kind === "read"; }).map((m) => m.id);
+    // ORACLE-EDIT 25 ก.ย. (Fable · reviewer): the clause above was printed but never asserted · and the two bulk doors must NOT sit on the
+    //   60/min `report` bucket (60 × 500 recipients/min with no write budget) — they belong to `write` (or a tighter bucket), never `report`
+    const bulkOnReport = ["emails.sendBulk", "sequences.bulkEnroll"].filter((id) => String((byId.get(id) as Any)?.rate ?? "") === "report");
     chk("C2.11-X7.1", "the rate limiter of C1.10 covers the new ops: `CRM_API_CONFIG` still declares read/write/report limits on its own namespace (never the account/member/kb namespace) and the heavy new reads (stats/simulate/dry-run) are declared with an explicit `rate` bucket",
-      !!cfg.rateNs && typeof limits === "object" && Object.keys(limits).length >= 2 && String(cfg.systemType) === "CRM",
-      "config + buckets", `rateNs=${String(cfg.rateNs)} limits=${Object.keys(limits).join(",") || "-"} systemType=${String(cfg.systemType)} readOpsWithoutRate=${rateKinds.length}${ABSENT}`, "MAJOR");
+      !!cfg.rateNs && typeof limits === "object" && Object.keys(limits).length >= 2 && String(cfg.systemType) === "CRM" && rateKinds.length === 0 && bulkOnReport.length === 0,
+      "config + buckets · reads rated · bulk not on report", `rateNs=${String(cfg.rateNs)} limits=${Object.keys(limits).join(",") || "-"} systemType=${String(cfg.systemType)} readOpsWithoutRate=${rateKinds.length} bulkOnReport=${bulkOnReport.join(",") || "-"}${ABSENT}`, "MAJOR");
   }
   {
     const buckets = (await P.chatRateBucket.count({ where: { key: { contains: String((CFG.CRM_API_CONFIG ?? {}).rateNs ?? "crm") } } }).catch(() => -1)) as number;
@@ -798,9 +811,12 @@ try {
     const sendIsWrite = !sendOp || String(sendOp.kind) === "write";
     // `emails.send` must NOT grow a recipients[] / confirm field — the multi path is `emails.sendBulk` (controller ORACLE-EDIT)
     const singleOnly = !sendOp || (!/recipients/i.test(sendShape) && !/contactIds/i.test(sendShape));
+    // ORACLE-EDIT 25 ก.ย. (Fable · reviewer): the ops hard-code `confirm: true` into the service call ⇒ the dispatcher is the only gate,
+    //   which is safe only while NO danger op carries a tool (AI proposals never reach a danger op)
+    const dangerWithTool = OPS.filter((o: Any) => String(o.kind) === "danger" && o.tool).map((o: Any) => String(o.id));
     chk("C2.11-X9.1", "the danger list is declared in the registry (controller ORACLE-EDIT 24 ก.ย. 2569): `emails.sendBulk` · `sequences.bulkEnroll` · `scoring.recompute` · `emails.inbound.rotate` are all kind `danger` (so the dispatcher demands confirm + reason) while `emails.send` stays a plain `write` for ONE recipient and carries no recipients[]/contactIds[] field at all — the bulk blast has its own door, it is not a flag on the single send",
-      dangerIds.every((id) => byId.has(id)) && wrong.length === 0 && sendIsWrite && singleOnly,
-      "4 danger · send single-only", `missing=${dangerIds.filter((id) => !byId.has(id)).join(",") || "-"} wrongKind=${wrong.join(",") || "-"} sendKind=${String(sendOp?.kind ?? "-")} singleOnly=${singleOnly} shape=${cut(sendShape, 90)}${ABSENT}`);
+      dangerIds.every((id) => byId.has(id)) && wrong.length === 0 && sendIsWrite && singleOnly && dangerWithTool.length === 0,
+      "4 danger · send single-only · no danger op has a tool", `missing=${dangerIds.filter((id) => !byId.has(id)).join(",") || "-"} wrongKind=${wrong.join(",") || "-"} sendKind=${String(sendOp?.kind ?? "-")} singleOnly=${singleOnly} dangerWithTool=${dangerWithTool.join(",") || "-"} shape=${cut(sendShape, 90)}${ABSENT}`);
   }
   {
     const multiOnSingle = await api("POST", "/emails/send", kAD, { contactIds: [contactId, contactId], subject: `หลายคน ${TAG}`, body: "x" });
@@ -817,10 +833,11 @@ try {
     await api("POST", "/scoring/recompute", kAD, { all: true, confirm: true, reason: REASON });
     await api("POST", "/emails/inbound/rotate-key", kAD, { confirm: true, reason: REASON });
     const rows = ((await P.auditLog.findMany({ where: { tenantId: tidA } })) as Any[]);
-    const withReason = rows.filter((r) => j([r.before, r.after, r.action]).includes(TAG) || String(r.action).startsWith("crm."));
+    // ORACLE-EDIT 25 ก.ย. (Fable · reviewer): the old predicate accepted ANY `crm.` audit row of the run — the caller's reason was never checked
+    const withReason = rows.filter((r) => String(r.action).startsWith("crm.") && j([r.before, r.after]).includes(REASON));
     chk("C2.11-X9.3", "every danger op that really ran left an AuditLog row of the module (action starting `crm.`) and the reason the caller gave is recorded — an API caller is as accountable as a human in the UI",
-      rows.length >= before && withReason.length >= 1,
-      "audit rows", `audits ${before}→${rows.length} crmRows=${withReason.length}${ABSENT}`, "MAJOR");
+      rows.length >= before && withReason.length >= 2,
+      "≥2 audit rows carrying the caller's reason", `audits ${before}→${rows.length} rowsWithReason=${withReason.length}${ABSENT}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

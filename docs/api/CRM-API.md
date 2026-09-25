@@ -2,7 +2,7 @@
 
 <!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
-Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 63 operations (25 read, 30 write, 8 danger) · 14 AI tools.
+Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 101 operations (45 read, 43 write, 13 danger) · 23 AI tools.
 
 ## Conventions
 
@@ -116,6 +116,7 @@ Query:
 | `contacts.archive` | `POST /contacts/{id}/archive` | **danger** | `crm.contact.delete` | Archive a contact (hidden from lists; history is kept). Needs confirm: true and a reason. |
 | `contacts.convert` | `POST /contacts/{id}/convert` | write | `crm.contact.convert` | Convert a lead: optionally make them a member, link or create a company and open a deal. The Idempotency-Key makes a retry return the same result. |
 | `contacts.merge` | `POST /contacts/{id}/merge` | **danger** | `crm.contact.merge` | Merge another contact (mergeId) into this one; deals, activities, companies and records move over. Needs confirm: true and a reason. |
+| `scoring.explain` | `GET /contacts/{id}/score` | read | `crm.contact.read` | Why this contact has the score it has: the current score, the band (HOT, WARM, COLD) and the latest points that still count, each with its Thai reason, the rule behind it and when it expires. A contact this key cannot see answers 404. |
 
 #### `GET /contacts` — contacts.list
 
@@ -262,7 +263,7 @@ Body:
 
 #### `PUT /contacts/{id}/owner` — contacts.assign
 
-Give the contact to another owner (a user of this shop), or null for no owner. (มอบผู้ติดต่อให้ผู้ดูแล)
+Give the contact to another owner (a user of this shop), or null for no owner. (มอบผู้ติดต่อให้ผู้ดูแล) AI tool: `crm_assign`.
 
 Body:
 
@@ -327,6 +328,16 @@ Body:
 | `fieldChoices` | object \| null |  |  |
 | `reason` | string | yes | max 500 chars, min 5 |
 | `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /contacts/{id}/score` — scoring.explain
+
+Why this contact has the score it has: the current score, the band (HOT, WARM, COLD) and the latest points that still count, each with its Thai reason, the rule behind it and when it expires. A contact this key cannot see answers 404. (เหตุผลของคะแนนผู้ติดต่อ) AI tool: `crm_score_explain`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `limit` | integer |  | <= 50 |
 
 ### Companies
 
@@ -488,6 +499,8 @@ Body:
 | `deals.lines.set` | `PUT /deals/{id}/lines` | write | `crm.deal.lines` | Replace the product lines of a deal; the deal value is recalculated. A discount above the shop's cap waits for approval (409 approval_required). |
 | `deals.quote` | `POST /deals/{id}/quotation` | write | `crm.deal.quote` | Issue a quotation in the accounting book from the deal's lines (a repeat call returns the same document). |
 | `deals.delete` | `DELETE /deals/{id}` | **danger** | `crm.deal.delete` | Delete a deal for good. Needs confirm: true and a reason. |
+| `deals.stale.list` | `GET /deals/stale` | read | `crm.deal.read` | Open deals that have gone quiet: no activity (or no stage change) for longer than the shop's stale threshold, newest activity last. Same list and same visibility as GET /deals?stale=true - this door only fixes the filter so one call answers 'what needs a nudge'. |
+| `deals.nextStep.set` | `PUT /deals/{id}/next-step` | write | `crm.deal.update` | Write the next step of one deal (a short note of what happens next, up to 300 characters). An empty value clears it. |
 
 #### `GET /deals` — deals.list
 
@@ -654,17 +667,42 @@ Body:
 | `reason` | string | yes | max 500 chars, min 5 |
 | `confirm` | boolean `true` | yes | checked before the schema |
 
+#### `GET /deals/stale` — deals.stale.list
+
+Open deals that have gone quiet: no activity (or no stage change) for longer than the shop's stale threshold, newest activity last. Same list and same visibility as GET /deals?stale=true - this door only fixes the filter so one call answers 'what needs a nudge'. (ดีลที่นิ่ง) Uses the report rate bucket. AI tool: `crm_stale_deals`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `owner` | string |  | max 64 chars |
+| `team` | string |  | max 64 chars |
+
+#### `PUT /deals/{id}/next-step` — deals.nextStep.set
+
+Write the next step of one deal (a short note of what happens next, up to 300 characters). An empty value clears it. (ตั้งขั้นถัดไปของดีล) AI tool: `crm_set_next_step`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `nextStep` | string \| null |  | max 300 chars |
+
 ### Activities and calendar
 
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `activities.list` | `GET /activities` | read | `crm.activity.read` | List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. |
-| `calendar.list` | `GET /calendar` | read | `crm.activity.read` | Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; for API keys `appointments` is always empty — those rows belong to the booking, clinic and school modules, so ask those modules with their own key. |
+| `calendar.list` | `GET /calendar` | read | `crm.activity.read` | Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; for API keys `appointments` is always empty - those rows belong to the booking, clinic and school modules, so ask those modules with their own key. |
 | `activities.get` | `GET /activities/{id}` | read | `crm.activity.read` | One activity. |
 | `activities.log` | `POST /activities` | write | `crm.activity.create` | Log an activity on a contact, company, deal or custom record (call, meeting, task, note, ...), optionally with a follow-up task. |
 | `activities.complete` | `POST /activities/{id}/complete` | write | `crm.activity.complete` | Mark an activity or task done, optionally with its outcome. |
 | `activities.reschedule` | `PUT /activities/{id}/schedule` | write | `crm.activity.create` | Move an activity to another start/end or due time. |
 | `activities.delete` | `DELETE /activities/{id}` | **danger** | `crm.activity.delete` | Delete an activity. Needs confirm: true and a reason. |
+| `activities.due.list` | `GET /activities/due` | read | `crm.activity.read` | Tasks and appointments that are waiting: status pending (default), today, week or overdue. Same list and same visibility as GET /activities?status=... - this door only fixes the filter so one call answers 'what is due'. |
 
 #### `GET /activities` — activities.list
 
@@ -688,7 +726,7 @@ Query:
 
 #### `GET /calendar` — calendar.list
 
-Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; for API keys `appointments` is always empty — those rows belong to the booking, clinic and school modules, so ask those modules with their own key. (ปฏิทินกิจกรรม)
+Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; for API keys `appointments` is always empty - those rows belong to the booking, clinic and school modules, so ask those modules with their own key. (ปฏิทินกิจกรรม)
 
 Query:
 
@@ -765,6 +803,22 @@ Body:
 | --- | --- | --- | --- |
 | `reason` | string | yes | max 500 chars, min 5 |
 | `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /activities/due` — activities.due.list
+
+Tasks and appointments that are waiting: status pending (default), today, week or overdue. Same list and same visibility as GET /activities?status=... - this door only fixes the filter so one call answers 'what is due'. (งานที่ถึงกำหนด) AI tool: `crm_activities_due`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `status` | `pending` \| `today` \| `week` \| `overdue` \| `done` |  |  |
+| `type` | `CALL` \| `MEETING` \| `EMAIL` \| `LINE` \| `TASK` \| `NOTE` \| `CHAT` \| `SMS` \| `WHATSAPP` \| `VISIT` \| `WEB` \| `PORTAL` |  |  |
+| `scope` | `mine` \| `team` |  |  |
+| `contactId` | string |  | max 64 chars, min 1 |
+| `dealId` | string |  | max 64 chars, min 1 |
 
 ### Custom objects and records
 
@@ -909,6 +963,498 @@ Body:
 
 Archive a team (members and history are kept; it no longer appears in lists). (เก็บถาวรทีมขาย)
 
+### E-mail
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `emails.threads.list` | `GET /emails/threads` | read | `crm.email.read` | List e-mail threads this key can see (newest first): subject, snippet, direction, message count and the linked contact, company and deal. Headers and snippet only - the message bodies are in GET /emails/threads/{threadKey}. |
+| `emails.thread.get` | `GET /emails/threads/{threadKey}` | read | `crm.email.read` | One e-mail thread: every message of it this key may see, oldest first. A thread nobody of this key's scope may see answers 404. |
+| `emails.send` | `POST /emails/send` | write | `crm.email.send` | Send one e-mail to ONE contact (the address on the contact record - the API never takes a free-text recipient). Give subject and body, or a templateId with vars. The customer's marketing consent is checked first; a contact who opted out answers 409. To write to many contacts at once use POST /emails/send-bulk, which needs confirm and a reason. |
+| `emails.sendBulk` | `POST /emails/send-bulk` | **danger** | `crm.email.send` | Send the same e-mail to up to 500 contacts (one message per contact, each checked against that customer's consent). Needs confirm: true and a reason of at least 5 characters; the reason goes into the audit log. The answer reports how many were sent, queued or failed and names the contacts that were skipped with the Thai reason. |
+| `emails.schedule` | `POST /emails/schedule` | write | `crm.email.send` | Queue one e-mail to one contact for a time in the future (scheduledAt, ISO-8601). The minute job sends it; a time in the past is sent at once. |
+| `emails.draft` | `POST /emails/draft` | read | `crm.email.read` | Build a draft e-mail for one contact WITHOUT sending anything: the suggested subject, an empty body with the sender's signature, and the shop's templates to choose from. Nothing is written and no message is created - feed the result to POST /emails/send when the person agrees. |
+| `emails.userSettings.get` | `GET /emails/user-settings` | read | `crm.email.settings` | The sender settings of the person this key acts for (from name, from address, reply-to mode, copy-to and the HTML signature). null = never set. |
+| `emails.userSettings.set` | `PUT /emails/user-settings` | write | `crm.email.settings` | Change the sender settings of the person this key acts for: from name, from address, reply-to mode (SHARK, STAFF, SELF, CUSTOM) and address, copy mode (NONE, IN, OUT, BOTH) and address, and the signature (field `signature`, HTML, sanitised before it is stored). |
+| `emails.routing.get` | `GET /emails/routing` | read | `crm.email.settings` | How this shop's CRM sends and receives e-mail: mode (SHARED = the shared SHARK address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. |
+| `emails.routing.set` | `PUT /emails/routing` | write | `crm.email.settings` | Change how the shop sends e-mail: mode (SHARED or DOMAIN - DOMAIN needs a verified domain), from name and address, reply-to mode and address, copy mode and address, whether the CRM inbox is on, open and click tracking, and how many days message bodies are kept. |
+| `emails.inbound.rotate` | `POST /emails/inbound/rotate-key` | **danger** | `crm.email.settings` | Give the CRM inbox a new address. The old address stops accepting mail at once, so anything a customer replies to it is lost - needs confirm: true and a reason. The answer carries the new address; put it in the shop's forwarding rule right away. |
+| `emails.templates.list` | `GET /emails/templates` | read | `crm.email.read` | The shop's e-mail templates (name, subject, body with {{contact.firstName}}-style variables, category and whether they are active). |
+| `emails.templates.upsert` | `PUT /emails/templates` | write | `crm.email.settings` | Create an e-mail template, or change one by sending its id. The body is sanitised before it is stored; two templates cannot share a name. |
+| `emails.templates.delete` | `DELETE /emails/templates/{id}` | **danger** | `crm.email.settings` | Delete an e-mail template. A sequence step or an e-mail that is queued for later and points at it stops working, so this needs confirm: true and a reason. The answer reports what still used it as inUse: { sequences, scheduled } - the same counts land in the audit log. |
+
+#### `GET /emails/threads` — emails.threads.list
+
+List e-mail threads this key can see (newest first): subject, snippet, direction, message count and the linked contact, company and deal. Headers and snippet only - the message bodies are in GET /emails/threads/{threadKey}. (รายการเธรดอีเมล) AI tool: `crm_email_thread`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+| `contactId` | string |  | max 64 chars, min 1 |
+| `companyId` | string |  | max 64 chars, min 1 |
+| `dealId` | string |  | max 64 chars, min 1 |
+| `unmatched` | `0` \| `1` \| `true` \| `false` |  |  |
+| `q` | string |  | max 120 chars |
+
+#### `GET /emails/threads/{threadKey}` — emails.thread.get
+
+One e-mail thread: every message of it this key may see, oldest first. A thread nobody of this key's scope may see answers 404. (เธรดอีเมล)
+
+#### `POST /emails/send` — emails.send
+
+Send one e-mail to ONE contact (the address on the contact record - the API never takes a free-text recipient). Give subject and body, or a templateId with vars. The customer's marketing consent is checked first; a contact who opted out answers 409. To write to many contacts at once use POST /emails/send-bulk, which needs confirm and a reason. (ส่งอีเมล) AI tool: `crm_send_email`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `subject` | string |  | max 300 chars, min 1 |
+| `body` | string |  | max 512000 chars |
+| `bodyHtml` | string |  | max 512000 chars |
+| `templateId` | string \| null |  | max 64 chars, min 1 |
+| `vars` | object |  |  |
+| `dealId` | string \| null |  | max 64 chars, min 1 |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `replyToEmailId` | string \| null |  | max 64 chars, min 1 |
+
+#### `POST /emails/send-bulk` — emails.sendBulk
+
+Send the same e-mail to up to 500 contacts (one message per contact, each checked against that customer's consent). Needs confirm: true and a reason of at least 5 characters; the reason goes into the audit log. The answer reports how many were sent, queued or failed and names the contacts that were skipped with the Thai reason. (ส่งอีเมลเป็นกลุ่ม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactIds` | string[] | yes | max 500 items |
+| `subject` | string |  | max 300 chars, min 1 |
+| `body` | string |  | max 512000 chars |
+| `bodyHtml` | string |  | max 512000 chars |
+| `templateId` | string \| null |  | max 64 chars, min 1 |
+| `vars` | object |  |  |
+| `scheduledAt` | string |  | max 40 chars |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `POST /emails/schedule` — emails.schedule
+
+Queue one e-mail to one contact for a time in the future (scheduledAt, ISO-8601). The minute job sends it; a time in the past is sent at once. (ตั้งเวลาส่งอีเมล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `subject` | string |  | max 300 chars, min 1 |
+| `body` | string |  | max 512000 chars |
+| `bodyHtml` | string |  | max 512000 chars |
+| `templateId` | string \| null |  | max 64 chars, min 1 |
+| `vars` | object |  |  |
+| `dealId` | string \| null |  | max 64 chars, min 1 |
+| `companyId` | string \| null |  | max 64 chars, min 1 |
+| `replyToEmailId` | string \| null |  | max 64 chars, min 1 |
+| `scheduledAt` | string | yes | max 40 chars |
+
+#### `POST /emails/draft` — emails.draft
+
+Build a draft e-mail for one contact WITHOUT sending anything: the suggested subject, an empty body with the sender's signature, and the shop's templates to choose from. Nothing is written and no message is created - feed the result to POST /emails/send when the person agrees. (ร่างอีเมล) AI tool: `crm_draft_email`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `goal` | string |  | max 300 chars |
+| `templateId` | string \| null |  | max 64 chars, min 1 |
+
+#### `GET /emails/user-settings` — emails.userSettings.get
+
+The sender settings of the person this key acts for (from name, from address, reply-to mode, copy-to and the HTML signature). null = never set. (ตั้งค่าผู้ส่งรายคน)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `userId` | string |  | max 64 chars, min 1 |
+
+#### `PUT /emails/user-settings` — emails.userSettings.set
+
+Change the sender settings of the person this key acts for: from name, from address, reply-to mode (SHARK, STAFF, SELF, CUSTOM) and address, copy mode (NONE, IN, OUT, BOTH) and address, and the signature (field `signature`, HTML, sanitised before it is stored). (แก้ตั้งค่าผู้ส่งรายคน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `userId` | string |  | max 64 chars, min 1 |
+| `fromName` | string \| null |  | max 120 chars |
+| `fromAddr` | string \| null |  | max 200 chars |
+| `replyToMode` | `SHARK` \| `STAFF` \| `SELF` \| `CUSTOM` |  |  |
+| `replyToAddr` | string \| null |  | max 200 chars |
+| `copyMode` | `NONE` \| `IN` \| `OUT` \| `BOTH` |  |  |
+| `copyToAddr` | string \| null |  | max 200 chars |
+| `signature` | string \| null |  | max 4000 chars |
+| `signatureHtml` | string \| null |  | max 4000 chars |
+
+#### `GET /emails/routing` — emails.routing.get
+
+How this shop's CRM sends and receives e-mail: mode (SHARED = the shared SHARK address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. (ที่อยู่ส่ง/รับอีเมลของร้าน)
+
+#### `PUT /emails/routing` — emails.routing.set
+
+Change how the shop sends e-mail: mode (SHARED or DOMAIN - DOMAIN needs a verified domain), from name and address, reply-to mode and address, copy mode and address, whether the CRM inbox is on, open and click tracking, and how many days message bodies are kept. (แก้ที่อยู่ส่ง/รับอีเมลของร้าน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `mode` | `SHARED` \| `SHARK` \| `DOMAIN` |  |  |
+| `fromName` | string \| null |  | max 120 chars |
+| `fromAddr` | string \| null |  | max 200 chars |
+| `replyToMode` | `SHARK` \| `STAFF` \| `SELF` \| `CUSTOM` |  |  |
+| `replyToAddr` | string \| null |  | max 200 chars |
+| `copyMode` | `NONE` \| `IN` \| `OUT` \| `BOTH` |  |  |
+| `copyToAddr` | string \| null |  | max 200 chars |
+| `inboundEnabled` | boolean |  |  |
+| `trackOpens` | boolean |  |  |
+| `trackClicks` | boolean |  |  |
+| `allowUserOverride` | boolean |  |  |
+| `strangerToLead` | boolean |  |  |
+| `retentionDays` | integer |  | <= 3650 |
+
+#### `POST /emails/inbound/rotate-key` — emails.inbound.rotate
+
+Give the CRM inbox a new address. The old address stops accepting mail at once, so anything a customer replies to it is lost - needs confirm: true and a reason. The answer carries the new address; put it in the shop's forwarding rule right away. (หมุนกุญแจกล่องอีเมล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /emails/templates` — emails.templates.list
+
+The shop's e-mail templates (name, subject, body with {{contact.firstName}}-style variables, category and whether they are active). (รายการแม่แบบอีเมล)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `PUT /emails/templates` — emails.templates.upsert
+
+Create an e-mail template, or change one by sending its id. The body is sanitised before it is stored; two templates cannot share a name. (บันทึกแม่แบบอีเมล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `id` | string \| null |  | max 64 chars, min 1 |
+| `name` | string | yes | max 120 chars, min 1 |
+| `subject` | string | yes | max 300 chars, min 1 |
+| `body` | string |  | max 512000 chars |
+| `bodyHtml` | string |  | max 512000 chars |
+| `category` | string \| null |  | max 60 chars |
+| `active` | boolean |  |  |
+
+#### `DELETE /emails/templates/{id}` — emails.templates.delete
+
+Delete an e-mail template. A sequence step or an e-mail that is queued for later and points at it stops working, so this needs confirm: true and a reason. The answer reports what still used it as inUse: { sequences, scheduled } - the same counts land in the audit log. (ลบแม่แบบอีเมล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Follow-up sequences
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `sequences.list` | `GET /sequences` | read | `crm.sequence.manage` | List the shop's follow-up sequences: name, live version, whether they accept new people, how many steps and how many contacts are in each state. |
+| `sequences.get` | `GET /sequences/{id}` | read | `crm.sequence.manage` | One sequence with its steps in order (e-mail, LINE, SMS, task and wait steps) and its sending rules. |
+| `sequences.create` | `POST /sequences` | write | `crm.sequence.manage` | Create a follow-up sequence (version 1) with its steps: EMAIL, LINE, SMS, TASK and WAIT. Sending rules: business days only, a send window in Thai time, a cap on how many contacts may walk it at once, and which outcomes stop it. |
+| `sequences.enroll` | `POST /sequences/{id}/enroll` | write | `crm.sequence.enroll` | Put one contact into this sequence, optionally tied to a deal. A contact who asked for no marketing is skipped (the answer says so). A contact who already walks this sequence answers 409 unless replace is true, which stops the old run first. |
+| `sequences.bulkEnroll` | `POST /sequences/{id}/bulk-enroll` | **danger** | `crm.sequence.enroll` | Put up to 500 contacts into this sequence in one call. Needs confirm: true and a reason - the messages that go out cannot be recalled. Contacts who opted out or are already in the sequence are reported back, not silently dropped. |
+| `sequences.stop` | `POST /sequences/enrollments/{id}/stop` | write | `crm.sequence.enroll` | Stop one enrollment (the id of the enrollment, not of the sequence). The remaining steps are cancelled; the history of what was sent is kept. |
+| `sequences.stats` | `GET /sequences/{id}/stats` | read | `crm.sequence.manage` | Per-step counters of one sequence version: sent, skipped, failed and how many contacts sit on each step, plus totals per state. |
+
+#### `GET /sequences` — sequences.list
+
+List the shop's follow-up sequences: name, live version, whether they accept new people, how many steps and how many contacts are in each state. (รายการลำดับการติดตาม)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `GET /sequences/{id}` — sequences.get
+
+One sequence with its steps in order (e-mail, LINE, SMS, task and wait steps) and its sending rules. (ลำดับการติดตาม)
+
+#### `POST /sequences` — sequences.create
+
+Create a follow-up sequence (version 1) with its steps: EMAIL, LINE, SMS, TASK and WAIT. Sending rules: business days only, a send window in Thai time, a cap on how many contacts may walk it at once, and which outcomes stop it. (สร้างลำดับการติดตาม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 120 chars, min 1 |
+| `description` | string \| null |  | max 500 chars |
+| `stopOnReply` | boolean |  |  |
+| `stopOnWon` | boolean |  |  |
+| `stopOnLost` | boolean |  |  |
+| `businessDaysOnly` | boolean |  |  |
+| `sendWindow` | object \| null |  |  |
+| `maxActive` | integer \| null |  | <= 100000 |
+| `active` | boolean |  |  |
+| `steps` | object[] | yes | max 50 items |
+
+#### `POST /sequences/{id}/enroll` — sequences.enroll
+
+Put one contact into this sequence, optionally tied to a deal. A contact who asked for no marketing is skipped (the answer says so). A contact who already walks this sequence answers 409 unless replace is true, which stops the old run first. (ใส่ผู้ติดต่อเข้าลำดับ) AI tool: `crm_enroll_sequence`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `dealId` | string \| null |  | max 64 chars, min 1 |
+| `replace` | boolean |  |  |
+
+#### `POST /sequences/{id}/bulk-enroll` — sequences.bulkEnroll
+
+Put up to 500 contacts into this sequence in one call. Needs confirm: true and a reason - the messages that go out cannot be recalled. Contacts who opted out or are already in the sequence are reported back, not silently dropped. (ใส่ผู้ติดต่อเข้าลำดับเป็นกลุ่ม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactIds` | string[] | yes | max 500 items |
+| `replace` | boolean |  |  |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `POST /sequences/enrollments/{id}/stop` — sequences.stop
+
+Stop one enrollment (the id of the enrollment, not of the sequence). The remaining steps are cancelled; the history of what was sent is kept. (หยุดลำดับของผู้ติดต่อ)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string \| null |  | max 500 chars |
+
+#### `GET /sequences/{id}/stats` — sequences.stats
+
+Per-step counters of one sequence version: sent, skipped, failed and how many contacts sit on each step, plus totals per state. (สถิติลำดับการติดตาม) Uses the report rate bucket.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `version` | integer |  | <= 1000 |
+
+### Lead assignment
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `assignment.rules.list` | `GET /assignment/rules` | read | `crm.assignment.manage` | The shop's lead assignment rules in the order they are tried: mode, the people or team they hand to, their conditions and the open-work cap. |
+| `assignment.rules.create` | `POST /assignment/rules` | write | `crm.assignment.manage` | Add a lead assignment rule at the end of the order. mode FIXED (always these people), ROUND_ROBIN (take turns), TEAM_LEAD (the team's lead) or LEAST_OPEN (whoever has the fewest open deals). Conditions decide which leads the rule catches. |
+| `assignment.simulate` | `POST /assignment/simulate` | read | `crm.assignment.manage` | Dry run: for each draft lead in rows[], answer who would get it, through which rule and why. Writes nothing at all - no contact, no move of the round-robin cursor - so it is safe to call before importing a list. At most 200 rows per call. |
+
+#### `GET /assignment/rules` — assignment.rules.list
+
+The shop's lead assignment rules in the order they are tried: mode, the people or team they hand to, their conditions and the open-work cap. (รายการกฎแจกลีด)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `POST /assignment/rules` — assignment.rules.create
+
+Add a lead assignment rule at the end of the order. mode FIXED (always these people), ROUND_ROBIN (take turns), TEAM_LEAD (the team's lead) or LEAST_OPEN (whoever has the fewest open deals). Conditions decide which leads the rule catches. (เพิ่มกฎแจกลีด)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 120 chars, min 1 |
+| `mode` | `FIXED` \| `ROUND_ROBIN` \| `TEAM_LEAD` \| `LEAST_OPEN` | yes |  |
+| `userIds` | string[] |  | max 100 items |
+| `teamId` | string \| null |  | max 64 chars, min 1 |
+| `maxOpenPerUser` | integer \| null |  | <= 10000 |
+| `conditions` | object \| null |  |  |
+| `active` | boolean |  |  |
+
+#### `POST /assignment/simulate` — assignment.simulate
+
+Dry run: for each draft lead in rows[], answer who would get it, through which rule and why. Writes nothing at all - no contact, no move of the round-robin cursor - so it is safe to call before importing a list. At most 200 rows per call. (ทดลองแจกลีด) Uses the report rate bucket.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `rows` | object[] | yes | max 200 items |
+
+### Scoring
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `scoring.rules.list` | `GET /scoring/rules` | read | `crm.score.manage` | The shop's scoring rules in order: which event gives how many points, for how long they count, the per-day cap and whether the rule is on. |
+| `scoring.rules.create` | `POST /scoring/rules` | write | `crm.score.manage` | Add a scoring rule: the event that earns the points (only events that really reach the scorer can be chosen), the points (-1000..1000), how many days a point stays alive, a cap per contact per day and optional conditions. |
+| `scoring.recompute` | `POST /scoring/recompute` | **danger** | `crm.score.manage` | Add the points up again from the log: for one contact (contactId) or for the whole shop (all: true). Needs confirm: true and a reason of at least 5 characters. Send dryRun: true (together with confirm) to see what would change without writing. |
+
+#### `GET /scoring/rules` — scoring.rules.list
+
+The shop's scoring rules in order: which event gives how many points, for how long they count, the per-day cap and whether the rule is on. (รายการกฎคะแนน)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `POST /scoring/rules` — scoring.rules.create
+
+Add a scoring rule: the event that earns the points (only events that really reach the scorer can be chosen), the points (-1000..1000), how many days a point stays alive, a cap per contact per day and optional conditions. (เพิ่มกฎคะแนน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 120 chars, min 1 |
+| `event` | `forms.submission.received` \| `chat.message.received` \| `crm.activity.completed` \| `crm.email.opened` \| `crm.email.clicked` \| `crm.email.received` \| `crm.web.identified` \| `crm.deal.quotation.issued` \| `crm.contact.inactive` | yes |  |
+| `points` | integer | yes | <= 1000 |
+| `conditions` | object \| null |  |  |
+| `expiresDays` | integer \| null |  | <= 3650 |
+| `maxPerDay` | integer \| null |  | <= 1000 |
+| `active` | boolean |  |  |
+
+#### `POST /scoring/recompute` — scoring.recompute
+
+Add the points up again from the log: for one contact (contactId) or for the whole shop (all: true). Needs confirm: true and a reason of at least 5 characters. Send dryRun: true (together with confirm) to see what would change without writing. (คิดคะแนนใหม่) Uses the report rate bucket.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string |  | max 64 chars, min 1 |
+| `all` | boolean |  |  |
+| `dryRun` | boolean |  |  |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Tracked links
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `tracking.links.list` | `GET /tracking/links` | read | `crm.tracking.manage` | The shop's tracked short links (newest first): code, destination, name, channel, whether it is on, total clicks and unique clicks. |
+| `tracking.links.create` | `POST /tracking/links` | write | `crm.tracking.manage` | Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. |
+| `tracking.links.stats` | `GET /tracking/links/{id}/stats` | read | `crm.tracking.manage` | Clicks of one tracked link: the totals and the clicks per day (Thai calendar day) over the last `days` days (1-365, 30 by default). |
+
+#### `GET /tracking/links` — tracking.links.list
+
+The shop's tracked short links (newest first): code, destination, name, channel, whether it is on, total clicks and unique clicks. (รายการลิงก์ติดตาม)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `POST /tracking/links` — tracking.links.create
+
+Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. (สร้างลิงก์ติดตาม)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `url` | string | yes | max 500 chars, http(s) URL |
+| `name` | string \| null |  | max 120 chars |
+| `label` | string \| null |  | max 120 chars |
+| `channel` | string \| null |  | max 40 chars |
+| `code` | string \| null |  | max 32 chars |
+
+#### `GET /tracking/links/{id}/stats` — tracking.links.stats
+
+Clicks of one tracked link: the totals and the clicks per day (Thai calendar day) over the last `days` days (1-365, 30 by default). (สถิติลิงก์ติดตาม) Uses the report rate bucket.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `days` | integer |  | <= 365 |
+
+### Automation rules
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `automation.rules.list` | `GET /automation/rules` | read | `crm.automation.manage` | The CRM automation rules of this system: name, whether they are on, their trigger and conditions, the steps they run, how many times they ran in total and this month, and when they last ran. |
+| `automation.dryRun` | `POST /automation/dry-run` | read | `crm.automation.manage` | Try a draft rule against real data of the last `days` days (1-90, 30 by default) and answer which records it would have caught. Writes nothing: no run row, no event, no message - so it is safe to call before switching a rule on. |
+
+#### `GET /automation/rules` — automation.rules.list
+
+The CRM automation rules of this system: name, whether they are on, their trigger and conditions, the steps they run, how many times they ran in total and this month, and when they last ran. (รายการกฎอัตโนมัติ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `POST /automation/dry-run` — automation.dryRun
+
+Try a draft rule against real data of the last `days` days (1-90, 30 by default) and answer which records it would have caught. Writes nothing: no run row, no event, no message - so it is safe to call before switching a rule on. (ทดลองกฎอัตโนมัติ) Uses the report rate bucket.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `name` | string | yes | max 120 chars, min 1 |
+| `trigger` | object | yes |  |
+| `conditions` | object \| null |  |  |
+| `actions` | object[] | yes | max 20 items |
+| `pipelineId` | string \| null |  | max 64 chars, min 1 |
+| `days` | integer |  | <= 90 |
+
+### Notification preferences
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `notifications.prefs.get` | `GET /notifications/prefs` | read | `crm.contact.read` | The CRM notification settings of the person this key acts for: which of the 10 CRM subjects reach them on which channel (in-app, push, e-mail), their own quiet hours (null = the shop's), and the shop defaults they override. A key only ever sees its own owner's settings. |
+| `notifications.prefs.set` | `PUT /notifications/prefs` | write | `crm.contact.read` | Change the CRM notification settings of the person this key acts for: switch a subject on or off per channel (IN_APP, PUSH, EMAIL) and set or clear their own quiet hours (quietHours: null = follow the shop). Only the key owner's own settings can be changed - there is no userId field, so one key can never mute a colleague. |
+
+#### `GET /notifications/prefs` — notifications.prefs.get
+
+The CRM notification settings of the person this key acts for: which of the 10 CRM subjects reach them on which channel (in-app, push, e-mail), their own quiet hours (null = the shop's), and the shop defaults they override. A key only ever sees its own owner's settings. (การแจ้งเตือนของฉัน)
+
+#### `PUT /notifications/prefs` — notifications.prefs.set
+
+Change the CRM notification settings of the person this key acts for: switch a subject on or off per channel (IN_APP, PUSH, EMAIL) and set or clear their own quiet hours (quietHours: null = follow the shop). Only the key owner's own settings can be changed - there is no userId field, so one key can never mute a colleague. (แก้การแจ้งเตือนของฉัน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `notifications` | object |  |  |
+| `quietHours` | object \| null |  |  |
+
 ### Settings
 
 | Operation | Method and path | Kind | Scope | Summary |
@@ -940,6 +1486,7 @@ The in-app assistant and outside agents (`POST https://shark.in.th/api/v1/ai/too
 | `crm_search` | read (runs at once) | `search` | `crm.contact.read` |
 | `crm_contact_360` | read (runs at once) | `contacts.get` | `crm.contact.read` |
 | `crm_create_lead` | write (proposal) | `contacts.create` | `crm.contact.create` |
+| `crm_assign` | write (proposal) | `contacts.assign` | `crm.contact.update` |
 | `crm_convert` | write (proposal) | `contacts.convert` | `crm.contact.convert` |
 | `crm_company_360` | read (runs at once) | `companies.get` | `crm.company.read` |
 | `crm_create_company` | write (proposal) | `companies.create` | `crm.company.create` |
@@ -951,6 +1498,14 @@ The in-app assistant and outside agents (`POST https://shark.in.th/api/v1/ai/too
 | `crm_move_deal` | write (proposal) | `deals.move` | `crm.deal.move` |
 | `crm_log_activity` | write (proposal) | `activities.log` | `crm.activity.create` |
 | `crm_records_query` | read (runs at once) | `records.list` | `crm.record.read` |
+| `crm_email_thread` | read (runs at once) | `emails.threads.list` | `crm.email.read` |
+| `crm_send_email` | write (proposal) | `emails.send` | `crm.email.send` |
+| `crm_draft_email` | read (runs at once) | `emails.draft` | `crm.email.read` |
+| `crm_enroll_sequence` | write (proposal) | `sequences.enroll` | `crm.sequence.enroll` |
+| `crm_score_explain` | read (runs at once) | `scoring.explain` | `crm.contact.read` |
+| `crm_stale_deals` | read (runs at once) | `deals.stale.list` | `crm.deal.read` |
+| `crm_activities_due` | read (runs at once) | `activities.due.list` | `crm.activity.read` |
+| `crm_set_next_step` | write (proposal) | `deals.nextStep.set` | `crm.deal.update` |
 
 `crm_create_lead` keeps its old name. On a shop that still runs the previous CRM screens it proposes the old `crm_create_lead` action (name, phone, e-mail) exactly as before.
 
@@ -984,7 +1539,7 @@ Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps
 | `crm.score.changed` | `contactId`, `band` (+ `from`, `to`, `ruleId` on `crm.score.changed`) — numbers and ids only |
 | `crm.score.threshold` | `contactId`, `band` (+ `from`, `to`, `ruleId` on `crm.score.changed`) — numbers and ids only |
 | `crm.deal.quotation.issued` | `dealId`, related ids |
-| `crm.deal.stale` | `dealId`, related ids |
+| `crm.deal.stale` | `dealId`, `days` - ids and numbers only |
 | `crm.activity.overdue` | `activityId`, related ids |
 | `crm.sequence.enrolled` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
 | `crm.sequence.finished` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
@@ -1020,16 +1575,19 @@ These operations are designed but not registered yet; calling them answers 404. 
 | --- | --- | --- |
 | C1.11 / C2.11 | Contacts | `contacts.setLifecycle`, `contacts.timeline`, `contacts.duplicates.dismiss`, `contacts.import.status` |
 | C2.11 | Companies | `companies.setParent`, `companies.contacts.setPrimary`, `companies.contacts.setRole`, `companies.import.start`, `companies.importFromAccount`, `companies.outstanding` |
-| C2.11 | Deals | `deals.reopen`, `deals.setCollaborators`, `deals.invoice`, `deals.history`, `deals.stale`, `pipelines.create`, `pipelines.update`, `stages.upsert`, `lostReasons.list` |
+| C2.11 | Deals | `deals.reopen`, `deals.setCollaborators`, `deals.invoice`, `deals.history`, `pipelines.create`, `pipelines.update`, `stages.upsert`, `lostReasons.list` |
 | C2.11 | Activities | `activities.update`, `activities.outcomes`, `activities.transcribe` |
-| C2.11 | E-mail | `emails.threads`, `emails.thread`, `emails.send`, `emails.attach`, `emails.templates.*`, `emails.routing.*`, `emails.sendTest`, `emails.domain.status` |
-| C2.11 | Sequences, assignment and scoring | `sequences.*`, `sequences.enroll`, `sequences.stop`, `assignment.rules.*`, `assignment.simulate`, `scoring.rules.*`, `scoring.explain`, `scoring.recompute` |
-| C2.11 | Tracking | `tracking.links.*`, `tracking.settings.*`, `tracking.stats`, `tracking.sessions` |
+| C2.11 | E-mail | `emails.attach`, `emails.sendTest`, `emails.domain.status` |
+| C2.11 | Sequences and assignment | `sequences.update`, `sequences.archive`, `sequences.enrollments.list`, `assignment.rules.update`, `assignment.rules.delete`, `assignment.rules.reorder` |
+| C2.11 | Scoring | `scoring.rules.update`, `scoring.rules.delete`, `scoring.rules.reorder`, `scoring.seed`, `scoring.settings.get`, `scoring.settings.set` |
+| C2.11 | Tracking | `tracking.links.update`, `tracking.links.delete`, `tracking.web.get`, `tracking.web.set`, `tracking.stats`, `tracking.sessions` |
+| C2.10 + C2.11 | Notification preferences | `notifications.templates.get`, `notifications.templates.set` |
+| C2.11 | Automation | `automation.rules.get`, `automation.rules.create`, `automation.rules.update`, `automation.rules.toggle`, `automation.rules.delete`, `automation.runs.list` |
 | C3.8 | Custom objects | `objects.get`, `records.move`, `records.timeline`, `records.import`, `records.byParent` |
 | C3.8 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `quotas.*`, `quotas.progress`, `commissions.rules.*`, `commissions.list`, `commissions.approve`, `commissions.reject`, `commissions.report` |
 | C3.5 / C3.8 | Portal (customer session) | `portal.invite`, `portal.access.list`, `portal.access.revoke`, `p.me`, `p.quotations.*`, `p.invoices.*`, `p.receipts.list`, `p.documents.list`, `p.requests.*`, `p.contacts.*` |
 | C3.8 | Reports and settings | `reports.*`, `reports.export`, `reports.schedule`, `settings.targets.set`, `settings.integrations.status`, `templates.list`, `templates.apply` |
-| C2.11 / C3.4 | AI tools (18 more) | `10 tools of C2.11 (e-mail, sequences, scoring)`, `8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card` |
+| C3.4 | AI tools (8 more) | `8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card` |
 
 ## Glossary (Thai <-> English)
 
@@ -1047,3 +1605,11 @@ These operations are designed but not registered yet; calling them answers 404. 
 | วัตถุกำหนดเอง | custom object | `/objects/{key}` |
 | รายการ (ของวัตถุ) | record | `/objects/{key}/records` |
 | ไม่รับข่าวสาร | marketing opt-out | `marketingOptOut` |
+| เธรดอีเมล | e-mail thread | `/emails/threads`, `threadKey` |
+| แม่แบบจดหมาย | e-mail template | `/emails/templates`, `templateId` |
+| ลำดับการติดตาม | follow-up sequence | `/sequences` |
+| การลงทะเบียน (ในลำดับ) | enrollment | `/sequences/enrollments/{id}/stop`, `enrollmentId` |
+| กฎแจกลีด | lead assignment rule | `/assignment/rules` |
+| คะแนนผู้ติดต่อ | contact score | `/contacts/{id}/score`, `score`, `band` |
+| ลิงก์ติดตาม | tracked link | `/tracking/links` |
+| กฎอัตโนมัติ | automation rule | `/automation/rules` |

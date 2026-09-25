@@ -1154,6 +1154,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      + สะพานคะแนนใต้ compose ⇒ กฎเริ่มต้น "ได้รับใบเสนอราคา" (+8) ได้แต้มครั้งเดียวต่อ (ดีล, เอกสาร)
   "crm.deal.quotation.issued": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
   // ◂ CRM C2.8
+  // CRM C2.11 ▸ `crm.deal.stale` / `crm.activity.overdue` ประกาศ consumer ไว้ที่บล็อก C2.10 ข้างล่างที่เดียว (ใบนั้นเป็นเจ้าของทั้งตัวยิงและ
+  //   consumer) — คีย์ซ้ำในอ็อบเจกต์เดียวกัน = ตัวหลังชนะเงียบ ๆ ⇒ ใบนี้ **ไม่ประกาศซ้ำ** เพียงเปิดให้ร้านสมัครเว็บฮุคได้ ◂
   // CRM C2.10 ▸ ดีลนิ่ง + งานติดตามเลยกำหนด (ยิงจากงานเบื้องหลัง — `crm/deals.ts#markStale` · `crm/activities.ts#overdueSweep`)
   //   key `crm.deal.stale#<days>#<dealId>#<จุดยึด ISO>` · `crm.activity.overdue#<activityId>` (คีย์เดียวกับตัวตามเก็บของ C2.1)
   //   งานหลักไม่มีอะไรต้องทำ: การแจ้งเตือนคนเกิดที่ตัวงานเองแล้ว (สรุปรายวันของ `markStale`) และการทำงานของ
