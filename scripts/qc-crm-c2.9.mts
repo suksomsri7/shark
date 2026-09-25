@@ -402,7 +402,10 @@ try {
       id: "S2", name: "rental", type: "rental.returned", faultRollsBack: true, idField: "bookingId", table: "RentalBooking",
       preState: "PICKED_UP", postState: "RETURNED", title: /เช่า|คืน/,
       mk: async (tid, unitId, par, phone) => {
-        const r = await call(M.rental.createBooking, { tenantId: tid, unitId }, { assetId: par.asset, customerName: pii(`ผู้เช่า ${TAG}-${nx()}`), customerPhone: phone, startDate: new Date(Date.now() - 86_400_000), endDate: new Date(Date.now() + 86_400_000) });
+        // ORACLE-EDIT C2.9-X4.1/X4.2 (controller · 25 Sep): each rental fixture gets its OWN asset — a fault-rolled-back booking correctly stays PICKED_UP and
+      //   would otherwise occupy the shared asset for every later fixture ("ช่วงเวลานี้สินทรัพย์ถูกจองแล้ว")
+      const ownAsset = await call(M.rental.createAsset, { tenantId: tid, unitId }, { name: `จักรยาน ${TAG}-${nx()}`, dailyRateSatang: 10_000 });
+      const r = await call(M.rental.createBooking, { tenantId: tid, unitId }, { assetId: (ownAsset.v?.id as string) ?? par.asset, customerName: pii(`ผู้เช่า ${TAG}-${nx()}`), customerPhone: phone, startDate: new Date(Date.now() - 86_400_000), endDate: new Date(Date.now() + 86_400_000) });
         const id = (r.v?.id as string) ?? NONE;
         if (!r.ok) note(`rental.createBooking: ${r.err}`);
         if (id !== NONE) await call(M.rental.pickUp, { tenantId: tid, unitId }, id);
@@ -424,11 +427,15 @@ try {
       id: "S4", name: "hotel", type: "hotel.checked_out", faultRollsBack: true, idField: "reservationId", table: "HotelReservation",
       preState: "CHECKED_IN", postState: "CHECKED_OUT", title: /เข้าพัก|ห้อง/,
       mk: async (tid, unitId, par, phone) => {
-        const r = await call(M.hotel.createReservation, { tenantId: tid, unitId, roomTypeId: par.roomType, checkInDate: ymd(0), checkOutDate: ymd(1), guestName: pii(`ผู้เข้าพัก ${TAG}-${nx()}`), guestPhone: phone });
+        // ORACLE-EDIT C2.9-X4.1/X4.2 (controller · 25 Sep): own room type + room per fixture (a rolled-back CHECKED_IN row keeps the shared room occupied)
+      const ownRt = await call(M.hotel.createRoomType, { tenantId: tid, unitId, name: `ห้องทดสอบ ${TAG}-${nx()}`, capacity: 2, baseRateSatang: 0 });
+      const ownRoom = ownRt.ok ? await call(M.hotel.createRoom, { tenantId: tid, unitId, roomTypeId: ownRt.v?.id, number: `${TAG.slice(-4)}${nx()}` }) : { ok: false, v: undefined };
+      const roomTypeId = (ownRt.v?.id as string) ?? par.roomType; const roomId = ((ownRoom as Any).v?.id as string) ?? par.room;
+      const r = await call(M.hotel.createReservation, { tenantId: tid, unitId, roomTypeId, checkInDate: ymd(0), checkOutDate: ymd(1), guestName: pii(`ผู้เข้าพัก ${TAG}-${nx()}`), guestPhone: phone });
         const id = (r.v?.id as string) ?? NONE;
         if (!r.ok || r.v?.ok === false) note(`hotel.createReservation: ${r.ok ? j(r.v) : r.err}`);
         if (id !== NONE) {
-          const ci = await call(M.hotel.checkIn, tid, unitId, id, par.room);
+          const ci = await call(M.hotel.checkIn, tid, unitId, id, roomId);
           if (!ci.ok || ci.v?.ok === false) note(`hotel.checkIn: ${ci.ok ? j(ci.v) : ci.err}`);
         }
         return { rowId: id, phone };
