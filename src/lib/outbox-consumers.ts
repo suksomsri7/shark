@@ -500,7 +500,9 @@ type CrmBridgeName =
   | "onPosSaleVoided"
   | "onDealWonAutoInvoice"
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 8 โมดูล — ตัวรับ **ตัวเดียว** (crm-bridges/business.ts) ◂
-  | "onBusinessEvent";
+  | "onBusinessEvent"
+  // CRM C2.8 ▸ คะแนนผู้ติดต่อ (crm-bridges/scoring.ts) — ของแถมใต้ compose ในตัวบริโภคของทุก event ที่กฎคะแนนอ้างได้ ◂
+  | "onScoringEvent";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -688,6 +690,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
     }
     // M3.7 — ห้องที่ผูกสมาชิก → ไทม์ไลน์ "แชท" 1 แถวต่อห้องต่อวันไทย (memberBridge กลืน error เอง ไม่ล้มคิว)
     await memberBridge("onChatMessageReceived")(evt);
+    // CRM C2.8 ▸ + คะแนนของกฎ "ทักแชทเข้ามา" (+5 · ไม่เกิน 1 ครั้ง/วัน) — ห่อไว้เอง: ชั้นนี้เป็น base ของ compose
+    //   ⇒ ถ้าปล่อยให้โยน สะพานผู้ติดต่อ (`onChatMessage`) จะยังวิ่งแต่ event จะถูก retry ทั้งที่งานหลักสำเร็จแล้ว ◂
+    try {
+      await crmBridge("onScoringEvent")(evt);
+    } catch (e) {
+      await logOps("WARN", "outbox", `ให้คะแนนจากแชทไม่สำเร็จ (${evt.type})`, { tenantId: evt.tenantId, detail: errDetail(e) });
+    }
   }, crmBridge("onChatMessage"))),
   // WO-C2 (§3.4): แอดมินตอบ / เธรดเปลี่ยนสถานะ — ผลข้างเคียงเกิดใน service ไปแล้ว
   // consumer เป็น no-op เพื่อ **ปิด event เป็น DONE** (ไม่มี handler = ค้าง PENDING ตลอดกาล
@@ -717,9 +726,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // K3.3: + เปิดการ์ดจากฟอร์ม (คำตอบทุกข้ออยู่ในรายละเอียดการ์ด) เฉพาะร้านที่เปิดสวิตช์
   // CRM C1.8 ▸ lead เข้า CRM (ย้ายจากการเรียกตรงใน forms/service) = ขั้นแรกที่ retry ได้ (crmFirst · lead ต้องไม่หายเพราะล้มชั่วคราว)
   //   ระบบ = resolveFormCrmSystem(form) · crmContactId เขียนใน tx เดียวกับ lead · ไทม์ไลน์สมาชิก = ของแถมใต้ compose ◂
+  // CRM C2.8 ▸ + คะแนนของกฎที่ผูกกับ "ลูกค้ากรอกฟอร์ม" (แต้มของ `FormDef.scoreOnSubmit` มาทางสะพานฟอร์มด้านบน — คนละใบ คนละกุญแจ) ◂
   "forms.submission.received": crmFirst(
     crmBridge("onFormLead"),
-    withAutomation(compose(compose(async () => {}, kanbanBridge("onFormSubmission")), crmBridge("onFormTimeline"))),
+    withAutomation(compose(compose(compose(async () => {}, kanbanBridge("onFormSubmission")), crmBridge("onFormTimeline")), crmBridge("onScoringEvent"))),
   ),
   // Wave4-C: AppNotification "ได้รับมอบหมายงาน" ถูกสร้างแล้วใน kanban.notifyAssignment —
   // consumer ปิด event DONE + จุดให้ Automation/Webhooks ยิงเมื่อมอบหมายการ์ด
@@ -1089,7 +1099,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   ผลข้างเคียง (lastActivityAt · แจ้งเตือน @กล่าวถึง · ปิดงาน) เขียนครบใน tx ของบริการแล้ว ⇒ consumer = no-op ปิด event เป็น DONE
   //   (ขาด = คิวตัน) + ทริกเกอร์กฎ + เว็บฮุค · ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียง (AUDIT-CLASS X4) · C1.8/C2.8 เติมของแถมใต้ compose
   "crm.activity.logged": withAutomation(compose(async () => {}, crmBridge("onCrmTimelineEvent"))), // CRM C1.8 ▸ ไทม์ไลน์สมาชิก 1 แถว/event ◂
-  "crm.activity.completed": withAutomation(async () => {}),
+  // CRM C2.8 ▸ + คะแนน ("นัดพบ/โทรคุยเสร็จ" ของกฎเริ่มต้น) — ของแถมใต้ compose: ล้ม = WARN ไม่ทำให้ event ล้ม ◂
+  "crm.activity.completed": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
   // ◂ CRM C1.6
   // CRM C2.2 ▸ ลำดับการติดตาม (`crm/sequences.ts`) — ยิงใน tx เดียวกับการเขียน · key `<type>#<enrollmentId>#1` (R-C.8) · payload id/โค้ดล้วน:
   //   enrolled {enrollmentId, sequenceId, contactId, dealId, sequenceVersion} · finished {enrollmentId, sequenceId, contactId, status, reason?}
@@ -1112,9 +1123,10 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   `sequences.stopFor`) เขียนครบใน tx/ทางเดินของบริการอีเมลแล้ว ⇒ ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียงเพิ่ม
   //   (AUDIT-CLASS X4 · ข้อสอบ C2.5-X4.5 บริโภคซ้ำสองครั้งและสองครั้งพร้อมกัน)
   "crm.email.sent": withAutomation(async () => {}),
-  "crm.email.received": withAutomation(async () => {}),
-  "crm.email.opened": withAutomation(async () => {}),
-  "crm.email.clicked": withAutomation(async () => {}),
+  // CRM C2.8 ▸ + คะแนน (ตอบอีเมลกลับ · เปิดอีเมล · กดลิงก์ในอีเมล = 3 กฎเริ่มต้น) ◂
+  "crm.email.received": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
+  "crm.email.opened": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
+  "crm.email.clicked": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
   "crm.email.replied": withAutomation(async () => {}),
   "crm.email.bounced": withAutomation(async () => {}),
   // ◂ CRM C2.5
@@ -1124,8 +1136,24 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + ทริกเกอร์กฎ + เว็บฮุคของร้าน ·
   //   ผลข้างเคียงจริง (การผูก session · กิจกรรม 1 รายการ/วันไทย) เขียนครบใน tx ของบริการแล้ว ⇒ ส่งซ้ำ/พร้อมกัน = ผลเดิม (X4)
   //   🔴 ใบ C2.8 (คะแนน) เป็นผู้บริโภคตัวจริงของ event นี้ — ใบ C2.6 แค่ยิง
-  "crm.web.identified": withAutomation(async () => {}),
+  // CRM C2.8 ▸ + คะแนน (ใบ C2.6 ส่งต่อให้ใบนี้เป็นผู้บริโภคตัวจริงของ event นี้) ◂
+  "crm.web.identified": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
   // ◂ CRM C2.6
+  // CRM C2.8 ▸ คะแนนผู้ติดต่อ (`crm/scoring.ts`) — ยิงใน tx เดียวกับแถวแต้ม + การขยับคะแนน
+  //   key `crm.score.changed#<contactId>#<logId>` · `crm.score.threshold#<contactId>#<band>#<logId>` (งานรายวันใช้ `#decay#<วันไทย>`)
+  //   payload **id/ตัวเลข/ระดับ ล้วน** { contactId, from, to, band, ruleId } · { contactId, band } — ไม่มีชื่อ เบอร์ อีเมล (X8)
+  //   🔴 ผลข้างเคียงจริง (แถว `CrmScoreLog` · `CrmContact.score/scoreBand/scoreUpdatedAt`) เขียนครบใน tx ของบริการแล้ว
+  //      ⇒ consumer = no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตันทั้งระบบเงียบ ๆ — บทเรียน 30 ส.ค. 2026)
+  //      + เป็นจุดให้ **กฎอัตโนมัติของ C2.1** ("เมื่อคะแนนถึงระดับ ร้อน/อุ่น/เย็น") และเว็บฮุคของร้านยิงต่อ
+  //      ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียงเพิ่ม (AUDIT-CLASS X4 — ตัวกันซ้ำของ `runForCrmEvent` คือแถวหลักต่อ (กฎ, คน, event))
+  //   🔴 `crm.score.threshold` ถูกกรองด้วย `trigger.params.band` ใน `automation.ts` (บล็อก C2.8) ⇒ กฎ "เย็น" ไม่ทำงานตอนลูกค้าร้อน
+  "crm.score.changed": withAutomation(async () => {}),
+  "crm.score.threshold": withAutomation(async () => {}),
+  //   🔴 รอบแก้ 25 ก.ย. — `crm.deal.quotation.issued`: ตัวยิงอยู่ที่ `crm/deals.ts` (tx เดียวกับการผูก `quotationDocId`) ·
+  //      งานหลักไม่มีอะไรต้องทำ (เอกสารถูกสร้างในบัญชีไปแล้ว) ⇒ no-op ปิด event เป็น DONE (ขาด consumer = คิวตันทั้งระบบ)
+  //      + สะพานคะแนนใต้ compose ⇒ กฎเริ่มต้น "ได้รับใบเสนอราคา" (+8) ได้แต้มครั้งเดียวต่อ (ดีล, เอกสาร)
+  "crm.deal.quotation.issued": withAutomation(compose(async () => {}, crmBridge("onScoringEvent"))),
+  // ◂ CRM C2.8
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

@@ -1007,8 +1007,28 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
       case "ENROLL_SEQUENCE":
       case "STOP_SEQUENCE":
         return skip(i, kind, "sequence ยังไม่เปิดใช้ — ขั้นนี้จะทำงานเมื่อระบบลำดับการติดตาม (sequence) เปิด");
-      case "ADJUST_SCORE":
-        return skip(i, kind, "ระบบคะแนนผู้ติดต่อยังไม่เปิดใช้ — ขั้นนี้จะทำงานเมื่อระบบคะแนนเปิด");
+      // CRM C2.8 ▸ ปรับคะแนนผู้ติดต่อจริง (ของเดิมเป็น stub "ระบบคะแนนยังไม่เปิดใช้" — ใบ C2.8 ต่อเข้ากับ `scoring.adjust`)
+      //   โหลด `./scoring` แบบ dynamic: ฝั่งคะแนนก็โหลดไฟล์นี้แบบ dynamic เพื่อใช้ตัวประเมินเงื่อนไข ⇒ ไม่มีวงโหลดไฟล์
+      //   refType "AUTOMATION_RULE" + refId = id ของกฎ · `eventKey` ผูกกับรอบการทำงาน (แถวหลักของ (กฎ, คน, eventKey) มีได้ใบเดียว
+      //   ⇒ event ใบเดิมที่ส่งซ้ำไม่มีรอบที่สอง และไม่มีแต้มใบที่สอง) · `ruleId` ของแถวแต้มเป็น null (ไม่ใช่กฎคะแนน) ◂
+      case "ADJUST_SCORE": {
+        if (!s.contact) return skip(i, kind, "เหตุการณ์นี้ไม่มีผู้ติดต่อ — ไม่มีคนให้ปรับคะแนน");
+        const points = Math.trunc(numOr(params.points, 0));
+        if (!points) return skip(i, kind, "กฎนี้ยังไม่ได้ตั้งจำนวนแต้ม — ไม่มีอะไรให้ปรับ");
+        const scoring = await import("./scoring");
+        const note = str(params.reason).slice(0, 120);
+        const r = await scoring.adjust(svcCtx(s), null, {
+          contactId: s.contact.id,
+          points,
+          reason: `${note || "ปรับคะแนนอัตโนมัติ"} (กฎ "${env.rule.name}")`,
+          refType: "AUTOMATION_RULE",
+          refId: env.rule.id,
+          eventKey: `automation#${env.runId}#${i}`,
+          now: env.now,
+        });
+        await touch(env, `contact:${s.contact.id}`);
+        return ok(`${points > 0 ? "เพิ่ม" : "หัก"}คะแนน ${Math.abs(points).toLocaleString("th-TH")} แต้ม (คะแนนรวม ${r.score.toLocaleString("th-TH")})`);
+      }
       case "ISSUE_VOUCHER":
       case "GIVE_POINTS": {
         // RESOLUTIONS R-A: ของสมาชิกผ่าน adapter ของสมาชิกเท่านั้น (ผู้ติดต่อที่ผูกสมาชิกแล้ว)
@@ -1306,6 +1326,44 @@ async function enterRule(rule: RuleRow, s: CrmSubject, evt: { type: string; payl
   return true;
 }
 
+// CRM C2.8 ▸ แมตช์พารามิเตอร์ของ trigger กับ payload ของ event (มติผู้คุมงาน 24 ก.ย. 2569 ข้อ 12 · ข้อสอบ C2.8-S4.3)
+//   🔴 เอนจินเลือกกฎด้วย "ชนิด event" เท่านั้น ⇒ ถ้าไม่กรองที่นี่ กฎที่ตั้งไว้ว่า "เมื่อคะแนนถึงระดับ **เย็น**" จะทำงานตอน
+//      ลูกค้ากลายเป็น **ร้อน** ด้วย (event `crm.score.threshold` ชนิดเดียวกัน ต่างกันแต่ `payload.band`)
+//   ทั่วไปโดยเจตนา: กฎที่ trigger ไม่มี params (กฎส่วนใหญ่) ไม่ถูกแตะเลย · payload ที่ไม่มีคีย์นั้น = ไม่กรอง
+//      (ทางเก็บย้อนหลังรายวันของ C2.1 ยิงเองด้วย payload ที่ใส่ `band` มาให้ตรงกับกฎอยู่แล้ว)
+const TRIGGER_MATCH_KEYS = ["band"] as const;
+
+function triggerParamsMatch(rule: Pick<RuleRow, "trigger">, payload: unknown): boolean {
+  const t = isObj(rule.trigger) ? rule.trigger : {};
+  const p = isObj(t.params) ? t.params : {};
+  const body = isObj(payload) ? payload : {};
+  for (const k of TRIGGER_MATCH_KEYS) {
+    const want = p[k];
+    if (want === undefined || want === null || want === "") continue;
+    const got = body[k];
+    if (got === undefined || got === null || got === "") continue;
+    if (str(want).toUpperCase() !== str(got).toUpperCase()) return false;
+  }
+  return true;
+}
+// ◂ CRM C2.8
+
+/**
+ * CRM C2.8 ▸ ตัวประเมินเงื่อนไข "ตัวเดียวของระบบ" ที่บริการคะแนน (`crm/scoring.ts`) เรียกใช้ — ไม่มีเอนจินเงื่อนไขใบที่สอง
+ *   (ฝั่งคะแนนโหลดไฟล์นี้แบบ dynamic ⇒ ไม่มีวงโหลดไฟล์) · ตัวตนถูกโหลดใหม่ด้วย id ในร้าน+ระบบที่ส่งมา (AUDIT-CLASS X1)
+ *   ไม่พบตัวตน = ไม่ผ่าน (กฎที่มีเงื่อนไขไม่ทำงานกับข้อมูลที่หาไม่เจอ) ◂
+ */
+export async function conditionsPassForRefs(
+  scope: { tenantId: string; systemId: string },
+  refs: { contactId?: string | null; dealId?: string | null },
+  cond: { mode?: "AND" | "OR"; items: readonly { field: string; op: string; value?: unknown }[] },
+): Promise<boolean> {
+  if (!Array.isArray(cond?.items) || cond.items.length === 0) return true;
+  const s = await subjectFromRefs(scope.tenantId, scope.systemId, { contactId: refs.contactId ?? null, dealId: refs.dealId ?? null });
+  if (!s) return false;
+  return conditionsPass(s, { mode: cond.mode === "OR" ? "OR" : "AND", items: cond.items as CrmRuleCondition[] });
+}
+
 /**
  * event `crm.*` / `custom.record.*` 1 ใบ → กฎ CRM ที่เปิดอยู่ของ **ระบบของ event** (ผ่าน engine.runForEvent · best-effort)
  * ห้าม throw · คืน `runs` = จำนวนแถวหลักที่เกิดรอบนี้ (ทำ/ข้าม) — ไม่นับที่ตัวกันซ้ำตัดทิ้ง
@@ -1327,10 +1385,13 @@ export async function runForCrmEvent(evt: CrmRuleEvent, opts: CrmRunOptions = {}
       select: RULE_SELECT,
     })) as RuleRow[];
     if (rules.length === 0) return { runs };
+    // CRM C2.8 ▸ กฎที่ trigger ระบุ params (วันนี้มีแต่ `band` ของ `crm.score.threshold`) ต้องตรงกับ payload ของ event ◂
+    const matched = rules.filter((rule) => triggerParamsMatch(rule, evt.payload));
+    if (matched.length === 0) return { runs };
     const eventKey = await eventKeyOf(evt as RunnerEventInput);
     const now = opts.now ?? new Date();
     const deps = opts.deps ?? {};
-    for (const rule of rules) {
+    for (const rule of matched) {
       try {
         if (await enterRule(rule, s, evt, eventKey, now, deps)) runs += 1;
       } catch (e) {
@@ -1401,7 +1462,8 @@ const CRON_CATCHUP_DAYS = 7;
  * ผู้เข้าเกณฑ์ของ trigger ตามรอบเวลา 1 กฎ ณ `now` — ทีละหน้า (เรียงตาม id + cursor) จนหมด ไม่มีเพดาน 500 ที่ทำให้แถวท้าย ๆ ไม่เคยถูกทำ (SF-2)
  * อ่านอย่างเดียว (ใช้ทั้ง cron และทดลองรัน) · กุญแจกันซ้ำ:
  *   close_due / field_due = (กฎ, รายการ, วันที่ของรายการ) — รอบถัดไปตามเก็บของที่รอบก่อนพลาดได้ · activity.overdue = ครั้งเดียวต่องาน ·
- *   deal.stale = ครั้งเดียวต่อช่วงที่นิ่ง · score.threshold = ครั้งเดียวต่อการอัปเดตคะแนน
+ *   deal.stale = ครั้งเดียวต่อช่วงที่นิ่ง
+ * 🔴 `crm.score.threshold` ไม่อยู่ในตัวนี้ (ใบ C2.8 รอบแก้): event สดของบริการคะแนนเป็นทางเดียว — ดูเหตุผลในตัว switch
  */
 async function* cronCandidatePages(tenantId: string, systemId: string, trigger: CrmRuleTrigger, now: Date): AsyncGenerator<CronCandidate[]> {
   const p = trigger.params ?? {};
@@ -1482,21 +1544,13 @@ async function* cronCandidatePages(tenantId: string, systemId: string, trigger: 
         cursor = rows[rows.length - 1]!.id;
       }
     }
-    case "crm.score.threshold": {
-      const band = str(p.band).toUpperCase();
-      if (!(CRM_SCORE_BANDS as readonly string[]).includes(band)) return;
-      for (let cursor: string | null = null; ; ) {
-        const rows: { id: string; scoreUpdatedAt: Date | null }[] = await prisma.crmContact.findMany({
-          where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, scoreBand: band as (typeof CRM_SCORE_BANDS)[number], ...after(cursor) },
-          orderBy: { id: "asc" },
-          take: CRON_PAGE,
-          select: { id: true, scoreUpdatedAt: true },
-        });
-        if (rows.length) yield rows.map((r) => ({ payload: { contactId: r.id, band }, key: `crm.score.threshold#${band}#${r.id}#${r.scoreUpdatedAt?.toISOString() ?? "0"}` }));
-        if (rows.length < CRON_PAGE) return;
-        cursor = rows[rows.length - 1]!.id;
-      }
-    }
+    // CRM C2.8 ▸ `crm.score.threshold` **ไม่มีทางเก็บย้อนหลังรายวันแล้ว** (มติผู้คุมงานรอบแก้ 25 ก.ย. 2569) —
+    //   ของเดิมกวาด "ทุกคนที่อยู่ระดับนั้น" ทุกวันด้วยกุญแจ `…#<scoreUpdatedAt>` ซึ่งไม่เคยชนกับกุญแจของ event สด
+    //   (`crm.score.threshold#<contactId>#<band>#<logId>`) ⇒ การข้ามระดับ **ครั้งเดียว** ทำให้กฎทำงาน **สองรอบ**
+    //   (รอบหนึ่งจาก event สด อีกรอบจาก cron) · และ C2.8 ขยับ `scoreUpdatedAt` ทุกครั้งที่ให้คะแนน ⇒ กุญแจเปลี่ยนเรื่อย
+    //   กลายเป็น "ยิงซ้ำทุกครั้งที่คะแนนขยับ" ไม่ใช่ "ตามเก็บของที่พลาด"
+    //   ⇒ ทางเดียวคือ event สดจาก `crm/scoring.ts` ผ่าน `runForCrmEvent` (แมตช์ `trigger.params.band` แล้วในบล็อก C2.8 ข้างบน)
+    //   ทะเบียน trigger + พารามิเตอร์ `band` คงไว้ทั้งชุด (C2.1-S9.1 ยังเขียว · หน้าตั้งค่ายังเลือกระดับได้เหมือนเดิม) ◂
   }
 }
 

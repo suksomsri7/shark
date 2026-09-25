@@ -31,8 +31,17 @@ export const CRM_CRON_TRIGGERS: readonly CrmTriggerDef[] = Object.freeze([
   { value: "custom.record.field_due", label: "ก่อนวันที่ในฟิลด์ของข้อมูลกำหนดเองถึงกำหนด n วัน", group: "record", cron: true, params: ["objectKey", "fieldKey", "daysBefore"] },
 ]);
 
+// CRM C2.8 ▸ ข้าม value ที่ประกาศเป็น trigger ตามรอบเวลาไปแล้ว (มติผู้คุมงาน 24 ก.ย. 2569 ข้อ 13)
+//   🔴 ใบ C2.8 เพิ่ม `crm.score.threshold` เข้า `AUTOMATION_EVENTS` (มี consumer/เว็บฮุคของตัวเอง) — ถ้า spread ตรง ๆ
+//      รายการนี้จะมี `crm.score.threshold` **สองแถว** (ใบหนึ่งจากทะเบียนกลาง ใบหนึ่งจาก `CRM_CRON_TRIGGERS`) ⇒ ตัวสร้างกฎ
+//      มีตัวเลือกซ้ำ และนิยาม cron (`cron: true` · `params: ["band"]`) อาจถูกแถวที่ไม่มี params แย่งไป
+//   ⇒ นิยามของ `CRM_CRON_TRIGGERS` ชนะเสมอ (ทางเก็บย้อนหลังรายวันของ C2.1 ยังอยู่ · ข้อสอบ C2.1-S9.1 ยังเขียว)
+const CRON_VALUES: ReadonlySet<string> = new Set(CRM_CRON_TRIGGERS.map((t) => t.value));
+
 export const CRM_RULE_TRIGGERS: readonly CrmTriggerDef[] = Object.freeze([
-  ...AUTOMATION_EVENTS.filter((e) => e.value.startsWith("crm.") || e.value.startsWith("custom.record.")).map((e) => ({ value: e.value, label: e.label, group: groupOf(e.value) })),
+  ...AUTOMATION_EVENTS.filter((e) => e.value.startsWith("crm.") || e.value.startsWith("custom.record."))
+    .filter((e) => !CRON_VALUES.has(e.value)) // ◂ CRM C2.8
+    .map((e) => ({ value: e.value, label: e.label, group: groupOf(e.value) })),
   ...CRM_CRON_TRIGGERS,
 ]);
 

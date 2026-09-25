@@ -376,3 +376,57 @@ export async function ensureCrmInboundKeySql(
     WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
 }
 // ◂ CRM C2.5
+
+// CRM C2.8 ▸ ระดับคะแนนผู้ติดต่อ `settings.crm.scoring = { hot, warm, decayDays }` (พิมพ์เขียว §4.5 · RESOLUTIONS R-A)
+//   ตัวอ่านบริสุทธิ์ (ค่าเพี้ยน/ไม่ได้ตั้ง = ค่าเริ่มต้น 50/20/30 · ไม่ throw) + ตัวเขียน **คำสั่งเดียว** (jsonb ซ้อนสองชั้น
+//   crm → scoring → คีย์) ⇒ คีย์อื่นของ `settings.crm` (uiVersion · bridgesEnabled · holidays …) และคีย์อื่นของ `scoring`
+//   รอดทุกครั้ง ไม่มี read-modify-write (สองคนกดบันทึกพร้อมกันไม่ทำค่าของอีกคนหาย — AUDIT-CLASS X3)
+//   AUDIT-CLASS X1: เขียนเฉพาะแถว AppSystem ที่ id + tenantId + type CRM ตรงกัน · ไม่พบ = 0 แถว (ผู้เรียกแปลงเป็น NOT_FOUND)
+//   🔴 รับ `db` (tx ของผู้เรียก) ได้ — ค่ากับแถว AuditLog commit พร้อมกัน (แบบเดียวกับ `setCrmAssignmentKey` ของ C2.3)
+//   🔴 ไม่เพิ่มช่องใน `CrmSettings` (ชนิดนั้นถูกเทียบรูปทั้งก้อนในข้อสอบเก่า) — ผู้ใช้อ่านผ่าน `crmScoringSettingsOf`
+export type CrmScoringSettings = { hot: number; warm: number; decayDays: number };
+
+const CRM_SCORING_DEFAULTS: Readonly<CrmScoringSettings> = Object.freeze({ hot: 50, warm: 20, decayDays: 30 });
+
+const intOr = (v: unknown, d: number, min: number): number => {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min ? n : d;
+};
+
+/** ค่าระดับคะแนนของระบบ (ค่าเพี้ยน/ไม่ได้ตั้ง = ค่าเริ่มต้น · hot ≤ warm ที่หลุดเข้าฐาน = กลับไปใช้ค่าเริ่มต้นทั้งคู่) */
+export function crmScoringSettingsOf(raw: Json): CrmScoringSettings {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : {};
+  const s = isObj(crm.scoring) ? crm.scoring : {};
+  const d = CRM_SCORING_DEFAULTS;
+  const hot = intOr(s.hot, d.hot, 0);
+  const warm = intOr(s.warm, d.warm, 0);
+  const decayDays = intOr(s.decayDays, d.decayDays, 0);
+  return hot > warm ? { hot, warm, decayDays } : { hot: d.hot, warm: d.warm, decayDays };
+}
+
+/** เขียนคีย์ใน `settings.crm.scoring` ด้วยคำสั่งเดียว (merge — คีย์อื่นรอดทั้งหมด) · คืนจำนวนแถวที่แก้ */
+export async function setCrmScoringKeys(
+  ctx: { tenantId: string; systemId: string },
+  patch: Partial<CrmScoringSettings>,
+  db: CrmSettingsDb = crmDb,
+): Promise<number> {
+  const clean: Record<string, number> = {};
+  for (const k of ["hot", "warm", "decayDays"] as const) {
+    const v = patch[k];
+    if (v !== undefined) clean[k] = Math.trunc(Number(v));
+  }
+  if (Object.keys(clean).length === 0) return 0;
+  const json = JSON.stringify(clean);
+  return db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('scoring',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'scoring') = 'object' THEN "settings"->'crm'->'scoring' ELSE '{}'::jsonb END)
+               || ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+}
+// ◂ CRM C2.8

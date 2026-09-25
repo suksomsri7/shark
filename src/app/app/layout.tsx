@@ -223,6 +223,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                   ]
                 : []),
               // ◂ CRM C2.6
+              // CRM C2.8 ▸ คะแนนผู้ติดต่อ (กฎให้คะแนน · ระดับ ร้อน/อุ่น/เย็น · อายุแต้ม · คำนวณใหม่) — คีย์ `crm.score.manage`
+              //   404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.score.manage") ? [{ href: `${s}/crm/settings/scoring`, label: "คะแนนผู้ติดต่อ" }] : []),
+              // ◂ CRM C2.8
               ]
             : []),
           // ◂ CRM uiVersion gate

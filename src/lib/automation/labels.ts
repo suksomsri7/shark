@@ -178,6 +178,25 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "crm.activity.logged", label: "เมื่อบันทึกกิจกรรม (โทร นัดพบ งาน โน้ต …) ใน CRM" },
   { value: "crm.activity.completed", label: "เมื่อปิดกิจกรรมหรืองานติดตามใน CRM" },
   // ◂ CRM C1.6
+  // CRM C2.8 ▸ คะแนนผู้ติดต่อ (`crm/scoring.ts`) — ยิงใน tx เดียวกับแถวแต้ม + การขยับคะแนน · key ตาม R-C.8:
+  //   `crm.score.changed#<contactId>#<logId>`            payload { contactId, from, to, band, ruleId }  (id/ตัวเลข/ระดับ ล้วน — X8)
+  //   `crm.score.threshold#<contactId>#<band>#<logId>`   payload { contactId, band } — ยิง **ครั้งเดียวต่อการข้ามระดับ**
+  //     (ขึ้นหรือลงก็ยิง: ป้ายของ trigger ใน C2.1 มีทั้ง ร้อน/อุ่น/เย็น ⇒ "กลายเป็นเย็น" ต้องไปถึงกฎได้) ·
+  //     งานรายวันที่ทำแต้มหมดอายุใช้ท้ายกุญแจ `#decay#<วันไทย>` แทน logId
+  //   🔴 ทั้งคู่มี consumer ใน `outbox-consumers.ts` แล้ว (ขาด consumer = คิวตันทั้งระบบเงียบ ๆ) · เว็บฮุคได้จาก spread
+  //      ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  //   🔴 `crm.score.threshold` เป็น trigger ตามรอบเวลาของ C2.1 อยู่แล้ว (`CRM_CRON_TRIGGERS`) — `CRM_RULE_TRIGGERS`
+  //      จึงข้ามค่าที่อยู่ในทะเบียนนั้นเวลา spread รายการนี้ (ไม่ให้ลิสต์ซ้ำสองแถว · ดู automation-shared.ts)
+  //   🔴 event เสมือน `crm.contact.inactive` **ไม่อยู่** ในทะเบียนนี้โดยเจตนา: ไม่มีตัวยิง ไม่มี consumer —
+  //      งานรายวัน `crm.scoring.decay` เป็นคนตัดสินเอง (แบบ R-B)
+  { value: "crm.score.changed", label: "เมื่อคะแนนผู้ติดต่อเปลี่ยน (CRM)" },
+  { value: "crm.score.threshold", label: "เมื่อคะแนนผู้ติดต่อข้ามระดับ ร้อน/อุ่น/เย็น (CRM)" },
+  //   🔴 รอบแก้ 25 ก.ย.: `crm.deal.quotation.issued` เคยเป็น "หนี้" (กฎคะแนนเริ่มต้น "ได้รับใบเสนอราคา" +8 อ้างไว้ แต่ไม่มีใครยิง)
+  //      ⇒ ใบนี้เติมให้ครบ 3 ทะเบียน: ตัวยิงใน `crm/deals.ts` (tx เดียวกับการผูก `quotationDocId` · key
+  //      `crm.deal.quotation.issued#<dealId>#<docId>` · payload { dealId, contactId, docId } = id ล้วน — X8) · ป้ายที่นี่ ·
+  //      consumer ใน `outbox-consumers.ts` (no-op + สะพานคะแนน) — ขาดตัวใดตัวหนึ่ง = คิวตันหรือกฎไม่ทำงาน
+  { value: "crm.deal.quotation.issued", label: "เมื่อออกใบเสนอราคาจากดีล (CRM)" },
+  // ◂ CRM C2.8
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 6 โมดูล (มติ C11 · ใบ C2.9) — ยิง **ใน transaction เดียวกับการเปลี่ยนสถานะ** ของโมดูลนั้น ·
   //   คีย์ `<type>#<id ของแถว>` (R-C.8) · payload = id + `unitId` + `partyId?` + จำนวนสตางค์ ตามแต่ละแถว (id ล้วน — X8:
   //   ไม่มีชื่อ/เบอร์/อีเมล และคลินิกไม่มีอาการ/การวินิจฉัย/ยา/ค่าบริการ)

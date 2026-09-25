@@ -10,7 +10,6 @@ import {
   ContactsError,
   LEAD_STATUS_LABEL,
   LIFECYCLE_LABEL,
-  SCORE_BAND_LABEL,
   contactLabel,
   type Contact360,
   type ContactScoreBand,
@@ -33,6 +32,11 @@ import { bookingLinkFor, callAiStatus } from "@/lib/modules/crm/calls";
 import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 import { ACTIVITY_OUTCOMES_DEFAULT, thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { outcomeOptions } from "@/lib/modules/crm/activities";
+// CRM C2.8 ▸ ป้ายคะแนน + เหตุผล 3 ข้อล่าสุด (ภาพ 05) — ข้อมูลอ่านที่นี่ผ่าน `scoring.explain` (การมองเห็นของผู้ดู) ◂
+import { explain as explainScore } from "@/lib/modules/crm/scoring";
+import { SCORE_BAND_LABELS, SCORE_EXPLAIN_LIMIT, scoreAgoLabel } from "@/lib/modules/crm/scoring-shared";
+import { ContactScoreBadge, ContactScoreReasons } from "@/components/crm/scoring/ContactScoreBadge";
+import type { ContactScoreReason } from "@/components/crm/scoring/ContactScoreBadge";
 // CRM C2.6 ▸ การเข้าชมเว็บของลูกค้ารายนี้ (ภาพ 11) — บล็อกแสดงผลล้วน ๆ · ข้อมูลอ่านที่นี่ตามการมองเห็นของผู้ดู ◂
 import { webTimeline } from "@/lib/modules/crm/tracking";
 import { CrmWebTimeline } from "@/components/crm/tracking/CrmWebTimeline";
@@ -105,6 +109,22 @@ export default async function Contact360Page({
       })),
     )
     .catch(() => [] as CrmWebTimelineSession[]);
+  // CRM C2.8 ▸ คะแนน + เหตุผล (ภาพ 05) — `scoring.explain` ใช้การมองเห็นของผู้ดูเอง (ล้ม/ไม่มีคีย์ = ป้ายจากคอลัมน์ · หน้าไม่ล้ม)
+  //   ขอมาเกิน 3 รายการเพื่อให้ "ที่มาของคะแนนทั้งหมด" เปิดดูได้ในคลิกเดียว (ชิปหน้าแรกยังเป็น 3 ตามภาพ)
+  const scoreView = await explainScore(ctx, actor, c.id, { limit: 20 })
+    .then((r) => ({
+      score: r.score,
+      band: r.band,
+      items: r.items.map((it): ContactScoreReason => ({
+        logId: it.logId,
+        points: it.points,
+        reason: it.reason,
+        ago: scoreAgoLabel(it.at),
+        expiresLabel: it.expiresAt ? thaiDateLabel(new Date(it.expiresAt).getTime()) : null,
+      })),
+    }))
+    .catch(() => ({ score: c.score, band: c.scoreBand ?? ("COLD" as ContactScoreBand), items: [] as ContactScoreReason[] }));
+  // ◂ CRM C2.8
   const base = `/app/sys/${id}/crm/contacts`;
   const name = contactLabel(c);
   const now = new Date();
@@ -197,13 +217,12 @@ export default async function Contact360Page({
                     )}
                     <span className="rounded-md border px-1.5 py-0.5 text-xs text-[color:var(--color-muted)]">{LIFECYCLE_LABEL[c.lifecycleStage]}</span>
                     <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold">{LEAD_STATUS_LABEL[c.leadStatus]}</span>
-                    {c.scoreBand && (
-                      <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ color: TONE[c.scoreBand], borderColor: TONE[c.scoreBand] }}>
-                        {SCORE_BAND_LABEL[c.scoreBand]} {c.score.toLocaleString("th-TH")}
-                      </span>
-                    )}
+                    {/* CRM C2.8 ▸ ป้ายคะแนน (ภาพ 05) — ระดับมาจาก `settings.crm.scoring` ของระบบนี้ ◂ */}
+                    <ContactScoreBadge score={scoreView.score} band={scoreView.band} bandLabel={SCORE_BAND_LABELS[scoreView.band]} tone={TONE[scoreView.band]} />
                   </div>
                   <span className="text-xs text-[color:var(--color-muted)]">{subline.join(" · ") || "ยังไม่มีรายละเอียด"}</span>
+                  {/* CRM C2.8 ▸ เหตุผล 3 ข้อล่าสุด + ที่มาของคะแนนทั้งหมด (ภาพ 05) ◂ */}
+                  <ContactScoreReasons items={scoreView.items} chips={SCORE_EXPLAIN_LIMIT} bandLabel={SCORE_BAND_LABELS[scoreView.band]} score={scoreView.score} />
                   {c.tags.length > 0 && (
                     <span className="flex flex-wrap gap-1">
                       {c.tags.map((t) => (

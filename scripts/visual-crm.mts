@@ -86,9 +86,14 @@ const TMP = {
   trackedLinkIds: [] as string[], webVisitorIds: [] as string[], webContactIds: [] as string[], formIds: [] as string[],
   // CRM C2.7 ▸ ทางเดินเงิน: การผูกบัญชี↔CRM · ใบเสนอราคา/บิล POS ตัวอย่าง (แถวเงิน CrmDealPayment ถูกลบตามดีล onDelete: Cascade — ไม่ต้องจำ id) ◂
   accLinkIds: [] as string[], docIds: [] as string[], posSaleIds: [] as string[],
+  // CRM C2.8 ▸ กฎคะแนนเริ่มต้น (เฉพาะใบที่รอบนี้สร้างเอง) + แถวแต้มของผู้ติดต่อตัวอย่าง (ลบครบใน restoreSeed · คะแนนเดิมของคนนั้นเขียนคืน) ◂
+  scoreRuleIds: [] as string[], scoreLogIds: [] as string[],
 };
 /** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
-const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1 };
+const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1, scoreRules: -1, scoreLogs: -1 };
+// CRM C2.8 ▸ คะแนน/ระดับเดิมของผู้ติดต่อตัวอย่าง (null = ใบนี้ไม่ได้แตะ) + เวลาเริ่มรอบ (ลบ audit `crm.score.*` ของรอบนี้) ◂
+let C28_SCORE_BEFORE: { id: string; score: number; scoreBand: string | null; scoreUpdatedAt: Date | null } | null = null;
+const C28_START = new Date();
 // CRM C2.6 ▸ ค่าตั้ง `settings.crm.tracking` ก่อนแตะ (undefined = ใบนี้ไม่ได้แตะ · null = เดิมไม่มีคีย์นี้) + เวลาเริ่มรอบ (ลบ audit ของรอบนี้) ◂
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let C26_TRACKING_BEFORE: any;
@@ -167,6 +172,28 @@ let C25_THREAD: string | null = null;
 const POS_REGISTER = `/app/sys/${(E.systems?.POS ?? "") as string}/pos/register?unit=${(E.units?.patong ?? "") as string}`;
 
 const SPECS: Record<string, Spec[]> = {
+  // CRM C2.8 ▸ คะแนนผู้ติดต่อ (พิมพ์เขียว §5.7 · ภาพ 05): หน้า "คะแนนผู้ติดต่อ" (ตารางกฎ + ระดับ ร้อน/อุ่น/เย็น + อายุแต้ม +
+  //   คำนวณใหม่แบบลองก่อน) · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎให้คะแนน") · ป้ายคะแนน + ชิปเหตุผล 3 ข้อบนผู้ติดต่อ 360
+  //   (สเปคของหน้า 360 ถูก unshift ในบล็อก "เตรียมของ C2.8" ด้านล่าง — พาธต้องมี id ของคนที่มีแต้มจริง)
+  //   thana/nok (STAFF ไม่มีคีย์ crm.score.manage) = 404 ตามแบบ (ข้อสอบ C2.8-S7.1/U.3) → ถ่ายเฉพาะ owner/manager
+  //   ⚠️ ไม่กดปุ่มที่เขียนฐาน (seed/บันทึก/ลบ/คำนวณใหม่จริง) — ชุดนี้เปิดตัวแก้กฎกับผลลองคำนวณอย่างเดียว
+  "2.8": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    {
+      name: `crm-scoring-${userKey}`,
+      path: `${CRM_BASE}/settings/scoring`,
+      note: "คะแนนผู้ติดต่อ — ตารางกฎให้คะแนน (เหตุการณ์ · แต้ม · เพดานต่อวัน · อายุแต้ม · เปิด/ปิด) + ระดับ ร้อน/อุ่น/เย็น + อายุแต้มปริยาย + ปุ่มคำนวณใหม่ (ลองก่อน)",
+      expect: ["[data-testid=crm-score-rule-list]", "[data-testid=crm-score-band-hot]", "[data-testid=crm-score-band-warm]", "[data-testid=crm-score-decay-days]", "[data-testid=crm-score-recompute-btn]"],
+      steps: [{ waitFor: "[data-testid=crm-score-rule-list]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-scoring-rule-editor-${userKey}`,
+      path: `${CRM_BASE}/settings/scoring`,
+      note: "ตัวแก้กฎให้คะแนน: ชื่อ · เหตุการณ์ · แต้ม · เพดานต่อวัน · อายุแต้ม · เปิดใช้",
+      expect: ["[data-testid=crm-score-rule-name]", "[data-testid=crm-score-rule-event]", "[data-testid=crm-score-rule-points]", "[data-testid=crm-score-rule-save]"],
+      steps: [{ waitFor: "[data-testid=crm-score-rule-new]", timeoutMs: 20_000 }, { click: "[data-testid=crm-score-rule-new]" }, { wait: 400 }],
+    },
+  ],
+  // ◂ CRM C2.8
   // CRM C2.7 ▸ ทางเดินเงิน (พิมพ์เขียว §7.2 · ภาพ 06): ช่อง "ดีล" ข้างช่องสมาชิกบนหน้าขาย · บล็อก "ดีล" บนหน้าเอกสารบัญชี ·
   //   ดีล 360 ที่มีรายการสินค้า + บิลหน้าร้านที่ผูกไว้ (บล็อก "เตรียมของ C2.7" ด้านล่างสร้างให้ แล้ว unshift สเปคที่ต้องใช้ id)
   //   ภาพแรกเป็น "ตัวคุม": ยังไม่เลือกสมาชิก ⇒ ช่องดีลต้องไม่โผล่ (ร้านที่ไม่ได้ใช้ CRM v2 เห็นหน้าขายเดิมทุกตัวอักษร)
@@ -582,6 +609,32 @@ async function restoreSeed(): Promise<void> {
     const ok = linkNow === BEFORE.links && sessNow === BEFORE.webSessions && formNow === BEFORE.forms && sameSettings;
     console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ลิงก์ ${BEFORE.links} → ${linkNow} · การเข้าชม ${BEFORE.webSessions} → ${sessNow} · ฟอร์ม ${BEFORE.forms} → ${formNow} · ค่าตั้ง tracking ${sameSettings ? "เท่าเดิม" : "ไม่เท่าเดิม!"}`);
   }
+  // CRM C2.8 ▸ คืนสภาพของคะแนน — จากใบนอกเข้าใน: แถวแต้มที่รอบนี้ใส่ → กฎที่รอบนี้สร้าง → audit `crm.score.*` ของรอบนี้
+  //   → คะแนน/ระดับ/เวลาเดิมของผู้ติดต่อตัวอย่าง (เขียนคืนทุกค่า · แถวอื่นของร้าน QC ไม่ถูกแตะ)
+  //   🔴 ลบแถวตรง ๆ (ไม่เรียก deleteRule ของบริการ) เพราะทางนั้นเขียน audit เพิ่มอีกชุดระหว่างกำลังเก็บกวาด
+  {
+    const { scoreLogIds: sl, scoreRuleIds: sr } = TMP;
+    if (sl.length) await P.crmScoreLog.deleteMany({ where: { id: { in: sl } } }).catch(() => null);
+    if (sr.length) await P.crmScoreRule.deleteMany({ where: { id: { in: sr } } }).catch(() => null);
+    if (sr.length || C28_SCORE_BEFORE) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, action: { startsWith: "crm.score." }, createdAt: { gte: C28_START } } }).catch(() => null);
+    }
+    if (C28_SCORE_BEFORE) {
+      await P.crmContact.update({
+        where: { id: C28_SCORE_BEFORE.id },
+        data: { score: C28_SCORE_BEFORE.score, scoreBand: C28_SCORE_BEFORE.scoreBand as Any, scoreUpdatedAt: C28_SCORE_BEFORE.scoreUpdatedAt },
+      }).catch(() => null);
+    }
+  }
+  if (BEFORE.scoreRules >= 0) {
+    const ruleNow = await P.crmScoreRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const logNow = await P.crmScoreLog.count({ where: { tenantId: E.tenantId } });
+    const back = C28_SCORE_BEFORE ? ((await P.crmContact.findFirst({ where: { id: C28_SCORE_BEFORE.id }, select: { score: true, scoreBand: true } })) as Any) : null;
+    const sameScore = !C28_SCORE_BEFORE || (Number(back?.score ?? -1) === C28_SCORE_BEFORE.score && (back?.scoreBand ?? null) === C28_SCORE_BEFORE.scoreBand);
+    const ok = ruleNow === BEFORE.scoreRules && logNow === BEFORE.scoreLogs && sameScore;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: กฎคะแนน ${BEFORE.scoreRules} → ${ruleNow} · แถวแต้ม ${BEFORE.scoreLogs} → ${logNow} · คะแนนผู้ติดต่อตัวอย่าง ${sameScore ? "เท่าเดิม" : "ไม่เท่าเดิม!"}${ok ? " (เท่าเดิม)" : ""}`);
+  }
+  // ◂ CRM C2.8
   // CRM C2.5 ▸ พิสูจน์ว่าจำนวนจดหมาย/แม่แบบกลับมาเท่าเดิม (แบบเดียวกับ C2.2/C2.3) ◂
   if (BEFORE.emails >= 0) {
     const emailNow = await P.crmEmailMessage.count({ where: { tenantId: E.tenantId, systemId: SYS } });
@@ -1132,6 +1185,79 @@ if (WO === "2.7") {
   );
 }
 // ◂ เตรียมของจริงของ C2.7
+
+// ── เตรียมของจริงของ C2.8 (ภาพ 05) ─────────────────────────────────────────────────────────────
+// 🔴 ทำไมต้องมีบล็อกนี้: seed QC ไม่มีกฎให้คะแนนเลย (ตารางกฎจะว่าง) และไม่มีแถว `CrmScoreLog` (ชิปเหตุผลบนหน้า 360
+//    จะไม่โผล่เลย) ⇒ เทียบ parity กับภาพ 05 ("🔥 ร้อน 72" + ชิป "+15 นัดสำเร็จ · 2 วันก่อน") ไม่ได้
+// 🔴 กฎสร้างผ่าน facade จริง (`crm.scoring.seedSystemRules` — ชุดเดียวกับปุ่มบนหน้า) · แถวแต้มของผู้ติดต่อตัวอย่าง
+//    ใส่ด้วย prisma ตรง ๆ เหมือน C2.4 (ยิง event จริงจะปั่น outbox/กฎอัตโนมัติของร้าน QC ทั้งร้านโดยไม่จำเป็น)
+// 🔴 คืนสภาพครบใน restoreSeed(): ลบกฎที่รอบนี้สร้าง · ลบแถวแต้มที่รอบนี้ใส่ · เขียนคะแนน/ระดับ/เวลาเดิมของคนนั้นกลับ
+if (WO === "2.8") {
+  const P28 = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const mem = await P28.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  BEFORE.scoreRules = await P28.crmScoreRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  BEFORE.scoreLogs = await P28.crmScoreLog.count({ where: { tenantId: E.tenantId } });
+
+  // (1) กฎเริ่มต้น 8 ข้อ (ชุดเดียวกับปุ่ม "สร้างกฎเริ่มต้น") — จำ id เฉพาะใบที่รอบนี้สร้างเอง
+  const idsBefore = new Set<string>(((await P28.crmScoreRule.findMany({ where: { tenantId: E.tenantId, systemId: SYS }, select: { id: true } })) as Any[]).map((r: Any) => r.id as string));
+  const seeded = await crm.scoring.seedSystemRules(ctx, ownerActor as Any).catch((e: unknown) => {
+    console.log(`⚠️ เตรียมของ C2.8: สร้างกฎเริ่มต้นไม่ได้ — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+    return { created: 0, total: 0 };
+  });
+  for (const r of (await P28.crmScoreRule.findMany({ where: { tenantId: E.tenantId, systemId: SYS }, select: { id: true } })) as Any[]) {
+    if (!idsBefore.has(r.id as string)) TMP.scoreRuleIds.push(r.id as string);
+  }
+
+  // (2) ผู้ติดต่อตัวอย่างที่ "มีแต้มจริง" — 4 แถวแต้ม (3 ใบแรกเป็นชิปตามภาพ 05 · ใบที่ 4 อยู่ในรายการเต็ม) + คะแนน/ระดับ
+  const target = (await P28.crmContact.findFirst({
+    where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, ownerUserId: ownerActor.userId },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, score: true, scoreBand: true, scoreUpdatedAt: true },
+  })) as Any;
+  if (target) {
+    C28_SCORE_BEFORE = { id: target.id as string, score: Number(target.score ?? 0), scoreBand: (target.scoreBand ?? null) as string | null, scoreUpdatedAt: (target.scoreUpdatedAt ?? null) as Date | null };
+    const day = 86_400_000;
+    const rows = [
+      { points: 15, reason: "นัดพบ/โทรคุยเสร็จ", ago: 2 },
+      { points: 10, reason: "ตอบอีเมลกลับ", ago: 4 },
+      { points: 5, reason: "กดลิงก์ในอีเมล", ago: 6 },
+      { points: 2, reason: "เปิดอีเมล", ago: 9 },
+    ];
+    for (const r of rows) {
+      const at = new Date(C28_START.getTime() - r.ago * day);
+      const made = await P28.crmScoreLog.create({
+        data: {
+          tenantId: E.tenantId, contactId: target.id, ruleId: null, points: r.points, reason: r.reason,
+          refType: "VisualQc", refId: "qc-visual-crm", eventKey: `qc-visual-crm#${target.id}#${r.ago}`,
+          createdAt: at, expiresAt: new Date(at.getTime() + 30 * day), expired: false,
+        },
+      });
+      TMP.scoreLogIds.push(made.id as string);
+    }
+    // ระดับมาจาก `settings.crm.scoring` ของระบบนี้ (ปริยาย ร้อน ≥ 50) — 72 แต้มตามภาพ 05 ⇒ "🔥 ร้อน 72"
+    await P28.crmContact.update({ where: { id: target.id }, data: { score: 72, scoreBand: "HOT", scoreUpdatedAt: new Date() } });
+  }
+  console.log(`🧪 เตรียมของ C2.8: กฎเริ่มต้น +${TMP.scoreRuleIds.length} ใบ (บริการรายงาน created=${seeded.created} total=${seeded.total}) · แถวแต้มตัวอย่าง ${TMP.scoreLogIds.length} ใบบนผู้ติดต่อ ${target?.id ?? "—"}`);
+
+  if (target) {
+    specs.push({
+      name: `crm-contact-360-score-${userKey}`,
+      path: `${CRM_BASE}/contacts/${target.id as string}`,
+      note: "ผู้ติดต่อ 360: ป้ายคะแนน \"ร้อน 72\" + ชิปเหตุผล 3 ข้อล่าสุด + \"ที่มาของคะแนนทั้งหมด\" (เทียบภาพ 05)",
+      expect: ["[data-testid=contact-score-badge]", "[data-testid=contact-score-reason-0]", "[data-testid=contact-score-reason-2]", "[data-testid=contact-score-explain-btn]"],
+      steps: [{ waitFor: "[data-testid=contact-score-badge]", timeoutMs: 20_000 }, { click: "[data-testid=contact-score-explain-btn]" }, { wait: 400 }],
+    });
+  }
+}
+// ◂ เตรียมของจริงของ C2.8
 
 // ── mint session (เรียกจากในกรอบ try เท่านั้น — ดูหมายเหตุหัวไฟล์) ──
 const UA = "qc-visual-crm";

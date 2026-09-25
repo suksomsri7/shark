@@ -76,6 +76,8 @@ await import("@/lib/modules/crm/sequences-job");
 await import("@/lib/modules/crm/reminders");
 // CRM C2.5 ▸ งานรายนาที "crm.email.scheduled" (ส่งอีเมลที่ตั้งเวลาไว้และถึงเวลาแล้ว) — ลงทะเบียนตอน import ◂
 await import("@/lib/modules/crm/emails-job");
+// CRM C2.8 ▸ งานรายวัน "crm.scoring.decay" (แต้มหมดอายุ + หักแต้มคนที่เงียบหาย) — ลงทะเบียนตอน import ◂
+await import("@/lib/modules/crm/scoring-job");
 
 let code = 0;
 try {

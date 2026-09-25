@@ -162,3 +162,13 @@ export * as payments from "./payments";
 export { DEAL_VOIDED_TAG, POS_LINK_LIMIT, MONEY_REF_TYPES } from "./payments-shared";
 export type { DealForDoc, DealMoney, OpenDealOption } from "./payments-shared";
 // ◂ CRM C2.7
+
+// CRM C2.8 ▸ คะแนนผู้ติดต่อ (`scoring.ts`) — namespace เดียว `scoring`:
+//   seedSystemRules (กฎเริ่มต้น 8 ข้อจากข้อมูลกลางของ C1.11) · listRules/createRule/updateRule/toggleRule/deleteRule/reorderRules ·
+//   onEvent (ทางเข้าการให้คะแนนทางเดียว — สะพาน `crm-bridges/scoring.ts` เรียกตัวนี้) · adjust (ADJUST_SCORE ของ C2.1 ·
+//   `FormDef.scoreOnSubmit` ของ C2.6 · คนกดเอง) · decay/applyInactivity/runDailyScoring (งานรายวัน `crm.scoring.decay` —
+//   ทะเบียนอยู่ที่ `src/lib/platform/minute-jobs.ts` จึงต้องเรียกผ่าน facade เหมือน C2.1/C2.2) · explain (เหตุผล 3 ข้อล่าสุด ·
+//   ภาพ 05) · recompute (ทั้งร้าน = การกระทำอันตราย) · get/setScoringSettings · assertScoringAccess (ด่านของหน้า/action)
+//   ค่าคงที่/ชนิด/`bandOf` สำหรับหน้า 'use client' อยู่ที่ `./scoring-shared`
+export * as scoring from "./scoring";
+// ◂ CRM C2.8

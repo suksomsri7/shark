@@ -1303,6 +1303,18 @@ async function quoteCore(ctx: DealsCtx, who: Who, dealId: string, opts: { validD
       if (cur.quotationDocId === res.docId) return;
       await tx.crmDeal.update({ where: { id: cur.id }, data: { quotationDocId: res.docId, lastActivityAt: new Date() } });
       await emitDeal(tx, ctx, EVT.updated, cur.id, `quote-${res.docId}`, { dealId: cur.id, changedKeys: ["quotationDocId"], documentId: res.docId });
+      // CRM C2.8 ▸ "ออกใบเสนอราคาจากดีล" — event ของตัวเองใน tx เดียวกับการผูกเอกสาร (ไม่ใช่ `crm.deal.updated` ที่หมายถึงอะไรก็ได้)
+      //   กฎคะแนนเริ่มต้น "ได้รับใบเสนอราคา" (+8) รออยู่ที่ event นี้ (ก่อนรอบแก้ 25 ก.ย. ไม่มีใครยิง ⇒ กฎไม่เคยทำงาน)
+      //   key `crm.deal.quotation.issued#<dealId>#<docId>` ⇒ ออกใบเดิมซ้ำ/ยิงพร้อมกันกี่รอบ = event ใบเดียว (R-C.8 · X4)
+      //   payload = id ล้วน { dealId, contactId, docId } — ไม่มีชื่อ/เบอร์/ยอดเงินของลูกค้า (X8) · contactId ว่างได้ (ดีลไม่มีผู้ติดต่อหลัก)
+      await emitOutbox(tx, {
+        tenantId: ctx.tenantId,
+        systemId: ctx.systemId,
+        type: "crm.deal.quotation.issued",
+        idempotencyKey: `crm.deal.quotation.issued#${cur.id}#${res.docId}`,
+        payload: { dealId: cur.id, contactId: cur.contactId ?? null, docId: res.docId },
+      });
+      // ◂ CRM C2.8
     });
   }
   if (res.created) {

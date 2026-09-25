@@ -84,6 +84,8 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C2.6 ▸ ติดตามเว็บ + ลิงก์ติดตาม (ภาพ 16 + ภาพ 11) · ฟอร์ม → CRM (ระบบปลายทาง/กฎมอบหมาย/คะแนน/กันสแปม/โค้ดฝัง)
   { key: "settings-tracking", label: "ติดตามเว็บและลิงก์", path: "/crm/settings/tracking", status: "ready", wo: "C2.6" },
   { key: "settings-forms", label: "ฟอร์มรับลูกค้า", path: "/crm/settings/forms", status: "ready", wo: "C2.6" },
+  // CRM C2.8 ▸ คะแนนผู้ติดต่อ (กฎให้คะแนน · ระดับ ร้อน/อุ่น/เย็น · อายุของแต้ม · คำนวณใหม่) — คีย์ `crm.score.manage` ◂
+  { key: "settings-scoring", label: "คะแนนผู้ติดต่อ", path: "/crm/settings/scoring", status: "ready", wo: "C2.8" },
   // ◂ CRM C2.6
 ] as const);
 

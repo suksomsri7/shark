@@ -166,18 +166,26 @@ async function applyFormExtras(
       }
     }
   }
+  // CRM C2.8 ▸ แต้มของ `FormDef.scoreOnSubmit` เดินผ่าน **เครื่องคะแนนตัวจริง** (`crm.scoring.adjust`) แล้ว
+  //   ⇒ แถวแต้ม + การขยับคะแนน + `scoreBand`/`scoreUpdatedAt` + event `crm.score.changed/threshold` มาจากที่เดียวกับทางอื่น
+  //   (ของเดิมในใบ C2.6 เขียนแถวเองแล้วบวกคะแนนตรง ๆ ⇒ ระดับคะแนนไม่ขยับ และกฎ "ลูกค้าร้อน" ไม่เคยได้ยิน)
+  //   กุญแจกันซ้ำ `form#<คำตอบ>` (ผูกกับคำตอบ ไม่ใช่กับ event) ⇒ ส่ง event ซ้ำ/พร้อมกันกี่รอบ = แต้มใบเดียว ·
+  //   `refType`/`refId` คงรูปเดิม ("FormSubmission" + id ของคำตอบ) · แต้มใบนี้ **เพิ่มเติมจาก** กฎคะแนนที่ผูกกับ
+  //   `forms.submission.received` (คนละใบ คนละกุญแจ — ร้านตั้งได้ทั้งสองทาง) ◂
   const points = Number(args.form.scoreOnSubmit ?? 0);
   if (Number.isInteger(points) && points > 0) {
-    const eventKey = `crm.form.score#${args.sub.id}`;
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:form-score:${args.sub.id}`}, 0))`;
-      const already = await tx.crmScoreLog.findFirst({ where: { tenantId: evt.tenantId, contactId: args.contactId, eventKey }, select: { id: true } });
-      if (already) return;
-      await tx.crmScoreLog.create({
-        data: { tenantId: evt.tenantId, contactId: args.contactId, points, reason: "ลูกค้ากรอกฟอร์มบนเว็บ", refType: "FormSubmission", refId: args.sub.id, eventKey },
+    try {
+      await crm.scoring.adjust({ tenantId: evt.tenantId, systemId: args.systemId, actorUserId: null }, null, {
+        contactId: args.contactId,
+        points,
+        reason: `ลูกค้ากรอกฟอร์มบนเว็บ (${args.form.name})`,
+        refType: "FormSubmission",
+        refId: args.sub.id,
+        eventKey: `form#${args.sub.id}`,
       });
-      await tx.$executeRaw`UPDATE "CrmContact" SET "score" = "score" + ${points} WHERE "id" = ${args.contactId} AND "tenantId" = ${evt.tenantId}`;
-    });
+    } catch (e) {
+      await logOps("WARN", "crm", `ให้คะแนนจากฟอร์มไม่สำเร็จ — คำตอบ ${args.sub.id} · ระบบ ${args.systemId} · ${e instanceof Error ? e.name : "unknown"}`, { tenantId: evt.tenantId });
+    }
   }
   if (args.sub.webSessionId) {
     const session = await prisma.crmWebSession.findFirst({

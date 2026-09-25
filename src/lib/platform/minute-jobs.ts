@@ -195,6 +195,24 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.5
+// CRM C2.8 ▸ คะแนนผู้ติดต่อ (ใบ C2.8 · พิมพ์เขียว §7.5 "score-decay รายวัน") — แต้มที่หมดอายุ + หักแต้มคนที่เงียบหาย
+//   🔴 ลงทะเบียน "ตรงนี้" เหมือน C2.1/C2.2/C2.4/C2.5 (มติผู้คุมงานรีวิว C2.2 ข้อ 6): ทั้ง `/api/cron/outbox` และ
+//      `scripts/crm-cron.mts` ต้องเห็นงานนี้เสมอ ไม่ว่าโพรเซสจะอุ่นหรือเย็น (`crm/scoring-job.ts` เป็นแค่ทางเข้าแบบ import)
+//   🔴 **หนี้ที่รู้ตัว**: พิมพ์เขียวเขียนว่า "03:00 ไทย" แต่ตัวกระจายงานของ C0.5 รู้จักแต่หน้าต่างที่นับจากเที่ยงคืนไทย
+//      ⇒ ระบุชั่วโมงไม่ได้ในวันนี้ · ใบ C6.1 ตั้งบรรทัด crontab รายวันเวลา 03:00 ได้ถ้าเจ้าของร้านต้องการ (มติผู้คุมงาน 24 ก.ย.)
+//   ไม่ vpsOnly: route ยิงมาช่วยได้ (งานนี้ idempotent — การจองเป็นชุดด้วย `FOR UPDATE SKIP LOCKED` + กุญแจกันซ้ำของแถวแต้ม)
+//   ประตู uiVersion อยู่ในตัวงาน (`decay`/`applyInactivity` กรองเฉพาะระบบที่ `settings.crm.uiVersion = 2` ใน SQL — R-E.14
+//   แถวคงอยู่ทั้งหมด แล้วเดินต่อเมื่อเปิด 2 อีกครั้ง) · โหลด CRM ผ่าน facade ตอนรันเท่านั้น (ห้ามลากกราฟ CRM ตอนโหลดไฟล์นี้)
+registerMinuteJob({
+  name: "crm.scoring.decay",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { scoring } = await import("@/lib/modules/crm");
+    await scoring.runDailyScoring({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C2.8
 
 function errorText(e: unknown): string {
   let s: string;

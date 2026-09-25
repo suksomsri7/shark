@@ -255,8 +255,11 @@ if (WORKER_AT >= 0) {
     for (let i = 1; i <= Number(arg.steps ?? 50); i += 1) {
       try {
         if (!dc) throw Object.assign(new Error("decay missing"), { code: "MISSING_FUNCTION" });
-        const r = await dc({ now: new Date(Number(arg.nowMs)), tenantIds: [wT], systemIds: arg.systemIds, batchSize: 1 });
+        // ORACLE-EDIT 25 ก.ย. (Fable): contract A.5 = one decay() call loops until quiet ⇒ cap to ONE batch per call (`maxBatches: 1`) and pace
+        //   (~200 ms) so the parent's SIGKILL lands in the middle of the sweep — before this, the first call swept all 25 and the kill came too late
+        const r = await dc({ now: new Date(Number(arg.nowMs)), tenantIds: [wT], systemIds: arg.systemIds, batchSize: 1, maxBatches: 1 });
         console.log(`C28STEP ${i} ${Number(r?.expired ?? 0)}`);
+        await new Promise((res) => setTimeout(res, 200));
         if (Number(r?.expired ?? 0) === 0) break;
       } catch (e) { console.log(`C28STEP ${i} ${err(e)}`); break; }
     }
@@ -601,11 +604,12 @@ try {
     const seqRes: Res[] = [];
     for (let i = 0; i < 5; i += 1) seqRes.push(await fire(cA, EV.OPEN, { contactId: cMax, emailId: `${TAG}-m-${i}` }, { now: NOW0 }));
     const sameDay = (await logsOf(cMax)).filter((l) => l.ruleId === rMax);
+    const score6 = await scoreOf(cMax); // ORACLE-EDIT 25 ก.ย. (Fable): snapshot BEFORE the next-day event — both reads used to happen after it
     const next = await fire(cA, EV.OPEN, { contactId: cMax, emailId: `${TAG}-m-next` }, { now: new Date(NOW0.getTime() + DAY) });
     const afterNext = (await logsOf(cMax)).filter((l) => l.ruleId === rMax);
     chk("C2.8-S2.1", "maxPerDay 3 on \"เปิดอีเมล\" (+2): 5 events on the SAME Thai day ⇒ exactly 3 logs and +6 on the score (the 4th and 5th write nothing and do not fail) · one more event on the NEXT Thai day scores again ⇒ 4 logs, +8",
-      seqRes.every((r) => r.ok) && sameDay.length === 3 && (await scoreOf(cMax)) === 6 && next.ok && afterNext.length === 4 && (await scoreOf(cMax)) === 8,
-      "3 then 4 logs · 6 then 8", `fired=${seqRes.filter((r) => r.ok).length}/5 sameDay=${sameDay.length} score6=${await scoreOf(cMax)} nextDay=${afterNext.length}${ABSENT}`);
+      seqRes.every((r) => r.ok) && sameDay.length === 3 && score6 === 6 && next.ok && afterNext.length === 4 && (await scoreOf(cMax)) === 8,
+      "3 then 4 logs · 6 then 8", `fired=${seqRes.filter((r) => r.ok).length}/5 sameDay=${sameDay.length} score6=${score6} nextDay=${afterNext.length}${ABSENT}`);
   }
   {
     const cOther = await rawContact(tidA, crmA);
@@ -777,10 +781,13 @@ try {
     const del = await call(deleteRuleF, cA, owner, rGone, { confirm: true, reason: `เลิกใช้แล้ว ${TAG}` });
     if (!del.ok) await P.crmScoreRule.deleteMany({ where: { id: rGone } });
     const exH = await call(explainF, cA, owner, cHist);
-    const itemsH = (exH.v?.items ?? exH.v ?? []) as Any[];
+    // ORACLE-EDIT 25 ก.ย. (Fable): crmA still holds the 8 seeded rules (S1.1) ⇒ `form_submitted` (+15) scores this event too — A.3 "every matching rule
+    //   scores" — so the contact has 2 logs / 21; the history item is the one whose ruleId is the deleted rule, not "the only item"
+    const itemsAll = (exH.v?.items ?? exH.v ?? []) as Any[];
+    const itemsH = itemsAll.filter((it) => String(it?.ruleId ?? "") === rGone);
     chk("C2.8-S5.2", "explain on a contact with no live log ⇒ an empty list with score 0 (never an error) · a log whose RULE has been deleted keeps its reason as history (ruleId has no FK) and still shows up in explain",
-      ex0.ok && ((ex0.v?.items ?? []) as Any[]).length === 0 && Number(ex0.v?.score ?? 0) === 0 && exH.ok && itemsH.length === 1 && String(itemsH[0]?.reason ?? "").includes("กฎที่จะถูกลบ") && (await scoreOf(cHist)) === 6,
-      "empty · history kept", `empty=${ex0.ok ? j(ex0.v) : ex0.err} deleted=${del.ok ? "service" : `raw (${cut(del.err, 40)})`} hist=${exH.ok ? cut(j(itemsH), 160) : exH.err}${ABSENT}`);
+      ex0.ok && ((ex0.v?.items ?? []) as Any[]).length === 0 && Number(ex0.v?.score ?? 0) === 0 && exH.ok && itemsAll.length === 2 && itemsH.length === 1 && String(itemsH[0]?.reason ?? "").includes("กฎที่จะถูกลบ") && (await scoreOf(cHist)) === 21,
+      "empty · history kept (2 logs / 21 — seeded form_submitted +15 also fires)", `empty=${ex0.ok ? j(ex0.v) : ex0.err} deleted=${del.ok ? "service" : `raw (${cut(del.err, 40)})`} hist=${exH.ok ? cut(j(itemsH), 160) : exH.err}${ABSENT}`);
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -976,7 +983,7 @@ try {
       "7 refused · CRUD ok", `accepted=${cut(accepted.join(" | "), 200) || "-"} create=${good.ok ? "ok" : good.err} update=${upd.ok ? upd.v?.points : upd.err} toggle=${off.ok ? off.v?.active : off.err} list=${listed.length}/${n1} foreign=${foreign.ok ? "ACCEPTED" : foreign.code} rows ${n0}→${n1}${ABSENT}`);
   }
   {
-    const cPerm = await rawContact(tidA, crmA);
+    const cPerm = await rawContact(tidA, crmA, { ownerUserId: userS }); // ORACLE-EDIT 25 ก.ย. (Fable): "a contact he may open" — STAFF default visibility is TEAM (own ∪ team); a team-less staff cannot see userA's rows (X1.3 asserts exactly that)
     const rules = await call(listRulesF, cA, staff);
     const create = await call(createRuleF, cA, staff, { name: `แอบสร้าง ${TAG}`, event: EV.ACT, points: 3 });
     const setS = await call(setSetF, cA, staff, { hot: 10, warm: 5 });
@@ -1047,13 +1054,14 @@ try {
     const evt = { id: `${TAG}-gate-1`, tenantId: tidA, type: EV.ACT, payload: { activityId: act.id, contactId: cGate, type: "CALL" }, systemId: crmG, unitId: null };
     const closed = await call(onScoring, evt);
     const closedLogs = await logsOf(cGate);
+    const closedScore = await scoreOf(cGate); // ORACLE-EDIT 25 ก.ย. (Fable): snapshot BEFORE the gate reopens
     await setCrm(crmG, { bridgesEnabled: true });
     const open = await call(onScoring, { ...evt, id: `${TAG}-gate-2` });
     const openLogs = await logsOf(cGate);
     await setCrm(crmG, { bridgesEnabled: false });
     chk("C2.8-S8.6", "the gate comes FIRST (crm-bridges/core.ts rule, R-E.14): with bridgesEnabled false the scoring extra writes no log, no event and does not throw although the system is uiVersion 2 · flipping the switch back on, the very same event scores +11 — so the switch is a real kill switch, not a half one",
-      typeof onScoring === "function" && closed.ok && closedLogs.length === 0 && (await scoreOf(cGate)) === 0 && open.ok && openLogs.length === 1 && (await scoreOf(cGate)) === 11,
-      "0 then 1 log", `bridge=${typeof onScoring} closed=${closed.ok ? "ok" : closed.err} logsClosed=${closedLogs.length} open=${open.ok ? "ok" : open.err} logsOpen=${openLogs.length} score=${await scoreOf(cGate)}${ABSENT}`);
+      typeof onScoring === "function" && closed.ok && closedLogs.length === 0 && closedScore === 0 && open.ok && openLogs.length === 1 && (await scoreOf(cGate)) === 11,
+      "0 then 1 log", `bridge=${typeof onScoring} closed=${closed.ok ? "ok" : closed.err} logsClosed=${closedLogs.length} scoreClosed=${closedScore} open=${open.ok ? "ok" : open.err} logsOpen=${openLogs.length} score=${await scoreOf(cGate)}${ABSENT}`);
   }
   {
     // FormDef.scoreOnSubmit (C2.6 column, C2.8 points) — driven through `adjust`, once per submission
@@ -1248,14 +1256,17 @@ try {
     await P.crmScoreLog.createMany({ data: Array.from({ length: 25 }, (_, i) => ({ tenantId: tidA, contactId: cKill, ruleId: null, points: 1, reason: `ถูกฆ่า ${TAG}-${i}`, expiresAt: new Date(NOW0.getTime() - DAY) })) });
     const enc = Buffer.from(JSON.stringify({ systemIds: [crmD], nowMs: NOW0.getTime(), steps: 25 }), "utf8").toString("base64url");
     const killed = await new Promise<{ steps: number; out: string }>((resolve) => {
-      const ch = spawn("pnpm", ["exec", "tsx", THIS_FILE, "--x3-worker", "decayloop", tidA, crmD, userA, String(Date.now()), enc], { env: process.env });
+      // ORACLE-EDIT 25 ก.ย. (Fable · round 2): `pnpm exec` is the child and `tsx` the GRANDCHILD — `ch.kill` reached pnpm only and the worker ran to
+      //   completion (steps=25). Spawn detached and kill the whole process group so the SIGKILL really lands mid-sweep.
+      const ch = spawn("pnpm", ["exec", "tsx", THIS_FILE, "--x3-worker", "decayloop", tidA, crmD, userA, String(Date.now()), enc], { env: process.env, detached: true });
+      const killGroup = () => { try { process.kill(-(ch.pid as number), "SIGKILL"); } catch { try { ch.kill("SIGKILL"); } catch { /* gone */ } } };
       let out = "";
       let steps = 0;
-      const to = setTimeout(() => { try { ch.kill("SIGKILL"); } catch { /* gone */ } resolve({ steps, out }); }, 180_000);
+      const to = setTimeout(() => { killGroup(); resolve({ steps, out }); }, 180_000);
       ch.stdout.on("data", (d: Any) => {
         out += String(d);
         steps = (out.match(/C28STEP /g) ?? []).length;
-        if (steps >= 3) { try { ch.kill("SIGKILL"); } catch { /* gone */ } }
+        if (steps >= 3) killGroup();
       });
       ch.stderr.on("data", (d: Any) => { out += String(d); });
       ch.on("close", () => { clearTimeout(to); resolve({ steps, out }); });
