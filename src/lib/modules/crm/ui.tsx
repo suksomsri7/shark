@@ -30,6 +30,8 @@ import { isCrmV2SwitchAllowed } from "./ui-version";
 import { CrmSwitchLink } from "@/components/crm/settings/CrmSwitchLink";
 export { CrmHomeV2 } from "./home";
 export { PartyCrmBlock } from "./party-block";
+// CRM C2.7 ▸ บล็อก "ดีล" บนหน้าเอกสารบัญชี (`crm.payments.dealForDoc` · เส้น account→crm เดิม) ◂
+export { AccountDocCrmDealBlock } from "./doc-block";
 // รีวิว N-9: ตัวแปลง settings (บริสุทธิ์) ให้หน้า /app/sys/[id] — ไม่ลาก facade index ทั้งก้อน (F2.3 อนุญาตเฉพาะ crm/index · crm/ui)
 export { parseCrmSettings } from "./settings";
 // ◂ CRM C1.11

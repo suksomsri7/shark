@@ -242,7 +242,9 @@ async function recomputeCachesInTx(tx: Tx, ctx: CompaniesCtx, companyId: string,
   await tx.$executeRaw`
     UPDATE "CrmCompany" co SET
       "openDealCount" = (SELECT count(*)::int FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'OPEN'::"CrmStageKind"),
-      "wonValueSatang" = (SELECT COALESCE(sum(COALESCE(d."wonValueSatang", d."valueSatang")), 0)::bigint FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'WON'::"CrmStageKind"),
+      -- CRM C2.7 ▸ ดีลที่ชนะ = ภาพมูลค่าตอนชนะ (เดิม) · ดีลที่ยังไม่ปิดแต่ "รับเงินจริง" มาแล้ว = ยอดเอกสาร/บิลที่รับเงิน
+      --   (wonValueSatang ของดีลที่ยังไม่ชนะเป็น NULL เสมอจนกว่า payments.ts จะนับเงินเข้า ⇒ ร้านที่ยังไม่ใช้ทางเดินเงินได้ค่าเดิมเป๊ะ)
+      "wonValueSatang" = (SELECT COALESCE(sum(CASE WHEN d."kind" = 'WON'::"CrmStageKind" THEN COALESCE(d."wonValueSatang", d."valueSatang") ELSE COALESCE(d."wonValueSatang", 0) END), 0)::bigint FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND (d."kind" = 'WON'::"CrmStageKind" OR d."wonValueSatang" IS NOT NULL)),
       "outstandingSatang" = COALESCE(${out}::bigint, co."outstandingSatang")
      WHERE co."id" = ${companyId} AND co."tenantId" = ${ctx.tenantId} AND co."systemId" = ${ctx.systemId}`;
 }

@@ -26,3 +26,15 @@ export { onChatConversationStatus } from "./chat";
 // CRM C2.2 ▸ หยุดลำดับการติดตามอัตโนมัติ (ชนะ/แพ้/ขอไม่รับข่าวสาร) — เรียก `crm.sequences.stopFor` (R-A · R-D)
 export { onDealWonStopSequences, onDealLostStopSequences, onContactOptOutStopSequences } from "./sequences";
 // ◂ CRM C2.2
+// CRM C2.7 ▸ ทางเดินเงิน (`money.ts` · R-D: ใบ C2.7 เป็นเจ้าของไฟล์นั้นไฟล์เดียว) — บัญชี/หน้าร้าน → CrmDealPayment · paidSatang ·
+//   wonValueSatang · lifecycle · แคชบริษัท · ธง "เอกสารถูกยกเลิก" · ออกใบแจ้งหนี้อัตโนมัติเมื่อชนะ
+export {
+  onPaymentRecorded,
+  onInvoicePaid,
+  onPaymentVoided,
+  onDocumentVoided,
+  onPosSalePaid,
+  onPosSaleVoided,
+  onDealWonAutoInvoice,
+} from "./money";
+// ◂ CRM C2.7

@@ -138,3 +138,27 @@ export * as reminders from "./reminders";
 //   ค่าคงที่/ชนิด/ตัวช่วยบริสุทธิ์สำหรับหน้า 'use client' อยู่ที่ `./emails-shared`
 export * as emails from "./emails";
 // ◂ CRM C2.5
+// CRM C2.6 ▸ การติดตามเว็บ (`tracking.ts`) — namespace เดียว: ลิงก์ติดตาม (createLink/updateLink/deleteLink/listLinks/linkStats/
+//   linkQrSvg) · ตั้งค่าเว็บ (getWebSettings/saveWebSettings) · สถิติ/ไทม์ไลน์ (webStats/webTimeline) · ฟอร์ม → CRM
+//   (listFormTargets/saveFormTarget) · ทางสาธารณะที่ route เรียก (resolveSite/collect/recordConsent/identify/purgeWeb/
+//   resolveLinkHit/linkUniqueCookie/trackerScript/corsOriginForPayload/corsOriginForPreflight/ticketedClickUrl) ·
+//   ตั๋วระบุตัวตนของลิงก์ในอีเมล
+//   (emailClickTicket/appendIdentifyTicket) · `ipHashFor` (ตัวแทนของ IP ตัวเดียวของโมดูล)
+//   ผู้เรียกนอกโมดูล: route `/l/[code]` `/t/s/[script]` `/t/e` `/t/consent` `/t/c/[token]` (ใบ C2.5 · hunk ตั๋ว) ·
+//   สะพานฟอร์ม `src/lib/platform/crm-bridges/forms.ts` · โมดูลฟอร์ม (`ipHashFor` ของคำตอบฟอร์ม) · C2.10 (ลงทะเบียน purgeWeb)
+//   ค่าคงที่/ตัวช่วยบริสุทธิ์สำหรับหน้า 'use client' อยู่ที่ `./tracking-shared`
+export * as tracking from "./tracking";
+// ◂ CRM C2.6
+
+// CRM C2.7 ▸ ทางเดินเงิน (`payments.ts`) — namespace เดียว `payments`:
+//   ทางเข้าของสะพาน (ไม่มี actor คน · ผู้เรียกตัดสินประตูมาแล้ว): recordDocPayment · onInvoiceFullyPaid · reverseDocPayment ·
+//     flagDocumentVoided · countPosSale · reversePosSale · countedWonValueOf
+//   ทางเข้าของคน (actor + คีย์ + การมองเห็น): linkSaleToDeal (ปุ่มผูกบิลของแคชเชียร์) · openDealsForParty (ช่อง "ดีล" บนหน้าขาย ·
+//     ไม่มีคีย์ = รายการว่าง ไม่ throw) · dealForDoc (บล็อกดีลบนหน้าเอกสารบัญชี) · dealMoney
+//   ผู้เรียก: `src/lib/platform/crm-bridges/money.ts` (6 ตัวรับ event) · `src/lib/modules/pos/register.ts` (เส้น pos→crm) ·
+//     `src/lib/actions/pos.ts` (ผูกบิลหลังขายสำเร็จ — ห่อไว้ ล้มแล้วบิลไม่ล้ม) · `crm/doc-block.tsx` (หน้าเอกสารบัญชี)
+//   ค่าคงที่/ชนิดบริสุทธิ์ (DEAL_VOIDED_TAG · POS_LINK_LIMIT · MONEY_REF_TYPES) อยู่ที่ `./payments-shared`
+export * as payments from "./payments";
+export { DEAL_VOIDED_TAG, POS_LINK_LIMIT, MONEY_REF_TYPES } from "./payments-shared";
+export type { DealForDoc, DealMoney, OpenDealOption } from "./payments-shared";
+// ◂ CRM C2.7

@@ -30,6 +30,10 @@ import { crmCan, crmForbiddenMessage, crmParam } from "./access";
 import * as companies from "./companies";
 import { CompaniesError } from "./companies-shared";
 import { dealStateForStage, lifecycleAfterDealWon } from "./rules";
+// CRM C2.7 ▸ ธง "เอกสารถูกยกเลิก" + เพดานของทางเดินเงิน อยู่ที่ `./payments-shared` (บริสุทธิ์ — `payments.ts` import `deals.ts` ทางเดียว ไม่มีวงโหลด) ◂
+import { DEAL_VOIDED_TAG } from "./payments-shared";
+// CRM C2.7 ▸ มติรอบ 2 (SF-3): ประตู uiVersion ของ "มูลค่าที่รับเงินจริง" ใน `moveCore` (ร้าน v1 = พฤติกรรมเดิมของ C1.5) ◂
+import { crmUiVersion } from "./ui-version";
 // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
 import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
 import {
@@ -763,7 +767,18 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
   const split = Object.keys(rfv).length > 0 ? splitRequireValues(rfv) : { columns: {}, custom: {} };
   const hasCustom = Object.keys(split.custom).length > 0;
 
+  // CRM C2.7 ▸ R-E.7: ดีลที่ "รับเงินจริง" มาแล้ว (มีแถว CrmDealPayment ที่ถูกนับ) มีภาพมูลค่าของตัวเอง = ยอดเอกสาร/บิลที่รับเงิน
+  //   ⇒ ย้ายขั้นต้องไม่ล้างค่านั้นทิ้ง และไม่ทับด้วย valueSatang · ยังไม่มีเงินเข้าเลย (null) = พฤติกรรมเดิมของ C1.5 ทุกประการ
+  //   อ่านผ่าน `payments.ts` (เจ้าของตารางเงิน · อ่านยอดเอกสารผ่าน facade บัญชี) ด้วย dynamic import — ไม่มีวงโหลด
+  // 🔴 มติรอบ 2 (SF-3): **อ่านใต้ล็อกด้วย tx ของการย้ายเสมอ** — อ่านก่อนล็อกแล้วเขียนทีหลังคือ TOCTOU:
+  //    เงินที่เพิ่งถูกนับระหว่างรอล็อก (ตัวรับ `pos.sale.paid` / `account.payment.recorded`) จะถูกทับเป็น null ⇒ ยอดที่รับจริงหาย
+  // 🔴 มติรอบ 2 (SF-3): ประตู v2 — ร้านที่ยังใช้ CRM รุ่นเดิมไม่มีทางเดินเงินของ v2 ⇒ ไม่อ่าน ไม่มีผลกับ `wonValueSatang` เดิมของ C1.5
+  const moneyGate = (await crmUiVersion(identityScope(ctx))) === 2;
+  let paidWonValue: bigint | null = null;
   const out = await withDealLocks(ctx, who, id, { contact: target.kind === "WON", engine: hasCustom }, async (tx, deal) => {
+    // อ่านใต้ล็อกแถวดีล (withDealLocks ถือ `FOR UPDATE` ของแถวนี้แล้ว — ทางเดินเงินก็ล็อกแถวเดียวกันก่อนเขียน)
+    //   relock/retry = อ่านซ้ำเองรอบใหม่ (ค่าเป็นของรอบนั้น ๆ เสมอ)
+    paidWonValue = moneyGate ? await (await import("./payments")).countedWonValueOf(identityScope(ctx), deal.id, tx).catch(() => null) : null;
     if (target.pipelineId !== deal.pipelineId) throw fail("NOT_FOUND", "ขั้นนี้ไม่ได้อยู่ใน pipeline ของดีลนี้ — เลือกขั้นจากกระดานของดีลนี้");
     // CRM C1.8 ▸ AUDIT-CLASS X4 (H5): ย้ายจากสะพาน = "ตรวจธงก่อน" ใต้ advisory lock ต่อธง + ล็อกแถวดีล — ธงมีแล้ว = ไม่ทำอะไร ·
     //   แถวธง (กิจกรรม AUTO `sourceRef` = ธง) เขียน **ใน tx เดียวกับการย้าย และเฉพาะเมื่อย้ายจริง** (ไม่ย้าย = ไม่มีโน้ต) ·
@@ -822,7 +837,7 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
         lostReasonId: target.kind === "LOST" ? lostReasonId : null,
         lostReason: target.kind === "LOST" ? lostNote : reopened ? null : working.lostReason,
         // R-E.7 (มติผู้คุมงาน C1.5 ข้อ 3): เข้า WON = ถ่ายภาพมูลค่า ณ ตอนชนะ (ครั้งเดียวต่อการเข้า) · WON→WON คงภาพเดิม · C2.7 ปรับตามเอกสารที่รับเงินจริง
-        wonValueSatang: intoWon ? BigInt(working.valueSatang) : target.kind === "WON" ? working.wonValueSatang : null,
+        wonValueSatang: paidWonValue !== null ? paidWonValue : intoWon ? BigInt(working.valueSatang) : target.kind === "WON" ? working.wonValueSatang : null,
         ...(reopened ? { reopenedCount: { increment: 1 } } : {}),
       },
     });
@@ -1310,8 +1325,14 @@ export async function issueQuotation(ctx: DealsCtx, actor: MemberActor, dealId: 
 /** ออกใบแจ้งหนี้ของดีล — ใบเสนอราคาที่ออกแล้ว (ไม่ใช่ร่าง) = แปลงต่อ · ไม่งั้นสร้างจากรายการของดีล · idempotent · เก็บ invoiceDocId */
 export async function issueInvoice(ctx: DealsCtx, actor: MemberActor, dealId: string): Promise<{ docId: string; created: boolean }> {
   const a = await enter(ctx, actor);
-  const pre = await loadDeal(ctx, a, dealId);
+  await loadDeal(ctx, a, dealId);
   need(a, "crm.deal.quote");
+  return invoiceCore(ctx, a, dealId);
+}
+
+/** ไส้ในของ "ออกใบแจ้งหนี้ของดีล" — ผู้เรียก: `issueInvoice` (คน) · `autoInvoiceOnWonFromBridge` (ระบบ · who = null) */
+async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ docId: string; created: boolean }> {
+  const pre = await loadDeal(ctx, who, dealId);
   const acc = await accountFacade();
   // รีวิว C1.5 S9 · AUDIT-CLASS X3: ต่อดีลทำทีละคำขอ — advisory lock ตลอด "หา → สร้าง → เก็บ" (ข้ามโพรเซสก็เรียงคิวที่ฐานข้อมูล)
   //   ⇒ กดพร้อมกันกี่ครั้งได้ใบแจ้งหนี้ใบเดียว · ล็อกนี้ไม่มีเส้นทางอื่นถือ จึงไม่ชนลำดับล็อกของใคร (บริษัท → ดีล ถูกล็อกทีหลัง)
@@ -1818,6 +1839,8 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
     if (info) docs.push({ id: info.docId, docType: info.docType, docNo: info.docNo, status: info.status, grandTotal: info.grandTotal, paidTotal: info.paidTotal });
   }
   const quotationDiffers = await quotationDiffersFor(ctx, deal, lines);
+  // CRM C2.7 ▸ ธง "เอกสารบัญชีของดีลนี้ถูกยกเลิก" = แท็กของดีล (ไม่มีคอลัมน์ · R-C.1) ◂
+  const documentVoided = deal.tags.includes(DEAL_VOIDED_TAG);
   const timeline: DealTimelineItem[] = [
     ...history.map((h) => ({ at: h.enteredAt, kind: (h.fromStageId ? "STAGE" : "CREATED") as DealTimelineItem["kind"], title: h.fromStageId ? `ย้ายขั้น ${h.fromStageName} → ${h.toStageName}` : `สร้างดีลที่ขั้น ${h.toStageName}`, detail: h.byName })),
     ...acts.map((x) => ({ at: x.createdAt.toISOString(), kind: "ACTIVITY" as const, title: x.title, detail: x.doneAt ? "เสร็จแล้ว" : x.dueAt ? "ค้างอยู่" : null })),
@@ -1841,6 +1864,9 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
     docs,
     timeline,
     quotationDiffers,
+    documentVoided,
+    // CRM C2.7 ▸ เงินที่รับจริงของดีล (คอลัมน์ `paidSatang` ที่ `payments.ts` บวก/ลบให้ในธุรกรรมของการรับเงิน) ◂
+    paidSatang: Number(deal.paidSatang ?? 0),
     daysInStage: Math.max(0, Math.floor((Date.now() - deal.stageEnteredAt.getTime()) / 86_400_000)),
     // CRM C1.6 ▸ การ์ดบอร์ดงานที่ผูกดีลนี้ (ลิงก์ DEAL · อ่านผ่าน kanban/links.listCardsForTarget — กรองบอร์ดที่ผู้ดูเห็นเอง) · มติผู้คุมงาน C1.6 ข้อ 2
     kanbanCards: await dealKanbanCards(ctx, a, deal.id),
@@ -2027,7 +2053,12 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
     // ดีลหนึ่งย้ายไม่ได้ (เงื่อนไขของขั้น/ชนกัน) ต้องไม่ขวางดีลอื่นของใบเดียวกัน — ล้มตัวแรกโยนต่อท้ายสุด (ผู้เรียกบันทึก WARN)
     try {
       const out = await moveCore(c, null, d.id, { stageId }, { flag });
-      if (out.changed) moved += 1;
+      if (out.changed) {
+        moved += 1;
+        // CRM C2.7 ▸ แจ้งเจ้าของดีล 1 ใบต่อ (เอกสาร, คำตอบ) — ผูกกับ "การย้ายที่เกิดจริง" ซึ่งธงของ moveCore การันตีว่าเกิดครั้งเดียว
+        //   AUDIT-CLASS X8: ข้อความไทยกลาง ๆ + id ล้วน (ไม่มีชื่อลูกค้า/เบอร์/อีเมล/ชื่อดีล/เลขที่เอกสาร) ◂
+        await notifyQuoteResponse(c, out.deal.id, out.deal.ownerUserId, input.accepted);
+      }
     } catch (e) {
       // เงื่อนไขของขั้นปลายทางไม่ครบ = ส่งซ้ำก็ไม่ผ่าน ⇒ บันทึก WARN (id ล้วน · AUDIT-CLASS X8) แล้วไปดีลถัดไป — ไม่ใช่ความล้มชั่วคราว
       if (e instanceof DealsError && (e.code === "STAGE_REQUIREMENTS" || e.code === "VALIDATION" || e.code === "NOT_FOUND")) {
@@ -2039,6 +2070,23 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
   }
   if (firstError) throw firstError;
   return moved;
+}
+
+/** CRM C2.7 ▸ แจ้งเตือนในแอปให้เจ้าของดีล (ไม่มีเจ้าของ = ไม่แจ้ง) — ล้มแล้วไม่ย้อนการย้าย (WARN แล้วไปต่อ) */
+async function notifyQuoteResponse(ctx: DealsCtx, dealId: string, ownerUserId: string | null, accepted: boolean): Promise<void> {
+  if (!ownerUserId) return;
+  try {
+    await prisma.appNotification.create({
+      data: {
+        tenantId: ctx.tenantId,
+        recipientUserId: ownerUserId,
+        title: accepted ? "ลูกค้าตอบรับใบเสนอราคาแล้ว" : "ลูกค้าปฏิเสธใบเสนอราคา",
+        body: `ดีลถูกย้ายไปขั้นที่ตั้งไว้ในไปป์ไลน์แล้ว — เปิดดูได้ที่ /app/sys/${ctx.systemId}/crm/deals/${dealId}`,
+      },
+    });
+  } catch (e) {
+    await logOps("WARN", "crm", `แจ้งเตือนคำตอบใบเสนอราคาไม่สำเร็จ — ดีล ${dealId}`, { tenantId: ctx.tenantId, detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e) });
+  }
 }
 
 /**
@@ -2070,3 +2118,72 @@ export async function linkInvoiceFromBridge(ctx: { tenantId: string; systemId: s
   return linked;
 }
 // ◂ CRM C1.8
+
+// CRM C2.7 ▸ ทางเดินเงิน: ป้าย "ต่างจากใบเสนอราคา" · ออกใบแจ้งหนี้อัตโนมัติตอนชนะ · ชนะอัตโนมัติเมื่อจ่ายครบ
+//   (ตารางเงิน/ตัวรับ event อยู่ที่ `payments.ts` + `platform/crm-bridges/money.ts` — ที่นี่มีเฉพาะสิ่งที่เป็นของ "ดีล")
+
+/**
+ * ประตูเขียน `CrmDeal.wonValueSatang` ให้ "ทางเดินเงิน" (`payments.ts`) ใช้ในธุรกรรมของมันเอง
+ * 🔴 ทำไมต้องอยู่ไฟล์นี้: คอลัมน์ที่ควบคุมของดีล (มูลค่า · ขั้น · ชนิด · มูลค่าตอนชนะ …) เขียนได้จาก `crm/deals*.ts`
+ *    เท่านั้น (ข้อสอบ C1.5-S0.8) — ผู้เรียกถือ advisory lock ของดีล + ล็อกแถวไว้แล้ว ที่นี่จึงเป็นการเขียนค่าเดียว
+ * null = ยังไม่มีเงินเข้าเลย ⇒ กลับไปเป็น "ไม่มีมูลค่าที่รับจริง" (R-E.7)
+ */
+export async function setWonValueInTx(
+  tx: Prisma.TransactionClient,
+  ctx: { tenantId: string; systemId: string },
+  dealId: string,
+  wonValueSatang: bigint | null,
+): Promise<void> {
+  await tx.crmDeal.updateMany({ where: { id: dealId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { wonValueSatang } });
+}
+
+/** §11.3: รายการของดีลต่างจากใบเสนอราคาที่ออกไปแล้วไหม (ป้ายบนดีล 360 · ด่านของ `issueInvoice`) */
+export async function quotationDiffers(ctx: DealsCtx, actor: MemberActor, dealId: string): Promise<boolean> {
+  const a = await enter(ctx, actor);
+  const deal = await loadDeal(ctx, a, dealId);
+  return quotationDiffersFor(ctx, deal);
+}
+
+/**
+ * `crm.deal.won` → pipeline ที่ตั้ง `autoInvoiceOnWon` = ออกใบแจ้งหนี้ให้ดีลนั้น **ใบเดียว**
+ * AUDIT-CLASS X4: `issueInvoice` ถือ advisory lock ต่อดีลและคืนใบเดิมเมื่อมี `invoiceDocId` แล้ว ⇒ ส่งซ้ำ/พร้อมกัน = ใบเดียว
+ * AUDIT-CLASS X9: audit `crm.deal.invoice.auto` (actorType SYSTEM) · ออกไม่ได้ (ยังไม่เชื่อมบัญชี/รายการต่าง) = โยนให้ผู้เรียก WARN —
+ *   ดีลยังชนะตามปกติ (การออกบิลเป็น "ของแถม" ของการชนะ ไม่ใช่เงื่อนไข)
+ */
+export async function autoInvoiceOnWonFromBridge(ctx: { tenantId: string; systemId: string }, input: { dealId: string }): Promise<{ docId: string | null; created: boolean }> {
+  const c: DealsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const dealId = str(input?.dealId);
+  if (!dealId) return { docId: null, created: false };
+  await resolveSystem(c);
+  const deal = await prisma.crmDeal.findFirst({ where: { ...identityScope(c), id: dealId }, select: { id: true, kind: true, invoiceDocId: true, pipeline: { select: { autoInvoiceOnWon: true } } } });
+  if (!deal || deal.kind !== "WON" || !deal.pipeline.autoInvoiceOnWon) return { docId: null, created: false };
+  if (deal.invoiceDocId) return { docId: deal.invoiceDocId, created: false };
+  const out = await invoiceCore(c, null, deal.id);
+  if (out.created) await audit(c, "crm.deal.invoice.auto", deal.id, { after: { docId: out.docId, via: "crm.deal.won" } });
+  return out;
+}
+
+/**
+ * เงินเข้าครบ → pipeline ที่ตั้ง `autoWonOnPaid` ย้ายดีลไปขั้นชนะ **ครั้งเดียวต่อดีล**
+ * AUDIT-CLASS X4: ใช้ธงของสะพาน (`moveCore` + กิจกรรม AUTO `sourceRef`) ⇒ ยิงซ้ำ/พร้อมกันกี่รอบก็ย้ายครั้งเดียว
+ * AUDIT-CLASS X9: audit `crm.deal.won.auto` (actorType SYSTEM — ไม่ผูกกับพนักงานที่บังเอิญกดปุ่มผูกบิล)
+ */
+export async function autoWinOnPaidFromBridge(ctx: { tenantId: string; systemId: string }, input: { dealId: string }): Promise<{ won: boolean }> {
+  const c: DealsCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  const dealId = str(input?.dealId);
+  if (!dealId) return { won: false };
+  await resolveSystem(c);
+  const deal = await prisma.crmDeal.findFirst({
+    where: { ...identityScope(c), id: dealId },
+    select: { id: true, kind: true, valueSatang: true, paidSatang: true, pipelineId: true, pipeline: { select: { autoWonOnPaid: true } } },
+  });
+  if (!deal || deal.kind !== "OPEN" || !deal.pipeline.autoWonOnPaid) return { won: false };
+  if (deal.valueSatang <= 0 || deal.paidSatang < BigInt(deal.valueSatang)) return { won: false };
+  const stage = await prisma.crmStage.findFirst({ where: { ...identityScope(c), pipelineId: deal.pipelineId, kind: "WON" }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true } });
+  if (!stage) return { won: false };
+  const flag: BridgeMoveFlag = { ref: `crm.deal.paid.autowon#${deal.id}`, title: "รับเงินครบตามมูลค่าดีล — ย้ายดีลไปขั้นชนะอัตโนมัติ" };
+  const out = await moveCore(c, null, deal.id, { stageId: stage.id }, { flag });
+  if (out.changed) await audit(c, "crm.deal.won.auto", deal.id, { after: { stageId: stage.id, paidSatang: Number(deal.paidSatang), valueSatang: deal.valueSatang } });
+  return { won: out.changed };
+}
+// ◂ CRM C2.7

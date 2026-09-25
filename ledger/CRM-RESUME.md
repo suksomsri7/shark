@@ -1,6 +1,6 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: **24 ก.ย. 2569 19:00 (ไทย · 12:00 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
+> อัปเดตล่าสุด: **25 ก.ย. 2569 07:15 (ไทย · 00:15 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → **ท้าย `ledger/CRM-RUN.md` §4 (บันทึก 23–24 ก.ย. สำคัญมาก)** → brief ของใบที่ทำ (มี "Controller ruling/addendum" = ผูกพัน)
 
 ## 0. ▶️ ทำต่อจากตรงนี้ (session ใหม่ · ทำตามลำดับ)
@@ -11,12 +11,13 @@
   `awk '/^== /{n=$0} /^exit=/{print n" -> "$0}' .qc-shots/crm/c21-verify3.log` และ `grep JSON_SUMMARY`
 - `ls /tmp/shark-gate*.lock` + `fuser /tmp/shark-gate.lock` ต้องไม่มีใครถือ
 
-### 0.2–0.5 C2.1 · C2.2 · C2.3 · C2.4 · C2.5 — ✅ รับงานแล้วทั้ง 5 ใบ (23/53 = 43%) · commit ในทรีหลัก · 🔴 **ยังไม่ push** (session Fable ถูกตัวกรองสิทธิ์บล็อก — เจ้าของกด: `cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main`)
+### 0.2–0.5 C2.1 … C2.7 — ✅ รับงานแล้ว 7 ใบ (25/53 = 47%) · commit ในทรีหลัก · 🔴 **ยังไม่ push** (session Fable ถูกตัวกรองสิทธิ์บล็อก — เจ้าของกด: `cd /root/projects/shark-crm && git push -u origin session/crm && git push origin HEAD:main`)
 - หลัง deploy READY: เติม D12 ใน wo-notes C2.1–C2.5 (hash + dpl) · `tg` · 🔴 prod ต้องมี `RESEND_WEBHOOK_SECRET` (ไม่ตั้ง = webhook ปิด 401 ปลอดภัย) · Q7 ฟุตเตอร์ยกเลิกรับ (ค่าเริ่มต้น "มี")
 - worktree c20/c23/c12a: รีเซ็ตเป็น HEAD ใหม่ก่อนใช้ (`git checkout -- . && git clean -fd -e .qc-shots -e node_modules -e '.env.*' && git checkout --detach <HEAD>`) · หลักฐาน `.qc-shots/c24*`, `.qc-shots/c25*` ยังอยู่
 - ข้อสอบพร้อม: C2.6 (82 + web 34) · C2.7 (55 — **8 ข้อรอเคาะท้าย addendum brief C2.7**) · C2.8 (54) · C2.9 (47) · C2.10 (40) · C2.11 (47) · C3.0 (33) — ทุกใบยกเว้น C2.6/C2.7 เคาะแล้ว
-- **กำลังเดิน (spawn 24 ก.ย. 12:20 UTC)**: builder **C2.6** opus ใน c20/QC2 (หลักฐาน `.qc-shots/c26/` · ข้อสอบ 82 + headless 34 ที่ผู้คุมงานรันตอน verify: serve → `qc-crm-c2.6-web` → stop) ∥ builder **C2.7** opus ใน c23/QC3 (`.qc-shots/c27/` · 55) · หลังจบ: ผู้ตรวจอ่านอย่างเดียวทั้งสองใบ → แก้ → รวม → unit → PARITY (mockup 11/16 · —) → รับ
-- ถัดไป: C2.8 ∥ C2.9 → C2.10 → C2.11 → ปิดเฟส C2 (`qc:all` ส่ง DATABASE_URL/DIRECT_URL) → C3.0 migration
+- C2.6/C2.7 รับแล้ว 25 ก.ย. (commit ดูใน git log) · หลักฐาน builder ใน c20/c23 `.qc-shots/c26*` `.qc-shots/c27*` · probe ไม่ commit
+- **กำลังเดิน**: C2.8 (c20/QC2 · ข้อสอบ 54 · ตอนรับต้อง ORACLE-EDIT `C2.1-S4.6`) ∥ C2.9 (c23/QC3 · 47) — spawn 25 ก.ย. ~00:20 UTC · ≤3 agent ขนาน
+- ถัดไป: C2.10 → C2.11 → ปิดเฟส C2 (`qc:all` ส่ง DATABASE_URL/DIRECT_URL) → C3.0 migration
 - วงจรที่ใช้ได้ผล (5 ใบ): builder (log ทุก suite) → **ผู้ตรวจอ่านอย่างเดียว opus** → ORACLE-EDIT + builder แก้ (before/after) → รวม (ไฟล์ร่วม: patch --fuzz + เช็คสมดุลวงเล็บ · inventory รวมตาม wo · docs regen ก่อน suite) → unit ตรวจรวม (ชื่อสคริปต์ใหม่ทุกรอบ · ถอยหลังรวม c1.11) → ภาพต้องมีข้อมูล → PARITY → wo-notes → commit
 
 ### 0.6 ถัดไปตามลำดับ

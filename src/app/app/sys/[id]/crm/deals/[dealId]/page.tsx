@@ -212,6 +212,14 @@ export default async function Deal360Page({
                 <span className="text-xs text-[color:var(--color-muted)]">มูลค่าดีล</span>
                 <span className="text-lg font-semibold">{formatBaht(d.valueSatang)}</span>
               </div>
+              {/* CRM C2.7 ▸ เงินที่รับจริงของดีล (ใบแจ้งหนี้ที่ชำระ + บิลหน้าร้านที่ผูกไว้) — ยังไม่มีเงินเข้า = ไม่แสดงช่องนี้
+                  ⇒ ดีลของร้านที่ยังไม่ใช้ทางเดินเงิน เห็นแถว KPI เดิมทุกช่อง ◂ */}
+              {data.paidSatang > 0 && (
+                <div className="flex flex-col">
+                  <span className="text-xs text-[color:var(--color-muted)]">เงินที่รับแล้ว</span>
+                  <span className="text-lg font-semibold">{formatBaht(data.paidSatang)}</span>
+                </div>
+              )}
               <div className="flex flex-col">
                 <span className="text-xs text-[color:var(--color-muted)]">วันปิดคาด</span>
                 <span className="font-semibold">{formatThaiDay(d.expectedCloseAt)}</span>
@@ -257,6 +265,12 @@ export default async function Deal360Page({
 
           {tab === "overview" && (
             <>
+              {/* CRM C2.7 ▸ เอกสารบัญชีของดีลถูกยกเลิก — เตือนก่อนใคร เพราะยอด "เงินที่รับ" ของดีลถูกถอนคืนไปแล้ว ◂ */}
+              {data.documentVoided && (
+                <p className="rounded-xl border p-2.5 text-xs" style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}>
+                  เอกสารบัญชีของดีลนี้ถูกยกเลิก — ตรวจยอดเงินที่รับอีกครั้ง แล้วออกเอกสารใหม่ถ้ายังต้องเก็บเงิน
+                </p>
+              )}
               <section className="card flex flex-col gap-2 p-4" data-testid="deal-360-lines">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="font-semibold">รายการสินค้า</h2>

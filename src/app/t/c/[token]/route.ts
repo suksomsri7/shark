@@ -1,4 +1,4 @@
-import { emails } from "@/lib/modules/crm";
+import { emails, tracking } from "@/lib/modules/crm";
 
 // GET /t/c/<token> — ลิงก์ที่ถูกห่อไว้ในอีเมลของ CRM (ใบ C2.5 · R-C.7)
 //
@@ -25,9 +25,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     if (!clean) return home();
     const ip = ipOf(req);
     const allowed = await emails.trackGate("c", { ip, token: clean });
-    const { url } = await emails.trackClick(clean, { ip, ua: req.headers.get("user-agent") }, { count: allowed });
+    const ua = req.headers.get("user-agent");
+    const { url } = await emails.trackClick(clean, { ip, ua }, { count: allowed });
     if (!url) return home();
-    return new Response(null, { status: 302, headers: { Location: url, "Cache-Control": "no-store" } });
+    // CRM C2.6 ▸ ตั๋วระบุตัวตน (`sd_ct`): คลิกที่ **นับจริง** ของจดหมายที่รู้ว่าเป็นของผู้ติดต่อคนไหน และปลายทางอยู่ใน
+    //   โดเมนที่ร้านประกาศไว้เท่านั้น ⇒ หน้าที่ลูกค้าไปถึงผูกการเข้าชมย้อนหลังเข้ากับลูกค้าคนนั้นได้โดยไม่ต้องส่งอีเมล/เบอร์
+    //   ผ่านหน้าเว็บเลย (AUDIT-CLASS X7 · X8) · ปลายทางยังเป็น url ที่เก็บไว้เสมอ (ต่อพารามิเตอร์ท้ายเท่านั้น)
+    //   🔴 เป็น hunk เดียวที่ใบ C2.6 แตะ route ของใบ C2.5 (มติผู้คุมงาน 24 ก.ย. ข้อ 1) ◂
+    const target = await tracking.ticketedClickUrl(clean.split("~")[0] ?? "", url, { counted: allowed, userAgent: ua });
+    return new Response(null, { status: 302, headers: { Location: target, "Cache-Control": "no-store" } });
   } catch {
     return home();
   }

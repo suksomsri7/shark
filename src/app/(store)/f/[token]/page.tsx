@@ -1,24 +1,16 @@
 import { getPublicForm } from "@/lib/modules/forms/service";
+// CRM C2.6 ▸ ด่านกันสแปม (มติ C24): ตั๋ว "เริ่มกรอก" + ชื่อช่องหลอกบอต มาจากโมดูลฟอร์มที่เดียว ◂
+import { FORM_HONEYPOT_FIELD, FORM_START_FIELD, issueFormStartToken } from "@/lib/modules/forms/spam-guard";
 import { getPublicBranding } from "@/lib/branding/service";
 import { publicThemeStyle } from "@/lib/branding/public";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { PublicForm } from "./PublicForm";
 import { submitFormAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-const inputCls =
-  "rounded-lg border px-3 py-2.5 text-sm text-[color:var(--color-ink)] bg-[color:var(--color-surface)]";
-
 // ลิงก์ฟอร์มสาธารณะ /f/<token> — ลูกค้ากรอกไม่ต้องล็อกอิน (มือถือ-first)
-export default async function PublicFormPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ token: string }>;
-  searchParams: Promise<{ ok?: string; err?: string }>;
-}) {
+export default async function PublicFormPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const { ok, err } = await searchParams;
   const pub = await getPublicForm(token);
 
   const shell = (children: React.ReactNode) => (
@@ -33,18 +25,6 @@ export default async function PublicFormPage({
         <div className="text-xl font-semibold">ไม่พบฟอร์ม</div>
         <div className="mt-1 text-sm text-[color:var(--color-muted)]">
           ฟอร์มนี้อาจถูกปิดหรือลิงก์ไม่ถูกต้อง
-        </div>
-      </div>,
-    );
-  }
-
-  if (ok) {
-    return shell(
-      <div className="rounded-xl border bg-[color:var(--color-surface)] p-6 text-center">
-        <div className="text-2xl">🎉</div>
-        <div className="mt-2 text-lg font-semibold">ขอบคุณค่ะ</div>
-        <div className="mt-1 text-sm text-[color:var(--color-muted)]">
-          เราได้รับข้อมูลของคุณเรียบร้อยแล้ว
         </div>
       </div>,
     );
@@ -78,51 +58,15 @@ export default async function PublicFormPage({
         )}
       </header>
 
-      <form
-        action={submitFormAction}
-        className="flex flex-col gap-4 rounded-xl border bg-[color:var(--color-surface)] p-5"
-      >
-        <input type="hidden" name="__token" value={token} />
-        {err && (
-          <p className="rounded-lg bg-[color:var(--color-surface-2)] p-2 text-sm text-[color:var(--color-danger)]">
-            {err}
-          </p>
-        )}
-
-        {form.fields.map((f) => (
-          <label key={f.key} className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-            <span>
-              {f.label}
-              {f.required && <span className="text-[color:var(--color-danger)]"> *</span>}
-            </span>
-
-            {f.type === "textarea" ? (
-              <textarea name={f.key} rows={4} required={f.required} className={inputCls} />
-            ) : f.type === "select" ? (
-              <select name={f.key} required={f.required} defaultValue="" className={inputCls}>
-                <option value="" disabled>
-                  — เลือก —
-                </option>
-                {(f.options ?? []).map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                name={f.key}
-                required={f.required}
-                type={f.type === "phone" ? "tel" : f.type === "email" ? "email" : "text"}
-                inputMode={f.type === "phone" ? "tel" : undefined}
-                className={inputCls}
-              />
-            )}
-          </label>
-        ))}
-
-        <SubmitButton pendingText="กำลังส่ง…">ส่งข้อมูล</SubmitButton>
-      </form>
+      {/* CRM C2.6 ▸ ฟอร์มฝั่งเบราว์เซอร์: honeypot ที่มองไม่เห็นจริง + ตั๋วเริ่มกรอก + ข้อความผลลัพธ์ inline ภาษาไทย ◂ */}
+      <PublicForm
+        token={token}
+        fields={form.fields.map((f) => ({ key: f.key, label: f.label, type: f.type, required: f.required, options: f.options }))}
+        startToken={issueFormStartToken(form.id)}
+        startField={FORM_START_FIELD}
+        honeypotField={FORM_HONEYPOT_FIELD}
+        submitAction={submitFormAction}
+      />
 
       <p className="text-center text-[11px] text-[color:var(--color-muted)]">
         ขับเคลื่อนโดย SHARK

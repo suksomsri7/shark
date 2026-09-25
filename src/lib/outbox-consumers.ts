@@ -490,7 +490,15 @@ type CrmBridgeName =
   | "onDealLostStopSequences"
   | "onContactOptOutStopSequences"
   // CRM C2.4 ▸ ห้องแชทปิด → กิจกรรมชนิด CHAT ใบเดียวต่อห้อง (crm-bridges/chat.ts) ◂
-  | "onChatConversationStatus";
+  | "onChatConversationStatus"
+  // CRM C2.7 ▸ ทางเดินเงิน (crm-bridges/money.ts) — บัญชี/หน้าร้าน → ยอดเงินของดีล ◂
+  | "onPaymentRecorded"
+  | "onInvoicePaid"
+  | "onPaymentVoided"
+  | "onDocumentVoided"
+  | "onPosSalePaid"
+  | "onPosSaleVoided"
+  | "onDealWonAutoInvoice";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -633,12 +641,15 @@ const stampFromVisit: OutboxHandler = async (evt) => {
 const baseConsumers: Record<string, OutboxHandler> = {
   // M2.3: + สแตมป์การ์ดจากบิล (ต่อท้าย post บัญชีเดิม · บิลขายบัตรกำนัลถูกข้ามในตัว handler เอง)
   // M2.8: + สะพานสมาชิก (ยอดสะสม/แต้ม/สแตมป์/ที่มา/ระดับ/ไทม์ไลน์) — ย้ายออกจาก tx ของบิลมาที่คิวนี้
-  "pos.sale.paid": withAutomation(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid"))),
+  // CRM C2.7 ▸ + ทางเดินเงินของ CRM (บิลที่แคชเชียร์ผูกไว้กับดีล → paidSatang) — ต่อ **ท้ายสุด** เสมอ:
+  //   บัญชี (posSalePaid) → ตรา (stampFromSale) → สมาชิก (memberSaleBridge) → CRM · ทุกตัวก่อนหน้าทำงานเหมือนเดิมทุกประการ ◂
+  "pos.sale.paid": withAutomation(compose(compose(compose(posSalePaid, stampFromSale), memberSaleBridge("onPosSalePaid")), crmBridge("onPosSalePaid"))),
   // K3.3: + การ์ด "ตรวจสอบบิลยกเลิก" เมื่อยอดถึงเกณฑ์ที่ร้านตั้งไว้ (สวิตช์ปิดอยู่ = ไม่มีอะไรเกิด)
   // M2.3: + ยกเลิกตราของบิลใบนั้น (voidStampsForSale)
   // M2.8: + คืนสิทธิ์ทุกชนิด + ย้อนแต้ม/ยอดสะสม/ไทม์ไลน์ของบิลที่ถูกยกเลิก
+  // CRM C2.7 ▸ + ถอนคืนยอดของบิลที่ถูกยกเลิก (เฉพาะที่เคยนับ) — ต่อท้ายสุดเช่นกัน ◂
   "pos.sale.voided": withAutomation(
-    compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")),
+    compose(compose(compose(compose(posSaleVoided, kanbanBridge("onVoidedSale")), stampVoidForSale), memberSaleBridge("onPosSaleVoided")), crmBridge("onPosSaleVoided")),
   ),
   // M2.3 (§9.2) — นัดเปลี่ยนเป็น "มาแล้ว" · ยิงจาก `booking/service.ts#setAppointmentStatus`
   // M3.7: + ไทม์ไลน์ VISIT (+ แถวจองย้อนหลัง) · แต้มโบนัส CHECKIN · ขอรีวิว (ร้านที่เปิดรีวิว) — สแตมป์ของ M2.3 ยังเป็นงานหลัก (พัง = retry เหมือนเดิม)
@@ -788,16 +799,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   + เป็นจุดให้ `withWebhooks` ยิงฮุคไปยังปลายทางที่ร้านสมัครไว้ (หน้า "แอปภายนอก/API")
   // K3.3: + ปิดการ์ดที่ผูกเอกสารใบนี้ไว้ (ขาเข้าอย่างเดียว — ไม่แตะสถานะเอกสารฝั่งบัญชี §9.3)
   "account.document.approved": withAutomation(compose(async () => {}, kanbanBridge("onAccountDocSettled"))),
-  "account.payment.recorded": withAutomation(async () => {}),
-  "account.invoice.paid": withAutomation(compose(async () => {}, kanbanBridge("onAccountDocSettled"))),
+  // CRM C2.7 ▸ ทางเดินเงิน: รับชำระ → CrmDealPayment(PAYMENT) + paidSatang/wonValueSatang/lifecycle/แคชบริษัท ·
+  //   ใบแจ้งหนี้จ่ายครบ → ตรวจ "ชนะอัตโนมัติ" (ไม่เพิ่มยอดซ้ำ) — ทั้งคู่เป็นของแถมใต้ compose ◂
+  "account.payment.recorded": withAutomation(compose(async () => {}, crmBridge("onPaymentRecorded"))),
+  "account.invoice.paid": withAutomation(compose(compose(async () => {}, kanbanBridge("onAccountDocSettled")), crmBridge("onInvoicePaid"))),
   "account.period.closed": withAutomation(async () => {}),
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)
   "account.document.issued": withAutomation(compose(async () => {}, crmBridge("onDocumentIssued"))), // CRM C1.8 ▸ ใบแจ้งหนี้จากใบเสนอราคาของดีล → invoiceDocId ◂
-  "account.document.voided": withAutomation(async () => {}),
+  "account.document.voided": withAutomation(compose(async () => {}, crmBridge("onDocumentVoided"))), // CRM C2.7 ▸ ธง "เอกสารถูกยกเลิก" ของดีล + ถอนคืนเงินของสายเอกสารนั้น ◂
   "account.quotation.responded": withAutomation(compose(async () => {}, crmBridge("onQuotationResponded"))), // CRM C1.8 ▸ ดีลย้ายขั้นตาม pipeline ◂
-  "account.payment.voided": withAutomation(async () => {}),
+  "account.payment.voided": withAutomation(compose(async () => {}, crmBridge("onPaymentVoided"))), // CRM C2.7 ▸ ถอนคืนเฉพาะยอดที่เคยนับ (M10) ◂
   "account.payment_request.paid": withAutomation(async () => {}),
   "account.payment_request.expired": withAutomation(async () => {}),
   "account.contact.created": withAutomation(async () => {}),
@@ -985,7 +998,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // `crm.deal.won` ยิงจาก `crm/deals.ts#moveCore` (C1.5) เมื่อดีล "เข้า" WON จากขั้นชนิดอื่น → หา/สมัครสมาชิก + ผูก CrmContact + แถว DEAL_WON
   //   key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
   // CRM C2.2 ▸ + หยุดลำดับการติดตามของดีลนี้ (stopOnWon) เป็นของแถมใต้ compose — ล้ม = WARN · สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิม ◂
-  "crm.deal.won": withAutomation(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences"))),
+  // CRM C2.7 ▸ + ออกใบแจ้งหนี้อัตโนมัติเมื่อชนะ (pipeline.autoInvoiceOnWon) เป็นของแถมใต้ compose — ออกไม่ได้ = WARN ดีลยังชนะ ◂
+  "crm.deal.won": withAutomation(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice"))),
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   "shop.order.paid": withAutomation(memberBridge("onShopOrderPaid")),
@@ -1084,6 +1098,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.email.replied": withAutomation(async () => {}),
   "crm.email.bounced": withAutomation(async () => {}),
   // ◂ CRM C2.5
+  // CRM C2.6 ▸ ผู้เข้าชมเว็บถูกระบุตัวตนแล้ว (`crm/tracking.ts#identify`) — ยิงใน tx เดียวกับการผูกการเข้าชม + กิจกรรม WEB
+  //   key `crm.web.identified#<contactId>#<วันไทย>` (R-C.8 · 1 ใบต่อผู้ติดต่อต่อวัน) · payload **id/ตัวเลขล้วน**
+  //   { contactId, systemId, visitorId, sessionCount, pageViews, firstUrl?, by } — ไม่มีชื่อ เบอร์ อีเมล (X8)
+  //   no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + ทริกเกอร์กฎ + เว็บฮุคของร้าน ·
+  //   ผลข้างเคียงจริง (การผูก session · กิจกรรม 1 รายการ/วันไทย) เขียนครบใน tx ของบริการแล้ว ⇒ ส่งซ้ำ/พร้อมกัน = ผลเดิม (X4)
+  //   🔴 ใบ C2.8 (คะแนน) เป็นผู้บริโภคตัวจริงของ event นี้ — ใบ C2.6 แค่ยิง
+  "crm.web.identified": withAutomation(async () => {}),
+  // ◂ CRM C2.6
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

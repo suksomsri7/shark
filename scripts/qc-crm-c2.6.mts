@@ -161,8 +161,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // WHAT THIS FILE PROVES: S0 structure · S1–S8 of CRM-RUN (30; S3 server half + static script, S8 static) · U PERMANENT RULE (uiVersion
-//   1) · X1 X3 (in-process + worker PROCESSES) X4 X5 X6 X7 X8 X9 · CLEAN.   N/A: X2 (REST ops / AI tools of tracking are C2.11) ·
-//   X10 (no private file; the identify ticket is covered under X7).
+//   1) · X1 X3 (in-process + worker PROCESSES) X4 X5 X6 X7 X8 X9 · S9 the six holes of the controller's RULING ROUND 2 (24 Sep: B1
+//   reserved field names `_sd_hp`/`_sd_st` · S1 unsigned `?v=` on the /f lane · S2 identify-ticket replay + 15-min TTL · S3 body read
+//   before the size cap · S4 start-token replay + a free honeypot · N7/N10/N12) · CLEAN.
+//   N/A: X2 (REST ops / AI tools of tracking are C2.11) · X10 (no private file; the identify ticket is covered under X7).
+// INVENTORY (a clean run prints 87): S0 7 · S1 5 · S2 5 · S3 8 · S4 5 · S5 2 · S6 8 · S7 1 · S8 4 · S9 6 · U 5 · X1 4 · X3 5 · X4 2 ·
+//   X5 1 · X6 3 · X7 10 · X8 3 · X9 2 · CLEAN 1.   `C2.6-FATAL` is printed only when the oracle itself throws.
 // HOUSE RULES: SKIP guard before any DB connection · throwaway tenants swept in `finally` (every table with tenantId, 4 passes) + users
 //   + ChatRateBucket rows with keys `crm:`/`form:` created during the run · no drainOutbox (own pump of OUR tenants) · EVERY outbound
 //   fetch stubbed · worker processes re-invoke THIS file with `--x3-worker` · last line JSON_SUMMARY.
@@ -172,6 +176,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 const TRACK = "src/lib/modules/crm/tracking.ts";
 const TRACK_SH = "src/lib/modules/crm/tracking-shared.ts";
@@ -230,6 +235,11 @@ if (WORKER_AT < 0 && !FORCE && (!BUILT || !C20)) {
   console.log(`JSON_SUMMARY ${JSON.stringify({ total: 0, passed: 0, findings: [], skipped: true })}`);
   process.exit(0);
 }
+
+// 🔴 Next's `app-render/async-local-storage.js` captures `globalThis.AsyncLocalStorage` **at module load time** and
+//    otherwise installs a fake store that can never hold a request scope. It must be installed HERE — before the first
+//    import that pulls a Next internal in — or `headers()`/`cookies()` inside a server action are unreachable (S9.2).
+(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
 
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
 const { host } = accEnv.loadQcEnv();
@@ -1653,6 +1663,250 @@ try {
     const orphan = mine.filter((m) => !uiAll.includes(m.replace(/\*$|\[.*\]$/, "").replace(/-$/, "")));
     chk("C2.6-S8.4", "scripts/crm-ui-inventory.json has a wo \"C2.6\" row for every new testid, none orphaned", miss.length === 0 && orphan.length === 0 && mine.length >= all.length,
       "complete", `rows=${mine.length} missing=${miss.join(",") || "-"} orphan=${orphan.join(",") || "-"}`, "MAJOR");
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S9 — the controller's ruling ROUND 2 (24 Sep, after the independent reviewer): the six holes that were
+  //   confirmed as real. Each check is written so that it can only go green when the hole is actually shut:
+  //     B1  reserved field names — `website` / `st` are names a shop really uses, so the old guard swallowed
+  //         every real lead of such a form (fake success, no notification, no log)
+  //     S1  the `/f` lane accepted an UNSIGNED visitor uuid (`?v=` / `visitorId`) ⇒ anybody could staple
+  //         someone else's 180-day browsing history onto a lead of their own
+  //     S2  the identify ticket was replayable for a whole hour  ⇒ jti + 15-minute TTL
+  //     S3  the public collectors read the whole body BEFORE the 8 KB cap ⇒ content-length first + capped reader
+  //     S4  the start token was replayable for 24 h and a honeypot hit cost the bot nothing
+  //     N7/N10/N12  consent-version bump in ONE statement · identify bound to the tenant · five canonical utm
+  // ═════════════════════════════════════════════════════════════════════════════
+  out("\n── S9 · ruling round 2 (B1 · S1–S4 · N7/N10/N12) ──");
+  const ST_FIELD = String(SG.FORM_START_FIELD ?? "st");
+  {
+    // B1 — a shop form whose OWN fields are keyed `website` and `st`
+    const CLASH = [
+      { key: "name", label: "ชื่อ", type: "text", required: true },
+      { key: "website", label: "เว็บไซต์ของบริษัท", type: "text", required: false },
+      { key: "st", label: "รัฐ/จังหวัด", type: "text", required: false },
+    ];
+    const fC = await mkForm(tidA, "clash", { fieldsJson: CLASH, crmSystemId: crmA });
+    const WEB_ANS = `https://www.${rand}-customer.example.com`;
+    const ST_ANS = "ภูเก็ต";
+    const okSub = await submitG(fC, { name: pii(`ลูกค้าช่องชน ${TAG}`), website: WEB_ANS, st: ST_ANS }, {});
+    const row1: Any = (await subsOf(fC.id))[0] ?? null;
+    const ans: Any = row1?.answersJson ?? {};
+    // …and the honeypot still fires for that very form, on the RESERVED name only
+    const hpSub = await submitG(fC, { name: pii(`บอทช่องชน ${TAG}`), website: WEB_ANS, st: ST_ANS }, {}, { hp: "https://bot.test" });
+    const nAfterHp = (await subsOf(fC.id)).length;
+    const withReserved = (k: string) => [...CLASH, { key: k, label: "ช่องของระบบ", type: "text", required: false }];
+    const cfHp = await call(FORMS.createForm, { tenantId: tidA }, { name: `สงวน-hp ${TAG}`, fields: withReserved(HP) });
+    const cfSt = await call(FORMS.createForm, { tenantId: tidA }, { name: `สงวน-st ${TAG}`, fields: withReserved(ST_FIELD.toUpperCase()) });
+    const ufHp = await call(FORMS.updateForm, { tenantId: tidA }, fC.id, { fields: withReserved(HP) });
+    const sft = await call(TR.saveFormTarget, cA, owner, fC.id, { createCompanyFromField: HP });
+    const leftover = await P.formDef.count({ where: { tenantId: tidA, name: { contains: "สงวน-" } } });
+    const fNow: Any = await P.formDef.findFirst({ where: { id: fC.id } });
+    const fieldsNow = j(fNow?.fieldsJson ?? []);
+    const namespaced = /^_sd_/.test(HP) && /^_sd_/.test(ST_FIELD) && HP !== "website" && ST_FIELD !== "st";
+    const thaiRefusal = (r: Res) => !r.ok && r.code !== "MISSING_FUNCTION" && thai(r.msg) && !blames(r.msg);
+    chk("C2.6-S9.1", `B1: the spam-guard field names are namespaced (${HP} / ${ST_FIELD}) — a shop form with its OWN fields keyed \`website\` + \`st\` STORES both answers on a normal submission (a real lead is never swallowed) · honeypot/token semantics apply to the reserved names only (honeypot on that same form ⇒ fake success, nothing written) · validateFields (createForm + updateForm, case-insensitive) and saveFormTarget refuse reserved keys (saveFormTarget with \`.code\` VALIDATION — CONTRACT A: every tracking error carries a code, so the settings page can point at the field) in Thai without blaming the user, and write nothing`,
+      namespaced && okSub.ok && okSub.v?.ok === true && typeof okSub.v?.id === "string" && !!row1 && ans.website === WEB_ANS && ans.st === ST_ANS &&
+        hpSub.ok && hpSub.v?.ok === true && hpSub.v?.id === null && nAfterHp === 1 &&
+        thaiRefusal(cfHp) && thaiRefusal(cfSt) && thaiRefusal(ufHp) && refused(sft, "VALIDATION") && leftover === 0 &&
+        fieldsNow.includes("website") && !fieldsNow.includes(HP),
+      "stored + refused",
+      `hp=${HP} st=${ST_FIELD} sub=${cut(j(okSub.v ?? okSub.err), 60)} answers=${cut(j(ans), 140)} honeypot=${cut(j(hpSub.v ?? hpSub.err), 50)}/rows=${nAfterHp} create=${rd(cfHp)}|${rd(cfSt)} update=${rd(ufHp)} target=${rd(sft)} leftoverForms=${leftover} fields=${cut(fieldsNow, 80)}`);
+  }
+  {
+    // S1 — the `/f` lane: the visitor may come from the first-party cookie (server-read) or from the signed
+    //   e-mail ticket, NEVER from an unsigned value the caller hands in. Driven through the real server action
+    //   inside a Next request scope, so the cookie is read exactly the way production reads it.
+    const ACT = (await import("@/app/(store)/f/[token]/actions" as string).catch(() => ({}))) as Any;
+    const nw = (await import("next/dist/server/app-render/work-async-storage.external.js" as string).catch(() => null)) as Any;
+    const nwu = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string).catch(() => null)) as Any;
+    const nck = (await import("next/dist/server/web/spec-extension/cookies.js" as string).catch(() => null)) as Any;
+    let scopeOk = false;
+    const inScope = async (req: Request, fn: () => Promise<Res>): Promise<Res> => {
+      if (!nw?.workAsyncStorage || !nwu?.workUnitAsyncStorage || !nck?.RequestCookies) return fn();
+      const jar = new nck.RequestCookies(req.headers);
+      const store = { route: "/f/[token]", forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null };
+      const unit = {
+        type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar,
+        headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname: new URL(req.url).pathname, search: "" },
+      };
+      try {
+        const r = await nw.workAsyncStorage.run(store, () => nwu.workUnitAsyncStorage.run(unit, fn));
+        scopeOk = true;
+        return r;
+      } catch (e) {
+        if (/AsyncLocalStorage accessed in runtime/.test(String((e as Error)?.message ?? ""))) return fn();
+        throw e;
+      }
+    };
+    const viaPage = (form: Any, answers: Record<string, unknown>, o: { cookie?: string; visitorId?: string } = {}) => {
+      const req = new Request(`${BASE}/f/${form.publicToken}`, { method: "POST", headers: hdrs({ cookie: o.cookie, ip: ipNew() }) });
+      return inScope(req, () =>
+        call(ACT.submitFormAction, form.publicToken, {
+          answers, hp: "", st: stTok(form.id),
+          ...(o.visitorId ? { visitorId: o.visitorId, v: o.visitorId } : {}),
+        }));
+    };
+    const VO = vid();
+    await acceptAndBrowse(crmA, OR_A, VO, [`${OR_A}/mine`]);
+    const sessVO = await sessionsOf(tidA, VO);
+    const latestVO = sessVO[sessVO.length - 1]?.id ?? "-";
+    const fL = await mkForm(tidA, "lane", { crmSystemId: crmA });
+    const rSpoof = await viaPage(fL, { name: pii(`ปลอมตัว ${TAG}`), email: mailOf("spoof") }, { visitorId: VO });
+    const subSpoof: Any = (await subsOf(fL.id))[0] ?? null;
+    await pump([tidA]);
+    const afterSpoof = await sessionsOf(tidA, VO);
+    const rReal = await viaPage(fL, { name: pii(`เจ้าของเครื่อง ${TAG}`), email: mailOf("owner") }, { cookie: `sd_vid=${VO}` });
+    const subReal: Any = (await subsOf(fL.id))[1] ?? null;
+    await pump([tidA]);
+    const afterReal = await sessionsOf(tidA, VO);
+    // comments are stripped first: a comment that DOCUMENTS the removed `?v=` lane must not read as the lane itself
+    const noComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const actSrc = noComments(read(FORM_ACTION));
+    const pageSrc = noComments([read("src/app/(store)/f/[token]/PublicForm.tsx"), read("src/app/(store)/f/[token]/page.tsx")].join("\n"));
+    const staticOk = /sd_vid|VISITOR_COOKIE/.test(actSrc) && !/visitorId\s*:\s*[^,\n]*input/.test(actSrc) && !/[?&]v=|get\(\s*["']v["']\s*\)/.test(pageSrc);
+    const behaveOk = !scopeOk || (
+      rSpoof.ok && !!subSpoof && subSpoof.webSessionId === null && afterSpoof.every((s) => s.contactId === null) &&
+      rReal.ok && !!subReal && subReal.webSessionId === latestVO && afterReal.some((s) => s.contactId !== null));
+    chk("C2.6-S9.2", "S1: the `/f` lane takes the visitor from the first-party cookie ONLY — a bare visitor uuid of ANOTHER consented visitor handed to the page/action (`visitorId` / `?v=`) binds nothing (webSessionId null, that visitor's 180-day history untouched, no session bound) · the SAME request carrying the sd_vid cookie binds (positive control) · the action never forwards a caller-supplied visitorId and the page never reads one from the URL [behaviour in a Next request scope + static]",
+      staticOk && behaveOk, "cookie only",
+      `scope=${scopeOk} static=${staticOk} spoof=${rd(rSpoof)} ws=${subSpoof ? subSpoof.webSessionId ?? "null" : "no-row"} bound=${afterSpoof.map((s) => s.contactId ?? "-").join(",")} · cookie=${rd(rReal)} ws=${subReal ? (subReal.webSessionId === latestVO ? "latest" : subReal.webSessionId ?? "null") : "no-row"} bound=${afterReal.map((s) => (s.contactId ? "CT" : "-")).join(",")}`,
+      "MAJOR");
+  }
+  {
+    // S2 — identify ticket: one jti, one use, 15 minutes
+    const ctK = await rawContact(tidA, crmA, "ลูกค้าตั๋วครั้งเดียว", userA);
+    const emK: Any = await rawEmail(tidA, crmA, ctK.id);
+    const base = { tenantId: tidA, systemId: crmA, emailId: String(emK?.id ?? `${TAG}-notk`), contactId: ctK.id };
+    const tkR = await call(TR.emailClickTicket, base);
+    const ticket = String(tkR.v ?? "");
+    const stale = String((await call(TR.emailClickTicket, base, new Date(Date.now() - 20 * 60_000))).v ?? "x");
+    const [v1, v2, v3] = [vid(), vid(), vid()];
+    for (const v of [v1, v2, v3]) await acceptAndBrowse(crmA, OR_A, v, [`${OR_A}/tk`]);
+    const idf = (v: string, ct: string) => postE({ ...pageBody(crmA, v, `${OR_A}/tk`), t: "identify", ct }, { origin: OR_A });
+    const r1 = await idf(v1, ticket);
+    const r2 = await idf(v2, ticket);
+    const r3 = await idf(v3, stale);
+    const b1 = await sessionsOf(tidA, v1);
+    const b2 = await sessionsOf(tidA, v2);
+    const b3 = await sessionsOf(tidA, v3);
+    const acts = await webActivities(ctK.id);
+    const evs = await identifiedEvents(tidA, ctK.id);
+    const ttl = Number(TSH.IDENTIFY_TICKET_MAX_AGE_MS ?? TSH.IDENTIFY_TICKET_TTL_MS ?? 0);
+    chk("C2.6-S9.3", "S2: the identify ticket is single-use and short-lived — the first use binds the visitor (EMAIL_CLICK · positive control), the SAME ticket replayed for a SECOND visitor binds NOTHING (no session bound, no second WEB activity, no second crm.web.identified) · a ticket issued 20 min ago is refused (the ruled TTL is 15 min, not 1 h) · every answer stays 204 empty",
+      tkR.ok && ttl > 0 && ttl <= 900_000 &&
+        b1.length > 0 && b1.every((s) => s.contactId === ctK.id && s.identifiedBy === "EMAIL_CLICK") &&
+        b2.length > 0 && b2.every((s) => s.contactId === null) && b3.length > 0 && b3.every((s) => s.contactId === null) &&
+        acts.length === 1 && evs.length === 1 && [r1, r2, r3].every(is204Empty),
+      "binds once",
+      `${rd(tkR)} ttl=${ttl} first=${b1.map((s) => `${s.contactId === ctK.id ? "CT" : s.contactId ?? "-"}:${s.identifiedBy ?? "-"}`).join(",")} replay=${b2.map((s) => s.contactId ?? "-").join(",")} stale=${b3.map((s) => s.contactId ?? "-").join(",")} acts=${acts.length} evs=${evs.length} status=${[r1, r2, r3].map((r) => r.status).join("/")}`,
+      "MAJOR");
+  }
+  {
+    // S3 — the cap is decided BEFORE the body is touched (a public collector must not let anybody make the
+    //   server buffer megabytes just by claiming a size). The body is a stream that counts its own reads.
+    const vCap = vid();
+    await acceptAndBrowse(crmA, OR_A, vCap, [`${OR_A}/cap`]);
+    const before = await visitorRows(tidA, vCap);
+    const smallE = JSON.stringify(pageBody(crmA, vCap, `${OR_A}/cap-lied`));
+    const smallC = JSON.stringify(consentBody(crmA, vCap, "accept", `${OR_A}/cap-lied`));
+    const bigE = JSON.stringify({ ...pageBody(crmA, vCap, `${OR_A}/cap-big`), pad: "p".repeat(MAXB + 1000) });
+    const bigC = JSON.stringify({ ...consentBody(crmA, vCap, "accept", `${OR_A}/cap-big`), pad: "p".repeat(MAXB + 1000) });
+    const shot = async (mod: Any, path: string, payload: string, contentLength: string | null): Promise<{ r: HttpRes; reads: number; used: boolean }> => {
+      const ctr = { n: 0 };
+      const h = hdrs({ origin: OR_A, ctype: "text/plain;charset=UTF-8" });
+      if (contentLength) h.set("content-length", contentLength);
+      // `pull` + highWaterMark 0 ⇒ the source is touched ONLY when somebody actually reads the body. (With the default
+      //   strategy the stream pre-fills its queue by itself in a microtask and every request would look "read".)
+      const body = new ReadableStream({ pull(c: Any) { ctr.n += 1; c.enqueue(new TextEncoder().encode(payload)); c.close(); } }, { highWaterMark: 0 }) as Any;
+      let req: Request | null = null;
+      try {
+        if (typeof mod?.POST !== "function") return { r: { status: -1, h: new Headers(), text: "POST missing" }, reads: ctr.n, used: false };
+        req = new Request(`${BASE}${path}`, { method: "POST", headers: h, body, duplex: "half" } as Any);
+        const r = await toRes(await mod.POST(req));
+        return { r, reads: ctr.n, used: req.bodyUsed };
+      } catch (e) {
+        return { r: httpErr(e), reads: ctr.n, used: !!req?.bodyUsed };
+      }
+    };
+    const eLie = await shot(RE, "/t/e", smallE, "9000");
+    const cLie = await shot(RC, "/t/consent", smallC, "9000");
+    const eBig = await shot(RE, "/t/e", bigE, null);
+    const cBig = await shot(RC, "/t/consent", bigC, null);
+    const after = await visitorRows(tidA, vCap);
+    chk("C2.6-S9.4", `S3: /t/e and /t/consent refuse an oversize payload BEFORE touching the body — \`content-length: 9000\` (> ${MAXB}) ⇒ 413 empty and the request body stream is NEVER read (0 reads) · a ${Buffer.byteLength(bigE)} B body with NO content-length ⇒ 413 from a capped reader (it must never buffer the whole thing) · nothing written either way`,
+      eLie.r.status === 413 && eLie.reads === 0 && !eLie.used && cLie.r.status === 413 && cLie.reads === 0 && !cLie.used &&
+        eBig.r.status === 413 && cBig.r.status === 413 && eLie.r.text === "" && cLie.r.text === "" && eBig.r.text === "" &&
+        after.s.length === before.s.length && after.pv === before.pv,
+      "413 · body unread",
+      `declared e=${eLie.r.status}/reads=${eLie.reads}/used=${eLie.used} c=${cLie.r.status}/reads=${cLie.reads}/used=${cLie.used} · streamed e=${eBig.r.status} c=${cBig.r.status} · rows ${before.s.length}/${before.pv}→${after.s.length}/${after.pv} body=${cut(eLie.r.text, 40)}`,
+      "MAJOR");
+  }
+  {
+    // S4 — start token: one nonce, one submission, 2 h · a honeypot hit must cost the bot a slot
+    const fN = await mkForm(tidA, "nonce");
+    const answer = (label: string) => ({ name: pii(`${label} ${TAG}-${nx()}`) });
+    const send = (form: Any, answers: Record<string, unknown>, st: string) =>
+      call(FORMS.submitPublicFormGuarded, form.publicToken, { answers, hp: "", st }, { ip: ipNew(), userAgent: uaHuman });
+    const oneTok = stTok(fN.id);
+    const n1 = await send(fN, answer("ตั๋วแรก"), oneTok);
+    const n2 = await send(fN, answer("ตั๋วซ้ำ"), oneTok);
+    const rowsN = (await subsOf(fN.id)).length;
+    const stale = await send(fN, answer("ตั๋วเก่า"), stTok(fN.id, 3 * 3600));
+    const rowsN2 = (await subsOf(fN.id)).length;
+    const maxAge = Number(SG.FORM_START_MAX_AGE_MS ?? 0);
+    const fH = await mkForm(tidA, "hpbucket");
+    const perIp = Number((typeof SG.parseSpamGuard === "function" ? SG.parseSpamGuard(null) : { perIpPerMin: 10 })?.perIpPerMin ?? 10);
+    const ipH = ipNew();
+    const SHOTS = 30;
+    for (let i = 0; i < SHOTS; i += 1) await submitG(fH, answer("ช่องหลอก"), { ip: ipH }, { hp: `https://bot-${i}.test` });
+    const rowsH = (await subsOf(fH.id)).length;
+    const bKey = typeof SG.formIpLimitKey === "function" && typeof TR.ipHashFor === "function"
+      ? String(SG.formIpLimitKey(String(TR.ipHashFor(ipH, new Date())))) : "";
+    const bucket: Any = bKey ? await P.chatRateBucket.findFirst({ where: { key: bKey } }) : null;
+    const real = await submitG(fH, answer("คนจริง"), { ip: ipH });
+    const rowsH2 = (await subsOf(fH.id)).length;
+    const refusedNow = real.ok && real.v?.ok === false && real.v?.reason === "RATE_LIMITED" && thai(real.v?.message) && !blames(real.v?.message);
+    const replayRefused = (r: Res) => r.ok && r.v?.ok === false && (r.v?.reason === "TOO_FAST" || r.v?.reason === "RATE_LIMITED") && thai(r.v?.message) && !blames(r.v?.message);
+    chk("C2.6-S9.5", `S4: the start token is single-use (the SAME token twice ⇒ the second is refused in Thai, ONE row) and expires (3 h old ⇒ refused · FORM_START_MAX_AGE_MS ≤ 2 h) · ${SHOTS} honeypot submissions from ONE ip (limit ${perIp}/min) consume the limiter bucket (count ${SHOTS}, key \`form:\`, no raw ip) so a REAL submission from that ip is then RATE_LIMITED — filling the honeypot is no longer free`,
+      n1.ok && n1.v?.ok === true && typeof n1.v?.id === "string" && replayRefused(n2) && rowsN === 1 &&
+        replayRefused(stale) && rowsN2 === 1 && maxAge > 0 && maxAge <= 2 * 3_600_000 &&
+        rowsH === 0 && !!bucket && Number(bucket.count) === SHOTS && bKey.startsWith("form:") && !bKey.includes(ipH) &&
+        perIp < SHOTS && refusedNow && rowsH2 === 0,
+      `1 row · bucket ${SHOTS} · then refused`,
+      `first=${cut(j(n1.v ?? n1.err), 50)} replay=${cut(j(n2.v ?? n2.err), 70)} rows=${rowsN}/${rowsN2} stale=${stale.v?.reason ?? rd(stale)} maxAge=${maxAge} hpRows=${rowsH} bucket=${bucket?.count ?? "-"}@${cut(bKey, 26)} real=${cut(j(real.v ?? real.err), 70)}`,
+      "MAJOR");
+  }
+  {
+    // N7 · N10 · N12 — the three NOTEs the controller ordered fixed
+    const crmZ = await mk(tidA, "CRM", "CRM ธงยินยอม");
+    await setCrm(crmZ, { uiVersion: 2, bridgesEnabled: true });
+    const cZ = { tenantId: tidA, systemId: crmZ, actorUserId: userA };
+    await enableWeb(cZ, crmZ, [DOM_A], 180);
+    const cv0 = Number((await call(TR.getWebSettings, cZ, owner)).v?.consentVersion ?? 0);
+    const bumps = await Promise.all(Array.from({ length: 10 }, () => call(TR.saveWebSettings, cZ, owner, { bumpConsentVersion: true })));
+    const cv1 = Number((await call(TR.getWebSettings, cZ, owner)).v?.consentVersion ?? 0);
+    const VX = vid();
+    await acceptAndBrowse(crmA, OR_A, VX, [`${OR_A}/n10`]);
+    // a row that carries ANOTHER tenantId on the same systemId (the shape an `updateMany` without tenantId would hit)
+    const foreign: Any = await P.crmWebSession?.create?.({ data: { tenantId: tidB, systemId: crmA, visitorId: VX, consentVersion: 1, consentAt: new Date(),
+      startedAt: new Date(), lastSeenAt: new Date(), pageViews: 1, firstUrl: `${OR_A}/n10-foreign` } }).catch(() => null);
+    const ctN = await rawContact(tidA, crmA, "ลูกค้าเทนแนนต์", userA);
+    const idN = await call(TR.identify, { tenantId: tidA, systemId: crmA }, { visitorId: VX, contactId: ctN.id, by: "PORTAL" });
+    const mineN = await sessionsOf(tidA, VX);
+    const frN: Any = foreign?.id ? await P.crmWebSession.findFirst({ where: { id: foreign.id } }) : null;
+    const scN = await getScript(SITE[crmA]);
+    const codeOnly = scN.text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const FIVE = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"];
+    const toks = [...codeOnly.matchAll(/utm_[a-z]*/g)].map((m) => m[0]);
+    const utmOk = FIVE.every((f) => toks.includes(f)) && toks.every((t) => FIVE.includes(t));
+    chk("C2.6-S9.6", "N7 bumpConsentVersion ×10 IN PARALLEL ⇒ exactly +10 (the new number is computed inside the one UPDATE, never from a value read before it) · N10 identify's updateMany is tenant-bound: a session row of ANOTHER tenant on the same systemId is never bound · N12 the served script keeps only the five canonical utm_ params (a bare `utm_` prefix filter would leak `utm_userid=<e-mail>` off the customer's device)",
+      cv1 === cv0 + 10 && bumps.every((r) => r.ok) &&
+        idN.ok && Number(idN.v?.bound) === 1 && mineN.length > 0 && mineN.every((s) => s.contactId === ctN.id) &&
+        !!frN && frN.contactId === null && utmOk,
+      "+10 · tenant-bound · 5 utm",
+      `cv ${cv0}→${cv1} bumps=${bumps.filter((r) => r.ok).length}/10 ${bumps.find((r) => !r.ok) ? rd(bumps.find((r) => !r.ok) as Res) : ""} identify=${cut(j(idN.v ?? idN.err), 70)} foreign=${frN ? frN.contactId ?? "null" : "no-row"} utm=${toks.join(",") || "-"}`,
+      "MINOR");
   }
   if (!wsA.ok) out(`  ℹ️  saveWebSettings(crmA) at setup: ${rd(wsA)}`);
 } catch (e) {

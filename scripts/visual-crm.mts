@@ -82,9 +82,18 @@ const TMP = {
   unitIds: [] as string[], bookingIds: [] as string[], clinicIds: [] as string[], schoolIds: [] as string[], partyIds: [] as string[],
   // CRM C2.5 ▸ เธรดจดหมาย 1 ชุด (ขาเข้ามี HTML + ไฟล์แนบ) · แม่แบบ 1 ใบ · ทับค่าต่อผู้ใช้ 1 แถว (ลบครบใน restoreSeed) ◂
   emailIds: [] as string[], emailTemplateIds: [] as string[], emailUserSettingIds: [] as string[], emailFileIds: [] as string[],
+  // CRM C2.6 ▸ ลิงก์ติดตาม · ผู้เข้าชม (การเข้าชม+เหตุการณ์) · ผู้ติดต่อที่ถูกผูก (กิจกรรม WEB + event) · ฟอร์ม (ลบครบใน restoreSeed) ◂
+  trackedLinkIds: [] as string[], webVisitorIds: [] as string[], webContactIds: [] as string[], formIds: [] as string[],
+  // CRM C2.7 ▸ ทางเดินเงิน: การผูกบัญชี↔CRM · ใบเสนอราคา/บิล POS ตัวอย่าง (แถวเงิน CrmDealPayment ถูกลบตามดีล onDelete: Cascade — ไม่ต้องจำ id) ◂
+  accLinkIds: [] as string[], docIds: [] as string[], posSaleIds: [] as string[],
 };
 /** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
-const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1 };
+const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1 };
+// CRM C2.6 ▸ ค่าตั้ง `settings.crm.tracking` ก่อนแตะ (undefined = ใบนี้ไม่ได้แตะ · null = เดิมไม่มีคีย์นี้) + เวลาเริ่มรอบ (ลบ audit ของรอบนี้) ◂
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let C26_TRACKING_BEFORE: any;
+const C26_START = new Date();
+let C26_LINK_ID: string | null = null;
 
 // แท็บย่อยของ CRM v1 (crmTabs ใน src/lib/modules/crm/ui.tsx) — ลิงก์จริงที่ต้องมีทุกหน้า
 const V1_TABS = ["a[href$='/crm/deals']", "a[href$='/crm/activities']", "a[href$='/crm/contacts']"];
@@ -154,7 +163,24 @@ const C22_CONTACT: string | null = WO === "2.2"
 // CRM C2.5 ▸ เธรดที่จะถ่าย (ตั้งค่าในบล็อก "เตรียมของ" ด้านล่าง — ที่นี่ประกาศไว้ให้ SPECS อ้างถึงได้) ◂
 let C25_THREAD: string | null = null;
 
+// CRM C2.7 ▸ หน้าขายของโมดูล POS (ช่อง "ดีล" อยู่ที่นั่น ไม่ได้อยู่ใต้ /crm) — สาขาป่าตองของเฉลย ◂
+const POS_REGISTER = `/app/sys/${(E.systems?.POS ?? "") as string}/pos/register?unit=${(E.units?.patong ?? "") as string}`;
+
 const SPECS: Record<string, Spec[]> = {
+  // CRM C2.7 ▸ ทางเดินเงิน (พิมพ์เขียว §7.2 · ภาพ 06): ช่อง "ดีล" ข้างช่องสมาชิกบนหน้าขาย · บล็อก "ดีล" บนหน้าเอกสารบัญชี ·
+  //   ดีล 360 ที่มีรายการสินค้า + บิลหน้าร้านที่ผูกไว้ (บล็อก "เตรียมของ C2.7" ด้านล่างสร้างให้ แล้ว unshift สเปคที่ต้องใช้ id)
+  //   ภาพแรกเป็น "ตัวคุม": ยังไม่เลือกสมาชิก ⇒ ช่องดีลต้องไม่โผล่ (ร้านที่ไม่ได้ใช้ CRM v2 เห็นหน้าขายเดิมทุกตัวอักษร)
+  //   thana/nok (STAFF) ไม่มีสิทธิ์หน้าบัญชี/หน้าขายของเฉลย ⇒ ถ่ายเฉพาะ owner/manager (แบบเดียวกับ C2.1/C2.3)
+  "2.7": isCustomer || userKey === "thana" || userKey === "nok" || !E.systems?.POS ? [] : [
+    {
+      name: `pos-register-no-deal-${userKey}`,
+      path: POS_REGISTER,
+      note: "หน้าขายก่อนเลือกสมาชิก — ต้องไม่มีช่อง \"ดีล\" (ตัวคุม parity ของหน้าขายเดิม)",
+      expect: ["[data-testid=pos-register]", "[data-testid=pos-member-select]"],
+      steps: [{ waitFor: "[data-testid=pos-member-select]", timeoutMs: 20_000 }, { wait: 400 }],
+    },
+  ],
+  // ◂ CRM C2.7
   // CRM C2.4 ▸ บันทึกการโทร (ภาพ 08 ซ้าย) + ปฏิทินที่รวมนัดของโมดูลอื่น (ภาพ 08 ขวา) — เจ้าของร้าน + ผู้จัดการ · 1440 และ 390
   //   ชุดนี้ต้องมี "ของจริง" ทั้งสองฝั่ง: ผู้ติดต่อที่มีเบอร์ (ปุ่มโทรจึงขึ้น) + นัดในสัปดาห์นี้ที่ผูก Party เดียวกัน
   //   ⇒ บล็อก "เตรียมของ C2.4" ด้านล่างสร้างให้ แล้ว splice สเปคของผู้ติดต่อ 360 เข้ามา (พาธต้องมี id)
@@ -183,6 +209,33 @@ const SPECS: Record<string, Spec[]> = {
       : []),
   ],
   // ◂ CRM C2.5
+  // CRM C2.6 ▸ ติดตามเว็บ + ลิงก์ติดตาม (ภาพ 16 + ภาพ 11) · ฟอร์มรับลูกค้า · บล็อกไทม์ไลน์เว็บบนผู้ติดต่อ 360 — ทั้ง 1440 และ 390
+  //   thana/nok (STAFF ไม่มีคีย์ crm.tracking.manage) = 404 ตามแบบ (ข้อสอบ C2.6 X9.1) → ถ่ายเฉพาะ owner/manager
+  //   ⚠️ ไม่กดปุ่มที่ลบลิงก์จริง (งานอันตราย X9) — ชุดนี้เปิดกล่อง QR กับกล่องพรีวิวแบนเนอร์อย่างเดียว
+  "2.6": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
+    {
+      name: `crm-tracking-${userKey}`,
+      path: `${CRM_BASE}/settings/tracking`,
+      note: "ติดตามเว็บและลิงก์ (ภาพ 16 + 11) — สวิตช์เปิดใช้ · โดเมนที่อนุญาต · โค้ดฝัง · ข้อความ cookie consent + เวอร์ชัน · อายุเก็บ (ไม่เก็บ IP เต็ม) · สถิติ · ตารางลิงก์ติดตาม",
+      expect: ["[data-testid=crm-tracking-page]", "[data-testid=crm-track-web-enabled]", "[data-testid=crm-track-embed-code]", "[data-testid=crm-track-stats]", "[data-testid=crm-link-create]"],
+      steps: [{ waitFor: "[data-testid=crm-tracking-page]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+    {
+      name: `crm-tracking-preview-${userKey}`,
+      path: `${CRM_BASE}/settings/tracking`,
+      note: "กล่องพรีวิวแบนเนอร์ cookie consent (ข้อความของร้าน + ปุ่ม ยอมรับ/ปฏิเสธ) — เปิดด้วยปุ่ม \"ดูตัวอย่างแบนเนอร์\"",
+      expect: ["[data-testid=crm-track-preview-box]"],
+      steps: [{ waitFor: "[data-testid=crm-track-preview]", timeoutMs: 20_000 }, { click: "[data-testid=crm-track-preview]" }, { wait: 400 }],
+    },
+    {
+      name: `crm-forms-${userKey}`,
+      path: `${CRM_BASE}/settings/forms`,
+      note: "ฟอร์มรับลูกค้า — ระบบ CRM ปลายทาง · กฎมอบหมาย · คะแนนเมื่อกรอก · บริษัทจากช่อง · กันสแปม · utm · โค้ดฝัง",
+      expect: ["[data-testid=crm-forms-page]"],
+      steps: [{ waitFor: "[data-testid=crm-forms-page]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+  ],
+  // ◂ CRM C2.6
   // CRM C2.3 ▸ มอบหมายอัตโนมัติ (ภาพ 07 ขวา): ตารางกฎตามลำดับ + ป้าย "คิวถัดไป" + ผู้รับสำรอง + ทดลอง · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎ") ทั้ง 1440 และ 390
   //   thana/nok (STAFF ไม่มีคีย์ crm.assignment.manage) = 404 ตามแบบ (ข้อสอบ C2.3 X1.6) → ถ่ายเฉพาะ owner/manager
   "2.3": isCustomer || userKey === "thana" || userKey === "nok" ? [] : [
@@ -449,11 +502,85 @@ async function restoreSeed(): Promise<void> {
     if (un.length) await P.businessUnit?.deleteMany?.({ where: { id: { in: un } } }).catch(() => null);
     if (pt.length) await P.party?.deleteMany?.({ where: { id: { in: pt }, tenantId: E.tenantId } }).catch(() => null);
   }
+  // CRM C2.7 ▸ คืนสภาพของทางเดินเงิน — จากใบนอกเข้าใน: event/audit ของดีลและเอกสาร → บิลหน้าร้าน → เอกสารบัญชี → การผูกบัญชี↔CRM
+  //   🔴 แถว `CrmDealPayment` หายไปพร้อมดีลด้านบนแล้ว (FK onDelete: Cascade) · ลบแถวตรง ๆ ไม่เรียกบริการ (ทางนั้นเขียน event เพิ่ม)
+  {
+    const { dealIds: dl, docIds: dc, posSaleIds: ps, accLinkIds: al } = TMP;
+    if (dl.length) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetType: "CrmDeal", targetId: { in: dl } } }).catch(() => null);
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: dl.map((id: string) => ({ idempotencyKey: { contains: id } })) } }).catch(() => null);
+    }
+    if (dc.length) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, targetId: { in: dc } } }).catch(() => null);
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: dc.map((id: string) => ({ idempotencyKey: { contains: id } })) } }).catch(() => null);
+    }
+    if (ps.length) {
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, OR: ps.map((id: string) => ({ idempotencyKey: { contains: id } })) } }).catch(() => null);
+      await P.posPayment?.deleteMany?.({ where: { saleId: { in: ps } } }).catch(() => null);
+      await P.posSaleLine?.deleteMany?.({ where: { saleId: { in: ps } } }).catch(() => null);
+      await P.posSale?.deleteMany?.({ where: { id: { in: ps } } }).catch(() => null);
+    }
+    if (dc.length) {
+      await P.accountDocumentLine?.deleteMany?.({ where: { documentId: { in: dc } } }).catch(() => null);
+      await P.accountDocument?.deleteMany?.({ where: { id: { in: dc } } }).catch(() => null);
+    }
+    if (al.length) await P.accountSystemLink?.deleteMany?.({ where: { id: { in: al } } }).catch(() => null);
+  }
+  if (BEFORE.accountDocs >= 0) {
+    const docNow = await P.accountDocument.count({ where: { tenantId: E.tenantId } });
+    const saleNow = await P.posSale.count({ where: { tenantId: E.tenantId } });
+    const moneyNow = await P.crmDealPayment.count({ where: { tenantId: E.tenantId } });
+    const ok = docNow === BEFORE.accountDocs && saleNow === BEFORE.posSales && moneyNow === BEFORE.moneyRows;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: เอกสารบัญชี ${BEFORE.accountDocs} → ${docNow} · บิลหน้าร้าน ${BEFORE.posSales} → ${saleNow} · แถวเงินของดีล ${BEFORE.moneyRows} → ${moneyNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
+  }
   if (BEFORE.sequences >= 0) {
     const seqNow = await P.crmSequence.count({ where: { tenantId: E.tenantId, systemId: SYS } });
     const ruleNow = await P.crmAssignmentRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
     const ok = seqNow === BEFORE.sequences && ruleNow === BEFORE.rules;
     console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ลำดับ ${BEFORE.sequences} → ${seqNow} · กฎมอบหมาย ${BEFORE.rules} → ${ruleNow}${ok ? " (เท่าเดิม)" : " — ไม่เท่าเดิม!"}`);
+  }
+  // CRM C2.6 ▸ คืนสภาพของที่บล็อก "เตรียมของ" ของการติดตามเว็บสร้าง — จากใบนอกเข้าใน:
+  //   เหตุการณ์การเข้าชม → การเข้าชม → กิจกรรม WEB + outbox (key มี contactId) → คลิก + ลิงก์ → คำตอบ + ฟอร์ม → audit ของรอบนี้
+  //   → ค่าตั้ง `settings.crm.tracking` (เขียนคืนทุกไบต์ · เดิมไม่มีคีย์ = ถอดคีย์ออก)
+  //   🔴 ลบแถวตรง ๆ (ไม่เรียก deleteLink/saveWebSettings ของบริการ) เพราะทางนั้นเขียน audit เพิ่มอีกชุดระหว่างกำลังเก็บกวาด
+  {
+    const { trackedLinkIds: lk, webVisitorIds: vi, webContactIds: wc, formIds: fm } = TMP;
+    if (vi.length) {
+      const ss = (await P.crmWebSession.findMany({ where: { tenantId: E.tenantId, visitorId: { in: vi } }, select: { id: true } }).catch(() => [])) as Any[];
+      if (ss.length) await P.crmWebEvent.deleteMany({ where: { sessionId: { in: ss.map((x: Any) => x.id as string) } } }).catch(() => null);
+      await P.crmWebSession.deleteMany({ where: { tenantId: E.tenantId, visitorId: { in: vi } } }).catch(() => null);
+    }
+    if (wc.length) {
+      await P.crmActivity.deleteMany({ where: { tenantId: E.tenantId, systemId: SYS, type: "WEB", contactId: { in: wc } } }).catch(() => null);
+      await P.outboxEvent.deleteMany({ where: { tenantId: E.tenantId, type: "crm.web.identified", OR: wc.map((id: string) => ({ idempotencyKey: { contains: id } })) } }).catch(() => null);
+    }
+    if (lk.length) {
+      await P.crmTrackedClick.deleteMany({ where: { linkId: { in: lk } } }).catch(() => null);
+      await P.crmTrackedLink.deleteMany({ where: { id: { in: lk } } }).catch(() => null);
+    }
+    if (fm.length) {
+      await P.formSubmission.deleteMany({ where: { formId: { in: fm } } }).catch(() => null);
+      await P.formDef.deleteMany({ where: { id: { in: fm }, tenantId: E.tenantId } }).catch(() => null);
+    }
+    if (lk.length || fm.length || C26_TRACKING_BEFORE !== undefined) {
+      await P.auditLog.deleteMany({ where: { tenantId: E.tenantId, action: { startsWith: "crm.tracking." }, createdAt: { gte: C26_START } } }).catch(() => null);
+    }
+    if (C26_TRACKING_BEFORE !== undefined) {
+      if (C26_TRACKING_BEFORE === null) {
+        await P.$executeRawUnsafe(`UPDATE "AppSystem" SET "settings" = "settings" #- '{crm,tracking}' WHERE "id" = $1`, SYS).catch(() => null);
+      } else {
+        await P.$executeRawUnsafe(`UPDATE "AppSystem" SET "settings" = jsonb_set("settings", '{crm,tracking}', $1::jsonb, true) WHERE "id" = $2`, JSON.stringify(C26_TRACKING_BEFORE), SYS).catch(() => null);
+      }
+    }
+  }
+  if (BEFORE.links >= 0) {
+    const linkNow = await P.crmTrackedLink.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const sessNow = await P.crmWebSession.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    const formNow = await P.formDef.count({ where: { tenantId: E.tenantId } });
+    const trackNow = ((await P.appSystem.findFirst({ where: { id: SYS }, select: { settings: true } }))?.settings as Any)?.crm?.tracking ?? null;
+    const sameSettings = JSON.stringify(trackNow ?? null) === JSON.stringify(C26_TRACKING_BEFORE ?? null);
+    const ok = linkNow === BEFORE.links && sessNow === BEFORE.webSessions && formNow === BEFORE.forms && sameSettings;
+    console.log(`  ${ok ? "🔢" : "❌"} คืนสภาพ: ลิงก์ ${BEFORE.links} → ${linkNow} · การเข้าชม ${BEFORE.webSessions} → ${sessNow} · ฟอร์ม ${BEFORE.forms} → ${formNow} · ค่าตั้ง tracking ${sameSettings ? "เท่าเดิม" : "ไม่เท่าเดิม!"}`);
   }
   // CRM C2.5 ▸ พิสูจน์ว่าจำนวนจดหมาย/แม่แบบกลับมาเท่าเดิม (แบบเดียวกับ C2.2/C2.3) ◂
   if (BEFORE.emails >= 0) {
@@ -682,6 +809,112 @@ if (WO === "2.5") {
 }
 // ◂ เตรียมของจริงของ C2.5
 
+// ── เตรียมของจริงของ C2.6 (ภาพ 16 + ภาพ 11) ─────────────────────────────────────────────────────
+// 🔴 ทำไมต้องมีบล็อกนี้: seed QC ไม่เคยเปิดการติดตามเว็บ · ไม่มีลิงก์ติดตาม · ไม่มีการเข้าชม · ไม่มีฟอร์มสักใบ
+//    ⇒ สามหน้าของใบนี้ถ่ายได้แต่ "กล่องว่าง" ซึ่งเทียบ parity กับภาพ 16 (โดเมน/โค้ดฝัง/สถิติ) และภาพ 11
+//    (ตารางลิงก์ + QR + ไทม์ไลน์เว็บบนผู้ติดต่อ 360) ไม่ได้เลย
+// 🔴 สร้างผ่าน facade จริงเท่านั้น (`tracking.saveWebSettings/createLink/recordConsent/collect/identify/saveFormTarget`
+//    + `forms/service.createForm`) — ยัดแถวดิบจะได้ภาพของข้อมูลที่บริการไม่มีวันสร้าง (เช่นการเข้าชมที่ไม่มีความยินยอม)
+// 🔴 **ไม่มีอะไรออกเน็ต**: การติดตามเว็บไม่เรียกผู้ให้บริการภายนอกเลย (โดเมนตัวอย่างเป็น `*.example.com` ที่ไม่มีใครยิงถึง)
+// 🔴 ตำแหน่ง: หลังด่าน QC server และก่อน try/finally ⇒ ทุกชิ้นถูกคืนใน restoreSeed() (รวม `settings.crm.tracking` เดิม)
+if (WO === "2.6") {
+  const P = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const formsSvc = (await import("@/lib/modules/forms/service")) as Any;
+  const { randomUUID } = await import("node:crypto");
+  const mem = await P.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  BEFORE.links = await P.crmTrackedLink.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  BEFORE.webSessions = await P.crmWebSession.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  BEFORE.forms = await P.formDef.count({ where: { tenantId: E.tenantId } });
+
+  // 0) จำค่าตั้งเดิมของ `settings.crm.tracking` — restoreSeed() เขียนคืนทุกไบต์ (เดิมไม่มีคีย์ = ถอดคีย์ออก)
+  const sysRow = await P.appSystem.findFirst({ where: { id: SYS }, select: { settings: true } });
+  C26_TRACKING_BEFORE = (sysRow?.settings as Any)?.crm?.tracking ?? null;
+
+  const rand = Math.random().toString(36).slice(2, 7).replace(/[^a-z0-9]/g, "q");
+  const DOMAIN = "siamdive-demo.example.com";
+  const ORIGIN = `https://${DOMAIN}`;
+  const web = await crm.tracking.saveWebSettings(ctx, ownerActor, {
+    enabled: true,
+    domains: [DOMAIN],
+    consentText: "เว็บไซต์นี้ใช้คุกกี้เพื่อจดจำการเข้าชมและช่วยให้เราดูแลคุณได้ดีขึ้น — เลือกได้ว่าจะให้เก็บหรือไม่",
+    retentionDays: 180,
+  });
+
+  // 1) ลิงก์ติดตาม 2 ลิงก์ (หนึ่งใบรหัสตั้งเอง `b2b-…` ตามภาพ 11)
+  const l1 = await crm.tracking.createLink(ctx, ownerActor, { url: `${ORIGIN}/promo/b2b`, name: "โปรโมชันลูกค้าองค์กร (ภาพตัวอย่าง)", channel: "LINE", code: `b2b-${rand}` });
+  const l2 = await crm.tracking.createLink(ctx, ownerActor, { url: `${ORIGIN}/trips/similan`, name: "ทริปสิมิลัน (QR ใบปลิว)", channel: "QR" });
+  for (const l of [l1, l2]) TMP.trackedLinkIds.push(l.id);
+  C26_LINK_ID = l1.id;
+
+  // 2) การเข้าชม 1 ชุด (ยอมรับคุกกี้ + 3 หน้า) แล้วผูกกับผู้ติดต่อจริงของ seed ⇒ บล็อกไทม์ไลน์บนหน้า 360 มีของ
+  const visitor = randomUUID();
+  const meta = { origin: ORIGIN, ip: "203.0.113.7", userAgent: "qc-visual-crm", bytes: 300 };
+  TMP.webVisitorIds.push(visitor);
+  await crm.tracking.recordConsent({ k: web.siteKey, v: visitor, cv: web.consentVersion, d: "accept", u: `${ORIGIN}/?utm_source=facebook&utm_medium=cpc&utm_campaign=q4` }, meta);
+  for (const u of [`${ORIGIN}/trips/similan`, `${ORIGIN}/trips/similan/liveaboard`, `${ORIGIN}/contact`]) {
+    await crm.tracking.collect({ k: web.siteKey, v: visitor, cv: web.consentVersion, t: "page", u, ti: "ทริปสิมิลัน 4 วัน 4 คืน" }, meta);
+  }
+  const target = (await P.crmContact.findFirst({
+    where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, trackingOptOut: false, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  })) as Any;
+  if (target?.id) {
+    const bound = await crm.tracking.identify({ tenantId: E.tenantId as string, systemId: SYS }, { visitorId: visitor, contactId: target.id, by: "FORM" });
+    if (bound.bound > 0) TMP.webContactIds.push(target.id);
+  }
+
+  // 3) ฟอร์มรับลูกค้า 1 ใบ + ตั้งปลายทางฝั่ง CRM ผ่าน facade ของใบนี้
+  const form = await formsSvc
+    .createForm({ tenantId: E.tenantId as string }, {
+      name: "ติดต่อเรา (ภาพตัวอย่าง)",
+      description: "ฟอร์มบนเว็บของร้าน — คำตอบเข้า CRM เป็น lead",
+      crmEnabled: true,
+      fields: [
+        { key: "name", label: "ชื่อ-นามสกุล", type: "text", required: true },
+        { key: "phone", label: "เบอร์โทร", type: "phone", required: true },
+        { key: "email", label: "อีเมล", type: "email", required: false },
+        { key: "company", label: "บริษัท", type: "text", required: false },
+        { key: "message", label: "สิ่งที่สนใจ", type: "textarea", required: false },
+      ],
+    })
+    .catch(() => null);
+  if (form?.id) {
+    TMP.formIds.push(form.id);
+    await crm.tracking.saveFormTarget(ctx, ownerActor, form.id, { crmSystemId: SYS, scoreOnSubmit: 10, utmCapture: true, createCompanyFromField: "company" }).catch(() => null);
+  }
+  console.log(`🧪 เตรียมของ C2.6: siteKey ${web.siteKey ?? "-"} · ลิงก์ ${TMP.trackedLinkIds.length} ใบ · การเข้าชม 1 ชุด (ผูกผู้ติดต่อ ${TMP.webContactIds.length} ราย) · ฟอร์ม ${TMP.formIds.length} ใบ`);
+
+  // ภาพเพิ่ม: กล่อง QR ของลิงก์จริง (ภาพ 11) + บล็อกไทม์ไลน์เว็บบนผู้ติดต่อ 360 ที่ถูกผูก
+  if (C26_LINK_ID) {
+    specs.push({
+      name: `crm-link-qr-${userKey}`,
+      path: `${CRM_BASE}/settings/tracking`,
+      note: "กล่อง QR ของลิงก์ติดตาม (ภาพ 11) — SVG พิมพ์ได้ + ลิงก์สั้น /l/<code>",
+      expect: ["[data-testid=crm-link-qr-box]"],
+      steps: [{ waitFor: `[data-testid=crm-link-qr-${C26_LINK_ID}]`, timeoutMs: 20_000 }, { click: `[data-testid=crm-link-qr-${C26_LINK_ID}]` }, { wait: 500 }],
+    });
+  }
+  if (TMP.webContactIds[0]) {
+    specs.push({
+      name: `crm-contact360-web-${userKey}`,
+      path: `${CRM_BASE}/contacts/${TMP.webContactIds[0]}`,
+      note: "ผู้ติดต่อ 360 — บล็อก \"การเข้าชมเว็บ\" (ภาพ 11): รอบการเข้าชม · จำนวนหน้า · utm · หน้าที่เปิด (ไม่มี IP/เบราว์เซอร์ใน DTO)",
+      expect: ["[data-testid=crm-web-timeline]"],
+      steps: [{ waitFor: "[data-testid=crm-web-timeline]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=crm-web-timeline]" }, { wait: 500 }],
+    });
+  }
+}
+// ◂ เตรียมของจริงของ C2.6
+
 // CRM C2.4 ▸ เตรียมของจริง: ผู้ติดต่อที่มีเบอร์ (ผ่าน facade) + นัดในสัปดาห์นี้ของ Party เดียวกัน 3 ระบบ (แถวตรง — ไม่มี facade ฝั่งเขียน)
 //   🔴 ตำแหน่ง: หลังด่าน QC server และก่อน try/finally เดียวกับ C2.2/C2.3 ⇒ ของทุกชิ้นถูกคืนใน restoreSeed() เสมอ
 if (WO === "2.4") {
@@ -757,6 +990,148 @@ if (WO === "2.4") {
   );
 }
 // ◂ เตรียมของจริงของ C2.4
+
+// CRM C2.7 ▸ เตรียมของจริงของทางเดินเงิน (ภาพ 06): ผู้ติดต่อที่เป็น "คนเดียวกับสมาชิก" (Party เดียวกัน · จับคู่ด้วยเบอร์) +
+//   ดีลที่มีรายการสินค้า 3 บรรทัด + ใบเสนอราคา (ร่าง — ไม่ออกเลขที่/ไม่ลงบัญชี) + บิลหน้าร้านที่ผูกเข้าดีลผ่าน facade
+//   🔴 ทำไมต้องมี: เฉลย QC ไม่มีเอกสารบัญชีเลย (0 ใบ) ไม่มีการผูกบัญชี↔CRM และไม่มีสมาชิกคนไหนใช้ Party ร่วมกับผู้ติดต่อ CRM
+//      ⇒ ถ้าไม่เตรียม ช่อง "ดีล" บนหน้าขายจะไม่โผล่เลย และหน้าเอกสารบัญชีก็ยังไม่มีเอกสารให้เปิด
+//   🔴 ฝั่ง CRM สร้างผ่าน facade จริงทั้งหมด (`contacts.createContact` · `deals.createDeal/setLines/issueQuotation` ·
+//      `payments.linkSaleToDeal`) · แถวบิลหน้าร้านสร้างตรง ๆ เพราะ `pos.createSale` โพสต์บัญชี/ตัดสต็อก/ระบายคิวตามหลัง
+//      ซึ่งคืนสภาพแบบแถวต่อแถวไม่ได้ — สิ่งที่ภาพต้องพิสูจน์คือ "การผูกผ่าน facade" ไม่ใช่การขายซ้ำ
+//   🔴 ตำแหน่ง: หลังด่าน QC server และก่อน try/finally เดียวกับใบอื่น ⇒ ของทุกชิ้นถูกคืนใน restoreSeed() เสมอ
+if (WO === "2.7") {
+  const P27 = prisma as Any;
+  const crm = await import("@/lib/modules/crm");
+  const posReg = (await import("@/lib/modules/pos/register" as string)) as Any;
+  const mem = await P27.membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const ownerActor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  const ctx = { tenantId: E.tenantId as string, systemId: SYS, actorUserId: ownerActor.userId };
+  const accSys = (E.systems?.ACCOUNT ?? "") as string;
+  const memSys = (E.systems?.MEMBER ?? "") as string;
+  const posSys = (E.systems?.POS ?? "") as string;
+  const unitId = (E.units?.patong ?? "") as string;
+  BEFORE.accountDocs = await P27.accountDocument.count({ where: { tenantId: E.tenantId } });
+  BEFORE.posSales = await P27.posSale.count({ where: { tenantId: E.tenantId } });
+  BEFORE.moneyRows = await P27.crmDealPayment.count({ where: { tenantId: E.tenantId } });
+
+  // (1) ผูกระบบบัญชี ↔ CRM (ใบเสนอราคาของดีลออกไม่ได้ถ้าไม่ผูก) — ผูกไว้แล้วก็ไม่แตะ
+  if (accSys) {
+    const have = await P27.accountSystemLink.findFirst({ where: { tenantId: E.tenantId, systemId: accSys, linkedKind: "CRM", linkedId: SYS }, select: { id: true } });
+    if (!have) {
+      const made = await P27.accountSystemLink.create({ data: { tenantId: E.tenantId, systemId: accSys, linkedKind: "CRM", linkedId: SYS } });
+      TMP.accLinkIds.push(made.id);
+    }
+  }
+
+  // (2) สมาชิกที่หน้าขายเลือกได้จริง (อยู่ใน dropdown 200 คนล่าสุด) + มีเบอร์ + มี Party
+  const members: Any[] = memSys ? await posReg.posMembers(E.tenantId, memSys) : [];
+  let picked: { id: string; name: string; phone: string; partyId: string } | null = null;
+  for (const m of members) {
+    const phone = String(m.phone ?? "").trim();
+    if (!phone) continue;
+    const row = await P27.customer.findFirst({ where: { id: m.id, tenantId: E.tenantId }, select: { partyId: true } });
+    if (row?.partyId) { picked = { id: m.id as string, name: String(m.name ?? ""), phone, partyId: row.partyId as string }; break; }
+  }
+
+  // (3) ผู้ติดต่อ CRM ของคนเดียวกัน — ส่งเบอร์เดียวกันไป ⇒ `party.findOrCreate` จับคู่ Party เดิมของสมาชิก (ไม่มีการยัดแถว)
+  const made = await crm.contacts.createContact(ctx, ownerActor as Any, {
+    firstName: "ภัทร",
+    lastName: "ทดสอบทางเดินเงิน qc-visual-crm",
+    phone: picked?.phone ?? "0812340027",
+    email: "pat.money.qc-visual-crm@example.com",
+    jobTitle: "เจ้าของกิจการ",
+    force: true,
+  });
+  TMP.contactIds.push(made.contact.id);
+  const ctRow = await P27.crmContact.findFirst({ where: { id: made.contact.id }, select: { partyId: true } });
+  const samePerson = !!picked && ctRow?.partyId === picked.partyId;
+  if (!samePerson && ctRow?.partyId) TMP.partyIds.push(ctRow.partyId); // Party ที่ใบนี้สร้างเองเท่านั้นที่ลบได้
+
+  // (4) ดีลที่มีรายการสินค้า 3 บรรทัด (ยอดจริงจากรายการ) + ใบเสนอราคาร่าง
+  const deal = await crm.deals.createDeal(ctx, ownerActor as Any, {
+    contactId: made.contact.id,
+    pipelineId: E.pipelines.b2b.id as string,
+    title: "แพ็กเกจดำน้ำองค์กร qc-visual-crm",
+    valueSatang: 3_000_00,
+    ownerUserId: ownerActor.userId,
+  });
+  TMP.dealIds.push(deal.id);
+  await crm.deals.setLines(ctx, ownerActor as Any, deal.id, {
+    lines: [
+      { name: "ทริปดำน้ำ 3 วัน 2 คืน", qty: 2, unitPriceSatang: 1_250_00, vatRateBp: 700 },
+      { name: "เช่าอุปกรณ์ครบชุด", qty: 3, unitPriceSatang: 333_33, discountBp: 500, vatRateBp: 700 },
+      { name: "รถรับส่งสนามบิน", qty: 1, unitPriceSatang: 87_77 },
+    ],
+  });
+  let docId = "";
+  if (accSys) {
+    const q = await crm.deals.issueQuotation(ctx, ownerActor as Any, deal.id, {}).catch((e: unknown) => {
+      console.log(`⚠️ เตรียมของ C2.7: ออกใบเสนอราคาไม่ได้ — ${e instanceof Error ? e.message.slice(0, 120) : e}`);
+      return null;
+    });
+    docId = String((q as Any)?.docId ?? "");
+    if (docId) TMP.docIds.push(docId);
+  }
+
+  // (5) บิลหน้าร้านที่ "จ่ายแล้ว" + ผูกเข้าดีลผ่าน facade (ทางเดินเงินนับให้ใน tx เดียวกัน — มติผู้คุมงาน C2.7 ข้อ 2)
+  let linked = false;
+  if (posSys && unitId) {
+    const sale = await P27.posSale.create({
+      data: {
+        tenantId: E.tenantId, unitId, systemId: posSys, sourceModule: "POS", idempotencyKey: `qc-visual-crm-${deal.id}`,
+        status: "PAID", subtotalSatang: 1_200_00, grandTotalSatang: 1_200_00, paidAt: new Date(),
+        ...(picked ? { memberId: picked.id } : {}),
+        lines: { create: [{ tenantId: E.tenantId, unitId, name: "มัดจำทริปองค์กร qc-visual-crm", qty: 1, unitPriceSatang: 1_200_00, lineTotalSatang: 1_200_00 }] },
+        payments: { create: [{ tenantId: E.tenantId, unitId, type: "CASH", amountSatang: 1_200_00 }] },
+      },
+    });
+    TMP.posSaleIds.push(sale.id);
+    const lr = await crm.payments.linkSaleToDeal({ tenantId: E.tenantId as string, systemId: SYS }, ownerActor as Any, { dealId: deal.id, saleId: sale.id })
+      .catch((e: unknown) => { console.log(`⚠️ เตรียมของ C2.7: ผูกบิลเข้าดีลไม่ได้ — ${e instanceof Error ? e.message.slice(0, 120) : e}`); return null; });
+    linked = !!lr?.counted;
+  }
+  console.log(`🧪 เตรียมของ C2.7: ผู้ติดต่อ+ดีล 3 บรรทัด (${deal.id}) · ใบเสนอราคา ${docId || "-"} · บิลผูกแล้ว=${linked} · สมาชิกคนเดียวกัน=${samePerson}${picked ? ` (${picked.id})` : " — ไม่มีสมาชิกที่มีเบอร์+Party ⇒ ช่องดีลจะไม่โผล่"}`);
+
+  specs.unshift(
+    ...(picked && samePerson
+      ? ([{
+          name: `pos-register-deal-select-${userKey}`,
+          path: POS_REGISTER,
+          note: "หน้าขาย: เลือกสมาชิกแล้ว ⇒ ช่อง \"ดีล\" ข้างช่องสมาชิกขึ้นพร้อมดีลที่ยังเปิดอยู่ของคนนั้น + คำอธิบายใต้ช่อง (เทียบภาพ 06)",
+          expect: ["[data-testid=pos-deal-select]", "[data-testid=pos-deal-hint]"],
+          steps: [
+            { waitFor: "[data-testid=pos-member-select]", timeoutMs: 20_000 },
+            { select: { on: "[data-testid=pos-member-select]", value: picked.id } },
+            { waitFor: "[data-testid=pos-deal-select]", timeoutMs: 15_000 },
+            { select: { on: "[data-testid=pos-deal-select]", value: deal.id } },
+            { wait: 400 },
+          ],
+        }] as Spec[])
+      : []),
+    ...(docId && accSys
+      ? ([{
+          name: `acc-doc-crm-deal-${userKey}`,
+          path: `/app/sys/${accSys}/account/docs/QUOTATION/${docId}`,
+          note: "หน้าเอกสารบัญชี: บล็อก \"ดีล\" ที่ลิงก์กลับไปดีลของ CRM (`payments.dealForDoc` · เส้น account→crm เดิม)",
+          expect: ["[data-testid=acc-doc-crm-deal]"],
+          steps: [{ waitFor: "[data-testid=acc-doc-crm-deal]", timeoutMs: 20_000 }, { wait: 400 }],
+        }] as Spec[])
+      : []),
+    {
+      name: `crm-deal-money-${userKey}`,
+      path: `${CRM_BASE}/deals/${deal.id}`,
+      note: "ดีล 360 ของดีลที่มีรายการสินค้า 3 บรรทัด + ใบเสนอราคา + บิลหน้าร้านที่ผูกไว้ (เงินที่รับของดีลมาจากบิลใบนั้น)",
+      expect: ["[data-testid=deal-360]", "[data-testid=deal-360-lines]"],
+      steps: [{ waitFor: "[data-testid=deal-360-lines]", timeoutMs: 20_000 }, { wait: 400 }],
+    },
+  );
+}
+// ◂ เตรียมของจริงของ C2.7
 
 // ── mint session (เรียกจากในกรอบ try เท่านั้น — ดูหมายเหตุหัวไฟล์) ──
 const UA = "qc-visual-crm";

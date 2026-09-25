@@ -278,6 +278,10 @@ export type Deal360 = {
   timeline: DealTimelineItem[];
   /** §11.3: รายการเปลี่ยนหลังออกใบเสนอราคา ⇒ ป้าย "ต่างจากใบเสนอราคา" */
   quotationDiffers: boolean;
+  // CRM C2.7 ▸ เอกสารบัญชีของดีลถูกยกเลิก (ธง = แท็ก `DEAL_VOIDED_TAG` ของดีล — ไม่มีคอลัมน์ · R-C.1) ◂
+  documentVoided: boolean;
+  /** CRM C2.7 ▸ เงินที่รับจริงของดีล (Σ แถวเงินที่ถูกนับ · สตางค์) — 0 = ยังไม่มีเงินเข้า ⇒ หน้าดีลไม่แสดงช่องนี้ ◂ */
+  paidSatang: number;
   /** วันที่อยู่ในขั้นปัจจุบัน */
   daysInStage: number;
 };

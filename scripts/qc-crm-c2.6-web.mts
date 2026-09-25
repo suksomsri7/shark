@@ -66,6 +66,11 @@
 //   W7. `/f/*` may be framed (the proxy edit of addendum item 10) while `/app/*` may NOT — proven by chromium, not by a header regex.
 //   W8. The tracker never reads form fields: nothing the user types into a form on the page may appear in ANY request body the
 //       browser sends (the proxy records every body) nor in any row.
+//   W9. USER AGENT (added 25 ก.ย. after the first real run): the exam drives every page with a REALISTIC DESKTOP user agent
+//       (chromium's own, with `HeadlessChrome` rewritten to `Chrome`), because C2.5's single bot engine (`isTrackingBot` ·
+//       `BOT_UA_RE` matches `headless`) makes `/l/<code>` redirect WITHOUT counting for a headless UA — correct in production,
+//       fatal for an exam that pretends to be a customer. `C2.6W-S1.3` is the negative control: ONE page keeps the untouched
+//       headless UA and must still be redirected while NOTHING is counted. No product behaviour is waived by this.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // WHAT THIS FILE PROVES: S0 harness controls · S1 browser half of CRM-RUN S1 (302 · real cookie jar · unique clicks) · S3 the SIX
@@ -187,7 +192,7 @@ const currentIp = () => STICKY_IP ?? ipNew();
 
 // ── the pages our front door serves for the shop hosts (filled after the fixtures exist) ──
 const PAGES = new Map<string, string>();
-type ReqLog = { method: string; host: string; path: string; status: number; origin: string; body: string; setCookie: string };
+type ReqLog = { method: string; host: string; path: string; status: number; origin: string; body: string; setCookie: string; xfo: string };
 const LOG: ReqLog[] = [];
 const postsTo = (p: string) => LOG.filter((r) => r.path === p && r.method === "POST");
 const waitForPosts = async (p: string, n: number, timeoutMs = 15_000) => {
@@ -351,7 +356,7 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
       if (SHOP_HOSTS.has(host) && !appPath) {
         const html = serveFixture(host, path);
         const payload = html ?? shell(`${host}${path}`, null);
-        LOG.push({ method: String(req.method), host, path, status: 200, origin, body: body.toString("utf8").slice(0, 2048), setCookie: "" });
+        LOG.push({ method: String(req.method), host, path, status: 200, origin, body: body.toString("utf8").slice(0, 2048), setCookie: "", xfo: "" });
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(payload);
         return;
@@ -374,6 +379,7 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
             LOG.push({
               method: String(req.method), host, path, status: Number(pres.statusCode ?? 0), origin,
               body: body.toString("utf8").slice(0, 2048), setCookie: Array.isArray(sc) ? sc.join(" || ") : String(sc ?? ""),
+              xfo: String(pres.headers["x-frame-options"] ?? ""),
             });
             const oh: Record<string, Any> = { ...pres.headers };
             delete oh["content-length"];
@@ -384,7 +390,7 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
         },
       );
       preq.on("error", (e: Any) => {
-        LOG.push({ method: String(req.method), host, path, status: -1, origin, body: `UPSTREAM ${e?.message ?? e}`, setCookie: "" });
+        LOG.push({ method: String(req.method), host, path, status: -1, origin, body: `UPSTREAM ${e?.message ?? e}`, setCookie: "", xfo: "" });
         res.writeHead(502, { "content-type": "text/plain" });
         res.end("upstream error");
       });
@@ -430,6 +436,22 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
       "--disable-features=Translate,BackForwardCache,OptimizationHints",
     ],
   });
+  // ── USER AGENT (ORACLE-EDIT 25 ก.ย.): chromium headless announces itself as `HeadlessChrome/…`, and C2.5's single bot engine
+  //    (`isTrackingBot` · `emails-shared.BOT_UA_RE` = /(bot|spider|crawl|preview|curl\/|wget\/|python-requests|headless)/i) treats
+  //    every `headless` UA as a machine ⇒ `/l/<code>` redirects WITHOUT counting (`resolveLinkHit`, by design — the PRODUCT is right:
+  //    in production a headless UA IS a bot). A real customer's browser is not headless, so the exam presents a realistic desktop UA
+  //    on every page it opens; `C2.6W-S1.3` keeps the bot rule itself under test by driving ONE page with the untouched headless UA.
+  const RAW_UA = String(await browser.userAgent().catch(() => "")) ||
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+  const DESKTOP_UA = RAW_UA.replace(/HeadlessChrome/g, "Chrome").replace(/\s*Headless\s*/g, " ").replace(/\s+/g, " ").trim();
+  const BOT_UA = /Headless/i.test(RAW_UA) ? RAW_UA : RAW_UA.replace("Chrome/", "HeadlessChrome/");
+  const isBotUa = (ua: string): boolean => (typeof TSH.isBotUserAgent === "function" ? !!TSH.isBotUserAgent(ua) : /headless/i.test(ua));
+  // ── `__name` SHIM (ORACLE-EDIT 25 ก.ย.): tsx/esbuild compiles this file with keep-names, so every inner named function of an
+  //    `evaluate` body is emitted as `__name(fn, "fn")`. `__name` is an esbuild helper of THIS module — it does not exist inside the
+  //    page, so any evaluate body holding an inner `const f = () => …` died with `ReferenceError: __name is not defined`
+  //    (X7.2 · X7.3 · the FATAL at X3). Declaring it as a no-op in every document — and re-asserting it before every
+  //    function-valued `evaluate`, for documents that were already loaded — is a pure harness fix: nothing of the product changes.
+  const NAME_SHIM = "globalThis.__name = globalThis.__name || function (f) { return f; };";
   type Ctx = { ctx: Any; pages: Any[]; errors: string[]; console: string[] };
   const CTXS: Ctx[] = [];
   const newCtx = async (): Promise<Ctx> => {
@@ -439,8 +461,15 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
     CTXS.push(holder);
     return holder;
   };
-  const openPage = async (holder: Ctx) => {
+  const openPage = async (holder: Ctx, ua: string = DESKTOP_UA) => {
     const pg = await holder.ctx.newPage();
+    await pg.setUserAgent(ua).catch(() => null);                        // never `HeadlessChrome` unless a check asks for it
+    await pg.evaluateOnNewDocument(NAME_SHIM).catch(() => null);        // every future document of this page (and its frames)
+    const rawEval = pg.evaluate.bind(pg);
+    pg.evaluate = async (fn: Any, ...args: Any[]) => {                  // and the document that is already open
+      if (typeof fn === "function") await rawEval(NAME_SHIM).catch(() => null);
+      return rawEval(fn, ...args);
+    };
     await pg.setViewport({ width: 1280, height: 800 });
     pg.on("pageerror", (e: Error) => holder.errors.push(cut(e.message, 160)));
     pg.on("console", (m: Any) => { const t = String(m.text()); holder.console.push(`${m.type()}:${cut(t, 200)}`); });
@@ -638,6 +667,19 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
     chk("C2.6W-S1.2", "second visit from the SAME browser ⇒ clicks 2, uniqueClicks stays 1 · a fresh browser context (empty jar) ⇒ clicks 3, uniqueClicks 2 (positive control for the cookie rule)",
       Number(row2?.clicks) === 2 && Number(row2?.uniqueClicks) === 1 && Number(row3?.clicks) === 3 && Number(row3?.uniqueClicks) === 2,
       "2/1 then 3/2", `same=${row2?.clicks}/${row2?.uniqueClicks} fresh=${row3?.clicks}/${row3?.uniqueClicks}`);
+    // [negative control of the bot rule] the SAME link opened by a HeadlessChrome UA: still redirects, counts NOTHING.
+    //   This is why every other page of this exam presents a realistic desktop UA — without this control a UA bug in the harness
+    //   would make S1.1/S1.2 unprovable (they went red exactly that way on the first run, 24 ก.ย.).
+    const cb = await newCtx();
+    const pb = await openPage(cb, BOT_UA);
+    await go(pb, `https://shark.in.th/l/${code}`);
+    const rowB: Any = LINK.id ? await linkRow(LINK.id) : null;
+    const clicksB = LINK.id ? (await safeMany("crmTrackedClick", { where: { linkId: LINK.id } })).length : -1;
+    chk("C2.6W-S1.3", "[negative control] the same /l/<code> opened with a HeadlessChrome user agent still lands the browser on the stored url but counts NOTHING (C2.5's one bot filter, judged from a real browser) — and the UA this exam uses everywhere else is NOT a bot",
+      String(pb.url()) === LINK_URL && Number(rowB?.clicks) === 3 && Number(rowB?.uniqueClicks) === 2 && clicksB === 3 &&
+        isBotUa(BOT_UA) && !isBotUa(DESKTOP_UA),
+      "redirects · clicks stay 3/2", `final=${cut(String(pb.url()), 90)} row=${rowB?.clicks}/${rowB?.uniqueClicks} clickRows=${clicksB} botUa=${isBotUa(BOT_UA)} desktopUaIsBot=${isBotUa(DESKTOP_UA)} ua=${cut(DESKTOP_UA, 70)}`);
+    await pb.close().catch(() => null);
     // X6 — the redirect target can never be influenced by the request
     await go(pl2, `https://shark.in.th/l/${code}?url=https://evil-${rand}.test/&next=https://evil-${rand}.test/&u=/etc/passwd`);
     chk("C2.6W-X6.1", "X6 open redirect, judged by the browser's final URL: /l/<code>?url=&next=&u= still ends on the STORED url",
@@ -677,25 +719,46 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
         !postsTo("/t/e").some((r) => r.body.includes(cMail) || r.body.includes(contact.id)),
       "bound once + 1 activity + 1 event", `ticket=${ticket ? "minted" : rd(tRes)} autoPickup=${auto} sessions=${bound.map((s) => `${s.contactId === contact.id ? "bound" : String(s.contactId)}:${s.identifiedBy}`).join(",") || "-"} acts=${acts.length} events=${evts.length}`,
       auto ? "CRITICAL" : "MAJOR");
-    // X4 — the same landing twice, then twice in parallel from two separate browser contexts
-    await go(pi, `${OR_A}/landing?sd_ct=${encodeURIComponent(ticket)}`);
-    const par = await Promise.all([newCtx(), newCtx()]);
+    // X4 — (a) the same landing AGAIN with the same ticket · (b) a DIFFERENT visitor replaying that already-burnt ticket ·
+    //      (c) two independent browsers identifying in PARALLEL, each carrying its OWN fresh ticket.
+    // 🔴 ORACLE-EDIT (25 ก.ย. · ผู้คุมงาน "ruling round 2", S2): an identify ticket now carries a `jti` that is BURNT on first use
+    //    (TTL 15 นาที · `consumeIdentifyTicket`) — "one ticket ⇒ ONE binding" is the ruled behaviour, so the extra visitors of X4
+    //    must carry tickets of their own (in production each of them clicked a link in their own e-mail). The replay of a used
+    //    ticket is not assumed to be harmless: it is asserted to bind NOTHING, which puts the round-2 fix itself under test.
+    await go(pi, `${OR_A}/landing?sd_ct=${encodeURIComponent(ticket)}`);       // (a) same visitor, same (burnt) ticket
+    await sleep(1200);
+    const cr = await newCtx();                                                 // (b) another visitor replaying the burnt ticket
+    const pr = await openPage(cr);
+    await go(pr, `${OR_A}/`);
+    await clickBanner(pr, "accept");
+    await sleep(1000);
+    const vidR = await vidOf(pr, OR_A);
+    await go(pr, `${OR_A}/landing?sd_ct=${encodeURIComponent(ticket)}`);
+    await sd(pr, "identify");
+    await sleep(1500);
+    const replaySessions = await sessionsOf(tidA, vidR || "none");
+    const replayBound = replaySessions.some((s) => s.contactId === contact.id);
+    const par = await Promise.all([newCtx(), newCtx()]);                        // (c) two browsers · one FRESH ticket each · parallel
     const pps = await Promise.all(par.map((c) => openPage(c)));
-    await Promise.all(pps.map(async (pp) => {
+    const freshTickets = await Promise.all(pps.map((_p, i) =>
+      call(TR.emailClickTicket, { tenantId: tidA, systemId: crmA, emailId: `${TAG}-mail-p${i}`, contactId: contact.id }, new Date())));
+    await Promise.all(pps.map(async (pp, i) => {
       await go(pp, `${OR_A}/`);
       await clickBanner(pp, "accept");
       await sleep(900);
-      await go(pp, `${OR_A}/landing?sd_ct=${encodeURIComponent(ticket)}`);
+      await go(pp, `${OR_A}/landing?sd_ct=${encodeURIComponent(String(freshTickets[i]?.v ?? ""))}`);
       await sd(pp, "identify");
     }));
     await sleep(2500);
     const acts2 = await safeMany("crmActivity", { where: { contactId: contact.id, type: "WEB" } });
     const evts2 = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.web.identified" } })) as Any[]).filter((e) => j(e.payload).includes(contact.id));
     const boundSessions = (await safeMany("crmWebSession", { where: { tenantId: tidA, contactId: contact.id } })).length;
-    chk("C2.6W-X4.1", "X4 identify twice in a row and twice in PARALLEL from two independent browsers ⇒ still ONE WEB activity for this Thai day and ONE crm.web.identified (the extra visitors' sessions are bound, nothing is duplicated)",
-      acts2.length === 1 && evts2.length === 1 && boundSessions >= 3, "1 activity · 1 event",
-      `acts=${acts2.length} events=${evts2.length} boundSessions=${boundSessions}`);
+    chk("C2.6W-X4.1", "X4 identify twice in a row and twice in PARALLEL from two independent browsers (each with its own ticket) ⇒ still ONE WEB activity for this Thai day and ONE crm.web.identified · every one of those visitors' sessions is bound · and a visitor replaying an ALREADY-USED ticket binds nothing (single-use jti · ruling round 2 S2)",
+      acts2.length === 1 && evts2.length === 1 && boundSessions >= 3 && replayBound === false && replaySessions.length >= 1,
+      "1 activity · 1 event · 3 bound visitors · replay binds 0",
+      `acts=${acts2.length} events=${evts2.length} boundSessions=${boundSessions} replayVisitorSessions=${replaySessions.length} replayBound=${replayBound} freshTickets=${freshTickets.map((t) => (t.v ? "minted" : rd(t))).join(",")}`);
     await pi.close().catch(() => null);
+    await pr.close().catch(() => null);
     for (const pp of pps) await pp.close().catch(() => null);
   }
 
@@ -1005,12 +1068,23 @@ ${siteKey ? `<script src="${"__SCRIPT_ORIGIN__"}/t/s/${siteKey}.js"></script>` :
     const frames = pe.frames().map((f: Any) => String(f.url()));
     const formFrame = pe.frames().find((f: Any) => String(f.url()).includes(`/f/${form.publicToken}`));
     const inputs = formFrame ? await formFrame.evaluate(() => document.querySelectorAll("input").length).catch(() => -1) : -1;
+    // 🔴 ORACLE-EDIT (25 ก.ย.): the verdict is chromium's OUTCOME, not a console string. A cross-origin iframe is an
+    //   out-of-process frame, so its "Refused to display … X-Frame-Options" entry is logged on the IFRAME's own target session and
+    //   never reaches `page.on("console")` of the embedding page (`refusals` came back empty on the first real run while the frame
+    //   was in fact refused). What the browser DOES show is unambiguous: the refused frame ends on `chrome-error://chromewebdata/`
+    //   and never renders `/app` (or the `/login` it redirects to), while the `/f/<token>` frame renders its inputs.
+    //   The response headers the front door saw name the REASON (evidence only — the pass/fail is the browser's).
+    const frameUrls: string[] = (frames as string[]).map((u) => String(u));
+    const appRendered = frameUrls.some((u) => /shark\.in\.th\/(app|login)/.test(u));
+    const appErrored = frameUrls.some((u) => /^chrome-error:/i.test(u));
+    const xfoOfLast = (re: RegExp) => { const r = LOG.filter((x) => re.test(x.path) && x.method === "GET").slice(-1)[0]; return r ? `${r.path}:${r.status}:${r.xfo || "none"}` : "-"; };
+    const xfoForm = LOG.filter((r) => r.path === `/f/${form.publicToken}`).slice(-1)[0]?.xfo ?? "";
+    const xfoApp = LOG.filter((r) => /^\/(app|login)(\/|$)/.test(r.path)).map((r) => r.xfo).filter(Boolean);
     const refusals = ce.console.filter((l) => /Refused to display|X-Frame-Options|frame-ancestors/i.test(l));
-    const refusedForm = refusals.some((l) => l.includes(`/f/${form.publicToken}`));
-    const refusedApp = refusals.some((l) => /\/app/.test(l));
-    chk("C2.6W-S6.5", "the embed really works in a browser: an iframe of /f/<token> renders its inputs (the proxy stops sending X-Frame-Options DENY for /f/* only) while an iframe of /app is still REFUSED (positive/negative pair from the same page)",
-      Number(inputs) > 0 && !refusedForm && refusedApp, "form framed · /app refused",
-      `frames=${cut(frames.join(" | "), 160)} inputsInFrame=${inputs} refusals=${cut(refusals.join(" | "), 160) || "-"}`);
+    chk("C2.6W-S6.5", "the embed really works in a browser: an iframe of /f/<token> renders its inputs (the proxy stops sending X-Frame-Options DENY for /f/* only) while an iframe of /app is still REFUSED by chromium — it never renders and lands on an error page (positive/negative pair from the same page)",
+      Number(inputs) > 0 && !/DENY|SAMEORIGIN/i.test(xfoForm) && !appRendered && appErrored && xfoApp.some((v) => /DENY/i.test(v)),
+      "form framed (no XFO) · /app refused (XFO DENY · error frame)",
+      `frames=${cut(frames.join(" | "), 160)} inputsInFrame=${inputs} appRendered=${appRendered} appErrorFrame=${appErrored} xfoForm=${xfoForm || "none"} xfoApp=${xfoApp.join(",") || "-"} lastApp=${xfoOfLast(/^\/(app|login)(\/|$)/)} consoleRefusals=${cut(refusals.join(" | "), 100) || "- (out-of-process frame: not delivered to the embedder)"}`);
     await pe.close().catch(() => null);
   }
 

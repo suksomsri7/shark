@@ -7,6 +7,10 @@ import { prisma } from "@/lib/core/db";
 import { systemForUnit } from "@/lib/modules/system/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as account from "@/lib/modules/account";
+// CRM C2.7 ▸ เส้น pos→crm (chokepoint ที่ลงทะเบียนใน scripts/fitness.mts) — หน้าขายอ่าน "ดีลที่ยังเปิดอยู่ของลูกค้าคนนี้"
+//   และผูกบิลเข้าดีล ผ่าน **facade `@/lib/modules/crm` เท่านั้น** (ห้าม import ไฟล์ภายในของ CRM · ด่าน F2.3) ◂
+import * as crm from "@/lib/modules/crm";
+import type { MemberActor } from "@/lib/modules/member";
 
 // type = ชนิดหน้างาน (BOOKING/SHOP/RESTAURANT…) — หน้า POS ใช้ตั้งค่าเริ่มต้นว่าบริการใหม่ควรจองล่วงหน้าได้ไหม
 export type PosUnit = { id: string; name: string; type: string };
@@ -306,4 +310,63 @@ export async function posMembers(tenantId: string, memberSystemId: string): Prom
     select: { id: true, name: true, memberCode: true, phone: true },
   });
   return rows.map((c) => ({ ...c, memberCode: c.memberCode ?? "" }));
+}
+
+// ═══════════ CRM C2.7 · ช่อง "ดีล" ที่หน้าขาย (พิมพ์เขียว §7.2 · ภาพ 06) ═══════════
+//
+// 🔴 อ่าน/เขียนฝั่ง CRM ผ่าน facade เท่านั้น · ขอบเขตการมองเห็น/คีย์สิทธิ์ตัดสินในโมดูล CRM (แคชเชียร์เห็นเฉพาะดีลของตัวเอง)
+// 🔴 ไม่มีคีย์ `crm.deal.read` / ร้านยังใช้ CRM รุ่นเดิม (uiVersion 1) = รายการว่าง **ไม่ใช่ error** — หน้าขายต้องขายต่อได้เสมอ
+
+/** ดีลที่เลือกได้ที่หน้าขาย (1 แถวต่อดีล · ยอดเป็นสตางค์) */
+export type PosDealOption = { id: string; systemId: string; title: string; valueSatang: number; stageName: string };
+
+/** ระบบ CRM ทุกใบของร้าน (เก่าสุดก่อน) — ประตู uiVersion/คีย์ ตัดสินในโมดูล CRM เอง */
+async function crmSystemIds(tenantId: string): Promise<string[]> {
+  const rows = await prisma.appSystem.findMany({ where: { tenantId, type: "CRM" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * ดีลที่ยังเปิดอยู่ของสมาชิกที่แคชเชียร์เลือก (ผ่าน Party ของสมาชิก) — ว่างได้เสมอ ไม่ throw
+ * 🔴 มติผู้คุมงาน C2.7 รอบ 2 (N1): ไม่มีคีย์ `crm.deal.update` = **ซ่อนช่อง "ดีล" ไปเลย** (รายการว่าง)
+ *    คนที่ผูกบิลไม่ได้ ต้องไม่เห็นช่องให้เลือก ไม่ใช่เลือกแล้วไปเจอ "ไม่มีสิทธิ์" ตอนเก็บเงินเสร็จ (เงินจ่ายแล้ว แก้อะไรไม่ได้)
+ *    ตัวตัดสินคีย์คือ `crm.crmCan` ของโมดูล CRM (ผ่าน facade) — ไม่มีทะเบียนสิทธิ์ซ้อนในโมดูล POS
+ */
+export async function posOpenDeals(tenantId: string, actor: MemberActor, memberId: string): Promise<PosDealOption[]> {
+  const id = String(memberId ?? "").trim();
+  if (!id) return [];
+  if (!crm.crmCan(actor, "crm.deal.update")) return [];
+  const cust = await prisma.customer.findFirst({ where: { id, tenantId }, select: { partyId: true } });
+  if (!cust?.partyId) return [];
+  const out: PosDealOption[] = [];
+  for (const systemId of await crmSystemIds(tenantId)) {
+    const rows = await crm.payments.openDealsForParty({ tenantId, systemId }, actor, cust.partyId).catch(() => []);
+    for (const d of rows) out.push({ id: d.id, systemId, title: d.title, valueSatang: d.valueSatang, stageName: d.stageName });
+    if (out.length >= crm.POS_LINK_LIMIT) break;
+  }
+  return out.slice(0, crm.POS_LINK_LIMIT);
+}
+
+/**
+ * ผูกบิลที่ขายสำเร็จแล้วเข้ากับดีล — คืน true เมื่อผูกได้
+ * ร้านมีระบบ CRM ได้หลายใบ: ลองทีละใบ ใบที่ไม่ได้เป็นเจ้าของดีลจะตอบ "ไม่พบ" (ขอบเขต X1 ของโมดูล CRM) ⇒ ข้ามไป
+ * 🔴 ผู้เรียก (`registerSaleAction`) ต้องห่อไว้เสมอ: บิลจ่ายเงินแล้ว ความล้มของ CRM ห้ามทำให้การขายล้ม
+ */
+export async function posLinkSaleToDeal(tenantId: string, actor: MemberActor, input: { dealId: string; saleId: string }): Promise<boolean> {
+  const dealId = String(input?.dealId ?? "").trim();
+  const saleId = String(input?.saleId ?? "").trim();
+  if (!dealId || !saleId) return false;
+  let lastError: unknown = null;
+  for (const systemId of await crmSystemIds(tenantId)) {
+    try {
+      await crm.payments.linkSaleToDeal({ tenantId, systemId }, actor, { dealId, saleId });
+      return true;
+    } catch (e) {
+      const code = (e as { code?: unknown } | null)?.code;
+      if (code === "NOT_FOUND" || code === "FORBIDDEN") continue; // ดีลไม่ได้อยู่ในระบบใบนี้ / ระบบนี้ยังไม่เปิด CRM ใหม่
+      lastError = e;
+    }
+  }
+  if (lastError) throw lastError;
+  return false;
 }

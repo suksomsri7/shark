@@ -631,6 +631,9 @@ type CreateCoreOpts = {
   // CRM C2.3 ▸ `auto` = ใช้กฎมอบหมายแม้มีคนสร้าง (`ownerUserId: "auto"`) · `leave` = "ใครลาอยู่" ที่อ่านก่อนเปิด tx (assignment.leaveSnapshot) ◂
   auto?: boolean;
   leave?: assignment.AssignmentLeaveSnapshot | null;
+  // CRM C2.6 ▸ กฎมอบหมายที่ "ต้นทาง" ระบุมาเจาะจง (ฟอร์มที่ตั้ง `FormDef.assignRuleId`) — ส่งต่อให้ `assignment.pick`
+  //   ทางเดียวกับที่ผู้ใช้เลือกกฎเอง · ไม่ส่ง/ไม่ตรงระบบ = ใช้กฎตามลำดับเหมือนเดิม (C2.3 `pick` เป็นคนตัดสิน) ◂
+  ruleId?: string | null;
 };
 type CreateCoreResult = { row: CrmContact; created: boolean; duplicates: DuplicateHit[] };
 
@@ -681,6 +684,7 @@ async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | 
       creatorUserId: actor?.userId || actorId(ctx),
       via: opts.via,
       auto: opts.auto === true,
+      ruleId: opts.ruleId ?? null, // CRM C2.6 ◂
       draft: { sourceKind: c.sourceKind, sourceChannel: c.sourceChannel, locale: c.locale, partyId, companyId: c.companyId, fields: custom },
       leave: opts.leave ?? null,
     },
@@ -2232,6 +2236,8 @@ export type BridgeLeadInput = {
    * 🔴 การ "จับคู่คำตอบฟอร์ม → ฟิลด์กำหนดเอง" เป็นของใบ C2.6 · ที่นี่แค่เปิดทางให้ค่าที่ผู้เรียกจับคู่มาแล้วไม่ตกหาย ◂
    */
   fields?: Record<string, unknown> | null;
+  // CRM C2.6 ▸ กฎมอบหมายที่ต้นทางระบุ (`FormDef.assignRuleId`) — ส่งตรงเข้า `assignment.pick` ◂
+  ruleId?: string | null;
   // CRM C1.11 ▸ (รีวิว SF-6) คนกดเอง (ปุ่ม "สร้าง lead จากแชท") — audit เป็น USER คนนี้ · ไม่ส่ง = SYSTEM (สะพานอัตโนมัติ) ◂
   actorUserId?: string | null;
   /** ช่องทางที่บันทึกใน audit (`after.via`) — ไม่ส่ง = "bridge" */
@@ -2335,7 +2341,14 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
       // CRM C2.3 ▸ `fields` ของสะพานไหลเข้า engine ฟิลด์ทางเดียวกับ createContact (ไม่ส่ง = ไม่มีอะไรเปลี่ยน) ◂
       const row =
         existing ??
-        (await insertContactInTx(tx, ctx, null, clean, { via: "API", legacy, partyId: kind === "CHAT" ? canonical : null, leave, custom: bridgeCustom /* CRM C2.3 ◂ */ }));
+        (await insertContactInTx(tx, ctx, null, clean, {
+          via: "API",
+          legacy,
+          partyId: kind === "CHAT" ? canonical : null,
+          leave,
+          custom: bridgeCustom /* CRM C2.3 ◂ */,
+          ruleId: str(input?.ruleId) ?? null /* CRM C2.6 ◂ */,
+        }));
       const created = !existing;
 
       // ── กิจกรรม (ฟอร์ม v2 · 1 รายการต่อคำตอบ) + ธงของฟอร์ม ──

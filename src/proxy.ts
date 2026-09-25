@@ -25,11 +25,15 @@ const ROOT_HOSTS = new Set(["shark.in.th", "www.shark.in.th", "localhost"]);
 export function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const res = NextResponse.next();
+  // CRM C2.6 ▸ ฟอร์มสาธารณะ `/f/<token>` ต้องฝังใน iframe บนเว็บของร้านได้ (โค้ดฝังของหน้า `/crm/settings/forms`)
+  //   ⇒ เส้นทางนี้ **เท่านั้น** ที่ไม่ส่ง `X-Frame-Options: DENY` · เส้นอื่นทั้งระบบ (รวม `/app/*`) ยัง DENY เหมือนเดิม
+  //   (มติผู้คุมงาน 24 ก.ย. ข้อ 10 · ข้อสอบ C2.6-S6.8 + C2.6W-S6.5 ให้เบราว์เซอร์จริงเป็นผู้ตัดสิน) ◂
+  const framable = /^\/f(\/|$)/.test(request.nextUrl.pathname);
 
   // แยก backoffice
   if (host === "backoffice.shark.in.th") {
     res.headers.set("x-shark-surface", "backoffice");
-    return applySecurity(res);
+    return applySecurity(res, framable);
   }
 
   // custom domain / subdomain ของร้าน → ส่ง host ให้ชั้น app resolve เป็น tenant (อ่าน header นี้)
@@ -38,11 +42,11 @@ export function proxy(request: NextRequest) {
     res.headers.set("x-shark-host", host);
   }
   res.headers.set("x-shark-surface", "app");
-  return applySecurity(res);
+  return applySecurity(res, framable);
 }
 
-function applySecurity(res: NextResponse) {
-  res.headers.set("X-Frame-Options", "DENY");
+function applySecurity(res: NextResponse, framable = false) {
+  if (!framable) res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // WO-0043: บังคับ HTTPS 2 ปี + รวม subdomain · ปิดสิทธิ์อุปกรณ์ที่แอปไม่ใช้

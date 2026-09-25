@@ -7,11 +7,13 @@ import { MemberIcon } from "@/components/member/MemberIcon";
 import {
   posQuoteAction,
   posMemberRightsAction,
+  posOpenDealsAction,
   registerSaleAction,
   type QuoteState,
   type RegisterSaleState,
 } from "@/lib/actions/pos";
 import type {
+  PosDealOption,
   PosServiceItem,
   PosCatalogItem,
   PosMember,
@@ -125,6 +127,11 @@ export function PosRegister({
   const [gcPin, setGcPin] = useState("");
   const [gcAmount, setGcAmount] = useState(""); // บาท
 
+  // ── CRM C2.7 · ผูกบิลเข้ากับ "ดีล" ของลูกค้าคนนี้ (ภาพ 06) ──
+  // 🔴 รายการว่าง = ไม่ต้องแสดงอะไรเลย (ร้านที่ไม่ได้ใช้ CRM ใหม่ หรือแคชเชียร์ไม่มีสิทธิ์อ่านดีล เห็นหน้าขายเดิมทุกตัวอักษร)
+  const [deals, setDeals] = useState<PosDealOption[]>([]);
+  const [dealId, setDealId] = useState("");
+
   const [phase, setPhase] = useState<"cart" | "pay" | "done">("cart");
   const [payMethod, setPayMethod] = useState<PayMethod>("CASH");
   const [quote, setQuote] = useState<OkQuote | null>(null);
@@ -217,6 +224,8 @@ export function PosRegister({
     setGcPin("");
     setGcAmount("");
     setLive(null);
+    setDeals([]);
+    setDealId("");
     if (!memberId) {
       setRights(null);
       return;
@@ -227,6 +236,14 @@ export function PosRegister({
       })
       .catch(() => {
         if (alive) setRights(null);
+      });
+    // CRM C2.7 — ดีลที่ยังเปิดอยู่ของคนนี้ (ล้มเหลว/ไม่มีสิทธิ์ = รายการว่าง ขายต่อได้ตามปกติ)
+    posOpenDealsAction({ systemId, unitId, memberId })
+      .then((rows) => {
+        if (alive) setDeals(rows);
+      })
+      .catch(() => {
+        if (alive) setDeals([]);
       });
     return () => {
       alive = false;
@@ -283,6 +300,8 @@ export function PosRegister({
         ...inputPayload(),
         payType: payMethod,
         cashReceivedSatang: payMethod === "CASH" ? bahtToSatang(cashReceived) : undefined,
+        // CRM C2.7 — ผูกบิลเข้าดีลหลังขายสำเร็จ (ฝั่งเซิร์ฟเวอร์ห่อไว้: ผูกไม่ได้ = บิลยังสำเร็จ)
+        dealId: dealId || undefined,
         idempotencyKey: idemRef.current,
       });
       if (res.status === "error") {
@@ -684,6 +703,29 @@ export function PosRegister({
                 </option>
               ))}
             </select>
+          </label>
+        )}
+
+        {/* CRM C2.7 ▸ ผูกบิลเข้ากับดีลของลูกค้าคนนี้ — รายการว่าง = ไม่แสดงอะไรเลย:
+            ร้านที่ไม่ได้ใช้ CRM ใหม่ · แคชเชียร์ที่ไม่มีคีย์ `crm.deal.read` · **ไม่มีคีย์ `crm.deal.update`** (มติรอบ 2 · N1 —
+            คนที่ผูกบิลไม่ได้ต้องไม่เห็นช่องให้เลือก) ⇒ ฝั่งเซิร์ฟเวอร์ (`pos.posOpenDeals`) คืนรายการว่าง
+            ทะเบียนปุ่ม: `scripts/crm-ui-inventory.json` แถว `pos-deal-select` / `pos-deal-hint` (ด่าน F14 ของ fitness) */}
+        {deals.length > 0 && (
+          <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            ดีล (นับบิลนี้เป็นเงินที่รับของดีล)
+            <select data-testid="pos-deal-select" value={dealId} onChange={(e) => setDealId(e.target.value)} className="input">
+              <option value="">ไม่ผูกดีล</option>
+              {deals.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title} · {d.stageName} · {formatBaht(d.valueSatang)}
+                </option>
+              ))}
+            </select>
+            <span data-testid="pos-deal-hint" className="text-[11px]">
+              {dealId
+                ? "เมื่อเก็บเงินสำเร็จ ยอดบิลนี้จะถูกนับเป็นเงินที่รับของดีลที่เลือก"
+                : "เลือกดีลเพื่อให้ยอดบิลนี้ไปรวมเป็นเงินที่รับของดีลนั้น (ไม่เลือกก็ขายได้ตามปกติ)"}
+            </span>
           </label>
         )}
 

@@ -682,11 +682,16 @@ export { createPaymentRequest as createPaymentRequestForDoc, type CreatePaymentR
 
 // ยอดค้างรับต่อผู้ติดต่อ (1 query ครอบทุกราย) · ข้อมูลเชื่อมโยงของเอกสาร (event บัญชีส่งมาแค่ documentId)
 // · "หนึ่ง Party = หนึ่งผู้ติดต่อต่อสมุด" (idempotent + กันยิงพร้อมกันที่ฐานข้อมูล — X3)
+// CRM C2.7 ▸ `listDocPayments` = การรับ/จ่ายชำระของเอกสาร 1 ใบ (อ่านล้วน · ของเดิมใน service.ts ไม่แตะ)
+//   ทำไมต้องเปิดผ่าน facade: ทางเดินเงินของ CRM ต้องรู้ว่า "แถวเงินของดีลแถวไหนเป็นของเอกสารใบที่ถูกยกเลิก"
+//   (มติผู้คุมงาน C2.7 รอบ 2 · SF-1) — ยกเลิกใบแจ้งหนี้ต้องไม่ไปถอนเงินมัดจำของอีกใบ · CRM อ่านตารางบัญชีเองไม่ได้
 export {
   outstandingByContacts,
   docLinkInfo,
+  listDocPayments,
   ensureAccountContact,
   type DocLinkInfo,
+  type DocPaymentRow,
   type EnsureAccountContactInput,
 } from "./service";
 

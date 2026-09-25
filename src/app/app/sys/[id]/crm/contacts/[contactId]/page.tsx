@@ -31,8 +31,12 @@ import { SequenceEnrollButton } from "@/components/crm/sequences/SequenceEnrollB
 import { CrmClickToCall } from "@/components/crm/call/CrmClickToCall";
 import { bookingLinkFor, callAiStatus } from "@/lib/modules/crm/calls";
 import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
-import { ACTIVITY_OUTCOMES_DEFAULT } from "@/lib/modules/crm/activities-shared";
+import { ACTIVITY_OUTCOMES_DEFAULT, thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { outcomeOptions } from "@/lib/modules/crm/activities";
+// CRM C2.6 ▸ การเข้าชมเว็บของลูกค้ารายนี้ (ภาพ 11) — บล็อกแสดงผลล้วน ๆ · ข้อมูลอ่านที่นี่ตามการมองเห็นของผู้ดู ◂
+import { webTimeline } from "@/lib/modules/crm/tracking";
+import { CrmWebTimeline } from "@/components/crm/tracking/CrmWebTimeline";
+import type { CrmWebTimelineSession } from "@/components/crm/tracking/types";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -86,6 +90,21 @@ export default async function Contact360Page({
     bookingLinkFor(ctx, actor, { contactId: c.id }).catch(() => null),
   ]);
   // ◂ CRM C2.4
+  // CRM C2.6 ▸ ไทม์ไลน์เว็บ (ล้ม/ไม่มีข้อมูล = บล็อกว่าง · หน้าไม่ล้ม) — ไม่มี ipHash/userAgent ใน DTO ◂
+  const webSessions: CrmWebTimelineSession[] = await webTimeline(ctx, actor, c.id)
+    .then((r) =>
+      r.sessions.map((s) => ({
+        id: s.id,
+        startedAtLabel: thaiDateLabel(new Date(s.startedAt).getTime(), true),
+        lastSeenAtLabel: thaiDateLabel(new Date(s.lastSeenAt).getTime(), true),
+        pageViews: s.pageViews,
+        firstUrl: s.firstUrl,
+        utm: s.utm,
+        identifiedBy: s.identifiedBy,
+        events: s.events.map((e) => ({ kind: e.kind, url: e.url, title: e.title, atLabel: thaiTimeLabel(new Date(e.at).getTime()), durationSec: e.durationSec })),
+      })),
+    )
+    .catch(() => [] as CrmWebTimelineSession[]);
   const base = `/app/sys/${id}/crm/contacts`;
   const name = contactLabel(c);
   const now = new Date();
@@ -398,6 +417,8 @@ export default async function Contact360Page({
             )}
           </section>
           {/* ◂ CRM C2.2 */}
+          {/* CRM C2.6 ▸ การเข้าชมเว็บ (คุกกี้ที่ลูกค้ายอมรับ) ◂ */}
+          <CrmWebTimeline sessions={webSessions} />
           <ConsentBlock systemId={id} contactId={c.id} consent={data.consent} disabled={!live} />
         </aside>
       </div>

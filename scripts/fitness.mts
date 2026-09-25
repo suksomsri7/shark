@@ -250,6 +250,10 @@ const ALLOWED_EDGES = new Set([
   // chokepoint ที่อนุมัติ (BLUEPRINT_CONNECTIONS §3.2): เงินทุกบาทผ่าน POS → Account
   // — อนุมัติโดย Fable 2026-07-16 สำหรับ WO-0002 (contract 2.4) · import ได้เฉพาะ account/index
   "pos→account",
+  // CRM C2.7 (chokepoint · พิมพ์เขียว CRM v2 §7.2 · มติผู้คุมงาน 24 ก.ย. 2569): หน้าขาย POS เสนอ "ดีลที่ยังเปิดอยู่ของลูกค้าคนนี้"
+  // แล้วผูกบิลที่ขายสำเร็จเข้าดีล — อ่าน/เขียนผ่าน facade `@/lib/modules/crm` เท่านั้น (`crm.payments.openDealsForParty` ·
+  // `crm.payments.linkSaleToDeal`) · ทิศทางเดียว (CRM ไม่ import POS · อ่านแถว PosSale เพื่อคิดเงินผ่าน prisma ในโมดูล CRM เอง)
+  "pos→crm",
   // chokepoint ที่อนุมัติ (contract 2.3): POS ใช้คูปองตอนขายจริง (validate/redeem/release)
   // — WO-0003 · POS เป็นจุดตัดเงินเดียวที่เรียก coupon.redeem ใน tx ของบิล
   "pos→coupon",
@@ -997,6 +1001,16 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
     for (const d of CRM_PUBLIC_DIRS) if (existsSync(join(ROOT, d))) out.add(d);
     return [...out].sort();
   }
+  // ── ปุ่ม/ช่องของ CRM ที่ "อาศัยอยู่บนหน้าจอของโมดูลอื่น" (ทะเบียนต้องคลุมให้ได้ · ใบ C2.7) ──
+  // 🔴 ทำไมต้องมีรายการนี้: สะพาน CRM บางอันเพิ่มคอนโทรลเข้าไปในหน้าจอของโมดูลเจ้าบ้าน (หน้าขาย POS) ซึ่งอยู่นอกโฟลเดอร์ CRM
+  //    ⇒ ตัวสแกนเดิมมองไม่เห็น: ลงทะเบียนแล้วกลายเป็น "แถวผี" (F14.2) · ไม่ลงทะเบียนก็ไม่มีใครคุม (§7 · D8)
+  // 🔴 ทำไมไม่สแกนไฟล์นั้นทั้งไฟล์: ทะเบียนนี้เป็นของ CRM — testid ของเจ้าบ้าน (`pos-member-select` · `pos-pay-button` …)
+  //    ต้องไม่ถูกลากเข้ามา ⇒ รับเฉพาะ **ชื่อที่ประกาศไว้ตรงนี้** และต้องมีอยู่จริงในไฟล์นั้น (ไม่มี = ตัวสแกนรายงานเอง)
+  const CRM_HOSTED_CONTROLS: { file: string; ids: string[]; wo: string }[] = [
+    // ใบ C2.7 (มติผู้คุมงาน 24 ก.ย. 2569 · N1): ช่อง "ดีล" + คำอธิบายใต้ช่อง บนหน้าขายของโมดูล POS
+    { file: "src/lib/modules/pos/register-ui.tsx", ids: ["pos-deal-select", "pos-deal-hint"], wo: "C2.7" },
+  ];
+
   // จุดยึดพิสูจน์ว่า "ตัวค้นหายังทำงาน": หน้า CRM ที่มีอยู่จริงวันนี้ต้องถูกค้นเจอเสมอ
   const CRM_ANCHOR_DIRS = ["src/app/app/sys/[id]/crm", "src/lib/modules/crm"];
   const INVENTORY = "scripts/crm-ui-inventory.json";
@@ -1067,6 +1081,27 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
         unreadable.push({ file: rel(f), line: lineOf(src, at), snippet: src.slice(at, at + 60).split("\n")[0]!, interactive: isInteractive(tag, attrs) });
       }
     }
+  }
+
+  // ── ปุ่มของ CRM บนหน้าจอโมดูลอื่น: อ่านไฟล์เจ้าบ้าน แล้วรับเฉพาะชื่อที่ประกาศไว้ (ดู CRM_HOSTED_CONTROLS) ──
+  const hostedMissing: string[] = [];
+  for (const host of CRM_HOSTED_CONTROLS) {
+    const abs = join(ROOT, host.file);
+    const src = existsSync(abs) ? readFileSync(abs, "utf8") : "";
+    if (!src) {
+      hostedMissing.push(`${host.file} (ไม่พบไฟล์ · ใบ ${host.wo})`);
+      continue;
+    }
+    const idsHere = new Set<string>();
+    for (const m of src.matchAll(TESTID_RE)) {
+      const raw = normId(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? "");
+      if (!host.ids.includes(raw)) continue; // testid ของเจ้าบ้านเอง — ไม่ใช่ของทะเบียน CRM
+      idsHere.add(raw);
+      const { tag, attrs } = tagAround(src, m.index ?? 0);
+      found.push({ id: raw, file: rel(abs), interactive: isInteractive(tag, attrs) });
+      scannedFiles++;
+    }
+    for (const want of host.ids) if (!idsHere.has(want)) hostedMissing.push(`${want} (${host.file} · ใบ ${host.wo})`);
   }
 
   // ── ratchet baseline: หนี้ testid ที่ "มีอยู่ก่อนมีทะเบียน" — ห้ามเพิ่ม ลดได้อย่างเดียว ──
@@ -1141,6 +1176,9 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
       : "",
     unreadableInteractive.length
       ? `${unreadableInteractive.length} จุดเขียน data-testid ด้วยค่าที่อ่านไม่ออก (ลงทะเบียนไม่ได้): ${unreadableInteractive.slice(0, 8).map((u) => `${u.file}:${u.line} ${u.snippet}`).join(" · ")} → ใช้สตริงตรง ๆ หรือ {\`ชื่อ-\${id}\`}`
+      : "",
+    hostedMissing.length
+      ? `ปุ่มของ CRM ที่ประกาศว่าอยู่บนหน้าจอโมดูลอื่น แต่หาในไฟล์นั้นไม่เจอ ${hostedMissing.length}: ${hostedMissing.join(" · ")} → แก้ CRM_HOSTED_CONTROLS ให้ตรงโค้ด หรือเอาแถวออกจากทะเบียน`
       : "",
   ].filter(Boolean);
   chk(

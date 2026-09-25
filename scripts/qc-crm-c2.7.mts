@@ -106,8 +106,35 @@
 //      consumer and a label. The commission hook is a NO-OP until C3.3.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// WHAT THIS FILE PROVES: S0 structure · S1–S8 of CRM-RUN §2 (28) · U PERMANENT RULE (uiVersion 1) · X1 X3 (in-process AND worker
-//   PROCESSES) X4 X6 X8 X9 · CLEAN.
+// WHAT THIS FILE PROVES (**63 checks**): S0 structure (6) · S1–S8 of CRM-RUN §2 (28) · **S9 the controller's ruling round 2
+//   (8)** · U PERMANENT RULE (uiVersion 1 · 4) · X1 (3) · X3 (4 — in-process AND worker PROCESSES) · X4 (4) · X6 (1) ·
+//   X8 (2) · X9 (2) · CLEAN (1).  (C2.7-FATAL only ever fires on an unexpected exception.)
+// ══════ S9 — ORACLE-EDIT of the oracle author (24 Sep · the controller's binding ruling round 2 · brief §"รอบ 2") ══════
+//   S9.1 (CRITICAL · B1) ONE bill is ONE piece of money: a PAID sale counted on deal A cannot be linked to deal B
+//     (CONFLICT · Thai · B untouched), two cashiers racing the same bill onto two deals leave exactly ONE row (the unique
+//     key is per DEAL, so only a lock on the BILL can decide it), and the void gives everything back over BOTH deals.
+//   S9.2 (CRITICAL · B2) the gate may stop COUNTING but never REVERSING: `uiVersion 2 + bridgesEnabled false` refuses
+//     `linkSaleToDeal` and writes nothing, while money counted before the shop closed the bridge — or fell back to
+//     uiVersion 1 — is still reversed by `pos.sale.voided` / `account.payment.voided` (else the deal keeps phantom money).
+//   S9.3 (MAJOR · SF-1) voiding the INVOICE reverses only that document's rows: the deposit receipt of the same deal keeps
+//     its money, the invoice's row is REVERSED and the deal is tagged exactly once.
+//   S9.4 (MAJOR · SF-2) withholding tax: `account.payment.recorded` carries the CASH only, accounting ties off cash + WHT
+//     and calls the invoice PAID ⇒ ONE `DOC_SETTLE#<docId>` row closes the document to its grand total (idempotent under
+//     replay and parallel delivery) and `autoWonOnPaid` fires exactly once.
+//   S9.5 (MAJOR · SF-3) 20 rounds of `moveDeal` OPEN→OPEN racing `recordDocPayment` on separate connections: reading the
+//     counted won value outside the deal's lock would overwrite it with null — `wonValueSatang` must never be null or
+//     regress once money has been counted.
+//   S9.6 (MINOR · SF-4) two deals claiming the same quotation/invoice: the oldest is credited ONCE and a WARN OpsEvent
+//     (Thai · ids only) records the ambiguity · the void flags BOTH deals but only un-counts the one that was counted.
+//   S9.7 (MINOR · SF-5) only `INVOICE` / `DEPOSIT_RECEIPT` are attributable: a `BILLING_NOTE` payment writes no deal money
+//     and leaves a WARN (one billing note can cover invoices of several deals — the debt belongs to C3).
+//   S9.8 (MINOR · N3 · N1 · N4) a gift-card bill is never deal revenue (Thai refusal · never counted even with a LINKED
+//     row) · the sell screen's deal list is EMPTY for a cashier without `crm.deal.update` and the link answers FORBIDDEN
+//     without writing a row (an offered select whose button always fails is a silent trap) · a pre-existing LINKED row that
+//     finally gets counted emits `crm.deal.updated`.
+//   X8.1 additionally sweeps those new WARN rows (and a WARN written without a tenantId) for PII; C2.7-S8.3 additionally
+//   demands a `crm-ui-inventory.json` row with wo C2.7 for `pos-deal-select` and `pos-deal-hint`, not only the doc link.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //   N/A with reasons: X2 (C2.7 adds no REST op and no AI tool — the money ops/tools are C2.11 and C3.4, which carry X2) ·
 //   X5 (C2.7 registers no scheduled job: every effect is an outbox consumer, and "two overlapping runs" is exercised as the
 //   twice-in-parallel delivery of X4.1–X4.4) · X7 (no public endpoint) · X10 (no file, no secret, no cookie).
@@ -1067,8 +1094,8 @@ try {
     const ctL = await mkContact(tidL, crmL, "คุณคอมโพส", userA);
     const dL = await mkDeal(cL, ctL, pL, { value: 500_00 });
     const sL = await sell(tidL, unitL, posL, 150_00);
-// ORACLE-EDIT C2.7-S7.6 (controller · 24 Sep): pos.createSale schedules a tenant-unscoped background drain — settle it before the trigger lab so the hand-delivered event is the only delivery that can count
-await pump([tidL]);
+    // ORACLE-EDIT C2.7-S7.6 (controller · 24 Sep): pos.createSale schedules a tenant-unscoped background drain — settle it before the trigger lab so the hand-delivered event is the only delivery that can count
+    await pump([tidL]);
     const saleL = sL.saleId;
     await P.crmDealPayment?.create?.({ data: { tenantId: tidL, systemId: crmL, dealId: dL, refType: "POS_SALE", refId: saleL, satang: BigInt(sL.grand), status: "LINKED" } }).catch(() => null);
     const ev = await lastEvent(tidL, "pos.sale.paid", saleL);
@@ -1081,7 +1108,7 @@ await pump([tidL]);
     // and the other direction: the accounting base fails ⇒ the CRM extra still runs
     let r2: Res = { ok: false, v: undefined, err: "not run", code: "", msg: "", name: "" };
     const s2 = await sell(tidL, unitL, posL, 220_00);
-await pump([tidL]);
+    await pump([tidL]);  // same reason as above (the second bill of this lab case)
     const sale2 = s2.saleId;
     await P.crmDealPayment?.create?.({ data: { tenantId: tidL, systemId: crmL, dealId: dL, refType: "POS_SALE", refId: sale2, satang: BigInt(s2.grand), status: "LINKED" } }).catch(() => null);
     const ev2 = await lastEvent(tidL, "pos.sale.paid", sale2);
@@ -1121,10 +1148,359 @@ await pump([tidL]);
     const pageFiles = walk("src/app/app/sys/[id]/account").filter((f) => /acc-doc-crm-deal|dealForDoc/.test(read(f)));
     let invRows: Any[] = [];
     try { invRows = JSON.parse(read(INVENTORY) || "{}").rows ?? []; } catch { invRows = []; }
-    const invHas = invRows.some((r: Any) => r?.wo === "C2.7" && String(r?.testid).includes("acc-doc-crm-deal"));
-    chk("C2.7-S8.3", "dealForDoc(tenantId, docId, actor): the deal of the invoice for the owner · null for another tenant, for an unknown document and for an actor who cannot see the deal · the account document page renders the \"ดีล\" link (testid acc-doc-crm-deal, registered in crm-ui-inventory.json with wo C2.7)",
+    // ORACLE-EDIT (oracle author · 24 Sep · ruling round 2): every testid this work order adds must be registered with
+    //   wo "C2.7" — the sell screen's deal control (`pos-deal-select` · `pos-deal-hint`) as well as the document link,
+    //   otherwise the visual/parity runner never opens the new POS control at all.
+    const NEED_TESTIDS = ["acc-doc-crm-deal", "pos-deal-select", "pos-deal-hint"];
+    const invMissing = NEED_TESTIDS.filter((t) => !invRows.some((r: Any) => r?.wo === "C2.7" && String(r?.testid).includes(t)));
+    const invHas = invMissing.length === 0;
+    chk("C2.7-S8.3", "dealForDoc(tenantId, docId, actor): the deal of the invoice for the owner · null for another tenant, for an unknown document and for an actor who cannot see the deal · the account document page renders the \"ดีล\" link · crm-ui-inventory.json carries a wo C2.7 row for EVERY new testid (acc-doc-crm-deal · pos-deal-select · pos-deal-hint)",
       dfd.ok && dfd.v?.dealId === dQuote && dfdForeign.v === null && dfdNone.v === null && dfdBlind.v === null && pageFiles.length > 0 && invHas,
-      "deal · 3× null · page + inventory", `own=${dfd.ok ? dfd.v?.dealId === dQuote : dfd.err} foreign=${j(dfdForeign.v)} unknown=${j(dfdNone.v)} blind=${j(dfdBlind.v)} page=${pageFiles.join(",") || "-"} inventory=${invHas}`);
+      "deal · 3× null · page + inventory (3 testids)", `own=${dfd.ok ? dfd.v?.dealId === dQuote : dfd.err} foreign=${j(dfdForeign.v)} unknown=${j(dfdNone.v)} blind=${j(dfdBlind.v)} page=${pageFiles.join(",") || "-"} inventoryMissing=${invMissing.join(",") || "-"}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // S9 — CONTROLLER RULING ROUND 2 (24 Sep · Fable · binding): B1 one bill = one deal · B2 the gate may stop
+  //   COUNTING but never REVERSING · SF-1 a voided document reverses only ITS OWN rows · SF-2 withholding tax
+  //   (`DOC_SETTLE#<docId>`) · SF-3 the won value read under the lock · SF-4 one document claimed by several deals ·
+  //   SF-5 only INVOICE / DEPOSIT_RECEIPT are attributable · N1 no deal select without `crm.deal.update` ·
+  //   N3 a gift-card bill is not deal revenue · N4 a pre-existing LINKED row that gets counted emits `crm.deal.updated`
+  // ═════════════════════════════════════════════════════════════════════════════
+  out("\n── S9 · มติรอบ 2: บิลเดียวดีลเดียว · ประตูห้ามหยุดการถอนคืน · ภาษีหัก ณ ที่จ่าย · เอกสารซ้ำดีล ──");
+  /** a refusal that is NOT a missing function: Thai, never blaming the user (the code differs per gate — see the act string) */
+  const gateRefused = (r: Res) => !r.ok && r.code !== "MISSING_FUNCTION" && thai(r.msg) && !blames(r.msg);
+  /** the money rows of one POS bill / one payment, whichever deal they ended up on (B1: the sweep must be per ref, not per deal) */
+  const rowsOfRef = async (sysId: string, refType: string, refId: string): Promise<Any[]> => {
+    try { return (await P.crmDealPayment.findMany({ where: { systemId: sysId, refType, refId }, orderBy: { createdAt: "asc" } })) ?? []; } catch { return []; }
+  };
+  /** a real account document that belongs to a deal the way C1.5 stores it (refSystemId/refType/refId + invoiceDocId) */
+  const mkDocForDeal = async (tid: string, accSys: string, crmSys: string, dealId: string, docType: string, satang: number, extra: Record<string, unknown> = {}) => {
+    const doc = await mkDocReal(tid, accSys, docType, satang, extra);
+    if (doc.id) {
+      await P.accountDocument.update({ where: { id: doc.id }, data: { refSystemId: crmSys, refType: "CrmDeal", refId: dealId } }).catch(() => null);
+      await P.crmDeal.update({ where: { id: dealId }, data: { invoiceDocId: doc.id } }).catch(() => null);
+    }
+    return doc;
+  };
+  {
+    // B1 — one bill is ONE piece of money: it may be counted by exactly one deal, and the void must give all of it back
+    const ct = await mkContact(tidA, crmA, "คุณบิลเดียวดีลเดียว", userA);
+    const dA = await mkDeal(cA, ct, pQuote, { value: 900_00 });
+    await sleep(30);
+    const dB = await mkDeal(cA, ct, pQuote, { value: 900_00 });
+    const s1 = await sell(tidA, unitA, posA, 260_00);
+    await pump([tidA]);
+    const l1 = await call(PAY.linkSaleToDeal, cA, owner, { dealId: dA, saleId: s1.saleId });
+    const l2 = await call(PAY.linkSaleToDeal, cA, owner, { dealId: dB, saleId: s1.saleId });
+    const rowsB = await paysOf(dB);
+    const paidB0 = B((await dealRow(dB))?.paidSatang);
+    // two cashiers pressing "ผูกดีล" for the same bill on two different deals at the same instant (the unique key is per
+    // deal, so only a lock on the BILL can decide this): exactly one wins, exactly one row exists for that bill
+    const s2 = await sell(tidA, unitA, posA, 130_00);
+    await pump([tidA]);
+    const par = await Promise.all([
+      call(PAY.linkSaleToDeal, cA, owner, { dealId: dA, saleId: s2.saleId }),
+      call(PAY.linkSaleToDeal, cA, owner, { dealId: dB, saleId: s2.saleId }),
+    ]);
+    const parOk = par.filter((r) => r.ok).length;
+    const parRows = await rowsOfRef(crmA, "POS_SALE", s2.saleId);
+    const paidBoth = B((await dealRow(dA))?.paidSatang) + B((await dealRow(dB))?.paidSatang);
+    // both bills voided ⇒ every row of those bills is REVERSED once and the money over BOTH deals is back to zero
+    await call(POS.voidSale, tidA, unitA, s1.saleId);
+    await call(POS.voidSale, tidA, unitA, s2.saleId);
+    await pump([tidA]);
+    const ev1 = await lastEvent(tidA, "pos.sale.voided", s1.saleId);
+    await consume(evtOf(ev1 ?? {}));
+    await Promise.all([consume(evtOf(ev1 ?? {})), consume(evtOf(ev1 ?? {}))]);
+    const after = [...(await rowsOfRef(crmA, "POS_SALE", s1.saleId)), ...(await rowsOfRef(crmA, "POS_SALE", s2.saleId))];
+    const paidEnd = B((await dealRow(dA))?.paidSatang) + B((await dealRow(dB))?.paidSatang);
+    chk("C2.7-S9.1", "B1 — a PAID bill counted on deal A cannot be linked to deal B: the second linkSaleToDeal is refused (CONFLICT · Thai · B untouched) and two cashiers linking the SAME bill to two deals at the same instant produce exactly ONE row · voiding the bills reverses each row once and the money summed over BOTH deals is 0",
+      l1.ok && l1.v?.counted === true && refused(l2, "CONFLICT") && rowsB.length === 0 && paidB0 === 0 &&
+        parOk === 1 && parRows.length === 1 && paidBoth === s1.grand + s2.grand &&
+        after.length === 2 && after.every((r) => r.status === "REVERSED" && !!r.reversedAt) && paidEnd === 0,
+      "1 deal per bill · 0 after the void",
+      `link=${rd(l1)}:${l1.v?.counted} second=${rd(l2)} B=${rowsB.length}/${paidB0} parallelOk=${parOk} parallelRows=${parRows.length} paid=${paidBoth}→${paidEnd} rows=${j(after.map((r) => r.status))}`);
+  }
+  {
+    // B2 — the gate (uiVersion / bridgesEnabled) may stop COUNTING, but a shop that closes the bridge (or falls back to
+    //   v1) after money was counted must still get it back: otherwise the deal carries phantom money for ever.
+    //   The whole case runs in the LAB tenant so that flipping the gate can never disturb another check.
+    let closedLink: Res = { ok: false, v: undefined, err: "not run", code: "", msg: "", name: "" };
+    let closedRows = -1;
+    let posClosed = [-1, -1];
+    let posV1 = [-1, -1];
+    let accClosed = [-1, -1];
+    let accV1 = [-1, -1];
+    let gateBack = false;
+    try {
+      const ctG = await mkContact(tidL, crmL, "คุณประตูสะพาน", userA);
+      // (1) v2 but the bridge is closed ⇒ linking (= counting) is refused and NOTHING is written
+      await setCrm(crmL, { uiVersion: 2, bridgesEnabled: false });
+      const dClosed = await mkDeal(cL, ctG, pL, { value: 900_00 });
+      const sClosed = await sell(tidL, unitL, posL, 110_00);
+      await pump([tidL]);
+      closedLink = await call(PAY.linkSaleToDeal, cL, owner, { dealId: dClosed, saleId: sClosed.saleId });
+      closedRows = (await P.crmDealPayment.count({ where: { systemId: crmL, refId: sClosed.saleId } }).catch(() => -1)) as number;
+      // (2) counted with the bridge open, then the bridge is closed and the bill is voided ⇒ the money comes back
+      const reverseCase = async (closeWith: Record<string, unknown>, satang: number): Promise<number[]> => {
+        await setCrm(crmL, { uiVersion: 2, bridgesEnabled: true });
+        const d = await mkDeal(cL, ctG, pL, { value: 900_00 });
+        const s = await sell(tidL, unitL, posL, satang);
+        await pump([tidL]);
+        await call(PAY.linkSaleToDeal, cL, owner, { dealId: d, saleId: s.saleId });
+        const before = B((await dealRow(d))?.paidSatang);
+        await setCrm(crmL, closeWith);
+        await call(POS.voidSale, tidL, unitL, s.saleId);
+        await pump([tidL]);
+        return [before, B((await dealRow(d))?.paidSatang)];
+      };
+      posClosed = await reverseCase({ bridgesEnabled: false }, 170_00);
+      posV1 = await reverseCase({ uiVersion: 1 }, 210_00);
+      // (3) the same for the ACCOUNT side: a counted payment, then the gate is closed, then the payment is voided
+      const accCase = async (closeWith: Record<string, unknown>, satang: number): Promise<number[]> => {
+        await setCrm(crmL, { uiVersion: 2, bridgesEnabled: true });
+        const d = await mkDeal(cL, ctG, pL, { value: 900_00 });
+        const doc = await mkDocForDeal(tidL, accL, crmL, d, "INVOICE", satang);
+        const half = Math.max(100, Math.round(doc.grand / 2));
+        const pr = await payDoc(tidL, accL, doc.id, half, finL);
+        await pump([tidL]);
+        const before = B((await dealRow(d))?.paidSatang);
+        await setCrm(crmL, closeWith);
+        await voidPay(tidL, accL, doc.id, String(pr.v?.paymentId ?? ""), `ยกเลิกงวด ${TAG}`);
+        await pump([tidL]);
+        return [before, B((await dealRow(d))?.paidSatang), half];
+      };
+      accClosed = await accCase({ bridgesEnabled: false }, 300_00);
+      accV1 = await accCase({ uiVersion: 1 }, 400_00);
+    } finally {
+      await setCrm(crmL, { uiVersion: 2, bridgesEnabled: true });
+      const s = (await P.appSystem.findFirst({ where: { id: crmL } }).catch(() => null)) as Any;
+      const crmS = (s?.settings?.crm ?? {}) as Any;
+      gateBack = crmS?.uiVersion === 2 && crmS?.bridgesEnabled === true;
+    }
+    chk("C2.7-S9.2", "B2 — the gate stops COUNTING but never REVERSING: with uiVersion 2 + bridgesEnabled false linkSaleToDeal is refused and nothing is written · money counted while the bridge was open is given back in full when `pos.sale.voided` / `account.payment.voided` arrive after the shop closed the bridge AND after it fell back to uiVersion 1 (a deal must never keep phantom money)",
+      gateRefused(closedLink) && closedRows === 0 &&
+        posClosed[0]! > 0 && posClosed[1] === 0 && posV1[0]! > 0 && posV1[1] === 0 &&
+        accClosed[0] === accClosed[2] && accClosed[1] === 0 && accV1[0] === accV1[2] && accV1[1] === 0 && gateBack,
+      "refused while closed · reversed to 0 in all 4 cases",
+      `closedLink=${rd(closedLink)} rows=${closedRows} pos(bridge)=${j(posClosed)} pos(v1)=${j(posV1)} acc(bridge)=${j(accClosed)} acc(v1)=${j(accV1)} gateRestored=${gateBack}`);
+  }
+  {
+    // SF-1 — voiding the invoice must reverse ONLY the invoice's own money: the deposit receipt of the same deal keeps its.
+    const ct = await mkContact(tidA, crmA, "คุณมัดจำสองใบ", userA);
+    const d = await mkDeal(cA, ct, pQuote, { value: 0 });
+    const inv = await mkDocForDeal(tidA, accA, crmA, d, "INVOICE", 10_000_00);
+    const dep = await mkDocReal(tidA, accA, "DEPOSIT_RECEIPT", 2_000_00, { sourceDocId: inv.id });
+    const prDep = await payDoc(tidA, accA, dep.id, dep.grand, finA);
+    const prInv = await payDoc(tidA, accA, inv.id, inv.grand, finA);
+    await pump([tidA]);
+    const paidBoth = B((await dealRow(d))?.paidSatang);
+    // accounting refuses to void a document that still carries a live payment, so the payment is voided first — but the
+    //   CRM must NOT see `account.payment.voided` here, otherwise the reversal below would be that path's work and this
+    //   check would no longer prove what `flagDocumentVoided` reverses (SF-1 is exactly about its scope).
+    const payId = String(prInv.v?.paymentId ?? "");
+    const vp = await voidPay(tidA, accA, inv.id, payId, `ยกเลิกงวด ${TAG}`);
+    const evPv = await lastEvent(tidA, "account.payment.voided", payId);
+    if (evPv) await P.outboxEvent.update({ where: { id: evPv.id }, data: { status: "DONE", processedAt: new Date() } }).catch(() => null);
+    const paidPre = B((await dealRow(d))?.paidSatang);
+    const vd = await call(accSvc.voidDocument, tidA, accA, inv.id, `ยกเลิกใบแจ้งหนี้ ${TAG}`);
+    await pump([tidA]);
+    const deal = await dealRow(d);
+    const rows = await paysOf(d);
+    const depRow = rows.find((r) => r.refId === String(prDep.v?.paymentId ?? ""));
+    const invRow = rows.find((r) => r.refId === payId);
+    const tags: string[] = Array.isArray(deal?.tags) ? deal.tags : [];
+    chk("C2.7-S9.3", `SF-1 — a deal that received a ฿2,000 deposit (through the sourceDocId chain) and a ฿10,000 invoice keeps the deposit when the INVOICE is voided: deal money = the deposit alone, the deposit row stays COUNTED, the invoice's row is REVERSED and the tag "${VOID_TAG}" is added exactly once`,
+      prDep.ok && prInv.ok && inv.grand > 0 && dep.grand > 0 && paidBoth === dep.grand + inv.grand && vp.ok && (vd.ok || vd.v?.ok === true) &&
+        paidPre === dep.grand + inv.grand && B(deal?.paidSatang) === dep.grand && depRow?.status === "COUNTED" && invRow?.status === "REVERSED" &&
+        tags.filter((t) => t === VOID_TAG).length === 1,
+      `deposit ${dep.grand} kept · invoice ${inv.grand} reversed`,
+      `${rd(prDep)}/${rd(prInv)} paid=${paidBoth}→${paidPre}→${B(deal?.paidSatang)} deposit=${depRow?.status} invoice=${invRow?.status} void=${rd(vd)} tags=${j(tags)}`, "MAJOR");
+  }
+  {
+    // SF-2 — withholding tax: `account.payment.recorded` carries only the CASH that arrived (no WHT) while accounting
+    //   ties off cash + WHT and declares the invoice PAID ⇒ without the settle row the deal is short for ever and
+    //   `autoWonOnPaid` never fires. One `DOC_SETTLE#<docId>` row closes the document to its grand total, idempotently.
+    const ct = await mkContact(tidA, crmA, "คุณหักภาษี", userA);
+    const d = await mkDeal(cA, ct, pAutoWon, { value: 100_00 });
+    const inv = await mkDocForDeal(tidA, accA, crmA, d, "INVOICE", 5_000_00);
+    const wht = Math.round(inv.grand * 0.03);
+    const net = inv.grand - wht;
+    const pr = await payDoc(tidA, accA, inv.id, net, finA, { whtAmountSatang: wht, whtRateBp: 300 });
+    await pump([tidA]);
+    const doc = await docRow(inv.id);
+    /** the settle row of ONE document — `DOC_SETTLE#<docId>` as the ruling writes it, i.e. refType DOC_SETTLE + refId = the document (or that key as the refId) */
+    const isSettle = (r: Any) => `${r?.refType}#${r?.refId}` === `DOC_SETTLE#${inv.id}` || String(r?.refId) === `DOC_SETTLE#${inv.id}`;
+    const rows = await paysOf(d);
+    const settle = rows.filter(isSettle);
+    const counted = rows.filter((r) => r.status === "COUNTED").reduce((n, r) => n + B(r.satang), 0);
+    // replay: the same `account.invoice.paid` twice in a row and twice in parallel ⇒ still ONE settle row, same money
+    const ev = await lastEvent(tidA, "account.invoice.paid", inv.id);
+    await consume(evtOf(ev ?? {}));
+    await consume(evtOf(ev ?? {}));
+    await Promise.all([consume(evtOf(ev ?? {})), consume(evtOf(ev ?? {}))]);
+    const rows2 = await paysOf(d);
+    const deal = await dealRow(d);
+    const wonAudit = (await P.auditLog.count({ where: { tenantId: tidA, targetId: d, action: "crm.deal.won.auto" } }).catch(() => -1)) as number;
+    const wonHist = (await P.crmDealStageHistory.count({ where: { dealId: d, toStageId: pAutoWon.st[3] } }).catch(() => -1)) as number;
+    chk("C2.7-S9.4", "SF-2 — an invoice with 3% withholding tax paid net (accounting marks it PAID): the deal is credited the FULL grand total of that document = the cash row + ONE `DOC_SETTLE#<docId>` row worth exactly the WHT · redelivering `account.invoice.paid` twice and twice in parallel adds no second row · autoWonOnPaid moves the deal to WON exactly once (audit crm.deal.won.auto once · one history row into the WON stage)",
+      pr.ok && doc?.status === "PAID" && wht > 0 && settle.length === 1 && B(settle[0]?.satang) === wht &&
+        counted === inv.grand && B(deal?.paidSatang) === inv.grand && rows2.filter(isSettle).length === 1 && rows2.length === rows.length &&
+        deal?.kind === "WON" && wonAudit === 1 && wonHist === 1,
+      `paid ${inv.grand} = ${net} cash + ${wht} WHT · WON once`,
+      `${rd(pr)} status=${doc?.status} settle=${settle.length}:${B(settle[0]?.satang)} Σcounted=${counted}/${inv.grand} paid=${B(deal?.paidSatang)} rows=${rows.length}→${rows2.length} kind=${deal?.kind} wonAudit=${wonAudit} wonHistory=${wonHist}`, "MAJOR");
+  }
+  {
+    // SF-3 — `moveDeal` recomputes `wonValueSatang` from the money rows; reading that outside the deal's lock is a
+    //   TOCTOU: money counted while the move waits for the lock gets overwritten with null. 20 rounds, both sides on
+    //   their own pool connection (two interactive transactions racing for the same row lock).
+    const W = await mkCompanyDeal();
+    const rounds = 20;
+    const each = 1_00;
+    let bad = "";
+    let counted = 0;
+    let moves = 0;
+    let lastWon = 0;
+    for (let i = 0; i < rounds; i += 1) {
+      const [mv, rp] = await Promise.all([
+        call(CRM.deals?.moveDeal, cA, owner, W.d, { stageId: pQuote.st[i % 2] }),
+        call(PAY.recordDocPayment, { tenantId: tidA, systemId: crmA }, { documentId: W.inv, paymentId: `${TAG}-sf3-${i}`, amountSatang: each, docType: "INVOICE" }),
+      ]);
+      if (mv.ok) moves += 1;
+      if (rp.ok && rp.v?.counted === true) counted += 1;
+      const deal = await dealRow(W.d);
+      const won = deal?.wonValueSatang;
+      if (counted > 0) {
+        if (won === null || won === undefined) bad = bad || `round ${i}: wonValue null after ${counted} counted`;
+        else if (B(won) < lastWon) bad = bad || `round ${i}: wonValue regressed ${lastWon}→${B(won)}`;
+        else if (B(won) !== W.grand) bad = bad || `round ${i}: wonValue ${B(won)} ≠ anchor ${W.grand}`;
+        lastWon = Math.max(lastWon, B(won));
+      }
+      if (!mv.ok && !bad && mv.code !== "CONFLICT") bad = bad || `round ${i}: move ${mv.err.slice(0, 40)}`;
+    }
+    const deal = await dealRow(W.d);
+    chk("C2.7-S9.5", `SF-3 — ${rounds} rounds of \`moveDeal\` OPEN→OPEN racing \`recordDocPayment\` on separate connections: \`wonValueSatang\` is never null and never regresses once money has been counted (it stays the anchor document's grand total), and paidSatang ends at the exact sum of the payments that were counted`,
+      counted >= rounds - 1 && moves >= rounds - 1 && bad === "" && B(deal?.paidSatang) === counted * each && B(deal?.wonValueSatang) === W.grand,
+      `won stable at ${W.grand} · paid = ${rounds} × ${each}`,
+      `counted=${counted}/${rounds} moves=${moves}/${rounds} paid=${B(deal?.paidSatang)} won=${j(deal?.wonValueSatang)} ${bad || "no anomaly"}`, "MAJOR");
+  }
+  {
+    // SF-4 — one document claimed by TWO deals (a duplicate/mis-merged deal): the money may land once only, on the
+    //   oldest deal, and the shop must be able to SEE that it happened (WARN with ids only — never a silent guess).
+    const ct = await mkContact(tidA, crmA, "คุณเอกสารซ้ำ", userA);
+    const dOld = await mkDeal(cA, ct, pQuote, { lines: LINES });
+    await sleep(30);
+    const dNew = await mkDeal(cA, ct, pQuote, { value: 0 });
+    const qr = await call(CRM.deals?.issueQuotation, cA, owner, dOld, {});
+    const qd = String(qr.v?.docId ?? "");
+    await issueDoc(tidA, accA, qd);
+    const inv = await mkDocReal(tidA, accA, "INVOICE", 400_00, { sourceDocId: qd });
+    // the malformed data the ruling describes: both deals point at the SAME quotation and the same invoice
+    await P.crmDeal.updateMany({ where: { id: { in: [dOld, dNew] } }, data: { quotationDocId: qd, invoiceDocId: inv.id } }).catch(() => null);
+    const t0 = new Date(Date.now() - 500);
+    const pr = await payDoc(tidA, accA, inv.id, inv.grand, finA);
+    await pump([tidA]);
+    const paidOld = B((await dealRow(dOld))?.paidSatang);
+    const paidNew = B((await dealRow(dNew))?.paidSatang);
+    const warns = ((await P.opsEvent.findMany({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: t0 } } }).catch(() => [])) as Any[])
+      .filter((w) => `${w.message} ${w.detail ?? ""}`.includes(inv.id));
+    const warnClean = warns.length > 0 && !warns.some((w) => PII.some((s) => s.length > 5 && `${w.message} ${w.detail ?? ""}`.includes(s)));
+    const warnThai = warns.length > 0 && thai(warns[0]?.message);
+    // voiding the invoice: BOTH deals are flagged, only the one that was counted gives money back
+    const payId = String(pr.v?.paymentId ?? "");
+    await voidPay(tidA, accA, inv.id, payId, `ยกเลิกงวด ${TAG}`);
+    const evPv = await lastEvent(tidA, "account.payment.voided", payId);
+    if (evPv) await P.outboxEvent.update({ where: { id: evPv.id }, data: { status: "DONE", processedAt: new Date() } }).catch(() => null);
+    const vd = await call(accSvc.voidDocument, tidA, accA, inv.id, `ยกเลิก ${TAG}`);
+    await pump([tidA]);
+    const oldRow = await dealRow(dOld);
+    const newRow = await dealRow(dNew);
+    const tagsOld: string[] = Array.isArray(oldRow?.tags) ? oldRow.tags : [];
+    const tagsNew: string[] = Array.isArray(newRow?.tags) ? newRow.tags : [];
+    chk("C2.7-S9.6", "SF-4 — two deals pointing at the same quotation/invoice: the payment is counted ONCE, for the OLDEST deal, and a WARN OpsEvent (Thai · ids only · no name/phone/e-mail) records the ambiguity · voiding that document flags BOTH deals and gives the money back only where it was counted",
+      pr.ok && paidOld === inv.grand && paidNew === 0 && warns.length >= 1 && warnThai && warnClean && (vd.ok || vd.v?.ok === true) &&
+        B(oldRow?.paidSatang) === 0 && B(newRow?.paidSatang) === 0 &&
+        tagsOld.filter((t) => t === VOID_TAG).length === 1 && tagsNew.filter((t) => t === VOID_TAG).length === 1 &&
+        (await paysOf(dNew)).length === 0,
+      "oldest counted · WARN · both flagged",
+      `paid old=${paidOld}→${B(oldRow?.paidSatang)} new=${paidNew}→${B(newRow?.paidSatang)} warns=${warns.length}:${warnThai}/${warnClean} tags=${j([tagsOld.length, tagsNew.length])} void=${rd(vd)}`, "MINOR");
+  }
+  {
+    // SF-5 — only INVOICE / DEPOSIT_RECEIPT are attributable. A ใบวางบิล (BILLING_NOTE) collects several invoices of
+    //   possibly several deals, so its money must NOT be guessed onto a deal (C3 owns that). The account book itself
+    //   refuses to take a payment on a group document (`PAYABLE_DOC_TYPES` of account/payment.ts → the money always
+    //   arrives at the CHILD invoices), so the only way such an event can exist is an import/integration — which is
+    //   exactly the case this rule defends: the event is therefore hand-delivered to the consumer here, with the BN's
+    //   chain pointing at the deal's invoice so that nothing but the doc-type rule can stop the attribution.
+    const ct = await mkContact(tidA, crmA, "คุณใบวางบิล", userA);
+    const d = await mkDeal(cA, ct, pQuote, { value: 0 });
+    const inv = await mkDocForDeal(tidA, accA, crmA, d, "INVOICE", 700_00);
+    const bn = await mkDocReal(tidA, accA, "BILLING_NOTE", 700_00, { sourceDocId: inv.id });
+    const t0 = new Date(Date.now() - 500);
+    const rBn = await consume({ id: `${TAG}-bn`, tenantId: tidA, type: "account.payment.recorded", payload: { documentId: bn.id, paymentId: `${TAG}-bn-pay`, amountSatang: Math.max(1, bn.grand), docType: "BILLING_NOTE" }, systemId: accA, unitId: null });
+    const bnRows = (await P.crmDealPayment.count({ where: { systemId: crmA, refId: `${TAG}-bn-pay` } }).catch(() => -1)) as number;
+    const paidBn = B((await dealRow(d))?.paidSatang);
+    const warns = ((await P.opsEvent.findMany({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: t0 } } }).catch(() => [])) as Any[])
+      .filter((w) => `${w.message} ${w.detail ?? ""}`.includes(bn.id));
+    const warnOk = warns.length >= 1 && thai(warns[0]?.message) && !warns.some((w) => PII.some((s) => s.length > 5 && `${w.message} ${w.detail ?? ""}`.includes(s)));
+    // positive control: the INVOICE of that deal and a DEPOSIT_RECEIPT of its chain DO count
+    const half = Math.max(100, Math.round(inv.grand / 2));
+    const prInv = await payDoc(tidA, accA, inv.id, half, finA);
+    const dep = await mkDocReal(tidA, accA, "DEPOSIT_RECEIPT", 300_00, { sourceDocId: inv.id });
+    const prDep = await payDoc(tidA, accA, dep.id, dep.grand, finA);
+    await pump([tidA]);
+    const paidEnd = B((await dealRow(d))?.paidSatang);
+    const kinds = (await paysOf(d)).filter((r) => r.status === "COUNTED").length;
+    chk("C2.7-S9.7", "SF-5 — a payment of a ใบวางบิล (BILLING_NOTE) is never turned into deal money (one billing note can cover invoices of several deals): nothing is written and a Thai WARN OpsEvent with ids only records it · the INVOICE of the same deal and a DEPOSIT_RECEIPT of its chain are counted (positive control)",
+      rBn.ok && bnRows === 0 && paidBn === 0 && warnOk && prInv.ok && prDep.ok && paidEnd === half + dep.grand && kinds === 2,
+      "0 for the billing note · counted for invoice + deposit",
+      `bn=${rd(rBn)} rows=${bnRows} paid=${paidBn}→${paidEnd} (want ${half + dep.grand}) counted=${kinds} warns=${warns.length}:${warnOk}`, "MINOR");
+  }
+  {
+    // N3 — a gift-card bill is money received IN ADVANCE, not deal revenue (the accounting module books it on 2110)
+    const ct = await mkContact(tidA, crmA, "คุณบัตรกำนัล", userS);
+    const dGift = await mkDeal(cA, ct, pQuote, { value: 500_00, ownerUserId: userS });
+    const sg = await sell(tidA, unitA, posA, 500_00);
+    await pump([tidA]);
+    // the M2.6 flag of such a bill (a plain column, no FK — the giftcard module sets it inside the sale's transaction)
+    await P.posSale.update({ where: { id: sg.saleId }, data: { giftCardId: `${TAG}-gc` } }).catch(() => null);
+    const lg = await call(PAY.linkSaleToDeal, cA, owner, { dealId: dGift, saleId: sg.saleId });
+    // even a row linked before the flag existed must never be counted by the consumer
+    await P.crmDealPayment?.create?.({ data: { tenantId: tidA, systemId: crmA, dealId: dGift, refType: "POS_SALE", refId: sg.saleId, satang: BigInt(sg.grand), status: "LINKED" } }).catch(() => null);
+    const evG = await lastEvent(tidA, "pos.sale.paid", sg.saleId);
+    const rG = await consume(evtOf(evG ?? {}));
+    const giftRow = (await paysOf(dGift)).find((r) => r.refId === sg.saleId);
+    const paidGift = B((await dealRow(dGift))?.paidSatang);
+    // N1 — the select of the sell screen must not be offered to a cashier who cannot link (no `crm.deal.update`):
+    //   an offered select whose button always fails is a silent trap. The data behind the select is `posOpenDeals`.
+    const REG = (await import("@/lib/modules/pos/register" as string).catch(() => ({}))) as Any;
+    const cust = await P.customer.create({ data: { tenantId: tidA, memberSystemId: `${TAG}-mem`, name: pii(`สมาชิกบัตร ${TAG}-${nx()}`), partyId: ct.partyId } }).catch(() => null);
+    const canLink = { userId: userS, role: "STAFF", unitAccess: ["*"], permissions: { ...STAFF_PERMS, "crm.deal.update": true } as Record<string, unknown> };
+    const listNoUpdate = await call(REG.posOpenDeals, tidA, cashier, String(cust?.id ?? ""));
+    const listCanLink = await call(REG.posOpenDeals, tidA, canLink, String(cust?.id ?? ""));
+    const sNo = await sell(tidA, unitA, posA, 100_00);
+    await pump([tidA]);
+    const linkNoKey = await call(PAY.linkSaleToDeal, cA, cashier, { dealId: dGift, saleId: sNo.saleId });
+    const rowsNoKey = (await P.crmDealPayment.count({ where: { systemId: crmA, refId: sNo.saleId } }).catch(() => -1)) as number;
+    // N4 — a LINKED row written before the bill was paid must emit `crm.deal.updated` when it is finally counted
+    const dLate = await mkDeal(cA, ct, pQuote, { value: 900_00 });
+    const sLate = await sell(tidA, unitA, posA, 240_00);
+    await pump([tidA]);
+    await P.crmDealPayment?.create?.({ data: { tenantId: tidA, systemId: crmA, dealId: dLate, refType: "POS_SALE", refId: sLate.saleId, satang: BigInt(sLate.grand), status: "LINKED" } }).catch(() => null);
+    const t0 = new Date(Date.now() - 500);
+    const evL = await lastEvent(tidA, "pos.sale.paid", sLate.saleId);
+    const rL = await consume(evtOf(evL ?? {}));
+    const updated = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.deal.updated", createdAt: { gte: t0 } } }).catch(() => [])) as Any[])
+      .filter((e) => j(e.payload).includes(dLate));
+    const paidLate = B((await dealRow(dLate))?.paidSatang);
+    const ids = (r: Res) => (Array.isArray(r.v) ? r.v.map((x: Any) => String(x.id)) : []);
+    chk("C2.7-S9.8", "N3 · N1 · N4 — a gift-card bill is refused with a Thai reason and is never counted even when a LINKED row exists · the sell screen's deal list is EMPTY for a cashier without `crm.deal.update` (and linkSaleToDeal answers FORBIDDEN without writing a row) while the same cashier WITH the key sees the deal (positive control) · a pre-existing LINKED row that finally gets counted emits `crm.deal.updated`",
+      refused(lg, "VALIDATION") && rG.ok && giftRow?.status === "LINKED" && paidGift === 0 &&
+        listNoUpdate.ok && ids(listNoUpdate).length === 0 && listCanLink.ok && ids(listCanLink).includes(dGift) &&
+        refused(linkNoKey, "FORBIDDEN") && rowsNoKey === 0 &&
+        rL.ok && paidLate === sLate.grand && updated.length >= 1,
+      "gift card 0 · no select without the key · crm.deal.updated emitted",
+      `gift=${rd(lg)} row=${giftRow?.status} paid=${paidGift} · list noUpdate=${rd(listNoUpdate)}:${ids(listNoUpdate).length} canLink=${ids(listCanLink).length} · link=${rd(linkNoKey)} rows=${rowsNoKey} · late paid=${paidLate} updated=${updated.length}`, "MINOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
@@ -1317,14 +1693,24 @@ await pump([tidL]);
       "nothing written, control counted", `rows=${rows.length} paid=${B(deal?.paidSatang)}→${B(dealOk?.paidSatang)} answers=${rs.map((r) => (r.ok ? "ok" : r.err.slice(0, 18))).join(",")}`);
   }
   {
-    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: { in: [tidA, tidL] }, createdAt: { gte: RUN_START } } })) as Any[])
+    // ORACLE-EDIT (oracle author · 24 Sep · ruling round 2): the sweep now covers EVERY throwaway tenant of this run and
+    //   the WARN rows the new rules write (SF-4 "one document, several deals" · SF-5 "billing note" · the wrapped
+    //   `linkSaleToDeal` failure of `registerSaleAction`) — those messages carry document/deal/sale ids and are the newest
+    //   PII surface of the money path. A WARN written WITHOUT a tenantId is swept too (source "crm"): it is still a log
+    //   line an owner/ops person reads. The count of WARN rows is asserted as well, so the sweep can never pass vacuously.
+    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: { in: TENANTS }, createdAt: { gte: RUN_START } } })) as Any[])
       .filter((e) => String(e.type).startsWith("crm."));
     const blob = evs.map((e) => j(e.payload)).join("\n");
-    const ops = ((await P.opsEvent.findMany({ where: { tenantId: { in: [tidA, tidL] }, createdAt: { gte: RUN_START } } }).catch(() => [])) as Any[]).map((o) => `${o.message} ${j(o.detail)}`).join("\n");
+    const opsRows = ((await P.opsEvent.findMany({
+      where: { createdAt: { gte: RUN_START }, OR: [{ tenantId: { in: TENANTS } }, { AND: [{ tenantId: null }, { source: "crm" }] }] },
+    }).catch(() => [])) as Any[]);
+    const warnRows = opsRows.filter((o) => String(o.level) === "WARN");
+    const ops = opsRows.map((o) => `${o.message} ${j(o.detail)}`).join("\n");
     const logs = LOGS.join("\n");
     const leak = PII.filter((s) => s.length > 5 && (blob.includes(s) || ops.includes(s) || logs.includes(s)));
-    chk("C2.7-X8.1", "no name, phone or e-mail of this run appears in any crm.* outbox payload, OpsEvent row or log line of the money path (ids and satang only)",
-      leak.length === 0, "no PII", leak.length ? cut(leak.map((s) => s.slice(0, 10)).join(","), 140) : `events=${evs.length} ops=${ops.length}B`);
+    chk("C2.7-X8.1", "no name, phone or e-mail of this run appears in any crm.* outbox payload, OpsEvent row (including every WARN the money path writes — ambiguous document, billing note, a failed link after a paid bill) or log line: ids and satang only",
+      leak.length === 0 && warnRows.length >= 1, "no PII · WARN rows actually present",
+      leak.length ? cut(leak.map((s) => s.slice(0, 10)).join(","), 140) : `events=${evs.length} ops=${opsRows.length} warns=${warnRows.length} (${ops.length}B swept)`);
   }
   {
     const evs = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, createdAt: { gte: RUN_START } } })) as Any[]).filter((e) => String(e.type).startsWith("crm."));

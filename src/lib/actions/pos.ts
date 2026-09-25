@@ -7,13 +7,15 @@ import { prisma } from "@/lib/core/db";
 import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
-import { posUnitIsLinked, resolvePosLinks, setItemSalePrice } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal } from "@/lib/modules/pos/register";
 import type {
+  PosDealOption,
   PosMemberChoicesInput,
   PosMemberQuote,
   PosMemberRights,
   PosMemberVoucher,
 } from "@/lib/modules/pos/register";
+import { logOps } from "@/lib/core/ops";
 import { getPaymentProfile } from "@/lib/payment/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import * as coupon from "@/lib/modules/coupon/service";
@@ -36,6 +38,8 @@ type SaleInput = {
   /** M2.8 — สิทธิ์สมาชิกที่ติ๊กไว้บนแผงขวา (voucher / แต้ม / บัตรกำนัล) */
   memberChoices?: PosMemberChoicesInput;
   couponCode?: string;
+  /** CRM C2.7 — ดีลที่แคชเชียร์เลือกให้บิลนี้ (ว่าง = ไม่ผูก) · ผูกหลังขายสำเร็จเท่านั้น */
+  dealId?: string;
   idempotencyKey: string;
 };
 type QuoteInput = Omit<SaleInput, "payType" | "cashReceivedSatang" | "idempotencyKey">;
@@ -234,6 +238,18 @@ export async function posMemberRightsAction(input: {
   };
 }
 
+/**
+ * CRM C2.7 — ดีลที่ยังเปิดอยู่ของสมาชิกที่เพิ่งเลือก (ช่อง "ดีล" ข้างช่องสมาชิก)
+ * รายการว่างเสมอเมื่อ: ร้านไม่มี CRM ใหม่ · แคชเชียร์ไม่มีสิทธิ์อ่านดีล · สมาชิกคนนี้ไม่มีดีลเปิดอยู่ — ทั้งหมดไม่ใช่ error
+ */
+export async function posOpenDealsAction(input: { systemId: string; unitId: string; memberId: string }): Promise<PosDealOption[]> {
+  const auth = await requireTenant();
+  if (!(await posUnitIsLinked(auth.active.tenantId, input.systemId, input.unitId))) return [];
+  assertPosCan(auth, input.unitId);
+  const actor = toMemberActor(auth.user.id, auth.active);
+  return posOpenDeals(auth.active.tenantId, actor, String(input.memberId ?? "")).catch(() => []);
+}
+
 /** ใบเสนอราคาสิทธิ์สมาชิกของตะกร้าปัจจุบัน — null = ไม่มีสมาชิก/ระบบสมาชิก หรือคนนี้ไม่อยู่ในระบบ */
 async function memberQuoteOf(
   auth: Auth & { active: NonNullable<Auth["active"]> },
@@ -422,6 +438,21 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
       couponCode: totals.couponSystemId ? input.couponCode?.trim().toUpperCase() : undefined,
       payMethods: [{ type: payType, amountSatang: grandTotal }],
     });
+    // ── CRM C2.7: ผูกบิลที่ขายสำเร็จแล้วเข้ากับดีลที่แคชเชียร์เลือก (`crm.payments.linkSaleToDeal` ผ่าน `pos/register.ts`) ──
+    // 🔴 ลูกค้าจ่ายเงินไปแล้ว: ความล้มของฝั่ง CRM **ห้าม** ทำให้การขายล้ม ⇒ ห่อไว้ที่นี่ แล้วบันทึกเป็น WARN (id ล้วน · X8)
+    //    บิลที่ `createSale` ทำเป็น PAID แล้ว จะถูก "นับ" ในธุรกรรมเดียวกับการผูก (ตัวรับ `pos.sale.paid` วิ่งไปก่อนหน้านี้แล้ว)
+    const dealId = String(input.dealId ?? "").trim();
+    if (dealId && res.saleId) {
+      try {
+        const actor = toMemberActor(auth.user.id, auth.active);
+        await posLinkSaleToDeal(tenantId, actor, { dealId, saleId: res.saleId });
+      } catch (e) {
+        await logOps("WARN", "crm", `ผูกบิลเข้าดีลไม่สำเร็จ (บิล ${res.saleId} · ดีล ${dealId}) — บิลขายสำเร็จแล้วตามปกติ`, {
+          tenantId,
+          detail: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+        });
+      }
+    }
     revalidatePath(`/app/sys/${input.systemId}/pos/register`);
     revalidatePath(`/app/sys/${input.systemId}/pos/sales`);
     revalidatePath(`/app/sys/${input.systemId}`);

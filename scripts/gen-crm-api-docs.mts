@@ -226,7 +226,9 @@ export function renderDocs(): string {
     // CRM C2.2 ▸ ตระกูล `crm.sequence.*` (ลำดับการติดตาม) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด ◂
     // CRM C2.5 ▸ ตระกูล `crm.email.*` (ระบบอีเมล) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยายซึ่งผิด ·
     //   payload id ล้วนตามมติผู้คุมงาน ข้อ 4 (URL ที่ถูกคลิกอยู่ใน CrmEmailEvent เท่านั้น ไม่เคยอยู่ใน payload) ◂
-    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
+    // CRM C2.6 ▸ ตระกูล `crm.web.*` (ติดตามเว็บ) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยายซึ่งผิด · payload เป็น id/ตัวเลขล้วน
+    //   (ไม่มีชื่อ เบอร์ อีเมล และไม่มี IP ดิบ — AUDIT-CLASS X8) ◂
+    const ids = e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("crm.web.") ? "`contactId`, `systemId`, `visitorId`, `sessionCount`, `pageViews`, `by` (never a name, address or raw IP)" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }
   push(

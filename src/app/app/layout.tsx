@@ -214,6 +214,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ...(crmCan(membershipOf(auth), "crm.email.read") ? [{ href: `${s}/crm/emails`, label: "อีเมล" }] : []),
               ...(crmCan(membershipOf(auth), "crm.email.settings") ? [{ href: `${s}/crm/settings/email`, label: "ตั้งค่าอีเมล" }] : []),
               // ◂ CRM C2.5
+              // CRM C2.6 ▸ ติดตามเว็บและลิงก์ (ภาพ 16 + 11) · ฟอร์มรับลูกค้า — ทั้งคู่ใช้คีย์ `crm.tracking.manage`
+              //   404 สำหรับคนที่ไม่มีคีย์ ⇒ ไม่โชว์ลิงก์ตาย · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.tracking.manage")
+                ? [
+                    { href: `${s}/crm/settings/tracking`, label: "ติดตามเว็บและลิงก์" },
+                    { href: `${s}/crm/settings/forms`, label: "ฟอร์มรับลูกค้า" },
+                  ]
+                : []),
+              // ◂ CRM C2.6
               ]
             : []),
           // ◂ CRM uiVersion gate
