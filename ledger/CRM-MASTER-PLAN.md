@@ -396,7 +396,9 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.1 | ✅ | `80c1269a` | รายงาน 8 แท็บ (SQL ล้วน) · export job lease · ตั้งเวลาอีเมล (ช่องเวลาไทย · lease 15 นาที · sweep รายชั่วโมง) · facade marketing `campaignCostsByIds` · ข้อสอบ 56/56 ×2 · ผู้ตรวจ SHOULD-FIX 5 แก้ครบ · ภาพ 17 PARITY ผ่าน · `wo-notes/crm-C3.1.md` |
 | C3 | C3.2 | ✅ | `684828d0` | โควตา (periodKey คริสต์ · reached ครั้งเดียวหลัง commit · at=countedAt) · หน้าแรก KPI 6 · leaderboard/ที่มา lead/ไม่มีเจ้าของ · saved views TEAM จริง · ฐาน achievement = ฐาน progress · ข้อสอบ 47/47 ×2 · ผู้ตรวจ 2 รอบ (BLOCKER 1 + 12) · ภาพ 11 PARITY ผ่าน · `wo-notes/crm-C3.2.md` |
 | C3 | C3.5 | ✅ | `c0e35025` | portal ลูกค้า `/b/[slug]` บน engine session สมาชิก (cp_ · __Host-) · เชิญ/OTP/LINE (nonce ใช้ครั้งเดียว · aud/iss) · ใบเสนอราคา (แก้ race บัญชี) · ใบแจ้งหนี้/จ่าย/สลิป · เรคคอร์ด portalVisible · คำขอ→บอร์ด/approval · role matrix · PDPA · REST PORTAL_OPS · ข้อสอบ 67/67 ×2 · ผู้ตรวจ 3 รอบ (24 แก้) · ภาพ 14 · `wo-notes/crm-C3.5.md` |
-| C3 | C3.3 · C3.6 · C3.7 · C2.7-fix | 🔨 | — | C3.3 78/78 รอบ 6 (ผู้ตรวจเงิน 4 รอบ) · C3.6 29/29 พร้อมรวม · C3.7 27/30 (รอภาพ) พร้อมรวม · C2.7-fix 79/79 พร้อมรวมคู่ C3.3 · ข้อสอบ C3.4 (53) เคาะแล้ว |
+| C3 | C3.6 | ✅ | `4c00bf09` | หน้าเชื่อมระบบ 24 ตัว · resolver ปลายทาง (stored>link>เดียว>null · 7 จุด · scan 0 raw) · widgets PAGES 3 · Team จริงใน saved views สมาชิก · ข้อสอบ 29/29 ×2 · ผู้ตรวจ 2 รอบ (BLOCKER 1 SEND_LINE) · ภาพ 2 |
+| C3 | C3.7 | ✅ | `4c00bf09`+`286ef7ab` | routes มือถือ 8 · แอปพนักงาน 5 จอ (+harness) · 390 px 24 หน้า · ข้อสอบ 30/30 · ผู้ตรวจ 1 รอบ (5 SHOULD-FIX) · จอแอป 5 |
+| C3 | C3.3 · C3.4 · C3.8 · C3.9 · C2.7-fix | 🔨 | — | C3.3 84/84 รอบ 7 · C2.7-fix 79/79 (รวมคู่ C3.3) · C3.9 builder เริ่ม · C3.4 หลัง C3.3 · C3.8 หลัง C3.4 · ข้อสอบครบทุกใบ |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |

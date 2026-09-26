@@ -68,3 +68,16 @@
 - SF2 สถิติเหตุการณ์ = `$transaction(… set_config('statement_timeout', ms, true) …).catch(() => null)` ⇒ `eventsUnavailable: true` + ข้อความ "โหลดสถิติเหตุการณ์ไม่ทัน — ลองใหม่ภายหลัง" · `minuteJobs().catch(() => [])` (แบบหน้ากฎอัตโนมัติ) · ไม่มี `$executeRawUnsafe`
 - SF3 บัญชี `via === "only"` = "ยังไม่ได้เชื่อมสมุดกับ CRM นี้ — CRM จะไม่เขียนสมุดบัญชี" (ไม่ขึ้น "ใช้อยู่")
 - notes: เหตุผลไทยแยก `CUSTOMER_CHAT_NOT_CONNECTED` เมื่อระบบแชทของลูกค้ายังไม่เชื่อม (เฉพาะทาง preferSystemId — ผู้เรียกเดิมได้ข้อความเดิม) · probe เพิ่มกรณี "ผู้ติดต่ออยู่ทั้ง A และ B + prefer A ⇒ A" · `Object.hasOwn` · `accountSystemForCrm({ bookId })` ตรวจ AccountSystemLink CRM ที่เปิดอยู่ภายใน · `crmLinkedBooks` = คำสั่ง SQL เดียว (JOIN AppSystem · `createdAt, id` asc) · `targetPicker` เรียกครั้งเดียวแล้วส่งให้ตัวตัดสิน (`linkedBooksHint`) · `checkAccountSwitch` อยู่ในธุรกรรม FOR UPDATE และอ่านผ่าน tx เดียวกันทั้งหมด (ค่า "ก่อน" = ค่าที่ล็อกไว้ · ไม่ขอ connection เพิ่มระหว่างถือล็อก) · convertOptions เรียงก่อนตัด · ลิงก์ HR ชี้กติกาต้นฉบับ `crm/access.ts`
+
+## ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 29 ข้อเขียนก่อน (c23) · ruling addendum ครบ |
+| D2 | ✅ | `qc-crm-c3.6` **29/29 ×2** QC1 seed ใหม่ (`c367-verify.log`) · 29/29 QC3 |
+| D3 | ✅ | ORACLE-EDIT 3 (X1.2 implicit read C1.7 · S1.4 ไม่ส่ง error detail · X3.1 ต้องมี AccountSystemLink) — ทั้งหมดตามมติผู้คุมงาน พิสูจน์ในโค้ด |
+| D4 | ✅ | ถอยหลัง QC1 48 ขั้น exit 0 (`c367-verify.log`) + follow-up (`c37b-verify.log`: c1.3 · c2.5 · c1.7 · c0.2 · nav 11/11) · m1.9 26/26 (รันซ้ำเดี่ยว `m19-after-c37b.log` — ในยูนิต S2.2 แดง = race กับเลน QC1 อื่น) |
+| D5/D6 | ✅ | typecheck 5120 · fitness 33/33 ×2 · build+serve |
+| D7 | ✅ | ภาพ 2 ใบ `.qc-shots/crm/3.6/` เทียบ mockup 17: แผนที่ 24 ระบบ+CRM กลาง · targets 5 · ตารางสถานะ · +งานเบื้องหลัง · มือถือ 2 คอลัมน์ ✓ |
+| D8–D11 | ✅ | ผู้ตรวจ 2 รอบ: BLOCKER 1 (SEND_LINE บังคับ OA ผิด → prefer+fallback · probe 2 กรณี) + SHOULD-FIX 9 + NOTE แก้ครบ · resolver scan 0 raw · DTO สมาชิกไม่เปลี่ยน (probe mtime ต่างกัน) |
+| D12 | ⏳ | รอ push |
+หนี้: index `OutboxEvent(tenantId,type,createdAt)` (C6.1) · resolver ต่อระบบ CRM ไม่ใช่ต่อหน่วย · `active`-aware ตามสเปก · SavedViewDto ไม่เปลี่ยน

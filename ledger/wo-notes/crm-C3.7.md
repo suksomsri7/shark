@@ -69,3 +69,16 @@
 - ORACLE-EDIT ที่ขอ: C3.7-S1.2 (qc-crm-c3.7.mts:430-432) วนทั้ง PAGES และนับ "ไม่มีภาพ" เป็นเสีย + บังคับ `emails` 200 ให้ thana
   (thana ใน seed ไม่มี crm.email.read ⇒ หน้านั้น 404 ตามแบบ) — ดูรายงาน builder
 - ข้อสังเกต: แท็บ `emails` ใน CRM_NAV ไม่มี `perm` แต่หน้าต้องมี crm.email.read ⇒ แท็บตายสำหรับ STAFF ที่ไม่มีคีย์ (หน้า C2.5 ใช้ `crmNavItems(id)` ไม่ส่งตัวตัดสิน)
+
+## ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 30 ข้อเขียนก่อน (c23) |
+| D2 | ✅ | `qc-crm-c3.7` **30/30** QC1 หลัง build+ภาพ 390 (owner 24 หน้า · thana 2 หน้าตามสิทธิ์) + shoot-crm 5/5 (`c37b-verify.log`) · 27/30 QC2 ก่อนภาพ |
+| D3 | ✅ | ORACLE-EDIT 1 = S1.2 (หน้าที่ thana ไม่มีสิทธิ์ไม่ถ่าย — ผู้คุมงานพิสูจน์: /emails 404 เพราะไม่มี `crm.email.read`) |
+| D4 | ✅ | ถอยหลัง c367 + c37b เขียว (c1.3 89/89 หลังแก้ mobile.ts · c2.4 · c1.6 · c1.4 · c1.10 · c2.11 · mobile-* · push · c0.2 · nav) · m1.9 26/26 |
+| D5/D6 | ✅ | typecheck · fitness 33/33 · build |
+| D7 | ✅ | จอแอป 5 ใบ `apps/mobile/qc/shots-crm/` เทียบ mockup 13(ก): chips · การ์ดดีล (ขั้น/ชื่อ/ผู้ติดต่อ/ยอด/โทร) · แถบล่าง ✓ · เว็บ 390 24 หน้าไม่ล้น |
+| D8–D11 | ✅ | ผู้ตรวจ 1 รอบ: SHOULD-FIX 5 (sourceRef ใน tx ของ logActivity · MAX_B64 · call prompt ผ่าน background · คืน lastActivityAt · via/proposalId trusted only) แก้ครบ + notes · ACCEPTANCE-FIX ผู้คุมงาน: แท็บอีเมล perm |
+| D12 | ⏳ | รอ push |
+หนี้: index `sourceRef` (C6.1) · แอปถึงเครื่องต้อง build/OTA (ห้ามในใบ) · ปุ่มค้นหา/กระดิ่งใน header ไม่อยู่ในสัญญา · แก้บั๊ก C2.4 allowlist
