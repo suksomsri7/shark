@@ -142,3 +142,16 @@
 
 ## 9. คืนสภาพ QC
 - ข้อสอบ C3.2 ลบผู้เช่า/ผู้ใช้ `qc-c32-*` ทั้งหมด (CLEAN เขียว) · probe ลบ `qc-c32probe-*` (rowsLeft=0) · สคริปต์ probe ลบแล้ว · m1.9 26/26
+
+## ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 46 ข้อเขียนก่อน (c110) · SKIPPED/RED ก่อนโค้ด · ruling 15 |
+| D2 | ✅ | `qc-crm-c3.2` **47/47 ×2** QC1 seed ใหม่ (`c32-verify.log`) · 47/47 QC2 |
+| D3 | ✅ | ORACLE-EDIT SF-4 (ฐาน achievement = ฐาน progress) โดยผู้เขียนข้อสอบคนเดิม + ข้อ S6.6 ใหม่ (ตัวเลขอิสระตรง builder ทุกข้อ) |
+| D4 | ✅ | ถอยหลัง QC1 38 ขั้น exit 0: c3.1 · c1.4 · c1.5 · c1.3 · c0.2 · c0.5 · c1.7 · c1.8 · c1.11 · c2.1 · c2.5 · c2.7 · c2.9 · c3.0 · v1 · pages · cron · nav 11/11 · uiversion probe · m3.10 · m1.9 26/26 — แดง: c2.10 39/41 = ลำดับ ORACLE-EDIT ของผู้คุมงาน (revert แล้ว รันซ้ำ 41/41 `c210-after-revert-r2.log`) · m1.5 S4.3 = ภาพสมาชิก ENV |
+| D5/D6 | ✅ | typecheck 5120 · fitness 32/32 ×2 · build+serve ผ่าน |
+| D7 | ✅ | ภาพ 11 ใบ `.qc-shots/crm/3.2/` (owner 5 · manager 3 · thana 3) ดูเองเทียบ mockup 01/10: KPI 6 · ตัวกรอง+มุมมอง · งานวันนี้/ดีลที่ต้องดู · leaderboard โควตา/ความคืบหน้า (ป้าย "ตามยอดรับชำระ") · AI 3 ปุ่ม (ปิดจน C3.4) · ที่มา lead · ไม่มีเจ้าของ · หน้าโควตา งวด/ตาราง/เป้า/ทำได้ · thana (STAFF ไม่มี report.view) ไม่เห็น KPI/leaderboard = ถูกตาม X1.3 (สเปคภาพของผู้คุมงานคาดผิด แก้แล้ว) · บล็อกเลือกเทมเพลตของ C1.11 อยู่บนสุดเพราะ seed ยังไม่เลือก (ข้อมูล) · มือถือไม่ล้น |
+| D8–D11 | ✅ | ผู้ตรวจ 2 รอบ: BLOCKER 1 (auto-win โยน ⇒ event หาย) + SHOULD-FIX 12 + NOTE แก้ครบ · หลักฐาน probe (control ไม่มี finally = 0 แถว) · race 3 รอบ = 80/100 อย่างละ 1 · same-day 80→100 = 2 แจ้งเตือน · OWNER = ผู้จัดการทุกสาขา identical · % เดียวกัน 4 ที่ |
+| D12 | ⏳ | รอ push |
+หนี้ (§8 ของ builder + ผู้คุมงาน): trigger group ของ `crm.quota.reached` (prefix) · N2 ข้ามจุดข้ามเมื่อ reassign/สมาชิกทีม/ลด target (แจ้งเจ้าของ) · N3 ทีมไม่มีแถวไม่ยิง reached · N8 quarter/year ไม่ roll-up · N11 perf 23 statements · S5 cap 51 ก่อน visibility แก้แล้ว (SF-2) · **C2.7 money race → เลน C2.7-fix**

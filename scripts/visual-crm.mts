@@ -243,8 +243,9 @@ const SPECS: Record<string, Spec[]> = {
       name: `crm-home-v2-${userKey}`,
       path: `/app/sys/${SYS}`,
       note: "หน้าแรก CRM v2: KPI 6 (ดีลเปิด · ถ่วงน้ำหนัก · ชนะ/โควตา ตามฐาน · อัตราชนะ · นิ่ง · lead ร้อน) · งานวันนี้ · ดีลที่ต้องดู · leaderboard ทีม · ที่มา lead · ปุ่ม AI 3 (ปิดจนถึง C3.4) · ตัวกรอง + saved view — เทียบภาพ 01",
-      expect: ["[data-testid=crm-home]", "[data-testid=crm-home-kpi-open]", "[data-testid=crm-home-kpi-won]", "[data-testid=crm-home-kpi-hot]", "[data-testid=crm-home-leaderboard]", "[data-testid=crm-home-sources]", "[data-testid=crm-home-stale-list]"],
-      steps: [{ waitFor: "[data-testid=crm-home-leaderboard]", timeoutMs: 20_000 }, { wait: 600 }],
+      // Fable 26 ก.ย.: thana = STAFF ไม่มี crm.report.view ⇒ KPI/leaderboard/ที่มา lead ซ่อนตามสิทธิ์ (X1.3) — คาดเฉพาะโครงหน้า
+      expect: userKey === "thana" ? ["[data-testid=crm-home]", "[data-testid=crm-home-my-tasks]", "[data-testid=crm-home-stale-list]"] : ["[data-testid=crm-home]", "[data-testid=crm-home-kpi-open]", "[data-testid=crm-home-kpi-won]", "[data-testid=crm-home-kpi-hot]", "[data-testid=crm-home-leaderboard]", "[data-testid=crm-home-sources]", "[data-testid=crm-home-stale-list]"],
+      steps: [{ waitFor: userKey === "thana" ? "[data-testid=crm-home-stale-list]" : "[data-testid=crm-home-leaderboard]", timeoutMs: 20_000 }, { wait: 600 }],
     },
     {
       name: `crm-home-filters-${userKey}`,
