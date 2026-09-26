@@ -1133,7 +1133,7 @@ try {
     sensOk = true;
   } catch (e) { info(`sensitive member field fixture skipped: ${cut((e as Error)?.message, 120)}`); }
   const kM = await mkContact(tidA, crmF, uS1, { memberCustomerId: cust.id });
-  await mkDeal(tidA, crmF, pX, { ownerUserId: uS1, stage: 1, value: 12_000, expectedCloseAt: at("2026-11-12T05:00:00.000Z"), contactId: kM, title: `ดีลสมาชิก ${TAG}` });
+  await mkDeal(tidA, crmF, pX, { ownerUserId: uS1, stage: 1, value: 12_000, expectedCloseAt: at("2026-11-12T05:00:00.000Z"), contactId: kM, title: `ดีลผูกสมาชิก-${TAG}` }); // ORACLE-EDIT C3.1-X8.1 (26 ก.ย. · ผู้คุมงาน): ชื่อเดิมมีชื่อสมาชิก (needle PII) เป็น substring ⇒ แดงตลอดกาล
   // crmS — per-person scope + schedules
   const pS = await mkPipe(tidA, crmS, true);
   await mkDeal(tidA, crmS, pS, { ownerUserId: uS1, stage: 2, kind: "WON", value: 100_000, closedAt: at("2026-09-20T05:00:00.000Z"), teamId: teamT });
@@ -1261,7 +1261,7 @@ try {
     for (const [tab, f] of TAB_FN) { const r = await call(f, cF, oA, {}); tabs.push(r.ok ? j(r.v) : ""); }
     const blob = `${tabs.join("\n")}\n${exF.csv}\n${exS.csv}\n${exR.csv}`;
     const hits = [...PII, BIRTH].filter((p) => blob.includes(p));
-    const memberDeal = exF.csv.includes(`ดีลสมาชิก ${TAG}`);
+    const memberDeal = exF.csv.includes(`ดีลผูกสมาชิก-${TAG}`);
     chk("C3.1-X8.1", "reports and exports carry NO personal data: the 8 tab payloads and the forecast/sources/reps CSVs contain no contact name/phone/e-mail and nothing of the linked member (phone · e-mail · birth date · the value of a `sensitive` member field) — while the member-linked deal itself IS in the forecast export (so the scan looked at the right rows)",
       tabs.every((x) => x.length > 0) && memberDeal && hits.length === 0 && sensOk, "0 PII · deal present", `tabs=${tabs.filter((x) => x.length > 0).length}/8 memberDeal=${memberDeal} pii=${cut(hits.slice(0, 3).join(","), 120) || "-"} sensitiveFixture=${sensOk}${ABSENT}`, "CRITICAL");
   }
