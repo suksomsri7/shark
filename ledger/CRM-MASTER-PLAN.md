@@ -395,7 +395,8 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.0 | ✅ | `41c262c0` | migration `crm_v2_c` 214 บรรทัด (enum 6 · ตาราง 6 · `HrPayAdjustment.crmCommissionId` + partial unique · scope 6) · ข้อสอบ 33/33 QC1 ×2 + QC2 · diff ว่างหลัง deploy · ORACLE-EDIT S4.3 · ถอยหลัง 2 รอบ (บทเรียน client ร่วม/overlay) · `wo-notes/crm-C3.0.md` |
 | C3 | C3.1 | ✅ | `80c1269a` | รายงาน 8 แท็บ (SQL ล้วน) · export job lease · ตั้งเวลาอีเมล (ช่องเวลาไทย · lease 15 นาที · sweep รายชั่วโมง) · facade marketing `campaignCostsByIds` · ข้อสอบ 56/56 ×2 · ผู้ตรวจ SHOULD-FIX 5 แก้ครบ · ภาพ 17 PARITY ผ่าน · `wo-notes/crm-C3.1.md` |
 | C3 | C3.2 | ✅ | `684828d0` | โควตา (periodKey คริสต์ · reached ครั้งเดียวหลัง commit · at=countedAt) · หน้าแรก KPI 6 · leaderboard/ที่มา lead/ไม่มีเจ้าของ · saved views TEAM จริง · ฐาน achievement = ฐาน progress · ข้อสอบ 47/47 ×2 · ผู้ตรวจ 2 รอบ (BLOCKER 1 + 12) · ภาพ 11 PARITY ผ่าน · `wo-notes/crm-C3.2.md` |
-| C3 | C3.3–C3.9 | 🔨 | — | C3.3 74/74 รอรอบ 4 + ผู้ตรวจสุดท้าย · C3.5 67/67 รอบ 4 (ชนโควตา 14:30) · C2.7-fix รอบ 3 (ชนโควตา) · ข้อสอบ C3.4 (53) เคาะแล้ว |
+| C3 | C3.5 | ✅ | `c0e35025` | portal ลูกค้า `/b/[slug]` บน engine session สมาชิก (cp_ · __Host-) · เชิญ/OTP/LINE (nonce ใช้ครั้งเดียว · aud/iss) · ใบเสนอราคา (แก้ race บัญชี) · ใบแจ้งหนี้/จ่าย/สลิป · เรคคอร์ด portalVisible · คำขอ→บอร์ด/approval · role matrix · PDPA · REST PORTAL_OPS · ข้อสอบ 67/67 ×2 · ผู้ตรวจ 3 รอบ (24 แก้) · ภาพ 14 · `wo-notes/crm-C3.5.md` |
+| C3 | C3.3 · C3.6 · C3.7 · C2.7-fix | 🔨 | — | C3.3 78/78 รอบ 6 (ผู้ตรวจเงิน 4 รอบ) · C3.6 29/29 พร้อมรวม · C3.7 27/30 (รอภาพ) พร้อมรวม · C2.7-fix 79/79 พร้อมรวมคู่ C3.3 · ข้อสอบ C3.4 (53) เคาะแล้ว |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |

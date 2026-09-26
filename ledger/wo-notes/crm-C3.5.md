@@ -155,3 +155,16 @@ qc-nav-functions exit 0 · qc-crm-c0.2 27/27 · qc-crm-c0.5 50/50 · fitness 33/
   อนุมัติตัวที่ซ้ำ → VALIDATION "มีรายการอื่นใช้ค่า …" · คำขอคง PENDING · ไม่มีค่าถูกเขียน
 - หมายเหตุ: `mintPortalSession` ออกจาก `member/index.ts` (เหลือ `session-facade.ts` + `crm/portal-session.ts`) · ถังสลับบริษัท `crm:portal:switch:<tenant>:<contactId>` (ต่อผู้ติดต่อ) ·
   สลับเข้าสิทธิ์ที่ยังไม่รับคำเชิญ (คำเชิญยังไม่หมด) = รับคำเชิญ · `recordFields` มี `take` · รายการบริษัทของหน้าแรกกรองบริษัทที่ถูกเก็บ/ถูกรวมแบบ `myCompanies`
+
+## ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 67 ข้อเขียนก่อน (c23) · SKIPPED/RED ก่อนโค้ด · ruling 17 |
+| D2 | ✅ | `qc-crm-c3.5` **67/67 ×2** QC1 seed ใหม่ (`c35-verify.log`) · 67/67 QC2 ทุกรอบ |
+| D3 | ✅ | ORACLE-EDIT 0 |
+| D4 | ✅ | ถอยหลัง QC1 47 ขั้น exit 0 (fix-s1 · pages · promptpay · payment · attachments · c0.4 · c2.7 · c1.8 · c3.0 · c3.1 · c3.2 · c1.3 · c0.2 · c0.5 · c1.2a · c1.9 · c1.4 · c1.10 · c2.11 · c1.11 · approval ×3 · v1 · cron · nav · uiversion probe · m3.10 · m1.9 26/26) · แดง = m2.9/m3.11 (ภาพ/เซิร์ฟเวอร์สมาชิก ENV) · k2.3 S3.2/S3.6 (หนี้เลน kanban) |
+| D5/D6 | ✅ | typecheck 5120 · fitness 33/33 ×2 (F2.4 ใหม่) · build+serve ผ่าน |
+| D7 | ✅ | ภาพ 14 ใบ `.qc-shots/crm/3.5/` (ลูกค้า 6 หน้า ×2 ขนาด · owner settings) ดูเองเทียบ mockup 12: มือถือ = เมนู+ชื่อบริษัท+ตัวสลับ · แถบค้างชำระ · สถิติ 2 (ดีล 3 ตัวที่ 3 เมื่อ showDeals) · ใบเสนอราคารอตอบ · กิจกรรมล่าสุด ✓ · เดสก์ท็อป = header + nav ซ้าย 6 รายการตรงแบบ ✓ · หน้าตั้งค่า portal ฝั่งพนักงาน (เปิด/ปิด · วิธีล็อกอิน · บอร์ด · showDeals · URL) ✓ · ข้อมูลว่างเพราะบริษัทใน seed ไม่มีเอกสาร (ใบแจ้งหนี้/PromptPay/สลิปพิสูจน์โดยข้อสอบ S3.x + testid) · testid ที่สเปคผู้คุมงานคาดผิด (`portal-request-kind` อยู่ในฟอร์ม · หน้า settings ใช้ `crm-portal-settings-*`) แก้สเปคแล้ว |
+| D8–D11 | ✅ | ผู้ตรวจความปลอดภัย 3 รอบ (16 + 5 + 3 แก้ครบ) · หลักฐาน: race quotation 11/12→0/12 · revoke 11 ms · token ไม่มี plaintext · limiter ร่วม · PDPA cascade · nonce ใช้ซ้ำไม่ได้ |
+| D12 | ⏳ | รอ push |
+หนี้ (§8 + ผู้คุมงาน): PDF/ใบกำกับเต็ม · LINE push คำเชิญ · toggle ฟิลด์ portal (C3.7/C4) · เทมเพลตแจ้งพนักงาน · XFF (platform) · API key เปิด account-files (C3.8) · PDPA card history (C3.9) · ownership PortalSession · **finding บัญชี: setQuotationResponse race (แก้แล้วในใบนี้)**
