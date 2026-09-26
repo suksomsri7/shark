@@ -1058,6 +1058,10 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
   const CRM_HOSTED_CONTROLS: { file: string; ids: string[]; wo: string }[] = [
     // ใบ C2.7 (มติผู้คุมงาน 24 ก.ย. 2569 · N1): ช่อง "ดีล" + คำอธิบายใต้ช่อง บนหน้าขายของโมดูล POS
     { file: "src/lib/modules/pos/register-ui.tsx", ids: ["pos-deal-select", "pos-deal-hint"], wo: "C2.7" },
+    // CRM C3.6 ▸ widget ข้อมูลของ CRM บนหน้า Page `/p/[slug]` · ตัวเลือกทีมของมุมมองสมาชิก · ลิงก์ "ทีมขาย" บนหน้า HR (R-A) ◂
+    { file: "src/components/pages/CrmDataWidgets.tsx", ids: ["page-widget-crm-my-deals-more", "page-widget-crm-today-tasks-more", "page-widget-crm-deal-*", "page-widget-crm-task-*", "page-widget-crm-portal-open"], wo: "C3.6" },
+    { file: "src/components/member/MembersSavedViewsMenu.tsx", ids: ["member-view-team"], wo: "C3.6" },
+    { file: "src/lib/modules/hr/ui.tsx", ids: ["hr-link-sales-teams"], wo: "C3.6" },
   ];
 
   // จุดยึดพิสูจน์ว่า "ตัวค้นหายังทำงาน": หน้า CRM ที่มีอยู่จริงวันนี้ต้องถูกค้นเจอเสมอ

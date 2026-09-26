@@ -41,3 +41,6 @@ yarn-error.*
 /android
 credentials/
 credentials.json
+
+# CRM C3.7 — ภาพ/summary ของ QC render จอ CRM (ผลของ shoot-crm.mjs · ไม่ commit)
+qc/shots-crm/

@@ -115,8 +115,19 @@ export async function availableWidgets(ctx: PageCtx, pageId: string): Promise<Wi
   const unit = await prisma.businessUnit.findFirst({ where: { id: page.unitId }, select: { type: true } });
   if (!unit) return [];
   const systems = await unitSystemMap(ctx.tenantId, page.unitId);
-  return widgetsFor(unit.type, new Set(systems.keys()));
+  // CRM C3.6 ▸ widget ข้อมูลของ CRM เลือกได้เฉพาะกิจการที่ระบบ CRM เปิด v2 แล้ว (v1 = ไม่มีอะไรให้แสดง) ◂
+  const crmV2 = await crmV2Of(ctx.tenantId, systems.get("CRM"));
+  return widgetsFor(unit.type, new Set(systems.keys())).filter((w) => !w.data || crmV2);
 }
+
+// CRM C3.6 ▸ ระบบ CRM ของกิจการเปิด CRM v2 แล้วไหม (R-E.14 — v1 = widget ข้อมูลของ CRM ไม่แสดง/ไม่ให้เลือก)
+//   โหลด facade CRM ตอนใช้: หน้า Page ที่ไม่มี widget ของ CRM ไม่ต้องลากกราฟ CRM เข้ามา
+async function crmV2Of(tenantId: string, crmSystemId: string | undefined): Promise<boolean> {
+  if (!crmSystemId) return false;
+  const crm = await import("@/lib/modules/crm");
+  return (await crm.crmUiVersion({ tenantId, systemId: crmSystemId })) === 2;
+}
+// ◂ CRM C3.6
 
 export async function addWidget(
   ctx: PageCtx,
@@ -301,6 +312,9 @@ export type RenderWidget = {
   imageUrl: string | null;
   shape: "RECT" | "SQUARE" | "CIRCLE";
   href: string;
+  // CRM C3.6 ▸ widget ข้อมูล: แหล่งข้อมูล (registry `data`) + ระบบที่ให้ข้อมูล (id ระบบของกิจการ) — หน้า /p โหลดด้วย session ของผู้เปิด ◂
+  data?: string;
+  systemId?: string;
 };
 
 export async function pageForRender(slug: string) {
@@ -318,10 +332,14 @@ export async function pageForRender(slug: string) {
     unitSystemMap(page.tenantId, page.unitId),
   ]);
   if (!unit) return null;
+  // CRM C3.6 ▸ widget ข้อมูลของ CRM แสดงเฉพาะเมื่อระบบ CRM ของกิจการนี้เปิด v2 (ถามครั้งเดียวต่อหน้า · เฉพาะหน้าที่มี widget แบบนี้) ◂
+  const hasData = page.widgets.some((w) => !!widgetDef(w.widgetKey)?.data);
+  const crmV2 = hasData ? await crmV2Of(page.tenantId, systems.get("CRM")) : false;
   const widgets: RenderWidget[] = [];
   for (const w of page.widgets) {
     const def = widgetDef(w.widgetKey);
     if (!def) continue; // registry เปลี่ยน → widget เก่าที่ไม่รู้จักซ่อนไว้ (ไม่พังทั้งหน้า)
+    if (def.data && !crmV2) continue; // CRM C3.6 ▸ R-E.14: CRM uiVersion 1 = ไม่มี widget ข้อมูล ◂
     const href = widgetHref(def, unit.slug, systems);
     if (!href) continue; // ระบบถูกปิด/เลิกผูก → ซ่อน
     widgets.push({
@@ -332,6 +350,7 @@ export async function pageForRender(slug: string) {
       imageUrl: w.imageUrl,
       shape: w.shape,
       href,
+      ...(def.data ? { data: def.data, systemId: systems.get(def.type) } : {}), // CRM C3.6 ◂
     });
   }
   return { page, unit, widgets };
@@ -351,6 +370,19 @@ export async function loginRoster(slug: string) {
     members: members.map((m) => ({ id: m.id, name: m.displayName, hasPin: !!m.pinHash })),
   };
 }
+
+// CRM C3.6 ▸ สิทธิ์จริงของผู้เปิดหน้า /p (ร้านของ Page + บทบาท/สาขา/สิทธิ์ของเขาในร้านนั้น) — widget ข้อมูลโหลดด้วยตัวนี้
+//   (ข้อมูลที่เห็น = ข้อมูลที่เขาเห็นในแอปอยู่แล้ว: visibleWhere ของ CRM ใช้กับ actor นี้) · ไม่เป็นสมาชิกร้าน = null
+export async function pageViewer(slug: string, userId: string) {
+  const page = await pageBySlug(slug);
+  if (!page) return null;
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId: page.tenantId, userId, acceptedAt: { not: null } },
+    select: { role: true, unitAccess: true, permissions: true },
+  });
+  return membership ? { tenantId: page.tenantId, membership } : null;
+}
+// ◂ CRM C3.6
 
 /** สิทธิ์เข้าดู /p ของ user ที่ login แล้ว: OWNER/MANAGER ของร้าน = เห็นหมด · PageMember = ตามที่กำหนด */
 export async function accessFor(slug: string, userId: string) {

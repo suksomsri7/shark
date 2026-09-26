@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireTenant } from "@/lib/core/context";
+import { tenantDb } from "@/lib/core/db"; // CRM C3.6 ▸ ลิงก์ "ทีมขาย" โชว์เฉพาะร้านที่มี CRM v2 ◂
 import { ModuleTabs } from "@/components/module-tabs";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
@@ -506,6 +507,16 @@ export async function HrHub({ systemId }: { systemId: string }) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
   const [employees, pending] = await Promise.all([listEmployees(ctx), pendingLeaves(ctx)]);
+  // CRM C3.6 ▸ ลิงก์ "ทีมขาย" โชว์เฉพาะคนที่เปิดหน้าทีมได้จริง — กติกาต้นฉบับ: `crmCan(actor, "crm.team.manage")` ใน
+  //   src/lib/modules/crm/access.ts (+ ด่านของหน้า src/app/app/settings/teams/page.tsx) · ถ้าแก้ที่นั่น ต้องแก้ที่นี่ตาม (หน้านั้น: OWNER หรือคีย์ `crm.team.manage` — คีย์ของเจ้าของร้าน
+  //   ที่ MANAGER ไม่ได้โดยปริยาย) · ไม่ import โมดูล CRM (เส้น hr→crm ไม่อยู่ใน ALLOWED_EDGES) ⇒ อ่านจาก membership ตรง ◂
+  const perms = (auth.active.permissions ?? {}) as Record<string, unknown>;
+  // + ร้านต้องมีระบบ CRM ที่เปิด CRM ใหม่ (uiVersion 2) — ร้าน CRM เดิมไม่มีเรื่อง "ทีมขาย" ให้จัด (ไม่โชว์ลิงก์ที่ไม่มีความหมาย)
+  const canManageSalesTeams =
+    (auth.active.role === "OWNER" || perms["crm.team.manage"] === true || perms["crm.*"] === true) &&
+    (await tenantDb({ tenantId: auth.active.tenantId }).appSystem.count({
+      where: { tenantId: auth.active.tenantId, type: "CRM", active: true, settings: { path: ["crm", "uiVersion"], equals: 2 } },
+    })) > 0;
 
   const cards = [
     { href: `/app/sys/${systemId}/hr/attendance`, label: "ลงเวลา", desc: "เข้า/ออกงาน + ประวัติ" },
@@ -531,6 +542,17 @@ export async function HrHub({ systemId }: { systemId: string }) {
             <span className={`text-xs ${muted}`}>{c.desc}</span>
           </Link>
         ))}
+        {canManageSalesTeams && (
+          // CRM C3.6 ▸ R-A: HR ลิงก์ไป "ทีมขาย" ของ core (`/app/settings/teams`) — ไม่มีหน้าทีมชุดที่สองใน HR ◂
+          <Link
+            href="/app/settings/teams"
+            data-testid="hr-link-sales-teams"
+            className="card flex min-h-[76px] flex-col gap-1 p-4 transition-colors hover:bg-[color:var(--color-surface-2)]"
+          >
+            <span className="text-sm font-medium">ทีมขาย</span>
+            <span className={`text-xs ${muted}`}>จัดทีม หัวหน้าทีม และคนรับ lead (ใช้ร่วมกับ CRM)</span>
+          </Link>
+        )}
       </div>
     </div>
   );

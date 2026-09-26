@@ -10,6 +10,8 @@ import { useRouter } from "expo-router";
 import * as Notifications from "expo-notifications";
 import { useAuth } from "@/src/lib/auth-context";
 import { registerPush, conversationIdFromNotification } from "@/src/lib/push-register";
+// CRM C3.7 ▸ แตะแจ้งเตือนของ CRM (data.link จาก crmNotifLink) → จอ CRM ในแอป (ตัวแปลงบริสุทธิ์) ◂
+import { crmRouteFromLink } from "@/src/lib/crm-link";
 import { C, R, S } from "@/src/theme";
 
 // type ของ props ระหว่าง expo-router/drawer กับ @react-navigation/drawer ชนกัน (identity ซ้ำสองแพ็กเกจ)
@@ -103,6 +105,14 @@ function DrawerBody(props: { navigation: DrawerNav }) {
         >
           <Text style={styles.menuText}>สมาชิก</Text>
         </Pressable>
+        {/* CRM C3.7 ▸ ดีลของฉัน · งานวันนี้ · บันทึกสายหลังวางสาย · สแกนนามบัตร (ภาพ 13) · โซน app/(app)/crm ◂ */}
+        <Pressable
+          testID="drawer-crm"
+          onPress={() => navigation.navigate("crm")}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.rowPressed]}
+        >
+          <Text style={styles.menuText}>CRM ขาย</Text>
+        </Pressable>
       </ScrollView>
 
       {/* ── ล่างสุด: อีเมล + ออกจากระบบ ── */}
@@ -136,7 +146,14 @@ export default function AppLayout() {
     void registerPush();
     const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
       const cid = conversationIdFromNotification(resp);
-      if (cid) router.push(`/chat/${cid}`);
+      if (cid) {
+        router.push(`/chat/${cid}`);
+        return;
+      }
+      // CRM C3.7 ▸ ใบแจ้งเตือนของ CRM (push ส่ง data.link = ลิงก์เว็บ) → จอ CRM ในแอป · ลิงก์ที่ไม่ใช่ CRM = ไม่ทำอะไร ◂
+      const link = (resp.notification.request.content.data as { link?: unknown } | undefined)?.link;
+      const crm = typeof link === "string" ? crmRouteFromLink(link) : null;
+      if (crm) router.push(crm);
     });
     return () => sub.remove();
   }, [router]);

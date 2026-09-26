@@ -43,6 +43,7 @@ import {
   type WaitRow,
 } from "@/lib/automation/action-runner";
 import { prisma } from "./db";
+import { resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ปลายทางแชทของ SEND_LINE (ชนิดเดียว) ◂
 import { crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2, crmUiVersion } from "./ui-version";
 import { canContact, memberSystemOf } from "./consents";
@@ -1114,12 +1115,16 @@ export const CRM_DEFAULT_DEPS: Required<Omit<CrmRuleDeps, "kanban" | "post">> & 
     if (req.consent !== "GRANTED") return { ok: false, skipped: true, error: "ผู้ติดต่อยังไม่ได้ยินยอมรับข่าวสารทาง LINE" };
     try {
       const chat = await import("@/lib/modules/chat");
+      // CRM C3.6 ▸ ปลายทางแชทจากตัวตัดสินตัวเดียว (`resolveCrmTargets(…, ["chat"])`) = ระบบที่ "อยากใช้ก่อน" เท่านั้น — **ไม่บังคับ**:
+      //   LINE userId ผูกกับ OA ที่ลูกค้าคุยด้วย ⇒ facade แชทหาผู้ติดต่อในระบบนั้นก่อน ไม่มี = ผู้ติดต่อล่าสุดของระบบใดก็ได้ แล้วส่งด้วย
+      //   ระบบของผู้ติดต่อที่หาเจอ (ร้านหลาย OA ไม่ส่งผิด OA) · null = แบบเดิมทุกตัวอักษร ◂
+      const preferSystemId = (await resolveCrmTargets(req.tenantId, req.systemId, ["chat"])).chat;
       if (req.to) {
-        const r = await chat.pushToContact({ tenantId: req.tenantId, channel: "LINE", externalUserId: req.to, text: req.body, systemId: null });
+        const r = await chat.pushToContact({ tenantId: req.tenantId, channel: "LINE", externalUserId: req.to, text: req.body, systemId: null, preferSystemId });
         return { ok: r.ok, ...(r.reason ? { error: r.reason } : {}) };
       }
       if (req.partyId) {
-        const r = await chat.sendLineToParty({ tenantId: req.tenantId }, { partyId: req.partyId, text: req.body });
+        const r = await chat.sendLineToParty({ tenantId: req.tenantId }, { partyId: req.partyId, text: req.body, preferSystemId });
         return { ok: r.ok, ...(r.reason ? { error: r.reason } : {}) };
       }
       return { ok: false, skipped: true, error: "ผู้ติดต่อนี้ยังไม่มีบัญชี LINE ที่ผูกไว้" };

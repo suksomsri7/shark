@@ -90,7 +90,20 @@ const TMP = {
   scoreRuleIds: [] as string[], scoreLogIds: [] as string[],
   // CRM C2.10 ▸ ดีลที่ `markStale` ปัก `stalledAt` ให้ (เก็บค่าเดิมทุกใบเพื่อเขียนคืน) + ใบแจ้งเตือน/event ที่รอบนี้ทำเกิด ◂
   staleBefore: [] as { id: string; stalledAt: Date | null }[],
+  // CRM C3.7 ▸ (รีวิว SF-4) เวลาที่จดหมายชั่วคราวดันขึ้น (touchLastActivity ของ recordSystemActivityInTx): ผู้ติดต่อ · บริษัทของเขา ·
+  //   ดีลของเขา (lastActivityAt + stalledAt ที่ถูกล้าง) — จดค่าเดิมก่อนเขียน แล้ว restoreSeed() เขียนคืนด้วยคำสั่งดิบ ◂
+  touched: [] as { contactId: string; lastActivityAt: Date | null; companyId: string | null; companyLastActivityAt: Date | null; deals: { id: string; lastActivityAt: Date | null; stalledAt: Date | null }[] }[],
 };
+// CRM C3.7 ▸ จดเวลาของผู้ติดต่อ/บริษัท/ดีลก่อนเขียนจดหมายชั่วคราว (C2.5 · C3.7) — ครั้งเดียวต่อผู้ติดต่อ (ค่าแรก = ค่าก่อนรอบนี้) ◂
+async function snapshotTouch(contactId: string): Promise<void> {
+  if (TMP.touched.some((t) => t.contactId === contactId)) return;
+  const P = prisma as Any;
+  const c = (await P.crmContact.findFirst({ where: { id: contactId }, select: { lastActivityAt: true, companyId: true } })) as Any;
+  if (!c) return;
+  const co = c.companyId ? ((await P.crmCompany.findFirst({ where: { id: c.companyId }, select: { lastActivityAt: true } })) as Any) : null;
+  const deals = (await P.crmDeal.findMany({ where: { contactId }, select: { id: true, lastActivityAt: true, stalledAt: true } })) as Any[];
+  TMP.touched.push({ contactId, lastActivityAt: c.lastActivityAt ?? null, companyId: c.companyId ?? null, companyLastActivityAt: co?.lastActivityAt ?? null, deals });
+}
 /** จำนวนแถวก่อน "เตรียมของ" (−1 = ใบนี้ไม่ได้เตรียมอะไร) — restoreSeed() พิมพ์คู่กับจำนวนหลังคืน เพื่อพิสูจน์ว่าเท่าเดิม */
 const BEFORE = { sequences: -1, rules: -1, emails: -1, emailTemplates: -1, links: -1, webSessions: -1, forms: -1, accountDocs: -1, posSales: -1, moneyRows: -1, scoreRules: -1, scoreLogs: -1, notifications: -1, staleEvents: -1 };
 // CRM C2.10 ▸ เวลาเริ่มรอบ (ลบใบแจ้งเตือน/event/audit ที่รอบนี้ทำเกิดเท่านั้น — ของเดิมของร้าน QC ไม่ถูกแตะ) ◂
@@ -179,6 +192,123 @@ const POS_REGISTER = `/app/sys/${(E.systems?.POS ?? "") as string}/pos/register?
 const PORTAL_SLUG: string = (await prisma.tenant.findUnique({ where: { id: E.tenantId }, select: { slug: true } }))?.slug ?? "-";
 const PB = `/b/${encodeURIComponent(PORTAL_SLUG)}`;
 // ◂ CRM C3.5
+// CRM C3.7 ▸ รอบ 390 px ของทุกหน้า C2–C3 (ใบ C3.7 · ข้อสอบ S1.1/S1.2/S1.5/S1.6) — ชื่อภาพ `c37-390-<key>-<user>` เฉพาะมือถือ
+//   key = nav key ของ CRM_NAV ∪ CRM_DEEP_NAV ที่ wo เป็น C2.x/C3.x (status ready · ยกเว้น settings-integrations ตาม R-D) · `home` ·
+//   `report-<แท็บ>` × 8 · `email-thread` · `sequence-editor` — รายการอ่านจาก nav ตอนรัน (หน้าใหม่ของ C3.x เข้ารอบเองโดยไม่ต้องแก้ไฟล์นี้)
+//   หน้าที่มี [param]: `before` ของสเปคหา "ของที่มีอยู่แล้ว" ก่อน · seed ไม่มี = สร้างเธรดจดหมาย/ลำดับการติดตามติดแท็ก `qc-visual-crm`
+//   ผ่าน facade จริง แล้ว restoreSeed() ลบคืนด้วยกลไกเดียวกับ C2.2/C2.5 (TMP.emailIds · TMP.sequenceIds)
+//   thana (STAFF): หน้าที่เขาเปิดไม่ได้ต้องเป็น 404 (ไม่ใช่พัง) — ข้อสอบรับ 404 · ที่เหลือต้อง < 400 ไม่มี console error ไม่ล้น
+const C37_PAGES: { key: string; path: string }[] = WO === "3.7" && !isCustomer
+  ? await (async () => {
+      const NAV = (await import("@/lib/modules/crm/nav" as string)) as Any;
+      const RS = (await import("@/lib/modules/crm/reports-shared" as string)) as Any;
+      const c23 = [...((NAV.CRM_NAV ?? []) as Any[]), ...((NAV.CRM_DEEP_NAV ?? []) as Any[])]
+        .filter((e) => /^C[23]\./.test(String(e?.wo ?? "")) && e?.status === "ready" && e?.path !== "/crm/settings/integrations");
+      return [
+        { key: "home", path: `/app/sys/${SYS}` },
+        ...c23.map((e) => ({ key: String(e.key), path: `/app/sys/${SYS}${String(e.path)}` })),
+        ...((RS.REPORT_TABS ?? []) as string[]).map((t) => ({ key: `report-${t}`, path: `${CRM_BASE}/reports/${t}` })),
+      ];
+    })()
+  : [];
+/** actor/ctx ของเจ้าของร้าน (ผู้สร้างของชั่วคราว) — แบบเดียวกับบล็อกเตรียมของ C2.2/C2.5 */
+async function c37Owner(): Promise<{ ctx: Any; actor: Any }> {
+  const mem = await (prisma as Any).membership.findFirst({ where: { tenantId: E.tenantId, userId: E.users.owner.userId }, select: { role: true, unitAccess: true, permissions: true } });
+  const actor = {
+    userId: E.users.owner.userId as string,
+    role: (mem?.role ?? "OWNER") as Any,
+    unitAccess: (Array.isArray(mem?.unitAccess) ? mem.unitAccess : []) as string[],
+    permissions: (mem?.permissions ?? {}) as Record<string, unknown>,
+  };
+  return { ctx: { tenantId: E.tenantId as string, systemId: SYS, actorUserId: actor.userId }, actor };
+}
+const C37_THREAD: Spec = { name: `c37-390-email-thread-${userKey}`, path: `${CRM_BASE}/emails`, onlyDevice: "mobile", steps: [{ wait: 1200 }] };
+C37_THREAD.before = async () => {
+  const P = prisma as Any;
+  const thanaId = (E.users?.thana?.userId ?? "-") as string;
+  // เธรดที่มีอยู่แล้ว (สายตา thana = เธรดของผู้ติดต่อที่เขาดูแล · ไม่มี = สร้าง) — หน้าเธรดต้องมีของจริงให้วัด
+  const mine = userKey === "thana"
+    ? ((await P.crmContact.findMany({ where: { tenantId: E.tenantId, systemId: SYS, ownerUserId: thanaId }, select: { id: true } })) as Any[]).map((c) => c.id as string)
+    : null;
+  const have = (await P.crmEmailMessage.findFirst({
+    where: { tenantId: E.tenantId, systemId: SYS, ...(mine ? { contactId: { in: mine } } : {}) },
+    orderBy: { createdAt: "desc" },
+    select: { threadKey: true },
+  })) as Any;
+  if (have?.threadKey) {
+    C37_THREAD.path = `${CRM_BASE}/emails/${encodeURIComponent(have.threadKey)}`;
+    console.log(`🧪 เตรียมของ C3.7: ใช้เธรดที่มีอยู่ ${have.threadKey}`);
+    return;
+  }
+  const crm = await import("@/lib/modules/crm");
+  const { ctx, actor } = await c37Owner();
+  if (BEFORE.emails < 0) {
+    BEFORE.emails = await P.crmEmailMessage.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    BEFORE.emailTemplates = await P.crmEmailTemplate.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  }
+  const target = (await P.crmContact.findFirst({
+    where: { tenantId: E.tenantId, systemId: SYS, archivedAt: null, mergedIntoId: null, email: { not: null }, ...(userKey === "thana" ? { ownerUserId: thanaId } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, email: true, name: true },
+  })) as Any;
+  if (!target?.email) {
+    console.log("⚠️ เตรียมของ C3.7: ไม่พบผู้ติดต่อที่มีอีเมล ⇒ ถ่ายกล่องจดหมายแทนหน้าเธรด (ข้อสอบ S1.1 จะชี้ให้เห็น)");
+    return;
+  }
+  const settings = await crm.emails.getEmailSettings(ctx, actor);
+  const deps = { transport: async () => ({ ok: true, providerId: `visual-${Date.now().toString(36)}` }), put: async () => {}, del: async () => 200 };
+  await snapshotTouch(target.id); // (รีวิว SF-4) จดเวลาเดิมของผู้ติดต่อ/บริษัท/ดีลก่อนจดหมายชั่วคราวดันขึ้น
+  const inbound = (await crm.emails.ingestInbound(
+    {
+      messageId: `<qc-visual-crm-c37-${Date.now().toString(36)}@mail.example>`,
+      from: `"${target.name}" <${target.email}>`,
+      to: [settings.inboundAddress],
+      subject: "สอบถามแพ็กเกจดำน้ำกลุ่ม (qc-visual-crm)",
+      text: "สวัสดีค่ะ สนใจแพ็กเกจดำน้ำสำหรับพนักงาน 25 ท่าน รบกวนส่งรายละเอียดด้วยค่ะ",
+      html: "<p>สวัสดีค่ะ สนใจแพ็กเกจดำน้ำสำหรับพนักงาน <b>25 ท่าน</b> รบกวนส่งรายละเอียดด้วยค่ะ</p>",
+      headers: {},
+      attachments: [],
+    } as Any,
+    deps as Any,
+  )) as Any;
+  if (inbound?.emailId) TMP.emailIds.push(inbound.emailId);
+  const row = inbound?.emailId ? await P.crmEmailMessage.findFirst({ where: { id: inbound.emailId }, select: { threadKey: true } }) : null;
+  if (row?.threadKey) C37_THREAD.path = `${CRM_BASE}/emails/${encodeURIComponent(row.threadKey)}`;
+  console.log(`🧪 เตรียมของ C3.7: สร้างเธรดชั่วคราว ${row?.threadKey ?? "-"} (ลบใน restoreSeed)`);
+};
+const C37_SEQ: Spec = { name: `c37-390-sequence-editor-${userKey}`, path: `${CRM_BASE}/settings/sequences`, onlyDevice: "mobile", steps: [{ wait: 1200 }] };
+C37_SEQ.before = async () => {
+  const P = prisma as Any;
+  const have = (await P.crmSequence.findFirst({ where: { tenantId: E.tenantId, systemId: SYS }, orderBy: { createdAt: "asc" }, select: { id: true } })) as Any;
+  if (have?.id) {
+    C37_SEQ.path = `${CRM_BASE}/settings/sequences/${have.id}`;
+    return;
+  }
+  const crm = await import("@/lib/modules/crm");
+  const { ctx, actor } = await c37Owner();
+  if (BEFORE.sequences < 0) {
+    BEFORE.sequences = await P.crmSequence.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+    BEFORE.rules = await P.crmAssignmentRule.count({ where: { tenantId: E.tenantId, systemId: SYS } });
+  }
+  const seq = (await crm.sequences.createSequence(ctx, actor, {
+    name: "ติดตามใบเสนอราคา (qc-visual-crm)",
+    description: "ลำดับตัวอย่างของรอบถ่าย 390 px — ลบทิ้งหลังถ่าย",
+    stopOnReply: true,
+    stopOnWon: true,
+    stopOnLost: true,
+    businessDaysOnly: true,
+    sendWindow: { from: "09:00", to: "18:00" },
+    steps: [
+      { kind: "EMAIL", subject: "ใบเสนอราคาจากสยามไดฟ์เซ็นเตอร์", body: "เรียนคุณ {{contact.firstName}} แนบใบเสนอราคามาให้แล้วนะคะ" },
+      { kind: "WAIT", waitDays: 3 },
+      { kind: "TASK", taskTitle: "โทรติดตามใบเสนอราคา", taskType: "CALL" },
+    ],
+  } as Any)) as Any;
+  TMP.sequenceIds.push(seq.id);
+  C37_SEQ.path = `${CRM_BASE}/settings/sequences/${seq.id}`;
+  console.log(`🧪 เตรียมของ C3.7: สร้างลำดับชั่วคราว ${seq.id} (ลบใน restoreSeed)`);
+};
+// ◂ CRM C3.7
 const SPECS: Record<string, Spec[]> = {
   // CRM C2.8 ▸ คะแนนผู้ติดต่อ (พิมพ์เขียว §5.7 · ภาพ 05): หน้า "คะแนนผู้ติดต่อ" (ตารางกฎ + ระดับ ร้อน/อุ่น/เย็น + อายุแต้ม +
   //   คำนวณใหม่แบบลองก่อน) · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎให้คะแนน") · ป้ายคะแนน + ชิปเหตุผล 3 ข้อบนผู้ติดต่อ 360
@@ -243,6 +373,11 @@ const SPECS: Record<string, Spec[]> = {
   // CRM C3.2 ▸ หน้าแรก KPI 6 + leaderboard + ที่มา lead + saved views + หน้าโควตา (ภาพ 01 · 10) — ผู้คุมงานเขียนสเปค (26 ก.ย.)
   //   thana = STAFF ทีมภูเก็ต (เห็นแถวตัวเอง) · manager · owner · โควตาเฉพาะ owner (crm.quota.manage)
   // CRM C3.5 ▸ ภาพ 12 — สายตาลูกค้า (customer:<accessId>) 6 หน้า · สายตา owner = หน้าตั้งค่า portal ของพนักงาน
+  // CRM C3.6 ▸ หน้าเชื่อมระบบ (ภาพ 17) — owner เท่านั้น (crm.settings.manage) · ผู้คุมงานเขียนสเปค 26 ก.ย.
+  "3.6": isCustomer || userKey !== "owner" ? [] : [
+    { name: `crm-integrations-${userKey}`, path: `${CRM_BASE}/settings/integrations`, note: "เชื่อมระบบ 24 ระบบ: แผนที่ (เปิด/ปิด · เหตุการณ์ล่าสุด) · ตัวเลือกระบบปลายทาง 5 ชนิด · ตารางสถานะ · งานเบื้องหลัง — เทียบภาพ 17", expect: ["[data-testid=crm-integrations-page]", "[data-testid=crm-integrations-map]", "[data-testid=crm-integrations-target-member]", "[data-testid=crm-integrations-targets-save]", "[data-testid=crm-integrations-status-table]", "[data-testid=crm-integrations-jobs]"], steps: [{ waitFor: "[data-testid=crm-integrations-status-table]", timeoutMs: 20_000 }, { wait: 500 }] },
+  ],
+  // ◂ CRM C3.6
   "3.5": isCustomer ? [
     { name: "portal-home", path: `${PB}`, note: "portal หน้าแรก — ชื่อบริษัท+ตัวสลับบริษัท · ยอดค้างชำระ · ใบเสนอราคารอตอบ · เมนู (ภาพ 12)", expect: ["[data-testid=portal-frame]", "[data-testid=portal-company-name]", "[data-testid=portal-home-stats]", "[data-testid=portal-menu]"], steps: [{ waitFor: "[data-testid=portal-home-stats]", timeoutMs: 20_000 }, { wait: 500 }] },
     { name: "portal-quotations", path: `${PB}/quotations`, note: "ใบเสนอราคาของบริษัทตน (ตอบรับ/ปฏิเสธเฉพาะ AWAITING_ACCEPT)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
@@ -255,6 +390,12 @@ const SPECS: Record<string, Spec[]> = {
     { name: `portal-login-${userKey}`, path: `${PB}/login`, note: "หน้าเข้าสู่ระบบ portal (สาธารณะ): ชื่อร้าน · แท็บ อีเมล+OTP / LINE — ภาพ 12 (ก)", expect: ["[data-testid=portal-login]", "[data-testid=portal-login-tab-email]"], steps: [{ waitFor: "[data-testid=portal-login]", timeoutMs: 20_000 }, { wait: 400 }] },
   ] : [],
   // ◂ CRM C3.5
+  // CRM C3.7 ▸ ทุกหน้า C2–C3 ที่ 390 px (owner/thana) — รายการจาก nav (ดู C37_PAGES ด้านบน) + หน้าเธรดจดหมาย + ตัวแก้ลำดับ ◂
+  "3.7": isCustomer ? [] : [
+    ...C37_PAGES.map((p) => ({ name: `c37-390-${p.key}-${userKey}`, path: p.path, onlyDevice: "mobile" as const, steps: [{ wait: 1200 }] }) as Spec),
+    C37_THREAD,
+    C37_SEQ,
+  ],
   "3.2": isCustomer ? [] : [
     {
       name: `crm-home-v2-${userKey}`,
@@ -602,6 +743,15 @@ const SPECS: Record<string, Spec[]> = {
 
 async function restoreSeed(): Promise<void> {
   const P = prisma as Any;
+  // CRM C3.7 ▸ (รีวิว SF-4) เขียนเวลาเดิมของผู้ติดต่อ/บริษัท/ดีลคืน (คำสั่งดิบ — ไม่ผ่านบริการ ไม่มี event/audit) ◂
+  //   เวลาเป็นข้อความ ISO → timestamptz → UTC แบบเดียวกับ `activities.touchLastActivity` (คอลัมน์ไม่มีเขตเวลา · null = NULL)
+  const ts = (d: Date | null) => (d ? new Date(d).toISOString() : null);
+  for (const t of TMP.touched) {
+    await P.$executeRaw`UPDATE "CrmContact" SET "lastActivityAt" = (${ts(t.lastActivityAt)}::timestamptz AT TIME ZONE 'UTC') WHERE "id" = ${t.contactId}`;
+    if (t.companyId) await P.$executeRaw`UPDATE "CrmCompany" SET "lastActivityAt" = (${ts(t.companyLastActivityAt)}::timestamptz AT TIME ZONE 'UTC') WHERE "id" = ${t.companyId}`;
+    for (const d of t.deals) await P.$executeRaw`UPDATE "CrmDeal" SET "lastActivityAt" = (${ts(d.lastActivityAt)}::timestamptz AT TIME ZONE 'UTC'), "stalledAt" = (${ts(d.stalledAt)}::timestamptz AT TIME ZONE 'UTC') WHERE "id" = ${d.id}`;
+  }
+  if (TMP.touched.length) console.log(`  🔢 คืนสภาพ: เวลาเคลื่อนไหวของผู้ติดต่อ ${TMP.touched.length} คน (+บริษัท/ดีล) เขียนค่าเดิมคืนแล้ว`);
   // C0.1: สเปคของใบนี้อ่านอย่างเดียว ⇒ ไม่มีอะไรต้องคืน · โครงนี้มีไว้ให้ใบถัดไปเติม (ห้ามลบ ห้ามข้าม finally)
   if (TMP.activityIds.length) await P.crmActivity?.deleteMany?.({ where: { id: { in: TMP.activityIds } } }).catch(() => null);
   if (TMP.dealIds.length) await P.crmDeal?.deleteMany?.({ where: { id: { in: TMP.dealIds } } }).catch(() => null);
@@ -951,6 +1101,7 @@ if (WO === "2.5") {
   if (!target?.email) {
     console.log("⚠️ เตรียมของ C2.5 ข้าม — ไม่พบผู้ติดต่อที่มีอีเมลและยินยอมรับข่าวสารในเฉลย ⇒ กล่องจดหมายยังเป็นกล่องว่าง");
   } else {
+    await snapshotTouch(target.id); // CRM C3.7 ▸ (รีวิว SF-4) จดเวลาเดิมก่อนจดหมายชั่วคราวดันขึ้น ◂
     // 1) จดหมายขาเข้า 1 ฉบับ (HTML + รูปจากภายนอก + ไฟล์แนบ) — เปิดเธรด
     const rfc = `<visual-${Date.now().toString(36)}@mail.example>`;
     const inbound = await crm.emails.ingestInbound(

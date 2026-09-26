@@ -236,3 +236,19 @@ export type {
   PortalSettings,
 } from "./portal-shared";
 // ◂ CRM C3.5
+// CRM C3.7 ▸ แอปพนักงาน ส่วน CRM (`mobile.ts` · route `src/app/api/mobile/crm/**` · ภาพ 13) — namespace เดียว `mobile`:
+//   resolveSystem (`?systemId=` หรือระบบ uiVersion 2 ใบแรก · v1 ⇒ 409 CRM_V2_DISABLED) · myDeals/dealDetail · todayTasks/completeTask ·
+//   callPrompt · callOnce (กันบันทึกสายซ้ำด้วย idempotencyKey — ตัวบันทึกจริงยังเป็น `calls.logCall`) · mobileErrorOf (error → JSON ไทย)
+//   ผู้เรียก: `src/lib/mobile/crm-routes.ts` + route ทั้ง 7 เส้น (นามบัตรเรียก `calls.scanBusinessCard`/`acceptLeadProposal` ตรง)
+export * as mobile from "./mobile";
+// ◂ CRM C3.7
+// CRM C3.6 ▸ เชื่อมต่อทุกระบบ (`integrations.ts`) + widget ของหน้า PAGES (`widgets.ts`)
+//   `integrations`: integrationStatus (สถานะ 24 ระบบ + งานรายนาที) · getTargets/setTargets (`settings.crm.targets`) · targetPicker ·
+//     resolveCrmTargets/resolveCrmTargetsDetailed = ตัวตัดสินปลายทาง **ตัวเดียว** (ผู้เรียกนอกโมดูล: src/lib/member-bridges.ts#onCrmDealWon) ·
+//     listTargetCandidates = raw lookup ตัวเดียวของระบบปลายทาง · ค่าคงที่/ชนิดบริสุทธิ์อยู่ที่ `./integrations-shared`
+//   `widgets`: myDeals · todayTasks · portalEntry · portalShopEntry — ผู้เรียก: src/lib/pages/service.ts + src/app/p/[slug]/page.tsx
+export * as integrations from "./integrations";
+export * as widgets from "./widgets";
+//   ขอบวันไทย (00:00 +07:00) ให้หน้า `/p/[slug]` จัดกลุ่มงานวันนี้/เลยกำหนด — สูตรเดียวของโมดูล (ไฟล์บริสุทธิ์)
+export { thaiDayStartMs } from "./activities-shared";
+// ◂ CRM C3.6

@@ -172,7 +172,7 @@ model CrmContact {                      // crm.prisma — เดิม: id tenan
   assignedBy       String?              // "USER:{id}" | "RULE:{id}" | "API" | "IMPORT"
   sourceKind       MemberSource?        // D10 enum (WALK_IN…API) · `source` String เดิมคงไว้เป็นรายละเอียด
   sourceChannel    String?              // key จาก channels.ts
-  sourceDetail     Json?                // { utm{source,medium,campaign,term,content}, formId?, linkId?, pageUrl?, referrer?, chatContactId?, staffUserId?, importJobId?, campaignId? }
+  sourceDetail     Json?                // { utm{source,medium,campaign,term,content}, formId?, submissionId?, linkId?, pageUrl?, referrer?, chatContactId?, staffUserId?, importJobId?, campaignId?, via?, proposalId? } — via/proposalId: server-set only (C3.7: card-scan via acceptLeadProposal · chat-panel via leadFromBridge); stripped from every external input
   attributionId    String?              // MemberAttribution (เมื่อกลายเป็นสมาชิก) — อ่านอย่างเดียว
   locale           String?  @default("th")
   tags             String[] @default([])

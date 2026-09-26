@@ -25,6 +25,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 //    ถ้า import ค่าที่หัวไฟล์ = วงโหลด (TDZ · fitness F10.1 — เหตุผลเดียวกับ companies.ts/deals.ts) · หัวไฟล์ import ได้เฉพาะ "ชนิด"
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import { activityWhere, contactWhere, dealWhere, recordWhere } from "./where";
 import * as companies from "./companies";
 import { activityOutcomesOf, parseCrmSettings } from "./settings";
@@ -608,8 +609,12 @@ async function scopeAttendees(ctx: ActivitiesCtx, a: MemberActor, att: Normalize
  * AUDIT-CLASS X3: ล็อก บริษัท → ผู้ติดต่อ → ดีล ก่อนเขียน · lastActivityAt = GREATEST คำสั่งเดียว
  * AUDIT-CLASS X4: event ยิงใน tx เดียวกับแถว (เขียนไม่สำเร็จ = ไม่มี event · event ล้ม = ไม่มีแถว)
  */
-export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input: LogActivityInput): Promise<LogActivityResult> {
+// CRM C3.7 ▸ `opts.sourceRef` (พารามิเตอร์ภายใน — ไม่ใช่ช่องของ input ภายนอก) = กุญแจกันบันทึกซ้ำของผู้เรียกฝั่งเซิร์ฟเวอร์
+//   (แอปพนักงาน: `mobile-call:<userId>:<idempotencyKey>`) · แบบเดียวกับ createSequenceTaskOnce/recordBusinessActivityOnce:
+//   advisory lock ของกุญแจ + หาแถวเดิม + insert พร้อม `sourceRef` ใน **ธุรกรรมเดียว** ⇒ ซ้ำ/พร้อมกันกี่ครั้ง = แถวเดียว (คืนแถวเดิม replayed) ◂
+export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input: LogActivityInput, opts?: { sourceRef?: string | null }): Promise<LogActivityResult> {
   const { a, settings } = await enter(ctx, actor);
+  const sourceRef = str(opts?.sourceRef)?.slice(0, 200) ?? null; // CRM C3.7 ◂
   const v = normalizeLog(input, settings);
   const attendees = await scopeAttendees(ctx, a, v.attendees);
   const now = new Date();
@@ -625,6 +630,12 @@ export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input:
       const pre = await resolveTargets(ctx, a, input ?? {});
       need(a, "crm.activity.create");
       const out = await prisma.$transaction(async (tx) => {
+        // CRM C3.7 ▸ กุญแจกันซ้ำของผู้เรียก: ล็อกก่อนแถวใด ๆ แล้วหาแถวเดิมใต้ล็อก (READ COMMITTED — เห็นของที่ commit ก่อนได้ล็อก) ◂
+        if (sourceRef) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.activity.ref:${ctx.tenantId}:${ctx.systemId}:${sourceRef}`}, 0))`;
+          const prior = await tx.crmActivity.findFirst({ where: { ...identityScope(ctx), sourceRef, source: "MANUAL" } });
+          if (prior) return { row: prior, next: null as CrmActivity | null, replayed: true };
+        }
         // ลำดับล็อกของทั้งระบบ: แถว CrmCompany → แถว CrmContact → แถว CrmDeal (เรียง id ทุกชั้น)
         await companies.lockCompanyRowsInTx(tx, coCtx(ctx), [pre.companyId]);
         await lockRows(tx, ctx, "CrmContact", [pre.contactId]);
@@ -657,6 +668,7 @@ export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input:
             mentions,
             ownerUserId: a.userId,
             source: "MANUAL",
+            ...(sourceRef ? { sourceRef } : {}), // CRM C3.7 ◂
           },
         });
         let next: CrmActivity | null = null;
@@ -670,8 +682,10 @@ export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input:
         await emitActivity(tx, ctx, EVT.logged, row);
         if (next) await emitActivity(tx, ctx, EVT.logged, next, { parentActivityId: row.id });
         if (v.done) await emitActivity(tx, ctx, EVT.completed, row);
-        return { row, next };
+        return { row, next, replayed: false };
       }, TX_OPTS);
+      // CRM C3.7 ▸ ซ้ำ = ไม่มีอะไรถูกเขียน ⇒ ไม่มีแถว audit ใหม่ · คืนแถวเดิม ◂
+      if (out.replayed) return { ...toActivityDto(out.row), nextTask: null, nextTaskId: null, replayed: true };
       await audit(ctx, "crm.activity.log", out.row.id, {
         after: { type: out.row.type, dealId: out.row.dealId, contactId: out.row.contactId, companyId: out.row.companyId, customRecordId: out.row.customRecordId, nextTaskId: out.next?.id ?? null, mentions: out.row.mentions.length, pinned: out.row.pinned },
       });
@@ -1220,7 +1234,10 @@ export async function dealKanbanCards(ctx: ActivitiesCtx, actor: MemberActor, de
   if (!deal) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
   const kActor = kanbanActorOf(a);
   if (!kActor) return [];
-  const systems = await prisma.appSystem.findMany({ where: { tenantId: ctx.tenantId, type: "KANBAN" }, select: { id: true } });
+  // CRM C3.6 ▸ ปลายทางจากตัวตัดสินตัวเดียว (`resolveCrmTargets`): มีปลายทาง = อ่านเฉพาะระบบบอร์ดงานนั้น · null (หลายระบบ ไม่ได้เลือก
+  //   ไม่ได้ผูกสาขา) = ไล่ทุกระบบบอร์ดงานของร้านแบบเดิม ผ่าน raw lookup ตัวเดียว (`listTargetCandidates`) ◂
+  const target = (await resolveCrmTargets(ctx.tenantId, ctx.systemId, ["kanban"])).kanban;
+  const systems = target ? [{ id: target }] : await listTargetCandidates(ctx.tenantId, "kanban");
   if (systems.length === 0) return [];
   const L = await kanbanLinks();
   const out: DealKanbanCard[] = [];

@@ -13,6 +13,8 @@ export type MembersSavedView = {
   name: string;
   scope: "PRIVATE" | "TEAM";
   ownerUserId: string | null;
+  /** CRM C3.6 ▸ ทีมจริงของมุมมองแบบ TEAM (null = ทั้งร้าน) — มาจาก lookup แยก ไม่ใช่ SavedViewDto ◂ */
+  teamId?: string | null;
 };
 
 export function MembersSavedViewsMenu({
@@ -20,6 +22,7 @@ export function MembersSavedViewsMenu({
   isManagerPlus,
   viewerUserId,
   views,
+  teams = [],
   currentFilters,
 }: {
   systemId: string;
@@ -27,6 +30,8 @@ export function MembersSavedViewsMenu({
   isManagerPlus: boolean;
   viewerUserId: string;
   views: MembersSavedView[];
+  /** CRM C3.6 ▸ ทีมของร้านที่เลือกให้มุมมองแบบ TEAM ได้ (ว่าง = มีแต่ "ทั้งร้าน") ◂ */
+  teams?: { id: string; name: string }[];
   /** ตัวกรอง/เรียง/คอลัมน์ปัจจุบัน (จาก URL ที่ page.tsx อ่านแล้ว) — เก็บลงมุมมองใหม่ตอนกด "บันทึกมุมมองนี้" */
   currentFilters: { filters: Record<string, unknown>; columns: string[]; sort?: string };
 }) {
@@ -112,7 +117,7 @@ export function MembersSavedViewsMenu({
                   ทั้งทีม
                 </span>
                 {teamViews.map((v) => (
-                  <ViewRow key={v.id} view={v} active={v.id === activeId} href={hrefOf(v.id)} onClose={() => setOpen(false)} canDelete={isManagerPlus} busy={busyId === v.id} onDelete={() => remove(v.id)} />
+                  <ViewRow key={v.id} view={v} teamName={v.teamId ? (teams.find((t) => t.id === v.teamId)?.name ?? "ทีม") : null} active={v.id === activeId} href={hrefOf(v.id)} onClose={() => setOpen(false)} canDelete={isManagerPlus} busy={busyId === v.id} onDelete={() => remove(v.id)} />
                 ))}
               </div>
             )}
@@ -146,6 +151,7 @@ export function MembersSavedViewsMenu({
         <SaveViewModal
           systemId={systemId}
           isManagerPlus={isManagerPlus}
+          teams={teams}
           currentFilters={currentFilters}
           onClose={() => setSaveOpen(false)}
           onSaved={(v) => setRows((prev) => [...prev, v])}
@@ -157,6 +163,7 @@ export function MembersSavedViewsMenu({
 
 function ViewRow({
   view,
+  teamName = null,
   active,
   href,
   canDelete,
@@ -165,6 +172,7 @@ function ViewRow({
   onDelete,
 }: {
   view: MembersSavedView;
+  teamName?: string | null;
   active: boolean;
   href: string;
   canDelete: boolean;
@@ -182,6 +190,7 @@ function ViewRow({
         style={{ background: active ? "var(--color-surface-2)" : "transparent", fontWeight: active ? 700 : 500, color: "var(--color-ink)" }}
       >
         {view.name}
+        {teamName ? <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 400, color: "var(--color-muted)" }}>· {teamName}</span> : null}
       </Link>
       {canDelete && (
         <button type="button" aria-label={`ลบมุมมอง ${view.name}`} disabled={busy} onClick={onDelete} className="grid shrink-0 place-items-center" style={{ width: 24, height: 24, color: "var(--color-muted)" }}>
@@ -195,18 +204,21 @@ function ViewRow({
 function SaveViewModal({
   systemId,
   isManagerPlus,
+  teams,
   currentFilters,
   onClose,
   onSaved,
 }: {
   systemId: string;
   isManagerPlus: boolean;
+  teams: { id: string; name: string }[];
   currentFilters: { filters: Record<string, unknown>; columns: string[]; sort?: string };
   onClose: () => void;
   onSaved: (v: MembersSavedView) => void;
 }) {
   const [name, setName] = useState("");
   const [scope, setScope] = useState<"PRIVATE" | "TEAM">("PRIVATE");
+  const [teamId, setTeamId] = useState(""); // CRM C3.6 ▸ "" = ทั้งร้าน ◂
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -218,13 +230,13 @@ function SaveViewModal({
     }
     setBusy(true);
     setError(null);
-    const res = await saveViewAction({ systemId, name: trimmed, scope, filters: currentFilters.filters, columns: currentFilters.columns, sort: currentFilters.sort });
+    const res = await saveViewAction({ systemId, name: trimmed, scope, teamId: scope === "TEAM" && teamId ? teamId : null, filters: currentFilters.filters, columns: currentFilters.columns, sort: currentFilters.sort });
     setBusy(false);
     if (!res.ok) {
       setError(res.reason);
       return;
     }
-    onSaved({ id: res.data.id, name: res.data.name, scope: res.data.scope, ownerUserId: res.data.ownerUserId });
+    onSaved({ id: res.data.id, name: res.data.name, scope: res.data.scope, ownerUserId: res.data.ownerUserId, teamId: scope === "TEAM" && teamId ? teamId : null });
     onClose();
   };
 
@@ -252,6 +264,19 @@ function SaveViewModal({
               <ScopeChip active={scope === "PRIVATE"} label="เฉพาะฉัน" onClick={() => setScope("PRIVATE")} />
               <ScopeChip active={scope === "TEAM"} label="ทั้งทีม" onClick={() => setScope("TEAM")} />
             </div>
+            {scope === "TEAM" && (
+              <label className="flex flex-col gap-1" style={{ fontSize: 12.5 }}>
+                แชร์ให้ทีม
+                <select data-testid="member-view-team" className="input" value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                  <option value="">ทั้งร้าน (ทุกคนในร้าน)</option>
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         )}
         {error && (

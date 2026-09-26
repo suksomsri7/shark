@@ -70,6 +70,8 @@ export async function saveViewAction(input: {
   systemId: string;
   name: string;
   scope: "PRIVATE" | "TEAM";
+  /** CRM C3.6 ▸ ทีมจริงของมุมมองแบบ TEAM (ว่าง = ทั้งร้าน) — บริการตรวจว่าเป็นทีมของร้านนี้ ◂ */
+  teamId?: string | null;
   filters: Record<string, unknown>;
   columns: string[];
   sort?: string;
@@ -80,6 +82,7 @@ export async function saveViewAction(input: {
     const view = await createSavedView(ctx, actor, {
       name: input.name,
       scope: input.scope,
+      teamId: typeof input.teamId === "string" && input.teamId ? input.teamId : null, // CRM C3.6 ◂
       filters: input.filters,
       columns: input.columns,
       sort: (input.sort as SavedViewDto["sort"]) ?? undefined,

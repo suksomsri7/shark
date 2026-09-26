@@ -24,6 +24,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import { activityWhere, contactWhere, dealWhere } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (หลังการมองเห็นเสมอ) ◂
@@ -449,12 +450,17 @@ function discountCapOf(who: Who): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(10_000, Math.floor(v))) : DEAL_DISCOUNT_CAP_BP_DEFAULT;
 }
 
-/** ระบบคลังของร้าน (ปกติ 1) — ใช้หาสินค้าจาก productId ผ่าน facade คลัง */
+/**
+ * ระบบคลังของร้าน (ปกติ 1) — ใช้หาสินค้าจาก productId ผ่าน facade คลัง
+ * CRM C3.6 ▸ ปลายทางจากตัวตัดสินตัวเดียว (`resolveCrmTargets`): มีปลายทาง = ค้นเฉพาะระบบนั้น (สินค้าของคลังอื่น = ไม่พบ) ·
+ *   null (หลายคลัง ไม่ได้เลือก ไม่ได้ผูกสาขา) = ไล่ทุกคลังของร้านแบบเดิม ผ่าน raw lookup ตัวเดียว (`listTargetCandidates`) ◂
+ */
 async function inventoryItems(ctx: DealsCtx, productIds: string[]): Promise<Map<string, { priceSatang: number }>> {
   const out = new Map<string, { priceSatang: number }>();
   const ids = [...new Set(productIds.filter(Boolean))];
   if (ids.length === 0) return out;
-  const systems = await prisma.appSystem.findMany({ where: { tenantId: ctx.tenantId, type: "INVENTORY" }, select: { id: true }, take: 20 });
+  const target = (await resolveCrmTargets(ctx.tenantId, ctx.systemId, ["inventory"])).inventory;
+  const systems = target ? [{ id: target }] : (await listTargetCandidates(ctx.tenantId, "inventory")).slice(0, 20);
   const inv = await inventoryFacade();
   // หนึ่งคำสั่งต่อระบบคลัง (ปกติร้านมีระบบเดียว) — ไม่ใช่ทีละสินค้า
   for (const s of systems) {

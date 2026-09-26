@@ -20030,6 +20030,321 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-count-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-map",
+        "db": "ไม่มีการเขียน (เน้นเฉพาะกล่องระบบที่เปิดใช้ · กดซ้ำ = ทั้งหมด)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-count-disabled",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-map",
+        "db": "ไม่มีการเขียน (เน้นเฉพาะกล่องระบบที่ยังไม่เปิด · กดซ้ำ = ทั้งหมด)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-node-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[systemId]",
+        "db": "ไม่มีการเขียน (กล่องของระบบที่เปิดอยู่ระบบเดียว = ลิงก์เข้าระบบนั้น · อื่น ๆ เป็นกล่องเฉย ๆ)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-target-member",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-targets-msg",
+        "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ MEMBER ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-target-account",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-targets-msg",
+        "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ ACCOUNT ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-target-kanban",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-targets-msg",
+        "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ KANBAN ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-target-chat",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-targets-msg",
+        "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ CHAT ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-target-inventory",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-integrations-targets-msg",
+        "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ INVENTORY ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/integrations",
+      "testid": "crm-integrations-targets-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "crm-integrations-targets-msg",
+        "db": "AppSystem.settings.crm.targets.<kind>SystemId=<id> + AuditLog.action=crm.integrations.targets (ตรวจด้วย query หลังกด)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/p/[slug]",
+      "testid": "page-widget-crm-my-deals-more",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/crm/deals",
+        "db": "ไม่มีการเขียน (widget ดีลของฉัน · session ของผู้เปิดหน้า)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/p/[slug]",
+      "testid": "page-widget-crm-deal-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/crm/deals/[dealId]",
+        "db": "ไม่มีการเขียน (เฉพาะดีลเปิดที่ผู้เปิดเป็นเจ้าของ · dealWhere)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/p/[slug]",
+      "testid": "page-widget-crm-today-tasks-more",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/crm/activities",
+        "db": "ไม่มีการเขียน (widget งานวันนี้)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/p/[slug]",
+      "testid": "page-widget-crm-task-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/crm/deals/[dealId] | /contacts/[contactId]",
+        "db": "ไม่มีการเขียน (งานของผู้เปิด · activityWhere · วันไทย)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/p/[slug]",
+      "testid": "page-widget-crm-portal-open",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/login",
+        "db": "ไม่มีการเขียน (โชว์เมื่อพอร์ทัลของร้านเปิดอยู่)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/app/sys/[id]/member/members",
+      "testid": "member-view-team",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "members-view-save-error",
+        "db": "MemberSavedView.teamId=<teamId> หลังกดบันทึก (ทีมของร้านนี้เท่านั้น · ว่าง = ทั้งร้าน)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/app/sys/[id] (HR hub)",
+      "testid": "hr-link-sales-teams",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/settings/teams",
+        "db": "ไม่มีการเขียน (โชว์เมื่อร้านมี CRM v2 และผู้ใช้เป็น OWNER/มีคีย์ crm.team.manage)"
+      },
+      "wo": "C3.6",
+      "oracle": "qc-crm-c3.6"
     }
   ]
 }

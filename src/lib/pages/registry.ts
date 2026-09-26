@@ -10,6 +10,9 @@ export type WidgetDef = {
   suffix: string; // ต่อท้าย /app/u/<slug> หรือ /app/sys/<id> ("" = หน้าแรกของระบบ)
   label: string;
   icon: string; // emoji เริ่มต้น (admin เปลี่ยนเป็นรูปได้)
+  // CRM C3.6 ▸ widget "ข้อมูล" (ไม่ใช่แค่ลิงก์เมนู) — ชื่อแหล่งข้อมูลที่หน้า /p/[slug] โหลดมาแสดงในกล่อง (ด้วย session ของคนที่เปิด)
+  //   "crm.myDeals" · "crm.todayTasks" · "crm.portalEntry" · ไม่มี = widget ลิงก์ธรรมดาแบบเดิม ◂
+  data?: string;
 };
 
 const B = (type: string, suffix: string, label: string, icon: string): WidgetDef => ({
@@ -92,6 +95,12 @@ export const WIDGET_DEFS: WidgetDef[] = [
   S("CRM", "/crm/deals", "ดีล", "💼"),
   S("CRM", "/crm/activities", "งานติดตาม", "📌"),
   S("CRM", "/crm/contacts", "ผู้ติดต่อ", "📇"),
+  // CRM C3.6 ▸ widget ข้อมูลของ CRM v2 (ซ่อนเองเมื่อระบบ CRM ของกิจการยังเป็น uiVersion 1 — service.pageForRender) ·
+  //   key ไม่ได้มาจาก `S()` (suffix ซ้ำกับเมนูข้างบน) จึงประกาศตรง ๆ — RG-2 (key ไม่ซ้ำ) ยังคุม
+  { key: "S:CRM:my-deals", kind: "feature", type: "CRM", suffix: "/crm/deals", label: "ดีลของฉัน", icon: "💼", data: "crm.myDeals" },
+  { key: "S:CRM:today-tasks", kind: "feature", type: "CRM", suffix: "/crm/activities", label: "งานวันนี้", icon: "📌", data: "crm.todayTasks" },
+  { key: "S:CRM:portal", kind: "feature", type: "CRM", suffix: "", label: "พอร์ทัลลูกค้า", icon: "🏢", data: "crm.portalEntry" },
+  // ◂ CRM C3.6
   S("MARKETING", "", "ภาพรวมการตลาด", "📣"),
   S("MARKETING", "/marketing/campaigns", "แคมเปญ", "🚀"),
   S("COUPON", "", "ภาพรวมคูปอง", "🎟"),

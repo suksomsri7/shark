@@ -1,11 +1,11 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { toMemberActor, canReadMember, hasMemberPerm } from "@/lib/modules/member/access";
 import { listLayout } from "@/lib/modules/member/fields";
 import { listTierDefs } from "@/lib/modules/member/tiers";
 import { listMembers, getMemberKpis, type ListMembersOptions, type MemberSort } from "@/lib/modules/member/list";
-import { listSavedViews } from "@/lib/modules/member/views";
+import { listSavedViews, savedViewTeamIds, savedViewTeamOptions } from "@/lib/modules/member/views";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MemberTabs } from "@/components/member/MemberTabs";
 import { MembersKpis } from "@/components/member/MembersKpis";
@@ -57,6 +57,13 @@ export default async function MembersHomePage({
     }
   }
 
+  // CRM C3.6 ▸ มุมมองใน URL ที่ผู้เปิดใช้ไม่ได้ (ทีมอื่น/ส่วนตัวของคนอื่น/ถูกลบ) = ตัด `?view=` ออกแล้วเปิดหน้าใหม่ (ไม่ 500 · ไม่ค้างชื่อมุมมองในเมนู) ◂
+  if (view && !Object.hasOwn(await savedViewTeamIds(ctx, actor, [view]), view)) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(rawQuery)) if (k !== "view" && k !== "page") for (const one of Array.isArray(v) ? v : v ? [v] : []) qs.append(k, one);
+    redirect(`/app/sys/${id}/member/members${qs.toString() ? `?${qs.toString()}` : ""}`);
+  }
+
   const filters: ListMembersOptions = {
     ...(q ? { q } : {}),
     ...(tier ? { tier } : {}),
@@ -98,6 +105,8 @@ export default async function MembersHomePage({
   const extraColumns: MembersListColumn[] = allFields.filter((fd) => fd.showInList && !fd.isSystem).map((fd) => ({ key: fd.key, label: fd.label }));
 
   const isManagerPlus = actor.role === "OWNER" || actor.role === "MANAGER";
+  // CRM C3.6 ▸ ทีมของมุมมอง (lookup แยกจาก SavedViewDto ที่ห้ามเปลี่ยนรูป) + ตัวเลือกทีมตอนบันทึกมุมมองแบบ TEAM ◂
+  const [viewTeams, teamOptions] = await Promise.all([savedViewTeamIds(ctx, actor, savedViews.map((v) => v.id)), savedViewTeamOptions(ctx, actor)]);
   const canExport = hasMemberPerm(actor, "member.customer.export");
   const canBulkEdit = hasMemberPerm(actor, "member.customer.update");
 
@@ -136,7 +145,8 @@ export default async function MembersHomePage({
             systemId={id}
             isManagerPlus={isManagerPlus}
             viewerUserId={auth.user.id}
-            views={savedViews.map((v) => ({ id: v.id, name: v.name, scope: v.scope, ownerUserId: v.ownerUserId }))}
+            views={savedViews.map((v) => ({ id: v.id, name: v.name, scope: v.scope, ownerUserId: v.ownerUserId, teamId: viewTeams[v.id] ?? null }))}
+            teams={teamOptions}
             currentFilters={{
               filters: { ...(q ? { q } : {}), ...(tier ? { tier } : {}), ...(unit ? { unit } : {}), ...(tag ? { tag } : {}), ...(Object.keys(f).length ? { f } : {}) },
               columns: extraColumns.map((c) => c.key),

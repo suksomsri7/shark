@@ -1,7 +1,11 @@
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/core/session";
-import { accessFor, loginRoster, pageForRender } from "@/lib/pages/service";
+import { accessFor, loginRoster, pageForRender, pageViewer, type RenderWidget } from "@/lib/pages/service";
 import { WidgetTile } from "@/lib/pages/WidgetBoard";
+// CRM C3.6 ▸ widget ข้อมูลของ CRM ("ดีลของฉัน" · "งานวันนี้" · "พอร์ทัลลูกค้า") — facade เท่านั้น (F2.3) ◂
+import * as crm from "@/lib/modules/crm";
+import { toMemberActor } from "@/lib/modules/member";
+import { CrmDataWidgets, type CrmWidgetData } from "@/components/pages/CrmDataWidgets";
 
 // หน้าแสดงผล Page (สาธารณะ) — /p/<slug>
 // ยังไม่ login → จอเลือกชื่อ + PIN (ฟอร์ม HTML ธรรมดา POST /api/page-login — ใช้ใน LINE LIFF ได้)
@@ -26,7 +30,10 @@ export default async function PublicPage({
 
   if (user && access) {
     if (!data) notFound();
-    const widgets = data.widgets.filter((w) => !access.allowedKeys || access.allowedKeys.has(w.key));
+    const allowed = data.widgets.filter((w) => !access.allowedKeys || access.allowedKeys.has(w.key));
+    // CRM C3.6 ▸ widget ข้อมูลแยกออกมาเป็นกล่อง — ที่เหลือเป็นไทล์ลิงก์แบบเดิม ◂
+    const widgets = allowed.filter((w) => !w.data);
+    const dataWidgets = await crmWidgetData(slug, user.id, allowed.filter((w) => !!w.data));
     return (
       <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-5 px-4 py-6">
         <header className="flex items-center justify-between gap-2">
@@ -38,9 +45,10 @@ export default async function PublicPage({
             ออก
           </a>
         </header>
-        {widgets.length === 0 ? (
+        <CrmDataWidgets widgets={dataWidgets} />
+        {widgets.length === 0 && dataWidgets.length === 0 ? (
           <p className={`text-sm ${muted}`}>ยังไม่มีเมนูบนหน้านี้ — ให้เจ้าของร้านจัด widget ก่อน</p>
-        ) : (
+        ) : widgets.length === 0 ? null : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {widgets.map((w) => (
               <WidgetTile key={w.id} w={w} href={w.href} />
@@ -133,3 +141,54 @@ export default async function PublicPage({
     </main>
   );
 }
+
+// CRM C3.6 ▸ โหลดข้อมูลของ widget CRM ด้วย **session ของคนที่เปิดหน้า** (หลังผ่าน accessFor แล้ว) — `crm.widgets.myDeals/todayTasks`
+//   ใช้ visibleWhere ของ actor นี้ (เห็นเท่าที่เขาเห็นในแอป) · โหลดไม่ได้ (ไม่มีสิทธิ์ดีล/งาน · ระบบปิด v2) = กล่องบอกเหตุผลไทย ไม่พังทั้งหน้า
+//   🔴 ห้ามใช้สิทธิ์ของเจ้าของ Page/เจ้าของร้านแทน — widget ข้อมูลต้องเคารพการมองเห็นของผู้เปิดเสมอ (AUDIT-CLASS X1)
+const baht = (satang: number) => `฿${(Math.round(satang) / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
+const reasonOf = (e: unknown) => (e instanceof Error && /[ก-๙]/.test(e.message) ? e.message : "โหลดข้อมูลไม่สำเร็จ — ลองรีเฟรชหน้าอีกครั้ง");
+
+async function crmWidgetData(slug: string, userId: string, list: RenderWidget[]): Promise<CrmWidgetData[]> {
+  if (list.length === 0) return [];
+  const viewer = await pageViewer(slug, userId);
+  if (!viewer) return [];
+  const actor = toMemberActor(userId, viewer.membership);
+  const out: CrmWidgetData[] = [];
+  for (const w of list) {
+    if (!w.systemId) continue;
+    const ctx = { tenantId: viewer.tenantId, systemId: w.systemId, actorUserId: userId };
+    if (w.data === "crm.myDeals") {
+      try {
+        const r = await crm.widgets.myDeals(ctx, actor, { limit: 5 });
+        out.push({ kind: "myDeals", id: w.id, title: w.title, moreHref: w.href, total: r.total, items: r.items.map((d) => ({ id: d.id, title: d.title, value: baht(d.valueSatang), stageName: d.stageName, stalled: d.stalled, href: d.href })) });
+      } catch (e) {
+        out.push({ kind: "myDeals", id: w.id, title: w.title, moreHref: w.href, total: 0, items: [], error: reasonOf(e) });
+      }
+    } else if (w.data === "crm.todayTasks") {
+      try {
+        const now = new Date();
+        const r = await crm.widgets.todayTasks(ctx, actor, { now, limit: 10 });
+        const dayStart = crm.thaiDayStartMs(now.getTime());
+        out.push({
+          kind: "todayTasks",
+          id: w.id,
+          title: w.title,
+          moreHref: w.href,
+          counts: r.counts,
+          items: r.items.map((t) => {
+            const ms = t.dueAt ? Date.parse(t.dueAt) : NaN;
+            const overdue = !t.done && Number.isFinite(ms) && ms < dayStart;
+            return { id: t.id, title: t.title, done: t.done, overdue, href: t.href, when: t.done ? "เสร็จแล้ว" : Number.isFinite(ms) ? (overdue ? crm.thaiDateLabel(ms) : crm.thaiTimeLabel(ms)) : "" };
+          }),
+        });
+      } catch (e) {
+        out.push({ kind: "todayTasks", id: w.id, title: w.title, moreHref: w.href, counts: { today: 0, overdue: 0, done: 0 }, items: [], error: reasonOf(e) });
+      }
+    } else if (w.data === "crm.portalEntry") {
+      const r = await crm.widgets.portalShopEntry(ctx).catch(() => null);
+      out.push({ kind: "portal", id: w.id, title: w.title, href: r?.href ?? null });
+    }
+  }
+  return out;
+}
+// ◂ CRM C3.6

@@ -9,7 +9,7 @@
 
 import { writeAudit } from "@/lib/core/audit";
 import { prisma } from "./db";
-import { pushToContact } from "./push";
+import { CUSTOMER_CHAT_NOT_CONNECTED, NO_CONNECTION_MSG, pushToContact } from "./push";
 import { canAccessConvUnit, unitAccessWhere } from "./service";
 
 export type ChatPartyCtx = {
@@ -24,6 +24,11 @@ export type SendLineToPartyInput = {
   text: string;
   /** บังคับระบบแชทที่ใช้ส่ง (ไม่ระบุ = ระบบของผู้ติดต่อไลน์ที่หาเจอ) */
   systemId?: string | null;
+  /**
+   * CRM C3.6 ▸ ระบบแชทที่ "อยากใช้ก่อน" (ปลายทางแชทของ CRM) — ไม่บังคับ: หาผู้ติดต่อไลน์ของ Party ในระบบนี้ก่อน
+   *   ไม่มี = ผู้ติดต่อล่าสุดของระบบใดก็ได้ แล้วส่งด้วยระบบของผู้ติดต่อ **ที่หาเจอ** (LINE userId ผูกกับ OA — ส่งผ่าน OA อื่นไม่ได้) ◂
+   */
+  preferSystemId?: string | null;
 };
 
 export type SendLineToPartyResult = { ok: boolean; reason?: string; externalMessageId?: string };
@@ -54,14 +59,16 @@ export async function sendLineToParty(
 
     // ผู้ติดต่อไลน์ล่าสุดของ Party รายนี้ — ทั่วทั้งร้าน (ลูกค้าอาจทักเข้ามาที่ระบบแชทไหนก็ได้)
     // `blockedAt` = ลูกค้าบล็อกร้าน/ร้านบล็อกลูกค้า ⇒ ไม่ใช่ปลายทางที่ส่งได้
-    const contact = await prisma.chatContact.findFirst({
-      where: { tenantId, partyId, channel: "LINE", blockedAt: null },
-      orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }],
-      select: { id: true, systemId: true, externalUserId: true, customerId: true },
-    });
+    // CRM C3.6 ▸ ระบบที่อยากใช้ก่อน (ถ้ามี) → ล่าสุดของระบบใดก็ได้ ◂
+    const where = { tenantId, partyId, channel: "LINE" as const, blockedAt: null };
+    const select = { id: true, systemId: true, externalUserId: true, customerId: true } as const;
+    const prefer = input.preferSystemId ? String(input.preferSystemId) : "";
+    const contact =
+      (prefer ? await prisma.chatContact.findFirst({ where: { ...where, systemId: prefer }, orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }], select }) : null) ??
+      (await prisma.chatContact.findFirst({ where, orderBy: [{ lastSeenAt: "desc" }, { createdAt: "desc" }], select }));
     if (!contact) return { ok: false, reason: NO_LINE_IDENTITY };
 
-    return await pushToContact({
+    const res = await pushToContact({
       tenantId,
       channel: "LINE",
       externalUserId: contact.externalUserId,
@@ -69,6 +76,9 @@ export async function sendLineToParty(
       systemId: input.systemId ?? contact.systemId,
       customerId: contact.customerId,
     });
+    // CRM C3.6 ▸ ทาง preferSystemId: ระบบของผู้ติดต่อที่หาเจอไม่มีการเชื่อมต่อ = เหตุผลแยก (ผู้เรียกเดิมได้ข้อความเดิม) ◂
+    if (prefer && !input.systemId && !res.ok && res.reason === NO_CONNECTION_MSG) return { ...res, reason: CUSTOMER_CHAT_NOT_CONNECTED };
+    return res;
   } catch {
     // ห้าม throw — ผู้เรียกเป็นตัวส่งเป็นชุด · ไม่พิมพ์รายละเอียด (อาจมีข้อมูลลูกค้าติดมา)
     return { ok: false, reason: "ส่งข้อความไม่สำเร็จ — ลองใหม่อีกครั้ง หรือตรวจการเชื่อมต่อที่หน้าตั้งค่าแชท" };

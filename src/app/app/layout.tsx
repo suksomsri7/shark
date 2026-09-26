@@ -246,6 +246,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // CRM C3.5 ▸ พอร์ทัลลูกค้า (ตั้งค่า · 404 สำหรับคนที่ไม่มี crm.portal.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
               ...(crmCan(membershipOf(auth), "crm.portal.manage") ? [{ href: `${s}/crm/settings/portal`, label: "พอร์ทัลลูกค้า" }] : []),
               // ◂ CRM C3.5
+              // CRM C3.6 ▸ เชื่อมต่อทุกระบบ (ภาพ 17 · 404 สำหรับคนที่ไม่มี crm.settings.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.settings.manage") ? [{ href: `${s}/crm/settings/integrations`, label: "เชื่อมต่อทุกระบบ" }] : []),
+              // ◂ CRM C3.6
               ]
             : []),
           // ◂ CRM uiVersion gate

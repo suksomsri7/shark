@@ -832,25 +832,41 @@ export type CrmAccountContactBrief = {
 export async function accountSystemForCrm(
   tenantId: string,
   crmSystemId: string,
-  opts: { partyId?: string | null; contactIds?: readonly string[] } = {},
+  opts: { partyId?: string | null; contactIds?: readonly string[]; bookId?: string | null } = {},
 ): Promise<{ systemId: string; contactOfParty: string | null; contacts: CrmAccountContactBrief[] } | null> {
   if (!tenantId || !crmSystemId) return null;
-  // สมุดที่ยังใช้งาน (AppSystem.active) ของร้านนี้ เรียงเก่า → ใหม่ แล้วหาลิงก์ CRM ที่เปิดอยู่ · หลายเล่มผูกระบบ CRM เดียวกันได้
-  //   ⇒ เลือกลิงก์ที่สร้างก่อนสุด (ผลคงที่ทุกครั้ง ไม่ขึ้นกับลำดับที่ฐานคืนมา) · tenantDb ต่อเล่ม (AccountSystemLink = sys scope)
-  const books = await crmTenantDb({ tenantId }).appSystem.findMany({
-    where: { tenantId, type: "ACCOUNT", active: true },
-    select: { id: true },
-    orderBy: { createdAt: "asc" },
-  });
   let link: { systemId: string; createdAt: Date } | null = null;
-  for (const b of books) {
+  // CRM C3.6 ▸ `opts.bookId` = สมุดที่ CRM เลือกเป็นปลายทาง (`settings.crm.targets.accountSystemId` ผ่านตัวตัดสินของ CRM)
+  //   ⇒ ใช้เล่มนั้นเมื่อ **ยังมี AccountSystemLink CRM ที่เปิดอยู่กับระบบ CRM นี้** (ด่าน §9.5 — ไม่เชื่อม = ไม่เขียนสมุด) ·
+  //   AUDIT-CLASS X1: ต้องเป็นสมุด ACCOUNT ที่ active ของร้านนี้ · ไม่ผ่านข้อใด = null ◂
+  const wantBook = typeof opts.bookId === "string" ? opts.bookId.trim() : "";
+  if (wantBook) {
+    const b = await crmTenantDb({ tenantId }).appSystem.findFirst({ where: { id: wantBook, tenantId, type: "ACCOUNT", active: true }, select: { id: true } });
+    if (!b) return null;
     const l = await crmTenantDb({ tenantId, systemId: b.id }).accountSystemLink.findFirst({
       where: { tenantId, systemId: b.id, linkedKind: "CRM", linkedId: crmSystemId, enabled: true, archivedAt: null },
       select: { systemId: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     });
-    if (l && (!link || l.createdAt < link.createdAt)) link = l;
-  }
+    if (!l) return null;
+    link = l;
+  } else {
+    // สมุดที่ยังใช้งาน (AppSystem.active) ของร้านนี้ เรียงเก่า → ใหม่ แล้วหาลิงก์ CRM ที่เปิดอยู่ · หลายเล่มผูกระบบ CRM เดียวกันได้
+    //   ⇒ เลือกลิงก์ที่สร้างก่อนสุด (ผลคงที่ทุกครั้ง ไม่ขึ้นกับลำดับที่ฐานคืนมา) · tenantDb ต่อเล่ม (AccountSystemLink = sys scope)
+    const books = await crmTenantDb({ tenantId }).appSystem.findMany({
+      where: { tenantId, type: "ACCOUNT", active: true },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+    for (const b of books) {
+      const l = await crmTenantDb({ tenantId, systemId: b.id }).accountSystemLink.findFirst({
+        where: { tenantId, systemId: b.id, linkedKind: "CRM", linkedId: crmSystemId, enabled: true, archivedAt: null },
+        select: { systemId: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (l && (!link || l.createdAt < link.createdAt)) link = l;
+    }
+  } // ◂ CRM C3.6
   if (!link) return null;
   const db = crmTenantDb({ tenantId, systemId: link.systemId });
   let contactOfParty: string | null = null;
@@ -874,6 +890,38 @@ export async function accountSystemForCrm(
   return { systemId: link.systemId, contactOfParty, contacts };
 }
 // ◂ CRM C1.3
+
+// CRM C3.6 ▸ สมุดบัญชีที่ "เชื่อมกับระบบ CRM นี้" (AccountSystemLink CRM ที่เปิดอยู่ · ไม่เก็บถาวร · สมุด active) เรียงตามลิงก์เก่า → ใหม่
+//   = ตัวเลือกเดียวที่ CRM ตั้งเป็นปลายทางบัญชีได้ (ปลายทางต้องไม่ข้ามด่าน §9.5 "ไม่เชื่อม = ไม่ลงบัญชีให้") · อ่านอย่างเดียว
+//   + `accountContactsInOtherBooks` — จำนวนผู้ติดต่อบัญชี (จาก id ที่ CRM ถืออยู่) ที่อยู่ในสมุดเล่มอื่นที่ไม่ใช่ `bookId`
+//     (CRM ใช้ปฏิเสธการสลับสมุดเมื่อบริษัทผูกผู้ติดต่อของเล่มเดิมไว้แล้ว) · AUDIT-CLASS X1: ผูก tenantId ทุกคำสั่ง
+/** ช่องทางอ่านที่รับ tx ของผู้เรียกได้ (CRM ตรวจการสลับสมุดใต้ล็อกแถวของตัวเอง) — ไม่ส่ง = client ที่ผูกร้าน */
+type CrmReadDb = Pick<Prisma.TransactionClient, "$queryRaw">;
+
+export async function crmLinkedBooks(tenantId: string, crmSystemId: string, db?: CrmReadDb): Promise<string[]> {
+  if (!tenantId || !crmSystemId) return [];
+  // คำสั่งเดียวสำหรับทุกเล่ม (ไม่วนทีละสมุด) · เรียงลิงก์เก่า → ใหม่ แล้ว id (ผลคงที่) · ลิงก์ละหนึ่งแถวต่อเล่ม (unique systemId+kind+linkedId)
+  const q = db ?? crmTenantDb({ tenantId });
+  const rows = await q.$queryRaw<{ id: string }[]>`
+    SELECT l."systemId" AS "id"
+    FROM "AccountSystemLink" l JOIN "AppSystem" s ON s."id" = l."systemId"
+    WHERE l."tenantId" = ${tenantId} AND s."tenantId" = ${tenantId} AND s."type" = 'ACCOUNT' AND s."active" = true
+      AND l."linkedKind" = 'CRM' AND l."linkedId" = ${crmSystemId} AND l."enabled" = true AND l."archivedAt" IS NULL
+    ORDER BY l."createdAt" ASC, l."id" ASC
+    LIMIT 50`;
+  return rows.map((r) => r.id);
+}
+
+export async function accountContactsInOtherBooks(tenantId: string, bookId: string, contactIds: readonly string[], db?: CrmReadDb): Promise<number> {
+  const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && x))].slice(0, 10_000);
+  if (!tenantId || ids.length === 0) return 0;
+  const q = db ?? crmTenantDb({ tenantId });
+  const r = await q.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS "n" FROM "AccountContact"
+    WHERE "tenantId" = ${tenantId} AND "systemId" <> ${bookId} AND "id" = ANY(${ids}::text[])`;
+  return Number(r[0]?.n ?? 0);
+}
+// ◂ CRM C3.6
 
 // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (`crm/portal.ts`) — ทางอ่าน/เขียนของบัญชีที่พอร์ทัลใช้ **ผ่าน facade นี้ทางเดียว** (F2.2)
 //   • listPortalDocs      — เอกสารขาออก (ไม่รวม DRAFT) ของ "บริษัทลูกค้า" = ผู้ติดต่อบัญชีที่ผูก Party เดียวกับบริษัท (ทุกสมุดของร้าน)

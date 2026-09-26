@@ -23,7 +23,6 @@ import * as point from "@/lib/modules/point";
 import * as stamp from "@/lib/modules/stamp";
 import * as marketing from "@/lib/modules/marketing";
 import { getUnitSystems } from "@/lib/modules/system";
-import { unitsForSystem } from "@/lib/modules/system/service";
 import { chatChannelToKey } from "@/lib/core/channels";
 import { formatThaiDateTime } from "@/lib/ui/date";
 
@@ -597,14 +596,15 @@ export async function onKanbanCardCompleted(evt: BridgeEvent): Promise<void> {
 
 // ─────────────────────────── CRM (crm.deal.won) ───────────────────────────
 
-/** ระบบสมาชิกที่ "ดีลของระบบ CRM นี้" ควรไปลง — สาขาที่ CRM ผูก → ระบบสมาชิกของสาขานั้น · ร้านมีระบบสมาชิกเดียว = ตัวนั้น */
+/**
+ * ระบบสมาชิกที่ "ดีลของระบบ CRM นี้" ควรไปลง
+ * CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียวของ CRM (`crm.integrations.resolveCrmTargets` — มติผู้คุมงาน C3.6):
+ *   ระบบที่ร้านเลือกใน `settings.crm.targets.memberSystemId` → ระบบสมาชิกที่ผูกสาขาเดียวกับ CRM → ระบบสมาชิกเดียวของร้าน → null
+ *   (null = มีหลายระบบแต่ไม่ได้เลือก/ไม่ได้ผูกสาขา ⇒ ไม่มีที่ลง — พฤติกรรมเดิม) · โหลด facade CRM ตอนใช้ (ไม่ลากกราฟ CRM เข้าทุก event) ◂
+ */
 async function memberSystemForCrm(tenantId: string, crmSystemId: string): Promise<string | null> {
-  for (const unitId of await unitsForSystem(tenantId, crmSystemId)) {
-    const linked = await getUnitSystems(tenantId, unitId);
-    if (linked.MEMBER) return linked.MEMBER;
-  }
-  const all = await prisma.appSystem.findMany({ where: { tenantId, type: "MEMBER" }, select: { id: true }, take: 2 });
-  return all.length === 1 ? (all[0]?.id ?? null) : null;
+  const crm = await import("@/lib/modules/crm");
+  return (await crm.integrations.resolveCrmTargets(tenantId, crmSystemId, ["member"])).member;
 }
 
 /**

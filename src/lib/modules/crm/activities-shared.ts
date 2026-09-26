@@ -210,7 +210,8 @@ export type ActivityListItem = ActivityDto & {
   ownerName: string | null;
 };
 
-export type LogActivityResult = ActivityDto & { nextTask: ActivityDto | null; nextTaskId: string | null };
+// CRM C3.7 ▸ `replayed` = มีแถวของ `opts.sourceRef` เดียวกันอยู่แล้ว ⇒ คืนแถวเดิม ไม่เขียนอะไรใหม่ (ไม่ส่ง sourceRef = ไม่มีช่องนี้) ◂
+export type LogActivityResult = ActivityDto & { nextTask: ActivityDto | null; nextTaskId: string | null; replayed?: boolean };
 
 export type ActivityListResult = { items: ActivityListItem[]; nextCursor: string | null };
 

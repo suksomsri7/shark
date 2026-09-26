@@ -23,6 +23,7 @@ import { displayOf, maskPhone, pointsOfMany } from "./profile";
 import { getTierRules, type RuleCondition } from "./tiers";
 import { memberSourceLabel } from "./member-source-labels";
 import { MEMBER_LIMITS, memberLimitError } from "./limits";
+import { savedViewAccessWhere } from "./views"; // CRM C3.6 ▸ มุมมองที่ใช้ได้ = ตัวกรองเดียวกับ listSavedViews ◂
 
 // ───────────────────────── ชนิดข้อมูลสาธารณะ ─────────────────────────
 
@@ -353,7 +354,8 @@ export async function listMembers(ctx: MemberCtx, actor: MemberActor, opts: List
 
   let effective: ListMembersOptions = opts;
   if (opts.viewId) {
-    const view = await prisma.memberSavedView.findFirst({ where: { id: opts.viewId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+    // CRM C3.6 ▸ ใช้ได้เฉพาะมุมมองที่ actor มองเห็น (PRIVATE ของคนอื่น · TEAM ของทีมอื่น · ระบบอื่น = ไม่พบ — ตัวกรองเดียวกับ listSavedViews) ◂
+    const view = await prisma.memberSavedView.findFirst({ where: { AND: [await savedViewAccessWhere(ctx, actor), { id: opts.viewId }] } });
     if (!view) throw new MemberNotFoundError("ไม่พบมุมมองที่บันทึกไว้นี้ — อาจถูกลบไปแล้ว");
     const viewFilters = (view.filters ?? {}) as Partial<ListMembersOptions>;
     const viewSort = view.sort as MemberSort | null;

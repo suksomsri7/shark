@@ -102,6 +102,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (เปิด/ปิด · วิธีเข้า · บอร์ดรับเรื่อง · showDeals) · คีย์ `crm.portal.manage` (404 สำหรับคนที่ไม่มี)
   { key: "settings-portal", label: "พอร์ทัลลูกค้า", path: "/crm/settings/portal", status: "ready", wo: "C3.5", perm: "crm.portal.manage" },
   // ◂ CRM C3.5
+  // CRM C3.6 ▸ เชื่อมต่อทุกระบบ (แผนผัง 24 ระบบ · ระบบปลายทาง · สถานะ · งานเบื้องหลัง — ภาพ 17) · คีย์ `crm.settings.manage` (404 สำหรับคนที่ไม่มี)
+  { key: "settings-integrations", label: "เชื่อมต่อทุกระบบ", path: "/crm/settings/integrations", status: "ready", wo: "C3.6", perm: "crm.settings.manage" },
+  // ◂ CRM C3.6
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

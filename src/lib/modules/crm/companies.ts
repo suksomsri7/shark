@@ -34,6 +34,7 @@ import * as party from "@/lib/modules/party";
 import type { CrmAccountContactBrief } from "@/lib/modules/account";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { resolveCrmTargetsDetailed } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
@@ -87,6 +88,29 @@ export { COMPANY_IMPORT_MAX_ROWS, COMPANY_IMPORT_MAX_BYTES, CompaniesError };
 
 const accountFacade = () => import("@/lib/modules/account");
 const memberFacade = () => import("@/lib/modules/member");
+
+// CRM C3.6 ▸ สมุดบัญชีของระบบ CRM นี้ผ่านตัวตัดสินปลายทางตัวเดียว (`resolveCrmTargetsDetailed` — มติผู้คุมงาน C3.6)
+//   ร้านเลือกสมุดไว้ (`settings.crm.targets.accountSystemId`) = เล่มนั้น (`accountSystemForCrm(… { bookId })`) · ไม่ได้เลือก = สมุดของ
+//   AccountSystemLink แบบเดิม · 🔴 "สมุดเดียวของร้าน" (ลำดับ 3) **ไม่** ใช้ที่นี่: ทางนี้เขียนผู้ติดต่อเข้าสมุดบัญชี — ร้านที่ยังไม่เคย
+//   เชื่อม CRM↔บัญชีต้องไม่ถูกเขียนสมุดเงียบ ๆ (ข้อสอบ C1.3-X4.4 · ตัดสินใจของผู้สร้าง C3.6 — แจ้งผู้คุมงานในรายงาน) ◂
+type CrmAccountBook = Awaited<ReturnType<Awaited<ReturnType<typeof accountFacade>>["accountSystemForCrm"]>>;
+async function crmAccountBook(tenantId: string, crmSystemId: string, opts: { partyId?: string | null; contactIds?: readonly string[] } = {}): Promise<CrmAccountBook> {
+  const t = (await resolveCrmTargetsDetailed(tenantId, crmSystemId, ["account"])).account;
+  if (!t.id || (t.via !== "target" && t.via !== "link")) return null;
+  return (await accountFacade()).accountSystemForCrm(tenantId, crmSystemId, { ...opts, bookId: t.id });
+}
+
+// CRM C3.6 ▸ ผู้ติดต่อบัญชีที่บริษัทของระบบนี้ผูกอยู่ (ไม่ซ้ำ · เพดาน 10,000) — `integrations.setTargets` ใช้ปฏิเสธการสลับสมุดบัญชี
+//   เมื่อบริษัทผูกผู้ติดต่อของเล่มอื่นไว้แล้ว (มติผู้ตรวจ S3) · AUDIT-CLASS X1: ผูก tenantId + systemId · ผู้เรียกผ่านด่าน crm.settings.manage มาแล้ว ◂
+export async function heldAccountContactIds(ctx: { tenantId: string; systemId: string }, db: Pick<Db, "crmCompany"> = prisma): Promise<string[]> {
+  const rows = await db.crmCompany.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, accountContactId: { not: null } },
+    select: { accountContactId: true },
+    distinct: ["accountContactId"],
+    take: 10_000,
+  });
+  return rows.map((r) => r.accountContactId).filter((x): x is string => !!x);
+}
 /** engine ฟิลด์ตัวเดียวของระบบ (member facade → namespace `fields` · ใบ C1.2a) */
 const engine = async () => (await memberFacade()).fields;
 
@@ -253,7 +277,7 @@ async function recomputeCachesInTx(tx: Tx, ctx: CompaniesCtx, companyId: string,
 /** ยอดค้างชำระสดจากสมุดบัญชีที่เชื่อม (0 เมื่อไม่ได้เชื่อม/ยังไม่มีผู้ติดต่อฝั่งบัญชี) */
 async function liveOutstanding(ctx: CompaniesCtx, accountContactId: string | null): Promise<number> {
   if (!accountContactId) return 0;
-  const acc = await (await accountFacade()).accountSystemForCrm(ctx.tenantId, ctx.systemId);
+  const acc = await crmAccountBook(ctx.tenantId, ctx.systemId);
   if (!acc) return 0;
   // 🔴 contactIds ต้องไม่ว่าง — outstandingByContacts ที่ได้อาร์เรย์ว่าง = "ทุกผู้ติดต่อของสมุด"
   const map = await (await accountFacade()).outstandingByContacts(ctx.tenantId, acc.systemId, [accountContactId]);
@@ -665,7 +689,7 @@ async function lockRecordForEngine(tx: Tx, id: string): Promise<void> {
 /** ผูก accountContactId ถ้าตัวตนนี้มีผู้ติดต่อในสมุดบัญชีที่เชื่อมอยู่แล้ว (อ่านอย่างเดียว · นอกธุรกรรม · เขียนแบบมีเงื่อนไข) */
 async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): Promise<CrmCompany> {
   if (row.accountContactId) return row;
-  const acc = await (await accountFacade()).accountSystemForCrm(ctx.tenantId, ctx.systemId, { partyId: row.partyId });
+  const acc = await crmAccountBook(ctx.tenantId, ctx.systemId, { partyId: row.partyId });
   if (!acc?.contactOfParty) return row;
   await prisma.crmCompany.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId, accountContactId: null }, data: { accountContactId: acc.contactOfParty } });
   return (await prisma.crmCompany.findFirst({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? row;
@@ -1090,7 +1114,7 @@ export async function setRole(ctx: CompaniesCtx, actor: MemberActor, companyId: 
 export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: string): Promise<Company360> {
   const a = await enter(ctx, actor);
   const row = await loadCompany(ctx, a, id);
-  const acc = await (await accountFacade()).accountSystemForCrm(ctx.tenantId, ctx.systemId);
+  const acc = await crmAccountBook(ctx.tenantId, ctx.systemId);
 
   // R-A (รีวิว SF8): ลิงก์/ดีล/กิจกรรมผ่านตัวช่วยของ where.ts — C1.7 เปลี่ยนการมองเห็นที่ไฟล์เดียว
   const [links, deals, agg, parent, subs, owner, team, activities] = await Promise.all([
@@ -1490,7 +1514,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
       warnings.push("ยังไม่ได้ย้ายเอกสารบัญชี เพราะบัญชีนี้ไม่มีสิทธิ์รวมผู้ติดต่อในระบบบัญชี — ให้ผู้มีสิทธิ์รวมผู้ติดต่อซ้ำที่หน้าระบบบัญชี");
     } else {
       try {
-        const acc = await (await accountFacade()).accountSystemForCrm(ctx.tenantId, ctx.systemId);
+        const acc = await crmAccountBook(ctx.tenantId, ctx.systemId);
         if (acc) {
           const r = await (await accountFacade()).mergeContacts({ tenantId: ctx.tenantId, systemId: acc.systemId }, { primaryId: keptAc, secondaryId: drop.accountContactId, actorId: ctx.actorUserId });
           accountMerge = r.ok ? { ok: true } : { ok: false, reason: r.reason };
@@ -1668,7 +1692,7 @@ export async function importFromAccount(ctx: CompaniesCtx, actor: MemberActor, i
   const a = await enter(ctx, actor);
   need(a, "crm.company.create");
   const acct = await accountFacade();
-  const acc = await acct.accountSystemForCrm(ctx.tenantId, ctx.systemId, { contactIds: ids });
+  const acc = await crmAccountBook(ctx.tenantId, ctx.systemId, { contactIds: ids });
   if (!acc) throw fail("VALIDATION", "ระบบ CRM นี้ยังไม่ได้เชื่อมกับระบบบัญชี — เชื่อมที่หน้าตั้งค่าการเชื่อมต่อของระบบบัญชีก่อน");
   if (ids.length > 0) await seedCompanyFields(ctx, a);
   const byId = new Map<string, CrmAccountContactBrief>(acc.contacts.map((c) => [c.id, c]));
@@ -1844,7 +1868,7 @@ export async function onCompanyCreated(evt: OutboxEvt): Promise<void> {
   let accountContactId = row.accountContactId;
   if (!accountContactId && !row.mergedIntoId && !row.archivedAt) {
     const acct = await accountFacade();
-    const acc = await acct.accountSystemForCrm(evt.tenantId, row.systemId);
+    const acc = await crmAccountBook(evt.tenantId, row.systemId);
     if (acc) {
       const got = await acct.ensureAccountContact(
         { tenantId: evt.tenantId, systemId: acc.systemId },

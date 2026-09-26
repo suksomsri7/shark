@@ -510,3 +510,31 @@ export async function setCrmNotifTemplateJson(
     WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
 }
 // ◂ CRM C2.10
+
+// CRM C3.6 ▸ ระบบปลายทางเมื่อร้านมีหลายระบบ `settings.crm.targets = { memberSystemId, accountSystemId, kanbanSystemId, chatSystemId,
+//   inventorySystemId }` (พิมพ์เขียว §4.5) — ตัวอ่านบริสุทธิ์อยู่ที่ `integrations-shared.ts` (`crmTargetsOf`)
+//   🔴 ตัวเขียน **คำสั่งเดียว** (jsonb ซ้อนสองชั้น crm → targets → คีย์ที่ส่งมา) ⇒ คีย์อื่นของ `settings.crm` และปลายทางชนิดอื่นรอดเสมอ
+//      (สองคนกดบันทึกคนละชนิดพร้อมกันไม่ทำค่าของอีกคนหาย — AUDIT-CLASS X3) · ผู้เรียกเดียวคือ `integrations.setTargets`
+//   AUDIT-CLASS X1: เขียนเฉพาะแถว AppSystem ที่ id + tenantId + type CRM ตรงกัน · คืน `targets` หลังเขียน (null = ไม่พบแถว)
+//   🔴 รับ `db` (tx ของผู้เรียก) — ค่ากับแถว AuditLog commit พร้อมกัน
+export async function setCrmTargetKeys(
+  ctx: { tenantId: string; systemId: string },
+  patch: Readonly<Record<string, string | null>>,
+  db: Pick<typeof crmDb, "$queryRaw"> = crmDb,
+): Promise<unknown | null> {
+  const json = JSON.stringify(patch ?? {});
+  const rows = await db.$queryRaw<{ targets: unknown }[]>`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('targets',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'targets') = 'object' THEN "settings"->'crm'->'targets' ELSE '{}'::jsonb END)
+               || ${json}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'
+    RETURNING "settings"->'crm'->'targets' AS "targets"`;
+  return rows.length > 0 ? (rows[0]?.targets ?? {}) : null;
+}
+// ◂ CRM C3.6

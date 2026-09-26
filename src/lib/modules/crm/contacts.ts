@@ -38,6 +38,7 @@ import { activityWhere, contactWhere, dealWhere } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
+import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import * as assignment from "./assignment";
 import * as companies from "./companies";
 import * as consents from "./consents";
@@ -435,11 +436,24 @@ function parseChannelKey(v: unknown): string | null {
 const UTM_KEYS = ["source", "medium", "campaign", "term", "content"] as const;
 // CRM C1.8 ▸ + submissionId (ลีดจากฟอร์มชี้คำตอบที่ทำให้เกิด — สะพานฟอร์ม · สัญญาข้อสอบ C1.8 S2.2) ◂
 const SOURCE_DETAIL_KEYS = ["formId", "submissionId", "linkId", "pageUrl", "referrer", "chatContactId", "staffUserId", "importJobId", "campaignId"] as const;
+// CRM C3.7 ▸ (รีวิว SF-5) ที่มาที่ "ระบบเป็นคนบอก" — `via` (ป้ายระบบ เช่น card-scan · chat-panel) + `proposalId` (ใบข้อเสนอ AI ที่ทำให้เกิด)
+//   🔴 ไม่อยู่ในรายการคีย์ของผู้เรียก (SOURCE_DETAIL_KEYS) โดยเจตนา: คีย์ทั้งสองที่มากับ input ภายนอก (ฟอร์มหน้าเว็บ · REST `contacts.create` ·
+//      เครื่องมือ AI) ถูกทิ้งเสมอ — ให้ผ่านได้เฉพาะพารามิเตอร์ภายใน `trusted` ของโค้ดฝั่งเซิร์ฟเวอร์: `calls.acceptLeadProposal`
+//      (`{ via: "card-scan", proposalId }`) และ `leadFromBridge` ของแผงแชท (`via: "chat-panel"` — ค่าคงที่ในโค้ด)
+export type TrustedSource = { via?: string | null; proposalId?: string | null };
+const TRUSTED_VIA = /^[a-z0-9-]{1,40}$/;
+const TRUSTED_PROPOSAL = /^[A-Za-z0-9_-]{1,64}$/;
+// ◂ CRM C3.7
 
 /** AUDIT-CLASS X6: sourceDetail เก็บเฉพาะคีย์ที่รู้จัก · ค่าข้อความ ≤ 500 · url เฉพาะ http/https · utm 5 คีย์เรียงคงที่ */
-function cleanSourceDetail(raw: unknown): Record<string, unknown> | null {
-  if (!isObj(raw)) return null;
+function cleanSourceDetail(raw: unknown, trusted?: TrustedSource | null): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
+  // CRM C3.7 ▸ ค่าที่ระบบบอกเอง (ดู TrustedSource) — รูปผิด = ไม่เก็บ (ไม่ throw: ที่มาไม่ควรทำให้ผู้ติดต่อหล่นหาย) ◂
+  const tVia = str(trusted?.via);
+  const tProp = str(trusted?.proposalId);
+  if (tVia && TRUSTED_VIA.test(tVia)) out.via = tVia;
+  if (tProp && TRUSTED_PROPOSAL.test(tProp)) out.proposalId = tProp;
+  if (!isObj(raw)) return Object.keys(out).length > 0 ? out : null;
   if (isObj(raw.utm)) {
     const utm: Record<string, string> = {};
     for (const k of UTM_KEYS) {
@@ -515,7 +529,7 @@ function cleanLocale(v: unknown): string | null {
 }
 // ◂ CRM C2.3
 
-function cleanCreate(input: CreateContactInput): CreateClean {
+function cleanCreate(input: CreateContactInput, trusted?: TrustedSource | null): CreateClean {
   const firstName = cleanName(input.firstName, "ชื่อจริง", true) as string;
   const lastName = cleanName(input.lastName, "นามสกุล", false);
   const tags = cleanTags(Array.isArray(input.tags) ? input.tags : []);
@@ -531,7 +545,7 @@ function cleanCreate(input: CreateContactInput): CreateClean {
     lineUserId: textOrNull(input.lineUserId, "LINE user id", 100),
     sourceKind: parseSource(input.sourceKind),
     sourceChannel: parseChannelKey(input.sourceChannel),
-    sourceDetail: cleanSourceDetail(input.sourceDetail),
+    sourceDetail: cleanSourceDetail(input.sourceDetail, trusted), // CRM C3.7 ◂
     tags: tags.tags,
     ownerUserId: str(input.ownerUserId),
     companyId: str(input.companyId),
@@ -760,7 +774,8 @@ async function linkCompany(ctx: ContactsCtx, actor: MemberActor, companyId: stri
   }
 }
 
-export async function createContact(ctx: ContactsCtx, actor: MemberActor, input: CreateContactInput): Promise<CreateContactResult & { warnings: string[] }> {
+// CRM C3.7 ▸ `opts.trustedSource` = ที่มาที่โค้ดฝั่งเซิร์ฟเวอร์ยืนยันเอง (via/proposalId) — ผู้เรียกจากภายนอกไม่มีทางส่งค่านี้ (ไม่ใช่ช่องของ input) ◂
+export async function createContact(ctx: ContactsCtx, actor: MemberActor, input: CreateContactInput, opts?: { trustedSource?: TrustedSource | null }): Promise<CreateContactResult & { warnings: string[] }> {
   const a = await enter(ctx, actor);
   need(a, "crm.contact.create");
   const { merged, custom } = await splitFields((input ?? {}) as CreateContactInput, input?.fields);
@@ -769,7 +784,7 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
   //   โดย **ไม่ย้ายออกจาก bag** (engine ยังเป็นผู้เขียนค่าฟิลด์รอบหลัง insert เหมือนเดิม · ค่าเดียวกัน คอลัมน์เดียวกัน) ◂
   const auto = str(merged.ownerUserId) === "auto";
   const localeIn = merged.locale ?? (typeof custom.locale === "string" ? custom.locale : null);
-  const clean = cleanCreate({ ...merged, locale: localeIn, ...(auto ? { ownerUserId: null } : {}) });
+  const clean = cleanCreate({ ...merged, locale: localeIn, ...(auto ? { ownerUserId: null } : {}) }, opts?.trustedSource ?? null);
   // ค่าที่มาทาง `fields.locale` ต้องลงคอลัมน์เป็นรูปเดียวกับที่ใช้ตัดสิน (engine เขียนทับรอบหลัง insert — "EN" ต้องไม่ชนะ "en")
   if (typeof custom.locale === "string" && clean.locale) custom.locale = clean.locale;
   if (clean.ownerUserId) await assertMember(ctx, clean.ownerUserId);
@@ -1461,8 +1476,11 @@ export async function contactOptions(ctx: ContactsCtx, actor: MemberActor, opts:
 /** ตัวเลือกของโมดัลแปลง: ระบบสมาชิกของร้าน · pipeline ของระบบนี้ (ขั้นที่ยังเปิด) */
 export async function convertOptions(ctx: ContactsCtx, actor: MemberActor): Promise<ConvertOptions> {
   await enter(ctx, actor);
-  const [systems, pipes] = await Promise.all([
-    prisma.appSystem.findMany({ where: { tenantId: ctx.tenantId, type: "MEMBER" }, select: { id: true, name: true }, orderBy: { createdAt: "asc" }, take: 20 }),
+  // CRM C3.6 ▸ ตัวเลือกระบบสมาชิก = raw lookup ตัวเดียว (`listTargetCandidates`) · ค่าตั้งต้น (แถวแรก = ที่โมดัลเลือกไว้ให้) =
+  //   ปลายทางจากตัวตัดสิน (`resolveCrmTargets`: ที่ร้านเลือก → ผูกสาขา → ระบบเดียว) — DTO `ConvertOptions` ไม่เปลี่ยนรูป ◂
+  const [candidates, targets, pipes] = await Promise.all([
+    listTargetCandidates(ctx.tenantId, "member"),
+    resolveCrmTargets(ctx.tenantId, ctx.systemId, ["member"]),
     prisma.crmPipeline.findMany({
       where: { ...identityScope(ctx), archivedAt: null },
       include: { stages: { where: { kind: "OPEN" }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } } },
@@ -1470,6 +1488,10 @@ export async function convertOptions(ctx: ContactsCtx, actor: MemberActor): Prom
       take: 50,
     }),
   ]);
+  const systems = candidates
+    .sort((a, b) => Number(b.id === targets.member) - Number(a.id === targets.member))
+    .slice(0, 20)
+    .map((c) => ({ id: c.id, name: c.name }));
   return { memberSystems: systems, pipelines: pipes.map((p) => ({ id: p.id, name: p.name, isDefault: p.isDefault, stages: p.stages })) };
 }
 
@@ -1499,8 +1521,9 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
   // ── ตรวจเป้าหมายทั้งหมดก่อนเปิดธุรกรรม (AUDIT-CLASS X1) ──
   let memberSystemId: string | null = null;
   if (wantMember) {
-    const sid = str((input.member as { systemId?: unknown }).systemId);
-    const sys = sid ? await prisma.appSystem.findFirst({ where: { id: sid, tenantId: ctx.tenantId, type: "MEMBER" }, select: { id: true } }) : null;
+    // CRM C3.6 ▸ ไม่ระบุระบบ = ปลายทางจากตัวตัดสิน · ระบุ = ต้องเป็นระบบสมาชิกของร้านนี้ (ตัวเลือกจาก raw lookup ตัวเดียว) ◂
+    const sid = str((input.member as { systemId?: unknown }).systemId) ?? (await resolveCrmTargets(ctx.tenantId, ctx.systemId, ["member"])).member;
+    const sys = sid ? (await listTargetCandidates(ctx.tenantId, "member")).find((c) => c.id === sid) ?? null : null;
     if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบสมาชิกที่เลือกในร้านนี้ — เลือกใหม่จากรายการ");
     memberSystemId = sys.id;
   }
@@ -2299,7 +2322,8 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
     sourceKind: kind === "CHAT" ? "CHAT" : kind === "EMAIL" ? "OTHER" : "WEB_FORM",
     // CRM C2.5 ▸ ช่องทางที่มาของ lead จากอีเมล (ทะเบียนช่องทางกลาง D19 มี EMAIL อยู่แล้ว) ◂
     sourceChannel: kind === "EMAIL" ? "EMAIL" : base.clean.sourceChannel,
-    sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null),
+    // CRM C3.7 ▸ `via` ของแผงแชทเป็นค่าคงที่ในชนิด ("chat-panel") ⇒ ส่งเป็นที่มาที่เชื่อถือได้ · `sourceDetail.via` ที่มากับ input ถูกทิ้ง ◂
+    sourceDetail: cleanSourceDetail(input?.sourceDetail ?? null, input?.via === "chat-panel" ? { via: "chat-panel" } : null),
     locale: cleanLocale(input?.locale ?? null), // CRM C2.3 ◂
   };
   // CRM C2.3 ▸ ค่าฟิลด์กำหนดเองที่สะพานจับคู่มาแล้ว (ไม่มี = {} เหมือนเดิม)

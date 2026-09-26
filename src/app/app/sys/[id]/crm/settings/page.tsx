@@ -69,6 +69,9 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
     { key: "visibility", href: `${base}/settings/visibility`, title: "การมองเห็นข้อมูล", desc: "ใครเห็นผู้ติดต่อ บริษัท ดีล และกิจกรรมของใคร", show: crmCan(actor, "crm.visibility.manage") },
     { key: "teams", href: "/app/settings/teams", title: "ทีมขาย", desc: "สร้างทีม ตั้งหัวหน้าทีม และสมาชิกที่รับ lead", show: crmCan(actor, "crm.team.manage") },
     { key: "api", href: `${base}/settings/api`, title: "API และ webhook", desc: "คีย์สำหรับระบบภายนอกและผู้ช่วย AI · ปลายทาง webhook และประวัติการส่ง", show: crmCan(actor, "crm.api.manage") },
+    // CRM C3.6 ▸ เชื่อมต่อทุกระบบ (ภาพ 17) — การ์ดขึ้นเฉพาะคนที่เปิดหน้าได้จริง (คีย์ `crm.settings.manage` · ไม่โชว์ลิงก์ตาย)
+    { key: "integrations", href: `${base}/settings/integrations`, title: "เชื่อมต่อทุกระบบ", desc: "แผนผัง 24 ระบบ · ระบบปลายทางเมื่อมีหลายระบบ · สถานะเหตุการณ์ และงานเบื้องหลัง", show: crmCan(actor, "crm.settings.manage") },
+    // ◂ CRM C3.6
   ];
   const onOff = (v: boolean) => (v ? "เปิด" : "ปิด");
 

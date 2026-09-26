@@ -99,7 +99,8 @@ const workingSince = (resultNote: unknown): number | null => {
 export type CallsCtx = { tenantId: string; systemId: string; actorUserId: string | null };
 export type CallStoreDeps = { put?: UploadDeps["put"]; del?: DeleteDeps["del"] };
 export type TranscribeDeps = { transcriber?: CrmTranscriber; ai?: AiProvider };
-export type LogCallResult = { activity: ActivityDto; nextTaskId: string | null; recording: RecordingDto | null };
+// CRM C3.7 ▸ `replayed` = `opts.sourceRef` เดิม ⇒ แถว CALL เดิม (ไม่เขียนใหม่ · ไม่แนบเสียง) ◂
+export type LogCallResult = { activity: ActivityDto; nextTaskId: string | null; recording: RecordingDto | null; replayed?: boolean };
 
 type Tx = Prisma.TransactionClient;
 
@@ -223,7 +224,8 @@ function parseDirection(v: unknown): CallDirection {
  * AUDIT-CLASS X6: ไฟล์เสียงถูกตรวจ **ก่อน** เขียนอะไรทั้งหมด ⇒ ไฟล์ผิด = ไม่มีกิจกรรม ไม่มี put ไม่มี FileAsset
  * AUDIT-CLASS X1 · X2: การมองเห็นเป้าหมาย + คีย์ `crm.activity.create` ตัดสินใน `logActivity` (ทางเดียวกับฟอร์มกิจกรรม)
  */
-export async function logCall(ctx: CallsCtx, actor: MemberActor, input: LogCallInput, deps?: CallStoreDeps): Promise<LogCallResult> {
+// CRM C3.7 ▸ `opts.sourceRef` = กุญแจกันซ้ำภายในของผู้เรียกฝั่งเซิร์ฟเวอร์ (แอปพนักงาน) — ส่งต่อให้ `activities.logActivity` ◂
+export async function logCall(ctx: CallsCtx, actor: MemberActor, input: LogCallInput, deps?: CallStoreDeps, opts?: { sourceRef?: string | null }): Promise<LogCallResult> {
   const { a } = await enter(ctx, actor);
   if (!isObj(input)) throw fail("VALIDATION", "ข้อมูลของสายไม่ครบ — กรอกฟอร์มใหม่อีกครั้ง");
   const direction = parseDirection(input.direction);
@@ -247,10 +249,11 @@ export async function logCall(ctx: CallsCtx, actor: MemberActor, input: LogCallI
       durationSec: input.durationSec ?? null,
       remindAt: input.remindAt ?? null,
       ...(input.nextTask ? { nextTask: input.nextTask } : {}),
-    })
+    }, opts?.sourceRef ? { sourceRef: opts.sourceRef } : undefined) // CRM C3.7 ◂
     .catch((e: unknown) => {
       throw mapError(e);
     });
+  if (logged.replayed) return { activity: logged, nextTaskId: logged.nextTaskId, recording: null, replayed: true }; // CRM C3.7 ◂
   let recording: RecordingDto | null = null;
   if (rec) {
     recording = await attachCore(ctx, a, logged.id, rec, deps).catch((e: unknown) => {
@@ -687,10 +690,9 @@ export async function acceptLeadProposal(ctx: CallsCtx, actor: MemberActor, prop
       jobTitle: str(payload.jobTitle),
       sourceKind: "OTHER",
       // 🔴 ไม่ตั้ง `sourceChannel`: ช่องนั้นรับได้เฉพาะคีย์ในทะเบียนช่องทางของระบบ (EMAIL/LINE/…) — "นามบัตร" ไม่ใช่ช่องทางสื่อสาร
-      //    ที่มาที่แท้จริงถูกเก็บใน `sourceDetail.via` ซึ่งเป็นช่องอิสระอยู่แล้ว
-      sourceDetail: { via: "card-scan", proposalId: p.id },
+      //    ที่มาที่แท้จริงถูกเก็บใน `sourceDetail.via` (+ proposalId) ผ่าน `trustedSource` — CRM C3.7
       force: true,
-    });
+    }, { trustedSource: { via: "card-scan", proposalId: p.id } }); // CRM C3.7 ▸ ที่มาผ่านพารามิเตอร์ภายใน (sourceDetail ของ input ภายนอกไม่รับ via/proposalId) ◂
     await prisma.aiProposal.update({ where: { id: p.id }, data: { resultNote: `เพิ่มผู้ติดต่อแล้ว (${res.contact.id})` } });
     return { contactId: res.contact.id };
   } catch (e) {

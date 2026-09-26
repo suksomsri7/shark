@@ -18,6 +18,7 @@ import { consentChannels, getChannel } from "@/lib/core/channels";
 import { emitOutbox } from "@/lib/core/outbox";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { listTargetCandidates } from "./integrations"; // CRM C3.6 ▸ raw lookup ตัวเดียวของระบบปลายทาง ◂
 import { contactWhere } from "./where";
 import {
   CONSENT_SOURCES,
@@ -71,7 +72,8 @@ async function loadContact(ctx: ConsentsCtx, actor: MemberActor | null | undefin
 export async function memberSystemOf(tenantId: string, customerId: string | null | undefined): Promise<{ systemId: string; memberCode: string; name: string } | null> {
   const cid = str(customerId);
   if (!tenantId || !cid) return null;
-  const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "MEMBER" }, select: { id: true }, orderBy: { createdAt: "asc" }, take: 20 });
+  // CRM C3.6 ▸ "ลูกค้าคนนี้อยู่ระบบสมาชิกไหน" = raw lookup ตัวเดียวของระบบปลายทาง (`listTargetCandidates` — ทุกระบบสมาชิกของร้าน) ◂
+  const systems = (await listTargetCandidates(tenantId, "member")).slice(0, 20);
   const m = await memberFacade();
   for (const s of systems) {
     const refs = await m.memberRefs({ tenantId, systemId: s.id, actorUserId: null }, [cid]);
