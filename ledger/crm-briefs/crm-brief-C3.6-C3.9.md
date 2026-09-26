@@ -127,6 +127,53 @@ Everything below is **oracle-proposed — controller to confirm** (a different r
 Contract: CRM-RUN §2 "C3.8". Ops: reports, quotas, commissions, portal (customer lane: `Authorization: Bearer cs_…`, only `/portal/*` paths), dynamic records for every object, integrations. `docs/api/CRM-API.md` now 100 % generated; skill manifest 32 tools; F13.10–12 strict.
 X2 FULL MATRIX generated from the registry: for every op and tool × {no-scope key, other-module key, readonly, operate, admin, team-filtered key, customer token, assistant-as-thana} → expected allow/deny asserted (no hand-written exceptions) · smoke every op once.
 
+## Addendum (oracle author) — 26 ก.ย. 2569 · `scripts/qc-crm-c3.8.mts` (31 ข้อ: K 1 · S1 1 · S2 4 · S3 3 · S4 2 · S5 1 · S6 2 · S7 1 · S8 6 · X1 1 · X2 2 · X3 1 · X6 1 · X8 2 · X9 1 · U 1 · CLEAN)
+Everything below is **oracle-proposed — controller to confirm** (a different ruling ⇒ ORACLE-EDIT the named check before the builder starts).
+1. **16 new ops** (S1.1 — each `test: "C3.8-…"`, strict input, Thai label, ASCII summary; registry total ≥ **117**, C3.4's `deals.atRisk.list` ·
+   `activities.taskCard.open` count too when present):
+   | id | METHOD path | key | kind | service |
+   |---|---|---|---|---|
+   | reports.get | GET /reports/{tab} | crm.report.view | read (rate report · tool crm_reports) | reports.getReport · query `from? to? teamId? pipelineId? ownerUserId?` |
+   | reports.export.start | POST /reports/{tab}/export | crm.report.view | danger (crm.admin key) | reports.startExport → `{ jobId, status }` |
+   | reports.export.get | GET /reports/exports/{jobId} | crm.report.view | read | reports.getExport (requester only · signed /api/files url) |
+   | quotas.list | GET /quotas | crm.report.view | read | quotas.listQuotas `{ periodKey?, ownerType? }` |
+   | quotas.set | PUT /quotas | crm.quota.manage | write | quotas.setQuota `{ ownerType, ownerId, periodKey (B.E. "2569-09"), targetSatang, … }` |
+   | quotas.progress | GET /quotas/progress | crm.report.view | read (tool crm_quota_progress) | quotas.progress `{ ownerType, ownerId, periodKey }` |
+   | commissions.mine | GET /commissions/mine | crm.commission.view | read (tool crm_commissions_mine) | commissions.mine |
+   | commissions.list | GET /commissions | crm.commission.view | read | commissions.list |
+   | commissions.approve | POST /commissions/{id}/approve | crm.commission.approve | write | commissions.approve `{ reason? }` |
+   | commissions.reject | POST /commissions/{id}/reject | crm.commission.approve | danger | commissions.reject (reason = the danger reason) |
+   | portal.access.list | GET /companies/{id}/portal-access | crm.portal.manage | read | portal.listAccess |
+   | portal.invite | POST /companies/{id}/portal-invites | crm.portal.manage | write | portal.invite `{ contactId, role?, loginMethods? }` |
+   | portal.revoke | POST /portal-access/{id}/revoke | crm.portal.manage | danger | portal.revoke |
+   | objects.schema.get | GET /objects/{key}/schema | crm.record.read | read | records-dynamic.objectValueSchema |
+   | integrations.status | GET /integrations | crm.settings.manage | read | integrations.integrationStatus |
+   | integrations.targets.set | PUT /integrations/targets | crm.settings.manage | write | integrations.setTargets |
+   Recommended (not asserted): integrations.targets.get · quotas.board · commissions.report · commissions.pending. 🔴 staff-side portal paths must
+   NOT start with `/portal` (dispatch sends `path[0] === "portal"` to the customer lane). The C3.4 tools crm_reports / crm_quota_progress /
+   crm_commissions_mine attach to the ops above — whichever of C3.4/C3.8 lands first creates the op with THIS id (the other only adds `tool`).
+2. **Records dynamic** (SKIP guard): `src/lib/modules/crm/api/ops/records-dynamic.ts` exports `RECORDS_DYNAMIC_OPS` · `objectValueSchema(ctx, actor,
+   objectKey)` (JSON schema of the live fields; sensitive fields only for actors allowed to see them) · `crmObjectsOpenApi({ tenantId, systemId })` →
+   `{ paths: { "/objects/<key>/records", "/objects/<key>/records/{id}" }, objects: [{ key, fields[] }] }`. `GET /api/v1/crm/openapi.json` WITHOUT a key
+   = today's static doc (no tenant data); WITH a CRM key = + the concrete per-object paths. A new object works at once (no restart); a wrong value type ⇒ 422 Thai.
+3. **Manifest** (SKIP guard): `src/lib/modules/crm/api/manifest.ts` → `crmManifest(): { version, ops[{id,method,path,kind,action,tool?}], portalOps[…],
+   tools[{name,opId,write,danger}], webhookEvents[], internalEvents[] }` (pure, from the registries) + route `src/app/api/v1/crm/manifest.json/route.ts`
+   (no key, like openapi.json) · `buildOpenApi()` gains `x-shark-webhooks` = crmWebhookEvents() · webhook-events.ts exports **`CRM_INTERNAL_EVENTS`**
+   (consumer-only flag events deliberately NOT offered to webhooks; every other CRM-prefixed consumer must be offered — S6.1).
+4. **Tools = 32** exactly (S4.2) — 23 today + the 9 of C3.4; manifest lists the same 32.
+5. **Docs / skill**: renderDocs() gains a portal-lane section (every PORTAL_OPS path) — docs stay byte-equal to the generator and `--check` exits 0 ·
+   `renderEndpointsReference()` lists CRM_OPS **and** PORTAL_OPS · `.claude/skills/shark-crm-api/SKILL.md` (frontmatter `name: shark-crm-api`, names all
+   32 tools) — `.claude/` is gitignored, so fitness cannot see it; S7.1 (= "skill F13.9" of CRM-RUN) checks it in the worktree.
+6. **Smoke every op** (S8.x) runs over the LIVE registry: requests are built from each op's path + JSON schema (+ a small table of business inputs); reads
+   must be 200 · writes 2xx or a Thai 400/404/409/422 · no key/unknown key 401 · no-scope/other-module key 403 · cross-tenant ids 404 · readonly 403 on writes
+   (reads per bundle, phone/e-mail masked) · 429 + Retry-After + Thai for every op once the DB bucket `crm:api:<kind>:<keyId>` is at its limit (portal:
+   `crm:portal:api:<tenant>:<kind>:<accessId>`). X2.1 = full matrix op × {no-scope, other-module, readonly, operate, admin, team-filtered, customer token}
+   with the expectation derived from the bundles (scope ∧ readonly-writes ∧ danger-export-needs-admin); X2.2 = assistant-as-thana over every tool.
+7. Oracle mechanics: throwaway tenants `qc-c38-<rand>-{a,b}` (CRM systems v2 · v2 · v1 + tenant B), 8 API keys, portal accesses + minted cp_ sessions;
+   the seed is only READ (K.1 · S3.1); docs + skill reference snapshotted/restored; buckets of our keys swept. Today (`--force-run`, builder absent)
+   **17/31** green = the registry-wide regression probes (S8.2–S8.6 · S2.1–S2.4 · S6.2 · X1.1 · X2.1 · X2.2 · X8.1 · U.1) + K.1 + CLEAN; S8.1 is red only
+   on the ≥ 117 count.
+
 # C3.9 — PDPA, retention, limits, penetration checks
 Contract: CRM-RUN §2 "C3.9"; blueprint §11.7, §11.9; decisions C20, C21.
 - NEW event `member.erased {customerId, partyId}` emitted by `eraseMember` alongside today's `member.updated`/`changedKeys:["erased"]` (3 registries) → CRM eraser. NEW CRM-side erase for contacts that are not members (request → approval → erase) keyed by Party.
@@ -135,6 +182,63 @@ Contract: CRM-RUN §2 "C3.9"; blueprint §11.7, §11.9; decisions C20, C21.
 - Penetration oracle: thana across teams; portal across companies; tracking without consent; readonly key never gets e-mail bodies; SSRF on every server-side fetch; open redirects; CSV injection on every export; file links across viewers; rate limits on every public route; `"use server"` export scan; payload/log PII scan over a full scripted day of activity.
 Regressions: `qc-member-m1.7`, `qc-member-fix-s4`, `qc-pdpa`, everything CRM. Then the controller closes phase C3: full `qc:all`, journeys US7 + US10.
 
+## Addendum (oracle author) — 26 ก.ย. 2569 · `scripts/qc-crm-c3.9.mts` (36 ข้อ: K 1 · S1 6 · S2 2 · S3 2 · S4 2 · S5 3 · S6 5 · S7 4 · X1 2 · X3 1 · X4 1 · X6 2 · X8 2 · X9 1 · X10 1 · CLEAN)
+Everything below is **oracle-proposed — controller to confirm** (a different ruling ⇒ ORACLE-EDIT the named check before the builder starts).
+1. **`src/lib/modules/crm/privacy.ts`** (SKIP guard) · facade block `// CRM C3.9 ▸ export * as privacy from "./privacy" ◂`:
+   - `eraseContact(ctx, actor|null, { contactId, confirm: true, reason ≥ 5, source?: "REQUEST"|"MEMBER"|"RETENTION" }, deps?: { del?(path) })` →
+     `{ contactId, partyId|null, erased: boolean, counts }` · key `crm.contact.delete` (actor null = system callers only) · danger (no confirm / short
+     reason ⇒ VALIDATION, nothing touched) · identity anonymised: `name = CRM_ERASED_NAME` ("ลบตามคำขอ PDPA"), phone/email/lineUserId/note/jobTitle/
+     firstName/lastName/company null, previousEmails/tags [] · Party anonymised when no other holder, else unlinked · deleted/cleared: e-mail
+     body/snippet/subject/from-to of the person + attachment files · call body/transcript/aiSummary/aiNextStep/recordingFileId + FileAsset (storage via
+     `deps.del`) · CrmWebSession/Event · CrmTrackedClick · portal access/session/request (reuse `portal.eraseContact`) · AiProposal rows naming the
+     contact (card scans) · CrmContactConsent notes · CustomRecordValue of records whose parent is the contact + sensitive values referencing its Party
+     (R-E.10) · record titles · AppNotification bodies naming it · CRM rows of MemberAccessLog · `AutomationRun.payload` · CrmCompanyContact note/jobTitle.
+     **Kept**: deals (title/value/stage/paid/owner), stage history, CrmDealPayment, CrmCommission, activity rows (emptied). AuditLog
+     `crm.contact.erase` (+ reason) · outbox **`crm.contact.erased`** `{ contactId, systemId, partyId? }` key `crm.contact.erased#<contactId>` (consumer +
+     one label). Idempotent (second call `erased:false`, no new audit/event; 10 parallel ⇒ one) · other tenant / other CRM system ⇒ NOT_FOUND.
+     The oracle scans EVERY tenant-scoped table (AuditLog aside) for the person's name/phone/e-mail/LINE id/note — 0 hits required.
+   - member-linked contact ⇒ ONE `eraseMember` through the member facade; `eraseMember` emits the NEW **`member.erased {customerId, partyId}`**
+     (3 registries, alongside today's `member.updated`) whose CRM consumer erases every linked contact once (flag-first; twice + parallel = no-op).
+   - `exportContact(ctx, actor, contactId) → { contact, tables: Record<model, rows[]> }` (same table list as erase) · `exportTenant(ctx, actor,
+     { format: "CSV"|"JSON" }, deps?: { put? })` → `{ jobId }` = `CrmImportJob kind "CRM_EXPORT"` on the C3.1 lane · `runExportJobs({ now, tenantIds,
+     deps })` (or `reports.runExportJobs` picking the kind) · `getExport(ctx, actor, jobId) → { status, url }` (requester only; url = signed
+     `/api/files/<id>?exp&sig`; file path `t/<tid>/private/…`, cdnUrl `private://…`) · key `crm.contact.export` · MANAGER exports omit sensitive values ·
+     e-mail bodies never exported · every CSV cell through `csvRow`.
+   - `purge(now, { tenantIds?, systemIds?, deadline?, signal?, deps? })` → `{ emails, recordings, webSessions, exports, leadsErased, leadsWarned }` —
+     honours the filters; conditional updates/deletes so overlapping runs purge each row once.
+2. **Retention settings** (single-statement jsonb_set): existing `settings.crm.email.retentionDays` (≥ 30) · `settings.crm.retention.recordingDays` ·
+   `settings.crm.tracking.web.retentionDays` (30–730) + NEW `settings.crm.retention.exportDays` (default 7) · `settings.crm.retention.leadMonths` (C21,
+   default 24, 0 = off): unconverted leads idle longer are erased (`source "RETENTION"`), those within 30 days of it get ONE in-app warning first.
+3. **Jobs** (daily, `everyMinutes: 1440`): existing `crm.purge.email` · `crm.purge.web` + NEW `crm.purge.exports` · `crm.retention.leads` (S3.2).
+4. **`src/lib/modules/crm/limits.ts`**: `CRM_LIMITS` = blueprint §11.9 — contacts 200000 · companies 50000 · openDeals 20000 · pipelines 10 ·
+   stagesPerPipeline 12 · linesPerDeal 100 · emailsPerDay 2000 · sequences 50 · stepsPerSequence 20 · activeEnrollments 5000 · assignmentRules 30 ·
+   scoreRules 50 · emailTemplates 100 · objectsWarn 30 · fieldsPerObject 60 · trackedLinks 1000 · webEventsPerMonth 5000000 · webhookEndpoints 20 ·
+   automationRunsPerMonth 5000 · `CRM_LIMIT_WARN_RATIO = 0.8` · `crmLimits(tenantId)` (overrides `Tenant.limits.crm.<key>`) · `crmUsage(ctx, key)` ·
+   `assertCrmLimit(ctx, key, adding = 1)` (error `.code "LIMIT"`, Thai; the check and the insert atomic — X3.1 10 parallel with one slot ⇒ 1) ·
+   crossing 80 % ⇒ exactly ONE AppNotification to each OWNER + ONE OpsEvent WARN `source "crm.limits"` (ids only) per (system, key, Thai month) ·
+   `limitStatus(ctx, actor) → { rows: { key, limit, used, ratio, warn }[] }` · `CRM_PARAM_CAPS` = every `crm._max*` permission param
+   (`_maxDealDiscountBp`, `_maxCommissionApproveSatang`, `_maxReassignPerDay` today) → its enforcer. Real create paths gated: pipelines · contacts ·
+   companies · sequences · trackedLinks · scoreRules · assignmentRules (S6.3). Hard caps kept: bulk e-mail 500 · saved views 50 · reassign/discount
+   params route to approval when an ApprovalPolicy exists (the oracle creates `crm.reassign` / `crm.discount` policies).
+5. **Public limits** (S5): every route/action file under `/l /t /u /b /f /api/v1/crm/public /api/email/inbound` must reach `checkRateLimitDb`
+   (static reachability) · human-facing entries (portal OTP, invite accept, LINE login, `/api/v1/crm/public/*`) refuse in Thai / 429 after the limit ·
+   collectors & redirects keep ONE answer shape (X7) while the `crm:*` buckets count with hashed keys.
+6. **Penetration** (S7): surfaces enumerated at run time — every read/list function of every CRM facade namespace (name-pattern; write verbs
+   excluded), reports × 8 tabs, REST through a thana-scoped key (`crm.filter.owner`), every AI tool, every `src/app/api/mobile/crm/**` route, portal
+   staff functions, exports; owner = positive control · portal service across companies + file links bound to one portal session · tracking without
+   consent (none / declined ⇒ 0 rows, accepted ⇒ rows) · readonly key over every GET op ⇒ no e-mail body.
+7. Oracle mechanics: throwaway tenants `qc-c39-<rand>-{a,b}` (CRM ×2 + MEMBER + tenant B · owner/manager/thana/nok · phuket/krabi teams · raw
+   rows fixed by construction); `Tenant.limits` and approval policies live in the throwaway tenant only; storage calls go to fake `deps.del/put`;
+   the seed is only READ (K.1 · X1.2). Today (`--force-run`, builder absent) **14/36** green: K.1 · S4.1–S4.2 · S5.1–S5.3 · S7.1–S7.4 · X1.2 · X6.2 ·
+   X8.1 · CLEAN. 🔴 X8.2 is red on current code outside the privacy service: `src/app/(store)/f/[token]/actions.ts` (a `"use server"` file) exports
+   `type PublicFormActionResult` — the C3.9 builder moves it to a shared file (house rule; a 500 at runtime although build passes).
+
 ## Controller ruling C3.6 + C3.7 (26 ก.ย. 2569 · Fable 5.1 · binding)
 - **CONFIRMED addendum ทั้งหมดของ C3.6 และ C3.7**: resolver `resolveCrmTargets(tenantId, crmSystemId)` ลำดับ stored > unit link > ระบบเดียว > null (null = พฤติกรรมเดิม) · `listTargetCandidates` เป็น raw lookup เดียวที่อนุญาต · 7 จุดต้องผ่าน resolver (member-bridges · contacts · consents · deals · activities · companies · automation SEND_LINE — เพิ่ม `opts.bookId` ใน `accountSystemForCrm` และฟังก์ชัน chat facade สำหรับ target ได้ในบล็อกติดป้าย C3.6) · `settings.crm.targets` jsonb_set เดียว + audit `crm.integrations.targets` + `crm.settings.manage` · widgets `S:CRM:my-deals`/`today-tasks`/`portal` · **`SavedViewDto` ของสมาชิกห้ามเปลี่ยน** (UI picker อ่าน teamId จาก lookup แยก) · หน้า `/crm/settings/integrations` + nav perm · mobile routes error `{error,message}` · 409 `CRM_V2_DISABLED` · limiter 120/นาที · idempotencyKey · scan-card JSON · app screens/testIDs/`drawer-crm`/`crm-link.ts`/`call-prompt.ts` · harness `shoot-crm.mjs` summary
 - 🔴 C3.7: `/root/qc-shark-mobile/node_modules` หายจาก VPS — builder C3.7 ต้องทำ README ขั้น 3 (ติดตั้งใหม่ผ่าน iso · ห้ามพร้อมกับ typecheck) ก่อนถ่ายจอแอป · ภาพ 390 ของหน้าเว็บ + จอแอป 3 จอ ผู้คุมงานถ่ายในยูนิต (build) ตามลำดับที่ผู้เขียนข้อสอบระบุ
+
+## Controller ruling C3.8 + C3.9 (26 ก.ย. 2569 · Fable 5.1 · binding)
+- **CONFIRMED addendum ทั้งหมด**: (1) op ใหม่ 16 ตัว — op ที่ใช้ร่วมกับ C3.4 (`reports.get` · `quotas.progress` · `commissions.mine` ใต้ `crm.commission.view`) **C3.4 เป็นผู้สร้าง** (C3.8 ใช้ต่อ · S1.1 นับรวม ≥117) · op ฝั่งพนักงานห้ามขึ้นต้น `/portal` (2) ไฟล์ `manifest.ts` · `records-dynamic.ts` · `CRM_INTERNAL_EVENTS` · `x-shark-webhooks` · `privacy.ts` (`eraseContact/exportContact/exportTenant/runExportJobs/getExport/purge`) · skill ตรวจใน worktree (3) event `crm.contact.erased` + `member.erased` · retention `settings.crm.retention.exportDays` 7 · `leadMonths` 24 เตือนล่วงหน้า 30 วัน · job รายวัน `crm.purge.exports` + `crm.retention.leads` (4) `limits.ts` 19 คีย์ §11.9 · เตือน 0.8 (OWNER + OpsEvent `crm.limits` ต่อระบบ/คีย์/เดือนไทย) · error `LIMIT` · `CRM_PARAM_CAPS` (5) collectors/redirects ตอบเงียบแบบเดิม
+- 🔴 **บั๊กเดิมที่ข้อสอบ X8.2 จับ**: `src/app/(store)/f/[token]/actions.ts` export type ใน "use server" (บทเรียน reference_next_use_server_no_type_export = หน้า 500 ทั้งที่ build ผ่าน) → builder C3.9 ย้าย type ไป `*-shared.ts` (บล็อกติดป้าย C3.9) + รัน `qc-form`/`qc-crm-c2.6`
+- finding เลนสมาชิก: bucket OTP/invite เก็บ IP ดิบในคีย์ (`customer-otp:ip:<ip>` · `portal-invite:<tenant>:<ip>`) → C3.9 แฮชคีย์ IP ของ portal-invite (ของ CRM) · ของสมาชิกจดให้เลนสมาชิก
+- ลำดับ: **builder C3.9 เริ่มได้เลย** (c23/QC3 · ไม่แตะ commissions/payments/api ops ใหม่) · **builder C3.8 หลัง C3.4 รวม** (ต้องมี op ร่วม 3 ตัว + tools 32)
