@@ -40,7 +40,7 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
-### 0.11 สถานะ 26 ก.ย. 05:40 UTC (Fable · session ใหม่) — ▶️ เดิน 3 เลน · รับแล้ว 29/53 = 55%
+### 0.11 สถานะ 26 ก.ย. 05:40 UTC (Fable · session ใหม่) — ▶️ เดิน 3 เลน · รับแล้ว 30/53 = 57%
 - session ก่อน (05:00 UTC) spawn builder 2 ตัวแล้วตายใน 25 นาที ⇒ spawn ใหม่ 05:40 ให้ "ทำต่อจากสภาพไฟล์" (agent ตายพร้อม session · ไฟล์ใน worktree ยังอยู่)
 - **เลน A** หนี้ `crm-c1.3` S0.3 — builder opus ใน `shark-crm-c23`/QC3: helper 6 ตัวท้าย `companies.ts` มาจากรอบก่อน (uncommitted) · เหลือย้ายจุดเรียก 12 จุดใน assignment/automation/emails/payments/sequences · หลักฐาน `.qc-shots/c13debt/` · ต้องรัน c1.3 + c2.1/2.2/2.3/2.5/2.7/2.8 บน QC3 (reseed ก่อน)
 - **เลน B** C3.0 migration `crm_v2_c` — builder opus ใน `shark-crm-c20`/QC2 (รีเซ็ตสะอาดที่ 7e32764f): ห้าม `prisma format` · owned = `crm.prisma` `payroll.prisma` `scope.ts` `migrations/20261102000000_crm_v2_c/` `wo-notes/crm-C3.0.md` · builder **ไม่ deploy** — Fable อ่าน SQL ทุกบรรทัด → `env QC_ENV_FILE=.env.qc2 bash scripts/qc-prisma.sh migrate deploy` (ผ่าน iso) → `qc-crm-c3.0` (33) บน QC2 → QC1/QC3 → regressions ท้าย brief · หลักฐาน `.qc-shots/c30/`
@@ -48,6 +48,7 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - ถ้า session ตายอีก: `git -C <wt> status` + `.qc-shots/` ของแต่ละเลน แล้ว spawn ใหม่ด้วย prompt เดิม (สรุปใน CRM-RUN §4 26 ก.ย. 05:40)
 - **06:55 UTC**: A ✅ `d3856c50` · B ✅ `41c262c0` (33/33 QC1+QC2 · ชุดถอยหลังรอบ 1 แดง 27 ชุดเพราะ client ร่วมถูก generate ทับ — ดู CRM-RUN §4 06:50 · รอบ 2 `run-c30-verify-v2.sh` รอยูนิตแรกจบ) · C ✅ `4abc726e` (56 ข้อ · ruling 15 ข้อ) → **builder C3.1 กำลังทำใน c23/QC3** (หลักฐาน `.qc-shots/c31/`) · **ผู้เขียนข้อสอบ C3.2 ใน c110** · c20 ยังมีไฟล์ C3.0 (commit แล้วในทรีหลัก · รีเซ็ตได้) · c12a ที่ 4abc726e
 - **07:40 UTC**: ข้อสอบ C3.2 ✅ `e98314d4` (46 ข้อ · ruling 15) → **3 agent กำลังทำ (เพดาน)**: builder C3.1 (c23/QC3 · `.qc-shots/c31/`) ∥ builder C3.2 (c110/QC2 · reseed เอง · `.qc-shots/c32/`) ∥ ผู้เขียนข้อสอบ C3.3 (c12a/QC1 throwaway) · crm_v2_c deploy ครบ QC1/QC2/QC3 แล้ว · ยูนิต `crm-c30-verify-v2` (27 ชุด + typecheck + m1.9) กำลังรัน log `.qc-shots/crm/c30-verify-v2.log` — m1.9 S7.2 รอบ 1 แดง (member.tier.* ค้าง 8 — น่าจะจากช่วง client เก่า · ถ้ารอบ 2 ยังแดง เปิด OutboxEvent.lastError)
+- **08:05 UTC เจ้าของเลือก "เอาคุณภาพ"** ⇒ เพดาน **3 เลน** (เครื่อง 2 CPU/8 GB) · Opus ทุกบทบาท · ผู้ตรวจทุกใบ · นักล่าทันทีหลังรับ C3.3/C3.5 · หลักฐาน X3/X4 แบบทำซ้ำบั๊ก · CP3 เจ้าของลองก่อน C4 · ✅ **รับ C3.0 = 30/53 (57%)** (`c2.7` 63/63 เมื่อ load ลด)
 - **07:50 UTC** เจ้าของบอก "ไม่มี session อื่น เดินหน้าเต็มกำลัง" → เปิดเลนที่ 4: ผู้เขียนข้อสอบ C3.4 (opus · c20 รีเซ็ตที่ 9e2ecd00 · QC1 throwaway) · เพดานตอนนี้ 4 agent (ถ้าโควตา Opus ชน → กลับไป 3)
 - รวม C3.1+C3.2 (ขนาน): ไฟล์ร่วม `index.ts`/`nav.ts`/`crm-ui-inventory.json`/registries → `patch --fuzz=3` + เช็คสมดุลวงเล็บ (ห้าม `git apply -3`) → รันข้อสอบทั้งสองใบซ้ำบน QC1
 - 🔴 ห้าม agent ใด `prisma generate` (client ร่วม) · worktree ทุกตัวต้องอยู่บน commit ที่สคีมาเท่าทรีหลัก

@@ -391,8 +391,9 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C2 | C2.9 | ✅ | (ใบนี้) | เหตุการณ์ธุรกิจ 8 โมดูล → VISIT ใบเดียว/sourceRef + ขั้น CUSTOMER ผ่าน Party · 6 event ใหม่ยิงใน tx · win-back ไม่ถูกคิวกลืน · ข้อสอบ 52/52 ×2 QC1 · wo-notes `crm-C2.9.md` |
 | C2 | C2.10 | ✅ | (ใบนี้) | ดีลนิ่ง `markStale` (คีย์ = ธง = คีย์ poller C2.1 · `days` เป็น match key) · แจ้งเตือนพนักงาน 10 เรื่อง × in-app/push/e-mail · quiet hours ผู้ใช้ชนะร้าน เลื่อนไม่ทิ้ง · dedupe 5 ส่วน · งาน cron 7 ตัว · การ์ด "ดีลที่ต้องดู" (mockup 01) · ข้อสอบ 41/41 ×2 QC1 · wo-notes `crm-C2.10.md` |
 | C2 | C2.11 | ✅ | (ใบนี้) | REST ชุด 2: 32 MUST op + 6 R · tool 10 · send 1 คน/send-bulk ≤500 danger · notifications prefs · A1 replyTo ต้องเป็นเธรดของผู้ติดต่อคนเดียวกัน (ปิด consent bypass เดิม) · assistant เห็น PII แบบ mask · ข้อสอบ 47/47 ×2 QC1 · c1.10 66/66 · wo-notes `crm-C2.11.md` |
-| C2 | ปิด C2 (`qc:all`) | 🟡 | — | 325/355 (25 ก.ย.) · ENV ข้อภาพ 25 · **หนี้ `crm-c1.3` S0.3** (5 ไฟล์อ่าน CrmCompany ตรง) ต้องแก้ก่อน C3.1 — builder เปิด 26 ก.ย. · acc-v2-coa T15 = ข้อสอบเน่าตามเวลา (เลนบัญชี) · kanban-k2.3 S3.2 = false positive dnd-kit จาก member M1.3 (เลน kanban) · ทั้งสองไม่ใช่ของ CRM (CRM-RUN §4 26 ก.ย.) |
-| C3 | C3.0–C3.9 | ⏸️ | — | |
+| C2 | ปิด C2 (`qc:all`) | ✅ | `d3856c50` | 325/355 (25 ก.ย.) · ENV ข้อภาพ 25 · หนี้ `crm-c1.3` S0.3 **ปิดแล้ว 26 ก.ย.** (12 จุด → helper · SQL เหมือนเดิม 17/17) · acc-v2-coa T15 / kanban-k2.3 S3.2 ไม่ใช่ของ CRM (CRM-RUN §4 26 ก.ย.) |
+| C3 | C3.0 | ✅ | `41c262c0` | migration `crm_v2_c` 214 บรรทัด (enum 6 · ตาราง 6 · `HrPayAdjustment.crmCommissionId` + partial unique · scope 6) · ข้อสอบ 33/33 QC1 ×2 + QC2 · diff ว่างหลัง deploy · ORACLE-EDIT S4.3 · ถอยหลัง 2 รอบ (บทเรียน client ร่วม/overlay) · `wo-notes/crm-C3.0.md` |
+| C3 | C3.1–C3.9 | 🔨 | — | C3.1/C3.2/C3.3 builder กำลังทำ (ข้อสอบ 56/46/61 เคาะแล้ว) · ข้อสอบ C3.4 กำลังเขียน |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |

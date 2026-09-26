@@ -60,3 +60,17 @@ f1 = (out.match(/^.*\[F1\.\d[^\n]*$/gm) ?? []).join(" | ");
 f8 = (out.match(/^.*\[F8\.\d[^\n]*$/gm) ?? []).join(" | ");
 const green = (s: string) => s.length > 0 && !/❌/.test(s) && code === 0;
 ```
+
+## 8. ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+**อ่าน SQL ทุกบรรทัด (214 บรรทัด · sha256 `36e77600…`)**: CREATE TYPE 6 · ADD COLUMN 1 (`HrPayAdjustment.crmCommissionId` nullable ไม่มี default) · CREATE TABLE 6 · index 13 · FK 5 เฉพาะสาย portal (cascade) · partial unique 1 ท้ายไฟล์ · **ไม่มี** DROP/RENAME/ALTER COLUMN/CHECK/ADD VALUE/คำสั่งข้อมูล · `refId TEXT NOT NULL DEFAULT ''` · เงิน BIGINT · `PortalSession.ipHash` · ไม่มี FK CrmCommission→CrmDeal / HrPayAdjustment→CrmCommission ✔ ตาม addendum 1–14
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 33 ข้อเขียนก่อน (24 ก.ย.) · SKIPPED เมื่อไม่มี migration |
+| D2 | ✅ | `qc-crm-c3.0` **33/33** QC2 (`c20/.qc-shots/c30/oracle-qc2-postdeploy.log`) · **33/33 ×2** QC1 (`c30-verify.log`) |
+| D3 | ✅ | ORACLE-EDIT 1 = `C3.0-S4.3` (ผู้คุมงานพิสูจน์เอง: `/FAIL/i` จับคำ "fail-closed" ของ F1.3 ใน fitness log · regex เดิมตัดเครื่องหมาย ✅/❌ ทิ้งจึงจับแดงจริงไม่ได้ด้วย) |
+| D4 | ✅ | ชุดถอยหลังบน QC1 seed ใหม่ (`c30-verify.log` + `c30-verify-v2.log`): m2.9 (ENV ภาพ) · m3.11 (ENV server) · fix-s1 · payroll · payroll-reverse · hr-payadjust · hr · c2.0 · c1.1…c1.11 · c2.1…c2.11 · c0.2 · c0.5 · v1 · pages · cron · m1.9 26/26 · typecheck · fitness 32/32 ×2 — รอบ 1 แดง 27 ชุดเพราะ client ร่วมถูก generate ทับ (CRM-RUN §4 06:50) รอบ 2 เขียวทั้งหมดยกเว้น `c2.7` S0.4 = ข้อสอบนับ `crm_v2_c` เป็น migration แปลกปลอม → ORACLE-EDIT (ชื่อข้อเองบอกว่า c เป็นของ C3.0) → รันซ้ำ 62/63 (X3.2 okPayments=0 ขณะ load 66 · swap เต็ม) → รันซ้ำอีกครั้งเมื่อ load ลด **63/63** (`c27-after-c30-r2.log`) = flake จากเครื่อง |
+| D5/D6 | ✅ | `migrate diff` หลัง deploy = ว่าง (S1.9) ทั้ง QC1/QC2 · scope registry F1/F8 312 โมเดล · typecheck exit 0 |
+| D7 | ✅ | ไม่มี UI · หน้า v1 ไม่แตะ (S5.1/S5.2 พิสูจน์ INSERT แบบ payroll เดิมยังผ่าน) |
+| D8–D11 | ✅ | ไม่มี event ใหม่ · ไม่มี consumer · m1.9 26/26 หลัง DRAIN (S7.2 รอบ 1 ค้าง 8 = ช่วง consumer บูตไม่ได้ · ระบายแล้วเขียว) |
+| D12 | ⏳ | รอ push (เจ้าของกด) — `_prisma_migrations` บน prod จะมีแถว `crm_v2_c` เมื่อ deploy ขึ้น |
+ลงฐานแล้ว: QC1 · QC2 · QC3 (ผู้คุมงานสั่งเอง) · มติ: FK cascade บน `CrmPortalRequest` = ตามที่ builder เสนอ (สาย portal ลบตามผู้ติดต่อ = PDPA) · `updatedAt` NOT NULL ไม่มี default บน `CrmQuota`/`CrmCommissionRule` — ข้อสอบที่ INSERT ดิบต้องใส่เอง (แจ้งผู้เขียนข้อสอบ C3.2/C3.3 แล้วผ่าน addendum)
