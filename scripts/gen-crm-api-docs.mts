@@ -257,6 +257,10 @@ export function renderDocs(): string {
       : e === "crm.activity.overdue" ? "`activityId`, related ids"
       // CRM C3.2 ▸ โควตาถึงเกณฑ์ — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด · payload id/ตัวเลขล้วน (X8) ◂
       : e === "crm.quota.reached" ? "`quotaId`, `ownerType`, `ownerId`, `periodKey` (Gregorian `2026-09` / `2026-Q3` / `2026`), `threshold` (80 or 100), `pct` - once per owner, period and threshold"
+      // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด · payload id ล้วน (X8 — ไม่มีเหตุผลที่ลูกค้าพิมพ์) ◂
+      : e === "crm.portal.viewed" ? "`companyId`, `contactId`, `accessId`, `day` (Thai calendar day) - first portal view of the day only"
+      : e === "crm.portal.quote.responded" ? "`companyId`, `contactId`, `docId`, `action` (`ACCEPT` or `REJECT`) - ids only, never the rejection reason"
+      : e === "crm.portal.request.created" ? "`companyId`, `contactId`, `requestId`, `kind` (`ISSUE` · `DOCUMENT_REQUEST` · `CONTACT_CHANGE` from the request form · `PROFILE_CHANGE` only from a field-edit request on a shared record)"
       : e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("crm.web.") ? "`contactId`, `systemId`, `visitorId`, `sessionCount`, `pageViews`, `by` (never a name, address or raw IP)" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }

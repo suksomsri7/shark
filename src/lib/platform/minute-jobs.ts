@@ -336,6 +336,23 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C3.1
+// CRM C3.5 ▸ กวาด session พอร์ทัลลูกค้าองค์กร — ลบแถว PortalSession ที่หมดอายุ/ถูกเพิกถอนเกิน 30 วัน (มติผู้คุมงาน C3.5 ข้อ 3)
+//   ช่องเวลาตายตัว 03:00–03:59 ไทย: ตัวกระจายของ C0.5 รู้จักแต่หน้าต่างนับจากเที่ยงคืน (ระบุชั่วโมงของงาน daily ไม่ได้ — หนี้เดียวกับ C2.10)
+//   ⇒ ลงทะเบียนแบบ hourly แล้ว **ตัวงานเช็คช่อง** (`portal.portalSweepSlot`) — ชั่วโมงอื่น = จบทันทีไม่แตะฐาน ⇒ ทำงานจริงวันละครั้ง
+//   AUDIT-CLASS X5: lease ของตัวกระจาย + ตัวลบเป็น DELETE คำสั่งเดียว ⇒ route + crontab ยิงซ้อนก็ได้ผลเดียว (รอบหลังลบ 0) · เริ่มใหม่ได้ทุกเมื่อ
+//   ไม่มีประตู uiVersion: เป็นงานเก็บกวาดข้อมูลตัวตน (ลดของที่เก็บ) ไม่ใช่งานที่สร้างของ — แบบเดียวกับ `crm.purge.web`
+//   โหลด CRM ผ่าน facade **ตอนรันเท่านั้น** (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ CRM ตอนโหลด)
+registerMinuteJob({
+  name: "crm.portal.sessions.sweep",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now) => {
+    const { portal } = await import("@/lib/modules/crm");
+    if (!portal.portalSweepSlot(now)) return;
+    await portal.sweepSessions(now);
+  },
+});
+// ◂ CRM C3.5
 
 function errorText(e: unknown): string {
   let s: string;

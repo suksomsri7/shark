@@ -2287,6 +2287,11 @@ export async function setQuotationResponse(
       /** 🔴 PDPA (X8): ห้ามใส่เบอร์/อีเมล/เนื้อความของลูกค้า — ใส่ได้แค่หลักฐานการลงนาม */
       after?: unknown;
     };
+    /**
+     * CRM C3.5 ▸ event เพิ่มเติมของผู้เรียก ที่ต้องเกิด **เฉพาะเมื่อคำตอบนี้เป็นตัวที่ชนะ** (ยิงใน tx เดียวกับการเปลี่ยนสถานะ ·
+     *   `createMany skipDuplicates` ⇒ ยิงซ้ำ/พร้อมกันไม่งอก) — พอร์ทัลลูกค้าใช้ส่ง `crm.portal.quote.responded` (id ล้วน) ◂
+     */
+    alsoEmit?: { type: string; idempotencyKey: string; payload: unknown; systemId?: string | null }[];
   },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const doc = await prisma.accountDocument.findFirst({ where: { id, tenantId, systemId } });
@@ -2295,15 +2300,25 @@ export async function setQuotationResponse(
   if (doc.status !== "AWAITING_ACCEPT") return { ok: false, reason: "สถานะไม่ถูกต้อง" };
   // WO C4: เปลี่ยนสถานะ + ยิง webhook "ลูกค้าตอบใบเสนอราคา" ในธุรกรรมเดียว
   //   (ปลายทางที่ต่อ CRM ไว้ ห้ามได้ event ของสถานะที่ rollback ไปแล้ว)
-  await prisma.$transaction(async (tx) => {
-    await tx.accountDocument.update({
-      where: { id },
+  // CRM C3.5 ▸ AUDIT-CLASS X3 — บั๊กเดิม: อ่านสถานะด้านบนแล้ว `update` ด้วย id อย่างเดียว ⇒ "ตอบรับ" กับ "ปฏิเสธ" ที่ยิงพร้อมกัน
+  //   ผ่านด่านอ่านทั้งคู่แล้ว commit ทั้งคู่ (ACCEPTED แล้วทับด้วย REJECTED · event 2 ใบเพราะคีย์ต่างกันที่ `#true/#false`)
+  //   ⇒ เปลี่ยนเป็น `updateMany … WHERE status = 'AWAITING_ACCEPT'` **ใน tx** และให้ event/audit ตามมาเฉพาะเมื่อแถวถูกเปลี่ยนจริง
+  //   (Postgres READ COMMITTED: ตัวที่มาทีหลังรอล็อกแถว แล้วประเมิน WHERE ใหม่หลังตัวแรก commit ⇒ ได้ 0 แถว ⇒ ไม่ยิงอะไรเลย)
+  //   ผู้แพ้ได้ `{ ok:false, reason:"สถานะไม่ถูกต้อง" }` แบบเดียวกับที่คนมาทีหลังได้อยู่แล้ว (ข้อความ/รูปผลลัพธ์เดิม) ◂
+  const won = await prisma.$transaction(async (tx) => {
+    const moved = await tx.accountDocument.updateMany({
+      where: { id, tenantId, systemId, docType: "QUOTATION", status: "AWAITING_ACCEPT" },
       data: {
         status: accepted ? "ACCEPTED" : "REJECTED",
         acceptedAt: accepted ? new Date() : null,
       },
     });
+    if (moved.count !== 1) return false;
     await emitQuotationResponded(tx, { tenantId, systemId }, { id, docNo: doc.docNo, accepted });
+    // CRM C3.5 ▸ event ของผู้เรียก (id ล้วน) — เกิดเฉพาะกับคำตอบที่ชนะ ◂
+    if (opts?.alsoEmit?.length) {
+      await emitOutboxMany(tx, opts.alsoEmit.map((e) => ({ tenantId, systemId: e.systemId ?? null, type: e.type, idempotencyKey: e.idempotencyKey, payload: e.payload })));
+    }
     // หลักฐานผู้ตอบ (ถ้าผู้เรียกส่งมา) — โครงแถวเดียวกับ `core/audit.writeAudit` แต่ผูกกับธุรกรรมนี้
     if (opts?.audit) {
       await tx.auditLog.create({
@@ -2318,8 +2333,9 @@ export async function setQuotationResponse(
         },
       });
     }
+    return true;
   });
-  return { ok: true };
+  return won ? { ok: true } : { ok: false, reason: "สถานะไม่ถูกต้อง" };
 }
 
 // แปลงเอกสาร (QT→IV, IV→RE/TX/CN/DN ฯลฯ) → สร้าง DRAFT ปลายทาง + relation

@@ -237,6 +237,15 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   //      `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
   { value: "crm.quota.reached", label: "เมื่อโควตาของพนักงานหรือทีมถึง 80% หรือครบ 100% (CRM)" },
   // ◂ CRM C3.2
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร — ตัวยิง `crm/portal.ts` · payload id ล้วน (X8):
+  //   `crm.portal.viewed#<accessId>#<YYYY-MM-DD ไทย>` {companyId, contactId, accessId, day} (ครั้งแรกต่อวัน)
+  //   `crm.portal.quote.responded#<docId>` {companyId, contactId, docId, action ACCEPT|REJECT} (tx เดียวกับบัญชี · คำตอบที่ชนะเท่านั้น)
+  //   `crm.portal.request.created#<requestId>` {companyId, contactId, requestId, kind}
+  //   🔴 consumer อยู่ที่ `outbox-consumers.ts` (บล็อก C3.5) · เว็บฮุคได้จาก spread ใน `webhooks/labels.ts` (ห้ามประกาศซ้ำที่นั่น)
+  { value: "crm.portal.viewed", label: "เมื่อลูกค้าบริษัทเปิดดูพอร์ทัล (ครั้งแรกของวัน · CRM)" },
+  { value: "crm.portal.quote.responded", label: "เมื่อลูกค้าบริษัทตอบรับหรือปฏิเสธใบเสนอราคาในพอร์ทัล (CRM)" },
+  { value: "crm.portal.request.created", label: "เมื่อลูกค้าบริษัทส่งคำขอหรือแจ้งเรื่องผ่านพอร์ทัล (CRM)" },
+  // ◂ CRM C3.5
 ];
 
 // event code → ป้ายไทย (สำหรับ body แจ้งเตือน + รายการกติกา) — ไม่รู้จัก → คืน code เดิม

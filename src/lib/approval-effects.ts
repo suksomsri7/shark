@@ -172,7 +172,7 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
 //                          ปฏิเสธ = ล้างของที่พักไว้ · AUDIT-CLASS X4: บริการดีลทำเฉพาะเมื่อดีลยังรอ "คำขอใบนี้" อยู่ (ใต้ล็อกแถว)
 //                          ⇒ drain ซ้ำ/พร้อมกันไม่ใช้ส่วนลดซ้ำ
 //   · crm.reassign       → รับทราบเท่านั้น (ผลจริง = ใบ C3.2 · มติผู้คุมงาน C1.7 ข้อ 7)
-//   · crm.commission     → ใบ C3.3 · crm.portal_request → ใบ C3.5 (วันนี้ไม่ทำอะไร)
+//   · crm.commission     → ใบ C3.3 · crm.portal_request → ใบ C3.5 (บล็อก C3.5 ข้างล่าง)
 //   dynamic import: crm facade → … → scheduleDrain ที่ outbox-consumers = วงโหลดไฟล์ (เหตุผลเดียวกับกิ่งสมาชิกข้างบน)
 export async function applyCrmApprovalEffect(evt: ApprovalEffectEvent): Promise<void> {
   const { entityType, entityId, requestId } = metaOf(evt.payload);
@@ -191,6 +191,15 @@ export async function applyCrmApprovalEffect(evt: ApprovalEffectEvent): Promise<
     }
     return;
   }
-  // crm.reassign · crm.commission · crm.portal_request · อื่น ๆ → ไม่ทำอะไร (ใบเจ้าของเรื่องมาเติม)
+  // CRM C3.5 ▸ `crm.portal_request` — คำขอจากพอร์ทัล (CONTACT_CHANGE / PROFILE_CHANGE) ถูกอนุมัติ/ปฏิเสธในสายอนุมัติกลาง
+  //   ⇒ คำขอ APPROVED/REJECTED + decidedAt (PROFILE_CHANGE ที่อนุมัติ = ใช้ค่าที่ขอกับฟิลด์ portalEditable) · entityId = CrmPortalRequest.id
+  //   AUDIT-CLASS X4: บริการเขียนเฉพาะคำขอที่ยัง PENDING (ส่งซ้ำ/พร้อมกัน = 0 แถว) · ล้มชั่วคราว = โยนต่อให้ event retry
+  if (entityType === "crm.portal_request") {
+    const crm = await import("@/lib/modules/crm");
+    await crm.portal.onApprovalDecided({ tenantId: evt.tenantId, approvalRequestId: requestId, requestId: entityId, approved });
+    return;
+  }
+  // ◂ CRM C3.5
+  // crm.reassign · crm.commission · อื่น ๆ → ไม่ทำอะไร (ใบเจ้าของเรื่องมาเติม)
 }
 // ◂ CRM C1.8

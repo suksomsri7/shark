@@ -9,6 +9,7 @@
 //    ก็ตอบสำเร็จเหมือนกันทุกประการ (แต่รหัสนั้นยืนยันไม่ผ่านตลอดกาล)
 // 🔴 ห้าม log รหัส OTP ดิบลง console/ops ไม่ว่ากรณีใด — `devOtp` คืนเป็นค่าในผลลัพธ์เฉพาะนอก production
 
+import { createHmac } from "node:crypto";
 import { otpCode, randomToken, sha256 } from "@/lib/core/hash";
 import { checkRateLimitDb, resetRateLimitDb } from "@/lib/core/rate-limit-db";
 import { prisma } from "./db";
@@ -184,17 +185,12 @@ export async function requestOtp(
   opts: { ip?: string | null; forJoin?: boolean } = {},
 ): Promise<RequestOtpResult> {
   const tenant = await tenantBySlug(tenantSlug);
-  const phone = normPhone(trimmed(input?.phone));
-  const email = trimmed(input?.email).toLowerCase();
-  if (!phone && !email) throw new CustomerAuthError("กรอกเบอร์โทรหรืออีเมลที่ให้ไว้กับร้านก่อน จึงจะขอรหัสได้");
-  const channel: "PHONE" | "EMAIL" = phone ? "PHONE" : "EMAIL";
-  const target = phone || email;
+  const { channel, target } = otpTargetOf(input);
 
   // 🔴 AUDIT H4: เพดานทั้งสองชั้นนับบนฐานข้อมูล (ทนข้าม instance) — เลนสมัครสมาชิกเรียกผ่านทางนี้
   //    เหมือนกันทุกประการ จึงได้เพดานชุดเดียวกัน ไม่ใช่เพดานคนละใบให้ยิงสลับกันได้สองเท่า
-  await hit(`customer-otp:target:${tenant.id}:${channel}:${target}`, RL_PER_TARGET, RL_WINDOW_MS, askTooOften);
-  const ip = trimmed(opts?.ip);
-  if (ip) await hit(`customer-otp:ip:${ip}`, RL_PER_IP, RL_WINDOW_MS, askTooOften);
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กรนับถังเดียวกันนี้ผ่าน `hitOtpAskBuckets` (R-C.5 · "ไม่มี limiter ตัวที่สอง") ◂
+  const ip = await hitOtpAskBuckets(tenant.id, channel, target, opts?.ip);
 
   const customer = await prisma.customer.findFirst({
     where: {
@@ -207,20 +203,8 @@ export async function requestOtp(
   });
 
   const otpId = randomToken(18);
-  const code = otpCode();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-  await prisma.customerOtp.create({
-    data: {
-      id: otpId,
-      tenantId: tenant.id,
-      target,
-      channel,
-      codeHash: sha256(`${otpId}:${code}`),
-      expiresAt,
-      customerId: customer?.id ?? null,
-      ip: ip || null,
-    },
-  });
+  const code = await createOtpRow({ id: otpId, tenantId: tenant.id, channel, target, customerId: customer?.id ?? null, ip, expiresAt });
 
   // ส่งจริงเฉพาะเมื่อรู้จักปลายทาง — ส่งไม่ออกห้ามทำให้คำขอล้ม (ผู้ใช้จะเห็นแค่ "ส่งแล้ว" เหมือนกันหมด)
   //
@@ -230,23 +214,7 @@ export async function requestOtp(
   //    ไลบรารีจากคิว/ข้อสอบ) ก็ยิงทิ้งพร้อม `.catch` — ทั้งสองทางคืนค่าให้ผู้เรียกทันทีเท่ากันหมด
   if ((customer || opts?.forJoin === true) && channel === "EMAIL") {
     const subject = opts?.forJoin === true ? `รหัสยืนยันสมัครสมาชิก ${tenant.name}` : `รหัสเข้าสู่ระบบสมาชิก ${tenant.name}`;
-    const deliver = async (): Promise<void> => {
-      try {
-        const { sendEmail } = await import("@/lib/core/email");
-        await sendEmail(target, subject, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
-      } catch {
-        // ส่งอีเมลไม่ออก = ผู้ใช้กดขอใหม่ได้ — ห้ามโยนต่อ (และห้าม log รหัส)
-      }
-    };
-    let scheduled = false;
-    try {
-      const { after } = await import("next/server");
-      after(deliver);
-      scheduled = true;
-    } catch {
-      // นอกขอบเขตคำขอ (คิว/ข้อสอบ/สคริปต์) — `after()` โยนทิ้ง ยังไม่ได้เรียก deliver จึงไม่ส่งซ้ำ
-    }
-    if (!scheduled) void deliver();
+    await sendOtpMailOffPath(target, subject, `รหัสยืนยันของคุณคือ ${code} (ใช้ได้ 5 นาที)`);
   }
   // หนี้: ยังไม่มีผู้ให้บริการ SMS ในระบบ ⇒ ช่องทางเบอร์ส่งจริงไม่ได้จนกว่าจะต่อ gateway (M3.2)
 
@@ -256,6 +224,102 @@ export async function requestOtp(
     maskedTo: maskTarget(target, channel),
     ...(otpPreviewOn() ? { devOtp: code } : {}),
   };
+}
+
+// ── ตัวช่วยของเส้นทาง OTP ที่ใช้ร่วมกันทั้ง "สมาชิก" และ "พอร์ทัลลูกค้าองค์กร" (CRM C3.5 · R-C.5) ──
+//    ย้ายออกมาจากตัวของ requestOtp/verifyOtp เดิม **โดยไม่เปลี่ยนพฤติกรรม** (ลำดับด่าน · ถัง · ข้อความ · การนับครั้งผิด)
+//    ⇒ พอร์ทัลไม่มีตัวออกรหัส/ตัวนับ/ตาราง OTP ของตัวเอง (ข้อสอบ C3.5-S0.4 · MASTER-PLAN §2.8)
+
+/** ปลายทางของรหัส (เบอร์ก่อน · ไม่มีเบอร์ใช้อีเมลตัวเล็ก) — ไม่มีทั้งคู่ = CustomerAuthError */
+function otpTargetOf(input: RequestOtpInput | null | undefined): { channel: "PHONE" | "EMAIL"; target: string } {
+  const phone = normPhone(trimmed(input?.phone));
+  const email = trimmed(input?.email).toLowerCase();
+  if (!phone && !email) throw new CustomerAuthError("กรอกเบอร์โทรหรืออีเมลที่ให้ไว้กับร้านก่อน จึงจะขอรหัสได้");
+  return phone ? { channel: "PHONE", target: phone } : { channel: "EMAIL", target: email };
+}
+
+/** นับถัง "ขอรหัส" ต่อปลายทาง + ต่อ IP (คืน IP ที่ตัดช่องว่างแล้ว) — เกินเพดาน = CustomerRateLimitError */
+async function hitOtpAskBuckets(tenantId: string, channel: "PHONE" | "EMAIL", target: string, rawIp: string | null | undefined): Promise<string> {
+  await hit(`customer-otp:target:${tenantId}:${channel}:${target}`, RL_PER_TARGET, RL_WINDOW_MS, askTooOften);
+  const ip = trimmed(rawIp);
+  if (ip) await hit(`customer-otp:ip:${ip}`, RL_PER_IP, RL_WINDOW_MS, askTooOften);
+  return ip;
+}
+
+/** ออกใบ OTP หนึ่งใบบนตาราง `CustomerOtp` (hash ของ id+รหัส) — คืนรหัสดิบให้ผู้เรียกส่งต่อ (ห้าม log) */
+async function createOtpRow(input: { id: string; tenantId: string; channel: "PHONE" | "EMAIL"; target: string; customerId: string | null; ip: string; expiresAt: Date }): Promise<string> {
+  const code = otpCode();
+  await prisma.customerOtp.create({
+    data: {
+      id: input.id,
+      tenantId: input.tenantId,
+      target: input.target,
+      channel: input.channel,
+      codeHash: sha256(`${input.id}:${code}`),
+      expiresAt: input.expiresAt,
+      customerId: input.customerId,
+      ip: input.ip || null,
+    },
+  });
+  return code;
+}
+
+/** ส่งอีเมลนอกเส้นทางคำขอ (AUDIT L1) — `after()` ในคำขอของ Next · นอกคำขอ = ยิงทิ้งพร้อม catch · ไม่เคยโยน */
+async function sendOtpMailOffPath(to: string, subject: string, body: string): Promise<void> {
+  const deliver = async (): Promise<void> => {
+    try {
+      const { sendEmail } = await import("@/lib/core/email");
+      await sendEmail(to, subject, body);
+    } catch {
+      // ส่งอีเมลไม่ออก = ผู้ใช้กดขอใหม่ได้ — ห้ามโยนต่อ (และห้าม log รหัส)
+    }
+  };
+  let scheduled = false;
+  try {
+    const { after } = await import("next/server");
+    after(deliver);
+    scheduled = true;
+  } catch {
+    // นอกขอบเขตคำขอ (คิว/ข้อสอบ/สคริปต์) — `after()` โยนทิ้ง ยังไม่ได้เรียก deliver จึงไม่ส่งซ้ำ
+  }
+  if (!scheduled) void deliver();
+}
+
+type OtpRow = NonNullable<Awaited<ReturnType<typeof prisma.customerOtp.findUnique>>>;
+
+/**
+ * เปิดใบ OTP เพื่อยืนยัน: นับถัง "ยืนยัน" (AUDIT H4) → ใบต้องยังใช้ได้ → เทียบรหัส
+ * ใบไม่มีจริง/ใช้แล้ว/หมดอายุ/ผิดครบ 5 ครั้ง = VERIFY_FAIL · รหัสผิดยังไม่ถูกนับที่นี่ (ผู้เรียกตัดสินผ่าน `failOtp`)
+ */
+async function openOtp(
+  input: { otpId: string; code: string },
+  meta: { userAgent?: string | null; ip?: string | null },
+): Promise<{ row: OtpRow; ok: boolean; keys: string[]; now: Date }> {
+  const otpId = trimmed(input?.otpId);
+  const code = trimmed(input?.code);
+  if (!otpId || !code) throw new CustomerAuthError(VERIFY_FAIL);
+
+  const row = await prisma.customerOtp.findUnique({ where: { id: otpId } });
+  const now = new Date();
+
+  // 🔴 AUDIT H4: เพดานเดิมนับ "ผิดต่อใบ" (5 ครั้ง) อย่างเดียว — ขอใบใหม่แล้วเดาต่อได้ไม่จำกัด
+  //    ⇒ นับรวมต่อเบอร์/อีเมล และต่อ IP บนฐานข้อมูลด้วย (ยิงขนานจากหลาย instance ก็โดนถังเดียวกัน)
+  //    ยืนยันสำเร็จ = ล้างถัง (คนกดผิดเพราะพิมพ์พลาดไม่ถูกลงโทษข้ามรอบ)
+  const ip = trimmed(meta?.ip) || trimmed(row?.ip);
+  const keys = verifyKeys(row?.tenantId ?? null, row?.target ?? null, ip);
+  const limitOf = (k: string) => (k.startsWith("customer-otp:verify:ip:") ? RL_VERIFY_PER_IP : RL_VERIFY_PER_TARGET);
+  for (const k of keys) await hit(k, limitOf(k), RL_VERIFY_WINDOW_MS, verifyTooOften);
+
+  if (!row || row.usedAt || row.expiresAt < now || row.attempts >= MAX_OTP_ATTEMPTS) {
+    throw new CustomerAuthError(VERIFY_FAIL);
+  }
+  return { row, ok: row.codeHash === sha256(`${otpId}:${code}`), keys, now };
+}
+
+/** นับ "กรอกผิด" 1 ครั้งบนใบนั้นแล้วตอบข้อความกลาง */
+async function failOtp(rowId: string): Promise<never> {
+  await prisma.customerOtp.update({ where: { id: rowId }, data: { attempts: { increment: 1 } } });
+  throw new CustomerAuthError(VERIFY_FAIL);
 }
 
 export type CustomerSessionToken = {
@@ -293,29 +357,8 @@ export async function verifyOtp(
   input: { otpId: string; code: string },
   meta: { userAgent?: string | null; ip?: string | null } = {},
 ): Promise<CustomerSessionToken> {
-  const otpId = trimmed(input?.otpId);
-  const code = trimmed(input?.code);
-  if (!otpId || !code) throw new CustomerAuthError(VERIFY_FAIL);
-
-  const row = await prisma.customerOtp.findUnique({ where: { id: otpId } });
-  const now = new Date();
-
-  // 🔴 AUDIT H4: เพดานเดิมนับ "ผิดต่อใบ" (5 ครั้ง) อย่างเดียว — ขอใบใหม่แล้วเดาต่อได้ไม่จำกัด
-  //    ⇒ นับรวมต่อเบอร์/อีเมล และต่อ IP บนฐานข้อมูลด้วย (ยิงขนานจากหลาย instance ก็โดนถังเดียวกัน)
-  //    ยืนยันสำเร็จ = ล้างถัง (คนกดผิดเพราะพิมพ์พลาดไม่ถูกลงโทษข้ามรอบ)
-  const ip = trimmed(meta?.ip) || trimmed(row?.ip);
-  const keys = verifyKeys(row?.tenantId ?? null, row?.target ?? null, ip);
-  const limitOf = (k: string) => (k.startsWith("customer-otp:verify:ip:") ? RL_VERIFY_PER_IP : RL_VERIFY_PER_TARGET);
-  for (const k of keys) await hit(k, limitOf(k), RL_VERIFY_WINDOW_MS, verifyTooOften);
-
-  if (!row || row.usedAt || row.expiresAt < now || row.attempts >= MAX_OTP_ATTEMPTS) {
-    throw new CustomerAuthError(VERIFY_FAIL);
-  }
-  const ok = row.codeHash === sha256(`${otpId}:${code}`);
-  if (!ok || !row.customerId) {
-    await prisma.customerOtp.update({ where: { id: row.id }, data: { attempts: { increment: 1 } } });
-    throw new CustomerAuthError(VERIFY_FAIL);
-  }
+  const { row, ok, keys, now } = await openOtp(input, meta);
+  if (!ok || !row.customerId) return failOtp(row.id);
   // 🔴 AUDIT M6: บัญชีที่ถูกระงับเข้าระบบไม่ได้ (เดิมรับ SUSPENDED ด้วย) — พิมพ์เขียว §3.10/§6.2 ไม่มี
   //    ข้อยกเว้นให้คนถูกระงับล็อกอิน · ข้อความยังเป็นใบเดียวกับ "รหัสผิด" (ไม่บอกใบ้สถานะบัญชีคนอื่น)
   const customer = await prisma.customer.findFirst({
@@ -499,3 +542,304 @@ export async function sweepCustomerAuth(now: Date = new Date()): Promise<number>
   ]);
   return otps.count + sessions.count;
 }
+
+// CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร `/b/<slug>/*` — subject ที่สองบนตรรกะชุดเดียวกัน (RESOLUTIONS R-C.5 · มติผู้คุมงาน C3.5 ข้อ 3–5)
+//   ผู้ถือ session = "ผู้ติดต่อของบริษัทลูกค้า 1 คน ในบริษัท 1 แห่ง" (`CrmPortalAccess`) · ตารางพี่น้อง `PortalSession`
+//   (ของ `CustomerSession` บังคับ customerId NOT NULL) · token `cp_…` เก็บเป็น sha256 เหมือน `cs_` · คุกกี้ `shark_portal`
+//   ใช้ตัวเลือกชุดเดียวกับลูกค้า (`customerCookieOptions`) · OTP/ถังเพดาน/ตาราง `CustomerOtp` ชุดเดิมทุกตัว (ไม่มีตัวที่สอง)
+// 🔴 ไฟล์นี้อยู่ในโมดูลสมาชิก ⇒ **ห้าม import โมดูล CRM** (ไม่มีเส้น member→crm ใน allowlist) — กติกา "ใครเข้าได้" อ่านจากตาราง
+//    ของ CRM ตรง ๆ ด้วยเงื่อนไขชุดเดียว (`portalAccessUsable`) ที่ทั้งตัวออก session และตัวอ่าน session ใช้ร่วมกัน
+// AUDIT-CLASS X1: session ผูก (tenant · ระบบ CRM · access · บริษัท · ผู้ติดต่อ) ครบทุกช่อง — อ่านกลับต้องตรงทุกช่อง
+// AUDIT-CLASS X8: `ipHash` = HMAC ที่มีเกลือ (ไม่ใช่ IP ดิบ ไม่ใช่ sha256 เปล่าของ IP) · ไม่มี token ดิบในแถว/บันทึกใด ๆ
+// AUDIT-CLASS X10: token มีคำนำหน้าของตัวเอง (`cp_` ≠ `cs_`) ⇒ เลนสมาชิกไม่รับ และเลนพอร์ทัลไม่รับ token สมาชิก
+
+/** คำนำหน้า token ของ session พอร์ทัลลูกค้าองค์กร (≠ `cs_` ของสมาชิก) */
+export const PORTAL_TOKEN_PREFIX = "cp_";
+/** คำนำหน้า id ของใบ OTP ที่ออกให้พอร์ทัล — ใบของสมาชิกยืนยันเป็น session พอร์ทัลไม่ได้ และกลับกัน */
+const PORTAL_OTP_PREFIX = "po_";
+/** อายุ session พอร์ทัล = อายุคุกกี้ของ `customerCookieOptions` (30 วัน) */
+const PORTAL_SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
+/** ข้อความกลางเมื่อสิทธิ์ใช้ไม่ได้ (ถูกถอน · ผู้ติดต่อถูกเก็บ · บัญชีสมาชิกถูกระงับ · ร้านปิดพอร์ทัล) — ไม่บอกว่าเพราะข้อไหน */
+const PORTAL_ACCESS_FAIL = "สิทธิ์เข้าพอร์ทัลนี้ใช้ไม่ได้แล้ว — ติดต่อร้านเพื่อขอเปิดสิทธิ์ใหม่อีกครั้ง";
+
+/** token นี้หน้าตาเป็น session พอร์ทัลไหม (ยังไม่ได้แปลว่าใช้ได้จริง — ต้อง `getPortalSession` ต่อ) */
+export function isPortalToken(raw: string): boolean {
+  return typeof raw === "string" && raw.startsWith(PORTAL_TOKEN_PREFIX);
+}
+
+/** ชื่อคุกกี้ของพอร์ทัล — กติกา APP_ENV เดียวกับ `customerCookieName` (`__Host-` คู่กับ Secure เสมอ) */
+export function portalCookieName(): string {
+  return appRequiresSecureCookies() ? "__Host-shark_portal" : "shark_portal";
+}
+
+/**
+ * กุญแจของพอร์ทัลพร้อมไหม — `SESSION_SECRET` ≥ 32 ตัวอักษร (มติผู้คุมงาน C3.5 · ไม่พร้อม = พอร์ทัลไม่เปิดเลย ไม่ใช่เปิดแบบไม่มีเกลือ)
+ * อ่านตอนเรียก (ไม่ใช่ตอน import — ด่าน fitness โหมดไร้ env)
+ */
+export function portalSecretReady(): boolean {
+  const s = process.env.SESSION_SECRET;
+  return typeof s === "string" && s.length >= 32;
+}
+
+/**
+ * ตัวแทนของ IP ตัวเดียวของพอร์ทัล (ทั้ง `PortalSession.ipHash` และหลักฐานผู้ลงนามใบเสนอราคา) — HMAC-SHA256 ด้วยเกลือคงที่
+ * `portal-ip:v1:<SESSION_SECRET>` (ไม่ใช่ IP ดิบ ไม่ใช่ sha256 เปล่า · ไม่มีเกลือรายเดือน ⇒ ค่าเดียวกันเทียบข้ามเวลาได้) · ไม่มี IP = null
+ */
+export function portalIpHash(ip: string | null | undefined): string | null {
+  const raw = trimmed(ip);
+  if (!raw || !portalSecretReady()) return null;
+  return createHmac("sha256", `portal-ip:v1:${process.env.SESSION_SECRET}`).update(raw).digest("hex");
+}
+
+const PORTAL_NOT_READY = "พอร์ทัลลูกค้ายังไม่พร้อมใช้งาน (ระบบยังตั้งค่ากุญแจไม่ครบ) — ขออภัย ร้านได้รับแจ้งแล้ว ลองใหม่ภายหลัง";
+
+export type PortalSessionToken = {
+  token: string;
+  cookieName: string;
+  sessionId: string;
+  portalAccessId: string;
+  companyId: string;
+  crmContactId: string;
+  crmSystemId: string;
+  tenantId: string;
+  expiresAt: Date;
+};
+
+export type PortalSessionInfo = {
+  sessionId: string;
+  tenantId: string;
+  crmSystemId: string;
+  portalAccessId: string;
+  companyId: string;
+  crmContactId: string;
+  role: string;
+  expiresAt: Date;
+};
+
+type UsableAccess = { id: string; tenantId: string; systemId: string; companyId: string; contactId: string; role: string };
+
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * กติกาเดียวของ "สิทธิ์นี้ยังเข้าได้ไหม" — ทั้งตอนออก session และ **ทุกครั้งที่อ่าน session** (revoke มีผลทันที · S6.2 · X8.4)
+ *   access ไม่ถูกถอน · ผู้ติดต่อไม่ถูกเก็บ/ไม่ถูกรวม · ยังผูกกับบริษัทนั้นอยู่ · บริษัทไม่ถูกเก็บ/ไม่ถูกรวม ·
+ *   ถ้าผูกสมาชิก ⇒ บัญชีสมาชิกต้อง ACTIVE · ระบบ CRM ต้องเป็น uiVersion 2 และเปิด `portal.enabled` (R-E.14)
+ */
+async function portalAccessUsable(accessId: string): Promise<UsableAccess | null> {
+  const id = trimmed(accessId);
+  if (!id) return null;
+  const a = await prisma.crmPortalAccess.findUnique({
+    where: { id },
+    select: {
+      id: true, tenantId: true, systemId: true, companyId: true, contactId: true, role: true, revokedAt: true, acceptedAt: true, inviteExpiresAt: true,
+      contact: { select: { tenantId: true, systemId: true, archivedAt: true, mergedIntoId: true, memberCustomerId: true } },
+      company: { select: { tenantId: true, systemId: true, archivedAt: true, mergedIntoId: true } },
+    },
+  });
+  if (!a || a.revokedAt) return null;
+  // มติผู้คุมงาน C3.5 รอบ 4 (SF1): ใช้ได้เมื่อ "รับคำเชิญแล้ว" หรือ "คำเชิญยังไม่หมดอายุ" — ทุกทาง (mint · อ่าน session · สลับบริษัท · REST)
+  //   จึงตามกติกาเดียวกัน (สิทธิ์ที่ถูกล้างเพราะตัวตนเปลี่ยน/คำเชิญหมด = ใช้ไม่ได้จนกว่าจะเชิญใหม่)
+  if (!a.acceptedAt && !(a.inviteExpiresAt && a.inviteExpiresAt.getTime() > Date.now())) return null;
+  const c = a.contact;
+  const co = a.company;
+  if (!c || c.tenantId !== a.tenantId || c.systemId !== a.systemId || c.archivedAt || c.mergedIntoId) return null;
+  if (!co || co.tenantId !== a.tenantId || co.systemId !== a.systemId || co.archivedAt || co.mergedIntoId) return null;
+  const [link, sys, member] = await Promise.all([
+    prisma.crmCompanyContact.findFirst({ where: { tenantId: a.tenantId, companyId: a.companyId, contactId: a.contactId }, select: { id: true } }),
+    prisma.appSystem.findFirst({ where: { id: a.systemId, tenantId: a.tenantId, type: "CRM" }, select: { settings: true } }),
+    c.memberCustomerId
+      ? prisma.customer.findFirst({ where: { id: c.memberCustomerId, tenantId: a.tenantId, status: "ACTIVE" }, select: { id: true } })
+      : Promise.resolve({ id: "" }),
+  ]);
+  if (!link || !sys || !member) return null;
+  const crm = isObj(sys.settings) && isObj(sys.settings.crm) ? sys.settings.crm : {};
+  const portal = isObj(crm.portal) ? crm.portal : {};
+  if (crm.uiVersion !== 2 || portal.enabled !== true) return null;
+  return { id: a.id, tenantId: a.tenantId, systemId: a.systemId, companyId: a.companyId, contactId: a.contactId, role: String(a.role) };
+}
+
+/**
+ * ออก session พอร์ทัลให้ access หนึ่ง (หลังรับคำเชิญ · หลัง OTP/LINE · สลับบริษัท · harness ของ QC)
+ * สิทธิ์ใช้ไม่ได้ = CustomerAuthError ข้อความกลาง (ไม่มีแถว session) · ขยับ `lastLoginAt` ของ access
+ */
+export async function mintPortalSession(
+  portalAccessId: string,
+  meta: { userAgent?: string | null; ip?: string | null } = {},
+): Promise<PortalSessionToken> {
+  if (!portalSecretReady()) throw new CustomerAuthError(PORTAL_NOT_READY);
+  const a = await portalAccessUsable(portalAccessId);
+  if (!a) throw new CustomerAuthError(PORTAL_ACCESS_FAIL);
+  const token = `${PORTAL_TOKEN_PREFIX}${randomToken(32)}`;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PORTAL_SESSION_TTL_MS);
+  const ipHash = portalIpHash(meta?.ip);
+  const row = await prisma.$transaction(async (tx) => {
+    const s = await tx.portalSession.create({
+      data: {
+        tenantId: a.tenantId,
+        portalAccessId: a.id,
+        crmContactId: a.contactId,
+        crmSystemId: a.systemId,
+        tokenHash: sha256(token),
+        userAgent: trimmed(meta?.userAgent).slice(0, 300) || null,
+        ipHash,
+        expiresAt,
+      },
+      select: { id: true },
+    });
+    await tx.crmPortalAccess.update({ where: { id: a.id }, data: { lastLoginAt: now } });
+    return s;
+  });
+  return {
+    token,
+    cookieName: portalCookieName(),
+    sessionId: row.id,
+    portalAccessId: a.id,
+    companyId: a.companyId,
+    crmContactId: a.contactId,
+    crmSystemId: a.systemId,
+    tenantId: a.tenantId,
+    expiresAt,
+  };
+}
+
+/** อ่าน session พอร์ทัลจาก token — หมดอายุ/ถูกเพิกถอน/สิทธิ์ใช้ไม่ได้/ไม่ใช่ token พอร์ทัล = null เงียบ ๆ */
+export async function getPortalSession(token: string): Promise<PortalSessionInfo | null> {
+  const t = trimmed(token);
+  if (!isPortalToken(t)) return null;
+  const row = await prisma.portalSession.findUnique({ where: { tokenHash: sha256(t) } });
+  if (!row || row.revokedAt || row.expiresAt < new Date()) return null;
+  const a = await portalAccessUsable(row.portalAccessId);
+  if (!a || a.tenantId !== row.tenantId || a.systemId !== row.crmSystemId || a.contactId !== row.crmContactId) return null;
+  return {
+    sessionId: row.id,
+    tenantId: row.tenantId,
+    crmSystemId: row.crmSystemId,
+    portalAccessId: a.id,
+    companyId: a.companyId,
+    crmContactId: a.contactId,
+    role: a.role,
+    expiresAt: row.expiresAt,
+  };
+}
+
+/** ออกจากระบบพอร์ทัล (ใบเดียว) — เรียกซ้ำได้ */
+export async function revokePortalSession(token: string): Promise<{ ok: true }> {
+  const t = trimmed(token);
+  if (isPortalToken(t)) {
+    await prisma.portalSession.updateMany({ where: { tokenHash: sha256(t), revokedAt: null }, data: { revokedAt: new Date() } });
+  }
+  return { ok: true };
+}
+
+/** เพิกถอนทุก session ของ access หนึ่ง (พนักงานถอนสิทธิ์ · PDPA) — คืนจำนวนใบที่ถูกเพิกถอน */
+export async function revokeAllPortalSessions(accessId: string): Promise<number> {
+  const r = await prisma.portalSession.updateMany({ where: { portalAccessId: trimmed(accessId), revokedAt: null }, data: { revokedAt: new Date() } });
+  return r.count;
+}
+
+/**
+ * ขอรหัส OTP สำหรับพอร์ทัล — **ถังเดียวกับสมาชิกทุกใบ** (`customer-otp:target:<tenant>:<CH>:<target>` · `customer-otp:ip:<ip>`)
+ * `isKnown` (ฝั่ง CRM ตัดสิน) = ปลายทางนี้มีสิทธิ์พอร์ทัลที่ใช้ได้ไหม — รู้จัก = ส่งอีเมลนอกเส้นทางคำขอ · ไม่รู้จัก = ออกใบเหมือนกัน
+ * (ใบนั้นยืนยันไม่ผ่านตลอดกาล) ⇒ คำตอบรูปเดียว เวลาใกล้กัน (X7.2)
+ */
+export async function requestPortalOtp(
+  tenant: { id: string; name: string },
+  input: RequestOtpInput,
+  opts: { ip?: string | null; isKnown: (channel: "PHONE" | "EMAIL", target: string) => Promise<boolean> },
+): Promise<RequestOtpResult> {
+  const { channel, target } = otpTargetOf(input);
+  const ip = await hitOtpAskBuckets(tenant.id, channel, target, opts?.ip);
+  const known = await opts.isKnown(channel, target).catch(() => false);
+  const otpId = `${PORTAL_OTP_PREFIX}${randomToken(18)}`;
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+  const code = await createOtpRow({ id: otpId, tenantId: tenant.id, channel, target, customerId: null, ip, expiresAt });
+  if (known && channel === "EMAIL") {
+    await sendOtpMailOffPath(target, `รหัสเข้าพอร์ทัลลูกค้า ${tenant.name}`, `รหัสยืนยันสำหรับเข้าพอร์ทัลลูกค้าของ ${tenant.name} คือ ${code} (ใช้ได้ 5 นาที)`);
+  }
+  return { otpId, expiresAt, maskedTo: maskTarget(target, channel), ...(otpPreviewOn() ? { devOtp: code } : {}) };
+}
+
+/**
+ * ยืนยัน OTP ของพอร์ทัล → session พอร์ทัล (ถังยืนยัน/นับครั้งผิด/ใบใช้ครั้งเดียว = ของสมาชิกชุดเดิม)
+ * `resolveAccess` (ฝั่ง CRM) = access ที่ปลายทางนี้เข้าได้ในร้านของใบ OTP · ไม่มี/ใช้ไม่ได้ = ข้อความเดียวกับรหัสผิด (X8.4)
+ * 🔴 ใบถูกใช้แบบมีเงื่อนไข (`usedAt IS NULL`) ⇒ ยิงรหัสเดียวกันพร้อมกันได้ session ใบเดียว
+ */
+export async function verifyPortalOtp(
+  input: { otpId: string; code: string },
+  meta: { userAgent?: string | null; ip?: string | null },
+  resolveAccess: (otp: { tenantId: string; channel: "PHONE" | "EMAIL"; target: string }) => Promise<string | null>,
+): Promise<PortalSessionToken> {
+  const { row, ok, keys, now } = await openOtp(input, meta);
+  if (!ok || !row.id.startsWith(PORTAL_OTP_PREFIX) || row.customerId) return failOtp(row.id);
+  const accessId = await resolveAccess({ tenantId: row.tenantId, channel: row.channel === "PHONE" ? "PHONE" : "EMAIL", target: row.target });
+  if (!accessId || !(await portalAccessUsable(accessId))) throw new CustomerAuthError(VERIFY_FAIL);
+  const spent = await prisma.customerOtp.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: now } });
+  if (spent.count !== 1) throw new CustomerAuthError(VERIFY_FAIL);
+  for (const k of keys) await resetRateLimitDb(k);
+  try {
+    return await mintPortalSession(accessId, meta);
+  } catch {
+    throw new CustomerAuthError(VERIFY_FAIL);
+  }
+}
+
+/**
+ * ด่านของการรับคำเชิญ (X7.4 · มติผู้คุมงานรอบ 3): ถังของตัวเอง `portal-invite:<tenant>:<ip>` 10 ครั้ง/15 นาที บน `checkRateLimitDb`
+ * นับ **ทุกครั้ง** ที่มีคนยื่น token (ไม่ใช่เฉพาะครั้งที่ผิด) ⇒ เดา token ต่อเนื่องจาก IP เดียวได้ไม่เกินเพดาน · แยกจากถังยืนยัน OTP
+ * (คนที่พิมพ์รหัส OTP ผิดไม่ควรเสียโควตารับคำเชิญ และกลับกัน)
+ */
+export async function hitPortalInviteLimit(tenantId: string, ip: string | null | undefined): Promise<void> {
+  const k = trimmed(ip);
+  await hit(`portal-invite:${trimmed(tenantId) || "-"}:${k || "unknown"}`, RL_VERIFY_PER_IP, RL_VERIFY_WINDOW_MS, (mins) => `ลองเปิดลิงก์เชิญบ่อยเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`);
+}
+
+export type PortalPageSession = { slug: string; tenantId: string; tenantName: string; token: string; session: PortalSessionInfo };
+
+/**
+ * ด่านของทุกหน้า `/b/<slug>/*` ที่ต้องล็อกอิน — ไม่มี session พอร์ทัล (หรือเป็นของร้านอื่น) = พาไป `loginPath`
+ * 🔴 ไม่แตะคุกกี้พนักงานหรือคุกกี้สมาชิกเลย · `loginPath` มาจากผู้เรียก (ค่าคงที่ PORTAL_BASE_PATH ของ CRM มีที่เดียว)
+ */
+export async function requirePortalSession(slug: string, loginPath: string): Promise<PortalPageSession> {
+  const { cookies } = await import("next/headers");
+  const jar = await cookies();
+  const token = jar.get(portalCookieName())?.value ?? "";
+  const session = token ? await getPortalSession(token) : null;
+  const go = async (): Promise<never> => {
+    const { redirect } = await import("next/navigation");
+    redirect(loginPath);
+    throw new CustomerAuthError("ต้องเข้าสู่ระบบพอร์ทัลก่อนจึงจะเปิดหน้านี้ได้");
+  };
+  if (!session) return go();
+  const tenant = await prisma.tenant.findUnique({ where: { slug: trimmed(slug) }, select: { id: true, name: true } });
+  if (!tenant || tenant.id !== session.tenantId) return go();
+  return { slug: trimmed(slug), tenantId: tenant.id, tenantName: tenant.name, token, session };
+}
+
+/** อายุเก็บแถว PortalSession ที่หมดอายุ/ถูกเพิกถอนแล้ว ก่อนงานกวาดลบทิ้ง (30 วัน — เผื่อสอบสวนย้อนหลัง) */
+export const PORTAL_SESSION_RETAIN_DAYS = 30;
+
+/**
+ * งานกวาด `crm.portal.sessions.sweep` (รายวัน · ช่อง 03:00 ไทย · ทะเบียน C0.5): ลบแถว PortalSession ที่ **หมดอายุ** หรือ
+ * **ถูกเพิกถอน** มาแล้วเกิน 30 วัน (นับจาก `now`) · session ที่ยังใช้ได้ไม่ถูกแตะ
+ * AUDIT-CLASS X5: คำสั่ง `DELETE … WHERE` คำสั่งเดียว (ไม่อ่านแล้วค่อยลบ) ⇒ สองรอบซ้อนกันได้ผลเดียวกัน (รอบหลังลบ 0 แถว) ·
+ * เริ่มใหม่ได้ทุกเมื่อ · `tenantId` = จำกัดร้าน (ข้อสอบ/เครื่องมือ) · ไม่ส่ง = ทุกร้าน
+ */
+export async function sweepPortalSessions(now: Date = new Date(), opts: { tenantId?: string | null } = {}): Promise<number> {
+  const cut = new Date(now.getTime() - PORTAL_SESSION_RETAIN_DAYS * 24 * 60 * 60_000);
+  const r = await prisma.portalSession.deleteMany({
+    where: { ...(opts.tenantId ? { tenantId: opts.tenantId } : {}), OR: [{ expiresAt: { lt: cut } }, { revokedAt: { lt: cut } }] },
+  });
+  return r.count;
+}
+
+/** token พอร์ทัลจากคุกกี้ของคำขอนี้ (route `/api/files` · หน้า) — ไม่มี = "" */
+export async function portalTokenFromCookies(): Promise<string> {
+  try {
+    const { cookies } = await import("next/headers");
+    return (await cookies()).get(portalCookieName())?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+// ◂ CRM C3.5

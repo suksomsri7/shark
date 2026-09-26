@@ -24,6 +24,9 @@ import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
 // CRM C1.9 ▸ แผงแท็บวัตถุกำหนดเอง (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.9 เป็นเจ้าของ) ◂
 import { CrmObjectTabPanel } from "@/components/crm/objects/ObjectTabs";
 import { crmCan } from "@/lib/modules/crm/access";
+// CRM C3.5 ▸ บล็อก "พอร์ทัลลูกค้า" (ใครเข้าได้ · เชิญ/ถอน · คำขอที่รอ) — คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ของใบ C3.5 · action ส่งทาง props ◂
+import { CrmPortalBlock } from "@/components/crm/portal/CrmPortalBlock";
+import { decidePortalRequestAction, inviteToPortalAction, revokePortalAccessAction } from "@/lib/modules/crm/portal-actions";
 
 // บริษัท 360 (CRM v2 · ใบ C1.3 · พิมพ์เขียว §3.4 · ภาพ 04) — `/app/sys/{id}/crm/companies/{companyId}`
 // URL state: ?tab=overview|contacts|deals|documents|timeline|obj-<objectKey>
@@ -247,6 +250,16 @@ export default async function Company360Page({
           {/* CRM C1.6 ▸ ไฟล์แนบ */}
           <CrmFilesBlock ctx={ctx} actor={actor} entityType="COMPANY" entityId={c.id} />
           {/* ◂ CRM C1.6 */}
+          {/* CRM C3.5 ▸ พอร์ทัลลูกค้า (มีคีย์ crm.portal.manage เท่านั้น — ไม่มี = ไม่แสดงบล็อก) ◂ */}
+          {live && (
+            <CrmPortalBlock
+              ctx={ctx}
+              actor={actor}
+              companyId={c.id}
+              contacts={data.contacts.map((p) => ({ id: p.contactId, name: p.name }))}
+              actions={{ invite: inviteToPortalAction, revoke: revokePortalAccessAction, decide: decidePortalRequestAction }}
+            />
+          )}
           <div className="card flex flex-col gap-2 p-4">
             <span className="font-semibold">ผู้ช่วย AI</span>
             <SideSoon title="สรุปบริษัทนี้" hint="ดีล + เอกสารบัญชีทั้งหมด" />

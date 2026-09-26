@@ -10,6 +10,7 @@ import { normalizeExtract, type BillExtract, type InboxAiStatus } from "./inbox-
 import { clampSearch } from "./search-input";
 // re-export ให้ผู้เรียกเดิมที่ import ค่าเหล่านี้จาก "./attachment" ยังใช้ได้ (ของจริงอยู่ attachment-shared.ts
 // ซึ่งบริสุทธิ์ ไม่แตะ prisma — client component ต้อง import จากไฟล์นั้นตรง ๆ ห้าม import จากไฟล์นี้)
+import { isPrivateAttachmentUrl, viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
 export type { AttachmentStatus, AttachmentSource } from "./attachment-shared";
 export { ATTACHMENT_MAX_BYTES, ATTACHMENT_ALLOWED_MIME, DOC_TYPE_HINT_OPTIONS, validateAttachmentUpload, validateAttachmentBytes, sniffAttachmentMime } from "./attachment-shared";
 
@@ -489,8 +490,8 @@ export async function listAttachmentsPaged(
     rows: rows.map((r) => ({
       id: r.id,
       fileName: r.fileName,
-      fileUrl: r.fileUrl,
-      thumbUrl: r.thumbUrl,
+      fileUrl: viewableAttachmentUrl(r.id, r.fileUrl), // CRM C3.5 ▸ ไฟล์ส่วนตัว → ทางเข้าที่ตรวจสิทธิ์ ◂
+      thumbUrl: r.thumbUrl && isPrivateAttachmentUrl(r.thumbUrl) ? null : r.thumbUrl,
       mimeType: r.mimeType,
       sizeBytes: r.sizeBytes,
       sha256: r.sha256,
@@ -758,8 +759,8 @@ export async function getAttachmentRow(tenantId: string, systemId: string, id: s
   return {
     id: r.id,
     fileName: r.fileName,
-    fileUrl: r.fileUrl,
-    thumbUrl: r.thumbUrl,
+    fileUrl: viewableAttachmentUrl(r.id, r.fileUrl), // CRM C3.5 ▸ ไฟล์ส่วนตัว → ทางเข้าที่ตรวจสิทธิ์ ◂
+    thumbUrl: r.thumbUrl && isPrivateAttachmentUrl(r.thumbUrl) ? null : r.thumbUrl,
     mimeType: r.mimeType,
     sizeBytes: r.sizeBytes,
     sha256: r.sha256,

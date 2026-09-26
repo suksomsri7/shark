@@ -175,6 +175,10 @@ let C25_THREAD: string | null = null;
 // CRM C2.7 ▸ หน้าขายของโมดูล POS (ช่อง "ดีล" อยู่ที่นั่น ไม่ได้อยู่ใต้ /crm) — สาขาป่าตองของเฉลย ◂
 const POS_REGISTER = `/app/sys/${(E.systems?.POS ?? "") as string}/pos/register?unit=${(E.units?.patong ?? "") as string}`;
 
+// CRM C3.5 ▸ พอร์ทัลลูกค้า `/b/<slug>` — slug ของร้าน QC (ผู้คุมงานเขียนสเปค 26 ก.ย.) · ลูกค้า = `--user customer:<accessId>` (prep: scripts/pending/portal-visual-prep.mts)
+const PORTAL_SLUG: string = (await prisma.tenant.findUnique({ where: { id: E.tenantId }, select: { slug: true } }))?.slug ?? "-";
+const PB = `/b/${encodeURIComponent(PORTAL_SLUG)}`;
+// ◂ CRM C3.5
 const SPECS: Record<string, Spec[]> = {
   // CRM C2.8 ▸ คะแนนผู้ติดต่อ (พิมพ์เขียว §5.7 · ภาพ 05): หน้า "คะแนนผู้ติดต่อ" (ตารางกฎ + ระดับ ร้อน/อุ่น/เย็น + อายุแต้ม +
   //   คำนวณใหม่แบบลองก่อน) · ตัวแก้กฎ (เปิดด้วย "เพิ่มกฎให้คะแนน") · ป้ายคะแนน + ชิปเหตุผล 3 ข้อบนผู้ติดต่อ 360
@@ -238,6 +242,18 @@ const SPECS: Record<string, Spec[]> = {
   // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — ผู้คุมงานเขียนสเปค (26 ก.ย.) · owner/manager มี `crm.report.view` ใน seed · ถ่าย overview + forecast + funnel + sources + ตารางเวลา
   // CRM C3.2 ▸ หน้าแรก KPI 6 + leaderboard + ที่มา lead + saved views + หน้าโควตา (ภาพ 01 · 10) — ผู้คุมงานเขียนสเปค (26 ก.ย.)
   //   thana = STAFF ทีมภูเก็ต (เห็นแถวตัวเอง) · manager · owner · โควตาเฉพาะ owner (crm.quota.manage)
+  // CRM C3.5 ▸ ภาพ 12 — สายตาลูกค้า (customer:<accessId>) 6 หน้า · สายตา owner = หน้าตั้งค่า portal ของพนักงาน
+  "3.5": isCustomer ? [
+    { name: "portal-home", path: `${PB}`, note: "portal หน้าแรก — ชื่อบริษัท+ตัวสลับบริษัท · ยอดค้างชำระ · ใบเสนอราคารอตอบ · เมนู (ภาพ 12)", expect: ["[data-testid=portal-frame]", "[data-testid=portal-company-name]", "[data-testid=portal-home-stats]", "[data-testid=portal-menu]"], steps: [{ waitFor: "[data-testid=portal-home-stats]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: "portal-quotations", path: `${PB}/quotations`, note: "ใบเสนอราคาของบริษัทตน (ตอบรับ/ปฏิเสธเฉพาะ AWAITING_ACCEPT)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: "portal-invoices", path: `${PB}/invoices`, note: "ใบแจ้งหนี้ + ยอดค้าง + ลิงก์จ่าย (ทางเดิม /pay/<token>)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: "portal-documents", path: `${PB}/documents`, note: "เอกสาร/เรคคอร์ด portalVisible ของบริษัทตน + ใบเสร็จ", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: "portal-requests", path: `${PB}/requests`, note: "คำขอ (ISSUE/เอกสาร/แก้ข้อมูล) + สถานะจากบอร์ด/approval", expect: ["[data-testid=portal-frame]", "[data-testid=portal-request-kind]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
+    { name: "portal-contacts", path: `${PB}/contacts`, note: "ผู้ติดต่อของบริษัทตน (ไม่มีข้อมูลบริษัทอื่น)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },
+  ] : userKey === "owner" ? [
+    { name: `crm-portal-settings-${userKey}`, path: `${CRM_BASE}/settings/portal`, note: "ตั้งค่า portal (พนักงาน): เปิด/ปิด · วิธีล็อกอิน · บอร์ดรับคำขอ · รายการ access + เชิญ/เพิกถอน (crm.portal.manage)", expect: ["[data-testid=crm-portal-block]", "[data-testid=crm-portal-invite]"], steps: [{ waitFor: "[data-testid=crm-portal-block]", timeoutMs: 20_000 }, { wait: 500 }] },
+  ] : [],
+  // ◂ CRM C3.5
   "3.2": isCustomer ? [] : [
     {
       name: `crm-home-v2-${userKey}`,
@@ -1641,6 +1657,11 @@ try {
   //    `CustomerSession` / `PortalSession` เพราะตารางหลังยังไม่มีในวันที่เขียน ⇒ C3.5 ต้องเติมลูปกวาด
   //    (userAgent = UA และ expiresAt < now) ให้ครบทั้งสองตาราง ไม่งั้นรอบที่ถูก kill จะทิ้ง session ลูกค้าค้างไว้
   const stale = await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } });
+  // CRM C3.5 ▸ ปิดหนี้ข้างบน: session ลูกค้า (portal · สมาชิก) ของรอบที่ถูก kill — แท็ก UA เดียวกันและเกิดก่อน 1 ชม. (รอบที่ยังวิ่งอยู่อายุ < 1 ชม.)
+  //   (อายุ session ลูกค้า 30 วัน ⇒ เงื่อนไข "หมดอายุแล้ว" แบบของพนักงานจะไม่จับซากเลย จึงใช้เวลาเกิดแทน) ◂
+  for (const mdl of ["portalSession", "customerSession"]) {
+    try { stale.count += (await (prisma as Any)[mdl]?.deleteMany?.({ where: { userAgent: UA, createdAt: { lt: new Date(Date.now() - 60 * 60 * 1000) } } }))?.count ?? 0; } catch { /* ตารางยังไม่มี */ }
+  }
   await prisma.$disconnect();
   writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, at: new Date().toISOString(), results }, null, 2));
   console.log(`\n🧹 ลบ session QC ของรอบนี้ ${count}${stale.count ? ` (+ซากหมดอายุ ${stale.count})` : ""} · ภาพ ${shots.length} ใบใน ${OUT} · สรุป summary-${userKey}.json`);

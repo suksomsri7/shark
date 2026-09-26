@@ -14,6 +14,8 @@ import type { ApiModuleConfig } from "@/lib/api/require";
 import { requireApi } from "@/lib/api/require";
 import { fail, type ApiErrorCode } from "@/lib/api/respond";
 import { parseCrmSettings } from "../settings";
+// CRM C3.5 ▸ token พอร์ทัลลูกค้า (`cp_…`) บน op ของร้าน = 403 ทันที (ไม่ต้องเสีย round trip ตรวจคีย์) ◂
+import { isPortalToken } from "@/lib/modules/member/session-facade"; // facade ที่สองของสมาชิก (ผิว session เท่านั้น — facade หลักแบบค่าทำให้เกิดวงโหลดของบัญชี)
 import { crmApiKeyActor, crmScopesCan } from "./actor";
 import { CRM_RATE_LIMITS } from "./rate";
 
@@ -87,6 +89,10 @@ export const CRM_API_CONFIG: ApiModuleConfig = {
     let effective = req;
     let gated = false;
     const raw = bearer(req);
+    // CRM C3.5 ▸ AUDIT-CLASS X1/X2: session ของลูกค้าบริษัทไม่มีสิทธิ์ใด ๆ บน API ของร้าน — ใช้ได้เฉพาะ `/portal/*` ◂
+    if (raw && isPortalToken(raw)) {
+      return { ok: false, response: fail(403, "forbidden", "บัญชีพอร์ทัลลูกค้าใช้ได้เฉพาะเส้นทาง /portal/* — เส้นทางนี้เป็นของทางร้าน ต้องใช้คีย์ API ของร้าน", "A customer-portal session may only use the /portal/* lane.", requestId) };
+    }
     const verdict = raw ? await verifyApiKeyDetailed(raw) : null;
     if (verdict?.status === "ok") {
       const key = verdict.key;

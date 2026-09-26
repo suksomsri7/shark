@@ -405,6 +405,10 @@ const ALLOWED_EDGES = new Set([
   //   crm→kanban    : งานของดีล/กิจกรรม → การ์ดบอร์ดงาน ผ่าน links.createCardFromExternal (เส้นเดียวกับ member→kanban)
   //   crm→forms     : ฟอร์มเว็บ → lead (ทิศหลักคือ forms→crm ที่มีอยู่แล้ว · ขานี้ใช้ตอน CRM อ่านนิยามฟอร์ม C2.6)
   //   (ไม่มี `crm→storage` / `crm→ai` เพราะไม่มีโมดูลชื่อนั้นใน src/lib/modules — ของกลางพวกนั้นอยู่ที่ `src/lib/*`)
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร ใช้ 4 เส้นที่มีอยู่แล้ว (ไม่เพิ่มเส้นใหม่): crm→account (ใบเสนอราคา/ใบแจ้งหนี้/ลิงก์ชำระ/สลิป ผ่าน facade ·
+  //   `respondQuotation` · `createPaymentRequestForDoc` · `listPortalDocs` · `attachPrivateFileToDoc`) · crm→member (ตัวตน/OTP/limiter ชุดเดียวกับ
+  //   ลูกค้า — ผ่าน facade ที่สอง `member/session-facade.ts` (ด่าน F2.4) กันวงโหลดของบัญชี) · crm→kanban (แจ้งเรื่อง → การ์ด ผ่าน
+  //   `links.createCardFromExternal`) · crm→approval (คำขอเปลี่ยนผู้ติดต่อ/ข้อมูล → `submitForApproval` · `cancelRequest`) ◂
   "crm→chat",
   "crm→hr",
   "crm→inventory",
@@ -520,6 +524,47 @@ chk(
   deepCrmImports.length ? `ล้วงลึก: ${deepCrmImports.join(", ")}` : "ครบ",
   "MAJOR",
 );
+
+// ═══ F2.4 (ใบ CRM v2 C3.5 · มติผู้คุมงาน 26 ก.ย. 2569) — ฝั่ง CRM/พอร์ทัลแตะโมดูลสมาชิกได้เฉพาะผ่าน facade ที่ประกาศ ═══
+// ทางเข้าที่ถูกต้อง 2 ทาง (รายชื่อตายตัว — เพิ่มได้ต้องมีเหตุผลที่นี่):
+//   • `@/lib/modules/member`                 = facade หลัก (index.ts)
+//   • `@/lib/modules/member/session-facade`  = facade ที่สอง แคบ: ผิว session ลูกค้า/พอร์ทัล (`customer-session.ts` + `customer-cookie.ts`)
+//     เหตุผล: facade หลักแบบค่าลาก wallet → giftcard → pos → outbox-consumers → บัญชี เข้ากราฟ ⇒ `crm/api` (ที่บัญชีโหลดผ่าน crm facade)
+//     import แล้วเกิดวงโหลด TDZ `VISIBLE_DOC_TYPES` (F10.1 แดงจริงระหว่างทำใบ C3.5) · session-facade ไม่ import โมดูลใดเลย
+// ขอบเขต: โมดูล CRM · คอมโพเนนต์ CRM · หน้า CRM · สะพาน CRM · route สาธารณะของ CRM (`src/app/b` · `/u` · `/t`) · REST CRM
+//   (โมดูลอื่นยังล้วงไฟล์ในของสมาชิกได้ตามเดิม — หนี้นอกขอบเขตใบนี้ ไม่ขยายด่านไปแดงของคนอื่น)
+{
+  const MEMBER_FACADES = new Set(["@/lib/modules/member", "@/lib/modules/member/session-facade"]);
+  const CRM_SIDE = ["src/lib/modules/crm", "src/components/crm", "src/app/app/sys/[id]/crm", "src/lib/platform/crm-bridges", "src/app/b", "src/app/u", "src/app/t", "src/app/api/v1/crm"];
+  // ทุก specifier (from · import() · require() · import "…") — รูป `@/lib/modules/member…` และรูปสัมพัทธ์ (`../member/…` · `../../modules/member`)
+  //   ที่ resolve แล้วชี้เข้าโฟลเดอร์ `src/lib/modules/member` (มติผู้คุมงานรอบ 4: F2.1 จับเฉพาะรูป `@/…` — รูปสัมพัทธ์ต้องจับที่นี่)
+  const SPEC_RE = /(?:from\s*|import\s*\(\s*|require\s*\(\s*|import\s+)["']([^"']+)["']/g;
+  const MEMBER_DIR = "src/lib/modules/member";
+  const off: string[] = [];
+  for (const d of CRM_SIDE) {
+    for (const f of walk(join(ROOT, d), (p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {
+      const src = readFileSync(f, "utf8");
+      for (const m of src.matchAll(SPEC_RE)) {
+        const raw = m[1]!;
+        let spec: string | null = null;
+        if (raw.startsWith("@/lib/modules/member") && (raw.length === "@/lib/modules/member".length || raw["@/lib/modules/member".length] === "/")) spec = raw;
+        else if (raw.startsWith(".")) {
+          const target = rel(resolve(dirname(f), raw)).replace(/\\/g, "/");
+          if (target === MEMBER_DIR || target.startsWith(`${MEMBER_DIR}/`)) spec = `@/lib/modules/member${target.slice(MEMBER_DIR.length)}`.replace(/\/index$/, "");
+        } else if (/modules\/member(\/|$)/.test(raw)) spec = raw;
+        if (spec !== null && !MEMBER_FACADES.has(spec)) off.push(`${rel(f)}:${src.slice(0, m.index ?? 0).split("\n").length} (${raw})`);
+      }
+    }
+  }
+  chk(
+    "F2.4",
+    "ฝั่ง CRM/พอร์ทัลแตะโมดูลสมาชิกได้เฉพาะผ่าน member/index หรือ member/session-facade",
+    off.length === 0,
+    off.length ? `ล้วงลึก: ${off.join(", ")}` : "ครบ",
+    "MAJOR",
+  );
+}
+// ◂ CRM C3.5
 
 // F5: raw prisma ในโมดูล
 const rawPrismaFiles = moduleFiles.filter((f) =>

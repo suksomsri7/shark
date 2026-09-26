@@ -99,6 +99,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   // CRM C3.2 ▸ โควตา (ตั้งเป้าพนักงาน/ทีมต่องวด + ความคืบหน้า — ภาพ 10 ขวา) · คีย์ `crm.quota.manage` (404 สำหรับคนที่ไม่มี)
   { key: "settings-quotas", label: "โควตา", path: "/crm/settings/quotas", status: "ready", wo: "C3.2", perm: "crm.quota.manage" }, // ACCEPTANCE-FIX ผู้คุมงาน 26 ก.ย.: perm ตามกติกา C3.1 (ไม่โชว์ลิงก์ตาย)
   // ◂ CRM C3.2
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (เปิด/ปิด · วิธีเข้า · บอร์ดรับเรื่อง · showDeals) · คีย์ `crm.portal.manage` (404 สำหรับคนที่ไม่มี)
+  { key: "settings-portal", label: "พอร์ทัลลูกค้า", path: "/crm/settings/portal", status: "ready", wo: "C3.5", perm: "crm.portal.manage" },
+  // ◂ CRM C3.5
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

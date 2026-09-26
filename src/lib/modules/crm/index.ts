@@ -198,3 +198,41 @@ export * as views from "./views";
 //   ค่าคงที่/ชนิด/ตัวช่วยเวลาไทยสำหรับหน้า 'use client' อยู่ที่ `./reports-shared`
 export * as reports from "./reports";
 // ◂ CRM C3.1
+// CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร `/b/<slug>/*` (`portal.ts`) — namespace เดียว `portal`:
+//   ลูกค้า (token ดิบก่อนเสมอ): portalShopBySlug/acceptInvite/requestOtp/verifyOtp/loginWithLine/switchCompany/logout/requirePortal ·
+//     home/myCompanies/me · listQuotations/getQuotation/respondQuotation · listInvoices/getInvoice/payLink/uploadSlip · listReceipts ·
+//     listDocuments/getRecord/requestRecordChange · listRequests/getRequest/createRequest · listContacts
+//   พนักงาน (ctx, actor · crm.portal.manage): invite/revoke/listAccess/listCompanyRequests/decideRequest · getPortalSettings/savePortalSettings
+//   ระบบ: eraseContact (PDPA — C3.9 เรียก) · onApprovalDecided (approval-effects) · onPortalEvent (สะพาน crm-bridges/portal.ts)
+//   ผิว session (`cp_` · คุกกี้ shark_portal) อยู่ที่ member/customer-session.ts (R-C.5) และถูกส่งต่อจาก portal.ts
+//   ค่าคงที่/DTO/ตัวแปลงบริสุทธิ์ (PORTAL_BASE_PATH ตัวเดียว) อยู่ที่ `./portal-shared` — ผู้เรียกนอกโมดูลใช้ผ่าน re-export ข้างล่าง
+export * as portal from "./portal";
+export {
+  PORTAL_BASE_PATH,
+  portalPath,
+  portalBaht,
+  portalDate,
+  PORTAL_ROLE_LABEL,
+  PORTAL_ROLES,
+  PORTAL_REQUEST_KIND_LABEL,
+  PORTAL_DOC_STATUS_LABEL,
+  PORTAL_DOC_TYPE_LABEL,
+  PortalError,
+  portalCanChangeData,
+  portalCanPay,
+  portalCanRespond,
+} from "./portal-shared";
+export type {
+  PortalHomeDto,
+  PortalQuotationDto,
+  PortalInvoiceDto,
+  PortalReceiptDto,
+  PortalDocumentItem,
+  PortalRecordDto,
+  PortalRequestDto,
+  PortalContactDto,
+  PortalFileDto,
+  PortalCompanyRef,
+  PortalSettings,
+} from "./portal-shared";
+// ◂ CRM C3.5

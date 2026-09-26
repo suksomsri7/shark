@@ -8,6 +8,9 @@ import type { ApiMethod, ApiOp } from "@/lib/api/op";
 import { fail, newRequestId, type ApiErrorCode } from "@/lib/api/respond";
 import { CRM_API_CONFIG } from "./config";
 import { CRM_OPS } from "./registry";
+// CRM C3.5 ▸ เลนลูกค้าของพอร์ทัล `/portal/*` — ทะเบียนแยก + ด่าน token พอร์ทัล (ไม่ใช่คีย์ร้าน) บน dispatch ของแกนตัวเดียวกัน ◂
+import type { ApiModuleConfig } from "@/lib/api/require";
+import { PORTAL_OPS, portalApiConfig } from "./portal-lane";
 
 // AUDIT-CLASS X6 (มติผู้คุมงาน C1.10 S3): เพดานขนาด body — 1 MB ทั่วไป · 10 MB เฉพาะนำเข้าผู้ติดต่อ
 export const CRM_BODY_MAX_BYTES = 1024 * 1024;
@@ -48,15 +51,20 @@ async function capBody(req: Request, cap: number): Promise<Request | Response> {
   return new Request(req.url, { method: req.method, headers: req.headers, body });
 }
 
-async function run(ops: readonly ApiOp[], method: ApiMethod, req: Request, path: string[]): Promise<Response> {
+async function run(ops: readonly ApiOp[], method: ApiMethod, req: Request, path: string[], cfg: ApiModuleConfig = CRM_API_CONFIG): Promise<Response> {
   const hit = matchOpIn(ops, method, path);
   const capped = await capBody(req, hit && BIG_BODY_OPS.has(hit.op.id) ? CRM_IMPORT_BODY_MAX_BYTES : CRM_BODY_MAX_BYTES);
   if (capped instanceof Response) return capped;
-  return coreDispatch(ops, method, capped, { path }, CRM_API_CONFIG);
+  return coreDispatch(ops, method, capped, { path }, cfg);
 }
+
+// CRM C3.5 ▸ config ของเลนพอร์ทัล (สร้างครั้งเดียว — ข้อความ/ชนิดระบบเดียวกับ CRM · ด่าน = token พอร์ทัลเท่านั้น) ◂
+const PORTAL_API_CONFIG: ApiModuleConfig = portalApiConfig(CRM_API_CONFIG);
 
 /** REST `/api/v1/crm/*` */
 export function dispatch(method: ApiMethod, req: Request, params: { path?: string[] }): Promise<Response> {
+  // CRM C3.5 ▸ `/api/v1/crm/portal/*` = เลนลูกค้าบริษัท (Bearer cp_…) — ไม่ผ่านทะเบียน/ด่านคีย์ของร้าน ◂
+  if ((params.path ?? [])[0] === "portal") return run(PORTAL_OPS, method, req, params.path ?? [], PORTAL_API_CONFIG);
   return run(CRM_OPS, method, req, params.path ?? []);
 }
 

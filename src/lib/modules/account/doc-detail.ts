@@ -9,6 +9,7 @@ import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type Do
 import { listJournalEntriesForDocument } from "./gl";
 import { LIST_TABS } from "./list-tabs";
 import { listDocumentAttachmentFiles, humanSize } from "./attachment";
+import { viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
 import { listDocAuditLogs, auditActionLabelTh } from "./access";
 // WO 1.7 — เอกสารกลุ่ม (BN/CP): ตาราง "เอกสารในกลุ่ม" + ชิป "อยู่ในใบวางบิล/ใบรวมจ่าย" ของใบลูก
 import { groupChipOfChild, groupDefOf, groupPanelData, isGroupDocType, type GroupChildView, type GroupMembershipChip } from "./group";
@@ -363,7 +364,7 @@ export async function getDocDetailData(
     attachments: attachmentRows.map((a) => ({
       id: a.id,
       fileName: a.fileName,
-      fileUrl: a.fileUrl,
+      fileUrl: viewableAttachmentUrl(a.id, a.fileUrl), // CRM C3.5 ▸ ไฟล์ส่วนตัว (สลิปจากพอร์ทัล) → ทางเข้าที่ตรวจสิทธิ์ ◂
       mimeType: a.mimeType,
       sizeBytes: a.sizeBytes,
     })),

@@ -36,6 +36,7 @@ import { previewNextExpenseDocNo, creditAvailableExpenseNow } from "./expense";
 import { listPaymentChannels } from "./payment";
 import { listExpenseAccounts, listIncomeAccounts, listProducts, listUnits } from "./product";
 import { listAttachments } from "./attachment";
+import { viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
 import {
   canCreateDirect,
   dueLabelOf,
@@ -283,7 +284,7 @@ export async function DocEditorPage({
   const attachmentViews: AttachmentView[] = attachments.map((a) => ({
     id: a.id,
     fileName: a.fileName,
-    fileUrl: a.fileUrl,
+    fileUrl: viewableAttachmentUrl(a.id, a.fileUrl), // CRM C3.5 ▸ ไฟล์ส่วนตัว → ทางเข้าที่ตรวจสิทธิ์ ◂
     mimeType: a.mimeType ?? "application/octet-stream",
     sizeBytes: a.sizeBytes ?? 0,
   }));

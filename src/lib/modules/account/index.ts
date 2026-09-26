@@ -4,7 +4,7 @@
 //
 // 🔴 ห้าม import raw prisma ที่นี่ (F5 baseline freeze) — query ผ่าน service.ts / gl.ts เท่านั้น
 
-import type { Prisma } from "@prisma/client";
+import type { AccountDocType, Prisma } from "@prisma/client";
 import { handleBeamPaid, handleBeamFailed } from "./payment-request";
 import {
   convertDocument,
@@ -649,6 +649,12 @@ export async function respondQuotation(
     signer?: { name: string; ipHash: string; userAgent: string } | null;
     /** ผู้ใช้ที่กดฝั่งร้าน (by = STAFF) — ฝั่งพอร์ทัลลูกค้าไม่มี User ⇒ actorType = SYSTEM */
     actorUserId?: string | null;
+    // CRM C3.5 ▸ เหตุผลที่ลูกค้าปฏิเสธ (เก็บ "ฝั่งร้าน" ในแถว audit ของเอกสารเท่านั้น — ไม่เคยอยู่ใน payload ของ event · X8) ·
+    //   event เพิ่มเติมของผู้เรียกที่ต้องเกิดเฉพาะกับคำตอบที่ชนะ (ส่งต่อให้ `setQuotationResponse.alsoEmit`) ◂
+    reason?: string | null;
+    alsoEmit?: { type: string; idempotencyKey: string; payload: unknown; systemId?: string | null }[];
+    /** CRM C3.5 ▸ (มติผู้คุมงาน S4) id ของสิทธิ์พอร์ทัล/ผู้ติดต่อที่ตอบ — ลง audit ของเอกสาร (id ล้วน) ◂ */
+    portal?: { accessId: string; contactId: string } | null;
   } = { by: "STAFF" },
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   // 🔴 หลักฐานเขียน **ในธุรกรรมเดียวกับการเปลี่ยนสถานะ** (ดูหมายเหตุที่ `setQuotationResponse`):
@@ -669,8 +675,12 @@ export async function respondQuotation(
           signer: opts.signer
             ? { name: opts.signer.name, ipHash: opts.signer.ipHash, userAgent: opts.signer.userAgent }
             : null,
+          // CRM C3.5 ▸ มีเฉพาะเมื่อผู้เรียกส่งมา (ผู้เรียกเดิมได้แถว audit รูปเดิมเป๊ะ) ◂
+          ...(opts.reason ? { reason: String(opts.reason).slice(0, 500) } : {}),
+          ...(opts.portal ? { accessId: opts.portal.accessId, contactId: opts.portal.contactId } : {}),
         },
       },
+      ...(opts.alsoEmit?.length ? { alsoEmit: opts.alsoEmit } : {}),
     });
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกคำตอบใบเสนอราคาไม่สำเร็จ — ลองใหม่อีกครั้ง") };
@@ -864,3 +874,95 @@ export async function accountSystemForCrm(
   return { systemId: link.systemId, contactOfParty, contacts };
 }
 // ◂ CRM C1.3
+
+// CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (`crm/portal.ts`) — ทางอ่าน/เขียนของบัญชีที่พอร์ทัลใช้ **ผ่าน facade นี้ทางเดียว** (F2.2)
+//   • listPortalDocs      — เอกสารขาออก (ไม่รวม DRAFT) ของ "บริษัทลูกค้า" = ผู้ติดต่อบัญชีที่ผูก Party เดียวกับบริษัท (ทุกสมุดของร้าน)
+//                           ช่องครบที่พอร์ทัลต้องใช้ (validUntil · dueDate · paidTotal) — `listDocsByParty` ของ M3.7 ไม่มีช่องพวกนี้และรวม DRAFT
+//   • firstReceiveFinanceId — ช่องทางรับเงินแรกของสมุด (ใช้ตัดสินลิงก์ `/pay/<token>` ผ่าน `createPaymentRequestForDoc` เดิม — ไม่มีทางเงินใหม่)
+//   • attachPrivateFileToDoc — สลิปจากพอร์ทัลเข้า "คลังไฟล์แนบของเอกสาร" เดิม (AccountAttachment LINKED) โดย `fileUrl` เป็นค่าหมาย
+//                           `private://…` ของไฟล์ส่วนตัว (C0.4) — ไม่ใช่ URL ที่เปิดได้ · `createAttachment` เดิมรับเฉพาะ http(s) จึงแยกทาง
+//   AUDIT-CLASS X1: ทุกตัวกรอง tenantId (+ Party / id เอกสาร) · เอกสารของร้านอื่น/Party อื่น = ไม่พบ (ว่าง/null)
+export type PortalDocRow = {
+  id: string;
+  systemId: string;
+  docType: AccountDocType;
+  docNo: string | null;
+  status: string;
+  issueDate: Date;
+  validUntil: Date | null;
+  dueDate: Date | null;
+  grandTotal: number;
+  paidTotal: number;
+  createdAt: Date;
+};
+
+export async function listPortalDocs(
+  tenantId: string,
+  partyId: string,
+  opts: { docTypes: readonly AccountDocType[]; id?: string | null; take?: number },
+): Promise<PortalDocRow[]> {
+  if (!tenantId || !partyId || opts.docTypes.length === 0) return [];
+  const take = Math.min(Math.max(1, Math.trunc(opts.take ?? 200)), 500);
+  // ทุกสมุดของร้าน (แบบเดียวกับ `listDocsByParty`) — tenantDb ต่อเล่ม เพราะ AccountDocument เป็น sys scope
+  const books = await crmTenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  const out: PortalDocRow[] = [];
+  for (const b of books) {
+    const rows = await crmTenantDb({ tenantId, systemId: b.id }).accountDocument.findMany({
+      where: {
+        tenantId,
+        systemId: b.id,
+        direction: "OUT",
+        docType: { in: [...opts.docTypes] },
+        status: { notIn: ["DRAFT"] },
+        contact: { partyId, tenantId },
+        ...(opts.id ? { id: opts.id } : {}),
+      },
+      orderBy: [{ issueDate: "desc" }, { id: "desc" }],
+      take,
+      select: { id: true, systemId: true, docType: true, docNo: true, status: true, issueDate: true, validUntil: true, dueDate: true, grandTotal: true, paidTotal: true, createdAt: true },
+    });
+    for (const r of rows) out.push({ ...r, status: String(r.status) });
+  }
+  return out.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime() || (a.id < b.id ? 1 : -1)).slice(0, take);
+}
+
+export async function firstReceiveFinanceId(ctx: AccountCtx): Promise<string | null> {
+  if (!ctx.tenantId || !ctx.systemId) return null;
+  const row = await crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId }).accountFinance.findFirst({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, useForReceive: true, archivedAt: null },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
+export async function attachPrivateFileToDoc(
+  ctx: AccountCtx,
+  documentId: string,
+  file: { fileAssetId: string; fileName: string; mimeType: string; sizeBytes: number },
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  const db = crmTenantDb({ tenantId: ctx.tenantId, systemId: ctx.systemId });
+  const doc = await db.accountDocument.findFirst({ where: { id: documentId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, docType: true } });
+  if (!doc) return { ok: false, reason: "ไม่พบเอกสาร" };
+  const asset = await crmTenantDb({ tenantId: ctx.tenantId }).fileAsset.findFirst({ where: { id: file.fileAssetId, tenantId: ctx.tenantId }, select: { id: true, cdnUrl: true } });
+  if (!asset || !asset.cdnUrl.startsWith("private://")) return { ok: false, reason: "ไม่พบไฟล์ที่อัปโหลด — ลองอัปโหลดใหม่อีกครั้ง" };
+  const row = await db.accountAttachment.create({
+    data: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      documentId: doc.id,
+      // eslint-disable-next-line no-control-regex
+      fileName: String(file.fileName ?? "").replace(/[\\/]+/g, "-").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 200) || "slip",
+      fileUrl: asset.cdnUrl,
+      mimeType: file.mimeType,
+      sizeBytes: Math.max(0, Math.round(file.sizeBytes || 0)),
+      docTypeHint: doc.docType,
+      status: "LINKED",
+      source: "UPLOAD",
+      folder: "สลิปจากพอร์ทัลลูกค้า",
+    },
+    select: { id: true },
+  });
+  return { ok: true, id: row.id };
+}
+// ◂ CRM C3.5

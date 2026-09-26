@@ -147,3 +147,17 @@ export function validateAttachmentBytes(
   if (!ATTACHMENT_ALLOWED_MIME.has(real)) return { ok: false, reason: MAGIC_ERR };
   return { ok: true, mimeType: real };
 }
+
+// CRM C3.5 ▸ ไฟล์แนบที่เป็น "ไฟล์ส่วนตัว" (C0.4 · `fileUrl = private://…` — สลิปที่ลูกค้าแนบจากพอร์ทัล) เปิดตรงไม่ได้
+//   ⇒ ทุก DTO ฝั่งพนักงานแทนด้วยทางเข้าของบัญชี `/api/account-files/<attachmentId>` ซึ่ง **ตรวจ session พนักงาน + ร้าน + สิทธิ์ดูเอกสาร**
+//   แล้วออกลิงก์ลงนามผู้ดูชนิด STAFF (`privateFileUrl` · หมดอายุ ≤ 15 นาที) ตอนกดเปิด — ลิงก์ในหน้าจึงไม่เคยหมดอายุค้างจอ
+//   และไม่มี URL CDN/`private://` หลุดถึงหน้าจอ · ไฟล์สาธารณะเดิม (http/https) = ค่าเดิมทุกตัวอักษร
+export const PRIVATE_ATTACHMENT_ROUTE = "/api/account-files";
+export function isPrivateAttachmentUrl(fileUrl: string | null | undefined): boolean {
+  return typeof fileUrl === "string" && fileUrl.trim().startsWith("private://");
+}
+/** URL ที่หน้าจอพนักงานใช้เปิดไฟล์แนบใบนี้ได้จริง */
+export function viewableAttachmentUrl(attachmentId: string, fileUrl: string): string {
+  return isPrivateAttachmentUrl(fileUrl) ? `${PRIVATE_ATTACHMENT_ROUTE}/${encodeURIComponent(attachmentId)}` : fileUrl;
+}
+// ◂ CRM C3.5

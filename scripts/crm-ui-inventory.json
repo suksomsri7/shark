@@ -19162,6 +19162,874 @@
       },
       "wo": "C3.2",
       "oracle": "qc-crm-c3.2"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "crm-portal-invite-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-contact",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-invite-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-role",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-invite-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-email",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-invite-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-line",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-invite-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.portal.invite",
+        "db": "CrmPortalAccess.inviteTokenHash=sha256(token) · inviteExpiresAt=+7d · AuditLog crm.portal.invite"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-invite-link",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-invite-link"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-revoke-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-revoke-confirm-*"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-revoke-confirm-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.portal.revoke",
+        "db": "CrmPortalAccess.revokedAt≠null · PortalSession.revokedAt≠null · AuditLog crm.portal.revoke"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-request-approve-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.portal.request.decide",
+        "db": "CrmPortalRequest.status=APPROVED · AuditLog crm.portal.request.decide"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/companies/[id]",
+      "testid": "crm-portal-request-reject-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.portal.request.decide",
+        "db": "CrmPortalRequest.status=REJECTED · AuditLog crm.portal.request.decide"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-enabled",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-email",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-line",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-issue",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-board",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-deals",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-portal-settings-save"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/settings/portal",
+      "testid": "crm-portal-settings-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.portal.settings",
+        "db": "AppSystem.settings.crm.portal · AuditLog crm.portal.settings"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-login-tab-email",
+      "kind": "tab",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-login-email"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-login-tab-line",
+      "kind": "tab",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-line-login"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-login-email",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-login-error"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-otp-request",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "op:portal.requestOtp",
+        "db": "CustomerOtp (id po_…) · ChatRateBucket customer-otp:target:*"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-otp-code",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-login-error"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-otp-submit",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]",
+        "db": "PortalSession (tokenHash) · CrmPortalAccess.lastLoginAt"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/login",
+      "testid": "portal-line-login",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]",
+        "db": "PortalSession (LIFF id_token ตรวจกับ LINE)"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/invite/[token]",
+      "testid": "portal-invite-accept",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]",
+        "db": "CrmPortalAccess.acceptedAt · inviteTokenHash=null · PortalSession"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-menu",
+      "kind": "menu",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "portal-menu-*"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-menu-*",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/*"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-nav-*",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/*"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-company-switcher",
+      "kind": "select",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]",
+        "db": "PortalSession ใหม่ของบริษัทที่เลือก"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-logout",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/login",
+        "db": "PortalSession.revokedAt≠null"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-home-outstanding",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/invoices"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-home-quote-link",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/quotations/[id]"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-quote-accept",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "portal-quote-confirm"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-quote-reject",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "portal-quote-confirm"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-signer-name",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-quote-confirm-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-reject-reason",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-quote-confirm-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]",
+      "testid": "portal-quote-confirm-submit",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "op:portal.respondQuotation",
+        "db": "AccountDocument.status=ACCEPTED|REJECTED · AuditLog account.quotation.accept|reject (signer) · OutboxEvent crm.portal.quote.responded"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/quotations",
+      "testid": "portal-quote-row",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/quotations/[id]"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/invoices",
+      "testid": "portal-invoice-row",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/invoices/[id]"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/invoices",
+      "testid": "portal-pay-promptpay",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/pay/[token]",
+        "db": "AccountPaymentRequest (ใบเดิมถ้ายังใช้ได้)"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/invoices",
+      "testid": "portal-slip-upload",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "op:portal.uploadSlip",
+        "db": "FileAsset t/<tenant>/private/… · AccountAttachment(documentId, fileUrl private://)"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/documents",
+      "testid": "portal-document-row",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/b/[slug]/documents/[id]"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/documents/[id]",
+      "testid": "portal-record-file",
+      "kind": "link",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "download",
+        "target": "/api/files/[id]?exp&sig"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/documents/[id]",
+      "testid": "portal-record-change-field",
+      "kind": "select",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-record-change-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/documents/[id]",
+      "testid": "portal-record-change-value",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-record-change-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/documents/[id]",
+      "testid": "portal-record-change-submit",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "op:portal.requestRecordChange",
+        "db": "CrmPortalRequest PROFILE_CHANGE PENDING (ค่าจริงไม่เปลี่ยน)"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/requests",
+      "testid": "portal-request-new",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "modal",
+        "target": "portal-request-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/requests",
+      "testid": "portal-request-kind",
+      "kind": "select",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-request-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/requests",
+      "testid": "portal-request-title",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-request-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/requests",
+      "testid": "portal-request-body",
+      "kind": "input",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "portal-request-submit"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
+    },
+    {
+      "page": "/b/[slug]/requests",
+      "testid": "portal-request-submit",
+      "kind": "button",
+      "roles": [
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "op:portal.createRequest",
+        "db": "CrmPortalRequest PENDING · KanbanCard (issueBoardId) หรือ ApprovalRequest crm.portal_request · OutboxEvent crm.portal.request.created"
+      },
+      "wo": "C3.5",
+      "oracle": "qc-crm-c3.5"
     }
   ]
 }

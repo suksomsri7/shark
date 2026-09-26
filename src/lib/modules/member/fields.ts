@@ -95,6 +95,8 @@ export type FieldDef = {
   sortOrder: number;
   archivedAt: Date | null;
   defaultValue: MemberFieldValueInput;
+  // CRM C3.5 ▸ ธงพอร์ทัล (`MemberField.portalVisible/portalEditable`) **ไม่อยู่ใน DTO นี้โดยตั้งใจ** — DTO ของ engine ต้องเท่าเดิมทุกไบต์
+  //   (ข้อสอบ C1.2a-G1.x golden) · ผู้เรียกที่ต้องใช้ธงอ่านจากแถวเอง (crm/portal.ts) · ตั้งค่าได้ผ่าน create/updateField ◂
 };
 
 export type SectionDef = {
@@ -1076,7 +1078,27 @@ export type CreateFieldInput = {
   customerEditable?: boolean;
   sensitive?: boolean;
   trackHistory?: boolean;
+  // CRM C3.5 ▸ ธงพอร์ทัล (วัตถุกำหนดเองเท่านั้น · แก้ได้ต้องเห็นได้ · ฟิลด์อ่อนไหวเปิดให้แก้ผ่านพอร์ทัลไม่ได้) ◂
+  portalVisible?: boolean;
+  portalEditable?: boolean;
 };
+
+/** CRM C3.5 ▸ ตรวจธงพอร์ทัลของฟิลด์ — คืนค่าที่จะเขียน (undefined = ไม่แตะ) · ผิดกติกา = MemberInputError ข้อความไทย ◂ */
+function portalFlagsOf(
+  scope: ObjectScope,
+  label: string,
+  want: { portalVisible?: boolean; portalEditable?: boolean },
+  current: { portalVisible: boolean; portalEditable: boolean; sensitive: boolean },
+): { portalVisible?: boolean; portalEditable?: boolean } {
+  if (want.portalVisible === undefined && want.portalEditable === undefined) return {};
+  if (scope.kind !== "custom" && (want.portalVisible === true || want.portalEditable === true)) {
+    throw new MemberInputError(`ฟิลด์ "${label}" ไม่ได้อยู่ในวัตถุกำหนดเอง จึงเปิดให้ลูกค้าเห็นในพอร์ทัลไม่ได้`);
+  }
+  const visible = want.portalVisible ?? current.portalVisible;
+  const editable = (want.portalEditable ?? current.portalEditable) && visible;
+  if (editable && current.sensitive) throw new MemberInputError(`ฟิลด์ "${label}" เป็นข้อมูลอ่อนไหว จึงเปิดให้ลูกค้าแก้ผ่านพอร์ทัลไม่ได้`);
+  return { portalVisible: visible, portalEditable: editable };
+}
 
 export async function createField(ctx: FieldCtx, input: CreateFieldInput, tx?: Client): Promise<FieldDef> {
   const db = clientOf(tx);
@@ -1117,6 +1139,8 @@ export async function createField(ctx: FieldCtx, input: CreateFieldInput, tx?: C
       customerEditable: input.customerEditable ?? false,
       sensitive: input.sensitive ?? section.sensitive,
       trackHistory: input.trackHistory ?? false,
+      // CRM C3.5 ▸ ธงพอร์ทัล (ค่าเริ่มต้นปิดทั้งคู่ — ร้านเลือกเปิดเองทีละฟิลด์) ◂
+      ...portalFlagsOf(scope, label, { portalVisible: input.portalVisible, portalEditable: input.portalEditable }, { portalVisible: false, portalEditable: false, sensitive: input.sensitive ?? section.sensitive }),
       isSystem: false,
       systemKey: null,
       sortOrder: (last?.sortOrder ?? -1) + 1,
@@ -1142,11 +1166,15 @@ export type UpdateFieldInput = {
   sensitive?: boolean;
   trackHistory?: boolean;
   sortOrder?: number;
+  // CRM C3.5 ▸ ธงพอร์ทัล (ดู `portalFlagsOf`) ◂
+  portalVisible?: boolean;
+  portalEditable?: boolean;
 };
 
 /** สิ่งที่ฟิลด์ระบบแก้ได้ (§5.3) — นอกรายการนี้คือคอลัมน์จริงของ Customer จึงเปลี่ยนไม่ได้ */
 const SYSTEM_EDITABLE_KEYS = new Set<keyof UpdateFieldInput>([
   "label", "description", "sortOrder", "showInList", "showOnCard", "required", "trackHistory", "customerEditable", "filterable", "sensitive", "sectionId",
+  "portalVisible", "portalEditable", // CRM C3.5 ▸ สวิตช์การแสดงผลในพอร์ทัล (ไม่แตะค่าจริง) ◂
 ]);
 
 export async function updateField(ctx: FieldCtx, id: string, patch: UpdateFieldInput, tx?: Client): Promise<FieldDef> {
@@ -1212,6 +1240,13 @@ export async function updateField(ctx: FieldCtx, id: string, patch: UpdateFieldI
   }
   if (patch.sensitive !== undefined) data.sensitive = patch.sensitive;
   if (patch.trackHistory !== undefined) data.trackHistory = patch.trackHistory;
+  // CRM C3.5 ▸ ธงพอร์ทัล — ฟิลด์ที่กลายเป็นอ่อนไหวถูกปิด "แก้ผ่านพอร์ทัล" ไปด้วย (ไม่ปล่อยค้างเปิด) ◂
+  {
+    const sensitiveAfter = patch.sensitive ?? field.sensitive;
+    const flags = portalFlagsOf(scope, field.label, { portalVisible: patch.portalVisible, portalEditable: patch.portalEditable ?? (sensitiveAfter && field.portalEditable ? false : undefined) }, { portalVisible: field.portalVisible, portalEditable: field.portalEditable, sensitive: sensitiveAfter });
+    if (flags.portalVisible !== undefined && flags.portalVisible !== field.portalVisible) data.portalVisible = flags.portalVisible;
+    if (flags.portalEditable !== undefined && flags.portalEditable !== field.portalEditable) data.portalEditable = flags.portalEditable;
+  }
   if (patch.sortOrder !== undefined) data.sortOrder = Math.max(0, Math.floor(patch.sortOrder));
   if (patch.unique !== undefined && patch.unique !== field.unique) {
     if (patch.unique === true) await assertNoDuplicateValues(ctx, scope, db, field);
@@ -2144,27 +2179,18 @@ async function dropSensitiveValues(
 
 // ── เขียน ──
 
-async function setRecordValues(
-  ctx: FieldCtx,
-  scope: CrmScope,
-  recordId: string,
-  values: Record<string, unknown>,
-  opts: SetFieldValuesOptions,
-  db: Client,
-  tx?: Client,
-): Promise<{ changed: string[] }> {
-  const via = normalizeVia(opts?.via);
-  const byUserId = opts?.byUserId ?? ctx.actorUserId ?? null;
+// CRM C3.5 ▸ ขั้นตรวจของ `setRecordValues` (ขั้น 1 เพดาน/รูปแบบ/ต้องกรอก/ฟิลด์ระบบ · ขั้น 2 LOOKUP/ค่าซ้ำ) — ย้ายออกมาทั้งก้อนไม่เปลี่ยนตรรกะ
+//   ผู้เรียก: `setRecordValues` (ตามเดิม) · `checkRecordValues` (พอร์ทัลลูกค้าตรวจค่าที่ขอแก้ตอนสร้างคำขอ — ไม่เขียนอะไร) ◂
+type CheckedRecordValue = { field: MemberField; value: MemberFieldValueInput; spec: CrmSystemSpec | null };
+async function checkRecordValuesIn(ctx: FieldCtx, scope: CrmScope, recordId: string, values: Record<string, unknown>, via: MemberConsentSource, db: Client, opts: { skipUnique?: boolean } = {}): Promise<CheckedRecordValue[]> {
   const keys = Object.keys(values ?? {});
-  if (keys.length === 0) return { changed: [] };
-
   // AUDIT-CLASS X1: รายการต้องเป็นของวัตถุนี้ในระบบ CRM นี้ (id ดีลที่ส่งมาในฐานะผู้ติดต่อ = ไม่พบ)
   await requireRecord(ctx, scope, db, recordId);
   const fields = await db.memberField.findMany({ where: { ...defWhere(ctx, scope), key: { in: keys } } });
   const byKey = new Map(fields.map((f) => [f.key, f]));
 
   // ── 1. ตรวจให้ครบก่อน (ค่าผิดตัวเดียว = ไม่เขียนอะไรเลย) ──
-  const checked: { field: MemberField; value: MemberFieldValueInput; spec: CrmSystemSpec | null }[] = [];
+  const checked: CheckedRecordValue[] = [];
   for (const key of keys) {
     const field = byKey.get(key);
     if (!field) throw new MemberInputError(`ไม่มีฟิลด์ชื่ออ้างอิง "${key}" ใน${scope.place} — ตรวจการตั้งค่าฟิลด์อีกครั้ง`);
@@ -2200,8 +2226,48 @@ async function setRecordValues(
         throw new MemberInputError(`ไม่พบ${LOOKUP_LABEL[target]}ที่เลือกไว้ในฟิลด์ "${field.label}" ภายในระบบนี้ — เลือกใหม่จากรายการ`);
       }
     }
-    if (field.unique) await assertRecordValueNotTaken(ctx, scope, db, field, value, recordId);
+    if (field.unique && opts.skipUnique !== true) await assertRecordValueNotTaken(ctx, scope, db, field, value, recordId);
   }
+
+  return checked;
+}
+
+/**
+ * CRM C3.5 ▸ ตรวจค่าของรายการวัตถุ CRM แบบ **ไม่เขียน** ด้วยกติกาเดียวกับ `setFieldValues` (ชนิด · maxLength · pattern · ต้องกรอก ·
+ *   LOOKUP · ค่าซ้ำ) — คืนค่าที่ normalize แล้วต่อ key · ผิด = throw ข้อความไทยตัวเดียวกับตอนบันทึกจริง · ทางสมาชิก (customer) = ปฏิเสธ ◂
+ */
+export async function checkRecordValues(
+  ctx: FieldCtx,
+  recordId: string,
+  values: Record<string, unknown>,
+  opts: SetFieldValuesOptions,
+  tx?: Client,
+  // CRM C3.5 รอบ 5: `skipUnique` (เลือกเปิดเอง) — ผู้เรียกที่เป็นคนนอกร้าน (พอร์ทัล) ต้องไม่ใช้ตัวตรวจนี้ถามว่ามีรายการอื่นใช้ค่านี้อยู่ไหม ·
+  //   `setRecordValues` ไม่ส่งค่านี้ ⇒ ตอนบันทึกจริงยังตรวจค่าซ้ำเสมอ
+  check: { skipUnique?: boolean } = {},
+): Promise<Record<string, MemberFieldValueInput>> {
+  const db = clientOf(tx);
+  const scope = await resolveScope(ctx, db);
+  if (scope.kind === "customer") throw new MemberInputError("ตัวตรวจนี้ใช้กับรายการของระบบ CRM เท่านั้น");
+  const checked = await checkRecordValuesIn(ctx, scope, recordId, values, normalizeVia(opts?.via), db, { skipUnique: check.skipUnique === true });
+  return Object.fromEntries(checked.map((c) => [c.field.key, c.value]));
+}
+
+async function setRecordValues(
+  ctx: FieldCtx,
+  scope: CrmScope,
+  recordId: string,
+  values: Record<string, unknown>,
+  opts: SetFieldValuesOptions,
+  db: Client,
+  tx?: Client,
+): Promise<{ changed: string[] }> {
+  const via = normalizeVia(opts?.via);
+  const byUserId = opts?.byUserId ?? ctx.actorUserId ?? null;
+  const keys = Object.keys(values ?? {});
+  if (keys.length === 0) return { changed: [] };
+  // CRM C3.5 ▸ ขั้นตรวจ 1–2 แยกเป็น `checkRecordValuesIn` (ตัวเดิมทุกบรรทัด) ให้พอร์ทัลตรวจค่า "ก่อนสร้างคำขอ" ด้วยกติกาเดียวกัน ◂
+  const checked = await checkRecordValuesIn(ctx, scope, recordId, values, via, db);
 
   // ── 3. อ่านค่าเดิม → เขียน → ประวัติ ใน transaction เดียว ──
   const customIds = checked.filter((c) => !c.field.isSystem).map((c) => c.field.id);

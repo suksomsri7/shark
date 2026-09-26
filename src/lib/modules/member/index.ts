@@ -177,6 +177,25 @@ export {
   /** cron รายวัน: ลบ OTP/session ที่หมดอายุแล้วทุกร้าน */
   sweepCustomerAuth,
 } from "./customer-session";
+// CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (`/b/<slug>/*` · R-C.5) — subject ที่สองบน OTP/ถังเพดาน/คุกกี้ชุดเดียวกับลูกค้า
+//   ผู้เรียก: `crm/portal.ts` (ผ่าน facade นี้) · route `/api/files/[id]` (ผู้ดูชนิด PORTAL) — ไม่มีตรรกะ OTP ชุดที่สอง
+export type { PortalSessionInfo, PortalSessionToken, PortalPageSession, RequestOtpResult } from "./customer-session";
+export {
+  PORTAL_TOKEN_PREFIX,
+  isPortalToken,
+  portalCookieName,
+  getPortalSession,
+  revokePortalSession,
+  revokeAllPortalSessions,
+  requestPortalOtp,
+  verifyPortalOtp,
+  hitPortalInviteLimit,
+  requirePortalSession,
+  portalTokenFromCookies,
+  CustomerAuthError,
+  CustomerRateLimitError,
+} from "./customer-session";
+// ◂ CRM C3.5
 
 export type { CardLookupDto, MeCardDto, MeDto } from "./me";
 export {

@@ -21,6 +21,8 @@
 //    แปลง/รวมใน tx เดียวใช้ `companies.createInTx · linkContactInTx · transferContactLinksInTx` · ชื่อบริษัทอ่านผ่าน `companies.liveCompanyRefs`
 // 🔴 หน้า GET ไม่เขียนอะไร — ฟิลด์ระบบของผู้ติดต่อ seed ตอนเขียนครั้งแรก (สร้าง · แก้ · นำเข้า) แบบเดียวกับบริษัท
 
+// CRM C3.5 ▸ ตัวตนพอร์ทัลเปลี่ยน/รวมผู้ติดต่อ ⇒ ตัด session + ต้องเชิญใหม่ (S4) ◂
+import { portalIdentityChangedInTx } from "./portal-identity";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CrmContact, CrmLeadStatus, CrmLifecycleStage, CrmScoreBand, MemberSource } from "@prisma/client";
@@ -972,6 +974,9 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
       }
       let out = pre;
       if (Object.keys(data).length > 0) out = await tx.crmContact.update({ where: { id: pre.id }, data });
+      // CRM C3.5 ▸ (มติผู้คุมงาน S4) ตัวตนที่ใช้เข้าพอร์ทัล (อีเมล · เบอร์ · LINE) เปลี่ยน ⇒ session พอร์ทัลของผู้ติดต่อนี้ตายทันที +
+      //   ต้องเชิญใหม่ (ไม่มีคอลัมน์เก็บ "ตัวตนตอนเชิญ" บน CrmPortalAccess และใบนี้ไม่มี migration) — ใน tx เดียวกับการแก้ ◂
+      if (keys.includes("phone") || keys.includes("email") || keys.includes("lineUserId")) await portalIdentityChangedInTx(tx, ctx.tenantId, [pre.id]);
       if (Object.keys(custom).length > 0) {
         const r = await (await engine()).setFieldValues(fctx(ctx, a), pre.id, custom, { via: "STAFF", byUserId: actorId(ctx) }, tx);
         keys.push(...r.changed.map((k) => `f.${k}`));
@@ -1885,6 +1890,8 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
       keepPartyAfter = (data.partyId as string | undefined) ?? partyId ?? null;
       await tx.crmContact.update({ where: { id: k.id }, data });
       await tx.crmContact.update({ where: { id: m.id }, data: { mergedIntoId: k.id, archivedAt: now } });
+      // CRM C3.5 ▸ (มติผู้คุมงาน S4) รวมผู้ติดต่อ ⇒ session พอร์ทัลของทั้งสองคนตาย + ต้องเชิญใหม่ (ตัวตนของคนที่เก็บไว้อาจเปลี่ยน) ◂
+      await portalIdentityChangedInTx(tx, ctx.tenantId, [k.id, m.id]);
       await emitContactEvent(tx, ctx, "merged", m.id, newSeq(), { keptId: k.id, mergedId: m.id });
     }, { maxWait: 15_000, timeout: 60_000 });
   } catch (e) {
@@ -2595,3 +2602,19 @@ export async function markCustomerFromBridge(ctx: { tenantId: string; systemId: 
   return out.changed;
 }
 // ◂ CRM C2.9
+
+// CRM C3.5 ▸ ผูก LINE ให้ผู้ติดต่อจากพอร์ทัล (รับคำเชิญด้วย LINE ที่ตัวตนตรง · อนุมัติคำขอ LINE_IDENTITY ที่ระบบสร้าง) — ผู้เขียน `lineUserId`
+//   ยังมีที่เดียวคือไฟล์นี้ (ข้อสอบ C1.4-S0.8) · ใน tx ของผู้เรียก · ผูกเฉพาะเมื่อผู้ติดต่อยังไม่มี LINE (ไม่ทับของเดิม) และไม่มีผู้ติดต่ออื่น
+//   ในระบบนี้ใช้ LINE นี้อยู่ · ผู้ติดต่อที่ถูกเก็บ/ถูกรวม = ไม่ผูก · คืน true เมื่อผูกจริง ◂
+export async function bindPortalLineUserIdInTx(tx: Tx, input: { tenantId: string; systemId: string; contactId: string; lineUserId: string }): Promise<boolean> {
+  const lineUserId = str(input.lineUserId);
+  if (!lineUserId || lineUserId.length > 100) return false;
+  const taken = await tx.crmContact.count({ where: { tenantId: input.tenantId, systemId: input.systemId, lineUserId, id: { not: input.contactId } } });
+  if (taken > 0) return false;
+  const r = await tx.crmContact.updateMany({
+    where: { id: input.contactId, tenantId: input.tenantId, systemId: input.systemId, lineUserId: null, archivedAt: null, mergedIntoId: null },
+    data: { lineUserId },
+  });
+  return r.count === 1;
+}
+// ◂ CRM C3.5

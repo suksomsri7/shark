@@ -34,6 +34,8 @@ import { prisma } from "@/lib/core/db";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { getSessionUser } from "@/lib/core/session";
 import { customerCookieName, getCustomerSession } from "@/lib/modules/member/customer-session";
+// CRM C3.5 ▸ ผู้ดูชนิด PORTAL (session พอร์ทัลลูกค้าองค์กร · คุกกี้ `shark_portal`) — ตัวอ่าน session ชุดเดียวกับหน้า `/b/*` ◂
+import { getPortalSession, portalCookieName } from "@/lib/modules/member/session-facade";
 import {
   extensionForUploadType,
   FILE_ASSET_ID_RE,
@@ -112,12 +114,23 @@ async function resolveViewers(): Promise<Viewer[]> {
   } catch {
     // ไม่มี session ลูกค้า
   }
+  // CRM C3.5 ▸ session พอร์ทัล (PORTAL) — ลิงก์ผูกกับ `PortalSession.id` ⇒ session อื่น (แม้คนเดียวกัน/บริษัทอื่น) เปิดไม่ได้ ·
+  //   ถูกถอนสิทธิ์/ออกจากระบบแล้ว `getPortalSession` = null ⇒ ไม่มีผู้ดูชนิดนี้ ⇒ 403 ◂
+  try {
+    const token = (await cookies()).get(portalCookieName())?.value ?? "";
+    if (token) {
+      const session = await getPortalSession(token);
+      if (session) out.push({ kind: "PORTAL", id: session.sessionId, tenantId: session.tenantId });
+    }
+  } catch {
+    // ไม่มี session พอร์ทัล
+  }
   return out;
 }
 
 /** ผู้ดูคนนี้อยู่ร้านเดียวกับไฟล์ไหม (ไม่ใช่ = 404) */
 async function viewerBelongsToTenant(viewer: Viewer, tenantId: string): Promise<boolean> {
-  if (viewer.kind === "CUSTOMER") return viewer.tenantId === tenantId;
+  if (viewer.kind === "CUSTOMER" || viewer.kind === "PORTAL") return viewer.tenantId === tenantId; // CRM C3.5 ▸ PORTAL ◂
   const membership = await prisma.membership.findFirst({
     where: { userId: viewer.id, tenantId, acceptedAt: { not: null } },
     select: { id: true },
@@ -164,7 +177,8 @@ async function handle(
 
   // ── 2) เพดานอัตราต่อผู้ดู (X7) — นับก่อนตรวจลายเซ็น จึงครอบคลุมคำขอที่เดาลายเซ็น ──
   const verdict = await checkRateLimitDb(
-    `files:private:${primary.kind}:${primary.id}`,
+    // CRM C3.5 ▸ ถังของ PORTAL มีร้านอยู่ในคีย์ (ถังของผู้ดูที่ไม่ใช่คนในร้านต้องย้อนหาร้านได้เวลาเก็บกวาด) ◂
+    primary.kind === "PORTAL" ? `files:private:PORTAL:${primary.tenantId ?? "-"}:${primary.id}` : `files:private:${primary.kind}:${primary.id}`,
     { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS },
   );
   if (!verdict.ok) {

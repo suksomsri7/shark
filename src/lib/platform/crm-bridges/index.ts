@@ -47,3 +47,6 @@ export { onScoringEvent } from "./scoring";
 //   ตัวรับ **ตัวเดียว** ใช้กับทั้ง 8 ชนิด (มติผู้คุมงาน C2.9 ข้อ 7)
 export { onBusinessEvent } from "./business";
 // ◂ CRM C2.9
+// CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (`portal.ts` · R-D: ใบ C3.5 เป็นเจ้าของไฟล์นั้นไฟล์เดียว) — crm.portal.viewed/.quote.responded/.request.created
+export { onPortalEvent } from "./portal";
+// ◂ CRM C3.5

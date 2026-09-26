@@ -40,15 +40,19 @@ export const PRIVATE_FILE_ROUTE = "/api/files";
  */
 export const FILE_ASSET_ID_RE = /^[a-z0-9]{16,40}$/i;
 
-/** ผู้ดูที่ลิงก์ผูกไว้ — พนักงาน (User.id) หรือ session ลูกค้า (Customer.id) */
-export type PrivateFileViewer = { kind: "STAFF" | "CUSTOMER"; id: string };
+/**
+ * ผู้ดูที่ลิงก์ผูกไว้ — พนักงาน (User.id) หรือ session ลูกค้า (Customer.id)
+ * CRM C3.5 ▸ `PORTAL` = session พอร์ทัลลูกค้าองค์กร (`PortalSession.id` — ผูกกับ **ใบ session** ไม่ใช่ตัวคน:
+ *   ลิงก์ที่ออกให้ session หนึ่งใช้กับ session อื่น/บริษัทอื่นของคนเดียวกันไม่ได้ · ออกจากระบบ/ถูกถอนสิทธิ์ = ใช้ไม่ได้ทันที) ◂
+ */
+export type PrivateFileViewer = { kind: "STAFF" | "CUSTOMER" | "PORTAL"; id: string };
 
-/** คีย์ของผู้ดูที่เข้าไปอยู่ในลายเซ็น (`STAFF:<userId>` / `CUSTOMER:<customerId>`) */
+/** คีย์ของผู้ดูที่เข้าไปอยู่ในลายเซ็น (`STAFF:<userId>` / `CUSTOMER:<customerId>` / `PORTAL:<portalSessionId>`) */
 export function privateFileViewerKey(viewer: PrivateFileViewer): string {
   const kind = viewer?.kind;
   const id = typeof viewer?.id === "string" ? viewer.id.trim() : "";
-  if ((kind !== "STAFF" && kind !== "CUSTOMER") || !id) {
-    throw new Error("ผู้ดูไฟล์ไม่ถูกต้อง — ต้องระบุ { kind: 'STAFF' | 'CUSTOMER', id }");
+  if ((kind !== "STAFF" && kind !== "CUSTOMER" && kind !== "PORTAL") || !id) {
+    throw new Error("ผู้ดูไฟล์ไม่ถูกต้อง — ต้องระบุ { kind: 'STAFF' | 'CUSTOMER' | 'PORTAL', id }");
   }
   return `${kind}:${id}`;
 }

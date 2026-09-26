@@ -243,6 +243,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — คีย์ `crm.report.view` (404 สำหรับคนที่ไม่มี ⇒ ไม่โชว์ลิงก์ตาย)
               ...(crmCan(membershipOf(auth), "crm.report.view") ? [{ href: `${s}/crm/reports`, label: "รายงาน" }] : []),
               // ◂ CRM C3.1
+              // CRM C3.5 ▸ พอร์ทัลลูกค้า (ตั้งค่า · 404 สำหรับคนที่ไม่มี crm.portal.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.portal.manage") ? [{ href: `${s}/crm/settings/portal`, label: "พอร์ทัลลูกค้า" }] : []),
+              // ◂ CRM C3.5
               ]
             : []),
           // ◂ CRM uiVersion gate

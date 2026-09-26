@@ -502,7 +502,9 @@ type CrmBridgeName =
   // CRM C2.9 ▸ เหตุการณ์ธุรกิจของ 8 โมดูล — ตัวรับ **ตัวเดียว** (crm-bridges/business.ts) ◂
   | "onBusinessEvent"
   // CRM C2.8 ▸ คะแนนผู้ติดต่อ (crm-bridges/scoring.ts) — ของแถมใต้ compose ในตัวบริโภคของทุก event ที่กฎคะแนนอ้างได้ ◂
-  | "onScoringEvent";
+  | "onScoringEvent"
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (crm-bridges/portal.ts) ◂
+  | "onPortalEvent";
 
 const crmBridge =
   (name: CrmBridgeName): OutboxHandler =>
@@ -1173,6 +1175,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
     await crm.quotas.onReached(evt);
   }),
   // ◂ CRM C3.2
+  // CRM C3.5 ▸ พอร์ทัลลูกค้าองค์กร (ตัวยิง `crm/portal.ts` · payload id ล้วน — X8)
+  //   `crm.portal.viewed#<accessId>#<วันไทย>` (เปิดดูครั้งแรกต่อวัน) · `crm.portal.quote.responded#<docId>` (ยิงใน tx เดียวกับการเปลี่ยนสถานะ
+  //   ของบัญชี — เฉพาะคำตอบที่ชนะ) · `crm.portal.request.created#<requestId>` (tx เดียวกับแถวคำขอ)
+  //   งานหลัก = กิจกรรม PORTAL 1 ใบบนผู้ติดต่อ (สะพาน crm-bridges/portal.ts · ใต้ advisory lock ⇒ ส่งซ้ำ/พร้อมกันไม่งอก — X4)
+  //   🔴 ดีลย้ายขั้นผ่านตัวรับเดิม `account.quotation.responded` เท่านั้น (ไม่มีตัวย้ายตัวที่สอง) · ขาด consumer = คิวตันทั้งระบบเงียบ ๆ
+  "crm.portal.viewed": withAutomation(crmBridge("onPortalEvent")),
+  "crm.portal.quote.responded": withAutomation(crmBridge("onPortalEvent")),
+  "crm.portal.request.created": withAutomation(crmBridge("onPortalEvent")),
+  // ◂ CRM C3.5
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

@@ -12,6 +12,7 @@
 
 import type { AccountContactKind, AccountDocStatus, AccountDocType, AccountLegalType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { viewableAttachmentUrl } from "./attachment-shared"; // CRM C3.5 ◂
 import * as memberSvc from "@/lib/modules/member/service";
 import * as crmSvc from "@/lib/modules/crm";
 import { agingReport } from "./reports";
@@ -418,7 +419,7 @@ export async function contactProfile(
       rows: rows.map((r) => ({
         id: r.id,
         fileName: r.fileName,
-        fileUrl: r.fileUrl,
+        fileUrl: viewableAttachmentUrl(r.id, r.fileUrl), // CRM C3.5 ▸ ไฟล์ส่วนตัว → ทางเข้าที่ตรวจสิทธิ์ ◂
         sizeBytes: r.sizeBytes,
         createdAt: r.createdAt.toISOString(),
         docNo: r.document?.docNo ?? null,
