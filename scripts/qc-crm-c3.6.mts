@@ -528,8 +528,9 @@ try {
     const jo = jobs.find((x) => x?.name === jobOk);
     const staticNames = [...read(MINUTE_JOBS_FILE).matchAll(/registerMinuteJob\(\{\s*name:\s*"([^"]+)"/g)].map((m) => m[1]);
     const missingNames = staticNames.filter((nm) => !jobs.some((x) => x?.name === nm));
-    const badOk = !!jb && isoOf(jb.lastRunAt) === tRun.toISOString() && isoOf(jb.lastOkAt) === tOk0.toISOString() && String(jb.lastError ?? "").includes(`boom ${TAG}`) && Number(jb.everyMinutes) === 60;
-    const okOk = !!jo && isoOf(jo.lastRunAt) === tRun.toISOString() && isoOf(jo.lastOkAt) === tRun.toISOString() && (jo.lastError === null || jo.lastError === undefined) && Number(jo.everyMinutes) === 30;
+    // ORACLE-EDIT C3.6-S1.4 (26 ก.ย. · ผู้คุมงาน · มติ S1): error detail ของงาน platform ห้ามถึงร้าน ⇒ DTO มีแค่ failed + เหตุผลไทยทั่วไป
+    const badOk = !!jb && isoOf(jb.lastRunAt) === tRun.toISOString() && isoOf(jb.lastOkAt) === tOk0.toISOString() && jb.failed === true && typeof jb.reason === "string" && !j(jb).includes(`boom ${TAG}`) && Number(jb.everyMinutes) === 60;
+    const okOk = !!jo && isoOf(jo.lastRunAt) === tRun.toISOString() && isoOf(jo.lastOkAt) === tRun.toISOString() && jo.failed === false && Number(jo.everyMinutes) === 30;
     chk("C3.6-S1.4", "job health comes from the C0.5 registry (getMinuteJobStatus): every job registered in minute-jobs.ts is listed · a failing job shows its last run, its older last success and the WARN detail of the minute-job OpsEvent as lastError · a healthy job shows lastRunAt = lastOkAt and no error",
       st.ok && staticNames.length >= 10 && missingNames.length === 0 && badOk && okOk, "registry · 2 synthetic rows exact", `${st.ok ? `jobs=${jobs.length} static=${staticNames.length} missing=${missingNames.join(",") || "-"} bad=${badOk} ${cut(j(jb), 160)} ok=${okOk}` : st.err}${ABSENT}`);
   }
@@ -602,6 +603,8 @@ try {
 
   // X3.1 — parallel writes of different settings keys never lose each other (single-statement jsonb_set)
   {
+    // ORACLE-EDIT C3.6-X3.1 (26 ก.ย. · ผู้คุมงาน · มติ S3): target บัญชีต้องเป็นสมุดที่มี CRM link เปิดอยู่ ⇒ ผูก accA ก่อน
+    await P.accountSystemLink.create({ data: { tenantId: tidA, systemId: accA, linkedKind: "CRM", linkedId: crmA, enabled: true } }).catch(() => null);
     const results: string[] = [];
     let allOk = true;
     for (let round = 0; round < 2; round += 1) {
