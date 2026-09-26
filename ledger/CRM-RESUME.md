@@ -47,6 +47,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - **เลน C** ผู้เขียนข้อสอบ C3.1 — opus ใน `shark-crm-c12a`: `scripts/qc-crm-c3.1.mts` (26 + X) + addendum ท้าย brief C3.1 (ต้องเคาะก่อน spawn builder C3.1)
 - ถ้า session ตายอีก: `git -C <wt> status` + `.qc-shots/` ของแต่ละเลน แล้ว spawn ใหม่ด้วย prompt เดิม (สรุปใน CRM-RUN §4 26 ก.ย. 05:40)
 - **06:55 UTC**: A ✅ `d3856c50` · B ✅ `41c262c0` (33/33 QC1+QC2 · ชุดถอยหลังรอบ 1 แดง 27 ชุดเพราะ client ร่วมถูก generate ทับ — ดู CRM-RUN §4 06:50 · รอบ 2 `run-c30-verify-v2.sh` รอยูนิตแรกจบ) · C ✅ `4abc726e` (56 ข้อ · ruling 15 ข้อ) → **builder C3.1 กำลังทำใน c23/QC3** (หลักฐาน `.qc-shots/c31/`) · **ผู้เขียนข้อสอบ C3.2 ใน c110** · c20 ยังมีไฟล์ C3.0 (commit แล้วในทรีหลัก · รีเซ็ตได้) · c12a ที่ 4abc726e
+- **07:40 UTC**: ข้อสอบ C3.2 ✅ `e98314d4` (46 ข้อ · ruling 15) → **3 agent กำลังทำ (เพดาน)**: builder C3.1 (c23/QC3 · `.qc-shots/c31/`) ∥ builder C3.2 (c110/QC2 · reseed เอง · `.qc-shots/c32/`) ∥ ผู้เขียนข้อสอบ C3.3 (c12a/QC1 throwaway) · crm_v2_c deploy ครบ QC1/QC2/QC3 แล้ว · ยูนิต `crm-c30-verify-v2` (27 ชุด + typecheck + m1.9) กำลังรัน log `.qc-shots/crm/c30-verify-v2.log` — m1.9 S7.2 รอบ 1 แดง (member.tier.* ค้าง 8 — น่าจะจากช่วง client เก่า · ถ้ารอบ 2 ยังแดง เปิด OutboxEvent.lastError)
+- รวม C3.1+C3.2 (ขนาน): ไฟล์ร่วม `index.ts`/`nav.ts`/`crm-ui-inventory.json`/registries → `patch --fuzz=3` + เช็คสมดุลวงเล็บ (ห้าม `git apply -3`) → รันข้อสอบทั้งสองใบซ้ำบน QC1
 - 🔴 ห้าม agent ใด `prisma generate` (client ร่วม) · worktree ทุกตัวต้องอยู่บน commit ที่สคีมาเท่าทรีหลัก
 - ถัดไป: รับ C3.0 หลังรอบ 2 เขียว (30/53) → รับ C3.1 (ผู้ตรวจอ่านอย่างเดียว opus ก่อน) → C3.2 ∥ C3.3 (ข้อสอบ C3.3 ต้องเขียนก่อน)
 
