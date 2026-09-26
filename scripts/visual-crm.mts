@@ -197,17 +197,53 @@ const PB = `/b/${encodeURIComponent(PORTAL_SLUG)}`;
 //   `report-<แท็บ>` × 8 · `email-thread` · `sequence-editor` — รายการอ่านจาก nav ตอนรัน (หน้าใหม่ของ C3.x เข้ารอบเองโดยไม่ต้องแก้ไฟล์นี้)
 //   หน้าที่มี [param]: `before` ของสเปคหา "ของที่มีอยู่แล้ว" ก่อน · seed ไม่มี = สร้างเธรดจดหมาย/ลำดับการติดตามติดแท็ก `qc-visual-crm`
 //   ผ่าน facade จริง แล้ว restoreSeed() ลบคืนด้วยกลไกเดียวกับ C2.2/C2.5 (TMP.emailIds · TMP.sequenceIds)
-//   thana (STAFF): หน้าที่เขาเปิดไม่ได้ต้องเป็น 404 (ไม่ใช่พัง) — ข้อสอบรับ 404 · ที่เหลือต้อง < 400 ไม่มี console error ไม่ล้น
+//   🔴 มติผู้คุมงาน (ตรวจ QC1 ของ C3.6+C3.7): รายการของ "ผู้ใช้แต่ละคน" = หน้าที่คนนั้นเปิดได้เท่านั้น — แท็บจาก
+//      `crmNavItems(SYS, (k) => crmCan(actor, k))` ∩ ด่านคีย์ของหน้า (C37_GATE — คัดจาก notFound() ของ page.tsx แต่ละหน้า เพราะ
+//      CRM_DEEP_NAV ส่วนใหญ่ไม่มี `perm`) · แท็บรายงานเฉพาะเมื่อมี crm.report.view ⇒ thana (STAFF) ไม่มีภาพ 404 เลย (ไม่ถ่าย
+//      /settings/portal · /settings/* ที่ต้องคีย์จัดการ · /emails ถ้าไม่มี crm.email.read) · owner = ครบทุกหน้าเหมือนเดิม
+/** ด่านคีย์ของหน้า C2–C3 (มีคีย์ใดคีย์หนึ่ง = เปิดได้) — ตรงกับ notFound() ของ page.tsx ณ ใบ C3.7 · หน้าที่ไม่อยู่ในตาราง = เปิดได้ทุกคนที่มี CRM */
+const C37_GATE: Record<string, string[]> = {
+  emails: ["crm.email.read"],
+  "email-thread": ["crm.email.read"],
+  reports: ["crm.report.view"],
+  "settings-automation": ["crm.automation.manage"],
+  "settings-sequences": ["crm.sequence.manage", "crm.sequence.enroll"],
+  "sequence-editor": ["crm.sequence.manage", "crm.sequence.enroll"],
+  "settings-holidays": ["crm.sequence.manage"],
+  "settings-assignment": ["crm.assignment.manage"],
+  "settings-email": ["crm.email.settings"],
+  "settings-tracking": ["crm.tracking.manage"],
+  "settings-forms": ["crm.tracking.manage"],
+  "settings-scoring": ["crm.score.manage"],
+  "settings-notifications": ["crm.settings.manage", "crm.deal.read", "crm.contact.read", "crm.activity.read"],
+  "settings-quotas": ["crm.quota.manage"],
+  "settings-portal": ["crm.portal.manage"],
+};
+/** ตัวตัดสินคีย์ของผู้ใช้ที่ถ่าย (membership ในร้าน QC → `crm.crmCan` ตัวเดียวกับหน้า) */
+const C37_CAN: (k: string) => boolean = WO === "3.7" && !isCustomer
+  ? await (async () => {
+      const crm = (await import("@/lib/modules/crm" as string)) as Any;
+      const uid = (E.users?.[userKey]?.userId ?? "-") as string;
+      const mem = (await (prisma as Any).membership.findFirst({ where: { tenantId: E.tenantId, userId: uid }, select: { role: true, permissions: true } })) as Any;
+      const actor = { userId: uid, role: mem?.role ?? "STAFF", permissions: (mem?.permissions ?? {}) as Record<string, unknown> };
+      return (k: string) => !!mem && crm.crmCan(actor, k) === true;
+    })()
+  : () => false;
+const c37Opens = (key: string, perm?: string) => (!perm || C37_CAN(perm)) && (!C37_GATE[key] || C37_GATE[key]!.some((k) => C37_CAN(k)));
 const C37_PAGES: { key: string; path: string }[] = WO === "3.7" && !isCustomer
   ? await (async () => {
       const NAV = (await import("@/lib/modules/crm/nav" as string)) as Any;
       const RS = (await import("@/lib/modules/crm/reports-shared" as string)) as Any;
-      const c23 = [...((NAV.CRM_NAV ?? []) as Any[]), ...((NAV.CRM_DEEP_NAV ?? []) as Any[])]
-        .filter((e) => /^C[23]\./.test(String(e?.wo ?? "")) && e?.status === "ready" && e?.path !== "/crm/settings/integrations");
+      // แท็บของผู้ใช้คนนี้ (crmNavItems กรอง perm ของแท็บแล้ว) — เซตของ path ที่คนนี้เห็นในเมนู
+      const tabs = new Set(((NAV.crmNavItems(SYS, C37_CAN) ?? []) as { href: string }[]).map((x) => x.href));
+      const c23 = [
+        ...((NAV.CRM_NAV ?? []) as Any[]).filter((e) => tabs.has(`/app/sys/${SYS}${String(e.path)}`)),
+        ...((NAV.CRM_DEEP_NAV ?? []) as Any[]),
+      ].filter((e) => /^C[23]\./.test(String(e?.wo ?? "")) && e?.status === "ready" && e?.path !== "/crm/settings/integrations" && c37Opens(String(e.key), e?.perm));
       return [
         { key: "home", path: `/app/sys/${SYS}` },
         ...c23.map((e) => ({ key: String(e.key), path: `/app/sys/${SYS}${String(e.path)}` })),
-        ...((RS.REPORT_TABS ?? []) as string[]).map((t) => ({ key: `report-${t}`, path: `${CRM_BASE}/reports/${t}` })),
+        ...(C37_CAN("crm.report.view") ? ((RS.REPORT_TABS ?? []) as string[]).map((t) => ({ key: `report-${t}`, path: `${CRM_BASE}/reports/${t}` })) : []),
       ];
     })()
   : [];

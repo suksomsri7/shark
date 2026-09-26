@@ -33,7 +33,7 @@ export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
   // ◂ CRM C1.6
   // CRM C2.5 ▸ กล่องจดหมาย (จดหมายเข้า/ออกของลูกค้า + กล่อง "ยังไม่จับคู่") — เธรด `/crm/emails/[threadKey]`
   //   เป็น [param] จึงไม่ขึ้นเมนู · คีย์ `crm.email.read` (STAFF ได้ปริยาย §6.1 ⇒ แท็บนี้ไม่ใช่ลิงก์ตายสำหรับพนักงาน)
-  { key: "emails", label: "อีเมล", path: "/crm/emails", status: "ready", wo: "C2.5" },
+  { key: "emails", label: "อีเมล", path: "/crm/emails", status: "ready", wo: "C2.5", perm: "crm.email.read" }, // ACCEPTANCE-FIX ผู้คุมงาน 26 ก.ย. (C3.7 พบ): STAFF ไม่มีสิทธิ์อีเมลเห็นแท็บที่ 404
   // ◂ CRM C2.5
   // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — `/crm/reports/[tab]` เป็น [param] จึงไม่ขึ้นเมนู · คีย์ `crm.report.view` (ไม่มี = 404)
   { key: "reports", label: "รายงาน", path: "/crm/reports", status: "ready", wo: "C3.1", perm: "crm.report.view" },

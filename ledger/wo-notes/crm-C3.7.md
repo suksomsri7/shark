@@ -61,3 +61,11 @@
 - ร้านที่มี CRM หลายระบบ: ลิงก์แจ้งเตือนพา `?systemId=` ของระบบนั้นมาด้วย · ดีลที่มองไม่เห็นในระบบนั้น (หรือระบบถูกปิด v2) = 404 → จอแสดงข้อความในจอ ไม่พัง
 - `drawer-crm` ไม่ได้ซ่อนตามสิทธิ์ (ปลอดภัย: ทุก route ตัดสินสิทธิ์/การมองเห็นเอง · ไม่มี CRM v2 = ข้อความ "ยังไม่ได้เปิดระบบ CRM ใหม่")
 - ดัชนีของ `CrmActivity.sourceRef` (ตอนนี้กรองด้วย tenantId/systemId แล้วสแกน) → ผู้สมัครของ C6.1 (ใบนี้ห้าม migration)
+
+## 7. รอบตรวจ QC1 ของผู้คุมงาน (C3.6+C3.7 รวม · 26 ก.ย.)
+- C1.3-S0.3: `mobile.ts` ไม่ query CrmCompany เองแล้ว — ใช้ `companies.companyRefsInTx(prisma, ctx, actor, ids)` (companyWhere ในบริการของบริษัท) · c1.3 89/89
+- `visual-crm 3.7`: รายการต่อผู้ใช้ = หน้าที่คนนั้นเปิดได้ (`crmNavItems(SYS, crmCan)` ∩ `C37_GATE` จาก notFound() ของ page.tsx · รายงานเฉพาะ crm.report.view) —
+  dry-run QC2: owner 24 ภาพ (เหมือนเดิม) · thana 2 ภาพ (home · settings-notifications) · ไม่ถ่าย /settings/portal ให้ thana
+- ORACLE-EDIT ที่ขอ: C3.7-S1.2 (qc-crm-c3.7.mts:430-432) วนทั้ง PAGES และนับ "ไม่มีภาพ" เป็นเสีย + บังคับ `emails` 200 ให้ thana
+  (thana ใน seed ไม่มี crm.email.read ⇒ หน้านั้น 404 ตามแบบ) — ดูรายงาน builder
+- ข้อสังเกต: แท็บ `emails` ใน CRM_NAV ไม่มี `perm` แต่หน้าต้องมี crm.email.read ⇒ แท็บตายสำหรับ STAFF ที่ไม่มีคีย์ (หน้า C2.5 ใช้ `crmNavItems(id)` ไม่ส่งตัวตัดสิน)

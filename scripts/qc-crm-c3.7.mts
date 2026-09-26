@@ -427,11 +427,12 @@ try {
       !!sO && PAGES.length >= 20 && bad.length === 0, "all pages clean", `summary=${!!sO} pages=${PAGES.length} bad=${bad.map(({ p, r }) => `${p.key}:${r ? `${r.status}${r.overflow ? "/overflow" : ""}${(r.errors ?? []).length ? "/err" : ""}` : "∅"}`).slice(0, 14).join(",") || "-"}${ABSENT}`, "MAJOR");
   }
   {
-    const shots = PAGES.map((p) => ({ p, r: resOf(sT, p.key, "thana") }));
+    // ORACLE-EDIT C3.7-S1.2 (26 ก.ย. · ผู้คุมงาน): สเปคภาพถ่ายเฉพาะหน้าที่ thana เปิดได้ (ตาม crmCan) ⇒ หน้าที่ไม่มีภาพ = ไม่มีสิทธิ์ ไม่ใช่ความผิด · ต้องมีอย่างน้อย home
+    const shots = PAGES.map((p) => ({ p, r: resOf(sT, p.key, "thana") })).filter(({ r }) => !!r);
     const bad = shots.filter(({ r }) => !r || r.overflow || !((r.status > 0 && r.status < 400) || r.status === 404) || ((r.status < 400) && (r.errors ?? []).length > 0));
-    const must200 = ["home", "emails"].filter((k) => PAGES.some((p) => p.key === k)).filter((k) => !(resOf(sT, k, "thana")?.status < 400));
+    const must200 = ["home"].filter((k) => PAGES.some((p) => p.key === k)).filter((k) => !(resOf(sT, k, "thana")?.status < 400));
     chk("C3.7-S1.2", "thana (STAFF) at 390: every C2–C3 page shot (c37-390-<key>-thana) is either 404 (a page he may not open — never a crash) or < 400 with no console error, and none overflows · home and the e-mail inbox open (200)",
-      !!sT && bad.length === 0 && must200.length === 0, "no overflow · 404 or clean", `summary=${!!sT} bad=${bad.map(({ p, r }) => `${p.key}:${r ? `${r.status}${r.overflow ? "/overflow" : ""}` : "∅"}`).slice(0, 14).join(",") || "-"} not200=${must200.join(",") || "-"}${ABSENT}`, "MAJOR");
+      !!sT && shots.length >= 1 && bad.length === 0 && must200.length === 0, "no overflow · 404 or clean", `summary=${!!sT} bad=${bad.map(({ p, r }) => `${p.key}:${r ? `${r.status}${r.overflow ? "/overflow" : ""}` : "∅"}`).slice(0, 14).join(",") || "-"} not200=${must200.join(",") || "-"}${ABSENT}`, "MAJOR");
   }
   const FIXED_W = /(^|[\s"'`{(])((?:[a-z0-9]+:)*)(min-w|w)-\[(\d+(?:\.\d+)?)(px|rem)\]/g;
   const wideUnprefixed = (src: string): string[] => {

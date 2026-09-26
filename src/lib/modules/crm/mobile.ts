@@ -17,7 +17,8 @@
 import type { CrmActivity, Prisma } from "@prisma/client";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
-import { activityWhere, companyWhere, contactWhere, dealWhere } from "./where";
+import { activityWhere, contactWhere, dealWhere } from "./where";
+import { companyRefsInTx } from "./companies";
 import { activityOutcomesOf, parseCrmSettings } from "./settings";
 import { CRM_V2_DISABLED_MSG, CrmV2DisabledError } from "./ui-version";
 import { ACTIVITY_OUTCOMES_DEFAULT, ActivitiesError, DAY_MS } from "./activities-shared";
@@ -93,11 +94,10 @@ async function toDealDtos(ctx: MobileCrmCtx, a: MemberActor, rows: DealRow[], no
   const contacts = contactIds.length
     ? await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: contactIds } }] }, select: { id: true, name: true, phone: true } })
     : [];
-  const companies = companyIds.length
-    ? await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { id: { in: companyIds } }] }, select: { id: true, name: true } })
-    : [];
+  // CRM C1.3 S0.3: บริษัทอ่านผ่านบริการของบริษัทเท่านั้น (companyWhere อยู่ในนั้น) — ไม่มี query CrmCompany ในไฟล์นี้
+  const companyRows = await companyRefsInTx(prisma, ctx, a, companyIds);
   const cMap = new Map(contacts.map((c) => [c.id, c]));
-  const coMap = new Map(companies.map((c) => [c.id, c]));
+  const coMap = new Map(companyRows.map((c) => [c.id, c]));
   return rows.map((r) => {
     const c = cMap.get(r.contactId);
     const co = r.companyId ? coMap.get(r.companyId) : undefined;
