@@ -235,7 +235,8 @@ try {
   const setMyPrefs = fnOf(NT, "setMyPrefs") ?? fnOf(CRM, "notifications.setMyPrefs");
   const markStale = fnOf(CRM, "deals.markStale") ?? fnOf(await import("@/lib/modules/crm/deals" as string).catch(() => ({})), "markStale");
   const TPL = Array.isArray(NSH.CRM_NOTIF_TEMPLATES) ? (NSH.CRM_NOTIF_TEMPLATES as Any[]) : [];
-  const WANT_KEYS = ["lead.assigned", "customer.replied", "deal.stale.digest", "tasks.today", "activity.reminder", "lead.hot", "deal.closed", "commission.status", "quota.progress", "invoice.paid"];
+  // ORACLE-EDIT C2.10-S0.2 (26 ก.ย. · ผู้คุมงาน · มติ C3.3 S6): เทมเพลตที่ 11 `commission.pending` (แจ้งเจ้าของเมื่อค่าคอมค้างเพราะไม่มีสายอนุมัติ/เกินเพดาน)
+  const WANT_KEYS = ["lead.assigned", "customer.replied", "deal.stale.digest", "tasks.today", "activity.reminder", "lead.hot", "deal.closed", "commission.status", "quota.progress", "invoice.paid", "commission.pending"];
   {
     const need: [string, Any][] = [["notifyStaff", notifyStaff], ["runFanout", runFanout], ["getNotificationSettings", getSettings], ["setTemplate", setTemplate],
       ["setNotificationSettings", setSettings], ["getMyPrefs", getMyPrefs], ["setMyPrefs", setMyPrefs], ["deals.markStale", markStale]];
@@ -251,8 +252,8 @@ try {
     const chans = Array.isArray(NSH.CRM_NOTIF_CHANNELS) ? (NSH.CRM_NOTIF_CHANNELS as Any[]).map(String) : [];
     const shaped = TPL.every((t) => thai(t?.label) && thai(t?.title) && thai(t?.body) && t?.defaults && typeof t.defaults === "object");
     chk("C2.10-S0.2", "notifications-shared.ts is pure and carries THE 10 staff templates of blueprint §7.4 (keys lead.assigned · customer.replied · deal.stale.digest · tasks.today · activity.reminder · lead.hot · deal.closed · commission.status · quota.progress · invoice.paid), each with a Thai label/title/body and per-channel defaults · CRM_NOTIF_CHANNELS = IN_APP · PUSH · EMAIL exactly (LINE-to-staff is OUT — brief + R-E.12)",
-      shSrc.length > 0 && !impure && TPL.length === 10 && missKeys.length === 0 && shaped && j([...chans].sort()) === j(["EMAIL", "IN_APP", "PUSH"]),
-      "10 templates · 3 channels", `shared=${shSrc.length > 0} impure=${impure} templates=${TPL.length} missing=${missKeys.join(",") || "-"} shaped=${shaped} channels=${chans.join(",") || "-"}${ABSENT}`);
+      shSrc.length > 0 && !impure && TPL.length === 11 && missKeys.length === 0 && shaped && j([...chans].sort()) === j(["EMAIL", "IN_APP", "PUSH"]),
+      "11 templates · 3 channels", `shared=${shSrc.length > 0} impure=${impure} templates=${TPL.length} missing=${missKeys.join(",") || "-"} shaped=${shaped} channels=${chans.join(",") || "-"}${ABSENT}`);
   }
   {
     // the quiet-hour helpers are LIFTED, not copied (no second engine — COMMON "no second engine" rule)
@@ -477,7 +478,7 @@ try {
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
-  // S3 — 10 templates × channels · shop/user prefs · quiet hours
+  // S3 — 11 templates × channels (C3.3 เพิ่ม commission.pending) · shop/user prefs · quiet hours
   // ═════════════════════════════════════════════════════════════════════════════
   console.log("\n── S3 · templates · channels · quiet hours ──");
   const notify = async (ctx: Any, key: string, userIds: string[], refId: string, extra: Record<string, Any> = {}) =>
@@ -489,9 +490,9 @@ try {
     const missing = WANT_KEYS.filter((k) => !tplView[k]);
     const digestDefaults = tplView["deal.stale.digest"]?.channels ?? tplView["deal.stale.digest"] ?? {};
     const hotDefaults = tplView["lead.hot"]?.channels ?? tplView["lead.hot"] ?? {};
-    chk("C2.10-S3.1", "getNotificationSettings returns all 10 templates with their per-channel defaults translated through R-E.12 — \"LINE ทันที\" becomes PUSH on (lead.hot), \"LINE รายวัน (สรุป)\" becomes the e-mail digest + in-app (deal.stale.digest: IN_APP on, EMAIL on) — plus the shop quiet hours (default 21:00–07:00, enabled) and the digest hour (08:00)",
+    chk("C2.10-S3.1", "getNotificationSettings returns all 11 templates with their per-channel defaults translated through R-E.12 — \"LINE ทันที\" becomes PUSH on (lead.hot), \"LINE รายวัน (สรุป)\" becomes the e-mail digest + in-app (deal.stale.digest: IN_APP on, EMAIL on) — plus the shop quiet hours (default 21:00–07:00, enabled) and the digest hour (08:00)",
       settings.ok && missing.length === 0 && hotDefaults?.PUSH === true && digestDefaults?.IN_APP === true && digestDefaults?.EMAIL === true && view.quietHours?.enabled === true && String(view.quietHours?.from) === "21:00" && String(view.quietHours?.to) === "07:00",
-      "10 templates · defaults · quiet 21–07", `settings=${settings.ok ? cut(j(view), 200) : settings.err} missing=${missing.join(",") || "-"}${ABSENT}`);
+      "11 templates · defaults · quiet 21–07", `settings=${settings.ok ? cut(j(view), 200) : settings.err} missing=${missing.join(",") || "-"}${ABSENT}`);
   }
   {
     SENT.length = 0;
