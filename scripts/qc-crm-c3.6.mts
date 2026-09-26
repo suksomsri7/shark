@@ -768,7 +768,7 @@ try {
     const crossTenant = await call(myDealsF, ctx(tidB, crmA, uTH), aTH, { limit: 20 });
     const pOther = await call(portalF, { tenantId: tidA, systemId: crmS }, { contactId: kP });
     const pForeign = await call(portalF, { tenantId: tidB, systemId: crmB }, { contactId: kP });
-    const noPerm = await call(myDealsF, cA(uTH), actor(uTH, "STAFF", { "crm.contact.read": true }), { limit: 20 });
+    const noPerm = await call(myDealsF, cA(uTH), actor(uTH, "STAFF", { "member.customer.read": true }), { limit: 20 }); // ORACLE-EDIT C3.6-X1.2 (26 ก.ย. · ผู้คุมงาน): มติ C1.7 CRM_IMPLICIT_READ — STAFF ที่ถือคีย์ crm.* ใด ๆ อ่านดีลได้ ⇒ actor "ไม่มีสิทธิ์" ต้องไม่มีคีย์ crm เลย
     chk("C3.6-X1.2", "X1 widgets: thana's \"my deals\" never shows a Krabi deal (nok's · the owner-less team-K deal) and \"today\" never shows nok's task · nok's widget has his deal only · the other CRM system shows only that system's deal · another tenant's ctx ⇒ NOT_FOUND · the portal widget of a contact of another system/tenant ⇒ null (or NOT_FOUND) · a STAFF without crm.deal.read ⇒ refused",
       noKrabi && crossSys.ok && mdNK.ok && same(idsOf(mdNK.v), [dNK.id]) && tdNK.ok && same(idsOf(tdNK.v), [aN1]) && otherSys.ok && same(idsOf(otherSys.v), [dTHs.id]) && isNF(crossTenant)
       && ((pOther.ok && pOther.v === null) || isNF(pOther)) && ((pForeign.ok && pForeign.v === null) || isNF(pForeign)) && (isFB(noPerm) || isNF(noPerm)),
