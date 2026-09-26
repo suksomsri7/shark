@@ -68,7 +68,7 @@
 //      UI: home (mockup 01) testids · `/crm/settings/quotas` page (mockup 10) + nav + inventory · NO migration (crm_v2_c already has CrmQuota).
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY: 46 = S0 4 · S1 5 · S2 2 · S3 6 · S4 3 · S5 4 (S1–S5 = the 20 of CRM-RUN §2) · S6 5 (brief extras) · K 1 (answer-key
+// CHECK INVENTORY: 47 = S0 4 · S1 5 · S2 2 · S3 6 · S4 3 · S5 4 (S1–S5 = the 20 of CRM-RUN §2) · S6 6 (brief extras · S6.6 = ORACLE-EDIT C3.2 SF-4) · K 1 (answer-key
 //   control) · X1 6 · X3 4 (X3.1a/X3.2a = "did the worker processes really run" controls) · X4 2 · X8 1 · X9 2 · CLEAN
 //   (C3.2-FATAL is added only when something throws)
 //   n/a: X2 (no REST op / AI tool — `crm_quota_progress` is C3.4/C3.8) · X5 (no scheduled job: reached is event-driven; report schedules are
@@ -600,7 +600,17 @@ try {
   };
   const LAST = (tIdx: number) => `WITH last AS (SELECT h."dealId", s2."kind", max(h."enteredAt") AS at FROM "CrmDealStageHistory" h JOIN "CrmStage" s2 ON s2."id" = h."toStageId" WHERE h."tenantId" = $${tIdx} GROUP BY h."dealId", s2."kind")`;
   const winPct = (w: number, l: number) => (w + l > 0 ? Math.round((w * 100) / (w + l)) : null);
-  type Kpi = { open: [number, number]; weighted: number; won: [number, number, number | null, number | null]; win: [number | null, number | null, number | null]; stale: [number, number]; hot: number };
+  // ORACLE-EDIT C3.2 SF-4 (26 ก.ย. · ruling: achievement basis = progress basis) ▸
+  //   KPI-3 pct and the leaderboard pct use the SAME achievement as progress()/checkReached: basis read independently from
+  //   AppSystem.settings.crm.commission.basis (anything but "WON" ⇒ PAID) · PAID ⇒ Σ COUNTED CrmDealPayment.satang by countedAt in the
+  //   window on non-archived deals owned by the row's user (the sqlProgress paid formula) · WON ⇒ the row's won value · KPI-3 achieved and
+  //   target = sums over the leaderboard users (owner-in-scope only) · won count/value columns unchanged · DTO carries won.basis,
+  //   won.achievedSatang, leaderboard.basis and per-row achievedSatang ◂
+  const sqlBasis = async (sys: string) => {
+    const [b] = await q(`SELECT "settings"->'crm'->'commission'->>'basis' AS b FROM "AppSystem" WHERE "id" = $1`, sys);
+    return b?.b === "WON" ? "WON" : "PAID";
+  };
+  type Kpi = { open: [number, number]; weighted: number; won: [number, number, number | null, number | null, string, number]; win: [number | null, number | null, number | null]; stale: [number, number]; hot: number };
   const sqlKpis = async (tid: string, sys: string, s: Scope, o: { key: string; pipelineId?: string; owner?: string; hot: number }): Promise<Kpi> => {
     const dealW = (p: unknown[]) => {
       let w = `d."systemId" = $1 AND d."archivedAt" IS NULL AND ${scopeSql("d", s, p)}`;
@@ -629,13 +639,13 @@ try {
     };
     const cur = await closed(o.key);
     const prev = /^\d{4}-\d{2}$/.test(o.key) ? await closed(prevMonth(o.key)) : null;
-    const users = s.kind === "ALL" ? null : s.kind === "OWN" ? [s.me] : s.mates;
-    const tu = o.owner ? (users === null ? [o.owner] : users.filter((u) => u === o.owner)) : users;
-    const pt: unknown[] = [sys, o.key];
-    let tw = `"systemId" = $1 AND "ownerType" = 'USER' AND "periodKey" = $2`;
-    if (tu) { pt.push(tu); tw += ` AND "ownerId" = ANY($3::text[])`; }
-    const [tq] = await q(`SELECT count(*)::int AS n, COALESCE(sum("targetSatang"),0)::bigint AS v FROM "CrmQuota" WHERE ${tw}`, ...pt);
-    const target = Number(tq.n) > 0 ? Number(tq.v) : null;
+    // ORACLE-EDIT C3.2 SF-4 (26 ก.ย. · ruling: achievement basis = progress basis) ▸ target + achieved over the leaderboard users
+    const board = await sqlBoard(tid, sys, s, o.key, { owner: o.owner, pipelineId: o.pipelineId });
+    const withT = board.filter((r) => r.targetSatang !== null);
+    const target = withT.length ? withT.reduce((a, r) => a + Number(r.targetSatang), 0) : null;
+    const achieved = board.reduce((a, r) => a + r.achievedSatang, 0);
+    const basis = await sqlBasis(sys);
+    // ◂
     const ph: unknown[] = [sys];
     let wh = `c."systemId" = $1 AND c."archivedAt" IS NULL AND c."mergedIntoId" IS NULL AND ${scopeSql("c", s, ph)}`;
     if (o.owner) { ph.push(o.owner); wh += ` AND c."ownerUserId" = $${ph.length}`; }
@@ -647,7 +657,7 @@ try {
     return {
       open: [Number(op.n), Number(op.v)],
       weighted: Math.round(Number(op.wv) / 100),
-      won: [cur.won, cur.wonV, target, target && target > 0 ? Math.floor((cur.wonV * 100) / target) : null],
+      won: [cur.won, cur.wonV, target, target && target > 0 ? Math.floor((achieved * 100) / target) : null, basis, achieved], // ORACLE-EDIT C3.2 SF-4
       win: [wp, pp, wp !== null && pp !== null ? wp - pp : null],
       stale: [Number(op.sn), Number(op.sv)],
       hot: Number(hot.n),
@@ -670,34 +680,46 @@ try {
     const [s] = await q(`SELECT count(*)::int AS n, COALESCE(sum("targetSatang"),0)::bigint AS v FROM "CrmQuota" WHERE "systemId" = $1 AND "ownerType" = 'USER' AND "periodKey" = $2 AND "ownerId" = ANY($3::text[])`, sys, key, await membersOfTeam(teamId));
     return Number(s.n) > 0 ? Number(s.v) : null;
   };
-  type BoardRow = { userId: string; wonSatang: number; wonCount: number; targetSatang: number | null; pct: number | null; openDeals: number };
-  const sqlBoard = async (tid: string, sys: string, s: Scope, key: string): Promise<BoardRow[]> => {
+  // ORACLE-EDIT C3.2 SF-4 (26 ก.ย. · ruling: achievement basis = progress basis) ▸ per-row achievedSatang (basis) · optional owner/pipeline filters (the KPI-3 sums reuse these rows)
+  type BoardRow = { userId: string; wonSatang: number; wonCount: number; achievedSatang: number; targetSatang: number | null; pct: number | null; openDeals: number };
+  const sqlBoard = async (tid: string, sys: string, s: Scope, key: string, f: { owner?: string; pipelineId?: string } = {}): Promise<BoardRow[]> => {
     let users: string[];
+    const pipeSql = (a: string, p: unknown[]) => (f.pipelineId ? (p.push(f.pipelineId), ` AND ${a}."pipelineId" = $${p.length}`) : "");
     if (s.kind === "ALL") {
-      users = (await q(`SELECT DISTINCT x.u FROM (SELECT d."ownerUserId" AS u FROM "CrmDeal" d WHERE d."systemId" = $1 AND d."archivedAt" IS NULL AND d."ownerUserId" IS NOT NULL
+      const pu: unknown[] = [sys, key, tid];
+      const pw = pipeSql("d", pu);
+      users = (await q(`SELECT DISTINCT x.u FROM (SELECT d."ownerUserId" AS u FROM "CrmDeal" d WHERE d."systemId" = $1 AND d."archivedAt" IS NULL AND d."ownerUserId" IS NOT NULL${pw}
           UNION SELECT qq."ownerId" FROM "CrmQuota" qq WHERE qq."systemId" = $1 AND qq."ownerType" = 'USER' AND qq."periodKey" = $2) x
-        WHERE EXISTS (SELECT 1 FROM "Membership" m WHERE m."tenantId" = $3 AND m."userId" = x.u)`, sys, key, tid)).map((x) => String(x.u));
+        WHERE EXISTS (SELECT 1 FROM "Membership" m WHERE m."tenantId" = $3 AND m."userId" = x.u)`, ...pu)).map((x) => String(x.u));
     } else users = s.kind === "OWN" ? [s.me] : [...s.mates];
+    if (f.owner) users = users.filter((u) => u === f.owner);
+    const basis = await sqlBasis(sys);
     const r = rangeOf(key);
     const rows: BoardRow[] = [];
     for (const u of users) {
       const p: unknown[] = [sys];
-      const w = `d."systemId" = $1 AND d."archivedAt" IS NULL AND ${scopeSql("d", s, p)}`;
+      const w = `d."systemId" = $1 AND d."archivedAt" IS NULL AND ${scopeSql("d", s, p)}${pipeSql("d", p)}`;
       p.push(u);
       const ui = p.length;
       p.push(tid, ts(r.from), ts(r.to));
       const [won] = await q(`${LAST(ui + 1)} SELECT count(*)::int AS n, COALESCE(sum(d."valueSatang"),0)::bigint AS v FROM "CrmDeal" d JOIN last l ON l."dealId" = d."id" AND l."kind" = d."kind"
         WHERE ${w} AND d."ownerUserId" = $${ui} AND d."kind" = 'WON' AND l.at >= $${ui + 2}::timestamp AND l.at < $${ui + 3}::timestamp`, ...p);
       const po: unknown[] = [sys];
-      const wo = `d."systemId" = $1 AND d."archivedAt" IS NULL AND ${scopeSql("d", s, po)}`;
+      const wo = `d."systemId" = $1 AND d."archivedAt" IS NULL AND ${scopeSql("d", s, po)}${pipeSql("d", po)}`;
       po.push(u);
       const [open] = await q(`SELECT count(*)::int AS n FROM "CrmDeal" d WHERE ${wo} AND d."ownerUserId" = $${po.length} AND d."kind" = 'OPEN'`, ...po);
       const tq = await q(`SELECT "targetSatang" AS v FROM "CrmQuota" WHERE "systemId" = $1 AND "ownerType" = 'USER' AND "ownerId" = $2 AND "periodKey" = $3`, sys, u, key);
       const target = tq.length ? Number(tq[0].v) : null;
-      rows.push({ userId: u, wonSatang: Number(won.v), wonCount: Number(won.n), targetSatang: target, pct: target && target > 0 ? Math.floor((Number(won.v) * 100) / target) : null, openDeals: Number(open.n) });
+      const pp: unknown[] = [sys, ts(r.from), ts(r.to), u];
+      const [paid] = await q(`SELECT COALESCE(sum(p."satang"),0)::bigint AS v FROM "CrmDealPayment" p JOIN "CrmDeal" d ON d."id" = p."dealId"
+        WHERE p."systemId" = $1 AND p."status" = 'COUNTED' AND p."countedAt" >= $2::timestamp AND p."countedAt" < $3::timestamp AND d."archivedAt" IS NULL
+          AND d."ownerUserId" = $4${pipeSql("d", pp)}`, ...pp);
+      const achieved = basis === "PAID" ? Number(paid.v) : Number(won.v);
+      rows.push({ userId: u, wonSatang: Number(won.v), wonCount: Number(won.n), achievedSatang: achieved, targetSatang: target, pct: target && target > 0 ? Math.floor((achieved * 100) / target) : null, openDeals: Number(open.n) });
     }
     return rows.sort((a, b) => b.wonSatang - a.wonSatang || (b.pct ?? -1) - (a.pct ?? -1) || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0));
   };
+  // ◂ ORACLE-EDIT C3.2 SF-4
   const sqlSources = async (sys: string, s: Scope, key: string) => {
     const r = rangeOf(key);
     const p: unknown[] = [sys];
@@ -716,12 +738,12 @@ try {
   const kOf = (v: Any): Kpi | null => (v ? {
     open: [n(v.openPipeline?.count), n(v.openPipeline?.valueSatang)],
     weighted: n(v.weighted?.valueSatang),
-    won: [n(v.won?.count), n(v.won?.valueSatang), nn(v.won?.targetSatang), nn(v.won?.pct)],
+    won: [n(v.won?.count), n(v.won?.valueSatang), nn(v.won?.targetSatang), nn(v.won?.pct), String(v.won?.basis), n(v.won?.achievedSatang)], // ORACLE-EDIT C3.2 SF-4
     win: [nn(v.winRate?.pct), nn(v.winRate?.prevPct), nn(v.winRate?.deltaPts)],
     stale: [n(v.stale?.count), n(v.stale?.valueSatang)],
     hot: n(v.hotLeads?.count),
   } : null);
-  const bOf = (v: Any): BoardRow[] => ((v?.rows ?? []) as Any[]).map((r) => ({ userId: String(r.userId), wonSatang: n(r.wonSatang), wonCount: n(r.wonCount), targetSatang: nn(r.targetSatang), pct: nn(r.pct), openDeals: n(r.openDeals) }));
+  const bOf = (v: Any): BoardRow[] => ((v?.rows ?? []) as Any[]).map((r) => ({ userId: String(r.userId), wonSatang: n(r.wonSatang), wonCount: n(r.wonCount), achievedSatang: n(r.achievedSatang), targetSatang: nn(r.targetSatang), pct: nn(r.pct), openDeals: n(r.openDeals) }));
   const srcOf = (v: Any): string[] => ((v?.items ?? []) as Any[]).map((x) => `${String(x.sourceKind)}:${Number(x.count)}`);
 
   const S_ALL: Scope = { kind: "ALL" };
@@ -734,9 +756,9 @@ try {
 
   console.log("\n── K · answer-key control ──");
   {
-    const HAND_O: Kpi = { open: [10, 14_300_000], weighted: 6_790_000, won: [5, 11_700_000, 14_000_000, 83], win: [63, 67, -4], stale: [3, 5_500_000], hot: 3 };
-    const HAND_TH: Kpi = { open: [3, 3_600_000], weighted: 1_800_000, won: [3, 7_200_000, 6_000_000, 120], win: [75, 100, -25], stale: [1, 1_000_000], hot: 1 };
-    const HAND_NK: Kpi = { open: [3, 5_100_000], weighted: 2_220_000, won: [1, 1_200_000, 3_000_000, 40], win: [50, 50, 0], stale: [2, 4_500_000], hot: 1 };
+    const HAND_O: Kpi = { open: [10, 14_300_000], weighted: 6_790_000, won: [5, 11_700_000, 14_000_000, 40, "PAID", 5_700_000], /* ORACLE-EDIT C3.2 SF-4: was 83 (won-based) */ win: [63, 67, -4], stale: [3, 5_500_000], hot: 3 };
+    const HAND_TH: Kpi = { open: [3, 3_600_000], weighted: 1_800_000, won: [3, 7_200_000, 6_000_000, 70, "PAID", 4_200_000], /* ORACLE-EDIT C3.2 SF-4: was 120 */ win: [75, 100, -25], stale: [1, 1_000_000], hot: 1 };
+    const HAND_NK: Kpi = { open: [3, 5_100_000], weighted: 2_220_000, won: [1, 1_200_000, 3_000_000, 0, "PAID", 0], /* ORACLE-EDIT C3.2 SF-4: was 40 */ win: [50, 50, 0], stale: [2, 4_500_000], hot: 1 };
     const HAND_P = { won: 7_200_000, deals: 3, paid: 4_200_000, activities: 3 };
     chk("C3.2-K.1", "[control] the oracle's independent SQL answer key reproduces the hand-computed fixture (owner / thana / nok KPIs + thana's Sep progress) — if this is red the fixture or the SQL is wrong, not the product",
       j(keyO) === j(HAND_O) && j(keyTH) === j(HAND_TH) && j(keyNK) === j(HAND_NK) && j(progTH) === j(HAND_P),
@@ -800,7 +822,7 @@ try {
     `${j(keyO.open)} · p2 ${j(key2.open)} · pook ${j(keyPK.open)}`, `${j(kv?.open)} · ${j(kv2?.open)} · ${j(kvpk?.open)} ${kO.ok ? `period=${kO.v?.periodKey}` : kO.err}${ABSENT}`);
   chk("C3.2-S3.2", "KPI 2 \"ถ่วงน้ำหนัก\" = Σ valueSatang × COALESCE(probabilityOverride, stage.probability) / 100 over the same OPEN deals (override wins over the stage) — all + pipeline filter (= SQL)",
     kO.ok && kv?.weighted === keyO.weighted && kv2?.weighted === key2.weighted, `${keyO.weighted} · p2 ${key2.weighted}`, `${kv?.weighted} · ${kv2?.weighted}${ABSENT}`);
-  chk("C3.2-S3.3", "KPI 3 \"ชนะเดือนนี้ vs โควตา\" = count + Σ value of deals WON in the Thai month (latest WON history row) · target = Σ USER quotas of the period in scope · pct = floor(won×100/target) — Sep and with periodKey 2026-08 (= SQL)",
+  chk("C3.2-S3.3", "KPI 3 \"ชนะเดือนนี้ vs โควตา\" = count + Σ value of deals WON in the Thai month (latest WON history row) · target = Σ USER quotas of the leaderboard users · pct = floor(achieved×100/target) with achieved on the progress() basis (PAID default ⇒ COUNTED payments of those users in the window · ORACLE-EDIT C3.2 SF-4) · basis + achievedSatang in the DTO — Sep and with periodKey 2026-08 (= SQL)",
     kO.ok && j(kv?.won) === j(keyO.won) && kAug.ok && j(kvaug?.won) === j(keyAug.won), `${j(keyO.won)} · Aug ${j(keyAug.won)}`, `${j(kv?.won)} · ${j(kvaug?.won)}${ABSENT}`);
   chk("C3.2-S3.4", "KPI 4 \"อัตราชนะ\" = round-half-up(won × 100 / (won + lost)) over deals closed in the Thai month (latest history row into their current WON/LOST stage) · prevPct = the previous Thai month · deltaPts = pct − prevPct (= SQL: 63 · 67 · −4)",
     kO.ok && j(kv?.win) === j(keyO.win), j(keyO.win), `${j(kv?.win)}${ABSENT}`);
@@ -815,8 +837,8 @@ try {
   console.log("\n── S6.4–S6.5 · leaderboard + lead sources · X1 visibility ──");
   const boardO = await sqlBoard(tidA, crmA, S_ALL, PK);
   const lbO = await call(boardF, cA(uO), aO, { now: NOW });
-  chk("C3.2-S6.4", `leaderboard (owner, Sep): one row per tenant member who owns a visible deal or holds a USER quota (the non-member owner and the "no owner" deal are out) · wonSatang/wonCount/openDeals over visible deals · targetSatang = USER quota · pct = floor(won×100/target) · ordered wonSatang desc, pct desc (null last), userId asc (= SQL, ${boardO.length} rows)`,
-    lbO.ok && j(bOf(lbO.v)) === j(boardO), j(boardO.map((r) => [r.wonSatang, r.pct, r.openDeals])), `${lbO.ok ? j(bOf(lbO.v).map((r) => [r.wonSatang, r.pct, r.openDeals])) : lbO.err}${ABSENT}`);
+  chk("C3.2-S6.4", `leaderboard (owner, Sep): one row per tenant member who owns a visible deal or holds a USER quota (the non-member owner and the "no owner" deal are out) · wonSatang/wonCount/openDeals over visible deals · targetSatang = USER quota · achievedSatang + pct = floor(achieved×100/target) on the progress() basis (ORACLE-EDIT C3.2 SF-4) · leaderboard.basis echoed · ordered wonSatang desc, pct desc (null last), userId asc (= SQL, ${boardO.length} rows)`,
+    lbO.ok && j(bOf(lbO.v)) === j(boardO) && String(lbO.v?.basis) === "PAID", j(boardO.map((r) => [r.wonSatang, r.achievedSatang, r.pct, r.openDeals])), `${lbO.ok ? `${j(bOf(lbO.v).map((r) => [r.wonSatang, r.achievedSatang, r.pct, r.openDeals]))} basis=${String(lbO.v?.basis)}` : lbO.err}${ABSENT}`);
   const srcO = await sqlSources(crmA, S_ALL, PK);
   const lsO = await call(sourcesF, cA(uO), aO, { now: NOW });
   chk("C3.2-S6.5", "lead sources (owner, Sep): contacts CREATED in the Thai month (1 Sep 00:05 Thai in · 31 Aug 23:55 Thai out · merged/archived out) grouped by sourceKind (null → OTHER), ordered count desc then key asc (= SQL)",
@@ -853,6 +875,33 @@ try {
     chk("C3.2-X1.3", "a STAFF without `crm.report.view` (he still has deal/contact read) gets a Thai FORBIDDEN/NOT_FOUND from kpis · leaderboard · leadSources · homeData — no number leaks through an error, nothing is written",
       ok(k) && ok(b) && ok(s) && ok(hd) && before === after, "4 refusals", `kpis=${rs(k)} board=${rs(b)} sources=${rs(s)} home=${rs(hd)} audit+${after - before}${ABSENT}`);
   }
+
+  // ORACLE-EDIT C3.2 SF-4 (26 ก.ย. · ruling: achievement basis = progress basis) ▸ S6.6 — one truth for "achievement": home KPI-3 = progress() = leaderboard row, under BOTH bases
+  {
+    const basis0 = await sqlBasis(crmA);
+    const out: string[] = [];
+    let ok = true;
+    for (const basis of ["PAID", "WON"] as const) {
+      await setCrm(crmA, { commission: { basis, approvalRequired: true, payrollLink: true } }); // no settings writer for commission.basis in crm/settings.ts ⇒ the fixture's jsonb_set
+      const lb = await call(boardF, cA(uO), aO, { now: NOW });
+      for (const u of [uTH, uPK]) {
+        const k = await call(kpisF, cA(uO), aO, { now: NOW, ownerUserId: u });
+        const pr = await call(progressF, cA(uO), aO, { ownerType: "USER", ownerId: u, periodKey: PK });
+        const row = lb.ok ? ((lb.v?.rows ?? []) as Any[]).find((r) => r.userId === u) : null;
+        const exp = (await sqlBoard(tidA, crmA, S_ALL, PK, { owner: u }))[0];
+        const vals = [nn(k.v?.won?.pct), nn(pr.v?.pct), nn(row?.pct), exp?.pct ?? null];
+        const good = k.ok && pr.ok && lb.ok && vals.every((x) => x === vals[3]) && String(k.v?.won?.basis) === basis && String(pr.v?.basis) === basis && String(lb.v?.basis) === basis
+          && n(k.v?.won?.achievedSatang) === exp?.achievedSatang && n(row?.achievedSatang) === exp?.achievedSatang;
+        ok = ok && good;
+        out.push(`${basis}/${u === uTH ? "thana" : "pook"}=${j(vals)}${good ? "" : ` k=${k.ok ? j(k.v?.won) : k.err} pr=${rs(pr)}`}`);
+      }
+    }
+    await setCrm(crmA, { commission: { basis: basis0, approvalRequired: true, payrollLink: true } });
+    const restored = (await sqlBasis(crmA)) === basis0;
+    chk("C3.2-S6.6", "SF-4 one truth: for the same user (thana 70→120 · pook 30→66) home KPI-3 pct (ownerUserId filter) = progress(USER).pct = his leaderboard row pct = the oracle's SQL, under commission.basis PAID and again under WON (basis + achievedSatang echoed by all three) — basis restored afterwards",
+      ok && restored, "4 × equal", `${out.join(" · ")} restored=${restored}${ABSENT}`);
+  }
+  // ◂ ORACLE-EDIT C3.2 SF-4
 
   // ═════════════════════════════════════════════════════════════════════════════
   // S5 — visual owner / thana (static UI contract + the render data of the two personas) — 4 · pixel parity = gate D7

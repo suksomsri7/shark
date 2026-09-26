@@ -80,6 +80,7 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   // ◂ CRM C2.6
   // CRM C2.11 ▸ `crm.deal.stale` / `crm.activity.overdue` ประกาศที่ `AUTOMATION_EVENTS` ของใบ C2.10 (spread ข้างบน) — ห้ามประกาศซ้ำที่นี่
   //   ไม่งั้นหน้าตั้งค่าฮุคมีช่องติ๊ก 2 แถวต่อ event เดียว (บทเรียนของบอร์ดงาน · ข้อสอบ C2.11-S4.2 จับ duplicate ทั้งทะเบียน) ◂
+  // CRM C3.2 ▸ `crm.quota.reached` ประกาศที่ `AUTOMATION_EVENTS` (บล็อก C3.2 · spread ข้างบน) — ร้านสมัครเว็บฮุคได้ทันที · ห้ามประกาศซ้ำที่นี่ ◂
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

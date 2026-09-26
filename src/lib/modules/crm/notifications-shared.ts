@@ -295,6 +295,8 @@ export function crmNotifPath(refType: string, refId: string): string {
   if (refType === "CrmCompany" && id) return `/companies/${id}`;
   if (refType === "CrmActivity") return "/activities";
   if (refType === "CrmStaleDeals") return "/deals";
+  // CRM C3.2 ▸ (รีวิว N5) โควตาถึงเกณฑ์ → หน้าแรกของระบบ CRM (KPI "ชนะเดือนนี้ vs โควตา") · "" = หน้าแรก (`crmNotifLink` สร้าง `/app/sys/<id>`) ◂
+  if (refType === "CrmQuota") return "";
   return "/deals";
 }
 
@@ -313,8 +315,17 @@ export function crmNotifPath(refType: string, refId: string): string {
  *    จะกันซ้ำพลาดทันทีถ้าใช้ `createdAt` เป็นตัวตัดสินวัน)
  * (ตาราง `AppNotification` เป็นของกลางทั้งแพลตฟอร์ม — ไม่มีคอลัมน์คีย์ให้ใช้ และใบนี้ห้ามเพิ่มคอลัมน์ · R-C.1)
  */
-export function crmNotifLink(systemId: string, refType: string, refId: string, key: CrmNotifKey, thaiDay: string): string {
-  return `/app/sys/${systemId}/crm${crmNotifPath(refType, refId)}?n=${key}&nd=${thaiDay}&r=${refIdParam(refId)}`;
+export function crmNotifLink(systemId: string, refType: string, refId: string, key: CrmNotifKey, thaiDay: string, query?: Record<string, string>): string {
+  const path = crmNotifPath(refType, refId);
+  // CRM C3.2 ▸ ทางเดินว่าง = หน้าแรกของระบบ CRM (`/app/sys/<id>` — ไม่มีหน้า `/crm` เปล่า) · พารามิเตอร์เพิ่ม (เช่น `period` ของโควตา)
+  //   ต่อท้าย `&r=` เสมอ (ส่วน n/nd/r ที่เป็นกุญแจกันซ้ำ/ตัวเลือกของรอบกวาดอยู่หน้าเหมือนเดิม) · คีย์/ค่านอก [A-Za-z0-9_-] ถูกตัดทิ้ง ◂
+  const base = path === "" ? `/app/sys/${systemId}` : `/app/sys/${systemId}/crm${path}`;
+  const extra = Object.entries(query ?? {})
+    .map(([k, v]) => [String(k).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32), String(v ?? "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64)] as const)
+    .filter(([k, v]) => k && v && !["n", "nd", "r"].includes(k))
+    .map(([k, v]) => `&${k}=${v}`)
+    .join("");
+  return `${base}?n=${key}&nd=${thaiDay}&r=${refIdParam(refId)}${extra}`;
 }
 
 /** รหัสระเบียนในรูปที่ใส่ใน query ได้ (cuid ปลอดภัยอยู่แล้ว · ตัวอื่นถูกตัดให้เหลือชุดที่ regex ของตัวอ่านรับ) */
@@ -323,13 +334,18 @@ function refIdParam(refId: string): string {
 }
 
 /** ป้ายบอกว่าใบแจ้งเตือนใบนี้เป็นของ CRM v2 (ตัวกรองแรกของรอบกวาด) */
-export const CRM_NOTIF_LINK_MARK = "/crm/";
+// CRM C3.2 ▸ ตัวกรองแรกของรอบกวาด = `?n=` (เดิม "/crm/") — ลิงก์ของโควตาไปหน้าแรก `/app/sys/<id>?n=…` ไม่มี "/crm/" ·
+//   ตัวกรองนี้แค่คัดก่อน — `parseCrmNotifLink` ยังตัดสินจริง (คีย์ต้องอยู่ในทะเบียน CRM) ใบของโมดูลอื่นจึงไม่หลุดเข้ามา ◂
+export const CRM_NOTIF_LINK_MARK = "?n=";
 /**
  * ดึงส่วนประกอบของกุญแจกันซ้ำกลับจากเนื้อความ (`null` = ไม่ใช่ใบของ CRM v2)
  * คืน systemId · คีย์เทมเพลต · วันไทย · **รหัสระเบียน** (`refId` — อาจเป็น "" ในใบเก่าที่เขียนก่อนรอบแก้นี้)
  */
 export function parseCrmNotifLink(body: string): { systemId: string; key: CrmNotifKey; thaiDay: string; refId: string } | null {
-  const m = /\/app\/sys\/([A-Za-z0-9_-]+)\/crm[^\s?]*\?n=([A-Za-z0-9._-]+)(?:&nd=([0-9-]+))?(?:&r=([A-Za-z0-9_-]*))?/.exec(String(body ?? ""));
+  // CRM C3.2 ▸ `/crm…` ไม่บังคับแล้ว (ลิงก์ของโควตาชี้หน้าแรก `/app/sys/<id>?n=…`) · (รีวิวรอบ 2 NOTE-10) ใช้ลิงก์ **ตัวสุดท้าย**
+  //   ในเนื้อความ — ลิงก์ของระบบต่อท้ายเสมอ ข้อความที่ร้านแก้เองอาจมีลิงก์หน้าตาเดียวกันนำหน้า ◂
+  const all = [...String(body ?? "").matchAll(/\/app\/sys\/([A-Za-z0-9_-]+)(?:\/crm[^\s?]*)?\?n=([A-Za-z0-9._-]+)(?:&nd=([0-9-]+))?(?:&r=([A-Za-z0-9_-]*))?/g)];
+  const m = all.length ? all[all.length - 1] : null;
   if (!m) return null;
   const key = m[2] ?? "";
   if (!isCrmNotifKey(key)) return null;

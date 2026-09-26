@@ -25,6 +25,7 @@ import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, contactWhere, dealWhere } from "./where";
+import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (หลังการมองเห็นเสมอ) ◂
 import { crmCan, crmForbiddenMessage, crmParam } from "./access";
 import * as companies from "./companies";
@@ -878,6 +879,10 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
       after: { stageId: out.row.stageId, kind: out.row.kind, lostReasonId: out.row.lostReasonId, ...(opts.reopenReason ? { reason: opts.reopenReason } : {}) },
     });
   }
+  // CRM C3.2 ▸ AUDIT-CLASS X3: เข้าขั้น WON แล้ว → ตรวจโควตา **หลัง tx ของการย้าย commit** (ใน tx ยังไม่มีใครเห็นชัยชนะนี้) ·
+  //   `crm.quota.reached` ยิงแบบ insert-or-skip ครั้งเดียวต่อ เจ้าของ+งวด+เกณฑ์ · ล้ม = WARN ไม่ทำให้การย้ายที่สำเร็จแล้วดูเหมือนล้ม
+  //   รีวิว N1: at = enteredAt ของแถวประวัติที่เข้า WON (= stageEnteredAt ที่เขียนใน tx เดียวกัน) ไม่ใช่นาฬิกาตอนตรวจ ◂
+  if (out.changed && out.row.kind === "WON") await (await import("./quotas")).reachedAfterCommit(identityScope(ctx), { dealId: out.row.id, at: out.row.stageEnteredAt });
   return { deal: toDto(out.row), changed: out.changed, fromStageId: out.from, histId: out.histId, reopened: out.reopened };
 }
 
@@ -1566,9 +1571,13 @@ async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Pro
   const viewId = str(raw?.savedViewId);
   if (viewId) {
     // AUDIT-CLASS X1: มุมมองต้องเป็นของระบบนี้ + ของตัวเองหรือระดับทีม — ของระบบ/คนอื่น = ไม่พบ
-    const view = await prisma.memberSavedView.findFirst({ where: { id: viewId, tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", OR: [{ ownerUserId: a.userId }, { scope: "TEAM" }] } });
-    if (!view) throw fail("NOT_FOUND", "ไม่พบมุมมองที่บันทึกไว้นี้ในระบบ CRM นี้ — เลือกมุมมองใหม่");
-    const vf = isObj(view.filters) ? (view.filters as Record<string, unknown>) : {};
+    // CRM C3.2 ▸ กติกาการมองเห็นอยู่ที่ `views.ts` ที่เดียว: TEAM = เจ้าของ + สมาชิกปัจจุบันของทีมนั้น (TEAM เดิมไม่มี teamId = ทั้งร้าน) ·
+    //   ตัวกรองผ่าน whitelist แล้ว — แถวเก่าที่เก็บ `pipeline` (ชื่อเดิม) ยังอ่านได้จากแถวดิบข้างล่าง ◂
+    const vfOk = await resolveViewFilters(ctx, a, "deal", viewId);
+    if (!vfOk) throw fail("NOT_FOUND", "ไม่พบมุมมองที่บันทึกไว้นี้ในระบบ CRM นี้ — เลือกมุมมองใหม่");
+    const legacy = await prisma.memberSavedView.findFirst({ where: { id: viewId, tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal" }, select: { filters: true } });
+    const raw0 = isObj(legacy?.filters) ? (legacy!.filters as Record<string, unknown>) : {};
+    const vf: Record<string, unknown> = { ...vfOk, ...(vfOk.pipelineId === undefined && typeof raw0.pipeline === "string" ? { pipeline: raw0.pipeline } : {}) };
     const fromView: DealListInput = {
       pipelineId: str(vf.pipelineId) ?? str(vf.pipeline),
       owner: str(vf.owner),
@@ -1580,6 +1589,9 @@ async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Pro
       tag: str(vf.tag),
       q: str(vf.q),
       companyId: str(vf.companyId),
+      // CRM C3.2 ▸ คีย์ใน whitelist ของมุมมองดีลที่เดิมไม่ถูกอ่าน ◂
+      contactId: str(vf.contactId),
+      kind: (["OPEN", "WON", "LOST"] as const).find((k) => k === vf.kind) ?? null,
       f: isObj(vf.f) ? (Object.fromEntries(Object.entries(vf.f).filter(([, v]) => typeof v === "string")) as Record<string, string>) : null,
     };
     const explicit = Object.fromEntries(Object.entries(raw ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== "")) as DealListInput;
@@ -1662,6 +1674,13 @@ async function toCards(ctx: DealsCtx, rows: CardRow[]): Promise<DealCardDto[]> {
 }
 
 const CARD_INCLUDE = { contact: { select: { name: true, score: true } }, stage: { select: { name: true, probability: true } } } as const;
+
+// CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดการ์ด" — where เดียวกับ listDeals + id 1 แถว ◂
+/** ตรวจว่าตัวกรองชุดนี้ใช้กับรายการดีลได้ (อ่าน 1 id · ไม่เติมชื่อผู้ติดต่อ/บริษัท) */
+export async function probeDealFilters(ctx: DealsCtx, actor: MemberActor, input: DealListInput): Promise<void> {
+  const a = await enter(ctx, actor);
+  await prisma.crmDeal.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
+}
 
 /** รายการดีล (ตาราง) — ตัวกรอง §2.3 · มุมมองที่บันทึก · เรียง · cursor (id) */
 export async function listDeals(ctx: DealsCtx, actor: MemberActor, input: DealListInput = {}): Promise<DealListResult> {
@@ -1980,12 +1999,8 @@ export async function companyContactOptions(ctx: DealsCtx, actor: MemberActor, c
 /** มุมมองที่บันทึกไว้ของดีล (ของตัวเอง + ระดับทีม) */
 export async function savedViewOptions(ctx: DealsCtx, actor: MemberActor): Promise<{ id: string; name: string }[]> {
   const a = await enter(ctx, actor);
-  return prisma.memberSavedView.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", OR: [{ ownerUserId: a.userId }, { scope: "TEAM" }] },
-    select: { id: true, name: true },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    take: 100,
-  });
+  // CRM C3.2 ▸ กติกาเดียวกับ listViews (`views.ts`) — ทีมจริง ไม่ใช่ "ทั้งร้าน" ◂
+  return (await viewOptions(ctx, a, "deal")).map((v) => ({ id: v.id, name: v.name }));
 }
 
 /** ฟิลด์กำหนดเองของดีล (โมดัลเงื่อนไขก่อนเข้าขั้น · ตัวกรอง f.<key>) */

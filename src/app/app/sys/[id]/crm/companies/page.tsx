@@ -5,12 +5,13 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
-import { listCompanies, ownerOptions } from "@/lib/modules/crm/companies";
+import { listCompanies, ownerOptions, savedViewOptions } from "@/lib/modules/crm/companies";
 import {
   COMPANY_LIFECYCLE_LABEL,
   COMPANY_SIZES,
   COMPANY_SIZE_LABEL,
   COMPANY_SORTS,
+  CompaniesError,
   formatSatangBaht,
   formatTaxId,
   relativeThai,
@@ -21,6 +22,10 @@ import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { CompanyExportButton, CompanyImportButton } from "./_components/CompanyListTools";
+// CRM C3.2 ▸ มุมมองที่บันทึกของรายชื่อบริษัท (objectKey "company" · ทีมจริง) — เลือก · บันทึก · ลบ ◂
+import { viewTeamOptions } from "@/lib/modules/crm/views";
+import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
+import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
 // รายชื่อบริษัท (CRM v2 · ใบ C1.3 · พิมพ์เขียว §3.4/§3.17) — `/app/sys/{id}/crm/companies`
 // URL state: ?q · industry · size · owner · open=1 · archived=1 · sort · page (ลิงก์แชร์ได้ · ย้อนกลับได้)
@@ -54,11 +59,23 @@ export default async function CompaniesPage({
   const archived = one("archived") === "1";
   const sort: CompanySort = (COMPANY_SORTS as readonly string[]).includes(one("sort")) ? (one("sort") as CompanySort) : "name";
   const page = Math.max(1, Math.floor(Number(one("page")) || 1));
+  const view = one("view"); // CRM C3.2 ▸ มุมมองที่บันทึก ◂
 
   // 🔴 หน้า GET ไม่เขียนอะไร (รีวิว SF12) — ฟิลด์ระบบของบริษัทถูก seed ตอนเขียนครั้งแรก (สร้าง/แก้/นำเข้า)
-  const [list, owners] = await Promise.all([
-    listCompanies(ctx, actor, { q, industry, size: size || null, owner: owner || null, hasOpenDeals: open ? true : null, includeArchived: archived, sort, page, pageSize: PAGE_SIZE }),
+  // CRM C3.2 ▸ มุมมองที่ใช้ไม่ได้แล้ว (ถูกลบ/ไม่ได้แชร์ให้) = บอกในหน้า ไม่ใช่หน้า error ◂
+  const viewFail = { message: null as string | null };
+  const [list, owners, views, viewTeams] = await Promise.all([
+    listCompanies(ctx, actor, { q, industry, size: size || null, owner: owner || null, hasOpenDeals: open ? true : null, includeArchived: archived, sort, page, pageSize: PAGE_SIZE, savedViewId: view || null }).catch((e: unknown) => {
+      // รีวิว S4: ตัวกรอง/มุมมองที่ใช้ไม่ได้ (VALIDATION) บอกในหน้าเหมือนหน้าผู้ติดต่อ — ไม่ใช่หน้า error ของทั้งทีม
+      if (e instanceof CompaniesError && (e.code === "VALIDATION" || (e.code === "NOT_FOUND" && view))) {
+        viewFail.message = e.message;
+        return { items: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+      }
+      throw e;
+    }),
     ownerOptions(ctx, actor),
+    savedViewOptions(ctx, actor).catch(() => []),
+    viewTeamOptions(ctx, actor).catch(() => []),
   ]);
   const ownerName = new Map(owners.map((o) => [o.id, o.name]));
   const def = systemDef(sys.type);
@@ -72,6 +89,7 @@ export default async function CompaniesPage({
     if (owner) u.set("owner", owner);
     if (open) u.set("open", "1");
     if (archived) u.set("archived", "1");
+    if (view) u.set("view", view); // CRM C3.2 ◂
     if (sort !== "name") u.set("sort", sort);
     if (p > 1) u.set("page", String(p));
     const s = u.toString();
@@ -129,6 +147,20 @@ export default async function CompaniesPage({
             ))}
           </select>
         </label>
+        {/* CRM C3.2 ▸ มุมมองที่บันทึก (ของตัวเอง · ทีมที่ตัวเองอยู่ · ทั้งร้านแบบเดิม) ◂ */}
+        {views.length > 0 && (
+          <label className="flex w-[160px] flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+            <span>มุมมองที่บันทึกไว้</span>
+            <select name="view" defaultValue={view} className="input text-sm" data-testid="companies-filter-view">
+              <option value="">ไม่ใช้</option>
+              {views.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex w-[150px] flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>เรียงตาม</span>
           <select name="sort" defaultValue={sort} className="input text-sm" data-testid="companies-filter-sort">
@@ -150,12 +182,29 @@ export default async function CompaniesPage({
         <button type="submit" className="btn btn-ghost text-sm" data-testid="companies-filter-submit">
           กรอง
         </button>
-        {(q || industry || size || owner || open || archived) && (
+        {(q || industry || size || owner || open || archived || view) && (
           <Link href={base} className="py-2 text-sm text-[color:var(--color-muted)] underline" data-testid="companies-filter-clear">
             ล้างตัวกรอง
           </Link>
         )}
       </form>
+
+      {/* CRM C3.2 ▸ บันทึกตัวกรองที่เปิดอยู่เป็นมุมมอง (ส่วนตัว/ทีม) · ลบมุมมองที่เลือกอยู่ (เจ้าของมุมมอง) ◂ */}
+      <SavedViewControls
+        systemId={id}
+        objectKey="company"
+        filters={{ q: q || null, industry: industry || null, size: size || null, owner: owner || null, hasOpenDeals: open ? true : null }}
+        teams={viewTeams}
+        current={view ? (views.find((v) => v.id === view) ?? null) : null}
+        viewParam="view"
+        create={createCrmViewAction}
+        remove={deleteCrmViewAction}
+      />
+      {viewFail.message && (
+        <div className="card p-3 text-sm" style={{ borderColor: "var(--color-danger)" }} data-testid="companies-view-error" role="alert">
+          {viewFail.message}
+        </div>
+      )}
 
       <div className="text-xs text-[color:var(--color-muted)]" data-testid="companies-count">
         ทั้งหมด {list.total.toLocaleString("th-TH")} บริษัท

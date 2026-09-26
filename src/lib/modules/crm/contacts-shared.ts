@@ -198,6 +198,8 @@ export type ContactListInput = {
   companyId?: string | null;
   f?: Record<string, string> | null;
   savedViewId?: string | null;
+  /** CRM C3.2 ▸ (รีวิว N9) คะแนนขั้นต่ำ — ลิงก์ KPI "lead ร้อน" ของหน้าแรกเปิดชุดเดียวกับที่นับ (score ≥ เกณฑ์ร้อน ไม่ใช่ scoreBand ที่อาจค้าง) ◂ */
+  minScore?: number | null;
   includeArchived?: boolean | null;
   sort?: string | null;
   cursor?: string | null;

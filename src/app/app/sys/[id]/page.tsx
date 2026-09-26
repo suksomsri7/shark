@@ -39,10 +39,12 @@ export default async function SystemPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ c?: string; err?: string }>;
+  // CRM C3.2 ▸ ตัวกรองของหน้าแรก CRM v2 (ภาพ 01): pipeline · owner · period — ส่งต่อให้ CrmHomeV2 (อ่านเป็นสตริงเท่านั้น · บริการตรวจเอง) ◂
+  searchParams: Promise<{ c?: string; err?: string; pipeline?: string | string[]; owner?: string | string[]; period?: string | string[] }>;
 }) {
   const { id } = await params;
-  const { c, err } = await searchParams;
+  const sp = await searchParams;
+  const { c, err } = sp;
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
 
@@ -69,7 +71,8 @@ export default async function SystemPage({
   return (
     // 🔴 WO-CV12: ระบบแชท = "แบบตัด" — ไม่มีชื่อหน้า/คำอธิบาย/แท็บ ทั้งมือถือและเดสก์ท็อป
     //    ⇒ ไม่มีอะไรมาคั่นเหนือกล่องแชท จึงไม่ต้องมี gap ของ stack ด้วย (ระบบอื่นคงเดิม)
-    <div className={`flex flex-col ${isChat ? (inApp ? "max-w-none gap-0" : "max-w-6xl gap-0") : "max-w-2xl gap-6"}`}>
+    // CRM C3.2 ▸ หน้าแรก CRM v2 = แดชบอร์ดของภาพ 01 (KPI 6 ช่อง + แถบขวา) ⇒ กว้างถึง max-w-7xl · ระบบอื่น/CRM v1 คงความกว้างเดิม ◂
+    <div className={`flex flex-col ${isChat ? (inApp ? "max-w-none gap-0" : "max-w-6xl gap-0") : sys.type === "CRM" && parseCrmSettings(sys.settings).uiVersion === 2 ? "max-w-7xl gap-6" : "max-w-2xl gap-6"}`}>
       {!isChat && (
         <PageHeader
           title={`${def?.icon ?? ""} ${sys.name}`.trim()}
@@ -114,7 +117,7 @@ export default async function SystemPage({
         </div>
       )}
       {/* CRM C1.11 ▸ ทางเข้าโมดูลตามรุ่นหน้าจอ (มติ C23): 2 = หน้าแรก CRM ใหม่ · อื่น ๆ = CrmHub เดิม ◂ */}
-      {sys.type === "CRM" && (parseCrmSettings(sys.settings).uiVersion === 2 ? <CrmHomeV2 systemId={id} /> : <CrmHub systemId={id} />)}
+      {sys.type === "CRM" && (parseCrmSettings(sys.settings).uiVersion === 2 ? <CrmHomeV2 systemId={id} filters={{ pipeline: sp.pipeline, owner: sp.owner, period: sp.period }} /> : <CrmHub systemId={id} />)}
       {sys.type === "INVENTORY" && <InvHub systemId={id} />}
       {sys.type === "HR" && <HrHub systemId={id} />}
       {sys.type === "MARKETING" && <MarketingHub systemId={id} />}

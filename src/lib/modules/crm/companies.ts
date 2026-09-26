@@ -35,6 +35,7 @@ import type { CrmAccountContactBrief } from "@/lib/modules/account";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
+import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
@@ -1204,7 +1205,18 @@ const SORTS: Record<CompanySort, Prisma.CrmCompanyOrderByWithRelationInput[]> = 
   "-wonValueSatang": [{ wonValueSatang: "desc" }, { id: "desc" }],
 };
 
-async function listWhere(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
+async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
+  // CRM C3.2 ▸ มุมมองที่บันทึก (`savedViewId` · objectKey "company") — กติกาการมองเห็นที่ `views.ts` ที่เดียว (TEAM = เจ้าของ +
+  //   สมาชิกปัจจุบันของทีม · มองไม่เห็น = NOT_FOUND ไม่ใช่ "ไม่กรอง") · ตัวกรองที่ส่งมาตรง ๆ ทับค่าของมุมมอง ◂
+  let input: CompanyListInput = raw ?? {};
+  const viewId = str(raw?.savedViewId);
+  if (viewId) {
+    const vf = await resolveViewFilters(ctx, actor, "company", viewId);
+    if (!vf) throw fail("NOT_FOUND", "ไม่พบมุมมองที่บันทึกไว้นี้ในระบบ CRM นี้ — เลือกมุมมองใหม่");
+    const explicit = Object.fromEntries(Object.entries(raw ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== "")) as CompanyListInput;
+    const vfF = (vf.f && typeof vf.f === "object" ? vf.f : {}) as Record<string, string>;
+    input = { ...(vf as CompanyListInput), ...explicit, f: { ...vfF, ...(explicit.f ?? {}) } };
+  }
   // AUDIT-CLASS X1: ขอบเขตผ่าน companyWhere เสมอ · บริษัทที่ถูกรวมไม่โผล่ในรายการ (แถวคงอยู่เป็นประวัติ)
   const AND: Prisma.CrmCompanyWhereInput[] = [await companyWhere(ctx, actor), { mergedIntoId: null }];
   if (!input.includeArchived) AND.push({ archivedAt: null });
@@ -1239,6 +1251,13 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, input: CompanyLi
     }
   }
   return { AND };
+}
+
+// CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดแถว" — where เดียวกับ listCompanies + id 1 แถว ◂
+/** ตรวจว่าตัวกรองชุดนี้ใช้กับรายชื่อบริษัทได้ (อ่าน 1 id · ไม่นับทั้งหมด) */
+export async function probeCompanyFilters(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<void> {
+  const a = await enter(ctx, actor);
+  await prisma.crmCompany.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
 }
 
 export async function listCompanies(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput = {}): Promise<CompanyListResult> {
@@ -1737,6 +1756,14 @@ export async function contactOptions(ctx: CompaniesCtx, actor: MemberActor, comp
     take: PICK_MAX,
   });
 }
+
+// CRM C3.2 ▸ ตัวเลือกมุมมองที่บันทึกของหน้ารายชื่อบริษัท — กติกาเดียวกับ listViews (`views.ts`: ของตัวเอง · ทีมที่ตัวเองอยู่ · ทั้งร้านแบบเดิม)
+/** มุมมองที่บันทึกไว้ของบริษัท (id · ชื่อ · แก้ได้ไหม) */
+export async function savedViewOptions(ctx: CompaniesCtx, actor: MemberActor): Promise<{ id: string; name: string; editable: boolean }[]> {
+  const a = await enter(ctx, actor);
+  return viewOptions(ctx, a, "company");
+}
+// ◂ CRM C3.2
 
 /** รายชื่อทีมงานของร้าน (ช่องผู้ดูแล) */
 export async function ownerOptions(ctx: CompaniesCtx, actor: MemberActor): Promise<{ id: string; name: string }[]> {

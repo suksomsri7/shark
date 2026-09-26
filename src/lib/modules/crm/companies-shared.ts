@@ -229,6 +229,8 @@ export type CompanyListInput = {
   sort?: CompanySort | null;
   page?: number | null;
   pageSize?: number | null;
+  /** CRM C3.2 ▸ มุมมองที่บันทึก (MemberSavedView objectKey "company") — ตัวกรองของมุมมอง + ตัวกรองที่ส่งมาตรง ๆ ทับ ◂ */
+  savedViewId?: string | null;
 };
 
 export type CompanySort = "name" | "-name" | "createdAt" | "-createdAt" | "lastActivityAt" | "-lastActivityAt" | "openDealCount" | "-openDealCount" | "wonValueSatang" | "-wonValueSatang";

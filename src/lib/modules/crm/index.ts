@@ -180,6 +180,15 @@ export * as scoring from "./scoring";
 //   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
 export * as notifications from "./notifications";
 // ◂ CRM C2.10
+// CRM C3.2 ▸ โควตา · หน้าแรก (KPI 6 · leaderboard · ที่มา lead · "ไม่มีเจ้าของ") · มุมมองที่บันทึกของ contact/company/deal
+//   `quotas` (`quotas.ts`): setQuota/listQuotas/progress/checkReached/quotaBoard · reachedAfterCommit (ทางเดินเงิน/ย้ายเข้า WON หลัง commit) ·
+//     onReached (ตัวรับ event `crm.quota.reached` ใน outbox-consumers) — ตัวช่วยงวดเวลาไทยบริสุทธิ์อยู่ที่ `./quotas-shared`
+//   `home` (`home-data.ts` — ไม่ใช่ `home.ts` ที่จะชน `./home` ของ ui.tsx): kpis/leaderboard/leadSources/unowned/homeData
+//   `views` (`views.ts`): listViews/createView/updateView/deleteView (+ ตัวช่วยของหน้ารายการ) — มุมมองสมาชิก (`member/views.ts`) ไม่เกี่ยว
+export * as quotas from "./quotas";
+export * as home from "./home-data";
+export * as views from "./views";
+// ◂ CRM C3.2
 // CRM C3.1 ▸ รายงาน (`reports.ts`) — namespace เดียว `reports`: 8 แท็บ overview/forecast/funnel/reps/activities/lostReasons/
 //   sources/scores · getReport (ตัวแจกงานตัวเดียว — C3.4 `crm_reports` ใช้ตัวนี้) · ส่งออก CSV เป็นงาน async
 //   startExport/runExportJobs/getExport (`CrmImportJob` kind REPORT_EXPORT + lease · งานรายนาที `crm.reports.exports`) ·

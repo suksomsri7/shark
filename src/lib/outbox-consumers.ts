@@ -1164,6 +1164,15 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.deal.stale": withAutomation(async () => {}),
   "crm.activity.overdue": withAutomation(async () => {}),
   // ◂ CRM C2.10
+  // CRM C3.2 ▸ โควตาถึงเกณฑ์ 80/100 % (ตัวยิง `crm/quotas.ts#checkReached` · key `crm.quota.reached#…#<threshold>` · id ล้วน)
+  //   งานหลัก = แจ้งเจ้าของโควตา (USER) หรือหัวหน้า+สมาชิกทีม (TEAM) ผ่าน `notifications.notifyStaff` เทมเพลต `quota.progress` ของ C2.10 ·
+  //   AUDIT-CLASS X4: ส่งซ้ำ/พร้อมกันไม่แจ้งซ้ำ (ตัวแจ้งกันซ้ำต่อ ผู้รับ+เทมเพลต+โควตา+วันไทย ใต้ล็อก) · กฎอัตโนมัติได้จาก withAutomation ·
+  //   dynamic import (crm → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดถ้า import หัวไฟล์) · 🔴 ขาด consumer = คิวตันทั้งระบบเงียบ ๆ
+  "crm.quota.reached": withAutomation(async (evt) => {
+    const crm = await import("@/lib/modules/crm");
+    await crm.quotas.onReached(evt);
+  }),
+  // ◂ CRM C3.2
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

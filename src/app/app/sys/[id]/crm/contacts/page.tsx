@@ -32,6 +32,10 @@ import { SequenceBulkEnroll } from "@/components/crm/sequences/SequenceBulkEnrol
 import { CrmCardScanButton } from "@/components/crm/call/CrmCardScanButton";
 import { crmCan } from "@/lib/modules/crm/access";
 import { CRM_CARD_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
+// CRM C3.2 ▸ บันทึก/ลบมุมมองของรายชื่อผู้ติดต่อ (objectKey "contact" · ทีมจริง) ◂
+import { viewOptions, viewTeamOptions } from "@/lib/modules/crm/views";
+import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
+import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
 // รายชื่อผู้ติดต่อ (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5/§3.17) — `/app/sys/{id}/crm/contacts`
 // URL state: ?q · stage · lead · owner · source · band · view (มุมมองบันทึก) · archived=1 · sort · cursor (ลิงก์แชร์ได้ · ย้อนกลับได้)
@@ -65,6 +69,9 @@ export default async function ContactsPage({
   const band = pick("band", SCORE_BANDS);
   const owner = one("owner");
   const view = one("view");
+  // CRM C3.2 ▸ (รีวิว N9) คะแนนขั้นต่ำจาก KPI "lead ร้อน" ของหน้าแรก (?minScore=) — ชุดเดียวกับที่หน้าแรกนับ ◂
+  const minScoreRaw = one("minScore");
+  const minScore = /^\d{1,7}$/.test(minScoreRaw) ? Number(minScoreRaw) : null;
   const archived = one("archived") === "1";
   const sort = one("sort") || "-createdAt";
   const cursor = one("cursor");
@@ -77,15 +84,19 @@ export default async function ContactsPage({
     scoreBand: band || null,
     owner: owner || null,
     savedViewId: view || null,
+    minScore,
     includeArchived: archived,
     sort,
   };
-  const [owners, views, customFields, seqOptions] = await Promise.all([
+  const [owners, views, customFields, seqOptions, viewMeta, viewTeams] = await Promise.all([
     ownerOptions(ctx, actor),
     savedViewOptions(ctx, actor),
     customFieldLayout(ctx, actor).catch(() => []),
     // CRM C2.2 ▸ ไม่มีคีย์ลงทะเบียน = [] (ปุ่มไม่แสดง) · อ่านล้ม = ไม่ทำให้หน้ารายชื่อล้ม ◂
     sequenceOptions(ctx, actor).catch(() => []),
+    // CRM C3.2 ▸ มุมมองที่แก้/ลบได้ + ทีมที่แชร์ให้ได้ (อ่านล้ม = ไม่แสดงปุ่ม ไม่ทำให้หน้ารายชื่อล้ม) ◂
+    viewOptions(ctx, actor, "contact").catch(() => []),
+    viewTeamOptions(ctx, actor).catch(() => []),
   ]);
   const failed = { message: null as string | null };
   const list = await listContacts(ctx, actor, { ...filters, cursor: cursor || null, pageSize: PAGE_SIZE }).catch((e: unknown) => {
@@ -108,13 +119,14 @@ export default async function ContactsPage({
     if (band) u.set("band", band);
     if (owner) u.set("owner", owner);
     if (view) u.set("view", view);
+    if (minScore !== null) u.set("minScore", String(minScore)); // CRM C3.2 ◂
     if (archived) u.set("archived", "1");
     if (sort !== "-createdAt") u.set("sort", sort);
     for (const [k, v] of Object.entries(extra)) u.set(k, v);
     const s = u.toString();
     return s ? `${base}?${s}` : base;
   };
-  const anyFilter = !!(q || stage || lead || source || band || owner || view || archived);
+  const anyFilter = !!(q || stage || lead || source || band || owner || view || archived || minScore !== null);
   const rows: ContactRowView[] = list.items.map((c) => ({
     id: c.id,
     name: contactLabel(c),
@@ -158,6 +170,8 @@ export default async function ContactsPage({
       )}
 
       <form method="get" action={base} className="card flex flex-wrap items-end gap-2 p-3" data-testid="contacts-filter-form">
+        {/* CRM C3.2 ▸ (รีวิว N9) คงตัวกรองคะแนนขั้นต่ำจาก KPI "lead ร้อน" เมื่อกด "กรอง" ซ้ำ (ช่องซ่อน — ไม่ใช่ปุ่มที่กดได้) ◂ */}
+        {minScore !== null && <input type="hidden" name="minScore" value={String(minScore)} />}
         <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           <span>ค้นหา</span>
           <input name="q" defaultValue={q} placeholder="ชื่อ · เบอร์ · อีเมล" className="input text-sm" data-testid="contacts-filter-q" />
@@ -253,6 +267,18 @@ export default async function ContactsPage({
           </Link>
         )}
       </form>
+
+      {/* CRM C3.2 ▸ บันทึกตัวกรองที่เปิดอยู่เป็นมุมมอง (ส่วนตัว/ทีม) · ลบมุมมองที่เลือกอยู่ (เจ้าของมุมมอง) ◂ */}
+      <SavedViewControls
+        systemId={id}
+        objectKey="contact"
+        filters={{ q: q || null, stage: stage || null, leadStatus: lead || null, source: source || null, scoreBand: band || null, owner: owner || null, minScore }}
+        teams={viewTeams}
+        current={view ? (viewMeta.find((v) => v.id === view) ?? null) : null}
+        viewParam="view"
+        create={createCrmViewAction}
+        remove={deleteCrmViewAction}
+      />
 
       {listError && (
         <div className="card p-3 text-sm" style={{ borderColor: "var(--color-danger)" }} data-testid="contacts-list-error" role="alert">

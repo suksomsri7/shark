@@ -32,6 +32,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { DealBoard } from "./_components/DealBoard";
 import { DealTable } from "./_components/DealTable";
+// CRM C3.2 ▸ บันทึก/ลบมุมมองของรายการดีล (objectKey "deal" · ทีมจริง) + pipeline ของมุมมองที่เลือก ◂
+import { resolveViewFilters, viewOptions, viewTeamOptions } from "@/lib/modules/crm/views";
+import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
+import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
 // ดีล (CRM v2 · ใบ C1.5 · พิมพ์เขียว §3.2 · ภาพ 02) — `/app/sys/{id}/crm/deals`
 // forecast ใช้เฉพาะ pipeline + ช่วงวันปิด + หมวด ⇒ ซ่อนตัวกรองที่มุมมองนี้ไม่ใช้ (ไม่หลอกผู้ใช้ว่ากรองแล้ว)
@@ -82,12 +86,15 @@ export default async function DealsPage({
   const canSettings = crmCan(m, "crm.settings.manage");
   const view: DealView = (DEAL_VIEWS as readonly string[]).includes(one("view")) ? (one("view") as DealView) : "board";
 
-  const [pipelines, owners, savedViews, lostReasons, layout] = await Promise.all([
+  const [pipelines, owners, savedViews, lostReasons, layout, viewMeta, viewTeams] = await Promise.all([
     pipelineOptions(ctx, actor),
     ownerOptions(ctx, actor),
     savedViewOptions(ctx, actor),
     lostReasonOptions(ctx, actor),
     dealFieldLayout(ctx, actor),
+    // CRM C3.2 ▸ มุมมองที่แก้/ลบได้ + ทีมที่แชร์ให้ได้ (อ่านล้ม = ไม่แสดงปุ่ม ไม่ทำให้หน้าล้ม) ◂
+    viewOptions(ctx, actor, "deal").catch(() => []),
+    viewTeamOptions(ctx, actor).catch(() => []),
   ]);
   const def = systemDef(sys.type);
   const header = (
@@ -130,7 +137,9 @@ export default async function DealsPage({
     );
   }
 
-  const pipe = pipelines.find((p) => p.id === one("pipeline")) ?? pipelines[0]!;
+  // CRM C3.2 ▸ เปิดมุมมองที่บันทึกโดยไม่ได้ระบุ pipeline ใน URL = ใช้ pipeline ของมุมมองนั้น (ไม่งั้น pipeline แรกทับตัวกรองของมุมมอง) ◂
+  const viewPipeline = one("saved") && !one("pipeline") ? await resolveViewFilters(ctx, actor, "deal", one("saved")).then((v) => (typeof v?.pipelineId === "string" ? v.pipelineId : "")).catch(() => "") : "";
+  const pipe = pipelines.find((p) => p.id === (one("pipeline") || viewPipeline)) ?? pipelines[0]!;
   const customFilters = layout.filter((f) => f.filterable && !f.isSystem);
   const f: Record<string, string> = {};
   for (const cf of customFilters) {
@@ -313,6 +322,18 @@ export default async function DealsPage({
           </Link>
         )}
       </form>
+
+      {/* CRM C3.2 ▸ บันทึกตัวกรองที่เปิดอยู่เป็นมุมมอง (ส่วนตัว/ทีม) · ลบมุมมองที่เลือกอยู่ (เจ้าของมุมมอง) ◂ */}
+      <SavedViewControls
+        systemId={id}
+        objectKey="deal"
+        filters={{ pipelineId: pipe.id, owner: filters.owner, team: filters.team, stage: filters.stage, closeFrom: filters.closeFrom, closeTo: filters.closeTo, stale: filters.stale, tag: filters.tag, q: filters.q, f: filters.f }}
+        teams={viewTeams}
+        current={filters.savedViewId ? (viewMeta.find((v) => v.id === filters.savedViewId) ?? null) : null}
+        viewParam="saved"
+        create={createCrmViewAction}
+        remove={deleteCrmViewAction}
+      />
 
       {one("notice") && (
         <p className="card p-3 text-sm" role="status" style={{ color: "var(--color-danger)" }} data-testid="deals-notice">

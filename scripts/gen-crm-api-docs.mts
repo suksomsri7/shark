@@ -255,6 +255,8 @@ export function renderDocs(): string {
       ? "`contactId`, `band` (+ `from`, `to`, `ruleId` on `crm.score.changed`) — numbers and ids only"
       : e === "crm.deal.stale" ? "`dealId`, `days` - ids and numbers only"
       : e === "crm.activity.overdue" ? "`activityId`, related ids"
+      // CRM C3.2 ▸ โควตาถึงเกณฑ์ — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด · payload id/ตัวเลขล้วน (X8) ◂
+      : e === "crm.quota.reached" ? "`quotaId`, `ownerType`, `ownerId`, `periodKey` (Gregorian `2026-09` / `2026-Q3` / `2026`), `threshold` (80 or 100), `pct` - once per owner, period and threshold"
       : e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("crm.web.") ? "`contactId`, `systemId`, `visitorId`, `sessionCount`, `pageViews`, `by` (never a name, address or raw IP)" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }

@@ -378,7 +378,7 @@ export async function recordDocPayment(
 
   if (out.counted) {
     await audit(ctx, "crm.deal.payment", dealId, { after: { refType: "PAYMENT", refId: paymentId, documentId, satang: input.amountSatang } });
-    await afterCounted(ctx, dealId);
+    await afterCounted(ctx, dealId, now); // CRM C3.2 ▸ at = countedAt ของแถวนี้ ◂
   }
   return { counted: out.counted, dealId, ...(out.skipped ? { skipped: out.skipped } : {}) };
 }
@@ -407,6 +407,7 @@ export async function onInvoiceFullyPaid(ctx: MoneyCtx, input: { documentId: str
   // ปิดยอดได้ก็ต่อเมื่อ "บัญชีเองบอกว่าครบแล้ว" (ส่ง event ซ้ำหลังยกเลิกการชำระ = paidTotal ลดลง ⇒ ไม่ปิดยอด)
   const settleable = grand > 0 && paidTotal >= grand && PAYABLE_DOC_TYPES.has(String(info.docType));
   let settled = 0;
+  let settledAt: Date | undefined; // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-1) countedAt ของแถวปิดยอดที่เขียนจริง ◂
   if (settleable) {
     const payIds = await paymentIdsOfDoc(ctx.tenantId, documentId);
     const anchorGrand = await anchorGrandOf(ctx, pre);
@@ -426,8 +427,10 @@ export async function onInvoiceFullyPaid(ctx: MoneyCtx, input: { documentId: str
       const already = mineRows.reduce((n, r) => n + Number(r.satang), 0);
       const diff = grand - already;
       if (diff <= 0 || !isUsableSatang(diff)) return 0;
-      const mine = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: DOC_SETTLE_REF_TYPE, refId: documentId, satang: BigInt(diff), status: "COUNTED", countedAt: new Date() });
+      const at = new Date();
+      const mine = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: DOC_SETTLE_REF_TYPE, refId: documentId, satang: BigInt(diff), status: "COUNTED", countedAt: at });
       if (!mine) return 0;
+      settledAt = at;
       await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: BigInt(diff), anchorGrand, lifecycle: true });
       await emitMoneyUpdate(tx, ctx, deal.id, `docsettle-${documentId}`, { documentId, satang: diff });
       return diff;
@@ -436,7 +439,7 @@ export async function onInvoiceFullyPaid(ctx: MoneyCtx, input: { documentId: str
       await audit(ctx, "crm.deal.payment", dealId, { after: { refType: DOC_SETTLE_REF_TYPE, refId: documentId, satang: settled, reason: "DOC_FULLY_PAID" } });
     }
   }
-  await afterCounted(ctx, dealId);
+  await afterCounted(ctx, dealId, settled > 0 ? settledAt : undefined);
   return { dealId, settledSatang: settled };
 }
 
@@ -608,35 +611,47 @@ export async function countPosSale(ctx: MoneyCtx, input: { saleId: string }): Pr
       await lockRef(tx, "POS_SALE", saleId);
       await lockMoney(tx, row.dealId);
       const deal = await lockRows(tx, ctx, pre);
-      if (!deal) return { counted: false as const };
+      if (!deal) return { counted: false as const, at: null };
       const counted = await countLinkedRowInTx(tx, ctx, deal, row.id, anchorGrand);
-      if (!counted) return { counted: false as const };
-      await emitMoneyUpdate(tx, ctx, deal.id, `pos-${saleId}`, { saleId, satang: Number(counted) });
-      return { counted: true as const };
+      if (!counted.satang) return { counted: false as const, at: null };
+      await emitMoneyUpdate(tx, ctx, deal.id, `pos-${saleId}`, { saleId, satang: Number(counted.satang) });
+      return { counted: true as const, at: counted.at };
     }, TX_OPTS);
     if (out.counted) {
       anyCounted = true;
       await audit(ctx, "crm.deal.pos.count", row.dealId, { after: { refType: "POS_SALE", refId: saleId } });
-      await afterCounted(ctx, row.dealId);
+      await afterCounted(ctx, row.dealId, out.at ?? undefined);
     }
   }
   return { counted: anyCounted, dealId: targets[0]?.dealId ?? null };
 }
 
 /** LINKED → COUNTED ใต้ล็อกที่ผู้เรียกถืออยู่ — คืนยอดที่เพิ่งนับ (0 = ไม่ได้นับ เพราะนับไปแล้ว/ถูกถอนคืนแล้ว) */
-async function countLinkedRowInTx(tx: Tx, ctx: MoneyCtx, deal: CrmDeal, rowId: string, anchorGrand: number): Promise<bigint> {
+async function countLinkedRowInTx(tx: Tx, ctx: MoneyCtx, deal: CrmDeal, rowId: string, anchorGrand: number): Promise<{ satang: bigint; at: Date | null }> {
   const cur = await tx.crmDealPayment.findFirst({ where: { id: rowId }, select: { id: true, status: true, satang: true } });
-  if (!cur || cur.status !== "LINKED") return ZERO;
-  const n = await tx.crmDealPayment.updateMany({ where: { id: cur.id, status: "LINKED" }, data: { status: "COUNTED", countedAt: new Date() } });
-  if (n.count !== 1) return ZERO;
+  if (!cur || cur.status !== "LINKED") return { satang: ZERO, at: null };
+  // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-1) คืน countedAt ที่เขียนจริงให้ผู้เรียกส่งต่อถึงการตรวจโควตา ◂
+  const at = new Date();
+  const n = await tx.crmDealPayment.updateMany({ where: { id: cur.id, status: "LINKED" }, data: { status: "COUNTED", countedAt: at } });
+  if (n.count !== 1) return { satang: ZERO, at: null };
   await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: cur.satang, anchorGrand, lifecycle: true });
-  return cur.satang;
+  return { satang: cur.satang, at };
 }
 
 /** หลังเงินเข้าครบ: ชนะอัตโนมัติถ้า pipeline ตั้งไว้ (นอก tx — `deals.moveCore` เปิดธุรกรรมของตัวเอง) */
-async function afterCounted(ctx: MoneyCtx, dealId: string): Promise<void> {
-  const deals = await import("./deals");
-  await deals.autoWinOnPaidFromBridge(ctx, { dealId });
+async function afterCounted(ctx: MoneyCtx, dealId: string, at?: Date): Promise<void> {
+  // CRM C3.2 ▸ AUDIT-CLASS X3: เงินที่ถูกนับ (COUNTED) → ตรวจโควตา **หลัง tx ของการรับเงิน commit แล้ว** — ใน tx สองการจ่ายที่ขนานกัน
+  //   ต่างเห็นแค่แถวของตัวเอง (60 % + 25 % ∥ 25 % ⇒ ไม่มีใครข้าม 100) · หลัง commit ผู้ที่ commit ทีหลังเห็นทั้งสองแถวเสมอ ·
+  //   `crm.quota.reached` = insert-or-skip ⇒ ได้แถวเดียวต่อเกณฑ์ · ล้ม = WARN (ของแถม ไม่ขวางเงิน)
+  //   🔴 รีวิว B1: ตรวจโควตาใน `finally` — ชนะอัตโนมัติที่ล้ม (STAGE_REQUIREMENTS/CONFLICT/timeout) ต้องไม่กลืนการข้ามเกณฑ์
+  //      (event ถูกส่งใหม่ = แถวเงินเป็น DUPLICATE ⇒ ไม่มีรอบที่สองให้ตรวจ) · error ของชนะอัตโนมัติยังโยนต่อเหมือนเดิม
+  //   🔴 รีวิว N1: `at` = countedAt ของแถวเงิน (ไม่ใช่นาฬิกาตอนตรวจ) — เงินเวลา 23:59:59 วันที่ 30 ต้องนับเข้างวดกันยายน ◂
+  try {
+    const deals = await import("./deals");
+    await deals.autoWinOnPaidFromBridge(ctx, { dealId });
+  } finally {
+    await (await import("./quotas")).reachedAfterCommit(scopeOf(ctx), { dealId, at });
+  }
 }
 
 // ═════════════════════════ ทางเข้าของคน (actor + คีย์ + การมองเห็น) ═════════════════════════
@@ -687,19 +702,22 @@ export async function linkSaleToDeal(ctx: MoneyCtx, actor: MemberActor, input: {
     // บิลจ่ายแล้ว ⇒ นับทันทีใน tx เดียวกัน (ตัวรับ `pos.sale.paid` วิ่งไปก่อนหน้านี้แล้วและตอนนั้นยังไม่มีแถวให้นับ)
     let counted = existing.status === "COUNTED";
     let justCounted = false;
+    // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-1) countedAt ของแถวนี้ (นับตอนนี้ = เวลาที่เขียน · นับไว้ก่อนแล้ว = countedAt เดิม) ◂
+    let countedAt: Date | null = existing.status === "COUNTED" ? existing.countedAt : null;
     if (sale.status === "PAID" && existing.status === "LINKED") {
       const got = await countLinkedRowInTx(tx, ctx, deal, existing.id, anchorGrand);
-      justCounted = got > ZERO;
+      justCounted = got.satang > ZERO;
       counted = justCounted;
+      countedAt = got.at;
     }
     if (created) await emitMoneyUpdate(tx, ctx, deal.id, `pos-link-${sale.id}`, { saleId: sale.id, satang: Number(satang), counted });
     // มติรอบ 2 (N4): แถว LINKED ที่มีอยู่ก่อนแล้วถูกนับโดยการผูกครั้งนี้ ก็ต้องมี event เหมือนตอนตัวรับนับเอง
     if (justCounted) await emitMoneyUpdate(tx, ctx, deal.id, `pos-${sale.id}`, { saleId: sale.id, satang: Number(satang) });
-    return { paymentId: existing.id, counted, created };
+    return { paymentId: existing.id, counted, created, countedAt };
   }, TX_OPTS);
 
   await audit(ctx, "crm.deal.pos.link", pre.id, { after: { saleId: sale.id, satang: Number(satang), counted: out.counted } }, actor.userId ?? null);
-  if (out.counted) await afterCounted(ctx, pre.id);
+  if (out.counted) await afterCounted(ctx, pre.id, out.countedAt ?? undefined);
   return { ok: true, paymentId: out.paymentId, counted: out.counted };
 }
 

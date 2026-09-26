@@ -96,6 +96,9 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   //   · แท็บ "ของฉัน" ไม่ต้องมีคีย์ — พนักงานทุกคนตั้งค่าของตัวเองได้ · มติ C22) ◂
   { key: "settings-notifications", label: "การแจ้งเตือน", path: "/crm/settings/notifications", status: "ready", wo: "C2.10" },
   // ◂ CRM C2.10
+  // CRM C3.2 ▸ โควตา (ตั้งเป้าพนักงาน/ทีมต่องวด + ความคืบหน้า — ภาพ 10 ขวา) · คีย์ `crm.quota.manage` (404 สำหรับคนที่ไม่มี)
+  { key: "settings-quotas", label: "โควตา", path: "/crm/settings/quotas", status: "ready", wo: "C3.2", perm: "crm.quota.manage" }, // ACCEPTANCE-FIX ผู้คุมงาน 26 ก.ย.: perm ตามกติกา C3.1 (ไม่โชว์ลิงก์ตาย)
+  // ◂ CRM C3.2
 ] as const);
 
 /** drawer ☰: หน้าหลักของระบบ + หมวดที่พร้อมใช้ + หน้าลึก */

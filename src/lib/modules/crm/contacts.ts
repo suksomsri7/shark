@@ -33,6 +33,7 @@ import * as party from "@/lib/modules/party";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, contactWhere, dealWhere } from "./where";
+import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as assignment from "./assignment";
@@ -1333,12 +1334,11 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
   const viewId = str(input?.savedViewId);
   if (viewId) {
     // มุมมองบันทึก (MemberSavedView objectKey "contact") ของระบบนี้ · ของคนอื่นที่ไม่ได้แชร์/ระบบอื่น = ไม่พบ (ไม่ใช่ "ไม่กรอง")
-    const view = await prisma.memberSavedView.findFirst({
-      where: { id: viewId, tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "contact", OR: [{ ownerUserId: actor.userId }, { scope: "TEAM" }] },
-      select: { filters: true },
-    });
-    if (!view) throw fail("NOT_FOUND", "ไม่พบมุมมองที่บันทึกไว้นี้ในระบบ CRM นี้ — เลือกมุมมองใหม่");
-    const vf = (isObj(view.filters) ? view.filters : {}) as ContactListInput;
+    // CRM C3.2 ▸ AUDIT-CLASS X1: กติกาการมองเห็นของมุมมองอยู่ที่ `views.ts` ที่เดียว — TEAM = เจ้าของ + สมาชิกปัจจุบันของทีมนั้น
+    //   (แถว TEAM เดิมที่ไม่มี teamId = ทั้งร้าน) · ตัวกรองที่ได้ผ่าน whitelist ของ objectKey แล้ว ◂
+    const vfRaw = await resolveViewFilters(ctx, actor, "contact", viewId);
+    if (!vfRaw) throw fail("NOT_FOUND", "ไม่พบมุมมองที่บันทึกไว้นี้ในระบบ CRM นี้ — เลือกมุมมองใหม่");
+    const vf = vfRaw as ContactListInput;
     const explicit = Object.fromEntries(Object.entries(input ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ""));
     flt = { ...vf, ...explicit, f: { ...(isObj(vf.f) ? (vf.f as Record<string, string>) : {}), ...(isObj(input?.f) ? input.f : {}) } };
   }
@@ -1368,6 +1368,12 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
   if (lead) AND.push({ leadStatus: lead });
   const band = enumOrNull(flt.scoreBand, SCORE_BANDS, "ระดับคะแนน");
   if (band) AND.push({ scoreBand: band as CrmScoreBand });
+  // CRM C3.2 ▸ (รีวิว N9) คะแนนขั้นต่ำ — จำนวนเต็ม 0–1,000,000 · ค่าอื่น = VALIDATION ◂
+  if (flt.minScore !== undefined && flt.minScore !== null) {
+    const ms = Number(flt.minScore);
+    if (!Number.isInteger(ms) || ms < 0 || ms > 1_000_000) throw fail("VALIDATION", "คะแนนขั้นต่ำต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป");
+    AND.push({ score: { gte: ms } });
+  }
   const source = enumOrNull(flt.source, CONTACT_SOURCES, "ที่มา");
   if (source) AND.push({ sourceKind: source as MemberSource });
   const owner = str(flt.owner);
@@ -1393,6 +1399,14 @@ async function ownerNames(ctx: ContactsCtx, ids: (string | null)[]): Promise<Map
   if (uniq.length === 0) return new Map();
   const rows = await prisma.membership.findMany({ where: { tenantId: ctx.tenantId, userId: { in: uniq } }, select: { user: { select: { id: true, name: true, email: true } } } });
   return new Map(rows.map((r) => [r.user.id, r.user.name ?? r.user.email ?? "ผู้ใช้"]));
+}
+
+// CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดการ์ด" — where เดียวกับ listContacts + ดึง id 1 แถว ·
+//   ตัวกรองที่ใช้ไม่ได้ = ContactsError VALIDATION จาก listWhere เหมือนหน้ารายการจริง ◂
+/** ตรวจว่าตัวกรองชุดนี้ใช้กับรายการผู้ติดต่อได้ (อ่าน 1 id · ไม่เติมชื่อบริษัท/ผู้ดูแล) */
+export async function probeContactFilters(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput): Promise<void> {
+  const a = await enter(ctx, actor);
+  await prisma.crmContact.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
 }
 
 export async function listContacts(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput = {}): Promise<ContactListResult> {
@@ -1422,12 +1436,8 @@ export async function listContacts(ctx: ContactsCtx, actor: MemberActor, input: 
 /** มุมมองบันทึกของผู้ติดต่อที่ actor ใช้ได้ (ของตัวเอง + ที่แชร์ทั้งร้าน) — สำหรับตัวเลือกบนหน้ารายการ */
 export async function savedViewOptions(ctx: ContactsCtx, actor: MemberActor): Promise<{ id: string; name: string }[]> {
   const a = await enter(ctx, actor);
-  return prisma.memberSavedView.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "contact", OR: [{ ownerUserId: a.userId }, { scope: "TEAM" }] },
-    select: { id: true, name: true },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    take: 100,
-  });
+  // CRM C3.2 ▸ กติกาเดียวกับ listViews (`views.ts`) — ทีมจริง ไม่ใช่ "ทั้งร้าน" ◂
+  return (await viewOptions(ctx, a, "contact")).map((v) => ({ id: v.id, name: v.name }));
 }
 
 /** ช่องเลือกผู้ติดต่อ (ค้นฝั่งเซิร์ฟเวอร์ — บทเรียน C1.3 SF11) */

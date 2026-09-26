@@ -107,6 +107,8 @@ export type CrmNotifyInput = {
   refId: string;
   vars?: Record<string, string | number>;
   now?: Date;
+  /** CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-10) พารามิเตอร์เพิ่มของลิงก์ลึก เช่น `{ period: "2026-09" }` ของโควตา (คีย์/ค่า [A-Za-z0-9_-] เท่านั้น) ◂ */
+  linkQuery?: Record<string, string>;
 };
 
 type NotifCode = "VALIDATION" | "FORBIDDEN" | "NOT_FOUND";
@@ -267,7 +269,7 @@ export async function notifyStaff(ctx: CrmNotifyCtx, input: CrmNotifyInput, opts
   const view = settingsViewOf(sys);
   const tpl = view.templates[key]!;
   const thaiDay = bkkYmd(now);
-  const link = crmNotifLink(ctx.systemId, refType, refId, key, thaiDay);
+  const link = crmNotifLink(ctx.systemId, refType, refId, key, thaiDay, input.linkQuery);
   const title = renderCrmNotif(tpl.title, input.vars ?? {}).slice(0, TITLE_MAX);
   // 🔴 A2 (มติผู้คุมงานรอบแก้ ข้อ 2): **ตัดเนื้อความ ไม่ใช่ตัดลิงก์** — ลิงก์คือกุญแจกันซ้ำและตัวเลือกของรอบกวาด
   //    ก่อนแก้: ร้านที่พิมพ์เนื้อความยาว 400 ตัวอักษรทำให้ `?n=…&nd=…&r=…` ถูก `slice(0, BODY_MAX)` กินหายไป
@@ -483,8 +485,10 @@ export async function runFanout(opts: { now?: Date; tenantIds?: string[]; deps?:
 
 /** ลิงก์ลึกที่อยู่ในเนื้อความใบนี้ (ใช้ส่งต่อให้ push) — ไม่มี = ส่งสตริงว่าง */
 function parseLinkOf(body: string): string {
-  const m = /\/app\/sys\/[A-Za-z0-9_-]+\/crm[^\s]*/.exec(String(body ?? ""));
-  return m ? m[0] : "";
+  // CRM C3.2 ▸ (รีวิวรอบ 2 SF-1) `/crm…` ไม่บังคับ — ลิงก์ของโควตาชี้หน้าแรก `/app/sys/<id>?n=…` · ใช้ลิงก์ **ตัวสุดท้าย**
+  //   (ลิงก์ของระบบต่อท้ายเนื้อความเสมอ · ข้อความเทมเพลตที่ร้านพิมพ์เองอาจมีลิงก์หน้าตาเดียวกันอยู่ก่อน) ◂
+  const all = [...String(body ?? "").matchAll(/\/app\/sys\/[A-Za-z0-9_-]+(?:\/crm[^\s?]*)?\?n=[^\s]*/g)];
+  return all.length ? all[all.length - 1]![0] : "";
 }
 
 // ───────────────────────── ตั้งค่าของร้าน (คีย์ `crm.settings.manage`) ─────────────────────────
