@@ -236,6 +236,33 @@ const SPECS: Record<string, Spec[]> = {
   //   🔴 บรรทัดช่วยของชุดสิทธิ์อยู่ใน **ฟอร์มสร้างคีย์** ⇒ ภาพที่สองต้องกด `crm-api-new` ก่อน (เดสก์ท็อป — แบบเดียวกับ C1.10)
   //   🔴 ไม่เพิ่ม testid ใหม่ · ไม่แตะ `scripts/crm-ui-inventory.json` (ใบนี้ไม่เพิ่มของบนหน้าจอที่ต้องขึ้นทะเบียน)
   // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — ผู้คุมงานเขียนสเปค (26 ก.ย.) · owner/manager มี `crm.report.view` ใน seed · ถ่าย overview + forecast + funnel + sources + ตารางเวลา
+  // CRM C3.2 ▸ หน้าแรก KPI 6 + leaderboard + ที่มา lead + saved views + หน้าโควตา (ภาพ 01 · 10) — ผู้คุมงานเขียนสเปค (26 ก.ย.)
+  //   thana = STAFF ทีมภูเก็ต (เห็นแถวตัวเอง) · manager · owner · โควตาเฉพาะ owner (crm.quota.manage)
+  "3.2": isCustomer ? [] : [
+    {
+      name: `crm-home-v2-${userKey}`,
+      path: `/app/sys/${SYS}`,
+      note: "หน้าแรก CRM v2: KPI 6 (ดีลเปิด · ถ่วงน้ำหนัก · ชนะ/โควตา ตามฐาน · อัตราชนะ · นิ่ง · lead ร้อน) · งานวันนี้ · ดีลที่ต้องดู · leaderboard ทีม · ที่มา lead · ปุ่ม AI 3 (ปิดจนถึง C3.4) · ตัวกรอง + saved view — เทียบภาพ 01",
+      expect: ["[data-testid=crm-home]", "[data-testid=crm-home-kpi-open]", "[data-testid=crm-home-kpi-won]", "[data-testid=crm-home-kpi-hot]", "[data-testid=crm-home-leaderboard]", "[data-testid=crm-home-sources]", "[data-testid=crm-home-stale-list]"],
+      steps: [{ waitFor: "[data-testid=crm-home-leaderboard]", timeoutMs: 20_000 }, { wait: 600 }],
+    },
+    {
+      name: `crm-home-filters-${userKey}`,
+      path: `/app/sys/${SYS}?period=${new Date().getUTCFullYear()}-Q3`,
+      note: "หน้าแรกกรองไตรมาส — ตัวกรองช่วง/pipeline/เจ้าของ + saved view + ปุ่มใช้/ล้าง",
+      onlyDevice: "desktop" as const,
+      expect: ["[data-testid=crm-home-filter-form]", "[data-testid=crm-home-filter-range]", "[data-testid=crm-home-filter-apply]", "[data-testid=crm-home-saved-view]"],
+      steps: [{ waitFor: "[data-testid=crm-home-filter-form]", timeoutMs: 20_000 }, { wait: 400 }],
+    },
+    ...(userKey === "owner" ? [{
+      name: `crm-quota-settings-${userKey}`,
+      path: `${CRM_BASE}/settings/quotas`,
+      note: "ตั้งค่าโควตา (ภาพ 10) — เลือกงวด · ตารางพนักงาน/ทีม · เป้ายอด/เป้าดีล · บันทึก (owner/crm.quota.manage เท่านั้น)",
+      expect: ["[data-testid=crm-quota-table]", "[data-testid=crm-quota-period]", "[data-testid=crm-quota-save]"],
+      steps: [{ waitFor: "[data-testid=crm-quota-table]", timeoutMs: 20_000 }, { wait: 400 }],
+    }] : []),
+  ],
+  // ◂ CRM C3.2
   "3.1": isCustomer ? [] : [
     {
       name: `crm-report-overview-${userKey}`,
