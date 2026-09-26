@@ -1,6 +1,6 @@
 # CRM v2 RUN — จุดต่องานของผู้คุมงาน (อ่านไฟล์นี้ก่อนเมื่อ session ใหม่)
 
-> อัปเดตล่าสุด: **25 ก.ย. 2569 07:15 (ไทย · 00:15 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
+> อัปเดตล่าสุด: **26 ก.ย. 2569 12:40 (ไทย · 05:40 UTC)** · ผู้คุมงาน **Fable 5.1** · branch `session/crm` · ▶️ กำลังเดิน
 > ลำดับอ่าน: ไฟล์นี้ → `ledger/CRM-MASTER-PLAN.md` §12 → **ท้าย `ledger/CRM-RUN.md` §4 (บันทึก 23–24 ก.ย. สำคัญมาก)** → brief ของใบที่ทำ (มี "Controller ruling/addendum" = ผูกพัน)
 
 ## 0. ▶️ ทำต่อจากตรงนี้ (session ใหม่ · ทำตามลำดับ)
@@ -39,6 +39,14 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 3. **C3.0 migration `crm_v2_c`** — builder รอบแรกถูกหยุด (เพิ่งเริ่ม · รัน `prisma format` แล้วทำ schema ทุกไฟล์เปลี่ยนรูปแบบ) · c20 ต้องรีเซ็ต (`git reset --hard && git clean -fd -e .qc-shots`) ก่อนเปิดใหม่ · prompt ใหม่ต้องสั่ง **ห้าม `prisma format` ทั้งชุด** (แก้เฉพาะ `crm.prisma` + ไฟล์ที่มี `HrPayAdjustment` + `PortalSession` ใหม่) · create-only เท่านั้น · Fable อ่าน SQL ทุกบรรทัด → `qc-prisma.sh migrate deploy` QC2 → `qc-crm-c3.0` (33) → QC1/QC3 → regressions ตาม brief §"Regressions the controller runs"
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
+
+### 0.11 สถานะ 26 ก.ย. 05:40 UTC (Fable · session ใหม่) — ▶️ เดิน 3 เลน · รับแล้ว 29/53 = 55%
+- session ก่อน (05:00 UTC) spawn builder 2 ตัวแล้วตายใน 25 นาที ⇒ spawn ใหม่ 05:40 ให้ "ทำต่อจากสภาพไฟล์" (agent ตายพร้อม session · ไฟล์ใน worktree ยังอยู่)
+- **เลน A** หนี้ `crm-c1.3` S0.3 — builder opus ใน `shark-crm-c23`/QC3: helper 6 ตัวท้าย `companies.ts` มาจากรอบก่อน (uncommitted) · เหลือย้ายจุดเรียก 12 จุดใน assignment/automation/emails/payments/sequences · หลักฐาน `.qc-shots/c13debt/` · ต้องรัน c1.3 + c2.1/2.2/2.3/2.5/2.7/2.8 บน QC3 (reseed ก่อน)
+- **เลน B** C3.0 migration `crm_v2_c` — builder opus ใน `shark-crm-c20`/QC2 (รีเซ็ตสะอาดที่ 7e32764f): ห้าม `prisma format` · owned = `crm.prisma` `payroll.prisma` `scope.ts` `migrations/20261102000000_crm_v2_c/` `wo-notes/crm-C3.0.md` · builder **ไม่ deploy** — Fable อ่าน SQL ทุกบรรทัด → `env QC_ENV_FILE=.env.qc2 bash scripts/qc-prisma.sh migrate deploy` (ผ่าน iso) → `qc-crm-c3.0` (33) บน QC2 → QC1/QC3 → regressions ท้าย brief · หลักฐาน `.qc-shots/c30/`
+- **เลน C** ผู้เขียนข้อสอบ C3.1 — opus ใน `shark-crm-c12a`: `scripts/qc-crm-c3.1.mts` (26 + X) + addendum ท้าย brief C3.1 (ต้องเคาะก่อน spawn builder C3.1)
+- ถ้า session ตายอีก: `git -C <wt> status` + `.qc-shots/` ของแต่ละเลน แล้ว spawn ใหม่ด้วย prompt เดิม (สรุปใน CRM-RUN §4 26 ก.ย. 05:40)
+- ถัดไปหลังรับ A+B: ปิด C2 จริง (ลง MASTER-PLAN §12) → builder C3.1 (opus · c23 หรือ c20 ที่ว่าง) ∥ ผู้เขียนข้อสอบ C3.2+C3.3 → รายงาน tg ทุกครั้งที่สถานะเปลี่ยน
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว
