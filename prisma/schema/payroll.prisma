@@ -42,6 +42,10 @@ model HrPayAdjustment {
   decidedAt     DateTime?
   runId         String? // ผูกกับรอบจ่ายเมื่อถูกดึงเข้างวดแล้ว (กันนับซ้ำข้ามงวด)
   createdAt     DateTime        @default(now())
+  // crm_v2_c (CRM C3.0/C3.3): ค่าคอมที่ส่งเข้างวดเงินเดือน · ลิงก์อ่อน ไม่มี FK (HR ไม่พึ่ง CRM)
+  // 🔴 partial unique ("crmCommissionId") WHERE "crmCommissionId" IS NOT NULL — ประกาศเฉพาะใน migration.sql
+  //    (Prisma schema ไม่รองรับ WHERE · ห้ามใส่ @unique ที่นี่ ไม่งั้น migrate diff จะสร้าง unique เต็มซ้ำ)
+  crmCommissionId String?
 
   @@index([systemId, periodKey, status])
   @@index([systemId, employeeId])

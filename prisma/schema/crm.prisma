@@ -190,6 +190,9 @@ model CrmContact {
   // crm_v2_b — FK อยู่ที่ตารางใหม่ (ไม่มี SQL บนตาราง CrmContact นอกจาก ADD COLUMN ข้างบน)
   scoreLogs          CrmScoreLog[]
   sequenceEnrollments CrmSequenceEnrollment[]
+  // crm_v2_c — FK ในสาย portal (ลบผู้ติดต่อ = สิทธิ์ portal + คำขอหายตาม · PDPA)
+  portalAccesses CrmPortalAccess[]
+  portalRequests CrmPortalRequest[]
 
   @@index([systemId, lifecycleStage])
   @@index([systemId, phone])
@@ -418,6 +421,9 @@ model CrmCompany {
   updatedAt           DateTime          @updatedAt
 
   contacts CrmCompanyContact[]
+  // crm_v2_c — FK ในสาย portal
+  portalAccesses CrmPortalAccess[]
+  portalRequests CrmPortalRequest[]
 
   @@unique([systemId, partyId])
   @@index([tenantId])
@@ -1144,4 +1150,190 @@ model CrmImportJob {
 
   @@index([status, leaseUntil])
   @@index([systemId, createdAt])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// crm_v2_c — ใบ C3.0 (migration ที่ 3 จาก 3 · RESOLUTIONS R-C.1) · ตารางของทั้งเฟส C3 · พิมพ์เขียว §4.2 §4.3 (ทีมขาย · portal) §15
+// กติกา: additive ล้วน · แตะตารางเดิมได้ตัวเดียว = HrPayAdjustment.crmCommissionId (payroll.prisma)
+// scope (F1): 5 ตารางที่มี systemId = sys() · PortalSession = tenant (ระบบ CRM อยู่ใน crmSystemId ไม่ใช่คอลัมน์ scope)
+// 💰 เงินเป็น BigInt (มติ C28) · 🔴 ไม่มี FK CrmCommission → CrmDeal (ลบดีลห้ามล้างประวัติค่าคอม)
+// FK มีเฉพาะสาย portal (CrmPortalAccess/Request → บริษัท/ผู้ติดต่อ · PortalSession → CrmPortalAccess) — cascade คือสิ่งที่ PDPA erase ต้องการ
+// 🔴 list (productIds · loginMethods) เติม NOT NULL มือใน migration.sql (Prisma ออก TEXT[] แบบ nullable เสมอ)
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum CrmQuotaOwner {
+  USER
+  TEAM
+}
+
+enum CrmCommissionBasis {
+  PAID
+  WON
+}
+
+enum CrmCommissionKind {
+  PCT
+  FIXED
+  TIERED
+}
+
+enum CrmCommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  REVERSED
+  REJECTED
+}
+
+enum CrmPortalRole {
+  VIEW
+  APPROVE
+  PAY
+  ADMIN
+}
+
+enum CrmPortalRequestKind {
+  ISSUE
+  CONTACT_CHANGE
+  PROFILE_CHANGE
+  DOCUMENT_REQUEST
+}
+
+// ─── ทีมขาย (C3.2 โควตา · C3.3 ค่าคอม) ───
+// เป้า 1 แถวต่อเจ้าของต่องวด ⇒ unique ทำให้ `crm.quota.reached` เป็น insert แบบมีเงื่อนไขได้
+model CrmQuota {
+  id               String        @id @default(cuid())
+  tenantId         String
+  systemId         String
+  ownerType        CrmQuotaOwner
+  ownerId          String // User.id หรือ Team.id ตาม ownerType
+  periodKey        String // "2569-10" · "2569-Q4" · "2569"
+  targetSatang     BigInt // 💰 C28
+  targetDeals      Int?
+  targetActivities Int?
+  note             String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([systemId, ownerType, ownerId, periodKey])
+}
+
+// config: {pctBp} | {fixedSatang} | {tiers:[{uptoSatang, pctBp}]}
+model CrmCommissionRule {
+  id                   String             @id @default(cuid())
+  tenantId             String
+  systemId             String
+  name                 String
+  basis                CrmCommissionBasis @default(PAID)
+  kind                 CrmCommissionKind
+  config               Json
+  pipelineId           String?
+  teamId               String?
+  productIds           String[]           @default([]) // 🔴 NOT NULL เติมมือใน migration.sql
+  minDealSatang        BigInt? // 💰 C28
+  splitCollaboratorsBp Int                @default(0)
+  payoutDelayDays      Int                @default(0)
+  active               Boolean            @default(true)
+  sortOrder            Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([systemId, active])
+}
+
+// 🔴 X4: unique (dealId, ruleId, userId, refId) + refId NOT NULL DEFAULT '' ("" = ไม่มี ref · แถว basis WON)
+//    ถ้า refId เป็น NULL ได้ Postgres จะไม่กันซ้ำ ⇒ invoice.paid ซ้ำ/พร้อมกัน = จ่ายค่าคอมสองรอบ
+// refType "DEAL_PAYMENT" · refId = CrmDealPayment.id (R-C.4) · dealId/ruleId ไม่มี FK (ลบดีล/กฎ ประวัติค่าคอมต้องอยู่)
+// hrPayAdjustmentId ↔ HrPayAdjustment.crmCommissionId (ลิงก์อ่อนสองทาง ไม่มี FK — HR ไม่พึ่ง CRM)
+model CrmCommission {
+  id                String              @id @default(cuid())
+  tenantId          String
+  systemId          String
+  dealId            String
+  ruleId            String
+  userId            String
+  amountSatang      BigInt // 💰 C28 (แถวกลับรายการ = ติดลบ)
+  basisSatang       BigInt // 💰 C28
+  basis             CrmCommissionBasis
+  status            CrmCommissionStatus @default(PENDING)
+  periodKey         String
+  approvalRequestId String?
+  hrPayAdjustmentId String?
+  refType           String?
+  refId             String              @default("")
+  reversedOfId      String?
+  note              String?
+  createdAt         DateTime            @default(now())
+  decidedAt         DateTime?
+
+  @@unique([dealId, ruleId, userId, refId])
+  @@index([userId, periodKey])
+  @@index([systemId, status])
+}
+
+// ─── portal (C3.5 · มติ C7/C15) ───
+// เชิญ: token ใช้ครั้งเดียว เก็บแค่ hash (inviteTokenHash unique) + หมดอายุ 7 วัน (inviteExpiresAt) · revokedAt = ตัด session ทันที
+model CrmPortalAccess {
+  id              String        @id @default(cuid())
+  tenantId        String
+  systemId        String
+  companyId       String
+  company         CrmCompany    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId       String
+  contact         CrmContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  role            CrmPortalRole @default(VIEW)
+  invitedById     String?
+  invitedAt       DateTime      @default(now())
+  acceptedAt      DateTime?
+  lastLoginAt     DateTime?
+  revokedAt       DateTime?
+  loginMethods    String[]      @default([]) // "EMAIL_OTP" | "LINE" · 🔴 NOT NULL เติมมือใน migration.sql
+  inviteTokenHash String?       @unique
+  inviteExpiresAt DateTime?
+
+  sessions PortalSession[]
+
+  @@unique([companyId, contactId])
+  @@index([contactId])
+}
+
+// status (ข้อความ): "PENDING" | "APPROVED" | "REJECTED" · ISSUE → การ์ดบอร์ดงาน (kanbanCardId) · CONTACT/PROFILE_CHANGE → อนุมัติ crm.portal_request
+model CrmPortalRequest {
+  id                String               @id @default(cuid())
+  tenantId          String
+  systemId          String
+  companyId         String
+  company           CrmCompany           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contactId         String
+  contact           CrmContact           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  kind              CrmPortalRequestKind
+  payload           Json
+  status            String               @default("PENDING")
+  kanbanCardId      String?
+  approvalRequestId String?
+  decidedById       String?
+  decidedAt         DateTime?
+  createdAt         DateTime             @default(now())
+
+  @@index([companyId, status])
+}
+
+// R-C.5 · C15 ฉบับแก้: ตารางพี่น้องของ CustomerSession (customerId ของตารางนั้นเป็น NOT NULL) — ตรรกะ token/คุกกี้/OTP/limiter ใช้ร่วม
+// X8: เก็บ ipHash (sha256 + salt) ไม่เก็บ IP ดิบ ต่างจาก CustomerSession.ip · crmContactId/crmSystemId NOT NULL
+model PortalSession {
+  id             String          @id @default(cuid())
+  tenantId       String
+  portalAccessId String
+  portalAccess   CrmPortalAccess @relation(fields: [portalAccessId], references: [id], onDelete: Cascade)
+  crmContactId   String
+  crmSystemId    String
+  tokenHash      String          @unique
+  userAgent      String?
+  ipHash         String?
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([portalAccessId])
+  @@index([tenantId, expiresAt])
 }

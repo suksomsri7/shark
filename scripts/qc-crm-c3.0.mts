@@ -614,10 +614,12 @@ try {
       const r = spawnSync("pnpm", ["exec", "tsx", "scripts/fitness.mts"], { encoding: "utf8", timeout: 420_000, env: process.env });
       code = r.status ?? -1;
       const out = `${r.stdout ?? ""}${r.stderr ?? ""}`;
-      f1 = (out.match(/F1\.\d[^\n]*/g) ?? []).join(" | ");
-      f8 = (out.match(/F8\.\d[^\n]*/g) ?? []).join(" | ");
+      // ORACLE-EDIT C3.0-S4.3 (26 ก.ย. · ผู้คุมงาน): เดิม `/❌|FAIL/i` จับคำว่า "fail-closed" ในชื่อข้อ F1.3 ⇒ แดงหลอกตลอดกาล
+      // และ regex ตัดเครื่องหมาย ✅/❌ ที่อยู่หน้า [F1.x] ทิ้ง ⇒ จับแดงจริงไม่ได้ด้วย · ตอนนี้เก็บทั้งบรรทัด + ต้อง exit 0
+      f1 = (out.match(/^.*\[F1\.\d[^\n]*$/gm) ?? []).join(" | ");
+      f8 = (out.match(/^.*\[F8\.\d[^\n]*$/gm) ?? []).join(" | ");
     }
-    const green = (s: string) => s.length > 0 && !/❌|FAIL/i.test(s);
+    const green = (s: string) => s.length > 0 && !/❌/.test(s) && code === 0;
     chk("C3.0-S4.3", "fitness F1 (every model registered in the scope registry — fail-closed) and F8 (every model appears in a migration) are green after crm_v2_c",
       green(f1) && green(f8), "F1 + F8 green", `exit=${code} F1=${short(f1 || "(not run)", 120)} F8=${short(f8 || "(not run)", 120)}${ABSENT}`, "MAJOR");
   }

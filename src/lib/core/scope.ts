@@ -97,6 +97,14 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CrmDealPayment: sys(),
   CrmUserPref: sys(),
   CrmImportJob: sys(),
+  // ── CRM v2 (crm_v2_c · ใบ C3.0 · พิมพ์เขียว §4.3 ทีมขาย/portal + §15) — มี systemId ของระบบ CRM = sys()
+  CrmQuota: sys(),
+  CrmCommissionRule: sys(),
+  CrmCommission: sys(),
+  CrmPortalAccess: sys(),
+  CrmPortalRequest: sys(),
+  // R-C.5: ตารางพี่น้องของ CustomerSession — ค้นด้วย tokenHash ก่อนรู้ระบบ · ระบบ CRM อยู่ใน crmSystemId (ไม่ใช่คอลัมน์ scope)
+  PortalSession: tenant,
   // ทีม (core · ของกลางทั้งแอป) — ไม่ผูกระบบ
   Team: tenant,
   TeamMember: tenant,
