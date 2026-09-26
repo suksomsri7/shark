@@ -367,7 +367,9 @@ try {
     const posCols = (await P.$queryRawUnsafe(`select column_name from information_schema.columns where table_schema='public' and table_name='PosSale'`).catch(() => [])) as Any[];
     const hasDealId = posCols.some((c) => String(c.column_name) === "dealId");
     const migs = existsSync("prisma/migrations") ? readdirSync("prisma/migrations") : [];
-    const extraMig = migs.filter((d) => /crm_v2_(c|d)$/.test(d));
+    // ORACLE-EDIT C2.7-S0.4 (26 ก.ย. · ผู้คุมงาน): `crm_v2_c` เป็นของ C3.0 ตาม R-C.1 (ชื่อข้อเองก็บอกไว้) — พอ C3.0 ลง ข้อนี้แดงหลอก
+    // ⇒ นับเฉพาะ migration ที่ไม่มีใครในแผนเป็นเจ้าของ (crm_v2_d ขึ้นไป)
+    const extraMig = migs.filter((d) => /crm_v2_[d-z]$/.test(d));
     chk("C2.7-S0.4", "C2.7 adds NO new outbox type (every crm.* name the money bridge emits is already in the registries and has a consumer), NO `PosSale.dealId` column (C29) and NO migration of its own (R-C.1: crm_v2_a · b · c only, and c is C3.0's)",
       newInMoney.length === 0 && !hasDealId && extraMig.length === 0, "no new type · no column · no migration",
       `newTypes=${newInMoney.join(",") || "-"} PosSale.dealId=${hasDealId} migrations=${extraMig.join(",") || "-"}`);
