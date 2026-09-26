@@ -34,7 +34,7 @@ import * as party from "@/lib/modules/party";
 import type { CrmAccountContactBrief } from "@/lib/modules/account";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
-import { activityWhere, companyWhere, contactWhere, dealWhere } from "./where";
+import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
@@ -2121,3 +2121,102 @@ export async function recomputeCachesSweep(
   return out;
 }
 // ◂ CRM C2.10
+
+// CRM หนี้ C1.3-S0.3 ▸ ทางอ่าน CrmCompany ของไฟล์บริการอื่นในโมดูล (automation · emails · sequences · payments · assignment)
+//   เดิมแต่ละไฟล์ยิง `prisma.crmCompany.*` เอง ⇒ ย้ายมาที่นี่ที่เดียว (ข้อสอบ C1.3-S0.3: นอก companies*.ts/where.ts ห้ามอ่านบริษัทตรง)
+//   🔴 ทุกตัวคง where/select/orderBy/take เดิมของจุดเรียกทุกประการ — ย้ายที่อยู่ ไม่ได้เปลี่ยนความหมาย
+//   🔴 ไฟล์นี้ห้าม import automation/emails/sequences/payments/assignment (ผู้เรียกพวกนั้น import ไฟล์นี้)
+
+/**
+ * แถวบริษัทเต็มแถวในขอบเขตร้าน+ระบบ (ไม่มี actor — ทางของระบบ: เงื่อนไขกฎอัตโนมัติ `co.{column}`)
+ * AUDIT-CLASS X1: บริษัทของระบบอื่น/ร้านอื่น = null
+ */
+export async function companyRowInScope(ctx: CrmScopeCtx, id: string): Promise<CrmCompany | null> {
+  return prisma.crmCompany.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+}
+
+/**
+ * ขนาด + Party ของบริษัทในขอบเขตร้าน+ระบบ (กฎแจกงาน `assignment.ts` — เงื่อนไข `company.size` / ที่อยู่ของบริษัท)
+ * `db` = client ของผู้เรียก (tx ของการสร้าง lead เห็นบริษัทที่เพิ่งสร้าง) · AUDIT-CLASS X1: บริษัทของระบบนี้เท่านั้น
+ * 🔴 ไม่ใช่ async โดยตั้งใจ — คืน PrismaPromise ตัวเดิม (ยิงตอนผู้เรียก await · ผู้เรียกแคช promise นี้ไว้ต่อร่าง)
+ */
+export function companySizePartyInScope(db: Db, ctx: CrmScopeCtx, id: string): Prisma.PrismaPromise<{ size: CrmCompanySize | null; partyId: string | null } | null> {
+  return db.crmCompany.findFirst({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { size: true, partyId: true } });
+}
+
+/**
+ * id ของบริษัทในขอบเขตร้าน+ระบบ (ไม่มี actor) ตามตัวกรองที่ระบุ — ตัวกรองที่ไม่ส่ง = ไม่กรอง
+ *   • `partyId`      — บริษัทของ Party นี้ (หน้าขาย: ดีลที่เปิดอยู่ของ Party · ผู้เรียกกรองดีลด้วย dealWhere ต่อ)
+ *   • `updatedSince` — แก้ไขตั้งแต่เวลานี้ เรียงใหม่สุดก่อน (ทดลองรันกฎ `crm.company.*` ย้อนหลัง)
+ *   • `take`         — เพดานจำนวน
+ */
+export async function companyIdsInScope(ctx: CrmScopeCtx, filter: { partyId?: string; updatedSince?: Date; take?: number }): Promise<string[]> {
+  const rows = await prisma.crmCompany.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      ...(filter.partyId !== undefined ? { partyId: filter.partyId } : {}),
+      ...(filter.updatedSince !== undefined ? { updatedAt: { gte: filter.updatedSince } } : {}),
+    },
+    ...(filter.updatedSince !== undefined ? { orderBy: { updatedAt: "desc" as const } } : {}),
+    ...(filter.take !== undefined ? { take: filter.take } : {}),
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * บริษัทนี้มี "ให้ผู้เรียกเห็น" ไหม (จำนวน 0/1) — actor จริง = ผ่าน companyWhere · null = ทางของระบบ (ขอบเขตร้าน+ระบบ)
+ * AUDIT-CLASS X1: 0 = ไม่พบหรือมองไม่เห็น (ไม่บอกว่ามีอยู่ที่อื่นไหม)
+ */
+export async function countVisibleCompany(ctx: CrmScopeCtx, actor: MemberActor | null, id: string): Promise<number> {
+  return actor
+    ? prisma.crmCompany.count({ where: { AND: [await companyWhere(ctx, actor), { id }] } })
+    : prisma.crmCompany.count({ where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+}
+
+/**
+ * id ของบริษัทที่ actor มองเห็น (companyWhere) — `ids` ระบุ = เฉพาะในชุดนั้น · ไม่ระบุ = ทั้งระบบ (ผู้เรียกใส่ `take` เป็นเพดาน)
+ * ผู้ใช้: ตัวกรองการมองเห็นของรายการกฎอัตโนมัติ · ขอบเขตรายการ/แถวของกล่องอีเมล
+ * AUDIT-CLASS X1: id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/มองไม่เห็น
+ */
+export async function visibleCompanyIds(ctx: CrmScopeCtx, actor: MemberActor, ids?: readonly string[] | null, opts: { take?: number } = {}): Promise<string[]> {
+  const scope = await companyWhere(ctx, actor);
+  const rows = await prisma.crmCompany.findMany({
+    where: ids ? { AND: [scope, { id: { in: [...ids] } }] } : scope,
+    select: { id: true },
+    ...(opts.take !== undefined ? { take: opts.take } : {}),
+  });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * ระบบของบริษัทจาก id — ขอบเขต **ร้านอย่างเดียว** (ไม่ใส่ systemId) โดยตั้งใจ:
+ * ตัว resolve subject ของกฎอัตโนมัติ (`automation.ts#resolveCrmSubject`) ได้ event ที่อาจยังไม่รู้ระบบ ⇒ อ่าน systemId จากแถว
+ * แล้วผู้เรียก "ปัก" ระบบเอง (`pin`) และตรวจว่าเป็นระบบ CRM ของร้านนี้จริงก่อนใช้ — ห้ามใช้ผลนี้โดยไม่ตรวจ systemId ต่อ
+ * AUDIT-CLASS X1: ร้านอื่น = null
+ */
+export async function companySystemRef(tenantId: string, id: string): Promise<{ id: string; systemId: string } | null> {
+  return prisma.crmCompany.findFirst({ where: { id, tenantId }, select: { id: true, systemId: true } });
+}
+
+/**
+ * บริษัทแรก (สร้างก่อนสุด) ที่ยังใช้งาน ซึ่งโดเมนอีเมลตรงกับ `domain` (ไม่สนตัวพิมพ์) — จับคู่จดหมายขาเข้าด้วยโดเมน (emails.ts)
+ * AUDIT-CLASS X1: ขอบเขต = `systemId` ที่ผู้เรียก resolve จากแถว AppSystem ของร้านแล้ว (ระบบหนึ่งผูกร้านเดียว) —
+ *   คง where เดิมของจุดเรียกทุกตัวอักษร (ไม่เติม tenantId: หนี้ใบนี้ห้ามเปลี่ยน SQL)
+ */
+export async function companyByEmailDomain(systemId: string, domain: string): Promise<CrmCompany | null> {
+  return prisma.crmCompany.findFirst({
+    where: { systemId, mergedIntoId: null, archivedAt: null, emailDomain: { equals: domain, mode: "insensitive" } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+}
+
+/**
+ * id + ชื่อของบริษัทที่ actor มองเห็น (companyWhere) ในชุด `ids` ที่ยังใช้งาน (ไม่ถูกเก็บ · ไม่ถูกรวม) — คอลัมน์ "บริษัท" ของรายการลำดับขั้น (sequences.ts)
+ * AUDIT-CLASS X1: บริษัทที่มองไม่เห็น = ไม่อยู่ในผล (ไม่มีชื่อ ไม่ใช่ชื่อหลุด)
+ */
+export async function visibleLiveCompanyNames(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly string[]): Promise<{ id: string; name: string }[]> {
+  return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: [...ids] }, archivedAt: null, mergedIntoId: null }] }, select: { id: true, name: true } });
+}
+// ◂ CRM หนี้ C1.3-S0.3

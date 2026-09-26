@@ -35,6 +35,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, CrmForbiddenError, isApiActor } from "./access";
 import { contactWhere, dealWhere } from "./where";
+import { companySizePartyInScope } from "./companies";
 import { assertCrmV2 } from "./ui-version";
 import { crmAssignmentSettingsOf, parseCrmSettings, setCrmAssignmentKey } from "./settings";
 import {
@@ -215,7 +216,7 @@ function companyOf(env: Env, ctx: AssignmentCtx, view: DraftView): Promise<{ siz
   const cid = str(view.draft.companyId);
   if (!cid) return Promise.resolve(null);
   // AUDIT-CLASS X1: บริษัทของระบบนี้เท่านั้น
-  view.company ??= env.db.crmCompany.findFirst({ where: { id: cid, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { size: true, partyId: true } });
+  view.company ??= companySizePartyInScope(env.db, ctx, cid);
   return view.company;
 }
 

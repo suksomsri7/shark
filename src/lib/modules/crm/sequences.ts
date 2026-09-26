@@ -27,7 +27,8 @@ import { prisma } from "./db";
 import { assertCanCrm, crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
-import { companyWhere, contactWhere, dealWhere } from "./where";
+import { contactWhere, dealWhere } from "./where";
+import { visibleLiveCompanyNames } from "./companies";
 import { mergeCrmHolidays, removeCrmHoliday, setCrmBusinessDays } from "./settings";
 import { CRM_DEFAULT_DEPS, crmLineAddressOf } from "./automation";
 import * as activities from "./activities";
@@ -932,7 +933,7 @@ export async function listEnrollments(ctx: SequencesCtx, actor: MemberActor, opt
       ? prisma.crmSequenceStep.findMany({ where: { OR: keys.map((k) => ({ sequenceId: k.split(":")[0]!, version: Number(k.split(":")[1]) })) }, orderBy: { index: "asc" } })
       : Promise.resolve([]),
     coIds.length
-      ? prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { id: { in: coIds }, archivedAt: null, mergedIntoId: null }] }, select: { id: true, name: true } })
+      ? visibleLiveCompanyNames(ctx, a, coIds)
       : Promise.resolve([] as { id: string; name: string }[]),
   ]);
   const coName = new Map(cos.map((c) => [c.id, c.name]));

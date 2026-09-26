@@ -715,7 +715,7 @@ export async function openDealsForParty(ctx: MoneyCtx, actor: MemberActor, party
   if (!crmCan(actor, "crm.deal.read")) return [];
   const [contacts, comps] = await Promise.all([
     prisma.crmContact.findMany({ where: { ...scopeOf(ctx), partyId: pid }, select: { id: true } }),
-    prisma.crmCompany.findMany({ where: { ...scopeOf(ctx), partyId: pid }, select: { id: true } }),
+    companies.companyIdsInScope(scopeOf(ctx), { partyId: pid }),
   ]);
   if (contacts.length === 0 && comps.length === 0) return [];
   const rows = await prisma.crmDeal.findMany({
@@ -723,7 +723,7 @@ export async function openDealsForParty(ctx: MoneyCtx, actor: MemberActor, party
       AND: [
         await dealWhere(ctx, actor),
         { kind: "OPEN", archivedAt: null },
-        { OR: [{ contactId: { in: contacts.map((c) => c.id) } }, { companyId: { in: comps.map((c) => c.id) } }] },
+        { OR: [{ contactId: { in: contacts.map((c) => c.id) } }, { companyId: { in: comps } }] },
       ],
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],

@@ -61,7 +61,8 @@ import { crmCan, crmForbiddenMessage, CrmForbiddenError } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
 import * as consents from "./consents";
-import { contactWhere, companyWhere, dealWhere } from "./where";
+import { contactWhere, dealWhere } from "./where";
+import { companyByEmailDomain, countVisibleCompany, visibleCompanyIds } from "./companies";
 import { resolve as resolveVisibility } from "./visibility";
 import * as contacts from "./contacts";
 import * as activities from "./activities";
@@ -1072,9 +1073,7 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
   }
   const companyId = strOrNull(input?.companyId) ?? contact.companyId ?? null;
   if (strOrNull(input?.companyId)) {
-    const found = actor
-      ? await prisma.crmCompany.count({ where: { AND: [await companyWhere(ctx, actor), { id: companyId as string }] } })
-      : await prisma.crmCompany.count({ where: { id: companyId as string, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+    const found = await countVisibleCompany(ctx, actor, companyId as string);
     if (found === 0) throw fail("NOT_FOUND", "ไม่พบบริษัทนี้ในระบบ CRM นี้ หรือบัญชีนี้ยังมองไม่เห็นบริษัทนี้ — เลือกบริษัทใหม่แล้วลองอีกครั้ง");
   }
 
@@ -1829,7 +1828,7 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
       if (!contact) {
         const domain = emailDomainOf(fromAddr);
         const company = domain
-          ? await prisma.crmCompany.findFirst({ where: { systemId: system.id, mergedIntoId: null, archivedAt: null, emailDomain: { equals: domain, mode: "insensitive" } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })
+          ? await companyByEmailDomain(system.id, domain)
           : null;
         if (company) {
           companyId = company.id;
@@ -2041,15 +2040,14 @@ async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<
  */
 async function visibleThreadWhere(ctx: EmailsCtx, actor: MemberActor): Promise<Prisma.CrmEmailMessageWhereInput> {
   const cWhere = await contactWhere(ctx, actor);
-  const coWhere = await companyWhere(ctx, actor);
   const [cIds, coIds] = await Promise.all([
     prisma.crmContact.findMany({ where: cWhere, select: { id: true }, take: 20_000 }),
-    prisma.crmCompany.findMany({ where: coWhere, select: { id: true }, take: 20_000 }),
+    visibleCompanyIds(ctx, actor, null, { take: 20_000 }),
   ]);
   return {
     tenantId: ctx.tenantId,
     systemId: ctx.systemId,
-    OR: [{ contactId: { in: cIds.map((c) => c.id) } }, { AND: [{ contactId: null }, { companyId: { in: coIds.map((c) => c.id) } }] }],
+    OR: [{ contactId: { in: cIds.map((c) => c.id) } }, { AND: [{ contactId: null }, { companyId: { in: coIds } }] }],
   };
 }
 
@@ -2152,10 +2150,10 @@ async function rowVisibleFilter(
   const companyIds = uniq(rows.filter((r) => !r.contactId).map((r) => r.companyId ?? ""));
   const [cRows, coRows] = await Promise.all([
     contactIds.length ? prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, actor), { id: { in: contactIds } }] }, select: { id: true } }) : Promise.resolve([]),
-    companyIds.length ? prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: companyIds } }] }, select: { id: true } }) : Promise.resolve([]),
+    companyIds.length ? visibleCompanyIds(ctx, actor, companyIds) : Promise.resolve([] as string[]),
   ]);
   const okC = new Set(cRows.map((c) => c.id));
-  const okCo = new Set(coRows.map((c) => c.id));
+  const okCo = new Set(coRows);
   let unmatchedOk = false;
   if (rows.some((r) => !r.contactId && !r.companyId)) {
     try {

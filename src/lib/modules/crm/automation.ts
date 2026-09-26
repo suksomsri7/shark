@@ -46,7 +46,8 @@ import { prisma } from "./db";
 import { crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2, crmUiVersion } from "./ui-version";
 import { canContact, memberSystemOf } from "./consents";
-import { companyWhere, contactWhere } from "./where";
+import { contactWhere } from "./where";
+import { companyIdsInScope, companyRowInScope, companySystemRef, visibleCompanyIds } from "./companies";
 import * as contacts from "./contacts";
 import * as deals from "./deals";
 import * as activities from "./activities";
@@ -682,7 +683,7 @@ async function resolveCrmSubject(tenantId: string, type: string, payload: unknow
   } else if (!d && !activity && !record) {
     const companyRef = sid("companyId") ?? (type.startsWith("crm.company.") ? sid("keepId") : null);
     if (!companyRef) return null;
-    const co = await prisma.crmCompany.findFirst({ where: { id: companyRef, tenantId }, select: { id: true, systemId: true } });
+    const co = await companySystemRef(tenantId, companyRef);
     if (!co || !pin(co.systemId)) return null;
     companyId = co.id;
   }
@@ -777,7 +778,7 @@ async function evalItem(s: CrmSubject, item: CrmRuleCondition, cache: Map<string
   if (f.kind === "c") return compare(s.contact ? ((s.contact as unknown as Record<string, CondValue>)[f.column] ?? null) : null, item.op, item.value);
   if (f.kind === "d") return compare(s.deal ? ((s.deal as unknown as Record<string, CondValue>)[f.column] ?? null) : null, item.op, item.value);
   if (f.kind === "co") {
-    if (!cache.has("co")) cache.set("co", s.companyId ? await prisma.crmCompany.findFirst({ where: { id: s.companyId, tenantId: s.tenantId, systemId: s.systemId } }) : null);
+    if (!cache.has("co")) cache.set("co", s.companyId ? await companyRowInScope({ tenantId: s.tenantId, systemId: s.systemId }, s.companyId) : null);
     const co = cache.get("co") as Record<string, CondValue> | null;
     return compare(co ? (co[f.column] ?? null) : null, item.op, item.value);
   }
@@ -1624,7 +1625,7 @@ async function visibleSubjects(ctx: CrmAutomationCtx, actor: MemberActor, subjec
   const cids = [...new Set(subjects.map((s) => s.contact?.id).filter((x): x is string => !!x))];
   const coids = [...new Set(subjects.filter((s) => !s.contact && s.companyId).map((s) => s.companyId!))];
   const seeC = new Set(cids.length ? (await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, actor), { id: { in: cids } }] }, select: { id: true } })).map((r) => r.id) : []);
-  const seeCo = new Set(coids.length ? (await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: coids } }] }, select: { id: true } })).map((r) => r.id) : []);
+  const seeCo = new Set(coids.length ? await visibleCompanyIds(ctx, actor, coids) : []);
   return (s) => (s.contact ? seeC.has(s.contact.id) : s.companyId ? seeCo.has(s.companyId) : true);
 }
 
@@ -1656,7 +1657,7 @@ export async function dryRun(ctx: CrmAutomationCtx, actor: MemberActor, input: C
   else if (ev.startsWith("crm.contact.")) cands = (await prisma.crmContact.findMany({ where: { tenantId: T, systemId: S, archivedAt: null, updatedAt: { gte: since } }, orderBy: { updatedAt: "desc" }, take: 300, select: { id: true } })).map((r) => ({ contactId: r.id }));
   else if (ev.startsWith("crm.activity.")) cands = (await prisma.crmActivity.findMany({ where: { tenantId: T, systemId: S, createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, take: 300, select: { id: true } })).map((r) => ({ activityId: r.id }));
   else if (ev.startsWith("custom.record.")) cands = (await prisma.customRecord.findMany({ where: { tenantId: T, systemId: S, updatedAt: { gte: since } }, orderBy: { updatedAt: "desc" }, take: 300, select: { id: true } })).map((r) => ({ recordId: r.id }));
-  else if (ev.startsWith("crm.company.")) cands = (await prisma.crmCompany.findMany({ where: { tenantId: T, systemId: S, updatedAt: { gte: since } }, orderBy: { updatedAt: "desc" }, take: 300, select: { id: true } })).map((r) => ({ companyId: r.id }));
+  else if (ev.startsWith("crm.company.")) cands = (await companyIdsInScope({ tenantId: T, systemId: S }, { updatedSince: since, take: 300 })).map((id) => ({ companyId: id }));
   const hits: CrmSubject[] = [];
   for (const payload of cands.slice(0, 300)) {
     const s = await resolveCrmSubject(T, ev, payload, S);
