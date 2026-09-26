@@ -180,3 +180,12 @@ export * as scoring from "./scoring";
 //   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
 export * as notifications from "./notifications";
 // ◂ CRM C2.10
+// CRM C3.1 ▸ รายงาน (`reports.ts`) — namespace เดียว `reports`: 8 แท็บ overview/forecast/funnel/reps/activities/lostReasons/
+//   sources/scores · getReport (ตัวแจกงานตัวเดียว — C3.4 `crm_reports` ใช้ตัวนี้) · ส่งออก CSV เป็นงาน async
+//   startExport/runExportJobs/getExport (`CrmImportJob` kind REPORT_EXPORT + lease · งานรายนาที `crm.reports.exports`) ·
+//   ตารางส่งอีเมล listSchedules/saveSchedule/deleteSchedule (ใน `settings.crm.reportSchedules[]` — R-E.6) · runScheduled
+//   (ตัวงานรายวัน `crm.reports.scheduled` ของ C2.10 — ทะเบียนอยู่ที่ `src/lib/platform/minute-jobs.ts` จึงเรียกผ่าน facade)
+//   🔴 namespace `lostReasons` ข้างบนคือบริการตั้งค่าเหตุผลที่แพ้ (C1.5) — แท็บรายงานคือ `reports.lostReasons` (คนละ namespace)
+//   ค่าคงที่/ชนิด/ตัวช่วยเวลาไทยสำหรับหน้า 'use client' อยู่ที่ `./reports-shared`
+export * as reports from "./reports";
+// ◂ CRM C3.1

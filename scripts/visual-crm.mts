@@ -235,6 +235,46 @@ const SPECS: Record<string, Spec[]> = {
   //   ⇒ ถ่าย 2 ภาพของหน้าเดิม (owner เท่านั้น — หน้านี้ต้องมีคีย์ `crm.api.manage`) ให้ผู้คุมงานเทียบกับภาพ 14 (ขวา)
   //   🔴 บรรทัดช่วยของชุดสิทธิ์อยู่ใน **ฟอร์มสร้างคีย์** ⇒ ภาพที่สองต้องกด `crm-api-new` ก่อน (เดสก์ท็อป — แบบเดียวกับ C1.10)
   //   🔴 ไม่เพิ่ม testid ใหม่ · ไม่แตะ `scripts/crm-ui-inventory.json` (ใบนี้ไม่เพิ่มของบนหน้าจอที่ต้องขึ้นทะเบียน)
+  // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — ผู้คุมงานเขียนสเปค (26 ก.ย.) · owner/manager มี `crm.report.view` ใน seed · ถ่าย overview + forecast + funnel + sources + ตารางเวลา
+  "3.1": isCustomer ? [] : [
+    {
+      name: `crm-report-overview-${userKey}`,
+      path: `${CRM_BASE}/reports`,
+      note: "รายงาน · ภาพรวม — แถบแท็บ 8 · ตัวกรองช่วง/ทีม/pipeline · การ์ด KPI (ดีลเปิด · มูลค่าถ่วงน้ำหนัก · ชนะ · อัตราชนะ · รับชำระ · กิจกรรม · lead ใหม่) · ปุ่ม export/ตั้งเวลา — เทียบภาพ 09",
+      expect: ["[data-testid=crm-reports]", "[data-testid=crm-report-tab-overview]", "[data-testid=crm-report-tab-scores]", "[data-testid=crm-report-filters]", "[data-testid=crm-report-export]"],
+      steps: [{ waitFor: "[data-testid=crm-reports]", timeoutMs: 20_000 }, { wait: 600 }],
+    },
+    {
+      name: `crm-report-forecast-${userKey}`,
+      path: `${CRM_BASE}/reports/forecast`,
+      note: "รายงาน · พยากรณ์ — ตารางเดือนไทย × หมวด (pipeline/best case/commit/ถ่วงน้ำหนัก/ปิดแล้ว) ต้องมีแถวข้อมูลจาก seed",
+      expect: ["[data-testid=crm-reports]", "[data-testid=crm-report-forecast]"],
+      steps: [{ waitFor: "[data-testid=crm-report-forecast]", timeoutMs: 20_000 }, { wait: 600 }],
+    },
+    {
+      name: `crm-report-funnel-${userKey}`,
+      path: `${CRM_BASE}/reports/funnel`,
+      note: "รายงาน · กรวย — ขั้น OPEN+WON ของ pipeline ปริยาย · เข้า/ออก/%/วันเฉลี่ย",
+      expect: ["[data-testid=crm-reports]", "[data-testid=crm-report-tab-funnel]"],
+      steps: [{ waitFor: "[data-testid=crm-reports]", timeoutMs: 20_000 }, { wait: 600 }],
+    },
+    {
+      name: `crm-report-sources-${userKey}`,
+      path: `${CRM_BASE}/reports/sources`,
+      note: "รายงาน · ที่มา/ROI — 3 มิติ (ที่มา · แคมเปญ · ลิงก์) · lead/ดีล/ชนะ/ต้นทุน/ROI",
+      expect: ["[data-testid=crm-reports]", "[data-testid=crm-report-tab-sources]"],
+      steps: [{ waitFor: "[data-testid=crm-reports]", timeoutMs: 20_000 }, { wait: 600 }],
+    },
+    ...(userKey === "owner" ? [{
+      name: `crm-report-schedule-${userKey}`,
+      path: `${CRM_BASE}/reports/reps`,
+      note: "รายงาน · ตั้งเวลาส่งอีเมล — โมดัล: แท็บ · ความถี่ · วัน · ผู้รับ (เฉพาะคนที่มี crm.report.view) · บันทึก (owner เท่านั้น: ต้อง crm.report.all)",
+      onlyDevice: "desktop" as const,
+      expect: ["[data-testid=crm-report-schedule-modal]", "[data-testid=crm-report-schedule-frequency]", "[data-testid=crm-report-schedule-save]"],
+      steps: [{ waitFor: "[data-testid=crm-report-schedule]", timeoutMs: 20_000 }, { click: "[data-testid=crm-report-schedule]" }, { waitFor: "[data-testid=crm-report-schedule-modal]", timeoutMs: 10_000 }, { wait: 400 }],
+    }] : []),
+  ],
+  // ◂ CRM C3.1
   "2.11": isCustomer || userKey !== "owner" ? [] : [
     {
       name: `crm-settings-api-c211-${userKey}`,

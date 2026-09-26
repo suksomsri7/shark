@@ -301,14 +301,41 @@ registerMinuteJob({
   name: "crm.reports.scheduled",
   everyMinutes: 1440,
   cadence: "daily",
-  run: async () => {
-    // ตัวเกาะของ "ส่งรายงานตามกำหนด" (พิมพ์เขียว §7.5) — ตัวส่งจริงเป็นของใบ C3.1 (รายงาน)
-    // 🔴 ลงทะเบียนไว้ตั้งแต่ตอนนี้โดยตั้งใจ: ใบ C3.1 จะได้ไม่ต้องแตะทะเบียนงาน (เปลี่ยนจังหวะของงานที่มีอยู่แล้ว
-    //    นอก dev = registerMinuteJob โยนทิ้ง) และหน้า integrations (C3.6) เห็นงานนี้ตั้งแต่วันนี้ว่า "ยังไม่มีอะไรให้ส่ง"
-    return;
+  // CRM C3.1 ▸ ตัวงานจริงของ "ส่งรายงานตามกำหนด" (ชื่อ/รอบเดิมของ C2.10 — เปลี่ยนแค่ตัวงาน · มติผู้คุมงาน C3.1 (ข))
+  //   AUDIT-CLASS X5: lease 15 นาทีต่อ (ตาราง, ช่องเวลาไทย) อยู่ใน `reports.runScheduled` ⇒ route + crontab ยิงซ้อนก็ได้ฉบับเดียว
+  //   ประตู uiVersion อยู่ในตัวงาน (กรองเฉพาะระบบ settings.crm.uiVersion = 2 ใน SQL — R-E.14) ◂
+  run: async (now, _budgetMs, ctrl) => {
+    const { reports } = await import("@/lib/modules/crm");
+    await reports.runScheduled({ now, deadline: ctrl.deadline, signal: ctrl.signal });
   },
 });
 // ◂ CRM C2.10
+// CRM C3.1 ▸ งานส่งออก CSV ของรายงาน (addendum ข้อ 7) — ทุก 1 นาที (ผู้ใช้กด "ส่งออก CSV" แล้วรอไฟล์)
+//   AUDIT-CLASS X5: จองแถว `CrmImportJob` kind REPORT_EXPORT ทีละแถวด้วย lease (`FOR UPDATE SKIP LOCKED`) ⇒ ยิงซ้อนกี่ทางก็ทำครั้งเดียว ·
+//   โพรเซสตายหลังจอง = รอบหลัง lease หมด (15 นาที) หยิบใหม่ · ไม่ vpsOnly (route ยิงมาช่วยได้) · ระบบรุ่น 1 ไม่ถูกหยิบ (R-E.14)
+registerMinuteJob({
+  name: "crm.reports.exports",
+  everyMinutes: 1,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { reports } = await import("@/lib/modules/crm");
+    await reports.runExportJobs({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// CRM C3.1 ▸ (รีวิว S1) รอบเก็บตกรายชั่วโมงของ "ส่งรายงานตามกำหนด" — ตัวงานเดียวกับ `crm.reports.scheduled` (`reports.runScheduled`)
+//   ทำไม: งานรายวันมีงบ 20 วินาที — ร้านท้ายคิวที่ถูกตัดงบ/ส่งล้มชั่วคราว ต้องได้ส่งภายในช่องเดียวกัน (DAILY ไม่หายทั้งวัน)
+//   ซ้อนกับงานรายวันได้ปลอดภัย: lease ต่อ (ตาราง, ช่อง) + ธง done/sent ต่อผู้รับ ⇒ ไม่มีฉบับซ้ำ · คิวเรียง "ส่งครบล่าสุดเก่าสุดก่อน"
+//   `crm.reports.scheduled` คงชื่อ/รอบเดิม (มติผู้คุมงาน C3.1 (ข)) · ประตู uiVersion อยู่ในตัวงาน (R-E.14)
+registerMinuteJob({
+  name: "crm.reports.sweep",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { reports } = await import("@/lib/modules/crm");
+    await reports.runScheduled({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C3.1
 
 function errorText(e: unknown): string {
   let s: string;

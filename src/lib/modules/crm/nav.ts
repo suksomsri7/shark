@@ -17,6 +17,8 @@ export type CrmNavEntry = {
   status: CrmNavStatus;
   /** ใบงานที่ทำหมวดนี้ */
   wo?: string;
+  /** CRM C3.1 ▸ คีย์ที่ต้องมีถึงจะเห็นแท็บนี้ (หน้า 404 สำหรับคนที่ไม่มี ⇒ ห้ามเป็นลิงก์ตาย) — กรองใน `crmNavItems` ◂ */
+  perm?: string;
 };
 
 /** หมวดของโมดูล (ลำดับ = ลำดับที่ผู้ใช้เห็น) — ดีล/งานติดตาม/ผู้ติดต่อ = หน้า v1 เดิม · บริษัท = C1.3 */
@@ -33,6 +35,9 @@ export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
   //   เป็น [param] จึงไม่ขึ้นเมนู · คีย์ `crm.email.read` (STAFF ได้ปริยาย §6.1 ⇒ แท็บนี้ไม่ใช่ลิงก์ตายสำหรับพนักงาน)
   { key: "emails", label: "อีเมล", path: "/crm/emails", status: "ready", wo: "C2.5" },
   // ◂ CRM C2.5
+  // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — `/crm/reports/[tab]` เป็น [param] จึงไม่ขึ้นเมนู · คีย์ `crm.report.view` (ไม่มี = 404)
+  { key: "reports", label: "รายงาน", path: "/crm/reports", status: "ready", wo: "C3.1", perm: "crm.report.view" },
+  // ◂ CRM C3.1
 ] as const);
 
 /**
@@ -102,8 +107,15 @@ export function crmNavChildren(base: string): { href: string; label: string }[] 
   ];
 }
 
-/** แถบแท็บในโมดูล (หน้าหลัก + หมวด) */
-export function crmNavItems(systemId: string): { href: string; label: string }[] {
+/**
+ * แถบแท็บในโมดูล (หน้าหลัก + หมวด)
+ * CRM C3.1 ▸ หมวดที่มี `perm` ขึ้นเฉพาะเมื่อผู้เรียกส่งตัวตัดสินคีย์ของ actor มา (`(k) => crmCan(actor, k)`) และผ่าน —
+ *   ไม่ส่งมา = ซ่อน (fail closed: ไม่มีลิงก์ที่กดแล้ว 404) · ไฟล์นี้บริสุทธิ์จึงรับเป็นฟังก์ชัน ไม่ import access.ts เอง ◂
+ */
+export function crmNavItems(systemId: string, can?: (perm: string) => boolean): { href: string; label: string }[] {
   const base = `/app/sys/${systemId}`;
-  return [{ href: base, label: "ภาพรวม" }, ...CRM_NAV.filter((e) => e.status === "ready").map((e) => ({ href: `${base}${e.path}`, label: e.label }))];
+  return [
+    { href: base, label: "ภาพรวม" },
+    ...CRM_NAV.filter((e) => e.status === "ready" && (!e.perm || (can ? can(e.perm) : false))).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
+  ];
 }

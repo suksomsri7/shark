@@ -72,7 +72,7 @@ export async function CrmHomeV2({ systemId }: { systemId: string }) {
   return (
     <CrmHomeView
       systemId={systemId}
-      navItems={crmNavItems(systemId)}
+      navItems={crmNavItems(systemId, (k) => crmCan(actor, k))}
       picker={canPick ? { templates, apply: applyBusinessTemplateAction, skip: skipBusinessTemplateAction } : null}
       deals={data.deals.map((d) => ({
         id: d.id,

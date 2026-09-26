@@ -437,6 +437,10 @@ const ALLOWED_EDGES = new Set([
   "crm→clinic",
   "crm→school",
   // ◂ CRM C2.4
+  // CRM C3.1 ▸ crm→marketing : C3.1 sources/ROI reads campaign cost — `marketing/index.campaignCostsByIds` (อ่านอย่างเดียว · ≤ 500 id ·
+  //   ชื่อ + Σ CampaignVariantStat.costSatang ของแคมเปญในร้านเดียวกัน) · โหลดแบบ lazy import ตอนใช้ (ไม่ลากกราฟการตลาดตอนโหลด facade CRM)
+  "crm→marketing",
+  // ◂ CRM C3.1
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

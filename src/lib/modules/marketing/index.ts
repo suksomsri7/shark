@@ -68,6 +68,10 @@ export {
   canManageCampaigns,
 } from "./campaigns";
 
+// CRM C3.1 ▸ ต้นทุนแคมเปญ (อ่านอย่างเดียว) ให้แท็บ "ที่มา/ROI" ของรายงาน CRM — ทางเดียวที่ CRM อ่านข้อมูลแคมเปญ (เส้น crm→marketing)
+export { campaignCostsByIds } from "./campaign-costs";
+// ◂ CRM C3.1
+
 // ── แคมเปญ v1 (ยังมีหน้าเดิมเรียกอยู่ — คงสัญญาไว้ทุกตัว) ──
 export type { Ctx, CreateCampaignInput } from "./service";
 export { createCampaign, sendCampaign, listCampaigns, previewAudience } from "./service";

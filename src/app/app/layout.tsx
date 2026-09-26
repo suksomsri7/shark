@@ -237,6 +237,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 ? [{ href: `${s}/crm/settings/notifications`, label: "การแจ้งเตือน" }]
                 : []),
               // ◂ CRM C2.10
+              // CRM C3.1 ▸ รายงาน 8 แท็บ (ภาพ 09) — คีย์ `crm.report.view` (404 สำหรับคนที่ไม่มี ⇒ ไม่โชว์ลิงก์ตาย)
+              ...(crmCan(membershipOf(auth), "crm.report.view") ? [{ href: `${s}/crm/reports`, label: "รายงาน" }] : []),
+              // ◂ CRM C3.1
               ]
             : []),
           // ◂ CRM uiVersion gate
