@@ -63,3 +63,16 @@
 ## 8. หนี้ (ส่งต่อ C3.9)
 - N5: ล้าง CSV ของงานส่งออกเก่า (`CrmImportJob.result` kind REPORT_EXPORT) ตามอายุ — ยังไม่มีงานล้าง
 - N10: ร้านที่ถูกระงับ/ปิด (Tenant SUSPENDED/CLOSED) ยังถูกงาน `crm.reports.*` หยิบ — ต้องกรองสถานะร้านในงานตามเวลา
+
+## ผู้คุมงาน (Fable 5.1 · 26 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 56 ข้อเขียนก่อน (c12a) · SKIPPED/RED-for-right-reason ก่อนโค้ด · ruling 15 ข้อ |
+| D2 | ✅ | `qc-crm-c3.1` **56/56 ×2** QC1 seed ใหม่ (`c31-verify.log`) · 56/56 QC3 (builder) |
+| D3 | ✅ | ORACLE-EDIT 1 = X8.1 (ชื่อดีล `ดีลสมาชิก <TAG>` มีชื่อสมาชิก needle PII เป็น substring — ผู้คุมงานพิสูจน์เองจากบรรทัด 1127/1136/1264) |
+| D4 | ✅ | ถอยหลัง QC1 (`c31-verify.log` 36 ขั้น exit 0): c2.10 · c1.3 · c0.2 · c0.5 · c1.7 · c1.11 · c2.1 · c2.5 · c2.11 · c2.7 · c3.0 · fix-s4 · marketing · v1 · pages · cron · nav 11/11 · uiversion probe · m3.10 · m1.9 26/26 — แดงเดียว m3.8 S11.2 = ภาพสมาชิก (ENV ไม่ใช่ของใบนี้) |
+| D5/D6 | ✅ | typecheck 5120 exit 0 · fitness 32/32 ×2 · build+serve ผ่าน |
+| D7 | ✅ | ภาพ 17 ใบ `.qc-shots/crm/3.1/` (owner 9 · manager 8 · 1440/390) ผู้คุมงานเปิดดูเองเทียบ mockup 09: แท็บ 8 · ตัวกรอง 3 · KPI 8 การ์ด · ตาราง forecast/funnel/ยอดต่อคน/เหตุผลแพ้/ที่มา · โมดัลตั้งเวลา (แท็บ·ความถี่·วัน·ผู้รับเฉพาะคนมีสิทธิ์) ตรงแบบ · แท่ง forecast ดำเต็ม = seed มีเฉพาะยอดปิด (ข้อมูล) · มือถือไม่ล้น · ร้าน v1 probe 14/14 |
+| D8–D11 | ✅ | ผู้ตรวจอ่านอย่างเดียว: BLOCKER 0 · SHOULD-FIX 5 + NOTE 6 แก้ครบ (หลักฐาน `.qc-shots/c31/probe-review.log`: งานรายวันโดนตัดงบ → sweep รายชั่วโมงเติมครบไม่ซ้ำ · API key FORBIDDEN · สาขา · VALIDATION ผู้รับ · คีย์สถานะมี tenant/system) · lease จริง: overlap 1 เมล · crash-after-claim retry ครั้งเดียวที่ +16 นาที · overview 2/7 round trips |
+| D12 | ⏳ | รอ push (เจ้าของกด) |
+หนี้ (C3.9): purge CSV export ใน `CrmImportJob.result` · tenant SUSPENDED ใน job · S4 ร้อย `can` ให้ `crmNavItems` ทุกหน้า (C4)

@@ -393,7 +393,8 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C2 | C2.11 | ✅ | (ใบนี้) | REST ชุด 2: 32 MUST op + 6 R · tool 10 · send 1 คน/send-bulk ≤500 danger · notifications prefs · A1 replyTo ต้องเป็นเธรดของผู้ติดต่อคนเดียวกัน (ปิด consent bypass เดิม) · assistant เห็น PII แบบ mask · ข้อสอบ 47/47 ×2 QC1 · c1.10 66/66 · wo-notes `crm-C2.11.md` |
 | C2 | ปิด C2 (`qc:all`) | ✅ | `d3856c50` | 325/355 (25 ก.ย.) · ENV ข้อภาพ 25 · หนี้ `crm-c1.3` S0.3 **ปิดแล้ว 26 ก.ย.** (12 จุด → helper · SQL เหมือนเดิม 17/17) · acc-v2-coa T15 / kanban-k2.3 S3.2 ไม่ใช่ของ CRM (CRM-RUN §4 26 ก.ย.) |
 | C3 | C3.0 | ✅ | `41c262c0` | migration `crm_v2_c` 214 บรรทัด (enum 6 · ตาราง 6 · `HrPayAdjustment.crmCommissionId` + partial unique · scope 6) · ข้อสอบ 33/33 QC1 ×2 + QC2 · diff ว่างหลัง deploy · ORACLE-EDIT S4.3 · ถอยหลัง 2 รอบ (บทเรียน client ร่วม/overlay) · `wo-notes/crm-C3.0.md` |
-| C3 | C3.1–C3.9 | 🔨 | — | C3.1/C3.2/C3.3 builder กำลังทำ (ข้อสอบ 56/46/61 เคาะแล้ว) · ข้อสอบ C3.4 กำลังเขียน |
+| C3 | C3.1 | ✅ | `80c1269a` | รายงาน 8 แท็บ (SQL ล้วน) · export job lease · ตั้งเวลาอีเมล (ช่องเวลาไทย · lease 15 นาที · sweep รายชั่วโมง) · facade marketing `campaignCostsByIds` · ข้อสอบ 56/56 ×2 · ผู้ตรวจ SHOULD-FIX 5 แก้ครบ · ภาพ 17 PARITY ผ่าน · `wo-notes/crm-C3.1.md` |
+| C3 | C3.2–C3.9 | 🔨 | — | C3.2/C3.3 builder รอบแก้ตามผู้ตรวจ (BLOCKER 1 / 4) · ข้อสอบ C3.4 (53) C3.5 (67) เคาะแล้ว |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |
