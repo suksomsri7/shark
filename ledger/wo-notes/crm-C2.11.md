@@ -32,7 +32,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | read-only (opus): BLOCKER A1 replyTo consent-bypass (แก้) · A2 เว็บฮุคไร้ตัวยิง (จบด้วย C2.10) · A3 จุดชน C2.10 (ถอนแถวซ้ำ) · MAJOR B1–B6 · MINOR 7–13 · ตัดสิน ORACLE-EDIT + ชี้ข้อที่เขียวหลอก (X7.1/X9.3) → ข้อสอบเข้มขึ้น |
 | D10 | เอกสาร/ทะเบียน | ✅ | docs 101 op (F13.11) · event C2 ประกาศครั้งเดียว · tool ในสกิล |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 ×2 |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push |
+| D12 | push → deploy | ✅ | เจ้าของสั่ง push · `session/crm` + `main` 0d638f15..`581428f1` (26 ก.ย. ~04:05 UTC · ไม่มี migration ในช่วง) · deploy ใหม่ขึ้นจริง 04:10:25 UTC (`dpl_8aHf55…` → `dpl_EG93Xo…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |

@@ -34,7 +34,7 @@
 | D9 | ผู้ตรวจอิสระ | ✅ | read-only (opus): BLOCKER A1 ยิงซ้ำ live↔cron เมื่อ days กฎ≠stage · A2 body 400 ตัดลิงก์ · MAJOR B1–B5 · MINOR 9 · parity 5 — แก้ครบ (B1 รับเป็นข้อจำกัด) · เห็นพ้อง ORACLE-EDIT 3 ข้อ |
 | D10 | เอกสาร/ทะเบียน | ✅ | event 2 ตัวมี consumer+ป้าย · docs regen (+2 webhook events) · งาน 7 ตัวใน `crm-cron.mts` |
 | D11 | wo-notes + คืนสภาพ | ✅ | `qc-member-m1.9` 26/26 ×2 |
-| D12 | push → deploy | ⏳ | รอเจ้าของ push |
+| D12 | push → deploy | ✅ | เจ้าของสั่ง push · `session/crm` + `main` 0d638f15..`581428f1` (26 ก.ย. ~04:05 UTC · ไม่มี migration ในช่วง) · deploy ใหม่ขึ้นจริง 04:10:25 UTC (`dpl_8aHf55…` → `dpl_EG93Xo…` ใน header `Link` ของ `/`) · smoke `/` `/login` `/api/health` 200 · health `db:true outboxPending:0` · prod `uiVersion` 1 ทุกร้าน |
 
 ## 4. กลุ่ม X
 | กลุ่ม | เกี่ยว? | ids / เหตุผล |
