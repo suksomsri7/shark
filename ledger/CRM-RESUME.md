@@ -46,7 +46,9 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - **เลน B** C3.0 migration `crm_v2_c` — builder opus ใน `shark-crm-c20`/QC2 (รีเซ็ตสะอาดที่ 7e32764f): ห้าม `prisma format` · owned = `crm.prisma` `payroll.prisma` `scope.ts` `migrations/20261102000000_crm_v2_c/` `wo-notes/crm-C3.0.md` · builder **ไม่ deploy** — Fable อ่าน SQL ทุกบรรทัด → `env QC_ENV_FILE=.env.qc2 bash scripts/qc-prisma.sh migrate deploy` (ผ่าน iso) → `qc-crm-c3.0` (33) บน QC2 → QC1/QC3 → regressions ท้าย brief · หลักฐาน `.qc-shots/c30/`
 - **เลน C** ผู้เขียนข้อสอบ C3.1 — opus ใน `shark-crm-c12a`: `scripts/qc-crm-c3.1.mts` (26 + X) + addendum ท้าย brief C3.1 (ต้องเคาะก่อน spawn builder C3.1)
 - ถ้า session ตายอีก: `git -C <wt> status` + `.qc-shots/` ของแต่ละเลน แล้ว spawn ใหม่ด้วย prompt เดิม (สรุปใน CRM-RUN §4 26 ก.ย. 05:40)
-- ถัดไปหลังรับ A+B: ปิด C2 จริง (ลง MASTER-PLAN §12) → builder C3.1 (opus · c23 หรือ c20 ที่ว่าง) ∥ ผู้เขียนข้อสอบ C3.2+C3.3 → รายงาน tg ทุกครั้งที่สถานะเปลี่ยน
+- **06:55 UTC**: A ✅ `d3856c50` · B ✅ `41c262c0` (33/33 QC1+QC2 · ชุดถอยหลังรอบ 1 แดง 27 ชุดเพราะ client ร่วมถูก generate ทับ — ดู CRM-RUN §4 06:50 · รอบ 2 `run-c30-verify-v2.sh` รอยูนิตแรกจบ) · C ✅ `4abc726e` (56 ข้อ · ruling 15 ข้อ) → **builder C3.1 กำลังทำใน c23/QC3** (หลักฐาน `.qc-shots/c31/`) · **ผู้เขียนข้อสอบ C3.2 ใน c110** · c20 ยังมีไฟล์ C3.0 (commit แล้วในทรีหลัก · รีเซ็ตได้) · c12a ที่ 4abc726e
+- 🔴 ห้าม agent ใด `prisma generate` (client ร่วม) · worktree ทุกตัวต้องอยู่บน commit ที่สคีมาเท่าทรีหลัก
+- ถัดไป: รับ C3.0 หลังรอบ 2 เขียว (30/53) → รับ C3.1 (ผู้ตรวจอ่านอย่างเดียว opus ก่อน) → C3.2 ∥ C3.3 (ข้อสอบ C3.3 ต้องเขียนก่อน)
 
 ## 1. 🔴 กติกาที่เพิ่งได้มาจากคืน 23–24 ก.ย. (อ่านให้ครบ ไม่งั้นเสียเวลาซ้ำ)
 1. **`qc-member-m1.1` ลบข้อมูล CRM ทั้งชุดด้วยตัวมันเอง** (ข้อ `M1.1-S3.4` รัน `seed-member-qc.mts` ซ้ำ = ลบร้านสร้างใหม่ · CRM ใช้ร้าน/slug เดียวกัน) ⇒ **วางได้ที่เดียว: หลัง reseed member และก่อน seed CRM** · พิสูจน์แล้วว่าย้ายแล้วเขียว
