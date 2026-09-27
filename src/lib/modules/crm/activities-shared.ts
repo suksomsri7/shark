@@ -59,8 +59,23 @@ export const CRM_FILE_MIME_ALLOWLIST: readonly string[] = Object.freeze([
   "text/plain",
 ]);
 
-/** AUDIT-CLASS X6: อักขระล่องหน/สลับทิศทาง (zero-width · bidi override/isolate · line/paragraph separator · BOM) — ใช้ปลอมชื่อ/นามสกุลไฟล์ */
-export const INVISIBLE_CHARS_RE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/g;
+/**
+ * AUDIT-CLASS X6: อักขระล่องหน/สลับทิศทาง (zero-width · bidi override/isolate · line/paragraph separator · BOM) — ใช้ปลอมชื่อ/นามสกุลไฟล์
+ * C4.3-fix ▸ ZWJ (U+200D) เคยถูกลบทุกตัว ⇒ อีโมจิประกอบ "👨‍👩‍👧" แตกเป็น 3 ตัว · ตอนนี้เก็บ ZWJ ไว้ **เฉพาะ** ตัวที่อยู่ระหว่าง
+ *   อีโมจิสองตัว (ระหว่างนั้นมี VS16 U+FE0F และ/หรือโทนสีผิว U+1F3FB–1F3FF คั่นได้ — เช่น 🏳️‍🌈 · 👩🏽‍💻 · 👩🏽️‍💻) · ZWJ ที่อื่น
+ *   (ระหว่างตัวอักษร ซึ่งใช้ซ่อนการสะกด/ปลอมนามสกุลไฟล์ได้) ยังถูกลบเหมือนเดิม · U+FE0F ไม่อยู่ในชุดนี้ (ไม่เคยถูกลบ)
+ * 🔴 ห้ามใช้ lookbehind (ทั้งแบบบวกและแบบลบ): ไฟล์นี้ถูก import จาก client component — Safari < 16.4 (iPad รุ่นเก่าของ SHARK HUB)
+ *   แยกวิเคราะห์ regex literal ที่มี lookbehind ไม่ได้ ⇒ ทั้ง chunk พัง · ใช้ "จับอีโมจิหน้า ZWJ เป็นกลุ่ม แล้วคืนกลุ่มนั้น" แทน
+ *   (อีโมจิที่ถูกจับไม่อยู่ในชุดที่ต้องลบ และตัวหลัง ZWJ เป็น lookahead ไม่ถูกกิน ⇒ ลูกโซ่ 👨‍👩‍👧 เก็บครบทุก ZWJ)
+ *   ⇒ ใช้ผ่าน `stripInvisibleChars()` เท่านั้น (`.replace(re, "")` ตรง ๆ จะลบอีโมจิทิ้ง — จึงไม่ export ตัว regex)
+ */
+const INVISIBLE_OR_EMOJI_ZWJ_RE =
+  /(\p{Extended_Pictographic}[\u{FE0F}\u{1F3FB}-\u{1F3FF}]*\u200d)(?=\p{Extended_Pictographic})|[\u200b-\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029\ufeff]/gu;
+
+/** ลบอักขระล่องหน/สลับทิศทาง — คง ZWJ ที่อยู่ระหว่างอีโมจิสองตัว (อีโมจิประกอบ) ไว้ */
+export function stripInvisibleChars(s: string): string {
+  return s.replace(INVISIBLE_OR_EMOJI_ZWJ_RE, "$1");
+}
 
 // ───────────────────────── ชนิด/ป้าย ─────────────────────────
 

@@ -19,6 +19,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
+import { crmEmailFailText } from "./emails-shared";
 import * as emails from "./emails";
 import * as activities from "./activities";
 import type { CrmEmailActionResult } from "@/components/crm/emails/types";
@@ -67,7 +68,7 @@ export async function sendCrmEmailAction(
     replyToEmailId?: string | null;
     attachments?: { filename: string; contentType: string; base64: string }[];
   },
-): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string }>> {
+): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string; failReason?: string }>> {
   try {
     const { ctx, actor } = await session(systemId, "crm.email.send");
     const files = (input?.attachments ?? []).map((a) => ({
@@ -87,7 +88,8 @@ export async function sendCrmEmailAction(
     });
     touchInbox(systemId);
     touchThread(systemId, r.threadKey);
-    return { ok: true, emailId: r.emailId, threadKey: r.threadKey, status: r.status };
+    // C4.3-fix: ok = "บันทึกจดหมายแล้ว" (แถว + เธรดมีจริง) · ส่งไม่ถึง = status FAILED + เหตุภาษาไทยให้หน้าจอแสดง
+    return { ok: true, emailId: r.emailId, threadKey: r.threadKey, status: r.status, ...(r.status === "FAILED" ? { failReason: crmEmailFailText(r.failCode) } : {}) };
   } catch (e) {
     return failOf(e);
   }

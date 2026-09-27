@@ -56,7 +56,7 @@ import {
   type PartyAppointment,
   CALENDAR_MAX_APPOINTMENTS,
   CALENDAR_MAX_ITEMS,
-  INVISIBLE_CHARS_RE,
+  stripInvisibleChars,
   CALENDAR_MAX_SPAN_DAYS,
   DAY_MS,
   thaiDayStartMs,
@@ -296,7 +296,7 @@ function parseType(v: unknown, label = "ชนิดกิจกรรม"): Act
 }
 
 function cleanTitle(v: unknown, label = "หัวเรื่องของกิจกรรม"): string {
-  const t = typeof v === "string" ? v.replace(INVISIBLE_CHARS_RE, "").replace(/[\u0000-\u001f\u007f]+/g, " ").trim().replace(/\s+/g, " ") : "";
+  const t = typeof v === "string" ? stripInvisibleChars(v).replace(/[\u0000-\u001f\u007f]+/g, " ").trim().replace(/\s+/g, " ") : "";
   if (!t) throw fail("VALIDATION", `ใส่${label}ก่อน — เช่น "โทรคุยเรื่องราคา"`);
   if (t.length > ACTIVITY_TITLE_MAX) throw fail("VALIDATION", `${label}ยาวเกิน ${ACTIVITY_TITLE_MAX} ตัวอักษร — ย่อให้สั้นลง แล้วใส่รายละเอียดในช่องโน้ตแทน`);
   return t;

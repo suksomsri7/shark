@@ -87,9 +87,15 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
     setBusy(true);
     setMsg(null);
     try {
-      const attachments = await Promise.all(
-        files.map(async (f) => ({ filename: f.name, contentType: f.type || "application/octet-stream", base64: await readAsBase64(f) })),
-      );
+      let attachments: { filename: string; contentType: string; base64: string }[];
+      try {
+        attachments = await Promise.all(
+          files.map(async (f) => ({ filename: f.name, contentType: f.type || "application/octet-stream", base64: await readAsBase64(f) })),
+        );
+      } catch {
+        setMsg({ ok: false, text: "อ่านไฟล์แนบไม่สำเร็จ — เลือกไฟล์ใหม่แล้วลองอีกครั้ง" });
+        return;
+      }
       const paragraphs = body
         .split(/\n{2,}/)
         .map((p) => p.trim())
@@ -109,6 +115,12 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
         setMsg({ ok: false, text: r.error });
         return;
       }
+      if (r.status === "FAILED") {
+        // C4.3-fix: เดิมขึ้น "ส่งจดหมายแล้ว" ทั้งที่ส่งไม่สำเร็จ ⇒ บอกเหตุจริง (ไทย · จากเซิร์ฟเวอร์) และเก็บข้อความที่พิมพ์ไว้ให้กดส่งใหม่ได้
+        setMsg({ ok: false, text: r.failReason ?? "ส่งจดหมายไม่สำเร็จ — จดหมายยังไม่ถึงผู้รับ ลองกดส่งอีกครั้ง" });
+        router.refresh();
+        return;
+      }
       setBody("");
       setSchedule("");
       setTemplateId("");
@@ -116,7 +128,7 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
       setMsg({ ok: true, text: r.status === "QUEUED" ? "ตั้งเวลาส่งเรียบร้อย — ระบบจะส่งให้เองเมื่อถึงเวลา" : "ส่งจดหมายแล้ว" });
       router.refresh();
     } catch {
-      setMsg({ ok: false, text: "อ่านไฟล์แนบไม่สำเร็จ — เลือกไฟล์ใหม่แล้วลองอีกครั้ง" });
+      setMsg({ ok: false, text: "ส่งจดหมายไม่สำเร็จเพราะเชื่อมต่อระบบไม่ได้ — ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง" });
     } finally {
       setBusy(false);
     }

@@ -21,6 +21,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { crmCan } from "./access";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { lockLostReasons, normalizeLostReasonLabel } from "./lost-reasons";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดาน pipeline (รีวิว S5) ◂
 import * as objects from "./objects";
 import { OBJECT_TEMPLATES } from "./templates/objects";
@@ -162,9 +163,14 @@ async function applyInTx(tx: Tx, ctx: BusinessTemplateCtx, t: BusinessTemplate, 
   }
 
   // ③ เหตุผลที่แพ้ (unique [systemId, key] — มีแล้ว = ข้าม · ร้านแก้ป้ายไว้ = คงป้ายของร้าน)
-  const have = new Set((await tx.crmLostReason.findMany({ where: scope, select: { key: true } })).map((r) => r.key));
+  //    C4.3-fix ▸ ถือล็อกเดียวกับการเพิ่มเหตุผลเอง (`lost-reasons.ts`) + ข้ามชื่อที่ร้านมีอยู่แล้ว (เทียบแบบ normalize) —
+  //    เดิมกันแค่ key ⇒ ร้านที่พิมพ์ "ไกลจากบ้าน/ที่ทำงาน" เองไว้ (key สุ่ม) ได้ชื่อซ้ำ 2 แถว ทั้งแบบพร้อมกันและแบบทีหลัง
+  await lockLostReasons(tx, ctx.systemId);
+  const existing = await tx.crmLostReason.findMany({ where: scope, select: { key: true, label: true } });
+  const have = new Set(existing.map((r) => r.key));
+  const haveLabel = new Set(existing.map((r) => normalizeLostReasonLabel(r.label)));
   const maxSort = (await tx.crmLostReason.aggregate({ where: scope, _max: { sortOrder: true } }))._max.sortOrder ?? -1;
-  const add = t.lostReasons.filter((r) => !have.has(r.key));
+  const add = t.lostReasons.filter((r) => !have.has(r.key) && !haveLabel.has(normalizeLostReasonLabel(r.label)));
   if (add.length > 0) {
     const r = await tx.crmLostReason.createMany({
       data: add.map((x, i) => ({ ...scope, key: x.key, label: x.label, sortOrder: maxSort + 1 + i, active: true, isSystem: x.key === "other" })),

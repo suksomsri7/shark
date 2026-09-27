@@ -1,0 +1,6 @@
+# C4.3-fix part 1 (27 Sep 2026 · builder Opus c110 · reviewer Opus MERGEABLE + round 2 N2/N3/N4/N6)
+Fixes: teams.ts requireUserId (no phantom TeamMember/lead "") · lost-reasons create/rename + template install under pg_advisory_xact_lock `crm:lost-reason:<systemId>` + label dedupe (no unique index) · activities-shared stripInvisibleChars() keeps ZWJ only inside emoji sequences, no lookbehind (Safari<16.4) · CRM api/emails/tracking server-action gates return Thai `{ok:false}` instead of throwing (requireTenant still outside try) · composer shows Thai failure reason (failCode/crmEmailFailText) · api settings catch-all logs.
+Evidence: c110 `.qc-shots/c43fix/` (proof 2/21→21/21 · proof-n2 0/5→5/5 · zwj 17/17 + 200k fuzz · forms --inproc 262/262).
+Main gate (controller · QC1 · `.qc-shots/crm/c43fix-main.log`): c1.5 c1.6 c1.7 c1.8 c1.9 c2.3 c2.5 c2.6 c3.8 c1.11 c1.10 c3.4 c2.1 all exit 0 · typecheck 0 · fitness ×2 0.
+Open: N1 lock wait counts toward 5 s tx timeout (P2028 raw on extreme contention) · N5 prod may hold TeamMember userId='' rows → C6.1 read-only count · v1 actions.ts still throw on missing permission (no result shape) · REST send ops return status only.
+Part 2 (strict-b inline errors + focus across forms) follows the C4.3 Phase-2 list.

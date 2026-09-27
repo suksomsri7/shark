@@ -161,7 +161,8 @@ export type SendInput = {
   replyToEmailId?: string | null;
   idempotencyKey?: string | null;
 };
-export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean };
+/** `failCode` (C4.3-fix) = รหัสใน providerError เมื่อ status เป็น FAILED — ให้หน้าจอบอกเหตุจริง (แปลไทยด้วย `crmEmailFailText`) */
+export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean; failCode?: string | null };
 
 export type EmailDomainRecord = { type: "TXT" | "MX" | "CNAME"; name: string; value: string; priority?: number; status?: string };
 export type EmailDomainDto = { id: string; domain: string; status: "PENDING" | "VERIFIED" | "FAILED"; records: EmailDomainRecord[]; verifiedAt: string | null };
@@ -1239,7 +1240,7 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     if (idem && (isUniqueViolation(e) || e instanceof CrmLimitError)) {
       const prior = await prisma.crmEmailMessage.findFirst({ where: { messageId } });
       if (prior) {
-        return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: statusOf(prior.status), reused: true };
+        return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: statusOf(prior.status), reused: true, ...(statusOf(prior.status) === "FAILED" ? { failCode: prior.providerError } : {}) };
       }
       if (e instanceof CrmLimitError) throw e;
       throw fail("CONFLICT", "จดหมายฉบับนี้กำลังถูกส่งอยู่จากอีกหน้าจอ — รอสักครู่แล้วรีเฟรชหน้าเพื่อดูผล");
@@ -1266,6 +1267,11 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     deps,
     now,
   });
+  if (result === "FAILED") {
+    // C4.3-fix: หน้าจอเคยขึ้น "ส่งจดหมายแล้ว" ทั้งที่ส่งไม่สำเร็จ ⇒ คืนรหัสเหตุ (อ่านจากแถวที่ deliver เพิ่งเขียน)
+    const f = await prisma.crmEmailMessage.findUnique({ where: { id: row.id }, select: { providerError: true } });
+    return { emailId: row.id, messageId: row.messageId, threadKey: row.threadKey, status: result, failCode: f?.providerError ?? null };
+  }
   return { emailId: row.id, messageId: row.messageId, threadKey: row.threadKey, status: result };
 }
 
