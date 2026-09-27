@@ -174,6 +174,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -1659,10 +1660,17 @@ try {
     try { rows = JSON.parse(read(INVENTORY) || "{}").rows ?? []; } catch { rows = []; }
     const mine = rows.filter((r) => r?.wo === "C2.6").map((r) => String(r.testid));
     const all = [...TIDS, "crm-web-timeline"];
-    const miss = all.filter((t) => !mine.some((m) => m === t || m.startsWith(t) || (t.endsWith("-") && m.startsWith(t.slice(0, -1)))));
+    // ORACLE-EDIT C2.6-S8.4 (sweep 27 Sep, C4.1 registry policy): a C2.6 row is required for every new testid that sits on an interactive
+    //   element per the F14.1 scanner (prefix ids `x-` judged as `x-*`; absent ⇒ strict); a non-interactive one must still EXIST as a
+    //   data-testid in the UI (asserted here, not only in S8.2) · the row-count floor counts only the ids that need a row
+    const kind = (t: string) => (t.endsWith("-") ? `${t}*` : t);
+    const needRow = all.filter((t) => needsRegistryRow(kind(t), uiAll));
+    const nonControl = all.filter((t) => !needsRegistryRow(kind(t), uiAll));
+    const miss = needRow.filter((t) => !mine.some((m) => m === t || m.startsWith(t) || (t.endsWith("-") && m.startsWith(t.slice(0, -1)))));
+    const gone = nonControl.filter((t) => !uiAll.includes(t));
     const orphan = mine.filter((m) => !uiAll.includes(m.replace(/\*$|\[.*\]$/, "").replace(/-$/, "")));
-    chk("C2.6-S8.4", "scripts/crm-ui-inventory.json has a wo \"C2.6\" row for every new testid, none orphaned", miss.length === 0 && orphan.length === 0 && mine.length >= all.length,
-      "complete", `rows=${mine.length} missing=${miss.join(",") || "-"} orphan=${orphan.join(",") || "-"}`, "MAJOR");
+    chk("C2.6-S8.4", "scripts/crm-ui-inventory.json has a wo \"C2.6\" row for every new testid, none orphaned", miss.length === 0 && gone.length === 0 && orphan.length === 0 && mine.length >= needRow.length,
+      "complete", `rows=${mine.length} needRow=${needRow.length} nonControl=${nonControl.join(",") || "-"} missing=${miss.join(",") || "-"} gone=${gone.join(",") || "-"} orphan=${orphan.join(",") || "-"}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

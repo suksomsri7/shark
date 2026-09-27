@@ -74,6 +74,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 
 const MOD_FILE = "src/lib/modules/crm/ai-bridges.ts";
 const SKILLS_FILE = "src/lib/ai/skills.ts";
@@ -1112,7 +1113,11 @@ try {
   const uiSrc = new Map(uiFiles.map((f) => [f, read(f)]));
   const inv = (() => { try { return (JSON.parse(read(INVENTORY) || "{}").rows ?? []) as Any[]; } catch { return [] as Any[]; } })();
   const hasTid = (t: string) => [...uiSrc.values()].some((s) => s.includes(`"${t}"`) || s.includes(`'${t}'`) || s.includes(`\`${t}`));
-  const inInv = (t: string) => inv.some((r) => r?.testid === t);
+  // ORACLE-EDIT C3.4-S8.1/S8.2/S8.3 (sweep 27 Sep, C4.1 registry policy): the registry holds interactive controls only ⇒ "has a row" is
+  //   demanded for a testid on an interactive element per the F14.1 scanner (absent ⇒ strict); a non-interactive one (the at-risk <table>,
+  //   row removed by C4.1) passes here only because each caller ALSO demands hasTid(t) — it must still exist in the UI source
+  const allUi = [...uiSrc.values()].join("\n");
+  const inInv = (t: string) => !needsRegistryRow(t, allUi) || inv.some((r) => r?.testid === t);
   {
     const BTN = ["crm-ai-deal-summary", "crm-ai-deal-risk", "crm-ai-deal-next-step", "crm-ai-deal-draft-email", "crm-ai-contact-why-hot", "crm-ai-contact-closing", "crm-ai-company-summary", "crm-ai-company-upsell", "crm-ai-home-at-risk"];
     const miss = BTN.filter((t) => !hasTid(t));

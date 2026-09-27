@@ -136,6 +136,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { spawn, type ChildProcess } from "node:child_process";
 
 const SEQ_FILE = "src/lib/modules/crm/sequences.ts";
@@ -1362,10 +1363,14 @@ try {
     let rows: Any[] = [];
     try { rows = (JSON.parse(read(INV_FILE)).rows ?? []) as Any[]; } catch { rows = []; }
     const inv = new Set(rows.filter((r) => r?.wo === "C2.2").map((r) => String(r.testid)));
-    const miss = [...lit].filter((t) => !inv.has(t));
+    // ORACLE-EDIT C2.2-S6.5 (sweep 27 Sep, C4.1 registry policy): only testids on an interactive element (F14.1 scanner) need a C2.2 row;
+    //   the rest were read from these files, so they still exist there (a wrapper/message testid is not a registry row since C4.1)
+    const litSrc = files.map(read).join("\n");
+    const nonControl = [...lit].filter((t) => !needsRegistryRow(t, litSrc));
+    const miss = [...lit].filter((t) => needsRegistryRow(t, litSrc) && !inv.has(t));
     const noTestid = files.filter((f) => /<(button|input|select|textarea)\b/.test(read(f)) && !/data-testid/.test(read(f)));
     chk("C2.2-S6.5", "D8: every interactive element of the C2.2 pages/components carries data-testid and every literal testid has a row with wo \"C2.2\" in scripts/crm-ui-inventory.json [static]",
-      files.length > 0 && lit.size >= 5 && miss.length === 0 && noTestid.length === 0, "all registered", `files=${files.length} testids=${lit.size} missing=${cut(miss.join(","), 120) || "-"} noTestid=${noTestid.join(",") || "-"}`, "MAJOR");
+      files.length > 0 && lit.size >= 5 && miss.length === 0 && noTestid.length === 0, "all registered", `files=${files.length} testids=${lit.size} nonControl=${nonControl.length} missing=${cut(miss.join(","), 120) || "-"} noTestid=${noTestid.join(",") || "-"}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

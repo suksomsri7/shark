@@ -129,6 +129,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { needsRegistryRow, testidKind } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { pathToFileURL } from "node:url";
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -1451,10 +1452,19 @@ try {
     const ghost = rows.filter((r) => { const t = String(r?.testid ?? " "); return !src.includes(t.endsWith("*") ? t.slice(0, -1) : t); }).map((r) => r?.testid);
     const by = (re: RegExp) => rows.filter((r) => re.test(String(r?.page ?? ""))).length;
     const panelRows = rows.filter((r) => /^crm-panel-/.test(String(r?.testid ?? ""))).length;
-    const toggle = rows.some((r) => r?.testid === "crm-uiversion-toggle");
+    // ORACLE-EDIT C1.11-S9.2 (sweep 27 Sep, C4.1 registry policy): the wrapper `crm-uiversion-toggle` needs a C1.11 row only while it is
+    //   interactive per the F14.1 scanner (C4.1 removed its row: a <div>) — else it must still EXIST · and the PRESSABLE control inside it
+    //   (`crm-uiversion-submit`, UiVersionToggle) must be interactive per the scanner AND carry its own C1.11 row
+    const TOGGLE_CTRL = "crm-uiversion-submit";
+    const togSrc = src + read(SETTINGS_PAGE) + read("src/components/crm/settings/UiVersionToggle.tsx");
+    const toggleNeedsRow = needsRegistryRow("crm-uiversion-toggle", togSrc);
+    const wrapOk = toggleNeedsRow ? rows.some((r) => r?.testid === "crm-uiversion-toggle") : /data-testid=["']crm-uiversion-toggle["']/.test(togSrc);
+    const ctrlKind = testidKind(TOGGLE_CTRL, togSrc);
+    const ctrlRow = rows.some((r) => r?.testid === TOGGLE_CTRL);
+    const toggle = wrapOk && ctrlKind === "interactive" && ctrlRow;
     chk("C1.11-S9.2", "D8 inventory: rows (wo C1.11) for /contacts/import (≥ 3) · /contacts/duplicates (≥ 1) · /companies/duplicates (≥ 1) · the 3 chat panel buttons · the switch toggle — every testid present in the sources (no ghost row) [static]",
       by(/\/contacts\/import/) >= 3 && by(/\/contacts\/duplicates/) >= 1 && by(/\/companies\/duplicates/) >= 1 && panelRows >= 3 && toggle && ghost.length === 0,
-      "rows", `import=${by(/\/contacts\/import/)} dupC=${by(/\/contacts\/duplicates/)} dupCo=${by(/\/companies\/duplicates/)} panel=${panelRows} toggle=${toggle} ghost=${ghost.slice(0, 4).join(",") || "-"}`, "MINOR");
+      "rows", `import=${by(/\/contacts\/import/)} dupC=${by(/\/contacts\/duplicates/)} dupCo=${by(/\/companies\/duplicates/)} panel=${panelRows} toggle=${toggle}(wrapper ${toggleNeedsRow ? "control→row" : "non-control→exists"}=${wrapOk} · ${TOGGLE_CTRL} ${ctrlKind} row=${ctrlRow}) ghost=${ghost.slice(0, 4).join(",") || "-"}`, "MINOR");
   }
   {
     const client = [...NEW_FILES, ...(CHAT_PANEL ? [CHAT_PANEL] : [])].filter((f) => f.endsWith(".tsx") && isUseClient(f));

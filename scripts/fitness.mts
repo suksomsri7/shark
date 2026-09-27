@@ -17,6 +17,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
+import { TESTID_RE, ANY_TESTID_RE, normId, globRe, tagAround, isInteractive, lineOf } from "./lib/crm-testid-scan.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 
@@ -1082,47 +1083,8 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
   const CRM_ANCHOR_DIRS = ["src/app/app/sys/[id]/crm", "src/lib/modules/crm"];
   const INVENTORY = "scripts/crm-ui-inventory.json";
 
-  // ── ค่า data-testid ที่ "กดได้/กรอกได้" เท่านั้นที่ต้องลงทะเบียน (กล่องโครง/ป้ายไม่ต้อง) ──
-  const INTERACTIVE_TAGS = new Set(["button", "a", "input", "select", "textarea", "form", "summary", "option", "dialog"]);
-  // ชื่อคอมโพเนนต์ที่ "โดยธรรมชาติแล้วกดได้" — ตรวจทั้งชื่อเต็มและชื่อท้ายจุด (`Dialog.Trigger` → `Trigger`)
-  const INTERACTIVE_COMPONENT = /(Button|Btn|Link|Input|Textarea|Select|Form|Toggle|Switch|Checkbox|Radio|Tab|Tabs|Menu|Dropdown|Upload|Picker|Slider|Search|Combobox|Modal|Sheet|Drawer|Trigger|Item|Option|Action|Close|Cancel|Submit|Save)$/;
-  // prop ที่แปลว่า "มีคนกด/พิมพ์ใส่ได้" — รวมสไตล์ headless UI (onSelect/onValueChange/onOpenChange/onPress)
-  const INTERACTIVE_ATTR = /\bon(Click|Change|Input|Submit|KeyDown|KeyUp|KeyPress|Drag\w*|Drop|Toggle|Select|ValueChange|CheckedChange|OpenChange|Press|PointerDown|MouseDown)\s*=|\bhref\s*=|\baction\s*=|\brole\s*=\s*\{?["']?(button|tab|link|menuitem|switch|checkbox|option)\b|\btabIndex\s*=|\bdraggable\s*=|\bcontentEditable\s*=/;
-  // ค่าที่ "อ่านออก": "…" · '…' · {`…`} · {"…"} · {'…'}
-  const TESTID_RE = /data-testid\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\s*`([^`]*)`\s*\}|\{\s*"([^"]*)"\s*\}|\{\s*'([^']*)'\s*\})/g;
-  // ทุกจุดที่เขียน data-testid (ใช้หาตัวที่ TESTID_RE อ่านไม่ออก เช่น `data-testid={someVar}` — ห้ามเงียบ)
-  const ANY_TESTID_RE = /data-testid\s*=/g;
-
-  /** ชื่อที่สร้างจากตัวแปร (`deal-card-${id}`) → แพตเทิร์น `deal-card-*` (ทะเบียนลงแถวเดียวคลุมทั้งชุดได้) */
-  const normId = (v: string) => v.replace(/\$\{[^}]*\}/g, "*").replace(/\*+/g, "*").trim();
-  const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  /** `foo-*` → /^foo-.*$/ (ใช้จับคู่ "แพตเทิร์น ↔ ชื่อจริง" ทั้งสองทาง) */
-  const globRe = (g: string) => new RegExp("^" + g.split("*").map(escapeRe).join(".*") + "$");
-
-  /** แท็กที่ห่อ data-testid ตัวนี้ + ข้อความ attribute ทั้งก้อน (ข้ามวงเล็บปีกกา/สตริงถูกต้อง) */
-  function tagAround(src: string, at: number): { tag: string; attrs: string } {
-    let open = -1;
-    for (let i = at; i >= 0; i--) if (src[i] === "<" && /[A-Za-z]/.test(src[i + 1] ?? "")) { open = i; break; }
-    if (open < 0) return { tag: "", attrs: "" };
-    const tag = (/^<([A-Za-z][\w.]*)/.exec(src.slice(open, open + 80)) ?? [, ""])[1] as string;
-    let depth = 0, quote = "", end = src.length;
-    for (let i = open; i < src.length; i++) {
-      const c = src[i]!;
-      if (quote) { if (c === quote && src[i - 1] !== "\\") quote = ""; continue; }
-      if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
-      else if (c === ">" && depth <= 0) { end = i; break; }
-    }
-    return { tag, attrs: src.slice(open, end) };
-  }
-  const isInteractive = (tag: string, attrs: string) =>
-    INTERACTIVE_TAGS.has(tag) ||
-    INTERACTIVE_TAGS.has(tag.split(".").pop() ?? "") ||          // `Dialog.Trigger` → ดูชื่อท้ายจุดด้วย
-    INTERACTIVE_COMPONENT.test(tag) ||
-    INTERACTIVE_COMPONENT.test(tag.split(".").pop() ?? "") ||
-    INTERACTIVE_ATTR.test(attrs);
-  const lineOf = (src: string, at: number) => src.slice(0, at).split("\n").length;
+  // ── ตัวสแกน testid (INTERACTIVE_TAGS/COMPONENT/ATTR · TESTID_RE · ANY_TESTID_RE · normId · globRe · tagAround · isInteractive · lineOf)
+  //    ย้ายไป scripts/lib/crm-testid-scan.mts (sweep 27 ก.ย. หลัง C4.1) — นิยามเดียวที่ oracle ของใบงานใช้ร่วมกับ F14 · พฤติกรรมเดิมทุกไบต์
 
   type Found = { id: string; file: string; interactive: boolean };
   const found: Found[] = [];

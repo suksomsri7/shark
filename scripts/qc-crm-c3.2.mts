@@ -916,7 +916,9 @@ try {
       "crm-home-leaderboard", "crm-home-leaderboard-row-", "crm-home-sources", "crm-home-source-row-", "crm-home-filter-pipeline", "crm-home-filter-owner",
       "crm-home-filter-range", "crm-home-saved-view", "crm-home-ai-risk", "crm-home-ai-draft", "crm-home-ai-summary", "crm-home-unowned", "crm-home-stale-list"];
     const miss = need.filter((t) => !src.includes(t));
-    const rows = inv.filter((r) => r?.wo === "C3.2" && String(r?.page ?? "") === "/");
+    // ORACLE-EDIT C3.2-S5.1 (sweep 27 Sep, C4.1 registry policy · controller ruling): C4.1 moved the home rows' registry page from "/" to
+    //   the canonical "/app/sys/[id]" ⇒ accept either value · threshold ≥ 12 and wo C3.2 unchanged
+    const rows = inv.filter((r) => r?.wo === "C3.2" && ["/", "/app/sys/[id]"].includes(String(r?.page ?? "")));
     chk("C3.2-S5.1", "mockup 01: the home page (crm/home.tsx + components/crm/home/**) renders the 6 KPI tiles, the leaderboard, lead sources, pipeline/owner/range filters + saved-view picker, the 3 AI buttons (wired in C3.4), the MANAGER \"no owner\" block, and keeps C2.10's \"ดีลที่ต้องดู\" — every testid present + ≥ 12 inventory rows (page \"/\", wo C3.2) [static]",
       miss.length === 0 && rows.length >= 12, "19 testids · ≥ 12 rows", `missing=${miss.join(",") || "-"} rows=${rows.length}${ABSENT}`, "MAJOR");
   }

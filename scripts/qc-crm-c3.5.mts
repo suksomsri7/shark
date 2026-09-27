@@ -53,6 +53,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -1481,7 +1482,9 @@ try {
     try { inv = JSON.parse(read(INVENTORY) || "{}"); } catch { inv = {}; }
     const rows: Any[] = Array.isArray(inv?.rows) ? inv.rows : [];
     const invIds = new Set(rows.map((r) => String(r?.testid ?? "").replace(/\*$/, "")));
-    const inInv = ids.filter((t) => [...invIds].some((x) => x === t || t.startsWith(x) || x.startsWith(t)));
+    // ORACLE-EDIT C3.5-S7.5 (sweep 27 Sep, C4.1 registry policy): a row is demanded for each id on an interactive element per the F14.1
+    //   scanner (absent ⇒ strict); a non-interactive one counts as covered only because inCode (above) still demands it in the code
+    const inInv = ids.filter((t) => !needsRegistryRow(t, src) || [...invIds].some((x) => x === t || t.startsWith(x) || x.startsWith(t)));
     const portalRows = rows.filter((r) => String(r?.page ?? "").startsWith("/b/[slug]")).length;
     chk("C3.5-S7.5", `D8: the ${ids.length} portal/staff testids exist in the code (login · OTP · LINE · switcher · accept/reject+reason · PromptPay · slip · request · invite · revoke) and each has a row in scripts/crm-ui-inventory.json (≥ 1 row with page "/b/[slug]…")`,
       inCode.length === ids.length && inInv.length === ids.length && portalRows >= 1, `${ids.length}/${ids.length}`, `code=${inCode.length}/${ids.length} inventory=${inInv.length}/${ids.length} portalRows=${portalRows} missingCode=${ids.filter((t) => !inCode.includes(t)).join(",") || "-"}${ABSENT}`, "MINOR");

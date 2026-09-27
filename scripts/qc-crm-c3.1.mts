@@ -84,6 +84,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 
 const REPORTS_FILE = "src/lib/modules/crm/reports.ts";
 const SHARED_FILE = "src/lib/modules/crm/reports-shared.ts";
@@ -1492,9 +1493,12 @@ try {
     const tabsOk = tabIds.every((k) => src.includes(`crm-report-tab-${k}`)) || (/crm-report-tab-\$\{/.test(src) && /REPORT_TABS/.test(src));
     const need = ["crm-report-filter-period", "crm-report-filter-team", "crm-report-filter-pipeline", "crm-report-export", "crm-report-schedule"].filter((t) => !src.includes(t));
     const invIds = new Set(rows.map((r) => String(r?.testid ?? "")));
+    // ORACLE-EDIT C3.1-S5.1 (sweep 27 Sep, C4.1 registry policy): the crm-report-export row is required while it is an interactive element
+    //   per the F14.1 scanner (absent ⇒ strict); if it ever becomes non-interactive it must still EXIST (the `need` list above checks that)
+    const exportRowOk = !needsRegistryRow("crm-report-export", src) || invIds.has("crm-report-export");
     chk("C3.1-S5.1", `mockup 09: ${PAGE} + ${TAB_PAGE} with the 8 tabs (testids crm-report-tab-<key>), the filters period · team · pipeline, "ส่งออก CSV" and "ตั้งเวลาส่งอีเมล" (crm-report-filter-* · crm-report-export · crm-report-schedule) · nav entry { path "/crm/reports", status "ready", wo "C3.1" } · ≥ 13 inventory rows of wo C3.1 [static]`,
-      read(PAGE).length > 0 && read(TAB_PAGE).length > 0 && tabsOk && need.length === 0 && /path:\s*"\/crm\/reports"[^}]*status:\s*"ready"[^}]*wo:\s*"C3\.1"/.test(nav) && rows.length >= 13 && invIds.has("crm-report-export"),
-      "pages · tabs · filters · nav · ≥ 13 rows", `pages=${read(PAGE).length > 0}/${read(TAB_PAGE).length > 0} tabs=${tabsOk} missing=${need.join(",") || "-"} nav=${/\/crm\/reports/.test(nav)} rows=${rows.length}`, "MAJOR");
+      read(PAGE).length > 0 && read(TAB_PAGE).length > 0 && tabsOk && need.length === 0 && /path:\s*"\/crm\/reports"[^}]*status:\s*"ready"[^}]*wo:\s*"C3\.1"/.test(nav) && rows.length >= 13 && exportRowOk,
+      "pages · tabs · filters · nav · ≥ 13 rows", `pages=${read(PAGE).length > 0}/${read(TAB_PAGE).length > 0} tabs=${tabsOk} missing=${need.join(",") || "-"} nav=${/\/crm\/reports/.test(nav)} rows=${rows.length} exportRow=${exportRowOk}`, "MAJOR");
   }
   {
     const files = [...walk(PAGE_DIR), ...walk(COMP_DIR)];

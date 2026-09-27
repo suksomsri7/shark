@@ -240,3 +240,11 @@
 | การ์ดที่ถูกแก้หัวก่อนการลบ: ประวัติ CARD_CREATED เก็บหัวเดิม ⇒ ถูกปิดคำระบุตัว ไม่ถูกแทนด้วยป้าย | ยอมรับ (มติ) — ข้อความที่ระบุตัวถูกปิดแล้ว | — |
 
 ผลรันรอบ 4 (หลัง PAUSE/RESUME ของผู้คุมงาน · QC1 · `progress.log`): `qc-crm-c3.9` **48/48 ×2** (`c39-r6.log` · `c39-r7.log`) · c2.5 105/105 (`c2.5-r4.log`) · probe-shopaddr บนโค้ดรอบ 4 = **SAFE** (`probe-shopaddr-r4.log`) · typecheck สะอาด (`typecheck-2.log`) · fitness 33/33 ×2 (รอบก่อน = `*-round3.log`) · `scripts/*-expected.json` ไม่เปลี่ยน (git สะอาด) · ไม่ได้ commit
+
+## § C3.9-fix — ACCEPTANCE GATE ✅ (controller · 27 Sep 2026 17:45 UTC)
+- Main tree `0053f261` (+ oracle sweep for the C4.1 registry policy — `ledger/wo-notes/crm-oracle-sweep-C41.md`) · QC1 fresh reseed 14:13 UTC.
+- Unit `crm-c39fix-main` (`.qc-shots/crm/c39fix-main.log`): **qc-crm-c3.9 48/48 ×2** · regression 34 suites green except (a) registry-policy class c2.5/c2.4/c2.2/c3.4/c1.11 (stale oracles after C4.1, not C3.9-fix) (b) k2.3 S3.2/S3.6 known (member dnd-kit · shots) (c) m1.4 S6.3 stuck=1 → re-run alone 37/37 ×2 (`m14-alone-v2.log`: 1-min outbox lease held by an in-flight drain = timing) · typecheck 0 · fitness ×2 · m1.9 green.
+- Unit `crm-sweep-verify` after merging the sweep (`.qc-shots/crm/sweep-verify.log`): c2.5 · c2.4 · c2.2 · c3.4 · c1.11 · c3.2 · c2.6 · c2.7 · c3.1 · c3.5 **all exit 0** · typecheck 0 · fitness · fitness-noenv 0.
+- Security reviewer: 3 rounds → MERGEABLE (CRM-RUN 12:57). Hunter findings H1–H12 closed by oracle.
+- Debts carried: `CrmContact.previousNames` migration · retention batches > 500 need a chunked job (C6.1 candidates).
+⇒ **C3.9-fix ACCEPTED** · prod push unblocked (owner decides).

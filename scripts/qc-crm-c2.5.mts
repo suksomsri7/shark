@@ -251,6 +251,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { createHash, createHmac, randomBytes } from "node:crypto";
 
 const EMAILS = "src/lib/modules/crm/emails.ts";
@@ -1215,11 +1216,16 @@ try {
     let inv: Any[] = [];
     try { const raw = JSON.parse(read(INVENTORY) || "[]"); inv = Array.isArray(raw?.rows) ? raw.rows : []; } catch { inv = []; }
     const lits = [...new Set([...uiAll.matchAll(/data-testid=["']([a-z0-9-]+)["']/g), ...withComps(P_INBOX).matchAll(/data-testid=["']([a-z0-9-]+)["']/g), ...withComps(P_SET).matchAll(/data-testid=["']([a-z0-9-]+)["']/g), ...read(ROUTES.unsubPage).matchAll(/data-testid=["']([a-z0-9-]+)["']/g)].map((m) => m[1]))];
-    const noRow = lits.filter((t) => !inv.some((r: Any) => (r?.testid ?? r?.testId ?? r?.id) === t && String(r?.wo ?? "") === "C2.5"));
+    // ORACLE-EDIT C2.5-S8.5 (sweep 27 Sep, C4.1 registry policy): the registry holds interactive controls only (C4.1 removed 94
+    //   wrapper/message rows) ⇒ a testid on an interactive element per the F14.1 scanner (shared helper — replaces the controller's
+    //   ad-hoc regex) needs a C2.5 row; a non-interactive one was read from these sources, so it still exists there.
+    const srcAll = [uiAll, withComps(P_INBOX), withComps(P_SET), read(ROUTES.unsubPage)].join("\n");
+    const nonControl = lits.filter((t) => !needsRegistryRow(t, srcAll));
+    const noRow = lits.filter((t) => needsRegistryRow(t, srcAll) && !inv.some((r: Any) => (r?.testid ?? r?.testId ?? r?.id) === t && String(r?.wo ?? "") === "C2.5"));
     const unsub = read(ROUTES.unsubPage);
     chk("C2.5-S8.5", "nav: /crm/emails in CRM_NAV (ready, C2.5) + /crm/settings/email in CRM_DEEP_NAV · every literal testid has an inventory row (wo C2.5) · /u/[token] page shows a confirm button (crm-unsub-confirm) through a form/server action — GET never unsubscribes",
       /path:\s*["']\/crm\/emails["']/.test(nav) && /path:\s*["']\/crm\/settings\/email["']/.test(nav) && lits.length > 0 && noRow.length === 0 && /crm-unsub-confirm/.test(unsub) && /<form|action=|"use server"/.test(unsub + read(EMAILS_ACT)),
-      "nav + inventory", `nav=${/\/crm\/emails["']/.test(nav)}/${/\/crm\/settings\/email["']/.test(nav)} testids=${lits.length} noRow=${cut(noRow.join(","), 120) || "-"} unsub=${/crm-unsub-confirm/.test(unsub)}`, "MAJOR");
+      "nav + inventory", `nav=${/\/crm\/emails["']/.test(nav)}/${/\/crm\/settings\/email["']/.test(nav)} testids=${lits.length} nonControl=${nonControl.length} noRow=${cut(noRow.join(","), 120) || "-"} unsub=${/crm-unsub-confirm/.test(unsub)}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

@@ -197,6 +197,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { randomBytes } from "node:crypto";
 
 const CALLS = "src/lib/modules/crm/calls.ts";
@@ -1059,10 +1060,14 @@ try {
     const uiSrc = [callUi, ...walk(CRM_PAGES).map(read), ...walk("src/components/crm").map(read)].join("\n");
     const orphan = rows.filter((r) => !uiSrc.includes(String(r.testid ?? "")));
     const need = [...MODAL_TIDS, "crm-call-tel", "crm-call-recording-player", "crm-calendar-appointment", "crm-card-scan", "crm-book-via-booking"];
-    const noRow = need.filter((t) => !rows.some((r) => r.testid === t));
+    // ORACLE-EDIT C2.4-S7.6 (sweep 27 Sep, C4.1 registry policy): the registry holds interactive controls only (F14.1 scanner, shared
+    //   helper — replaces the controller's hand-listed NON_CONTROL set) ⇒ an interactive (or unreadable/absent ⇒ strict) testid needs a
+    //   C2.4 row; a non-interactive one (modal container · native <audio>) must still EXIST as a data-testid in the UI source.
+    const nonControl = need.filter((t) => !needsRegistryRow(t, uiSrc));
+    const noRow = need.filter((t) => needsRegistryRow(t, uiSrc) && !rows.some((r) => r.testid === t));
     chk("C2.4-S7.6", "recording player is an <audio> fed by the DTO url (crm-call-recording-player) · inventory rows (wo C2.4) for every new testid incl. crm-card-scan and crm-book-via-booking, none orphaned",
       /<audio\b/.test(callUi) && /crm-call-recording-player/.test(callUi) && noRow.length === 0 && orphan.length === 0, "rows + player",
-      `audio=${/<audio\b/.test(callUi)} rows=${rows.length} noRow=${noRow.join(",") || "-"} orphan=${orphan.map((r) => r.testid).join(",") || "-"}`, "MAJOR");
+      `audio=${/<audio\b/.test(callUi)} rows=${rows.length} nonControl=${nonControl.join(",") || "-"} noRow=${noRow.join(",") || "-"} orphan=${orphan.map((r) => r.testid).join(",") || "-"}`, "MAJOR");
   }
 
   // ═════════════════════════════════════════════════════════════════════════════

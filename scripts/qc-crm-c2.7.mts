@@ -148,6 +148,7 @@
 type Any = any;
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { needsRegistryRow } from "./lib/crm-testid-scan.mjs"; // ORACLE-EDIT (sweep 27 Sep, C4.1 registry policy)
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 
@@ -1181,11 +1182,16 @@ try {
     //   wo "C2.7" — the sell screen's deal control (`pos-deal-select` · `pos-deal-hint`) as well as the document link,
     //   otherwise the visual/parity runner never opens the new POS control at all.
     const NEED_TESTIDS = ["acc-doc-crm-deal", "pos-deal-select", "pos-deal-hint"];
-    const invMissing = NEED_TESTIDS.filter((t) => !invRows.some((r: Any) => r?.wo === "C2.7" && String(r?.testid).includes(t)));
+    // ORACLE-EDIT C2.7-S8.3 (sweep 27 Sep, C4.1 registry policy): a wo C2.7 row is required for each of these that sits on an interactive
+    //   element per the F14.1 scanner (absent ⇒ strict); a non-interactive one (the `pos-deal-hint` <span>, row removed by C4.1) must
+    //   still EXIST as a data-testid in the account document page / the POS sell screen
+    const tidSrc = [...pageFiles.map(read), read(POS_UI)].join("\n");
+    const invMissing = NEED_TESTIDS.filter((t) => needsRegistryRow(t, tidSrc) && !invRows.some((r: Any) => r?.wo === "C2.7" && String(r?.testid).includes(t)));
+    const nonControl = NEED_TESTIDS.filter((t) => !needsRegistryRow(t, tidSrc));
     const invHas = invMissing.length === 0;
     chk("C2.7-S8.3", "dealForDoc(tenantId, docId, actor): the deal of the invoice for the owner · null for another tenant, for an unknown document and for an actor who cannot see the deal · the account document page renders the \"ดีล\" link · crm-ui-inventory.json carries a wo C2.7 row for EVERY new testid (acc-doc-crm-deal · pos-deal-select · pos-deal-hint)",
       dfd.ok && dfd.v?.dealId === dQuote && dfdForeign.v === null && dfdNone.v === null && dfdBlind.v === null && pageFiles.length > 0 && invHas,
-      "deal · 3× null · page + inventory (3 testids)", `own=${dfd.ok ? dfd.v?.dealId === dQuote : dfd.err} foreign=${j(dfdForeign.v)} unknown=${j(dfdNone.v)} blind=${j(dfdBlind.v)} page=${pageFiles.join(",") || "-"} inventoryMissing=${invMissing.join(",") || "-"}`);
+      "deal · 3× null · page + inventory (3 testids)", `own=${dfd.ok ? dfd.v?.dealId === dQuote : dfd.err} foreign=${j(dfdForeign.v)} unknown=${j(dfdNone.v)} blind=${j(dfdBlind.v)} page=${pageFiles.join(",") || "-"} inventoryMissing=${invMissing.join(",") || "-"} nonControl=${nonControl.join(",") || "-"}`);
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
