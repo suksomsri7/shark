@@ -252,3 +252,88 @@ qc-crm-c1.5 103/103 · qc-crm-c0.2 27/27 · fitness 32/32 ×2 · typecheck ส�
 | D12 | ⏳ | รอ push (เจ้าของกด) — commit `ff2cb5fb` |
 เดินสาย hook ตอนรวม (ผู้คุมงานทำมือ): payments.ts = ฐาน c20 + C3.2 + `afterPaymentsReversed` (reverseStraySettles · reconcileDocSettle · reverseRow · flagDocumentVoided) · `afterPaymentCounted` (reconcileDocSettle · recordDocPayment · countPosSale · linkSaleToDeal) ถอนก่อนใส่/ปลุกเสมอ · deals.ts#moveCore → afterDealMoved
 หนี้: Q9/Q10 เจ้าของ (CRM-OWNER-QUESTIONS) · sweeper ตรวจ "เงินนับแล้วไม่มีแถว" = runPayrollSync q1a cursor (มีแล้ว) · นักล่า §9
+
+## §10 C3.3-fix (money hunt · 27 ก.ย. · builder Opus 5.5 · worktree c12a @ 7c7eea86 · QC1)
+สัญญา = ORACLE-EDIT C3.3-H (`scripts/qc-crm-c3.3.mts` H1–H6 · ไม่แก้) · หลักฐานแดงก่อนแก้ `/root/projects/shark-crm/.qc-shots/hunt33/oracle-h-red.log` (84/90) · หลังแก้ `.qc-shots/c33fix/`
+
+| H | ต้นเหตุ | แก้ (ไฟล์:บรรทัด) | แดง → เขียว |
+|---|---|---|---|
+| H1 | `frozenTotal` แช่ T ที่ `basisSatang` ของแถวแรกเสมอเมื่อดีลมีมูลค่า — แต่แถวแรกที่เกิดตอนมูลค่า 0 พก T = "เงินที่นับได้ตอนนั้น" (มัดจำ 10,000) ⇒ กรอกมูลค่า 50,000 ทีหลัง งวดถัดไปได้ 0 + ธง nomatch | `commissions.ts:131-134` ธง `crm.commission.basis.float` (AuditLog ของร้าน · targetId = id แถว · เขียนใน tx เดียวกับแถว เมื่อดีลมูลค่า 0 **และ** ไม่มีรายการสินค้า — `:508`) · `frozenTotal` `:301-322` คืน `{T, settled}`: แถวแรกมีธง ⇒ T = max(T สูงสุดที่เคยใช้, มูลค่าปัจจุบัน) และฐาน "ไม่นิ่ง" (ไม่ติดธง nomatch) · ไม่มีธง ⇒ แช่แถวแรกเหมือนเดิม | แดง `first=100000 Σ=100000 flags=1` → ✅ Σ 500,000 flags 0 (`c33-run1.log`) |
+| H2 | ถอนงวด A แล้ว revisit เรียก onPaid เฉพาะงวดที่ "ไม่มีแถว" — งวด B ที่ได้ส่วนแบ่งถูกตัด (40,000) มีแถวแล้ว จึงไม่มีใครคืน 20,000 | `restoreClipped` `commissions.ts:1082-1158` (เรียกท้าย `revisitCounted`): ใต้ล็อกดีล + กฎ FOR SHARE ต่อกฎ PAID ที่ตรง — เป้า F_T(Σ ก่อน VAT ของงวด COUNTED ที่มีแถวหลักของร่างปัจจุบัน) − เครดิต (แถวหลัก+แถวเติม ไม่ถูกถอน ทุกสถานะ) · บวก ⇒ แถวใหม่ `refId = <กุญแจร่างของงวดล่าสุด>#t<n>` (PENDING → advance ทางปกติ · audit `crm.commission.topup`) · ไม่แก้แถวเดิม · helper `isOfIncarnation`/`ofCurrentSql` `:122-130` ⇒ แถวเติมนับเป็น "ของร่างนั้น" ใน credited ของ onPaid, `reverseRows` (ไม่ถอนขณะงวดยังนับ `:704`), คิว stale ของ `afterPaymentsReversed` + งานรายนาที (2) · `incMsOf` รับ `#c<ms>#t<n>` · ถอนงวดนั้น = prefix `<payId>#` ถอนแถวเติมด้วย | แดง `after=40000 topUps=0` → ✅ after 60,000 (top-up 20,000 แถวเดียว · replay + minute job ไม่เพิ่ม) · end 0 |
+| H3 | `commissionDocRatios` หารด้วย `grandTotal` ที่ **หักมัดจำแล้ว** ⇒ net/grand บวม (100,000/74,900) จ่ายเกิน 43 % | `account/service.ts:3932-3935` grand = `grandTotal + depositDeducted` (ตรงกับ computeTotals: grandTotal = grandBeforeDeposit − deposit) | แดง 500,000 → ✅ 350,000 |
+| H4 | `payrollEmployeeOfUser` ดูแค่ active ⇒ ยื่นรายการให้พนักงานไม่มีโปรไฟล์ · `createPayrollRun` ผูก runId ให้ทุกรายการ APPROVED ของงวดแม้ไม่มีแถวเงินเดือน · `onPayrollPaid` เชื่อ runId ⇒ PAID ทั้งที่ไม่มีใครได้เงิน แล้วยกเลิก = DEDUCTION | `hr/payroll.ts:575-598` ต้องมี `HrSalaryProfile` · `activeLinkedUserIds` `:703-718` เหมือนกัน (คิว syncPayroll) · `createPayrollRun` `:365-374` ผูก runId เฉพาะรายการของพนักงานที่มีแถว (มีโปรไฟล์) · `adjustmentsOfRun` `:643-660` คืนเฉพาะรายการที่พนักงานมี `HrPayrollItem` ในรอบ · DTO = `WAITING_EMPLOYEE` ตามเดิม (ไม่มี adj) | แดง `adj=1 dto=REQUESTED afterRun=PAID plain=bound deductions=1` → ✅ |
+| H5 | HR สร้างรอบของงวดก่อนแล้วค่อยอนุมัติ ⇒ รายการ APPROVED ค้างในงวดที่มีรอบ (ตัวกวาดแตะเฉพาะ PENDING) · ถอนคืน = DEDUCTION ของเงินที่ไม่เคยจ่าย | `hr/payroll.ts:170-201` `decideAdjustment`: รายการที่ผูก `crmCommissionId` + งวดมีรอบแล้ว ⇒ อนุมัติ **และ** ย้ายไปงวดถัดไปที่ไม่มีรอบใน updateMany เดียว (guard PENDING · `runId IS NULL` · งวดเดิม) · ตัวกวาด `strandedCommissionAdjustments` `:733` + `moveCommissionAdjustmentPeriod` `:686` รับ PENDING+APPROVED (guard runId null) · CRM `rehomeStranded` `commissions.ts:1026` · `handoffReversal` `:984-990` รายการที่ไม่เคยเข้ารอบ (PENDING **หรือ APPROVED**) ⇒ ถอน (`withdrawCommissionAdjustment` statuses ทั้งสอง) แทน DEDUCTION | แดง `adjAfterSync=2026-09/APPROVED deductions=2026-10:100000 origAdj=1` → ✅ unstranded · 0 DEDUCTION · withdrawn · Σ 0 |
+| H6 | `syncPayroll` เริ่ม cursor "" ทุกครั้ง ⇒ แถวเกินงบ 20×200 ไม่มีวันถึง | `commissions.ts:108-112` `PAYROLL_CURSOR_PREFIX = "crm.commission.payroll.cursor:"` (key `…:<systemId>` ⇒ CLEAN เดิม `crm.commission.%cursor:%` part 2 กวาดได้ — ไม่ต้อง ORACLE-EDIT) · `syncPayroll` `:765-819` เดินตาม (createdAt, id) · อ่าน cursor ตอนเริ่ม · บันทึกทุกหน้า · สุดทาง ⇒ ลบแล้ววนต้นคิวจนถึงจุดเริ่ม (ครั้งเดียว) · ปุ่มของคนเดียว (userId) ไม่แตะ cursor | แดง `consts=- resetsEveryCall=true` → ✅ |
+
+### ⚠️ ข้อสอบเดิม 2 ข้อที่มติ H2/H5 ทำให้แดง (ไม่เปลี่ยนแนวทาง — ขัดกับมติโดยตรง · ต้อง ORACLE-EDIT โดยผู้คุมงาน)
+- **C3.3-M7** (`c33-run1.log`): ยอดสุทธิถูก (1,000,000) แต่ข้อสอบตรึง "ส่วนที่ถูกตัดไปคืนที่งวดถัดไป p3 = 600,000" — มติ H2 คืนทันทีตอนถอน p1 เป็นแถวเติม 200,000 บน p2 ⇒ p3 = 400,000 (act `…:000#t1:200000 · p3 400000 · net 1000000`) · เข้ากันไม่ได้ทั้งสองแบบ (ห้ามแก้ยอดแถวเดิม)
+- **C3.3-X3.3**: ข้อสอบให้ HR อนุมัติรายการต้นทางใน tenant X ที่ **ไม่มีรอบจ่าย** แล้วคาด DEDUCTION 1 รายการ — มติ H5 ("ไม่เคยเข้ารอบ ⇒ ถอน ไม่หัก") ให้ 0 DEDUCTION (act `1rev/0ded ×3`)
+- ORACLE-EDIT ที่เสนอ (ทดสอบแล้วบนสำเนา `scripts/qc-crm-c3.3-prop.mts` ⇒ **90/90** `c33-prop-run1.log` — สำเนาลบแล้ว):
+  - M7 (แทน 2 บรรทัด `const e3 = …` / `const expNet = …`):
+    `const eTop = F(full7, T7, b(6_000_000)) - e2; // ORACLE-EDIT C3.3-H2 (27 ก.ย.): p1 voided ⇒ p2's clipped share is restored at once (ONE top-up row on p2)`
+    `const e3 = F(full7, T7, b(6_000_000) + b(4_000_000)) - e2 - eTop;`
+    `const expNet = e1 + e2 - e1 + eTop + e3;`
+    · `orig` เพิ่ม `&& !/#t\d+$/.test(String(r.refId))` · เพิ่ม `const top2 = rows.filter((r) => payOf(r.refId) === q2.rowId && /#c\d+#t\d+$/.test(String(r.refId)) && !r.reversedOfId);` · เงื่อนไข chk เพิ่ม `&& top2.length === 1 && b(top2[0].amountSatang) === eTop`
+  - X3.3 (หลังลูป `for (const c of xc) {…}` ที่อนุมัติ+ยกเลิกเงิน — คงการพิสูจน์ "12 ทางพร้อมกัน ⇒ DEDUCTION เดียว" โดยให้รายการต้นทาง **เข้ารอบ** ก่อน):
+    ```
+    // ORACLE-EDIT C3.3-H5 (27 ก.ย.) — ruling H5: an HR-APPROVED adjustment never in a run is withdrawn ⇒ bind the originals' adjustments to a run first
+    { const xcPeriods = new Set<string>();
+      for (const c of xc) for (const a of await adjOf(c.orig)) xcPeriods.add(String(a.periodKey));
+      for (const pk of xcPeriods) await PAY.createPayrollRun({ tenantId: tidX, systemId: hrX }, { periodKey: pk, payDate: T("2026-09-30T03:00:00Z") }); }
+    ```
+    (ทางเลือกที่ง่ายกว่าแต่เสียความครอบคลุม: คาด `ded.length === 0 && (await adjOf(c.orig)).length === 0`)
+- ความหมายที่เปลี่ยนของ S4.7 (ยังเขียว): ข้อความข้อสอบว่า "ตัวกวาดไม่แตะ APPROVED" — ตอนนี้ decide ย้ายรายการนั้นไปงวดว่างตั้งแต่ตอนอนุมัติ จึงไม่ค้างให้ตัวกวาดแตะ · ตัวกวาดย้าย APPROVED ที่ค้างได้แล้วตามมติ H5
+
+### ข้อยอมรับ / หนี้ใหม่
+- ถอนรายการ APPROVED ที่ไม่มี runId มีช่องแคบเดิมของ HR: `createPayrollRun` ไม่อยู่ใน tx เดียว (อ่าน APPROVED → สร้างรอบ → ผูก runId) ⇒ ถ้าถอนตรงช่วงนั้น รอบคิดยอดรวมรายการไปแล้วแต่รายการหาย (จ่ายเกินหนึ่งครั้ง) — หนี้ "HR createPayrollRun ไม่อยู่ในธุรกรรมเดียว" (§8) ครอบอยู่ ควรปิดพร้อมกัน
+- H1 ใช้ max(T สูงสุดที่เคยใช้, มูลค่าปัจจุบัน) (โตได้อย่างเดียว เหมือนดีลไม่มีมูลค่า) — ตรงกับมติ "max(frozen, value)" ในทุกกรณีที่มูลค่าไม่ลด · มูลค่าลดลงภายหลังไม่ดึง T ลง (หนี้ Q12 เดิม)
+- แถวเติม H2 เครดิตเจ้าของดีล ณ เวลาคืน (N7 เดิม) · งวดของแถวเติม = เดือนไทยของเวลาคืน (+ payoutDelayDays)
+- ธง basis.float อยู่ใน AuditLog ของร้าน (ลบตามร้าน) · cursor H6 อยู่ใน OpsAlertState (หนี้ §8 รอบ 6 เรื่องตารางธงของตัวเอง)
+
+### ผล (log `.qc-shots/c33fix/`)
+- `qc-crm-c3.3` (ข้อสอบจริง ไม่แก้): **88/90 ×2** (`c33-run1.log` · `c33-run2.log`) — H1–H6 ✅ ทั้งหมด · แดงเฉพาะ M7 + X3.3 (ขัดมติ ดูข้างบน) · สำเนาที่ใส่ ORACLE-EDIT ที่เสนอ **90/90 ×2** (`c33-prop-run1.log` · `c33-prop-run2.log` · diff `proposed-oracle-edit.diff`)
+- ถอยหลัง: qc-crm-c2.7 79/79 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-hr 9/9 · qc-approval 16/16 · qc-crm-c1.5 103/103 · qc-crm-c3.2 47/47
+- typecheck: รอบแรกแดง (TS7022 การอนุมานชนิดวนใน syncPayroll · ชนิดล้วน) → ใส่ชนิด `SyncRow`/`Prisma.Sql` → สะอาด (`typecheck2.log`) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL`
+- ตัวรัน `scripts/pending/run-c33fix.sh` (QC1 host guard แบบเดียวกับ run-hunt33.sh)
+
+### §10.1 ผู้คุมงานรับ ORACLE-EDIT M7 + X3.3 (diff ที่เสนอ ไม่แก้) → ผลบนข้อสอบจริง
+- `qc-crm-c3.3` **90/90 ×2** (`final-1.log` · `final-2.log`) บนโค้ด C3.3-fix ก่อนปิด race ข้างล่าง · รอบที่ 3 หลังปิด race: `final-3.log` (ดูบรรทัดท้ายหัวข้อนี้)
+
+### §10.2 ปิด race "ถอนรายการ APPROVED ที่ runId null" ↔ `createPayrollRun` (ข้อยอมรับใน §10 เดิม)
+- **ต้นเหตุ**: `createPayrollRun` อ่านรายการ APPROVED → สร้างรอบ (ยอดรวมรายการแล้ว) → ผูก runId เป็น 3 คำสั่งแยกกัน ไม่มีธุรกรรม · การถอนของ CRM (`handoffReversal` → `withdrawCommissionAdjustment`) ที่ลงตรงกลาง ⇒ แถวในรอบจ่ายนับยอดไปแล้ว แต่รายการถูกลบ และไม่มี DEDUCTION = **จ่ายเกิน**
+- **ทำซ้ำได้ก่อนแก้** (positive control): probe `scripts/pending/probe-c33fix-race.mts` · trigger `BEFORE INSERT ON "HrPayrollRun"` ที่ `pg_sleep(2.5)` เฉพาะ tenant ของ probe (ขยายช่องระหว่างอ่านกับผูก · DROP ใน finally · นับ pg_trigger เหลือ 0) · 8 รอบ ยิง 12 ทางพร้อมกัน (createPayrollRun 6 + afterPaymentsReversed 6) ⇒ `probe-race-before-slow.log`: **4/8 รอบจ่ายเกิน 100,000** (`item.add=100000 · adj=withdrawn · DEDUCTION=0 · net to rep=100000`) · ไม่มี trigger (`probe-race-before.log`) ฝั่ง HR ชนะทุกรอบ จึงไม่เคยเจอช่อง = ผลลบที่ไม่มี positive control
+- **แก้** `hr/payroll.ts`:
+  - `createPayrollRun` `:280-391` ทั้งฟังก์ชันอยู่ใน `tenantDb().$transaction` (maxWait 20 s · timeout 60 s) · advisory lock ต่อ (ระบบ HR, งวด) แล้วตรวจงวดซ้ำใต้ล็อก ⇒ ได้ข้อความไทยแทน error unique ของฐาน · อ่านรายการด้วย `SELECT … WHERE status = APPROVED AND runId IS NULL … FOR UPDATE` · ผูกด้วย updateMany เดียวที่มี guard `runId: null, status: APPROVED` · ผูกได้ไม่ครบทุกแถวที่ล็อก = โยน (ย้อนทั้งรอบ) · กติกา H4 เดิมคงอยู่ (ผูกเฉพาะคนที่มีโปรไฟล์)
+  - `withdrawCommissionAdjustment` `:679-705` อ่านแถวใหม่ใต้ `FOR UPDATE` (ล็อกเดียวกัน) แล้วลบด้วย guard เดิม (runId null + สถานะ) · ไม่มี tx จากผู้เรียก = เปิด tx เอง
+  - ผลลัพธ์: ใคร commit ก่อนชนะ — รอบมาก่อน ⇒ การถอนรอล็อกแล้วเห็น runId ⇒ คืน false ⇒ `handoffReversal` อ่านใหม่แล้วออก DEDUCTION · ถอนมาก่อน ⇒ `FOR UPDATE` ของรอบข้ามแถวที่ถูกลบ ⇒ ไม่นับเข้ายอด · `moveCommissionAdjustmentPeriod`/`decideAdjustment` เป็นคำสั่งเดียวที่มี guard `runId IS NULL` อยู่แล้ว ⇒ รอล็อกเดียวกันแล้วประเมินเงื่อนไขใหม่ (ไม่ย้าย/ไม่อนุมัติแถวที่เข้ารอบไปแล้ว)
+  - ลำดับล็อกไม่มีวงจร: CRM ถือแถวคอมมิชชันแล้วค่อยแตะรายการ HR · createPayrollRun ไม่แตะแถวคอมมิชชัน
+- **หลังแก้**: `probe-race-after.log` (trigger เดิม · 8 รอบ × 12 ทาง): **PASS 8/8** · ได้ครบทั้งสองผล (BOUND→DEDUCTION 4 · WITHDRAWN 4) · รอบจ่ายของงวดมีรอบเดียวทุกครั้ง (อีก 5 ครั้งได้ข้อความไทย "มีรอบจ่ายงวด … อยู่แล้ว") · สุทธิถึงพนักงาน = 0 ทุกรอบ · แถวถอนคืน 1 · ล้าง: rows 0 · trigger 0 · marker 0
+- ถอยหลัง: qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 (`race-*.log`) · typecheck สะอาด (`typecheck3.log`) · fitness ทั้งสองโหมด (`race-fitness-*.log`)
+- หนี้ HR "createPayrollRun ไม่อยู่ในธุรกรรมเดียว" (§8) **ปิดแล้ว**
+- **รอบที่ 3 หลังปิด race: `qc-crm-c3.3` 90/90** (`final-3.log`) · fitness 33/33 ทั้งสองโหมด (`race-fitness-env.log` · `race-fitness-noenv.log`)
+
+### §10.3 รีวิวเงิน C3.3-fix: MERGEABLE AFTER SHOULD-FIX (4 ข้อ + 2 note + note c) — ทำครบ
+หลักฐานก่อน/หลัง: probe `scripts/pending/probe-c33fix-review.mts` · ก่อนแก้ `probe-review-before.log` (ย้อนเฉพาะความหมาย S1–S4 ในสำเนาชั่วคราว แล้วคืนไฟล์ที่แก้แล้วแบบไบต์ตรง `cmp`) = **S1–S4 BUG ทั้ง 4** · หลังแก้ `probe-review-after.log` = **S1–S4 FIXED** · ล้าง rows 0 · marker 0
+
+| ข้อ | แก้ (ไฟล์:บรรทัด) | ก่อน → หลัง |
+|---|---|---|
+| S1 | `commissions.ts:510` `floating = live.valueSatang <= 0` (รายการสินค้าไม่เกี่ยว — บรรทัดราคา 0/ลด 100 % ไม่ทำให้ฐานแถวแรกเป็นมูลค่าดีล) | ดีลมูลค่า 0 มีบรรทัดราคา 0: Σ 100,000 → **500,000** |
+| S2 | `restoreClipped` `:1151-1157` แถว REJECTED ของกฎนี้บนงวดใดก็ได้ในเป้า ⇒ แถวเติมพก `COMMISSION_WAS_REJECTED_NOTE` (advance ไม่อนุมัติเอง → แจ้งเจ้าของร้าน · approvalRequired เปิด ⇒ เข้าสาย) | B ถูกคนปฏิเสธ แล้วร้านปิด approvalRequired · ถอน A: แถวเติม 20,000 APPROVED → **PENDING + ป้าย** |
+| S3 | `restoreClipped` `:1092` บรรทัดแรก `if (!(await bridgeSystem(ctx))) return;` (ประตูเดียวกับ onPaid · การถอนยังทำงานเสมอ) | ร้าน v1 ถอน A: แถวเติม 1 + event created 1 → **0 / 0** (แถวถอนคืน −60,000 ยังเกิด) |
+| S4 | `retireWonRows` `:1234-1237` รายการ HR ที่ไม่เคยเข้ารอบ (PENDING **หรือ APPROVED** · runId null) ⇒ ถอน (statuses ทั้งสอง · อ่าน runId ใต้ FOR UPDATE) แล้วลบแถว · เฉพาะที่เข้ารอบแล้วไปทางถอนคืน + DEDUCTION · DTO `rewon` `:2009` เฉพาะแถว PAID หรือ APPROVED ที่ยังผูกรายการ HR (รายการที่ถูกถอน ลิงก์ถูกล้าง ⇒ ไม่มีป้าย "เคยจ่ายแล้ว") | ชนะ → HR อนุมัติ (ไม่มีรอบ) → เปิดใหม่ → ชนะอีก: คงเหลือ 0 (แถวเดิม + ถอนคืน · ชนะอีกไม่สร้างใหม่) → **100,000** (แถวเดิม + รายการถูกถอนตอนเปิดใหม่ · ชนะอีกได้แถวใหม่ + รายการ HR ใหม่) |
+| note a | `restoreClipped` `:1103-1106` หลังล็อกดีล ล็อกแถวรับเงิน COUNTED ของดีล `FOR SHARE` (กติกา S8 ของ onPaid · ลำดับ ดีล → แถวรับเงิน) ⇒ แถวเติมไม่ผูกกับงวดที่ถูกถอนพร้อมกัน | โค้ด (race probe เดิมยังผ่าน — ดูผลรวม) |
+| note b | `restoreClipped` `:1116-1137` เวลานับครั้งแรกต่องวด = min(ร่าง · ธง `first:` · ms ในกุญแจของแถวเดิมทุกกฎ · createdAt ของ DOC_SETTLE) — นิยามเดียวกับ onPaid · งวดที่นับก่อน `rule.createdAt` ไม่อยู่ทั้งเป้าและเครดิต (กฎที่เปิดกลับไม่คืนส่วนที่ถูกตัดของงวดก่อนเปิด) | โค้ด |
+| note c | `hr/payroll.ts:162,186-187` `decideAdjustment` คืน `movedFrom/movedTo` · `hr/payroll-actions.ts:213` audit `hr.payadjust.approve` มี before `{periodKey: เดิม}` / after `{periodKey: ใหม่, reason}` เมื่อย้ายงวด | โค้ด |
+
+ผลรวม (log `rv-*.log` · สรุป `rv-summary.log`): ดูบรรทัดถัดไป
+- **qc-crm-c3.3 90/90 ×2** (`rv-c33-1.log` · `rv-c33-2.log`) · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-crm-c2.7 79/79 · qc-crm-c3.2 47/47 · typecheck สะอาด (`rv-typecheck.log`) · fitness 33/33 ทั้งสองโหมด (`rv-fitness-*.log`) · ตัวรัน `scripts/pending/run-c33fix-review-verify.sh`
+
+### §10.4 รีวิวเงินรอบ 2: NOT MERGEABLE (1 BLOCKER จาก note b ของ §10.3 + F1) — แก้แล้ว
+| ข้อ | ต้นเหตุ | แก้ (`commissions.ts` · `restoreClipped`) | ก่อน → หลัง |
+|---|---|---|---|
+| B1 (`:1153-1157`) | note (b) ตัดงวดที่นับก่อน `rule.createdAt` ออกจากทั้งเป้าและเครดิต แต่ `onPaid` ยังนับงวดเหล่านั้นในยอดสะสม ⇒ เพดานรวมหาย | `delta = min(F_T(ทุกงวดที่มีแถว) − เครดิตทุกงวด, F_T(งวดที่มีสิทธิ์) − เครดิตงวดที่มีสิทธิ์)` ⇒ ยังไม่มีเครดิตย้อนหลัง และผลรวมไม่เกินคอมมิชชันเต็ม · `wasRejected` ใช้ชุด eligible เดียวกัน | probe B1 (มูลค่า 100,000 · 10 % · P1 80,000 ⇒ 8,000 · เปิดกฎกลับ · P2 50,000 ⇒ 2,000 · P3 5,000 (ส่วนแบ่ง 0) ถูกถอน): `probe-review2-before.log` Σ **13,000** (แถวเติม 3,000) → `probe-review2-after.log` Σ **10,000** ไม่มีแถวเติม |
+| F1 (`:1137-1142`) | note (a) ล็อก `FOR SHARE` ทุกแถวรับเงิน COUNTED ของดีล (เรียงตาม id) — ชนกับ `flagDocumentVoided` (payments.ts:858-869 อัปเดตหลายแถวในธุรกรรมเดียวตาม findMany ที่ไม่เรียง) ⇒ deadlock ได้ | ล็อก **เฉพาะ** `pays[0]` (งวดที่แถวเติมจะผูก) `FOR SHARE` แบบเดียวกับ onPaid แล้วอ่านซ้ำใต้ล็อก: ไม่ COUNTED หรือกุญแจร่างเปลี่ยน ⇒ ข้ามกฎนี้ (ตัวต่อของการถอน/ปลุกเรียกซ้ำเอง) · ไม่แตะ payments.ts | โค้ด |
+
+- S1–S4 ยังผ่านบน probe เดียวกัน (`probe-review2-after.log`: S1–S4 + B1 FIXED ครบ · ล้าง rows 0 · marker 0)
+- **หนี้ (บันทึก · ไม่มีโค้ด):** แถวฐาน WON ที่รายการ HR ถูก **HR ไม่อนุมัติ** (REJECTED) — เปิดดีลใหม่แล้วแถวถูกถอนคืนตามเดิม (ไม่ใช่ถอนรายการ) ⇒ ยังขึ้นป้าย "เคยจ่ายแล้ว" และชนะอีกครั้งไม่สร้างแถวใหม่ · เป็นการตัดสินของ HR (ไม่ใช่เงินหาย) แต่ถ้อยคำป้ายไม่ตรง ("เคยจ่ายแล้ว" ทั้งที่ HR ปฏิเสธ) — หนี้ถ้อยคำป้าย/สถานะ (ผู้คุมงานจัดใบ)
+- ผลรวม (`rv2-summary.log` · log `rv2-*.log` · ตัวรัน `scripts/pending/run-c33fix-review2-verify.sh`): **qc-crm-c3.3 90/90 ×2** · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-crm-c2.7 79/79 · race probe PASS 8/8 (BOUND→DEDUCTION 4 · WITHDRAWN 4 · trigger เหลือ 0) · typecheck สะอาด · fitness 33/33 ทั้งสองโหมด

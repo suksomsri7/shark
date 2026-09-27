@@ -32,7 +32,8 @@ import { resolveProvider, type AiProvider } from "@/lib/ai/provider";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { assertCrmV2 } from "./ui-version";
-import { activityWhere, companyWhere, contactWhere } from "./where";
+import { activityWhere, contactWhere } from "./where";
+import * as companiesSvc from "./companies"; // CRM C3.4 ▸ จับคู่ชื่อบริษัทบนนามบัตรผ่านบริการบริษัท (C1.3-S0.3) ◂
 import { crmAiSettingsOf, crmRecordingDaysOf, parseCrmSettings } from "./settings";
 import * as activities from "./activities";
 import { sanitizeFileName } from "./files";
@@ -643,13 +644,7 @@ export async function scanBusinessCard(
   //   AUDIT-CLASS X1/X2: ค้นใต้ `companyWhere` ของคนสแกน ⇒ บริษัทของทีมอื่นที่เขามองไม่เห็นไม่มีวันถูกจับคู่ (และ id ไม่หลุดเข้า payload)
   //   ไม่พบ/ชื่อว่าง = ไม่มี companyId (ผู้ติดต่อใหม่ไม่ผูกบริษัท) ◂
   const cardCompany = draft.company.replace(/\s+/g, " ").trim();
-  const matched = cardCompany
-    ? await prisma.crmCompany.findFirst({
-        where: { AND: [await companyWhere(ctx, a), { name: { equals: cardCompany, mode: "insensitive" }, archivedAt: null, mergedIntoId: null }] },
-        select: { id: true },
-        orderBy: { createdAt: "asc" },
-      })
-    : null;
+  const matched = cardCompany ? await companiesSvc.matchByExactName(ctx, a, cardCompany) : null;
   const created = await prisma.aiProposal.create({
     data: {
       tenantId: ctx.tenantId,

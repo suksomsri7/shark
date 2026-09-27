@@ -28,10 +28,12 @@ export {
 
 // CRM C3.3 ▸ คอมมิชชัน CRM → เงินเดือน (re-export ล้วน — ตรรกะอยู่ที่ `payroll.ts` บล็อก C3.3)
 //   requestAdjustment รับ `crmCommissionId` (+ `tx` ของผู้เรียก) และปฏิเสธรายการที่สองของคอมมิชชันเดียวกัน (partial unique) ·
-//   payrollEmployeeOfUser = พนักงาน **active** ที่ผูกกับผู้ใช้ (จ่ายเฉพาะคนที่ยังทำงาน) · payrollRunPeriods / adjustmentOfCommission /
-//   adjustmentsOfRun = ตัวอ่านของงวด · ลิงก์สองทาง · รอบที่จ่ายแล้ว (ผู้บริโภค `hr.payroll.paid`)
+//   payrollEmployeeOfUser = พนักงาน **active ที่มีโปรไฟล์เงินเดือน** ที่ผูกกับผู้ใช้ (จ่ายเฉพาะคนที่ยังทำงานและมีแถวในรอบจ่าย — C3.3-fix H4) ·
+//   payrollRunPeriods / adjustmentOfCommission / adjustmentsOfRun = ตัวอ่านของงวด · ลิงก์สองทาง · รอบที่จ่ายแล้ว (ผู้บริโภค `hr.payroll.paid` ·
+//   เฉพาะรายการของพนักงานที่มีแถวในรอบ — H4)
 export type { CommissionAdjustmentRef } from "./payroll";
 export { payrollEmployeeOfUser, payrollRunPeriods, adjustmentOfCommission, adjustmentsOfRun } from "./payroll";
-//   มติผู้คุมงาน (รีวิวเงิน B3 · S3 · S4): ถอนรายการที่ยังไม่จ่าย (guard) · ผู้ใช้ที่มีพนักงาน active · รายการค้างในงวดที่ปิดแล้ว
+//   มติผู้คุมงาน (รีวิวเงิน B3 · S3 · S4 · C3.3-fix H5): ถอนรายการที่ยังไม่จ่าย (guard · PENDING/APPROVED ที่ไม่เคยเข้ารอบ) · ผู้ใช้ที่มีพนักงาน active + โปรไฟล์ ·
+//   รายการค้าง (PENDING/APPROVED) ในงวดที่มีรอบแล้ว
 export { withdrawCommissionAdjustment, activeLinkedUserIds, strandedCommissionAdjustments, moveCommissionAdjustmentPeriod } from "./payroll";
 // ◂ CRM C3.3

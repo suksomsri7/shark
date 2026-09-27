@@ -2293,3 +2293,38 @@ export async function listForExport(ctx: CompaniesCtx, actor: MemberActor, take:
   });
 }
 // ◂ CRM C3.9
+
+// CRM C3.4 ▸ ทางอ่าน CrmCompany ของผู้ช่วย AI (ai-bridges.ts) + การจับคู่ชื่อบริษัทบนนามบัตร (calls.ts)
+//   (C1.3-S0.3 — อ่านบริษัทได้เฉพาะในไฟล์นี้ · where.ts) · ทุกตัวกรองด้วย `companyWhere` ของ "คนที่ถาม/คนสแกน" — การมองเห็นเท่าเดิม
+//   `namesByIds`        = ชื่อบริษัทของชุด id ที่คนถามมองเห็น (ตารางดีลเสี่ยง — มองไม่เห็น = ไม่อยู่ในผล)
+//   `briefForAssist`    = ชื่อ + อุตสาหกรรม ของบริษัทหนึ่งแห่ง (ข้อเท็จจริงของดีล/ผู้ติดต่อ · การ์ดลิงก์ดีล) — มองไม่เห็น = null
+//   `factsForAssist`    = ช่องที่ผู้ช่วยสรุปบริษัทใช้ (🔴 ไม่อ่าน taxId/phone/email/website) — มองไม่เห็น = null
+//   `countVisibleByIds` = จำนวนบริษัทในชุด id ที่คนกดมองเห็น (ประตูข้อเสนอ: ต้องเท่าจำนวน id)
+//   `matchByExactName`  = บริษัทแรก (สร้างก่อน) ที่ชื่อตรงกันแบบไม่สนตัวพิมพ์ · ยังใช้งาน · ไม่ถูกรวม ◂
+export async function namesByIds(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly string[]): Promise<{ id: string; name: string }[]> {
+  return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: [...ids] } }] }, select: { id: true, name: true } });
+}
+
+export async function briefForAssist(ctx: CrmScopeCtx, actor: MemberActor, id: string) {
+  return prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, actor), { id }] }, select: { name: true, industry: true } });
+}
+
+export async function factsForAssist(ctx: CrmScopeCtx, actor: MemberActor, id: string) {
+  return prisma.crmCompany.findFirst({
+    where: { AND: [await companyWhere(ctx, actor), { id }] },
+    select: { id: true, name: true, industry: true, size: true, lifecycleStage: true, employeeCount: true, openDealCount: true, wonValueSatang: true, outstandingSatang: true, lastActivityAt: true, tags: true },
+  });
+}
+
+export async function countVisibleByIds(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly string[]): Promise<number> {
+  return prisma.crmCompany.count({ where: { AND: [await companyWhere(ctx, actor), { id: { in: [...ids] } }] } });
+}
+
+export async function matchByExactName(ctx: CrmScopeCtx, actor: MemberActor, name: string): Promise<{ id: string } | null> {
+  return prisma.crmCompany.findFirst({
+    where: { AND: [await companyWhere(ctx, actor), { name: { equals: name, mode: "insensitive" }, archivedAt: null, mergedIntoId: null }] },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+// ◂ CRM C3.4

@@ -209,6 +209,8 @@ export async function decideAdjustmentAction(formData: FormData) {
       action: status === "APPROVED" ? "hr.payadjust.approve" : "hr.payadjust.reject",
       targetType: "HrPayAdjustment",
       targetId: id,
+      // CRM C3.3-fix (รีวิวเงิน note c): รายการคอมมิชชันที่งวดเดิมมีรอบจ่ายแล้วถูกย้ายงวดพร้อมการอนุมัติ ⇒ บันทึก from → to
+      ...(res.movedTo ? { before: { periodKey: res.movedFrom }, after: { periodKey: res.movedTo, reason: res.reason } } : {}),
     });
   }
   revalidatePath(`/app/sys/${systemId}/hr/payroll`);

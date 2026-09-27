@@ -105,14 +105,33 @@ async function rememberFirstCounted(paymentId: string, at: Date): Promise<void> 
 }
 /** รีวิวรอบ 6 ข้อ 3: cursor ของคิว (1ก) ต่อระบบ (countedAt ของแถวสุดท้ายที่เดินถึง · ใหม่ → เก่า) */
 const Q1A_CURSOR_PREFIX = "crm.commission.q1a.cursor:";
+/**
+ * C3.3-fix H6: cursor ของ syncPayroll ต่อระบบ (`OpsAlertState` `crm.commission.payroll.cursor:<systemId>` = createdAt ของแถวสุดท้ายที่เดินถึง ·
+ * เก่า → ใหม่) — รอบถัดไปเดินต่อจากจุดนั้น (เดิมเริ่ม "" ทุกครั้ง ⇒ แถวเกินงบ 20×200 หน้าไม่มีวันถึง) · สุดทาง = ลบ cursor แล้ววนจากต้นคิว
+ */
+const PAYROLL_CURSOR_PREFIX = "crm.commission.payroll.cursor:";
 /** SQL: กุญแจร่างปัจจุบันของแถวรับเงิน `alias` (ตรงกับ `incKey`) */
 const keySql = (alias: string) =>
   Prisma.sql`(${Prisma.raw(`${alias}."id"`)} || '#c' || (ROUND(EXTRACT(EPOCH FROM COALESCE(${Prisma.raw(`${alias}."countedAt"`)}, ${Prisma.raw(`${alias}."createdAt"`)})) * 1000))::bigint::text)`;
-/** ms ของร่างจากกุญแจ (`#c<ms>`) — ไม่ใช่รูปแบบนี้ = null */
+/** ms ของร่างจากกุญแจ (`#c<ms>` หรือแถวเติม `#c<ms>#t<n>`) — ไม่ใช่รูปแบบนี้ = null */
 const incMsOf = (refId: string): number | null => {
-  const m = /#c(\d+)$/.exec(refId);
+  const m = /#c(\d+)(?:#t\d+)?$/.exec(refId);
   return m ? Number(m[1]) : null;
 };
+/**
+ * C3.3-fix H2: แถวเติม (top-up) ของส่วนแบ่งที่เคยถูกตัด — `refId = <กุญแจร่าง>#t<n>` ผูกกับร่างปัจจุบันของงวดที่ยังนับอยู่ล่าสุด
+ * ⇒ เป็น "ของร่างนั้น" ทุกทาง: เครดิตแล้ว/ยอดสะสมนับรวม · ถอนงวดนั้น (prefix `<payId>#`) ถอนแถวเติมไปด้วย · ไม่ใช่แถว "ค้าง" ขณะร่างยังนับอยู่
+ */
+const TOPUP_MARK = "#t";
+const isOfIncarnation = (refId: string, key: string) => refId === key || refId.startsWith(`${key}${TOPUP_MARK}`);
+/** SQL: แถว `c` เป็นของร่างปัจจุบันของแถวรับเงิน `p` (แถวหลัก หรือแถวเติมของร่างนั้น) */
+const ofCurrentSql = (c: string, p: string) =>
+  Prisma.sql`(${Prisma.raw(`${c}."refId"`)} = ${keySql(p)} OR ${Prisma.raw(`${c}."refId"`)} LIKE (${keySql(p)} || '#t%'))`;
+/**
+ * C3.3-fix H1 (+ รีวิวเงิน S1): ธง "แถวนี้เกิดตอนดีลยังไม่มีมูลค่า" (AuditLog ของร้าน · targetId = id แถว · เขียนใน tx เดียวกับแถว)
+ * ⇒ T ของ (ดีล, กฎ) ที่แถวแรกมีธงนี้ **ไม่แช่** — ใช้ max(T สูงสุดที่เคยใช้, มูลค่าปัจจุบัน) แม้เจ้าของจะกรอกมูลค่าทีหลัง
+ */
+const FLOAT_BASIS_ACTION = "crm.commission.basis.float";
 const payIdSql = (alias: string) => Prisma.sql`split_part(${Prisma.raw(`${alias}."refId"`)}, '#', 1)`;
 const APPROVAL_ENTITY = "crm.commission";
 const INT_MAX = 2_147_483_647;
@@ -279,18 +298,25 @@ async function baseTotalOf(ctx: Scope, deal: DealForCommission): Promise<bigint>
  *   • ดีลที่ไม่มีมูลค่า — T = max(T ที่เคยใช้สูงสุด, ยอดก่อน VAT ปัจจุบัน) **โตขึ้นได้อย่างเดียว** และแถวใหม่พก T นั้นไป
  *     ⇒ บิลที่ตามมาทีหลังได้ส่วนของตัวเอง (ไม่ใช่ 0) · ผลรวมสะสมยังพับเข้าหากันเพราะส่วนแบ่งคิดจาก F_T − ยอดที่เครดิตแล้ว
  */
-async function frozenTotal(tx: Tx, ctx: Scope, dealId: string, ruleId: string, now: bigint, valueBased: boolean): Promise<bigint> {
+async function frozenTotal(tx: Tx, ctx: Scope, dealId: string, ruleId: string, now: bigint, valueBased: boolean): Promise<{ T: bigint; settled: boolean }> {
+  const grow = async () => {
+    const agg = await tx.crmCommission.aggregate({ where: { ...ctx, dealId, ruleId, reversedOfId: null }, _max: { basisSatang: true } });
+    const max = agg._max.basisSatang ?? ZERO;
+    return max > now ? max : now;
+  };
   if (valueBased) {
     const first = await tx.crmCommission.findFirst({
       where: { ...ctx, dealId, ruleId, reversedOfId: null, basisSatang: { gt: ZERO } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { basisSatang: true },
+      select: { id: true, basisSatang: true },
     });
-    return first ? first.basisSatang : now;
+    if (!first) return { T: now, settled: false };
+    // C3.3-fix H1: แถวแรกเกิดตอนดีลมูลค่า 0 ⇒ ฐานของแถวแรกคือ "เงินที่นับได้ตอนนั้น" ไม่ใช่มูลค่าดีล ⇒ ไม่แช่ ·
+    //   T = max(T สูงสุดที่เคยใช้, มูลค่าปัจจุบัน) (โตได้อย่างเดียว — กติกาเดียวกับดีลไม่มีมูลค่า) · ฐานยังไม่นิ่ง ⇒ ไม่ติดธง nomatch
+    if (await tx.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: FLOAT_BASIS_ACTION, targetId: first.id }, select: { id: true } })) return { T: await grow(), settled: false };
+    return { T: first.basisSatang, settled: true };
   }
-  const agg = await tx.crmCommission.aggregate({ where: { ...ctx, dealId, ruleId, reversedOfId: null }, _max: { basisSatang: true } });
-  const max = agg._max.basisSatang ?? ZERO;
-  return max > now ? max : now;
+  return { T: await grow(), settled: false };
 }
 
 type PayRow = { id: string; refType: string; refId: string; satang: bigint };
@@ -475,10 +501,13 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
     );
     // รอบ 6: ร่างเก่าของงวดนี้เคยถูก "คน" ไม่อนุมัติ ⇒ ร่างใหม่เกิดเป็น PENDING พร้อมป้าย และไม่มีวันอนุมัติเอง (เคารพการตัดสินของคน)
     const wasRejected = !!(await tx.crmCommission.findFirst({
-      where: { ...s, dealId, refType: REF_PAYMENT, reversedOfId: null, status: "REJECTED", NOT: { refId: key }, OR: [{ refId: cur.id }, { refId: { startsWith: `${cur.id}#` } }] },
+      where: { ...s, dealId, refType: REF_PAYMENT, reversedOfId: null, status: "REJECTED", NOT: [{ refId: key }, { refId: { startsWith: `${key}${TOPUP_MARK}` } }], OR: [{ refId: cur.id }, { refId: { startsWith: `${cur.id}#` } }] },
       select: { id: true },
     }));
     const out: CrmCommission[] = [];
+    // C3.3-fix H1 + รีวิวเงิน S1: แถวที่เกิดตอนดีลมูลค่า 0 = ฐานลอย (ธง FLOAT_BASIS_ACTION ใน tx เดียวกับแถว) — รายการสินค้าไม่เกี่ยว
+    //   (บรรทัดราคา 0 / ลด 100 % ไม่ได้ทำให้ฐานของแถวแรกเป็นมูลค่าดีล ⇒ เดิมแช่ T ที่ยอดมัดจำแบบ H1 ได้อีก)
+    const floating = live.valueSatang <= 0;
     const steady = await lockRules(tx, s, matched);
     for (const rule of matched) {
       if (!steady.has(rule.id)) continue; // กฎถูกแก้/ปิดระหว่างนั้น ⇒ รอบถัดไปคิดด้วยค่าชุดใหม่
@@ -491,10 +520,9 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
       // รอบ 6 B-1: "นับแล้ว" ต่อ **กฎ** = มีแถวกุญแจร่างนี้ของกฎนี้ (ผู้ใช้ใดก็ได้ · รวมแถวที่ถูกถอนแล้ว) ⇒ ข้าม
       //   (เปลี่ยนเจ้าของ/ผู้ร่วมหลังเครดิต แล้วคิวหยิบซ้ำ ต้องไม่จ่ายงวดเดิมให้คนใหม่อีกรอบ — รอบ 5 N7 ถอนออกแล้ว)
       if (await tx.crmCommission.findFirst({ where: { ...s, dealId, ruleId: rule.id, refType: REF_PAYMENT, refId: key }, select: { id: true } })) continue;
-      const T = await frozenTotal(tx, s, dealId, rule.id, tNow, live.valueSatang > 0);
       // ฐานนิ่งแล้ว (ดีลมีมูลค่า + กฎนี้มีแถวบนดีลนี้ ⇒ T แช่ที่แถวแรก) เท่านั้นที่ "ไม่มีแถว" เป็นคำตอบถาวร ⇒ ติดธงได้
-      //   ฐานยังไม่นิ่ง (ไม่มีมูลค่า/ยังไม่มีแถว) = มูลค่าหรือเอกสารที่ตั้งทีหลังเปลี่ยนคำตอบได้ ⇒ ไม่ติดธง (มติ S-e: คิวยังหยิบให้)
-      const settledBase = live.valueSatang > 0 && !!(await tx.crmCommission.findFirst({ where: { ...s, dealId, ruleId: rule.id, reversedOfId: null, basisSatang: { gt: ZERO } }, select: { id: true } }));
+      //   ฐานยังไม่นิ่ง (ไม่มีมูลค่า/ยังไม่มีแถว/แถวแรกเกิดตอนมูลค่า 0 — H1) = มูลค่าหรือเอกสารที่ตั้งทีหลังเปลี่ยนคำตอบได้ ⇒ ไม่ติดธง (มติ S-e)
+      const { T, settled: settledBase } = await frozenTotal(tx, s, dealId, rule.id, tNow, live.valueSatang > 0);
       // minDealSatang รวมค่าเท่ากับ: T < min ⇒ ไม่มีแถว
       if (T <= ZERO || (rule.minDealSatang !== null && T < rule.minDealSatang)) {
         if (settledBase) zeroShare.push(rule.id);
@@ -510,7 +538,7 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
       const credited = await tx.$queryRaw<{ s: string }[]>`
         SELECT COALESCE(SUM(c."amountSatang"), 0)::text AS s FROM "CrmCommission" c JOIN "CrmDealPayment" p ON p."id" = ${payIdSql("c")}
         WHERE c."dealId" = ${dealId} AND c."ruleId" = ${rule.id} AND c."refType" = ${REF_PAYMENT} AND c."reversedOfId" IS NULL
-          AND p."status" = 'COUNTED' AND p."id" <> ${cur.id} AND c."refId" = ${keySql("p")}
+          AND p."status" = 'COUNTED' AND p."id" <> ${cur.id} AND ${ofCurrentSql("c", "p")}
           AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id")`;
       const paid = await netOfPayments(tx, s, [...creditedPays, { id: cur.id, refType: cur.refType, refId: cur.refId, satang: cur.satang }], ratios);
       const full = commissionOf(rule.kind, configOf(rule), T);
@@ -539,6 +567,9 @@ export async function onPaid(ctx: CommissionsCtx, input: { dealId: string; refTy
         })),
         skipDuplicates: true,
       });
+      if (floating && rows.length) {
+        await tx.auditLog.createMany({ data: rows.map((r) => ({ tenantId: ctx.tenantId, actorType: "SYSTEM" as const, action: FLOAT_BASIS_ACTION, targetType: "CrmCommission", targetId: r.id, after: { dealId, ruleId: rule.id, basisSatang: Number(T) } })) });
+      }
       for (const r of rows) {
         await emitCommission(tx, r, "created");
         out.push(r);
@@ -633,8 +664,8 @@ export async function onWon(ctx: CommissionsCtx, input: { dealId: string }): Pro
 /**
  * ถอนคืนคอมมิชชันของ "แถวรับเงิน" หนึ่งแถว (refId = CrmDealPayment.id) — addendum ข้อ 9 + มติผู้คุมงาน B3
  *   PENDING → REJECTED (ไม่มีแถวติดลบ ไม่มีรายการ HR · ยกเลิกคำขออนุมัติที่ค้าง) · APPROVED/PAID → แถว REVERSED ติดลบ 1 แถว
- *   แล้วฝั่งเงินเดือน (handoff): ต้นทาง HR ยังไม่อนุมัติและยังไม่เข้ารอบ ⇒ **ถอนรายการเดิม** (ไม่หัก) · HR ไม่อนุมัติ ⇒ ไม่หัก ·
- *   อนุมัติแล้ว/เข้ารอบแล้ว ⇒ DEDUCTION ในงวดถัดไปที่ยังไม่มีรอบจ่าย · ต้นทางคงสถานะเดิม · ไม่แตะรอบจ่ายเงินเดือนใด ๆ
+ *   แล้วฝั่งเงินเดือน (handoff): รายการต้นทาง **ไม่เคยเข้ารอบจ่าย** (PENDING หรือ APPROVED · C3.3-fix H5) ⇒ **ถอนรายการเดิม** (ไม่หัก) ·
+ *   HR ไม่อนุมัติ ⇒ ไม่หัก · เข้ารอบแล้ว ⇒ DEDUCTION ในงวดถัดไปที่ยังไม่มีรอบจ่าย · ต้นทางคงสถานะเดิม · ไม่แตะรอบจ่ายเงินเดือนใด ๆ
  * 🔴 ไม่มีประตู uiVersion (การถอนคืนต้องทำได้เสมอ — กติกาเดียวกับทางเดินเงิน มติ B2 ของ C2.7)
  */
 export async function reverse(ctx: CommissionsCtx, input: { refId: string; reason?: string | null; keepKey?: string | null }): Promise<{ reversed: number; rejected: number }> {
@@ -671,7 +702,7 @@ async function reverseRows(ctx: Scope, rows: CrmCommission[], reason: string, ac
         const payId = row.refId.split("#")[0]!;
         await tx.$queryRaw`SELECT "id" FROM "CrmDealPayment" WHERE "id" = ${payId} AND "tenantId" = ${ctx.tenantId} FOR SHARE`;
         const p = await tx.crmDealPayment.findFirst({ where: { id: payId, tenantId: ctx.tenantId }, select: { status: true, countedAt: true, createdAt: true } });
-        if (p?.status === "COUNTED" && row.refId === incKey(payId, p.countedAt ?? p.createdAt)) return null;
+        if (p?.status === "COUNTED" && isOfIncarnation(row.refId, incKey(payId, p.countedAt ?? p.createdAt))) return null; // H2: + แถวเติมของร่างนี้
       }
       const cur = await lockRow(tx, ctx, row.id);
       if (!cur) return null;
@@ -732,6 +763,7 @@ async function reverseRows(ctx: Scope, rows: CrmCommission[], reason: string, ac
  * ยอด ≤ เพดาน HR · ต้นทางต้องมีพนักงาน active (ตัวอ่านของ HR) · เดินด้วย cursor (ไม่วนแถวที่ส่งไม่ได้ซ้ำไปมา)
  * N6: แถวถอนคืนไม่ขึ้นกับสวิตช์ payrollLink (ต้นทางเคยถูกส่งตอนสวิตช์เปิดอยู่ ต้องหักคืนเสมอ)
  */
+type SyncRow = { id: string; userId: string; reversedOfId: string | null; createdAt: Date };
 export async function syncPayroll(ctx: CommissionsCtx, input: { userId?: string | null } = {}, opts: { deadline?: number } = {}): Promise<{ requested: number }> {
   const sys = await bridgeSystem(ctx);
   if (!sys) return { requested: 0 };
@@ -741,27 +773,49 @@ export async function syncPayroll(ctx: CommissionsCtx, input: { userId?: string 
   const hr = await hrFacade();
   const userFilter = userId ? Prisma.sql`AND c."userId" = ${userId}` : Prisma.empty;
   const originals = link ? Prisma.sql`(c."reversedOfId" IS NULL AND c."status"::text IN ('APPROVED','PAID') AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id"))` : Prisma.sql`FALSE`;
-  let cursor = "";
+  // C3.3-fix H6: เดินคิวทั้งระบบต่อจาก cursor ที่จำไว้ (`PAYROLL_CURSOR_PREFIX`) · ปุ่ม "ส่ง payroll" ของคนเดียว (userId) เริ่มต้นคิวเสมอและไม่แตะ cursor
+  //   ผ่านแรก: createdAt ≥ cursor (ms เดียวกันหยิบซ้ำได้ — handoff idempotent) · สุดทาง ⇒ ลบ cursor แล้วผ่านที่สอง: ต้นคิว → ก่อน cursor
+  //   ภายในการเรียกเดียวเดินด้วย (createdAt, id) แบบเข้ม ⇒ ไม่วนแถวเดิม · งบหน้า/เวลาหมด ⇒ cursor = createdAt ของแถวสุดท้าย
+  const cursorKey = `${PAYROLL_CURSOR_PREFIX}${s.systemId}`;
+  const saved = userId ? null : ((await prisma.opsAlertState.findUnique({ where: { source: cursorKey }, select: { lastAlertAt: true } }))?.lastAlertAt ?? null);
+  let from: Date | null = saved;
+  let until: Date | null = null;
+  let after: { at: Date; id: string } | null = null;
+  let wrapped = saved === null;
   let requested = 0;
   for (let page = 0; page < 20; page += 1) {
     if (opts.deadline !== undefined && Date.now() >= opts.deadline) break;
-    const rows = await prisma.$queryRaw<{ id: string; userId: string; reversedOfId: string | null }[]>`
-      SELECT c."id", c."userId", c."reversedOfId" FROM "CrmCommission" c
-      WHERE c."tenantId" = ${s.tenantId} AND c."systemId" = ${s.systemId} AND c."hrPayAdjustmentId" IS NULL AND c."id" > ${cursor} ${userFilter}
+    const pos: Prisma.Sql = after
+      ? Prisma.sql`AND (c."createdAt", c."id") > (${after.at}, ${after.id})`
+      : from ? Prisma.sql`AND c."createdAt" >= ${from}` : Prisma.empty;
+    const end: Prisma.Sql = until ? Prisma.sql`AND c."createdAt" < ${until}` : Prisma.empty;
+    const rows: SyncRow[] = await prisma.$queryRaw<SyncRow[]>`
+      SELECT c."id", c."userId", c."reversedOfId", c."createdAt" FROM "CrmCommission" c
+      WHERE c."tenantId" = ${s.tenantId} AND c."systemId" = ${s.systemId} AND c."hrPayAdjustmentId" IS NULL ${pos} ${end} ${userFilter}
         AND ABS(c."amountSatang") <= ${BigInt(COMMISSION_LIMITS.hrMaxSatang)}
         AND (c."note" IS NULL OR c."note" <> ${COMMISSION_REVERSAL_SETTLED_NOTE})
         AND (${originals}
           OR (c."reversedOfId" IS NOT NULL AND c."status"::text = 'REVERSED'
               AND EXISTS (SELECT 1 FROM "CrmCommission" o WHERE o."id" = c."reversedOfId" AND o."hrPayAdjustmentId" IS NOT NULL)))
-      ORDER BY c."id" ASC LIMIT 200`;
-    if (rows.length === 0) break;
-    cursor = rows[rows.length - 1]!.id;
+      ORDER BY c."createdAt" ASC, c."id" ASC LIMIT 200`;
     const linked = new Set(await hr.activeLinkedUserIds(s.tenantId, rows.filter((r) => !r.reversedOfId).map((r) => r.userId)));
     for (const r of rows) {
-      if (!r.reversedOfId && !linked.has(r.userId)) continue; // รอผูกพนักงาน
+      if (!r.reversedOfId && !linked.has(r.userId)) continue; // รอผูกพนักงาน (active + มีโปรไฟล์เงินเดือน — H4)
       if (await handoff(s, r.id)) requested += 1;
     }
-    if (rows.length < 200) break;
+    if (rows.length < 200) {
+      // สุดทางของผ่านนี้ ⇒ ลบ cursor (รอบหน้าเริ่มต้นคิว) · ผ่านแรกเริ่มกลางคิว ⇒ วนต้นคิวถึงก่อนจุดเริ่ม (ครั้งเดียว)
+      if (!userId) await prisma.opsAlertState.deleteMany({ where: { source: cursorKey } });
+      if (wrapped) break;
+      wrapped = true;
+      until = saved;
+      from = null;
+      after = null;
+      continue;
+    }
+    const last: { id: string; createdAt: Date } = rows[rows.length - 1]!;
+    after = { at: new Date(last.createdAt), id: last.id };
+    if (!userId) await prisma.opsAlertState.upsert({ where: { source: cursorKey }, create: { source: cursorKey, lastAlertAt: after.at }, update: { lastAlertAt: after.at } });
   }
   return { requested };
 }
@@ -838,8 +892,8 @@ async function approverOf(ctx: Scope, id: string): Promise<string | null> {
 /**
  * ส่งเข้าเงินเดือน (addendum ข้อ 8 + มติผู้คุมงาน B3 · S2 · S4):
  *   ต้นทาง APPROVED/PAID → COMMISSION ของพนักงาน **active** ที่ผูกกับผู้ใช้ (requestedById = ผู้อนุมัติด้วยมือ — HR 4 ตา)
- *   แถวถอนคืน → ดูรายการต้นทาง: ไม่มี/HR ไม่อนุมัติ ⇒ ปิดเรื่อง (ไม่หัก) · HR ยังไม่อนุมัติและยังไม่เข้ารอบ ⇒ ถอนรายการต้นทาง (ไม่หัก) ·
- *   อนุมัติแล้ว/เข้ารอบแล้ว ⇒ DEDUCTION (จำนวนบวก) ของพนักงานคนเดียวกับรายการต้นทาง
+ *   แถวถอนคืน → ดูรายการต้นทาง: ไม่มี/HR ไม่อนุมัติ ⇒ ปิดเรื่อง (ไม่หัก) · ไม่เคยเข้ารอบ (PENDING/APPROVED — H5) ⇒ ถอนรายการต้นทาง (ไม่หัก) ·
+ *   เข้ารอบแล้ว ⇒ DEDUCTION (จำนวนบวก) ของพนักงานคนเดียวกับรายการต้นทาง
  *   งวด = เดือนแรก ≥ งวดของแถวที่ยังไม่มีรอบจ่าย — คำนวณ **ใต้ล็อก** ด้วย tx เดียวกัน · HR ตอบ PERIOD_CLOSED = เลื่อนเดือนถัดไป
  * 🔴 X4: ใต้ `FOR UPDATE` ของแถวคอมมิชชัน + เขียนรายการ HR ด้วย tx เดียวกัน (partial unique เป็นด่านสุดท้าย) ⇒ รายการเดียวเสมอ
  */
@@ -910,8 +964,8 @@ async function requestInTx(
 /**
  * ฝั่งเงินเดือนของแถวถอนคืน (มติผู้คุมงาน B3 + รีวิวรอบ 2 S-b) — **ตัดสินเรื่องเงินใต้ล็อกเท่านั้น**:
  * ล็อกแถวถอนคืน + แถวต้นทาง → อ่านรายการ HR ของต้นทางใหม่ด้วย tx เดียวกัน → ตัดสิน
- *   ไม่มี/HR ไม่อนุมัติ ⇒ ปิดเรื่อง (ไม่หัก) · HR ยังไม่อนุมัติและยังไม่เข้ารอบ ⇒ ถอนรายการต้นทาง (guard) แล้วปิดเรื่อง ·
- *   อื่น ๆ (อนุมัติแล้ว/เข้ารอบแล้ว) ⇒ DEDUCTION — ไม่มีการใช้ค่าที่อ่านก่อนเข้าล็อกมาตัดสินเงิน
+ *   ไม่มี/HR ไม่อนุมัติ ⇒ ปิดเรื่อง (ไม่หัก) · ไม่เคยเข้ารอบ (PENDING/APPROVED — H5) ⇒ ถอนรายการต้นทาง (guard) แล้วปิดเรื่อง ·
+ *   อื่น ๆ (เข้ารอบแล้ว) ⇒ DEDUCTION — ไม่มีการใช้ค่าที่อ่านก่อนเข้าล็อกมาตัดสินเงิน
  */
 async function handoffReversal(ctx: Scope, row: CrmCommission, hr: HrFacade): Promise<boolean> {
   if (row.status !== "REVERSED" || !row.reversedOfId) return false;
@@ -929,11 +983,13 @@ async function handoffReversal(ctx: Scope, row: CrmCommission, hr: HrFacade): Pr
       await settle();
       return { kind: "settled" as const, why: adj ? (adj.status === "REJECTED" ? "HR_REJECTED" : "HR_LINK_MOVED") : "HR_ADJUSTMENT_GONE", adjustmentId: adj?.id ?? null };
     }
-    if (adj.status === "PENDING" && !adj.runId) {
-      if (await hr.withdrawCommissionAdjustment({ tenantId: ctx.tenantId, systemId: adj.systemId }, { adjustmentId: adj.id, crmCommissionId: orig.id }, { tx })) {
+    // C3.3-fix H5: รายการที่ **ไม่เคยเข้ารอบจ่าย** (runId null) = ไม่มีใครได้เงิน ⇒ ถอนรายการเดิม (PENDING และ APPROVED) แทนการหัก
+    //   (เดิมถอนเฉพาะ PENDING ⇒ รายการที่อนุมัติหลังรอบของงวดถูกสร้าง (ค้าง) ถูกหักคืนเงินที่ไม่เคยจ่าย)
+    if ((adj.status === "PENDING" || adj.status === "APPROVED") && !adj.runId) {
+      if (await hr.withdrawCommissionAdjustment({ tenantId: ctx.tenantId, systemId: adj.systemId }, { adjustmentId: adj.id, crmCommissionId: orig.id, statuses: ["PENDING", "APPROVED"] }, { tx })) {
         await tx.crmCommission.updateMany({ where: { id: orig.id, ...ctx }, data: { hrPayAdjustmentId: null } });
         await settle();
-        return { kind: "settled" as const, why: "HR_PENDING_WITHDRAWN", adjustmentId: adj.id };
+        return { kind: "settled" as const, why: adj.status === "APPROVED" ? "HR_APPROVED_UNPAID_WITHDRAWN" : "HR_PENDING_WITHDRAWN", adjustmentId: adj.id };
       }
       // ถอนไม่ได้ทั้งที่ถือล็อกคอมมิชชันอยู่ = HR เพิ่งตัดสินในเสี้ยววินาทีนั้น ⇒ อ่านใหม่แล้วตัดสินอีกรอบ
       const again = await hr.adjustmentOfCommission(ctx.tenantId, orig.id, { tx });
@@ -964,12 +1020,13 @@ async function handoffSafe(ctx: Scope, id: string): Promise<void> {
 
 /**
  * มติผู้คุมงาน S4 + รีวิวรอบ 2 S-c: รายการ HR ของคอมมิชชันที่ "ค้าง" (งวดของมันมีรอบจ่ายแล้ว ⇒ จะไม่ถูกดึงอีก)
- * → **ย้ายงวดในที่เดิม** ไปเดือนถัดไปที่ว่าง (ไม่ลบ-สร้างใหม่ · ไม่เสียประวัติการยื่น) · เฉพาะ PENDING ที่ยังไม่เข้ารอบ
- * (guard ในคำสั่งเดียว) — รายการที่ HR อนุมัติแล้วไม่ถูกแตะเด็ดขาด (`createPayrollRun` ไม่อยู่ใน tx เดียว ⇒ แตะของอนุมัติแล้ว = เสี่ยงจ่ายซ้ำ)
+ * → **ย้ายงวดในที่เดิม** ไปเดือนถัดไปที่ว่าง (ไม่ลบ-สร้างใหม่ · ไม่เสียประวัติการยื่น) · PENDING **และ APPROVED** (C3.3-fix H5) ที่ยังไม่เข้ารอบ
+ * (guard `runId IS NULL` ในคำสั่งเดียว) — งวดเดิมมีรอบแล้ว ⇒ `createPayrollRun` ของงวดนั้นไม่มีวันเกิดซ้ำ จึงไม่เสี่ยงจ่ายซ้ำ
  * ใต้ `FOR UPDATE` ของแถวคอมมิชชัน · ย้ายไม่ได้ = โยน (ผู้เรียก WARN แล้วรอบหน้าลองใหม่)
  */
 async function rehomeStranded(ctx: Scope, adj: { id: string; systemId: string; periodKey: string; status: string; crmCommissionId: string | null }): Promise<boolean> {
-  if (!adj.crmCommissionId || adj.status !== "PENDING") return false;
+  // C3.3-fix H5: APPROVED ที่ไม่เข้ารอบในงวดที่มีรอบแล้วก็ค้างถาวร ⇒ ย้ายด้วย (guard runId IS NULL ในคำสั่งเดียวของ HR)
+  if (!adj.crmCommissionId || (adj.status !== "PENDING" && adj.status !== "APPROVED")) return false;
   const hr = await hrFacade();
   return prisma.$transaction(async (tx) => {
     const cur = await lockRow(tx, ctx, adj.crmCommissionId!);
@@ -1020,6 +1077,124 @@ async function revisitCounted(ctx: Scope, dealId: string): Promise<void> {
                             AND c."refId" = ${keySql("p")} AND c."reversedOfId" IS NULL))
     ORDER BY p."countedAt" ASC, p."id" ASC LIMIT 50`;
   for (const p of counted) await onPaid(scopeOf(ctx), { dealId, refType: REF_PAYMENT, refId: p.id });
+  await restoreClipped(ctx, dealId);
+}
+
+/**
+ * C3.3-fix H2 (มติผู้คุมงาน 27 ก.ย.): ส่วนแบ่งที่เคยถูก "ตัด" (งวดหลังได้ไม่เต็มเพราะงวดก่อนกินเพดาน F_T ไปแล้ว) ต้องคืนเมื่องวดก่อนถูกถอน —
+ * ต่อกฎ PAID ที่ตรงดีล: เป้า = F_T(Σ ก่อน VAT ของทุกงวดที่ยังนับอยู่ซึ่งมีแถวหลักของร่างปัจจุบันของกฎนี้) − เครดิตแล้ว (แถวหลัก + แถวเติมของร่างเหล่านั้น
+ * ที่ยังไม่ถูกถอน · ทุกสถานะ) · ส่วนต่างบวก ⇒ แถวเติม `refId = <กุญแจร่างของงวดที่นับล่าสุด>#t<n>` (แบ่งผู้ร่วมตามกฎ · เครดิตเจ้าของปัจจุบัน)
+ * 🔴 ใต้ล็อกต่อดีล + กฎ FOR SHARE (เหมือน onPaid) ⇒ ตัวต่อยิงซ้ำ/พร้อมกัน/งานรายนาที = ส่วนต่าง 0 (idempotent) · ไม่มีการแก้ยอดของแถวเดิม ·
+ *    ถอนงวดนั้น ⇒ แถวเติมถูกถอนไปด้วย (prefix `<payId>#`) · งวดที่ไม่มีแถวหลัก (ก่อนสร้างกฎ · ส่วนแบ่ง 0) ไม่นับเข้าเป้า (ไม่มีเครดิตย้อนหลัง)
+ */
+async function restoreClipped(ctx: Scope, dealId: string): Promise<void> {
+  // รีวิวเงิน S3: ประตู uiVersion เดียวกับ onPaid — ร้าน v1 ถอนเงินแล้วต้องไม่ได้แถวใหม่/event/ส่ง HR
+  if (!(await bridgeSystem(ctx))) return;
+  const s = scopeOf(ctx);
+  const rules = await activeRules(s, "PAID");
+  if (rules.length === 0) return;
+  const deal = await loadDeal(s, dealId);
+  if (!deal) return;
+  const matched = await matchingRules(s, rules, deal);
+  if (matched.length === 0) return;
+  const tNow = await baseTotalOf(s, deal);
+  const ratios = await docRatiosOf(s, deal);
+  const made = await prisma.$transaction(async (tx) => {
+    await lockDeal(tx, dealId);
+    const live = await loadDeal(s, dealId, tx);
+    if (!live || !live.ownerUserId) return [];
+    const out: CrmCommission[] = [];
+    const steady = await lockRules(tx, s, matched);
+    for (const rule of matched) {
+      if (!steady.has(rule.id)) continue;
+      if (await hasOtherBasisRows(tx, s, dealId, rule.id, "PAID")) continue;
+      const allPays = await tx.$queryRaw<(PayRow & { at: Date; createdAt: Date })[]>`
+        SELECT p."id", p."refType", p."refId", p."satang", COALESCE(p."countedAt", p."createdAt") AS "at", p."createdAt" FROM "CrmDealPayment" p
+        WHERE p."dealId" = ${dealId} AND p."tenantId" = ${ctx.tenantId} AND p."systemId" = ${ctx.systemId} AND p."status" = 'COUNTED'
+          AND EXISTS (SELECT 1 FROM "CrmCommission" c WHERE c."dealId" = ${dealId} AND c."ruleId" = ${rule.id} AND c."refType" = ${REF_PAYMENT} AND c."refId" = ${keySql("p")}
+                      AND c."reversedOfId" IS NULL AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id"))
+        ORDER BY COALESCE(p."countedAt", p."createdAt") DESC, p."id" DESC LIMIT 1000`;
+      if (allPays.length === 0) continue;
+      // รีวิวเงิน note (b): ไม่มีเครดิตย้อนหลัง — งวดที่ "นับครั้งแรก" ก่อน rule.createdAt (เช่นกฎที่ปิดแล้วเปิดกลับ) ไม่อยู่ในเป้าและเครดิต
+      //   เวลานับครั้งแรก = min(ร่างนี้ · ธง first:<payId> · ms ในกุญแจของแถวเดิมของงวดนั้น (ทุกกฎ) · createdAt ของ DOC_SETTLE) — นิยามเดียวกับ onPaid
+      const ids = allPays.map((p) => p.id);
+      const remembered = new Map((await tx.opsAlertState.findMany({ where: { source: { in: ids.map((id) => `${FIRST_PREFIX}${id}`) } }, select: { source: true, lastAlertAt: true } }))
+        .map((m) => [m.source.slice(FIRST_PREFIX.length), m.lastAlertAt.getTime()] as const));
+      const keyed = await tx.$queryRaw<{ payId: string; refId: string }[]>`
+        SELECT DISTINCT ${payIdSql("c")} AS "payId", c."refId" FROM "CrmCommission" c
+        WHERE c."dealId" = ${dealId} AND c."tenantId" = ${ctx.tenantId} AND c."refType" = ${REF_PAYMENT} AND c."reversedOfId" IS NULL AND ${payIdSql("c")} = ANY(${ids}::text[])
+        LIMIT 5000`;
+      const firstOf = (p: { id: string; refType: string; at: Date; createdAt: Date }) => Math.min(
+        new Date(p.at).getTime(),
+        remembered.get(p.id) ?? Number.POSITIVE_INFINITY,
+        ...keyed.filter((k) => k.payId === p.id).map((k) => incMsOf(k.refId) ?? Number.POSITIVE_INFINITY),
+        p.refType === "DOC_SETTLE" ? new Date(p.createdAt).getTime() : Number.POSITIVE_INFINITY,
+      );
+      const pays = allPays.filter((p) => firstOf(p) >= rule.createdAt.getTime());
+      if (pays.length === 0) continue;
+      const latest = pays[0]!;
+      const key = incKey(latest.id, new Date(latest.at));
+      // รีวิวเงินรอบ 2 F1 (แทน note a): ล็อก **เฉพาะ** แถวรับเงินที่แถวเติมจะผูก `FOR SHARE` แบบเดียวกับ onPaid (S8) แล้วอ่านซ้ำใต้ล็อก —
+      //   ถูกถอน/ปลุกระหว่างนั้น (ไม่ COUNTED หรือกุญแจร่างเปลี่ยน) ⇒ ข้ามกฎนี้ (ตัวต่อของการถอนจะเรียกเราอีก) · ไม่ล็อกทุกแถวของดีล
+      //   (ล็อกหลายแถวตามลำดับ id ชนกับ flagDocumentVoided ที่อัปเดตหลายแถวในธุรกรรมเดียวแบบไม่เรียงลำดับ ⇒ deadlock ได้)
+      await tx.$queryRaw`SELECT "id" FROM "CrmDealPayment" WHERE "id" = ${latest.id} AND "tenantId" = ${ctx.tenantId} FOR SHARE`;
+      const still = await tx.crmDealPayment.findFirst({ where: { id: latest.id, ...s, status: "COUNTED" }, select: { countedAt: true, createdAt: true } });
+      if (!still || incKey(latest.id, still.countedAt ?? still.createdAt) !== key) continue;
+      const eligible = pays.map((p) => p.id);
+      const everyPay = allPays.map((p) => p.id);
+      const creditedOf = async (payIds: string[]) => BigInt((await tx.$queryRaw<{ s: string }[]>`
+        SELECT COALESCE(SUM(c."amountSatang"), 0)::text AS s FROM "CrmCommission" c JOIN "CrmDealPayment" p ON p."id" = ${payIdSql("c")}
+        WHERE c."dealId" = ${dealId} AND c."ruleId" = ${rule.id} AND c."refType" = ${REF_PAYMENT} AND c."reversedOfId" IS NULL
+          AND p."status" = 'COUNTED' AND p."id" = ANY(${payIds}::text[]) AND ${ofCurrentSql("c", "p")}
+          AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id")`)[0]?.s ?? "0");
+      const { T } = await frozenTotal(tx, s, dealId, rule.id, tNow, live.valueSatang > 0);
+      if (T <= ZERO || (rule.minDealSatang !== null && T < rule.minDealSatang)) continue;
+      const full = commissionOf(rule.kind, configOf(rule), T);
+      // รีวิวเงินรอบ 2 B1: delta = min(เพดานรวม F_T(ทุกงวดที่มีแถว) − เครดิตทุกงวด, F_T(งวดที่มีสิทธิ์) − เครดิตงวดที่มีสิทธิ์)
+      //   ⇒ ไม่มีเครดิตย้อนหลัง (ข้อหลัง) และผลรวมไม่เกินคอมมิชชันเต็มเหมือนที่ onPaid คิด (ข้อแรก — onPaid นับทุกงวดที่มีแถวในยอดสะสม)
+      const dAll = cumulativeOf(full, T, await netOfPayments(tx, s, allPays, ratios)) - (await creditedOf(everyPay));
+      const dElig = cumulativeOf(full, T, await netOfPayments(tx, s, pays, ratios)) - (await creditedOf(eligible));
+      const delta = dAll < dElig ? dAll : dElig;
+      if (delta <= ZERO) continue;
+      const parts = splitParts(delta, rule.splitCollaboratorsBp, live.ownerUserId, live.collaboratorUserIds);
+      if (parts.length === 0) continue;
+      // n = จำนวนแถวเติมของร่างนี้ที่เคยมี (ทุกผู้ใช้ · รวมที่ถูกถอนแล้ว) + 1 ⇒ กุญแจใหม่ทุกครั้งที่ต้องเติมจริง (unique ของแถวเป็นด่านสุดท้าย)
+      const n = await tx.crmCommission.count({ where: { ...s, dealId, ruleId: rule.id, refType: REF_PAYMENT, refId: { startsWith: `${key}${TOPUP_MARK}` }, reversedOfId: null } });
+      const refId = `${key}${TOPUP_MARK}${n + 1}`;
+      // รีวิวเงิน S2: งวดในเป้าเคยถูก "คน" ไม่อนุมัติ (แถว REJECTED ของกฎนี้ ร่างใดก็ได้) ⇒ แถวเติมพกป้าย "เคยถูกปฏิเสธ" — ไม่อนุมัติเอง (advance ส่งเจ้าของร้าน)
+      const wasRejected = !!(await tx.$queryRaw<{ id: string }[]>`
+        SELECT c."id" FROM "CrmCommission" c
+        WHERE c."dealId" = ${dealId} AND c."tenantId" = ${ctx.tenantId} AND c."ruleId" = ${rule.id} AND c."refType" = ${REF_PAYMENT}
+          AND c."reversedOfId" IS NULL AND c."status"::text = 'REJECTED' AND ${payIdSql("c")} = ANY(${eligible}::text[])
+        LIMIT 1`)[0];
+      const rows = await tx.crmCommission.createManyAndReturn({
+        data: parts.map((p) => ({
+          ...s,
+          dealId,
+          ruleId: rule.id,
+          userId: p.userId,
+          amountSatang: p.amount,
+          basisSatang: T,
+          basis: "PAID" as const,
+          status: "PENDING" as const,
+          periodKey: commissionPeriodOf(new Date(), rule.payoutDelayDays),
+          refType: REF_PAYMENT,
+          refId,
+          ...(wasRejected ? { note: COMMISSION_WAS_REJECTED_NOTE } : {}),
+        })),
+        skipDuplicates: true,
+      });
+      for (const r of rows) {
+        await emitCommission(tx, r, "created");
+        out.push(r);
+      }
+    }
+    return out;
+  }, TX_OPTS);
+  for (const r of made) {
+    await audit(s, "crm.commission.topup", "CrmCommission", r.id, { after: { amountSatang: num(r.amountSatang), refId: r.refId, reason: "คืนส่วนแบ่งที่เคยถูกตัด เพราะงวดก่อนหน้าถูกยกเลิก" } }, null);
+    await advanceSafe(s, r.id);
+  }
 }
 
 /** ทางเดินเงินถอนคืนแถวรับเงินของดีลนี้ (ยกเลิกรับชำระ · ยกเลิกเอกสาร · ยกเลิกบิล) — ถอนคอมมิชชันของทุกแถวที่ถูกถอนแล้ว */
@@ -1032,7 +1207,7 @@ export async function afterPaymentsReversed(ctx: Scope, input: { dealId: string 
       SELECT DISTINCT p."id" AS "payId" FROM "CrmCommission" c JOIN "CrmDealPayment" p ON p."id" = ${payIdSql("c")}
       WHERE c."tenantId" = ${ctx.tenantId} AND c."systemId" = ${ctx.systemId} AND c."dealId" = ${dealId} AND c."refType" = ${REF_PAYMENT}
         AND c."reversedOfId" IS NULL AND c."status"::text IN ('PENDING','APPROVED','PAID')
-        AND (p."status" = 'REVERSED' OR (p."status" = 'COUNTED' AND c."refId" <> ${keySql("p")}))
+        AND (p."status" = 'REVERSED' OR (p."status" = 'COUNTED' AND NOT ${ofCurrentSql("c", "p")}))
         AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id")
       LIMIT 200`;
     // รอบ 6 S-1: ไม่ส่งกุญแจที่อ่านนอกล็อก — reverseRows ตัดสิน "ร่างปัจจุบัน" ใต้ FOR SHARE ของแถวรับเงินเอง
@@ -1064,8 +1239,10 @@ async function retireWonRows(ctx: Scope, dealId: string, rows: CrmCommission[], 
       if (await tx.crmCommission.findFirst({ where: { reversedOfId: cur.id, ...ctx }, select: { id: true } })) return { kind: "skip" as const };
       if (cur.status === "PAID") return { kind: "keep" as const };
       if (cur.hrPayAdjustmentId) {
-        if (!adj || adj.id !== cur.hrPayAdjustmentId || adj.status !== "PENDING" || adj.runId) return { kind: "keep" as const };
-        if (!(await hr.withdrawCommissionAdjustment({ tenantId: ctx.tenantId, systemId: adj.systemId }, { adjustmentId: adj.id, crmCommissionId: cur.id }, { tx }))) return { kind: "keep" as const };
+        // รีวิวเงิน S4 (มติ H5 ใช้กับฐาน WON ด้วย): รายการที่ **ไม่เคยเข้ารอบจ่าย** (PENDING หรือ APPROVED · runId null) ⇒ ถอนแล้วลบแถว (ชนะอีกคิดใหม่)
+        //   เฉพาะรายการที่เข้ารอบแล้ว (runId) ไปทางถอนคืน + DEDUCTION · การถอนอ่าน runId ใหม่ใต้ FOR UPDATE (race กับ createPayrollRun ปิดแล้ว)
+        if (!adj || adj.id !== cur.hrPayAdjustmentId || (adj.status !== "PENDING" && adj.status !== "APPROVED") || adj.runId) return { kind: "keep" as const };
+        if (!(await hr.withdrawCommissionAdjustment({ tenantId: ctx.tenantId, systemId: adj.systemId }, { adjustmentId: adj.id, crmCommissionId: cur.id, statuses: ["PENDING", "APPROVED"] }, { tx }))) return { kind: "keep" as const };
       }
       const n = await tx.crmCommission.deleteMany({ where: { id: cur.id, ...ctx, status: { in: ["PENDING", "APPROVED"] } } });
       if (n.count !== 1) return { kind: "keep" as const };
@@ -1274,7 +1451,7 @@ export async function runPayrollSync(now: Date, opts: { deadline?: number; signa
       const moneyDeals = await prisma.$queryRaw<{ dealId: string }[]>`
         SELECT DISTINCT c."dealId" FROM "CrmCommission" c JOIN "CrmDealPayment" p ON p."id" = ${payIdSql("c")}
         WHERE c."tenantId" = ${ctx.tenantId} AND c."systemId" = ${ctx.systemId} AND c."refType" = ${REF_PAYMENT} AND c."reversedOfId" IS NULL
-          AND c."status"::text IN ('PENDING','APPROVED','PAID') AND (p."status" = 'REVERSED' OR (p."status" = 'COUNTED' AND c."refId" <> ${keySql("p")}))
+          AND c."status"::text IN ('PENDING','APPROVED','PAID') AND (p."status" = 'REVERSED' OR (p."status" = 'COUNTED' AND NOT ${ofCurrentSql("c", "p")}))
           AND NOT EXISTS (SELECT 1 FROM "CrmCommission" r WHERE r."reversedOfId" = c."id") LIMIT 50`;
       // รอบ 6: ดีลที่มีการถอนเงินใน 7 วัน ⇒ เรียกตัวต่อซ้ำ (idempotent) — ครอบกรณีโพรเซสตายระหว่าง "ถอน" กับ "คิดงวดที่ไม่มีแถวใหม่" (S1 ของรอบ 5)
       const recent = await prisma.$queryRaw<{ dealId: string }[]>`
@@ -1836,7 +2013,8 @@ async function toDtos(ctx: Scope, rows: CrmCommission[]): Promise<CommissionDto[
       approvalRequestId: r.approvalRequestId,
       hrPayAdjustmentId: r.hrPayAdjustmentId,
       payroll: payrollStateOf(r, isReversed),
-      rewon: r.basis === "WON" && !r.reversedOfId && isReversed && deal?.kind === "WON" && (r.status === "APPROVED" || r.status === "PAID"),
+      // รีวิวเงิน S4: "เคยจ่ายแล้ว" เฉพาะแถวที่ถึงเงินเดือนจริง (PAID หรือยังผูกรายการ HR ที่เข้ารอบ) — รายการที่ถูกถอน (ลิงก์ถูกล้าง) ไม่ได้ป้ายนี้
+      rewon: r.basis === "WON" && !r.reversedOfId && isReversed && deal?.kind === "WON" && (r.status === "PAID" || (r.status === "APPROVED" && !!r.hrPayAdjustmentId)),
       createdAt: r.createdAt.toISOString(),
       decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
     };

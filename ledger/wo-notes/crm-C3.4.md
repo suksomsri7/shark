@@ -117,3 +117,12 @@
 
 **รอบ 3 ต่อ (มติผู้คุมงาน):** งานรายวัน `crm.teamroom.stale` ใช้ด่านเดียวกับรอบเก็บตก — ทำงานเฉพาะเมื่อ `crm.deals.stale` จบแล้วในวันไทยนี้ (`getMinuteJobStatus` + `minuteJobDue(1440, lastOkAt, now) === false`) ไม่งั้นข้ามเงียบ · ทั้งสองงานใช้ธงต่อวันร่วมกัน ⇒ ตัวแรกหลังงานนิ่งจบเป็นผู้โพสต์ (`platform/minute-jobs.ts:385-398`) · N4 (ตัดดีลที่มองไม่เห็นเฉพาะใบของคนกดเอง) ผู้คุมงานรับแล้ว (X9.1 ตรึงไว้) · N5 เติมคำบรรยายในตารางด้านบนแล้ว
 - ผล (`.qc-shots/c34/summary.log` ส่วน "round 5"): `qc-crm-c3.4` **53/53** (`r4-c34.log`) · qc-crm-c2.10 **41/41** (`r4-qc-crm-c2.10.log`) · typecheck สะอาด (`r4-typecheck.log` · 0 error)
+
+## § รอบ 4 (C1.3-S0.3) — regression: อ่าน CrmCompany ตรงนอก companies*.ts / where.ts
+| แก้อะไร | ที่ไหน |
+|---|---|
+| ทางอ่านบริษัทใหม่ในบริการบริษัท (ทุกตัวกรองด้วย `companyWhere` ของคนที่ถาม/คนสแกน · การมองเห็นเท่าเดิม · ผู้เรียกไม่มี tx จึงไม่รับ tx): `namesByIds` · `briefForAssist` (name+industry) · `factsForAssist` (ช่องเดิมของ companyFacts · ไม่อ่าน taxId/phone/email/website) · `countVisibleByIds` · `matchByExactName` (ไม่สนตัวพิมพ์ · ยังใช้งาน · ไม่ถูกรวม · สร้างก่อนมาก่อน) | `companies.ts:2297-2329` (`:2304` `:2308` `:2312` `:2319` `:2323`) |
+| ai-bridges อ่านบริษัทผ่าน `companiesSvc` (เลิก import `companyWhere`): ตารางดีลเสี่ยง · dealFacts · contactFacts · companyFacts · ประตูข้อเสนอ (ids.companies) · parentId (ใช้ `countVisibleCompany(scope, null, pid)` = where `{id, tenantId, systemId}` เดิม และ `countVisibleCompany(scope, a, pid)`) · การ์ดลิงก์ดีล | `ai-bridges.ts:35` `:198` `:252` `:293` `:313` `:661` `:678-679` `:1122` |
+| calls.ts จับคู่ชื่อบริษัทบนนามบัตรผ่าน `companiesSvc.matchByExactName(ctx, a, cardCompany)` (เลิก import `companyWhere` · คอมเมนต์ AUDIT-CLASS X1/X2 คงไว้) | `calls.ts:36` `:647` |
+
+ผล (QC1 · `.qc-shots/c34fix/progress.log` · `<ชุด>.log`): qc-crm-c1.3 **89/89** · qc-crm-c1.6 79/79 · qc-crm-c3.4 **53/53** · qc-crm-c2.4 **91/91** · typecheck สะอาด (0 error) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL`

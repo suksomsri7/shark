@@ -31,7 +31,8 @@ import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/p
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { CrmV2DisabledError } from "./ui-version";
-import { activityWhere, companyWhere, contactWhere, dealWhere, recordWhere } from "./where";
+import { activityWhere, contactWhere, dealWhere, recordWhere } from "./where";
+import * as companiesSvc from "./companies"; // CRM C3.4 ▸ อ่านบริษัทผ่านบริการบริษัท (C1.3-S0.3) ◂
 import { parseCrmSettings } from "./settings";
 import { redactContactInfo } from "./calls-shared";
 import { DAY_MS, TH_OFFSET_MS, thaiDateLabel, thaiDayKey } from "./activities-shared";
@@ -194,7 +195,7 @@ export async function atRiskDeals(ctx: AiBridgeCtx, actor: Actor, input: AtRiskI
     .filter((x) => x.reasons.length > 0);
   // ชื่อบริษัทเฉพาะที่คนถามมองเห็น (มองไม่เห็น = null — ไม่เดา ไม่เปิดเผย)
   const coIds = [...new Set(risky.map((x) => x.d.companyId).filter((x): x is string => !!x))];
-  const cos = coIds.length ? await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(scope, a), { id: { in: coIds } }] }, select: { id: true, name: true } }) : [];
+  const cos = coIds.length ? await companiesSvc.namesByIds(scope, a, coIds) : [];
   const coName = new Map(cos.map((c) => [c.id, c.name]));
   return {
     month,
@@ -248,7 +249,7 @@ async function dealFacts(scope: { tenantId: string; systemId: string }, a: Actor
   });
   if (!d) throw fail("NOT_FOUND", MSG.deal);
   const [co, ct, acts] = await Promise.all([
-    d.companyId ? prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(scope, a), { id: d.companyId }] }, select: { name: true, industry: true } }) : null,
+    d.companyId ? companiesSvc.briefForAssist(scope, a, d.companyId) : null,
     prisma.crmContact.findFirst({ where: { AND: [await contactWhere(scope, a), { id: d.contactId }] }, select: { name: true, jobTitle: true } }),
     prisma.crmActivity.findMany({
       where: { AND: [await activityWhere(scope, a), { dealId: d.id }] },
@@ -289,7 +290,7 @@ async function contactFacts(scope: { tenantId: string; systemId: string }, a: Ac
   });
   if (!c) throw fail("NOT_FOUND", MSG.contact);
   const [co, logs, deals, acts] = await Promise.all([
-    c.companyId ? prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(scope, a), { id: c.companyId }] }, select: { name: true } }) : null,
+    c.companyId ? companiesSvc.briefForAssist(scope, a, c.companyId) : null,
     prisma.crmScoreLog.findMany({ where: { tenantId: scope.tenantId, contactId: c.id }, select: { points: true, reason: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 6 }).catch(() => [] as { points: number; reason: string; createdAt: Date }[]),
     prisma.crmDeal.findMany({ where: { AND: [await dealWhere(scope, a), { contactId: c.id, archivedAt: null }] }, select: { title: true, valueSatang: true, kind: true, stage: { select: { name: true } } }, orderBy: { updatedAt: "desc" }, take: 5 }),
     prisma.crmActivity.findMany({ where: { AND: [await activityWhere(scope, a), { contactId: c.id }] }, select: { type: true, title: true, startAt: true, dueAt: true, doneAt: true }, orderBy: { createdAt: "desc" }, take: 6 }),
@@ -309,10 +310,7 @@ async function contactFacts(scope: { tenantId: string; systemId: string }, a: Ac
 
 async function companyFacts(scope: { tenantId: string; systemId: string }, a: Actor, companyId: string, kind: AssistKind): Promise<Built> {
   // 🔴 ไม่อ่าน taxId/phone/email/website ของบริษัท (ไม่ต้องใช้ในการสรุป และห้ามออกจากเครื่อง)
-  const c = await prisma.crmCompany.findFirst({
-    where: { AND: [await companyWhere(scope, a), { id: companyId }] },
-    select: { id: true, name: true, industry: true, size: true, lifecycleStage: true, employeeCount: true, openDealCount: true, wonValueSatang: true, outstandingSatang: true, lastActivityAt: true, tags: true },
-  });
+  const c = await companiesSvc.factsForAssist(scope, a, companyId);
   if (!c) throw fail("NOT_FOUND", MSG.company);
   const dealsWhere = await dealWhere(scope, a);
   const [open, won, acts] = await Promise.all([
@@ -660,7 +658,7 @@ async function loadDoorRow(ctx: AiBridgeCtx, actor: Actor, proposalId: string): 
   }
   if (ids.deals.length && !(await visible(await prisma.crmDeal.count({ where: { AND: [await dealWhere(scope, a), { id: { in: ids.deals } }] } }), ids.deals.length))) throw fail("FORBIDDEN", MSG.cannotAct);
   if (ids.contacts.length && !(await visible(await prisma.crmContact.count({ where: { AND: [await contactWhere(scope, a), { id: { in: ids.contacts } }] } }), ids.contacts.length))) throw fail("FORBIDDEN", MSG.cannotAct);
-  if (ids.companies.length && !(await visible(await prisma.crmCompany.count({ where: { AND: [await companyWhere(scope, a), { id: { in: ids.companies } }] } }), ids.companies.length))) throw fail("FORBIDDEN", MSG.cannotAct);
+  if (ids.companies.length && !(await visible(await companiesSvc.countVisibleByIds(scope, a, ids.companies), ids.companies.length))) throw fail("FORBIDDEN", MSG.cannotAct);
   if (ids.activities.length && !(await visible(await prisma.crmActivity.count({ where: { AND: [await activityWhere(scope, a), { id: { in: ids.activities } }] } }), ids.activities.length))) throw fail("FORBIDDEN", MSG.cannotAct);
   if (ids.records.length && !(await visible(await prisma.customRecord.count({ where: await recordWhere(scope, a, { recordIds: ids.records }) }), ids.records.length))) throw fail("FORBIDDEN", MSG.cannotAct);
   if (ids.enrollments.length) {
@@ -677,8 +675,8 @@ async function loadDoorRow(ctx: AiBridgeCtx, actor: Actor, proposalId: string): 
     const own = { id: pid, tenantId: sys.tenantId, systemId: sys.id };
     if (await prisma.crmContact.count({ where: own })) {
       if (!(await prisma.crmContact.count({ where: { AND: [await contactWhere(scope, a), { id: pid }] } }))) throw fail("FORBIDDEN", MSG.cannotAct);
-    } else if (await prisma.crmCompany.count({ where: own })) {
-      if (!(await prisma.crmCompany.count({ where: { AND: [await companyWhere(scope, a), { id: pid }] } }))) throw fail("FORBIDDEN", MSG.cannotAct);
+    } else if (await companiesSvc.countVisibleCompany(scope, null, pid)) {
+      if (!(await companiesSvc.countVisibleCompany(scope, a, pid))) throw fail("FORBIDDEN", MSG.cannotAct);
     } else if (await prisma.crmDeal.count({ where: own })) {
       if (!(await prisma.crmDeal.count({ where: { AND: [await dealWhere(scope, a), { id: pid }] } }))) throw fail("FORBIDDEN", MSG.cannotAct);
     }
@@ -1121,7 +1119,7 @@ export async function unfurlDealLink(ctx: { tenantId: string }, viewer: Actor, u
     });
     if (!d) return null;
     const [co, owner] = await Promise.all([
-      d.companyId ? prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(scope, viewer), { id: d.companyId }] }, select: { name: true } }) : null,
+      d.companyId ? companiesSvc.briefForAssist(scope, viewer, d.companyId) : null,
       d.ownerUserId ? prisma.user.findUnique({ where: { id: d.ownerUserId }, select: { name: true } }) : null,
     ]);
     return {

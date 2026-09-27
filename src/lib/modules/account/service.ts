@@ -3916,7 +3916,7 @@ export async function docNetBeforeVat(tenantId: string, docId: string): Promise<
 }
 
 // CRM C3.3 ▸ อัตราส่วนก่อน VAT ต่อ "เอกสารของแต่ละงวด" (รีวิวเงินรอบ 5 N6): การรับชำระ → เอกสารของมัน · เอกสาร → (net, grand)
-//   net = subTotal − discountAmount (นิยามเดียวกับ computeTotals) · อ่านล้วน · ผูกร้าน · ไม่พบ = ไม่อยู่ในผลลัพธ์ ◂
+//   net = subTotal − discountAmount (นิยามเดียวกับ computeTotals) · grand = ยอดรวมก่อนหักมัดจำ (C3.3-fix H3) · อ่านล้วน · ผูกร้าน · ไม่พบ = ไม่อยู่ในผลลัพธ์ ◂
 export async function commissionDocRatios(
   tenantId: string,
   input: { paymentIds: string[]; docIds: string[] },
@@ -3929,9 +3929,11 @@ export async function commissionDocRatios(
     : [];
   const docIds = [...new Set([...input.docIds.filter(Boolean), ...pays.map((p) => p.documentId)])].slice(0, 1_000);
   const docs = docIds.length
-    ? await prisma.accountDocument.findMany({ where: { tenantId, id: { in: docIds } }, select: { id: true, subTotal: true, discountAmount: true, grandTotal: true }, take: docIds.length })
+    ? await prisma.accountDocument.findMany({ where: { tenantId, id: { in: docIds } }, select: { id: true, subTotal: true, discountAmount: true, grandTotal: true, depositDeducted: true }, take: docIds.length })
     : [];
-  for (const d of docs) out.docs[d.id] = { net: Math.max(0, d.subTotal - d.discountAmount), grand: d.grandTotal };
+  // C3.3-fix H3 (มติผู้คุมงาน 27 ก.ย.): ตัวหาร = ยอดรวม "ก่อนหักมัดจำ" (grandTotal + depositDeducted — computeTotals หักมัดจำจาก grandBeforeDeposit)
+  //   เดิมใช้ grandTotal หลังหักมัดจำ ⇒ net/grand บวม (ใบแจ้งหนี้หักมัดจำ 32,100 ⇒ จ่ายเกิน 43 %)
+  for (const d of docs) out.docs[d.id] = { net: Math.max(0, d.subTotal - d.discountAmount), grand: d.grandTotal + Math.max(0, d.depositDeducted) };
   for (const p of pays) if (out.docs[p.documentId]) out.payments[p.id] = out.docs[p.documentId]!;
   return out;
 }
