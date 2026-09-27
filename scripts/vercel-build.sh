@@ -26,5 +26,9 @@ else
   echo "▶ [vercel-build] VERCEL_ENV=${VERCEL_ENV:-<ว่าง>} → ข้าม migrate (ไม่ใช่ production)"
 fi
 
-echo "▶ [vercel-build] next build"
+# 🔴 28 ก.ย. 2569: build ของ c236a490 ค้างที่ "Running TypeScript" เกิน 40 นาที (รอบก่อน ๆ ทั้ง build 5 นาที) —
+#    with-gate-lock.sh ตั้ง heap 3584 MB ถ้าไม่มีใครตั้งมาก่อน · tsc ของ next build ตรวจ scripts/*.mts ด้วย (oracle ใหญ่ขึ้นมากใน C3)
+#    ⇒ heap ตึงจน GC วน · เครื่องเราใช้ 5120 มาตลอด · เครื่อง build ของ Vercel มี RAM 8 GB ⇒ ตั้ง 6144 (ผู้เรียกตั้งเองได้)
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
+echo "▶ [vercel-build] next build (NODE_OPTIONS=$NODE_OPTIONS)"
 pnpm build
