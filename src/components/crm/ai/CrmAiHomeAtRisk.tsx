@@ -53,7 +53,7 @@ export function CrmAiHomeAtRisk({ systemId, reasonLabels }: { systemId: string; 
           <p className="whitespace-pre-wrap break-words text-sm">{result.text}</p>
           {items.length > 0 && (
             <div className="min-w-0 overflow-x-auto">
-              <table className="w-full min-w-[420px] text-sm" data-testid="crm-ai-at-risk-table">
+              <table className="w-full text-sm" data-testid="crm-ai-at-risk-table">
                 <thead>
                   <tr className={`border-b text-left text-xs ${muted}`}>
                     <th className="py-2 pr-2 font-semibold">ดีล</th>

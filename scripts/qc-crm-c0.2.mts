@@ -209,11 +209,19 @@ try {
     // ORACLE-EDIT C0.2-S1.4 (controller · C1.10, 19 Sep): C1.10 adds the namespace re-export `export * as crmApi from "./api"`
     //   (REST/AI dispatch for /api/v1/crm/* routes). A namespace has no single owner among service/ui/rules/actions — compare it
     //   member-by-member with crm/api instead (every binding identical ⇒ still a pure re-export).
-    if (s === "crmApi") {
-      const api = await load("@/lib/modules/crm/api");
+    // ORACLE-EDIT C0.2-S1.4 (controller · C3.4, 27 ก.ย.): generalize — ANY `export * as <name> from "./<file>"` namespace in the facade
+    //   (crmApi · commissions · privacy · limits · aiBridges …) is compared member-by-member with `crm/<file>` (every binding identical
+    //   ⇒ still a pure re-export). C3.4 made `aiBridges` an outside-used symbol (ai/proposals.ts) and the old branch knew only crmApi.
+    const nsFile = (() => {
+      const src0 = read(FACADE_FILE);
+      const m = new RegExp(String.raw`export\s+\*\s+as\s+${s}\s+from\s*["']\./([\w./-]+)["']`).exec(src0);
+      return m?.[1] ?? (s === "crmApi" ? "api" : null);
+    })();
+    if (nsFile) {
+      const api = await load(`@/lib/modules/crm/${nsFile}`);
       const ns = facade[s] as Record<string, Any>;
-      const bad = !api ? ["crm/api failed to load"] : Object.keys(api).filter((k) => ns?.[k] !== (api as Record<string, Any>)[k]);
-      if (bad.length) shapeBad.push(`crmApi: not identical to crm/api for ${bad.join(",")}`);
+      const bad = !api ? [`crm/${nsFile} failed to load`] : Object.keys(api).filter((k) => ns?.[k] !== (api as Record<string, Any>)[k]);
+      if (bad.length) shapeBad.push(`${s}: not identical to crm/${nsFile} for ${bad.join(",")}`);
       continue;
     }
     const owner = ownerOf(s);

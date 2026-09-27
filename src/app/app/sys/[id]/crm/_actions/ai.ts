@@ -1,7 +1,7 @@
 "use server";
 
 // _actions/ai.ts — ทางเข้า server action ของ "ผู้ช่วย AI ในหน้า CRM" + ตัวเลือกห้องทีม + การ์ดลิงก์ดีลในห้องแชท (ใบ C3.4)
-//   คอมโพเนนต์อยู่ที่ `src/components/crm/ai/**` (ด่าน F2.3 ห้าม components import โมดูล CRM ⇒ เรียกผ่านไฟล์นี้ — รูปเดียวกับ `_actions/calls.ts`)
+//   คอมโพเนนต์อยู่ที่ `src/components/crm/ai/…` (ด่าน F2.3 ห้าม components import โมดูล CRM ⇒ เรียกผ่านไฟล์นี้ — รูปเดียวกับ `_actions/calls.ts`)
 //
 // 🔴 "use server" = ส่งออกได้เฉพาะ async function (ห้าม export type/const — หน้า 500 ทั้งที่ build ผ่าน · Next 16)
 // 🔴 tenantId + ตัวคนมาจาก session เสมอ · systemId จากหน้าเป็นแค่ "ตัวเลือก" — บริการ resolve ใหม่ (ระบบ CRM ของร้านนี้ · uiVersion 2)
