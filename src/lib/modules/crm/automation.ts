@@ -43,6 +43,7 @@ import {
   type WaitRow,
 } from "@/lib/automation/action-runner";
 import { prisma } from "./db";
+import { crmLimitOf } from "./limits"; // CRM C3.9 ▸ เพดานรอบกฎอัตโนมัติ ◂
 import { resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ปลายทางแชทของ SEND_LINE (ชนิดเดียว) ◂
 import { crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2, crmUiVersion } from "./ui-version";
@@ -56,7 +57,6 @@ import { OBJECT_TEMPLATES } from "./templates/objects";
 import {
   CRM_ACTION_LABELS,
   CRM_ACTION_TYPE_SET,
-  CRM_AUTOMATION_RUNS_PER_MONTH,
   CRM_CONDITION_OP_SET,
   CRM_CRON_TRIGGER_VALUES,
   CRM_LOOP_GUARD_MS,
@@ -552,11 +552,9 @@ export async function listRuns(ctx: CrmAutomationCtx, actor: MemberActor, opts: 
 // ───────────────────────── โควตา (addendum 5: ต่อร้าน · นับทุกระบบ CRM ของร้าน · ไม่นับสมาชิก/บอร์ดงาน) ─────────────────────────
 
 async function crmRunLimit(tenantId: string): Promise<number> {
-  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { limits: true } });
-  const limits = isObj(t?.limits) ? t.limits : {};
-  const crm = isObj(limits.crm) ? limits.crm : {};
-  const v = Number(crm.automationRunsPerMonth);
-  return Number.isFinite(v) && v >= 0 ? v : CRM_AUTOMATION_RUNS_PER_MONTH;
+  // CRM C3.9 ▸ ตัวอ่านเพดานตัวเดียวของ CRM (`limits.ts` · `Tenant.limits.crm.automationRunsPerMonth` · ค่าเริ่มต้น 5,000 =
+  //   CRM_AUTOMATION_RUNS_PER_MONTH) — ไม่อ่าน JSON ของร้านเองอีก ◂
+  return crmLimitOf(tenantId, "automationRunsPerMonth");
 }
 
 async function crmRunsUsed(tenantId: string, now: Date): Promise<number> {

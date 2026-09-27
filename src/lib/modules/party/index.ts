@@ -253,3 +253,40 @@ export async function findOrCreateCompany(
   return { id: row.id, created: true };
 }
 // ◂ CRM C1.3
+
+// CRM C3.9 ▸ ผู้ถือ Party ทั้งร้าน (ตัวนับเดียวของการลบตาม PDPA — สมาชิก `eraseMember` + CRM `eraseContact` ใช้ร่วมกัน · รีวิว C3.9 NOTE)
+//   นับทุกตารางที่มีคอลัมน์ `partyId` และเป็น "ตัวตนที่ยังใช้งาน" ของโมดูลอื่น: บัญชี · นัด · แชท · CRM (ผู้ติดต่อ/บริษัท) · ที่พัก · สมาชิก ·
+//   คิว · เช่า · เรียน · คลินิก (ประวัติ/การเข้ารับบริการ) · บัตรงาน · ร้านค้าออนไลน์ · HR · ผู้ขาย · การ์ดบอร์ดงานที่ผูก PARTY
+//   🔴 ไม่นับ `CustomRecord.partyId` (เรคคอร์ดกำหนดเองคือ "ข้อมูลเกี่ยวกับคนนี้" ไม่ใช่ผู้ถือตัวตนอิสระ — ถูกล้างในขอบเขตการลบเอง)
+//   `exclude` = แถวที่ผู้เรียกกำลังลบอยู่ (ไม่นับเป็นผู้ถือ) · สมาชิกที่ปิดแล้ว (status CLOSED = ถูกลบ) ไม่นับ · `client` บังคับ (tx/prisma ของผู้เรียก)
+export async function countPartyHolders(
+  tenantId: string,
+  partyId: string,
+  exclude: { crmContactIds?: readonly string[]; customerIds?: readonly string[] },
+  client: Prisma.TransactionClient,
+): Promise<number> {
+  const t = tenantId;
+  const p = partyId;
+  const notIn = (ids: readonly string[] | undefined) => (ids && ids.length ? { id: { notIn: [...ids] } } : {});
+  const counts = await Promise.all([
+    client.accountContact.count({ where: { tenantId: t, partyId: p } }),
+    client.appointment.count({ where: { tenantId: t, partyId: p } }),
+    client.chatContact.count({ where: { tenantId: t, partyId: p } }),
+    client.crmContact.count({ where: { tenantId: t, partyId: p, ...notIn(exclude.crmContactIds) } }),
+    client.crmCompany.count({ where: { tenantId: t, partyId: p } }),
+    client.hotelReservation.count({ where: { tenantId: t, partyId: p } }),
+    client.customer.count({ where: { tenantId: t, partyId: p, status: { not: "CLOSED" }, ...notIn(exclude.customerIds) } }),
+    client.queueTicket.count({ where: { tenantId: t, partyId: p } }),
+    client.rentalBooking.count({ where: { tenantId: t, partyId: p } }),
+    client.schoolEnrollment.count({ where: { tenantId: t, partyId: p } }),
+    client.patientRecord.count({ where: { tenantId: t, partyId: p } }),
+    client.clinicVisit.count({ where: { tenantId: t, partyId: p } }),
+    client.ticketOrder.count({ where: { tenantId: t, partyId: p } }),
+    client.shopOrder.count({ where: { tenantId: t, partyId: p } }),
+    client.hrEmployee.count({ where: { tenantId: t, partyId: p } }),
+    client.supplier.count({ where: { tenantId: t, partyId: p } }),
+    client.kanbanCardLink.count({ where: { tenantId: t, linkType: "PARTY", linkId: p, removedAt: null } }),
+  ]);
+  return counts.reduce((a, b) => a + b, 0);
+}
+// ◂ CRM C3.9

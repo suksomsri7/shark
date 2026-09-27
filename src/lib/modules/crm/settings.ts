@@ -567,3 +567,52 @@ export async function setCrmTargetKeys(
   return rows.length > 0 ? (rows[0]?.targets ?? {}) : null;
 }
 // ◂ CRM C3.6
+
+// CRM C3.9 ▸ อายุเก็บข้อมูล (PDPA · addendum ข้อ 2) `settings.crm.retention = { recordingDays (C2.4) · exportDays · leadMonths }`
+//   exportDays = อายุไฟล์ส่งออกทั้งระบบ (ค่าเริ่มต้น 7 วัน · 1–90) · leadMonths = อายุ lead ที่ไม่แปลง (มติ C21 · ค่าเริ่มต้น 24 เดือน ·
+//   0 = ปิด · 1–120) — ตัวอ่านบริสุทธิ์ (ค่าเพี้ยน = ค่าเริ่มต้น) + ตัวเขียนคำสั่งเดียว (jsonb ซ้อน 2 ชั้นแบบ setCrmRecordingDays —
+//   คีย์อื่นของ `crm` และของ `retention` รอดเสมอ ไม่มี read-modify-write)
+export const CRM_RETENTION_EXPORT_DAYS_DEFAULT = 7;
+export const CRM_RETENTION_LEAD_MONTHS_DEFAULT = 24;
+export type CrmRetentionSettings = { exportDays: number; leadMonths: number };
+
+export function crmRetentionOf(raw: Json): CrmRetentionSettings {
+  const crm = isObj(raw) && isObj(raw.crm) ? raw.crm : null;
+  const ret = crm && isObj(crm.retention) ? crm.retention : null;
+  const ex = ret?.exportDays;
+  const lm = ret?.leadMonths;
+  return {
+    exportDays: typeof ex === "number" && Number.isInteger(ex) && ex >= 1 && ex <= 90 ? ex : CRM_RETENTION_EXPORT_DAYS_DEFAULT,
+    leadMonths: typeof lm === "number" && Number.isInteger(lm) && lm >= 0 && lm <= 120 ? lm : CRM_RETENTION_LEAD_MONTHS_DEFAULT,
+  };
+}
+
+export async function setCrmRetentionKeys(
+  ctx: { tenantId: string; systemId: string },
+  patch: Partial<CrmRetentionSettings>,
+  db: CrmSettingsDb = crmDb,
+): Promise<void> {
+  const out: Record<string, number> = {};
+  if (patch.exportDays !== undefined) {
+    if (!Number.isInteger(patch.exportDays) || patch.exportDays < 1 || patch.exportDays > 90) throw new Error("อายุไฟล์ส่งออกต้องเป็นจำนวนวันเต็มตั้งแต่ 1 ถึง 90");
+    out.exportDays = patch.exportDays;
+  }
+  if (patch.leadMonths !== undefined) {
+    if (!Number.isInteger(patch.leadMonths) || patch.leadMonths < 0 || patch.leadMonths > 120) throw new Error("อายุเก็บ lead ต้องเป็นจำนวนเดือนเต็มตั้งแต่ 0 (ปิด) ถึง 120");
+    out.leadMonths = patch.leadMonths;
+  }
+  if (Object.keys(out).length === 0) return;
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('retention',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'retention') = 'object' THEN "settings"->'crm'->'retention' ELSE '{}'::jsonb END)
+               || ${JSON.stringify(out)}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+// ◂ CRM C3.9

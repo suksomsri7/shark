@@ -33,6 +33,7 @@ import * as party from "@/lib/modules/party";
 import type * as HrFacade from "@/lib/modules/hr";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานกฎมอบหมาย ◂
 import { crmCan, CrmForbiddenError, isApiActor } from "./access";
 import { contactWhere, dealWhere } from "./where";
 import { companySizePartyInScope } from "./companies";
@@ -747,6 +748,8 @@ export async function createRule(ctx: AssignmentCtx, actor: MemberActor, input: 
   const v = await cleanRule(ctx, actor, input);
   // S5: กฎใหม่ + แถวประวัติ อยู่ใน tx เดียว (ลำดับ sortOrder อ่านใน tx เดียวกับที่เขียน)
   const row = await prisma.$transaction(async (tx) => {
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานกฎมอบหมายของระบบ — ล็อก + นับ + insert ใน tx เดียว ◂
+    await assertCrmLimit(ctx, "assignmentRules", 1, tx);
     const max = await tx.crmAssignmentRule.aggregate({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, _max: { sortOrder: true } });
     const created = await tx.crmAssignmentRule.create({
       data: {

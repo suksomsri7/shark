@@ -262,3 +262,13 @@ export * as widgets from "./widgets";
 //   ขอบวันไทย (00:00 +07:00) ให้หน้า `/p/[slug]` จัดกลุ่มงานวันนี้/เลยกำหนด — สูตรเดียวของโมดูล (ไฟล์บริสุทธิ์)
 export { thaiDayStartMs } from "./activities-shared";
 // ◂ CRM C3.6
+// CRM C3.9 ▸ PDPA ฝั่ง CRM (`privacy.ts`) + เพดานของระบบ (`limits.ts`)
+//   `privacy`: eraseContact (ลบตามคำขอ · danger · idempotent) · exportContact (ชุดข้อมูลของคนหนึ่งคน) · exportTenant/runExportJobs/getExport/
+//     listMyExports (ไฟล์ส่งออกทั้งระบบ = งาน CRM_EXPORT บนเลนของ C3.1 · ไฟล์ส่วนตัว) · purge/purgeExports/retentionLeads (อายุเก็บ ·
+//     งานรายวัน `crm.purge.exports` · `crm.retention.leads` — ทะเบียนอยู่ที่ `platform/minute-jobs.ts`) · onMemberErased (ตัวรับ
+//     `member.erased` ผ่านสะพาน `crm-bridges/privacy.ts`) · retentionSettings — ค่าคงที่/ชนิดสำหรับหน้า 'use client' อยู่ที่ `./privacy-shared`
+//   `limits`: CRM_LIMITS (19 คีย์ §11.9) · crmLimits/crmUsage/assertCrmLimit/noteCrmUsage/limitStatus · CRM_PARAM_CAPS · CRM_HARD_CAPS —
+//     ค่าคงที่/ชนิด/ป้ายไทยสำหรับหน้า 'use client' อยู่ที่ `./limits-shared`
+export * as privacy from "./privacy";
+export * as limits from "./limits";
+// ◂ CRM C3.9

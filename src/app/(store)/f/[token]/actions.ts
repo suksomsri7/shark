@@ -13,8 +13,8 @@
 
 import { headers } from "next/headers";
 import { submitPublicFormGuarded } from "@/lib/modules/forms/service";
-
-export type PublicFormActionResult = { ok: true } | { ok: false; message: string };
+// CRM C3.9 ▸ ชนิดผลลัพธ์ย้ายไป `./actions-shared` (ไฟล์ "use server" export ได้เฉพาะ async function — X8.2) ◂
+import type { PublicFormActionResult } from "./actions-shared";
 
 /** รหัสผู้เข้าชมของคำขอนี้ — อ่านจากคุกกี้ first-party `sd_vid` ของคำขอเท่านั้น (ไม่รับค่าจากผู้เรียก) */
 function visitorFromCookie(cookie: string | null): string | null {

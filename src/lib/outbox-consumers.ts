@@ -1207,6 +1207,28 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.portal.quote.responded": withAutomation(crmBridge("onPortalEvent")),
   "crm.portal.request.created": withAutomation(crmBridge("onPortalEvent")),
   // ◂ CRM C3.5
+  // CRM C3.9 ▸ PDPA — payload id ล้วน (X8)
+  //   `member.erased` {customerId, partyId} (ตัวยิง `member/privacy.ts#eraseMember` · key `member.erased.event#<customerId>` · คู่กับ member.updated เดิม)
+  //     งานหลัก = ลบผู้ติดต่อ CRM ที่ผูกสมาชิกคนนี้ (`crm.privacy.onMemberErased` ผ่าน facade — แบบเดียวกับ crm.quota.reached) — **ขั้นแรกที่ retry ได้**
+  //     ไม่ใช่ของแถมใต้ compose: การลบตามกฎหมายที่ล้มแล้วกลายเป็น WARN = ข้อมูลค้างเงียบ ๆ ⇒ ล้ม = event ล้ม = คิวส่งใหม่ (ตัวรับ idempotent
+  //     ใต้ล็อกแถว — X4) · 🔴 ไม่ใช่ "สะพาน" (crm-bridges ต้องเคารพประตู uiVersion/bridgesEnabled — R-E.14): การลบตามคำขอ PDPA เป็น
+  //     หน้าที่ตามกฎหมายของทุกระบบ CRM รวมรุ่น 1 แบบเดียวกับงาน crm.purge.* (มติผู้คุมงาน 25 ก.ย.) ⇒ ไม่มีประตูโดยเจตนา
+  //     AUDIT-CLASS X1: ผู้ติดต่อค้นด้วย tenantId ของ event เท่านั้น
+  //   `crm.contact.erased` {contactId, systemId, partyId?, customerId?} (ตัวยิง `crm/privacy.ts#eraseContact` ใน tx เดียวกับการลบ · key `crm.contact.erased#<id>`)
+  //     รีวิว C3.9 B3 (มติผู้คุมงาน): งานหลัง commit ทั้งหมด (วัตถุไฟล์บนที่เก็บ · ยกเลิกคำขออนุมัติของพอร์ทัล · ลบสมาชิกที่ผูก) เป็นของตัวรับนี้ —
+  //     **ขั้นแรกที่ retry ได้** (`crmFirst` แบบเดียวกับผลอนุมัติ): ล้ม = event ล้ม = ส่งใหม่จนสำเร็จ · idempotent (อ่านงานจากแถว audit ของการลบ
+  //     id ล้วน · ไฟล์ที่ลบแล้ว/คำขอที่ปิดแล้ว/สมาชิกที่ลบแล้ว = ข้าม) · ความล้มลง OpsEvent WARN (id ล้วน) · กฎอัตโนมัติ/เว็บฮุคของร้านได้รู้ตามปกติ
+  //   รีวิวรอบ 2 N1: ลำดับห่อแบบเดียวกับตัวบริโภคอื่น — `crmFirst(first, withAutomation(…))` ⇒ งานหลักล้ม = โยนทันที (ส่งใหม่) และกฎอัตโนมัติ/
+  //   เว็บฮุคของร้านวิ่งเฉพาะรอบที่งานหลักสำเร็จ (ไม่ยิงซ้ำทุกรอบที่ retry)
+  "member.erased": crmFirst(async (evt) => {
+    const crm = await import("@/lib/modules/crm");
+    await crm.privacy.onMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
+  }, withAutomation(async () => {})),
+  "crm.contact.erased": crmFirst(async (evt) => {
+    const crm = await import("@/lib/modules/crm");
+    await crm.privacy.onContactErased({ tenantId: evt.tenantId, payload: evt.payload });
+  }, withAutomation(async () => {})),
+  // ◂ CRM C3.9
 };
 
 // ห่อทุก consumer ด้วย withWebhooks → ทุก event ที่ drain สำเร็จจะ dispatch ฮุคให้อัตโนมัติ

@@ -35,6 +35,7 @@ import {
   type UpdateCompanyInput,
 } from "./companies";
 import { CompaniesError, type CompanyCandidate, type ImportCompaniesResult } from "./companies-shared";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Fail = { ok: false; error: string; code?: string; duplicateOf?: string };
 
@@ -54,6 +55,7 @@ async function session(systemId: string, action: string) {
  * "ข้อมูลไม่เปลี่ยน" เพราะช่วงก่อนหน้าอาจบันทึกไปแล้ว (รีวิว SF9)
  */
 function failOf(e: unknown, multiStep = false): Fail {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof CompaniesError) return { ok: false, error: e.message, code: e.code, ...(e.duplicateOf ? { duplicateOf: e.duplicateOf } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };

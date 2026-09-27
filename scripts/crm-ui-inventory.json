@@ -21001,6 +21001,306 @@
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-export",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "download",
+        "target": "file:json",
+        "db": "AuditLog crm.contact.export.person (ไม่มีการเขียนข้อมูลลูกค้า)"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-erase",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "contact-privacy-erase-panel",
+        "db": ""
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-erase-reason",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "contact-privacy-erase-panel",
+        "db": "เหตุผล < 5 ตัวอักษร = ปุ่มลบถาวรกดไม่ได้"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-erase-confirm",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "contact-privacy-erase-submit",
+        "db": "ไม่ติ๊ก = ปุ่มลบถาวรกดไม่ได้"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-erase-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:eraseContactAction",
+        "db": "CrmContact.name=ลบตามคำขอ PDPA · AuditLog crm.contact.erase · OutboxEvent crm.contact.erased"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-privacy-erase-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "toast",
+        "target": "contact-privacy",
+        "db": "ปิดแผง ไม่มีการเขียน"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-retention-export-days",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-retention",
+        "db": "1–90 วัน"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-retention-lead-months",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-retention",
+        "db": "0–120 เดือน (0 = ปิด)"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-retention-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:saveRetentionAction",
+        "db": "AppSystem.settings.crm.retention.{exportDays,leadMonths} · AuditLog crm.settings.retention"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-export-start-csv",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:startTenantExportAction",
+        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-export-start-json",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:startTenantExportAction",
+        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-export-refresh",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "toast",
+        "target": "crm-export-jobs",
+        "db": "ไม่มีการเขียน"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-export-download",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "download",
+        "target": "file:csv|json",
+        "db": "ไม่มีการเขียน · ลิงก์ /api/files/<id> อายุ ≤ 15 นาทีของผู้ขอ"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-retention-lower-confirm",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-retention-save",
+        "db": "ไม่ติ๊ก = ปุ่มบันทึกกดไม่ได้เมื่อลดอายุเก็บ lead"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-retention-lower-text",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-retention-save",
+        "db": "ต้องพิมพ์คำว่า ลดอายุเก็บ · ไม่ตรง = ปุ่มบันทึกกดไม่ได้ (action ตอบ CONFIRM_REQUIRED)"
+      },
+      "wo": "C3.9",
+      "oracle": "qc-crm-c3.9"
     }
   ]
 }

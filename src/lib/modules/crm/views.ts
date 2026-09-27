@@ -22,6 +22,7 @@ import { CrmV2DisabledError } from "./ui-version";
 import { COMPANY_SIZES, type CompanyListInput } from "./companies-shared";
 import type { ContactListInput } from "./contacts-shared";
 import type { DealListInput } from "./deals-shared";
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export const CRM_VIEW_OBJECT_KEYS = ["contact", "company", "deal"] as const;
 export type CrmViewObjectKey = (typeof CRM_VIEW_OBJECT_KEYS)[number];
@@ -231,7 +232,7 @@ const DEAL_KINDS = new Set(["OPEN", "WON", "LOST"]);
 const COMPANY_SIZE_SET = new Set<string>(COMPANY_SIZES);
 const isDay = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(new Date(`${v}T00:00:00Z`).getTime());
 /** เพดานมุมมองต่อคนต่อวัตถุ (เท่ากับของวัตถุกำหนดเอง `objects-actions.ts`) */
-export const CRM_VIEW_PER_USER_MAX = 50;
+export const CRM_VIEW_PER_USER_MAX = CRM_HARD_CAPS.savedViewsPerUser; // CRM C3.9 ▸ เพดานตายตัวอยู่ที่ limits-shared (ค่าเดิม 50) ◂
 
 /**
  * รีวิว S4: มุมมอง (โดยเฉพาะแบบทีม) ต้อง "ใช้ได้จริง" ก่อนบันทึก — ค่าผิดชนิด (ขนาดบริษัท · ชนิดดีล · วันที่) ถูกปฏิเสธตรง ๆ แล้ว

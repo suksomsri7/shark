@@ -38,6 +38,7 @@ import {
 } from "./deals";
 import { contactOptions } from "./contacts";
 import { DealsError, type DealDto, type DealLineInput, type DealListInput } from "./deals-shared";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Fail = { ok: false; error: string; code?: string; missing?: string[] };
 
@@ -53,6 +54,7 @@ async function session(systemId: string, action: string) {
 }
 
 function failOf(e: unknown, multiStep = false): Fail {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof DealsError) return { ok: false, error: e.message, code: e.code, ...(e.missing ? { missing: e.missing } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };

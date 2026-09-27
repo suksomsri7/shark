@@ -57,6 +57,8 @@ import {
 import type { MemberActor } from "@/lib/modules/member";
 import type { RichEmail, RichEmailResult } from "@/lib/core/email";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานอีเมลต่อวัน + แม่แบบ ◂
+import { CRM_HARD_CAPS, CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 import { crmCan, crmForbiddenMessage, CrmForbiddenError } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
@@ -679,7 +681,11 @@ export async function saveTemplate(
       await writeAudit({ tenantId: ctx.tenantId, actorId: str(ctx.actorUserId) || null, action: "crm.email.template.update", targetType: "CrmEmailTemplate", targetId: row.id, after: { name, category: data.category } });
       return { id: row.id, name: row.name, subject: row.subject, bodyHtml: row.bodyHtml, category: row.category, active: row.active };
     }
-    const row = await prisma.crmEmailTemplate.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...data } });
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานแม่แบบจดหมายของระบบ (§11.9 · 100) — ล็อก + นับ + insert ใน tx เดียว ◂
+    const row = await prisma.$transaction(async (tx) => {
+      await assertCrmLimit(ctx, "emailTemplates", 1, tx);
+      return tx.crmEmailTemplate.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, ...data } });
+    });
     await writeAudit({ tenantId: ctx.tenantId, actorId: str(ctx.actorUserId) || null, action: "crm.email.template.create", targetType: "CrmEmailTemplate", targetId: row.id, after: { name, category: data.category } });
     return { id: row.id, name: row.name, subject: row.subject, bodyHtml: row.bodyHtml, category: row.category, active: row.active };
   } catch (e) {
@@ -1151,7 +1157,10 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   let row: CrmEmailMessage;
   try {
-    row = await prisma.crmEmailMessage.create({
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานอีเมลต่อวันของระบบ (§11.9 · 2,000/วันไทย) — ล็อก + นับ + insert ใน tx เดียว ◂
+    row = await prisma.$transaction(async (tx) => {
+      await assertCrmLimit(ctx, "emailsPerDay", 1, tx);
+      return tx.crmEmailMessage.create({
       data: {
         id: emailId,
         tenantId: ctx.tenantId,
@@ -1184,6 +1193,7 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
         routing: routingJson as unknown as Prisma.InputJsonValue,
         leaseUntil: queued ? null : new Date(now.getTime() + CRM_EMAIL_LEASE_MS),
       },
+      });
     });
   } catch (e) {
     // 🔴 แถวนี้แพ้การแข่ง (หรือเขียนไม่สำเร็จ) ⇒ ไฟล์ที่เพิ่งอัปขึ้นที่เก็บเมื่อครู่ไม่มีใครอ้างถึงอีกเลย
@@ -1192,11 +1202,13 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     for (const a of stored) {
       await deleteFileAsset({ tenantId: ctx.tenantId }, a.fileId, deps?.del ? { del: deps.del } : undefined).catch(() => null);
     }
-    if (idem && isUniqueViolation(e)) {
+    // CRM C3.9 ▸ ส่งซ้ำด้วยกุญแจเดิมตอนเต็มเพดาน = ได้ฉบับเดิมคืน (ไม่ใช่ LIMIT) ◂
+    if (idem && (isUniqueViolation(e) || e instanceof CrmLimitError)) {
       const prior = await prisma.crmEmailMessage.findFirst({ where: { messageId } });
       if (prior) {
         return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: statusOf(prior.status), reused: true };
       }
+      if (e instanceof CrmLimitError) throw e;
       throw fail("CONFLICT", "จดหมายฉบับนี้กำลังถูกส่งอยู่จากอีกหน้าจอ — รอสักครู่แล้วรีเฟรชหน้าเพื่อดูผล");
     }
     throw e;
@@ -1355,7 +1367,7 @@ export async function sendEmail(ctx: EmailsCtx, actor: MemberActor, input: SendI
 //   🔴 ไม่มีเอนจินที่สอง: วนเรียก `sendCore` ทีละคน ⇒ กติกาความยินยอม (`canContact`) · การมองเห็นผู้ติดต่อ ·
 //      ผู้รับต้องเป็นอีเมลของผู้ติดต่อรายนั้น · ตัวกันซ้ำระดับจดหมาย (Message-ID) เหมือนการส่งทีละฉบับเป๊ะ ๆ
 //   🔴 กุญแจกันซ้ำต่อคน = `<กุญแจของคำขอ>:<contactId>` ⇒ ยิงคำสั่งเดิมซ้ำ (เน็ตหลุด) ไม่ทำให้ลูกค้าได้จดหมายสองฉบับ
-export const CRM_EMAIL_BULK_MAX = 500;
+export const CRM_EMAIL_BULK_MAX = CRM_HARD_CAPS.emailBulk; // CRM C3.9 ▸ เพดานตายตัวย้ายไป limits-shared (ค่าเดิม 500) ◂
 
 export type BulkSendInput = {
   contactIds: string[];
@@ -2605,13 +2617,17 @@ export async function purgeBodies(
          ORDER BY "createdAt" ASC LIMIT 200`) ?? [];
       if (rows.length === 0) break;
       for (const r of rows) {
+        // CRM C3.9 ▸ AUDIT-CLASS X5: จองแถวก่อนด้วยการล้างแบบมีเงื่อนไข (`purgedAt IS NULL`) — สองรอบที่วิ่งซ้อนกัน
+        //   (route + crontab · รอบที่ 2 เหลื่อมเวลา) นับ/ลบไฟล์แนบของฉบับเดียวกันได้ **ครั้งเดียว** (เดิม: ลบไฟล์ก่อน แล้ว update
+        //   ไม่มีเงื่อนไข ⇒ ซ้อนกัน = นับ 2 และยิงลบไฟล์ 2 ครั้ง) · ไฟล์แนบลบหลังจองได้ (ลบไม่สำเร็จ = OpsEvent จากตัวลบกลาง) ◂
+        const claimed = await prisma.crmEmailMessage.updateMany({
+          where: { id: r.id, purgedAt: null },
+          data: { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: at },
+        });
+        if (claimed.count !== 1) continue;
         for (const a of attachmentsOf({ attachments: r.attachments })) {
           await deleteFileAsset({ tenantId: sys.tenantId }, a.fileId, opts.deps?.del ? { del: opts.deps.del } : undefined).catch(() => null);
         }
-        await prisma.crmEmailMessage.update({
-          where: { id: r.id },
-          data: { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: at },
-        });
         purged += 1;
       }
       if (rows.length < 200) break;

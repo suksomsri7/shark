@@ -790,7 +790,12 @@ export async function verifyPortalOtp(
  * (คนที่พิมพ์รหัส OTP ผิดไม่ควรเสียโควตารับคำเชิญ และกลับกัน)
  */
 export async function hitPortalInviteLimit(tenantId: string, ip: string | null | undefined): Promise<void> {
-  const k = trimmed(ip);
+  // CRM C3.9 ▸ AUDIT-CLASS X8: กุญแจถังเก็บ **ค่าแฮชของ IP** ไม่ใช่ IP ดิบ (มติผู้คุมงาน C3.8+C3.9 — finding ของข้อสอบ S5.3) ·
+  //   ผูกกับชื่อถังในแฮช ⇒ ค่าเดียวกันเทียบข้ามถังไม่ได้ · เพดาน/หน้าต่างเดิม (ถังเดิมของ IP ดิบหมดอายุเองใน 15 นาที) ◂
+  //   NOTE รีวิว C3.9: ใช้ HMAC ชุดกุญแจเดียวกับพอร์ทัล (`portalIpHash` · `portal-ip:v1:<SESSION_SECRET>`) — sha256 เปล่าของ IP เดาย้อนได้
+  //   (พื้นที่ IPv4 เล็ก) · ไม่มีกุญแจ (พอร์ทัลไม่เปิดอยู่แล้ว) = ถอยไป sha256 เพื่อไม่ให้ IP ดิบลงคีย์ ◂
+  const raw = trimmed(ip);
+  const k = raw ? (portalIpHash(raw) ?? sha256(`portal-invite:ip:${raw}`)).slice(0, 32) : "";
   await hit(`portal-invite:${trimmed(tenantId) || "-"}:${k || "unknown"}`, RL_VERIFY_PER_IP, RL_VERIFY_WINDOW_MS, (mins) => `ลองเปิดลิงก์เชิญบ่อยเกินไป — รออีกประมาณ ${mins} นาทีแล้วลองใหม่อีกครั้ง`);
 }
 

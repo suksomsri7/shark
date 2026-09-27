@@ -24,6 +24,7 @@ import {
   type StagePatch,
 } from "./pipelines";
 import { DealsError } from "./deals-shared";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Fail = { ok: false; error: string; code?: string };
 
@@ -39,6 +40,7 @@ async function session(systemId: string) {
 }
 
 function failOf(e: unknown): Fail {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof DealsError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ตั้งค่า CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };

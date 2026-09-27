@@ -24,6 +24,7 @@
 import type { CrmActivity, FileAsset, Prisma } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { logOps } from "@/lib/core/ops";
+import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" (รีวิว S3) ◂
 import type { MemberActor } from "@/lib/modules/member";
 import { ALLOWED_UPLOAD_TYPES, deleteFileAsset, normalizeUploadType, openStoredFile, privateFileUrl, uploadFile, type DeleteDeps, type UploadDeps } from "@/lib/storage/service";
 import { canSpend, canSpendPeek, chargeUsageSafe } from "@/lib/ai/credit";
@@ -774,12 +775,13 @@ export async function bookingLinkFor(ctx: CallsCtx, actor: MemberActor, input: {
  * 🔴 R-E.14: ระบบที่ยัง uiVersion 1 ถูกข้าม (ไม่มีงานเบื้องหลังของ v2 แตะร้านที่ยังไม่เปิด)
  * AUDIT-CLASS X4: ทำซ้ำได้ — `recordingFileId` ถูกล้างแบบมีเงื่อนไข ⇒ รอบถัดไปไม่เจอแถวเดิมอีก
  */
-export async function purgeRecordings(now: Date, opts?: { tenantIds?: string[]; deps?: CallStoreDeps; limit?: number }): Promise<{ purged: number }> {
+export async function purgeRecordings(now: Date, opts?: { tenantIds?: string[]; systemIds?: string[]; deps?: CallStoreDeps; limit?: number }): Promise<{ purged: number }> {
   const at = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
   const tenantIds = Array.isArray(opts?.tenantIds) ? opts!.tenantIds.filter((x): x is string => typeof x === "string" && !!x) : null;
   const limit = Math.min(Math.max(opts?.limit ?? 500, 1), 5000);
   const systems = await prisma.appSystem.findMany({
-    where: { type: "CRM", ...(tenantIds ? { tenantId: { in: tenantIds } } : {}) },
+    // CRM C3.9 ▸ NOTE รีวิว: ขอบเขตระบบ (privacy.purge ส่ง systemIds ต่อมา) ◂
+    where: { type: "CRM", ...(tenantIds ? { tenantId: { in: tenantIds } } : {}), ...(Array.isArray(opts?.systemIds) ? { id: { in: opts!.systemIds.filter((x) => typeof x === "string" && !!x) } } : {}) },
     select: { id: true, tenantId: true, settings: true },
     orderBy: { id: "asc" },
   });
@@ -803,10 +805,26 @@ export async function purgeRecordings(now: Date, opts?: { tenantIds?: string[]; 
     for (const row of rows) {
       const fileId = row.recordingFileId;
       if (!fileId) continue;
-      const del = await deleteFileAsset({ tenantId: sys.tenantId }, fileId, opts?.deps?.del ? { del: opts.deps.del } : undefined).catch(() => ({ ok: false as const, reason: "throw" }));
-      if (!del.ok) continue; // ที่เก็บล่ม = คงแถวไว้ให้รอบหน้าทำต่อ (ห้ามล้างช่องแล้วทิ้งไฟล์กำพร้า)
+      // CRM C3.9 ▸ AUDIT-CLASS X5: **จองก่อนลบ** — ล้างช่องแบบมีเงื่อนไข (`recordingFileId = fileId`) ได้ 1 แถว = รอบนี้เป็นเจ้าของ
+      //   ⇒ สองรอบที่วิ่งซ้อนกันลบวัตถุเดียวกันได้ครั้งเดียว (เดิม: ลบไฟล์ก่อนแล้วค่อยล้าง ⇒ ซ้อนกัน = ยิงลบ 2 ครั้ง) ·
+      //   ที่เก็บล่ม = คืนช่องให้แถวเดิม (มีเงื่อนไข) ให้รอบหน้าทำต่อ — ยังไม่ทิ้งไฟล์กำพร้าเหมือนสัญญาเดิม ◂
+      //   รีวิว C3.9 S3 (มติผู้คุมงาน): ลบไม่สำเร็จ = คืน **เฉพาะตัวชี้ไฟล์** (ข้อความถอดเสียงหมดอายุไปแล้ว ไม่คืน) และคืนเฉพาะเมื่อผู้ติดต่อของสาย
+      //   ยังไม่ถูกลบตาม PDPA (ธง = แถว audit `crm.contact.erase`) — ถูกลบแล้ว = ไม่คืน + OpsEvent WARN (id ล้วน) ให้ตามเก็บวัตถุ ◂
       const cleared = await prisma.crmActivity.updateMany({ where: { id: row.id, tenantId: sys.tenantId, recordingFileId: fileId }, data: { recordingFileId: null, transcript: null } });
-      if (cleared.count === 1) purged += 1;
+      if (cleared.count !== 1) continue;
+      const del = await deleteFileAsset({ tenantId: sys.tenantId }, fileId, opts?.deps?.del ? { del: opts.deps.del } : undefined).catch(() => ({ ok: false as const, reason: "throw" }));
+      if (!del.ok) {
+        // รีวิวรอบ 2 N4: คืนตัวชี้ในคำสั่งเดียว — เงื่อนไข "ผู้ติดต่อยังไม่ถูกลบ" อยู่ใน WHERE เดียวกับการเขียน (ไม่มีช่องระหว่างอ่านกับเขียน)
+        const restored = await prisma.$executeRaw`
+          UPDATE "CrmActivity" a SET "recordingFileId" = ${fileId}
+           WHERE a."id" = ${row.id} AND a."tenantId" = ${sys.tenantId} AND a."recordingFileId" IS NULL
+             AND NOT EXISTS (SELECT 1 FROM "AuditLog" e WHERE e."action" = ${CRM_ERASE_AUDIT_ACTION} AND e."tenantId" = a."tenantId" AND e."targetId" = a."contactId")`;
+        if (Number(restored) === 0) {
+          await logOps("WARN", "crm.privacy", "ลบไฟล์เสียงไม่สำเร็จและไม่คืนตัวชี้ (ผู้ติดต่อถูกลบข้อมูลแล้ว) — ต้องตามลบวัตถุบนที่เก็บ", { tenantId: sys.tenantId, detail: JSON.stringify({ activityId: row.id, fileId }) });
+        }
+        continue;
+      }
+      purged += 1;
     }
   }
   return { purged };

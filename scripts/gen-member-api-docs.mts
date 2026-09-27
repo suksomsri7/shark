@@ -214,6 +214,11 @@ const WEBHOOK_EVENT_DOCS: Record<string, WebhookDoc> = {
     when: "Two records turned out to be the same person and were merged. Everything now hangs off `keepId`; `mergedId` still exists but is closed and points at the survivor.",
     payload: { keepId: "cmf1cus0001", mergedId: "cmf1cus0002" },
   },
+  // CRM C3.9 ▸ ตัวยิง `member/privacy.ts#eraseMember` (tx เดียวกับการลบ · คู่กับ member.updated `changedKeys: ["erased"]`) ◂
+  "member.erased": {
+    when: "A member's personal data was erased under PDPA (their own request, an approved erase request or the shop's retention rule). Delete every copy you keep of this person; only the ids remain. The CRM erases contacts linked to this member on the same event.",
+    payload: { customerId: "cmf1cus0001", partyId: "cmf1pty0001" },
+  },
   "member.identity.linked": {
     when: "An outside channel account (a LINE user, a WhatsApp number, a marketplace buyer) was attached to a member. `method` says what matched: PHONE, EMAIL or CHANNEL_ID.",
     payload: { customerId: "cmf1cus0001", channel: "LINE", externalId: "Uxxxxxxxx", method: "PHONE", identityId: "cmf1idn0001" },

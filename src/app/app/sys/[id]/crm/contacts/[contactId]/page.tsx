@@ -41,6 +41,10 @@ import type { ContactScoreReason } from "@/components/crm/scoring/ContactScoreBa
 import { webTimeline } from "@/lib/modules/crm/tracking";
 import { CrmWebTimeline } from "@/components/crm/tracking/CrmWebTimeline";
 import type { CrmWebTimelineSession } from "@/components/crm/tracking/types";
+// CRM C3.9 ▸ PDPA: ส่งออกข้อมูลของผู้ติดต่อนี้ · ลบข้อมูลส่วนบุคคล (ปุ่มขึ้นตามคีย์ของผู้ดู — ไม่มีคีย์ = ไม่เห็นปุ่ม) ◂
+import { ContactPrivacyBlock } from "../_components/ContactPrivacyBlock";
+import { crmCan } from "@/lib/modules/crm/access";
+import { isContactErased } from "@/lib/modules/crm/privacy";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
 // 🔴 404-not-403 (COMMON page guard): ระบบไม่ใช่ CRM ของร้านนี้ / ผู้ติดต่อของระบบอื่น-ร้านอื่น = notFound() — ไม่บอกว่า "มีแต่ห้ามดู"
@@ -125,6 +129,8 @@ export default async function Contact360Page({
     }))
     .catch(() => ({ score: c.score, band: c.scoreBand ?? ("COLD" as ContactScoreBand), items: [] as ContactScoreReason[] }));
   // ◂ CRM C2.8
+  // CRM C3.9 ▸ ธง "ลบแล้ว" = แถว audit ของการลบ (ไม่ใช่ชื่อ — รีวิว S2) ◂
+  const erased = await isContactErased(tenantId, c.id).catch(() => false);
   const base = `/app/sys/${id}/crm/contacts`;
   const name = contactLabel(c);
   const now = new Date();
@@ -439,6 +445,14 @@ export default async function Contact360Page({
           {/* CRM C2.6 ▸ การเข้าชมเว็บ (คุกกี้ที่ลูกค้ายอมรับ) ◂ */}
           <CrmWebTimeline sessions={webSessions} />
           <ConsentBlock systemId={id} contactId={c.id} consent={data.consent} disabled={!live} />
+          {/* CRM C3.9 ▸ PDPA ◂ */}
+          <ContactPrivacyBlock
+            systemId={id}
+            contactId={c.id}
+            canExport={crmCan(actor, "crm.contact.export")}
+            canErase={crmCan(actor, "crm.contact.delete")}
+            erased={erased}
+          />
         </aside>
       </div>
     </div>

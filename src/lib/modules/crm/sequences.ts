@@ -24,6 +24,7 @@ import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { executeActions, WAIT_LEASE_MS, type RunnerChannel, type RunnerEnv, type RunnerSendCore, type RunnerSendResult, type StepOutcome, type SubjectAdapter } from "@/lib/automation/action-runner";
 import { prisma } from "./db";
+import { assertCrmLimit, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดานลำดับการติดตาม + ขั้นต่อลำดับ + ผู้อยู่ในลำดับ ◂
 import { assertCanCrm, crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
@@ -404,12 +405,21 @@ const stepRows = (tenantId: string, sequenceId: string, version: number, steps: 
 
 // ───────────────────────── จัดการลำดับ ─────────────────────────
 
+// CRM C3.9 ▸ เพดานขั้นต่อลำดับของร้าน (§11.9 ค่าเริ่มต้น 20 = SEQ_MAX_STEPS · `Tenant.limits.crm.stepsPerSequence`) ◂
+async function assertStepCap(ctx: SequencesCtx, n: number): Promise<void> {
+  const cap = await perParentCap(ctx.tenantId, "stepsPerSequence");
+  if (n > cap) throw fail("VALIDATION", `ลำดับหนึ่งมีได้ไม่เกิน ${cap.toLocaleString("th-TH")} ขั้นตามเพดานของร้าน — รวมขั้นที่คล้ายกันแล้วลองใหม่`);
+}
+
 export async function createSequence(ctx: SequencesCtx, actor: MemberActor, input: SeqSequenceInput): Promise<SequenceDto> {
   const a = await enter(ctx, actor, [MANAGE_KEY]);
   const head = cleanHead(input ?? ({} as SeqSequenceInput), true);
   const st = cleanSteps(input?.steps);
   if (!st.ok) throw fail("VALIDATION", st.error);
+  await assertStepCap(ctx, st.value.length); // CRM C3.9 ▸ ขั้นต่อลำดับ (เพดานของร้าน) ◂
   const out = await prisma.$transaction(async (tx) => {
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานลำดับการติดตามของระบบ — ล็อก + นับ + insert ใน tx เดียว ◂
+    await assertCrmLimit(ctx, "sequences", 1, tx);
     const row = await tx.crmSequence.create({
       data: {
         tenantId: ctx.tenantId,
@@ -446,6 +456,7 @@ export async function updateSequence(ctx: SequencesCtx, actor: MemberActor, id: 
   const head = cleanHead(patch ?? {}, false);
   const st = patch?.steps !== undefined ? cleanSteps(patch.steps) : null;
   if (st && !st.ok) throw fail("VALIDATION", st.error);
+  if (st && st.ok) await assertStepCap(ctx, st.value.length); // CRM C3.9 ▸ ขั้นต่อลำดับ (เพดานของร้าน) ◂
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "CrmSequence" WHERE "id" = ${str(id)} FOR UPDATE`;
     const cur = await loadSequence(ctx, id, tx);
@@ -641,6 +652,8 @@ async function enrollOne(
       if (live.length > 0 && !replace) throw fail("CONFLICT", ALREADY_IN);
       let replaced = false;
       for (const r of live) if (await stopOneTx(tx, ctx.systemId, r, "REPLACED", now)) replaced = true;
+      // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานผู้ติดต่อที่เดินอยู่ในลำดับของระบบ (§11.9 · 5,000) — ใต้ล็อกใน tx เดียวกับ insert ◂
+      await assertCrmLimit(ctx, "activeEnrollments", 1, tx);
       const row = await insertEnrollment(tx, {
         tenantId: ctx.tenantId,
         sequenceId: seq.id,
@@ -771,6 +784,8 @@ export async function resume(ctx: SequencesCtx, actor: MemberActor, enrollmentId
   const row = await loadEnrollment(ctx, a, enrollmentId);
   try {
     const n = await prisma.$transaction(async (tx) => {
+      // CRM C3.9 ▸ NOTE รีวิว: เดินต่อ = กลับมานับในเพดานผู้อยู่ในลำดับ (activeEnrollments) — ล็อก + นับ + เขียนใน tx เดียว ◂
+      if (row.status === "PAUSED") await assertCrmLimit(ctx, "activeEnrollments", 1, tx);
       const r = await tx.crmSequenceEnrollment.updateMany({ where: { id: row.id, status: "PAUSED" }, data: { status: "ACTIVE", ...(row.nextAt ? {} : { nextAt: new Date() }) } });
       if (r.count === 1) await auditTx(tx, ctx, a.userId, "crm.sequence.resume", "CrmSequenceEnrollment", row.id, { before: { status: "PAUSED" }, after: { status: "ACTIVE" } });
       return r.count;

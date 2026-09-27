@@ -22,6 +22,7 @@ import { EmailError } from "./emails";
 import * as emails from "./emails";
 import * as activities from "./activities";
 import type { CrmEmailActionResult } from "@/components/crm/emails/types";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Ctx = { tenantId: string; systemId: string; actorUserId: string };
 
@@ -36,6 +37,7 @@ async function session(systemId: string, key: string): Promise<{ ctx: Ctx; actor
 }
 
 function failOf(e: unknown): { ok: false; error: string; code?: string } {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof EmailError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ForbiddenError) return { ok: false, error: e.message, code: "FORBIDDEN" };

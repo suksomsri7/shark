@@ -24,6 +24,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { assertCrmLimit, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดานดีลเปิด + รายการต่อดีล ◂
 import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import { activityWhere, contactWhere, dealWhere } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
@@ -475,6 +476,9 @@ async function inventoryItems(ctx: DealsCtx, productIds: string[]): Promise<Map<
 async function checkLinesOrThrow(ctx: DealsCtx, rawLines: unknown, dealBp: unknown) {
   const c = checkDealLines(rawLines, dealBp ?? 0);
   if (!c.ok) throw fail("VALIDATION", c.error);
+  // CRM C3.9 ▸ เพดานรายการต่อดีลของร้าน (§11.9 ค่าเริ่มต้น 100 · `Tenant.limits.crm.linesPerDeal`) — ข้อความ/รหัสเดียวกับเพดานเดิม ◂
+  const lineCap = await perParentCap(ctx.tenantId, "linesPerDeal");
+  if (c.lines.length > lineCap) throw fail("VALIDATION", `ดีลหนึ่งใส่รายการได้ไม่เกิน ${lineCap.toLocaleString("th-TH")} บรรทัดตามเพดานของร้าน — แยกเป็นหลายดีลหรือรวมบรรทัดที่เหมือนกัน`);
   const pids = c.lines.map((l) => l.productId).filter((x): x is string => !!x);
   if (pids.length > 0) {
     const found = await inventoryItems(ctx, pids);
@@ -689,6 +693,8 @@ async function createCore(ctx: DealsCtx, who: Who, input: CreateDealInput, opts:
     }
     const now = new Date();
     const state = dealStateForStage(stage.kind, now);
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานดีลที่เปิดอยู่ของระบบ — ล็อก + นับ + insert ใน tx เดียว (ดีลที่เกิดในขั้นปิดแล้วไม่กินเพดาน) ◂
+    if (state.kind === "OPEN") await assertCrmLimit(ctx, "openDeals", 1, tx);
     const row = await tx.crmDeal.create({
       data: {
         tenantId: ctx.tenantId,
@@ -836,6 +842,8 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
     });
     const state = dealStateForStage(target.kind as CrmStageKind, now);
     const reopened = fromClosed && target.kind === "OPEN";
+    // CRM C3.9 ▸ NOTE รีวิว: เปิดดีลที่ปิดแล้วกลับมา = กลับมานับในเพดานดีลเปิด — ล็อก + นับ + เขียนใน tx เดียว (ดีลที่เก็บถาวรไม่นับ) ◂
+    if (reopened && !deal.archivedAt) await assertCrmLimit(ctx, "openDeals", 1, tx);
     const row = await tx.crmDeal.update({
       where: { id: deal.id },
       data: {

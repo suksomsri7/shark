@@ -38,6 +38,9 @@ import { activityWhere, contactWhere, dealWhere } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานผู้ติดต่อ ◂
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
+import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" ◂
 import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import * as assignment from "./assignment";
 import * as companies from "./companies";
@@ -80,6 +83,8 @@ import {
   contactPhoneProblem,
   emailProblem,
   joinName,
+  isReservedContactName,
+  CONTACT_NAME_PLACEHOLDER, // CRM C3.9 ▸ ตัวแทนชื่อตัวเดียว (ตัวปิดข้อความของการลบ PDPA ข้ามค่านี้) ◂
   nameProblem,
   type Contact360,
   type Contact360Company,
@@ -290,6 +295,9 @@ function toDto(row: CrmContact): ContactDto {
 /** error จาก engine ฟิลด์ / โมดูลสมาชิก / บริการบริษัท → ContactsError · error ของฐานข้อมูลโยนต่อตามจริง */
 function mapError(e: unknown): unknown {
   if (e instanceof ContactsError) return e;
+  // CRM C3.9 ▸ รีวิวรอบ 2 SF1: เกินเพดาน = ข้อผิดพลาดของบริการผู้ติดต่อ (ถาวร) — สะพานที่แยก "ถาวร (ContactsError) = WARN แล้วจบ"
+  //   ออกจาก "ชั่วคราว = โยนให้คิวส่งใหม่" (forms · แชท · อีเมลขาเข้า · ข้อเสนอ AI) จึงไม่ส่ง event เดิมซ้ำ 5 รอบจน FAILED ◂
+  if (e instanceof CrmLimitError) return fail("LIMIT", e.message);
   if (e instanceof CompaniesError) return fail(e.code === "PARTIAL" ? "CONFLICT" : e.code, e.message);
   if (e instanceof Prisma.PrismaClientKnownRequestError || e instanceof Prisma.PrismaClientUnknownRequestError || e instanceof Prisma.PrismaClientValidationError) {
     return e;
@@ -689,7 +697,11 @@ function identKeys(ctx: ContactsCtx, phone: string | null, email: string | null)
  * event `crm.contact.created` (+ `crm.contact.assigned` เมื่อได้ผู้ดูแล) ใน tx เดียวกัน
  */
 async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | null, c: CreateClean, opts: Omit<CreateCoreOpts, "force"> & { partyId?: string | null }): Promise<CrmContact> {
+  // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานผู้ติดต่อของระบบ (§11.9) — ตัวเขียนแถวใหม่ที่เดียวของไฟล์ ⇒ ทุกทางสร้าง (คน · ฟอร์ม · แชท · อีเมล ·
+  //   นำเข้า · v1) ผ่านด่านนี้ใน tx เดียวกับ insert · เกิน = CrmLimitError (LIMIT · ไทย) และไม่มีอะไรถูกเขียน ◂
+  await assertCrmLimit(ctx, "contacts", 1, tx);
   const name = opts.legacy?.name ?? joinName(c.firstName, c.lastName);
+  assertNotReservedName(name); // CRM C3.9 ▸ ชื่อสงวนของการลบ PDPA (รีวิว S2) — ทุกทางสร้างผ่านบรรทัดนี้ ◂
   const custom = opts.custom ?? {};
   const partyId = opts.partyId ?? (await personParty(tx, ctx.tenantId, { name, phone: c.phone, email: c.email }));
   // CRM C2.3 ▸ ตัวเลือกผู้ดูแลจริง (แทน stub C1.4) — await ใน tx นี้ (cursor round-robin/เพดานงานค้างถอยพร้อม tx) · ร่าง lead ให้เงื่อนไขของกฎ
@@ -850,7 +862,7 @@ function legacyCreateArgs(
   const sourceKind: MemberSource = legacySource === "FORM" ? "WEB_FORM" : legacySource === "AI" ? "API" : "CRM";
   return {
     clean: {
-      firstName: firstName || "ไม่ระบุชื่อ",
+      firstName: firstName || CONTACT_NAME_PLACEHOLDER,
       lastName,
       titleTh: null,
       phone,
@@ -866,7 +878,7 @@ function legacyCreateArgs(
       companyId: null,
       locale: null, // CRM C2.3 ▸ ทางห่อ v1/สะพานไม่รู้ภาษา (คอลัมน์ใช้ค่าเริ่มต้นเดิม) — สะพานที่รู้ภาษาส่งผ่าน `BridgeLeadInput.locale` ◂
     },
-    legacy: { company: str(input?.company)?.slice(0, CONTACT_TEXT_MAX) ?? null, source: legacySource, name: full || "ไม่ระบุชื่อ", note },
+    legacy: { company: str(input?.company)?.slice(0, CONTACT_TEXT_MAX) ?? null, source: legacySource, name: full || CONTACT_NAME_PLACEHOLDER, note },
   };
 }
 
@@ -943,6 +955,7 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
       if (nextLast !== undefined && nextLast !== pre.lastName) { data.lastName = nextLast; keys.push("lastName"); }
       const nextName = joinName(first, last) || pre.name;
       const nameChanged = (keys.includes("firstName") || keys.includes("lastName")) && nextName !== pre.name;
+      if (nameChanged) assertNotReservedName(nextName); // CRM C3.9 ▸ รีวิว S2 ◂
       if (nameChanged) data.name = nextName;
       const phoneChanged = nextPhone !== undefined && nextPhone !== pre.phone;
       const emailChangedPre = nextEmail !== undefined && (nextEmail ?? "").toLowerCase() !== (pre.email ?? "").toLowerCase();
@@ -1077,6 +1090,13 @@ async function mutate(
     if (pre.archivedAt && !opts.allowArchived) throw fail("VALIDATION", ARCHIVED_MSG);
     const m = decide(pre);
     if (!m) return pre;
+    // CRM C3.9 ▸ กู้คืน: ผู้ติดต่อที่ถูกลบตาม PDPA (ธง = แถว audit) กู้คืนไม่ได้ · กู้คืน = กลับมานับในเพดานผู้ติดต่อ (ล็อก + นับใน tx เดียว) ◂
+    if (action === "crm.contact.restore") {
+      if (await tx.auditLog.count({ where: { tenantId: ctx.tenantId, action: CRM_ERASE_AUDIT_ACTION, targetId: pre.id } })) {
+        throw fail("VALIDATION", "ผู้ติดต่อนี้ถูกลบข้อมูลส่วนบุคคลตาม PDPA แล้ว จึงกู้คืนไม่ได้ — เพิ่มเป็นผู้ติดต่อใหม่ถ้าลูกค้ากลับมาติดต่อ");
+      }
+      await assertCrmLimit(ctx, "contacts", 1, tx);
+    }
     const out = Object.keys(m.data).length > 0 ? await tx.crmContact.update({ where: { id: pre.id }, data: m.data }) : pre;
     if (m.consentRow) {
       // AUDIT-CLASS X8: การขอไม่รับข่าวสาร **เพิ่มแถวประวัติเสมอ** (append-only · เวลาหลังได้ล็อก ⇒ ลำดับตรงลำดับจริง)
@@ -1845,7 +1865,8 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
       }
       const first = (bag.firstName as string | undefined) ?? k.firstName;
       const last = bag.lastName !== undefined ? (bag.lastName as string | null) : k.lastName;
-      if (bag.firstName !== undefined || bag.lastName !== undefined) data.name = joinName(first, last) || k.name;
+      if (bag.firstName !== undefined || bag.lastName !== undefined) data.name = joinName(first, last) || k.name; // CRM C3.9 ▸ รีวิว S2 ↓ ◂
+      if (typeof data.name === "string") assertNotReservedName(data.name);
       const nextEmail = bag.email !== undefined ? (bag.email as string | null) : k.email;
       const prevEmails = [...k.previousEmails, ...m.previousEmails, ...(k.email ? [k.email] : []), ...(m.email ? [m.email] : [])].filter((x) => x && x.toLowerCase() !== (nextEmail ?? "").toLowerCase());
       data.previousEmails = [...new Set(prevEmails)].slice(-20);
@@ -2258,7 +2279,7 @@ export type BridgeLeadKind =
 
 export type BridgeLeadInput = {
   kind: BridgeLeadKind;
-  /** ชื่อตามที่ลูกค้าพิมพ์/ชื่อที่แชทรู้ (ว่าง = "ไม่ระบุชื่อ") */
+  /** ชื่อตามที่ลูกค้าพิมพ์/ชื่อที่แชทรู้ (ว่าง = CONTACT_NAME_PLACEHOLDER) */
   name: string | null;
   phone?: string | null;
   email?: string | null;
@@ -2316,7 +2337,7 @@ export async function leadFromBridge(ctx: ContactsCtx, input: BridgeLeadInput): 
   // CRM C2.5 ▸ ทางอีเมลต้องมีอีเมลของผู้ส่ง (ตัวจับคู่/กุญแจกันซ้ำของทางนี้คืออีเมล) ◂
   if (kind === "EMAIL" && !str(input?.email)) throw fail("VALIDATION", "ไม่พบอีเมลของผู้ส่ง — ข้ามรายการนี้");
   const sourceWord = kind === "CHAT" ? null : kind === "EMAIL" ? "EMAIL" : "FORM";
-  const base = legacyCreateArgs({ name: str(input?.name) ?? "ไม่ระบุชื่อ", phone: input?.phone ?? null, email: input?.email ?? null, source: sourceWord }, null);
+  const base = legacyCreateArgs({ name: str(input?.name) ?? CONTACT_NAME_PLACEHOLDER, phone: input?.phone ?? null, email: input?.email ?? null, source: sourceWord }, null);
   const clean: CreateClean = {
     ...base.clean,
     sourceKind: kind === "CHAT" ? "CHAT" : kind === "EMAIL" ? "OTHER" : "WEB_FORM",
@@ -2487,7 +2508,7 @@ export async function personPartyFor(tenantId: string, input: { name: string | n
   const phone = rawPhone && !contactPhoneProblem(rawPhone) ? storePhone(rawPhone) : null;
   const email = rawEmail && !emailProblem(rawEmail) ? rawEmail.toLowerCase() : null;
   if (!tenantId || (!phone && !email)) return null;
-  const name = str(input?.name) ?? phone ?? email ?? "ไม่ระบุชื่อ";
+  const name = str(input?.name) ?? phone ?? email ?? CONTACT_NAME_PLACEHOLDER;
   return prisma.$transaction((tx) => personParty(tx, tenantId, { name, phone, email }), TX_OPTS);
 }
 // ◂ CRM C1.8
@@ -2642,3 +2663,51 @@ export async function bindPortalLineUserIdInTx(tx: Tx, input: { tenantId: string
   return r.count === 1;
 }
 // ◂ CRM C3.5
+
+// CRM C3.9 ▸ PDPA — ทำให้แถวผู้ติดต่อไม่ระบุตัวตน (ผู้เรียก: `privacy.ts#eraseContact` ใน tx ที่ถือ FOR UPDATE ของแถวนี้แล้ว)
+//   อยู่ในไฟล์นี้เพราะคอลัมน์ที่มีกฎธุรกิจ (เบอร์ · อีเมล · opt-out · แท็ก · อีเมลเก่า · LINE) เขียนได้เฉพาะบริการผู้ติดต่อ (C1.4-S0.8)
+//   ชื่อ = ธง "ลบแล้ว" · ปิดทุกช่องทางติดต่อ (opt-out ทั้งหมด = ไม่มีผู้ส่งเส้นทางไหนติดต่อได้อีก) · เก็บถาวร (หลุดจากรายการ/งานอัตโนมัติ) ·
+//   ดีล/ผู้ดูแล/ทีม/คะแนนคงเดิม (ตัวเลข) · `unlinkParty` = ตัดการผูก Party ที่ยังมีผู้ถืออื่น
+export async function anonymizeContactInTx(
+  tx: Tx,
+  ctx: { tenantId: string; systemId: string },
+  contactId: string,
+  o: { name: string; now: Date; keepArchivedAt: Date | null; unlinkParty: boolean },
+): Promise<void> {
+  const n = await tx.crmContact.updateMany({
+    where: { id: contactId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+    data: {
+      name: o.name,
+      firstName: null,
+      lastName: null,
+      titleTh: null,
+      phone: null,
+      email: null,
+      company: null,
+      note: null,
+      jobTitle: null,
+      department: null,
+      lineUserId: null,
+      previousEmails: [],
+      tags: [],
+      sourceDetail: Prisma.DbNull,
+      sourceChannel: null,
+      attributionId: null,
+      portalAccessAt: null,
+      emailOptOut: true,
+      marketingOptOut: true,
+      trackingOptOut: true,
+      archivedAt: o.keepArchivedAt ?? o.now,
+      ...(o.unlinkParty ? { partyId: null } : {}),
+    },
+  });
+  if (n.count !== 1) throw fail("NOT_FOUND", NOT_FOUND_MSG);
+}
+// ◂ CRM C3.9
+
+// CRM C3.9 ▸ รีวิว S2 (มติผู้คุมงาน): ชื่อ "ลบตามคำขอ PDPA" สงวนไว้ให้ป้ายของผู้ติดต่อที่ถูกลบ (ธงจริงคือแถว audit) —
+//   ทุกตัวเขียนชื่อของบริการนี้ (สร้าง · แก้ · นำเข้า · ฟอร์ม/แชท/อีเมล · รวม) ปฏิเสธชื่อนี้ ⇒ คนกรอกฟอร์มพิมพ์ชื่อนี้เพื่อหลบงานอายุเก็บ/ตัวนับ Party ไม่ได้
+function assertNotReservedName(name: string | null | undefined): void {
+  if (isReservedContactName(name)) throw fail("VALIDATION", "ชื่อนี้ระบบสงวนไว้สำหรับผู้ติดต่อที่ถูกลบข้อมูลตาม PDPA — ใช้ชื่ออื่นแล้วบันทึกอีกครั้ง");
+}
+// ◂ CRM C3.9

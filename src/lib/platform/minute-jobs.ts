@@ -347,8 +347,10 @@ registerMinuteJob({
   everyMinutes: 1,
   cadence: "minute",
   run: async (now, _budgetMs, ctrl) => {
-    const { reports } = await import("@/lib/modules/crm");
+    const { reports, privacy } = await import("@/lib/modules/crm");
     await reports.runExportJobs({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+    // CRM C3.9 ▸ ไฟล์ส่งออกทั้งระบบ (kind CRM_EXPORT) ขี่เลนเดียวกัน — lease/SKIP LOCKED ของตัวเอง (X5) · ไม่ตั้งงานใหม่ต่อนาที ◂
+    await privacy.runExportJobs({ now, deadline: ctrl.deadline, signal: ctrl.signal });
   },
 });
 // CRM C3.1 ▸ (รีวิว S1) รอบเก็บตกรายชั่วโมงของ "ส่งรายงานตามกำหนด" — ตัวงานเดียวกับ `crm.reports.scheduled` (`reports.runScheduled`)
@@ -382,6 +384,36 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C3.5
+// CRM C3.9 ▸ PDPA — งานรายวันอีกสองตัว (addendum ข้อ 3 · ทะเบียน C0.5 · everyMinutes 1440)
+//   `crm.purge.exports`   ลบไฟล์ส่งออกทั้งระบบที่เกิน `retention.exportDays` (ค่าเริ่มต้น 7 วัน) + ล้าง CSV ในแถวงานส่งออกรายงานของ C3.1
+//   `crm.retention.leads` lead ที่ไม่แปลงและไม่เคลื่อนไหวเกิน `retention.leadMonths` (มติ C21 · 24 เดือน · 0 = ปิด) ⇒ ลบ · อีก ≤ 30 วัน ⇒ เตือนครั้งเดียว
+//                         (+ ตรวจเพดานชนิด "เตือนอย่างเดียว" ของ limits.ts — web event/เดือน · วัตถุ · รอบกฎอัตโนมัติ)
+//   🔴 ช่องเวลา: ตัวกระจายของ C0.5 รู้จักแต่หน้าต่างนับจากเที่ยงคืนไทย (หนี้เดียวกับ C2.10) ⇒ daily = วันละครั้งในหน้าต่างวันไทย ·
+//      ใบ C6.1 ตั้งบรรทัด crontab รายวันตามชั่วโมงที่ต้องการได้
+//   AUDIT-CLASS X5: ทุกตัวจองแถวแบบมีเงื่อนไข (UPDATE … FROM SELECT … FOR UPDATE SKIP LOCKED · ธง ON CONFLICT DO NOTHING · ล็อกแถวผู้ติดต่อ)
+//      ⇒ route + crontab ยิงซ้อน/เหลื่อมเวลาได้ผลเดียว · เริ่มใหม่ได้ทุกคำสั่ง · ไม่ vpsOnly
+//   ไฟล์ส่งออก = หน้าที่ตามกฎหมาย (ครอบทุกระบบ) · lead = การลบที่ย้อนไม่ได้ (เฉพาะระบบ uiVersion 2 — ประตูอยู่ในตัวงาน · R-E.14)
+//   โหลด CRM ผ่าน facade **ตอนรันเท่านั้น** (ไฟล์นี้ถูก import จาก route — ห้ามลากกราฟ CRM ตอนโหลด)
+registerMinuteJob({
+  name: "crm.purge.exports",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { privacy } = await import("@/lib/modules/crm");
+    await privacy.purgeExports(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+registerMinuteJob({
+  name: "crm.retention.leads",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    const { privacy, limits } = await import("@/lib/modules/crm");
+    await privacy.retentionLeads(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+    await limits.sweepWarnings(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C3.9
 
 function errorText(e: unknown): string {
   let s: string;

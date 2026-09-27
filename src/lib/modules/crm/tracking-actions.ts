@@ -21,6 +21,7 @@ import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import * as tracking from "./tracking";
 import { TrackingError } from "./tracking";
 import type { CrmTrackingResult, CrmTrackFormTargetRow, CrmTrackLinkRow, CrmTrackWebSettings } from "@/components/crm/tracking/types";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Ctx = { tenantId: string; systemId: string; actorUserId: string };
 
@@ -35,6 +36,7 @@ async function session(systemId: string): Promise<{ ctx: Ctx; actor: MemberActor
 }
 
 function failOf(e: unknown): { ok: false; error: string; code?: string } {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof TrackingError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ForbiddenError) return { ok: false, error: e.message, code: "FORBIDDEN" };

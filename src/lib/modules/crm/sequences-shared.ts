@@ -1,6 +1,7 @@
 // sequences-shared.ts — ชนิด · ค่าคงที่ · ตัวตรวจ · ปฏิทินวันทำการ ของ "ลำดับการติดตาม" (sequence · ใบ C2.2 · พิมพ์เขียว §5.7 §11.5)
 // 🔴 ไฟล์บริสุทธิ์ (ไม่แตะ prisma / env) — หน้า 'use client' และบริการ import ร่วมกันได้
 // 🔴 เวลาไทย = UTC+7 ตายตัว (ไม่มี DST) — ห้ามใช้ getDay()/getDate() ของเครื่อง (เครื่องเป็น UTC)
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export const SEQ_STEP_KINDS = ["EMAIL", "LINE", "TASK", "WAIT", "SMS"] as const;
 export type SeqStepKind = (typeof SEQ_STEP_KINDS)[number];
@@ -50,7 +51,7 @@ export const SEQ_TASK_TITLE_MAX = 200;
 export const SEQ_MAX_WAIT_DAYS = 365;
 export const SEQ_MAX_WAIT_HOURS = 24 * 30;
 /** X9: ลงทะเบียนเป็นกลุ่มได้ครั้งละไม่เกิน */
-export const SEQ_BULK_MAX = 500;
+export const SEQ_BULK_MAX = CRM_HARD_CAPS.sequenceBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const SEQ_REASON_MIN = 5;
 export const SEQ_REASON_MAX = 500;
 export const SEQ_TASK_TYPES = ["TASK", "CALL", "MEETING", "EMAIL", "LINE", "VISIT", "NOTE"] as const;

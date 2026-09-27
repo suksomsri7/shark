@@ -20,6 +20,7 @@ import { prisma } from "./db";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import * as objects from "./objects";
+import { crmUsage, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดานฟิลด์ต่อวัตถุ ◂
 import { objectKeyProblem, ObjectsError, OBJECT_PARENT_TYPES, type ObjectDto, type ObjectParentType, type RecordDto } from "./objects-shared";
 
 type Code = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "FORBIDDEN";
@@ -235,6 +236,11 @@ export async function createObjectFieldAction(input: DesignIn & fields.CreateFie
     const { systemId: _s, objectKey: _o, ...rest } = input;
     void _s;
     void _o;
+    // CRM C3.9 ▸ เพดานฟิลด์ต่อวัตถุของร้าน (§11.9 · 60 · `Tenant.limits.crm.fieldsPerObject`) — ตรวจก่อนสร้าง (งานของผู้ออกแบบ · ไม่มีการแข่ง) ◂
+    const fieldCap = await perParentCap(ctx.tenantId, "fieldsPerObject");
+    if ((await crmUsage(ctx, "fieldsPerObject", { parentId: objectKey })) >= fieldCap) {
+      throw new ObjectsError("VALIDATION", `วัตถุนี้มีฟิลด์ครบ ${fieldCap.toLocaleString("th-TH")} ฟิลด์ตามเพดานของร้านแล้ว — เก็บถาวรฟิลด์ที่ไม่ใช้ก่อน แล้วเพิ่มใหม่`);
+    }
     const field = await fields.createField(fctx, rest);
     await designAudit(ctx, "crm.object.field.create", "MemberField", field.id, { objectKey, key: field.key, type: field.type });
     return { ok: true, data: field };

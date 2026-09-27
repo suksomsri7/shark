@@ -5,12 +5,14 @@
 // 🔴 เพดาน (CONTRACT BLOCK ของข้อสอบ): นำเข้า 50,000 แถว / 10 MB · bulk ≤ 500 · เหตุผล ≥ 5 · แท็ก ≤ 50 (ตัวละ ≤ 64) · ชื่อ ≤ 200
 
 import { emailProblem, phoneProblem } from "./companies-shared";
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export { emailProblem, phoneProblem };
+import { CRM_ERASED_NAME } from "./privacy-shared"; // CRM C3.9 ▸ ชื่อสงวน ◂
 
 // ───────────────────────── เพดาน ─────────────────────────
 
-export const CONTACT_IMPORT_MAX_ROWS = 50_000;
+export const CONTACT_IMPORT_MAX_ROWS = CRM_HARD_CAPS.importRows; // CRM C3.9 ▸ ค่าเดิม 50,000 ◂
 /** ขนาดไบต์ (UTF-8) ของ `JSON.stringify(rows)` */
 export const CONTACT_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
 /**
@@ -22,7 +24,7 @@ export const CONTACT_IMPORT_INLINE_MAX_ROWS = 5_000;
 export const CONTACT_IMPORT_BATCH = 200;
 /** แถวผิดที่รายงานกลับได้สูงสุด (ที่เหลือนับใน failed) */
 export const CONTACT_IMPORT_ERRORS_MAX = 500;
-export const CONTACT_BULK_MAX = 500;
+export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const CONTACT_REASON_MIN = 5;
 export const CONTACT_TAGS_MAX = 50;
 export const CONTACT_TAG_MAX = 64;
@@ -129,7 +131,7 @@ export type ContactSort = (typeof CONTACT_SORTS)[number];
 
 // ───────────────────────── error ─────────────────────────
 
-export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN";
+export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN" | "LIMIT"; // CRM C3.9 ▸ LIMIT = เกินเพดาน (ถาวร · retry ไม่ช่วย) ◂
 export type DuplicateHit = { contactId: string; name: string; reason: "PHONE" | "EMAIL" };
 
 /** error ของบริการผู้ติดต่อ — ข้อความไทยที่ไม่โทษผู้ใช้ · `.code` ตาม CONTRACT BLOCK · ไม่มีข้อมูลของร้าน/ระบบอื่นในข้อความ */
@@ -290,6 +292,21 @@ export function splitFullName(full: string | null | undefined): { firstName: str
 }
 
 /** ชื่อแสดง (legacy `name`) = "ชื่อ นามสกุล" */
+// CRM C3.9 ▸ ชื่อแทนที่ระบบใส่ให้เองเมื่อไม่รู้ชื่อ (ฟอร์ม/แชท/อีเมล/v1) + คำเรียกทั่วไปที่ระบบใช้แทนชื่อ — ไม่ใช่ "ตัวตน" ของใคร
+//   ⇒ ตัวปิดข้อความของการลบ PDPA ห้ามใช้เป็นคำระบุตัว (ไม่งั้น "ไม่ระบุชื่อ" ในข้อความของทุกคนถูกปิดทิ้ง — รีวิวรอบ 2 SF2) ◂
+export const CONTACT_NAME_PLACEHOLDER = "ไม่ระบุชื่อ";
+export const CONTACT_NAME_PLACEHOLDERS: readonly string[] = Object.freeze([CONTACT_NAME_PLACEHOLDER, "ไม่ระบุ", "ไม่มีชื่อ", "ลูกค้า", "ผู้ติดต่อ", "ผู้ติดต่อใหม่", "lead", "unknown"]);
+export function isPlaceholderContactName(name: string | null | undefined): boolean {
+  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+  return typeof name === "string" && CONTACT_NAME_PLACEHOLDERS.some((p) => norm(p) === norm(name));
+}
+
+// CRM C3.9 ▸ ชื่อสงวนของผู้ติดต่อที่ถูกลบตาม PDPA (รีวิว S2) — เทียบหลังตัดช่องว่าง/ยุบช่องว่างซ้ำ ไม่สนตัวพิมพ์ ◂
+export function isReservedContactName(name: string | null | undefined): boolean {
+  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+  return typeof name === "string" && norm(name) === norm(CRM_ERASED_NAME);
+}
+
 export function joinName(firstName: string | null | undefined, lastName: string | null | undefined): string {
   return [firstName, lastName].map((x) => String(x ?? "").trim()).filter(Boolean).join(" ");
 }

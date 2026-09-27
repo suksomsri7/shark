@@ -126,6 +126,7 @@ export async function onFormLead(evt: BridgeEvent): Promise<void> {
     );
     leadContactId = lead.contactId;
   } catch (e) {
+    // CRM C3.9 ▸ เกินเพดานผู้ติดต่อ = ContactsError code LIMIT (ถาวร) ⇒ WARN แล้วจบ (ไม่ส่ง event ซ้ำจน FAILED · ขั้น `rest` ของ crmFirst ยังวิ่ง) ◂
     if (!(e instanceof crm.contacts.ContactsError)) throw e; // ชั่วคราว ⇒ คิวส่งใหม่
     await logOps("WARN", "crm", `ส่งคำตอบฟอร์มเข้า CRM ไม่ได้ (${e.code}) — คำตอบ ${sub.id} · ระบบ ${systemId}`, { tenantId: evt.tenantId });
     return;

@@ -1287,14 +1287,8 @@ export async function eraseMember(
   let anonymizeParty = false;
   if (c.partyId) {
     const pid = c.partyId;
-    const [acc, crm, chat, hr, cards] = await Promise.all([
-      prisma.accountContact.count({ where: { tenantId: ctx.tenantId, partyId: pid } }),
-      prisma.crmContact.count({ where: { tenantId: ctx.tenantId, partyId: pid } }),
-      prisma.chatContact.count({ where: { tenantId: ctx.tenantId, partyId: pid } }),
-      prisma.hrEmployee.count({ where: { tenantId: ctx.tenantId, partyId: pid } }),
-      prisma.kanbanCardLink.count({ where: { tenantId: ctx.tenantId, linkType: "PARTY", linkId: pid, removedAt: null } }),
-    ]);
-    anonymizeParty = acc + crm + chat + hr + cards === 0;
+    // CRM C3.9 ▸ ตัวนับผู้ถือ Party ตัวเดียวของร้าน (party facade — ครบทุกตารางที่มี partyId · เดิมนับแค่ 5 ตาราง) ◂
+    anonymizeParty = (await party.countPartyHolders(ctx.tenantId, pid, { customerIds: [customerId] }, prisma)) === 0;
   }
 
   // 🔴 AUDIT M5: เป้าหมาย OTP ที่ต้องกวาด (เบอร์/อีเมลของคนนี้ก่อนถูกลบชื่อ)
@@ -1302,7 +1296,17 @@ export async function eraseMember(
 
   const now = new Date();
   const removedFiles: string[] = [];
+  // CRM C3.9 ▸ AUDIT-CLASS X3/X4 (รีวิว C3.9 B3): ล็อกแถวลูกค้าแล้วอ่านสถานะใหม่ใต้ล็อก — สองทางที่ลบคนเดียวกันพร้อมกัน
+  //   (คำขอสมาชิก + ตัวรับ `crm.contact.erased` / ปุ่มในหน้า CRM) เคยผ่านด่าน "ลบแล้ว" ด้านบนทั้งคู่ แล้วชนกุญแจ outbox กลายเป็น error
+  //   ⇒ ผู้แพ้เห็นว่าลบแล้ว = จบเงียบ (ไม่มี audit/event ซ้ำ) ◂
+  let lost = false as boolean;
   await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${customerId} FOR UPDATE`;
+    const live = await tx.customer.findFirst({ where: { id: customerId }, select: { name: true, status: true } });
+    if (!live || (live.name === ERASED_NAME && live.status === "CLOSED")) {
+      lost = true;
+      return;
+    }
     await tx.memberFieldValue.deleteMany({ where: { customerId } });
     await tx.memberFieldValueHistory.deleteMany({ where: { customerId } });
     await tx.memberAddress.deleteMany({ where: { customerId } });
@@ -1386,7 +1390,22 @@ export async function eraseMember(
       systemId: ctx.systemId,
       unitId: c.homeUnitId,
     });
+    // CRM C3.9 ▸ event ใหม่ `member.erased` {customerId, partyId} (id ล้วน · X8) คู่กับ `member.updated` เดิม (ไม่แตะของเดิม) —
+    //   ผู้รับ = CRM (`crm-bridges/privacy.ts#onMemberErased`) ลบผู้ติดต่อ CRM ที่ผูกสมาชิกคนนี้ **ครั้งเดียว** ·
+    //   กุญแจแยกจาก `member.erased#<id>` ของ member.updated (unique ต่อร้าน) · อยู่ใน tx เดียวกับการลบ ◂
+    await emitOutbox(tx, {
+      tenantId: ctx.tenantId,
+      type: "member.erased",
+      idempotencyKey: `member.erased.event#${customerId}`,
+      payload: { customerId, partyId: c.partyId ?? null },
+      systemId: ctx.systemId,
+      unitId: c.homeUnitId,
+    });
   });
+  if (lost) {
+    await closeRequest();
+    return { erased: false };
+  }
   await closeRequest();
   // 🔴 AUDIT M5: ไฟล์จริงบนที่เก็บ — ลบแบบ best-effort นอก tx (ตัวลบห้าม throw · ลบไม่ได้ก็ลง OpsEvent เอง)
   //    แถว FileAsset ถูกลบไปแล้วใน tx ⇒ ความเป็นส่วนตัวใน DB เกิดแน่นอนไม่ว่าที่เก็บจะตอบอะไร
@@ -1403,6 +1422,20 @@ export async function eraseMember(
     after: { requestId: options.requestId ?? null, step: "erased", partyAnonymized: anonymizeParty, filesRemoved: removedFiles.length },
   });
   return { erased: true };
+}
+
+// CRM C3.9 ▸ ทางเข้าของ CRM (ผ่าน member facade · มติ addendum ข้อ 1): ลบสมาชิกที่ผูกกับผู้ติดต่อ CRM ที่ถูกลบตามคำขอ PDPA
+//   รู้แค่ร้าน + รหัสลูกค้า — ระบบสมาชิกหาเองจากแถวลูกค้า (CRM ไม่ต้องรู้จัก memberSystemId) · ร้านอื่น/ไม่พบ = `{ erased: false }`
+//   ตัวลบจริงคือ `eraseMember` ตัวเดิม (idempotent · ลบแล้ว = เงียบ) ⇒ `member.erased` ถูกยิงครั้งเดียวต่อคน ◂
+export async function eraseMemberById(
+  tenantId: string,
+  customerId: string,
+  opts: { actorUserId?: string | null } = {},
+): Promise<{ erased: boolean }> {
+  if (typeof tenantId !== "string" || !tenantId || typeof customerId !== "string" || !customerId) return { erased: false };
+  const c = await prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { memberSystemId: true } });
+  if (!c?.memberSystemId) return { erased: false };
+  return eraseMember({ tenantId, systemId: c.memberSystemId, actorUserId: opts.actorUserId ?? null }, customerId);
 }
 
 /**

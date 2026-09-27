@@ -48,6 +48,7 @@ import {
   type QuotaProgressDto,
   type SetQuotaInput,
 } from "./quotas-shared";
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export { QuotaError, QUOTA_THRESHOLDS };
 export type { QuotaBoard, QuotaBoardRow, QuotaDto, QuotaOwnerType, QuotaProgressDto, SetQuotaInput };
@@ -61,7 +62,7 @@ export const QUOTA_REACHED_EVENT = "crm.quota.reached";
 
 const MSG_NO_SYSTEM = "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่";
 const MSG_NO_TARGET = "ไม่พบโควตาหรือเจ้าของโควตานี้ในขอบเขตที่บัญชีนี้ดูได้ — เลือกจากรายการ";
-const LIST_MAX = 500;
+const LIST_MAX = CRM_HARD_CAPS.quotaBoardRows; // CRM C3.9 ▸ เพดานตายตัวอยู่ที่ limits-shared (ค่าเดิม 500) ◂
 const TEAM_MEMBERS_MAX = 2_000;
 
 // ───────────────────────── ด่านทางเข้า ─────────────────────────

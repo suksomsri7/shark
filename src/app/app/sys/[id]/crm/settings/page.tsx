@@ -14,6 +14,11 @@ import { UiVersionToggle } from "@/components/crm/settings/UiVersionToggle";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
+// CRM C3.9 ▸ อายุเก็บข้อมูล · ส่งออกทั้งระบบ · แถบการใช้งานเพดาน (§11.9 · เตือนที่ 80 %) ◂
+import { limitStatus } from "@/lib/modules/crm/limits";
+import { crmLimitPercent } from "@/lib/modules/crm/limits-shared";
+import { listMyExports, retentionSettings } from "@/lib/modules/crm/privacy";
+import { PrivacySettings } from "./_components/PrivacySettings";
 
 // ตั้งค่า CRM — หน้ารวม (ใบ C1.10 · หนี้ C1.5 ตาม RESOLUTIONS R-A) — `/app/sys/{id}/crm/settings`
 // 🔴 404-not-403: ระบบไม่ใช่ CRM ของร้านนี้ · ยังไม่เปิด CRM ใหม่ · ไม่มีคีย์ `crm.settings.manage` = notFound()
@@ -76,6 +81,13 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
     // ◂ CRM C3.6
   ];
   const onOff = (v: boolean) => (v ? "เปิด" : "ปิด");
+  // CRM C3.9 ▸ อ่านล้ม = ไม่แสดงส่วนนั้น (หน้าไม่ล้ม) ◂
+  const pctx = { tenantId, systemId: id, actorUserId: auth.user.id };
+  const [limitRows, retention, myExports] = await Promise.all([
+    limitStatus(pctx, actor).then((r) => r.rows).catch(() => []),
+    retentionSettings(pctx, actor).catch(() => null),
+    listMyExports(pctx, actor).catch(() => []),
+  ]);
 
   return (
     <div className="flex w-full max-w-3xl min-w-0 flex-col gap-5" data-testid="crm-settings-page">
@@ -101,6 +113,50 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
       </section>
       {/* CRM C1.11 ▸ สวิตช์ (เจ้าของร้าน) ◂ */}
       {switchCard}
+      {/* CRM C3.9 ▸ อายุเก็บข้อมูล (PDPA) · ส่งออกทั้งระบบ · เพดานของระบบ */}
+      <PrivacySettings
+        systemId={id}
+        retention={{ exportDays: retention?.exportDays ?? 7, leadMonths: retention?.leadMonths ?? 24 }}
+        canManage={!!retention}
+        canExport={crmCan(actor, "crm.contact.export")}
+        initialJobs={myExports}
+      />
+      {limitRows.length ? (
+        <section className="card flex min-w-0 flex-col gap-3 p-4" data-testid="crm-limits">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-medium">เพดานการใช้งานของระบบ</h2>
+            <p className="text-xs text-[color:var(--color-muted)]">
+              เมื่อใช้ถึง 80% เจ้าของร้านได้รับแจ้งเตือนในแอปครั้งเดียวต่อเดือน · เต็มเพดานแล้วระบบไม่ให้เพิ่มรายการใหม่ (ข้อมูลเดิมไม่หาย) — ติดต่อทีม SHARK เพื่อขยายเพดาน
+            </p>
+          </div>
+          <ul className="flex flex-col gap-2 text-xs" data-testid="crm-limits-list">
+            {limitRows.map((r) => {
+              const pct = r.used === null ? 0 : crmLimitPercent(r.used, r.limit);
+              const tone = r.over ? "var(--color-danger)" : r.warn ? "var(--color-accent)" : "var(--color-muted)";
+              return (
+                <li key={r.key} className="flex min-w-0 flex-col gap-1" data-limit-key={r.key}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="min-w-0 truncate">
+                      {r.label}
+                      {r.perParent ? " (ตัวที่ใช้มากที่สุด)" : ""}
+                      {r.warnOnly ? " · เตือนอย่างเดียว" : ""}
+                    </span>
+                    <span className="shrink-0 tabular-nums" style={{ color: tone }}>
+                      {r.used === null
+                        ? `ประเมินรายวัน · เพดาน ${r.limit.toLocaleString("th-TH")} ${r.unit}${r.warn ? " · ใกล้เต็ม" : ""}`
+                        : `${r.used.toLocaleString("th-TH")} / ${r.limit.toLocaleString("th-TH")} ${r.unit} (${pct}%)${r.warn ? " · ใกล้เต็ม" : ""}`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded bg-[color:var(--color-surface)]" role="progressbar" aria-label={`การใช้งาน${r.label}`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="h-full" style={{ width: `${pct}%`, background: tone }} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+      {/* ◂ CRM C3.9 */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards
           .filter((c) => c.show)

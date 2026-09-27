@@ -89,6 +89,11 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   { value: "crm.commission.removed", label: "เมื่อลบคอมมิชชันที่ยังไม่อนุมัติ เพราะเงินถูกยกเลิกหรือดีลถูกเปิดใหม่ (CRM)" },
   // ◂ CRM C3.3
   // CRM C3.2 ▸ `crm.quota.reached` ประกาศที่ `AUTOMATION_EVENTS` (บล็อก C3.2 · spread ข้างบน) — ร้านสมัครเว็บฮุคได้ทันที · ห้ามประกาศซ้ำที่นี่ ◂
+  // CRM C3.9 ▸ PDPA — ประกาศที่นี่ที่เดียว (ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ: `CRM_RULE_TRIGGERS` ผูกกับ AUTOMATION_EVENTS ทั้งก้อน) ·
+  //   payload id ล้วน · consumer อยู่ใน outbox-consumers.ts (บล็อก C3.9) — ระบบภายนอกที่ถือสำเนาข้อมูลลูกค้าต้องรู้เพื่อลบตาม
+  { value: "crm.contact.erased", label: "เมื่อผู้ติดต่อถูกลบข้อมูลส่วนบุคคลตามคำขอ PDPA (CRM)" },
+  { value: "member.erased", label: "เมื่อสมาชิกถูกลบข้อมูลส่วนบุคคลตามคำขอ PDPA" },
+  // ◂ CRM C3.9
   { value: "member.sensitive.viewed", label: "เมื่อมีคนเปิดดูข้อมูลอ่อนไหวของสมาชิก" },
   { value: "approval.request.submitted", label: "เมื่อมีคำขออนุมัติใหม่" },
   { value: "approval.request.approved", label: "เมื่อคำขออนุมัติผ่าน" },

@@ -25,6 +25,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานลิงก์ติดตาม ◂
 import { assertCanCrm } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { parseCrmSettings } from "./settings";
@@ -346,8 +347,8 @@ export async function createLink(ctx: TrackingCtx, actor: MemberActor, input: { 
   const custom = cleanCode(input?.code);
   const name = str(input?.name).slice(0, 120) || null;
   const channel = str(input?.channel).slice(0, 40) || null;
-  const total = await prisma.crmTrackedLink.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId } });
-  if (total >= LINK_MAX_PER_SYSTEM) throw fail("VALIDATION", `ระบบนี้มีลิงก์ติดตามครบ ${LINK_MAX_PER_SYSTEM} ลิงก์แล้ว — ลบลิงก์ที่เลิกใช้ก่อนแล้วลองใหม่`);
+  // CRM C3.9 ▸ เพดานลิงก์ติดตามย้ายไปที่ `limits.ts` (trackedLinks · ค่าเริ่มต้น 1,000 = LINK_MAX_PER_SYSTEM เดิม · ร้านขยายได้) —
+  //   ตัดสินใต้ล็อกใน tx เดียวกับ insert ข้างล่าง (AUDIT-CLASS X3) ◂
   if (custom) {
     // AUDIT-CLASS X1: รหัสลิงก์เป็น unique ทั้งระบบ (ลิงก์สั้นไม่มีร้านกำกับ) ⇒ ชนกับร้านอื่นก็ต้องปฏิเสธ
     const taken = await prisma.crmTrackedLink.findFirst({ where: { code: custom }, select: { id: true } });
@@ -357,9 +358,13 @@ export async function createLink(ctx: TrackingCtx, actor: MemberActor, input: { 
   for (let attempt = 0; attempt < 5 && !row; attempt += 1) {
     const code = custom ?? randomLinkCode();
     try {
-      row = await prisma.crmTrackedLink.create({
-        data: { tenantId: ctx.tenantId, systemId: ctx.systemId, code, url, name, channel, createdById: str(ctx.actorUserId) || null },
-        select: { id: true, code: true, url: true, name: true, channel: true, active: true, clicks: true, uniqueClicks: true, createdAt: true },
+      // CRM C3.9 ▸ tx ละครั้งต่อรหัสที่ลอง (P2002 ทำ tx ถอย ⇒ ลองใหม่ใน tx ใหม่) — เพดานตัดสินใต้ล็อกคู่กับ insert ◂
+      row = await prisma.$transaction(async (tx) => {
+        await assertCrmLimit(ctx, "trackedLinks", 1, tx);
+        return tx.crmTrackedLink.create({
+          data: { tenantId: ctx.tenantId, systemId: ctx.systemId, code, url, name, channel, createdById: str(ctx.actorUserId) || null },
+          select: { id: true, code: true, url: true, name: true, channel: true, active: true, clicks: true, uniqueClicks: true, createdAt: true },
+        });
       });
     } catch (e) {
       const code2 = (e as { code?: string })?.code;

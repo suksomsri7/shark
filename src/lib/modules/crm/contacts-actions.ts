@@ -37,6 +37,7 @@ import {
 } from "./contacts";
 import { set as setConsent } from "./consents";
 import { CONTACT_IMPORT_INLINE_MAX_ROWS, CONTACT_IMPORT_MAX_BYTES, ContactsError, type ContactListInput, type ConvertInput, type DuplicateHit, type ImportContactsResult, type ImportDuplicateMode } from "./contacts-shared";
+import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Fail = { ok: false; error: string; code?: string; duplicates?: DuplicateHit[] };
 
@@ -53,6 +54,7 @@ async function session(systemId: string, action: string) {
 
 /** `multiStep` = งานที่ commit เป็นหลายช่วง (นำเข้า · รวม) — ล้มกลางทางแล้ว **ห้าม** บอกว่า "ข้อมูลไม่เปลี่ยน" */
 function failOf(e: unknown, multiStep = false): Fail {
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };

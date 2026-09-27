@@ -34,6 +34,7 @@ import * as party from "@/lib/modules/party";
 import type { CrmAccountContactBrief } from "@/lib/modules/account";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานบริษัท ◂
 import { resolveCrmTargetsDetailed } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
@@ -648,6 +649,8 @@ async function createCore(ctx: CompaniesCtx, actor: MemberActor, clean: CleanPat
         const parent = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), id: extra.parentCompanyId, mergedIntoId: null, archivedAt: null }, select: { id: true } });
         if (!parent) throw fail("VALIDATION", "บริษัทแม่ที่เลือกเพิ่งถูกเก็บถาวรหรือรวมไป — เลือกใหม่จากรายการ");
       }
+      // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานบริษัทของระบบ — ล็อก + นับ + insert ใน tx เดียว (ตัวซ้ำ/Party เดิมคืนก่อนถึงด่าน = ไม่กินเพดาน) ◂
+      await assertCrmLimit(ctx, "companies", 1, tx);
       const row = await tx.crmCompany.create({
         data: {
           tenantId: ctx.tenantId,
@@ -908,6 +911,7 @@ export async function restoreCompany(ctx: CompaniesCtx, actor: MemberActor, id: 
       });
       if (dup) throw fail("DUPLICATE", "เลขภาษีนี้มีบริษัทอื่นที่ใช้งานอยู่ในระบบนี้แล้ว — รวมสองบริษัทแทนการกู้คืน", { duplicateOf: dup.id });
     }
+    await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ กู้คืน = กลับมานับในเพดานบริษัท (NOTE รีวิว) ◂
     await tx.crmCompany.update({ where: { id: row.id }, data: { archivedAt: null } });
     const linked = await tx.crmCompanyContact.findMany({ where: { companyId: row.id, endedAt: null }, select: { contactId: true } });
     await lockContacts(tx, ctx, linked.map((l) => l.contactId));
@@ -1944,6 +1948,7 @@ export async function createInTx(tx: Tx, ctx: CompaniesCtx, input: { name: strin
   await partyLock(tx, ctx, partyId);
   const same = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId }, select: { id: true } });
   if (same) return { id: same.id, partyId, created: false };
+  await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ เพดานบริษัท (ทางสร้างใน tx ของผู้ติดต่อ) ◂
   const row = await tx.crmCompany.create({
     data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, branchCode: "00000", ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
   });

@@ -21,6 +21,7 @@ import { writeAudit } from "@/lib/core/audit";
 import { crmCan } from "./access";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดาน pipeline (รีวิว S5) ◂
 import * as objects from "./objects";
 import { OBJECT_TEMPLATES } from "./templates/objects";
 import { BUSINESS_TEMPLATE_LIST } from "./templates/business";
@@ -134,6 +135,8 @@ async function applyInTx(tx: Tx, ctx: BusinessTemplateCtx, t: BusinessTemplate, 
   for (const p of t.pipelines) {
     const hit = await tx.crmPipeline.findFirst({ where: { ...scope, name: p.name, archivedAt: null }, select: { id: true } });
     if (hit) continue;
+    // CRM C3.9 ▸ รีวิว S5: pipeline จากเทมเพลตกินเพดานเดียวกับที่คนสร้างเอง — ล็อก + นับ + insert ใน tx ของผู้เรียก (เกิน = LIMIT ถอยทั้งก้อน) ◂
+    await assertCrmLimit(scope, "pipelines", 1, tx);
     const live = await tx.crmPipeline.count({ where: { ...scope, archivedAt: null } });
     const all = await tx.crmPipeline.count({ where: scope });
     await tx.crmPipeline.create({

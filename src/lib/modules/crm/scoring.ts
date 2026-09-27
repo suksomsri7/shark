@@ -31,6 +31,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
+import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานกฎให้คะแนน ◂
 import { crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { contactWhere } from "./where";
@@ -384,6 +385,8 @@ export async function createRule(ctx: ScoringCtx, actor: MemberActor, input: Sco
   await enter(ctx, actor);
   const v = cleanInput(input);
   const dto = await prisma.$transaction(async (tx) => {
+    // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานกฎให้คะแนนของระบบ — ล็อก + นับ + insert ใน tx เดียว ◂
+    await assertCrmLimit(ctx, "scoreRules", 1, tx);
     const n = await tx.crmScoreRule.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId } });
     const row = (await tx.crmScoreRule.create({
       data: {

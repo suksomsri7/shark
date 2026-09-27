@@ -9,7 +9,7 @@
 // 🔴 ข้อความผลลัพธ์ทั้งหมดขึ้น **inline** บนหน้า ไม่มี alert() ไม่มีหน้าเปล่า และไม่โทษผู้ใช้
 
 import { useRef, useState } from "react";
-import type { PublicFormActionResult } from "./actions";
+import type { PublicFormActionResult } from "./actions-shared"; // CRM C3.9 ▸ ชนิดอยู่นอกไฟล์ "use server" ◂
 
 export type PublicFormField = { key: string; label: string; type: string; required: boolean; options?: string[] };
 

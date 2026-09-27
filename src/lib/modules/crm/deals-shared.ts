@@ -3,13 +3,14 @@
 // 🔴 ไฟล์นี้ปลอดภัยสำหรับ 'use client' — ไม่ import prisma / core db / server-only / next/headers / ./deals
 //    กระดาน · ดีล 360 · ฟอร์มเพิ่มดีล import เพดานและตัวคำนวณจากที่นี่ ⇒ ตัวเลขบนจอกับตัวเลขที่บริการบันทึกมาจากสูตรเดียวกัน
 // 🔴 เงิน = สตางค์ (จำนวนเต็ม) · วันที่คาดว่าจะปิด = "วันตามปฏิทินไทย" เก็บเป็นเที่ยงคืน UTC (แบบเดียวกับ engine ฟิลด์ DATE)
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 // ───────────────────────── เพดาน (มติ C28 · X6) ─────────────────────────
 
 /** มูลค่าดีลสูงสุด ฿20,000,000 (มติ C28 — คอลัมน์ `valueSatang` เป็น Int) */
 export const DEAL_VALUE_MAX_SATANG = 2_000_000_000;
 /** จำนวนดีลต่อคำสั่งกลุ่ม (ย้ายขั้น · โอน · แท็ก) */
-export const DEAL_BULK_MAX = 200;
+export const DEAL_BULK_MAX = CRM_HARD_CAPS.dealBulk; // CRM C3.9 ▸ ค่าเดิม 200 ◂
 /** เหตุผลของการกระทำอันตราย (ลบ · เปิดใหม่ · ย้าย/โอนเป็นกลุ่ม) อย่างน้อยกี่ตัวอักษร */
 export const DEAL_REASON_MIN = 5;
 export const DEAL_REASON_MAX = 500;

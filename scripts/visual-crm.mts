@@ -163,7 +163,7 @@ const C111_CHAT: { sysId: string; convId: string } | null = WO === "1.11"
     })()
   : null;
 // C1.11 ▸ ตัวอย่างสำหรับหน้า 360 ที่ 390 (อ่านอย่างเดียว)
-const C111_IDS = WO === "1.11"
+const C111_IDS = WO === "1.11" || WO === "3.9" // CRM C3.9 ▸ ใช้ contact แรกของผู้ถ่ายสำหรับบล็อก PDPA บนหน้า 360 ◂
   ? await (async () => {
       const P = prisma as Any;
       const contact = (await P.crmContact.findFirst({ where: { systemId: SYS, archivedAt: null, mergedIntoId: null, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
@@ -442,6 +442,31 @@ const SPECS: Record<string, Spec[]> = {
     },
   ],
   // ◂ CRM C3.3
+  // CRM C3.9 ▸ PDPA — หน้าตั้งค่า CRM (owner: อายุเก็บ + ส่งออกทั้งระบบ + แถบเพดาน) · บล็อก "ข้อมูลส่วนบุคคล" บนผู้ติดต่อ 360 (owner มี crm.contact.delete ⇒ ปุ่มลบ · thana เห็นแค่ส่งออก/ไม่มีปุ่มลบ)
+  //   ⚠️ ไม่กดปุ่มที่เขียนฐาน (ลบ/บันทึกอายุเก็บ/เริ่มส่งออก) — เปิดแผงยืนยันลบอย่างเดียว (owner)
+  "3.9": isCustomer ? [] : [
+    ...(userKey === "owner" ? [{
+      name: `crm-privacy-settings-${userKey}`,
+      path: `${CRM_BASE}/settings`,
+      note: "ตั้งค่า CRM: อายุเก็บข้อมูล (ไฟล์ส่งออก · lead นิ่ง) · ส่งออกทั้งระบบ CSV/JSON + รายการงาน · เพดานการใช้งาน (แถบ % · เตือน 80 %)",
+      expect: ["[data-testid=crm-retention]", "[data-testid=crm-retention-lead-months]", "[data-testid=crm-export]", "[data-testid=crm-export-start-csv]", "[data-testid=crm-limits-list]"],
+      steps: [{ waitFor: "[data-testid=crm-limits-list]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=crm-retention]" }, { wait: 500 }],
+    }] as Spec[] : []),
+    ...(C111_IDS.contact ? [{
+      name: `crm-contact-privacy-${userKey}`,
+      path: `${CRM_BASE}/contacts/${C111_IDS.contact}`,
+      note: "ผู้ติดต่อ 360 → บล็อกข้อมูลส่วนบุคคล: ส่งออกชุดข้อมูล · ลบตามคำขอ (เฉพาะ crm.contact.delete)",
+      expect: ["[data-testid=contact-privacy]", "[data-testid=contact-privacy-export]", ...(userKey === "owner" ? ["[data-testid=contact-privacy-erase]"] : [])],
+      steps: [{ waitFor: "[data-testid=contact-privacy]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=contact-privacy]" }, { wait: 500 }],
+    }, ...(userKey === "owner" ? [{
+      name: `crm-contact-erase-panel-${userKey}`,
+      path: `${CRM_BASE}/contacts/${C111_IDS.contact}`,
+      note: "แผงยืนยันลบตามคำขอ (เหตุผล ≥5 ตัว + ติ๊กยืนยัน · ไม่กดส่ง)",
+      expect: ["[data-testid=contact-privacy-erase-panel]", "[data-testid=contact-privacy-erase-reason]", "[data-testid=contact-privacy-erase-confirm]", "[data-testid=contact-privacy-erase-submit]"],
+      steps: [{ waitFor: "[data-testid=contact-privacy-erase]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=contact-privacy]" }, { click: "[data-testid=contact-privacy-erase]" }, { waitFor: "[data-testid=contact-privacy-erase-panel]", timeoutMs: 10_000 }, { wait: 400 }],
+    }] : [])] as Spec[] : []),
+  ],
+  // ◂ CRM C3.9
   "3.5": isCustomer ? [
     { name: "portal-home", path: `${PB}`, note: "portal หน้าแรก — ชื่อบริษัท+ตัวสลับบริษัท · ยอดค้างชำระ · ใบเสนอราคารอตอบ · เมนู (ภาพ 12)", expect: ["[data-testid=portal-frame]", "[data-testid=portal-company-name]", "[data-testid=portal-home-stats]", "[data-testid=portal-menu]"], steps: [{ waitFor: "[data-testid=portal-home-stats]", timeoutMs: 20_000 }, { wait: 500 }] },
     { name: "portal-quotations", path: `${PB}/quotations`, note: "ใบเสนอราคาของบริษัทตน (ตอบรับ/ปฏิเสธเฉพาะ AWAITING_ACCEPT)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },

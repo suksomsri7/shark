@@ -27,6 +27,7 @@ const memberFacade = () => import("@/lib/modules/member");
 /** engine ฟิลด์ตัวเดียวของระบบ (member facade → namespace `fields` · ใบ C1.2a) */
 const engine = async () => (await memberFacade()).fields;
 import { prisma } from "./db";
+import { noteCrmUsage } from "./limits"; // CRM C3.9 ▸ เตือนจำนวนวัตถุ ◂
 // CRM C1.7 ▸ การมองเห็นของรายการ = ตามแม่ (where.ts → visibility) · คีย์สิทธิ์ผ่าน access.ts ◂
 import { companyWhere, contactWhere, dealWhere, recordWhere } from "./where";
 import { recordVisibilitySql } from "./visibility";
@@ -461,6 +462,8 @@ export async function create(ctx: ObjectsCtx, actor: MemberActor, input: CreateO
   let row: CustomObject;
   try {
     row = await prisma.$transaction(async (tx) => {
+      // CRM C3.9 ▸ วัตถุ "ไม่จำกัด เตือนที่ 30" (§11.9 objectsWarn) — ทางเตือนอย่างเดียว (ไม่ปฏิเสธ) ใต้ล็อกใน tx เดียวกับ insert ◂
+      await noteCrmUsage(ctx, "objectsWarn", 1, tx);
       const last = await tx.customObject.aggregate({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, _max: { sortOrder: true } });
       const obj = await tx.customObject.create({
         data: {

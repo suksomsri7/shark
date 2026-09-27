@@ -61,7 +61,7 @@ Conventions that apply to every operation:
 13. Rate limits are per key and per class: 600 reads and 600 writes per minute, 60 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.
 15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `campaign.sent`, `review.requested`, `review.received`, `review.replied`, `referral.joined`, `referral.converted`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
+16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `campaign.sent`, `review.requested`, `review.received`, `review.replied`, `referral.joined`, `referral.converted`, `member.erased`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
 17. Operations under `/join/{tenantSlug}` are the public signup lane used by the shop's signup page and app: no API key, no customer session, rate limited per network, `Idempotency-Key` optional. The flow is form -> start (one time code) -> verify -> complete; verify and complete hand back a customer session `cs_...` that works on `/me` right away. The phone or email of a new member always comes from the verified code, never from the body.
 18. Every answer uses the same envelope, including creations: HTTP 200 and the created record in `data` (there is no 201).
 
@@ -3996,6 +3996,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | `review.replied` | The shop replied to a review, or edited its reply (`edited: true`). |
 | `referral.joined` | A friend signed up with a member's referral code. `customerId` is the referrer. |
 | `referral.converted` | A referral met the programme's condition (signup or first purchase) and both sides were rewarded. `rewards` says what each side got. |
+| `member.erased` | A member's personal data was erased under PDPA (their own request, an approved erase request or the shop's retention rule). Delete every copy you keep of this person; only the ids remain. The CRM erases contacts linked to this member on the same event. |
 | `member.sensitive.viewed` | Somebody opened sensitive member data (a health note, an emergency contact). The position they held at that moment is recorded, not the one they hold today. |
 
 #### `member.created`
@@ -4557,6 +4558,21 @@ A referral met the programme's condition (signup or first purchase) and both sid
         "valueSatang": 10000
       }
     }
+  },
+  "sentAt": "2026-09-10T09:15:00.000Z"
+}
+```
+
+#### `member.erased`
+
+A member's personal data was erased under PDPA (their own request, an approved erase request or the shop's retention rule). Delete every copy you keep of this person; only the ids remain. The CRM erases contacts linked to this member on the same event.
+
+```json
+{
+  "type": "member.erased",
+  "payload": {
+    "customerId": "cmf1cus0001",
+    "partyId": "cmf1pty0001"
   },
   "sentAt": "2026-09-10T09:15:00.000Z"
 }

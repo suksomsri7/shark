@@ -86,6 +86,7 @@ import {
   type PortalRequestKind,
   type PortalSettings,
 } from "./portal-shared";
+import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 // ส่งต่อผิว session ให้ผู้เรียกของ CRM ใช้ได้จากที่เดียว (ตัวจริงอยู่ที่ member/customer-session.ts — R-C.5)
 export {
@@ -453,7 +454,7 @@ function usableAccessWhere(now: Date = new Date()): Prisma.CrmPortalAccessWhereI
 /** ธงฝั่งเซิร์ฟเวอร์ของคำขอที่ `loginWithLine` สร้าง (ลูกค้าตั้งเองไม่ได้ — คีย์สงวนใน `cleanPayload`) */
 const LINE_LOGIN_ORIGIN = "LINE_LOGIN";
 /** เพดานการเขียนของลูกค้า (มติผู้คุมงาน S1) — ถังต่อสิทธิ์ ใช้ร่วมทั้งหน้าเว็บและ REST เพราะนับที่ชั้นบริการ */
-const PORTAL_WRITE_LIMIT = { limit: 30, windowMs: 60_000 };
+const PORTAL_WRITE_LIMIT = { limit: CRM_HARD_CAPS.portalWritesPerMinute, windowMs: 60_000 }; // CRM C3.9 ▸ เพดานตายตัวอยู่ที่ limits-shared (ค่าเดิม 30/นาที) ◂
 const PORTAL_SLIP_LIMIT = { limit: 10, windowMs: 60 * 60_000 };
 
 /** AUDIT-CLASS X7: นับ 1 ครั้งในถังเขียนของสิทธิ์นี้ (`crm:portal:write:<tenant>:<access>` · สลิปมีถังของตัวเองเพิ่ม) — เกิน = RATE_LIMITED ไทย */
@@ -1378,6 +1379,45 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
     return { accesses: accesses.count, sessions: sessions.count, requests: requests.count, approvalsCancelled, cardsRedacted: cards.count };
   });
 }
+
+// CRM C3.9 ▸ ส่วนของพอร์ทัลในการลบตาม PDPA — แยกเป็น 2 ขั้น (รีวิว C3.9 B3 · มติผู้คุมงาน):
+//   `eraseContactInTx` = แถวทั้งหมด (session · คำขอ · สิทธิ์ · ชื่อการ์ดบอร์ดงานของคำขอ) ใน tx ของการลบ ⇒ ข้อมูลหายพร้อมการลบ ไม่มีช่วงค้าง
+//   `cancelErasedApprovals` = ยกเลิกคำขออนุมัติของคำขอเหล่านั้น (ข้ามโมดูล · นอก tx) — ผู้เรียก = ตัวรับ `crm.contact.erased` (retry ได้ · idempotent)
+//   `eraseContact` เดิมยังอยู่ให้ผู้เรียกเก่า (ทางเดียวกัน ทำครบในคราวเดียว)
+export async function eraseContactInTx(
+  tx: Prisma.TransactionClient,
+  ctx: { tenantId: string; systemId: string },
+  contactIds: readonly string[],
+): Promise<{ accesses: number; sessions: number; requests: number; cardsRedacted: number; approvalRequestIds: string[] }> {
+  const ids = [...new Set(contactIds.filter(Boolean))];
+  if (ids.length === 0) return { accesses: 0, sessions: 0, requests: 0, cardsRedacted: 0, approvalRequestIds: [] };
+  const reqs = await tx.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
+  const cardIds = reqs.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
+  const cards = cardIds.length
+    ? await tx.kanbanCard.updateMany({ where: { tenantId: ctx.tenantId, id: { in: cardIds }, sourceKey: { startsWith: "crm:portal-request:" } }, data: { title: "ลบตามคำขอ PDPA", description: null } })
+    : { count: 0 };
+  const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { id: true }, take: 1_000 })).map((r) => r.id);
+  const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, ...(accessIds.length ? [{ portalAccessId: { in: accessIds } }] : [])] } });
+  const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
+  const accesses = await tx.crmPortalAccess.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
+  return {
+    accesses: accesses.count,
+    sessions: sessions.count,
+    requests: requests.count,
+    cardsRedacted: cards.count,
+    approvalRequestIds: reqs.map((r) => r.approvalRequestId).filter((x): x is string => !!x),
+  };
+}
+
+/** ยกเลิกคำขออนุมัติของคำขอพอร์ทัลที่ถูกลบ (ขั้นหลัง commit ของการลบ PDPA) — คำขอที่ปิดไปแล้ว = ข้าม (idempotent) */
+export async function cancelErasedApprovals(tenantId: string, approvalRequestIds: readonly string[]): Promise<number> {
+  if (!approvalRequestIds.length) return 0;
+  const ap = await approvalFacade();
+  let n = 0;
+  for (const id of approvalRequestIds) if (await ap.cancelRequest({ tenantId }, id)) n += 1; // ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่
+  return n;
+}
+// ◂ CRM C3.9
 
 // ── ตั้งค่าพอร์ทัลของระบบ (`settings.crm.portal`) — jsonb_set คำสั่งเดียว (ไม่ read-modify-write ทั้งก้อน) ──
 

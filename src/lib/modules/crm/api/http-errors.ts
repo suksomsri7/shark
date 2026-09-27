@@ -36,6 +36,8 @@ const EN: Record<string, string> = {
   EMAIL_BLOCKED: "The customer asked not to be contacted by e-mail, so nothing was sent.",
   NOT_CONFIGURED: "The shop has not finished setting this up yet, so the request cannot be carried out.",
   CRM_V2_DISABLED: "This CRM system still runs the previous version.",
+  // CRM C3.9 ▸ เพดานของระบบ (`limits.ts` · CrmLimitError) ◂
+  LIMIT: "This CRM system reached one of its limits, so nothing was saved.",
 };
 
 function thai(m: unknown): string | null {
@@ -87,6 +89,9 @@ export function toCrmApiError(e: unknown): unknown {
       return crmApiError(409, "state_conflict", th, EN.NOT_CONFIGURED!);
     case "CRM_V2_DISABLED":
       return crmApiError(409, "crm_v2_disabled", th, EN.CRM_V2_DISABLED!);
+    // CRM C3.9 ▸ เกินเพดาน = สถานะของร้าน (409 · retry ไม่ช่วย) — ไม่ใช่ 500 ◂
+    case "LIMIT":
+      return crmApiError(409, "state_conflict", th, EN.LIMIT!);
     case "STAGE_REQUIREMENTS": {
       const missing = Array.isArray((e as { missing?: unknown }).missing) ? ((e as { missing: unknown[] }).missing.filter((x): x is string => typeof x === "string")) : [];
       return crmApiError(409, "stage_requirements", th, EN.STAGE_REQUIREMENTS!, missing.length ? `missing: ${missing.join(", ")}` : undefined,
