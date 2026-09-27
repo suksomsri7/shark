@@ -26,6 +26,8 @@ import { CrmObjectTabPanel } from "@/components/crm/objects/ObjectTabs";
 import { crmCan } from "@/lib/modules/crm/access";
 // CRM C3.5 ▸ บล็อก "พอร์ทัลลูกค้า" (ใครเข้าได้ · เชิญ/ถอน · คำขอที่รอ) — คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ของใบ C3.5 · action ส่งทาง props ◂
 import { CrmPortalBlock } from "@/components/crm/portal/CrmPortalBlock";
+// CRM C3.4 ▸ ผู้ช่วย AI ในหน้า (client · ปุ่มเรียก server action `_actions/ai.ts` → crm.aiBridges.runAssist) ◂
+import { CrmAiPanel } from "@/components/crm/ai/CrmAiPanel";
 import { decidePortalRequestAction, inviteToPortalAction, revokePortalAccessAction } from "@/lib/modules/crm/portal-actions";
 
 // บริษัท 360 (CRM v2 · ใบ C1.3 · พิมพ์เขียว §3.4 · ภาพ 04) — `/app/sys/{id}/crm/companies/{companyId}`
@@ -260,11 +262,8 @@ export default async function Company360Page({
               actions={{ invite: inviteToPortalAction, revoke: revokePortalAccessAction, decide: decidePortalRequestAction }}
             />
           )}
-          <div className="card flex flex-col gap-2 p-4">
-            <span className="font-semibold">ผู้ช่วย AI</span>
-            <SideSoon title="สรุปบริษัทนี้" hint="ดีล + เอกสารบัญชีทั้งหมด" />
-            <SideSoon title="แนะนำโอกาสต่อยอด" hint="อิงประวัติซื้อ" />
-          </div>
+          {/* CRM C3.4 ▸ ผู้ช่วย AI: สรุปบริษัท · โอกาสต่อยอดจากประวัติการซื้อ (แทนป้าย "เร็ว ๆ นี้" ของ C1.3) ◂ */}
+          <CrmAiPanel systemId={id} entity="company" entityId={c.id} />
           <div className="card flex flex-col gap-2 p-4">
             <span className="font-semibold">Portal ลูกค้า</span>
             <p className="text-xs text-[color:var(--color-muted)]">ให้ผู้ติดต่อของบริษัทเข้าดูใบเสนอราคา/ใบแจ้งหนี้เองได้ — เปิดใช้ได้เมื่อระบบ portal พร้อม</p>
@@ -311,18 +310,6 @@ function Kpi({ label, value, danger, small }: { label: string; value: string; da
       <span className={`${small ? "text-base" : "text-xl"} font-semibold tabular-nums`} style={danger ? { color: "var(--color-danger)" } : undefined}>
         {value}
       </span>
-    </div>
-  );
-}
-
-function SideSoon({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2 border-t pt-2 first-of-type:border-t-0">
-      <div className="flex flex-col">
-        <span className="text-sm">{title}</span>
-        <span className="text-xs text-[color:var(--color-muted)]">{hint}</span>
-      </div>
-      <span className="shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] text-[color:var(--color-muted)]">เร็ว ๆ นี้</span>
     </div>
   );
 }

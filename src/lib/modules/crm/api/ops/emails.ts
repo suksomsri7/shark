@@ -16,6 +16,7 @@
 import { z } from "zod";
 import * as emails from "../../emails";
 import { CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_COPY_MODES, CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SUBJECT_MAX } from "../../emails-shared";
+import { renderKbTokens } from "../../kb-tokens"; // CRM C3.4 ◂
 import type { ApiActor } from "@/lib/api/actor";
 import { crmActorOf, crmCtxOf } from "../actor";
 import { defineCrmOp, type ApiOp } from "../op";
@@ -248,7 +249,8 @@ const draft = defineCrmOp({
       contactId: input.contactId,
       // ไม่มีที่อยู่อีเมลในคำตอบ (AUDIT-CLASS X8 — ผู้ช่วยไม่ต้องรู้ที่อยู่เพื่อร่างจดหมาย · ผู้ส่งจริงคือบริการ)
       subject: picked ? picked.subject : goal ? goal.slice(0, CRM_EMAIL_SUBJECT_MAX) : "",
-      bodyHtml: picked ? picked.bodyHtml : "",
+      // CRM C3.4 ▸ `{{kb:<articleId>}}` ของแม่แบบ → บทความที่เปิดใช้ของร้านนี้ (escape แล้ว · ไม่พบ/ร้านอื่น/ปิดใช้ = "") ◂
+      bodyHtml: picked ? await renderKbTokens({ tenantId: ctx.tenantId }, picked.bodyHtml) : "",
       signatureHtml: mine?.signatureHtml ?? null,
       templates: templates.filter((t) => t.active).map((t) => ({ id: t.id, name: t.name, subject: t.subject })),
       sendWith: "POST /emails/send",

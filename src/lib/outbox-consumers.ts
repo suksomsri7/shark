@@ -513,6 +513,16 @@ const crmBridge =
     await bridges[name](evt);
   };
 
+// CRM C3.4 ▸ แจ้งห้องทีมใน MEETING (`crm/ai-bridges.ts` ผ่าน facade CRM) — ของแถมใต้ compose เสมอ (ล้ม = WARN ไม่พางานหลักล้ม) ·
+//   ประตู uiVersion 2 · ห้องที่ผูกไว้ใช้ไม่ได้ = WARN ในตัว (ไม่ throw) · ธงกันซ้ำต่อ event (ส่งซ้ำ/พร้อมกัน = ข้อความเดียว · AUDIT-CLASS X4)
+//   dynamic import เหตุผลเดียวกับ crmBridge (crm → … → scheduleDrain ที่ไฟล์นี้) ◂
+const crmTeamRoom =
+  (name: "onDealWonTeamRoom" | "onHotLeadTeamRoom"): OutboxHandler =>
+  async (evt) => {
+    const { aiBridges } = await import("@/lib/modules/crm");
+    await aiBridges[name](evt);
+  };
+
 /**
  * ขั้นแรกที่ retry ได้ (มติผู้คุมงาน C1.8 ข้อ 2 · 6): `first` วิ่งก่อนทุกชั้น — ล้ม ⇒ โยนทันที ⇒ event ล้ม ⇒ คิวส่งใหม่
  *   และ `rest` (งานหลักเดิม + automation + journey + ของแถม) ยังไม่ได้วิ่ง ⇒ ไม่มี automation/แจ้งเตือนซ้ำตอน retry ·
@@ -1027,7 +1037,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //   key: ทาง v1 (`service.moveDeal`) = `crm.deal.won#<dealId>` (ครั้งเดียวต่อดีล) · ทาง v2 = `crm.deal.won#<dealId>#<histId>` (ต่อการเข้า WON)
   // CRM C2.2 ▸ + หยุดลำดับการติดตามของดีลนี้ (stopOnWon) เป็นของแถมใต้ compose — ล้ม = WARN · สะพานสมาชิกเดิมวิ่งก่อนเหมือนเดิม ◂
   // CRM C2.7 ▸ + ออกใบแจ้งหนี้อัตโนมัติเมื่อชนะ (pipeline.autoInvoiceOnWon) เป็นของแถมใต้ compose — ออกไม่ได้ = WARN ดีลยังชนะ ◂
-  "crm.deal.won": withAutomation(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice"))),
+  // CRM C3.4 ▸ + แจ้งห้องของทีมดีลใน MEETING (ข้อความเดียวต่อ event · ธง `crm.teamroom#won#<eventId>`) — ของแถมใต้ compose ท้ายสุด ◂
+  "crm.deal.won": withAutomation(compose(compose(compose(memberBridge("onCrmDealWon"), crmBridge("onDealWonStopSequences")), crmBridge("onDealWonAutoInvoice")), crmTeamRoom("onDealWonTeamRoom"))),
   // `shop.order.paid` ยิงจาก `shop/service.ts#confirmOrderPaid` (หน้าร้านเว็บ) / ตัวเชื่อมตลาดออนไลน์ →
   //   หา/สมัครสมาชิก (MARKETPLACE) + ผูกตัวตนช่องทาง + แต้ม (ShopOrder) + แถว PURCHASE
   // CRM C2.9 ▸ + ไทม์ไลน์ CRM ของ Party ที่ผูกออเดอร์ (กิจกรรม VISIT ใบเดียว + ขั้นลูกค้า) — ต่อ **ท้ายสุด** ใต้ compose:
@@ -1161,7 +1172,12 @@ const baseConsumers: Record<string, OutboxHandler> = {
   //      ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่มีผลข้างเคียงเพิ่ม (AUDIT-CLASS X4 — ตัวกันซ้ำของ `runForCrmEvent` คือแถวหลักต่อ (กฎ, คน, event))
   //   🔴 `crm.score.threshold` ถูกกรองด้วย `trigger.params.band` ใน `automation.ts` (บล็อก C2.8) ⇒ กฎ "เย็น" ไม่ทำงานตอนลูกค้าร้อน
   "crm.score.changed": withAutomation(async () => {}),
-  "crm.score.threshold": withAutomation(async () => {}),
+  // CRM C3.4 ▸ + lead ร้อน (band HOT เท่านั้น) → แจ้งห้องของทีมผู้ติดต่อ (ธง `crm.teamroom#hot#<eventId>`) — ของแถมใต้ compose ◂
+  "crm.score.threshold": withAutomation(compose(async () => {}, crmTeamRoom("onHotLeadTeamRoom"))),
+  // CRM C3.4 ▸ `crm.teamroom.posted` = **ธงกันซ้ำ** ของการโพสต์ห้องทีม (เขียนใน tx เดียวกับข้อความ — addendum ข้อ 5) ·
+  //   ผลข้างเคียงเกิดครบแล้วก่อน event ถูก drain ⇒ consumer = no-op ปิด event เป็น DONE (ขาด consumer = คิวตัน) + จุดให้เว็บฮุคของร้าน ·
+  //   payload id ล้วน { kind, dealId|contactId|teamId, channelId, meetingSystemId, day?, count? } — ไม่มีชื่อ/เบอร์/อีเมล (X8) ◂
+  "crm.teamroom.posted": withAutomation(async () => {}),
   //   🔴 รอบแก้ 25 ก.ย. — `crm.deal.quotation.issued`: ตัวยิงอยู่ที่ `crm/deals.ts` (tx เดียวกับการผูก `quotationDocId`) ·
   //      งานหลักไม่มีอะไรต้องทำ (เอกสารถูกสร้างในบัญชีไปแล้ว) ⇒ no-op ปิด event เป็น DONE (ขาด consumer = คิวตันทั้งระบบ)
   //      + สะพานคะแนนใต้ compose ⇒ กฎเริ่มต้น "ได้รับใบเสนอราคา" (+8) ได้แต้มครั้งเดียวต่อ (ดีล, เอกสาร)

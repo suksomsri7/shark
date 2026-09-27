@@ -39,7 +39,8 @@ import { deleteFileAsset, privateFileUrl, uploadFile, type UploadDeps } from "@/
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage, isApiActor } from "./access";
-import { activityWhere, companyWhere, contactWhere, dealWhere } from "./where";
+import { activityWhere, contactWhere, dealWhere } from "./where";
+import * as companiesSvc from "./companies";
 import { crmRetentionOf, parseCrmSettings } from "./settings";
 import { CRM_HARD_CAPS } from "./limits-shared";
 import { anonymizeContactInTx } from "./contacts";
@@ -705,12 +706,8 @@ async function buildTenantExport(ctx: PrivacyCtx, actor: Actor): Promise<ExportT
     orderBy: { createdAt: "asc" },
     take: cap,
   });
-  const companies = await prisma.crmCompany.findMany({
-    where: { AND: [await companyWhere(ctx, actor), { mergedIntoId: null }] },
-    select: { id: true, name: true, legalName: true, taxId: true, branchCode: true, industry: true, website: true, phone: true, email: true, ownerUserId: true, teamId: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-    take: cap,
-  });
+  // รีวิวรอบ 4 (C1.3-S0.3): อ่านบริษัทผ่านบริการบริษัท (companyWhere อยู่ในนั้น) — ไม่มีคิวรี CrmCompany นอก companies*.ts
+  const companies = await companiesSvc.listForExport({ tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: ctx.actorUserId ?? null }, actor, cap);
   const deals = await prisma.crmDeal.findMany({
     where: await dealWhere(ctx, actor),
     select: { id: true, title: true, contactId: true, companyId: true, valueSatang: true, paidSatang: true, kind: true, currency: true, ownerUserId: true, teamId: true, expectedCloseAt: true, closedAt: true, createdAt: true, stage: { select: { name: true } }, pipeline: { select: { name: true } } },

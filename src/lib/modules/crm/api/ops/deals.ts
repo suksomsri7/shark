@@ -268,6 +268,8 @@ const quote = defineCrmOp({
   label: "ออกใบเสนอราคาจากดีล",
   input: z.object({ validDays: z.number().int().min(1).max(365).nullable().optional(), note: optText(2000) }).strict(),
   test: "C1.10-S2.3",
+  // CRM C3.4 ▸ tool ของผู้ช่วย (addendum ข้อ 1) — เขียน ⇒ เป็นข้อเสนอให้คนกดยืนยันเสมอ ◂
+  tool: { name: "crm_issue_quotation", hint: "Use to propose issuing the quotation document of a deal from its lines; read crm_deal_360 first." },
   async handler({ actor, params, input }) {
     const r = await deals.issueQuotation(crmCtxOf(actor), crmActorOf(actor), params.id ?? "", input);
     return { dealId: params.id ?? "", documentId: r.docId, created: r.created };

@@ -18561,25 +18561,6 @@
     },
     {
       "page": "/",
-      "testid": "crm-home-ai-risk",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "manager",
-        "nok",
-        "thana"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "inline-error",
-        "target": "crm-home-ai-risk",
-        "db": "ไม่มีการเขียน (ปุ่มเท่านั้น · ปิดไว้ — ต่อสายในใบ C3.4)"
-      },
-      "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
-    },
-    {
-      "page": "/",
       "testid": "crm-home-ai-draft",
       "kind": "button",
       "roles": [
@@ -21301,6 +21282,467 @@
       },
       "wo": "C3.9",
       "oracle": "qc-crm-c3.9"
+    },
+    {
+      "page": "/",
+      "testid": "crm-home-ai-risk",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "#crm-ai-at-risk",
+        "db": "ไม่มีการเขียน (C3.4 ต่อสายแล้ว — เลื่อนลงไปที่แผง \"ดีลไหนเสี่ยงเดือนนี้\")"
+      },
+      "wo": "C3.2",
+      "oracle": "qc-crm-c3.2"
+    },
+    {
+      "page": "/deals/[dealId]",
+      "testid": "crm-ai-deal-summary",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn USAGE source CRM_ASSIST +1 แถว (note = id ล้วน) · ข้อความสรุปแสดงใน crm-ai-result"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.1"
+    },
+    {
+      "page": "/deals/[dealId]",
+      "testid": "crm-ai-deal-risk",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 · เหตุผลที่เสี่ยงแสดงใน crm-ai-result"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.2"
+    },
+    {
+      "page": "/deals/[dealId]",
+      "testid": "crm-ai-deal-next-step",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "crm-ai-proposal-card",
+        "db": "AiProposal kind crm.deals.nextStep.set status PENDING (TTL 24 ชม.) +1 · CrmDeal.nextStep ยังไม่เปลี่ยนจนกว่าจะอนุมัติ"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.2"
+    },
+    {
+      "page": "/deals/[dealId]",
+      "testid": "crm-ai-deal-draft-email",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "ร่างเท่านั้น: CrmEmailMessage ไม่เพิ่ม · ไม่มีข้อเสนอส่ง · AiCreditTxn CRM_ASSIST +1"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.3"
+    },
+    {
+      "page": "/deals/[dealId]",
+      "testid": "crm-ai-draft-copy",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "toast",
+        "target": "crm-ai-draft-copy",
+        "db": "ไม่มีการเขียน (คัดลอกร่างอีเมลเข้าคลิปบอร์ด)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "crm-ai-contact-why-hot",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "CrmContact ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.4"
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "crm-ai-contact-closing",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "ร่างข้อความเท่านั้น (ไม่ส่ง) · AiCreditTxn CRM_ASSIST +1"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.4"
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "crm-ai-company-summary",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.4"
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "crm-ai-company-upsell",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-result",
+        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 (prompt อิงดีลที่ชนะ + รายการสินค้า)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S4.4"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-home-at-risk",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "crm-ai-at-risk-table",
+        "db": "AiProposal kind crm.assist.tasks status PENDING 1 ใบต่อ (ระบบ·คนกด·เดือนไทย) · กดซ้ำ = ใบเดิม · AiCreditTxn CRM_ASSIST +1"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S3.3"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-at-risk-table",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/deals/[dealId]",
+        "db": "ไม่มีการเขียน (ตารางดีลเสี่ยง: ดีล · บริษัท · มูลค่า · เหตุผล — เฉพาะดีลที่ผู้กดมองเห็น)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S8.2"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-at-risk-deal-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/deals/[dealId]",
+        "db": "ไม่มีการเขียน"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-proposal-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "crm-ai-proposal-status",
+        "db": "AiProposal PENDING→EXECUTED (ครั้งเดียว) · crm.assist.tasks = CrmActivity TASK 1 แถวต่อดีล (ผู้ดูแลดีล · พรุ่งนี้ 09:00) · crm.deals.nextStep.set = CrmDeal.nextStep"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S3.4"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-proposal-edit",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-proposal-next-step-input",
+        "db": "ไม่มีการเขียน (เปิดโหมดแก้ขั้นถัดไป/ติ๊กดีลออก ก่อนอนุมัติ)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S8.2"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-proposal-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "crm-ai-proposal-status",
+        "db": "AiProposal PENDING→REJECTED — ได้เฉพาะคนที่ยืนยันได้ (คีย์ของ kind + มองเห็นทุกดีลในข้อเสนอ)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-X9.1"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-proposal-next-step-input",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-proposal-confirm",
+        "db": "ไม่มีการเขียนจนกดอนุมัติ (ข้อความใหม่ ≤ 300 ตัวแทนของ AI)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/",
+      "testid": "crm-ai-proposal-deal-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-ai-proposal-confirm",
+        "db": "ไม่มีการเขียนจนกดอนุมัติ (ดีลที่ไม่ติ๊ก = ไม่สร้างงาน)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-settings-team-room",
+      "kind": "form",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "thana",
+        "nok"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.settings.manage",
+        "db": "AppSystem.settings.crm.teamRooms[teamId] = { meetingSystemId, channelId } (jsonb_set คำสั่งเดียว) · AuditLog crm.settings.team_room"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S8.3"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-settings-team-room-team",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "thana",
+        "nok"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-settings-team-room-channel",
+        "db": "ไม่มีการเขียน (เลือกทีม)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-settings-team-room-channel",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "thana",
+        "nok"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-settings-team-room-save",
+        "db": "ไม่มีการเขียน (เลือกห้องแชทของทีม · ว่าง = เลิกผูก)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-settings-team-room-save",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "thana",
+        "nok"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.settings.manage",
+        "db": "AppSystem.settings.crm.teamRooms[teamId] เปลี่ยน · ห้องร้านอื่น/ถูกเก็บ = ข้อความไทย inline ไม่เขียน"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/settings",
+      "testid": "crm-settings-team-room-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "thana",
+        "nok"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.settings.manage",
+        "db": "AppSystem.settings.crm.teamRooms ลบคีย์ teamId"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4"
+    },
+    {
+      "page": "/app/sys/[id]/meeting",
+      "testid": "crm-deal-unfurl-card",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/deals/[dealId]",
+        "db": "ไม่มีการเขียน (การ์ดลิงก์ดีลในห้องแชท — เฉพาะคนที่มองเห็นดีล · ไม่มีเบอร์/อีเมล/เลขภาษี)"
+      },
+      "wo": "C3.4",
+      "oracle": "qc-crm-c3.4 C3.4-S2.1"
     }
   ]
 }

@@ -14,6 +14,9 @@ import { UiVersionToggle } from "@/components/crm/settings/UiVersionToggle";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
+// CRM C3.4 ▸ ห้องแชทของทีม (MEETING) — ตัวเลือกผูกทีม → ห้อง (addendum ข้อ 4 · คีย์ crm.settings.manage) ◂
+import { teamRoomOptions } from "@/lib/modules/crm/ai-bridges";
+import { CrmTeamRoomPicker } from "@/components/crm/ai/CrmTeamRoomPicker";
 // CRM C3.9 ▸ อายุเก็บข้อมูล · ส่งออกทั้งระบบ · แถบการใช้งานเพดาน (§11.9 · เตือนที่ 80 %) ◂
 import { limitStatus } from "@/lib/modules/crm/limits";
 import { crmLimitPercent } from "@/lib/modules/crm/limits-shared";
@@ -81,6 +84,8 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
     // ◂ CRM C3.6
   ];
   const onOff = (v: boolean) => (v ? "เปิด" : "ปิด");
+  // CRM C3.4 ▸ ตัวเลือกห้องทีม (อ่านล้ม = ซ่อนบล็อก หน้าไม่ล้ม · หน้า GET ไม่เขียนอะไร) ◂
+  const roomOpts = await teamRoomOptions({ tenantId, systemId: id, actorUserId: auth.user.id }, actor).catch(() => null);
   // CRM C3.9 ▸ อ่านล้ม = ไม่แสดงส่วนนั้น (หน้าไม่ล้ม) ◂
   const pctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const [limitRows, retention, myExports] = await Promise.all([
@@ -113,6 +118,16 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
       </section>
       {/* CRM C1.11 ▸ สวิตช์ (เจ้าของร้าน) ◂ */}
       {switchCard}
+      {/* CRM C3.4 ▸ ห้องแชทของทีมขาย — ระบบ CRM แจ้ง "ปิดดีลได้ · lead ร้อน · สรุปดีลนิ่งรายวัน" เข้าห้องที่ผูกไว้ ◂ */}
+      {roomOpts && (
+        <section className="card flex min-w-0 flex-col gap-3 p-4" aria-label="ห้องแชทของทีมขาย">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-medium">ห้องแชทของทีมขาย</h2>
+            <p className="text-xs text-[color:var(--color-muted)]">ระบบ CRM จะแจ้งในห้องของทีมเมื่อปิดดีลได้ เมื่อมี lead ร้อน และสรุปดีลที่นิ่งวันละครั้ง — ไม่มีเบอร์โทร อีเมล หรือเลขภาษีของลูกค้าในข้อความ</p>
+          </div>
+          <CrmTeamRoomPicker systemId={id} teams={roomOpts.teams} rooms={roomOpts.rooms} current={roomOpts.current} hiddenLive={roomOpts.hiddenLive} />
+        </section>
+      )}
       {/* CRM C3.9 ▸ อายุเก็บข้อมูล (PDPA) · ส่งออกทั้งระบบ · เพดานของระบบ */}
       <PrivacySettings
         systemId={id}

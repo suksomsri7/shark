@@ -159,6 +159,8 @@ const stop = defineCrmOp({
   label: "หยุดลำดับของผู้ติดต่อ",
   input: z.object({ reason: optText(500) }).strict(),
   test: "C2.11-S2.6",
+  // CRM C3.4 ▸ tool ของผู้ช่วย (addendum ข้อ 1) — id ของการลงทะเบียน (enrollment) ไม่ใช่ของลำดับ ◂
+  tool: { name: "crm_stop_sequence", hint: "Use to propose stopping one contact's follow-up sequence enrollment (pass the enrollment id and a short reason)." },
   async handler({ actor, params, input }) {
     const r = await sequences.stop(crmCtxOf(actor), crmActorOf(actor), params.id ?? "", { reason: input.reason ?? null });
     return { enrollmentId: params.id ?? "", stopped: r.stopped, status: r.status };

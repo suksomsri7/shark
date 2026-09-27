@@ -102,6 +102,7 @@ import {
   type CrmEmailRoutingView,
   type CrmEmailSettings,
 } from "./emails-shared";
+import { renderKbTokens } from "./kb-tokens"; // CRM C3.4 ◂
 import "./emails-job";
 
 /**
@@ -1050,7 +1051,11 @@ async function renderTemplate(
   for (const [k, v] of Object.entries(vars ?? {})) merged[k] = String(v ?? "");
   const escaped: Record<string, string> = {};
   for (const [k, v] of Object.entries(merged)) escaped[k] = escapeHtmlText(v);
-  return { subject: renderEmailVars(tpl.subject, merged), bodyHtml: renderEmailVars(tpl.bodyHtml, escaped) };
+  // CRM C3.4 ▸ `{{kb:<articleId>}}` → บทความที่เปิดใช้ของร้านนี้ (escape แล้ว · ไม่พบ/ร้านอื่น = "") — แทน **ก่อน** ตัวแปร
+  //   (รีวิว C3.4 N2: ถ้าแทนทีหลัง ผู้ติดต่อที่ตั้งชื่อว่า `{{kb:<id>}}` จะดึงบทความเข้าจดหมายได้ · แทนก่อน = token มาจากแม่แบบของร้านเท่านั้น
+  //   ค่าตัวแปรที่หยอดทีหลังไม่ถูกสแกนหา token อีก) ◂
+  const bodyWithKb = await renderKbTokens({ tenantId: ctx.tenantId }, tpl.bodyHtml);
+  return { subject: renderEmailVars(tpl.subject, merged), bodyHtml: renderEmailVars(bodyWithKb, escaped) };
 }
 
 async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCore, deps?: EmailDeps): Promise<SendResult> {

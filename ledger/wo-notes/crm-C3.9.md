@@ -113,3 +113,14 @@
 | N5 | สมาชิกถูกลบคู่กันเฉพาะ source REQUEST — RETENTION/MEMBER ส่ง `memberCustomerIds = []` (ตัวนับ Party ก็ไม่ยกเว้นสมาชิกให้ RETENTION) | `privacy.ts:301` |
 | N2 · N6 · N7 · N8 | ลงตารางหนี้ §3 (ไม่มีโค้ด) | §3 |
 - ผลรันรอบ 3 (QC3 · `r3-progress.log` · `r3-<ชุด>.log`): `qc-crm-c3.9` 36/36 ×2 · qc-form 10/10 · c1.4 110/110 · c2.4 91/91 · c1.11 66/66 (`CRM_V2_SWITCH=all`) · typecheck สะอาด (`r3-typecheck.log`) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL` · expected json ไม่ถูกแก้
+
+## § รอบ 4 — regression ของตัวรันต้นไม้หลัก: `qc-crm-c1.3` S0.3 (ห้ามอ่าน CrmCompany นอก companies*.ts / where.ts)
+| แก้อะไร | ที่ไหน |
+|---|---|
+| ตัวอ่านบริษัทของ PDPA/เพดานย้ายเข้าบริการบริษัท: `countForLimit(db, ctx)` (รับ tx ของผู้เรียก — limits.ts นับใต้ advisory lock เดิมใน tx เดียวกับ insert) · `listForExport(ctx, actor, take)` (companyWhere ของผู้ขอ) | `companies.ts:2283` `:2287` |
+| `limits.ts` นับบริษัทผ่าน `companies.countForLimit(db, sys)` | `limits.ts:131` |
+| `privacy.ts` ไฟล์ส่งออกทั้งระบบอ่านบริษัทผ่าน `companiesSvc.listForExport` (เลิก import `companyWhere`) | `privacy.ts:710` |
+| กวาดไฟล์ใหม่ของใบนี้หาคิวรีตรงอื่นที่ข้อสอบพี่น้องตรึง: ไม่มี `crmCompany.*` นอก companies*.ts · การเขียนคอลัมน์ที่มีกฎของ CrmContact อยู่ใน `contacts.ts#anonymizeContactInTx` (C1.4-S0.8) · ไม่มีการเขียน CrmDeal ใน privacy/limits (C1.5-S0.8) · ไม่มีการเขียน CrmCompany นอก companies*.ts (C1.6-S0.6) | — |
+
+ผล (QC3 · `r4-progress.log` · `r4-<ชุด>.log`): qc-crm-c1.3 89/89 (×2) · c1.2a 91/91 · c1.4 110/110 · c1.5 103/103 · c1.6 79/79 · qc-crm-c3.9 36/36 (×2) · typecheck สะอาด (`r4-typecheck-2.log` — รอบแรกแดงที่ชนิด ctx ของ `listForExport` แก้แล้ว · ชุดข้อสอบรันด้วย tsx ไม่กระทบ) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL`
+- `scripts/crm-expected.json` · `member-expected.json` · `acc-v2-expected.json` ถูกเขียนใหม่โดย seed ของ QC3 (generatedAt 2026-09-27T03:24Z · ไม่ใช่ชุดของใบนี้) — คืนจาก git แล้ว · สำเนาอยู่ที่ `.qc-shots/c39/qc3-*-expected-r4.json`

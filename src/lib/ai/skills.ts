@@ -209,6 +209,10 @@ export const SKILLS: Skill[] = [
       //   ข้อเสนอให้คนกดยืนยัน: crm_send_email · crm_enroll_sequence · crm_assign · crm_set_next_step ◂
       "crm_email_thread", "crm_score_explain", "crm_stale_deals", "crm_activities_due", "crm_draft_email",
       "crm_send_email", "crm_enroll_sequence", "crm_assign", "crm_set_next_step",
+      // CRM C3.4 ▸ ชุดสุดท้าย 9 ตัว (addendum ข้อ 1 · รวม 32): อ่านทันที crm_deals_at_risk · crm_reports · crm_quota_progress · crm_commissions_mine
+      //   ข้อเสนอให้คนกดยืนยัน: crm_issue_quotation · crm_stop_sequence · crm_create_record · crm_update_record · crm_create_task_card ◂
+      "crm_deals_at_risk", "crm_reports", "crm_quota_progress", "crm_commissions_mine",
+      "crm_issue_quotation", "crm_stop_sequence", "crm_create_record", "crm_update_record", "crm_create_task_card",
     ],
     systems: ["CRM", "MARKETING"],
   },

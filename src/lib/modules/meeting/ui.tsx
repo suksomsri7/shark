@@ -21,6 +21,8 @@ import {
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ModuleTabs } from "@/components/module-tabs";
+// CRM C3.4 ▸ การ์ดลิงก์ดีล CRM ในห้อง (client · addendum ข้อ 11) ◂
+import { CrmDealUnfurl } from "@/components/crm/ai/CrmDealUnfurl";
 import { CHANNEL_KIND_LABEL } from "@/lib/ui/status-labels";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -109,7 +111,8 @@ export async function MeetingContent({
     listVisibleChannels(tenantId, systemId, userId),
     listStaff(tenantId),
   ]);
-  const nameOf = (uid: string) => staff.find((s) => s.userId === uid)?.name ?? "ผู้ใช้";
+  // CRM C3.4 ▸ ข้อความจากระบบ (`system:<โมดูล>` — แจ้งห้องทีมของ CRM) แสดงเป็นชื่อระบบ ไม่ใช่ "ผู้ใช้" ◂
+  const nameOf = (uid: string) => (uid === "system:crm" ? "ระบบ CRM" : uid.startsWith("system:") ? "ระบบ" : staff.find((s) => s.userId === uid)?.name ?? "ผู้ใช้");
 
   const active =
     channels.find((c) => c.id === channelId) ??
@@ -278,7 +281,8 @@ async function ChannelMembers({
   const members = await listChannelMembers(systemId, channel.id);
   const memberIds = new Set(members.map((m) => m.userId));
   const invitable = staff.filter((s) => !memberIds.has(s.userId));
-  const nameOf = (uid: string) => staff.find((s) => s.userId === uid)?.name ?? "ผู้ใช้";
+  // CRM C3.4 ▸ ข้อความจากระบบ (`system:<โมดูล>` — แจ้งห้องทีมของ CRM) แสดงเป็นชื่อระบบ ไม่ใช่ "ผู้ใช้" ◂
+  const nameOf = (uid: string) => (uid === "system:crm" ? "ระบบ CRM" : uid.startsWith("system:") ? "ระบบ" : staff.find((s) => s.userId === uid)?.name ?? "ผู้ใช้");
 
   return (
     <details className="border-b pb-2">
@@ -398,6 +402,8 @@ function MessageRow({
         )}
       </div>
       <div className="whitespace-pre-wrap break-words text-sm">{msg.body}</div>
+      {/* CRM C3.4 ▸ ลิงก์ดีล CRM ในข้อความ → การ์ด (เฉพาะคนที่มองเห็นดีล · คอมโพเนนต์เรียก action ของ CRM เอง — MEETING ไม่ import CRM) ◂ */}
+      {msg.body.includes("/crm/deals/") && <CrmDealUnfurl body={msg.body} />}
       {mine && (
         <div className="mt-0.5 flex items-center gap-2">
           <details className="inline">

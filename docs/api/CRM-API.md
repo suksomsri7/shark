@@ -2,7 +2,7 @@
 
 <!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
-Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 101 operations (45 read, 43 write, 13 danger) · 23 AI tools.
+Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 106 operations (49 read, 44 write, 13 danger) · 32 AI tools.
 
 ## Conventions
 
@@ -21,7 +21,7 @@ Conventions that apply to every operation:
 10. Lists answer `{ items, nextCursor }`; send `take` (at most 100) and pass `nextCursor` back as `cursor` for the next page. Money is in satang (`*Satang`, 100 satang = 1 baht), discounts in basis points (`*Bp`), timestamps are ISO-8601.
 11. Rate limits are per key: 600 reads, 300 writes and 60 reports (forecast) per minute. A 429 carries `Retry-After`; successful answers carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 12. Success is `{ data, requestId }` with HTTP 200 (also for creations). Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`.
-13. Outgoing webhooks: a shop endpoint can subscribe to `crm.deal.won`, `team.updated`, `custom.record.created`, `custom.record.updated`, `custom.record.archived`, `crm.company.created`, `crm.company.updated`, `crm.company.merged`, `crm.contact.created`, `crm.contact.updated`, `crm.contact.assigned`, `crm.contact.converted`, `crm.contact.merged`, `crm.deal.created`, `crm.deal.stage.changed`, `crm.deal.lost`, `crm.deal.reopened`, `crm.deal.reassigned`, `crm.deal.updated`, `crm.activity.logged`, `crm.activity.completed`, `crm.score.changed`, `crm.score.threshold`, `crm.deal.quotation.issued`, `crm.deal.stale`, `crm.activity.overdue`, `crm.quota.reached`, `crm.portal.viewed`, `crm.portal.quote.responded`, `crm.portal.request.created`, `crm.sequence.enrolled`, `crm.sequence.finished`, `crm.activity.reminder`, `crm.email.sent`, `crm.email.received`, `crm.email.opened`, `crm.email.clicked`, `crm.email.replied`, `crm.email.bounced`, `crm.web.identified`, `crm.commission.created`, `crm.commission.approved`, `crm.commission.reversed`, `crm.commission.removed`, `crm.contact.erased`. Payloads carry ids only (no phone, e-mail, name or deal title); every delivery is signed with `X-Shark-Signature` (HMAC-SHA256 of the body) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<X-Shark-Timestamp>.<body>`).
+13. Outgoing webhooks: a shop endpoint can subscribe to `crm.deal.won`, `team.updated`, `custom.record.created`, `custom.record.updated`, `custom.record.archived`, `crm.company.created`, `crm.company.updated`, `crm.company.merged`, `crm.contact.created`, `crm.contact.updated`, `crm.contact.assigned`, `crm.contact.converted`, `crm.contact.merged`, `crm.deal.created`, `crm.deal.stage.changed`, `crm.deal.lost`, `crm.deal.reopened`, `crm.deal.reassigned`, `crm.deal.updated`, `crm.activity.logged`, `crm.activity.completed`, `crm.score.changed`, `crm.score.threshold`, `crm.deal.quotation.issued`, `crm.deal.stale`, `crm.activity.overdue`, `crm.quota.reached`, `crm.portal.viewed`, `crm.portal.quote.responded`, `crm.portal.request.created`, `crm.sequence.enrolled`, `crm.sequence.finished`, `crm.activity.reminder`, `crm.teamroom.posted`, `crm.email.sent`, `crm.email.received`, `crm.email.opened`, `crm.email.clicked`, `crm.email.replied`, `crm.email.bounced`, `crm.web.identified`, `crm.commission.created`, `crm.commission.approved`, `crm.commission.reversed`, `crm.commission.removed`, `crm.contact.erased`. Payloads carry ids only (no phone, e-mail, name or deal title); every delivery is signed with `X-Shark-Signature` (HMAC-SHA256 of the body) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<X-Shark-Timestamp>.<body>`).
 14. Sales teams are tenant-wide: one team list per shop, shared by every CRM system of that shop (not per system). They are also served at `/api/v1/teams` with the same operations and key. A key that is not bound to a system may omit `X-Shark-System` only when the shop has a single CRM system.
 15. Request bodies are capped at 1 MB (10 MB for `POST /contacts/import`); larger bodies answer 413 `payload_too_large`. Exports (`POST /contacts/export`, `POST /objects/{key}/records/export`) need a `crm.admin` key.
 16. A key with an owner or team filter can only create or reassign records inside that filter; anything that would land outside answers 422 `validation`.
@@ -501,6 +501,7 @@ Body:
 | `deals.delete` | `DELETE /deals/{id}` | **danger** | `crm.deal.delete` | Delete a deal for good. Needs confirm: true and a reason. |
 | `deals.stale.list` | `GET /deals/stale` | read | `crm.deal.read` | Open deals that have gone quiet: no activity (or no stage change) for longer than the shop's stale threshold, newest activity last. Same list and same visibility as GET /deals?stale=true - this door only fixes the filter so one call answers 'what needs a nudge'. |
 | `deals.nextStep.set` | `PUT /deals/{id}/next-step` | write | `crm.deal.update` | Write the next step of one deal (a short note of what happens next, up to 300 characters). An empty value clears it. |
+| `deals.atRisk.list` | `GET /deals/at-risk` | read | `crm.deal.read` | Open deals at risk in a Thai calendar month (default: this month): expected to close before the month ends (overdue ones included) and stalled, past their close date, without a next activity, or still at forecast PIPELINE within 7 days of closing. Each item lists its reasons. Same set as the CRM home page table; only deals the caller can see. |
 
 #### `GET /deals` — deals.list
 
@@ -647,7 +648,7 @@ Body:
 
 #### `POST /deals/{id}/quotation` — deals.quote
 
-Issue a quotation in the accounting book from the deal's lines (a repeat call returns the same document). (ออกใบเสนอราคาจากดีล)
+Issue a quotation in the accounting book from the deal's lines (a repeat call returns the same document). (ออกใบเสนอราคาจากดีล) AI tool: `crm_issue_quotation`.
 
 Body:
 
@@ -691,6 +692,18 @@ Body:
 | --- | --- | --- | --- |
 | `nextStep` | string \| null |  | max 300 chars |
 
+#### `GET /deals/at-risk` — deals.atRisk.list
+
+Open deals at risk in a Thai calendar month (default: this month): expected to close before the month ends (overdue ones included) and stalled, past their close date, without a next activity, or still at forecast PIPELINE within 7 days of closing. Each item lists its reasons. Same set as the CRM home page table; only deals the caller can see. (ดีลเสี่ยงเดือนนี้) Uses the report rate bucket. AI tool: `crm_deals_at_risk`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `month` | string |  |  |
+| `team` | string |  | max 64 chars |
+| `owner` | string |  | max 64 chars |
+
 ### Activities and calendar
 
 | Operation | Method and path | Kind | Scope | Summary |
@@ -703,6 +716,7 @@ Body:
 | `activities.reschedule` | `PUT /activities/{id}/schedule` | write | `crm.activity.create` | Move an activity to another start/end or due time. |
 | `activities.delete` | `DELETE /activities/{id}` | **danger** | `crm.activity.delete` | Delete an activity. Needs confirm: true and a reason. |
 | `activities.due.list` | `GET /activities/due` | read | `crm.activity.read` | Tasks and appointments that are waiting: status pending (default), today, week or overdue. Same list and same visibility as GET /activities?status=... - this door only fixes the filter so one call answers 'what is due'. |
+| `activities.taskCard.open` | `POST /activities/{id}/task-card` | write | `crm.activity.create` | Open (or reuse) a task-board card for one CRM activity on a board the caller can see; the card links back to the deal, contact and company of the activity. |
 
 #### `GET /activities` — activities.list
 
@@ -820,6 +834,17 @@ Query:
 | `contactId` | string |  | max 64 chars, min 1 |
 | `dealId` | string |  | max 64 chars, min 1 |
 
+#### `POST /activities/{id}/task-card` — activities.taskCard.open
+
+Open (or reuse) a task-board card for one CRM activity on a board the caller can see; the card links back to the deal, contact and company of the activity. (เปิดการ์ดบอร์ดงานจากกิจกรรม) AI tool: `crm_create_task_card`.
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `boardId` | string | yes | max 64 chars, min 1 |
+| `columnId` | string \| null |  | max 64 chars, min 1 |
+
 ### Custom objects and records
 
 | Operation | Method and path | Kind | Scope | Summary |
@@ -870,7 +895,7 @@ One record with its field values (sensitive values follow the shop's policy). (�
 
 #### `POST /objects/{key}/records` — records.create
 
-Create a record under its parent (contact, company, deal or member, per the object); the title comes from the object's title field. (เพิ่มรายการ)
+Create a record under its parent (contact, company, deal or member, per the object); the title comes from the object's title field. (เพิ่มรายการ) AI tool: `crm_create_record`.
 
 Body:
 
@@ -884,7 +909,7 @@ Body:
 
 #### `PATCH /objects/{key}/records/{id}` — records.update
 
-Change a record's field values (only the keys sent are touched). (แก้ไขรายการ)
+Change a record's field values (only the keys sent are touched). (แก้ไขรายการ) AI tool: `crm_update_record`.
 
 Body:
 
@@ -1245,7 +1270,7 @@ Body:
 
 #### `POST /sequences/enrollments/{id}/stop` — sequences.stop
 
-Stop one enrollment (the id of the enrollment, not of the sequence). The remaining steps are cancelled; the history of what was sent is kept. (หยุดลำดับของผู้ติดต่อ)
+Stop one enrollment (the id of the enrollment, not of the sequence). The remaining steps are cancelled; the history of what was sent is kept. (หยุดลำดับของผู้ติดต่อ) AI tool: `crm_stop_sequence`.
 
 Body:
 
@@ -1477,6 +1502,62 @@ Body:
 | `chatToLead` | boolean |  |  |
 | `bridgesEnabled` | boolean |  |  |
 
+### Reports
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `reports.get` | `GET /reports/{tab}` | read | `crm.report.view` | One CRM report tab (overview, forecast, funnel, reps, activities, lost, sources, scores) with the same numbers as the reports page, limited to what the caller may see. Optional filters: from/to (dates), teamId, pipelineId, ownerUserId, and groupBy (month, owner, team) for forecast. |
+
+#### `GET /reports/{tab}` — reports.get
+
+One CRM report tab (overview, forecast, funnel, reps, activities, lost, sources, scores) with the same numbers as the reports page, limited to what the caller may see. Optional filters: from/to (dates), teamId, pipelineId, ownerUserId, and groupBy (month, owner, team) for forecast. (รายงาน CRM) Uses the report rate bucket. AI tool: `crm_reports`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `from` | string |  | max 40 chars |
+| `to` | string |  | max 40 chars |
+| `teamId` | string |  | max 64 chars, min 1 |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `ownerUserId` | string |  | max 64 chars, min 1 |
+| `groupBy` | `month` \| `owner` \| `team` |  |  |
+
+### Sales quotas
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `quotas.progress` | `GET /quotas/progress` | read | `crm.report.view` | Progress against the sales quota of one person or team for a period (periodKey "2026-09", "2026-Q3" or "2026"; default: the caller, this month). Counted from payments received and won deals. Only people/teams the caller may see. |
+
+#### `GET /quotas/progress` — quotas.progress
+
+Progress against the sales quota of one person or team for a period (periodKey "2026-09", "2026-Q3" or "2026"; default: the caller, this month). Counted from payments received and won deals. Only people/teams the caller may see. (ความคืบหน้าโควตา) Uses the report rate bucket. AI tool: `crm_quota_progress`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `ownerType` | `USER` \| `TEAM` |  |  |
+| `ownerId` | string |  | max 64 chars, min 1 |
+| `periodKey` | string |  | max 10 chars |
+
+### Commissions
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `commissions.mine` | `GET /commissions/mine` | read | `crm.commission.view` | The caller's own commission rows (newest first) and totals per status. Optional filters: status (PENDING, APPROVED, PAID, REVERSED, REJECTED) and periodKey ("2026-09"). |
+
+#### `GET /commissions/mine` — commissions.mine
+
+The caller's own commission rows (newest first) and totals per status. Optional filters: status (PENDING, APPROVED, PAID, REVERSED, REJECTED) and periodKey ("2026-09"). (คอมมิชชันของฉัน) AI tool: `crm_commissions_mine`.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `status` | `PENDING` \| `APPROVED` \| `PAID` \| `REVERSED` \| `REJECTED` |  |  |
+| `periodKey` | string |  | max 7 chars |
+
 ## AI tools (skill `crm`)
 
 The in-app assistant and outside agents (`POST https://shark.in.th/api/v1/ai/tools/<name>`, manifest `GET https://shark.in.th/api/v1/ai/skills/crm`) reach the CRM through these tools. Read tools run at once with the rights of the person asking (never more; without a known person they refuse). Write tools only create a proposal that a person confirms in the app. A key without any `crm.*` scope cannot use any of them, `crm_create_lead` included.
@@ -1496,16 +1577,25 @@ The in-app assistant and outside agents (`POST https://shark.in.th/api/v1/ai/too
 | `crm_create_deal` | write (proposal) | `deals.create` | `crm.deal.create` |
 | `crm_update_deal` | write (proposal) | `deals.update` | `crm.deal.update` |
 | `crm_move_deal` | write (proposal) | `deals.move` | `crm.deal.move` |
+| `crm_issue_quotation` | write (proposal) | `deals.quote` | `crm.deal.quote` |
 | `crm_log_activity` | write (proposal) | `activities.log` | `crm.activity.create` |
 | `crm_records_query` | read (runs at once) | `records.list` | `crm.record.read` |
+| `crm_create_record` | write (proposal) | `records.create` | `crm.record.create` |
+| `crm_update_record` | write (proposal) | `records.update` | `crm.record.update` |
 | `crm_email_thread` | read (runs at once) | `emails.threads.list` | `crm.email.read` |
 | `crm_send_email` | write (proposal) | `emails.send` | `crm.email.send` |
 | `crm_draft_email` | read (runs at once) | `emails.draft` | `crm.email.read` |
 | `crm_enroll_sequence` | write (proposal) | `sequences.enroll` | `crm.sequence.enroll` |
+| `crm_stop_sequence` | write (proposal) | `sequences.stop` | `crm.sequence.enroll` |
 | `crm_score_explain` | read (runs at once) | `scoring.explain` | `crm.contact.read` |
 | `crm_stale_deals` | read (runs at once) | `deals.stale.list` | `crm.deal.read` |
 | `crm_activities_due` | read (runs at once) | `activities.due.list` | `crm.activity.read` |
 | `crm_set_next_step` | write (proposal) | `deals.nextStep.set` | `crm.deal.update` |
+| `crm_deals_at_risk` | read (runs at once) | `deals.atRisk.list` | `crm.deal.read` |
+| `crm_create_task_card` | write (proposal) | `activities.taskCard.open` | `crm.activity.create` |
+| `crm_reports` | read (runs at once) | `reports.get` | `crm.report.view` |
+| `crm_quota_progress` | read (runs at once) | `quotas.progress` | `crm.report.view` |
+| `crm_commissions_mine` | read (runs at once) | `commissions.mine` | `crm.commission.view` |
 
 `crm_create_lead` keeps its old name. On a shop that still runs the previous CRM screens it proposes the old `crm_create_lead` action (name, phone, e-mail) exactly as before.
 
@@ -1548,6 +1638,7 @@ Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps
 | `crm.sequence.enrolled` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
 | `crm.sequence.finished` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
 | `crm.activity.reminder` | `activityId`, related ids |
+| `crm.teamroom.posted` | `teamId`, `change` |
 | `crm.email.sent` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
 | `crm.email.received` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
 | `crm.email.opened` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
@@ -1593,7 +1684,7 @@ These operations are designed but not registered yet; calling them answers 404. 
 | C2.10 + C2.11 | Notification preferences | `notifications.templates.get`, `notifications.templates.set` |
 | C2.11 | Automation | `automation.rules.get`, `automation.rules.create`, `automation.rules.update`, `automation.rules.toggle`, `automation.rules.delete`, `automation.runs.list` |
 | C3.8 | Custom objects | `objects.get`, `records.move`, `records.timeline`, `records.import`, `records.byParent` |
-| C3.8 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `quotas.*`, `quotas.progress`, `commissions.rules.*`, `commissions.list`, `commissions.approve`, `commissions.reject`, `commissions.report` |
+| C3.8 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `quotas.*`, `commissions.rules.*`, `commissions.list`, `commissions.approve`, `commissions.reject`, `commissions.report` |
 | C3.5 / C3.8 | Portal (customer session) | `portal.invite`, `portal.access.list`, `portal.access.revoke`, `p.me`, `p.quotations.*`, `p.invoices.*`, `p.receipts.list`, `p.documents.list`, `p.requests.*`, `p.contacts.*` |
 | C3.8 | Reports and settings | `reports.*`, `reports.export`, `reports.schedule`, `settings.targets.set`, `settings.integrations.status`, `templates.list`, `templates.apply` |
 | C3.4 | AI tools (8 more) | `8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card` |

@@ -17,6 +17,7 @@ import { Prisma } from "@prisma/client";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
+import * as companies from "./companies"; // CRM C3.9 ▸ นับบริษัทผ่านบริการบริษัท (C1.3-S0.3) ◂
 import {
   CRM_HARD_CAPS,
   CRM_LIMITS,
@@ -127,7 +128,7 @@ async function usageOf(db: Db, ctx: LimitsCtx, key: CrmLimitKey, parentId: strin
     case "contacts":
       return db.crmContact.count({ where: { ...sys, mergedIntoId: null, archivedAt: null } });
     case "companies":
-      return db.crmCompany.count({ where: { ...sys, mergedIntoId: null, archivedAt: null } });
+      return companies.countForLimit(db, sys); // C1.3-S0.3: อ่าน CrmCompany ได้เฉพาะบริการบริษัท (tx เดียวกัน · ใต้ล็อกเดิม)
     case "openDeals":
       return db.crmDeal.count({ where: { ...sys, kind: "OPEN", archivedAt: null } });
     case "pipelines":

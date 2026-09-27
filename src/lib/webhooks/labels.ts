@@ -63,6 +63,9 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
   //   payload = id ล้วน (activityId · activityType · ownerUserId · contactId · dealId · companyId) · consumer อยู่ใน outbox-consumers.ts
   { value: "crm.activity.reminder", label: "เมื่อถึงเวลาเตือนงานหรือนัดใน CRM" },
   // ◂ CRM C2.4
+  // CRM C3.4 ▸ แจ้งห้องทีม (MEETING) แล้ว — ประกาศที่นี่ที่เดียว (ไม่ใส่ `AUTOMATION_EVENTS`: เป็น "ธงกันซ้ำ" ของการโพสต์ ไม่ใช่เหตุการณ์ธุรกิจ
+  //   ที่ร้านจะตั้งกฎต่อ — แบบเดียวกับ `crm.activity.reminder`) · payload id ล้วน · consumer no-op อยู่ใน outbox-consumers.ts ◂
+  { value: "crm.teamroom.posted", label: "เมื่อ CRM แจ้งข่าวเข้าห้องแชทของทีมขาย" },
   // CRM C2.5 ▸ อีเมล — ประกาศที่นี่ที่เดียว (ไม่ใช่ทริกเกอร์ของตัวสร้างกฎ CRM · consumer อยู่ใน outbox-consumers.ts)
   //   ร้านที่ต่อระบบอื่นอยู่ (ศูนย์บริการลูกค้า · แดชบอร์ดของตัวเอง) ต้องรู้ว่า "ลูกค้าตอบจดหมายแล้ว" ได้ทันที
   { value: "crm.email.sent", label: "เมื่อส่งอีเมลถึงผู้ติดต่อ (CRM)" },

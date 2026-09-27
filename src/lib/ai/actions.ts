@@ -9,6 +9,8 @@ import { recordFeedback, type FeedbackRating } from "./feedback";
 import { quotaMessage } from "./usage";
 import { ensureWallet } from "./credit";
 import { formatUsd } from "./pricing";
+// CRM C3.4 ▸ ประตูข้อเสนอของ CRM (ยกเลิกได้เฉพาะคนที่ยืนยันได้) ผ่าน facade ◂
+import { aiBridges } from "@/lib/modules/crm";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -156,6 +158,13 @@ export async function confirmProposalAction(
 export async function rejectProposalAction(proposalId: string): Promise<ProposalResult> {
   const auth = await requireTenant();
   const ctx = { tenantId: auth.active.tenantId };
+  // CRM C3.4 ▸ ข้อเสนอของ CRM ยกเลิกได้เฉพาะคนที่ยืนยันได้ (addendum ข้อ 9) — ส่งไปประตู CRM พร้อมตัวคนกด (สิทธิ์จาก session) ◂
+  const crm = await aiBridges.cancelProposalById(
+    ctx.tenantId,
+    { userId: auth.user.id, role: auth.active.role, unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [], permissions: (auth.active.permissions ?? {}) as Record<string, unknown> },
+    proposalId,
+  );
+  if (crm.handled) return { ok: crm.ok, note: crm.ok ? "ยกเลิกข้อเสนอแล้ว" : crm.note };
   const ok = await rejectProposal(ctx, proposalId);
   return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
 }

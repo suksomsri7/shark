@@ -445,6 +445,15 @@ const ALLOWED_EDGES = new Set([
   //   ชื่อ + Σ CampaignVariantStat.costSatang ของแคมเปญในร้านเดียวกัน) · โหลดแบบ lazy import ตอนใช้ (ไม่ลากกราฟการตลาดตอนโหลด facade CRM)
   "crm→marketing",
   // ◂ CRM C3.1
+  // CRM C3.4 ▸ (มติผู้คุมงาน C3.4 (4) · addendum ข้อ 3 · 10) สองโมดูลนี้ไม่เคยมี facade — ใบ C3.4 สร้าง `index.ts` ให้ทั้งคู่ (re-export ล้วน)
+  //   crm→meeting : แจ้ง "ปิดดีลได้ · lead ร้อน · สรุปดีลนิ่งรายวัน" เข้าห้องแชทของทีม ผ่าน `meeting/index.postSystemMessage`
+  //                 (ผู้เขียน `system:crm` · ปฏิเสธห้องของร้าน/ระบบอื่นและห้องที่เก็บถาวร) + ตัวเลือกห้อง `listRoomOptions` — ทิศเดียว
+  //                 (MEETING ไม่ import CRM: การ์ดลิงก์ดีลในห้องเรียก server action ใต้ `src/app/app/sys/[id]/crm/_actions/ai.ts`)
+  //   crm→kb      : ร่างอีเมล/สรุปของผู้ช่วย AI อ้างบทความของร้าน (≤ 3) + `{{kb:<articleId>}}` ในแม่แบบอีเมล ผ่าน `kb/index` (searchKb · getArticle)
+  //   ทั้งสองเส้นโหลดแบบ dynamic import ตอนใช้ (ไม่ลากกราฟโมดูลอื่นตอนโหลด facade CRM) ◂
+  "crm→meeting",
+  "crm→kb",
+  // ◂ CRM C3.4
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

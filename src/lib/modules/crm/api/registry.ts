@@ -25,6 +25,8 @@ import { NOTIFICATIONS_OPS } from "./ops/notifications";
 import { SCORING_OPS } from "./ops/scoring";
 import { SEQUENCES_OPS } from "./ops/sequences";
 import { TRACKING_OPS } from "./ops/tracking";
+// CRM C3.4 ▸ op ของผู้ช่วย AI ชุดสุดท้าย (ดีลเสี่ยง · การ์ดบอร์ดงาน · รายงาน · โควตา · คอมมิชชันของฉัน) ◂
+import { ASSIST_OPS } from "./ops/assist";
 
 export * from "./op";
 
@@ -52,6 +54,9 @@ export const CRM_OPS: ApiOp[] = [
   ...AUTOMATION_OPS,
   ...INSIGHTS_OPS,
   // ◂ CRM C2.11
+  // CRM C3.4 ▸ 5 op (addendum ข้อ 1): `deals.atRisk.list` · `activities.taskCard.open` + สาม op ที่ใช้ร่วมกับ C3.8 (C3.4 เป็นผู้สร้าง —
+  //   มติผู้คุมงาน C3.6–C3.9 ข้อ 1): `reports.get` · `quotas.progress` · `commissions.mine` ◂
+  ...ASSIST_OPS,
 ];
 
 // CRM C2.11 ▸ MINOR 12 (ผู้ตรวจอิสระ 25 ก.ย. 2569) — "POST ที่เป็น kind read" ปลอดภัยเพราะอะไร ◂

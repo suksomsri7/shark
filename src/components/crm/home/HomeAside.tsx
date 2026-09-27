@@ -44,8 +44,11 @@ export function HomeAside({
   sources,
   sourcesTitle,
   stale,
+  atRisk,
 }: {
   ai: { staleCount: number; hotCount: number; hotThreshold: number };
+  /** CRM C3.4 ▸ แผงดีลเสี่ยง (client component จาก `components/crm/ai`) — ไม่ส่ง = ปุ่มปิดแบบเดิม ◂ */
+  atRisk?: ReactNode;
   sources: HomeSourceView[];
   sourcesTitle: string;
   /** null = ไม่มีดีลนิ่ง (ไม่แสดงป้าย) */
@@ -60,9 +63,16 @@ export function HomeAside({
         </h2>
         <ul className="flex min-w-0 flex-col divide-y">
           <AiRow title="ดีลไหนเสี่ยงเดือนนี้" sub="วิเคราะห์จากประวัติขั้น+กิจกรรม">
-            <button type="button" className={AI_BTN} disabled aria-disabled="true" title={AI_SOON} data-testid="crm-home-ai-risk">
-              ดู
-            </button>
+            {/* CRM C3.4 ▸ ต่อสายแล้ว — ลิงก์ลงไปที่แผง "ดีลไหนเสี่ยงเดือนนี้" (ตาราง + ข้อเสนอ) ข้างล่าง ◂ */}
+            {atRisk ? (
+              <a href="#crm-ai-at-risk" className="btn-sm shrink-0" data-testid="crm-home-ai-risk">
+                ดู
+              </a>
+            ) : (
+              <button type="button" className={AI_BTN} disabled aria-disabled="true" title={AI_SOON} data-testid="crm-home-ai-risk">
+                ดู
+              </button>
+            )}
           </AiRow>
           <AiRow title="ร่างอีเมลติดตามดีลนิ่ง" sub={`${ai.staleCount.toLocaleString("th-TH")} ดีล พร้อมส่ง`}>
             <button type="button" className={AI_BTN} disabled aria-disabled="true" title={AI_SOON} data-testid="crm-home-ai-draft">
@@ -75,8 +85,10 @@ export function HomeAside({
             </button>
           </AiRow>
         </ul>
-        <p className={`text-xs ${muted}`}>ผู้ช่วย AI ของหน้าแรกกำลังจะเปิดใช้ — ปุ่มจะกดได้เมื่อพร้อม</p>
+        <p className={`text-xs ${muted}`}>{atRisk ? "ร่างอีเมลและสรุป lead ร้อนของหน้าแรกกำลังจะเปิดใช้ — ใช้ปุ่มผู้ช่วยในหน้าดีลและผู้ติดต่อได้แล้ววันนี้" : "ผู้ช่วย AI ของหน้าแรกกำลังจะเปิดใช้ — ปุ่มจะกดได้เมื่อพร้อม"}</p>
       </section>
+      {/* CRM C3.4 ▸ แผง "ดีลไหนเสี่ยงเดือนนี้" (client) — ส่งมาจาก crm/home.tsx เป็นช่อง ◂ */}
+      {atRisk}
 
       <section className="card flex min-w-0 flex-col gap-1 p-4" data-testid="crm-home-sources">
         <h2 className="flex items-center gap-2 text-base font-semibold">

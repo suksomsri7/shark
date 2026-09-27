@@ -612,9 +612,12 @@ async function scopeAttendees(ctx: ActivitiesCtx, a: MemberActor, att: Normalize
 // CRM C3.7 ▸ `opts.sourceRef` (พารามิเตอร์ภายใน — ไม่ใช่ช่องของ input ภายนอก) = กุญแจกันบันทึกซ้ำของผู้เรียกฝั่งเซิร์ฟเวอร์
 //   (แอปพนักงาน: `mobile-call:<userId>:<idempotencyKey>`) · แบบเดียวกับ createSequenceTaskOnce/recordBusinessActivityOnce:
 //   advisory lock ของกุญแจ + หาแถวเดิม + insert พร้อม `sourceRef` ใน **ธุรกรรมเดียว** ⇒ ซ้ำ/พร้อมกันกี่ครั้ง = แถวเดียว (คืนแถวเดิม replayed) ◂
-export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input: LogActivityInput, opts?: { sourceRef?: string | null }): Promise<LogActivityResult> {
+export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input: LogActivityInput, opts?: { sourceRef?: string | null; ownerUserId?: string | null }): Promise<LogActivityResult> {
   const { a, settings } = await enter(ctx, actor);
   const sourceRef = str(opts?.sourceRef)?.slice(0, 200) ?? null; // CRM C3.7 ◂
+  // CRM C3.4 ▸ ผู้ดูแลของแถว = คนสร้างเสมอ ยกเว้นผู้เรียกภายในที่ส่ง `ownerUserId` มาเอง (ข้อเสนอ "สร้างงานติดตาม" ของหน้าแรก:
+  //   ผู้ดูแลงาน = ผู้ดูแลดีล ซึ่ง ai-bridges อ่านจากแถวดีลในฐาน — ไม่ใช่ค่าจากหน้าจอ/คีย์ API · ทางเข้า REST/หน้าไม่ส่งช่องนี้) ◂
+  const ownerUserId = str(opts?.ownerUserId) ?? a.userId;
   const v = normalizeLog(input, settings);
   const attendees = await scopeAttendees(ctx, a, v.attendees);
   const now = new Date();
@@ -666,7 +669,7 @@ export async function logActivity(ctx: ActivitiesCtx, actor: MemberActor, input:
             ...(v.priority ? { priority: v.priority } : {}),
             pinned: v.pinned,
             mentions,
-            ownerUserId: a.userId,
+            ownerUserId, // CRM C3.4 ◂
             source: "MANUAL",
             ...(sourceRef ? { sourceRef } : {}), // CRM C3.7 ◂
           },

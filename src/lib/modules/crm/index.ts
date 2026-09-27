@@ -262,6 +262,15 @@ export * as widgets from "./widgets";
 //   ขอบวันไทย (00:00 +07:00) ให้หน้า `/p/[slug]` จัดกลุ่มงานวันนี้/เลยกำหนด — สูตรเดียวของโมดูล (ไฟล์บริสุทธิ์)
 export { thaiDayStartMs } from "./activities-shared";
 // ◂ CRM C3.6
+// CRM C3.4 ▸ ผู้ช่วย AI ในหน้า + สะพานห้องทีม (MEETING) + คลังความรู้ (KB) (`ai-bridges.ts`) — namespace เดียว `aiBridges`:
+//   runAssist (ปุ่ม AI 9 ปุ่มบนดีล/ผู้ติดต่อ/บริษัท/หน้าแรก) · atRiskDeals (ชุด "ดีลเสี่ยงเดือนนี้" ตัวเดียว — tool crm_deals_at_risk ใช้ด้วย) ·
+//   confirmProposal/cancelProposal (ประตูเดียวของข้อเสนอ CRM · addendum ข้อ 9) + confirmProposalById/cancelProposalById/isCrmDoorKind
+//   (ทางเข้าของประตูทั่วไป `ai/proposals.ts` · `ai/actions.ts` · `/api/mobile/proposals/reject`) ·
+//   onDealWonTeamRoom/onHotLeadTeamRoom (ของแถมใต้ compose ใน outbox-consumers) · postStaleDigest (งานรายวัน `crm.teamroom.stale` ใน
+//   platform/minute-jobs.ts) · unfurlDealLink (การ์ดลิงก์ดีลในห้องแชท) · renderKbTokens (`{{kb:<articleId>}}`) · setTeamRoom/teamRoomOptions
+//   ค่าคงที่/ชนิดบริสุทธิ์อยู่ที่ `./ai-bridges-shared` · ไปถึง MEETING/KB ผ่าน facade ของสองโมดูลนั้นเท่านั้น (เส้น crm→meeting · crm→kb)
+export * as aiBridges from "./ai-bridges";
+// ◂ CRM C3.4
 // CRM C3.9 ▸ PDPA ฝั่ง CRM (`privacy.ts`) + เพดานของระบบ (`limits.ts`)
 //   `privacy`: eraseContact (ลบตามคำขอ · danger · idempotent) · exportContact (ชุดข้อมูลของคนหนึ่งคน) · exportTenant/runExportJobs/getExport/
 //     listMyExports (ไฟล์ส่งออกทั้งระบบ = งาน CRM_EXPORT บนเลนของ C3.1 · ไฟล์ส่วนตัว) · purge/purgeExports/retentionLeads (อายุเก็บ ·

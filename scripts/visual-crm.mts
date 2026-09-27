@@ -163,7 +163,7 @@ const C111_CHAT: { sysId: string; convId: string } | null = WO === "1.11"
     })()
   : null;
 // C1.11 ▸ ตัวอย่างสำหรับหน้า 360 ที่ 390 (อ่านอย่างเดียว)
-const C111_IDS = WO === "1.11" || WO === "3.9" // CRM C3.9 ▸ ใช้ contact แรกของผู้ถ่ายสำหรับบล็อก PDPA บนหน้า 360 ◂
+const C111_IDS = WO === "1.11" || WO === "3.9" || WO === "3.4" // CRM C3.9 ▸ ใช้ contact แรกของผู้ถ่ายสำหรับบล็อก PDPA บนหน้า 360 ◂
   ? await (async () => {
       const P = prisma as Any;
       const contact = (await P.crmContact.findFirst({ where: { systemId: SYS, archivedAt: null, mergedIntoId: null, ...(userKey === "thana" ? { ownerUserId: E.users.thana?.userId ?? "-" } : {}) }, orderBy: { createdAt: "asc" }, select: { id: true } }))?.id ?? null;
@@ -467,6 +467,16 @@ const SPECS: Record<string, Spec[]> = {
     }] : [])] as Spec[] : []),
   ],
   // ◂ CRM C3.9
+  // CRM C3.4 ▸ ผู้ช่วย AI ในหน้า (ภาพ 14 ซ้าย · 13 ค) — แผง AI บน deal/contact/company 360 · หน้าแรก "ดีลไหนเสี่ยงเดือนนี้" · ตั้งค่า: ผูกทีม ↔ ห้องแชท (owner)
+  //   ⚠️ ไม่กดปุ่ม AI (เรียกโมเดล/หักเครดิต) และไม่กดบันทึกการผูกห้อง — ถ่ายโครงแผงอย่างเดียว · thana = STAFF เห็นแผงบนของตัวเอง
+  "3.4": isCustomer ? [] : [
+    ...(C111_IDS.deal ? [{ name: `crm-ai-deal-${userKey}`, path: `${CRM_BASE}/deals/${C111_IDS.deal}`, note: "ดีล 360 → แผง AI: สรุปดีล · ทำไมเสี่ยง · ขั้นถัดไป · ร่างอีเมลติดตาม (ปุ่ม 4)", expect: ["[data-testid=crm-ai-deal-summary]", "[data-testid=crm-ai-deal-risk]", "[data-testid=crm-ai-deal-next-step]", "[data-testid=crm-ai-deal-draft-email]"], steps: [{ waitFor: "[data-testid=crm-ai-deal-summary]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=crm-ai-deal-summary]" }, { wait: 500 }] }] as Spec[] : []),
+    ...(C111_IDS.contact ? [{ name: `crm-ai-contact-${userKey}`, path: `${CRM_BASE}/contacts/${C111_IDS.contact}`, note: "ผู้ติดต่อ 360 → แผง AI: ทำไม lead ร้อน · ข้อความปิดการขาย", expect: ["[data-testid=contact-360-ai]", "[data-testid=crm-ai-contact-why-hot]", "[data-testid=crm-ai-contact-closing]"], steps: [{ waitFor: "[data-testid=crm-ai-contact-why-hot]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=contact-360-ai]" }, { wait: 500 }] }] as Spec[] : []),
+    ...(C111_IDS.company ? [{ name: `crm-ai-company-${userKey}`, path: `${CRM_BASE}/companies/${C111_IDS.company}`, note: "บริษัท 360 → แผง AI: สรุปบริษัท · โอกาส upsell จากที่เคยซื้อ", expect: ["[data-testid=crm-ai-company-summary]", "[data-testid=crm-ai-company-upsell]"], steps: [{ waitFor: "[data-testid=crm-ai-company-summary]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=crm-ai-company-summary]" }, { wait: 500 }] }] as Spec[] : []),
+    { name: `crm-ai-home-${userKey}`, path: `/app/sys/${SYS}`, note: "หน้าแรก CRM → ปุ่ม \"ดีลไหนเสี่ยงเดือนนี้\" (ปุ่ม AI ที่เคยปิดจนถึง C3.4) — ถ่ายโครงเท่านั้น", expect: ["[data-testid=crm-ai-home-at-risk]"], steps: [{ waitFor: "[data-testid=crm-ai-home-at-risk]", timeoutMs: 20_000 }, { wait: 500 }] },
+    ...(userKey === "owner" ? [{ name: `crm-team-room-${userKey}`, path: `${CRM_BASE}/settings`, note: "ตั้งค่า CRM → ห้องแชทของทีมขาย: เลือกทีม · เลือกห้อง (PUBLIC/ที่เป็นสมาชิก) · บันทึก/เลิกผูก", expect: ["[data-testid=crm-settings-team-room]", "[data-testid=crm-settings-team-room-team]", "[data-testid=crm-settings-team-room-save]"], steps: [{ waitFor: "[data-testid=crm-settings-team-room]", timeoutMs: 20_000 }, { scrollTo: "[data-testid=crm-settings-team-room]" }, { wait: 500 }] }] as Spec[] : []),
+  ],
+  // ◂ CRM C3.4
   "3.5": isCustomer ? [
     { name: "portal-home", path: `${PB}`, note: "portal หน้าแรก — ชื่อบริษัท+ตัวสลับบริษัท · ยอดค้างชำระ · ใบเสนอราคารอตอบ · เมนู (ภาพ 12)", expect: ["[data-testid=portal-frame]", "[data-testid=portal-company-name]", "[data-testid=portal-home-stats]", "[data-testid=portal-menu]"], steps: [{ waitFor: "[data-testid=portal-home-stats]", timeoutMs: 20_000 }, { wait: 500 }] },
     { name: "portal-quotations", path: `${PB}/quotations`, note: "ใบเสนอราคาของบริษัทตน (ตอบรับ/ปฏิเสธเฉพาะ AWAITING_ACCEPT)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },

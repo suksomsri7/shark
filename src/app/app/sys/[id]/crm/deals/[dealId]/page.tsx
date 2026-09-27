@@ -20,6 +20,8 @@ import { CrmDealCardsBlock } from "@/components/crm/activity/CrmDealCardsBlock";
 //   🔴 ไม่ส่งเบอร์มาที่นี่โดยเจตนา: `getDeal360` ไม่คืนเบอร์ของผู้ติดต่อ (และหน้านี้ห้าม query ตารางผู้ติดต่อเอง) ⇒
 //      ปุ่มบนหน้าดีลคือ "บันทึกสาย" · การกดโทรจริงอยู่บนผู้ติดต่อ 360 ที่โหลดเบอร์มาแล้ว ◂
 import { CrmClickToCall } from "@/components/crm/call/CrmClickToCall";
+// CRM C3.4 ▸ ผู้ช่วย AI ในหน้า (client · ปุ่มเรียก server action `_actions/ai.ts` → crm.aiBridges.runAssist) ◂
+import { CrmAiPanel } from "@/components/crm/ai/CrmAiPanel";
 import { callAiStatus } from "@/lib/modules/crm/calls";
 import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 import { ACTIVITY_OUTCOMES_DEFAULT } from "@/lib/modules/crm/activities-shared";
@@ -384,6 +386,8 @@ export default async function Deal360Page({
         </div>
 
         <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[300px]" data-testid="deal-360-rail">
+          {/* CRM C3.4 ▸ ผู้ช่วย AI: สรุปดีล · ทำไมเสี่ยง · เสนอขั้นถัดไป (ข้อเสนอ) · ร่างอีเมลติดตาม (ร่างเท่านั้น) ◂ */}
+          <CrmAiPanel systemId={id} entity="deal" entityId={d.id} />
           {/* CRM C1.6 ▸ ไฟล์แนบ */}
           <CrmFilesBlock ctx={ctx} actor={actor} entityType="DEAL" entityId={d.id} />
           {/* ◂ CRM C1.6 */}

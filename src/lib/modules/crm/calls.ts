@@ -32,7 +32,7 @@ import { resolveProvider, type AiProvider } from "@/lib/ai/provider";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { assertCrmV2 } from "./ui-version";
-import { activityWhere, contactWhere } from "./where";
+import { activityWhere, companyWhere, contactWhere } from "./where";
 import { crmAiSettingsOf, crmRecordingDaysOf, parseCrmSettings } from "./settings";
 import * as activities from "./activities";
 import { sanitizeFileName } from "./files";
@@ -639,6 +639,17 @@ export async function scanBusinessCard(
     company: field(parsed, "company", 200),
     jobTitle: field(parsed, "jobTitle", 120),
   };
+  // CRM C3.4 ▸ addendum ข้อ 8: ชื่อบริษัทบนนามบัตร → บริษัทที่ "คนสแกนมองเห็น" ชื่อตรงกัน (ไม่สนตัวพิมพ์/ช่องว่างซ้ำ) → `companyId`
+  //   AUDIT-CLASS X1/X2: ค้นใต้ `companyWhere` ของคนสแกน ⇒ บริษัทของทีมอื่นที่เขามองไม่เห็นไม่มีวันถูกจับคู่ (และ id ไม่หลุดเข้า payload)
+  //   ไม่พบ/ชื่อว่าง = ไม่มี companyId (ผู้ติดต่อใหม่ไม่ผูกบริษัท) ◂
+  const cardCompany = draft.company.replace(/\s+/g, " ").trim();
+  const matched = cardCompany
+    ? await prisma.crmCompany.findFirst({
+        where: { AND: [await companyWhere(ctx, a), { name: { equals: cardCompany, mode: "insensitive" }, archivedAt: null, mergedIntoId: null }] },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      })
+    : null;
   const created = await prisma.aiProposal.create({
     data: {
       tenantId: ctx.tenantId,
@@ -646,7 +657,7 @@ export async function scanBusinessCard(
       kind: LEAD_PROPOSAL_KIND,
       risk: "NORMAL",
       summary: "ผู้ช่วย AI อ่านนามบัตรแล้ว — ตรวจข้อมูลก่อนเพิ่มเป็นผู้ติดต่อใหม่",
-      payload: { systemId: ctx.systemId, ...draft },
+      payload: { systemId: ctx.systemId, ...draft, ...(matched ? { companyId: matched.id } : {}) },
       expiresAt: new Date(Date.now() + PROPOSAL_TTL_MS),
     },
     select: { id: true },
@@ -689,6 +700,8 @@ export async function acceptLeadProposal(ctx: CallsCtx, actor: MemberActor, prop
       phone: str(payload.phone),
       email: str(payload.email),
       jobTitle: str(payload.jobTitle),
+      // CRM C3.4 ▸ บริษัทที่จับคู่ได้ตอนสแกน (createContact ตรวจการมองเห็นของบริษัทซ้ำอีกชั้นด้วยสิทธิ์ของคนกดรับ) ◂
+      ...(str(payload.companyId) ? { companyId: str(payload.companyId) } : {}),
       sourceKind: "OTHER",
       // 🔴 ไม่ตั้ง `sourceChannel`: ช่องนั้นรับได้เฉพาะคีย์ในทะเบียนช่องทางของระบบ (EMAIL/LINE/…) — "นามบัตร" ไม่ใช่ช่องทางสื่อสาร
       //    ที่มาที่แท้จริงถูกเก็บใน `sourceDetail.via` (+ proposalId) ผ่าน `trustedSource` — CRM C3.7

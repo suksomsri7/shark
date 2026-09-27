@@ -47,6 +47,10 @@ const SECTIONS: { key: string; title: string; match: (op: ApiOp) => boolean }[] 
   { key: "automation", title: "Automation rules", match: (o) => o.path.startsWith("/automation") },
   { key: "notifications", title: "Notification preferences", match: (o) => o.path.startsWith("/notifications") },
   { key: "settings", title: "Settings", match: (o) => o.path.startsWith("/settings") },
+  // CRM C3.4 ▸ op ที่ใช้ร่วมกับ C3.8 (C3.4 เป็นผู้สร้าง): รายงาน · โควตา · คอมมิชชัน — ไม่มีหมวด = หายจากคู่มือ (C1.10-S8.1 จับ) ◂
+  { key: "reports", title: "Reports", match: (o) => o.path.startsWith("/reports") },
+  { key: "quotas", title: "Sales quotas", match: (o) => o.path.startsWith("/quotas") },
+  { key: "commissions", title: "Commissions", match: (o) => o.path.startsWith("/commissions") },
 ];
 
 /** รหัสข้อผิดพลาดที่ REST CRM ตอบ (รหัสกลางที่ CRM ไม่เคยตอบไม่อยู่ในตาราง — เขียนตามจริง) */

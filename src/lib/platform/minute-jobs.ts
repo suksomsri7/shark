@@ -383,6 +383,39 @@ registerMinuteJob({
     await portal.sweepSessions(now);
   },
 });
+// CRM C3.4 ▸ สรุปดีลนิ่งเข้าห้องแชทของแต่ละทีม (addendum ข้อ 6) — วันละครั้ง · ธงต่อ (ระบบ · ทีม · วันไทย) ใต้ advisory lock ใน tx เดียวกับข้อความ
+//   ⇒ route + crontab ยิงซ้อน/สาย = ข้อความเดียวต่อห้องต่อวัน · โพสต์ล้ม (ห้องถูกเก็บ) = ไม่มีธง ⇒ รอบหลังวันเดียวกันโพสต์ได้ครั้งเดียว (X5)
+//   ประตู uiVersion 2 อยู่ในตัวงาน (R-E.14) · โหลด CRM ผ่าน facade ตอนรันเท่านั้น
+registerMinuteJob({
+  name: "crm.teamroom.stale",
+  everyMinutes: 1440,
+  cadence: "daily",
+  run: async (now, _budgetMs, ctrl) => {
+    // มติผู้คุมงาน (รีวิว C3.4 รอบ 3): ด่านเดียวกับรอบเก็บตก — ทำงานเฉพาะเมื่อ `crm.deals.stale` จบแล้วในวันไทยนี้ (ไม่งั้นข้ามเงียบ ·
+    //   รอบเก็บตกรายชั่วโมงโพสต์ให้หลังงานนิ่งจบ) · ใช้ธงต่อวันร่วมกัน ⇒ ตัวแรกหลังงานนิ่งจบเป็นผู้โพสต์
+    const [stale] = await getMinuteJobStatus(["crm.deals.stale"]);
+    if (!stale?.lastOkAt || minuteJobDue(1440, stale.lastOkAt, now)) return;
+    const { aiBridges } = await import("@/lib/modules/crm");
+    await aiBridges.postStaleDigest(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// รีวิว C3.4 S3 ▸ รอบเก็บตกรายชั่วโมงของสรุปดีลนิ่ง — ตัวงานเดียวกัน (`aiBridges.postStaleDigest`) แบบเดียวกับคู่ reports.scheduled/.sweep ของ C3.1
+//   ทำไม: ห้อง/ร้านที่ล้มหรือถูกตัดงบในรอบรายวันต้องได้ข้อความภายในวันไทยเดียวกัน · ซ้อนกับรอบรายวันได้ปลอดภัยเพราะธงต่อ (ระบบ·ทีม·วันไทย)
+//   ⇒ ห้องที่โพสต์แล้ววันนี้ไม่ถูกโพสต์ซ้ำ · งานรายวันยังคงชื่อ/รอบเดิม 1440 (ข้อสอบ C3.4-X5.1 ตรึงไว้) ◂
+//   รีวิว C3.4 รอบ 2 S-R2.1: รอบเก็บตกทำงาน **เฉพาะหลัง `crm.deals.stale` จบในหน้าต่างวันไทยนี้แล้ว** — ไม่งั้นมันปักธงของวันด้วยข้อมูล
+//   ดีลนิ่งของเมื่อวาน (00:07 ก่อนงานนิ่ง 03:40) แล้วงานรายวันกลายเป็น no-op ทุกวัน · ยังไม่จบ = ข้ามเงียบ ๆ (งานรายวันยังเป็นผู้โพสต์หลัก)
+registerMinuteJob({
+  name: "crm.teamroom.stale.sweep",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const [stale] = await getMinuteJobStatus(["crm.deals.stale"]);
+    if (!stale?.lastOkAt || minuteJobDue(1440, stale.lastOkAt, now)) return;
+    const { aiBridges } = await import("@/lib/modules/crm");
+    await aiBridges.postStaleDigest(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C3.4
 // ◂ CRM C3.5
 // CRM C3.9 ▸ PDPA — งานรายวันอีกสองตัว (addendum ข้อ 3 · ทะเบียน C0.5 · everyMinutes 1440)
 //   `crm.purge.exports`   ลบไฟล์ส่งออกทั้งระบบที่เกิน `retention.exportDays` (ค่าเริ่มต้น 7 วัน) + ล้าง CSV ในแถวงานส่งออกรายงานของ C3.1

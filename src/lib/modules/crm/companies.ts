@@ -2276,3 +2276,20 @@ export async function visibleLiveCompanyNames(ctx: CrmScopeCtx, actor: MemberAct
   return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: [...ids] }, archivedAt: null, mergedIntoId: null }] }, select: { id: true, name: true } });
 }
 // ◂ CRM หนี้ C1.3-S0.3
+
+// CRM C3.9 ▸ ทางอ่าน CrmCompany ของ PDPA/เพดาน (C1.3-S0.3 — อ่านบริษัทได้เฉพาะในไฟล์นี้ · where.ts)
+//   `countForLimit` = จำนวนบริษัทที่กินเพดาน (ยังใช้งาน · ไม่ถูกรวม) — รับ tx ของผู้เรียก (limits.ts นับใต้ advisory lock ใน tx เดียวกับ insert)
+//   `listForExport` = แถวของไฟล์ส่งออกทั้งระบบ ตามการมองเห็นของผู้ขอ (companyWhere) · เพดานแถวจากผู้เรียก ◂
+export async function countForLimit(db: Db, ctx: { tenantId: string; systemId: string }): Promise<number> {
+  return db.crmCompany.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, mergedIntoId: null, archivedAt: null } });
+}
+
+export async function listForExport(ctx: CompaniesCtx, actor: MemberActor, take: number) {
+  return prisma.crmCompany.findMany({
+    where: { AND: [await companyWhere(ctx, actor), { mergedIntoId: null }] },
+    select: { id: true, name: true, legalName: true, taxId: true, branchCode: true, industry: true, website: true, phone: true, email: true, ownerUserId: true, teamId: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+    take,
+  });
+}
+// ◂ CRM C3.9

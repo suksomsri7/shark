@@ -28,6 +28,9 @@ import { HomeKpis } from "@/components/crm/home/HomeKpis";
 import { HomeFilters, type HomeFilterOption } from "@/components/crm/home/HomeFilters";
 import { HomeLeaderboard } from "@/components/crm/home/HomeLeaderboard";
 import { HomeAside } from "@/components/crm/home/HomeAside";
+// CRM C3.4 ▸ ผู้ช่วย AI ของหน้าแรก (ดีลเสี่ยงเดือนนี้) ◂
+import { CrmAiHomeAtRisk } from "@/components/crm/ai/CrmAiHomeAtRisk";
+import { AT_RISK_REASON_LABEL } from "./ai-bridges-shared";
 import { HomeUnowned } from "@/components/crm/home/HomeUnowned";
 import { homeData, unowned as homeUnowned, type HomeData } from "./home-data";
 import { reportScopeOf } from "./quotas";
@@ -333,6 +336,8 @@ async function loadReport(systemId: string, tenantId: string, userId: string, ac
   const aside = (
     <HomeAside
       ai={{ staleCount: k.stale.count, hotCount: k.hotLeads.count, hotThreshold: k.hotLeads.threshold }}
+      // CRM C3.4 ▸ "ดีลไหนเสี่ยงเดือนนี้" ต่อสายแล้ว — ตาราง + ข้อเสนอสร้างงานติดตาม (ภาพ 14 ซ้าย · client เรียก `_actions/ai.ts`) ◂
+      atRisk={<CrmAiHomeAtRisk systemId={systemId} reasonLabels={AT_RISK_REASON_LABEL} />}
       sourcesTitle={periodKey === monthKey ? "ที่มา lead เดือนนี้" : `ที่มา lead ${periodLabel(periodKey)}`}
       sources={hd.leadSources.items.map((s) => ({ key: s.sourceKind, label: LEAD_SOURCE_LABEL[s.sourceKind] ?? s.sourceKind, count: s.count, href: `${base}/crm/contacts?source=${encodeURIComponent(s.sourceKind)}` }))}
       stale={k.stale.count > 0 ? { count: k.stale.count, satang: k.stale.valueSatang, href: `${deals}${qs({ stale: "1" })}` } : null}

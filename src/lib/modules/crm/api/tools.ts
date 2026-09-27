@@ -30,7 +30,9 @@ import { CRM_OPS } from "./registry";
 /** ชุดอ่านของผู้ช่วย — ตัดกับสิทธิ์จริงของคนที่ถามทุกครั้ง (คนที่ไม่มีคีย์อ่านรายงาน = ผู้ช่วยก็อ่านรายงานให้ไม่ได้) */
 // CRM C2.11 ▸ + `crm.email.read` — tool `crm_email_thread` / `crm_draft_email` ต้องอ่านเธรดจดหมายได้เมื่อ **คนที่ถาม**
 //   มีสิทธิ์นั้นจริง (ตัดกับสิทธิ์ของเขาทุกครั้ง — พนักงานที่ไม่มีคีย์อ่านอีเมล ผู้ช่วยก็อ่านให้ไม่ได้ · ข้อสอบ X2.5) ◂
-const ASSISTANT_READ_SCOPES = ["crm.contact.read", "crm.company.read", "crm.deal.read", "crm.activity.read", "crm.record.read", "crm.report.view", "crm.email.read"] as const;
+// CRM C3.4 ▸ + `crm.commission.view` — tool `crm_commissions_mine` (op `commissions.mine`) · ตัดกับสิทธิ์ของคนที่ถามเสมอ (พนักงานที่ไม่มีคีย์นี้
+//   ผู้ช่วยก็อ่านให้ไม่ได้) และบริการคืนเฉพาะแถวของ "คนที่ถาม" เอง ◂
+const ASSISTANT_READ_SCOPES = ["crm.contact.read", "crm.company.read", "crm.deal.read", "crm.activity.read", "crm.record.read", "crm.report.view", "crm.email.read", "crm.commission.view"] as const;
 
 /** "ใครกำลังเรียก tool นี้" — ก้อนเดียวใช้ทั้งตอนผู้ช่วยเสนอและตอนคนกดยืนยัน */
 export type CrmToolCtx = {

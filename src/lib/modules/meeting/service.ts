@@ -378,3 +378,82 @@ export async function deleteMessage(input: {
   });
   return { ok: true };
 }
+
+// ───────────────────────── CRM C3.4 ▸ ข้อความจาก "ระบบ" (ห้องทีมขาย) ─────────────────────────
+//
+// ใบ CRM v2 C3.4 (addendum ข้อ 3): CRM โพสต์แจ้ง "ปิดดีลได้ · lead ร้อน · สรุปดีลนิ่งรายวัน" เข้าห้องของทีม
+// 🔴 ผู้เขียน = ค่าคงที่ที่ขึ้นต้นด้วย `system:` เสมอ (`MeetingMessage.authorUserId` เป็นสตริงธรรมดา) — ไม่มีวันเป็น id ของคนจริง
+//    ⇒ ไม่มีใครแก้/ลบในนามคนอื่นได้ (editMessage เทียบ authorUserId กับผู้ใช้) · หน้าห้องแสดงเป็น "ระบบ CRM"
+// 🔴 ปฏิเสธ (ไม่ throw) เมื่อห้องไม่ใช่ของร้าน/ระบบนั้น · ระบบไม่ใช่ MEETING · ห้องถูกเก็บถาวร — ผู้เรียก (ตัวรับ event) ต้องไม่ล้ม
+// 🔴 รับ `tx` ของผู้เรียกได้: CRM ปักธงกันซ้ำ + โพสต์ใน tx เดียวกัน ⇒ โพสต์ล้ม = ธงหายไปด้วย (รอบหลังโพสต์ใหม่ได้ครั้งเดียว)
+export const MEETING_SYSTEM_AUTHOR_PREFIX = "system:";
+
+type SystemPostDb = Pick<typeof prisma, "appSystem" | "meetingChannel" | "meetingMessage">;
+
+export async function postSystemMessage(
+  input: { tenantId: string; systemId: string; channelId: string; body: string; author?: string | null },
+  tx?: SystemPostDb,
+): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
+  const db = tx ?? prisma;
+  const body = String(input?.body ?? "").trim();
+  if (!body) return { ok: false, reason: "EMPTY" };
+  if (body.length > 8000) return { ok: false, reason: "TOO_LONG" };
+  const author =
+    typeof input.author === "string" && input.author.startsWith(MEETING_SYSTEM_AUTHOR_PREFIX) && input.author.length <= 60
+      ? input.author
+      : `${MEETING_SYSTEM_AUTHOR_PREFIX}crm`;
+  const tenantId = String(input?.tenantId ?? "");
+  const systemId = String(input?.systemId ?? "");
+  const channelId = String(input?.channelId ?? "");
+  if (!tenantId || !systemId || !channelId) return { ok: false, reason: "CHANNEL_NOT_FOUND" };
+  const sys = await db.appSystem.findFirst({ where: { id: systemId, tenantId, type: "MEETING" }, select: { id: true } });
+  if (!sys) return { ok: false, reason: "SYSTEM_NOT_FOUND" };
+  const channel = await db.meetingChannel.findFirst({ where: { id: channelId, tenantId, systemId }, select: { id: true, archivedAt: true } });
+  if (!channel) return { ok: false, reason: "CHANNEL_NOT_FOUND" };
+  if (channel.archivedAt) return { ok: false, reason: "CHANNEL_ARCHIVED" };
+  const created = await db.meetingMessage.create({ data: { tenantId, systemId, channelId, authorUserId: author, body } });
+  await db.meetingChannel.update({ where: { id: channelId }, data: { lastMessageAt: created.createdAt } });
+  return { ok: true, id: created.id };
+}
+
+/**
+ * ห้องที่ "ผู้ดู" เลือกเป็นห้องของทีมได้ (ตัวเลือกบนหน้าตั้งค่า CRM) — ห้องที่ยังไม่เก็บถาวรของทุกระบบ MEETING ในร้านนี้
+ * 🔴 รีวิว C3.4 S1: การมองเห็นเดียวกับ `listVisibleChannels` — ห้อง PUBLIC หรือห้องที่ผู้ดูเป็นสมาชิกอยู่ (ยังไม่ออก)
+ *    ⇒ ห้อง PRIVATE ที่ผู้ดูไม่ได้อยู่ ไม่โผล่ในตัวเลือก และผูกไม่ได้ (ผู้เรียกตรวจกับชุดเดียวกันนี้)
+ */
+export async function listRoomOptions(tenantId: string, viewerUserId: string): Promise<{ meetingSystemId: string; systemName: string; channelId: string; channelName: string }[]> {
+  if (!viewerUserId) return [];
+  const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "MEETING" }, select: { id: true, name: true }, orderBy: { createdAt: "asc" }, take: 20 });
+  if (systems.length === 0) return [];
+  const names = new Map(systems.map((s) => [s.id, s.name]));
+  const mine = await prisma.meetingChannelMember.findMany({
+    where: { systemId: { in: systems.map((s) => s.id) }, userId: viewerUserId, leftAt: null },
+    select: { channelId: true },
+  });
+  const rows = await prisma.meetingChannel.findMany({
+    where: {
+      tenantId,
+      systemId: { in: systems.map((s) => s.id) },
+      archivedAt: null,
+      OR: [{ kind: "PUBLIC" }, { id: { in: mine.map((m) => m.channelId) } }],
+    },
+    select: { id: true, name: true, systemId: true },
+    orderBy: [{ systemId: "asc" }, { name: "asc" }],
+    take: 500,
+  });
+  return rows.map((r) => ({ meetingSystemId: r.systemId, systemName: names.get(r.systemId) ?? "", channelId: r.id, channelName: r.name }));
+}
+/**
+ * รีวิว C3.4 รอบ 2 N2: ห้องไหนใน `ids` ที่ "ยังใช้งานอยู่" (ของร้านนี้ · ระบบ MEETING · ไม่เก็บถาวร) — คืนแค่ id (ไม่มีชื่อห้อง)
+ * ให้หน้าตั้งค่า CRM บอกได้ว่าการผูกเดิมชี้ห้องที่ผู้ดู "มองไม่เห็น แต่ยังใช้อยู่" ต่างจาก "ถูกเก็บ/ลบ" โดยไม่เปิดเผยชื่อห้องส่วนตัว
+ */
+export async function liveChannelIds(tenantId: string, ids: string[]): Promise<string[]> {
+  const list = [...new Set(ids.filter((x) => typeof x === "string" && x))].slice(0, 500);
+  if (!tenantId || list.length === 0) return [];
+  const rows = await prisma.meetingChannel.findMany({ where: { tenantId, id: { in: list }, archivedAt: null }, select: { id: true, systemId: true } });
+  if (rows.length === 0) return [];
+  const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "MEETING", id: { in: [...new Set(rows.map((r) => r.systemId))] } }, select: { id: true } });
+  const ok = new Set(systems.map((x) => x.id));
+  return rows.filter((r) => ok.has(r.systemId)).map((r) => r.id);
+}
+// ◂ CRM C3.4

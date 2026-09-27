@@ -951,17 +951,19 @@ try {
     const full7 = fullOf("PCT", { pctBp: 1_000 }, T7);
     const e1 = F(full7, T7, b(6_000_000));
     const e2 = F(full7, T7, b(12_000_000)) - e1; // p1 still counted
-    const e3 = F(full7, T7, b(6_000_000) + b(4_000_000)) - e2; // p1 voided: only p2 (still COUNTED, credited e2) + p3
-    const expNet = e1 + e2 - e1 + e3;
+    const eTop = F(full7, T7, b(6_000_000)) - e2; // ORACLE-EDIT C3.3-H2 (27 ก.ย.): p1 voided ⇒ p2's clipped share is restored at once (ONE top-up row on p2)
+    const e3 = F(full7, T7, b(6_000_000) + b(4_000_000)) - e2 - eTop; // p3: running total over p2 (e2 + top-up, credited) + p3
+    const expNet = e1 + e2 - e1 + eTop + e3;
     console.log(`  [arith] M7 T 10,000,000 · 10 % ⇒ full ${full7} · p1 6M ⇒ ${e1} · p2 6M ⇒ F(12M)−${e1} = ${e2} · void p1 ⇒ −${e1} · p3 4M ⇒ F(6M+4M)−${e2} = ${e3} · net ${expNet}`);
     const rows = await comm({ dealId: d7.id });
-    const orig = (ref: string) => rows.find((r) => payOf(r.refId) === ref && !r.reversedOfId); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+    const orig = (ref: string) => rows.find((r) => payOf(r.refId) === ref && !r.reversedOfId && !/#t\d+$/.test(String(r.refId))); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) · C3.3-H2: base row, not a top-up
+    const top2 = rows.filter((r) => payOf(r.refId) === q2.rowId && /#c\d+#t\d+$/.test(String(r.refId)) && !r.reversedOfId); // ORACLE-EDIT C3.3-H2
     const o1 = orig(q1.rowId);
     const rev1 = rows.filter((r) => r.reversedOfId && r.reversedOfId === o1?.id);
     const net = sumB(rows.filter((r) => r.status !== "REJECTED"));
     chk("C3.3-M7", `ruling B2 self-healing running total [VAT mode: the fixture's invoices are id-only (no account document) ⇒ no VAT, net = gross, so Σ shares = F_T(Σ net counted)]: T 10,000,000 at 10 % · p1 6M (${e1}) · p2 6M (${e2}) · p1 voided (reversal −${e1}) · p3 4M (${e3}) ⇒ net exactly ${expNet} = the full commission — the voided payment's share is earned again by the next payment, never lost and never paid twice`,
       q1.counted && q2.counted && v1.ok && q3.counted && !!o1 && b(o1.amountSatang) === e1 && b(orig(q2.rowId)?.amountSatang ?? -1) === e2 && b(orig(q3.rowId)?.amountSatang ?? -1) === e3
-      && rev1.length === 1 && b(rev1[0].amountSatang) === -e1 && net === expNet && expNet === full7,
+      && rev1.length === 1 && b(rev1[0].amountSatang) === -e1 && top2.length === 1 && b(top2[0].amountSatang) === eTop && net === expNet && expNet === full7, // ORACLE-EDIT C3.3-H2
       `${e1}/${e2}/−${e1}/${e3} · net ${expNet}`, `rows=${desc(rows)} net=${net} void=${rs(v1)}${ABSENT}`);
   }
 
@@ -2060,6 +2062,13 @@ try {
     //   original's adjustment first so "exactly ONE DEDUCTION under a 12-way race" stays the thing proven (tenant X has no payroll run)
     for (const a of await adjOf(c.orig)) await PAY.decideAdjustment({ tenantId: tidX, systemId: hrX }, a.id, "APPROVED", { userId: uO, isOwner: true });
     await P.crmDealPayment.update({ where: { id: c.ref }, data: { status: "REVERSED", reversedAt: new Date() } }); // the money was voided (raw — the race below is commissions.reverse itself)
+  }
+  // ORACLE-EDIT C3.3-H5 (27 ก.ย.) — ruling H5: an HR-APPROVED adjustment that was never in a payroll run is WITHDRAWN (no DEDUCTION for money
+  //   never paid) ⇒ put the originals' adjustments INTO a payroll run first so "exactly ONE DEDUCTION under a 12-way race" stays the thing proven
+  {
+    const xcPeriods = new Set<string>();
+    for (const c of xc) for (const a of await adjOf(c.orig)) xcPeriods.add(String(a.periodKey));
+    for (const pk of xcPeriods) await PAY.createPayrollRun({ tenantId: tidX, systemId: hrX }, { periodKey: pk, payDate: T("2026-09-30T03:00:00Z") });
   }
   for (const x of xd) {
     x.comm = ((await comm({ dealId: x.d.id, refType: "DEAL_PAYMENT" }))[0] as Any)?.id ?? null;

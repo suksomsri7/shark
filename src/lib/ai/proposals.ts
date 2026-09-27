@@ -337,7 +337,14 @@ export async function listPendingProposals(ctx: Ctx, conversationId: string) {
 }
 
 // ── ยกเลิกข้อเสนอ — PENDING→REJECTED เท่านั้น (สถานะอื่น/ไม่พบ → false) ──
+// CRM C3.4 ▸ (addendum ข้อ 9 · มติผู้คุมงาน (2)) ประตูนี้ "ไม่รู้ว่าใครกด" ⇒ **ปฏิเสธข้อเสนอของ CRM เสมอ** (`crm.*` ทุกตัว +
+//   `crm_create_lead` ที่มี systemId — นามบัตร): ข้อเสนอเหล่านั้นยกเลิกได้เฉพาะคนที่ยืนยันได้ ผ่าน `crm.aiBridges.cancelProposal`
+//   (ผู้เรียกสองราย — `ai/actions.ts#rejectProposalAction` · `/api/mobile/proposals/reject` — ส่งข้อเสนอ CRM ไปทางนั้นพร้อมตัวคนกดแล้ว)
+//   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
 export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
+  const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true } });
+  if (!row) return false;
+  if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
   const res = await tenantDb(ctx).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
@@ -354,6 +361,29 @@ export async function executeProposal(
 ): Promise<{ ok: boolean; note: string; needsSecondConfirm?: boolean }> {
   const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id } });
   if (!row) return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
+
+  // CRM C3.4 ▸ ข้อเสนอที่ "ประตู CRM" เป็นเจ้าของ (ต้องใช้การมองเห็นของคนกด **ก่อน** จอง + ธง WORKING#):
+  //   `crm.assist.tasks` (หน้าแรก) · `crm.activity.ai_fill` (สรุปสาย) · `crm_create_lead` ที่มี systemId (นามบัตร) ·
+  //   รีวิว C3.4 S2: **ทุก `crm.*` ที่ payload มี `requestedByUserId`** (ข้อเสนอจากปุ่ม AI ในหน้า เช่น `crm.deals.nextStep.set`) —
+  //   ไม่งั้นเพื่อนร่วมทีมกดใบที่ยังว่างแล้วล้างขั้นถัดไป / คนที่มองไม่เห็นดีลกดแล้วใบของคนอื่นกลายเป็น FAILED
+  //   ส่งต่อให้ `crm.aiBridges.confirmProposal` ด้วยสิทธิ์ของคนกด (ต้องรู้ userId) · `crm.<op>` ที่แชทสร้าง (ไม่มี requestedByUserId)
+  //   เดินทางเดิม (op ตรวจการมองเห็นเอง · C1.10 S6.3/S10.2) ◂
+  const payloadObj = row.payload && typeof row.payload === "object" && !Array.isArray(row.payload) ? (row.payload as Record<string, unknown>) : {};
+  if (
+    row.kind === "crm.assist.tasks" ||
+    row.kind === "crm.activity.ai_fill" ||
+    (row.kind === "crm_create_lead" && crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) ||
+    (row.kind.startsWith("crm.") && typeof payloadObj.requestedByUserId === "string" && payloadObj.requestedByUserId.length > 0)
+  ) {
+    if (!opts?.userId) return { ok: false, note: "ต้องรู้ตัวผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้ — เปิดจากหน้าแอปแล้วลองอีกครั้ง" };
+    const r = await crmSvc.aiBridges.confirmProposalById(ctx.tenantId, { userId: opts.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, id, { confirm2x: opts?.confirm2x === true });
+    return { ok: r.ok, note: r.note };
+  }
+
+  // CRM C3.4 ▸ รีวิว S2: ใบที่ยังถูก "จองไว้ทำงาน" (`resultNote` = WORKING#<ms> — เนื้อยังไม่มา) ยืนยันไม่ได้ทุก kind ◂
+  if (typeof row.resultNote === "string" && row.resultNote.startsWith("WORKING#")) {
+    return { ok: false, note: "ผู้ช่วย AI กำลังเตรียมข้อเสนอนี้อยู่ — รอสักครู่แล้วลองอีกครั้ง" };
+  }
 
   // ทำไปแล้ว/ปิดไปแล้ว (ไม่ใช่ PENDING) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") {

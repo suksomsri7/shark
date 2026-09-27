@@ -28,6 +28,8 @@ import { SEQ_STATUS_LABEL, type SeqEnrollStatus } from "@/lib/modules/crm/sequen
 import { SequenceEnrollButton } from "@/components/crm/sequences/SequenceEnrollButton";
 // CRM C2.4 ▸ กดโทร + โมดัลบันทึกการโทร · ลิงก์ "จองผ่านระบบจองคิว" (R-A) — ใบ C2.4 เป็นเจ้าของ ◂
 import { CrmClickToCall } from "@/components/crm/call/CrmClickToCall";
+// CRM C3.4 ▸ ผู้ช่วย AI ในหน้า (client · ปุ่มเรียก server action `_actions/ai.ts` → crm.aiBridges.runAssist) ◂
+import { CrmAiPanel } from "@/components/crm/ai/CrmAiPanel";
 import { bookingLinkFor, callAiStatus } from "@/lib/modules/crm/calls";
 import { CRM_RECORDING_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 import { ACTIVITY_OUTCOMES_DEFAULT, thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
@@ -359,10 +361,10 @@ export default async function Contact360Page({
           {/* CRM C1.6 ▸ ไฟล์แนบ */}
           <CrmFilesBlock ctx={ctx} actor={actor} entityType="CONTACT" entityId={c.id} />
           {/* ◂ CRM C1.6 */}
-          <section className="card flex flex-col gap-2 p-4 text-sm" data-testid="contact-360-ai">
-            <h2 className="font-semibold">✦ ผู้ช่วย AI</h2>
-            <p className="text-xs text-[color:var(--color-muted)]">สรุปเหตุผลคะแนน · ร่างข้อความปิดการขาย — เปิดใช้เมื่อระบบคะแนนและผู้ช่วย AI ของ CRM พร้อม</p>
-          </section>
+          {/* CRM C3.4 ▸ ผู้ช่วย AI: ทำไมคะแนนร้อน · ร่างข้อความปิดการขาย (แทนป้าย "เปิดใช้เมื่อพร้อม" ของ C1.4) ◂ */}
+          <div className="flex min-w-0 flex-col" data-testid="contact-360-ai">
+            <CrmAiPanel systemId={id} entity="contact" entityId={c.id} />
+          </div>
 
           <section className="card flex flex-col gap-2 p-4 text-sm" data-testid="contact-360-connections">
             <h2 className="font-semibold">🔗 การเชื่อมต่อ</h2>

@@ -81,6 +81,8 @@ const recordsCreate = defineCrmOp({
   label: "เพิ่มรายการ",
   input: z.object({ parentId: optId, title: optText(200), values: fieldsBag.optional(), unitId: optId, ownerUserId: optId }).strict(),
   test: "C1.10-S5.2",
+  // CRM C3.4 ▸ tool ของผู้ช่วย (addendum ข้อ 1) ◂
+  tool: { name: "crm_create_record", hint: "Use to propose adding a custom object record (car, contract, pet, ...) under its parent; read crm_records_query first." },
   async handler({ actor, params, input }) {
     const rec = await objects.records.create(crmCtxOf(actor), crmActorOf(actor), params.key ?? "", { ...input, values: input.values ?? {} });
     return { recordId: rec.id, record: rec };
@@ -97,6 +99,8 @@ const recordsUpdate = defineCrmOp({
   label: "แก้ไขรายการ",
   input: z.object({ title: optText(200), values: fieldsBag.optional() }).strict(),
   test: "C1.10-S5.2",
+  // CRM C3.4 ▸ tool ของผู้ช่วย (addendum ข้อ 1) ◂
+  tool: { name: "crm_update_record", hint: "Use to propose changing field values of one custom object record; only the keys sent are touched." },
   async handler({ actor, params, input }) {
     const rec = await objects.records.update(crmCtxOf(actor), crmActorOf(actor), params.key ?? "", params.id ?? "", input);
     return { recordId: rec.id, record: rec };
