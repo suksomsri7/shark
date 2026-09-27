@@ -63,7 +63,7 @@
 //      minute job `crm.commissions.payroll` · UI `/crm/settings/commissions` (rules + pending + "ส่ง payroll") and `/crm/commissions` (mine).
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY (84): S0 6 · S1 5 · S2 5 · S3 4 · S4 9 · S5 6 · S6 2 · S7 2 · S8 6 (the 30 of CRM-RUN §2 + S2.3/S4.6 money review + S4.7/S4.8/S5.5/S5.5a round 3) · M 17 (money gates + M9/M9a/M10/M11 round 3 + M12/M13 round 5 + M14–M16 round 6 /
+// CHECK INVENTORY (90 = 84 + ORACLE-EDIT C3.3-H: H1–H6 money hunt 27 ก.ย.): S0 6 · S1 5 · S2 5 · S3 4 · S4 9 · S5 6 · S6 2 · S7 2 · S8 6 (the 30 of CRM-RUN §2 + S2.3/S4.6 money review + S4.7/S4.8/S5.5/S5.5a round 3) · M 17 (money gates + M9/M9a/M10/M11 round 3 + M12/M13 round 5 + M14–M16 round 6 /
 //   BigInt) · X1 5 · X3 8 (X3.1a–X3.4a = "did the worker processes really run" controls) · X4 5 · X8 1 · X9 2 · CLEAN
 //   (C3.3-FATAL is added only when something throws)
 //   n/a: X2 (no REST op / AI tool — `crm_commissions_mine` is C3.4/C3.8) · X5 (the payroll sync job is idempotent by the partial unique —
@@ -2185,6 +2185,206 @@ try {
   }
 
   // ═════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT C3.3-H (money hunt 27 ก.ย.) — fix wave "C3.3-fix" · controller rulings H1–H6 (binding) · evidence of the bugs:
+  //   scripts/pending/probe-hunt33.mts + .qc-shots/hunt33/probe-hunt33.log. Tenants H (money path, no HR) and HP (HR + payroll) are
+  //   dedicated; every amount below is the oracle's own BigInt arithmetic. The hooks under test are the real entry points the money path
+  //   calls after commit (afterPaymentCounted / afterPaymentsReversed) + the scoped minute job (runPayrollSync {tenantIds}).
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── C3.3-H · money hunt 27 ก.ย. ──");
+  {
+    const APC = fnOf(CM, "afterPaymentCounted");
+    const APR = fnOf(CM, "afterPaymentsReversed");
+    const H_NOHR = { basis: "PAID", approvalRequired: false, payrollLink: false };
+    const tidH = await mkTenant("h");
+    await member(tidH, uO, "OWNER");
+    await member(tidH, uTH, "STAFF", SALES);
+    const cH = await mk(tidH, "CRM", "CRM hunt");
+    await setCrm(cH, { uiVersion: 2, bridgesEnabled: true, commission: H_NOHR });
+    const rH = await mkRule(tidH, cH, R10);
+    const pH = await mkPipe(tidH, cH);
+    const cxH = { tenantId: tidH, systemId: cH };
+    const payRow = async (d: Deal, refType: string, refId: string, satang: number, countedAt: Date) =>
+      (await P.crmDealPayment.create({ data: { tenantId: d.tid, systemId: d.sys, dealId: d.id, refType, refId, satang: BigInt(satang), status: "COUNTED", countedAt } })).id as string;
+    const voidRow = (id: string) => P.crmDealPayment.update({ where: { id }, data: { status: "REVERSED", reversedAt: new Date() } });
+    const flagsH = async (dealId: string) => {
+      const pays = ((await P.crmDealPayment.findMany({ where: { dealId }, select: { id: true } })) as Any[]).map((x) => String(x.id));
+      return ((await P.opsAlertState.findMany({ where: { source: { startsWith: NOMATCH, endsWith: `:${rH}` } }, select: { source: true } })) as Any[])
+        .filter((f) => pays.includes(String(f.source).slice(NOMATCH.length).split("#")[0])).length;
+    };
+
+    // ── H1 · value-0 deal: POS deposit → owner types the deal value → next POS sale ⇒ T = max(frozen, value) ──
+    {
+      const d = await mkDeal(tidH, cH, pH, uTH, 0, [], true);
+      const s1 = await mkSale(tidH, cH, 1_070_000, 70_000);
+      await payRow(d, "POS_SALE", s1, 1_070_000, NOWP);
+      await call(APC, cxH, { dealId: d.id, refType: "POS_SALE", refId: s1 });
+      const first = await comm({ dealId: d.id });
+      await P.crmDeal.update({ where: { id: d.id }, data: { valueSatang: 5_000_000 } }); // deals.updateDeal on an OPEN deal (value only)
+      const s2 = await mkSale(tidH, cH, 4_280_000, 280_000);
+      await payRow(d, "POS_SALE", s2, 4_280_000, new Date(NOWP.getTime() + 60_000));
+      await call(APC, cxH, { dealId: d.id, refType: "POS_SALE", refId: s2 });
+      await call(SYNC, new Date(), { tenantIds: [tidH] });
+      const rows = await comm({ dealId: d.id });
+      const flags = await flagsH(d.id);
+      const T1 = b(1_070_000 - 70_000);
+      const e1 = fullOf("PCT", R10.config, T1); // first row: T = pre-VAT so far (value 0)
+      const T2 = b(5_000_000) > T1 ? b(5_000_000) : T1; // ruling H1: never below the value the owner typed
+      const eSum = F(fullOf("PCT", R10.config, T2), T2, T1 + b(4_280_000 - 280_000));
+      console.log(`  [arith] H1 sale 1 net ${T1} ⇒ ${e1} (T ${T1}) · value typed 5,000,000 · sale 2 net 4,000,000 ⇒ T = max(${T1}, 5,000,000) = ${T2} ⇒ Σ = F(${T1 + b(4_000_000)}) = ${eSum}`);
+      chk("C3.3-H1", `ruling H1 — value-0 deal: POS deposit 10,700 (net 10,000) ⇒ ${e1}; the owner then types the deal value 50,000 (deal still OPEN) and a second POS sale 42,800 (net 40,000) is counted ⇒ Σ = ${eSum} (T = max(frozen first basis, current value) because the first row was born with value 0), no nomatch flag on this deal`,
+        first.length === 1 && b(first[0].amountSatang) === e1 && sumB(rows) === eSum && flags === 0 && rows.every((r) => b(r.amountSatang) > Z),
+        `first ${e1} · Σ ${eSum} · flags 0`, `first=${desc(first)} rows=${desc(rows)} Σ=${sumB(rows)} flags=${flags}${ABSENT}`);
+    }
+
+    // ── H2 · clipped share restored on reversal (top-up keyed <incarnation>#t<n> on the latest COUNTED payment) ──
+    {
+      const d = await mkDeal(tidH, cH, pH, uTH, 1_000_000);
+      const refA = `${TAG}-h2a`, refB = `${TAG}-h2b`;
+      const idA = await payRow(d, "PAYMENT", refA, 600_000, new Date(NOWP.getTime() - 120_000));
+      await call(APC, cxH, { dealId: d.id, refType: "PAYMENT", refId: refA });
+      const idB = await payRow(d, "PAYMENT", refB, 600_000, new Date(NOWP.getTime() - 60_000));
+      await call(APC, cxH, { dealId: d.id, refType: "PAYMENT", refId: refB });
+      const before = await comm({ dealId: d.id });
+      await voidRow(idA);
+      await call(APR, cxH, { dealId: d.id });
+      await call(SYNC, new Date(), { tenantIds: [tidH] });
+      await call(APR, cxH, { dealId: d.id }); // replay — no second top-up
+      await call(SYNC, new Date(), { tenantIds: [tidH] });
+      const after = await comm({ dealId: d.id });
+      const full = fullOf("PCT", R10.config, b(1_000_000));
+      const [sA, sB] = seqShares(full, b(1_000_000), [b(600_000), b(600_000)]);
+      const eNet = F(full, b(1_000_000), b(600_000));
+      const topUps = after.filter((r) => payOf(r.refId) === idB && /#c\d+#t\d+$/.test(String(r.refId)) && !r.reversedOfId);
+      const eTop = eNet - sB;
+      await voidRow(idB);
+      await call(APR, cxH, { dealId: d.id });
+      await call(SYNC, new Date(), { tenantIds: [tidH] });
+      const end = await comm({ dealId: d.id });
+      console.log(`  [arith] H2 T 1,000,000 · full ${full} · A 600,000 ⇒ ${sA} · B 600,000 ⇒ clipped ${sB} · void A ⇒ counted 600,000 ⇒ net F = ${eNet} ⇒ top-up ${eTop} on B · void B ⇒ net 0`);
+      chk("C3.3-H2", `ruling H2 — value 1,000,000 · 10 %: A 600,000 (${sA}) + B 600,000 (clipped ${sB}) · A cancelled ⇒ revisit restores the clipped share: net Σ = ${eNet} with exactly ONE top-up row ${eTop} keyed <B incarnation>#t<n> (replayed hook + minute job add nothing) · B cancelled afterwards ⇒ its top-up is reversed too ⇒ net 0`,
+        sumB(before) === full && sumB(after) === eNet && topUps.length === 1 && b(topUps[0].amountSatang) === eTop && sumB(end) === Z,
+        `before ${full} · after ${eNet} (1 top-up ${eTop}) · end 0`, `before=${sumB(before)} after=${sumB(after)} topUps=${topUps.length}:${desc(topUps)} end=${sumB(end)} rows=${cut(desc(after), 200)}${ABSENT}`);
+    }
+
+    // ── H3 · invoice with a deposit deducted: ratio denominator = grand BEFORE the deposit deduction ──
+    {
+      const net = 10_000_000, vat = 700_000, dep = 3_210_000, grand = net + vat - dep; // grand 7,490,000 as stored after the deduction
+      const doc = await P.accountDocument.create({ data: { tenantId: tidH, systemId: `${TAG}-acc`, docType: "INVOICE", status: "PARTIAL", subTotal: net, discountAmount: 0, vatAmount: vat, depositDeducted: dep, grandTotal: grand } });
+      const cash = grand / 2; // 3,745,000
+      const adp = await P.accountDocumentPayment.create({ data: { tenantId: tidH, systemId: `${TAG}-acc`, documentId: doc.id, amount: cash } });
+      const d = await mkDeal(tidH, cH, pH, uTH, net);
+      await P.crmDeal.update({ where: { id: d.id }, data: { invoiceDocId: doc.id } });
+      await payRow(d, "PAYMENT", adp.id, cash, NOWP);
+      await call(APC, cxH, { dealId: d.id, refType: "PAYMENT", refId: adp.id });
+      const rows = await comm({ dealId: d.id });
+      const pre = (b(cash) * b(net)) / b(grand + dep); // 3,500,000
+      const exp = F(fullOf("PCT", R10.config, b(net)), b(net), pre);
+      const bug = F(fullOf("PCT", R10.config, b(net)), b(net), (b(cash) * b(net)) / b(grand));
+      console.log(`  [arith] H3 net ${net} + VAT ${vat} − deposit ${dep} ⇒ grand ${grand} · half paid ${cash} ⇒ before VAT ${cash}×${net}/${grand + dep} = ${pre} ⇒ ${exp} (the post-deposit denominator would give ${bug})`);
+      chk("C3.3-H3", `ruling H3 — invoice net 100,000 + VAT 7,000 with a 32,100 deposit deducted (grand 74,900): half paid (37,450) ⇒ before VAT = cash × net / (grandTotal + depositDeducted) = ${pre} ⇒ commission ${exp} (not ${bug})`,
+        rows.length === 1 && b(rows[0].amountSatang) === exp, `${exp}`, `rows=${desc(rows)} Σ=${sumB(rows)}${ABSENT}`);
+    }
+
+    // ── HP tenant: HR system · rep uPK has a salary profile · rep uNK is linked + active but has NO payroll profile ──
+    const tidHP = await mkTenant("hp");
+    await member(tidHP, uO, "OWNER");
+    await member(tidHP, uPK, "STAFF", SALES);
+    await member(tidHP, uNK, "STAFF", SALES);
+    const hrH = await mk(tidHP, "HR", "พนักงาน hunt");
+    const cHRH = { tenantId: tidHP, systemId: hrH };
+    const eWith = (await P.hrEmployee.create({ data: { tenantId: tidHP, systemId: hrH, name: `พนักงาน ${TAG}-${nx()}`, linkedUserId: uPK, active: true } })).id as string;
+    await PAY.setSalaryProfile(cHRH, { employeeId: eWith, baseSalarySatang: 3_000_000 });
+    const eNo = (await P.hrEmployee.create({ data: { tenantId: tidHP, systemId: hrH, name: `พนักงาน ${TAG}-${nx()}`, linkedUserId: uNK, active: true } })).id as string;
+    const cHP = await mk(tidHP, "CRM", "CRM hunt payroll");
+    await setCrm(cHP, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidHP, cHP, R10);
+    const pHP = await mkPipe(tidHP, cHP);
+    const cxHP = { tenantId: tidHP, systemId: cHP };
+    const ownerAct = { userId: uO, isOwner: true };
+
+    // ── H5 · HR runs the month first, THEN approves the pending commission adjustment · payment voided later ──
+    {
+      const d = await mkDeal(tidHP, cHP, pHP, uPK, 1_000_000);
+      const ref = `${TAG}-h5`;
+      const pid = await payRow(d, "PAYMENT", ref, 1_000_000, NOWP);
+      await call(APC, cxHP, { dealId: d.id, refType: "PAYMENT", refId: ref });
+      await settle(tidHP);
+      const orig = (await comm({ dealId: d.id, reversedOfId: null }))[0] as Any;
+      const a0 = (await adjOf(orig?.id))[0] as Any;
+      const P0 = String(a0?.periodKey ?? PK);
+      const run = await call(PAY.createPayrollRun, cHRH, { periodKey: P0, payDate: T("2026-09-30T03:00:00Z") });
+      const dec = a0 ? await call(PAY.decideAdjustment, cHRH, a0.id, "APPROVED", ownerAct) : MISSING;
+      await call(SYNC, new Date(), { tenantIds: [tidHP] });
+      const runs = await runsOf(hrH);
+      const a1 = (await adjOf(orig?.id))[0] as Any;
+      const unstranded = !!a1 && !a1.runId && !runs.has(String(a1.periodKey));
+      await voidRow(pid);
+      await call(APR, cxHP, { dealId: d.id });
+      await settle(tidHP);
+      await call(SYNC, new Date(), { tenantIds: [tidHP] });
+      const rows = await comm({ dealId: d.id });
+      const rev = rows.find((r) => r.reversedOfId === orig?.id) as Any;
+      const ded = ((await P.hrPayAdjustment.findMany({ where: { tenantId: tidHP, crmCommissionId: { in: rows.map((r) => r.id) }, kind: "DEDUCTION" } })) as Any[]);
+      const origAdj = await adjOf(orig?.id);
+      const exp = fullOf("PCT", R10.config, b(1_000_000));
+      console.log(`  [arith] H5 commission ${exp} · adj period ${P0} gets a run BEFORE HR approves it · then the payment is voided ⇒ never paid ⇒ nothing to deduct`);
+      chk("C3.3-H5", `ruling H5 — commission ${exp} · HR creates the run of its period (${P0}) while the adjustment is PENDING, then approves it (decide) ⇒ after the minute job the adjustment is NOT stranded (runId null and its period has no run — refused or moved) · the payment is then voided ⇒ NO DEDUCTION, the original adjustment is withdrawn, the commission has its REVERSED row and nets 0`,
+        run.ok && !!a0 && unstranded && !!rev && ded.length === 0 && origAdj.length === 0 && sumB(rows) === Z,
+        "unstranded · 0 DEDUCTION · withdrawn · net 0", `run=${run.ok} decide=${rs(dec)} adjBefore=${a0 ? `${a0.periodKey}/${a0.status}` : "-"} adjAfterSync=${a1 ? `${a1.periodKey}/${a1.status}/run=${a1.runId ? "set" : "null"}` : "-"} runs=${[...runs].join(",")} rev=${!!rev} deductions=${ded.map((x) => `${x.periodKey}:${x.amountSatang}`).join(",") || "-"} origAdj=${origAdj.length} Σ=${sumB(rows)}${ABSENT}`);
+    }
+
+    // ── H4 · rep linked + active but WITHOUT a payroll profile ⇒ WAITING, never PAID, no DEDUCTION; HR binds no item-less adjustment ──
+    {
+      const d = await mkDeal(tidHP, cHP, pHP, uNK, 1_000_000);
+      const ref = `${TAG}-h4`;
+      const pid = await payRow(d, "PAYMENT", ref, 1_000_000, NOWP);
+      await call(APC, cxHP, { dealId: d.id, refType: "PAYMENT", refId: ref });
+      await settle(tidHP);
+      await call(SYNC, new Date(), { tenantIds: [tidHP] });
+      const orig = (await comm({ dealId: d.id, reversedOfId: null }))[0] as Any;
+      const a0 = await adjOf(orig?.id);
+      const dto = orig ? await call(F_.mine, ctx(tidHP, cHP, uNK), actor(uNK, "STAFF", SALES), {}) : MISSING;
+      const mineRow = itemsOf(dto.v).find((r: Any) => r?.id === orig?.id);
+      const Q = String(a0[0]?.periodKey ?? freePeriod(PK, await runsOf(hrH), false));
+      const plain = await call(PAY.requestAdjustment, cHRH, { employeeId: eNo, periodKey: Q, kind: "BONUS", amountSatang: 50_000, note: `โบนัส ${TAG}`, requestedById: uO });
+      if (plain.ok && plain.v?.id) await call(PAY.decideAdjustment, cHRH, plain.v.id, "APPROVED", ownerAct);
+      for (const a of a0) await call(PAY.decideAdjustment, cHRH, a.id, "APPROVED", ownerAct);
+      const run = await call(PAY.createPayrollRun, cHRH, { periodKey: Q, payDate: T("2026-10-30T03:00:00Z") });
+      if (run.ok) { await call(PAY.approveRun, cHRH, run.v.id); await call(PAY.markPaid, cHRH, run.v.id); }
+      await settle(tidHP);
+      const mid = (await comm({ id: orig?.id }))[0] as Any;
+      const plainAfter = plain.ok && plain.v?.id ? ((await P.hrPayAdjustment.findUnique({ where: { id: plain.v.id } })) as Any) : null;
+      const items = run.ok ? ((await P.hrPayrollItem.findMany({ where: { runId: run.v.id }, select: { employeeId: true } })) as Any[]) : [];
+      await voidRow(pid);
+      await call(APR, cxHP, { dealId: d.id });
+      await settle(tidHP);
+      await call(SYNC, new Date(), { tenantIds: [tidHP] });
+      const rows = await comm({ dealId: d.id });
+      const ded = ((await P.hrPayAdjustment.findMany({ where: { tenantId: tidHP, crmCommissionId: { in: rows.map((r) => r.id) }, kind: "DEDUCTION" } })) as Any[]);
+      const exp = fullOf("PCT", R10.config, b(1_000_000));
+      console.log(`  [arith] H4 commission ${exp} for a rep whose HR employee has no payroll profile ⇒ must wait (no adjustment) · run ${Q} makes no item for that employee`);
+      chk("C3.3-H4", `ruling H4 — rep linked to an ACTIVE employee WITHOUT a payroll profile · commission ${exp} ⇒ APPROVED with NO HR adjustment (DTO payroll WAITING_EMPLOYEE) even after the minute job · HR then pays run ${Q} ⇒ the commission is never PAID and a plain approved adjustment of that employee is NOT bound to the run (no item was produced) · the payment is voided ⇒ no DEDUCTION`,
+        !!orig && orig.status === "APPROVED" && a0.length === 0 && mineRow?.payroll === "WAITING_EMPLOYEE" && mid?.status !== "PAID" && !items.some((i) => i.employeeId === eNo)
+          && !!plainAfter && !plainAfter.runId && ded.length === 0,
+        "APPROVED · 0 adj · WAITING · never PAID · plain unbound · 0 DEDUCTION",
+        `orig=${orig ? `${orig.status}/${orig.amountSatang}` : "-"} adj=${a0.length} dto=${mineRow?.payroll ?? rs(dto)} afterRun=${mid?.status ?? "-"} run=${run.ok} itemForEmp=${items.some((i) => i.employeeId === eNo)} plain=${plainAfter ? `run=${plainAfter.runId ? "bound" : "null"}` : rs(plain)} deductions=${ded.length}${ABSENT}`);
+    }
+
+    // ── H6 · syncPayroll resumes from a per-system cursor (like the q1a queue) — rows beyond the page budget are eventually handed off ──
+    {
+      const src = read(C_FILE);
+      const body = /export async function syncPayroll\([\s\S]*?\n}\n/.exec(src)?.[0] ?? "";
+      const consts = [...src.matchAll(/const\s+([A-Z0-9_]+)\s*=\s*["'`](crm\.commission\.[^"'`]*cursor[^"'`]*)["'`]/gi)]
+        .filter((m) => !/q1a/i.test(m[2])).map((m) => ({ name: m[1], key: m[2] }));
+      const usesConst = consts.some((c) => new RegExp(`\\b${c.name}\\b`).test(body));
+      const literal = /["'`]crm\.commission\.(?!q1a)[\w.]*cursor/i.test(body);
+      const resetsEveryCall = /let\s+cursor\s*=\s*["'`]{2}\s*;/.test(body) && !usesConst && !literal;
+      chk("C3.3-H6", "ruling H6 — syncPayroll keeps a per-system cursor in OpsAlertState (a `crm.commission.…cursor:<systemId>` key other than the q1a one, read at start and advanced/cleared per page) so rows beyond its 20×200 page budget are eventually handed off [static: syncPayroll body references that key]",
+        body.length > 0 && (usesConst || literal) && !resetsEveryCall, "cursor key used in syncPayroll", `body=${body.length > 0} consts=${consts.map((c) => c.key).join(",") || "-"} usesConst=${usesConst} literal=${literal} resetsEveryCall=${resetsEveryCall}${ABSENT}`, "MAJOR");
+    }
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
   // X8 — payloads ids only
   // ═════════════════════════════════════════════════════════════════════════════
   {
@@ -2223,7 +2423,7 @@ try {
     const flagSql = `FROM "OpsAlertState" WHERE ("source" LIKE 'crm.commission.nomatch:%' AND (split_part("source", ':', 3) IN (SELECT "id" FROM "CrmCommissionRule" WHERE "tenantId" IN (${inList}))
       OR split_part(split_part("source", ':', 2), '#', 1) IN (SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList}))))
       OR ("source" LIKE 'crm.commission.first:%' AND split_part("source", ':', 2) IN (SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList})))
-      OR ("source" LIKE 'crm.commission.q1a.cursor:%' AND split_part("source", ':', 2) IN (SELECT "id" FROM "AppSystem" WHERE "tenantId" IN (${inList})))`;
+      OR ("source" LIKE 'crm.commission.%cursor:%' AND split_part("source", ':', 2) IN (SELECT "id" FROM "AppSystem" WHERE "tenantId" IN (${inList})))`; // ORACLE-EDIT C3.3-H (27 ก.ย.): every per-system cursor (q1a + the H6 syncPayroll cursor)
     const ourRules = ((await P.$queryRawUnsafe(`SELECT "id" FROM "CrmCommissionRule" WHERE "tenantId" IN (${inList})`).catch(() => [])) as Any[]).map((r) => String(r.id));
     const ourPays = ((await P.$queryRawUnsafe(`SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList})`).catch(() => [])) as Any[]).map((r) => String(r.id));
     await del(() => P.$executeRawUnsafe(`DELETE ${flagSql}`));
