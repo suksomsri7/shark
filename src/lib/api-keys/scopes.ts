@@ -210,7 +210,7 @@ const MEMBER_ADMIN_SCOPES: readonly string[] = [
 ];
 
 // CRM C1.10 ▸ ระบบ CRM (ใบ C1.10 · CRM-API §1 · มติผู้คุมงาน C1.10 ข้อ 6) — 3 ชุดซ้อนกันเป็นชั้น: readonly ⊂ operate ⊂ admin
-//   readonly → อ่านอย่างเดียว (ผู้ติดต่อ · บริษัท · ดีล · กิจกรรม · รายการวัตถุ · รายงานของตัวเอง) — **ไม่มี** crm.commission.view
+//   readonly → อ่านอย่างเดียว (ผู้ติดต่อ · บริษัท · ดีล · กิจกรรม · รายการวัตถุ · รายงานของทั้งระบบ (อ่าน · มติผู้คุมงาน C3.8 N5)) — **ไม่มี** crm.commission.view
 //              และคำตอบของคีย์ชุดนี้ปิดบังเบอร์/อีเมลเสมอ (`crm/api/serialize.ts`)
 //   operate  → + งานที่พนักงานขายทำได้ (ชุดค่าเริ่มต้น STAFF ของ §6.1) — ไม่มี *.manage / รวม / ลบ / ส่งออก / โอนข้ามทีม
 //   admin    → ทุกคีย์ของ §6.1 (ตั้งค่า · ทีม · ลบ · รวม · ส่งออก) — design ops ของวัตถุกำหนดเองก็ยังเรียกผ่านคีย์ไม่ได้ (C1.2b)
@@ -340,7 +340,7 @@ export const API_SCOPE_BUNDLES: readonly ApiScopeBundle[] = [
     id: "crm.readonly",
     label: "CRM — อ่านอย่างเดียว",
     summary:
-      "Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the key holder's own reports. Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written.",
+      "Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the reports of the whole system (read). Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written.",
     scopes: CRM_READONLY_SCOPES,
   },
   {

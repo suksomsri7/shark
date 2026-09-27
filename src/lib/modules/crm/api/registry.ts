@@ -27,6 +27,11 @@ import { SEQUENCES_OPS } from "./ops/sequences";
 import { TRACKING_OPS } from "./ops/tracking";
 // CRM C3.4 ▸ op ของผู้ช่วย AI ชุดสุดท้าย (ดีลเสี่ยง · การ์ดบอร์ดงาน · รายงาน · โควตา · คอมมิชชันของฉัน) ◂
 import { ASSIST_OPS } from "./ops/assist";
+// CRM C3.8 ▸ ชุดที่สาม (ส่งออกรายงาน · โควตา · คอมมิชชัน · พอร์ทัลฝั่งร้าน · รูปของรายการวัตถุ · การเชื่อมต่อ) ◂
+import { INTEGRATIONS_OPS } from "./ops/integrations";
+import { PORTAL_STAFF_OPS } from "./ops/portal-staff";
+import { RECORDS_DYNAMIC_OPS } from "./ops/records-dynamic";
+import { SALES_OPS } from "./ops/sales";
 
 export * from "./op";
 
@@ -57,6 +62,12 @@ export const CRM_OPS: ApiOp[] = [
   // CRM C3.4 ▸ 5 op (addendum ข้อ 1): `deals.atRisk.list` · `activities.taskCard.open` + สาม op ที่ใช้ร่วมกับ C3.8 (C3.4 เป็นผู้สร้าง —
   //   มติผู้คุมงาน C3.6–C3.9 ข้อ 1): `reports.get` · `quotas.progress` · `commissions.mine` ◂
   ...ASSIST_OPS,
+  // CRM C3.8 ▸ ชุดที่สาม — 16 op ตามตาราง MUST ของ `scripts/qc-crm-c3.8.mts` (3 ตัวอยู่ใน ASSIST_OPS ของ C3.4 — มติผู้คุมงาน) +
+  //   op ที่แนะนำ 3 ตัว (`quotas.board` · `commissions.pending` · `integrations.targets.get`) · ทุกตัวเรียกบริการของ C3.1–C3.6 เท่านั้น ◂
+  ...SALES_OPS,
+  ...PORTAL_STAFF_OPS,
+  ...RECORDS_DYNAMIC_OPS,
+  ...INTEGRATIONS_OPS,
 ];
 
 // CRM C2.11 ▸ MINOR 12 (ผู้ตรวจอิสระ 25 ก.ย. 2569) — "POST ที่เป็น kind read" ปลอดภัยเพราะอะไร ◂

@@ -979,10 +979,12 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   const crmQcSrc = walk(join(ROOT, "scripts"), (f) => /qc-crm-.*\.mts$/.test(f))
     .map((f) => readFileSync(f, "utf8"))
     .join("\n");
-  const untestedCrm = CRM_OPS.filter((o) => !o.test || !crmQcSrc.includes(`"${o.test}"`));
+  // CRM C3.8 ▸ strict: เลนลูกค้าของพอร์ทัล (`PORTAL_OPS` — ทะเบียนแยก) ต้องมีข้อสอบครอบเหมือน op ของร้าน ◂
+  const { PORTAL_OPS } = await import("@/lib/modules/crm/api/portal-lane");
+  const untestedCrm = [...CRM_OPS, ...PORTAL_OPS].filter((o) => !o.test || !crmQcSrc.includes(`"${o.test}"`));
   chk(
     "F13.10",
-    `ทุก op ของ CRM (${CRM_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-crm-*.mts`,
+    `ทุก op ของ CRM (${CRM_OPS.length} + พอร์ทัล ${PORTAL_OPS.length}) มี test id ที่อ้างถึงจริงใน scripts/qc-crm-*.mts`,
     untestedCrm.length === 0,
     untestedCrm.length
       ? `${untestedCrm.length} op ไม่มีข้อสอบครอบ: ${untestedCrm.map((o) => `${o.id}(test=${o.test || "-"})`).join(", ")}`
@@ -1008,6 +1010,9 @@ console.log("\n── F13: ทะเบียน API (op ทุกตัวม�
   const crmWithTool = CRM_OPS.filter((o) => o.tool);
   const skillsSrc4 = readFileSync(join(ROOT, "src", "lib", "ai", "skills.ts"), "utf8");
   const crmOrphans = crmWithTool.filter((o) => !skillsSrc4.includes(`"${o.tool!.name}"`));
+  // CRM C3.8 ▸ strict: ชื่อ tool ต้องไม่ซ้ำ (ชื่อซ้ำ = ผู้ช่วยเรียกได้ตัวเดียว อีกตัวหายเงียบ) ◂
+  const crmToolDup = crmWithTool.map((o) => o.tool!.name).filter((n, i, a) => a.indexOf(n) !== i);
+  for (const n of crmToolDup) crmOrphans.push({ ...crmWithTool.find((o) => o.tool!.name === n)!, tool: { name: `${n} (ชื่อซ้ำ)` } });
   chk(
     "F13.12",
     `tool ของ op CRM (${crmWithTool.length} ตัว) ลงทะเบียนในสกิล AI แล้ว`,

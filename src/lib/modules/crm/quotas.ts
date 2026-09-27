@@ -389,7 +389,11 @@ export async function setQuota(ctx: QuotaCtx, actor: Actor, input: SetQuotaInput
  * รายการโควตา — คีย์ crm.quota.manage หรือระดับรายงาน ALL = ทุกแถวของระบบ · อื่น ๆ = ของตัวเอง + ทีมที่ตัวเองอยู่
  * (มีเพดาน LIST_MAX · เรียงงวด → ชนิด → เจ้าของ)
  */
-export async function listQuotas(ctx: QuotaCtx, actor: Actor, input: { periodKey?: string | null; ownerType?: string | null } = {}): Promise<QuotaDto[]> {
+export async function listQuotas(
+  ctx: QuotaCtx,
+  actor: Actor,
+  input: { periodKey?: string | null; ownerType?: string | null; owners?: { userIds: string[]; teamIds: string[] } | null } = {},
+): Promise<QuotaDto[]> {
   await enter(ctx, actor);
   const where: Prisma.CrmQuotaWhereInput = { tenantId: ctx.tenantId, systemId: ctx.systemId };
   if (input?.periodKey) where.periodKey = cleanPeriod(input.periodKey);
@@ -405,6 +409,10 @@ export async function listQuotas(ctx: QuotaCtx, actor: Actor, input: { periodKey
         ],
       });
     }
+  }
+  // CRM C3.8 รีวิว N2 ▸ `owners` = ขอบเขตของตัวกรองคีย์ API — กรองในฐานก่อนเพดาน LIST_MAX ◂
+  if (input?.owners) {
+    AND.push({ OR: [{ ownerType: "USER", ownerId: { in: input.owners.userIds } }, { ownerType: "TEAM", ownerId: { in: input.owners.teamIds } }] });
   }
   const rows = await prisma.crmQuota.findMany({ where: { AND }, orderBy: [{ periodKey: "asc" }, { ownerType: "asc" }, { ownerId: "asc" }], take: LIST_MAX });
   return rows.map(toDto);

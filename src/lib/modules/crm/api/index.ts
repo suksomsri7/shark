@@ -5,6 +5,9 @@
 // (ไฟล์นี้ re-export ล้วน ไม่มีตรรกะ)
 export { dispatch, dispatchTeams } from "./dispatch";
 export { buildOpenApi, CRM_DOC_INFO } from "./openapi";
+// CRM C3.8 ▸ เอกสารต่อผู้เรียก (openapi.json + path จริงของวัตถุเมื่อมีคีย์) · manifest ทั้งสัญญา ◂
+export { buildOpenApiForRequest } from "./openapi";
+export { crmManifest } from "./manifest";
 export { CRM_OPS } from "./registry";
 export { CRM_API_CONFIG } from "./config";
 export {
@@ -22,4 +25,4 @@ export {
   runCrmTool,
 } from "./tools";
 export type { CrmToolCtx, CrmToolInfo, CrmToolOutcome } from "./tools";
-export { crmWebhookEvents, isCrmWebhookEndpoint } from "./webhook-events";
+export { crmWebhookEvents, isCrmWebhookEndpoint, CRM_INTERNAL_EVENTS } from "./webhook-events";

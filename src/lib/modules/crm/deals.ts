@@ -29,7 +29,8 @@ import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM
 import { activityWhere, contactWhere, dealWhere } from "./where";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (หลังการมองเห็นเสมอ) ◂
-import { crmCan, crmForbiddenMessage, crmParam } from "./access";
+import { crmCan, crmForbiddenMessage } from "./access";
+import { crmCapFor } from "./key-caps"; // CRM C3.8 ▸ เพดานของคีย์ = ของผู้สร้างคีย์ ◂
 import * as companies from "./companies";
 import { CompaniesError } from "./companies-shared";
 import { dealStateForStage, lifecycleAfterDealWon } from "./rules";
@@ -1046,7 +1047,7 @@ export async function reassignDeal(ctx: DealsCtx, actor: MemberActor, id: string
   };
   if (crossOf(pre.teamId)) need(a, "crm.deal.reassign");
   if (targetTeamOf(pre.teamId) === "AMBIGUOUS") throw fail("VALIDATION", await ambiguousMsg());
-  const cap = a.role === "OWNER" ? undefined : crmParam(a, "crm._maxReassignPerDay");
+  const cap = await crmCapFor(ctx.tenantId, a, "crm._maxReassignPerDay"); // CRM C3.8 รีวิว S2 ▸ คีย์ = เพดานปัจจุบันของผู้สร้างคีย์ ◂
   const actorId = actorIdOf(ctx) ?? a.userId;
   const dayStart = thaiDayUtc(new Date())!;
   const dayFrom = new Date(dayStart.getTime() - 7 * 3_600_000); // 00:00 เวลาไทย = 17:00 UTC ของวันก่อน

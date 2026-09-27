@@ -54,3 +54,32 @@ export async function assertActivityOwnerInFilter(actor: ApiActor): Promise<void
     if (!me || !members.has(me)) throw outside("คีย์นี้จำกัดทีม แต่ผู้สร้างคีย์ไม่ได้อยู่ในทีมนั้น กิจกรรมที่บันทึกจึงจะหลุดขอบเขตของคีย์ — ใช้คีย์ที่สมาชิกทีมเป็นผู้สร้าง");
   }
 }
+
+// CRM C3.8 ▸ ตัวกรองของคีย์บน "ข้อมูลของคน" (โควตา · คอมมิชชัน) — ตารางพวกนี้ไม่มี teamId/ownerUserId ให้ visibleWhere จับ
+//   ⇒ ขอบเขตของคีย์ = คนในตัวกรองผู้ดูแล / สมาชิกปัจจุบันของทีมในตัวกรอง (มีทั้งคู่ = ทั้งสองเงื่อนไข) (อ่านจากฐานทุกคำขอ — ย้ายทีมมีผลทันที) และทีมในตัวกรอง
+//   คีย์ที่ไม่มีตัวกรอง / คนจริง / ผู้ช่วย = null (ไม่จำกัดเพิ่ม — บริการตัดสินการมองเห็นตามปกติ) ◂
+export type KeyPeople = { owners: Set<string>; teams: Set<string> };
+
+export async function keyPeopleOf(actor: ApiActor): Promise<KeyPeople | null> {
+  const f = keyFilterOf(actor);
+  if (f.teamIds.length === 0 && f.ownerIds.length === 0) return null;
+  const members = new Set<string>();
+  for (const t of f.teamIds) for (const m of await teams.membersOf({ tenantId: actor.tenantId }, t)) members.add(m.userId);
+  // รีวิว C3.8 N1: มีทั้งสองตัวกรอง = AND (ความหมายเดียวกับ visibleWhere — ผู้ดูแลในตัวกรอง ∩ สมาชิกทีมในตัวกรอง) ·
+  //   โควตาของ "ทีม" ไม่มีผู้ดูแลให้ตรวจ ⇒ คีย์ที่มีตัวกรองผู้ดูแลไม่เห็นโควตาทีม (ปิดไว้ก่อน)
+  const owners = f.teamIds.length === 0 ? new Set(f.ownerIds) : f.ownerIds.length === 0 ? members : new Set(f.ownerIds.filter((u) => members.has(u)));
+  return { owners, teams: new Set(f.ownerIds.length === 0 ? f.teamIds : []) };
+}
+
+/** เจ้าของ (USER/TEAM) อยู่ในขอบเขตของคีย์ไหม (null = ไม่มีตัวกรอง = อยู่เสมอ) */
+export function inKeyPeople(p: KeyPeople | null, ownerType: string, ownerId: string | null | undefined): boolean {
+  if (!p) return true;
+  if (!ownerId) return false;
+  return ownerType === "TEAM" ? p.teams.has(ownerId) : p.owners.has(ownerId);
+}
+
+/** 404 ของเจ้าของที่อยู่นอกขอบเขตของคีย์ (เหมือนระเบียนของร้านอื่น — ไม่บอกว่ามีอยู่) */
+export function outsideKeyPeople(): never {
+  throw crmApiError(404, "not_found", "ไม่พบข้อมูลของพนักงานหรือทีมนี้ในขอบเขตที่คีย์นี้ดูได้ — เลือกคนหรือทีมที่อยู่ในตัวกรองของคีย์", "The person or team is outside this API key's filter.");
+}
+// ◂ CRM C3.8

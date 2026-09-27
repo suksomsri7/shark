@@ -23,6 +23,9 @@ const TARGET_OF: Record<string, string> = {
   deals: "CrmDeal",
   activities: "CrmActivity",
   teams: "Team",
+  // CRM C3.8 ▸ ชุดที่สาม: ประวัติของ REST ชี้แถวที่ถูกแตะ (ไม่ใช่ชื่อ op) ◂
+  commissions: "CrmCommission",
+  "portal-access": "CrmPortalAccess",
 };
 
 function crmAuditTarget(path: string) {

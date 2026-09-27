@@ -210,9 +210,12 @@ export async function withIdempotency(
     result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
   }
   // เก็บผลไว้ตอบซ้ำ — เก็บทั้งสำเร็จและล้มเหลว (retry ของคำสั่งที่ล้มเหลวต้องได้คำตอบเดิม ไม่ใช่ลองใหม่เงียบ ๆ)
+  // CRM C3.8 รีวิว S1 ▸ ค่าลับที่คืนครั้งเดียว (`replaySecrets` — PIN บัตรกำนัล · token เชิญพอร์ทัล · ตั๋วสมัคร · คีย์ API ใหม่)
+  //   ต้องไม่ถูกเก็บลง `ApiIdempotency.responseJson` เลย (เดิมตัดตอน replay อย่างเดียว ⇒ ค่าดิบค้างในตาราง 24 ชม.)
+  //   ⇒ เก็บฉบับที่ตัดแล้ว · คำตอบครั้งแรกยังได้ค่าจริงตามเดิม · replay ได้ null เหมือนเดิม ◂
   await db.apiIdempotency.updateMany({
     where: { keyId, idemKey },
-    data: { status: result.status, responseJson: result.body as never },
+    data: { status: result.status, responseJson: scrubReplaySecrets(op, result.body) as never },
   });
   return respond(result.status, result.body);
 }

@@ -10,12 +10,19 @@ import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 /** คำนำหน้าของเหตุการณ์ที่ CRM เป็นเจ้าของ: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1) */
 export const CRM_EVENT_PREFIXES = ["crm.", "custom.record.", "team."] as const;
 
-/** เหตุการณ์ของ CRM ในทะเบียนฮุค — ตัดตัวซ้ำ */
+// CRM C3.8 ▸ event ของ CRM ที่ "มี consumer แต่ไม่เปิดให้ร้านสมัครเว็บฮุค" โดยเจตนา (ธงภายในล้วน — ไม่มีความหมายต่อระบบภายนอก)
+//   กติกา (ข้อสอบ C3.8-S6.1): consumer ทุกตัวที่ขึ้นต้นด้วย CRM_EVENT_PREFIXES ต้อง **อยู่ในรายการเว็บฮุค หรืออยู่ในรายการนี้** — ไม่มีทางที่สาม
+//   ⇒ event ใหม่ที่ลืมป้ายเว็บฮุคจะถูกจับทันที · ตอนนี้ว่าง: ธงกันซ้ำตัวเดียวของ CRM (`crm.teamroom.posted` · C3.4) ถูกตั้งใจเปิดให้เว็บฮุค
+//   (ร้านเอาไปต่อห้องแชทภายนอกได้ — payload id ล้วน) · ใส่ชื่อที่นี่ = ตัดออกจาก crmWebhookEvents() / คู่มือ / manifest / x-shark-webhooks พร้อมกัน ◂
+export const CRM_INTERNAL_EVENTS: readonly string[] = [];
+
+/** เหตุการณ์ของ CRM ในทะเบียนฮุค — ตัดตัวซ้ำ · ตัด CRM_INTERNAL_EVENTS */
 export function crmWebhookEvents(): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
+  const internal = new Set(CRM_INTERNAL_EVENTS);
   for (const e of WEBHOOK_EVENTS) {
-    if (!CRM_EVENT_PREFIXES.some((p) => e.value.startsWith(p)) || seen.has(e.value)) continue;
+    if (!CRM_EVENT_PREFIXES.some((p) => e.value.startsWith(p)) || seen.has(e.value) || internal.has(e.value)) continue;
     seen.add(e.value);
     out.push(e.value);
   }

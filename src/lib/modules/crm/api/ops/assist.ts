@@ -18,7 +18,9 @@ import * as reports from "../../reports";
 import { periodKeyOf } from "../../quotas-shared";
 import { crmActorOf, crmCtxOf } from "../actor";
 import { defineCrmOp, type ApiOp } from "../op";
-import { idStr, isoDate, optId, text } from "../schema";
+import { idStr, isoDate, optId, periodKeyIn, text } from "../schema";
+// CRM C3.8 ▸ ตัวกรองของคีย์บนข้อมูลของคน (โควตา · คอมมิชชัน) + คีย์งวด พ.ศ. ◂
+import { inKeyPeople, keyPeopleOf, outsideKeyPeople } from "../filters";
 
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
@@ -112,7 +114,9 @@ const quotaProgress = defineCrmOp({
   async handler({ actor, input }) {
     const ownerType = input.ownerType ?? "USER";
     const ownerId = input.ownerId ?? (ownerType === "USER" ? actor.userId ?? "" : "");
-    return quotas.progress(crmCtxOf(actor), crmActorOf(actor), { ownerType, ownerId, periodKey: input.periodKey ?? periodKeyOf(new Date(), "MONTH") });
+    // CRM C3.8 ▸ คีย์ที่มีตัวกรอง = เฉพาะคน/ทีมในตัวกรอง (นอกกรอบ 404) · งวด พ.ศ. "2569-09" = "2026-09" ◂
+    if (!inKeyPeople(await keyPeopleOf(actor), ownerType, ownerId)) outsideKeyPeople();
+    return quotas.progress(crmCtxOf(actor), crmActorOf(actor), { ownerType, ownerId, periodKey: periodKeyIn(input.periodKey) ?? periodKeyOf(new Date(), "MONTH") });
   },
 });
 
@@ -124,14 +128,20 @@ const commissionsMine = defineCrmOp({
   action: "crm.commission.view",
   summary: "The caller's own commission rows (newest first) and totals per status. Optional filters: status (PENDING, APPROVED, PAID, REVERSED, REJECTED) and periodKey (\"2026-09\").",
   label: "คอมมิชชันของฉัน",
-  input: z.object({ status: z.enum(["PENDING", "APPROVED", "PAID", "REVERSED", "REJECTED"]).optional(), periodKey: text(7).optional() }).strict(),
+  input: z.object({ status: z.enum(["PENDING", "APPROVED", "PAID", "REVERSED", "REJECTED"]).optional(), periodKey: text(10).optional() }).strict(), // CRM C3.8 ▸ 10 = รับ "2569-09" ได้เท่ารูปอื่น ◂
   rate: "read",
   test: "C3.8-S1.1",
   tool: { name: "crm_commissions_mine", hint: "Use to answer how much commission the person asking has earned, is waiting for, or was paid." },
   async handler({ actor, input }) {
     const ctx = crmCtxOf(actor);
     const a = crmActorOf(actor);
-    const f = { status: input.status ?? null, periodKey: input.periodKey ?? null };
+    // CRM C3.8 ▸ งวด พ.ศ. ได้ด้วย · มติ C3.8 (C3.4 ข้อ 13): ผ่านคีย์ API "ของฉัน" = แถวของผู้สร้างคีย์ (คนเบื้องหลังคีย์ — ตัวเดียวกับ
+    //   actorUserId ของ audit) · คีย์ต้องถือ crm.commission.view ซึ่งอ่าน commissions.list ของทั้งระบบได้อยู่แล้ว ⇒ ไม่เห็นเกินที่มี ·
+    //   คีย์ที่มีตัวกรองแล้วผู้สร้างอยู่นอกกรอบ = รายการว่าง (ไม่หลุดกรอบ) ◂
+    const f = { status: input.status ?? null, periodKey: periodKeyIn(input.periodKey) ?? null };
+    if (!inKeyPeople(await keyPeopleOf(actor), "USER", actor.userId)) {
+      return { items: [], totals: { pendingSatang: 0, approvedSatang: 0, paidSatang: 0, reversedSatang: 0, netSatang: 0 } };
+    }
     const [items, totals] = await Promise.all([commissions.mine(ctx, a, f), commissions.mineTotals(ctx, a, f)]);
     return { items, totals };
   },

@@ -33,7 +33,8 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
-import { crmCan, crmParam, crmForbiddenMessage } from "./access";
+import { crmCan, crmForbiddenMessage } from "./access";
+import { crmCapFor } from "./key-caps"; // CRM C3.8 ▸ เพดานของคีย์ = ของผู้สร้างคีย์ ◂
 import { dealWhere } from "./where";
 import { parseCrmSettings, setCrmCommissionSettings } from "./settings";
 import { z } from "zod";
@@ -1765,8 +1766,9 @@ export async function approve(ctx: CommissionsCtx, actor: MemberActor, input: { 
   if (row.status !== "PENDING" || row.reversedOfId) throw fail("CONFLICT", DECIDED_MSG);
   const reason = str(input?.reason);
   if (reason && reason.length > COMMISSION_LIMITS.reasonMax) throw fail("VALIDATION", `เหตุผลยาวได้ไม่เกิน ${COMMISSION_LIMITS.reasonMax} ตัวอักษร`);
-  if (actor.role !== "OWNER") {
-    const cap = crmParam(actor, "crm._maxCommissionApproveSatang");
+  {
+    // CRM C3.8 รีวิว S2 ▸ คีย์ API ใช้เพดานปัจจุบันของผู้สร้างคีย์ (ผู้สร้างไม่อยู่แล้ว = 0) · คนจริงเหมือนเดิม (OWNER ไม่จำกัด) ◂
+    const cap = await crmCapFor(ctx.tenantId, actor, "crm._maxCommissionApproveSatang");
     if (cap !== undefined && row.amountSatang > BigInt(Math.max(0, Math.floor(cap)))) {
       if (!row.approvalRequestId) await escalateOnce(s, row);
       throw fail("APPROVAL_REQUIRED", OVER_CAP_MSG);
@@ -1879,23 +1881,46 @@ export async function mineTotals(ctx: CommissionsCtx, actor: MemberActor, f: Com
 }
 
 /** ทุกแถวของระบบ (คีย์ `crm.commission.view`) — กรองด้วยการมองเห็นดีล (OWNER เห็นทั้งหมด · แถวของตัวเองเห็นเสมอ) */
-export async function list(ctx: CommissionsCtx, actor: MemberActor, f: CommissionFilter = {}): Promise<CommissionDto[]> {
+export async function list(ctx: CommissionsCtx, actor: MemberActor, f: CommissionFilter & { userIds?: string[] | null } = {}): Promise<CommissionDto[]> {
   await enterHuman(ctx, actor);
   need(actor, "crm.commission.view");
   const s = scopeOf(ctx);
   const userId = str(f?.userId);
-  const rows = await prisma.crmCommission.findMany({ where: { ...whereOf(s, f), ...(userId ? { userId } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: COMMISSION_LIMITS.listMax });
+  // CRM C3.8 รีวิว N2 ▸ `userIds` = ขอบเขตคนของตัวกรองคีย์ API — กรองในฐานก่อนเพดาน listMax (ตัวชี้หน้าของ REST ถูกต้อง) ◂
+  const userIds = Array.isArray(f?.userIds) ? f.userIds.filter((x): x is string => typeof x === "string") : null;
+  const rows = await prisma.crmCommission.findMany({
+    where: { ...whereOf(s, f), ...(userId ? { userId } : {}), ...(userIds ? { AND: [{ userId: { in: userIds } }] } : {}) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: COMMISSION_LIMITS.listMax,
+  });
   return toDtos(s, await filterVisible(s, actor, rows));
 }
 
+/**
+ * CRM C3.8 รีวิว N2 ▸ แถวเดียวตาม id (คีย์ `crm.commission.view` หรือ `crm.commission.approve`) — การมองเห็นเดียวกับ approve/reject
+ * (ของตัวเอง/OWNER/มองเห็นดีล · ไม่เห็น = NOT_FOUND) · ไม่ต้องดึงทั้งรายการ 500 แถวมาหา ◂
+ */
+export async function get(ctx: CommissionsCtx, actor: MemberActor, id: string): Promise<CommissionDto> {
+  await enterHuman(ctx, actor);
+  need(actor, "crm.commission.view", "crm.commission.approve");
+  const s = scopeOf(ctx);
+  return (await toDtos(s, [await visibleRow(s, actor, id)]))[0]!;
+}
+
 /** รายการรออนุมัติ (คีย์ `crm.commission.approve`) — ภาพ 10 ขวา "คอมมิชชันรออนุมัติ" */
-export async function pending(ctx: CommissionsCtx, actor: MemberActor): Promise<CommissionDto[]> {
+export async function pending(ctx: CommissionsCtx, actor: MemberActor, opts: { userIds?: string[] | null } = {}): Promise<CommissionDto[]> {
   await enterHuman(ctx, actor);
   need(actor, "crm.commission.approve");
   const s = scopeOf(ctx);
   // มติผู้คุมงาน S2: ผู้อนุมัติที่ไม่ใช่เจ้าของร้านไม่เห็นแถวของตัวเองในรายการรออนุมัติ
   const own: Prisma.CrmCommissionWhereInput = actor.role === "OWNER" ? {} : { userId: { not: actor.userId } };
-  const rows = await prisma.crmCommission.findMany({ where: { ...s, status: "PENDING", ...own }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: COMMISSION_LIMITS.listMax });
+  // CRM C3.8 รีวิวรอบ 2 ▸ `userIds` = ขอบเขตคนของตัวกรองคีย์ API — กรองในฐานก่อนเพดาน listMax (แบบเดียวกับ list) ◂
+  const userIds = Array.isArray(opts?.userIds) ? opts.userIds.filter((x): x is string => typeof x === "string") : null;
+  const rows = await prisma.crmCommission.findMany({
+    where: { ...s, status: "PENDING", ...own, ...(userIds ? { AND: [{ userId: { in: userIds } }] } : {}) },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    take: COMMISSION_LIMITS.listMax,
+  });
   return toDtos(s, (await filterVisible(s, actor, rows)).filter((r) => actor.role === "OWNER" || r.userId !== actor.userId));
 }
 

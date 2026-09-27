@@ -2,7 +2,7 @@
 
 <!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
-Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · 106 operations (49 read, 44 write, 13 danger) · 32 AI tools.
+Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · manifest: `https://shark.in.th/api/v1/crm/manifest.json` · 122 operations (58 read, 48 write, 16 danger) + 16 customer-portal operations · 32 AI tools.
 
 ## Conventions
 
@@ -25,6 +25,10 @@ Conventions that apply to every operation:
 14. Sales teams are tenant-wide: one team list per shop, shared by every CRM system of that shop (not per system). They are also served at `/api/v1/teams` with the same operations and key. A key that is not bound to a system may omit `X-Shark-System` only when the shop has a single CRM system.
 15. Request bodies are capped at 1 MB (10 MB for `POST /contacts/import`); larger bodies answer 413 `payload_too_large`. Exports (`POST /contacts/export`, `POST /objects/{key}/records/export`) need a `crm.admin` key.
 16. A key with an owner or team filter can only create or reassign records inside that filter; anything that would land outside answers 422 `validation`.
+17. Custom objects are dynamic: `/objects/{key}/records...` works for every object of the system the moment it is created, and `GET /objects/{key}/schema` describes the values of one object. `GET /openapi.json` called WITH a CRM key adds the concrete `/objects/<key>/records` paths of that key's system (without a key it is the static contract and carries no shop data).
+18. The customer portal has its own lane at `/portal/*`: it takes a customer-portal session token (`Authorization: Bearer cp_...`), never a shop key; a shop key there answers 401, a portal token on any other path answers 403. The shop side of the portal (access list, invites, revoke) lives at `/companies/{id}/portal-access`, `/companies/{id}/portal-invites` and `/portal-access/{id}/revoke`.
+19. Period keys of quotas and commissions are Gregorian (`2026-09`, `2026-Q3`, `2026`); a Thai Buddhist year (`2569-09`) is accepted and converted. Report exports are asynchronous jobs that only the `crm.admin` key which queued them can read.
+20. The whole contract is machine readable without a key: `GET /manifest.json` lists every operation, the portal lane, the AI tools and the webhook events; the OpenAPI document carries the webhook events as `x-shark-webhooks`.
 
 Every write needs `Idempotency-Key`; every danger operation needs `confirm: true` and a `reason` of at least 5 characters.
 
@@ -34,7 +38,7 @@ Create keys in CRM > Settings > API. A key is bound to one CRM system and holds 
 
 | Bundle | Label | What it may do | Scopes |
 | --- | --- | --- | --- |
-| `crm.readonly` | CRM — อ่านอย่างเดียว | Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the key holder's own reports. Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written. | 6 |
+| `crm.readonly` | CRM — อ่านอย่างเดียว | Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the reports of the whole system (read). Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written. | 6 |
 | `crm.operate` | CRM — งานของพนักงานขาย | Everything in crm.readonly plus the sales-rep work: create and edit contacts, companies and deals, move deals between stages, set deal lines, issue quotations, log and complete activities and write custom object records. No settings, no merging, no deleting deals, no export and no cross-team reassignment. | 23 |
 | `crm.admin` | CRM — ผู้ดูแล | Every CRM permission: settings, sales teams, visibility, merging and archiving contacts and companies, deleting deals, exporting, reassigning deals across teams and managing the CRM API keys. Designing custom objects is still only possible from the settings screen. | 51 |
 
@@ -856,6 +860,7 @@ Body:
 | `records.create` | `POST /objects/{key}/records` | write | `crm.record.create` | Create a record under its parent (contact, company, deal or member, per the object); the title comes from the object's title field. |
 | `records.update` | `PATCH /objects/{key}/records/{id}` | write | `crm.record.update` | Change a record's field values (only the keys sent are touched). |
 | `records.archive` | `POST /objects/{key}/records/{id}/archive` | write | `crm.record.delete` | Archive one record (kept for history, hidden from lists). |
+| `objects.schema.get` | `GET /objects/{key}/schema` | read | `crm.record.read` | JSON schema of one custom object's record values (what `values` of POST/PATCH /objects/{key}/records accepts): every live field with its type, choices and whether it is required. Works for objects created a moment ago. Sensitive fields appear only for callers allowed to see them. |
 
 #### `GET /objects` — objects.list
 
@@ -921,6 +926,10 @@ Body:
 #### `POST /objects/{key}/records/{id}/archive` — records.archive
 
 Archive one record (kept for history, hidden from lists). (เก็บถาวรรายการ)
+
+#### `GET /objects/{key}/schema` — objects.schema.get
+
+JSON schema of one custom object's record values (what `values` of POST/PATCH /objects/{key}/records accepts): every live field with its type, choices and whether it is required. Works for objects created a moment ago. Sensitive fields appear only for callers allowed to see them. (รูปแบบข้อมูลของวัตถุ)
 
 ### Sales teams (also at /api/v1/teams)
 
@@ -1507,6 +1516,8 @@ Body:
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `reports.get` | `GET /reports/{tab}` | read | `crm.report.view` | One CRM report tab (overview, forecast, funnel, reps, activities, lost, sources, scores) with the same numbers as the reports page, limited to what the caller may see. Optional filters: from/to (dates), teamId, pipelineId, ownerUserId, and groupBy (month, owner, team) for forecast. |
+| `reports.export.start` | `POST /reports/{tab}/export` | **danger** | `crm.report.view` | Queue a CSV export of one report tab (overview, forecast, funnel, reps, activities, lost, sources, scores) with the same filters as GET /reports/{tab}. Answers { jobId, status: QUEUED }; poll GET /reports/exports/{jobId}. Needs a crm.admin key, confirm: true and a reason. Only the key that asked can read the file. |
+| `reports.export.get` | `GET /reports/exports/{jobId}` | read | `crm.report.view` | Status of one report export job (QUEUED, RUNNING, DONE, FAILED) and, when DONE, the CSV text (UTF-8, formula cells neutralised). Only the API key that queued the job can read it; any other key or person gets 404. |
 
 #### `GET /reports/{tab}` — reports.get
 
@@ -1523,11 +1534,35 @@ Query:
 | `ownerUserId` | string |  | max 64 chars, min 1 |
 | `groupBy` | `month` \| `owner` \| `team` |  |  |
 
+#### `POST /reports/{tab}/export` — reports.export.start
+
+Queue a CSV export of one report tab (overview, forecast, funnel, reps, activities, lost, sources, scores) with the same filters as GET /reports/{tab}. Answers { jobId, status: QUEUED }; poll GET /reports/exports/{jobId}. Needs a crm.admin key, confirm: true and a reason. Only the key that asked can read the file. (ส่งออกรายงานเป็นไฟล์)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `from` | string |  | max 40 chars |
+| `to` | string |  | max 40 chars |
+| `teamId` | string |  | max 64 chars, min 1 |
+| `pipelineId` | string |  | max 64 chars, min 1 |
+| `ownerUserId` | string |  | max 64 chars, min 1 |
+| `groupBy` | `month` \| `owner` \| `team` |  |  |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+#### `GET /reports/exports/{jobId}` — reports.export.get
+
+Status of one report export job (QUEUED, RUNNING, DONE, FAILED) and, when DONE, the CSV text (UTF-8, formula cells neutralised). Only the API key that queued the job can read it; any other key or person gets 404. (ไฟล์ส่งออกรายงาน)
+
 ### Sales quotas
 
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `quotas.progress` | `GET /quotas/progress` | read | `crm.report.view` | Progress against the sales quota of one person or team for a period (periodKey "2026-09", "2026-Q3" or "2026"; default: the caller, this month). Counted from payments received and won deals. Only people/teams the caller may see. |
+| `quotas.list` | `GET /quotas` | read | `crm.report.view` | Sales quotas of this CRM system (target in satang, target deals and activities per person or team and period). periodKey is "2026-09", "2026-Q3" or "2026" (a Thai Buddhist year such as "2569-09" is accepted too). For a person without crm.quota.manage only their own and their teams' quotas are listed; an API key sees the quotas of the whole system (narrowed by its team/owner filter). |
+| `quotas.set` | `PUT /quotas` | write | `crm.quota.manage` | Set the quota of one person (USER) or team (TEAM) for one period: creates it or changes it (one row per owner and period). targetSatang is required; targetDeals, targetActivities and note are optional (omit = keep, null = clear). Changing a period that has ended needs a manager-level key. |
+| `quotas.board` | `GET /quotas/board` | read | `crm.quota.manage` | The quota table of one period (default: this month): every staff member and team with target, achieved amount and percent - the same rows as the quota settings page. |
 
 #### `GET /quotas/progress` — quotas.progress
 
@@ -1541,11 +1576,54 @@ Query:
 | `ownerId` | string |  | max 64 chars, min 1 |
 | `periodKey` | string |  | max 10 chars |
 
+#### `GET /quotas` — quotas.list
+
+Sales quotas of this CRM system (target in satang, target deals and activities per person or team and period). periodKey is "2026-09", "2026-Q3" or "2026" (a Thai Buddhist year such as "2569-09" is accepted too). For a person without crm.quota.manage only their own and their teams' quotas are listed; an API key sees the quotas of the whole system (narrowed by its team/owner filter). (โควตา)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `periodKey` | string |  | max 10 chars, min 4 |
+| `ownerType` | `USER` \| `TEAM` |  |  |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `PUT /quotas` — quotas.set
+
+Set the quota of one person (USER) or team (TEAM) for one period: creates it or changes it (one row per owner and period). targetSatang is required; targetDeals, targetActivities and note are optional (omit = keep, null = clear). Changing a period that has ended needs a manager-level key. (ตั้งโควตา)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `ownerType` | `USER` \| `TEAM` | yes |  |
+| `ownerId` | string | yes | max 64 chars, min 1 |
+| `periodKey` | string | yes | max 10 chars, min 4 |
+| `targetSatang` | integer | yes |  |
+| `targetDeals` | integer \| null |  | <= 1000000 |
+| `targetActivities` | integer \| null |  | <= 1000000 |
+| `note` | string \| null |  | max 500 chars |
+
+#### `GET /quotas/board` — quotas.board
+
+The quota table of one period (default: this month): every staff member and team with target, achieved amount and percent - the same rows as the quota settings page. (ตารางโควตา) Uses the report rate bucket.
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `periodKey` | string |  | max 10 chars, min 4 |
+
 ### Commissions
 
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `commissions.mine` | `GET /commissions/mine` | read | `crm.commission.view` | The caller's own commission rows (newest first) and totals per status. Optional filters: status (PENDING, APPROVED, PAID, REVERSED, REJECTED) and periodKey ("2026-09"). |
+| `commissions.list` | `GET /commissions` | read | `crm.commission.view` | Commission rows of this CRM system, newest first, limited to deals the caller can see. Optional filters: status, periodKey ("2026-09" or "2569-09") and userId. |
+| `commissions.pending` | `GET /commissions/pending` | read | `crm.commission.approve` | Commission rows waiting for approval (oldest first) that the caller may decide on; an approver never sees their own rows here. |
+| `commissions.approve` | `POST /commissions/{id}/approve` | write | `crm.commission.approve` | Approve one PENDING commission row (optional reason). Above the approver's cap (an API key uses the current cap of the person who created it) it answers 409 approval_required and nothing changes; approving your own row is refused; a row that was already decided answers 409 state_conflict. |
+| `commissions.reject` | `POST /commissions/{id}/reject` | **danger** | `crm.commission.approve` | Reject one PENDING commission row. Needs confirm: true and a reason (at least 5 characters) - the salesperson sees the reason. |
 
 #### `GET /commissions/mine` — commissions.mine
 
@@ -1556,7 +1634,177 @@ Query:
 | Field | Type | Required | Limits |
 | --- | --- | --- | --- |
 | `status` | `PENDING` \| `APPROVED` \| `PAID` \| `REVERSED` \| `REJECTED` |  |  |
-| `periodKey` | string |  | max 7 chars |
+| `periodKey` | string |  | max 10 chars |
+
+#### `GET /commissions` — commissions.list
+
+Commission rows of this CRM system, newest first, limited to deals the caller can see. Optional filters: status, periodKey ("2026-09" or "2569-09") and userId. (คอมมิชชัน)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `status` | `PENDING` \| `APPROVED` \| `PAID` \| `REVERSED` \| `REJECTED` |  |  |
+| `periodKey` | string |  | max 10 chars, min 4 |
+| `userId` | string |  | max 64 chars, min 1 |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `GET /commissions/pending` — commissions.pending
+
+Commission rows waiting for approval (oldest first) that the caller may decide on; an approver never sees their own rows here. (คอมมิชชันรออนุมัติ)
+
+Query:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `take` | integer |  | <= 100 |
+| `cursor` | string |  | max 200 chars, min 1 |
+
+#### `POST /commissions/{id}/approve` — commissions.approve
+
+Approve one PENDING commission row (optional reason). Above the approver's cap (an API key uses the current cap of the person who created it) it answers 409 approval_required and nothing changes; approving your own row is refused; a row that was already decided answers 409 state_conflict. (อนุมัติคอมมิชชัน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string \| null |  | max 500 chars |
+
+#### `POST /commissions/{id}/reject` — commissions.reject
+
+Reject one PENDING commission row. Needs confirm: true and a reason (at least 5 characters) - the salesperson sees the reason. (ไม่อนุมัติคอมมิชชัน)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Customer portal (shop side)
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `portal.access.list` | `GET /companies/{id}/portal-access` | read | `crm.portal.manage` | Who can sign in to the customer portal of one company: each contact's portal role, sign-in methods, invite/accept/last-login times and status (ACTIVE, INVITED, EXPIRED, REVOKED), plus whether the shop's portal is switched on. No tokens or hashes. |
+| `portal.invite` | `POST /companies/{id}/portal-invites` | write | `crm.portal.manage` | Invite one contact of the company to the customer portal (role VIEW, PAY, APPROVE or ADMIN; sign-in EMAIL_OTP and/or LINE). A one-time link valid 7 days is e-mailed to the contact and returned once as inviteUrl (a replay with the same Idempotency-Key returns inviteUrl: null). Inviting again renews the link. |
+| `portal.revoke` | `POST /portal-access/{id}/revoke` | **danger** | `crm.portal.manage` | Revoke one portal access: every session of it ends at its next request and the invite link stops working. Needs confirm: true and a reason. |
+
+#### `GET /companies/{id}/portal-access` — portal.access.list
+
+Who can sign in to the customer portal of one company: each contact's portal role, sign-in methods, invite/accept/last-login times and status (ACTIVE, INVITED, EXPIRED, REVOKED), plus whether the shop's portal is switched on. No tokens or hashes. (สิทธิ์พอร์ทัลของบริษัท)
+
+#### `POST /companies/{id}/portal-invites` — portal.invite
+
+Invite one contact of the company to the customer portal (role VIEW, PAY, APPROVE or ADMIN; sign-in EMAIL_OTP and/or LINE). A one-time link valid 7 days is e-mailed to the contact and returned once as inviteUrl (a replay with the same Idempotency-Key returns inviteUrl: null). Inviting again renews the link. (เชิญเข้าพอร์ทัลลูกค้า)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `contactId` | string | yes | max 64 chars, min 1 |
+| `role` | `VIEW` \| `PAY` \| `APPROVE` \| `ADMIN` |  |  |
+| `loginMethods` | `EMAIL_OTP` \| `LINE`[] |  | max 2 items |
+
+#### `POST /portal-access/{id}/revoke` — portal.revoke
+
+Revoke one portal access: every session of it ends at its next request and the invite link stops working. Needs confirm: true and a reason. (ถอนสิทธิ์พอร์ทัล)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `reason` | string | yes | max 500 chars, min 5 |
+| `confirm` | boolean `true` | yes | checked before the schema |
+
+### Integrations with other SHARK systems
+
+| Operation | Method and path | Kind | Scope | Summary |
+| --- | --- | --- | --- | --- |
+| `integrations.status` | `GET /integrations` | read | `crm.settings.manage` | Connection status of the 24 SHARK systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. |
+| `integrations.targets.get` | `GET /integrations/targets` | read | `crm.settings.manage` | Which member, account, task-board, chat and inventory system this CRM works with: the stored choice, the system used right now and why (chosen, linked unit, only system), and the shop's systems of each kind to choose from. |
+| `integrations.targets.set` | `PUT /integrations/targets` | write | `crm.settings.manage` | Choose the member, account, task-board, chat or inventory system this CRM works with (only the keys sent change; null = back to automatic). Each id must be an active system of that kind in this shop; the account book must already be linked to this CRM. |
+
+#### `GET /integrations` — integrations.status
+
+Connection status of the 24 SHARK systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. (สถานะการเชื่อมต่อ) Uses the report rate bucket.
+
+#### `GET /integrations/targets` — integrations.targets.get
+
+Which member, account, task-board, chat and inventory system this CRM works with: the stored choice, the system used right now and why (chosen, linked unit, only system), and the shop's systems of each kind to choose from. (ระบบปลายทางของ CRM)
+
+#### `PUT /integrations/targets` — integrations.targets.set
+
+Choose the member, account, task-board, chat or inventory system this CRM works with (only the keys sent change; null = back to automatic). Each id must be an active system of that kind in this shop; the account book must already be linked to this CRM. (ตั้งระบบปลายทางของ CRM)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `memberSystemId` | string \| null |  | max 64 chars, min 1 |
+| `accountSystemId` | string \| null |  | max 64 chars, min 1 |
+| `kanbanSystemId` | string \| null |  | max 64 chars, min 1 |
+| `chatSystemId` | string \| null |  | max 64 chars, min 1 |
+| `inventorySystemId` | string \| null |  | max 64 chars, min 1 |
+
+## Customer portal lane (`/portal/*`)
+
+These operations are called by a contact of a customer company, not by the shop. Authentication is the customer-portal session token (`Authorization: Bearer cp_...`) that the portal sign-in (e-mail OTP or LINE) issues; a shop API key, a member-customer token or no token answers 401 here, and a portal token on any shop operation answers 403. Every answer is limited to the company of the session; another company's record or request answers 404. Revoking the access (`POST /portal-access/{id}/revoke`) ends the session at its next request. Writes accept an optional `Idempotency-Key`. Rate limits are per portal access: 240 reads, 30 writes per minute.
+
+| Operation | Method and path | Kind | Summary |
+| --- | --- | --- | --- |
+| `portal.me` | `GET /portal/me` | read | Who is signed in to the customer portal and for which company. (ข้อมูลผู้ใช้พอร์ทัล) |
+| `portal.home` | `GET /portal/home` | read | Company home: outstanding balance, quotations awaiting an answer, recent activity. (หน้าแรกบริษัท) |
+| `portal.quotations.list` | `GET /portal/quotations` | read | Quotations of the signed-in company. (ใบเสนอราคา) |
+| `portal.quotations.get` | `GET /portal/quotations/{id}` | read | One quotation of the signed-in company. (ใบเสนอราคา 1 ใบ) |
+| `portal.quotations.respond` | `POST /portal/quotations/{id}/respond` | write | Accept or reject a quotation (reject needs a reason). (ตอบรับ/ปฏิเสธใบเสนอราคา) |
+| `portal.invoices.list` | `GET /portal/invoices` | read | Invoices of the signed-in company with the outstanding amount. (ใบแจ้งหนี้) |
+| `portal.invoices.get` | `GET /portal/invoices/{id}` | read | One invoice of the signed-in company. (ใบแจ้งหนี้ 1 ใบ) |
+| `portal.invoices.payLink` | `POST /portal/invoices/{id}/pay-link` | write | The payment link (/pay/<token>) of an invoice. (ลิงก์ชำระเงิน) |
+| `portal.receipts.list` | `GET /portal/receipts` | read | Receipts and tax invoices of the signed-in company. (ใบเสร็จ/ใบกำกับภาษี) |
+| `portal.documents.list` | `GET /portal/documents` | read | Shared documents and contracts of the signed-in company. (เอกสาร/สัญญา) |
+| `portal.records.get` | `GET /portal/records/{id}` | read | One shared record with its visible fields and files. (เอกสาร/สัญญา 1 รายการ) |
+| `portal.records.changeRequest` | `POST /portal/records/{id}/change-request` | write | Ask the shop to change an editable field of a shared record. (ขอแก้ข้อมูลในเอกสาร) |
+| `portal.requests.list` | `GET /portal/requests` | read | Requests of the signed-in company with their progress. (คำขอ/แจ้งเรื่อง) |
+| `portal.requests.create` | `POST /portal/requests` | write | Create a request (issue, document request or contact change). Field edits go through records/{id}/change-request. (แจ้งเรื่อง/ส่งคำขอ) |
+| `portal.requests.get` | `GET /portal/requests/{id}` | read | One request of the signed-in company. (คำขอ 1 รายการ) |
+| `portal.contacts.list` | `GET /portal/contacts` | read | Contacts of the signed-in company. (ผู้ติดต่อบริษัท) |
+
+#### `POST /portal/quotations/{id}/respond` — portal.quotations.respond
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `accept` | boolean | yes |  |
+| `reason` | string \| null |  | max 500 chars |
+| `signerName` | string | yes | max 120 chars, min 1 |
+
+#### `POST /portal/records/{id}/change-request` — portal.records.changeRequest
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `fieldKey` | string | yes | max 80 chars, min 1 |
+| `value` | string | yes | max 2000 chars |
+
+#### `POST /portal/requests` — portal.requests.create
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `kind` | string | yes | max 40 chars, min 1 |
+| `title` | string | yes | max 200 chars, min 1 |
+| `body` | string \| null |  | max 4000 chars |
+| `payload` | object \| null |  |  |
+
+## Machine-readable contract
+
+- `GET https://shark.in.th/api/v1/crm/manifest.json` (no key): every shop operation (id, method, path, kind, scope, AI tool), the portal lane, the 32 AI tools and the webhook events - generated from the same registry as this page.
+- `GET https://shark.in.th/api/v1/crm/openapi.json` (no key): OpenAPI 3.1 of the shop operations with `x-shark-webhooks`. Called with a CRM key it also lists the concrete `/objects/<key>/records` paths and value schemas of that key's system.
+- `GET /objects/{key}/schema`: the JSON schema of one custom object's record values (live - a new object or field shows up at once).
 
 ## AI tools (skill `crm`)
 
@@ -1638,7 +1886,7 @@ Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps
 | `crm.sequence.enrolled` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
 | `crm.sequence.finished` | `enrollmentId`, `sequenceId`, `contactId`, related ids |
 | `crm.activity.reminder` | `activityId`, related ids |
-| `crm.teamroom.posted` | `teamId`, `change` |
+| `crm.teamroom.posted` | `kind`, `dealId` or `contactId` or `teamId`, `channelId`, `meetingSystemId` (+ `day`, `count` on digests) - ids and numbers only |
 | `crm.email.sent` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
 | `crm.email.received` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
 | `crm.email.opened` | `emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL) |
@@ -1683,11 +1931,10 @@ These operations are designed but not registered yet; calling them answers 404. 
 | C2.11 | Tracking | `tracking.links.update`, `tracking.links.delete`, `tracking.web.get`, `tracking.web.set`, `tracking.stats`, `tracking.sessions` |
 | C2.10 + C2.11 | Notification preferences | `notifications.templates.get`, `notifications.templates.set` |
 | C2.11 | Automation | `automation.rules.get`, `automation.rules.create`, `automation.rules.update`, `automation.rules.toggle`, `automation.rules.delete`, `automation.runs.list` |
-| C3.8 | Custom objects | `objects.get`, `records.move`, `records.timeline`, `records.import`, `records.byParent` |
-| C3.8 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `quotas.*`, `commissions.rules.*`, `commissions.list`, `commissions.approve`, `commissions.reject`, `commissions.report` |
-| C3.5 / C3.8 | Portal (customer session) | `portal.invite`, `portal.access.list`, `portal.access.revoke`, `p.me`, `p.quotations.*`, `p.invoices.*`, `p.receipts.list`, `p.documents.list`, `p.requests.*`, `p.contacts.*` |
-| C3.8 | Reports and settings | `reports.*`, `reports.export`, `reports.schedule`, `settings.targets.set`, `settings.integrations.status`, `templates.list`, `templates.apply` |
-| C3.4 | AI tools (8 more) | `8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card` |
+| after CRM v2 | Custom objects | `objects.get`, `records.move`, `records.timeline`, `records.import`, `records.byParent` |
+| after CRM v2 | Visibility, quotas and commissions | `visibility.policies.list`, `visibility.policies.set`, `commissions.rules.list`, `commissions.rules.set`, `commissions.report` |
+| after CRM v2 | Customer portal (shop side) | `portal.requests.list`, `portal.requests.decide`, `portal.settings.get`, `portal.settings.set` |
+| after CRM v2 | Reports and templates | `reports.schedules.list`, `reports.schedules.set`, `templates.list`, `templates.apply` |
 
 ## Glossary (Thai <-> English)
 

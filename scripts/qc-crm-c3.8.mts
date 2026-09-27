@@ -622,7 +622,7 @@ try {
   {
     const bad: string[] = [];
     let n = 0;
-    for (const o of OPS.filter((x) => /\{(?!key\})[^}]+\}/.test(String(x.path)))) {
+    for (const o of OPS.filter((x) => /\{(?!key\}|tab\})[^}]+\}/.test(String(x.path)))) { // ORACLE-EDIT C3.8-S8.4 (27 ก.ย. ผู้คุมงาน): {tab} ไม่ใช่ id ระเบียน
       n += 1;
       const r = await callOp(o, kAD.raw, I_B);
       const leak = SECRET_FOREIGN.some((s) => r.text.includes(s));
@@ -638,7 +638,7 @@ try {
       const r = await callOp(o, kRO.raw, o.kind === "read" ? I : I_SAC);
       const inBundle = typeof ACT.crmScopesCan === "function" ? ACT.crmScopesCan(roScopes, o.action) : roSet.has(String(o.action));
       if (o.kind !== "read") { if (r.status !== 403) bad.push(`${o.id}:${sr(r)}`); }
-      else if (inBundle ? r.status !== 200 : r.status !== 403) bad.push(`${o.id}:${sr(r)}(bundle=${inBundle})`);
+      else if (inBundle ? !(r.status === 200 || (o.id === "reports.export.get" && r.status === 404 && ecode(r) === "not_found")) : r.status !== 403) bad.push(`${o.id}:${sr(r)}(bundle=${inBundle})`); // ORACLE-EDIT C3.8-S8.5 (27 ก.ย.): งานส่งออกผูกกับคีย์ที่ขอ ⇒ คีย์อื่น 404 (เหมือน X2.1)
     }
     const c = await api("GET", `/contacts/${kA.id}`, kRO.raw);
     const raw = (await P.crmContact.findUnique({ where: { id: kA.id }, select: { phone: true, email: true } })) as Any;
@@ -870,7 +870,7 @@ try {
   {
     const bad: string[] = [];
     let n = 0;
-    for (const o of OPS.filter((x) => /\{(?!key\})[^}]+\}/.test(String(x.path)) && !String(x.path).startsWith("/teams"))) {
+    for (const o of OPS.filter((x) => /\{(?!key\}|tab\})[^}]+\}/.test(String(x.path)) && !String(x.path).startsWith("/teams"))) { // ORACLE-EDIT C3.8-X1.1 (27 ก.ย.): {tab} ไม่ใช่ id ระเบียน
       n += 1;
       const r = await callOp(o, kAD.raw, I_S2);
       if (!(r.status === 404 || [400, 422].includes(r.status) || emptyByParty(o, r)) || SECRET_FOREIGN.some((s) => r.text.includes(s))) bad.push(`${o.id}:${sr(r)}`);

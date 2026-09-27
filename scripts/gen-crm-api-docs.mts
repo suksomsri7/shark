@@ -21,6 +21,8 @@ import { CRM_ERROR_CODES } from "@/lib/modules/crm/api/http-errors";
 import { CRM_DOC_DESCRIPTION, jsonSchemaOf } from "@/lib/modules/crm/api/openapi";
 import { CRM_OPS } from "@/lib/modules/crm/api/registry";
 import { crmWebhookEvents } from "@/lib/modules/crm/api/webhook-events";
+// CRM C3.8 ▸ เลนลูกค้าของพอร์ทัล (`/portal/*`) อยู่ในทะเบียนแยก — คู่มือ/ตารางอ้างอิงของสกิลต้องมีครบทั้งสองทะเบียน ◂
+import { PORTAL_OPS } from "@/lib/modules/crm/api/portal-lane";
 
 const ROOT = resolve(fileURLToPath(import.meta.url), "..", "..");
 const DOC_PATH = resolve(ROOT, "docs/api/CRM-API.md");
@@ -33,7 +35,8 @@ const CRM_BUNDLES = API_SCOPE_BUNDLES.filter((b) => b.id.startsWith("crm."));
 const SECTIONS: { key: string; title: string; match: (op: ApiOp) => boolean }[] = [
   { key: "core", title: "Health check and search", match: (o) => o.path === "/ping" || o.path === "/search" },
   { key: "contacts", title: "Contacts", match: (o) => o.path.startsWith("/contacts") },
-  { key: "companies", title: "Companies", match: (o) => o.path.startsWith("/companies") },
+  // CRM C3.8 ▸ op พอร์ทัลฝั่งร้านที่อยู่ใต้ `/companies/{id}/portal-…` ไปอยู่หมวด "Customer portal (shop side)" (ไม่ซ้ำสองหมวด) ◂
+  { key: "companies", title: "Companies", match: (o) => o.path.startsWith("/companies") && !/\/portal-/.test(o.path) },
   { key: "deals", title: "Deals and pipelines", match: (o) => o.path.startsWith("/deals") || o.path.startsWith("/pipelines") },
   { key: "activities", title: "Activities and calendar", match: (o) => o.path.startsWith("/activities") || o.path.startsWith("/calendar") },
   { key: "objects", title: "Custom objects and records", match: (o) => o.path.startsWith("/objects") },
@@ -51,6 +54,9 @@ const SECTIONS: { key: string; title: string; match: (op: ApiOp) => boolean }[] 
   { key: "reports", title: "Reports", match: (o) => o.path.startsWith("/reports") },
   { key: "quotas", title: "Sales quotas", match: (o) => o.path.startsWith("/quotas") },
   { key: "commissions", title: "Commissions", match: (o) => o.path.startsWith("/commissions") },
+  // CRM C3.8 ▸ หมวดของชุดที่สาม — op ที่ไม่ตรงหมวดใดเลยตกไปหมวด "Other" ท้ายตาราง (ไม่หายเงียบ — ดู renderDocs) ◂
+  { key: "portal-staff", title: "Customer portal (shop side)", match: (o) => o.path.startsWith("/portal-access") || /^\/companies\/\{id\}\/portal-/.test(o.path) },
+  { key: "integrations", title: "Integrations with other SHARK systems", match: (o) => o.path.startsWith("/integrations") },
 ];
 
 /** รหัสข้อผิดพลาดที่ REST CRM ตอบ (รหัสกลางที่ CRM ไม่เคยตอบไม่อยู่ในตาราง — เขียนตามจริง) */
@@ -92,11 +98,11 @@ const PLANNED: { wo: string; area: string; ops: string[] }[] = [
   { wo: "C2.11", area: "Tracking", ops: ["tracking.links.update", "tracking.links.delete", "tracking.web.get", "tracking.web.set", "tracking.stats", "tracking.sessions"] },
   { wo: "C2.10 + C2.11", area: "Notification preferences", ops: ["notifications.prefs.get", "notifications.prefs.set", "notifications.templates.get", "notifications.templates.set"] },
   { wo: "C2.11", area: "Automation", ops: ["automation.rules.get", "automation.rules.create", "automation.rules.update", "automation.rules.toggle", "automation.rules.delete", "automation.runs.list"] },
-  { wo: "C3.8", area: "Custom objects", ops: ["objects.get", "records.move", "records.timeline", "records.import", "records.byParent"] },
-  { wo: "C3.8", area: "Visibility, quotas and commissions", ops: ["visibility.policies.list", "visibility.policies.set", "quotas.*", "quotas.progress", "commissions.rules.*", "commissions.list", "commissions.approve", "commissions.reject", "commissions.report"] },
-  { wo: "C3.5 / C3.8", area: "Portal (customer session)", ops: ["portal.invite", "portal.access.list", "portal.access.revoke", "p.me", "p.quotations.*", "p.invoices.*", "p.receipts.list", "p.documents.list", "p.requests.*", "p.contacts.*"] },
-  { wo: "C3.8", area: "Reports and settings", ops: ["reports.*", "reports.export", "reports.schedule", "settings.targets.set", "settings.integrations.status", "templates.list", "templates.apply"] },
-  { wo: "C3.4", area: "AI tools (8 more)", ops: ["8 tools of C3.4: crm_issue_quotation, crm_reports, crm_quota_progress, crm_commissions_mine, crm_stop_sequence, crm_create_record, crm_update_record, crm_create_task_card"] },
+  // CRM C3.8 ▸ ชุดที่สามลงทะเบียนแล้ว — ที่เหลือคือของที่ยังไม่มี op จริง (หลัง CRM v2) · แถวที่ op ลงทะเบียนครบถูกกรองออกเอง ◂
+  { wo: "after CRM v2", area: "Custom objects", ops: ["objects.get", "records.move", "records.timeline", "records.import", "records.byParent"] },
+  { wo: "after CRM v2", area: "Visibility, quotas and commissions", ops: ["visibility.policies.list", "visibility.policies.set", "commissions.rules.list", "commissions.rules.set", "commissions.report"] },
+  { wo: "after CRM v2", area: "Customer portal (shop side)", ops: ["portal.requests.list", "portal.requests.decide", "portal.settings.get", "portal.settings.set"] },
+  { wo: "after CRM v2", area: "Reports and templates", ops: ["reports.schedules.list", "reports.schedules.set", "templates.list", "templates.apply"] },
 ];
 
 const GLOSSARY: [string, string, string][] = [
@@ -182,7 +188,7 @@ export function renderDocs(): string {
     "",
     "<!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->",
     "",
-    `Base URL: \`${BASE_URL}\` · OpenAPI 3.1: \`${BASE_URL}/openapi.json\` (no key needed) · ${CRM_OPS.length} operations (${CRM_OPS.filter((o) => o.kind === "read").length} read, ${CRM_OPS.filter((o) => o.kind === "write").length} write, ${CRM_OPS.filter((o) => o.kind === "danger").length} danger) · ${tools.length} AI tools.`,
+    `Base URL: \`${BASE_URL}\` · OpenAPI 3.1: \`${BASE_URL}/openapi.json\` (no key needed) · manifest: \`${BASE_URL}/manifest.json\` · ${CRM_OPS.length} operations (${CRM_OPS.filter((o) => o.kind === "read").length} read, ${CRM_OPS.filter((o) => o.kind === "write").length} write, ${CRM_OPS.filter((o) => o.kind === "danger").length} danger) + ${PORTAL_OPS.length} customer-portal operations · ${tools.length} AI tools.`,
     "",
     "## Conventions",
     "",
@@ -215,7 +221,10 @@ export function renderDocs(): string {
   for (const [code, status, meaning] of ERROR_DOCS) if (known.has(code)) push(`| \`${code}\` | ${status} | ${meaning} |`);
   push("", "## Operations", "");
 
-  for (const sec of SECTIONS) {
+  // CRM C3.8 ▸ op ที่ไม่ตรงหมวดใดเลย = หมวด "Other" (คู่มือต้องครบ 100 % — ไม่มี op หายเงียบ) ◂
+  const unsectioned = CRM_OPS.filter((o) => !SECTIONS.some((sec) => sec.match(o)));
+  const sections = unsectioned.length ? [...SECTIONS, { key: "other", title: "Other", match: (o: ApiOp) => unsectioned.includes(o) }] : SECTIONS;
+  for (const sec of sections) {
     const ops = CRM_OPS.filter((o) => sec.match(o));
     if (ops.length === 0) continue;
     push(`### ${sec.title}`, "", "| Operation | Method and path | Kind | Scope | Summary |", "| --- | --- | --- | --- | --- |");
@@ -227,6 +236,30 @@ export function renderDocs(): string {
     }
   }
 
+  // CRM C3.8 ▸ เลนลูกค้าของพอร์ทัล (ทะเบียน PORTAL_OPS) — คู่มือครบทั้งสองเลน ◂
+  push(
+    "## Customer portal lane (`/portal/*`)",
+    "",
+    "These operations are called by a contact of a customer company, not by the shop. Authentication is the customer-portal session token (`Authorization: Bearer cp_...`) that the portal sign-in (e-mail OTP or LINE) issues; a shop API key, a member-customer token or no token answers 401 here, and a portal token on any shop operation answers 403. Every answer is limited to the company of the session; another company's record or request answers 404. Revoking the access (`POST /portal-access/{id}/revoke`) ends the session at its next request. Writes accept an optional `Idempotency-Key`. Rate limits are per portal access: 240 reads, 30 writes per minute.",
+    "",
+    "| Operation | Method and path | Kind | Summary |",
+    "| --- | --- | --- | --- |",
+  );
+  for (const o of PORTAL_OPS) push(`| \`${o.id}\` | \`${o.method} ${o.path}\` | ${KIND_LABEL[o.kind]} | ${o.summary} (${o.label}) |`);
+  push("");
+  for (const o of PORTAL_OPS) {
+    const rows = inputTable(o);
+    if (rows.length === 0) continue;
+    push(`#### \`${o.method} ${o.path}\` — ${o.id}`, "", ...rows);
+  }
+  push(
+    "## Machine-readable contract",
+    "",
+    `- \`GET ${BASE_URL}/manifest.json\` (no key): every shop operation (id, method, path, kind, scope, AI tool), the portal lane, the ${tools.length} AI tools and the webhook events - generated from the same registry as this page.`,
+    `- \`GET ${BASE_URL}/openapi.json\` (no key): OpenAPI 3.1 of the shop operations with \`x-shark-webhooks\`. Called with a CRM key it also lists the concrete \`/objects/<key>/records\` paths and value schemas of that key's system.`,
+    "- `GET /objects/{key}/schema`: the JSON schema of one custom object's record values (live - a new object or field shows up at once).",
+    "",
+  );
   push(
     "## AI tools (skill `crm`)",
     "",
@@ -268,6 +301,8 @@ export function renderDocs(): string {
       : e === "crm.portal.viewed" ? "`companyId`, `contactId`, `accessId`, `day` (Thai calendar day) - first portal view of the day only"
       : e === "crm.portal.quote.responded" ? "`companyId`, `contactId`, `docId`, `action` (`ACCEPT` or `REJECT`) - ids only, never the rejection reason"
       : e === "crm.portal.request.created" ? "`companyId`, `contactId`, `requestId`, `kind` (`ISSUE` · `DOCUMENT_REQUEST` · `CONTACT_CHANGE` from the request form · `PROFILE_CHANGE` only from a field-edit request on a shared record)"
+      // CRM C3.8 ▸ ธงโพสต์ห้องทีม (C3.4) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยาย `teamId, change` ซึ่งผิด · id ล้วน (X8) ◂
+      : e === "crm.teamroom.posted" ? "`kind`, `dealId` or `contactId` or `teamId`, `channelId`, `meetingSystemId` (+ `day`, `count` on digests) - ids and numbers only"
       : e.startsWith("crm.deal.") ? "`dealId`, related ids" : e.startsWith("crm.contact.") ? "`contactId`, related ids" : e.startsWith("crm.company.") ? "`companyId`, related ids" : e.startsWith("crm.activity.") ? "`activityId`, related ids" : e.startsWith("crm.email.") ? "`emailId`, `threadKey`, `contactId`, related ids (never an address, subject, body or clicked URL)" : e.startsWith("crm.sequence.") ? "`enrollmentId`, `sequenceId`, `contactId`, related ids" : e.startsWith("crm.web.") ? "`contactId`, `systemId`, `visitorId`, `sessionCount`, `pageViews`, `by` (never a name, address or raw IP)" : e.startsWith("custom.record.") ? "`recordId`, `objectKey`, parent ids" : "`teamId`, `change`";
     push(`| \`${e}\` | ${ids} |`);
   }
@@ -309,6 +344,9 @@ export function renderDocs(): string {
 export function renderEndpointsReference(): string {
   const lines = ["# SHARK CRM API — endpoints", "", "Generated by `scripts/gen-crm-api-docs.mts`. Do not edit by hand.", "", "| Method | Path | Kind | Scope | Summary |", "| --- | --- | --- | --- | --- |"];
   for (const o of CRM_OPS) lines.push(`| ${o.method} | \`${o.path}\` | ${o.kind} | \`${o.action}\` | ${o.summary} |`);
+  // CRM C3.8 ▸ เลนลูกค้า (`/portal/*` · Bearer cp_…) — ตารางแยก เพราะคีย์ของร้านใช้ไม่ได้ ◂
+  lines.push("", "## Customer portal lane (`Authorization: Bearer cp_...` — never a shop key)", "", "| Method | Path | Kind | Summary |", "| --- | --- | --- | --- |");
+  for (const o of PORTAL_OPS) lines.push(`| ${o.method} | \`${o.path}\` | ${o.kind} | ${o.summary} |`);
   lines.push("");
   return lines.join("\n");
 }

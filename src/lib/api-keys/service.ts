@@ -261,3 +261,21 @@ export async function listApiKeys(ctx: ApiKeyCtx): Promise<ApiKeyRow[]> {
   });
   return rows.map(({ scopesJson, ...r }) => ({ ...r, scopes: parseScopes(scopesJson) }));
 }
+
+// CRM C3.8 ▸ งานเบื้องหลังที่ "คีย์ API เป็นผู้ขอ" (ส่งออกรายงาน CRM ผ่าน REST) ต้องสร้างผู้ทำงานจากคีย์ **ใหม่ตอนรัน**
+//   ไม่ใช่ใช้ scope ที่จดไว้ตอนขอ ⇒ คีย์ที่ถูกเพิกถอน/หมดอายุ/ถูกหมุนระหว่างรอคิว = ไม่มีผู้ทำงาน (งานล้มพร้อมเหตุผลไทย)
+//   อ่านผ่าน tenantDb (ร้านเดียวกับงานเท่านั้น) · ไม่คืน keyHash/prefix ◂
+export type ActiveApiKeyForRun = { keyId: string; scopes: string[]; systemId: string | null; createdById: string | null };
+
+/** คีย์ที่ยังใช้งานได้ของร้านนี้ตาม id (เพิกถอน/หมดอายุ/ไม่พบ/ร้านอื่น = null) */
+export async function activeApiKeyForRun(ctx: ApiKeyCtx, keyId: string, now: Date = new Date()): Promise<ActiveApiKeyForRun | null> {
+  const id = typeof keyId === "string" ? keyId.trim() : "";
+  if (!id) return null;
+  const row = await tenantDb(ctx).apiKey.findFirst({
+    where: { id, revokedAt: null },
+    select: { id: true, scopesJson: true, systemId: true, expiresAt: true, createdById: true },
+  });
+  if (!row || (row.expiresAt && row.expiresAt.getTime() <= now.getTime())) return null;
+  return { keyId: row.id, scopes: parseScopes(row.scopesJson), systemId: row.systemId, createdById: row.createdById };
+}
+// ◂ CRM C3.8

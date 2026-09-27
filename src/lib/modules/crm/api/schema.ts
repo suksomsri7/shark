@@ -54,3 +54,15 @@ export function pageOfCursor(c: string | undefined): number {
   const m = /^page:(\d{1,6})$/.exec(Buffer.from(c, "base64url").toString("utf8"));
   return m ? Math.max(1, Number(m[1])) : 1;
 }
+
+// CRM C3.8 ▸ คีย์งวดของโควตา/คอมมิชชัน — บริการเก็บเป็นปี ค.ศ. ("2026-09" · "2026-Q3" · "2026") · REST รับปี พ.ศ. ได้ด้วย
+//   ("2569-09" → "2026-09") เพราะร้านไทยพิมพ์ พ.ศ. เป็นปกติ · ปี ≥ 2400 เท่านั้นที่ถูกแปลง (ปี ค.ศ. ที่บริการรับได้สูงสุด 2199 — ไม่มีทางกำกวม)
+//   รูปอื่นส่งต่อให้บริการตัดสินตามเดิม (ผิดรูป = 422 ข้อความไทยของบริการ) ◂
+export const periodKeyText = z.string().min(4).max(10);
+export function periodKeyIn(v: string | null | undefined): string | undefined {
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!s) return undefined;
+  const m = /^(\d{4})(-(?:\d{2}|Q[1-4]))?$/.exec(s);
+  if (m && Number(m[1]) >= 2400) return `${Number(m[1]) - 543}${m[2] ?? ""}`;
+  return s;
+}

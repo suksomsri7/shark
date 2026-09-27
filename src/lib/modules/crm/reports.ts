@@ -88,7 +88,7 @@ type Sql = Prisma.Sql;
 const NOT_FOUND_MSG = "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละร้าน) — รีเฟรชหน้าแล้วลองใหม่";
 const TAB_MSG = "ไม่รู้จักแท็บรายงานนี้ — เลือกแท็บจากรายการของหน้ารายงาน";
 const DATE_MSG = "วันที่ในตัวกรองอ่านไม่ออก — ใช้รูปแบบ ปี-เดือน-วัน แบบ ค.ศ. เช่น 2026-10-31";
-const API_EXPORT_MSG = "การส่งออกไฟล์รายงานใช้ได้จากหน้าจอของพนักงานเท่านั้น (ยังไม่เปิดให้คีย์ API) — ใช้รายงานแบบอ่านค่าแทน หรือเข้าหน้ารายงานเพื่อส่งออก";
+const API_EXPORT_MSG = "การส่งออกไฟล์รายงานผ่านคีย์ API ใช้ได้เฉพาะคีย์ชุดผู้ดูแล (crm.admin) — ขอให้เจ้าของร้านออกคีย์ผู้ดูแลสำหรับงานนี้ หรือส่งออกจากหน้ารายงาน"; // CRM C3.8 ▸ ข้อความใหม่ (คีย์ผู้ดูแลส่งออกได้แล้ว) ◂
 const RANGE_MSG = "ช่วงวันที่ในตัวกรองกลับด้าน (วันเริ่มอยู่หลังวันสิ้นสุด) — สลับวันแล้วลองใหม่";
 const EXPORT_CSV_MAX_BYTES = 5 * 1024 * 1024;
 const EXPORT_BATCH_MAX = 20;
@@ -846,9 +846,11 @@ const exportFilename = (tab: ReportTab, day: string) => `crm-report-${tab}-${day
  */
 export async function startExport(ctx: ReportsCtx, actor: Actor, input: { tab: ReportTab | string; filters?: ForecastFilters | null }): Promise<{ jobId: string; status: ReportExportStatus }> {
   const { sys, actor: a } = await enter(ctx, actor, "crm.report.view");
-  // S2 (AUDIT-CLASS X2): ส่งออกเป็นของ "คน" เท่านั้น — คีย์ API ไม่มีตัวตนคงที่ให้ผูกผู้ขอ (createdById ของคีย์ = ผู้สร้างคีย์ ไม่ใช่ผู้เรียก)
-  //   C3.8 (REST) ต้องสร้าง actor จากคีย์ใหม่ตอนรันและผูกงานกับ ApiKey.id ก่อนเปิดทางนี้
-  if (isApiActor(a)) throw fail("FORBIDDEN", API_EXPORT_MSG);
+  // S2 (AUDIT-CLASS X2): ผู้ขอมีตัวตนคงที่เสมอ — คน = USER + userId · คีย์ API = APIKEY + ApiKey.id (ไม่ใช่ผู้สร้างคีย์)
+  // CRM C3.8 ▸ เปิดทางให้คีย์ API: ผูกงานกับ ApiKey.id · เฉพาะคีย์ชุดผู้ดูแล (crm.admin — การส่งออกทั้งชุด) · ตอนรันสร้างผู้ทำงานจาก
+  //   คีย์ใหม่ (`keyActorForRun`) — คีย์ถูกเพิกถอน/หมดอายุระหว่างรอคิว = งานล้มพร้อมเหตุผลไทย · คนอ่านงานของคีย์ไม่ได้ และกลับกัน ◂
+  const requester = requesterOf(a);
+  if (!requester) throw fail("FORBIDDEN", API_EXPORT_MSG);
   const tab = (input as { tab?: unknown } | null)?.tab;
   if (!isReportTab(tab)) throw fail("VALIDATION", TAB_MSG);
   const rawFilters = (input as { filters?: unknown } | null)?.filters ?? {};
@@ -862,15 +864,45 @@ export async function startExport(ctx: ReportsCtx, actor: Actor, input: { tab: R
       systemId: sys.systemId,
       kind: REPORT_EXPORT_KIND,
       status: "QUEUED",
-      createdById: a.userId,
-      // ตัวตนคงที่ของผู้ขอ = ชนิด USER + userId (getExport เทียบทั้งคู่ — ไม่มีทางที่คีย์ API ของผู้สร้างคีย์จะอ่านงานของคนได้)
-      options: { tab, filters, requesterKind: "USER", requesterId: a.userId, ...(groupBy ? { groupBy } : {}) },
+      createdById: a.userId || null,
+      // ตัวตนคงที่ของผู้ขอ = ชนิด + id (getExport เทียบทั้งคู่ — ไม่มีทางที่คีย์ API ของผู้สร้างคีย์จะอ่านงานของคนได้ และกลับกัน)
+      options: { tab, filters, requesterKind: requester.kind, requesterId: requester.id, ...(groupBy ? { groupBy } : {}) },
     },
     select: { id: true },
   });
   // AUDIT-CLASS X8: audit = รหัส + แท็บ + ตัวกรอง (id ล้วน) — ไม่มีข้อมูลบุคคล
-  await writeAudit({ tenantId: sys.tenantId, actorId: a.userId, action: "crm.report.export", targetType: "CrmImportJob", targetId: job.id, after: { tab, filters, groupBy } });
+  await writeAudit({
+    tenantId: sys.tenantId,
+    actorId: a.userId || null,
+    action: "crm.report.export",
+    targetType: "CrmImportJob",
+    targetId: job.id,
+    after: { tab, filters, groupBy, ...(requester.kind === "APIKEY" ? { apiKeyId: requester.id } : {}) },
+  });
   return { jobId: job.id, status: "QUEUED" };
+}
+
+// CRM C3.8 ▸ ตัวตนของผู้ขอไฟล์ส่งออก + ผู้ทำงานของงานที่คีย์ API ขอ ◂
+/** ผู้ขอ = คน (USER + userId) หรือคีย์ API ชุดผู้ดูแล (APIKEY + ApiKey.id) · คีย์ชุดอื่น/คีย์ไม่มี id = null (ปฏิเสธ) */
+function requesterOf(a: Actor): { kind: "USER" | "APIKEY"; id: string } | null {
+  if (!isApiActor(a)) return typeof a.userId === "string" && a.userId ? { kind: "USER", id: a.userId } : null;
+  const keyId = str((a as Actor & { keyId?: unknown }).keyId);
+  // AUDIT-CLASS X2: การส่งออกทั้งชุดของคีย์ = crm.admin เท่านั้น (ชั้น REST ตรวจก่อนแล้ว — ที่นี่คือชั้นที่สอง)
+  return keyId && String(a.apiRole ?? "").toUpperCase() === "ADMIN" ? { kind: "APIKEY", id: keyId } : null;
+}
+
+/**
+ * ผู้ทำงานของงานส่งออกที่คีย์ API ขอ — อ่านคีย์ใหม่ตอนรัน: ยังไม่ถูกเพิกถอน/หมดอายุ · ร้านเดียวกัน · ผูกระบบนี้ (หรือไม่ผูก) ·
+ * ยังเป็นชุดผู้ดูแลและยังมี crm.report.view ⇒ actor จาก scope ปัจจุบันของคีย์ (ตัวกรองทีม/ผู้ดูแลของคีย์มีผลกับรายงานเหมือนตอนอ่าน)
+ */
+async function keyActorForRun(tenantId: string, systemId: string, keyId: string): Promise<{ actor: Actor } | undefined> {
+  const { activeApiKeyForRun } = await import("@/lib/api-keys/service");
+  const key = await activeApiKeyForRun({ tenantId }, keyId);
+  if (!key || (key.systemId !== null && key.systemId !== systemId)) return undefined;
+  const { crmActorForKey } = await import("./api/actor");
+  const actor = crmActorForKey({ keyId: key.keyId, scopes: key.scopes, createdById: key.createdById });
+  if (requesterOf(actor)?.kind !== "APIKEY" || !crmCan(actor, "crm.report.view")) return undefined;
+  return { actor };
 }
 
 /** actor ของพนักงานจาก Membership ปัจจุบัน (re-resolve ทุกครั้ง — ถูกเอาออกจากร้านแล้ว = null) */
@@ -936,9 +968,20 @@ export async function runExportJobs(opts: RunOpts = {}): Promise<{ done: number;
       const o = (job.options && typeof job.options === "object" && !Array.isArray(job.options) ? job.options : {}) as Record<string, unknown>;
       const tab = o.tab;
       if (!isReportTab(tab)) throw fail("VALIDATION", TAB_MSG);
-      const who = (await staffActor(job.tenantId, job.createdById ? [job.createdById] : [])).get(job.createdById ?? "");
-      if (!who) throw fail("FORBIDDEN", "ผู้ขอไฟล์นี้ไม่ได้เป็นพนักงานของร้านนี้แล้ว — ขอส่งออกใหม่จากบัญชีที่ยังใช้งานอยู่");
-      const ctx = { tenantId: job.tenantId, systemId: job.systemId, actorUserId: who.actor.userId };
+      // CRM C3.8 ▸ งานของคีย์ API: ผู้ทำงาน = คีย์ใบนั้น "ตอนนี้" (scope/ตัวกรอง/ระบบที่ผูก อ่านใหม่) — ไม่ใช่ผู้สร้างคีย์ ◂
+      const who =
+        o.requesterKind === "APIKEY"
+          ? await keyActorForRun(job.tenantId, job.systemId, typeof o.requesterId === "string" ? o.requesterId : "")
+          : (await staffActor(job.tenantId, job.createdById ? [job.createdById] : [])).get(job.createdById ?? "");
+      if (!who) {
+        throw fail(
+          "FORBIDDEN",
+          o.requesterKind === "APIKEY"
+            ? "คีย์ API ที่ขอไฟล์นี้ถูกยกเลิก หมดอายุ หรือไม่มีสิทธิ์ส่งออกแล้ว — ขอส่งออกใหม่ด้วยคีย์ชุดผู้ดูแลที่ยังใช้งานอยู่"
+            : "ผู้ขอไฟล์นี้ไม่ได้เป็นพนักงานของร้านนี้แล้ว — ขอส่งออกใหม่จากบัญชีที่ยังใช้งานอยู่",
+        );
+      }
+      const ctx = { tenantId: job.tenantId, systemId: job.systemId, actorUserId: who.actor.userId || null };
       const run = await prepare(ctx, who.actor, o.filters ?? {});
       const rep = await compute(run, tab, { groupBy: o.groupBy });
       const { csv, rowCount } = await toCsv(run, tab, rep);
@@ -962,17 +1005,20 @@ export async function runExportJobs(opts: RunOpts = {}): Promise<{ done: number;
 /** ผลของงานส่งออก — **เฉพาะผู้ขอ** (คนอื่น = NOT_FOUND) · ไม่มี URL ใด ๆ ใน DTO (AUDIT-CLASS X10: CSV ส่งถึงมือผู้ขอเท่านั้น) */
 export async function getExport(ctx: ReportsCtx, actor: Actor, jobId: string): Promise<ReportExportDto> {
   const { sys, actor: a } = await enter(ctx, actor, "crm.report.view");
-  if (isApiActor(a)) throw fail("FORBIDDEN", API_EXPORT_MSG);
+  const requester = requesterOf(a);
+  // CRM C3.8 ▸ คีย์ชุดอ่าน/ทำงาน ขอส่งออกไม่ได้ ⇒ ไม่มีงานของตัวเองเลย — "ไม่พบ" (ไม่ใช่ห้าม: ไม่บอกว่ามีงานของคนอื่นอยู่) ◂
+  if (!requester) throw fail(isApiActor(a) ? "NOT_FOUND" : "FORBIDDEN", isApiActor(a) ? "ไม่พบไฟล์ส่งออกนี้สำหรับคีย์นี้ — ไฟล์ส่งออกเปิดได้เฉพาะคีย์ที่เป็นผู้ขอ" : API_EXPORT_MSG);
   const id = str(jobId);
   const job = id
     ? await prisma.crmImportJob.findFirst({
-        where: { id, tenantId: sys.tenantId, systemId: sys.systemId, kind: REPORT_EXPORT_KIND, createdById: a.userId },
+        // CRM C3.8 ▸ งานของคน = createdById ต้องตรงด้วย (เดิม) · งานของคีย์ = เทียบ requesterId (ApiKey.id) ข้างล่าง ◂
+        where: { id, tenantId: sys.tenantId, systemId: sys.systemId, kind: REPORT_EXPORT_KIND, ...(requester.kind === "USER" ? { createdById: a.userId } : {}) },
         select: { id: true, status: true, options: true, result: true, totalRows: true, error: true },
       })
     : null;
   const o = (job?.options && typeof job.options === "object" && !Array.isArray(job.options) ? job.options : {}) as Record<string, unknown>;
   // S2: ผู้ขอต้องตรงทั้งชนิด (USER) และ userId — ไม่ใช่แค่ createdById
-  if (!job || o.requesterKind !== "USER" || o.requesterId !== a.userId) throw fail("NOT_FOUND", "ไม่พบไฟล์ส่งออกนี้ (อาจเป็นของบัญชีอื่นหรือถูกล้างไปแล้ว) — กดส่งออกใหม่ได้เลย");
+  if (!job || o.requesterKind !== requester.kind || o.requesterId !== requester.id) throw fail("NOT_FOUND", "ไม่พบไฟล์ส่งออกนี้ (อาจเป็นของบัญชีอื่นหรือถูกล้างไปแล้ว) — กดส่งออกใหม่ได้เลย");
   const r = (job.result && typeof job.result === "object" && !Array.isArray(job.result) ? job.result : {}) as Record<string, unknown>;
   const status = (["QUEUED", "RUNNING", "DONE", "FAILED"].includes(job.status) ? job.status : "FAILED") as ReportExportStatus;
   return {

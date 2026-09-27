@@ -7,10 +7,15 @@ import type { ApiOp } from "@/lib/api/op";
 import { CRM_RATE_LIMITS } from "./rate";
 import { CRM_OPS } from "./registry";
 import { crmWebhookEvents } from "./webhook-events";
+// CRM C3.8 ▸ เอกสารต่อร้าน (path จริงของทุกวัตถุ) เมื่อเรียกด้วยคีย์ CRM ◂
+import { verifyApiKeyDetailed } from "@/lib/api-keys/service";
+import { crmActorForKey, crmScopesCan } from "./actor";
+import { crmObjectsOpenApi } from "./ops/records-dynamic";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 
 export { jsonSchemaOf } from "@/lib/api/openapi";
 export type { ApiDocInfo, JsonSchema, OpenApiDocument } from "@/lib/api/openapi";
-export { crmWebhookEvents, CRM_EVENT_PREFIXES } from "./webhook-events";
+export { crmWebhookEvents, CRM_EVENT_PREFIXES, CRM_INTERNAL_EVENTS } from "./webhook-events";
 
 const SERVER_URL = "https://shark.in.th/api/v1/crm";
 const API_VERSION = "1.0.0";
@@ -35,6 +40,11 @@ export const CRM_DOC_DESCRIPTION: readonly string[] = [
   "14. Sales teams are tenant-wide: one team list per shop, shared by every CRM system of that shop (not per system). They are also served at `/api/v1/teams` with the same operations and key. A key that is not bound to a system may omit `X-Shark-System` only when the shop has a single CRM system.",
   "15. Request bodies are capped at 1 MB (10 MB for `POST /contacts/import`); larger bodies answer 413 `payload_too_large`. Exports (`POST /contacts/export`, `POST /objects/{key}/records/export`) need a `crm.admin` key.",
   "16. A key with an owner or team filter can only create or reassign records inside that filter; anything that would land outside answers 422 `validation`.",
+  // CRM C3.8 ▸ ข้อตกลงของชุดที่สาม ◂
+  "17. Custom objects are dynamic: `/objects/{key}/records...` works for every object of the system the moment it is created, and `GET /objects/{key}/schema` describes the values of one object. `GET /openapi.json` called WITH a CRM key adds the concrete `/objects/<key>/records` paths of that key's system (without a key it is the static contract and carries no shop data).",
+  "18. The customer portal has its own lane at `/portal/*`: it takes a customer-portal session token (`Authorization: Bearer cp_...`), never a shop key; a shop key there answers 401, a portal token on any other path answers 403. The shop side of the portal (access list, invites, revoke) lives at `/companies/{id}/portal-access`, `/companies/{id}/portal-invites` and `/portal-access/{id}/revoke`.",
+  "19. Period keys of quotas and commissions are Gregorian (`2026-09`, `2026-Q3`, `2026`); a Thai Buddhist year (`2569-09`) is accepted and converted. Report exports are asynchronous jobs that only the `crm.admin` key which queued them can read.",
+  "20. The whole contract is machine readable without a key: `GET /manifest.json` lists every operation, the portal lane, the AI tools and the webhook events; the OpenAPI document carries the webhook events as `x-shark-webhooks`.",
 ];
 
 export const CRM_DOC_INFO: ApiDocInfo = {
@@ -46,8 +56,46 @@ export const CRM_DOC_INFO: ApiDocInfo = {
   securityDescription: "API key created in the CRM settings (CRM > Settings > API). Send it as `Authorization: Bearer <key>`.",
 };
 
+/** เอกสาร OpenAPI ของ CRM = ของแกน + `x-shark-webhooks` (เหตุการณ์ที่ร้านสมัครได้ — ทะเบียนเดียวกับหน้าตั้งค่า · CRM C3.8) */
+export type CrmOpenApiDocument = OpenApiDocument & { "x-shark-webhooks": string[]; "x-shark-objects"?: unknown };
+
 /** ทะเบียน op ของ CRM → เอกสาร OpenAPI 3.1 (บริสุทธิ์ · เรียกซ้ำได้ผลเท่ากันทุกไบต์) */
-export function buildOpenApi(ops: readonly ApiOp[] = CRM_OPS, baseUrl?: string): OpenApiDocument {
+export function buildOpenApi(ops: readonly ApiOp[] = CRM_OPS, baseUrl?: string): CrmOpenApiDocument {
   const info: ApiDocInfo = baseUrl ? { ...CRM_DOC_INFO, serverUrl: `${baseUrl.replace(/\/+$/, "")}/api/v1/crm` } : CRM_DOC_INFO;
-  return coreBuildOpenApi(ops, info);
+  // CRM C3.8 ▸ x-shark-webhooks = crmWebhookEvents() (ข้อสอบ C3.8-S4.1) ◂
+  return { ...coreBuildOpenApi(ops, info), "x-shark-webhooks": crmWebhookEvents() };
+}
+
+// CRM C3.8 ▸ `/api/v1/crm/openapi.json` ต่อผู้เรียก ◂
+/**
+ * ไม่มีคีย์ / คีย์ใช้ไม่ได้ / ไม่ใช่คีย์ CRM ที่อ่านรายการได้ / ระบบไม่ใช่ CRM v2 ⇒ เอกสารคงที่ (ไม่มีข้อมูลร้านใด — เหมือนเดิมทุกไบต์)
+ * คีย์ CRM ที่ถือ `crm.record.read` ⇒ + path จริงของทุกวัตถุในระบบของคีย์ (`/objects/<key>/records…`) และ `x-shark-objects`
+ *   ฟิลด์อ่อนไหวในสคีมาตามสิทธิ์ของคีย์ (readonly/operate ไม่เห็นเสมอ) · ไม่แคชร่วม (`keyed` ⇒ route ตอบ private, no-store)
+ * AUDIT-CLASS X1: ระบบ = ระบบที่คีย์ผูก (หรือหัว X-Shark-System เมื่อคีย์ไม่ผูก และต้องเป็น CRM ของร้านเดียวกับคีย์)
+ */
+export async function buildOpenApiForRequest(req: Request): Promise<{ doc: CrmOpenApiDocument; keyed: boolean; retryAfterSec?: number }> {
+  const base = buildOpenApi();
+  const m = /^Bearer\s+(.+)$/i.exec((req.headers.get("authorization") ?? "").trim());
+  const raw = m?.[1]?.trim() ?? "";
+  if (!raw) return { doc: base, keyed: false };
+  const v = await verifyApiKeyDetailed(raw);
+  if (v.status !== "ok" || !crmScopesCan(v.key.scopes, "crm.record.read")) return { doc: base, keyed: false };
+  const header = req.headers.get("x-shark-system")?.trim() || null;
+  if (v.key.systemId && header && header !== v.key.systemId) return { doc: base, keyed: false };
+  const systemId = v.key.systemId ?? header;
+  if (!systemId) return { doc: base, keyed: false };
+  // รีวิว C3.8 N3: เอกสารต่อคีย์อ่านฐาน (วัตถุ + ฟิลด์) ⇒ นับเข้าถังอ่านของคีย์ใบเดียวกับ REST (`crm:api:read:<keyId>`) · เต็ม = 429
+  const rl = await checkRateLimitDb(`crm:api:read:${v.key.keyId}`, CRM_RATE_LIMITS.read);
+  if (!rl.ok) return { doc: base, keyed: true, retryAfterSec: rl.retryAfterSec ?? 60 };
+  const actor = crmActorForKey({ keyId: v.key.keyId, scopes: v.key.scopes, createdById: v.key.createdById });
+  let extra: Awaited<ReturnType<typeof crmObjectsOpenApi>>;
+  try {
+    extra = await crmObjectsOpenApi({ tenantId: v.key.tenantId, systemId }, { actor, requireV2: true });
+  } catch {
+    return { doc: base, keyed: false };
+  }
+  const merged: Record<string, OpenApiDocument["paths"][string]> = { ...base.paths, ...extra.paths };
+  const paths: OpenApiDocument["paths"] = {};
+  for (const p of Object.keys(merged).sort()) paths[p] = merged[p]!;
+  return { doc: { ...base, paths, "x-shark-objects": extra.objects }, keyed: true };
 }
