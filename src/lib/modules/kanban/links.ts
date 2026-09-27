@@ -20,7 +20,7 @@ import { setCardLabels } from "./labels";
 import { sanitizeDescription } from "./sanitize";
 import { createCard } from "./service";
 import { LINK_TYPES, targetExists } from "./link-resolvers";
-import type { KanbanCardSourceType } from "@prisma/client";
+import type { KanbanCardSourceType, Prisma } from "@prisma/client";
 import type { KanbanActor, KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
 // CRM C1.6 ▸ ด่านการมองเห็นบอร์ดของโมดูลนี้เอง (visibleBoardOptions ท้ายไฟล์) · +KanbanActor ในบรรทัดบน ◂
 import { visibleBoardsWhere } from "./access";
@@ -447,3 +447,87 @@ export async function visibleBoardOptions(
   });
 }
 // ◂ CRM C1.6
+
+// CRM C3.9-fix ▸ H4 (ล่าความปลอดภัย B4): ลบข้อมูลส่วนบุคคลตาม PDPA — การ์ดที่ผูกกับของที่ถูกลบ (เช่น ผู้ติดต่อ CRM) ถูกปิดคำระบุตัว
+//   ทั้งหัวการ์ด · รายละเอียด · ความเห็น (KanbanComment.body) · ประวัติการ์ด (KanbanActivity.data — เช่น CARD_CREATED เก็บหัวการ์ดตอนสร้าง)
+//   ตัวเขียนตารางบอร์ดงานอยู่ในโมดูลนี้เท่านั้น (ผู้เรียกส่งตัวปิดข้อความมา — บอร์ดงานไม่รู้ว่าคำไหนระบุตัวใคร) · ใน tx ของผู้เรียก
+//   รวมลิงก์ที่ถอดไปแล้วด้วย (การ์ดเคยผูก = ข้อความอาจเอ่ยถึงคนนั้น) · แถวคงอยู่ทั้งหมด (ลำดับงาน/ตัวนับของบอร์ดไม่เปลี่ยน)
+const MASK_CARDS_MAX = 2_000;
+export async function maskCardsLinkedInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  linkType: KanbanLinkKind,
+  linkIds: readonly string[],
+  mask: (text: string) => string,
+): Promise<{ cards: number; comments: number; activities: number }> {
+  const ids = [...new Set(linkIds.filter((x) => typeof x === "string" && !!x))];
+  if (!tenantId || ids.length === 0) return { cards: 0, comments: 0, activities: 0 };
+  const cardIds = [...new Set((await tx.kanbanCardLink.findMany({ where: { tenantId, linkType, linkId: { in: ids } }, select: { cardId: true }, take: MASK_CARDS_MAX })).map((l) => l.cardId))];
+  return maskCardsInTx(tx, tenantId, { id: { in: cardIds } }, mask, null);
+}
+
+/**
+ * รีวิว C3.9-fix S1: การ์ดที่ **โมดูลอื่นเปิดเอง** (เช่น คำขอจากพอร์ทัล CRM · `sourceKey` ขึ้นต้นด้วย prefix ของผู้เรียก) — หัวการ์ด = ป้ายที่ผู้เรียกให้ ·
+ * รายละเอียดว่าง · ความเห็น + ประวัติการ์ดถูกปิดคำด้วยตัวปิดของผู้เรียก และข้อความหัว/รายละเอียดเดิมถูกแทนด้วยป้าย (CARD_CREATED เก็บหัวเดิมไว้)
+ * sourceKey คงไว้ (กันเปิดการ์ดซ้ำ) · ตารางบอร์ดงานเขียนที่นี่ที่เดียว (ผู้เรียกไม่เขียน `kanbanCard` ตรง)
+ */
+export async function redactCardsInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  cardIds: readonly string[],
+  opts: { title: string; sourceKeyPrefix: string; mask?: ((text: string) => string) | null },
+): Promise<{ cards: number; comments: number; activities: number }> {
+  const ids = [...new Set(cardIds.filter((x) => typeof x === "string" && !!x))].slice(0, MASK_CARDS_MAX);
+  if (!tenantId || ids.length === 0 || !opts.sourceKeyPrefix) return { cards: 0, comments: 0, activities: 0 };
+  return maskCardsInTx(tx, tenantId, { id: { in: ids }, sourceKey: { startsWith: opts.sourceKeyPrefix } }, opts.mask ?? ((x) => x), opts.title);
+}
+
+async function maskCardsInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  where: Prisma.KanbanCardWhereInput,
+  mask: (text: string) => string,
+  redactTitle: string | null,
+): Promise<{ cards: number; comments: number; activities: number }> {
+  const out = { cards: 0, comments: 0, activities: 0 };
+  const cards = await tx.kanbanCard.findMany({ where: { ...where, tenantId }, select: { id: true, title: true, description: true }, take: MASK_CARDS_MAX });
+  if (cards.length === 0) return out;
+  const cardIds = cards.map((c) => c.id);
+  // หัว/รายละเอียดเดิมของการ์ดที่ถูกแทนด้วยป้าย (ยาว ≥ 4) ถูกแทนในความเห็น/ประวัติด้วย — ประวัติ CARD_CREATED/UPDATED พกข้อความเดิม
+  const old = redactTitle === null ? [] : cards.flatMap((c) => [c.title, c.description ?? ""]).map((x) => x.trim()).filter((x) => x.length >= 4 && x !== redactTitle).sort((x, y) => y.length - x.length);
+  const text = (v: string): string => {
+    let r = v;
+    for (const o of old) if (r.includes(o)) r = r.split(o).join(redactTitle as string);
+    return mask(r);
+  };
+  const deep = (v: unknown): unknown => {
+    if (typeof v === "string") return text(v);
+    if (Array.isArray(v)) return v.map(deep);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, deep(x)]));
+    return v;
+  };
+  for (const c of cards) {
+    const title = redactTitle ?? mask(c.title);
+    const description = redactTitle !== null ? null : c.description === null ? null : mask(c.description);
+    if (title !== c.title || description !== c.description) {
+      await tx.kanbanCard.update({ where: { id: c.id }, data: { title, description } });
+      out.cards += 1;
+    }
+  }
+  for (const r of await tx.kanbanComment.findMany({ where: { tenantId, cardId: { in: cardIds } }, select: { id: true, body: true } })) {
+    const body = text(r.body);
+    if (body !== r.body) {
+      await tx.kanbanComment.update({ where: { id: r.id }, data: { body } });
+      out.comments += 1;
+    }
+  }
+  for (const r of await tx.kanbanActivity.findMany({ where: { tenantId, cardId: { in: cardIds } }, select: { id: true, data: true } })) {
+    const data = deep(r.data);
+    if (JSON.stringify(data) !== JSON.stringify(r.data)) {
+      await tx.kanbanActivity.update({ where: { id: r.id }, data: { data: data as Prisma.InputJsonValue } });
+      out.activities += 1;
+    }
+  }
+  return out;
+}
+// ◂ CRM C3.9-fix

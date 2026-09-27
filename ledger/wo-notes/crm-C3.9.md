@@ -137,3 +137,106 @@
 | D8–D11 | ✅ | ผู้ตรวจอิสระ 2 รอบ (BLOCKER 3 + SHOULD-FIX 5 + NOTE 12 → รอบ 2 SHOULD-FIX 2 + NOTE 9 → รอบ 3 ปิด) + รอบ 4 regression static · หลักฐาน before/after `.qc-shots/c39/r2-probe-b123.log` |
 | D12 | ⏳ | รอ push (เจ้าของกด) — `a0d9d531` + `a06a796b` + `a9523b59` |
 หนี้: N2 ตัวเก็บตก followUp FAILED (C6) · N6 index (tenantId, action, targetId) บน AuditLog · N7 รอบแรก retention prod (C6.1 เจ้าของ) · AppNotification refType/refId (migration) · N8 payload มีแค่ contactId หลัก
+
+## § C3.9-fix (security hunt) — 12 findings ของนักล่าความปลอดภัย (27 ก.ย. 2569 · builder Opus · c12a/QC1 · `f1d55be6`)
+> สัญญา: ORACLE-EDIT **C3.9-H1…H12** + S3.1 (ธงเตือน 31 วัน) ใน `scripts/qc-crm-c3.9.mts` (ไม่ได้แตะข้อสอบ) · มติผู้คุมงาน RUN §4 27 ก.ย. 10:50 · ไม่มี migration
+> ก่อนแก้ (ทำซ้ำได้): `/root/projects/shark-crm/.qc-shots/hunt39/oracle-h-red.log` **36/48** (H1–H12 แดง · ค่าจริงในแต่ละบรรทัด) + probe `probe-hunt39{,b}.log` · หลังแก้: `.qc-shots/c39fix/c39-r1.log` **48/48** (รอบแรกหลังแก้)
+
+| H | ต้นเหตุ | แก้ที่ | ก่อน (red log) → หลัง |
+|---|---|---|---|
+| H1 (B1) | ขอบเขตการลบไม่มี `FormSubmission` (ตารางของโมดูลฟอร์ม) · คำระบุตัวมีแต่ค่าปัจจุบันของผู้ติดต่อ ⇒ ชื่อที่กรอกในฟอร์ม/ชื่อก่อนแก้ไขรอดในแจ้งเตือน | `forms/service.ts:526` `eraseCrmContactSubmissions` (answers `{}` · ip/pageUrl/referrer/utm/webSessionId null · คืนชื่อ/เบอร์/อีเมลที่เคยกรอก) + `submissionsOfCrmContacts` → facade `forms/index.ts:4` · `privacy.ts:409` เรียกใน tx · `privacy.ts:338` `formerIdentity` (ชื่อ/เบอร์/อีเมล/LINE ดิบจากแถว audit เก่าของสาย) · `privacy.ts:173` ชื่อเดิมใช้เฉพาะชื่อเต็ม ≥ 2 คำ · ส่งออก `privacy.ts:851` ตาราง `FormSubmission` | `answersEmpty=false metaNull=false formerNameInNotification=true exportRows=-1` → ✅ |
+| H2 (B2) | เลือกจดหมายด้วย `contactId ∈ สาย` อย่างเดียว | `privacy.ts:473` ชุดที่สอง: จดหมายของระบบที่ `contactId` เป็นคนอื่น/null แต่ from/to/cc/bcc ตรงที่อยู่ของเขา (อีเมลปัจจุบัน · เก่า · Party · ฟอร์ม · audit เก่า) — ตัดที่อยู่ของเขาออก · ปิดคำระบุตัวในหัวข้อ/เนื้อ/ชื่อผู้ส่ง · เขาเป็นผู้ส่ง + ไม่ผูกใคร = ล้างเนื้อ/html/snippet/ไฟล์แนบ + หัวข้อ (RETENTION = ปิดคำแทน) · FOR UPDATE เรียง id | `cc=true phoneInBody=true · unlinked body/html/subjName/fromIsPerson=true` → ✅ |
+| H3 (B3) | AiMessage/AiConversation อยู่นอกขอบเขต | `privacy.ts:548` replace เดียวกับ AppNotification (ผูก tenantId · แถวคงอยู่) | `leakingRows=3` → ✅ (control ไม่ถูกแตะ) |
+| H4 (B4) | ปิดแค่หัว/รายละเอียดการ์ด และเขียนตารางบอร์ดงานตรงจาก privacy.ts | `kanban/links.ts:451` `maskCardsLinkedInTx` (หัว · รายละเอียด · KanbanComment.body · KanbanActivity.data แบบลึก · รวมลิงก์ที่ถอดแล้ว) — privacy.ts เรียกผ่าน facade `privacy.ts:603` (ไม่มี `tx.kanban*` ใน privacy.ts แล้ว) | `commentHasPhone=true historyHasName=true` → ✅ |
+| H5 (B5) | `crm.contact.delete` อย่างเดียวลบสมาชิกตรง (`eraseMemberById`) ข้ามคีย์/สายอนุมัติของระบบสมาชิก | `privacy.ts:257` ตรวจ `hasMemberPerm(actor,"member.customer.delete")` ก่อน tx · ไม่มีคีย์ = สมาชิกไม่ถูกแตะ + OpsEvent WARN (id ล้วน) + `memberSkipped` · มีคีย์ = `followUp.memberRequests` → `completeErasure` เรียก `member.requestEraseFromCrm` (`member/privacy.ts:1441` — `requestErase` ตัวจริง: ไม่มีนโยบาย = ลบทันที · มี = MemberPrivacyRequest + ApprovalRequest PENDING · `memberPending`) · สมาชิกนับเป็นผู้ถือ Party เสมอ (`privacy.ts:611` — ระบบสมาชิกล้าง Party เองเมื่อถูกลบจริง) · ข้อความ action `privacy-actions.ts:60` | `a: member=CLOSED skipped=false · b: request=- approvals=0` → ✅ (c = ลบทันทีคงเดิม) |
+| H6 (M1) | วันยึด `COALESCE(lastActivityAt, createdAt)` ถอยไปก่อนวันสร้างได้ (กิจกรรมย้อนหลัง) · ลบได้โดยไม่เคยเตือน | `privacy.ts:1263` วันยึด `GREATEST(COALESCE(lastActivityAt, createdAt), createdAt)` · ลบเฉพาะที่มี `crm.retention.warned` **หลังวันยึด** และอายุ ≥ `LEAD_RETENTION_WARN_DAYS` · เตือน = ใกล้ครบ **หรือเกินอายุแต่ยังไม่เคยเตือน** · ธงกันเตือนซ้ำ = คำเตือนหลังวันยึด (`warnBatch` `privacy.ts:1216`) | `leadsErased=4 leadsWarned=0 fresh/unwarned/warned5 erased` → ✅ |
+| H7 (M2) | ตัวเขียนกิจกรรม/โน้ต/ไฟล์ไม่เช็คธงลบ · ลบซ้ำ = จบทันที | `crm/erased.ts` (ใหม่ · ธง = แถว audit) · `activities.ts:434` ระบุผู้ติดต่อที่ถูกลบตรง ๆ = VALIDATION ไทย (มากับดีล = ไม่ผูกผู้ติดต่อ) · `files.ts:126` · `privacy.ts:379` ลบซ้ำ = กวาดเนื้อหาซ้ำตามขอบเขตเดิม ไม่มี audit/event/สมาชิก/ถอนไฟล์ · ไฟล์ที่เจอลบทันที (`deleteFilesNow` · ล้ม = WARN) | `activity/note/file: accepted! · staleBodyLeft=true` → ✅ (record/deal VALIDATION อยู่แล้ว) |
+| H8 (M3) | ตัวเขียนผู้ติดต่อเก็บชื่อ/นามสกุล/LINE ดิบใน before/after · การลบไม่แตะ AuditLog | `contacts.ts:999` + `:2710` `AUDIT_IDENTITY_KEYS` (name/firstName/lastName/phone/email/lineUserId/note/previousEmails → "(เปลี่ยน)") · `privacy.ts:627` ขัด before/after ของทุกแถวในสาย (ยกเว้น `crm.contact.erase`) — คีย์ตัวตน → `[ข้อมูลถูกลบ]` · ข้อความ → ปิดคำระบุตัว | `leaking=crm.contact.update forwardMasked=false` → ✅ |
+| H9 (M4) | ไฟล์ส่งออกที่สร้างก่อนการลบยังโหลดได้ถึง 7 วัน | `privacy.ts:647` (ไม่ใช่ RETENTION): งาน CRM_EXPORT ที่กำลัง RUNNING กลับเข้าคิว (finish เสีย lease ⇒ ทิ้งไฟล์ · สร้างใหม่หลังลบ) **ก่อน** ถอนไฟล์ DONE (`fileId` null + `result.withdrawn` · ไฟล์ลบผ่าน followUp) · REPORT_EXPORT ล้าง `result.csv` · `getExport` = EXPIRED + ข้อความ "ถูกถอน" | `fileLeft=1 storageDeleted=false getExport=DONE reportCsvClean=false` → ✅ |
+| H10 (M5) | คิวรี retention ตัด `archivedAt IS NULL` | `privacy.ts:1263` ตัดเงื่อนไขออก (ยังตัดคนที่ถูกรวม/ถูกลบ) | `archived31=false` → ✅ (merged31 ยังไม่ถูกลบ) |
+| H11 (m1) | `seedSystemRules` ไม่ผ่านด่านเพดาน | `scoring.ts:346` `assertCrmLimit(ctx,"scoreRules",จำนวนที่ขาด,tx)` ใต้ advisory lock ของ seed — ทั้งชุดหรือไม่เลย (LIMIT ไทย) · action ของหน้าให้คะแนนแปลง `CrmLimitError` เป็นข้อความไทย | `created=8 after=8` → ✅ (LIMIT · 0 แถว) |
+| H12 (m2) | เขียน audit ลบให้ทุกคนในสายโดยไม่ดูว่าลบไปแล้ว | `privacy.ts:396` `erasedBefore` · `:687` ข้ามคนที่มีแถวแล้ว | `auditRowsForMergedIn=2` → ✅ |
+
+### ตัดสินใจของ builder (ให้ผู้คุมงานยืนยัน)
+1. **H1 × H8**: เมื่อตัวเขียนผู้ติดต่อเลิกเขียนค่าตัวตนลง audit (H8) แถวแก้ไขใหม่จะไม่มี "ชื่อเดิม" ให้ดึงอีก ⇒ `formerIdentity` เก็บเฉพาะแถวเก่า (ก่อน C3.9-fix) · ชื่อที่ลูกค้ากรอกในฟอร์ม (H1) ได้จากคำตอบฟอร์มของสายแทน (ข้อสอบ H1 ผ่านทางนี้) · ชื่อที่พนักงานแก้ทิ้ง **หลัง** C3.9-fix ไม่ถูกจำไว้ที่ใด (ไม่มีคอลัมน์ `previousNames` — ต้อง migration) → แจ้งเตือนเก่าที่เอ่ยชื่อก่อนแก้จะไม่ถูกปิด · เสนอหนี้ migration (`CrmContact.previousNames` แบบ previousEmails)
+2. ชื่อที่ได้จากฟอร์ม/audit เก่าใช้เป็นคำระบุตัวเฉพาะเมื่อเป็นชื่อเต็ม ≥ 2 คำ (มติรีวิว S1 — ท่อนเดียวทับคำของคนอื่นในทั้งร้าน)
+3. H5: ผู้เรียกระบบ (actor null) + REQUEST ก็ผ่าน `requestEraseFromCrm` (เคารพสายอนุมัติของสมาชิกเช่นกัน) · followUp เก่า (`memberCustomerIds`) ยังลบตรงแบบเดิม
+4. H9: RETENTION ไม่ถอนไฟล์ส่งออก (มีนาฬิกา `retention.exportDays` ของตัวเอง — แบบเดียวกับเนื้ออีเมล/ไฟล์เสียง) · REPORT_EXPORT ถูกล้างทั้งระบบ (ตามมติ "ของระบบ" — ไม่รู้ว่า CSV ไหนมีเขา)
+5. H4: `KanbanActivity` เป็น append-only (K1.10 เฝ้า `activity.ts`) — การปิดคำระบุตัวใน `data` เป็นข้อยกเว้นตามกฎหมายที่อยู่ใน `links.ts` เท่านั้น (แถว/ชนิด/ลำดับคงเดิม)
+6. H7: ตัวเขียนของระบบ (`recordBusinessActivityOnce` · `createChatActivityOnce` · `createSequenceTaskOnce`) ยังไม่มีด่าน (ลำดับถูกหยุด STOPPED · LINE id/เบอร์ถูกล้างจึงจับคู่ใหม่ไม่ได้ · ทางที่เหลือ = สมาชิกที่ถูกข้าม/รออนุมัติยังผูก `memberCustomerId`) ⇒ ลบซ้ำ = กวาดได้ · เสนอด่านเงียบในใบถัดไป
+
+### หนี้เพิ่ม
+| เรื่อง | เหตุผล | ใบ |
+|---|---|---|
+| `CrmContact.previousNames` (ชื่อก่อนแก้ไข) | ข้อ 1 ด้านบน — ต้อง migration | ใบ migration ถัดไป |
+| การลบแต่ละครั้งสแกน AuditLog ของร้านด้วย `targetId` (ไม่มีดัชนี) | ดัชนี `(tenantId, targetId)` / N6 ต้อง migration · ขนาดเดียวกับการสแกนแจ้งเตือน/ข้อความ AI ต่อคำระบุตัวที่มีอยู่แล้ว | ใบ migration ถัดไป |
+| REPORT_EXPORT ที่กำลังสร้าง (reports.runExportJobs) ขณะลบ | งานนั้นเก็บ CSV ในแถวตอนจบ — ไม่มี lease ให้ขัด (CRM_EXPORT ขัดแล้ว) | C5 |
+
+### ผลรัน (QC1 · `CRM_V2_SWITCH=all` · log `.qc-shots/c39fix/<ชุด>.log` · ลำดับใน `progress.log`)
+- `qc-crm-c3.9` **48/48 ×2** (`c39-r1.log` · `c39-r2.log` — รอบสองหลังชุดถอยหลังทั้งหมด) · CLEAN ✅
+- ถอยหลัง: qc-form 10/10 · c2.5 (อีเมล) 105/105 · c2.4 91/91 · kanban k2.3 15/17 (หนี้เดิม S3.2/S3.6) · k1.8 (ความเห็น) 18/18 · k1.10 (ประวัติ · append-only ของ activity.ts) 16/16 · k3.1 (facade links) 19/20 (S6.3 = โฟลเดอร์ภาพ `.qc-shots/kanban/3.1` หาย — รู้จักตั้งแต่ 19 ก.ย.) · qc-ai-proposals 16/16 · member-fix-s1 28/28 · member-m1.4 37/37 · c1.4 110/110 · c1.3 89/89 · c2.8 (คะแนน) 54/54 · c3.1 (ส่งออก) 56/56 · c1.11 66/66
+- typecheck สะอาด ×2 (`typecheck-1.log` หลังแก้ · `typecheck-2.log` สุดท้าย) · fitness 33/33 ทั้งมี env (`fitness-env.log`) และ `env -u DATABASE_URL -u DIRECT_URL` (`fitness-noenv.log`)
+- `scripts/{crm,member,acc-v2}-expected.json` ถูก seed ของ QC1 เขียนทับระหว่างรัน — คืนจาก git แล้ว (สำเนา `.qc-shots/c39fix/qc1-*-expected.json`) · ไม่ได้แตะข้อสอบ · ไม่มี migration · ไม่ได้ commit
+
+### มติผู้คุมงาน (C3.9-fix · 27 ก.ย.)
+1. ✅ ข้อ 1 รับ — **หนี้ migration `CrmContact.previousNames`** · จนกว่าจะมี: H1 พึ่งคำตอบฟอร์ม + ประวัติ audit (แถวก่อน C3.9-fix) เป็นแหล่ง "ตัวตนเดิม"
+2. ✅ RETENTION ปล่อยไฟล์ส่งออกให้ `exportDays` · REPORT_EXPORT CSV ล้างทั้งระบบ
+3. ✅ การปิดคำใน `KanbanActivity.data` = ข้อยกเว้น append-only ตัวเดียว อยู่ใน `kanban/links.ts`
+4. 🔨 ทำทันที — ตัวเขียนของระบบ (ด้านล่าง)
+5. ✅ หนี้: ดัชนี AuditLog targetId → รวมใน N6 · REPORT_EXPORT ที่กำลังรันตอนลบ
+
+## § C3.9-fix รอบ 2 — มติข้อ 4: ตัวเขียนของระบบลงผู้ติดต่อที่ถูกลบ
+| ทาง | แก้ | ที่ |
+|---|---|---|
+| สะพานธุรกิจ 8 โมดูล | `recordBusinessActivityOnce` ข้าม + WARN id ล้วน (คืน `skipped`) · `markCustomerFromBridge` ไม่เลื่อนขั้น | `activities.ts` `skipErasedWrite` · `contacts.ts` markCustomerFromBridge |
+| สะพานแชท | `createChatActivityOnce` ข้าม + WARN (สะพานจบที่ `!res.created` ⇒ ไม่เรียก AI) · `touchContactsFromChat` ข้ามเงียบ (ยิงทุกข้อความ — WARN อยู่ที่กิจกรรมต่อห้อง) · โน้ตจากแผงแชท = `logActivity` (VALIDATION ของ H7 — action แสดงข้อความไทย) | `activities.ts` |
+| ลำดับการติดตาม | `createSequenceTaskOnce` ข้าม + WARN · ขั้น SEQ_TASK ได้ skipped + โน้ตไทย (ไม่ใช่ "มีงานอยู่แล้ว") · การลงทะเบียนถูก STOPPED ตอนลบอยู่แล้ว | `activities.ts` · `sequences.ts` runDomainAction |
+| กฎอัตโนมัติ | ตัวโหลดเป้าหมาย: ผู้ติดต่อที่มีธงลบ = ไม่มีเป้า (เดิมคัดด้วย `archivedAt` ซึ่งผู้ถูกลบมีเสมอ — ตรวจธงจริงอีกชั้นกันกฎที่วิ่งคร่อมการลบ) | `automation.ts` loadSubject |
+| ตัวเขียนใน tx ของผู้เรียก | `recordSystemActivityInTx` (ดีลย้ายขั้น · รับชำระ · เว็บ · อีเมล) = ตัดการผูกผู้ติดต่อ แถวยังผูกดีล/บริษัท (ดีลของเขาคงอยู่) — ไม่ throw ใน tx ของสะพาน | `activities.ts` |
+
+หลักฐาน probe (`.qc-shots/c39fix/probe-writers.mts` · tenant ทิ้ง · CLEAN 0/0):
+- ก่อนแก้ `probe-writers-before.log`: leaks = business · markCustomer (LEAD→CUSTOMER) · chat · touchChat (lastActivityAt ขยับ) · sequenceTask · systemInTx (ผูกผู้ติดต่อที่ถูกลบ) = **6** · WARN 0
+- หลังแก้ `probe-writers-after.log`: leaks **0** · ไม่มี throw · WARN 3 แถว (business/chat/sequence) id ล้วน · systemInTx `contactId=null`
+- กฎอัตโนมัติ: ไม่มีทางทำซ้ำได้ก่อนแก้ (ตัวโหลดคัด `archivedAt` อยู่แล้ว) — ด่านที่เพิ่มเป็นชั้นป้องกัน ไม่มี probe แยก
+
+ผลรันรอบ 2 (QC1 · `progress.log`): `qc-crm-c3.9` 48/48 (`c39-r3.log`) · c2.2 (ลำดับ) 73/73 · c2.1 (อัตโนมัติ) 83/84 · qc-chat-core-v2 47/47 · c1.6 79/79 · typecheck สะอาด (`typecheck-3.log` + `typecheck-2.log`) · fitness 33/33 ×2 (ของรอบ 1 เก็บเป็น `*-round1.log`)
+- c2.1 แดงข้อเดียว `C2.1-S6.2` = ข้อที่รันลูก `qc-member-m3.3` · รันเดี่ยว (`member-m3.3.log`) ตายที่บรรทัด 66 ของข้อสอบ `prisma.membership.findFirst(...)!` คืน null (**seed สมาชิกของ QC1 ไม่มี membership ที่ข้อสอบหา**) ก่อนเรียกบริการใด ๆ — สภาพแวดล้อม ไม่เกี่ยวใบนี้ (ไม่ได้ seed ใหม่: seed สมาชิกล้างข้อมูล CRM บน QC1)
+
+## § รอบ 3 — ผลรีวิวความปลอดภัยอิสระ (NOT MERGEABLE · B1 + S1 + S2 + NOTES) · 27 ก.ย. 2569
+| # | ต้นเหตุ | แก้ | ที่ |
+|---|---|---|---|
+| B1(a) | ชุดที่อยู่ H2 รวมทุกอีเมลที่พิมพ์ในฟอร์ม + อีเมลจาก audit เก่า | ที่อยู่ของเขา = อีเมลผู้ติดต่อ + อีเมลเก่า + อีเมล Party + ช่อง `email` หลักของฟอร์มเท่านั้น (ตัวล้างฟอร์มคืนเฉพาะช่องหลัก name/phone/email ที่สะพานใช้ — ช่องชนิดอีเมล/เบอร์อื่นเป็นของคนอื่น) | `privacy.ts` บล็อก H1/H2 (`ownEmails` · `personAddrs`) · `forms/service.ts` `eraseCrmContactSubmissions` |
+| B1(b) | ไม่กันที่อยู่ของร้าน/ระบบ/พนักงาน/คนอื่น | `notThePerson` (`privacy.ts:376`): ตัดทิ้งเสมอ — ที่อยู่ร้าน (ตั้งค่าอีเมลทุกระบบ CRM + `CrmEmailUserSetting` from/replyTo/copyTo · `emails.ts:382` `shopMailAddressesInTx`) · ที่อยู่ระบบ SHARK (`isSystemMailAddress`) · อีเมลพนักงาน (Membership→User) · อีเมล/อีเมลเก่าของผู้ติดต่อที่ยังไม่ถูกลบ (ทุกระบบของร้าน) · อีเมลของ Party อื่น · `keepAddr` คงที่อยู่เหล่านี้เสมอ | `privacy.ts:376` `:488` `:497` |
+| B1(c) | ชุดที่ 2 ไม่มีเพดาน | นับก่อน · เกิน `SECOND_SET_MAX` (500) = ไม่แตะทั้งชุด + WARN id ล้วน (ไม่ล้างครึ่ง ๆ) | `privacy.ts:367` `:561` |
+| B1(d) | คำระบุตัวจากฟอร์ม/audit ไม่ผ่านตัวกรอง | ชื่อ/เบอร์/อีเมลจากฟอร์ม + audit เก่า ผ่าน `notThePerson` (เบอร์ของผู้ติดต่อคนอื่น/Party อื่นทั้งรูปดิบและรูปมาตรฐาน · ชื่อของผู้ติดต่อคนอื่นที่ยังไม่ถูกลบ/พนักงาน) ก่อนใช้กับ AppNotification/AiMessage/Kanban · คำอีเมลของแถวปัจจุบันก็ถูกกรองด้วยชุดอีเมลเดียวกัน | `privacy.ts` `tokens` |
+| S1 | `portal.ts` เขียน `tx.kanbanCard` ตรง (2 จุด) และไม่ปิดความเห็น/ประวัติของการ์ดคำขอ | facade `kanban/links.ts:474` `redactCardsInTx(tx, tenantId, cardIds, { title, sourceKeyPrefix, mask })` — หัว = ป้าย · รายละเอียดว่าง · ความเห็น + `KanbanActivity.data` ถูกแทนหัว/รายละเอียดเดิมด้วยป้ายแล้วปิดคำระบุตัว (`mask` จาก privacy.ts) · แตะเฉพาะการ์ดที่ `sourceKey` ขึ้นต้น `portalCardSourceKey("")` · `maskCardsLinkedInTx` ใช้ตัวในเดียวกัน (`maskCardsInTx`) · portal.ts ไม่มีการเขียนตารางบอร์ดงานแล้ว | `links.ts:474` `:485` · `portal.ts:1373` `:1402` · `privacy.ts:623` |
+| S2 | ส่งใหม่หลังคำขอถูก REJECTED/ถอดนโยบาย = ยื่นใหม่ → ลบอัตโนมัติ | `requestEraseFromCrm` รับ `requestId`/`since`: มี requestId ที่จดไว้ หรือมีคำขอ DELETE/ERASE ของลูกค้าคนนี้ที่ยื่น **หลังเวลาแถว audit การลบ** (ทุกสถานะ รวม REJECTED) = คืนสถานะเดิม ไม่ยื่นใหม่ · `completeErasure` จด requestId ลง `after.followUp.memberRequestIds` (jsonb คำสั่งเดียว · ไม่ทับของเดิม) | `member/privacy.ts:1446` · `privacy.ts` completeErasure `:839` `rememberMemberRequests` |
+| NOTE | จดหมาย QUEUED ในชุดที่ 2 | = FAILED เหมือนชุดที่ 1 | `privacy.ts:585` |
+| NOTE | ลำดับล็อกเมื่อลบสองคนพร้อมกันที่ใช้จดหมายฉบับเดียวกัน | จดในโค้ด: deadlock ⇒ Postgres ยกเลิกหนึ่ง tx (rollback ทั้งการลบ) → ลองใหม่ (ยอมรับตามมติ) | `privacy.ts` หัวบล็อกอีเมล |
+| NOTE | เกิน AUDIT_SCRUB_MAX เงียบ | อ่าน 5,001 แถว · เกิน = ขัด 5,000 + WARN id ล้วน (ลบซ้ำ = กวาดต่อ) | `privacy.ts:476` |
+| NOTE | ข้อความลบซ้ำ | "…ถูกลบข้อมูลไปก่อนหน้านี้แล้ว — ระบบกวาดข้อมูลที่หลงเข้ามาใหม่ (ถ้ามี) ให้อีกรอบแล้ว" | `privacy-actions.ts` |
+
+หลักฐาน B1 (`.qc-shots/c39fix/probe-shopaddr.mts` · lead จากฟอร์มกรอกที่อยู่ร้าน + เบอร์ของลูกค้าอีกคน → ลบแบบ RETENTION · tenant ทิ้ง CLEAN 0/0):
+- ก่อนแก้ (รันบนโค้ดรอบ 2 ที่คืนชั่วคราว · `probe-shopaddr-before.log`): **LEAK** — จดหมายขาออกของร้าน `fromAddr=""` `fromName=null` · ที่อยู่ร้านหลุดจาก `toAddrs` ของจดหมายขาเข้า · จดหมายไม่ผูกใครของร้าน `fromAddr=""` · แจ้งเตือนที่เอ่ยที่อยู่ร้านและเบอร์ของคนอื่นถูกปิด
+- หลังแก้ (`probe-shopaddr-after.log`): **SAFE** — จดหมายของร้านทั้ง 3 ฉบับเหมือนเดิมทุกไบต์ (รวม updatedAt) · แจ้งเตือนไม่ถูกแตะ · positive control: ที่อยู่จริงของ lead ในจดหมายไม่ผูกใครยังถูกตัด
+
+ผลรันรอบ 3 (QC1 · `progress.log`): `qc-crm-c3.9` **48/48 ×2** (`c39-r4.log` · `c39-r5.log`) · c2.5 105/105 · c3.5 (พอร์ทัล) 67/67 · k1.8 18/18 · c1.8 (ฟอร์ม) 81/81 · typecheck สะอาด (`typecheck-4.log` + `typecheck-2.log`) · fitness 33/33 ×2 (รอบก่อนเก็บเป็น `*-round1.log`/`*-round2.log`) · expected json ไม่ถูกแก้ · ไม่ได้ commit
+
+## § รอบ 4 — รีวิวรอบ 2: R2-S1 (ข้อยกเว้น "คนอื่นถือร่วม" ถูกใช้กว้างเกิน) · 27 ก.ย. 2569
+| # | ต้นเหตุ | แก้ | ที่ |
+|---|---|---|---|
+| R2-S1 | รอบ 3 ใช้ชุดตัดทิ้งเดียว (ร้าน/ระบบ/พนักงาน **+ ผู้ติดต่อ/Party อื่นที่ถือร่วม**) กับทั้งจดหมายชุดที่ 1 และคำระบุตัวทุกคำ ⇒ ผู้ติดต่อซ้ำที่ใช้อีเมลเดียวกัน: ที่อยู่ค้างในจดหมายของเขาเอง + แจ้งเตือนไม่ถูกปิด (ถอยหลังจาก C3.9 เดิม) | `notThePerson` แยก `fixedEmails` (ร้าน · ระบบ SHARK · พนักงาน) กับ `emails` (fixed + ผู้ติดต่อ/Party อื่นที่ยังไม่ถูกลบ) + `holders` (id ผู้ติดต่อที่ถือร่วม) · **ชุดที่ 1** (`personAddrs`/`keepAddr`) + คำของแถวปัจจุบัน (แจ้งเตือน/AI/บอร์ดงาน/audit) ตัดเฉพาะ `fixedEmails` · **ชุดที่ 2** (`personAddrs2`/`keepAddr2`/`tokens2`) + คำจากฟอร์ม/audit เก่า ใช้ข้อยกเว้นเต็ม · ที่อยู่ของเขาที่คนอื่นถือร่วม = OpsEvent WARN `{contactId, heldBy:[id…]}` (id ล้วน) | `privacy.ts:402` `:505` `:508` `:509` `:531` |
+
+การตีความมติ: "การแทนคำทั้งร้าน" ที่ใช้ข้อยกเว้นคนอื่นถือร่วม = คำที่มาจากคำตอบฟอร์ม/แถว audit เก่า (ข้อ B1(d) รอบ 3) · คำของแถวปัจจุบันยังปิดทั้งร้านเหมือน C3.9 เดิม (probe ข้อนี้ต้องการให้แจ้งเตือนถูกปิด)
+
+หลักฐาน (`.qc-shots/c39fix/probe-dupemail.mts` · ผู้ติดต่อ A/B ใช้อีเมลเดียวกัน → ลบ A (REQUEST) · tenant ทิ้ง CLEAN 0/0):
+- ก่อนแก้ (โค้ดรอบ 3 คืนชั่วคราว · `probe-dupemail-before.log`): **REGRESSION** — จดหมายขาออก/ขาเข้าของ A ยังมีที่อยู่ร่วม · แจ้งเตือน "ส่งไม่ถึง <ที่อยู่>" ไม่ถูกปิด · ไม่มี WARN
+- หลังแก้ (`probe-dupemail-after.log`): **OK** — ที่อยู่หายจากจดหมายของ A (ที่อยู่ร้านคงอยู่) · แจ้งเตือนถูกปิด · จดหมายของ B คงที่อยู่และเนื้อเดิม · WARN มี id ของ B (id ล้วน)
+
+### หนี้เพิ่ม (มติรอบ 4)
+| เรื่อง | เหตุผล | ใบ |
+|---|---|---|
+| จดหมายชุดที่ 2 เกินเพดาน 500 ค้างตลอด (ลบซ้ำก็ชนเพดานอีก) | ต้องมีงานตามเก็บแบบแบ่งชุด (lease + ทีละ ≤ 500 · ผูกแถว audit การลบ) | C6 |
+| การ์ดที่ถูกแก้หัวก่อนการลบ: ประวัติ CARD_CREATED เก็บหัวเดิม ⇒ ถูกปิดคำระบุตัว ไม่ถูกแทนด้วยป้าย | ยอมรับ (มติ) — ข้อความที่ระบุตัวถูกปิดแล้ว | — |
+
+ผลรันรอบ 4 (หลัง PAUSE/RESUME ของผู้คุมงาน · QC1 · `progress.log`): `qc-crm-c3.9` **48/48 ×2** (`c39-r6.log` · `c39-r7.log`) · c2.5 105/105 (`c2.5-r4.log`) · probe-shopaddr บนโค้ดรอบ 4 = **SAFE** (`probe-shopaddr-r4.log`) · typecheck สะอาด (`typecheck-2.log`) · fitness 33/33 ×2 (รอบก่อน = `*-round3.log`) · `scripts/*-expected.json` ไม่เปลี่ยน (git สะอาด) · ไม่ได้ commit

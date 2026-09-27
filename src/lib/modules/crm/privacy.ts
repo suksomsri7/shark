@@ -17,8 +17,12 @@
 //     + ค่าฟิลด์ sensitive ที่อ้าง Party (R-E.10) · MemberAccessLog แถวของ CRM · AutomationRun.payload
 //   คงไว้ (ตัวเลข): ดีล (ชื่อ/มูลค่า/ขั้น/ยอดรับ/ผู้ดูแล) · ประวัติขั้น · CrmDealPayment · CrmCommission · แถวกิจกรรม (เหลือแต่เปลือก) · คะแนน
 //   ⇒ AuditLog `crm.contact.erase` (เหตุผล) + outbox `crm.contact.erased` {contactId, systemId, partyId} (id ล้วน · X8) ใน tx เดียวกัน
-//   ผู้ติดต่อที่ผูกสมาชิก ⇒ ลบสมาชิกครั้งเดียวผ่าน member facade (`eraseMemberById` → `member.erased`) — ตัวรับ `member.erased` ของ CRM
+//   ผู้ติดต่อที่ผูกสมาชิก ⇒ ยื่นคำขอลบของระบบสมาชิกผ่าน member facade (`requestEraseFromCrm` — สายอนุมัติ `member.erase` · ไม่มีนโยบาย =
+//     ลบทันที → `member.erased`) เฉพาะผู้กดที่มีคีย์ `member.customer.delete` (C3.9-fix H5) — ตัวรับ `member.erased` ของ CRM
 //     เจอผู้ติดต่อที่ลบแล้ว = ไม่ทำอะไร (ไม่มีการลบซ้อน)
+//   C3.9-fix (ล่าความปลอดภัย 27 ก.ย.): + คำตอบฟอร์ม (facade ฟอร์ม) · จดหมายที่มีที่อยู่ของเขาแม้ไม่ได้ผูกเขา · บทสนทนาผู้ช่วย AI ·
+//     ความเห็น/ประวัติของการ์ดที่ผูก (facade บอร์ดงาน) · before/after ของ AuditLog ในสาย · ไฟล์ส่งออกที่ยังไม่หมดอายุ (ถอน) ·
+//     คำระบุตัวรวม "ตัวตนเดิม" (คำตอบฟอร์ม · แถวแก้ไขเก่า) · ลบซ้ำ = กวาดซ้ำ (ไม่มี audit/event ใหม่)
 //   source "RETENTION" (lead หมดอายุเก็บ): เหมือนกันทุกข้อ ยกเว้นเนื้อจดหมาย/ไฟล์เสียง ที่ถูกปิดชื่อแทนการลบ — สองอย่างนี้มีนาฬิกาอายุเก็บ
 //     ของตัวเอง (`email.retentionDays` · `retention.recordingDays`) ⇒ งานล้างตามอายุเป็นเจ้าของ (ไม่มีสองงานแย่งลบไฟล์เดียวกัน · X5)
 //
@@ -33,6 +37,7 @@
 import { Prisma } from "@prisma/client";
 import type { CrmContact } from "@prisma/client";
 import { csvRow } from "@/lib/core/csv";
+import { bareEmail } from "@/lib/core/inbound-address";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { deleteFileAsset, privateFileUrl, uploadFile, type UploadDeps } from "@/lib/storage/service";
@@ -43,7 +48,7 @@ import { activityWhere, contactWhere, dealWhere } from "./where";
 import * as companiesSvc from "./companies";
 import { crmRetentionOf, parseCrmSettings } from "./settings";
 import { CRM_HARD_CAPS } from "./limits-shared";
-import { anonymizeContactInTx } from "./contacts";
+import { anonymizeContactInTx, AUDIT_CHANGED_MARK, AUDIT_IDENTITY_KEYS } from "./contacts";
 import { isPlaceholderContactName, joinName } from "./contacts-shared";
 import * as party from "@/lib/modules/party";
 import { logOps } from "@/lib/core/ops";
@@ -156,7 +161,7 @@ type IdentityRow = { name: string; firstName: string | null; lastName: string | 
  * คำที่ระบุตัวคนนี้ (ใช้ปิดข้อความที่คงแถวไว้) — รีวิว C3.9 S1 (มติผู้คุมงาน): **ชื่อเต็ม** (ชื่อ+นามสกุล · ไม่ใช้ชื่อ/นามสกุลแยกท่อน —
  * ท่อนสั้น ๆ ไปทับคำทั่วไปของคนอื่น) · เบอร์ · อีเมล · LINE id · อีเมลเก่า — ต่ำกว่า 4 ตัวอักษร = ไม่ใช้
  */
-function identityTokens(rows: readonly IdentityRow[], party: { phone: string | null; email: string | null }[]): string[] {
+function identityTokens(rows: readonly IdentityRow[], party: { phone: string | null; email: string | null }[], extra: { names: readonly string[]; values: readonly string[] } = { names: [], values: [] }): string[] {
   const raw: (string | null | undefined)[] = [];
   // รีวิวรอบ 2 SF2: ชื่อแทนของระบบ ("ไม่ระบุชื่อ" ฯลฯ — `CONTACT_NAME_PLACEHOLDERS`) ไม่ใช่ตัวตนของใคร ⇒ ไม่ใช้เป็นคำระบุตัว
   //   (ชื่อที่ทุกคำเป็นคำแทนชื่อ เช่น "ไม่ระบุชื่อ" หรือ "ลูกค้า ไม่ระบุ" = ไม่ใช่ชื่อจริง · มีคำจริงอย่างน้อย 1 คำ = ใช้ทั้งชื่อ)
@@ -166,6 +171,12 @@ function identityTokens(rows: readonly IdentityRow[], party: { phone: string | n
   };
   for (const r of rows) raw.push(realName(r.name), realName(joinName(r.firstName, r.lastName)), r.phone, r.email, r.lineUserId, ...(r.previousEmails ?? []));
   for (const p of party) raw.push(p.phone, p.email);
+  // C3.9-fix H1: ตัวตน "เดิม" (คำตอบฟอร์ม · แถว audit เก่าของตัวเขียนผู้ติดต่อ) — ชื่อต้องเป็นชื่อเต็ม ≥ 2 คำ (ท่อนเดียว = คำทั่วไปของคนอื่นได้)
+  for (const n of extra.names) {
+    const full = realName(n);
+    if (full && full.trim().split(/\s+/).length >= 2) raw.push(full);
+  }
+  raw.push(...extra.values);
   const out = new Set<string>();
   for (const v of raw) {
     const s = typeof v === "string" ? v.trim() : "";
@@ -210,16 +221,26 @@ const ZERO_COUNTS: EraseCounts = {
   mergedContacts: 0,
   partyAnonymised: false,
   memberErased: false,
+  formSubmissions: 0,
+  aiMessages: 0,
+  kanban: 0,
+  auditScrubbed: 0,
+  exportsWithdrawn: 0,
 };
 
 type EraseInput = { contactId: string; confirm?: boolean | null; reason?: string | null; source?: EraseSource | string | null };
 
+/** คีย์สิทธิ์ของระบบสมาชิกที่ต้องมีจึงลบสมาชิกที่ผูกไว้ได้ (C3.9-fix H5 · `member/privacy.ts#requestErase`) */
+const MEMBER_DELETE_KEY = "member.customer.delete";
+
 /**
- * ลบผู้ติดต่อตามคำขอ PDPA — idempotent (ลบแล้ว = `erased:false` ไม่มี audit/event ใหม่ · ไม่ทำอะไรต่อ) · ผู้เรียกระบบส่ง actor = null
+ * ลบผู้ติดต่อตามคำขอ PDPA — idempotent (ลบแล้ว = `erased:false` ไม่มี audit/event ใหม่) · ผู้เรียกระบบส่ง actor = null
  * (ตัวรับ `member.erased` · งานอายุเก็บ lead) · ผู้เรียกที่เป็นคนต้องถือ `crm.contact.delete`
  * ข้อมูลในฐานทั้งหมดหายใน tx เดียว (รวมผู้ติดต่อที่ถูกรวมเข้ามาทั้งสาย · พอร์ทัล · ลิงก์ไฟล์) ⇒ commit แล้ว = ลบแล้วจริง ·
  * ขั้นหลัง commit (`completeErasure`: วัตถุบนที่เก็บ · คำขออนุมัติ · สมาชิก) เป็นของตัวรับ `crm.contact.erased` (ส่งใหม่จนสำเร็จ) —
  * ที่นี่ลองทำให้ทันทีหนึ่งครั้งแบบ best-effort (ล้ม = followUp "PENDING" ไม่ใช่ error — การลบ commit ไปแล้ว)
+ * C3.9-fix H7: ลบซ้ำ = **กวาดเนื้อหาซ้ำ** (ของที่หลุดเข้ามาหลังการลบครั้งแรก) โดยไม่มี audit/event ใหม่ · ยังตอบ `erased:false`
+ * C3.9-fix H5: สมาชิกที่ผูกไว้ = ยื่นคำขอลบของระบบสมาชิก (ผู้กดต้องมี `member.customer.delete` · ไม่มี = ข้าม + WARN)
  */
 export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: EraseInput, deps?: PrivacyDeps | null): Promise<EraseResult> {
   // AUDIT-CLASS X9: ด่านของการกระทำอันตรายมาก่อนแตะฐาน (ไม่มี confirm / เหตุผลสั้น = ไม่แตะอะไรเลย)
@@ -233,21 +254,58 @@ export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: 
   const c = { tenantId: sys.tenantId, systemId: sys.systemId, actorUserId: actor ? actor.userId : null };
   const pre = await loadContact(c, actor, input?.contactId);
   if (actor) need(actor, "crm.contact.delete");
+  // C3.9-fix H5 (ล่าความปลอดภัย B5): คีย์ลบสมาชิกเป็นของระบบสมาชิก — คีย์ crm.contact.delete อย่างเดียวลบสมาชิกไม่ได้
+  const memberAllowed = !actor || (await import("@/lib/modules/member")).hasMemberPerm(actor, MEMBER_DELETE_KEY);
 
-  const out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source), TX_OPTS);
-  // รีวิว C3.9 B3: ผู้แพ้การแข่ง/เรียกซ้ำ = จบตรงนี้ (ไม่มีทางซ่อมในโพรเซส — งานค้างเป็นของตัวรับ event ที่ส่งใหม่จนสำเร็จ)
-  if (!out.erased) return { contactId: pre.id, partyId: out.partyId, erased: false, counts: null, followUp: null };
+  const out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source, { memberAllowed }), TX_OPTS);
+  const none = { memberSkipped: false, memberPending: false };
+  if (!out.erased) {
+    // C3.9-fix H7: การกวาดซ้ำเจอไฟล์ที่หลุดเข้ามา (ไม่มีแถว audit ใหม่ให้ตัวรับ event) ⇒ ลบวัตถุตรงนี้ · ล้ม = WARN (id ล้วน) ให้กวาดซ้ำได้อีก
+    await deleteFilesNow(c.tenantId, pre.id, out.resweepFileIds, deps);
+    return { contactId: pre.id, partyId: out.partyId, erased: false, counts: null, followUp: null, ...none };
+  }
+  if (out.memberSkipped.length) {
+    await logOps("WARN", "crm.privacy", "ลบผู้ติดต่อ CRM แล้ว แต่ข้อมูลสมาชิกที่ผูกไว้ยังไม่ถูกลบ — ผู้ลบไม่มีสิทธิ์ลบข้อมูลสมาชิก ให้ผู้มีสิทธิ์ลบในระบบสมาชิก", {
+      tenantId: c.tenantId,
+      detail: JSON.stringify({ contactId: pre.id, customerIds: out.memberSkipped.slice(0, 20) }),
+    });
+  }
   let followUp: "DONE" | "PENDING" = "DONE";
-  let post = { files: 0, memberErased: false };
+  let post = { files: 0, memberErased: false, memberPending: false };
   try {
     post = await completeErasure(c.tenantId, pre.id, deps);
   } catch {
     followUp = "PENDING"; // completeErasure ลง OpsEvent WARN (id ล้วน) ไว้แล้ว · ตัวรับ event ทำต่อ
   }
-  return { contactId: pre.id, partyId: out.partyId, erased: true, counts: { ...out.counts, files: post.files, memberErased: post.memberErased }, followUp };
+  return {
+    contactId: pre.id,
+    partyId: out.partyId,
+    erased: true,
+    counts: { ...out.counts, files: post.files, memberErased: post.memberErased },
+    followUp,
+    memberSkipped: out.memberSkipped.length > 0,
+    memberPending: post.memberPending,
+  };
 }
 
-type EraseTxOut = { erased: boolean; partyId: string | null; counts: EraseCounts };
+/** ลบวัตถุไฟล์ทันที (ทางกวาดซ้ำ) — ล้ม = OpsEvent WARN (id ล้วน) · ไม่ throw (ข้อมูลในฐานถูกกวาดแล้ว) */
+async function deleteFilesNow(tenantId: string, contactId: string, fileIds: readonly string[], deps?: PrivacyDeps | null): Promise<void> {
+  if (!fileIds.length) return;
+  const d = storeDeps(deps);
+  const failed: string[] = [];
+  for (const fid of new Set(fileIds)) {
+    const r = await deleteFileAsset({ tenantId }, fid, d).catch(() => ({ ok: false as const }));
+    if (!r.ok) failed.push(fid);
+  }
+  if (failed.length) {
+    await logOps("WARN", "crm.privacy", "ลบไฟล์ที่หลุดเข้ามาหลังการลบข้อมูลส่วนบุคคลไม่สำเร็จ — กดลบข้อมูลของผู้ติดต่อนี้ซ้ำอีกครั้งเพื่อลองใหม่", {
+      tenantId,
+      detail: JSON.stringify({ contactId, fileIds: failed.slice(0, 50) }),
+    });
+  }
+}
+
+type EraseTxOut = { erased: boolean; partyId: string | null; counts: EraseCounts; memberSkipped: string[]; resweepFileIds: string[] };
 
 /** ผู้ติดต่อที่ถูกรวมเข้ามาในคนนี้ทั้งสาย (`mergedIntoId` ซ้อนกันได้) — รีวิว C3.9 B2 */
 const CHAIN_DEPTH_MAX = 20;
@@ -273,14 +331,112 @@ async function mergedChain(tx: Tx, ctx: { tenantId: string; systemId: string }, 
   return { ids: out, truncated };
 }
 
-async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null }, id: string, reason: string, source: EraseSource): Promise<EraseTxOut> {
+/** แถว AuditLog ของสายนี้ที่ต้องขัดตัวตน (C3.9-fix H8) — ยกเว้นแถว `crm.contact.erase` (หลักฐาน/ธง: id + เหตุผล) */
+const AUDIT_SCRUB_MAX = 5_000;
+type AuditTrailRow = { id: string; targetId: string | null; before: Prisma.JsonValue; after: Prisma.JsonValue };
+
+/**
+ * ตัวตน "เดิม" ของคนในสาย (C3.9-fix H1): ชื่อ/เบอร์/อีเมล/LINE ที่เคยอยู่ในแถว audit ของตัวเขียนผู้ติดต่อ (แถวเก่าก่อน H8 เก็บค่าดิบ)
+ * ชื่อ = ชื่อเต็มเท่านั้น (ท่อนเดียวไม่ใช้ — ไปทับคำทั่วไปของคนอื่น · มติรีวิว S1) · ชื่อ/นามสกุลแยกท่อนในแถวแก้ไข = ต่อกับอีกท่อนของตัวเขาเอง
+ */
+function formerIdentity(rows: readonly AuditTrailRow[], people: readonly CrmContact[]): { names: string[]; values: string[] } {
+  const names: string[] = [];
+  const values: string[] = [];
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const raw = (v: unknown) => (typeof v === "string" && v.trim() && v.trim() !== AUDIT_CHANGED_MARK && v.trim() !== CRM_ERASED_MASK ? v.trim() : null);
+  for (const r of rows) {
+    const p = r.targetId ? byId.get(r.targetId) : undefined;
+    for (const o of [r.before, r.after]) {
+      if (!isObj(o)) continue;
+      const n = raw(o.name);
+      if (n) names.push(n);
+      const f = raw(o.firstName);
+      const l = raw(o.lastName);
+      if (f || l) names.push(joinName(f ?? p?.firstName ?? null, l ?? p?.lastName ?? null));
+      for (const k of ["phone", "email", "lineUserId"]) {
+        const v = raw(o[k]);
+        if (v) values.push(v);
+      }
+      if (Array.isArray(o.previousEmails)) for (const e of o.previousEmails) if (raw(e)) values.push(raw(e) as string);
+    }
+  }
+  return { names, values };
+}
+
+/** รีวิว C3.9-fix B1(c): เพดานจดหมายชุดที่ 2 (มีที่อยู่ของเขาแต่ไม่ได้ผูกเขา) ต่อการลบหนึ่งครั้ง */
+const SECOND_SET_MAX = 500;
+
+/**
+ * รีวิว C3.9-fix B1 (มติผู้คุมงาน): ค่าที่ **ไม่ใช่ของคนที่ถูกลบคนเดียว** ในชุดผู้สมัคร — ห้ามใช้ปิด/ตัด/ล้างที่ไหน
+ *   อีเมล: ที่อยู่ของร้าน (ตั้งค่าอีเมลระบบ + รายคน: ผู้ส่ง/ตอบกลับ/สำเนา) · ที่อยู่ของระบบ SHARK · อีเมลพนักงานของร้าน ·
+ *     อีเมล/อีเมลเก่าของผู้ติดต่อคนอื่นที่ยังไม่ถูกลบ (ทุกระบบของร้าน) · อีเมลของ Party อื่น
+ *   เบอร์: ของผู้ติดต่อคนอื่นที่ยังไม่ถูกลบ · ของ Party อื่น (ตรงตัวหรือรูปมาตรฐาน)
+ *   ชื่อ: ชื่อของผู้ติดต่อคนอื่นที่ยังไม่ถูกลบ · ชื่อพนักงานของร้าน
+ */
+async function notThePerson(
+  tx: Tx,
+  t: string,
+  ids: readonly string[],
+  partyIds: readonly string[],
+  cand: { emails: readonly string[]; phones: readonly string[]; names: readonly string[] },
+): Promise<{ fixedEmails: Set<string>; emails: Set<string>; phones: Set<string>; names: Set<string>; holders: { id: string; email: string }[] }> {
+  const out = { fixedEmails: new Set<string>(), emails: new Set<string>(), phones: new Set<string>(), names: new Set<string>(), holders: [] as { id: string; email: string }[] };
+  const em = [...new Set(cand.emails.map((x) => bareEmail(x)).filter((x) => x.includes("@")))];
+  const ph = [...new Set(cand.phones.map((x) => x.trim()).filter(Boolean))];
+  const nm = [...new Set(cand.names.map((x) => x.trim()).filter(Boolean))];
+  const liveOther = Prisma.sql`c."tenantId" = ${t} AND NOT (c."id" = ANY(${[...ids]}::text[]))
+    AND NOT EXISTS (SELECT 1 FROM "AuditLog" e WHERE e."action" = ${CRM_ERASE_AUDIT_ACTION} AND e."targetId" = c."id" AND e."tenantId" = c."tenantId")`;
+  const otherParty = Prisma.sql`p."tenantId" = ${t} AND NOT (p."id" = ANY(${[...partyIds]}::text[]))`;
+  if (em.length) {
+    const shop = await emails.shopMailAddressesInTx(tx, t);
+    for (const e of em) if (shop.has(e) || emails.isSystemMailAddress(e)) out.fixedEmails.add(e);
+    const staff = await tx.$queryRaw<{ v: string }[]>`
+      SELECT lower(u."email") AS "v" FROM "Membership" m JOIN "User" u ON u."id" = m."userId" WHERE m."tenantId" = ${t} AND lower(u."email") = ANY(${em}::text[])`;
+    for (const r of staff) if (r.v) out.fixedEmails.add(r.v);
+    const contacts = await tx.$queryRaw<{ id: string; v: string }[]>`
+      SELECT DISTINCT c."id", lower(btrim(x.e)) AS "v" FROM "CrmContact" c, unnest(array_append(c."previousEmails", c."email")) x(e)
+       WHERE ${liveOther} AND x.e IS NOT NULL AND lower(btrim(x.e)) = ANY(${em}::text[]) LIMIT 200`;
+    const partiesHit = await tx.$queryRaw<{ v: string }[]>`
+      SELECT DISTINCT lower(btrim(p."email")) AS "v" FROM "Party" p WHERE ${otherParty} AND lower(btrim(p."email")) = ANY(${em}::text[])`;
+    for (const r of [...contacts, ...partiesHit]) if (r.v) out.emails.add(r.v);
+    for (const r of contacts) if (r.v) out.holders.push({ id: r.id, email: r.v });
+    for (const e of out.fixedEmails) out.emails.add(e);
+  }
+  if (ph.length) {
+    const norm = [...new Set(ph.map((x) => party.normalizePartyPhone(x)).filter(Boolean))];
+    const contacts = await tx.$queryRaw<{ v: string }[]>`SELECT DISTINCT c."phone" AS "v" FROM "CrmContact" c WHERE ${liveOther} AND c."phone" = ANY(${ph}::text[])`;
+    const partiesHit = await tx.$queryRaw<{ v: string | null; n: string | null }[]>`
+      SELECT p."phone" AS "v", p."phoneNorm" AS "n" FROM "Party" p WHERE ${otherParty} AND (p."phone" = ANY(${ph}::text[]) OR p."phoneNorm" = ANY(${norm}::text[]))`;
+    const heldNorm = new Set(partiesHit.map((r) => r.n).filter((x): x is string => !!x));
+    for (const r of [...contacts, ...partiesHit]) if (r.v) out.phones.add(r.v.trim());
+    for (const p of ph) if (heldNorm.has(party.normalizePartyPhone(p))) out.phones.add(p);
+  }
+  if (nm.length) {
+    const contacts = await tx.$queryRaw<{ v: string }[]>`SELECT DISTINCT c."name" AS "v" FROM "CrmContact" c WHERE ${liveOther} AND c."name" = ANY(${nm}::text[])`;
+    const staff = await tx.$queryRaw<{ v: string }[]>`
+      SELECT u."name" AS "v" FROM "Membership" m JOIN "User" u ON u."id" = m."userId" WHERE m."tenantId" = ${t} AND u."name" = ANY(${nm}::text[])`;
+    for (const r of [...contacts, ...staff]) if (r.v) out.names.add(r.v.trim());
+  }
+  return out;
+}
+
+async function eraseInTx(
+  tx: Tx,
+  ctx: PrivacyCtx & { actorUserId: string | null },
+  id: string,
+  reason: string,
+  source: EraseSource,
+  opts: { memberAllowed: boolean },
+): Promise<EraseTxOut> {
   const t = ctx.tenantId;
   const sysScope = { tenantId: t, systemId: ctx.systemId };
   // AUDIT-CLASS X3: ล็อกแถวก่อนอ่านธง — 10 ทางพร้อมกันรอกันที่นี่ แล้วอ่านธง (แถว audit ของคนที่ชนะ commit แล้ว) ⇒ ผู้ชนะคนเดียว
   await tx.$queryRaw`SELECT "id" FROM "CrmContact" WHERE "id" = ${id} AND "tenantId" = ${t} AND "systemId" = ${ctx.systemId} FOR UPDATE`;
   const row = await tx.crmContact.findFirst({ where: { id, ...sysScope } });
   if (!row) throw fail("NOT_FOUND", NOT_FOUND_MSG);
-  if (await erasedAudit(tx, t, id)) return { erased: false, partyId: row.partyId, counts: { ...ZERO_COUNTS } };
+  // C3.9-fix H7 (ล่าความปลอดภัย M2): ลบแล้ว = ไม่มี audit/event/สมาชิก/ถอนไฟล์ส่งออกใหม่ แต่ **กวาดเนื้อหาซ้ำ** ตามขอบเขตเดิม
+  //   (ของที่หลุดเข้ามาหลังการลบครั้งแรก — เช่น กิจกรรมจากทางที่ยังไม่มีด่าน) ⇒ ปุ่มลบซ้ำ = ทางแก้ของผู้ดูแล
+  const resweep = !!(await erasedAudit(tx, t, id));
   const now = new Date();
   const counts: EraseCounts = { ...ZERO_COUNTS };
 
@@ -295,58 +451,176 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
   const chainRows = chain.length ? await tx.crmContact.findMany({ where: { id: { in: chain }, ...sysScope } }) : [];
   const people = [row, ...chainRows];
   const ids = people.map((p) => p.id);
+  // C3.9-fix H12 (ล่าความปลอดภัย m2): คนในสายที่ถูกลบไปก่อนแล้ว (ลบตัวเขาตรง ๆ) มีแถว audit ของตัวเองแล้ว ⇒ ไม่เขียนแถวที่สอง
+  const erasedBefore = new Set(
+    (await tx.auditLog.findMany({ where: { tenantId: t, action: CRM_ERASE_AUDIT_ACTION, targetId: { in: ids } }, select: { targetId: true } })).map((a) => a.targetId),
+  );
   counts.mergedContacts = chainRows.length;
   const partyIds = [...new Set(people.map((p) => p.partyId).filter((x): x is string => !!x))];
   const parties = partyIds.length ? await tx.party.findMany({ where: { id: { in: partyIds }, tenantId: t }, select: { id: true, phone: true, email: true } }) : [];
   const linkedMembers = [...new Set(people.map((p) => p.memberCustomerId).filter((x): x is string => !!x))];
-  // รีวิวรอบ 2 N5: สมาชิกถูกลบคู่กันเฉพาะคำขอของคน (REQUEST) — งานอัตโนมัติ (RETENTION) ห้ามลบสมาชิกเด็ดขาด · MEMBER = สมาชิกถูกลบมาก่อนแล้ว
-  const memberCustomerIds = source === "REQUEST" ? linkedMembers : [];
-  const tokens = identityTokens(people, parties);
-  const personAddrs = new Set(
-    [...people.flatMap((p) => [p.email, ...(p.previousEmails ?? [])]), ...parties.map((p) => p.email)].filter((x): x is string => !!x).map((x) => x.trim().toLowerCase()),
-  );
+  // รีวิวรอบ 2 N5: สมาชิกเกี่ยวเฉพาะคำขอของคน (REQUEST) — งานอัตโนมัติ (RETENTION) ห้ามแตะสมาชิกเด็ดขาด · MEMBER = สมาชิกถูกลบมาก่อนแล้ว
+  // C3.9-fix H5: REQUEST + คีย์ member.customer.delete = ยื่นคำขอลบของระบบสมาชิก (หลัง commit · สายอนุมัติของสมาชิก) · ไม่มีคีย์ = ข้าม + WARN
+  const memberAsk = !resweep && source === "REQUEST" && opts.memberAllowed ? linkedMembers : [];
+  const memberSkipped = !resweep && source === "REQUEST" && !opts.memberAllowed ? linkedMembers : [];
+
+  // ── C3.9-fix H1 (ล่าความปลอดภัย B1): คำตอบฟอร์มบนเว็บของคนในสาย (ผ่าน facade ฟอร์ม) — ล้างคำตอบ + ip/หน้า/ที่มา · เก็บค่าที่เคยกรอกไว้เป็นคำระบุตัว ──
+  const forms = await import("@/lib/modules/forms");
+  const formOut = await forms.eraseCrmContactSubmissions(tx, t, ids);
+  counts.formSubmissions = formOut.count;
+  // ── C3.9-fix H8 (ล่าความปลอดภัย M3) + H1: ร่องรอย audit ของสาย (อ่านก่อนขัด — ตัวตนเดิมจากแถวแก้ไขเก่าเข้าชุดคำระบุตัว) ──
+  const trailRaw: AuditTrailRow[] = await tx.auditLog.findMany({
+    where: { tenantId: t, targetId: { in: ids }, NOT: { action: CRM_ERASE_AUDIT_ACTION } },
+    select: { id: true, targetId: true, before: true, after: true },
+    orderBy: { createdAt: "asc" },
+    take: AUDIT_SCRUB_MAX + 1,
+  });
+  // รีวิว C3.9-fix (NOTE): เกินเพดาน = ขัด 5,000 แถวแรก + WARN (id ล้วน) — ไม่เงียบ (ลบซ้ำ = กวาดต่อ)
+  if (trailRaw.length > AUDIT_SCRUB_MAX) {
+    await logOps("WARN", "crm.privacy", "ร่องรอย audit ของผู้ติดต่อที่ถูกลบยาวเกินเพดานของการลบครั้งเดียว — ขัดตัวตนได้บางส่วน กดลบซ้ำเพื่อกวาดต่อ", { tenantId: t, detail: JSON.stringify({ contactId: id, cap: AUDIT_SCRUB_MAX }) });
+  }
+  const trail = trailRaw.slice(0, AUDIT_SCRUB_MAX);
+  const former = formerIdentity(trail, people);
+
+  // ── รีวิว C3.9-fix B1 (มติผู้คุมงาน): ตัวตน "ของเขาเอง" เท่านั้น — ที่อยู่ของร้าน/ระบบ/พนักงาน และค่าที่คนอื่นที่ยังไม่ถูกลบในร้านถือร่วม ห้ามถูกนับ ──
+  //   ที่อยู่ของเขา (H2) = อีเมลของผู้ติดต่อ + อีเมลเก่า + อีเมลของ Party + ช่อง `email` หลักของฟอร์ม (ช่องที่สะพานฟอร์มผูกเป็นตัวตน)
+  //   คำระบุตัวจากฟอร์ม/audit เก่า (H1) ผ่านตัวกรองเดียวกัน (ชื่อ · เบอร์ · อีเมล) · คำระบุตัวของแถวปัจจุบันถูกกรองเฉพาะอีเมล
+  const ownEmails = [...people.flatMap((p) => [p.email, ...(p.previousEmails ?? [])]), ...parties.map((p) => p.email), ...formOut.identity.emails].map((x) => bareEmail(x)).filter((x) => x.includes("@"));
+  const extraNames = [...former.names, ...formOut.identity.names];
+  const extraValues = [...former.values, ...formOut.identity.phones, ...formOut.identity.emails];
+  const notHis = await notThePerson(tx, t, ids, partyIds, {
+    emails: [...ownEmails, ...extraValues.filter((v) => v.includes("@")).map((v) => bareEmail(v))],
+    phones: extraValues.filter((v) => !v.includes("@")),
+    names: extraNames,
+  });
+  // รีวิวรอบ 2 R2-S1 (มติผู้คุมงาน): ตัวตนของแถวปัจจุบัน (อีเมล/เบอร์/ชื่อของผู้ติดต่อ + Party) ตัดเฉพาะที่อยู่ร้าน/ระบบ/พนักงาน — ที่อยู่ที่ผู้ติดต่อคนอื่น
+  //   ใช้ร่วม (เช่น ผู้ติดต่อซ้ำ) ยังเป็นของเขา ⇒ ชุดที่ 1 (จดหมายที่ผูกเขา) + การแทนคำทั้งร้าน (แจ้งเตือน/AI/บอร์ดงาน/audit) ยังตัด/ปิด เหมือน C3.9 เดิม ·
+  //   ข้อยกเว้น "คนอื่นถือร่วม" ใช้กับ (ก) คำจากฟอร์ม/audit เก่า (ข) ชุดที่ 2 (จดหมายของคนอื่น) เท่านั้น — ถือร่วม = WARN พร้อม id ของผู้ถือ (id ล้วน)
+  const extraTokens = identityTokens([], [], {
+    names: extraNames.filter((n) => !notHis.names.has(n.trim())),
+    values: extraValues.filter((v) => (v.includes("@") ? !notHis.emails.has(bareEmail(v)) : !notHis.phones.has(v.trim()))),
+  });
+  const coreTokens = identityTokens(people, parties).filter((tk) => !(tk.includes("@") && notHis.fixedEmails.has(bareEmail(tk))));
+  const tokens = [...new Set([...coreTokens, ...extraTokens])].sort((a, b) => b.length - a.length);
+  const tokens2 = tokens.filter((tk) => !(tk.includes("@") && notHis.emails.has(bareEmail(tk))));
+  const ownSet = new Set(ownEmails);
+  const personAddrs = new Set(ownEmails.filter((a) => !notHis.fixedEmails.has(a))); // ชุดที่ 1
+  const personAddrs2 = new Set(ownEmails.filter((a) => !notHis.emails.has(a))); // ชุดที่ 2
+  const holders = notHis.holders.filter((h) => ownSet.has(h.email));
+  if (holders.length) {
+    await logOps("WARN", "crm.privacy", "อีเมลของผู้ติดต่อที่ถูกลบมีผู้ติดต่อคนอื่นที่ยังไม่ถูกลบใช้อยู่ — ตัดออกจากจดหมาย/ข้อความของเขาเองแล้ว แต่คงไว้ในจดหมายของคนอื่น ตรวจว่าเป็นคนเดียวกันไหม", {
+      tenantId: t,
+      detail: JSON.stringify({ contactId: id, heldBy: [...new Set(holders.map((h) => h.id))].slice(0, 20) }),
+    });
+  }
+  const mask = (v: string | null) => maskText(v, tokens);
+  const mask2 = (v: string | null) => maskText(v, tokens2);
   const fileIds: string[] = [];
   const contentToo = source !== "RETENTION";
 
   // ── อีเมล (แถวคงอยู่ · ล็อกแถวก่อนเก็บรหัสไฟล์แนบ — งานล้างตามอายุที่วิ่งพร้อมกันรอแล้วเห็นว่าจองไปแล้ว) ──
-  const mails = await tx.$queryRaw<{ id: string; direction: string; status: string; fromAddr: string; fromName: string | null; toAddrs: string[]; ccAddrs: string[]; bccAddrs: string[]; subject: string; bodyHtml: string | null; bodyText: string | null; snippet: string | null; attachments: Prisma.JsonValue }[]>`
-    SELECT "id", "direction"::text AS "direction", "status"::text AS "status", "fromAddr", "fromName", "toAddrs", "ccAddrs", "bccAddrs", "subject", "bodyHtml", "bodyText", "snippet", "attachments"
+  //   ลำดับล็อก (รีวิว C3.9-fix NOTE): ชุดที่ 1 (ผูกเขา) แล้วชุดที่ 2 (มีที่อยู่ของเขา) — ต่างชุดเรียง id · การลบสองคนพร้อมกันที่ใช้จดหมายฉบับเดียวกัน
+  //   (เช่น cc กันไปมา) อาจชนกันเป็น deadlock ⇒ Postgres ยกเลิกหนึ่ง tx (rollback ทั้งการลบ · ไม่มีอะไรครึ่ง ๆ) — ผู้กดลองใหม่/งานวิ่งรอบหน้า (ยอมรับ · มติผู้คุมงาน)
+  type MailRow = { id: string; contactId: string | null; direction: string; status: string; fromAddr: string; fromName: string | null; toAddrs: string[]; ccAddrs: string[]; bccAddrs: string[]; subject: string; bodyHtml: string | null; bodyText: string | null; snippet: string | null; attachments: Prisma.JsonValue };
+  const mails = await tx.$queryRaw<MailRow[]>`
+    SELECT "id", "contactId", "direction"::text AS "direction", "status"::text AS "status", "fromAddr", "fromName", "toAddrs", "ccAddrs", "bccAddrs", "subject", "bodyHtml", "bodyText", "snippet", "attachments"
       FROM "CrmEmailMessage" WHERE "tenantId" = ${t} AND "systemId" = ${ctx.systemId} AND "contactId" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
-  const keepAddr = (a: string) => !personAddrs.has(a.trim().toLowerCase()) && !tokens.some((tk) => a.includes(tk));
+  const isPersonAddr = (a: string) => personAddrs.has(bareEmail(a));
+  const keepAddr = (a: string) => notHis.fixedEmails.has(bareEmail(a)) || (!isPersonAddr(a) && !tokens.some((tk) => a.includes(tk)));
+  const isPersonAddr2 = (a: string) => personAddrs2.has(bareEmail(a));
+  const keepAddr2 = (a: string) => notHis.emails.has(bareEmail(a)) || (!isPersonAddr2(a) && !tokens2.some((tk) => a.includes(tk)));
+  const attachmentIds = (m: MailRow) => {
+    for (const a of Array.isArray(m.attachments) ? m.attachments : []) {
+      const fid = isObj(a) && typeof a.fileId === "string" ? a.fileId : null;
+      if (fid) fileIds.push(fid);
+    }
+  };
+  const QUEUED_FAIL = { status: "FAILED" as const, scheduledAt: null, leaseUntil: null };
   for (const m of mails) {
     const inbound = m.direction === "IN";
     const queued = m.status === "QUEUED";
     const data: Prisma.CrmEmailMessageUpdateInput = {
-      subject: maskText(m.subject, tokens) ?? "",
+      subject: mask(m.subject) ?? "",
       fromAddr: keepAddr(m.fromAddr) ? m.fromAddr : "",
-      fromName: inbound ? null : maskText(m.fromName, tokens),
+      fromName: inbound ? null : mask(m.fromName),
       toAddrs: m.toAddrs.filter(keepAddr),
       ccAddrs: m.ccAddrs.filter(keepAddr),
       bccAddrs: m.bccAddrs.filter(keepAddr),
       providerError: null,
       // NOTE รีวิว C3.9: จดหมายที่ตั้งเวลาไว้ถึงคนที่ถูกลบต้องไม่ถูกส่งออกไปอีก (ปลายทางถูกล้างแล้ว) ⇒ FAILED ใน tx เดียวกัน
-      ...(queued ? { status: "FAILED" as const, scheduledAt: null, leaseUntil: null } : {}),
+      ...(queued ? QUEUED_FAIL : {}),
     };
     if (contentToo || queued) {
-      for (const a of Array.isArray(m.attachments) ? m.attachments : []) {
-        const fid = isObj(a) && typeof a.fileId === "string" ? a.fileId : null;
-        if (fid) fileIds.push(fid);
-      }
+      attachmentIds(m);
       Object.assign(data, { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: now });
     } else {
-      Object.assign(data, { bodyHtml: maskText(m.bodyHtml, tokens), bodyText: maskText(m.bodyText, tokens), snippet: maskText(m.snippet, tokens) });
+      Object.assign(data, { bodyHtml: mask(m.bodyHtml), bodyText: mask(m.bodyText), snippet: mask(m.snippet) });
     }
     await tx.crmEmailMessage.update({ where: { id: m.id }, data });
   }
   counts.emails = mails.length;
   if (mails.length) await tx.crmEmailEvent.deleteMany({ where: { emailId: { in: mails.map((m) => m.id) } } });
 
+  // ── C3.9-fix H2 (ล่าความปลอดภัย B2): จดหมายที่ **ไม่ได้ผูก** คนนี้ (ของคนอื่น/ไม่ผูกใคร) แต่มีที่อยู่ของเขาใน from/to/cc/bcc ──
+  //   ที่อยู่ของเขาถูกตัดออกจากรายการ · คำระบุตัวในหัวข้อ/เนื้อ/ชื่อผู้ส่งถูกปิด (ที่อยู่ของเจ้าของจดหมาย/ร้านคงไว้) ·
+  //   จดหมายที่ **เขาเป็นผู้ส่ง** และไม่ผูกใคร = เนื้อหาของเขาเอง ⇒ ล้างเนื้อ/ไฟล์แนบ + หัวข้อ (RETENTION = ปิดคำระบุตัวแทน — อีเมลมีนาฬิกาของตัวเอง) ·
+  //   จดหมาย QUEUED ในชุดนี้ = FAILED เหมือนชุดที่ 1 (ปลายทางที่เป็นเขาถูกตัดแล้ว — ห้ามส่งฉบับที่ถูกแก้ออกไป)
+  //   รีวิว C3.9-fix B1(c): ชุดนี้เกิน SECOND_SET_MAX = ไม่แตะเลย (ไม่ล้างครึ่ง ๆ) + WARN id ล้วน — ที่อยู่ที่ตรงจดหมายจำนวนมากขนาดนั้นน่าจะไม่ใช่ของเขาคนเดียว
+  const addrList = [...personAddrs2];
+  const matchedCount = addrList.length
+    ? Number(
+        (
+          await tx.$queryRaw<{ n: number }[]>`
+            SELECT count(*)::int AS "n" FROM "CrmEmailMessage" m
+             WHERE m."tenantId" = ${t} AND m."systemId" = ${ctx.systemId}
+               AND (m."contactId" IS NULL OR NOT (m."contactId" = ANY(${ids}::text[])))
+               AND (lower(btrim(m."fromAddr")) = ANY(${addrList}::text[])
+                    OR EXISTS (SELECT 1 FROM unnest(m."toAddrs" || m."ccAddrs" || m."bccAddrs") x(a) WHERE lower(btrim(x.a)) = ANY(${addrList}::text[])))`
+        )[0]?.n ?? 0,
+      )
+    : 0;
+  if (matchedCount > SECOND_SET_MAX) {
+    await logOps("WARN", "crm.privacy", "จดหมายที่มีที่อยู่ของผู้ติดต่อที่ถูกลบแต่ไม่ได้ผูกเขามีมากเกินเพดาน — ไม่ได้แตะชุดนี้ ตรวจสอบก่อนลบซ้ำ", { tenantId: t, detail: JSON.stringify({ contactId: id, matched: matchedCount, cap: SECOND_SET_MAX }) });
+  }
+  const matched = addrList.length && matchedCount > 0 && matchedCount <= SECOND_SET_MAX
+    ? await tx.$queryRaw<MailRow[]>`
+        SELECT m."id", m."contactId", m."direction"::text AS "direction", m."status"::text AS "status", m."fromAddr", m."fromName", m."toAddrs", m."ccAddrs", m."bccAddrs", m."subject", m."bodyHtml", m."bodyText", m."snippet", m."attachments"
+          FROM "CrmEmailMessage" m
+         WHERE m."tenantId" = ${t} AND m."systemId" = ${ctx.systemId}
+           AND (m."contactId" IS NULL OR NOT (m."contactId" = ANY(${ids}::text[])))
+           AND (lower(btrim(m."fromAddr")) = ANY(${addrList}::text[])
+                OR EXISTS (SELECT 1 FROM unnest(m."toAddrs" || m."ccAddrs" || m."bccAddrs") x(a) WHERE lower(btrim(x.a)) = ANY(${addrList}::text[])))
+         ORDER BY m."id" FOR UPDATE`
+    : [];
+  for (const m of matched) {
+    const fromPerson = isPersonAddr2(m.fromAddr);
+    const clear = fromPerson && !m.contactId && contentToo;
+    const queued = m.status === "QUEUED";
+    const data: Prisma.CrmEmailMessageUpdateInput = {
+      subject: clear ? "" : (mask2(m.subject) ?? ""),
+      fromAddr: keepAddr2(m.fromAddr) ? m.fromAddr : "",
+      fromName: fromPerson ? null : mask2(m.fromName),
+      toAddrs: m.toAddrs.filter(keepAddr2),
+      ccAddrs: m.ccAddrs.filter(keepAddr2),
+      bccAddrs: m.bccAddrs.filter(keepAddr2),
+      ...(queued ? QUEUED_FAIL : {}),
+    };
+    if (clear) {
+      attachmentIds(m);
+      Object.assign(data, { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: now });
+    } else {
+      Object.assign(data, { bodyHtml: mask2(m.bodyHtml), bodyText: mask2(m.bodyText), snippet: mask2(m.snippet) });
+    }
+    await tx.crmEmailMessage.update({ where: { id: m.id }, data });
+  }
+  counts.emails += matched.length;
+
   // ── กิจกรรม (แถว + ตัวเลขคงอยู่ · เนื้อ/ถอดเสียง/สรุป AI หาย · ไฟล์เสียงลบหลัง commit) ──
   const acts = await tx.$queryRaw<{ id: string; title: string; recordingFileId: string | null }[]>`
     SELECT "id", "title", "recordingFileId" FROM "CrmActivity" WHERE "tenantId" = ${t} AND "contactId" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
   for (const a of acts) {
     const data: Prisma.CrmActivityUpdateInput = { body: null, transcript: null, aiSummary: null, aiNextStep: null, location: null, meetingUrl: null, attendees: Prisma.DbNull };
-    const title = maskText(a.title, tokens);
+    const title = mask(a.title);
     if (title !== a.title) data.title = title ?? "";
     if (contentToo && a.recordingFileId) {
       fileIds.push(a.recordingFileId);
@@ -367,7 +641,7 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
   counts.clicks = (await tx.crmTrackedClick.deleteMany({ where: { tenantId: t, contactId: { in: ids } } })).count;
 
   // ── พอร์ทัล (รีวิว C3.9 B3): แถวทั้งหมดหายใน tx นี้ (`portal.eraseContactInTx` — ของ C3.5) · คำขออนุมัติยกเลิกหลัง commit ──
-  const portalOut = await portal.eraseContactInTx(tx, sysScope, ids);
+  const portalOut = await portal.eraseContactInTx(tx, sysScope, ids, { mask: (s) => maskText(s, tokens) ?? s });
   counts.portal = portalOut.accesses + portalOut.sessions + portalOut.requests;
 
   // ── ข้อเสนอ AI (นามบัตร/lead · รีวิว C3.9 S1): เฉพาะข้อเสนอชนิดของ CRM ที่เอ่ยถึงคนนี้ หรือข้อเสนอใดก็ตามที่พก id ของคนนี้ ──
@@ -378,13 +652,20 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
     );
   }
 
-  // ── แจ้งเตือนในแอป (แถวคงอยู่ · คำที่ระบุตัว → [ข้อมูลถูกลบ]) ──
+  // ── แจ้งเตือนในแอป · บทสนทนาผู้ช่วย AI (แถวคงอยู่ · คำที่ระบุตัว → [ข้อมูลถูกลบ]) ──
   //   🔴 AppNotification ไม่มีคอลัมน์อ้างอิง (refType/refId) ⇒ ขอบเขต = ข้อความที่มีคำระบุตัวแบบเต็ม (ชื่อเต็ม · เบอร์ · อีเมล · LINE id)
   //      เท่านั้น (ไม่ใช่ชื่อ/นามสกุลแยกท่อน — รีวิว C3.9 S1) · ข้อสอบ C3.9-S1.3 บังคับให้แจ้งเตือนที่เอ่ยชื่อ+เบอร์ถูกล้าง
+  //   C3.9-fix H3 (ล่าความปลอดภัย B3): AiMessage.content + AiConversation.title ของร้านด้วยคำชุดเดียวกัน (แถวคงอยู่ — ตัวนับโทเคน/การใช้งาน)
   for (const tk of tokens) {
     counts.notifications += Number(
       await tx.$executeRaw`UPDATE "AppNotification" SET "title" = replace("title", ${tk}, ${CRM_ERASED_MASK}), "body" = replace("body", ${tk}, ${CRM_ERASED_MASK})
                             WHERE "tenantId" = ${t} AND (strpos("title", ${tk}) > 0 OR strpos("body", ${tk}) > 0)`,
+    );
+    counts.aiMessages += Number(
+      await tx.$executeRaw`UPDATE "AiMessage" SET "content" = replace("content", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("content", ${tk}) > 0`,
+    );
+    counts.aiMessages += Number(
+      await tx.$executeRaw`UPDATE "AiConversation" SET "title" = replace("title", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("title", ${tk}) > 0`,
     );
   }
 
@@ -426,27 +707,21 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
 
   // ── ไทม์ไลน์สมาชิกที่ผูกคนนี้ · กฎอัตโนมัติ · การ์ดบอร์ดงานที่ผูก · ลำดับการติดตามที่เดินอยู่ ──
   const timeline = await tx.memberActivity.findMany({ where: { tenantId: t, crmContactId: { in: ids } }, select: { id: true, summary: true } });
-  for (const r of timeline) await tx.memberActivity.update({ where: { id: r.id }, data: { summary: maskText(r.summary, tokens) ?? "", data: Prisma.DbNull } });
+  for (const r of timeline) await tx.memberActivity.update({ where: { id: r.id }, data: { summary: mask(r.summary) ?? "", data: Prisma.DbNull } });
   await tx.automationRun.updateMany({ where: { tenantId: t, crmContactId: { in: ids } }, data: { payload: Prisma.DbNull, detail: null } });
-  const cardIds = (await tx.kanbanCardLink.findMany({ where: { tenantId: t, linkType: "CRM_CONTACT", linkId: { in: ids } }, select: { cardId: true } })).map((l) => l.cardId);
-  if (cardIds.length) {
-    const cards = await tx.kanbanCard.findMany({ where: { tenantId: t, id: { in: cardIds } }, select: { id: true, title: true, description: true } });
-    for (const cd of cards) {
-      const title = maskText(cd.title, tokens) ?? "";
-      const description = maskText(cd.description, tokens);
-      if (title !== cd.title || description !== cd.description) await tx.kanbanCard.update({ where: { id: cd.id }, data: { title, description } });
-    }
-  }
+  // C3.9-fix H4 (ล่าความปลอดภัย B4): การ์ดที่ผูก — หัว · รายละเอียด · ความเห็น · ประวัติการ์ด ผ่าน facade ของบอร์ดงาน (ตารางบอร์ดงานไม่ถูกเขียนจากไฟล์นี้)
+  const kb = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "CRM_CONTACT", ids, (s) => maskText(s, tokens) ?? s);
+  counts.kanban = kb.cards + kb.comments + kb.activities;
   await tx.crmSequenceEnrollment.updateMany({
     where: { tenantId: t, contactId: { in: ids }, status: { in: ["ACTIVE", "PAUSED"] } },
     data: { status: "STOPPED", stoppedReason: "ERASED", stoppedAt: now, nextAt: null, leaseUntil: null },
   });
 
-  // ── Party: ไม่มีผู้ถืออื่น (ตัวนับเดียวของร้าน `party.countPartyHolders` · ไม่นับคนในสายนี้และสมาชิกที่ถูกลบคู่กัน) = ล้างตัวตน ·
-  //    มี = ตัดการผูกของแถวในสายนี้ ──
+  // ── Party: ไม่มีผู้ถืออื่น (ตัวนับเดียวของร้าน `party.countPartyHolders` · ไม่นับคนในสายนี้) = ล้างตัวตน · มี = ตัดการผูกของแถวในสายนี้ ──
+  //   C3.9-fix H5: สมาชิกที่ผูกไว้ **นับเป็นผู้ถือเสมอ** — สมาชิกถูกลบ (ถ้าถูกลบ) โดยระบบสมาชิกเองหลัง commit (อาจรออนุมัติ) แล้วมันล้าง Party เอง
   const unlinkParty = new Set<string>();
   for (const pid of partyIds) {
-    const holders = await party.countPartyHolders(t, pid, { crmContactIds: ids, customerIds: memberCustomerIds }, tx);
+    const holders = await party.countPartyHolders(t, pid, { crmContactIds: ids, customerIds: [] }, tx);
     if (holders === 0) {
       await tx.party.updateMany({ where: { id: pid, tenantId: t }, data: { name: CRM_ERASED_NAME, phone: null, phoneNorm: null, email: null, taxId: null, address: null } });
       counts.partyAnonymised = true;
@@ -459,17 +734,67 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
     await anonymizeContactInTx(tx, sysScope, p.id, { name: CRM_ERASED_NAME, now, keepArchivedAt: p.archivedAt, unlinkParty: !!p.partyId && unlinkParty.has(p.partyId) });
   }
 
+  // ── C3.9-fix H8 (ล่าความปลอดภัย M3): ขัดตัวตนออกจาก before/after ของแถว audit ในสาย (คีย์ตัวตน → [ข้อมูลถูกลบ] · ข้อความ → ปิดคำระบุตัว) ──
+  //   แถว `crm.contact.erase` (ธง + หลักฐาน: id + เหตุผล) ไม่ถูกแตะ · ตัวเขียนผู้ติดต่อเลิกเขียนค่าตัวตนลง audit แล้ว (contacts.ts AUDIT_IDENTITY_KEYS)
+  const scrub = (v: unknown, key?: string): unknown => {
+    if (key && AUDIT_IDENTITY_KEYS.has(key) && v !== null && v !== undefined && v !== AUDIT_CHANGED_MARK) return CRM_ERASED_MASK;
+    if (typeof v === "string") return maskText(v, tokens);
+    if (Array.isArray(v)) return v.map((x) => scrub(x));
+    if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, k)]));
+    return v;
+  };
+  const asJson = (v: unknown) => (v === null || v === undefined ? Prisma.DbNull : (v as Prisma.InputJsonValue));
+  for (const r of trail) {
+    const before = scrub(r.before);
+    const after = scrub(r.after);
+    if (JSON.stringify(before) === JSON.stringify(r.before) && JSON.stringify(after) === JSON.stringify(r.after)) continue;
+    await tx.auditLog.update({ where: { id: r.id }, data: { before: asJson(before), after: asJson(after) } });
+    counts.auditScrubbed += 1;
+  }
+
+  if (resweep) return { erased: false, partyId: row.partyId, counts, memberSkipped: [], resweepFileIds: [...new Set(fileIds)] };
+
+  // ── C3.9-fix H9 (ล่าความปลอดภัย M4): ไฟล์ส่งออกของระบบที่ยังไม่หมดอายุ (สร้างก่อนการลบ = มีข้อมูลของเขา) ถูกถอน ──
+  //   CRM_EXPORT: ไฟล์ส่วนตัวลบหลัง commit (followUp) · แถวงาน fileId = null + result.withdrawn ⇒ getExport = EXPIRED ·
+  //   REPORT_EXPORT: CSV ในแถว (C3.1) ถูกล้าง · RETENTION ไม่ถอน (ไฟล์ส่งออกมีนาฬิกาอายุเก็บของตัวเอง `retention.exportDays` — แบบเดียวกับอีเมล/เสียง)
+  if (source !== "RETENTION") {
+    // งานที่กำลังสร้างไฟล์อยู่ (อ่านข้อมูลก่อนการลบนี้ commit ได้) = กลับเข้าคิว ⇒ `finish` ของรอบนั้นเสีย lease → ทิ้งไฟล์ที่อัปโหลด ·
+    //   รอบถัดไปสร้างใหม่จากข้อมูลหลังลบ (ล็อกแถวเดียวกับ finish — ทำ **ก่อน** การถอน: finish ที่ commit ก่อนหน้า = แถว DONE ถูกถอนในคำสั่งถัดไป · finish ที่ตามมา = เสีย lease)
+    await tx.$executeRaw`UPDATE "CrmImportJob" SET "status" = 'QUEUED', "leaseUntil" = NULL
+                          WHERE "tenantId" = ${t} AND "systemId" = ${ctx.systemId} AND "kind" = ${CRM_EXPORT_KIND} AND "status" = 'RUNNING'`;
+    const withdrawn = await tx.$queryRaw<{ fileId: string }[]>`
+      WITH p AS (
+        SELECT "id", "fileId" FROM "CrmImportJob"
+         WHERE "tenantId" = ${t} AND "systemId" = ${ctx.systemId} AND "kind" = ${CRM_EXPORT_KIND} AND "fileId" IS NOT NULL
+         ORDER BY "id" FOR UPDATE)
+      UPDATE "CrmImportJob" j SET "fileId" = NULL,
+             "result" = COALESCE(CASE WHEN jsonb_typeof(j."result") = 'object' THEN j."result" ELSE NULL END, '{}'::jsonb) || '{"expired":true,"withdrawn":true}'::jsonb
+        FROM p WHERE j."id" = p."id" RETURNING p."fileId" AS "fileId"`;
+    for (const w of withdrawn) fileIds.push(w.fileId);
+    const reports = await tx.$executeRaw`
+      UPDATE "CrmImportJob" SET "result" = ("result" - 'csv') || '{"expired":true,"withdrawn":true}'::jsonb
+       WHERE "tenantId" = ${t} AND "systemId" = ${ctx.systemId} AND "kind" = 'REPORT_EXPORT' AND jsonb_typeof("result") = 'object' AND "result" ? 'csv'`;
+    counts.exportsWithdrawn = withdrawn.length + Number(reports);
+  }
+
   // ── หลักฐาน (= ธง "ลบแล้ว") + event (tx เดียวกัน) ──
-  //   `after.followUp` = งานหลัง commit เป็น id ล้วน (ไฟล์ · คำขออนุมัติ · สมาชิก) — ตัวรับ `crm.contact.erased` อ่านจากแถวนี้
+  //   `after.followUp` = งานหลัง commit เป็น id ล้วน (ไฟล์ · คำขออนุมัติ · คำขอลบสมาชิก) — ตัวรับ `crm.contact.erased` อ่านจากแถวนี้
   //   (payload ของ event เป็น id ของผู้ติดต่อ/ระบบ/Party/สมาชิกเท่านั้น — ข้อสอบ C3.9-S1.4 ตรึงชุดคีย์ไว้)
-  const followUp = { fileIds: [...new Set(fileIds)], approvalRequestIds: portalOut.approvalRequestIds, memberCustomerIds };
+  const followUp = {
+    fileIds: [...new Set(fileIds)],
+    approvalRequestIds: portalOut.approvalRequestIds,
+    // C3.9-fix H5: คำขอลบของระบบสมาชิก (ผ่านสายอนุมัติ `member.erase`) · ผู้ยื่น = ผู้กดลบ (ผ่านด่านคีย์แล้วก่อน tx)
+    memberRequests: memberAsk,
+    memberRequestedBy: ctx.actorUserId,
+    memberSkipped,
+  };
   const audit = (targetId: string, extra: Record<string, unknown>) =>
     tx.auditLog.create({
       data: { tenantId: t, actorType: ctx.actorUserId ? "USER" : "SYSTEM", actorId: ctx.actorUserId, action: CRM_ERASE_AUDIT_ACTION, targetType: "CrmContact", targetId, after: { reason, source, systemId: ctx.systemId, ...extra } as Prisma.InputJsonValue },
     });
   const partyId = row.partyId;
   await audit(id, { partyId, memberCustomerId: row.memberCustomerId, mergedIds: chain, counts: { ...counts, files: followUp.fileIds.length }, followUp });
-  for (const m of chain) await audit(m, { mergedInto: id, partyId: people.find((p) => p.id === m)?.partyId ?? null });
+  for (const m of chain) if (!erasedBefore.has(m)) await audit(m, { mergedInto: id, partyId: people.find((p) => p.id === m)?.partyId ?? null });
   await emitOutbox(tx, {
     tenantId: t,
     type: "crm.contact.erased",
@@ -477,18 +802,20 @@ async function eraseInTx(tx: Tx, ctx: PrivacyCtx & { actorUserId: string | null 
     payload: { contactId: id, systemId: ctx.systemId, ...(partyId ? { partyId } : {}), ...(row.memberCustomerId ? { customerId: row.memberCustomerId } : {}) },
     systemId: ctx.systemId,
   });
-  return { erased: true, partyId, counts };
+  return { erased: true, partyId, counts, memberSkipped, resweepFileIds: [] };
 }
 
 /**
- * ขั้นหลัง commit ของการลบ (รีวิว C3.9 B3 · มติผู้คุมงาน) — วัตถุไฟล์บนที่เก็บ · ยกเลิกคำขออนุมัติของพอร์ทัล · ลบสมาชิกที่ผูก (member facade)
- * อ่านงานจากแถว audit ของการลบ (id ล้วน) ⇒ ทำซ้ำ/พร้อมกันได้: ไฟล์ที่ลบแล้ว = ไม่มีแถว = สำเร็จ · คำขอที่ปิดแล้ว = ข้าม · สมาชิกที่ลบแล้ว = เงียบ
+ * ขั้นหลัง commit ของการลบ (รีวิว C3.9 B3 · มติผู้คุมงาน) — วัตถุไฟล์บนที่เก็บ · ยกเลิกคำขออนุมัติของพอร์ทัล · สมาชิกที่ผูก (member facade)
+ * อ่านงานจากแถว audit ของการลบ (id ล้วน) ⇒ ทำซ้ำ/พร้อมกันได้: ไฟล์ที่ลบแล้ว = ไม่มีแถว = สำเร็จ · คำขอที่ปิดแล้ว = ข้าม · สมาชิกที่ลบแล้ว/คำขอค้าง = เงียบ
  * ขั้นไหนล้ม = ทำขั้นอื่นต่อให้ครบ แล้ว OpsEvent WARN (id ล้วน) + throw ⇒ ตัวรับ event ส่งใหม่
+ * C3.9-fix H5: `followUp.memberRequests` = ยื่นคำขอลบของระบบสมาชิก (`requestEraseFromCrm` — ไม่มีนโยบายอนุมัติ = ลบทันที · มี = PENDING)
+ *   แถวเก่าก่อน C3.9-fix (`followUp.memberCustomerIds`) = ลบตรงแบบเดิม (ตัดสินไปแล้วตอนนั้น)
  */
-export async function completeErasure(tenantId: string, contactId: string, deps?: PrivacyDeps | null): Promise<{ files: number; memberErased: boolean }> {
+export async function completeErasure(tenantId: string, contactId: string, deps?: PrivacyDeps | null): Promise<{ files: number; memberErased: boolean; memberPending: boolean }> {
   const a = await erasedAudit(prisma, tenantId, contactId);
   const f = a && isObj(a.after) && isObj(a.after.followUp) ? a.after.followUp : null;
-  if (!f) return { files: 0, memberErased: false };
+  if (!f) return { files: 0, memberErased: false, memberPending: false };
   const ids = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : []);
   const failed: string[] = [];
   let files = 0;
@@ -500,19 +827,56 @@ export async function completeErasure(tenantId: string, contactId: string, deps?
   }
   await portal.cancelErasedApprovals(tenantId, ids(f.approvalRequestIds)).catch(() => failed.push("approvals"));
   let memberErased = false;
-  for (const cid of ids(f.memberCustomerIds)) {
-    try {
-      const member = await import("@/lib/modules/member");
-      if ((await member.eraseMemberById(tenantId, cid, { actorUserId: null })).erased) memberErased = true;
-    } catch {
-      failed.push(`customer:${cid}`);
+  let memberPending = false;
+  const legacy = ids(f.memberCustomerIds);
+  const asks = ids(f.memberRequests);
+  if (legacy.length || asks.length) {
+    const member = await import("@/lib/modules/member");
+    for (const cid of legacy) {
+      try {
+        if ((await member.eraseMemberById(tenantId, cid, { actorUserId: null })).erased) memberErased = true;
+      } catch {
+        failed.push(`customer:${cid}`);
+      }
     }
+    const by = typeof f.memberRequestedBy === "string" && f.memberRequestedBy ? f.memberRequestedBy : null;
+    const why = a && isObj(a.after) && typeof a.after.reason === "string" ? a.after.reason : null;
+    // รีวิว C3.9-fix S2: คำขอที่ยื่นแล้วจดไว้ใน followUp (`memberRequestIds`) — ส่งใหม่อ่านสถานะของคำขอนั้น ไม่ยื่นใหม่ ·
+    //   ยื่นแล้วแต่ยังไม่ได้จด (ล้มระหว่างทาง) = ระบบสมาชิกหา "คำขอหลังเวลาการลบ" เอง (`since`) ⇒ ไม่มีคำขอซ้อน/ลบอัตโนมัติรอบใหม่
+    const known = isObj(f.memberRequestIds) ? (f.memberRequestIds as Record<string, unknown>) : {};
+    const since = a ? await erasedAt(tenantId, a.id) : null;
+    const record: Record<string, string> = {};
+    for (const cid of asks) {
+      try {
+        const rid = typeof known[cid] === "string" ? (known[cid] as string) : null;
+        const r = await member.requestEraseFromCrm(tenantId, cid, { actorUserId: by, reason: why, since, requestId: rid });
+        if (r.status === "DONE") memberErased = true;
+        else if (r.status === "PENDING") memberPending = true;
+        if (r.requestId && !rid) record[cid] = r.requestId;
+      } catch {
+        failed.push(`customer:${cid}`);
+      }
+    }
+    if (a && Object.keys(record).length) await rememberMemberRequests(a.id, record).catch(() => failed.push("followUp.memberRequestIds"));
   }
   if (failed.length) {
     await logOps("WARN", "crm.privacy", "ขั้นหลังการลบข้อมูลส่วนบุคคลยังไม่ครบ — ระบบจะลองใหม่อัตโนมัติ", { tenantId, detail: JSON.stringify({ contactId, failed: failed.slice(0, 50) }) });
     throw new Error(`crm.privacy.completeErasure pending (${failed.length})`);
   }
-  return { files, memberErased };
+  return { files, memberErased, memberPending };
+}
+
+/** เวลาของแถว audit การลบ (จุดตัดของ "คำขอลบสมาชิกที่ยื่นหลังการลบ" — รีวิว C3.9-fix S2) */
+async function erasedAt(tenantId: string, auditId: string): Promise<Date | null> {
+  return (await prisma.auditLog.findFirst({ where: { id: auditId, tenantId }, select: { createdAt: true } }))?.createdAt ?? null;
+}
+
+/** จด requestId ของคำขอลบสมาชิกลง `after.followUp.memberRequestIds` ของแถว audit การลบ (jsonb คำสั่งเดียว · ไม่ทับของที่จดไว้แล้ว) */
+async function rememberMemberRequests(auditId: string, ids: Record<string, string>): Promise<void> {
+  await prisma.$executeRaw`
+    UPDATE "AuditLog" SET "after" = jsonb_set("after", '{followUp,memberRequestIds}',
+           ${JSON.stringify(ids)}::jsonb || COALESCE("after"->'followUp'->'memberRequestIds', '{}'::jsonb), true)
+     WHERE "id" = ${auditId} AND jsonb_typeof("after"->'followUp') = 'object'`;
 }
 
 /** ตัวรับ `crm.contact.erased` (outbox-consumers · ขั้นแรกที่ retry ได้) — ทำขั้นหลัง commit ให้ครบ (ล้ม = throw = ส่งใหม่) */
@@ -613,6 +977,18 @@ export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: st
         select: { entityType: true, entityId: true, name: true, mime: true, size: true, createdAt: true },
         take: 5_000,
       }),
+    ),
+    // C3.9-fix H1: คำตอบฟอร์มบนเว็บที่เขากรอก (ผ่าน facade ฟอร์ม · ตารางเดียวกับขอบเขตการลบ)
+    FormSubmission: rowsOf(
+      (await (await import("@/lib/modules/forms")).submissionsOfCrmContacts(prisma, t, [id])).map((x) => ({
+        id: x.id,
+        form: x.formName,
+        answers: x.answers,
+        createdAt: x.createdAt,
+        pageUrl: x.pageUrl,
+        referrer: x.referrer,
+        utm: x.utm,
+      })),
     ),
   };
   const contact = jsonClean({
@@ -879,7 +1255,14 @@ export async function getExport(ctx: PrivacyCtx, actor: Actor, jobId: string): P
     filename: typeof r.filename === "string" ? r.filename : null,
     rowCount: job.totalRows,
     url,
-    error: status === "FAILED" ? (job.error ?? "สร้างไฟล์ไม่สำเร็จ — กดส่งออกใหม่อีกครั้ง") : status === "EXPIRED" ? "ไฟล์นี้หมดอายุและถูกล้างตามนโยบายเก็บข้อมูลแล้ว — กดส่งออกใหม่ได้เลย" : null,
+    error:
+      status === "FAILED"
+        ? (job.error ?? "สร้างไฟล์ไม่สำเร็จ — กดส่งออกใหม่อีกครั้ง")
+        : status === "EXPIRED"
+          ? r.withdrawn === true
+            ? "ไฟล์นี้ถูกถอนเพราะมีการลบข้อมูลส่วนบุคคลตามคำขอหลังสร้างไฟล์ — กดส่งออกใหม่ได้เลย (ไฟล์ใหม่จะไม่มีข้อมูลของคนที่ถูกลบ)"
+            : "ไฟล์นี้หมดอายุและถูกล้างตามนโยบายเก็บข้อมูลแล้ว — กดส่งออกใหม่ได้เลย"
+          : null,
     createdAt: job.createdAt.toISOString(),
   };
 }
@@ -958,20 +1341,20 @@ function monthsBefore(now: Date, months: number): Date {
   return new Date(target.getTime() - 7 * 3_600_000);
 }
 
-/** เตือน lead ชุดหนึ่ง (ใต้ advisory lock ต่อระบบ) — ธง "เตือนแล้ว" = แถว AuditLog `crm.retention.warned` (after.anchor = วันที่ไม่เคลื่อนไหวล่าสุด)
- *  กลับมาเคลื่อนไหวแล้วหยุดอีก = วันที่ใหม่ = เตือนใหม่ได้ · เป็นหลักฐานด้วยว่าร้านได้รับคำเตือนก่อนลบ (ผูกร้าน — ไม่มีแถวกำพร้าในตารางกลาง) */
+/** เตือน lead ชุดหนึ่ง (ใต้ advisory lock ต่อระบบ) — ธง "เตือนแล้ว" = แถว AuditLog `crm.retention.warned` ที่เขียน **หลัง** วันเคลื่อนไหวล่าสุด
+ *  (after.anchor = วันที่ไม่เคลื่อนไหวล่าสุด เก็บเป็นหลักฐาน) · กลับมาเคลื่อนไหวแล้วหยุดอีก = คำเตือนเก่าอยู่ก่อนวันเคลื่อนไหวใหม่ = เตือนใหม่ได้ ·
+ *  เป็นหลักฐานด้วยว่าร้านได้รับคำเตือนก่อนลบ (ผูกร้าน — ไม่มีแถวกำพร้าในตารางกลาง) */
 async function warnBatch(sys: { id: string; tenantId: string }, near: { id: string; ownerUserId: string | null; anchor: Date }[], months: number, at: Date): Promise<number> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.retention.warn:${sys.id}`}, 0))`;
     const dayOf = (d: Date) => new Date(d).toISOString().slice(0, 10);
-    const prior = await tx.auditLog.findMany({ where: { tenantId: sys.tenantId, action: "crm.retention.warned", targetId: { in: near.map((r) => r.id) } }, select: { targetId: true, after: true } });
-    const seen = new Set(prior.map((a) => `${a.targetId}:${isObj(a.after) && typeof a.after.anchor === "string" ? a.after.anchor : ""}`));
+    const prior = await tx.auditLog.findMany({ where: { tenantId: sys.tenantId, action: LEAD_WARNED_ACTION, targetId: { in: near.map((r) => r.id) } }, select: { targetId: true, createdAt: true } });
     const byOwner = new Map<string, number>();
     let n = 0;
     for (const r of near) {
-      const anchor = dayOf(r.anchor);
-      if (seen.has(`${r.id}:${anchor}`)) continue;
-      await tx.auditLog.create({ data: { tenantId: sys.tenantId, actorType: "SYSTEM", actorId: null, action: "crm.retention.warned", targetType: "CrmContact", targetId: r.id, after: { anchor, systemId: sys.id, leadMonths: months } } });
+      // ใต้ล็อก: อีกรอบที่วิ่งซ้อนเตือนคนนี้ไปแล้ว (หลังวันเคลื่อนไหวล่าสุดของเขา) = ข้าม
+      if (prior.some((p) => p.targetId === r.id && p.createdAt.getTime() >= new Date(r.anchor).getTime())) continue;
+      await tx.auditLog.create({ data: { tenantId: sys.tenantId, actorType: "SYSTEM", actorId: null, action: LEAD_WARNED_ACTION, targetType: "CrmContact", targetId: r.id, after: { anchor: dayOf(r.anchor), systemId: sys.id, leadMonths: months } } });
       n += 1;
       const key = r.ownerUserId ?? "";
       byOwner.set(key, (byOwner.get(key) ?? 0) + 1);
@@ -986,7 +1369,7 @@ async function warnBatch(sys: { id: string; tenantId: string }, near: { id: stri
           recipientUserId: uid,
           title: "lead ใกล้ครบอายุเก็บข้อมูล",
           // AUDIT-CLASS X8: ไม่มีชื่อ/เบอร์ของลูกค้าในแจ้งเตือน — จำนวนล้วน
-          body: `lead ${count.toLocaleString("th-TH")} รายที่${owner ? "คุณดูแล" : "ยังไม่มีผู้ดูแล"}ไม่มีความเคลื่อนไหวมานาน จะถูกลบข้อมูลอัตโนมัติตามอายุเก็บข้อมูลของร้านภายใน ${LEAD_RETENTION_WARN_DAYS} วัน — ติดต่อหรือบันทึกกิจกรรมเพื่อเก็บไว้`,
+          body: `lead ${count.toLocaleString("th-TH")} รายที่${owner ? "คุณดูแล" : "ยังไม่มีผู้ดูแล"}ไม่มีความเคลื่อนไหวมานาน จะถูกลบข้อมูลอัตโนมัติตามอายุเก็บข้อมูลของร้านในอีก ${LEAD_RETENTION_WARN_DAYS} วัน — ติดต่อหรือบันทึกกิจกรรมเพื่อเก็บไว้`,
           createdAt: at,
         });
       }
@@ -996,12 +1379,17 @@ async function warnBatch(sys: { id: string; tenantId: string }, near: { id: stri
   }, TX_OPTS);
 }
 
+const LEAD_WARNED_ACTION = "crm.retention.warned";
+
 /**
  * อายุเก็บ lead ที่ไม่แปลง (มติ C21 · `retention.leadMonths` ค่าเริ่มต้น 24 · 0 = ปิด):
- *   ไม่เคลื่อนไหวเกินอายุ ⇒ ลบ (source RETENTION) · อีกไม่ถึง 30 วันจะครบ ⇒ แจ้งเตือนในแอปถึงผู้ดูแลครั้งเดียว (ไม่มีชื่อคนในข้อความ)
- * "lead ที่ไม่แปลง" = ขั้น LEAD/PROSPECT/LOST · ไม่เคยแปลง · ไม่ผูกสมาชิก · ไม่มีดีลเปิด/ชนะ · ไม่มีสิทธิ์พอร์ทัล · ยังไม่ถูกเก็บถาวร/รวม
+ *   วันยึด = GREATEST(COALESCE(lastActivityAt, createdAt), createdAt) (C3.9-fix H6 — กิจกรรมที่บันทึกย้อนหลังดึงวันยึดไปก่อนวันสร้างไม่ได้)
+ *   ลบ (source RETENTION) **เฉพาะ** lead ที่เกินอายุ **และ** ได้รับคำเตือน (`crm.retention.warned` หลังวันยึด) มาแล้ว ≥ LEAD_RETENTION_WARN_DAYS วัน ·
+ *   เตือน = lead ที่อีกไม่ถึง 30 วันจะครบ **หรือเกินอายุแล้วแต่ยังไม่เคยถูกเตือน** (รอบแรกของร้าน/ขยับค่าอายุ) — แจ้งในแอปถึงผู้ดูแลครั้งเดียว (ไม่มีชื่อคน)
+ * "lead ที่ไม่แปลง" = ขั้น LEAD/PROSPECT/LOST · ไม่เคยแปลง · ไม่ผูกสมาชิก · ไม่มีดีลเปิด/ชนะ · ไม่มีสิทธิ์พอร์ทัล · ไม่ถูกรวม/ลบ
+ *   (C3.9-fix H10: **รวม** lead ที่เก็บถาวร — เก็บถาวรคือสิ่งที่ข้อความเพดานแนะนำ ต้องไม่กลายเป็นทางหลบอายุเก็บ)
  * 🔴 เฉพาะระบบ uiVersion 2 (R-E.14): การลบอัตโนมัติเป็นการกระทำที่ย้อนไม่ได้ — ร้านที่ยังไม่เปิด v2 ไม่ถูกแตะ
- * AUDIT-CLASS X5: ลบ = idempotent ใต้ล็อกแถว (ธง = แถว audit ของการลบ) · เตือน = แถว audit `crm.retention.warned` ต่อวันที่ไม่เคลื่อนไหว ใต้ advisory lock
+ * AUDIT-CLASS X5: ลบ = idempotent ใต้ล็อกแถว (ธง = แถว audit ของการลบ) · เตือน = แถว audit `crm.retention.warned` ใต้ advisory lock
  */
 export async function retentionLeads(now: Date, opts: PurgeOpts = {}): Promise<{ leadsErased: number; leadsWarned: number }> {
   const at = clockOf(now);
@@ -1014,29 +1402,31 @@ export async function retentionLeads(now: Date, opts: PurgeOpts = {}): Promise<{
     if (months <= 0) continue;
     const cutoff = monthsBefore(at, months);
     const warnFrom = new Date(cutoff.getTime() + LEAD_RETENTION_WARN_DAYS * DAY_MS);
+    const warnedBy = new Date(at.getTime() - LEAD_RETENTION_WARN_DAYS * DAY_MS);
     const reason = `lead ไม่มีความเคลื่อนไหวเกิน ${months} เดือน — ลบอัตโนมัติตามอายุเก็บข้อมูลของร้าน`;
     // รีวิว C3.9 S4 (ข)(ค): วนจนเงียบ (เคารพ deadline/signal) · lead ที่ลบไม่สำเร็จ = OpsEvent WARN (id ล้วน) + ข้ามไปตลอดรอบนี้
-    //   (ไม่ขวางคิว) · คนที่เตือนแล้ว (วันที่ไม่เคลื่อนไหวเดียวกัน) ไม่ถูกหยิบซ้ำ ⇒ รอบถัดไปของลูปได้คนใหม่เสมอ
+    //   (ไม่ขวางคิว) · คนที่เตือนแล้ว (หลังวันยึด) ไม่ถูกหยิบซ้ำ ⇒ รอบถัดไปของลูปได้คนใหม่เสมอ
     const skip: string[] = [];
-    const idle = (lo: Date | null, hi: Date, excludeWarned: boolean) => prisma.$queryRaw<{ id: string; ownerUserId: string | null; anchor: Date }[]>`
-      SELECT c."id", c."ownerUserId", COALESCE(c."lastActivityAt", c."createdAt") AS "anchor" FROM "CrmContact" c
+    const anchor = Prisma.sql`GREATEST(COALESCE(c."lastActivityAt", c."createdAt"), c."createdAt")`;
+    const warning = (extra: Prisma.Sql) =>
+      Prisma.sql`SELECT 1 FROM "AuditLog" w WHERE w."action" = ${LEAD_WARNED_ACTION} AND w."targetId" = c."id" AND w."tenantId" = c."tenantId" AND w."createdAt" >= ${anchor} ${extra}`;
+    const idle = (hi: Date, mode: "erase" | "warn") => prisma.$queryRaw<{ id: string; ownerUserId: string | null; anchor: Date }[]>`
+      SELECT c."id", c."ownerUserId", ${anchor} AS "anchor" FROM "CrmContact" c
        WHERE c."tenantId" = ${sys.tenantId} AND c."systemId" = ${sys.id}
-         AND c."archivedAt" IS NULL AND c."mergedIntoId" IS NULL
+         AND c."mergedIntoId" IS NULL
          AND c."convertedAt" IS NULL AND c."memberCustomerId" IS NULL
          AND c."lifecycleStage"::text IN ('LEAD', 'PROSPECT', 'LOST')
          AND NOT (c."id" = ANY(${skip}::text[]))
-         AND COALESCE(c."lastActivityAt", c."createdAt") < (${ts(hi)}::timestamptz AT TIME ZONE 'UTC')
-         ${lo ? Prisma.sql`AND COALESCE(c."lastActivityAt", c."createdAt") >= (${ts(lo)}::timestamptz AT TIME ZONE 'UTC')` : Prisma.empty}
+         AND ${anchor} < (${ts(hi)}::timestamptz AT TIME ZONE 'UTC')
          AND NOT EXISTS (SELECT 1 FROM "CrmDeal" d WHERE d."contactId" = c."id" AND d."kind"::text IN ('OPEN', 'WON'))
          AND NOT EXISTS (SELECT 1 FROM "CrmPortalAccess" p WHERE p."contactId" = c."id" AND p."revokedAt" IS NULL)
          AND NOT EXISTS (SELECT 1 FROM "AuditLog" e WHERE e."action" = ${CRM_ERASE_AUDIT_ACTION} AND e."targetId" = c."id" AND e."tenantId" = c."tenantId")
-         ${excludeWarned
-           ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "AuditLog" w WHERE w."action" = 'crm.retention.warned' AND w."targetId" = c."id" AND w."tenantId" = c."tenantId"
-                          AND w."after"->>'anchor' = to_char(COALESCE(c."lastActivityAt", c."createdAt"), 'YYYY-MM-DD'))`
-           : Prisma.empty}
-       ORDER BY COALESCE(c."lastActivityAt", c."createdAt") ASC, c."id" ASC LIMIT ${LEAD_BATCH_MAX}`;
+         ${mode === "erase"
+           ? Prisma.sql`AND EXISTS (${warning(Prisma.sql`AND w."createdAt" <= (${ts(warnedBy)}::timestamptz AT TIME ZONE 'UTC')`)})`
+           : Prisma.sql`AND NOT EXISTS (${warning(Prisma.empty)})`}
+       ORDER BY ${anchor} ASC, c."id" ASC LIMIT ${LEAD_BATCH_MAX}`;
     for (let round = 0; round < 50 && !stopped(opts); round += 1) {
-      const batch = await idle(null, cutoff, false);
+      const batch = await idle(cutoff, "erase");
       if (batch.length === 0) break;
       for (const r of batch) {
         if (stopped(opts)) break;
@@ -1051,7 +1441,7 @@ export async function retentionLeads(now: Date, opts: PurgeOpts = {}): Promise<{
       }
     }
     for (let round = 0; round < 50 && !stopped(opts); round += 1) {
-      const near = await idle(cutoff, warnFrom, true);
+      const near = await idle(warnFrom, "warn");
       if (near.length === 0) break;
       const n = await warnBatch(sys, near, months, at);
       leadsWarned += n;

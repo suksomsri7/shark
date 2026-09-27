@@ -343,6 +343,10 @@ export async function seedSystemRules(ctx: ScoringCtx, actor: MemberActor): Prom
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:score-rules-seed:${ctx.systemId}`}, 0))`;
     const existing = await tx.crmScoreRule.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { id: true, conditions: true } });
     const have = new Set(existing.map((r) => seedKeyOf(r.conditions)).filter((k): k is string => !!k));
+    // CRM C3.9-fix ▸ H11 (ล่าความปลอดภัย m1): กฎเริ่มต้นกินเพดาน scoreRules เหมือนกฎที่สร้างเอง — ล็อก + นับ + insert ใน tx เดียว
+    //   (ใต้ advisory lock ของเพดานใน assertCrmLimit) · ทั้งชุดหรือไม่เลย: เกินเพดาน = LIMIT (ข้อความไทย) ไม่เขียนอะไร ◂
+    const missing = CENTRAL_SCORE_RULES.filter((d) => !have.has(d.key)).length;
+    if (missing > 0) await assertCrmLimit(ctx, "scoreRules", missing, tx);
     const made: string[] = [];
     for (const [i, d] of CENTRAL_SCORE_RULES.entries()) {
       if (have.has(d.key)) continue;

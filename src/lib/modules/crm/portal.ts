@@ -1367,10 +1367,10 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
     if (r.approvalRequestId && (await ap.cancelRequest({ tenantId: ctx.tenantId }, r.approvalRequestId).catch(() => false))) approvalsCancelled += 1;
   }
   const cardIds = reqs.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
+  const kb = await kanbanLinks();
   return prisma.$transaction(async (tx) => {
-    const cards = cardIds.length
-      ? await tx.kanbanCard.updateMany({ where: { tenantId: ctx.tenantId, id: { in: cardIds }, sourceKey: { startsWith: "crm:portal-request:" } }, data: { title: "ลบตามคำขอ PDPA", description: null } })
-      : { count: 0 };
+    // รีวิว C3.9-fix S1: การ์ดของคำขอถูกล้างผ่าน facade บอร์ดงาน (หัว · รายละเอียด · ความเห็น · ประวัติ) — portal.ts ไม่เขียนตารางบอร์ดงานเอง
+    const cards = { count: cardIds.length ? (await kb.redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX })).cards : 0 };
     const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id }, select: { id: true }, take: 1_000 })).map((r) => r.id);
     const sessions = accessIds.length ? await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, portalAccessId: { in: accessIds } } }) : { count: 0 };
     const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } });
@@ -1380,6 +1380,10 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
   });
 }
 
+// CRM C3.9-fix ▸ รีวิว S1: ป้ายของการ์ดคำขอที่ถูกลบ + prefix ของ sourceKey ที่พอร์ทัลใช้เปิดการ์ด (facade บอร์ดงานแตะเฉพาะการ์ดที่ขึ้นต้นด้วยค่านี้) ◂
+const PORTAL_CARD_ERASED_TITLE = "ลบตามคำขอ PDPA";
+const PORTAL_CARD_SOURCE_PREFIX = portalCardSourceKey("");
+
 // CRM C3.9 ▸ ส่วนของพอร์ทัลในการลบตาม PDPA — แยกเป็น 2 ขั้น (รีวิว C3.9 B3 · มติผู้คุมงาน):
 //   `eraseContactInTx` = แถวทั้งหมด (session · คำขอ · สิทธิ์ · ชื่อการ์ดบอร์ดงานของคำขอ) ใน tx ของการลบ ⇒ ข้อมูลหายพร้อมการลบ ไม่มีช่วงค้าง
 //   `cancelErasedApprovals` = ยกเลิกคำขออนุมัติของคำขอเหล่านั้น (ข้ามโมดูล · นอก tx) — ผู้เรียก = ตัวรับ `crm.contact.erased` (retry ได้ · idempotent)
@@ -1388,14 +1392,14 @@ export async function eraseContactInTx(
   tx: Prisma.TransactionClient,
   ctx: { tenantId: string; systemId: string },
   contactIds: readonly string[],
+  opts?: { mask?: ((text: string) => string) | null },
 ): Promise<{ accesses: number; sessions: number; requests: number; cardsRedacted: number; approvalRequestIds: string[] }> {
   const ids = [...new Set(contactIds.filter(Boolean))];
   if (ids.length === 0) return { accesses: 0, sessions: 0, requests: 0, cardsRedacted: 0, approvalRequestIds: [] };
   const reqs = await tx.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
   const cardIds = reqs.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
-  const cards = cardIds.length
-    ? await tx.kanbanCard.updateMany({ where: { tenantId: ctx.tenantId, id: { in: cardIds }, sourceKey: { startsWith: "crm:portal-request:" } }, data: { title: "ลบตามคำขอ PDPA", description: null } })
-    : { count: 0 };
+  // รีวิว C3.9-fix S1: ผ่าน facade บอร์ดงาน · `mask` = ตัวปิดคำระบุตัวของการลบ (privacy.ts) ⇒ ความเห็น/ประวัติของการ์ดคำขอถูกปิดด้วยคำชุดเดียวกัน
+  const cards = { count: cardIds.length ? (await (await kanbanLinks()).redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX, mask: opts?.mask ?? null })).cards : 0 };
   const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { id: true }, take: 1_000 })).map((r) => r.id);
   const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, ...(accessIds.length ? [{ portalAccessId: { in: accessIds } }] : [])] } });
   const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });

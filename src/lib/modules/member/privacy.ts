@@ -1438,6 +1438,42 @@ export async function eraseMemberById(
   return eraseMember({ tenantId, systemId: c.memberSystemId, actorUserId: opts.actorUserId ?? null }, customerId);
 }
 
+// CRM C3.9-fix ▸ H5 (ล่าความปลอดภัย B5 · มติผู้คุมงาน): การลบผู้ติดต่อ CRM ที่ผูกสมาชิก ⇒ **ยื่นคำขอลบของระบบสมาชิก** (สายอนุมัติกลาง
+//   `member.erase` ของร้าน) แทนการลบสมาชิกตรง — ไม่มีนโยบายอนุมัติ = ลบทันที (autoApproved · เหมือนกดในหน้าสมาชิก) · มีนโยบาย = PENDING
+//   🔴 สิทธิ์ `member.customer.delete` ของผู้กด **ตรวจที่ CRM ก่อนเรียก** (ผู้เรียกที่ไม่มีคีย์จะไม่มาถึงที่นี่) — ที่นี่ใช้ผู้กระทำของระบบ
+//      เพราะทางนี้วิ่งซ้ำจากตัวรับ `crm.contact.erased` ได้ (ห้ามพังเมื่อผู้กดถูกถอดสิทธิ์ภายหลังการตัดสินใจที่ผ่านด่านแล้ว)
+//   idempotent: ลบแล้ว = DONE เงียบ · คำขอค้างอยู่ = คืนคำขอเดิม (requestErase) ⇒ ส่งใหม่กี่รอบก็ไม่เกิดคำขอซ้อน
+export async function requestEraseFromCrm(
+  tenantId: string,
+  customerId: string,
+  opts: { actorUserId?: string | null; reason?: string | null; since?: Date | null; requestId?: string | null } = {},
+): Promise<{ status: "DONE" | "PENDING" | "REJECTED" | "NONE"; requestId?: string }> {
+  if (typeof tenantId !== "string" || !tenantId || typeof customerId !== "string" || !customerId) return { status: "NONE" };
+  const c = await prisma.customer.findFirst({ where: { id: customerId, tenantId }, select: { memberSystemId: true, name: true, status: true } });
+  if (!c?.memberSystemId) return { status: "NONE" };
+  if (c.name === ERASED_NAME && c.status === "CLOSED") return { status: "DONE" };
+  // รีวิว C3.9-fix S2 (มติผู้คุมงาน): ส่งใหม่ (ตัวรับ event) = **ไม่ยื่นซ้ำ** เมื่อมีคำขอลบของลูกค้าคนนี้ที่ยื่นหลังการลบฝั่ง CRM แล้ว (ทุกสถานะ รวม REJECTED)
+  //   หรือมี requestId ที่ CRM จดไว้ — ร้านปฏิเสธแล้ว/ถอดนโยบายอนุมัติทีหลัง ⇒ ไม่มีการลบอัตโนมัติรอบใหม่
+  const prior = opts.requestId
+    ? await prisma.memberPrivacyRequest.findFirst({ where: { id: opts.requestId, tenantId, customerId }, select: { id: true, status: true } })
+    : opts.since
+      ? await prisma.memberPrivacyRequest.findFirst({
+          where: { tenantId, customerId, type: { in: ["DELETE", "ERASE"] }, createdAt: { gte: opts.since } },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, status: true },
+        })
+      : null;
+  if (prior) return { status: prior.status === "DONE" ? "DONE" : prior.status === "REJECTED" ? "REJECTED" : "PENDING", requestId: prior.id };
+  const r = await requestErase(
+    { tenantId, systemId: c.memberSystemId, actorUserId: opts.actorUserId ?? null },
+    SYSTEM_ACTOR,
+    customerId,
+    { via: opts.actorUserId ? "STAFF" : "API", reason: opts.reason ?? null },
+  );
+  return { status: r.status === "DONE" ? "DONE" : "PENDING", requestId: r.requestId };
+}
+// ◂ CRM C3.9-fix
+
 /**
  * ผลของการอนุมัติ/ปฏิเสธคำขอลบ — เรียกจาก `approval-effects.ts` เท่านั้น (composition root)
  * อนุมัติ → ลบจริง · ปฏิเสธ → ปิดคำขอเป็น REJECTED (ข้อมูลลูกค้าไม่ถูกแตะเลย)

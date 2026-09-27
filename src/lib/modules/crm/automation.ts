@@ -44,6 +44,7 @@ import {
 } from "@/lib/automation/action-runner";
 import { prisma } from "./db";
 import { crmLimitOf } from "./limits"; // CRM C3.9 ▸ เพดานรอบกฎอัตโนมัติ ◂
+import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import { resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ปลายทางแชทของ SEND_LINE (ชนิดเดียว) ◂
 import { crmCan, CrmForbiddenError } from "./access";
 import { assertCrmV2, crmUiVersion } from "./ui-version";
@@ -679,6 +680,9 @@ async function resolveCrmSubject(tenantId: string, type: string, payload: unknow
   if (contactId) {
     contact = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId } });
     if (!contact || !pin(contact.systemId) || contact.archivedAt || contact.mergedIntoId) return null;
+    // CRM C3.9-fix ▸ มติข้อ 4: ผู้ติดต่อที่ถูกลบตาม PDPA ไม่เป็นเป้าของกฎอัตโนมัติ (ถูกเก็บถาวรอยู่แล้ว — ด่านนี้ตรวจธงจริงอีกชั้น
+    //   กันกฎที่วิ่งคร่อมการลบ ⇒ ไม่มีงาน/ดีล/มอบหมายงอกบนคนที่ถูกลบ · CREATE_ACTIVITY ที่หลุดมาถึง logActivity = VALIDATION ถูกจดเป็นขั้นล้ม ไม่ใช่ข้อมูลใหม่) ◂
+    if (await isErasedContact(tenantId, contact.id)) return null;
   } else if (!d && !activity && !record) {
     const companyRef = sid("companyId") ?? (type.startsWith("crm.company.") ? sid("keepId") : null);
     if (!companyRef) return null;

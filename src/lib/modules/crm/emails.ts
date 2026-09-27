@@ -377,6 +377,34 @@ async function settingsOfSystem(systemId: string): Promise<(CrmEmailSettings & {
   return { ...crmEmailSettingsOf(sys.settings), uiVersion: crm.uiVersion === 2 ? 2 : 1 };
 }
 
+// CRM C3.9-fix ▸ รีวิว B1 (มติผู้คุมงาน): ที่อยู่ของ "ร้าน" ห้ามถูกถือเป็นตัวตนของลูกค้าที่ถูกลบตาม PDPA — ผู้เรียก = `privacy.ts`
+//   ที่อยู่ผู้ส่ง/ตอบกลับ/สำเนาของร้าน (ตั้งค่าระบบทุกระบบ CRM ของร้าน + ตั้งค่ารายคน `CrmEmailUserSetting`) · อ่านใน tx ของผู้เรียก
+export async function shopMailAddressesInTx(db: Pick<Prisma.TransactionClient, "appSystem" | "crmEmailUserSetting">, tenantId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const add = (v: unknown) => {
+    const b = bareEmail(v);
+    if (b.includes("@")) out.add(b);
+  };
+  for (const sys of await db.appSystem.findMany({ where: { tenantId, type: "CRM" }, select: { settings: true }, take: 50 })) {
+    const st = crmEmailSettingsOf(sys.settings);
+    add(st.fromAddr);
+    add(st.replyToAddr);
+    add(st.copyToAddr);
+  }
+  for (const r of await db.crmEmailUserSetting.findMany({ where: { tenantId }, select: { fromAddr: true, replyToAddr: true, copyToAddr: true }, take: 2_000 })) {
+    add(r.fromAddr);
+    add(r.replyToAddr);
+    add(r.copyToAddr);
+  }
+  return out;
+}
+
+/** ที่อยู่ของระบบ SHARK (`<slug>@` · `crm+<key>@` ของโดเมนระบบ) — ไม่ใช่ของลูกค้าคนใดเสมอ */
+export function isSystemMailAddress(addr: unknown): boolean {
+  return bareEmail(addr).endsWith(`@${CRM_EMAIL_SHARK_DOMAIN}`.toLowerCase());
+}
+// ◂ CRM C3.9-fix
+
 async function auditEmail(ctx: EmailsCtx, action: string, targetId: string | undefined, data: { before?: unknown; after?: unknown } = {}): Promise<void> {
   await writeAudit({
     tenantId: ctx.tenantId,

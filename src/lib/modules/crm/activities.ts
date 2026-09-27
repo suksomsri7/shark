@@ -81,6 +81,7 @@ export {
   ActivitiesError,
 };
 
+import { ERASED_CONTACT_WRITE_MSG, erasedContactIds, isErasedContact } from "./erased"; // CRM C3.9-fix ▸ H7 ◂
 const kanbanLinks = () => import("@/lib/modules/kanban/links");
 const memberFacade = () => import("@/lib/modules/member");
 
@@ -429,6 +430,12 @@ async function resolveTargets(ctx: ActivitiesCtx, a: MemberActor, input: { conta
     const r = await db.customRecord.findFirst({ where: { AND: [await recordWhere(ctx, a, { recordId: recordIn, db }), { archivedAt: null }] }, select: { id: true } });
     if (!r) throw fail("NOT_FOUND", TARGET_NOT_FOUND_MSG);
     customRecordId = r.id;
+  }
+  // CRM C3.9-fix ▸ H7 (ล่าความปลอดภัย M2): ไม่มีข้อมูลใหม่งอกบนผู้ติดต่อที่ถูกลบตาม PDPA — ระบุผู้ติดต่อนั้นตรง ๆ = VALIDATION (ไทย) ·
+  //   ผู้ติดต่อที่มากับดีล (ดีลของคนที่ถูกลบยังอยู่แบบไม่ระบุตัว) = กิจกรรมผูกดีลอย่างเดียว ไม่ผูกผู้ติดต่อ ◂
+  if (contactId && (await isErasedContact(ctx.tenantId, contactId, db))) {
+    if (contactIn && contactIn === contactId) throw fail("VALIDATION", ERASED_CONTACT_WRITE_MSG);
+    contactId = null;
   }
   return { contactId, companyId, dealId, customRecordId };
 }
@@ -1299,6 +1306,19 @@ export async function boardOptions(ctx: ActivitiesCtx, actor: MemberActor): Prom
 // CRM C2.5 ▸ เพิ่มชนิด/ที่มา `EMAIL` + `direction` — จดหมายเข้า/ออกของระบบอีเมล (`crm/emails.ts`) เขียนกิจกรรม
 //   ผ่านตัวเขียนตัวเดียวกันนี้ (ไม่มีผู้เขียน CrmActivity ชุดที่สองในโมดูล) · ยังไม่ยิง `crm.activity.logged`
 //   เหมือนแถวของสะพานอื่น (ไทม์ไลน์ของจดหมายมาจาก `crm.email.*` แล้ว — ยิงซ้ำ = สองแถวในไทม์ไลน์เดียว) ◂
+// CRM C3.9-fix ▸ มติผู้คุมงานข้อ 4 (ต่อจาก H7): ตัวเขียนของ "ระบบ" (สะพานธุรกิจ · แชท · ลำดับการติดตาม) ไม่เขียนลงผู้ติดต่อที่ถูกลบตาม PDPA —
+//   ข้าม (ไม่ throw ⇒ event ไม่ถูกส่งซ้ำจนล้ม) + OpsEvent WARN id ล้วน (AUDIT-CLASS X8) · ตัวเขียนใน tx ของผู้เรียก (`recordSystemActivityInTx`)
+//   ตัดการผูกผู้ติดต่อแทน (แถวยังผูกดีล/บริษัท) · ทางคนกด (`logActivity`) = VALIDATION ภาษาไทย (H7)
+async function skipErasedWrite(ctx: { tenantId: string; systemId: string }, contactId: string | null | undefined, via: string): Promise<boolean> {
+  if (!contactId || !(await isErasedContact(ctx.tenantId, contactId))) return false;
+  await logOps("WARN", "crm.privacy", "ไม่บันทึกกิจกรรมจากระบบลงผู้ติดต่อที่ถูกลบข้อมูลส่วนบุคคลตาม PDPA แล้ว (ข้าม)", {
+    tenantId: ctx.tenantId,
+    detail: JSON.stringify({ systemId: ctx.systemId, contactId, via }),
+  });
+  return true;
+}
+// ◂ CRM C3.9-fix
+
 export type SystemActivityInput = {
   type: "WEB" | "NOTE" | "EMAIL";
   source: "WEB" | "AUTO" | "EMAIL";
@@ -1313,8 +1333,10 @@ export type SystemActivityInput = {
   at?: Date;
 };
 
-export async function recordSystemActivityInTx(tx: Tx, ctx: { tenantId: string; systemId: string }, input: SystemActivityInput): Promise<CrmActivity> {
+export async function recordSystemActivityInTx(tx: Tx, ctx: { tenantId: string; systemId: string }, rawInput: SystemActivityInput): Promise<CrmActivity> {
   const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  // CRM C3.9-fix ▸ มติข้อ 4: ผู้ติดต่อที่ถูกลบตาม PDPA ไม่รับกิจกรรมใหม่จากระบบ — แถวยังผูกดีล/บริษัทได้ (ดีลของเขาคงอยู่แบบไม่ระบุตัว) ◂
+  const input: SystemActivityInput = rawInput.contactId && (await isErasedContact(ctx.tenantId, rawInput.contactId, tx)) ? { ...rawInput, contactId: null } : rawInput;
   const now = new Date();
   const at = new Date(Math.min((input.at ?? now).getTime(), now.getTime()));
   const row = await tx.crmActivity.create({
@@ -1360,8 +1382,9 @@ export type SequenceTaskInput = {
   dueAt: Date;
 };
 
-export async function createSequenceTaskOnce(ctx: { tenantId: string; systemId: string }, input: SequenceTaskInput): Promise<{ id: string; created: boolean }> {
+export async function createSequenceTaskOnce(ctx: { tenantId: string; systemId: string }, input: SequenceTaskInput): Promise<{ id: string; created: boolean; skipped?: true }> {
   const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  if (await skipErasedWrite(ctx, input.contactId, "sequence")) return { id: "", created: false, skipped: true }; // CRM C3.9-fix ▸ มติข้อ 4 ◂
   const out = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm.seq.task:${ctx.tenantId}:${input.sourceRef}`}, 0))`;
     const prior = await tx.crmActivity.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: input.contactId, sourceRef: input.sourceRef }, select: { id: true } });
@@ -1405,8 +1428,9 @@ export type ChatActivityInput = {
   at?: Date;
 };
 
-export async function createChatActivityOnce(ctx: { tenantId: string; systemId: string }, input: ChatActivityInput): Promise<{ id: string; created: boolean }> {
+export async function createChatActivityOnce(ctx: { tenantId: string; systemId: string }, input: ChatActivityInput): Promise<{ id: string; created: boolean; skipped?: true }> {
   const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
+  if (await skipErasedWrite(ctx, input.contactId, "chat")) return { id: "", created: false, skipped: true }; // CRM C3.9-fix ▸ มติข้อ 4 ◂
   const now = new Date();
   const at = new Date(Math.min((input.at ?? now).getTime(), now.getTime()));
   const out = await prisma.$transaction(async (tx) => {
@@ -1455,7 +1479,10 @@ export async function setChatAiSummary(ctx: { tenantId: string; systemId: string
  * AUDIT-CLASS X1: ผูกร้าน + ระบบของ ctx (id ของผู้ติดต่อมาจากคิวรีที่ผูกขอบเขตเดียวกันแล้ว)
  */
 export async function touchContactsFromChat(ctx: { tenantId: string; systemId: string }, contactIds: string[], at: Date): Promise<number> {
-  const ids = [...new Set((contactIds ?? []).filter((x): x is string => typeof x === "string" && !!x))].sort();
+  const all = [...new Set((contactIds ?? []).filter((x): x is string => typeof x === "string" && !!x))].sort();
+  // CRM C3.9-fix ▸ มติข้อ 4: ผู้ติดต่อที่ถูกลบตาม PDPA ไม่ถูกแตะเวลาเคลื่อนไหว (ข้ามเงียบ — ยิงทุกข้อความ · WARN อยู่ที่กิจกรรมแชทต่อห้อง) ◂
+  const erased = await erasedContactIds(ctx.tenantId, all);
+  const ids = all.filter((x) => !erased.has(x));
   if (ids.length === 0) return 0;
   const ts = new Date(Math.min(at.getTime(), Date.now())).toISOString();
   let n = 0;
@@ -1490,7 +1517,7 @@ export type BusinessActivityInput = {
   refId?: string | null;
 };
 
-export async function recordBusinessActivityOnce(ctx: { tenantId: string; systemId: string }, input: BusinessActivityInput): Promise<{ id: string; created: boolean }> {
+export async function recordBusinessActivityOnce(ctx: { tenantId: string; systemId: string }, input: BusinessActivityInput): Promise<{ id: string; created: boolean; skipped?: true }> {
   const c: ActivitiesCtx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: null };
   const sourceRef = str(input?.sourceRef);
   const contactId = str(input?.contactId);
@@ -1499,6 +1526,7 @@ export async function recordBusinessActivityOnce(ctx: { tenantId: string; system
   // AUDIT-CLASS X1 (ผู้ตรวจรอบ 3 · N8): ด่านเดียวกับพี่น้องของมัน `crm.contacts.markCustomerFromBridge` —
   //   `ctx.systemId` ต้องเป็นระบบ **CRM ของร้านนี้** จริง ก่อนจะเขียนอะไรทั้งสิ้น (ระบบร้านอื่น/ชนิดอื่น = NOT_FOUND)
   await resolveSystem(c);
+  if (await skipErasedWrite(ctx, contactId, "business")) return { id: "", created: false, skipped: true }; // CRM C3.9-fix ▸ มติข้อ 4 ◂
   const now = new Date();
   const at = new Date(Math.min((input.at instanceof Date && !Number.isNaN(input.at.getTime()) ? input.at : now).getTime(), now.getTime()));
   const out = await prisma.$transaction(async (tx) => {

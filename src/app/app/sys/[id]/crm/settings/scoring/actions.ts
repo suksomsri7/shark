@@ -23,6 +23,7 @@ import {
   updateRule,
 } from "@/lib/modules/crm/scoring";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
+import { CrmLimitError } from "@/lib/modules/crm/limits-shared"; // CRM C3.9-fix ▸ H11: กฎเริ่มต้น/กฎใหม่เกินเพดาน = ข้อความไทยของเพดาน ◂
 import type { CrmScoreActionResult, CrmScoreBandsDraft, CrmScoreRecomputeRow, CrmScoreRuleDraft } from "@/components/crm/scoring/types";
 
 // ลำดับด่านเดียวกับบริการ: ระบบของร้าน (NOT_FOUND) → uiVersion 2 (CRM_V2_DISABLED) → คีย์ crm.score.manage (FORBIDDEN)
@@ -38,6 +39,7 @@ async function session(systemId: string) {
 function failOf(e: unknown): { ok: false; error: string; code?: string } {
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ScoringError) return { ok: false, error: e.message, code: e.code };
+  if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof ForbiddenError) return { ok: false, error: e.message, code: "FORBIDDEN" };
   console.error(`[crm.scoring] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (กฎคะแนนไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };

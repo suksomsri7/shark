@@ -51,6 +51,7 @@ import { canAdvanceLifecycle } from "./rules";
 // CRM C1.5 ▸ ดีลของ "แปลง lead" + ดีลเปิดที่ย้ายตามบริษัท เขียนผ่านบริการดีล (ผู้เขียนคอลัมน์ดีลที่เดียว) ◂
 import * as deals from "./deals";
 import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
+import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import {
   CONTACT_BULK_MAX,
   CONTACT_EXPORT_MAX_ROWS,
@@ -996,9 +997,11 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
         );
         if (np !== pre.partyId) data.partyId = np;
       }
+      // CRM C3.9-fix ▸ H8 (ล่าความปลอดภัย M3): แถว audit ไม่เก็บค่าที่ระบุตัว (ชื่อ · นามสกุล · เบอร์ · อีเมล · LINE id · โน้ต) — เก็บแค่ว่า "เปลี่ยน"
+      //   (เดิมปิดแค่เบอร์/อีเมล ⇒ ชื่อเก่า/ใหม่ค้างใน AuditLog หลังลบตาม PDPA) · คีย์ที่เปลี่ยนยังอยู่ครบใน changedKeys ◂
       for (const k of keys) {
-        before[k] = k === "phone" || k === "email" ? "(เปลี่ยน)" : (pre as Record<string, unknown>)[k];
-        after[k] = k === "phone" || k === "email" ? "(เปลี่ยน)" : (data as Record<string, unknown>)[k] ?? (k === "companyId" ? wantCompany : null);
+        before[k] = AUDIT_IDENTITY_KEYS.has(k) ? AUDIT_CHANGED_MARK : (pre as Record<string, unknown>)[k];
+        after[k] = AUDIT_IDENTITY_KEYS.has(k) ? AUDIT_CHANGED_MARK : (data as Record<string, unknown>)[k] ?? (k === "companyId" ? wantCompany : null);
       }
       let out = pre;
       if (Object.keys(data).length > 0) out = await tx.crmContact.update({ where: { id: pre.id }, data });
@@ -2613,6 +2616,8 @@ export async function markCustomerFromBridge(ctx: { tenantId: string; systemId: 
   const contactId = str(input?.contactId);
   if (!contactId) return 0;
   await resolveSystem(c);
+  // CRM C3.9-fix ▸ มติข้อ 4: ผู้ติดต่อที่ถูกลบตาม PDPA ไม่ถูกเลื่อนขั้นจากเหตุการณ์ธุรกิจ (ข้ามเงียบ — WARN อยู่ที่ตัวเขียนกิจกรรมของสะพานเดียวกัน) ◂
+  if (await isErasedContact(ctx.tenantId, contactId)) return 0;
   const out = await prisma.$transaction(async (tx) => {
     // ขั้นก่อนหน้าอ่าน **ในธุรกรรมเดียวกับการเลื่อนขั้น** → แถว audit มี before จริง (ผู้ตรวจต้องเห็นว่ามาจาก LEAD/PROSPECT
     //   หรือกลับมาจาก CHURNED — "after เพียว ๆ" ตอบคำถามนี้ไม่ได้ และไล่ย้อนจากที่อื่นไม่ได้เพราะค่าถูกทับแล้ว)
@@ -2704,6 +2709,10 @@ export async function anonymizeContactInTx(
   if (n.count !== 1) throw fail("NOT_FOUND", NOT_FOUND_MSG);
 }
 // ◂ CRM C3.9
+
+// CRM C3.9-fix ▸ H8: คีย์ที่ระบุตัวของผู้ติดต่อ — แถว audit ของตัวเขียนผู้ติดต่อเก็บแค่เครื่องหมาย "เปลี่ยน" (ไม่มีค่าเก่า/ใหม่) ◂
+export const AUDIT_IDENTITY_KEYS: ReadonlySet<string> = new Set(["name", "firstName", "lastName", "phone", "email", "lineUserId", "note", "previousEmails"]);
+export const AUDIT_CHANGED_MARK = "(เปลี่ยน)";
 
 // CRM C3.9 ▸ รีวิว S2 (มติผู้คุมงาน): ชื่อ "ลบตามคำขอ PDPA" สงวนไว้ให้ป้ายของผู้ติดต่อที่ถูกลบ (ธงจริงคือแถว audit) —
 //   ทุกตัวเขียนชื่อของบริการนี้ (สร้าง · แก้ · นำเข้า · ฟอร์ม/แชท/อีเมล · รวม) ปฏิเสธชื่อนี้ ⇒ คนกรอกฟอร์มพิมพ์ชื่อนี้เพื่อหลบงานอายุเก็บ/ตัวนับ Party ไม่ได้

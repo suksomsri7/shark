@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -522,3 +522,75 @@ export async function linkSubmissionCrmContact(db: FormsDb, tenantId: string, su
   return n.count === 1;
 }
 // ◂ CRM C1.8
+
+// CRM C3.9-fix ▸ H1 (ล่าความปลอดภัย B1): คำตอบฟอร์มของผู้ติดต่อ CRM ที่ถูกลบ/ขอสำเนาตาม PDPA — ตัวอ่าน/ตัวล้างอยู่ในโมดูลฟอร์ม
+//   (ผู้เรียก = `crm/privacy.ts` ผ่าน facade `forms/index.ts`) · ลบ = แถวคงอยู่ (ตัวนับ/สถิติฟอร์ม) แต่คำตอบ = {} และ ip/pageUrl/referrer/utm = null
+//   AUDIT-CLASS X1: ทุกคำสั่งผูก tenantId + crmContactId ของผู้เรียก
+const SUBMISSION_ERASE_MAX = 5_000;
+export type CrmContactSubmission = {
+  id: string;
+  formId: string;
+  formName: string;
+  answers: Record<string, unknown>;
+  createdAt: Date;
+  pageUrl: string | null;
+  referrer: string | null;
+  utm: Prisma.JsonValue | null;
+};
+export type SubmissionIdentity = { names: string[]; phones: string[]; emails: string[] };
+
+type FormFieldLite = { key: string; type: string };
+function fieldsOf(fieldsJson: unknown): FormFieldLite[] {
+  return (Array.isArray(fieldsJson) ? fieldsJson : [])
+    .map((f) => (f && typeof f === "object" && !Array.isArray(f) ? (f as Record<string, unknown>) : {}))
+    .map((f) => ({ key: typeof f.key === "string" ? f.key : "", type: typeof f.type === "string" ? f.type : "" }))
+    .filter((f) => !!f.key);
+}
+const answersOf = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
+
+/** คำตอบฟอร์มทุกฉบับที่ผูกผู้ติดต่อ CRM ชุดนี้ (ส่งออกตามคำขอเข้าถึงข้อมูล) */
+export async function submissionsOfCrmContacts(db: FormsDb, tenantId: string, contactIds: readonly string[], take = SUBMISSION_ERASE_MAX): Promise<CrmContactSubmission[]> {
+  const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && !!x))];
+  if (!tenantId || ids.length === 0) return [];
+  const rows = await db.formSubmission.findMany({
+    where: { tenantId, crmContactId: { in: ids } },
+    select: { id: true, formId: true, answersJson: true, createdAt: true, pageUrl: true, referrer: true, utm: true, form: { select: { name: true } } },
+    orderBy: { createdAt: "asc" },
+    take: Math.max(1, Math.min(take, SUBMISSION_ERASE_MAX)),
+  });
+  return rows.map((r) => ({ id: r.id, formId: r.formId, formName: r.form.name, answers: answersOf(r.answersJson), createdAt: r.createdAt, pageUrl: r.pageUrl, referrer: r.referrer, utm: r.utm ?? null }));
+}
+
+/**
+ * ล้างคำตอบฟอร์มของผู้ติดต่อ CRM ที่ถูกลบ (ใน tx ของผู้เรียก) — คืนจำนวน + ค่าที่ระบุตัว **ของคนกรอกเอง** (ชื่อ · เบอร์ · อีเมล)
+ * ให้ผู้เรียกใช้ปิดข้อความที่อื่น (แจ้งเตือน "มีคนกรอกฟอร์ม" ฯลฯ พกชื่อที่กรอกตอนนั้น ซึ่งอาจต่างจากชื่อปัจจุบันของผู้ติดต่อ)
+ * 🔴 รีวิว C3.9-fix B1: เฉพาะช่องหลักที่สะพานฟอร์ม → CRM ใช้เป็นตัวตนของผู้ติดต่อ — ช่องชื่อ (key "name" หรือช่องข้อความช่องแรก) ·
+ *    `phone` · `email` — ไม่ใช่ทุกช่องชนิดอีเมล/เบอร์ (ช่อง "อีเมลผู้แนะนำ"/"เบอร์ฉุกเฉิน" เป็นของคนอื่น) · ผู้เรียกกรองที่อยู่ของร้าน/คนอื่นออกอีกชั้น
+ */
+export async function eraseCrmContactSubmissions(db: FormsDb, tenantId: string, contactIds: readonly string[]): Promise<{ count: number; identity: SubmissionIdentity }> {
+  const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && !!x))];
+  const identity: SubmissionIdentity = { names: [], phones: [], emails: [] };
+  if (!tenantId || ids.length === 0) return { count: 0, identity };
+  const rows = await db.formSubmission.findMany({
+    where: { tenantId, crmContactId: { in: ids } },
+    select: { id: true, answersJson: true, form: { select: { fieldsJson: true } } },
+    take: SUBMISSION_ERASE_MAX,
+  });
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
+  for (const r of rows) {
+    const a = answersOf(r.answersJson);
+    const fields = fieldsOf(r.form.fieldsJson);
+    const nameKey = fields.find((f) => f.key === "name")?.key ?? fields.find((f) => f.type === "text")?.key ?? "name";
+    if (str(a[nameKey])) identity.names.push(str(a[nameKey]));
+    if (str(a.phone)) identity.phones.push(str(a.phone));
+    if (str(a.email)) identity.emails.push(str(a.email));
+  }
+  const n = rows.length
+    ? await db.formSubmission.updateMany({
+        where: { tenantId, id: { in: rows.map((r) => r.id) } },
+        data: { answersJson: {}, ip: null, pageUrl: null, referrer: null, utm: Prisma.DbNull, webSessionId: null },
+      })
+    : { count: 0 };
+  return { count: n.count, identity: { names: [...new Set(identity.names)], phones: [...new Set(identity.phones)], emails: [...new Set(identity.emails)] } };
+}
+// ◂ CRM C3.9-fix

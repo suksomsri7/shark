@@ -53,11 +53,17 @@ export async function eraseContactAction(
     revalidatePath(`/app/sys/${systemId}/crm/contacts`);
     revalidatePath(`/app/sys/${systemId}/crm/contacts/${contactId}`);
     const message = !r.erased
-      ? "ผู้ติดต่อนี้ถูกลบข้อมูลไปก่อนหน้านี้แล้ว"
+      ? "ผู้ติดต่อนี้ถูกลบข้อมูลไปก่อนหน้านี้แล้ว — ระบบกวาดข้อมูลที่หลงเข้ามาใหม่ (ถ้ามี) ให้อีกรอบแล้ว" // C3.9-fix H7 · รีวิว NOTE
       : r.followUp === "PENDING"
         ? ERASE_PENDING_MESSAGE
         : "ลบข้อมูลส่วนบุคคลแล้ว — ดีลและตัวเลขยอดขายยังอยู่ครบแบบไม่ระบุตัวตน";
-    return { ok: true, erased: r.erased, counts: r.counts, message };
+    // CRM C3.9-fix ▸ H5: สมาชิกที่ผูกไว้ถูกจัดการตามกติกาของระบบสมาชิก — บอกผู้กดให้ชัดว่ายังเหลืออะไรต้องทำ ◂
+    const memberNote = r.memberSkipped
+      ? " · ข้อมูลสมาชิกที่ผูกไว้ยังไม่ถูกลบ เพราะบัญชีของคุณไม่มีสิทธิ์ลบข้อมูลสมาชิก — ให้ผู้มีสิทธิ์ลบในระบบสมาชิก"
+      : r.memberPending
+        ? " · ส่งคำขอลบข้อมูลสมาชิกที่ผูกไว้แล้ว รออนุมัติในระบบสมาชิก"
+        : "";
+    return { ok: true, erased: r.erased, counts: r.counts, message: `${message}${memberNote}` };
   } catch (e) {
     return failOf(e);
   }

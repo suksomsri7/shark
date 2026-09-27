@@ -164,6 +164,8 @@ export {
   sweepAutoErase,
   // CRM C3.9 ▸ CRM ลบผู้ติดต่อที่ผูกสมาชิก ⇒ ลบสมาชิกครั้งเดียวผ่านทางนี้ (ตัวจริง = eraseMember · ยิง `member.erased`) ◂
   eraseMemberById,
+  // CRM C3.9-fix ▸ H5: CRM ลบผู้ติดต่อที่ผูกสมาชิก ⇒ ยื่นคำขอลบผ่านสายอนุมัติของระบบสมาชิก (ไม่มีนโยบาย = ลบทันที) ◂
+  requestEraseFromCrm,
 } from "./privacy";
 
 // ── ฝั่งลูกค้า `/m/*` (M2.9 · §3.10 §6.3) ──

@@ -19,6 +19,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { contactWhere, dealWhere, fileWhere, recordWhere } from "./where";
 import { crmCan, crmForbiddenMessage } from "./access";
+import { ERASED_CONTACT_WRITE_MSG, isErasedContact } from "./erased"; // CRM C3.9-fix ▸ H7 ◂
 import * as companies from "./companies";
 import {
   ActivitiesError,
@@ -122,6 +123,8 @@ export async function attachFile(ctx: FilesCtx, actor: MemberActor, input: Attac
   // CRM C1.7 ▸ มองเห็นแล้ว (404 ก่อน) → คีย์แก้ไขของระเบียนแม่ (เห็นแต่ไม่มีคีย์ = 403 ข้อความไทย) ◂
   const key = ATTACH_KEY[entityType];
   if (!crmCan(a, key)) throw fail("FORBIDDEN", crmForbiddenMessage(key));
+  // CRM C3.9-fix ▸ H7 (ล่าความปลอดภัย M2): ผู้ติดต่อที่ถูกลบตาม PDPA รับไฟล์แนบใหม่ไม่ได้ (ก่อนแตะที่เก็บ — ไม่มี put/FileAsset/ลิงก์) ◂
+  if (entityType === "CONTACT" && (await isErasedContact(ctx.tenantId, entityId))) throw fail("VALIDATION", ERASED_CONTACT_WRITE_MSG);
   const data = input?.data;
   if (!(data instanceof Uint8Array) || data.length === 0) throw fail("VALIDATION", "ไฟล์ว่างหรืออ่านไม่ได้ — เลือกไฟล์ใหม่อีกครั้ง");
   // AUDIT-CLASS X6: เพดานขนาด + ชนิดไฟล์ (ชุดย่อยของ storage ลบ SVG — สคริปต์ฝังใน SVG = stored XSS บนลิงก์ส่วนตัว)

@@ -1213,6 +1213,8 @@ const SEQ_ADAPTER: SubjectAdapter<SeqSubject, SeqEnv> = {
         dueAt: env.now,
       },
     );
+    // CRM C3.9-fix ▸ มติข้อ 4: ผู้ติดต่อถูกลบตาม PDPA ⇒ ข้ามขั้น (ไม่สร้างงาน) ◂
+    if (r.skipped) return { i: at.index, type: kind, ok: false, skipped: true, note: "ผู้ติดต่อนี้ถูกลบข้อมูลส่วนบุคคลตาม PDPA แล้ว — ไม่ได้สร้างงานติดตาม" };
     return { i: at.index, type: kind, ok: true, note: r.created ? "สร้างงานติดตามแล้ว" : "มีงานของขั้นนี้อยู่แล้ว (ไม่สร้างซ้ำ)" };
   },
   channelLabel: (c) => CHANNEL_LABEL[c],

@@ -40,11 +40,28 @@ export type EraseCounts = {
   mergedContacts: number;
   partyAnonymised: boolean;
   memberErased: boolean;
+  // CRM C3.9-fix ▸ ขอบเขตที่เพิ่มจากการล่าความปลอดภัย (H1–H4 · H8 · H9) ◂
+  formSubmissions: number;
+  aiMessages: number;
+  kanban: number;
+  auditScrubbed: number;
+  exportsWithdrawn: number;
 };
 
 /** `followUp` (รีวิว C3.9 B3): ขั้นหลัง commit (ไฟล์บนที่เก็บ · คำขออนุมัติของพอร์ทัล · สมาชิกที่ผูก) — DONE = เสร็จในคำขอนี้ ·
  *  PENDING = ข้อมูลในฐานถูกลบแล้ว ส่วนที่เหลือทำต่อโดยตัวรับ `crm.contact.erased` (ส่งใหม่จนสำเร็จ) · null = ไม่ได้ลบรอบนี้ */
-export type EraseResult = { contactId: string; partyId: string | null; erased: boolean; counts: EraseCounts | null; followUp: "DONE" | "PENDING" | null };
+/** CRM C3.9-fix ▸ H5 (มติผู้คุมงาน): สมาชิกที่ผูกไว้ถูกลบตามกติกาของระบบสมาชิกเท่านั้น — `memberSkipped` = ผู้ลบไม่มีคีย์
+ *  `member.customer.delete` (ผู้ติดต่อถูกลบ · สมาชิกไม่ถูกแตะ · OpsEvent WARN) · `memberPending` = ร้านตั้งสายอนุมัติ `member.erase`
+ *  (ยื่นคำขอลบของระบบสมาชิกแล้ว รออนุมัติ) ◂ */
+export type EraseResult = {
+  contactId: string;
+  partyId: string | null;
+  erased: boolean;
+  counts: EraseCounts | null;
+  followUp: "DONE" | "PENDING" | null;
+  memberSkipped: boolean;
+  memberPending: boolean;
+};
 /** action ของหน้าจอบอกผลนี้เมื่อ followUp = PENDING (มติผู้คุมงาน C3.9 B3) */
 export const ERASE_PENDING_MESSAGE = "ลบแล้ว · กำลังล้างข้อมูลที่เชื่อมโยง";
 /** ชื่อ action ของแถว AuditLog ที่เป็นธง "ลบแล้ว" (รีวิว C3.9 S2 — ชื่อผู้ติดต่อเป็นแค่ป้ายแสดงผล) */
@@ -100,4 +117,5 @@ export const EXPORT_TABLE_LABEL: Readonly<Record<string, string>> = Object.freez
   CustomRecord: "ข้อมูลกำหนดเอง",
   CustomRecordValue: "ค่าฟิลด์กำหนดเอง",
   CrmFileLink: "ไฟล์แนบ",
+  FormSubmission: "คำตอบฟอร์มบนเว็บ", // CRM C3.9-fix ▸ H1 ◂
 });
