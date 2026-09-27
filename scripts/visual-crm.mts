@@ -457,8 +457,9 @@ const SPECS: Record<string, Spec[]> = {
   // CRM C3.7 ▸ ทุกหน้า C2–C3 ที่ 390 px (owner/thana) — รายการจาก nav (ดู C37_PAGES ด้านบน) + หน้าเธรดจดหมาย + ตัวแก้ลำดับ ◂
   "3.7": isCustomer ? [] : [
     ...C37_PAGES.map((p) => ({ name: `c37-390-${p.key}-${userKey}`, path: p.path, onlyDevice: "mobile" as const, steps: [{ wait: 1200 }] }) as Spec),
-    C37_THREAD,
-    C37_SEQ,
+    // Fable 27 ก.ย. (ORACLE-EDIT S1.2 ต่อเนื่อง): เธรดจดหมาย/ตัวแก้ลำดับ = 404 สำหรับคนไม่มีคีย์ (thana) ⇒ ถ่ายเฉพาะคนที่เปิดได้ (ประตูเดียวกับ C37_GATE)
+    ...(c37Opens("email-thread") ? [C37_THREAD] : []),
+    ...(c37Opens("sequence-editor") ? [C37_SEQ] : []),
   ],
   "3.2": isCustomer ? [] : [
     {
