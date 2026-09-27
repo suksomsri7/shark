@@ -143,3 +143,14 @@ spec "2.7" (AccountSystemLink + ดีล 3 บรรทัด + ใบเสน
   - ฮุค DOC_SETTLE ของ C3.3 ต้องยิง **ตอนปลุก** แถวปิดยอดด้วย (ไม่ใช่เฉพาะตอนสร้าง) — แถวเดิม (id เดิม) กลับมาเป็น COUNTED ด้วยยอดใหม่
   - C3.3 ต้องรับมือ "id ของแถวปิดยอดถูกใช้ซ้ำ": **มติผู้คุมงาน (ล่าสุด) — refId ของค่าคอม = `<payId>#c<countedAt ms>`** (ชาติของแถว · countedAt ของทุกการปลุกมากกว่าเดิมอย่างเคร่งครัด) · ค่าคอม PENDING ของแถวที่ถูกถอน **ลบทิ้ง** (ไม่ใช่ REJECTED)
   - จุดต่อฮุค C3.3 (post-commit) ถูกทำเครื่องหมาย `// C3.3 ▸ hook:` ใน payments.ts — `afterPaymentsReversed` ก่อน `afterPaymentCounted` เสมอในทางถอน→ปลุก
+
+## 11. ผู้คุมงาน (Fable 5.1 · 27 ก.ย. 2569) — รับ C2.7-fix (รวมพร้อม C3.3 · `ff2cb5fb`)
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1/D3 | ✅ | ORACLE-EDIT C2.7-fix F1.1–F1.14 (+ S0.4 ของ main) = 79 ข้อ · มติผู้คุมงาน 4 รอบ (§10) |
+| D2 | ✅ | `qc-crm-c2.7` **79/79 ×2** QC1 seed ใหม่ (`c33-verify.log`) · 79/79 c20 (`.qc-shots/c27fix/`) |
+| D4–D6 | ✅ | ชุดเดียวกับ C3.3 D4 (บัญชี promptpay 84 · payment 16 · attachments 66 · c1.5 103 · c3.2 47 ผ่านหลังรวม) · typecheck · fitness ×2 · build |
+| D7 | — | ไม่มี UI ใหม่ (payload settle เพิ่ม rowId/countedAt · หน้าเดิม) |
+| D8–D11 | ✅ | ผู้ตรวจเงิน 4 รอบ (§10) · hook C3.3 ต่อที่จุด `// C3.3 ▸ hook:` ครบ 8 จุด ผู้คุมงานตรวจ diff เอง (ไม่เหลือ comment ค้าง) |
+| D12 | ⏳ | รอ push |
+หนี้: Q8 เจ้าของ · job `crm.money.reconcile` รายชั่วโมงต้องมี crontab prod (C6.1) · cheque/refundDeposit ไม่ยิง event (finding เลนบัญชี · Q11)

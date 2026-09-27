@@ -238,3 +238,17 @@ qc-crm-c1.5 103/103 · qc-crm-c0.2 27/27 · fitness 32/32 ×2 · typecheck ส�
 
 ## 9. คืนสภาพ QC
 ข้อสอบ + probe ใช้ tenant ทิ้ง (`qc-c33-*` · `qc-c33probe-*`) ลบใน finally — CLEAN เขียว · probe: rows left=0 · trigger ของ probe ถูก DROP (นับ pg_trigger = 0)
+
+## ผู้คุมงาน (Fable 5.1 · 27 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 84 ข้อเขียนก่อน (c12a · `77a6ebe8`) · ruling addendum ครบ · ORACLE-EDIT 7 รอบ (S1.1 · S5.2 · X4.2 · X3.3 · รอบ 5 13 ข้อ · X1.2/S1.4/X3.1 · S0.6 · CLEAN part 2 — ผู้คุมงานตรวจ split_part เอง) |
+| D2 | ✅ | `qc-crm-c3.3` **84/84 ×2** QC1 seed ใหม่ (`c33-verify.log`) · 84/84 c12a CLEAN rerun (`.qc-shots/c33/clean-run1.log`) · marker first/cursor เหลือ 0 |
+| D3 | ✅ | ทุก ORACLE-EDIT ตรงมติที่จดใน §7a–§7h · ผู้คุมงานอ่าน hunk ก่อนใช้ทุกครั้ง (รอบ CLEAN จับ part 3→2) |
+| D4 | ✅ | ถอยหลัง QC1 (`c33-verify.log` part A): c2.7 79 ×2 · payroll 19 · payroll-reverse · hr-payadjust 27 · hr 9 · approval 16/12/7 · c1.5 103 · **c2.10 41/41 (เทมเพลตที่ 11)** · c3.0 33 · c3.1 56 · c3.2 47 · c3.5 67 · c3.6 29 · pages 31 · systems · c1.8 81 · c2.9 52 · c1.4 110 · c1.3 · c1.6 79 · c2.4 91 · c2.1 84 · chat 47 · c0.2 27 · c0.4 72 · c0.5 50 · c1.2a 91 · c1.9 45 · c1.10 66 · c2.11 47 · c1.11 66 · promptpay 84 · payment 16 · attachments 66 · mobile-app/auth · v1 17 · cron 4 · nav 11 · gate probe 14 · แดงที่รู้จัก: k2.3 15/17 (หนี้ kanban เดิม) · m1.5 S4.3/4.4 (ภาพ · ต้องมีเซิร์ฟเวอร์) |
+| D5/D6 | ✅ | typecheck 5120 exit 0 (ก่อนรวม `.qc-shots/c33/typecheck1.log` + ในยูนิต) · fitness ×2 exit 0 · build ผ่าน (part B2 หลัง OOM 2 ครั้งจากเลนอื่นซ้อน) |
+| D7 | ✅ | ภาพ `.qc-shots/crm/3.3/` owner 6 ใบ (settings · rule editor · mine · 1440/390) ผู้คุมงานเปิดดูเทียบ mockup 10 ขวา: การ์ดกฎ + "เพิ่มกฎ" · การ์ดรออนุมัติ + ป้ายจำนวน + "อนุมัติที่เลือก"/"ส่ง payroll" ตรงโครง · เพิ่มบล็อกค่าตั้งร้าน (addendum: ต้องอนุมัติ · ส่ง payroll · ฐานปริยาย) · ตัวแก้กฎครบช่อง (ชื่อ · คิดเมื่อ · แบบอัตรา · % · pipeline · ขั้นต่ำ · แบ่ง · หน่วง · เปิดใช้) · คอมมิชชันของฉัน = ตัวกรองงวด/สถานะ + KPI 4 + รายการ · 390 px ไม่ล้น · ข้อมูลว่างเพราะ seed ไม่มีกฎ (เหมือน C3.1/3.5) · manager 6 ใบ (เห็นกฎอ่าน + รออนุมัติ ไม่มีเพิ่มกฎ/ค่าตั้งร้าน — ถูกตามสิทธิ์ · สเปคผู้คุมงานแก้แล้ว) · thana 2 ใบ (คอมมิชชันของฉัน) · 3.7 owner 390 px รวม 2 หน้าใหม่ ไม่ล้น · m3.10 21/21 · m1.9 26/26 (`c33-verify-b.log`) |
+| D8–D11 | ✅ | ผู้ตรวจเงินอิสระ 7 รอบ (§7a–§7h): BLOCKER รวม 7 (money) ปิดครบ · SHOULD-FIX รอบสุดท้าย 5 ปิดครบ · **นักล่าบั๊กเงินหลังรวม spawn แล้ว 27 ก.ย.** (กติกาคุณภาพ) — ผลจะจดใน §9 |
+| D12 | ⏳ | รอ push (เจ้าของกด) — commit `ff2cb5fb` |
+เดินสาย hook ตอนรวม (ผู้คุมงานทำมือ): payments.ts = ฐาน c20 + C3.2 + `afterPaymentsReversed` (reverseStraySettles · reconcileDocSettle · reverseRow · flagDocumentVoided) · `afterPaymentCounted` (reconcileDocSettle · recordDocPayment · countPosSale · linkSaleToDeal) ถอนก่อนใส่/ปลุกเสมอ · deals.ts#moveCore → afterDealMoved
+หนี้: Q9/Q10 เจ้าของ (CRM-OWNER-QUESTIONS) · sweeper ตรวจ "เงินนับแล้วไม่มีแถว" = runPayrollSync q1a cursor (มีแล้ว) · นักล่า §9

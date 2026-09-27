@@ -418,13 +418,15 @@ const SPECS: Record<string, Spec[]> = {
   // CRM C3.3 ▸ คอมมิชชัน (ภาพ 10 ขวา) — ผู้คุมงานเขียนสเปค 27 ก.ย. · หน้าตั้งค่า = owner/manager (crm.settings.manage หรือ crm.commission.approve
   //   — seed ให้ manager มี approve) · "คอมมิชชันของฉัน" = พนักงานทุกคน (thana เห็นเฉพาะแถวตัวเอง) · ⚠️ ไม่กดปุ่มที่เขียนฐาน (อนุมัติ/ส่ง payroll/บันทึกกฎ)
   "3.3": isCustomer ? [] : [
+    // Fable 27 ก.ย.: manager (seed) มี crm.commission.approve แต่ไม่มี crm.settings.manage ⇒ เห็นกฎ (อ่าน) + รออนุมัติ แต่ไม่มี "เพิ่มกฎ"/ค่าตั้งร้าน — ตามแบบ · ตัวแก้กฎถ่ายเฉพาะ owner
     ...(userKey === "owner" || userKey === "manager" ? [{
       name: `crm-commission-settings-${userKey}`,
       path: `${CRM_BASE}/settings/commissions`,
-      note: "คอมมิชชัน (ตั้งค่า): กฎ (ชื่อ · ฐาน PAID/WON · % หรือคงที่ · ขั้นบันได · หน่วง) · ค่าตั้งร้าน (ต้องอนุมัติ · ส่ง payroll · ฐานปริยาย) · รายการรออนุมัติ + เลือกทั้งหมด/อนุมัติ/ปฏิเสธ · ปุ่มส่ง payroll — เทียบภาพ 10 ขวา",
-      expect: ["[data-testid=crm-commission-settings]", "[data-testid=crm-commission-rules]", "[data-testid=crm-commission-rule-add]", "[data-testid=crm-commission-setting-approval]", "[data-testid=crm-commission-pending]"],
+      note: "คอมมิชชัน (ตั้งค่า): กฎ (ชื่อ · ฐาน PAID/WON · % หรือคงที่ · ขั้นบันได · หน่วง) · ค่าตั้งร้าน (ต้องอนุมัติ · ส่ง payroll · ฐานปริยาย — เฉพาะ crm.settings.manage) · รายการรออนุมัติ + เลือกทั้งหมด/อนุมัติ/ปฏิเสธ · ปุ่มส่ง payroll — เทียบภาพ 10 ขวา",
+      expect: ["[data-testid=crm-commission-rules]", "[data-testid=crm-commission-pending]", ...(userKey === "owner" ? ["[data-testid=crm-commission-settings]", "[data-testid=crm-commission-rule-add]", "[data-testid=crm-commission-setting-approval]"] : [])],
       steps: [{ waitFor: "[data-testid=crm-commission-pending]", timeoutMs: 20_000 }, { wait: 500 }],
-    }, {
+    }] as Spec[] : []),
+    ...(userKey === "owner" ? [{
       name: `crm-commission-rule-editor-${userKey}`,
       path: `${CRM_BASE}/settings/commissions`,
       note: "ตัวแก้กฎคอมมิชชัน (เปิดด้วย 'เพิ่มกฎ' · ไม่บันทึก): ชื่อ · pipeline · ฐาน · ชนิด % / คงที่ / ขั้นบันได · ขั้นต่ำ · แบ่ง · หน่วงวัน",

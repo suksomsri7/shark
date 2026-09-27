@@ -398,7 +398,9 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.5 | ✅ | `c0e35025` | portal ลูกค้า `/b/[slug]` บน engine session สมาชิก (cp_ · __Host-) · เชิญ/OTP/LINE (nonce ใช้ครั้งเดียว · aud/iss) · ใบเสนอราคา (แก้ race บัญชี) · ใบแจ้งหนี้/จ่าย/สลิป · เรคคอร์ด portalVisible · คำขอ→บอร์ด/approval · role matrix · PDPA · REST PORTAL_OPS · ข้อสอบ 67/67 ×2 · ผู้ตรวจ 3 รอบ (24 แก้) · ภาพ 14 · `wo-notes/crm-C3.5.md` |
 | C3 | C3.6 | ✅ | `4c00bf09` | หน้าเชื่อมระบบ 24 ตัว · resolver ปลายทาง (stored>link>เดียว>null · 7 จุด · scan 0 raw) · widgets PAGES 3 · Team จริงใน saved views สมาชิก · ข้อสอบ 29/29 ×2 · ผู้ตรวจ 2 รอบ (BLOCKER 1 SEND_LINE) · ภาพ 2 |
 | C3 | C3.7 | ✅ | `4c00bf09`+`286ef7ab` | routes มือถือ 8 · แอปพนักงาน 5 จอ (+harness) · 390 px 24 หน้า · ข้อสอบ 30/30 · ผู้ตรวจ 1 รอบ (5 SHOULD-FIX) · จอแอป 5 |
-| C3 | C3.3 · C3.4 · C3.8 · C3.9 · C2.7-fix | 🔨 | — | C3.3 84/84 รอบ 7 · C2.7-fix 79/79 (รวมคู่ C3.3) · C3.9 builder เริ่ม · C3.4 หลัง C3.3 · C3.8 หลัง C3.4 · ข้อสอบครบทุกใบ |
+| C3 | C3.3 | ✅ | `ff2cb5fb` | คอมมิชชัน → payroll (กฎ %/คงที่/ขั้นบันได/แบ่ง · ฐาน PAID/WON · incarnation `<payId>#c<ms>` · nomatch flags · สายอนุมัติ+เพดาน · HR adjustment 2 ทาง · จ็อบ 5 นาที) · ข้อสอบ 84/84 ×2 · ผู้ตรวจเงิน 7 รอบ (BLOCKER 7 ปิดครบ) · hook 8 จุดใน payments.ts · ภาพ 14 (owner 6 · manager 6 · thana 2) · นักล่าบั๊กเงินหลังรวม (กำลังทำ) |
+| C2 | C2.7-fix | ✅ | `ff2cb5fb` | ลำดับ event การจ่าย: settle = grand − Σ เงินสดที่ยังไม่ยกเลิก ใต้ล็อก · COUNTED ไม่เปลี่ยนยอด (ปลุกผ่าน REVERSED) · docPaymentLedger SQL · drain (createdAt,id) · จ็อบ reconcile รายชั่วโมง · ข้อสอบ 79/79 ×2 · ผู้ตรวจเงิน 4 รอบ |
+| C3 | C3.4 · C3.8 · C3.9 | 🔨 | — | C3.9 รอบ 2 36/36 (ผู้ตรวจรอบ 2 กำลังอ่าน) · C3.4 builder เริ่ม 27 ก.ย. (c110) · C3.8 หลัง C3.4 · ข้อสอบครบทุกใบ |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |
