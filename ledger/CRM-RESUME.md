@@ -45,6 +45,7 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - ยูนิต `crm-c39fix-main` ยิง 13:45 UTC (log `.qc-shots/crm/c39fix-main.log`) → เขียว = จด gate C3.9-fix + แจ้งเจ้าของก่อน push prod
 - เลน A: builder C4.2 triage (Opus · c42) Phase 1 = ทะเบียน opener/needs/viewport + dry (QC3) · เลน B: ผู้เขียน C4.3 ฟอร์ม (Opus · c43 · QC3 in-process) `qc-crm-forms.mts` + `scripts/lib/qc-crm-restore.mts` · เลน C: ผู้เขียน C4.4 US1–US10 (Sonnet · c44 · QC2) `scripts/crm-journeys/` + `--journey` · ทั้งสามหยุดหลัง Phase 1 → **ผู้คุมงาน: หลังยูนิตจบ พักทุกเลน → build จาก HEAD → `acc-v2-serve.sh start` (QC1 · 3215) → resume เลนสำหรับ Phase 2 (รันจริงผ่าน gate lock)**
 - heartbeat CronCreate `*/23` (session-only)
+- 14:40 UTC OWNER: **4 lanes** · lane D = C5.1 perf builder (Opus · `shark-crm-c51` · QC2 tenant crm-perf-qc) · old worktrees cleaned by owner · owner items → `ledger/CRM-OWNER-PENDING.md` · tg = % only · unit relaunched 14:15 (first launch failed: relative path)
 
 ### 0.12 🔴 CHECKPOINT 27 ก.ย. 2569 ~13:50 UTC — เจ้าของอัปเกรด VPS เป็น KVM4 + ย้ายบัญชี Claude (session ใหม่เริ่มที่นี่)
 **รับแล้ว 40/53 = 75%** (C2 ครบ · C3.0–3.9 · C2.7-fix · C3.3-fix) · commit ล่าสุด = ดู `git log -1` (session/crm) · **ทุกอย่างรวมเข้าทรีหลักแล้ว — worktree c12a/c20/c110/c23 ไม่มีของที่ยังไม่ได้รวม (reset ได้)**
