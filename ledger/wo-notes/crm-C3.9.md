@@ -124,3 +124,16 @@
 
 ผล (QC3 · `r4-progress.log` · `r4-<ชุด>.log`): qc-crm-c1.3 89/89 (×2) · c1.2a 91/91 · c1.4 110/110 · c1.5 103/103 · c1.6 79/79 · qc-crm-c3.9 36/36 (×2) · typecheck สะอาด (`r4-typecheck-2.log` — รอบแรกแดงที่ชนิด ctx ของ `listForExport` แก้แล้ว · ชุดข้อสอบรันด้วย tsx ไม่กระทบ) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL`
 - `scripts/crm-expected.json` · `member-expected.json` · `acc-v2-expected.json` ถูกเขียนใหม่โดย seed ของ QC3 (generatedAt 2026-09-27T03:24Z · ไม่ใช่ชุดของใบนี้) — คืนจาก git แล้ว · สำเนาอยู่ที่ `.qc-shots/c39/qc3-*-expected-r4.json`
+
+## ผู้คุมงาน (Fable 5.1 · 27 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 36 ข้อเขียนก่อน (c23 · `82653840`) · ruling addendum ครบ · ไม่มี ORACLE-EDIT |
+| D2 | ✅ | `qc-crm-c3.9` **36/36 ×2** QC1 seed ใหม่ (`c39-verify.log`) + 36/36 ในยูนิต c34 หลังรอบ 4 · 36/36 ×2 ทุกรอบบน QC3 |
+| D3 | ✅ | ไม่มี ORACLE-EDIT · มติผู้คุมงาน 6+2 ข้อจดใน RUN §4 (completeErasure best-effort + consumer รับประกัน · AppNotification ไม่มี ref = หนี้ migration) |
+| D4 | ✅ | ถอยหลัง QC1 (`c39-verify.log` 51 ขั้น + `c34-verify.log`): form 10 · fix-s1 28 · m1.4 37 · c1.4 110 · c2.4 91 · c2.5 105 · c2.6 87 · c2.2 73 · c3.1 56 · c3.2 47 · c3.5 67 · c3.6 29 · c0.4 72 · c0.5 50 · c0.2 27 · c1.11 66 · c1.5 103 · c2.7 79 · c3.3 90 (หลัง C3.3-fix) · **c1.3 89 (หลังรอบ 4)** · c1.8 · c2.1 · c2.10 · c2.11 · c1.10 · c1.2a · c1.9 · c1.6 · c2.9 · c3.0 · pages · systems · chat · attachments · v1 · cron · nav · แดงที่รู้จัก: m2.9/m3.11 (ENV/ภาพ) · c3.7 ภาพ · k2.3 หนี้ kanban |
+| D5/D6 | ✅ | typecheck 5120 exit 0 · fitness 33/33 ×2 · build ผ่าน (part B `c34-verify-b.log`) |
+| D7 | ✅ | ภาพ `.qc-shots/crm/3.9/` owner 6 ใบ (ตั้งค่า: อายุเก็บ · ส่งออก CSV/JSON · เพดาน 19 คีย์แถบ % · ผู้ติดต่อ 360: บล็อก PDPA ส่งออก/ลบ + แผงยืนยัน เหตุผล ≥5 + ติ๊กย้อนกลับไม่ได้) ผู้คุมงานดูเอง · thana ไม่มีบล็อก (STAFF ไม่มีคีย์ — ตามแบบ · สเปคแก้) · ไม่มี mockup เฉพาะ (ใบนี้ไม่มีภาพในชุด 17) |
+| D8–D11 | ✅ | ผู้ตรวจอิสระ 2 รอบ (BLOCKER 3 + SHOULD-FIX 5 + NOTE 12 → รอบ 2 SHOULD-FIX 2 + NOTE 9 → รอบ 3 ปิด) + รอบ 4 regression static · หลักฐาน before/after `.qc-shots/c39/r2-probe-b123.log` |
+| D12 | ⏳ | รอ push (เจ้าของกด) — `a0d9d531` + `a06a796b` + `a9523b59` |
+หนี้: N2 ตัวเก็บตก followUp FAILED (C6) · N6 index (tenantId, action, targetId) บน AuditLog · N7 รอบแรก retention prod (C6.1 เจ้าของ) · AppNotification refType/refId (migration) · N8 payload มีแค่ contactId หลัก

@@ -126,3 +126,16 @@
 | calls.ts จับคู่ชื่อบริษัทบนนามบัตรผ่าน `companiesSvc.matchByExactName(ctx, a, cardCompany)` (เลิก import `companyWhere` · คอมเมนต์ AUDIT-CLASS X1/X2 คงไว้) | `calls.ts:36` `:647` |
 
 ผล (QC1 · `.qc-shots/c34fix/progress.log` · `<ชุด>.log`): qc-crm-c1.3 **89/89** · qc-crm-c1.6 79/79 · qc-crm-c3.4 **53/53** · qc-crm-c2.4 **91/91** · typecheck สะอาด (0 error) · fitness 33/33 ทั้งมี env และ `env -u DATABASE_URL -u DIRECT_URL`
+
+## ผู้คุมงาน (Fable 5.1 · 27 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 53 ข้อเขียนก่อน (`7e6d60e4`) · ruling addendum 1–13 + 4 มติ · ไม่มี ORACLE-EDIT (S3 ใช้คู่ daily+sweep แทน) |
+| D2 | ✅ | `qc-crm-c3.4` **53/53 ×2** QC1 seed ใหม่ (`c34-verify.log`) · 53/53 หลัง fixer (`c33fix-main.log`) · 53/53 ×2 ทุกรอบบน QC2 |
+| D3 | ✅ | deviation 5 ข้อ: รับ 4 · ข้อ 4 บางส่วน → S2 (ประตูสำหรับทุก crm.* ที่มี requestedByUserId) |
+| D4 | ✅ | ถอยหลัง QC1 (`c34-verify.log`): ai-tools 18 · ai-proposals 16 · ai-skills 23 · ai-credit 32 · ai-vision 6 · kb 12 · kb-search · kb-auto · meeting-invite 22 · c1.7 57 · c3.9 36 · + ชุดของ C3.9 D4 ทั้งหมด · **regression จริง 3 จุดพบในยูนิต แก้ครบ**: C0.2-S1.4 (ORACLE-EDIT namespace ทั่วไป) · C1.11 S1.6/S6.10 (min-w-[420px] · คอมเมนต์ `/**`) · C1.3-S0.3 (fixer: companies helpers) — ยืนยันซ้ำ c0.2 27 · c1.11 66 · c1.3 89 · c3.4 53 · c2.4 91 · c1.6 79 |
+| D5/D6 | ✅ | typecheck 5120 exit 0 ×3 · fitness 33/33 ×2 · build ผ่าน (part B) |
+| D7 | ✅ | ภาพ `.qc-shots/crm/3.4/` owner 10 ใบ + thana 4 ใบ ผู้คุมงานดูเอง: deal 360 แผง AI 4 ปุ่ม · contact 360 2 ปุ่ม · company 360 2 ปุ่ม · หน้าแรก "ดีลไหนเสี่ยงเดือนนี้ → ถามผู้ช่วย" · ตั้งค่า "ห้องแชทของทีมขาย" (สถานะว่างเพราะร้าน QC ไม่มีห้อง) · เทียบ mockup 14 ซ้าย: ตารางผล+การ์ดข้อเสนอ = ข้อสอบ S8 static (ไม่กดโมเดลตอนถ่าย) · thana: company 404/home ไม่มี = ตามสิทธิ์ (สเปคแก้) · m3.10 21/21 |
+| D8–D11 | ✅ | ผู้ตรวจอิสระ 2 รอบ (SHOULD-FIX 3 + NOTE 7 → รอบ 2 SHOULD-FIX 1 + NOTE 5 → รอบ 3 ปิด + ด่านงานรายวัน) · H3 ผ่าน (thana เข้าถึงกระบี่ไม่ได้ทั้ง 32 tool + 9 kind) |
+| D12 | ⏳ | รอ push |
+หนี้: Q13 (เครดิต AI ใครกดได้) · หน้าแรกมีการ์ด AI 3 ปุ่มเดิม + แผง C3.4 ซ้อน (รวมใน C4) · N5 งานซ้ำกรณีขอบ · การพึ่งพาทางอ้อม meeting→crm ผ่าน components/crm/ai · rejectProposal ทั่วไปของโมดูลอื่น (เลน AI)

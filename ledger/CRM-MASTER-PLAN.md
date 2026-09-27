@@ -400,7 +400,10 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.7 | ✅ | `4c00bf09`+`286ef7ab` | routes มือถือ 8 · แอปพนักงาน 5 จอ (+harness) · 390 px 24 หน้า · ข้อสอบ 30/30 · ผู้ตรวจ 1 รอบ (5 SHOULD-FIX) · จอแอป 5 |
 | C3 | C3.3 | ✅ | `ff2cb5fb` | คอมมิชชัน → payroll (กฎ %/คงที่/ขั้นบันได/แบ่ง · ฐาน PAID/WON · incarnation `<payId>#c<ms>` · nomatch flags · สายอนุมัติ+เพดาน · HR adjustment 2 ทาง · จ็อบ 5 นาที) · ข้อสอบ 84/84 ×2 · ผู้ตรวจเงิน 7 รอบ (BLOCKER 7 ปิดครบ) · hook 8 จุดใน payments.ts · ภาพ 14 (owner 6 · manager 6 · thana 2) · นักล่าบั๊กเงินหลังรวม (กำลังทำ) |
 | C2 | C2.7-fix | ✅ | `ff2cb5fb` | ลำดับ event การจ่าย: settle = grand − Σ เงินสดที่ยังไม่ยกเลิก ใต้ล็อก · COUNTED ไม่เปลี่ยนยอด (ปลุกผ่าน REVERSED) · docPaymentLedger SQL · drain (createdAt,id) · จ็อบ reconcile รายชั่วโมง · ข้อสอบ 79/79 ×2 · ผู้ตรวจเงิน 4 รอบ |
-| C3 | C3.4 · C3.8 · C3.9 | 🔨 | — | C3.9 รอบ 2 36/36 (ผู้ตรวจรอบ 2 กำลังอ่าน) · C3.4 builder เริ่ม 27 ก.ย. (c110) · C3.8 หลัง C3.4 · ข้อสอบครบทุกใบ |
+| C3 | C3.9 | ✅ | `a0d9d531`+`a06a796b` | PDPA ลบ/ส่งออก (ลบใต้ FOR UPDATE + ธง audit · สายที่ถูกรวม · ไฟล์ · consumer crm.contact.erased retry · member.erased) · อายุเก็บ + ยืนยันลด · เพดาน 19 คีย์ (advisory lock · เตือน 80 % ครั้งเดียว) · party.countPartyHolders · ข้อสอบ 36/36 ×2 · ผู้ตรวจ 4 รอบ (BLOCKER 3) · ภาพ 6 |
+| C3 | C3.4 | ✅ | `a06a796b`+`0321c844`+`a9523b59` | AI ในหน้า 9 kind · tool 32 · facade meeting/kb · ประตูข้อเสนอ (rejectProposal สาขา CRM) · ห้องทีม (won/hot/digest + sweep gated) · unfurl · KB tokens · ข้อสอบ 53/53 ×2 · ผู้ตรวจ 3 รอบ · regression static 3 จุดแก้ · ภาพ 14 |
+| C3 | C3.3-fix | ✅ | `a9523b59` | นักล่าเงินหลังรวมพบ MAJOR 5 + race 1 → ORACLE-EDIT H1–H6/M7/X3.3 → แก้ 4 รอบ · ผู้ตรวจเงิน 3 รอบ (B1 จากมติผู้คุมงานเอง) · c3.3 90/90 ×2 บนทรีหลัก |
+| C3 | C3.8 | 🔨 | — | builder 31/31 ×2 · ผู้ตรวจรอบ 1 SHOULD-FIX 2 (token ดิบใน ApiIdempotency · เพดานอนุมัติของคีย์) กำลังแก้ |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |
