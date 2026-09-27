@@ -44,7 +44,7 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 - worktree เดิม c12a/c20/c23/c110 **มีไฟล์ค้างที่ยังไม่ reset** (ตัวกรองสิทธิ์ไม่ให้ session นี้ reset — ของรวมเข้า main แล้วตาม §0.12) · bind mount node_modules หายหลังรีบูต · **สร้าง worktree ใหม่** `shark-crm-c42` (C4.2) `-c43` (C4.3) `-c44` (C4.4) ที่ 18feaa84 + `mount --bind` node_modules ของทรีหลัก (รีบูตแล้วต้อง mount ใหม่) + ก๊อป `.env.qc*`
 - ยูนิต `crm-c39fix-main` ยิง 13:45 UTC (log `.qc-shots/crm/c39fix-main.log`) → เขียว = จด gate C3.9-fix + แจ้งเจ้าของก่อน push prod
 - เลน A: builder C4.2 triage (Opus · c42) Phase 1 = ทะเบียน opener/needs/viewport + dry (QC3) · เลน B: ผู้เขียน C4.3 ฟอร์ม (Opus · c43 · QC3 in-process) `qc-crm-forms.mts` + `scripts/lib/qc-crm-restore.mts` · เลน C: ผู้เขียน C4.4 US1–US10 (Sonnet · c44 · QC2) `scripts/crm-journeys/` + `--journey` · ทั้งสามหยุดหลัง Phase 1 → **ผู้คุมงาน: หลังยูนิตจบ พักทุกเลน → build จาก HEAD → `acc-v2-serve.sh start` (QC1 · 3215) → resume เลนสำหรับ Phase 2 (รันจริงผ่าน gate lock)**
-- heartbeat CronCreate `*/23` (session-only)
+- heartbeat CronCreate `*/23` (session-only · re-created 22:42 after container restart)
 - ~14:25 UTC OWNER: **4 lanes** · lane D = C5.1 perf builder (Opus · `shark-crm-c51` · QC2 tenant crm-perf-qc) · old worktrees cleaned by owner · owner items → `ledger/CRM-OWNER-PENDING.md` · tg = % only · unit relaunched ~13:55 (first launch failed: relative path)
 
 ### 0.12 🔴 CHECKPOINT 27 ก.ย. 2569 ~13:50 UTC — เจ้าของอัปเกรด VPS เป็น KVM4 + ย้ายบัญชี Claude (session ใหม่เริ่มที่นี่)

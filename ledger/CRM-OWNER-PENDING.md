@@ -4,7 +4,7 @@
 
 | # | when | item | default if no answer |
 |---|---|---|---|
-| P1 | when C3.9-fix unit green | approve `git push origin HEAD:main` (prod deploy) | do NOT push |
+| P1 | NOW (asked on tg 17:50 UTC) · push up to c236a490 | approve `git push origin HEAD:main` (prod deploy) | do NOT push |
 | P2 | after C3.10 qc:all | CP3 — owner tries QC shop: portal with a customer session · commission → payroll (controller sends link + steps) | wait |
 | P3 | any time | Q7 unsubscribe line in 1:1 sales e-mail | YES (both kinds) |
 | P4 | any time | Q8 v1-era payments counted into deals after switching to v2 | NO catch-up |
