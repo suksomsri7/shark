@@ -8,20 +8,46 @@ row's action" and "assert the row's expect" to the runner, because the registry 
 is a DECISION THIS RUNNER MAKES, not a fact derived from the brief — if the controller wants different behaviour,
 the fix belongs in `scripts/qc-crm-buttons.mts` (this file only documents what it currently does and why).
 
+> **Update (27 Sep 2569, same day, after C4.1 rewrote the registry — ledger/wo-notes/crm-C4.1.md):** the registry
+> went from 1,144 → 1,055 rows and gained a machine-readable vocabulary (`system` · `query` · `alsoOn` · `ui`
+> expect-type with `state` · `anyOf` · `resultTarget` · `dropTarget` · `history:back` · `mailto:*`) specifically to
+> close the gaps this addendum's §1/§3/§7 complained about. `scripts/qc-crm-buttons.mts` was updated to match
+> (registry/product code untouched, per the controller's instruction). Sections below marked **[C4.1-RESOLVED]**
+> describe the OLD behaviour for history; the current behaviour is in the code + the CONTRACT block at the top of
+> the file. `--dry` on QC3 right after this update: 7,070 presses, 372 skips (vs the C4.1 builder's own `--dry` of
+> ~7,142/~336 minutes earlier on the SAME QC3 branch — a real reseed between the two runs, not a regression: every
+> extra skip had a matching structural counterpart, e.g. `sequenceId` unresolved for nok/thana dropped 38→27 each).
+>
+> **Update 2 (same day, round 2 — ledger/wo-notes/crm-C4.1.md §7/§8, registry 1,055 → 1,052 rows):** added `only`/
+> `not` handling, bare-`*` support in `navMatches`, and corner-clicks for `*-backdrop` rows — see §11 below. `--dry`
+> on QC3 after THIS update: **7,122 presses, 368 skips** (`pnpm typecheck` exit 0 both times — logs in this run's
+> handback). The `only` expansion is why total went UP despite the registry shrinking (`company-new-*` alone: 1 row
+> → 8 independent plan items × roles × viewports).
+
 ## 1. Assumptions about `expect` semantics (per `expect.type`)
+
+**[C4.1-RESOLVED]** the previous revision of this section documented a prose-detection fallback for ~16 `modal`/
+`toast` rows and 4 `navigate` rows whose `target` was Thai/English commentary instead of a real testid/path (e.g.
+`"contacts-import-modal (ปิด)"`, `"(ย้อนกลับ)"`). C4.1's rewrite (ledger/wo-notes/crm-C4.1.md §3, validated with
+`.qc-shots/c41/validate.py` → 0 remaining prose) replaced those with the `ui` type (+ `state`), `history:back`, and
+`mailto:*`, all handled explicitly now — the "is this even a selector/path" defensive fallback is gone from the
+navigate/modal code paths (no longer needed; `looksLikeTestid` still exists but now only gates the shape of a real
+testid, including mid-name `*`).
 
 | type | this runner's action |
 |---|---|
-| `modal` / `toast` | wait up to 5 s for `[data-testid="<target>"]` to appear; closes modals with `Escape` afterwards so the next row on the same page starts clean. **~16 rows** put Thai/English prose in `target` instead of a testid (e.g. `contacts-import-cancel` → `"contacts-import-modal (ปิด)"`, `deal-lost-cancel` → `"(ปิดหน้าต่าง · การ์ดกลับที่เดิม) · ใช้ร่วมบนหน้า /deals/[dealId] (stepper)"`) — a literal selector built from that string would never match, so this runner detects "not testid-shaped" (`/^[A-Za-z][A-Za-z0-9-]*\*?$/`) and falls back to the same soft pass as `inline-error` below, rather than reporting every "cancel"/"close" button as a false `wrongExpect`. |
-| `navigate` | `page.url()`'s pathname must match the FIRST whitespace-delimited token of `target`, brackets/`<…>` treated as a wildcard path segment; a trailing `?…` is NOT compared. **4 rows** append commentary after the real path (`deal-req-open-link` → `"/deals/[dealId] · ใช้ร่วมบนหน้า /deals/[dealId] (stepper)"`) or have no real path at all (`deal-new-cancel` → `"(ย้อนกลับ)"`) — the first token is checked for "starts with `/`" before being treated as a path; if it doesn't, same soft-pass fallback. |
+| `modal` / `toast` | wait up to 5 s for `[data-testid="<target>"]` (or any of `anyOf`) to appear — **never auto-dismissed** (changed from the previous revision, which pressed `Escape` after every modal-type row). Registry row ORDER puts the opener before the modal's inner-field/cancel rows on the SAME page load; auto-closing here would make every one of those later rows falsely `dead`-missing. The eventual `ui`+`disappears` (cancel) row closes it for real. |
+| `navigate` | `page.url()`'s pathname must match `target` (or any of `anyOf`) — brackets/`<…>` → wildcard path segment, trailing `?…` ignored — UNLESS `target`/`anyOf` is `"history:back"` or starts with `"mailto:"`, which cannot be asserted via `page.url()` (soft pass; the registry's own `note` on those rows says so explicitly, e.g. `deal-new-cancel`: "router.back() — เปิดตรงจากลิงก์ = ไม่มีหน้าให้กลับ"). |
+| `ui` (new in C4.1) | `target` (a testid, possibly `*`-patterned) must, per `state`: **appears** (default) → become visible · **disappears** → become absent/invisible (polled up to 3 s) · **changes** → its `outerHTML` differ from a snapshot taken immediately BEFORE the action. The "changes" case also covers `target` being a DIFFERENT element than the one acted on (e.g. `company-pick-*-q` input → `company-pick-*-select` sibling changes after a debounced server search). |
 | `download` | a network response fired during the action whose content-type or URL suffix looks like a file (`csv`/`pdf`/`xlsx`/`octet-stream`/`spreadsheet`) — byte length is NOT checked (puppeteer-core does not expose response bodies for same-page downloads without extra CDP wiring, which this WO's budget did not extend to) |
-| `mutation` | (a) at least one non-GET-ish network response fired during the action and none was ≥400 — this is the ONLY signal for rows whose `db` text can't be parsed; (b) when `db` DOES parse (see §2) that check must also hold |
-| `inline-error` | **soft pass** — satisfied as soon as the row is not `dead`. This runner always types/selects a VALID value (see §3); it never submits deliberately-bad input, so it cannot tell "the field silently accepted a valid value" apart from "the field would have shown an error and didn't". Per `crm-brief-C4.md`, deliberately-bad input / exact inline-error-message assertions are **C4.3's job**, not C4.2's — this runner does not duplicate that work with a half-real heuristic. |
+| `mutation` | (a) at least one non-GET-ish network response fired during the action and none was ≥400 — this is the ONLY signal for rows whose `db` text can't be parsed; (b) when `db` DOES parse (see §2) that check must also hold; (c) NEW — when `resultTarget` is set (8 rows), it must also appear within 5 s (a result/confirmation testid, sometimes inside a modal, e.g. `crm-report-schedule-save` → `resultTarget: "crm-report-schedule-modal"`). |
+| `inline-error` | **soft pass, unchanged** — satisfied as soon as the row is not `dead`. C4.1 pointed every `target` at a REAL testid now (`deal-fields-msg`, `st-msg-*`, …, no more prose), but this runner still never submits deliberately-bad input, so it still cannot tell "silently accepted" apart from "validation broken". Per `crm-brief-C4.md`, deliberately-bad input / exact inline-error-message assertions are **C4.3's job**, not C4.2's. |
 
-**Controller decision needed:** is the `inline-error` soft-pass acceptable for C4.2's gate, or should C4.2 also
-assert something machine-checkable for these 508 rows (roughly 44% of the registry)? If the latter, the registry
-needs a second field (e.g. `expect.validTarget`) naming what SHOULD change on a valid submission, because today
-`target` for `inline-error` rows always names the *error* container, not a success signal.
+**Controller decision needed (unchanged):** is the `inline-error` soft-pass acceptable for C4.2's gate, or should
+C4.2 also assert something machine-checkable for these 417 rows (~40% of the current 1,055-row registry)? The
+`target` now being a real testid makes this MORE feasible than before (e.g. "assert the error container's
+`textContent` is empty/hidden after a valid submit") but still needs a deliberately-bad-input pass to be meaningful,
+which is explicitly out of scope for C4.2 per the brief.
 
 ## 2. DB-diff heuristic (best-effort, not a full oracle)
 
@@ -60,20 +86,21 @@ richer per-row DSL in the registry, or a small set of per-row exceptions hand-wr
   inputs, and the webhook URL field which will fail URL-format validation) are exactly the kind of finding this
   addendum exists to surface — check `wrongExpect[]` for `*-url`, `*-percent`, `*-rate` testids before treating them
   as real bugs.
-- `form` → if the element resolves to an actual `<form>` tag, `requestSubmit()` (fallback: dispatch a `submit`
-  event); otherwise `click()` it. **Ambiguity**: the registry's `kind: "form"` (159 rows) is used for two different
-  things in practice — real `<form>` containers meant to be submitted whole, AND composite filter/inline widgets
-  (e.g. `contacts-filter-form`, `pos-deal-hint`, `crm-notify-page`) that are not meant to be "submitted" at all.
-  This runner's tag-sniff handles the first case correctly and degrades to a plain click for the second, which is
-  usually harmless (many of those rows expect `navigate` via query-string changes anyway) but is not guaranteed
-  correct for every row. **Recommend C4.1** split `kind: "form"` into `form` (real submit) and a more specific kind
-  for the composite/filter widgets, so C4.2 (or its successor) can stop guessing from the DOM tag name.
-- `drag` → SKIPPED, not counted in `total`/`passed`. The one `drag`-kind row in today's registry (`/deals`
-  `deal-card-*`, the Kanban drag-to-move-stage gesture) has no drop-target column id in its row — `expect.target` is
-  `"op:deals.moveDeal (...)"`, an op name, not a "drop onto this column" testid. **Recommend C4.1** add an
-  `expect.dropTarget` (or similar) field naming the destination column's testid before this is worth automating —
-  the same gesture IS already covered by `visual-crm.mts`'s scripted `drag`/`dragBy` steps for specific WOs, so this
-  is a coverage gap for C4.2's generic sweep only, not an untested gesture overall.
+- `form` / `filter` → if the element resolves to an actual `<form>` tag, `requestSubmit()` (fallback: dispatch a
+  `submit` event); otherwise `click()` it. **[C4.1-RESOLVED]** the old `kind:"form"` ambiguity (real `<form>` vs.
+  composite filter/inline widget, 159 rows) is gone: C4.1 removed the 94 non-control "form" rows that pointed at
+  boxes/text/tables (they remain usable as `expect.target`s, per ledger/wo-notes/crm-C4.1.md §3), changed rows that
+  were really a `<select>`/`<input>` to their real kind, and split the true GET-only filter forms into a NEW
+  `kind:"filter"` (9 rows, e.g. `contacts-filter-form`, `deals-filter-form`) — confirmed by reading the registry:
+  every remaining `filter`-kind row's testid ends in `-form` and is a real `<form method=get>`. This runner treats
+  `form` and `filter` identically (same tag-sniff + `requestSubmit()`), which is now correct for both by construction.
+- `drag` → now performs a real drag: mouse-down on the testid, move in 12 steps onto the LAST DOM element matching
+  `expect.dropTarget` (a testid pattern, e.g. `deal-column-*`), mouse-up. **Remaining assumption**: "last match" is a
+  best-effort heuristic to land on a column different from the card's own (the row doesn't say which card starts in
+  which column) — only 1 `drag`-kind row exists today (`deal-card-*` on `/deals`), so this hasn't been cross-checked
+  against a real browser run yet. If the card happens to already be in the last column, the drag is a no-op onto
+  itself and this row would likely show up as `dead` (no mutation) — a real signal, not a false one, but worth the
+  controller knowing before reading that particular result.
 
 ## 4. Safety guard — rows that reach a real external send (never pressed for real)
 
@@ -147,33 +174,54 @@ Everything else (deal/contact/company ids, party id via the representative conta
 "contract", the tenant's portal slug, and all system ids used as `/app/sys/[id]/...` for POS/MEMBER/HR) resolves
 from `scripts/crm-expected.json` or a narrow live query and should work whenever the standard `crm-seed` has run.
 
-## 7. Page-path inconsistencies in the registry (recommend C4.1 fix, not a C4.2 bug)
+## 7. Page-path inconsistencies in the registry — **[C4.1-RESOLVED]**
 
-- `/companies/[id]` (11 rows, all C3.5 portal-invite rows) and `/contacts/[id]` (8 rows, all C1.6 file/activity rows)
-  use a different bracket name than the real Next.js route folders (`src/app/app/sys/[id]/crm/companies/[companyId]`,
-  `.../contacts/[contactId]`). This runner aliases them (`PAGE_ALIAS`) so both groups land on the one real page, but
-  the registry itself should be normalised to `[companyId]`/`[contactId]` everywhere — two names for the same page
-  is exactly the kind of drift F14.2 ("no ghost rows / no duplicate identity") is meant to prevent structurally,
-  even though today's F14 testid-existence check doesn't look at `page` values at all.
-- `/contacts · /companies · /deals` (8 rows, the `crm-view-*` saved-view menu component) names three pages in one
-  string. This runner tests it once, on `/contacts`, since the component is shared verbatim across all three list
-  pages (`src/components/member/MembersSavedViewsMenu.tsx`-style reuse per `crm-brief-C4.md`'s cross-check note) —
-  recommend either three separate row-groups (one per page) or an explicit convention for "same component, multiple
-  hosts" if this pattern recurs.
-- `/app/sys/[id] (HR hub)` embeds a human-readable annotation inside the `page` field itself (not a real URL
-  segment). This runner strips the trailing `(...)` before building a URL. Recommend moving such notes to a
-  sibling field (there is room in the schema for one) rather than the `page` string.
-- Same class of problem inside `expect.target` (not `page`): ~16 `modal`/`toast` rows and 4 `navigate` rows carry
-  Thai/English commentary instead of (or appended after) a real testid/path — see §1's table for the exact rows and
-  this runner's fallback. Recommend the same fix: a real testid/path in `target` always, commentary in a sibling
-  field (or dropped — the `note`/mockup cross-reference already lives elsewhere).
+Every issue this section used to list (`[id]` vs `[companyId]`/`[contactId]` aliasing, the combined
+`/contacts · /companies · /deals` page string, the `(HR hub)` annotation baked into `page`, prose baked into
+`expect.target`) was fixed at the source by C4.1's registry rewrite (ledger/wo-notes/crm-C4.1.md §3, validated
+0 prose remaining). `PAGE_ALIAS`/`COMBINED_PAGE` were deleted from this runner — nothing to alias anymore; `page`
+is always the real route param name, `system`+`query` replace the string-annotation hacks, and `target` is always
+machine-readable. See §1 above for the new `ui`/`anyOf`/`resultTarget`/`history:back`/`mailto:*` vocabulary that
+replaced the old fallbacks.
 
-## 8. `kind: "textarea"` is not in the documented vocabulary
+## 8. `kind: "textarea"` — **[C4.1-RESOLVED]**
 
-`scripts/crm-ui-inventory.json`'s own `$fields.kind` doc string lists `button | link | menu | tab | toggle | drag |
-form | input | select` — three rows in the current registry use `kind: "textarea"` (undocumented but handled
-identically to `input` by this runner, and by `fitness.mts`'s testid scanner via `INTERACTIVE_TAGS`). Cosmetic only
-— recommend adding it to the doc string.
+C4.1's rewritten `$fields.kind` doc string now lists `textarea` and `filter` explicitly (`button | link | menu | tab
+| toggle | drag | form | filter | input | textarea | select`) — no longer undocumented.
+
+## 11. CRM C4.1 round 2 (registry rewrite again same day, 1,055 → 1,052 rows — ledger/wo-notes/crm-C4.1.md §7/§8)
+
+A second pass added three more things this runner needed to change to keep pressing the RIGHT element, plus one
+future field noted for awareness only:
+
+1. **`only`/`not` on pattern rows.** A `*`-pattern testid can cover either (a) several genuinely DISTINCT exact
+   controls sharing a prefix (`company-new-*` → 8 separate fields: name/taxId/branchCode/industry/website/
+   emailDomain/phone/email) or (b) one real control plus decoy non-control elements sharing the prefix
+   (`crm-integrations-node-*` matches a `<div>` for the CRM node itself, which isn't a link). `only` (when present)
+   is the definitive exact-testid list — `buildPlan()` now EXPANDS the row into one independent plan item per exact
+   name in `only` (each gets its own visibility/action/dead/expect check), and `not` is ignored in that case. When
+   `only` is absent, `not` (if present) is carried per-item as `notList` and consulted at press-time by a NEW
+   `resolveSel()` helper: it walks every DOM match of the pattern selector, skips any whose exact testid is in
+   `notList`, and returns the FIRST one that is **actually clickable** — tag ∈ {button, input, select, textarea},
+   or `<a href>`, or `role` ∈ {button, link, menuitem, tab, switch, checkbox, option} — never a bare `<div>`/`<li>`
+   wrapper. This applies to EVERY `*`-pattern row now (generic fix), not just the 3 the review named.
+2. **`navMatches` now treats a bare `*` as a wildcard too**, not only `[bracket]`/`<angle>` placeholders — needed for
+   `portal-menu-*`/`portal-nav-*` (`target: "/b/[slug]/*"`) and `crm-book-via-booking`
+   (`target: "/app/u/*/booking?partyId=*"`, the `?...` part already discarded by the existing query-stripping).
+   Because the match is a PREFIX test (no trailing `$`), a trailing `*` correctly accepts a deeper remainder too
+   (e.g. "/b/shop/documents/123" satisfies target "/b/[slug]/*") without needing a separate "match to end of string"
+   code path — confirmed by reasoning through the regex, not yet exercised against a real browser.
+3. **Backdrop rows (`*-backdrop`, 5 rows) now click a CORNER**, not the center. Their close handler checks
+   `e.target === e.currentTarget`; `page.click(selector)`'s default center-of-bounding-box click lands on the
+   dialog box sitting visually on top of the backdrop at that point, not the backdrop itself, so the row would
+   incorrectly show as `dead`. This runner detects `testid.endsWith("-backdrop")` and clicks `(box.x+6, box.y+6)`
+   via `page.mouse.click()` instead.
+4. **`opener` (proposed, not yet in the registry — D1 of the C4.1 review):** a future field naming the testid that
+   must be pressed FIRST to reveal a modal's inner controls. Not implemented today (no row has it yet) — this
+   runner still relies on registry row ORDER (opener rows before their modal's inner-field/cancel rows on the same
+   page) to keep a modal open across consecutive same-page rows, per §1's `modal`/`toast`/`ui` no-auto-dismiss note.
+   If `opener` is added later, the right fix is: before pressing a row that has one, press `opener`'s testid first
+   (if not already visible) — noted here for whoever picks this up, not implemented now (out of THIS round's ask).
 
 ## 9. How to read `.qc-shots/crm/buttons/summary.json` and `plan-dry.json`
 

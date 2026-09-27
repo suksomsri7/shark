@@ -172,7 +172,7 @@ export function useDealMover(opts: {
             <span>รายละเอียดเพิ่มเติม (ไม่บังคับ)</span>
             <textarea value={lostNote} onChange={(e) => setLostNote(e.target.value)} rows={3} className="input text-sm" data-testid="deal-lost-note" />
           </label>
-          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert">{error}</p>}
+          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="deal-lost-error">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-ghost text-sm" onClick={() => cancel(lost)} data-testid="deal-lost-cancel">
               ยกเลิก
@@ -200,7 +200,7 @@ export function useDealMover(opts: {
             <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} data-testid="deal-reopen-confirm" />
             ยืนยันเปิดดีลนี้ใหม่
           </label>
-          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert">{error}</p>}
+          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="deal-reopen-error">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-ghost text-sm" onClick={() => cancel(reopen)} data-testid="deal-reopen-cancel">
               ยกเลิก
@@ -236,7 +236,7 @@ export function useDealMover(opts: {
               </Link>
             </p>
           )}
-          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert">{error}</p>}
+          {error && <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="deal-req-error">{error}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-ghost text-sm" onClick={() => cancel(req.r)} data-testid="deal-req-cancel">
               ยกเลิก

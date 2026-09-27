@@ -19,7 +19,7 @@
 // 🔴 ต่อ QC server ไม่ได้ = ตายทันทีพร้อมเหตุผล (ห้ามค้างรอ) — ตรวจหลังเลือกสเปค ก่อน mint session เสมอ
 // โครง/ขั้นตอน (Step) สืบทอดจาก scripts/visual-member.mts (M1.3–M3.11)
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
@@ -30,19 +30,23 @@ const { prisma } = await import("@/lib/core/db");
 const { sha256 } = await import("@/lib/core/hash");
 
 const argv = process.argv.slice(2);
-const WO = argv[0] ?? "0.1";
-const userKey = argv.includes("--user") ? argv[argv.indexOf("--user") + 1]! : "owner";
+// CRM C4.1 ▸ `--inventory` = โหมดไล่ทะเบียนปุ่ม (ดูบล็อก "INVENTORY" ท้ายไฟล์) · ไม่ส่ง --user = ไล่ทุกบทบาท ◂
+const INVENTORY = argv.includes("--inventory");
+const WO = INVENTORY ? "inventory" : (argv[0] ?? "0.1");
+const userKey = argv.includes("--user") ? argv[argv.indexOf("--user") + 1]! : INVENTORY ? "all" : "owner";
 const isCustomer = userKey.startsWith("customer:");
 const STAFF_KEYS = ["owner", "manager", "thana", "nok"] as const;
-if (!isCustomer && !(STAFF_KEYS as readonly string[]).includes(userKey)) {
+if (!isCustomer && !(STAFF_KEYS as readonly string[]).includes(userKey) && !(INVENTORY && (userKey === "all" || userKey === "anon" || userKey === "customer"))) {
   console.error(`❌ --user ${userKey} ไม่รู้จัก — ใช้ได้: ${STAFF_KEYS.join(" · ")} · customer:<รหัส>`);
   process.exit(2);
 }
 const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3215";
 const OUT = `${CQC.shotsDir}/${WO}`;
 mkdirSync(OUT, { recursive: true });
-if (!existsSync(CQC.expectedPath)) { console.error(`❌ ไม่พบเฉลย ${CQC.expectedPath} — รัน seed ก่อน (scripts/seed-crm-qc.mts)`); process.exit(2); }
-const E = JSON.parse(readFileSync(CQC.expectedPath, "utf8"));
+// CRM C4.1 ▸ CRM_EXPECTED_PATH = เฉลยของฐานที่ "เซิร์ฟเวอร์" ใช้ (เซิร์ฟเวอร์ QC ของ tree หลักอ่าน QC1 แต่ worktree นี้ seed บน QC3) ◂
+const EXPECTED_PATH = process.env.CRM_EXPECTED_PATH || CQC.expectedPath;
+if (!existsSync(EXPECTED_PATH)) { console.error(`❌ ไม่พบเฉลย ${EXPECTED_PATH} — รัน seed ก่อน (scripts/seed-crm-qc.mts)`); process.exit(2); }
+const E = JSON.parse(readFileSync(EXPECTED_PATH, "utf8"));
 const SYS: string = E.systemId;
 const CRM_BASE = `/app/sys/${SYS}/crm`;
 
@@ -1066,13 +1070,13 @@ async function restoreSeed(): Promise<void> {
 }
 
 const specs: Spec[] = WO === "path" ? [{ name: "custom", path: argv[1]! }] : (SPECS[WO] ?? []);
-if (specs.length === 0) {
+if (specs.length === 0 && !INVENTORY) {
   console.error(`❌ ไม่มี spec ของ WO ${WO}${isCustomer ? ` สำหรับสายตาลูกค้า (${userKey}) — หน้า portal เริ่มมีในใบ C3.5` : ""}`);
   process.exit(2);
 }
 
-// ── ด่านแรก: QC server ต้องรับสายจริง (ไม่งั้นทุกภาพจะรอจน timeout ทีละ 60 วิ) ──
-{
+// ── ด่านแรก: QC server ต้องรับสายจริง (ไม่งั้นทุกภาพจะรอจน timeout ทีละ 60 วิ) ── (โหมด inventory ตรวจเองในบล็อกของมัน)
+if (!INVENTORY) {
   const ping = await fetch(BASE, { redirect: "manual", signal: AbortSignal.timeout(8_000) }).catch((e: unknown) => e as Error);
   if (ping instanceof Error) {
     console.error(`❌ ต่อ QC server ${BASE} ไม่ได้ (${ping.message}) — สั่ง \`bash scripts/acc-v2-serve.sh\` (ผ่าน iso) ให้ขึ้นก่อน แล้วรันซ้ำ`);
@@ -1713,7 +1717,8 @@ class Fatal extends Error {}
 /** แถว session ที่ "รอบนี้" สร้างเอง — ลบเฉพาะของตัวเอง (ลบด้วยแท็กเปล่า ๆ จะฆ่ารอบที่รันขนานกันอยู่) */
 const MINE = { sessionIds: [] as string[], tokenHashes: [] as string[] };
 
-async function mintSession(): Promise<Any[]> {
+async function mintSession(key: string = userKey): Promise<Any[]> {
+  const isCustomer = key.startsWith("customer:"); // CRM C4.1 ▸ โหมด inventory mint ทีละบทบาทในโปรเซสเดียว ◂
   const token = "crm" + Math.random().toString(36).slice(2) + Date.now().toString(36);
   const ttl = new Date(Date.now() + 60 * 60 * 1000);
   const https = BASE.startsWith("https:");
@@ -1722,7 +1727,7 @@ async function mintSession(): Promise<Any[]> {
     // C3.5 — session ลูกค้าของ portal (มติ C15: ตาราง PortalSession · subject = CrmPortalAccess)
     //   ผู้ทำ C3.5 ต้อง export `mintPortalSession(accessCode, { userAgent })` ที่ «src/lib/modules/crm/portal-session.ts»
     //   ระหว่างนี้รองรับ session ลูกค้าของระบบสมาชิก (customer-session.ts) เป็นทางถอย เพื่อถ่ายหน้า /m/* ได้
-    const code = userKey.slice("customer:".length);
+    const code = key.slice("customer:".length);
     const ps = (await import("@/lib/modules/crm/portal-session" as string).catch(() => null)) as Any;
     const cs = (await import("@/lib/modules/member/customer-session" as string).catch(() => null)) as Any;
     let minted: Any = null;
@@ -1752,11 +1757,11 @@ async function mintSession(): Promise<Any[]> {
     thana: "mb-thana@shark.local",
     nok: CQC.users?.nok?.email ?? "mb-nok@shark.local",
   };
-  let userId: string | undefined = E.users?.[userKey]?.userId;
+  let userId: string | undefined = E.users?.[key]?.userId;
   if (!userId) {
-    const email = FALLBACK_EMAIL[userKey]!;
+    const email = FALLBACK_EMAIL[key]!;
     const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-    if (!u) throw new Fatal(`ไม่พบผู้ใช้ ${userKey} (${email}) — รัน seed-member-qc แล้ว seed-crm-qc ก่อน`);
+    if (!u) throw new Fatal(`ไม่พบผู้ใช้ ${key} (${email}) — รัน seed-member-qc แล้ว seed-crm-qc ก่อน`);
     userId = u.id;
   }
   const row = await prisma.session.create({ data: { userId, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
@@ -1765,6 +1770,308 @@ async function mintSession(): Promise<Any[]> {
     ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: E.tenantId, url: BASE, path: "/", secure: true }]
     : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: E.tenantId, domain: host, path: "/" }];
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// CRM C4.1 ▸ INVENTORY — ไล่ "ทุกคอนโทรลที่กดได้/กรอกได้" จาก DOM จริงของทุกหน้า CRM แล้วเทียบทะเบียนปุ่ม
+//   ใช้: pnpm exec tsx scripts/visual-crm.mts --inventory [--user owner|manager|nok|thana|customer|anon] [--page <registry page>] [--dry]
+//   ผล:  .qc-shots/crm/inventory/crawl.json — ต่อ (หน้า × ผู้ใช้): testid ที่เจอ · คอนโทรลที่ "ไม่มี testid" (tag+ข้อความ+selector) ·
+//        แถวทะเบียนของหน้านั้นที่ไม่เจอ (สำหรับบทบาทที่ควรเห็น) · แถว hiddenFor ที่ดันโผล่ · คำขอที่ถูกตัดทิ้ง
+//        (รันทีละผู้ใช้ได้ — ผลรวมเข้าไฟล์เดิม คีย์ `<หน้า>|<ผู้ใช้>`)
+//   🔴 ห้ามเขียนฐาน: (1) ทุกคำขอที่ไม่ใช่ GET/HEAD/OPTIONS ถูก abort ที่ตัวเบราว์เซอร์ (server action = POST ⇒ ไม่ถึงเซิร์ฟเวอร์เลย)
+//      (2) กดเฉพาะ "ตัวเปิด" ที่ไม่ทำลาย (แถว expect=modal/ui · kind tab/menu) — ชื่อที่เข้าข่ายเขียน/ลบ/ส่ง ไม่กดเด็ดขาด
+//      (3) ไม่เปิด /t/* · /l/* (route บันทึกการเปิด/คลิก = เขียนฐานทุกครั้งที่ GET · ไม่มี UI ให้ไล่)
+//      ของที่เขียนมีอย่างเดียว = session ของรอบนี้ (ลบใน finally ตามกลไกเดิมของไฟล์)
+//   🔴 ฐานต้องตรงกับเซิร์ฟเวอร์: เซิร์ฟเวอร์ QC ของ tree หลักใช้ QC1 ⇒ รันด้วย .env.qc (QC1) + CRM_EXPECTED_PATH=<เฉลย QC1>
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+if (INVENTORY) {
+  const INV_OUT = `${CQC.shotsDir}/inventory`;
+  mkdirSync(INV_OUT, { recursive: true });
+  const CRAWL = `${INV_OUT}/crawl.json`;
+  const onlyPage = argv.includes("--page") ? argv[argv.indexOf("--page") + 1]! : null;
+  const DRY = argv.includes("--dry");
+  type Row = { page: string; system?: string; testid: string; kind: string; roles: string[]; hiddenFor: string[]; expect: { type: string; target?: string; db?: string } };
+  const REG: Row[] = JSON.parse(readFileSync("scripts/crm-ui-inventory.json", "utf8")).rows;
+  const P = prisma as Any;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const globRe = (g: string) => new RegExp("^" + g.split("*").map(esc).join(".*") + "$");
+  const rowRes = REG.map((r) => ({ r, re: r.testid.includes("*") ? globRe(r.testid) : null }));
+  /** testid จริงบนหน้า → แถวทะเบียนที่คลุม (ตรงตัวก่อน · แพตเทิร์นทีหลัง) */
+  const rowsFor = (id: string) => { const ex = rowRes.filter((x) => x.r.testid === id); return ex.length ? ex.map((x) => x.r) : rowRes.filter((x) => x.re?.test(id)).map((x) => x.r); };
+  /** ชื่อที่เข้าข่าย "เขียน/ลบ/ส่ง/ออก" — ไม่กดเด็ดขาดแม้แถวบอกว่าเป็นตัวเปิด (กันทะเบียนเขียนผิด) */
+  const DESTRUCTIVE = /(delete|remove|archive|restore|lost|won|revoke|merge|reject|accept|approve|logout|send|submit|save|apply|confirm|import|export|download|rotate|regenerate|reset|disable|enable|convert|assign|reassign|pay|upload|unsub|create|issue|duplicate|clone|move|close|cancel|skip|none|run|test|sync|connect|disconnect|retry|refresh|seed|publish|print|mark|complete|done|snooze|enroll|unenroll|pause|resume|stop|start|invite|resend|claim|release|lock|unlock|void|reverse|refund|approve|clear|erase|purge|wipe|ban|block|suspend|deny|kick|leave|drop|unlink|detach|transfer|split|bulk)/i;
+  const isOpener = (r: Row) => {
+    if (DESTRUCTIVE.test(r.testid)) return false;
+    if (!["button", "menu", "tab", "toggle", "link"].includes(r.kind)) return false;
+    if (r.kind === "link" && r.expect.type === "navigate") return false; // ลิงก์ออกหน้า = หน้านั้นถูกไล่เองอยู่แล้ว
+    return r.expect.type === "modal" || r.expect.type === "ui" || r.kind === "tab" || r.kind === "menu";
+  };
+
+  // ── ผู้ใช้ ──
+  const portalAccess = (await P.crmPortalAccess.findFirst({ where: { tenantId: E.tenantId, systemId: SYS, acceptedAt: { not: null }, revokedAt: null }, orderBy: { createdAt: "asc" }, select: { id: true } }).catch(() => null)) as { id: string } | null;
+  const portalOn = !!((await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }))?.settings as Any)?.crm?.portal?.enabled;
+  const ALL_USERS: string[] = ["owner", "manager", "nok", "thana", ...(portalAccess ? [`customer:${portalAccess.id}`] : []), "anon"];
+  const users = userKey === "all" ? ALL_USERS : userKey === "customer" ? ALL_USERS.filter((u) => u.startsWith("customer:")) : [userKey];
+  const roleOf = (u: string) => (u.startsWith("customer:") ? "customer" : u);
+  const invNotes: string[] = [];
+  if (!portalAccess) invNotes.push("ไม่มี CrmPortalAccess ที่ตอบรับแล้วในฐานของเซิร์ฟเวอร์ ⇒ ไม่มีรอบสายตาลูกค้า (หน้า portal ที่ต้องล็อกอินไม่ถูกไล่)");
+  if (!portalOn) invNotes.push("settings.crm.portal.enabled = false ในฐานของเซิร์ฟเวอร์ ⇒ หน้า /b/* อาจตอบ 404");
+
+  // ── ค่าที่หาได้จากฐาน (อ่านอย่างเดียว) — ใช้เมื่อค้นลิงก์จากหน้ารายการไม่เจอ ──
+  const firstId = async (model: string, where: Any) => ((await P[model].findFirst({ where, orderBy: { createdAt: "asc" }, select: { id: true } }).catch(() => null)) as { id: string } | null)?.id ?? null;
+  const partyContact = (await P.crmContact.findFirst({ where: { systemId: SYS, partyId: { not: null }, mergedIntoId: null, archivedAt: null }, orderBy: { createdAt: "asc" }, select: { partyId: true } }).catch(() => null)) as { partyId: string } | null;
+  const chatConv = await (async () => {
+    const parties = ((await P.crmContact.findMany({ where: { systemId: SYS, partyId: { not: null }, mergedIntoId: null }, select: { partyId: true }, take: 500 })) as Any[]).map((x) => x.partyId);
+    const cc = await P.chatContact.findFirst({ where: { tenantId: E.tenantId, partyId: { in: parties } }, select: { id: true, systemId: true } }).catch(() => null);
+    const conv = cc ? await P.chatConversation.findFirst({ where: { tenantId: E.tenantId, contactId: cc.id }, orderBy: { lastMessageAt: "desc" }, select: { id: true } }).catch(() => null) : null;
+    return cc && conv ? { sysId: cc.systemId as string, convId: conv.id as string } : null;
+  })();
+  const crmPage = (await P.pageWidget.findFirst({ where: { tenantId: E.tenantId, widgetKey: { startsWith: "S:CRM:" } }, select: { page: { select: { slug: true } } } }).catch(() => null)) as { page: { slug: string } } | null;
+  if (!chatConv) invNotes.push("ไม่มีห้องแชทที่ลูกค้าเป็นผู้ติดต่อ CRM ⇒ ไม่ได้ไล่แผง CRM ในแชท");
+  if (!crmPage) invNotes.push("ไม่มี Page ที่วาง widget CRM ⇒ ไม่ได้ไล่ /p/[slug]");
+
+  // ── รายการหน้า — `key` = ค่า page ของทะเบียน (+ @ระบบ ถ้าไม่ใช่ CRM) · path คืน null = ข้าม (พร้อมเหตุผล) ──
+  type Disc = Record<string, string>;
+  type InvPage = {
+    key: string; users: "staff" | "customer" | "anon"; path: (d: Disc) => string | null; why?: string;
+    /** selector ขอบเขตที่ไล่ "คอนโทรลไม่มี testid" (ปริยาย = <main> ของหน้า) · null = หน้าของโมดูลอื่น: นับเฉพาะ testid ของ CRM */
+    scope?: string | null;
+    /** ค้นลิงก์รายละเอียดจากหน้านี้: ชื่อ → regex ของ pathname (กลุ่มที่ 1 = ค่า) */
+    discover?: Record<string, RegExp>;
+  };
+  const C = (sub: string) => `${CRM_BASE}${sub}`;
+  const CRM_PAGES = ["/activities", "/calendar", "/commissions", "/companies/new", "/companies/duplicates", "/contacts/new", "/contacts/import", "/contacts/duplicates", "/deals/new", "/pipelines", "/reports",
+    "/settings", "/settings/api", "/settings/assignment", "/settings/automation", "/settings/commissions", "/settings/email", "/settings/forms", "/settings/holidays", "/settings/integrations",
+    "/settings/lost-reasons", "/settings/notifications", "/settings/objects", "/settings/pipelines", "/settings/portal", "/settings/quotas", "/settings/scoring", "/settings/stages", "/settings/tracking", "/settings/visibility"];
+  const REPORT_TABS = ["forecast", "funnel", "reps", "activities", "lost", "sources", "scores"];
+  const PAGES: InvPage[] = [
+    { key: "/app/sys/[id]", users: "staff", path: () => `/app/sys/${SYS}` },
+    { key: "/companies", users: "staff", path: () => C("/companies"), discover: { companyId: /\/crm\/companies\/(?!new$|duplicates$)([^/?#]+)$/ } },
+    { key: "/contacts", users: "staff", path: () => C("/contacts"), discover: { contactId: /\/crm\/contacts\/(?!new$|duplicates$|import$)([^/?#]+)$/ } },
+    { key: "/deals", users: "staff", path: () => C("/deals"), discover: { dealId: /\/crm\/deals\/(?!new$)([^/?#]+)$/ } },
+    { key: "/deals?view=table", users: "staff", path: () => C("/deals?view=table") },
+    { key: "/deals?view=forecast", users: "staff", path: () => C("/deals?view=forecast") },
+    { key: "/emails", users: "staff", path: () => C("/emails"), discover: { threadKey: /\/crm\/emails\/([^/?#]+)$/ } },
+    { key: "/objects", users: "staff", path: () => C("/objects"), discover: { key: /\/crm\/objects\/([^/?#]+)$/ } },
+    { key: "/settings/sequences", users: "staff", path: () => C("/settings/sequences"), discover: { sequenceId: /\/crm\/settings\/sequences\/([^/?#]+)$/ } },
+    ...CRM_PAGES.map((p): InvPage => ({ key: p, users: "staff", path: () => C(p) })),
+    ...REPORT_TABS.map((t): InvPage => ({ key: `/reports/[tab]?tab=${t}`, users: "staff", path: () => C(`/reports/${t}`) })),
+    { key: "/companies/[companyId]", users: "staff", path: (d) => (d.companyId ? C(`/companies/${d.companyId}`) : null), why: "หน้ารายการบริษัทไม่มีลิงก์ให้ผู้ใช้นี้" },
+    { key: "/contacts/[contactId]", users: "staff", path: (d) => (d.contactId ? C(`/contacts/${d.contactId}`) : null), why: "หน้ารายการผู้ติดต่อไม่มีลิงก์ให้ผู้ใช้นี้" },
+    { key: "/deals/[dealId]", users: "staff", path: (d) => (d.dealId ? C(`/deals/${d.dealId}`) : null), why: "หน้ารายการดีลไม่มีลิงก์ให้ผู้ใช้นี้" },
+    { key: "/emails/[threadKey]", users: "staff", path: (d) => (d.threadKey ? C(`/emails/${d.threadKey}`) : null), why: "ไม่มีเธรดจดหมายในฐานนี้" },
+    { key: "/settings/sequences/[sequenceId]", users: "staff", path: (d) => (d.sequenceId ? C(`/settings/sequences/${d.sequenceId}`) : null), why: "ไม่มีลำดับการติดตามในฐานนี้" },
+    { key: "/objects/[key]", users: "staff", path: (d) => (d.key ? C(`/objects/${d.key}`) : null), why: "ไม่มีออบเจ็กต์ในฐานนี้", discover: { recordId: /\/crm\/objects\/[^/]+\/([^/?#]+)$/ } },
+    { key: "/objects/[key]/[recordId]", users: "staff", path: (d) => (d.key && d.recordId ? C(`/objects/${d.key}/${d.recordId}`) : null), why: "ไม่มีเรคคอร์ดที่ผู้ใช้นี้เปิดได้" },
+    { key: "/app/settings/teams", users: "staff", path: () => "/app/settings/teams" },
+    { key: "/app/sys/[id]@CHAT", users: "staff", path: () => (chatConv ? `/app/sys/${chatConv.sysId}?c=${chatConv.convId}` : null), scope: "[data-testid=crm-chat-panel]", why: "ไม่มีห้องแชทของผู้ติดต่อ CRM" },
+    { key: "/app/party/[partyId]", users: "staff", path: () => (partyContact ? `/app/party/${partyContact.partyId}` : null), scope: "[data-testid=party-crm]", why: "ไม่มีผู้ติดต่อที่ผูก Party" },
+    { key: "/app/sys/[id]/pos/register@POS", users: "staff", path: () => (E.systems?.POS ? `/app/sys/${E.systems.POS}/pos/register?unit=${E.units?.patong ?? ""}` : null), scope: null },
+    { key: "/app/sys/[id]/member/members@MEMBER", users: "staff", path: () => (E.systems?.MEMBER ? `/app/sys/${E.systems.MEMBER}/member/members` : null), scope: null },
+    { key: "/app/sys/[id]@HR", users: "staff", path: () => (E.systems?.HR ? `/app/sys/${E.systems.HR}` : null), scope: null },
+    { key: "/p/[slug]", users: "staff", path: () => (crmPage ? `/p/${crmPage.page.slug}` : null), scope: null, why: "ไม่มี Page ที่วาง widget CRM" },
+    { key: "/b/[slug]", users: "customer", path: () => PB, discover: { quoteId: /\/b\/[^/]+\/quotations\/([^/?#]+)$/ } },
+    { key: "/b/[slug]/quotations", users: "customer", path: () => `${PB}/quotations`, discover: { quoteId: /\/b\/[^/]+\/quotations\/([^/?#]+)$/ } },
+    { key: "/b/[slug]/quotations/[id]", users: "customer", path: (d) => (d.quoteId ? `${PB}/quotations/${d.quoteId}` : null), why: "ลูกค้าไม่มีใบเสนอราคา" },
+    { key: "/b/[slug]/invoices", users: "customer", path: () => `${PB}/invoices`, discover: { invoiceId: /\/b\/[^/]+\/invoices\/([^/?#]+)$/ } },
+    { key: "/b/[slug]/invoices/[id]", users: "customer", path: (d) => (d.invoiceId ? `${PB}/invoices/${d.invoiceId}` : null), why: "ลูกค้าไม่มีใบแจ้งหนี้" },
+    { key: "/b/[slug]/documents", users: "customer", path: () => `${PB}/documents`, discover: { documentId: /\/b\/[^/]+\/documents\/([^/?#]+)$/ } },
+    { key: "/b/[slug]/documents/[id]", users: "customer", path: (d) => (d.documentId ? `${PB}/documents/${d.documentId}` : null), why: "ลูกค้าไม่มีเอกสาร" },
+    { key: "/b/[slug]/requests", users: "customer", path: () => `${PB}/requests` },
+    { key: "/b/[slug]/contacts", users: "customer", path: () => `${PB}/contacts` },
+    { key: "/b/[slug]/login", users: "anon", path: () => `${PB}/login`, scope: "body" },
+    { key: "/b/[slug]/invite/[token]", users: "anon", path: () => `${PB}/invite/qc-inventory-invalid-token`, scope: "body" },
+    { key: "/u/[token]", users: "anon", path: () => "/u/qc-inventory-invalid-token", scope: "body" },
+  ];
+  // --page = ค่า page ของทะเบียนตรงตัว หรือ regex (เช่น '^/settings') — แบ่งรอบให้แต่ละคำสั่งจบใน 10 นาที
+const selected = PAGES.filter((p) => !onlyPage || p.key === onlyPage || p.key.split("?")[0]!.split("@")[0] === onlyPage || (() => { try { return new RegExp(onlyPage).test(p.key); } catch { return false; } })());
+
+  // ── ตัวไล่ใน DOM (รันในเบราว์เซอร์) ──
+  const ENUM = (scopeSel: string | null) => {
+    const SEL = 'button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=switch], [role=checkbox], [role=radio], [role=option], [role=link], [role=combobox], [role=slider], [draggable=true], [contenteditable=""], [contenteditable=true], [tabindex]:not([tabindex="-1"])';
+    const HANDLER = /^on(Click|Change|Input|Submit|KeyDown|PointerDown|MouseDown|DragStart|Drop|Toggle|TouchStart|DoubleClick)$/;
+    const reactProps = (el: Element): Record<string, unknown> | null => { const k = Object.keys(el).find((x) => x.startsWith("__reactProps$")); return k ? ((el as unknown as Record<string, Record<string, unknown>>)[k] ?? null) : null; };
+    const handlerOf = (el: Element) => { const p = reactProps(el); if (!p) return ""; return Object.keys(p).filter((k) => HANDLER.test(k) && typeof p[k] === "function").join(","); };
+    const visible = (el: Element) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none" && cs.opacity !== "0"; };
+    const pathOf = (el: Element) => {
+      const parts: string[] = []; let e: Element | null = el;
+      for (let i = 0; e && e !== document.body && i < 7; i++) {
+        const tid = e.getAttribute("data-testid");
+        if (tid && e !== el) { parts.unshift(`[data-testid="${tid}"]`); break; }
+        let seg = e.tagName.toLowerCase();
+        const p: Element | null = e.parentElement;
+        if (p) { const sib = Array.from(p.children).filter((c) => c.tagName === e!.tagName); if (sib.length > 1) seg += `:nth-of-type(${sib.indexOf(e) + 1})`; }
+        parts.unshift(seg); e = p;
+      }
+      return parts.join(" > ");
+    };
+    const text = (el: Element) => ((el as HTMLElement).innerText || (el as HTMLInputElement).placeholder || el.getAttribute("aria-label") || el.getAttribute("title") || (el as HTMLInputElement).name || "").replace(/\s+/g, " ").trim().slice(0, 60);
+    const root = scopeSel === null ? null : (scopeSel ? document.querySelector(scopeSel) : (document.querySelector("main") ?? document.body));
+    const testids: { id: string; tag: string; visible: boolean; interactive: boolean }[] = [];
+    for (const el of Array.from(document.querySelectorAll("[data-testid]"))) {
+      const id = el.getAttribute("data-testid") ?? "";
+      testids.push({ id, tag: el.tagName.toLowerCase() + (el.getAttribute("role") ? `[role=${el.getAttribute("role")}]` : ""), visible: visible(el), interactive: el.matches(SEL) || !!handlerOf(el) });
+    }
+    const untestid: { tag: string; text: string; selector: string; visible: boolean; handler: string; href: string; ancestorTestid: string; ancestorDepth: number; type: string; parentClass: string }[] = [];
+    if (root) {
+      const cands = new Set<Element>([...Array.from(root.querySelectorAll(SEL)), ...(root.matches(SEL) ? [root] : [])]);
+      for (const el of Array.from(root.querySelectorAll("*"))) if (!cands.has(el) && handlerOf(el) && !el.closest(SEL)) cands.add(el);
+      for (const el of cands) {
+        if (el.hasAttribute("data-testid")) continue;
+        // ห่อด้วย element ที่มี testid แล้ว "เป็นตัวเดียว" ในนั้น (label/div ครอบ input) = testid อยู่ที่ตัวห่อ ⇒ นับว่ามี
+        let a: Element | null = el.parentElement, depth = 1;
+        while (a && !a.hasAttribute("data-testid") && depth < 40) { a = a.parentElement; depth++; }
+        const anc = a && a.hasAttribute("data-testid") ? a : null;
+        untestid.push({ tag: el.tagName.toLowerCase() + (el.getAttribute("role") ? `[role=${el.getAttribute("role")}]` : "") + ((el as HTMLInputElement).type && el.tagName !== "BUTTON" ? `[type=${(el as HTMLInputElement).type}]` : ""), type: el.getAttribute("type") ?? "", text: text(el), selector: pathOf(el), visible: visible(el), handler: handlerOf(el), href: (el as HTMLAnchorElement).getAttribute?.("href") ?? "", ancestorTestid: anc?.getAttribute("data-testid") ?? "", ancestorDepth: anc ? depth : -1, parentClass: String(el.parentElement?.getAttribute("class") ?? "").slice(0, 80) });
+      }
+    }
+    const dialogs = Array.from(document.querySelectorAll('[role=dialog], dialog[open], [aria-modal=true]')).filter(visible).length;
+    return { testids, untestid, dialogs, url: location.pathname + location.search, scopeFound: scopeSel === null ? null : !!root };
+  };
+
+  type Load = { testids: Any[]; untestid: Any[]; dialogs: number; url: string; scopeFound: boolean | null };
+  type Entry = {
+    page: string; user: string; path: string | null; skipped?: string; at: string;
+    devices: Record<string, { status: number; finalUrl: string; testidsSeen: string[]; testidsVisible: string[]; untestid: Any[]; openers: { testid: string; ok: boolean; newTestids: string[]; note?: string }[]; aborted: string[]; consoleErrors: string[] }>;
+    rowsNotSeen: string[]; hiddenForSeen: string[]; unregisteredTestids: string[];
+  };
+  const crawl: Record<string, Entry> = existsSync(CRAWL) ? JSON.parse(readFileSync(CRAWL, "utf8")).entries ?? {} : {};
+  let invFatal = "";
+
+  console.log(`🔎 INVENTORY · ผู้ใช้ ${users.join(" ")} · หน้า ${selected.length} · ${DRY ? "DRY (ไม่เปิดเบราว์เซอร์)" : BASE}`);
+  for (const n of invNotes) console.log(`   ⚠️ ${n}`);
+  if (DRY) {
+    for (const p of selected) console.log(`   ${p.users.padEnd(8)} ${p.key.padEnd(44)} ${p.path({}) ?? `(ค้นจากหน้ารายการ · ${p.why ?? ""})`}`);
+  } else {
+    const ping = await fetch(BASE, { redirect: "manual", signal: AbortSignal.timeout(8_000) }).catch((e: unknown) => e as Error);
+    if (ping instanceof Error) { console.error(`❌ ต่อ QC server ${BASE} ไม่ได้ (${ping.message})`); process.exit(2); }
+    try {
+      const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as Any;
+      const browser = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=/tmp/chr-crm-inv-${process.pid}`] });
+      try {
+        for (const u of users) {
+          const role = roleOf(u);
+          const cookies: Any[] = u === "anon" ? [] : await mintSession(u);
+          const bctx = await browser.createBrowserContext();
+          const disc: Disc = {};
+          const wantUsers = role === "customer" ? "customer" : role === "anon" ? "anon" : "staff";
+          // --page ตัดหน้ารายการออกไป ⇒ หน้ารายละเอียดหา id ไม่เจอ: เปิดหน้ารายการที่ "ค้นลิงก์" ได้แบบเงียบ ๆ ก่อน (ไม่บันทึกผล)
+          if (onlyPage) {
+            for (const lp of PAGES.filter((x) => x.discover && x.users === wantUsers && !selected.includes(x))) {
+              const lpath = lp.path(disc);
+              if (!lpath) continue;
+              const pg0 = await bctx.newPage();
+              if (cookies.length) await pg0.setCookie(...cookies);
+              await pg0.setRequestInterception(true);
+              pg0.on("request", (rq: Any) => { const m = rq.method(); if (m === "GET" || m === "HEAD" || m === "OPTIONS") rq.continue().catch(() => {}); else rq.abort().catch(() => {}); });
+              await pg0.goto(`${BASE}${lpath}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+              const hrefs: string[] = await pg0.$$eval("a[href]", (as: Element[]) => as.map((a) => a.getAttribute("href") ?? "")).catch(() => []);
+              for (const [name, re] of Object.entries(lp.discover!)) {
+                if (disc[name]) continue;
+                for (const hrf of hrefs) { const m = re.exec(hrf.split("?")[0]!.split("#")[0]!); if (m) { disc[name] = decodeURIComponent(m[1]!); break; } }
+              }
+              await pg0.close();
+            }
+          }
+          for (const pg of selected) {
+            if (pg.users !== wantUsers) continue;
+            const regPage = pg.key.split("?")[0]!;
+            const path = pg.path(disc);
+            const ekey = `${pg.key}|${role}`;
+            const entry: Entry = { page: pg.key, user: role, path, at: new Date().toISOString(), devices: {}, rowsNotSeen: [], hiddenForSeen: [], unregisteredTestids: [] };
+            if (!path) { entry.skipped = pg.why ?? "ไม่มีค่าจริงของพารามิเตอร์"; if (!crawl[ekey] || crawl[ekey]!.skipped) crawl[ekey] = entry; console.log(`  ⏭  ${pg.key} [${role}] — ${entry.skipped}`); continue; }
+            const pageRows = REG.filter((r) => (r.page + (r.system && r.system !== "CRM" ? `@${r.system}` : "")) === regPage);
+            const seenAll = new Set<string>(); const visAll = new Set<string>(); const interAll = new Set<string>();
+            for (const [device, w, h] of [["desktop", 1440, 900], ["mobile", 390, 844]] as const) {
+              const page = await bctx.newPage();
+              await page.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: device === "mobile", hasTouch: device === "mobile" });
+              // tsx (esbuild keepNames) ห่อฟังก์ชันซ้อนด้วย __name(...) — ในเบราว์เซอร์ไม่มีตัวนี้ ⇒ ใส่ตัวว่างไว้ก่อนทุกหน้า
+              await page.evaluateOnNewDocument("window.__name = function (f) { return f; };");
+              if (cookies.length) await page.setCookie(...cookies);
+              const aborted: string[] = []; const cErr: string[] = [];
+              await page.setRequestInterception(true);
+              page.on("request", (rq: Any) => { const m = rq.method(); if (m === "GET" || m === "HEAD" || m === "OPTIONS") { rq.continue().catch(() => {}); return; } aborted.push(`${m} ${String(rq.url()).replace(BASE, "").slice(0, 120)}${rq.headers()["next-action"] ? " (server action)" : ""}`); rq.abort().catch(() => {}); });
+              page.on("pageerror", (e: Error) => cErr.push(e.message.slice(0, 160)));
+              page.on("console", (m: Any) => { if (m.type() === "error") cErr.push(String(m.text()).slice(0, 160)); });
+              const resp = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+              await new Promise((r) => setTimeout(r, 600));
+              const scope = pg.scope === undefined ? "" : pg.scope;
+              const base: Load = await page.evaluate(ENUM, scope);
+              const dev = { status: resp?.status() ?? 0, finalUrl: base.url, testidsSeen: [] as string[], testidsVisible: [] as string[], untestid: base.untestid.map((x: Any) => ({ ...x, via: "" })), openers: [] as Entry["devices"][string]["openers"], aborted, consoleErrors: cErr };
+              const addIds = (l: Load) => { for (const t of l.testids) { seenAll.add(t.id); if (t.visible) visAll.add(t.id); if (t.interactive) interAll.add(t.id); } };
+              addIds(base);
+              if (pg.scope !== undefined && pg.scope !== null && !base.scopeFound) dev.untestid.push({ tag: "-", text: `ไม่พบขอบเขต ${pg.scope}`, selector: "", visible: false, via: "" });
+              // discovery (ลิงก์รายละเอียดจากหน้ารายการ — ตามที่ผู้ใช้คนนี้มองเห็นจริง)
+              if (pg.discover && device === "desktop") {
+                const hrefs: string[] = await page.$$eval("a[href]", (as: Element[]) => as.map((a) => a.getAttribute("href") ?? ""));
+                for (const [name, re] of Object.entries(pg.discover)) {
+                  if (disc[name]) continue;
+                  for (const hrf of hrefs) { const m = re.exec(hrf.split("?")[0]!.split("#")[0]!); if (m) { disc[name] = decodeURIComponent(m[1]!); break; } }
+                }
+              }
+              // ตัวเปิด (โมดัล/แท็บ/เมนู) ที่ไม่ทำลาย — เปิดแล้วไล่ของใหม่ แล้วปิด/โหลดใหม่
+              const openers = pageRows.filter(isOpener).filter((r) => !r.hiddenFor.includes(role));
+              for (const r of openers) {
+                const sel = r.testid.includes("*") ? `[data-testid^="${r.testid.split("*")[0]}"]` : `[data-testid="${r.testid}"]`;
+                const el = await page.$(sel);
+                const vis = el ? await el.evaluate((x: Element) => { const b = x.getBoundingClientRect(); return b.width > 0 && b.height > 0; }).catch(() => false) : false;
+                if (!el || !vis) continue;
+                const before = new Set<string>([...dev.untestid.map((x: Any) => x.selector)]);
+                const beforeIds = new Set<string>(base.testids.map((t: Any) => t.id));
+                const urlBefore = page.url();
+                let note = "";
+                try { await el.click(); } catch (e) { note = `กดไม่ได้: ${e instanceof Error ? e.message.slice(0, 80) : e}`; }
+                await new Promise((res) => setTimeout(res, 900));
+                const after: Load = await page.evaluate(ENUM, scope);
+                addIds(after);
+                const newIds = after.testids.filter((t: Any) => !beforeIds.has(t.id)).map((t: Any) => t.id);
+                for (const x of after.untestid) if (!before.has(x.selector)) { dev.untestid.push({ ...x, via: r.testid }); before.add(x.selector); }
+                dev.openers.push({ testid: r.testid, ok: !note, newTestids: [...new Set(newIds)].slice(0, 80), ...(note ? { note } : {}) });
+                // ปิด: Escape → ถ้ายังมี dialog หรือ URL เปลี่ยน = โหลดหน้าใหม่
+                await page.keyboard.press("Escape").catch(() => {});
+                await new Promise((res) => setTimeout(res, 300));
+                const still = await page.evaluate(() => Array.from(document.querySelectorAll('[role=dialog], dialog[open], [aria-modal=true]')).length).catch(() => 0);
+                if (still > 0 || page.url() !== urlBefore) { await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null); await new Promise((res) => setTimeout(res, 400)); }
+              }
+              dev.testidsSeen = [...new Set(base.testids.map((t: Any) => t.id))];
+              dev.testidsVisible = [...new Set(base.testids.filter((t: Any) => t.visible).map((t: Any) => t.id))];
+              entry.devices[device] = dev;
+              await page.close();
+              console.log(`  ${dev.status && dev.status < 400 ? "✅" : "❌"} ${pg.key} [${role} ${device}] HTTP ${dev.status} · testid ${dev.testidsSeen.length} · ไม่มี testid ${dev.untestid.length} · ตัวเปิด ${dev.openers.length}${aborted.length ? ` · ตัดคำขอ ${aborted.length}` : ""}`);
+            }
+            // เทียบทะเบียน
+            const seenRows = new Set<Row>(); for (const id of seenAll) for (const r of rowsFor(id)) seenRows.add(r);
+            entry.rowsNotSeen = pageRows.filter((r) => r.roles.includes(role) && !r.hiddenFor.includes(role) && !seenRows.has(r)).map((r) => r.testid);
+            entry.hiddenForSeen = pageRows.filter((r) => r.hiddenFor.includes(role) && [...visAll].some((id) => rowsFor(id).includes(r))).map((r) => r.testid);
+            // เฉพาะ testid ที่ "กดได้/กรอกได้" ใน DOM (กล่อง/ป้ายที่มี testid ไว้ให้ข้อสอบอ่าน ไม่ต้องมีแถว — ตรงกับ F14.1)
+            entry.unregisteredTestids = [...interAll].filter((id) => rowsFor(id).length === 0);
+            crawl[ekey] = entry;
+          }
+          await bctx.close();
+        }
+      } finally {
+        await browser.close();
+        // 🔴 โปรไฟล์ chromium ต้องลบทุกรอบ (snap chromium เก็บไว้ใน /tmp/snap-private-tmp — เคยทำดิสก์เต็ม) — ลบเฉพาะของ pid นี้
+        for (const d of [`/tmp/chr-crm-inv-${process.pid}`, `/tmp/snap-private-tmp/snap.chromium/tmp/chr-crm-inv-${process.pid}`]) { try { rmSync(d, { recursive: true, force: true }); } catch { /* ไม่มี/ไม่มีสิทธิ์ */ } }
+      }
+    } catch (e) {
+      invFatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
+    } finally {
+      let count = 0;
+      if (MINE.sessionIds.length) count += (await prisma.session.deleteMany({ where: { id: { in: MINE.sessionIds } } })).count;
+      for (const mdl of ["portalSession", "customerSession"]) {
+        try { if (MINE.tokenHashes.length) count += (await (prisma as Any)[mdl]?.deleteMany?.({ where: { tokenHash: { in: MINE.tokenHashes } } }))?.count ?? 0; } catch { /* ตารางยังไม่มี */ }
+      }
+      console.log(`🧹 ลบ session ของรอบนี้ ${count}`);
+      writeFileSync(CRAWL, JSON.stringify({ at: new Date().toISOString(), base: BASE, systemId: SYS, notes: invNotes, entries: crawl }, null, 1));
+    }
+  }
+  await prisma.$disconnect();
+  if (invFatal) console.error(`❌ ${invFatal}`);
+  const ents = Object.values(crawl);
+  console.log(`JSON_SUMMARY ${JSON.stringify({ wo: "inventory", entries: ents.length, skipped: ents.filter((e) => e.skipped).length, untestid: ents.reduce((a, e) => a + Object.values(e.devices).reduce((b, d) => b + d.untestid.length, 0), 0), rowsNotSeen: ents.reduce((a, e) => a + e.rowsNotSeen.length, 0), hiddenForSeen: ents.reduce((a, e) => a + e.hiddenForSeen.length, 0), fatal: invFatal || null })}`);
+  process.exit(invFatal ? 2 : 0);
+}
+// ◂ CRM C4.1 INVENTORY
 
 let failures = 0;
 let fatal = "";

@@ -1,12 +1,13 @@
 // qc-crm-buttons.mts — CRM v2 WO C4.2 "press everything" (registry-driven button/link/form presser)
 //
-// Reads scripts/crm-ui-inventory.json (the C4.1 registry — page/testid/kind/roles/hiddenFor/expect for ~1,145
-// controls) and, for each user in {owner, manager, nok, thana, customer} × viewport {1440×900, 390×844}, opens
-// every registry page and for every row of that page: checks visibility (rows listing the user in `hiddenFor`
-// must be ABSENT — a present hidden control = `hiddenLeak`), performs the row's action by `kind`, asserts the
-// row's `expect`, and captures console errors / ≥400 responses / horizontal overflow. Built on the same
-// puppeteer-core harness as scripts/visual-crm.mts (login-per-user-key session minting, viewport loop, overflow
-// probe) and the chk()/JSON_SUMMARY conventions of scripts/qc-crm-c3.7.mts.
+// Reads scripts/crm-ui-inventory.json (the C4.1 registry, rewritten 27 Sep 2569 onto a machine-readable vocabulary
+// — ledger/wo-notes/crm-C4.1.md — page/testid/kind/roles/hiddenFor/expect/system/query for 1,055 controls) and, for
+// each user in {owner, manager, nok, thana, customer} × viewport {1440×900, 390×844}, opens every registry page and
+// for every row of that page: checks visibility (rows listing the user in `hiddenFor` must be ABSENT — a present
+// hidden control = `hiddenLeak`), performs the row's action by `kind`, asserts the row's `expect`, and captures
+// console errors / ≥400 responses / horizontal overflow. Built on the same puppeteer-core harness as
+// scripts/visual-crm.mts (login-per-user-key session minting, viewport loop, overflow probe) and the
+// chk()/JSON_SUMMARY conventions of scripts/qc-crm-c3.7.mts.
 //
 // Run (heavy — through the machine's serialising wrappers, QC3 branch per this WO's brief):
 //   bash scripts/iso.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-crm-buttons.mts
@@ -18,7 +19,12 @@
 //    message + exit 2 (checked BEFORE any session is minted, same rule as visual-crm.mts).
 //
 // ══════════════════════════════ CONTRACT (oracle-proposed — controller confirms; see the addendum below) ══════════════════
-// SELECTOR   testid → `[data-testid="<id>"]` (exact) or `[data-testid^="<prefix>"]` (registry pattern `foo-*`) — first match.
+// SELECTOR   testid → `[data-testid="<id>"]` (exact) or, with ONE `*` anywhere in the name (leading/trailing/mid —
+//            `deal-card-*` · `contact-*-modal` · `st-msg-*`), the matching combination of `^=`/`$=` attribute
+//            selectors — first match.
+// PAGE URL   `page` (+ optional `system`: HR|POS|MEMBER|ACCOUNT|CHAT|MEETING, else this CRM system) resolves `[id]`
+//            in an absolute page; `query` (may itself contain `[placeholder]`s, e.g. "c=[conversationId]") is
+//            appended — some controls are only reachable in a particular view/query (17 rows: `?view=table` etc.).
 // VISIBILITY user ∈ hiddenFor(row)             ⇒ element must be ABSENT/invisible (`hiddenLeak` if found)
 //            user ∈ roles(row)\hiddenFor(row)  ⇒ element must be visible; missing ⇒ bucketed into `dead[]` (no named
 //                                                 bucket for this case in MASTER-PLAN §7 — extension, flagged below)
@@ -29,27 +35,31 @@
 // ACTION-BY-KIND  button|link|menu|tab|toggle → click · select → choose the first option that differs from the one
 //            selected (falls back to the last option) · input|textarea → select-all + type a generic value shaped by
 //            the testid (…email→x@example.com · …phone→08######## · …qty/price/amount/satang/discount→"1"/"100" ·
-//            …from/to/hour near window/quiet→"09:00" · else `qc-btn-<rand>`) + Tab to blur/commit · form → if the
-//            element IS a real <form>, requestSubmit()/dispatch a submit event; else click it (the registry's "form"
-//            kind is used for both real <form> containers and composite filter/inline widgets — see addendum) · drag →
-//            SKIPPED (registry has no drop-target field to drag onto; 1 row today).
+//            …from/to/hour near window/quiet→"09:00" · else `qc-btn-<rand>`) + Tab to blur/commit · form|filter → if
+//            the element IS a real <form>, requestSubmit()/dispatch a submit event; else click it (`filter` = a real
+//            `<form method=get>` per $fields — same DOM mechanics, never writes) · drag → mouse-down on the testid,
+//            move onto the LAST element matching `expect.dropTarget`, mouse-up (best-effort target pick — see addendum).
 // DEAD       within 3 s of the action: no DOM mutation (MutationObserver on <body>), no navigation, no new network
 //            request ⇒ ❌ `dead` (a toast IS a DOM mutation so it needs no separate probe).
-// EXPECT     modal/toast    → `[data-testid="<target>"]` appears within 5 s — UNLESS `target` isn't testid-shaped
-//                              (contains spaces/Thai, e.g. "…modal (ปิด)"), in which case it's prose describing the
-//                              close/no-op, not a selector; falls back to the `inline-error` soft pass (~16 rows)
-//            navigate       → `page.url()` pathname matches the FIRST whitespace token of `target` (brackets/`<…>`
-//                              → wildcard segment; a trailing `?…` is advisory only — pathname prefix match, query
-//                              ignored) — UNLESS that first token isn't a path (doesn't start with `/`, e.g.
-//                              "(ย้อนกลับ)"), in which case same soft-pass fallback (4 rows)
-//            mutation       → (a) at least one non-GET request fired during the action and every response was < 400
-//                              (network is the ONLY signal for rows whose `db` text isn't mechanically parseable) ·
-//                              (b) when `expect.db` parses (see DB-DIFF below) that check must also hold
-//            download       → a response during the action whose content-type/disposition indicates a file, with a
-//                              non-zero byte length
-//            inline-error   → soft pass: satisfied once the row is not `dead` (this runner always types a VALID
-//                              value — deliberately-bad input / exact inline-error-message assertions are C4.3's job,
-//                              per crm-brief-C4.md; see addendum)
+// EXPECT     modal/toast → `[data-testid="<target>"]` (or any of `anyOf`) appears within 5 s — never auto-dismissed:
+//                          registry row ORDER puts the opener before the modal's own inner-field/cancel rows on the
+//                          SAME page load, so closing it here would make every later row on that modal falsely dead.
+//            navigate    → `page.url()` pathname matches `target` (or any of `anyOf`) — brackets/`<…>` → wildcard
+//                          path segment, a trailing `?…` is advisory only (query ignored) — UNLESS the target (or
+//                          any anyOf) is `"history:back"` or starts with `"mailto:"`, which can't be asserted via
+//                          `page.url()` (soft pass — the registry's own `note` on those rows says so explicitly).
+//            ui          → CRM C4.1's "screen-only, no DB write" type: `target` (a testid, possibly `*`-patterned)
+//                          must, per `state`: "appears" (default) → become visible · "disappears" → become
+//                          absent/invisible (polled 3 s) · "changes" → its outerHTML differ from a snapshot taken
+//                          right before the action (covers debounced search-as-you-type into a sibling element too).
+//            mutation    → (a) at least one non-GET-ish request fired during the action and none was ≥400 (the ONLY
+//                          signal for rows whose `db` text isn't mechanically parseable) · (b) when `expect.db`
+//                          parses (see DB-DIFF below) that must also hold · (c) when `resultTarget` is set, it must
+//                          also appear within 5 s (a result/confirmation testid, e.g. inside a modal).
+//            download    → a response during the action whose content-type/disposition indicates a file.
+//            inline-error → soft pass: satisfied once the row is not `dead`. C4.1 pointed every `target` at a real
+//                          testid (no more prose), but this runner never submits deliberately-bad input, so it still
+//                          cannot tell "silently accepted" apart from "validation broken" — C4.3's job, not C4.2's.
 // DB-DIFF    best-effort parser over `expect.db`, split on " · ": `Model +1` / `Model -1` (row count of that Prisma
 //            model changes by exactly that delta, scoped by `systemId` when the model has one — narrower than
 //            `tenantId` on purpose: this QC database is shared by concurrent sessions/oracles, COMMON brief) ·
@@ -120,9 +130,24 @@ type Row = {
   kind: string;
   roles: string[];
   hiddenFor: string[];
-  expect: { type: string; target?: string; db?: string };
+  expect: {
+    type: string; target?: string; db?: string;
+    // CRM C4.1 vocabulary (27 Sep 2569 rewrite — ledger/wo-notes/crm-C4.1.md §3/§4):
+    anyOf?: string[]; // alternate acceptable targets (navigate: any path matches · modal/toast: any testid matches)
+    resultTarget?: string; // mutation only — a result/confirmation testid that must also appear
+    state?: "appears" | "disappears" | "changes"; // ui only — what must happen to `target`
+    dropTarget?: string; // drag only — testid pattern of the drop zone
+    note?: string; // human commentary only — never machine-read
+  };
   wo?: string;
   oracle?: string;
+  system?: string; // CRM C4.1 — HR|POS|MEMBER|ACCOUNT|CHAT|MEETING when [id] in `page` is NOT the CRM system
+  query?: string; // CRM C4.1 — query string (may contain [placeholder]s) required to see this control at all
+  alsoOn?: string[]; // CRM C4.1 — informational only (same component on other pages) — never tested here
+  // CRM C4.1 round 2 (ledger/wo-notes/crm-C4.1.md §7/§8) — a `*`-pattern testid can cover several DISTINCT exact
+  // controls (`only`) or a family of same-prefix elements where some matches are non-controls (`not`):
+  only?: string[]; // when present: THE definitive exact testids to press (each gets its own row/check) — `not` is ignored
+  not?: string[]; // when `only` is absent: exact testids matching the pattern that must NOT be pressed (they're not real controls)
 };
 let ROWS: Row[] = [];
 try {
@@ -164,17 +189,13 @@ const DIRECT_SEND_GUARD = new Set(["crm-email-send", "crm-email-test-send", "por
 // crm-portal-invite-submit is handled specially (ACT_INVITE_SAFE below), not fully guarded.
 
 // ───────────────────────────── page URL resolution ─────────────────────────────
-// page-path aliases the registry uses inconsistently (confirmed against src/app/.../[companyId]/[contactId] — see addendum)
-const PAGE_ALIAS: Record<string, string> = {
-  "/companies/[id]": "/companies/[companyId]",
-  "/contacts/[id]": "/contacts/[contactId]",
-};
-// the combined "reused component on 3 list pages" row-group (crm-view-* — CrmSavedViewsMenu) — tested once on /contacts
-const COMBINED_PAGE = "/contacts · /companies · /deals";
+// CRM C4.1 (27 Sep 2569) rewrote the registry onto real route params (`[companyId]`/`[contactId]` everywhere, no
+// more `[id]` aliasing) and replaced the old combined-page string with a per-row `alsoOn` (informational-only —
+// tested once, on `page`) — PAGE_ALIAS/COMBINED_PAGE are gone, nothing to alias anymore.
 
 type Ctx = {
   dealId: string | null; contactId: string | null; companyId: string | null; recordId: string | null; objectKey: string | null;
-  partyId: string | null; slug: string | null; chatId: string | null; conversationId: string | null;
+  partyId: string | null; slug: string | null; conversationId: string | null; unitId: string | null;
   sequenceId: string | null; threadKey: string | null; token: string | null; docType: string | null; docId: string | null;
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
 };
@@ -185,11 +206,13 @@ const note = (placeholder: string, reason: string) => UNRESOLVED.push({ placehol
 async function buildCtx(): Promise<Ctx> {
   const ctx: Ctx = {
     dealId: E.dealIds?.[0] ?? null, contactId: E.contactIds?.[0] ?? null, companyId: E.companyIds?.[0] ?? null,
-    recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, chatId: null, conversationId: null,
+    recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, conversationId: null,
+    unitId: E.units?.patong ?? E.units?.kata ?? null,
     sequenceId: null, threadKey: null, token: null, docType: null, docId: null,
     posSysId: E.systems?.POS ?? null, memberSysId: E.systems?.MEMBER ?? null, hrSysId: E.systems?.HR ?? null,
     accountSysId: E.systems?.ACCOUNT ?? null, chatSysId: E.systems?.CHAT ?? null,
   };
+  if (!ctx.unitId) note("unitId", "crm-expected.json units ว่าง (ใช้กับ system:POS query unit=[unitId])");
   if (!ctx.dealId) note("dealId", "crm-expected.json dealIds ว่าง");
   if (!ctx.contactId) note("contactId", "crm-expected.json contactIds ว่าง");
   if (!ctx.companyId) note("companyId", "crm-expected.json companyIds ว่าง");
@@ -222,8 +245,7 @@ async function buildCtx(): Promise<Ctx> {
         ? await P.chatConversation.findFirst({ where: { systemId: ctx.chatSysId, contact: { phone } }, select: { id: true } })
         : null;
       ctx.conversationId = conv?.id ?? (await P.chatConversation.findFirst({ where: { systemId: ctx.chatSysId }, select: { id: true } }))?.id ?? null;
-      ctx.chatId = ctx.chatSysId;
-      if (!ctx.conversationId) note("chatId/conversationId", "ไม่มีห้องแชทในระบบ CHAT ของซีดนี้เลย");
+      if (!ctx.conversationId) note("conversationId", "ไม่มีห้องแชทในระบบ CHAT ของซีดนี้เลย");
     } else note("chatId/conversationId", "ไม่มีระบบ CHAT ในซีด หรือไม่มีผู้ติดต่อตัวแทน");
   } catch (e) { note("chatId/conversationId", `query ล้ม — ${e instanceof Error ? e.message : e}`); }
 
@@ -251,47 +273,63 @@ async function buildCtx(): Promise<Ctx> {
   return ctx;
 }
 
-/** normalise a registry `page` value into a concrete pathname (or null + reason when unresolvable) */
-function pageUrl(pageRaw: string, ctx: Ctx): { path: string | null; reason: string | null } {
-  const page = PAGE_ALIAS[pageRaw] ?? pageRaw;
-  const sub = (s: string, map: Record<string, string | null>): { path: string | null; reason: string | null } => {
-    let missing: string | null = null;
-    const out = s.replace(/\[([a-zA-Z]+)\]/g, (_m, key: string) => {
-      const v = map[key];
-      if (v == null) { missing = key; return `[${key}]`; }
-      return v;
-    });
-    return missing ? { path: null, reason: `ไม่มีค่าจริงของ [${missing}] ในซีดนี้` } : { path: out, reason: null };
+/** substitute every `[placeholder]` in `s` from `map` — null/absent value ⇒ report the FIRST one missing (never throws) */
+function subPlaceholders(s: string, map: Record<string, string | null>): { out: string | null; missing: string | null } {
+  let missing: string | null = null;
+  const out = s.replace(/\[([a-zA-Z]+)\]/g, (_m, key: string) => {
+    const v = map[key];
+    if (v == null) { missing = key; return `[${key}]`; }
+    return v;
+  });
+  return missing ? { out: null, missing } : { out, missing: null };
+}
+
+/** CRM C4.1 `system` field (§6 item 1) — resolves the `[id]` segment of an absolute `page`; undefined/"CRM" = this CRM system */
+function resolveSystemId(system: string | undefined, ctx: Ctx): { id: string | null; reason: string | null } {
+  switch (system) {
+    case undefined: case "CRM": return { id: SYS, reason: null };
+    case "HR": return { id: ctx.hrSysId, reason: ctx.hrSysId ? null : "ไม่มีระบบ HR ในซีดนี้" };
+    case "POS": return { id: ctx.posSysId, reason: ctx.posSysId ? null : "ไม่มีระบบ POS ในซีดนี้" };
+    case "MEMBER": return { id: ctx.memberSysId, reason: ctx.memberSysId ? null : "ไม่มีระบบ MEMBER ในซีดนี้" };
+    case "ACCOUNT": return { id: ctx.accountSysId, reason: ctx.accountSysId ? null : "ไม่มีระบบ ACCOUNT ในซีดนี้" };
+    case "CHAT": return { id: ctx.chatSysId, reason: ctx.chatSysId ? null : "ไม่มีระบบ CHAT ในซีดนี้" };
+    case "MEETING": return { id: null, reason: "ไม่มีระบบ MEETING ในซีดนี้ (ไม่ได้ seed)" };
+    default: return { id: null, reason: `system "${system}" ไม่รู้จัก (ทะเบียนใช้ค่าใหม่ที่ตัวกดยังไม่รู้จัก)` };
+  }
+}
+
+/**
+ * normalise a registry row's `page`+`system`+`query` into a concrete pathname (or null + reason when unresolvable).
+ * CRM C4.1 (27 Sep 2569): `page` is now always the real route param name (no more `[id]` aliasing needed) and
+ * absolute for anything outside `${CRM_BASE}` — `system` says which system's id fills `[id]` in an absolute page,
+ * `query` (may itself contain placeholders, e.g. "c=[conversationId]") is appended so the control is even reachable.
+ */
+function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | null } {
+  const sysR = resolveSystemId(row.system, ctx);
+  if (!sysR.id) return { path: null, reason: sysR.reason };
+  const map: Record<string, string | null> = {
+    id: sysR.id, dealId: ctx.dealId, contactId: ctx.contactId, companyId: ctx.companyId,
+    recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: ctx.slug,
+    token: ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
+    unitId: ctx.unitId, sequenceId: ctx.sequenceId, threadKey: ctx.threadKey,
   };
-  // literal annotation suffix e.g. "/app/sys/[id] (HR hub)" — strip before building the URL
-  const clean = page.replace(/\s*\([^)]*\)\s*$/, "");
-  if (clean.startsWith("/app/sys/[id]/pos/register")) return sub(clean, { id: ctx.posSysId });
-  if (clean.startsWith("/app/sys/[id]/member/members")) return sub(clean, { id: ctx.memberSysId });
-  if (clean === "/app/sys/[id]" && page.includes("HR hub")) return sub(clean, { id: ctx.hrSysId });
-  if (clean.startsWith("/app/sys/[id]/account/docs/")) return sub(clean, { id: ctx.accountSysId, docType: ctx.docType, docId: ctx.docId });
-  if (clean === "/app/sys/[id]" || clean.startsWith("/app/sys/[id]/meeting")) return sub(clean, { id: SYS });
-  if (clean.startsWith("/app/sys/[chatId]")) {
-    const basePath = clean.split("?")[0]!;
-    const r = sub(basePath, { chatId: ctx.chatId });
-    if (!r.path) return r;
-    return ctx.conversationId ? { path: `${r.path}?c=${ctx.conversationId}`, reason: null } : { path: null, reason: "ไม่มีค่าจริงของ [conversationId] ในซีดนี้" };
-  }
-  if (clean.startsWith("/app/party/")) return sub(clean, { partyId: ctx.partyId });
-  if (clean.startsWith("/b/") || clean.startsWith("/p/")) {
-    const r = sub(clean, { slug: ctx.slug, token: ctx.token, id: ctx.docId });
-    return r;
-  }
-  if (clean.startsWith("/u/")) return sub(clean, { token: ctx.token });
-  if (clean.startsWith("/objects/")) return sub(`${CRM_BASE}${clean}`, { key: ctx.objectKey, recordId: ctx.recordId });
-  if (clean.startsWith("/emails/")) return sub(`${CRM_BASE}${clean}`, { threadKey: ctx.threadKey });
-  if (clean.startsWith("/settings/sequences/")) return sub(`${CRM_BASE}${clean}`, { sequenceId: ctx.sequenceId });
-  return sub(`${CRM_BASE}${clean}`, { dealId: ctx.dealId, contactId: ctx.contactId, companyId: ctx.companyId, id: SYS });
+  // any page already rooted outside the CRM module (/app/… /b/… /p/… /u/…) is absolute as-is; everything else is
+  // the shortened CRM-relative form ("/deals", "/objects/[key]", …) and needs the CRM_BASE prefix.
+  const isAbsolute = /^\/(app|b|p|u)\//.test(row.page);
+  const base = isAbsolute ? row.page : `${CRM_BASE}${row.page}`;
+  const p = subPlaceholders(base, map);
+  if (!p.out) return { path: null, reason: `ไม่มีค่าจริงของ [${p.missing}] ในซีดนี้` };
+  if (!row.query) return { path: p.out, reason: null };
+  const q = subPlaceholders(row.query, map);
+  if (!q.out) return { path: null, reason: `ไม่มีค่าจริงของ [${q.missing}] ในซีดนี้ (query "${row.query}")` };
+  return { path: `${p.out}?${q.out}`, reason: null };
 }
 
 // ───────────────────────────── plan ─────────────────────────────
 type PlanItem = {
   user: UserKey; device: string; w: number; h: number; page: string; path: string; testid: string; kind: string;
   roles: string[]; hiddenFor: string[]; expect: Row["expect"]; wo: string; guarded: boolean;
+  notList: string[]; // CRM C4.1 round 2 — exact testids to exclude when `testid` is a `*`-pattern (row.only expands away, never carries a notList)
 };
 type SkipEntry = { page: string; testid: string; reason: string };
 
@@ -306,17 +344,24 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
   const pageCache = new Map<string, { path: string | null; reason: string | null }>();
   for (const row of ROWS) {
     if (PAGE_FILTER && row.page !== PAGE_FILTER) continue;
-    const testid = String(row.testid ?? "").trim();
-    if (!testid) continue;
-    const pages = row.page === COMBINED_PAGE ? ["/contacts"] : [row.page];
-    for (const pageRaw of pages) {
-      if (!pageCache.has(pageRaw)) pageCache.set(pageRaw, pageUrl(pageRaw, ctx));
-      const { path, reason } = pageCache.get(pageRaw)!;
+    const rawTestid = String(row.testid ?? "").trim();
+    if (!rawTestid) continue;
+    // CRM C4.1 round 2 (§7 item 1): `only` (when present) means this ONE row actually covers N distinct exact
+    // controls (e.g. `company-new-*` → 8 separate fields) — expand into N independent items, each checked on its
+    // own; `not` only matters for the un-expanded pattern case (excluded at press-time, resolveSel() in main()).
+    const testids = row.only && row.only.length ? row.only : [rawTestid];
+    const notList = row.only && row.only.length ? [] : (row.not ?? []);
+    // cache key must include system+query — two rows can share the SAME `page` string ("/app/sys/[id]") but
+    // resolve to different real pages (e.g. the CRM home hub vs the HR hub vs the chat panel's host page)
+    const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}`;
+    if (!pageCache.has(cacheKey)) pageCache.set(cacheKey, pageUrl(row, ctx));
+    const { path, reason } = pageCache.get(cacheKey)!;
+    for (const testid of testids) {
       for (const user of userKeys) {
         if (!applicableUser(row, user)) continue; // silent on this role — registry makes no claim (see header contract)
-        if (!path) { skipped.push({ page: pageRaw, testid, reason: `${reason} (${user})` }); continue; }
+        if (!path) { skipped.push({ page: row.page, testid, reason: `${reason} (${user})` }); continue; }
         for (const [device, w, h] of VIEWPORTS) {
-          items.push({ user, device, w, h, page: pageRaw, path, testid, kind: row.kind, roles: row.roles, hiddenFor: row.hiddenFor, expect: row.expect, wo: row.wo ?? "", guarded: DIRECT_SEND_GUARD.has(testid) });
+          items.push({ user, device, w, h, page: row.page, path, testid, kind: row.kind, roles: row.roles, hiddenFor: row.hiddenFor, expect: row.expect, wo: row.wo ?? "", guarded: DIRECT_SEND_GUARD.has(testid), notList });
         }
       }
     }
@@ -412,16 +457,54 @@ async function mintSession(user: UserKey, ctx: Ctx): Promise<Any[]> {
 }
 
 // ── selector + generic action helpers ──
-// 🔴 a real testid is bare kebab-case (optionally ending `*`); a real path starts with `/`. ~16 modal/toast rows and
-//    4 navigate rows in today's registry put Thai/English PROSE in `expect.target` instead (e.g.
-//    `"contacts-import-modal (ปิด)"`, `"(ย้อนกลับ)"`, `"/deals/[dealId] · ใช้ร่วมบนหน้า … (stepper)"`) — waiting for
-//    a selector built from that string literally, or matching a pathname against it literally, would NEVER
-//    succeed and would flood `wrongExpect` with false positives on otherwise-working controls. Detect this and
-//    fall back to the same soft "not dead" pass `inline-error` uses — see crm-brief-C4.2.md §1 for the list.
-const looksLikeTestid = (s: string) => /^[A-Za-z][A-Za-z0-9-]*\*?$/.test(s);
-const looksLikePath = (s: string) => s.startsWith("/");
+// CRM C4.1 (27 Sep 2569) cleaned every `expect.target` down to pure machine-readable data (testid / path / op:… /
+// action:… / file:… / history:back / mailto:*) — prose moved to `note` (validated: 0 prose left, ledger/wo-notes/
+// crm-C4.1.md §3). `looksLikeTestid` is still needed as a defensive shape-check before building a selector from
+// `target`, and now must accept `*` ANYWHERE in the name, not just trailing — e.g. `contact-*-modal`,
+// `contacts-*-error`, `st-msg-*` (§6 item 4).
+const looksLikeTestid = (s: string) => /^[A-Za-z][A-Za-z0-9*-]*$/.test(s);
+/**
+ * testid → CSS selector. A single `*` may sit anywhere (not just at the end): `deal-card-*` → prefix-only ·
+ * `contact-*-modal` → prefix AND suffix · `st-msg-*` → prefix-only · `*-foo` (leading wildcard, none seen today but
+ * handled) → suffix-only. Exactly one `*` is assumed (every pattern in the registry has one).
+ */
 function selOf(testid: string): string {
-  return testid.includes("*") ? `[data-testid^="${testid.replace(/\*+$/, "")}"]` : `[data-testid="${testid}"]`;
+  if (!testid.includes("*")) return `[data-testid="${testid}"]`;
+  const i = testid.indexOf("*");
+  const prefix = testid.slice(0, i);
+  const suffix = testid.slice(i + 1);
+  const parts: string[] = [];
+  if (prefix) parts.push(`[data-testid^="${prefix}"]`);
+  if (suffix) parts.push(`[data-testid$="${suffix}"]`);
+  return parts.length ? parts.join("") : "[data-testid]";
+}
+/**
+ * CRM C4.1 round 2 (§7 item 1): for a `*`-pattern testid, `[data-testid^=…]`/`[data-testid$=…]` can match BOTH the
+ * real control AND non-control wrappers/labels sharing the same prefix (e.g. `company-new-page`/`-form`/`-error`
+ * alongside the real input fields) — pressing "whatever the DOM happens to list first" is not the row's intent.
+ * Resolve to the FIRST element that (a) is not one of `notList`'s exact testids and (b) is actually clickable
+ * (button/a[href]/input/select/textarea/[role=button|link|menuitem|tab|switch|checkbox|option]) — never a bare
+ * div/li wrapper. Falls back to the raw pattern selector when nothing qualifies (keeps the existing dead/hiddenLeak
+ * signal meaningful instead of silently doing nothing). Exact (non-`*`) testids skip all of this — `only`-expanded
+ * items already carry an exact name from buildPlan().
+ */
+async function resolveSel(page: Any, it: PlanItem): Promise<string> {
+  if (!it.testid.includes("*")) return selOf(it.testid);
+  const patternSel = selOf(it.testid);
+  const tid: string | null = await page.evaluate((pSel: string, notList: string[]) => {
+    const CLICKABLE_TAGS = ["button", "input", "select", "textarea"];
+    const CLICKABLE_ROLES = ["button", "link", "menuitem", "tab", "switch", "checkbox", "option"];
+    for (const el of Array.from(document.querySelectorAll(pSel))) {
+      const t = el.getAttribute("data-testid") ?? "";
+      if (notList.includes(t)) continue;
+      const tag = el.tagName.toLowerCase();
+      const role = el.getAttribute("role") ?? "";
+      const clickable = CLICKABLE_TAGS.includes(tag) || (tag === "a" && el.hasAttribute("href")) || CLICKABLE_ROLES.includes(role);
+      if (clickable) return t;
+    }
+    return null;
+  }, patternSel, it.notList).catch(() => null);
+  return tid ? `[data-testid="${tid}"]` : patternSel;
 }
 const rand = Math.random().toString(36).slice(2, 8).replace(/[^a-z0-9]/g, "q");
 function fillValueFor(testid: string): string {
@@ -438,11 +521,18 @@ function fillValueFor(testid: string): string {
 //    first and then substituting placeholders would also escape the wildcard's own `^`/`+`, corrupting it (caught
 //    in review before this ever ran — split-then-map keeps the two concerns apart).
 const RE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+// CRM C4.1 round 2 (§7 item 2): `target` can wildcard a segment with a BARE `*` too, not just `[bracket]`/`<angle>`
+// placeholders — e.g. `/b/[slug]/*` (portal-menu-*/portal-nav-*) · `/app/u/*/booking?partyId=*` (crm-book-via-booking).
+// A bare `*` gets the exact same `[^/]+` treatment; since `.test()` only anchors the START (no trailing `$`), a
+// trailing `*` still correctly accepts a DEEPER remainder too (e.g. "/b/shop/documents/123" for target "/b/[slug]/*")
+// — the regex only needs to match a PREFIX ending at end-of-string/`/`/`?`, so extra segments after that are never
+// required to match anything.
+const WILDCARD_TOKEN = /(\[[^\]]+\]|<[^>]+>|\*)/g;
 function navMatches(target: string | undefined, url: string): boolean {
   if (!target) return false;
   const rawPath = target.split("?")[0]!;
-  const parts = rawPath.split(/(\[[^\]]+\]|<[^>]+>)/g);
-  const pat = parts.map((p) => (/^(\[[^\]]+\]|<[^>]+>)$/.test(p) ? "[^/]+" : p.replace(RE_ESCAPE, "\\$&"))).join("");
+  const parts = rawPath.split(WILDCARD_TOKEN);
+  const pat = parts.map((p) => (/^(\[[^\]]+\]|<[^>]+>|\*)$/.test(p) ? "[^/]+" : p.replace(RE_ESCAPE, "\\$&"))).join("");
   let path: string;
   try { path = new URL(url).pathname; } catch { path = url; }
   const anchored = pat.startsWith("/") ? pat : `${CRM_BASE}${pat}`;
@@ -569,7 +659,7 @@ async function main() {
         const pageResults: Any[] = [];
         for (const it of rowsOfPage) {
           total.n++;
-          const sel = selOf(it.testid);
+          const sel = await resolveSel(page, it);
           const base = it.user.startsWith("customer") ? "customer" : it.user;
           const shouldBeHidden = it.hiddenFor.includes(base);
           const els = await page.$$(sel).catch(() => []);
@@ -604,11 +694,36 @@ async function main() {
           const urlBefore = page.url();
           const reqBefore = reqCount;
           const respBefore = respLog.length;
+          // "ui"+"changes" needs a snapshot of `target` BEFORE the action to compare against after (§6 item 3)
+          const uiChangesSnapBefore = it.expect.type === "ui" && it.expect.state === "changes"
+            ? await page.$eval(selOf(it.expect.target ?? ""), (el: Any) => el.outerHTML).catch(() => null)
+            : null;
 
           let actErr = "";
           try {
-            if (it.kind === "drag") { throw new Error("SKIP: drag ไม่มี drop-target ในทะเบียน"); }
-            else if (it.kind === "select") {
+            if (it.testid.endsWith("-backdrop")) {
+              // CRM C4.1 round 2 (§7 item 3): the close handler checks `e.target === e.currentTarget` — clicking
+              // the CENTER of the backdrop (page.click()'s default) lands on the dialog box sitting on top of it,
+              // never the backdrop itself, so the row would look "dead". Click a CORNER instead, well outside
+              // where a centered dialog can reach.
+              const el = await page.$(sel);
+              if (!el) throw new Error(`ไม่พบ backdrop ${it.testid}`);
+              const box = (await el.boundingBox())!;
+              await page.mouse.click(box.x + 6, box.y + 6);
+            } else if (it.kind === "drag") {
+              const dropSel = selOf(it.expect.dropTarget ?? "");
+              const from = await page.$(sel);
+              const drops = await page.$$(dropSel);
+              const to = drops[drops.length - 1] ?? null; // last match — best-effort "probably a different column than the card's own"
+              if (!from || !to) throw new Error(`ไม่พบ element ลาก (from=${!!from} · dropTarget ${it.expect.dropTarget}=${drops.length})`);
+              const a = (await from.boundingBox())!, b = (await to.boundingBox())!;
+              const sx = a.x + a.width / 2, sy = a.y + a.height / 2, tx = b.x + b.width / 2, ty = b.y + 8;
+              await page.mouse.move(sx, sy); await page.mouse.down();
+              await new Promise((r) => setTimeout(r, 300));
+              const n = 12;
+              for (let i = 1; i <= n; i++) { await page.mouse.move(sx + ((tx - sx) * i) / n, sy + ((ty - sy) * i) / n); await new Promise((r) => setTimeout(r, 25)); }
+              await page.mouse.up();
+            } else if (it.kind === "select") {
               const opts: { value: string; selected: boolean }[] = await page.$$eval(`${sel} option`, (os: Any[]) => os.map((o) => ({ value: o.value, selected: o.selected }))).catch(() => []);
               const current = opts.find((o) => o.selected)?.value;
               const cand = opts.find((o) => o.value && o.value !== current) ?? opts[opts.length - 1];
@@ -617,7 +732,8 @@ async function main() {
               await page.click(sel, { clickCount: 3 });
               await page.keyboard.type(fillValueFor(it.testid), { delay: 8 });
               await page.keyboard.press("Tab");
-            } else if (it.kind === "form") {
+            } else if (it.kind === "form" || it.kind === "filter") {
+              // "filter" = <form method=get> per $fields — same DOM mechanics as a real writing <form>
               const tag = await page.$eval(sel, (el: Any) => el.tagName).catch(() => "");
               if (tag === "FORM") await page.$eval(sel, (f: Any) => { if (typeof f.requestSubmit === "function") f.requestSubmit(); else f.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }).catch(() => { throw new Error("form.requestSubmit ล้ม"); });
               else await page.click(sel);
@@ -625,8 +741,6 @@ async function main() {
               await page.click(sel);
             }
           } catch (e) { actErr = e instanceof Error ? e.message : String(e); }
-
-          if (actErr.startsWith("SKIP:")) { pageResults.push({ testid: it.testid, ok: true, note: actErr }); total.n--; continue; }
 
           // ── dead-control detector: 3 s window, poll every 150 ms ──
           let deadFlag = actErr !== "";
@@ -640,21 +754,49 @@ async function main() {
           }
           if (deadFlag) { dead.push({ page: it.page, testid: it.testid, user: it.user, device: it.device, detail: actErr || "ไม่มี DOM mutation/navigation/network ภายใน 3 วิ" }); pageResults.push({ testid: it.testid, ok: false, bucket: "dead" }); continue; }
 
-          // ── expect assertion ──
+          // ── expect assertion (CRM C4.1 vocabulary: ui/anyOf/resultTarget/history:back/mailto — ledger/wo-notes/crm-C4.1.md §6.3) ──
           let ok = true; let detail = "";
           const newResp = respLog.slice(respBefore);
-          if ((it.expect.type === "modal" || it.expect.type === "toast") && looksLikeTestid(it.expect.target ?? "")) {
-            const found = await page.waitForSelector(selOf(it.expect.target ?? ""), { timeout: 5_000 }).then(() => true).catch(() => false);
-            ok = found; detail = found ? "" : `ไม่เจอ ${it.expect.target}`;
-            if (it.expect.type === "modal" && found) await page.keyboard.press("Escape").catch(() => {});
-          } else if (it.expect.type === "modal" || it.expect.type === "toast") {
-            ok = true; // target is prose, not a testid (e.g. "…modal (ปิด)") — soft pass, already proven "not dead" above
-          } else if (it.expect.type === "navigate" && looksLikePath(it.expect.target?.split(/\s+/)[0] ?? "")) {
-            const urlAfter = page.url();
-            const realTarget = it.expect.target!.split(/\s+/)[0]!; // strip trailing Thai/English commentary after the path
-            ok = navMatches(realTarget, urlAfter); detail = ok ? "" : `url=${urlAfter} ไม่ตรง ${realTarget}`;
+          const candidates = (t?: string) => [t, ...(it.expect.anyOf ?? [])].filter((x): x is string => !!x);
+          if (it.expect.type === "modal" || it.expect.type === "toast") {
+            // no auto-Escape/dismiss here on purpose: registry row ORDER puts the opener before the modal's own
+            // inner-field/cancel rows on the SAME page load — closing it immediately would make every one of those
+            // later rows falsely "dead-missing". The eventual `ui`/`disappears` (cancel) row closes it for real.
+            let found = false; let triedAny = false;
+            for (const t of candidates(it.expect.target)) {
+              if (!looksLikeTestid(t)) continue;
+              triedAny = true;
+              found = await page.waitForSelector(selOf(t), { timeout: 5_000 }).then(() => true).catch(() => false);
+              if (found) break;
+            }
+            ok = found; detail = found ? "" : `ไม่เจอ ${triedAny ? candidates(it.expect.target).join(" | ") : "(target ไม่เข้ารูป testid)"}`;
           } else if (it.expect.type === "navigate") {
-            ok = true; // target is prose, not a path (e.g. "(ย้อนกลับ)") — soft pass, already proven "not dead" above
+            const cands = candidates(it.expect.target);
+            if (cands.some((t) => t === "history:back" || t.startsWith("mailto:"))) {
+              ok = true; // router.back()/mailto: can't be asserted via page.url() — soft pass (registry's own `note` says so per-row)
+            } else {
+              const urlAfter = page.url();
+              ok = cands.some((t) => navMatches(t, urlAfter));
+              detail = ok ? "" : `url=${urlAfter} ไม่ตรงกับ ${cands.join(" | ")}`;
+            }
+          } else if (it.expect.type === "ui") {
+            const targetSel = selOf(it.expect.target ?? "");
+            if (it.expect.state === "disappears") {
+              let gone = false;
+              for (let i = 0; i < 20; i++) {
+                const visible = await page.evaluate((s: string) => { const el = document.querySelector(s) as HTMLElement | null; if (!el) return false; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.display !== "none" && cs.visibility !== "hidden"; }, targetSel).catch(() => false);
+                if (!visible) { gone = true; break; }
+                await new Promise((r) => setTimeout(r, 150));
+              }
+              ok = gone; detail = gone ? "" : `${it.expect.target} ยังมองเห็นได้`;
+            } else if (it.expect.state === "changes") {
+              const after = await page.$eval(targetSel, (el: Any) => el.outerHTML).catch(() => null);
+              ok = after !== null && after !== uiChangesSnapBefore;
+              detail = ok ? "" : `${it.expect.target} ไม่เปลี่ยน (ก่อน=${uiChangesSnapBefore === null ? "ไม่มีอยู่" : "มีอยู่"} · หลัง=${after === null ? "ไม่มีอยู่" : "มีอยู่"})`;
+            } else { // "appears" (default when `state` absent)
+              const found = await page.waitForSelector(targetSel, { timeout: 5_000 }).then(() => true).catch(() => false);
+              ok = found; detail = found ? "" : `ไม่เจอ ${it.expect.target}`;
+            }
           } else if (it.expect.type === "download") {
             const hit = newResp.find((r) => /csv|octet-stream|spreadsheet|pdf/.test(r.contentType) || /\.(csv|pdf|xlsx)(\?|$)/.test(r.url));
             ok = !!hit; detail = ok ? "" : "ไม่พบ response ที่หน้าตาเป็นไฟล์";
@@ -678,8 +820,14 @@ async function main() {
                 if (!coerceEq(actual, c.value ?? "")) { ok = false; detail += ` · ${c.model}.${c.column}=${String(actual)} (คาด ${c.value})`; }
               }
             }
+            if (ok && it.expect.resultTarget) {
+              const found = await page.waitForSelector(selOf(it.expect.resultTarget), { timeout: 5_000 }).then(() => true).catch(() => false);
+              if (!found) { ok = false; detail += ` · ไม่เจอ resultTarget ${it.expect.resultTarget}`; }
+            }
           } else if (it.expect.type === "inline-error") {
-            ok = true; // soft pass — see header contract (C4.3 owns deliberate-bad-input assertions)
+            ok = true; // soft pass — see header contract (C4.3 owns deliberate-bad-input assertions); target is now a
+            // real testid (C4.1 cleaned this up) but C4.2 never submits deliberately-bad input, so it still cannot
+            // tell "silently accepted" apart from "validation broken" — see crm-brief-C4.2.md §1.
           }
           if (!ok) { wrongExpect.push({ page: it.page, testid: it.testid, user: it.user, device: it.device, detail }); pageResults.push({ testid: it.testid, ok: false, bucket: "wrongExpect", detail }); }
           else { passedN.n++; pageResults.push({ testid: it.testid, ok: true }); }

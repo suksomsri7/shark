@@ -199,7 +199,7 @@ export function ActivityRow({
       )}
 
       {error && (
-        <p className="text-xs" style={{ color: "var(--color-danger)" }} role="alert">
+        <p className="text-xs" style={{ color: "var(--color-danger)" }} role="alert" data-testid="activity-row-error">
           {error}
         </p>
       )}

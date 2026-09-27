@@ -44,7 +44,7 @@ type Opt = { id: string; name: string };
 
 function Sheet({ label, testid, onClose, children }: { label: string; testid: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={(e) => (e.target === e.currentTarget ? onClose() : undefined)}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={(e) => (e.target === e.currentTarget ? onClose() : undefined)} data-testid="company-360-sheet-backdrop">
       <div
         role="dialog"
         aria-modal="true"

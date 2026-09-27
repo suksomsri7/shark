@@ -66,7 +66,7 @@ export function MergePairSheet({
         รวม
       </button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={(e) => (e.target === e.currentTarget ? setOpen(false) : undefined)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={(e) => (e.target === e.currentTarget ? setOpen(false) : undefined)} data-testid="crm-merge-sheet-backdrop">
           <div
             role="dialog"
             aria-modal="true"

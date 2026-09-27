@@ -144,7 +144,7 @@ export function StageSettings({
                   ลบขั้น
                 </button>
                 {msgs[s.id] && (
-                  <span className="text-sm" style={{ color: msgs[s.id]!.ok ? "var(--color-accent)" : "var(--color-danger)" }} role="status">
+                  <span className="text-sm" style={{ color: msgs[s.id]!.ok ? "var(--color-accent)" : "var(--color-danger)" }} role="status" data-testid={`st-msg-${s.id}`}>
                     {msgs[s.id]!.text}
                   </span>
                 )}
@@ -189,7 +189,7 @@ export function StageSettings({
         </div>
         <div className="flex items-center justify-end gap-2">
           {msgs.new && (
-            <span className="text-sm" style={{ color: msgs.new.ok ? "var(--color-accent)" : "var(--color-danger)" }} role="status">
+            <span className="text-sm" style={{ color: msgs.new.ok ? "var(--color-accent)" : "var(--color-danger)" }} role="status" data-testid="st-new-msg">
               {msgs.new.text}
             </span>
           )}
