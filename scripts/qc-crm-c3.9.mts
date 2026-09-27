@@ -34,10 +34,20 @@
 //   limits.ts: CRM_LIMITS (blueprint §11.9 keys below) · CRM_LIMIT_WARN_RATIO = 0.8 · crmLimits(tenantId) (Tenant.limits.crm overrides) ·
 //     crmUsage(ctx, key) · assertCrmLimit(ctx, key, adding = 1) (error code LIMIT, Thai; crossing 80 % ⇒ ONE AppNotification per OWNER + ONE OpsEvent
 //     WARN source "crm.limits" per (system, key, Thai month)) · limitStatus(ctx, actor) · CRM_PARAM_CAPS (every `crm._max*` permission param → enforcer).
+// ── ORACLE-EDIT C3.9-H (security hunt 27 ก.ย. 2569 · controller rulings on the 12 accepted findings of the post-merge hunt) ──
+//   H1 FormSubmission (crmContactId ∈ chain): answersJson {} · ip/pageUrl/referrer/utm null · in exportContact · identity tokens include former
+//      names/e-mails/phones from the chain's crm.contact.update audit · H2 e-mails matched by from/to/cc/bcc (any contactId): addresses removed,
+//      identity masked; unlinked mail sent BY the person: body/subject cleared · H3 AiMessage.content + AiConversation.title masked · H4 KanbanComment.body +
+//      KanbanActivity.data of linked cards masked via the kanban facade · H5 member erasure via CRM only with member.customer.delete; ApprovalPolicy
+//      member.erase ⇒ member.requestErase (result flag `memberPending` — r.X or r.counts.X · confirmed); no key ⇒ member untouched + WARN (result flag `memberSkipped`) · H6 retention
+//      anchor GREATEST(COALESCE(lastActivityAt, createdAt), createdAt) + erase only with a crm.retention.warned audit ≥ LEAD_RETENTION_WARN_DAYS old ·
+//      H7 CRM writers refuse an erased contact (VALIDATION) + repeat erase re-sweeps (no new audit/event) · H8 erase scrubs identity from the chain's
+//      AuditLog before/after (except crm.contact.erase) + contact audits mask identity keys · H9 erase withdraws unexpired CRM_EXPORT/REPORT_EXPORT
+//      (getExport EXPIRED) · H10 retention includes archived leads · H11 seedSystemRules passes assertCrmLimit · H12 one erase audit per person.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY (24 contract + X): K.1 · S1.1–S1.6 · S2.1–S2.2 · S3.1–S3.2 · S4.1–S4.2 · S5.1–S5.3 · S6.1–S6.5 · S7.1–S7.4 ·
-//   X1.1–X1.2 · X3.1 · X4.1 · X6.1–X6.2 · X8.1–X8.2 · X9.1 · X10.1 · CLEAN  (C3.9-FATAL only when something throws).
+// CHECK INVENTORY (48 = 36 + 12 · 24 contract + X + ORACLE-EDIT C3.9-H): K.1 · S1.1–S1.6 · S2.1–S2.2 · S3.1–S3.2 · S4.1–S4.2 · S5.1–S5.3 · S6.1–S6.5 · S7.1–S7.4 ·
+//   X1.1–X1.2 · X3.1 · X4.1 · X6.1–X6.2 · X8.1–X8.2 · X9.1 · X10.1 · CLEAN · H1–H12 (ORACLE-EDIT C3.9-H)  (C3.9-FATAL only when something throws).
 //   n/a: X2 (keys/assistant matrix = C3.8 X2; the readonly-body lens is S7.4) · X5 is inside S3.2 (overlap + crash after claim).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -71,7 +81,9 @@ const LIMIT_DEFAULTS: Record<string, number> = {
 };
 const TEST_IDS = ["C3.9-K.1", "C3.9-S1.1", "C3.9-S1.2", "C3.9-S1.3", "C3.9-S1.4", "C3.9-S1.5", "C3.9-S1.6", "C3.9-S2.1", "C3.9-S2.2", "C3.9-S3.1", "C3.9-S3.2",
   "C3.9-S4.1", "C3.9-S4.2", "C3.9-S5.1", "C3.9-S5.2", "C3.9-S5.3", "C3.9-S6.1", "C3.9-S6.2", "C3.9-S6.3", "C3.9-S6.4", "C3.9-S6.5", "C3.9-S7.1", "C3.9-S7.2",
-  "C3.9-S7.3", "C3.9-S7.4", "C3.9-X1.1", "C3.9-X1.2", "C3.9-X3.1", "C3.9-X4.1", "C3.9-X6.1", "C3.9-X6.2", "C3.9-X8.1", "C3.9-X8.2", "C3.9-X9.1", "C3.9-X10.1"];
+  "C3.9-S7.3", "C3.9-S7.4", "C3.9-X1.1", "C3.9-X1.2", "C3.9-X3.1", "C3.9-X4.1", "C3.9-X6.1", "C3.9-X6.2", "C3.9-X8.1", "C3.9-X8.2", "C3.9-X9.1", "C3.9-X10.1",
+  // ORACLE-EDIT C3.9-H (security hunt 27 ก.ย.)
+  "C3.9-H1", "C3.9-H2", "C3.9-H3", "C3.9-H4", "C3.9-H5", "C3.9-H6", "C3.9-H7", "C3.9-H8", "C3.9-H9", "C3.9-H10", "C3.9-H11", "C3.9-H12"];
 void TEST_IDS;
 
 // ═══════════════════════════ SKIP guard ═══════════════════════════
@@ -455,6 +467,9 @@ try {
   const B1 = await mkOldBatch("เก่าหนึ่ง");
   const nearLead = await mkContact(T, S, "ใกล้ครบ", { lastActivityAt: new Date(Date.now() - 70 * DAY), createdAt: new Date(Date.now() - 70 * DAY) });
   {
+    // ORACLE-EDIT C3.9-S3.1 (27 ก.ย. · มติ H6) — lead ถูกลบตามอายุได้เฉพาะเมื่อมีธงเตือน ≥ LEAD_RETENTION_WARN_DAYS ⇒ ปักธงเตือนอายุ 31 วันให้ B1 ก่อน purge
+    await P.auditLog.create({ data: { tenantId: T, actorType: "SYSTEM", actorId: null, action: "crm.retention.warned", targetType: "CrmContact", targetId: B1.k.id,
+      after: { anchor: new Date(Date.now() - 120 * DAY).toISOString().slice(0, 10), systemId: S, leadMonths: 3 }, createdAt: new Date(Date.now() - 31 * DAY) } });
     const tPurge = new Date();
     const r = await call(PRIV.purge, new Date(), { tenantIds: [T], deps });
     const om = (await P.crmEmailMessage.findUnique({ where: { id: B1.oldMail } })) as Any;
@@ -917,6 +932,294 @@ try {
     const job = exportJob ? ((await P.crmImportJob.findUnique({ where: { id: exportJob } })) as Any) : null;
     chk("C3.9-X10.1", "X10 the export DTO carries only the signed /api/files link — no private:// path, no storage path, no CDN host — and the job row keeps the file id, not a URL",
       got.ok && !/private:\/\/|t\/[a-z0-9]+\/private\/|b-cdn|bunny/i.test(dto) && !!job?.fileId && !/https?:\/\//.test(j(job?.result ?? {})), "no raw url", `dto=${cut(dto, 120)} job=${cut(j(job?.result ?? null), 80)}${ABSENT}`);
+  }
+  // ═════════════════════════════════ ORACLE-EDIT C3.9-H (security hunt 27 ก.ย.) ═════════════════════════════════
+  // Controller rulings on the 12 accepted hunt findings (probe scenarios scripts/pending/probe-hunt39{,b}.mts) — each check encodes the
+  // CORRECT behaviour. Own throwaway tenant `${TAG}-h` (swept by CLEAN like the others) · raw rows by construction where the real writer is
+  // named · storage through the oracle's fake `deps` · ids only in every message.
+  console.log("\n── H · security hunt (ORACLE-EDIT C3.9-H) ──");
+  const H_IDS = ["C3.9-H1", "C3.9-H2", "C3.9-H3", "C3.9-H4", "C3.9-H5", "C3.9-H6", "C3.9-H7", "C3.9-H8", "C3.9-H9", "C3.9-H10", "C3.9-H11", "C3.9-H12"];
+  const hDone = new Set<string>();
+  const hchk = (id: string, n: string, ok: unknown, e: string, a: string, s: Sev = "CRITICAL") => { hDone.add(id); chk(id, n, ok, e, a, s); };
+  try {
+    const FBR = (await import("@/lib/platform/crm-bridges/forms" as string).catch(() => ({}))) as Any;
+    const MEMF = (await import("@/lib/modules/member" as string).catch(() => ({}))) as Any;
+    const TH = await mkTenant("h");
+    const uStaffDel = await mkUser("-hdel");
+    for (const [u, role, perms] of [[uOwner, "OWNER", {}], [uMgr, "MANAGER", {}], [uStaffDel, "STAFF", { "crm.contact.read": true, "crm.contact.delete": true }]] as const)
+      await P.membership.create({ data: { userId: u, tenantId: TH, role, unitAccess: ["*"], permissions: perms, acceptedAt: new Date() } });
+    const SH = (await sysSvc.createSystem(TH, "CRM", `CRM H ${TAG}`)).id as string;
+    const MH = (await sysSvc.createSystem(TH, "MEMBER", `สมาชิก H ${TAG}`)).id as string;
+    const KH = (await sysSvc.createSystem(TH, "KANBAN", `บอร์ด H ${TAG}`)).id as string;
+    await setCrm(SH, { uiVersion: 2, bridgesEnabled: true, retention: { exportDays: 7, leadMonths: 24 } });
+    const ownerH = { userId: uOwner, role: "OWNER", unitAccess: ["*"], permissions: {} as Record<string, unknown> };
+    const mgrH = { userId: uMgr, role: "MANAGER", unitAccess: ["*"], permissions: {} as Record<string, unknown> };
+    const staffDel = { userId: uStaffDel, role: "STAFF", unitAccess: ["*"], permissions: { "crm.contact.read": true, "crm.contact.delete": true } as Record<string, unknown> };
+    const cH = { tenantId: TH, systemId: SH, actorUserId: uOwner };
+    const HR = () => `เหตุผลทดสอบ H ${TAG}`;
+    const phoneH = () => `08${String(20_000_000 + Number(nx()) * 7907).slice(0, 8)}`;
+    const person = async (tag: string, extra: Record<string, unknown> = {}) => {
+      const name = `คุณ${tag}ฮันต์ ${TAG}`;
+      const phone = phoneH();
+      const email = `h${nx()}.${rand}@qc.invalid`;
+      const partyId = (await P.party.create({ data: { tenantId: TH, name, kind: "PERSON", phone } })).id as string;
+      const c = await P.crmContact.create({ data: { tenantId: TH, systemId: SH, name, firstName: name, phone, email, partyId, ownerUserId: uOwner, lastActivityAt: new Date(), ...extra } });
+      return { id: c.id as string, partyId, name, phone, email };
+    };
+    const erasedH = async (id: string) => ((await P.auditLog.count({ where: { tenantId: TH, action: "crm.contact.erase", targetId: id } })) as number) > 0;
+    const mkMail = (data: Record<string, unknown>) => P.crmEmailMessage.create({ data: { tenantId: TH, systemId: SH, direction: "IN", messageId: `<${TAG}-h-${nx()}@qc.invalid>`, threadKey: `${TAG}-hth-${nx()}`, subject: "เรื่องแพ็กเกจ", status: "RECEIVED", receivedAt: new Date(), trackTokenHash: sha(`${TAG}-h-${nx()}`), ...data } });
+
+    // ── H1 (B1) · FormSubmission of a lead from the public form + former name from the edit audit ──
+    {
+      const first = `ฟอร์ม${rand}`;
+      const oldLast = `เดิม${rand}`;
+      const newLast = `ใหม่${rand}`;
+      const phone = phoneH();
+      const email = `form.${rand}@qc.invalid`;
+      const form = (await P.formDef.create({ data: { tenantId: TH, name: `ฟอร์มติดต่อ ${TAG}`, publicToken: `${TAG}-h-${randomBytes(8).toString("hex")}`, active: true, crmEnabled: true, crmSystemId: SH,
+        fieldsJson: [{ key: "name", label: "ชื่อ", type: "text", required: true }, { key: "phone", label: "เบอร์", type: "phone" }, { key: "email", label: "อีเมล", type: "email" }, { key: "message", label: "ข้อความ", type: "textarea" }] } })) as Any;
+      // the row `forms/service.ts#writeSubmission` writes on the live (guarded) path — ip is the hash, utm/pageUrl/referrer captured
+      const sub = (await P.formSubmission.create({ data: { tenantId: TH, formId: form.id, answersJson: { name: `${first} ${oldLast}`, phone, email, message: `โทรกลับที่ ${phone}` }, ip: sha(IP), pageUrl: "https://qc.invalid/contact?utm_source=qc", referrer: "https://qc.invalid/", utm: { source: "qc" } } })) as Any;
+      await P.appNotification.create({ data: { tenantId: TH, title: "มีคนกรอกฟอร์มเข้ามา", body: `${form.name}: ${first} ${oldLast} · ดูข้อมูล /app/forms/${form.id}` } });
+      const lead = await call(FBR.onFormLead, { id: `${TAG}-h-evt`, tenantId: TH, type: "forms.submission.received", payload: { formId: form.id, submissionId: sub.id } });
+      const A = String(((await P.formSubmission.findUnique({ where: { id: sub.id } })) as Any)?.crmContactId ?? "");
+      const upd = A ? await call(CRM?.contacts?.updateContact, cH, ownerH, A, { lastName: newLast }) : MISSING;
+      const bundle = A ? await call(PRIV.exportContact, cH, ownerH, A) : MISSING;
+      const exported = Array.isArray(bundle.v?.tables?.FormSubmission) ? bundle.v.tables.FormSubmission.length : -1;
+      const r = A ? await call(PRIV.eraseContact, cH, ownerH, { contactId: A, confirm: true, reason: HR() }, deps) : MISSING;
+      const s2 = (await P.formSubmission.findUnique({ where: { id: sub.id } })) as Any;
+      const answersEmpty = !!s2 && typeof s2.answersJson === "object" && s2.answersJson !== null && Object.keys(s2.answersJson).length === 0;
+      const metaNull = !!s2 && s2.ip === null && s2.pageUrl === null && s2.referrer === null && (s2.utm === null || s2.utm === undefined);
+      const notif = ((await P.appNotification.findMany({ where: { tenantId: TH, title: "มีคนกรอกฟอร์มเข้ามา" }, select: { body: true } })) as Any[]).map((x) => String(x.body));
+      const formerLeft = notif.some((b) => b.includes(`${first} ${oldLast}`));
+      hchk("C3.9-H1", "B1 erase covers the public-form lead: the FormSubmission whose crmContactId is in the erased chain keeps its row but answersJson = {} and ip/pageUrl/referrer/utm = null · exportContact carries a FormSubmission table · identity tokens include FORMER names taken from the chain's crm.contact.update audit (a notification naming the pre-edit full name is masked)",
+        lead.ok && !!A && upd.ok && exported >= 1 && r.ok && r.v?.erased === true && answersEmpty && metaNull && !formerLeft,
+        "answers {} · meta null · exported · former name masked", `lead=${lead.ok ? "ok" : lead.err} contact=${!!A} upd=${upd.ok ? "ok" : upd.err} exportRows=${exported} erase=${r.ok ? r.v?.erased : r.err} answersEmpty=${answersEmpty} metaNull=${metaNull} formerNameInNotification=${formerLeft}${ABSENT}`);
+    }
+
+    // ── H2 (B2) · e-mails outside the person's own contactId ──
+    {
+      const A2 = await person("อีเมล");
+      const B2 = await person("เพื่อน");
+      const cc = (await mkMail({ contactId: B2.id, fromAddr: B2.email, toAddrs: [`shop.${rand}@qc.invalid`], ccAddrs: [A2.email], bccAddrs: [], bodyText: `cc ${A2.name} (${A2.phone}) ด้วยนะครับ`, matchedBy: "EMAIL" })) as Any;
+      const un = (await mkMail({ contactId: null, fromAddr: A2.email, fromName: A2.name, toAddrs: [`shop.${rand}@qc.invalid`], subject: `สอบถามจาก ${A2.name}`, bodyText: `สวัสดีค่ะ ${A2.name} โทร ${A2.phone}`, bodyHtml: `<p>${A2.phone}</p>`, snippet: `สวัสดีค่ะ ${A2.name}`, matchedBy: "NONE" })) as Any;
+      const r = await call(PRIV.eraseContact, cH, ownerH, { contactId: A2.id, confirm: true, reason: HR() }, deps);
+      const c2 = (await P.crmEmailMessage.findUnique({ where: { id: cc.id } })) as Any;
+      const u2 = (await P.crmEmailMessage.findUnique({ where: { id: un.id } })) as Any;
+      const ccOk = !!c2 && !(c2.ccAddrs as string[]).includes(A2.email) && !String(c2.bodyText ?? "").includes(A2.phone) && !String(c2.bodyText ?? "").includes(A2.name) && c2.fromAddr === B2.email;
+      const unOk = !!u2 && !u2.bodyText && !u2.bodyHtml && !u2.snippet && !String(u2.subject ?? "").includes(A2.name) && u2.fromAddr !== A2.email && !String(u2.fromName ?? "").includes(A2.name);
+      hchk("C3.9-H2", "B2 e-mails whose from/to/cc/bcc match the person's addresses are reached even when contactId is someone else's or null: the person's address is removed from the lists and identity masked in subject/body/fromName (the other person's own address stays) · an unlinked mail SENT BY the person loses body/html/snippet and its subject no longer names them",
+        r.ok && r.v?.erased === true && ccOk && unOk, "cc stripped + masked · unlinked cleared", `erase=${r.ok ? r.v?.erased : r.err} ccMail=${c2 ? `cc=${(c2.ccAddrs as string[]).includes(A2.email)} phoneInBody=${String(c2.bodyText ?? "").includes(A2.phone)} fromKept=${c2.fromAddr === B2.email}` : "gone"} unlinked=${u2 ? `body=${!!u2.bodyText} html=${!!u2.bodyHtml} subjName=${String(u2.subject ?? "").includes(A2.name)} fromIsPerson=${u2.fromAddr === A2.email}` : "gone"}${ABSENT}`);
+    }
+
+    // ── H3 (B3) · assistant conversations of the tenant ──
+    {
+      const A3 = await person("เอไอ");
+      const conv = (await P.aiConversation.create({ data: { tenantId: TH, title: `สรุปลูกค้า ${A3.name}` } })) as Any;
+      const m1 = (await P.aiMessage.create({ data: { tenantId: TH, conversationId: conv.id, role: "USER", content: `สรุปลูกค้า ${A3.name} เบอร์ ${A3.phone} อีเมล ${A3.email}` } })) as Any;
+      const m2 = (await P.aiMessage.create({ data: { tenantId: TH, conversationId: conv.id, role: "ASSISTANT", content: `${A3.name} (${A3.phone}) กรอกฟอร์มเมื่อวาน` } })) as Any;
+      const ctlText = `วันนี้มีงานอะไรบ้าง ${TAG}`;
+      const m3 = (await P.aiMessage.create({ data: { tenantId: TH, conversationId: conv.id, role: "USER", content: ctlText } })) as Any;
+      const r = await call(PRIV.eraseContact, cH, ownerH, { contactId: A3.id, confirm: true, reason: HR() }, deps);
+      const rows = (await P.aiMessage.findMany({ where: { id: { in: [m1.id, m2.id, m3.id] } }, select: { id: true, content: true } })) as Any[];
+      const title = String(((await P.aiConversation.findUnique({ where: { id: conv.id } })) as Any)?.title ?? "");
+      const leak = rows.filter((x) => [A3.name, A3.phone, A3.email].some((t) => String(x.content).includes(t))).length + ([A3.name].some((t) => title.includes(t)) ? 1 : 0);
+      const ctl = rows.find((x) => x.id === m3.id)?.content === ctlText;
+      hchk("C3.9-H3", "B3 AiMessage.content and AiConversation.title of the tenant that contain the person's identity tokens are masked (same replace as AppNotification) · rows are kept · a message without tokens is untouched",
+        r.ok && r.v?.erased === true && rows.length === 3 && leak === 0 && ctl, "0 tokens · rows kept · control intact", `erase=${r.ok ? r.v?.erased : r.err} rows=${rows.length} leakingRows=${leak} controlIntact=${ctl}${ABSENT}`);
+    }
+
+    // ── H4 (B4) · task-board card linked to the contact: comments + history (through the kanban facade) ──
+    {
+      const A4 = await person("บอร์ด");
+      const board = (await P.kanbanBoard.create({ data: { tenantId: TH, systemId: KH, name: `งานขาย ${TAG}` } })) as Any;
+      const col = (await P.kanbanColumn.create({ data: { tenantId: TH, systemId: KH, boardId: board.id, name: "ต้องทำ" } })) as Any;
+      const card = (await P.kanbanCard.create({ data: { tenantId: TH, systemId: KH, boardId: board.id, columnId: col.id, title: `โทรหา ${A4.name}` } })) as Any;
+      await P.kanbanCardLink.create({ data: { tenantId: TH, systemId: KH, cardId: card.id, linkType: "CRM_CONTACT", linkId: A4.id, role: "RELATED" } });
+      const cm = (await P.kanbanComment.create({ data: { tenantId: TH, cardId: card.id, authorUserId: uOwner, body: `ลูกค้าให้โทร ${A4.phone} หลัง 5 โมง` } })) as Any;
+      // the shape kanban/service.ts#createCard logs (CARD_CREATED data.title = the card title at creation)
+      const ka = (await P.kanbanActivity.create({ data: { tenantId: TH, boardId: board.id, cardId: card.id, type: "CARD_CREATED", data: { title: `โทรหา ${A4.name}`, columnId: col.id } } })) as Any;
+      const r = await call(PRIV.eraseContact, cH, ownerH, { contactId: A4.id, confirm: true, reason: HR() }, deps);
+      const body = String(((await P.kanbanComment.findUnique({ where: { id: cm.id } })) as Any)?.body ?? "");
+      const hist = j(((await P.kanbanActivity.findUnique({ where: { id: ka.id } })) as Any)?.data ?? null);
+      const src = read(PRIV_FILE);
+      const direct = /\b(tx|prisma)\.kanban(Comment|Activity)\b/.test(src);
+      hchk("C3.9-H4", "B4 cards linked to the contact (CRM_CONTACT) get KanbanComment.body and KanbanActivity.data masked too (not only title/description) · done through the kanban facade (privacy.ts writes no kanbanComment/kanbanActivity rows itself)",
+        r.ok && r.v?.erased === true && !!body && !body.includes(A4.phone) && !hist.includes(A4.name) && !direct, "comment + history masked via facade", `erase=${r.ok ? r.v?.erased : r.err} commentHasPhone=${body.includes(A4.phone)} historyHasName=${hist.includes(A4.name)} directWrites=${direct}${ABSENT}`);
+    }
+
+    // ── H5 (B5) · member erasure through CRM obeys the member key and the member approval policy ──
+    {
+      const mkCust = async (tag: string) => {
+        const name = `สมาชิก${tag} ${TAG}`;
+        const phone = phoneH();
+        const partyId = (await P.party.create({ data: { tenantId: TH, name, kind: "PERSON", phone } })).id as string;
+        const cust = (await P.customer.create({ data: { tenantId: TH, memberSystemId: MH, name, phone, partyId } })) as Any;
+        return { id: cust.id as string, name, phone, partyId };
+      };
+      const linked = async (tag: string, ownerId: string) => {
+        const c = await mkCust(tag);
+        const k = (await P.crmContact.create({ data: { tenantId: TH, systemId: SH, name: c.name, phone: c.phone, partyId: c.partyId, memberCustomerId: c.id, ownerUserId: ownerId, lastActivityAt: new Date() } })) as Any;
+        return { c, k: k.id as string };
+      };
+      const custOf = async (id: string) => (await P.customer.findUnique({ where: { id }, select: { name: true, phone: true, status: true } })) as Any;
+      const flag = (r: Res, key: string) => r.ok && (r.v?.[key] === true || r.v?.counts?.[key] === true);
+      // (a) STAFF holding crm.contact.delete but NOT member.customer.delete ⇒ contact erased · member untouched · WARN (ids only) · memberSkipped
+      const t0 = new Date();
+      const a = await linked("เอ", uStaffDel);
+      const ra = await call(PRIV.eraseContact, { tenantId: TH, systemId: SH, actorUserId: uStaffDel }, staffDel, { contactId: a.k, confirm: true, reason: HR() }, deps);
+      const custA = await custOf(a.c.id);
+      const warns = (await P.opsEvent.findMany({ where: { tenantId: TH, level: "WARN", createdAt: { gte: t0 } }, select: { message: true, detail: true } })) as Any[];
+      const warnIdsOnly = warns.length > 0 && warns.every((w) => !j(w).includes(a.c.phone) && !j(w).includes(a.c.name));
+      const aOk = ra.ok && ra.v?.erased === true && custA?.status === "ACTIVE" && custA?.phone === a.c.phone && flag(ra, "memberSkipped") && warnIdsOnly;
+      // (c) OWNER, no policy yet ⇒ member erased now (positive control — the path that must keep working)
+      const c = await linked("ซี", uOwner);
+      const rc = await call(PRIV.eraseContact, cH, ownerH, { contactId: c.k, confirm: true, reason: HR() }, deps);
+      const custC = await custOf(c.c.id);
+      const cOk = rc.ok && rc.v?.erased === true && custC?.status === "CLOSED";
+      // (b) an ApprovalPolicy for member.erase exists ⇒ CRM submits member.requestErase: member side PENDING, contact erased now, response says so
+      await P.approvalPolicy.create({ data: { tenantId: TH, name: `member.erase ${TAG}`, entityType: "member.erase", active: true, steps: { create: [{ tenantId: TH, order: 1, approverRole: "OWNER" }] } } });
+      const b = await linked("บี", uMgr);
+      const rb = await call(PRIV.eraseContact, { tenantId: TH, systemId: SH, actorUserId: uMgr }, mgrH, { contactId: b.k, confirm: true, reason: HR() }, deps);
+      const custB = await custOf(b.c.id);
+      const reqB = (await P.memberPrivacyRequest.findFirst({ where: { tenantId: TH, customerId: b.c.id, status: "PENDING" } })) as Any;
+      const apprB = (await P.approvalRequest.count({ where: { tenantId: TH, entityType: "member.erase", status: "PENDING" } })) as number;
+      const bOk = rb.ok && rb.v?.erased === true && custB?.status === "ACTIVE" && !!reqB && apprB >= 1 && flag(rb, "memberPending");
+      void MEMF;
+      hchk("C3.9-H5", "B5 CRM erase touches the linked MEMBER only as the member module allows: (a) actor without member.customer.delete ⇒ contact erased, member untouched, OpsEvent WARN (ids only), result flag memberSkipped · (b) ApprovalPolicy member.erase exists ⇒ CRM files member.requestErase (MemberPrivacyRequest + ApprovalRequest PENDING, customer ACTIVE), contact erased now, result flag memberPending · (c) owner with no policy ⇒ member erased at once (control)",
+        aOk && bOk && cOk, "skipped · pending · erased",
+        `a:erase=${ra.ok ? ra.v?.erased : ra.err} member=${custA?.status} skipped=${flag(ra, "memberSkipped")} warn=${warns.length}/idsOnly=${warnIdsOnly} · b:erase=${rb.ok ? rb.v?.erased : rb.err} member=${custB?.status} request=${reqB?.status ?? "-"} approvals=${apprB} pending=${flag(rb, "memberPending")} · c:erase=${rc.ok ? rc.v?.erased : rc.err} member=${custC?.status}${ABSENT}`);
+    }
+
+    // ── H6 (M1) + H10 (M5) · lead retention: anchor never before createdAt · erase only after a warning ≥ 30 days old · archived leads included ──
+    {
+      const LONG = new Date(Date.now() - 800 * DAY);
+      const dayOf = (d: Date) => d.toISOString().slice(0, 10);
+      const oldLead = async (tag: string, extra: Record<string, unknown> = {}) =>
+        (await P.crmContact.create({ data: { tenantId: TH, systemId: SH, name: `ลีด${tag} ${TAG}`, phone: phoneH(), createdAt: LONG, lastActivityAt: LONG, ownerUserId: uOwner, ...extra } })).id as string;
+      const warn = (id: string, ageDays: number) => P.auditLog.create({ data: { tenantId: TH, actorType: "SYSTEM", actorId: null, action: "crm.retention.warned", targetType: "CrmContact", targetId: id, after: { anchor: dayOf(LONG), systemId: SH, leadMonths: 24 }, createdAt: new Date(Date.now() - ageDays * DAY) } });
+      const fresh = await call(CRM?.contacts?.createContact, cH, ownerH, { firstName: `ลีดสด${rand}`, phone: phoneH(), sourceKind: "CRM" });
+      const freshId = String(fresh.v?.contact?.id ?? "");
+      const back = freshId ? await call(CRM?.activities?.logActivity, cH, ownerH, { type: "CALL", title: "โทรคุยครั้งแรก (บันทึกย้อนหลัง)", contactId: freshId, startAt: new Date(Date.now() - 760 * DAY), direction: "OUT", done: true }) : MISSING;
+      const unwarned = await oldLead("ไม่เคยเตือน");
+      const warned31 = await oldLead("เตือนแล้ว31");
+      await warn(warned31, 31);
+      const warned5 = await oldLead("เตือนแล้ว5");
+      await warn(warned5, 5);
+      const archived31 = await oldLead("เก็บถาวร31", { archivedAt: new Date(Date.now() - 60 * DAY) });
+      await warn(archived31, 31);
+      const keepLive = await person("ปลายทางรวม");
+      const merged31 = await oldLead("ถูกรวม31", { mergedIntoId: keepLive.id, archivedAt: new Date(Date.now() - 60 * DAY) });
+      await warn(merged31, 31);
+      const run = await call(PRIV.retentionLeads, new Date(), { tenantIds: [TH], deps });
+      const st = {
+        fresh: freshId ? await erasedH(freshId) : null,
+        unwarned: await erasedH(unwarned),
+        unwarnedWarned: (await P.auditLog.count({ where: { tenantId: TH, action: "crm.retention.warned", targetId: unwarned } })) as number,
+        warned31: await erasedH(warned31),
+        warned5: await erasedH(warned5),
+        archived31: await erasedH(archived31),
+        merged31: await erasedH(merged31),
+      };
+      hchk("C3.9-H6", "M1 the retention anchor is GREATEST(COALESCE(lastActivityAt, createdAt), createdAt) — a lead created today whose first activity is back-dated 25 months is NOT erased · only leads holding a crm.retention.warned audit ≥ LEAD_RETENTION_WARN_DAYS old are erased (an old lead never warned gets the warning instead, one warned 5 days ago is kept) · positive control: warned 31 days ago ⇒ erased",
+        run.ok && fresh.ok && back.ok && st.fresh === false && st.unwarned === false && st.unwarnedWarned >= 1 && st.warned5 === false && st.warned31 === true,
+        "fresh kept · unwarned warned not erased · 5d kept · 31d erased", `run=${run.ok ? j(run.v) : run.err} create=${fresh.ok ? "ok" : fresh.err} backdated=${back.ok ? "ok" : back.err} ${j(st)}${ABSENT}`);
+      hchk("C3.9-H10", "M5 retention includes ARCHIVED unconverted leads (archiving is what the cap message recommends — it must not exempt a lead from PDPA retention) · merged-away contacts and already-erased ones stay excluded",
+        run.ok && st.archived31 === true && st.merged31 === false, "archived erased · merged not", `archived31=${st.archived31} merged31=${st.merged31}${ABSENT}`);
+    }
+
+    // ── H7 (M2) · nothing new lands on an erased contact · a repeat erase re-sweeps content without new audit/event ──
+    {
+      const X = await person("หลังลบ");
+      const r1 = await call(PRIV.eraseContact, cH, ownerH, { contactId: X.id, confirm: true, reason: HR() }, deps);
+      const act = await call(CRM?.activities?.logActivity, cH, ownerH, { type: "CALL", title: "ลูกค้าโทรเข้ามา", body: `โทรกลับจาก ${X.phone}`, contactId: X.id, direction: "IN", done: true });
+      const note = await call(CRM?.activities?.logActivity, cH, ownerH, { type: "NOTE", title: "โน้ต", body: `ที่อยู่ใหม่ของ ${X.phone}`, contactId: X.id });
+      const obj = await call(CRM?.objects?.create, cH, ownerH, { key: "car", label: "รถ", labelPlural: "รถ", parentType: "CONTACT", titleFieldKey: "plate", templateKey: "vehicle", showAsTab: true });
+      const rec = obj.ok ? await call(CRM?.objects?.records?.create, cH, ownerH, "car", { parentId: X.id, title: `รถของ ${X.phone}`, values: { plate: `กข${nx()}` } }) : MISSING;
+      const file = await call(CRM?.files?.attachFile, cH, ownerH, { entityType: "CONTACT", entityId: X.id, filename: "บัตร.pdf", contentType: "application/pdf", data: new TextEncoder().encode("%PDF-1.4 qc") }, { put: async () => undefined, del: async () => 204 });
+      const hPipe = (await P.crmPipeline.create({ data: { tenantId: TH, systemId: SH, name: `ขาย H ${TAG}`, stages: { create: [{ tenantId: TH, systemId: SH, name: "ใหม่", kind: "OPEN", probability: 10, sortOrder: 0 }] } }, include: { stages: true } })) as Any;
+      const deal = await call(CRM?.deals?.createDeal, cH, ownerH, { pipelineId: hPipe.id, title: `ดีลหลังลบ ${TAG}`, contactId: X.id });
+      const writers = { activity: act, note, record: rec, file, deal };
+      const refusedAll = Object.values(writers).every((w) => refused(w, ["VALIDATION"]));
+      // content that reached the erased row anyway (written before this rule existed) — a repeat erase must sweep it, idempotently
+      const stale = (await P.crmActivity.create({ data: { tenantId: TH, systemId: SH, contactId: X.id, type: "CALL", title: "เก่าค้าง", body: `ค้างจาก ${X.phone}`, ownerUserId: uOwner } })) as Any;
+      const audBefore = (await P.auditLog.count({ where: { tenantId: TH, action: "crm.contact.erase", targetId: X.id } })) as number;
+      const evtBefore = (await P.outboxEvent.count({ where: { tenantId: TH, type: "crm.contact.erased" } })) as number;
+      const r2 = await call(PRIV.eraseContact, cH, ownerH, { contactId: X.id, confirm: true, reason: HR() }, deps);
+      const staleBody = ((await P.crmActivity.findUnique({ where: { id: stale.id } })) as Any)?.body ?? null;
+      const audAfter = (await P.auditLog.count({ where: { tenantId: TH, action: "crm.contact.erase", targetId: X.id } })) as number;
+      const evtAfter = (await P.outboxEvent.count({ where: { tenantId: TH, type: "crm.contact.erased" } })) as number;
+      hchk("C3.9-H7", "M2 CRM writers refuse an erased contact with VALIDATION + Thai (activity · note · custom record under it · file on it · deal for it) · eraseContact on an already-erased contact still sweeps content that reached it (activity body cleared) with erased:false and NO new erase audit / crm.contact.erased event",
+        r1.ok && refusedAll && r2.ok && r2.v?.erased === false && !staleBody && audAfter === audBefore && evtAfter === evtBefore,
+        "5 × refused · re-sweep idempotent", `writers=${Object.entries(writers).map(([k, w]) => `${k}:${w.ok ? "accepted!" : w.code || w.err.slice(0, 40)}`).join(",")} repeat=${r2.ok ? r2.v?.erased : r2.err} staleBodyLeft=${!!staleBody} audit ${audBefore}→${audAfter} events ${evtBefore}→${evtAfter}${ABSENT}`);
+    }
+
+    // ── H8 (M3) · the audit trail of the chain is scrubbed on erase and contact writers stop writing identity values into it ──
+    {
+      const oldLast = `เก่าออดิต${rand}`;
+      const newLast = `ใหม่ออดิต${rand}`;
+      const line = `Uaudit${randomBytes(6).toString("hex")}`;
+      const Y = await call(CRM?.contacts?.createContact, cH, ownerH, { firstName: `วาย${rand}`, lastName: oldLast, phone: phoneH(), sourceKind: "CRM" });
+      const yId = String(Y.v?.contact?.id ?? "");
+      const u1 = yId ? await call(CRM?.contacts?.updateContact, cH, ownerH, yId, { lastName: newLast, lineUserId: line }) : MISSING;
+      const r = yId ? await call(PRIV.eraseContact, cH, ownerH, { contactId: yId, confirm: true, reason: HR() }, deps) : MISSING;
+      const trail = yId ? ((await P.auditLog.findMany({ where: { tenantId: TH, targetId: yId, NOT: { action: "crm.contact.erase" } }, select: { action: true, before: true, after: true } })) as Any[]) : [];
+      const trailLeak = trail.filter((x) => [oldLast, newLast, line].some((t) => j([x.before, x.after]).includes(t))).map((x) => x.action);
+      const zLast = `ซีต่อไป${rand}`;
+      const Z = await call(CRM?.contacts?.createContact, cH, ownerH, { firstName: `ซี${rand}`, phone: phoneH(), sourceKind: "CRM" });
+      const zId = String(Z.v?.contact?.id ?? "");
+      const u2 = zId ? await call(CRM?.contacts?.updateContact, cH, ownerH, zId, { lastName: zLast }) : MISSING;
+      const zRows = zId ? ((await P.auditLog.findMany({ where: { tenantId: TH, targetId: zId, action: "crm.contact.update" }, select: { before: true, after: true } })) as Any[]) : [];
+      const forward = zRows.length > 0 && zRows.every((x) => !j([x.before, x.after]).includes(zLast));
+      hchk("C3.9-H8", "M3 on erase every AuditLog row with targetId in the chain (except crm.contact.erase) has before/after scrubbed of identity values (old + new last name, LINE id) · going forward crm.contact.update audits mask identity keys (a new last name is not written raw)",
+        Y.ok && u1.ok && r.ok && r.v?.erased === true && trail.length > 0 && trailLeak.length === 0 && Z.ok && u2.ok && forward,
+        "trail scrubbed · forward masked", `create=${Y.ok ? "ok" : Y.err} upd=${u1.ok ? "ok" : u1.err} erase=${r.ok ? r.v?.erased : r.err} trailRows=${trail.length} leaking=${trailLeak.join(",") || "-"} forwardMasked=${forward}${ABSENT}`);
+    }
+
+    // ── H9 (M4) · unexpired exports made before the erase are withdrawn ──
+    {
+      const W = await person("ส่งออก");
+      const PUT: Record<string, Uint8Array> = {};
+      const ex = await call(PRIV.exportTenant, cH, ownerH, { format: "CSV" });
+      const run = await call(PRIV.runExportJobs, { tenantIds: [TH], deps: { put: async (p: string, d: Uint8Array) => { PUT[p] = d; } } });
+      const job = ex.ok ? ((await P.crmImportJob.findUnique({ where: { id: ex.v.jobId } })) as Any) : null;
+      const fileRow = job?.fileId ? ((await P.fileAsset.findUnique({ where: { id: job.fileId } })) as Any) : null;
+      const hadPhone = Object.values(PUT).some((d) => new TextDecoder().decode(d).includes(W.phone));
+      const rep = (await P.crmImportJob.create({ data: { tenantId: TH, systemId: SH, kind: "REPORT_EXPORT", status: "DONE", createdById: uOwner, finishedAt: new Date(), result: { format: "CSV", csv: `name,phone\r\n${W.name},${W.phone}\r\n` } } })) as Any;
+      const r = await call(PRIV.eraseContact, cH, ownerH, { contactId: W.id, confirm: true, reason: HR() }, deps);
+      const fileLeft = job?.fileId ? ((await P.fileAsset.count({ where: { id: job.fileId } })) as number) : -1;
+      const storageDeleted = !!fileRow?.path && DELETED.includes(String(fileRow.path));
+      const g = ex.ok ? await call(PRIV.getExport, cH, ownerH, ex.v.jobId) : MISSING;
+      const repAfter = (await P.crmImportJob.findUnique({ where: { id: rep.id } })) as Any;
+      const repClean = !j(repAfter?.result ?? null).includes(W.phone);
+      hchk("C3.9-H9", "M4 erase withdraws the system's unexpired CRM_EXPORT files (FileAsset gone, storage object deleted through followUp — getExport answers EXPIRED) and REPORT_EXPORT result.csv — an export generated before the erase no longer hands out the person's data",
+        ex.ok && run.ok && hadPhone && r.ok && r.v?.erased === true && fileLeft === 0 && storageDeleted && g.ok && g.v?.status === "EXPIRED" && repClean,
+        "file gone · EXPIRED · csv cleared", `export=${ex.ok ? "ok" : ex.err} run=${run.ok ? j(run.v) : run.err} fileHadPhone=${hadPhone} erase=${r.ok ? r.v?.erased : r.err} fileLeft=${fileLeft} storageDeleted=${storageDeleted} getExport=${g.ok ? g.v?.status : g.err} reportCsvClean=${repClean}${ABSENT}`);
+    }
+
+    // ── H11 (m1) · the scoring seed obeys the scoreRules cap ──
+    {
+      await setLimits(TH, { scoreRules: 2 });
+      const before = (await P.crmScoreRule.count({ where: { tenantId: TH, systemId: SH } })) as number;
+      const s = await call(CRM?.scoring?.seedSystemRules, cH, ownerH);
+      const after = (await P.crmScoreRule.count({ where: { tenantId: TH, systemId: SH } })) as number;
+      hchk("C3.9-H11", "m1 scoring.seedSystemRules passes assertCrmLimit (Tenant.limits.crm.scoreRules = 2): it never leaves more rules than the cap — refused with LIMIT (Thai, nothing written) or stops at the cap",
+        after <= 2 && (s.ok || refused(s, ["LIMIT"])), "≤ 2 rules", `before=${before} seed=${s.ok ? j(s.v) : s.err} after=${after}${ABSENT}`, "MAJOR");
+    }
+
+    // ── H12 (m2) · no second erase audit for a merged-in contact that was erased on its own first ──
+    {
+      const K12 = await person("หลัก");
+      const M12 = await person("ถูกรวม");
+      await P.crmContact.update({ where: { id: M12.id }, data: { mergedIntoId: K12.id, archivedAt: new Date() } });
+      const r1 = await call(PRIV.eraseContact, { tenantId: TH, systemId: SH, actorUserId: null }, null, { contactId: M12.id, confirm: true, reason: HR() }, deps);
+      const r2 = await call(PRIV.eraseContact, cH, ownerH, { contactId: K12.id, confirm: true, reason: HR() }, deps);
+      const n = (await P.auditLog.count({ where: { tenantId: TH, action: "crm.contact.erase", targetId: M12.id } })) as number;
+      hchk("C3.9-H12", "m2 erasing a primary after one of its merged-in contacts was already erased writes NO second crm.contact.erase audit for that merged-in contact (exactly one per person)",
+        r1.ok && r1.v?.erased === true && r2.ok && r2.v?.erased === true && n === 1, "1 audit row", `first=${r1.ok ? r1.v?.erased : r1.err} primary=${r2.ok ? r2.v?.erased : r2.err} auditRowsForMergedIn=${n}${ABSENT}`, "MAJOR");
+    }
+  } catch (e) {
+    for (const id of H_IDS) if (!hDone.has(id)) chk(id, "security-hunt check ran", false, "no exception", cut(e instanceof Error ? `${e.name}: ${e.message}` : String(e), 300));
   }
 } catch (e) {
   chk("C3.9-FATAL", "the oracle ran to the end without an unexpected exception", false, "no exception", cut(e instanceof Error ? `${e.name}: ${e.message}\n${e.stack ?? ""}` : String(e), 600));
