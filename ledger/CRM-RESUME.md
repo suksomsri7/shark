@@ -40,6 +40,17 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.12 🔴 CHECKPOINT 27 ก.ย. 2569 ~13:50 UTC — เจ้าของอัปเกรด VPS เป็น KVM4 + ย้ายบัญชี Claude (session ใหม่เริ่มที่นี่)
+**รับแล้ว 40/53 = 75%** (C2 ครบ · C3.0–3.9 · C2.7-fix · C3.3-fix) · commit ล่าสุด = ดู `git log -1` (session/crm) · **ทุกอย่างรวมเข้าทรีหลักแล้ว — worktree c12a/c20/c110/c23 ไม่มีของที่ยังไม่ได้รวม (reset ได้)**
+
+**ค้าง (ทำต่อทันทีหลังเครื่องใหม่พร้อม):**
+1. **C3.9-fix acceptance**: โค้ดรวมแล้ว (`0053f261`) · ผู้ตรวจความปลอดภัย 3 รอบ MERGEABLE · **ยูนิตยืนยันบนทรีหลักยังไม่จบ** (ถูกหยุดตอน checkpoint) → รัน `systemd-run --unit=crm-c39fix-main --collect -p MemoryMax=6G --setenv=PATH="$PATH" --setenv=HOME=/root bash scripts/pending/run-c39fix-main.sh` (c3.9 48/48 ×2 + regression 34 + fitness + m1.9) → ถ้าเขียว = จด gate ใน wo-notes C3.9 §C3.9-fix · **แล้วจึงเปิด push prod** (`git push origin HEAD:main`)
+2. **C4.1** รวมแล้ว (`15707b04`) รอ C4.2 รันจริงยืนยัน backdrop testid 5 ตัว · **C4.2** runner + ทะเบียน: pilot owner 1,962 กด ผ่าน 510 / dead 1,327 (แถวในชีตต้องเปิดก่อน) → งาน triage ค้าง: เพิ่มฟิลด์ `opener`/`needs` ในทะเบียน + ตัวกด แล้ววน owner จน dead = จริง (ดู `ledger/wo-notes/crm-C4.2.md` สถานะล่าสุด) · finding จริงแล้ว: `/deals/new` ล้นจอ 390 · `/p/[slug]` 404 resource
+3. **C3.10 ปิดเฟส**: qc:all เต็ม · CP3 เจ้าของลองบนร้าน QC · HANDOVER · แล้ว C4.3/C4.4 · C5 นักล่า 5 · C6 (crontab · backfill · pilot)
+4. คำถามเจ้าของค้าง: Q7–Q13 (`ledger/CRM-OWNER-QUESTIONS.md` + wo-notes)
+
+**วิธีเริ่มใหม่บนเครื่อง/บัญชีใหม่:** `git pull` · อ่าน §0.12 นี้ + `ledger/CRM-RUN.md` ท้ายไฟล์ · ตรวจ `.env.qc/.env.qc2/.env.qc3` มีอยู่ · `pnpm install` + `bash scripts/qc-prisma.sh generate` ถ้า node_modules ใหม่ · worktree เดิมถ้าหายให้ `git worktree add` ใหม่ (c12a/c110 = bind mount node_modules · c20/c23 = overlay — ดู 0.11) · เปิด CronCreate heartbeat ใหม่ (session-only) · กติกาคงเดิม: เอาคุณภาพ · ≤3 เลน · **build ต้องพักทุกเลนก่อน (OOM 3 ครั้งบน 2 CPU/8 GB — KVM4 น่าจะดีขึ้น)** · ผู้ตรวจอิสระทุกใบ · นักล่าหลังใบเงิน/ความปลอดภัย · patch --fuzz แล้วอ่านทุก hunk · ห้าม prisma generate ในเอเจนต์ · pgrep -f จับตัวเอง · รายงาน tg เป็นระยะ
+
 ### 0.11 สถานะ 26 ก.ย. 05:40 UTC (Fable · session ใหม่) — ▶️ เดิน 3 เลน · รับแล้ว 35/53 = 66%
 - session ก่อน (05:00 UTC) spawn builder 2 ตัวแล้วตายใน 25 นาที ⇒ spawn ใหม่ 05:40 ให้ "ทำต่อจากสภาพไฟล์" (agent ตายพร้อม session · ไฟล์ใน worktree ยังอยู่)
 - **เลน A** หนี้ `crm-c1.3` S0.3 — builder opus ใน `shark-crm-c23`/QC3: helper 6 ตัวท้าย `companies.ts` มาจากรอบก่อน (uncommitted) · เหลือย้ายจุดเรียก 12 จุดใน assignment/automation/emails/payments/sequences · หลักฐาน `.qc-shots/c13debt/` · ต้องรัน c1.3 + c2.1/2.2/2.3/2.5/2.7/2.8 บน QC3 (reseed ก่อน)
