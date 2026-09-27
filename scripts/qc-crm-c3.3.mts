@@ -63,7 +63,7 @@
 //      minute job `crm.commissions.payroll` · UI `/crm/settings/commissions` (rules + pending + "ส่ง payroll") and `/crm/commissions` (mine).
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY (61): S0 4 · S1 5 · S2 2 · S3 4 · S4 5 · S5 4 · S6 2 · S7 2 · S8 6 (S1–S8 = the 30 of CRM-RUN §2) · M 5 (money gates /
+// CHECK INVENTORY (84): S0 6 · S1 5 · S2 5 · S3 4 · S4 9 · S5 6 · S6 2 · S7 2 · S8 6 (the 30 of CRM-RUN §2 + S2.3/S4.6 money review + S4.7/S4.8/S5.5/S5.5a round 3) · M 17 (money gates + M9/M9a/M10/M11 round 3 + M12/M13 round 5 + M14–M16 round 6 /
 //   BigInt) · X1 5 · X3 8 (X3.1a–X3.4a = "did the worker processes really run" controls) · X4 5 · X8 1 · X9 2 · CLEAN
 //   (C3.3-FATAL is added only when something throws)
 //   n/a: X2 (no REST op / AI tool — `crm_commissions_mine` is C3.4/C3.8) · X5 (the payroll sync job is idempotent by the partial unique —
@@ -178,6 +178,26 @@ if (WORKER_AT >= 0) {
         if (typeof CM.reverse !== "function") throw miss("reverse");
         await CM.reverse(ctx, { refId: c.a.refId, reason: "ยกเลิกการรับชำระ (ข้อสอบ)" });
         return "OK";
+      }
+      // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — posCount: count a POS bill on the deal (COUNTED row) then onPaid ×1 + ×2 in parallel (R1 race) ·
+      //   hrDecide: HR decides the original's adjustment from its own connection (S-b race against the reversal)
+      if (c.fn === "posCount") {
+        if (typeof CM.onPaid !== "function") throw miss("onPaid");
+        const row = await PW.crmDealPayment.create({ data: { tenantId: wT, systemId: c.sys, dealId: c.a.dealId, refType: "POS_SALE", refId: c.a.saleId, satang: BigInt(c.a.satang), status: "COUNTED", countedAt: new Date(c.a.now) } });
+        await CM.onPaid(ctx, { dealId: c.a.dealId, refType: "DEAL_PAYMENT", refId: row.id });
+        await Promise.all([CM.onPaid(ctx, { dealId: c.a.dealId, refType: "DEAL_PAYMENT", refId: row.id }), CM.onPaid(ctx, { dealId: c.a.dealId, refType: "DEAL_PAYMENT", refId: row.id })]);
+        return "OK";
+      }
+      // ORACLE-EDIT C3.3 round-6 (26 ก.ย.) — apr: the (late) afterPaymentsReversed hook of the money path (M16 race)
+      if (c.fn === "apr") {
+        if (typeof CM.afterPaymentsReversed !== "function") throw miss("afterPaymentsReversed");
+        await CM.afterPaymentsReversed({ tenantId: wT, systemId: c.sys }, { dealId: c.a.dealId });
+        return "OK";
+      }
+      if (c.fn === "hrDecide") {
+        const PAYW = (await import("@/lib/modules/hr/payroll" as string)) as Any;
+        const r = await PAYW.decideAdjustment({ tenantId: wT, systemId: c.a.hrSystemId }, c.a.adjustmentId, c.a.decision, { userId: c.a.deciderId, isOwner: true });
+        return `OK:${r?.ok === true ? "decided" : "late"}`;
       }
       if (c.fn === "deliver") {
         const e = await PW.outboxEvent.findUnique({ where: { id: c.a.eventId } });
@@ -470,21 +490,25 @@ try {
     return c.id as string;
   };
   type Deal = { id: string; inv: string; value: number; tid: string; sys: string };
-  const mkDeal = async (tid: string, sys: string, pipe: Pipe, owner: string | null, value: number, collaborators: string[] = []) => {
+  const mkDeal = async (tid: string, sys: string, pipe: Pipe, owner: string | null, value: number, collaborators: string[] = [], noDoc = false) => {
     const contactId = await mkContact(tid, sys, owner);
-    const inv = `${TAG}-inv-${nx()}`;
+    const inv = noDoc ? "" : `${TAG}-inv-${nx()}`;
     const at = T("2026-09-01T03:00:00Z");
     const d = await P.crmDeal.create({
       data: { tenantId: tid, systemId: sys, contactId, pipelineId: pipe.id, stageId: pipe.OPEN, title: `ดีล ${TAG}-${nx()}`, valueSatang: value, kind: "OPEN",
-        ownerUserId: owner, stageEnteredAt: at, createdAt: at, invoiceDocId: inv, collaboratorUserIds: collaborators },
+        ownerUserId: owner, stageEnteredAt: at, createdAt: at, invoiceDocId: inv || null, collaboratorUserIds: collaborators },
     });
     await P.crmDealStageHistory.create({ data: { tenantId: tid, dealId: d.id, fromStageId: null, toStageId: pipe.OPEN, enteredAt: at, leftAt: null } });
     return { id: d.id as string, inv, value, tid, sys } as Deal;
   };
-  type RuleSpec = { basis?: string; kind: string; config: Any; pipelineId?: string | null; minDealSatang?: number | null; split?: number; delay?: number };
+  type RuleSpec = { basis?: string; kind: string; config: Any; pipelineId?: string | null; minDealSatang?: number | null; split?: number; delay?: number; createdAt?: Date };
+  const RULE_EPOCH = T("2026-08-01T00:00:00Z");
   const mkRule = async (tid: string, sys: string, r: RuleSpec) => (await P.crmCommissionRule.create({
     data: { tenantId: tid, systemId: sys, name: `กฎ ${TAG}-${nx()}`, basis: r.basis ?? "PAID", kind: r.kind, config: r.config, pipelineId: r.pipelineId ?? null, productIds: [],
-      minDealSatang: r.minDealSatang === undefined || r.minDealSatang === null ? null : BigInt(r.minDealSatang), splitCollaboratorsBp: r.split ?? 0, payoutDelayDays: r.delay ?? 0 },
+      minDealSatang: r.minDealSatang === undefined || r.minDealSatang === null ? null : BigInt(r.minDealSatang), splitCollaboratorsBp: r.split ?? 0, payoutDelayDays: r.delay ?? 0,
+      // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — onPaid now refuses money counted before the rule existed (no retro credit · M11); the fixture's rules
+      //   exist since 1 Aug so every payment counted "now = NOWP (15 Sep)" is after them — M11 overrides this with its own dates
+      createdAt: r.createdAt ?? RULE_EPOCH },
   })).id as string;
 
   // hand-deliver OUR events to the consumer map — by id, whatever their status (a foreign drainer may have claimed them)
@@ -512,9 +536,16 @@ try {
   };
   const rawPay = async (d: Deal, amount: number, countedAt: Date = NOWP) =>
     (await P.crmDealPayment.create({ data: { tenantId: d.tid, systemId: d.sys, dealId: d.id, refType: "PAYMENT", refId: `${TAG}-raw-${nx()}`, satang: BigInt(amount), status: "COUNTED", countedAt } })).id as string;
+  // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — a REAL PosSale row (no FK on unitId; swept by tenantId) so pre-VAT = grand − vat is readable
+  const mkSale = async (tid: string, sys: string, grand: number, vat: number) => (await P.posSale.create({
+    data: { tenantId: tid, unitId: `${TAG}-unit`, systemId: sys, idempotencyKey: `${TAG}-sale-${nx()}`, status: "PAID", subtotalSatang: grand - vat, vatSatang: vat, grandTotalSatang: grand, paidAt: NOWP },
+  })).id as string;
   const comm = async (where: Any) => (await P.crmCommission.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })) as Any[];
   const adjOf = async (commissionId: string | null | undefined) => (commissionId ? ((await P.hrPayAdjustment.findMany({ where: { crmCommissionId: commissionId } })) as Any[]) : []);
   const sumB = (rows: Any[]) => rows.reduce((s, r) => s + BigInt(r.amountSatang), Z);
+  // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — ruling B1: a PAID row's refId is the incarnation key `<CrmDealPayment.id>#c<countedAt ms>` ⇒ the
+  //   payment row id is the part before '#' (WON rows keep refId '' and REVERSAL rows the original's id — not touched by this helper)
+  const payOf = (ref: unknown) => String(ref ?? "").split("#")[0];
   const desc = (rows: Any[]) => rows.map((r) => `${r.userId === uTH ? "thana" : r.userId === uPK ? "pook" : String(r.userId).slice(-4)}:${String(r.refId).slice(-6)}:${String(r.amountSatang)}:${r.status}`).join(",");
   const reqOf = async (tid: string, commissionId: string | undefined) => (commissionId ? ((await P.approvalRequest.findFirst({ where: { tenantId: tid, entityType: "crm.commission", entityId: commissionId } })) as Any) : null);
   const decideReq = async (tid: string, commissionId: string | undefined, decision: "APPROVED" | "REJECTED") => {
@@ -546,14 +577,14 @@ try {
   console.log(`  [arith] d12 T=3,333,333 ⇒ full ⌊3,333,333·500/10⁴⌋=${full12} · running total ${e12a} + ${e12b} = ${e12a + e12b} (naive per-payment floor ${naive12} loses ${full12 - naive12})`);
   {
     const rows = await comm({ dealId: d11.id });
-    const byRef = new Map(rows.map((r) => [String(r.refId), r]));
+    const byRef = new Map(rows.map((r) => [payOf(r.refId), r])); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
     const ok = rows.length === 2 && [p11a, p11b].every((p) => {
       const r = byRef.get(p.rowId);
-      const sat = p === p11a ? 600_000 : 1_400_000;
-      return r && r.userId === uTH && r.ruleId === rS1 && r.refType === "DEAL_PAYMENT" && r.basis === "PAID" && Number(r.basisSatang) === sat && r.status === "PENDING" && r.periodKey === PK && r.systemId === crmS1;
+      // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B1: basisSatang carries the FROZEN pre-VAT base T (= valueSatang 2,000,000), not the payment amount
+      return r && r.userId === uTH && r.ruleId === rS1 && r.refType === "DEAL_PAYMENT" && /^[^#]+#c\d+$/.test(r.refId) && r.basis === "PAID" && Number(r.basisSatang) === 2_000_000 && r.status === "PENDING" && r.periodKey === PK && r.systemId === crmS1;
     });
-    chk("C3.3-S1.1", "two partial payments of one deal through the real C2.7 money path (recordDocPayment → COUNTED) ⇒ exactly TWO CrmCommission rows — one per payment: refType DEAL_PAYMENT · refId = the CrmDealPayment id (R-C.4) · basis PAID · basisSatang = that payment · user = the owner · status PENDING (approval chain exists) · periodKey = Thai month of countedAt (2026-09)",
-      p11a.counted && p11b.counted && ok, "2 rows · shape", `counted=${p11a.counted}/${p11b.counted} rows=${rows.length} ${cut(j(rows.map((r) => ({ ref: r.refId === p11a.rowId ? "a" : r.refId === p11b.rowId ? "b" : r.refId, t: r.refType, basis: r.basis, bs: r.basisSatang, st: r.status, pk: r.periodKey, u: r.userId === uTH }))), 300)}${ABSENT}`);
+    chk("C3.3-S1.1", "two partial payments of one deal through the real C2.7 money path (recordDocPayment → COUNTED) ⇒ exactly TWO CrmCommission rows — one per payment: refType DEAL_PAYMENT · refId = the incarnation key <CrmDealPayment id>#c<countedAt ms> (R-C.4 + round-5 B1) · basis PAID · basisSatang = the frozen pre-VAT base T (ruling B1) · user = the owner · status PENDING (approval chain exists) · periodKey = Thai month of countedAt (2026-09)",
+      p11a.counted && p11b.counted && ok, "2 rows · shape", `counted=${p11a.counted}/${p11b.counted} rows=${rows.length} ${cut(j(rows.map((r) => ({ ref: payOf(r.refId) === p11a.rowId ? "a" : payOf(r.refId) === p11b.rowId ? "b" : r.refId, t: r.refType, basis: r.basis, bs: r.basisSatang, st: r.status, pk: r.periodKey, u: r.userId === uTH }))), 300)}${ABSENT}`);
     const a = byRef.get(p11a.rowId);
     const bb = byRef.get(p11b.rowId);
     chk("C3.3-S1.2", `partial payment = proportional commission (§11.6): 600,000 + 1,400,000 of T 2,000,000 at 5 % ⇒ ${e11a} + ${e11b} = ${full11} (the full commission) exactly`,
@@ -561,8 +592,8 @@ try {
   }
   {
     const rows = await comm({ dealId: d12.id });
-    const a = rows.find((r) => r.refId === p12a.rowId);
-    const bb = rows.find((r) => r.refId === p12b.rowId);
+    const a = rows.find((r) => payOf(r.refId) === p12a.rowId); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+    const bb = rows.find((r) => payOf(r.refId) === p12b.rowId);
     chk("C3.3-S1.3", `no satang lost (running-total rounding): T 3,333,333 · 5 % ⇒ full ${full12}; payments 1,111,111 then 2,222,222 ⇒ ${e12a} + ${e12b} = ${full12} (a per-payment floor would pay ${naive12}) · Σ rows = full`,
       rows.length === 2 && a && bb && b(a.amountSatang) === e12a && b(bb.amountSatang) === e12b && sumB(rows) === full12, `${e12a}+${e12b}=${full12}`, `${desc(rows)} Σ=${sumB(rows)}${ABSENT}`);
   }
@@ -630,7 +661,7 @@ try {
     const okWin = mvW1.ok && rowsAfterWin.length === 1 && rowsAfterWin[0].ruleId === rWon;
     chk("C3.3-S2.1", `WON rule: moving the deal to WON (deals.moveDeal, the real path) ⇒ ONE row of the WON rule for the owner = ${eWon} (FIXED 15,000 + 3 % of T) · basis WON · refId '' · basisSatang = T · periodKey = Thai month of the WON history row (${pkWon}) — and NO row of the PAID rule on the win; the later payment of 1,000,000 adds only the PAID-rule row ${eWp} (the WON rule does not fire on money)`,
       okWin && won.length === 1 && w && b(w.amountSatang) === eWon && w.basis === "WON" && w.refId === "" && Number(w.basisSatang) === 2_345_678 && w.periodKey === pkWon && w.userId === uTH
-      && wp.length === 1 && b(wp[0].amountSatang) === eWp && wp[0].refId === pW1.rowId,
+      && wp.length === 1 && b(wp[0].amountSatang) === eWp && payOf(wp[0].refId) === pW1.rowId, // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
       `won ${eWon} · paid ${eWp}`, `move=${rs(mvW1)} afterWin=${desc(rowsAfterWin)} now=${desc(rows)}${ABSENT}`);
   }
   {
@@ -652,6 +683,71 @@ try {
       [...seqR, ...parR].every((r) => r.ok) && wonEv.length >= 1 && mid === before && mvL.ok && r2.length === 0 && (lostWon.ok || refused(lostWon)) && p3.counted && r3.length === 1 && r3[0].ruleId === rWp && b(r3[0].amountSatang) === e3,
       "1 WON row · 0 · PAID only", `calls=${[...seqR, ...parR].map((r) => (r.ok ? "ok" : r.err)).join("|")} wonEvents=${wonEv.length} unchanged=${mid === before} lost=${rs(mvL)} lostRows=${r2.length} open=${desc(r3)}${ABSENT}`);
   }
+
+  {
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling S2 (new check S2.3): nobody but the OWNER approves his own commission
+    const cS2 = await mk(tidA, "CRM", "CRM อนุมัติของตัวเอง");
+    await setCrm(cS2, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+    await APV.createPolicy({ tenantId: tidA }, { name: `คอมมิชชัน S2 ${TAG}`, entityType: "crm.commission", systemId: cS2, steps: [{ order: 1, approverRole: "OWNER" }] });
+    await mkRule(tidA, cS2, { kind: "PCT", config: { pctBp: 1_000 } });
+    const pS2 = await mkPipe(tidA, cS2);
+    const dMg = await mkDeal(tidA, cS2, pS2, uM, 500_000); // 50,000 — under the manager's cap: only "own row" can refuse it
+    const dOw = await mkDeal(tidA, cS2, pS2, uO, 500_000);
+    await pay(dMg, "s23m", 500_000);
+    await pay(dOw, "s23o", 500_000);
+    const rM = (await comm({ dealId: dMg.id }))[0] as Any;
+    const rO = (await comm({ dealId: dOw.id }))[0] as Any;
+    const selfM = await call(F_.approve, ctx(tidA, cS2, uM), aM, { id: rM?.id ?? "-", reason: "อนุมัติของตัวเอง" });
+    const stillM = rM ? ((await comm({ id: rM.id }))[0] as Any)?.status : "-";
+    const pendM = await call(F_.pending, ctx(tidA, cS2, uM), aM);
+    const pendO = await call(F_.pending, ctx(tidA, cS2, uO), aO);
+    const selfO = await call(F_.approve, ctx(tidA, cS2, uO), aO, { id: rO?.id ?? "-", reason: "เจ้าของอนุมัติของตัวเอง" });
+    await settle(tidA);
+    const afterO = rO ? ((await comm({ id: rO.id }))[0] as Any)?.status : "-";
+    const inM = idsOf(pendM.v).includes(String(rM?.id));
+    const inO = idsOf(pendO.v).includes(String(rM?.id));
+    chk("C3.3-S2.3", "ruling S2 — no self-approval: a MANAGER approving his OWN commission (50,000, under his cap) ⇒ FORBIDDEN (Thai), the row stays PENDING and it is not in his own pending() list (the OWNER still sees it there) · the OWNER approving his own commission ⇒ APPROVED",
+      !!rM && !!rO && isFB(selfM) && stillM === "PENDING" && pendM.ok && !inM && pendO.ok && inO && selfO.ok && afterO === "APPROVED",
+      "403 · PENDING · hidden · owner ok", `rows=${!!rM}/${!!rO} manager=${rs(selfM)} still=${stillM} inManagerList=${inM} inOwnerList=${inO} owner=${rs(selfO)} after=${afterO}${ABSENT}`);
+  }
+  {
+    // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — ruling S4 (new check S2.4): rows of a PREVIOUS win are retired before the new win is credited
+    const c24 = await mk(tidA, "CRM", "CRM ชนะซ้ำ");
+    await setCrm(c24, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    const r24 = await mkRule(tidA, c24, { basis: "WON", kind: "PCT", config: { pctBp: 1_000 } });
+    const p24 = await mkPipe(tidA, c24);
+    const d24 = await mkDeal(tidA, c24, p24, uC[1], 100_000);
+    const c24o = ctx(tidA, c24, uO);
+    const w1 = await call(DL.moveDeal, c24o, aO, d24.id, { stageId: p24.WON });
+    await settle(tidA);
+    const old = (await comm({ dealId: d24.id }))[0] as Any;
+    // reopen WITHOUT the afterDealMoved hook (raw — the hook-skipped path the ruling is about) and lower the value to 50,000
+    const reAt = new Date();
+    await P.crmDealStageHistory.updateMany({ where: { dealId: d24.id, leftAt: null }, data: { leftAt: reAt } });
+    await P.crmDealStageHistory.create({ data: { tenantId: tidA, dealId: d24.id, fromStageId: p24.WON, toStageId: p24.OPEN, enteredAt: reAt, leftAt: null } });
+    await P.crmDeal.update({ where: { id: d24.id }, data: { kind: "OPEN", stageId: p24.OPEN, closedAt: null, stageEnteredAt: reAt, valueSatang: 50_000 } });
+    await sleep(50);
+    const w2 = await call(DL.moveDeal, c24o, aO, d24.id, { stageId: p24.WON });
+    await settle(tidA);
+    const e1 = fullOf("PCT", { pctBp: 1_000 }, b(100_000));
+    const e2 = fullOf("PCT", { pctBp: 1_000 }, b(50_000));
+    console.log(`  [arith] S2.4 WON 10 %: first win on 100,000 ⇒ ${e1} · reopened (hook skipped) · value 50,000 · re-win ⇒ old row removed, new ${e2}`);
+    const rows = await comm({ dealId: d24.id });
+    const oldGone = old ? !(await comm({ id: old.id }))[0] : false;
+    const aud = old ? ((await P.auditLog.count({ where: { tenantId: tidA, action: "crm.commission.remove", targetId: old.id } })) as number) : 0;
+    const ev = old ? ((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.commission.removed" } })) as Any[]).filter((e) => e.payload?.commissionId === old.id) : [];
+    const snap0 = j(rows);
+    const cw = ctx(tidA, c24, null);
+    const rr = [await call(F_.onWon, cw, { dealId: d24.id }), await call(F_.onWon, cw, { dealId: d24.id })];
+    rr.push(...(await Promise.all([call(F_.onWon, cw, { dealId: d24.id }), call(F_.onWon, cw, { dealId: d24.id })])));
+    const wonEv = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.deal.won" } })) as Any[]).filter((e) => e.payload?.dealId === d24.id);
+    for (const e of wonEv) { await deliver(e); await Promise.all([deliver(e), deliver(e)]); }
+    const snap1 = j(await comm({ dealId: d24.id }));
+    chk("C3.3-S2.4", `round-5 S4 — previous-win rows are retired: a deal won at 100,000 (${e1}) is reopened without the reopen hook, its value lowered to 50,000 and won again ⇒ the old row is REMOVED (row gone · audit crm.commission.remove · event crm.commission.removed) and ONE new row of ${e2} exists (refId '', same rule) · onWon ×2 + ×2 in parallel + the won events redelivered ⇒ unchanged`,
+      w1.ok && w2.ok && !!old && b(old.amountSatang) === e1 && oldGone && aud === 1 && ev.length === 1 && rows.length === 1 && b(rows[0].amountSatang) === e2 && rows[0].ruleId === r24 && rows[0].refId === "" && rr.every((x) => x.ok) && snap1 === snap0,
+      `removed · ${e2} · unchanged`, `win1=${rs(w1)} old=${old ? String(old.amountSatang) : "-"} gone=${oldGone} audit=${aud} event=${ev.length} rows=${desc(rows)} win2=${rs(w2)} replay=${rr.map((x) => (x.ok ? "ok" : x.err)).join("|")} unchanged=${snap1 === snap0}${ABSENT}`);
+  }
+
 
   // ═════════════════════════════════════════════════════════════════════════════
   // S3 — TIERED (marginal) + split between collaborators
@@ -679,8 +775,8 @@ try {
   console.log(`  [arith] dT4 TIERED full ${fullT4} paid 12,345,678 + 22,654,322 ⇒ ⌊${fullT4}·12,345,678/35,000,000⌋ = ${eT4a} + ${eT4b}`);
   {
     const rows = await comm({ dealId: dT4.id });
-    const a = rows.find((r) => r.refId === pt4a.rowId);
-    const bb = rows.find((r) => r.refId === pt4b.rowId);
+    const a = rows.find((r) => payOf(r.refId) === pt4a.rowId); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+    const bb = rows.find((r) => payOf(r.refId) === pt4b.rowId);
     chk("C3.3-S3.2", `TIERED × partial payments: the full tiered commission ${fullT4} is shared by the running total — ${eT4a} + ${eT4b} = ${fullT4}, not the tier rate applied to each payment on its own`,
       rows.length === 2 && a && bb && b(a.amountSatang) === eT4a && b(bb.amountSatang) === eT4b, `${eT4a}+${eT4b}`, `${desc(rows)}${ABSENT}`);
   }
@@ -711,7 +807,7 @@ try {
   console.log(`  [arith] dS2 full ${fullS2} · payment shares ${aS2a}/${aS2b} · split 1 collaborator: p1 thana ${spA.owner} + c1 ${spA.each} · p2 pook ${spB.owner} + c1 ${spB.each}`);
   {
     const rows = await comm({ dealId: dS2.id });
-    const pick = (ref: string, u: string) => rows.filter((r) => r.refId === ref && r.userId === u);
+    const pick = (ref: string, u: string) => rows.filter((r) => payOf(r.refId) === ref && r.userId === u); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
     const ok = rows.length === 4 && pick(ps2a.rowId, uTH).length === 1 && b(pick(ps2a.rowId, uTH)[0].amountSatang) === spA.owner && pick(ps2a.rowId, uC[0]).length === 1 && b(pick(ps2a.rowId, uC[0])[0].amountSatang) === spA.each
       && pick(ps2b.rowId, uPK).length === 1 && b(pick(ps2b.rowId, uPK)[0].amountSatang) === spB.owner && pick(ps2b.rowId, uC[0]).length === 1 && b(pick(ps2b.rowId, uC[0])[0].amountSatang) === spB.each
       && pick(ps2b.rowId, uTH).length === 0 && sumB(rows) === fullS2;
@@ -794,6 +890,81 @@ try {
       `${exp} · untouched`, `forged=${rs(forged)} rows=${desc(rc)} wrongDeal=${rs(wrongDeal)} dealA=${ra.length}${ABSENT}`, "MAJOR");
   }
 
+  {
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B1 (new check M6): the base T is valueSatang (pre-VAT) FROZEN on the first row of
+    //   (deal, rule); wonValueSatang (Σ grand totals incl. VAT) drifts after every sale and must never move the shares
+    const cF = await mk(tidA, "CRM", "CRM B1 คงที่");
+    const cTT = await mk(tidA, "CRM", "CRM B1 ขั้นบันได");
+    for (const x of [cF, cTT]) await setCrm(x, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    const R_F = { kind: "FIXED", config: { fixedSatang: 15_000, pctBp: 300 } };
+    const R_TT = { kind: "TIERED", config: { tiers: [{ uptoSatang: 500_000, pctBp: 500 }, { uptoSatang: null, pctBp: 800 }] } };
+    await mkRule(tidA, cF, R_F);
+    await mkRule(tidA, cTT, R_TT);
+    const dF = await mkDeal(tidA, cF, await mkPipe(tidA, cF), uC[1], 300_000);
+    const dT = await mkDeal(tidA, cTT, await mkPipe(tidA, cTT), uC[1], 1_000_000);
+    // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — ruling S-a: every payment enters `paid` PRE-VAT ⇒ the POS bills are REAL PosSale rows (grand 107,000 ·
+    //   vat 7,000 ⇒ net 100,000) so the product can read their VAT; the CrmDealPayment carries the gross like the money path writes it
+    const posPay = async (d: Deal, amount: number) =>
+      (await P.crmDealPayment.create({ data: { tenantId: d.tid, systemId: d.sys, dealId: d.id, refType: "POS_SALE", refId: await mkSale(d.tid, d.sys, amount, Math.round((amount * 7) / 107)), satang: BigInt(amount), status: "COUNTED", countedAt: NOWP } })).id as string;
+    const refsF: string[] = [];
+    for (let i = 1; i <= 3; i += 1) {
+      await P.crmDeal.update({ where: { id: dF.id }, data: { wonValueSatang: BigInt(107_000 * i) } }); // R-E.7 drift (grand totals incl. 7 % VAT)
+      const ref = await posPay(dF, 107_000);
+      refsF.push(ref);
+      await call(F_.onPaid, ctx(tidA, cF, null), { dealId: dF.id, refType: "DEAL_PAYMENT", refId: ref });
+    }
+    const refsT: string[] = [];
+    for (let i = 1; i <= 2; i += 1) {
+      await P.crmDeal.update({ where: { id: dT.id }, data: { wonValueSatang: BigInt(535_000 * i) } });
+      const ref = await posPay(dT, 535_000);
+      refsT.push(ref);
+      await call(F_.onPaid, ctx(tidA, cTT, null), { dealId: dT.id, refType: "DEAL_PAYMENT", refId: ref });
+    }
+    await settle(tidA);
+    const fullF = fullOf("FIXED", R_F.config, b(300_000));
+    const expF = seqShares(fullF, b(300_000), [b(100_000), b(100_000), b(100_000)]); // pre-VAT: 107,000 × (107,000 − 7,000) / 107,000 = 100,000
+    const driftF = fullOf("FIXED", R_F.config, b(321_000));
+    const fullT = fullOf("TIERED", R_TT.config, b(1_000_000));
+    const expT = seqShares(fullT, b(1_000_000), [b(500_000), b(500_000)]); // pre-VAT: 535,000 × 500,000 / 535,000 = 500,000
+    const grossF = seqShares(fullF, b(300_000), [b(107_000), b(107_000), b(107_000)]);
+    console.log(`  [arith] M6 FIXED 15,000 + ⌊300,000·300/10⁴⌋ = ${fullF} · 3 sales of 107,000 gross = 100,000 net ⇒ F(100k)/F(200k)−F(100k)/F(300k)−F(200k) = ${expF.join(" + ")} (gross shares would be ${grossF.join(" + ")} · a drifting base 321,000 would pay ${driftF}) · TIERED 5 %≤500k/8 % on 1,000,000 = 25,000 + 40,000 = ${fullT} · 2 × 535,000 gross = 500,000 net ⇒ ${expT.join(" + ")}`);
+    const rF = await comm({ dealId: dF.id });
+    const rT = await comm({ dealId: dT.id });
+    // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — payOf() in okF/okT
+    const okF = rF.length === 3 && refsF.every((ref, i) => { const r = rF.find((x) => payOf(x.refId) === ref); return r && b(r.amountSatang) === expF[i] && Number(r.basisSatang) === 300_000; }) && sumB(rF) === fullF;
+    const okT = rT.length === 2 && refsT.every((ref, i) => { const r = rT.find((x) => payOf(x.refId) === ref); return r && b(r.amountSatang) === expT[i] && Number(r.basisSatang) === 1_000_000; }) && sumB(rT) === fullT;
+    chk("C3.3-M6", `rulings B1 + S-a drift-proof pre-VAT base: 3 POS sales of 107,000 (100,000 + 7 % VAT) on a deal valued 300,000 while wonValueSatang drifts 107k→214k→321k ⇒ FIXED ฿150 + 3 % pays exactly ${fullF} in total (${expF.join("/")}), never ${driftF} · TIERED 5 % ≤ 500,000 / 8 % above on a deal of 1,000,000 paid by two sales of 535,000 (500,000 net) ⇒ exactly ${fullT} (${expT.join("/")}, the running total is proportional) · every payment enters the running total pre-VAT · every row's basisSatang = the frozen base`,
+      okF && okT, `${fullF} · ${fullT}`, `fixed=${desc(rF)} Σ=${sumB(rF)} bs=${rF.map((r) => String(r.basisSatang)).join("/")} tiered=${desc(rT)} Σ=${sumB(rT)}${ABSENT}`);
+  }
+  {
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B2 (new check M7): the running total heals itself after a voided payment
+    const c7 = await mk(tidA, "CRM", "CRM B2 ยกเลิกงวด");
+    await setCrm(c7, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidA, c7, { kind: "PCT", config: { pctBp: 1_000 } });
+    const d7 = await mkDeal(tidA, c7, await mkPipe(tidA, c7), uC[2], 10_000_000);
+    const q1 = await pay(d7, "m7p1", 6_000_000);
+    const q2 = await pay(d7, "m7p2", 6_000_000);
+    const v1 = await call(PM.reverseDocPayment, { tenantId: tidA, systemId: c7 }, { documentId: d7.inv, paymentId: q1.paymentId });
+    await settle(tidA);
+    const q3 = await pay(d7, "m7p3", 4_000_000);
+    const T7 = b(10_000_000);
+    const full7 = fullOf("PCT", { pctBp: 1_000 }, T7);
+    const e1 = F(full7, T7, b(6_000_000));
+    const e2 = F(full7, T7, b(12_000_000)) - e1; // p1 still counted
+    const e3 = F(full7, T7, b(6_000_000) + b(4_000_000)) - e2; // p1 voided: only p2 (still COUNTED, credited e2) + p3
+    const expNet = e1 + e2 - e1 + e3;
+    console.log(`  [arith] M7 T 10,000,000 · 10 % ⇒ full ${full7} · p1 6M ⇒ ${e1} · p2 6M ⇒ F(12M)−${e1} = ${e2} · void p1 ⇒ −${e1} · p3 4M ⇒ F(6M+4M)−${e2} = ${e3} · net ${expNet}`);
+    const rows = await comm({ dealId: d7.id });
+    const orig = (ref: string) => rows.find((r) => payOf(r.refId) === ref && !r.reversedOfId); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+    const o1 = orig(q1.rowId);
+    const rev1 = rows.filter((r) => r.reversedOfId && r.reversedOfId === o1?.id);
+    const net = sumB(rows.filter((r) => r.status !== "REJECTED"));
+    chk("C3.3-M7", `ruling B2 self-healing running total [VAT mode: the fixture's invoices are id-only (no account document) ⇒ no VAT, net = gross, so Σ shares = F_T(Σ net counted)]: T 10,000,000 at 10 % · p1 6M (${e1}) · p2 6M (${e2}) · p1 voided (reversal −${e1}) · p3 4M (${e3}) ⇒ net exactly ${expNet} = the full commission — the voided payment's share is earned again by the next payment, never lost and never paid twice`,
+      q1.counted && q2.counted && v1.ok && q3.counted && !!o1 && b(o1.amountSatang) === e1 && b(orig(q2.rowId)?.amountSatang ?? -1) === e2 && b(orig(q3.rowId)?.amountSatang ?? -1) === e3
+      && rev1.length === 1 && b(rev1[0].amountSatang) === -e1 && net === expNet && expNet === full7,
+      `${e1}/${e2}/−${e1}/${e3} · net ${expNet}`, `rows=${desc(rows)} net=${net} void=${rs(v1)}${ABSENT}`);
+  }
+
   // ═════════════════════════════════════════════════════════════════════════════
   // S4–S7 — approval → HR adjustment · reversal · hr.payroll.paid · approval cap (crmP: PCT 10 % · chain OWNER ⇒ PENDING)
   // ═════════════════════════════════════════════════════════════════════════════
@@ -870,6 +1041,31 @@ try {
       "waiting · REJECTED", `inactive=${inn?.status}/${ai.length} rejected=${rj?.status}/${ar.length}${ABSENT}`);
   }
 
+  {
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling S6 (new check S4.6): approvalRequired + NO chain ⇒ stays PENDING (never auto-approved)
+    //   and the owner is told ONCE (template `commission.pending`, flag AuditLog `crm.commission.escalate`) however often the row is advanced
+    const c6 = await mk(tidA, "CRM", "CRM ไม่มีสายอนุมัติ");
+    await setCrm(c6, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+    await mkRule(tidA, c6, { kind: "PCT", config: { pctBp: 1_000 } });
+    const d6 = await mkDeal(tidA, c6, await mkPipe(tidA, c6), uPK, 100_000);
+    await pay(d6, "s46", 100_000);
+    const r6 = (await comm({ dealId: d6.id }))[0] as Any;
+    const adv = fnOf(CM, "advanceById");
+    const a1 = await call(adv, { tenantId: tidA, commissionId: r6?.id ?? null });
+    const a2 = await Promise.all([call(adv, { tenantId: tidA, commissionId: r6?.id ?? null }), call(adv, { tenantId: tidA, commissionId: r6?.id ?? null })]);
+    const sy = await call(F_.syncPayroll, ctx(tidA, c6, null), {});
+    await settle(tidA);
+    const after6 = r6 ? ((await comm({ id: r6.id }))[0] as Any) : null;
+    const reqs = r6 ? ((await P.approvalRequest.count({ where: { tenantId: tidA, entityId: r6.id } })) as number) : -1;
+    const notes = r6 ? ((await P.appNotification.findMany({ where: { tenantId: tidA, recipientUserId: uO, body: { contains: `r=${r6.id}` } } })) as Any[]) : [];
+    const pendingNotes = notes.filter((x) => String(x.body).includes("n=commission.pending"));
+    const flags = r6 ? ((await P.auditLog.count({ where: { tenantId: tidA, action: "crm.commission.escalate", targetId: r6.id } })) as number) : -1;
+    const adj6 = await adjOf(r6?.id);
+    chk("C3.3-S4.6", "ruling S6: approvalRequired with NO `crm.commission` chain ⇒ the row stays PENDING (no ApprovalRequest, no adjustment) even after 3 more advances (1 + 2 in parallel) and a syncPayroll · the OWNER got exactly ONE `commission.pending` notification for it and there is exactly ONE `crm.commission.escalate` flag",
+      !!r6 && a1.ok && a2.every((x) => x.ok) && sy.ok && after6?.status === "PENDING" && !after6?.approvalRequestId && reqs === 0 && adj6.length === 0 && pendingNotes.length === 1 && flags === 1,
+      "PENDING · 1 notice · 1 flag", `row=${!!r6} advance=${a1.ok ? "ok" : a1.err}/${a2.map((x) => (x.ok ? "ok" : x.err)).join(",")} status=${after6?.status ?? "-"} requests=${reqs} adj=${adj6.length} notices=${pendingNotes.length}/${notes.length} flags=${flags}${ABSENT}`);
+  }
+
   console.log("\n── S7 · approval cap ──");
   {
     const s71 = await cOf("s71");
@@ -909,6 +1105,21 @@ try {
       "REJECTED · 0 · 0", `void=${rs(rv)} lateDecide=${j(late)} after=${after?.status ?? "removed"} reversals=${revRows.length} adj=${adj.length}${ABSENT}`);
   }
   {
+    // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — N5 (new check S0.5): `crm.commission.removed` — registered once (label + consumer) and emitted,
+    //   ids/satang only, when the PENDING commission of a voided payment is deleted (S5.1 above)
+    const lab = read(LABELS_FILE) + "\n" + read(WEBHOOK_LABELS);
+    const count = (lab.match(/value:\s*["']crm\.commission\.removed["']/g) ?? []).length;
+    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, type: "crm.commission.removed" } })) as Any[]).filter((e) => e.payload?.dealId === DP.s51.d.id);
+    const okKeys = ["amountSatang", "commissionId", "dealId", "periodKey", "reversedOfId", "ruleId", "status", "systemId", "userId"];
+    const e = evs[0];
+    const keysOk = !!e && Object.keys(e.payload ?? {}).every((k) => okKeys.includes(k));
+    const leak = PII.filter((x) => j(evs.map((z) => z.payload)).includes(x));
+    chk("C3.3-S0.5", "round-5 N5 — event `crm.commission.removed`: declared EXACTLY ONCE across the two label registries with a consumer in outbox-consumers.ts · emitted when the PENDING commission of a voided payment is deleted (S5.1): one event, key `crm.commission.removed#<id>`, payload ids + amount only (amountSatang = the removed amount, status PENDING), no PII",
+      count === 1 && typeof CONS?.["crm.commission.removed"] === "function" && evs.length === 1 && e?.idempotencyKey === `crm.commission.removed#${e?.payload?.commissionId}` && keysOk
+      && Number(e?.payload?.amountSatang) === Number(DP.s51.exp) && e?.payload?.status === "PENDING" && e?.systemId === crmP && leak.length === 0,
+      "1 label · consumer · 1 event ids-only", `labels=${count} consumer=${typeof CONS?.["crm.commission.removed"]} events=${evs.length} payload=${cut(j(e?.payload), 200)} leaks=${leak.length}${ABSENT}`, "MAJOR");
+  }
+  {
     const r = await call(F_.approve, ctxP(uO), aO, { id: (await cOf("s52"))?.id, reason: "อนุมัติก่อนยกเลิกบิล" });
     await settle(tidA);
     const orig = await cOf("s52");
@@ -922,11 +1133,16 @@ try {
     s52Rev = revRows[0] ?? null;
     const dAdj = await adjOf(s52Rev?.id);
     const origAfter = (await comm({ id: orig?.id ?? "-" }))[0] as Any;
-    chk("C3.3-S5.2", `reverse AFTER approval (adjustment requested, not yet in a run): ONE REVERSED row = −${DP.s52.exp} · reversedOfId = the original · refType REVERSAL · refId = original id · periodKey ${expK} (first month after ${base} without a payroll run) · ONE DEDUCTION adjustment ${DP.s52.exp} (HR amounts are positive) in ${expK} linked to the reversal row · the original row keeps APPROVED`,
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B3: the original's HR adjustment is still HR-PENDING and in no run ⇒ it is WITHDRAWN
+    //   (hr.withdrawCommissionAdjustment deletes it under guard PENDING + runId null), NOTHING is deducted, the original's link is cleared and
+    //   the reversal row is closed with a note — a DEDUCTION would take back money HR never paid
+    const origAdjGone = origAdj[0] ? !(await P.hrPayAdjustment.findUnique({ where: { id: origAdj[0].id } })) : false;
+    const origAdjNow = await adjOf(orig?.id);
+    chk("C3.3-S5.2", `reverse AFTER approval while HR has NOT approved the adjustment yet (PENDING, no run — ruling B3): ONE REVERSED row = −${DP.s52.exp} · reversedOfId = the original · refType REVERSAL · refId = original id · periodKey ${expK} (first month after ${base} without a payroll run) · the original's un-approved HR adjustment is withdrawn (row gone, link cleared), NOTHING deducted, the reversal row carries the settled note · the original row keeps APPROVED`,
       r.ok && origAdj.length === 1 && rv.ok && revRows.length === 1 && b(s52Rev.amountSatang) === -DP.s52.exp && s52Rev.status === "REVERSED" && s52Rev.refType === "REVERSAL" && s52Rev.refId === orig?.id
-      && s52Rev.periodKey === expK && dAdj.length === 1 && dAdj[0].kind === "DEDUCTION" && b(dAdj[0].amountSatang) === DP.s52.exp && dAdj[0].periodKey === expK && dAdj[0].employeeId === eTH
-      && s52Rev.hrPayAdjustmentId === dAdj[0].id && origAfter?.status === "APPROVED",
-      `−${DP.s52.exp} · DEDUCTION ${expK}`, `approve=${rs(r)} origAdj=${origAdj.length} void=${rs(rv)} rev=${cut(j(revRows.map((x) => ({ a: x.amountSatang, s: x.status, t: x.refType, p: x.periodKey }))), 160)} ded=${cut(j(dAdj.map((a) => ({ k: a.kind, a: a.amountSatang, p: a.periodKey }))), 120)} orig=${origAfter?.status}${ABSENT}`);
+      && s52Rev.periodKey === expK && dAdj.length === 0 && origAdjGone && origAdjNow.length === 0 && !origAfter?.hrPayAdjustmentId && !s52Rev.hrPayAdjustmentId && !!s52Rev.note
+      && origAfter?.status === "APPROVED",
+      `−${DP.s52.exp} · withdrawn · 0 deduction · note`, `approve=${rs(r)} origAdj=${origAdj.length} gone=${origAdjGone} now=${origAdjNow.length} origLink=${origAfter?.hrPayAdjustmentId ?? null} void=${rs(rv)} rev=${cut(j(revRows.map((x) => ({ a: x.amountSatang, s: x.status, t: x.refType, p: x.periodKey, note: x.note }))), 200)} ded=${dAdj.length} orig=${origAfter?.status}${ABSENT}`);
   }
   {
     // X4.2 — reversal never double-reverses: the void replayed + commissions.reverse ×2 in a row + ×2 in parallel
@@ -938,8 +1154,12 @@ try {
     await settle(tidA);
     const revRows = await comm({ reversedOfId: orig?.id ?? "-" });
     const dAdj = revRows.length ? await adjOf(revRows[0].id) : [];
-    chk("C3.3-X4.2", "X4 (M10) reversal never double-reverses: the void replayed + commissions.reverse(refId) ×2 in a row + ×2 in parallel ⇒ still ONE negative row and ONE deduction",
-      rv2.ok && rr.every((r) => r.ok) && revRows.length === 1 && dAdj.length === 1, "1 · 1", `void2=${rs(rv2)} calls=${rr.map((r) => (r.ok ? "ok" : r.err)).join("|")} reversals=${revRows.length} deductions=${dAdj.length}${ABSENT}`);
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B3: after the withdrawal of S5.2 there is no deduction to double; the replay must not
+    //   create one, nor re-send the original, nor reopen the settled reversal
+    const origNow = await adjOf(orig?.id);
+    chk("C3.3-X4.2", "X4 (M10) reversal never double-reverses: the void replayed + commissions.reverse(refId) ×2 in a row + ×2 in parallel ⇒ still ONE negative row, still NO deduction and NO adjustment for the original (ruling B3 — its un-approved adjustment was withdrawn), the settled note stays",
+      rv2.ok && rr.every((r) => r.ok) && revRows.length === 1 && dAdj.length === 0 && origNow.length === 0 && !!revRows[0]?.note && !revRows[0]?.hrPayAdjustmentId,
+      "1 · 0 · 0", `void2=${rs(rv2)} calls=${rr.map((r) => (r.ok ? "ok" : r.err)).join("|")} reversals=${revRows.length} deductions=${dAdj.length} origAdj=${origNow.length} note=${!!revRows[0]?.note}${ABSENT}`);
   }
   {
     const r = await call(F_.approve, ctxP(uO), aO, { id: (await cOf("s54"))?.id, reason: "อนุมัติ รอผูกพนักงาน" });
@@ -1177,6 +1397,28 @@ try {
       "create · update · 2 × 403 · 7 × VALIDATION · audit", `create=${rs(good)} update=${rs(upd)} mgr=${rs(mgr)} staff=${rs(stf)} ${res.join(" ")} rules=${count} audits=${aud.length}${ABSENT}`, "MAJOR");
   }
 
+  {
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B4 (new check M8): a rule that already has commission rows cannot change its basis
+    const before = (await P.crmCommissionRule.findUnique({ where: { id: rS1 } })) as Any;
+    const hasRows = (await P.crmCommission.count({ where: { ruleId: rS1 } })) as number;
+    const refusedB = await call(F_.updateRule, ctx(tidA, crmS1, uO), aO, rS1, { basis: "WON" });
+    const after = (await P.crmCommissionRule.findUnique({ where: { id: rS1 } })) as Any;
+    // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — the refusal also covers kind / config (rate) / minDealSatang; a non-money field (name) still changes
+    const refusedK = await call(F_.updateRule, ctx(tidA, crmS1, uO), aO, rS1, { kind: "FIXED", config: { fixedSatang: 1_000 } });
+    const refusedC = await call(F_.updateRule, ctx(tidA, crmS1, uO), aO, rS1, { config: { pctBp: 600 } });
+    const refusedMin = await call(F_.updateRule, ctx(tidA, crmS1, uO), aO, rS1, { minDealSatang: 1_000 });
+    const afterAll = (await P.crmCommissionRule.findUnique({ where: { id: rS1 } })) as Any;
+    const nameOk = await call(F_.updateRule, ctx(tidA, crmS1, uO), aO, rS1, { name: `กฎเปลี่ยนชื่อ ${TAG}` });
+    const afterName = (await P.crmCommissionRule.findUnique({ where: { id: rS1 } })) as Any;
+    const moneySame = afterName && afterName.kind === before?.kind && j(afterName.config) === j(before?.config) && j(afterName.minDealSatang) === j(before?.minDealSatang) && afterName.basis === before?.basis;
+    const ctrlId = await mkRule(tidA, crmR, { kind: "PCT", config: { pctBp: 100 } }); // no rows ⇒ the basis may change (positive control)
+    const ctrl = await call(F_.updateRule, ctx(tidA, crmR, uO), aO, ctrlId, { basis: "WON" });
+    const ctrlRow = (await P.crmCommissionRule.findUnique({ where: { id: ctrlId } })) as Any;
+    chk("C3.3-M8", "ruling B4 (+ round 3): on a rule that already has commission rows, changing the basis (PAID → WON), the kind (PCT → FIXED), the rate (config 500 → 600 bp) or minDealSatang ⇒ VALIDATION (Thai) each time and the rule is byte-identical afterwards · a rename of the same rule succeeds with the money fields unchanged · a basis change on a rule WITHOUT rows succeeds (positive control)",
+      hasRows > 0 && isVal(refusedB) && isVal(refusedK) && isVal(refusedC) && isVal(refusedMin) && j(after) === j(before) && j(afterAll) === j(before) && nameOk.ok && !!moneySame && ctrl.ok && ctrlRow?.basis === "WON",
+      "4 × VALIDATION · unchanged · rename ok · control ok", `rows=${hasRows} basis=${rs(refusedB)} kind=${rs(refusedK)} config=${rs(refusedC)} min=${rs(refusedMin)} unchanged=${j(afterAll) === j(before)} rename=${rs(nameOk)}/${moneySame} control=${rs(ctrl)}/${ctrlRow?.basis}${ABSENT}`, "MAJOR");
+  }
+
   // ═════════════════════════════════════════════════════════════════════════════
   // S8 — report · UI · personas (pixel parity = gate D7, the controller photographs owner/thana × 1440/390)
   // ═════════════════════════════════════════════════════════════════════════════
@@ -1272,6 +1514,513 @@ try {
   // ═════════════════════════════════════════════════════════════════════════════
   // X3 · X4.1 — real concurrency in worker PROCESSES (tenant X) + the global replay
   // ═════════════════════════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT C3.3 round-3 (26 ก.ย.) — controller round-3 rulings: R1 (value-0 base grows) · S-b (reversal vs HR reject race) ·
+  //   S-c (rehome in place, never an APPROVED adjustment) · S-d (chain self-decision · requestedById never null) · S-e (queue has no
+  //   3-day cut for a deal with no row yet) · no retro credit (M11). Tenants Q and M are dedicated so the scoped minute-job
+  //   `runPayrollSync(now, { tenantIds })` touches nothing of tenant A.
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── round 3 · R1 · S-a..S-e ──");
+  const ADV = fnOf(CM, "advanceById");
+  const SYNC = fnOf(CM, "runPayrollSync");
+  const spawnT = (tid: string, arg: Any, startAt: number) => new Promise<string[]>((resolve) => {
+    const enc = Buffer.from(JSON.stringify(arg), "utf8").toString("base64url");
+    const ch = spawn("pnpm", ["exec", "tsx", THIS_FILE, "--x3-worker", tid, String(startAt), enc], { env: process.env });
+    let out = "";
+    const to = setTimeout(() => { try { ch.kill("SIGKILL"); } catch { /* gone */ } }, 300_000);
+    ch.stdout.on("data", (d: Any) => { out += String(d); });
+    ch.stderr.on("data", (d: Any) => { out += String(d); });
+    ch.on("error", (e: Any) => { clearTimeout(to); resolve([`SPAWN-ERROR ${String(e)}`]); });
+    ch.on("close", () => { clearTimeout(to); const m = /X3WORKER (\[.*\])/.exec(out); resolve(m ? (JSON.parse(m[1]) as string[]) : [`NO-OUTPUT ${cut(out, 200)}`]); });
+  });
+  const R5 = { kind: "PCT", config: { pctBp: 500 } };
+  const R10 = { kind: "PCT", config: { pctBp: 1_000 } };
+
+  // ── M9 · R1: a deal WITHOUT value — T = max(frozen, pre-VAT so far) grows; new rows carry the grown T ──
+  const cM9 = await mk(tidA, "CRM", "CRM R1 ไม่มีมูลค่า");
+  await setCrm(cM9, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+  await mkRule(tidA, cM9, R5);
+  const pM9 = await mkPipe(tidA, cM9);
+  const T1 = b(10_000);
+  const T2 = b(110_000) > T1 ? b(110_000) : T1;
+  const m9a = fullOf("PCT", R5.config, T1) >= Z ? F(fullOf("PCT", R5.config, T1), T1, b(10_000)) : Z;
+  const m9b = F(fullOf("PCT", R5.config, T2), T2, b(110_000)) - m9a;
+  console.log(`  [arith] M9 value 0 · 5 % · bill 1 10,700 gross (700 VAT ⇒ 10,000 net): T=10,000 ⇒ ${m9a} · bill 2 107,000 gross (100,000 net): T=max(10,000, 110,000)=110,000 ⇒ F=⌊5,500·110,000/110,000⌋ − ${m9a} = ${m9b} · Σ ${m9a + m9b}`);
+  let m9seq = "";
+  let m9ok = false;
+  {
+    const d = await mkDeal(tidA, cM9, pM9, uC[1], 0, [], true);
+    const s1 = await mkSale(tidA, cM9, 10_700, 700);
+    const r1 = (await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: cM9, dealId: d.id, refType: "POS_SALE", refId: s1, satang: BigInt(10_700), status: "COUNTED", countedAt: NOWP } })).id as string;
+    await call(F_.onPaid, ctx(tidA, cM9, null), { dealId: d.id, refType: "DEAL_PAYMENT", refId: r1 });
+    const s2 = await mkSale(tidA, cM9, 107_000, 7_000);
+    const r2 = (await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: cM9, dealId: d.id, refType: "POS_SALE", refId: s2, satang: BigInt(107_000), status: "COUNTED", countedAt: NOWP } })).id as string;
+    await call(F_.onPaid, ctx(tidA, cM9, null), { dealId: d.id, refType: "DEAL_PAYMENT", refId: r2 });
+    await settle(tidA);
+    const rows = await comm({ dealId: d.id });
+    const a = rows.find((r) => payOf(r.refId) === r1); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+    const bb = rows.find((r) => payOf(r.refId) === r2);
+    m9ok = rows.length === 2 && !!a && !!bb && b(a.amountSatang) === m9a && b(bb.amountSatang) === m9b && b(a.basisSatang) === T1 && b(bb.basisSatang) === T2 && sumB(rows) === m9a + m9b;
+    m9seq = `${desc(rows)} bs=${rows.map((r) => String(r.basisSatang)).join("/")}`;
+  }
+  const M9R = 3;
+  const m9deals: { d: Deal; s1: string; s2: string }[] = [];
+  for (let r = 0; r < M9R; r += 1) {
+    const d = await mkDeal(tidA, cM9, pM9, uC[1], 0, [], true);
+    m9deals.push({ d, s1: await mkSale(tidA, cM9, 10_700, 700), s2: await mkSale(tidA, cM9, 107_000, 7_000) });
+  }
+  const m9Start = Date.now() + 45_000;
+  const m9Arg = (which: "s1" | "s2") => ({ rounds: m9deals.map((x, r) => ({ atMs: r * 3_000, calls: [{ ph: "R", fn: "posCount", sys: cM9, a: { dealId: x.d.id, saleId: x[which], satang: which === "s1" ? 10_700 : 107_000, now: NOWP.toISOString() }, n: 1 }] })) });
+  const m9w = (await Promise.all([spawnT(tidA, m9Arg("s1"), m9Start), spawnT(tidA, m9Arg("s2"), m9Start)])).flat();
+  await settle(tidA);
+  {
+    const per: string[] = [];
+    let ok = true;
+    for (const x of m9deals) {
+      const rows = await comm({ dealId: x.d.id });
+      const bs = rows.map((r) => b(r.basisSatang));
+      const good = rows.length === 2 && sumB(rows) === m9a + m9b && bs.every((v) => v <= T2) && bs.some((v) => v === T2);
+      ok = ok && good;
+      per.push(`${rows.length}r/Σ${sumB(rows)}/bs${bs.join("|")}`);
+    }
+    chk("C3.3-M9a", `[positive control] 2 worker PROCESSES counted the two bills of each of ${M9R} value-0 deals at the same moment (count + onPaid ×1 + ×2 in parallel) and every call returned`,
+      m9w.length === M9R * 2 && m9w.every((o) => o === "R:OK"), `${M9R * 2} R:OK`, `${m9w.length} ${cut(m9w.filter((o) => o !== "R:OK").slice(0, 2).join(" | "), 200)}${ABSENT}`, "MAJOR");
+    chk("C3.3-M9", `ruling R1 (BLOCKER) — a deal with valueSatang 0: T = max(frozen, pre-VAT so far) GROWS and each new row carries the grown T · sequential: bill 10,700 ⇒ ${m9a} (basis 10,000) then bill 107,000 ⇒ ${m9b} (basis 110,000), Σ ${m9a + m9b} · the same two bills counted in parallel by 2 processes (${M9R} rounds) ⇒ Σ still ${m9a + m9b}, every basisSatang ≤ 110,000 and the largest = 110,000`,
+      m9ok && ok, `${m9a}+${m9b} · parallel Σ ${m9a + m9b}`, `seq=${m9seq} parallel=${per.join(" ")}${ABSENT}`);
+  }
+
+  // ── M11 · no retro credit: money counted before the rule existed earns nothing from that rule ──
+  {
+    const c11 = await mk(tidA, "CRM", "CRM กฎมาทีหลัง");
+    await setCrm(c11, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    const late = await mkRule(tidA, c11, { ...R10, createdAt: T("2026-09-16T00:00:00Z") }); // after the payment (15 Sep 12:00 Thai)
+    const early = await mkRule(tidA, c11, { ...R10, createdAt: T("2026-09-01T00:00:00Z") }); // before it (positive control)
+    const d = await mkDeal(tidA, c11, await mkPipe(tidA, c11), uC[1], 100_000);
+    const ref = await rawPay(d, 100_000);
+    const r = await call(F_.onPaid, ctx(tidA, c11, null), { dealId: d.id, refType: "DEAL_PAYMENT", refId: ref });
+    await settle(tidA);
+    const rows = await comm({ dealId: d.id });
+    chk("C3.3-M11", "no retroactive credit: a payment counted on 15 Sep earns NOTHING from a rule created on 16 Sep, while a rule created on 1 Sep (positive control) pays its 10,000 for the same payment",
+      r.ok && rows.filter((x) => x.ruleId === late).length === 0 && rows.filter((x) => x.ruleId === early).length === 1 && Number(rows.find((x) => x.ruleId === early)?.amountSatang) === 10_000,
+      "late 0 · early 10,000", `onPaid=${rs(r)} late=${rows.filter((x) => x.ruleId === late).length} early=${desc(rows.filter((x) => x.ruleId === early))}${ABSENT}`, "MAJOR");
+  }
+
+  // ── ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — M12 (ruling B1 incarnation key) · M13 (ruling S1 zero-share revisit) ──
+  {
+    const APC = fnOf(CM, "afterPaymentCounted");
+    const APR = fnOf(CM, "afterPaymentsReversed");
+    const c12 = await mk(tidA, "CRM", "CRM ร่างใหม่ของงวด");
+    await setCrm(c12, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidA, c12, R10);
+    const d = await mkDeal(tidA, c12, await mkPipe(tidA, c12), uC[1], 10_000);
+    const payRef = `${TAG}-m12p`;
+    const docRef = `${TAG}-m12doc`;
+    await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c12, dealId: d.id, refType: "PAYMENT", refId: payRef, satang: BigInt(9_700), status: "COUNTED", countedAt: NOWP } });
+    const t0 = new Date(NOWP.getTime() + 60_000);
+    const sRow = await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c12, dealId: d.id, refType: "DOC_SETTLE", refId: docRef, satang: BigInt(300), status: "COUNTED", countedAt: t0 } });
+    const c0 = { tenantId: tidA, systemId: c12 };
+    const a1 = await call(APC, c0, { dealId: d.id, refType: "PAYMENT", refId: payRef });
+    const a2 = await call(APC, c0, { dealId: d.id, refType: "DOC_SETTLE", refId: docRef });
+    await settle(tidA);
+    const rows0 = await comm({ dealId: d.id });
+    // the C2.7 "wake": REVERSED + re-COUNTED in ONE statement (the REVERSED state is never visible) — new satang 100, new countedAt
+    const t1 = new Date(NOWP.getTime() + 2 * 3_600_000);
+    await P.crmDealPayment.update({ where: { id: sRow.id }, data: { satang: BigInt(100), countedAt: t1 } });
+    const a3 = await call(APC, c0, { dealId: d.id, refType: "DOC_SETTLE", refId: docRef });
+    await settle(tidA);
+    const rows1 = await comm({ dealId: d.id });
+    const T12 = b(10_000);
+    const full12m = fullOf("PCT", R10.config, T12);
+    const eP = F(full12m, T12, b(9_700));
+    const eS = F(full12m, T12, b(10_000)) - eP;
+    const eN = F(full12m, T12, b(9_800)) - eP; // the stale settle key no longer counts: paid = 9,700 + 100
+    const expNet = eP + eS - eS + eN;
+    console.log(`  [arith] M12 T 10,000 · 10 % ⇒ full ${full12m} · payment 9,700 ⇒ ${eP} · settle 300 (key #c${t0.getTime()}) ⇒ F(10,000)−${eP} = ${eS} · settle re-counted as 100 (key #c${t1.getTime()}) ⇒ −${eS} reversal + F(9,800)−${eP} = ${eN} · net ${expNet}`);
+    const oldKey = `${sRow.id}#c${t0.getTime()}`;
+    const newKey = `${sRow.id}#c${t1.getTime()}`;
+    const oldRow = rows1.find((r) => r.refId === oldKey);
+    const rev = oldRow ? rows1.filter((r) => r.reversedOfId === oldRow.id) : [];
+    const newRow = rows1.filter((r) => r.refId === newKey);
+    const net = sumB(rows1.filter((r) => r.status !== "REJECTED"));
+    const snap0 = j(rows1);
+    const rp = [await call(APC, c0, { dealId: d.id, refType: "DOC_SETTLE", refId: docRef }), await call(APR, c0, { dealId: d.id })];
+    rp.push(...(await Promise.all([call(APC, c0, { dealId: d.id, refType: "DOC_SETTLE", refId: docRef }), call(APC, c0, { dealId: d.id, refType: "DOC_SETTLE", refId: docRef }), call(APR, c0, { dealId: d.id })])));
+    await settle(tidA);
+    const snap1 = j(await comm({ dealId: d.id }));
+    chk("C3.3-M12", `round-5 B1 incarnation key: payment 9,700 (${eP}) + DOC_SETTLE 300 (${eS}, refId ${"<id>#c<t0>"}) · the settle row is re-counted in one statement as 100 with a new countedAt ⇒ afterPaymentCounted reverses the old key (−${eS}) and credits the new key <id>#c<t1> (${eN}) ⇒ net exactly ${expNet} · afterPaymentCounted ×3 (2 in parallel) + afterPaymentsReversed ×2 ⇒ unchanged`,
+      a1.ok && a2.ok && a3.ok && rows0.length === 2 && !!oldRow && b(oldRow.amountSatang) === eS && rev.length === 1 && b(rev[0].amountSatang) === -eS && newRow.length === 1 && b(newRow[0].amountSatang) === eN && net === expNet && rp.every((x) => x.ok) && snap1 === snap0,
+      `−${eS} · +${eN} · net ${expNet}`, `rows=${desc(rows1)} old=${!!oldRow} rev=${rev.length} new=${newRow.length} net=${net} replay=${rp.map((x) => (x.ok ? "ok" : x.err)).join("|")} unchanged=${snap1 === snap0}${ABSENT}`);
+  }
+  {
+    const c13 = await mk(tidA, "CRM", "CRM งวดที่เคยได้ศูนย์");
+    await setCrm(c13, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidA, c13, R10);
+    const d = await mkDeal(tidA, c13, await mkPipe(tidA, c13), uC[1], 10_000);
+    const tA = new Date(NOWP.getTime() - 10 * DAY);
+    const pA = await pay(d, "m13a", 10_000, tA);
+    const pB = await pay(d, "m13b", 4_000, new Date(tA.getTime() + 3_600_000)); // over-collection: its share is 0 ⇒ no row
+    const bBefore = (await comm({ dealId: d.id })).filter((r) => payOf(r.refId) === pB.rowId).length;
+    const v = await call(PM.reverseDocPayment, { tenantId: tidA, systemId: c13 }, { documentId: d.inv, paymentId: pA.paymentId }); // voided 10 days later
+    await settle(tidA);
+    const rows = await comm({ dealId: d.id });
+    const T13 = b(10_000);
+    const f13 = fullOf("PCT", R10.config, T13);
+    const eA = F(f13, T13, b(10_000));
+    const eB0 = F(f13, T13, b(14_000)) - eA;
+    const eB = F(f13, T13, b(4_000));
+    console.log(`  [arith] M13 T 10,000 · 10 % ⇒ full ${f13} · A 10,000 ⇒ ${eA} · B 4,000 ⇒ F(14,000)−${eA} = ${eB0} (no row) · void A (10 days later) ⇒ −${eA} and B re-credited F(4,000)−0 = ${eB} · net ${eA - eA + eB}`);
+    const rowA = rows.find((r) => payOf(r.refId) === pA.rowId && !r.reversedOfId);
+    const revA = rowA ? rows.filter((r) => r.reversedOfId === rowA.id) : [];
+    const rowB = rows.filter((r) => payOf(r.refId) === pB.rowId && !r.reversedOfId);
+    const net = sumB(rows.filter((r) => r.status !== "REJECTED"));
+    chk("C3.3-M13", `round-5 S1 zero-share revisit: A 10,000 earns ${eA} · B 4,000 over-collects (share ${eB0} ⇒ no row) · A is voided 10 days later (outside the minute-job's 3-day window) ⇒ −${eA} AND B is re-credited ${eB} by afterPaymentsReversed itself ⇒ net ${eB}`,
+      pA.counted && pB.counted && eB0 === Z && bBefore === 0 && v.ok && !!rowA && b(rowA.amountSatang) === eA && revA.length === 1 && b(revA[0].amountSatang) === -eA && rowB.length === 1 && b(rowB[0].amountSatang) === eB && net === eB,
+      `−${eA} · +${eB} · net ${eB}`, `rows=${desc(rows)} bBefore=${bBefore} void=${rs(v)} net=${net}${ABSENT}`);
+  }
+
+  // ── M10 · S-e: value set 4 days after the money — the minute-job queue (1ก) still credits it (tenant M, scoped run) ──
+  {
+    const tidM = await mkTenant("m");
+    await member(tidM, uO, "OWNER");
+    await member(tidM, uTH, "STAFF", SALES);
+    const c10 = await mk(tidM, "CRM", "CRM มูลค่ามาทีหลัง");
+    await setCrm(c10, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidM, c10, R10);
+    const d = await mkDeal(tidM, c10, await mkPipe(tidM, c10), uTH, 0, [], true); // no value · no document ⇒ T = 0
+    const ref = await rawPay(d, 100_000);
+    const first = await call(F_.onPaid, ctx(tidM, c10, null), { dealId: d.id, refType: "DEAL_PAYMENT", refId: ref });
+    const before = (await comm({ dealId: d.id })).length;
+    await P.crmDeal.update({ where: { id: d.id }, data: { valueSatang: 100_000 } }); // the value is filled in later
+    const later = new Date(NOWP.getTime() + 4 * DAY);
+    const run = await call(SYNC, later, { tenantIds: [tidM] });
+    await settle(tidM);
+    const rows = await comm({ dealId: d.id });
+    const exp = fullOf("PCT", R10.config, b(100_000));
+    chk("C3.3-M10", `ruling S-e: a payment counted on a deal with NO value and NO document earns nothing at first (T = 0) · 4 days later the value 100,000 is filled in and the minute-job queue runPayrollSync(now = +4 days, scoped to this tenant) still credits it (${exp}, period ${PK}) — no 3-day cut for a deal that has no row for the rule yet`,
+      first.ok && before === 0 && run.ok && rows.length === 1 && b(rows[0].amountSatang) === exp && payOf(rows[0].refId) === ref && rows[0].periodKey === PK, // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+      `0 → ${exp}`, `first=${rs(first)} before=${before} run=${rs(run)} rows=${desc(rows)}${ABSENT}`);
+  }
+
+  // ── tenant Q: S4.8 (chain self-decision · requestedById) → S4.7 (rehome) → S5.5 (withdraw after rehome + race with HR reject) ──
+  const tidQ = await mkTenant("q");
+  await member(tidQ, uO, "OWNER");
+  await member(tidQ, uM, "MANAGER", { "crm._maxCommissionApproveSatang": CAP });
+  await member(tidQ, uTH, "STAFF", SALES);
+  const hrQ = await mk(tidQ, "HR", "พนักงาน Q");
+  const cHRQ = { tenantId: tidQ, systemId: hrQ };
+  const eQ: Record<string, string> = {};
+  for (const u of [uO, uM, uTH]) eQ[u] = await mkEmp(tidQ, hrQ, u);
+  const cQC = await mk(tidQ, "CRM", "CRM สายอนุมัติ Q");
+  const cQS = await mk(tidQ, "CRM", "CRM อัตโนมัติ Q");
+  await setCrm(cQC, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+  await setCrm(cQS, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+  await APV.createPolicy({ tenantId: tidQ }, { name: `คอมมิชชัน Q ${TAG}`, entityType: "crm.commission", systemId: cQC, steps: [{ order: 1, approverRole: "MANAGER" }] });
+  await mkRule(tidQ, cQC, R10);
+  await mkRule(tidQ, cQS, R10);
+  const pQC = await mkPipe(tidQ, cQC);
+  const pQS = await mkPipe(tidQ, cQS);
+  const qRow = async (sys: string, pipe: Pipe, owner: string, value: number) => {
+    const d = await mkDeal(tidQ, sys, pipe, owner, value);
+    const ref = await rawPay(d, value);
+    await call(F_.onPaid, ctx(tidQ, sys, null), { dealId: d.id, refType: "DEAL_PAYMENT", refId: ref });
+    await settle(tidQ);
+    return { d, ref, row: (await comm({ dealId: d.id }))[0] as Any };
+  };
+  const decideAs = async (who: string, role: string, commissionId: string | undefined) => {
+    const req = await reqOf(tidQ, commissionId);
+    if (!req) return { ok: false, status: "NO_REQUEST" };
+    return APV.decide({ userId: who, role, unitAccess: role === "OWNER" ? [] : ["*"], permissions: {} }, { tenantId: tidQ }, req.id, { decision: "APPROVED", note: `ข้อสอบ ${TAG}` });
+  };
+  {
+    const qM = await qRow(cQC, pQC, uM, 100_000); // the MANAGER's own commission
+    const qT = await qRow(cQC, pQC, uTH, 200_000);
+    const qO = await qRow(cQC, pQC, uO, 300_000); // the OWNER's own commission
+    const qA = await qRow(cQS, pQS, uTH, 400_000); // auto path (approvalRequired false)
+    const dM = await decideAs(uM, "MANAGER", qM.row?.id);
+    const dT = await decideAs(uM, "MANAGER", qT.row?.id);
+    const dO = await decideAs(uO, "OWNER", qO.row?.id);
+    await settle(tidQ);
+    const st = async (x: { row: Any }) => (x.row ? ((await comm({ id: x.row.id }))[0] as Any) : null);
+    const [sM, sT, sO, sA] = [await st(qM), await st(qT), await st(qO), await st(qA)];
+    const [aM, aT, aO2, aA] = [await adjOf(sM?.id), await adjOf(sT?.id), await adjOf(sO?.id), await adjOf(sA?.id)];
+    // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — ruling S3: the self-decided row is NOT rejected — it stays PENDING, keeps its request, gets a Thai note
+    //   and the OWNER is escalated to exactly once (AuditLog `crm.commission.escalate`)
+    const escM = sM ? ((await P.auditLog.count({ where: { tenantId: tidQ, action: "crm.commission.escalate", targetId: sM.id } })) as number) : -1;
+    chk("C3.3-S4.8", "ruling S-d (+ round-5 S3): a chain decision by the row's OWN user (a MANAGER who is the chain step) does not approve it ⇒ stays PENDING (request kept · note · owner notified once), no HR adjustment · the same MANAGER approving someone else's row ⇒ APPROVED and the HR adjustment's requestedById = him · the OWNER deciding his own row ⇒ APPROVED, requestedById = owner · the auto path (approvalRequired false) ⇒ requestedById = the row's user — never null",
+      dM.ok && dT.ok && dO.ok && sM?.status === "PENDING" && !!sM?.approvalRequestId && !!sM?.note && aM.length === 0 && escM === 1 && sT?.status === "APPROVED" && aT.length === 1 && aT[0].requestedById === uM
+      && sO?.status === "APPROVED" && aO2.length === 1 && aO2[0].requestedById === uO && sA?.status === "APPROVED" && aA.length === 1 && aA[0].requestedById === uTH,
+      "PENDING+note+1 escalation · by=manager · by=owner · by=user", `decide=${dM.ok}/${dT.ok}/${dO.ok} self=${sM?.status}/req=${!!sM?.approvalRequestId}/note=${!!sM?.note}/esc=${escM}/${aM.length} other=${sT?.status}/${aT[0]?.requestedById === uM} owner=${sO?.status}/${aO2[0]?.requestedById === uO} auto=${sA?.status}/${aA[0]?.requestedById === uTH ? "user" : aA[0]?.requestedById ?? "null"}${ABSENT}`);
+  }
+  let rehomed: { ref: string; row: Any; adjId: string | null } | null = null;
+  {
+    const qA = await qRow(cQS, pQS, uTH, 500_000); // will be HR-APPROVED after the run exists (stranded but approved)
+    const qB = await qRow(cQS, pQS, uM, 600_000); // stays HR-PENDING in a period that gets a run (stranded)
+    const adjA0 = (await adjOf(qA.row?.id))[0] as Any;
+    const adjB0 = (await adjOf(qB.row?.id))[0] as Any;
+    await PAY.createPayrollRun(cHRQ, { periodKey: PK, payDate: T("2026-09-30T03:00:00Z") }); // pulls nothing (both still PENDING at HR)
+    if (adjA0) await PAY.decideAdjustment(cHRQ, adjA0.id, "APPROVED", { userId: uO, isOwner: true });
+    const snapA = j(adjA0 ? await P.hrPayAdjustment.findUnique({ where: { id: adjA0.id } }) : null);
+    const expB = freePeriod(adjB0?.periodKey ?? PK, await runsOf(hrQ), false);
+    const s1 = await call(SYNC, new Date(), { tenantIds: [tidQ] });
+    const s2 = await call(SYNC, new Date(), { tenantIds: [tidQ] });
+    await settle(tidQ);
+    const a1 = adjA0 ? ((await P.hrPayAdjustment.findUnique({ where: { id: adjA0.id } })) as Any) : null;
+    const b1 = adjB0 ? ((await P.hrPayAdjustment.findUnique({ where: { id: adjB0.id } })) as Any) : null;
+    const rowB = qB.row ? ((await comm({ id: qB.row.id }))[0] as Any) : null;
+    const adjsB = await adjOf(qB.row?.id);
+    chk("C3.3-S4.7", `ruling S-c: the stranded-adjustment sweeper (runPayrollSync ×2, scoped) never touches an HR-APPROVED adjustment sitting in a period that has a run (byte-identical, same id, still APPROVED) · an HR-PENDING one in that period is moved IN PLACE: same id, periodKey ${adjB0?.periodKey ?? PK} → ${expB} (next month without a run), still PENDING, the commission still points at it and there is still exactly one`,
+      !!adjA0 && !!adjB0 && s1.ok && s2.ok && j(a1) === snapA && a1?.status === "APPROVED" && b1?.id === adjB0.id && b1?.periodKey === expB && b1?.status === "PENDING" && rowB?.hrPayAdjustmentId === adjB0.id && adjsB.length === 1,
+      `A untouched · B ${expB}`, `A=${!!adjA0} untouched=${j(a1) === snapA}/${a1?.status} B=${b1 ? `${b1.id === adjB0?.id ? "same" : "NEW"}/${b1.periodKey}/${b1.status}` : "gone"} link=${rowB?.hrPayAdjustmentId === adjB0?.id} count=${adjsB.length} runs=${rs(s1)}${ABSENT}`);
+    rehomed = { ref: qB.ref, row: qB.row, adjId: adjB0?.id ?? null };
+  }
+  // S5.5 part 1 — the rehomed (PENDING, moved) original is reversed ⇒ that adjustment is withdrawn, nothing deducted
+  let s55a = false;
+  let s55aWhy = "";
+  if (rehomed?.row) {
+    await P.crmDealPayment.update({ where: { id: rehomed.ref }, data: { status: "REVERSED", reversedAt: new Date() } });
+    const rv = await call(F_.reverse, ctx(tidQ, cQS, null), { refId: rehomed.ref, reason: "ยกเลิกหลังย้ายงวด" });
+    await settle(tidQ);
+    const rev = (await comm({ reversedOfId: rehomed.row.id })) as Any[];
+    const ded = rev.length ? await adjOf(rev[0].id) : [];
+    const gone = rehomed.adjId ? !(await P.hrPayAdjustment.findUnique({ where: { id: rehomed.adjId } })) : false;
+    s55a = rv.ok && rev.length === 1 && ded.length === 0 && gone && !!rev[0].note;
+    s55aWhy = `reverse=${rs(rv)} rev=${rev.length} ded=${ded.length} withdrawn=${gone} note=${!!rev[0]?.note}`;
+  } else s55aWhy = "no rehomed row";
+  // S5.5 part 2 — reversal racing HR's REJECT of the original's PENDING adjustment (2 processes, ≥ 6 rounds)
+  const S55R = 6;
+  const race: { ref: string; row: Any; adjId: string | null }[] = [];
+  for (let r = 0; r < S55R; r += 1) {
+    const x = await qRow(cQS, pQS, uTH, 100_000 + r);
+    const adj = (await adjOf(x.row?.id))[0] as Any;
+    await P.crmDealPayment.update({ where: { id: x.ref }, data: { status: "REVERSED", reversedAt: new Date() } }); // the money was voided
+    race.push({ ref: x.ref, row: x.row, adjId: adj?.id ?? null });
+  }
+  const raceStart = Date.now() + 45_000;
+  const argRev = { rounds: race.map((x, r) => ({ atMs: r * 3_000, calls: [{ ph: "V", fn: "reverse", sys: cQS, a: { refId: x.ref }, n: 2 }] })) };
+  const argHr = { rounds: race.map((x, r) => ({ atMs: r * 3_000, calls: [{ ph: "H", fn: "hrDecide", sys: cQS, a: { hrSystemId: hrQ, adjustmentId: x.adjId ?? "-", decision: "REJECTED", deciderId: uO }, n: 2 }] })) };
+  const raceOut = (await Promise.all([spawnT(tidQ, argRev, raceStart), spawnT(tidQ, argHr, raceStart)])).flat();
+  await settle(tidQ);
+  {
+    const vOut = raceOut.filter((o) => o.startsWith("V:"));
+    const hOut = raceOut.filter((o) => o.startsWith("H:"));
+    const hrWon = hOut.filter((o) => o === "H:OK:decided").length;
+    chk("C3.3-S5.5a", `[positive control] ${S55R} rounds: the reversal (process 1, ×2) and HR's REJECT of the original's adjustment (process 2, ×2) fired at the same moment and every call returned (HR decided first in ${hrWon} calls — the rest arrived after the withdrawal)`,
+      race.every((x) => x.row && x.adjId) && vOut.length === S55R * 2 && vOut.every((o) => o === "V:OK") && hOut.length === S55R * 2 && hOut.every((o) => /^H:OK/.test(o)),
+      `${S55R * 4} results`, `${raceOut.length} ${cut(raceOut.filter((o) => !/^[VH]:OK/.test(o)).slice(0, 2).join(" | "), 200)}${ABSENT}`, "MAJOR");
+    const per: string[] = [];
+    let ok = true;
+    for (const x of race) {
+      const rev = (await comm({ reversedOfId: x.row?.id ?? "-" })) as Any[];
+      const ded = rev.length ? await adjOf(rev[0].id) : [];
+      const orig = x.adjId ? ((await P.hrPayAdjustment.findUnique({ where: { id: x.adjId } })) as Any) : null;
+      const good = rev.length === 1 && ded.length === 0 && !!rev[0].note && (orig === null || orig.status === "REJECTED");
+      ok = ok && good;
+      per.push(`${rev.length}rev/${ded.length}ded/${orig ? orig.status : "withdrawn"}`);
+    }
+    chk("C3.3-S5.5", `ruling S-b: a reversal NEVER deducts money HR never paid — (1) the original whose PENDING adjustment the sweeper had moved in place is reversed ⇒ that adjustment is withdrawn, no DEDUCTION · (2) ${S55R} rounds of the reversal racing HR rejecting the original's adjustment on another connection ⇒ every round ends with ONE settled reversal row (note), ZERO DEDUCTION, and the original adjustment either withdrawn or REJECTED`,
+      s55a && ok, "withdrawn · 0 DEDUCTION × rounds", `rehomed: ${s55aWhy} · race: ${per.join(" ")}${ABSENT}`);
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT C3.3 round-6 (26 ก.ย.) — B-1 (per-rule "done" + nomatch flags) · B-2 (WON→WON) · S-1 (late reverse never hits the current
+  //   incarnation) · S-2 (first-counted time survives a wake) · rejected incarnation · updateRule field classes. Tenant N is dedicated
+  //   (scoped runPayrollSync). NOTE: `OpsAlertState` has no tenantId — the finally block deletes our nomatch flags explicitly.
+  // ═════════════════════════════════════════════════════════════════════════════
+  console.log("\n── round 6 · B-1 B-2 S-1 S-2 ──");
+  const NOMATCH = "crm.commission.nomatch:";
+  const flagsOfRule = async (ruleId: string) => (await P.opsAlertState.findMany({ where: { source: { startsWith: NOMATCH, endsWith: `:${ruleId}` } } })) as Any[];
+  const tidN = await mkTenant("n");
+  await member(tidN, uO, "OWNER");
+  await member(tidN, uC[1], "STAFF", SALES);
+  await member(tidN, uC[2], "STAFF", SALES);
+  const c14 = await mk(tidN, "CRM", "CRM เปลี่ยนเจ้าของ");
+  await setCrm(c14, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+  const team14 = (await P.team.create({ data: { tenantId: tidN, name: `ทีมอื่น ${TAG}` } })).id as string; // neither A nor B is a member
+  const r14 = await mkRule(tidN, c14, R10);
+  const r14t = (await P.crmCommissionRule.create({ data: { tenantId: tidN, systemId: c14, name: `กฎทีม ${TAG}`, basis: "PAID", kind: "PCT", config: { pctBp: 500 }, teamId: team14, productIds: [], createdAt: RULE_EPOCH } })).id as string;
+  const p14 = await mkPipe(tidN, c14);
+  const d14 = await mkDeal(tidN, c14, p14, uC[1], 10_000);
+  const pay14 = await rawPay(d14, 10_000);
+  {
+    const a1 = await call(F_.onPaid, ctx(tidN, c14, null), { dealId: d14.id, refType: "DEAL_PAYMENT", refId: pay14 });
+    await P.crmDeal.update({ where: { id: d14.id }, data: { ownerUserId: uC[2] } }); // A → B after the credit
+    const s1 = await call(SYNC, new Date(), { tenantIds: [tidN] });
+    const s2 = await call(SYNC, new Date(), { tenantIds: [tidN] });
+    const a2 = await call(F_.onPaid, ctx(tidN, c14, null), { dealId: d14.id, refType: "DEAL_PAYMENT", refId: pay14 });
+    await settle(tidN);
+    const rows = await comm({ dealId: d14.id });
+    const exp = fullOf("PCT", R10.config, b(10_000));
+    const flags = await flagsOfRule(r14t);
+    const wantFlag = `${NOMATCH}${pay14}#c${NOWP.getTime()}:${r14t}`;
+    console.log(`  [arith] M14 T 10,000 · 10 % ⇒ ${exp} for owner A · team rule 5 % (owner not in the team) ⇒ 0 rows + flag ${wantFlag.slice(0, 40)}…`);
+    chk("C3.3-M14", `round-6 B-1: a payment credited to owner A (${exp}) — the owner then becomes B, runPayrollSync ×2 (scoped) + onPaid again ⇒ still exactly ONE row (A, ${exp}), none for B, Σ ${exp}; the second rule (team the owner is not in) has 0 rows and exactly ONE OpsAlertState flag \`crm.commission.nomatch:<payId>#c<ms>:<ruleId>\``,
+      a1.ok && s1.ok && s2.ok && a2.ok && rows.length === 1 && rows[0].userId === uC[1] && b(rows[0].amountSatang) === exp && rows[0].ruleId === r14 && sumB(rows) === exp
+      && rows.filter((r) => r.ruleId === r14t).length === 0 && flags.length === 1 && flags[0].source === wantFlag,
+      `1 row A ${exp} · 1 flag`, `rows=${desc(rows)} flags=${flags.length}/${flags[0]?.source === wantFlag} sync=${rs(s1)}/${rs(s2)}${ABSENT}`);
+  }
+  {
+    // S0.6 — updateRule field classes on a rule WITH rows (r14) · and flags cleared by a matching edit on a rule WITHOUT rows (r14t)
+    const cR6 = ctx(tidN, c14, uO);
+    const snap = async () => { const r = (await P.crmCommissionRule.findUnique({ where: { id: r14 } })) as Any; return j({ basis: r?.basis, kind: r?.kind, config: r?.config, min: r?.minDealSatang, pipelineId: r?.pipelineId, teamId: r?.teamId, productIds: r?.productIds }); };
+    const s0 = await snap();
+    const okName = await call(F_.updateRule, cR6, aO, r14, { name: `กฎ 10% เปลี่ยนชื่อ ${TAG}` });
+    const okOff = await call(F_.updateRule, cR6, aO, r14, { active: false });
+    const okOn = await call(F_.updateRule, cR6, aO, r14, { active: true });
+    const okSort = await call(F_.updateRule, cR6, aO, r14, { sortOrder: 7 });
+    const p14b = await mkPipe(tidN, c14);
+    const refused: [string, Res][] = [
+      ["config", await call(F_.updateRule, cR6, aO, r14, { config: { pctBp: 2_000 } })],
+      ["pipeline", await call(F_.updateRule, cR6, aO, r14, { pipelineId: p14b.id })],
+      ["team", await call(F_.updateRule, cR6, aO, r14, { teamId: team14 })],
+      ["products", await call(F_.updateRule, cR6, aO, r14, { productIds: [`${TAG}-prod`] })],
+    ];
+    const s1 = await snap();
+    const after = (await P.crmCommissionRule.findUnique({ where: { id: r14 } })) as Any;
+    const fBefore = (await flagsOfRule(r14t)).length;
+    const clr = await call(F_.updateRule, cR6, aO, r14t, { teamId: null });
+    const fAfter = (await flagsOfRule(r14t)).length;
+    chk("C3.3-S0.6", "updateRule field classes: on a rule WITH rows, name / active (off → on) / sortOrder edits are allowed · money (config) AND matching (pipeline · team · products) edits are refused with VALIDATION and leave every money/matching field byte-identical · a matching edit (team → none) on a rule WITHOUT rows succeeds and clears that rule's nomatch flags (1 → 0)",
+      okName.ok && okOff.ok && okOn.ok && okSort.ok && after?.active === true && after?.sortOrder === 7 && refused.every(([, r]) => isVal(r)) && s1 === s0 && fBefore === 1 && clr.ok && fAfter === 0,
+      "4 allowed · 4 VALIDATION · unchanged · flags 1→0", `allowed=${[okName, okOff, okOn, okSort].map((r) => (r.ok ? "ok" : r.err)).join("|")} refused=${refused.map(([k, r]) => `${k}:${isVal(r) ? "VALIDATION" : rs(r)}`).join(" ")} unchanged=${s1 === s0} flags=${fBefore}→${fAfter} clear=${rs(clr)}${ABSENT}`, "MAJOR");
+  }
+  {
+    // S2.5 — B-2: a move WON → WON (second won stage) changes nothing
+    const c25 = await mk(tidA, "CRM", "CRM ชนะสองขั้น");
+    await setCrm(c25, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidA, c25, { basis: "WON", kind: "PCT", config: { pctBp: 1_000 } });
+    const stages: [string, string, number][] = [["ใหม่", "OPEN", 20], ["ชนะ", "WON", 100], ["ชนะ-ส่งมอบ", "WON", 100], ["แพ้", "LOST", 0]];
+    const pp = (await P.crmPipeline.create({ data: { tenantId: tidA, systemId: c25, name: `ขาย ${TAG}-${nx()}`, stages: { create: stages.map(([name, kind, probability], i) => ({ tenantId: tidA, systemId: c25, sortOrder: i, name, kind, probability })) } }, include: { stages: true } })) as Any;
+    const sid = (name: string) => (pp.stages as Any[]).find((x) => x.name === name).id as string;
+    const pipe25 = { id: pp.id as string, OPEN: sid("ใหม่"), WON: sid("ชนะ"), LOST: sid("แพ้") };
+    const d25 = await mkDeal(tidA, c25, pipe25, uC[1], 100_000);
+    const m1 = await call(DL.moveDeal, ctx(tidA, c25, uO), aO, d25.id, { stageId: sid("ชนะ") });
+    await settle(tidA);
+    const rows0 = await comm({ dealId: d25.id });
+    const ev0 = (await P.outboxEvent.count({ where: { tenantId: tidA, systemId: c25, type: { startsWith: "crm.commission." } } })) as number;
+    const m2 = await call(DL.moveDeal, ctx(tidA, c25, uM), aM, d25.id, { stageId: sid("ชนะ-ส่งมอบ") });
+    await settle(tidA);
+    const w = await call(F_.onWon, ctx(tidA, c25, null), { dealId: d25.id });
+    await settle(tidA);
+    const rows1 = await comm({ dealId: d25.id });
+    const ev1 = (await P.outboxEvent.count({ where: { tenantId: tidA, systemId: c25, type: { startsWith: "crm.commission." } } })) as number;
+    const rm = rows0[0] ? ((await P.auditLog.count({ where: { tenantId: tidA, action: "crm.commission.remove", targetId: rows0[0].id } })) as number) : -1;
+    chk("C3.3-S2.5", `round-6 B-2: WON rule 10 % · deal 100,000 moved to the first WON stage ⇒ one row ${fullOf("PCT", { pctBp: 1_000 }, b(100_000))} · the MANAGER moves it WON → second WON stage and onWon runs again ⇒ the commission rows are byte-identical (id · createdAt · amount · status), no new crm.commission.* event, no crm.commission.remove audit`,
+      m1.ok && m2.ok && w.ok && rows0.length === 1 && b(rows0[0].amountSatang) === b(10_000) && j(rows1) === j(rows0) && ev1 === ev0 && rm === 0,
+      "identical · events unchanged", `move1=${rs(m1)} move2=${rs(m2)} onWon=${rs(w)} rows=${desc(rows1)} identical=${j(rows1) === j(rows0)} events=${ev0}→${ev1} removeAudit=${rm}${ABSENT}`);
+  }
+  {
+    // M15 — S-2: a wake keeps the FIRST counted time (no retro credit for a rule created in between) · approvalRequired ON + chain
+    const APC = fnOf(CM, "afterPaymentCounted");
+    const c15 = await mk(tidA, "CRM", "CRM ปลุกงวดหลังสร้างกฎ");
+    await setCrm(c15, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+    await APV.createPolicy({ tenantId: tidA }, { name: `คอมมิชชัน M15 ${TAG}`, entityType: "crm.commission", systemId: c15, steps: [{ order: 1, approverRole: "OWNER" }] });
+    const R1 = await mkRule(tidA, c15, R10);
+    const t0 = NOWP;
+    const d15 = await mkDeal(tidA, c15, await mkPipe(tidA, c15), uC[1], 1_000);
+    const ref15 = `${TAG}-m15p`;
+    const row15 = await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c15, dealId: d15.id, refType: "PAYMENT", refId: ref15, satang: BigInt(1_000), status: "COUNTED", countedAt: t0, createdAt: t0 } });
+    const c0 = { tenantId: tidA, systemId: c15 };
+    const x1 = await call(APC, c0, { dealId: d15.id, refType: "PAYMENT", refId: ref15 });
+    await settle(tidA);
+    const first = (await comm({ dealId: d15.id }))[0] as Any;
+    const req0 = first?.approvalRequestId ? ((await P.approvalRequest.findUnique({ where: { id: first.approvalRequestId } })) as Any) : null;
+    const LATE = await mkRule(tidA, c15, { ...R10, createdAt: new Date(t0.getTime() + DAY) });
+    const t2 = new Date(t0.getTime() + 2 * DAY);
+    await P.crmDealPayment.update({ where: { id: row15.id }, data: { satang: BigInt(500), countedAt: t2 } }); // the wake: one statement
+    const x2 = await call(APC, c0, { dealId: d15.id, refType: "PAYMENT", refId: ref15 });
+    await settle(tidA);
+    const rows = await comm({ dealId: d15.id });
+    const reqAfter = req0 ? ((await P.approvalRequest.findUnique({ where: { id: req0.id } })) as Any) : null;
+    const T15 = b(1_000);
+    const e0 = F(fullOf("PCT", R10.config, T15), T15, b(1_000));
+    const e1 = F(fullOf("PCT", R10.config, T15), T15, b(500));
+    // DOC_SETTLE counted (and born) before the only rule existed, woken after it ⇒ nothing
+    const c15b = await mk(tidA, "CRM", "CRM ปิดยอดก่อนมีกฎ");
+    await setCrm(c15b, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+    await mkRule(tidA, c15b, { ...R10, createdAt: new Date(t0.getTime() + DAY) });
+    const d15b = await mkDeal(tidA, c15b, await mkPipe(tidA, c15b), uC[1], 10_000);
+    const doc15 = `${TAG}-m15doc`;
+    const sr = await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c15b, dealId: d15b.id, refType: "DOC_SETTLE", refId: doc15, satang: BigInt(300), status: "COUNTED", countedAt: t0, createdAt: t0 } });
+    const y1 = await call(APC, { tenantId: tidA, systemId: c15b }, { dealId: d15b.id, refType: "DOC_SETTLE", refId: doc15 });
+    await P.crmDealPayment.update({ where: { id: sr.id }, data: { satang: BigInt(100), countedAt: t2 } });
+    const y2 = await call(APC, { tenantId: tidA, systemId: c15b }, { dealId: d15b.id, refType: "DOC_SETTLE", refId: doc15 });
+    await settle(tidA);
+    const rowsB = await comm({ dealId: d15b.id });
+    console.log(`  [arith] M15 T 1,000 · 10 % · counted 1,000 at t0 ⇒ PENDING ${e0} · rule LATE created t0+1d · woken as 500 at t0+2d ⇒ old PENDING deleted, R1 = F(500) = ${e1}, LATE 0 (first counted t0 < LATE) · DOC_SETTLE born/counted t0, only rule created t0+1d, woken t0+2d ⇒ 0 rows`);
+    const live = rows.filter((r) => !r.reversedOfId);
+    chk("C3.3-M15", `round-6 S-2 (approvalRequired ON + chain): a payment counted at t0 gives a PENDING ${e0} for R1 with a request · a rule LATE is created at t0+1d · the payment is woken as 500 at t0+2d ⇒ the old PENDING row is deleted and its request CANCELLED, ONE new R1 row ${e1} PENDING with key <id>#c<t0+2d>, LATE earns NOTHING (first counted at t0 — no retro credit) · a DOC_SETTLE born and counted before its only rule existed, woken after it ⇒ 0 rows`,
+      x1.ok && x2.ok && !!first && b(first.amountSatang) === e0 && first.status === "PENDING" && req0?.status === "PENDING" && !(await comm({ id: first.id }))[0] && reqAfter?.status === "CANCELLED"
+      && live.length === 1 && live[0].ruleId === R1 && b(live[0].amountSatang) === e1 && live[0].status === "PENDING" && live[0].refId === `${row15.id}#c${t2.getTime()}` && rows.filter((r) => r.ruleId === LATE).length === 0
+      && y1.ok && y2.ok && rowsB.length === 0,
+      `R1 ${e0} → ${e1} · LATE 0 · settle 0`, `first=${first ? `${first.amountSatang}/${first.status}/${req0?.status}` : "-"} rows=${desc(rows)} oldReq=${reqAfter?.status ?? "-"} late=${rows.filter((r) => r.ruleId === LATE).length} settleRows=${rowsB.length}${ABSENT}`);
+  }
+  {
+    // S4.9 — a human-REJECTED row: its next incarnation is born PENDING with the "เคยถูกปฏิเสธ" note and is NOT auto-approved (approvalRequired off)
+    const APC = fnOf(CM, "afterPaymentCounted");
+    const c49 = await mk(tidA, "CRM", "CRM เคยถูกปฏิเสธ");
+    await setCrm(c49, { uiVersion: 2, bridgesEnabled: true, commission: REQ });
+    await APV.createPolicy({ tenantId: tidA }, { name: `คอมมิชชัน S4.9 ${TAG}`, entityType: "crm.commission", systemId: c49, steps: [{ order: 1, approverRole: "OWNER" }] });
+    await mkRule(tidA, c49, R10);
+    const d49 = await mkDeal(tidA, c49, await mkPipe(tidA, c49), uC[1], 100_000);
+    const ref49 = `${TAG}-s49p`;
+    const pr = await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c49, dealId: d49.id, refType: "PAYMENT", refId: ref49, satang: BigInt(100_000), status: "COUNTED", countedAt: NOWP } });
+    const c0 = { tenantId: tidA, systemId: c49 };
+    await call(APC, c0, { dealId: d49.id, refType: "PAYMENT", refId: ref49 });
+    await settle(tidA);
+    const old = (await comm({ dealId: d49.id }))[0] as Any;
+    const rj = await call(F_.reject, ctx(tidA, c49, uO), aO, { id: old?.id ?? "-", reason: "ยอดไม่ตรงกับใบเสร็จ" });
+    await setCrm(c49, { commission: AUTO }); // the shop now turns approvals OFF
+    const t1 = new Date(NOWP.getTime() + 3_600_000);
+    await P.crmDealPayment.update({ where: { id: pr.id }, data: { countedAt: t1 } }); // woken (same amount, new incarnation)
+    const w = await call(APC, c0, { dealId: d49.id, refType: "PAYMENT", refId: ref49 });
+    await settle(tidA);
+    const nw = (await comm({ dealId: d49.id })).filter((r) => r.id !== old?.id && !r.reversedOfId);
+    const a1 = await call(ADV, { tenantId: tidA, commissionId: nw[0]?.id ?? null });
+    await Promise.all([call(ADV, { tenantId: tidA, commissionId: nw[0]?.id ?? null }), call(ADV, { tenantId: tidA, commissionId: nw[0]?.id ?? null })]);
+    await settle(tidA);
+    const cur = nw[0] ? ((await comm({ id: nw[0].id }))[0] as Any) : null;
+    const oldNow = old ? ((await comm({ id: old.id }))[0] as Any) : null;
+    const exp49 = fullOf("PCT", R10.config, b(100_000));
+    chk("C3.3-S4.9", `round-6: a commission REJECTED by a person (${exp49}) — its payment is woken as a new incarnation after the shop turned approvals OFF ⇒ ONE new row ${exp49} PENDING whose note starts "เคยถูกปฏิเสธ", no approval request, and it stays PENDING after advanceById ×3 (1 + 2 in parallel) — never auto-approved · the REJECTED row is untouched`,
+      rj.ok && oldNow?.status === "REJECTED" && w.ok && a1.ok && nw.length === 1 && b(nw[0].amountSatang) === exp49 && cur?.status === "PENDING" && String(cur?.note ?? "").startsWith("เคยถูกปฏิเสธ") && !cur?.approvalRequestId && cur?.refId === `${pr.id}#c${t1.getTime()}`,
+      "PENDING · note · not auto-approved", `reject=${rs(rj)} old=${oldNow?.status} new=${desc(nw)} now=${cur?.status}/${cut(cur?.note, 30)}/req=${!!cur?.approvalRequestId}${ABSENT}`);
+  }
+  {
+    // M16 — S-1: a late reverse({refId}) racing afterPaymentsReversed never reverses the CURRENT incarnation (worker processes)
+    const APC = fnOf(CM, "afterPaymentCounted");
+    const c16 = await mk(tidA, "CRM", "CRM ถอนมาช้า");
+    await setCrm(c16, { uiVersion: 2, bridgesEnabled: true, commission: AUTO });
+    await mkRule(tidA, c16, R10);
+    const d16 = await mkDeal(tidA, c16, await mkPipe(tidA, c16), uC[1], 10_000);
+    const doc16 = `${TAG}-m16doc`;
+    const t0 = new Date(NOWP.getTime() + 60_000);
+    const sr = await P.crmDealPayment.create({ data: { tenantId: tidA, systemId: c16, dealId: d16.id, refType: "DOC_SETTLE", refId: doc16, satang: BigInt(300), status: "COUNTED", countedAt: t0, createdAt: t0 } });
+    const c0 = { tenantId: tidA, systemId: c16 };
+    await call(APC, c0, { dealId: d16.id, refType: "DOC_SETTLE", refId: doc16 });
+    const t1 = new Date(NOWP.getTime() + 2 * 3_600_000);
+    await P.crmDealPayment.update({ where: { id: sr.id }, data: { satang: BigInt(100), countedAt: t1 } });
+    await call(APC, c0, { dealId: d16.id, refType: "DOC_SETTLE", refId: doc16 });
+    await settle(tidA);
+    const before = j(await comm({ dealId: d16.id }));
+    const T16 = b(10_000);
+    const f16 = fullOf("PCT", R10.config, T16);
+    const e300 = F(f16, T16, b(300));
+    const e100 = F(f16, T16, b(100));
+    console.log(`  [arith] M16 T 10,000 · 10 % · settle 300 ⇒ ${e300} · woken as 100 ⇒ −${e300} + ${e100} ⇒ Σ ${e300 - e300 + e100} · then 3 rounds × (reverse({refId}) ×3 ∥ afterPaymentsReversed ×3) in 2 processes`);
+    const start = Date.now() + 45_000;
+    const mkArg = (fn: string) => ({ rounds: [0, 1, 2].map((r) => ({ atMs: r * 3_000, calls: [{ ph: "S", fn, sys: c16, a: { refId: sr.id, dealId: d16.id }, n: 3 }] })) });
+    const outs = (await Promise.all([spawnT(tidA, mkArg("reverse"), start), spawnT(tidA, mkArg("apr"), start)])).flat();
+    await settle(tidA);
+    const rows = await comm({ dealId: d16.id });
+    const curKey = `${sr.id}#c${t1.getTime()}`;
+    const curRow = rows.find((r) => r.refId === curKey);
+    const curRev = curRow ? rows.filter((r) => r.reversedOfId === curRow.id) : [];
+    chk("C3.3-M16", `round-6 S-1: settle 300 (${e300}) woken as 100 ⇒ −${e300} + ${e100} · then a late reverse({refId: <payId>}) and afterPaymentsReversed fired together (2 processes × 3 × 3 rounds) ⇒ every row byte-identical to before, the current incarnation <payId>#c<t1> has NO reversal, Σ = ${e100}`,
+      outs.length === 18 && outs.every((o) => o === "S:OK") && j(rows) === before && !!curRow && b(curRow.amountSatang) === e100 && curRev.length === 0 && sumB(rows) === e300 - e300 + e100,
+      `identical · Σ ${e100}`, `workers=${outs.length}/${cut(outs.filter((o) => o !== "S:OK").slice(0, 2).join(" | "), 160)} identical=${j(rows) === before} rows=${desc(rows)} Σ=${sumB(rows)} curRev=${curRev.length}${ABSENT}`);
+  }
+
+
   console.log("\n── X3 · concurrency (processes) ──");
   const ROUNDS = 3;
   const R_X = { kind: "PCT", config: { pctBp: 500 } };
@@ -1307,6 +2056,9 @@ try {
   await settle(tidX);
   for (const c of xc) {
     c.orig = ((await comm({ dealId: c.d.id, refType: "DEAL_PAYMENT" }))[0] as Any)?.id ?? null;
+    // ORACLE-EDIT C3.3 money-review (26 ก.ย.) — ruling B3: only an HR-APPROVED/PAID original is taken back by a DEDUCTION ⇒ HR approves the
+    //   original's adjustment first so "exactly ONE DEDUCTION under a 12-way race" stays the thing proven (tenant X has no payroll run)
+    for (const a of await adjOf(c.orig)) await PAY.decideAdjustment({ tenantId: tidX, systemId: hrX }, a.id, "APPROVED", { userId: uO, isOwner: true });
     await P.crmDealPayment.update({ where: { id: c.ref }, data: { status: "REVERSED", reversedAt: new Date() } }); // the money was voided (raw — the race below is commissions.reverse itself)
   }
   for (const x of xd) {
@@ -1360,8 +2112,8 @@ try {
     for (let r = 0; r < ROUNDS; r += 1) {
       const pays = (await P.crmDealPayment.findMany({ where: { dealId: xa[r].id, status: "COUNTED" } })) as Any[];
       const rows = await comm({ dealId: xa[r].id });
-      const ra = rows.find((x) => pays.find((p) => p.id === x.refId && Number(p.satang) === PA));
-      const rb = rows.find((x) => pays.find((p) => p.id === x.refId && Number(p.satang) === PB));
+      const ra = rows.find((x) => pays.find((p) => p.id === payOf(x.refId) && Number(p.satang) === PA)); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+      const rb = rows.find((x) => pays.find((p) => p.id === payOf(x.refId) && Number(p.satang) === PB));
       const good = pays.length === 2 && rows.length === 2 && ra && rb && sumB(rows) === fullX && b(ra.amountSatang) >= bA[0] && b(ra.amountSatang) <= bA[1] && b(rb.amountSatang) >= bB[0] && b(rb.amountSatang) <= bB[1];
       ok = ok && !!good;
       per.push(`${pays.length}p/${rows.length}r/Σ${sumB(rows)}`);
@@ -1377,8 +2129,8 @@ try {
     let ok = true;
     for (let r = 0; r < ROUNDS; r += 1) {
       const rows = await comm({ dealId: xb[r].d.id });
-      const ra = rows.filter((x) => x.refId === xb[r].ra);
-      const rb = rows.filter((x) => x.refId === xb[r].rb);
+      const ra = rows.filter((x) => payOf(x.refId) === xb[r].ra); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
+      const rb = rows.filter((x) => payOf(x.refId) === xb[r].rb);
       const good = rows.length === 2 && ra.length === 1 && rb.length === 1 && sumB(rows) === fullX && b(ra[0].amountSatang) >= bA[0] && b(ra[0].amountSatang) <= bA[1] && b(rb[0].amountSatang) >= bB[0] && b(rb[0].amountSatang) <= bB[1];
       ok = ok && !!good;
       per.push(`${rows.length}r/Σ${sumB(rows)}`);
@@ -1399,7 +2151,7 @@ try {
       ok = ok && good;
       per.push(`${revs.length}rev/${ded.length}ded`);
     }
-    chk("C3.3-X3.3", `CRITICAL — 12 parallel reversals of the same payment (APPROVED commission with a requested adjustment) ⇒ exactly ONE negative row (−${fullOf("PCT", R_X.config, b(1_000_000))}) and ONE DEDUCTION adjustment per round · ${ROUNDS} rounds`,
+    chk("C3.3-X3.3", `CRITICAL — 12 parallel reversals of the same payment (APPROVED commission whose adjustment HR already APPROVED — ruling B3 · ORACLE-EDIT money-review) ⇒ exactly ONE negative row (−${fullOf("PCT", R_X.config, b(1_000_000))}) and ONE DEDUCTION adjustment per round · ${ROUNDS} rounds`,
       ok, `1rev/1ded ×${ROUNDS}`, `${per.join(" ")}${ABSENT}`);
   }
   {
@@ -1436,12 +2188,14 @@ try {
   // X8 — payloads ids only
   // ═════════════════════════════════════════════════════════════════════════════
   {
-    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: { in: [tidA, tidX] }, type: { in: EVENTS } } })) as Any[]);
+    const evs = ((await P.outboxEvent.findMany({ where: { tenantId: { in: [tidA, tidX] }, type: { in: [...EVENTS, "crm.commission.removed"] } } })) as Any[]); // ORACLE-EDIT C3.3 round-5 (26 ก.ย.)
     const allowed: Record<string, string[]> = {
       "hr.payroll.paid": ["periodKey", "runId"],
       "crm.commission.created": ["amountSatang", "commissionId", "dealId", "periodKey", "reversedOfId", "ruleId", "status", "systemId", "userId"],
       "crm.commission.approved": ["amountSatang", "commissionId", "dealId", "periodKey", "reversedOfId", "ruleId", "status", "systemId", "userId", "hrPayAdjustmentId"],
       "crm.commission.reversed": ["amountSatang", "commissionId", "dealId", "periodKey", "reversedOfId", "ruleId", "status", "systemId", "userId", "hrPayAdjustmentId"],
+      // ORACLE-EDIT C3.3 round-5 (26 ก.ย.) — N5: the new event is held to the same ids-only rule
+      "crm.commission.removed": ["amountSatang", "commissionId", "dealId", "periodKey", "reversedOfId", "ruleId", "status", "systemId", "userId"],
     };
     const badKeys = evs.filter((e) => Object.keys(e.payload ?? {}).some((k) => !allowed[e.type]?.includes(k))).map((e) => `${e.type}:${Object.keys(e.payload ?? {}).join("/")}`);
     const blob = j(evs.map((e) => e.payload));
@@ -1464,6 +2218,15 @@ try {
   const del = async (fn: () => Promise<unknown>) => { try { await fn(); } catch { /* order/FK — retried next pass */ } };
   if (ids.length > 0) {
     const inList = ids.map((x) => `'${x}'`).join(",");
+    // ORACLE-EDIT C3.3 round-6 (26 ก.ย.) — nomatch flags live in OpsAlertState (no tenantId): delete those naming our rules or our payments
+    // ORACLE-EDIT C3.3 round-7 CLEAN (27 ก.ย.) — also purge first-count markers + q1a cursors owned by our payments/systems (key = prefix:<id> ⇒ part 2; ผู้คุมงานแก้จาก part 3 ที่ผู้สร้างเสนอ)
+    const flagSql = `FROM "OpsAlertState" WHERE ("source" LIKE 'crm.commission.nomatch:%' AND (split_part("source", ':', 3) IN (SELECT "id" FROM "CrmCommissionRule" WHERE "tenantId" IN (${inList}))
+      OR split_part(split_part("source", ':', 2), '#', 1) IN (SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList}))))
+      OR ("source" LIKE 'crm.commission.first:%' AND split_part("source", ':', 2) IN (SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList})))
+      OR ("source" LIKE 'crm.commission.q1a.cursor:%' AND split_part("source", ':', 2) IN (SELECT "id" FROM "AppSystem" WHERE "tenantId" IN (${inList})))`;
+    const ourRules = ((await P.$queryRawUnsafe(`SELECT "id" FROM "CrmCommissionRule" WHERE "tenantId" IN (${inList})`).catch(() => [])) as Any[]).map((r) => String(r.id));
+    const ourPays = ((await P.$queryRawUnsafe(`SELECT "id" FROM "CrmDealPayment" WHERE "tenantId" IN (${inList})`).catch(() => [])) as Any[]).map((r) => String(r.id));
+    await del(() => P.$executeRawUnsafe(`DELETE ${flagSql}`));
     const tables = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`).catch(() => [])) as Any[])
       .map((r) => r.table_name as string).filter((t) => /^[A-Za-z_]+$/.test(t));
     for (let pass = 0; pass < 4; pass += 1)
@@ -1488,8 +2251,11 @@ try {
       const rules = (await P.crmCommissionRule.count({ where: { name: { contains: TAG } } })) as number;
       const adj = (await P.hrPayAdjustment.count({ where: { id: { startsWith: TAG } } })) as number;
       const comms = (await P.crmCommission.count({ where: { id: { startsWith: TAG } } })) as number;
+      // ORACLE-EDIT C3.3 round-6 (26 ก.ย.) — no nomatch flag of ours survives (checked by the ids captured before the sweep)
+      const flagRows = ((await P.opsAlertState.findMany({ where: { source: { startsWith: "crm.commission.nomatch:" } }, select: { source: true } })) as Any[]).map((f) => String(f.source));
+      const flagsLeft = flagRows.filter((src) => { const [, key, rule] = src.split(":"); return ourRules.includes(rule) || ourPays.includes(String(key).split("#")[0]); }).length;
       chk("C3.3-CLEAN", "the oracle gives the QC database back exactly as found — every throwaway tenant and every row it owned (rules · commissions · deals · payments · HR employees/profiles/adjustments/runs · approval policies/requests · outbox · audit · notifications) and the throwaway users are gone",
-        left.length === 0 && tenants === 0 && users === 0 && rules === 0 && adj === 0 && comms === 0, "0 rows · 0 tenants · 0 users", `${left.join(" · ") || "-"} · tenants=${tenants} users=${users} rules=${rules} adj=${adj} comms=${comms}`, "MAJOR");
+        left.length === 0 && tenants === 0 && users === 0 && rules === 0 && adj === 0 && comms === 0 && flagsLeft === 0, "0 rows · 0 tenants · 0 users · 0 flags", `${left.join(" · ") || "-"} · tenants=${tenants} users=${users} rules=${rules} adj=${adj} comms=${comms} nomatchFlags=${flagsLeft}`, "MAJOR");
     } catch (e) {
       chk("C3.3-CLEAN", "the oracle gives the QC database back exactly as found", false, "0 rows", cut(String((e as Error)?.message ?? e)), "MAJOR");
     }

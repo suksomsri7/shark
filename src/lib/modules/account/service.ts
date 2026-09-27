@@ -3859,6 +3859,83 @@ export async function docLinkInfo(tenantId: string, docId: string): Promise<DocL
   };
 }
 
+// CRM C2.7-fix ▸ (รอบ 3–4 · N9 · มติผู้คุมงานหลังตรวจเงิน) สมุดการรับชำระของเอกสาร 1 ใบแบบผอม — อ่านล้วน
+//   ทางเดินเงินของ CRM ตัดสิน "ยกเลิกแล้ว / ครบแล้ว / ส่วนต่างภาษีหัก ณ ที่จ่ายเท่าไร" **ในธุรกรรมที่ถือล็อกเงินอยู่** (ส่ง `db` = tx)
+//   `listDocPayments` ของหน้าเอกสารหนักเกินไป (หาชื่อบัญชีเงิน/เช็ค/ผู้บันทึกผ่าน membership) และอ่านนอกธุรกรรมได้อย่างเดียว
+//   รอบ 4: **รวมยอดใน SQL** (R-E.8 — ไม่มีรายการแถวให้บวกใน JS · ไม่มีเพดานจำนวนแถว) · ผูกร้านเสมอ (X1) · ไม่ join สมาชิก/ผู้ใช้
+//   อยู่ในไฟล์นี้เพราะ F5.1 (raw prisma ในโมดูลห้ามเพิ่มไฟล์) ◂
+export type DocPaymentLedger = {
+  systemId: string;
+  docType: string;
+  status: string;
+  grandTotal: number;
+  paidTotal: number;
+  /** Σ `amount` (เงินสด ไม่รวม WHT) ของการรับชำระที่ยังไม่ถูกยกเลิก */
+  liveCashSatang: number;
+  /** `opts.paymentId` ถูกยกเลิกแล้วไหม — null = ไม่ได้ถาม หรือไม่พบการรับชำระนั้นในเอกสารนี้ */
+  paymentVoided: boolean | null;
+};
+
+export async function docPaymentLedger(
+  tenantId: string,
+  docId: string,
+  opts: { paymentId?: string; db?: Prisma.TransactionClient } = {},
+): Promise<DocPaymentLedger | null> {
+  if (!tenantId || !docId) return null;
+  const q = (opts.db ?? prisma) as Prisma.TransactionClient;
+  const doc = await q.accountDocument.findFirst({
+    where: { id: docId, tenantId },
+    select: { id: true, systemId: true, docType: true, status: true, grandTotal: true, paidTotal: true },
+  });
+  if (!doc) return null;
+  const live = await q.accountDocumentPayment.aggregate({
+    where: { tenantId, systemId: doc.systemId, documentId: doc.id, voidedAt: null },
+    _sum: { amount: true },
+  });
+  const pay = opts.paymentId
+    ? await q.accountDocumentPayment.findFirst({ where: { id: opts.paymentId, tenantId, documentId: doc.id }, select: { voidedAt: true } })
+    : null;
+  return {
+    systemId: doc.systemId,
+    docType: doc.docType,
+    status: doc.status,
+    grandTotal: doc.grandTotal,
+    paidTotal: doc.paidTotal,
+    liveCashSatang: live._sum.amount ?? 0,
+    paymentVoided: pay ? pay.voidedAt !== null : null,
+  };
+}
+// ◂ CRM C2.7-fix
+
+// CRM C3.3 ▸ ฐานคอมมิชชันก่อน VAT (มติผู้คุมงาน B1): ยอดรายได้สุทธิของเอกสาร 1 ใบ **ก่อน VAT** = subTotal − discountAmount
+//   (นิยามเดียวกับ computeTotals/gl.postDocument — สมดุลทั้ง EXCLUDE/INCLUDE) · อ่านล้วน · ผูกร้านเสมอ · ไม่พบ/ข้ามร้าน = null ◂
+export async function docNetBeforeVat(tenantId: string, docId: string): Promise<number | null> {
+  if (!tenantId || !docId) return null;
+  const doc = await prisma.accountDocument.findFirst({ where: { id: docId, tenantId }, select: { subTotal: true, discountAmount: true } });
+  return doc ? Math.max(0, doc.subTotal - doc.discountAmount) : null;
+}
+
+// CRM C3.3 ▸ อัตราส่วนก่อน VAT ต่อ "เอกสารของแต่ละงวด" (รีวิวเงินรอบ 5 N6): การรับชำระ → เอกสารของมัน · เอกสาร → (net, grand)
+//   net = subTotal − discountAmount (นิยามเดียวกับ computeTotals) · อ่านล้วน · ผูกร้าน · ไม่พบ = ไม่อยู่ในผลลัพธ์ ◂
+export async function commissionDocRatios(
+  tenantId: string,
+  input: { paymentIds: string[]; docIds: string[] },
+): Promise<{ payments: Record<string, { net: number; grand: number }>; docs: Record<string, { net: number; grand: number }> }> {
+  const out = { payments: {} as Record<string, { net: number; grand: number }>, docs: {} as Record<string, { net: number; grand: number }> };
+  if (!tenantId) return out;
+  const payIds = [...new Set(input.paymentIds.filter(Boolean))].slice(0, 500);
+  const pays = payIds.length
+    ? await prisma.accountDocumentPayment.findMany({ where: { tenantId, id: { in: payIds } }, select: { id: true, documentId: true }, take: payIds.length })
+    : [];
+  const docIds = [...new Set([...input.docIds.filter(Boolean), ...pays.map((p) => p.documentId)])].slice(0, 1_000);
+  const docs = docIds.length
+    ? await prisma.accountDocument.findMany({ where: { tenantId, id: { in: docIds } }, select: { id: true, subTotal: true, discountAmount: true, grandTotal: true }, take: docIds.length })
+    : [];
+  for (const d of docs) out.docs[d.id] = { net: Math.max(0, d.subTotal - d.discountAmount), grand: d.grandTotal };
+  for (const p of pays) if (out.docs[p.documentId]) out.payments[p.id] = out.docs[p.documentId]!;
+  return out;
+}
+
 export type EnsureAccountContactInput = {
   /** ตัวตนกลางระดับ tenant (Party.id) — กุญแจเดียวของฟังก์ชันนี้ */
   partyId: string;

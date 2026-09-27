@@ -878,6 +878,8 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
       : null;
     return { row, changed: true, histId: hist.id, from: deal.stageId, reopened, flagNote };
   });
+  // CRM C3.3 ▸ คอมมิชชันฐาน WON (หลัง commit · ล้ม = WARN ในตัวเอง ไม่พาการย้ายล้ม): อยู่ที่ WON = onWon · ออกจาก WON = ถอนคืน ◂
+  if (out.changed) await (await import("./commissions")).afterDealMoved(identityScope(ctx), { dealId: out.row.id, kind: out.row.kind });
   if (out.changed && "flagNote" in out && out.flagNote) await auditSystemActivity(ctx, out.flagNote, "account.quotation.responded");
   if (out.changed) {
     await audit(ctx, out.reopened ? "crm.deal.reopen" : "crm.deal.move", out.row.id, {

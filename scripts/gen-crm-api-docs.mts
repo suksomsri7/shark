@@ -251,7 +251,10 @@ export function renderDocs(): string {
     //   (ไม่มีชื่อ เบอร์ อีเมล และไม่มี IP ดิบ — AUDIT-CLASS X8) ◂
     // CRM C2.8 ▸ ตระกูล `crm.score.*` (คะแนนผู้ติดต่อ) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยายซึ่งผิด ·
     //   payload เป็น id/ตัวเลข/ระดับล้วน (ไม่มีชื่อ เบอร์ อีเมล เหตุผลของลูกค้า — AUDIT-CLASS X8) ◂
-    const ids = e.startsWith("crm.score.")
+    // CRM C3.3 ▸ ตระกูล `crm.commission.*` (คอมมิชชัน) — ไม่มีสาขาของตัวเองจะตกไปที่ค่าปริยายซึ่งผิด · payload id/สตางค์/งวด ล้วน (X8) ◂
+    const ids = e.startsWith("crm.commission.")
+      ? "`commissionId`, `dealId`, `ruleId`, `userId`, `amountSatang`, `periodKey`, `status`, `reversedOfId`, `systemId` (+ `hrPayAdjustmentId` on approved/reversed) — ids and numbers only"
+      : e.startsWith("crm.score.")
       ? "`contactId`, `band` (+ `from`, `to`, `ruleId` on `crm.score.changed`) — numbers and ids only"
       : e === "crm.deal.stale" ? "`dealId`, `days` - ids and numbers only"
       : e === "crm.activity.overdue" ? "`activityId`, related ids"

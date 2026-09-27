@@ -213,6 +213,21 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.8
+// CRM C2.7-fix ▸ ไล่ปิดยอดเงินของดีลรายชั่วโมง (มติผู้คุมงานรอบ 4 ข้อ 5) — ตัวรับ event บัญชีของ CRM เป็น "ของแถม" ที่ไม่มีใคร
+//   ลองใหม่ให้ (ล้ม = WARN แล้ว event เป็น DONE) ⇒ งานนี้เรียก `payments.runMoneyReconcile` ไล่เอกสารที่มีการรับชำระ/ยกเลิก/ชำระครบ
+//   ใน 24 ชม. แล้วทำแถวปิดยอดให้ตรงกับสมุดบัญชี (ใต้ล็อกเดียวกับตัวรับ · idempotent · ชุดละ 200 ด้วยเคอร์เซอร์ · หยุดก่อนหมดงบ)
+//   ประตู uiVersion/สะพาน (R-E.14 · B2) อยู่ในตัวงาน: ระบบที่ `canCount` = ใส่/ปลุกได้ · ระบบอื่นถอนได้อย่างเดียว · ร้าน v1 ที่ไม่มีแถวปิดยอด = ข้ามทั้งร้าน
+//   โหลด CRM ผ่าน facade ตอนรันเท่านั้น · ไม่ vpsOnly (route ยิงซ้ำได้ — ผลเดียวกัน)
+registerMinuteJob({
+  name: "crm.money.reconcile",
+  everyMinutes: 60,
+  cadence: "hourly",
+  run: async (now, _budgetMs, ctrl) => {
+    const { payments } = await import("@/lib/modules/crm");
+    await payments.runMoneyReconcile({ now, deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C2.7-fix
 // CRM C2.10 ▸ งานที่เหลือทั้งชุดของ CRM v2 (ใบ C2.10 · พิมพ์เขียว §7.5) — ลงทะเบียน "ตรงนี้" เหมือนทุกใบก่อนหน้า
 //   (มติผู้คุมงานรีวิว C2.2 ข้อ 6): ทั้ง `/api/cron/outbox` และ `scripts/crm-cron.mts` ต้องเห็นงานครบ ไม่ว่าโพรเซสจะอุ่นหรือเย็น
 //
@@ -310,6 +325,20 @@ registerMinuteJob({
   },
 });
 // ◂ CRM C2.10
+// CRM C3.3 ▸ คอมมิชชัน → เงินเดือน (ใบ C3.3 · addendum ข้อ 8) — ทุก 5 นาที: ส่งแถวที่อนุมัติแล้วเข้าเงินเดือนเมื่อพนักงานเพิ่งถูกผูก ·
+//   เก็บงานที่ค้างเพราะโพรเซสตายหลัง commit (เงินที่นับแล้ว/ดีลที่ชนะแล้วแต่ยังไม่มีแถว · การถอนคืนที่ยังไม่ถอน · PENDING ที่ยังไม่ยื่นอนุมัติ)
+//   🔴 ลงทะเบียน "ตรงนี้" เหมือนทุกใบก่อนหน้า (มติผู้คุมงานรีวิว C2.2 ข้อ 6) · โหลด CRM ผ่าน facade ตอนรันเท่านั้น
+//   idempotent ทุกขั้น (unique + guard สถานะ + ล็อกแถว + partial unique ของ HR) ⇒ route + crontab ยิงซ้อนกันได้ · ประตู uiVersion ใน SQL
+registerMinuteJob({
+  name: "crm.commissions.payroll",
+  everyMinutes: 5,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => {
+    const { commissions } = await import("@/lib/modules/crm");
+    await commissions.runPayrollSync(now, { deadline: ctrl.deadline, signal: ctrl.signal });
+  },
+});
+// ◂ CRM C3.3
 // CRM C3.1 ▸ งานส่งออก CSV ของรายงาน (addendum ข้อ 7) — ทุก 1 นาที (ผู้ใช้กด "ส่งออก CSV" แล้วรอไฟล์)
 //   AUDIT-CLASS X5: จองแถว `CrmImportJob` kind REPORT_EXPORT ทีละแถวด้วย lease (`FOR UPDATE SKIP LOCKED`) ⇒ ยิงซ้อนกี่ทางก็ทำครั้งเดียว ·
 //   โพรเซสตายหลังจอง = รอบหลัง lease หมด (15 นาที) หยิบใหม่ · ไม่ vpsOnly (route ยิงมาช่วยได้) · ระบบรุ่น 1 ไม่ถูกหยิบ (R-E.14)

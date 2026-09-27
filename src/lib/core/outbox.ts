@@ -219,7 +219,9 @@ async function drainOnce(
   const now = new Date();
   const candidates = await prisma.outboxEvent.findMany({
     where: { status: "PENDING", availableAt: { lte: now } },
-    orderBy: { createdAt: "asc" },
+    // CRM C2.7-fix ▸ แถวจาก emitOutboxMany คำสั่งเดียวมี createdAt เท่ากัน — id (cuid เรียงตามลำดับที่เขียน) ตัดสินให้แน่นอน
+    //   (กันไว้อีกชั้นเท่านั้น: ตัวรับต้องไม่พึ่งลำดับ เพราะตัวระบายหลายตัว/การลองใหม่ทำให้ลำดับสลับได้เสมอ) ◂
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: limit,
   });
 

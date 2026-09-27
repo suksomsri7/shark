@@ -91,6 +91,11 @@ export const CRM_DEEP_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "settings-forms", label: "ฟอร์มรับลูกค้า", path: "/crm/settings/forms", status: "ready", wo: "C2.6" },
   // CRM C2.8 ▸ คะแนนผู้ติดต่อ (กฎให้คะแนน · ระดับ ร้อน/อุ่น/เย็น · อายุของแต้ม · คำนวณใหม่) — คีย์ `crm.score.manage` ◂
   { key: "settings-scoring", label: "คะแนนผู้ติดต่อ", path: "/crm/settings/scoring", status: "ready", wo: "C2.8" },
+  // CRM C3.3 ▸ คอมมิชชัน — กฎ + รออนุมัติ + ส่ง payroll (ภาพ 10 ขวา · คีย์ crm.settings.manage หรือ crm.commission.approve) ·
+  //   คอมมิชชันของฉัน (พนักงาน CRM v2 ทุกคน · เห็นเฉพาะแถวของตัวเอง)
+  { key: "settings-commissions", label: "คอมมิชชัน", path: "/crm/settings/commissions", status: "ready", wo: "C3.3" },
+  { key: "commissions", label: "คอมมิชชันของฉัน", path: "/crm/commissions", status: "ready", wo: "C3.3" },
+  // ◂ CRM C3.3
   // ◂ CRM C2.6
   // CRM C2.10 ▸ ตั้งค่าการแจ้งเตือน (เทมเพลต 10 เรื่อง × 3 ช่องทาง + ช่วงห้ามรบกวนของร้าน = คีย์ `crm.settings.manage`
   //   · แท็บ "ของฉัน" ไม่ต้องมีคีย์ — พนักงานทุกคนตั้งค่าของตัวเองได้ · มติ C22) ◂

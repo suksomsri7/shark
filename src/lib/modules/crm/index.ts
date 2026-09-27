@@ -180,6 +180,16 @@ export * as scoring from "./scoring";
 //   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
 export * as notifications from "./notifications";
 // ◂ CRM C2.10
+// CRM C3.3 ▸ export * as commissions from "./commissions" ◂
+//   คอมมิชชัน → เงินเดือน (`commissions.ts`) — namespace เดียว `commissions`:
+//   ทางเข้าของสะพาน (ไม่มี actor คน): onPaid · onWon · reverse · syncPayroll · afterPaymentCounted/afterPaymentsReversed (ทางเดินเงิน
+//   payments.ts) · afterDealMoved (deals.ts) · applyApprovalDecision (src/lib/approval-effects.ts · entityType `crm.commission`) ·
+//   onPayrollPaid (`hr.payroll.paid`) · advanceById (ตัวรับ event ของตัวเอง) · runPayrollSync (งานรายนาที `crm.commissions.payroll`)
+//   ทางเข้าของคน: listRules/createRule/updateRule (crm.settings.manage) · approve/approveMany/reject (crm.commission.approve + เพดาน) ·
+//   mine (ทุกคน) · list (crm.commission.view) · pending (crm.commission.approve) · report (crm.report.view | crm.commission.view)
+//   สูตรเงิน/ค่าคงที่/ชนิดสำหรับหน้า 'use client' อยู่ที่ `./commissions-shared` (บริสุทธิ์)
+export * as commissions from "./commissions";
+// ◂ CRM C3.3
 // CRM C3.2 ▸ โควตา · หน้าแรก (KPI 6 · leaderboard · ที่มา lead · "ไม่มีเจ้าของ") · มุมมองที่บันทึกของ contact/company/deal
 //   `quotas` (`quotas.ts`): setQuota/listQuotas/progress/checkReached/quotaBoard · reachedAfterCommit (ทางเดินเงิน/ย้ายเข้า WON หลัง commit) ·
 //     onReached (ตัวรับ event `crm.quota.reached` ใน outbox-consumers) — ตัวช่วยงวดเวลาไทยบริสุทธิ์อยู่ที่ `./quotas-shared`

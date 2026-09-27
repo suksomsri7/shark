@@ -511,6 +511,35 @@ export async function setCrmNotifTemplateJson(
 }
 // ◂ CRM C2.10
 
+// CRM C3.3 ▸ ตัวเขียน `settings.crm.commission` (คอมมิชชัน: approvalRequired · payrollLink · basis ปริยายของกฎใหม่)
+//   🔴 คำสั่งเดียว — jsonb ซ้อนสองชั้นแบบ `setCrmAiKey` ของ C2.4: คีย์อื่นของ `crm` และคีย์อื่นของ `commission` รอดเสมอ (ไม่มี read-modify-write)
+//   🔴 ตัวตรวจค่า (zod) · คีย์สิทธิ์ `crm.settings.manage` · audit before/after อยู่ที่ผู้เรียก (`commissions.setCommissionSettings`)
+//   AUDIT-CLASS X1: เขียนเฉพาะแถว AppSystem ที่ id + tenantId + type CRM ตรงกัน · ไม่พบ = โยนข้อความไทย (ไม่เขียนอะไร)
+export async function setCrmCommissionSettings(
+  ctx: { tenantId: string; systemId: string },
+  patch: { approvalRequired?: boolean; payrollLink?: boolean; basis?: "PAID" | "WON" },
+  db: CrmSettingsDb = crmDb,
+): Promise<void> {
+  const clean: Record<string, boolean | string> = {};
+  if (typeof patch.approvalRequired === "boolean") clean.approvalRequired = patch.approvalRequired;
+  if (typeof patch.payrollLink === "boolean") clean.payrollLink = patch.payrollLink;
+  if (patch.basis === "PAID" || patch.basis === "WON") clean.basis = patch.basis;
+  if (Object.keys(clean).length === 0) return;
+  const n = await db.$executeRaw`
+    UPDATE "AppSystem"
+    SET "settings" = jsonb_set(
+      CASE WHEN jsonb_typeof("settings") = 'object' THEN "settings" ELSE '{}'::jsonb END,
+      '{crm}',
+      (CASE WHEN jsonb_typeof("settings"->'crm') = 'object' THEN "settings"->'crm' ELSE '{}'::jsonb END)
+        || jsonb_build_object('commission',
+             (CASE WHEN jsonb_typeof("settings"->'crm'->'commission') = 'object' THEN "settings"->'crm'->'commission' ELSE '{}'::jsonb END)
+               || ${JSON.stringify(clean)}::jsonb),
+      true)
+    WHERE "id" = ${ctx.systemId} AND "tenantId" = ${ctx.tenantId} AND "type" = 'CRM'`;
+  if (n === 0) throw new Error("ไม่พบระบบ CRM นี้ในร้าน");
+}
+// ◂ CRM C3.3
+
 // CRM C3.6 ▸ ระบบปลายทางเมื่อร้านมีหลายระบบ `settings.crm.targets = { memberSystemId, accountSystemId, kanbanSystemId, chatSystemId,
 //   inventorySystemId }` (พิมพ์เขียว §4.5) — ตัวอ่านบริสุทธิ์อยู่ที่ `integrations-shared.ts` (`crmTargetsOf`)
 //   🔴 ตัวเขียน **คำสั่งเดียว** (jsonb ซ้อนสองชั้น crm → targets → คีย์ที่ส่งมา) ⇒ คีย์อื่นของ `settings.crm` และปลายทางชนิดอื่นรอดเสมอ

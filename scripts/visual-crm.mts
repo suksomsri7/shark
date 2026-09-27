@@ -218,6 +218,7 @@ const C37_GATE: Record<string, string[]> = {
   "settings-notifications": ["crm.settings.manage", "crm.deal.read", "crm.contact.read", "crm.activity.read"],
   "settings-quotas": ["crm.quota.manage"],
   "settings-portal": ["crm.portal.manage"],
+  "settings-commissions": ["crm.settings.manage", "crm.commission.approve"], // CRM C3.3 (page.tsx: canManage || canApprove)
 };
 /** ตัวตัดสินคีย์ของผู้ใช้ที่ถ่าย (membership ในร้าน QC → `crm.crmCan` ตัวเดียวกับหน้า) */
 const C37_CAN: (k: string) => boolean = WO === "3.7" && !isCustomer
@@ -414,6 +415,31 @@ const SPECS: Record<string, Spec[]> = {
     { name: `crm-integrations-${userKey}`, path: `${CRM_BASE}/settings/integrations`, note: "เชื่อมระบบ 24 ระบบ: แผนที่ (เปิด/ปิด · เหตุการณ์ล่าสุด) · ตัวเลือกระบบปลายทาง 5 ชนิด · ตารางสถานะ · งานเบื้องหลัง — เทียบภาพ 17", expect: ["[data-testid=crm-integrations-page]", "[data-testid=crm-integrations-map]", "[data-testid=crm-integrations-target-member]", "[data-testid=crm-integrations-targets-save]", "[data-testid=crm-integrations-status-table]", "[data-testid=crm-integrations-jobs]"], steps: [{ waitFor: "[data-testid=crm-integrations-status-table]", timeoutMs: 20_000 }, { wait: 500 }] },
   ],
   // ◂ CRM C3.6
+  // CRM C3.3 ▸ คอมมิชชัน (ภาพ 10 ขวา) — ผู้คุมงานเขียนสเปค 27 ก.ย. · หน้าตั้งค่า = owner/manager (crm.settings.manage หรือ crm.commission.approve
+  //   — seed ให้ manager มี approve) · "คอมมิชชันของฉัน" = พนักงานทุกคน (thana เห็นเฉพาะแถวตัวเอง) · ⚠️ ไม่กดปุ่มที่เขียนฐาน (อนุมัติ/ส่ง payroll/บันทึกกฎ)
+  "3.3": isCustomer ? [] : [
+    ...(userKey === "owner" || userKey === "manager" ? [{
+      name: `crm-commission-settings-${userKey}`,
+      path: `${CRM_BASE}/settings/commissions`,
+      note: "คอมมิชชัน (ตั้งค่า): กฎ (ชื่อ · ฐาน PAID/WON · % หรือคงที่ · ขั้นบันได · หน่วง) · ค่าตั้งร้าน (ต้องอนุมัติ · ส่ง payroll · ฐานปริยาย) · รายการรออนุมัติ + เลือกทั้งหมด/อนุมัติ/ปฏิเสธ · ปุ่มส่ง payroll — เทียบภาพ 10 ขวา",
+      expect: ["[data-testid=crm-commission-settings]", "[data-testid=crm-commission-rules]", "[data-testid=crm-commission-rule-add]", "[data-testid=crm-commission-setting-approval]", "[data-testid=crm-commission-pending]"],
+      steps: [{ waitFor: "[data-testid=crm-commission-pending]", timeoutMs: 20_000 }, { wait: 500 }],
+    }, {
+      name: `crm-commission-rule-editor-${userKey}`,
+      path: `${CRM_BASE}/settings/commissions`,
+      note: "ตัวแก้กฎคอมมิชชัน (เปิดด้วย 'เพิ่มกฎ' · ไม่บันทึก): ชื่อ · pipeline · ฐาน · ชนิด % / คงที่ / ขั้นบันได · ขั้นต่ำ · แบ่ง · หน่วงวัน",
+      expect: ["[data-testid=crm-commission-rule-name]", "[data-testid=crm-commission-rule-basis]", "[data-testid=crm-commission-rule-kind]", "[data-testid=crm-commission-rule-save]", "[data-testid=crm-commission-rule-cancel]"],
+      steps: [{ waitFor: "[data-testid=crm-commission-rule-add]", timeoutMs: 20_000 }, { click: "[data-testid=crm-commission-rule-add]" }, { waitFor: "[data-testid=crm-commission-rule-name]", timeoutMs: 10_000 }, { wait: 400 }],
+    }] as Spec[] : []),
+    {
+      name: `crm-commission-mine-${userKey}`,
+      path: `${CRM_BASE}/commissions`,
+      note: "คอมมิชชันของฉัน: ตัวเลือกงวด · ตารางแถวของตัวเอง (ดีล · กฎ · ยอด · สถานะ PENDING/APPROVED/PAID/REVERSED · ป้ายรอ/ชนะใหม่) — thana เห็นเฉพาะของตัวเอง",
+      expect: ["[data-testid=crm-commission-mine]", "[data-testid=crm-commission-period]"],
+      steps: [{ waitFor: "[data-testid=crm-commission-mine]", timeoutMs: 20_000 }, { wait: 500 }],
+    },
+  ],
+  // ◂ CRM C3.3
   "3.5": isCustomer ? [
     { name: "portal-home", path: `${PB}`, note: "portal หน้าแรก — ชื่อบริษัท+ตัวสลับบริษัท · ยอดค้างชำระ · ใบเสนอราคารอตอบ · เมนู (ภาพ 12)", expect: ["[data-testid=portal-frame]", "[data-testid=portal-company-name]", "[data-testid=portal-home-stats]", "[data-testid=portal-menu]"], steps: [{ waitFor: "[data-testid=portal-home-stats]", timeoutMs: 20_000 }, { wait: 500 }] },
     { name: "portal-quotations", path: `${PB}/quotations`, note: "ใบเสนอราคาของบริษัทตน (ตอบรับ/ปฏิเสธเฉพาะ AWAITING_ACCEPT)", expect: ["[data-testid=portal-frame]"], steps: [{ waitFor: "[data-testid=portal-frame]", timeoutMs: 20_000 }, { wait: 500 }] },

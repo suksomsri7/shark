@@ -20345,6 +20345,662 @@
       },
       "wo": "C3.6",
       "oracle": "qc-crm-c3.6"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "crm-commission-rule-name",
+        "db": "ไม่มีการเขียน (เปิดฟอร์มกฎใหม่ในหน้า · คีย์ crm.settings.manage)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-row-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "crm-commission-rule-name",
+        "db": "ไม่มีการเขียน (เปิดฟอร์มแก้กฎ · MANAGER เห็นแต่กดไม่ได้)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-name",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "ไม่มีการเขียนจนกด บันทึกกฎ"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-basis",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.basis=PAID|WON (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-kind",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.kind=PCT|FIXED|TIERED (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-pct",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.config.pctBp (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-fixed",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.config.fixedSatang (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-tier-upto-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.config.tiers[i].uptoSatang (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-tier-pct-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.config.tiers[i].pctBp (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-tier-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (ลบขั้นออกจากฟอร์ม)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-tier-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (เพิ่มขั้นก่อนขั้นส่วนที่เกิน)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-pipeline",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.pipelineId (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-min",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.minDealSatang (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-split",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.splitCollaboratorsBp (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-delay",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.payoutDelayDays (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-active",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rule-error",
+        "db": "CrmCommissionRule.active (หลังกด บันทึกกฎ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.commission.rule.create|update",
+        "db": "CrmCommissionRule แถวใหม่/แก้ + AuditLog crm.commission.rule.create|update (before/after)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-rule-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-rules",
+        "db": "ไม่มีการเขียน (ปิดฟอร์ม)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-select-all",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "ไม่มีการเขียน (เลือกทุกแถวที่รออนุมัติ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-select-*",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "ไม่มีการเขียน (เลือกแถว)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-approve-selected",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.commission.approve",
+        "db": "CrmCommission.status=APPROVED ของแถวที่เลือก (เกินเพดานของผู้กด = คง PENDING + ข้อความ) + HrPayAdjustment(crmCommissionId) เมื่อผูกพนักงาน + AuditLog crm.commission.approve"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-reject-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-reject-reason",
+        "db": "ไม่มีการเขียนจนยืนยัน (เปิดช่องเหตุผล)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-reject-reason",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "ไม่มีการเขียนจนยืนยัน (เหตุผล ≥ 5 ตัวอักษร)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-reject-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.commission.reject",
+        "db": "CrmCommission.status=REJECTED + AuditLog crm.commission.reject (เหตุผล)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-reject-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-pending",
+        "db": "ไม่มีการเขียน (ปิดช่องเหตุผล)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-send-payroll",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.commission.syncPayroll",
+        "db": "HrPayAdjustment(kind COMMISSION|DEDUCTION, crmCommissionId) ของแถว APPROVED/REVERSED ที่ผูกพนักงานแล้ว · CrmCommission.hrPayAdjustmentId"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/commissions",
+      "testid": "crm-commission-period",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/crm/commissions?period=[YYYY-MM]",
+        "db": "ไม่มีการเขียน (กรองงวด)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/commissions",
+      "testid": "crm-commission-status",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/crm/commissions?status=[status]",
+        "db": "ไม่มีการเขียน (กรองสถานะ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/commissions",
+      "testid": "crm-commission-mine-deal-*",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/crm/deals/[dealId]",
+        "db": "ไม่มีการเขียน (เปิดดีล 360 ของรายการ)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-setting-approval",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "AppSystem.settings.crm.commission.approvalRequired (หลังกด บันทึกค่าตั้ง)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-setting-payroll",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "AppSystem.settings.crm.commission.payrollLink (หลังกด บันทึกค่าตั้ง)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-setting-basis",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-commission-msg",
+        "db": "AppSystem.settings.crm.commission.basis=PAID|WON (หลังกด บันทึกค่าตั้ง)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
+    },
+    {
+      "page": "/settings/commissions",
+      "testid": "crm-commission-settings-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:crm.commission.settings",
+        "db": "AppSystem.settings.crm.commission (jsonb_set คำสั่งเดียว) + AuditLog crm.commission.settings (before/after)"
+      },
+      "wo": "C3.3",
+      "oracle": "qc-crm-c3.3"
     }
   ]
 }

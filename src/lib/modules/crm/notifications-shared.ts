@@ -30,6 +30,8 @@ export const CRM_NOTIF_KEYS = [
   "commission.status",
   "quota.progress",
   "invoice.paid",
+  // CRM C3.3 ▸ คอมมิชชันรออนุมัติที่ไม่มีสายอนุมัติ/เกินวงเงินของผู้กด → แจ้งเจ้าของร้าน (มติผู้คุมงาน S6 · ต้อง ORACLE-EDIT C2.10-S0.2 10 → 11) ◂
+  "commission.pending",
 ] as const;
 export type CrmNotifKey = (typeof CRM_NOTIF_KEYS)[number];
 
@@ -126,6 +128,15 @@ export const CRM_NOTIF_TEMPLATES: readonly CrmNotifTemplateDef[] = Object.freeze
     body: "โควตาของงวดนี้เดินมาถึง {{count}}% แล้ว — เปิดดูรายละเอียดของงวด",
     defaults: ch(true, false, false),
     recipients: "เจ้าของโควตา และหัวหน้าทีม",
+  },
+  // CRM C3.3 ▸ แจ้งเจ้าของร้าน: คอมมิชชันรออนุมัติที่ไม่มีสายอนุมัติ หรือยอดเกินวงเงินของผู้จัดการ (ครั้งเดียวต่อรายการ) ◂
+  {
+    key: "commission.pending",
+    label: "คอมมิชชันรอเจ้าของร้านอนุมัติ",
+    title: "มีคอมมิชชันรอคุณอนุมัติ",
+    body: "มีรายการคอมมิชชันที่ต้องให้เจ้าของร้านอนุมัติ (ไม่มีสายอนุมัติ หรือยอดเกินวงเงินของผู้จัดการ) — เปิดหน้าคอมมิชชันเพื่อตรวจและอนุมัติ",
+    defaults: ch(true, true, false),
+    recipients: "เจ้าของร้าน",
   },
   {
     key: "invoice.paid",
@@ -295,6 +306,7 @@ export function crmNotifPath(refType: string, refId: string): string {
   if (refType === "CrmCompany" && id) return `/companies/${id}`;
   if (refType === "CrmActivity") return "/activities";
   if (refType === "CrmStaleDeals") return "/deals";
+  if (refType === "CrmCommission") return "/settings/commissions"; // CRM C3.3 ▸ รายการคอมมิชชัน (ลิงก์ไปหน้าอนุมัติ) ◂
   // CRM C3.2 ▸ (รีวิว N5) โควตาถึงเกณฑ์ → หน้าแรกของระบบ CRM (KPI "ชนะเดือนนี้ vs โควตา") · "" = หน้าแรก (`crmNotifLink` สร้าง `/app/sys/<id>`) ◂
   if (refType === "CrmQuota") return "";
   return "/deals";

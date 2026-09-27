@@ -200,6 +200,21 @@ export async function applyCrmApprovalEffect(evt: ApprovalEffectEvent): Promise<
     return;
   }
   // ◂ CRM C3.5
-  // crm.reassign · crm.commission · อื่น ๆ → ไม่ทำอะไร (ใบเจ้าของเรื่องมาเติม)
+  // CRM C3.3 ▸ crm.commission → ใบ C3.3: entityId = CrmCommission.id · อนุมัติ = PENDING→APPROVED (guard สถานะ + คำขอใบนี้) แล้วส่ง HR
+  //   ครั้งเดียว · ปฏิเสธ = PENDING→REJECTED · มาช้าหลังคนตัดสินเอง/หลังถอนคืน = ไม่เปลี่ยนอะไร (AUDIT-CLASS X4)
+  //   dynamic import (เหตุผลเดียวกับ crm.discount) · CommissionsError = ข้อมูลใช้ไม่ได้ถาวร ⇒ WARN แล้วจบ · อื่น ๆ โยนต่อให้ retry
+  if (entityType === "crm.commission") {
+    if (!requestId) return;
+    const crm = await import("@/lib/modules/crm");
+    try {
+      await crm.commissions.applyApprovalDecision({ tenantId: evt.tenantId, requestId, entityId, approved });
+    } catch (e) {
+      if (!(e instanceof crm.commissions.CommissionsError)) throw e;
+      await logOps("WARN", "crm", `ใช้ผลอนุมัติคอมมิชชันไม่ได้ (${e.code}) — คำขอ ${requestId}`, { tenantId: evt.tenantId });
+    }
+    return;
+  }
+  // ◂ CRM C3.3
+  // crm.reassign · อื่น ๆ → ไม่ทำอะไร (ใบเจ้าของเรื่องมาเติม)
 }
 // ◂ CRM C1.8

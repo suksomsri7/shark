@@ -1,5 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
 import type { Prisma } from "@prisma/client";
+// CRM C3.3 ▸ `hr.payroll.paid` ยิงใน tx เดียวกับการปิดรอบ (markPaid) ◂
+import { emitOutbox } from "@/lib/core/outbox";
 import { postPayrollJV, reverseEntry } from "@/lib/modules/account";
 import {
   ssoContribution,
@@ -101,15 +103,23 @@ export type RequestAdjustInput = {
   hours?: number; // หรือระบุชั่วโมง (เฉพาะ OT — คิดยอดจากอัตราให้)
   note?: string | null;
   requestedById?: string | null;
+  // CRM C3.3 ▸ ลิงก์อ่อนไปยัง CrmCommission (ไม่มี FK — HR ไม่พึ่ง CRM) · partial unique ⇒ 1 คอมมิชชัน = 1 รายการเท่านั้น ◂
+  crmCommissionId?: string | null;
 };
 
 /** ยื่นรายการ — สถานะเริ่มต้น PENDING เสมอ (แม้ผู้ยื่นจะเป็นเจ้าของ) เพื่อให้มีร่องรอยการอนุมัติ */
 export async function requestAdjustment(
   ctx: Ctx,
   input: RequestAdjustInput,
-): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number }> {
+  // CRM C3.3 ▸ `tx` = ผู้เรียก (คอมมิชชัน CRM) ถือล็อกแถวคอมมิชชันอยู่ ⇒ เขียนใน tx เดียวกัน (ห้ามเปิด connection ที่สองใต้ล็อก) ◂
+  opts: { tx?: Prisma.TransactionClient } = {},
+): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number; code?: string }> {
   if (!ADJUST_KINDS.includes(input.kind)) return { ok: false, reason: "ชนิดรายการไม่ถูกต้อง" };
   if (!PERIOD_RE.test(input.periodKey.trim())) return { ok: false, reason: "งวดต้องเป็นรูปแบบ YYYY-MM" };
+  // CRM C3.3 ▸ รายการจากคอมมิชชัน CRM — ทางแยกของตัวเอง (ทางเดิมข้างล่างไม่เปลี่ยนแม้แต่บรรทัดเดียว)
+  const crmCommissionId = typeof input.crmCommissionId === "string" && input.crmCommissionId.trim() ? input.crmCommissionId.trim() : null;
+  if (crmCommissionId || opts.tx) return requestCommissionAdjustment(ctx, input, crmCommissionId, opts.tx);
+  // ◂ CRM C3.3
   const emp = await tenantDb(ctx).hrEmployee.findFirst({ where: { id: input.employeeId } });
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
 
@@ -433,14 +443,33 @@ export async function reverseRun(
 }
 
 // ── จ่ายแล้ว (APPROVED→PAID) ──
+// CRM C3.3 ▸ AUDIT-CLASS X4: การเปลี่ยน APPROVED→PAID ที่มี guard + event `hr.payroll.paid` อยู่ใน **ธุรกรรมเดียวกัน**
+//   ⇒ ยิงเฉพาะเมื่อคำสั่งนี้เป็นคนเปลี่ยนสถานะจริง (count = 1) · ล้มหลังเปลี่ยนสถานะ = ย้อนทั้งสถานะและ event (ไม่มี event ลอย/หาย)
+//   key `hr.payroll.paid#<runId>` (R-C.8) · payload = { runId, periodKey } เท่านั้น (X8 — ไม่มีชื่อ/ยอดรายคน) · systemId = ระบบ HR
+//   ผู้บริโภค: คอมมิชชัน CRM (`crm-bridges/commissions.ts#onPayrollPaid`) — APPROVED → PAID ของรายการที่อยู่ในรอบนี้
+//   🔴 tenantDb().$transaction (ไม่ import prisma ดิบ — ratchet F5.1 เต็มเพดาน) · tx ของ client ที่ $extends ส่งเข้า emitOutbox
+//      ได้ทางชนิดเท่านั้น (runtime มี outboxEvent ครบ และ OutboxEvent อยู่ในทะเบียน scope แบบ tenant)
 export async function markPaid(ctx: Ctx, runId: string): Promise<{ ok: boolean; note: string }> {
-  const upd = await tenantDb(ctx).hrPayrollRun.updateMany({
-    where: { id: runId, systemId: ctx.systemId, status: "APPROVED" },
-    data: { status: "PAID" },
+  const paid = await tenantDb(ctx).$transaction(async (tx) => {
+    const upd = await tx.hrPayrollRun.updateMany({
+      where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId, status: "APPROVED" },
+      data: { status: "PAID" },
+    });
+    if (upd.count === 0) return false;
+    const run = await tx.hrPayrollRun.findFirst({ where: { id: runId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { periodKey: true } });
+    await emitOutbox(tx as unknown as Prisma.TransactionClient, {
+      tenantId: ctx.tenantId,
+      systemId: ctx.systemId,
+      type: "hr.payroll.paid",
+      idempotencyKey: `hr.payroll.paid#${runId}`,
+      payload: { runId, periodKey: run?.periodKey ?? null },
+    });
+    return true;
   });
-  if (upd.count === 0) return { ok: false, note: "ต้องอนุมัติรอบก่อนจึงจ่ายได้" };
+  if (!paid) return { ok: false, note: "ต้องอนุมัติรอบก่อนจึงจ่ายได้" };
   return { ok: true, note: "บันทึกจ่ายเงินเดือนแล้ว" };
 }
+// ◂ CRM C3.3
 
 // ── reads (UI + สลิป) ──
 export function listRuns(ctx: Ctx, take = 50) {
@@ -468,3 +497,199 @@ export async function payslipData(ctx: Ctx, runId: string, employeeId: string) {
   ]);
   return { run, item, employee };
 }
+
+// CRM C3.3 ▸ ทางเข้าของคอมมิชชัน CRM (ใบ C3.3 · addendum ข้อ 8 · 10) — อ่าน/เขียนผ่านไฟล์นี้เท่านั้น (CRM ห้ามแตะตาราง HR ตรง)
+//   • requestCommissionAdjustment — ยื่นรายการ COMMISSION/DEDUCTION ที่ผูก `crmCommissionId` · 🔴 partial unique
+//     `HrPayAdjustment("crmCommissionId") WHERE NOT NULL` เป็นตัวตัดสิน: ใส่ด้วย `ON CONFLICT DO NOTHING` (createManyAndReturn +
+//     skipDuplicates) ⇒ ครั้งที่สองของคอมมิชชันเดียวกัน = ok:false (ไม่ throw · ไม่ทำให้ tx ของผู้เรียก abort)
+//   • payrollEmployeeOfUser — พนักงาน **ที่ยังทำงานอยู่** ที่ผูกกับผู้ใช้ (MASTER-PLAN C0.3: `employeeOfUser` คืนคนที่ลาออกด้วย)
+//   • payrollRunPeriods · adjustmentOfCommission · adjustmentsOfRun — ตัวอ่านของงวด/ลิงก์/รอบจ่าย (hr.payroll.paid)
+//   AUDIT-CLASS X1: ทุกคำสั่งผูก tenantId (+ systemId ของ HR) · AUDIT-CLASS X8: `note` มาจากผู้เรียกเป็นข้อความกลาง (ไม่มีชื่อลูกค้า)
+const HR_INT_MAX = 2_147_483_647;
+type HrDb = Prisma.TransactionClient;
+
+async function requestCommissionAdjustment(
+  ctx: Ctx,
+  input: RequestAdjustInput,
+  crmCommissionId: string | null,
+  tx: HrDb | undefined,
+): Promise<{ ok: boolean; reason?: string; id?: string; amountSatang?: number; code?: string }> {
+  if (input.kind === "OT") return { ok: false, reason: "รายการ OT ยื่นผ่านหน้าจอ HR เท่านั้น" };
+  const amount = Math.round(input.amountSatang ?? 0);
+  if (!Number.isSafeInteger(amount) || amount <= 0) return { ok: false, reason: "ระบุจำนวนเงินให้มากกว่า 0" };
+  if (amount > HR_INT_MAX) return { ok: false, reason: "ยอดเงินสูงเกินกว่าที่ระบบเงินเดือนรับได้ต่อรายการ — แยกเป็นหลายรายการแทน" };
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const data = {
+    ...scope,
+    employeeId: input.employeeId,
+    periodKey: input.periodKey.trim(),
+    kind: input.kind,
+    amountSatang: amount,
+    note: input.note?.trim() || null,
+    requestedById: input.requestedById ?? null,
+    crmCommissionId,
+  };
+  const write = async (db: HrDb) => {
+    const emp = await db.hrEmployee.findFirst({ where: { id: input.employeeId, ...scope }, select: { id: true } });
+    if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
+    // มติผู้คุมงาน S4: งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ) จะไม่ถูกดึงอีก ⇒ ห้ามยื่นเข้าไป (ผู้เรียกเลื่อนไปเดือนถัดไปที่ว่าง)
+    const closed = await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: data.periodKey }, select: { id: true } });
+    if (closed) return { ok: false, code: "PERIOD_CLOSED", reason: `งวด ${data.periodKey} มีรอบจ่ายเงินเดือนแล้ว — ยื่นเข้างวดถัดไปแทน` };
+    const made = await db.hrPayAdjustment.createManyAndReturn({ data: [data], skipDuplicates: true, select: { id: true } });
+    if (made.length === 0) return { ok: false, reason: "คอมมิชชันรายการนี้ถูกส่งเข้างวดเงินเดือนไปแล้ว (มีได้รายการเดียว)" };
+    return { ok: true, id: made[0]!.id, amountSatang: amount };
+  };
+  if (tx) return write(tx);
+  return tenantDb(ctx).$transaction(async (t) => write(t as unknown as HrDb));
+}
+
+/** พนักงานที่ยังทำงานอยู่ (active) ที่ผูกกับผู้ใช้คนนี้ — ระบบ HR ที่เก่าที่สุดก่อน · ไม่มี/ลาออกแล้ว = null (ห้ามจ่ายผิดคน) */
+export async function payrollEmployeeOfUser(tenantId: string, userId: string): Promise<{ employeeId: string; systemId: string } | null> {
+  const uid = (userId ?? "").trim();
+  if (!tenantId || !uid) return null;
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 50 });
+  for (const s of systems) {
+    const row = await tenantDb({ tenantId, systemId: s.id }).hrEmployee.findFirst({
+      where: { linkedUserId: uid, active: true },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, systemId: true },
+    });
+    if (row) return { employeeId: row.id, systemId: row.systemId };
+  }
+  return null;
+}
+
+/** งวดที่มีรอบจ่ายแล้ว (ทุกสถานะ — `createPayrollRun` ดึงรายการของงวดได้ครั้งเดียว) ของระบบ HR นี้ · `tx` = อ่านใต้ล็อกของผู้เรียก */
+export async function payrollRunPeriods(ctx: Ctx, opts: { tx?: HrDb } = {}): Promise<string[]> {
+  const where = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const rows = opts.tx
+    ? await opts.tx.hrPayrollRun.findMany({ where, select: { periodKey: true }, take: 2_000 })
+    : await tenantDb(ctx).hrPayrollRun.findMany({ where, select: { periodKey: true }, take: 2_000 });
+  return rows.map((r) => r.periodKey);
+}
+
+export type CommissionAdjustmentRef = {
+  id: string;
+  systemId: string;
+  employeeId: string;
+  periodKey: string;
+  kind: string;
+  status: string;
+  runId: string | null;
+  amountSatang: number;
+  note: string | null;
+  requestedById: string | null;
+  crmCommissionId: string | null;
+};
+
+/** รายการปรับเงินที่ผูกกับคอมมิชชันนี้ (มีได้รายการเดียว) — ผูกร้านเสมอ · `tx` = อ่านใต้ล็อกของผู้เรียก */
+export async function adjustmentOfCommission(tenantId: string, crmCommissionId: string, opts: { tx?: HrDb } = {}): Promise<CommissionAdjustmentRef | null> {
+  if (!tenantId || !crmCommissionId) return null;
+  const where = { tenantId, crmCommissionId };
+  const select = { id: true, systemId: true, employeeId: true, periodKey: true, kind: true, status: true, runId: true, amountSatang: true, note: true, requestedById: true, crmCommissionId: true } as const;
+  if (opts.tx) {
+    const row = await opts.tx.hrPayAdjustment.findFirst({ where, select });
+    return row ? { ...row, kind: String(row.kind), status: String(row.status) } : null;
+  }
+  // HrPayAdjustment เป็น system-scoped ⇒ tenantDb ต้องมี systemId — ไล่ระบบ HR ของร้าน (มีไม่กี่ระบบ)
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 50 });
+  for (const s of systems) {
+    const row = await tenantDb({ tenantId, systemId: s.id }).hrPayAdjustment.findFirst({ where, select });
+    if (row) return { ...row, kind: String(row.kind), status: String(row.status) };
+  }
+  return null;
+}
+
+/** รายการที่ผูกคอมมิชชัน CRM ในรอบจ่ายนี้ + สถานะของรอบ (ผู้บริโภค `hr.payroll.paid`) */
+export async function adjustmentsOfRun(ctx: Ctx, runId: string): Promise<{ status: string | null; items: { id: string; crmCommissionId: string }[] }> {
+  const run = await tenantDb(ctx).hrPayrollRun.findFirst({ where: { id: runId, systemId: ctx.systemId }, select: { status: true } });
+  if (!run) return { status: null, items: [] };
+  const rows = await tenantDb(ctx).hrPayAdjustment.findMany({
+    where: { systemId: ctx.systemId, runId, crmCommissionId: { not: null } },
+    select: { id: true, crmCommissionId: true },
+    take: 10_000,
+  });
+  return { status: String(run.status), items: rows.flatMap((r) => (r.crmCommissionId ? [{ id: r.id, crmCommissionId: r.crmCommissionId }] : [])) };
+}
+
+/**
+ * ถอนรายการของคอมมิชชันที่ **ยังไม่ถูกจ่าย** (มติผู้คุมงาน B3 · S1 · S4) — ลบแบบมี guard: ต้องเป็นรายการของคอมมิชชันนี้ ·
+ * ยังไม่เข้ารอบจ่าย (`runId` null) · สถานะอยู่ในชุดที่ผู้เรียกระบุ (ปริยาย PENDING เท่านั้น — HR ยังไม่อนุมัติ)
+ * คืน true = ถอนแล้ว · false = HR ตัดสิน/ดึงเข้ารอบไปแล้วระหว่างนั้น (ผู้เรียกต้องหักคืนแทน)
+ */
+export async function withdrawCommissionAdjustment(
+  ctx: Ctx,
+  input: { adjustmentId: string; crmCommissionId: string; statuses?: ("PENDING" | "APPROVED")[] },
+  opts: { tx?: HrDb } = {},
+): Promise<boolean> {
+  const where = {
+    id: input.adjustmentId,
+    tenantId: ctx.tenantId,
+    systemId: ctx.systemId,
+    crmCommissionId: input.crmCommissionId,
+    runId: null,
+    status: { in: input.statuses && input.statuses.length ? input.statuses : (["PENDING"] as ("PENDING" | "APPROVED")[]) },
+  };
+  const n = opts.tx ? await opts.tx.hrPayAdjustment.deleteMany({ where }) : await tenantDb(ctx).hrPayAdjustment.deleteMany({ where });
+  return n.count === 1;
+}
+
+/**
+ * ย้ายงวดของรายการคอมมิชชันที่ค้าง (รีวิวรอบ 2 S-c) — แก้ `periodKey` ในที่เดิม ด้วย guard คำสั่งเดียว:
+ * รายการของคอมมิชชันนี้ · ยังไม่เข้ารอบ · สถานะ PENDING เท่านั้น (ของที่ HR อนุมัติแล้วไม่ถูกแตะ) · งวดปลายทางต้องยังไม่มีรอบ
+ */
+export async function moveCommissionAdjustmentPeriod(
+  ctx: Ctx,
+  input: { adjustmentId: string; crmCommissionId: string; periodKey: string },
+  opts: { tx?: HrDb } = {},
+): Promise<boolean> {
+  if (!PERIOD_RE.test(input.periodKey)) return false;
+  const scope = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const db = opts.tx;
+  const closed = db
+    ? await db.hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey }, select: { id: true } })
+    : await tenantDb(ctx).hrPayrollRun.findFirst({ where: { ...scope, periodKey: input.periodKey }, select: { id: true } });
+  if (closed) return false;
+  const where = { id: input.adjustmentId, ...scope, crmCommissionId: input.crmCommissionId, runId: null, status: "PENDING" as const };
+  const n = db ? await db.hrPayAdjustment.updateMany({ where, data: { periodKey: input.periodKey } }) : await tenantDb(ctx).hrPayAdjustment.updateMany({ where, data: { periodKey: input.periodKey } });
+  return n.count === 1;
+}
+
+/** ผู้ใช้กลุ่มนี้คนไหนมีพนักงาน **active** ที่ผูกไว้ (ตัวกรองคิว "ส่ง payroll" — มติผู้คุมงาน S3) */
+export async function activeLinkedUserIds(tenantId: string, userIds: string[]): Promise<string[]> {
+  const ids = [...new Set(userIds.filter(Boolean))].slice(0, 1_000);
+  if (!tenantId || ids.length === 0) return [];
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, take: 50 });
+  const out = new Set<string>();
+  for (const sys of systems) {
+    const rows = await tenantDb({ tenantId, systemId: sys.id }).hrEmployee.findMany({ where: { linkedUserId: { in: ids }, active: true }, select: { linkedUserId: true }, take: 1_000 });
+    for (const r of rows) if (r.linkedUserId) out.add(r.linkedUserId);
+  }
+  return [...out];
+}
+
+/**
+ * รายการของคอมมิชชันที่ "ค้าง" (มติผู้คุมงาน S4): ยังไม่เข้ารอบ แต่งวดของมันมีรอบจ่ายแล้ว ⇒ จะไม่มีวันถูกดึง
+ * (รอบถูกสร้างหลังจากยื่น) — ตัวกวาดของ CRM ถอนแล้วยื่นใหม่ในเดือนถัดไปที่ว่าง
+ */
+export async function strandedCommissionAdjustments(tenantId: string, limit = 100): Promise<CommissionAdjustmentRef[]> {
+  if (!tenantId) return [];
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { tenantId, type: "HR" }, select: { id: true }, take: 50 });
+  const out: CommissionAdjustmentRef[] = [];
+  for (const sys of systems) {
+    const db = tenantDb({ tenantId, systemId: sys.id });
+    const runs = (await db.hrPayrollRun.findMany({ where: { systemId: sys.id }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey);
+    if (runs.length === 0) continue;
+    const rows = await db.hrPayAdjustment.findMany({
+      // รีวิวรอบ 2 S-c: PENDING เท่านั้น — ของที่ HR อนุมัติแล้วไม่ใช่งานของตัวกวาด
+      where: { systemId: sys.id, runId: null, crmCommissionId: { not: null }, status: "PENDING", periodKey: { in: runs } },
+      select: { id: true, systemId: true, employeeId: true, periodKey: true, kind: true, status: true, runId: true, amountSatang: true, note: true, requestedById: true, crmCommissionId: true },
+      orderBy: { id: "asc" },
+      take: Math.max(1, limit - out.length),
+    });
+    out.push(...rows.map((r) => ({ ...r, kind: String(r.kind), status: String(r.status) })));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+// ◂ CRM C3.3

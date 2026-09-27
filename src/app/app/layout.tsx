@@ -237,6 +237,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 ? [{ href: `${s}/crm/settings/notifications`, label: "การแจ้งเตือน" }]
                 : []),
               // ◂ CRM C2.10
+              // CRM C3.3 ▸ คอมมิชชัน (กฎ + รออนุมัติ — crm.settings.manage หรือ crm.commission.approve · 404 สำหรับคนอื่น ⇒ ไม่โชว์ลิงก์ตาย) ·
+              //   คอมมิชชันของฉัน (พนักงาน CRM ทุกคน — เห็นเฉพาะแถวของตัวเอง) · ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
+              ...(crmCan(membershipOf(auth), "crm.settings.manage") || crmCan(membershipOf(auth), "crm.commission.approve")
+                ? [{ href: `${s}/crm/settings/commissions`, label: "คอมมิชชัน" }]
+                : []),
+              { href: `${s}/crm/commissions`, label: "คอมมิชชันของฉัน" },
+              // ◂ CRM C3.3
               // CRM C3.2 ▸ โควตา (404 สำหรับคนที่ไม่มี crm.quota.manage ⇒ ไม่โชว์ลิงก์ตาย) — ทะเบียนเต็มอยู่ที่ `crm/nav.ts` (CRM_DEEP_NAV)
               ...(crmCan(membershipOf(auth), "crm.quota.manage") ? [{ href: `${s}/crm/settings/quotas`, label: "โควตา" }] : []),
               // ◂ CRM C3.2

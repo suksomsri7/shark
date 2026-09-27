@@ -533,6 +533,17 @@ const crmApprovalEffect: OutboxHandler = async (evt) => {
 };
 // ◂ CRM C1.8
 
+// CRM C3.3 ▸ สะพานคอมมิชชัน (`src/lib/platform/crm-bridges/commissions.ts` · R-D) — dynamic import ด้วยเหตุผลเดียวกับ `crmBridge`
+//   (crm → … → scheduleDrain ที่ไฟล์นี้ = วงโหลดไฟล์) · ใช้เป็น **ขั้นแรกที่ retry ได้** (`crmFirst`): `hr.payroll.paid` ที่หายไป =
+//   คอมมิชชันค้าง APPROVED ตลอดกาล ⇒ ล้มชั่วคราวต้องให้คิวส่งใหม่ (ไม่ใช่ WARN แบบของแถม) · ตัวรับ idempotent ทั้งหมด (X4)
+const crmCommissionBridge =
+  (name: "onPayrollPaid" | "onCommissionCreated" | "onCommissionApproved" | "onCommissionReversed"): OutboxHandler =>
+  async (evt) => {
+    const bridges = await import("@/lib/platform/crm-bridges/commissions");
+    await bridges[name](evt);
+  };
+// ◂ CRM C3.3
+
 // M2.6 — บัตรกำนัลขายแล้ว/ถูกใช้ → ไทม์ไลน์ของเจ้าของบัตร
 // M3.7 — ตัวเขียนย้ายไป `member-bridges.ts#onLoyaltyEvent` (recordOnce · เจ้าของว่าง/ถูกลบ = จบเงียบเหมือนเดิม)
 
@@ -1166,6 +1177,18 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "crm.deal.stale": withAutomation(async () => {}),
   "crm.activity.overdue": withAutomation(async () => {}),
   // ◂ CRM C2.10
+  // CRM C3.3 ▸ คอมมิชชัน → เงินเดือน (`crm/commissions.ts` · ใบ C3.3) — 4 event ใหม่ ลงครบ 3 ทะเบียน (ป้ายอยู่ที่ webhooks/labels.ts)
+  //   `hr.payroll.paid#<runId>` {runId, periodKey} — ยิงใน tx เดียวกับ APPROVED→PAID ของรอบจ่าย (hr/payroll.ts#markPaid)
+  //   `crm.commission.created|approved|reversed#<commissionId>` — ยิงใน tx เดียวกับการเขียนแถว/เปลี่ยนสถานะ · payload id/สตางค์/งวด ล้วน (X8)
+  //   ตัวรับ = ขั้นแรกที่ retry ได้ (ยื่นอนุมัติ/ส่งเงินเดือน/ปิด PAID ต่อจากที่ค้าง · แจ้ง `commission.status`) แล้วจึง automation + เว็บฮุค
+  //   ส่งซ้ำ/พร้อมกันกี่รอบก็ไม่เปลี่ยนอะไร (AUDIT-CLASS X4 — guard สถานะ + ล็อกแถว + partial unique ของ HR)
+  "hr.payroll.paid": crmFirst(crmCommissionBridge("onPayrollPaid"), withAutomation(async () => {})),
+  "crm.commission.created": crmFirst(crmCommissionBridge("onCommissionCreated"), withAutomation(async () => {})),
+  "crm.commission.approved": crmFirst(crmCommissionBridge("onCommissionApproved"), withAutomation(async () => {})),
+  "crm.commission.reversed": crmFirst(crmCommissionBridge("onCommissionReversed"), withAutomation(async () => {})),
+  // รอบ 5 N5: แถว PENDING ถูกลบ — ผลข้างเคียงจริง (ลบ + ยกเลิกคำขอ + audit) เกิดครบแล้ว ⇒ no-op ปิด event เป็น DONE + automation/เว็บฮุค
+  "crm.commission.removed": withAutomation(async () => {}),
+  // ◂ CRM C3.3
   // CRM C3.2 ▸ โควตาถึงเกณฑ์ 80/100 % (ตัวยิง `crm/quotas.ts#checkReached` · key `crm.quota.reached#…#<threshold>` · id ล้วน)
   //   งานหลัก = แจ้งเจ้าของโควตา (USER) หรือหัวหน้า+สมาชิกทีม (TEAM) ผ่าน `notifications.notifyStaff` เทมเพลต `quota.progress` ของ C2.10 ·
   //   AUDIT-CLASS X4: ส่งซ้ำ/พร้อมกันไม่แจ้งซ้ำ (ตัวแจ้งกันซ้ำต่อ ผู้รับ+เทมเพลต+โควตา+วันไทย ใต้ล็อก) · กฎอัตโนมัติได้จาก withAutomation ·

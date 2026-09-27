@@ -135,6 +135,9 @@
 //   X8.1 additionally sweeps those new WARN rows (and a WARN written without a tenantId) for PII; C2.7-S8.3 additionally
 //   demands a `crm-ui-inventory.json` row with wo C2.7 for `pos-deal-select` and `pos-deal-hint`, not only the doc link.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ORACLE-EDIT C2.7-fix ▸ (26 Sep · controller lane "C2.7-fix") + F1 = 16 checks (F1.1 · F1.2a · F1.2 · F1.2b · F1.3 · F1.4 · F1.5 ·
+//   F1.6 · round 2: F1.7 · F1.8 · F1.9 · F1.10 · F1.11 · round 3: F1.12 · F1.13 · F1.14) ⇒ 79: the document money must not depend on the ORDER `account.payment.recorded` / `account.invoice.paid` are consumed in
+//   (they are written by ONE emitOutboxMany with the same createdAt) · `pump` orders by (createdAt, id) · worker mode `deliverRounds` ◂
 //   N/A with reasons: X2 (C2.7 adds no REST op and no AI tool — the money ops/tools are C2.11 and C3.4, which carry X2) ·
 //   X5 (C2.7 registers no scheduled job: every effect is an outbox consumer, and "two overlapping runs" is exercised as the
 //   twice-in-parallel delivery of X4.1–X4.4) · X7 (no public endpoint) · X10 (no file, no secret, no cookie).
@@ -241,6 +244,28 @@ if (WORKER_AT >= 0) {
       } catch (e) { return err(e); }
     }))));
   }
+  // ORACLE-EDIT C2.7-fix ▸ deliverRounds : { ids: string[]; t0: number; gapMs: number; skewMs?: number[] } → outbox row ids[r]
+  //   delivered ONCE to the consumer map at t0 + r·gapMs + skewMs[r] (rows prefetched before t0). Two of these workers — one holding the `account.invoice.paid` rows,
+  //   the other the `account.payment.recorded` rows of the SAME payments — race the two events of one payment on two processes
+  //   (own pools, own connections) round after round. An answer "LATE:<ms>" = that round was not synchronised (positive control F1.2a).
+  else if (mode === "deliverRounds") {
+    const obx = (await import("@/lib/outbox-consumers" as string).catch(() => ({}))) as Any;
+    const ids: string[] = Array.isArray(arg.ids) ? arg.ids.map(String) : [];
+    const rows = await Promise.all(ids.map((id) => PW.outboxEvent.findFirst({ where: { id } })));
+    for (let r = 0; r < ids.length; r += 1) {
+      const row = rows[r];
+      const skew = Array.isArray(arg.skewMs) ? Number(arg.skewMs[r] ?? 0) : 0;
+      const wait = Number(arg.t0) + r * Number(arg.gapMs) + skew - Date.now();
+      if (wait > 0) await new Promise<void>((res) => setTimeout(res, wait));
+      try {
+        const h = obx?.consumers?.[row?.type];
+        if (!row || typeof h !== "function") { out.push("ERR:consumer/row missing"); continue; }
+        await h({ id: row.id, tenantId: row.tenantId, type: row.type, payload: row.payload, systemId: row.systemId, unitId: row.unitId });
+        out.push(wait < -80 ? `LATE:${Math.round(-wait)}` : "OK");
+      } catch (e) { out.push(err(e)); }
+    }
+  }
+  // ◂ ORACLE-EDIT C2.7-fix
   console.log(`X3WORKER ${JSON.stringify(out)}`);
   await PW.$disconnect();
   process.exit(0);
@@ -560,7 +585,9 @@ try {
   const pump = async (tids: string[], rounds = 25) => {
     await sleep(250); // let any drain the product code scheduled itself finish first (createSale drains after commit)
     for (let i = 0; i < rounds; i += 1) {
-      const rows = (await P.outboxEvent.findMany({ where: { tenantId: { in: tids }, status: "PENDING" }, orderBy: { createdAt: "asc" }, take: 200 })) as Any[];
+      // ORACLE-EDIT C2.7-fix ▸ deterministic order: rows written by ONE emitOutboxMany share createdAt to the microsecond, so
+      //   `createdAt` alone left the tie to the planner and could hide (or show) an order bug by luck — the id breaks the tie ◂
+      const rows = (await P.outboxEvent.findMany({ where: { tenantId: { in: tids }, status: "PENDING" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 200 })) as Any[];
       if (rows.length === 0) { await sleep(150); return true; }
       for (const row of rows) {
         await consume(evtOf(row));
@@ -1623,6 +1650,464 @@ try {
       [...rsD, ...rsS, ...rsSV].every((r) => r.ok) && B(deal?.paidSatang) === 0 && tagsQ.filter((t) => t === VOID_TAG).length === 1,
       "idempotent everywhere", `paid=${B(deal?.paidSatang)} tags=${j(tagsQ)} answers=${[...rsD, ...rsS, ...rsSV].filter((r) => !r.ok).length} failed`);
   }
+
+  // ═════════════════════════════════════════════════════════════════════════════
+  // ORACLE-EDIT C2.7-fix ▸ F1 — the document money must NOT depend on the ORDER the two account events are consumed in
+  //   (26 Sep · controller lane "C2.7-fix" · found by the C3.2 builder, wo-notes crm-C3.2 §7 CRITICAL)
+  //   `account/service.ts` recordPayment writes `account.payment.recorded` + `account.invoice.paid` in ONE `emitOutboxMany` ⇒ both
+  //   rows carry the SAME createdAt and nothing guarantees which one is consumed first (a tie in ORDER BY createdAt, two drainers
+  //   claiming one row each, a retry after a failed first attempt). When `invoice.paid` wins, `onInvoiceFullyPaid` settles the
+  //   document before the payment row exists and the payment is then counted AGAIN on top ⇒ paidSatang > the document.
+  //   Every check below takes the two events away from every drainer (status DONE right after the REAL payment) and delivers
+  //   them itself — the order is chosen by the test, never by chance:
+  //   F1.1 (CRITICAL) invoice.paid BEFORE payment.recorded ⇒ paidSatang = grand total exactly · one COUNTED row per payment ·
+  //        ≤ 1 DOC_SETTLE row · Σ COUNTED ≤ grand total at every step (also right after the first delivery) · auto-WON once
+  //   F1.2 (CRITICAL) the two events of one payment delivered in PARALLEL by 2 worker PROCESSES × 10 rounds ⇒ the F1.1 invariant
+  //        every round (half of the rounds carry 3 % WHT). With a zero kick-off skew `payment.recorded` always reaches the deal
+  //        lock first (the invoice.paid consumer does more reads before it locks), so the start of payment.recorded is swept
+  //        −150…+390 ms relative to invoice.paid across the rounds · F1.2a positive control: every delivery answered, and the
+  //        lock was won by EACH side in at least one WHT round (read from the xmin order of the settle / payment rows — round 2)
+  //   F1.2b (CRITICAL) the same in-process on separate pool connections (Promise.all + the same skew sweep) × 10 rounds
+  //   F1.3 (CRITICAL) replay: pay→paid, paid→pay, both in parallel ×2 ⇒ rows byte-identical, still exactly the grand total
+  //   F1.4 (CRITICAL) WHT: partial P1 counted · P2 (rest net of 3 % WHT) makes the invoice PAID · invoice.paid delivered first,
+  //        then P2 ⇒ paidSatang = grand total exactly
+  //   F1.5 (MAJOR) order independence of the ROWS: after the reversed order every payment row holds its CASH and the settle
+  //        row holds only the WHT remainder (0 / absent without WHT) — row-for-row what the in-order delivery produces
+  //   F1.6 (MAJOR) voiding P2 after the reversed order ⇒ paidSatang back to P1 exactly · P2 and the settle row REVERSED · no negative
+  // ═════════════════════════════════════════════════════════════════════════════
+  out("\n── F1 · ลำดับ event ของการจ่ายเงิน (C2.7-fix) ──");
+  {
+    type F1Ev = { id: string; type: string } & Record<string, Any>;
+    const f1Fixture = async (label: string, satang: number, pipe: Pipe = pPlain, value = 100_00) => {
+      const ct = await mkContact(tidA, crmA, label, userA);
+      const d = await mkDeal(cA, ct, pipe, { value });
+      const inv = await mkDocForDeal(tidA, accA, crmA, d, "INVOICE", satang);
+      return { d, inv: inv.id, grand: inv.grand };
+    };
+    /** a REAL payment through the book, then the events it emitted are CLAIMED (status DONE) before any drainer of any lane can
+     *  consume them — from here on only this oracle decides the delivery order. `claimed` = every emitted row was still ours */
+    const f1Pay = async (docId: string, amount: number, extra: Record<string, unknown> = {}) => {
+      const pr = await payDoc(tidA, accA, docId, amount, finA, extra);
+      const pid = String(pr.v?.paymentId ?? "");
+      const keys = [`account.payment.recorded#${pid}`, `account.invoice.paid#${docId}`];
+      // round 2: only rows still PENDING belong to THIS payment (`account.invoice.paid#<doc>` is written once per document for
+      //   ever — a re-payment after a void finds the old DONE row, which is not ours to deliver)
+      const evs = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, idempotencyKey: { in: keys }, status: "PENDING" } })) ?? []) as F1Ev[];
+      const claim = evs.length ? await P.outboxEvent.updateMany({ where: { id: { in: evs.map((e) => e.id) }, status: "PENDING" }, data: { status: "DONE", processedAt: new Date() } }) : { count: 0 };
+      const pay = evs.find((e) => e.type === "account.payment.recorded") ?? null;
+      const paid = evs.find((e) => e.type === "account.invoice.paid") ?? null;
+      return { pr, pid, pay, paid, claimed: pr.ok && pr.v?.ok !== false && !!pid && !!pay && Number(claim.count) === evs.length };
+    };
+    const f1State = async (d: string, docId: string) => {
+      const deal = await dealRow(d);
+      const rows = await paysOf(d);
+      const counted = rows.filter((r) => r.status === "COUNTED");
+      const sum = counted.reduce((n, r) => n + B(r.satang), 0);
+      const settle = rows.filter((r) => r.refType === "DOC_SETTLE" && r.refId === docId);
+      const pays = rows.filter((r) => r.refType === "PAYMENT");
+      return { deal, rows, paid: B(deal?.paidSatang), sum, settle, pays };
+    };
+    const f1Inv = (s: Awaited<ReturnType<typeof f1State>>, grand: number, pids: string[]) =>
+      grand > 0 && s.paid === grand && s.sum === grand && s.settle.length <= 1 && s.pays.length === pids.length &&
+      pids.every((pid) => s.pays.filter((r) => r.refId === pid && r.status === "COUNTED").length === 1);
+    const f1Show = (s: Awaited<ReturnType<typeof f1State>>) =>
+      `paid=${s.paid} Σcounted=${s.sum} rows=${j(s.rows.map((r) => `${r.refType}:${r.status}:${B(r.satang)}`))}`;
+    /** row-for-row order independence: every payment row = its cash · settle = the WHT remainder only (0 / absent without WHT) */
+    const f1Rows = (s: Awaited<ReturnType<typeof f1State>>, cash: Record<string, number>, wht: number) =>
+      Object.entries(cash).every(([pid, v]) => s.pays.some((r) => r.refId === pid && r.status === "COUNTED" && B(r.satang) === v)) &&
+      (wht > 0 ? s.settle.length === 1 && s.settle[0]?.status === "COUNTED" && B(s.settle[0]?.satang) === wht : s.settle.every((r) => B(r.satang) === 0 || r.status !== "COUNTED"));
+
+    // F1.11 tracker (C3.3/C3.2 contract): a row that is COUNTED in two consecutive snapshots keeps its satang — commissions and
+    //   quota progress hang off COUNTED rows, so a COUNTED amount that moves afterwards silently corrupts both
+    //   round 3 (controller ruling B1): the ONE allowed exception is a settle row re-derived from the book — it must pass through
+    //   REVERSED with its own events, so a COUNTED→COUNTED amount change is accepted only when a `reverse-doc_settle-<doc>-…`
+    //   crm.deal.updated event of that deal was written after the previous snapshot (database clock on both sides)
+    //   round 4 (controller ruling ข้อ 4 · C3.3 key `<id>#c<countedAt ms>`): every COUNTED settle row has a `docsettle-…` event whose
+    //   payload is its life {rowId, countedAt, satang = the row's amount} · reversedAt is null after a wake · a settle row whose
+    //   countedAt moved must have moved strictly forward AND have a `reverse-doc_settle-…` event whose payload carries the OLD
+    //   countedAt and the OLD amount · a PAYMENT row's countedAt never changes while COUNTED
+    const SEEN = new Map<string, { status: string; satang: number; where: string; t: Date; countedMs: number | null }>();
+    const VIOL: string[] = [];
+    const VIA_REVERSE: string[] = [];
+    const LIFE: string[] = [];
+    const isoOf = (x: unknown) => (x ? new Date(String(x instanceof Date ? x.toISOString() : x)).toISOString() : null);
+    let steps = 0;
+    const dbNow = async (): Promise<Date> => new Date(String(((await P.$queryRawUnsafe(`SELECT now() AS t`)) as Any[])[0]?.t));
+    const track = async (d: string, where: string) => {
+      steps += 1;
+      const t = await dbNow();
+      for (const r of await paysOf(d)) {
+        const prev = SEEN.get(String(r.id));
+        if (prev && prev.status === "COUNTED" && r.status === "COUNTED" && prev.satang !== B(r.satang)) {
+          const passedReverse = r.refType === "DOC_SETTLE" && ((await P.outboxEvent.count({
+            where: { tenantId: tidA, idempotencyKey: { startsWith: `crm.deal.updated#${d}#reverse-doc_settle-${r.refId}-` }, createdAt: { gt: prev.t } },
+          }).catch(() => 0)) as number) > 0;
+          (passedReverse ? VIA_REVERSE : VIOL).push(`${r.refType} ${prev.satang}→${B(r.satang)} (${prev.where} → ${where})`);
+        }
+        const countedMs = r.countedAt ? new Date(r.countedAt).getTime() : null;
+        if (prev && prev.status === "COUNTED" && r.status === "COUNTED" && prev.countedMs !== countedMs) {
+          if (r.refType !== "DOC_SETTLE") LIFE.push(`${r.refType} countedAt moved while COUNTED (${where})`);
+          else if (!(countedMs !== null && prev.countedMs !== null && countedMs > prev.countedMs)) LIFE.push(`DOC_SETTLE countedAt not strictly later ${prev.countedMs}→${countedMs} (${where})`);
+        }
+        if (r.refType === "DOC_SETTLE" && r.status === "COUNTED") {
+          if (r.reversedAt) LIFE.push(`DOC_SETTLE COUNTED with reversedAt set (${where})`);
+          const evs = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, idempotencyKey: { startsWith: `crm.deal.updated#${d}#` } }, select: { idempotencyKey: true, payload: true } }).catch(() => [])) ?? []) as Any[];
+          const setEv = evs.find((e) => String(e.idempotencyKey).includes(`#docsettle-${r.refId}-`) && e.payload?.rowId === r.id && e.payload?.countedAt === isoOf(r.countedAt));
+          if (!setEv || B(setEv.payload?.satang) !== B(r.satang)) LIFE.push(`no docsettle payload {rowId, countedAt ${isoOf(r.countedAt)}, satang ${B(r.satang)}} (${where})`);
+          if (prev && prev.status === "COUNTED" && prev.countedMs !== null && prev.countedMs !== countedMs) {
+            const revEv = evs.find((e) => String(e.idempotencyKey).includes(`#reverse-doc_settle-${r.refId}-`) && e.payload?.rowId === r.id &&
+              e.payload?.countedAt === new Date(prev.countedMs as number).toISOString() && B(e.payload?.satang) === prev.satang);
+            if (!revEv) LIFE.push(`no reverse-doc_settle payload {rowId, old countedAt, old satang ${prev.satang}} (${where})`);
+          }
+        }
+        SEEN.set(String(r.id), { status: String(r.status), satang: B(r.satang), where, t, countedMs });
+      }
+    };
+
+    // F1.1 · F1.3 · F1.5(a) — invoice.paid delivered FIRST, then payment.recorded (full payment, no WHT)
+    const A1 = await f1Fixture("คุณลำดับกลับ", 1_000_00, pAutoWon, 100_00);
+    const a1 = await f1Pay(A1.inv, A1.grand);
+    const r1 = await consume(evtOf(a1.paid ?? {}));
+    await track(A1.d, "F1.1 paid");
+    const mid = await f1State(A1.d, A1.inv);
+    const r2 = await consume(evtOf(a1.pay ?? {}));
+    await track(A1.d, "F1.1 pay");
+    const s1 = await f1State(A1.d, A1.inv);
+    const won1 = (await P.auditLog.count({ where: { tenantId: tidA, targetId: A1.d, action: "crm.deal.won.auto" } }).catch(() => -1)) as number;
+    chk("C2.7-F1.1", "`account.invoice.paid` consumed BEFORE `account.payment.recorded` of the same (full) payment ⇒ paidSatang = the invoice grand total EXACTLY (not twice) · exactly one COUNTED row for the payment · at most one DOC_SETTLE row · Σ COUNTED never above the grand total (also right after the first delivery) · autoWonOnPaid once",
+      a1.claimed && !!a1.paid && r1.ok && r2.ok && mid.sum <= A1.grand && f1Inv(s1, A1.grand, [a1.pid]) && s1.sum <= A1.grand && won1 === 1,
+      `paid ${A1.grand} · 1 PAYMENT row · ≤1 settle · WON once`,
+      `claimed=${a1.claimed} answers=${rd(r1)}/${rd(r2)} afterFirst Σ=${mid.sum}/${A1.grand} · ${f1Show(s1)} wonAudit=${won1}`);
+    {
+      const snap = (s: Awaited<ReturnType<typeof f1State>>) => j(s.rows.map((r) => [r.id, r.refType, r.refId, r.status, B(r.satang)]));
+      const before = snap(s1);
+      const rs: Res[] = [];
+      rs.push(await consume(evtOf(a1.pay ?? {})), await consume(evtOf(a1.paid ?? {})));
+      rs.push(await consume(evtOf(a1.paid ?? {})), await consume(evtOf(a1.pay ?? {})));
+      for (let k = 0; k < 2; k += 1) rs.push(...(await Promise.all([consume(evtOf(a1.pay ?? {})), consume(evtOf(a1.paid ?? {})), consume(evtOf(a1.paid ?? {})), consume(evtOf(a1.pay ?? {}))])));
+      await track(A1.d, "F1.3 replays");
+      const s3 = await f1State(A1.d, A1.inv);
+      chk("C2.7-F1.3", "replaying BOTH events of the F1.1 payment in both orders and in parallel (×2) changes nothing: the rows are byte-identical, paidSatang is still exactly the grand total, every delivery resolves",
+        rs.every((r) => r.ok) && snap(s3) === before && f1Inv(s3, A1.grand, [a1.pid]),
+        `unchanged · paid ${A1.grand}`, `answers=${rs.filter((r) => !r.ok).length} failed · same=${snap(s3) === before} · ${f1Show(s3)}`);
+    }
+
+    // F1.4 · F1.5(b) · F1.6 — WHT: partial P1 counted in order · P2 = the rest net of 3 % WHT · invoice.paid FIRST, then P2
+    const W1 = await f1Fixture("คุณหักภาษีลำดับกลับ", 5_000_00);
+    const p1Amt = Math.round(W1.grand * 0.4);
+    const wht = Math.round(W1.grand * 0.03);
+    const p2Amt = W1.grand - p1Amt - wht;
+    const w1 = await f1Pay(W1.inv, p1Amt);
+    const rw1 = await consume(evtOf(w1.pay ?? {}));
+    await track(W1.d, "F1.4 P1");
+    const w2 = await f1Pay(W1.inv, p2Amt, { whtAmountSatang: wht, whtRateBp: 300 });
+    const rw2 = await consume(evtOf(w2.paid ?? {}));
+    await track(W1.d, "F1.4 paid");
+    const midW = await f1State(W1.d, W1.inv);
+    const rw3 = await consume(evtOf(w2.pay ?? {}));
+    await track(W1.d, "F1.4 P2");
+    const sW = await f1State(W1.d, W1.inv);
+    const docW = await docRow(W1.inv);
+    chk("C2.7-F1.4", "WHT: partial P1 counted · P2 (the rest, net of 3 % WHT) makes the invoice PAID · `invoice.paid` consumed BEFORE P2's `payment.recorded` ⇒ paidSatang = the grand total EXACTLY · one COUNTED row per payment · ≤ 1 DOC_SETTLE · Σ COUNTED never above the grand total",
+      w1.claimed && w2.claimed && !!w2.paid && docW?.status === "PAID" && wht > 0 && [rw1, rw2, rw3].every((r) => r.ok) && midW.sum <= W1.grand && f1Inv(sW, W1.grand, [w1.pid, w2.pid]),
+      `paid ${W1.grand} = ${p1Amt} + ${p2Amt} + WHT ${wht}`,
+      `claimed=${w1.claimed}/${w2.claimed} status=${docW?.status} afterPaid Σ=${midW.sum}/${W1.grand} · ${f1Show(sW)}`);
+    // round 2 (controller ruling on the money review): restated — payment rows == cash and settle == WHT exactly, in EVERY order
+    chk("C2.7-F1.5", "in every delivery order the payment rows hold exactly their CASH and the settle row exactly the WHT (F1.4: P1 · P2 · settle = WHT) — no settle row worth anything without WHT (F1.1) — the settle is computed from the book (grand − Σ non-voided payments), never from which CRM rows happen to exist yet",
+      f1Rows(s1, { [a1.pid]: A1.grand }, 0) && f1Rows(sW, { [w1.pid]: p1Amt, [w2.pid]: p2Amt }, wht),
+      `F1.1 payment=${A1.grand} settle 0/absent · F1.4 ${p1Amt}/${p2Amt} settle=${wht}`, `F1.1 ${f1Show(s1)} · F1.4 ${f1Show(sW)}`, "MAJOR");
+    {
+      const vp = await voidPay(tidA, accA, W1.inv, w2.pid, `ยกเลิก ${TAG}`);
+      await pump([tidA]);
+      await track(W1.d, "F1.6 void P2");
+      const sV = await f1State(W1.d, W1.inv);
+      const p2Row = sV.pays.find((r) => r.refId === w2.pid);
+      const negative = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "CrmDeal" WHERE "systemId" = $1 AND "paidSatang" < 0`, crmA).catch(() => [{ n: -1 }])) as Any[];
+      chk("C2.7-F1.6", "voiding P2 after the reversed order gives back exactly what it brought: paidSatang = P1 exactly · P2's row and the settle row REVERSED · P1 still COUNTED · no negative paidSatang in the shop",
+        vp.ok && sV.paid === p1Amt && sV.sum === p1Amt && p2Row?.status === "REVERSED" && sV.settle.every((r) => r.status === "REVERSED") &&
+          sV.pays.some((r) => r.refId === w1.pid && r.status === "COUNTED") && Number(negative[0]?.n ?? -1) === 0,
+        `paid ${p1Amt}`, `void=${rd(vp)} ${f1Show(sV)} negatives=${String(negative[0]?.n)}`, "MAJOR");
+    }
+
+    // F1.2 — the two events of ONE payment raced by two worker PROCESSES, 10 rounds (odd rounds carry 3 % WHT)
+    const ROUNDS = 10;
+    type F1Round = { d: string; inv: string; grand: number; pid: string; cash: number; wht: number; paidEv: string; payEv: string; claimed: boolean };
+    const mkRound = async (r: number, label: string): Promise<F1Round> => {
+      const f = await f1Fixture(`${label} ${r}`, 700_00 + r * 11_00);
+      const w = r % 2 === 1 ? Math.round(f.grand * 0.03) : 0;
+      const p = await f1Pay(f.inv, f.grand - w, w > 0 ? { whtAmountSatang: w, whtRateBp: 300 } : {});
+      return { d: f.d, inv: f.inv, grand: f.grand, pid: p.pid, cash: f.grand - w, wht: w, paidEv: String(p.paid?.id ?? ""), payEv: String(p.pay?.id ?? ""), claimed: p.claimed && !!p.paid };
+    };
+    /** who reached the deal lock first — round 2: the settle amount no longer depends on the order (it is the WHT read from the
+     *  book), so the winner is read from the transaction ids: both money transactions take only ADVISORY locks before the deal
+     *  lock, and their first xid-assigning statement (SELECT … FOR UPDATE of the deal rows) comes right after it ⇒ the xmin of the
+     *  settle row vs the payment row orders the two lock acquisitions. A round without a settle row (no WHT) is "?" */
+    const winnerOf = async (x: F1Round): Promise<"PAID" | "PAY" | "?"> => {
+      const rows = ((await P.$queryRawUnsafe(`SELECT "refType", "refId", (xmin::text)::bigint AS x FROM "CrmDealPayment" WHERE "dealId" = $1`, x.d).catch(() => [])) ?? []) as Any[];
+      const st = rows.find((r) => r.refType === "DOC_SETTLE" && r.refId === x.inv);
+      const py = rows.find((r) => r.refType === "PAYMENT" && r.refId === x.pid);
+      if (!st || !py) return "?";
+      return BigInt(st.x) < BigInt(py.x) ? "PAID" : "PAY";
+    };
+    // round 2: the sweep straddles zero (payment.recorded first … invoice.paid well ahead) so both lock orders occur
+    const SKEW = Array.from({ length: 10 }, (_v, r) => r * 60 - 150);
+    const judge = async (rs: F1Round[]) => {
+      const bad: string[] = [];
+      for (const [i, x] of rs.entries()) {
+        const s = await f1State(x.d, x.inv);
+        if (!(x.claimed && f1Inv(s, x.grand, [x.pid]) && f1Rows(s, { [x.pid]: x.cash }, x.wht))) bad.push(`r${i}:${x.claimed ? "" : "UNCLAIMED "}grand=${x.grand} wht=${x.wht} ${f1Show(s)}`);
+      }
+      return bad;
+    };
+    {
+      const rs: F1Round[] = [];
+      for (let r = 0; r < ROUNDS; r += 1) rs.push(await mkRound(r, "คุณแข่งโพรเซส"));
+      const t0 = Date.now() + 25_000;
+      const gapMs = 2_000;
+      const [wa, wb] = await Promise.all([
+        spawnWorkers("deliverRounds", { ids: rs.map((x) => x.paidEv), t0, gapMs }, 1),
+        spawnWorkers("deliverRounds", { ids: rs.map((x) => x.payEv), t0, gapMs, skewMs: SKEW.slice(0, ROUNDS) }, 1),
+      ]);
+      const answers = [...wa.answers, ...wb.answers];
+      const wins = await Promise.all(rs.map(winnerOf));
+      chk("C2.7-F1.2a", `[positive control] 2 worker PROCESSES delivered ${ROUNDS} rounds each (invoice.paid ∥ payment.recorded of the same payment · payment kick-off swept ${SKEW[0]}…${SKEW[ROUNDS - 1]} ms relative to invoice.paid), every delivery answered, and EACH side won the deal lock in ≥ 1 round — if red, F1.2 proves nothing`,
+        wa.spawned && wb.spawned && answers.length === 2 * ROUNDS && answers.every((a) => a === "OK" || a.startsWith("LATE:")) && rs.every((x) => x.claimed) &&
+          wins.includes("PAID") && wins.includes("PAY"),
+        `${2 * ROUNDS} answers · both orders seen`, `spawned=${wa.spawned}/${wb.spawned} answers=${j(answers)} claimed=${rs.filter((x) => x.claimed).length}/${ROUNDS} lockWinner=${j(wins)}`);
+      const bad = await judge(rs);
+      chk("C2.7-F1.2", `the two events of one payment delivered in PARALLEL by 2 PROCESSES (own pools · own connections) × ${ROUNDS} rounds — every round: paidSatang = the grand total exactly, one COUNTED row for the payment, ≤ 1 settle row holding only the WHT`,
+        bad.length === 0 && answers.length === 2 * ROUNDS, `${ROUNDS}/${ROUNDS} exact`, `${ROUNDS - bad.length}/${ROUNDS} exact · ${cut(bad.join(" | "), 900)}`);
+    }
+    {
+      const rs: F1Round[] = [];
+      for (let r = 0; r < ROUNDS; r += 1) rs.push(await mkRound(r, "คุณแข่งในโพรเซส"));
+      const answers: Res[] = [];
+      for (const [i, x] of rs.entries()) {
+        const evPaid = await P.outboxEvent.findFirst({ where: { id: x.paidEv } });
+        const evPay = await P.outboxEvent.findFirst({ where: { id: x.payEv } });
+        const sk = SKEW[i] ?? 0;
+        answers.push(...(await Promise.all([sleep(Math.max(0, -sk)).then(() => consume(evtOf(evPaid ?? {}))), sleep(Math.max(0, sk)).then(() => consume(evtOf(evPay ?? {})))])));
+      }
+      const bad = await judge(rs);
+      const wins = await Promise.all(rs.map(winnerOf));
+      chk("C2.7-F1.2b", `the same race in-process on separate pool connections (Promise.all · payment kick-off swept ${SKEW[0]}…${SKEW[ROUNDS - 1]} ms relative to invoice.paid) × ${ROUNDS} rounds ⇒ every round exact (lock winners are reported)`,
+        bad.length === 0 && answers.every((r) => r.ok), `${ROUNDS}/${ROUNDS} exact`, `${ROUNDS - bad.length}/${ROUNDS} exact · failed=${answers.filter((r) => !r.ok).length} · lockWinner=${j(wins)} · ${cut(bad.join(" | "), 900)}`);
+    }
+
+    // ── round 2 (controller ruling on the money review of the C2.7-fix · 26 Sep): voids, re-payments, late events ──
+    const f1Claim = async (keys: string[]) => {
+      const evs = ((await P.outboxEvent.findMany({ where: { tenantId: tidA, idempotencyKey: { in: keys }, status: "PENDING" } })) ?? []) as F1Ev[];
+      const claim = evs.length ? await P.outboxEvent.updateMany({ where: { id: { in: evs.map((e) => e.id) }, status: "PENDING" }, data: { status: "DONE", processedAt: new Date() } }) : { count: 0 };
+      return { evs, claimed: evs.length === keys.length && Number(claim.count) === evs.length };
+    };
+    const f1Void = async (docId: string, pid: string) => {
+      const vp = await voidPay(tidA, accA, docId, pid, `ยกเลิก ${TAG}`);
+      const c = await f1Claim([`account.payment.voided#${pid}`]);
+      return { vp, ev: c.evs[0] ?? null, claimed: vp.ok && vp.v?.ok !== false && c.claimed };
+    };
+    {
+      // F1.7 — P1 (half) counted · P1 voided in the book · P1' (the full grand total) makes the invoice PAID · the void of P1 is
+      //   delivered LAST, after P1' + invoice.paid in both orders ⇒ the deal holds exactly P1' (= the grand total)
+      const run = async (order: "PAY_FIRST" | "PAID_FIRST") => {
+        const F = await f1Fixture(`คุณจ่ายใหม่ ${order}`, 10_000_00);
+        const p1Amt = Math.round(F.grand / 2);
+        const a = await f1Pay(F.inv, p1Amt);
+        const rs: Res[] = [await consume(evtOf(a.pay ?? {}))];
+        await track(F.d, `F1.7 ${order} P1`);
+        const v = await f1Void(F.inv, a.pid);
+        const b = await f1Pay(F.inv, F.grand);
+        for (const e of order === "PAY_FIRST" ? [b.pay, b.paid] : [b.paid, b.pay]) { rs.push(await consume(evtOf(e ?? {}))); await track(F.d, `F1.7 ${order} ${e?.type}`); }
+        rs.push(await consume(evtOf(v.ev ?? {})));
+        await track(F.d, `F1.7 ${order} void P1 (last)`);
+        const s = await f1State(F.d, F.inv);
+        const doc = await docRow(F.inv);
+        const ok = a.claimed && v.claimed && b.claimed && !!b.paid && doc?.status === "PAID" && rs.every((r) => r.ok) && s.paid === F.grand && s.sum === F.grand &&
+          s.pays.some((r) => r.refId === b.pid && r.status === "COUNTED" && B(r.satang) === F.grand) && s.pays.some((r) => r.refId === a.pid && r.status === "REVERSED");
+        return { ok, show: `${order}: claimed=${a.claimed}/${v.claimed}/${b.claimed} status=${doc?.status} grand=${F.grand} P1=${p1Amt} P1'=${F.grand} → ${f1Show(s)}` };
+      };
+      const x = await run("PAY_FIRST");
+      const y = await run("PAID_FIRST");
+      chk("C2.7-F1.7", "P1 (half) counted · P1 voided · P1' = the grand total makes the invoice PAID · P1's void delivered LAST after P1' and invoice.paid in BOTH orders ⇒ the deal = the grand total exactly (P1' row = its cash · P1 row REVERSED) — a cap computed from CRM rows that the void has not reached yet must not shave P1'",
+        x.ok && y.ok, "grand total in both orders", `${x.show} | ${y.show}`);
+    }
+    {
+      // F1.8 — WHT: P1 = grand − 3 % paid net (PAID) ⇒ grand · void P1 ⇒ 0 · P1'' = the same net again (PAID again — the book does NOT
+      //   emit account.invoice.paid a second time: its key is per document) ⇒ grand again, the SAME settle row reactivated, WON once
+      const F = await f1Fixture("คุณจ่าย-ยกเลิก-จ่ายใหม่", 10_000_00, pAutoWon, 100_00);
+      const wht = Math.round(F.grand * 0.03);
+      const net = F.grand - wht;
+      const a = await f1Pay(F.inv, net, { whtAmountSatang: wht, whtRateBp: 300 });
+      const rs: Res[] = [await consume(evtOf(a.pay ?? {})), await consume(evtOf(a.paid ?? {}))];
+      await track(F.d, "F1.8 P1+paid");
+      const sA = await f1State(F.d, F.inv);
+      const v = await f1Void(F.inv, a.pid);
+      rs.push(await consume(evtOf(v.ev ?? {})));
+      await track(F.d, "F1.8 void P1");
+      const sV = await f1State(F.d, F.inv);
+      const c = await f1Pay(F.inv, net, { whtAmountSatang: wht, whtRateBp: 300 });
+      rs.push(await consume(evtOf(c.pay ?? {})));
+      await track(F.d, "F1.8 P1''");
+      const sR = await f1State(F.d, F.inv);
+      const doc = await docRow(F.inv);
+      const won = (await P.auditLog.count({ where: { tenantId: tidA, targetId: F.d, action: "crm.deal.won.auto" } }).catch(() => -1)) as number;
+      const settleId = sA.settle[0]?.id;
+      chk("C2.7-F1.8", "WHT: P1 (net of 3 % WHT) ⇒ deal = grand · void P1 ⇒ deal = 0 (settle REVERSED) · P1'' (same net + WHT) makes the invoice PAID again WITHOUT a second `account.invoice.paid` ⇒ deal = grand again: the SAME settle row reactivated to exactly the WHT · autoWonOnPaid fired once overall",
+        a.claimed && !!a.paid && v.claimed && c.claimed && !c.paid && doc?.status === "PAID" && rs.every((r) => r.ok) &&
+          sA.paid === F.grand && sV.paid === 0 && sV.settle.every((r) => r.status === "REVERSED") &&
+          sR.paid === F.grand && sR.sum === F.grand && sR.settle.length === 1 && sR.settle[0]?.id === settleId && sR.settle[0]?.status === "COUNTED" && B(sR.settle[0]?.satang) === wht && won === 1,
+        `${F.grand} → 0 → ${F.grand} · settle ${wht} reactivated · WON once`,
+        `claimed=${a.claimed}/${v.claimed}/${c.claimed} secondPaidEvent=${!!c.paid} status=${doc?.status} grand=${F.grand} net=${net} wht=${wht} · after P1 ${sA.paid} · after void ${sV.paid} · after P1'' ${f1Show(sR)} · sameSettle=${sR.settle[0]?.id === settleId} wonAudit=${won}`);
+    }
+    {
+      // F1.9 — a LATE payment.recorded: (a) the payment was voided before its event arrived · (b) payment voided + document voided
+      const F = await f1Fixture("คุณมาช้า", 3_000_00);
+      const part = Math.round(F.grand * 0.3);
+      const a = await f1Pay(F.inv, part);
+      const v = await f1Void(F.inv, a.pid);
+      const rs: Res[] = [await consume(evtOf(v.ev ?? {})), await consume(evtOf(a.pay ?? {})), await consume(evtOf(v.ev ?? {}))];
+      await track(F.d, "F1.9a late pay");
+      const sa = await f1State(F.d, F.inv);
+      const G = await f1Fixture("คุณเอกสารยกเลิก", 3_000_00);
+      const partG = Math.round(G.grand * 0.3);
+      const b = await f1Pay(G.inv, partG);
+      const vb = await f1Void(G.inv, b.pid);
+      const vd = await call(accSvc.voidDocument, tidA, accA, G.inv, `ยกเลิก ${TAG}`);
+      const cd = await f1Claim([`account.document.voided#${G.inv}`]);
+      rs.push(await consume(evtOf(vb.ev ?? {})), await consume(evtOf(cd.evs[0] ?? {})), await consume(evtOf(b.pay ?? {})));
+      await track(G.d, "F1.9b late pay");
+      const sb = await f1State(G.d, G.inv);
+      const docG = await docRow(G.inv);
+      const rowA = sa.pays.find((r) => r.refId === a.pid);
+      const rowB = sb.pays.find((r) => r.refId === b.pid);
+      chk("C2.7-F1.9", "a LATE `payment.recorded` whose payment is already voided (a) — or whose payment AND document are voided (b) — writes its row as REVERSED and counts nothing: the deal stays at 0 and a redelivered void changes nothing",
+        a.claimed && v.claimed && b.claimed && vb.claimed && cd.claimed && docG?.status === "VOIDED" && rs.every((r) => r.ok) &&
+          sa.paid === 0 && sa.sum === 0 && rowA?.status === "REVERSED" && sb.paid === 0 && sb.sum === 0 && rowB?.status === "REVERSED",
+        "REVERSED rows · deals 0", `claimed=${a.claimed}/${v.claimed}/${b.claimed}/${vb.claimed}/${cd.claimed} docVoid=${rd(vd)}:${docG?.status} · (a) ${f1Show(sa)} · (b) ${f1Show(sb)}`);
+    }
+    {
+      // F1.10 — a LATE void of a payment that was already replaced: P1 (WHT) PAID + settled · P1 voided in the book · P1'' re-pays
+      //   (PAID again) and is delivered BEFORE P1's void ⇒ the late void takes P1 back but keeps the settle (the book is still PAID)
+      const F = await f1Fixture("คุณยกเลิกช้า", 10_000_00);
+      const wht = Math.round(F.grand * 0.03);
+      const net = F.grand - wht;
+      const a = await f1Pay(F.inv, net, { whtAmountSatang: wht, whtRateBp: 300 });
+      const rs: Res[] = [await consume(evtOf(a.pay ?? {})), await consume(evtOf(a.paid ?? {}))];
+      await track(F.d, "F1.10 P1+paid");
+      const v = await f1Void(F.inv, a.pid);
+      const c = await f1Pay(F.inv, net, { whtAmountSatang: wht, whtRateBp: 300 });
+      rs.push(await consume(evtOf(c.pay ?? {})));
+      await track(F.d, "F1.10 P1''");
+      rs.push(await consume(evtOf(v.ev ?? {})));
+      await track(F.d, "F1.10 late void P1");
+      rs.push(await consume(evtOf(v.ev ?? {})));
+      const s = await f1State(F.d, F.inv);
+      const doc = await docRow(F.inv);
+      chk("C2.7-F1.10", "a LATE void of an already-replaced payment (P1'' re-paid and counted first) takes back only P1: the settle row stays COUNTED at the WHT because the book is still PAID ⇒ deal = the grand total = P1'' cash + WHT",
+        a.claimed && v.claimed && c.claimed && doc?.status === "PAID" && rs.every((r) => r.ok) && s.paid === F.grand && s.sum === F.grand &&
+          s.settle.length === 1 && s.settle[0]?.status === "COUNTED" && B(s.settle[0]?.satang) === wht &&
+          s.pays.some((r) => r.refId === a.pid && r.status === "REVERSED") && s.pays.some((r) => r.refId === c.pid && r.status === "COUNTED" && B(r.satang) === net),
+        `deal ${F.grand} = ${net} + WHT ${wht}`, `claimed=${a.claimed}/${v.claimed}/${c.claimed} status=${doc?.status} ${f1Show(s)}`);
+    }
+    // ── round 3 (controller ruling on the second money review): the settle is RE-DERIVED from the book ──
+    const settleKeys = async (d: string, inv: string) => {
+      const ks = (((await P.outboxEvent.findMany({ where: { tenantId: tidA, idempotencyKey: { startsWith: `crm.deal.updated#${d}#` } }, select: { idempotencyKey: true } }).catch(() => [])) ?? []) as Any[]).map((r) => String(r.idempotencyKey));
+      return { rev: ks.filter((k) => k.includes(`#reverse-doc_settle-${inv}-`)).length, set: ks.filter((k) => k.includes(`#docsettle-${inv}`)).length };
+    };
+    {
+      // F1.12 — B1: void + re-pay with a DIFFERENT WHT (3 % → 1 %, 3 % → 0) in both orders of the late void, plus a partial-first
+      //   variant ⇒ the deal = grand exactly and the settle = the NEW WHT (a stale COUNTED settle is re-derived through REVERSED)
+      const variant = async (label: string, newBp: number, order: "VOID_FIRST" | "VOID_LAST", partialFirst: boolean, minSet = 1) => {
+        const F = await f1Fixture(`คุณเปลี่ยนภาษี ${label}`, 10_000_00);
+        const rs: Res[] = [];
+        const p0 = partialFirst ? Math.round(F.grand * 0.4) : 0;
+        let c0 = true;
+        if (p0 > 0) {
+          const a0 = await f1Pay(F.inv, p0);
+          c0 = a0.claimed;
+          rs.push(await consume(evtOf(a0.pay ?? {})));
+          await track(F.d, `F1.12 ${label} P0`);
+        }
+        const rest = F.grand - p0;
+        const w1 = Math.round(rest * 0.03);
+        const a = await f1Pay(F.inv, rest - w1, { whtAmountSatang: w1, whtRateBp: 300 });
+        rs.push(await consume(evtOf(a.pay ?? {})), await consume(evtOf(a.paid ?? {})));
+        await track(F.d, `F1.12 ${label} P1+paid`);
+        const v = await f1Void(F.inv, a.pid);
+        const w2 = Math.round((rest * newBp) / 10_000);
+        const b = await f1Pay(F.inv, rest - w2, w2 > 0 ? { whtAmountSatang: w2, whtRateBp: newBp } : {});
+        const seq = order === "VOID_FIRST" ? [v.ev, b.pay] : [b.pay, v.ev];
+        for (const e of seq) { rs.push(await consume(evtOf(e ?? {}))); await track(F.d, `F1.12 ${label} ${e?.type}`); }
+        const s = await f1State(F.d, F.inv);
+        const k = await settleKeys(F.d, F.inv);
+        const doc = await docRow(F.inv);
+        const settleOk = w2 > 0
+          ? s.settle.length === 1 && s.settle[0]?.status === "COUNTED" && B(s.settle[0]?.satang) === w2
+          : s.settle.every((r) => r.status !== "COUNTED" || B(r.satang) === 0);
+        const ok = c0 && a.claimed && !!a.paid && v.claimed && b.claimed && doc?.status === "PAID" && rs.every((r) => r.ok) &&
+          s.paid === F.grand && s.sum === F.grand && settleOk && k.rev >= 1 && k.set >= minSet;
+        return { ok, show: `${label}: grand=${F.grand} P0=${p0} P1=${rest - w1}+${w1} → P2=${rest - w2}+${w2} → ${f1Show(s)} events rev=${k.rev} set=${k.set}` };
+      };
+      const vs = [
+        await variant("3→1 void-first", 100, "VOID_FIRST", false),
+        await variant("3→1 void-last", 100, "VOID_LAST", false, 2),
+        await variant("3→0 void-first", 0, "VOID_FIRST", false),
+        await variant("3→0 void-last", 0, "VOID_LAST", false),
+        await variant("partial 3→1 void-first", 100, "VOID_FIRST", true),
+        await variant("partial 3→1 void-last", 100, "VOID_LAST", true, 2),
+      ];
+      chk("C2.7-F1.12", "B1 — void + re-pay with a DIFFERENT withholding tax (3 %→1 %, 3 %→0 %, and a partial-payment-first variant), the void delivered before OR after the re-payment ⇒ deal = the grand total exactly · the settle row = the NEW WHT (none worth anything at 0 %) · the stale settle was taken back through REVERSED with its own events (a `reverse-doc_settle-…` and a `docsettle-…` crm.deal.updated exist · the 3→1 void-last variants show TWO `docsettle-…` = the one-transaction reverse→wake path)",
+        vs.every((x) => x.ok), "6/6 exact", `${vs.filter((x) => x.ok).length}/6 · ${cut(vs.filter((x) => !x.ok).map((x) => x.show).join(" | ") || vs.map((x) => x.show).join(" | "), 1400)}`);
+    }
+    {
+      // F1.13 — N1-deposit: WHT deducted on a DEPOSIT_RECEIPT is settled too (per-document settle row keyed by the receipt) —
+      //   the book never emits account.invoice.paid for a deposit, so only the CRM-side trigger can close it
+      const ct = await mkContact(tidA, crmA, "คุณมัดจำหักภาษี", userA);
+      const d = await mkDeal(cA, ct, pPlain, { value: 100_00 });
+      const dep = await mkDocForDeal(tidA, accA, crmA, d, "DEPOSIT_RECEIPT", 5_000_00);
+      const wht = Math.round(dep.grand * 0.03);
+      const a = await f1Pay(dep.id, dep.grand - wht, { whtAmountSatang: wht, whtRateBp: 300 });
+      const r = await consume(evtOf(a.pay ?? {}));
+      await track(d, "F1.13 deposit");
+      const s = await f1State(d, dep.id);
+      const doc = await docRow(dep.id);
+      chk("C2.7-F1.13", "a DEPOSIT_RECEIPT paid net of 3 % WHT (no account.invoice.paid exists for deposits) ⇒ the deal = the receipt's grand total: the cash row + ONE settle row keyed by the receipt worth exactly the WHT",
+        a.claimed && r.ok && dep.grand > 0 && s.paid === dep.grand && s.sum === dep.grand && s.settle.length === 1 && s.settle[0]?.status === "COUNTED" && B(s.settle[0]?.satang) === wht,
+        `paid ${dep.grand} = ${dep.grand - wht} + WHT ${wht}`, `claimed=${a.claimed} ${rd(r)} status=${doc?.status} paidTotal=${B(doc?.paidTotal)} grand=${dep.grand} · ${f1Show(s)}`);
+    }
+    {
+      // F1.14 — N3/N9: the book cannot be read (round 4: the ledger reader is a dependency — `deps.ledger`, default = the account
+      //   facade — so the oracle hands in one that throws; no test marker in src/) ⇒ the settle path touches NOTHING and leaves a
+      //   WARN (ids only) · the cash is still counted (the void event would take it back) · positive control: the real reader settles
+      const F = await f1Fixture("คุณสมุดอ่านไม่ได้", 5_000_00);
+      const wht = Math.round(F.grand * 0.03);
+      const cash = F.grand - wht;
+      const t0 = await dbNow();
+      const a = await f1Pay(F.inv, cash, { whtAmountSatang: wht, whtRateBp: 300 });
+      const boom = async () => { throw new Error("qc ledger unreadable"); };
+      const ctxA = { tenantId: tidA, systemId: crmA };
+      const rs: Res[] = [
+        await call(PAY.recordDocPayment, ctxA, { documentId: F.inv, paymentId: a.pid, amountSatang: cash }, { ledger: boom }),
+        await call(PAY.onInvoiceFullyPaid, ctxA, { documentId: F.inv }, { ledger: boom }),
+      ];
+      await track(F.d, "F1.14 ledger unreadable");
+      const s = await f1State(F.d, F.inv);
+      const warns = ((await P.opsEvent.findMany({ where: { tenantId: tidA, level: "WARN", createdAt: { gte: t0 } } }).catch(() => [])) as Any[])
+        .filter((w) => `${w.message} ${w.detail ?? ""}`.includes(F.inv));
+      const leak = warns.filter((w) => PII.some((x) => `${w.message} ${w.detail ?? ""}`.includes(x)));
+      const rc = await call(PAY.onInvoiceFullyPaid, ctxA, { documentId: F.inv });
+      await track(F.d, "F1.14 ledger readable again");
+      const s2 = await f1State(F.d, F.inv);
+      chk("C2.7-F1.14", "the book cannot be read (the ledger reader throws — injected through `deps.ledger`) ⇒ no settle row is written or changed, the deal keeps only the cash, and a WARN OpsEvent (Thai · ids only) names the document · [positive control] the same `onInvoiceFullyPaid` with the real reader settles exactly the WHT",
+        a.claimed && rs.every((r) => r.ok) && s.settle.length === 0 && s.paid === cash &&
+          warns.length >= 1 && leak.length === 0 && warns.every((w) => thai(w.message)) && rc.ok && s2.paid === F.grand && s2.settle.length === 1 && B(s2.settle[0]?.satang) === wht,
+        `unreadable: settle 0 · paid ${cash} · WARN · readable: paid ${F.grand}`,
+        `answers=${rs.map(rd).join("/")} unreadable: ${f1Show(s)} warns=${warns.length} leak=${leak.length} · readable: ${rd(rc)} ${f1Show(s2)}`);
+    }
+    chk("C2.7-F1.11", "C3.3/C3.2 contract across the whole F1 fixture: a CrmDealPayment row that is COUNTED in two consecutive snapshots keeps its satang and its countedAt (commissions key on `<id>#c<countedAt ms>`) · every COUNTED settle row has a `docsettle-…` event carrying {rowId, countedAt, satang} · reversedAt null after a wake · a re-derived settle's countedAt moves strictly forward and its `reverse-doc_settle-…` event carries the OLD countedAt and amount — the ONLY amount exception is a settle row re-derived from the book, which must have passed through REVERSED with its own `reverse-doc_settle-…` event in between — snapshots after every delivery step of F1.1 · F1.3 · F1.4 · F1.6 · F1.7–F1.10 · F1.12–F1.14",
+      VIOL.length === 0 && LIFE.length === 0 && steps >= 15 && SEEN.size > 0, "0 unexplained amount/countedAt changes · every settle life has its events",
+      `steps=${steps} rows=${SEEN.size} violations=${cut(VIOL.join(" | "), 500) || "-"} · life=${cut(LIFE.join(" | "), 600) || "-"} · via REVERSED=${VIA_REVERSE.length}`);
+  }
+  // ◂ ORACLE-EDIT C2.7-fix
 
   // ═════════════════════════════════════════════════════════════════════════════
   // X1 — scope: cross tenant · cross CRM system of the same tenant · cross visibility

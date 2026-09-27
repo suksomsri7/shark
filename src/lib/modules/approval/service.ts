@@ -396,3 +396,20 @@ export async function cancelRequest(ctx: Ctx, requestId: string): Promise<boolea
   });
   return res.count > 0;
 }
+
+// CRM C3.3 ▸ ผู้ตัดสินขั้นสุดท้ายของคำขอ (อ่านล้วน · ผูกร้าน) — ผู้เรียก: crm/commissions.ts (รีวิวเงินรอบ 2 S-d: ห้ามอนุมัติของตัวเองผ่านสาย)
+export async function lastDecisionOf(ctx: Ctx, requestId: string): Promise<{ decidedById: string; decision: string } | null> {
+  if (!requestId) return null;
+  const d = await tenantDb(ctx).approvalDecision.findFirst({ where: { requestId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { decidedById: true, decision: true } });
+  return d ? { decidedById: d.decidedById, decision: String(d.decision) } : null;
+}
+// ◂ CRM C3.3
+
+// CRM C3.3 ▸ สถานะของคำขอหลายใบ (อ่านล้วน · ผูกร้าน) — ผู้เรียก: งานรายนาทีของคอมมิชชัน (ใช้ผลสายซ้ำเมื่อการแจ้งเจ้าของร้านล้ม)
+export async function requestStatuses(ctx: Ctx, requestIds: string[]): Promise<Record<string, string>> {
+  const ids = [...new Set(requestIds.filter(Boolean))].slice(0, 500);
+  if (ids.length === 0) return {};
+  const rows = await tenantDb(ctx).approvalRequest.findMany({ where: { id: { in: ids } }, select: { id: true, status: true }, take: ids.length });
+  return Object.fromEntries(rows.map((r) => [r.id, String(r.status)]));
+}
+// ◂ CRM C3.3

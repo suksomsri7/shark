@@ -705,8 +705,14 @@ export {
   type EnsureAccountContactInput,
 } from "./service";
 
+// CRM C2.7-fix ▸ (รอบ 3–4 · N9) สมุดการรับชำระของเอกสาร 1 ใบแบบผอม (อ่านล้วน · รวมยอดใน SQL · รับ tx ของผู้เรียกได้)
+//   ทางเดินเงินของ CRM ตัดสิน "ยกเลิกแล้ว/ครบแล้ว/ส่วนต่าง WHT" ในธุรกรรมที่ถือล็อกเงิน — ของเดิมใน service.ts ไม่แตะ ◂
+export { docPaymentLedger, type DocPaymentLedger } from "./service";
+
 // รวมผู้ติดต่อซ้ำ (ใช้ตอน CRM รวมบริษัท/ผู้ติดต่อแล้วต้องรวมฝั่งบัญชีตาม) — ธุรกรรมเดียว ครบทุกตาราง
 export { mergeContacts, type MergeContactsInput, type MergeResult } from "./contact-merge";
+// CRM C3.3 ▸ ฐานคอมมิชชันก่อน VAT ของเอกสาร (subTotal − discountAmount · อ่านล้วน) — ผู้เรียก: crm/commissions.ts (เส้น crm→account เดิม) ◂
+export { docNetBeforeVat, commissionDocRatios } from "./service";
 
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
 // reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)
