@@ -403,7 +403,10 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.9 | ✅ | `a0d9d531`+`a06a796b` | PDPA ลบ/ส่งออก (ลบใต้ FOR UPDATE + ธง audit · สายที่ถูกรวม · ไฟล์ · consumer crm.contact.erased retry · member.erased) · อายุเก็บ + ยืนยันลด · เพดาน 19 คีย์ (advisory lock · เตือน 80 % ครั้งเดียว) · party.countPartyHolders · ข้อสอบ 36/36 ×2 · ผู้ตรวจ 4 รอบ (BLOCKER 3) · ภาพ 6 |
 | C3 | C3.4 | ✅ | `a06a796b`+`0321c844`+`a9523b59` | AI ในหน้า 9 kind · tool 32 · facade meeting/kb · ประตูข้อเสนอ (rejectProposal สาขา CRM) · ห้องทีม (won/hot/digest + sweep gated) · unfurl · KB tokens · ข้อสอบ 53/53 ×2 · ผู้ตรวจ 3 รอบ · regression static 3 จุดแก้ · ภาพ 14 |
 | C3 | C3.3-fix | ✅ | `a9523b59` | นักล่าเงินหลังรวมพบ MAJOR 5 + race 1 → ORACLE-EDIT H1–H6/M7/X3.3 → แก้ 4 รอบ · ผู้ตรวจเงิน 3 รอบ (B1 จากมติผู้คุมงานเอง) · c3.3 90/90 ×2 บนทรีหลัก |
-| C3 | C3.8 | 🔨 | — | builder 31/31 ×2 · ผู้ตรวจรอบ 1 SHOULD-FIX 2 (token ดิบใน ApiIdempotency · เพดานอนุมัติของคีย์) กำลังแก้ |
+| C3 | C3.8 | ✅ | `76b0f81a` | REST/AI ชุดสาม: op 106→122 · manifest 32 tool · OpenAPI ต่อคีย์ · export ผ่านคีย์ admin · key-caps (เพดานผู้สร้างคีย์) · idempotency ไม่เก็บค่าลับ (แกนกลาง) · ข้อสอบ 31/31 ×2 · ผู้ตรวจ 2 รอบ |
+| C3 | C3.9-fix | 🔨 | — | นักล่าความปลอดภัยพบ 12 (BLOCKER 5) → ORACLE-EDIT H1–H12 → builder 4 รอบ (48/48) · ผู้ตรวจรอบ 2 เหลือ R2-S1 กำลังปิด · ⛔ prod รอใบนี้ |
+| C4 | C4.1 | 🔨 | `15707b04` | ทะเบียน 1,052 แถว · crawler --inventory · testid ใหม่ 11 · ผู้ตรวจ MERGEABLE AFTER SHOULD-FIX (ปิดแล้ว) · รอ C4.2 รันจริงยืนยัน backdrop |
+| C4 | C4.2 | 🔨 | `15707b04` | qc-crm-buttons.mts (dry 7,122 กด) รอรันจริงกับ server จาก HEAD |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.1–C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |

@@ -148,3 +148,16 @@
 - **บันทึกมติ (ตั้งใจ · ฝั่งปลอดภัย):** คีย์ที่ OWNER สร้าง = เพดานอนุมัติไม่จำกัด (`crmCapFor` → OWNER ไม่จำกัด) แต่ actor ของคีย์ชุดผู้ดูแลมีบทบาท MANAGER ⇒ **อนุมัติแถวคอมมิชชันของเจ้าของร้านเองไม่ได้** (กติกา "ห้ามอนุมัติของตัวเอง ยกเว้น OWNER" ใช้ role ของ actor ซึ่งไม่ใช่ OWNER) — ถือว่าถูก: การอนุมัติของตัวเองต้องทำบนหน้าจอโดยเจ้าของร้าน ไม่ใช่ผ่านคีย์
 - ชุดสมาชิกที่แตะ replaySecrets (m1.11 · m2.10 · m2.6/m2.7/m2.9 · m3.10/m3.11 · fix-s1/s4) **รันบน QC2 ไม่ได้ตอนนี้**: probe `scripts/pending/probe-c38-seedid.mts` (อ่านอย่างเดียว) ยืนยันว่า id สมาชิก #1 ทั้งของ `member-expected.json` ฉบับ git และฉบับของ `shark-crm`/`c12a` **ไม่มี** ใน QC2 (seed ของ QC2 ถูกสร้างใหม่ แต่ไฟล์ expected ที่ตรงกันหายไปตอน checkout คืนตามคำสั่ง) ⇒ ต้อง seed QC2 ใหม่ (งานของผู้คุมงาน) หรือรันบน QC1 · หลักฐานของแกน replay: probe S1 4/4 + qc-account-api-core 64/64 + qc-account-api-keys (รอบ 3)
 - **ผลรอบ 3** (`.qc-shots/c38/r3-summary.log`): typecheck 0 error · gen docs · qc-crm-c3.8 31/31 · qc-crm-c3.3 83/90 (H1–H6 + M7 = ฐานของ c110 ไม่มีข้ออื่น) · qc-crm-c3.9 36/36 (รวม S6.5) · qc-crm-c3.2 47/47 · qc-crm-c3.4 53/53 · qc-account-api-keys 51/51 · fitness 33/33 ×2 · `scripts/*-expected.json` ตรงกับ git (ไม่มี diff)
+
+## ผู้คุมงาน (Fable 5.1 · 27 ก.ย. 2569) — รับงาน
+| # | ผล | หลักฐาน |
+|---|---|---|
+| D1 | ✅ | ข้อสอบ 31 ข้อเขียนก่อน (`82653840`) · ruling addendum · ORACLE-EDIT A ({tab} ไม่ใช่ id · S8.4/X1.1) + B (export.get ผ่านคีย์อื่น 404 · S8.5) — ผู้ตรวจยืนยันไม่ทำให้อ่อนลง |
+| D2 | ✅ | `qc-crm-c3.8` **31/31 ×2** QC1 seed ใหม่ (`c38-verify.log` · ครั้งแรก 30/31 = skill gitignored ยังไม่ได้คัดลอกเข้า main) · 31/31 ×2 ทุกรอบบน QC2 |
+| D3 | ✅ | มติ commissions.mine ผ่านคีย์ = แถวผู้สร้างคีย์ · คีย์ OWNER = role MANAGER อนุมัติแถวเจ้าของไม่ได้ (ตั้งใจ) · readonly เห็นโควตาทั้งระบบ (แก้ถ้อยคำ scopes) |
+| D4 | ✅ | ถอยหลัง QC1 (`c38-verify.log` 66 ขั้น): c3.4 53 · c3.9 36/48 (H รอ fix) · account-api-core 64 · account-api-keys 51 · m1.11 25/26 (S5.2 ภาพ) · m2.10 17/20 (S5.x server) · k1.15 · ai ×5 · kb ×3 · meeting 22 · c1.7 57 · + regression ชุด C3.4/C3.9 ทั้งหมด · แดง = รู้จัก (m2.9/m3.11/c3.7 ภาพ · k2.3) |
+| D5/D6 | ✅ | typecheck 5120 exit 0 ×2 · fitness 33/33 ×2 · build ผ่าน (`c38-verify-b.log` · หลังพักเลนอื่น — OOM ครั้งที่ 3 ยืนยันกฎ) |
+| D7 | — | ไม่มี UI ใหม่ (manifest/OpenAPI/docs) · ภาพ 3.7 owner/thana บน build ใหม่ 0 failures · c3.7 30/30 · m3.10 21/21 |
+| D8–D11 | ✅ | ผู้ตรวจอิสระ 2 รอบ (SHOULD-FIX 2: token ดิบใน ApiIdempotency (แกนกลาง) · เพดานของคีย์ · NOTE 6 → รอบ 2 MERGEABLE + notes ปิด) · probe idempotency 4/4 |
+| D12 | ⏳ | รอ push (⛔ prod รอ C3.9-fix) — `76b0f81a` |
+หนี้: N4 portal.revoke idempotency (C3.5) · REPORT_EXPORT กำลังรันตอนลบ (C3.9-fix) · commissions.pending/list 500 (แก้แล้ว) · member suites replay ยืนยันบน QC1 แล้ว (m1.11 25/26 · account-api-core 64)
