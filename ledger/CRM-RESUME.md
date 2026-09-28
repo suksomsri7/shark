@@ -40,6 +40,15 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.15 ⏸️ 28 Sep 2026 ~06:00 UTC — QUOTA STOP at 95% (owner) · accepted 43/53 = 81%
+Resume via SendMessage (each agent has a wo-notes checkpoint):
+- C5.4-A (a6099ec1d458b59fb · c54a): round 3 = hunter H1–H5 (report ledger/wo-notes/crm-C5.4-A-hunt.md). Batch A rounds 1–2 are ALREADY MERGED into the MAIN working tree (uncommitted!) — unit crm-c54a-main verifies it · after round 3: re-merge the delta (patch, read hunks) → gate → commit.
+- C4.3-fix2 (a467afb01d3d14282 · c432): round 2 = S1 activity clear · S2 required custom fields UI + SERVER enforcement (action + REST) · N2 FieldError outside <label> · then ALL parts + merge under the QC3 lock → merge into main → accept C4.3 (44/53).
+- C5.4-B (a79fe2841ad004c36 · c54b) · C5.4-C (a967cc389179d4d2a · c54c): building.
+- C4.2 (aed457d6ca7a8aed3): it3 analysis; unit crm-c42-it3b (other roles).
+- C4.4 (a34d2630d3542be17): stories.
+- Owner rules now: cap 6 lanes · ask quota % hourly · stop at ≥90%.
+
 ### 0.14 ⏸️ 28 Sep 2026 ~02:00 UTC — QUOTA STOP at 81% (owner) · accepted **43/53 = 81%** (C5.2 · C5.3 · C5.1 today) · prod LIVE 3677d983 (C3.9-fix + Vercel tsc split)
 Resume each agent via SendMessage from its wo-notes checkpoint (transcripts survive):
 - C4.2 (aed457d6ca7a8aed3 · c42) — unit `crm-c42-it3b` keeps running owner→manager→nok→thana→customer · then merge_summary per role (wo-notes §12)
