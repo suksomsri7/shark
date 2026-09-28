@@ -4,7 +4,7 @@
 
 | # | when | item | default if no answer |
 |---|---|---|---|
-| P1 | ✅ DONE 27 Sep 22:55 UTC (owner "push ได้") · pushed c236a490:main | approve `git push origin HEAD:main` (prod deploy) | do NOT push |
+| P1 | ✅ DONE · prod LIVE 28 Sep 00:40 UTC (3677d983 = c236a490 + Vercel build fix) | approve `git push origin HEAD:main` (prod deploy) | do NOT push |
 | P2 | after C3.10 qc:all | CP3 — owner tries QC shop: portal with a customer session · commission → payroll (controller sends link + steps) | wait |
 | P3 | any time | Q7 unsubscribe line in 1:1 sales e-mail | YES (both kinds) |
 | P4 | any time | Q8 v1-era payments counted into deals after switching to v2 | NO catch-up |
@@ -15,5 +15,6 @@
 | P9 | prod env | `RESEND_WEBHOOK_SECRET` on prod (unset = webhook returns 401, safe) | leave unset |
 | P10 | any time (from C5.2 L2 hunt) | Q14 — CRM 'won value': before VAT (= deal value, what quotas/home use today) or VAT-inclusive (what paid-invoice deals use today)? Both surfaces must use one basis | default: **before VAT** everywhere |
 | P11 | any time (from C5.2 L4 hunt) | Q15 — `/l/<code>` short links let any shop redirect to any site on shark.in.th (abuse ⇒ whole domain blocklisted ⇒ every shop's CRM mail to spam). Options: (ก) separate short-link domain (ข) destination policy/allowlist + Safe Browsing check (ค) keep as is | default: (ข) destination policy + Safe Browsing |
+| P12 | any time (from C5.3) | Q16 — should an API key stop working when the staff member who created it is demoted or removed? (today it keeps working with the creator's old rights) | default: **yes — keys die with their creator's access** |
 
 Done by owner: 27 Sep — chose **4 lanes**; cleaned worktrees c12a/c20/c23/c110 (0 changes each, verified).

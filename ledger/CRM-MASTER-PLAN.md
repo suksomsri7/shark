@@ -410,7 +410,9 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.2 | ✅ | (this commit) | 6 hunters read-only · 0 BLOCKER · 22 MAJOR · 40 MINOR · `wo-notes/crm-C5.2*.md` · C5.3 pinning in progress |
 | C5 | C5.1 | 🔨 | — | perf fix done (32/32) · independent review in progress |
-| C5 | C5.3–C5.5 | ⏸️ | — | |
+| C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
+| C5 | C5.4 | 🔨 | — | batch A (platform/prod-exposed) building · B–F queued |
+| C5 | C5.5 | ⏸️ | — | |
 | C6 | C6.1–C6.4 | ⏸️ | — | |
 
 รวม 53 ใบ: C0 5 · C1 12 · C2 12 · C3 11 (รวมปิดเฟส) · C4 4 · C5 5 · C6 4 · ประมาณเวลาเดินเครื่อง 6–8 วัน (เทียบ RUN สมาชิก 34 ใบ ≈ 3 วัน + รอบแก้ 1 วัน) · migration 3 ใบ · ข้อสอบ ≈ 780 (เดิม) + ≈ 350 (กลุ่ม X) + ทะเบียนปุ่ม ≈ 600–800 แถว
