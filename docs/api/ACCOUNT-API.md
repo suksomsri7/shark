@@ -3690,7 +3690,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
 | --- | --- |
 | `account.document.approved` | A purchase order was approved. |
 | `account.payment.recorded` | A receipt or a vendor payment was recorded against a document. |
-| `account.invoice.paid` | An invoice reached fully paid. |
+| `account.invoice.paid` | An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split. |
 | `account.period.closed` | An accounting period was closed. |
 | `account.document.issued` | A document left draft and got its real document number (sales, purchase, purchase order sent for approval, approved stock issue). |
 | `account.document.voided` | A document was cancelled (draft) or voided (already posted, journal reversed). |
@@ -3745,7 +3745,7 @@ A receipt or a vendor payment was recorded against a document.
 
 #### `account.invoice.paid`
 
-An invoice reached fully paid.
+An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split.
 
 ```json
 {
@@ -3753,7 +3753,9 @@ An invoice reached fully paid.
   "payload": {
     "documentId": "cmf1doc0001",
     "docNo": "IV-202609-0007",
-    "grandTotalSatang": 107000
+    "grandTotalSatang": 107000,
+    "paidTotalSatang": 96300,
+    "creditNoteSatang": 10700
   },
   "sentAt": "2026-09-05T09:15:00.000Z"
 }

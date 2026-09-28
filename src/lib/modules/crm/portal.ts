@@ -497,7 +497,8 @@ function quotationDto(d: DocRow, role: string, now = new Date()): PortalQuotatio
 }
 
 function invoiceDto(d: DocRow, role: string): PortalInvoiceDto {
-  const outstanding = OPEN_INVOICE.has(d.status) ? Math.max(0, d.grandTotal - d.paidTotal) : 0;
+  // CRM C5.4-C ▸ (cross-lane ACCOUNT) ยอดค้างหักใบลดหนี้ที่ยังมีผล — เดิมลูกค้าเห็นยอดใบลดหนี้เป็นหนี้ค้าง และลิงก์จ่ายขอยอดเต็ม ◂
+  const outstanding = OPEN_INVOICE.has(d.status) ? Math.max(0, d.grandTotal - d.paidTotal - Math.max(0, d.creditNoteTotal ?? 0)) : 0;
   return {
     id: d.id,
     docNo: d.docNo,

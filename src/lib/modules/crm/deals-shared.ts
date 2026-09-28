@@ -114,7 +114,10 @@ export type DealDto = {
   stageId: string;
   kind: DealKind;
   valueSatang: number;
+  /** มูลค่าที่ชนะ (ฐาน WON_VALUE_BASIS · C5.4-C) — ดีลที่ชนะไม่เป็น null */
   wonValueSatang: number | null;
+  /** CRM C5.4-C ▸ เงินที่รับจริงของดีล (สตางค์) ◂ */
+  paidSatang: number;
   discountBp: number;
   currency: string;
   /** "YYYY-MM-DD" (วันตามปฏิทินไทย) */

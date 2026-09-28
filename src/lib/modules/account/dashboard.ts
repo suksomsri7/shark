@@ -1,6 +1,6 @@
 import { tenantDb } from "@/lib/core/db";
-import type { AccountDocStatus, AccountDocType, AccountLedgerType } from "@prisma/client";
-import { DOC_LABEL, STATUS_LABEL, isOverdue } from "./service";
+import type { AccountDocStatus, AccountDocType, AccountLedgerType, Prisma } from "@prisma/client";
+import { DOC_LABEL, STATUS_LABEL, familyCreditByInvoice, isOverdue } from "./service";
 import { EXP_DOC_LABEL } from "./expense";
 import { financeBalances } from "./finance";
 import { agingBucket, emptyAging, type AgingGrand } from "./reports";
@@ -910,7 +910,7 @@ function emptyStatusPoint(periodKey: string): MonthStatusPoint {
  * เต็มใบ (ธรรมเนียมเดียวกับ documentsIssued() ที่ไม่ใช้ยอดคงค้าง) ⇒ ชำระแล้ว+รอชำระ+พ้นกำหนด = ยอดที่ออกทั้งเดือนเสมอ
  *
  * ใช้ findMany + bucket ฝั่ง JS (ไม่ใช่ $queryRaw) — แนวเดียวกับ loadOpenDocs()/recentRows() ในไฟล์นี้ (ไม่ต้อง
- * เขียนตรรกะวันที่/overdue ซ้ำเป็น SQL คนละสำนวน) — **1 query**
+ * เขียนตรรกะวันที่/overdue ซ้ำเป็น SQL คนละสำนวน) — **1 query** (ฝั่งรายรับที่มีใบ PAID = 2: ใบลดหนี้ · C5.4-C)
  */
 export async function monthlyStatusSeries(
   ctx: DashCtx,
@@ -924,8 +924,16 @@ export async function monthlyStatusSeries(
   const scopeWhere = side === "revenue" ? SALES_WHERE : PURCHASE_WHERE;
   const docs = await db.accountDocument.findMany({
     where: { ...scopeWhere, status: { notIn: NOT_ISSUED }, issueDate: { gte: from, lt: to } },
-    select: { issueDate: true, status: true, dueDate: true, validUntil: true, grandTotal: true },
+    select: { id: true, issueDate: true, status: true, dueDate: true, validUntil: true, grandTotal: true },
   });
+  // CRM C5.4-C ▸ (review round 2 · Q2) ถัง "ชำระแล้ว" ของฝั่งรายรับ = ยอดใบ − ใบลดหนี้ที่ยังมีผล (ใบแจ้งหนี้ที่ปิดด้วยใบลดหนี้ไม่ใช่เงินที่เก็บได้)
+  //   คำสั่งที่ 2 เฉพาะฝั่งรายรับที่มีใบ PAID · ยอดรวม (grand) ใช้ยอดเดียวกัน ⇒ ชำระแล้ว+รอชำระ+พ้นกำหนด = ยอดรวม ยังจริงเสมอ ◂
+  const paidIds = side === "revenue" ? docs.filter((d) => d.status === "PAID").map((d) => d.id) : [];
+  const creditOf = new Map<string, number>();
+  if (paidIds.length > 0) {
+    // hunt F1: ทั้งครอบครัวใบแจ้งหนี้ (ใบลดหนี้อ้างใบเสร็จ/ใบกำกับด้วย)
+    for (const [k, v] of await familyCreditByInvoice(db as unknown as Prisma.TransactionClient, ctx.systemId, paidIds)) creditOf.set(k, v);
+  }
 
   const byKey = new Map<string, MonthStatusPoint>();
   for (const k of yearKeys(year)) byKey.set(k, emptyStatusPoint(k));
@@ -944,10 +952,11 @@ export async function monthlyStatusSeries(
     const bucket = byKey.get(periodKeyBkk(d.issueDate));
     if (!bucket) continue;
     const overdue = isOverdue({ status: d.status, dueDate: d.dueDate, validUntil: d.validUntil });
+    const amount = d.status === "PAID" ? Math.max(0, d.grandTotal - (creditOf.get(d.id) ?? 0)) : d.grandTotal;
     if (d.status === "PAID") {
-      bucket.paid += d.grandTotal;
+      bucket.paid += amount;
       bucket.paidCount += 1;
-      total.paid += d.grandTotal;
+      total.paid += amount;
       total.paidCount += 1;
     } else if (overdue) {
       bucket.overdue += d.grandTotal;
@@ -960,7 +969,7 @@ export async function monthlyStatusSeries(
       total.awaiting += d.grandTotal;
       total.awaitingCount += 1;
     }
-    total.grand += d.grandTotal;
+    total.grand += amount;
     total.grandCount += 1;
   }
 

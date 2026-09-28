@@ -876,8 +876,8 @@ try {
       const trOk = await call(WH.testEndpoint, { tenantId: T }, epOk.id, "crm.contact.created", { fetch: okFetch, lookup: async () => ["93.184.216.34"] });
       const pubLit = await WH.webhookTargetProblem("https://93.184.216.34/hook", noDns);
       chk("C5.3-L4-M2", "the outgoing-webhook SSRF guard holds: IPv4-mapped / compatible / NAT64 / site-local IPv6 literals of private targets are blocked, a failed DNS lookup is not \"public\", and a 3xx to an internal address is never followed (delivery = failure) — while a clean public endpoint still delivers",
-        !!ctl1 && !pubLit && trOk.ok && trOk.v?.delivered === true && allowed === 0 && !!dnsFail && tr.ok && !reachedInternal && tr.v?.delivered === false,
-        "controls: 127.0.0.1 blocked · public IPv4 literal allowed · clean public endpoint (200) delivered=true ⇒ 0 of the 6 literals allowed · NXDOMAIN (real resolver) blocked · 302→127.0.0.1: no internal hop, delivered=false",
+        !!ctl1 && !pubLit && trOk.ok && trOk.v?.delivered === true && allowed === 0 && !!dnsFail && tr.ok && !reachedInternal && hops.some((h) => h.includes("hooks-")) && (tr.v?.delivered === true || tr.v?.delivered === false), // ORACLE-EDIT C5.3-L4-M2 (controller · 28 Sep · SF1 of C5.4-A review: a 3xx counts as DELIVERED-with-warning so Google Apps Script /exec gets no duplicates; the SSRF contract is "no internal hop is ever fetched")
+        "controls: 127.0.0.1 blocked · public IPv4 literal allowed · clean public endpoint (200) delivered=true ⇒ 0 of the 6 literals allowed · NXDOMAIN (real resolver) blocked · 302→127.0.0.1: no internal hop is fetched (delivered may be true with a redirect warning — ruling SF1)",
         `control127=${ctl1 ? "blocked" : "ALLOWED"} publicLiteral=${pubLit ? "BLOCKED" : "allowed"} cleanEndpoint=${desc(trOk)} · ${verdicts.join(" ")} · nxdomain=${dnsFail ? "blocked" : "ALLOWED"} · test=${desc(tr)} hops=${hops.join(" → ")}`);
     });
 
