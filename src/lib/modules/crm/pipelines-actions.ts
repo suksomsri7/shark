@@ -19,6 +19,7 @@ import {
   restorePipeline,
   updatePipeline,
   updateStage,
+  type PipelinePatch,
   type PipelinesCtx,
   type StageInput,
   type StagePatch,
@@ -70,7 +71,8 @@ export async function createPipelineAction(systemId: string, input: { name: stri
   }
 }
 
-export async function updatePipelineAction(systemId: string, pipelineId: string, patch: { name?: string | null; isDefault?: boolean | null }): Promise<{ ok: true } | Fail> {
+// C4.4-fix ▸ US3: patch รับ stageOnQuoteAcceptedId/RejectedId ด้วย (บริการตรวจว่าเป็นขั้นของ pipeline นี้ ร้าน/ระบบเดียวกัน · ด่านสิทธิ์เดิม) ◂
+export async function updatePipelineAction(systemId: string, pipelineId: string, patch: PipelinePatch): Promise<{ ok: true } | Fail> {
   try {
     const { ctx, actor } = await session(systemId);
     await updatePipeline(ctx, actor, pipelineId, patch);

@@ -12,6 +12,7 @@ import { crmNavItems } from "@/lib/modules/crm/nav";
 import { CRM_OPS } from "@/lib/modules/crm/api/registry";
 import { crmToolInfos } from "@/lib/modules/crm/api/tools";
 import { crmWebhookEvents, isCrmWebhookEndpoint } from "@/lib/modules/crm/api/webhook-events";
+import { privateTargetsAllowed } from "@/lib/webhooks/private-targets"; // C4.4-fix I3 ▸ ช่องทดสอบ http://loopback (dev/QC เท่านั้น) ◂
 import { crmKeysRefusedByGuard } from "@/lib/modules/crm/api/key-guard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -124,6 +125,7 @@ export default async function CrmApiSettingsPage({ params }: { params: Promise<{
         events={events}
         webhooks={webhooks}
         deliveries={deliveries}
+        allowLoopbackHttp={privateTargetsAllowed()}
         createKey={createCrmApiKeyAction}
         revokeKey={revokeCrmApiKeyAction}
         createWebhook={createCrmWebhookAction}

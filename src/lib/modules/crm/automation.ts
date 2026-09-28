@@ -839,6 +839,23 @@ async function tenantOwnerId(tenantId: string): Promise<string> {
   const m = await prisma.membership.findFirst({ where: { tenantId, role: "OWNER" }, orderBy: { createdAt: "asc" }, select: { userId: true } });
   return m?.userId ?? "";
 }
+/**
+ * C4.4-fix ▸ US8: ผู้ติดต่อหลักของบริษัท (ลิงก์ที่ยังใช้งาน isPrimary · บริษัท/ผู้ติดต่อของร้าน + ระบบนี้ · ไม่เก็บถาวร/รวม/ลบตาม PDPA)
+ *   เลือกแบบกำหนดแน่นอน (เริ่มลิงก์ก่อน → id) · ไม่พบ = เหตุผลภาษาไทยให้ผู้เรียกบันทึกเป็น "ข้าม" ◂
+ */
+async function primaryContactOfCompany(tenantId: string, systemId: string, companyId: string): Promise<{ ok: true; contact: CrmContact } | { ok: false; reason: string }> {
+  const co = await companySystemRef(tenantId, companyId);
+  if (!co || co.systemId !== systemId) return { ok: false, reason: "ไม่พบบริษัทของเหตุการณ์นี้ในระบบ CRM นี้ — เปิดดีลให้ไม่ได้" };
+  const links = await prisma.crmCompanyContact.findMany({
+    where: { tenantId, companyId: co.id, isPrimary: true, endedAt: null, contact: { tenantId, systemId, archivedAt: null, mergedIntoId: null } },
+    orderBy: [{ startedAt: "asc" }, { id: "asc" }],
+    take: 5,
+    select: { contact: true },
+  });
+  for (const l of links) if (!(await isErasedContact(tenantId, l.contact.id))) return { ok: true, contact: l.contact };
+  return { ok: false, reason: "บริษัทนี้ยังไม่มีผู้ติดต่อหลัก — เปิดดีลให้ไม่ได้ (ตั้งผู้ติดต่อหลักในหน้าบริษัทก่อน)" };
+}
+
 async function ownerOf(s: CrmSubject): Promise<string> {
   return s.contact?.ownerUserId ?? s.deal?.ownerUserId ?? (await tenantOwnerId(s.tenantId));
 }
@@ -908,17 +925,29 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
         return ok("สร้างงานติดตามแล้ว");
       }
       case "CREATE_DEAL": {
-        if (!s.contact) return skip(i, kind, "เหตุการณ์นี้ไม่มีผู้ติดต่อ — เปิดดีลให้ไม่ได้");
+        // C4.4-fix ▸ US8: เหตุการณ์ของ "บริษัท" (เช่น สัญญาที่ผูกบริษัท · custom.record.field_due) ไม่มีผู้ติดต่อในตัว ⇒ ใช้ผู้ติดต่อหลัก
+        //   ของบริษัทนั้น (ร้าน + ระบบเดียวกัน · ยังใช้งาน · ไม่ถูกลบตาม PDPA · เลือกแบบกำหนดแน่นอน) และผูกดีลกับบริษัท ·
+        //   ไม่มีผู้ติดต่อหลัก = ข้ามพร้อมเหตุผลที่อ่านรู้เรื่อง (บันทึกในผลของกฎ) — ไม่ล้ม ไม่ทำเป็นสำเร็จ ◂
+        let dealContact: CrmContact | null = s.contact;
+        let dealCompanyId: string | null = null;
+        if (!dealContact && !s.deal && s.companyId) {
+          const pc = await primaryContactOfCompany(s.tenantId, s.systemId, s.companyId);
+          if (!pc.ok) return skip(i, kind, pc.reason);
+          dealContact = pc.contact;
+          dealCompanyId = s.companyId;
+        }
+        if (!dealContact) return skip(i, kind, "เหตุการณ์นี้ไม่มีผู้ติดต่อ — เปิดดีลให้ไม่ได้");
         const pipe = await prisma.crmPipeline.findFirst({ where: { id: str(params.pipelineId), tenantId: s.tenantId, systemId: s.systemId, archivedAt: null }, select: { id: true } });
         if (!pipe) return skip(i, kind, "pipeline ที่ตั้งไว้ไม่อยู่ในระบบ CRM นี้แล้ว — ไม่ได้เปิดดีล");
         const first = await prisma.crmStage.findFirst({ where: { pipelineId: pipe.id, kind: "OPEN" }, orderBy: { sortOrder: "asc" }, select: { id: true } });
-        const owner = await ownerOf(s);
-        await touch(env, `contact:${s.contact.id}`);
+        const owner = dealContact.ownerUserId ?? (await ownerOf(s));
+        await touch(env, `contact:${dealContact.id}`);
         const nd = await deals.createDeal(svcCtx(s), systemActor(owner), {
           pipelineId: pipe.id,
           stageId: first?.id ?? null,
           title: ((await render(str(params.titleTpl))) || "ดีลใหม่").slice(0, 200),
-          contactId: s.contact.id,
+          contactId: dealContact.id,
+          ...(dealCompanyId ? { companyId: dealCompanyId } : {}),
           ...(params.valueSatang !== undefined ? { valueSatang: numOr(params.valueSatang, 0) } : {}),
           ...(owner ? { ownerUserId: owner } : {}),
         });

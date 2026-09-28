@@ -2583,6 +2583,64 @@
     },
     {
       "page": "/contacts/[contactId]",
+      "testid": "contact-convert-company-taxid",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "contact-convert-error",
+        "note": "US2: เลขภาษีของบริษัทใหม่ตอนแปลง lead (ตัวตรวจ taxIdProblem เดียวกับ createCompany)"
+      },
+      "wo": "C4.4-fix",
+      "oracle": ""
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-convert-company-role",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "inline-error",
+        "target": "contact-convert-error",
+        "note": "US2: บทบาทของผู้ติดต่อในบริษัท (บริษัทใหม่ค่าเริ่มต้น = ผู้ตัดสินใจ · ผูกบริษัทเดิมค่าเริ่มต้น = ไม่เปลี่ยน)"
+      },
+      "wo": "C4.4-fix",
+      "oracle": ""
+    },
+    {
+      "page": "/contacts/[contactId]",
+      "testid": "contact-convert-done",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "contact-convert-modal",
+        "state": "disappears",
+        "note": "C4.4-fix รอบ 2 (S2): ปุ่มปิดหลังแปลงเสร็จเมื่อระบบใช้บริษัทเดิมที่มีเลขภาษีนี้ (contact-convert-reused บอกชื่อ)"
+      },
+      "wo": "C4.4-fix",
+      "oracle": ""
+    },
+    {
+      "page": "/contacts/[contactId]",
       "testid": "contact-convert-deal",
       "kind": "toggle",
       "roles": [
@@ -5162,6 +5220,63 @@
         "db": "CrmPipeline.isDefault=true"
       },
       "wo": "C1.5",
+      "oracle": ""
+    },
+    {
+      "page": "/settings/pipelines",
+      "testid": "pl-quote-accept-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pl-msg",
+        "note": "US3: ขั้นที่ดีลย้ายไปเมื่อลูกค้าตอบรับใบเสนอราคา (CrmPipeline.stageOnQuoteAcceptedId · ค่าว่าง = ไม่ย้าย)"
+      },
+      "wo": "C4.4-fix",
+      "oracle": ""
+    },
+    {
+      "page": "/settings/pipelines",
+      "testid": "pl-quote-reject-*",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "pl-msg",
+        "note": "US3: ขั้นที่ดีลย้ายไปเมื่อลูกค้าปฏิเสธใบเสนอราคา (CrmPipeline.stageOnQuoteRejectedId · ค่าว่าง = ไม่ย้าย)"
+      },
+      "wo": "C4.4-fix",
+      "oracle": ""
+    },
+    {
+      "page": "/settings/pipelines",
+      "testid": "pl-quote-save-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "op:pipelines.updatePipeline(stageOnQuoteAcceptedId,stageOnQuoteRejectedId)",
+        "db": "CrmPipeline.stageOnQuoteAcceptedId/stageOnQuoteRejectedId"
+      },
+      "wo": "C4.4-fix",
       "oracle": ""
     },
     {

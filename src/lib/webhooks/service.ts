@@ -16,6 +16,7 @@ import { isIP } from "node:net";
 import type { LookupAddress } from "node:dns";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { privateTargetsAllowed } from "./private-targets";
 
 export type Ctx = { tenantId: string };
 /**
@@ -55,9 +56,7 @@ const DNS_TIMEOUT_MS = 1500;
 const PRIVATE_HOST_TH =
   "ที่อยู่ปลายทางนี้ชี้ไปยังเครื่องภายในเครือข่าย จึงส่งข้อมูลออกไปไม่ได้ — ใช้ที่อยู่สาธารณะของระบบปลายทาง";
 
-function privateTargetsAllowed(): boolean {
-  return process.env.WEBHOOK_ALLOW_PRIVATE === "1" && process.env.APP_ENV !== "production";
-}
+// C4.4-fix I3 ▸ สวิตช์ย้ายไป `./private-targets` (ไฟล์บริสุทธิ์) — ตัวตรวจที่อยู่ของ CRM ใช้สวิตช์เดียวกัน · พฤติกรรมเดิมทุกตัวอักษร ◂
 
 /** IPv4 นี้อยู่ในเครือข่ายภายใน/loopback/link-local/metadata/สงวนไหม */
 function isPrivateV4(p: readonly number[]): boolean {

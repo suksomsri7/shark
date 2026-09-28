@@ -48,7 +48,7 @@ import * as assignment from "./assignment";
 import * as companies from "./companies";
 import * as consents from "./consents";
 import * as objects from "./objects";
-import { CompaniesError } from "./companies-shared";
+import { COMPANY_CONTACT_ROLES, CompaniesError, TAX_COMPANY_ARCHIVED_MSG, TAX_COMPANY_HIDDEN_MSG, normalizeCompanyTaxId, taxIdProblem, type CompanyContactRole } from "./companies-shared";
 import { canAdvanceLifecycle } from "./rules";
 // CRM C1.5 ▸ ดีลของ "แปลง lead" + ดีลเปิดที่ย้ายตามบริษัท เขียนผ่านบริการดีล (ผู้เขียนคอลัมน์ดีลที่เดียว) ◂
 import * as deals from "./deals";
@@ -1755,10 +1755,28 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
   }
   let companyExisting: string | null = null;
   let companyNewName: string | null = null;
+  let companyNewTaxId: string | null = null;
+  let companyRole: CompanyContactRole | null = null;
   if (wantCompany) {
     const c = input.company as Record<string, unknown>;
+    // C4.4-fix ▸ US2: บทบาทของผู้ติดต่อในบริษัท (ไม่ส่ง/ว่าง = ไม่แตะ) · ค่านอกรายการ = ปฏิเสธก่อนเปิดธุรกรรม ◂
+    const rawRole = typeof c.role === "string" ? c.role.trim() : c.role ?? null;
+    if (rawRole !== null && rawRole !== "") {
+      if (typeof rawRole !== "string" || !(COMPANY_CONTACT_ROLES as readonly string[]).includes(rawRole)) {
+        throw fail("VALIDATION", "บทบาทในบริษัทที่เลือกไม่อยู่ในรายการ — เลือกใหม่จากรายการ (เช่น ผู้ตัดสินใจ · ผู้ประสาน · การเงิน)");
+      }
+      companyRole = rawRole as CompanyContactRole;
+    }
     if (isObj(c.new)) {
       companyNewName = cleanName(c.new.name, "ชื่อบริษัท", true);
+      // C4.4-fix ▸ US2: เลขภาษีของบริษัทใหม่ — ตัวตรวจชุดเดียวกับ companies.createCompany (taxIdProblem · ข้อความเดียวกัน) ◂
+      const rawTax = c.new.taxId;
+      if (rawTax !== undefined && rawTax !== null) {
+        if (typeof rawTax !== "string") throw fail("VALIDATION", "เลขประจำตัวผู้เสียภาษีต้องเป็นตัวเลขเท่านั้น (เว้นวรรคหรือขีดคั่นได้)");
+        const p = taxIdProblem(rawTax);
+        if (p) throw fail("VALIDATION", p, { field: "taxId" });
+        companyNewTaxId = normalizeCompanyTaxId(rawTax) || null;
+      }
     } else {
       const cid = str(c.id);
       const [co] = cid ? await companies.liveCompanyRefs(coCtx(ctx), a, [cid]) : [];
@@ -1784,11 +1802,13 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
     dealPlan = { pipelineId: pipe.id, stageId: stage.id, stageKind: stage.kind, title, valueSatang: v };
   }
 
+  // C4.4-fix รอบ 2 (M2): การมองเห็นบริษัทของผู้กด คำนวณก่อนเปิด tx (ใน tx อ่านแค่แถวเดียวด้วย where นี้ — ไม่แย่ง pool ขณะถือล็อก)
+  const companyVisible = companyNewName ? await companies.companyVisibility(coCtx(ctx), a) : null;
   // สมาชิกที่ผูกอยู่แล้ว: หาระบบสมาชิกไว้ก่อนเปิด tx (ถอนความยินยอมใน tx ต้องไม่เปิด connection ที่สองระหว่างถือล็อก)
   const linkedMemberSystem = wantMember && contact.memberCustomerId ? ((await consents.memberSystemOf(ctx.tenantId, contact.memberCustomerId))?.systemId ?? null) : null;
   const keyHash = createHash("sha256").update(key).digest("hex").slice(0, 32);
   const eventKey = `${EVENT.converted}#${contact.id}#${keyHash}`;
-  type Outcome = { replayed: boolean; customerId: string | null; companyId: string | null; dealId: string | null; memberCreated: boolean; companyCreated: boolean; partyId: string | null; revoked: string[] };
+  type Outcome = { replayed: boolean; customerId: string | null; companyId: string | null; dealId: string | null; memberCreated: boolean; companyCreated: boolean; partyId: string | null; revoked: string[]; reusedCompany?: { id: string; name: string } | null };
   let out: Outcome;
   try {
     out = await prisma.$transaction(async (tx): Promise<Outcome> => {
@@ -1811,16 +1831,36 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
       // ② บริษัท + ลิงก์ผ่านบริการบริษัทที่เข้าร่วม tx นี้ (มติ C1.4 Option A): Party COMPANY advisory → แถวบริษัท → แถวผู้ติดต่อ
       let companyId: string | null = companyExisting;
       let companyCreated = false;
+      let reusedCompany: { id: string; name: string } | null = null;
       if (companyNewName) {
-        const co = await companies.createInTx(tx, coCtx(ctx), { name: companyNewName, ownerUserId: pre.ownerUserId ?? actorId(ctx) });
+        const co = await companies
+          .createInTx(tx, coCtx(ctx), { name: companyNewName, taxId: companyNewTaxId, ownerUserId: pre.ownerUserId ?? actorId(ctx), visible: companyVisible })
+          .catch((e: unknown) => {
+            // รอบ 3: ข้อความเรื่องเลขภาษีซ้ำ (เก็บถาวร/มองไม่เห็น) แสดงใต้ช่องเลขภาษี
+            if (e instanceof CompaniesError && (e.message === TAX_COMPANY_ARCHIVED_MSG || e.message === TAX_COMPANY_HIDDEN_MSG)) throw fail("VALIDATION", e.message, { field: "taxId" });
+            throw e;
+          });
         companyId = co.id;
         companyCreated = co.created;
+        // C4.4-fix รอบ 2 (M2 · S2): createInTx คืน "บริษัทเดิม" ได้ (เลขภาษีซ้ำ) — ต้องผ่านการมองเห็นเดียวกับทาง "เลือกบริษัท"
+        //   (ไม่เห็น = ยกเลิกทั้งก้อน ไม่บอกชื่อ/id ของบริษัทนั้น) · เห็น = ใช้บริษัทเดิมและบอกผู้ใช้ในผลลัพธ์ (ไม่ใช้เงียบ ๆ) ·
+        //   บริษัทใหม่ที่ผู้กดมองไม่เห็น (ไม่มีสิทธิ์อ่านบริษัท) + ติ๊กดีล = บอกเรื่องสิทธิ์ตรง ๆ แทน "ไม่พบบริษัทที่เลือก" จากบริการดีล ◂
+        if (!co.created || dealPlan) {
+          const seen = companyVisible ? await companies.visibleCompanyInTx(tx, companyVisible, co.id) : null;
+          if (!co.created && !seen) {
+            throw fail("VALIDATION", TAX_COMPANY_HIDDEN_MSG, { field: "taxId" });
+          }
+          if (co.created && !seen) {
+            throw fail("FORBIDDEN", "บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลบริษัท จึงเปิดดีลที่ผูกกับบริษัทใหม่ไม่ได้ — ระบบยกเลิกการแปลงทั้งหมดให้แล้ว (ข้อมูลไม่เปลี่ยน) · ขอให้ผู้ดูแลเพิ่มสิทธิ์ดูบริษัท หรือเอาติ๊กดีลออกแล้วลองใหม่");
+          }
+          if (!co.created && seen) reusedCompany = seen;
+        }
       }
       // CRM C1.5 ▸ รีวิว C1.5 S4 (ลำดับล็อก บริษัท → ผู้ติดต่อ → ดีล): ล็อกบริษัทปัจจุบันของผู้ติดต่อ + บริษัทที่เลือก (เรียง id) ก่อนแถวผู้ติดต่อ
       //   — ดีลที่สร้างใน ⑤ ผูกบริษัทใดบริษัทหนึ่งในชุดนี้ ⇒ บริการดีลไม่ต้องล็อกบริษัทใหม่หลังถือแถวผู้ติดต่อแล้ว ◂ CRM C1.5
       const lockedCompanies = [pre.companyId, companyId].filter((x): x is string => !!x);
       await companies.lockCompanyRowsInTx(tx, coCtx(ctx), lockedCompanies);
-      if (companyId) await companies.linkContactInTx(tx, coCtx(ctx), companyId, pre.id, { primaryIfNone: true, jobTitle: pre.jobTitle });
+      if (companyId) await companies.linkContactInTx(tx, coCtx(ctx), companyId, pre.id, { primaryIfNone: true, jobTitle: pre.jobTitle, ...(companyRole ? { role: companyRole } : {}) });
 
       // ③ แถวผู้ติดต่อ (หลังแถวบริษัท · ล็อกซ้ำใน tx เดียวกันได้) แล้ว **อ่านใหม่** (รีวิว C1.4 S3): รวม/เก็บถาวร/แปลงด้วยคีย์อื่น
       //    ที่ commit ระหว่างรอล็อก = ปฏิเสธ · ความยินยอมอ่านหลังล็อกนี้ (setOptOut/consents.set ล็อกแถวเดียวกัน)
@@ -1912,7 +1952,7 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
       const lifecycleStage = target !== cur.lifecycleStage && canAdvanceLifecycle(cur.lifecycleStage, target) ? target : cur.lifecycleStage;
       // payload ของ event (id ล้วน) ประกอบก่อนเขียนแถว — แคช companyId ของผู้ติดต่อเขียนโดยบริการบริษัท (linkContactInTx) ไม่ใช่ที่นี่
       const convertedPayload = { contactId: cur.id, customerId, companyId, dealId, partyId: cur.partyId };
-      const outcome: Outcome = { replayed: false, customerId, companyId, dealId, memberCreated, companyCreated, partyId: cur.partyId, revoked };
+      const outcome: Outcome = { replayed: false, customerId, companyId, dealId, memberCreated, companyCreated, partyId: cur.partyId, revoked, reusedCompany };
       await tx.crmContact.update({ where: { id: cur.id }, data: { convertedAt: now, lifecycleStage, ...(customerId ? { memberCustomerId: customerId } : {}) } });
 
       // ⑦ event ใน tx เดียวกัน (key ผูกคีย์กันซ้ำ = แถวนี้คือ "ใบเสร็จ" ของคำขอ) · payload id ล้วน
@@ -1945,7 +1985,7 @@ export async function convertContact(ctx: ContactsCtx, actor: MemberActor, id: s
     }
     if (out.companyId && out.dealId) await companies.recomputeCaches(coCtx(ctx), out.companyId).catch(() => undefined);
   }
-  return { contactId: contact.id, customerId: out.customerId, companyId: out.companyId, dealId: out.dealId, replayed: out.replayed };
+  return { contactId: contact.id, customerId: out.customerId, companyId: out.companyId, dealId: out.dealId, replayed: out.replayed, reusedCompany: out.reusedCompany ?? null };
 }
 
 // ═════════════════════════ ตัวซ้ำ · รวม ═════════════════════════

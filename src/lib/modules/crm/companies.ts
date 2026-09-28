@@ -46,6 +46,8 @@ import * as objects from "./objects";
 import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
   COMPANY_CONTACT_ROLES,
+  TAX_COMPANY_ARCHIVED_MSG,
+  TAX_COMPANY_HIDDEN_MSG,
   COMPANY_CONTACT_ROLE_LABEL,
   COMPANY_EXPORT_MAX_ROWS,
   COMPANY_IMPORT_ACCOUNT_MAX,
@@ -691,6 +693,15 @@ async function createCore(ctx: CompaniesCtx, actor: MemberActor, clean: CleanPat
 
 async function lockRecordForEngine(tx: Tx, id: string): Promise<void> {
   await (await engine()).lockRecordForFieldWrite(tx, id);
+}
+
+/**
+ * C4.4-fix ▸ US3: หลัง "ออกเอกสารของดีลบริษัท" (deals.ts — ลูกค้าบนเอกสาร = Party ของบริษัท) สมุดบัญชีอาจเพิ่งมีผู้ติดต่อของ Party นี้
+ *   ⇒ ผูก accountContactId ให้บริษัทที่ยังไม่ผูก (เขียนแบบมีเงื่อนไข accountContactId = null · ไม่ทับของเดิม · ไม่มี event เหมือนตอนสร้างบริษัท) ◂
+ */
+export async function adoptAccountContactFromDoc(ctx: CompaniesCtx, companyId: string): Promise<void> {
+  const row = str(companyId) ? await prisma.crmCompany.findFirst({ where: { ...identityScope(ctx), id: companyId } }) : null;
+  if (row && !row.accountContactId) await linkExistingAccountContact(ctx, row);
 }
 
 /** ผูก accountContactId ถ้าตัวตนนี้มีผู้ติดต่อในสมุดบัญชีที่เชื่อมอยู่แล้ว (อ่านอย่างเดียว · นอกธุรกรรม · เขียนแบบมีเงื่อนไข) */
@@ -2074,16 +2085,43 @@ export async function repointAccountContactFromBridge(ctx: { tenantId: string; s
 //   🔴 ไม่ resolve ระบบ/ไม่ตรวจ actor — ผู้เรียก (บริการผู้ติดต่อ) ทำแล้วก่อนเปิด tx · ทุก where ผูก tenant + ระบบ (AUDIT-CLASS X1)
 
 /** สร้างบริษัทใหม่ (Party ชนิด COMPANY เท่านั้น — B1) ใน tx ของผู้เรียก · Party เดิมของระบบนี้ = คืนบริษัทเดิม · event created ใน tx เดียวกัน */
-export async function createInTx(tx: Tx, ctx: CompaniesCtx, input: { name: string; ownerUserId?: string | null }): Promise<{ id: string; partyId: string; created: boolean }> {
+export async function createInTx(
+  tx: Tx,
+  ctx: CompaniesCtx,
+  // C4.4-fix รอบ 3: `visible` = การมองเห็นของผู้กด (companyVisibility) — ตัวซ้ำที่เก็บถาวรแต่ผู้กดมองไม่เห็น = ข้อความเดียวกับ "มองไม่เห็น"
+  input: { name: string; taxId?: string | null; ownerUserId?: string | null; visible?: Prisma.CrmCompanyWhereInput | null },
+): Promise<{ id: string; partyId: string; created: boolean }> {
   const name = textOrNull(input?.name, "ชื่อบริษัท", COMPANY_NAME_MAX);
   if (!name) throw fail("VALIDATION", "ใส่ชื่อบริษัทก่อนบันทึก");
-  const partyId = (await party.findOrCreateCompany(ctx.tenantId, { name }, tx)).id;
+  // C4.4-fix ▸ US2 (แปลง lead): เลขภาษีของบริษัทใหม่ — ตัวตรวจ + กติกาตัวซ้ำเดียวกับ createCore (ลำดับล็อก: เลขภาษี → Party → แถว)
+  //   เลขภาษี+สาขาเดียวกันมีอยู่แล้วในระบบนี้ = ใช้บริษัทเดิม (ไม่สร้างแถวที่สอง) · ตัวเดิมถูกเก็บถาวร = บอกให้กู้คืน/เลือกบริษัทเดิม ◂
+  let taxId: string | null = null;
+  if (input?.taxId !== undefined && input?.taxId !== null) {
+    const p = taxIdProblem(input.taxId);
+    if (p) throw fail("VALIDATION", p);
+    taxId = normalizeCompanyTaxId(input.taxId) || null;
+  }
+  const branchCode = "00000";
+  if (taxId) {
+    await taxLock(tx, ctx, taxId);
+    const dup = await tx.crmCompany.findFirst({
+      where: { ...identityScope(ctx), taxId, branchCode, mergedIntoId: null },
+      orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
+      select: { id: true, partyId: true, archivedAt: true },
+    });
+    if (dup?.archivedAt) {
+      const seen = input.visible ? await tx.crmCompany.findFirst({ where: { AND: [input.visible, { id: dup.id }] }, select: { id: true } }) : dup;
+      throw fail("VALIDATION", seen ? TAX_COMPANY_ARCHIVED_MSG : TAX_COMPANY_HIDDEN_MSG);
+    }
+    if (dup) return { id: dup.id, partyId: dup.partyId, created: false };
+  }
+  const partyId = (await party.findOrCreateCompany(ctx.tenantId, { name, ...(taxId ? { taxId, branchCode } : {}) }, tx)).id;
   await partyLock(tx, ctx, partyId);
   const same = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId }, select: { id: true } });
   if (same) return { id: same.id, partyId, created: false };
   await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ เพดานบริษัท (ทางสร้างใน tx ของผู้ติดต่อ) ◂
   const row = await tx.crmCompany.create({
-    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, branchCode: "00000", ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
+    data: { tenantId: ctx.tenantId, systemId: ctx.systemId, partyId, name, taxId, branchCode, ownerUserId: str(input?.ownerUserId) ?? ctx.actorUserId ?? null },
   });
   await emitCompanyEvent(tx, ctx, "created", row.id, "1", { companyId: row.id, partyId: row.partyId });
   return { id: row.id, partyId, created: true };
@@ -2098,8 +2136,11 @@ export async function linkContactInTx(
   ctx: CompaniesCtx,
   companyId: string,
   contactId: string,
-  opts: { primaryIfNone?: boolean; jobTitle?: string | null } = {},
+  opts: { primaryIfNone?: boolean; jobTitle?: string | null; role?: CompanyContactRole | null } = {},
 ): Promise<{ created: boolean; isPrimary: boolean }> {
+  // C4.4-fix ▸ US2: บทบาทที่ผู้เรียกระบุ (เช่น แปลง lead → "ผู้ตัดสินใจ") · ไม่ระบุ = พฤติกรรมเดิม (ลิงก์ใหม่ OTHER · ลิงก์เดิมไม่แตะ) ◂
+  const role = opts.role ?? null;
+  if (role !== null && !(COMPANY_CONTACT_ROLES as readonly string[]).includes(role)) throw fail("VALIDATION", "บทบาทในบริษัทที่เลือกไม่อยู่ในรายการ — เลือกใหม่จากรายการ");
   await lockCompanies(tx, ctx, [companyId]);
   const co = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), id: companyId, mergedIntoId: null, archivedAt: null }, select: { id: true } });
   if (!co) throw fail("NOT_FOUND", NOT_FOUND_MSG);
@@ -2118,13 +2159,17 @@ export async function linkContactInTx(
       await tx.crmCompanyContact.update({ where: { id: link.id }, data: { isPrimary: true } });
       isPrimary = changed = true;
     }
+    if (role && link.role !== role) {
+      await tx.crmCompanyContact.update({ where: { id: link.id }, data: { role } });
+      changed = true;
+    }
   } else if (link) {
     if (link.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, companyId, contactId, ctx.actorUserId, REOPENED, now); // hunter H1
-    await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null } });
+    await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null, ...(role ? { role } : {}) } });
     isPrimary = asPrimary;
     created = changed = true;
   } else {
-    await tx.crmCompanyContact.create({ data: { tenantId: ctx.tenantId, companyId, contactId, role: "OTHER", jobTitle: jobTitle ?? null, isPrimary: asPrimary, startedAt: now } });
+    await tx.crmCompanyContact.create({ data: { tenantId: ctx.tenantId, companyId, contactId, role: role ?? "OTHER", jobTitle: jobTitle ?? null, isPrimary: asPrimary, startedAt: now } });
     isPrimary = asPrimary;
     created = changed = true;
   }
@@ -2175,6 +2220,20 @@ export async function transferContactLinksInTx(tx: Tx, ctx: CompaniesCtx, fromCo
   }
   await recomputeContactCompanyCache(tx, ctx, [fromContactId, toContactId]);
   return { moved, companyIds };
+}
+
+/**
+ * C4.4-fix รอบ 2 (M2): การมองเห็นบริษัทของ actor แบบ "คำนวณก่อนเปิด tx" + ตรวจใน tx ของผู้เรียก (เห็นบริษัทที่เพิ่งสร้างใน tx เดียวกัน)
+ *   กติกาเดียวกับ liveCompanyRefs (companyWhere) · แยกสองขั้นเพราะ companyWhere/enter อ่านฐานผ่าน connection อื่น —
+ *   ทำระหว่างถือ tx = แย่ง pool กับคำขอแปลงที่ยิงพร้อมกัน (P2028) · ผู้เรียก: แปลง lead (contacts.ts) ◂
+ */
+export async function companyVisibility(ctx: CompaniesCtx, actor: MemberActor): Promise<Prisma.CrmCompanyWhereInput> {
+  const a = await enter(ctx, actor);
+  return companyWhere(ctx, a);
+}
+export async function visibleCompanyInTx(tx: Tx, visible: Prisma.CrmCompanyWhereInput, id: string): Promise<{ id: string; name: string } | null> {
+  if (!str(id)) return null;
+  return tx.crmCompany.findFirst({ where: { AND: [visible, { id, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
 }
 
 /** ชื่อบริษัทที่ยังใช้งาน (ไม่ถูกรวม/เก็บถาวร) ที่ actor มองเห็น — อ่านอย่างเดียว (companyWhere) · id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/ไม่ใช้งานแล้ว */

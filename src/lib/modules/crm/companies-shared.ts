@@ -260,6 +260,10 @@ export function isValidThaiTaxId(taxId: string): boolean {
   return (11 - (sum % 11)) % 10 === Number(taxId[12]);
 }
 
+// C4.4-fix รอบ 2–3 ▸ แปลง lead + เลขภาษีที่มีบริษัทอยู่แล้ว (ข้อความไม่บอกชื่อ/id/สถานะของบริษัทที่ผู้กดมองไม่เห็น) ◂
+export const TAX_COMPANY_HIDDEN_MSG = "มีบริษัทที่ใช้เลขภาษีนี้อยู่แล้ว แต่บัญชีนี้ยังไม่มีสิทธิ์เห็นบริษัทนั้น — ขอให้ผู้ดูแลเพิ่มสิทธิ์ หรือเลือกบริษัทที่มีอยู่";
+export const TAX_COMPANY_ARCHIVED_MSG = "มีบริษัทที่ใช้เลขประจำตัวผู้เสียภาษีนี้อยู่แล้ว แต่ถูกเก็บถาวรไว้ — กู้คืนบริษัทนั้นก่อน หรือเลือก \"ผูกบริษัทที่มีอยู่\" แทน";
+
 /** ข้อความปัญหาของเลขภาษี (null = ใช้ได้ · ค่าว่าง = ไม่มีเลขภาษี ไม่ใช่ปัญหา) */
 export function taxIdProblem(raw: string | null | undefined): string | null {
   const t = normalizeCompanyTaxId(raw);

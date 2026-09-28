@@ -1298,18 +1298,41 @@ export async function applyDiscountDecision(input: { tenantId: string; requestId
 
 type QuoteResult = { ok: true; docId: string; created: boolean } | { ok: false; reason: string };
 
+/**
+ * C4.4-fix ▸ US3: "ลูกค้าบนเอกสาร" ของดีล — ดีลที่ผูกบริษัท = **บริษัท** (Party COMPANY · ชื่อ/เลขภาษี/สาขา/ติดต่อของบริษัท) เพราะ
+ *   พอร์ทัล B2B (`portal.ts` scope → `listPortalDocs`) · หน้าบริษัท 360 (`listDocsByParty`) · ยอดค้างของบริษัท อ่านเอกสารตาม
+ *   Party ของบริษัท — เดิมส่ง Party ของ "คน" ⇒ ใบเสนอราคา/ใบแจ้งหนี้ของดีลบริษัทไม่เคยโผล่ในพอร์ทัล · ดีลไม่มีบริษัท = ผู้ติดต่อ (เหมือนเดิม)
+ *   🔴 ไม่ส่งเบอร์/อีเมลใด ๆ ไปกับบริษัท (ทั้งของคนและของบริษัท): ตัวหา AccountContact จับคู่ด้วยเบอร์/อีเมลได้ ⇒ เอกสารจะไปติด
+ *      ผู้ติดต่อบัญชีของตัวตนอื่น · ฝั่งบัญชีก็ปฏิเสธคู่ที่เป็นของ Party อื่นเมื่อผู้เรียกส่ง partyId มา (รอบ 2 · M1 สองชั้น) ◂
+ */
 async function dealDocInput(ctx: DealsCtx, deal: CrmDeal) {
-  const [contact, ls] = await Promise.all([
+  const [contact, company, ls] = await Promise.all([
     prisma.crmContact.findFirst({ where: { id: deal.contactId, tenantId: ctx.tenantId }, select: { id: true, name: true, phone: true, email: true, partyId: true } }),
+    // ผู้อ่านบริษัทมีที่เดียว (companies.ts — C1.3-S0.3) · ขอบเขตร้าน + ระบบของดีล
+    deal.companyId ? companies.companyRowInScope({ tenantId: ctx.tenantId, systemId: ctx.systemId }, deal.companyId) : Promise.resolve(null),
     prisma.crmDealLine.findMany({ where: { dealId: deal.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
   ]);
+  const customer = company
+    ? // รอบ 2 (M1): บริษัทส่งแค่ ชื่อ/เลขภาษี/สาขา/Party — ไม่ส่งเบอร์/อีเมล (เบอร์บริษัทมักเป็นมือถือเจ้าของ ⇒ จับคู่ผิดตัวตนได้)
+      { customer: { name: company.name, taxId: company.taxId, branchCode: company.branchCode }, partyId: company.partyId, companyId: company.id }
+    : contact
+      ? { customer: { name: contact.name, phone: contact.phone, email: contact.email }, partyId: contact.partyId, companyId: null }
+      : null;
   const norm = ls.map((l) => ({ name: l.name, qty: l.qty.toNumber(), unitPriceSatang: l.unitPriceSatang, discountBp: l.discountBp, vatRateBp: l.vatRateBp }));
   const totals = dealTotals(norm, deal.discountBp);
   const accLines = norm.map((l) => {
     const gross = lineGrossSatang(l);
     return { description: l.name, qty: l.qty, unitPrice: l.unitPriceSatang, discount: Math.max(0, gross - lineAmountSatang(l)), ...(l.vatRateBp !== null ? { vatRateBp: l.vatRateBp } : {}) };
   });
-  return { contact, norm, totals, accLines };
+  return { contact, customer, norm, totals, accLines };
+}
+
+/** C4.4-fix ▸ เอกสารแรกของบริษัทสร้างผู้ติดต่อบัญชีของ Party บริษัท — ผูกเข้า CrmCompany.accountContactId (ยอดค้างบนหน้า 360) · ล้ม = WARN ไม่ล้มการออกเอกสาร ◂ */
+async function adoptCompanyAccountContact(ctx: DealsCtx, companyId: string | null): Promise<void> {
+  if (!companyId) return;
+  await companies.adoptAccountContactFromDoc(coCtx(ctx), companyId).catch(async (e: unknown) => {
+    await logOps("WARN", "crm", `ผูกผู้ติดต่อบัญชีของบริษัทหลังออกเอกสารไม่สำเร็จ — บริษัท ${companyId}`, { tenantId: ctx.tenantId, detail: e instanceof Error ? e.name : "unknown" }).catch(() => undefined);
+  });
 }
 
 async function quoteCore(ctx: DealsCtx, who: Who, dealId: string, opts: { validDays?: number | null; note?: string | null }): Promise<QuoteResult> {
@@ -1317,8 +1340,8 @@ async function quoteCore(ctx: DealsCtx, who: Who, dealId: string, opts: { validD
   const validDays = opts?.validDays === undefined || opts?.validDays === null ? null : opts.validDays;
   if (validDays !== null && (!Number.isInteger(validDays) || validDays < 1 || validDays > 365)) throw fail("VALIDATION", "อายุใบเสนอราคาต้องเป็นจำนวนวัน 1–365");
   const note = cleanNote(opts?.note, "หมายเหตุใบเสนอราคา");
-  const { contact, norm, totals, accLines } = await dealDocInput(ctx, deal);
-  if (!contact) return { ok: false, reason: "ไม่พบผู้ติดต่อของดีลนี้" };
+  const { contact, customer, norm, totals, accLines } = await dealDocInput(ctx, deal);
+  if (!contact || !customer) return { ok: false, reason: "ไม่พบผู้ติดต่อของดีลนี้" };
   if (norm.length === 0 && deal.valueSatang <= 0) return { ok: false, reason: "ดีลยังไม่มีมูลค่า — ใส่มูลค่าก่อนออกใบเสนอราคา" };
   const res = await (await accountFacade()).createExternalQuotation({
     tenantId: ctx.tenantId,
@@ -1328,8 +1351,8 @@ async function quoteCore(ctx: DealsCtx, who: Who, dealId: string, opts: { validD
     refId: deal.id,
     title: deal.title,
     valueSatang: deal.valueSatang,
-    customer: { name: contact.name, phone: contact.phone, email: contact.email },
-    partyId: contact.partyId,
+    customer: customer.customer,
+    partyId: customer.partyId,
     sourceContactId: contact.id,
     ...(norm.length > 0 ? { lines: accLines, discountAmount: totals.discountSatang } : {}),
     ...(validDays !== null ? { validUntil: new Date(Date.now() + validDays * 86_400_000) } : {}),
@@ -1337,6 +1360,7 @@ async function quoteCore(ctx: DealsCtx, who: Who, dealId: string, opts: { validD
     createdById: actorIdOf(ctx),
   });
   if (!res.ok) return res;
+  if (res.created) await adoptCompanyAccountContact(ctx, customer.companyId);
   if (deal.quotationDocId !== res.docId) {
     await withDealLocks(ctx, who, deal.id, {}, async (tx, cur) => {
       if (cur.quotationDocId === res.docId) return;
@@ -1387,6 +1411,7 @@ async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ d
   const acc = await accountFacade();
   // รีวิว C1.5 S9 · AUDIT-CLASS X3: ต่อดีลทำทีละคำขอ — advisory lock ตลอด "หา → สร้าง → เก็บ" (ข้ามโพรเซสก็เรียงคิวที่ฐานข้อมูล)
   //   ⇒ กดพร้อมกันกี่ครั้งได้ใบแจ้งหนี้ใบเดียว · ล็อกนี้ไม่มีเส้นทางอื่นถือ จึงไม่ชนลำดับล็อกของใคร (บริษัท → ดีล ถูกล็อกทีหลัง)
+  let adoptCompany: string | null = null;
   const out = await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`crm:deal-invoice:${pre.id}`}, 0))`;
@@ -1411,8 +1436,8 @@ async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ d
         }
       }
       if (!docId) {
-        const { contact, norm, totals, accLines } = await dealDocInput(ctx, deal);
-        if (!contact) throw fail("NOT_FOUND", "ไม่พบผู้ติดต่อของดีลนี้");
+        const { contact, customer, norm, totals, accLines } = await dealDocInput(ctx, deal);
+        if (!contact || !customer) throw fail("NOT_FOUND", "ไม่พบผู้ติดต่อของดีลนี้");
         if (norm.length === 0 && deal.valueSatang <= 0) throw fail("VALIDATION", "ดีลยังไม่มีมูลค่า — ใส่มูลค่าหรือรายการสินค้าก่อนออกใบแจ้งหนี้");
         const r = await acc.createExternalInvoice({
           tenantId: ctx.tenantId,
@@ -1422,8 +1447,8 @@ async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ d
           refId: deal.id,
           title: deal.title,
           valueSatang: deal.valueSatang,
-          customer: { name: contact.name, phone: contact.phone, email: contact.email },
-          partyId: contact.partyId,
+          customer: customer.customer,
+          partyId: customer.partyId,
           sourceContactId: contact.id,
           ...(norm.length > 0 ? { lines: accLines, discountAmount: totals.discountSatang } : {}),
           createdById: actorIdOf(ctx),
@@ -1431,6 +1456,7 @@ async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ d
         if (!r.ok) throw fail("VALIDATION", r.reason);
         docId = r.docId;
         created = r.created;
+        adoptCompany = customer.companyId;
       }
       // เก็บ invoiceDocId ใต้ลำดับล็อกปกติ (บริษัท → ดีล) ใน tx เดียวกับ advisory lock
       await companies.lockCompanyRowsInTx(tx, coCtx(ctx), [deal.companyId]);
@@ -1447,6 +1473,7 @@ async function invoiceCore(ctx: DealsCtx, who: Who, dealId: string): Promise<{ d
     throw mapError(e);
   });
   if (out.store) await audit(ctx, "crm.deal.invoice", pre.id, { after: { docId: out.docId, created: out.created } });
+  if (out.created) await adoptCompanyAccountContact(ctx, adoptCompany);
   return { docId: out.docId, created: out.created };
 }
 

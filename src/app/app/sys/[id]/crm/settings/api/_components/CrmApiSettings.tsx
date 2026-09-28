@@ -9,6 +9,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
+import { isLoopbackHostname } from "@/lib/webhooks/private-targets"; // C4.4-fix I3 ▸ ไฟล์บริสุทธิ์ (ไม่ถึง prisma) ◂
 import { CRM_KEY_BUNDLES, type CrmActionResult, type CrmApiKeyRow, type CrmApiToolRow, type CrmBundleScopeRow, type CrmKeyResult, type CrmWebhookCreateResult, type CrmWebhookDeliveryRow, type CrmWebhookRow } from "./shared";
 
 type Props = {
@@ -22,6 +23,8 @@ type Props = {
   events: { value: string; label: string }[];
   webhooks: CrmWebhookRow[];
   deliveries: CrmWebhookDeliveryRow[];
+  /** C4.4-fix I3 ▸ เซิร์ฟเวอร์ตัดสินแล้วว่าเปิดช่องทดสอบ (dev/QC) — รับ http:// ถึงเครื่องนี้ตรงตัว · prod = false เสมอ ◂ */
+  allowLoopbackHttp?: boolean;
   createKey: (fd: FormData) => Promise<CrmKeyResult>;
   revokeKey: (fd: FormData) => Promise<CrmActionResult>;
   createWebhook: (fd: FormData) => Promise<CrmWebhookCreateResult>;
@@ -70,14 +73,16 @@ function scopeNote(rows: CrmBundleScopeRow[], id: string): string {
   return ` · ${row.count} สิทธิ์${groups.length > 0 ? ` (รวม ${groups.join(" · ")})` : ""}`;
 }
 
-/** C4.3-fix part 2 ▸ ที่อยู่ปลายทางต้องเป็น https — ข้อความเดียวกับ `crmWebhookUrlProblem` (action ตรวจซ้ำเสมอ) ◂ */
-function hookUrlProblem(raw: string): string | null {
+/** C4.3-fix part 2 ▸ ที่อยู่ปลายทางต้องเป็น https — ข้อความเดียวกับ `crmWebhookUrlProblem` (action ตรวจซ้ำเสมอ) ◂
+ *  C4.4-fix I3 ▸ ยกเว้น http:// ถึงเครื่องนี้ตรงตัว เมื่อเซิร์ฟเวอร์บอกว่าเปิดช่องทดสอบ (`allowLoopbackHttp`) ◂ */
+function hookUrlProblem(raw: string, allowLoopbackHttp: boolean): string | null {
   let u: URL | null = null;
   try {
     u = new URL(raw.trim());
   } catch {
     u = null;
   }
+  if (u && u.protocol === "http:" && allowLoopbackHttp && isLoopbackHostname(u.hostname)) return null;
   return !u || u.protocol !== "https:" ? "ที่อยู่ปลายทางต้องขึ้นต้นด้วย https:// — รหัสอ้างอิงลูกค้าส่งผ่านช่องทางที่ไม่เข้ารหัสไม่ได้" : null;
 }
 
@@ -141,7 +146,7 @@ export function CrmApiSettings(p: Props) {
     setHookMsg(null);
     if (
       hookFe.show({
-        url: hookUrlProblem(String(fd.get("url") ?? "")) ?? undefined,
+        url: hookUrlProblem(String(fd.get("url") ?? ""), p.allowLoopbackHttp === true) ?? undefined,
         events: picked.length === 0 ? "เลือกเหตุการณ์ที่จะรับอย่างน้อย 1 รายการ" : undefined,
       })
     )

@@ -25,6 +25,8 @@ import {
   type ContactLifecycle,
   type ConvertOptions,
 } from "@/lib/modules/crm/contacts-shared";
+// C4.4-fix ▸ US2: เลขภาษีของบริษัทใหม่ + บทบาทของผู้ติดต่อในบริษัท (ตัวตรวจ/ป้ายชุดเดียวกับฝั่งบริการ — ไฟล์บริสุทธิ์) ◂
+import { COMPANY_CONTACT_ROLES, COMPANY_CONTACT_ROLE_LABEL, taxIdProblem, type CompanyContactRole } from "@/lib/modules/crm/companies-shared";
 import {
   archiveContactAction,
   assignContactAction,
@@ -41,6 +43,7 @@ import {
   updateContactAction,
 } from "@/lib/modules/crm/contacts-actions";
 import { ContactPicker } from "./ContactPicker";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors"; // C4.4-fix รอบ 2 (S3) ◂
 // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
 import { MergeFieldChoices, choosableFields, toFieldChoices } from "@/components/crm/merge/MergeFieldChoices";
 
@@ -107,6 +110,10 @@ export function ConvertButton({
   const [companyMode, setCompanyMode] = useState<"new" | "pick">("new");
   const [companyNew, setCompanyNew] = useState(companyName ?? "");
   const [companyPick, setCompanyPick] = useState("");
+  const [companyTaxId, setCompanyTaxId] = useState("");
+  // บริษัทใหม่จาก lead = ผู้ติดต่อคนนี้คือผู้ตัดสินใจ (US2 · แก้ได้) · ผูกบริษัทเดิม = ค่าว่าง "ไม่เปลี่ยน" (ไม่ทับบทบาทเดิมโดยไม่ตั้งใจ)
+  const [roleNew, setRoleNew] = useState<CompanyContactRole>("DECISION_MAKER");
+  const [rolePick, setRolePick] = useState<CompanyContactRole | "">("");
   const [tickDeal, setTickDeal] = useState(true);
   const defaultPipe = options.pipelines[0];
   const [pipelineId, setPipelineId] = useState(defaultPipe?.id ?? "");
@@ -114,33 +121,51 @@ export function ConvertButton({
   const [title, setTitle] = useState(`ดีล ${contactName}`);
   const [valueBaht, setValueBaht] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // C4.4-fix รอบ 2 · S3: ข้อความของเลขภาษี (ตรวจในเครื่อง + ที่เซิร์ฟเวอร์ชี้ field "taxId") แสดงใต้ช่อง · ข้อผิดพลาดอื่นอยู่กล่องเดิม
+  const fe = useFieldErrors(["taxId"] as const);
+  // C4.4-fix รอบ 2 · S2: เลขภาษีตรงกับบริษัทที่มีอยู่ ⇒ ระบบใช้บริษัทนั้น — บอกชื่อในหน้าต่างก่อนปิด (ไม่ใช้เงียบ ๆ)
+  const [reused, setReused] = useState<{ id: string; name: string } | null>(null);
   const [pending, start] = useTransition();
   const pipe = options.pipelines.find((p) => p.id === pipelineId);
 
   const openModal = () => {
     setKey(newKey()); // 1 การเปิดโมดัล = 1 คีย์ ⇒ กดแปลงรัวกี่ครั้งก็ได้ชุดเดียว
     setError(null);
+    fe.reset();
+    setReused(null);
     setOpen(true);
   };
   const submit = () =>
     start(async () => {
       setError(null);
+      fe.reset();
       if (!tickMember && !tickCompany && !tickDeal) return setError("ติ๊กอย่างน้อย 1 อย่างก่อนกดแปลง");
       if (tickMember && !member && !memberSystem) return setError("ร้านนี้ยังไม่มีระบบสมาชิก — เปิดระบบสมาชิกก่อน หรือเอาติ๊กสมาชิกออก");
       if (tickCompany && companyMode === "new" && !companyNew.trim()) return setError("ใส่ชื่อบริษัทที่จะสร้าง");
       if (tickCompany && companyMode === "pick" && !companyPick) return setError("เลือกบริษัทที่จะผูก");
+      const taxProblem = tickCompany && companyMode === "new" ? taxIdProblem(companyTaxId) : null;
+      if (taxProblem) return void fe.show({ taxId: taxProblem });
+      const role = companyMode === "new" ? roleNew : rolePick || null;
       if (tickDeal && (!pipelineId || !title.trim())) return setError("เลือก pipeline และใส่ชื่อดีล");
       const baht = valueBaht.trim() ? Number(valueBaht.replace(/,/g, "")) : 0;
       if (tickDeal && (!Number.isFinite(baht) || baht < 0)) return setError("มูลค่าดีลต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป");
       const r = await convertContactAction(systemId, contactId, {
         idempotencyKey: key,
         member: tickMember && memberSystem ? { systemId: memberSystem } : null,
-        company: tickCompany ? (companyMode === "new" ? { new: { name: companyNew.trim() } } : { id: companyPick }) : null,
+        company: tickCompany
+          ? companyMode === "new"
+            ? { new: { name: companyNew.trim(), taxId: companyTaxId.trim() || null }, role }
+            : { id: companyPick, role }
+          : null,
         deal: tickDeal ? { pipelineId, stageId: stageId || null, title: title.trim(), valueSatang: Math.round(baht * 100) } : null,
       });
-      if (!r.ok) return setError(r.error);
-      setOpen(false);
+      if (!r.ok) {
+        if (!fe.show(r.fieldErrors as { taxId?: string } | undefined)) setError(r.error);
+        return;
+      }
       router.refresh();
+      if (r.reusedCompany) return setReused(r.reusedCompany);
+      setOpen(false);
     });
 
   const box = (on: boolean) => ({ borderColor: on ? "var(--color-accent)" : "var(--color-line)", background: on ? "var(--color-surface-2)" : undefined });
@@ -200,10 +225,28 @@ export function ConvertButton({
                   </label>
                 </div>
                 {companyMode === "new" ? (
-                  <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-                    <span>ชื่อบริษัท</span>
-                    <input value={companyNew} onChange={(e) => setCompanyNew(e.target.value)} className="input text-sm" placeholder="เช่น โรงแรมกะตะ คลิฟ รีสอร์ท" data-testid="contact-convert-company-name" />
-                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                      <span>ชื่อบริษัท</span>
+                      <input value={companyNew} onChange={(e) => setCompanyNew(e.target.value)} className="input text-sm" placeholder="เช่น โรงแรมกะตะ คลิฟ รีสอร์ท" data-testid="contact-convert-company-name" />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                      <span>เลขประจำตัวผู้เสียภาษี (ถ้ามี)</span>
+                      <input
+                        {...fe.field("taxId")}
+                        value={companyTaxId}
+                        onChange={(e) => {
+                          setCompanyTaxId(e.target.value);
+                          fe.clear("taxId");
+                        }}
+                        inputMode="numeric"
+                        className="input text-sm"
+                        placeholder="13 หลัก"
+                        data-testid="contact-convert-company-taxid"
+                      />
+                      <FieldError id={fe.errorId("taxId")} message={fe.errors.taxId} testid="contact-convert-company-taxid-error" />
+                    </label>
+                  </div>
                 ) : (
                   <ContactPicker
                     kind="convert-company"
@@ -215,6 +258,22 @@ export function ConvertButton({
                     search={(q) => searchCompaniesAction(systemId, q)}
                   />
                 )}
+                <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+                  <span>บทบาทในบริษัท</span>
+                  <select
+                    value={companyMode === "new" ? roleNew : rolePick}
+                    onChange={(e) => (companyMode === "new" ? setRoleNew(e.target.value as CompanyContactRole) : setRolePick(e.target.value as CompanyContactRole | ""))}
+                    className="input text-sm"
+                    data-testid="contact-convert-company-role"
+                  >
+                    {companyMode === "pick" && <option value="">ไม่เปลี่ยน (คงบทบาทเดิม)</option>}
+                    {COMPANY_CONTACT_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {COMPANY_CONTACT_ROLE_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {jobTitle && <span className="text-xs text-[color:var(--color-muted)]">ตำแหน่งของผู้ติดต่อนี้: {jobTitle}</span>}
               </>
             )}
@@ -270,14 +329,25 @@ export function ConvertButton({
               ))}
           </section>
           <ErrorLine text={error} testid="contact-convert-error" />
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-cancel">
-              ยกเลิก
-            </button>
-            <button type="button" className="btn btn-primary text-sm" disabled={pending} onClick={submit} data-testid="contact-convert-submit">
-              {pending ? "กำลังแปลง…" : "✓ แปลง"}
-            </button>
-          </div>
+          {reused ? (
+            <>
+              <p className="rounded-xl border p-3 text-sm" style={{ borderColor: "var(--color-accent)" }} role="status" data-testid="contact-convert-reused">
+                แปลงแล้ว — ใช้บริษัทเดิม &quot;{reused.name}&quot; ที่มีเลขภาษีนี้อยู่แล้ว (ไม่ได้สร้างบริษัทใหม่)
+              </p>
+              <button type="button" className="btn btn-primary text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-done">
+                ปิด
+              </button>
+            </>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(false)} data-testid="contact-convert-cancel">
+                ยกเลิก
+              </button>
+              <button type="button" className="btn btn-primary text-sm" disabled={pending} onClick={submit} data-testid="contact-convert-submit">
+                {pending ? "กำลังแปลง…" : "✓ แปลง"}
+              </button>
+            </div>
+          )}
         </Sheet>
       )}
     </>

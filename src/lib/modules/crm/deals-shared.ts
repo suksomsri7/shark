@@ -205,7 +205,16 @@ export type StageDto = {
   description: string | null;
 };
 
-export type PipelineDto = { id: string; name: string; isDefault: boolean; archivedAt: string | null; stages: StageDto[] };
+export type PipelineDto = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  archivedAt: string | null;
+  stages: StageDto[];
+  // C4.4-fix ▸ US3: ขั้นที่ดีลย้ายไปเมื่อลูกค้าตอบรับ/ปฏิเสธใบเสนอราคา (null = ไม่ย้าย) — มีเฉพาะ DTO ของบริการตั้งค่า (pipelines.ts) ◂
+  stageOnQuoteAcceptedId?: string | null;
+  stageOnQuoteRejectedId?: string | null;
+};
 
 export type BoardColumnDto = {
   stageId: string;

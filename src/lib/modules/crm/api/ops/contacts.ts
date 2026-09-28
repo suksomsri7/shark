@@ -8,6 +8,7 @@
 import { z } from "zod";
 import * as contacts from "../../contacts";
 import { CONSENT_SOURCES, CONTACT_SORTS, CONTACT_SOURCES, IMPORT_DUPLICATE_MODES, LEAD_STATUSES, LIFECYCLE_STAGES, MERGE_CHOICE_FIELDS, SCORE_BANDS } from "../../contacts-shared";
+import { COMPANY_CONTACT_ROLES, type CompanyContactRole } from "../../companies-shared";
 import { crmActorOf, crmCtxOf } from "../actor";
 import { crmApiError } from "../http-errors";
 import { assertNoTeamFilter, assertOwnerInFilter } from "../filters";
@@ -306,7 +307,14 @@ const archive = defineCrmOp({
 const convertInput = z
   .object({
     member: z.object({ systemId: idStr }).strict().nullable().optional(),
-    company: z.union([z.object({ id: idStr }).strict(), z.object({ new: z.object({ name: text(200).min(1) }).strict() }).strict()]).nullable().optional(),
+    // C4.4-fix ▸ US2: บริษัทใหม่ใส่เลขภาษีได้ (บริการตรวจ checksum) · `role` = บทบาทของผู้ติดต่อในบริษัท (ทั้งเลือกบริษัทเดิมและสร้างใหม่) ◂
+    company: z
+      .union([
+        z.object({ id: idStr, role: z.enum(COMPANY_CONTACT_ROLES as unknown as [CompanyContactRole, ...CompanyContactRole[]]).nullable().optional() }).strict(),
+        z.object({ new: z.object({ name: text(200).min(1), taxId: text(40).nullable().optional() }).strict(), role: z.enum(COMPANY_CONTACT_ROLES as unknown as [CompanyContactRole, ...CompanyContactRole[]]).nullable().optional() }).strict(),
+      ])
+      .nullable()
+      .optional(),
     deal: z
       .object({ pipelineId: idStr, stageId: optId, title: text(200).min(1), valueSatang: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional() })
       .strict()

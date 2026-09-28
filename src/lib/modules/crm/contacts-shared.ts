@@ -4,7 +4,7 @@
 //    ตัวตรวจชุดเดียวกันใช้ทั้งฝั่งฟอร์ม (ตรวจก่อนส่ง) และฝั่งบริการ (ตัดสินจริง) — ข้อความไทยตรงกันสองฝั่ง
 // 🔴 เพดาน (CONTRACT BLOCK ของข้อสอบ): นำเข้า 50,000 แถว / 10 MB · bulk ≤ 500 · เหตุผล ≥ 5 · แท็ก ≤ 50 (ตัวละ ≤ 64) · ชื่อ ≤ 200
 
-import { emailProblem, phoneProblem } from "./companies-shared";
+import { emailProblem, phoneProblem, type CompanyContactRole } from "./companies-shared";
 import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
 
 export { emailProblem, phoneProblem };
@@ -244,10 +244,13 @@ export type Contact360 = {
 export type ConvertInput = {
   idempotencyKey: string;
   member?: { systemId: string } | null;
-  company?: { id: string } | { new: { name: string } } | null;
+  // C4.4-fix ▸ US2: บริษัทใหม่ใส่เลขภาษีได้ (ตัวตรวจชุดเดียวกับ companies.createCompany) · `role` = บทบาทของผู้ติดต่อในบริษัท
+  //   (เช่น DECISION_MAKER · ไม่ส่ง = ค่าเดิมของลิงก์ / OTHER) ใช้ได้ทั้งบริษัทใหม่และบริษัทที่เลือก ◂
+  company?: (({ id: string } | { new: { name: string; taxId?: string | null } }) & { role?: CompanyContactRole | null }) | null;
   deal?: { pipelineId: string; stageId?: string | null; title: string; valueSatang?: number | null } | null;
 };
-export type ConvertResult = { contactId: string; customerId: string | null; companyId: string | null; dealId: string | null; replayed: boolean };
+// C4.4-fix รอบ 2 (S2) ▸ `reusedCompany` = ขอ "สร้างบริษัทใหม่" แต่เลขภาษีตรงกับบริษัทที่มีอยู่ (ที่ผู้กดมองเห็น) ⇒ ใช้บริษัทนั้นแทน — บอกชื่อให้ผู้ใช้เห็น ◂
+export type ConvertResult = { contactId: string; customerId: string | null; companyId: string | null; dealId: string | null; replayed: boolean; reusedCompany?: { id: string; name: string } | null };
 export type ConvertOptions = {
   memberSystems: { id: string; name: string }[];
   pipelines: { id: string; name: string; isDefault: boolean; stages: { id: string; name: string }[] }[];

@@ -196,12 +196,13 @@ export async function convertContactAction(
   systemId: string,
   contactId: string,
   input: ConvertInput,
-): Promise<{ ok: true; customerId: string | null; companyId: string | null; dealId: string | null } | Fail> {
+): Promise<{ ok: true; customerId: string | null; companyId: string | null; dealId: string | null; reusedCompany: { id: string; name: string } | null } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.convert");
     const r = await convertContact(ctx, actor, contactId, input);
     revalidatePath(`${base(systemId)}/${contactId}`);
-    return { ok: true, customerId: r.customerId, companyId: r.companyId, dealId: r.dealId };
+    // C4.4-fix รอบ 2 · S2: ใช้บริษัทเดิมจากเลขภาษี (ที่ผู้กดมองเห็น) — ส่งชื่อกลับให้หน้าต่างบอกผู้ใช้ ◂
+    return { ok: true, customerId: r.customerId, companyId: r.companyId, dealId: r.dealId, reusedCompany: r.reusedCompany ?? null };
   } catch (e) {
     return failOf(e, true);
   }

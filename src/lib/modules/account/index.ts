@@ -495,7 +495,8 @@ export async function createExternalQuotation(input: {
   refId: string; // dealId
   title: string;
   valueSatang: number;
-  customer: { name: string; phone?: string | null; email?: string | null };
+  /** C4.4-fix ▸ ลูกค้าที่เป็นบริษัท (ดีล CRM ที่ผูกบริษัท) ส่งเลขภาษี/สาขามาด้วย — ใช้หา/สร้างผู้ติดต่อบัญชีแบบบริษัท (additive) ◂ */
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
   // WO 3.1 (MAP §F.5): CRM ส่ง partyId ของ CrmContact ต้นทางมาด้วย — ใช้เป็นกุญแจจับคู่ผู้ติดต่อฝั่งบัญชี
   // ตัวแรกก่อน taxId/phone/name+email (lookup แทนการเดาจากชื่อ/เบอร์) · sourceContactId เก็บไว้เผื่อ debug/audit
   partyId?: string | null;
@@ -586,7 +587,8 @@ export async function createExternalInvoice(input: {
   refId: string;
   title: string;
   valueSatang: number;
-  customer: { name: string; phone?: string | null; email?: string | null };
+  /** C4.4-fix ▸ ลูกค้าที่เป็นบริษัท (ดีล CRM ที่ผูกบริษัท) ส่งเลขภาษี/สาขามาด้วย — ใช้หา/สร้างผู้ติดต่อบัญชีแบบบริษัท (additive) ◂ */
+  customer: { name: string; phone?: string | null; email?: string | null; taxId?: string | null; branchCode?: string | null };
   partyId?: string | null;
   sourceContactId?: string | null;
   lines?: LineInput[];
