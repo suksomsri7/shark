@@ -1002,8 +1002,9 @@ const STATE: Record<string, (ctx: RunCtx) => Promise<string>> = {
   "crm-api-hook-form": cnt("webhookEndpoint", () => ({ tenantId: TENANT })),
   "crm-seq-new-form": cnt("crmSequence", () => ({ systemId: SYS })),
   "crm-seq-holiday-form": async () => JSON.stringify((await settingsCrm()).holidays ?? []),
-  "crm-seq-enroll-form": cnt("crmSequenceEnrollment", () => ({ systemId: SYS })),
-  "crm-seq-bulk-form": cnt("crmSequenceEnrollment", () => ({ systemId: SYS })),
+  // ORACLE-EDIT C4.3-probe (controller · 28 Sep): CrmSequenceEnrollment has no systemId column — the count returned -1 (probe-error) and aborted both forms
+  "crm-seq-enroll-form": cnt("crmSequenceEnrollment", () => ({ tenantId: TENANT, sequence: { systemId: SYS } })),
+  "crm-seq-bulk-form": cnt("crmSequenceEnrollment", () => ({ tenantId: TENANT, sequence: { systemId: SYS } })),
   "crm-email-composer": cnt("crmEmailMessage", () => ({ systemId: SYS })),
   "crm-settings-team-room": async () => JSON.stringify((await settingsCrm()).teamRooms ?? {}),
 };
