@@ -30,5 +30,8 @@ fi
 #    with-gate-lock.sh ตั้ง heap 3584 MB ถ้าไม่มีใครตั้งมาก่อน · tsc ของ next build ตรวจ scripts/*.mts ด้วย (oracle ใหญ่ขึ้นมากใน C3)
 #    ⇒ heap ตึงจน GC วน · เครื่องเราใช้ 5120 มาตลอด · เครื่อง build ของ Vercel มี RAM 8 GB ⇒ ตั้ง 6144 (ผู้เรียกตั้งเองได้)
 export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
-echo "▶ [vercel-build] next build (NODE_OPTIONS=$NODE_OPTIONS)"
-pnpm build
+# 28 ก.ย. (รอบ 2): heap อย่างเดียวไม่พอ — tsc (~5.1 GB) + process ของ next build บนเครื่อง 8 GB ⇒ แยกขั้น type check ออกมาก่อน
+echo "▶ [vercel-build] tsc --noEmit (ขั้นแยก ก่อน next build · ล้ม = build ล้ม)"
+pnpm exec tsc --noEmit -p tsconfig.json
+echo "▶ [vercel-build] tsc ผ่าน → next build (ข้ามตัวตรวจ TypeScript ซ้ำในตัว next build · NODE_OPTIONS=$NODE_OPTIONS)"
+SHARK_TSC_PREBUILD_OK=1 pnpm build
