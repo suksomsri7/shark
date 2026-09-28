@@ -587,3 +587,6 @@
 - 28 Sep 01:36 UTC · ✅ **รับ C5.3 = 42/53 (79%)** — qc-crm-c5.3.mts 54 checks · reviewer 2 rounds · merged into main (suite + notes) · copied to c54a
 - 28 Sep 01:46 UTC · C4.3 oracle review round 2 SF applied (ALLOWED_SKIPS 32 · skip never erases · probe-error · describedby inside target · leftover-outside control) · merge 585/659 · controls 225/225 · restore identical 11/11 · unlistedSkips 0 · oracle merged into main (tests only; card C4.3 accepted when passed===total after C4.3-fix2) · re-copied to c432
 - 28 Sep 01:47 UTC · ✅ **รับ C5.1 = 43/53 (81%)** — main gate green (migrate QC1/2/3 · 18 suites · typecheck · fitness) · commit C5.1-fix · rebuild of QC server pending (C4.2 it3 running on 3215)
+- 28 Sep 01:48 UTC · C5.4-B builder spawned (Opus · c54b @98fd480a · L1-M1/M2/m1–m4 + L5-M1–M4/m3/m5–m7 · ORACLE-EDIT rulings 3+6 allowed) · batch C (money) held until quota reading · active: C4.2 it3 · C4.3-fix2 · C4.4 · C5.4-A · C5.4-B
+- 28 Sep 01:49 UTC · OWNER: quota 81% (window started ~23:45 → ≈40%/h at 5–8 agents) ⇒ all 5 agents told to checkpoint + stop; systemd units keep running · resume after reset (ask owner the reset time)
+- 28 Sep 01:56 UTC · all 5 agents checkpointed (quota 81%) · units still running: crm-c42-it3b · c432-v3 · c432-serve · c54a-tc2 · c54a-reg-new2 · c54b-base · RESUME §0.14 written

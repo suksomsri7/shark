@@ -40,6 +40,16 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.14 ⏸️ 28 Sep 2026 ~02:00 UTC — QUOTA STOP at 81% (owner) · accepted **43/53 = 81%** (C5.2 · C5.3 · C5.1 today) · prod LIVE 3677d983 (C3.9-fix + Vercel tsc split)
+Resume each agent via SendMessage from its wo-notes checkpoint (transcripts survive):
+- C4.2 (aed457d6ca7a8aed3 · c42) — unit `crm-c42-it3b` keeps running owner→manager→nok→thana→customer · then merge_summary per role (wo-notes §12)
+- C4.3-fix part 2 (a467afb01d3d14282 · c432) — unit `c432-v3` rebuild #3 + hardened oracle + shots (`.qc-shots/c432/v3-progress.log` ends V3DONE) · server 3217 unit `c432-serve` · then controller: eyeball screenshots vs mockups → merge → C4.3 card (passed===total)
+- C4.4 (a34d2630d3542be17 · c44) — US4/5/7/8 unclassified, US9/10 not run · --clean leftovers · US3 product bug = C4.4-fix item
+- C5.4-A (a6099ec1d458b59fb · c54a) — all 10 coded · units c54a-tc2 + c54a-reg-new2 running · re-run fitness → handback → reviewer + hunter
+- C5.4-B (a79fe2841ad004c36 · c54b) — planned only · baseline unit c54b-base · ruling 6 refined (wo-notes)
+- Queued: C5.4-C money (L2 + X1: REST paidSatang/wonValueSatang) · D queues (L3 M1 CRM/M2/M4/m2) · E business/UX (L6) · F public (L4 M1, M3 part, m1–m3) · C4.4-fix (US2 taxId/role · US3 stage UI + contact/company partyId bug · US5?) · C3.10 (qc:all · CP3 owner · HANDOVER) · rebuild QC server 3215 from HEAD after C4.2 it3
+- Hazard noted: C2.1-S6.2 spawns qc-member-m3.3 which does a GLOBAL drain (crashed at start twice on QC2) — scope it before the next shared-DB run
+
 ### 0.13 ▶️ 27 ก.ย. ~14:10 UTC (Fable · บัญชีใหม่ · เครื่อง KVM4 4 CPU/15 GB) — เดิน 3 เลน · 40/53 = 75%
 - worktree เดิม c12a/c20/c23/c110 **มีไฟล์ค้างที่ยังไม่ reset** (ตัวกรองสิทธิ์ไม่ให้ session นี้ reset — ของรวมเข้า main แล้วตาม §0.12) · bind mount node_modules หายหลังรีบูต · **สร้าง worktree ใหม่** `shark-crm-c42` (C4.2) `-c43` (C4.3) `-c44` (C4.4) ที่ 18feaa84 + `mount --bind` node_modules ของทรีหลัก (รีบูตแล้วต้อง mount ใหม่) + ก๊อป `.env.qc*`
 - ยูนิต `crm-c39fix-main` ยิง 13:45 UTC (log `.qc-shots/crm/c39fix-main.log`) → เขียว = จด gate C3.9-fix + แจ้งเจ้าของก่อน push prod
