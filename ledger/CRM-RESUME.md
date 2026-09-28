@@ -48,6 +48,7 @@ Resume each agent via SendMessage from its wo-notes checkpoint (transcripts surv
 - C5.4-A (a6099ec1d458b59fb · c54a) — all 10 coded · units c54a-tc2 + c54a-reg-new2 running · re-run fitness → handback → reviewer + hunter
 - C5.4-B (a79fe2841ad004c36 · c54b) — planned only · baseline unit c54b-base · ruling 6 refined (wo-notes)
 - Queued: C5.4-C money (L2 + X1: REST paidSatang/wonValueSatang) · D queues (L3 M1 CRM/M2/M4/m2) · E business/UX (L6) · F public (L4 M1, M3 part, m1–m3) · C4.4-fix (US2 taxId/role · US3 stage UI + contact/company partyId bug · US5?) · C3.10 (qc:all · CP3 owner · HANDOVER) · rebuild QC server 3215 from HEAD after C4.2 it3
+- 02:40 UTC update: quota 90% (owner) · reset ≈04:35 UTC · C5.4-A reviewer MERGEABLE AFTER SF (3xx=delivered · keep storing 500 · phone column valid-only + notes) → round 2 in c54a, checkpoint "ROUND 2 STOP" in its wo-notes · C4.3-fix2 unit c432-v3 (i1 274/276 · q01 62/62 so far) · C4.2 it3 owner 13/13 done (analyse #6/#13/#12 first) · manager… running in crm-c42-it3b · after reset: cron one-shot 04:52 resumes lanes
 - Hazard noted: C2.1-S6.2 spawns qc-member-m3.3 which does a GLOBAL drain (crashed at start twice on QC2) — scope it before the next shared-DB run
 
 ### 0.13 ▶️ 27 ก.ย. ~14:10 UTC (Fable · บัญชีใหม่ · เครื่อง KVM4 4 CPU/15 GB) — เดิน 3 เลน · 40/53 = 75%
