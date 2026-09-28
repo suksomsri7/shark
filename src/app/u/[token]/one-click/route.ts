@@ -25,11 +25,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const { token } = await params;
     const clean = String(token ?? "");
     const ip = ipOf(req);
-    // 🔴 คำตอบของด่านความถี่ต้องถูก **ใช้** ไม่ใช่แค่เรียกให้ผ่าน ๆ: ลิงก์นี้ยิงได้โดยไม่ต้องล็อกอิน และการยิง
-    //    ซ้ำ ๆ ทำให้เกิดการเขียนฐานทุกครั้ง (ธง · แถวความยินยอม · แถวเหตุการณ์ · audit) — เต็มเพดาน = ไม่แตะฐาน
-    //    แต่ยังตอบหน้าเดิมทุกไบต์ (คนกดจริงต้องไม่เห็นว่าระบบกันอยู่ · และไม่มีเครื่องทำนาย token ที่ใช้ได้)
+    // 🔴 คำตอบของด่านความถี่ต้องถูก **ใช้** ไม่ใช่แค่เรียกให้ผ่าน ๆ: ลิงก์นี้ยิงได้โดยไม่ต้องล็อกอิน · ตอบหน้าเดิมทุกไบต์
+    //    ทุกกรณี (คนกดจริงต้องไม่เห็นว่าระบบกันอยู่ · และไม่มีเครื่องทำนาย token ที่ใช้ได้)
+    // CRM C5.4-F ▸ L4-m2 (มติผู้คุมงาน ข้อ 4 แทนมติ F8 เดิม): เต็มเพดาน **ไม่ทิ้งการเลิกรับ** — token ที่ถูกต้องได้ผลเสมอ
+    //   (Gmail/Yahoo ยิงจาก IP ชุดเล็กที่ใช้ร่วมกันทุกร้าน) · เพดานมีไว้ชะลอเฉพาะ token ที่ไม่รู้จัก: ตอนเต็มเพดาน
+    //   `unsubscribe` อ่าน 1 แถวแล้วจบ ไม่เขียนอะไร เว้นแต่ token จริงและธงยังไม่พลิก ◂
     const allowed = await emails.trackGate("u", { ip, token: clean });
-    if (clean && allowed) await emails.unsubscribe(clean, { ip, ua: req.headers.get("user-agent") });
+    if (clean) await emails.unsubscribe(clean, { ip, ua: req.headers.get("user-agent"), rateLimited: !allowed });
   } catch {
     // ล้มแล้วยังตอบ 2xx: ผู้ให้บริการอีเมลเห็น 5xx = ซ่อนปุ่ม "ยกเลิกรับ" ของเราทิ้ง
   }

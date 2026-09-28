@@ -1776,33 +1776,155 @@ async function fetchLinkedAttachment(
 function lowerHeaders(h: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!isObj(h)) return out;
-  for (const [k, v] of Object.entries(h)) out[String(k).trim().toLowerCase()] = String(v ?? "");
+  // CRM C5.4-F ▸ hunt: คีย์ที่ชนกันหลังทำเป็นตัวพิมพ์เล็ก (`Authentication-Results` + `authentication-results`) ถูก **ต่อกันด้วย `\n`
+  //   ตามลำดับที่มา** แทนการเขียนทับ (ตัวหลังเคยชนะ ⇒ ผู้ส่งเลือกได้ว่าหัวไหนถูกอ่าน) ◂
+  for (const [k, v] of Object.entries(h)) {
+    const key = String(k).trim().toLowerCase();
+    const val = String(v ?? "");
+    out[key] = key in out ? `${out[key]}\n${val}` : val;
+  }
   return out;
 }
 
 const bareId = (v: unknown) => str(v).replace(/^<|>$/g, "");
 
 /**
- * หัว `Authentication-Results` (RFC 8601) ของ MTA บอกว่า **โดเมนนี้** ผ่าน DKIM หรือ SPF ไหม — แกะแบบระวัง
- * 🔴 ตีความแบบเข้มที่สุดเท่าที่ทำได้: ตัดเป็นข้อ ๆ ด้วย `;` แล้วนับเฉพาะข้อที่ประกาศ `dkim=pass` / `spf=pass`
- *    **และ** ในข้อเดียวกันมีโดเมนกำกับ (`header.d=` · `header.i=@` · `smtp.mailfrom=`) ที่ตรงกับโดเมนของ From
- *    (หรือเป็นโดเมนแม่ของมัน) · หัวที่บอกแค่ "pass" ลอย ๆ โดยไม่กำกับโดเมน = ไม่นับ (ปลอมง่ายและพิสูจน์ไม่ได้)
- * 🔴 ไม่รับ `ARC-Authentication-Results` (ผลของ MTA ต้นทางที่เราไม่ได้เชื่อ) และไม่รับแค่การมี `DKIM-Signature`
- *    (ลายเซ็นที่ยังไม่ได้ตรวจ ≠ ลายเซ็นที่ผ่าน)
+ * หัว `Authentication-Results` (RFC 8601) ของ MTA ขาเข้าของเรา บอกว่าจดหมายฉบับนี้ **ผ่าน DMARC ในนามโดเมนของ From** ไหม
+ * CRM C5.4-F ▸ L4-M1 + hunt (รอบ 3) — หัวนี้ **ผู้ส่งเขียนเองได้** และ MTA บางตัวสะท้อนค่าที่ผู้ส่งควบคุม (HELO · MAIL FROM) ลงใน
+ *   หัวของตัวเองโดยไม่ quote/escape ⇒ เชื่อได้เฉพาะเมื่อผ่านทุกข้อ (ไม่ผ่านข้อใด = ไม่มีหลักฐาน = IN · fail-closed):
+ *   1) ตั้ง `CRM_INBOUND_AUTHSERV_ID` แล้ว (ว่าง = ไม่เชื่อหัวใดเลย) · `X-Authentication-Results` / `ARC-…` ไม่ถูกอ่าน
+ *   2) authserv-id ของเรานำหน้า instance **เดียวพอดี** (สองหัวขึ้นไป = มีหัวที่ติดมากับจดหมาย ⇒ ไม่เชื่อทั้งหมด)
+ *   3) แยก instance/ข้อได้สะอาด: comment `( … )` และ quoted-string ปิดครบ และไม่มีรอยต่อระหว่างหัว (`,` / ขึ้นบรรทัด)
+ *      อยู่ข้างใน (ไม่งั้นคือหัวสองหัวที่ถูกเย็บต่อกัน หรือค่าของผู้ส่งที่หลุดออกมาจาก comment)
+ *   4) ใน instance นั้นมี resinfo `dmarc` ได้ 1 ข้อ และ `spf` ไม่เกิน 1 ข้อ (ข้อที่ถูกฉีดเพิ่มทำให้เกินเสมอ ถ้า MTA ออก dmarc เอง)
+ *   5) หลักฐานเดียวที่รับ: `dmarc=pass header.from=<โดเมนของ From ตรงตัว>` — dkim/spf ลำพังไม่นับ (header.i / smtp.mailfrom
+ *      ไม่ align กับ From · DMARC คือผลที่ align แล้ว)
  */
 function authResultPass(headers: Record<string, string>, fromDomain: string): boolean {
   const domain = str(fromDomain).toLowerCase();
   if (!domain || !domain.includes(".")) return false;
-  const raw = [headers["authentication-results"], headers["x-authentication-results"]].filter((v) => typeof v === "string" && v).join(";");
-  if (!raw) return false;
-  for (const part of raw.toLowerCase().split(";")) {
-    const clause = part.trim();
-    if (!/\b(?:dkim|spf)\s*=\s*pass\b/.test(clause)) continue;
-    for (const m of clause.matchAll(/(?:header\.d|header\.i|smtp\.mailfrom)\s*=\s*"?@?([a-z0-9][a-z0-9.-]*)"?/g)) {
-      const d = (m[1] ?? "").replace(/^.*@/, "").replace(/\.$/, "");
-      if (!d.includes(".")) continue;
-      if (d === domain || domain.endsWith(`.${d}`)) return true;
+  const trusted = str(process.env.CRM_INBOUND_AUTHSERV_ID).toLowerCase();
+  if (!trusted) return false;
+  const insts = authResultsInstances(str(headers["authentication-results"]));
+  if (!insts) return false;
+  const ours = insts.filter((i) => i.authservId === trusted);
+  if (ours.length !== 1) return false;
+  let dmarc = 0;
+  let spf = 0;
+  let pass = false;
+  for (const part of (ours[0] as { clauses: string[] }).clauses) {
+    // ข้อหนึ่ง = คู่ `key=value` เรียงกัน (value ในเครื่องหมายคำพูดถูกกินทั้งก้อน ⇒ ข้อความใน `reason="…"` ไม่ถูกอ่านเป็น key)
+    const pairs = [...part.trim().toLowerCase().matchAll(/([a-z0-9._-]+)\s*=\s*("(?:[^"\\]|\\.)*"|[^\s";]+)/g)].map((m) => ({
+      k: m[1] ?? "",
+      v: (m[2] ?? "").replace(/^"|"$/g, ""),
+    }));
+    const head = pairs[0];
+    if (!head) continue;
+    if (head.k === "spf") spf += 1;
+    if (head.k !== "dmarc") continue;
+    dmarc += 1;
+    if (head.v !== "pass") continue;
+    if (pairs.slice(1).some(({ k, v }) => k === "header.from" && v.replace(/^.*@/, "").replace(/\.$/, "") === domain)) pass = true;
+  }
+  return pass && dmarc === 1 && spf <= 1;
+}
+
+/**
+ * CRM C5.4-F ▸ L4-M1 — แยกค่าของหัว `Authentication-Results` เป็นทีละ instance → `{ authservId, clauses }` · `null` = แยกไม่สะอาด (ไม่เชื่อ)
+ * - หัวชื่อซ้ำถูกต่อด้วย `\n` (`lowerHeaders` · route ขาเข้า) หรือ `,` (ผู้ให้บริการบางราย) ⇒ ทั้งสองอย่างคือรอยต่อระหว่างหัว
+ * - header folding: บรรทัดที่ขึ้นต้นด้วยช่องว่างต่อกับบรรทัดก่อน **เว้นแต่** มันขึ้นต้นเหมือนหัวใหม่ (`<authserv-id> [version];`
+ *   ที่ไม่มี `=`) — หัวปลอมที่ถูกเย็บด้วย `\n\t` จึงไม่ถูกรวบเข้าหัวจริง
+ * - comment `( … )` (ซ้อนได้ · `\` escape) ถูกตัดทิ้ง · quoted-string ถูกเก็บทั้งก้อน · รอยต่อ (`,`/ขึ้นบรรทัด) ที่อยู่ใน comment
+ *   หรือในเครื่องหมายคำพูด หรือ comment/เครื่องหมายคำพูดที่ไม่ปิด ⇒ `null`
+ */
+function authResultsInstances(rawValue: string): { authservId: string; clauses: string[] }[] | null {
+  const lines = rawValue.split(/\r?\n/);
+  let raw = lines[0] ?? "";
+  for (const line of lines.slice(1)) {
+    const folded = /^[ \t]/.test(line) && !/^\s*[a-z0-9._-]+(?:\s+\d+)?\s*(?:\([^)]*\)\s*)?;/i.test(line);
+    raw += folded ? ` ${line.trim()}` : `\n${line}`;
+  }
+  const out: { authservId: string; clauses: string[] }[] = [];
+  let cur = "";
+  let clauses: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  const flushInstance = () => {
+    clauses.push(cur);
+    cur = "";
+    const [head, ...rest] = clauses;
+    const id = str(head).split(/\s+/)[0]?.toLowerCase() ?? "";
+    if (id) out.push({ authservId: id, clauses: rest });
+    clauses = [];
+  };
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i] as string;
+    const boundary = ch === "," || ch === "\n";
+    if ((depth > 0 || quoted) && boundary) return null;
+    if (ch === "\\" && (quoted || depth > 0)) {
+      if (!depth) cur += ch + (raw[i + 1] ?? "");
+      i += 1;
+      continue;
     }
+    if (depth > 0) {
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      if (depth === 0) cur += " ";
+      continue;
+    }
+    if (quoted) {
+      cur += ch;
+      if (ch === '"') quoted = false;
+      continue;
+    }
+    if (ch === "(") depth = 1;
+    else if (ch === ")") return null;
+    else if (ch === '"') {
+      quoted = true;
+      cur += ch;
+    } else if (ch === ";") {
+      clauses.push(cur);
+      cur = "";
+    } else if (boundary || ch === "\r") {
+      if (cur.trim() || clauses.length) flushInstance();
+    } else cur += ch;
+  }
+  if (depth > 0 || quoted) return null;
+  if (cur.trim() || clauses.length) flushInstance();
+  return out;
+}
+
+/** โดเมนอีเมลสาธารณะที่พนักงานใช้ร่วมกับลูกค้าได้ — โดเมนเหล่านี้ไม่ถือเป็น "โดเมนของพนักงาน" (ไม่งั้นลูกค้า gmail ทั้งหมดไม่เป็น lead) */
+const PUBLIC_MAIL_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.co.th", "live.com", "msn.com",
+  "yahoo.com", "yahoo.co.th", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "aol.com", "gmx.com",
+]);
+
+/**
+ * CRM C5.4-F ▸ hunt #5 — คนแปลกหน้าที่ **ดูเหมือนพนักงาน** ห้ามกลายเป็น lead อัตโนมัติ: ที่อยู่เป็นรูป +tag ของที่อยู่พนักงาน
+ * (`sales+ceo@…`) · อยู่บนโดเมนส่วนตัวของพนักงาน (ไม่ใช่โดเมนอีเมลสาธารณะ) · หรือชื่อที่แสดงมีที่อยู่ของพนักงาน/ตรงกับชื่อพนักงาน
+ * (จดหมายยังถูกเก็บเป็นขาเข้าที่ยังไม่จับคู่ตามปกติ — แค่ไม่สร้างผู้ติดต่อใหม่จากมัน)
+ */
+async function mimicsStaff(tenantId: string, fromAddr: string, displayName: string): Promise<boolean> {
+  const rows = await prisma.membership.findMany({
+    where: { tenantId, acceptedAt: { not: null } },
+    select: { user: { select: { email: true, name: true } } },
+    take: 2_000,
+  });
+  const addr = fromAddr.toLowerCase();
+  const [local = "", dom = ""] = addr.split("@");
+  const base = `${local.split("+")[0]}@${dom}`;
+  const shown = str(displayName).toLowerCase();
+  for (const r of rows) {
+    const email = str(r.user?.email).toLowerCase();
+    const name = str(r.user?.name).toLowerCase();
+    if (email) {
+      const sDom = email.split("@")[1] ?? "";
+      if (base === email) return true;
+      if (sDom && sDom === dom && !PUBLIC_MAIL_DOMAINS.has(dom)) return true;
+      if (shown && shown.includes(email)) return true;
+    }
+    if (name.length >= 3 && shown === name) return true;
   }
   return false;
 }
@@ -1876,16 +1998,18 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     // 🔴 ก่อนจะ "เชื่อ" ว่าจดหมายฉบับนี้พนักงานส่งเอง ต้องมีหลักฐานว่า From ไม่ได้ถูกปลอม: ใครก็ยิง JSON เข้ามาที่
     //    เส้นขาเข้าโดยจ่า `From:` เป็นอีเมลพนักงานได้ ⇒ จดหมายจะถูกเก็บเป็น **ขาออกของร้าน** (direction OUT ·
     //    sentById = พนักงานคนนั้น) แล้วโผล่ในไทม์ไลน์ของลูกค้าเหมือนพนักงานเขียนเอง (ปล่อยข้อความปลอมในนามร้าน)
-    //    หลักฐานที่รับ: `authentication-results` ของ MTA บอก dkim=pass / spf=pass ให้โดเมนของ From
-    //    หรือโดเมนของ From เป็นโดเมนผู้ส่งที่ร้านนี้ยืนยันแล้ว (`EmailDomain.status = VERIFIED`)
+    //    หลักฐานที่รับ: `authentication-results` **ของ MTA ขาเข้าของเราเอง** (authserv-id = `CRM_INBOUND_AUTHSERV_ID`)
+    //    บอก dkim/spf/dmarc=pass ให้โดเมนของ From — ดู `authResultPass`
     //    ไม่ผ่าน = ปฏิบัติกับมันเหมือนจดหมายขาเข้าธรรมดา (กติกาคนแปลกหน้า) — AUDIT-CLASS X1 · X6
+    // CRM C5.4-F ▸ L4-M1: โดเมนผู้ส่งที่ร้านยืนยันแล้ว (`EmailDomain.status = VERIFIED`) **ไม่ใช่หลักฐาน** อีกต่อไป — มันแปลว่า
+    //   "Resend ส่งในนามโดเมนนี้ได้" ไม่ได้บอกว่าใครส่งจดหมายฉบับที่เข้ามา (`From: owner@<โดเมนร้าน>` เปล่า ๆ เคยพอ)
+    //   จดหมายที่อ้างที่อยู่ของพนักงาน/โดเมนของร้านโดยไม่มีหลักฐาน ⇒ IN + ธง `routing.unverifiedShopFrom` (ให้หน้าจอเตือนได้)
+    //   และไม่ถูกทำเป็น lead ใหม่ (ที่อยู่ของพนักงานเองไม่ใช่ลูกค้า) ◂
     const staffClaim = staff?.userId ?? (overrideTrusted ? staffByOverride?.userId : null) ?? null;
-    let fromAuthenticated = false;
-    if (staffClaim) {
-      fromAuthenticated =
-        authResultPass(headers, emailDomainOf(fromAddr)) || (await verifiedDomains(system.tenantId)).has(emailDomainOf(fromAddr));
-    }
+    const fromAuthenticated = staffClaim ? authResultPass(headers, emailDomainOf(fromAddr)) : false;
     const sentById = fromAuthenticated ? staffClaim : null;
+    const fromOnShopDomain = !!fromAddr && (await verifiedDomains(system.tenantId)).has(emailDomainOf(fromAddr));
+    const unverifiedShopFrom = !fromAuthenticated && !!fromAddr && (!!staffClaim || fromOnShopDomain);
     const direction: "IN" | "OUT" = sentById ? "OUT" : "IN";
     if (direction === "OUT" && settings.bccCaptureEnabled !== true) return { ok: true, handled: false, reason: "bcc_capture_off", attachmentsDropped: 0 };
 
@@ -1904,7 +2028,11 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
         }
       }
     } else {
-      contact = (await contactByAddress(system.id, fromAddr)) ?? (replyToAddr ? await contactByAddress(system.id, replyToAddr) : null);
+      // CRM C5.4-F ▸ review SF2 + hunt #4: Reply-To ใช้หาผู้ติดต่อได้ **เฉพาะ** จดหมายฟอร์มของร้าน — From อยู่บนโดเมนที่ร้านยืนยัน
+      //   แล้ว (`EmailDomain.status = VERIFIED`) และไม่ใช่ที่อยู่ของพนักงาน · คนนอกที่รู้ `crm+<key>@` (อยู่ใน Reply-To ของทุก
+      //   จดหมาย CRM) เคยใส่ Reply-To เป็นอีเมลลูกค้าแล้วแปะจดหมายลงไทม์ไลน์ของลูกค้าคนนั้นได้ ◂
+      const replyToUsable = replyToAddr && fromOnShopDomain && !staffClaim ? replyToAddr : "";
+      contact = (await contactByAddress(system.id, fromAddr)) ?? (replyToUsable ? await contactByAddress(system.id, replyToUsable) : null);
       if (contact) matchedBy = "EMAIL";
       if (!contact) {
         const domain = emailDomainOf(fromAddr);
@@ -1914,7 +2042,14 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
         if (company) {
           companyId = company.id;
           matchedBy = "DOMAIN";
-        } else if (settings.strangerToLead === true && !auto && isEmailAddr(fromAddr)) {
+        } else if (
+          settings.strangerToLead === true &&
+          !auto &&
+          !staffClaim &&
+          !unverifiedShopFrom &&
+          isEmailAddr(fromAddr) &&
+          !(await mimicsStaff(system.tenantId, fromAddr, displayNameOf(payload?.from)))
+        ) {
           // คนแปลกหน้า ⇒ lead ใหม่ 1 ราย (ทางเดียวกับสะพานฟอร์ม/แชท · กันซ้ำด้วย advisory lock ในนั้น)
           const lead = await contacts
             .leadFromBridge({ tenantId: system.tenantId, systemId: system.id, actorUserId: null }, {
@@ -1998,6 +2133,7 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
             sentById,
             ...(direction === "OUT" ? { sentAt: at, status: "SENT" as const } : { receivedAt: at, status: "RECEIVED" as const }),
             matchedBy,
+            ...(unverifiedShopFrom ? { routing: { unverifiedShopFrom: true } as unknown as Prisma.InputJsonValue } : {}),
             trackTokenHash: sha256(`crm.email.in:${storedMessageId}`),
           },
         });
@@ -2042,7 +2178,7 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
       dropped += files.length - stored.length;
       const data: Prisma.CrmEmailMessageUpdateInput = {};
       if (stored.length) data.attachments = stored as unknown as Prisma.InputJsonValue;
-      if (dropped > 0) data.routing = { attachmentsDropped: dropped } as unknown as Prisma.InputJsonValue;
+      if (dropped > 0) data.routing = { ...(unverifiedShopFrom ? { unverifiedShopFrom: true } : {}), attachmentsDropped: dropped } as unknown as Prisma.InputJsonValue;
       if (Object.keys(data).length) await prisma.crmEmailMessage.update({ where: { id: created.id }, data });
     }
 
@@ -2369,11 +2505,13 @@ export async function trackGate(route: TrackRoute, req: { ip: string; token?: st
   const keys = trackRateKeys(route, req);
   const ipKey = keys[0] as string;
   const tokKey = keys[1];
-  // CRM C5.1-fix ▸ F5: สองถัง (IP · token) นับในคำสั่งเดียว — ความหมายเดิม (นับทั้งสองถังเสมอ · ผ่านเมื่อผ่านทั้งคู่) ◂
-  const verdicts = await checkRateLimitDbMany([
-    { key: ipKey, ...CRM_TRACK_RATE_LIMITS.perIp },
-    ...(tokKey ? [{ key: tokKey, ...CRM_TRACK_RATE_LIMITS.perToken }] : []),
-  ]);
+  // CRM C5.1-fix ▸ F5: สองถัง (IP · token) นับในคำสั่งเดียว (ผ่านเมื่อผ่านทั้งคู่) ◂
+  // CRM C5.4-F ▸ L4-m3: `chain` — ถัง token ถูกนับ/สร้าง **เฉพาะเมื่อถัง IP ยังผ่าน** · IP ที่เกินเพดานแล้วยิง token สุ่มใหม่
+  //   ทุกครั้งเคยสร้างแถว `ChatRateBucket` ใหม่ทุกคำขอ (เพดานต่อ IP จำกัดการนับ แต่ไม่จำกัดการเขียนฐาน) ◂
+  const verdicts = await checkRateLimitDbMany(
+    [{ key: ipKey, ...CRM_TRACK_RATE_LIMITS.perIp }, ...(tokKey ? [{ key: tokKey, ...CRM_TRACK_RATE_LIMITS.perToken }] : [])],
+    { chain: true },
+  );
   return verdicts.every((v) => v.ok);
 }
 
@@ -2528,7 +2666,13 @@ export async function trackClick(
  * ยกเลิกรับอีเมล — คืน `{ ok: true }` **เสมอ** ไม่ว่า token จะรู้จักหรือไม่ (ไม่มีเครื่องทำนาย token ที่ใช้ได้)
  * 🔴 ทำงานแม้ร้านกลับไป uiVersion 1 (มติผู้คุมงาน ข้อ 7): การยกเลิกรับตามกฎหมายห้ามขึ้นกับสวิตช์หน้าจอ
  */
-export async function unsubscribe(token: string, meta?: { ip?: string; ua?: string | null }): Promise<{ ok: true }> {
+/**
+ * CRM C5.4-F ▸ L4-m2 (มติผู้คุมงาน ข้อ 4 · 28 ก.ย.): token เลิกรับที่ **ถูกต้อง** ต้องได้ผลเสมอ ไม่ว่าถังความถี่จะเต็มแค่ไหน
+ *   (Gmail/Yahoo ยิง one-click จากฝั่งเซิร์ฟเวอร์ผ่าน IP ชุดเล็กที่ใช้ร่วมกันทุกร้าน — การเลิกรับห้ามหายเงียบ)
+ *   `rateLimited: true` = ผู้เรียกเต็มเพดานแล้ว ⇒ token ที่ไม่รู้จักจบที่การอ่าน 1 แถว (ไม่เขียนอะไร) · token จริงพลิกธงตามปกติ
+ *   และเขียนแถวเหตุการณ์เฉพาะรอบที่ธงพลิกจริง (การยิงซ้ำตอนเต็มเพดาน = ไม่มีการเขียนเพิ่ม) · audit เขียนเฉพาะรอบที่พลิกจริงเสมอ ◂
+ */
+export async function unsubscribe(token: string, meta?: { ip?: string; ua?: string | null; rateLimited?: boolean }): Promise<{ ok: true }> {
   try {
     const row = await messageOfToken("u", str(token));
     if (!row || !row.contactId) return { ok: true };
@@ -2536,6 +2680,11 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
     // กติกาถาวร (ข้อสอบ C1.4-S0.8): คอลัมน์ที่มีเจ้าของของ `CrmContact` เขียนได้จาก `contacts*.ts`/`consents.ts`
     //   เท่านั้น ⇒ ธง "ขอไม่รับ" พลิกผ่านตัวเขียนแคบ ๆ ของ `contacts.ts` (มีเงื่อนไข · คืน "พลิกจริงไหม")
     const contactId = row.contactId;
+    // CRM C5.4-F ▸ hunt INFO: เต็มเพดาน + ขอไม่รับอยู่แล้ว ⇒ จบที่การอ่าน (ไม่เปิดธุรกรรมทุกคำขอ) ◂
+    if (meta?.rateLimited === true) {
+      const cur = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: row.tenantId }, select: { emailOptOut: true } });
+      if (!cur || cur.emailOptOut) return { ok: true };
+    }
     const flipped = await prisma.$transaction((tx) => contacts.markEmailOptOutInTx(tx, ctx, contactId));
     if (flipped) {
       await consents
@@ -2543,9 +2692,11 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
         .catch(() => null);
       await stopSequencesFor(ctx, row.contactId, "OPT_OUT");
     }
+    if (!flipped && meta?.rateLimited === true) return { ok: true };
     await prisma.crmEmailEvent
       .create({ data: { tenantId: row.tenantId, emailId: row.id, kind: "UNSUBSCRIBE", providerEventId: `unsub:${row.id}`, userAgent: str(meta?.ua).slice(0, 200) || null } })
       .catch(() => null);
+    if (!flipped) return { ok: true };
     await writeAudit({
       tenantId: row.tenantId,
       actorId: null,

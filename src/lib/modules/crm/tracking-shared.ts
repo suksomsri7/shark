@@ -192,6 +192,23 @@ export function urlHostAllowed(url: unknown, domains: readonly string[]): boolea
   }
 }
 
+/**
+ * ค่า header `Location` ต้องเป็น ByteString — url ที่มีอักขระนอก ASCII (ทางเดินภาษาไทย/จีน) ต้องเข้ารหัสก่อน ไม่งั้นสร้าง
+ * Response ไม่ได้เลย (เดิมอยู่ใน route `/l` · CRM C5.4-F ▸ L4-m1: `/t/c` ใช้ตัวเดียวกัน — เดิมพาลูกค้าไปหน้าแรกของ SHARK)
+ * ASCII ล้วน = ไม่แตะ · อย่างอื่น = `new URL().href` (percent-encode แบบ UTF-8 · ไม่เข้ารหัส `%` ที่มีอยู่ซ้ำ) หรือ `encodeURI`
+ */
+export function headerSafeLocation(url: string): string {
+  const ascii = (v: string) => /^[ -~]*$/.test(v);
+  if (ascii(url)) return url;
+  try {
+    const href = new URL(url).href;
+    if (ascii(href)) return href;
+  } catch {
+    /* ตกไปใช้ encodeURI */
+  }
+  return encodeURI(url);
+}
+
 /** ที่อยู่สาธารณะของแอปที่สคริปต์บนเว็บร้านจะยิงกลับ — ต้องเป็น https เสมอ (http://127.0.0.1 ของเครื่องทดสอบ = ใช้ค่าสาธารณะ) */
 export function publicAppOrigin(appUrl: unknown): string {
   const s = typeof appUrl === "string" ? appUrl.trim().replace(/\/+$/, "") : "";

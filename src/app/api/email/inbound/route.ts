@@ -102,7 +102,10 @@ function crmExtras(raw: unknown): { cc: string[]; headers: Record<string, string
   const rawHeaders = data.headers && typeof data.headers === "object" ? (data.headers as Record<string, unknown>) : {};
   const headers: Record<string, string> = {};
   for (const [k, v] of Object.entries(rawHeaders)) {
-    if (typeof v === "string" || typeof v === "number") headers[k.trim().toLowerCase()] = String(v);
+    // CRM C5.4-F ▸ hunt: คีย์ที่ชนกันหลังทำเป็นตัวพิมพ์เล็ก = ต่อด้วย "\n" ตามลำดับที่มา (ไม่เขียนทับ — ตัวหลังเคยชนะ) ◂
+    if (typeof v !== "string" && typeof v !== "number") continue;
+    const key = k.trim().toLowerCase();
+    headers[key] = key in headers ? `${headers[key]}\n${String(v)}` : String(v);
   }
   return { cc: toRecipients(data.cc ?? data.Cc), headers };
 }

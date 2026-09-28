@@ -326,6 +326,9 @@ const WH_KEY_B64 = randomBytes(24).toString("base64");
 process.env.RESEND_API_KEY = `re_qc_c25_${randomBytes(8).toString("hex")}`;
 process.env.EMAIL_INBOUND_SECRET = `qc-c25-inbound-${randomBytes(12).toString("hex")}`;
 process.env.RESEND_WEBHOOK_SECRET = `whsec_${WH_KEY_B64}`;
+// ORACLE-EDIT (proposed · C5.4-F · L4-M1): Authentication-Results is trusted only from our own MTA's authserv-id
+//   (`CRM_INBOUND_AUTHSERV_ID`) — the S3.4/S10.7 fixtures already write `mx.shark.in.th`, so the suite declares it as ours
+process.env.CRM_INBOUND_AUTHSERV_ID = "mx.shark.in.th";
 delete process.env.OPS_ALERT_EMAIL;
 const CDN = "https://qc-c25-cdn.invalid";
 /** โฮสต์สมมติของไฟล์แนบ "แบบลิงก์" (S10.9) — ทุกคำขอถูกดักโดย stub ด้านล่าง */
@@ -995,7 +998,8 @@ try {
     // ORACLE-EDIT (ruling G.7 · review round 3): the OUT branch now needs a PROVEN From — the fixture carries the
     //   `authentication-results` an MTA would add.  The spoofed twin (no proof ⇒ IN) is C2.5-S10.7.
     const staffDom = String(uS.email.split("@")[1] ?? "");
-    const AUTH_OK = { "authentication-results": `mx.shark.in.th; spf=pass smtp.mailfrom=${staffDom}; dkim=pass header.d=${staffDom}` };
+    // ORACLE-EDIT (proposed · C5.4-F hunt): only `dmarc=pass header.from=<From domain>` of our MTA is proof ⇒ the fixture carries it
+    const AUTH_OK = { "authentication-results": `mx.shark.in.th; spf=pass smtp.mailfrom=${staffDom}; dkim=pass header.d=${staffDom}; dmarc=pass header.from=${staffDom}` };
     const r1 = await ingest(inMail({ from: `"พนักงาน" <${uS.email}>`, to: [kStaff.email, inA], subject: subj("สำเนา BCC"), headers: AUTH_OK }));
     const r2 = await ingest(inMail({ from: uS.email, to: [unknown, inA], subject: subj("BCC ไม่รู้จัก"), headers: AUTH_OK }));
     const w1 = await row(r1.v?.emailId ?? NONE);
@@ -2138,7 +2142,7 @@ try {
       headers: { "authentication-results": `mx.shark.in.th; spf=pass smtp.mailfrom=${dom}; dkim=pass header.d=${dom}; dmarc=pass header.from=${dom}` },
     }));
     const w2 = await row(authed.v?.emailId ?? NONE);
-    chk("C2.5-S10.7", "ruling G.7 (F7): the OUT branch (BCC capture · sentById = that staff) opens only when the delivery PROVES the From — a passing `authentication-results` (spf/dkim for the From domain) or a From on a VERIFIED EmailDomain of the tenant · a mail that merely writes a staff address in From with no such header is stored as an ordinary IN message (sentById null, stranger rules), never as something the staff 'sent'",
+    chk("C2.5-S10.7", "ruling G.7 (F7): the OUT branch (BCC capture · sentById = that staff) opens only when the delivery PROVES the From — a passing `authentication-results` of OUR MTA (authserv-id = CRM_INBOUND_AUTHSERV_ID · spf/dkim/dmarc for the From domain — a VERIFIED EmailDomain alone is no proof: ORACLE-EDIT C5.4-F, L4-M1) · a mail that merely writes a staff address in From with no such header is stored as an ordinary IN message (sentById null, stranger rules), never as something the staff 'sent'",
       spoof.ok && spoof.v?.handled === true && w1?.direction === "IN" && !w1?.sentById &&
         authed.ok && w2?.direction === "OUT" && w2?.sentById === uS.id && w2?.contactId === kSp.id,
       "IN unless proven", `spoof=${rd(spoof)} dir=${w1?.direction} by=${w1?.sentById ?? "-"} authed=${rd(authed)} dir2=${w2?.direction} by2=${w2?.sentById === uS.id}`, "MAJOR");
@@ -2178,8 +2182,10 @@ try {
     const bucketsBad = keysOf(ipBad).length ? await P.chatRateBucket.count({ where: { key: { in: keysOf(ipBad) } } }) : -1;
     const bucketsW = keysOf(ipW).length ? await P.chatRateBucket.count({ where: { key: { in: keysOf(ipW) } } }) : -1;
     const shape = (a: Rr, b: Rr) => a.status === 429 || a.status === b.status;
-    chk("C2.5-S10.8", "ruling G.8 (F8): `/u/<token>/one-click` and the provider webhook obey checkRateLimitDb like the pixel does — after perIp.limit calls from one IP the next one is REFUSED (same answer shape or 429) and performs nothing (the customer is not unsubscribed, the message is not flagged BOUNCED) · [positive controls] the same token/payload from a fresh IP works · a webhook with a bad signature is 401 and writes NOTHING — not even a ChatRateBucket row (the gate runs AFTER the signature)",
-      burnable && burnU.every((x) => x.status === burnU[0].status && x.status >= 200 && x.status < 300) && shape(overU, freshU) && kU1?.emailOptOut === false && kU2?.emailOptOut === true &&
+    // ORACLE-EDIT (C5.4-F · controller ruling 4 of C5.3, 28 Sep — F8 re-ruled): a VALID one-click token is honoured at ANY bucket
+    //   level (opt-outs are never dropped; the bucket only slows unknown tokens) ⇒ kU1.emailOptOut === true (was: false)
+    chk("C2.5-S10.8", "ruling G.8 (F8, re-ruled by C5.3 ruling 4): `/u/<token>/one-click` and the provider webhook obey checkRateLimitDb like the pixel does — after perIp.limit calls from one IP the next one answers the same shape (or 429) · the webhook performs nothing (the message is not flagged BOUNCED) while a VALID unsubscribe token is still honoured (opt-outs are never dropped) · [positive controls] the same payload from a fresh IP works · a webhook with a bad signature is 401 and writes NOTHING — not even a ChatRateBucket row (the gate runs AFTER the signature)",
+      burnable && burnU.every((x) => x.status === burnU[0].status && x.status >= 200 && x.status < 300) && shape(overU, freshU) && kU1?.emailOptOut === true && kU2?.emailOptOut === true &&
         burnW.every((x) => x.status === burnW[0].status) && shape(overW, okW) && w1?.status !== "BOUNCED" && (await evRows(idOf(oW), "BOUNCE")).length <= 1 && w2?.status === "BOUNCED" &&
         badSig.status === 401 && bucketsBad === 0 && bucketsW >= 1,
       "gated", `limit=${lim} u=${burnU.length}×${burnU[0]?.status ?? "-"} over=${overU.status}/optOut=${kU1?.emailOptOut} fresh=${freshU.status}/${kU2?.emailOptOut} wh=${burnW.length}×${burnW[0]?.status ?? "-"} over=${overW.status}/status=${w1?.status} ok=${okW.status}/${w2?.status} badSig=${badSig.status} buckets bad=${bucketsBad} signed=${bucketsW}`, "MAJOR");

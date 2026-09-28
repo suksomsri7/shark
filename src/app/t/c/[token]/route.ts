@@ -34,7 +34,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     //   🔴 เป็น hunk เดียวที่ใบ C2.6 แตะ route ของใบ C2.5 (มติผู้คุมงาน 24 ก.ย. ข้อ 1) ◂
     //   C5.1-fix ▸ F5: แถวอีเมล/ผู้ติดต่อ/ระบบที่คำสั่งนับอ่านมาแล้ว ส่งต่อให้ตัวทำตั๋ว (ไม่อ่านฐานซ้ำ — ทางร้อน 2 รอบไปกลับ) ◂
     const target = await tracking.ticketedClickUrl(clean.split("~")[0] ?? "", url, { counted: allowed, userAgent: ua, pre: ticket ?? null });
-    return new Response(null, { status: 302, headers: { Location: target, "Cache-Control": "no-store" } });
+    // CRM C5.4-F ▸ L4-m1: ปลายทางที่มีทางเดินภาษาไทยเคยทำ `new Response` พัง (ByteString) ⇒ ลูกค้าตกไปหน้าแรกของ SHARK ◂
+    return new Response(null, { status: 302, headers: { Location: tracking.headerSafeLocation(target), "Cache-Control": "no-store" } });
   } catch {
     return home();
   }

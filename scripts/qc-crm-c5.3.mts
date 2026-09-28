@@ -819,7 +819,7 @@ try {
   });
 
   // ═════════════════════════════════════════ L4 · PUBLIC SURFACE ═════════════════════════════════════════
-  await section("L4", ["C5.3-L4-M1", "C5.3-L4-M2", "C5.3-L4-m1", "C5.3-L4-m2", "C5.3-L4-m3"], { "C5.3-L4-m1": "MINOR", "C5.3-L4-m2": "MINOR", "C5.3-L4-m3": "MINOR" }, async () => {
+  await section("L4", ["C5.3-L4-M1", "C5.3-L4-M1b", "C5.3-L4-M1c", "C5.3-L4-M2", "C5.3-L4-m1", "C5.3-L4-m2", "C5.3-L4-m3"], { "C5.3-L4-m1": "MINOR", "C5.3-L4-m2": "MINOR", "C5.3-L4-m3": "MINOR" }, async () => {
     // ── L4-M1 · inbound "staff BCC capture" accepts a forged From ──
     await sub("C5.3-L4-M1", async () => {
       const B32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -845,6 +845,98 @@ try {
         dCtl === "IN" && dGood === "OUT" && dA !== "OUT" && dB !== "OUT" && dC !== "OUT",
         "controls: no evidence = IN · genuine copy (A-R authserv-id mx.shark.in.th = CRM_INBOUND_AUTHSERV_ID, dkim/spf/dmarc pass for the From domain) = OUT ⇒ (A) From owner@<verified domain>, no headers · (B) forged A-R authserv-id attacker.example · (C) forged X-A-R: none stored as OUT",
         `control(no evidence)=${dCtl} · control(genuine)=${dGood} · A(verified domain)=${dA} · B(forged A-R)=${dB} · C(X-A-R)=${dC}`);
+    });
+
+    // ORACLE-ADD C5.3-L4-M1b (C5.4-F review) — the trusted Authentication-Results is the FIRST instance carrying our authserv-id;
+    //   (a) a forged instance with our id AFTER the genuine one changes nothing (both joiners a provider may use: "\n" and ", ")
+    //   (b) documents the dependency on the inbound path: a forged A-R with our id and NO genuine instance is stored IN while
+    //       CRM_INBOUND_AUTHSERV_ID (the trusted-provider flag) is unset — fail-closed; with it set the product relies on the MTA
+    //       stripping/renaming incoming A-R with its own id (verdict recorded, not asserted — see .env.example)
+    //   (c) review SF2: an unproven staff From must not reach a customer's timeline through Reply-To; a shop-domain form mail
+    //       (non-staff address on a VERIFIED domain) with Reply-To = the customer still matches that customer (control)
+    await sub("C5.3-L4-M1b", async () => {
+      const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+      const KEY = Array.from(randomBytes(8)).map((b) => B32[b % 32]).join("");
+      const SD = `staff-${rand}.example`;
+      const VER2 = `${rand}-forms.example`;
+      const st = await mkUser("sales-m1b", "STAFF", { ...STAFF_KEYS }, ["*"], `sales-b-${rand}@${SD}`);
+      const c = await mkCrm("L4-M1b", { email: { inboundKey: KEY, inboundEnabled: true, bccCaptureEnabled: true, strangerToLead: false, fromMode: "SHARK", replyToMode: "SHARK", copyMode: "NONE" } });
+      await P.emailDomain.create({ data: { tenantId: T, domain: VER2, status: "VERIFIED", verifiedAt: new Date() } });
+      const cust = await mkContact(c, "ลูกค้าM1b", { email: `cust-b-${rand}@cust.example` });
+      const mail = (from: string, headers: Record<string, string>, to: string[] = [cust.email]) => ({ messageId: `<${TAG}-${randomBytes(4).toString("hex")}@m1b.example>`, from, to: [...to, `crm+${KEY}@shark.in.th`], cc: [], subject: "M1b", text: "M1b", html: "<p>M1b</p>", headers, attachments: [] });
+      const rowOf = async (r: Res) => (r.ok && r.v?.emailId ? await P.crmEmailMessage.findUnique({ where: { id: r.v.emailId }, select: { direction: true, contactId: true } }) : null);
+      const dir = async (r: Res) => (await rowOf(r))?.direction ?? (r.ok ? `not-stored(${r.v?.reason})` : r.err);
+      const OURS = "mx.shark.in.th";
+      const GOOD = `${OURS}; dkim=pass header.d=${SD}; dmarc=pass header.from=${SD}`;
+      const FAIL = `${OURS}; dkim=fail header.d=${SD}; dmarc=fail header.from=${SD}`;
+      process.env.CRM_INBOUND_AUTHSERV_ID = OURS;
+      const ctlGood = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": GOOD })));
+      const ctlGoodThenForgedFail = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": `${GOOD}\n${FAIL}` })));
+      const aNl = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": `${FAIL}\n${GOOD}` })));
+      const aComma = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": `${FAIL}, ${GOOD}` })));
+      delete process.env.CRM_INBOUND_AUTHSERV_ID;
+      const bUnset = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": GOOD })));
+      process.env.CRM_INBOUND_AUTHSERV_ID = OURS;
+      const bSet = await dir(await call(CRM.emails.ingestInbound, mail(st.email, { "authentication-results": GOOD })));
+      const forgedRt = await rowOf(await call(CRM.emails.ingestInbound, { ...mail(st.email, { "reply-to": cust.email }, []) }));
+      const formRt = await rowOf(await call(CRM.emails.ingestInbound, { ...mail(`forms@${VER2}`, { "reply-to": cust.email }, []) }));
+      chk("C5.3-L4-M1b", "only the FIRST Authentication-Results instance with our authserv-id decides (a forged later instance with our id changes nothing, \\n or , joined) · with CRM_INBOUND_AUTHSERV_ID unset even an A-R with our id is no proof (fail-closed) · an unproven staff From is not attached to a customer through Reply-To, while a shop-domain form mail still is",
+        ctlGood === "OUT" && ctlGoodThenForgedFail === "IN" && aNl === "IN" && aComma === "IN" && bUnset === "IN" &&
+          !!forgedRt && forgedRt.direction === "IN" && forgedRt.contactId === null && !!formRt && formRt.contactId === cust.id,
+        "controls: genuine single instance = OUT · (C5.4-F hunt ruling) our authserv-id heading TWO instances is never trusted, even genuine-PASS first + forged-FAIL after ⇒ IN · form mail from a VERIFIED-domain non-staff address with Reply-To = customer ⇒ that customer ⇒ genuine FAIL first + forged PASS after (\\n / ,) = IN · env unset + A-R with our id = IN · forged staff From + Reply-To = customer ⇒ IN, contact null",
+        `ctl genuine=${ctlGood} genuine+forgedFail=${ctlGoodThenForgedFail} · (a) fail→pass \\n=${aNl} ,=${aComma} · (b) unset=${bUnset} (set, recorded only=${bSet}) · (c) forgedStaff+ReplyTo dir=${forgedRt?.direction} contact=${forgedRt?.contactId === cust.id ? "CUSTOMER" : forgedRt?.contactId ?? "null"} · form+ReplyTo contact=${formRt?.contactId === cust.id ? "customer" : formRt?.contactId ?? "null"}`);
+    });
+
+    // ORACLE-ADD C5.3-L4-M1c (C5.4-F hunt) — injections into OUR MTA's own instance (it echoes attacker HELO / MAIL FROM without
+    //   quoting), header-map key collisions, folded joins, header.i, outsider Reply-To, staff-looking strangers. Only
+    //   `dmarc=pass header.from=<From domain>` in the single instance headed by CRM_INBOUND_AUTHSERV_ID is proof; an instance with
+    //   more than one dmarc/spf resinfo, a comment/quote that swallows a header boundary, or our id heading twice ⇒ no proof.
+    await sub("C5.3-L4-M1c", async () => {
+      const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+      const KEY = Array.from(randomBytes(8)).map((b) => B32[b % 32]).join("");
+      const SD = `staffc-${rand}.example`;
+      const VER3 = `${rand}-shopc.example`;
+      const st = await mkUser("sales-m1c", "STAFF", { ...STAFF_KEYS }, ["*"], `sales-c-${rand}@${SD}`);
+      const c = await mkCrm("L4-M1c", { email: { inboundKey: KEY, inboundEnabled: true, bccCaptureEnabled: true, strangerToLead: true, fromMode: "SHARK", replyToMode: "SHARK", copyMode: "NONE" } });
+      await P.emailDomain.create({ data: { tenantId: T, domain: VER3, status: "VERIFIED", verifiedAt: new Date() } });
+      const cust = await mkContact(c, "ลูกค้าM1c", { email: `cust-c-${rand}@cust.example` });
+      const mail = (from: string, headers: Record<string, string>, to: string[] = [cust.email]) => ({ messageId: `<${TAG}-${randomBytes(4).toString("hex")}@m1c.example>`, from, to: [...to, `crm+${KEY}@shark.in.th`], cc: [], subject: "M1c", text: "M1c", html: "<p>M1c</p>", headers, attachments: [] });
+      const rowOf = async (r: Res) => (r.ok && r.v?.emailId ? await P.crmEmailMessage.findUnique({ where: { id: r.v.emailId }, select: { direction: true, contactId: true } }) : null);
+      const dir = async (m: Any) => { const r = await call(CRM.emails.ingestInbound, m); return (await rowOf(r))?.direction ?? (r.ok ? `not-stored(${r.v?.reason})` : r.err); };
+      const OURS = "mx.shark.in.th";
+      process.env.CRM_INBOUND_AUTHSERV_ID = OURS;
+      const PASS = `${OURS}; spf=pass smtp.mailfrom=${SD}; dkim=pass header.d=${SD}; dmarc=pass header.from=${SD}`;
+      const FAIL = `${OURS}; spf=fail smtp.mailfrom=evil.example; dkim=none; dmarc=fail header.from=${SD}`;
+      const cases: [string, Record<string, string>][] = [
+        ["A2 unescaped ')' dkim", { "authentication-results": `${OURS}; spf=fail (${OURS}: domain of "x);dkim=pass header.d=${SD};("@evil.example does not designate 192.0.2.1) smtp.mailfrom=evil.example; dkim=none; dmarc=fail header.from=${SD}` }],
+        ["A2' unescaped ')' dmarc", { "authentication-results": `${OURS}; spf=fail (${OURS}: domain of "x);dmarc=pass header.from=${SD};("@evil.example does not designate 192.0.2.1) smtp.mailfrom=evil.example; dkim=none; dmarc=fail header.from=${SD}` }],
+        ["A3 unquoted HELO dkim", { "authentication-results": `${OURS}; spf=none smtp.helo=x;dkim=pass header.d=${SD}; dkim=none; dmarc=fail header.from=${SD}` }],
+        ["A3' unquoted HELO dmarc", { "authentication-results": `${OURS}; spf=none smtp.helo=x;dmarc=pass header.from=${SD}; dkim=none; dmarc=fail header.from=${SD}` }],
+        ["A1 \\n\\t fold join", { "authentication-results": `${FAIL}\n\t${PASS}` }],
+        ["A7 key collision", { "Authentication-Results": FAIL, "authentication-results": PASS }],
+        ["A12 header.i only", { "authentication-results": `${OURS}; dkim=pass header.d=evil.example header.i=@${SD}` }],
+        ["A4 '(' swallows joiner", { "authentication-results": `${OURS}; dkim=fail header.d=${SD}; spf=none (helo=foo( ; dmarc=fail header.from=${SD}, evil.example; x=y)) ; dmarc=pass header.from=${SD}` }],
+      ];
+      const verdicts: string[] = [];
+      let bad = 0;
+      for (const [name, h] of cases) { const d = await dir(mail(st.email, h)); if (d === "OUT") bad += 1; verdicts.push(`${name}=${d}`); }
+      const ctlPass = await dir(mail(st.email, { "authentication-results": PASS }));
+      const ctlFolded = await dir(mail(st.email, { "authentication-results": `${OURS};\n\tspf=pass smtp.mailfrom=${SD};\n\tdmarc=pass header.from=${SD}` }));
+      // hunt #4: outsider From + Reply-To = customer ⇒ not on the customer's timeline · control: shop-domain form mail still matches
+      const outsider = await rowOf(await call(CRM.emails.ingestInbound, mail(`x-${rand}@evil.example`, { "reply-to": cust.email }, [])));
+      const form = await rowOf(await call(CRM.emails.ingestInbound, mail(`forms@${VER3}`, { "reply-to": cust.email }, [])));
+      // hunt #5: strangers that look like staff / the shop never become leads · control: a real stranger does
+      const leadOf = async (addr: string) => (await P.crmContact.count({ where: { systemId: c.S, email: { equals: addr, mode: "insensitive" } } })) as number;
+      const lA15 = `ceo-${rand}@${VER3}`; await call(CRM.emails.ingestInbound, mail(lA15, {}, []));
+      const lA14 = `sales-c-${rand}+ceo@${SD}`; await call(CRM.emails.ingestInbound, mail(lA14, {}, []));
+      const lA16 = `y-${rand}@evil.example`; await call(CRM.emails.ingestInbound, mail(`"QC sales (${st.email})" <${lA16}>`, {}, []));
+      const lCtl = `newbie-${rand}@cust2.example`; await call(CRM.emails.ingestInbound, mail(`"ลูกค้าใหม่" <${lCtl}>`, {}, []));
+      const leads = { A15: await leadOf(lA15), A14: await leadOf(lA14), A16: await leadOf(lA16), ctl: await leadOf(lCtl) };
+      chk("C5.3-L4-M1c", "injections into our own MTA's A-R (unescaped ')' / unquoted HELO carrying dkim or dmarc), \\n\\t-joined or key-colliding headers, a '(' that swallows a header boundary and header.i-only DKIM are never proof ⇒ IN · an outsider's Reply-To never files mail on a customer · shop-domain / staff +tag / staff-named strangers never become leads",
+        bad === 0 && ctlPass === "OUT" && ctlFolded === "OUT" && !!outsider && outsider.contactId !== cust.id && !!form && form.contactId === cust.id &&
+          leads.A15 === 0 && leads.A14 === 0 && leads.A16 === 0 && leads.ctl === 1,
+        "controls: single genuine instance with dmarc=pass header.from=<From domain> = OUT (also folded CRLF+TAB) · VERIFIED-domain form mail + Reply-To = customer ⇒ that customer · a plain stranger ⇒ 1 lead ⇒ every injection case IN · outsider+Reply-To ⇒ never the customer (strangerToLead on: the outsider's own new lead) · 0 leads for ceo@<shop domain>, <staff>+tag@<staff domain>, display name carrying a staff address",
+        `ctl pass=${ctlPass} folded=${ctlFolded} · ${verdicts.join(" · ")} · outsider+ReplyTo contact=${outsider?.contactId === cust.id ? "CUSTOMER" : outsider?.contactId ?? "null"} form=${form?.contactId === cust.id ? "customer" : form?.contactId ?? "null"} · leads ${JSON.stringify(leads)}`);
     });
 
     // ── L4-M2 · webhook SSRF guard bypass (core webhooks service — used by every module's endpoints: PROD NOW) ──

@@ -64,7 +64,7 @@ import {
 } from "./tracking-shared";
 
 // ค่าคงที่ที่ route สาธารณะต้องใช้ — route แตะโมดูลได้ทางเดียวคือ facade (`@/lib/modules/crm`) ตามด่าน F2.3
-export { LINK_FALLBACK_URL, TRACKING_PAYLOAD_MAX_BYTES, VISITOR_COOKIE, CONSENT_COOKIE, cleanTrackedUrl, cleanReferrer } from "./tracking-shared";
+export { LINK_FALLBACK_URL, TRACKING_PAYLOAD_MAX_BYTES, VISITOR_COOKIE, CONSENT_COOKIE, cleanTrackedUrl, cleanReferrer, headerSafeLocation } from "./tracking-shared";
 
 type Tx = Prisma.TransactionClient;
 type Json = Prisma.InputJsonValue;
@@ -97,8 +97,23 @@ function appUrl(): string {
   const raw = str(process.env.APP_URL) || "http://localhost:3000";
   return raw.replace(/\/+$/, "");
 }
-/** ที่อยู่ที่ "สคริปต์บนเว็บของร้าน" ยิงกลับ — https เสมอ (เครื่องทดสอบที่ตั้ง APP_URL เป็น 127.0.0.1 ใช้โดเมนสาธารณะ) */
-export const trackerOrigin = (): string => publicAppOrigin(appUrl());
+/**
+ * ที่อยู่ที่ "สคริปต์บนเว็บของร้าน" ยิงกลับ
+ * - production (`APP_ENV=production`): https เสมอ — `APP_URL` ที่ไม่ใช่ https ถูกแทนด้วยโดเมนสาธารณะ (พฤติกรรมเดิม)
+ * - นอก production (dev · QC · preview): origin ของ `APP_URL` ของสภาพแวดล้อมนั้นเอง — CRM C5.4-F ▸ C4.4-I2: หน้า QC/dev
+ *   ต้องไม่มีวันยิงเหตุการณ์ติดตามเข้า shark.in.th ตัวจริง (เดิม APP_URL=http://127.0.0.1:… ⇒ สคริปต์ยิงไป prod) ◂
+ */
+export const trackerOrigin = (): string => {
+  if (str(process.env.APP_ENV) === "production") return publicAppOrigin(appUrl());
+  try {
+    const u = new URL(appUrl());
+    // origin "null" (scheme แปลก) / ไม่ใช่ http(s) = ตั้งค่าผิด ⇒ ค่าปลอดภัยของเครื่อง dev (ไม่ใช่ shark.in.th) · hunt INFO
+    if ((u.protocol === "http:" || u.protocol === "https:") && u.origin !== "null") return u.origin;
+  } catch {
+    /* ตกไปค่าปลอดภัย */
+  }
+  return "http://localhost:3000";
+};
 
 // ───────────────────────── กุญแจ/แฮช (แยกตามหน้าที่ — มติ C0.4) ─────────────────────────
 
@@ -1291,19 +1306,44 @@ export type LinkHit = { url: string; code: string } | null;
  * 🔴 ไม่รู้จัก / ปิด / หมดอายุ = `null` ⇒ route ตอบเหมือนกันทุกไบต์ (X7)
  * 🔴 uiVersion 1 = ยัง redirect (QR ที่พิมพ์ไปแล้วต้องไม่ตาย) แต่ไม่นับอะไรเลย (R-E.14 · มติผู้คุมงาน ข้อ 6)
  */
+/**
+ * CRM C5.4-F ▸ L4-M3 — สถานะร้านที่ยังให้ `/l/<code>` redirect ได้: **รายการอนุญาต** (ACTIVE · PENDING) — สถานะอื่นทั้งหมด
+ * (SUSPENDED "login ไม่ได้ + storefront 410" · CLOSED · PENDING_DELETE · สถานะที่เพิ่มในอนาคต · ไม่พบร้าน) = ไม่ redirect
+ */
+const LINK_TENANT_OK: ReadonlySet<string> = new Set(["ACTIVE", "PENDING"]);
+function linkTenantMayRedirect(status: string | null): boolean {
+  return !!status && LINK_TENANT_OK.has(status);
+}
+
+/**
+ * TODO(OWNER Q15 · L4-M3): จุดเสียบ "นโยบายปลายทาง" ของลิงก์ติดตาม (โดเมนที่ร้านประกาศ/ยืนยัน · Safe Browsing · โดเมนแยก)
+ * ยังไม่ตัดสิน ⇒ ตอนนี้อนุญาตทุก url ที่ผ่าน `cleanLinkUrl` แล้ว (พฤติกรรมเดิม)
+ */
+function linkDestinationAllowed(_url: string, _tenantId: string): boolean {
+  return true;
+}
+
 export async function resolveLinkHit(code: unknown, meta: { ip: string; userAgent: string; hasUniqueCookie: boolean }, now: Date = new Date()): Promise<LinkHit> {
   const c = str(code);
   if (!c || c.length > 64) return null;
   // CRM C5.1-fix ▸ F5: ลิงก์ + ระบบในคำสั่งเดียว (เดิม 2) · ถังความถี่ + ตัวนับ + แถวคลิกในคำสั่งเดียว (เดิม 2) ⇒ ทางร้อน 2 รอบไปกลับ ◂
-  const found = await prisma.$queryRaw<{ id: string; code: string; url: string; tenantId: string; systemId: string; active: boolean; expiresAt: Date | null; settings: unknown; sys: boolean }[]>`
-    SELECT l."id", l."code", l."url", l."tenantId", l."systemId", l."active", l."expiresAt", s."settings", (s."id" IS NOT NULL) AS "sys"
+  // CRM C5.4-F ▸ L4-M3 (ส่วนที่เป็นข้อเท็จจริง): สถานะร้านมากับคำสั่งเดียวกัน (ไม่เพิ่มรอบไปกลับ) ◂
+  const found = await prisma.$queryRaw<{ id: string; code: string; url: string; tenantId: string; systemId: string; active: boolean; expiresAt: Date | null; settings: unknown; sys: boolean; tenantStatus: string | null }[]>`
+    SELECT l."id", l."code", l."url", l."tenantId", l."systemId", l."active", l."expiresAt", s."settings", (s."id" IS NOT NULL) AS "sys", t."status"::text AS "tenantStatus"
       FROM "CrmTrackedLink" l
       LEFT JOIN "AppSystem" s ON s."id" = l."systemId" AND s."tenantId" = l."tenantId" AND s."type" = 'CRM'
+      LEFT JOIN "Tenant" t ON t."id" = l."tenantId"
      WHERE l."code" = ${c}
      LIMIT 1`;
   const link = found[0];
   if (!link || !link.active) return null;
   if (link.expiresAt && new Date(link.expiresAt).getTime() <= now.getTime()) return null;
+  // CRM C5.4-F ▸ L4-M3: สวิตช์ปิดของแพลตฟอร์ม — ร้านที่ไม่ได้ ACTIVE/PENDING (ระงับ/ปิด/รอลบ) ใช้ `shark.in.th/l/<code>` พาคนไปที่ไหนไม่ได้อีก
+  //   (คำตอบเดียวกับรหัสที่ไม่รู้จัก · ไม่นับคลิก) ◂
+  if (!linkTenantMayRedirect(link.tenantStatus)) return null;
+  // TODO(OWNER Q15 · L4-M3 นโยบายปลายทาง): ตัวเลือก (ข) = นโยบายปลายทาง + Safe Browsing ยังไม่อยู่ในใบนี้ — เสียบที่
+  //   `linkDestinationAllowed` (ตอนนี้ผ่านทุก url ที่ผ่าน `cleanLinkUrl` ตอนสร้าง) แล้วเรียกทั้งที่นี่และตอน create/update
+  if (!linkDestinationAllowed(link.url, link.tenantId)) return null;
   try {
     const v2 = link.sys && parseCrmSettings(link.settings as Prisma.JsonValue).uiVersion === 2;
     if (v2 && !isBotUserAgent(meta?.userAgent)) {
