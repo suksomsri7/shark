@@ -207,7 +207,9 @@ export async function run(ctx: Any): Promise<void> {
         const { createHmac } = await import("node:crypto");
         // B2: verify the ACTUAL delivered request, not a re-derivation from payloadJson — find the capture-server
         // hit whose raw body JSON-parses to the same dealId as the delivery row we matched above.
-        const hit = capture.captured.find((c) => { try { return JSON.parse(c.body)?.dealId === (delivery.payloadJson as Any)?.dealId; } catch { return false; } });
+        // ORACLE-EDIT C4.4 (controller · 28 Sep · builder ORACLE-QUESTION 4): the delivered envelope is {id,type,payload:{dealId},sentAt}
+        //   (webhooks/service.ts) — match on .payload.dealId (fallback to top-level for older envelopes)
+        const hit = capture.captured.find((c) => { try { const b = JSON.parse(c.body); return (b?.payload?.dealId ?? b?.dealId) === (delivery.payloadJson as Any)?.dealId; } catch { return false; } });
         ctx.check("US10-8b", "our capture server actually received the HTTP delivery for this event (not just a DB row)", true, !!hit);
         if (hit && endpoint?.secret) {
           const sigHeader = String(hit.headers["x-shark-signature"] ?? "");

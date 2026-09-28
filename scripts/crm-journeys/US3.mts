@@ -29,20 +29,34 @@ export async function run(ctx: Any): Promise<void> {
 
   let origStageOnAccept: string | null | undefined;
   let restorePortalSettings: (() => Promise<void>) | null = null;
-  ctx.plan(`SETUP (direct prisma — see DECISION-US3-1, no UI exists for this): set pipeline.stageOnQuoteAcceptedId = ${wonStage.name}`);
+  // ORACLE-EDIT C4.4 (controller · 28 Sep · builder ORACLE-QUESTION 3): C4.4-fix added the real control on
+  //   /settings/pipelines (pl-quote-accept-<id> + pl-quote-save-<id>) — the owner now sets it by clicking; prisma is
+  //   used only to READ the original value (and to restore it in CLEANUP — shared seed config).
+  ctx.plan(`SCRIPTED ACTION (real UI, owner): /settings/pipelines → "ลูกค้าตอบรับใบเสนอราคา → ย้ายดีลไปขั้น" = ${wonStage.name} → บันทึก`);
   if (!ctx.dry) {
     const row = await P.crmPipeline.findFirst({ where: { id: env.pipelines.b2b.id }, select: { stageOnQuoteAcceptedId: true } });
     origStageOnAccept = row?.stageOnQuoteAcceptedId ?? null;
-    // Controller ruling 27 Sep: prisma SETUP is allowed only for data the seed lacks, never to stand in for a
-    // control the story asks the USER to press — record that substitution as a red-for-gap check, not a silent one.
-    ctx.check(
-      "US3-0-GAP",
-      "PRODUCT GAP (see crm-brief-C4.4.md DECISION-US3-1): a shop owner should be able to configure \"which stage a deal moves to when its quotation is accepted\" from /settings/pipelines or /settings/stages — no such control exists in either page's registry, so this journey sets CrmPipeline.stageOnQuoteAcceptedId directly via prisma instead of clicking a real control",
-      "a UI control for stageOnQuoteAcceptedId exists",
-      "no UI control exists — set via prisma SETUP",
-      true,
-    );
-    await P.crmPipeline.update({ where: { id: env.pipelines.b2b.id }, data: { stageOnQuoteAcceptedId: wonStage.id } });
+    const pid = env.pipelines.b2b.id;
+    const pg = await ctx.loginStaff("owner");
+    await pg.goto(`${ctx.BASE}/app/sys/${env.SYS}/crm/settings/pipelines`, { waitUntil: "networkidle2", timeout: 30_000 });
+    const hasControl = !!(await pg.waitForSelector(`[data-testid=pl-quote-accept-${pid}]`, { timeout: 10_000 }).catch(() => null));
+    if (hasControl) {
+      // pick a different value first when it already equals WON, so the save button is enabled and the click is real
+      if (origStageOnAccept === wonStage.id) {
+        await pg.select(`[data-testid=pl-quote-accept-${pid}]`, "");
+        await pg.click(`[data-testid=pl-quote-save-${pid}]`);
+        await pollUntil(async () => ((await P.crmPipeline.findFirst({ where: { id: pid }, select: { stageOnQuoteAcceptedId: true } }))?.stageOnQuoteAcceptedId ?? null) === null ? true : null, { timeoutMs: 10_000, intervalMs: 500 });
+      }
+      await pg.select(`[data-testid=pl-quote-accept-${pid}]`, wonStage.id);
+      await ctx.shot(pg, "00-pipeline-quote-accept-picked");
+      await pg.click(`[data-testid=pl-quote-save-${pid}]`);
+    }
+    const saved = hasControl
+      ? await pollUntil(async () => ((await P.crmPipeline.findFirst({ where: { id: pid }, select: { stageOnQuoteAcceptedId: true } }))?.stageOnQuoteAcceptedId === wonStage.id ? true : null), { timeoutMs: 10_000, intervalMs: 500 })
+      : null;
+    await ctx.shot(pg, "00b-pipeline-quote-accept-saved");
+    await pg.close();
+    ctx.check("US3-0", `the owner set "quotation accepted → move deal to ${wonStage.name}" from the real /settings/pipelines control and it saved (CrmPipeline.stageOnQuoteAcceptedId)`, true, !!saved);
   }
 
   try {

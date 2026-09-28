@@ -42,6 +42,7 @@ export async function run(ctx: Any): Promise<void> {
   }
 
   const companyName = `บริษัท ทดสอบ US2 จำกัด (${ctx.tag})`;
+  const wantTaxId = validTaxId(`0105${Date.now()}`.slice(0, 12)); // ORACLE-EDIT C4.4: computed BEFORE the click so the UI can type it
   const dealTitle = `ดีล US2 ${ctx.tag}`;
 
   ctx.plan(`SETUP (test-fixture permission elevation, not a product gap — see withStaffPermissions() doc in lib.mts): QC1's seeded thana lacks crm.contact.convert + crm.company.read/create/update (seed-crm-qc.mts:132-137 deliberately scopes thana narrowly for OTHER WOs' boundary tests) — grant for the duration of this journey, restore after`);
@@ -75,6 +76,12 @@ export async function run(ctx: Any): Promise<void> {
     await page.waitForSelector("[data-testid=contact-convert-company-mode-new]", { timeout: 5_000 }); // already rendered (tickCompany defaults true)
     await page.click("[data-testid=contact-convert-company-name]", { clickCount: 3 });
     await page.keyboard.type(companyName, { delay: 10 });
+    // ORACLE-EDIT C4.4 (controller · 28 Sep · builder ORACLE-QUESTION 1+2): the story's "เลขภาษี" + "ผู้ตัดสินใจ" are now
+    //   typed/picked in the real modal (they used to be unreachable gaps) — the expected taxId is precomputed below so the
+    //   assertion compares what the user TYPED, and the role is picked explicitly (not relying on the UI default).
+    await page.click("[data-testid=contact-convert-company-taxid]", { clickCount: 3 });
+    await page.keyboard.type(wantTaxId, { delay: 10 });
+    await page.select("[data-testid=contact-convert-company-role]", "DECISION_MAKER");
     await page.waitForSelector("[data-testid=contact-convert-deal-pipeline]", { timeout: 5_000 }); // already rendered (tickDeal defaults true)
     await page.select("[data-testid=contact-convert-deal-pipeline]", env.pipelines.b2b.id);
     await page.click("[data-testid=contact-convert-deal-title]", { clickCount: 3 });
@@ -109,21 +116,18 @@ export async function run(ctx: Any): Promise<void> {
     // Controller ruling 27 Sep: taxId/role are PRODUCT GAPS (C4.4-fix), not weakened assertions — assert what the
     // story actually asks for and let it go red until ConvertInput/linkContactInTx grow the fields.
     const company = c?.companyId ? await P.crmCompany.findFirst({ where: { id: c.companyId }, select: { name: true, taxId: true } }) : null;
-    const wantTaxId = validTaxId(`0105${Date.now()}`.slice(0, 12));
     ctx.check(
-      "US2-4-GAP",
-      `PRODUCT GAP (see crm-brief-C4.4.md DECISION-US2-1): story says the company gets "เลขภาษี" on convert — ConvertInput (contacts-shared.ts:239-246) has no taxId field at all, so it can never be set here`,
+      "US2-4",
+      `the company created by convert carries the "เลขภาษี" the user typed in the convert modal (was PRODUCT GAP DECISION-US2-1 — fixed in C4.4-fix)`,
       wantTaxId,
       company?.taxId ?? null,
-      true,
     );
     const link = c?.companyId ? await P.crmCompanyContact.findFirst({ where: { companyId: c.companyId, contactId } , select: { role: true } }) : null;
     ctx.check(
-      "US2-5-GAP",
-      `PRODUCT GAP (see crm-brief-C4.4.md DECISION-US2-1): story says the contact becomes "ผู้ตัดสินใจ" (DECISION_MAKER) on convert — linkContactInTx (companies.ts:1963-1969) has no role param, so CrmCompanyContact.role stays the schema default (OTHER)`,
+      "US2-5",
+      `the contact is linked to the new company as "ผู้ตัดสินใจ" (DECISION_MAKER), picked in the convert modal (was PRODUCT GAP DECISION-US2-1 — fixed in C4.4-fix)`,
       "DECISION_MAKER",
       link?.role ?? null,
-      true,
     );
 
     ctx.plan(`SCRIPTED ACTION (real UI, thana): move the deal to the WON stage (${wonStage?.name}) — this is what fires crm.deal.won`);
