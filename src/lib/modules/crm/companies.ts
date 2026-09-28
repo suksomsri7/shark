@@ -36,7 +36,9 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานบริษัท ◂
 import { resolveCrmTargetsDetailed } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
-import { activityWhere, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
+import { activityWhere, visibleCompanySql, companyWhere, contactWhere, dealWhere, type CrmScopeCtx } from "./where";
+import { andSql, containsSql, enumEqSql, inOrder, orSql, orderBySql, sqlSortOf } from "./list-sql"; // CRM C5.1-fix ◂
+import { crmScope } from "./request-scope";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
@@ -84,6 +86,7 @@ import {
   type ImportCompaniesResult,
   type MergeChoiceField,
 } from "./companies-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export { COMPANY_IMPORT_MAX_ROWS, COMPANY_IMPORT_MAX_BYTES, CompaniesError };
 
@@ -197,7 +200,7 @@ function assertActor(actor: MemberActor | null | undefined): asserts actor is Me
 async function resolveSystem(ctx: CompaniesCtx, db: Db = prisma): Promise<void> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
 }
@@ -1116,6 +1119,10 @@ export async function setRole(ctx: CompaniesCtx, actor: MemberActor, companyId: 
 // ═════════════════════════ 360 ═════════════════════════
 
 export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: string): Promise<Company360> {
+  return crmScope(() => getCompany360In(ctx, actor, id));
+}
+
+async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string): Promise<Company360> {
   const a = await enter(ctx, actor);
   const row = await loadCompany(ctx, a, id);
   const acc = await crmAccountBook(ctx.tenantId, ctx.systemId);
@@ -1144,12 +1151,22 @@ export async function getCompany360(ctx: CompaniesCtx, actor: MemberActor, id: s
       : Promise.resolve(null),
     row.teamId ? prisma.team.findFirst({ where: { id: row.teamId, tenantId: ctx.tenantId }, select: { id: true, name: true } }) : Promise.resolve(null),
     // ไทม์ไลน์ = กิจกรรม "เกี่ยวกับบริษัทนี้" เท่านั้น (ผูกบริษัท หรือผูกดีลของบริษัท) — ไม่ใช่ทุกกิจกรรมของผู้ติดต่อ (SF8)
-    prisma.crmActivity.findMany({
-      where: { AND: [await activityWhere(ctx, a), { OR: [{ companyId: row.id }, { deal: { companyId: row.id } }] }] },
-      include: { contact: { select: { name: true } } },
-      orderBy: [{ createdAt: "desc" }],
-      take: 50,
-    }),
+    // CRM C5.1-fix ▸ F4: เดิม OR(companyId, deal.companyId) = LEFT JOIN + OR ⇒ สแกนกิจกรรมทั้งร้าน · ใหม่ = สองกิ่งที่ใช้ดัชนีได้
+    //   (companyId · ดีลของบริษัทนี้) วิ่งพร้อมกัน แล้วรวม/ตัดซ้ำ/เรียง (createdAt desc, id desc) เหลือ 50 ◂
+    (async () => {
+      const vis = await activityWhere(ctx, a);
+      const orderBy: Prisma.CrmActivityOrderByWithRelationInput[] = [{ createdAt: "desc" }, { id: "desc" }];
+      const include = { contact: { select: { name: true } } } as const;
+      const [x, y] = await Promise.all([
+        prisma.crmActivity.findMany({ where: { AND: [vis, { companyId: row.id }] }, include, orderBy, take: 50 }),
+        prisma.crmActivity.findMany({ where: { AND: [vis, { deal: { companyId: row.id } }] }, include, orderBy, take: 50 }),
+      ]);
+      const seen = new Set<string>();
+      return [...x, ...y]
+        .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+        .sort((p, q) => q.createdAt.getTime() - p.createdAt.getTime() || (q.id < p.id ? -1 : q.id > p.id ? 1 : 0))
+        .slice(0, 50);
+    })(),
   ]);
 
   const [outstanding, docs, objectTabs] = await Promise.all([
@@ -1233,7 +1250,8 @@ const SORTS: Record<CompanySort, Prisma.CrmCompanyOrderByWithRelationInput[]> = 
   "-wonValueSatang": [{ wonValueSatang: "desc" }, { id: "desc" }],
 };
 
-async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
+/** ตัวกรองที่ใช้จริง = มุมมองที่บันทึก (ถ้ามี) ทับด้วยตัวกรองที่ส่งมา — ใช้ร่วมกันทั้ง where ของ Prisma และ SQL (C5.1-fix) */
+async function effectiveListInput(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyListInput): Promise<CompanyListInput> {
   // CRM C3.2 ▸ มุมมองที่บันทึก (`savedViewId` · objectKey "company") — กติกาการมองเห็นที่ `views.ts` ที่เดียว (TEAM = เจ้าของ +
   //   สมาชิกปัจจุบันของทีม · มองไม่เห็น = NOT_FOUND ไม่ใช่ "ไม่กรอง") · ตัวกรองที่ส่งมาตรง ๆ ทับค่าของมุมมอง ◂
   let input: CompanyListInput = raw ?? {};
@@ -1245,6 +1263,10 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
     const vfF = (vf.f && typeof vf.f === "object" ? vf.f : {}) as Record<string, string>;
     input = { ...(vf as CompanyListInput), ...explicit, f: { ...vfF, ...(explicit.f ?? {}) } };
   }
+  return input;
+}
+
+async function listWhereFrom(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<Prisma.CrmCompanyWhereInput> {
   // AUDIT-CLASS X1: ขอบเขตผ่าน companyWhere เสมอ · บริษัทที่ถูกรวมไม่โผล่ในรายการ (แถวคงอยู่เป็นประวัติ)
   const AND: Prisma.CrmCompanyWhereInput[] = [await companyWhere(ctx, actor), { mergedIntoId: null }];
   if (!input.includeArchived) AND.push({ archivedAt: null });
@@ -1281,20 +1303,91 @@ async function listWhere(ctx: CompaniesCtx, actor: MemberActor, raw: CompanyList
   return { AND };
 }
 
+const hasFieldFilters = (input: CompanyListInput) => Object.keys(input.f ?? {}).length > 0;
+
+// CRM C5.1-fix ▸ F1: where เดียวกับ listWhere ในรูป SQL ของแถว alias — ใช้เมื่อมีตัวกรองฟิลด์ (`f.<key>`) เท่านั้น ◂
+async function listSqlWhere(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput, co = "co"): Promise<Prisma.Sql> {
+  const A = Prisma.raw(co);
+  const AND: Prisma.Sql[] = [await visibleCompanySql(ctx, actor, co), Prisma.sql`${A}."mergedIntoId" IS NULL`];
+  if (!input.includeArchived) AND.push(Prisma.sql`${A}."archivedAt" IS NULL`);
+  const q = str(input.q)?.slice(0, 100);
+  if (q) {
+    const digits = q.replace(/[\s-]/g, "");
+    AND.push(
+      orSql([
+        containsSql(co, "name", q, true),
+        containsSql(co, "legalName", q, true),
+        containsSql(co, "emailDomain", q.toLowerCase(), false),
+        ...(/^\d{3,13}$/.test(digits) ? [containsSql(co, "taxId", digits, false)] : []),
+      ]),
+    );
+  }
+  const owner = str(input.owner);
+  if (owner) AND.push(owner === "none" ? Prisma.sql`${A}."ownerUserId" IS NULL` : Prisma.sql`${A}."ownerUserId" = ${owner}`);
+  const team = str(input.team);
+  if (team) AND.push(Prisma.sql`${A}."teamId" = ${team}`);
+  const industry = str(input.industry);
+  if (industry) AND.push(Prisma.sql`${A}."industry" ILIKE ${industry}`);
+  if (input.size !== undefined && input.size !== null && input.size !== "") {
+    const size = parseSize(input.size);
+    AND.push(size === null ? Prisma.sql`${A}."size" IS NULL` : enumEqSql(co, "size", "CrmCompanySize", size));
+  }
+  if (input.hasOpenDeals === true) AND.push(Prisma.sql`${A}."openDealCount" > 0`);
+  if (input.hasOpenDeals === false) AND.push(Prisma.sql`${A}."openDealCount" = 0`);
+  const filters = input.f ?? {};
+  if (Object.keys(filters).length > 0) {
+    try {
+      AND.push(await (await engine()).fieldFilterSql({ ...fctx(ctx, actor), objectKey: "company" }, filters, co));
+    } catch (e) {
+      throw engineError(e);
+    }
+  }
+  return andSql(AND);
+}
+
+async function countSql(where: Prisma.Sql): Promise<number> {
+  return (await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS "n" FROM "CrmCompany" co WHERE ${where}`)[0]?.n ?? 0;
+}
+
+async function pageIdsSql(where: Prisma.Sql, orderBy: readonly Record<string, unknown>[], limit: number, offset: number, after?: string | null): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT co."id" FROM "CrmCompany" co WHERE ${where} ${after ? Prisma.sql`AND co."id" > ${after}` : Prisma.empty}
+     ORDER BY ${orderBySql("co", sqlSortOf(orderBy))} LIMIT ${limit} OFFSET ${offset}`;
+  return rows.map((r) => r.id);
+}
+
 // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดแถว" — where เดียวกับ listCompanies + id 1 แถว ◂
 /** ตรวจว่าตัวกรองชุดนี้ใช้กับรายชื่อบริษัทได้ (อ่าน 1 id · ไม่นับทั้งหมด) */
 export async function probeCompanyFilters(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput): Promise<void> {
   const a = await enter(ctx, actor);
-  await prisma.crmCompany.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
+  const eff = await effectiveListInput(ctx, a, input ?? {});
+  // CRM C5.1-fix ▸ มีตัวกรองฟิลด์ = ตรวจด้วย SQL (ไม่มีรายการ id) ◂
+  if (hasFieldFilters(eff)) {
+    await pageIdsSql(await listSqlWhere(ctx, a, eff), [{ id: "asc" }], 1, 0);
+    return;
+  }
+  await prisma.crmCompany.findFirst({ where: await listWhereFrom(ctx, a, eff), select: { id: true } });
 }
 
 export async function listCompanies(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput = {}): Promise<CompanyListResult> {
+  return crmScope(() => listCompaniesIn(ctx, actor, input));
+}
+
+async function listCompaniesIn(ctx: CompaniesCtx, actor: MemberActor, input: CompanyListInput = {}): Promise<CompanyListResult> {
   const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, input ?? {});
+  const eff = await effectiveListInput(ctx, a, input ?? {});
   const pageSize = Math.min(COMPANY_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
   const page = Math.max(1, Math.floor(Number(input?.page) || 1));
   const sortKey = input?.sort;
   const orderBy = typeof sortKey === "string" && Object.hasOwn(SORTS, sortKey) ? SORTS[sortKey] : SORTS.name;
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = นับ + id ของหน้าด้วย SQL แล้วอ่านแถวเต็มด้วย Prisma ◂
+  if (hasFieldFilters(eff)) {
+    const sw = await listSqlWhere(ctx, a, eff);
+    const [total, ids] = await Promise.all([countSql(sw), pageIdsSql(sw, orderBy as Record<string, unknown>[], pageSize, (page - 1) * pageSize)]);
+    const rows = ids.length ? inOrder(ids, await prisma.crmCompany.findMany({ where: { id: { in: ids } } })) : [];
+    return { items: rows.map(toDto), total, page, pageSize };
+  }
+  const where = await listWhereFrom(ctx, a, eff);
   const [total, rows] = await Promise.all([
     prisma.crmCompany.count({ where }),
     prisma.crmCompany.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
@@ -1308,8 +1401,11 @@ export async function listCompanies(ctx: CompaniesCtx, actor: MemberActor, input
  */
 export async function exportCompanies(ctx: CompaniesCtx, actor: MemberActor, opts: Omit<CompanyListInput, "page" | "pageSize" | "sort"> = {}): Promise<string> {
   const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, opts ?? {});
-  const total = await prisma.crmCompany.count({ where });
+  const eff = await effectiveListInput(ctx, a, opts ?? {});
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = นับ/อ่านเป็นชุดด้วย SQL (id > ตัวสุดท้าย · ลำดับ id เดิม) ◂
+  const sw = hasFieldFilters(eff) ? await listSqlWhere(ctx, a, eff) : null;
+  const where = sw ? null : await listWhereFrom(ctx, a, eff);
+  const total = sw ? await countSql(sw) : await prisma.crmCompany.count({ where: where! });
   if (total > COMPANY_EXPORT_MAX_ROWS) {
     throw fail("VALIDATION", `ส่งออกได้ครั้งละไม่เกิน ${COMPANY_EXPORT_MAX_ROWS.toLocaleString("th-TH")} บริษัท (ตัวกรองนี้มี ${total.toLocaleString("th-TH")} บริษัท) — กรองให้แคบลงแล้วส่งออกเป็นรอบ`);
   }
@@ -1317,7 +1413,12 @@ export async function exportCompanies(ctx: CompaniesCtx, actor: MemberActor, opt
   let cursor: string | null = null;
   let count = 0;
   for (;;) {
-    const batch: CrmCompany[] = await prisma.crmCompany.findMany({ where, orderBy: { id: "asc" }, take: 1_000, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
+    const batch: CrmCompany[] = sw
+      ? await (async () => {
+          const ids = await pageIdsSql(sw, [{ id: "asc" }], 1_000, 0, cursor);
+          return ids.length ? inOrder(ids, await prisma.crmCompany.findMany({ where: { id: { in: ids } } })) : [];
+        })()
+      : await prisma.crmCompany.findMany({ where: where!, orderBy: { id: "asc" }, take: 1_000, ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}) });
     for (const r of batch) {
       if (count >= COMPANY_EXPORT_MAX_ROWS) break;
       lines.push(

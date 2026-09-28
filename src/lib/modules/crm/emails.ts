@@ -43,7 +43,7 @@ import { Prisma, type CrmContact, type CrmEmailMessage } from "@prisma/client";
 import { writeAudit } from "@/lib/core/audit";
 import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
-import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { checkRateLimitDbMany } from "@/lib/core/rate-limit-db";
 import { htmlToText, sanitizeHtml } from "@/lib/core/sanitize";
 import {
   ALLOWED_UPLOAD_TYPES,
@@ -63,7 +63,8 @@ import { crmCan, crmForbiddenMessage, CrmForbiddenError } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
 import * as consents from "./consents";
-import { contactWhere, dealWhere } from "./where";
+import { contactWhere, dealWhere, visibleEmailRowSql } from "./where";
+import { crmScope } from "./request-scope";
 import { companyByEmailDomain, countVisibleCompany, visibleCompanyIds } from "./companies";
 import { resolve as resolveVisibility } from "./visibility";
 import * as contacts from "./contacts";
@@ -104,6 +105,7 @@ import {
 } from "./emails-shared";
 import { renderKbTokens } from "./kb-tokens"; // CRM C3.4 ◂
 import "./emails-job";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 /**
  * ตัวจับที่อยู่กล่องขาเข้าอยู่ใน `emails-shared.ts` (ไฟล์บริสุทธิ์) แล้ว — ที่นี่ส่งต่อให้ facade เท่าเดิม
@@ -338,7 +340,7 @@ const emailIdOfToken = (token: unknown): string => str(token).split("~")[0] ?? "
 async function resolveSystem(ctx: EmailsCtx): Promise<{ id: string; settings: Json }> {
   const sys =
     str(ctx?.tenantId) && str(ctx?.systemId)
-      ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true, settings: true } })
+      ? await crmSystemRow(ctx, prisma)
       : null;
   if (!sys) throw fail("NOT_FOUND", SYSTEM_NOT_FOUND);
   return sys;
@@ -1649,16 +1651,27 @@ async function sendClaimed(emailId: string, at: Date, deps?: EmailDeps): Promise
 
 async function contactByAddress(systemId: string, addr: string): Promise<CrmContact | null> {
   if (!addr) return null;
-  const direct = await prisma.crmContact.findFirst({
-    where: { systemId, mergedIntoId: null, archivedAt: null, email: { equals: addr, mode: "insensitive" } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
-  if (direct) return direct;
-  // R-A: `previousEmails` (ผู้ติดต่อเปลี่ยนอีเมล — จดหมายจากที่อยู่เดิมยังต้องเข้าเธรดของคนเดิม)
-  return prisma.crmContact.findFirst({
-    where: { systemId, mergedIntoId: null, archivedAt: null, previousEmails: { hasSome: uniq([addr, addr.toLowerCase()]) } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-  });
+  // CRM C5.1-fix ▸ F7: เดิม `email equals … mode insensitive` = `ILIKE $1` (seq scan ทั้งระบบ · และ `_`/`%` ในอีเมลกลายเป็นตัวแทน —
+  //   `a_b@x.com` เคยจับคู่ `aXb@x.com` ได้) → `lower("email") = lower($1)` ใช้ดัชนีนิพจน์ ("systemId", lower("email")) ของ migration
+  //   crm_perf_indexes · ทางสำรอง `previousEmails` (R-A: ผู้ติดต่อเปลี่ยนอีเมล — จดหมายจากที่อยู่เดิมยังเข้าเธรดของคนเดิม) ใช้ดัชนี GIN ·
+  //   สองทางในคำสั่งเดียว (ทางตรงก่อน · คนที่สร้างก่อนสุดของแต่ละทาง เหมือนเดิม) แล้วอ่านแถวเต็มด้วย id ◂
+  const variants = uniq([addr, addr.toLowerCase()]);
+  //   🔴 MATERIALIZED: ไม่งั้น planner เดา `&&` ไว้ 990 แถว แล้วเลือกเดินดัชนี (systemId, createdAt) ทั้งระบบหาแถวแรก (วัดได้ 320 ms · C5.1-fix)
+  const hit = await prisma.$queryRaw<{ id: string }[]>`
+    WITH d AS MATERIALIZED (
+      SELECT c."id", c."createdAt" FROM "CrmContact" c
+       WHERE c."systemId" = ${systemId} AND c."mergedIntoId" IS NULL AND c."archivedAt" IS NULL AND lower(c."email") = lower(${addr})
+    ), pv AS MATERIALIZED (
+      SELECT c."id", c."createdAt" FROM "CrmContact" c
+       WHERE c."systemId" = ${systemId} AND c."mergedIntoId" IS NULL AND c."archivedAt" IS NULL AND c."previousEmails" && ${variants}::text[]
+    )
+    SELECT x."id" FROM (
+      (SELECT d."id", 0 AS "p" FROM d ORDER BY d."createdAt" ASC, d."id" ASC LIMIT 1)
+      UNION ALL
+      (SELECT pv."id", 1 AS "p" FROM pv ORDER BY pv."createdAt" ASC, pv."id" ASC LIMIT 1)
+    ) x ORDER BY x."p" LIMIT 1`;
+  const id = hit[0]?.id;
+  return id ? prisma.crmContact.findFirst({ where: { id, systemId } }) : null;
 }
 
 function decodeBase64(v: unknown): Uint8Array | null {
@@ -2089,20 +2102,21 @@ async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<
  * แถวที่ไม่ผูกผู้ติดต่อแต่ผูกบริษัทตัดสินด้วยบริษัท) ⇒ เธรดที่รายการไม่โชว์ ก็เปิดตรง ๆ ไม่ได้ และตัวนับจำนวน
  * ฉบับในรายการนับเฉพาะฉบับที่บัญชีนี้มองเห็น
  */
-async function visibleThreadWhere(ctx: EmailsCtx, actor: MemberActor): Promise<Prisma.CrmEmailMessageWhereInput> {
-  const cWhere = await contactWhere(ctx, actor);
-  const [cIds, coIds] = await Promise.all([
-    prisma.crmContact.findMany({ where: cWhere, select: { id: true }, take: 20_000 }),
-    visibleCompanyIds(ctx, actor, null, { take: 20_000 }),
-  ]);
-  return {
-    tenantId: ctx.tenantId,
-    systemId: ctx.systemId,
-    OR: [{ contactId: { in: cIds.map((c) => c.id) } }, { AND: [{ contactId: null }, { companyId: { in: coIds } }] }],
-  };
-}
+// CRM C5.1-fix ▸ F2: เดิมดึง id ผู้ติดต่อ ≤ 20,000 + id บริษัท ≤ 20,000 มาเป็น `IN (…)` ⇒ ร้านใหญ่ = P2029 ทุกครั้ง และเกิน 20,000 คน =
+//   จดหมายของคนที่ 20,001+ หายจากกล่องเงียบ ๆ · ใหม่ = EXISTS ของแถวผู้ติดต่อ/บริษัทที่เห็น (contactSql/companySql) ในคำสั่งเดียว — กติกาเดิม:
+//   แถวที่ผูกผู้ติดต่อตัดสินด้วยผู้ติดต่อ · แถวที่ไม่ผูกผู้ติดต่อแต่ผูกบริษัทตัดสินด้วยบริษัท · ไม่ผูกทั้งคู่ = ไม่เห็นในกล่องปกติ ◂
+
+type ThreadRowSql = Pick<CrmEmailMessage, "id" | "threadKey" | "subject" | "contactId" | "companyId" | "dealId" | "matchedBy" | "direction" | "snippet" | "sentAt" | "receivedAt" | "createdAt">;
 
 export async function listThreads(
+  ctx: EmailsCtx,
+  actor: MemberActor,
+  input: { contactId?: string | null; companyId?: string | null; dealId?: string | null; unmatched?: boolean; q?: string | null; page?: number; pageSize?: number } = {},
+): Promise<{ items: ThreadListItem[]; total: number }> {
+  return crmScope(() => listThreadsIn(ctx, actor, input));
+}
+
+async function listThreadsIn(
   ctx: EmailsCtx,
   actor: MemberActor,
   // CRM C2.11 ▸ `pageSize` (1–100 · ปริยาย 50 = ของเดิมทุกไบต์) — REST `GET /emails/threads` ต้องเคารพ `take` ของผู้เรียก
@@ -2112,23 +2126,21 @@ export async function listThreads(
   await enter(ctx, actor, KEY_READ);
   const unmatched = input?.unmatched === true;
   if (unmatched) await assertUnmatchedGate(ctx, actor);
-  const scope: Prisma.CrmEmailMessageWhereInput = unmatched
-    ? { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: null, companyId: null }
-    : await visibleThreadWhere(ctx, actor);
-  const extra: Prisma.CrmEmailMessageWhereInput[] = [];
-  if (str(input?.contactId)) extra.push({ contactId: str(input.contactId) });
-  if (str(input?.companyId)) extra.push({ companyId: str(input.companyId) });
-  if (str(input?.dealId)) extra.push({ dealId: str(input.dealId) });
-  if (str(input?.q)) extra.push({ subject: { contains: str(input.q), mode: "insensitive" } });
-  const rows = await prisma.crmEmailMessage.findMany({
-    where: extra.length ? { AND: [scope, ...extra] } : scope,
-    orderBy: { createdAt: "desc" },
-    take: 2000,
-    select: {
-      id: true, threadKey: true, subject: true, contactId: true, companyId: true, dealId: true, matchedBy: true,
-      direction: true, snippet: true, sentAt: true, receivedAt: true, createdAt: true,
-    },
-  });
+  const scope = unmatched
+    ? Prisma.sql`m."tenantId" = ${ctx.tenantId} AND m."systemId" = ${ctx.systemId} AND m."contactId" IS NULL AND m."companyId" IS NULL`
+    : await visibleEmailRowSql(ctx, actor, "m");
+  const extra: Prisma.Sql[] = [];
+  if (str(input?.contactId)) extra.push(Prisma.sql`m."contactId" = ${str(input.contactId)}`);
+  if (str(input?.companyId)) extra.push(Prisma.sql`m."companyId" = ${str(input.companyId)}`);
+  if (str(input?.dealId)) extra.push(Prisma.sql`m."dealId" = ${str(input.dealId)}`);
+  if (str(input?.q)) extra.push(Prisma.sql`m."subject" ILIKE ('%' || ${str(input.q)} || '%')`);
+  const rows = await prisma.$queryRaw<ThreadRowSql[]>`
+    SELECT m."id", m."threadKey", m."subject", m."contactId", m."companyId", m."dealId", m."matchedBy"::text AS "matchedBy",
+           m."direction"::text AS "direction", m."snippet", m."sentAt", m."receivedAt", m."createdAt"
+      FROM "CrmEmailMessage" m
+     WHERE ${scope} ${extra.length ? Prisma.sql`AND ${Prisma.join(extra, " AND ")}` : Prisma.empty}
+     ORDER BY m."createdAt" DESC, m."id" DESC
+     LIMIT 2000`;
   const byThread = new Map<string, ThreadListItem & { _at: number }>();
   for (const r of rows) {
     const at = (r.sentAt ?? r.receivedAt ?? r.createdAt).getTime();
@@ -2331,9 +2343,12 @@ export async function trackGate(route: TrackRoute, req: { ip: string; token?: st
   const keys = trackRateKeys(route, req);
   const ipKey = keys[0] as string;
   const tokKey = keys[1];
-  const ipOk = await checkRateLimitDb(ipKey, CRM_TRACK_RATE_LIMITS.perIp);
-  const tokOk = tokKey ? await checkRateLimitDb(tokKey, CRM_TRACK_RATE_LIMITS.perToken) : { ok: true };
-  return ipOk.ok && tokOk.ok;
+  // CRM C5.1-fix ▸ F5: สองถัง (IP · token) นับในคำสั่งเดียว — ความหมายเดิม (นับทั้งสองถังเสมอ · ผ่านเมื่อผ่านทั้งคู่) ◂
+  const verdicts = await checkRateLimitDbMany([
+    { key: ipKey, ...CRM_TRACK_RATE_LIMITS.perIp },
+    ...(tokKey ? [{ key: tokKey, ...CRM_TRACK_RATE_LIMITS.perToken }] : []),
+  ]);
+  return verdicts.every((v) => v.ok);
 }
 
 async function messageOfToken(purpose: "o" | "u" | "c", token: string): Promise<CrmEmailMessage | null> {
@@ -2358,32 +2373,36 @@ async function messageOfToken(purpose: "o" | "u" | "c", token: string): Promise<
 export async function trackOpen(token: string, meta: { ip: string; ua?: string | null }, opts: { count?: boolean } = {}): Promise<{ url: string | null }> {
   try {
     if (opts.count === false) return { url: null };
-    const row = await messageOfToken("o", str(token));
-    if (!row || row.direction !== "OUT") return { url: null };
+    const t = str(token);
+    if (!emailIdOfToken(t)) return { url: null };
     if (isTrackingBot(meta?.ua)) return { url: null };
-    const sentAt = row.sentAt ?? row.createdAt;
-    if (Date.now() - sentAt.getTime() < OPEN_MIN_AGE_MS) return { url: null };
-    if (row.contactId) {
-      const contact = await prisma.crmContact.findFirst({ where: { id: row.contactId }, select: { trackingOptOut: true } });
-      if (contact?.trackingOptOut) return { url: null };
-    }
-    // AUDIT-CLASS X3: ตัวนับจบในคำสั่ง SQL เดียว (สิบคำขอพร้อมกันต้องได้ 10 ไม่ใช่ 3)
-    // AUDIT-CLASS X4: ตัวนับ · แถวเหตุการณ์ · event ขาออก อยู่ใน **ธุรกรรมเดียวกัน** — เดิมแยกสามก้อน
-    //   ⇒ เครื่องดับคั่นกลางได้ "นับแล้วแต่ไม่มี event" (กฎอัตโนมัติ/รายงานของร้านไม่เคยรู้ว่าลูกค้าเปิดอ่าน)
-    //   หรือ "มีแถวเหตุการณ์แต่ไม่มี event" — สองอย่างนี้ซ่อมย้อนหลังไม่ได้เพราะไม่มีใครรู้ว่าขาด
-    await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
-        UPDATE "CrmEmailMessage"
-           SET "openCount" = "openCount" + 1,
-               "firstOpenedAt" = COALESCE("firstOpenedAt", NOW()),
+    // CRM C5.1-fix ▸ F5 (พิมพ์เขียว §12 "เขียนอย่างเดียว"): เดิม 7 รอบไปกลับ (หาอีเมล · หาผู้ติดต่อ · BEGIN/UPDATE/INSERT/ตรวจ outbox/INSERT/COMMIT)
+    //   → **คำสั่งเดียว**: เงื่อนไขเดิมทุกข้อ (token รู้จัก · ขาออก · ส่งมาแล้ว ≥ 2 วินาที · ผู้ติดต่อไม่ได้ปิดการติดตาม) อยู่ใน WHERE ·
+    //   ตัวนับ + แถวเหตุการณ์ + event ขาออก (idempotencyKey เดิม · ON CONFLICT = กันซ้ำแบบ emitOutbox) อยู่ในคำสั่งเดียว = atomic (X3/X4) ◂
+    const cutoff = new Date(Date.now() - OPEN_MIN_AGE_MS);
+    const ua = str(meta?.ua).slice(0, 200) || null;
+    await prisma.$queryRaw`
+      WITH m AS (
+        SELECT e."id", e."tenantId", e."systemId", e."contactId", e."dealId", e."companyId", e."threadKey", e."sequenceStepId"
+          FROM "CrmEmailMessage" e
+         WHERE e."trackTokenHash" = ${tokenHash("o", t)} AND e."direction" = 'OUT'
+           AND COALESCE(e."sentAt", e."createdAt") <= ${cutoff}
+           AND NOT EXISTS (SELECT 1 FROM "CrmContact" c WHERE c."id" = e."contactId" AND c."trackingOptOut" = TRUE)
+         LIMIT 1
+      ), u AS (
+        UPDATE "CrmEmailMessage" x
+           SET "openCount" = x."openCount" + 1,
+               "firstOpenedAt" = COALESCE(x."firstOpenedAt", NOW()),
                "lastOpenedAt" = NOW(),
-               "status" = CASE WHEN "status" IN ('SENT','DELIVERED') THEN 'OPENED'::"CrmEmailStatus" ELSE "status" END
-         WHERE "id" = ${row.id}`;
-      const ev = await tx.crmEmailEvent.create({
-        data: { tenantId: row.tenantId, emailId: row.id, kind: "OPEN", userAgent: str(meta?.ua).slice(0, 200) || null },
-      });
-      await emitEmailEvent(tx, { tenantId: row.tenantId, systemId: row.systemId }, EVT.opened, row, ev.id);
-    });
+               "status" = CASE WHEN x."status" IN ('SENT','DELIVERED') THEN 'OPENED'::"CrmEmailStatus" ELSE x."status" END
+          FROM m WHERE x."id" = m."id"
+        RETURNING x."id"
+      ), ev AS (
+        INSERT INTO "CrmEmailEvent" ("id", "tenantId", "emailId", "kind", "userAgent")
+        SELECT gen_random_uuid()::text, m."tenantId", m."id", 'OPEN'::"CrmEmailEventKind", ${ua} FROM m JOIN u ON u."id" = m."id"
+        RETURNING "id", "emailId"
+      )
+      ${emailEventOutboxSql(EVT.opened)}`;
     return { url: null };
   } catch {
     return { url: null };
@@ -2391,37 +2410,89 @@ export async function trackOpen(token: string, meta: { ip: string; ua?: string |
 }
 
 /**
+ * CTE ท้ายคำสั่งนับเปิด/คลิก: event ขาออก 1 ใบต่อแถวเหตุการณ์ (ต้องมี CTE `m` = แถวอีเมล และ `ev` = แถวเหตุการณ์ที่เพิ่งเขียน)
+ * payload/idempotencyKey เท่า `emitEmailEvent` ทุกช่อง (`${type}#${emailId}#${eventId}` · ช่องที่ว่างไม่ใส่) · กันซ้ำด้วย
+ * @@unique(tenantId, idempotencyKey) แบบเดียวกับ emitOutbox (มีแล้ว = เงียบ)
+ */
+function emailEventOutboxSql(type: string): Prisma.Sql {
+  return Prisma.sql`, ob AS (
+    INSERT INTO "OutboxEvent" ("id", "tenantId", "systemId", "type", "payload", "idempotencyKey")
+    SELECT gen_random_uuid()::text, m."tenantId", m."systemId", ${type},
+           jsonb_strip_nulls(jsonb_build_object(
+             'emailId', m."id", 'contactId', NULLIF(m."contactId", ''), 'dealId', NULLIF(m."dealId", ''), 'companyId', NULLIF(m."companyId", ''),
+             'threadKey', m."threadKey", 'sequenceStepId', NULLIF(m."sequenceStepId", ''))),
+           ${type} || '#' || m."id" || '#' || ev."id"
+      FROM m JOIN ev ON ev."emailId" = m."id"
+    ON CONFLICT ("tenantId", "idempotencyKey") DO NOTHING
+    RETURNING "id"
+  )
+  SELECT (SELECT count(*) FROM ev)::int AS "n", (SELECT count(*) FROM ob)::int AS "o"`;
+}
+
+/** ข้อมูลที่ route `/t/c` ใช้ต่อท้ายตั๋วระบุตัวตน — อ่านมาในคำสั่งเดียวกับการนับ (ไม่ต้องอ่านซ้ำ · C5.1-fix) */
+export type ClickTicketPre = { emailId: string; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; trackingOptOut: boolean; settings: unknown };
+
+/**
  * นับคลิก แล้วคืน URL ที่ "เก็บไว้สำหรับ token นั้น" เท่านั้น
  * 🔴 AUDIT-CLASS X7: ไม่มีทางที่พารามิเตอร์ใน URL หรือ token ที่ถูกแก้จะเลือกปลายทางอื่นได้ — ปลายทาง
  *    มาจากแถวในฐานที่ผูกกับค่าย่อยของ token นั้นตัวเดียว (ไม่ใช่จากคำขอ)
+ * CRM C5.1-fix ▸ F5: เดิม 10 รอบไปกลับ (อีเมล · ผู้ติดต่อ · ธุรกรรมนับ 5 · แล้ว route อ่านอีเมล/ผู้ติดต่อ/ระบบซ้ำเพื่อทำตั๋ว) →
+ *   **คำสั่งเดียว**: หาอีเมลด้วย id ของ token + ลิงก์ที่ค่าย่อยตรง (ตัวแรกในลำดับเดิม · ต้องขึ้นต้น http(s)://) + ผู้ติดต่อ + ระบบ ·
+ *   นับเฉพาะเมื่อ count ไม่ใช่ false · ไม่ใช่เครื่อง · ผู้ติดต่อไม่ได้ปิดการติดตาม — ผลอ่านคืนเป็น `ticket` ให้ route ทำตั๋วโดยไม่อ่านฐานอีก ◂
  */
-export async function trackClick(token: string, meta: { ip: string; ua?: string | null }, opts: { count?: boolean } = {}): Promise<{ url: string | null }> {
+export async function trackClick(
+  token: string,
+  meta: { ip: string; ua?: string | null },
+  opts: { count?: boolean } = {},
+): Promise<{ url: string | null; ticket?: ClickTicketPre }> {
   try {
     const t = str(token);
-    const row = await messageOfToken("c", t);
-    if (!row) return { url: null };
-    const routing = isObj(row.routing) ? (row.routing as RoutingJson) : null;
-    const h = tokenHash("c", t);
-    const link = (routing?.links ?? []).find((l) => isObj(l) && l.h === h);
-    const url = link && /^https?:\/\//i.test(String(link.url)) ? String(link.url) : null;
-    if (!url) return { url: null };
-    if (opts.count === false || isTrackingBot(meta?.ua)) return { url };
-    let skip = false;
-    if (row.contactId) {
-      const contact = await prisma.crmContact.findFirst({ where: { id: row.contactId }, select: { trackingOptOut: true } });
-      skip = contact?.trackingOptOut === true;
-    }
-    if (!skip) {
-      // AUDIT-CLASS X3/X4: ตัวนับ + แถวเหตุการณ์ (URL อยู่ที่นี่ที่เดียว) + event ขาออก = ธุรกรรมเดียว
-      await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`UPDATE "CrmEmailMessage" SET "clickCount" = "clickCount" + 1 WHERE "id" = ${row.id}`;
-        const ev = await tx.crmEmailEvent.create({
-          data: { tenantId: row.tenantId, emailId: row.id, kind: "CLICK", url: url.slice(0, 2000), userAgent: str(meta?.ua).slice(0, 200) || null },
-        });
-        await emitEmailEvent(tx, { tenantId: row.tenantId, systemId: row.systemId }, EVT.clicked, row, ev.id);
-      });
-    }
-    return { url };
+    const id = emailIdOfToken(t);
+    if (!id) return { url: null };
+    const doCount = opts.count !== false && !isTrackingBot(meta?.ua);
+    const ua = str(meta?.ua).slice(0, 200) || null;
+    const rows = await prisma.$queryRaw<{ url: string | null; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; optOut: boolean | null; settings: unknown }[]>`
+      WITH m AS (
+        SELECT e."id", e."tenantId", e."systemId", e."contactId", e."dealId", e."companyId", e."threadKey", e."sequenceStepId",
+               (SELECT l.v->>'url'
+                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e."routing"::jsonb->'links') = 'array' THEN e."routing"::jsonb->'links' ELSE '[]'::jsonb END)
+                       WITH ORDINALITY AS l(v, i)
+                 WHERE jsonb_typeof(l.v) = 'object' AND jsonb_typeof(l.v->'h') = 'string' AND l.v->>'h' = ${tokenHash("c", t)}
+                 ORDER BY l.i LIMIT 1) AS "url",
+               c."tenantId" AS "contactTenantId", c."trackingOptOut" AS "optOut"
+          FROM "CrmEmailMessage" e LEFT JOIN "CrmContact" c ON c."id" = e."contactId"
+         WHERE e."id" = ${id}
+         LIMIT 1
+      ), go AS (
+        SELECT m.* FROM m WHERE m."url" ~* '^https?://' AND ${doCount}::boolean AND COALESCE(m."optOut", FALSE) = FALSE
+      ), u AS (
+        UPDATE "CrmEmailMessage" x SET "clickCount" = x."clickCount" + 1 FROM go WHERE x."id" = go."id" RETURNING x."id"
+      ), ev AS (
+        INSERT INTO "CrmEmailEvent" ("id", "tenantId", "emailId", "kind", "url", "userAgent")
+        SELECT gen_random_uuid()::text, go."tenantId", go."id", 'CLICK'::"CrmEmailEventKind", left(go."url", 2000), ${ua} FROM go JOIN u ON u."id" = go."id"
+        RETURNING "id", "emailId"
+      ), ob AS (
+        INSERT INTO "OutboxEvent" ("id", "tenantId", "systemId", "type", "payload", "idempotencyKey")
+        SELECT gen_random_uuid()::text, go."tenantId", go."systemId", ${EVT.clicked},
+               jsonb_strip_nulls(jsonb_build_object(
+                 'emailId', go."id", 'contactId', NULLIF(go."contactId", ''), 'dealId', NULLIF(go."dealId", ''), 'companyId', NULLIF(go."companyId", ''),
+                 'threadKey', go."threadKey", 'sequenceStepId', NULLIF(go."sequenceStepId", ''))),
+               ${EVT.clicked} || '#' || go."id" || '#' || ev."id"
+          FROM go JOIN ev ON ev."emailId" = go."id"
+        ON CONFLICT ("tenantId", "idempotencyKey") DO NOTHING
+        RETURNING "id"
+      )
+      SELECT m."url", m."tenantId", m."systemId", m."contactId", m."contactTenantId", m."optOut",
+             (SELECT s."settings" FROM "AppSystem" s WHERE s."id" = m."systemId" AND s."tenantId" = m."tenantId" AND s."type" = 'CRM' LIMIT 1) AS "settings",
+             (SELECT count(*) FROM ob)::int AS "o"
+        FROM m`;
+    const r = rows[0];
+    const url = r?.url && /^https?:\/\//i.test(String(r.url)) ? String(r.url) : null;
+    if (!r || !url) return { url: null };
+    return {
+      url,
+      ticket: { emailId: id, tenantId: r.tenantId, systemId: r.systemId, contactId: r.contactId, contactTenantId: r.contactTenantId, trackingOptOut: r.optOut === true, settings: r.settings },
+    };
   } catch {
     return { url: null };
   }

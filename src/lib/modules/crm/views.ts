@@ -23,6 +23,7 @@ import { COMPANY_SIZES, type CompanyListInput } from "./companies-shared";
 import type { ContactListInput } from "./contacts-shared";
 import type { DealListInput } from "./deals-shared";
 import { CRM_HARD_CAPS } from "./limits-shared"; // CRM C3.9 ▸ เพดานตายตัวของโค้ดอยู่ที่เดียว ◂
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export const CRM_VIEW_OBJECT_KEYS = ["contact", "company", "deal"] as const;
 export type CrmViewObjectKey = (typeof CRM_VIEW_OBJECT_KEYS)[number];
@@ -108,7 +109,7 @@ export function whitelistViewFilters(objectKey: CrmViewObjectKey, raw: unknown):
 
 async function requireSystem(ctx: CrmViewCtx): Promise<void> {
   const ok = !!ctx && typeof ctx.tenantId === "string" && typeof ctx.systemId === "string" && !!ctx.tenantId && !!ctx.systemId;
-  const sys = ok ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } }) : null;
+  const sys = ok ? await crmSystemRow(ctx, prisma) : null;
   if (!sys) throw new CrmViewError("NOT_FOUND", MSG_NO_SYSTEM);
   if (parseCrmSettings(sys.settings).uiVersion !== 2) throw new CrmV2DisabledError();
 }

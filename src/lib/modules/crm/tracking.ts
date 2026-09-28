@@ -20,7 +20,7 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, 
 import type { Prisma } from "@prisma/client";
 import QRCode from "qrcode";
 import type { MemberActor } from "@/lib/modules/member";
-import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { checkRateLimitDb, rateBucketCte } from "@/lib/core/rate-limit-db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit";
 import { logOps } from "@/lib/core/ops";
@@ -594,10 +594,19 @@ export async function resolveSite(siteKey: unknown): Promise<SiteInfo | null> {
  * 🔴 ห้ามตอบ `*` และห้ามตอบว่า "โดเมนนี้เป็นของร้านอื่นที่เปิดติดตามอยู่" (ร้าน A เอา siteKey ไปวางบนเว็บร้าน B ไม่ได้)
  */
 export async function corsOriginForPayload(body: unknown, origin: unknown): Promise<string | null> {
+  if (!str(origin) || !isObj(body)) return null;
+  return corsOriginForSite(await resolveSite((body as CollectBody).k), body, origin);
+}
+
+/** C5.1-fix ▸ ตัวสินใจ CORS จาก site ที่ resolve แล้ว (route `/t/e` resolve ครั้งเดียวแล้วใช้ทั้ง CORS และ collect) — กติกาเดียวกับ corsOriginForPayload ◂ */
+export function siteKeyOfPayload(body: unknown): unknown {
+  return isObj(body) ? (body as CollectBody).k : undefined;
+}
+
+export function corsOriginForSite(site: SiteInfo | null, body: unknown, origin: unknown): string | null {
   const o = str(origin);
   if (!o || !isObj(body)) return null;
   const b = body as CollectBody;
-  const site = await resolveSite(b.k);
   if (!site) return null;
   if (!originAllowed(o, site.domains)) return null;
   // หน้าที่อ้างว่าอยู่คนละโดเมนกับที่ร้านประกาศ = คำขอที่เราไม่รับรู้ ⇒ ไม่ให้ header CORS ด้วย (ไม่ยืนยันอะไรกลับไปเลย)
@@ -634,7 +643,12 @@ export async function corsOriginForPreflight(origin: unknown): Promise<string | 
 }
 
 export type CollectMeta = { origin: string | null; ip: string; userAgent: string; bytes: number };
-export type CollectDeps = { limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>; now?: Date };
+export type CollectDeps = {
+  limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>;
+  now?: Date;
+  /** C5.1-fix ▸ site ที่ route resolve แล้ว (ส่งมา = ไม่ resolve ซ้ำ · null = siteKey ใช้ไม่ได้) ◂ */
+  site?: SiteInfo | null;
+};
 
 type SessionRow = { id: string; tenantId: string; systemId: string; visitorId: string; contactId: string | null; consentVersion: number | null; lastSeenAt: Date; identifiedBy: string | null };
 
@@ -714,12 +728,14 @@ async function sessionOptedOut(session: SessionRow): Promise<boolean> {
 
 type CollectBody = { k?: unknown; v?: unknown; cv?: unknown; t?: unknown; u?: unknown; ti?: unknown; r?: unknown; d?: unknown; n?: unknown; ct?: unknown };
 
-/** ด่านร่วมของ `/t/e` และ `/t/consent` — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
-async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "collect" | "consent"): Promise<{ site: SiteInfo; visitorId: string; url: string | null; body: CollectBody; now: Date; ipHash: string } | null> {
+type Gated = { site: SiteInfo; visitorId: string; url: string | null; body: CollectBody; now: Date; ipHash: string };
+
+/** ด่านร่วมของ `/t/e` และ `/t/consent` ส่วนที่ไม่อ่าน/เขียนฐาน (นอกจาก resolve site) — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
+async function preGate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "collect" | "consent"): Promise<Gated | null> {
   if (!isObj(body)) return null;
   const b = body as CollectBody;
   if (Number(meta?.bytes ?? 0) > TRACKING_PAYLOAD_MAX_BYTES) return null;
-  const site = await resolveSite(b.k);
+  const site = deps?.site !== undefined ? deps.site : await resolveSite(b.k);
   if (!site) return null;
   // AUDIT-CLASS X7: ต้องมาจากหน้าเว็บบนโดเมนที่ร้านประกาศไว้เท่านั้น (https) และ url ของหน้าก็ต้องอยู่โดเมนเดียวกัน
   if (!originAllowed(meta?.origin ?? null, site.domains)) return null;
@@ -730,12 +746,77 @@ async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "
   if (b.u !== undefined && !urlHostAllowed(b.u, site.domains)) return null;
   const now = deps?.now ?? new Date();
   const ipHash = ipHashFor(String(meta?.ip ?? ""), now);
-  const limiter = deps?.limiter ?? ((key: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(key, spec));
-  const perIp = await limiter(`crm:t${kind === "collect" ? "e" : "c"}:${ipHash.slice(0, 32)}`, kind === "collect" ? TRACKING_RATE_LIMITS.collectPerIp : TRACKING_RATE_LIMITS.consentPerIp);
-  if (!perIp.ok) return null;
-  const perSite = await limiter(`crm:ts:${site.siteKey}`, TRACKING_RATE_LIMITS.collectPerSite);
-  if (!perSite.ok) return null;
   return { site, visitorId, url, body: b, now, ipHash };
+}
+
+const ipBucketKey = (kind: "collect" | "consent", ipHash: string) => `crm:t${kind === "collect" ? "e" : "c"}:${ipHash.slice(0, 32)}`;
+
+/** ด่านร่วมของ `/t/e` และ `/t/consent` — ผ่านแล้วได้ site + visitorId + url ที่สะอาด */
+async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "collect" | "consent"): Promise<Gated | null> {
+  const g = await preGate(body, meta, deps, kind);
+  if (!g) return null;
+  const limiter = deps?.limiter ?? ((key: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(key, spec));
+  const perIp = await limiter(ipBucketKey(kind, g.ipHash), kind === "collect" ? TRACKING_RATE_LIMITS.collectPerIp : TRACKING_RATE_LIMITS.consentPerIp);
+  if (!perIp.ok) return null;
+  const perSite = await limiter(`crm:ts:${g.site.siteKey}`, TRACKING_RATE_LIMITS.collectPerSite);
+  if (!perSite.ok) return null;
+  return g;
+}
+
+/**
+ * CRM C5.1-fix ▸ F5 ทางร้อนของ `/t/e` (พิมพ์เขียว §12 "เขียนอย่างเดียว"): ถังความถี่สองถัง (IP ก่อน · ถังของเว็บนับเมื่อ IP ผ่านเท่านั้น —
+ *   ลำดับเดิมของ gate) + การเข้าชมล่าสุด + ผู้ติดต่อปิดการติดตาม + ตัวนับ/แถว PAGEVIEW — **คำสั่งเดียว**
+ *   เขียนเฉพาะเมื่อเงื่อนไขเดิมครบทุกข้อ: ผ่านเพดาน · เป็น page · เวอร์ชัน consent ตรงของร้าน · การเข้าชมล่าสุดถือ consent เวอร์ชันนี้ ·
+ *   ยังไม่เกินเวลาว่าง · ผู้ติดต่อไม่ได้ปิดการติดตาม · ทางอื่น (เปิดรอบใหม่ · event · identify · ไม่ผ่านเงื่อนไข) = "slow" ให้ตรรกะเดิมตัดสิน
+ *   (ไม่นับถังซ้ำ) ◂
+ */
+async function collectHot(g: Gated, meta: CollectMeta): Promise<"done" | "blocked" | "slow"> {
+  const { site, visitorId, url, now } = g;
+  const b = g.body;
+  const type = str(b.t);
+  const isPage = type === "page" && Number(b.cv) === site.consentVersion;
+  const ipLim = TRACKING_RATE_LIMITS.collectPerIp;
+  const siteLim = TRACKING_RATE_LIMITS.collectPerSite;
+  const utm = isPage ? utmOf(url) : null;
+  const title = str(b.ti).slice(0, 300) || null;
+  const durationSec = Number.isFinite(Number(b.d)) ? Math.min(Math.max(Math.floor(Number(b.d)), 0), 86_400) : null;
+  const idleCut = new Date(now.getTime() - WEB_SESSION_IDLE_MS);
+  const rows = await prisma.$queryRaw<{ ipCount: number | null; siteCount: number | null; written: number }[]>`
+    WITH ${rateBucketCte("rip", ipBucketKey("collect", g.ipHash), ipLim.windowMs, now.getTime())},
+    ${rateBucketCte("rsite", `crm:ts:${site.siteKey}`, siteLim.windowMs, now.getTime(), { after: "rip", limit: ipLim.limit })},
+    s AS (
+      SELECT ws."id", ws."tenantId", ws."contactId", ws."consentVersion", ws."lastSeenAt"
+        FROM "CrmWebSession" ws
+       WHERE ws."systemId" = ${site.systemId} AND ws."visitorId" = ${visitorId}
+       ORDER BY ws."lastSeenAt" DESC, ws."id" DESC
+       LIMIT 1
+    ), go AS (
+      SELECT s."id" FROM s
+       WHERE ${isPage}::boolean
+         AND EXISTS (SELECT 1 FROM rsite WHERE rsite."count" <= ${siteLim.limit})
+         AND s."consentVersion" = ${site.consentVersion}
+         AND s."lastSeenAt" >= ${idleCut}
+         AND NOT EXISTS (SELECT 1 FROM "CrmContact" c WHERE c."id" = s."contactId" AND c."tenantId" = s."tenantId" AND c."trackingOptOut" = TRUE)
+    ), upd AS (
+      UPDATE "CrmWebSession" w
+         SET "pageViews" = w."pageViews" + 1,
+             "lastSeenAt" = ${now},
+             "firstUrl" = COALESCE(w."firstUrl", ${url}),
+             "utm" = COALESCE(w."utm", ${(utm ? JSON.stringify(utm) : null) as string | null}::jsonb)
+        FROM go WHERE w."id" = go."id"
+      RETURNING w."id", w."tenantId"
+    ), ins AS (
+      INSERT INTO "CrmWebEvent" ("id", "tenantId", "sessionId", "kind", "url", "title", "durationSec", "at")
+      SELECT gen_random_uuid()::text, upd."tenantId", upd."id", 'PAGEVIEW'::"CrmWebEventKind", ${url}, ${title}, ${durationSec}, ${now} FROM upd
+      RETURNING "id"
+    )
+    SELECT (SELECT "count" FROM rip) AS "ipCount", (SELECT "count" FROM rsite) AS "siteCount", (SELECT count(*) FROM ins)::int AS "written"`;
+  void meta;
+  const r = rows[0];
+  const ipOk = r?.ipCount !== null && r?.ipCount !== undefined && Number(r.ipCount) <= ipLim.limit;
+  const siteOk = r?.siteCount !== null && r?.siteCount !== undefined && Number(r.siteCount) <= siteLim.limit;
+  if (!ipOk || !siteOk) return "blocked";
+  return Number(r?.written ?? 0) > 0 ? "done" : "slow";
 }
 
 /**
@@ -745,7 +826,16 @@ async function gate(body: unknown, meta: CollectMeta, deps: CollectDeps, kind: "
  */
 export async function collect(body: unknown, meta: CollectMeta, deps: CollectDeps = {}): Promise<void> {
   try {
-    const g = await gate(body, meta, deps, "collect");
+    // CRM C5.1-fix ▸ F5: ไม่มีตัวจำกัดที่ผู้เรียกฉีดมา (= route จริง) ⇒ ทางร้อนคำสั่งเดียว (collectHot) · ข้อสอบที่ฉีด limiter = ทางเดิม ◂
+    let g: Gated | null;
+    if (!deps?.limiter) {
+      g = await preGate(body, meta, deps, "collect");
+      if (!g) return;
+      const hot = await collectHot(g, meta);
+      if (hot !== "slow") return;
+    } else {
+      g = await gate(body, meta, deps, "collect");
+    }
     if (!g) return;
     const { site, visitorId, url, now, ipHash } = g;
     const b = g.body;
@@ -1198,28 +1288,33 @@ export type LinkHit = { url: string; code: string } | null;
 export async function resolveLinkHit(code: unknown, meta: { ip: string; userAgent: string; hasUniqueCookie: boolean }, now: Date = new Date()): Promise<LinkHit> {
   const c = str(code);
   if (!c || c.length > 64) return null;
-  const link = await prisma.crmTrackedLink.findFirst({
-    where: { code: c },
-    select: { id: true, code: true, url: true, tenantId: true, systemId: true, active: true, expiresAt: true },
-  });
+  // CRM C5.1-fix ▸ F5: ลิงก์ + ระบบในคำสั่งเดียว (เดิม 2) · ถังความถี่ + ตัวนับ + แถวคลิกในคำสั่งเดียว (เดิม 2) ⇒ ทางร้อน 2 รอบไปกลับ ◂
+  const found = await prisma.$queryRaw<{ id: string; code: string; url: string; tenantId: string; systemId: string; active: boolean; expiresAt: Date | null; settings: unknown; sys: boolean }[]>`
+    SELECT l."id", l."code", l."url", l."tenantId", l."systemId", l."active", l."expiresAt", s."settings", (s."id" IS NOT NULL) AS "sys"
+      FROM "CrmTrackedLink" l
+      LEFT JOIN "AppSystem" s ON s."id" = l."systemId" AND s."tenantId" = l."tenantId" AND s."type" = 'CRM'
+     WHERE l."code" = ${c}
+     LIMIT 1`;
+  const link = found[0];
   if (!link || !link.active) return null;
   if (link.expiresAt && new Date(link.expiresAt).getTime() <= now.getTime()) return null;
   try {
-    const sys = await prisma.appSystem.findFirst({ where: { id: link.systemId, tenantId: link.tenantId, type: "CRM" }, select: { settings: true } });
-    const v2 = !!sys && parseCrmSettings(sys.settings).uiVersion === 2;
+    const v2 = link.sys && parseCrmSettings(link.settings as Prisma.JsonValue).uiVersion === 2;
     if (v2 && !isBotUserAgent(meta?.userAgent)) {
-      const ok = await checkRateLimitDb(`crm:l:${ipHashFor(String(meta?.ip ?? ""), now).slice(0, 32)}`, TRACKING_RATE_LIMITS.linkPerIp);
-      if (ok.ok) {
-        const uniqueInc = meta?.hasUniqueCookie ? 0 : 1;
-        // AUDIT-CLASS X3: ตัวนับสองตัว + แถวคลิก จบในคำสั่งเดียว
-        await prisma.$executeRaw`
-          WITH l AS (
-            UPDATE "CrmTrackedLink" SET "clicks" = "clicks" + 1, "uniqueClicks" = "uniqueClicks" + ${uniqueInc}
-             WHERE "id" = ${link.id} RETURNING "id", "tenantId"
-          )
+      const uniqueInc = meta?.hasUniqueCookie ? 0 : 1;
+      const lim = TRACKING_RATE_LIMITS.linkPerIp;
+      // AUDIT-CLASS X3: ถังความถี่ (คำสั่งเดียวแบบ checkRateLimitDb) + ตัวนับสองตัว + แถวคลิก จบในคำสั่งเดียว — เกินเพดาน = ไม่นับ
+      await prisma.$queryRaw`
+        WITH ${rateBucketCte("rl", `crm:l:${ipHashFor(String(meta?.ip ?? ""), now).slice(0, 32)}`, lim.windowMs, now.getTime())},
+        l AS (
+          UPDATE "CrmTrackedLink" SET "clicks" = "clicks" + 1, "uniqueClicks" = "uniqueClicks" + ${uniqueInc}
+           WHERE "id" = ${link.id} AND (SELECT rl."count" FROM rl) <= ${lim.limit} RETURNING "id", "tenantId"
+        ), ins AS (
           INSERT INTO "CrmTrackedClick" ("id", "tenantId", "linkId", "userAgent", "at")
-          SELECT gen_random_uuid()::text, l."tenantId", l."id", ${str(meta?.userAgent).slice(0, 200) || null}, ${now} FROM l`;
-      }
+          SELECT gen_random_uuid()::text, l."tenantId", l."id", ${str(meta?.userAgent).slice(0, 200) || null}, ${now} FROM l
+          RETURNING "id"
+        )
+        SELECT (SELECT count(*) FROM ins)::int AS "n"`;
     }
   } catch (e) {
     // นับไม่ได้ = ตัวเลขในรายงานขาดไป 1 — ห้ามทำให้ลูกค้าที่กดลิงก์ไปต่อไม่ได้
@@ -1236,16 +1331,37 @@ export const linkUniqueCookie = (code: string): string =>
  * `/t/c/<token>` (route ของใบ C2.5) — ต่อท้ายตั๋วระบุตัวตนให้ลิงก์ที่ลูกค้ากดจากอีเมล
  * 🔴 ต่อให้เฉพาะ "คลิกที่นับจริง" ของจดหมายที่รู้ว่าเป็นของผู้ติดต่อคนไหน และปลายทางอยู่ในโดเมนของร้านเท่านั้น
  */
-export async function ticketedClickUrl(emailId: unknown, url: string, opts: { counted: boolean; userAgent?: string | null }, now: Date = new Date()): Promise<string> {
+export async function ticketedClickUrl(
+  emailId: unknown,
+  url: string,
+  opts: {
+    counted: boolean;
+    userAgent?: string | null;
+    /** C5.1-fix ▸ F5: แถวที่ `emails.trackClick` อ่านมาแล้วในคำสั่งนับ (อีเมล · ผู้ติดต่อ · ระบบ) — ส่งมา = ไม่อ่านฐานซ้ำ (ความหมายเดิมทุกข้อ) ◂ */
+    pre?: { emailId: string; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; trackingOptOut: boolean; settings: unknown } | null;
+  },
+  now: Date = new Date(),
+): Promise<string> {
   try {
     if (!opts?.counted || isBotUserAgent(opts?.userAgent ?? "")) return url;
     const id = str(emailId);
     if (!id) return url;
-    const msg = await prisma.crmEmailMessage.findFirst({ where: { id }, select: { id: true, tenantId: true, systemId: true, contactId: true } });
+    const pre = opts.pre && opts.pre.emailId === id ? opts.pre : null;
+    const msg = pre
+      ? { id: pre.emailId, tenantId: pre.tenantId, systemId: pre.systemId, contactId: pre.contactId }
+      : await prisma.crmEmailMessage.findFirst({ where: { id }, select: { id: true, tenantId: true, systemId: true, contactId: true } });
     if (!msg?.contactId) return url;
-    const contact = await prisma.crmContact.findFirst({ where: { id: msg.contactId, tenantId: msg.tenantId }, select: { trackingOptOut: true } });
+    const contact = pre
+      ? pre.contactTenantId === msg.tenantId
+        ? { trackingOptOut: pre.trackingOptOut }
+        : null
+      : await prisma.crmContact.findFirst({ where: { id: msg.contactId, tenantId: msg.tenantId }, select: { trackingOptOut: true } });
     if (contact?.trackingOptOut) return url;
-    const sys = await prisma.appSystem.findFirst({ where: { id: msg.systemId, tenantId: msg.tenantId, type: "CRM" }, select: { settings: true } });
+    const sys = pre
+      ? pre.settings === null || pre.settings === undefined
+        ? null
+        : { settings: pre.settings as Prisma.JsonValue }
+      : await prisma.appSystem.findFirst({ where: { id: msg.systemId, tenantId: msg.tenantId, type: "CRM" }, select: { settings: true } });
     if (!sys) return url;
     const web = webSettingsOf(sys.settings);
     if (!web.enabled || web.domains.length === 0) return url;

@@ -409,7 +409,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C4 | C4.2 | 🔨 | `15707b04` | qc-crm-buttons.mts (dry 7,122 กด) รอรันจริงกับ server จาก HEAD |
 | C4 | C4.1–C4.4 | ⏸️ | — | |
 | C5 | C5.2 | ✅ | (this commit) | 6 hunters read-only · 0 BLOCKER · 22 MAJOR · 40 MINOR · `wo-notes/crm-C5.2*.md` · C5.3 pinning in progress |
-| C5 | C5.1 | 🔨 | — | perf fix done (32/32) · independent review in progress |
+| C5 | C5.1 | ✅ | (this commit) | perf at real size: 32/32 budgets · P2029 crashes fixed · migration crm_perf_indexes (index-only) · reviewer MERGEABLE · equivalence 0 diffs |
 | C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
 | C5 | C5.4 | 🔨 | — | batch A (platform/prod-exposed) building · B–F queued |
 | C5 | C5.5 | ⏸️ | — | |

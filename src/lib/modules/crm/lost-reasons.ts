@@ -12,6 +12,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { DealsError, LOST_REASON_LABEL_MAX } from "./deals-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export type LostReasonsCtx = { tenantId: string; systemId: string; actorUserId: string | null };
 export type LostReasonDto = { id: string; key: string; label: string; active: boolean; sortOrder: number; isSystem: boolean; usedBy: number };
@@ -24,7 +25,7 @@ async function enter(ctx: LostReasonsCtx, actor: MemberActor | null | undefined)
   if (!actor || actor.role === "CUSTOMER") throw fail("NOT_FOUND", NOT_FOUND_MSG);
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, prisma)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return actor;

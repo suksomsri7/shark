@@ -34,7 +34,8 @@ import { emitOutbox } from "@/lib/core/outbox";
 import * as party from "@/lib/modules/party";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
-import { activityWhere, contactWhere, dealWhere } from "./where";
+import { activityWhere, visibleContactSql, contactWhere, dealWhere } from "./where";
+import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orSql, orderBySql, sqlSortOf } from "./list-sql"; // CRM C5.1-fix ◂
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
@@ -112,6 +113,8 @@ import {
   type ImportJobStatus,
   type MergeChoiceField,
 } from "./contacts-shared";
+import { crmScope } from "./request-scope";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export {
   CONTACT_BULK_MAX,
@@ -220,7 +223,7 @@ function assertActor(actor: MemberActor | null | undefined): asserts actor is Me
 async function resolveSystem(ctx: ContactsCtx, db: Db = prisma): Promise<void> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
 }
@@ -1279,7 +1282,25 @@ function displayOf(type: string, value: unknown, choices: { value: string; label
   return String(value);
 }
 
+/** CRM C5.1-fix ▸ F4: กิจกรรม 2 กิ่ง (แต่ละกิ่งใช้ดัชนีของตัวเอง) รวมกันแบบไม่ซ้ำ เรียงใหม่ล่าสุดก่อน — ผลเท่า `OR` ของสองกิ่ง ◂ */
+async function unionActivities(vis: Prisma.CrmActivityWhereInput, a: Prisma.CrmActivityWhereInput, b: Prisma.CrmActivityWhereInput, take: number) {
+  const orderBy: Prisma.CrmActivityOrderByWithRelationInput[] = [{ createdAt: "desc" }, { id: "desc" }];
+  const [x, y] = await Promise.all([
+    prisma.crmActivity.findMany({ where: { AND: [vis, a] }, orderBy, take }),
+    prisma.crmActivity.findMany({ where: { AND: [vis, b] }, orderBy, take }),
+  ]);
+  const seen = new Set<string>();
+  return [...x, ...y]
+    .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+    .sort((p, q) => q.createdAt.getTime() - p.createdAt.getTime() || (q.id < p.id ? -1 : q.id > p.id ? 1 : 0))
+    .slice(0, take);
+}
+
 export async function getContact360(ctx: ContactsCtx, actor: MemberActor, id: string): Promise<Contact360> {
+  return crmScope(() => getContact360In(ctx, actor, id));
+}
+
+async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string): Promise<Contact360> {
   const a = await enter(ctx, actor);
   const row = await loadContact(ctx, a, id);
   const eng = await engine();
@@ -1296,11 +1317,9 @@ export async function getContact360(ctx: ContactsCtx, actor: MemberActor, id: st
       orderBy: [{ createdAt: "desc" }],
       take: 100,
     }),
-    prisma.crmActivity.findMany({
-      where: { AND: [await activityWhere(ctx, a), { OR: [{ contactId: row.id }, { deal: { contactId: row.id } }] }] },
-      orderBy: [{ createdAt: "desc" }],
-      take: 50,
-    }),
+    // CRM C5.1-fix ▸ F4: เดิม OR(contactId, deal.contactId) = LEFT JOIN + OR ⇒ สแกนกิจกรรมทั้งร้าน (โตตามทั้งร้าน ไม่ใช่ตามคนนี้) ·
+    //   ใหม่ = สองกิ่งที่ใช้ดัชนีได้ (contactId · ดีลของคนนี้) วิ่งพร้อมกัน แล้วรวม/ตัดซ้ำ/เรียง (createdAt desc, id desc) เหลือ 50 ◂
+    unionActivities(await activityWhere(ctx, a), { contactId: row.id }, { deal: { contactId: row.id } }, 50),
     row.ownerUserId ? prisma.membership.findFirst({ where: { tenantId: ctx.tenantId, userId: row.ownerUserId }, select: { user: { select: { id: true, name: true } } } }) : Promise.resolve(null),
     eng.listLayout(fctx(ctx, a)),
     // AUDIT-CLASS X8: ค่าอ่อนไหวผ่าน engine เท่านั้น (D8 ตัดสิน · เห็นจริง = แถว MemberAccessLog page "crm.contact")
@@ -1372,7 +1391,13 @@ function enumOrNull<T extends string>(v: unknown, list: readonly T[], label: str
   return s as T;
 }
 
-async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput): Promise<Prisma.CrmContactWhereInput> {
+/** ตัวกรองฟิลด์ `f.<key>` ที่มีค่า (ค่าว่างไม่นับ) */
+function listFieldFilters(flt: ContactListInput): Record<string, string> {
+  return isObj(flt.f) ? (Object.fromEntries(Object.entries(flt.f).filter(([, v]) => v !== undefined && v !== null && String(v) !== "").map(([k, v]) => [k, String(v)])) as Record<string, string>) : {};
+}
+
+/** ตัวกรองที่ใช้จริง = มุมมองที่บันทึก (ถ้ามี) ทับด้วยตัวกรองที่ส่งมา — ใช้ร่วมกันทั้ง where ของ Prisma และ SQL (C5.1-fix) */
+async function effectiveListInput(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput): Promise<ContactListInput> {
   let flt: ContactListInput = { ...(input ?? {}) };
   const viewId = str(input?.savedViewId);
   if (viewId) {
@@ -1385,6 +1410,14 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
     const explicit = Object.fromEntries(Object.entries(input ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== ""));
     flt = { ...vf, ...explicit, f: { ...(isObj(vf.f) ? (vf.f as Record<string, string>) : {}), ...(isObj(input?.f) ? input.f : {}) } };
   }
+  return flt;
+}
+
+async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput): Promise<Prisma.CrmContactWhereInput> {
+  return listWhereFrom(ctx, actor, await effectiveListInput(ctx, actor, input));
+}
+
+async function listWhereFrom(ctx: ContactsCtx, actor: MemberActor, flt: ContactListInput): Promise<Prisma.CrmContactWhereInput> {
   // AUDIT-CLASS X1: ขอบเขตผ่าน contactWhere เสมอ · ผู้ติดต่อที่ถูกรวมไม่โผล่ (แถวคงอยู่เป็นประวัติ)
   const AND: Prisma.CrmContactWhereInput[] = [await contactWhere(ctx, actor), { mergedIntoId: null }];
   if (!flt.includeArchived) AND.push({ archivedAt: null });
@@ -1425,7 +1458,7 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
   if (team) AND.push({ teamId: team });
   const companyId = str(flt.companyId);
   if (companyId) AND.push({ OR: [{ companyId }, { companyLinks: { some: { companyId, endedAt: null } } }] });
-  const filters = isObj(flt.f) ? (Object.fromEntries(Object.entries(flt.f).filter(([, v]) => v !== undefined && v !== null && String(v) !== "").map(([k, v]) => [k, String(v)])) as Record<string, string>) : {};
+  const filters = listFieldFilters(flt);
   if (Object.keys(filters).length > 0) {
     // ตัวกรอง f.{key} = engine ตัวเดียว (objectKey "contact") · key ที่ไม่มี/กรองไม่ได้/อ่อนไหวไม่มีสิทธิ์ = VALIDATION
     try {
@@ -1437,11 +1470,73 @@ async function listWhere(ctx: ContactsCtx, actor: MemberActor, input: ContactLis
   return { AND };
 }
 
+// CRM C5.1-fix ▸ F1: where เดียวกับ listWhere ในรูป SQL ของแถว alias (ตัวกรองฟิลด์ = EXISTS ในฐานข้อมูล — ไม่มีรายการ id) ·
+//   ใช้เมื่อมีตัวกรองฟิลด์ (`f.<key>`) เท่านั้น — ไม่มีตัวกรองฟิลด์ = ทาง Prisma เดิมทุกตัวอักษร · เทียบผล: qc-crm-c51fix-equiv ◂
+async function listSqlWhere(ctx: ContactsCtx, actor: MemberActor, flt: ContactListInput, c = "c"): Promise<Prisma.Sql> {
+  const A = Prisma.raw(c);
+  const AND: Prisma.Sql[] = [await visibleContactSql(ctx, actor, c), Prisma.sql`${A}."mergedIntoId" IS NULL`];
+  if (!flt.includeArchived) AND.push(Prisma.sql`${A}."archivedAt" IS NULL`);
+  const q = str(flt.q)?.slice(0, 100);
+  if (q) {
+    const digits = q.replace(/\D/g, "");
+    const OR: Prisma.Sql[] = [containsSql(c, "name", q, true), containsSql(c, "firstName", q, true), containsSql(c, "lastName", q, true), containsSql(c, "email", q.toLowerCase(), true)];
+    if (digits.length >= 3) {
+      OR.push(containsSql(c, "phone", digits, false));
+      const norm = party.normalizePartyPhone(digits);
+      if (norm && norm !== digits) OR.push(containsSql(c, "phone", norm, false));
+      OR.push(containsSql(c, "phone", q, false));
+    }
+    AND.push(orSql(OR));
+  }
+  const stage = enumOrNull(flt.stage, LIFECYCLE_STAGES, "ขั้น");
+  if (stage) AND.push(enumEqSql(c, "lifecycleStage", "CrmLifecycleStage", stage));
+  const lead = enumOrNull(flt.leadStatus, LEAD_STATUSES, "สถานะ lead");
+  if (lead) AND.push(enumEqSql(c, "leadStatus", "CrmLeadStatus", lead));
+  const band = enumOrNull(flt.scoreBand, SCORE_BANDS, "ระดับคะแนน");
+  if (band) AND.push(enumEqSql(c, "scoreBand", "CrmScoreBand", band));
+  if (flt.minScore !== undefined && flt.minScore !== null) {
+    const ms = Number(flt.minScore);
+    if (!Number.isInteger(ms) || ms < 0 || ms > 1_000_000) throw fail("VALIDATION", "คะแนนขั้นต่ำต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป");
+    AND.push(Prisma.sql`${A}."score" >= ${ms}`);
+  }
+  const source = enumOrNull(flt.source, CONTACT_SOURCES, "ที่มา");
+  if (source) AND.push(enumEqSql(c, "sourceKind", "MemberSource", source));
+  const owner = str(flt.owner);
+  if (owner) AND.push(owner === "none" ? Prisma.sql`${A}."ownerUserId" IS NULL` : Prisma.sql`${A}."ownerUserId" = ${owner}`);
+  const team = str(flt.team);
+  if (team) AND.push(Prisma.sql`${A}."teamId" = ${team}`);
+  const companyId = str(flt.companyId);
+  if (companyId) {
+    AND.push(Prisma.sql`(${A}."companyId" = ${companyId} OR EXISTS (SELECT 1 FROM "CrmCompanyContact" cl WHERE cl."contactId" = ${A}."id" AND cl."companyId" = ${companyId} AND cl."endedAt" IS NULL))`);
+  }
+  const filters = listFieldFilters(flt);
+  if (Object.keys(filters).length > 0) {
+    try {
+      AND.push(await (await engine()).fieldFilterSql({ ...fctx(ctx, actor), objectKey: "contact" }, filters, c));
+    } catch (e) {
+      throw mapError(e);
+    }
+  }
+  return andSql(AND);
+}
+
+/** id ของหน้า (ทาง SQL) — ลำดับ/cursor แบบ Prisma (list-sql.ts) */
+async function pageIdsSql(where: Prisma.Sql, orderBy: readonly Record<string, unknown>[], take: number, cursor: string | null): Promise<string[]> {
+  const sort = sqlSortOf(orderBy);
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT c."id" FROM "CrmContact" c
+     WHERE ${where} ${cursor ? Prisma.sql`AND ${cursorSql("c", "CrmContact", sort, cursor)}` : Prisma.empty}
+     ORDER BY ${orderBySql("c", sort)} LIMIT ${take} OFFSET ${cursor ? 1 : 0}`;
+  return rows.map((r) => r.id);
+}
+
 async function ownerNames(ctx: ContactsCtx, ids: (string | null)[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
   if (uniq.length === 0) return new Map();
-  const rows = await prisma.membership.findMany({ where: { tenantId: ctx.tenantId, userId: { in: uniq } }, select: { user: { select: { id: true, name: true, email: true } } } });
-  return new Map(rows.map((r) => [r.user.id, r.user.name ?? r.user.email ?? "ผู้ใช้"]));
+  // CRM C5.1-fix ▸ ถาม User ตรง + กรอง "เป็นสมาชิกร้านนี้" ด้วย relation filter = 1 คำสั่ง (เดิม Membership + include User = 2) ·
+  //   ชุดผลเท่าเดิม (Membership @@unique[userId, tenantId] ⇒ 1 คน 1 แถวต่อร้าน — วิธีเดียวกับ account/attachment.ts) ◂
+  const rows = await prisma.user.findMany({ where: { id: { in: uniq }, memberships: { some: { tenantId: ctx.tenantId } } }, select: { id: true, name: true, email: true } });
+  return new Map(rows.map((r) => [r.id, r.name ?? r.email ?? "ผู้ใช้"]));
 }
 
 // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-6) ตรวจตัวกรองของมุมมองที่บันทึก "โดยไม่โหลดการ์ด" — where เดียวกับ listContacts + ดึง id 1 แถว ·
@@ -1449,12 +1544,26 @@ async function ownerNames(ctx: ContactsCtx, ids: (string | null)[]): Promise<Map
 /** ตรวจว่าตัวกรองชุดนี้ใช้กับรายการผู้ติดต่อได้ (อ่าน 1 id · ไม่เติมชื่อบริษัท/ผู้ดูแล) */
 export async function probeContactFilters(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput): Promise<void> {
   const a = await enter(ctx, actor);
-  await prisma.crmContact.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
+  // CRM C5.1-fix ▸ มีตัวกรองฟิลด์ = ตรวจด้วย SQL (ไม่มีรายการ id) ◂
+  const flt = await effectiveListInput(ctx, a, input ?? {});
+  if (Object.keys(listFieldFilters(flt)).length > 0) {
+    await prisma.$queryRaw`SELECT c."id" FROM "CrmContact" c WHERE ${await listSqlWhere(ctx, a, flt)} LIMIT 1`;
+    return;
+  }
+  await prisma.crmContact.findFirst({ where: await listWhereFrom(ctx, a, flt), select: { id: true } });
 }
 
 export async function listContacts(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput = {}): Promise<ContactListResult> {
+  return crmScope(() => listContactsIn(ctx, actor, input));
+}
+
+async function listContactsIn(ctx: ContactsCtx, actor: MemberActor, input: ContactListInput = {}): Promise<ContactListResult> {
   const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, input ?? {});
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = เลือก id ของหน้าด้วย SQL (EXISTS · ไม่มีรายการ id) แล้วอ่านแถวเต็มด้วย Prisma ·
+  //   ไม่มีตัวกรองฟิลด์ = ทาง Prisma เดิม ◂
+  const flt = await effectiveListInput(ctx, a, input ?? {});
+  const sqlPath = Object.keys(listFieldFilters(flt)).length > 0 ? await listSqlWhere(ctx, a, flt) : null;
+  const where = sqlPath ? null : await listWhereFrom(ctx, a, flt);
   const pageSize = Math.min(CONTACT_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
   const sortKey = input?.sort;
   const orderBy = typeof sortKey === "string" && (CONTACT_SORTS as readonly string[]).includes(sortKey) ? SORTS[sortKey as ContactSort] : SORTS["-createdAt"];
@@ -1463,7 +1572,12 @@ export async function listContacts(ctx: ContactsCtx, actor: MemberActor, input: 
     const ok = await prisma.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, a), { id: cursor }] }, select: { id: true } });
     if (!ok) throw fail("VALIDATION", "ลิงก์หน้าถัดไปหมดอายุแล้ว — กลับไปหน้าแรกของรายการ");
   }
-  const rows = await prisma.crmContact.findMany({ where, orderBy, take: pageSize + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  const rows = sqlPath
+    ? await (async () => {
+        const ids = await pageIdsSql(sqlPath, orderBy, pageSize + 1, cursor);
+        return ids.length ? inOrder(ids, await prisma.crmContact.findMany({ where: { id: { in: ids } } })) : [];
+      })()
+    : await prisma.crmContact.findMany({ where: where!, orderBy, take: pageSize + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
   const more = rows.length > pageSize;
   const page = more ? rows.slice(0, pageSize) : rows;
   const coIds = [...new Set(page.map((r) => r.companyId).filter((x): x is string => !!x))];
@@ -2169,12 +2283,27 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
   const reason = reasonOf(opts, "ส่งออกรายชื่อผู้ติดต่อ");
   const a = await enter(ctx, actor);
   need(a, "crm.contact.export");
-  const where = await listWhere(ctx, a, opts ?? {});
-  const total = await prisma.crmContact.count({ where });
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = นับ/เลือก id ด้วย SQL แล้วอ่านแถวเป็นชุดละ ≤ 5,000 id (ไม่ติดเพดาน bind) ◂
+  const flt = await effectiveListInput(ctx, a, opts ?? {});
+  const sqlWhere = Object.keys(listFieldFilters(flt)).length > 0 ? await listSqlWhere(ctx, a, flt) : null;
+  const where = sqlWhere ? null : await listWhereFrom(ctx, a, flt);
+  const total = sqlWhere
+    ? ((await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS "n" FROM "CrmContact" c WHERE ${sqlWhere}`)[0]?.n ?? 0)
+    : await prisma.crmContact.count({ where: where! });
   if (total > CONTACT_EXPORT_MAX_ROWS) {
     throw fail("VALIDATION", `ผลลัพธ์มี ${total.toLocaleString("th-TH")} คน — ส่งออกได้ครั้งละไม่เกิน ${CONTACT_EXPORT_MAX_ROWS.toLocaleString("th-TH")} คน กรองให้แคบลงก่อน`);
   }
-  const rows = await prisma.crmContact.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: CONTACT_EXPORT_MAX_ROWS });
+  let rows: CrmContact[];
+  if (sqlWhere) {
+    const ids = await pageIdsSql(sqlWhere, [{ createdAt: "asc" }, { id: "asc" }], CONTACT_EXPORT_MAX_ROWS, null);
+    rows = [];
+    for (let i = 0; i < ids.length; i += 5_000) {
+      const chunk = ids.slice(i, i + 5_000);
+      rows.push(...inOrder(chunk, await prisma.crmContact.findMany({ where: { id: { in: chunk } } })));
+    }
+  } else {
+    rows = await prisma.crmContact.findMany({ where: where!, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: CONTACT_EXPORT_MAX_ROWS });
+  }
   const eng = await engine();
   const layout = await eng.listLayout(fctx(ctx, a));
   const customFields = layout.sections.flatMap((s) => s.fields.filter((f) => !f.isSystem).map((f) => ({ key: f.key, label: f.label, type: f.type, choices: f.options?.choices })));

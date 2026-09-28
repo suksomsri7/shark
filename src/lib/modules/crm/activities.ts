@@ -82,6 +82,7 @@ export {
 };
 
 import { ERASED_CONTACT_WRITE_MSG, erasedContactIds, isErasedContact } from "./erased"; // CRM C3.9-fix ▸ H7 ◂
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 const kanbanLinks = () => import("@/lib/modules/kanban/links");
 const memberFacade = () => import("@/lib/modules/member");
 
@@ -189,7 +190,7 @@ function assertActor(actor: MemberActor | null | undefined): asserts actor is Me
 async function resolveSystem(ctx: ActivitiesCtx, db: Db = prisma): Promise<unknown> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true, settings: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   return sys.settings;

@@ -113,6 +113,15 @@ const ARGV = process.argv.slice(2);
 const WORKER_AT = ARGV.indexOf("--x3-worker");
 const FORCE = ARGV.includes("--force-run");
 const read = (p: string) => (p && existsSync(p) ? readFileSync(p, "utf8") : "");
+// ORACLE-EDIT C3.2-S0.4 (C5.1-fix · controller-approved index-only migration): the perf-index migration `20261103000000_crm_perf_indexes`
+//   is allowlisted by exact name ONLY while every statement of its SQL is `CREATE INDEX IF NOT EXISTS "…" ON "…" [USING …] (…)`
+//   (comments stripped) — any other statement (table/column/constraint/data) ⇒ it counts as a new CRM migration again (still red)
+const C51_INDEX_MIG = "20261103000000_crm_perf_indexes";
+const c51IndexOnly = (d: string): boolean => {
+  if (d !== C51_INDEX_MIG) return false;
+  const stmts = read(join(MIG_DIR, d, "migration.sql")).replace(/--[^\n]*/g, "").split(";").map((x) => x.trim()).filter(Boolean);
+  return stmts.length > 0 && stmts.every((x) => /^CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+"[^"]+"\s+ON\s+"[^"]+"\s*(USING\s+\w+\s*)?\([^;]*\)$/i.test(x));
+};
 const walk = (dir: string): string[] => {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -326,7 +335,7 @@ try {
     const once = events.filter((x) => x === EVT).length === 1;
     const inWh = new RegExp(`value:\\s*["']${EVT.replace(/\./g, "\\.")}["']`).test(read(WEBHOOK_LABELS));
     const blocks = /CRM C3\.2 ▸/.test(read(LABELS_FILE)) && /CRM C3\.2 ▸/.test(read(CONSUMERS_FILE));
-    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => /crm/i.test(d) && d > C30_MIG) : [];
+    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => /crm/i.test(d) && d > C30_MIG && !c51IndexOnly(d)) : [];
     chk("C3.2-S0.4", "3 registries (a new event without a consumer stalls the whole queue): `crm.quota.reached` declared EXACTLY ONCE in automation/labels.ts (block `// CRM C3.2 ▸`), never re-declared in webhooks/labels.ts, with a consumer in outbox-consumers.ts (block `// CRM C3.2 ▸`) · C3.2 ships NO migration (CrmQuota came with crm_v2_c — R-C.1)",
       once && !inWh && typeof CONS?.[EVT] === "function" && blocks && migs.length === 0,
       "1 label · consumer · no migration", `labelOnce=${once} webhookDup=${inWh} consumer=${typeof CONS?.[EVT]} blocks=${blocks} newCrmMigrations=${migs.join(",") || "-"}${ABSENT}`);

@@ -55,6 +55,7 @@ import {
   type ObjectWarnings,
   type RecordDto,
 } from "./objects-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export { OBJECT_TEMPLATES, OBJECT_EXPORT_MAX_ROWS, OBJECT_IMPORT_MAX_ROWS, OBJECT_IMPORT_MAX_BYTES, OBJECT_BULK_MAX, OBJECT_WARN_AT, RECORD_WARN_AT, ObjectsError };
 
@@ -186,7 +187,7 @@ function assertDesigner(actor: MemberActor): void {
 async function resolveSystem(ctx: ObjectsCtx, db: Db = prisma): Promise<void> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string"
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
 }
@@ -1034,7 +1035,8 @@ async function recordsWhere(ctx: ObjectsCtx, actor: MemberActor, obj: CustomObje
 
 // CRM C1.7 ▸ รายการ/ส่งออกของผู้ที่ถูกจำกัดการมองเห็น: กรองในฐานข้อมูลด้วย EXISTS ของแม่ที่เห็น (recordVisibilitySql) —
 //   ไม่ดึงรายการ id ของแม่ทั้งระบบ (รีวิว C1.7 ข้อ 2 · เพดาน bind 32,767 ของ Postgres) · นับ + หน้า = 2 คิวรี
-//   ตัวกรองฟิลด์ f.{key} ของ engine (where ของ Prisma) ใช้เป็นชุด id ตั้งต้นส่งเป็นอาร์เรย์พารามิเตอร์เดียว (= ANY) — มีเฉพาะเมื่อผู้ใช้กรองฟิลด์
+//   CRM C5.1-fix ▸ ตัวกรองฟิลด์ f.{key} = EXISTS ของ engine (fieldFilterSql) ในคำสั่งเดียวกัน · ทางนี้ใช้ด้วยเมื่อมีตัวกรองฟิลด์
+//   แม้ผู้ดูไม่ถูกจำกัด (vis = null ⇒ ไม่กรองการมองเห็นเพิ่ม) ◂
 const SORT_SQL: Record<string, Prisma.Sql> = {
   title: Prisma.sql`r."title" ASC, r."id" ASC`,
   "-title": Prisma.sql`r."title" DESC, r."id" DESC`,
@@ -1049,7 +1051,7 @@ async function visibleRecordPage(
   actor: MemberActor,
   obj: CustomObject,
   input: ListRecordsInput,
-  vis: Prisma.Sql,
+  vis: Prisma.Sql | null,
   sortKey: string,
   page: { limit: number; offset: number } | null,
 ): Promise<{ total: number; ids: string[] }> {
@@ -1062,11 +1064,10 @@ async function visibleRecordPage(
   if (obj.unitScoped && !wholeShop(actor)) cond.push(Prisma.sql`(r."unitId" IS NULL OR r."unitId" = ANY(${actor.unitAccess}::text[]))`);
   const filters = input?.f ?? {};
   if (Object.keys(filters).length > 0) {
-    const frag = await viaEngine(async () => (await engine()).fieldFilterWhere({ ...fctx(ctx, obj.key, actor), objectKey: obj.key }, filters));
-    const ids = (await prisma.customRecord.findMany({ where: { AND: [{ tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: obj.id }, frag as Prisma.CustomRecordWhereInput] }, select: { id: true } })).map((r) => r.id);
-    cond.push(Prisma.sql`r."id" = ANY(${ids}::text[])`);
+    // CRM C5.1-fix ▸ F1: ตัวกรองฟิลด์ = EXISTS ในคำสั่งเดียวกัน (เดิมดึง id ทั้งชุดออกมาแล้วส่งกลับ — ช้าและติดเพดานที่ทาง Prisma) ◂
+    cond.push(await viaEngine(async () => (await engine()).fieldFilterSql({ ...fctx(ctx, obj.key, actor), objectKey: obj.key }, filters, "r")));
   }
-  cond.push(vis);
+  if (vis) cond.push(vis);
   const where = Prisma.join(cond, " AND ");
   const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "CustomRecord" r WHERE ${where}`;
   const rows = await prisma.$queryRaw<{ id: string }[]>`
@@ -1074,6 +1075,8 @@ async function visibleRecordPage(
     ${page ? Prisma.sql`LIMIT ${page.limit} OFFSET ${page.offset}` : Prisma.empty}`;
   return { total: n, ids: rows.map((r) => r.id) };
 }
+
+const hasFieldFilters = (input: ListRecordsInput | null | undefined) => Object.keys(input?.f ?? {}).length > 0;
 
 async function rowsInOrder(ids: string[]): Promise<CustomRecord[]> {
   if (ids.length === 0) return [];
@@ -1097,7 +1100,8 @@ async function listRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: strin
   const vis = await recordVisibilitySql(ctx, actor);
   let total: number;
   let rows: CustomRecord[];
-  if (vis === null) {
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = ทาง SQL เสมอ (ตัวกรองเป็น EXISTS) แม้ผู้ดูไม่ถูกจำกัด (vis null = ไม่กรองการมองเห็นเพิ่ม) ◂
+  if (vis === null && !hasFieldFilters(input)) {
     const where = await recordsWhere(ctx, actor, obj, input ?? {});
     [total, rows] = await Promise.all([
       prisma.customRecord.count({ where }),
@@ -1334,9 +1338,11 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   const listInput = { ...(opts ?? {}), page: undefined, pageSize: undefined };
   // CRM C1.7 ▸ ผู้ถูกจำกัดการมองเห็น = นับ/อ่านเป็นหน้าในฐานข้อมูล (EXISTS ของแม่) · ไม่ถูกจำกัด = ทาง Prisma เดิม ◂
   const vis = await recordVisibilitySql(ctx, actor);
-  const where = await recordsWhere(ctx, actor, obj, listInput);
+  // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = ทาง SQL เสมอ (เหมือน list) ◂
+  const viaSql = vis !== null || hasFieldFilters(listInput);
+  const where = viaSql ? {} : await recordsWhere(ctx, actor, obj, listInput);
   // AUDIT-CLASS X6: เพดานส่งออก — นับก่อนสร้างไฟล์ (ไฟล์ใหญ่เกิน = หน่วยความจำ/เวลาเกินของเครื่องเดียว)
-  const total = vis === null ? await prisma.customRecord.count({ where }) : (await visibleRecordPage(ctx, actor, obj, listInput, vis, "createdAt", { limit: 0, offset: 0 })).total;
+  const total = !viaSql ? await prisma.customRecord.count({ where }) : (await visibleRecordPage(ctx, actor, obj, listInput, vis, "createdAt", { limit: 0, offset: 0 })).total;
   if (total > OBJECT_EXPORT_MAX_ROWS) {
     throw fail(
       "VALIDATION",
@@ -1346,7 +1352,7 @@ async function exportRecords(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
   let cursor: string | null = null;
   for (let offset = 0; ; offset += EXPORT_BATCH) {
     const rows: CustomRecord[] =
-      vis === null
+      !viaSql
         ? await prisma.customRecord.findMany({ where, orderBy: { id: "asc" }, take: EXPORT_BATCH, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) })
         : await rowsInOrder((await visibleRecordPage(ctx, actor, obj, listInput, vis, "createdAt", { limit: EXPORT_BATCH, offset })).ids);
     if (rows.length === 0) break;

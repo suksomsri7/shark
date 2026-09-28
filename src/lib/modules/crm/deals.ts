@@ -26,7 +26,9 @@ import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { assertCrmLimit, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดานดีลเปิด + รายการต่อดีล ◂
 import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
-import { activityWhere, contactWhere, dealWhere } from "./where";
+import { activityWhere, contactWhere, visibleDealSql, dealWhere } from "./where";
+import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orderBySql, sqlSortOf } from "./list-sql"; // CRM C5.1-fix ◂
+import { crmScope } from "./request-scope";
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM (หลังการมองเห็นเสมอ) ◂
 import { crmCan, crmForbiddenMessage } from "./access";
@@ -99,6 +101,7 @@ import {
   type PipelineDto,
   type StageDto,
 } from "./deals-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export { DealsError };
 
@@ -202,7 +205,7 @@ function assertActor(actor: MemberActor | null | undefined): asserts actor is Me
 async function resolveSystem(ctx: DealsCtx, db: Db = prisma): Promise<void> {
   const sys =
     typeof ctx?.systemId === "string" && typeof ctx?.tenantId === "string" && ctx.systemId && ctx.tenantId
-      ? await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } })
+      ? await crmSystemRow(ctx, db)
       : null;
   if (!sys) throw fail("NOT_FOUND", "ไม่พบระบบ CRM นี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
 }
@@ -1583,7 +1586,8 @@ const SORTS: Record<DealSort, Prisma.CrmDealOrderByWithRelationInput[]> = {
 };
 
 /** ตัวกรองของ URL (§2.3) + มุมมองที่บันทึกไว้ (MemberSavedView objectKey "deal") → where เดียว — ขอบเขตผ่าน dealWhere เสมอ */
-async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Promise<Prisma.CrmDealWhereInput> {
+/** ตัวกรองที่ใช้จริง = มุมมองที่บันทึก (ถ้ามี) ทับด้วยตัวกรองที่ส่งมา — ใช้ร่วมกันทั้ง where ของ Prisma และ SQL (C5.1-fix) */
+async function effectiveListInput(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Promise<DealListInput> {
   let input: DealListInput = { ...(raw ?? {}) };
   const viewId = str(raw?.savedViewId);
   if (viewId) {
@@ -1614,7 +1618,12 @@ async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Pro
     const explicit = Object.fromEntries(Object.entries(raw ?? {}).filter(([, v]) => v !== undefined && v !== null && v !== "")) as DealListInput;
     input = { ...fromView, ...explicit };
   }
-  const AND: Prisma.CrmDealWhereInput[] = [await dealWhere(ctx, a)];
+  return input;
+}
+
+/** `vis` = dealWhere ที่ผู้เรียกคำนวณไว้แล้ว — ไม่ส่ง = คำนวณเอง */
+async function listWhereFrom(ctx: DealsCtx, a: MemberActor, input: DealListInput, vis?: Prisma.CrmDealWhereInput): Promise<Prisma.CrmDealWhereInput> {
+  const AND: Prisma.CrmDealWhereInput[] = [vis ?? (await dealWhere(ctx, a))];
   const pipelineId = str(input.pipelineId);
   if (pipelineId) AND.push({ pipelineId });
   const owner = str(input.owner);
@@ -1637,8 +1646,8 @@ async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Pro
   if (companyId) AND.push({ companyId });
   const contactId = str(input.contactId);
   if (contactId) AND.push({ contactId });
-  if (isObj(input.f) && Object.keys(input.f).length > 0) {
-    const f = Object.fromEntries(Object.entries(input.f).filter(([, v]) => typeof v === "string" && v !== "")) as Record<string, string>;
+  {
+    const f = listFieldFilters(input);
     if (Object.keys(f).length > 0) {
       try {
         AND.push((await (await engine()).fieldFilterWhere({ ...fctx(ctx, a), objectKey: "deal" }, f)) as Prisma.CrmDealWhereInput);
@@ -1650,13 +1659,72 @@ async function listWhere(ctx: DealsCtx, a: MemberActor, raw: DealListInput): Pro
   return { AND };
 }
 
+/** ตัวกรองฟิลด์ `f.<key>` ที่เป็นข้อความไม่ว่าง */
+function listFieldFilters(input: DealListInput): Record<string, string> {
+  return isObj(input.f) ? (Object.fromEntries(Object.entries(input.f).filter(([, v]) => typeof v === "string" && v !== "")) as Record<string, string>) : {};
+}
+
+const tsSql = (d: Date): Prisma.Sql => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
+// CRM C5.1-fix ▸ F1/F3: where เดียวกับ listWhere ในรูป SQL ของแถว alias (การมองเห็น = dealSql · ตัวกรองฟิลด์ = EXISTS) —
+//   กระดาน/พยากรณ์ใช้ทุกครั้ง · รายการ/ส่งออก/ตรวจมุมมองใช้เมื่อมีตัวกรองฟิลด์ · เทียบผลกับ Prisma: qc-crm-c51fix-equiv ◂
+/** `vis` = การมองเห็นที่ผู้เรียกคำนวณไว้แล้ว (alias เดียวกัน) — ไม่ส่ง = คำนวณเอง */
+async function listSqlWhere(ctx: DealsCtx, a: MemberActor, input: DealListInput, d = "d", vis?: Prisma.Sql): Promise<Prisma.Sql> {
+  const A = Prisma.raw(d);
+  const AND: Prisma.Sql[] = [vis ?? (await visibleDealSql(ctx, a, d))];
+  const pipelineId = str(input.pipelineId);
+  if (pipelineId) AND.push(Prisma.sql`${A}."pipelineId" = ${pipelineId}`);
+  const owner = str(input.owner);
+  if (owner) AND.push(owner === "none" ? Prisma.sql`${A}."ownerUserId" IS NULL` : Prisma.sql`${A}."ownerUserId" = ${owner}`);
+  const team = str(input.team);
+  if (team) AND.push(team === "none" ? Prisma.sql`${A}."teamId" IS NULL` : Prisma.sql`${A}."teamId" = ${team}`);
+  const stage = str(input.stage);
+  if (stage) AND.push(Prisma.sql`${A}."stageId" = ${stage}`);
+  const kind = str(input.kind);
+  if (kind && ["OPEN", "WON", "LOST"].includes(kind)) AND.push(enumEqSql(d, "kind", "CrmStageKind", kind));
+  const from = input.closeFrom ? cleanClose(input.closeFrom) : null;
+  const to = input.closeTo ? cleanClose(input.closeTo) : null;
+  if (from) AND.push(Prisma.sql`${A}."expectedCloseAt" >= ${tsSql(from)}`);
+  if (to) AND.push(Prisma.sql`${A}."expectedCloseAt" <= ${tsSql(to)}`);
+  if (input.stale === true) AND.push(Prisma.sql`${A}."stalledAt" IS NOT NULL`);
+  const tag = str(input.tag);
+  if (tag) AND.push(Prisma.sql`${A}."tags" @> ARRAY[${tag}]::text[]`);
+  const q = str(input.q)?.slice(0, 100);
+  if (q) AND.push(containsSql(d, "title", q, true));
+  const companyId = str(input.companyId);
+  if (companyId) AND.push(Prisma.sql`${A}."companyId" = ${companyId}`);
+  const contactId = str(input.contactId);
+  if (contactId) AND.push(Prisma.sql`${A}."contactId" = ${contactId}`);
+  const f = listFieldFilters(input);
+  if (Object.keys(f).length > 0) {
+    try {
+      AND.push(await (await engine()).fieldFilterSql({ ...fctx(ctx, a), objectKey: "deal" }, f, d));
+    } catch (e) {
+      throw mapError(e);
+    }
+  }
+  return andSql(AND);
+}
+
+/** id ของหน้า (ทาง SQL) — ลำดับ/cursor แบบ Prisma (list-sql.ts) */
+async function pageIdsSql(where: Prisma.Sql, orderBy: readonly Record<string, unknown>[], take: number, cursor: string | null): Promise<string[]> {
+  const sort = sqlSortOf(orderBy);
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT d."id" FROM "CrmDeal" d
+     WHERE ${where} ${cursor ? Prisma.sql`AND ${cursorSql("d", "CrmDeal", sort, cursor)}` : Prisma.empty}
+     ORDER BY ${orderBySql("d", sort)} LIMIT ${take} OFFSET ${cursor ? 1 : 0}`;
+  return rows.map((r) => r.id);
+}
+
 type CardRow = Prisma.CrmDealGetPayload<{ include: { contact: { select: { name: true; score: true } }; stage: { select: { name: true; probability: true } } } }>;
 
 async function userNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
   if (uniq.length === 0) return new Map();
-  const rows = await prisma.membership.findMany({ where: { tenantId: ctx.tenantId, userId: { in: uniq } }, select: { user: { select: { id: true, name: true, email: true } } } });
-  return new Map(rows.map((r) => [r.user.id, r.user.name ?? r.user.email ?? "ผู้ใช้"]));
+  // CRM C5.1-fix ▸ ถาม User ตรง + กรอง "เป็นสมาชิกร้านนี้" ด้วย relation filter = 1 คำสั่ง (เดิม Membership + include User = 2) ·
+  //   ชุดผลเท่าเดิม (Membership @@unique[userId, tenantId] ⇒ 1 คน 1 แถวต่อร้าน — วิธีเดียวกับ account/attachment.ts) ◂
+  const rows = await prisma.user.findMany({ where: { id: { in: uniq }, memberships: { some: { tenantId: ctx.tenantId } } }, select: { id: true, name: true, email: true } });
+  return new Map(rows.map((r) => [r.id, r.name ?? r.email ?? "ผู้ใช้"]));
 }
 
 async function companyNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
@@ -1696,243 +1764,304 @@ const CARD_INCLUDE = { contact: { select: { name: true, score: true } }, stage: 
 /** ตรวจว่าตัวกรองชุดนี้ใช้กับรายการดีลได้ (อ่าน 1 id · ไม่เติมชื่อผู้ติดต่อ/บริษัท) */
 export async function probeDealFilters(ctx: DealsCtx, actor: MemberActor, input: DealListInput): Promise<void> {
   const a = await enter(ctx, actor);
-  await prisma.crmDeal.findFirst({ where: await listWhere(ctx, a, input ?? {}), select: { id: true } });
+  const eff = await effectiveListInput(ctx, a, input ?? {});
+  // CRM C5.1-fix ▸ มีตัวกรองฟิลด์ = ตรวจด้วย SQL (ไม่มีรายการ id) ◂
+  if (Object.keys(listFieldFilters(eff)).length > 0) {
+    await prisma.$queryRaw`SELECT d."id" FROM "CrmDeal" d WHERE ${await listSqlWhere(ctx, a, eff)} LIMIT 1`;
+    return;
+  }
+  await prisma.crmDeal.findFirst({ where: await listWhereFrom(ctx, a, eff), select: { id: true } });
 }
 
 /** รายการดีล (ตาราง) — ตัวกรอง §2.3 · มุมมองที่บันทึก · เรียง · cursor (id) */
 export async function listDeals(ctx: DealsCtx, actor: MemberActor, input: DealListInput = {}): Promise<DealListResult> {
-  const a = await enter(ctx, actor);
-  const where = await listWhere(ctx, a, input ?? {});
-  // (อ่านผ่าน dealWhere — ประกอบใน listWhere)
-  const pageSize = Math.min(DEAL_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
-  const sortKey = input?.sort;
-  const orderBy = typeof sortKey === "string" && (DEAL_SORTS as readonly string[]).includes(sortKey) ? SORTS[sortKey as DealSort] : SORTS["-createdAt"];
-  const cursor = str(input?.cursor);
-  const rows = await prisma.crmDeal.findMany({
-    where: { AND: [where, await dealWhere(ctx, a)] },
-    include: CARD_INCLUDE,
-    orderBy,
-    take: pageSize + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  return crmScope(async () => {
+    const a = await enter(ctx, actor);
+    const eff = await effectiveListInput(ctx, a, input ?? {});
+    const pageSize = Math.min(DEAL_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
+    const sortKey = input?.sort;
+    const orderBy = typeof sortKey === "string" && (DEAL_SORTS as readonly string[]).includes(sortKey) ? SORTS[sortKey as DealSort] : SORTS["-createdAt"];
+    const cursor = str(input?.cursor);
+    // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = id ของหน้าด้วย SQL แล้วอ่านการ์ดด้วย Prisma · ไม่มี = ทาง Prisma เดิม ·
+    //   F3: listWhere มี dealWhere อยู่แล้ว — ไม่ AND ซ้ำ (เดิมสร้างภาพการมองเห็นสองรอบ · ผลเท่าเดิม) ◂
+    let rows: CardRow[];
+    if (Object.keys(listFieldFilters(eff)).length > 0) {
+      const ids = await pageIdsSql(await listSqlWhere(ctx, a, eff, "d", await visibleDealSql(ctx, a, "d")), orderBy as Record<string, unknown>[], pageSize + 1, cursor);
+      rows = ids.length ? inOrder(ids, await prisma.crmDeal.findMany({ where: { id: { in: ids } }, include: CARD_INCLUDE })) : [];
+    } else {
+      rows = await prisma.crmDeal.findMany({
+        where: await listWhereFrom(ctx, a, eff, await dealWhere(ctx, a)),
+        include: CARD_INCLUDE,
+        orderBy,
+        take: pageSize + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+    }
+    const more = rows.length > pageSize;
+    const page = more ? rows.slice(0, pageSize) : rows;
+    const cards = await toCards(ctx, page);
+    const items: DealListRow[] = cards.map((c, i) => ({ ...c, pipelineId: page[i]!.pipelineId, stageName: page[i]!.stage?.name ?? "", forecastCategory: page[i]!.forecastCategory as ForecastCategory }));
+    return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
   });
-  const more = rows.length > pageSize;
-  const page = more ? rows.slice(0, pageSize) : rows;
-  const cards = await toCards(ctx, page);
-  const items: DealListRow[] = cards.map((c, i) => ({ ...c, pipelineId: page[i]!.pipelineId, stageName: page[i]!.stage?.name ?? "", forecastCategory: page[i]!.forecastCategory as ForecastCategory }));
-  return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
 }
 
-/** id ของดีลในขอบเขตที่ actor เห็น + ตัวกรอง (where ของ Prisma ผ่าน dealWhere) — ยอดเงินรวมทำใน SQL ต่อจากนี้ (R-E.8) */
-async function scopedDealIds(where: Prisma.CrmDealWhereInput): Promise<string[]> {
-  return (await prisma.crmDeal.findMany({ where, select: { id: true } })).map((r) => r.id);
-}
+type BoardCardSqlRow = {
+  id: string; title: string; companyId: string | null; contactName: string | null; contactScore: number | null; valueSatang: number;
+  ownerUserId: string | null; expectedCloseAt: Date | null; stalledAt: Date | null; nextActivityAt: Date | null; nextStep: string | null;
+  kind: string; stageId: string; probabilityOverride: number | null; stageName: string | null; stageProbability: number | null; tags: string[];
+};
 
 /**
  * กระดาน: หนึ่งคอลัมน์ต่อขั้น (เรียง sortOrder) · จำนวน/ยอดรวม/ยอดถ่วงน้ำหนักต่อคอลัมน์รวมใน SQL (groupBy) · การ์ดต่อคอลัมน์ ≤ DEAL_BOARD_CARDS_MAX
  * ถ่วงน้ำหนัก = เฉพาะดีลเปิด · หมวด OMITTED ไม่นับ · (probabilityOverride ?? stage.probability)
+ * CRM C5.1-fix ▸ F3: เดิม = คิวรีต่อขั้น ×3 (Prisma แตก include) + ดึง id ดีลทั้งกระดานไปกลับ + ภาพการมองเห็นสองรอบ ⇒ 25–33 คำสั่ง ·
+ *   ใหม่ = ผลรวม 1 คำสั่ง + การ์ดทุกคอลัมน์ 1 คำสั่ง (row_number ต่อขั้น · join ผู้ติดต่อ/ขั้นในคำสั่งเดียว) · where = listSqlWhere
+ *   (การมองเห็น dealSql + ตัวกรองเดิมทุกตัว) · ลำดับการ์ดเดิม (stageEnteredAt desc, id desc) ◂
  */
 export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealListInput & { pipelineId?: string | null } = {}): Promise<BoardDto> {
-  const a = await enter(ctx, actor);
-  const pid =
-    str(input?.pipelineId) ??
-    (await prisma.crmPipeline.findFirst({ where: { ...identityScope(ctx), archivedAt: null }, orderBy: [{ isDefault: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } }))?.id;
-  const pipe = await loadPipeline(ctx, pid);
-  const where: Prisma.CrmDealWhereInput = { AND: [await dealWhere(ctx, a), await listWhere(ctx, a, { ...(input ?? {}), pipelineId: pipe.id, stage: null }), { pipelineId: pipe.id }] };
-  // R-E.8 (รีวิว C1.5): จำนวน/ยอด/ถ่วงน้ำหนักต่อคอลัมน์รวมใน SQL เป็น bigint (ยอดรวม > 2³¹ ไม่ล้น) — ขอบเขตจาก dealWhere
-  const ids = await scopedDealIds(where);
-  const agg = ids.length
-    ? await prisma.$queryRaw<{ stageId: string; n: number; sum: bigint; weighted: bigint }[]>`
+  return crmScope(async () => {
+    const a = await enter(ctx, actor);
+    const pid =
+      str(input?.pipelineId) ??
+      (await prisma.crmPipeline.findFirst({ where: { ...identityScope(ctx), archivedAt: null }, orderBy: [{ isDefault: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } }))?.id;
+    const pipe = await loadPipeline(ctx, pid);
+    const eff = await effectiveListInput(ctx, a, { ...(input ?? {}), pipelineId: pipe.id, stage: null });
+    // เดิม: AND[dealWhere, listWhere({ ...input, pipelineId, stage: null }), { pipelineId }] — `stage: null` ที่ส่งตรงถูกตัดทิ้งตอนรวมกับ
+    //   มุมมองที่บันทึก (ค่าว่างไม่ทับ) ⇒ ขั้นของมุมมองยังมีผล · ใช้ตัวกรองที่รวมแล้วชุดเดียวกัน (ความหมายเท่าเดิม)
+    const where = Prisma.sql`${await listSqlWhere(ctx, a, eff, "d", await visibleDealSql(ctx, a, "d"))} AND d."pipelineId" = ${pipe.id}`;
+    const stageIds = pipe.stages.map((s) => s.id);
+    // R-E.8 (รีวิว C1.5): จำนวน/ยอด/ถ่วงน้ำหนักต่อคอลัมน์รวมใน SQL เป็น bigint (ยอดรวม > 2³¹ ไม่ล้น) — ขอบเขตจาก dealSql
+    const [agg, cardRows] = await Promise.all([
+      prisma.$queryRaw<{ stageId: string; n: number; sum: bigint; weighted: bigint }[]>`
         SELECT d."stageId" AS "stageId", count(*)::int AS "n",
                COALESCE(sum(d."valueSatang"), 0)::bigint AS "sum",
                COALESCE(sum(CASE WHEN d."kind" = 'OPEN' AND d."forecastCategory" <> 'OMITTED'
                                  THEN round(d."valueSatang"::numeric * COALESCE(d."probabilityOverride", s."probability") / 100) ELSE 0 END), 0)::bigint AS "weighted"
           FROM "CrmDeal" d JOIN "CrmStage" s ON s."id" = d."stageId"
-         WHERE d."id" = ANY(${ids}::text[]) AND d."tenantId" = ${ctx.tenantId} AND d."systemId" = ${ctx.systemId}
-         GROUP BY d."stageId"`
-    : [];
-  const aggBy = new Map(agg.map((g) => [g.stageId, g]));
-  const cardsByStage = await Promise.all(
-    pipe.stages.map((s) => prisma.crmDeal.findMany({ where: { AND: [where, { stageId: s.id }] }, include: CARD_INCLUDE, orderBy: [{ stageEnteredAt: "desc" }, { id: "desc" }], take: DEAL_BOARD_CARDS_MAX })),
-  );
-  const cards = await toCards(ctx, cardsByStage.flat());
-  const byId = new Map(cards.map((c) => [c.id, c]));
-  const columns: BoardColumnDto[] = pipe.stages.map((s, i) => {
-    const g = aggBy.get(s.id);
-    const count = g?.n ?? 0;
-    const sumSatang = Number(g?.sum ?? 0);
-    const weightedSatang = Number(g?.weighted ?? 0);
-    return {
-      stageId: s.id,
-      name: s.name,
-      kind: s.kind as DealKind,
-      probability: s.probability,
-      count,
-      sumSatang,
-      weightedSatang,
-      cards: (cardsByStage[i] ?? []).map((r) => byId.get(r.id)).filter((x): x is DealCardDto => !!x),
-    };
+         WHERE ${where}
+         GROUP BY d."stageId"`,
+      stageIds.length
+        ? prisma.$queryRaw<BoardCardSqlRow[]>`
+            WITH ranked AS (
+              SELECT d."id", row_number() OVER (PARTITION BY d."stageId" ORDER BY d."stageEnteredAt" DESC, d."id" DESC) AS "rn"
+                FROM "CrmDeal" d
+               WHERE ${where} AND d."stageId" = ANY(${stageIds}::text[])
+            )
+            SELECT d."id", d."title", d."companyId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
+                   d."ownerUserId", d."expectedCloseAt", d."stalledAt", d."nextActivityAt", d."nextStep", d."kind"::text AS "kind",
+                   d."stageId", d."probabilityOverride", st."name" AS "stageName", st."probability" AS "stageProbability", d."tags"
+              FROM ranked r
+              JOIN "CrmDeal" d ON d."id" = r."id"
+              LEFT JOIN "CrmContact" c ON c."id" = d."contactId"
+              LEFT JOIN "CrmStage" st ON st."id" = d."stageId"
+             WHERE r."rn" <= ${DEAL_BOARD_CARDS_MAX}
+             ORDER BY d."stageId", d."stageEnteredAt" DESC, d."id" DESC`
+        : Promise.resolve([] as BoardCardSqlRow[]),
+    ]);
+    const aggBy = new Map(agg.map((g) => [g.stageId, g]));
+    // แถว SQL → รูปเดียวกับ CardRow ที่ toCards อ่าน (contact/stage = relation ที่ include เดิมเลือกไว้)
+    const asCard = (r: BoardCardSqlRow) =>
+      ({
+        ...r,
+        contact: r.contactName === null ? null : { name: r.contactName, score: r.contactScore ?? 0 },
+        stage: r.stageName === null ? null : { name: r.stageName, probability: r.stageProbability ?? 0 },
+      }) as unknown as CardRow;
+    const cards = await toCards(ctx, cardRows.map(asCard));
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    const byStage = new Map<string, DealCardDto[]>();
+    for (const r of cardRows) {
+      const c = byId.get(r.id);
+      if (c) byStage.set(r.stageId, [...(byStage.get(r.stageId) ?? []), c]);
+    }
+    const columns: BoardColumnDto[] = pipe.stages.map((s) => {
+      const g = aggBy.get(s.id);
+      const count = g?.n ?? 0;
+      const sumSatang = Number(g?.sum ?? 0);
+      const weightedSatang = Number(g?.weighted ?? 0);
+      return {
+        stageId: s.id,
+        name: s.name,
+        kind: s.kind as DealKind,
+        probability: s.probability,
+        count,
+        sumSatang,
+        weightedSatang,
+        cards: byStage.get(s.id) ?? [],
+      };
+    });
+    return { pipeline: pipelineDto(pipe), columns };
   });
-  return { pipeline: pipelineDto(pipe), columns };
 }
 
 /**
  * พยากรณ์ (R-E.8 ยอดรวมใน SQL): เฉพาะดีลเปิด · OMITTED ไม่นับ · ถ่วงน้ำหนัก = value × (probabilityOverride ?? stage.probability) / 100 ·
  * groupBy month = "YYYY-MM" ของวันที่คาดว่าจะปิด (วันไทยเก็บเป็นเที่ยงคืน UTC — 31 ต.ค. ไม่ไหลไปเดือนอื่น) · ไม่มีวันที่ = กลุ่ม "none"
+ * CRM C5.1-fix ▸ เดิมดึง id ดีลที่เห็นทั้งหมดไปกลับ (`= ANY($ids)`) — ใหม่ = เงื่อนไขการมองเห็น (dealSql) อยู่ในคำสั่งผลรวมเลย ◂
  */
 export async function forecast(ctx: DealsCtx, actor: MemberActor, input: { pipelineId?: string | null; groupBy?: string | null; category?: string | null; from?: string | null; to?: string | null } = {}): Promise<ForecastResult> {
-  const a = await enter(ctx, actor);
-  const groupBy: ForecastGroup = (FORECAST_GROUPS as readonly string[]).includes(String(input?.groupBy)) ? (input.groupBy as ForecastGroup) : "month";
-  const AND: Prisma.CrmDealWhereInput[] = [await dealWhere(ctx, a), { kind: "OPEN" }, { forecastCategory: { not: "OMITTED" } }];
-  const pid = str(input?.pipelineId);
-  if (pid) {
-    await loadPipeline(ctx, pid);
-    AND.push({ pipelineId: pid });
-  }
-  if (input?.category) AND.push({ forecastCategory: cleanCategory(input.category) });
-  const from = input?.from ? cleanClose(input.from) : null;
-  const to = input?.to ? cleanClose(input.to) : null;
-  if (from || to) AND.push({ expectedCloseAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } });
-  const where: Prisma.CrmDealWhereInput = { AND };
-  // R-E.8 (รีวิว C1.5): รวมต่อ "ถัง" ที่ขอใน SQL (bigint) · ถังเลือกจากรายการตายตัว (ไม่มีค่าจากผู้ใช้แทรกลงคำสั่ง) · ขอบเขตจาก dealWhere
-  const bucket =
-    groupBy === "month" ? Prisma.sql`COALESCE(to_char(d."expectedCloseAt", 'YYYY-MM'), ${FORECAST_NONE_KEY})`
-      : groupBy === "owner" ? Prisma.sql`COALESCE(d."ownerUserId", ${FORECAST_NONE_KEY})`
-        : Prisma.sql`COALESCE(d."teamId", ${FORECAST_NONE_KEY})`;
-  const ids = await scopedDealIds(where);
-  const agg = ids.length
-    ? await prisma.$queryRaw<{ key: string; n: number; value: bigint; weighted: bigint }[]>`
-        SELECT ${bucket} AS "key", count(*)::int AS "n",
-               COALESCE(sum(d."valueSatang"), 0)::bigint AS "value",
-               COALESCE(sum(round(d."valueSatang"::numeric * COALESCE(d."probabilityOverride", s."probability") / 100)), 0)::bigint AS "weighted"
-          FROM "CrmDeal" d JOIN "CrmStage" s ON s."id" = d."stageId"
-         WHERE d."id" = ANY(${ids}::text[]) AND d."tenantId" = ${ctx.tenantId} AND d."systemId" = ${ctx.systemId}
-         GROUP BY 1`
-    : [];
-  const acc = new Map<string, { valueSatang: number; weightedSatang: number; count: number }>(agg.map((g) => [g.key, { valueSatang: Number(g.value), weightedSatang: Number(g.weighted), count: g.n }]));
-  const keys = [...acc.keys()];
-  let labels = new Map<string, string>();
-  if (groupBy === "owner") labels = await userNames(ctx, keys);
-  if (groupBy === "team") {
-    const teams = await prisma.team.findMany({ where: { tenantId: ctx.tenantId, id: { in: keys.filter((k) => k !== FORECAST_NONE_KEY) } }, select: { id: true, name: true } });
-    labels = new Map(teams.map((t) => [t.id, t.name]));
-  }
-  const rows: ForecastRow[] = keys
-    .map((key) => ({
-      key,
-      label:
-        groupBy === "month" ? formatThaiMonth(key)
-          : key === FORECAST_NONE_KEY ? (groupBy === "owner" ? "ยังไม่มีผู้ดูแล" : "ไม่มีทีม")
-            : (labels.get(key) ?? "ไม่ทราบชื่อ"),
-      ...acc.get(key)!,
-    }))
-    .sort((x, y) => (x.key === FORECAST_NONE_KEY ? 1 : y.key === FORECAST_NONE_KEY ? -1 : x.key.localeCompare(y.key)));
-  return { groupBy, rows };
+  return crmScope(async () => {
+    const a = await enter(ctx, actor);
+    const groupBy: ForecastGroup = (FORECAST_GROUPS as readonly string[]).includes(String(input?.groupBy)) ? (input.groupBy as ForecastGroup) : "month";
+    const AND: Prisma.Sql[] = [await visibleDealSql(ctx, a, "d"), Prisma.sql`d."kind" = 'OPEN'`, Prisma.sql`d."forecastCategory" <> 'OMITTED'`];
+    const pid = str(input?.pipelineId);
+    if (pid) {
+      await loadPipeline(ctx, pid);
+      AND.push(Prisma.sql`d."pipelineId" = ${pid}`);
+    }
+    if (input?.category) AND.push(enumEqSql("d", "forecastCategory", "CrmForecastCategory", cleanCategory(input.category)));
+    const from = input?.from ? cleanClose(input.from) : null;
+    const to = input?.to ? cleanClose(input.to) : null;
+    if (from) AND.push(Prisma.sql`d."expectedCloseAt" >= ${tsSql(from)}`);
+    if (to) AND.push(Prisma.sql`d."expectedCloseAt" <= ${tsSql(to)}`);
+    // R-E.8 (รีวิว C1.5): รวมต่อ "ถัง" ที่ขอใน SQL (bigint) · ถังเลือกจากรายการตายตัว (ไม่มีค่าจากผู้ใช้แทรกลงคำสั่ง) · ขอบเขตจาก dealSql
+    const bucket =
+      groupBy === "month" ? Prisma.sql`COALESCE(to_char(d."expectedCloseAt", 'YYYY-MM'), ${FORECAST_NONE_KEY})`
+        : groupBy === "owner" ? Prisma.sql`COALESCE(d."ownerUserId", ${FORECAST_NONE_KEY})`
+          : Prisma.sql`COALESCE(d."teamId", ${FORECAST_NONE_KEY})`;
+    const agg = await prisma.$queryRaw<{ key: string; n: number; value: bigint; weighted: bigint }[]>`
+      SELECT ${bucket} AS "key", count(*)::int AS "n",
+             COALESCE(sum(d."valueSatang"), 0)::bigint AS "value",
+             COALESCE(sum(round(d."valueSatang"::numeric * COALESCE(d."probabilityOverride", s."probability") / 100)), 0)::bigint AS "weighted"
+        FROM "CrmDeal" d JOIN "CrmStage" s ON s."id" = d."stageId"
+       WHERE ${andSql(AND)}
+       GROUP BY 1`;
+    const acc = new Map<string, { valueSatang: number; weightedSatang: number; count: number }>(agg.map((g) => [g.key, { valueSatang: Number(g.value), weightedSatang: Number(g.weighted), count: g.n }]));
+    const keys = [...acc.keys()];
+    let labels = new Map<string, string>();
+    if (groupBy === "owner") labels = await userNames(ctx, keys);
+    if (groupBy === "team") {
+      const teams = await prisma.team.findMany({ where: { tenantId: ctx.tenantId, id: { in: keys.filter((k) => k !== FORECAST_NONE_KEY) } }, select: { id: true, name: true } });
+      labels = new Map(teams.map((t) => [t.id, t.name]));
+    }
+    const rows: ForecastRow[] = keys
+      .map((key) => ({
+        key,
+        label:
+          groupBy === "month" ? formatThaiMonth(key)
+            : key === FORECAST_NONE_KEY ? (groupBy === "owner" ? "ยังไม่มีผู้ดูแล" : "ไม่มีทีม")
+              : (labels.get(key) ?? "ไม่ทราบชื่อ"),
+        ...acc.get(key)!,
+      }))
+      .sort((x, y) => (x.key === FORECAST_NONE_KEY ? 1 : y.key === FORECAST_NONE_KEY ? -1 : x.key.localeCompare(y.key)));
+    return { groupBy, rows };
+  });
 }
 
 /** ดีล 360 (ภาพ 03): หัว · stepper ขั้น · รายการ (+ป้ายราคาเปลี่ยน) · ประวัติขั้น · บริษัท · ผู้ติดต่อ · ผู้ร่วม · เอกสาร · ไทม์ไลน์ */
 export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string): Promise<Deal360 & { kanbanCards: DealKanbanCard[] } /* CRM C1.6 ▸ การ์ดบอร์ดงานของดีล ◂ */> {
-  const a = await enter(ctx, actor);
-  const did = str(id);
-  // AUDIT-CLASS X1: อ่านผ่าน dealWhere — ดีลของระบบ/ร้านอื่น = ไม่พบ (ข้อความไม่สะท้อนข้อมูลของเขา)
-  const deal = did ? await prisma.crmDeal.findFirst({ where: { AND: [await dealWhere(ctx, a), { id: did }] } }) : null;
-  if (!deal) throw fail("NOT_FOUND", NOT_FOUND_MSG);
-  const [pipe, lineRows, hist, contact, company, lostReason, acts] = await Promise.all([
-    loadPipeline(ctx, deal.pipelineId),
-    prisma.crmDealLine.findMany({ where: { dealId: deal.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
-    prisma.crmDealStageHistory.findMany({ where: { dealId: deal.id, tenantId: ctx.tenantId }, orderBy: [{ enteredAt: "desc" }, { id: "desc" }], take: 200 }),
-    prisma.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, a), { id: deal.contactId }] }, select: { id: true, name: true } }),
-    deal.companyId ? companies.companyRefsInTx(prisma, coCtx(ctx), a, [deal.companyId]).then((r) => r[0] ?? null) : Promise.resolve(null),
-    deal.lostReasonId ? prisma.crmLostReason.findFirst({ where: { ...identityScope(ctx), id: deal.lostReasonId }, select: { id: true, label: true } }) : Promise.resolve(null),
-    prisma.crmActivity.findMany({ where: { AND: [await activityWhere(ctx, a), { dealId: deal.id }] }, orderBy: [{ createdAt: "desc" }], take: 30, select: { id: true, type: true, title: true, createdAt: true, doneAt: true, dueAt: true } }),
-  ]);
-  const pids = lineRows.map((l) => l.productId).filter((x): x is string => !!x);
-  const prices = pids.length ? await inventoryItems(ctx, pids) : new Map<string, { priceSatang: number }>();
-  const lines: DealLineDto[] = lineRows.map((l) => {
-    const qty = l.qty.toNumber();
-    const cur = l.productId ? (prices.get(l.productId)?.priceSatang ?? null) : null;
+  return crmScope(async () => {
+    const a = await enter(ctx, actor);
+    const did = str(id);
+    // AUDIT-CLASS X1: อ่านผ่าน dealWhere — ดีลของระบบ/ร้านอื่น = ไม่พบ (ข้อความไม่สะท้อนข้อมูลของเขา)
+    const deal = did ? await prisma.crmDeal.findFirst({ where: { AND: [await dealWhere(ctx, a), { id: did }] } }) : null;
+    if (!deal) throw fail("NOT_FOUND", NOT_FOUND_MSG);
+    const [pipe, lineRows, hist, contact, company, lostReason, acts] = await Promise.all([
+      loadPipeline(ctx, deal.pipelineId),
+      prisma.crmDealLine.findMany({ where: { dealId: deal.id }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }),
+      prisma.crmDealStageHistory.findMany({ where: { dealId: deal.id, tenantId: ctx.tenantId }, orderBy: [{ enteredAt: "desc" }, { id: "desc" }], take: 200 }),
+      prisma.crmContact.findFirst({ where: { AND: [await contactWhere(ctx, a), { id: deal.contactId }] }, select: { id: true, name: true } }),
+      deal.companyId ? companies.companyRefsInTx(prisma, coCtx(ctx), a, [deal.companyId]).then((r) => r[0] ?? null) : Promise.resolve(null),
+      deal.lostReasonId ? prisma.crmLostReason.findFirst({ where: { ...identityScope(ctx), id: deal.lostReasonId }, select: { id: true, label: true } }) : Promise.resolve(null),
+      prisma.crmActivity.findMany({ where: { AND: [await activityWhere(ctx, a), { dealId: deal.id }] }, orderBy: [{ createdAt: "desc" }], take: 30, select: { id: true, type: true, title: true, createdAt: true, doneAt: true, dueAt: true } }),
+    ]);
+    const pids = lineRows.map((l) => l.productId).filter((x): x is string => !!x);
+    const prices = pids.length ? await inventoryItems(ctx, pids) : new Map<string, { priceSatang: number }>();
+    const lines: DealLineDto[] = lineRows.map((l) => {
+      const qty = l.qty.toNumber();
+      const cur = l.productId ? (prices.get(l.productId)?.priceSatang ?? null) : null;
+      return {
+        id: l.id,
+        productId: l.productId,
+        name: l.name,
+        qty,
+        unitPriceSatang: l.unitPriceSatang,
+        discountBp: l.discountBp,
+        vatRateBp: l.vatRateBp,
+        note: l.note,
+        amountSatang: lineAmountSatang({ qty, unitPriceSatang: l.unitPriceSatang, discountBp: l.discountBp }),
+        priceChanged: cur !== null && cur !== l.unitPriceSatang,
+        currentPriceSatang: cur,
+      };
+    });
+    const totals = dealTotals(lines, deal.discountBp);
+    const stageIds = [...new Set(hist.flatMap((h) => [h.fromStageId, h.toStageId]).filter((x): x is string => !!x))];
+    const allStages = stageIds.length ? await prisma.crmStage.findMany({ where: { ...identityScope(ctx), id: { in: stageIds } }, select: { id: true, name: true } }) : [];
+    const stageName = new Map(allStages.map((s) => [s.id, s.name]));
+    const people = await userNames(ctx, [deal.ownerUserId, ...deal.collaboratorUserIds, ...hist.map((h) => h.byUserId)]);
+    const history: DealHistoryRow[] = hist.map((h) => ({
+      id: h.id,
+      fromStageId: h.fromStageId,
+      fromStageName: h.fromStageId ? (stageName.get(h.fromStageId) ?? "ขั้นที่ถูกลบ") : null,
+      toStageId: h.toStageId,
+      toStageName: stageName.get(h.toStageId) ?? "ขั้นที่ถูกลบ",
+      byUserId: h.byUserId,
+      byName: h.byUserId ? (people.get(h.byUserId) ?? null) : h.bySource === "MANUAL" ? null : "ระบบ",
+      bySource: h.bySource,
+      enteredAt: h.enteredAt.toISOString(),
+      leftAt: iso(h.leftAt),
+      durationSec: h.durationSec,
+      note: h.note,
+    }));
+    const acc = await accountFacade();
+    const docIds = [deal.quotationDocId, deal.invoiceDocId].filter((x): x is string => !!x);
+    const docs: DealDocRow[] = [];
+    for (const d of docIds) {
+      const info = await acc.docLinkInfo(ctx.tenantId, d).catch(() => null);
+      if (info) docs.push({ id: info.docId, docType: info.docType, docNo: info.docNo, status: info.status, grandTotal: info.grandTotal, paidTotal: info.paidTotal });
+    }
+    const quotationDiffers = await quotationDiffersFor(ctx, deal, lines);
+    // CRM C2.7 ▸ ธง "เอกสารบัญชีของดีลนี้ถูกยกเลิก" = แท็กของดีล (ไม่มีคอลัมน์ · R-C.1) ◂
+    const documentVoided = deal.tags.includes(DEAL_VOIDED_TAG);
+    const timeline: DealTimelineItem[] = [
+      ...history.map((h) => ({ at: h.enteredAt, kind: (h.fromStageId ? "STAGE" : "CREATED") as DealTimelineItem["kind"], title: h.fromStageId ? `ย้ายขั้น ${h.fromStageName} → ${h.toStageName}` : `สร้างดีลที่ขั้น ${h.toStageName}`, detail: h.byName })),
+      ...acts.map((x) => ({ at: x.createdAt.toISOString(), kind: "ACTIVITY" as const, title: x.title, detail: x.doneAt ? "เสร็จแล้ว" : x.dueAt ? "ค้างอยู่" : null })),
+      ...docs.map((d) => ({ at: deal.updatedAt.toISOString(), kind: "DOC" as const, title: `${d.docType === "QUOTATION" ? "ใบเสนอราคา" : d.docType === "INVOICE" ? "ใบแจ้งหนี้" : "เอกสาร"} ${d.docNo ?? "(ร่าง)"}`, detail: null })),
+    ].sort((x, y) => y.at.localeCompare(x.at));
+    const pending = isObj(deal.pendingLines) && Array.isArray(deal.pendingLines.lines) ? (deal.pendingLines.lines as DealLineInput[]) : null;
     return {
-      id: l.id,
-      productId: l.productId,
-      name: l.name,
-      qty,
-      unitPriceSatang: l.unitPriceSatang,
-      discountBp: l.discountBp,
-      vatRateBp: l.vatRateBp,
-      note: l.note,
-      amountSatang: lineAmountSatang({ qty, unitPriceSatang: l.unitPriceSatang, discountBp: l.discountBp }),
-      priceChanged: cur !== null && cur !== l.unitPriceSatang,
-      currentPriceSatang: cur,
+      deal: toDto(deal),
+      pipeline: { id: pipe.id, name: pipe.name },
+      stages: pipe.stages.map((s) => ({ ...stageDto(s), current: s.id === deal.stageId })),
+      lines,
+      pendingLines: pending,
+      subtotalSatang: totals.subtotalSatang,
+      discountSatang: totals.discountSatang,
+      history,
+      company: company ? { id: company.id, name: company.name } : null,
+      contact: { id: deal.contactId, name: contact?.name ?? "ผู้ติดต่อที่มองไม่เห็น" },
+      owner: deal.ownerUserId ? { id: deal.ownerUserId, name: people.get(deal.ownerUserId) ?? "ผู้ใช้" } : null,
+      collaborators: deal.collaboratorUserIds.map((u) => ({ id: u, name: people.get(u) ?? "ผู้ใช้" })),
+      lostReason: lostReason ? { id: lostReason.id, label: lostReason.label } : null,
+      docs,
+      timeline,
+      quotationDiffers,
+      documentVoided,
+      // CRM C2.7 ▸ เงินที่รับจริงของดีล (คอลัมน์ `paidSatang` ที่ `payments.ts` บวก/ลบให้ในธุรกรรมของการรับเงิน) ◂
+      paidSatang: Number(deal.paidSatang ?? 0),
+      daysInStage: Math.max(0, Math.floor((Date.now() - deal.stageEnteredAt.getTime()) / 86_400_000)),
+      // CRM C1.6 ▸ การ์ดบอร์ดงานที่ผูกดีลนี้ (ลิงก์ DEAL · อ่านผ่าน kanban/links.listCardsForTarget — กรองบอร์ดที่ผู้ดูเห็นเอง) · มติผู้คุมงาน C1.6 ข้อ 2
+      kanbanCards: await dealKanbanCards(ctx, a, deal.id),
+      // ◂ CRM C1.6
     };
   });
-  const totals = dealTotals(lines, deal.discountBp);
-  const stageIds = [...new Set(hist.flatMap((h) => [h.fromStageId, h.toStageId]).filter((x): x is string => !!x))];
-  const allStages = stageIds.length ? await prisma.crmStage.findMany({ where: { ...identityScope(ctx), id: { in: stageIds } }, select: { id: true, name: true } }) : [];
-  const stageName = new Map(allStages.map((s) => [s.id, s.name]));
-  const people = await userNames(ctx, [deal.ownerUserId, ...deal.collaboratorUserIds, ...hist.map((h) => h.byUserId)]);
-  const history: DealHistoryRow[] = hist.map((h) => ({
-    id: h.id,
-    fromStageId: h.fromStageId,
-    fromStageName: h.fromStageId ? (stageName.get(h.fromStageId) ?? "ขั้นที่ถูกลบ") : null,
-    toStageId: h.toStageId,
-    toStageName: stageName.get(h.toStageId) ?? "ขั้นที่ถูกลบ",
-    byUserId: h.byUserId,
-    byName: h.byUserId ? (people.get(h.byUserId) ?? null) : h.bySource === "MANUAL" ? null : "ระบบ",
-    bySource: h.bySource,
-    enteredAt: h.enteredAt.toISOString(),
-    leftAt: iso(h.leftAt),
-    durationSec: h.durationSec,
-    note: h.note,
-  }));
-  const acc = await accountFacade();
-  const docIds = [deal.quotationDocId, deal.invoiceDocId].filter((x): x is string => !!x);
-  const docs: DealDocRow[] = [];
-  for (const d of docIds) {
-    const info = await acc.docLinkInfo(ctx.tenantId, d).catch(() => null);
-    if (info) docs.push({ id: info.docId, docType: info.docType, docNo: info.docNo, status: info.status, grandTotal: info.grandTotal, paidTotal: info.paidTotal });
-  }
-  const quotationDiffers = await quotationDiffersFor(ctx, deal, lines);
-  // CRM C2.7 ▸ ธง "เอกสารบัญชีของดีลนี้ถูกยกเลิก" = แท็กของดีล (ไม่มีคอลัมน์ · R-C.1) ◂
-  const documentVoided = deal.tags.includes(DEAL_VOIDED_TAG);
-  const timeline: DealTimelineItem[] = [
-    ...history.map((h) => ({ at: h.enteredAt, kind: (h.fromStageId ? "STAGE" : "CREATED") as DealTimelineItem["kind"], title: h.fromStageId ? `ย้ายขั้น ${h.fromStageName} → ${h.toStageName}` : `สร้างดีลที่ขั้น ${h.toStageName}`, detail: h.byName })),
-    ...acts.map((x) => ({ at: x.createdAt.toISOString(), kind: "ACTIVITY" as const, title: x.title, detail: x.doneAt ? "เสร็จแล้ว" : x.dueAt ? "ค้างอยู่" : null })),
-    ...docs.map((d) => ({ at: deal.updatedAt.toISOString(), kind: "DOC" as const, title: `${d.docType === "QUOTATION" ? "ใบเสนอราคา" : d.docType === "INVOICE" ? "ใบแจ้งหนี้" : "เอกสาร"} ${d.docNo ?? "(ร่าง)"}`, detail: null })),
-  ].sort((x, y) => y.at.localeCompare(x.at));
-  const pending = isObj(deal.pendingLines) && Array.isArray(deal.pendingLines.lines) ? (deal.pendingLines.lines as DealLineInput[]) : null;
-  return {
-    deal: toDto(deal),
-    pipeline: { id: pipe.id, name: pipe.name },
-    stages: pipe.stages.map((s) => ({ ...stageDto(s), current: s.id === deal.stageId })),
-    lines,
-    pendingLines: pending,
-    subtotalSatang: totals.subtotalSatang,
-    discountSatang: totals.discountSatang,
-    history,
-    company: company ? { id: company.id, name: company.name } : null,
-    contact: { id: deal.contactId, name: contact?.name ?? "ผู้ติดต่อที่มองไม่เห็น" },
-    owner: deal.ownerUserId ? { id: deal.ownerUserId, name: people.get(deal.ownerUserId) ?? "ผู้ใช้" } : null,
-    collaborators: deal.collaboratorUserIds.map((u) => ({ id: u, name: people.get(u) ?? "ผู้ใช้" })),
-    lostReason: lostReason ? { id: lostReason.id, label: lostReason.label } : null,
-    docs,
-    timeline,
-    quotationDiffers,
-    documentVoided,
-    // CRM C2.7 ▸ เงินที่รับจริงของดีล (คอลัมน์ `paidSatang` ที่ `payments.ts` บวก/ลบให้ในธุรกรรมของการรับเงิน) ◂
-    paidSatang: Number(deal.paidSatang ?? 0),
-    daysInStage: Math.max(0, Math.floor((Date.now() - deal.stageEnteredAt.getTime()) / 86_400_000)),
-    // CRM C1.6 ▸ การ์ดบอร์ดงานที่ผูกดีลนี้ (ลิงก์ DEAL · อ่านผ่าน kanban/links.listCardsForTarget — กรองบอร์ดที่ผู้ดูเห็นเอง) · มติผู้คุมงาน C1.6 ข้อ 2
-    kanbanCards: await dealKanbanCards(ctx, a, deal.id),
-    // ◂ CRM C1.6
-  };
 }
 
 /** ส่งออก CSV (AUDIT-CLASS X6: ทุกบรรทัดผ่าน `csvRow` — เซลล์ขึ้นต้น = + - @ ถูกทำให้เป็นกลาง) · ≤ DEAL_EXPORT_MAX_ROWS */
 export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: DealListInput = {}): Promise<string> {
   const a = await enter(ctx, actor);
-  const where: Prisma.CrmDealWhereInput = { AND: [await dealWhere(ctx, a), await listWhere(ctx, a, { ...(filters ?? {}), cursor: null })] };
-  const total = await prisma.crmDeal.count({ where });
+  // CRM C5.1-fix ▸ F1/F3: listWhere มี dealWhere อยู่แล้ว (ไม่ AND ซ้ำ) · มีตัวกรองฟิลด์ = นับ/เลือก id ด้วย SQL (≤ 5,000 id) ◂
+  const eff = await effectiveListInput(ctx, a, { ...(filters ?? {}), cursor: null });
+  const sw = Object.keys(listFieldFilters(eff)).length > 0 ? await listSqlWhere(ctx, a, eff) : null;
+  const where: Prisma.CrmDealWhereInput = sw ? {} : await listWhereFrom(ctx, a, eff);
+  const total = sw ? ((await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS "n" FROM "CrmDeal" d WHERE ${sw}`)[0]?.n ?? 0) : await prisma.crmDeal.count({ where });
   if (total > DEAL_EXPORT_MAX_ROWS) throw fail("VALIDATION", `ผลลัพธ์มี ${total.toLocaleString("th-TH")} ดีล — ส่งออกได้ครั้งละไม่เกิน ${DEAL_EXPORT_MAX_ROWS.toLocaleString("th-TH")} ดีล กรองให้แคบลงก่อน`);
-  const rows = await prisma.crmDeal.findMany({ where, include: { contact: { select: { name: true } }, stage: { select: { name: true, probability: true } }, pipeline: { select: { name: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: DEAL_EXPORT_MAX_ROWS });
+  const include = { contact: { select: { name: true } }, stage: { select: { name: true, probability: true } }, pipeline: { select: { name: true } } } as const;
+  const rows = sw
+    ? await (async () => {
+        const ids = await pageIdsSql(sw, [{ createdAt: "asc" }, { id: "asc" }], DEAL_EXPORT_MAX_ROWS, null);
+        return ids.length ? inOrder(ids, await prisma.crmDeal.findMany({ where: { id: { in: ids } }, include })) : [];
+      })()
+    : await prisma.crmDeal.findMany({ where, include, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: DEAL_EXPORT_MAX_ROWS });
   const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
   const header = ["ชื่อดีล", "บริษัท", "ผู้ติดต่อ", "pipeline", "ขั้น", "สถานะ", "มูลค่า (บาท)", "หมวดพยากรณ์", "โอกาสปิด (%)", "วันที่คาดว่าจะปิด", "ผู้ดูแล", "แท็ก", "เพิ่มเมื่อ"];
   const out = [csvRow(header)];

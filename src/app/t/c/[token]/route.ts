@@ -26,13 +26,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const ip = ipOf(req);
     const allowed = await emails.trackGate("c", { ip, token: clean });
     const ua = req.headers.get("user-agent");
-    const { url } = await emails.trackClick(clean, { ip, ua }, { count: allowed });
+    const { url, ticket } = await emails.trackClick(clean, { ip, ua }, { count: allowed });
     if (!url) return home();
     // CRM C2.6 ▸ ตั๋วระบุตัวตน (`sd_ct`): คลิกที่ **นับจริง** ของจดหมายที่รู้ว่าเป็นของผู้ติดต่อคนไหน และปลายทางอยู่ใน
     //   โดเมนที่ร้านประกาศไว้เท่านั้น ⇒ หน้าที่ลูกค้าไปถึงผูกการเข้าชมย้อนหลังเข้ากับลูกค้าคนนั้นได้โดยไม่ต้องส่งอีเมล/เบอร์
     //   ผ่านหน้าเว็บเลย (AUDIT-CLASS X7 · X8) · ปลายทางยังเป็น url ที่เก็บไว้เสมอ (ต่อพารามิเตอร์ท้ายเท่านั้น)
     //   🔴 เป็น hunk เดียวที่ใบ C2.6 แตะ route ของใบ C2.5 (มติผู้คุมงาน 24 ก.ย. ข้อ 1) ◂
-    const target = await tracking.ticketedClickUrl(clean.split("~")[0] ?? "", url, { counted: allowed, userAgent: ua });
+    //   C5.1-fix ▸ F5: แถวอีเมล/ผู้ติดต่อ/ระบบที่คำสั่งนับอ่านมาแล้ว ส่งต่อให้ตัวทำตั๋ว (ไม่อ่านฐานซ้ำ — ทางร้อน 2 รอบไปกลับ) ◂
+    const target = await tracking.ticketedClickUrl(clean.split("~")[0] ?? "", url, { counted: allowed, userAgent: ua, pre: ticket ?? null });
     return new Response(null, { status: 302, headers: { Location: target, "Cache-Control": "no-store" } });
   } catch {
     return home();

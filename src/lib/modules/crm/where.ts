@@ -6,9 +6,9 @@
 //    ขอบเขต = ร้าน + ระบบ CRM เดียวกัน + การมองเห็น OWN/TEAM/ALL + คีย์อ่านของเอนทิตี (ไม่มีคีย์อ่าน = ไม่เห็นอะไร)
 // 🔴 ผู้เรียกต้อง resolve ctx.systemId ใหม่แล้ว (ระบบ CRM ของร้านนี้จริง) ก่อนเรียก
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { MemberActor } from "@/lib/modules/member";
-import { fileVisibleWhere, recordVisibleWhere, visibleWhere, type VisDb } from "./visibility";
+import { fileVisibleWhere, recordVisibleWhere, visibleSql, visibleWhere, type VisDb } from "./visibility";
 
 export type CrmScopeCtx = { tenantId: string; systemId: string };
 /** `db` = tx ของผู้เรียกที่ถือล็อกแถวอยู่ — คิวรีของการมองเห็นวิ่งบน tx นั้น (ไม่แย่ง connection ขณะถือล็อก) */
@@ -51,3 +51,31 @@ export async function recordWhere(ctx: CrmScopeCtx, actor: MemberActor, target: 
   return recordVisibleWhere(ctx, actor, target);
 }
 // ◂ CRM C1.6
+
+// CRM C5.1-fix ▸ เงื่อนไขเดียวกันในรูป SQL (visible*Sql) ของแถว alias ที่ระบุ (รายการ/กระดาน/ผลรวมที่ประกอบเป็นคำสั่ง SQL เดียว — ไม่มีรายการ id)
+/** AUDIT-CLASS X1: contactWhere ในรูป SQL */
+export async function visibleContactSql(ctx: CrmScopeCtx, actor: MemberActor, alias: string, opts: WhereOpts = {}): Promise<Prisma.Sql> {
+  return visibleSql(ctx, actor, "CONTACT", alias, opts);
+}
+/** AUDIT-CLASS X1: companyWhere ในรูป SQL */
+export async function visibleCompanySql(ctx: CrmScopeCtx, actor: MemberActor, alias: string, opts: WhereOpts = {}): Promise<Prisma.Sql> {
+  return visibleSql(ctx, actor, "COMPANY", alias, opts);
+}
+/** AUDIT-CLASS X1: dealWhere ในรูป SQL (policy ต่อ pipeline เหมือนกัน) */
+export async function visibleDealSql(ctx: CrmScopeCtx, actor: MemberActor, alias: string, opts: WhereOpts & { pipelineId?: string | null } = {}): Promise<Prisma.Sql> {
+  return visibleSql(ctx, actor, "DEAL", alias, opts);
+}
+/**
+ * AUDIT-CLASS X1: แถวจดหมาย (`CrmEmailMessage` alias) ที่ actor เห็นในกล่องปกติ — กติกาเดียวกับ `rowVisibleFilter` ของ getThread:
+ * ผูกผู้ติดต่อ = ตัดสินด้วยผู้ติดต่อ · ไม่ผูกผู้ติดต่อแต่ผูกบริษัท = ตัดสินด้วยบริษัท · ไม่ผูกทั้งคู่ = ไม่เห็น (EXISTS · ไม่มีรายการ id / เพดาน 20k — F2)
+ */
+export async function visibleEmailRowSql(ctx: CrmScopeCtx, actor: MemberActor, alias: string): Promise<Prisma.Sql> {
+  if (!/^[a-z][a-z0-9_]{0,15}$/.test(alias)) throw new Error("where: alias ไม่ถูกต้อง");
+  const m = Prisma.raw(alias);
+  const [cVis, coVis] = await Promise.all([visibleSql(ctx, actor, "CONTACT", "vc"), visibleSql(ctx, actor, "COMPANY", "vco")]);
+  return Prisma.sql`${m}."tenantId" = ${ctx.tenantId} AND ${m}."systemId" = ${ctx.systemId} AND (
+    (${m}."contactId" IS NOT NULL AND EXISTS (SELECT 1 FROM "CrmContact" vc WHERE vc."id" = ${m}."contactId" AND ${cVis}))
+    OR (${m}."contactId" IS NULL AND ${m}."companyId" IS NOT NULL AND EXISTS (SELECT 1 FROM "CrmCompany" vco WHERE vco."id" = ${m}."companyId" AND ${coVis}))
+  )`;
+}
+// ◂ CRM C5.1-fix

@@ -122,6 +122,15 @@ const REQUIRED_EVENTS: Record<string, string[]> = {
 const ARGV = process.argv.slice(2);
 const FORCE = ARGV.includes("--force-run");
 const read = (p: string) => (p && existsSync(p) ? readFileSync(p, "utf8") : "");
+// ORACLE-EDIT C3.6-S0.2 (C5.1-fix · controller-approved index-only migration): the perf-index migration `20261103000000_crm_perf_indexes`
+//   is allowlisted by exact name ONLY while every statement of its SQL is `CREATE INDEX IF NOT EXISTS "…" ON "…" [USING …] (…)`
+//   (comments stripped) — any other statement (table/column/constraint/data) ⇒ it counts as a new CRM migration again (still red)
+const C51_INDEX_MIG = "20261103000000_crm_perf_indexes";
+const c51IndexOnly = (d: string): boolean => {
+  if (d !== C51_INDEX_MIG) return false;
+  const stmts = read(join(MIG_DIR, d, "migration.sql")).replace(/--[^\n]*/g, "").split(";").map((x) => x.trim()).filter(Boolean);
+  return stmts.length > 0 && stmts.every((x) => /^CREATE\s+INDEX\s+IF\s+NOT\s+EXISTS\s+"[^"]+"\s+ON\s+"[^"]+"\s*(USING\s+\w+\s*)?\([^;]*\)$/i.test(x));
+};
 const walk = (dir: string): string[] => {
   if (!existsSync(dir)) return [];
   const out: string[] = [];
@@ -271,7 +280,7 @@ try {
     const idx = read(INDEX_FILE);
     const block = /CRM C3\.6 ▸[\s\S]*?◂/.exec(idx)?.[0] ?? "";
     const facadeOk = /export\s+\*\s+as\s+integrations\s+from\s+["']\.\/integrations["']/.test(block) && /export\s+\*\s+as\s+widgets\s+from\s+["']\.\/widgets["']/.test(block);
-    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => /crm/i.test(d) && d > C30_MIG) : [];
+    const migs = existsSync(MIG_DIR) ? readdirSync(MIG_DIR).filter((d) => /crm/i.test(d) && d > C30_MIG && !c51IndexOnly(d)) : [];
     chk("C3.6-S0.2", "widgets.ts exports myDeals · todayTasks · portalEntry · the PAGES registry carries S:CRM:my-deals · S:CRM:today-tasks · S:CRM:portal (type CRM, `data` = crm.*) · facade block `// CRM C3.6 ▸` exports the `integrations` and `widgets` namespaces (reachable at runtime) · NO migration after crm_v2_c (MemberSavedView.teamId came with crm_v2_a)",
       typeof myDealsF === "function" && typeof todayF === "function" && typeof portalF === "function" && regOk && facadeOk && typeof CRM?.integrations?.resolveCrmTargets === "function" && typeof CRM?.widgets?.myDeals === "function" && migs.length === 0,
       "3 fns · 3 keys · facade · no migration", `fns=${typeof myDealsF}/${typeof todayF}/${typeof portalF} registry=${w.map((d) => (d ? `${d.key}:${d.data ?? "-"}` : "∅")).join(",")} facade=${facadeOk} runtime=${typeof CRM?.integrations?.resolveCrmTargets}/${typeof CRM?.widgets?.myDeals} newMigrations=${migs.join(",") || "-"}${ABSENT}`);

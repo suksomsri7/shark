@@ -61,6 +61,7 @@ import {
   type SeqStepKind,
 } from "./sequences-shared";
 import "./sequences-job";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 // ───────────────────────── ชนิด · error ─────────────────────────
 
@@ -118,7 +119,7 @@ function isUniqueViolation(e: unknown): boolean {
 async function resolveSystem(ctx: SequencesCtx): Promise<{ settings: Prisma.JsonValue }> {
   const sys =
     typeof ctx?.tenantId === "string" && typeof ctx?.systemId === "string" && ctx.tenantId && ctx.systemId
-      ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } })
+      ? await crmSystemRow(ctx, prisma)
       : null;
   if (!sys) throw fail("NOT_FOUND", SYSTEM_NOT_FOUND);
   return sys;

@@ -39,6 +39,7 @@ import {
   type HomeLeadSources,
   type HomeUnowned,
 } from "./quotas-shared";
+import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export type { HomeData, HomeFilters, HomeKpis, HomeLeaderboard, HomeLeaderRow, HomeLeadSources, HomeUnowned };
 
@@ -81,7 +82,7 @@ async function enter(ctx: HomeCtx, actor: Actor | null | undefined): Promise<{ s
   if (!actor || actor.role === "CUSTOMER") throw new QuotaError("NOT_FOUND", MSG_NO_SYSTEM);
   const ok = !!ctx && typeof ctx.tenantId === "string" && typeof ctx.systemId === "string" && !!ctx.tenantId && !!ctx.systemId;
   // AUDIT-CLASS X1: ระบบต้องเป็น CRM ของร้านใน ctx (ร้านอื่น/ระบบอื่นชนิด = ไม่พบ ไม่บอกว่ามีอยู่ที่อื่น)
-  const sys = ok ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } }) : null;
+  const sys = ok ? await crmSystemRow(ctx, prisma) : null;
   if (!sys) throw new QuotaError("NOT_FOUND", MSG_NO_SYSTEM);
   // R-E.14: ระบบที่ยังไม่เปิด CRM v2 — ไม่อ่านอะไรต่อ
   if (parseCrmSettings(sys.settings).uiVersion !== 2) throw new CrmV2DisabledError();
