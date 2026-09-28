@@ -166,3 +166,9 @@ SHARK_AI_MOCK=1). Full re-run on QC3 via `.qc-shots/c43/run-qc3.sh` (parts i1 + 
   typecheck exit 0 (`typecheck-8.log`) · 10 checks: 2 ✅ (custom valid baseline) · 8 ❌ RED as expected · controls 35/35 ·
   restore identical. f: action AND REST **accept** a company/contact without the required custom value (new product finding —
   server-side required-custom enforcement missing on create) · b (1440+390): message = form-level box, not under the field.
+
+## ✅ C4.3 ACCEPTED by controller (28 Sep 2026 ~18:10 UTC)
+- Oracle: qc-crm-forms.mts (24 forms · a–f · required custom fields · 256+ positive controls) — reviewer 2 rounds + probe/select-wait ORACLE-EDITs by controller.
+- Product: C4.3-fix part 1 (130ca0c1) + part 2 (c6fe26d2: inline field errors on 22 forms + server-side required custom fields) — reviewers MERGEABLE.
+- Acceptance run on MAIN / QC1 against the server built from committed c6fe26d2 (`.qc-shots/crm/c43-accept2.log`): **669/669 · positive controls 0 missed · restore identical ×12 · missingPlanned 0 · unlistedSkips 0**. Gate flag false ONLY from provenance "src/prisma had uncommitted changes" on the 10 BROWSER parts: batch C5.4-B was merged into the working tree (uncommitted) while they ran — those parts exercise the SERVER (clean committed build c6fe26d2), not the working tree; the in-process parts (oc1, i1) ran on a clean tree. Controller judgement: product under test = committed c6fe26d2 ⇒ accepted.
+- Follow-ups: N2 FieldError inside <label> (screen readers read twice) · N3 server-side dedupe on company/contact double submit → batch E.

@@ -407,7 +407,8 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C3 | C3.9-fix | 🔨 | — | นักล่าความปลอดภัยพบ 12 (BLOCKER 5) → ORACLE-EDIT H1–H12 → builder 4 รอบ (48/48) · ผู้ตรวจรอบ 2 เหลือ R2-S1 กำลังปิด · ⛔ prod รอใบนี้ |
 | C4 | C4.1 | 🔨 | `15707b04` | ทะเบียน 1,052 แถว · crawler --inventory · testid ใหม่ 11 · ผู้ตรวจ MERGEABLE AFTER SHOULD-FIX (ปิดแล้ว) · รอ C4.2 รันจริงยืนยัน backdrop |
 | C4 | C4.2 | 🔨 | `15707b04` | qc-crm-buttons.mts (dry 7,122 กด) รอรันจริงกับ server จาก HEAD |
-| C4 | C4.1–C4.4 | ⏸️ | — | |
+| C4 | C4.3 | ✅ | (this commit) | every form: 669/669 on main build c6fe26d2 · 22 forms inline errors + focus · required custom fields enforced server-side · reviewer rounds on oracle + fixes |
+| C4 | C4.4 | 🔨 | — | 10 journeys run (59/78 + 4 gaps) · C4.4-fix list 7 · reviewer round 2 pending |
 | C5 | C5.2 | ✅ | (this commit) | 6 hunters read-only · 0 BLOCKER · 22 MAJOR · 40 MINOR · `wo-notes/crm-C5.2*.md` · C5.3 pinning in progress |
 | C5 | C5.1 | ✅ | (this commit) | perf at real size: 32/32 budgets · P2029 crashes fixed · migration crm_perf_indexes (index-only) · reviewer MERGEABLE · equivalence 0 diffs |
 | C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
