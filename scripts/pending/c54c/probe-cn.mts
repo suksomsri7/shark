@@ -292,6 +292,136 @@ try {
       chk("E6", vrc?.ok === true && onVoided.r?.ok === false && /ยกเลิก/.test(String(onVoided.r?.reason)) && v1?.ok === false && /ยกเลิกใบลดหนี้ก่อน/.test(String(v1?.reason)) && vcn?.ok === true && v2?.ok === true,
         `G2: CN on a voided RECEIPT refused · G3: void IV with a live CN refused, void CN then IV ok — got voidRC=${JSON.stringify(vrc)} cnOnVoided=${JSON.stringify(onVoided.r)} voidIV=${JSON.stringify(v1)} voidCN=${JSON.stringify(vcn)} voidIVafter=${JSON.stringify(v2)}`);
     }
+    { // E7 (round 6 · F6) REST documents.create: INVOICE with sourceDocId = another INVOICE ⇒ 422 validation (Thai) · with a QUOTATION ⇒ ok
+      const OPS = (await import("@/lib/modules/account/api/ops/documents-write" as string)) as Any;
+      const op = (OPS.DOCUMENTS_WRITE_OPS as Any[]).find((o) => o.id === "documents.create");
+      const actor = { kind: "apikey", tenantId: T, systemId: A };
+      const ivA = await invOf();
+      const line = [{ description: "งาน", qty: 1, unitPriceSatang: 10_000_000 }];
+      let bad: Any = null;
+      try { await op.handler({ actor, input: op.input.parse({ type: "INVOICE", contactId: cust.id, sourceDocId: ivA, lines: line }) }); bad = { ok: true }; } catch (e) { bad = { status: (e as Any)?.status, code: (e as Any)?.code, msg: String((e as Any)?.message_th ?? (e as Any)?.message ?? e) }; }
+      const q = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "QUOTATION", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "งาน", qty: 1, unitPrice: 10_000_000 }] });
+      let good: Any = null;
+      try { good = await op.handler({ actor, input: op.input.parse({ type: "INVOICE", contactId: cust.id, sourceDocId: q.id, lines: line }) }); } catch (e) { good = { err: String((e as Any)?.message ?? e) }; }
+      let svc: Any = null;
+      try { await accSvc.createDocument({ tenantId: T, systemId: A, docType: "INVOICE", contactId: cust.id, sourceDocId: ivA, lines: [{ description: "งาน", qty: 1, unitPrice: 1 }] }); svc = "created"; } catch (e) { svc = String((e as Any)?.message ?? e); }
+      chk("E7", bad?.status === 422 && bad?.code === "validation" && /ใบเสนอราคา/.test(String(bad?.msg)) && !good?.err && /ใบเสนอราคา/.test(String(svc)),
+        `REST INVOICE→INVOICE source ⇒ 422 validation (Thai) · INVOICE→QUOTATION ok · service path refuses too — got bad=${JSON.stringify(bad)} good=${JSON.stringify(good?.err ? good : "ok")} svc=${svc}`);
+    }
+    { // F (round 7 · N1) cheque lifecycle races — lock order cheque → document → payment (CAS) · 5 rounds each · invariant paidTotal = Σ live payments
+      const cheque = (await import("@/lib/modules/account/cheque" as string)) as Any;
+      const exp = (await import("@/lib/modules/account/expense" as string)) as Any;
+      const liveSum = async (docId: string) => Number((await P.accountDocumentPayment.aggregate({ where: { documentId: docId, voidedAt: null }, _sum: { amount: true } }))._sum.amount ?? 0);
+      const bounceEntries = async (cid: string) => P.accountJournalEntry.count({ where: { systemId: A, refType: "AccountCheque", refId: cid } });
+      const out: string[] = [];
+      let bad = 0;
+      let n = 0;
+      const vend = await accSvc.createContact({ tenantId: T, systemId: A, kind: "VENDOR", legalType: "COMPANY", name: `ผู้ขาย ${TAG}`, taxId: "0105562222222" });
+      for (let i = 0; i < 5; i += 1) {
+        // F1 bounce ∥ bounce
+        { const iv = await invOf(); await accSvc.recordPayment(T, A, iv, { channel: "TRANSFER", amount: 5_000_000 });
+          const c1 = await cheque.createCheque({ tenantId: T, systemId: A, direction: "IN", chequeNo: `BB${i}`, bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: iv });
+          const r = await Promise.all([cheque.bounceCheque(T, A, c1.id, "x"), cheque.bounceCheque(T, A, c1.id, "x")]);
+          const s = await docSt(iv); const live = await liveSum(iv); const ok = r.filter((q: Any) => q.ok).length;
+          n += 1; if (!(ok === 1 && s.paidTotal === live && live === 5_000_000 && (await bounceEntries(c1.id)) === 2)) bad += 1;
+          if (i === 0) out.push(`bounce∥bounce ${r.map((q: Any) => (q.ok ? "ok" : q.reason)).join("|")} paid=${s.paidTotal} live=${live}`); }
+        // F2 clear ∥ bounce
+        { const iv = await invOf();
+          const c1 = await cheque.createCheque({ tenantId: T, systemId: A, direction: "IN", chequeNo: `CB${i}`, bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: iv });
+          const r = i % 2 === 0 ? await Promise.all([cheque.clearCheque(T, A, c1.id), cheque.bounceCheque(T, A, c1.id, "x")]) : (await Promise.all([cheque.bounceCheque(T, A, c1.id, "x"), cheque.clearCheque(T, A, c1.id)])).reverse();
+          const s = await docSt(iv); const live = await liveSum(iv); const cs = (await P.accountCheque.findUnique({ where: { id: c1.id }, select: { status: true } }))?.status;
+          const consistent = r[1].ok ? cs === "BOUNCED" && live === 0 : cs === "CLEARED" && live === 3_000_000;
+          n += 1; if (!(r[1].ok || r[0].ok) || !consistent || s.paidTotal !== live) bad += 1;
+          if (i < 2) out.push(`clear∥bounce ${r.map((q: Any) => (q.ok ? "ok" : q.reason)).join("|")} cheque=${cs} paid=${s.paidTotal} live=${live}`); }
+        // F3 voidPayment(cheque payment) ∥ bounce
+        { const iv = await invOf(); await accSvc.recordPayment(T, A, iv, { channel: "TRANSFER", amount: 5_000_000 });
+          const c1 = await cheque.createCheque({ tenantId: T, systemId: A, direction: "IN", chequeNo: `VB${i}`, bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: iv });
+          const cp = await P.accountDocumentPayment.findFirst({ where: { chequeId: c1.id }, select: { id: true } });
+          const r = await Promise.all([accSvc.voidPayment(T, A, iv, cp.id, "x"), cheque.bounceCheque(T, A, c1.id, "x")]);
+          const s = await docSt(iv); const live = await liveSum(iv);
+          n += 1; if (!(s.paidTotal === live && live === 5_000_000)) bad += 1;
+          if (i === 0) out.push(`voidPayment∥bounce ${r.map((q: Any) => (q.ok ? "ok" : q.reason)).join("|")} paid=${s.paidTotal} live=${live}`); }
+        // F4 voidCheque ∥ voidCheque and voidCheque ∥ voidVendorPayment (OUT cheque on an expense)
+        { const ex = await exp.createExpenseDoc({ tenantId: T, systemId: A, docType: "EXPENSE", contactId: vend.id, vatMode: "EXCLUDE", vatPurchaseMode: "CLAIM", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 10_000_000 }] });
+          await exp.issueExpenseDoc(T, A, ex.id);
+          const c1 = await cheque.createCheque({ tenantId: T, systemId: A, direction: "OUT", chequeNo: `VO${i}`, bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: ex.id });
+          const cp = await P.accountDocumentPayment.findFirst({ where: { chequeId: c1.id }, select: { id: true } });
+          const r = i % 2 === 0 ? await Promise.all([cheque.voidCheque(T, A, c1.id, "x"), cheque.voidCheque(T, A, c1.id, "x")]) : await Promise.all([cheque.voidCheque(T, A, c1.id, "x"), exp.voidVendorPayment(T, A, ex.id, cp.id, "x")]);
+          const s = await docSt(ex.id); const live = await liveSum(ex.id);
+          n += 1; if (!(c1.ok && s.paidTotal === live && live === 0 && (i % 2 === 1 || r.filter((q: Any) => q.ok).length === 1))) bad += 1;
+          if (i < 2) out.push(`${i % 2 === 0 ? "voidCheque∥voidCheque" : "voidCheque∥voidVendorPayment"} ${r.map((q: Any) => (q.ok ? "ok" : q.reason)).join("|")} paid=${s.paidTotal} live=${live}`); }
+      }
+      { // F2 (round 7 · ruling B2c) sequential: voidPayment on a live-cheque payment REFUSED (nothing written) → bounce → sub-ledger = GL
+        const ar = async () => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 AND a."code" = '1100'`, A)) as Any[])[0]?.n);
+        const iv = await invOf(); await accSvc.recordPayment(T, A, iv, { channel: "TRANSFER", amount: 5_000_000 });
+        const c1 = await cheque.createCheque({ tenantId: T, systemId: A, direction: "IN", chequeNo: "B2C", bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: iv });
+        const cp = await P.accountDocumentPayment.findFirst({ where: { chequeId: c1.id }, select: { id: true } });
+        const ar0 = await ar(); const s0 = await docSt(iv);
+        const vp = await accSvc.voidPayment(T, A, iv, cp.id, "x");
+        const s1 = await docSt(iv); const pv = await P.accountDocumentPayment.findUnique({ where: { id: cp.id }, select: { voidedAt: true } });
+        const b = await cheque.bounceCheque(T, A, c1.id, "x");
+        const s2 = await docSt(iv); const live = await liveSum(iv); const arD = (await ar()) - ar0;
+        const out2 = accSvc.paymentOutstandingOf((await accSvc.paymentTargetOf(T, A, iv)).target);
+        const vAfter = await accSvc.voidPayment(T, A, iv, cp.id, "x"); // cheque now BOUNCED + payment already voided ⇒ harmless refusal
+        // purchase side: voidVendorPayment on a live OUT cheque refused
+        const ex = await exp.createExpenseDoc({ tenantId: T, systemId: A, docType: "EXPENSE", contactId: vend.id, vatMode: "EXCLUDE", vatPurchaseMode: "CLAIM", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 10_000_000 }] });
+        await exp.issueExpenseDoc(T, A, ex.id);
+        const co = await cheque.createCheque({ tenantId: T, systemId: A, direction: "OUT", chequeNo: "B2CO", bankName: "B", chequeDate: new Date(), amount: 3_000_000, documentId: ex.id });
+        const cop = await P.accountDocumentPayment.findFirst({ where: { chequeId: co.id }, select: { id: true } });
+        const vvp = await exp.voidVendorPayment(T, A, ex.id, cop.id, "x");
+        // non-cheque payment still voidable
+        const iv2 = await invOf(); const tp = await accSvc.recordPayment(T, A, iv2, { channel: "TRANSFER", amount: 1_000_000 });
+        const vt = await accSvc.voidPayment(T, A, iv2, tp.paymentId, "x");
+        chk("F2", vp?.ok === false && /ทะเบียนเช็ค/.test(String(vp?.reason)) && s1.paidTotal === s0.paidTotal && pv?.voidedAt === null && b?.ok === true && s2.paidTotal === live && live === 5_000_000 && out2 === 5_700_000 && arD === 3_000_000 && vAfter?.ok === false
+          && vvp?.ok === false && /ทะเบียนเช็ค/.test(String(vvp?.reason)) && vt?.ok === true,
+          `B2c: voidPayment(live cheque) refused, nothing written · bounce ok ⇒ paid 5,000,000 = live · outstanding 5,700,000 · GL AR Δ +3,000,000 (= sub-ledger) · voidVendorPayment(live OUT cheque) refused · plain transfer still voidable — got vp=${JSON.stringify(vp)} paid ${s0.paidTotal}→${s1.paidTotal}→${s2.paidTotal} live=${live} out=${out2} arΔ=${arD} vAfter=${JSON.stringify(vAfter)} vvp=${JSON.stringify(vvp)} vt=${JSON.stringify(vt)}`);
+      }
+      { // F3 legacy refusal phrases kept (qc-acc-v2-wht-cheque T14.3/.5/.7/.9/.10 wording)
+        const ci = await cheque.createCheque({ tenantId: T, systemId: A, direction: "IN", chequeNo: "LG1", bankName: "B", chequeDate: new Date(), amount: 100_000 });
+        const b1 = await cheque.bounceCheque(T, A, ci.id, "x");
+        const cl = await cheque.clearCheque(T, A, ci.id); const b2 = await cheque.bounceCheque(T, A, ci.id, "x");
+        const co = await cheque.createCheque({ tenantId: T, systemId: A, direction: "OUT", chequeNo: "LG2", bankName: "B", chequeDate: new Date(), amount: 100_000 });
+        const v1 = await cheque.voidCheque(T, A, co.id, "ยกเลิกทดสอบ"); const v2 = await cheque.voidCheque(T, A, co.id, "ยกเลิกทดสอบ");
+        const wrongVoid = await cheque.voidCheque(T, A, ci.id, "ยกเลิกทดสอบ"); const wrongBounce = await cheque.bounceCheque(T, A, co.id, "x");
+        chk("F3", b1.ok && /นำฝากก่อน/.test(String(cl.reason)) && /สถานะเช็คไม่รองรับการทำเด้ง/.test(String(b2.reason)) && v1.ok && /ยกเลิกได้เฉพาะเช็คจ่ายที่ยังไม่ถูกเรียกเก็บ/.test(String(v2.reason))
+          && /ยกเลิกได้เฉพาะเช็คจ่าย/.test(String(wrongVoid.reason)) && /เด้งได้เฉพาะเช็ครับ/.test(String(wrongBounce.reason)),
+          `legacy phrases kept — clear(BOUNCED)=${cl.reason} · bounce twice=${b2.reason} · void twice=${v2.reason} · void IN=${wrongVoid.reason} · bounce OUT=${wrongBounce.reason}`);
+      }
+      { // G1b (round 8 · R8-1) group (billing note) paid by ONE cheque: every child payment linked · group void with live cheque refused, nothing written ·
+        //   bounce restores BOTH children and GL AR = Σ outstanding · backfill links legacy (first-child-only) data
+        const grp = (await import("@/lib/modules/account/group" as string)) as Any;
+        const ar = async () => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 AND a."code" = '1100'`, A)) as Any[])[0]?.n);
+        const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const mkG = async () => {
+          const i1 = await invOf(); const i2 = await invOf();
+          const g = await grp.createGroupDoc(T, A, { docType: "BILLING_NOTE", contactId: cust.id, issueDate: today, dueDate: null, note: null, childIds: [i1, i2], createdById: null, source: "MANUAL", tags: [] });
+          const r = await grp.recordGroupPayment(T, A, g.id, { paidAt: today, financeAccountId: null, tieOffSatang: 21_400_000, note: "", feeSatang: 0, wht: [], cheque: { chequeNo: `G${Math.random().toString(36).slice(2, 6)}`, bankName: "KBank", chequeDate: today } }, { clientKey: Math.random().toString(36).slice(2, 10) });
+          const pays = await P.accountDocumentPayment.findMany({ where: { documentId: { in: [i1, i2] }, voidedAt: null }, select: { id: true, chequeId: true } });
+          return { g, r, i1, i2, pays, cq: pays.find((p: Any) => p.chequeId)?.chequeId as string };
+        };
+        const outOf = async (ids: string[]) => { let o = 0; for (const id of ids) o += accSvc.paymentOutstandingOf((await accSvc.paymentTargetOf(T, A, id)).target); return o; };
+        const x = await mkG();
+        const linked = x.pays.filter((p: Any) => p.chequeId === x.cq).length;
+        const v = await grp.voidGroupPayment(T, A, x.g.id, x.r.batchKey, "x");
+        const afterV = [await docSt(x.i1), await docSt(x.i2)];
+        const ar0 = await ar();
+        const b = await cheque.bounceCheque(T, A, x.cq, "x");
+        const afterB = [await docSt(x.i1), await docSt(x.i2)];
+        const o = await outOf([x.i1, x.i2]);
+        const arB = await ar();
+        // legacy data (only the first child linked) → backfill --apply for this tenant links the second
+        const y = await mkG();
+        const other = y.pays.find((p: Any) => p.id !== y.pays[0].id)!;
+        await P.accountDocumentPayment.updateMany({ where: { id: { in: y.pays.map((p: Any) => p.id).filter((id: string) => id !== y.pays.find((p: Any) => p.chequeId)?.id) } }, data: { chequeId: null } });
+        const { spawnSync } = await import("node:child_process");
+        const bf = spawnSync("pnpm", ["exec", "tsx", "scripts/pending/c54c/backfill-group-cheque-links.mts", `--tenant=${T}`, "--apply"], { env: process.env, encoding: "utf8" });
+        const relinked = (await P.accountDocumentPayment.findMany({ where: { documentId: { in: [y.i1, y.i2] }, voidedAt: null }, select: { chequeId: true } })).filter((p: Any) => p.chequeId === y.cq).length;
+        chk("G1b", linked === 2 && v?.ok === false && /ทะเบียนเช็ค/.test(String(v?.reason)) && afterV.every((d: Any) => d.status === "PAID" && d.paidTotal === 10_700_000)
+          && b?.ok === true && afterB.every((d: Any) => d.paidTotal === 0 && d.status === "AWAITING_PAYMENT") && o === 21_400_000 && arB - ar0 === 21_400_000 && relinked === 2,
+          `group cheque: linked ${linked}/2 · group void with live cheque → ${JSON.stringify(v)} (both still PAID) · bounce → ${JSON.stringify(b)} both AWAITING_PAYMENT paid 0 · Σ outstanding ${o} = GL AR Δ ${arB - ar0} · backfill relinked ${relinked}/2 (${String(bf.stdout).match(/JSON_SUMMARY.*/)?.[0] ?? String(bf.stderr).slice(0, 120)}) · other=${other.id.slice(-4)}`);
+      }
+      chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
+    }
     // D3 · Q2: dashboard "paid" bucket (revenue) = grand − live CN of each PAID invoice ⇒ inv 107,000 + inv2 (107,000 − 10,700) = 203,300
     const dash = (await import("@/lib/modules/account/dashboard" as string)) as Any;
     const yr = Number(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 4));

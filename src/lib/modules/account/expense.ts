@@ -1275,65 +1275,85 @@ export async function voidVendorPayment(
   reason: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    await prisma.$transaction(async (tx) => {
-      const pay = await tx.accountDocumentPayment.findFirst({
-        where: { id: paymentId, documentId, tenantId, systemId },
-      });
-      if (!pay) throw new Error("ไม่พบรายการจ่าย");
-      if (pay.voidedAt) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
-      // §9.3 (reversal เลื่อนวันได้ ⇒ ด่านใน gl.commitEntry จับวันเดิมไม่ถึง)
-      await assertNotLockedTx(tx, systemId, pay.paidAt);
-      const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
-      if (!doc) throw new Error("ไม่พบเอกสาร");
-      // WO 1.4: ใบมัดจำจ่ายที่ถูกหักในบันทึกซื้อแล้ว ยกเลิกการจ่ายไม่ได้ (ต้องแก้ที่ปลายทางก่อน)
-      if (doc.docType === "DEPOSIT_PAYMENT") {
-        const applied = await tx.accountDocumentRelation.findMany({
-          where: { systemId, fromId: documentId, type: "DEPOSIT_APPLY" },
-          include: { to: { select: { status: true } } },
-        });
-        if (applied.some((r) => r.to.status !== "VOIDED" && r.to.status !== "CANCELLED"))
-          throw new Error("ใบมัดจำนี้ถูกหักในเอกสารอื่นแล้ว — ยกเลิกการหักที่เอกสารนั้นก่อน");
-      }
-      await tx.accountDocumentPayment.update({
-        where: { id: paymentId },
-        data: { voidedAt: new Date(), voidReason: reason || null },
-      });
-      const tieOff = pay.amount + pay.whtAmountSatang;
-      const newPaid = Math.max(0, doc.paidTotal - tieOff);
-      await tx.accountDocument.update({
-        where: { id: documentId },
-        data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
-      });
-      await reverseFor({ tenantId, systemId }, "AccountDocumentPayment", paymentId, reason, tx);
-
-      // ── WO 1.4 (ปิดรูรั่ว 1.2 §8.1): JV ของใบจ่ายมัดจำ (Dr 1130 + Dr 1150 / Cr เงิน) ผูกกับ
-      //    *ตัวเอกสาร* ไม่ใช่ payment ⇒ reversal ข้างบนไม่แตะ · ต้องกลับรายการเอกสารด้วย
-      if (doc.docType === "DEPOSIT_PAYMENT" && doc.status === "AWAITING_DEDUCT") {
-        await reverseFor({ tenantId, systemId }, "AccountDocument", documentId, reason, tx);
-      }
-
-      // ── R-A/C2: cascade → 50 ทวิ (WHT_CERT) ที่ผูก payment นี้ → VOIDED + ล้าง link ──
-      //    ไม่งั้น ภงด.53 นำส่งบนเงินที่ไม่ได้จ่าย (จ่าย void แต่ cert ยัง ISSUED)
-      if (pay.whtCertDocId) {
-        await tx.accountDocument.updateMany({
-          where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", status: { notIn: ["VOIDED", "CANCELLED"] } },
-          data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการยกเลิกจ่าย: ${reason}` },
-        });
-        await tx.accountDocumentPayment.update({ where: { id: paymentId }, data: { whtCertDocId: null } });
-      }
-      // WO C4: "ยกเลิกการจ่าย" — event เดียวกับฝั่งรับ (`voidPaymentAny` ส่งต่อมาที่นี่ตามทิศทางเอกสาร)
-      await emitPaymentVoided(tx, { tenantId, systemId }, {
-        paymentId,
-        documentId,
-        docNo: doc.docNo,
-        amountSatang: pay.amount,
-        reason,
-      });
-    });
+    await prisma.$transaction((tx) => voidVendorPaymentInTx(tx, tenantId, systemId, documentId, paymentId, reason), { maxWait: 20_000, timeout: 40_000 });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ยกเลิกการจ่ายไม่สำเร็จ") };
   }
+}
+
+/** CRM C5.4-C ▸ (round 8 · R8-1) ยกเลิกการจ่าย 1 งวดในธุรกรรมของผู้เรียก (voidGroupPayment ทำทุกใบลูกในธุรกรรมเดียว) ◂ */
+export async function voidVendorPaymentInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  documentId: string,
+  paymentId: string,
+  reason: string,
+): Promise<void> {
+    // CRM C5.4-C ▸ (round 7 · N1) ลำดับล็อกเดียวกับทะเบียนเช็ค: เช็คที่ผูก → เอกสาร → แถวรับ/จ่าย (CAS) — ยกเลิกการจ่าย ∥ ยกเลิกเช็คจ่าย ไม่ถอยยอดซ้ำ ◂
+    const chq = (await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId, tenantId, systemId }, select: { chequeId: true } }))?.chequeId ?? null;
+    if (chq) {
+      await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${chq} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
+      // มติผู้คุมงาน (round 7 · B2c): เช็คจ่ายที่ยังมีผล ⇒ ยกเลิกที่ทะเบียนเช็คเท่านั้น (บัญชีของการจ่ายอยู่ที่ทะเบียนเช็ค)
+      const cs = (await tx.accountCheque.findFirst({ where: { id: chq, tenantId, systemId }, select: { status: true } }))?.status;
+      if (cs && cs !== "BOUNCED" && cs !== "VOIDED") throw new Error("รายการนี้จ่ายเป็นเช็ค — ให้ยกเลิกเช็คที่ทะเบียนเช็คแทน ยอดในบัญชีจะถูกกลับรายการให้ถูกต้อง");
+    }
+    await tx.$queryRaw`SELECT "id" FROM "AccountDocument" WHERE "id" = ${documentId} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
+    const pay = await tx.accountDocumentPayment.findFirst({
+      where: { id: paymentId, documentId, tenantId, systemId },
+    });
+    if (!pay) throw new Error("ไม่พบรายการจ่าย");
+    if (pay.voidedAt) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
+    // §9.3 (reversal เลื่อนวันได้ ⇒ ด่านใน gl.commitEntry จับวันเดิมไม่ถึง)
+    await assertNotLockedTx(tx, systemId, pay.paidAt);
+    const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
+    if (!doc) throw new Error("ไม่พบเอกสาร");
+    // WO 1.4: ใบมัดจำจ่ายที่ถูกหักในบันทึกซื้อแล้ว ยกเลิกการจ่ายไม่ได้ (ต้องแก้ที่ปลายทางก่อน)
+    if (doc.docType === "DEPOSIT_PAYMENT") {
+      const applied = await tx.accountDocumentRelation.findMany({
+        where: { systemId, fromId: documentId, type: "DEPOSIT_APPLY" },
+        include: { to: { select: { status: true } } },
+      });
+      if (applied.some((r) => r.to.status !== "VOIDED" && r.to.status !== "CANCELLED"))
+        throw new Error("ใบมัดจำนี้ถูกหักในเอกสารอื่นแล้ว — ยกเลิกการหักที่เอกสารนั้นก่อน");
+    }
+    const voidedNow = await tx.accountDocumentPayment.updateMany({
+      where: { id: paymentId, voidedAt: null },
+      data: { voidedAt: new Date(), voidReason: reason || null },
+    });
+    if (voidedNow.count !== 1) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
+    const tieOff = pay.amount + pay.whtAmountSatang;
+    const newPaid = Math.max(0, doc.paidTotal - tieOff);
+    await tx.accountDocument.update({
+      where: { id: documentId },
+      data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
+    });
+    await reverseFor({ tenantId, systemId }, "AccountDocumentPayment", paymentId, reason, tx);
+
+    // ── WO 1.4 (ปิดรูรั่ว 1.2 §8.1): JV ของใบจ่ายมัดจำ (Dr 1130 + Dr 1150 / Cr เงิน) ผูกกับ
+    //    *ตัวเอกสาร* ไม่ใช่ payment ⇒ reversal ข้างบนไม่แตะ · ต้องกลับรายการเอกสารด้วย
+    if (doc.docType === "DEPOSIT_PAYMENT" && doc.status === "AWAITING_DEDUCT") {
+      await reverseFor({ tenantId, systemId }, "AccountDocument", documentId, reason, tx);
+    }
+
+    // ── R-A/C2: cascade → 50 ทวิ (WHT_CERT) ที่ผูก payment นี้ → VOIDED + ล้าง link ──
+    //    ไม่งั้น ภงด.53 นำส่งบนเงินที่ไม่ได้จ่าย (จ่าย void แต่ cert ยัง ISSUED)
+    if (pay.whtCertDocId) {
+      await tx.accountDocument.updateMany({
+        where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", status: { notIn: ["VOIDED", "CANCELLED"] } },
+        data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการยกเลิกจ่าย: ${reason}` },
+      });
+      await tx.accountDocumentPayment.update({ where: { id: paymentId }, data: { whtCertDocId: null } });
+    }
+    // WO C4: "ยกเลิกการจ่าย" — event เดียวกับฝั่งรับ (`voidPaymentAny` ส่งต่อมาที่นี่ตามทิศทางเอกสาร)
+    await emitPaymentVoided(tx, { tenantId, systemId }, {
+      paymentId,
+      documentId,
+      docNo: doc.docNo,
+      amountSatang: pay.amount,
+      reason,
+    });
 }
 
 // ยกเลิกเอกสาร: DRAFT → CANCELLED · มีผลแล้ว → VOIDED + reversal

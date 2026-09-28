@@ -3,7 +3,10 @@ import { safeReason } from "./errors";
 import type { AccountChequeDirection, AccountChequeStatus, Prisma } from "@prisma/client";
 // posting engine (owner = GL-Core) — subagent แค่ import + เรียกตามลายเซ็น
 import { ensureAccounting, postChequeEntry, resolveMapping } from "./gl";
-import { emitChequeChanged } from "./events";
+import { emitChequeChanged, emitPaymentVoided } from "./events";
+import { emitOutboxMany } from "@/lib/core/outbox";
+// CRM C5.4-C ▸ (round 6 · F4) ด่านหนี้เดียวกับ recordPayment: ล็อกแถวเอกสาร · หนี้จริงหักใบลดหนี้ทั้งครอบครัว · สถานะจาก receivableStatusOf ◂
+import { liveCreditTotalInTx, lockDocumentRow, receivableStatusOf } from "./service";
 
 // ─────────────────────────────────────────────────────────────
 // cheque.ts — ทะเบียนเช็ครับ/เช็คจ่าย (§3.5)
@@ -305,6 +308,8 @@ export async function createCheque(input: {
   /** WO 1.4: เช็คที่เกิดจากการรับ/จ่ายชำระในฟอร์ม §5.2 F — payment + JV (Dr 1040 / Cr 1100) ลงไปแล้ว
    *  ⇒ ที่นี่ทำแค่ "ขึ้นทะเบียนเช็ค" + ผูกกลับไปที่ payment · ห้ามตัดหนี้/โพสต์ซ้ำ */
   paymentId?: string | null;
+  /** CRM C5.4-C ▸ (round 8 · R8-1) เช็คใบเดียวจ่ายหลายงวด (ใบวางบิล/ใบรวมจ่าย) — ผูกกลับทุกงวด (รวม `paymentId`) ◂ */
+  paymentIds?: string[] | null;
 }): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (!input.chequeNo.trim()) return { ok: false, reason: "กรุณากรอกเลขที่เช็ค" };
   if (!input.bankName.trim()) return { ok: false, reason: "กรุณากรอกชื่อธนาคาร" };
@@ -318,7 +323,11 @@ export async function createCheque(input: {
       // R-B: ผูกเอกสาร → ตรวจทิศทาง/สถานะ/ยอดคงเหลือ + สร้าง payment (ตัดหนี้) + อัปสถานะเอกสาร
       let contactId: string | null = null;
       let doc: { id: string; contactId: string | null; grandTotal: number; paidTotal: number; docType: string } | null = null;
-      if (input.documentId && !input.paymentId) {
+      let creditTotal = 0;
+      const linkIds = [...new Set([...(input.paymentId ? [input.paymentId] : []), ...(input.paymentIds ?? []).filter(Boolean)])];
+      if (input.documentId && linkIds.length === 0) {
+        // round 6 · F4: ล็อกแถวเอกสารก่อนอ่านยอด (เช็คพร้อมรับชำระ/ใบลดหนี้ = อ่านยอดเก่า → เก็บเกิน)
+        await lockDocumentRow(tx, ctx.tenantId, ctx.systemId, input.documentId);
         const d = await tx.accountDocument.findFirst({
           where: { id: input.documentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
           select: { id: true, contactId: true, direction: true, status: true, grandTotal: true, paidTotal: true, docType: true },
@@ -329,8 +338,10 @@ export async function createCheque(input: {
         if (d.direction !== wantDir) throw new Error("ทิศทางเช็คไม่ตรงกับเอกสาร");
         if (!["AWAITING_PAYMENT", "PARTIAL"].includes(d.status))
           throw new Error("เอกสารนี้รับ/จ่ายชำระไม่ได้ในสถานะปัจจุบัน");
-        const remain = Math.max(0, d.grandTotal - d.paidTotal);
-        if (amount > remain + 1) throw new Error("จำนวนเงินเช็คเกินยอดคงเหลือของเอกสาร");
+        // round 6 · F4/F7: หนี้จริงของใบแจ้งหนี้ = grand − paid − ใบลดหนี้ของทั้งครอบครัว (F-05) · เผื่อ 1 สตางค์เฉพาะเมื่อยังมีหนี้ค้าง
+        creditTotal = d.docType === "INVOICE" ? await liveCreditTotalInTx(tx, ctx.systemId, d.id) : 0;
+        const remain = Math.max(0, d.grandTotal - d.paidTotal - creditTotal);
+        if (amount > remain + (remain > 0 ? 1 : 0)) throw new Error("จำนวนเงินเช็คเกินยอดคงเหลือของเอกสาร");
         contactId = d.contactId;
         doc = { id: d.id, contactId: d.contactId, grandTotal: d.grandTotal, paidTotal: d.paidTotal, docType: d.docType };
       }
@@ -354,7 +365,7 @@ export async function createCheque(input: {
 
       // ตัดหนี้เอกสาร (sub-ledger ตรง GL) + กันจ่าย/รับซ้ำผ่านหน้าเอกสาร
       if (doc) {
-        await tx.accountDocumentPayment.create({
+        const payRow = await tx.accountDocumentPayment.create({
           data: {
             tenantId: ctx.tenantId,
             systemId: ctx.systemId,
@@ -369,23 +380,41 @@ export async function createCheque(input: {
         });
         const newPaid = doc.paidTotal + amount;
         const fully = newPaid >= doc.grandTotal;
-        const status = fully
-          ? doc.docType === "DEPOSIT_PAYMENT" || doc.docType === "DEPOSIT_RECEIPT"
-            ? "AWAITING_DEDUCT"
-            : "PAID"
-          : "PARTIAL";
+        const status = doc.docType === "INVOICE"
+          ? receivableStatusOf(doc.grandTotal, newPaid, creditTotal) // round 6 · F4: ฟังก์ชันสถานะเดียว (ใบลดหนี้ปิดส่วนที่เหลือได้)
+          : fully
+            ? doc.docType === "DEPOSIT_PAYMENT" || doc.docType === "DEPOSIT_RECEIPT"
+              ? "AWAITING_DEDUCT"
+              : "PAID"
+            : "PARTIAL";
         await tx.accountDocument.update({ where: { id: doc.id }, data: { paidTotal: newPaid, status } });
+        // round 6 · F4: เช็ครับที่ตัดหนี้เอกสารขาย = การรับชำระ ⇒ event เดียวกับ recordPayment (CRM นับเงิน · webhook) และ
+        //   `account.invoice.paid` เมื่อใบแจ้งหนี้ครบ — คีย์เดียวกับ recordPayment ⇒ ครั้งเดียวต่อเอกสารไม่ว่าจากทางไหน
+        if (input.direction === "IN") {
+          const docNo = (await tx.accountDocument.findFirst({ where: { id: doc.id }, select: { docNo: true } }))?.docNo ?? null;
+          await emitOutboxMany(tx, [
+            { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "account.payment.recorded", idempotencyKey: `account.payment.recorded#${payRow.id}`,
+              payload: { documentId: doc.id, paymentId: payRow.id, amountSatang: amount, docType: doc.docType } },
+            ...(status === "PAID" && doc.docType === "INVOICE" && newPaid > 0
+              ? [{ tenantId: ctx.tenantId, systemId: ctx.systemId, type: "account.invoice.paid", idempotencyKey: `account.invoice.paid#${doc.id}`,
+                  payload: { documentId: doc.id, docNo, grandTotalSatang: doc.grandTotal, paidTotalSatang: newPaid, creditNoteSatang: creditTotal } }]
+              : []),
+          ]);
+        }
       }
 
       // WO 1.4: เช็คของ payment ที่โพสต์แล้ว → ผูกกลับ แล้วจบ (ไม่ตัดหนี้ซ้ำ ไม่โพสต์ซ้ำ)
-      if (input.paymentId) {
-        const pay = await tx.accountDocumentPayment.findFirst({
-          where: { id: input.paymentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
-          select: { id: true, chequeId: true },
-        });
-        if (!pay) throw new Error("ไม่พบรายการชำระที่จะผูกเช็ค");
-        if (pay.chequeId) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
-        await tx.accountDocumentPayment.update({ where: { id: pay.id }, data: { chequeId: cq.id } });
+      if (linkIds.length > 0) {
+        for (const pid of linkIds.sort()) {
+          const pay = await tx.accountDocumentPayment.findFirst({
+            where: { id: pid, tenantId: ctx.tenantId, systemId: ctx.systemId },
+            select: { id: true, chequeId: true },
+          });
+          if (!pay) throw new Error("ไม่พบรายการชำระที่จะผูกเช็ค");
+          if (pay.chequeId) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
+          const n = await tx.accountDocumentPayment.updateMany({ where: { id: pay.id, chequeId: null }, data: { chequeId: cq.id } });
+          if (n.count !== 1) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
+        }
         return cq.id;
       }
 
@@ -435,21 +464,70 @@ export async function createCheque(input: {
   }
 }
 
+/**
+ * CRM C5.4-C ▸ (round 7 · N1) ล็อกแถวเช็ค (`FOR UPDATE`) แล้วอ่านใหม่ใต้ล็อก — ทุกการเปลี่ยนสถานะเช็ค (นำฝาก · เคลียร์ · เด้ง · ยกเลิก) ผ่านตัวนี้
+ *   ลำดับล็อกของทั้งระบบ: **เช็ค → เอกสาร → แถวรับชำระ (CAS)** — voidPayment (service.ts) ล็อกเช็คของงวดนั้นก่อนเอกสารเหมือนกัน
+ *   เดิมอ่านสถานะโดยไม่ล็อก ⇒ กดเด้งซ้ำ/ยิง REST ซ้ำ ผ่านทั้งคู่ ถอยยอดรับชำระสองครั้ง (ยอดค้างเกินจริง ⇒ เก็บเงินลูกค้าเกิน) ◂
+ */
+async function lockChequeRow(tx: Tx, tenantId: string, systemId: string, id: string) {
+  await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${id} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
+  return tx.accountCheque.findFirst({ where: { id, tenantId, systemId } });
+}
+
+/** round 7 · N1: เปลี่ยนสถานะเช็คแบบมีเงื่อนไข (CAS) — ใครเปลี่ยนก่อนชนะ อีกฝ่ายได้ข้อความไทยว่าทำไปแล้ว */
+async function casChequeStatus(tx: Tx, id: string, from: AccountChequeStatus, data: Prisma.AccountChequeUpdateManyMutationInput): Promise<void> {
+  const n = await tx.accountCheque.updateMany({ where: { id, status: from }, data });
+  if (n.count !== 1) throw new Error("สถานะเช็คเพิ่งถูกเปลี่ยนโดยรายการอื่น — รีเฟรชหน้าแล้วตรวจสถานะล่าสุดอีกครั้ง");
+}
+
+/**
+ * round 7 · N1: ข้อความไทยเมื่อเช็คอยู่ในสถานะปลายทางแล้ว (กดซ้ำ/ยิงซ้ำ) — **คงวลีเดิมของระบบไว้ในข้อความเสมอ**
+ * (ข้อสอบ/แอปภายนอกจับวลีเดิม: "นำฝากก่อน" · "ไม่อยู่สถานะรอเรียกเก็บ" · "ยกเลิกได้เฉพาะเช็คจ่ายที่ยังไม่ถูกเรียกเก็บ" · "สถานะเช็คไม่รองรับการทำเด้ง")
+ */
+function alreadyMsg(status: string, action: "เด้ง" | "ยกเลิก" | "เคลียร์", direction: string): string | null {
+  const legacyClear = direction === "IN" ? "เคลียร์ได้เฉพาะเช็ครับที่นำฝากก่อน" : "เช็คจ่ายนี้ไม่อยู่สถานะรอเรียกเก็บ";
+  if (action === "เด้ง" && status === "BOUNCED") return "เช็คนี้ถูกบันทึกเด้งไปแล้ว — สถานะเช็คไม่รองรับการทำเด้งซ้ำ ไม่ต้องทำซ้ำ";
+  if (action === "ยกเลิก" && status === "VOIDED") return "เช็คนี้ถูกยกเลิกไปแล้ว — ยกเลิกได้เฉพาะเช็คจ่ายที่ยังไม่ถูกเรียกเก็บ ไม่ต้องทำซ้ำ";
+  if (action === "เคลียร์") {
+    if (status === "BOUNCED") return `เช็คนี้ถูกบันทึกเด้งแล้ว — ${legacyClear}`;
+    if (status === "VOIDED") return `เช็คนี้ถูกยกเลิกแล้ว — ${legacyClear}`;
+    if (status === "CLEARED") return `เช็คนี้เรียกเก็บแล้ว ไม่ต้องทำซ้ำ — ${legacyClear}`;
+  }
+  return null;
+}
+
 // คืนหนี้เอกสารเมื่อเช็คเด้ง/ยกเลิก (void payment ที่ผูก + ถอย paidTotal/สถานะ)
+//   round 7 · N1: ผู้เรียกถือล็อกแถวเช็คอยู่ · ล็อกเอกสารก่อน → อ่านแถวรับชำระใหม่ใต้ล็อก → ยกเลิกด้วย CAS (voidedAt null)
+//   round 8 · R8-1: เช็คใบเดียวผูกได้หลายงวด (ใบวางบิล) ⇒ ทุกงวดที่ยังมีผล · ล็อกเอกสารเรียง id (ลำดับคงที่: เช็ค → เอกสาร ↑id) ·
+//   ต่องวด: ยกเลิกด้วย CAS → ถอยยอดของเอกสารนั้น + สถานะจาก receivableStatusOf + `account.payment.voided` หนึ่งใบ — เฉพาะเมื่อคำสั่งนี้เป็นคนยกเลิก
 async function restoreDocForCheque(tx: Tx, tenantId: string, systemId: string, chequeId: string): Promise<string | null> {
-  const pay = await tx.accountDocumentPayment.findFirst({
+  const all = await tx.accountDocumentPayment.findMany({
+    where: { chequeId, tenantId, systemId },
+    orderBy: [{ documentId: "asc" }, { id: "asc" }],
+    select: { documentId: true, document: { select: { contactId: true } } },
+  });
+  if (all.length === 0) return null;
+  const docIds = [...new Set(all.map((p) => p.documentId))].sort();
+  for (const d of docIds) await lockDocumentRow(tx, tenantId, systemId, d);
+  const live = await tx.accountDocumentPayment.findMany({
     where: { chequeId, tenantId, systemId, voidedAt: null },
-    select: { id: true, amount: true, documentId: true, document: { select: { contactId: true } } },
+    orderBy: [{ documentId: "asc" }, { id: "asc" }],
+    select: { id: true, amount: true, documentId: true },
   });
-  if (!pay) return null;
-  await tx.accountDocumentPayment.update({ where: { id: pay.id }, data: { voidedAt: new Date(), voidReason: "เช็คเด้ง/ยกเลิก" } });
-  const doc = await tx.accountDocument.findFirst({ where: { id: pay.documentId }, select: { paidTotal: true } });
-  const newPaid = Math.max(0, (doc?.paidTotal ?? 0) - pay.amount);
-  await tx.accountDocument.update({
-    where: { id: pay.documentId },
-    data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
-  });
-  return pay.document?.contactId ?? null;
+  for (const pay of live) {
+    const voided = await tx.accountDocumentPayment.updateMany({ where: { id: pay.id, voidedAt: null }, data: { voidedAt: new Date(), voidReason: "เช็คเด้ง/ยกเลิก" } });
+    if (voided.count !== 1) continue; // ยกเลิกไปแล้ว (voidPayment ก่อนหน้า) — ไม่ถอยซ้ำ
+    const doc = await tx.accountDocument.findFirst({ where: { id: pay.documentId }, select: { paidTotal: true, grandTotal: true, docType: true, docNo: true, direction: true } });
+    const newPaid = Math.max(0, (doc?.paidTotal ?? 0) - pay.amount);
+    const status = doc?.docType === "INVOICE"
+      ? receivableStatusOf(doc.grandTotal, newPaid, await liveCreditTotalInTx(tx, systemId, pay.documentId))
+      : newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT";
+    await tx.accountDocument.update({ where: { id: pay.documentId }, data: { paidTotal: newPaid, status } });
+    if (doc?.direction === "OUT") {
+      await emitPaymentVoided(tx, { tenantId, systemId }, { paymentId: pay.id, documentId: pay.documentId, docNo: doc.docNo, amountSatang: pay.amount, reason: "เช็คเด้ง/ยกเลิก" });
+    }
+  }
+  return all[0]?.document?.contactId ?? null;
 }
 
 // ─────────────────── เปลี่ยนสถานะ (lifecycle) ───────────────────
@@ -467,10 +545,16 @@ export async function depositCheque(
   if (cq.status !== "ON_HAND") return { ok: false, reason: "เช็คนี้ไม่อยู่สถานะรอนำฝาก" };
   // WO 5.4 (§10.4): บันทึกวันที่นำฝากจริง (ของเดิมเปลี่ยนแค่ status ไม่มีวันที่เก็บ)
   // WO D4: ห่อ $transaction เพิ่ม (ของเดิมเป็น update เดี่ยว) เพื่อยิง account.cheque.changed ในธุรกรรมเดียวกัน
+  try {
   await prisma.$transaction(async (tx) => {
-    await tx.accountCheque.update({ where: { id }, data: { status: "DEPOSITED", depositedAt: depositedAt ?? new Date() } });
+    // round 7 · N1: CAS — นำฝากซ้ำ/พร้อมเด้ง ไม่ทับสถานะที่เพิ่งเปลี่ยน
+    const n = await tx.accountCheque.updateMany({ where: { id, tenantId, systemId, status: "ON_HAND" }, data: { status: "DEPOSITED", depositedAt: depositedAt ?? new Date() } });
+    if (n.count !== 1) throw new Error("เช็คนี้ไม่อยู่สถานะรอนำฝากแล้ว — รีเฟรชหน้าแล้วตรวจสถานะล่าสุด");
     await emitChequeChanged(tx, { tenantId, systemId }, { chequeId: id, direction: cq.direction, chequeNo: cq.chequeNo, status: "DEPOSITED", amountSatang: cq.amount });
   });
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "นำฝากเช็คไม่สำเร็จ") };
+  }
   return { ok: true };
 }
 
@@ -484,8 +568,10 @@ export async function clearCheque(
   const ctx = { tenantId, systemId };
   try {
     await prisma.$transaction(async (tx) => {
-      const cq = await tx.accountCheque.findFirst({ where: { id, tenantId, systemId } });
+      const cq = await lockChequeRow(tx, tenantId, systemId, id); // round 7 · N1 (เคลียร์ ∥ เด้ง อ่านสถานะเดียวกันไม่ได้อีก)
       if (!cq) throw new Error("ไม่พบเช็ค");
+      const again = alreadyMsg(cq.status, "เคลียร์", cq.direction);
+      if (again) throw new Error(again);
       const date = clearedDate ?? new Date();
       const bank = await bankLedgerId(ctx, cq.financeAccountId, tx);
       if (cq.direction === "IN") {
@@ -526,7 +612,7 @@ export async function clearCheque(
           tx,
         );
       }
-      await tx.accountCheque.update({ where: { id }, data: { status: "CLEARED", clearedAt: date } });
+      await casChequeStatus(tx, id, cq.status, { status: "CLEARED", clearedAt: date });
       await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "CLEARED", amountSatang: cq.amount });
     });
     return { ok: true };
@@ -545,9 +631,11 @@ export async function bounceCheque(
   const ctx = { tenantId, systemId };
   try {
     await prisma.$transaction(async (tx) => {
-      const cq = await tx.accountCheque.findFirst({ where: { id, tenantId, systemId } });
+      const cq = await lockChequeRow(tx, tenantId, systemId, id); // round 7 · N1
       if (!cq) throw new Error("ไม่พบเช็ค");
       if (cq.direction !== "IN") throw new Error("เด้งได้เฉพาะเช็ครับ");
+      const again = alreadyMsg(cq.status, "เด้ง", cq.direction);
+      if (again) throw new Error(again);
       if (cq.status !== "ON_HAND" && cq.status !== "DEPOSITED" && cq.status !== "CLEARED")
         throw new Error("สถานะเช็คไม่รองรับการทำเด้ง");
       const ar = await resolveMapping(ctx, "AR", undefined, tx);
@@ -578,10 +666,7 @@ export async function bounceCheque(
         },
         tx,
       );
-      await tx.accountCheque.update({
-        where: { id },
-        data: { status: "BOUNCED", note: reason?.trim() || cq.note },
-      });
+      await casChequeStatus(tx, id, cq.status, { status: "BOUNCED", note: reason?.trim() || cq.note });
       await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "BOUNCED", amountSatang: cq.amount });
     });
     return { ok: true };
@@ -600,9 +685,11 @@ export async function voidCheque(
   const ctx = { tenantId, systemId };
   try {
     await prisma.$transaction(async (tx) => {
-      const cq = await tx.accountCheque.findFirst({ where: { id, tenantId, systemId } });
+      const cq = await lockChequeRow(tx, tenantId, systemId, id); // round 7 · N1
       if (!cq) throw new Error("ไม่พบเช็ค");
       if (cq.direction !== "OUT") throw new Error("ยกเลิกได้เฉพาะเช็คจ่าย");
+      const again = alreadyMsg(cq.status, "ยกเลิก", cq.direction);
+      if (again) throw new Error(again);
       if (cq.status !== "ISSUED") throw new Error("ยกเลิกได้เฉพาะเช็คจ่ายที่ยังไม่ถูกเรียกเก็บ");
       const ap = await resolveMapping(ctx, "AP", undefined, tx);
       const pay = await resolveMapping(ctx, "CHEQUE_PAYABLE", undefined, tx);
@@ -623,10 +710,7 @@ export async function voidCheque(
         },
         tx,
       );
-      await tx.accountCheque.update({
-        where: { id },
-        data: { status: "VOIDED", note: reason?.trim() || cq.note },
-      });
+      await casChequeStatus(tx, id, cq.status, { status: "VOIDED", note: reason?.trim() || cq.note });
       await emitChequeChanged(tx, ctx, { chequeId: cq.id, direction: cq.direction, chequeNo: cq.chequeNo, status: "VOIDED", amountSatang: cq.amount });
     });
     return { ok: true };
