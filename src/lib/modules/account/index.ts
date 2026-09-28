@@ -23,7 +23,7 @@ import {
 } from "./service";
 // CRM v2 · C0.3-A: ชนิด+คณิตศาสตร์บรรทัดเอกสาร (ไฟล์ `totals.ts` บริสุทธิ์ ไม่แตะ prisma) + ตัวจัดรูปเงิน
 import { lineAmount, type LineInput } from "./totals";
-import { baht } from "./service";
+import { baht, familyCreditByInvoice } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
 // CRM C1.3 ▸ `accountSystemForCrm` (ท้ายไฟล์) — tenantDb (ไม่ใช่ prisma ดิบ · F5) + ตาม Party ที่ถูกรวมไปตัวปลายทาง
@@ -713,6 +713,7 @@ export { docPaymentLedger, type DocPaymentLedger } from "./service";
 export { mergeContacts, type MergeContactsInput, type MergeResult } from "./contact-merge";
 // CRM C3.3 ▸ ฐานคอมมิชชันก่อน VAT ของเอกสาร (subTotal − discountAmount · อ่านล้วน) — ผู้เรียก: crm/commissions.ts (เส้น crm→account เดิม) ◂
 export { docNetBeforeVat, commissionDocRatios } from "./service";
+export { docWonBasis, type DocWonBasis, creditMoneyDocOf, docFamilyIds } from "./service"; // CRM C5.4-C ▸ ฐานมูลค่าที่ชนะของเอกสารหลัก (ก่อน VAT / รวม VAT − ใบลดหนี้) ◂
 
 // Payroll posting (WO-0036) — จุดเดียวที่ hr เรียกลงบัญชีเงินเดือน
 // reverseEntry (WO Wave2-K) — hr เรียกกลับ JV เงินเดือนตาม journalEntryId (immutable ledger)
@@ -948,6 +949,8 @@ export type PortalDocRow = {
   grandTotal: number;
   paidTotal: number;
   createdAt: Date;
+  /** CRM C5.4-C ▸ (cross-lane ACCOUNT) Σ ใบลดหนี้ที่ยังมีผลซึ่งอ้างอิงเอกสารนี้ — ยอดค้างที่ลูกค้าเห็น = grand − paid − ค่านี้ (F-05) ◂ */
+  creditNoteTotal: number;
 };
 
 export async function listPortalDocs(
@@ -975,7 +978,10 @@ export async function listPortalDocs(
       take,
       select: { id: true, systemId: true, docType: true, docNo: true, status: true, issueDate: true, validUntil: true, dueDate: true, grandTotal: true, paidTotal: true, createdAt: true },
     });
-    for (const r of rows) out.push({ ...r, status: String(r.status) });
+    // CRM C5.4-C ▸ ใบลดหนี้ของใบแจ้งหนี้ในหน้านี้ (รวมใน SQL ต่อเล่ม) ◂
+    //   hunt F1: ใบลดหนี้ของทั้งครอบครัว (ใบแจ้งหนี้ + ใบเสร็จ/ใบกำกับที่แปลงจากมัน) — ตัวช่วยชุดเดียวของบริการบัญชี
+    const cnOf = await familyCreditByInvoice(crmTenantDb({ tenantId, systemId: b.id }) as unknown as Prisma.TransactionClient, b.id, rows.filter((r) => r.docType === "INVOICE").map((r) => r.id));
+    for (const r of rows) out.push({ ...r, status: String(r.status), creditNoteTotal: cnOf.get(r.id) ?? 0 });
   }
   return out.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime() || (a.id < b.id ? 1 : -1)).slice(0, take);
 }

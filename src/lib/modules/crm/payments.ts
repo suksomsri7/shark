@@ -33,6 +33,7 @@ import { getCrmSettings } from "./settings";
 import { crmUiVersion, CrmV2DisabledError } from "./ui-version";
 import {
   ALL_MONEY_REF_TYPES,
+  CREDIT_NOTE_REF_TYPE,
   DEAL_VOIDED_TAG,
   DOC_SETTLE_REF_TYPE,
   MONEY_MAX_SATANG,
@@ -40,6 +41,7 @@ import {
   MONEY_STATUSES,
   PaymentsError,
   POS_LINK_LIMIT,
+  WON_VALUE_BASIS,
   isUsableSatang,
   type DealForDoc,
   type DealMoney,
@@ -51,6 +53,8 @@ import {
 
 export {
   ALL_MONEY_REF_TYPES,
+  CREDIT_NOTE_REF_TYPE,
+  WON_VALUE_BASIS,
   DEAL_VOIDED_TAG,
   DOC_SETTLE_REF_TYPE,
   MONEY_MAX_SATANG,
@@ -253,13 +257,19 @@ async function paymentIdsOfDoc(tenantId: string, documentId: string): Promise<st
   return rows.map((r: { id: string }) => r.id);
 }
 
-/** ยอดเต็มของ "เอกสารหลัก" ของดีล (ใบแจ้งหนี้ก่อน ไม่งั้นใบเสนอราคา) — R-E.7 ใช้เป็น `wonValueSatang` ฝั่งเอกสาร */
-async function anchorGrandOf(ctx: MoneyCtx, deal: { invoiceDocId: string | null; quotationDocId: string | null }): Promise<number> {
+/**
+ * มูลค่าของ "เอกสารหลัก" ของดีล (ใบแจ้งหนี้ก่อน ไม่งั้นใบเสนอราคา) — R-E.7 ใช้เป็น `wonValueSatang` ฝั่งเอกสาร
+ * CRM C5.4-C ▸ (L2-M2 · L2-M3 · มติผู้คุมงาน — Q14 ค้าง) ฐานเดียว `WON_VALUE_BASIS` (ค่าเริ่มต้น = ก่อน VAT):
+ *   ก่อน VAT = subTotal − discountAmount · รวม VAT = grandTotal + depositDeducted (ยอด **ก่อนหักมัดจำ** — ใบแจ้งหนี้ที่หักมัดจำ
+ *   มี grandTotal สุทธิจากมัดจำ ⇒ เดิมมูลค่าที่ชนะหดเท่ามัดจำ) · ลบด้วยใบลดหนี้ที่ยังมีผลของเอกสารนั้น (และของใบที่แปลงมาจากมัน) บนฐานเดียวกัน ◂
+ */
+async function anchorWonOf(ctx: MoneyCtx, deal: { invoiceDocId: string | null; quotationDocId: string | null }): Promise<number> {
   const anchor = deal.invoiceDocId ?? deal.quotationDocId;
   if (!anchor) return 0;
-  const info = await (await accountFacade()).docLinkInfo(ctx.tenantId, anchor).catch(() => null);
-  const grand = info ? Number(info.grandTotal) : 0;
-  return Number.isFinite(grand) ? Math.max(0, Math.round(grand)) : 0;
+  const b = await (await accountFacade()).docWonBasis(ctx.tenantId, anchor).catch(() => null);
+  if (!b) return 0;
+  const v = WON_VALUE_BASIS === "PRE_VAT" ? b.preVat - b.creditPreVat : b.vatIncl - b.creditVatIncl;
+  return Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0;
 }
 
 /**
@@ -268,15 +278,16 @@ async function anchorGrandOf(ctx: MoneyCtx, deal: { invoiceDocId: string | null;
  *   • ฝั่งหน้าร้าน = Σ ยอดบิล POS ที่ถูกนับ
  * ไม่มีแถวที่ถูกนับเลย = null (กลับไปเป็น "ยังไม่มีมูลค่าที่รับจริง") — คำนวณในธุรกรรมเดียวกับการเขียนเสมอ
  */
-async function wonValueInTx(db: Tx | typeof prisma, ctx: MoneyCtx, dealId: string, anchorGrand: number): Promise<bigint | null> {
+async function wonValueInTx(db: Tx | typeof prisma, ctx: MoneyCtx, dealId: string, anchorWon: number): Promise<bigint | null> {
   const rows = await db.crmDealPayment.findMany({ where: { ...scopeOf(ctx), dealId, status: "COUNTED" }, select: { refType: true, refId: true } });
   if (rows.length === 0) return null;
   // ฝั่งเอกสารนับ "ยอดเต็มของเอกสารหลัก" ครั้งเดียว — ทั้งแถวรับชำระและแถวปิดยอด (SF-2) คือเงินของเอกสารใบเดียวกัน
-  let won = rows.some((r) => r.refType === "PAYMENT" || r.refType === DOC_SETTLE_REF_TYPE) ? BigInt(anchorGrand) : ZERO;
+  let won = rows.some((r) => r.refType === "PAYMENT" || r.refType === DOC_SETTLE_REF_TYPE || r.refType === CREDIT_NOTE_REF_TYPE) ? BigInt(anchorWon) : ZERO;
   const saleIds = [...new Set(rows.filter((r) => r.refType === "POS_SALE").map((r) => r.refId))];
   if (saleIds.length > 0) {
-    const sales = await db.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { grandTotalSatang: true } });
-    for (const sale of sales) won += BigInt(Math.max(0, sale.grandTotalSatang));
+    // CRM C5.4-C ▸ ฐานเดียวกับเอกสาร (WON_VALUE_BASIS): ก่อน VAT = ยอดบิล − VAT ของบิล ◂
+    const sales = await db.posSale.findMany({ where: { tenantId: ctx.tenantId, id: { in: saleIds } }, select: { grandTotalSatang: true, vatSatang: true } });
+    for (const sale of sales) won += BigInt(Math.max(0, WON_VALUE_BASIS === "PRE_VAT" ? sale.grandTotalSatang - sale.vatSatang : sale.grandTotalSatang));
   }
   return won;
 }
@@ -293,8 +304,8 @@ export async function countedWonValueOf(ctx: MoneyCtx, dealId: string, tx?: Tx):
   const db: Tx | typeof prisma = tx ?? prisma;
   const deal = await db.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: did }, select: { invoiceDocId: true, quotationDocId: true } });
   if (!deal) return null;
-  const anchorGrand = await anchorGrandOf(ctx, deal);
-  return wonValueInTx(db, ctx, did, anchorGrand);
+  const anchorWon = await anchorWonOf(ctx, deal);
+  return wonValueInTx(db, ctx, did, anchorWon);
 }
 
 /** WON/รับเงินแล้ว ⇒ lifecycle ของผู้ติดต่อเป็น CUSTOMER (กติกาเดียวกับ `deals.moveCore` · ไม่มีวันถอยหลัง) */
@@ -310,7 +321,7 @@ async function afterMoneyChangedInTx(
   tx: Tx,
   ctx: MoneyCtx,
   deal: CrmDeal,
-  opts: { deltaSatang: bigint; anchorGrand: number; lifecycle: boolean },
+  opts: { deltaSatang: bigint; anchorWon: number; lifecycle: boolean },
 ): Promise<void> {
   if (opts.deltaSatang !== ZERO) {
     await tx.crmDeal.update({
@@ -318,7 +329,10 @@ async function afterMoneyChangedInTx(
       data: { paidSatang: opts.deltaSatang > ZERO ? { increment: opts.deltaSatang } : { decrement: -opts.deltaSatang }, lastActivityAt: new Date() },
     });
   }
-  const won = await wonValueInTx(tx, ctx, deal.id, opts.anchorGrand);
+  const counted = await wonValueInTx(tx, ctx, deal.id, opts.anchorWon);
+  // CRM C5.4-C ▸ (SF3 · มติผู้คุมงาน) ดีลที่ชนะแล้วต้องมีมูลค่าที่ชนะเสมอ — เงินทุกก้อนถูกถอนคืน (เช่นยกเลิกการรับชำระเดียวของดีล)
+  //   ⇒ กลับไปใช้มูลค่าดีล (ก่อน VAT) แบบเดียวกับ `deals.moveCore` ตอนชนะโดยไม่มีเงิน · ดีลที่ยังเปิด = null เหมือนเดิม ◂
+  const won = counted ?? (deal.kind === "WON" ? BigInt(Math.max(0, deal.valueSatang)) : null);
   // 🔴 `wonValueSatang` เป็นคอลัมน์ที่ **ใบ C1.5 ปกครอง** (ข้อสอบ C1.5-S0.8: เขียนได้จาก `crm/deals*.ts` เท่านั้น)
   //    ⇒ ทางเดินเงินสั่งผ่านประตูของ deals.ts ในธุรกรรมของตัวเอง (dynamic import — deals.ts ก็เรียก payments.ts แบบเดียวกัน)
   await (await import("./deals")).setWonValueInTx(tx, ctx, deal.id, won);
@@ -344,6 +358,10 @@ type DocLedger = {
   liveCashSatang: number;
   /** การรับชำระที่ถามถึงถูกยกเลิกแล้วไหม (null = ไม่ได้ถาม/ไม่พบ) */
   paymentVoided: boolean | null;
+  /** CRM C5.4-C ▸ Σ (เงินสด + WHT) ของการรับชำระที่ยังไม่ถูกยกเลิก (ไม่มี = ใช้ liveCashSatang — ตัวอ่านสมุดที่ฉีดเข้ามาของข้อสอบเดิม) ◂ */
+  liveTieOffSatang?: number;
+  /** CRM C5.4-C ▸ Σ ใบลดหนี้ที่ยังมีผลซึ่งอ้างอิงเอกสารนี้ (ไม่มี = 0) ◂ */
+  creditNoteSatang?: number;
 };
 export type LedgerReader = (tenantId: string, docId: string, opts: { paymentId?: string; db?: Tx }) => Promise<DocLedger | null>;
 export type MoneyDeps = { ledger?: LedgerReader };
@@ -387,10 +405,14 @@ async function warnLedger(ctx: MoneyCtx, documentId: string, step: string, e: un
 }
 
 /** สมุดบอกว่า "เอกสารชนิดที่นับเข้าดีลได้ · ยังไม่ถูกยกเลิก · ชำระครบแล้ว" */
+/** CRM C5.4-C ▸ Σ ใบลดหนี้ที่ยังมีผลของเอกสาร (ตัวอ่านสมุดที่ไม่ส่งมา = 0) ◂ */
+const creditOf = (l: DocLedger): number => Math.max(0, Math.round(Number(l.creditNoteSatang) || 0));
+
 function paidInFull(l: DocLedger): boolean {
   const grand = Math.max(0, Math.round(Number(l.grandTotal) || 0));
   const paid = Math.max(0, Math.round(Number(l.paidTotal) || 0));
-  return !DEAD_DOC_STATUSES.has(String(l.status)) && PAYABLE_DOC_TYPES.has(String(l.docType)) && grand > 0 && paid >= grand;
+  // CRM C5.4-C ▸ L2-M3: หนี้ของเอกสารที่มีใบลดหนี้ = grand − CN (F-05 ของบัญชี) ⇒ "ครบ" = ตัดหนี้แล้ว + ใบลดหนี้ ≥ ยอดเต็ม ◂
+  return !DEAD_DOC_STATUSES.has(String(l.status)) && PAYABLE_DOC_TYPES.has(String(l.docType)) && grand > 0 && paid + creditOf(l) >= grand;
 }
 
 /**
@@ -399,7 +421,21 @@ function paidInFull(l: DocLedger): boolean {
  */
 function settleTargetOf(l: DocLedger): number {
   if (!paidInFull(l)) return 0;
-  return Math.max(0, Math.round(Number(l.grandTotal) || 0) - Math.max(0, Math.round(Number(l.liveCashSatang) || 0)));
+  // CRM C5.4-C ▸ (review round 2 · S1) ส่วนต่าง WHT = ยอดเต็ม − (CN − ส่วนที่คืน) − เงินสด: ใบลดหนี้ที่ "คืนเงิน" ไม่ได้ลดยอดที่ต้องตัดด้วยเงิน
+  //   (มันถูกนับเป็นแถว CREDIT_NOTE ติดลบแยกแล้ว) — เดิมลบ CN ทั้งใบ ⇒ ถ้ามีเงินคืน ส่วนต่าง WHT หายซ้ำ ◂
+  return Math.max(0, Math.round(Number(l.grandTotal) || 0) - (creditOf(l) - creditRefundOf(l)) - Math.max(0, Math.round(Number(l.liveCashSatang) || 0)));
+}
+
+/**
+ * CRM C5.4-C ▸ (L2-M3) ส่วนของใบลดหนี้ที่เป็น "เงินคืน" ตามสมุด = clamp(ยอดตัดหนี้ที่ยังมีผล + Σ CN − ยอดเต็ม, 0, Σ CN)
+ *   ใบลดหนี้ก่อนลูกค้าจ่ายครบ = ลดหนี้ (ลูกค้าจ่ายน้อยลงเอง) ⇒ 0 · ใบลดหนี้หลังจ่ายครบ = คืนเงินทั้งใบ ⇒ Σ CN ◂
+ */
+function creditRefundOf(l: DocLedger): number {
+  const cn = creditOf(l);
+  if (cn <= 0) return 0;
+  const tie = Math.max(0, Math.round(Number(l.liveTieOffSatang ?? l.liveCashSatang) || 0));
+  const grand = Math.max(0, Math.round(Number(l.grandTotal) || 0));
+  return Math.max(0, Math.min(cn, tie + cn - grand));
 }
 
 /** เวลาใส่/ปลุก/ถอนแถวปิดยอด: อ่านหลังได้ล็อก และ **มากกว่า countedAt เดิมอย่างเคร่งครัด** (ms เดียวกัน = +1 ms) */
@@ -424,7 +460,7 @@ async function reverseStraySettles(ctx: MoneyCtx, documentId: string, keepDealId
   for (const s of stray) {
     const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: s.dealId } });
     if (!pre) continue;
-    const anchorGrand = await anchorGrandOf(ctx, pre);
+    const anchorWon = await anchorWonOf(ctx, pre);
     const done = await prisma.$transaction(async (tx) => {
       await lockRef(tx, DOC_SETTLE_REF_TYPE, documentId);
       await lockMoney(tx, s.dealId);
@@ -435,7 +471,7 @@ async function reverseStraySettles(ctx: MoneyCtx, documentId: string, keepDealId
       const at = nextInstant(cur.countedAt);
       const n = await tx.crmDealPayment.updateMany({ where: { id: cur.id, status: "COUNTED" }, data: { status: "REVERSED", reversedAt: at } });
       if (n.count !== 1) return 0;
-      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: -cur.satang, anchorGrand, lifecycle: false });
+      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: -cur.satang, anchorWon, lifecycle: false });
       await emitMoneyUpdate(tx, ctx, deal.id, `reverse-doc_settle-${documentId}-${at.getTime()}`, {
         rowId: cur.id, refType: DOC_SETTLE_REF_TYPE, refId: documentId, countedAt: isoOf(cur.countedAt), satang: Number(cur.satang),
       });
@@ -471,7 +507,7 @@ async function reconcileDocSettle(
   const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: dealId } });
   if (!pre) return { dealId: null, settled: 0, at };
   await reverseStraySettles(ctx, documentId, dealId);
-  const anchorGrand = await anchorGrandOf(ctx, pre);
+  const anchorWon = await anchorWonOf(ctx, pre);
   let out: { reversed: number; settled: number } = { reversed: 0, settled: 0 };
   try {
     out = await prisma.$transaction(async (tx) => {
@@ -525,7 +561,7 @@ async function reconcileDocSettle(
           });
         }
       }
-      if (reversed > 0 || settled > 0) await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: delta, anchorGrand, lifecycle: settled > 0 });
+      if (reversed > 0 || settled > 0) await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: delta, anchorWon, lifecycle: settled > 0 });
       return { reversed, settled };
     }, TX_OPTS);
   } catch (e) {
@@ -544,6 +580,144 @@ async function reconcileDocSettle(
     await (await import("./commissions")).afterPaymentCounted(ctx, { dealId, refType: DOC_SETTLE_REF_TYPE, refId: documentId });
   }
   return { dealId, settled: out.settled, at };
+}
+
+/**
+ * CRM C5.4-C ▸ (L2-M3 · มติผู้คุมงาน SF1) **ทำให้แถวใบลดหนี้ของเอกสารตรงกับสมุด** — แบบเดียวกับ `reconcileDocSettle`
+ *   แถวเดียวต่อ (ดีล, เอกสารต้นทาง): `CREDIT_NOTE` · satang = −ส่วนที่คืน (`creditRefundOf`) · ไม่เกินเงินที่ดีลนับจากเอกสารนั้นจริง
+ *   (ร้านที่ไม่เคยนับ/นับไม่ครบ = ถอนได้เท่าที่เคยนับ ไม่ติดลบ) · ใต้ lockRef(CREDIT_NOTE, doc) + lockMoney(ดีล) · อ่านสมุดในล็อก
+ *   COUNTED & ยอดไม่ตรง ⇒ ถอน (+ยอดเดิมคืน) · เป้า > 0 ⇒ ใส่/ปลุกด้วย countedAt ใหม่ (สัญญาร่างของคอมมิชชัน C3.3)
+ *   ทุกครั้งที่ `force` (event ของใบลดหนี้): คิดมูลค่าที่ชนะใหม่เสมอ — ใบลดหนี้ลดมูลค่าที่ชนะแม้ไม่มีเงินคืน (`anchorWonOf`)
+ *   🔴 ไม่มีประตู: ใบลดหนี้ = การ "ลด" เงิน/มูลค่าที่เคยนับ (มติ B2 — ประตูห้ามการถอนคืนไม่ได้) · ระบบที่ไม่เคยนับ = เพดาน 0 ⇒ ไม่มีแถว
+ *   อ่านสมุดไม่ได้ ⇒ ไม่แตะอะไร + WARN (N3) ◂
+ */
+async function reconcileCredit(
+  ctx: MoneyCtx,
+  documentId: string,
+  opts: { force: boolean; deps?: MoneyDeps },
+): Promise<{ dealId: string | null; applied: number; restored: number; at: Date }> {
+  let at = new Date();
+  const none = { dealId: null, applied: 0, restored: 0, at };
+  const dealId = await dealIdForDoc(ctx, documentId);
+  if (!dealId) return none;
+  const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: dealId } });
+  if (!pre) return none;
+  if (!opts.force) {
+    // ทางรับชำระ/ยกเลิกรับชำระ: ไม่มีใบลดหนี้และไม่มีแถวค้าง = ไม่มีอะไรให้ทำ (ไม่เปิดธุรกรรมทุกงวด)
+    let cn = 0;
+    try {
+      const l = await readerOf(opts.deps)(ctx.tenantId, documentId, {});
+      cn = l ? creditOf(l) : 0;
+    } catch (e) {
+      await warnLedger(ctx, documentId, "credit-trigger", e);
+      return { ...none, dealId };
+    }
+    const has = await prisma.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), dealId, refType: CREDIT_NOTE_REF_TYPE, refId: documentId }, select: { id: true } });
+    if (cn === 0 && !has) return { ...none, dealId };
+  }
+  const payIds = await paymentIdsOfDoc(ctx.tenantId, documentId);
+  const anchorWon = await anchorWonOf(ctx, pre);
+  let out: { restored: number; applied: number } = { restored: 0, applied: 0 };
+  try {
+    out = await prisma.$transaction(async (tx) => {
+      await lockRef(tx, CREDIT_NOTE_REF_TYPE, documentId);
+      await lockMoney(tx, dealId);
+      const deal = await lockRows(tx, ctx, pre);
+      if (!deal) return { restored: 0, applied: 0 };
+      const ledger = await ledgerInTx(tx, ctx, documentId, "reconcile-credit", opts.deps);
+      if (!ledger) return { restored: 0, applied: 0 };
+      // เพดาน: เงินที่ดีลนี้นับจากเอกสารนี้จริง (การรับชำระของเอกสาร + แถวปิดยอดของมัน) — รวมใน SQL
+      const counted = await tx.crmDealPayment.aggregate({
+        where: {
+          ...scopeOf(ctx), dealId: deal.id, status: "COUNTED",
+          OR: [{ refType: "PAYMENT", refId: { in: payIds.length > 0 ? payIds : ["-"] } }, { refType: DOC_SETTLE_REF_TYPE, refId: documentId }],
+        },
+        _sum: { satang: true },
+      });
+      const cap = Math.max(0, Number(counted._sum.satang ?? ZERO));
+      const target = Math.min(creditRefundOf(ledger), cap);
+      const row = await tx.crmDealPayment.findFirst({
+        where: { ...scopeOf(ctx), dealId: deal.id, refType: CREDIT_NOTE_REF_TYPE, refId: documentId },
+        select: { id: true, status: true, satang: true, countedAt: true },
+      });
+      at = nextInstant(row?.countedAt);
+      let status = row?.status ?? null;
+      let delta = ZERO;
+      let restored = 0;
+      let applied = 0;
+      if (row && status === "COUNTED" && row.satang !== BigInt(-target)) {
+        const n = await tx.crmDealPayment.updateMany({ where: { id: row.id, status: "COUNTED" }, data: { status: "REVERSED", reversedAt: at } });
+        if (n.count === 1) {
+          status = "REVERSED";
+          delta -= row.satang; // แถวติดลบ ⇒ คืนยอดเข้า
+          restored = Number(-row.satang);
+          await emitMoneyUpdate(tx, ctx, deal.id, `reverse-credit_note-${documentId}-${at.getTime()}`, {
+            rowId: row.id, refType: CREDIT_NOTE_REF_TYPE, refId: documentId, countedAt: isoOf(row.countedAt), satang: Number(row.satang),
+          });
+        }
+      }
+      if (target > 0 && isUsableSatang(target)) {
+        let rowId: string | null = null;
+        if (!row) {
+          const made = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: CREDIT_NOTE_REF_TYPE, refId: documentId, satang: BigInt(-target), status: "COUNTED", countedAt: at });
+          if (made) rowId = (await tx.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), dealId: deal.id, refType: CREDIT_NOTE_REF_TYPE, refId: documentId }, select: { id: true } }))?.id ?? null;
+        } else if (status === "REVERSED") {
+          const woke = await tx.crmDealPayment.updateMany({ where: { id: row.id, status: "REVERSED" }, data: { status: "COUNTED", satang: BigInt(-target), countedAt: at, reversedAt: null } });
+          if (woke.count === 1) rowId = row.id;
+        }
+        if (rowId) {
+          delta -= BigInt(target);
+          applied = target;
+          await emitMoneyUpdate(tx, ctx, deal.id, `credit-${documentId}-${at.getTime()}`, {
+            rowId, refType: CREDIT_NOTE_REF_TYPE, refId: documentId, countedAt: isoOf(at), satang: -target,
+          });
+        }
+      }
+      // มูลค่าที่ชนะคิดใหม่เสมอเมื่อถูกเรียกจาก event ของใบลดหนี้ (ลดได้แม้ไม่มีเงินคืน) · ทางรับชำระ = เฉพาะเมื่อแถวเปลี่ยน
+      //   🔴 R-E.14: เฉพาะดีลที่ทางเดินเงินเคยนับแล้ว (มีแถว COUNTED) — ดีลของระบบ v1/ไม่เคยนับไม่ถูกเขียน wonValueSatang/แคชบริษัท
+      const touched = restored > 0 || applied > 0
+        || (opts.force && !!(await tx.crmDealPayment.findFirst({ where: { ...scopeOf(ctx), dealId: deal.id, status: "COUNTED" }, select: { id: true } })));
+      if (touched) await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: delta, anchorWon, lifecycle: false });
+      return { restored, applied };
+    }, TX_OPTS);
+  } catch (e) {
+    if (!(e instanceof LedgerUnreadable)) throw e;
+    await warnLedger(ctx, documentId, e.step, e);
+    return { ...none, dealId };
+  }
+  const commissions = await import("./commissions");
+  if (out.restored > 0) {
+    await audit(ctx, "crm.deal.payment.reverse", dealId, { after: { refType: CREDIT_NOTE_REF_TYPE, refId: documentId, satang: -out.restored, reason: "CREDIT_NOTE_REDERIVED" } });
+    // CRM C3.3 ▸ คอมมิชชัน (หลัง commit · ล้ม = WARN ในตัวเอง) — ถอนแถวหักคืนของร่างเก่า (คืนคอมมิชชัน) ก่อนฮุคใส่/ปลุก ◂
+    await commissions.afterPaymentsReversed(ctx, { dealId });
+  }
+  if (out.applied > 0) {
+    await audit(ctx, "crm.deal.payment", dealId, { after: { refType: CREDIT_NOTE_REF_TYPE, refId: documentId, satang: -out.applied, reason: "CREDIT_NOTE" } });
+    // CRM C3.3 ▸ คอมมิชชันหักคืนส่วนก่อน VAT ของใบลดหนี้ (ส่วนแบ่งติดลบของกฎฐาน PAID) ◂
+    await commissions.afterPaymentCounted(ctx, { dealId, refType: CREDIT_NOTE_REF_TYPE, refId: documentId });
+  }
+  return { dealId, applied: out.applied, restored: out.restored, at };
+}
+
+/**
+ * CRM C5.4-C ▸ (L2-M3) `account.document.issued` / `account.document.voided` ของ **ใบลดหนี้** → ดีลของเอกสารต้นทาง:
+ *   (1) แถวใบลดหนี้ตามสมุด (เงินคืน ⇒ ยอดรับชำระ · โควตา · คอมมิชชันลดลง) + มูลค่าที่ชนะคิดใหม่ (ลบใบลดหนี้ทุกใบบนฐาน WON_VALUE_BASIS)
+ *   (2) แถวปิดยอด WHT ของเอกสารต้นทาง (ใบลดหนี้ทำให้ "ครบ" ได้ — เดิมไม่มีวันครบ) (3) ชนะอัตโนมัติ/โควตา
+ *   ไม่ใช่ใบลดหนี้ / ไม่อ้างอิงเอกสาร (ใบลดหนี้ลอย) = ไม่ทำอะไร · ส่งซ้ำ = กระทบยอดใต้ล็อก (idempotent) ◂
+ */
+export async function onCreditNoteChanged(ctx: MoneyCtx, input: { documentId: string }, deps: MoneyDeps = {}): Promise<{ dealId: string | null; sourceDocId: string | null }> {
+  const documentId = str(input?.documentId);
+  if (!documentId) return { dealId: null, sourceDocId: null };
+  await resolveSystem(ctx);
+  const info = await (await accountFacade()).docLinkInfo(ctx.tenantId, documentId).catch(() => null);
+  if (!info || String(info.docType) !== "CREDIT_NOTE" || !info.sourceDocId) return { dealId: null, sourceDocId: null };
+  // hunt F2: ใบลดหนี้ที่อ้างใบเสร็จ/ใบกำกับ (ทางคืนเงินจริงหลังจ่ายครบ) ⇒ เงินอยู่ที่ใบแจ้งหนี้แม่ — กระทบยอดที่นั่นด้วยใบลดหนี้ทั้งครอบครัว
+  const source = (await (await accountFacade()).creditMoneyDocOf(ctx.tenantId, info.sourceDocId).catch(() => null)) ?? info.sourceDocId;
+  const r = await reconcileCredit(ctx, source, { force: true, deps });
+  if (!r.dealId) return { dealId: null, sourceDocId: source };
+  const settled = await reconcileDocSettle(ctx, source, { allowCount: await canCount(ctx), deps });
+  if (await canCount(ctx)) await afterCounted(ctx, r.dealId, settled.settled > 0 ? settled.at : r.at);
+  return { dealId: r.dealId, sourceDocId: source };
 }
 
 /**
@@ -600,7 +774,7 @@ export async function recordDocPayment(
   if (!dealId) return { counted: false, dealId: null, skipped: "NO_DEAL" };
   const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: dealId } });
   if (!pre) return { counted: false, dealId: null, skipped: "NOT_FOUND" };
-  const anchorGrand = await anchorGrandOf(ctx, pre);
+  const anchorWon = await anchorWonOf(ctx, pre);
   const now = opts.now ?? new Date();
 
   let ledgerFail = null as LedgerUnreadable | null;
@@ -626,7 +800,7 @@ export async function recordDocPayment(
     // ธงคือแถวใต้ unique `(dealId, refType, refId)` — ปักด้วยคำสั่งเดียวที่ชนไม่ได้ (ดู `flagRowInTx`)
     const mine = await flagRowInTx(tx, ctx, { dealId: deal.id, refType: "PAYMENT", refId: paymentId, satang: BigInt(input.amountSatang), status: "COUNTED", countedAt: now });
     if (!mine) return { counted: false as const, skipped: "DUPLICATE" as const };
-    await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: BigInt(input.amountSatang), anchorGrand, lifecycle: true });
+    await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: BigInt(input.amountSatang), anchorWon, lifecycle: true });
     await emitMoneyUpdate(tx, ctx, deal.id, `pay-${paymentId}`, { paymentId, documentId, satang: input.amountSatang });
     return { counted: true as const, skipped: undefined };
   }, TX_OPTS);
@@ -639,7 +813,11 @@ export async function recordDocPayment(
     await afterCounted(ctx, dealId, now);
   }
   // CRM C2.7-fix ▸ S2a + รอบ 4 ข้อ 1 — นับแล้ว หรือส่งซ้ำ ⇒ ตรวจครบ + ปรับแถวปิดยอด (idempotent ใต้ล็อก) ◂
-  if (out.counted || out.skipped === "DUPLICATE") await settleIfPaidInFull(ctx, documentId, deps);
+  if (out.counted || out.skipped === "DUPLICATE") {
+    await settleIfPaidInFull(ctx, documentId, deps);
+    // CRM C5.4-C ▸ L2-M3: เอกสารที่มีใบลดหนี้ — ส่วน "เงินคืน" ขึ้นกับยอดที่รับแล้ว ⇒ กระทบยอดแถวใบลดหนี้ (ไม่มีใบลดหนี้ = ไม่เปิดธุรกรรม) ◂
+    await reconcileCredit(ctx, documentId, { force: false, deps });
+  }
   return { counted: out.counted, dealId, ...(out.skipped ? { skipped: out.skipped } : {}) };
 }
 
@@ -671,7 +849,7 @@ export async function onInvoiceFullyPaid(ctx: MoneyCtx, input: { documentId: str
  */
 export async function runMoneyReconcile(opts: { now: Date; deadline?: number; signal?: AbortSignal }): Promise<{ documents: number; settled: number }> {
   const since = new Date(opts.now.getTime() - 24 * 60 * 60 * 1000);
-  const types = ["account.payment.recorded", "account.payment.voided", "account.invoice.paid"];
+  const types = ["account.payment.recorded", "account.payment.voided", "account.invoice.paid", "account.document.issued", "account.document.voided"];
   const outOfTime = () => opts.signal?.aborted === true || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 2_000);
   let documents = 0;
   let settled = 0;
@@ -688,23 +866,30 @@ export async function runMoneyReconcile(opts: { now: Date; deadline?: number; si
     const seen = new Set<string>();
     let cursor: string | null = null;
     for (let page = 0; page < 50 && !outOfTime(); page += 1) {
-      const rows: { id: string; payload: Prisma.JsonValue }[] = await prisma.outboxEvent.findMany({
+      const rows: { id: string; type: string; payload: Prisma.JsonValue }[] = await prisma.outboxEvent.findMany({
         where: { tenantId, type: { in: types }, createdAt: { gte: since, lte: opts.now }, ...(cursor ? { id: { gt: cursor } } : {}) },
         orderBy: { id: "asc" },
         take: 200,
-        select: { id: true, payload: true },
+        select: { id: true, type: true, payload: true },
       });
       if (rows.length === 0) break;
       cursor = rows[rows.length - 1]?.id ?? cursor;
       for (const ev of rows) {
         if (outOfTime()) break;
         const p = ev.payload && typeof ev.payload === "object" && !Array.isArray(ev.payload) ? (ev.payload as Record<string, unknown>) : {};
-        const docId = str(p.documentId);
+        const rawId = str(p.documentId);
+        // CRM C5.4-C ▸ event ของเอกสาร: เฉพาะใบลดหนี้ (payload.type) ⇒ กระทบยอดของเอกสารต้นทาง · ชนิดอื่นข้าม (ไม่ใช่งานของตัวซ่อมนี้) ◂
+        const isDocEvent = ev.type === "account.document.issued" || ev.type === "account.document.voided";
+        if (isDocEvent && String(p.type ?? "") !== "CREDIT_NOTE") continue;
+        const cnSource = isDocEvent && rawId ? ((await (await accountFacade()).docLinkInfo(tenantId, rawId).catch(() => null))?.sourceDocId ?? null) : null;
+        // hunt F2: ต้นทางของใบลดหนี้ → ใบแจ้งหนี้แม่ของครอบครัว (เงินอยู่ที่นั่น)
+        const docId = isDocEvent ? (cnSource ? ((await (await accountFacade()).creditMoneyDocOf(tenantId, cnSource).catch(() => null)) ?? cnSource) : null) : rawId;
         if (!docId || seen.has(docId)) continue;
         seen.add(docId);
         for (const s of systems) {
           const ctx = { tenantId, systemId: s.id };
           try {
+            await reconcileCredit(ctx, docId, { force: isDocEvent });
             const r = await reconcileDocSettle(ctx, docId, { allowCount: s.count });
             documents += 1;
             if (r.dealId && r.settled > 0) {
@@ -789,7 +974,7 @@ async function reverseRow(
   for (const target of targets) {
     const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: target.dealId } });
     if (!pre) continue;
-    const anchorGrand = await anchorGrandOf(ctx, pre);
+    const anchorWon = await anchorWonOf(ctx, pre);
     const out = await prisma.$transaction(async (tx) => {
       await lockRef(tx, target.refType, target.refId);
       await lockMoney(tx, target.dealId);
@@ -801,7 +986,7 @@ async function reverseRow(
       const at = new Date();
       const n = await tx.crmDealPayment.updateMany({ where: { id: cur.id, status: cur.status }, data: { status: "REVERSED", reversedAt: at } });
       if (n.count !== 1) return { reversed: false as const, satang: ZERO };
-      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: wasCounted ? -cur.satang : ZERO, anchorGrand, lifecycle: false });
+      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: wasCounted ? -cur.satang : ZERO, anchorWon, lifecycle: false });
       // CRM C2.7-fix ▸ seq ต่อครั้งที่เกิด (แถวเดียวกันถอน → ปลุก → ถอนอีกได้) ◂
       await emitMoneyUpdate(tx, ctx, deal.id, `reverse-${target.refType.toLowerCase()}-${target.refId}-${at.getTime()}`, { refType: target.refType, refId: target.refId, satang: wasCounted ? Number(cur.satang) : 0 });
       return { reversed: true as const, satang: wasCounted ? cur.satang : ZERO };
@@ -819,6 +1004,8 @@ async function reverseRow(
   if (refType === "PAYMENT" && docId) {
     const r = await reconcileDocSettle(ctx, docId, { allowCount: await canCount(ctx) });
     if (r.dealId && r.settled > 0) await afterCounted(ctx, r.dealId, r.at);
+    // CRM C5.4-C ▸ L2-M3: ยกเลิกรับชำระของเอกสารที่มีใบลดหนี้ ⇒ ส่วนเงินคืนเปลี่ยน (ถอนได้เสมอ — ไม่มีประตู) ◂
+    await reconcileCredit(ctx, docId, { force: false });
   }
   return { reversed: anyReversed, dealId: firstDeal ?? targets[0]?.dealId ?? null };
 }
@@ -845,7 +1032,7 @@ export async function flagDocumentVoided(ctx: MoneyCtx, input: { documentId: str
   const sourceRef = `account.document.voided#${documentId}`;
   let flagged = 0;
   for (const pre of rows) {
-    const anchorGrand = await anchorGrandOf(ctx, pre);
+    const anchorWon = await anchorWonOf(ctx, pre);
     const done = await prisma.$transaction(async (tx) => {
       await lockMoney(tx, pre.id);
       const deal = await lockRows(tx, ctx, pre);
@@ -858,7 +1045,8 @@ export async function flagDocumentVoided(ctx: MoneyCtx, input: { documentId: str
       const counted = await tx.crmDealPayment.findMany({
         where: {
           ...scopeOf(ctx), dealId: deal.id, status: "COUNTED",
-          OR: [{ refType: "PAYMENT", refId: { in: payIds.length > 0 ? payIds : ["-"] } }, { refType: DOC_SETTLE_REF_TYPE, refId: documentId }],
+          // CRM C5.4-C ▸ + แถวใบลดหนี้ของเอกสารนี้ (ติดลบ — ถอนแล้วยอดกลับเข้า) ◂
+          OR: [{ refType: "PAYMENT", refId: { in: payIds.length > 0 ? payIds : ["-"] } }, { refType: DOC_SETTLE_REF_TYPE, refId: documentId }, { refType: CREDIT_NOTE_REF_TYPE, refId: documentId }],
         },
         select: { id: true, satang: true },
       });
@@ -867,7 +1055,7 @@ export async function flagDocumentVoided(ctx: MoneyCtx, input: { documentId: str
         const n = await tx.crmDealPayment.updateMany({ where: { id: c.id, status: "COUNTED" }, data: { status: "REVERSED", reversedAt: new Date() } });
         if (n.count === 1) reversed += c.satang;
       }
-      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: -reversed, anchorGrand, lifecycle: false });
+      await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: -reversed, anchorWon, lifecycle: false });
       // AUDIT-CLASS X8: หัวเรื่องกิจกรรมเป็นข้อความไทยกลาง ๆ — ไม่มีเลขที่เอกสาร ชื่อคน หรือยอดเงิน
       const act = await recordSystemActivityInTx(tx, ctx, {
         type: "NOTE",
@@ -916,13 +1104,13 @@ export async function countPosSale(ctx: MoneyCtx, input: { saleId: string }): Pr
   for (const row of targets) {
     const pre = await prisma.crmDeal.findFirst({ where: { ...scopeOf(ctx), id: row.dealId } });
     if (!pre) continue;
-    const anchorGrand = await anchorGrandOf(ctx, pre);
+    const anchorWon = await anchorWonOf(ctx, pre);
     const out = await prisma.$transaction(async (tx) => {
       await lockRef(tx, "POS_SALE", saleId);
       await lockMoney(tx, row.dealId);
       const deal = await lockRows(tx, ctx, pre);
       if (!deal) return { counted: false as const, at: null };
-      const counted = await countLinkedRowInTx(tx, ctx, deal, row.id, anchorGrand);
+      const counted = await countLinkedRowInTx(tx, ctx, deal, row.id, anchorWon);
       if (!counted.satang) return { counted: false as const, at: null };
       await emitMoneyUpdate(tx, ctx, deal.id, `pos-${saleId}`, { saleId, satang: Number(counted.satang) });
       return { counted: true as const, at: counted.at };
@@ -939,14 +1127,14 @@ export async function countPosSale(ctx: MoneyCtx, input: { saleId: string }): Pr
 }
 
 /** LINKED → COUNTED ใต้ล็อกที่ผู้เรียกถืออยู่ — คืนยอดที่เพิ่งนับ (0 = ไม่ได้นับ เพราะนับไปแล้ว/ถูกถอนคืนแล้ว) */
-async function countLinkedRowInTx(tx: Tx, ctx: MoneyCtx, deal: CrmDeal, rowId: string, anchorGrand: number): Promise<{ satang: bigint; at: Date | null }> {
+async function countLinkedRowInTx(tx: Tx, ctx: MoneyCtx, deal: CrmDeal, rowId: string, anchorWon: number): Promise<{ satang: bigint; at: Date | null }> {
   const cur = await tx.crmDealPayment.findFirst({ where: { id: rowId }, select: { id: true, status: true, satang: true } });
   if (!cur || cur.status !== "LINKED") return { satang: ZERO, at: null };
   // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-1) คืน countedAt ที่เขียนจริงให้ผู้เรียกส่งต่อถึงการตรวจโควตา ◂
   const at = new Date();
   const n = await tx.crmDealPayment.updateMany({ where: { id: cur.id, status: "LINKED" }, data: { status: "COUNTED", countedAt: at } });
   if (n.count !== 1) return { satang: ZERO, at: null };
-  await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: cur.satang, anchorGrand, lifecycle: true });
+  await afterMoneyChangedInTx(tx, ctx, deal, { deltaSatang: cur.satang, anchorWon, lifecycle: true });
   return { satang: cur.satang, at };
 }
 
@@ -996,7 +1184,7 @@ export async function linkSaleToDeal(ctx: MoneyCtx, actor: MemberActor, input: {
   const sale = await prisma.posSale.findFirst({ where: { id: saleId, tenantId: ctx.tenantId }, select: { id: true, status: true, grandTotalSatang: true, giftCardId: true } });
   if (!sale) throw fail("NOT_FOUND", SALE_NOT_FOUND_MSG);
   if (sale.giftCardId) throw fail("VALIDATION", GIFTCARD_MSG);
-  const anchorGrand = await anchorGrandOf(ctx, pre);
+  const anchorWon = await anchorWonOf(ctx, pre);
   const satang = BigInt(Math.max(0, sale.grandTotalSatang));
 
   const out = await prisma.$transaction(async (tx) => {
@@ -1020,7 +1208,7 @@ export async function linkSaleToDeal(ctx: MoneyCtx, actor: MemberActor, input: {
     // CRM C3.2 ▸ (รีวิวรอบ 2 NOTE-1) countedAt ของแถวนี้ (นับตอนนี้ = เวลาที่เขียน · นับไว้ก่อนแล้ว = countedAt เดิม) ◂
     let countedAt: Date | null = existing.status === "COUNTED" ? existing.countedAt : null;
     if (sale.status === "PAID" && existing.status === "LINKED") {
-      const got = await countLinkedRowInTx(tx, ctx, deal, existing.id, anchorGrand);
+      const got = await countLinkedRowInTx(tx, ctx, deal, existing.id, anchorWon);
       justCounted = got.satang > ZERO;
       counted = justCounted;
       countedAt = got.at;

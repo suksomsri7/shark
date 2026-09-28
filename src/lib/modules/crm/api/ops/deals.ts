@@ -113,7 +113,8 @@ const line = z
     unitPriceSatang: satang,
     discountBp: z.number().int().min(0).max(10_000).nullable().optional(),
     productId: optId,
-    vatRateBp: z.number().int().min(0).max(10_000).nullable().optional(),
+    // CRM C5.4-C ▸ L2-m4: −1 = ยกเว้นภาษี (VAT exempt) — ค่าเดียวกับที่หน้าจอและ checkDealLines รับ (deals-shared) ◂
+    vatRateBp: z.number().int().min(-1).max(10_000).nullable().optional(),
     note: optText(500),
   })
   .strict();

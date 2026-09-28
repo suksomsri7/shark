@@ -1743,7 +1743,115 @@ export async function creditAvailable(
   });
   const used = priorCns.reduce((s, c) => s + c.grandTotal, 0);
   // F-04: CN cap = ยอดคงเหลือค้างชำระจริง (grandTotal − ที่ชำระแล้ว − CN เดิม)
-  return Math.max(0, src.grandTotal - src.paidTotal - used);
+  const own = Math.max(0, src.grandTotal - src.paidTotal - used);
+  // CRM C5.4-C ▸ (hunt F4) เพดานของ "ครอบครัวใบแจ้งหนี้": ใบลดหนี้ทุกใบบนใบแจ้งหนี้ + ใบเสร็จ/ใบกำกับที่แปลงจากมัน รวมกันไม่เกินยอดขาย
+  //   (ต้นทาง = ใบแจ้งหนี้เอง ⇒ ไม่เกินหนี้คงค้าง F-04 · ต้นทาง = ใบเสร็จ/ใบกำกับ ⇒ ลดหนี้/คืนเงินได้ไม่เกินยอดขายที่เหลือ)
+  //   ผู้เรียกที่ตัดสินจริง (issueDocument) ถือล็อกแถวใบแจ้งหนี้อยู่ · หน้าจอเรียกแบบอ่านอย่างเดียว ◂
+  const inv = await invoiceOfDocInTx(tx, systemId, sourceDocId);
+  if (!inv) return own;
+  const fam = await familyCreditInTx(tx, systemId, inv.id, excludeId);
+  const famCap = Math.max(0, inv.grandTotal - (inv.id === sourceDocId ? inv.paidTotal : 0) - fam.grand);
+  return Math.min(own, famCap);
+}
+
+// ═══ CRM C5.4-C ▸ (hunt F1/F4) "ครอบครัวใบแจ้งหนี้" — ใบลดหนี้อ้างใบแจ้งหนี้ หรือใบเสร็จ/ใบกำกับที่แปลงจากมัน (ไทย: ใบลดหนี้อ้างใบกำกับภาษีได้)
+//   หนี้จริงของใบแจ้งหนี้ = grand − paid − Σ ใบลดหนี้ที่ยังมีผลของ **ทั้งครอบครัว** — ทุกทาง (รับชำระ · สถานะ · ยอดค้างพอร์ทัล/ลิงก์/แผงรับชำระ ·
+//   เพดานใบลดหนี้ · สมุดของ CRM · อัตราคอมมิชชัน · มูลค่าที่ชนะ) ใช้ตัวช่วยชุดนี้ชุดเดียว ═══
+const CREDIT_TYPES = ["CREDIT_NOTE", "DEBIT_NOTE"] as const;
+const LIVE_NOT = ["DRAFT", "VOIDED", "CANCELLED"] as const;
+
+/** id ของเอกสาร + ลูกหลานที่แปลงจากมัน (≤ 3 ชั้น · ไม่รวมใบลด/เพิ่มหนี้) — ใบแจ้งหนี้ → ใบเสร็จ → ใบกำกับ · ใบเสนอราคา → ใบแจ้งหนี้ → … */
+export async function docFamilyIds(db: Prisma.TransactionClient, systemId: string, rootId: string): Promise<string[]> {
+  const out = [rootId];
+  let layer = [rootId];
+  for (let depth = 0; depth < 3 && layer.length > 0; depth += 1) {
+    const kids = await db.accountDocument.findMany({ where: { systemId, sourceDocId: { in: layer }, docType: { notIn: [...CREDIT_TYPES] } }, select: { id: true }, take: 500 });
+    layer = kids.map((k) => k.id).filter((id) => !out.includes(id));
+    out.push(...layer);
+  }
+  return out;
+}
+
+/** Σ ใบลดหนี้ที่ยังมีผลของครอบครัว (ยอดรวม VAT + ก่อน VAT) — `excludeId` = ใบที่กำลังออก (ไม่นับตัวเอง) */
+async function familyCreditInTx(db: Prisma.TransactionClient, systemId: string, rootId: string, excludeId?: string): Promise<{ grand: number; net: number }> {
+  const ids = await docFamilyIds(db, systemId, rootId);
+  const agg = await db.accountDocument.aggregate({
+    where: { systemId, docType: "CREDIT_NOTE", sourceDocId: { in: ids }, status: { notIn: [...LIVE_NOT] }, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    _sum: { grandTotal: true, subTotal: true, discountAmount: true },
+  });
+  return { grand: agg._sum.grandTotal ?? 0, net: Math.max(0, (agg._sum.subTotal ?? 0) - (agg._sum.discountAmount ?? 0)) };
+}
+
+/** ใบแจ้งหนี้ "เจ้าของหนี้" ของเอกสาร: ตัวมันเอง (INVOICE) หรือเดินขึ้นจากใบเสร็จ/ใบกำกับ ≤ 3 ทอด · ไม่ใช่ครอบครัวใบแจ้งหนี้ = null */
+async function invoiceOfDocInTx(db: Prisma.TransactionClient, systemId: string, docId: string): Promise<{ id: string; grandTotal: number; paidTotal: number } | null> {
+  let cur: string | null = docId;
+  for (let hop = 0; hop < 4 && cur; hop += 1) {
+    const d: { id: string; docType: string; sourceDocId: string | null; grandTotal: number; paidTotal: number } | null = await db.accountDocument.findFirst({
+      where: { id: cur, systemId }, select: { id: true, docType: true, sourceDocId: true, grandTotal: true, paidTotal: true },
+    });
+    if (!d) return null;
+    if (d.docType === "INVOICE") return { id: d.id, grandTotal: d.grandTotal, paidTotal: d.paidTotal };
+    if (d.docType !== "RECEIPT" && d.docType !== "TAX_INVOICE") return null;
+    cur = d.sourceDocId;
+  }
+  return null;
+}
+
+/**
+ * CRM C5.4-C ▸ (hunt F1) แบบชุด: Σ ใบลดหนี้ที่ยังมีผลของครอบครัว ต่อใบแจ้งหนี้ (รายงานอายุหนี้ · แดชบอร์ด · พอร์ทัล · ภาพรวม)
+ * ลูกหลานหาทีละชั้น (≤ 3 ชั้น · คำสั่งละชั้น) แล้วรวม groupBy ครั้งเดียว — ไม่ใช่คำสั่งต่อใบ ◂
+ */
+export async function familyCreditByInvoice(db: Prisma.TransactionClient, systemId: string, invoiceIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (invoiceIds.length === 0) return out;
+  const rootOf = new Map(invoiceIds.map((id) => [id, id]));
+  let layer = [...invoiceIds];
+  for (let depth = 0; depth < 3 && layer.length > 0; depth += 1) {
+    const kids = await db.accountDocument.findMany({ where: { systemId, sourceDocId: { in: layer }, docType: { notIn: [...CREDIT_TYPES] } }, select: { id: true, sourceDocId: true }, take: 5_000 });
+    layer = [];
+    for (const k of kids) if (k.sourceDocId && !rootOf.has(k.id)) { rootOf.set(k.id, rootOf.get(k.sourceDocId) ?? k.sourceDocId); layer.push(k.id); }
+  }
+  const cn = await db.accountDocument.groupBy({
+    by: ["sourceDocId"],
+    where: { systemId, docType: "CREDIT_NOTE", sourceDocId: { in: [...rootOf.keys()] }, status: { notIn: [...LIVE_NOT] } },
+    _sum: { grandTotal: true },
+  });
+  for (const g of cn) { const root = g.sourceDocId ? rootOf.get(g.sourceDocId) : undefined; if (root) out.set(root, (out.get(root) ?? 0) + (g._sum.grandTotal ?? 0)); }
+  return out;
+}
+
+/**
+ * CRM C5.4-C ▸ (hunt F5 · G1 · G2) ตรวจสายอ้างอิงของใบลดหนี้ — คืนข้อความไทย (ออกไม่ได้) หรือ null (ออกได้)
+ *   ต้นทาง/ทุกใบในสายต้องออกแล้วและยังมีผล (G2) · ชนิดที่อ้างได้ = ใบแจ้งหนี้ · ใบเสร็จ · ใบกำกับภาษี (F5)
+ *   สายต้องจบที่ **ใบแจ้งหนี้** หรือใบเสร็จ/ใบกำกับที่ไม่ได้แปลงจากเอกสารอื่น (ขายสด) — สายที่ไปจบที่ใบรับมัดจำ (เช่นใบกำกับของมัดจำ) = ปฏิเสธ (G1):
+ *   มัดจำมีกติกาหักในใบแจ้งหนี้ของมันเอง ใบลดหนี้บนมัดจำทำให้ยอดหักมัดจำ/ลูกหนี้/CRM ไม่ตรงกัน ⇒ ให้ลดหนี้ที่ใบแจ้งหนี้ที่หักมัดจำแล้วแทน ◂
+ */
+async function creditSourceProblemInTx(db: Prisma.TransactionClient, systemId: string, sourceId: string): Promise<string | null> {
+  let cur: string | null = sourceId;
+  for (let hop = 0; hop < 4 && cur; hop += 1) {
+    const d: { docType: string; status: string; sourceDocId: string | null } | null = await db.accountDocument.findFirst({ where: { id: cur, systemId }, select: { docType: true, status: true, sourceDocId: true } });
+    if (!d) return "ไม่พบเอกสารอ้างอิงของใบลดหนี้ในสมุดเล่มนี้ — เลือกเอกสารอ้างอิงใหม่";
+    if ((LIVE_NOT as readonly string[]).includes(d.status))
+      return hop === 0
+        ? "เอกสารอ้างอิงของใบลดหนี้ยังเป็นร่างหรือถูกยกเลิกแล้ว — เลือกเอกสารที่ออกแล้วและยังมีผล"
+        : "ใบแจ้งหนี้ต้นทางของเอกสารอ้างอิงถูกยกเลิกแล้ว — ออกใบลดหนี้อ้างเอกสารนี้ไม่ได้";
+    if (d.docType === "INVOICE") return null;
+    if (d.docType === "DEPOSIT_RECEIPT")
+      return "ยังออกใบลดหนี้ของเงินมัดจำไม่ได้ — ให้ออกใบลดหนี้อ้างใบแจ้งหนี้ที่หักมัดจำแล้ว (หรือยกเลิกใบรับมัดจำหากยังไม่ถูกหัก)";
+    if (d.docType !== "RECEIPT" && d.docType !== "TAX_INVOICE")
+      return "ใบลดหนี้ต้องอ้างอิงใบแจ้งหนี้ ใบเสร็จรับเงิน หรือใบกำกับภาษี — เลือกเอกสารอ้างอิงใหม่";
+    if (!d.sourceDocId) return null; // ใบเสร็จ/ใบกำกับขายสด (ไม่ได้แปลงจากเอกสารอื่น) = เพดานของตัวเอง
+    cur = d.sourceDocId;
+  }
+  return null;
+}
+
+/** CRM C5.4-C ▸ facade: เอกสารที่ "ถือเงิน" ของใบลดหนี้ที่อ้าง `docId` — ใบแจ้งหนี้ของครอบครัว หรือเอกสารนั้นเอง (ไม่ใช่ครอบครัวใบแจ้งหนี้) ◂ */
+export async function creditMoneyDocOf(tenantId: string, docId: string): Promise<string | null> {
+  if (!tenantId || !docId) return null;
+  const d = await prisma.accountDocument.findFirst({ where: { id: docId, tenantId }, select: { systemId: true } });
+  if (!d) return null;
+  return (await invoiceOfDocInTx(prisma as unknown as Prisma.TransactionClient, d.systemId, docId))?.id ?? docId;
 }
 
 /** WO 1.6 — เวอร์ชันไม่ต้องมี tx (นอก transaction) ให้ DocEditorPage เรียกแสดง "cap-line" ได้โดยไม่ต้อง import prisma เอง (F5) */
@@ -2159,6 +2267,15 @@ export async function issueDocument(
         if (!doc.adjustReason || doc.adjustReason.trim().length === 0)
           throw new Error("ต้องระบุเหตุผลการออก (ตามประกาศสรรพากร)");
         if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
+          // CRM C5.4-C ▸ (review round 3 · 2) ล็อกแถวต้นทางก่อนอ่านเพดาน — recordPayment ล็อกแถวเดียวกัน ⇒ ใบลดหนี้ที่แข่งกับการรับชำระ
+          //   (หรือกับใบลดหนี้อีกใบ) อ่านยอดที่ commit แล้วเสมอ ไม่ลดหนี้เกินคงเหลือ · ลำดับล็อก: ใบลดหนี้ → ต้นทาง (เหมือน voidDocument) ◂
+          // hunt F5 + G1 + G2: สายอ้างอิงของใบลดหนี้ต้องจบที่ใบแจ้งหนี้ (หรือใบเสร็จ/ใบกำกับที่ไม่ได้แปลงจากอะไร) และทุกใบในสายต้องมีผลอยู่
+          const srcProblem = await creditSourceProblemInTx(tx, systemId, doc.sourceDocId);
+          if (srcProblem) throw new Error(srcProblem);
+          await lockDocumentRow(tx, tenantId, systemId, doc.sourceDocId);
+          // hunt F4: ล็อกใบแจ้งหนี้แม่ของครอบครัวด้วย (ลำดับ: ใบลดหนี้ → ต้นทาง → ใบแจ้งหนี้ · recordPayment ล็อกเฉพาะใบแจ้งหนี้)
+          const famInv = await invoiceOfDocInTx(tx, systemId, doc.sourceDocId);
+          if (famInv && famInv.id !== doc.sourceDocId) await lockDocumentRow(tx, tenantId, systemId, famInv.id);
           const cap = await creditAvailable(tx, systemId, doc.sourceDocId, id);
           if (doc.grandTotal > cap + 1)
             throw new Error(`ยอดใบลดหนี้เกินยอดคงเหลือของเอกสารเดิม (คงเหลือ ฿${baht(cap)})`);
@@ -2232,6 +2349,8 @@ export async function issueDocument(
       } else if (doc.docType === "CREDIT_NOTE" || doc.docType === "DEBIT_NOTE") {
         // F4: CN = Dr รายได้+Dr 2200 / Cr 1100|เงิน · DN กลับด้าน (logic ใน gl)
         await postDocument(ctx, id, tx);
+        // CRM C5.4-C ▸ (review B1) ใบลดหนี้ที่ปิดยอดคงเหลือ ⇒ ต้นทางเป็น PAID (กติกาเดียวกับ recordPayment) ◂
+        if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
       } else if (doc.docType === "TAX_INVOICE") {
         // A2: ใบกำกับเป็นตัวกำหนดเดือน VAT → ย้าย 2205/2210 → 2200
         await postTaxInvoice(ctx, id, tx);
@@ -2470,6 +2589,41 @@ async function depositRepostEvent(tx: Prisma.TransactionClient, systemId: string
  * 🔴 ต้องเรียก **ก่อน** อ่านข้อมูลของเอกสารเสมอ · ล็อกจะถูกปล่อยเมื่อ tx จบ (commit/rollback)
  *    ผูก tenantId+systemId ไว้ด้วยเพื่อไม่ให้ id จากร้านอื่นมาจับล็อกแถวเราได้
  */
+// CRM C5.4-C ▸ (review round 2 · B1) **สถานะหนี้ของใบแจ้งหนี้ — ฟังก์ชันเดียว** ของทุกทางที่เปลี่ยน "ที่ชำระแล้ว" หรือ "ใบลดหนี้":
+//   recordPayment · voidPayment · ออกใบลดหนี้ · ยกเลิกใบลดหนี้ — หนี้จริง = grand − paid − ใบลดหนี้ที่ยังมีผล (F-05)
+//   ครบ (paid + CN ≥ grand) = PAID · ยังค้างและเคยรับเงิน = PARTIAL · ไม่เคยรับเงิน = AWAITING_PAYMENT ◂
+export function receivableStatusOf(grandTotal: number, paidTotal: number, creditTotal: number): "PAID" | "PARTIAL" | "AWAITING_PAYMENT" {
+  if (paidTotal + Math.max(0, creditTotal) >= grandTotal) return "PAID";
+  return paidTotal > 0 ? "PARTIAL" : "AWAITING_PAYMENT";
+}
+
+/** CRM C5.4-C ▸ Σ ใบลดหนี้ที่ยังมีผลของเอกสาร — อ่านด้วย tx ของผู้เรียก (ใต้ล็อกแถวเอกสารต้นทาง) ◂ */
+async function liveCreditTotalInTx(tx: Prisma.TransactionClient, systemId: string, docId: string): Promise<number> {
+  return (await familyCreditInTx(tx, systemId, docId)).grand; // hunt F1: ทั้งครอบครัวใบแจ้งหนี้
+}
+
+/**
+ * CRM C5.4-C ▸ (review B1) ใบลดหนี้ออก/ถูกยกเลิก ⇒ คิดสถานะของใบแจ้งหนี้ต้นทางใหม่ด้วย `receivableStatusOf` ใต้ล็อกแถวต้นทาง
+ *   (ลำดับล็อก: ใบลดหนี้ → ต้นทาง · recordPayment ล็อกเฉพาะต้นทาง ⇒ ไม่ย้อนลำดับ) · เพิ่งกลายเป็น PAID ⇒ `account.invoice.paid`
+ *   (คีย์เดียวกับ recordPayment — ครั้งเดียวต่อเอกสาร) · ต้นทางที่ไม่ใช่ใบแจ้งหนี้รอชำระ/ชำระแล้ว = ไม่แตะ ◂
+ */
+async function rederiveInvoiceStatusInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, docId: string): Promise<void> {
+  // hunt F1: ใบลดหนี้อ้างใบเสร็จ/ใบกำกับ ⇒ คิดที่ใบแจ้งหนี้แม่ของครอบครัว
+  const sourceId = (await invoiceOfDocInTx(tx, systemId, docId))?.id;
+  if (!sourceId) return;
+  await lockDocumentRow(tx, tenantId, systemId, sourceId);
+  const src = await tx.accountDocument.findFirst({ where: { id: sourceId, tenantId, systemId }, select: { id: true, docType: true, docNo: true, status: true, grandTotal: true, paidTotal: true } });
+  if (!src || src.docType !== "INVOICE" || !["AWAITING_PAYMENT", "PARTIAL", "PAID"].includes(src.status)) return;
+  const credit = await liveCreditTotalInTx(tx, systemId, src.id);
+  const next = receivableStatusOf(src.grandTotal, src.paidTotal, credit);
+  if (next === src.status) return;
+  await tx.accountDocument.update({ where: { id: src.id }, data: { status: next } });
+  // (review round 3 · 1) ใบลดหนี้ที่ลดหนี้ทั้งใบของใบที่ **ยังไม่เคยรับเงิน** = PAID ได้ (ไม่มีหนี้เหลือ) แต่ "ไม่ได้รับเงิน" ⇒ ไม่ยิง invoice.paid
+  if (next === "PAID" && src.paidTotal > 0) {
+    await emitOutbox(tx, { tenantId, systemId, type: "account.invoice.paid", idempotencyKey: `account.invoice.paid#${src.id}`, payload: { documentId: src.id, docNo: src.docNo, grandTotalSatang: src.grandTotal, paidTotalSatang: src.paidTotal, creditNoteSatang: credit } });
+  }
+}
+
 async function lockDocumentRow(
   tx: Prisma.TransactionClient,
   tenantId: string,
@@ -2537,16 +2691,8 @@ export async function recordPayment(
       // A5: paidTotal = ยอดที่ตัดหนี้ (เงินเข้า + WHT ถูกหัก) — กันเกินยอด
       const tieOff = input.amount + wht;
       // F-05: หนี้จริง = grandTotal − ที่ชำระแล้ว − ใบลดหนี้ที่ออกแล้ว (กันรับเงินเกินจน GL ลูกหนี้ติดลบ)
-      const cnAgg = await tx.accountDocument.aggregate({
-        where: {
-          systemId,
-          docType: "CREDIT_NOTE",
-          sourceDocId: id,
-          status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
-        },
-        _sum: { grandTotal: true },
-      });
-      const cnTotal = cnAgg._sum.grandTotal ?? 0;
+      // CRM C5.4-C ▸ (hunt F1) ใบลดหนี้ของทั้งครอบครัว (ใบแจ้งหนี้ + ใบเสร็จ/ใบกำกับที่แปลงจากมัน) ◂
+      const cnTotal = (await familyCreditInTx(tx, systemId, id)).grand;
       const remain = Math.max(0, doc.grandTotal - doc.paidTotal - cnTotal);
       if (tieOff > remain + 1) // เผื่อ rounding 1 สตางค์
         throw new Error("ยอดชำระเกินยอดคงเหลือ");
@@ -2570,7 +2716,9 @@ export async function recordPayment(
       });
       paymentId = payment.id;
       const newPaid = doc.paidTotal + tieOff;
-      const fullyPaid = newPaid >= doc.grandTotal;
+      // CRM C5.4-C ▸ L2-M3 (ฝั่งบัญชี · ขั้นต่ำ): หนี้ของใบแจ้งหนี้ที่มีใบลดหนี้ = grand − CN (F-05 ข้างบน) ⇒ "ครบ" ต้องนับใบลดหนี้ด้วย
+      //   เดิม newPaid ≥ grandTotal ไม่มีวันจริง ⇒ ค้าง PARTIAL ตลอดไป + ไม่มี account.invoice.paid (แถวปิดยอด WHT ของ CRM ไม่เกิด) ◂
+      const fullyPaid = newPaid + (doc.docType === "DEPOSIT_RECEIPT" ? 0 : cnTotal) >= doc.grandTotal;
       const ctx = { tenantId, systemId };
       await ensureAccounting(ctx, tx);
 
@@ -2581,7 +2729,7 @@ export async function recordPayment(
         // มัดจำโพสต์เต็มก้อนเมื่อรับครบ (เงินสด Dr = grandTotal) — postDocument อ่าน finance account จาก payment
         if (fullyPaid) await postDocument(ctx, id, tx, { event: await depositRepostEvent(tx, systemId, id) });
       } else {
-        status = fullyPaid ? "PAID" : "PARTIAL";
+        status = receivableStatusOf(doc.grandTotal, newPaid, cnTotal); // CRM C5.4-C ▸ ฟังก์ชันสถานะเดียว (review B1) ◂
         await tx.accountDocument.update({ where: { id }, data: { paidTotal: newPaid, status } });
         // ── A5: โพสต์บัญชีการชำระ (Dr เงิน/WHT/fee, Cr ลูกหนี้ + โอน VAT ถ้า ON_PAYMENT) ──
         await postPayment(ctx, payment.id, tx);
@@ -2634,7 +2782,8 @@ export async function recordPayment(
                 tenantId,
                 type: "account.invoice.paid",
                 idempotencyKey: `account.invoice.paid#${id}`,
-                payload: { documentId: id, docNo: doc.docNo, grandTotalSatang: doc.grandTotal },
+                // CRM C5.4-C ▸ (review round 3) + ยอดที่ตัดหนี้แล้ว + ใบลดหนี้ที่ยังมีผล (additive) ◂
+                payload: { documentId: id, docNo: doc.docNo, grandTotalSatang: doc.grandTotal, paidTotalSatang: newPaid, creditNoteSatang: cnTotal },
                 systemId,
               },
             ]
@@ -2776,7 +2925,10 @@ export async function voidPayment(
         where: { id: documentId },
         data: {
           paidTotal: newPaid,
-          status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT",
+          // CRM C5.4-C ▸ (review B1) ใบแจ้งหนี้ = ฟังก์ชันสถานะเดียว (ใบลดหนี้ที่ยังมีผลนับเป็นส่วนที่ปิดแล้ว) · ชนิดอื่นคงเดิม ◂
+          status: doc.docType === "INVOICE"
+            ? receivableStatusOf(doc.grandTotal, newPaid, await liveCreditTotalInTx(tx, systemId, documentId))
+            : newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT",
         },
       });
       // reversal journal ของการชำระ
@@ -2900,7 +3052,14 @@ export type PaymentTargetDoc = {
   sourceDocId: string | null;
   contactId: string | null;
   contactName: string | null;
+  /** CRM C5.4-C ▸ (cross-lane ACCOUNT) Σ ใบลดหนี้ที่ออกแล้วและยังมีผลซึ่งอ้างอิงเอกสารนี้ — หนี้จริง = grand − paid − ค่านี้ (F-05) ◂ */
+  creditNoteTotal: number;
 };
+
+/** CRM C5.4-C ▸ ยอดคงค้างจริงของเอกสารรับชำระ (นิยามเดียวกับด่าน F-05 ของ recordPayment) — ทุกจุดที่เติม/จำกัดยอดรับชำระใช้ตัวนี้ ◂ */
+export function paymentOutstandingOf(t: { grandTotal: number; paidTotal: number; creditNoteTotal?: number }): number {
+  return Math.max(0, t.grandTotal - t.paidTotal - Math.max(0, t.creditNoteTotal ?? 0));
+}
 
 const PAYMENT_DOC_SELECT = {
   id: true,
@@ -2935,7 +3094,14 @@ function toPaymentTarget(d: PaymentDocRow): PaymentTargetDoc {
     sourceDocId: d.sourceDocId,
     contactId: d.contactId,
     contactName: (snap?.name as string) ?? d.contact?.name ?? null,
+    creditNoteTotal: 0,
   };
+}
+
+/** CRM C5.4-C ▸ Σ ใบลดหนี้ที่ยังมีผลของเอกสาร (F-05) ◂ */
+async function creditNoteTotalOf(tenantId: string, systemId: string, docId: string): Promise<number> {
+  void tenantId; // systemId ถูกผูกกับ tenant แล้วโดยผู้เรียก (paymentTargetOf อ่านเอกสารด้วย tenantId + systemId)
+  return (await familyCreditInTx(prisma as unknown as Prisma.TransactionClient, systemId, docId)).grand; // hunt F1
 }
 
 /**
@@ -2957,9 +3123,14 @@ export async function paymentTargetOf(
       where: { id: doc.sourceDocId, tenantId, systemId, docType: "INVOICE" },
       select: PAYMENT_DOC_SELECT,
     });
-    if (src) return { doc: toPaymentTarget(doc), target: toPaymentTarget(src) };
+    if (src) {
+      const target = toPaymentTarget(src);
+      target.creditNoteTotal = await creditNoteTotalOf(tenantId, systemId, src.id);
+      return { doc: toPaymentTarget(doc), target };
+    }
   }
   const t = toPaymentTarget(doc);
+  t.creditNoteTotal = await creditNoteTotalOf(tenantId, systemId, doc.id);
   return { doc: t, target: t };
 }
 
@@ -3148,6 +3319,20 @@ export async function voidDocument(
         if (activePay > 0) throw new Error("มีการรับชำระค้างอยู่ — ยกเลิกการชำระก่อน");
       }
       const wasIssued = doc.status !== "DRAFT"; // เคยมีผล (มี journal)
+      // CRM C5.4-C ▸ (hunt G3) ยกเลิกเอกสารที่มีใบลดหนี้ที่ยังมีผลอ้างอยู่ (ตัวมันหรือเอกสารที่แปลงจากมัน) ไม่ได้ — เดิมยกเลิกผ่าน
+      //   ⇒ ใบลดหนี้ลอย ลูกหนี้ติดลบในบัญชี · ต้องยกเลิกใบลดหนี้ก่อน ◂
+      if (wasIssued && doc.docType !== "CREDIT_NOTE" && doc.docType !== "DEBIT_NOTE") {
+        const fam = await docFamilyIds(tx, systemId, id);
+        const liveCn = await tx.accountDocument.count({ where: { systemId, docType: "CREDIT_NOTE", sourceDocId: { in: fam }, status: { notIn: [...LIVE_NOT] } } });
+        if (liveCn > 0) throw new Error("เอกสารนี้ (หรือเอกสารที่แปลงจากมัน) มีใบลดหนี้ที่ยังมีผลอ้างอิงอยู่ — ยกเลิกใบลดหนี้ก่อน แล้วค่อยยกเลิกเอกสารนี้");
+      }
+      // CRM C5.4-C ▸ (hunt F3 · deadlock) ใบลดหนี้ที่อ้างเอกสาร: ล็อกต้นทาง + ใบแจ้งหนี้แม่ **ก่อน** กลับรายการ GL — ลำดับเดียวกับ issueDocument
+      //   (ใบลดหนี้ → ต้นทาง → ใบแจ้งหนี้ → GL) · เดิมล็อกต้นทางหลัง reverseFor ⇒ ชนกับการออกใบลดหนี้ใบที่สอง (40P01) ◂
+      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
+        await lockDocumentRow(tx, tenantId, systemId, doc.sourceDocId);
+        const famInv = await invoiceOfDocInTx(tx, systemId, doc.sourceDocId);
+        if (famInv && famInv.id !== doc.sourceDocId) await lockDocumentRow(tx, tenantId, systemId, famInv.id);
+      }
       await tx.accountDocument.update({
         where: { id },
         data: {
@@ -3160,6 +3345,8 @@ export async function voidDocument(
       if (wasIssued) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // CRM C5.4-C ▸ (review B1) ยกเลิกใบลดหนี้ ⇒ หนี้ของต้นทางกลับมา: PAID → PARTIAL/AWAITING_PAYMENT (ฟังก์ชันสถานะเดียว) ◂
+      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
       // WO C4: "ยกเลิกเอกสาร" ออก webhook — ใน tx เดียวกับ reversal (ยกเลิกล้ม = ไม่มี event หลอก)
       await emitDocumentVoided(tx, { tenantId, systemId }, {
         id,
@@ -3186,21 +3373,8 @@ export async function overviewStats(tenantId: string, systemId: string) {
     select: { id: true, grandTotal: true, paidTotal: true, dueDate: true, status: true, validUntil: true },
   });
   // F-06: หักใบลดหนี้ที่ออกแล้วของแต่ละใบ → ยอดค้างรับหน้าจอตรงกับ GL 1100
-  const cnBySource = new Map<string, number>();
-  if (openInvoices.length > 0) {
-    const cns = await prisma.accountDocument.groupBy({
-      by: ["sourceDocId"],
-      where: {
-        tenantId,
-        systemId,
-        docType: "CREDIT_NOTE",
-        sourceDocId: { in: openInvoices.map((d) => d.id) },
-        status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] },
-      },
-      _sum: { grandTotal: true },
-    });
-    for (const c of cns) if (c.sourceDocId) cnBySource.set(c.sourceDocId, c._sum.grandTotal ?? 0);
-  }
+  // CRM C5.4-C ▸ (hunt F1) ทั้งครอบครัวใบแจ้งหนี้ (ใบลดหนี้อ้างใบเสร็จ/ใบกำกับด้วย) ◂
+  const cnBySource = await familyCreditByInvoice(prisma as unknown as Prisma.TransactionClient, systemId, openInvoices.map((d) => d.id));
   let receivable = 0;
   let overdueCount = 0;
   let overdueAmount = 0;
@@ -3874,6 +4048,10 @@ export type DocPaymentLedger = {
   liveCashSatang: number;
   /** `opts.paymentId` ถูกยกเลิกแล้วไหม — null = ไม่ได้ถาม หรือไม่พบการรับชำระนั้นในเอกสารนี้ */
   paymentVoided: boolean | null;
+  /** CRM C5.4-C ▸ Σ (`amount` + `whtAmountSatang`) ของการรับชำระที่ยังไม่ถูกยกเลิก = ยอดที่ตัดหนี้จริง (รวมที่ฐานข้อมูล) ◂ */
+  liveTieOffSatang: number;
+  /** CRM C5.4-C ▸ Σ `grandTotal` ของใบลดหนี้ที่ออกแล้วและยังไม่ถูกยกเลิก ซึ่งอ้างอิงเอกสารนี้ (นิยามเดียวกับ F-05 ของ recordPayment) ◂ */
+  creditNoteSatang: number;
 };
 
 export async function docPaymentLedger(
@@ -3890,8 +4068,10 @@ export async function docPaymentLedger(
   if (!doc) return null;
   const live = await q.accountDocumentPayment.aggregate({
     where: { tenantId, systemId: doc.systemId, documentId: doc.id, voidedAt: null },
-    _sum: { amount: true },
+    _sum: { amount: true, whtAmountSatang: true },
   });
+  // CRM C5.4-C ▸ ใบลดหนี้ที่อ้างอิงเอกสารนี้ (ยังมีผล) — F-05 ◂
+  const cn = { _sum: { grandTotal: (await familyCreditInTx(q, doc.systemId, doc.id)).grand } }; // hunt F1: ทั้งครอบครัว
   const pay = opts.paymentId
     ? await q.accountDocumentPayment.findFirst({ where: { id: opts.paymentId, tenantId, documentId: doc.id }, select: { voidedAt: true } })
     : null;
@@ -3903,6 +4083,31 @@ export async function docPaymentLedger(
     paidTotal: doc.paidTotal,
     liveCashSatang: live._sum.amount ?? 0,
     paymentVoided: pay ? pay.voidedAt !== null : null,
+    liveTieOffSatang: (live._sum.amount ?? 0) + (live._sum.whtAmountSatang ?? 0),
+    creditNoteSatang: cn._sum.grandTotal ?? 0,
+  };
+}
+
+// CRM C5.4-C ▸ (L2-M2 · L2-M3 · มติผู้คุมงาน: มูลค่าที่ชนะ = ก่อน VAT · ใบลดหนี้ลดมูลค่าที่ชนะ) ฐานมูลค่าของ "เอกสารหลัก" ของดีล 1 ใบ — อ่านล้วน
+//   preVat = subTotal − discountAmount (นิยามเดียวกับ docNetBeforeVat/computeTotals) · vatIncl = grandTotal + depositDeducted (ยอดก่อนหักมัดจำ — H3)
+//   ใบลดหนี้ = ใบที่ออกแล้วและยังมีผล ซึ่งอ้างอิงเอกสารนี้ **หรือ** อ้างอิงเอกสารที่แปลงมาจากเอกสารนี้ (ใบแจ้งหนี้ของใบเสนอราคา)
+//   รวมยอดใน SQL (R-E.8) · ผูกร้านเสมอ (X1) · ไม่พบ/ข้ามร้าน = null ◂
+export type DocWonBasis = { preVat: number; vatIncl: number; creditPreVat: number; creditVatIncl: number };
+export async function docWonBasis(tenantId: string, docId: string, opts: { db?: Prisma.TransactionClient } = {}): Promise<DocWonBasis | null> {
+  if (!tenantId || !docId) return null;
+  const q = (opts.db ?? prisma) as Prisma.TransactionClient;
+  const doc = await q.accountDocument.findFirst({
+    where: { id: docId, tenantId },
+    select: { id: true, systemId: true, subTotal: true, discountAmount: true, grandTotal: true, depositDeducted: true },
+  });
+  if (!doc) return null;
+  // hunt F1: ครอบครัวเดียวกับทุกทาง (docFamilyIds — ลูกหลาน ≤ 3 ชั้น: ใบเสนอราคา → ใบแจ้งหนี้ → ใบเสร็จ → ใบกำกับ)
+  const fam = await familyCreditInTx(q, doc.systemId, doc.id);
+  return {
+    preVat: Math.max(0, doc.subTotal - doc.discountAmount),
+    vatIncl: Math.max(0, doc.grandTotal + Math.max(0, doc.depositDeducted)),
+    creditPreVat: fam.net,
+    creditVatIncl: fam.grand,
   };
 }
 // ◂ CRM C2.7-fix
@@ -3919,10 +4124,19 @@ export async function docNetBeforeVat(tenantId: string, docId: string): Promise<
 //   net = subTotal − discountAmount (นิยามเดียวกับ computeTotals) · grand = ยอดรวมก่อนหักมัดจำ (C3.3-fix H3) · อ่านล้วน · ผูกร้าน · ไม่พบ = ไม่อยู่ในผลลัพธ์ ◂
 export async function commissionDocRatios(
   tenantId: string,
-  input: { paymentIds: string[]; docIds: string[] },
-): Promise<{ payments: Record<string, { net: number; grand: number }>; docs: Record<string, { net: number; grand: number }> }> {
-  const out = { payments: {} as Record<string, { net: number; grand: number }>, docs: {} as Record<string, { net: number; grand: number }> };
+  input: { paymentIds: string[]; docIds: string[]; creditSourceIds?: string[] },
+): Promise<{ payments: Record<string, { net: number; grand: number }>; docs: Record<string, { net: number; grand: number }>; credits: Record<string, { net: number; grand: number }> }> {
+  const out = { payments: {} as Record<string, { net: number; grand: number }>, docs: {} as Record<string, { net: number; grand: number }>, credits: {} as Record<string, { net: number; grand: number }> };
   if (!tenantId) return out;
+  // CRM C5.4-C ▸ L2-M3: อัตราส่วนก่อน VAT ของ "ใบลดหนี้ทุกใบที่ยังมีผล" ต่อเอกสารต้นทาง (แถวเงิน CREDIT_NOTE ของดีลผูกกับเอกสารต้นทาง) ◂
+  const creditIds = [...new Set((input.creditSourceIds ?? []).filter(Boolean))].slice(0, 500);
+  // hunt F1: ใบลดหนี้ของทั้งครอบครัวของเอกสารต้นทาง (แถวเงิน CREDIT_NOTE ของ CRM ผูกกับใบแจ้งหนี้แม่)
+  for (const id of creditIds) {
+    const d = await prisma.accountDocument.findFirst({ where: { id, tenantId }, select: { systemId: true } });
+    if (!d) continue;
+    const fam = await familyCreditInTx(prisma as unknown as Prisma.TransactionClient, d.systemId, id);
+    if (fam.grand > 0) out.credits[id] = { net: fam.net, grand: fam.grand };
+  }
   const payIds = [...new Set(input.paymentIds.filter(Boolean))].slice(0, 500);
   const pays = payIds.length
     ? await prisma.accountDocumentPayment.findMany({ where: { tenantId, id: { in: payIds } }, select: { id: true, documentId: true }, take: payIds.length })

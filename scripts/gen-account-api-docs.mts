@@ -213,8 +213,8 @@ const WEBHOOK_EVENT_DOCS: Record<string, { when: string; payload: Record<string,
     },
   },
   "account.invoice.paid": {
-    when: "An invoice reached fully paid.",
-    payload: { documentId: "cmf1doc0001", docNo: "IV-202609-0007", grandTotalSatang: 107000 },
+    when: "An invoice reached fully paid: payments (incl. withholding tax) plus live credit notes cover the grand total and some money was received. `paidTotalSatang` and `creditNoteSatang` show the split.",
+    payload: { documentId: "cmf1doc0001", docNo: "IV-202609-0007", grandTotalSatang: 107000, paidTotalSatang: 96300, creditNoteSatang: 10700 },
   },
   "account.payment_request.paid": {
     when: "A PromptPay payment link was paid - either confirmed by the provider webhook or by a staff member for a static QR.",

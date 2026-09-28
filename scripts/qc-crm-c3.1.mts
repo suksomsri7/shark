@@ -406,7 +406,7 @@ async function expReps(sc: Scope, f: Flt): Promise<RowMap> {
   const acts = await Q(S`SELECT a."ownerUserId" AS k, count(*)::int AS n FROM "CrmActivity" a
     WHERE ${actBase(sc, f)} AND a."ownerUserId" IS NOT NULL AND a."doneAt" IS NOT NULL AND ${per('a."doneAt"', f)} GROUP BY 1`);
   const comm = HAS_COMMISSION ? await Q(S`SELECT c."userId" AS k, COALESCE(sum(c."amountSatang"), 0)::bigint AS v FROM "CrmCommission" c JOIN "CrmDeal" d ON d."id" = c."dealId"
-    WHERE ${dealBase(sc, f)} AND c."status"::text NOT IN ('REVERSED', 'REJECTED') AND ${per('c."createdAt"', f)} GROUP BY 1`) : [];
+    WHERE ${dealBase(sc, f)} AND c."status"::text IN ('APPROVED', 'PAID', 'REVERSED') AND (TRUE ${f.from ? S`AND c."periodKey" >= ${f.from.slice(0, 7)}` : EMPTY} ${f.to ? S`AND c."periodKey" <= ${f.to.slice(0, 7)}` : EMPTY}) GROUP BY 1`) : []; // ORACLE-EDIT 1 (C5.4-C · controller ruling 1): net = APPROVED+PAID+REVERSED (= commissions.report) by periodKey · was NOT IN ('REVERSED','REJECTED') by createdAt
   const m: RowMap = new Map();
   const blank = (): Row => ({ wonDeals: 0, wonValueSatang: 0, openDeals: 0, openValueSatang: 0, lostDeals: 0, paidSatang: 0, activitiesDone: 0, commissionSatang: 0 });
   const get = (k: string) => { if (!m.has(k)) m.set(k, blank()); return m.get(k)!; };

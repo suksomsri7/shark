@@ -93,6 +93,11 @@ export async function onDocumentVoided(evt: BridgeEvent): Promise<void> {
   if (systems.length === 0) return;
   const info = await (await accountFacade()).docLinkInfo(evt.tenantId, documentId);
   if (!info) return;
+  // CRM C5.4-C ▸ L2-M3: ยกเลิกใบลดหนี้ ⇒ กระทบยอดของเอกสารต้นทางใหม่ (เงินคืน/มูลค่าที่ชนะ/คอมมิชชันกลับมา) — ไม่ใช่ธง "เอกสารของดีลถูกยกเลิก" ◂
+  if (String(info.docType) === "CREDIT_NOTE") {
+    for (const systemId of systems) await crm.payments.onCreditNoteChanged({ tenantId: evt.tenantId, systemId }, { documentId: info.docId });
+    return;
+  }
   for (const systemId of systems) await crm.payments.flagDocumentVoided({ tenantId: evt.tenantId, systemId }, { documentId: info.docId, reason: str(p.reason) ?? undefined });
 }
 

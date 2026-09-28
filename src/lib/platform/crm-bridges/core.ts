@@ -283,9 +283,18 @@ const INVOICE_TYPES = new Set(["INVOICE", "TAX_INVOICE"]);
 export async function onDocumentIssued(evt: BridgeEvent): Promise<void> {
   const documentId = str(payloadOf(evt.payload).documentId);
   if (!documentId) return;
-  const systems = await openCrmSystems(evt.tenantId);
-  if (systems.length === 0) return;
+  const gates = await crmGates(evt.tenantId);
+  // ประตูก่อนอ่านเอกสาร: ไม่มีระบบ CRM · หรือไม่ใช่ใบลดหนี้ (payload.type) และไม่มีระบบที่สะพานเปิด = ไม่ทำอะไร
+  if (gates.length === 0 || (String(payloadOf(evt.payload).type ?? "") !== "CREDIT_NOTE" && !gates.some(bridgeOpen))) return;
   const info = await (await accountFacade()).docLinkInfo(evt.tenantId, documentId);
+  // CRM C5.4-C ▸ L2-M3: ใบลดหนี้ที่อ้างอิงเอกสาร → ทางเดินเงินของดีล (เงินคืน · มูลค่าที่ชนะ · คอมมิชชัน · โควตา) ·
+  //   การ "ลด" เงินที่เคยนับ = อ่านประตูแต่ไม่กั้น (มติ B2 แบบทางยกเลิกของ money.ts) — ระบบที่ไม่เคยนับไม่มีอะไรให้ลด ◂
+  if (info && String(info.docType) === "CREDIT_NOTE" && info.sourceDocId) {
+    for (const g of gates) await crm.payments.onCreditNoteChanged({ tenantId: evt.tenantId, systemId: g.systemId }, { documentId: info.docId });
+    return;
+  }
+  const systems = gates.filter(bridgeOpen).map((g) => g.systemId);
+  if (systems.length === 0) return;
   if (!info || !info.sourceDocId || !INVOICE_TYPES.has(info.docType)) return;
   for (const systemId of systems) {
     await crm.deals.linkInvoiceFromBridge({ tenantId: evt.tenantId, systemId }, { quotationDocId: info.sourceDocId, invoiceDocId: info.docId });

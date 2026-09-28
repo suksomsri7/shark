@@ -472,7 +472,7 @@ try {
     return c.id as string;
   };
   type Pipe = Awaited<ReturnType<typeof mkPipe>>;
-  type DSpec = { k: string; owner: string | null; team?: string | null; pipe: Pipe; stage: string; value: number; prob?: number; stalled?: boolean; archived?: boolean; hist?: [string, string][]; closedAt?: string; sys?: string; tid?: string; invoiceDocId?: string };
+  type DSpec = { k: string; owner: string | null; team?: string | null; pipe: Pipe; stage: string; value: number; prob?: number; stalled?: boolean; archived?: boolean; hist?: [string, string][]; closedAt?: string; sys?: string; tid?: string; invoiceDocId?: string; omitted?: boolean }; // ORACLE-EDIT 2 (C5.4-C · controller ruling 2): + omitted
   const D: Record<string, { id: string; contactId: string; spec: DSpec }> = {};
   const mkDeal = async (s: DSpec) => {
     const tid = s.tid ?? tidA;
@@ -490,6 +490,7 @@ try {
         closedAt: kind === "OPEN" ? null : T(s.closedAt ?? last[1]), createdAt: T("2026-07-01T03:00:00Z"),
         ...(s.stalled ? { stalledAt: new Date(NOW.getTime() - 10 * 86_400_000) } : {}), ...(s.archived ? { archivedAt: T("2026-09-14T03:00:00Z") } : {}),
         ...(s.invoiceDocId ? { invoiceDocId: s.invoiceDocId } : {}),
+        ...(s.omitted ? { forecastCategory: "OMITTED" } : {}), // ORACLE-EDIT 2 (C5.4-C · controller ruling 2)
       },
     });
     for (let i = 0; i < path.length; i += 1) {
@@ -512,7 +513,9 @@ try {
   const mkQuota = (tid: string, sys: string, ownerType: string, ownerId: string, periodKey: string, target: number, deals: number | null = null, acts: number | null = null) =>
     P.crmQuota.create({ data: { tenantId: tid, systemId: sys, ownerType, ownerId, periodKey, targetSatang: BigInt(target), targetDeals: deals, targetActivities: acts, note: TAG } });
 
-  // ── the KPI / progress fixture (crmA) — values are multiples of 100 satang ⇒ every rounding scheme of `weighted` agrees ──
+  // ── the KPI / progress fixture (crmA) ── ORACLE-EDIT 2 (C5.4-C · controller ruling 2): was "values are multiples of 100 satang ⇒ every rounding
+  //    scheme of `weighted` agrees" — now o7 (700,005 @10 % = 70,000.5) and o10 (1,100,003 @20 % = 220,000.6) are NOT multiples of 100
+  //    (per-deal rounding 70,001 + 220,001 ≠ rounding once) and o8 is OMITTED (open pipeline counts it · weighted does not) ──
   const SPECS: DSpec[] = [
     { k: "o1", owner: uTH, pipe: p1, stage: "L", value: 1_000_000, stalled: true },
     { k: "o2", owner: uTH, pipe: p1, stage: "PR", value: 2_000_000, prob: 70, hist: [["PR", "2026-07-05T03:00:00Z"]] },
@@ -520,10 +523,10 @@ try {
     { k: "o4", owner: uPK, team: teamK, pipe: p2, stage: "NEW", value: 500_000, stalled: true }, // pook (team P) owns a deal of TEAM K
     { k: "o5", owner: uNK, pipe: p1, stage: "PR", value: 4_000_000, stalled: true, hist: [["PR", "2026-07-07T03:00:00Z"]] },
     { k: "o6", owner: uKT, pipe: p2, stage: "NEW", value: 600_000 },
-    { k: "o7", owner: null, team: null, pipe: p1, stage: "L", value: 700_000 }, // no owner
-    { k: "o8", owner: uGONE, team: null, pipe: p1, stage: "L", value: 800_000 }, // owner is not a member
+    { k: "o7", owner: null, team: null, pipe: p1, stage: "L", value: 700_005 }, // no owner · // ORACLE-EDIT 2 (C5.4-C · controller ruling 2): was 700_000
+    { k: "o8", owner: uGONE, team: null, pipe: p1, stage: "L", value: 800_000, omitted: true }, // owner is not a member · // ORACLE-EDIT 2 (C5.4-C · controller ruling 2): + OMITTED
     { k: "o9", owner: uTH, pipe: p1, stage: "L", value: 900_000, stalled: true, archived: true },
-    { k: "o10", owner: uM, pipe: p2, stage: "NEW", value: 1_100_000 },
+    { k: "o10", owner: uM, pipe: p2, stage: "NEW", value: 1_100_003 }, // ORACLE-EDIT 2 (C5.4-C · controller ruling 2): was 1_100_000
     { k: "r1", owner: uTH, pipe: p1, stage: "PR", value: 600_000, hist: [["WON", "2026-09-05T03:00:00Z"], ["PR", "2026-09-06T03:00:00Z"]] }, // reopened
     { k: "w1", owner: uTH, pipe: p1, stage: "WON", value: 4_000_000, hist: [["WON", "2026-09-03T03:00:00Z"]] },
     { k: "w2", owner: uTH, pipe: p1, stage: "WON", value: 2_500_000, hist: [["WON", "2026-08-31T17:30:00Z"]] }, // 1 Sep 00:30 Thai
@@ -630,7 +633,7 @@ try {
     const p1q: unknown[] = [sys];
     const w1 = dealW(p1q);
     const [op] = await q(`SELECT count(*)::int AS n, COALESCE(sum(d."valueSatang"),0)::bigint AS v,
-        COALESCE(sum(d."valueSatang"::bigint * COALESCE(d."probabilityOverride", st."probability")),0)::bigint AS wv,
+        COALESCE(sum(round(d."valueSatang"::numeric * COALESCE(d."probabilityOverride", st."probability") / 100)) FILTER (WHERE d."forecastCategory"::text <> 'OMITTED'),0)::bigint AS wv, -- ORACLE-EDIT 2 (C5.4-C · controller ruling 2): OMITTED out · rounded per deal (was Σ value × prob, rounded once)
         (count(*) FILTER (WHERE d."stalledAt" IS NOT NULL))::int AS sn, COALESCE(sum(d."valueSatang") FILTER (WHERE d."stalledAt" IS NOT NULL),0)::bigint AS sv
       FROM "CrmDeal" d JOIN "CrmStage" st ON st."id" = d."stageId" WHERE ${w1} AND d."kind" = 'OPEN'`, ...p1q);
     const closed = async (key: string) => {
@@ -665,7 +668,7 @@ try {
     const pp = prev ? winPct(prev.won, prev.lost) : null;
     return {
       open: [Number(op.n), Number(op.v)],
-      weighted: Math.round(Number(op.wv) / 100),
+      weighted: Number(op.wv), // ORACLE-EDIT 2 (C5.4-C · controller ruling 2): was Math.round(Number(op.wv) / 100)
       won: [cur.won, cur.wonV, target, target && target > 0 ? Math.floor((achieved * 100) / target) : null, basis, achieved], // ORACLE-EDIT C3.2 SF-4
       win: [wp, pp, wp !== null && pp !== null ? wp - pp : null],
       stale: [Number(op.sn), Number(op.sv)],
@@ -765,7 +768,7 @@ try {
 
   console.log("\n── K · answer-key control ──");
   {
-    const HAND_O: Kpi = { open: [10, 14_300_000], weighted: 6_790_000, won: [5, 11_700_000, 14_000_000, 40, "PAID", 5_700_000], /* ORACLE-EDIT C3.2 SF-4: was 83 (won-based) */ win: [63, 67, -4], stale: [3, 5_500_000], hot: 3 };
+    const HAND_O: Kpi = { open: [10, 14_300_008], weighted: 6_710_002, /* ORACLE-EDIT 2 (C5.4-C · controller ruling 2): was open 14_300_000 · weighted 6_790_000 (o8 OMITTED −80,000 · o7/o10 per-deal +2) */ won: [5, 11_700_000, 14_000_000, 40, "PAID", 5_700_000], /* ORACLE-EDIT C3.2 SF-4: was 83 (won-based) */ win: [63, 67, -4], stale: [3, 5_500_000], hot: 3 };
     const HAND_TH: Kpi = { open: [3, 3_600_000], weighted: 1_800_000, won: [3, 7_200_000, 6_000_000, 70, "PAID", 4_200_000], /* ORACLE-EDIT C3.2 SF-4: was 120 */ win: [75, 100, -25], stale: [1, 1_000_000], hot: 1 };
     const HAND_NK: Kpi = { open: [3, 5_100_000], weighted: 2_220_000, won: [1, 1_200_000, 3_000_000, 0, "PAID", 0], /* ORACLE-EDIT C3.2 SF-4: was 40 */ win: [50, 50, 0], stale: [2, 4_500_000], hot: 1 };
     const HAND_P = { won: 7_200_000, deals: 3, paid: 4_200_000, activities: 3 };
@@ -829,7 +832,7 @@ try {
   chk("C3.2-S3.1", "KPI 1 \"pipeline เปิด\" = count + Σ valueSatang of visible OPEN, non-archived deals — and it follows the pipeline filter and the owner filter (= SQL each)",
     kO.ok && j(kv?.open) === j(keyO.open) && j(kv2?.open) === j(key2.open) && j(kvpk?.open) === j(keyPK.open) && String(kO.v?.periodKey) === PK,
     `${j(keyO.open)} · p2 ${j(key2.open)} · pook ${j(keyPK.open)}`, `${j(kv?.open)} · ${j(kv2?.open)} · ${j(kvpk?.open)} ${kO.ok ? `period=${kO.v?.periodKey}` : kO.err}${ABSENT}`);
-  chk("C3.2-S3.2", "KPI 2 \"ถ่วงน้ำหนัก\" = Σ valueSatang × COALESCE(probabilityOverride, stage.probability) / 100 over the same OPEN deals (override wins over the stage) — all + pipeline filter (= SQL)",
+  chk("C3.2-S3.2", "KPI 2 \"ถ่วงน้ำหนัก\" = Σ round(valueSatang × COALESCE(probabilityOverride, stage.probability) / 100) per deal over the same OPEN deals except forecastCategory OMITTED (override wins over the stage) — all + pipeline filter (= SQL · ORACLE-EDIT 2 C5.4-C)",
     kO.ok && kv?.weighted === keyO.weighted && kv2?.weighted === key2.weighted, `${keyO.weighted} · p2 ${key2.weighted}`, `${kv?.weighted} · ${kv2?.weighted}${ABSENT}`);
   chk("C3.2-S3.3", "KPI 3 \"ชนะเดือนนี้ vs โควตา\" = count + Σ value of deals WON in the Thai month (latest WON history row) · target = Σ USER quotas of the leaderboard users · pct = floor(achieved×100/target) with achieved on the progress() basis (PAID default ⇒ COUNTED payments of those users in the window · ORACLE-EDIT C3.2 SF-4) · basis + achievedSatang in the DTO — Sep and with periodKey 2026-08 (= SQL)",
     kO.ok && j(kv?.won) === j(keyO.won) && kAug.ok && j(kvaug?.won) === j(keyAug.won), `${j(keyO.won)} · Aug ${j(keyAug.won)}`, `${j(kv?.won)} · ${j(kvaug?.won)}${ABSENT}`);

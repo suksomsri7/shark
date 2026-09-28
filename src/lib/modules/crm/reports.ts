@@ -519,9 +519,10 @@ async function repsOf({ sc, f }: Run): Promise<RepsReport> {
       SELECT a."ownerUserId" AS k, count(*)::int AS acts FROM "CrmActivity" a
        WHERE ${activityBase(sc, f)} AND a."ownerUserId" IS NOT NULL AND a."doneAt" IS NOT NULL AND ${per('a."doneAt"', f)} GROUP BY 1
     ), cm AS (
+      -- CRM C5.4-C ▸ L2-M1: คอมมิชชัน "สุทธิ" = APPROVED + PAID + REVERSED (แถวถอนคืนติดลบ) ตามงวด periodKey — นิยามเดียวกับ commissions.report ◂
       SELECT cc."userId" AS k, COALESCE(sum(cc."amountSatang"), 0)::bigint AS comm
         FROM "CrmCommission" cc LEFT JOIN "CrmDeal" d ON d."id" = cc."dealId"
-       WHERE ${commissionBase(sc, f)} AND cc."status"::text NOT IN ('REVERSED', 'REJECTED') GROUP BY 1
+       WHERE ${commissionBase(sc, f)} AND cc."status"::text IN ('APPROVED', 'PAID', 'REVERSED') GROUP BY 1
     ), ks AS (SELECT k FROM dd UNION SELECT k FROM pp UNION SELECT k FROM aa UNION SELECT k FROM cm)
     SELECT ks.k, COALESCE(dd.won, 0)::int AS won, COALESCE(dd.wonv, 0)::bigint AS wonv, COALESCE(dd.open, 0)::int AS open,
            COALESCE(dd.openv, 0)::bigint AS openv, COALESCE(dd.lost, 0)::int AS lost, COALESCE(pp.paid, 0)::bigint AS paid,
