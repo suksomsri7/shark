@@ -1338,8 +1338,11 @@ async function setField(page: Any, f: FieldSpec, value: string | boolean | strin
   const el = await findVis(page, f.testid, 4000);
   if (!el) return `ไม่พบช่อง ${f.testid}`;
   if (f.kind === "select") {
-    const opts: { value: string; disabled: boolean }[] = await el.evaluate((s: HTMLSelectElement) => Array.from(s.options).map((o) => ({ value: o.value, disabled: o.disabled })));
     const v = String(value);
+    const readOpts = (): Promise<{ value: string; disabled: boolean }[]> => el.evaluate((s: HTMLSelectElement) => Array.from(s.options).map((o) => ({ value: o.value, disabled: o.disabled })));
+    let opts = await readOpts();
+    // ORACLE-EDIT C4.3-select-wait (controller · 28 Sep): options of a picker that loads async (deal-new-contact @390) may not be there yet — wait ≤5 s for the wanted option before judging
+    for (let i = 0; i < 25 && (v === "@first" ? !opts.some((o) => o.value !== "" && !o.disabled) : !opts.some((o) => o.value === v)); i++) { await new Promise((r) => setTimeout(r, 200)); opts = await readOpts(); }
     if (v === "" && !opts.some((o) => o.value === "")) return "no-empty-option";
     const pick = v === "@first" ? opts.find((o) => o.value !== "" && !o.disabled)?.value : v;
     if (pick === undefined || !opts.some((o) => o.value === pick)) return `ตัวเลือก ${v} ไม่มีใน ${f.testid}`;
