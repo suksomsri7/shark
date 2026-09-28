@@ -33,6 +33,7 @@ import { promptpayPayload, isValidPromptPayId } from "@/lib/payment/promptpay";
 import {
   recordPayment,
   paymentTargetOf,
+  paymentOutstandingOf,
   getSettings,
   orgDisplayName,
   DOC_LABEL,
@@ -205,7 +206,7 @@ export async function createPaymentRequest(
   if (!(OPEN_STATUSES as readonly string[]).includes(target.status))
     return fail("เอกสารนี้ไม่อยู่ในสถานะที่เก็บเงินได้ (ต้องออกเอกสารแล้วและยังค้างชำระ)");
 
-  const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+  const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
   if (outstanding <= 0) return fail("เอกสารนี้ไม่มียอดคงค้างแล้ว");
 
   const channels = await listFinanceAccounts(ctx.tenantId, ctx.systemId);
@@ -473,7 +474,7 @@ export async function handleBeamPaid(input: {
   const found = await paymentTargetOf(req.tenantId, req.systemId, req.documentId);
   if (!found) return fail("ไม่พบเอกสารของคำขอนี้");
   const { target } = found;
-  const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+  const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
   if (outstanding <= 0) return fail("เอกสารนี้ไม่มียอดคงค้างแล้ว");
 
   // จ่ายเกิน = บันทึกได้แค่ "ยอดคงค้าง" (ลูกหนี้ห้ามติดลบ) + จดส่วนเกินไว้ให้คนตามคืนเงินเอง
@@ -567,7 +568,7 @@ export async function confirmStaticPaymentRequest(
   const found = await paymentTargetOf(ctx.tenantId, ctx.systemId, req.documentId);
   if (!found) return fail("ไม่พบเอกสารของคำขอนี้");
   const { target } = found;
-  const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+  const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
   if (outstanding <= 0) return fail("เอกสารนี้ไม่มียอดคงค้างแล้ว");
   const amount = Math.min(req.amountSatang, outstanding);
 
@@ -758,7 +759,7 @@ export async function settleStaticRequestsFromStatement(
     const found = await paymentTargetOf(ctx.tenantId, ctx.systemId, req.documentId);
     if (!found) continue;
     const { target } = found;
-    const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+    const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
     if (outstanding <= 0) continue;
     const amount = Math.min(line.amountSatang, outstanding);
 

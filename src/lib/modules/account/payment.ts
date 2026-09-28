@@ -4,6 +4,7 @@ import {
   voidPayment,
   issueDocument,
   paymentTargetOf,
+  paymentOutstandingOf,
   listDocPayments,
   attachDraftReceiptPayments,
   findPaymentsByKeys,
@@ -151,7 +152,7 @@ export async function paymentPanelData(
     listDocPayments(tenantId, systemId, target.id),
     listPaymentChannels(tenantId, systemId),
   ]);
-  const outstanding = Math.max(0, target.grandTotal - target.paidTotal);
+  const outstanding = paymentOutstandingOf(target) /* CRM C5.4-C ▸ − ใบลดหนี้ (F-05) ◂ */;
   return {
     docId: doc.id,
     docType: doc.docType,
@@ -243,7 +244,7 @@ export async function recordPayments(
         targetDocId: target.id,
         status: after?.status ?? target.status,
         paidTotal: after?.paidTotal ?? 0,
-        outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
+        outstanding: (after ? paymentOutstandingOf(after) : 0) /* CRM C5.4-C ◂ */,
         certNos: [],
         recorded: 0,
         paymentIds: keys.map((k) => idByKey.get(k)).filter((v): v is string => !!v),
@@ -318,7 +319,7 @@ export async function recordPayments(
     targetDocId: target.id,
     status: after?.status ?? target.status,
     paidTotal: after?.paidTotal ?? 0,
-    outstanding: Math.max(0, (after?.grandTotal ?? 0) - (after?.paidTotal ?? 0)),
+    outstanding: (after ? paymentOutstandingOf(after) : 0) /* CRM C5.4-C ◂ */,
     certNos,
     recorded,
     paymentIds,

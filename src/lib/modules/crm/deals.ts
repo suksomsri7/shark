@@ -327,7 +327,10 @@ function toDto(row: CrmDeal): DealDto {
     stageId: row.stageId,
     kind: row.kind as DealKind,
     valueSatang: row.valueSatang,
-    wonValueSatang: toNum(row.wonValueSatang),
+    // CRM C5.4-C ▸ (SF3) ดีลที่ชนะแล้วมีมูลค่าที่ชนะเสมอ — ค่าว่างของข้อมูลเก่า (เงินก้อนเดียวถูกถอนก่อนใบนี้) = มูลค่าดีล (ก่อน VAT) ◂
+    wonValueSatang: row.wonValueSatang === null && row.kind === "WON" ? row.valueSatang : toNum(row.wonValueSatang),
+    // CRM C5.4-C ▸ (SF3) เงินที่รับจริงของดีล (สตางค์ · Σ แถวเงินที่ถูกนับ) — REST/AI อ่านได้จากตัวดีลโดยไม่ต้องเปิด 360 ◂
+    paidSatang: Number(row.paidSatang ?? 0),
     discountBp: row.discountBp,
     currency: row.currency,
     expectedCloseAt: dayKey(row.expectedCloseAt),
@@ -1194,6 +1197,9 @@ export async function updateDeal(ctx: DealsCtx, actor: MemberActor, id: string, 
 
 // ═════════════════════════ รายการสินค้า + ส่วนลด (→ สายอนุมัติ crm.discount) ═════════════════════════
 
+/** CRM C5.4-C ▸ L2-m3: เพดานของ `ApprovalRequest.amountSatang` (คอลัมน์ Int · 2³¹−1 สตางค์ ≈ ฿21.47 ล้าน) ◂ */
+const APPROVAL_AMOUNT_MAX = 2_147_483_647;
+
 /**
  * แทนที่รายการสินค้าทั้งชุด — มูลค่า = Σ ยอดบรรทัด − ส่วนลดท้ายดีล (สุทธิ ก่อน VAT)
  * AUDIT-CLASS X3: แทนที่ทั้งชุดใน tx เดียวใต้ล็อกแถวดีล ⇒ ยิงพร้อมกันได้ชุดใดชุดหนึ่งเสมอ ไม่มีวันปนกัน (แถว + มูลค่า + ส่วนลดมาจากชุดเดียวกัน)
@@ -1213,9 +1219,13 @@ export async function setLines(ctx: DealsCtx, actor: MemberActor, dealId: string
     if (over) {
       const submission = newSeq();
       const gross = c.lines.reduce((s, l) => s + lineGrossSatang(l), 0);
+      // CRM C5.4-C ▸ L2-m3: ส่วนลดรวมเกิน Int ของ ApprovalRequest.amountSatang ได้ (200 บรรทัด × ≤ 2e9 ก่อนลด) ⇒ ตัดที่เพดาน Int
+      //   (เกณฑ์ของสายอนุมัติเป็น Int ⇒ ตัดสินเหมือนยอดจริงทุกกรณี) + ธง `approvalAmountCapped` + ยอดจริงในแถว audit ด้านล่าง ◂
+      const discountSatang = Math.max(0, gross - c.valueSatang);
+      const approvalAmountCapped = discountSatang > APPROVAL_AMOUNT_MAX;
       const sub = await (await approvalFacade()).submitForApproval(
         { tenantId: ctx.tenantId },
-        { entityType: "crm.discount", entityId: `${pre.id}:${submission}`, systemId: ctx.systemId, amountSatang: Math.max(0, gross - c.valueSatang), requestedById: a.userId },
+        { entityType: "crm.discount", entityId: `${pre.id}:${submission}`, systemId: ctx.systemId, amountSatang: Math.min(APPROVAL_AMOUNT_MAX, discountSatang), requestedById: a.userId },
       );
       if ("requestId" in sub) {
         const requestId = sub.requestId;
@@ -1228,7 +1238,7 @@ export async function setLines(ctx: DealsCtx, actor: MemberActor, dealId: string
           await emitDeal(tx, ctx, EVT.updated, deal.id, submission, { dealId: deal.id, changedKeys: ["pendingLines"], approvalRequestId: requestId });
           return r;
         });
-        await audit(ctx, "crm.deal.lines.pending", row.id, { after: { approvalRequestId: requestId, lines: c.lines.length, valueSatang: c.valueSatang, discountBp: c.dealDiscountBp } });
+        await audit(ctx, "crm.deal.lines.pending", row.id, { after: { approvalRequestId: requestId, lines: c.lines.length, valueSatang: c.valueSatang, discountBp: c.dealDiscountBp, discountSatang, ...(approvalAmountCapped ? { approvalAmountCapped: true } : {}) } });
         return { status: "APPROVAL_REQUIRED", approvalRequestId: requestId, deal: toDto(row) };
       }
     }
@@ -2352,15 +2362,25 @@ export async function autoWinOnPaidFromBridge(ctx: { tenantId: string; systemId:
   await resolveSystem(c);
   const deal = await prisma.crmDeal.findFirst({
     where: { ...identityScope(c), id: dealId },
-    select: { id: true, kind: true, valueSatang: true, paidSatang: true, pipelineId: true, pipeline: { select: { autoWonOnPaid: true } } },
+    select: { id: true, kind: true, valueSatang: true, paidSatang: true, pipelineId: true, invoiceDocId: true, quotationDocId: true, pipeline: { select: { autoWonOnPaid: true } } },
   });
   if (!deal || deal.kind !== "OPEN" || !deal.pipeline.autoWonOnPaid) return { won: false };
-  if (deal.valueSatang <= 0 || deal.paidSatang < BigInt(deal.valueSatang)) return { won: false };
+  // CRM C5.4-C ▸ L2-m2 (มติผู้คุมงาน 5 · Q14 ค้าง): เงินที่รับ (รวม VAT · รวม WHT ที่ปิดยอด) เทียบกับ **ยอดของเอกสารหลัก**
+  //   (ใบแจ้งหนี้ก่อน ไม่งั้นใบเสนอราคา · ยอดก่อนหักมัดจำ − ใบลดหนี้ที่ยังมีผล) — เดิมเทียบกับมูลค่าดีลก่อน VAT ⇒ ชนะเองทั้งที่ยังค้าง VAT
+  //   ดีลที่ไม่มีเอกสาร (เงินจากบิลหน้าร้าน) = มูลค่าดีลเหมือนเดิม · อ่านเอกสารไม่ได้ = ไม่ชนะเอง (ไม่เดา) ◂
+  const anchor = deal.invoiceDocId ?? deal.quotationDocId;
+  let need: bigint;
+  if (anchor) {
+    const b = await (await accountFacade()).docWonBasis(c.tenantId, anchor).catch(() => null);
+    if (!b) return { won: false };
+    need = BigInt(Math.max(0, b.vatIncl - b.creditVatIncl));
+  } else need = BigInt(Math.max(0, deal.valueSatang));
+  if (need <= BigInt(0) || deal.paidSatang < need) return { won: false };
   const stage = await prisma.crmStage.findFirst({ where: { ...identityScope(c), pipelineId: deal.pipelineId, kind: "WON" }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { id: true } });
   if (!stage) return { won: false };
-  const flag: BridgeMoveFlag = { ref: `crm.deal.paid.autowon#${deal.id}`, title: "รับเงินครบตามมูลค่าดีล — ย้ายดีลไปขั้นชนะอัตโนมัติ" };
+  const flag: BridgeMoveFlag = { ref: `crm.deal.paid.autowon#${deal.id}`, title: anchor ? "รับเงินครบตามเอกสารของดีล — ย้ายดีลไปขั้นชนะอัตโนมัติ" : "รับเงินครบตามมูลค่าดีล — ย้ายดีลไปขั้นชนะอัตโนมัติ" };
   const out = await moveCore(c, null, deal.id, { stageId: stage.id }, { flag });
-  if (out.changed) await audit(c, "crm.deal.won.auto", deal.id, { after: { stageId: stage.id, paidSatang: Number(deal.paidSatang), valueSatang: deal.valueSatang } });
+  if (out.changed) await audit(c, "crm.deal.won.auto", deal.id, { after: { stageId: stage.id, paidSatang: Number(deal.paidSatang), valueSatang: deal.valueSatang, requiredSatang: Number(need) } });
   return { won: out.changed };
 }
 // ◂ CRM C2.7

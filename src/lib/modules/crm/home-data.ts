@@ -226,8 +226,9 @@ async function kpisOf(L: Loaded): Promise<HomeKpis> {
   const [open, byStage, board, lost, prevWon, prevLost, stale, hotCount, wonAll] = await Promise.all([
     // 1 · pipeline เปิด
     prisma.crmDeal.aggregate({ where: openW, _count: { _all: true }, _sum: { valueSatang: true } }),
-    // 2 · ถ่วงน้ำหนัก — รวมต่อ (ขั้น · % ที่ตั้งเอง) ในฐานข้อมูล
-    prisma.crmDeal.groupBy({ by: ["stageId", "probabilityOverride"], where: openW, _sum: { valueSatang: true } }),
+    // 2 · ถ่วงน้ำหนัก — CRM C5.4-C ▸ L2-m1: นิยามเดียวกับกระดาน/deals.forecast/reports (ไม่นับหมวด OMITTED · ปัดต่อดีล)
+    //   รวมต่อ (ขั้น · % ที่ตั้งเอง · มูลค่า) ในฐานข้อมูล ⇒ ปัดต่อดีลได้ตรงโดยไม่ดึงดีลทีละใบ (ดีลมูลค่าเท่ากันปัดเท่ากัน) ◂
+    prisma.crmDeal.groupBy({ by: ["stageId", "probabilityOverride", "valueSatang"], where: { AND: [openW, { forecastCategory: { not: "OMITTED" } }] }, _count: { _all: true } }),
     // 3 · ชนะในงวด vs โควตา = Σ แถวของ leaderboard (รีวิวรอบ 2 NOTE-3 · SF-4: % บนฐานเดียวกับ progress())
     boardOf(L),
     // 4 · อัตราชนะ (งวดนี้ + งวดก่อน)
@@ -246,7 +247,12 @@ async function kpisOf(L: Loaded): Promise<HomeKpis> {
     ? new Map((await prisma.crmStage.findMany({ where: { tenantId: L.ctx.tenantId, systemId: L.ctx.systemId, id: { in: stageIds } }, select: { id: true, probability: true }, take: STAGES_MAX })).map((s) => [s.id, s.probability]))
     : new Map<string, number>();
   let weighted = BigInt(0);
-  for (const g of byStage) weighted += BigInt(g._sum.valueSatang ?? 0) * BigInt(g.probabilityOverride ?? probs.get(g.stageId) ?? 0);
+  // round(มูลค่า × % / 100) ต่อดีล (ครึ่งปัดขึ้น — ค่าไม่ติดลบ = round ของ Postgres ที่กระดาน/รายงานใช้) × จำนวนดีลในกลุ่ม
+  for (const g of byStage) {
+    const n = typeof g._count === "object" && g._count ? g._count._all ?? 0 : 0;
+    const each = (BigInt(Math.max(0, g.valueSatang)) * BigInt(g.probabilityOverride ?? probs.get(g.stageId) ?? 0) + BigInt(50)) / BigInt(100);
+    weighted += each * BigInt(n);
+  }
   const withTarget = board.rows.filter((r) => r.targetSatang !== null);
   const targetSatang = withTarget.length ? withTarget.reduce((n, r) => n + BigInt(r.targetSatang ?? 0), BigInt(0)) : null;
   const wonCount = board.rows.reduce((n, r) => n + r.wonCount, 0);
@@ -257,8 +263,7 @@ async function kpisOf(L: Loaded): Promise<HomeKpis> {
   return {
     periodKey: L.periodKey,
     openPipeline: { count: open._count._all, valueSatang: num(open._sum.valueSatang) },
-    // ปัดครึ่งขึ้นหนึ่งครั้งบนผลรวม (ไม่ใช่ปัดทีละดีล) — ค่าไม่ติดลบเสมอ
-    weighted: { valueSatang: Number((weighted + BigInt(50)) / BigInt(100)) },
+    weighted: { valueSatang: Number(weighted) },
     won: { count: wonCount, valueSatang: Number(wonValue), targetSatang: targetSatang === null ? null : Number(targetSatang), pct: quotaPct(achieved, targetSatang), basis: board.basis, achievedSatang: Number(achieved) },
     winRate: { pct, prevPct, deltaPts: pct !== null && prevPct !== null ? pct - prevPct : null, won: wonAll, lost },
     stale: { count: stale._count._all, valueSatang: num(stale._sum.valueSatang) },
@@ -289,14 +294,21 @@ async function computeBoard(L: Loaded): Promise<HomeLeaderboard> {
   if (users.length === 0) return { periodKey: L.periodKey, basis: L.basis, rows: [] };
   const wonStages = await stageIdsOfKind(L, "WON");
   const inUsers: Prisma.CrmDealWhereInput = { ownerUserId: { in: users } };
-  const [wonBy, openBy, targets, names, paid] = await Promise.all([
-    prisma.crmDeal.groupBy({ by: ["ownerUserId"], where: { AND: [L.dealW, inUsers, closedIn("WON", wonStages, L.range)] }, _sum: { valueSatang: true }, _count: { _all: true }, orderBy: { ownerUserId: "asc" }, take: MEMBERS_MAX }),
+  // CRM C5.4-C ▸ L2-M2: "ชนะ" = มูลค่าที่ชนะ (COALESCE(wonValueSatang, valueSatang) — นิยามเดียวกับรายงาน/โควตา · ฐาน WON_VALUE_BASIS)
+  //   groupBy รวม COALESCE ไม่ได้ ⇒ สองกลุ่ม: มี wonValueSatang (Σ ค่านั้น) + ไม่มี (Σ มูลค่าดีล) · จำนวนดีลนับจากทั้งสอง ◂
+  const wonWhere = { AND: [L.dealW, inUsers, closedIn("WON", wonStages, L.range)] };
+  const [wonByV, wonByNull, openBy, targets, names, paid] = await Promise.all([
+    prisma.crmDeal.groupBy({ by: ["ownerUserId"], where: { AND: [wonWhere, { wonValueSatang: { not: null } }] }, _sum: { wonValueSatang: true }, _count: { _all: true }, orderBy: { ownerUserId: "asc" }, take: MEMBERS_MAX }),
+    prisma.crmDeal.groupBy({ by: ["ownerUserId"], where: { AND: [wonWhere, { wonValueSatang: null }] }, _sum: { valueSatang: true }, _count: { _all: true }, orderBy: { ownerUserId: "asc" }, take: MEMBERS_MAX }),
     prisma.crmDeal.groupBy({ by: ["ownerUserId"], where: { AND: [L.dealW, inUsers, { kind: "OPEN" }] }, _count: { _all: true }, orderBy: { ownerUserId: "asc" }, take: MEMBERS_MAX }),
     prisma.crmQuota.findMany({ where: { tenantId: L.ctx.tenantId, systemId: L.ctx.systemId, ownerType: "USER", periodKey: L.periodKey, ownerId: { in: users } }, select: { ownerId: true, targetSatang: true }, take: MEMBERS_MAX }),
     prisma.membership.findMany({ where: { tenantId: L.ctx.tenantId, userId: { in: users } }, select: { userId: true, user: { select: { name: true } } }, take: MEMBERS_MAX }),
     L.basis === "PAID" ? paidByOwner(L.ctx, users, L.range, L.pipelineId) : Promise.resolve(new Map<string, bigint>()),
   ]);
-  const wonOf = new Map(wonBy.map((g) => [g.ownerUserId ?? "", { v: BigInt(g._sum?.valueSatang ?? 0), n: typeof g._count === "object" && g._count ? g._count._all ?? 0 : 0 }]));
+  const wonOf = new Map<string, { v: bigint; n: number }>();
+  const addWon = (u: string, v: bigint, n: number) => { const p = wonOf.get(u) ?? { v: BigInt(0), n: 0 }; wonOf.set(u, { v: p.v + v, n: p.n + n }); };
+  for (const g of wonByV) addWon(g.ownerUserId ?? "", BigInt(g._sum?.wonValueSatang ?? 0), typeof g._count === "object" && g._count ? g._count._all ?? 0 : 0);
+  for (const g of wonByNull) addWon(g.ownerUserId ?? "", BigInt(g._sum?.valueSatang ?? 0), typeof g._count === "object" && g._count ? g._count._all ?? 0 : 0);
   const openOf = new Map(openBy.map((g) => [g.ownerUserId ?? "", typeof g._count === "object" && g._count ? g._count._all ?? 0 : 0]));
   const targetOf = new Map(targets.map((t) => [t.ownerId, t.targetSatang]));
   const nameOf = new Map(names.map((m) => [m.userId, m.user?.name?.trim() || "พนักงาน"]));
