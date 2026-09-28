@@ -385,3 +385,15 @@ function formatPostedAt(d: Date): string {
   const time = d.toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hour12: false });
   return `${formatDateTh(d)} ${time}`;
 }
+
+// CRM C5.4-B ▸ hunter H2 (ใช้โดย connections-actions: หมุน/เพิกถอนคีย์) — ดูคำอธิบายที่ตัวเรียก
+const FOREIGN_SCOPE = /^(crm|member|kanban)\./;
+export async function accountManagedKey(tenantId: string, keyId: string): Promise<boolean> {
+  if (!keyId) return false;
+  const db = tenantDb({ tenantId });
+  const k = await db.apiKey.findFirst({ where: { id: keyId }, select: { systemId: true, scopesJson: true } });
+  if (!k) return false;
+  if (k.systemId) return !!(await db.appSystem.findFirst({ where: { id: k.systemId, type: "ACCOUNT" }, select: { id: true } }));
+  const scopes: string[] = Array.isArray(k.scopesJson) ? (k.scopesJson as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  return !scopes.some((sc: string) => FOREIGN_SCOPE.test(sc));
+}

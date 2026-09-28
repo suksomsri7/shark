@@ -46,7 +46,7 @@
 //      (getExport EXPIRED) · H10 retention includes archived leads · H11 seedSystemRules passes assertCrmLimit · H12 one erase audit per person.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// CHECK INVENTORY (48 = 36 + 12 · 24 contract + X + ORACLE-EDIT C3.9-H): K.1 · S1.1–S1.6 · S2.1–S2.2 · S3.1–S3.2 · S4.1–S4.2 · S5.1–S5.3 · S6.1–S6.5 · S7.1–S7.4 ·
+// CHECK INVENTORY (48 = 36 + 12 · 24 contract + X + ORACLE-EDIT C3.9-H): K.1 · S1.1–S1.6 · S2.1–S2.3 (S2.3 = ORACLE-EDIT C3.9-export-confirm · C5.4-B) · S3.1–S3.2 · S4.1–S4.2 · S5.1–S5.3 · S6.1–S6.5 · S7.1–S7.4 ·
 //   X1.1–X1.2 · X3.1 · X4.1 · X6.1–X6.2 · X8.1–X8.2 · X9.1 · X10.1 · CLEAN · H1–H12 (ORACLE-EDIT C3.9-H)  (C3.9-FATAL only when something throws).
 //   n/a: X2 (keys/assistant matrix = C3.8 X2; the readonly-body lens is S7.4) · X5 is inside S3.2 (overlap + crash after claim).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -243,7 +243,8 @@ try {
     const k = await mkContact(T, S, tag, o);
     await P.crmCompanyContact.create({ data: { tenantId: T, companyId: coA, contactId: k.id, jobTitle: "จัดซื้อ", note: k.pii[4] } });
     await P.crmContactConsent.create({ data: { tenantId: T, systemId: S, contactId: k.id, channel: "EMAIL", granted: true, source: "FORM", note: `ยินยอมโดย ${k.pii[0]}` } });
-    const deal = await mkDeal(k.id, `ดีลตัวเลข ${tag} ${nx()}`, { companyId: coA });
+    // ORACLE-EDIT C3.9-S1.4 (C5.4-B · controller ruling 3): the deal title carries the person's name (convert-sheet default "ดีล <name>")
+    const deal = await mkDeal(k.id, `ดีล ${k.pii[0]} ตัวเลข ${tag} ${nx()}`, { companyId: coA });
     await P.crmDealStageHistory.create({ data: { tenantId: T, dealId: deal, toStageId: st0, enteredAt: new Date() } }).catch(() => undefined);
     await P.crmDealPayment.create({ data: { tenantId: T, systemId: S, dealId: deal, refType: "PAYMENT", refId: `${TAG}-${nx()}`, satang: BigInt(100_000), status: "COUNTED" } }).catch(() => undefined);
     await P.crmCommission.create({ data: { tenantId: T, systemId: S, dealId: deal, ruleId: `${TAG}-rule`, userId: uThana, amountSatang: BigInt(5_000), basisSatang: BigInt(100_000), basis: "PAID", status: "APPROVED", periodKey: BE_MONTH, refType: "DEAL_PAYMENT", refId: `${TAG}-${nx()}` } }).catch(() => undefined);
@@ -280,14 +281,21 @@ try {
   console.log(`[setup] T=${T} S=${S} M=${M} TB=${TB} · E=${E.k.id} KEEP=${KEEP.k.id} krabi deal=${dK} · car=${objCar.ok}\n`);
 
   // snapshots used by S1
+  // ORACLE-EDIT C3.9-S1.4 (C5.4-B · controller ruling 3): numbers byte-identical WITHOUT the title — the title is checked by titlesOf below
   const numbersOf = async (contactId: string) => j(await Promise.all([
-    P.crmDeal.findMany({ where: { contactId }, select: { id: true, title: true, valueSatang: true, stageId: true, paidSatang: true, ownerUserId: true }, orderBy: { id: "asc" } }),
+    P.crmDeal.findMany({ where: { contactId }, select: { id: true, valueSatang: true, stageId: true, paidSatang: true, ownerUserId: true }, orderBy: { id: "asc" } }),
     P.crmDealStageHistory.count({ where: { deal: { contactId } } }).catch(() => -1),
     P.crmDealPayment.aggregate({ _sum: { satang: true }, _count: true, where: { deal: { contactId } } }).catch(() => ({ _sum: { satang: null }, _count: -1 })),
     P.crmCommission.aggregate({ _sum: { amountSatang: true }, _count: true, where: { dealId: { in: ((await P.crmDeal.findMany({ where: { contactId }, select: { id: true } })) as Any[]).map((d) => d.id) } } }),
     P.crmActivity.count({ where: { contactId } }),
   ]));
   const numsBefore = await numbersOf(E.k.id);
+  // ORACLE-EDIT C3.9-S1.4 (C5.4-B · controller ruling 3): deal title/nextStep/lostReason identical unless they carry an identity token of the
+  //   erased person — then every token is masked ("[ข้อมูลถูกลบ]", the activity-title rule) and the rest of the text is unchanged
+  const ERASED_MASK = "[ข้อมูลถูกลบ]";
+  const dealTextsOf = async (contactId: string) => ((await P.crmDeal.findMany({ where: { contactId }, select: { id: true, title: true, nextStep: true, lostReason: true }, orderBy: { id: "asc" } })) as Any[]);
+  const dealTextsBefore = await dealTextsOf(E.k.id);
+  const maskedAs = (before: string | null, tokens: string[]) => { if (before === null) return null; let s = before; for (const tk of [...tokens].sort((a, b) => b.length - a.length)) if (tk && s.includes(tk)) s = s.split(tk).join(ERASED_MASK); return s; };
   const tenantTables = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((t) => /^[A-Za-z_]+$/.test(t));
   /** full-text PII scan over EVERY table of the tenant (AuditLog excluded — the legal trail is ids + reason; counted separately) */
   const piiScan = async (tokens: string[], exclude: string[] = ["AuditLog"]) => {
@@ -342,14 +350,19 @@ try {
   }
   {
     const numsAfter = await numbersOf(E.k.id);
+    const dealTextsAfter = await dealTextsOf(E.k.id);
+    const toks = E.k.pii.filter((x) => x.length >= 4);
+    const textOk = dealTextsBefore.length === dealTextsAfter.length && dealTextsBefore.some((d) => toks.some((tk) => String(d.title).includes(tk))) &&
+      dealTextsBefore.every((d, i) => { const a = dealTextsAfter[i]; return !!a && a.id === d.id && (["title", "nextStep", "lostReason"] as const).every((f) => a[f] === maskedAs(d[f], toks) && !toks.some((tk) => String(a[f] ?? "").includes(tk))); });
     const audits = (await P.auditLog.findMany({ where: { tenantId: T, action: "crm.contact.erase", targetId: E.k.id } })) as Any[];
     const evts = (await P.outboxEvent.findMany({ where: { tenantId: T, type: "crm.contact.erased" } })) as Any[];
     const mine = evts.filter((e) => j(e.payload).includes(E.k.id));
     const keysOk = mine.every((e) => Object.keys((e.payload ?? {}) as Record<string, unknown>).every((k) => ["contactId", "systemId", "partyId", "customerId"].includes(k)));
     const reg = [!!(OBX.consumers ?? {})["crm.contact.erased"], ((ALAB.AUTOMATION_EVENTS ?? []) as Any[]).filter((e) => e.value === "crm.contact.erased").length + ((WLAB.WEBHOOK_EVENTS ?? []) as Any[]).filter((e) => e.value === "crm.contact.erased").length >= 1];
-    chk("C3.9-S1.4", "erase KEEPS the numbers: the deals (title/value/stage/paid/owner), stage history, counted payments (Σ satang), commissions (Σ amount) and the number of activities are byte-identical · one AuditLog `crm.contact.erase` with the reason · one outbox `crm.contact.erased` whose payload is ids only (contactId/systemId/partyId) · the event has a consumer and a label",
-      er.ok && numsAfter === numsBefore && audits.length === 1 && j(audits[0]).includes(eraseIn.reason) && mine.length === 1 && keysOk && !E.k.pii.some((s) => j(mine).includes(s)) && reg.every(Boolean),
-      "numbers kept · 1 audit · 1 event", `numbersEqual=${numsAfter === numsBefore} audits=${audits.length} events=${mine.length} idsOnly=${keysOk} registries=${reg.join("/")}${ABSENT}`);
+    // ORACLE-EDIT C3.9-S1.4 (C5.4-B · controller ruling 3): title/nextStep/lostReason masked only where they carry an identity token
+    chk("C3.9-S1.4", "erase KEEPS the numbers: the deals (value/stage/paid/owner byte-identical · title/nextStep/lostReason identical except every identity token of the erased person masked), stage history, counted payments (Σ satang), commissions (Σ amount) and the number of activities are byte-identical · one AuditLog `crm.contact.erase` with the reason · one outbox `crm.contact.erased` whose payload is ids only (contactId/systemId/partyId) · the event has a consumer and a label",
+      er.ok && numsAfter === numsBefore && textOk && audits.length === 1 && j(audits[0]).includes(eraseIn.reason) && mine.length === 1 && keysOk && !E.k.pii.some((s) => j(mine).includes(s)) && reg.every(Boolean),
+      "numbers kept · 1 audit · 1 event", `numbersEqual=${numsAfter === numsBefore} dealTexts=${textOk} ${cut(j(dealTextsAfter.map((d: Any) => d.title)), 120)} audits=${audits.length} events=${mine.length} idsOnly=${keysOk} registries=${reg.join("/")}${ABSENT}`);
   }
   {
     const again = await call(PRIV.eraseContact, cS, owner, eraseIn, deps);
@@ -423,7 +436,15 @@ try {
     const tables = Object.keys((bundle.v?.tables ?? {}) as Record<string, unknown>);
     const NEED = ["CrmContactConsent", "CrmActivity", "CrmEmailMessage", "CrmWebSession", "CrmTrackedClick", "CrmPortalAccess", "CrmPortalRequest", "CustomRecord", "CrmDeal"];
     const miss = NEED.filter((t) => !tables.some((x) => x.toLowerCase().includes(t.toLowerCase().replace(/^crm/, ""))));
-    const st = await call(PRIV.exportTenant, cS, owner, { format: "CSV" }, putDeps);
+    // ORACLE-EDIT C3.9-export-confirm (C5.4-B · L5-m7): the whole-system export needs confirm + a reason (X9) — without them it is refused (Thai) and queues nothing
+    const jobsBefore = (await P.crmImportJob.count({ where: { tenantId: T, kind: "CRM_EXPORT" } })) as number;
+    const noGate = await call(PRIV.exportTenant, cS, owner, { format: "CSV" }, putDeps);
+    const noConfirm = await call(PRIV.exportTenant, cS, owner, { format: "CSV", reason: "qc-c3.9 ส่งออกทั้งระบบ" }, putDeps);
+    const jobsMid = (await P.crmImportJob.count({ where: { tenantId: T, kind: "CRM_EXPORT" } })) as number;
+    chk("C3.9-S2.3", "CRM-wide export gate (X9 · C5.3-L5-m7): exportTenant without confirm/reason is refused with a Thai message (VALIDATION) · with a reason but no confirm refused (CONFIRM_REQUIRED/VALIDATION) · neither queues a job",
+      refused(noGate, ["VALIDATION"]) && refused(noConfirm, ["CONFIRM_REQUIRED", "VALIDATION"]) && jobsMid === jobsBefore,
+      "refused · 0 jobs", `noGate=${noGate.err || "ok!"} noConfirm=${noConfirm.err || "ok!"} jobs ${jobsBefore}→${jobsMid}${ABSENT}`);
+    const st = await call(PRIV.exportTenant, cS, owner, { format: "CSV", confirm: true, reason: "qc-c3.9 ส่งออกทั้งระบบ" }, putDeps); // ORACLE-EDIT C3.9-export-confirm (C5.4-B · L5-m7)
     exportJob = String(st.v?.jobId ?? "");
     const runner = PRIV.runExportJobs ?? CRM?.reports?.runExportJobs;
     const run1 = await call(runner, { now: new Date(), tenantIds: [T], deps: putDeps });
@@ -438,7 +459,7 @@ try {
   {
     const byMgr = exportJob ? await call(PRIV.getExport, { tenantId: T, systemId: S, actorUserId: uMgr }, manager, exportJob) : MISSING;
     const byThana = await call(PRIV.exportTenant, cThana, thana, { format: "JSON" }, putDeps);
-    const mgrJob = await call(PRIV.exportTenant, { tenantId: T, systemId: S, actorUserId: uMgr }, manager, { format: "CSV" }, putDeps);
+    const mgrJob = await call(PRIV.exportTenant, { tenantId: T, systemId: S, actorUserId: uMgr }, manager, { format: "CSV", confirm: true, reason: "qc-c3.9 ส่งออกทั้งระบบ" }, putDeps); // ORACLE-EDIT C3.9-export-confirm (C5.4-B · L5-m7)
     await call(PRIV.runExportJobs ?? CRM?.reports?.runExportJobs, { now: new Date(), tenantIds: [T], deps: putDeps });
     const mgrContent = PUT.slice(-1)[0]?.body ?? "";
     const sensitiveLeak = carFields.length > 0 && mgrContent.includes(`model-${KEEP.k.pii[1]}`);
@@ -1180,7 +1201,7 @@ try {
     {
       const W = await person("ส่งออก");
       const PUT: Record<string, Uint8Array> = {};
-      const ex = await call(PRIV.exportTenant, cH, ownerH, { format: "CSV" });
+      const ex = await call(PRIV.exportTenant, cH, ownerH, { format: "CSV", confirm: true, reason: "qc-c3.9 ส่งออกทั้งระบบ" }); // ORACLE-EDIT C3.9-export-confirm (C5.4-B · L5-m7)
       const run = await call(PRIV.runExportJobs, { tenantIds: [TH], deps: { put: async (p: string, d: Uint8Array) => { PUT[p] = d; } } });
       const job = ex.ok ? ((await P.crmImportJob.findUnique({ where: { id: ex.v.jobId } })) as Any) : null;
       const fileRow = job?.fileId ? ((await P.fileAsset.findUnique({ where: { id: job.fileId } })) as Any) : null;

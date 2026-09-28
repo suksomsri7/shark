@@ -1152,7 +1152,7 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ◂ CRM C2.5
   // CRM C2.6 ▸ ผู้เข้าชมเว็บถูกระบุตัวตนแล้ว (`crm/tracking.ts#identify`) — ยิงใน tx เดียวกับการผูกการเข้าชม + กิจกรรม WEB
   //   key `crm.web.identified#<contactId>#<วันไทย>` (R-C.8 · 1 ใบต่อผู้ติดต่อต่อวัน) · payload **id/ตัวเลขล้วน**
-  //   { contactId, systemId, visitorId, sessionCount, pageViews, firstUrl?, by } — ไม่มีชื่อ เบอร์ อีเมล (X8)
+  //   { contactId, systemId, visitorId, sessionCount, pageViews, by } — ไม่มีชื่อ เบอร์ อีเมล url (X8 · C5.4-B L5-m6 ตัด firstUrl)
   //   no-op ที่ปิด event เป็น DONE (ขาด consumer = คิวตัน — บทเรียน 30 ส.ค.) + ทริกเกอร์กฎ + เว็บฮุคของร้าน ·
   //   ผลข้างเคียงจริง (การผูก session · กิจกรรม 1 รายการ/วันไทย) เขียนครบใน tx ของบริการแล้ว ⇒ ส่งซ้ำ/พร้อมกัน = ผลเดิม (X4)
   //   🔴 ใบ C2.8 (คะแนน) เป็นผู้บริโภคตัวจริงของ event นี้ — ใบ C2.6 แค่ยิง

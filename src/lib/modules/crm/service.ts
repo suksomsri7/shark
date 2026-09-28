@@ -17,6 +17,9 @@ import { createContactFromLegacy } from "./contacts";
 //    (defense-in-depth · Crm* ทุกตัวเป็น system-scoped ใน scope.ts)
 //    nested write (stages) ไม่ผ่าน guard ชั้นนี้ → ใส่ tenantId/systemId ตรงเอง
 
+// CRM C5.4-B ▸ hunter H5: ประตู "action/ข้อเสนอแบบ v1 ใช้ไม่ได้บนระบบนี้" (อ่านไม่ได้ = ปิด) — re-export ให้ facade (ai/proposals · crm_create_lead)
+export { isCrmV1Closed } from "./ui-version";
+
 export type Ctx = { tenantId: string; systemId: string };
 
 // ── ensureCrm — idempotent seed default pipeline ──

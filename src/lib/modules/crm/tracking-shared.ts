@@ -78,12 +78,14 @@ export const isIdentifyBy = (v: unknown): v is IdentifyBy => typeof v === "strin
 export const isBotUserAgent = (ua: unknown): boolean => isTrackingBot(ua);
 
 const UTM_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
+/** C5.4-B (รีวิว note f): ลิงก์ที่มาของผู้ติดต่อ (sourceDetail.pageUrl) เก็บเฉพาะ 3 ตัวนี้ — utm_term/utm_content พกอีเมล/คำค้นของลูกค้าได้ */
+export const SOURCE_PAGE_UTM_KEEP = ["utm_source", "utm_medium", "utm_campaign"] as const;
 
 /**
  * AUDIT-CLASS X8: url ที่เก็บได้ — http/https เท่านั้น · เก็บ **เฉพาะ** พารามิเตอร์ `utm_*` · ตัด `#fragment` · ยาวไม่เกิน 2048
  * 🔴 หน้าเว็บของร้านมักพ่วง token/อีเมลลูกค้ามาใน query (`?email=…&token=…`) — เก็บทั้งดุ้น = เก็บข้อมูลส่วนตัวโดยไม่ตั้งใจ
  */
-export function cleanTrackedUrl(raw: unknown): string | null {
+export function cleanTrackedUrl(raw: unknown, opts: { keep?: readonly string[] } = {}): string | null {
   const s = typeof raw === "string" ? raw.trim() : "";
   if (!s || s.length > TRACKED_URL_MAX * 2) return null;
   let u: URL;
@@ -96,7 +98,7 @@ export function cleanTrackedUrl(raw: unknown): string | null {
   if (scheme !== "http:" && scheme !== "https:") return null;
   if (!u.hostname) return null;
   const keep = new URLSearchParams();
-  for (const k of UTM_PARAMS) {
+  for (const k of opts.keep ?? UTM_PARAMS) {
     const v = u.searchParams.get(k);
     if (v !== null && v !== "") keep.set(k, v.slice(0, 200));
   }

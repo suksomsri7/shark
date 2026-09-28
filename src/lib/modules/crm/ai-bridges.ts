@@ -106,6 +106,27 @@ const lockKey = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_
 const baht = (satang: number | bigint) => `฿${(Number(satang) / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
 /** ข้อความอิสระที่พนักงานพิมพ์ (ชื่อดีล · หัวข้อกิจกรรม · ชื่อคน) — ปิดเบอร์/อีเมล/เลขยาวก่อนออกจากเครื่อง (AUDIT-CLASS X8) */
 const safe = (v: unknown, max = 200): string => redactContactInfo(String(v ?? "").replace(/\s+/g, " ").trim()).slice(0, max);
+// CRM C5.4-B ▸ L5-M3: ห้องทีม (สมาชิกห้อง ≠ คนที่เห็นผู้ติดต่อใน CRM) ไม่ได้ชื่อลูกค้า — ชื่อดีลที่มีชื่อผู้ติดต่อของดีลนั้น (ค่าปริยาย "ดีล <ชื่อ>")
+//   ถูกแทนชื่อด้วย "ลูกค้า" ก่อนโพสต์ (โพสต์ที่ออกไปแล้วไม่มีทางถูกปิดคำตอนลบข้อมูล) · lead ร้อน = ลิงก์ + คะแนน ไม่มีชื่อ ◂
+type NameParts = { name: string | null; firstName: string | null; lastName: string | null } | null;
+// hunter H3(d): ชื่อของผู้ติดต่อ **ทุกคน** ของดีล (หลัก + CrmDealContact) ไม่ใช่แค่คนหลัก
+const withoutName = (title: string, c: NameParts, more: readonly { contact: NameParts }[] = []): string => {
+  let t = withoutOne(title, c);
+  for (const m of more) t = withoutOne(t, m.contact);
+  return t;
+};
+const withoutOne = (title: string, c: NameParts): string => {
+  if (!c) return title;
+  const toks = [c.name, [c.firstName, c.lastName].filter(Boolean).join(" "), c.firstName, c.lastName]
+    .map((x) => String(x ?? "").trim())
+    .filter((x) => x.length >= 3)
+    .sort((a, b) => b.length - a.length);
+  let t = title;
+  for (const tk of toks) if (t.includes(tk)) t = t.split(tk).join("ลูกค้า");
+  return t;
+};
+const NAME_SEL = { select: { name: true, firstName: true, lastName: true } } as const;
+const MORE_SEL = { select: { contact: NAME_SEL }, take: 50 } as const;
 const dayLabel = (d: Date | null | undefined): string => (d ? thaiDateLabel(d.getTime(), true) : "-");
 const nowOf = (v: unknown): Date => (v instanceof Date && Number.isFinite(v.getTime()) ? v : new Date());
 
@@ -939,14 +960,14 @@ export async function onDealWonTeamRoom(evt: Evt): Promise<void> {
   const p = isObj(evt?.payload) ? evt.payload : {};
   const dealId = str(p.dealId);
   if (!dealId || !evt?.tenantId || !evt.id) return;
-  const deal = await prisma.crmDeal.findFirst({ where: { id: dealId, tenantId: evt.tenantId }, select: { id: true, systemId: true, title: true, valueSatang: true, teamId: true } });
+  const deal = await prisma.crmDeal.findFirst({ where: { id: dealId, tenantId: evt.tenantId }, select: { id: true, systemId: true, title: true, valueSatang: true, teamId: true, contact: NAME_SEL, contacts: MORE_SEL } });
   if (!deal) return;
   const sys = await v2System(evt.tenantId, deal.systemId);
   if (!sys) return;
   const room = await roomFor(sys, deal.teamId, `won deal:${deal.id}`);
   if (!room) return;
   // AUDIT-CLASS X8: ชื่อดีล (ปิดเบอร์/อีเมลที่อาจพิมพ์ไว้) + มูลค่า + ลิงก์ — ไม่มีเบอร์/อีเมล/เลขภาษีของลูกค้า
-  const body = `🎉 ปิดดีลได้แล้ว: ${safe(deal.title)} · ${baht(deal.valueSatang)}\nเปิดดู: /app/sys/${sys.id}/crm/deals/${deal.id}`;
+  const body = `🎉 ปิดดีลได้แล้ว: ${safe(withoutName(deal.title, deal.contact, deal.contacts))} · ${baht(deal.valueSatang)}\nเปิดดู: /app/sys/${sys.id}/crm/deals/${deal.id}`;
   await postFlagged({ tenantId: evt.tenantId, crmSystemId: sys.id, key: `crm.teamroom#won#${evt.id}`, room, body, payload: { kind: "won", dealId: deal.id, teamId: deal.teamId } });
 }
 
@@ -956,13 +977,14 @@ export async function onHotLeadTeamRoom(evt: Evt): Promise<void> {
   if (p.band !== "HOT") return;
   const contactId = str(p.contactId);
   if (!contactId || !evt?.tenantId || !evt.id) return;
-  const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: evt.tenantId }, select: { id: true, systemId: true, name: true, score: true, teamId: true } });
+  const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: evt.tenantId }, select: { id: true, systemId: true, score: true, teamId: true } });
   if (!c) return;
   const sys = await v2System(evt.tenantId, c.systemId);
   if (!sys) return;
   const room = await roomFor(sys, c.teamId, `hot contact:${c.id}`);
   if (!room) return;
-  const body = `🔥 lead ร้อน: ${safe(c.name, 80)} · คะแนน ${c.score}\nเปิดดู: /app/sys/${sys.id}/crm/contacts/${c.id}`;
+  // C5.4-B L5-M3: ลิงก์ + คะแนนเท่านั้น (ไม่มีชื่อ — คนในห้องที่มองเห็นผู้ติดต่อนี้เปิดลิงก์ดูเอง)
+  const body = `🔥 มี lead ร้อนใหม่ · คะแนน ${c.score}\nเปิดดู: /app/sys/${sys.id}/crm/contacts/${c.id}`;
   await postFlagged({ tenantId: evt.tenantId, crmSystemId: sys.id, key: `crm.teamroom#hot#${evt.id}`, room, body, payload: { kind: "hot", contactId: c.id, teamId: c.teamId } });
 }
 
@@ -997,11 +1019,11 @@ export async function postStaleDigest(now: Date, opts: { tenantIds?: string[]; s
           sum.skipped += 1;
           continue;
         }
-        const deals = await prisma.crmDeal.findMany({ where, select: { id: true, title: true, valueSatang: true, stalledAt: true }, orderBy: [{ stalledAt: "asc" }, { id: "asc" }], take: CRM_TEAMROOM_DIGEST_MAX });
+        const deals = await prisma.crmDeal.findMany({ where, select: { id: true, title: true, valueSatang: true, stalledAt: true, contact: NAME_SEL, contacts: MORE_SEL }, orderBy: [{ stalledAt: "asc" }, { id: "asc" }], take: CRM_TEAMROOM_DIGEST_MAX });
         const more = count - deals.length;
         const body = [
           `📋 สรุปดีลนิ่งของทีม ประจำวันที่ ${thaiDateLabel(at.getTime(), true)} — ${count.toLocaleString("th-TH")} ดีล`,
-          ...deals.map((d) => `• ${safe(d.title)} · ${baht(d.valueSatang)} — /app/sys/${sys.id}/crm/deals/${d.id}`),
+          ...deals.map((d) => `• ${safe(withoutName(d.title, d.contact, d.contacts))} · ${baht(d.valueSatang)} — /app/sys/${sys.id}/crm/deals/${d.id}`),
           more > 0 ? `…และอีก ${more.toLocaleString("th-TH")} ดีล — ดูทั้งหมด: /app/sys/${sys.id}/crm/deals?stale=1&team=${teamId}` : "",
         ]
           .filter(Boolean)

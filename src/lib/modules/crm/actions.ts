@@ -15,6 +15,7 @@ import {
   issueQuotation,
 } from "./service";
 import { DealsError } from "./deals-shared";
+import { CRM_V1_CLOSED_MSG, CRM_V1_UNREADABLE_MSG, isCrmV1Closed } from "./ui-version";
 
 // ตรวจสิทธิ์โมดูล CRM (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "crm.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -53,6 +54,18 @@ const dateOrNull = (v: FormDataEntryValue | null): Date | null => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// CRM C5.4-B ▸ L1-M1: action v1 ทำงานเฉพาะระบบ uiVersion 1 — ระบบที่เปิด v2 แล้ว (crmUiVersion = 2) ปฏิเสธก่อนแตะข้อมูลใด ๆ
+//   (action v1 ไม่กรองการมองเห็น/ข้ามกติกา v2 เช่นเหตุผลแพ้) ⇒ พากลับหน้า CRM ใหม่พร้อมข้อความไทย · ไม่มีแถวไหนเปลี่ยน
+async function refuseOnV2(tenantId: string, systemId: string): Promise<void> {
+  const closed = await isCrmV1Closed({ tenantId, systemId });
+  if (closed) {
+    // อ่านรุ่นไม่ได้ = ปฏิเสธเหมือนกัน (fail closed) แต่ข้อความเป็นกลาง — ไม่อ้างว่าเปลี่ยนหน้าจอแล้ว
+    const msg = closed === "V2" ? CRM_V1_CLOSED_MSG : CRM_V1_UNREADABLE_MSG;
+    redirect(`/app/sys/${encodeURIComponent(systemId)}/crm?notice=${encodeURIComponent(msg)}`);
+  }
+}
+// ◂ CRM C5.4-B
+
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
 
 // CRM C1.5 ▸ ฟอร์ม v1 (ดีล) เรียกบริการดีล v2 ผ่าน service.ts — กติกา v2 ที่ปฏิเสธ (DealsError: ข้อความไทยไม่โทษผู้ใช้)
@@ -76,6 +89,7 @@ export async function createContactAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await refuseOnV2(ctx.tenantId, systemId);
   await createContact(ctx, {
     name,
     phone: String(formData.get("phone") ?? "").trim() || null,
@@ -95,6 +109,7 @@ export async function createDealAction(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim();
   if (!systemId || !contactId || !pipelineId || !stageId || !title) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await refuseOnV2(ctx.tenantId, systemId);
   await withDealNotice(systemId, () =>
     createDeal(ctx, {
       contactId,
@@ -117,6 +132,7 @@ export async function moveDealAction(formData: FormData) {
   const stageId = String(formData.get("stageId") ?? "");
   if (!systemId || !dealId || !stageId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await refuseOnV2(ctx.tenantId, systemId);
   await withDealNotice(systemId, () => moveDeal(ctx, dealId, stageId));
   revalidate(systemId);
 }
@@ -131,6 +147,7 @@ export async function addActivityAction(formData: FormData) {
   const type = (ACTIVITY_TYPES.has(rawType as CrmActivityType) ? rawType : "TASK") as CrmActivityType;
   if (!systemId || !title) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await refuseOnV2(ctx.tenantId, systemId);
   await addActivity(ctx, {
     contactId: String(formData.get("contactId") ?? "").trim() || null,
     dealId: String(formData.get("dealId") ?? "").trim() || null,
@@ -149,6 +166,7 @@ export async function completeActivityAction(formData: FormData) {
   const activityId = String(formData.get("activityId") ?? "");
   if (!systemId || !activityId) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  await refuseOnV2(ctx.tenantId, systemId);
   await completeActivity(ctx, activityId);
   revalidate(systemId);
 }
@@ -159,6 +177,8 @@ export async function issueQuotationAction(formData: FormData) {
   const dealId = String(formData.get("dealId") ?? "");
   const auth = await requireTenant();
   assertCrmCan(auth, "crm.deal.quote");
+  if (!systemId || !dealId) return;
+  await refuseOnV2(auth.active.tenantId, systemId);
   await withDealNotice(systemId, () => issueQuotation({ tenantId: auth.active.tenantId, systemId }, dealId));
   revalidate(systemId);
 }

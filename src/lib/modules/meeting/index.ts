@@ -3,4 +3,4 @@
 // 🔴 re-export ล้วน — ไม่มีตรรกะที่นี่ · ผู้ใช้วันนี้: CRM (`crm/ai-bridges.ts` แจ้งห้องทีม · ตัวเลือกห้องบนหน้าตั้งค่า CRM)
 //    ผ่านเส้น `crm→meeting` ใน ALLOWED_EDGES (scripts/fitness.mts) · โหลดแบบ dynamic import จากฝั่ง CRM
 // 🔴 ของที่เปิด = เท่าที่คนนอกใช้จริงเท่านั้น (โพสต์ในนามระบบ + รายการห้องให้เลือก)
-export { postSystemMessage, listRoomOptions, liveChannelIds, MEETING_SYSTEM_AUTHOR_PREFIX } from "./service";
+export { postSystemMessage, listRoomOptions, liveChannelIds, maskSystemMessagesInTx, MEETING_SYSTEM_AUTHOR_PREFIX } from "./service";

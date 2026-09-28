@@ -652,8 +652,8 @@ try {
     const r = await create(cA, { firstName: "ลูกค้าโฆษณา", phone: phoneOf(), sourceKind: "WEB_FORM", sourceChannel: "LINE", sourceDetail: sd });
     const row = await ctRow(kid(r.v));
     const got = row?.sourceDetail ?? {};
-    chk("C1.4-S1.5", "sourceDetail is stored complete: the 5 utm keys + formId + pageUrl + referrer, sourceKind WEB_FORM",
-      r.ok && row?.sourceKind === "WEB_FORM" && j(Object.fromEntries(Object.entries(got?.utm ?? {}).sort())) === j(Object.fromEntries(Object.entries(sd.utm).sort())) && got?.formId === sd.formId && got?.pageUrl === sd.pageUrl && got?.referrer === sd.referrer,
+    chk("C1.4-S1.5", "sourceDetail is stored complete: the 5 utm keys + formId + pageUrl (path kept, non-utm query dropped — ORACLE-EDIT C1.4-S1.5 · C5.4-B L5-m6) + referrer, sourceKind WEB_FORM",
+      r.ok && row?.sourceKind === "WEB_FORM" && j(Object.fromEntries(Object.entries(got?.utm ?? {}).sort())) === j(Object.fromEntries(Object.entries(sd.utm).sort())) && got?.formId === sd.formId && got?.pageUrl === "https://shop.example/p" && !String(got?.pageUrl ?? "").includes("?x=1") && got?.referrer === sd.referrer, // ORACLE-EDIT C1.4-S1.5 (C5.4-B · L5-m6 ruling): the stored pageUrl keeps the path, the non-utm query (and fragment) is dropped
       "utm ×5 + form/page/referrer", `${r.err} kind=${row?.sourceKind} detail=${cut(j(got), 200)}`);
   }
   {

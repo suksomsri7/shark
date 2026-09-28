@@ -97,7 +97,7 @@ export type CrmSendRequest = {
   title?: string;
 };
 export type CrmSendFn = (req: CrmSendRequest) => Promise<RunnerSendResult>;
-export type CrmKanbanRequest = { tenantId: string; systemId: string; ruleId: string; runId: string; contactId: string | null; boardId: string; title: string; description: string; sourceKey: string };
+export type CrmKanbanRequest = { tenantId: string; systemId: string; ruleId: string; runId: string; contactId: string | null; dealId?: string | null; boardId: string; title: string; description: string; sourceKey: string };
 export type CrmKanbanFn = (req: CrmKanbanRequest) => Promise<{ ok: boolean; cardId?: string; error?: string }>;
 /** ตัวส่งที่ฉีดแทนได้ (ข้อสอบ) — ไม่ฉีด = ตัวจริงปริยาย (อีเมล: ยังไม่เปิดจนถึง C2.5 · LINE: แชท · push: พนักงาน · การ์ด: บอร์ดงาน · webhook: fetch 5 วิ) */
 export type CrmRuleDeps = {
@@ -963,7 +963,17 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
           recipients = o ? [o] : [];
         }
         recipients = [...new Set(recipients)];
-        if (recipients.length === 0) return skip(i, kind, "ไม่พบพนักงานที่ต้องแจ้ง");
+        // CRM C5.4-B ▸ L1-m4 (C2.10 "ผู้รับถูกกรอง ไม่ใช่เชื่อ"): ข้อความของกฎแทน {ชื่อ}/{ดีล} ได้ ⇒ ผู้รับต้องเปิดทุกระเบียนที่เรื่องนี้อ้างถึงได้
+        //   (ด่านเดียวกับ notifyStaff: รับคำเชิญแล้ว + คีย์อ่าน + visibleWhere) — คนที่มองไม่เห็นไม่ได้ใบ ◂
+        const { crmRecipientsWhoSee } = await import("./notifications");
+        const refs = [
+          ...(s.contact ? [{ target: "CONTACT" as const, id: s.contact.id }] : []),
+          ...(s.deal ? [{ target: "DEAL" as const, id: s.deal.id }] : []),
+          ...(s.activity ? [{ target: "ACTIVITY" as const, id: s.activity.id }] : []),
+          ...(s.record ? [{ target: "RECORD" as const, id: s.record.id }] : []),
+        ];
+        recipients = await crmRecipientsWhoSee({ tenantId: s.tenantId, systemId: s.systemId }, recipients, refs);
+        if (recipients.length === 0) return skip(i, kind, "ไม่พบพนักงานที่ต้องแจ้ง (หรือผู้รับที่ตั้งไว้มองไม่เห็นรายการนี้)");
         const title = ((await render(str(params.text))) || `กฎอัตโนมัติ "${env.rule.name}"`).slice(0, 200);
         // AUDIT-CLASS X8: เนื้อความมีแต่ชื่อกฎ + ลิงก์ (ไม่มีเบอร์/อีเมลของลูกค้า) — หน้าปลายทางตรวจสิทธิ์เอง
         const link = s.deal ? `/app/sys/${s.systemId}/crm/deals/${s.deal.id}` : s.contact ? `/app/sys/${s.systemId}/crm/contacts/${s.contact.id}` : `/app/sys/${s.systemId}/crm`;
@@ -981,8 +991,11 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
           ruleId: env.rule.id,
           runId: env.runId,
           contactId: s.contact?.id ?? null,
+          dealId: s.deal?.id ?? null,
           boardId: board.id,
-          title: ((await render(str(params.title))) || env.rule.name).slice(0, 200),
+          // CRM C5.4-B ▸ L1-m4/L5-M2: บอร์ดงานเป็นของทั้งทีม (สมาชิกบอร์ด ≠ คนที่เห็นผู้ติดต่อนี้ใน CRM) ⇒ ชื่อการ์ดไม่มีชื่อลูกค้า/ชื่อดีล —
+          //   {ชื่อ}/{ดีล} กลายเป็นรหัสอ้างอิงสั้น ๆ · ตัวตนจริงอยู่ที่ลิงก์ CRM_CONTACT/DEAL ของการ์ด (ตัวแสดงลิงก์ตรวจสิทธิ์รายคน) ◂
+          title: (renderTemplate(str(params.title), cardVars(env)) || env.rule.name).slice(0, 200),
           description: `จากกฎอัตโนมัติ CRM "${env.rule.name}"`,
           sourceKey: `crm-rule:${env.runId}:${i}`,
         });
@@ -1061,6 +1074,12 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
 async function crmVars(env: CrmEnv, _text: string): Promise<Record<string, string | undefined>> {
   return { ชื่อ: contactName(env.subject.contact), ดีล: env.subject.deal?.title ?? "" };
 }
+/** ตัวแปรของชื่อการ์ดบอร์ดงาน — ไม่มีชื่อคน/ชื่อดีล (C5.4-B L1-m4 · L5-M2) */
+function cardVars(env: CrmEnv): Record<string, string | undefined> {
+  const ref = (label: string, id: string | undefined) => (id ? `${label} #${id.slice(-6)}` : "");
+  return { ชื่อ: ref("ลูกค้า", env.subject.contact?.id), ดีล: ref("ดีล", env.subject.deal?.id) };
+}
+
 
 // C5.4 (L4-M2): ยิงผ่าน `outboundFetch` ตัวเดียวของแพลตฟอร์ม (ตรวจปลายทาง · ตรึง IP ตอนต่อ · ไม่ตาม 3xx)
 async function postWebhook(url: string, body: unknown): Promise<void> {
@@ -1078,7 +1097,18 @@ const defaultKanban: CrmKanbanFn = async (req) => {
     const { createCardFromExternal } = await import("@/lib/modules/kanban/links");
     const r = await createCardFromExternal(
       { tenantId: req.tenantId, systemId: board.systemId, actorUserId: null },
-      { boardId: req.boardId, title: req.title, description: req.description, sourceType: "AUTOMATION", sourceKey: req.sourceKey },
+      {
+        boardId: req.boardId,
+        title: req.title,
+        description: req.description,
+        sourceType: "AUTOMATION",
+        sourceKey: req.sourceKey,
+        // CRM C5.4-B ▸ L5-M2: ผูกการ์ดกับผู้ติดต่อ/ดีลตั้งแต่เกิด ⇒ ลบข้อมูลส่วนบุคคล (erase) หาการ์ดเจอผ่านลิงก์ CRM_CONTACT ◂
+        links: [
+          ...(req.contactId ? [{ linkType: "CRM_CONTACT" as const, linkId: req.contactId, role: "RELATED" as const }] : []),
+          ...(req.dealId ? [{ linkType: "DEAL" as const, linkId: req.dealId, role: "RELATED" as const }] : []),
+        ],
+      },
     );
     return { ok: true, cardId: r.cardId };
   } catch (e) {

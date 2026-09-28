@@ -219,12 +219,14 @@ async function accessesOfContacts(tenantId: string, systemId: string, contactIds
     select: { id: true, companyId: true, contactId: true, lastLoginAt: true, acceptedAt: true, invitedAt: true },
     take: 50,
   });
-  const primary = new Set(
-    (await prisma.crmCompanyContact.findMany({ where: { tenantId, contactId: { in: contactIds }, isPrimary: true }, select: { companyId: true, contactId: true }, take: 100 })).map((r) => `${r.contactId}:${r.companyId}`),
-  );
+  // CRM C5.4-B ▸ L1-M2: เฉพาะบริษัทที่ผู้ติดต่อยังอยู่ (ลิงก์ endedAt null) — ข้อมูลเก่าที่ถอดออกก่อนแก้นี้ก็ไม่ได้ OTP/LINE
+  const links = await prisma.crmCompanyContact.findMany({ where: { tenantId, contactId: { in: contactIds }, endedAt: null }, select: { companyId: true, contactId: true, isPrimary: true }, take: 200 });
+  const live = new Set(links.map((r) => `${r.contactId}:${r.companyId}`));
+  const primary = new Set(links.filter((r) => r.isPrimary).map((r) => `${r.contactId}:${r.companyId}`));
+  const liveRows = rows.filter((r) => live.has(`${r.contactId}:${r.companyId}`));
   const t = (d: Date | null) => (d ? d.getTime() : 0);
-  rows.sort((a, b) => t(b.lastLoginAt) - t(a.lastLoginAt) || Number(primary.has(`${b.contactId}:${b.companyId}`)) - Number(primary.has(`${a.contactId}:${a.companyId}`)) || t(b.acceptedAt) - t(a.acceptedAt) || t(a.invitedAt) - t(b.invitedAt));
-  return rows.map((r) => r.id);
+  liveRows.sort((a, b) => t(b.lastLoginAt) - t(a.lastLoginAt) || Number(primary.has(`${b.contactId}:${b.companyId}`)) - Number(primary.has(`${a.contactId}:${a.companyId}`)) || t(b.acceptedAt) - t(a.acceptedAt) || t(a.invitedAt) - t(b.invitedAt));
+  return liveRows.map((r) => r.id);
 }
 
 /** ผู้ติดต่อของปลายทางนี้ในระบบ (อีเมลไม่สนตัวพิมพ์ · เบอร์ตัวเลขล้วน) — ไม่รวมที่ถูกเก็บ/ถูกรวม */
@@ -535,11 +537,18 @@ export async function myCompanies(token: string): Promise<{ current: string; ite
   const s = await session(token);
   const rows = await prisma.crmPortalAccess.findMany({
     where: { tenantId: s.tenantId, systemId: s.crmSystemId, contactId: s.crmContactId, revokedAt: null, company: { archivedAt: null, mergedIntoId: null }, ...usableAccessWhere() },
-    select: { companyId: true, company: { select: { name: true } } },
+    select: { companyId: true, acceptedAt: true, invitedAt: true, company: { select: { name: true } } },
     orderBy: { invitedAt: "asc" },
     take: 50,
   });
-  return { current: s.companyId, items: rows.map((r) => ({ id: r.companyId, name: r.company.name })) };
+  // CRM C5.4-B ▸ hunter H6: บริษัทที่ออกแล้ว (ลิงก์จบ) หรือสิทธิ์รอบเก่า (ก่อนลิงก์รอบปัจจุบันเริ่ม) ไม่โผล่ในตัวสลับ — กติกาเดียวกับ portalAccessUsable
+  const links = await prisma.crmCompanyContact.findMany({
+    where: { tenantId: s.tenantId, contactId: s.crmContactId, endedAt: null, companyId: { in: rows.map((r) => r.companyId) } },
+    select: { companyId: true, startedAt: true },
+  });
+  const since = new Map(links.map((l) => [l.companyId, l.startedAt ? l.startedAt.getTime() : 0]));
+  const usable = rows.filter((r) => since.has(r.companyId) && Math.max(r.acceptedAt?.getTime() ?? 0, r.invitedAt?.getTime() ?? 0) >= (since.get(r.companyId) ?? 0));
+  return { current: s.companyId, items: usable.map((r) => ({ id: r.companyId, name: r.company.name })) };
 }
 
 /** หน้าแรกของบริษัท: ค้างชำระ · ใบเสนอราคารอตอบ · กิจกรรมล่าสุด (+ จำนวนดีลเปิด เฉพาะร้านที่ตั้ง showDeals) */
@@ -1004,7 +1013,8 @@ export async function getRequest(token: string, requestId: string): Promise<Port
 export async function listContacts(token: string): Promise<{ items: PortalContactDto[] }> {
   const sc = await scope(token);
   const links = await prisma.crmCompanyContact.findMany({
-    where: { tenantId: sc.tenantId, companyId: sc.companyId, contact: { archivedAt: null, mergedIntoId: null, tenantId: sc.tenantId, systemId: sc.crmSystemId } },
+    // CRM C5.4-B ▸ L1-M2: เฉพาะคนที่ยังอยู่ในบริษัท (endedAt null) — อดีตพนักงานไม่โผล่ให้คนในพอร์ทัลเห็น
+    where: { tenantId: sc.tenantId, companyId: sc.companyId, endedAt: null, contact: { archivedAt: null, mergedIntoId: null, tenantId: sc.tenantId, systemId: sc.crmSystemId } },
     select: { isPrimary: true, jobTitle: true, contact: { select: { id: true, name: true, email: true, phone: true } } },
     take: 200,
   });
@@ -1073,7 +1083,7 @@ export async function invite(
   if (!co.live) throw new PortalError("VALIDATION", "บริษัทนี้ถูกเก็บหรือถูกรวมไปแล้ว จึงเชิญเข้าพอร์ทัลไม่ได้");
   const contactId = str(input?.contactId);
   const link = contactId
-    ? await prisma.crmCompanyContact.findFirst({ where: { tenantId: ctx.tenantId, companyId: co.id, contactId, contact: { tenantId: ctx.tenantId, systemId: ctx.systemId } }, select: { contact: { select: { id: true, name: true, email: true, archivedAt: true, mergedIntoId: true } } } })
+    ? await prisma.crmCompanyContact.findFirst({ where: { tenantId: ctx.tenantId, companyId: co.id, contactId, endedAt: null /* C5.4-B L1-M2 */, contact: { tenantId: ctx.tenantId, systemId: ctx.systemId } }, select: { contact: { select: { id: true, name: true, email: true, archivedAt: true, mergedIntoId: true } } } })
     : null;
   if (!link) throw new PortalError("NOT_FOUND", "ผู้ติดต่อคนนี้ไม่ได้อยู่ในบริษัทนี้ — เพิ่มเข้าบริษัทก่อนแล้วค่อยเชิญ");
   if (link.contact.archivedAt || link.contact.mergedIntoId) throw new PortalError("VALIDATION", "ผู้ติดต่อคนนี้ถูกเก็บหรือถูกรวมไปแล้ว จึงเชิญเข้าพอร์ทัลไม่ได้");

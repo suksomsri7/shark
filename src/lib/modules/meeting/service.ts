@@ -417,6 +417,23 @@ export async function postSystemMessage(
 }
 
 /**
+ * CRM C5.4-B ▸ hunter H3(d): ลบข้อมูลส่วนบุคคล (PDPA) — ข้อความ "ของระบบ" (ผู้เขียนขึ้นต้น `system:`) ของร้านนี้ที่มีคำระบุตัว ถูกแทนด้วย `mask`
+ * (แถวคงอยู่ · ข้อความของคนจริงไม่ถูกแตะ — ผู้เขียนเป็นเจ้าของ) · ใน tx ของผู้เรียก · คืนจำนวนแถวที่เปลี่ยน
+ */
+export async function maskSystemMessagesInTx(tx: Pick<typeof prisma, "$executeRaw">, tenantId: string, tokens: readonly string[], mask: string): Promise<number> {
+  let n = 0;
+  if (!tenantId) return 0;
+  for (const tk of tokens) {
+    if (!tk || tk.length < 4) continue;
+    n += Number(
+      await tx.$executeRaw`UPDATE "MeetingMessage" SET "body" = replace("body", ${tk}, ${mask})
+                            WHERE "tenantId" = ${tenantId} AND "authorUserId" LIKE ${`${MEETING_SYSTEM_AUTHOR_PREFIX}%`} AND strpos("body", ${tk}) > 0`,
+    );
+  }
+  return n;
+}
+
+/**
  * ห้องที่ "ผู้ดู" เลือกเป็นห้องของทีมได้ (ตัวเลือกบนหน้าตั้งค่า CRM) — ห้องที่ยังไม่เก็บถาวรของทุกระบบ MEETING ในร้านนี้
  * 🔴 รีวิว C3.4 S1: การมองเห็นเดียวกับ `listVisibleChannels` — ห้อง PUBLIC หรือห้องที่ผู้ดูเป็นสมาชิกอยู่ (ยังไม่ออก)
  *    ⇒ ห้อง PRIVATE ที่ผู้ดูไม่ได้อยู่ ไม่โผล่ในตัวเลือก และผูกไม่ได้ (ผู้เรียกตรวจกับชุดเดียวกันนี้)

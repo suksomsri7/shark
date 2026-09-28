@@ -304,7 +304,7 @@ async function channelsOf(tenantId: string, contact: ContactConsentSubject): Pro
 export async function current(ctx: ConsentsCtx, actor: MemberActor, contactId: string): Promise<ConsentView> {
   const contact = await loadContact(ctx, actor, contactId);
   const { memberLinked, channels } = await channelsOf(ctx.tenantId, contact);
-  return { memberLinked, optOut: contact.marketingOptOut, emailBounced: !!contact.emailBouncedAt, channels };
+  return { memberLinked, optOut: contact.marketingOptOut, emailBounced: !!contact.emailBouncedAt, trackingOptOut: contact.trackingOptOut === true, channels };
 }
 
 /** ประวัติ (ใหม่สุดก่อน) — แถว CrmContactConsent ของผู้ติดต่อนี้ (รวมแถวขอไม่รับเมื่อไม่ระบุช่องทาง) */

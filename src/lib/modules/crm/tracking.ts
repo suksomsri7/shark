@@ -1023,13 +1023,14 @@ export async function identify(
         dealId: null,
         at: now,
       }));
-    // AUDIT-CLASS X8: payload เป็น id/ตัวเลขล้วน (ไม่มีชื่อ เบอร์ อีเมล)
+    // AUDIT-CLASS X8: payload เป็น id/ตัวเลขล้วน (ไม่มีชื่อ เบอร์ อีเมล) · CRM C5.4-B L5-m6: ไม่มี firstUrl (url เป็นพฤติกรรมของคน —
+    //   ไปถึง webhook/automation แล้วค้างใน WebhookDelivery หลังลบข้อมูล) · ผู้บริโภคที่ต้องการอ่านจาก CrmWebSession ตามสิทธิ์ ◂
     await emitOutbox(tx, {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
       type: "crm.web.identified",
       idempotencyKey: `crm.web.identified#${contactId}#${day}`,
-      payload: { contactId, systemId: ctx.systemId, visitorId, sessionCount: bound.count, pageViews, ...(firstUrl ? { firstUrl } : {}), by },
+      payload: { contactId, systemId: ctx.systemId, visitorId, sessionCount: bound.count, pageViews, by },
     });
     return { bound: bound.count, activityId: activity.id, sessionCount: bound.count, pageViews, firstUrl };
   }, TX_OPTS);
@@ -1039,7 +1040,7 @@ export async function identify(
 
 // ───────────────────────── ล้างตามอายุ (retention) ─────────────────────────
 
-export type PurgeResult = { sessionsDeleted: number; sessionsSummarised: number; eventsDeleted: number };
+export type PurgeResult = { sessionsDeleted: number; sessionsSummarised: number; eventsDeleted: number; /** C5.4-B L5-m5 */ clicksDeleted: number };
 
 /**
  * ล้างข้อมูลการเข้าชมที่เกินอายุเก็บของแต่ละระบบ (ค่าเริ่มต้น 180 วัน · นับจาก `lastSeenAt`)
@@ -1061,7 +1062,7 @@ export async function purgeWeb(
 ): Promise<PurgeResult> {
   const tenantIds = Array.isArray(opts?.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : null;
   const systemIds = Array.isArray(opts?.systemIds) ? opts.systemIds.filter((x) => typeof x === "string" && x) : null;
-  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0 };
+  const out: PurgeResult = { sessionsDeleted: 0, sessionsSummarised: 0, eventsDeleted: 0, clicksDeleted: 0 };
   if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return out;
   const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
   const systems = await prisma.appSystem.findMany({
@@ -1088,6 +1089,11 @@ export async function purgeWeb(
       UPDATE "CrmWebSession" SET "ipHash" = NULL, "userAgent" = NULL, "purgedAt" = ${now}
        WHERE "systemId" = ${sys.id} AND "lastSeenAt" < ${cutoff} AND "contactId" IS NOT NULL AND "purgedAt" IS NULL RETURNING "id"`;
     out.sessionsSummarised += summarised.length;
+    // CRM C5.4-B ▸ L5-m5: คลิกของลิงก์ติดตาม (ผู้ติดต่อ · user agent · เวลา) อายุเก็บเดียวกับการเข้าเว็บ — ตัวนับของลิงก์ (clicks/uniqueClicks) คงอยู่ ◂
+    const clicks = await prisma.$executeRaw`
+      DELETE FROM "CrmTrackedClick" c USING "CrmTrackedLink" l
+       WHERE c."linkId" = l."id" AND l."systemId" = ${sys.id} AND l."tenantId" = ${sys.tenantId} AND c."at" < ${cutoff}`;
+    out.clicksDeleted += Number(clicks);
   }
   return out;
 }

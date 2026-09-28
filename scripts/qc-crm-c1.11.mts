@@ -1278,6 +1278,13 @@ try {
     const switchFn = actFn("setUiVersion");
     const actBad = ACTION_FILES.filter((f) => { const s = stripComments(read(f)); return !/assertCrmV2|crmUiVersion|requireCrmV2Page|crmGates?\(|bridgeOpen|openCrmSystems/.test(s); })
       .filter((f) => !(switchFn && /(setCrmUiVersionAction|setUiVersionAction)/.test(read(f)) && (read(f).match(/export\s+async\s+function/g) ?? []).length === 1));
+    // ORACLE-EDIT C1.11-S6.10 (C5.4-B · controller ruling 6, refined): the v1 action file is no longer exempt — it must carry the INVERSE
+    //   gate (refuse on uiVersion 2) in EVERY exported action; the ACTIONS name map above (:284) still excludes it (v1 names collide with v2)
+    const v1Src = stripComments(read(V1_ACTIONS_FILE));
+    const v1Parts = v1Src.split(/(?=export\s+async\s+function\s)/).filter((p) => /^export\s+async\s+function\s/.test(p));
+    const V1_GATE = /isCrmV1Closed|assertCrmV1|crmUiVersion|refuseOnV2/;
+    if (!v1Src || v1Parts.length === 0 || !/isCrmV1Closed|assertCrmV1|crmUiVersion/.test(v1Src)) actBad.push(`${V1_ACTIONS_FILE}(no v2 refusal)`);
+    for (const p of v1Parts) if (!V1_GATE.test(p)) actBad.push(`${V1_ACTIONS_FILE}:${/function\s+(\w+)/.exec(p)?.[1]}(no v2 refusal)`);
     const brSrc = walkFiles(BR_DIR).map((f) => ({ f, s: stripComments(read(f)) }));
     const brBad: string[] = [];
     for (const { f, s } of brSrc) {
@@ -1289,7 +1296,8 @@ try {
       const s = read(f);
       for (const m of s.matchAll(/registerMinuteJob\(\s*\{\s*name:\s*["'](crm\.[^"']+)["']/g)) if (m[1] !== "crm.heartbeat" && !/uiVersion|crmUiVersion|crmGates?\(|bridgeOpen|openCrmSystems/.test(s)) jobBad.push(`${m[1]}@${f}`);
     }
-    chk("C1.11-S6.10", "PERMANENT RULE, whole surface [static]: every crm page.tsx except the 3 dual pages + the switch page calls requireCrmV2Page · every \"use server\" CRM/chat-CRM file except crm/actions.ts (v1) and a switch-only file reads the gate · every crm-bridges on* handler reads the gate · every registered crm.* minute job except crm.heartbeat reads it",
+    // ORACLE-EDIT C1.11-S6.10 (C5.4-B · controller ruling 6, refined) — check text: crm/actions.ts exemption dropped
+    chk("C1.11-S6.10", "PERMANENT RULE, whole surface [static]: every crm page.tsx except the 3 dual pages + the switch page calls requireCrmV2Page · every \"use server\" CRM/chat-CRM file except a switch-only file reads the gate · crm/actions.ts (v1) refuses on uiVersion 2 in every action (ORACLE-EDIT C1.11-S6.10 · C5.4-B · controller ruling 6, refined) · every crm-bridges on* handler reads the gate · every registered crm.* minute job except crm.heartbeat reads it",
       !!SETTINGS_PAGE && pagesBad.length === 0 && actBad.length === 0 && brSrc.length >= 3 && brBad.length === 0 && jobBad.length === 0, "all gated",
       `pages=${pagesBad.map((f) => f.replace(CRM_DIR, "crm")).join(",") || "-"} actions=${actBad.join(",") || "-"} bridges=${brBad.join(",") || "-"} jobs=${jobBad.join(",") || "-"}`, "MAJOR");
   }

@@ -179,6 +179,8 @@ export type ContactDto = {
   sourceChannel: string | null;
   marketingOptOut: boolean;
   emailOptOut: boolean;
+  /** C5.4-B L5-M4: ลูกค้าขอ "ไม่ให้ติดตามการเปิดอ่าน/คลิก" (pixel + ห่อลิงก์ + web tracking) — ยังรับอีเมลได้ */
+  trackingOptOut: boolean;
   emailBouncedAt: Date | null;
   memberCustomerId: string | null;
   convertedAt: Date | null;
@@ -215,7 +217,7 @@ export type CreateContactResult = { contact: ContactDto; created: boolean; dupli
 
 export type ConsentState = { channel: string; label: string; granted: boolean | null; source: string | null; at: Date | null };
 export type ConsentHistoryRow = { id: string; channel: string; granted: boolean; source: string; note: string | null; createdAt: Date; createdById: string | null };
-export type ConsentView = { memberLinked: boolean; optOut: boolean; emailBounced: boolean; channels: ConsentState[] };
+export type ConsentView = { memberLinked: boolean; optOut: boolean; emailBounced: boolean; /** C5.4-B L5-M4 */ trackingOptOut: boolean; channels: ConsentState[] };
 
 export type Contact360Field = { key: string; label: string; type: string; value: unknown; display: string; hidden: boolean };
 export type Contact360Section = { key: string; label: string; sensitive: boolean; isSystem: boolean; fields: Contact360Field[] };

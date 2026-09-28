@@ -269,6 +269,23 @@ const setOptOut = defineCrmOp({
   },
 });
 
+// CRM C5.4-B ▸ L5-M4: ลูกค้าขอไม่ให้ติดตามการเปิดอ่าน/คลิก (trackingOptOut · พิมพ์เขียว §11.4) ◂
+const setTrackingOptOut = defineCrmOp({
+  id: "contacts.setTrackingOptOut",
+  method: "PUT",
+  path: "/contacts/{id}/tracking-opt-out",
+  kind: "write",
+  action: "crm.contact.update",
+  summary: "Record that the contact does (true) or no longer does (false) refuse e-mail open/click and web tracking. E-mail can still be sent under the existing consent.",
+  label: "ตั้งไม่ให้ติดตาม",
+  input: z.object({ optOut: z.boolean(), source: z.enum(CONSENT_SOURCES).optional() }).strict(),
+  test: "C3.8-S8.1", // smoke of every op · behaviour = C5.3-L5-M4 (service writer + merge)
+  async handler({ actor, params, input }) {
+    const contact = await contacts.setTrackingOptOut(crmCtxOf(actor), crmActorOf(actor), params.id ?? "", { optOut: input.optOut, source: input.source ?? "API" });
+    return { contactId: contact.id, trackingOptOut: contact.trackingOptOut };
+  },
+});
+
 const archive = defineCrmOp({
   id: "contacts.archive",
   method: "POST",
@@ -424,6 +441,7 @@ export const CONTACTS_OPS: ApiOp[] = [
   assign,
   setTags,
   setOptOut,
+  setTrackingOptOut,
   archive,
   convert,
   merge,

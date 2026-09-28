@@ -616,7 +616,7 @@ export type PortalSessionInfo = {
   expiresAt: Date;
 };
 
-type UsableAccess = { id: string; tenantId: string; systemId: string; companyId: string; contactId: string; role: string };
+type UsableAccess = { id: string; tenantId: string; systemId: string; companyId: string; contactId: string; role: string; /** C5.4-B H1 */ linkStartedAt: Date | null };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -631,7 +631,7 @@ async function portalAccessUsable(accessId: string): Promise<UsableAccess | null
   const a = await prisma.crmPortalAccess.findUnique({
     where: { id },
     select: {
-      id: true, tenantId: true, systemId: true, companyId: true, contactId: true, role: true, revokedAt: true, acceptedAt: true, inviteExpiresAt: true,
+      id: true, tenantId: true, systemId: true, companyId: true, contactId: true, role: true, revokedAt: true, acceptedAt: true, invitedAt: true, inviteExpiresAt: true,
       contact: { select: { tenantId: true, systemId: true, archivedAt: true, mergedIntoId: true, memberCustomerId: true } },
       company: { select: { tenantId: true, systemId: true, archivedAt: true, mergedIntoId: true } },
     },
@@ -645,17 +645,23 @@ async function portalAccessUsable(accessId: string): Promise<UsableAccess | null
   if (!c || c.tenantId !== a.tenantId || c.systemId !== a.systemId || c.archivedAt || c.mergedIntoId) return null;
   if (!co || co.tenantId !== a.tenantId || co.systemId !== a.systemId || co.archivedAt || co.mergedIntoId) return null;
   const [link, sys, member] = await Promise.all([
-    prisma.crmCompanyContact.findFirst({ where: { tenantId: a.tenantId, companyId: a.companyId, contactId: a.contactId }, select: { id: true } }),
+    // CRM C5.4-B ▸ L1-M2: ลิงก์บริษัทที่จบแล้ว (endedAt = ออกจากบริษัท) = ใช้พอร์ทัลของบริษัทนั้นไม่ได้
+    prisma.crmCompanyContact.findFirst({ where: { tenantId: a.tenantId, companyId: a.companyId, contactId: a.contactId, endedAt: null }, select: { id: true, startedAt: true } }),
     prisma.appSystem.findFirst({ where: { id: a.systemId, tenantId: a.tenantId, type: "CRM" }, select: { settings: true } }),
     c.memberCustomerId
       ? prisma.customer.findFirst({ where: { id: c.memberCustomerId, tenantId: a.tenantId, status: "ACTIVE" }, select: { id: true } })
       : Promise.resolve({ id: "" }),
   ]);
   if (!link || !sys || !member) return null;
+  // CRM C5.4-B ▸ hunter H1: สิทธิ์ที่เกิดก่อนลิงก์บริษัทรอบปัจจุบัน (ออกแล้วถูกเพิ่มกลับ) = สิทธิ์ของ "งานเก่า" — ต้องเชิญใหม่
+  //   (เวลาอ้างอิง = ล่าสุดของ รับคำเชิญ/เชิญ · เชิญใหม่หลังเพิ่มกลับ = ใช้ได้) · session ที่ออกก่อน startedAt ถูกปฏิเสธที่ getPortalSession
+  const since = link.startedAt ? link.startedAt.getTime() : 0;
+  const grantedAt = Math.max(a.acceptedAt ? a.acceptedAt.getTime() : 0, a.invitedAt ? a.invitedAt.getTime() : 0);
+  if (since && grantedAt < since) return null;
   const crm = isObj(sys.settings) && isObj(sys.settings.crm) ? sys.settings.crm : {};
   const portal = isObj(crm.portal) ? crm.portal : {};
   if (crm.uiVersion !== 2 || portal.enabled !== true) return null;
-  return { id: a.id, tenantId: a.tenantId, systemId: a.systemId, companyId: a.companyId, contactId: a.contactId, role: String(a.role) };
+  return { id: a.id, tenantId: a.tenantId, systemId: a.systemId, companyId: a.companyId, contactId: a.contactId, role: String(a.role), linkStartedAt: link.startedAt ?? null };
 }
 
 /**
@@ -711,6 +717,9 @@ export async function getPortalSession(token: string): Promise<PortalSessionInfo
   if (!row || row.revokedAt || row.expiresAt < new Date()) return null;
   const a = await portalAccessUsable(row.portalAccessId);
   if (!a || a.tenantId !== row.tenantId || a.systemId !== row.crmSystemId || a.contactId !== row.crmContactId) return null;
+  // CRM C5.4-B ▸ hunter H1: session ที่ออกก่อนลิงก์บริษัทรอบปัจจุบันเริ่ม = ของรอบเก่า (ออก→เพิ่มกลับ) ⇒ ใช้ไม่ได้
+  //   (เผื่อ 2 วิ: createdAt มาจากนาฬิกาฐาน · startedAt จากนาฬิกาแอป — session เก่าจริงเก่ากว่านี้มาก และทางเพิ่มกลับเพิกถอนให้อยู่แล้ว)
+  if (a.linkStartedAt && row.createdAt.getTime() < a.linkStartedAt.getTime() - 2_000) return null;
   return {
     sessionId: row.id,
     tenantId: row.tenantId,

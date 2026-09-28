@@ -29,6 +29,7 @@ import {
   setLifecycle,
   setOptOut,
   setTags,
+  setTrackingOptOut,
   updateContact,
   type ContactsCtx,
   type CreateContactInput,
@@ -126,6 +127,18 @@ export async function setOptOutAction(systemId: string, contactId: string, optOu
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.update");
     await setOptOut(ctx, actor, contactId, { optOut, source: "STAFF" });
+    revalidatePath(`${base(systemId)}/${contactId}`);
+    return { ok: true };
+  } catch (e) {
+    return failOf(e);
+  }
+}
+
+// CRM C5.4-B ▸ L5-M4: ลูกค้าขอ "ไม่ให้ติดตามการเปิดอ่าน/คลิก" (บล็อกความยินยอมในหน้า 360) ◂
+export async function setTrackingOptOutAction(systemId: string, contactId: string, optOut: boolean): Promise<{ ok: true } | Fail> {
+  try {
+    const { ctx, actor } = await session(systemId, "crm.contact.update");
+    await setTrackingOptOut(ctx, actor, contactId, { optOut, source: "STAFF" });
     revalidatePath(`${base(systemId)}/${contactId}`);
     return { ok: true };
   } catch (e) {

@@ -15,7 +15,7 @@
 //   ลบ: เนื้อจดหมาย + ไฟล์แนบ · เนื้อ/ถอดเสียง/สรุป AI ของกิจกรรม + ไฟล์เสียง · CrmWebSession/Event · CrmTrackedClick · CrmEmailEvent ·
 //     พอร์ทัล (access/session/request ผ่าน `portal.eraseContact`) · AiProposal ที่เอ่ยถึง (นามบัตร) · ค่าฟิลด์กำหนดเองของเรคคอร์ดที่มีแม่เป็นคนนี้
 //     + ค่าฟิลด์ sensitive ที่อ้าง Party (R-E.10) · MemberAccessLog แถวของ CRM · AutomationRun.payload
-//   คงไว้ (ตัวเลข): ดีล (ชื่อ/มูลค่า/ขั้น/ยอดรับ/ผู้ดูแล) · ประวัติขั้น · CrmDealPayment · CrmCommission · แถวกิจกรรม (เหลือแต่เปลือก) · คะแนน
+//   คงไว้ (ตัวเลข): ดีล (มูลค่า/ขั้น/ยอดรับ/ผู้ดูแล — ชื่อดีล/ขั้นต่อไป/เหตุผลแพ้ ถูกปิดคำระบุตัว · C5.4-B L5-M1) · ประวัติขั้น · CrmDealPayment · CrmCommission · แถวกิจกรรม (เหลือแต่เปลือก) · คะแนน
 //   ⇒ AuditLog `crm.contact.erase` (เหตุผล) + outbox `crm.contact.erased` {contactId, systemId, partyId} (id ล้วน · X8) ใน tx เดียวกัน
 //   ผู้ติดต่อที่ผูกสมาชิก ⇒ ยื่นคำขอลบของระบบสมาชิกผ่าน member facade (`requestEraseFromCrm` — สายอนุมัติ `member.erase` · ไม่มีนโยบาย =
 //     ลบทันที → `member.erased`) เฉพาะผู้กดที่มีคีย์ `member.customer.delete` (C3.9-fix H5) — ตัวรับ `member.erased` ของ CRM
@@ -177,12 +177,31 @@ function identityTokens(rows: readonly IdentityRow[], party: { phone: string | n
     if (full && full.trim().split(/\s+/).length >= 2) raw.push(full);
   }
   raw.push(...extra.values);
+  // CRM C5.4-B ▸ hunter H3(e): รูปแบบอื่นของค่าเดียวกัน — เบอร์ (ตัวเลขล้วน · ขีด · เว้นวรรค · +66/66) · ส่วนหน้า @ ของอีเมล (≥ 6 ตัว)
+  for (const v of [...raw]) {
+    if (typeof v !== "string") continue;
+    if (v.includes("@")) {
+      const local = v.trim().split("@")[0] ?? "";
+      if (local.length >= 6) raw.push(local);
+    } else if (/^[\d\s+().-]{9,}$/.test(v.trim())) raw.push(...phoneVariants(v)); // เฉพาะค่าที่เป็นเบอร์ (ไม่ใช่ LINE id ที่มีตัวเลข)
+  }
   const out = new Set<string>();
   for (const v of raw) {
     const s = typeof v === "string" ? v.trim() : "";
     if (s.length >= 4 && s !== CRM_ERASED_NAME) out.add(s);
   }
   return [...out].sort((a, b) => b.length - a.length);
+}
+
+/** CRM C5.4-B ▸ hunter H3(e)/H4: รูปแบบที่คนพิมพ์เบอร์ไทยเดียวกัน (ไม่ใช่เบอร์ = []) — 0XXXXXXXXX · 0XX-XXX-XXXX · 0XX XXX XXXX · +66XXXXXXXXX · +66 XX XXX XXXX · 66XXXXXXXXX */
+function phoneVariants(raw: string): string[] {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  const local = d.startsWith("66") && (d.length === 11 || d.length === 10) ? `0${d.slice(2)}` : d.startsWith("0") ? d : "";
+  if (local.length !== 10 && local.length !== 9) return [];
+  const n = local.slice(1);
+  const g = local.length === 10 ? [local.slice(0, 3), local.slice(3, 6), local.slice(6)] : [local.slice(0, 2), local.slice(2, 5), local.slice(5)];
+  const ng = local.length === 10 ? [n.slice(0, 2), n.slice(2, 5), n.slice(5)] : [n.slice(0, 1), n.slice(1, 4), n.slice(4)];
+  return [local, g.join("-"), g.join(" "), `+66${n}`, `+66 ${ng.join(" ")}`, `+66-${ng.join("-")}`, `66${n}`];
 }
 
 function maskText(v: string | null, tokens: readonly string[]): string | null {
@@ -257,7 +276,9 @@ export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: 
   // C3.9-fix H5 (ล่าความปลอดภัย B5): คีย์ลบสมาชิกเป็นของระบบสมาชิก — คีย์ crm.contact.delete อย่างเดียวลบสมาชิกไม่ได้
   const memberAllowed = !actor || (await import("@/lib/modules/member")).hasMemberPerm(actor, MEMBER_DELETE_KEY);
 
-  const out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source, { memberAllowed }), TX_OPTS);
+  // รีวิว C5.4-B รอบ 2 (SF): รอบของกฎ CRM ที่ subject เป็นดีลของเขาแต่ไม่มี crmContactId — หา **ก่อน** ล็อก (คำสั่งเดียว · คีย์ JSON ตรง)
+  const dealRunIds = await dealRuleRunsOf(c, pre.id);
+  const out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source, { memberAllowed, dealRunIds }), TX_OPTS);
   const none = { memberSkipped: false, memberPending: false };
   if (!out.erased) {
     // C3.9-fix H7: การกวาดซ้ำเจอไฟล์ที่หลุดเข้ามา (ไม่มีแถว audit ใหม่ให้ตัวรับ event) ⇒ ลบวัตถุตรงนี้ · ล้ม = WARN (id ล้วน) ให้กวาดซ้ำได้อีก
@@ -420,13 +441,34 @@ async function notThePerson(
   return out;
 }
 
+/**
+ * CRM C5.4-B ▸ L5-M2 (รีวิวรอบ 2): id ของรอบกฎ scope CRM ของระบบนี้ ที่ไม่มี crmContactId แต่ subject เป็นดีลของคนนี้ (ทั้งสายที่ถูกรวม) —
+ * คีย์ที่เอนจินเขียนจริง: รอบหลัก `payload.event.payload.dealId` · ขั้นที่รอเวลา `payload.refs.dealId` · อ่านนอก tx (ไม่ถือล็อก) คำสั่งเดียว
+ */
+async function dealRuleRunsOf(ctx: { tenantId: string; systemId: string }, contactId: string): Promise<string[]> {
+  const chain = (await mergedChain(prisma as unknown as Tx, ctx, contactId)).ids;
+  const people = [contactId, ...chain];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    WITH d AS (
+      SELECT x."id" FROM "CrmDeal" x
+       WHERE x."tenantId" = ${ctx.tenantId} AND x."systemId" = ${ctx.systemId}
+         AND (x."contactId" = ANY(${people}::text[])
+              OR EXISTS (SELECT 1 FROM "CrmDealContact" dc WHERE dc."tenantId" = ${ctx.tenantId} AND dc."dealId" = x."id" AND dc."contactId" = ANY(${people}::text[])))
+    )
+    SELECT r."id" FROM "AutomationRun" r JOIN "AutomationRule" ru ON ru."id" = r."ruleId"
+     WHERE r."tenantId" = ${ctx.tenantId} AND ru."tenantId" = ${ctx.tenantId} AND ru."scope"::text = 'CRM' AND ru."systemId" = ${ctx.systemId}
+       AND r."crmContactId" IS NULL AND r."payload" IS NOT NULL
+       AND (r."payload"->'event'->'payload'->>'dealId' IN (SELECT "id" FROM d) OR r."payload"->'refs'->>'dealId' IN (SELECT "id" FROM d))`;
+  return rows.map((r) => r.id);
+}
+
 async function eraseInTx(
   tx: Tx,
   ctx: PrivacyCtx & { actorUserId: string | null },
   id: string,
   reason: string,
   source: EraseSource,
-  opts: { memberAllowed: boolean },
+  opts: { memberAllowed: boolean; dealRunIds?: readonly string[] },
 ): Promise<EraseTxOut> {
   const t = ctx.tenantId;
   const sysScope = { tenantId: t, systemId: ctx.systemId };
@@ -490,7 +532,8 @@ async function eraseInTx(
   const extraValues = [...former.values, ...formOut.identity.phones, ...formOut.identity.emails];
   const notHis = await notThePerson(tx, t, ids, partyIds, {
     emails: [...ownEmails, ...extraValues.filter((v) => v.includes("@")).map((v) => bareEmail(v))],
-    phones: extraValues.filter((v) => !v.includes("@")),
+    // CRM C5.4-B ▸ hunter H4: เบอร์ของแถวปัจจุบัน (ผู้ติดต่อ + Party) ด้วย — เบอร์ที่คนอื่นที่ยังไม่ถูกลบใช้อยู่ (เบอร์สำนักงาน) ไม่ถูกปิดในของคนอื่น
+    phones: [...extraValues.filter((v) => !v.includes("@")), ...people.map((p) => p.phone ?? ""), ...parties.map((p) => p.phone ?? "")].filter(Boolean),
     names: extraNames,
   });
   // รีวิวรอบ 2 R2-S1 (มติผู้คุมงาน): ตัวตนของแถวปัจจุบัน (อีเมล/เบอร์/ชื่อของผู้ติดต่อ + Party) ตัดเฉพาะที่อยู่ร้าน/ระบบ/พนักงาน — ที่อยู่ที่ผู้ติดต่อคนอื่น
@@ -502,7 +545,10 @@ async function eraseInTx(
   });
   const coreTokens = identityTokens(people, parties).filter((tk) => !(tk.includes("@") && notHis.fixedEmails.has(bareEmail(tk))));
   const tokens = [...new Set([...coreTokens, ...extraTokens])].sort((a, b) => b.length - a.length);
-  const tokens2 = tokens.filter((tk) => !(tk.includes("@") && notHis.emails.has(bareEmail(tk))));
+  // CRM C5.4-B ▸ hunter H4: รูปแบบทั้งหมดของเบอร์ที่คนอื่นถือร่วม — ไม่ใช้กับของคนอื่น (ชุดที่ 2 + การแทนคำทั้งร้าน) แต่ยังปิดในของเขาเอง
+  const sharedPhone = new Set([...notHis.phones].flatMap((p) => [p.trim(), ...phoneVariants(p)]));
+  const tokens2 = tokens.filter((tk) => !(tk.includes("@") && notHis.emails.has(bareEmail(tk))) && !sharedPhone.has(tk));
+  const tokensT = tokens.filter((tk) => !sharedPhone.has(tk)); // ทั้งร้าน (แจ้งเตือน/AI/ข้อเสนอ/ห้องทีม) — อีเมลตามมติ R2-S1 เดิม
   const ownSet = new Set(ownEmails);
   const personAddrs = new Set(ownEmails.filter((a) => !notHis.fixedEmails.has(a))); // ชุดที่ 1
   const personAddrs2 = new Set(ownEmails.filter((a) => !notHis.emails.has(a))); // ชุดที่ 2
@@ -631,6 +677,43 @@ async function eraseInTx(
   }
   counts.activities = acts.length;
 
+  // ── CRM C5.4-B ▸ L5-M1: ดีลของเขา (ผูกตรง หรือผ่าน CrmDealContact) — แถว/ตัวเลข/ขั้น/ผู้ดูแลคงอยู่ แต่คำระบุตัวใน title · nextStep ·
+  //   lostReason ถูกปิด (ชื่อดีลปริยาย "ดีล <ชื่อ>" ของหน้าแปลง lead · กฎ CREATE_DEAL {ชื่อ} · ขั้นต่อไปที่ AI/พนักงานเขียน) ──
+  const deals = await tx.$queryRaw<{ id: string; title: string; nextStep: string | null; lostReason: string | null }[]>`
+    SELECT d."id", d."title", d."nextStep", d."lostReason" FROM "CrmDeal" d
+     WHERE d."tenantId" = ${t} AND d."systemId" = ${ctx.systemId}
+       AND (d."contactId" = ANY(${ids}::text[])
+            OR EXISTS (SELECT 1 FROM "CrmDealContact" dc WHERE dc."tenantId" = ${t} AND dc."dealId" = d."id" AND dc."contactId" = ANY(${ids}::text[])))
+     ORDER BY d."id" FOR UPDATE`;
+  for (const d of deals) {
+    const title = mask(d.title) ?? "";
+    const nextStep = mask(d.nextStep);
+    const lostReason = mask(d.lostReason);
+    if (title !== d.title || nextStep !== d.nextStep || lostReason !== d.lostReason) {
+      await tx.crmDeal.update({ where: { id: d.id }, data: { title: title || CRM_ERASED_MASK, nextStep, lostReason } });
+    }
+  }
+  // CRM C5.4-B ▸ hunter H3(a–c): บันทึกการย้ายขั้นของดีลเหล่านั้น · กิจกรรมระดับดีล (ของผู้ติดต่อคนอื่นบนดีลของเขา — เปลือกคงอยู่) ·
+  //   การ์ดบอร์ดงานที่ผูก DEAL ของดีลเหล่านั้น — ปิดคำระบุตัวของเขา (ตัวเลข/ขั้น/เจ้าของคงอยู่)
+  const dealIds = deals.map((d) => d.id);
+  if (dealIds.length) {
+    for (const h of await tx.crmDealStageHistory.findMany({ where: { tenantId: t, dealId: { in: dealIds }, note: { not: null } }, select: { id: true, note: true } })) {
+      const note = mask(h.note);
+      if (note !== h.note) await tx.crmDealStageHistory.update({ where: { id: h.id }, data: { note } });
+    }
+    const dealActs = await tx.$queryRaw<{ id: string; title: string; body: string | null }[]>`
+      SELECT "id", "title", "body" FROM "CrmActivity" WHERE "tenantId" = ${t} AND "dealId" = ANY(${dealIds}::text[])
+         AND ("contactId" IS NULL OR NOT ("contactId" = ANY(${ids}::text[]))) ORDER BY "id" FOR UPDATE`;
+    for (const a of dealActs) {
+      const title = mask(a.title) ?? "";
+      const body = mask(a.body);
+      if (title !== a.title || body !== a.body) await tx.crmActivity.update({ where: { id: a.id }, data: { title: title || CRM_ERASED_MASK, body } });
+    }
+    const kd = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "DEAL", dealIds, (x) => maskText(x, tokens) ?? x);
+    counts.kanban += kd.cards + kd.comments + kd.activities;
+  }
+  // ◂ CRM C5.4-B
+
   // ── เว็บ · ลิงก์ติดตาม ──
   const sessions = (await tx.crmWebSession.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { id: true } })).map((s) => s.id);
   if (sessions.length) {
@@ -646,7 +729,7 @@ async function eraseInTx(
 
   // ── ข้อเสนอ AI (นามบัตร/lead · รีวิว C3.9 S1): เฉพาะข้อเสนอชนิดของ CRM ที่เอ่ยถึงคนนี้ หรือข้อเสนอใดก็ตามที่พก id ของคนนี้ ──
   for (const cid of ids) counts.proposals += Number(await tx.$executeRaw`DELETE FROM "AiProposal" WHERE "tenantId" = ${t} AND strpos("payload"::text, ${cid}) > 0`);
-  for (const tk of tokens) {
+  for (const tk of tokensT) {
     counts.proposals += Number(
       await tx.$executeRaw`DELETE FROM "AiProposal" WHERE "tenantId" = ${t} AND "kind" LIKE 'crm%' AND (strpos("payload"::text, ${tk}) > 0 OR strpos("summary", ${tk}) > 0)`,
     );
@@ -656,7 +739,9 @@ async function eraseInTx(
   //   🔴 AppNotification ไม่มีคอลัมน์อ้างอิง (refType/refId) ⇒ ขอบเขต = ข้อความที่มีคำระบุตัวแบบเต็ม (ชื่อเต็ม · เบอร์ · อีเมล · LINE id)
   //      เท่านั้น (ไม่ใช่ชื่อ/นามสกุลแยกท่อน — รีวิว C3.9 S1) · ข้อสอบ C3.9-S1.3 บังคับให้แจ้งเตือนที่เอ่ยชื่อ+เบอร์ถูกล้าง
   //   C3.9-fix H3 (ล่าความปลอดภัย B3): AiMessage.content + AiConversation.title ของร้านด้วยคำชุดเดียวกัน (แถวคงอยู่ — ตัวนับโทเคน/การใช้งาน)
-  for (const tk of tokens) {
+  // CRM C5.4-B ▸ hunter H3(d): ข้อความของระบบในห้องทีม (โพสต์ปิดดีล/ดีลนิ่งที่ส่งไปแล้ว) — ผ่าน facade ของ MEETING
+  counts.notifications += await (await import("@/lib/modules/meeting")).maskSystemMessagesInTx(tx, t, tokensT, CRM_ERASED_MASK);
+  for (const tk of tokensT) {
     counts.notifications += Number(
       await tx.$executeRaw`UPDATE "AppNotification" SET "title" = replace("title", ${tk}, ${CRM_ERASED_MASK}), "body" = replace("body", ${tk}, ${CRM_ERASED_MASK})
                             WHERE "tenantId" = ${t} AND (strpos("title", ${tk}) > 0 OR strpos("body", ${tk}) > 0)`,
@@ -708,10 +793,34 @@ async function eraseInTx(
   // ── ไทม์ไลน์สมาชิกที่ผูกคนนี้ · กฎอัตโนมัติ · การ์ดบอร์ดงานที่ผูก · ลำดับการติดตามที่เดินอยู่ ──
   const timeline = await tx.memberActivity.findMany({ where: { tenantId: t, crmContactId: { in: ids } }, select: { id: true, summary: true } });
   for (const r of timeline) await tx.memberActivity.update({ where: { id: r.id }, data: { summary: mask(r.summary) ?? "", data: Prisma.DbNull } });
+  // CRM C5.4-B ▸ L5-M2: การ์ดที่กฎของเขาเปิด (`crm-rule:<runId>:<i>`) ก่อนมีลิงก์ผูกผู้ติดต่อ — เก็บ runId ก่อนล้าง payload ของรอบ แล้วปิดคำในการ์ดเหล่านั้น
+  //   รีวิว C5.4-B note (e): ทุกรอบ (แบ่งหน้า ไม่ตัดที่ 5,000) + รอบของกฎที่ subject เป็นดีลของเขาแต่ไม่มี crmContactId (dealRuleRunsOf · คีย์ JSON)
+  const ruleRuns: { id: string }[] = [];
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string }[] = await tx.automationRun.findMany({
+      where: { tenantId: t, crmContactId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true },
+      orderBy: { id: "asc" },
+      take: 5_000,
+    });
+    ruleRuns.push(...page);
+    if (page.length < 5_000) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  ruleRuns.push(...(opts.dealRunIds ?? []).map((rid) => ({ id: rid }))); // รอบของดีลเขา (หาไว้ก่อนล็อก — dealRuleRunsOf)
   await tx.automationRun.updateMany({ where: { tenantId: t, crmContactId: { in: ids } }, data: { payload: Prisma.DbNull, detail: null } });
   // C3.9-fix H4 (ล่าความปลอดภัย B4): การ์ดที่ผูก — หัว · รายละเอียด · ความเห็น · ประวัติการ์ด ผ่าน facade ของบอร์ดงาน (ตารางบอร์ดงานไม่ถูกเขียนจากไฟล์นี้)
   const kb = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "CRM_CONTACT", ids, (s) => maskText(s, tokens) ?? s);
-  counts.kanban = kb.cards + kb.comments + kb.activities;
+  counts.kanban += kb.cards + kb.comments + kb.activities;
+  if (ruleRuns.length) {
+    const { maskCardsBySourcePrefixInTx } = await import("@/lib/modules/kanban/links");
+    const prefixes = [...new Set(ruleRuns.map((r) => `crm-rule:${r.id}:`))];
+    // ทีละ 500 รอบ (ตัวปิดการ์ดรับได้ ≤ 2,000 ใบต่อครั้ง · รอบหนึ่งเปิดการ์ดได้ไม่กี่ใบ) — ไม่มีรอบไหนหลุด
+    for (let i = 0; i < prefixes.length; i += 500) {
+      const kr = await maskCardsBySourcePrefixInTx(tx, t, prefixes.slice(i, i + 500), (s) => maskText(s, tokens) ?? s);
+      counts.kanban += kr.cards + kr.comments + kr.activities;
+    }
+  }
   await tx.crmSequenceEnrollment.updateMany({
     where: { tenantId: t, contactId: { in: ids }, status: { in: ["ACTIVE", "PAUSED"] } },
     data: { status: "STOPPED", stoppedReason: "ERASED", stoppedAt: now, nextAt: null, leaseUntil: null },
@@ -1022,7 +1131,12 @@ export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: st
 
 // ═════════════════════════ ส่งออกทั้งระบบ (งาน async บนเลนของ C3.1) ═════════════════════════
 
-export async function exportTenant(ctx: PrivacyCtx, actor: Actor, input: { format?: CrmExportFormat | string | null }, deps?: PrivacyDeps | null): Promise<{ jobId: string; status: "QUEUED" }> {
+export async function exportTenant(
+  ctx: PrivacyCtx,
+  actor: Actor,
+  input: { format?: CrmExportFormat | string | null; confirm?: boolean | null; reason?: string | null },
+  deps?: PrivacyDeps | null,
+): Promise<{ jobId: string; status: "QUEUED" }> {
   void deps; // ไฟล์ถูกเขียนตอน runExportJobs (ผู้เรียกฉีด put ที่นั่น)
   assertStaff(actor);
   const sys = await resolveSystem(ctx);
@@ -1031,6 +1145,12 @@ export async function exportTenant(ctx: PrivacyCtx, actor: Actor, input: { forma
   need(actor, "crm.contact.export");
   const format = (CRM_EXPORT_FORMATS as readonly string[]).includes(str(input?.format).toUpperCase()) ? (str(input?.format).toUpperCase() as CrmExportFormat) : null;
   if (!format) throw fail("VALIDATION", "เลือกรูปแบบไฟล์ส่งออกเป็น CSV หรือ JSON");
+  // CRM C5.4-B ▸ L5-m7 (AUDIT-CLASS X9 · แบบเดียวกับส่งออกรายชื่อผู้ติดต่อ): ไฟล์นี้มีเบอร์/อีเมล/โน้ตของทุกคนที่มองเห็น ⇒ ต้องมีเหตุผล + ยืนยัน
+  //   ก่อนแตะฐาน · เหตุผลลง audit + ตัวเลือกงาน ◂
+  const why = str(input?.reason);
+  if (why.length < PRIVACY_REASON_MIN) throw fail("VALIDATION", `ใส่เหตุผลของการส่งออกข้อมูลทั้งระบบอย่างน้อย ${PRIVACY_REASON_MIN} ตัวอักษร เพื่อให้ทีมย้อนดูได้ว่าส่งออกไปเพราะอะไร`);
+  if (why.length > PRIVACY_REASON_MAX) throw fail("VALIDATION", `เหตุผลยาวเกิน ${PRIVACY_REASON_MAX} ตัวอักษร — ย่อให้สั้นลง`);
+  if (input?.confirm !== true) throw fail("CONFIRM_REQUIRED", "การส่งออกข้อมูลทั้งระบบต้องกดยืนยันก่อน — ติ๊กช่องยืนยันแล้วลองอีกครั้ง");
   const job = await prisma.crmImportJob.create({
     data: {
       tenantId: sys.tenantId,
@@ -1042,7 +1162,7 @@ export async function exportTenant(ctx: PrivacyCtx, actor: Actor, input: { forma
     },
     select: { id: true },
   });
-  await writeAudit({ tenantId: sys.tenantId, actorId: actor.userId, action: "crm.contact.export", targetType: "CrmImportJob", targetId: job.id, after: { systemId: sys.systemId, format, scope: "SYSTEM" } });
+  await writeAudit({ tenantId: sys.tenantId, actorId: actor.userId, action: "crm.contact.export", targetType: "CrmImportJob", targetId: job.id, after: { systemId: sys.systemId, format, scope: "SYSTEM", reason: why } });
   return { jobId: job.id, status: "QUEUED" };
 }
 

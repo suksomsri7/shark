@@ -2,7 +2,7 @@
 
 <!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
-Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · manifest: `https://shark.in.th/api/v1/crm/manifest.json` · 122 operations (58 read, 48 write, 16 danger) + 16 customer-portal operations · 32 AI tools.
+Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/api/v1/crm/openapi.json` (no key needed) · manifest: `https://shark.in.th/api/v1/crm/manifest.json` · 123 operations (58 read, 49 write, 16 danger) + 16 customer-portal operations · 32 AI tools.
 
 ## Conventions
 
@@ -117,6 +117,7 @@ Query:
 | `contacts.assign` | `PUT /contacts/{id}/owner` | write | `crm.contact.update` | Give the contact to another owner (a user of this shop), or null for no owner. |
 | `contacts.setTags` | `PUT /contacts/{id}/tags` | write | `crm.contact.update` | Add and remove tags on a contact in one call. |
 | `contacts.setOptOut` | `PUT /contacts/{id}/opt-out` | write | `crm.contact.update` | Record that the contact does (true) or no longer does (false) refuse marketing messages. |
+| `contacts.setTrackingOptOut` | `PUT /contacts/{id}/tracking-opt-out` | write | `crm.contact.update` | Record that the contact does (true) or no longer does (false) refuse e-mail open/click and web tracking. E-mail can still be sent under the existing consent. |
 | `contacts.archive` | `POST /contacts/{id}/archive` | **danger** | `crm.contact.delete` | Archive a contact (hidden from lists; history is kept). Needs confirm: true and a reason. |
 | `contacts.convert` | `POST /contacts/{id}/convert` | write | `crm.contact.convert` | Convert a lead: optionally make them a member, link or create a company and open a deal. The Idempotency-Key makes a retry return the same result. |
 | `contacts.merge` | `POST /contacts/{id}/merge` | **danger** | `crm.contact.merge` | Merge another contact (mergeId) into this one; deals, activities, companies and records move over. Needs confirm: true and a reason. |
@@ -289,6 +290,17 @@ Body:
 #### `PUT /contacts/{id}/opt-out` — contacts.setOptOut
 
 Record that the contact does (true) or no longer does (false) refuse marketing messages. (ตั้งไม่รับข่าวสาร)
+
+Body:
+
+| Field | Type | Required | Limits |
+| --- | --- | --- | --- |
+| `optOut` | boolean | yes |  |
+| `source` | `STAFF` \| `IMPORT` \| `API` \| `SIGNUP_FORM` \| `LIFF` \| `CUSTOMER_SELF` \| `WEB_FORM` \| `CHAT` \| `PORTAL` \| `UNSUBSCRIBE` |  |  |
+
+#### `PUT /contacts/{id}/tracking-opt-out` — contacts.setTrackingOptOut
+
+Record that the contact does (true) or no longer does (false) refuse e-mail open/click and web tracking. E-mail can still be sent under the existing consent. (ตั้งไม่ให้ติดตาม)
 
 Body:
 

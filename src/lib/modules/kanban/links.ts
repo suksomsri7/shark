@@ -482,6 +482,22 @@ export async function redactCardsInTx(
   return maskCardsInTx(tx, tenantId, { id: { in: ids }, sourceKey: { startsWith: opts.sourceKeyPrefix } }, opts.mask ?? ((x) => x), opts.title);
 }
 
+/**
+ * CRM C5.4-B ▸ L5-M2: การ์ดที่โมดูลอื่นเปิดจาก "รอบการทำงาน" (เช่น กฎอัตโนมัติ CRM `crm-rule:<runId>:<i>`) ที่เกิดก่อนมีลิงก์ผูกผู้ติดต่อ —
+ * หาด้วย prefix ของ sourceKey (ผู้เรียกให้ชุด prefix ที่รู้ว่าเป็นของคนที่ถูกลบ) แล้ว **ปิดคำระบุตัว** แบบเดียวกับการ์ดที่ผูกลิงก์
+ * (หัว · รายละเอียด · ความเห็น · ประวัติการ์ด) · prefix ต้องยาวพอ (≥ 12) กันกวาดทั้งร้าน · ใน tx ของผู้เรียก ◂
+ */
+export async function maskCardsBySourcePrefixInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  prefixes: readonly string[],
+  mask: (text: string) => string,
+): Promise<{ cards: number; comments: number; activities: number }> {
+  const list = [...new Set(prefixes.filter((x) => typeof x === "string" && x.length >= 12))].slice(0, MASK_CARDS_MAX);
+  if (!tenantId || list.length === 0) return { cards: 0, comments: 0, activities: 0 };
+  return maskCardsInTx(tx, tenantId, { OR: list.map((p) => ({ sourceKey: { startsWith: p } })) }, mask, null);
+}
+
 async function maskCardsInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,

@@ -247,6 +247,43 @@ async function resolveRecipients(
   return out;
 }
 
+// CRM C5.4-B ▸ L1-m4: ด่านผู้รับตัวเดียวกับ `resolveRecipients` สำหรับผู้เรียกที่เขียนข้อความเอง (กฎอัตโนมัติ NOTIFY_STAFF)
+//   ผู้รับต้องเป็นพนักงานที่รับคำเชิญแล้ว · ถือคีย์อ่าน **และ** เปิดระเบียนได้ ทุกระเบียนที่ข้อความอ้างถึง (ผู้ติดต่อ/ดีล/…)
+//   — "ผู้รับถูกกรอง ไม่ใช่เชื่อ" · ไม่มีระเบียน = เรื่องระดับระบบ (พนักงานที่รับคำเชิญแล้วเท่านั้น) ◂
+const READ_KEY_OF_TARGET: Readonly<Record<VisTarget, string>> = {
+  CONTACT: "crm.contact.read",
+  COMPANY: "crm.company.read",
+  DEAL: "crm.deal.read",
+  ACTIVITY: "crm.activity.read",
+  RECORD: "crm.record.read",
+};
+export async function crmRecipientsWhoSee(
+  ctx: { tenantId: string; systemId: string },
+  userIds: readonly string[],
+  refs: readonly { target: VisTarget; id: string }[],
+): Promise<string[]> {
+  const ids = [...new Set((userIds ?? []).filter((u) => typeof u === "string" && u))].slice(0, RECIPIENT_MAX);
+  if (ids.length === 0) return [];
+  const memberships = await prisma.membership.findMany({
+    where: { tenantId: ctx.tenantId, userId: { in: ids }, acceptedAt: { not: null } },
+    select: { userId: true, role: true, unitAccess: true, permissions: true },
+  });
+  const { toMemberActor } = await memberFacade();
+  const out: string[] = [];
+  for (const m of memberships) {
+    const actor = toMemberActor(m.userId, m);
+    let okAll = true;
+    for (const r of refs) {
+      if (!r.id || !crmCan(actor, READ_KEY_OF_TARGET[r.target]) || !(await canSee({ tenantId: ctx.tenantId, systemId: ctx.systemId }, actor, r.target, r.id))) {
+        okAll = false;
+        break;
+      }
+    }
+    if (okAll) out.push(m.userId);
+  }
+  return out;
+}
+
 /**
  * ส่งเรื่องหนึ่งถึงพนักงานที่ควรรู้ — **จุดเดียว** ที่ CRM v2 แจ้งเตือนคน
  *

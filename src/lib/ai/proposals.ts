@@ -977,6 +977,11 @@ async function dispatch(
     const p = payload as CrmCreateLeadPayload;
     const system = await resolveSystem(tenantId, "CRM");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบ CRM (ลูกค้ามุ่งหวัง)");
+    // CRM C5.4-B ▸ hunter H5: ข้อเสนอแบบเดิม (v1) ที่ค้างอยู่ ห้ามสร้างผู้ติดต่อผ่านทางลัด v1 บนระบบที่เปิด CRM ใหม่แล้ว (ไม่มีกันซ้ำ/การมองเห็น)
+    //   อ่านรุ่นไม่ได้ = ปฏิเสธเหมือนกัน (fail closed) · ให้ผู้ใช้ถามผู้ช่วยใหม่ (ข้อเสนอรุ่นใหม่ผ่านบริการ v2)
+    if (await crmSvc.isCrmV1Closed({ tenantId, systemId: system.id })) {
+      throw new Error("ข้อเสนอนี้สร้างจากระบบ CRM รุ่นเดิม จึงยืนยันไม่ได้แล้ว — ขอให้ผู้ช่วยเพิ่มลูกค้ามุ่งหวังใหม่อีกครั้ง");
+    }
     const name = String(p.name ?? "").trim();
     if (!name) throw new Error("ต้องระบุชื่อผู้ติดต่อ");
     // source = "AI" ระบุที่มาว่าผู้ช่วยสร้างให้ · note: service ไม่รับ (เก็บ company/source เท่านั้น) → ไม่ persist

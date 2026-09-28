@@ -42,6 +42,7 @@ import { crmCan, crmForbiddenMessage } from "./access";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานผู้ติดต่อ ◂
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" ◂
+import { cleanReferrer, cleanTrackedUrl, SOURCE_PAGE_UTM_KEEP } from "./tracking-shared"; // CRM C5.4-B L5-m6 ◂
 import { listTargetCandidates, resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ตัวตัดสินปลายทางตัวเดียว ◂
 import * as assignment from "./assignment";
 import * as companies from "./companies";
@@ -287,6 +288,7 @@ function toDto(row: CrmContact): ContactDto {
     sourceChannel: row.sourceChannel,
     marketingOptOut: row.marketingOptOut,
     emailOptOut: row.emailOptOut,
+    trackingOptOut: row.trackingOptOut === true,
     emailBouncedAt: row.emailBouncedAt,
     memberCustomerId: row.memberCustomerId,
     convertedAt: row.convertedAt,
@@ -484,7 +486,11 @@ function cleanSourceDetail(raw: unknown, trusted?: TrustedSource | null): Record
     if ((k === "pageUrl" || k === "referrer") && !/^https?:\/\//i.test(v)) {
       throw fail("VALIDATION", "ลิงก์หน้าเว็บที่มา/ผู้แนะนำต้องขึ้นต้นด้วย http:// หรือ https://");
     }
-    out[k] = v.slice(0, CONTACT_SOURCE_TEXT_MAX);
+    // CRM C5.4-B ▸ L5-m6: ลิงก์ที่มาเก็บแบบเดียวกับ web tracking — pageUrl คงเฉพาะ utm_source/medium/campaign (ตัด utm_term/content + ?email=&phone=&token= · #fragment — รีวิว note f) ·
+    //   referrer ตัด query/fragment ทั้งหมด (tracking-shared · X8) ◂
+    const cleaned = k === "pageUrl" ? cleanTrackedUrl(v, { keep: SOURCE_PAGE_UTM_KEEP }) : k === "referrer" ? cleanReferrer(v) : v;
+    if (!cleaned) continue;
+    out[k] = cleaned.slice(0, CONTACT_SOURCE_TEXT_MAX);
   }
   return Object.keys(out).length > 0 ? out : null;
 }
@@ -1242,6 +1248,36 @@ export async function setOptOut(ctx: ContactsCtx, actor: MemberActor, id: string
     consentRow: { granted: !optOut, source },
     };
   });
+}
+
+/**
+ * CRM C5.4-B ▸ L5-M4 (พิมพ์เขียว §11.4 · `trackingOptOut`): ลูกค้าขอ "ไม่ให้ติดตาม" — ไม่ใส่ pixel เปิดอ่าน · ไม่ห่อลิงก์ · ไม่ผูกการเข้าเว็บ
+ * (ยังรับอีเมลได้ตามความยินยอมเดิม) — ทางเดียวที่แก้ธงนี้จากพนักงาน/REST (updateContact ปฏิเสธ) · audit `crm.contact.tracking_opt_out`
+ * + event `crm.contact.updated` ใน tx เดียวกับคอลัมน์ · ลูกค้ากดเองจากหน้า /u/<token> ใช้ `markTrackingOptOutInTx`
+ */
+export async function setTrackingOptOut(
+  ctx: ContactsCtx,
+  actor: MemberActor,
+  id: string,
+  input: { optOut: boolean; source?: string | null } | boolean,
+): Promise<ContactDto> {
+  const a = await enter(ctx, actor);
+  await loadContact(ctx, a, id);
+  need(a, "crm.contact.update");
+  const optOut = typeof input === "boolean" ? input : input?.optOut === true;
+  const source = (typeof input === "object" && input ? String(input.source ?? "STAFF") : "STAFF").trim().toUpperCase() || "STAFF";
+  if (!/^[A-Z_]{2,30}$/.test(source)) throw fail("VALIDATION", "ที่มาของการขอไม่ให้ติดตามไม่ถูกต้อง");
+  return mutate(ctx, a, id, "crm.contact.tracking_opt_out", (pre) =>
+    pre.trackingOptOut === optOut
+      ? null
+      : {
+          data: { trackingOptOut: optOut },
+          kind: "updated",
+          payload: { contactId: pre.id, changedKeys: ["trackingOptOut"] },
+          before: { trackingOptOut: pre.trackingOptOut },
+          after: { trackingOptOut: optOut, source },
+        },
+  );
 }
 
 export async function assignContact(ctx: ContactsCtx, actor: MemberActor, id: string, input: { userId: string | null }): Promise<ContactDto> {
@@ -2054,6 +2090,8 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
         await tx.crmContactConsent.create({ data: { tenantId: ctx.tenantId, systemId: k.systemId, contactId: k.id, channel: OPT_OUT_CHANNEL, granted: false, source: "STAFF", note: "รวมผู้ติดต่อ — อีกคนขอไม่รับข่าวสารไว้", createdById: actorId(ctx), createdAt: now } });
       }
       if (m.emailOptOut && !k.emailOptOut) data.emailOptOut = true;
+      // CRM C5.4-B ▸ L5-M4: "ไม่ให้ติดตาม" ตามมาด้วย (เข้มสุดชนะ — เหมือนธงขอไม่รับ)
+      if (m.trackingOptOut && !k.trackingOptOut) data.trackingOptOut = true;
       // B1 (c) (รีวิว C1.4 · "เข้มสุดชนะ"): ความยินยอมที่คนถูกรวม **ถอนไว้** ตามมาที่คนที่เก็บไว้ — ไม่มีวันให้เพิ่ม
       //   ผลลัพธ์ไม่ผูกสมาชิก ⇒ เพิ่มแถวถอนฝั่ง CRM (append-only) · ผูกสมาชิก ⇒ ถอนบนสมาชิกผ่าน facade หลัง commit
       //   (ใช้เฉพาะฝั่งที่ความจริงอยู่ใน CRM — ผู้ติดต่อที่ผูกสมาชิกอยู่แล้วมีสมาชิกเป็นแหล่งเดียว)
@@ -2757,6 +2795,23 @@ export async function markEmailOptOutInTx(
     where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, emailOptOut: false },
     data: { emailOptOut: true },
   });
+  return n.count === 1;
+}
+
+/** C5.4-B L5-M4: ธง "ไม่ให้ติดตาม" จากลิงก์ในอีเมล (ลูกค้ากดเอง) — คืน true เมื่อรอบนี้เป็นคนพลิกจริง */
+export async function markTrackingOptOutInTx(
+  tx: Tx,
+  ctx: { tenantId: string; systemId: string },
+  contactId: string,
+): Promise<boolean> {
+  const id = String(contactId ?? "");
+  if (!id || !ctx?.tenantId) return false;
+  const n = await tx.crmContact.updateMany({
+    where: { id, tenantId: ctx.tenantId, systemId: ctx.systemId, trackingOptOut: false },
+    data: { trackingOptOut: true },
+  });
+  // รีวิว C5.4-B note (d): event เดียวกับทางของพนักงาน (setTrackingOptOut → mutate) — ใน tx เดียวกับคอลัมน์ · เฉพาะรอบที่พลิกจริง
+  if (n.count === 1) await emitContactEvent(tx, ctx, "updated", id, newSeq(), { contactId: id, changedKeys: ["trackingOptOut"] });
   return n.count === 1;
 }
 

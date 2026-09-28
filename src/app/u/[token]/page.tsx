@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function UnsubscribePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const action = `/u/${encodeURIComponent(String(token ?? ""))}/one-click`;
+  const noTrack = `/u/${encodeURIComponent(String(token ?? ""))}/no-track`;
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center gap-6 px-5 py-10">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -26,6 +27,16 @@ export default async function UnsubscribePage({ params }: { params: Promise<{ to
             className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white"
           >
             ยืนยันยกเลิกรับอีเมล
+          </button>
+        </form>
+        {/* CRM C5.4-B ▸ L5-M4: ทางเลือกที่เบากว่า — ยังรับอีเมล แต่ไม่ให้นับการเปิดอ่าน/คลิก (trackingOptOut) ◂ */}
+        <form method="post" action={noTrack} className="mt-3">
+          <button
+            type="submit"
+            data-testid="crm-unsub-notrack"
+            className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800"
+          >
+            ยังรับอีเมล แต่ไม่ต้องติดตามการเปิดอ่าน/คลิก
           </button>
         </form>
       </div>

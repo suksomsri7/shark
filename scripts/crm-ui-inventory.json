@@ -2952,6 +2952,25 @@
     },
     {
       "page": "/contacts/[contactId]",
+      "testid": "contact-tracking-optout-toggle",
+      "kind": "toggle",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "action:setTrackingOptOutAction",
+        "db": "CrmContact.trackingOptOut + AuditLog crm.contact.tracking_opt_out +1 (REST op:contacts.setTrackingOptOut)"
+      },
+      "wo": "C5.4",
+      "oracle": "C5.3-L5-M4"
+    },
+    {
+      "page": "/contacts/[contactId]",
       "testid": "contact-consent-grant",
       "kind": "button",
       "roles": [
@@ -13698,6 +13717,27 @@
       "oracle": ""
     },
     {
+      "page": "/u/[token]",
+      "testid": "crm-unsub-notrack",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager",
+        "nok",
+        "thana",
+        "customer"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "mutation",
+        "target": "/u/[token]/no-track",
+        "db": "CrmContact.trackingOptOut=true · AuditLog crm.contact.tracking_opt_out 1 แถว (เฉพาะรอบที่พลิก · emailOptOut ไม่เปลี่ยน · หน้านี้เปิดเปล่า ๆ = GET ไม่เขียนอะไร)",
+        "note": "เพิ่มโดย C5.4-B (L5-M4 · trackingOptOut) บนหน้าของ C2.5 — ข้อสอบ C2.5-S8.5 ผูกทุก testid ของหน้า /u/[token] กับ wo C2.5"
+      },
+      "wo": "C2.5",
+      "oracle": ""
+    },
+    {
       "page": "/emails",
       "testid": "crm-emails-tab-all",
       "kind": "tab",
@@ -19622,6 +19662,46 @@
     },
     {
       "page": "/settings",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "wo": "C5.4",
+      "oracle": "C5.3-L5-m7",
+      "testid": "crm-export-reason",
+      "kind": "input",
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-export-error",
+        "note": "เหตุผล ≥ 5 ตัวอักษร (ลง AuditLog crm.contact.export) — สั้นไปแล้วกดขอไฟล์ = ข้อความผิดพลาด"
+      }
+    },
+    {
+      "page": "/settings",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "manager",
+        "nok",
+        "thana"
+      ],
+      "wo": "C5.4",
+      "oracle": "C5.3-L5-m7",
+      "testid": "crm-export-confirm",
+      "kind": "toggle",
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-export-error",
+        "note": "ยืนยันการส่งออกข้อมูลส่วนบุคคลทั้งระบบ (X9) — ไม่ติ๊กแล้วกดขอไฟล์ = ข้อความผิดพลาด"
+      }
+    },
+    {
+      "page": "/settings",
       "testid": "crm-export-start-csv",
       "kind": "button",
       "roles": [
@@ -19635,7 +19715,11 @@
       "expect": {
         "type": "mutation",
         "target": "action:startTenantExportAction",
-        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export"
+        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export (after.reason)",
+        "anyOf": [
+          "crm-export-error"
+        ],
+        "note": "C5.4-B L5-m7: ต้องติ๊ก crm-export-confirm + เหตุผล ≥ 5 ใน crm-export-reason ก่อน — ยังไม่ครบ = ข้อความใน crm-export-error ไม่เรียก action"
       },
       "wo": "C3.9",
       "oracle": "qc-crm-c3.9"
@@ -19655,7 +19739,11 @@
       "expect": {
         "type": "mutation",
         "target": "action:startTenantExportAction",
-        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export"
+        "db": "CrmImportJob kind=CRM_EXPORT status=QUEUED · AuditLog crm.contact.export (after.reason)",
+        "anyOf": [
+          "crm-export-error"
+        ],
+        "note": "C5.4-B L5-m7: ต้องติ๊ก crm-export-confirm + เหตุผล ≥ 5 ใน crm-export-reason ก่อน — ยังไม่ครบ = ข้อความใน crm-export-error ไม่เรียก action"
       },
       "wo": "C3.9",
       "oracle": "qc-crm-c3.9"

@@ -15,7 +15,7 @@ import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/
 import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
-import { connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections";
+import { accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections";
 
 const PATH = (systemId: string) => `/app/sys/${systemId}/account/settings/connections`;
 
@@ -135,6 +135,11 @@ export async function createApiKeyAction(
   }
 }
 
+// CRM C5.4-B ▸ hunter H2: หน้านี้จัดการได้เฉพาะคีย์ "ของบัญชี" — คีย์ที่ผูกระบบบัญชี (สมุดใดก็ได้ของร้าน — หน้านี้แสดงคีย์ทุกเล่ม · WO A2)
+//   หรือคีย์ไม่ผูกระบบที่ไม่มี scope ของโมดูลอื่น · คีย์ของ CRM/สมาชิก/บอร์ดงาน = "ไม่พบ" (จัดการจากหน้าตั้งค่า API ของโมดูลนั้นเท่านั้น —
+//   เดิมพนักงานบัญชีหมุนคีย์ crm.admin ของเจ้าของได้: คีย์เดิมถูกเพิกถอน + ได้คีย์ใหม่ที่ข้ามด่านออกคีย์ของ CRM)
+const KEY_NOT_HERE = "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น";
+
 /** เพิกถอนคีย์ API */
 export async function revokeApiKeyAction(fd: FormData): Promise<ConnResult> {
   const systemId = s(fd, "systemId");
@@ -142,6 +147,7 @@ export async function revokeApiKeyAction(fd: FormData): Promise<ConnResult> {
   assertCan(mc(auth), { module: "api", action: "api.key.revoke" });
   const id = s(fd, "id");
   if (!id) return { ok: false, reason: "ไม่รู้ว่าจะเพิกถอนคีย์ไหน" };
+  if (!(await accountManagedKey(tenantId, id))) return { ok: false, reason: KEY_NOT_HERE };
   await revokeApiKey({ tenantId }, id);
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { revoked: true } });
   revalidatePath(PATH(systemId));
@@ -157,6 +163,7 @@ export async function rotateApiKeyAction(
   assertCan(mc(auth), { module: "api", action: "api.key.create" });
   const id = s(fd, "id");
   if (!id) return { ok: false, reason: "ไม่รู้ว่าจะหมุนคีย์ไหน" };
+  if (!(await accountManagedKey(tenantId, id))) return { ok: false, reason: KEY_NOT_HERE };
   try {
     const { rawKey } = await rotateApiKey({ tenantId }, id, { createdById: userId });
     await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { rotated: true } });

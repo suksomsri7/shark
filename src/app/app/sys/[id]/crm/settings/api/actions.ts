@@ -22,6 +22,8 @@ import { createEndpoint, deleteEndpoint, getEndpoint, setEndpointActive } from "
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
+import { crmKeyWiderThanCreator } from "@/lib/modules/crm/api/key-guard";
+import type { MemberActor } from "@/lib/modules/member";
 import { crmWebhookEventsCheck, crmWebhookUrlProblem, isCrmWebhookEndpoint } from "@/lib/modules/crm/api/webhook-events";
 import type { CrmActionResult, CrmKeyResult, CrmWebhookCreateResult } from "./_components/shared";
 
@@ -32,7 +34,7 @@ const BUNDLES = new Set(["crm.readonly", "crm.operate", "crm.admin"]);
 // C4.3-fix ▸ เดิม gate() อยู่นอก try และ "โยน" error ⇒ พนักงานที่ไม่มีสิทธิ์กดแล้วได้ error ดิบของ Next แทนข้อความไทย ·
 //   ตอนนี้คืน `{ ok:false, reason }` (รูปเดียวกับที่หน้าจอแสดงอยู่แล้ว) · requireTenant() อยู่นอก try โดยตั้งใจ — redirect
 //   (ยังไม่ล็อกอิน/ร้านถูกระงับ) ต้องโยนต่อให้ Next พาไปหน้าที่ถูกต้อง ห้ามถูกกลืนเป็นข้อความ
-type Gate = { ok: true; tenantId: string; userId: string } | { ok: false; reason: string };
+type Gate = { ok: true; tenantId: string; userId: string; actor: MemberActor } | { ok: false; reason: string };
 const NO_PLATFORM_RIGHT = "บัญชีนี้ยังไม่ได้รับสิทธิ์จัดการคีย์ API / webhook ของร้าน — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง";
 
 async function gate(systemId: string, module: "api" | "webhook", platformAction: string): Promise<Gate> {
@@ -43,14 +45,15 @@ async function gate(systemId: string, module: "api" | "webhook", platformAction:
     if (!system) return { ok: false, reason: "ไม่พบระบบ CRM นี้ในร้านนี้ — รีเฟรชหน้าแล้วลองใหม่" };
     await assertCrmV2({ tenantId, systemId });
     // AUDIT-CLASS X2: คีย์ของ CRM ก่อน แล้วค่อยสิทธิ์แพลตฟอร์ม
-    if (!crmCan(toMemberActor(auth.user.id, auth.active), "crm.api.manage")) {
+    const actor = toMemberActor(auth.user.id, auth.active);
+    if (!crmCan(actor, "crm.api.manage")) {
       return { ok: false, reason: "บัญชีนี้ยังไม่ได้รับสิทธิ์จัดการคีย์ API ของ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง" };
     }
     assertCan(
       { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> },
       { module, action: platformAction },
     );
-    return { ok: true, tenantId, userId: auth.user.id };
+    return { ok: true, tenantId, userId: auth.user.id, actor };
   } catch (e) {
     if (e instanceof ForbiddenError) return { ok: false, reason: NO_PLATFORM_RIGHT };
     // ปฏิเสธที่คาดไว้ (ระบบยังไม่เปิด CRM ใหม่) ไม่ต้อง log · อย่างอื่น = ไม่คาดคิด ⇒ log ชนิด error ล้วน (AUDIT-CLASS X8 แบบ `crm/*-actions.ts`)
@@ -82,6 +85,9 @@ export async function createCrmApiKeyAction(fd: FormData): Promise<CrmKeyResult>
       if (!(await getTeam({ tenantId }, teamId))) return fieldFail("teamId", "ไม่พบทีมที่เลือกในร้านนี้ — รีเฟรชหน้าแล้วเลือกใหม่");
       scopes.push(`${CRM_FILTER_TEAM_PREFIX}${teamId}`);
     }
+    // CRM C5.4-B ▸ L1-m1: คีย์กว้างกว่าคนออกไม่ได้ (ชุดสิทธิ์ ⊆ สิทธิ์ CRM ปัจจุบัน + การมองเห็น) — crm.admin จึงเป็นของเจ้าของร้าน
+    const wider = await crmKeyWiderThanCreator({ tenantId, systemId }, g.actor, scopes);
+    if (wider) return { ok: false, reason: wider };
     const expiresAt = new Date(Date.now() + DEFAULT_KEY_TTL_DAYS * 86_400_000);
     const { rawKey } = await createApiKey({ tenantId }, name, { scopes, systemId, expiresAt, createdById: userId });
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "ApiKey", after: { created: name, bundle, teamId: teamId || null, systemId, expiresAt } });

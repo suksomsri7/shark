@@ -35,6 +35,7 @@ import {
   searchContactsAction,
   setConsentAction,
   setOptOutAction,
+  setTrackingOptOutAction,
   setStatusAction,
   setTagsAction,
   updateContactAction,
@@ -592,6 +593,16 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
           </span>
         </span>
         <input type="checkbox" checked={consent.optOut} disabled={disabled || pending} onChange={(e) => run(() => setOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-optout-toggle" />
+      </label>
+      {/* CRM C5.4-B ▸ L5-M4: ลูกค้าขอไม่ให้ติดตาม (พิมพ์เขียว §11.4 trackingOptOut) — ยังรับอีเมลได้ ◂ */}
+      <label className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+        <span>
+          ไม่ให้ติดตามการเปิดอ่าน/คลิก
+          <span className="block text-xs text-[color:var(--color-muted)]">
+            เปิด = อีเมลถึงคนนี้ไม่ใส่ตัวนับการเปิดอ่านและไม่ห่อลิงก์ · การเข้าเว็บของร้านไม่ผูกกับคนนี้ (ยังส่งอีเมลได้ตามความยินยอมด้านล่าง)
+          </span>
+        </span>
+        <input type="checkbox" checked={consent.trackingOptOut} disabled={disabled || pending} onChange={(e) => run(() => setTrackingOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-tracking-optout-toggle" />
       </label>
       {consent.emailBounced && <p className="text-xs text-[color:var(--color-danger)]">อีเมลของผู้ติดต่อนี้ส่งไม่ถึง (เด้งกลับ) — ระบบหยุดส่งอีเมลให้แล้ว</p>}
       <ul className="flex flex-col divide-y text-sm">

@@ -131,12 +131,14 @@ const CRM_WRITE_VERB = /\.(create|update|delete|convert|import|merge|move|quote|
 
 /**
  * คำตอบของ op 1 ครั้ง → สิ่งที่ออกจากระบบได้จริง
- * คีย์ readonly = ปิดบังเบอร์/อีเมล + ตัดค่าอ่อนไหว · operate = ตัดค่าอ่อนไหว · ผู้ช่วย AI = ตัดค่าอ่อนไหวเสมอ (แม้เจ้าของร้านถาม)
+ * คีย์ readonly = ปิดบังเบอร์/อีเมล + ตัดค่าอ่อนไหว · operate = ตัดค่าอ่อนไหว · ผู้ช่วย AI = ตัดค่าอ่อนไหว + ปิดบังเบอร์/อีเมล/LINE เสมอ (แม้เจ้าของร้านถาม)
  */
 export function present(actor: ApiActor, data: unknown): unknown {
   let out = jsonSafe(data);
   const role = apiRoleOfActor(actor);
   if (actor.kind === "assistant" || role === "READONLY" || role === "OPERATE") out = stripSensitive(out);
-  if (role === "READONLY") out = maskPiiDeep(out);
+  // CRM C5.4-B ▸ L5-m3: ผู้ช่วย AI ได้เบอร์/อีเมล/LINE id แบบปิดบังเสมอ (กติกาเดียวกับ op อีเมลของผู้ช่วย + ai-bridges "prompt ไม่มีเบอร์/อีเมล")
+  //   — ข้อเสนอที่ผู้ช่วยสร้างพก id ไม่ใช่ค่าติดต่อ ⇒ ไม่เสียความสามารถ ◂
+  if (role === "READONLY" || actor.kind === "assistant") out = maskPiiDeep(out);
   return out;
 }

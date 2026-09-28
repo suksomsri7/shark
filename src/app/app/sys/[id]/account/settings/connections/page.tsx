@@ -65,10 +65,18 @@ export default async function AccountConnectionsSettingsPage({
 
   // อ่านเฉพาะที่หัวข้อนั้นใช้จริง (คีย์/ฮุคเป็น query ของแพลตฟอร์ม — ไม่ควรจ่ายทุกครั้งที่เปิดหน้าการ์ด)
   const cards = sub === "shark" ? await buildConnectionCards(ctx, new Date()) : [];
-  const [keys, endpoints, deliveries] =
+  const [keysAll, endpoints, deliveries] =
     sub === "api"
       ? await Promise.all([listApiKeys({ tenantId }), listEndpoints({ tenantId }), listDeliveries({ tenantId }, 10)])
       : [[], [], []];
+  // CRM C5.4-B ▸ hunter H2: แสดง/จัดการเฉพาะคีย์ของบัญชี (ผูกระบบบัญชีเล่มใดก็ได้ หรือไม่ผูกระบบและไม่มี scope crm./member./kanban.) —
+  //   คีย์ของโมดูลอื่นจัดการจากหน้าตั้งค่า API ของโมดูลนั้น (action ก็ปฏิเสธซ้ำ — accountManagedKey)
+  const accountSystemIds = new Set(
+    keysAll.some((k) => !!k.systemId)
+      ? (await prisma.appSystem.findMany({ where: { tenantId, type: "ACCOUNT" }, select: { id: true } })).map((x) => x.id)
+      : [],
+  );
+  const keys = keysAll.filter((k) => (k.systemId ? accountSystemIds.has(k.systemId) : !k.scopes.some((sc) => /^(crm|member|kanban)\./.test(sc))));
 
   // ป้ายชื่อสมุดบัญชีต่อคีย์ (WO A2) — คีย์ของทั้ง tenant อาจผูกสมุดอื่นนอกจากเล่มนี้ด้วย
   const otherSystemIds = Array.from(

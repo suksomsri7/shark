@@ -7,6 +7,7 @@
 //   • setContactPartyId          ← src/lib/modules/account/contact-links.ts (ผูก CrmContact เข้า Party)
 //   • findContactByPartyId       ← src/lib/modules/account/contact-profile.ts (การ์ด CRM ในโปรไฟล์)
 //   • findLatestDealForContact   ← src/lib/modules/account/contact-profile.ts (ดีลล่าสุด)
+//   • isCrmV1Closed              ← src/lib/ai/proposals.ts (crm_create_lead แบบเดิมห้ามยืนยันบนระบบ v2 · C5.4-B H5)
 // 🔴 CrmHub **ไม่อยู่ที่นี่** (มติผู้คุมงาน addendum 3): `index.ts` = ผิวฝั่งเซิร์ฟเวอร์ · `ui.tsx` = ทางเข้าคอมโพเนนต์
 //    เหมือนอีกสิบโมดูลที่ `src/app/app/sys/[id]/page.tsx` import Hub จาก `<module>/ui` (coupon · meeting · kanban ·
 //    chat · inventory · hr · marketing · member · point · reward) — ถ้าดึง ./ui เข้ามาที่นี่ ทุกคนที่ import facade
@@ -18,6 +19,7 @@ export {
   findContactByPartyId,
   findContactsForLink,
   findLatestDealForContact,
+  isCrmV1Closed,
   listPartyIdsWithContact,
   setContactPartyId,
 } from "./service";

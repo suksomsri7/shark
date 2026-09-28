@@ -260,6 +260,11 @@ export function CrmApiSettings(p: Props) {
                     <td className={cell}>
                       {k.bundleLabel}
                       {k.filterLabel ? <span className={`block ${help}`}>{k.filterLabel}</span> : null}
+                      {k.refused ? (
+                        <span className="block text-xs font-medium text-[color:var(--color-danger)]" data-testid={`crm-api-key-refused-${k.id}`}>
+                          ใช้ไม่ได้ — ผู้สร้างไม่มีสิทธิ์แล้ว
+                        </span>
+                      ) : null}
                     </td>
                     <td className={cell}>{k.lastUsedLabel}</td>
                     <td className={cell}>{k.expiresLabel}</td>

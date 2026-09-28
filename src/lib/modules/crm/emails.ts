@@ -59,7 +59,7 @@ import type { RichEmail, RichEmailResult } from "@/lib/core/email";
 import { prisma } from "./db";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานอีเมลต่อวัน + แม่แบบ ◂
 import { CRM_HARD_CAPS, CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
-import { crmCan, crmForbiddenMessage, CrmForbiddenError } from "./access";
+import { crmCan, crmForbiddenMessage, CrmForbiddenError, isApiActor } from "./access";
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
 import * as consents from "./consents";
@@ -581,6 +581,17 @@ export async function setUserSetting(ctx: EmailsCtx, actor: MemberActor, patch: 
   if ("fromName" in patch) data.fromName = cleanTextPatch(patch.fromName, "ชื่อผู้ส่ง");
   if ("signatureHtml" in patch) data.signatureHtml = patch.signatureHtml === null ? null : sanitizeHtml(str(patch.signatureHtml)).slice(0, 4000) || null;
   if ("fromAddr" in patch) data.fromAddr = cleanAddrPatch(patch.fromAddr, "ที่อยู่ผู้ส่ง");
+  // CRM C5.4-B ▸ L1-m3: ที่อยู่ผู้ส่งส่วนตัว = "ตัวตนของพนักงาน" ที่เส้นขาเข้าใช้ตัดสินว่าจดหมายเป็นขาออกของร้าน ⇒ ต้องอยู่บนโดเมนผู้ส่ง
+  //   ที่ร้านยืนยันแล้ว (ที่อื่นส่งจริงไม่ได้อยู่แล้ว — routingFor ใช้เฉพาะโดเมนยืนยัน) และต้องไม่ใช่อีเมลของผู้ติดต่อในระบบนี้
+  //   (ไม่งั้นคำตอบจริงของลูกค้าคนนั้นถูกเก็บเป็น "พนักงานส่ง") ◂
+  if (typeof data.fromAddr === "string" && data.fromAddr) {
+    const addr = data.fromAddr;
+    if (!(await verifiedDomains(ctx.tenantId)).has(emailDomainOf(addr))) {
+      throw fail("VALIDATION", "ที่อยู่ผู้ส่งต้องเป็นอีเมลบนโดเมนที่ร้านยืนยันแล้ว (ตั้งค่า › อีเมล › โดเมนผู้ส่ง) — ถ้ายังไม่มีโดเมน ให้เว้นว่างไว้ ระบบจะส่งในนามร้านให้");
+    }
+    const isContact = await prisma.crmContact.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, OR: [{ email: { equals: addr, mode: "insensitive" } }, { previousEmails: { has: addr } }] }, select: { id: true } });
+    if (isContact) throw fail("VALIDATION", "ที่อยู่นี้เป็นอีเมลของผู้ติดต่อในระบบ CRM จึงใช้เป็นที่อยู่ผู้ส่งของพนักงานไม่ได้ — ใช้อีเมลของร้านบนโดเมนที่ยืนยันแล้ว");
+  }
   if ("replyToAddr" in patch) data.replyToAddr = cleanAddrPatch(patch.replyToAddr, "ที่อยู่รับคำตอบ");
   if ("copyToAddr" in patch) data.copyToAddr = cleanAddrPatch(patch.copyToAddr, "ที่อยู่รับสำเนา");
   if ("replyToMode" in patch && patch.replyToMode !== null) {
@@ -1860,13 +1871,15 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
       : fromAddr
         ? await prisma.crmEmailUserSetting.findFirst({ where: { systemId: system.id, fromAddr: { equals: fromAddr, mode: "insensitive" } }, select: { userId: true } })
         : null;
+    // CRM C5.4-B ▸ L1-m3: ที่อยู่ override ที่ไม่ได้อยู่บนโดเมนยืนยันของร้าน (แถวเก่าก่อนมีด่านใน setUserSetting) ไม่นับเป็นตัวตนพนักงาน ◂
+    const overrideTrusted = !!staffByOverride && (await verifiedDomains(system.tenantId)).has(emailDomainOf(fromAddr));
     // 🔴 ก่อนจะ "เชื่อ" ว่าจดหมายฉบับนี้พนักงานส่งเอง ต้องมีหลักฐานว่า From ไม่ได้ถูกปลอม: ใครก็ยิง JSON เข้ามาที่
     //    เส้นขาเข้าโดยจ่า `From:` เป็นอีเมลพนักงานได้ ⇒ จดหมายจะถูกเก็บเป็น **ขาออกของร้าน** (direction OUT ·
     //    sentById = พนักงานคนนั้น) แล้วโผล่ในไทม์ไลน์ของลูกค้าเหมือนพนักงานเขียนเอง (ปล่อยข้อความปลอมในนามร้าน)
     //    หลักฐานที่รับ: `authentication-results` ของ MTA บอก dkim=pass / spf=pass ให้โดเมนของ From
     //    หรือโดเมนของ From เป็นโดเมนผู้ส่งที่ร้านนี้ยืนยันแล้ว (`EmailDomain.status = VERIFIED`)
     //    ไม่ผ่าน = ปฏิบัติกับมันเหมือนจดหมายขาเข้าธรรมดา (กติกาคนแปลกหน้า) — AUDIT-CLASS X1 · X6
-    const staffClaim = staff?.userId ?? staffByOverride?.userId ?? null;
+    const staffClaim = staff?.userId ?? (overrideTrusted ? staffByOverride?.userId : null) ?? null;
     let fromAuthenticated = false;
     if (staffClaim) {
       fromAuthenticated =
@@ -2093,10 +2106,19 @@ async function stopSequencesFor(ctx: { tenantId: string; systemId: string }, con
 // ───────────────────────── อ่านเธรด · ไฟล์แนบ · ผูกเข้าผู้ติดต่อ ─────────────────────────
 
 /** สิทธิ์เปิดกล่อง "ยังไม่จับคู่" — ต้องมีคีย์อ่าน **และ** เห็นผู้ติดต่อทั้งระบบ (หรือเป็นผู้จัดการ/เจ้าของร้าน) */
+// CRM C5.4-B ▸ L1-m2: กล่องนี้คือจดหมายที่ "ไม่ผูกใคร" ของทั้งระบบ ⇒ เปิดได้เฉพาะผู้ที่เห็นทั้งระบบจริง ๆ —
+//   คีย์ API ที่ถูกกรอง (`crm.filter.team:` / `crm.filter.owner:` · R-C.3 "แคบลงเท่านั้น") ไม่ผ่าน · ผู้จัดการ/พนักงานต้องไม่ถูกจำกัดสาขา
+//   และเห็นผู้ติดต่อ ALL (เดิม MANAGER ทุกคน + คีย์ admin ที่แปลงเป็น MANAGER ผ่านหมด)
 async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<void> {
-  if (actor.role === "OWNER" || actor.role === "MANAGER") return;
+  if (actor.role === "OWNER" && !isApiActor(actor)) return;
+  const deny = () => fail("FORBIDDEN", "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน");
+  if (isApiActor(actor)) {
+    if (Object.entries(actor.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("crm.filter."))) throw deny();
+    return;
+  }
+  const wholeShop = actor.unitAccess.length === 0 || actor.unitAccess.includes("*");
   const level = await resolveVisibility(ctx, actor, "CONTACT");
-  if (level !== "ALL") {
+  if (level !== "ALL" || !wholeShop) {
     throw fail("FORBIDDEN", "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบหรือระดับผู้จัดการขึ้นไป — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน");
   }
 }
@@ -2539,6 +2561,35 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
   }
 }
 
+/**
+ * CRM C5.4-B ▸ L5-M4: ลูกค้ากด "ไม่ต้องติดตามการเปิดอ่าน" จากหน้า /u/<token> (ยังรับอีเมลได้) — พลิก `trackingOptOut` ผ่านตัวเขียนแคบของ
+ * contacts.ts (มีเงื่อนไข · ครั้งเดียว) + audit เฉพาะรอบที่พลิกจริง · token ไม่รู้จัก = ไม่ทำอะไร แต่ตอบเหมือนกัน (X7 ไม่มีเครื่องทำนาย token)
+ * 🔴 ไม่ผ่านถังความถี่ (มติ F8 ใหม่ · C5.3: คำขอเลิกของลูกค้าห้ามถูกทิ้ง) — token ที่ใช้ได้เขียนฐานได้ครั้งเดียว (พลิกแล้วรอบหลังไม่เขียน)
+ */
+export async function stopTracking(token: string, meta?: { ip?: string; ua?: string | null }): Promise<{ ok: true }> {
+  try {
+    const row = await messageOfToken("u", str(token));
+    if (!row || !row.contactId) return { ok: true };
+    const ctx = { tenantId: row.tenantId, systemId: row.systemId };
+    const contactId = row.contactId;
+    const flipped = await prisma.$transaction((tx) => contacts.markTrackingOptOutInTx(tx, ctx, contactId));
+    if (flipped) {
+      await writeAudit({
+        tenantId: row.tenantId,
+        actorId: null,
+        actorType: "SYSTEM",
+        action: "crm.contact.tracking_opt_out",
+        targetType: "CrmContact",
+        targetId: contactId,
+        after: { trackingOptOut: true, source: "UNSUBSCRIBE_PAGE", emailId: row.id, ua: str(meta?.ua).slice(0, 120) || null },
+      });
+    }
+    return { ok: true };
+  } catch {
+    return { ok: true };
+  }
+}
+
 // ───────────────────────── webhook ของผู้ให้บริการ (Svix) ─────────────────────────
 
 export type ProviderWebhookInput = {
@@ -2696,11 +2747,11 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
 export async function purgeBodies(
   now: Date,
   opts: { tenantIds?: string[]; systemIds?: string[]; deps?: { del?: DeleteDeps["del"] }; deadline?: number; signal?: AbortSignal } = {},
-): Promise<{ purged: number }> {
+): Promise<{ purged: number; eventsPurged: number }> {
   const at = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
   const tenantIds = Array.isArray(opts.tenantIds) ? opts.tenantIds.filter((t) => typeof t === "string" && t) : undefined;
   const systemIds = Array.isArray(opts.systemIds) ? opts.systemIds.filter((x) => typeof x === "string" && x) : undefined;
-  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return { purged: 0 };
+  if ((tenantIds && tenantIds.length === 0) || (systemIds && systemIds.length === 0)) return { purged: 0, eventsPurged: 0 };
   const stop = () => !!opts.signal?.aborted || (typeof opts.deadline === "number" && Date.now() > opts.deadline - 500);
   const systems = await prisma.appSystem.findMany({
     where: {
@@ -2713,12 +2764,13 @@ export async function purgeBodies(
     select: { id: true, tenantId: true, settings: true },
   });
   let purged = 0;
+  let eventsPurged = 0;
   for (const sys of systems) {
-    if (stop()) return { purged };
+    if (stop()) return { purged, eventsPurged };
     const days = crmEmailSettingsOf(sys.settings).retentionDays;
     const cutoff = new Date(at.getTime() - days * 86_400_000);
     for (let round = 0; round < 50; round += 1) {
-      if (stop()) return { purged };
+      if (stop()) return { purged, eventsPurged };
       // 🔴 ห้ามล้างจดหมายที่ **ยังไม่ได้ส่ง**: แถว QUEUED ไม่มี sentAt/receivedAt ⇒ `createdAt` เป็นตัวตัดสิน ⇒
       //    จดหมายที่พนักงานตั้งเวลาไว้ไกลกว่าอายุการเก็บ (เช่น ตั้งล่วงหน้า 1 ปี ในร้านที่เก็บ 30 วัน) เคยถูกล้าง
       //    เนื้อความทิ้งก่อนถึงเวลาส่ง แล้วงานตามเวลาก็ส่งจดหมายเปล่าออกไปให้ลูกค้า
@@ -2746,6 +2798,20 @@ export async function purgeBodies(
       }
       if (rows.length < 200) break;
     }
+    // CRM C5.4-B ▸ L5-m5: เหตุการณ์เปิดอ่าน/คลิก (url · user agent · เวลา ต่อคน) มีอายุเก็บเดียวกับเนื้อจดหมาย — ลบที่เก่ากว่า cutoff
+    //   (BOUNCE / COMPLAINT / REPLY / UNSUBSCRIBE คงไว้: เป็นหลักฐานความยินยอม/การส่งไม่ถึง ไม่ใช่ข้อมูลติดตามพฤติกรรม) · ทีละ 1,000 แถว เคารพงบเวลา ◂
+    for (let round = 0; round < 50; round += 1) {
+      if (stop()) return { purged, eventsPurged };
+      const n = Number(
+        await prisma.$executeRaw`
+          DELETE FROM "CrmEmailEvent" WHERE "id" IN (
+            SELECT e."id" FROM "CrmEmailEvent" e JOIN "CrmEmailMessage" m ON m."id" = e."emailId"
+             WHERE m."systemId" = ${sys.id} AND m."tenantId" = ${sys.tenantId} AND e."kind"::text IN ('OPEN', 'CLICK') AND e."at" <= ${cutoff}
+             LIMIT 1000)`,
+      );
+      eventsPurged += n;
+      if (n < 1000) break;
+    }
   }
-  return { purged };
+  return { purged, eventsPurged };
 }

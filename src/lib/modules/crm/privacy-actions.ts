@@ -81,10 +81,11 @@ export async function exportContactAction(systemId: string, contactId: string): 
 }
 
 /** ขอไฟล์ส่งออกทั้งระบบ (งานเบื้องหลัง · ลิงก์ดาวน์โหลดของผู้ขอคนเดียว) */
-export async function startTenantExportAction(systemId: string, format: string): Promise<{ ok: true; jobId: string } | Fail> {
+export async function startTenantExportAction(systemId: string, format: string, danger?: { confirm?: boolean; reason?: string } | null): Promise<{ ok: true; jobId: string } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.export");
-    const r = await exportTenant(ctx, actor, { format });
+    // CRM C5.4-B ▸ L5-m7: ยืนยัน + เหตุผล ส่งต่อให้บริการ (บริการเป็นด่านจริง) ◂
+    const r = await exportTenant(ctx, actor, { format, confirm: danger?.confirm === true, reason: danger?.reason ?? null });
     revalidatePath(`/app/sys/${systemId}/crm/settings`);
     return { ok: true, jobId: r.jobId };
   } catch (e) {

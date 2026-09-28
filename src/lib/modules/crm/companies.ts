@@ -1027,6 +1027,8 @@ export async function addContact(ctx: CompaniesCtx, actor: MemberActor, companyI
         changed = true;
       }
     } else if (existing) {
+      // hunter H1: ลิงก์ที่จบแล้วถูกเปิดใหม่ ⇒ สิทธิ์พอร์ทัลรอบเก่าไม่ฟื้น
+      if (existing.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, company.id, contact.id, ctx.actorUserId, REOPENED);
       await tx.crmCompanyContact.update({
         where: { id: existing.id },
         data: { endedAt: null, startedAt: new Date(), isPrimary: false, role: wantRole ?? existing.role, ...(jobTitle !== undefined ? { jobTitle } : {}) },
@@ -1089,14 +1091,33 @@ async function linkMutation(
   await writeAudit({ tenantId: ctx.tenantId, actorId: ctx.actorUserId, action, targetType: "CrmCompany", targetId: company.id, before: audit.before, after: { ...(audit.after as object), contactId: cid } });
 }
 
+// CRM C5.4-B ▸ L1-M2 + hunter H1: ถอนสิทธิ์พอร์ทัล + ปิด session ของ (บริษัท, ผู้ติดต่อ) ใน tx ของผู้เรียก · audit crm.portal.revoke ต่อสิทธิ์
+//   ใช้ตอน "ออกจากบริษัท" และตอน "เพิ่มกลับ/รวม" ลิงก์ที่เคยจบ (สิทธิ์ของรอบเก่าต้องไม่ฟื้น — เชิญใหม่เท่านั้น)
+async function revokePortalOfLinkInTx(tx: Tx, tenantId: string, companyId: string, contactId: string, actorId: string | null | undefined, reason: string, now = new Date()): Promise<number> {
+  const accesses = await tx.crmPortalAccess.findMany({ where: { tenantId, companyId, contactId, revokedAt: null }, select: { id: true } });
+  for (const acc of accesses) {
+    await tx.crmPortalAccess.update({ where: { id: acc.id }, data: { revokedAt: now, inviteTokenHash: null } });
+    const s = await tx.portalSession.updateMany({ where: { portalAccessId: acc.id, revokedAt: null }, data: { revokedAt: now } });
+    await tx.auditLog.create({ data: { tenantId, actorType: actorId ? "USER" : "SYSTEM", actorId: actorId || null, action: "crm.portal.revoke", targetType: "CrmPortalAccess", targetId: acc.id, after: { sessionsRevoked: s.count, reason } } });
+  }
+  return accesses.length;
+}
+const LEFT_COMPANY = "ผู้ติดต่อออกจากบริษัทนี้แล้ว";
+const REOPENED = "ลิงก์บริษัทที่เคยจบถูกเปิดใหม่ — สิทธิ์พอร์ทัลรอบเก่าไม่ใช้ต่อ (เชิญใหม่)";
+
 /** ถอดผู้ติดต่อ — แถวคงอยู่ (endedAt = ประวัติ) · หลุดจากการเป็นหลัก · แคช companyId ของเขาคำนวณใหม่ */
 export async function removeContact(ctx: CompaniesCtx, actor: MemberActor, companyId: string, contactId: string): Promise<{ ok: true }> {
   const a = await enter(ctx, actor);
   await loadCompany(ctx, a, companyId);
   need(a, "crm.company.update");
   await linkMutation(ctx, a, companyId, contactId, "crm.company.contact.remove", async (tx, link) => {
-    await tx.crmCompanyContact.updateMany({ where: { id: link.id, endedAt: null }, data: { endedAt: new Date(), isPrimary: false } });
-    return { affected: [], changed: true, before: { role: link.role, isPrimary: link.isPrimary }, after: { endedAt: "now" } };
+    const now = new Date();
+    await tx.crmCompanyContact.updateMany({ where: { id: link.id, endedAt: null }, data: { endedAt: now, isPrimary: false } });
+    // CRM C5.4-B ▸ L1-M2: คนที่ออกจากบริษัทแล้วต้องเข้าพอร์ทัลของบริษัทนั้นไม่ได้อีก — ถอนสิทธิ์พอร์ทัล + ปิด session ใน tx เดียวกัน
+    //   (ประตูอ่าน `portalAccessUsable`/listContacts/invite ก็กรอง endedAt อีกชั้น) · audit crm.portal.revoke เหตุผล "ออกจากบริษัท"
+    const revoked = await revokePortalOfLinkInTx(tx, ctx.tenantId, link.companyId, link.contactId, ctx.actorUserId, LEFT_COMPANY, now);
+    // ◂ CRM C5.4-B
+    return { affected: [], changed: true, before: { role: link.role, isPrimary: link.isPrimary }, after: { endedAt: "now", ...(revoked ? { portalRevoked: revoked } : {}) } };
   });
   return { ok: true };
 }
@@ -1556,6 +1577,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
         await tx.crmCompanyContact.update({ where: { id: l.id }, data: { endedAt: now, isPrimary: false } });
         moved.contactsDeduped += 1;
       } else if (kl) {
+        if (kl.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, kl.companyId, kl.contactId, ctx.actorUserId, REOPENED, now); // hunter H1
         await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: now, role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: false } });
         await tx.crmCompanyContact.update({ where: { id: l.id }, data: { endedAt: now, isPrimary: false } });
         moved.contacts += 1;
@@ -2097,6 +2119,7 @@ export async function linkContactInTx(
       isPrimary = changed = true;
     }
   } else if (link) {
+    if (link.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, companyId, contactId, ctx.actorUserId, REOPENED, now); // hunter H1
     await tx.crmCompanyContact.update({ where: { id: link.id }, data: { endedAt: null, startedAt: now, isPrimary: asPrimary, jobTitle: link.jobTitle ?? jobTitle ?? null } });
     isPrimary = asPrimary;
     created = changed = true;
@@ -2138,7 +2161,8 @@ export async function transferContactLinksInTx(tx: Tx, ctx: CompaniesCtx, fromCo
     const kl = kBy.get(l.companyId);
     if (kl) {
       if (kl.endedAt && !l.endedAt) {
-        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: l.startedAt ?? now, role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: l.isPrimary } });
+        if (kl.endedAt) await revokePortalOfLinkInTx(tx, ctx.tenantId, kl.companyId, kl.contactId, ctx.actorUserId, REOPENED, now); // hunter H1
+        await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { endedAt: null, startedAt: kl.endedAt ? now : (l.startedAt ?? now), role: l.role, jobTitle: l.jobTitle ?? kl.jobTitle, isPrimary: l.isPrimary } });
       } else if (!kl.endedAt && !l.endedAt && l.isPrimary && !kl.isPrimary) {
         // บทบาทชน: แถวของคนที่เก็บไว้ชนะ แต่ถ้าแถวที่ถูกลบเป็น "ผู้ติดต่อหลัก" — บริษัทต้องไม่เสียผู้ติดต่อหลัก ⇒ ยกธงหลักให้แถวที่เหลือ
         await tx.crmCompanyContact.update({ where: { id: kl.id }, data: { isPrimary: true } });
