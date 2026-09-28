@@ -138,11 +138,14 @@ export type DuplicateHit = { contactId: string; name: string; reason: "PHONE" | 
 export class ContactsError extends Error {
   readonly code: ContactsErrorCode;
   readonly duplicates?: DuplicateHit[];
-  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[] } = {}) {
+  /** C4.3-fix part 2 ▸ ช่องที่ข้อความเป็นของ (fieldErrors key เช่น `cf:<fieldKey>`) ◂ */
+  readonly field?: string;
+  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[]; field?: string } = {}) {
     super(message);
     this.name = "ContactsError";
     this.code = code;
     if (extra.duplicates) this.duplicates = extra.duplicates;
+    if (extra.field) this.field = extra.field;
   }
 }
 
@@ -342,6 +345,20 @@ export function nameProblem(raw: unknown, label: string, required: boolean): str
 }
 
 /** เบอร์โทร: รูปแบบตัวอักษร (ตัวตรวจเดียวกับบริษัท) + จำนวนหลัก 9–15 */
+/**
+ * C5.4 (L6-m7 · มติผู้คุมงานรอบ 2): เบอร์ที่ฟอร์ม v1/ฟอร์มสาธารณะรับมาแต่รูปแบบไม่ผ่าน (เช่นมีเบอร์ต่อ "… ต่อ 12" หรือไม่ครบหลัก)
+ * **ไม่เข้าคอลัมน์ `phone`** (คอลัมน์นั้นต้องเป็นเบอร์ที่ถูกต้องเสมอ — สะพาน/ตัวจับซ้ำ/หน้าแก้ไข v2 พึ่งมัน) แต่เก็บตามที่กรอกไว้ในโน้ต
+ * ด้วยหัวข้อนี้ ⇒ จอ v1 (`CrmContactsSection`) อ่านกลับมาแสดงแทน/ข้างเบอร์ เหมือนก่อนมี C1.x
+ */
+export const LEGACY_NOTE_PREFIX = "ข้อมูลติดต่อจากฟอร์มที่รูปแบบยังไม่ถูกต้อง (เก็บตามที่กรอก) — ";
+export function legacyTypedPhone(note: string | null | undefined): string | null {
+  // hunter H5: พนักงานเขียนโน้ตต่อท้ายได้ (บรรทัดใหม่) ⇒ อ่านเฉพาะบรรทัดแรกที่ระบบเขียนไว้
+  const n = String(note ?? "").split(/\r?\n/, 1)[0] ?? "";
+  if (!n.startsWith(LEGACY_NOTE_PREFIX)) return null;
+  const m = /(?:^|\s)เบอร์: (.+?)(?: · อีเมล: |$)/.exec(n.slice(LEGACY_NOTE_PREFIX.length));
+  return m?.[1]?.trim() || null;
+}
+
 export function contactPhoneProblem(raw: string | null | undefined): string | null {
   const p = String(raw ?? "").trim();
   if (!p) return null;

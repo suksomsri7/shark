@@ -61,7 +61,7 @@ Conventions that apply to every operation:
 13. Rate limits are per key and per class: 600 reads and 600 writes per minute, 60 reports per minute. A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 14. Operations under `/me` belong to the customer themself (the LIFF and in-app self-service lane). They need a customer session token, which starts with `cs_` and is sent the same way: `Authorization: Bearer cs_...`. A shop API key calling them gets 401 `customer_session_required` and no scope opens that lane; the mirror also holds, a customer session calling any other path gets 403 `customer_scope`.
 15. Some list operations can also render CSV: send `Accept: text/csv` and, when the operation lists `text/csv` under its 200 response, you get `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment` instead of the JSON envelope. Every cell is safe against spreadsheet formula injection.
-16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `campaign.sent`, `review.requested`, `review.received`, `review.replied`, `referral.joined`, `referral.converted`, `member.erased`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
+16. Outgoing webhooks. The shop can subscribe an endpoint to any of these events: `member.created`, `member.updated`, `member.merged`, `member.identity.linked`, `member.tier.changed`, `member.tier.at_risk`, `member.consent.changed`, `point.earned`, `point.burned`, `point.expiring`, `point.expired`, `point.transferred`, `giftcard.sold`, `giftcard.used`, `stamp.added`, `stamp.completed`, `stamp.expired`, `reward.redeemed`, `reward.fulfilled`, `voucher.issued`, `voucher.used`, `voucher.expiring`, `voucher.expired`, `member.birthday.upcoming`, `member.inactive`, `member.tier.review_due`, `campaign.sent`, `review.requested`, `review.received`, `review.replied`, `referral.joined`, `referral.converted`, `member.erased`, `member.sensitive.viewed`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ id, type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once (5 retries), so handlers must be idempotent. `id` (also sent as header `X-Shark-Event-Id`) is the event id and stays the same on every retry of that event - use it to drop duplicates. Redirects (3xx) are not followed and count as a failed delivery: register the final URL. Full list with one example body per event: docs/api/MEMBER-API.md, section Webhooks.
 17. Operations under `/join/{tenantSlug}` are the public signup lane used by the shop's signup page and app: no API key, no customer session, rate limited per network, `Idempotency-Key` optional. The flow is form -> start (one time code) -> verify -> complete; verify and complete hand back a customer session `cs_...` that works on `/me` right away. The phone or email of a new member always comes from the verified code, never from the body.
 18. Every answer uses the same envelope, including creations: HTTP 200 and the created record in `data` (there is no 201).
 
@@ -3918,11 +3918,13 @@ Every event below fires wherever the change came from - a person at the counter,
 | --- | --- |
 | `X-Shark-Event` | The event type, for example `member.tier.changed`. |
 | `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |
+| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |
 
-The body is always the same three fields:
+The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.tier.changed",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -3953,7 +3955,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
   if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
     return { status: 401 };
   }
-  const event = JSON.parse(rawBody.toString("utf8")) as { type: string; payload: unknown; sentAt: string };
+  const event = JSON.parse(rawBody.toString("utf8")) as { id: string; type: string; payload: unknown; sentAt: string };
   // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.
   void enqueue(event);
   return { status: 200 };
@@ -4005,6 +4007,7 @@ A member was registered, whichever way it happened (a form at the counter, this 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.created",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4022,6 +4025,7 @@ A member's details changed. `changedKeys` names the fields that moved, so a hand
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.updated",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4040,6 +4044,7 @@ Two records turned out to be the same person and were merged. Everything now han
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.merged",
   "payload": {
     "keepId": "cmf1cus0001",
@@ -4055,6 +4060,7 @@ An outside channel account (a LINE user, a WhatsApp number, a marketplace buyer)
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.identity.linked",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4073,6 +4079,7 @@ A member moved to another tier: the review promoted or demoted them, somebody se
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.tier.changed",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4090,6 +4097,7 @@ A member has not met the keep rule of their tier and will lose it at the next re
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.tier.at_risk",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4107,6 +4115,7 @@ A member agreed to, or withdrew consent for, being contacted through one channel
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.consent.changed",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4125,6 +4134,7 @@ A member earned points, from a sale, an event bonus or a hand written credit. `l
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "point.earned",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4144,6 +4154,7 @@ Points were spent: taken off a bill, exchanged for a reward, or transferred away
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "point.burned",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4162,6 +4173,7 @@ A lot is about to expire. Fires once per lot per reminder day the shop configure
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "point.expiring",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4180,6 +4192,7 @@ A lot expired and the points are gone. Sent by the nightly job, once per lot.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "point.expired",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4196,6 +4209,7 @@ A member sent points to another member of the same shop, confirmed with a one ti
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "point.transferred",
   "payload": {
     "fromCustomerId": "cmf1cus0001",
@@ -4214,6 +4228,7 @@ A gift card was sold. From this moment the amount is money the shop owes, not re
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "giftcard.sold",
   "payload": {
     "giftCardId": "cmf1gcd0001",
@@ -4233,6 +4248,7 @@ A gift card paid for part or all of a bill.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "giftcard.used",
   "payload": {
     "giftCardId": "cmf1gcd0001",
@@ -4251,6 +4267,7 @@ A member collected one or more stamps on a card.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "stamp.added",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4271,6 +4288,7 @@ A card filled up and its reward was paid out. `rewardKind` says what the member 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "stamp.completed",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4293,6 +4311,7 @@ A member exchanged points or stamps for a reward. Nothing has been handed over y
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "reward.redeemed",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4309,6 +4328,7 @@ The reward was actually handed to the member at the counter.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "reward.fulfilled",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4325,6 +4345,7 @@ A voucher was issued to a member. `origin` says why, which is what the campaign 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "voucher.issued",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4345,6 +4366,7 @@ A voucher was spent on a bill or an appointment. `discountSatang` is what it act
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "voucher.used",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4364,6 +4386,7 @@ A voucher is close to its expiry date (7 days out, then 1 day out, by Thai calen
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "voucher.expiring",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4383,6 +4406,7 @@ A voucher expired unused.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "voucher.expired",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4400,6 +4424,7 @@ Daily, for each member whose birthday is exactly `daysBefore` Thai calendar days
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.birthday.upcoming",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4416,6 +4441,7 @@ Daily, for each member with no purchase or booking for at least `days` days (mem
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.inactive",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4432,6 +4458,7 @@ Daily, for each member whose tier review date is exactly `daysBefore` Thai calen
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.tier.review_due",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4448,6 +4475,7 @@ A campaign finished a sending round. `sent` counts messages delivered in that ro
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "campaign.sent",
   "payload": {
     "campaignId": "cmf1cmp0001",
@@ -4469,6 +4497,7 @@ A member was asked to review a bill or an appointment. `sent` is false when the 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "review.requested",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4487,6 +4516,7 @@ A member sent a review. `escalated` is true when the rating was at or below the 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "review.received",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4506,6 +4536,7 @@ The shop replied to a review, or edited its reply (`edited: true`).
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "review.replied",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4523,6 +4554,7 @@ A friend signed up with a member's referral code. `customerId` is the referrer.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "referral.joined",
   "payload": {
     "referrerId": "cmf1cus0001",
@@ -4541,6 +4573,7 @@ A referral met the programme's condition (signup or first purchase) and both sid
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "referral.converted",
   "payload": {
     "referrerId": "cmf1cus0001",
@@ -4569,6 +4602,7 @@ A member's personal data was erased under PDPA (their own request, an approved e
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.erased",
   "payload": {
     "customerId": "cmf1cus0001",
@@ -4584,6 +4618,7 @@ Somebody opened sensitive member data (a health note, an emergency contact). The
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "member.sensitive.viewed",
   "payload": {
     "customerId": "cmf1cus0001",

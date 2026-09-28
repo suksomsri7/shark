@@ -37,10 +37,11 @@ import {
   type UpdateDealInput,
 } from "./deals";
 import { contactOptions } from "./contacts";
-import { DealsError, type DealDto, type DealLineInput, type DealListInput } from "./deals-shared";
+import { DEAL_NOTE_MAX, DEAL_TITLE_MAX, DealsError, type DealDto, type DealLineInput, type DealListInput } from "./deals-shared";
+import { blank, withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
-type Fail = { ok: false; error: string; code?: string; missing?: string[] };
+type Fail = { ok: false; error: string; code?: string; missing?: string[]; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -78,7 +79,13 @@ export async function createDealAction(systemId: string, input: CreateDealInput)
     touch(systemId);
     return { ok: true, id: d.id };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (key = ชื่อช่องของ NewDealForm) ◂
+    const title = typeof input?.title === "string" ? input.title.trim() : "";
+    return withFieldError(failOf(e), {
+      title: !title || title.length > DEAL_TITLE_MAX,
+      contact: blank(input?.contactId),
+      nextStep: typeof input?.nextStep === "string" && input.nextStep.trim().length > DEAL_NOTE_MAX,
+    });
   }
 }
 

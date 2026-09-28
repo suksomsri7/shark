@@ -1741,10 +1741,14 @@ async function fetchLinkedAttachment(
   deps?: EmailDeps,
 ): Promise<InboundFile | null> {
   try {
-    const { webhookTargetProblem } = await import("@/lib/webhooks/service");
-    if (await webhookTargetProblem(item.url)) return null;
-    const doFetch = deps?.fetch ?? fetch;
-    const res = await doFetch(item.url, { method: "GET", redirect: "manual", signal: AbortSignal.timeout(ATTACH_FETCH_TIMEOUT_MS) });
+    // C5.4 (L4-M2): ตัวส่งตัวเดียวของแพลตฟอร์ม — ตรวจปลายทาง · ตรึง IP ตอนต่อ (ปิด DNS rebinding/DNS ช้า) · ไม่ตาม 3xx ·
+    //   เพดานขนาดอ่านที่ชั้นเชื่อมต่อ (ไม่ต้องเชื่อ content-length) · ฉีด `deps.fetch` ได้เหมือนเดิม (ข้อสอบ)
+    const { outboundFetch } = await import("@/lib/webhooks/service");
+    const res = await outboundFetch(
+      item.url,
+      { method: "GET", timeoutMs: ATTACH_FETCH_TIMEOUT_MS, maxBytes: CRM_EMAIL_ATTACH_MAX_BYTES },
+      deps?.fetch ? { fetch: deps.fetch } : undefined,
+    );
     if (!res.ok) return null;
     const declared = Number(res.headers.get("content-length") ?? "0");
     if (Number.isFinite(declared) && declared > CRM_EMAIL_ATTACH_MAX_BYTES) return null;

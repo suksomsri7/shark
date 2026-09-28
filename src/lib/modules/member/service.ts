@@ -6,6 +6,7 @@ import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.7): findOrCreate คือทางเข้าที่แชท (maybeAutoLinkMember)
 // เรียกอยู่แล้ว ⇒ hook ที่นี่พอ ครอบคลุมแชทโดยไม่ต้องแตะ chat/** · เรียกผ่าน facade เท่านั้น (F2.2)
 import * as party from "@/lib/modules/party";
+import { MemberConflictError, MemberForbiddenError } from "./errors";
 
 // Member (แกนกลาง CRM) — service ที่โมดูลอื่นเรียก (contract 2.6/2.7)
 // รับ client optional เพื่อ join transaction ของผู้เรียก (Booking/POS)
@@ -502,10 +503,26 @@ export async function findCustomerByPartyId(
  * อ่านอย่างเดียว · 1 query · จำกัด 5 แถว (แค่พอโชว์การ์ดให้คนกดยืนยัน ไม่ใช่หน้ารายชื่อ)
  * เส้น import account→member อนุมัติไว้แล้วใน fitness.mts (WO 3.2)
  */
+/**
+ * C5.4 (hunter H2) — "ใครถาม" ของทางที่โมดูลอื่น (บัญชี) อ่าน/ผูกสมาชิก · **fail-closed** (กระจกของ `CrmLinkViewer` ฝั่ง CRM)
+ *   - `MemberActor` = คน/คีย์ของทางที่กดได้ ⇒ อ่าน: `canReadMember` + มองเห็นตามขอบเขตสาขา (`briefFor`) · ผูก: `member.customer.update` + มองเห็น
+ *   - `null` หรือ **ไม่ส่ง** = ไม่มีสิทธิ์ฝั่งสมาชิก ⇒ ไม่มีแถว / ผูกไม่ได้ · `"system"` = งานระบบที่ต้องประกาศชัด ๆ
+ */
+export type MemberLinkViewer = import("./access").MemberActor | "system" | null;
+
+async function visibleCustomerIds(tenantId: string, memberSystemId: string, viewer: import("./access").MemberActor, ids: string[]): Promise<Set<string>> {
+  const { canReadMember } = await import("./access");
+  if (!canReadMember(viewer) || ids.length === 0) return new Set();
+  const { briefFor } = await import("./profile"); // dynamic: profile → service (uniqueMemberCode) = วง import
+  const briefs = await briefFor({ tenantId, systemId: memberSystemId, actorUserId: viewer.userId || null }, viewer, ids);
+  return new Set(briefs.map((b) => b.id));
+}
+
 export async function findCustomersForLink(
   tenantId: string,
   memberSystemId: string,
   keys: { phoneVariants?: string[]; email?: string | null; partyId?: string | null },
+  viewer?: MemberLinkViewer,
 ): Promise<
   { id: string; memberCode: string | null; name: string | null; phone: string | null; email: string | null; partyId: string | null }[]
 > {
@@ -515,12 +532,16 @@ export async function findCustomersForLink(
   if (keys.email?.trim()) or.push({ email: { equals: keys.email.trim(), mode: "insensitive" } });
   if (keys.partyId) or.push({ partyId: keys.partyId });
   if (or.length === 0) return [];
-  return tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
+  if (viewer === undefined || viewer === null) return []; // C5.4 (H2): fail-closed
+  const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
     where: { OR: or },
     select: { id: true, memberCode: true, name: true, phone: true, email: true, partyId: true },
     orderBy: { createdAt: "asc" },
     take: 5,
   });
+  if (viewer === "system") return rows;
+  const visible = await visibleCustomerIds(tenantId, memberSystemId, viewer, rows.map((r) => r.id));
+  return rows.filter((r) => visible.has(r.id));
 }
 
 /**
@@ -533,12 +554,30 @@ export async function setCustomerPartyId(
   memberSystemId: string,
   customerId: string,
   partyId: string,
+  viewer?: MemberLinkViewer,
 ): Promise<boolean> {
-  const res = await tenantDb({ tenantId, systemId: memberSystemId }).customer.updateMany({
-    where: { id: customerId },
-    data: { partyId },
-  });
-  return res.count > 0;
+  // C5.4 (hunter H2) — กระจกของ CRM `setContactPartyId`: สิทธิ์ `member.customer.update` + มองเห็น (มองไม่เห็น = false เหมือนไม่มี) ·
+  //   ไม่เขียนทับ Party อื่น (หลังตามสายการรวม) = MemberConflictError · เขียนแบบมีเงื่อนไขบน partyId ที่อ่านมา
+  if (viewer === undefined || viewer === null) throw new MemberForbiddenError();
+  const db = tenantDb({ tenantId, systemId: memberSystemId });
+  const row = await db.customer.findFirst({ where: { id: customerId }, select: { id: true, partyId: true } });
+  if (!row) return false;
+  if (viewer !== "system") {
+    if (!(await visibleCustomerIds(tenantId, memberSystemId, viewer, [customerId])).has(customerId)) return false;
+    const { hasMemberPerm } = await import("./access");
+    if (!hasMemberPerm(viewer, "member.customer.update")) {
+      throw new MemberForbiddenError("บัญชีนี้ยังไม่ได้รับสิทธิ์ \"แก้ไขข้อมูลสมาชิก\" — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง");
+    }
+  }
+  const conflict = () =>
+    new MemberConflictError("สมาชิกรายนี้ผูกกับบุคคลอื่นอยู่แล้ว ระบบจึงไม่ผูกทับให้ — ถ้าเป็นคนเดียวกันจริง ให้รวมรายชื่อซ้ำก่อน แล้วค่อยเชื่อมอีกครั้ง");
+  if (row.partyId && row.partyId !== partyId) {
+    const [have, want] = await Promise.all([party.resolveCanonical(tenantId, row.partyId), party.resolveCanonical(tenantId, partyId)]);
+    if (have !== want) throw conflict();
+  }
+  const res = await db.customer.updateMany({ where: { id: customerId, partyId: row.partyId }, data: { partyId } });
+  if (res.count === 0) throw conflict();
+  return true;
 }
 
 export async function getProfile(tenantId: string, id: string) {

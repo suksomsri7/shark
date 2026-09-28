@@ -311,7 +311,7 @@ const VERIFY_SAMPLE = [
   "  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {",
   "    return { status: 401 };",
   "  }",
-  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { type: string; payload: unknown; sentAt: string };",
+  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { id: string; type: string; payload: unknown; sentAt: string };",
   "  // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.",
   "  void enqueue(event);",
   "  return { status: 200 };",
@@ -335,11 +335,12 @@ function webhookSection(): string[] {
     "| --- | --- |",
     "| `X-Shark-Event` | The event type, for example `account.document.issued`. |",
     "| `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |",
+    "| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |",
     "",
-    "The body is always the same three fields:",
+    "The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):",
     "",
     "```json",
-    JSON.stringify({ type: "account.document.issued", payload: { documentId: "cmf1doc0001" }, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2),
+    JSON.stringify({ id: "cmf1evt0001", type: "account.document.issued", payload: { documentId: "cmf1doc0001" }, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2),
     "```",
     "",
     "`payload` never contains your shop id or accounting book id: the endpoint already belongs to one shop. Money fields are integers of satang and end in `Satang`, calendar dates are `YYYY-MM-DD` (UTC+7) and instants are ISO-8601 UTC ending in `At` - the same conventions as the REST API.",
@@ -367,7 +368,7 @@ function webhookSection(): string[] {
   for (const e of accountEvents) {
     const doc = WEBHOOK_EVENT_DOCS[e.value];
     if (!doc) continue;
-    out.push(`#### \`${e.value}\``, "", doc.when, "", "```json", JSON.stringify({ type: e.value, payload: doc.payload, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2), "```", "");
+    out.push(`#### \`${e.value}\``, "", doc.when, "", "```json", JSON.stringify({ id: "cmf1evt0001", type: e.value, payload: doc.payload, sentAt: "2026-09-05T09:15:00.000Z" }, null, 2), "```", "");
   }
   return out;
 }

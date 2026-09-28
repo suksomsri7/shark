@@ -445,10 +445,11 @@ try {
   // ── the four re-exported READ functions, through the facade vs straight from crm/service ──
   const keys = { phoneVariants: [PHONE], email: EMAIL, partyId: pty.id };
   const pairs: { id: string; fn: string; name: string; viaFacade: Any; viaDirect: Any; sorted?: boolean }[] = [
-    { id: "C0.2-S3.1", fn: "findContactByPartyId", name: "findContactByPartyId(ctx, partyId) — account contact-profile.ts:598 (the \"CRM\" card)", viaFacade: await facade.findContactByPartyId(ctx, pty.id), viaDirect: await svc.findContactByPartyId(ctx, pty.id) },
-    { id: "C0.2-S3.2", fn: "findContactsForLink", name: "findContactsForLink(ctx, {phoneVariants,email,partyId}) — account contact-links.ts:77 (the \"same person?\" block)", viaFacade: await facade.findContactsForLink(ctx, keys), viaDirect: await svc.findContactsForLink(ctx, keys), sorted: true },
-    { id: "C0.2-S3.3", fn: "listPartyIdsWithContact", name: "listPartyIdsWithContact(ctx, partyIds) — account contacts-list.ts:210 (the \"CRM\" badge; returns a Set)", viaFacade: await facade.listPartyIdsWithContact(ctx, [pty.id]), viaDirect: await svc.listPartyIdsWithContact(ctx, [pty.id]) },
-    { id: "C0.2-S3.4", fn: "findLatestDealForContact", name: "findLatestDealForContact(ctx, contactId) — account contact-profile.ts:604 (the latest deal line)", viaFacade: await facade.findLatestDealForContact(ctx, fx.id), viaDirect: await svc.findLatestDealForContact(ctx, fx.id) },
+    // ORACLE-EDIT S3.1–S3.4 (C5.4-A round 2 · fail-closed viewer): the facade reads/writes now return nothing / refuse without a viewer — the system caller passes "system" explicitly; assertions unchanged
+    { id: "C0.2-S3.1", fn: "findContactByPartyId", name: "findContactByPartyId(ctx, partyId) — account contact-profile.ts:598 (the \"CRM\" card)", viaFacade: await facade.findContactByPartyId(ctx, pty.id, "system"), viaDirect: await svc.findContactByPartyId(ctx, pty.id, "system") },
+    { id: "C0.2-S3.2", fn: "findContactsForLink", name: "findContactsForLink(ctx, {phoneVariants,email,partyId}) — account contact-links.ts:77 (the \"same person?\" block)", viaFacade: await facade.findContactsForLink(ctx, keys, "system"), viaDirect: await svc.findContactsForLink(ctx, keys, "system"), sorted: true },
+    { id: "C0.2-S3.3", fn: "listPartyIdsWithContact", name: "listPartyIdsWithContact(ctx, partyIds) — account contacts-list.ts:210 (the \"CRM\" badge; returns a Set)", viaFacade: await facade.listPartyIdsWithContact(ctx, [pty.id], "system"), viaDirect: await svc.listPartyIdsWithContact(ctx, [pty.id], "system") },
+    { id: "C0.2-S3.4", fn: "findLatestDealForContact", name: "findLatestDealForContact(ctx, contactId) — account contact-profile.ts:604 (the latest deal line)", viaFacade: await facade.findLatestDealForContact(ctx, fx.id, "system"), viaDirect: await svc.findLatestDealForContact(ctx, fx.id, "system") },
   ];
   for (const p of pairs) {
     const a = p.sorted ? byId(p.viaFacade) : p.viaFacade;
@@ -476,10 +477,11 @@ try {
   let seedSame = true;
   if (seedPartyIds.length > 0) {
     seedSame =
-      eq(await facade.listPartyIdsWithContact(ctx, seedPartyIds), await svc.listPartyIdsWithContact(ctx, seedPartyIds)) &&
-      eq(await facade.findContactByPartyId(ctx, seedPartyIds[0]), await svc.findContactByPartyId(ctx, seedPartyIds[0])) &&
-      eq(byId(await facade.findContactsForLink(ctx, { partyId: seedPartyIds[0] })), byId(await svc.findContactsForLink(ctx, { partyId: seedPartyIds[0] }))) &&
-      eq(await facade.findLatestDealForContact(ctx, seedRows[0].id), await svc.findLatestDealForContact(ctx, seedRows[0].id));
+      // ORACLE-EDIT S3.6 (C5.4-A round 2 · fail-closed viewer): the facade reads/writes now return nothing / refuse without a viewer — the system caller passes "system" explicitly; assertions unchanged
+      eq(await facade.listPartyIdsWithContact(ctx, seedPartyIds, "system"), await svc.listPartyIdsWithContact(ctx, seedPartyIds, "system")) &&
+      eq(await facade.findContactByPartyId(ctx, seedPartyIds[0], "system"), await svc.findContactByPartyId(ctx, seedPartyIds[0], "system")) &&
+      eq(byId(await facade.findContactsForLink(ctx, { partyId: seedPartyIds[0] }, "system")), byId(await svc.findContactsForLink(ctx, { partyId: seedPartyIds[0] }, "system"))) &&
+      eq(await facade.findLatestDealForContact(ctx, seedRows[0].id, "system"), await svc.findLatestDealForContact(ctx, seedRows[0].id, "system"));
   }
   chk(
     "C0.2-S3.6",
@@ -508,8 +510,9 @@ try {
     "identical projection + party linked",
     `facade=${cut(j(pick(rowF)), 150)} direct=${cut(j(pick(rowD)), 150)}`,
   );
-  const setF = await facade.setContactPartyId(ctx, viaF.id, pty.id);
-  const setD = await svc.setContactPartyId(ctx, viaD.id, pty.id);
+  // ORACLE-EDIT S3.8 (C5.4-A round 2 · fail-closed viewer): the facade reads/writes now return nothing / refuse without a viewer — the system caller passes "system" explicitly; assertions unchanged
+  const setF = await facade.setContactPartyId(ctx, viaF.id, pty.id, "system");
+  const setD = await svc.setContactPartyId(ctx, viaD.id, pty.id, "system");
   const afterF = await P.crmContact.findUnique({ where: { id: viaF.id }, select: { partyId: true } });
   const afterD = await P.crmContact.findUnique({ where: { id: viaD.id }, select: { partyId: true } });
   chk(
@@ -530,10 +533,11 @@ try {
   const foreignSys = otherSystem?.id ?? `${MARK}-no-such-system`;
 
   const probe = async (mod: Record<string, Any>, c: { tenantId: string; systemId: string }) => ({
-    byParty: await mod.findContactByPartyId(c, pty.id),
-    forLink: byId(await mod.findContactsForLink(c, keys)),
-    partyIds: await mod.listPartyIdsWithContact(c, [pty.id]),
-    latestDeal: await mod.findLatestDealForContact(c, fx.id),
+    // ORACLE-EDIT X1.1/X1.2 (C5.4-A round 2 · fail-closed viewer): the facade reads/writes now return nothing / refuse without a viewer — the system caller passes "system" explicitly; assertions unchanged
+    byParty: await mod.findContactByPartyId(c, pty.id, "system"),
+    forLink: byId(await mod.findContactsForLink(c, keys, "system")),
+    partyIds: await mod.listPartyIdsWithContact(c, [pty.id], "system"),
+    latestDeal: await mod.findLatestDealForContact(c, fx.id, "system"),
   });
   const emptyish = (r: Any) => r.byParty === null && Array.isArray(r.forLink) && r.forLink.length === 0 && r.partyIds instanceof Set && r.partyIds.size === 0 && r.latestDeal === null;
 
@@ -555,8 +559,9 @@ try {
     "empty through both paths",
     `facade=${cut(j(xSysF), 140)} direct=${cut(j(xSysD), 140)}`,
   );
-  const wF = await facade.setContactPartyId({ tenantId: foreignTid, systemId: SYS }, fx.id, pty.id);
-  const wD = await svc.setContactPartyId({ tenantId: tid, systemId: foreignSys }, fx.id, pty.id);
+  // ORACLE-EDIT X1.3 (C5.4-A round 2 · fail-closed viewer): the facade reads/writes now return nothing / refuse without a viewer — the system caller passes "system" explicitly; assertions unchanged
+  const wF = await facade.setContactPartyId({ tenantId: foreignTid, systemId: SYS }, fx.id, pty.id, "system");
+  const wD = await svc.setContactPartyId({ tenantId: tid, systemId: foreignSys }, fx.id, pty.id, "system");
   const fxAfter = await P.crmContact.findUnique({ where: { id: fx.id }, select: { partyId: true, tenantId: true, systemId: true } });
   chk(
     "C0.2-X1.3",

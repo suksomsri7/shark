@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { archivePipelineAction, createPipelineAction, restorePipelineAction, updatePipelineAction } from "@/lib/modules/crm/pipelines-actions";
 import { DEAL_REASON_MIN, type PipelineDto } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Row = PipelineDto & { openDeals: number };
 
@@ -43,6 +44,8 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [modalErr, setModalErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // C4.3-fix part 2 ▸ ฟอร์มสร้าง: ข้อความใต้ช่องชื่อ + โฟกัส (pl-msg คงไว้สำหรับผลของปุ่มในแถว/ผลสำเร็จ) ◂
+  const fe = useFieldErrors(["name"] as const);
 
   const run = async (f: () => Promise<{ ok: true } | { ok: false; error: string }>, okText: string) => {
     setBusy(true);
@@ -114,9 +117,16 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
         className="card flex flex-col gap-2 p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!newName.trim()) return setMsg({ ok: false, text: "ใส่ชื่อ pipeline ก่อน" });
-          void run(() => createPipelineAction(systemId, { name: newName.trim(), stages: TEMPLATES[tpl]!.stages }), "สร้าง pipeline แล้ว").then((ok) => {
-            if (ok) setNewName("");
+          setMsg(null);
+          if (fe.show({ name: !newName.trim() ? "ใส่ชื่อ pipeline ก่อน" : undefined })) return;
+          setBusy(true);
+          void createPipelineAction(systemId, { name: newName.trim(), stages: TEMPLATES[tpl]!.stages }).then((r) => {
+            setBusy(false);
+            if (r.ok) {
+              setNewName("");
+              setMsg({ ok: true, text: "สร้าง pipeline แล้ว" });
+              router.refresh();
+            } else if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
           });
         }}
         data-testid="pl-new-form"
@@ -125,7 +135,18 @@ export function PipelineSettings({ systemId, pipelines }: { systemId: string; pi
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อ</span>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} className="input text-sm" placeholder="เช่น ขายองค์กร (B2B)" data-testid="pl-new-name" />
+            <input
+              {...fe.field("name")}
+              value={newName}
+              onChange={(e) => {
+                setNewName(e.target.value);
+                fe.clear("name");
+              }}
+              className="input text-sm"
+              placeholder="เช่น ขายองค์กร (B2B)"
+              data-testid="pl-new-name"
+            />
+            <FieldError id={fe.errorId("name")} message={fe.errors.name} testid="pl-new-name-error" />
           </label>
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ขั้นตั้งต้น (แก้ทีหลังได้)</span>

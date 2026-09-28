@@ -9,6 +9,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { contactCompaniesAction, createDealAction, searchDealContactsAction } from "@/lib/modules/crm/deals-actions";
 import { DEAL_TITLE_MAX, FORECAST_CATEGORIES, FORECAST_CATEGORY_LABEL, bahtTextToSatang, type PipelineDto } from "@/lib/modules/crm/deals-shared";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
+
+// C4.3-fix part 2 ▸ ลำดับช่องบนจอ (โฟกัสช่องแรกที่ผิด) ◂
+const DEAL_FIELDS = ["title", "contact", "pipeline", "value", "nextStep"] as const;
 
 type Opt = { id: string; name: string };
 
@@ -51,7 +55,7 @@ export function NewDealForm({
   const [owner, setOwner] = useState(defaultOwner);
   const [category, setCategory] = useState<string>("PIPELINE");
   const [nextStep, setNextStep] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const fe = useFieldErrors(DEAL_FIELDS);
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const seq = useRef(0);
@@ -87,15 +91,14 @@ export function NewDealForm({
   }, [contactId, systemId]);
 
   const submit = async () => {
-    const e: Record<string, string> = {};
+    const e: Partial<Record<(typeof DEAL_FIELDS)[number], string>> = {};
     if (!title.trim()) e.title = "ใส่ชื่อดีลก่อน";
     if (title.trim().length > DEAL_TITLE_MAX) e.title = `ชื่อดีลยาวเกิน ${DEAL_TITLE_MAX} ตัวอักษร`;
     if (!contactId) e.contact = "เลือกผู้ติดต่อก่อน";
     if (!pipe) e.pipeline = "ยังไม่มี pipeline — สร้างที่หน้าตั้งค่า pipeline ก่อน";
     const v = bahtTextToSatang(value);
     if (v === null) e.value = "มูลค่าต้องเป็นตัวเลข (บาท) ทศนิยมไม่เกิน 2 ตำแหน่ง";
-    setErrors(e);
-    if (Object.keys(e).length > 0 || !pipe || v === null) return;
+    if (fe.show(e) || !pipe || v === null) return;
     setBusy(true);
     setServerError(null);
     const r = await createDealAction(systemId, {
@@ -111,11 +114,14 @@ export function NewDealForm({
       nextStep: nextStep.trim() || null,
     });
     setBusy(false);
-    if (!r.ok) return setServerError(r.error);
+    if (!r.ok) {
+      if (!fe.show(r.fieldErrors)) setServerError(r.error);
+      return;
+    }
     router.push(`/app/sys/${systemId}/crm/deals/${r.id}`);
   };
 
-  const err = (k: string) => (errors[k] ? <span className="text-xs text-[color:var(--color-danger)]">{errors[k]}</span> : null);
+  const err = (k: (typeof DEAL_FIELDS)[number]) => <FieldError id={fe.errorId(k)} message={fe.errors[k]} testid={`deal-new-${k}-error`} />;
 
   return (
     <form
@@ -128,7 +134,7 @@ export function NewDealForm({
     >
       <label className="flex flex-col gap-1 text-sm">
         <span>ชื่อดีล</span>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={DEAL_TITLE_MAX + 20} className="input text-sm" placeholder='เช่น "คอร์สดำน้ำพนักงาน 10 คน"' data-testid="deal-new-title" />
+        <input {...fe.field("title")} value={title} onChange={(e) => { setTitle(e.target.value); fe.clear("title"); }} maxLength={DEAL_TITLE_MAX + 20} className="input text-sm" placeholder='เช่น "คอร์สดำน้ำพนักงาน 10 คน"' data-testid="deal-new-title" />
         {err("title")}
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -137,7 +143,7 @@ export function NewDealForm({
             <span>ค้นหาผู้ติดต่อ</span>
             <input value={q} onChange={(e) => setQ(e.target.value)} className="input text-sm" placeholder="ชื่อ · เบอร์ · อีเมล" data-testid="deal-new-contact-q" />
           </label>
-          <select aria-label="ผู้ติดต่อหลัก" value={contactId} onChange={(e) => setContactId(e.target.value)} className="input text-sm" data-testid="deal-new-contact">
+          <select {...fe.field("contact")} aria-label="ผู้ติดต่อหลัก" value={contactId} onChange={(e) => { setContactId(e.target.value); fe.clear("contact"); }} className="input text-sm" data-testid="deal-new-contact">
             <option value="">— เลือกผู้ติดต่อหลัก —</option>
             {contacts.map((c) => (
               <option key={c.id} value={c.id}>
@@ -163,6 +169,7 @@ export function NewDealForm({
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           <span>pipeline</span>
           <select
+            {...fe.field("pipeline")}
             value={pipelineId}
             onChange={(e) => {
               setPipelineId(e.target.value);
@@ -192,7 +199,7 @@ export function NewDealForm({
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-sm">
           <span>มูลค่า (บาท · ก่อน VAT)</span>
-          <input value={value} onChange={(e) => setValue(e.target.value)} inputMode="decimal" className="input text-sm" placeholder="0" data-testid="deal-new-value" />
+          <input {...fe.field("value")} value={value} onChange={(e) => { setValue(e.target.value); fe.clear("value"); }} inputMode="decimal" className="input text-sm" placeholder="0" data-testid="deal-new-value" />
           {err("value")}
           <span className="text-xs text-[color:var(--color-muted)]">เพิ่มรายการสินค้าได้ที่หน้าดีล — มูลค่าจะคิดจากรายการอัตโนมัติ</span>
         </label>
@@ -223,7 +230,8 @@ export function NewDealForm({
       </div>
       <label className="flex flex-col gap-1 text-sm">
         <span>ขั้นถัดไป (ไม่บังคับ)</span>
-        <input value={nextStep} onChange={(e) => setNextStep(e.target.value)} className="input text-sm" placeholder="เช่น โทรนัดสาธิตวันพฤหัส" data-testid="deal-new-next-step" />
+        <input {...fe.field("nextStep")} value={nextStep} onChange={(e) => { setNextStep(e.target.value); fe.clear("nextStep"); }} className="input text-sm" placeholder="เช่น โทรนัดสาธิตวันพฤหัส" data-testid="deal-new-next-step" />
+        {err("nextStep")}
       </label>
       {serverError && (
         <p className="text-sm text-[color:var(--color-danger)]" role="alert" data-testid="deal-new-error">

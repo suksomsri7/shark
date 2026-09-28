@@ -47,6 +47,22 @@ export function objectKeyProblem(raw: unknown): string | null {
 }
 // ◂ CRM C1.9
 
+// C4.3-fix part 2 ▸ ตัวตรวจชื่อ/ฟิลด์ชื่อรายการ "ตัวเดียว" ของบริการ (objects.ts normalizeText/normalizeTitleFieldKey) + ฟอร์มตั้งค่า
+//   (ข้อความใต้ช่องก่อนส่ง) — ข้อความเดิมทุกตัวอักษร · ใช้ได้ = null
+export const OBJECT_TEXT_MAX = 120;
+export function objectTextProblem(raw: unknown, what: string, max = OBJECT_TEXT_MAX): string | null {
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return `ต้องตั้ง${what}ก่อนจึงบันทึกได้`;
+  if (text.length > max) return `${what}ยาวเกิน ${max} ตัวอักษร — ตั้งให้สั้นลง`;
+  return null;
+}
+export function titleFieldKeyProblem(raw: unknown): string | null {
+  const key = typeof raw === "string" ? raw.trim() : "";
+  if (!key || key.length > OBJECT_KEY_MAX || !OBJECT_KEY_RE.test(key)) return "เลือกฟิลด์ที่ใช้เป็นชื่อรายการ (ชื่ออ้างอิงของฟิลด์ เช่น \"plate\") ก่อนบันทึก";
+  return null;
+}
+// ◂ C4.3-fix part 2
+
 export type ObjectParentType = "CUSTOMER" | "CONTACT" | "COMPANY" | "DEAL" | "NONE";
 export const OBJECT_PARENT_TYPES: readonly ObjectParentType[] = ["CUSTOMER", "CONTACT", "COMPANY", "DEAL", "NONE"];
 export const OBJECT_PARENT_LABEL: Record<ObjectParentType, string> = {
@@ -126,10 +142,13 @@ const STATUS_OF: Record<ObjectsErrorCode, number> = { NOT_FOUND: 404, VALIDATION
 export class ObjectsError extends Error {
   readonly code: ObjectsErrorCode;
   readonly status: number;
-  constructor(code: ObjectsErrorCode, message: string) {
+  /** C4.3-fix part 2 ▸ ช่องที่ข้อความนี้เป็นของ (key ของช่องในฟอร์ม/ฟิลด์ของวัตถุ) — ฟอร์มแสดงใต้ช่องนั้น + โฟกัส ◂ */
+  readonly field?: string;
+  constructor(code: ObjectsErrorCode, message: string, field?: string) {
     super(message);
     this.name = "ObjectsError";
     this.code = code;
     this.status = STATUS_OF[code];
+    if (field) this.field = field;
   }
 }

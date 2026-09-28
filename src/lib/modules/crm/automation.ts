@@ -351,8 +351,9 @@ async function cleanAction(ctx: CrmAutomationCtx, raw: unknown, depth: number): 
     }
     case "WEBHOOK": {
       const url = need(str(p.url), "URL ปลายทาง");
-      const { webhookTargetProblem } = await import("@/lib/webhooks/service");
-      const problem = await webhookTargetProblem(url);
+      // C5.4 (L4-M2): ด่านตอนบันทึก (ที่อยู่ภายในถูกปฏิเสธทันที · ตอนยิงผ่าน outboundFetch ตรวจซ้ำ + ตรึง IP)
+      const { webhookSaveProblem } = await import("@/lib/webhooks/service");
+      const problem = await webhookSaveProblem(url);
       if (problem) throw fail("VALIDATION", `ส่ง webhook: ${problem}`);
       return { type, params: { url } };
     }
@@ -990,8 +991,9 @@ async function runCrmDomainAction(kind: string, params: Record<string, unknown>,
       case "WEBHOOK": {
         const url = str(params.url);
         // AUDIT-CLASS X6: ด่าน SSRF ตัวเดียวของระบบ — ตรวจซ้ำตอนยิง (แถวกฎที่ถูกแก้ตรงในฐานก็ยิงหาเครือข่ายภายในไม่ได้)
-        const { webhookTargetProblem } = await import("@/lib/webhooks/service");
-        const problem = await webhookTargetProblem(url);
+        //   C5.4 (L4-M2): ตัวส่งจริง (`postWebhook`) ผ่าน outboundFetch = ตรวจซ้ำตอนต่อ + ตรึง IP + ไม่ตาม 3xx
+        const { webhookSaveProblem } = await import("@/lib/webhooks/service");
+        const problem = await webhookSaveProblem(url);
         if (problem) return { i, type: kind, ok: false, note: `ไม่ได้ส่ง webhook — ${problem}` };
         // AUDIT-CLASS X8: เนื้อความมีแต่ id (ไม่มีชื่อ/เบอร์/อีเมล)
         await (env.deps.post ?? postWebhook)(url, {
@@ -1060,15 +1062,12 @@ async function crmVars(env: CrmEnv, _text: string): Promise<Record<string, strin
   return { ชื่อ: contactName(env.subject.contact), ดีล: env.subject.deal?.title ?? "" };
 }
 
+// C5.4 (L4-M2): ยิงผ่าน `outboundFetch` ตัวเดียวของแพลตฟอร์ม (ตรวจปลายทาง · ตรึง IP ตอนต่อ · ไม่ตาม 3xx)
 async function postWebhook(url: string, body: unknown): Promise<void> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000);
-  try {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal, redirect: "manual" });
-    if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
-  } finally {
-    clearTimeout(timer);
-  }
+  const { outboundFetch, redirectWarning } = await import("@/lib/webhooks/service");
+  const res = await outboundFetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), timeoutMs: 5000, maxBytes: 65_536 });
+  if (redirectWarning(res.status)) return; // C5.4 รอบ 2: 3xx = ส่งถึงแล้ว (ไม่ตาม · ไม่ลองซ้ำ)
+  if (!res.ok) throw new Error(`ปลายทางตอบรหัส ${res.status}`);
 }
 
 // ── ตัวส่งจริงปริยาย (ห้าม throw — คืน {ok:false} แทน) ──

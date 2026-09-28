@@ -99,7 +99,8 @@ const create = defineCrmOp({
     // AUDIT-CLASS X2: บริษัทใหม่ต้องลงในขอบเขตของคีย์ (ผู้ดูแล · ทีม — ตัวกรองทีมเดียว = ใช้ทีมนั้นให้)
     assertOwnerInFilter(actor, input.ownerUserId ?? actor.userId ?? null);
     const teamId = teamInFilter(actor, input.teamId ?? null);
-    const r = await companies.createCompany(crmCtxOf(actor), crmActorOf(actor), { ...input, ...(teamId !== undefined ? { teamId } : {}) });
+    // C4.3-fix part 2 · round 2 ▸ ผู้เรียก API = คนกรอก ⇒ ฟิลด์กำหนดเองที่ต้องกรอกบังคับเหมือนหน้าจอ ◂
+    const r = await companies.createCompany(crmCtxOf(actor), crmActorOf(actor), { ...input, ...(teamId !== undefined ? { teamId } : {}) }, { requireCustom: true });
     return { companyId: r.company.id, created: r.created, company: r.company, duplicateOf: r.duplicateOf, candidates: r.candidates.map((c) => ({ companyId: c.companyId, reason: c.reason })) };
   },
 });

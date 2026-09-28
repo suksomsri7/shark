@@ -23,10 +23,17 @@ import {
   type StageInput,
   type StagePatch,
 } from "./pipelines";
-import { DealsError } from "./deals-shared";
+import { DealsError, PIPELINE_NAME_MAX } from "./deals-shared";
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
+
+// C4.3-fix part 2 ▸ ชื่อที่บริการจะปฏิเสธ (cleanName ใน pipelines.ts: ตัดช่องว่างซ้ำ · ว่าง/ยาวเกิน) — ไว้ชี้ข้อความกลับไปที่ช่อง ◂
+const nameBad = (v: unknown, max: number): boolean => {
+  const t = typeof v === "string" ? v.trim().replace(/\s+/g, " ") : "";
+  return !t || t.length > max;
+};
 
 async function session(systemId: string) {
   const auth = await requireTenant();
@@ -59,7 +66,7 @@ export async function createPipelineAction(systemId: string, input: { name: stri
     touch(systemId);
     return { ok: true, id: p.id };
   } catch (e) {
-    return failOf(e);
+    return withFieldError(failOf(e), { name: nameBad(input?.name, PIPELINE_NAME_MAX) });
   }
 }
 
@@ -103,7 +110,11 @@ export async function addStageAction(systemId: string, pipelineId: string, input
     touch(systemId);
     return { ok: true };
   } catch (e) {
-    return failOf(e);
+    const prob = input?.probability;
+    return withFieldError(failOf(e), {
+      name: nameBad(input?.name, 60),
+      probability: prob !== undefined && prob !== null && (typeof prob !== "number" || !Number.isInteger(prob) || prob < 0 || prob > 100),
+    });
   }
 }
 

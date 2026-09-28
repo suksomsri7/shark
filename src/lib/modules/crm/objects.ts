@@ -37,9 +37,10 @@ import {
   OBJECT_EXPORT_MAX_ROWS,
   OBJECT_IMPORT_MAX_BYTES,
   OBJECT_IMPORT_MAX_ROWS,
-  OBJECT_KEY_MAX,
-  OBJECT_KEY_RE,
+  OBJECT_TEXT_MAX,
   objectKeyProblem,
+  objectTextProblem,
+  titleFieldKeyProblem,
   OBJECT_PARENT_LABEL,
   OBJECT_PARENT_TYPES,
   OBJECT_REASON_MIN,
@@ -112,7 +113,8 @@ const EXPORT_BATCH = 1_000;
 const TITLE_MAX = 200;
 const EVENT_TYPES = { created: "custom.record.created", updated: "custom.record.updated", archived: "custom.record.archived" } as const;
 
-const fail = (code: ObjectsError["code"], message: string) => new ObjectsError(code, message);
+// C4.3-fix part 2 ▸ `field` = ช่องที่ข้อความเป็นของ (ฟอร์มแสดงใต้ช่อง) — ไม่เปลี่ยนข้อความ/รหัส/สถานะของ REST ◂
+const fail = (code: ObjectsError["code"], message: string, field?: string) => new ObjectsError(code, message, field);
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -235,16 +237,16 @@ function objectDto(row: CustomObject): ObjectDto {
 function normalizeObjectKey(raw: unknown): string {
   const key = typeof raw === "string" ? raw.trim() : "";
   const problem = objectKeyProblem(key);
-  if (problem) throw fail("VALIDATION", problem);
+  if (problem) throw fail("VALIDATION", problem, "key");
   return key;
 }
 // ◂ CRM C1.9
 
-function normalizeText(raw: unknown, what: string, max = 120): string {
-  const text = typeof raw === "string" ? raw.trim() : "";
-  if (!text) throw fail("VALIDATION", `ต้องตั้ง${what}ก่อนจึงบันทึกได้`);
-  if (text.length > max) throw fail("VALIDATION", `${what}ยาวเกิน ${max} ตัวอักษร — ตั้งให้สั้นลง`);
-  return text;
+// C4.3-fix part 2 ▸ ตัวตรวจย้ายไป objects-shared (ฟอร์มตั้งค่าใช้ตัวเดียวกันก่อนส่ง) — ข้อความ/เงื่อนไขเดิมทุกตัวอักษร ◂
+function normalizeText(raw: unknown, what: string, field: string, max = OBJECT_TEXT_MAX): string {
+  const problem = objectTextProblem(raw, what, max);
+  if (problem) throw fail("VALIDATION", problem, field);
+  return (raw as string).trim();
 }
 
 function normalizeParentType(raw: unknown): ObjectParentType {
@@ -253,11 +255,9 @@ function normalizeParentType(raw: unknown): ObjectParentType {
 }
 
 function normalizeTitleFieldKey(raw: unknown): string {
-  const key = typeof raw === "string" ? raw.trim() : "";
-  if (!key || key.length > OBJECT_KEY_MAX || !OBJECT_KEY_RE.test(key)) {
-    throw fail("VALIDATION", "เลือกฟิลด์ที่ใช้เป็นชื่อรายการ (ชื่ออ้างอิงของฟิลด์ เช่น \"plate\") ก่อนบันทึก");
-  }
-  return key;
+  const problem = titleFieldKeyProblem(raw);
+  if (problem) throw fail("VALIDATION", problem, "titleFieldKey");
+  return (raw as string).trim();
 }
 
 function normalizeReason(raw: unknown): string | null {
@@ -444,8 +444,8 @@ export async function create(ctx: ObjectsCtx, actor: MemberActor, input: CreateO
   assertDesigner(actor);
   await resolveSystem(ctx);
   const key = normalizeObjectKey(input?.key);
-  const label = normalizeText(input?.label, "ชื่อวัตถุ");
-  const labelPlural = input?.labelPlural === undefined || input?.labelPlural === null ? label : normalizeText(input.labelPlural, "ชื่อเรียกหลายรายการ");
+  const label = normalizeText(input?.label, "ชื่อวัตถุ", "label");
+  const labelPlural = input?.labelPlural === undefined || input?.labelPlural === null ? label : normalizeText(input.labelPlural, "ชื่อเรียกหลายรายการ", "labelPlural");
   const parentType = normalizeParentType(input?.parentType);
   const titleFieldKey = normalizeTitleFieldKey(input?.titleFieldKey);
   const templateKey = str(input?.templateKey);
@@ -454,7 +454,7 @@ export async function create(ctx: ObjectsCtx, actor: MemberActor, input: CreateO
     throw fail("VALIDATION", `ไม่รู้จักเทมเพลตวัตถุ "${templateKey}" — เลือกได้ ${OBJECT_TEMPLATES.map((t) => t.key).join(" / ")}`);
   }
   if (template && !template.sections.some((s) => s.fields.some((f) => f.key === titleFieldKey))) {
-    throw fail("VALIDATION", `ฟิลด์ชื่อรายการ "${titleFieldKey}" ไม่มีในเทมเพลต "${template.label}" — เลือกฟิลด์ข้อความของเทมเพลตนี้`);
+    throw fail("VALIDATION", `ฟิลด์ชื่อรายการ "${titleFieldKey}" ไม่มีในเทมเพลต "${template.label}" — เลือกฟิลด์ข้อความของเทมเพลตนี้`, "titleFieldKey");
   }
   const dupMsg = `มีวัตถุที่ใช้ชื่ออ้างอิง "${key}" อยู่แล้วในระบบ CRM นี้ — ตั้งชื่ออ้างอิงอื่น`;
   const dup = await prisma.customObject.findFirst({ where: { systemId: ctx.systemId, key }, select: { id: true } });
@@ -582,15 +582,15 @@ export async function update(ctx: ObjectsCtx, actor: MemberActor, objectKey: str
           after.parentType = parentType;
         }
       }
-      if (p.label !== undefined) data.label = normalizeText(p.label, "ชื่อวัตถุ");
-      if (p.labelPlural !== undefined) data.labelPlural = normalizeText(p.labelPlural, "ชื่อเรียกหลายรายการ");
+      if (p.label !== undefined) data.label = normalizeText(p.label, "ชื่อวัตถุ", "label");
+      if (p.labelPlural !== undefined) data.labelPlural = normalizeText(p.labelPlural, "ชื่อเรียกหลายรายการ", "labelPlural");
       if (p.icon !== undefined) data.icon = str(p.icon);
       if (p.titleFieldKey !== undefined) {
         const tfk = normalizeTitleFieldKey(p.titleFieldKey);
         // AUDIT-CLASS X8 (D8): ชื่อรายการห้ามมาจากฟิลด์อ่อนไหว
         const layout = await (await engine()).listLayout(fctx(ctx, obj.key, actor), { includeArchived: true }, tx);
         if (isSensitiveField(layout, tfk)) {
-          throw fail("VALIDATION", `ฟิลด์ "${tfk}" เป็นข้อมูลอ่อนไหว จึงใช้เป็นชื่อรายการไม่ได้ (ชื่อรายการแสดงให้ทุกคนเห็น) — เลือกฟิลด์อื่น`);
+          throw fail("VALIDATION", `ฟิลด์ "${tfk}" เป็นข้อมูลอ่อนไหว จึงใช้เป็นชื่อรายการไม่ได้ (ชื่อรายการแสดงให้ทุกคนเห็น) — เลือกฟิลด์อื่น`, "titleFieldKey");
         }
         data.titleFieldKey = tfk;
         // CRM C1.10 ▸ หนี้ C1.2b (S11.4): ชื่อรายการเดิมคำนวณใหม่หลัง commit (recomputeTitles — ทีละชุด + audit) ◂
@@ -695,9 +695,9 @@ export async function archive(ctx: ObjectsCtx, actor: MemberActor, objectKey: st
     const live = await tx.customRecord.count({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectId: current.id, archivedAt: null } });
     if (live > 0) {
       if (str(opts?.confirmKey) !== current.key) {
-        throw fail("CONFIRM_REQUIRED", `วัตถุ "${current.label}" มีรายการอยู่ ${live} รายการ — พิมพ์ชื่ออ้างอิง "${current.key}" เพื่อยืนยันการเก็บถาวร (รายการไม่ถูกลบ กู้คืนได้)`);
+        throw fail("CONFIRM_REQUIRED", `วัตถุ "${current.label}" มีรายการอยู่ ${live} รายการ — พิมพ์ชื่ออ้างอิง "${current.key}" เพื่อยืนยันการเก็บถาวร (รายการไม่ถูกลบ กู้คืนได้)`, "confirmKey");
       }
-      if (!reason) throw fail("CONFIRM_REQUIRED", `ใส่เหตุผลของการเก็บถาวรอย่างน้อย ${OBJECT_REASON_MIN} ตัวอักษร เพื่อให้ทีมย้อนดูได้ว่าทำไม`);
+      if (!reason) throw fail("CONFIRM_REQUIRED", `ใส่เหตุผลของการเก็บถาวรอย่างน้อย ${OBJECT_REASON_MIN} ตัวอักษร เพื่อให้ทีมย้อนดูได้ว่าทำไม`, "reason");
     }
     const res = await tx.customObject.updateMany({ where: { id: current.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, data: { archivedAt: new Date() } });
     return { live, changed: res.count > 0 };
@@ -850,7 +850,7 @@ async function createRecordCore(ctx: ObjectsCtx, actor: MemberActor, obj: Custom
           const given = rawValues[f.key];
           const blank = given === undefined || given === null || (typeof given === "string" && given.trim() === "") || (Array.isArray(given) && given.length === 0);
           if (blank && f.defaultValue !== null && f.defaultValue !== undefined && given === undefined) rawValues[f.key] = f.defaultValue;
-          else if (blank && f.required) throw fail("VALIDATION", `ฟิลด์ "${f.label}" เป็นข้อมูลที่ต้องกรอก — ใส่ค่าก่อนบันทึก`);
+          else if (blank && f.required) throw fail("VALIDATION", `ฟิลด์ "${f.label}" เป็นข้อมูลที่ต้องกรอก — ใส่ค่าก่อนบันทึก`, f.key);
         }
       }
       // AUDIT-CLASS X8 (D8): ฟิลด์ชื่อรายการที่อ่อนไหว ⇒ ใช้ชื่อสำรอง ไม่เอาค่ามาเป็นชื่อ (ชื่อรายการโชว์ทุกที่ ไม่ผ่านด่าน D8)

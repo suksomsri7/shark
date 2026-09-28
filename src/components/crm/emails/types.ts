@@ -6,7 +6,8 @@
 
 export type CrmEmailOption = { value: string; label: string; hint?: string };
 
-export type CrmEmailActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string; code?: string };
+// C4.3-fix part 2 ▸ fieldErrors = ช่องที่ข้อความปฏิเสธเป็นของ (ช่องเขียนจดหมายแสดงใต้ช่อง + โฟกัส) ◂
+export type CrmEmailActionResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string; code?: string; fieldErrors?: Record<string, string> };
 
 // ───────────────────────── กล่องจดหมาย ─────────────────────────
 

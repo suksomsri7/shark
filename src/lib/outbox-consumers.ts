@@ -375,10 +375,8 @@ const withApprovalEffect =
  *    ตามเก็บให้ต่อ (backoff ต่อใบ) ⇒ ไม่ต้องอาศัยการ retry ของคิวเพื่อส่งซ้ำ
  *    เรียกนอกคิว (ข้อสอบ/สคริปต์เรียก consumer ตรง) = ไม่มีแถว event → ยิงตามปกติ
  */
-async function webhooksAlreadyDispatched(evt: { id: string }): Promise<boolean> {
-  const row = await prisma.outboxEvent.findUnique({ where: { id: evt.id }, select: { attempts: true } });
-  return !!row && row.attempts > 0;
-}
+// C5.4 (hunter H4): เกณฑ์ "attempts > 0" ถูกแทนด้วยการจองแถวการส่งต่อ (event, ปลายทาง) ใน `dispatchWebhooks` (PK คงที่)
+//   ⇒ รอบที่สอง (retry ของคิว · drainer ซ้อนตอน lease หลุด ขณะ attempts ยัง 0) ข้ามปลายทางที่จองแล้วเอง — กันซ้ำด้วยแถวจริง
 
 const withWebhooks =
   (handler: OutboxHandler): OutboxHandler =>
@@ -392,9 +390,7 @@ const withWebhooks =
       failure = e;
     }
     try {
-      if (!(await webhooksAlreadyDispatched(evt))) {
-        await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload });
-      }
+      await dispatchWebhooks({ tenantId: evt.tenantId, type: evt.type, payload: evt.payload, id: evt.id });
     } catch (e) {
       await logOps("WARN", "outbox", `webhook ของ "${evt.type}" ล้มเหลว`, { tenantId: evt.tenantId, detail: errDetail(e) });
     }

@@ -43,6 +43,7 @@ import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ ม�
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
+import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
   COMPANY_CONTACT_ROLES,
   COMPANY_CONTACT_ROLE_LABEL,
@@ -176,7 +177,7 @@ const TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
 const NOT_FOUND_MSG = "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่";
 const RACE_MSG = "ข้อมูลบริษัทนี้เพิ่งถูกแก้จากที่อื่นระหว่างบันทึก — รีเฟรชหน้าแล้วลองใหม่";
 
-const fail = (code: CompaniesError["code"], message: string, extra: { duplicateOf?: string } = {}) => new CompaniesError(code, message, extra);
+const fail = (code: CompaniesError["code"], message: string, extra: { duplicateOf?: string; field?: string } = {}) => new CompaniesError(code, message, extra);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 const newSeq = () => randomUUID().replace(/-/g, "");
 const toNum = (v: bigint | number | null | undefined): number => (v === null || v === undefined ? 0 : Number(v));
@@ -701,7 +702,11 @@ async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): P
   return (await prisma.crmCompany.findFirst({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? row;
 }
 
-export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput): Promise<CreateCompanyResult> {
+/**
+ * `opts.requireCustom` (C4.3-fix part 2 · round 2): ทางเข้าที่ "คนกรอกฟอร์ม/เรียก API" (server action · REST `companies.create`)
+ * ต้องบังคับฟิลด์กำหนดเองที่ต้องกรอก — ทางเข้าอัตโนมัติ (นำเข้าผู้ติดต่อที่สร้างบริษัทจากชื่อ) ไม่มีค่าให้กรอก จึงไม่ส่งธงนี้
+ */
+export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput, opts: { requireCustom?: boolean } = {}): Promise<CreateCompanyResult> {
   const a = await enter(ctx, actor);
   need(a, "crm.company.create");
   const { merged, custom } = await splitFields(input ?? ({} as CreateCompanyInput));
@@ -716,6 +721,11 @@ export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input
     if (!parent) throw fail("VALIDATION", "ไม่พบบริษัทแม่ที่เลือกในระบบ CRM นี้ — เลือกใหม่จากรายการ");
   }
   await seedCompanyFields(ctx, a);
+  if (opts.requireCustom) {
+    // engine ตรวจเฉพาะ key ที่ส่งมา — ช่องบังคับที่ "ไม่ส่งเลย" ต้องตรวจที่นี่ (กติกาเดียวกับ objects.ts records.create)
+    const miss = missingRequiredCustom(await (await engine()).listLayout(fctx(ctx, a), {}), custom);
+    if (miss) throw fail("VALIDATION", requiredCustomMessage(miss.label), { field: customFieldErrorKey(miss.key) });
+  }
   // ไม่มีเลขภาษี: หาบริษัทที่ "อาจซ้ำ" (โดเมนอีเมล → ชื่อคล้าย) ไว้บอกผู้ใช้ — ไม่รวมเงียบ ๆ (§11.1)
   const candidates = clean.taxId ? [] : await findCandidates(ctx, a, { name: clean.name ?? "", emailDomain: clean.emailDomain ?? null });
   const res = await createCore(ctx, a, clean, { ownerUserId, teamId, parentCompanyId }, { custom });

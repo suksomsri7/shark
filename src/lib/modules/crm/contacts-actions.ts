@@ -36,10 +36,11 @@ import {
   type UpdateContactPatch,
 } from "./contacts";
 import { set as setConsent } from "./consents";
-import { CONTACT_IMPORT_INLINE_MAX_ROWS, CONTACT_IMPORT_MAX_BYTES, ContactsError, type ContactListInput, type ConvertInput, type DuplicateHit, type ImportContactsResult, type ImportDuplicateMode } from "./contacts-shared";
+import { CONTACT_IMPORT_INLINE_MAX_ROWS, CONTACT_IMPORT_MAX_BYTES, ContactsError, contactPhoneProblem, emailProblem, nameProblem, type ContactListInput, type ConvertInput, type DuplicateHit, type ImportContactsResult, type ImportDuplicateMode } from "./contacts-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 
-type Fail = { ok: false; error: string; code?: string; duplicates?: DuplicateHit[] };
+type Fail = { ok: false; error: string; code?: string; duplicates?: DuplicateHit[]; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -56,7 +57,7 @@ async function session(systemId: string, action: string) {
 function failOf(e: unknown, multiStep = false): Fail {
   if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
-  if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}) };
+  if (e instanceof ContactsError) return { ok: false, error: e.message, code: e.code, ...(e.duplicates ? { duplicates: e.duplicates } : {}), ...(e.field ? { fieldErrors: { [e.field]: e.message } } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };
   // 🔴 ไม่ส่งรายละเอียดทางเทคนิค/ข้อมูลลูกค้าออกไป (log แค่ชนิด error)
   console.error(`[crm.contacts] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
@@ -73,11 +74,17 @@ export async function createContactAction(
 ): Promise<{ ok: true; id: string; created: boolean; duplicates: DuplicateHit[]; warnings: string[] } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.create");
-    const r = await createContact(ctx, actor, input);
+    const r = await createContact(ctx, actor, input, { requireCustom: true });
     if (r.created) revalidatePath(base(systemId));
     return { ok: true, id: r.contact.id, created: r.created, duplicates: r.duplicates, warnings: r.warnings };
   } catch (e) {
-    return failOf(e, true);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (ตัวตรวจชุดเดียวกับฟอร์ม) ◂
+    return withFieldError(failOf(e, true), {
+      firstName: !!nameProblem(input?.firstName, "ชื่อจริง", true),
+      lastName: !!nameProblem(input?.lastName ?? "", "นามสกุล", false),
+      phone: !!contactPhoneProblem(input?.phone),
+      email: !!emailProblem(input?.email),
+    });
   }
 }
 

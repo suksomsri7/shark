@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { addHolidayAction, importThaiHolidaysAction, removeHolidayAction, setBusinessDaysAction } from "@/app/app/sys/[id]/crm/settings/sequences/actions";
 import { WEEKDAYS, type SeqCalendarData } from "./types";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 const thaiDate = (d: string) => {
   const [y, m, dd] = d.split("-").map((x) => Number(x));
@@ -25,6 +26,8 @@ export function SequenceCalendarSettings({ data }: { data: SeqCalendarData }) {
   const [year, setYear] = useState(String(data.importYears[0] ?? 2026));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // C4.3-fix part 2 ▸ ฟอร์มเพิ่มวันหยุด: ยังไม่เลือกวันที่ = ข้อความใต้ช่องวันที่ + โฟกัส (กล่องข้อความของหน้าอยู่ท้ายหน้า) ◂
+  const fe = useFieldErrors(["date", "name"] as const);
 
   const run = async (f: () => Promise<{ ok: true } | { ok: false; error: string }>, okText: string) => {
     setBusy(true);
@@ -67,18 +70,36 @@ export function SequenceCalendarSettings({ data }: { data: SeqCalendarData }) {
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(() => addHolidayAction(systemId, date, name), "เพิ่มวันหยุดแล้ว").then((ok) => {
-              if (ok) {
+            setMsg(null);
+            if (fe.show({ date: !/^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? "เลือกวันที่ของวันหยุด (ปี-เดือน-วัน)" : undefined })) return;
+            setBusy(true);
+            void addHolidayAction(systemId, date, name).then((r) => {
+              setBusy(false);
+              if (r.ok) {
                 setDate("");
                 setName("");
-              }
+                setMsg({ ok: true, text: "เพิ่มวันหยุดแล้ว" });
+                router.refresh();
+              } else if (!fe.show(r.fieldErrors)) setMsg({ ok: false, text: r.error });
             });
           }}
           data-testid="crm-seq-holiday-form"
         >
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>วันที่</span>
-            <input type="date" value={date} disabled={busy} onChange={(e) => setDate(e.target.value)} className="input text-sm" data-testid="crm-seq-holiday-date" />
+            <input
+              {...fe.field("date")}
+              type="date"
+              value={date}
+              disabled={busy}
+              onChange={(e) => {
+                setDate(e.target.value);
+                fe.clear("date");
+              }}
+              className="input text-sm"
+              data-testid="crm-seq-holiday-date"
+            />
+            <FieldError id={fe.errorId("date")} message={fe.errors.date} testid="crm-seq-holiday-date-error" />
           </label>
           <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ชื่อวันหยุด</span>

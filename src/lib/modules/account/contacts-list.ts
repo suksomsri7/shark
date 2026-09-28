@@ -166,7 +166,11 @@ export type ContactsSidebar = {
 };
 
 /** ทุกอย่างที่ sidebar ต้องใช้ — โหลดครั้งเดียวต่อหน้า (ไม่ผูกกับ filter/หน้าปัจจุบัน) */
-export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter): Promise<ContactsSidebar> {
+/**
+ * C5.4 (L1-M3): `crmViewer` = ผู้ดูในสายตาของ CRM — ป้าย/ตัวนับ "CRM" นับเฉพาะผู้ติดต่อ CRM ที่เขามีสิทธิ์อ่าน + มองเห็น ·
+ * ไม่ส่ง = ไม่นับ CRM เลย (fail-closed — ผู้เรียกที่ใช้แค่รหัส/กลุ่ม เช่น getContactDetail ไม่ต้องส่ง)
+ */
+export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter, crmViewer?: import("@/lib/modules/member").MemberActor | null): Promise<ContactsSidebar> {
   const db = dbOf(ctx, meter);
   // 🔴 groups ดึงแบบ "แบน" 2 ก้อน (ไม่ใช้ include:{members:...}) — Prisma ทำ relation แบบ hasMany
   //    ด้วย query แยกเสมอ (WHERE groupId IN (...)) แม้จะเป็น Prisma API call เดียว ⇒ 1 include = 2 SQL จริง
@@ -207,7 +211,7 @@ export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter): Promise
   bump(meter);
   const [memberPartySet, crmPartySet] = await Promise.all([
     memberSystemId ? memberSvc.listPartyIdsWithCustomer(ctx.tenantId, memberSystemId, partyIds) : Promise.resolve(new Set<string>()),
-    crmSystemId ? crmSvc.listPartyIdsWithContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyIds) : Promise.resolve(new Set<string>()),
+    crmSystemId ? crmSvc.listPartyIdsWithContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyIds, crmViewer) : Promise.resolve(new Set<string>()),
   ]);
   if (memberSystemId) bump(meter);
   if (crmSystemId) bump(meter);

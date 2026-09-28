@@ -157,7 +157,8 @@ const create = defineCrmOp({
     // AUDIT-CLASS X2: คีย์ที่มีตัวกรอง — ผู้ติดต่อใหม่ต้องลงในขอบเขตของคีย์
     assertNoTeamFilter(actor, "ผู้ติดต่อ");
     assertOwnerInFilter(actor, input.ownerUserId ?? actor.userId ?? null);
-    const r = await contacts.createContact(crmCtxOf(actor), crmActorOf(actor), { ...input, sourceKind: input.sourceKind ?? "API" });
+    // C4.3-fix part 2 · round 2 ▸ ผู้เรียก API = คนกรอก ⇒ ฟิลด์กำหนดเองที่ต้องกรอกบังคับเหมือนหน้าจอ ◂
+    const r = await contacts.createContact(crmCtxOf(actor), crmActorOf(actor), { ...input, sourceKind: input.sourceKind ?? "API" }, { requireCustom: true });
     return { contactId: r.contact.id, created: r.created, contact: r.contact, duplicates: r.duplicates.map((d) => ({ contactId: d.contactId, reason: d.reason })), warnings: r.warnings };
   },
 });

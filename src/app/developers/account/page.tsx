@@ -426,7 +426,7 @@ export default function AccountApiDevPage() {
         <p className="text-sm text-neutral-700">
           The shop owner can subscribe an endpoint URL to any of these events (Connections &gt; External apps / API).
           Each delivery is <code>POST</code> with header <code>X-Shark-Signature</code> = HMAC-SHA256 of the raw body
-          with the endpoint secret (lowercase hex), and a body of <code>{"{ type, payload, sentAt }"}</code>. Verify
+          with the endpoint secret (lowercase hex), and a body of <code>{"{ id, type, payload, sentAt }"}</code>. Verify
           the signature over the <strong>raw</strong> bytes before parsing JSON.
         </p>
         <table className={table}>

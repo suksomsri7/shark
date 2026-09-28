@@ -27,10 +27,11 @@ import {
   type UpdateActivityInput,
 } from "@/lib/modules/crm/activities";
 import { attachFile, removeFile } from "@/lib/modules/crm/files";
-import { ActivitiesError, CRM_FILE_MAX_BYTES } from "@/lib/modules/crm/activities-shared";
+import { ACTIVITY_BODY_MAX, ACTIVITY_TITLE_MAX, ActivitiesError, CRM_FILE_MAX_BYTES } from "@/lib/modules/crm/activities-shared";
+import { blank, withFieldError, type CrmFieldErrors } from "@/lib/modules/crm/field-errors-shared";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -68,7 +69,15 @@ export async function logActivityAction(systemId: string, input: LogActivityInpu
     // notified = คนที่ได้รับแจ้งเตือนจริง (หน้าจอบอกผู้เขียนว่าใครไม่ได้รับ โดยใช้ชื่อจากรายการตัวเลือกของเขาเอง — ไม่บอกเหตุผล)
     return { ok: true, id: r.id, nextTaskId: r.nextTaskId, notified: r.mentions };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่องของ LogActivityForm (target · title · body · งานถัดไป) ◂
+    const title = typeof input?.title === "string" ? input.title.trim() : "";
+    return withFieldError(failOf(e), {
+      target: !input?.contactId && !input?.dealId && !input?.companyId && !input?.customRecordId,
+      title: !title || title.length > ACTIVITY_TITLE_MAX,
+      body: typeof input?.body === "string" && input.body.length > ACTIVITY_BODY_MAX,
+      nextTitle: !!input?.nextTask && blank(input.nextTask.title),
+      nextDue: !!input?.nextTask && (input.nextTask.dueAt == null || input.nextTask.dueAt === ""),
+    });
   }
 }
 

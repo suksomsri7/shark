@@ -7,8 +7,9 @@
 //   INSERT (keyId, idemKey) — ชน unique = มีคนจองไปแล้ว
 //   ⇒ การจองจบใน SQL คำสั่งเดียว ไม่มีช่วง read-then-write ให้สองคำขอที่มาพร้อมกันแทรก
 //      (บทเรียนเดียวกับ rate-limit-db.ts: แตกเป็นหลายคำสั่ง = นับ/จองพลาดจริงตอนยิงพร้อมกัน)
-//   จองได้  → ทำงาน แล้วอัปเดต status + responseJson กลับเข้าแถวเดิม (เก็บทั้งกรณีสำเร็จและล้มเหลว)
-//   จองไม่ได้ → hash ต่าง = 409 conflict · status ยังว่าง = 409 in_progress · มีผลแล้ว = ตอบซ้ำของเดิม
+//   จองได้  → ทำงาน แล้วอัปเดต status + responseJson กลับเข้าแถวเดิม (C5.4: 409/429/503 = ลบการจองทิ้ง · ที่เหลือเก็บ)
+//   จองไม่ได้ → hash ต่าง = 409 conflict · status ยังว่าง = 409 in_progress (C5.4: ค้างเกิน 6 นาที = รับช่วงด้วย CAS) ·
+//               มีผลแล้ว = ตอบซ้ำของเดิม
 //
 // TTL 24 ชม.: แถวที่หมดอายุถือว่า "ไม่มี" (ลบทิ้งแล้วจองใหม่) — ไม่งั้นตารางโตไม่มีที่สิ้นสุด
 // และผู้เชื่อมต่อที่ใช้ค่า key ซ้ำรายวัน (เช่น `invoice-2026-09-05`) จะติดล็อกตลอดกาล
@@ -20,6 +21,19 @@ import type { ApiOp } from "./op";
 import { fail, mapError, failBody } from "./respond";
 
 const TTL_MS = 24 * 60 * 60_000;
+/**
+ * C5.4 (L3-m1): การจองที่ยังไม่มีผล (status NULL) เก่ากว่านี้ = แลมบ์ดาที่จองตายไปแล้ว ⇒ คำขอใหม่ด้วยคีย์เดิมรับช่วงได้ (CAS)
+ * 6 นาที = เกินเพดานเวลาที่ฟังก์ชันหนึ่งรันได้จริง (Vercel fluid compute ปริยาย 300 วิ) + เผื่อ — รับช่วงเร็วกว่านี้ =
+ * เสี่ยงทำงานซ้ำขณะเจ้าของเดิมยังรันอยู่ ซึ่งคือสิ่งที่ตารางนี้มีไว้กันพอดี
+ */
+const STALE_CLAIM_MS = 6 * 60_000;
+
+/**
+ * C5.4 (L3-m1 · มติผู้คุมงานรอบ 2): ผลที่ "ชั่วคราวแน่นอน" ห้ามเก็บไว้ตอบซ้ำ 24 ชม. — 409 (ชนล็อก/ชนกันชั่วคราว) ·
+ * 429 (ถูกจำกัดอัตรา) · 503 (บริการ/ฐานข้อมูลไม่พร้อม) ⇒ ลบการจองทิ้ง ให้ retry ของผู้เรียกรันจริง
+ * 500 อื่น ๆ ยัง **เก็บ** เหมือนเดิม: งานอาจ commit ไปแล้วก่อนพัง (เช่นพังตอนสร้างคำตอบ) — ตอบซ้ำของเดิมปลอดภัยกว่ารันซ้ำ
+ */
+const isTransientStatus = (status: number) => status === 409 || status === 429 || status === 503;
 
 export type RunResult = { status: number; body: unknown };
 
@@ -38,6 +52,7 @@ type IdemRow = {
   status: number | null;
   responseJson: unknown;
   expiresAt: Date;
+  createdAt: Date;
 };
 
 /**
@@ -133,10 +148,13 @@ export async function withIdempotency(
     });
 
   // ── จองแถว (INSERT อย่างเดียว — ชน unique = มีเจ้าของแล้ว) ─────────────────
+  // C5.4 (L3-m1): จำ (id, createdAt) ของการจองที่เป็นของเรา — ขาเขียนผล/ลบทิ้งด้านล่างแตะได้เฉพาะ "การจองครั้งนี้"
+  //   (ถ้าเราช้าจนมีคนรับช่วงไปแล้ว createdAt จะไม่ตรง ⇒ ผลของเราไม่ทับของเขา)
+  let owned: { id: string; createdAt: Date } | null = null;
   const claim = async (): Promise<boolean> => {
     try {
       // tenantDb ยัด tenantId ให้เอง · unique คือ (keyId, idemKey) ⇒ ชนคีย์ต่างร้านไม่ได้อยู่แล้ว
-      await db.apiIdempotency.create({
+      const created = await db.apiIdempotency.create({
         data: {
           tenantId: actor.tenantId,
           keyId,
@@ -144,19 +162,32 @@ export async function withIdempotency(
           requestHash: hash,
           expiresAt: new Date(Date.now() + TTL_MS),
         },
+        select: { id: true, createdAt: true },
       });
+      owned = created;
       return true;
     } catch (e) {
       if (isUniqueViolation(e)) return false;
       throw e;
     }
   };
+  /** C5.4 (L3-m1): รับช่วงการจองที่ค้าง (status NULL เก่ากว่า STALE_CLAIM_MS) — CAS บน createdAt เดิม ⇒ ผู้ชนะมีคนเดียว */
+  const takeOver = async (row: IdemRow): Promise<boolean> => {
+    const now = new Date();
+    const res = await db.apiIdempotency.updateMany({
+      where: { id: row.id, status: null, createdAt: row.createdAt },
+      data: { createdAt: now, expiresAt: new Date(now.getTime() + TTL_MS) },
+    });
+    if (res.count !== 1) return false;
+    owned = { id: row.id, createdAt: now };
+    return true;
+  };
 
   let mine = await claim();
   if (!mine) {
     const row = (await db.apiIdempotency.findFirst({
       where: { keyId, idemKey },
-      select: { id: true, requestHash: true, status: true, responseJson: true, expiresAt: true },
+      select: { id: true, requestHash: true, status: true, responseJson: true, expiresAt: true, createdAt: true },
     })) as IdemRow | null;
 
     if (!row) {
@@ -175,6 +206,9 @@ export async function withIdempotency(
         requestId,
         { headers: extraHeaders },
       );
+    } else if (row.status === null && Date.now() - row.createdAt.getTime() > STALE_CLAIM_MS) {
+      // เจ้าของการจองตาย (แลมบ์ดาหมดเวลา/ถูกฆ่า) ก่อนเขียนผล — เดิมติด 409 in_progress ไปจนหมดอายุ 24 ชม.
+      mine = await takeOver(row);
     } else if (row.status === null) {
       return fail(
         409,
@@ -209,12 +243,19 @@ export async function withIdempotency(
     const m = mapError(e);
     result = { status: m.status, body: failBody(m.code, m.message_th, m.message_en, requestId, { hint: m.hint }) };
   }
-  // เก็บผลไว้ตอบซ้ำ — เก็บทั้งสำเร็จและล้มเหลว (retry ของคำสั่งที่ล้มเหลวต้องได้คำตอบเดิม ไม่ใช่ลองใหม่เงียบ ๆ)
+  const mineNow = owned as { id: string; createdAt: Date } | null;
+  const ownWhere = mineNow ? { id: mineNow.id, status: null, createdAt: mineNow.createdAt } : { keyId, idemKey, status: null };
+  // C5.4 (L3-m1): ผลชั่วคราว (409 · 429 · 503) ไม่เก็บ — ลบการจองของเราทิ้ง ⇒ retry ด้วยคีย์เดิมรันจริงอีกครั้ง
+  if (isTransientStatus(result.status)) {
+    await db.apiIdempotency.deleteMany({ where: ownWhere });
+    return respond(result.status, result.body);
+  }
+  // เก็บผลไว้ตอบซ้ำ — เก็บทั้งสำเร็จและล้มเหลว (รวม 500) (retry ของคำสั่งที่ล้มเหลวต้องได้คำตอบเดิม ไม่ใช่ลองใหม่เงียบ ๆ)
   // CRM C3.8 รีวิว S1 ▸ ค่าลับที่คืนครั้งเดียว (`replaySecrets` — PIN บัตรกำนัล · token เชิญพอร์ทัล · ตั๋วสมัคร · คีย์ API ใหม่)
   //   ต้องไม่ถูกเก็บลง `ApiIdempotency.responseJson` เลย (เดิมตัดตอน replay อย่างเดียว ⇒ ค่าดิบค้างในตาราง 24 ชม.)
   //   ⇒ เก็บฉบับที่ตัดแล้ว · คำตอบครั้งแรกยังได้ค่าจริงตามเดิม · replay ได้ null เหมือนเดิม ◂
   await db.apiIdempotency.updateMany({
-    where: { keyId, idemKey },
+    where: ownWhere,
     data: { status: result.status, responseJson: scrubReplaySecrets(op, result.body) as never },
   });
   return respond(result.status, result.body);

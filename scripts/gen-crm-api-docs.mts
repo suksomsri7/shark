@@ -275,7 +275,7 @@ export function renderDocs(): string {
     "",
     "## Webhooks",
     "",
-    "Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps. Deliveries are `POST` with a body `{ type, payload, sentAt }`, header `X-Shark-Event`, `X-Shark-Timestamp`, `X-Shark-Signature` (HMAC-SHA256 of the raw body with the endpoint secret, hex) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<timestamp>.<body>`). Delivery is at least once; handlers must be idempotent. Payloads carry ids only - read the record through this API.",
+    "Subscribe an endpoint (https only) in CRM > Settings > API or in Settings > Apps. Deliveries are `POST` with a body `{ id, type, payload, sentAt }`, header `X-Shark-Event`, `X-Shark-Event-Id`, `X-Shark-Timestamp`, `X-Shark-Signature` (HMAC-SHA256 of the raw body with the endpoint secret, hex) and `X-Shark-Signature-V2` (HMAC-SHA256 of `<timestamp>.<body>`). Delivery is at least once; handlers must be idempotent - `id` / `X-Shark-Event-Id` is the event id, the same on every retry, so dedupe on it. Redirects (3xx) are not followed and count as a failed delivery. Payloads carry ids only - read the record through this API.",
     "",
     "| Event | Payload (ids only) |",
     "| --- | --- |",

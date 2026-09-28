@@ -173,6 +173,32 @@ function parseYmd(raw: string): Date | null {
   return dt;
 }
 
+/**
+ * C5.4 (L6-m2): ปี ≥ 2400 ในรูป ISO = ปี **พ.ศ.** ที่พิมพ์ผิดช่อง (ค.ศ. 2400 ยังอีก 370 กว่าปี) — เดิมรับไว้เป็น ค.ศ. 2569
+ * ⇒ กฎ "ต่อสัญญา/วันหมดอายุ" ไม่ทำงาน และจอแสดงปี 3112 · **ปฏิเสธ** พร้อมบอกปี ค.ศ. ที่ถูก (ไม่แปลงเงียบ ๆ:
+ * ช่องนี้เป็นสัญญา ISO ของ API/นำเข้าด้วย — เดาแทนผู้ใช้แล้วผิดตัวเดียวแก้ย้อนยาก) · ตรวจรูปแบบแล้วจึงเรียก
+ */
+const BUDDHIST_YEAR_MIN = 2400;
+/**
+ * มติผู้คุมงานรอบ 2: ตรวจเฉพาะค่าที่ **เปลี่ยน** — แถวเก่าที่เก็บปี พ.ศ. ไว้ก่อน C5.4 ต้องไม่ทำให้ฟอร์มที่ส่งค่าเดิมกลับมา
+ * (แก้ช่องอื่น) บันทึกไม่ได้ · ผู้ใช้เปลี่ยนค่าช่องนั้นเมื่อไร ค่าใหม่ต้องเป็น ค.ศ.
+ */
+function assertChangedDatesNotBuddhist(pending: { field: MemberField; value: MemberFieldValueInput; changed: boolean }[]): void {
+  for (const p of pending) {
+    if (!p.changed || (p.field.type !== "DATE" && p.field.type !== "DATETIME") || typeof p.value !== "string") continue;
+    assertNotBuddhistYear(p.field.label, p.value);
+  }
+}
+function assertNotBuddhistYear(label: string, text: string): void {
+  const year = Number(text.slice(0, 4));
+  if (Number.isInteger(year) && year >= BUDDHIST_YEAR_MIN) {
+    const ad = year - 543;
+    throw new MemberInputError(
+      `ค่าของฟิลด์ "${label}" ใส่ปีเป็น พ.ศ. ${year} — ช่องวันที่ใช้ปี ค.ศ. กรุณาใส่ ${ad}${text.slice(4, 10)} แทน`,
+    );
+  }
+}
+
 /** Date → "YYYY-MM-DD" อ่านด้วย getUTC* เสมอ (ค่าที่เก็บคือเที่ยงคืน UTC ของวันนั้น) */
 function ymdOf(d: Date): string {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
@@ -1532,6 +1558,7 @@ export async function setFieldValues(
       : readCell(field.type, existingBy.get(field.id) ?? null);
     return { field, value, oldValue, changed: !sameValue(oldValue, value) };
   });
+  assertChangedDatesNotBuddhist(pending); // C5.4 (L6-m2)
   const changedWrites = pending.filter((p) => p.changed);
   if (changedWrites.length === 0) return { changed: [] };
 
@@ -2292,6 +2319,7 @@ async function setRecordValues(
       const oldValue = spec ? columnToValue(field, row?.[spec.key]) : readCell(field.type, existingBy.get(field.id) ?? null);
       return { field, value, spec, oldValue, changed: !sameValue(oldValue, value) };
     });
+    assertChangedDatesNotBuddhist(pending); // C5.4 (L6-m2)
     const changedWrites = pending.filter((p) => p.changed);
     if (changedWrites.length === 0) return;
 

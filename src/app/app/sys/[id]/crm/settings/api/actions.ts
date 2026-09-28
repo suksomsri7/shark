@@ -59,6 +59,9 @@ async function gate(systemId: string, module: "api" | "webhook", platformAction:
   }
 }
 
+/** C4.3-fix part 2 ▸ ปฏิเสธที่เป็นของช่องเดียว: `reason` เดิม + `fieldErrors` ให้ฟอร์มแสดงใต้ช่องนั้น ◂ */
+const fieldFail = (field: string, reason: string) => ({ ok: false as const, reason, fieldErrors: { [field]: reason } });
+
 /** ออกคีย์ของระบบ CRM นี้ (ผูก systemId เสมอ) — คืนคีย์ดิบครั้งเดียว · ตัวกรองทีม (ถ้าเลือก) เก็บเป็น pseudo-scope */
 export async function createCrmApiKeyAction(fd: FormData): Promise<CrmKeyResult> {
   const systemId = s(fd, "systemId");
@@ -67,15 +70,16 @@ export async function createCrmApiKeyAction(fd: FormData): Promise<CrmKeyResult>
   const { tenantId, userId } = g;
   try {
     const name = s(fd, "name");
-    if (!name) return { ok: false, reason: "ตั้งชื่อคีย์ให้จำง่ายก่อน เช่น ฟอร์มหน้าเว็บ — lead" };
-    if (name.length > 100) return { ok: false, reason: "ชื่อคีย์ยาวได้ไม่เกิน 100 ตัวอักษร" };
+    // C4.3-fix part 2 ▸ ข้อความของช่อง "ชื่อคีย์" (ฟอร์มแสดงใต้ช่อง) ◂
+    if (!name) return fieldFail("name", "ตั้งชื่อคีย์ให้จำง่ายก่อน เช่น ฟอร์มหน้าเว็บ — lead");
+    if (name.length > 100) return fieldFail("name", "ชื่อคีย์ยาวได้ไม่เกิน 100 ตัวอักษร");
     const bundle = s(fd, "bundle") || "crm.readonly";
     if (!BUNDLES.has(bundle)) return { ok: false, reason: "ชุดสิทธิ์ที่เลือกไม่ใช่ชุดของ CRM — เลือกใหม่" };
     const scopes = expandBundles([bundle]);
     const teamId = s(fd, "teamId");
     if (teamId) {
       // AUDIT-CLASS X1: ทีมต้องเป็นของร้านนี้ (ทีมของร้านอื่น = ไม่พบ)
-      if (!(await getTeam({ tenantId }, teamId))) return { ok: false, reason: "ไม่พบทีมที่เลือกในร้านนี้ — รีเฟรชหน้าแล้วเลือกใหม่" };
+      if (!(await getTeam({ tenantId }, teamId))) return fieldFail("teamId", "ไม่พบทีมที่เลือกในร้านนี้ — รีเฟรชหน้าแล้วเลือกใหม่");
       scopes.push(`${CRM_FILTER_TEAM_PREFIX}${teamId}`);
     }
     const expiresAt = new Date(Date.now() + DEFAULT_KEY_TTL_DAYS * 86_400_000);
@@ -121,9 +125,9 @@ export async function createCrmWebhookAction(fd: FormData): Promise<CrmWebhookCr
   try {
     const url = s(fd, "url");
     const problem = crmWebhookUrlProblem(url);
-    if (problem) return { ok: false, reason: problem };
+    if (problem) return fieldFail("url", problem);
     const checked = crmWebhookEventsCheck(fd.getAll("events").map((v) => String(v)));
-    if (!checked.ok) return { ok: false, reason: checked.reason };
+    if (!checked.ok) return fieldFail("events", checked.reason);
     const res = await createEndpoint({ tenantId }, { url, events: checked.events });
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: res.id, after: { created: true, events: checked.events, systemId } });
     revalidatePath(PATH(systemId));

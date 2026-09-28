@@ -363,7 +363,7 @@ const VERIFY_SAMPLE = [
   "  if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {",
   "    return { status: 401 };",
   "  }",
-  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { type: string; payload: unknown; sentAt: string };",
+  "  const event = JSON.parse(rawBody.toString(\"utf8\")) as { id: string; type: string; payload: unknown; sentAt: string };",
   "  // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.",
   "  void enqueue(event);",
   "  return { status: 200 };",
@@ -389,12 +389,14 @@ function webhookSection(): string[] {
     "| --- | --- |",
     "| `X-Shark-Event` | The event type, for example `member.tier.changed`. |",
     "| `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |",
+    "| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |",
     "",
-    "The body is always the same three fields:",
+    "The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):",
     "",
     "```json",
     JSON.stringify(
       {
+        id: "cmf1evt0001",
         type: "member.tier.changed",
         payload: { customerId: "cmf1cus0001", from: "silver", to: "gold", reason: "RULE_UPGRADE" },
         sentAt: "2026-09-10T09:15:00.000Z",
@@ -436,7 +438,7 @@ function webhookSection(): string[] {
       doc.when,
       "",
       "```json",
-      JSON.stringify({ type: value, payload: doc.payload, sentAt: "2026-09-10T09:15:00.000Z" }, null, 2),
+      JSON.stringify({ id: "cmf1evt0001", type: value, payload: doc.payload, sentAt: "2026-09-10T09:15:00.000Z" }, null, 2),
       "```",
       "",
     );

@@ -19,7 +19,8 @@ import type { MemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
-import { crmEmailFailText } from "./emails-shared";
+import { CRM_EMAIL_SUBJECT_MAX, crmEmailFailText } from "./emails-shared";
+import { withFieldError } from "./field-errors-shared";
 import * as emails from "./emails";
 import * as activities from "./activities";
 import type { CrmEmailActionResult } from "@/components/crm/emails/types";
@@ -91,7 +92,12 @@ export async function sendCrmEmailAction(
     // C4.3-fix: ok = "บันทึกจดหมายแล้ว" (แถว + เธรดมีจริง) · ส่งไม่ถึง = status FAILED + เหตุภาษาไทยให้หน้าจอแสดง
     return { ok: true, emailId: r.emailId, threadKey: r.threadKey, status: r.status, ...(r.status === "FAILED" ? { failReason: crmEmailFailText(r.failCode) } : {}) };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ หัวข้อ (cleanSubject) / เนื้อความว่าง = ข้อความใต้ช่องนั้นของช่องเขียนจดหมาย ◂
+    const subject = String(input?.subject ?? "").trim();
+    return withFieldError(failOf(e), {
+      subject: !subject || subject.length > CRM_EMAIL_SUBJECT_MAX || /[\r\n]/.test(subject),
+      body: !String(input?.bodyHtml ?? "").replace(/<[^>]*>/g, "").trim(),
+    });
   }
 }
 

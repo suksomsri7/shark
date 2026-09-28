@@ -259,6 +259,18 @@ function isZodError(e: unknown): boolean {
   return o.name === "ZodError" || Array.isArray(o.issues);
 }
 
+/** C5.4 (hunter H3): รหัส Prisma ที่แปลว่า "ลองใหม่แล้วอาจผ่าน" ไม่ใช่ "ข้อมูลผิด" */
+const TRANSIENT_PRISMA_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024", "P2028", "P2034"]);
+const TRANSIENT_NET_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"]);
+function isTransientInfraError(e: unknown, depth = 0): boolean {
+  if (typeof e !== "object" || e === null || depth > 3) return false;
+  const o = e as { code?: unknown; name?: unknown; cause?: unknown; errorCode?: unknown };
+  const code = typeof o.code === "string" ? o.code : typeof o.errorCode === "string" ? o.errorCode : "";
+  if (TRANSIENT_PRISMA_CODES.has(code) || TRANSIENT_NET_CODES.has(code)) return true;
+  if (o.name === "PrismaClientInitializationError") return true;
+  return o.cause !== undefined ? isTransientInfraError(o.cause, depth + 1) : false;
+}
+
 /**
  * error จากชั้น service (ข้อความไทยที่เราเขียนเอง) → status + รหัสที่ผู้เรียกแยกแยะได้
  *
@@ -288,6 +300,17 @@ export function mapError(e: unknown): MappedError {
       code: "validation",
       message_th: "ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด",
       message_en: "Request payload failed validation.",
+    };
+  }
+  // C5.4 (hunter H3): ฐานข้อมูล/เครือข่ายสะดุดชั่วคราว (write conflict/deadlock · pool หมดเวลา · ต่อฐานไม่ได้ · connection reset)
+  //   = 503 ให้ลองใหม่ — เดิมตกไปเป็น 422 "ข้อมูลไม่ถูกต้อง" แล้ว idempotency เก็บตอบซ้ำ 24 ชม. ⇒ คำขอที่ถูกต้องไม่เคยได้ทำ
+  //   (503 ไม่ถูกเก็บ — ดู `isTransientStatus` ใน idempotency.ts) · ต้องเช็คก่อน status ที่ประกาศเองและก่อนตัวจับคำไทย
+  if (isTransientInfraError(e)) {
+    return {
+      status: 503,
+      code: "upstream_unavailable", // รหัสเดิมของ 503 (ไม่เพิ่มรหัสใหม่ในสัญญา)
+      message_th: "ระบบไม่ว่างชั่วคราว ยังไม่ได้บันทึกรายการนี้ — กรุณาลองใหม่อีกครั้งด้วยค่า Idempotency-Key เดิม",
+      message_en: "Temporarily unavailable; nothing was saved. Retry with the same Idempotency-Key.",
     };
   }
   const raw = e instanceof Error ? e.message : "";

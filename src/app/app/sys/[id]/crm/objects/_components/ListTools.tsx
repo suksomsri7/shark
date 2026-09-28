@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { OBJECT_IMPORT_MAX_BYTES, OBJECT_IMPORT_MAX_ROWS } from "@/lib/modules/crm/objects-shared";
 import { deleteObjectViewAction, importRecordsAction, renameObjectViewAction, saveObjectViewAction } from "@/lib/modules/crm/objects-actions";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 /**
  * นำเข้า CSV — แถวหัว = ชื่ออ้างอิงของฟิลด์ (+ `title` · `parentId`) · เพดาน OBJECT_IMPORT_MAX_ROWS แถว / OBJECT_IMPORT_MAX_BYTES ไบต์
@@ -17,6 +18,8 @@ export function ImportRecordsButton({ systemId, objectKey, label, columns }: { s
   const [csv, setCsv] = useState("");
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string; errors?: { row: number; reason: string }[] } | null>(null);
   const [pending, startTransition] = useTransition();
+  // C4.3-fix part 2 ▸ ไฟล์ว่าง/ใหญ่เกิน/ถูกปฏิเสธทั้งไฟล์ = ข้อความใต้ช่อง CSV + โฟกัสช่อง · ผลนำเข้า (สร้าง/ข้ามแถว) ยังอยู่ในกล่องผลเดิม ◂
+  const fe = useFieldErrors(["csv"] as const);
   const header = columns.join(",");
 
   if (!open) {
@@ -34,18 +37,20 @@ export function ImportRecordsButton({ systemId, objectKey, label, columns }: { s
         e.preventDefault();
         setMsg(null);
         const bytes = new TextEncoder().encode(csv).length;
-        if (!csv.trim()) {
-          setMsg({ tone: "err", text: "ใส่ข้อมูล CSV หรือเลือกไฟล์ก่อนนำเข้า" });
+        if (
+          fe.show({
+            csv: !csv.trim()
+              ? "ใส่ข้อมูล CSV หรือเลือกไฟล์ก่อนนำเข้า"
+              : bytes > OBJECT_IMPORT_MAX_BYTES
+                ? `ไฟล์ใหญ่เกิน ${(OBJECT_IMPORT_MAX_BYTES / 1024 / 1024).toFixed(0)} MB ต่อครั้ง — แบ่งไฟล์แล้วนำเข้าทีละส่วน`
+                : undefined,
+          })
+        )
           return;
-        }
-        if (bytes > OBJECT_IMPORT_MAX_BYTES) {
-          setMsg({ tone: "err", text: `ไฟล์ใหญ่เกิน ${(OBJECT_IMPORT_MAX_BYTES / 1024 / 1024).toFixed(0)} MB ต่อครั้ง — แบ่งไฟล์แล้วนำเข้าทีละส่วน` });
-          return;
-        }
         startTransition(async () => {
           const res = await importRecordsAction(systemId, objectKey, { csv });
           if (!res.ok) {
-            setMsg({ tone: "err", text: res.error });
+            if (!fe.show(res.fieldErrors)) setMsg({ tone: "err", text: res.error });
             return;
           }
           setMsg({
@@ -67,11 +72,26 @@ export function ImportRecordsButton({ systemId, objectKey, label, columns }: { s
         data-testid="object-import-file"
         onChange={async (e) => {
           const file = e.target.files?.[0];
-          if (file) setCsv(await file.text());
+          if (file) {
+            setCsv(await file.text());
+            fe.clear("csv");
+          }
         }}
         className="text-xs"
       />
-      <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={5} className="input font-mono text-xs" placeholder={header} data-testid="object-import-text" />
+      <textarea
+        {...fe.field("csv")}
+        value={csv}
+        onChange={(e) => {
+          setCsv(e.target.value);
+          fe.clear("csv");
+        }}
+        rows={5}
+        className="input font-mono text-xs"
+        placeholder={header}
+        data-testid="object-import-text"
+      />
+      <FieldError id={fe.errorId("csv")} message={fe.errors.csv} testid="object-import-text-error" />
       {msg && (
         <div className="text-xs" style={{ color: msg.tone === "err" ? "var(--color-danger)" : "var(--color-accent)" }} role={msg.tone === "err" ? "alert" : "status"} data-testid="object-import-result">
           {msg.text}
@@ -106,6 +126,8 @@ export function SaveViewButton({ systemId, objectKey, filters, canShare }: { sys
   const [team, setTeam] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // C4.3-fix part 2 ▸ ชื่อมุมมองว่าง/ยาวเกิน = ข้อความใต้ช่องชื่อ + โฟกัส (บริการตรวจซ้ำ · ข้อความเดียวกัน) ◂
+  const fe = useFieldErrors(["name"] as const);
   if (!open) {
     return (
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)} data-testid="object-view-save-btn">
@@ -120,10 +142,11 @@ export function SaveViewButton({ systemId, objectKey, filters, canShare }: { sys
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
+        if (fe.show({ name: !name.trim() ? "ตั้งชื่อมุมมองก่อนจึงบันทึกได้" : undefined })) return;
         startTransition(async () => {
           const res = await saveObjectViewAction(systemId, objectKey, { name, filters: { f: filters.f, q: filters.q }, scope: team ? "TEAM" : "PRIVATE" });
           if (!res.ok) {
-            setError(res.error);
+            if (!fe.show(res.fieldErrors)) setError(res.error);
             return;
           }
           setOpen(false);
@@ -132,7 +155,21 @@ export function SaveViewButton({ systemId, objectKey, filters, canShare }: { sys
         });
       }}
     >
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ชื่อมุมมอง" className="input text-sm" data-testid="object-view-name" />
+      <span className="flex min-w-0 flex-col gap-1">
+        <input
+          {...fe.field("name")}
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            fe.clear("name");
+          }}
+          placeholder="ชื่อมุมมอง"
+          aria-label="ชื่อมุมมอง"
+          className="input text-sm"
+          data-testid="object-view-name"
+        />
+        <FieldError id={fe.errorId("name")} message={fe.errors.name} testid="object-view-name-error" />
+      </span>
       {canShare && (
         <label className="flex items-center gap-1 text-xs">
           <input type="checkbox" checked={team} onChange={(e) => setTeam(e.target.checked)} data-testid="object-view-team" />

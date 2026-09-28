@@ -3645,11 +3645,13 @@ Delivery is at least once and ordered by the moment the change was committed. Ev
 | --- | --- |
 | `X-Shark-Event` | The event type, for example `account.document.issued`. |
 | `X-Shark-Signature` | `HMAC-SHA256(secret, raw request body)` as lowercase hex. |
+| `X-Shark-Event-Id` | The event id (same as `id` in the body). It stays the same on every retry of that event - store it and drop duplicates. |
 
-The body is always the same three fields:
+The body is always the same four fields (`id` = the event id, see `X-Shark-Event-Id`):
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.issued",
   "payload": {
     "documentId": "cmf1doc0001"
@@ -3677,7 +3679,7 @@ export function handleSharkWebhook(rawBody: Buffer, headers: Record<string, stri
   if (got.length !== expected.length || !timingSafeEqual(Buffer.from(got), Buffer.from(expected))) {
     return { status: 401 };
   }
-  const event = JSON.parse(rawBody.toString("utf8")) as { type: string; payload: unknown; sentAt: string };
+  const event = JSON.parse(rawBody.toString("utf8")) as { id: string; type: string; payload: unknown; sentAt: string };
   // Answer 2xx fast, then do the work. Anything else is retried up to 5 times.
   void enqueue(event);
   return { status: 200 };
@@ -3716,6 +3718,7 @@ A purchase order was approved.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.approved",
   "payload": {
     "documentId": "cmf1doc0002",
@@ -3732,6 +3735,7 @@ A receipt or a vendor payment was recorded against a document.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment.recorded",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3749,6 +3753,7 @@ An invoice reached fully paid.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.invoice.paid",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3765,6 +3770,7 @@ An accounting period was closed.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.period.closed",
   "payload": {
     "periodKey": "2026-08",
@@ -3780,6 +3786,7 @@ A document left draft and got its real document number (sales, purchase, purchas
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.issued",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3801,6 +3808,7 @@ A document was cancelled (draft) or voided (already posted, journal reversed).
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.document.voided",
   "payload": {
     "documentId": "cmf1doc0001",
@@ -3818,6 +3826,7 @@ A quotation was accepted or rejected. The idempotency key carries the answer, so
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.quotation.responded",
   "payload": {
     "documentId": "cmf1doc0003",
@@ -3834,6 +3843,7 @@ A recorded payment was voided (journal reversed, document goes back to unpaid or
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment.voided",
   "payload": {
     "paymentId": "cmf1pay0001",
@@ -3852,6 +3862,7 @@ A PromptPay payment link was paid - either confirmed by the provider webhook or 
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment_request.paid",
   "payload": {
     "requestId": "cmf1req0001",
@@ -3871,6 +3882,7 @@ A payment link passed its expiry date and was closed by the hourly job.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.payment_request.expired",
   "payload": {
     "requestId": "cmf1req0002",
@@ -3888,6 +3900,7 @@ A contact (customer or supplier) was created.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.created",
   "payload": {
     "contactId": "cmf1con0001",
@@ -3908,6 +3921,7 @@ A contact was edited. The idempotency key includes the row `updatedAt` in millis
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.updated",
   "payload": {
     "contactId": "cmf1con0001",
@@ -3928,6 +3942,7 @@ Two duplicate contacts were merged. Stop using `mergedId`: every document now po
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.contact.merged",
   "payload": {
     "keepId": "cmf1con0001",
@@ -3949,6 +3964,7 @@ A product or service was created.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.product.created",
   "payload": {
     "productId": "cmf1prd0001",
@@ -3968,6 +3984,7 @@ A product or service was edited. Same `updatedAt` rule as `account.contact.updat
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.product.updated",
   "payload": {
     "productId": "cmf1prd0001",
@@ -3987,6 +4004,7 @@ A cheque's status changed: deposited, cleared, bounced or voided. Fires once per
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.cheque.changed",
   "payload": {
     "chequeId": "cmf1chq0001",
@@ -4005,6 +4023,7 @@ A month of bank reconciliation for one channel was confirmed.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.reconcile.confirmed",
   "payload": {
     "financeId": "cmf1fin0001",
@@ -4022,6 +4041,7 @@ A closed accounting period was reopened.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.period.reopened",
   "payload": {
     "periodKey": "2026-08",
@@ -4038,6 +4058,7 @@ Monthly depreciation was posted for one fixed asset.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.asset.depreciated",
   "payload": {
     "assetId": "cmf1ast0001",
@@ -4055,6 +4076,7 @@ A fixed asset was sold or written off.
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.asset.disposed",
   "payload": {
     "assetId": "cmf1ast0001",
@@ -4074,6 +4096,7 @@ A recurring document rule produced its document for the period (draft or auto-is
 
 ```json
 {
+  "id": "cmf1evt0001",
   "type": "account.recurring.ran",
   "payload": {
     "ruleId": "cmf1rec0001",

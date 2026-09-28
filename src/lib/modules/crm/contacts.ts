@@ -53,8 +53,10 @@ import { canAdvanceLifecycle } from "./rules";
 import * as deals from "./deals";
 import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
+import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
   CONTACT_BULK_MAX,
+  LEGACY_NOTE_PREFIX,
   CONTACT_EXPORT_MAX_ROWS,
   CONTACT_IMPORT_BATCH,
   CONTACT_IMPORT_ERRORS_MAX,
@@ -203,7 +205,7 @@ const NOT_FOUND_MSG = "ไม่พบผู้ติดต่อนี้ใน
 const MERGED_MSG = "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — เปิดผู้ติดต่อที่เก็บไว้แทน";
 const ARCHIVED_MSG = "ผู้ติดต่อนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ";
 
-const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[] } = {}) => new ContactsError(code, message, extra);
+const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[]; field?: string } = {}) => new ContactsError(code, message, extra);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : null);
 const newSeq = () => randomUUID().replace(/-/g, "");
 const lockKey = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
@@ -403,9 +405,11 @@ function storePhone(raw: string | null): string | null {
 function cleanPhone(v: unknown): string | null {
   if (v === null || v === undefined || v === "") return null;
   if (typeof v !== "string" && typeof v !== "number") throw fail("VALIDATION", "เบอร์โทรต้องเป็นข้อความ");
-  const p = contactPhoneProblem(String(v));
+  // C5.4 (L6-m7): เลขไทย ๐–๙ = เบอร์ปกติที่พิมพ์ด้วยแป้นไทย ⇒ แปลงก่อนตรวจ (เดิมปฏิเสธ "ใช้ได้เฉพาะตัวเลข")
+  const text = arabicDigits(String(v));
+  const p = contactPhoneProblem(text);
   if (p) throw fail("VALIDATION", p);
-  return storePhone(String(v).trim());
+  return storePhone(text.trim());
 }
 
 function cleanEmail(v: unknown): string | null {
@@ -791,7 +795,9 @@ async function linkCompany(ctx: ContactsCtx, actor: MemberActor, companyId: stri
 }
 
 // CRM C3.7 ▸ `opts.trustedSource` = ที่มาที่โค้ดฝั่งเซิร์ฟเวอร์ยืนยันเอง (via/proposalId) — ผู้เรียกจากภายนอกไม่มีทางส่งค่านี้ (ไม่ใช่ช่องของ input) ◂
-export async function createContact(ctx: ContactsCtx, actor: MemberActor, input: CreateContactInput, opts?: { trustedSource?: TrustedSource | null }): Promise<CreateContactResult & { warnings: string[] }> {
+// C4.3-fix part 2 · round 2 ▸ `opts.requireCustom` = ทางเข้าที่คนกรอก (server action · REST `contacts.create`) บังคับฟิลด์กำหนดเองที่ต้องกรอก ·
+//   ทางเข้าอัตโนมัติ (สายเข้า · แชท · นำเข้า · ฟอร์มหน้าเว็บ) ไม่มีค่าให้กรอก จึงไม่ส่งธงนี้ ◂
+export async function createContact(ctx: ContactsCtx, actor: MemberActor, input: CreateContactInput, opts?: { trustedSource?: TrustedSource | null; requireCustom?: boolean }): Promise<CreateContactResult & { warnings: string[] }> {
   const a = await enter(ctx, actor);
   need(a, "crm.contact.create");
   const { merged, custom } = await splitFields((input ?? {}) as CreateContactInput, input?.fields);
@@ -806,6 +812,11 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
   if (clean.ownerUserId) await assertMember(ctx, clean.ownerUserId);
   if (clean.companyId) await assertCompany(ctx, a, clean.companyId);
   await seedContactFields(ctx, a);
+  if (opts?.requireCustom) {
+    // engine ตรวจเฉพาะ key ที่ส่งมา — ช่องบังคับที่ "ไม่ส่งเลย" ต้องตรวจที่นี่ (กติกาเดียวกับ objects.ts records.create)
+    const miss = missingRequiredCustom(await (await engine()).listLayout(fctx(ctx, a)), custom);
+    if (miss) throw fail("VALIDATION", requiredCustomMessage(miss.label), { field: customFieldErrorKey(miss.key) });
+  }
   const res = await createCore(ctx, a, { ...clean, sourceKind: clean.sourceKind ?? "CRM" }, { force: input?.force === true, via: "USER", custom, auto });
   if (!res.created) return { contact: toDto(res.row), created: false, duplicates: res.duplicates, warnings: [] };
   const warnings: string[] = [];
@@ -844,6 +855,36 @@ export async function createContactFromLegacy(
 }
 
 /**
+ * C5.4 (L6-m4): คำนำหน้าชื่อที่รู้จัก — แยกออกเป็น `titleTh` ก่อนตัดชื่อ/นามสกุล (เดิม "นาย สมชาย ใจดี" ⇒ firstName "นาย" ⇒
+ * อีเมล/ลำดับติดตาม `{{contact.firstName}}` = "เรียนคุณนาย") · `name` ของ v1 ยังเก็บตามที่พิมพ์ทุกตัวอักษร (จอ v1 ไม่เปลี่ยน)
+ * - มีช่องว่างตามหลัง: ทุกคำในรายการ (รวม "คุณ" "นาง" และภาษาอังกฤษ Mr/Mrs/Ms/Miss/Dr — ไม่สนตัวพิมพ์)
+ * - ติดกับชื่อ ("นายสมชาย" "นางสาวสมหญิง" "น.ส.สมหญิง"): เฉพาะคำที่ไม่ใช่ต้นชื่อจริงของคนไทย และตัวถัดไปต้องเป็นพยัญชนะ/สระหน้า
+ *   ("นาง"/"คุณ" ติดกันไม่แยก: นางนวล · คุณากร · คุณวุฒิ เป็นชื่อจริง) · เหลือชื่อว่าง = ไม่แยก
+ */
+const HONORIFIC_SPACED = ["นางสาว", "นาง", "นาย", "น.ส.", "ด.ช.", "ด.ญ.", "เด็กชาย", "เด็กหญิง", "คุณ", "ดร.", "นพ.", "พญ.", "ทพ.", "ทพญ.", "mr.", "mr", "mrs.", "mrs", "ms.", "ms", "miss", "dr.", "dr"];
+const HONORIFIC_GLUED = ["เด็กหญิง", "เด็กชาย", "นางสาว", "ทพญ.", "น.ส.", "ด.ช.", "ด.ญ.", "นาย", "ดร.", "นพ.", "พญ.", "ทพ."];
+export function splitHonorific(full: string): { title: string | null; rest: string } {
+  const text = full.trim();
+  const sp = text.indexOf(" ");
+  if (sp > 0) {
+    const head = text.slice(0, sp);
+    const rest = text.slice(sp + 1).trim();
+    if (rest && HONORIFIC_SPACED.includes(head.toLowerCase())) return { title: head, rest };
+  }
+  for (const t of HONORIFIC_GLUED) {
+    if (!text.startsWith(t)) continue;
+    const rest = text.slice(t.length).trim();
+    if (rest && /^[\u0E01-\u0E2E\u0E40-\u0E44]/.test(rest)) return { title: t, rest };
+  }
+  return { title: null, rest: text };
+}
+
+/** C5.4 (L6-m7): เลขไทย ๐–๙ → 0–9 (ฟอร์ม/แชทที่พิมพ์ด้วยแป้นไทย) */
+const arabicDigits = (v: string) => v.replace(/[\u0E50-\u0E59]/g, (d) => String(d.charCodeAt(0) - 0x0e50));
+/** C5.4 (L6-m7): "02-123-4567 ต่อ 12" / "… ext. 12" / "… #12" → ส่วนเบอร์หลัก (ใช้จับคู่ได้) · ไม่มีเบอร์ต่อ = null */
+const EXT_RE = /^(.*?\d)\s*(?:ต่อ|ext\.?|x|#)\s*\d{1,6}\s*$/i;
+
+/**
  * ค่าที่ทางเข้า v1 ส่งให้ `createCore` (ใช้ร่วมกับสะพานฟอร์ม C1.8 — ฟอร์มสาธารณะต้องเข้า CRM ได้เสมอ ไม่ว่าจะพิมพ์เบอร์/อีเมลรูปแบบไหน)
  * ชื่อเต็มแยกที่ช่องว่างแรก · v1 ไม่เคยตรวจรูปแบบเบอร์/อีเมล · รีวิว C1.4 S7: ค่าที่รูปแบบผิด **ไม่ทิ้ง** — เก็บตามที่พิมพ์ไว้ในโน้ต
  * (ไม่ใช้จับคู่ Party/ตัวซ้ำ) ให้พนักงานแก้เอง
@@ -853,22 +894,34 @@ function legacyCreateArgs(
   owner: string | null,
 ): { clean: CreateClean; legacy: NonNullable<CreateCoreOpts["legacy"]> } {
   const full = String(input?.name ?? "").trim().replace(/\s+/g, " ");
-  const at = full.indexOf(" ");
-  const firstName = (at < 0 ? full : full.slice(0, at)).slice(0, CONTACT_NAME_MAX);
-  const lastName = at < 0 ? null : full.slice(at + 1).slice(0, CONTACT_NAME_MAX) || null;
+  // C5.4 (L6-m4): คำนำหน้า → titleTh ก่อนตัดชื่อ (ดู `splitHonorific`)
+  const honor = splitHonorific(full);
+  const given = honor.rest;
+  const at = given.indexOf(" ");
+  const firstName = (at < 0 ? given : given.slice(0, at)).slice(0, CONTACT_NAME_MAX);
+  const lastName = at < 0 ? null : given.slice(at + 1).slice(0, CONTACT_NAME_MAX) || null;
   const rawPhone = str(input?.phone);
   const rawEmail = str(input?.email);
-  const phone = rawPhone && !contactPhoneProblem(rawPhone) ? storePhone(rawPhone) : null;
-  const email = rawEmail && !emailProblem(rawEmail) ? rawEmail.toLowerCase() : null;
-  const kept = [rawPhone && !phone ? `เบอร์: ${rawPhone.slice(0, 100)}` : null, rawEmail && !email ? `อีเมล: ${rawEmail.slice(0, 200)}` : null].filter(Boolean);
-  const note = kept.length > 0 ? `ข้อมูลติดต่อจากฟอร์มที่รูปแบบยังไม่ถูกต้อง (เก็บตามที่กรอก) — ${kept.join(" · ")}` : null;
+  // C5.4 (L6-m7 · มติรอบ 2): คอลัมน์ `phone` เก็บเฉพาะเบอร์ที่ถูกต้อง (หรือ null) · เลขไทยแปลงเป็นอารบิกก่อน (๐๘๑… = เบอร์ปกติ) ·
+  //   มีเบอร์ต่อ = คอลัมน์ได้เบอร์หลัก · ข้อความที่กรอกจริงเมื่อไม่ผ่านตามรูป (รวมเบอร์ต่อ) เก็บในโน้ตหัว LEGACY_NOTE_PREFIX ซึ่งจอ v1
+  //   อ่านกลับมาแสดง (`legacyTypedPhone`) ⇒ ผู้ใช้ v1 เห็นเบอร์ตามที่กรอกเหมือนเดิม
+  const phoneIn = rawPhone ? arabicDigits(rawPhone).trim() : null;
+  const valid = phoneIn && !contactPhoneProblem(phoneIn) ? storePhone(phoneIn) : null;
+  const extBase = !valid && phoneIn ? (EXT_RE.exec(phoneIn)?.[1] ?? null) : null;
+  const phone = valid ?? (extBase && !contactPhoneProblem(extBase) ? storePhone(extBase) : null);
+  // C5.4 (L6-m7): ช่องอีเมลของฟอร์มที่ใส่มาหลายที่อยู่ ("a@x.com, b@y.com") — ใช้ที่อยู่แรกที่ถูกรูปแบบ (เดิมทิ้งทั้งช่องลงโน้ต)
+  //   ข้อความเต็มยังเก็บในโน้ตเมื่อมีมากกว่าหนึ่งที่อยู่/รูปแบบไม่ตรง (ที่อยู่ที่เหลือไม่หาย)
+  const emailWhole = rawEmail && !emailProblem(rawEmail) ? rawEmail.toLowerCase() : null;
+  const email = emailWhole ?? (rawEmail ? (rawEmail.split(/[\s,;]+/).find((x) => x && !emailProblem(x))?.toLowerCase() ?? null) : null);
+  const kept = [phoneIn && !valid ? `เบอร์: ${phoneIn.slice(0, 100)}` : null, rawEmail && !emailWhole ? `อีเมล: ${rawEmail.slice(0, 200)}` : null].filter(Boolean);
+  const note = kept.length > 0 ? `${LEGACY_NOTE_PREFIX}${kept.join(" · ")}` : null;
   const legacySource = str(input?.source);
   const sourceKind: MemberSource = legacySource === "FORM" ? "WEB_FORM" : legacySource === "AI" ? "API" : "CRM";
   return {
     clean: {
       firstName: firstName || CONTACT_NAME_PLACEHOLDER,
       lastName,
-      titleTh: null,
+      titleTh: honor.title ? honor.title.slice(0, 40) : null,
       phone,
       email,
       jobTitle: null,

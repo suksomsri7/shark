@@ -31,10 +31,13 @@ export class CompaniesError extends Error {
   /** DUPLICATE: บริษัทเดิมที่ชน */
   readonly duplicateOf?: string;
   readonly companyId?: string;
-  constructor(code: CompanyErrorCode, message: string, extra: { duplicateOf?: string } = {}) {
+  /** C4.3-fix part 2 ▸ ช่องที่ข้อความเป็นของ (fieldErrors key เช่น `cf:<fieldKey>`) ◂ */
+  readonly field?: string;
+  constructor(code: CompanyErrorCode, message: string, extra: { duplicateOf?: string; field?: string } = {}) {
     super(message);
     this.name = "CompaniesError";
     this.code = code;
+    if (extra.field) this.field = extra.field;
     if (extra.duplicateOf) {
       this.duplicateOf = extra.duplicateOf;
       this.companyId = extra.duplicateOf;

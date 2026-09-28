@@ -520,7 +520,7 @@ export default function KanbanApiDevPage() {
         <p className="text-sm text-neutral-700">
           เจ้าของร้านสมัคร URL ปลายทางให้ event ใดก็ได้ในตารางนี้ · แต่ละครั้งส่งเป็น <code>POST</code> พร้อมส่วนหัว{" "}
           <code>X-Shark-Event</code> และ <code>X-Shark-Signature</code> = HMAC-SHA256 ของ <strong>ไบต์ดิบ</strong>{" "}
-          ทั้งก้อนด้วย secret ของปลายทาง (hex ตัวพิมพ์เล็ก) เนื้อคำขอเป็น <code>{"{ type, payload, sentAt }"}</code> ·
+          ทั้งก้อนด้วย secret ของปลายทาง (hex ตัวพิมพ์เล็ก) เนื้อคำขอเป็น <code>{"{ id, type, payload, sentAt }"}</code> ·
           ต้องตรวจลายเซ็นจากไบต์ดิบ <strong>ก่อน</strong> แปลง JSON · การส่งเป็นแบบ at-least-once (ลองซ้ำได้ 5 ครั้ง)
           ตัวรับจึงต้องทนของซ้ำ
         </p>

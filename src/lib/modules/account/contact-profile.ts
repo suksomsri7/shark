@@ -225,6 +225,11 @@ export type ContactProfileInput = {
   base: string;
   asOf?: Date;
   meter?: QueryMeter;
+  /**
+   * C5.4 (L1-M3): ผู้ดูโปรไฟล์ ในสายตาของ CRM — การ์ด "CRM" (ชื่อผู้ติดต่อ · ดีลล่าสุด · ขั้น) แสดงเฉพาะที่เขามีคีย์อ่าน +
+   * มองเห็น · `null` = ไม่มีสิทธิ์ CRM · ไม่ส่ง = งานระบบ (ทุกทางที่ผู้ใช้เปิดได้ต้องส่ง)
+   */
+  crmViewer?: import("@/lib/modules/member").MemberActor | null;
 };
 
 const RECENT_DOCS_TAKE = 5;
@@ -428,7 +433,7 @@ export async function contactProfile(
   }
 
   if (tab === "links") {
-    profile.linksTab = { cards: await loadConnections(ctx, c, base, meter) };
+    profile.linksTab = { cards: await loadConnections(ctx, c, base, meter, input.crmViewer) };
   }
 
   return profile;
@@ -586,6 +591,7 @@ async function loadConnections(
   c: { id: string; partyId: string | null },
   base: string,
   meter?: QueryMeter,
+  crmViewer?: import("@/lib/modules/member").MemberActor | null,
 ): Promise<ProfileConnection[]> {
   bumpMeter(meter);
   const { memberSystemId, crmSystemId } = await findLinkedSystemIds(ctx.tenantId);
@@ -596,13 +602,13 @@ async function loadConnections(
       ? (bumpMeter(meter), memberSvc.findCustomerByPartyId(ctx.tenantId, memberSystemId, partyId))
       : Promise.resolve(null),
     crmSystemId && partyId
-      ? (bumpMeter(meter), crmSvc.findContactByPartyId({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyId))
+      ? (bumpMeter(meter), crmSvc.findContactByPartyId({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyId, crmViewer))
       : Promise.resolve(null),
   ]);
 
   const deal =
     crmSystemId && crmContact
-      ? (bumpMeter(meter), await crmSvc.findLatestDealForContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, crmContact.id))
+      ? (bumpMeter(meter), await crmSvc.findLatestDealForContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, crmContact.id, crmViewer))
       : null;
 
   const baht = (satang: number) =>

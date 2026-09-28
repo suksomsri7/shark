@@ -7,6 +7,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { formatBaht } from "@/lib/ui/money";
+import { legacyTypedPhone } from "./contacts-shared";
 import {
   getBoard,
   listContacts,
@@ -336,7 +337,8 @@ export async function CrmContactsSection({ systemId }: { systemId: string }) {
         items={contacts.map((c) => ({
           key: c.id,
           primary: c.name,
-          secondary: [c.phone, c.source].filter(Boolean).join(" · ") || undefined,
+          // C5.4 (L6-m7): เบอร์ที่ฟอร์มรับมาแต่รูปแบบไม่ผ่าน (เก็บในโน้ต ไม่ใช่คอลัมน์ phone) — แสดงตามที่กรอกเหมือนก่อน C1.x
+          secondary: [legacyTypedPhone(c.note) ?? c.phone, c.source].filter(Boolean).join(" · ") || undefined,
           trailing: (
             <StatusChip value={c.lifecycleStage} map={LIFECYCLE_LABEL} tone={lifecycleTone(c.lifecycleStage)} />
           ),

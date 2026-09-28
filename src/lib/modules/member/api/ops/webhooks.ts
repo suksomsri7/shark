@@ -20,7 +20,7 @@ import {
   setEndpointActive,
   setEndpointEvents,
   testEndpoint,
-  webhookTargetProblem,
+  webhookSaveProblem,
 } from "@/lib/webhooks/service";
 import type { ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
@@ -114,7 +114,8 @@ const create = defineMemberOp({
     const url = checkUrl(input.url);
     const events = checkEvents(input.events);
     // 🔴 AUDIT M1: ปลายทางภายใน/loopback/metadata = 400 พร้อมเหตุผลไทย (ไม่ใช่ 500 จากบริการกลาง)
-    const unsafe = await webhookTargetProblem(url);
+    //    C5.4 (L4-M2): ด่านตอนบันทึก — โดเมนที่ DNS ยังไม่กระจายบันทึกได้ (ทุกการส่งตรวจซ้ำ + ตรึง IP ใน outboundFetch)
+    const unsafe = await webhookSaveProblem(url);
     if (unsafe) throw badRequest(unsafe, "The endpoint URL must resolve to a public address.", [{ path: "url", message: unsafe }]);
     const res = await createEndpoint({ tenantId: actor.tenantId }, { url, events });
     return jsonSafe({ id: res.id, secret: res.secret, url, events, active: true });

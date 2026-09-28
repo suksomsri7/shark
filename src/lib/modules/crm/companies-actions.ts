@@ -34,10 +34,22 @@ import {
   type MergeCompaniesInput,
   type UpdateCompanyInput,
 } from "./companies";
-import { CompaniesError, type CompanyCandidate, type ImportCompaniesResult } from "./companies-shared";
+import {
+  COMPANY_NAME_MAX,
+  CompaniesError,
+  branchCodeProblem,
+  emailDomainProblem,
+  emailProblem,
+  phoneProblem,
+  taxIdProblem,
+  websiteProblem,
+  type CompanyCandidate,
+  type ImportCompaniesResult,
+} from "./companies-shared";
+import { blank, withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
-type Fail = { ok: false; error: string; code?: string; duplicateOf?: string };
+type Fail = { ok: false; error: string; code?: string; duplicateOf?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, action: string) {
   const auth = await requireTenant();
@@ -57,7 +69,7 @@ async function session(systemId: string, action: string) {
 function failOf(e: unknown, multiStep = false): Fail {
   if (e instanceof CrmLimitError) return { ok: false, error: e.message, code: "LIMIT" }; // CRM C3.9 ▸ เกินเพดาน = ข้อความไทยของเพดาน ◂
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
-  if (e instanceof CompaniesError) return { ok: false, error: e.message, code: e.code, ...(e.duplicateOf ? { duplicateOf: e.duplicateOf } : {}) };
+  if (e instanceof CompaniesError) return { ok: false, error: e.message, code: e.code, ...(e.duplicateOf ? { duplicateOf: e.duplicateOf } : {}), ...(e.field ? { fieldErrors: { [e.field]: e.message } } : {}) };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };
   // 🔴 ไม่ส่งรายละเอียดทางเทคนิค/ข้อมูลลูกค้าออกไป (log แค่ชนิด error)
   console.error(`[crm.companies] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
@@ -74,11 +86,20 @@ export async function createCompanyAction(
 ): Promise<{ ok: true; id: string; created: boolean; duplicateOf: string | null; duplicateArchived: boolean; candidates: CompanyCandidate[] } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.company.create");
-    const r = await createCompany(ctx, actor, input);
+    const r = await createCompany(ctx, actor, input, { requireCustom: true });
     if (r.created) revalidatePath(base(systemId));
     return { ok: true, id: r.company.id, created: r.created, duplicateOf: r.duplicateOf, duplicateArchived: !!r.duplicateArchived, candidates: r.candidates };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (ฟอร์มแสดงใต้ช่อง + โฟกัส) · ตัวตรวจชุดเดียวกับฝั่งจอ ◂
+    return withFieldError(failOf(e), {
+      name: blank(input?.name) || String(input?.name ?? "").trim().length > COMPANY_NAME_MAX,
+      taxId: !!taxIdProblem(input?.taxId),
+      branchCode: !!branchCodeProblem(input?.branchCode),
+      website: !!websiteProblem(input?.website),
+      emailDomain: !!emailDomainProblem(input?.emailDomain),
+      phone: !!phoneProblem(input?.phone),
+      email: !!emailProblem(input?.email),
+    });
   }
 }
 

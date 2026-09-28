@@ -11,8 +11,9 @@ import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { createLostReason, updateLostReason, type LostReasonsCtx } from "./lost-reasons";
 import { DealsError } from "./deals-shared";
+import { withFieldError, type CrmFieldErrors } from "./field-errors-shared";
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string) {
   const auth = await requireTenant();
@@ -42,7 +43,9 @@ export async function createLostReasonAction(systemId: string, label: string): P
     touch(systemId);
     return { ok: true };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ฟอร์มนี้มีช่องเดียว: ค่าไม่ผ่าน/ซ้ำกับของเดิม = ข้อความของช่อง "เหตุผลใหม่" ◂
+    const f = failOf(e);
+    return withFieldError(f, { label: true }, { force: f.code === "CONFLICT" });
   }
 }
 

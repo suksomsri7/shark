@@ -7,7 +7,8 @@
 // 🔴 คีย์ดิบ/secret แสดงครั้งเดียว (ฐานเก็บแต่ hash) · ข้อความผิดพลาดแสดงใต้ฟอร์ม (ไม่ใช้ alert)
 // 🔴 ไฟล์ 'use client' — import ได้เฉพาะชนิดบริสุทธิ์ (`./shared`) · action มาทาง props
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 import { CRM_KEY_BUNDLES, type CrmActionResult, type CrmApiKeyRow, type CrmApiToolRow, type CrmBundleScopeRow, type CrmKeyResult, type CrmWebhookCreateResult, type CrmWebhookDeliveryRow, type CrmWebhookRow } from "./shared";
 
 type Props = {
@@ -69,6 +70,17 @@ function scopeNote(rows: CrmBundleScopeRow[], id: string): string {
   return ` · ${row.count} สิทธิ์${groups.length > 0 ? ` (รวม ${groups.join(" · ")})` : ""}`;
 }
 
+/** C4.3-fix part 2 ▸ ที่อยู่ปลายทางต้องเป็น https — ข้อความเดียวกับ `crmWebhookUrlProblem` (action ตรวจซ้ำเสมอ) ◂ */
+function hookUrlProblem(raw: string): string | null {
+  let u: URL | null = null;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    u = null;
+  }
+  return !u || u.protocol !== "https:" ? "ที่อยู่ปลายทางต้องขึ้นต้นด้วย https:// — รหัสอ้างอิงลูกค้าส่งผ่านช่องทางที่ไม่เข้ารหัสไม่ได้" : null;
+}
+
 export function CrmApiSettings(p: Props) {
   const [pending, start] = useTransition();
   const [keyOpen, setKeyOpen] = useState(false);
@@ -81,16 +93,37 @@ export function CrmApiSettings(p: Props) {
   const [picked, setPicked] = useState<string[]>(["crm.deal.won", "crm.contact.created"].filter((e) => p.events.some((x) => x.value === e)));
 
   const run = <T extends { ok: boolean }>(fn: () => Promise<T>, done: (r: T) => void) => start(async () => done(await fn()));
+  // C4.3-fix part 2 ▸ ฟอร์มสร้างคีย์/เพิ่มปลายทาง: ไม่ใช้ bubble `required` ของเบราว์เซอร์ (noValidate) — ตรวจเอง บอกใต้ช่อง + โฟกัส
+  //   · ส่งด้วย onSubmit (ไม่ใช่ form action) เพื่อไม่ให้ React ล้างค่าที่พิมพ์ไว้เมื่อถูกปฏิเสธ · กันกดซ้ำระหว่างส่ง ◂
+  const keyFe = useFieldErrors(["name", "teamId"] as const);
+  const hookFe = useFieldErrors(["url", "events"] as const);
+  const inflight = useRef(false);
+  const submitOnce = <T extends { ok: boolean }>(fn: () => Promise<T>, done: (r: T) => void) => {
+    if (inflight.current) return;
+    inflight.current = true;
+    start(async () => {
+      try {
+        done(await fn());
+      } finally {
+        inflight.current = false;
+      }
+    });
+  };
 
-  const onCreateKey = (fd: FormData) => {
+  const onCreateKey = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
     fd.set("systemId", p.systemId);
     fd.set("bundle", bundle);
-    run(() => p.createKey(fd), (r) => {
+    const name = String(fd.get("name") ?? "").trim();
+    setKeyMsg(null);
+    if (keyFe.show({ name: !name ? "ตั้งชื่อคีย์ให้จำง่ายก่อน เช่น ฟอร์มหน้าเว็บ — lead" : undefined })) return;
+    submitOnce(() => p.createKey(fd), (r) => {
       if (r.ok) {
         setRawKey(r.rawKey);
         setKeyMsg({ ok: true, text: "สร้างคีย์แล้ว — คัดลอกเก็บไว้ตอนนี้ ระบบจะไม่แสดงคีย์นี้อีก" });
         setKeyOpen(false);
-      } else setKeyMsg({ ok: false, text: r.reason });
+      } else if (!keyFe.show(r.fieldErrors)) setKeyMsg({ ok: false, text: r.reason });
     });
   };
   const onRevoke = (id: string) => {
@@ -99,16 +132,26 @@ export function CrmApiSettings(p: Props) {
     fd.set("keyId", id);
     run(() => p.revokeKey(fd), (r) => setKeyMsg(r.ok ? { ok: true, text: "เพิกถอนคีย์แล้ว — คำขอถัดไปของคีย์นี้จะถูกปฏิเสธ" } : { ok: false, text: r.reason }));
   };
-  const onCreateHook = (fd: FormData) => {
+  const onCreateHook = (ev: React.FormEvent<HTMLFormElement>) => {
+    ev.preventDefault();
+    const fd = new FormData(ev.currentTarget);
     fd.set("systemId", p.systemId);
     fd.delete("events");
     for (const e of picked) fd.append("events", e);
-    run(() => p.createWebhook(fd), (r) => {
+    setHookMsg(null);
+    if (
+      hookFe.show({
+        url: hookUrlProblem(String(fd.get("url") ?? "")) ?? undefined,
+        events: picked.length === 0 ? "เลือกเหตุการณ์ที่จะรับอย่างน้อย 1 รายการ" : undefined,
+      })
+    )
+      return;
+    submitOnce(() => p.createWebhook(fd), (r) => {
       if (r.ok) {
         setSecret(r.secret);
         setHookMsg({ ok: true, text: "เพิ่มปลายทางแล้ว — คัดลอก secret ไว้ตรวจลายเซ็น ระบบจะไม่แสดงอีก" });
         setHookOpen(false);
-      } else setHookMsg({ ok: false, text: r.reason });
+      } else if (!hookFe.show(r.fieldErrors)) setHookMsg({ ok: false, text: r.reason });
     });
   };
   const hookAction = (fn: (fd: FormData) => Promise<CrmActionResult>, id: string, extra: Record<string, string> = {}) => {
@@ -131,10 +174,20 @@ export function CrmApiSettings(p: Props) {
         </div>
         <p className={help}>คีย์ใช้กับระบบ CRM นี้เท่านั้น · ทำได้ {p.opCount} คำสั่งตามชุดสิทธิ์ที่เลือก · ระบบภายนอกส่งคีย์ในส่วนหัว Authorization</p>
         {keyOpen ? (
-          <form action={onCreateKey} className="flex flex-col gap-3 rounded-md border p-3" data-testid="crm-api-key-form">
+          <form onSubmit={onCreateKey} noValidate className="flex flex-col gap-3 rounded-md border p-3" data-testid="crm-api-key-form">
             <label className="flex flex-col gap-1 text-sm">
               ชื่อคีย์
-              <input name="name" maxLength={100} required className={input} placeholder="เช่น ฟอร์มหน้าเว็บ — lead" data-testid="crm-api-key-name" />
+              <input
+                {...keyFe.field("name")}
+                name="name"
+                maxLength={100}
+                aria-required="true"
+                onChange={() => keyFe.clear("name")}
+                className={input}
+                placeholder="เช่น ฟอร์มหน้าเว็บ — lead"
+                data-testid="crm-api-key-name"
+              />
+              <FieldError id={keyFe.errorId("name")} message={keyFe.errors.name} testid="crm-api-key-name-error" />
             </label>
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm">ชุดสิทธิ์</legend>
@@ -154,7 +207,7 @@ export function CrmApiSettings(p: Props) {
             </fieldset>
             <label className="flex flex-col gap-1 text-sm">
               จำกัดให้เห็นเฉพาะทีม (ไม่บังคับ)
-              <select name="teamId" className={input} defaultValue="" data-testid="crm-api-key-team">
+              <select {...keyFe.field("teamId")} name="teamId" className={input} defaultValue="" onChange={() => keyFe.clear("teamId")} data-testid="crm-api-key-team">
                 <option value="">ทุกทีม (ตามชุดสิทธิ์)</option>
                 {p.teams.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -162,6 +215,7 @@ export function CrmApiSettings(p: Props) {
                   </option>
                 ))}
               </select>
+              <FieldError id={keyFe.errorId("teamId")} message={keyFe.errors.teamId} testid="crm-api-key-team-error" />
             </label>
             <div className="flex flex-wrap gap-2">
               <button type="submit" className={btn} disabled={pending} data-testid="crm-api-key-submit">
@@ -272,20 +326,38 @@ export function CrmApiSettings(p: Props) {
         </div>
         <p className={help}>ส่งเฉพาะรหัสอ้างอิง (ไม่มีเบอร์ อีเมล ชื่อ) · ลงลายเซ็น X-Shark-Signature และ X-Shark-Signature-V2 ด้วย secret ของปลายทาง</p>
         {hookOpen ? (
-          <form action={onCreateHook} className="flex flex-col gap-3 rounded-md border p-3" data-testid="crm-api-hook-form">
+          <form onSubmit={onCreateHook} noValidate className="flex flex-col gap-3 rounded-md border p-3" data-testid="crm-api-hook-form">
             <label className="flex flex-col gap-1 text-sm">
               ที่อยู่ปลายทาง (https://)
-              <input name="url" type="url" maxLength={500} required className={input} placeholder="https://example.com/hooks/shark" data-testid="crm-api-hook-url" />
+              <input
+                {...hookFe.field("url")}
+                name="url"
+                type="url"
+                inputMode="url"
+                maxLength={500}
+                aria-required="true"
+                onChange={() => hookFe.clear("url")}
+                className={input}
+                placeholder="https://example.com/hooks/shark"
+                data-testid="crm-api-hook-url"
+              />
+              <FieldError id={hookFe.errorId("url")} message={hookFe.errors.url} testid="crm-api-hook-url-error" />
             </label>
-            <fieldset className="flex flex-col gap-1">
+            <fieldset className="flex flex-col gap-1" aria-describedby={hookFe.errors.events ? hookFe.errorId("events") : undefined}>
               <legend className="text-sm">เหตุการณ์ที่จะรับ</legend>
+              {/* กลุ่มช่องติ๊ก: ข้อความอยู่ใต้หัวกลุ่ม (เห็นทันทีเมื่อโฟกัสย้ายไปช่องแรก) · ทุกช่องผูก aria-describedby */}
+              <FieldError id={hookFe.errorId("events")} message={hookFe.errors.events} testid="crm-api-hook-events-error" />
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-                {p.events.map((e) => (
+                {p.events.map((e, i) => (
                   <label key={e.value} className="flex items-start gap-2 text-xs">
                     <input
+                      {...(i === 0 ? hookFe.field("events") : { "aria-invalid": hookFe.errors.events ? true : undefined, "aria-describedby": hookFe.errors.events ? hookFe.errorId("events") : undefined })}
                       type="checkbox"
                       checked={picked.includes(e.value)}
-                      onChange={(ev) => setPicked((cur) => (ev.target.checked ? [...cur, e.value] : cur.filter((x) => x !== e.value)))}
+                      onChange={(ev) => {
+                        setPicked((cur) => (ev.target.checked ? [...cur, e.value] : cur.filter((x) => x !== e.value)));
+                        hookFe.clear("events");
+                      }}
                       data-testid={`crm-api-hook-event-${e.value}`}
                     />
                     <span>

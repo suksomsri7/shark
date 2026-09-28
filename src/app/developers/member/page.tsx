@@ -560,7 +560,7 @@ export default function MemberApiDocsPage() {
         <p className="text-sm text-neutral-700">
           ร้านสมัครปลายทางได้ที่ <strong>ตั้งค่า › แอปภายนอก / API</strong> · ทุกครั้งที่ส่งจะเป็น{" "}
           <code>POST</code> พร้อมส่วนหัว <code>X-Shark-Event</code> · เนื้อ{" "}
-          <code>{"{ type, payload, sentAt }"}</code> · และ <code>X-Shark-Signature</code> ={" "}
+          <code>{"{ id, type, payload, sentAt }"}</code> · และ <code>X-Shark-Signature</code> ={" "}
           HMAC-SHA256 ของเนื้อคำขอดิบด้วยความลับของปลายทาง (hex ตัวพิมพ์เล็ก) · ส่งอย่างน้อยหนึ่งครั้ง (retry 5 ครั้ง)
           ⇒ ตัวรับต้องทนการส่งซ้ำ
         </p>

@@ -17,6 +17,7 @@ import {
 } from "@/lib/modules/crm/contacts-shared";
 import { createContactAction, searchCompaniesAction } from "@/lib/modules/crm/contacts-actions";
 import { ContactPicker } from "./ContactPicker";
+import { FieldError, useFieldErrors } from "@/components/crm/form/field-errors";
 
 type Opt = { id: string; name: string };
 type CustomField = { key: string; label: string; type: string; required: boolean; choices: { value: string; label: string }[] };
@@ -38,18 +39,25 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
   const [values, setValues] = useState<Record<Key, string>>(() => ({ ...(Object.fromEntries(FIELDS.map((k) => [k, ""])) as Record<Key, string>), ownerUserId: defaultOwner, sourceKind: "CRM" }));
   const [companyId, setCompanyId] = useState("");
   const [custom, setCustom] = useState<Record<string, string>>({});
-  const [errors, setErrors] = useState<Partial<Record<Key, string>>>({});
+  // C4.3-fix part 2 ▸ ข้อความใต้ช่อง + โฟกัสช่องแรกที่ผิด (แบบแผนเดียวของฟอร์ม CRM) ◂
+  //   ช่องข้อมูลเพิ่มเติม (custom) ต่อท้ายลำดับ — key `cf:<fieldKey>` (reviewer S2: ช่องบังคับที่ว่างบอกใต้ช่องนั้น + โฟกัส)
+  const fe = useFieldErrors<string>([...FIELDS, ...customFields.map((f) => `cf:${f.key}`)]);
+  const errors = fe.errors;
   const [formError, setFormError] = useState<string | null>(null);
   const [dups, setDups] = useState<DuplicateHit[] | null>(null);
   const [pending, start] = useTransition();
 
   const set = (k: Key, v: string) => {
     setValues((s) => ({ ...s, [k]: v }));
-    if (errors[k]) setErrors((e) => ({ ...e, [k]: undefined }));
+    fe.clear(k);
   };
+  // 🔴 ช่องว่าง = ไม่บอกตอน blur (บอกตอนกดบันทึก): ข้อความที่โผล่ตอน blur ดันปุ่มบันทึกลง ⇒ คลิกที่กดลงไปแล้วหลุดปุ่ม
+  //    (mousedown → blur → ข้อความเกิด → mouseup นอกปุ่ม = ไม่มี submit · C4.3-fix part 2)
   const blur = (k: Key) => {
+    if (!values[k].trim()) return fe.clear(k);
     const p = CHECK[k]?.(values[k]) ?? null;
-    setErrors((e) => ({ ...e, [k]: p ?? undefined }));
+    if (p) fe.set(k, p);
+    else fe.clear(k);
   };
 
   const send = (force: boolean) =>
@@ -59,14 +67,10 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
         const p = CHECK[k]?.(values[k]) ?? null;
         if (p) next[k] = p;
       }
-      setErrors(next);
       setFormError(null);
-      if (Object.keys(next).length > 0) return;
-      const missing = customFields.find((f) => f.required && !String(custom[f.key] ?? "").trim());
-      if (missing) {
-        setFormError(`ช่อง "${missing.label}" เป็นข้อมูลที่ต้องกรอก`);
-        return;
-      }
+      const all: Record<string, string> = { ...(next as Record<string, string>) };
+      for (const f of customFields) if (f.required && !String(custom[f.key] ?? "").trim()) all[`cf:${f.key}`] = `ช่อง "${f.label}" เป็นข้อมูลที่ต้องกรอก`;
+      if (fe.show(all)) return;
       const fields: Record<string, unknown> = {};
       for (const f of customFields) {
         const v = String(custom[f.key] ?? "").trim();
@@ -87,7 +91,7 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
         force,
       });
       if (!r.ok) {
-        setFormError(r.error);
+        if (!fe.show(r.fieldErrors)) setFormError(r.error);
         return;
       }
       if (!r.created) {
@@ -110,14 +114,10 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
         onBlur={() => blur(k)}
         placeholder={props.placeholder}
         className="input text-sm"
-        aria-invalid={!!errors[k]}
+        {...fe.field(k)}
         data-testid={`contact-new-${k}`}
       />
-      {errors[k] && (
-        <span className="text-xs text-[color:var(--color-danger)]" data-testid={`contact-new-${k}-error`}>
-          {errors[k]}
-        </span>
-      )}
+      <FieldError id={fe.errorId(k)} message={errors[k]} testid={`contact-new-${k}-error`} />
     </label>
   );
 
@@ -177,7 +177,14 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
                 {f.required && <span className="text-[color:var(--color-danger)]"> *</span>}
               </span>
               {f.type === "SELECT" ? (
-                <select value={custom[f.key] ?? ""} onChange={(e) => setCustom((c) => ({ ...c, [f.key]: e.target.value }))} className="input text-sm" data-testid={`contact-new-f-${f.key}`}>
+                <select value={custom[f.key] ?? ""} onChange={(e) => {
+                    setCustom((c) => ({ ...c, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)}
+                  className="input text-sm"
+                  data-testid={`contact-new-f-${f.key}`}
+                >
                   <option value="">—</option>
                   {f.choices.map((c) => (
                     <option key={c.value} value={c.value}>
@@ -189,11 +196,16 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
                 <input
                   type={f.type === "NUMBER" ? "number" : f.type === "DATE" ? "date" : "text"}
                   value={custom[f.key] ?? ""}
-                  onChange={(e) => setCustom((c) => ({ ...c, [f.key]: e.target.value }))}
+                  onChange={(e) => {
+                    setCustom((c) => ({ ...c, [f.key]: e.target.value }));
+                    fe.clear(`cf:${f.key}`);
+                  }}
+                  {...fe.field(`cf:${f.key}`)}
                   className="input text-sm"
                   data-testid={`contact-new-f-${f.key}`}
                 />
               )}
+              <FieldError id={fe.errorId(`cf:${f.key}`)} message={fe.errors[`cf:${f.key}`]} testid={`contact-new-f-${f.key}-error`} />
             </label>
           ))}
         </div>

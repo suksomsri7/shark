@@ -27,10 +27,11 @@ import {
   stop,
   updateSequence,
 } from "@/lib/modules/crm/sequences";
-import type { SeqSequenceInput, SeqSequencePatch } from "@/lib/modules/crm/sequences-shared";
+import { cleanStep, SEQ_BODY_MAX, SEQ_NAME_MAX, SEQ_REASON_MIN, SEQ_SUBJECT_MAX, type SeqSequenceInput, type SeqSequencePatch, type SeqStepInput } from "@/lib/modules/crm/sequences-shared";
+import { withFieldError, type CrmFieldErrors } from "@/lib/modules/crm/field-errors-shared";
 import { assertCrmV2, CrmV2DisabledError } from "@/lib/modules/crm/ui-version";
 
-type Fail = { ok: false; error: string; code?: string };
+type Fail = { ok: false; error: string; code?: string; fieldErrors?: CrmFieldErrors };
 
 async function session(systemId: string, mode: "manage" | "enroll" | "read") {
   const auth = await requireTenant();
@@ -49,6 +50,28 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
+/**
+ * C4.3-fix part 2 ▸ ข้อความปฏิเสธของ "สร้างลำดับ" เป็นของช่องไหน (ฟอร์มสร้างมีชื่อ + ขั้นแรกขั้นเดียว) — ลำดับเดียวกับบริการ:
+ *   cleanHead (ชื่อ) ก่อน แล้ว cleanStep ของขั้นที่ 1 · ชนิดของขั้นบอกว่าช่องไหน (key = ชื่อช่องของ StepFields) ◂
+ */
+function createSeqFieldBad(input: SeqSequenceInput): Record<string, boolean> {
+  const name = typeof input?.name === "string" ? input.name.trim() : "";
+  const steps = Array.isArray(input?.steps) ? input.steps : [];
+  const st = (steps.length === 1 ? steps[0] : null) as SeqStepInput | null;
+  const stepBad = !!st && !cleanStep(st, 0).ok;
+  const kind = String(st?.kind ?? "").toUpperCase();
+  const body = typeof st?.body === "string" ? st.body.replace(/\r\n?/g, "\n").trim() : "";
+  const subj = typeof st?.subject === "string" ? st.subject : "";
+  const subjectBad = kind === "EMAIL" && (/[\r\n]/.test(subj) || !subj.trim() || subj.trim().length > SEQ_SUBJECT_MAX);
+  return {
+    name: !name || name.length > SEQ_NAME_MAX || /[\r\n]/.test(name),
+    waitDays: stepBad && kind === "WAIT",
+    taskTitle: stepBad && kind === "TASK",
+    subject: stepBad && body.length <= SEQ_BODY_MAX && subjectBad,
+    body: stepBad && kind !== "WAIT" && kind !== "TASK",
+  };
+}
+
 const touchList = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/sequences`);
 const touchOne = (systemId: string, id: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/sequences/${id}`);
 
@@ -60,7 +83,7 @@ export async function createSequenceAction(systemId: string, input: SeqSequenceI
     touchList(systemId);
     return { ok: true, id: r.id };
   } catch (e) {
-    return failOf(e);
+    return withFieldError(failOf(e), createSeqFieldBad(input));
   }
 }
 
@@ -130,7 +153,11 @@ export async function bulkEnrollContactsAction(
     touchList(systemId);
     return { ok: true, enrolled: r.enrolled, skipped: r.skipped.length, conflicts: r.conflicts };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ ยืนยัน/เหตุผลไม่ครบ = ข้อความของช่องนั้น (ตรวจลำดับเดียวกับบริการ reasonOf) ◂
+    return withFieldError(failOf(e), {
+      confirm: input?.confirm !== true,
+      reason: String(input?.reason ?? "").trim().length < SEQ_REASON_MIN,
+    });
   }
 }
 
@@ -192,7 +219,9 @@ export async function addHolidayAction(systemId: string, date: string, name: str
     touchCalendar(systemId);
     return { ok: true, total: r.holidays.length };
   } catch (e) {
-    return failOf(e);
+    // C4.3-fix part 2 ▸ วันที่ว่าง/ผิดรูป (กติกาเดียวกับ addHoliday) = ข้อความใต้ช่องวันที่ ◂
+    const d = String(date ?? "").trim();
+    return withFieldError(failOf(e), { date: !/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) });
   }
 }
 
