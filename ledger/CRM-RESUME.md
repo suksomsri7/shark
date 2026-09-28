@@ -40,6 +40,14 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.18 ⏸️ 28 Sep 2026 ~23:40 UTC — WEEKLY-LIMIT STOP (owner) · 44/53 = 83% · lanes 2 · no agents/units running
+- MAIN (session/crm) = C4.4-fix 3f934300 on top of C r5 4888a96e + F 986ec608 · all pushed · prod still 3677d983 (nothing new pushed to prod — ⛔ ask owner first; C money must NOT ship before r8 done).
+- C4.4: fix merged + gate green; card NOT accepted yet → rebuild QC1 3215 from HEAD (`scripts/pending/run-build-head3.sh` pattern — NEVER wrap acc-v2-serve in with-gate-lock) → run ALL journeys US1–US10 on QC1 (runner env WEBHOOK_ALLOW_PRIVATE=1) + --clean → passed===total ⇒ accept C4.4 (45/53).
+- C5.4-C r6–r8 = branch **wip/crm-c54c-r8** (61985bba; incremental = `git diff c10ee3f9 61985bba`; worktree shark-crm-c54c). Hunter r6 F1–F7 + r7 N1 closed + B2c refuse + legacy cheque phrases (QC1 wht-cheque 69/69). OPEN R8-1 (group/billing-note payment by cheque links only first child): partial fix in WIP (group void one tx + up-front refusal · restore loops) but `AccountDocumentPayment.chequeId` is UNIQUE ⇒ **RULING (controller): option (a) no migration** — derive the batch from payment key `GRP#…#<child>` in restoreDocForCheque/voidPaymentInTx, drop `paymentIds` + backfill script; then rerun probe-r8 (G0–G3 + G1b), r7 reruns, probe-cn, c2.7, groups, payments, write-payments, typecheck, fitness ×2 (QC2) + wht-cheque/cheque-audit/ai-skill on QC1 (swap acc-v2-expected like scripts/pending/run-c54c-r7c-cheque.sh) → hunter r9 → patch incremental onto main → gate (run-main-c.sh list) → commit.
+- Agents (resume via SendMessage if transcripts survive; else new agents from wo-notes): C builder a967cc389179d4d2a · money hunter ab3bffbcee8ecf3e9 · C4.4-fix builder a260db9b893b75e34 · C4.4 reviewer a5211e54e500acd78 · C4.2 it4 aed457d6ca7a8aed3 (GO pending, needs fresh 3215).
+- Then queue: C4.2 it4 → accept C4.1/C4.2 · C4.2-fix (B1–B6) · C5.4-D queues · C5.4-E UX · C5.5 · C3.10 · C6. Owner pending P1–P17 (`ledger/CRM-OWNER-PENDING.md`; new P17).
+- Worktree c44f fully merged (can be removed) · main working copy acc-v2-expected/crm-expected/member-expected = QC1 reseed ids, uncommitted on purpose.
+
 ### 0.17 ▶️ 28 Sep 2026 ~20:20 UTC — 2 lanes · 44/53 = 83%
 - MAIN = 4888a96e (batch F + C4.4 oracle 986ec608 · batch C r5 4888a96e) · pushed session/crm · prod still 3677d983 · ⛔ C money NOT for prod until r6.
 - QC1 server 3215 rebuilt from 4888a96e (AI mock · WEBHOOK_ALLOW_PRIVATE=1) READY 20:18. 🔴 never wrap acc-v2-serve.sh in with-gate-lock (it locks itself → self-deadlock).
