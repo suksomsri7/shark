@@ -40,6 +40,12 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.16 ⏸️ 28 Sep 2026 ~12:50 UTC — QUOTA STOP at 91% · 43/53 = 81% · lane cap now 2 (owner)
+- MAIN = c6fe26d2 (batch A r1–3 + C4.3-fix2 committed). QC1 server 3215 rebuilt from c6fe26d2 (AI mock · WEBHOOK_ALLOW_PRIVATE=1).
+- Unit crm-c43-accept (C4.3 acceptance on main/QC1): oc1 10/10 · i1 296/296 · q01 65/66 (deal-new @390 "ตัวเลือก @first ไม่มีใน deal-new-contact" — likely data/timing, re-run q01 + inspect) · q02 56/56 · q03–q10 + merge running → gate true ⇒ accept C4.3 (44/53).
+- Agents to resume (wo-notes checkpoints): C5.4-B a79fe2841ad004c36 round 4 (hunter H1–H6) · C5.4-C a967cc389179d4d2a round 3 (zero-cash paid event · CN race · backfill dry-run).
+- Queued (lane cap 2): C5.4-F review r2 (a65c68198f8dc4d6e) → F hunter · C money hunter after C r3 · C4.2 it4 GO (aed457d6ca7a8aed3, server ready) · C4.4 full run GO (a34d2630d3542be17, server has WEBHOOK_ALLOW_PRIVATE) · C4.4-fix builder (4 items) · C4.2-fix builder (B1–B6) · C5.4-D queues · C5.4-E business/UX · C3.10 · C5.5 · C6.
+
 ### 0.15 ⏸️ 28 Sep 2026 ~06:00 UTC — QUOTA STOP at 95% (owner) · accepted 43/53 = 81%
 Resume via SendMessage (each agent has a wo-notes checkpoint):
 - C5.4-A (a6099ec1d458b59fb · c54a): round 3 = hunter H1–H5 (report ledger/wo-notes/crm-C5.4-A-hunt.md). Batch A rounds 1–2 are ALREADY MERGED into the MAIN working tree (uncommitted!) — unit crm-c54a-main verifies it · after round 3: re-merge the delta (patch, read hunks) → gate → commit.

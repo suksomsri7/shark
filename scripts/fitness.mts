@@ -34,9 +34,12 @@ function chk(id: string, name: string, ok: boolean, detail: string, sev: Sev = "
 function walk(dir: string, filter: (p: string) => boolean, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
   for (const e of readdirSync(dir)) {
-    if (e === "node_modules" || e === ".next" || e === ".git") continue;
+    // .qc-shots = evidence/browser profiles written by running QC suites (a live chromium profile can vanish mid-walk → ENOENT crash · 28 Sep)
+    if (e === "node_modules" || e === ".next" || e === ".git" || e === ".qc-shots") continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, filter, out);
+    let isDir = false;
+    try { isDir = statSync(p).isDirectory(); } catch { continue; } // file removed between readdir and stat
+    if (isDir) walk(p, filter, out);
     else if (filter(p)) out.push(p);
   }
   return out;
