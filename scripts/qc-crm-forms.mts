@@ -65,6 +65,7 @@ const BROWSER_ONLY = ARGV.includes("--browser-only");
 const SELFTEST_BROWSER = ARGV.includes("--selftest-browser");
 const argOf = (flag: string): string | null => (ARGV.includes(flag) ? ARGV[ARGV.indexOf(flag) + 1] ?? null : null);
 const FORM_FILTER = argOf("--form");
+const ONLY_CUSTOM = ARGV.includes("--only-custom"); // run ONLY the required-custom-field checks (controller addition 28 Sep)
 const PART = argOf("--part"); // write this run's full results to parts/<name>.json (split runs ≤ 15 min under the shared lock)
 const MERGE = ARGV.includes("--merge"); // merge parts/*.json → summary.json (no DB, no browser)
 const DEVICE = argOf("--device") ?? "both"; // desktop | mobile | both — mobile (390×844) runs a/b/e only (controller ruling D-r1)
@@ -1441,7 +1442,7 @@ const collectThai = (): ThaiNode[] => {
   return out;
 };
 type BVerdict = { ok: boolean; kind: string; detail: string };
-async function analyseRequired(kit: PageKit, anchorSel: string, before: ThaiNode[], submitSel: string): Promise<BVerdict> {
+async function analyseRequired(kit: PageKit, anchorSel: string, before: ThaiNode[], submitSel: string, opts: { formLevel?: string[] } = {}): Promise<BVerdict> {
   const page = kit.page;
   await page.evaluate(NAME_SHIM).catch(() => {});
   const after: ThaiNode[] = await page.evaluate(collectThai).catch(() => []);
@@ -1467,7 +1468,11 @@ async function analyseRequired(kit: PageKit, anchorSel: string, before: ThaiNode
     };
   }, anchorSel, submitSel).catch((e: Error) => ({ evalError: cut(e.message, 160) }));
   if (!geo || "evalError" in geo) return { ok: false, kind: "field-missing", detail: `ไม่พบช่อง ${anchorSel} หลังกดส่ง${geo ? ` (evaluate: ${(geo as Any).evalError})` : ""}` };
-  const under = fresh.filter((n) => n.top >= geo.bottom - 4 && n.top <= geo.bottom + 72 && n.left < geo.right && n.right > geo.left);
+  const underAll = fresh.filter((n) => n.top >= geo.bottom - 4 && n.top <= geo.bottom + 72 && n.left < geo.right && n.right > geo.left);
+  // custom-field addition (28 Sep): the form's OWN form-level error box does not count as "under the field" even when the
+  //   layout happens to put it right below that field (company/contact: the custom fieldset is the last block before it)
+  const formLevel = opts.formLevel ?? [];
+  const under = underAll.filter((n) => !formLevel.includes(n.tid ?? ""));
   const where = fresh.map((n) => `${n.tid ?? "-"}@${Math.round(n.top - geo.bottom)}px:"${cut(n.s, 40)}"`).slice(0, 3).join(" | ");
   if (kit.dialogs.length) return { ok: false, kind: "dialog", detail: `window dialog: ${kit.dialogs.join(" · ")}` };
   // review S3: …and its text must be NEW (appeared after the submit) — a static hint wired to aria-describedby is not an error
@@ -1475,6 +1480,7 @@ async function analyseRequired(kit: PageKit, anchorSel: string, before: ThaiNode
   const describedFresh = geo.described.filter((d: Any) => fresh.some((n) => d.text.includes(n.s) && n.top >= d.top - 1 && n.bottom <= d.bottom + 1 && n.left >= d.left - 1 && n.right <= d.right + 1)).map((d: Any) => d.text as string);
   const inline = under.length > 0 || describedFresh.length > 0;
   if (!inline) {
+    if (underAll.length > under.length) return { ok: false, kind: "form-level-box", detail: `the message is the form-level box ${underAll.find((n) => formLevel.includes(n.tid ?? ""))?.tid} (sits right below the field): "${cut(underAll[0]?.s, 60)}"` };
     if (geo.nativeInvalid) return { ok: false, kind: "native-bubble", detail: "HTML required → browser bubble (not Thai DOM text, outside the page)" };
     if (geo.submitDisabled && !fresh.length) return { ok: false, kind: "silent-disable", detail: "submit disabled, no message tells the user why" };
     if (fresh.length) return { ok: false, kind: "not-under-field", detail: `new Thai text elsewhere: ${where}` };
@@ -1526,6 +1532,94 @@ async function doubleClick(page: Any, sel: string): Promise<boolean> {
   await sleep(80);
   await page.mouse.click(x, y);
   return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// REQUIRED CUSTOM FIELD (controller addition 28 Sep · reviewer finding on C4.3-fix2 S2): the seed defines no custom field
+//   on company/contact, so "a required custom value missing → message lands in the form-level box" was invisible.
+//   A fixture defines ONE required TEXT field on the object (inside the snapshot window — removed by a restore right after
+//   these checks), then: f (in-process) the server refuses a create without it (action + REST) and accepts one with it;
+//   b (browser, 1440 + 390) the Thai message sits under THAT field and focus moves to it.
+//   The field is located by its LABEL (not a testid), so the check survives a testid change in the fix.
+// ═══════════════════════════════════════════════════════════════════
+const CUSTOM_REQ: Record<string, { objectKey: "company" | "contact"; key: string; label: string; restPath: string; op: string }> = {
+  "company-new-form": { objectKey: "company", key: "qcformreq", label: "รหัสอ้างอิงลูกค้า QC", restPath: "/companies", op: "companies.create" },
+  "contact-new-form": { objectKey: "contact", key: "qcformreq", label: "รหัสอ้างอิงผู้ติดต่อ QC", restPath: "/contacts", op: "contacts.create" },
+};
+const customCreate = (form: string, name: string, fields?: Record<string, string>): { mod: string; fn: string; args: unknown[]; body: Any } =>
+  form === "company-new-form"
+    ? { mod: "@/lib/modules/crm/companies-actions", fn: "createCompanyAction", args: [SYS, { name, ...(fields ? { fields } : {}) }], body: { name, ...(fields ? { fields } : {}) } }
+    : { mod: "@/lib/modules/crm/contacts-actions", fn: "createContactAction", args: [SYS, { firstName: name, ...(fields ? { fields } : {}) }], body: { firstName: name, ...(fields ? { fields } : {}) } };
+/** define the required field (through the product's own designer actions), run `fn`, then remove it by restoring the snapshot */
+async function withCustomRequired(spec: FormSpec, ctx: RunCtx, fn: () => Promise<void>): Promise<string> {
+  const cr = CUSTOM_REQ[spec.testid];
+  if (!cr) return "no custom-field contract for this form";
+  const sec = await callAction("@/lib/modules/crm/objects-actions", "createObjectSectionAction", [{ systemId: SYS, objectKey: cr.objectKey, key: "qcformsec", label: "QC ฟอร์ม (ชั่วคราว)" }], ctx.cookie);
+  if (!sec.ok) return `สร้างส่วน (section) fixture ไม่สำเร็จ: ${sec.code}:${cut(sec.msg, 120)}`;
+  const sectionId = String(sec.v?.data?.id ?? "");
+  const fld = await callAction("@/lib/modules/crm/objects-actions", "createObjectFieldAction", [{ systemId: SYS, objectKey: cr.objectKey, sectionId, key: cr.key, label: cr.label, type: "TEXT", required: true }], ctx.cookie);
+  if (!fld.ok) { await R!.restoreSnapshot(`${spec.testid} custom fixture (failed)`); return `สร้างฟิลด์บังคับ fixture ไม่สำเร็จ: ${fld.code}:${cut(fld.msg, 120)}`; }
+  try { await fn(); } finally { await R!.restoreSnapshot(`${spec.testid} custom fixture removed`); }
+  return "";
+}
+async function customInproc(spec: FormSpec, ctx: RunCtx): Promise<void> {
+  const F = spec.testid; const cr = CUSTOM_REQ[F]; if (!cr || !want("f")) return;
+  const err = await withCustomRequired(spec, ctx, async () => {
+    // baseline: WITH the value the create is accepted (proves the fixture is live, not a broken form)
+    const t0 = newTag(); const b0 = await snapW(spec, ctx, t0);
+    const c0 = customCreate(F, t0, { [cr.key]: `${t0}-value` });
+    const r0 = await callAction(c0.mod, c0.fn, c0.args, ctx.cookie); const w0 = await diffW(spec, ctx, t0, b0);
+    rec(F, "f", "custom valid (action)", "inproc", r0.ok && w0.d === 1, r0.ok ? "rows" : refusalKind(r0) || "refused", `ok=${r0.ok} ${r0.ok ? "" : `${r0.code}:${cut(r0.msg, 100)} `}${w0.txt}`);
+    // required custom value missing → clean Thai refusal, nothing written (action)
+    const t1 = newTag(); const b1 = await snapW(spec, ctx, t1);
+    const c1 = customCreate(F, t1);
+    const r1 = await callAction(c1.mod, c1.fn, c1.args, ctx.cookie); const w1 = await diffW(spec, ctx, t1, b1);
+    rec(F, "f", "required:custom (action)", "inproc", cleanRefusal(r1) && w1.clean, !w1.clean ? "row-written" : refusalKind(r1), `${r1.ok ? "accepted" : `${r1.code}:${cut(r1.msg, 120)}`} ${w1.txt}`);
+    // …and by REST (same service, own schema)
+    const t2 = newTag(); const b2 = await snapW(spec, ctx, t2);
+    const rr = await callRest("POST", cr.restPath, customCreate(F, t2).body, `${t2}-idem`); const w2 = await diffW(spec, ctx, t2, b2);
+    rec(F, "f", `required:custom (REST ${cr.op})`, "inproc", rr.status >= 400 && rr.status < 500 && w2.clean && thai(restErrTh(rr)), !w2.clean ? "row-written" : rr.status < 400 ? "accepted" : rr.status >= 500 ? "5xx" : "not-thai", `HTTP ${rr.status} ${cut(restMsg(rr), 100)} ${w2.txt}`);
+  });
+  if (err) rec(F, "f", "custom fixture", "inproc", false, "fixture", err);
+}
+/** mark the control that belongs to a visible label text (label wrapper, `for=`, or the control right after a text node) */
+async function markByLabel(page: Any, label: string, mark: string): Promise<boolean> {
+  await page.evaluate(NAME_SHIM).catch(() => {});
+  return page.evaluate((lb: string, mk: string) => {
+    const isCtl = (e: Element | null) => !!e && ["INPUT", "TEXTAREA", "SELECT"].includes(e.tagName);
+    for (const l of Array.from(document.querySelectorAll("label"))) {
+      if (!(l.textContent ?? "").includes(lb)) continue;
+      const c = (l.htmlFor ? document.getElementById(l.htmlFor) : null) ?? l.querySelector("input,textarea,select");
+      if (isCtl(c)) { c!.setAttribute("data-qc-anchor", mk); return true; }
+    }
+    for (const el of Array.from(document.querySelectorAll("span,div,p,legend,dt"))) {
+      if ((el.textContent ?? "").trim().replace(/\s*\*$/, "") !== lb) continue;
+      const box = el.parentElement; const c = box?.querySelector("input,textarea,select") ?? null;
+      if (isCtl(c)) { c!.setAttribute("data-qc-anchor", mk); return true; }
+    }
+    return false;
+  }, label, mark).catch(() => false);
+}
+async function customBrowser(browser: Any, spec: FormSpec, ctx: RunCtx, device: string): Promise<void> {
+  const F = spec.testid; const cr = CUSTOM_REQ[F]; if (!cr || !want("b")) return;
+  const DEV = device === "mobile" ? " @390" : "";
+  const err = await withCustomRequired(spec, ctx, async () => {
+    const kit = await newKit(browser, ctx, false, device);
+    try {
+      const t = newTag(); const e0 = await openForm(kit, spec, ctx); if (e0) return rec(F, "b", `required:custom${DEV}`, "browser", false, "open", e0);
+      if (!(await markByLabel(kit.page, cr.label, "custom"))) return rec(F, "b", `required:custom${DEV}`, "browser", false, "field-missing", `ไม่พบช่อง "${cr.label}" บนฟอร์ม (fixture ไม่ถึงหน้า?)`);
+      const e1 = await fillAll(kit, spec, spec.valid(ctx, t, "browser")); if (e1) return rec(F, "b", `required:custom${DEV}`, "browser", false, "fill", e1);
+      const before = await snapW(spec, ctx, t);
+      const thaiBefore: ThaiNode[] = await kit.page.evaluate(collectThai).catch(() => []);
+      await (await findVis(kit.page, spec.submit, 3000))?.click().catch(() => {});
+      await sleep(1200); await kit.page.waitForNetworkIdle({ idleTime: 800, timeout: 15_000 }).catch(() => {});
+      await markByLabel(kit.page, cr.label, "custom"); // re-mark in case the form re-rendered the control
+      const verdict = await analyseRequired(kit, '[data-qc-anchor="custom"]', thaiBefore, selFor(spec.submit), { formLevel: spec.errorBox ? [spec.errorBox] : [] });
+      const w = await diffW(spec, ctx, t, before);
+      rec(F, "b", `required:custom${DEV}`, "browser", verdict.ok && w.clean, !w.clean ? "row-written" : verdict.kind, `${verdict.detail} · ${w.txt} · field "${cr.label}" (required custom TEXT, fixture)`);
+    } finally { await kit.page.waitForNetworkIdle({ idleTime: 1000, timeout: 30_000 }).catch(() => {}); await kit.close(); }
+  });
+  if (err) rec(F, "b", `custom fixture${DEV}`, "browser", false, "fixture", err);
 }
 
 async function browserForm(browser: Any, spec: FormSpec, ctx: RunCtx, device = "desktop"): Promise<void> {
@@ -1681,7 +1775,7 @@ async function positiveControlsBrowser(browser: Any, withServer = false): Promis
   const form = (body: string, script: string) => `<!doctype html><html><body style="font:16px sans-serif"><form id="f" ${body}>
     <label>ชื่อ<br><input data-testid="n" id="n"></label><div id="slot"></div><div style="height:420px"></div><p id="box" data-testid="box"></p>
     <button data-testid="s" type="submit">บันทึก</button></form><script>${script}</script></body></html>`;
-  const cases: { id: string; html: string; expect: string }[] = [
+  const cases: { id: string; html: string; expect: string; anchorLabel?: string; formLevel?: string[] }[] = [
     { id: "PB-alert", expect: "dialog", html: form("", `f.onsubmit=e=>{e.preventDefault();if(!n.value)alert('ใส่ชื่อก่อน')}`) },
     { id: "PB-form-level", expect: "not-under-field", html: form("", `f.onsubmit=e=>{e.preventDefault();if(!n.value)box.textContent='ใส่ชื่อก่อนบันทึก'}`) },
     { id: "PB-native", expect: "native-bubble", html: form("", `n.required=true;f.onsubmit=e=>e.preventDefault()`) },
@@ -1693,6 +1787,12 @@ async function positiveControlsBrowser(browser: Any, withServer = false): Promis
     // round 2: the SAME wording as a static describedby hint, but the new text lands in a far box — must not count as inline
     { id: "PB-describedby-elsewhere", expect: "not-under-field", html: form("", `const h3=slot;h3.id='h3';h3.textContent='ใส่ชื่อก่อนบันทึก';n.setAttribute('aria-describedby','h3');f.onsubmit=e=>{e.preventDefault();if(!n.value){box.textContent='ใส่ชื่อก่อนบันทึก';n.focus()}}`) },
     // negative control: a describedby target that RECEIVES the new text (visible, under the field) + focus must PASS
+    // controller addition 28 Sep: a required CUSTOM field (located by its label, like the real check) whose error goes to
+    //   the form-level box must fail — and the same page with the error under the field + focus must pass (next case)
+    { id: "PB-custom-formlevel", expect: "not-under-field", anchorLabel: "รหัสอ้างอิงลูกค้า QC", html: form("", `slot.innerHTML='<label>รหัสอ้างอิงลูกค้า QC <span>*</span><input id="cf"></label>';n.value='x';f.onsubmit=e=>{e.preventDefault();if(!document.getElementById('cf').value){box.textContent='ช่อง "รหัสอ้างอิงลูกค้า QC" เป็นข้อมูลที่ต้องกรอก'}}`) },
+    // …and when that form-level box happens to sit DIRECTLY under the field (the real company/contact layout), it still fails
+    { id: "PB-custom-formlevel-adjacent", expect: "form-level-box", anchorLabel: "รหัสอ้างอิงลูกค้า QC", formLevel: ["cfbox"], html: form("", `slot.innerHTML='<label>รหัสอ้างอิงลูกค้า QC <span>*</span><input id="cf"></label><p data-testid="cfbox"></p>';n.value='x';f.onsubmit=e=>{e.preventDefault();const c=document.getElementById('cf');if(!c.value){document.querySelector('[data-testid=cfbox]').textContent='ช่อง "รหัสอ้างอิงลูกค้า QC" เป็นข้อมูลที่ต้องกรอก';c.focus()}}`) },
+    { id: "PB-custom-good", expect: "", anchorLabel: "รหัสอ้างอิงลูกค้า QC", html: form("", `slot.innerHTML='<label>รหัสอ้างอิงลูกค้า QC <span>*</span><input id="cf"></label><p id="cfe"></p>';n.value='x';f.onsubmit=e=>{e.preventDefault();const c=document.getElementById('cf');if(!c.value){document.getElementById('cfe').textContent='ใส่รหัสอ้างอิงลูกค้าก่อนบันทึก';c.focus()}}`) },
     { id: "PB-describedby-good", expect: "", html: form("", `const h4=slot;h4.id='h4';n.setAttribute('aria-describedby','h4');f.onsubmit=e=>{e.preventDefault();if(!n.value){h4.textContent='ใส่ชื่อก่อนบันทึก';n.focus()}}`) },
     // review S3: an aria-describedby target that gets the text but stays HIDDEN is not shown to the user
     { id: "PB-describedby-hidden", expect: "no-message", html: form("", `const h2=slot;h2.id='h2';h2.style.display='none';n.setAttribute('aria-describedby','h2');f.onsubmit=e=>{e.preventDefault();if(!n.value){h2.textContent='ใส่ชื่อก่อนบันทึก';n.focus()}}`) },
@@ -1701,11 +1801,12 @@ async function positiveControlsBrowser(browser: Any, withServer = false): Promis
     kit.dialogs.length = 0;
     await page.setContent(c.html, { waitUntil: "load" });
     await page.evaluate(NAME_SHIM);
+    if (c.anchorLabel && !(await markByLabel(page, c.anchorLabel, "pc"))) { positiveControls.push({ id: c.id, cat: "b", what: "label-located anchor", caught: false, detail: "markByLabel found nothing" }); continue; }
     const before: ThaiNode[] = await page.evaluate(collectThai);
     const btn = await page.$('[data-testid="s"]');
     await btn?.click().catch(() => {});
     await sleep(300);
-    const v = await analyseRequired(kit, '[data-testid="n"]', before, '[data-testid="s"]');
+    const v = await analyseRequired(kit, c.anchorLabel ? '[data-qc-anchor="pc"]' : '[data-testid="n"]', before, '[data-testid="s"]', { formLevel: c.formLevel ?? [] });
     const caught = c.expect ? !v.ok && v.kind === c.expect : v.ok;
     positiveControls.push({ id: c.id, cat: "b", what: c.expect ? `synthetic form that fails b as "${c.expect}"` : "synthetic CORRECT form (negative control — must pass)", caught, detail: `verdict ok=${v.ok} kind=${v.kind || "-"} ${cut(v.detail, 80)}` });
   }
@@ -1838,7 +1939,8 @@ async function main(): Promise<{ total: number; passed: number; fatal: string }>
       await positiveControlsInproc(ctx);
       for (const s of FORMS.filter((f) => formSelected(f.testid))) {
         console.log(`\n── ${s.testid} (in-process) ──`);
-        try { await inprocForm(s, ctx); } catch (e) { rec(s.testid, "f", "inproc (crash)", "inproc", false, "runner-crash", e instanceof Error ? `${e.message} ${e.stack?.split("\n")[1] ?? ""}` : String(e)); }
+        if (!ONLY_CUSTOM) { try { await inprocForm(s, ctx); } catch (e) { rec(s.testid, "f", "inproc (crash)", "inproc", false, "runner-crash", e instanceof Error ? `${e.message} ${e.stack?.split("\n")[1] ?? ""}` : String(e)); } }
+        try { await customInproc(s, ctx); } catch (e) { rec(s.testid, "f", "custom (crash)", "inproc", false, "runner-crash", e instanceof Error ? e.message : String(e)); }
         await R.restoreSnapshot(`${s.testid} in-process`);
       }
     }
@@ -1851,7 +1953,8 @@ async function main(): Promise<{ total: number; passed: number; fatal: string }>
       for (const s of FORMS.filter((f) => formSelected(f.testid))) {
         for (const dev of DEVICE === "both" ? ["desktop", "mobile"] : [DEVICE]) {
           console.log(`\n── ${s.testid} (browser ${dev}) ──`);
-          try { await browserForm(browser, s, ctx, dev); } catch (e) { rec(s.testid, "a", `browser ${dev} (crash)`, "browser", false, "runner-crash", e instanceof Error ? e.message : String(e)); }
+          if (!ONLY_CUSTOM) { try { await browserForm(browser, s, ctx, dev); } catch (e) { rec(s.testid, "a", `browser ${dev} (crash)`, "browser", false, "runner-crash", e instanceof Error ? e.message : String(e)); } }
+          try { await customBrowser(browser, s, ctx, dev); } catch (e) { rec(s.testid, "b", `custom ${dev} (crash)`, "browser", false, "runner-crash", e instanceof Error ? e.message : String(e)); }
           await R.restoreSnapshot(`${s.testid} browser ${dev}`);
         }
       }
@@ -1890,6 +1993,14 @@ function plannedChecks(sp: FormSpec): Planned[] {
     out.push({ cat: "f", mode: "inproc", device: "-", check: "staff:thana" });
     out.push({ cat: "d", mode: "inproc", device: "-", check: null });
     if (sp.fields.some((f) => f.text)) out.push({ cat: "c", mode: "inproc", device: "-", check: null });
+  }
+  const cr = CUSTOM_REQ[sp.testid];
+  if (cr) {
+    out.push({ cat: "f", mode: "inproc", device: "-", check: "custom valid (action)" });
+    out.push({ cat: "f", mode: "inproc", device: "-", check: "required:custom (action)" });
+    out.push({ cat: "f", mode: "inproc", device: "-", check: `required:custom (REST ${cr.op})` });
+    out.push({ cat: "b", mode: "browser", device: "desktop", check: "required:custom" });
+    out.push({ cat: "b", mode: "browser", device: "mobile", check: "required:custom @390" });
   }
   for (const device of ["desktop", "mobile"] as const) {
     const sfx = device === "mobile" ? " @390" : "";

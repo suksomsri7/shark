@@ -146,3 +146,23 @@ SHARK_AI_MOCK=1). Full re-run on QC3 via `.qc-shots/c43/run-qc3.sh` (parts i1 + 
 - Result (unit `c43-forms-r2`): typecheck exit 0 (`typecheck-6.log`) · merge **585/659** · positive controls **225/225** ·
   restore identical 11/11 · missingPlanned 0 · unlistedSkips 0 · provenance problems 0 · failures = the same 74
   (6 fixedInMain:130ca0c1 + 68 strict-b). `--selftest-browser` 17/17. Gate red only because of those 74 (expected until C4.3-fix).
+
+## §10 REQUIRED CUSTOM FIELD (controller addition, 28 Sep ~05:30 UTC)
+- `CUSTOM_REQ` (company-new-form · contact-new-form): fixture = one REQUIRED TEXT field ("รหัสอ้างอิงลูกค้า QC" /
+  "รหัสอ้างอิงผู้ติดต่อ QC", key `qcformreq`) created through the product's designer actions (createObjectSection/FieldAction)
+  INSIDE the snapshot window and removed by a restore right after its checks (never visible to the other checks).
+- f in-process: `custom valid (action)` (baseline, with value) · `required:custom (action)` · `required:custom (REST companies|contacts.create)`.
+- b browser 1440 + 390: `required:custom` / `required:custom @390` — field located by its LABEL (survives a testid change);
+  message must be NEW Thai text under THAT field + focus on it. Planned checks added; ALLOWED_SKIPS unchanged.
+- Controls: PB-custom-formlevel (error in form-level box → not-under-field ✅ caught) · PB-custom-good (negative, passes).
+  `--selftest-browser` 19/19.
+- Run: systemd unit `c43-forms-cf1` (`.qc-shots/c43/run-custom-cf1.sh`, log `cf1.log`, part → `parts-custom/cf1.json`,
+  kept apart from the v3 parts because the runner hash changed). `--only-custom` flag.
+- cf1 exposed a gap in the new b check itself: on company/contact the form-level box (`company-new-error` / `contact-new-error`)
+  sits DIRECTLY under the custom fieldset, so geometry called it "inline" (only focus failed). Fix: the custom checks pass
+  `formLevel: [spec.errorBox]` → the form's own box never counts as under-the-field (kind `form-level-box`). Control
+  PB-custom-formlevel-adjacent (caught). `--selftest-browser` 20/20. cf1 archived in parts-custom/ (superseded).
+- **cf2 (unit c43-forms-cf2, QC3 :3216 = build ce728fd8, BUILD_ID Hdguns9GH9DuvBNdnUSlM — NOT main; the old build still serves 3216):**
+  typecheck exit 0 (`typecheck-8.log`) · 10 checks: 2 ✅ (custom valid baseline) · 8 ❌ RED as expected · controls 35/35 ·
+  restore identical. f: action AND REST **accept** a company/contact without the required custom value (new product finding —
+  server-side required-custom enforcement missing on create) · b (1440+390): message = form-level box, not under the field.
