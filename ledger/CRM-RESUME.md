@@ -40,6 +40,14 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.17 ▶️ 28 Sep 2026 ~20:20 UTC — 2 lanes · 44/53 = 83%
+- MAIN = 4888a96e (batch F + C4.4 oracle 986ec608 · batch C r5 4888a96e) · pushed session/crm · prod still 3677d983 · ⛔ C money NOT for prod until r6.
+- QC1 server 3215 rebuilt from 4888a96e (AI mock · WEBHOOK_ALLOW_PRIVATE=1) READY 20:18. 🔴 never wrap acc-v2-serve.sh in with-gate-lock (it locks itself → self-deadlock).
+- Lane 1: C5.4-C round 6 (a967cc389179d4d2a · c54c on TEMP r5 commit c10ee3f9 · QC2) fixing hunter r6 F1–F7 (probe scripts/pending/hunt-54c-r6/probe-r6.mts) → then incremental patch (diff vs c10ee3f9) onto main → gate (run-main-c.sh list) → re-hunt.
+- Lane 2: C4.4-fix builder (a260db9b893b75e34 · c44f on TEMP b112b467 = 986ec608 + C r5 · QC3) items taxId/role · stageOnQuote UI · dealDocInput company partyId · CREATE_DEAL primary contact · I3 → merge diff vs b112b467 → rerun journeys on QC1 → accept C4.4.
+- Queued: C4.2 it4 GO (aed457d6ca7a8aed3, server ready) → accept C4.1/C4.2 · C4.2-fix (B1–B6) · C5.4-D · C5.4-E · C5.5 · C3.10 · C6.
+- promptpay PP16 = fixture gap on QC2 (no staticPending request row) — reseed acc-v2 on QC2 or fix fixture before C3.10 qc:all. main scripts/acc-v2-expected.json working copy = QC1 seed ids (do not commit blindly).
+
 ### 0.16 ⏸️ 28 Sep 2026 ~12:50 UTC — QUOTA STOP at 91% · 43/53 = 81% · lane cap now 2 (owner)
 - MAIN = c6fe26d2 (batch A r1–3 + C4.3-fix2 committed). QC1 server 3215 rebuilt from c6fe26d2 (AI mock · WEBHOOK_ALLOW_PRIVATE=1).
 - Unit crm-c43-accept (C4.3 acceptance on main/QC1): oc1 10/10 · i1 296/296 · q01 65/66 (deal-new @390 "ตัวเลือก @first ไม่มีใน deal-new-contact" — likely data/timing, re-run q01 + inspect) · q02 56/56 · q03–q10 + merge running → gate true ⇒ accept C4.3 (44/53).
