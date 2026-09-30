@@ -4,5 +4,5 @@ set -e
 cd "$(dirname "$0")"
 b="$1"; t="$2"; out="${b%.body.html}.html"
 { printf '<!doctype html>\n<html lang="th"><head><meta charset="utf-8">\n<title>%s</title>\n' "$t"
-  cat _base.part; cat _pos.part; cat "$b"; printf '\n</body></html>\n'; } > "$out"
+  cat _base.part; cat _pos.part; cat "$b"; cat _airy.part; printf '\n</body></html>\n'; } > "$out"
 echo "built $out"

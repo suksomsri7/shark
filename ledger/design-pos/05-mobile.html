@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="th"><head><meta charset="utf-8">
-<title>SHARK · POS · มือถือ</title>
+<title>SHARK · POS · 05-mobile</title>
 <style>
 /* ══ โทเคนสี — จานเดียวทั้งไฟล์ (WO §1) ═══════════════════════════════════
    ขาว #fff · พื้นรอง #fafafa · พื้นเวที #f4f5f7
@@ -361,7 +361,7 @@ svg.i.lg{width:22px;height:22px}
 .pos{display:flex;min-height:0;flex:1}
 .pos .left{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
 .pos .cart{width:420px;flex:none;display:flex;flex-direction:column;background:var(--sf)}
-.pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:14px 18px;overflow:hidden}
+.pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;padding:14px 18px;overflow:hidden}
 .pitem{border:1px solid var(--line);border-radius:12px;padding:10px;min-height:96px;display:flex;flex-direction:column;justify-content:space-between;background:var(--sf)}
 .pitem .img{height:44px;border-radius:8px;background:var(--stage);margin-bottom:8px}
 .pitem .nm{font-size:13px;font-weight:600;line-height:1.3}
@@ -369,10 +369,10 @@ svg.i.lg{width:22px;height:22px}
 .pitem .pr small{color:var(--mut2);font-size:11px}
 .pitem.oos{opacity:.45}
 .pitem.oos .nm::after{content:" · หมด";color:var(--dg)}
-.cats{display:flex;gap:6px;padding:12px 18px 0;overflow:hidden}
+.cats{display:flex;gap:10px;padding:12px 18px 0;overflow:hidden}
 .cats .c{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:13px;color:var(--ink2);white-space:nowrap}
 .cats .c.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
-.cline{display:flex;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.cline{display:flex;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
 .cline .q{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
 .cline .t{flex:1;min-width:0}
 .cline .t b{font-size:13.5px;font-weight:600;display:block}
@@ -384,10 +384,10 @@ svg.i.lg{width:22px;height:22px}
 .tot .r.g{font-size:20px;font-weight:700;color:var(--ink);padding-top:8px}
 .tot .r .dg{color:var(--dg)}
 .paybtn{margin:10px 16px 14px;height:56px;border-radius:12px;background:var(--ink);color:var(--sf);display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:16px;font-weight:700}
-.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
 .numpad div{height:52px;border:1px solid var(--line);border-radius:10px;display:grid;place-items:center;font-size:18px;font-weight:600}
 .numpad div.k{background:var(--sf2);font-size:14px}
-.paym{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.paym{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
 .paym div{height:60px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:600}
 .paym div.on{border-color:var(--ink);background:var(--sf2);box-shadow:inset 0 0 0 1px var(--ink)}
 .paym div.off{color:var(--mut2)}
@@ -407,7 +407,7 @@ svg.i.lg{width:22px;height:22px}
 .ticket .h .tm{font-variant-numeric:tabular-nums;color:var(--mut)}
 .ticket.late .h{background:var(--ink);color:var(--sf)}.ticket.late .h .tm{color:var(--sf)}
 .ticket.warn .h{background:var(--sf2)}
-.ticket .l{display:flex;gap:8px;padding:7px 12px;font-size:13px;border-bottom:1px solid var(--line)}
+.ticket .l{display:flex;gap:13px;padding:7px 12px;font-size:13px;border-bottom:1px solid var(--line)}
 .ticket .l:last-child{border-bottom:0}
 .ticket .l b{width:24px;flex:none}
 .ticket .l small{display:block;color:var(--mut);font-size:11.5px}
@@ -418,15 +418,15 @@ svg.i.lg{width:22px;height:22px}
 .rcpt hr{border:0;border-top:1px dashed var(--line2);margin:8px 0}
 .mob{width:390px;height:844px;background:var(--sf);border:1px solid var(--line);border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column}
 .mob .sb{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:700;flex:none}
-.mob .mh{display:flex;align-items:center;gap:10px;padding:6px 16px 10px;flex:none}
+.mob .mh{display:flex;align-items:center;gap:16px;padding:6px 16px 10px;flex:none}
 .mob .mh h1{font-size:18px;font-weight:700}
 .mob .mb{flex:1;min-height:0;overflow:hidden;padding:0 16px}
 .mob .bb{flex:none;border-top:1px solid var(--line);padding:10px 16px 22px}
-.mob .pgrid{grid-template-columns:repeat(3,1fr);padding:10px 0;gap:8px}
+.mob .pgrid{grid-template-columns:repeat(3,1fr);padding:10px 0;gap:13px}
 .mob .pitem{min-height:84px;padding:8px}
 .big{font-size:44px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.sysc{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--sf)}
-.sysc .h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px}
+.sysc{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:13px;background:var(--sf)}
+.sysc .h{display:flex;align-items:center;gap:13px;font-weight:700;font-size:13.5px}
 .sysc .h .sw{margin-left:auto}
 .sysc p{font-size:12px;color:var(--mut);line-height:1.45}
 .sysc ul{padding-left:16px;font-size:12px;color:var(--ink2);line-height:1.6}
@@ -437,8 +437,8 @@ svg.i.lg{width:22px;height:22px}
 .note{font-size:11.5px;color:var(--mut);border:1px dashed var(--line2);border-radius:8px;padding:6px 9px;display:inline-block}
 </style>
 <style>
-.mrowx{display:flex;gap:22px;align-items:flex-start}
-.mob .sb .ic{display:flex;gap:6px;align-items:center;font-size:12px}
+.mrowx{display:flex;gap:35px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:10px;align-items:center;font-size:12px}
 .mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
 .mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
 .mob .mh .brn{display:inline-flex;align-items:center;gap:5px;font-size:16px;font-weight:700}
@@ -448,14 +448,14 @@ svg.i.lg{width:22px;height:22px}
 .mob .cats{padding:10px 0 0}
 .mob .cats .c{height:30px;font-size:12.5px;padding:0 10px}
 .mob .pitem .img{height:80px}
-.peek{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.peek{display:flex;align-items:center;gap:13px;font-size:12px;color:var(--ink2);padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
 .peek .sp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mob .pitem .nm{font-size:12.5px}
 .mob .pitem .pr{font-size:12.5px}
 .mob .pitem.cnt{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);position:relative}
 .mob .pitem .qb{position:absolute;right:6px;top:6px;min-width:22px;height:22px;border-radius:7px;background:var(--ink);color:var(--sf);
   font-size:11.5px;font-weight:700;display:grid;place-items:center;padding:0 6px}
-.bbr{display:flex;align-items:center;gap:10px}
+.bbr{display:flex;align-items:center;gap:16px}
 .bbr .t{flex:1;min-width:0}
 .bbr .t .k{font-size:12px;color:var(--mut)}
 .bbr .t .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -464,19 +464,19 @@ svg.i.lg{width:22px;height:22px}
 .mob .big{font-size:40px}
 .mob .paym{grid-template-columns:repeat(3,1fr)}
 .mob .paym div{height:56px;font-size:12.5px}
-.paid{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
+.paid{display:flex;align-items:center;gap:13px;font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
 .paid .sp{flex:1}
 .paid.rem{background:var(--acc-bg);border-color:var(--acc);color:var(--acc);font-weight:700}
-.qrbox{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:8px;background:var(--sf2)}
+.qrbox{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:13px;background:var(--sf2)}
 .qrbox .qr{width:170px;height:170px}
-.pulse{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--acc);font-weight:700}
+.pulse{display:flex;align-items:center;gap:13px;font-size:12.5px;color:var(--acc);font-weight:700}
 .pulse i{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px var(--acc-bg),0 0 0 5px var(--acc);display:block}
-.ptrow{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
+.ptrow{display:flex;align-items:center;gap:13px;font-size:12.5px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
 .ptrow .sp{flex:1}
 /* ค */
 .prog{height:6px;border-radius:3px;background:var(--sf2);overflow:hidden;border:1px solid var(--line)}
 .prog i{display:block;height:100%;width:30%;background:var(--ink)}
-.cr{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+.cr{display:flex;align-items:center;gap:16px;padding:11px 0;border-top:1px solid var(--line)}
 .cr:first-child{border-top:0}
 .cr .t{flex:1;min-width:0}
 .cr .t b{font-size:13.5px;font-weight:600;display:block}
@@ -592,5 +592,52 @@ svg.i.lg{width:22px;height:22px}
 
 </div>
 </div>
+<style>
+/* ══ Airy pass (30 ก.ย. เย็น) — เจ้าของสั่ง "โปร่งขึ้น เพิ่มระยะห่างคอลัมน์/แถว" · ทับทุกจอ · ต่อท้ายไฟล์ ══ */
+.frame{height:auto!important}
+.frame[style*="height:900px"]{min-height:900px}
+.mob{height:auto!important;min-height:844px}
+.wrap{gap:44px!important;padding:32px!important}
+.pg{gap:26px!important;padding:0 32px 34px!important}
+.ph{padding:14px 32px 20px!important}
+.crumb{padding:16px 32px 0!important}
+.amenu{padding:0 26px!important}
+.amenu .am{padding:15px 18px 13px!important}
+.top{padding:0 24px!important;height:60px!important}
+.card{padding:22px!important}
+.card.p0{padding:0!important}
+.row{gap:26px!important}
+.tbl th{padding:12px 14px!important}
+.tbl td{padding:15px 14px!important}
+.stat{gap:36px!important}
+.tabs{gap:6px!important}
+.tab{padding:11px 16px!important}
+.ddi{height:44px!important}
+.cats{padding:18px 26px 0!important;gap:10px!important}
+.cats .c{height:36px!important;padding:0 16px!important}
+.pgrid{gap:18px!important;padding:20px 26px!important}
+.pitem{padding:14px!important}
+.cart{width:460px!important}
+.cline{padding:16px 22px!important;gap:14px!important}
+.tot{padding:16px 22px!important}
+.tot .r{padding:5px 0!important}
+.paybtn{margin:14px 22px 20px!important;height:60px!important}
+.numpad{gap:12px!important}
+.numpad div{height:56px!important}
+.paym{gap:14px!important}
+.paym div{height:66px!important}
+.tbl-card{padding:14px!important;min-height:112px!important}
+.ticket .l{padding:11px 14px!important}
+.ticket .h{padding:12px 14px!important}
+.sysc{padding:20px!important;gap:12px!important}
+.sysc ul{line-height:1.9!important}
+.mob .mb{padding:0 20px!important}
+.mob .mh{padding:8px 20px 14px!important}
+.mob .bb{padding:14px 20px 26px!important}
+.mob .pgrid{gap:12px!important;padding:14px 0!important}
+.rcpt{padding:22px 24px!important;line-height:1.7!important}
+.kpi .val{margin-top:10px!important}
+.kpi .fo{margin-top:8px!important}
+</style>
 
 </body></html>
