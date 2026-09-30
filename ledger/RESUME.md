@@ -4,7 +4,7 @@
 - สรุป: โค้ด POS จริง = จุดตัดเงินแข็ง (createSale/void/outbox/QC) แต่ไม่มี กะ·พักบิล·split·refund·ตัวเลือก·บาร์โค้ด·ใบเสร็จ·หลายเครื่อง·ออฟไลน์ · ปัญหาโครงสร้าง = สินค้ามี 3 ต้นฉบับ (InvItem/MenuItem/ShopProduct) · ตั้งราคาต้องเชื่อมบัญชีก่อน
 - แบบใหม่: POS เดียวทุกประเภทร้าน (โหมด หน้าขาย/โต๊ะ/ออเดอร์ออนไลน์) · แคตตาล็อกเดียว · SalesChannel + ราคาต่อช่องทาง + BOM · ออเดอร์ทุกช่องทางจอเดียว · เชื่อม 13 ระบบ SHARK · P1 18 WO / P2 14 / P3 12
 - เทียบ Wongnai POS · Odoo 18 · ChocoCRM · Loyverse (ตาราง 30 ฟีเจอร์ §2.5)
-- ⏳ รอเจ้าของเคาะ §9 (8 ข้อ): ยุบเมนู/เว็บร้านเข้าแคตตาล็อกเดียว · ลำดับ P1 (ค้าปลีก/คาเฟ่ก่อน) · Beam creds · partner API LINE MAN/Grab/Shopee · ฮาร์ดแวร์ · ออฟไลน์ P3 · e-Tax · ชื่อโหมด
+- ✅ เจ้าของเคาะแล้ว 4/8 (เย็น 30 ก.ย.): ยุบแคตตาล็อกเดียว · **ทำครบวงจร RUN เดียว (P1+P2 = 32 WO แบ่ง 3 เลน)** · ออฟไลน์ P3 · แท็บเล็ต+เครื่องพิมพ์ BT/USB · ⏳ รอของจากเจ้าของ: Beam creds · partner API LINE MAN/Grab/Shopee · e-Tax provider · ชื่อโหมด (ไม่บล็อก) · ⛔ **RUN ยังไม่เริ่ม — รอคำสั่ง**
 - ภาพส่ง TG แล้ว (ดูเลข msg ใน memory project_shark_pos_redesign)
 
 ## 🔥 11 ก.ย. 2569 12:30–13:10 BKK — [session CRM] **Vercel prod deploy ล้ม 3 รอบ (5cc4100 · 21fd9f3 · c3c0ea7) — แก้แล้ว `5394a15` READY** · สาเหตุ: oracle `scripts/qc-crm-c1.1.mts` import `@/lib/core/teams` ที่ยังไม่มี → next build type check ล้ม (tsconfig include `**/*.mts`) · แก้เป็น `import("…" as string)` · กติกาใหม่ handoff §3 ข้อ 11 + memory `reference_shark_mts_scripts_typechecked_by_build` · ⚠️ session สมาชิก: deploy ของ 21fd9f3/c3c0ea7 ล้มเพราะต่อจาก commit ผม ไม่ใช่ของสมาชิก — โค้ดสมาชิกขึ้น prod แล้วพร้อม 5394a15
