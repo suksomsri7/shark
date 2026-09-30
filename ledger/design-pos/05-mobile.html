@@ -437,8 +437,8 @@ svg.i.lg{width:22px;height:22px}
 .note{font-size:11.5px;color:var(--mut);border:1px dashed var(--line2);border-radius:8px;padding:6px 9px;display:inline-block}
 </style>
 <style>
-.mrowx{display:flex;gap:35px;align-items:flex-start}
-.mob .sb .ic{display:flex;gap:10px;align-items:center;font-size:12px}
+.mrowx{display:flex;gap:42px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
 .mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
 .mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
 .mob .mh .brn{display:inline-flex;align-items:center;gap:5px;font-size:16px;font-weight:700}
@@ -448,14 +448,14 @@ svg.i.lg{width:22px;height:22px}
 .mob .cats{padding:10px 0 0}
 .mob .cats .c{height:30px;font-size:12.5px;padding:0 10px}
 .mob .pitem .img{height:80px}
-.peek{display:flex;align-items:center;gap:13px;font-size:12px;color:var(--ink2);padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
+.peek{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--ink2);padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--line)}
 .peek .sp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mob .pitem .nm{font-size:12.5px}
 .mob .pitem .pr{font-size:12.5px}
 .mob .pitem.cnt{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);position:relative}
 .mob .pitem .qb{position:absolute;right:6px;top:6px;min-width:22px;height:22px;border-radius:7px;background:var(--ink);color:var(--sf);
   font-size:11.5px;font-weight:700;display:grid;place-items:center;padding:0 6px}
-.bbr{display:flex;align-items:center;gap:16px}
+.bbr{display:flex;align-items:center;gap:19px}
 .bbr .t{flex:1;min-width:0}
 .bbr .t .k{font-size:12px;color:var(--mut)}
 .bbr .t .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -464,19 +464,19 @@ svg.i.lg{width:22px;height:22px}
 .mob .big{font-size:40px}
 .mob .paym{grid-template-columns:repeat(3,1fr)}
 .mob .paym div{height:56px;font-size:12.5px}
-.paid{display:flex;align-items:center;gap:13px;font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
+.paid{display:flex;align-items:center;gap:16px;font-size:12.5px;padding:9px 12px;border:1px solid var(--line);border-radius:10px}
 .paid .sp{flex:1}
 .paid.rem{background:var(--acc-bg);border-color:var(--acc);color:var(--acc);font-weight:700}
-.qrbox{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:13px;background:var(--sf2)}
+.qrbox{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:16px;background:var(--sf2)}
 .qrbox .qr{width:170px;height:170px}
-.pulse{display:flex;align-items:center;gap:13px;font-size:12.5px;color:var(--acc);font-weight:700}
+.pulse{display:flex;align-items:center;gap:16px;font-size:12.5px;color:var(--acc);font-weight:700}
 .pulse i{width:9px;height:9px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px var(--acc-bg),0 0 0 5px var(--acc);display:block}
-.ptrow{display:flex;align-items:center;gap:13px;font-size:12.5px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
+.ptrow{display:flex;align-items:center;gap:16px;font-size:12.5px;padding:10px 12px;border:1px dashed var(--line2);border-radius:10px}
 .ptrow .sp{flex:1}
 /* ค */
 .prog{height:6px;border-radius:3px;background:var(--sf2);overflow:hidden;border:1px solid var(--line)}
 .prog i{display:block;height:100%;width:30%;background:var(--ink)}
-.cr{display:flex;align-items:center;gap:16px;padding:11px 0;border-top:1px solid var(--line)}
+.cr{display:flex;align-items:center;gap:19px;padding:11px 0;border-top:1px solid var(--line)}
 .cr:first-child{border-top:0}
 .cr .t{flex:1;min-width:0}
 .cr .t b{font-size:13.5px;font-weight:600;display:block}
@@ -638,6 +638,81 @@ svg.i.lg{width:22px;height:22px}
 .rcpt{padding:22px 24px!important;line-height:1.7!important}
 .kpi .val{margin-top:10px!important}
 .kpi .fo{margin-top:8px!important}
+</style>
+<style>
+/* แก้คำตัดบรรทัดหลังเพิ่มระยะห่าง */
+.qc b,.qc span,.oc .cd,.oc .r1{white-space:nowrap!important}
+.qc{gap:8px!important}
+.oc .r1{gap:6px!important}
+</style>
+<style>
+/* ══ รอบ 3 — "โปร่งขึ้นอีก + user friendly" (เจ้าของสั่ง 30 ก.ย. ค่ำ) ══
+   หลัก: ตัวอักษรใหญ่ขึ้น 1 ขั้น · ปุ่ม/ช่องกด ≥44px · มุมมน 16px · ตัวเลขเงินเด่น · ช่องว่างเพิ่มอีก 20% · ไม่มีตัวอักษร < 12.5px */
+body{font-size:15px!important}
+.frame{border-radius:22px!important}
+.wrap{gap:60px!important;padding:36px!important}
+.pg{gap:34px!important;padding:0 36px 40px!important}
+.ph{padding:18px 36px 24px!important}.ph h1{font-size:26px!important}
+.row{gap:32px!important}
+.card{padding:28px!important;border-radius:18px!important}
+.card.p0{padding:0!important}
+.pitem,.tbl-card,.ticket,.sysc,.oc,.mem,.pop{border-radius:18px!important}
+.btn{height:46px!important;padding:0 20px!important;font-size:15px!important;border-radius:13px!important;gap:9px!important}
+.btn.sm{height:40px!important;padding:0 14px!important;font-size:14px!important;border-radius:11px!important}
+.inp{height:48px!important;font-size:15px!important;border-radius:13px!important;padding:0 16px!important}
+.chip{height:28px!important;font-size:13px!important;padding:0 11px!important;border-radius:8px!important}
+.top{height:66px!important}.top .brand{font-size:16px!important}
+.amenu .am{font-size:15px!important;padding:18px 22px 16px!important;gap:9px!important}
+.tabs{gap:8px!important}.tab{font-size:14.5px!important;padding:12px 18px!important}
+.ddi{font-size:15px!important;height:48px!important}
+.drawer{width:300px!important}
+.crumb{font-size:13px!important}
+.frame small,.frame .mu,.frame .fo,.frame .st,.frame .m,.frame .lbl{font-size:12.5px!important}
+/* หน้าขาย */
+.cats{gap:12px!important;padding:22px 30px 0!important}
+.cats .c{height:44px!important;padding:0 20px!important;font-size:15px!important;border-radius:13px!important}
+.pgrid{gap:22px!important;padding:24px 30px!important}
+.pitem{padding:16px!important;min-height:170px!important}
+.pitem .nm{font-size:16px!important}.pitem .pr{font-size:16px!important;margin-top:6px!important}
+.cart{width:480px!important}
+.cline{padding:18px 24px!important;gap:16px!important}
+.cline .q{width:34px!important;height:34px!important;font-size:15px!important;border-radius:10px!important}
+.cline .t b{font-size:16px!important}.cline .t span{font-size:13.5px!important;margin-top:4px!important}
+.cline .a{font-size:16px!important}
+.tot{padding:20px 24px!important;font-size:15px!important}.tot .r{padding:6px 0!important}.tot .r.g{font-size:26px!important;padding-top:12px!important}
+.paybtn{height:72px!important;font-size:19px!important;border-radius:18px!important;margin:16px 24px 24px!important;padding:0 24px!important}
+.mem{padding:14px 16px!important}
+/* ชำระเงิน */
+.big{font-size:56px!important}
+.numpad{gap:14px!important}.numpad div{height:64px!important;font-size:21px!important;border-radius:14px!important}
+.paym{gap:16px!important}.paym div{height:78px!important;font-size:15px!important;border-radius:16px!important;gap:6px!important}
+.paym div small{font-size:12.5px!important}
+.qr{width:170px!important;height:170px!important}
+/* โต๊ะ / ครัว */
+.tbl-card{padding:16px!important;min-height:132px!important}
+.tbl-card .n{font-size:18px!important}.tbl-card .m{font-size:13px!important}
+.ticket .h{font-size:14px!important;padding:14px 16px!important}
+.ticket .l{font-size:15px!important;padding:14px 16px!important;gap:10px!important}
+.ticket .l small{font-size:12.5px!important}
+/* ตาราง / รายงาน / ตั้งค่า */
+.tbl{font-size:14.5px!important}.tbl th{font-size:12.5px!important;padding:14px 16px!important}.tbl td{padding:18px 16px!important}
+.kpi .lbl{font-size:13.5px!important}.kpi .val{font-size:30px!important;margin-top:12px!important}.kpi .fo{margin-top:10px!important}
+.stat{gap:40px!important}.stat .b .k{font-size:13px!important}.stat .b .v{font-size:23px!important}
+.sysc{padding:24px!important;gap:14px!important}
+.sysc .h{font-size:16px!important}.sysc p,.sysc ul{font-size:13.5px!important;line-height:2!important}
+.sw{width:42px!important;height:24px!important}.sw::after{width:18px!important;height:18px!important;top:3px!important;right:3px!important}.sw.off::after{left:3px!important}
+.note{font-size:12.5px!important;padding:8px 12px!important;border-radius:10px!important}
+.bar{height:150px!important;gap:8px!important}
+/* มือถือ */
+.mob{border-radius:34px!important}
+.mob .sb{height:50px!important;font-size:14px!important}
+.mob .mh h1{font-size:20px!important}
+.mob .mb{padding:0 22px!important}
+.mob .pgrid{gap:14px!important;padding:16px 0!important}
+.mob .pitem{min-height:120px!important;padding:12px!important}
+.mob .bb{padding:18px 22px 32px!important}
+/* ใบเสร็จ */
+.rcpt{font-size:13px!important;line-height:1.8!important;padding:26px 28px!important}
 </style>
 
 </body></html>
