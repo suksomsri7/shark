@@ -474,3 +474,179 @@ See N7. The per-job cap was not tested by the builder in a real 80 s run. It is 
 - The run9 directory was created at 12:37:05.
 - The commit holds no source edit made after run9 started.
 - `scripts/{crm,member}-expected.json` are modified in the worktree and not committed.
+
+---
+
+## Round 3 — re-review of `git diff 54e3a942 1d5d1603` (read-only · 30 Sep 2026)
+
+### VERDICT: MERGEABLE AFTER SHOULD-FIX (R3-S1)
+
+- R3-S1 is a one-constant change in the only prod-exposed piece: `core/after-drain.ts`.
+- Everything else is v2-only. No prod shop is on v2, and the `crm-cron` crontab is not installed until C6.1.
+- The v2-only items are listed as **follow-ups F1–F6**. They can go to a follow-up card, as long as that card is done **before any shop runs v2 sequences with the crontab (C6.1 gate)**.
+
+### Rulings checked (verified in code)
+
+**R2-S1**
+- `deals.ts:851-857` sets `keepCloseDate = !legacy && fromClosed && deal.kind === target.kind && !!deal.closedAt`. WON↔LOST, open→closed and reopen behave as before; v1 `legacy` is untouched.
+- The `closedAt` reader list in the builder's notes is complete. I grepped `closedAt` over `src/`; the account, restaurant and referrals hits are other models, and `member/fields.ts:544` is a column list.
+- Every CRM reader now gets the date of the first close, which is the more correct answer:
+  - reports won/lost per period: `reports.ts:382-384, 418, 429, 508-512, 589`
+  - commission reconcile window and `closedAt >= rule.createdAt`: `commissions.ts:1510-1514`
+  - member timeline `at`: `member-bridges.ts:687`
+  - AI purchase history
+  - DTOs and exports
+- No data migration: rows already re-stamped keep their dates.
+
+**R2-S2**
+- Each redelivery claim writes its own hashes (`emails.ts` ≈1296-1310) and keeps the previous attempt's hashes in `redo`.
+- In `deliver` (≈1426-1460), a 409 is read as "sent" **only when `args.redelivery` is set**. A plain send's 409 still ends FAILED.
+- On that path: row SENT, `providerId` null, `providerError = DELIVERY_UNCONFIRMED`, `routing.deliveryUnconfirmed`, previous hashes restored.
+- The three-attempt case the probe covers (503 → accepted-lost → 409) is correct:
+  - The 503 attempt writes H1 and leaves it.
+  - The accepted-lost attempt claims H2; its FAILED write keeps H2.
+  - The 409 attempt restores `prev = prior.trackTokenHash = H2`, which belongs to the accepted body.
+- Superseded attempts' tokens stop resolving, because their hashes are overwritten. That is the right direction, apart from F1.
+- Activity and `crm.email.sent` are written once, in the SENT transaction.
+- A late webhook cannot double-write, because it cannot find the row at all (see F2).
+
+**R2-S3**
+- Permanent = 400/404/405/422 + INVALID_HEADER + NO_RECIPIENT; outage = 401/403/429 (`emails.ts` ≈1024-1036).
+- Outage retries use their own `stats.outages` counter for backoff and never call `failAttempt`.
+- The 72 h ceiling is measured from `stats.firstFail[v:idx]` and stops the enrollment in the same transaction as the log, finished event and audit (`sequences.ts` ≈1575-1605).
+- Counters are keyed by version and step index, so a success or permanent advance moves to a fresh key. That makes a reset unnecessary.
+- Mixed runs (outage → transient → outage) work: transient failures count toward 5; outage failures do not count but share `firstFail`, and stop at 72 h after the first failure of any kind.
+- There is no infinite loop on the outage path.
+
+**R2-N1b**
+- A full daily cap on the system path throws `CrmLimitError` unless an already-sent row exists (`emails.ts` ≈1284).
+- `defaultSender` then waits until `nextThaiDayStart`, with no log and no count.
+- `nextThaiDayStart` (`sequences.ts` ≈1155-1158) is `Date.UTC(thY, thM, thD+1) − 7 h`, computed on a +7 h shifted instant with `getUTC*`, so it avoids the local-time trap.
+  - 16:59Z (23:59 Thai) → 17:00Z same day.
+  - 17:00Z (00:00 Thai) → next day's 17:00Z. That is correct: the new Thai day has already started and its cap is full.
+  - Month and year rollover are handled by `Date.UTC`.
+
+**R2-N2**
+- The Message-ID prefix is `ik-` when an actor is present and `sk-` for the system path. REST and UI keys hash byte-identically to before, so they still dedupe across the deploy.
+- Sequence keys have only ever existed in unmerged WIP commits, so no pre-deploy `ik-` sequence rows exist on prod.
+- The only other system sender, the automation `SEND_EMAIL` rule (`automation.ts:1161`), passes no key, so the change does not affect it.
+
+**R2-N3**
+- A prior QUEUED row returns `inFlightUntil`, and the step waits until `lease + 2 min`.
+- The stuck-send reaper is inside `runScheduled` (`emails.ts` ≈1658-1666, immediate QUEUED rows past their lease). Its job `crm.email.scheduled` is in the same minute dispatcher as `crm.sequences` (`minute-jobs.ts:196`), so it runs wherever sequences run.
+- On prod neither runs today: v2-only, no crontab.
+- If the reaper fails persistently, the wait repeats every minute with no ceiling (F4).
+
+**R2-N5**
+- `consents.ts:177-182`: when the member link changed mid-call, the code throws an uncoded `Error`. The complaint path treats it as transient ⇒ 500 ⇒ the provider retries.
+- A member that is genuinely missing is still CONFLICT.
+
+**R2-N6 (call-site invariant)**
+- I read all 14 `scheduleDrain` call sites in 10 files. The builder said 11 sites.
+  - booking.ts:156
+  - branding/service.ts:317
+  - pos/service.ts:382
+  - chat/service.ts:769, 1707, 1980, 2131, 2238
+  - forms/service.ts:276
+  - kanban/notify.ts:209
+  - kanban/reminders.ts:131, 215
+  - kanban/checklists.ts:242
+  - kanban/comments.ts:165
+- Every one runs after its own `prisma.$transaction` has returned. None is inside a transaction callback.
+- `notifyCardAssigned` commits its event in its own top-level transaction before waking.
+- In a request, `after()` only runs after the response, so callers' awaited transactions have committed.
+- Layering: `core/after-drain.ts` imports only `next/server`. `outbox-consumers` → core, with no cycle; fitness is 33/33.
+- Scripts and cron: `after()` throws ⇒ the drain runs immediately and the flag is cleared at start, so there is no coalescing outside a request.
+
+### SHOULD-FIX
+
+#### R3-S1 — The 6-min stale window turns cross-request coalescing into a platform-wide drain stall · verified by reasoning (prod-exposed)
+
+**Where:** `src/lib/core/after-drain.ts`, `PENDING_STALE_MS = 6 * 60_000`.
+
+**How it fails**
+- Since r3, one "registered-but-not-started" drain covers **every module's** drain requests in the Fluid instance: chat, POS→accounting, booking, forms, kanban, branding, CRM.
+- The registered task only starts when the registering request's response has finished.
+- So B's events wait for A's response to finish (for example, POS `voidSale` keeps working after `scheduleDrain`, and a server action streams its RSC payload).
+- Worse: if A's `after()` task never starts, every drain in that instance is suppressed for up to **6 minutes**. That happens if the invocation hits maxDuration or is killed while the instance keeps serving.
+- Those 6 minutes cover automation, webhooks, member stamps and journeys, POS→accounting and chat-side consumers. This is the same symptom class as the 1 Sep incident (≈ 557–600 s delays).
+- Before r3, each request drained on its own after its own response.
+
+**Wanted**
+- Shorten the window to about **10–15 s**.
+- Registering an extra drain when a pending one is older than that is harmless: drains are serialised in-process and leases guard every claim. At most one extra drain per window per instance.
+- The worst-case added delay then becomes about 15 s instead of 6 min.
+- Update the file's comment: the window should be short, not "> maxDuration".
+
+### FOLLOW-UPS (v2-only / not prod-exposed today — safe for a follow-up card, gate: before C6.1 enables sequences)
+
+#### F1 — R2-S2 restores the wrong hashes when a failure that never reached the key check lies between the accepted attempt and the 409 · verified by trace
+**Scenario**
+- Attempt k is accepted but its answer is lost.
+- Attempt k+1 fails before Resend's idempotency check: a network error that never reached Resend, or an early 5xx/429/401. Its claim overwrote the row's hashes with H(k+1).
+- Attempt k+2 gets 409 and restores `prev = H(k+1)`.
+- The mail the customer actually holds (H(k)) then has open, click **and unsubscribe links (including List-Unsubscribe one-click) that do not resolve**.
+
+**Why the probe misses it:** the stub (`probe-c54d-r3.mts:28-33`) always answers 409 once a key is stored, so it cannot express "a later attempt that never reached Resend".
+
+**Fix:** derive tokens deterministically, e.g. HMAC(server secret, `emailId|purpose|i`), so every attempt is byte-identical.
+- Resend then replays the original 200 **with its id**.
+- The 409/unconfirmed path and the hash juggling become unnecessary.
+- This also fixes F2.
+
+#### F2 — Unconfirmed rows are invisible to later webhooks · verified in code
+- `providerId` is null, and the webhook resolves rows by `providerId` (`emails.ts` ≈2873). A delivered, bounced or complained event for that mail therefore answers `unknown_email` 200 and is dropped.
+- So a **spam complaint about that mail does not opt the contact out**, and a hard bounce does not stop sequences.
+- F1's deterministic tokens fix this.
+
+#### F3 (suspected, provider semantics) — A 409 after an attempt that genuinely failed
+- If Resend stores *error* answers against an idempotency key, then a 409 after a genuinely failed attempt means nothing was ever delivered, yet the row is marked SENT (unconfirmed) and the step advances.
+- F1 removes this dependency.
+
+#### F4 — Wait paths (R2-N3 in-flight, R2-N1b full cap) have no ceiling and no log line
+- If the reaper job keeps failing, the step re-checks every minute forever.
+- Staff see no reason why a step stalls.
+- Suggest one log entry per wait episode, plus a ceiling (e.g. 24 h in-flight ⇒ the normal FAILED path).
+
+#### F5 — The R2-S3 owner notice is deferred to the UX batch (builder note)
+- Today an outage is visible only as step log lines and the platform `email.rich` WARN. Keep it tracked.
+
+#### F6 — Carried items
+- R2-N1a: a redelivery goes to the stored `toAddrs`, not the contact's current address.
+- For C6.1: round-1 N5 (write paths that don't wake), N6 (VPS drainer env and commit parity), N7 (cadence notes).
+
+### Probe quality (`probe-c54d-r3.mts`)
+
+**What the stub models**
+- It is Resend-like: same key + same body ⇒ replay; different body ⇒ 409; errors are not stored.
+- "lost" means accepted with the answer thrown away. That models R2S2a/b/c faithfully, but it cannot express F1 (see above).
+
+**R2N8a/b really force the race**
+- R2N8a parks the guard at its deal read (a patched `crmDeal.findFirst` keyed on the guard's `select`) until the consumers have stopped the rows. It then asserts `runDue.failed === held`, i.e. the guard attempted its conditional stop and lost.
+- R2N8b parks every consumer after it has read ACTIVE rows, runs the guard, then releases. It asserts that consumers saw every row ACTIVE and that the guard finished all of them.
+- Both still require exactly 1 finished event and 1 audit per enrollment, and 0 sends. These now prove the race, unlike r2's N10.
+
+**RED-before (source at 54e3a942)**
+- run10 and run11: probe-r3 7/19. Red: R2S1a, R2S1b, R2S2a, R2S2b, R2S2c, R2S3a, R2S3b, R2N2, R2N3, R2N6, R2N5b, R2N1b.
+- Green as pins: R2S3c, R2N8a–d, R2N5a, CLEAN.
+
+### Logs — verified
+
+**run15 (SUMMARY)**
+- probe-r3 19/19 · probe-r2 13/13 · probe 10/10 · C5.3 L3 11/11
+- c2.2 73 · c2.1 84 · c0.5 50 · c2.5 105 · c2.6 87 · c2.10 41 · c2.11 47
+- c1.4 110 · c1.5 103 · c1.8 81
+- c3.1 56 · c3.2 47 · c3.3 90 · c3.9 49
+- forms-notify 9/9 (from its text line) · m1.9 26
+- typecheck exit 0 (clean `tsc --noEmit`) · fitness 33/33 ×2
+- 0 ❌ in every run15 log.
+- `run15/c53-copy.diff` is the host-guard line 57 only.
+
+**Earlier runs**
+- run12: typecheck exit 2, the TS2322 the builder reported. run13: exit 0.
+
+**mtimes**
+- Last source edit: `emails.ts` at 13:43:18. probe-r3 was edited at 13:35:14.
+- run14 (probe-r3 19/19) finished at 13:45:29; run15's first log was written at 13:47:15.
+- So no source edit happened after run15 started.
+- The worktree holds only `scripts/{crm,member}-expected.json` changes, which are uncommitted as stated.
