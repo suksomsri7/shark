@@ -1,5 +1,22 @@
 import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// CRM C5.4-C ▸ LOCK ORDER of the account money transactions (round 11 · R10-2) — THE one order; a step may be
+//   skipped, never reordered. Every function that pays / un-pays a document follows it (voidPaymentInTx,
+//   voidVendorPaymentInTx, voidPaymentBatchInOneTx, recordPaymentInTx, recordVendorPaymentInTx, recordPaymentBatchInOneTx,
+//   cheque.ts restoreDocForCheque, credit-note issue/void):
+//     1. AccountCheque rows ↑id ............ chequeIdsHoldingPayments / cheque.ts lockChequeRow
+//     2. auto tax invoices ↑id ............. TAX_INVOICE rows whose sourcePaymentId is one of the payments
+//     3. documents ↑id ..................... lockDocumentRow (the invoices / bills being paid or un-paid)
+//     4. group heads ↑id ................... lockGroupHeadsOfDocsInTx (BILLING_NOTE / COMBINED_PAYMENT of those documents)
+//     5. payment rows ...................... CAS updateMany({ id, voidedAt: null })
+//   and ONLY THEN journal postings (gl.ts commitEntry / reverseFor) and syncGroupHeadInTx (which re-locks the head).
+//   Why step 4 sits before any posting: gl.nextJournalNo inserts a unique journal number, so a transaction that already
+//   posted can make another wait on it; if that other one holds the group head we get the R10-2 cycle
+//   (group payment ∥ bounce of another batch of the same group — trace: scripts/pending/c54c/trace-r10-2-deadlock.mts).
+//   Rows created inside the transaction (a new cheque, tax invoice, WHT certificate) need no lock.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { prisma } from "@/lib/core/db";
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO C4 — ตัวประกอบ payload + คีย์กันซ้ำของเหตุการณ์บัญชีที่ออกทาง webhook (ที่เดียวทั้งโมดูล)
@@ -38,6 +55,7 @@ import {
   ensureAccounting,
   postDocument,
   postPayment,
+  postChequeEntry,
   postTaxInvoice,
   resolveMapping,
   reverseFor,
@@ -2327,6 +2345,7 @@ export async function issueDocument(
           // hunt F5 + G1 + G2: สายอ้างอิงของใบลดหนี้ต้องจบที่ใบแจ้งหนี้ (หรือใบเสร็จ/ใบกำกับที่ไม่ได้แปลงจากอะไร) และทุกใบในสายต้องมีผลอยู่
           //   round 6 · F1/F2: ล็อกทั้งสาย (ล่าง → บน) **ก่อน** อ่านสถานะ — ยกเลิกใบแจ้งหนี้/ใบเสร็จพร้อมกันจะรอเรา หรือเราจะเห็นว่าถูกยกเลิกแล้ว
           await lockCreditChainInTx(tx, tenantId, systemId, doc.sourceDocId);
+          await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, await creditNoteGroupChildIdsInTx(tx, systemId, doc.sourceDocId)); // round 11 · R10-10 (ขั้น 4)
           const srcProblem = await creditSourceProblemInTx(tx, systemId, doc.sourceDocId);
           if (srcProblem) throw new Error(srcProblem);
           const cap = await creditAvailable(tx, systemId, doc.sourceDocId, id);
@@ -2404,7 +2423,10 @@ export async function issueDocument(
         // F4: CN = Dr รายได้+Dr 2200 / Cr 1100|เงิน · DN กลับด้าน (logic ใน gl)
         await postDocument(ctx, id, tx);
         // CRM C5.4-C ▸ (review B1) ใบลดหนี้ที่ปิดยอดคงเหลือ ⇒ ต้นทางเป็น PAID (กติกาเดียวกับ recordPayment) ◂
-        if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
+        if (doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
+          await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
+          await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, await creditNoteGroupChildIdsInTx(tx, systemId, doc.sourceDocId)); // round 11 · R10-10
+        }
       } else if (doc.docType === "TAX_INVOICE") {
         // A2: ใบกำกับเป็นตัวกำหนดเดือน VAT → ย้าย 2205/2210 → 2200
         await postTaxInvoice(ctx, id, tx);
@@ -2661,6 +2683,12 @@ export async function liveCreditTotalInTx(tx: Prisma.TransactionClient, systemId
  *   (ลำดับล็อก: ใบลดหนี้ → ต้นทาง · recordPayment ล็อกเฉพาะต้นทาง ⇒ ไม่ย้อนลำดับ) · เพิ่งกลายเป็น PAID ⇒ `account.invoice.paid`
  *   (คีย์เดียวกับ recordPayment — ครั้งเดียวต่อเอกสาร) · ต้นทางที่ไม่ใช่ใบแจ้งหนี้รอชำระ/ชำระแล้ว = ไม่แตะ ◂
  */
+/** round 11 · R10-10: เอกสารลูกของกลุ่มที่ใบลดหนี้กระทบ = ต้นทางที่อ้าง + ใบแจ้งหนี้แม่ของครอบครัว (หัวกลุ่มผูกกับใบแจ้งหนี้) */
+async function creditNoteGroupChildIdsInTx(tx: Prisma.TransactionClient, systemId: string, sourceDocId: string): Promise<string[]> {
+  const inv = (await invoiceOfDocInTx(tx, systemId, sourceDocId))?.id;
+  return [...new Set([sourceDocId, ...(inv ? [inv] : [])])];
+}
+
 async function rederiveInvoiceStatusInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, docId: string): Promise<void> {
   // hunt F1: ใบลดหนี้อ้างใบเสร็จ/ใบกำกับ ⇒ คิดที่ใบแจ้งหนี้แม่ของครอบครัว
   const sourceId = (await invoiceOfDocInTx(tx, systemId, docId))?.id;
@@ -2772,6 +2800,7 @@ export async function recordPaymentInTx(
       //    (วัดจริงด้วย Promise.all ใน qc-acc-v2-security S12) · ล็อกที่นี่ทำให้คำขอที่สอง
       //    รอจน tx แรก commit แล้วค่อยอ่าน paidTotal ที่อัปเดตแล้ว → ตกด่านตามที่ควรเป็น
       await lockDocumentRow(tx, tenantId, systemId, id);
+      await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // round 11 · LOCK ORDER ขั้น 4 (ก่อนลงบัญชี)
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
       if (!doc) throw new Error("ไม่พบเอกสาร");
       if (!["AWAITING_PAYMENT", "PARTIAL"].includes(doc.status))
@@ -3011,6 +3040,7 @@ export async function recordPaymentBatchInOneTx<T>(
   try {
     return await prisma.$transaction(async (tx) => {
       for (const id of [...new Set(input.childIds)].sort()) await lockDocumentRow(tx, tenantId, systemId, id);
+      await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, input.childIds); // round 11 · LOCK ORDER ขั้น 4 — ก่อนลงบัญชีใด ๆ (R10-2)
       // คีย์ตรงตัว (group-batch) — ไม่พึ่ง LIKE ของ startsWith
       if ((await groupBatchPayments(tx, tenantId, systemId, input.batchKey)).length > 0) return { ok: true as const, duplicate: true as const };
       const result = await work(tx);
@@ -3046,6 +3076,11 @@ export async function voidPaymentBatchInOneTx(
         if (cs && cs !== "BOUNCED" && cs !== "VOIDED")
           throw new Error(side === "expense" ? "การจ่ายครั้งนี้จ่ายเป็นเช็ค — ให้ยกเลิกเช็คที่ทะเบียนเช็คแทน ยอดในบัญชีจะถูกกลับรายการให้ถูกต้อง" : CHEQUE_PAYMENT_VOID_MSG);
       }
+      // round 11 · LOCK ORDER ขั้น 2–4 ของทั้งครั้งก่อนเริ่ม (ตัวยกเลิกต่อใบล็อกซ้ำได้ไม่มีผล) — เดิมล็อกทีละใบ ⇒ ใบ 1 → หัว → ใบ 2 สลับกับยกเลิกใบ 2 เดี่ยว
+      const tiRows = await tx.accountDocument.findMany({ where: { tenantId, systemId, docType: "TAX_INVOICE", sourcePaymentId: { in: payments.map((p) => p.id) }, status: { notIn: ["VOIDED", "CANCELLED"] } }, select: { id: true }, orderBy: { id: "asc" } });
+      for (const t of tiRows) await lockDocumentRow(tx, tenantId, systemId, t.id);
+      for (const d of [...new Set(payments.map((p) => p.documentId))].sort()) await lockDocumentRow(tx, tenantId, systemId, d);
+      await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, payments.map((p) => p.documentId));
       let n = 0;
       for (const p of [...payments].sort((a, b) => (a.documentId < b.documentId ? -1 : a.documentId > b.documentId ? 1 : a.id < b.id ? -1 : 1))) {
         const cur = await tx.accountDocumentPayment.findFirst({ where: { id: p.id, tenantId, systemId }, select: { voidedAt: true } });
@@ -3094,6 +3129,7 @@ export async function voidPaymentInTx(
     for (const t of autoTis) await lockDocumentRow(tx, tenantId, systemId, t.id);
     // WO 9.2 ข้อ 14 — ล็อกแถวเอกสารก่อน (กดยกเลิกรัว 2 ครั้งพร้อมกันเคยลด paidTotal ซ้ำสองได้)
     await lockDocumentRow(tx, tenantId, systemId, documentId);
+    await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, [documentId]); // round 11 · LOCK ORDER ขั้น 4
     await assertNoLiveCnOnAutoTaxInvoicesInTx(tx, systemId, autoTis.map((t) => t.id), AUTO_TI_CN_VOID_PAYMENT_MSG);
     const pay = await tx.accountDocumentPayment.findFirst({
       where: { id: paymentId, documentId, tenantId, systemId },
@@ -3107,6 +3143,10 @@ export async function voidPaymentInTx(
     // ── WO 1.4: ใบรับมัดจำที่ถูกหักไปในใบแจ้งหนี้/ใบเสร็จแล้ว ยกเลิกการรับเงินไม่ได้ ──
     //    (เงินมัดจำไปตัดหนี้ใบอื่นแล้ว — ต้องยกเลิกการหักที่ใบปลายทางก่อน)
     await assertDepositNotAppliedInTx(tx, systemId, doc);
+    // round 11 · R10-5: งวดที่ผูกกับใบเสร็จขายสดตอนออก — เงินอยู่ใน JV ของตัวใบเสร็จ (ไม่มี JV ของงวด) ⇒ ยกเลิกงวดเดี่ยว ๆ ไม่มีอะไรให้กลับ
+    //   (เดิมผ่าน: ใบเสร็จกลายเป็นค้างชำระ แต่เงิน/รายได้/ภาษียังอยู่ในบัญชี · รับใหม่ = เงินเข้าซ้ำ) ⇒ ให้ยกเลิกใบเสร็จ (voidDocument ยกเลิกงวดให้พร้อมกัน)
+    if ((doc.docType === "RECEIPT" && doc.status === "DRAFT") || (await isReceiptAttachedPaymentInTx(tx, systemId, doc, paymentId)))
+      throw new Error(RECEIPT_ATTACHED_PAYMENT_VOID_MSG);
     // round 7 · N1: CAS — เช็คเด้งที่ยกเลิกแถวนี้ไปก่อน (ใต้ล็อกเดียวกัน) = ไม่ถอยยอดซ้ำ
     const done = await unwindPaymentInTx(tx, { tenantId, systemId }, paymentId, reason, "VOID");
     if (!done) throw new Error("รายการชำระนี้ถูกยกเลิกแล้ว");
@@ -3122,6 +3162,75 @@ export async function assertNoLiveCnOnAutoTaxInvoicesInTx(tx: Prisma.Transaction
   const fam = (await Promise.all(taxInvoiceIds.map((id) => docFamilyIds(tx, systemId, id)))).flat();
   const liveCn = await tx.accountDocument.count({ where: { systemId, docType: "CREDIT_NOTE", sourceDocId: { in: fam }, status: { notIn: [...LIVE_NOT] } } });
   if (liveCn > 0) throw new Error(message);
+}
+
+/** round 11 · R10-5 */
+export const RECEIPT_ATTACHED_PAYMENT_VOID_MSG =
+  "รายการรับเงินนี้บันทึกพร้อมใบเสร็จขายสด — เงินลงบัญชีอยู่ที่ตัวใบเสร็จ ให้ยกเลิกใบเสร็จแทน ระบบจะยกเลิกรายการรับเงินและกลับรายการเงิน รายได้ และภาษีขายให้ครบ";
+/** เหตุผลที่เช็คเด้ง/ยกเลิกเช็คใส่ไว้ที่งวดที่ตัวเองถอย (cheque.ts) — voidDocument ของใบเสร็จขายสดใช้แยกงวดที่เช็คเด้งถอยไปแล้ว */
+export const CHEQUE_UNWIND_REASON = "เช็คเด้ง/ยกเลิก";
+
+/**
+ * round 11 · R10-5: ยกเลิกใบเสร็จขายสดที่รายการรับเงินถูกเช็คเด้งถอยไปแล้ว — ต่อเช็ค (เช็คที่ผูกงวด ไม่ใช่เช็คขึ้นทะเบียนเอง) ลง JV ของเช็ค
+ *   `RECEIPT_VOID`: Dr บัญชีพักเช็ค (เงิน − ค่าธรรมเนียม) + Dr 1160 + Dr ค่าธรรมเนียม / Cr ลูกหนี้ (เงิน + WHT) = กลับ JV เช็คเด้งของงวดเหล่านั้น
+ *   (เงิน/รายได้/ภาษีของใบเสร็จกลับด้วย reversal ของตัวใบเสร็จอยู่แล้ว) · idempotent ต่อเช็ค
+ */
+async function undoBouncedReceiptClaimsInTx(tx: Prisma.TransactionClient, ctx: { tenantId: string; systemId: string }, doc: { id: string; contactId: string | null }, reason: string): Promise<void> {
+  const { tenantId, systemId } = ctx;
+  const bounced = await tx.accountDocumentPayment.findMany({
+    where: { documentId: doc.id, tenantId, systemId, voidedAt: { not: null }, voidReason: CHEQUE_UNWIND_REASON },
+    select: { id: true, amount: true, whtAmountSatang: true, feeAmount: true },
+  });
+  const byCheque = new Map<string, typeof bounced>();
+  for (const p of bounced) {
+    if ((await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocumentPayment", refId: p.id } })) > 0) continue; // มี JV ของงวดเอง = ไม่ใช่งวดที่ผูกตอนออก
+    for (const c of await chequeIdsHoldingPayments(tx, tenantId, systemId, [p.id])) {
+      const registered = (await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountCheque", refId: c, idempotencyKey: `AccountCheque#${c}#REGISTER` } })) > 0;
+      const cs = (await tx.accountCheque.findFirst({ where: { id: c, tenantId, systemId }, select: { status: true } }))?.status;
+      if (registered || cs !== "BOUNCED") continue;
+      byCheque.set(c, [...(byCheque.get(c) ?? []), p]);
+    }
+  }
+  for (const [c, ps] of byCheque) {
+    const transit = await resolveMapping(ctx, "CHEQUE_IN_TRANSIT", undefined, tx);
+    const ar = await resolveMapping(ctx, "AR", undefined, tx);
+    const cash = ps.reduce((s, p) => s + p.amount - p.feeAmount, 0);
+    const wht = ps.reduce((s, p) => s + p.whtAmountSatang, 0);
+    const fee = ps.reduce((s, p) => s + p.feeAmount, 0);
+    const lines = [
+      { accountId: transit, debit: cash, credit: 0, note: "ยกเลิกใบเสร็จที่เช็คเด้ง" },
+      ...(wht > 0 ? [{ accountId: await resolveMapping(ctx, "WHT_ASSET", undefined, tx), debit: wht, credit: 0, note: "ภาษีถูกหัก ณ ที่จ่าย" }] : []),
+      ...(fee > 0 ? [{ accountId: await resolveMapping(ctx, "PAYMENT_FEE", undefined, tx), debit: fee, credit: 0, note: "ค่าธรรมเนียม" }] : []),
+      { accountId: ar, debit: 0, credit: cash + wht + fee, note: "ปิดลูกหนี้ของใบเสร็จที่ยกเลิก", contactId: doc.contactId },
+    ];
+    await postChequeEntry(ctx, { chequeId: c, event: "RECEIPT_VOID", book: "RECEIPTS", date: new Date(), memo: `ยกเลิกใบเสร็จหลังเช็คเด้ง — ${reason}`, lines }, tx);
+  }
+}
+
+/** round 11 · R10-5: งวดของใบเสร็จขายสด (path ②) — ไม่มี JV ของงวดเอง และตัวใบเสร็จมี JV ที่ยังมีผล (เงินอยู่ในนั้น) */
+export async function isReceiptAttachedPaymentInTx(tx: Prisma.TransactionClient, systemId: string, doc: { id: string; docType: AccountDocType }, paymentId: string): Promise<boolean> {
+  if (doc.docType !== "RECEIPT") return false;
+  if ((await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocumentPayment", refId: paymentId } })) > 0) return false;
+  return (await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocument", refId: doc.id, status: "POSTED", reversalOfId: null } })) > 0;
+}
+
+/**
+ * round 11 · R10-7 (a): ยกเลิก/ปิดเอกสารที่หักมัดจำ ⇒ คืนสถานะใบมัดจำในธุรกรรมเดียวกัน — DEDUCTED ที่ยอดที่ถูกหักโดยเอกสารที่ยังมีผลไม่ครบแล้ว
+ *   → AWAITING_DEDUCT (หักต่อได้/ถอยได้) · ใบที่ยังถูกหักครบโดยเอกสารอื่นคง DEDUCTED · เรียกหลังตั้งสถานะเอกสารที่หักเป็น VOIDED/CANCELLED แล้ว
+ *   (สิ่งเดียวที่การออกเอกสารเปลี่ยนที่ใบมัดจำคือสถานะ — ยอดหัก/ภาษีของการหักอยู่ใน JV ของเอกสารที่หัก ซึ่ง voidDocument กลับรายการเองแล้ว) ◂
+ */
+export async function releaseDepositDeductionsInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, deductorId: string): Promise<void> {
+  const applies = await tx.accountDocumentRelation.findMany({ where: { systemId, toId: deductorId, type: "DEPOSIT_APPLY" }, select: { fromId: true } });
+  for (const depId of [...new Set(applies.map((a) => a.fromId))].sort()) {
+    const dep = await tx.accountDocument.findFirst({ where: { id: depId, tenantId, systemId }, select: { status: true, grandTotal: true } });
+    if (!dep || dep.status !== "DEDUCTED") continue;
+    const live = await tx.accountDocumentRelation.findMany({
+      where: { systemId, fromId: depId, type: "DEPOSIT_APPLY", to: { status: { notIn: ["VOIDED", "CANCELLED"] } } },
+      select: { amount: true },
+    });
+    const used = live.reduce((s, r) => s + (r.amount ?? 0), 0);
+    if (used < dep.grandTotal) await tx.accountDocument.update({ where: { id: depId }, data: { status: "AWAITING_DEDUCT" } });
+  }
 }
 
 /** WO 1.4 (+ round 10 เช็คเด้ง): ใบมัดจำที่ถูกหักในเอกสารอื่นแล้ว — ถอยการรับ/จ่ายเงินมัดจำไม่ได้จนกว่าจะยกเลิกการหักที่ปลายทาง */
@@ -3194,19 +3303,22 @@ export async function unwindPaymentInTx(
   //    ไม่งั้นเงินมัดจำ + ภาษีค้างอยู่ในบัญชีตลอดไป (WO 1.4 ปิดรูรั่ว 1.2 §8.1 · round 10 R9-2 ทางเช็คเด้ง)
   const isDeposit = doc.docType === "DEPOSIT_RECEIPT" || doc.docType === "DEPOSIT_PAYMENT";
   let gl: PaymentChequeGl = { kind: "NONE" };
-  if (isDeposit && doc.status === "AWAITING_DEDUCT") {
-    const posted = await tx.accountJournalEntry.findMany({
-      where: { systemId, refType: "AccountDocument", refId: doc.id, status: "POSTED", reversalOfId: null },
-      include: { lines: true },
-    });
-    // ขาเงินของ JV มัดจำ = ฝั่งเดบิต (รับ) / เครดิต (จ่าย) ที่ไม่ใช่บัญชีมัดจำ/ภาษี — postDocument มีบรรทัดเงินบรรทัดเดียว
-    const depositKeys = isPayable ? ["DEPOSIT_PAID", "VAT_INPUT"] : ["DEPOSIT_RECEIVED", "VAT_OUTPUT"];
-    const skip = new Set(await Promise.all(depositKeys.map((k) => resolveMapping(ctx, k, undefined, tx))));
-    const cashLine = posted.flatMap((e) => e.lines).find((l) => !skip.has(l.accountId) && (isPayable ? l.credit > 0 : l.debit > 0));
-    await reverseFor(ctx, "AccountDocument", doc.id, reason, tx);
-    if (cashLine) gl = { kind: "DEPOSIT", direction: isPayable ? "OUT" : "IN", cashAccountId: cashLine.accountId, amount: pay.amount };
+  //    round 11 · R10-7: DEDUCTED ที่ไม่มีเอกสารที่ยังมีผลหักอยู่ (ข้อมูลเก่า — ใบที่หักถูกยกเลิกก่อนมีการคืนสถานะ) = เหมือน AWAITING_DEDUCT
+  //      (ด่าน assertDepositNotAppliedInTx ปฏิเสธไปแล้วถ้ายังมีเอกสารที่มีผลหักอยู่)
+  if (isDeposit && (doc.status === "AWAITING_DEDUCT" || doc.status === "DEDUCTED")) {
+    const reversed = await reverseFor(ctx, "AccountDocument", doc.id, reason, tx);
+    // round 11 · R10-3: reversal ล้าง JV มัดจำ **ทั้งใบ** ไม่ว่าขาเงินจะลงที่บัญชีไหน (รูปเก่า = ก้อนเดียวที่บัญชีของรายการแรก ·
+    //   รูปใหม่ = ขาละรายการ) ⇒ JV เช็คต้องคืนเงินของงวดนี้ที่ "บัญชีพักเช็ค" (1040/2300) เสมอ แล้วลงคู่บัญชีของเช็ค (พัก/ธนาคาร)
+    //   ⇒ ทุกบัญชีกลับเป็นศูนย์ทั้งสองรูป (เดิมใช้บัญชีของบรรทัดเงินใน JV ⇒ รูปเก่า โอนก่อน-เช็คทีหลัง: ธนาคาร +2,210,000 / 1040 −2,210,000)
+    if (mode === "CHEQUE" && reversed.length > 0)
+      gl = { kind: "DEPOSIT", direction: isPayable ? "OUT" : "IN", cashAccountId: await resolveMapping(ctx, isPayable ? "CHEQUE_PAYABLE" : "CHEQUE_IN_TRANSIT", undefined, tx), amount: pay.amount };
   } else if (!isDeposit) {
-    gl = { kind: "MIRROR", direction: isPayable ? "OUT" : "IN", contactId: doc.contactId, amount: pay.amount, wht: pay.whtAmountSatang, fee: pay.feeAmount };
+    // round 11: MIRROR เฉพาะงวดที่เงินลงบัญชีไปแล้วจริง — JV ของงวดเอง หรือ JV ของตัวเอกสาร (ใบเสร็จขายสดที่ออกแล้ว) ·
+    //   ร่างใบเสร็จ (path ② ก่อนออก) ยังไม่ลงอะไร ⇒ เช็คเด้งไม่ลงอะไร (เดิมจะตั้งลูกหนี้/ล้าง 1040 ที่ไม่เคยเข้า)
+    const ownJv = await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocumentPayment", refId: paymentId } });
+    const docJv = ownJv > 0 ? 1 : await tx.accountJournalEntry.count({ where: { systemId, refType: "AccountDocument", refId: doc.id, status: "POSTED", reversalOfId: null } });
+    if (ownJv > 0 || docJv > 0)
+      gl = { kind: "MIRROR", direction: isPayable ? "OUT" : "IN", contactId: doc.contactId, amount: pay.amount, wht: pay.whtAmountSatang, fee: pay.feeAmount };
   }
 
   // ⑤ เอกสารภาษีหัก ณ ที่จ่ายของงวดนี้ → ยกเลิกตาม (ไม่งั้นยื่นเครดิต/นำส่งภาษีบนเงินที่ไม่มีจริง) — 1160 / 2130 กลับที่ JV ของงวด (③)
@@ -3246,6 +3358,9 @@ export async function syncGroupHeadInTx(
   systemId: string,
   groupId: string,
 ): Promise<{ status: AccountDocStatus; paidTotal: number; outstanding: number } | null> {
+  // round 11 · R10-1: หัวกลุ่มต้องถูกล็อกก่อนอ่านใบลูก — แล้วอ่านยอดใบลูกด้วยคำสั่งใหม่ **หลัง** ได้ล็อก (READ COMMITTED เห็นของที่อีกธุรกรรม commit แล้ว)
+  //   เดิมอ่านก่อนล็อก ⇒ สองธุรกรรมของลูกคนละใบเขียนหัวจากค่าพี่น้องเก่า (เด้งพร้อมกัน/รับชำระพร้อมกัน ⇒ หัวผิด 20/20)
+  await lockDocumentRow(tx, tenantId, systemId, groupId);
   const head = await tx.accountDocument.findFirst({ where: { id: groupId, tenantId, systemId }, select: { id: true, docType: true, grandTotal: true, status: true } });
   if (!head) return null;
   const relType = head.docType === "BILLING_NOTE" ? "BILL" : head.docType === "COMBINED_PAYMENT" ? "PAY_GROUP" : null;
@@ -3271,6 +3386,18 @@ export async function syncGroupHeadInTx(
   const status: AccountDocStatus = outs.every((o) => o <= 0) ? "PAID" : paidTotal > 0 ? "PARTIAL" : "AWAITING_PAYMENT";
   await tx.accountDocument.update({ where: { id: groupId }, data: { paidTotal, status } });
   return { status, paidTotal, outstanding };
+}
+
+/** round 11 · LOCK ORDER ขั้น 4: ล็อกหัวกลุ่ม (ใบวางบิล/ใบรวมจ่าย) ที่ยังมีผลของเอกสารชุดนี้ ↑id — หลังล็อกเอกสาร ก่อนลงบัญชีใด ๆ */
+export async function lockGroupHeadsOfDocsInTx(tx: Prisma.TransactionClient, tenantId: string, systemId: string, docIds: string[]): Promise<string[]> {
+  if (docIds.length === 0) return [];
+  const rels = await tx.accountDocumentRelation.findMany({
+    where: { tenantId, systemId, toId: { in: [...new Set(docIds)] }, type: { in: ["BILL", "PAY_GROUP"] }, from: { status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } } },
+    select: { fromId: true },
+  });
+  const heads = [...new Set(rels.map((r) => r.fromId))].sort();
+  for (const h of heads) await lockDocumentRow(tx, tenantId, systemId, h);
+  return heads;
 }
 
 /** round 10 · มติ C: หัวกลุ่มที่ยังมีผลของเอกสารลูกชุดหนึ่ง → sync ในธุรกรรมเดียวกัน (เรียกหลังแก้ใบลูกครบแล้ว) */
@@ -3541,25 +3668,42 @@ export async function listDocPayments(
  * (gl.postDocument case RECEIPT อ่านรายการเหล่านี้ไปเดบิตตามช่องทางจริง + Dr 1160 ให้ครบ)
  * 🔴 ยังไม่ลง JV ที่นี่ — JV เกิดตอน issueDocument ครั้งเดียว
  */
+export type DraftReceiptPaymentRow = {
+  paidAt: Date;
+  channel: AccountPayChannel;
+  financeAccountId: string | null;
+  amount: number;
+  whtAmountSatang: number;
+  whtRateBp: number | null;
+  feeAmount: number;
+  note: string | null;
+  createdById: string | null;
+  idempotencyKey: string | null;
+};
+
 export async function attachDraftReceiptPayments(
   tenantId: string,
   systemId: string,
   documentId: string,
-  rows: {
-    paidAt: Date;
-    channel: AccountPayChannel;
-    financeAccountId: string | null;
-    amount: number;
-    whtAmountSatang: number;
-    whtRateBp: number | null;
-    feeAmount: number;
-    note: string | null;
-    createdById: string | null;
-    idempotencyKey: string | null;
-  }[],
+  rows: DraftReceiptPaymentRow[],
 ): Promise<{ ok: true; paymentIds: string[] } | { ok: false; reason: string }> {
   try {
-    const paymentIds = await prisma.$transaction(async (tx) => {
+    const paymentIds = await prisma.$transaction((tx) => attachDraftReceiptPaymentsInTx(tx, tenantId, systemId, documentId, rows));
+    return { ok: true, paymentIds };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ผูกรายการรับเงินไม่สำเร็จ") };
+  }
+}
+
+/** CRM C5.4-C ▸ round 11 · R10-6: ผูกรายการรับเงินกับร่างใบเสร็จ **ในธุรกรรมของผู้เรียก** (แยกแบบกลไก) — cheque.ts ผูกเช็คในธุรกรรมเดียวกัน ◂ */
+export async function attachDraftReceiptPaymentsInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  documentId: string,
+  rows: DraftReceiptPaymentRow[],
+): Promise<string[]> {
+      await lockDocumentRow(tx, tenantId, systemId, documentId);
       const doc = await tx.accountDocument.findFirst({
         where: { id: documentId, tenantId, systemId, docType: "RECEIPT", status: "DRAFT" },
         select: { id: true },
@@ -3584,11 +3728,6 @@ export async function attachDraftReceiptPayments(
       }
       await tx.accountDocument.update({ where: { id: documentId }, data: { paidTotal: tieOff } });
       return ids;
-    });
-    return { ok: true, paymentIds };
-  } catch (e) {
-    return { ok: false, reason: safeReason(e, "ผูกรายการรับเงินไม่สำเร็จ") };
-  }
 }
 
 // ยกเลิกเอกสาร: DRAFT → CANCELLED · มีผลแล้ว → VOIDED
@@ -3600,6 +3739,12 @@ export async function voidDocument(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
     await prisma.$transaction(async (tx) => {
+      // round 11 · R10-5 · LOCK ORDER ขั้น 1: ใบเสร็จขายสด — ล็อกเช็คของรายการรับเงินก่อนตัวเอกสาร (ลำดับเดียวกับเช็คเด้ง)
+      const head0 = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId }, select: { docType: true } });
+      const receiptCheques = head0?.docType === "RECEIPT"
+        ? await chequeIdsHoldingPayments(tx, tenantId, systemId, (await tx.accountDocumentPayment.findMany({ where: { documentId: id, tenantId, systemId }, select: { id: true } })).map((p) => p.id))
+        : [];
+      for (const c of receiptCheques) await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${c} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
       // WO 9.2 ข้อ 14 — ล็อกแถวก่อนอ่านสถานะ (กดยกเลิกพร้อมกัน 2 ครั้ง = กลับรายการซ้ำ)
       await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({ where: { id, tenantId, systemId } });
@@ -3609,10 +3754,24 @@ export async function voidDocument(
       // §9.3: ยกเลิกเอกสารที่ลงวันที่ในช่วงล็อกไม่ได้
       // 🔴 ด่านใน gl.commitEntry จับเคสนี้ไม่ได้ เพราะ reversal เลื่อนวันไปงวดเปิดถัดไปแล้ว
       await assertNotLockedTx(tx, systemId, doc.issueDate);
+      // round 11 · R10-5: ใบเสร็จขายสด — รายการรับเงินที่ผูกตอนออก (เงินอยู่ใน JV ของใบเสร็จ) ถูกยกเลิกไปพร้อมใบเสร็จ
+      //   รับเป็นเช็คที่ยังมีผล ⇒ ปฏิเสธ (ให้บันทึกเช็คเด้งก่อน — กติกา B2c)
+      const attached: string[] = [];
+      if (doc.docType === "RECEIPT") {
+        for (const p of await tx.accountDocumentPayment.findMany({ where: { documentId: id, tenantId, systemId, voidedAt: null }, orderBy: { id: "asc" }, select: { id: true } })) {
+          // ร่าง (ผูกรายการรับไว้แล้วแต่ยังไม่ออก — ยังไม่ลงบัญชีอะไร) = ทุกรายการ · ออกแล้ว = รายการที่เงินอยู่ใน JV ของใบเสร็จ
+          if (doc.status !== "DRAFT" && !(await isReceiptAttachedPaymentInTx(tx, systemId, doc, p.id))) continue;
+          for (const c of await chequeIdsHoldingPayments(tx, tenantId, systemId, [p.id])) {
+            const cs = (await tx.accountCheque.findFirst({ where: { id: c, tenantId, systemId }, select: { status: true } }))?.status;
+            if (cs && cs !== "BOUNCED" && cs !== "VOIDED") throw new Error("ใบเสร็จนี้รับเงินเป็นเช็คที่ยังมีผลอยู่ — บันทึกเช็คเด้ง (หรือรอเช็คผ่าน) ที่ทะเบียนเช็คก่อน แล้วค่อยยกเลิกใบเสร็จ");
+          }
+          attached.push(p.id);
+        }
+      }
       // เอกสารมี payment ที่ยังไม่ void → ต้อง void payment ก่อน (กันบัญชีค้าง)
       if (doc.status !== "DRAFT") {
         const activePay = await tx.accountDocumentPayment.count({
-          where: { documentId: id, voidedAt: null },
+          where: { documentId: id, voidedAt: null, id: { notIn: attached } },
         });
         if (activePay > 0) throw new Error("มีการรับชำระค้างอยู่ — ยกเลิกการชำระก่อน");
       }
@@ -3626,7 +3785,12 @@ export async function voidDocument(
       }
       // CRM C5.4-C ▸ (hunt F3 · deadlock) ใบลดหนี้ที่อ้างเอกสาร: ล็อกต้นทาง + ใบแจ้งหนี้แม่ **ก่อน** กลับรายการ GL — ลำดับเดียวกับ issueDocument
       //   (ใบลดหนี้ → ต้นทาง → ใบแจ้งหนี้ → GL) · เดิมล็อกต้นทางหลัง reverseFor ⇒ ชนกับการออกใบลดหนี้ใบที่สอง (40P01) ◂
-      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) await lockCreditChainInTx(tx, tenantId, systemId, doc.sourceDocId); // round 6: ทั้งสาย ลำดับเดียวกับการออก
+      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
+        await lockCreditChainInTx(tx, tenantId, systemId, doc.sourceDocId); // round 6: ทั้งสาย ลำดับเดียวกับการออก
+        await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, await creditNoteGroupChildIdsInTx(tx, systemId, doc.sourceDocId)); // round 11 · R10-10
+      }
+      // round 11 · R10-5: ถอยรายการรับเงินของใบเสร็จขายสดด้วยตัวถอยตัวเดียวของระบบ (ไม่มี JV ของงวด ⇒ ไม่มีบรรทัดบัญชี · 50 ทวิ/WTI · event)
+      for (const pid of attached) await unwindPaymentInTx(tx, { tenantId, systemId }, pid, reason, "VOID");
       await tx.accountDocument.update({
         where: { id },
         data: {
@@ -3639,8 +3803,16 @@ export async function voidDocument(
       if (wasIssued) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // round 11 · R10-5: รายการรับเงินของใบเสร็จขายสดที่เช็คเด้งถอยไปแล้ว — JV เช็คเด้งย้ายหนี้ไปลูกหนี้ (Dr AR / Cr เช็คระหว่างทาง)
+      //   reversal ของใบเสร็จข้างบนกลับขาเงิน (Cr เช็คระหว่างทาง) อีกครั้ง ⇒ คืนให้ครบ: Dr เช็คระหว่างทาง (+1160 · ค่าธรรมเนียม) / Cr ลูกหนี้
+      if (wasIssued && doc.docType === "RECEIPT") await undoBouncedReceiptClaimsInTx(tx, { tenantId, systemId }, doc, reason);
+      // round 11 · R10-7 (a): เอกสารที่หักมัดจำถูกยกเลิก ⇒ คืนสถานะใบมัดจำในธุรกรรมเดียวกัน
+      if (doc.docType === "INVOICE" || doc.docType === "RECEIPT") await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
       // CRM C5.4-C ▸ (review B1) ยกเลิกใบลดหนี้ ⇒ หนี้ของต้นทางกลับมา: PAID → PARTIAL/AWAITING_PAYMENT (ฟังก์ชันสถานะเดียว) ◂
-      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
+      if (wasIssued && doc.docType === "CREDIT_NOTE" && doc.sourceDocId) {
+        await rederiveInvoiceStatusInTx(tx, tenantId, systemId, doc.sourceDocId);
+        await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, await creditNoteGroupChildIdsInTx(tx, systemId, doc.sourceDocId)); // round 11 · R10-10
+      }
       // WO C4: "ยกเลิกเอกสาร" ออก webhook — ใน tx เดียวกับ reversal (ยกเลิกล้ม = ไม่มี event หลอก)
       await emitDocumentVoided(tx, { tenantId, systemId }, {
         id,

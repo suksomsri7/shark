@@ -671,6 +671,167 @@ try {
             `deposit receipt by cheque → bounce ${J(b)} Δ ${JSON.stringify(d1)} (all 0) · re-pay by transfer ${J(rp)} → ${st2.status} Δ ${JSON.stringify(d2)} (2110 −3,000,000 · 2200 −210,000 once · AR 0 · 1040 0)`);
         });
       }
+      { // R11 (round 11 · hunter r10 rulings) — only what probe-r10{a..g} do not cover:
+        //   R11-RCPT  cash-sale receipt: REST payments.void refused with guidance, nothing written · voidDocument(receipt) ⇒ full TB Δ 0 · same after a cheque bounce
+        //   R11-DEP2  deposit deducted by TWO invoices: void one ⇒ AWAITING_DEDUCT, unwind still refused (other deductor live) · void both ⇒ bounce ok, TB Δ 0 ·
+        //             twin without the void ⇒ refused with the existing message · CN (not void) on the deducting invoice ⇒ reported state
+        //   R11-SHAPE deposit transfer + cheque: NEW-shape JV has per-payment legs (clear ⇒ bank +3,210,000, 1040 0) · bounce ⇒ TB Δ 0 ·
+        //             OLD-shape JV (single cash line — simulated by rewriting the posted legs) · clear + bounce ⇒ TB Δ 0
+        //   R11-CAP   > 40 children refused before any write on service + REST (same message) · panel/action wired to the same rule (static)
+        //   R11-CN    CN issue/void on a child re-syncs the group head
+        const grp = (await import("@/lib/modules/account/group" as string)) as Any;
+        const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+        const pay = (await import("@/lib/modules/account/payment" as string)) as Any;
+        const PW = (await import("@/lib/modules/account/api/ops/payments-write" as string)) as Any;
+        const { readFileSync } = await import("node:fs");
+        const vend2 = await accSvc.createContact({ tenantId: T, systemId: A, kind: "VENDOR", legalType: "COMPANY", name: `ผู้ขาย R11 ${TAG}`, taxId: "0105563333333" });
+        const bk = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: `บัญชี R11 ${TAG}`, bankName: "ไทยพาณิชย์" });
+        if (!bk?.ok) throw new Error(`bank: ${bk?.reason}`);
+        const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const tb = async (): Promise<Map<string, number>> => {
+          const rows = (await P.$queryRawUnsafe(`SELECT a."code" AS code, COALESCE(l."contactId",'-') AS c, sum(l."debit" - l."credit")::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 GROUP BY 1,2`, A)) as Any[];
+          return new Map(rows.map((r) => [`${r.code}${r.c === "-" ? "" : r.c === cust.id ? "@cust" : "@other"}`, Number(r.n)]));
+        };
+        const tbDiff = (a: Map<string, number>, b: Map<string, number>) => { const out: string[] = []; for (const k of new Set([...a.keys(), ...b.keys()])) { const d = (b.get(k) ?? 0) - (a.get(k) ?? 0); if (d !== 0) out.push(`${k}:${d}`); } return out.sort(); };
+        const byAcc = async (accountId: string) => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" WHERE e."systemId" = $1 AND l."accountId" = $2`, A, accountId)) as Any[])[0]?.n);
+        const byAccCode = async (code: string) => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 AND a."code" = $2`, A, code)) as Any[])[0]?.n);
+        const bankLedger = (await P.accountFinance.findUnique({ where: { id: bk.id }, select: { ledgerAccountId: true } }))?.ledgerAccountId as string;
+        const J = (v: Any) => JSON.stringify(v?.ok ? { ok: true } : v);
+        let ks = 0; const key = () => `r11k${++ks}_${randomBytes(3).toString("hex")}`;
+        const chqD = () => ({ chequeNo: `R11-${++ks}`, bankName: "KBank", chequeDate: today });
+        const row = (amt: number, cheque: Any = null) => ({ paidAt: today, financeAccountId: bk.id, amountSatang: amt, whtAmountSatang: 0, whtRateBp: null, whtIncomeType: null, feeSatang: 0, note: "", cheque });
+        const sub = async (id: string, f: () => Promise<void>) => { try { await f(); } catch (e) { chk(id, false, `FATAL ${e instanceof Error ? e.message : String(e)}`); } };
+
+        await sub("R11-RCPT", async () => {
+          const mkRe = async () => (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "RECEIPT", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "ขายสด", qty: 1, unitPrice: 1_000_000 }] })).id as string;
+          const op = (PW.PAYMENTS_WRITE_OPS as Any[]).find((o) => o.id === "payments.void");
+          const actor = { kind: "apikey", tenantId: T, systemId: A, keyId: "probe-r11" };
+          // a) transfer: REST void refused (guidance), nothing written · voidDocument ⇒ TB Δ 0
+          const re = await mkRe(); const b0 = await tb();
+          const ap = await pay.approveReceiptWithPayments(T, A, re, [row(1_070_000)], { keyBase: key() });
+          const p = await P.accountDocumentPayment.findFirst({ where: { documentId: re }, select: { id: true } });
+          const mid0 = await tb(); const je0 = await P.accountJournalEntry.count({ where: { systemId: A } });
+          let rest: Any = null;
+          try { await op.handler({ actor, params: { paymentId: p.id }, input: op.input.parse({ documentId: re, reason: "ลูกค้ายกเลิกการซื้อ" }) }); rest = { ok: true }; } catch (e) { rest = { status: (e as Any)?.status, msg: String((e as Any)?.message_th ?? (e as Any)?.message ?? e) }; }
+          const nothing = tbDiff(mid0, await tb()).length === 0 && (await P.accountJournalEntry.count({ where: { systemId: A } })) === je0 && (await P.accountDocumentPayment.findUnique({ where: { id: p.id }, select: { voidedAt: true } })).voidedAt === null;
+          const vd = await accSvc.voidDocument(T, A, re, "ยกเลิกการขาย");
+          const dA = tbDiff(b0, await tb()); const stA = await docSt(re); const pv = (await P.accountDocumentPayment.findUnique({ where: { id: p.id }, select: { voidedAt: true } })).voidedAt !== null;
+          // b) cheque → bounce (customer owes) → voidDocument ⇒ TB Δ 0 (RECEIPT_VOID moves the claim back)
+          const re2 = await mkRe(); const c0 = await tb();
+          const ap2 = await pay.approveReceiptWithPayments(T, A, re2, [row(1_070_000, chqD())], { keyBase: key() });
+          const p2 = await P.accountDocumentPayment.findFirst({ where: { documentId: re2 }, select: { id: true, chequeId: true } });
+          const vdLive = await accSvc.voidDocument(T, A, re2, "x"); // live cheque ⇒ refused
+          const b = await cheque.bounceCheque(T, A, p2.chequeId, "x");
+          const afterB = tbDiff(c0, await tb());
+          const vd2 = await accSvc.voidDocument(T, A, re2, "ยกเลิกการขาย");
+          const dB = tbDiff(c0, await tb());
+          chk("R11-RCPT", ap?.ok === true && rest?.ok !== true && /ยกเลิกใบเสร็จแทน/.test(String(rest?.msg)) && nothing && vd?.ok === true && dA.length === 0 && stA.status === "VOIDED" && pv
+            && ap2?.ok === true && !!p2?.chequeId && vdLive?.ok === false && /เช็ค/.test(String(vdLive?.reason)) && b?.ok === true && afterB.join() === `1100@cust:1070000,2200:-70000,4000:-1000000` && vd2?.ok === true && dB.length === 0,
+            `transfer: REST payments.void → ${JSON.stringify(rest)} · nothing written ${nothing} · voidDocument(receipt) ${J(vd)} → ${stA.status}, payment voided ${pv}, TBΔ ${JSON.stringify(dA)} (want []) ‖ cheque: approve ${J(ap2)} · void receipt with live cheque ${J(vdLive)} · bounce ${J(b)} → TBΔ ${JSON.stringify(afterB)} · voidDocument ${J(vd2)} → TBΔ ${JSON.stringify(dB)} (want [])`);
+        });
+
+        await sub("R11-DEP2", async () => {
+          const mkDep = async () => {
+            const q = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "QUOTATION", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "งาน", qty: 1, unitPrice: 10_000_000 }] });
+            const dep = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "DEPOSIT_RECEIPT", contactId: cust.id, sourceDocId: q.id, vatMode: "EXCLUDE", lines: [{ description: "มัดจำ", qty: 1, unitPrice: 3_000_000 }] });
+            await accSvc.issueDocument(T, A, dep.id); return dep.id as string;
+          };
+          const mkInvDeduct = async (dep: string, amt: number) => {
+            const i = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "INVOICE", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "งาน", qty: 1, unitPrice: 10_000_000 }] });
+            const sd = await accSvc.setDocDeposits(T, A, i.id, [{ depositId: dep, amountSatang: amt }]);
+            if (!sd.ok) throw new Error(`deduct: ${sd.reason}`);
+            const is = await accSvc.issueDocument(T, A, i.id); if (!is.ok) throw new Error(`issue: ${is.reason}`);
+            return i.id as string;
+          };
+          const d = await mkDep(); const b0 = await tb();
+          const r = await pay.recordPayments(T, A, d, [row(3_210_000, chqD())], { keyBase: key() });
+          const cq = (await P.accountDocumentPayment.findFirst({ where: { documentId: d }, select: { chequeId: true } })).chequeId;
+          const i1 = await mkInvDeduct(d, 2_000_000); const i2 = await mkInvDeduct(d, 1_210_000);
+          const s0 = (await docSt(d)).status;
+          const v1 = await accSvc.voidDocument(T, A, i1, "x"); const s1 = (await docSt(d)).status;
+          const bRef = await cheque.bounceCheque(T, A, cq, "x"); // i2 still deducts ⇒ refused
+          const v2 = await accSvc.voidDocument(T, A, i2, "x"); const s2 = (await docSt(d)).status;
+          const bOk = await cheque.bounceCheque(T, A, cq, "x");
+          const dT = tbDiff(b0, await tb()); const s3 = await docSt(d);
+          // twin: invoice NOT voided ⇒ refused with the existing message
+          const dT2 = await mkDep();
+          const r2 = await pay.recordPayments(T, A, dT2, [row(3_210_000)], { keyBase: key() });
+          await mkInvDeduct(dT2, 3_210_000);
+          const pT = await P.accountDocumentPayment.findFirst({ where: { documentId: dT2 }, select: { id: true } });
+          const vT = await accSvc.voidPayment(T, A, dT2, pT.id, "x");
+          // CN (not void) on the deducting invoice: report what happens
+          const dC = await mkDep();
+          await pay.recordPayments(T, A, dC, [row(3_210_000)], { keyBase: key() });
+          const iC = await mkInvDeduct(dC, 3_210_000);
+          const cn = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "CREDIT_NOTE", contactId: cust.id, sourceDocId: iC, adjustReason: "x", vatMode: "EXCLUDE", lines: [{ description: "x", qty: 1, unitPrice: 1_000_000 }] });
+          const ci = await accSvc.issueDocument(T, A, cn.id);
+          const pC = await P.accountDocumentPayment.findFirst({ where: { documentId: dC }, select: { id: true } });
+          const vC = await accSvc.voidPayment(T, A, dC, pC.id, "x");
+          chk("R11-DEP2", r?.ok === true && s0 === "DEDUCTED" && v1?.ok === true && s1 === "AWAITING_DEDUCT" && bRef?.ok === false && /ถูกหักในเอกสารอื่นแล้ว/.test(String(bRef?.reason)) && v2?.ok === true && s2 === "AWAITING_DEDUCT"
+            && bOk?.ok === true && dT.length === 0 && s3.status === "AWAITING_PAYMENT" && s3.paidTotal === 0 && r2?.ok === true && vT?.ok === false && /ถูกหักในเอกสารอื่นแล้ว/.test(String(vT?.reason)),
+            `two deductors: dep ${s0} → void inv1 ${J(v1)} → ${s1} · bounce while inv2 deducts ${J(bRef)} · void inv2 → ${s2} · bounce ${J(bOk)} → dep ${JSON.stringify(s3)} TBΔ ${JSON.stringify(dT)} (want []) ‖ twin (invoice live) voidPayment ${J(vT)} ‖ REPORT CN 1,070,000 on the deducting invoice ${J(ci)} → deposit ${(await docSt(dC)).status} · voidPayment(deposit) ${J(vC)}`);
+        });
+
+        await sub("R11-SHAPE", async () => {
+          const res: string[] = []; let ok = true;
+          for (const shape of ["NEW", "OLD"] as const) {
+            const q = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "QUOTATION", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "งาน", qty: 1, unitPrice: 10_000_000 }] });
+            const dep = (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "DEPOSIT_RECEIPT", contactId: cust.id, sourceDocId: q.id, vatMode: "EXCLUDE", lines: [{ description: "มัดจำ", qty: 1, unitPrice: 3_000_000 }] })).id as string;
+            await accSvc.issueDocument(T, A, dep);
+            const b0 = await tb(); const t0 = await byAccCode("1040"); const k0 = await byAcc(bankLedger);
+            const p1 = await pay.recordPayments(T, A, dep, [row(1_000_000)], { keyBase: key() });            // transfer first
+            const p2 = await pay.recordPayments(T, A, dep, [row(2_210_000, chqD())], { keyBase: key() });   // cheque completes it
+            const je = await P.accountJournalEntry.findFirst({ where: { systemId: A, refType: "AccountDocument", refId: dep, status: "POSTED", reversalOfId: null }, include: { lines: true } });
+            const transitId = (await P.accountLedger.findFirst({ where: { systemId: A, code: "1040" }, select: { id: true } }))?.id;
+            const legs = (je?.lines ?? []).filter((l: Any) => l.debit > 0).map((l: Any) => `${l.accountId === bankLedger ? "bank" : l.accountId === transitId ? "1040" : "other"}:${l.debit}`).sort().join(",");
+            if (shape === "OLD") { // legacy posting: whole cash side on the FIRST payment's account (the bank)
+              const tl = (je?.lines ?? []).find((l: Any) => l.accountId === transitId && l.debit > 0);
+              if (tl) await P.accountJournalLine.update({ where: { id: tl.id }, data: { accountId: bankLedger } });
+            }
+            const cq = (await P.accountDocumentPayment.findFirst({ where: { documentId: dep, chequeId: { not: null } }, select: { chequeId: true } })).chequeId;
+            await cheque.depositCheque(T, A, cq); await cheque.clearCheque(T, A, cq);
+            const afterClear = { bank: (await byAcc(bankLedger)) - k0, t1040: (await byAccCode("1040")) - t0 };
+            const b = await cheque.bounceCheque(T, A, cq, "x");
+            const d = tbDiff(b0, await tb()); const st = await docSt(dep);
+            const good = p1?.ok === true && p2?.ok === true && (shape === "OLD" || (legs === "1040:2210000,bank:1000000" && afterClear.bank === 3_210_000 && afterClear.t1040 === 0)) && b?.ok === true && d.length === 0 && st.status === "PARTIAL" && st.paidTotal === 1_000_000;
+            ok &&= good;
+            res.push(`${shape}: deposit JV cash legs ${shape === "NEW" ? legs : "(rewritten to bank only)"} · after clear bank Δ ${afterClear.bank} / 1040 Δ ${afterClear.t1040} · bounce ${J(b)} → dep ${st.status} paid ${st.paidTotal} · TBΔ since before pay ${JSON.stringify(d)} (want [] — partial deposits post nothing)`);
+          }
+          chk("R11-SHAPE", ok, res.join(" ‖ "));
+        });
+
+        await sub("R11-CAP", async () => {
+          const kids: string[] = []; for (let i = 0; i < 41; i += 1) kids.push(await invOf());
+          const g = await grp.createGroupDoc(T, A, { docType: "BILLING_NOTE", contactId: cust.id, issueDate: today, dueDate: null, note: null, childIds: kids, createdById: null, source: "MANUAL", tags: [] });
+          if (!g.ok) throw new Error(`group: ${g.reason}`);
+          const je0 = await P.accountJournalEntry.count({ where: { systemId: A } }); const pay0 = await P.accountDocumentPayment.count({ where: { documentId: { in: kids } } }); const ob0 = await P.outboxEvent.count({ where: { tenantId: T } });
+          const svc = await grp.recordGroupPayment(T, A, g.id, { paidAt: today, financeAccountId: bk.id, tieOffSatang: 41 * 10_700_000, note: "", feeSatang: 0, wht: [], cheque: null }, { clientKey: key() });
+          const op = (PW.PAYMENTS_WRITE_OPS as Any[]).find((o) => o.id === "payments.record-group");
+          let rest: Any = null;
+          try { await op.handler({ actor: { kind: "apikey", tenantId: T, systemId: A, keyId: "probe-r11" }, idempotencyKey: key(), requestId: key(), input: op.input.parse({ groupId: g.id, paidAt: today, financeAccountId: bk.id, tieOffSatang: 41 * 10_700_000 }) }); rest = { ok: true }; } catch (e) { rest = { status: (e as Any)?.status, msg: String((e as Any)?.message_th ?? (e as Any)?.message ?? e) }; }
+          const nothing = (await P.accountJournalEntry.count({ where: { systemId: A } })) === je0 && (await P.accountDocumentPayment.count({ where: { documentId: { in: kids } } })) === pay0 && (await P.outboxEvent.count({ where: { tenantId: T } })) === ob0;
+          const svc40 = await grp.recordGroupPayment(T, A, g.id, { paidAt: today, financeAccountId: bk.id, tieOffSatang: 40 * 10_700_000, note: "", feeSatang: 0, wht: [], cheque: null }, { clientKey: key() });
+          const panel = readFileSync("src/components/account-v2/GroupPaymentPanel.tsx", "utf8"); const action = readFileSync("src/lib/modules/account/group-actions.ts", "utf8");
+          const uiWired = /GROUP_PAYMENT_MAX_CHILDREN/.test(panel) && /groupPaymentTooManyChildrenMsg\(/.test(panel);
+          const actionWired = /recordGroupPayment\(/.test(action) && !/GROUP_PAYMENT_MAX_CHILDREN\s*=/.test(action);
+          const msg41 = "บันทึกได้ครั้งละไม่เกิน 40 ใบ";
+          chk("R11-CAP", svc?.ok === false && String(svc?.reason).includes(msg41) && rest?.ok !== true && String(rest?.msg).includes(msg41) && nothing && svc40?.ok === true && svc40.recorded === 40 && uiWired && actionWired,
+            `41 children: service ${J(svc)} · REST record-group ${JSON.stringify(rest)} (same message ${String(rest?.msg) === String(svc?.reason)}) · nothing written by the two refusals ${nothing} · 40 children → ${J(svc40)} recorded ${svc40?.recorded} · panel uses the shared rule ${uiWired} · server action goes through recordGroupPayment ${actionWired}`);
+        });
+
+        await sub("R11-CN", async () => {
+          const kids = [await invOf(), await invOf()];
+          const g = await grp.createGroupDoc(T, A, { docType: "BILLING_NOTE", contactId: cust.id, issueDate: today, dueDate: null, note: null, childIds: kids, createdById: null, source: "MANUAL", tags: [] });
+          if (!g.ok) throw new Error(`group: ${g.reason}`);
+          await grp.recordGroupPayment(T, A, g.id, { paidAt: today, financeAccountId: bk.id, tieOffSatang: 10_700_000, note: "", feeSatang: 0, wht: [], cheque: null }, { clientKey: key() });
+          const h0 = await docSt(g.id);
+          const cn = await accSvc.createDocument({ tenantId: T, systemId: A, docType: "CREDIT_NOTE", contactId: cust.id, sourceDocId: kids[1], adjustReason: "x", vatMode: "EXCLUDE", lines: [{ description: "x", qty: 1, unitPrice: 10_000_000 }] });
+          const ci = await accSvc.issueDocument(T, A, cn.id); const h1 = await docSt(g.id);
+          const vc = await accSvc.voidDocument(T, A, cn.id, "x"); const h2 = await docSt(g.id);
+          chk("R11-CN", h0.status === "PARTIAL" && h0.paidTotal === 10_700_000 && ci?.ok === true && h1.status === "PAID" && h1.paidTotal === 21_400_000 && vc?.ok === true && h2.status === "PARTIAL" && h2.paidTotal === 10_700_000,
+            `head after paying child 1 ${JSON.stringify(h0)} · full CN on child 2 ${J(ci)} → head ${JSON.stringify(h1)} (want PAID/21,400,000) · void CN ${J(vc)} → head ${JSON.stringify(h2)} (want PARTIAL/10,700,000)`);
+        });
+      }
       chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
     }
     // D3 · Q2: dashboard "paid" bucket (revenue) = grand − live CN of each PAID invoice ⇒ inv 107,000 + inv2 (107,000 − 10,700) = 203,300

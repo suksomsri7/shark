@@ -6,14 +6,13 @@ import {
   paymentTargetOf,
   paymentOutstandingOf,
   listDocPayments,
-  attachDraftReceiptPayments,
   findPaymentsByKeys,
   DOC_LABEL,
 
 } from "./service";
 import { recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
-import { chequeDraftProblem, createCheque, recordPaymentWithChequeInOneTx } from "./cheque";
+import { attachReceiptPaymentsWithChequesInOneTx, chequeDraftProblem, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
 
 // ─────────────────────────────────────────────────────────────
@@ -374,29 +373,38 @@ export async function approveReceiptWithPayments(
   for (const r of rows)
     if (r.financeAccountId && !financeTypes.has(r.financeAccountId))
       return { ok: false, reason: "ช่องทางการเงินไม่ถูกต้อง" };
-  // CRM C5.4-C ▸ round 10 · มติ B: ร่างเช็คตรวจก่อนผูกรายการ/ออกเอกสาร (ทางนี้ยังเป็นหลายขั้น — createCheque{paymentId} ปฏิเสธงวดที่ถูกยกเลิกเป็นด่านหลัง) ◂
+  // CRM C5.4-C ▸ round 10 · มติ B: ร่างเช็คตรวจก่อนผูกรายการ/ออกเอกสาร (round 11: ผูกรายการ + เช็ค เป็นธุรกรรมเดียวแล้ว — ออกเอกสาร/หนังสือรับรองยังเป็นขั้นแยก) ◂
   for (const r of rows) {
     const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amountSatang }) : null;
     if (bad) return { ok: false, reason: bad };
   }
 
-  const attached = await attachDraftReceiptPayments(
-    tenantId,
-    systemId,
-    docId,
-    rows.map((r, i) => ({
-      paidAt: dateOf(r.paidAt),
-      channel: (r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""))) as AccountPayChannel,
-      financeAccountId: r.cheque ? null : r.financeAccountId,
-      amount: r.amountSatang,
-      whtAmountSatang: r.whtAmountSatang,
-      whtRateBp: r.whtRateBp,
-      feeAmount: r.feeSatang,
-      note: clampNote(r.note),
-      createdById: opts.userId ?? null,
-      idempotencyKey: opts.keyBase ? `${opts.keyBase}:${i}` : null,
-    })),
-  );
+  // CRM C5.4-C ▸ round 11 · R10-6: รายการรับเงิน + เช็ค + ผูกเช็ค ในธุรกรรมเดียว (รายการรับที่เป็นเช็คไม่มีวันไม่มีเช็ค) ·
+  //   กดอนุมัติซ้ำหลังขั้นออกเอกสารล้ม (คีย์ชุดเดิมผูกไว้ครบแล้ว) ⇒ ข้ามการผูก ไปออกเอกสารต่อ (เดิมติด "บันทึกชุดนี้ไปแล้ว" ถาวร) ◂
+  const keys = opts.keyBase ? rows.map((_r, i) => `${opts.keyBase}:${i}`) : [];
+  const already = keys.length ? await findPaymentsByKeys(tenantId, systemId, keys) : [];
+  const attached =
+    keys.length > 0 && already.length === keys.length && already.every((p) => p.documentId === docId)
+      ? { ok: true as const, paymentIds: keys.map((k) => already.find((p) => p.idempotencyKey === k)!.id) }
+      : await attachReceiptPaymentsWithChequesInOneTx(
+          tenantId,
+          systemId,
+          docId,
+          rows.map((r, i) => ({
+            paidAt: dateOf(r.paidAt),
+            channel: (r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""))) as AccountPayChannel,
+            financeAccountId: r.cheque ? null : r.financeAccountId,
+            amount: r.amountSatang,
+            whtAmountSatang: r.whtAmountSatang,
+            whtRateBp: r.whtRateBp,
+            feeAmount: r.feeSatang,
+            note: clampNote(r.note),
+            createdById: opts.userId ?? null,
+            idempotencyKey: keys[i] ?? null,
+            cheque: r.cheque ? { chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, chequeDate: dateOf(r.cheque.chequeDate) } : null,
+            chequeFinanceAccountId: r.financeAccountId,
+          })),
+        );
   if (!attached.ok) return { ok: false, reason: attached.reason };
 
   const issued = await issueDocument(tenantId, systemId, docId);
@@ -426,22 +434,6 @@ export async function approveReceiptWithPayments(
       );
       if (!cert.ok) return { ok: false, reason: cert.reason };
       certNos.push(cert.docNo);
-    }
-    if (r.cheque) {
-      const cq = await createCheque({
-        tenantId,
-        systemId,
-        direction: "IN",
-        chequeNo: r.cheque.chequeNo,
-        bankName: r.cheque.bankName,
-        chequeDate: dateOf(r.cheque.chequeDate),
-        amount: r.amountSatang,
-        financeAccountId: r.financeAccountId,
-        documentId: docId,
-        paymentId,
-        note: clampNote(r.note),
-      });
-      if (!cq.ok) return { ok: false, reason: cq.reason };
     }
   }
   return { ok: true, docNo: issued.docNo, outstanding: 0, certNos };

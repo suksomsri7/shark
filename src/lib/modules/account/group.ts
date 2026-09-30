@@ -24,7 +24,7 @@ import { listPaymentChannels, type FinanceOption } from "./payment";
 import { chequeDraftProblem, createChequeInTx } from "./cheque";
 import { safeReason } from "./errors";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) คีย์ของชุดการชำระ — ที่เดียวกับตัวหา "เช็คของชุด" (service/expense/cheque ใช้ร่วม ไม่ import วน) ◂
-import { GROUP_KEY_SEP, groupBatchKey, groupChildKey, groupKeyPrefix } from "./group-batch";
+import { GROUP_KEY_SEP, GROUP_PAYMENT_MAX_CHILDREN, groupBatchKey, groupChildKey, groupKeyPrefix, groupPaymentTooManyChildrenMsg } from "./group-batch";
 import { formatDateTh } from "@/lib/ui/date";
 
 export { groupBatchKey, groupChildKey, groupKeyPrefix };
@@ -528,6 +528,8 @@ export async function recordGroupPayment(
     tieOffTotal,
   );
   if (alloc.length === 0) return { ok: false, reason: "ไม่มีเอกสารในกลุ่มที่ยังค้างชำระ" };
+  // CRM C5.4-C ▸ round 11 · R10-8: เกิน 40 ใบต่อครั้ง ⇒ ปฏิเสธก่อนเขียนอะไร (ธุรกรรมเดียวมีเพดานเวลา 40 วินาที) ◂
+  if (alloc.length > GROUP_PAYMENT_MAX_CHILDREN) return { ok: false, reason: groupPaymentTooManyChildrenMsg(alloc.length) };
 
   // ภาษีหัก ณ ที่จ่าย "รายใบ" — ต้องไม่เกินยอดที่ใบนั้นได้รับจัดสรร และต้องเหลือเงินจริง > 0
   const whtOf = new Map<string, GroupChildWht>();

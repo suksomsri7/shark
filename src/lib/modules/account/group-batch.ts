@@ -97,3 +97,13 @@ export async function paymentsOfCheque(db: Db, tenantId: string, systemId: strin
   }
   return [...byId.values()].sort((a, b) => (a.documentId < b.documentId ? -1 : a.documentId > b.documentId ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
+
+/**
+ * CRM C5.4-C ▸ (round 11 · R10-8) การชำระ 1 ครั้งของเอกสารกลุ่มเป็นธุรกรรมเดียว (round 10 มติ B) ⇒ มีเพดานเวลา (40 วินาที)
+ *   ~0.4 วินาที/ใบลูกเมื่อมีภาษีหัก ณ ที่จ่าย + ใบกำกับอัตโนมัติ + เช็ค ⇒ รับได้ครั้งละไม่เกิน 40 ใบ — ปฏิเสธก่อนเขียนอะไร
+ *   กติกา/ข้อความเดียวกันทุกทาง: แผงรับชำระ (GroupPaymentPanel) · server action · REST (ทั้งสองทางผ่าน recordGroupPayment) ◂
+ */
+export const GROUP_PAYMENT_MAX_CHILDREN = 40;
+export function groupPaymentTooManyChildrenMsg(n: number): string {
+  return `การชำระครั้งนี้กระจายลงเอกสาร ${n} ใบ — บันทึกได้ครั้งละไม่เกิน ${GROUP_PAYMENT_MAX_CHILDREN} ใบ กรุณาแบ่งจ่ายเป็นหลายครั้ง (ใส่ยอดให้ครอบคลุมไม่เกิน ${GROUP_PAYMENT_MAX_CHILDREN} ใบต่อครั้ง)`;
+}

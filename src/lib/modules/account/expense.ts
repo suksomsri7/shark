@@ -33,6 +33,8 @@ import {
   unwindPaymentInTx,
   syncGroupHeadsOfDocsInTx,
   lockDocumentRow,
+  lockGroupHeadsOfDocsInTx,
+  releaseDepositDeductionsInTx,
 } from "./service";
 // WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
 import { issueDocNo, peekDocNo } from "./doc-numbering";
@@ -1190,6 +1192,7 @@ export async function recordVendorPaymentInTx(
   let paymentId = "";
       // CRM C5.4-C ▸ round 10: ล็อกแถวเอกสารก่อนอ่านยอด (เหมือน recordPayment · ลำดับล็อกเดียวกับยกเลิกการจ่าย/ยกเลิกเช็ค) ◂
       await lockDocumentRow(tx, tenantId, systemId, id);
+      await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // round 11 · LOCK ORDER ขั้น 4 (service.ts หัวไฟล์)
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId },
         include: { contact: true },
@@ -1343,6 +1346,7 @@ export async function voidVendorPaymentInTx(
       if (cs && cs !== "BOUNCED" && cs !== "VOIDED") throw new Error("รายการนี้จ่ายเป็นเช็ค — ให้ยกเลิกเช็คที่ทะเบียนเช็คแทน ยอดในบัญชีจะถูกกลับรายการให้ถูกต้อง");
     }
     await tx.$queryRaw`SELECT "id" FROM "AccountDocument" WHERE "id" = ${documentId} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
+    await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, [documentId]); // round 11 · LOCK ORDER ขั้น 4
     const pay = await tx.accountDocumentPayment.findFirst({
       where: { id: paymentId, documentId, tenantId, systemId },
     });
@@ -1397,6 +1401,8 @@ export async function voidExpenseDoc(
       if (posted) {
         await reverseFor({ tenantId, systemId }, "AccountDocument", id, reason, tx);
       }
+      // CRM C5.4-C ▸ round 11 · R10-7 (a) ฝั่งซื้อ: เอกสารที่หักเงินมัดจำจ่ายถูกยกเลิก ⇒ ใบจ่ายมัดจำกลับเป็นรอหัก (ในธุรกรรมเดียวกัน) ◂
+      if (DEPOSIT_DEDUCTIBLE_TYPES.includes(doc.docType)) await releaseDepositDeductionsInTx(tx, tenantId, systemId, id);
       // WO C4: "ยกเลิกเอกสาร" ฝั่งซื้อ — event/คีย์ชุดเดียวกับฝั่งขาย (ปลายทางไม่ต้องแยก 2 ชนิด)
       await emitDocumentVoided(tx, { tenantId, systemId }, {
         id,

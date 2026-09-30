@@ -547,13 +547,23 @@ export async function postDocument(
       }
       case "DEPOSIT_RECEIPT": {
         // รับมัดจำ: Dr เงิน · Cr 2110 (ฐาน) · Cr 2200 (VAT เกิดตอนรับเงิน)
-        const pay = await db.accountDocumentPayment.findFirst({
+        // CRM C5.4-C ▸ round 11 · R10-4: รับครบด้วยรายการรับหลายช่องทาง (โอน + เช็ค) ⇒ ขาเงินต่อรายการรับ (บัญชีเงินของโอน · 1040 ของเช็ค)
+        //   เหมือนใบเสร็จขายสด · เดิมลงก้อนเดียวที่บัญชีของรายการแรก (ธนาคารเกิน/1040 ติดลบหลังเช็คผ่าน) · JV ที่โพสต์ไปแล้วไม่ถูกแก้ ◂
+        const pays = await db.accountDocumentPayment.findMany({
           where: { documentId: docId, systemId: ctx.systemId, voidedAt: null },
           orderBy: { paidAt: "asc" },
-          select: { financeAccountId: true, channel: true },
+          select: { financeAccountId: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true },
         });
-        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel, db);
-        b.dr(cashId, doc.grandTotal);
+        if (pays.length > 0 && pays.reduce((s, p) => s + p.amount + p.whtAmountSatang, 0) === doc.grandTotal) {
+          for (const p of pays) {
+            b.dr(await financeLedgerId(ctx, p.financeAccountId, p.channel, db), p.amount - p.feeAmount);
+            if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
+            if (p.whtAmountSatang > 0) b.dr(await b.id("WHT_ASSET"), p.whtAmountSatang, "ภาษีถูกหัก ณ ที่จ่าย");
+          }
+        } else {
+          const cashId = await financeLedgerId(ctx, pays[0]?.financeAccountId, pays[0]?.channel, db);
+          b.dr(cashId, doc.grandTotal);
+        }
         b.cr(await b.id("DEPOSIT_RECEIVED"), doc.grandTotal - doc.vatAmount);
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         book = "RECEIPTS";
@@ -636,15 +646,24 @@ export async function postDocument(
       }
       case "DEPOSIT_PAYMENT": {
         // จ่ายเงินมัดจำให้ผู้ขาย: Dr 1130 มัดจำจ่าย (+1150 VAT) · Cr เงิน
-        const pay = await db.accountDocumentPayment.findFirst({
+        // CRM C5.4-C ▸ round 11 · R10-4 (ฝั่งจ่าย): จ่ายครบด้วยหลายรายการ ⇒ ขาเงินต่อรายการจ่าย (บัญชีเงิน / 2300 ของเช็ค) ◂
+        const pays = await db.accountDocumentPayment.findMany({
           where: { documentId: docId, systemId: ctx.systemId, voidedAt: null },
           orderBy: { paidAt: "asc" },
-          select: { financeAccountId: true, channel: true },
+          select: { financeAccountId: true, channel: true, amount: true, whtAmountSatang: true, feeAmount: true },
         });
-        const cashId = await financeLedgerId(ctx, pay?.financeAccountId, pay?.channel, db, true);
         b.dr(await b.id("DEPOSIT_PAID"), doc.grandTotal - doc.vatAmount, "มัดจำจ่าย");
         if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
-        b.cr(cashId, doc.grandTotal);
+        if (pays.length > 0 && pays.reduce((s, p) => s + p.amount + p.whtAmountSatang, 0) === doc.grandTotal) {
+          for (const p of pays) {
+            b.cr(await financeLedgerId(ctx, p.financeAccountId, p.channel, db, true), p.amount + p.feeAmount);
+            if (p.feeAmount > 0) b.dr(await b.id("PAYMENT_FEE"), p.feeAmount, "ค่าธรรมเนียม");
+            if (p.whtAmountSatang > 0) b.cr(await b.id("WHT_PAYABLE"), p.whtAmountSatang, "ภาษีหัก ณ ที่จ่ายค้างนำส่ง");
+          }
+        } else {
+          const cashId = await financeLedgerId(ctx, pays[0]?.financeAccountId, pays[0]?.channel, db, true);
+          b.cr(cashId, doc.grandTotal);
+        }
         book = "PAYMENTS";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "จ่ายเงินมัดจำ" };
         break;
@@ -1200,7 +1219,7 @@ export async function postChequeEntry(
   ctx: GlCtx,
   o: {
     chequeId: string;
-    event: "REGISTER" | "CLEAR" | "BOUNCE" | "VOID";
+    event: "REGISTER" | "CLEAR" | "BOUNCE" | "VOID" | "RECEIPT_VOID"; // CRM C5.4-C round 11 · R10-5: ยกเลิกใบเสร็จขายสดหลังเช็คเด้ง
     book: AccountJournalBook;
     date: Date;
     memo?: string;

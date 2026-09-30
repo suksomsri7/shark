@@ -8,10 +8,12 @@ import { emitOutboxMany } from "@/lib/core/outbox";
 // CRM C5.4-C ▸ (round 6 · F4) ด่านหนี้เดียวกับ recordPayment: ล็อกแถวเอกสาร · หนี้จริงหักใบลดหนี้ทั้งครอบครัว · สถานะจาก receivableStatusOf ◂
 import {
   AUTO_TI_CN_CHEQUE_MSG,
+  CHEQUE_UNWIND_REASON,
   assertDepositNotAppliedInTx,
   assertNoLiveCnOnAutoTaxInvoicesInTx,
   liveCreditTotalInTx,
   lockDocumentRow,
+  lockGroupHeadsOfDocsInTx,
   receivableStatusOf,
   syncGroupHeadsOfDocsInTx,
   unwindPaymentInTx,
@@ -19,6 +21,8 @@ import {
   recordPaymentInTx,
   type PaymentChequeGl,
   type RecordPaymentInput,
+  attachDraftReceiptPaymentsInTx,
+  type DraftReceiptPaymentRow,
 } from "./service";
 import { recordVendorPaymentInTx, type RecordVendorPaymentInput } from "./expense";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คใบเดียวของใบวางบิล/ใบรวมจ่าย ผูกได้แค่งวดแรก — งวดอื่นของชุดหาจากคีย์กันซ้ำ ◂
@@ -397,6 +401,49 @@ export async function recordPaymentWithChequeInOneTx(
 }
 
 /**
+ * CRM C5.4-C ▸ (round 11 · R10-6) อนุมัติใบเสร็จขายสดพร้อมรับเงิน (path ②): ผูกรายการรับเงิน + สร้างเช็ค + ผูกเช็ค **ในธุรกรรมเดียว**
+ *   ⇒ รายการรับที่เป็นเช็คไม่มีวันมีอยู่โดยไม่มีเช็คของมัน (เดิม ผูก → ออก → สร้างเช็คทีหลัง: ยกเลิกแทรกก่อนผูกเช็คได้ 8/8)
+ *   การออกเอกสาร + เอกสารภาษีหัก ณ ที่จ่าย ยังเป็นขั้นแยก (issueDocument มีธุรกรรมของตัวเอง) ◂
+ */
+export async function attachReceiptPaymentsWithChequesInOneTx(
+  tenantId: string,
+  systemId: string,
+  documentId: string,
+  rows: (DraftReceiptPaymentRow & { cheque: { chequeNo: string; bankName: string; chequeDate: Date } | null; chequeFinanceAccountId: string | null })[],
+): Promise<{ ok: true; paymentIds: string[] } | { ok: false; reason: string }> {
+  for (const r of rows) {
+    const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amount }) : null;
+    if (bad) return { ok: false, reason: bad };
+  }
+  try {
+    const paymentIds = await prisma.$transaction(async (tx) => {
+      const ids = await attachDraftReceiptPaymentsInTx(tx, tenantId, systemId, documentId, rows.map(({ cheque: _c, chequeFinanceAccountId: _f, ...row }) => row));
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r.cheque) continue;
+        await createChequeInTx(tx, {
+          tenantId,
+          systemId,
+          direction: "IN",
+          chequeNo: r.cheque.chequeNo,
+          bankName: r.cheque.bankName,
+          chequeDate: r.cheque.chequeDate,
+          amount: r.amount,
+          financeAccountId: r.chequeFinanceAccountId,
+          documentId,
+          paymentId: ids[i],
+          note: r.note,
+        });
+      }
+      return ids;
+    }, { maxWait: 20_000, timeout: 40_000 });
+    return { ok: true, paymentIds };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ผูกรายการรับเงินไม่สำเร็จ") };
+  }
+}
+
+/**
  * CRM C5.4-C ▸ (round 10 · มติ B) ตัวสร้างเช็คในธุรกรรมของผู้เรียก — recordGroupPayment / ฟอร์มรับ-จ่ายชำระ บันทึกงวด + เช็ค + ผูก
  *   ในธุรกรรมเดียว (ล้ม = ไม่มีอะไรถูกเขียน ไม่มี event) · throw ข้อความไทย ◂
  */
@@ -610,6 +657,7 @@ async function restoreDocForCheque(tx: Tx, tenantId: string, systemId: string, c
   for (const t of tis) await lockDocumentRow(tx, tenantId, systemId, t.id);
   const docIds = [...new Set(all.map((p) => p.documentId))].sort();
   for (const d of docIds) await lockDocumentRow(tx, tenantId, systemId, d);
+  await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, docIds); // round 11 · LOCK ORDER ขั้น 4 — ก่อนลงบัญชี (R10-2)
   const live = await tx.accountDocumentPayment.findMany({
     where: { id: { in: ids }, tenantId, systemId, voidedAt: null },
     orderBy: [{ documentId: "asc" }, { id: "asc" }],
@@ -624,7 +672,7 @@ async function restoreDocForCheque(tx: Tx, tenantId: string, systemId: string, c
   }
   const unwound: Restored["unwound"] = [];
   for (const p of live) {
-    const r = await unwindPaymentInTx(tx, ctx, p.id, "เช็คเด้ง/ยกเลิก", "CHEQUE");
+    const r = await unwindPaymentInTx(tx, ctx, p.id, CHEQUE_UNWIND_REASON, "CHEQUE");
     if (r) unwound.push(r);
   }
   // งวดที่ถูกยกเลิกไปก่อนหน้า: ไม่ลงซ้ำ (มติ A · legacy) — จดเฉพาะเงินที่ reversal ของงวดดึงออกจากบัญชีพักเช็คไปแล้ว (ใช้เมื่อเช็คเคลียร์แล้ว)
