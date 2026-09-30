@@ -1,0 +1,273 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.am .pill{height:18px;min-width:18px;font-size:10.5px}
+.o9{display:flex;flex:1;min-height:0}
+.chn{width:220px;flex:none;border-right:1px solid var(--line);background:var(--sf2);padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.chn .ci{display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--ink2)}
+.chn .ci .n{margin-left:auto;font-size:12px;color:var(--mut);font-variant-numeric:tabular-nums}
+.chn .ci.on{background:var(--sf);border:1px solid var(--line);font-weight:700;color:var(--ink)}
+.chn .ci.on .n{color:var(--ink)}
+.chn .sec{font-size:11px;font-weight:700;color:var(--mut);padding:14px 10px 6px;border-top:1px solid var(--line);margin-top:10px}
+.chn .ar{display:flex;align-items:center;gap:8px;height:32px;padding:0 10px;font-size:12.5px;color:var(--ink2)}
+.chn .ar .sw{margin-left:auto;transform:scale(.88)}
+.chn .hint{font-size:11px;color:var(--mut);padding:2px 10px 4px;line-height:1.45}
+.chn .inp{margin:4px 10px 0;height:32px}
+.chn .btn{margin:10px 10px 0}
+.okb{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--stage)}
+.okh{display:flex;align-items:center;gap:10px;padding:12px 14px 0;font-size:12.5px;color:var(--mut)}
+.okh b{color:var(--ink);font-size:14px}
+.okh .sp{flex:1}
+.okc{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:10px 14px 14px}
+.ol9{display:flex;flex-direction:column;gap:8px;min-width:0}
+.ol9 .hd{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:2px 2px 2px;white-space:nowrap}
+.ol9 .hd .pill{height:18px;font-size:10.5px}
+.ol9 .hd small{font-weight:400;color:var(--mut);font-size:11.5px}
+.ol9 .hd small.dgt{color:var(--dg);font-weight:700}
+.oc{background:var(--sf);border:1px solid var(--line);border-radius:11px;padding:10px;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.oc.sel{box-shadow:0 0 0 2px var(--acc);border-color:var(--acc)}
+.oc .r1{display:flex;align-items:center;gap:6px}
+.oc .r1 .chip{height:20px;font-size:10.5px;padding:0 6px}
+.oc .r1 .cd{font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums}
+.oc .r1 .t{margin-left:auto;color:var(--mut);font-size:11px}
+.oc .r2{font-size:13px;color:var(--ink2)}
+.oc .r2 b{color:var(--ink)}
+.oc .cu{color:var(--mut)}
+.oc .eta{display:flex;align-items:center;gap:5px;font-weight:700;color:var(--ink)}
+.oc .eta.dg{color:var(--dg)}
+.oc .nt{color:var(--ink2);background:var(--sf2);border-radius:6px;padding:4px 7px;font-size:11.5px}
+.oc .nt.acc{background:var(--acc-bg);color:var(--acc);font-weight:600}
+.oc .bt{display:flex;gap:6px;margin-top:3px}
+.oc .bt .btn{flex:1;padding:0 6px}
+.oc .pr{display:flex;align-items:center;gap:7px;color:var(--ink2)}
+.oc .pr .mtr{flex:1;height:6px}
+.oc .pr .mtr i{background:var(--ink)}
+.oc .pr .mtr i.e{background:var(--line)}
+.oc .late{color:var(--dg);font-weight:700}
+.dn{background:var(--sf);border:1px solid var(--line);border-radius:11px;padding:2px 10px}
+.dn .dr{display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--line);font-size:12px}
+.dn .dr:first-child{border-top:0}
+.dn .dr .x{min-width:0}
+.dn .dr .x b{display:block;font-size:12.5px}
+.dn .dr .x small{display:block;font-size:11px;color:var(--mut)}
+.dn .dr .a{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.dn .dr .t{color:var(--mut);font-size:11px;width:32px;text-align:right}
+.dsum{font-size:11.5px;color:var(--mut);padding:2px 4px;line-height:1.5}
+.dsum b{color:var(--ink)}
+.det{width:320px;flex:none;border-left:1px solid var(--line);background:var(--sf);display:flex;flex-direction:column;min-height:0}
+.det .dh{padding:14px 16px 11px;border-bottom:1px solid var(--line)}
+.det .dh .t{display:flex;align-items:center;gap:8px}
+.det .dh h2{font-size:15px;font-weight:700}
+.det .dh .sp{flex:1}
+.det .dh .m{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.55}
+.det .dh .m b{color:var(--ink2);font-weight:600}
+.det .sc{padding:10px 16px;border-bottom:1px solid var(--line);font-size:12.5px}
+.det .sc h3{font-size:11.5px;font-weight:700;color:var(--mut);margin-bottom:6px}
+.det .it{display:flex;gap:8px;padding:5px 0;align-items:flex-start}
+.det .it .q{font-weight:700;width:22px;flex:none}
+.det .it .nm{flex:1;min-width:0;font-size:13px}
+.det .it .nm small{display:block;font-size:11.5px;color:var(--mut)}
+.det .it .a{font-weight:600;font-variant-numeric:tabular-nums}
+.det .kv2{display:flex;justify-content:space-between;padding:3px 0;color:var(--ink2);font-variant-numeric:tabular-nums}
+.det .kv2.g{font-weight:700;color:var(--ink);font-size:14px;padding-top:6px}
+.det .kv2 .dg{color:var(--dg)}
+.det .note{display:block;margin-top:8px;line-height:1.5;font-size:11.5px}
+.det .stp{padding-left:16px;font-size:12px;color:var(--ink2);line-height:1.7}
+.det .ft{margin-top:auto;padding:12px 16px 14px;display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--line)}
+.det .ft .row2{display:flex;gap:7px}
+.det .ft .row2 .btn{flex:1}
+</style>
+<div class="wrap"><div>
+<p class="cap">09 · ออเดอร์ทุกช่องทาง <span>— QR โต๊ะ · เว็บร้าน · แชท LINE · LINE MAN · Grab · Shopee รวมที่เดียว · นับถอยหลังรับออเดอร์ · ตั้งรับอัตโนมัติรายช่องทาง · ค่าคอมฯ ลงบัญชีเอง</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน</span>
+  <span class="sp"></span><span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เคาน์เตอร์ 1</span><svg class="i"><use href="#i-search"/></svg><div class="av">น</div></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-shop"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am on"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์<span class="pill">3</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-box"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="o9">
+    <!-- ช่องทาง -->
+    <div class="chn">
+     <div class="ci on"><svg class="i sm"><use href="#i-list"/></svg>ทุกช่องทาง<span class="n">14</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-qr"/></svg>หน้าร้าน QR<span class="n">4</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-shop"/></svg>เว็บร้าน SHARK Shop<span class="n">2</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-mail"/></svg>แชท LINE<span class="n">1</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-truck"/></svg>LINE MAN<span class="n">4</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-truck"/></svg>Grab<span class="n">2</span></div>
+     <div class="ci"><svg class="i sm"><use href="#i-box"/></svg>Shopee<span class="n">1</span></div>
+
+     <div class="sec">รับอัตโนมัติ</div>
+     <div class="ar">LINE MAN<span class="sw"></span></div>
+     <div class="ar">Grab<span class="sw"></span></div>
+     <div class="ar">Shopee<span class="sw off"></span></div>
+     <div class="hint">พักรับอัตโนมัติเองเมื่อครัวค้างเกิน 8 ใบ — ตอนนี้ครัวร้อนค้าง 8 ใบ จึงต้องกดรับเอง</div>
+
+     <div class="sec">เวลาเตรียมมาตรฐาน</div>
+     <div class="inp"><b>15 นาที</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+     <div class="hint">ส่งให้แพลตฟอร์มเป็นเวลาพร้อมรับของ</div>
+     <div class="btn gh sm"><svg class="i sm"><use href="#i-lock"/></svg>ปิดรับชั่วคราว</div>
+    </div>
+
+    <!-- บอร์ดออเดอร์ -->
+    <div class="okb">
+     <div class="okh"><b>ออเดอร์วันนี้ 14</b><span>· ยอดรวม ฿5,260</span><span class="sp"></span>
+      <span class="chip"><svg class="i xs"><use href="#i-flag"/></svg>เสียงเตือนออเดอร์ใหม่ เปิด</span>
+      <span>อัปเดต 12:10:22</span></div>
+     <div class="okc">
+      <!-- ใหม่ -->
+      <div class="ol9">
+       <div class="hd">ใหม่ <span class="pill">3</span><small class="dgt">· ต้องรับใน 2:00</small></div>
+       <div class="oc sel">
+        <div class="r1"><span class="chip ink">LINE MAN</span><span class="cd">LM-48213</span><span class="t">12:09</span></div>
+        <div class="r2">3 รายการ · <b>฿420</b></div>
+        <div class="cu">คุณเอก · 08x-xxx-1234</div>
+        <div class="eta"><svg class="i xs"><use href="#i-clock"/></svg>รับภายใน 1:20</div>
+        <div class="nt">ไม่ใส่ผักชี · ขอช้อนส้อม</div>
+        <div class="bt"><div class="btn pri sm">รับออเดอร์</div><div class="btn gh sm">ปฏิเสธ</div></div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip ink">Grab</span><span class="cd">GF-7731</span><span class="t">12:08</span></div>
+        <div class="r2">2 รายการ · <b>฿310</b></div>
+        <div class="cu">คุณมายด์ · 09x-xxx-5521</div>
+        <div class="eta dg"><svg class="i xs"><use href="#i-clock"/></svg>รับภายใน 0:42</div>
+        <div class="bt"><div class="btn pri sm">รับออเดอร์</div><div class="btn gh sm">ปฏิเสธ</div></div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip">แชท LINE</span><span class="cd">CH-0930-07</span><span class="t">12:06</span></div>
+        <div class="r2">2 รายการ · <b>฿280</b></div>
+        <div class="cu">คุณแพร · รับเองที่ร้าน 12:40</div>
+        <div class="nt acc">สั่งผ่านแชท · รอยืนยันชำระ PromptPay ฿280</div>
+        <div class="bt"><div class="btn pri sm">รับออเดอร์</div><div class="btn gh sm">ปฏิเสธ</div></div>
+       </div>
+      </div>
+
+      <!-- กำลังเตรียม -->
+      <div class="ol9">
+       <div class="hd">กำลังเตรียม <span class="pill gh">4</span></div>
+       <div class="oc">
+        <div class="r1"><span class="chip ink">LINE MAN</span><span class="cd">LM-48190</span><span class="t">11:59</span></div>
+        <div class="r2">3 รายการ · <b>฿465</b></div>
+        <div class="pr">ครัวกำลังทำ 0/3<span class="mtr"><i class="e" style="width:100%"></i></span></div>
+        <div class="late">เลยเวลาเตรียม 1 นาที</div>
+        <div class="cu">ไรเดอร์รออยู่ที่ร้าน</div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip ink">Grab</span><span class="cd">GF-7702</span><span class="t">12:02</span></div>
+        <div class="r2">2 รายการ · <b>฿325</b></div>
+        <div class="pr">ครัวกำลังทำ 1/2<span class="mtr"><i style="width:50%"></i><i class="e" style="width:50%"></i></span></div>
+        <div class="cu">พร้อมใน 3 นาที</div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip">เว็บร้าน</span><span class="cd">SW-1042</span><span class="t">12:03</span></div>
+        <div class="r2">3 รายการ · <b>฿390</b></div>
+        <div class="pr">ครัวกำลังทำ 2/3<span class="mtr"><i style="width:66%"></i><i class="e" style="width:34%"></i></span></div>
+        <div class="cu">คุณนิด · รับที่ร้าน 12:30</div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip">QR โต๊ะ</span><span class="cd">B2 · #18</span><span class="t">12:09</span></div>
+        <div class="r2">2 รายการ · <b>฿145</b></div>
+        <div class="pr">ครัวกำลังทำ 0/2<span class="mtr"><i class="e" style="width:100%"></i></span></div>
+        <div class="cu">เก็บเงินรวมกับบิลโต๊ะ</div>
+       </div>
+      </div>
+
+      <!-- พร้อม / รอไรเดอร์ -->
+      <div class="ol9">
+       <div class="hd">พร้อม / รอไรเดอร์ <span class="pill gh">2</span></div>
+       <div class="oc">
+        <div class="r1"><span class="chip ink">LINE MAN</span><span class="cd">LM-48177</span><span class="t">11:48</span></div>
+        <div class="r2">2 รายการ · <b>฿385</b></div>
+        <div class="eta"><svg class="i xs"><use href="#i-truck"/></svg>ไรเดอร์ถึงใน 6 นาที</div>
+        <div class="cu">ชื่อไรเดอร์ อนันต์ · ถุงที่ชั้น 2</div>
+        <div class="bt"><div class="btn gh sm"><svg class="i xs"><use href="#i-check"/></svg>ส่งมอบแล้ว</div></div>
+       </div>
+       <div class="oc">
+        <div class="r1"><span class="chip ink">Shopee</span><span class="cd">SP-2609-118</span></div>
+        <div class="r2">1 รายการ · <b>฿450</b></div>
+        <div class="cu">เมล็ดกาแฟคั่วกลาง 500 ก. · คุณต่อ · เชียงใหม่</div>
+        <div class="eta"><svg class="i xs"><use href="#i-box"/></svg>แพ็กแล้ว · ขนส่งรับ 15:00</div>
+        <div class="bt"><div class="btn gh sm"><svg class="i xs"><use href="#i-print"/></svg>พิมพ์ใบปะหน้า · Flash</div></div>
+       </div>
+      </div>
+
+      <!-- เสร็จวันนี้ -->
+      <div class="ol9">
+       <div class="hd">เสร็จวันนี้ <span class="pill gh">5</span></div>
+       <div class="dn">
+        <div class="dr"><div class="x"><b>QR โต๊ะ A4 · #7</b><small>หน้าร้าน QR · 11:58</small></div><span class="a">฿455</span></div>
+        <div class="dr"><div class="x"><b>LM-48152</b><small>LINE MAN · 11:52</small></div><span class="a">฿385</span></div>
+        <div class="dr"><div class="x"><b>QR โต๊ะ C4 · #5</b><small>หน้าร้าน QR · 11:40</small></div><span class="a">฿640</span></div>
+        <div class="dr"><div class="x"><b>SW-1039</b><small>เว็บร้าน · 10:15</small></div><span class="a">฿260</span></div>
+        <div class="dr"><div class="x"><b>QR โต๊ะ A1 · #3</b><small>หน้าร้าน QR · 09:30</small></div><span class="a">฿350</span></div>
+       </div>
+       <div class="dsum">ยกเลิก/ปฏิเสธวันนี้ <b>0</b><br>รับออเดอร์เฉลี่ย <b>38 วินาที</b><br>เสร็จตรงเวลา <b>5 จาก 5</b> ออเดอร์</div>
+      </div>
+     </div>
+    </div>
+
+    <!-- รายละเอียด -->
+    <div class="det">
+     <div class="dh">
+      <div class="t"><h2>รายละเอียด LM-48213</h2><span class="sp"></span><span class="chip ink">LINE MAN</span></div>
+      <div class="m">เข้า 12:09 · <b>รับภายใน 1:20</b><br>ลูกค้า <b>คุณเอก · 08x-xxx-1234</b><br>ส่งถึง ซอยหัวหิน 94 · 2.4 กม. · ไรเดอร์ยังไม่ได้มอบหมาย</div>
+     </div>
+     <div class="sc">
+      <h3>รายการ</h3>
+      <div class="it"><span class="q">1</span><span class="nm">ผัดไทยกุ้ง<small>เส้นเล็ก · ไม่ใส่ถั่วงอก</small></span><span class="a">฿120</span></div>
+      <div class="it"><span class="q">1</span><span class="nm">ต้มยำกุ้งน้ำข้น<small>แยกน้ำ · เผ็ดน้อย · ไม่ใส่ผักชี</small></span><span class="a">฿180</span></div>
+      <div class="it"><span class="q">2</span><span class="nm">ชาไทยเย็น<small>หวานน้อย · แยกน้ำแข็ง</small></span><span class="a">฿120</span></div>
+      <div class="nt" style="margin-top:6px;font-size:11.5px;color:var(--ink2);background:var(--sf2);border-radius:6px;padding:5px 8px">หมายเหตุลูกค้า: ไม่ใส่ผักชี · ขอช้อนส้อม</div>
+     </div>
+     <div class="sc">
+      <div class="kv2"><span>ยอดรวม</span><span>฿420</span></div>
+      <div class="kv2"><span>ค่าคอมมิชชันแพลตฟอร์ม 30%</span><span class="dg">−฿126</span></div>
+      <div class="kv2 g"><span>รับจริง</span><span>฿294</span></div>
+      <span class="note">ชำระผ่านแพลตฟอร์ม → บันทึกเป็นวิธีชำระ 'แพลตฟอร์ม' และลงบัญชีค่าคอมฯ อัตโนมัติ</span>
+     </div>
+     <div class="sc" style="border-bottom:0">
+      <h3>เมื่อกดรับออเดอร์ ระบบจะ</h3>
+      <ul class="stp">
+       <li>ส่งใบครัวเข้าจอครัวร้อน 2 รายการ · เครื่องดื่ม 1 รายการ</li>
+       <li>แจ้ง LINE MAN ว่าพร้อมรับของ 12:25</li>
+       <li>ตัดสต็อกวัตถุดิบตามสูตร</li>
+       <li>เปิดบิล R2609-000381 · ช่องทาง LINE MAN</li>
+      </ul>
+      <h3 style="margin-top:12px">ลูกค้า</h3>
+      <div class="kv2"><span>สั่งกับร้านนี้</span><span>ครั้งที่ 3 · เฉลี่ย ฿390</span></div>
+      <div class="kv2"><span>สมาชิก</span><span class="mu">ยังไม่เป็นสมาชิก</span></div>
+     </div>
+     <div class="ft">
+      <div class="btn pri blk">รับออเดอร์ · เตรียม 15 นาที</div>
+      <div class="row2"><div class="btn gh sm">แก้เวลา</div><div class="btn gh sm">ปฏิเสธ (ของหมด)</div></div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div></div>
