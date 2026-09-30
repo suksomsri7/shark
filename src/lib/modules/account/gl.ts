@@ -1219,7 +1219,8 @@ export async function postChequeEntry(
   ctx: GlCtx,
   o: {
     chequeId: string;
-    event: "REGISTER" | "CLEAR" | "BOUNCE" | "VOID" | "RECEIPT_VOID"; // CRM C5.4-C round 11 · R10-5: ยกเลิกใบเสร็จขายสดหลังเช็คเด้ง
+    // CRM C5.4-C round 11 · R10-5: RECEIPT_VOID = ยกเลิกใบเสร็จขายสดหลังเช็คเด้ง · round 12 · R11-3: PAYMENT_VOID:<paymentId> = ถอยงวดที่เช็คเคลียร์แล้ว
+    event: "REGISTER" | "CLEAR" | "BOUNCE" | "VOID" | "RECEIPT_VOID" | `PAYMENT_VOID:${string}`;
     book: AccountJournalBook;
     date: Date;
     memo?: string;

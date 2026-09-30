@@ -383,6 +383,9 @@ export async function approveReceiptWithPayments(
   //   กดอนุมัติซ้ำหลังขั้นออกเอกสารล้ม (คีย์ชุดเดิมผูกไว้ครบแล้ว) ⇒ ข้ามการผูก ไปออกเอกสารต่อ (เดิมติด "บันทึกชุดนี้ไปแล้ว" ถาวร) ◂
   const keys = opts.keyBase ? rows.map((_r, i) => `${opts.keyBase}:${i}`) : [];
   const already = keys.length ? await findPaymentsByKeys(tenantId, systemId, keys) : [];
+  // round 12 · R11-1: รายการชุดเดิมถูกยกเลิกไปแล้ว (เช่น เช็คเด้งขณะใบเสร็จยังเป็นร่าง) ⇒ ห้ามข้ามไปออกเอกสารโดยไม่มีเงิน — ให้กรอกการรับเงินใหม่
+  if (keys.length > 0 && already.length === keys.length && already.some((p) => p.voidedAt))
+    return { ok: false, reason: "รายการรับเงินของร่างใบเสร็จนี้ถูกยกเลิกไปแล้ว (เช่น เช็คเด้ง) — กรอกการรับเงินใหม่แล้วกดอนุมัติอีกครั้ง" };
   const attached =
     keys.length > 0 && already.length === keys.length && already.every((p) => p.documentId === docId)
       ? { ok: true as const, paymentIds: keys.map((k) => already.find((p) => p.idempotencyKey === k)!.id) }

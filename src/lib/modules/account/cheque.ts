@@ -748,6 +748,12 @@ async function chequeUnwindLines(
       } else if (g.kind === "DEPOSIT") {
         if (IN) { dr(g.cashAccountId, g.amount, "คืนขาเงินของใบรับมัดจำ (เช็คเด้ง)"); cr(counterId, g.amount, counterNote); }
         else { cr(g.cashAccountId, g.amount, "คืนขาเงินของใบจ่ายมัดจำ (ยกเลิกเช็ค)"); dr(counterId, g.amount, counterNote); }
+      } else if (g.amount > 0) {
+        // round 12 · R11-1/R11-4: งวดที่ไม่เคยลงบัญชี (ร่างใบเสร็จ · ใบมัดจำที่ยังรับไม่ครบ) — ไม่มีขาอื่นให้กลับ แต่ถ้าเช็คเคลียร์แล้ว
+        //   JV เคลียร์ย้ายเงิน พักเช็ค → ธนาคาร ไว้ ⇒ พักเช็ค ↔ คู่บัญชี ของงวดนี้ (ยังไม่เคลียร์ = คู่บัญชีคือพักเช็ค หักล้างเป็นศูนย์)
+        const transit = await resolveMapping(ctx, IN ? "CHEQUE_IN_TRANSIT" : "CHEQUE_PAYABLE", undefined, tx);
+        if (IN) { dr(transit, g.amount, "งวดที่ยังไม่ลงบัญชี"); cr(counterId, g.amount, counterNote); }
+        else { cr(transit, g.amount, "งวดที่ยังไม่ลงบัญชี"); dr(counterId, g.amount, counterNote); }
       }
     }
     // ข้อมูลเก่า: งวดที่ถูกยกเลิกไปก่อน (JV งวดกลับไปแล้ว) แต่เช็คถูกเคลียร์เข้าธนาคารทั้งใบ ⇒ คืนเงินส่วนนั้นจากธนาคารกลับบัญชีพักเช็ค

@@ -832,6 +832,123 @@ try {
             `head after paying child 1 ${JSON.stringify(h0)} · full CN on child 2 ${J(ci)} → head ${JSON.stringify(h1)} (want PAID/21,400,000) · void CN ${J(vc)} → head ${JSON.stringify(h2)} (want PARTIAL/10,700,000)`);
         });
       }
+      { // R12 (round 12 · hunter r11 rulings) — exits probe-r11{a..d} do not cover:
+        //   R12-DRAFT  "worst remaining state" of path ② (attach + cheque committed, issue never ran): the receipt stays DRAFT on bounce, and EVERY exit ends at TB Δ [] —
+        //              bounce → approve again (same key ⇒ calm refusal · new key ⇒ issues once) · bounce → cancel · cleared → bounce → cancel · cleared → cancel (register stays CLEARED)
+        //   R12-CLEARED issued cash-sale receipt whose cheque CLEARED ⇒ voidDocument allowed, TB Δ [], register CLEARED, payment.recorded 1 / payment.voided 1
+        //   R12-EVT    event symmetry + CRM: transfer and cheque cash-sale receipts, attach → issue → void ⇒ recorded 1 · voided 1 each · CRM deal paid/commission unchanged
+        const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+        const pay = (await import("@/lib/modules/account/payment" as string)) as Any;
+        const bk = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: `บัญชี R12 ${TAG}`, bankName: "กรุงไทย" });
+        if (!bk?.ok) throw new Error(`bank: ${bk?.reason}`);
+        const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const tb = async (): Promise<Map<string, number>> => {
+          const rows = (await P.$queryRawUnsafe(`SELECT a."code" AS code, COALESCE(l."contactId",'-') AS c, sum(l."debit" - l."credit")::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 GROUP BY 1,2`, A)) as Any[];
+          return new Map(rows.map((r) => [`${r.code}${r.c === "-" ? "" : r.c === cust.id ? "@cust" : "@other"}`, Number(r.n)]));
+        };
+        const tbDiff = (a: Map<string, number>, b: Map<string, number>) => { const out: string[] = []; for (const k of new Set([...a.keys(), ...b.keys()])) { const d = (b.get(k) ?? 0) - (a.get(k) ?? 0); if (d !== 0) out.push(`${k}:${d}`); } return out.sort(); };
+        const J = (v: Any) => JSON.stringify(v?.ok ? { ok: true } : v);
+        let ks = 0; const kb = () => `r12k${++ks}_${randomBytes(3).toString("hex")}`;
+        const mkRe = async () => (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "RECEIPT", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "ขายสด", qty: 1, unitPrice: 1_000_000 }] })).id as string;
+        const chqDFake = () => ({ chequeNo: `R12-retry-${ks}`, bankName: "KBank", chequeDate: today });
+        const row = (cheque: Any = null) => ({ paidAt: today, financeAccountId: bk.id, amountSatang: 1_070_000, whtAmountSatang: 0, whtRateBp: null, whtIncomeType: null, feeSatang: 0, note: "", cheque });
+        const sub = async (id: string, f: () => Promise<void>) => { try { await f(); } catch (e) { chk(id, false, `FATAL ${e instanceof Error ? e.message : String(e)}`); } };
+        const recEvents = async (pid: string) => ({
+          rec: await P.outboxEvent.count({ where: { tenantId: T, idempotencyKey: `account.payment.recorded#${pid}` } }),
+          voi: await P.outboxEvent.count({ where: { tenantId: T, type: "account.payment.voided", idempotencyKey: { contains: pid } } }),
+        });
+        // the committed attach + cheque of path ② WITHOUT the issue step (= the state left when issueDocument fails)
+        const worst = async () => {
+          const re = await mkRe(); const key = kb();
+          const r = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, re, [{ paidAt: new Date(`${today}T00:00:00Z`), channel: "CHEQUE", financeAccountId: null, amount: 1_070_000, whtAmountSatang: 0, whtRateBp: null, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${key}:0`, cheque: { chequeNo: `R12-${ks}`, bankName: "KBank", chequeDate: new Date(`${today}T00:00:00Z`) }, chequeFinanceAccountId: bk.id }]);
+          if (!r.ok) throw new Error(`attach: ${r.reason}`);
+          const p = await P.accountDocumentPayment.findFirst({ where: { documentId: re }, select: { id: true, chequeId: true } });
+          return { re, key, pid: p.id as string, cq: p.chequeId as string };
+        };
+
+        await sub("R12-DRAFT", async () => {
+          const out: string[] = []; let ok = true;
+          { // a) bounce → approve again: same key ⇒ refused · new key ⇒ issued once
+            const b0 = await tb(); const w = await worst();
+            const b = await cheque.bounceCheque(T, A, w.cq, "x"); const s1 = await docSt(w.re); const d1 = tbDiff(b0, await tb());
+            const again = await pay.approveReceiptWithPayments(T, A, w.re, [row(chqDFake())], { keyBase: w.key });
+            const fresh = await pay.approveReceiptWithPayments(T, A, w.re, [row()], { keyBase: kb() });
+            const s2 = await P.accountDocument.findUnique({ where: { id: w.re }, select: { status: true, docNo: true } }); const d2 = tbDiff(b0, await tb());
+            const bankCode = d2.find((x) => x.startsWith("10") && !x.startsWith("1040"));
+            const good = b?.ok === true && s1.status === "DRAFT" && s1.paidTotal === 0 && d1.length === 0 && again?.ok === false && /ถูกยกเลิกไปแล้ว/.test(String(again?.reason)) && fresh?.ok === true && s2.status === "PAID" && !!s2.docNo
+              && d2.length === 3 && d2.includes("2200:-70000") && d2.includes("4000:-1000000") && bankCode?.endsWith(":1070000");
+            ok &&= !!good; out.push(`a) bounce ${J(b)} → ${s1.status}/${s1.paidTotal} TBΔ ${JSON.stringify(d1)} · approve same key ${J(again)} · approve new key ${J(fresh)} → ${s2.status} ${s2.docNo} TBΔ ${JSON.stringify(d2)}`);
+          }
+          { // b) bounce → cancel the draft
+            const b0 = await tb(); const w = await worst();
+            const b = await cheque.bounceCheque(T, A, w.cq, "x");
+            const v = await accSvc.voidDocument(T, A, w.re, "ยกเลิกร่าง"); const s = await docSt(w.re); const d = tbDiff(b0, await tb());
+            const rv = await P.accountJournalEntry.count({ where: { systemId: A, refType: "AccountCheque", refId: w.cq } });
+            const good = b?.ok === true && v?.ok === true && s.status === "CANCELLED" && d.length === 0 && rv === 0;
+            ok &&= good; out.push(`b) bounce → cancel ${J(v)} → ${s.status} · cheque JEs ${rv} (want 0) · TBΔ ${JSON.stringify(d)}`);
+          }
+          { // c) cleared → bounce → cancel
+            const b0 = await tb(); const w = await worst();
+            await cheque.depositCheque(T, A, w.cq); await cheque.clearCheque(T, A, w.cq); const dc = tbDiff(b0, await tb());
+            const b = await cheque.bounceCheque(T, A, w.cq, "x"); const d1 = tbDiff(b0, await tb()); const s1 = await docSt(w.re);
+            const v = await accSvc.voidDocument(T, A, w.re, "ยกเลิกร่าง"); const d2 = tbDiff(b0, await tb());
+            const good = dc.length === 2 && b?.ok === true && d1.length === 0 && s1.status === "DRAFT" && v?.ok === true && d2.length === 0;
+            ok &&= good; out.push(`c) clear → TBΔ ${JSON.stringify(dc)} · bounce ${J(b)} → ${s1.status} TBΔ ${JSON.stringify(d1)} · cancel ${J(v)} → TBΔ ${JSON.stringify(d2)}`);
+          }
+          { // d) cleared → cancel (no bounce): money in the bank, register stays CLEARED
+            const b0 = await tb(); const w = await worst();
+            await cheque.depositCheque(T, A, w.cq); await cheque.clearCheque(T, A, w.cq);
+            const v = await accSvc.voidDocument(T, A, w.re, "ยกเลิกร่าง"); const d = tbDiff(b0, await tb()); const s = await docSt(w.re);
+            const cs = (await P.accountCheque.findUnique({ where: { id: w.cq }, select: { status: true } })).status;
+            const ev = await recEvents(w.pid);
+            const good = v?.ok === true && s.status === "CANCELLED" && d.length === 0 && cs === "CLEARED" && ev.rec === 1 && ev.voi === 1;
+            ok &&= good; out.push(`d) clear → cancel ${J(v)} → ${s.status} · register ${cs} · events recorded/voided ${ev.rec}/${ev.voi} · TBΔ ${JSON.stringify(d)}`);
+          }
+          { // e) live cheque → cancel refused (guidance) · approve again with the same key ⇒ issued
+            const b0 = await tb(); const w = await worst();
+            const v = await accSvc.voidDocument(T, A, w.re, "x");
+            const again = await pay.approveReceiptWithPayments(T, A, w.re, [row(chqDFake())], { keyBase: w.key });
+            const s = await P.accountDocument.findUnique({ where: { id: w.re }, select: { status: true, docNo: true } }); const d = tbDiff(b0, await tb());
+            const good = v?.ok === false && /เช็ค/.test(String(v?.reason)) && again?.ok === true && s.status === "PAID" && d.includes("1040:1070000") && d.includes("4000:-1000000");
+            ok &&= good; out.push(`e) live cheque: cancel ${J(v)} · approve same key ${J(again)} → ${s.status} ${s.docNo} TBΔ ${JSON.stringify(d)}`);
+          }
+          chk("R12-DRAFT", ok, out.join(" ‖ "));
+        });
+
+        await sub("R12-CLEARED", async () => {
+          const b0 = await tb(); const re = await mkRe();
+          const ap = await pay.approveReceiptWithPayments(T, A, re, [row({ chequeNo: `R12C-${++ks}`, bankName: "KBank", chequeDate: today })], { keyBase: kb() });
+          const p = await P.accountDocumentPayment.findFirst({ where: { documentId: re }, select: { id: true, chequeId: true } });
+          await cheque.depositCheque(T, A, p.chequeId); const cl = await cheque.clearCheque(T, A, p.chequeId);
+          const v = await accSvc.voidDocument(T, A, re, "ลูกค้าคืนสินค้า");
+          const d = tbDiff(b0, await tb()); const s = await docSt(re);
+          const cs = (await P.accountCheque.findUnique({ where: { id: p.chequeId }, select: { status: true } })).status;
+          const ev = await recEvents(p.id);
+          chk("R12-CLEARED", ap?.ok === true && cl?.ok === true && v?.ok === true && s.status === "VOIDED" && d.length === 0 && cs === "CLEARED" && ev.rec === 1 && ev.voi === 1,
+            `cash-sale by cheque ${J(ap)} → clear ${J(cl)} → voidDocument ${J(v)} → ${s.status} · register ${cs} (no fake bounce) · TBΔ ${JSON.stringify(d)} (want []) · events recorded/voided ${ev.rec}/${ev.voi} (want 1/1)`);
+        });
+
+        await sub("R12-EVT", async () => {
+          const c = await mk("R12");
+          const res: string[] = []; let ok = true;
+          for (const how of ["transfer", "cheque"] as const) {
+            const re = await mkRe();
+            const d = await deal(c, { invoiceDocId: re });
+            const s0 = await state(c, d.id);
+            const ap = await pay.approveReceiptWithPayments(T, A, re, [row(how === "cheque" ? { chequeNo: `R12E-${++ks}`, bankName: "KBank", chequeDate: today } : null)], { keyBase: kb() });
+            await deliver(); const s1 = await state(c, d.id);
+            const p = await P.accountDocumentPayment.findFirst({ where: { documentId: re }, select: { id: true, chequeId: true } });
+            if (how === "cheque") { await cheque.depositCheque(T, A, p.chequeId); await cheque.clearCheque(T, A, p.chequeId); }
+            const v = await accSvc.voidDocument(T, A, re, "ยกเลิกการขาย");
+            await deliver(); const s2 = await state(c, d.id);
+            const ev = await recEvents(p.id);
+            const good = ap?.ok === true && v?.ok === true && ev.rec === 1 && ev.voi === 1 && s1.paid === s0.paid && s1.comm === s0.comm && s2.paid === s0.paid && s2.comm === s0.comm;
+            ok &&= good;
+            res.push(`${how}: approve ${J(ap)} → deal ${JSON.stringify(s1)} · void ${J(v)} → deal ${JSON.stringify(s2)} (before ${JSON.stringify(s0)}) · events recorded/voided ${ev.rec}/${ev.voi}`);
+          }
+          chk("R12-EVT", ok, `cash-sale receipts are not deal money (CRM counts INVOICE/DEPOSIT_RECEIPT) — symmetric events, nothing counted, nothing reversed: ${res.join(" ‖ ")}`);
+        });
+      }
       chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
     }
     // D3 · Q2: dashboard "paid" bucket (revenue) = grand − live CN of each PAID invoice ⇒ inv 107,000 + inv2 (107,000 − 10,700) = 203,300
@@ -839,7 +956,8 @@ try {
     const yr = Number(new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 4));
     const ser = await dash.monthlyStatusSeries({ tenantId: T, systemId: A }, "revenue", yr);
     const tot = ser?.total ?? {};
-    const allPaid = (await P.accountDocument.findMany({ where: { tenantId: T, systemId: A, docType: "INVOICE", status: "PAID" }, select: { id: true, grandTotal: true } })) as Any[];
+    // round 12: same document scope as the dashboard (SALES_WHERE: INVOICE · cash-sale RECEIPT without source · TAX_INVOICE_ABB) — probes above now leave issued cash-sale receipts PAID
+    const allPaid = (await P.accountDocument.findMany({ where: { tenantId: T, systemId: A, direction: "OUT", status: "PAID", OR: [{ docType: "INVOICE" }, { docType: "RECEIPT", sourceDocId: null }, { docType: "TAX_INVOICE_ABB" }] }, select: { id: true, grandTotal: true } })) as Any[];
     let expPaid = 0;
     for (const x of allPaid) expPaid += Math.max(0, x.grandTotal - Number((await P.accountDocument.aggregate({ where: { systemId: A, docType: "CREDIT_NOTE", sourceDocId: { in: await accSvc.docFamilyIds(P, A, x.id) }, status: { notIn: ["DRAFT", "VOIDED", "CANCELLED"] } }, _sum: { grandTotal: true } }))._sum.grandTotal ?? 0));
     chk("D3.1", tot.paid === expPaid && tot.paidCount === allPaid.length && tot.grand === tot.paid + tot.awaiting + tot.overdue,

@@ -13,7 +13,7 @@ import {
   openGroupOfChild,
   recordPaymentBatchInOneTx,
   recordPaymentInTx,
-  updateGroupProgress,
+  syncGroupHead,
   voidPaymentBatchInOneTx,
   voidPaymentInTx,
   type GroupChildDoc,
@@ -38,7 +38,7 @@ export { groupBatchKey, groupChildKey, groupKeyPrefix };
 //   • รับ/จ่าย 1 ครั้งที่กลุ่ม → กระจายเป็นการชำระของ "ใบลูก" ทีละใบ ผ่านบริการเดิมของ WO 1.4
 //     (service.recordPayment / expense.recordVendorPayment) ⇒ ใบลูกได้ JV/WHT/50 ทวิ/สถานะของตัวเอง ครบ
 //   • ผลรวม JV จึงเป็น: BN → Dr เงิน Σ · Cr 1100 แยกตามใบแจ้งหนี้ · CP → Dr 2100 Σ · Cr เงิน + Cr 2130
-//   • สถานะกลุ่มเป็น **ค่าที่คำนวณจากใบลูก** (updateGroupProgress) — ไม่ใช่ตัวนับแยกที่หลุดจากความจริงได้
+//   • สถานะกลุ่มเป็น **ค่าที่คำนวณจากใบลูก** (service.syncGroupHeadInTx — ล็อกหัวก่อนอ่านใบลูก) — ไม่ใช่ตัวนับแยกที่หลุดจากความจริงได้
 //
 // 🔴 ไฟล์นี้ไม่ import prisma (fitness F5) — ทุกการแตะ DB ผ่าน service/expense/cheque
 // 🔴 ไฟล์นี้ไม่เขียน posting เอง — posting อยู่ที่ gl.ts ผ่านบริการชำระเงินของใบลูกเท่านั้น
@@ -656,27 +656,18 @@ export async function recordGroupPayment(
   };
 }
 
-/** อ่านยอดค้างของใบลูกใหม่ทั้งหมด แล้วเขียนความคืบหน้า/สถานะกลับที่เอกสารกลุ่ม */
+/**
+ * อ่านยอดค้างของใบลูกใหม่ทั้งหมด แล้วเขียนความคืบหน้า/สถานะกลับที่เอกสารกลุ่ม
+ * CRM C5.4-C ▸ round 12 (hunter r11 · group.ts:705): ผ่าน syncGroupHeadInTx ตัวเดียวของระบบ — ล็อกหัวก่อนอ่านใบลูก (LOCK ORDER ขั้น 4 ·
+ *   ไม่ถือล็อกอื่น) · เดิมอ่านใบลูกแล้วเขียนหัวโดยไม่ล็อก หลังธุรกรรมของผู้เรียก ⇒ เขียนทับผลที่ล็อกแล้วของธุรกรรมอื่นด้วยค่าเก่าได้ ◂
+ */
 export async function syncGroupStatus(
   tenantId: string,
   systemId: string,
   groupId: string,
 ): Promise<{ status: string; outstanding: number; paidTotal: number }> {
-  const head = await getGroupDocHead(tenantId, systemId, groupId);
-  const def = head ? groupDefOf(head.docType) : undefined;
-  if (!head || !def) return { status: "", outstanding: 0, paidTotal: 0 };
-  const children = await groupChildDocs(tenantId, systemId, groupId, def.relType);
-  const res = await updateGroupProgress(
-    tenantId,
-    systemId,
-    groupId,
-    children.map((c) => ({ outstanding: c.outstanding, status: c.status })),
-  );
-  return {
-    status: res.status,
-    outstanding: children.reduce((s, c) => s + c.outstanding, 0),
-    paidTotal: res.paidTotal,
-  };
+  const res = await syncGroupHead(tenantId, systemId, groupId);
+  return res ? { status: res.status, outstanding: res.outstanding, paidTotal: res.paidTotal } : { status: "", outstanding: 0, paidTotal: 0 };
 }
 
 /** ยกเลิกการชำระ 1 "ครั้ง" ของกลุ่ม = ยกเลิกการชำระของใบลูกทุกใบในครั้งนั้น (reversal ไม่ลบ) */
@@ -702,7 +693,7 @@ export async function voidGroupPayment(
       ? voidVendorPaymentInTx(tx, tenantId, systemId, documentId, paymentId, reason)
       : voidPaymentInTx(tx, tenantId, systemId, documentId, paymentId, reason));
   if (!res.ok) return res;
-  await syncGroupStatus(tenantId, systemId, groupId);
+  // round 12: หัวกลุ่ม sync ในธุรกรรมของ voidPaymentBatchInOneTx แล้ว (ล็อกใบลูก → หัว) — ไม่เขียนซ้ำนอกธุรกรรม
   return { ok: true, voided: res.voided };
 }
 
