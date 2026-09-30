@@ -1518,6 +1518,21 @@ export async function deleteDeal(ctx: DealsCtx, actor: MemberActor, id: string, 
     await companies.recomputeDealCachesInTx(tx, coCtx(ctx), [deal.companyId]);
     return deal;
   });
+  // CRM C5.4-D r2 ▸ S2 (มติผู้คุมงาน): ลบดีลที่ "ปิดแล้ว" (ลบได้เฉพาะ LOST — WON ถูกปฏิเสธข้างบน) ⇒ หยุดลำดับการติดตามที่ผูกดีลนี้ทันที
+  //   ตามธง stopOnLost ด้วยทางเข้าเดียวกับตัวรับ event (`sequences.stopFor` · เหตุ "LOST") และกติกาเวลาเดียวกับ S1 (เฉพาะแถวที่ลงทะเบียน
+  //   ก่อน/พร้อมการปิด) — ไม่ผ่านประตู bridgesEnabled: เมื่อดีลหายไปแล้ว ด่าน ณ เวลาส่งและตัวรับ `crm.deal.lost` หาดีลไม่เจออีก
+  //   (เดิมแพ้ → ลบ ก่อนคิวถูกระบาย = อีเมลยังส่งถึงลูกค้าที่ปฏิเสธแล้ว) · ทำหลัง tx ของการลบ: ล้มก็ไม่ย้อนการลบ แต่ลงบันทึก WARN
+  //   🔴 มติผู้คุมงาน: ลบดีลที่ยัง "เปิด" และการเก็บดีล (archivedAt — ยังไม่มีทางเขียนในวันนี้) **ไม่หยุด** ลำดับ — ผู้ติดต่อยังเป็นลูกค้ามุ่งหวัง
+  //   ที่มีชีวิต ลำดับติดตามต่อได้ · ไม่มีโค้ดเหตุหยุดใหม่ ◂
+  if (out.kind === "WON" || out.kind === "LOST") {
+    const closedAt = out.closedAt ?? out.stageEnteredAt ?? null;
+    try {
+      const seq = await import("./sequences");
+      await seq.stopFor({ tenantId: ctx.tenantId, systemId: ctx.systemId }, out.contactId ?? "", out.kind, { dealId: out.id, enrolledAtOrBefore: closedAt });
+    } catch (e) {
+      await logOps("WARN", "crm.deals", "ลบดีลแล้ว แต่หยุดลำดับการติดตามที่ผูกดีลนี้ไม่สำเร็จ", { tenantId: ctx.tenantId, detail: `deal=${out.id} ${e instanceof Error ? e.name : "Error"}` }).catch(() => {});
+    }
+  }
   // รีวิว C1.5 S8: คำขออนุมัติส่วนลดที่ยังรออยู่ของดีลที่ถูกลบ = ยกเลิก (ไม่ให้ผู้อนุมัติกดผ่านของที่ไม่มีแล้ว) — ผ่าน facade สายอนุมัติ
   if (out.pendingApprovalRequestId) {
     await (await approvalFacade()).cancelRequest({ tenantId: ctx.tenantId }, out.pendingApprovalRequestId).catch(() => false);

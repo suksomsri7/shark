@@ -22,12 +22,29 @@ async function drainNow(): Promise<void> {
   }
 }
 
-/** ตั้งให้ระบายคิว outbox หลังตอบคำขอ (นอกบริบทคำขอ = ระบายทันทีแบบไม่รอ) — เรียกหลังงานเขียน commit แล้วเท่านั้น */
+// CRM C5.4-D r2 ▸ S3 (มติผู้คุมงาน): หนึ่งการระบายต่อคำขอ — action ที่รีเฟรชหลายหน้า (เช่นกิจกรรม = 5 ครั้ง) เคยตั้ง `after()` 5 งาน
+//   ⇒ ระบายทั้งคิว (ทุกร้าน ทุกโมดูล) ต่อกัน 5 รอบในแลมบ์ดาเดียว · ตอนนี้: ตั้งแล้ว "ยังไม่เริ่ม" = ไม่ตั้งซ้อน
+//   ทำไมถูกต้องแม้ข้ามคำขอในแลมบ์ดาเดียวกัน: ผู้เรียกปลุก **หลัง** งานเขียน commit แล้วเสมอ ⇒ ถ้ามีการระบายที่ตั้งไว้และยังไม่เริ่ม
+//   มันจะเริ่มทีหลังและเห็นแถวนี้แน่นอน · เริ่มไปแล้ว (ธงถูกล้างตอนเริ่ม) = ตั้งใหม่ของตัวเอง
+//   ธงที่ค้างเพราะงานที่ตั้งไว้ไม่เคยได้เริ่ม (คำขอถูกฆ่าก่อน) หมดอายุเองใน PENDING_STALE_MS (> เพดานเวลาของฟังก์ชัน 300 วิ) ◂
+const PENDING_STALE_MS = 6 * 60_000;
+const PENDING_KEY = Symbol.for("shark.crm.outbox-wake.pendingSince");
+const pendingHolder = globalThis as unknown as Record<symbol, number | undefined>;
+
+/** ตั้งให้ระบายคิว outbox หลังตอบคำขอ (นอกบริบทคำขอ = ระบายทันทีแบบไม่รอ) — เรียกหลังงานเขียน commit แล้วเท่านั้น · ซ้ำในคำขอเดียว = ครั้งเดียว */
 export function wakeOutbox(): void {
+  const since = pendingHolder[PENDING_KEY];
+  if (since !== undefined && Date.now() - since < PENDING_STALE_MS) return;
+  pendingHolder[PENDING_KEY] = Date.now();
+  // CRM C5.4-D r2 ▸ N9: งานของ `after()` **คืน promise ของการระบาย** — waitUntil ของแพลตฟอร์มผูกกับ promise นี้ (ไม่ใช่ void ลอย) ◂
+  const task = (): Promise<void> => {
+    pendingHolder[PENDING_KEY] = undefined;
+    return drainNow();
+  };
   try {
-    after(drainNow);
+    after(task);
   } catch {
-    void drainNow();
+    void task();
   }
 }
 

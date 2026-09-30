@@ -144,26 +144,50 @@ export async function latestCrmStates(db: Db, tenantId: string, contactId: strin
  * · ผู้ติดต่อที่ยังไม่เป็นสมาชิก ⇒ **เพิ่มแถวใหม่** ใน CrmContactConsent (append-only) + event `crm.contact.updated` ใน tx เดียวกัน
  * · ผู้ติดต่อที่ผูกสมาชิกแล้ว ⇒ เขียน MemberConsent ผ่าน facade สมาชิก (`setConsent`) และ **ไม่มี** แถวฝั่ง CRM
  * AUDIT-CLASS X3 (รีวิว C1.4 S3): ตัดสิน "CRM หรือสมาชิก" **หลังล็อกแถวผู้ติดต่อ** ใน tx — แปลงเป็นสมาชิกพร้อมกันไม่ทำให้เขียนผิดที่
+ * CRM C5.4-D r2 ▸ S4 (มติผู้คุมงาน): `opts.ifChanged` — ตรวจ "ค่าล่าสุดของช่องทางนี้เท่ากับที่จะเขียนอยู่แล้วไหม" **ภายใต้ล็อกแถวผู้ติดต่อ**
+ *   เท่ากัน = ไม่เขียนแถว/event/สมุดตรวจ แล้วคืน `unchanged: true` ⇒ ผู้เรียกที่อาจถูกยิงซ้ำพร้อมกัน (webhook แจ้งสแปมของ Resend)
+ *   ได้ผลครั้งเดียวจริงระดับฐาน · ผู้ติดต่อที่ผูกสมาชิก: อ่าน/เขียน MemberConsent ผ่าน facade สมาชิก **ใน tx เดียวกัน** (ลำดับล็อก
+ *   CrmContact → Customer แบบเดียวกับ `revokeOnMember`) และเขียนสมุดตรวจ `member.privacy.consent` เองหลัง tx (setConsent ใน tx ไม่เขียนให้)
+ *   ผู้เรียกเดิมทุกรายไม่ส่งธงนี้ = พฤติกรรมเดิมทุกประการ (การบันทึกของพนักงานคือเหตุการณ์ที่ต้องมีแถวเสมอ แม้ค่าเท่าเดิม) ◂
  */
 export async function set(
   ctx: ConsentsCtx,
   actor: MemberActor,
   contactId: string,
   input: { channel: string; granted: boolean; source?: string | null; note?: string | null },
-): Promise<{ channel: string; granted: boolean; via: "CRM" | "MEMBER" }> {
+  opts: { ifChanged?: boolean } = {},
+): Promise<{ channel: string; granted: boolean; via: "CRM" | "MEMBER"; unchanged?: true }> {
   const channel = consentChannel(input?.channel);
   const source = consentSource(input?.source);
   const granted = input?.granted === true;
   const note = str(input?.note)?.slice(0, 500) ?? null;
   const contact = await loadContact(ctx, actor, contactId);
   if (contact.mergedIntoId) throw fail("VALIDATION", "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — บันทึกความยินยอมที่ผู้ติดต่อที่เก็บไว้แทน");
+  const ifChanged = opts?.ifChanged === true;
+  // S4: ระบบสมาชิกหาไว้ก่อนเปิด tx (ไม่เปิด connection ที่สองระหว่างถือล็อก — กติกาเดียวกับ revokeOnMember)
+  const preMemberSys = ifChanged && contact.memberCustomerId ? await memberSystemOf(ctx.tenantId, contact.memberCustomerId) : null;
+  const mctxOf = (systemId: string) => ({ tenantId: ctx.tenantId, systemId, actorUserId: ctx.actorUserId ?? actor.userId ?? null });
 
-  const decided = await prisma.$transaction(async (tx) => {
+  const decided = await prisma.$transaction(async (tx): Promise<{ member: string | null; unchanged?: true; memberWritten?: string }> => {
     await tx.$queryRaw`SELECT "id" FROM "CrmContact" WHERE "id" = ${contact.id} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
     const pre = await tx.crmContact.findFirst({ where: { id: contact.id, tenantId: ctx.tenantId, systemId: contact.systemId }, select: { memberCustomerId: true, mergedIntoId: true } });
     if (!pre) throw fail("NOT_FOUND", NOT_FOUND_MSG);
     if (pre.mergedIntoId) throw fail("VALIDATION", "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — บันทึกความยินยอมที่ผู้ติดต่อที่เก็บไว้แทน");
+    if (pre.memberCustomerId && ifChanged) {
+      const sysId = pre.memberCustomerId === contact.memberCustomerId ? (preMemberSys?.systemId ?? null) : null;
+      if (!sysId) throw fail("CONFLICT", "ผู้ติดต่อนี้ผูกกับสมาชิกที่ไม่พบในระบบสมาชิกแล้ว — ตรวจการผูกสมาชิกก่อนบันทึกความยินยอม");
+      try {
+        const m = await memberFacade();
+        const cur = (await m.getConsents(mctxOf(sysId), pre.memberCustomerId, tx)).find((r) => r.channel === channel);
+        if (cur && cur.granted === granted) return { member: null, unchanged: true };
+        await m.setConsent(mctxOf(sysId), actor, pre.memberCustomerId, { channel, granted, source: memberSource(source) }, tx);
+      } catch (e) {
+        throw memberError(e);
+      }
+      return { member: null, memberWritten: pre.memberCustomerId };
+    }
     if (pre.memberCustomerId) return { member: pre.memberCustomerId };
+    if (ifChanged && (await latestCrmStates(tx, ctx.tenantId, contact.id)).get(channel)?.granted === granted) return { member: null, unchanged: true };
     await tx.crmContactConsent.create({
       data: {
         tenantId: ctx.tenantId,
@@ -189,6 +213,18 @@ export async function set(
     return { member: null as string | null };
   });
 
+  if (decided.unchanged) return { channel, granted, via: contact.memberCustomerId ? "MEMBER" : "CRM", unchanged: true };
+  if (decided.memberWritten) {
+    await writeAudit({
+      tenantId: ctx.tenantId,
+      actorId: ctx.actorUserId ?? null,
+      action: "member.privacy.consent",
+      targetType: "Customer",
+      targetId: decided.memberWritten,
+      after: { channel, granted, source: memberSource(source) },
+    });
+    return { channel, granted, via: "MEMBER" };
+  }
   if (decided.member) {
     const sys = await memberSystemOf(ctx.tenantId, decided.member);
     if (!sys) throw fail("CONFLICT", "ผู้ติดต่อนี้ผูกกับสมาชิกที่ไม่พบในระบบสมาชิกแล้ว — ตรวจการผูกสมาชิกก่อนบันทึกความยินยอม");

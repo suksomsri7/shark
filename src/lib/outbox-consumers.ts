@@ -1270,9 +1270,13 @@ export async function drainAll() {
  */
 export function scheduleDrain(): void {
   try {
-    after(() => {
-      void drainAll().catch(() => {});
-    });
+    // CRM C5.4-D r2 ▸ N9 (มติผู้คุมงาน · ตรวจกับ node_modules/next/dist/docs/…/after.md): งานของ `after()` ต้อง **คืน promise**
+    //   ของการระบาย — เดิม `void drainAll()` ข้างใน = งานจบทันที waitUntil ไม่ครอบการระบาย แลมบ์ดาจึงถูกแช่แข็งกลางงานได้
+    //   (บั๊กชนิดเดียวกับ 1 ก.ย. ข้างบน) · ตอนนี้คำขอของผู้เรียกทุกรายถือฟังก์ชันไว้จนระบายจบ (≤ ~20 วิ + รอบสุดท้าย — drainUntilQuiet) ◂
+    after(() => drainAll().then(
+      () => undefined,
+      () => undefined,
+    ));
   } catch {
     void drainAll().catch(() => {});
   }

@@ -207,12 +207,24 @@ try {
     const ROUTE = (await import("@/app/api/v1/crm/[...path]/route" as string)) as Any;
     const key = await AK.createApiKey({ tenantId: T }, `${TAG} v1`, { scopes: [...((SC.API_SCOPE_BUNDLES as Any[]).find((x) => x.id === "crm.operate")?.scopes ?? [])], systemId: v1.S, createdById: u.id });
     const marker = await P.outboxEvent.create({ data: { tenantId: T, systemId: v1.S, type: "crm.contact.updated", payload: { contactId: "none" }, idempotencyKey: `${TAG}-marker` } });
-    const res: Response = await ROUTE.POST(new Request("http://qc.invalid/api/v1/crm/contacts", { method: "POST", headers: { authorization: `Bearer ${key.rawKey}`, "content-type": "application/json", "idempotency-key": `${TAG}-v1`, "x-forwarded-for": "203.0.113.154" }, body: JSON.stringify({ name: `v1 ${TAG}` }) }), { params: Promise.resolve({ path: ["contacts"] }) });
+    const res: Response = await ROUTE.POST(new Request("http://qc.invalid/api/v1/crm/contacts", { method: "POST", headers: { authorization: `Bearer ${key.rawKey}`, "content-type": "application/json", "idempotency-key": `${TAG}-v1`, "x-forwarded-for": "203.0.113.154" }, body: JSON.stringify({ firstName: `v1 ${TAG}` }) }), { params: Promise.resolve({ path: ["contacts"] }) });
     await new Promise((r) => setTimeout(r, 3_000));
-    const mk = await P.outboxEvent.findUnique({ where: { id: marker.id }, select: { status: true } });
+    const mk = await P.outboxEvent.findUnique({ where: { id: marker.id }, select: { status: true, attempts: true } });
     await P.apiKey.delete({ where: { id: key.id } }).catch(() => undefined);
-    chk("P9", "uiVersion-1 system: REST write refused (≥ 400) and no drain woken (marker event still PENDING)",
-      res.status >= 400 && mk?.status === "PENDING", `status=${res.status} marker=${mk?.status}`);
+    // C5.4-D r2 (review N10) ▸ positive control: the same REST write on a v2 system DOES wake — its marker is claimed (DONE or attempts > 0) ◂
+    const key2 = await AK.createApiKey({ tenantId: T }, `${TAG} v2`, { scopes: [...((SC.API_SCOPE_BUNDLES as Any[]).find((x) => x.id === "crm.operate")?.scopes ?? [])], systemId: c.S, createdById: u.id });
+    const marker2 = await P.outboxEvent.create({ data: { tenantId: T, systemId: c.S, type: "crm.contact.updated", payload: { contactId: "none" }, idempotencyKey: `${TAG}-marker2` } });
+    const res2: Response = await ROUTE.POST(new Request("http://qc.invalid/api/v1/crm/contacts", { method: "POST", headers: { authorization: `Bearer ${key2.rawKey}`, "content-type": "application/json", "idempotency-key": `${TAG}-v2`, "x-forwarded-for": "203.0.113.154" }, body: JSON.stringify({ firstName: `v2 ${TAG}` }) }), { params: Promise.resolve({ path: ["contacts"] }) });
+    let mk2: Any = null;
+    for (let i = 0; i < 20; i += 1) {
+      mk2 = await P.outboxEvent.findUnique({ where: { id: marker2.id }, select: { status: true, attempts: true } });
+      if (mk2?.status !== "PENDING" || (mk2?.attempts ?? 0) > 0) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await P.apiKey.delete({ where: { id: key2.id } }).catch(() => undefined);
+    chk("P9", "uiVersion-1 system: REST write refused (≥ 400) and no drain woken (marker PENDING, attempts 0) · control: the v2 REST write wakes (its marker claimed)",
+      res.status >= 400 && mk?.status === "PENDING" && mk?.attempts === 0 && res2.status < 400 && (mk2?.status !== "PENDING" || (mk2?.attempts ?? 0) > 0),
+      `v1 status=${res.status} marker=${mk?.status}/${mk?.attempts} · v2 status=${res2.status} marker=${mk2?.status}/${mk2?.attempts}`);
   }
 } catch (e) {
   chk("FATAL", "probe ran to the end", false, e instanceof Error ? `${e.message}\n${e.stack}` : String(e));

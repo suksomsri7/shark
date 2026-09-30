@@ -6,6 +6,7 @@
 // 🔴 F6: ทุก action ตรวจสิทธิ์ด้วย assertCan ก่อนลงมือ (convention crm.contact.<verb> — OWNER/MANAGER ผ่าน · STAFF ตามสิทธิ์)
 // 🔴 actor สร้างด้วย `toMemberActor` เท่านั้น · ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้
 
+import { revalidatePath } from "next/cache";
 import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
@@ -244,7 +245,9 @@ export async function importContactsAction(
     revalidateAndWake(base(systemId));
     return { ok: true, jobId: r.jobId, ...r.result };
   } catch (e) {
-    revalidateAndWake(base(systemId));
+    // CRM C5.4-D r2 ▸ N4: นำเข้าล้มกลางทางอาจเขียนไปบางส่วนแล้ว ⇒ ปลุกคิว · แต่ระบบรุ่น 1 (CrmV2DisabledError) ไม่ได้เขียนอะไร = ไม่ปลุก ◂
+    if (e instanceof CrmV2DisabledError) revalidatePath(base(systemId));
+    else revalidateAndWake(base(systemId));
     return failOf(e, true);
   }
 }
