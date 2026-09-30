@@ -40,6 +40,13 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.19 ▶️ 30 Sep 2026 ~10:00 UTC — RESUMED (new Claude account) · owner: **1 lane first** · 44/53 = 83%
+- Lane (the only agent): **C5.4-C round 8b builder** (Opus · id ad432d1fb4fb1977d · worktree c54c at 61985bba · QC2 only) — ruling R8-1 option (a): batch from `GRP#…#<child>` key in restoreDocForCheque / voidPaymentInTx / voidVendorPaymentInTx / group void · drops createCheque `paymentIds` + backfill script · one authorised ORACLE-EDIT (probe-r8 G0) · checkpoints in c54c `ledger/wo-notes/crm-C5.4-C.md` "Round 8b" · logs `/tmp/c54c-logs/r9/` · ends with one local WIP commit (no push). If it dies: new agent "continue from the files" with the same ruling.
+- Controller machine work (no quota): unit **crm-c44-accept** (`scripts/pending/run-c44-accept-v1.sh`) = restore QC1 expected → build HEAD + server 3215 → --clean → `--journey all` → --clean · results `.qc-shots/crm/c44-accept/_summary.txt` + `journeys.log` · passed===total ⇒ accept C4.4 (45/53); reds ⇒ classify (known infra: US5 RESEND key · US9 tracker origin).
+- After builder hands back: controller reads the diff → QC1 cheque suites (wht-cheque / cheque-audit / ai-skill · pattern `scripts/pending/run-c54c-r7c-cheque.sh`) → money hunter r9 (read-only, the single lane) → patch incremental onto main → gate (`run-main-c.sh` list) → commit. ⛔ prod push = ask owner.
+- Heartbeat CronCreate `*/23` re-created (session-only). Old agent ids in §0.18 are dead (account switch). Leftover servers: 3216, 3217 (`c432-serve`) still up — harmless, stop when memory is needed.
+- Main tree working copy: `scripts/*-expected.json` + fixtures = QC1 seed ids (restored from `.qc-shots/qc1-expected/`) — do NOT commit them.
+
 ### 0.18 ⏸️ 28 Sep 2026 ~23:40 UTC — WEEKLY-LIMIT STOP (owner) · 44/53 = 83% · lanes 2 · no agents/units running
 - MAIN (session/crm) = C4.4-fix 3f934300 on top of C r5 4888a96e + F 986ec608 · all pushed · prod still 3677d983 (nothing new pushed to prod — ⛔ ask owner first; C money must NOT ship before r8 done).
 - C4.4: fix merged + gate green; card NOT accepted yet → rebuild QC1 3215 from HEAD (`scripts/pending/run-build-head3.sh` pattern — NEVER wrap acc-v2-serve in with-gate-lock) → run ALL journeys US1–US10 on QC1 (runner env WEBHOOK_ALLOW_PRIVATE=1) + --clean → passed===total ⇒ accept C4.4 (45/53).
