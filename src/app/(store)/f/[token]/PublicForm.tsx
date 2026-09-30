@@ -10,6 +10,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PublicFormActionResult } from "./actions-shared"; // CRM C3.9 ▸ ชนิดอยู่นอกไฟล์ "use server" ◂
+// CRM C4.4-fix3 r2 ▸ (review N6) กติกา "origin นี้อยู่ในโดเมนของร้านไหม" แบบเดียวกับ `/t/e` `/t/v` (ไฟล์บริสุทธิ์ของโมดูลฟอร์ม —
+//   ด่าน F2.3 ห้ามล้วงไฟล์ภายใน CRM · ข้อสอบ J3-r4 เทียบผลกับ `originAllowed` ของ CRM ทีละกรณี) ◂
+import { parentOriginAllowed } from "@/lib/modules/forms/handover-shared";
 
 export type PublicFormField = { key: string; label: string; type: string; required: boolean; options?: string[] };
 
@@ -41,9 +44,13 @@ function utmOf(): Record<string, string> | null {
 //      ไม่มีใน url · คุกกี้ · storage · DOM
 //   🔴 รับคำตอบเฉพาะจาก `window.parent` (หน้าที่ฝังเราอยู่จริง) · ข้อความขอ (`sd:form-ready`) ไม่มีความลับ จึงส่งแบบไม่ระบุ origin ได้
 //      (หน้านี้ไม่รู้ว่าร้านอยู่ origin ไหน) — ตัวตอบกลับฝั่งร้านตอบเฉพาะ iframe ของตัวเองที่มาจาก origin ของแอป
-//   🔴 เปิดเฉพาะเมื่อหน้าเซิร์ฟเวอร์บอก (`visitorHandover` = ระบบ CRM ปลายทางเป็น uiVersion 2 + เปิดติดตามเว็บ) และถูกฝังอยู่เท่านั้น ◂
+//   🔴 เปิดเฉพาะเมื่อหน้าเซิร์ฟเวอร์บอก (`visitorHandover` = โดเมนติดตามของระบบ CRM uiVersion 2 ที่เปิดติดตามเว็บ) และถูกฝังอยู่เท่านั้น
+//   r2 (review N6): รับตั๋วเฉพาะเมื่อ origin ของหน้าที่ฝังอยู่ในโดเมนเหล่านั้น (เว็บอื่นที่ฝังฟอร์มของร้านยัดตั๋วไม่ได้)
+//   r2 (review S2): ตอนกดส่ง ถ้ายังไม่เคยได้ตั๋วเลย ขออีกครั้งแล้วรอไม่เกิน 1.5 วิ (ผู้เข้าชมที่กดยอมรับหลังฟอร์มโหลดยังผูกได้) ·
+//   ตั๋วอายุ 10–14 นาทีขอใบใหม่ แต่ถ้าใบใหม่ไม่มาทันยังใช้ใบเดิม (ยังไม่หมดอายุ) ◂
 const HANDOVER_PINGS_MS = [0, 800, 2_000, 4_500, 9_000];
 const TICKET_REFRESH_AFTER_MS = 10 * 60_000; // ตั๋วอายุ 15 นาที — กรอกนานเกิน 10 นาทีขอใบใหม่ตอนกดส่ง
+const TICKET_FALLBACK_MAX_MS = 14 * 60_000; // ใบเดิมยังใช้ได้ (เผื่อนาฬิกา/เวลาเดินทาง 1 นาที)
 const TICKET_REFRESH_WAIT_MS = 1_500;
 const TICKET_RE = /^[A-Za-z0-9_-]{40,1024}$/;
 
@@ -62,7 +69,7 @@ export function PublicForm({
   startField,
   honeypotField,
   submitAction,
-  visitorHandover = false,
+  visitorHandover,
 }: {
   token: string;
   fields: PublicFormField[];
@@ -81,8 +88,8 @@ export function PublicForm({
       vt?: string | null;
     },
   ) => Promise<PublicFormActionResult>;
-  /** CRM C4.4-fix3 ▸ เปิดตัวรับตั๋วผู้เข้าชม (หน้าเซิร์ฟเวอร์เป็นคนตัดสิน) ◂ */
-  visitorHandover?: boolean;
+  /** CRM C4.4-fix3 ▸ โดเมนของเว็บร้านที่ส่งตั๋วผู้เข้าชมให้ฟอร์มนี้ได้ (หน้าเซิร์ฟเวอร์เป็นคนตัดสิน · ไม่มี/ว่าง = ปิด) ◂ */
+  visitorHandover?: string[];
 }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -90,12 +97,16 @@ export function PublicForm({
   const sending = useRef(false);
   const ticketRef = useRef<{ t: string; at: number } | null>(null);
   const ticketWaiter = useRef<(() => void) | null>(null);
+  const hostsKey = (visitorHandover ?? []).join(",");
+  const handoverOn = hostsKey !== "";
 
   useEffect(() => {
-    if (!visitorHandover || !isFramed()) return;
+    const hosts = hostsKey ? hostsKey.split(",") : [];
+    if (hosts.length === 0 || !isFramed()) return;
     const parent = window.parent;
     const onMessage = (e: MessageEvent) => {
       if (e.source !== window.parent) return; // ต้องมาจากหน้าที่ฝังเราอยู่จริงเท่านั้น
+      if (!parentOriginAllowed(e.origin, hosts)) return; // r2 (N6): และหน้านั้นต้องอยู่บนเว็บของร้านเจ้าของฟอร์ม (https · โดเมนติดตาม)
       const d = e.data as { type?: unknown; ticket?: unknown } | null;
       if (!d || typeof d !== "object" || d.type !== "sd:visitor-ticket") return;
       const t = typeof d.ticket === "string" ? d.ticket : "";
@@ -117,15 +128,11 @@ export function PublicForm({
       window.removeEventListener("message", onMessage);
       for (const id of timers) window.clearTimeout(id);
     };
-  }, [visitorHandover]);
+  }, [hostsKey]);
 
-  /** ตั๋วที่จะแนบกับการส่งครั้งนี้ (ไม่มี = ไม่แนบ) — ตั๋วเก่ากว่า 10 นาทีขอใบใหม่และรอไม่เกิน 1.5 วินาที (เฉพาะเมื่อเคยได้ตั๋วแล้ว) */
-  async function currentTicket(): Promise<string | null> {
-    if (!visitorHandover || !isFramed()) return null;
-    const cur = ticketRef.current;
-    if (!cur) return null;
-    if (Date.now() - cur.at < TICKET_REFRESH_AFTER_MS) return cur.t;
-    ticketRef.current = null;
+  /** ขอตั๋วใบใหม่หนึ่งครั้งแล้วรอไม่เกิน 1.5 วินาที — ได้ใบที่มาถึง **หลัง** เริ่มขอ หรือ null */
+  async function askForTicket(): Promise<string | null> {
+    const since = Date.now();
     await new Promise<void>((resolve) => {
       const timer = window.setTimeout(resolve, TICKET_REFRESH_WAIT_MS);
       ticketWaiter.current = () => {
@@ -141,7 +148,16 @@ export function PublicForm({
     });
     ticketWaiter.current = null;
     const fresh = ticketRef.current as { t: string; at: number } | null; // ถูกตั้งใหม่โดยตัวฟังข้อความระหว่างรอ
-    return fresh?.t ?? null;
+    return fresh && fresh.at >= since ? fresh.t : null;
+  }
+
+  /** ตั๋วที่จะแนบกับการส่งครั้งนี้ (ไม่มี = ไม่แนบ) */
+  async function currentTicket(): Promise<string | null> {
+    if (!handoverOn || !isFramed()) return null;
+    const cur = ticketRef.current;
+    if (!cur) return askForTicket(); // ยังไม่เคยได้เลย (เช่น เพิ่งกดยอมรับคุกกี้หลังฟอร์มโหลด) ⇒ ขออีกครั้ง
+    if (Date.now() - cur.at < TICKET_REFRESH_AFTER_MS) return cur.t;
+    return (await askForTicket()) ?? (Date.now() - cur.at < TICKET_FALLBACK_MAX_MS ? cur.t : null);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {

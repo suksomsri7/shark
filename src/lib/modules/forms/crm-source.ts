@@ -61,15 +61,16 @@ export async function submissionWebSessionFromTicket(form: { id: string; tenantI
 }
 
 /**
- * หน้า `/f/<token>` เปิดตัวรับตั๋วจากหน้าเว็บที่ฝังไหม — เฉพาะเมื่อระบบ CRM ปลายทางของฟอร์มเป็น uiVersion 2 และเปิดติดตามเว็บอยู่
- * 🔴 ร้าน uiVersion 1 / ปิดการติดตาม / ไม่มี CRM = false ⇒ หน้าฟอร์มทำงานเหมือนเดิมทุกอย่าง (ไม่ฟัง ไม่ส่งข้อความ ไม่แนบอะไรเพิ่ม)
+ * หน้า `/f/<token>` เปิดตัวรับตั๋วจากหน้าเว็บที่ฝังไหม และรับจากเว็บโดเมนไหน — เฉพาะเมื่อระบบ CRM ปลายทางของฟอร์มเป็น uiVersion 2 และ
+ *   เปิดติดตามเว็บอยู่ ⇒ คืนโดเมนติดตามของระบบนั้น (r2 · review N6: หน้าฟอร์มรับตั๋วเฉพาะจากหน้าที่ฝังซึ่งอยู่ในโดเมนเหล่านี้)
+ * 🔴 ร้าน uiVersion 1 / ปิดการติดตาม / ไม่มี CRM = `[]` ⇒ หน้าฟอร์มทำงานเหมือนเดิมทุกอย่าง (ไม่ฟัง ไม่ส่งข้อความ ไม่แนบอะไรเพิ่ม)
  */
-export async function formVisitorHandover(form: { id: string; tenantId: string }): Promise<boolean> {
-  if (!form?.id || !form?.tenantId) return false;
+export async function formVisitorHandover(form: { id: string; tenantId: string }): Promise<string[]> {
+  if (!form?.id || !form?.tenantId) return [];
   const bridges = await import("@/lib/platform/crm-bridges");
   const systemId = await bridges.resolveFormCrmSystem({ id: form.id, tenantId: form.tenantId }).catch(() => null);
-  if (!systemId) return false;
+  if (!systemId) return [];
   const crm = await import("@/lib/modules/crm");
-  return crm.tracking.visitorHandoverOn(form.tenantId, systemId).catch(() => false);
+  return crm.tracking.visitorHandoverHosts(form.tenantId, systemId).catch(() => [] as string[]);
 }
 // ◂ CRM C4.4-fix3

@@ -33,8 +33,9 @@ export default async function PublicFormPage({ params }: { params: Promise<{ tok
   const { form } = pub;
   const branding = await getPublicBranding(pub.tenantId);
   // CRM C4.4-fix3 ▸ รับตั๋วผู้เข้าชมจากเว็บที่ฝังฟอร์มไหม — เปิดเฉพาะฟอร์มที่ส่งเข้าระบบ CRM uiVersion 2 ที่เปิดติดตามเว็บอยู่
-  //   (ร้าน uiVersion 1 ได้ props ชุดเดิมทุกตัว ⇒ หน้าฟอร์มไม่ฟัง/ไม่ส่งข้อความ/ไม่แนบอะไรเพิ่ม) ◂
-  const handover = await formVisitorHandover({ id: form.id, tenantId: pub.tenantId }).catch(() => false);
+  //   (ร้าน uiVersion 1 ได้ props ชุดเดิมทุกตัว ⇒ หน้าฟอร์มไม่ฟัง/ไม่ส่งข้อความ/ไม่แนบอะไรเพิ่ม)
+  //   r2 (review N6): ค่าที่ส่งคือโดเมนติดตามของระบบนั้น — หน้าฟอร์มรับตั๋วเฉพาะจากหน้าที่ฝังซึ่งอยู่ในโดเมนเหล่านี้ ◂
+  const handover = await formVisitorHandover({ id: form.id, tenantId: pub.tenantId }).catch(() => [] as string[]);
   const accentStyle = publicThemeStyle(branding);
   return shell(
     <>
@@ -69,7 +70,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ tok
         startField={FORM_START_FIELD}
         honeypotField={FORM_HONEYPOT_FIELD}
         submitAction={submitFormAction}
-        {...(handover ? { visitorHandover: true } : {})}
+        {...(handover.length > 0 ? { visitorHandover: handover } : {})}
       />
 
       <p className="text-center text-[11px] text-[color:var(--color-muted)]">

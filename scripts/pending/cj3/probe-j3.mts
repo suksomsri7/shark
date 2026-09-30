@@ -214,15 +214,15 @@ try {
   type Sub = { r: Res; row: Any; contactId: string | null };
   /** framed submit through the real action: optional first-party cookie (same-host case), optional ticket (field `vt`), optional raw uuid tricks */
   const submit = async (form: Any, label: string, o: { cookie?: string; vt?: string; rawV?: string } = {}): Promise<Sub> => {
-    const before = (await subsOf(form.id)).length;
+    const name = `${label} ${TAG}-${nx()}`; // r2: the row is matched by its own answer (parallel submits must not read each other's row)
     const req = new Request(`${BASE}/f/${form.publicToken}${o.rawV ? `?v=${o.rawV}` : ""}`, { method: "POST", headers: hdrs({ cookie: o.cookie, ip: ipNew() }) });
     const r = await inScope(req, () => call(ACT.submitFormAction, form.publicToken, {
-      answers: { name: `${label} ${TAG}-${nx()}`, email: `${TAG}-${nx()}@qc-crm.example` }, hp: "", st: stTok(form.id),
+      answers: { name, email: `${TAG}-${nx()}@qc-crm.example` }, hp: "", st: stTok(form.id),
       ...(o.vt !== undefined ? { vt: o.vt } : {}),
       ...(o.rawV ? { visitorId: o.rawV, v: o.rawV } : {}),
     }));
     const rows = await subsOf(form.id);
-    const row = rows.length > before ? rows[rows.length - 1] : null;
+    const row = rows.find((x) => (x.answersJson as Any)?.name === name) ?? null;
     await pump([form.tenantId]);
     const after = row ? await P.formSubmission.findFirst({ where: { id: row.id } }) : null;
     return { r, row: after, contactId: after?.crmContactId ?? null };
@@ -516,8 +516,11 @@ try {
     try { script = await (await RS.GET(new Request(`${BASE}/t/s/${SITE[crmV]}.js`), { params: Promise.resolve({ script: `${SITE[crmV]}.js` }) })).text(); } catch { script = "ERR"; }
     const handV = await call(CSRC.formVisitorHandover, { id: fV.id, tenantId: tidV });
     const handA = await call(CSRC.formVisitorHandover, { id: fA.id, tenantId: tidA });
-    chk("J3-l", "uiVersion-1 system: /t/v ⇒ 204 empty · a sealed ticket for it binds nothing and nothing new is written (0 sessions/events) · its served script is still the NOOP tracker byte-for-byte · the /f page hand-over is OFF for a v1 form (ON for a v2 web-tracked form — positive control)",
-      rs.every(is204Empty) && is204Empty(rv) && sV.r.v?.ok === true && sV.row?.webSessionId === null && sessions === 0 && events === 0 && script === OLD_NOOP && handV.ok && handV.v === false && handA.ok && handA.v === true,
+    // r2 (N6): the page's hand-over decision now carries the allowed parent hosts (empty = off) instead of a boolean
+    const handOff = (x: Res) => x.ok && Array.isArray(x.v) && x.v.length === 0;
+    const handOn = (x: Res) => x.ok && Array.isArray(x.v) && x.v.includes(DOM_A);
+    chk("J3-l", "uiVersion-1 system: /t/v ⇒ 204 empty · a sealed ticket for it binds nothing and nothing new is written (0 sessions/events) · its served script is still the NOOP tracker byte-for-byte · the /f page hand-over is OFF for a v1 form ([] hosts) and ON for a v2 web-tracked form (its tracking domains — positive control)",
+      rs.every(is204Empty) && is204Empty(rv) && sV.r.v?.ok === true && sV.row?.webSessionId === null && sessions === 0 && events === 0 && script === OLD_NOOP && handOff(handV) && handOn(handA),
       "inert", `tv=${rv.status} ws=${sV.row?.webSessionId ?? "null"} rows=${sessions}/${events} noop=${script === OLD_NOOP} hand v1=${j(handV.v ?? handV.err)} v2=${j(handA.v ?? handA.err)}`);
   }
 
@@ -542,6 +545,132 @@ try {
     chk("J3-m2", "cookie + ticket together: the cookie path wins (today's behaviour) — the ticket is not consulted and not burned (it still binds its own visitor on a later submit)",
       t3.r.status === 200 && sBoth.row?.webSessionId === latestId(ss2) && unbound(ss3a) && ss2.every((x) => x.contactId === sBoth.contactId) && !!sLater.row?.webSessionId,
       "cookie wins · ticket intact", `ws=${sBoth.row?.webSessionId === latestId(ss2) ? "cookie" : sBoth.row?.webSessionId ?? "null"} v3=${ss3a.map((x) => (x.contactId ? "CT" : "-")).join(",")} later=${sLater.row?.webSessionId ? "bound" : "none"}`, "MAJOR");
+  }
+
+  // ═══ ROUND 2 (review a300d68d: S1 S2 N2 N6 N8 N12) ═══
+  out("── J3-r · review round 2 ──");
+  const idEvents = async (v: string) => (await P.crmWebEvent.findMany({ where: { kind: "IDENTIFY", session: { tenantId: tidA, visitorId: v } }, select: { sessionId: true, meta: true } })) as Any[];
+  const idle = async (tid: string, v: string) => { for (const x of await sessionsOf(tid, v)) await P.crmWebSession.update({ where: { id: x.id }, data: { lastSeenAt: new Date(Date.now() - 2 * 3_600_000) } }); };
+  const ctR = (await submit(fA, "ผู้ติดต่อรอบสอง")).contactId ?? "-";
+  {
+    // S1 — identified as C → revoke → re-accept → identified as C AGAIN ⇒ a new IDENTIFY on the new session · the next session inherits C
+    const V = vid();
+    await acceptAndBrowse(crmA, OR_A, V, ["/s1a"]);
+    await call(TR.identify, { tenantId: tidA, systemId: crmA }, { visitorId: V, contactId: ctR, by: "FORM" });
+    await consent(crmA, OR_A, V, "revoke");
+    await idle(tidA, V);
+    const before = new Set((await sessionsOf(tidA, V)).map((x) => x.id));
+    await acceptAndBrowse(crmA, OR_A, V, ["/s1b"]);
+    const s2 = (await sessionsOf(tidA, V)).find((x) => !before.has(x.id));
+    const again = await call(TR.identify, { tenantId: tidA, systemId: crmA }, { visitorId: V, contactId: ctR, by: "FORM" });
+    const evs = await idEvents(V);
+    await idle(tidA, V);
+    const before3 = new Set((await sessionsOf(tidA, V)).map((x) => x.id));
+    await postE(pageBody(crmA, V, `${OR_A}/s1c`), { origin: OR_A });
+    const s3 = (await sessionsOf(tidA, V)).find((x) => !before3.has(x.id));
+    chk("J3-r1", "S1: identified as C → revoke → re-accept → identified as C again ⇒ a NEW IDENTIFY is written on the post-consent session (the one on the revoked session no longer counts) and the next session after idle inherits C",
+      again.ok && Number(again.v?.bound) === 1 && !!s2 && evs.some((e) => e.sessionId === s2.id && e.meta?.contactId === ctR) && !!s3 && s3.contactId === ctR,
+      "new IDENTIFY · inherits", `identify=${j(again.v ?? again.err)} ids=${evs.map((e) => (s2 && e.sessionId === s2.id ? "S2" : "old")).join(",")} s3=${s3 ? (s3.contactId === ctR ? "CT" : s3.contactId ?? "null") : "none"}`);
+  }
+  {
+    // S2 (service level) — accept AFTER the form loaded: before consent /t/v says 204 (the form's early ping gets nothing), after accept it mints and the submit binds
+    const V = vid();
+    const early = await postV(ticketBody(crmA, V, OR_A), { origin: OR_A });
+    await consent(crmA, OR_A, V, "accept");
+    const m = await mint(crmA, V, OR_A);
+    const s = await submit(fA, "ยอมรับหลังฟอร์มโหลด", { vt: m.t });
+    const trk = String(TR.trackerScript?.({ siteKey: SITE[crmA], consentVersion: 1, consentText: "x" }, "https://app.example.com") ?? "");
+    const trackerPush = /function afterAccept\(/.test(trk) && /afterAccept\(consent\("accept"\)\)/.test(trk) && /waiting\.push\(/.test(trk) && /function consent\(what\)\{[^}]*return post\(/.test(trk);
+    const pf = read("src/app/(store)/f/[token]/PublicForm.tsx").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const formAsk = /async function currentTicket[\s\S]*?if \(!cur\) return askForTicket\(/.test(pf) && /TICKET_FALLBACK_MAX_MS/.test(pf) && /askForTicket\(\)\)\s*\?\?\s*\(/.test(pf);
+    chk("J3-r2", "S2: accept AFTER the form loaded — /t/v 204 before consent, 200 after, the submit binds (service) · the served tracker remembers form frames that asked before consent and serves them right after the accept POST lands · the form asks again at submit when no ticket ever arrived and keeps a still-valid previous ticket as fallback on refresh [static; browser proof = browser-j3]",
+      is204Empty(early) && m.r.status === 200 && !!s.row?.webSessionId && trackerPush && formAsk,
+      "binds + push + ask", `early=${early.status} mint=${m.r.status} ws=${s.row?.webSessionId ? "bound" : "null"} trackerPush=${trackerPush} formAsk=${formAsk}`);
+  }
+  {
+    // N2 — burn window = TTL + 2 min
+    let spec: Any = null;
+    await call(TR.consumeIdentifyTicket, `probe-${rand}-n2`, async (_k: string, sp: Any) => { spec = sp; return { ok: true }; });
+    const ttl = Number(TSH.IDENTIFY_TICKET_MAX_AGE_MS ?? 0);
+    chk("J3-r3", "N2: a burned jti stays burned for TTL + 2 min (clock skew between instances cannot reopen it)", spec?.limit === 1 && Number(spec?.windowMs) === ttl + 120_000, `${ttl + 120_000}`, j(spec), "MAJOR");
+  }
+  {
+    // N6 — the form accepts a ticket only from a parent whose host is one of the target system's tracking domains [static here · browser proof = browser-j3]
+    const pf = read("src/app/(store)/f/[token]/PublicForm.tsx").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const pg = read("src/app/(store)/f/[token]/page.tsx");
+    // the form cannot import CRM's originAllowed (fitness F2.3) ⇒ its own pure copy must agree with it case by case
+    const HS = (await import("@/lib/modules/forms/handover-shared" as string).catch(() => ({}))) as Any;
+    const hosts = ["shop.example.com", "b2b.example.org"];
+    const cases = ["https://shop.example.com", "https://shop.example.com:8443", "https://www.shop.example.com", "http://shop.example.com", "https://evil-shop.example.com",
+      "https://shop.example.com.attacker.test", "https://xshop.example.com", "https://b2b.example.org", "https://SHOP.EXAMPLE.COM", "null", "", "javascript:alert(1)", "https://example.com", "https://a.b2b.example.org"];
+    const parity = typeof HS.parentOriginAllowed === "function" && cases.every((o) => HS.parentOriginAllowed(o, hosts) === TSH.originAllowed(o, hosts)) &&
+      HS.parentOriginAllowed("https://shop.example.com", hosts) === true && HS.parentOriginAllowed("https://evil-shop.example.com", hosts) === false && HS.parentOriginAllowed("https://shop.example.com", []) === false;
+    const ok = /parentOriginAllowed\(\s*e\.origin/.test(pf) && /visitorHandover:\s*handover/.test(pg) && parity;
+    chk("J3-r4", "N6: the form checks event.origin against the hosts the page passes (the target system's tracking domains) before taking a ticket [static] · its rule (forms/handover-shared) agrees with CRM's originAllowed on 14 edge cases (https-only · suffix tricks · port · case · subdomain)", ok, "origin check + parity", `ok=${ok} parity=${parity}`, "MAJOR");
+  }
+  {
+    // N12 — two parallel redeems of ONE ticket: exactly one binds, the other WARN REPLAY
+    const V = vid();
+    await acceptAndBrowse(crmA, OR_A, V, ["/p1"]);
+    const m = await mint(crmA, V, OR_A);
+    const opsBefore = (await opsOf(tidA)).length;
+    const [x1, x2] = await Promise.all([submit(fA, "พร้อมกัน-1", { vt: m.t }), submit(fA, "พร้อมกัน-2", { vt: m.t })]);
+    const bound = [x1, x2].filter((x) => !!x.row?.webSessionId).length;
+    const nulls = [x1, x2].filter((x) => x.row && x.row.webSessionId === null).length;
+    const newOps = (await opsOf(tidA)).slice(opsBefore);
+    chk("J3-r5", "N12: two PARALLEL submits carrying one ticket ⇒ both stored, exactly one binds, the other gets a WARN REPLAY", m.r.status === 200 && x1.r.v?.ok === true && x2.r.v?.ok === true && bound === 1 && nulls === 1 && newOps.some((o) => /REPLAY/.test(o.message)),
+      "1 bound · 1 replay", `bound=${bound} nulls=${nulls} ops=${newOps.map((o) => cut(o.message, 60)).join(" | ")}`);
+  }
+  {
+    // N12 — opt-out between mint and redeem
+    const V = vid();
+    await acceptAndBrowse(crmA, OR_A, V, ["/o1"]);
+    const c1 = (await submit(fA, "จะขอหยุดติดตาม", { cookie: `sd_vid=${V}` })).contactId;
+    const m = await mint(crmA, V, OR_A);
+    if (c1) await P.crmContact.update({ where: { id: c1 }, data: { trackingOptOut: true } });
+    const opsBefore = (await opsOf(tidA)).length;
+    const s = await submit(fA, "หลังขอหยุดติดตาม", { vt: m.t });
+    const newOps = (await opsOf(tidA)).slice(opsBefore);
+    chk("J3-r6", "N12: the visitor's contact opts out of tracking AFTER the ticket was minted ⇒ the submit is stored but binds nothing (WARN OPT_OUT)", !!c1 && m.r.status === 200 && s.r.v?.ok === true && s.row?.webSessionId === null && newOps.some((o) => /OPT_OUT/.test(o.message)),
+      "null · OPT_OUT", `c1=${!!c1} mint=${m.r.status} ws=${s.row?.webSessionId ?? "null"} ops=${newOps.map((o) => cut(o.message, 50)).join(" | ")}`);
+  }
+  {
+    // N12 — revoke between mint and redeem
+    const V = vid();
+    await acceptAndBrowse(crmA, OR_A, V, ["/v1"]);
+    const m = await mint(crmA, V, OR_A);
+    await consent(crmA, OR_A, V, "revoke");
+    const s = await submit(fA, "ถอนหลังได้ตั๋ว", { vt: m.t });
+    const ss = await sessionsOf(tidA, V);
+    chk("J3-r7", "N12: revoke AFTER the ticket was minted ⇒ stored, nothing bound", m.r.status === 200 && s.r.v?.ok === true && s.row?.webSessionId === null && unbound(ss), "null", `mint=${m.r.status} ws=${s.row?.webSessionId ?? "null"}`);
+  }
+  {
+    // N12 — consent version bumped between mint and redeem (crmA3)
+    const V = vid();
+    await acceptAndBrowse(crmA3, OR_A3, V, ["/b1"]);
+    const m = await mint(crmA3, V, OR_A3);
+    const bump = await call(TR.saveWebSettings, ctxOf[crmA3], owner, { bumpConsentVersion: true });
+    CV[crmA3] = Number(bump.v?.consentVersion ?? CV[crmA3]);
+    const s = await submit(fA3, "เวอร์ชันเปลี่ยนหลังได้ตั๋ว", { vt: m.t });
+    chk("J3-r8", "N12: the shop bumps its consent version AFTER the ticket was minted ⇒ stored, nothing bound (STALE)", m.r.status === 200 && bump.ok && s.r.v?.ok === true && s.row?.webSessionId === null, "null", `mint=${m.r.status} cv=${CV[crmA3]} ws=${s.row?.webSessionId ?? "null"}`);
+  }
+  {
+    // N8 — re-accept within 30 min after a version bump opens a NEW session (the pre-bump row and its page views stay out)
+    const V = vid();
+    await acceptAndBrowse(crmA3, OR_A3, V, ["/n8a", "/n8b"]);
+    const pre = new Set((await sessionsOf(tidA, V)).map((x) => x.id));
+    const bump = await call(TR.saveWebSettings, ctxOf[crmA3], owner, { bumpConsentVersion: true });
+    const oldCv = CV[crmA3];
+    CV[crmA3] = Number(bump.v?.consentVersion ?? CV[crmA3]);
+    await acceptAndBrowse(crmA3, OR_A3, V, ["/n8c"]);
+    const m = await mint(crmA3, V, OR_A3);
+    const s = await submit(fA3, "ยอมรับเวอร์ชันใหม่", { vt: m.t });
+    const ss = await sessionsOf(tidA, V);
+    const old = ss.filter((x) => pre.has(x.id));
+    const fresh = ss.filter((x) => !pre.has(x.id));
+    chk("J3-r9", "N8: re-accepting within 30 min after the shop bumped its consent version opens a NEW session — the pre-bump row keeps its old version and is never bound (pre-bump anonymous history stays out) · the new session binds (positive control)",
+      bump.ok && old.length >= 1 && old.every((x) => x.consentVersion === oldCv && x.contactId === null) && fresh.length === 1 && fresh[0].contactId === s.contactId && !!s.contactId,
+      "old unbound · new bound", `old=${old.map((x) => `${x.consentVersion}:${x.pageViews}:${x.contactId ? "CT" : "-"}`).join(",")} new=${fresh.map((x) => `${x.consentVersion}:${x.pageViews}:${x.contactId ? "CT" : "-"}`).join(",")}`);
   }
 
   // ═══ J3-s — static: served script, /f page, NOOP ═══

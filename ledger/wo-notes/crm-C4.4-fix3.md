@@ -79,3 +79,58 @@ third-party-cookie approaches · custom-domain forms · `IDENTIFY_BY` "PORTAL"/"
   qc-crm-c2.6-web **35/35** (browser half of shark.js on the new script) · 3219 server stopped (port free, units inactive). 2 builds used.
 - Not verified here: real production topology (https app origin ≠ QC http), Safari/Firefox postMessage behaviour, forms whose iframe
   origin differs from the tracker origin (APP_URL vs publicAppOrigin in prod) — hand-over silently off in that case (form still submits).
+
+## Round 2 (review `crm-C4.4-fix3-review.md` on a300d68d — MERGEABLE AFTER SHOULD-FIX S1, S2)
+
+Plan (controller rulings): S1 · S2 (a+b+c) · N2 · N6 · N8 decision · N12 probe cases · residual-risk list below.
+- RED (probe extended to 32 checks, run on the unchanged a300d68d src · /tmp/cj3-logs/RED-r2-run12b.log): **25/32** — red: J3-l (hand-over
+  contract now = allowed hosts) · r1 S1 · r2 S2 · r3 N2 · r4 N6 · r6 opt-out after mint (redeem did not re-check it) · r9 N8.
+  Already green on a300d68d (kept as guards): r5 parallel double redeem (exactly one binds, WARN REPLAY) · r7 revoke after mint · r8 bump after mint.
+  (First RED run12 showed r5 bound=2 — a PROBE bug: in parallel both calls read "the last row"; the helper now matches its row by answer.)
+- Changes:
+  - S1 `identify()` IDENTIFY dedupe query also requires `s."consentVersion" IS NOT NULL` (same rule as `lastIdentifiedContact`).
+  - S2 (b) tracker: form frames that ask before consent are remembered (`waiting`, ≤10, own iframes only) and served right after the accept
+    POST lands (`afterAccept(consent("accept"))`; `post`/`consent` now return the fetch promise). (a) form: at submit, no ticket ever ⇒ ask once,
+    wait ≤ 1.5 s. (c) a 10–14 min old ticket is refreshed but kept as fallback if the new one does not arrive in time.
+  - N2 burn window = TTL + 2 min.
+  - N6 `/f` page gets the target system's tracking domains (`visitorHandoverHosts`, [] = off) as the prop; the form takes `sd:visitor-ticket` only
+    when `originAllowed(e.origin, hosts)` (https + listed host). Minor: the form page's RSC payload now contains the shop's tracking domains
+    (its own website, where the form is embedded anyway).
+  - N8 DECISION: re-accept within 30 min of an OLD-version row upgraded that row with its pre-bump page views ⇒ INCONSISTENT with "pre-bump
+    anonymous history is never bound" ⇒ FIXED: `recordConsent` reuses a fresh row only if it already holds the CURRENT version and `openSession`
+    reuses only a row holding the same version ⇒ accepting a new version always opens a new session (probe J3-r9). Identity inheritance from a
+    stale-version (non-revoked) IDENTIFY is unchanged: it binds only NEW post-consent sessions, not pre-bump history.
+  - Redeem re-checks opt-out of the session's contact (WARN OPT_OUT) — the reviewer noted it was only checked at mint.
+- GREEN: probe **32/32** (/tmp/cj3-logs/GREEN-r2-run14.log) · typecheck rc=0.
+
+## Residual risk (owner-visible)
+(copied from the reviewer's list — N3 N4 N8 N9 N10 N14 — and updated for round 2)
+1. Anyone who gets hold of a visitor's browser id (script/XSS on the shop's own website, or the device) can attach that visitor's browsing
+   history to a fake lead. They cannot read it. Already possible before this card via the form's cookie path (a non-browser client can send
+   `Cookie: sd_vid=<id>`; the rule "never take a visitor id from the caller" does not hold against non-browser callers — pre-existing, N3).
+2. Someone holding a visitor id learns one fact from `/t/v`: whether that visitor currently accepts cookies and has not asked to stop tracking (N4).
+3. "Use the ticket only once" relies on the database; if the DB errors at that exact moment the limiter fails open and a ticket could be used
+   twice (same as e-mail click tickets).
+4. A hostile website that embeds a shop's form could plant fake page views on whoever fills it in there — closed for the ticket channel in
+   round 2 (N6: the form only accepts tickets from the shop's own tracking domains); still possible by other means (forged cookie, N3).
+5. Pages a customer viewed before withdrawing consent, if already linked to that customer, stay on the customer's history until retention or
+   erase — this card only stops NEW linking (N9, pre-existing).
+6. After a shop publishes a new cookie text, earlier anonymous browsing is never linked to a lead any more (stricter than before) — and since
+   round 2 (N8) re-accepting the new text always starts a new session.
+7. The public form link reveals that the shop uses CRM v2 web tracking and, since round 2, the shop's tracking domains (the tracking script link
+   already reveals v2) (N10).
+8. If the form is served from a different address than the tracking script (custom domain, misconfigured APP_URL), linking quietly does not
+   happen; the form still works (N14).
+9. (round 2) A framed v2 form whose visitor never accepts cookies waits up to 1.5 s at submit for a ticket that will not come (bounded, S2a).
+- r2 verification (fresh build of r2 code on :3219 · run16/run17): journey US9 **8/8** (US9-3 ✅ webSessionId set · US9-4 ✅) · `--clean` rc=0 ·
+  **browser-j3 4/4** (`scripts/pending/cj3/browser-j3.mts` · log + screenshots `.qc-shots/crm/cj3/browser/`): B-A accept > 9 s after the form
+  loaded ⇒ bound (the only /t/v fired accept+217 ms = the tracker's afterAccept push) · B-N6 real ticket planted by a non-listed https parent ⇒
+  nothing bound · B-N6c same page on the shop's listed host ⇒ bound (positive control) · qc-crm-c2.6-web **35/35** · server stopped.
+- r2 suites (run18 · QC3): c2.6 **87/87** · c2.5 **105/105** · c1.8 **81/81** · c3.9 **49/49** · qc-form **10/10** · forms-notify rc=0 ·
+  c1.11 **66/66** with `CRM_V2_SWITCH=all` (confirms round 1's 9 reds were only the missing env switch) · typecheck rc=0 (full tree, run15).
+- r2 F2.3: the first r2 commit attempt was refused by pre-commit fitness F2.3 — `PublicForm.tsx` imported `@/lib/modules/crm/tracking-shared`
+  (only the facade / `crm/ui` may be imported from outside CRM; no exceptions to be added; the facade cannot go into a client bundle) ⇒ the
+  form uses its own pure `src/lib/modules/forms/handover-shared.ts#parentOriginAllowed`, and probe J3-r4 pins it to CRM's `originAllowed` on
+  14 edge cases. Re-verified on the code as committed: fitness 33/33 (`pnpm fitness`) · probe **32/32** · c2.6 **87/87** · typecheck rc=0 ·
+  round-2 build #2 on :3219 (run19/run21): US9 **8/8** · browser-j3 **4/4** (B-A /t/v at accept+243 ms) · c2.6-web **35/35** · clean rc=0 ·
+  server stopped. Two builds used in round 2.

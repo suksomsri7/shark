@@ -217,7 +217,9 @@ export function readIdentifyTicket(ticket: unknown, expect: { tenantId: string; 
 export async function consumeIdentifyTicket(jti: string, limiter?: (key: string, spec: { limit: number; windowMs: number }) => Promise<{ ok: boolean }>): Promise<boolean> {
   const key = `crm:tkt:${createHash("sha256").update(String(jti ?? "")).digest("hex").slice(0, 40)}`;
   const run = limiter ?? ((k: string, spec: { limit: number; windowMs: number }) => checkRateLimitDb(k, spec));
-  const r = await run(key, { limit: 1, windowMs: IDENTIFY_TICKET_MAX_AGE_MS });
+  // CRM C4.4-fix3 r2 ▸ (review N2) หน้าต่างการเผา = อายุตั๋ว + 2 นาที — ตัวอ่านรับตั๋วได้ถึง "ตอนนี้ + อายุ + 60 วิ" และเครื่องแต่ละตัว
+  //   นาฬิกาเหลื่อมกันได้ ⇒ ถ้าหน้าต่างเท่าอายุพอดี ตั๋วที่ถูกเผาช่วงต้นอาจถูกใช้ซ้ำได้ในวินาทีท้าย ๆ ◂
+  const r = await run(key, { limit: 1, windowMs: IDENTIFY_TICKET_MAX_AGE_MS + 120_000 });
   return r.ok;
 }
 
@@ -765,8 +767,9 @@ async function openSession(
   return prisma.$transaction(async (tx) => {
     await lockKey(tx, `crm:web-visitor:${site.systemId}:${visitorId}`);
     const again = await tx.crmWebSession.findFirst({ where: { systemId: site.systemId, visitorId }, orderBy: [{ lastSeenAt: "desc" }, { id: "desc" }], select: SESSION_COLS });
-    // CRM C4.4-fix3 ▸ (finding c) แถวที่ถูกถอน/ปฏิเสธ (consentVersion null) ไม่ถูกหยิบกลับมาใช้แม้ยังไม่พ้นเวลาว่าง ⇒ เปิดรอบใหม่ ◂
-    if (again && again.consentVersion !== null && input.now.getTime() - new Date(again.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS) return again;
+    // CRM C4.4-fix3 ▸ (finding c) แถวที่ถูกถอน/ปฏิเสธ (consentVersion null) ไม่ถูกหยิบกลับมาใช้แม้ยังไม่พ้นเวลาว่าง ⇒ เปิดรอบใหม่
+    //   r2 (review N8): แถวที่ถือ **เวอร์ชันอื่น** (ก่อนร้านออกข้อความใหม่) ก็เช่นกัน — ต้องเป็นเวอร์ชันเดียวกับที่รอบนี้ยินยอม ◂
+    if (again && again.consentVersion !== null && again.consentVersion === input.consentVersion && input.now.getTime() - new Date(again.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS) return again;
     const utm = utmOf(input.url);
     return tx.crmWebSession.create({
       data: {
@@ -1009,7 +1012,9 @@ export async function recordConsent(body: unknown, meta: CollectMeta, deps: Coll
     const existing = await latestSession(site.systemId, visitorId);
     // CRM C4.4-fix3 ▸ (finding c) ยอมรับใหม่หลังถอน/ปฏิเสธ = การเข้าชมรอบใหม่เสมอ — แถวที่ถูกถอนเก็บหน้าที่ดูก่อนการถอนไว้
     //   ถ้า "ต่ออายุ" แถวนั้นกลับมา หน้าเหล่านั้นจะกลายเป็นข้อมูลที่ยินยอมอีกครั้งทั้งที่เจ้าของถอนไปแล้ว (และถูกผูกเข้าลูกค้าได้) ◂
-    const fresh = existing && existing.consentVersion !== null && now.getTime() - new Date(existing.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS ? existing : null;
+    //   r2 (review N8) ▸ เช่นเดียวกัน: แถวที่ยินยอมไว้กับข้อความ **เวอร์ชันเก่า** ไม่ถูก "อัปเกรด" (หน้าที่ดูก่อนร้านออกเวอร์ชันใหม่ต้องไม่กลายเป็น
+    //   ข้อมูลที่ยินยอมตามข้อความใหม่ — มติ "ประวัติแบบไม่ระบุตัวก่อนเปลี่ยนเวอร์ชันไม่ถูกผูก") ⇒ ยอมรับเวอร์ชันใหม่ = รอบใหม่เสมอ ◂
+    const fresh = existing && existing.consentVersion === site.consentVersion && now.getTime() - new Date(existing.lastSeenAt).getTime() <= WEB_SESSION_IDLE_MS ? existing : null;
     const utm = utmOf(url);
     const session =
       fresh ??
@@ -1099,6 +1104,9 @@ export async function redeemVisitorTicket(
     if (!(await consumeIdentifyTicket(p.j, opts?.limiter))) return refuse("REPLAY");
     const sessionId = await latestConsentedSessionId(p.t, p.s, p.v);
     if (!sessionId) return refuse("NO_CONSENT");
+    // CRM C4.4-fix3 r2 ▸ (review N8/N12) ผู้ติดต่อที่ผูกกับการเข้าชมนี้ขอหยุดติดตามหลังออกตั๋ว ⇒ ไม่ผูก (ตรวจซ้ำตอนแลก ไม่ใช่แค่ตอนออก) ◂
+    const row = await prisma.crmWebSession.findFirst({ where: { id: sessionId, tenantId: p.t, systemId: p.s }, select: SESSION_COLS });
+    if (!row || (await sessionOptedOut(row))) return refuse("OPT_OUT");
     return sessionId;
   } catch (e) {
     await warn(e instanceof Error ? e.name : "unknown");
@@ -1107,15 +1115,18 @@ export async function redeemVisitorTicket(
 }
 
 /**
- * หน้า `/f/<token>` ควรเปิด "รับตั๋วจากหน้าเว็บที่ฝัง" ไหม — ระบบ CRM ปลายทางของฟอร์มต้องเป็น uiVersion 2 + เปิดติดตามเว็บ + มี siteKey
- *   และโดเมน ⇒ ร้าน uiVersion 1 (ทุกร้านบน prod) / ปิดการติดตาม = หน้าฟอร์มไม่ติดตั้งตัวฟังและไม่ส่งข้อความใด ๆ (พฤติกรรมเดิมทุกอย่าง)
+ * หน้า `/f/<token>` ควรเปิด "รับตั๋วจากหน้าเว็บที่ฝัง" ไหม และรับจากหน้าเว็บโดเมนไหนได้ — ระบบ CRM ปลายทางของฟอร์มต้องเป็น uiVersion 2 +
+ *   เปิดติดตามเว็บ + มี siteKey และโดเมน ⇒ คืน **โดเมนติดตามของระบบนั้น** · ไม่เข้าเงื่อนไข = `[]` (ร้าน uiVersion 1 ทุกร้านบน prod /
+ *   ปิดการติดตาม = หน้าฟอร์มไม่ติดตั้งตัวฟังและไม่ส่งข้อความใด ๆ — พฤติกรรมเดิมทุกอย่าง)
+ * CRM C4.4-fix3 r2 ▸ (review N6) หน้าฟอร์มรับตั๋วเฉพาะเมื่อ origin ของหน้าที่ฝังอยู่ในโดเมนชุดนี้ (กติกาเดียวกับ `originAllowed`) ⇒ เว็บอื่น
+ *   ที่ฝังฟอร์มของร้านไว้ "ยัดตั๋ว" ของผู้เข้าชมที่ตัวเองสร้างให้ผู้กรอกไม่ได้ · โดเมนชุดนี้คือเว็บของร้านเอง (ที่ฝังฟอร์มอยู่แล้ว) ◂
  */
-export async function visitorHandoverOn(tenantId: string, systemId: string): Promise<boolean> {
-  if (!str(tenantId) || !str(systemId)) return false;
+export async function visitorHandoverHosts(tenantId: string, systemId: string): Promise<string[]> {
+  if (!str(tenantId) || !str(systemId)) return [];
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "CRM" }, select: { settings: true } });
-  if (!sys) return false;
+  if (!sys) return [];
   const web = webSettingsOf(sys.settings);
-  return web.enabled && !!web.siteKey && web.domains.length > 0 && parseCrmSettings(sys.settings).uiVersion === 2;
+  return web.enabled && !!web.siteKey && web.domains.length > 0 && parseCrmSettings(sys.settings).uiVersion === 2 ? [...web.domains] : [];
 }
 // ◂ CRM C4.4-fix3
 
@@ -1169,8 +1180,10 @@ export async function identify(
     // เจตนา "ผู้เข้าชมรายนี้คือผู้ติดต่อคนนี้" — รอบใหม่ของผู้เข้าชมสืบทอดจากที่นี่ (ไม่มีคอลัมน์เก็บ · เก็บเป็นเหตุการณ์)
     const rows = await tx.$queryRaw<{ contactId: string | null }[]>`
       SELECT e."meta"->>'contactId' AS "contactId" FROM "CrmWebEvent" e JOIN "CrmWebSession" s ON s."id" = e."sessionId"
-       WHERE s."systemId" = ${ctx.systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY'
+       WHERE s."systemId" = ${ctx.systemId} AND s."visitorId" = ${visitorId} AND e."kind" = 'IDENTIFY' AND s."consentVersion" IS NOT NULL
        ORDER BY e."at" DESC, e."id" DESC LIMIT 1`;
+    // CRM C4.4-fix3 r2 ▸ (review S1) กติกาเดียวกับ `lastIdentifiedContact`: IDENTIFY บนแถวที่ถูกถอนไม่นับ — ไม่งั้นระบุเป็นคนเดิมหลัง
+    //   ถอน→ยอมรับใหม่ จะ "เห็นว่ามีแล้ว" แต่ตัวสืบทอดมองไม่เห็น ⇒ รอบถัดไปไม่สืบทอดตัวตน ◂
     if (rows[0]?.contactId !== contactId) {
       await tx.crmWebEvent.create({ data: { tenantId: ctx.tenantId, sessionId: all[0].id, kind: "IDENTIFY", meta: { contactId, by } as Json, at: now } });
     }
@@ -1633,7 +1646,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   }
   function post(url,data){
     /* keepalive = คำขอไปต่อได้แม้ผู้ใช้กดไปหน้าอื่นทันที · text/plain = คำขอธรรมดา (ไม่ต้อง preflight) */
-    try{fetch(url,{method:"POST",body:JSON.stringify(data),headers:{"content-type":"text/plain;charset=UTF-8"},keepalive:true,mode:"cors",credentials:"omit"}).catch(function(){});}catch(e){}
+    try{return fetch(url,{method:"POST",body:JSON.stringify(data),headers:{"content-type":"text/plain;charset=UTF-8"},keepalive:true,mode:"cors",credentials:"omit"}).catch(function(){});}catch(e){return null;}
   }
   function decision(){var c=ck(CC);if(!c)return null;var m=/^([adr])(\\d+)$/.exec(c);if(!m||Number(m[2])!==CV)return null;return m[1];}
   function vid(){var v=ck(VC);if(!v){v=uuid();put(VC,v);}return v;}
@@ -1659,7 +1672,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   }
   function consent(what){
     var v=what==="accept"?vid():(ck(VC)||uuid());
-    post(EC,{k:KEY,v:v,cv:CV,d:what,u:clean(location.href)});
+    return post(EC,{k:KEY,v:v,cv:CV,d:what,u:clean(location.href)});
   }
   var banner=null;
   function closeBanner(){if(banner&&banner.parentNode)banner.parentNode.removeChild(banner);banner=null;}
@@ -1685,7 +1698,7 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
     no.style.border="1px solid #6b7280";
     var yes=button("ยอมรับ","accept","#22c55e","#062a13");
     no.onclick=function(){put(CC,"d"+CV);closeBanner();consent("decline");};
-    yes.onclick=function(){put(CC,"a"+CV);vid();closeBanner();consent("accept");};
+    yes.onclick=function(){put(CC,"a"+CV);vid();closeBanner();afterAccept(consent("accept"));};
     box.appendChild(no);box.appendChild(yes);
     banner.appendChild(text);banner.appendChild(box);
     D.body.appendChild(banner);
@@ -1703,22 +1716,37 @@ export function trackerScript(site: { siteKey: string; consentVersion: number; c
   /* CRM C4.4-fix3: ฟอร์มของ SHARK ที่ร้านฝังด้วย iframe (โหลดจาก origin ของแอป) ส่ง {type:"sd:form-ready"} มาขอตั๋วผู้เข้าชม
      ตอบเฉพาะเมื่อ (1) ข้อความมาจาก origin ของแอปพอดี (2) ผู้ส่งเป็น iframe ของหน้านี้จริง (3) ผู้เข้าชมยอมรับคุกกี้แล้ว
      ตั๋วถูกส่งกลับไปที่ iframe ตัวนั้นตัวเดียว ด้วย targetOrigin = origin ของแอป (ไม่ใช่ดาว) · ไม่มีตั๋วใน url/คุกกี้/storage
-     เซิร์ฟเวอร์ตรวจความยินยอมอีกชั้น (ปฏิเสธ/ถอน/เวอร์ชันเก่า = ไม่มีตั๋ว) · ห้ามใช้เครื่องหมาย backtick ในคอมเมนต์นี้ */
+     เซิร์ฟเวอร์ตรวจความยินยอมอีกชั้น (ปฏิเสธ/ถอน/เวอร์ชันเก่า = ไม่มีตั๋ว) · ห้ามใช้เครื่องหมาย backtick ในคอมเมนต์นี้
+     r2 (review S2): ฟอร์มที่ขอมาก่อนผู้เข้าชมกดยอมรับ ถูกจดไว้ (waiting) แล้วได้ตั๋วทันทีหลังคำขอยอมรับไปถึงเซิร์ฟเวอร์ (afterAccept)
+     กรณีกดยอมรับหลังฟอร์มโหลดแล้ว หรือกดยอมรับบนหน้าเดียวกับฟอร์ม จึงยังผูกได้ */
+  var waiting=[];
+  function ownFrame(src){
+    var fr=D.getElementsByTagName("iframe");
+    for(var i=0;i<fr.length;i++){if(fr[i].contentWindow===src)return true;}
+    return false;
+  }
+  function serve(src){
+    var v=ck(VC);
+    if(!v||!accepted())return;
+    fetch(EV,{credentials:"omit",mode:"cors",cache:"no-store",method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({k:KEY,v:v,cv:CV,u:clean(location.href)})})
+      .then(function(r){return r&&r.status===200?r.json():null;})
+      .then(function(j){if(j&&typeof j.t==="string"&&j.t)src.postMessage({type:"sd:visitor-ticket",ticket:j.t},AO);})
+      .catch(function(){});
+  }
+  function afterAccept(p){
+    var list=waiting;waiting=[];
+    var go=function(){for(var i=0;i<list.length;i++){try{if(ownFrame(list[i]))serve(list[i]);}catch(x){}}};
+    if(p&&typeof p.then==="function")p.then(go,go);else go();
+  }
   function onMessage(e){
     try{
       if(!e||e.origin!==AO)return;
       var m=e.data;
       if(!m||typeof m!=="object"||m.type!=="sd:form-ready")return;
-      var src=e.source,fr=D.getElementsByTagName("iframe"),own=false;
-      if(!src)return;
-      for(var i=0;i<fr.length;i++){if(fr[i].contentWindow===src){own=true;break;}}
-      if(!own||!accepted())return;
-      var v=ck(VC);
-      if(!v)return;
-      fetch(EV,{credentials:"omit",mode:"cors",cache:"no-store",method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({k:KEY,v:v,cv:CV,u:clean(location.href)})})
-        .then(function(r){return r&&r.status===200?r.json():null;})
-        .then(function(j){if(j&&typeof j.t==="string"&&j.t)src.postMessage({type:"sd:visitor-ticket",ticket:j.t},AO);})
-        .catch(function(){});
+      var src=e.source;
+      if(!src||!ownFrame(src))return;
+      if(!accepted()){if(waiting.indexOf(src)<0&&waiting.length<10)waiting.push(src);return;}
+      serve(src);
     }catch(x){}
   }
   if(W.addEventListener)W.addEventListener("message",onMessage);
