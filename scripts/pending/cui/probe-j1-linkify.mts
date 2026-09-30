@@ -13,7 +13,7 @@ const chk = (id: string, ok: boolean, msg: string) => {
 
 const decodeAttr = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 const S = (await import("@/lib/modules/crm/emails-shared" as string)) as Any;
-const toHtml: ((t: string) => string) | undefined = S.crmPlainTextToEmailHtml;
+const toHtml: ((t: string, p?: Any) => string) | undefined = S.crmPlainTextToEmailHtml;
 const toText: ((h: string) => string) | undefined = S.crmEmailHtmlToComposerText;
 chk("J1.0", typeof toHtml === "function", `emails-shared exports crmPlainTextToEmailHtml (got ${typeof toHtml})`);
 chk("J1.0b", typeof toText === "function", `emails-shared exports crmEmailHtmlToComposerText (got ${typeof toText})`);
@@ -73,6 +73,22 @@ if (typeof toHtml === "function") {
     const wrapped = [...h.matchAll(wrapRe)].map((m) => decodeAttr(m[1]!));
     const own = [...h.matchAll(/<a href="([^"]*)" rel="noopener" target="_blank">/g)].map((m) => decodeAttr(m[1]!));
     chk(id, JSON.stringify(wrapped) === JSON.stringify(own) && tagsOk(h), `composeOutgoing wraps only the linkifier's own anchors — wrapped=${JSON.stringify(wrapped).slice(0, 120)} own=${JSON.stringify(own).slice(0, 120)}`);
+  }
+
+  // ── r3 R2-SF1: a URL that runs straight into a placeholder is left as escaped TEXT, whole (mail clients autolink it) —
+  //    never a truncated link to the wrong address, never a value inside an href ◂
+  const noA = (h: string) => !/<a\b/i.test(h);
+  const r3: [string, string, "brace" | "mustache", Record<string, string>, (h: string) => boolean, string][] = [
+    ["R3.1", "ดู https://shop.com/?ref={ชื่อ}&x=1 ค่ะ", "brace", { ชื่อ: "abc" }, (h) => noA(h) && h.includes("https://shop.com/?ref=abc&amp;x=1"), "brace: URL + {ชื่อ} + tail = one plain text run"],
+    ["R3.2", "https://shop.com/{{contact.firstName}}/x", "mustache", { "contact.firstName": "abc" }, (h) => noA(h) && h.includes("https://shop.com/abc/x"), "mustache: URL + {{…}} + tail = plain text"],
+    ["R3.3", "https://{ชื่อ}.example/p", "brace", { ชื่อ: "evil" }, (h) => noA(h), "slot in the host = text"],
+    ["R3.4", "https://shop.com/a.{ชื่อ}", "brace", { ชื่อ: "b" }, (h) => noA(h) && h.includes("https://shop.com/a.b"), "punctuation then slot = text (untrimmed URL touches the slot)"],
+    ["R3.5", "ดู https://shop.com/p {ชื่อ}", "brace", { ชื่อ: "https://evil.example" }, (h) => [...h.matchAll(/<a href="([^"]*)"/g)].map((m) => m[1]).join("|") === "https://shop.com/p" && !/href="https:\/\/evil/.test(h), "a space before the slot = the author URL is still a link · the value stays text"],
+    ["R3.6", "{{contact.firstName}}https://shop.com/q", "mustache", { "contact.firstName": "x" }, (h) => [...h.matchAll(/<a href="([^"]*)"/g)].map((m) => m[1]).join("|") === "https://shop.com/q", "slot BEFORE a URL does not stop the author URL"],
+  ];
+  for (const [id, text, syntax, values, ok, msg] of r3) {
+    const h = toHtml(text, { syntax, values } as Any);
+    chk(id, ok(h) && tagsOk(h), `${msg} — in=${JSON.stringify(text)} out=${h}`);
   }
 
   // ── r2 SF-1: linear conversion — 400 KB of the reviewer's worst case (URLs of 2030 ")") well under 1 s ──

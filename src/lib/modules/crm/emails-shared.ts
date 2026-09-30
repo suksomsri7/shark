@@ -309,6 +309,9 @@ export function crmLinkifyText(text: string): string {
     const lead = m[1] ?? "";
     const raw = m[2] ?? "";
     if (raw.length > CRM_TEXT_URL_MAX) continue; // ยาวผิดปกติ = ข้อความธรรมดา
+    // CRM C4.4-fix2 r3 ▸ (รีวิว R2-SF1) URL ที่วิ่งชนช่องค่าตัวแปรทันที (`https://shop.com/?ref={ชื่อ}&x=1` · `…/{{contact.firstName}}/x`)
+    //   = ข้อความธรรมดาทั้งก้อน (เหมือนก่อน C4.4 — โปรแกรมอ่านเมลทำลิงก์ให้เอง) · ไม่ตัดเป็นลิงก์ครึ่งท่อนที่พาไปผิดหน้า และไม่มีค่าเข้า href ◂
+    if (src[m.index + m[0].length] === SLOT_OPEN) continue;
     const url = trimUrlTail(raw);
     const start = m.index + lead.length;
     if (!hasHost(url)) continue; // ไม่ใช่ลิงก์ที่ใช้ได้ — ปล่อยเป็นข้อความ (ถูก escape รวมกับข้อความรอบข้าง)
