@@ -247,23 +247,41 @@ const PPTR_PATH = "/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/pu
  */
 export const SHOP_HOST = "qc-jrn-shop.shark-qc.test";
 
-export async function launchBrowser(pid: number): Promise<Any> {
+/** ROUND 5 (R4-S4): the shop site's key/cert, generated at browser launch ONLY when US9 is selected. */
+let shopTlsMaterial: { key: Buffer; cert: Buffer; spki: string } | null = null;
+export function shopTls(): { key: Buffer; cert: Buffer; spki: string } | null {
+  return shopTlsMaterial;
+}
+
+async function makeShopTls(): Promise<{ key: Buffer; cert: Buffer; spki: string }> {
+  const { execFileSync } = await import("node:child_process");
+  const dir = `${SHOTS_ROOT}/.tls-${process.pid}`;
+  mkdirSync(dir, { recursive: true });
+  try {
+    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", `${dir}/key.pem`, "-out", `${dir}/cert.pem`, "-days", "1", "-subj", `/CN=${SHOP_HOST}`, "-addext", `subjectAltName=DNS:${SHOP_HOST}`], { stdio: "pipe" });
+    // SPKI pin = base64(sha256(DER SubjectPublicKeyInfo)) — the format --ignore-certificate-errors-spki-list expects
+    const pub = execFileSync("openssl", ["x509", "-in", `${dir}/cert.pem`, "-pubkey", "-noout"], { stdio: "pipe" });
+    const der = execFileSync("openssl", ["pkey", "-pubin", "-outform", "der"], { input: pub, stdio: "pipe" });
+    const { createHash } = await import("node:crypto");
+    const spki = createHash("sha256").update(der).digest("base64");
+    return { key: readFileSync(`${dir}/key.pem`), cert: readFileSync(`${dir}/cert.pem`), spki };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export async function launchBrowser(pid: number, opts: { shopSite?: boolean } = {}): Promise<Any> {
   const pptr = (await import(PPTR_PATH as string).catch((e: unknown) => {
     throw new Fatal(`puppeteer-core unavailable (${e instanceof Error ? e.message : e}) — need /root/dive3d/node_modules/puppeteer-core`);
   })) as Any;
-  return pptr.default.launch({
-    executablePath: "/usr/bin/chromium-browser",
-    args: [
-      "--no-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      `--user-data-dir=/tmp/chr-crm-jrn-${pid}`,
-      // ROUND 4 (US9): see SHOP_HOST — map ONLY the reserved shop host to loopback; the self-signed cert of the local
-      // TLS terminator is accepted. Every other request is still subject to the B1 origin guard below.
-      `--host-resolver-rules=MAP ${SHOP_HOST} 127.0.0.1`,
-      "--ignore-certificate-errors",
-    ],
-  });
+  const args = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=/tmp/chr-crm-jrn-${pid}`];
+  if (opts.shopSite) {
+    // ROUND 5 (R4-S4): only when US9 runs — map ONLY the reserved shop host to loopback, and trust ONLY the shop
+    // site's own freshly generated key (SPKI pin), never certificate errors in general. B1 still guards every request.
+    shopTlsMaterial = await makeShopTls();
+    args.push(`--host-resolver-rules=MAP ${SHOP_HOST} 127.0.0.1`, `--ignore-certificate-errors-spki-list=${shopTlsMaterial.spki}`);
+  }
+  return pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args });
 }
 
 export function cleanupChromiumProfile(pid: number): void {
@@ -424,6 +442,13 @@ export class JourneyCtx {
     this.browser = opts.browser;
     this.minter = opts.minter;
     mkdirSync(this.outDir, { recursive: true });
+    // ROUND 5 (N6): each run starts with an empty screenshot set for this story, so reviewers can't mix rounds.
+    // created.json (the append-only --clean manifest) is deliberately kept.
+    if (!opts.dry) {
+      for (const f of readdirSync(this.outDir)) {
+        if (f.endsWith(".png") || f.startsWith("tls-")) rmSync(`${this.outDir}/${f}`, { recursive: true, force: true });
+      }
+    }
   }
 
   log(msg: string): void {
@@ -688,6 +713,25 @@ async function cleanAll(prisma: Any, log: (s: string) => void): Promise<void> {
     const ids = manifest[model];
     if (!ids || ids.size === 0) continue;
     try {
+      if (model === "fileAsset") {
+        // ROUND 5 (N5): delete through the product's own storage function — removes the stored object AND the row
+        // (a bare deleteMany would orphan the file in the storage zone)
+        const storage = (await import("@/lib/storage/service" as string)) as Any;
+        const rows = await prisma.fileAsset.findMany({ where: { id: { in: [...ids] } }, select: { id: true, tenantId: true } });
+        let n = 0;
+        const bad: string[] = [];
+        for (const row of rows) {
+          const r = await storage.deleteFileAsset({ tenantId: row.tenantId }, row.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+          if (r?.ok) n += 1;
+          else bad.push(row.id);
+        }
+        totalDeleted += n;
+        if (bad.length) throw new Error(`deleteFileAsset failed for ${bad.join(",")}`);
+        (succeeded[model] ??= new Set()).clear();
+        for (const id of ids) succeeded[model]!.add(id);
+        log(`clean: fileAsset -${n} (via storage.deleteFileAsset — stored object + row)`);
+        continue;
+      }
       const r = await prisma[model].deleteMany({ where: { id: { in: [...ids] } } });
       totalDeleted += r.count;
       (succeeded[model] ??= new Set()).clear();
@@ -697,6 +741,16 @@ async function cleanAll(prisma: Any, log: (s: string) => void): Promise<void> {
       failed[model] = [...ids];
       log(`clean: ${model} FAILED (${ids.size} id(s) kept in the retry manifest) — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
     }
+  }
+  // ROUND 5 (R4-S3) fallback sweep: renewal deals opened by US8's system-wide rule carry "(qc-jrn-us8)" via the
+  // rule's own title template (US8.mts) — anything a manifest missed (e.g. a cron tick between the journey and its
+  // finally) is removed here. The literal is US8-specific; no other story's titles contain it.
+  try {
+    const r = await prisma.crmDeal.deleteMany({ where: { title: { contains: `(${TAG_PREFIX}us8)` } } });
+    totalDeleted += r.count;
+    if (r.count) log(`clean: crmDeal -${r.count} (US8 rule-opened deal sweep by title tag)`);
+  } catch (e) {
+    log(`clean: US8 deal sweep FAILED — ${e instanceof Error ? e.message.slice(0, 160) : e}`);
   }
   // anything in the manifest under a model name CLEAN_ORDER forgot — surface it instead of silently leaving rows behind
   for (const model of Object.keys(manifest)) {
@@ -802,7 +856,7 @@ export async function runJourneyCli(argv: string[], opts: CliOpts): Promise<numb
       // health check the QC server before minting anything (house rule — die fast, never hang)
       const ping = await fetch(opts.BASE, { redirect: "manual" }).catch(() => null);
       if (!ping) throw new Fatal(`cannot reach QC server at ${opts.BASE} — start it first (scripts/acc-v2-serve.sh) or run with --dry`);
-      browser = await launchBrowser(pid);
+      browser = await launchBrowser(pid, { shopSite: stories.includes("US9" as StoryId) }); // R4-S4: shop-site TLS flags only when US9 runs
     }
     for (const story of stories) {
       log(`\n=== ${story} ${dry ? "(dry plan)" : ""} ===`);

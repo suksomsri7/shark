@@ -814,3 +814,93 @@ from earlier rounds, not in any manifest). Not deleted — controller's call.
    site (custom domain in front of SHARK); a shop site on its own domain linking to shark.in.th/f/<token> gets no binding.
 6. QC-env note — web tracking can't be exercised on the plain-http QC origin (https-only origin, no IP domains — correct
    for prod); the oracle now uses a TLS shop domain.
+
+## Round 5 (30 Sep)
+
+Reviewer verdict on r4: NOT MERGEABLE (R4-B1) — `ledger/wo-notes/crm-C4.4-review-r4.md`. Runner-only changes again
+(`scripts/crm-journeys/{lib,US4,US5,US8,US9}.mts`, uncommitted on top of 7e67abd4). Journey files type-check clean
+(scoped tsc, exit 0). Runs: `c44-r5-a` (N7 restore + US4,US8,US9) and `c44-r5-all` (`--journey all` + `--clean` + probe),
+all under with-gate-lock on QC1 / crm-qc1-serve.
+
+### Per finding
+- **R4-B1 (BLOCKER) → fixed; US9-3 is now an honest ❌ PRODUCT BUG (HIGH).** US9.mts:5-40 header + :41-66
+  `startShopSite`: the shop site serves ONLY /shop/p1..p3 + /shop/contact (favicon 204, everything else 404),
+  forwards NOTHING. /shop/contact pastes the form embed code read from the real UI (`crm-forms-embed-<formId>` on
+  /settings/forms, US9.mts:~126-139; new check **US9-1c** ✅ = the product's `<iframe src="<APP_URL>/f/<token>">`),
+  the visitor fills the form INSIDE that iframe (loaded from the QC origin, as in production), and US9-3 asserts the
+  binding (US9.mts:206-212). Result: form submitted and contact created (**US9-3a** ✅), 3 page views (US9-2 ✅), but
+  `formSubmission.webSessionId = null` and the session is NOT bound → **US9-3 ❌**. Screenshot
+  `journeys/US9/07-06-form-submitted-in-iframe.png`.
+- **Identify-ticket map (for the product-fix lane)** — also in US9.mts header:
+  exists: `emailClickTicket` (tracking.ts:158, AES-GCM, one-shot jti, 15 min) → `appendIdentifyTicket` (tracking.ts:210,
+  only for URLs on the shop's domains) — its ONLY caller is `ticketedClickUrl` (tracking.ts:1380-1417) on `/t/c` e-mail
+  clicks; the tracker reads `?sd_ct` from `location.search` and posts `t:"identify"` (tracking.ts:1522-1537) →
+  `collect` (tracking.ts:870-877) → `readIdentifyTicket` + `consumeIdentifyTicket` → `identify(by:"EMAIL_CLICK")`.
+  Form path: `f/[token]/actions.ts:19-25` reads `sd_vid` only from its own request cookies (caller-supplied ids
+  deliberately dropped, :9-12) → `forms/service.ts:370-371` `submissionWebSessionId` → `crm-bridges/forms.ts:190-197`
+  `identify(by:"FORM")`.
+  NOT wired: (1) the tracker never decorates links or iframes (no DOM scan in `trackerScript`); (2) no signed
+  ticket exists for FORM — nothing hands the visitor id/ticket to the `/f/` iframe (`formEmbedCode`,
+  forms/service.ts:390-394, is a bare iframe) or link; (3) `IDENTIFY_BY` "PORTAL"/"LINK" (tracking-shared.ts:70) have
+  no producer anywhere in src/. Net: with the product's own embed, retroactive form binding never happens.
+- **R4-S1 → fixed.** US4.mts:252-266: 🟧 only when section UNAVAILABLE and text === `CRM_TRANSCRIBER_MISSING_MSG`
+  (read from calls-shared at run time); section absent / not reached / OFF text = ❌ "REGRESSION (not the known gap)".
+- **R4-S2 → added US4-5d 🟧.** US4.mts:138-165: owner opens /crm/settings + /crm/settings/integrations, searches
+  controls labelled ถอดเสียง/transcri*; none found → red-for-gap (screens `journeys/US4/06-00-*`). Passes only when a
+  real UI control appears.
+- **R4-S3 → fixed.** US8.mts:9-36: `run` wraps `runInner` in try/finally; finally disables the rule through the
+  product's `toggleRule(false)` (fallback: row enabled=false), THEN snapshots every deal with "(qc-jrn-us8)" created
+  ≥ rule.createdAt. Log: "enabled after teardown: false", 4 deals registered. `--clean` fallback sweep by title tag
+  (lib.mts:745-755).
+- **R4-S4 → fixed.** lib.mts:250-285: key/cert generated at launch, SPKI pin
+  (`--ignore-certificate-errors-spki-list=<sha256>`) + `--host-resolver-rules` added ONLY when US9 is selected
+  (lib.mts:859). No global `--ignore-certificate-errors`. US9 reuses the launch cert (`lib.shopTls()`).
+- **N1** US9.mts:238-252: 2 s settle, then re-read until two reads agree. **N2** US9-2b now asserts sessions
+  (firstUrl marker, got 1) AND events (got 3). **N3** US5-3/3b/4/5 texts now start "[on the SETUP re-send —
+  API/template-shaped mail …]" (US5.mts:~200-). Template-with-link variant of US5-3a not added (typed URL evidence kept).
+- **N5** `--clean` removes `fileAsset` through the product's `storage.deleteFileAsset` (stored object + row,
+  lib.mts:717-735); US4 appends each recording id to `journeys/us4-recording-fileassets.log`; the probe checks those ids
+  (probe no longer queries a non-existent `filename` column). Final probe: 2 ids checked, 0 remain. The --clean
+  fallback itself found nothing to delete (removeRecording had already run), so the fallback's storage delete is
+  exercised only as a no-op.
+- **N6** lib.mts:445-452: each story's *.png (and stale tls-*) wiped at run start; created.json kept.
+- **N7 → LEAK CONFIRMED and restored.** AuditLog `crm.tracking.web.settings`: pre-C4.4 suite runs (28 Sep 02:13,
+  03:36) each re-issued a fresh `siteKey` (their restore had removed it); the last issue is 28 Sep 05:26:23 by owner =
+  C4.4 US9 round 1 (contact 05:26:37), after which `enabled:true` + siteKey `viSzWELljmZ…` persisted — rounds 1-2 never
+  restored. Seed never enables tracking (visual-crm.mts:1304). Restored the baseline (key absent) with a path-scoped
+  `settings #- '{crm,tracking}'` under the lock (`.qc-shots/crm/c44-r5/n7-restore.log`: BEFORE {web:{enabled:true,…}}
+  → AFTER null; crm keys left: email, portal, uiVersion). US9's snapshot now restores to that baseline each run.
+- **N4 (code reading only, provider not called):** (1) `deliver()` sets `Message-ID: <rfcId>` (emails.ts:1316-1321)
+  and stores `<systemId>:<rfcId>` before sending; `core/email.ts:140` forwards `headers` verbatim to Resend; Resend's
+  returned id is kept only as `providerId` (emails.ts:1360) and never used for matching. (2) The inbound matcher sets
+  `parent` — and therefore `repliedAt` + `stopSequencesFor(REPLY)` (emails.ts:2186-2196) — only when In-Reply-To/
+  References contain OUR rfcId (emails.ts:2074-2083), i.e. the code assumes the provider delivers our Message-ID
+  unchanged. (3) If the provider rewrites it, replies still thread via the Reply-To `+t<short>` tag (tier 2,
+  emails.ts:2084-2094) or subject, but `parent` stays null ⇒ no repliedAt, no stop-on-reply — unverifiable on QC.
+- 45 stale qc-jrn rows of 28 Sep: left as ruled.
+
+### Final run
+`--journey all` (unit c44-r5-all) → `.qc-shots/crm/c44-r5/all-journeys.log`:
+`JSON_SUMMARY {"total":95,"passed":90,"failures":5,"gaps":3,"fatal":null}` · 0 B1 aborts.
+- 🟧 US4-5d — PRODUCT GAP: no settings UI to turn call transcription on.
+- 🟧 US4-5b — PRODUCT GAP: no STT provider registered (exact transcriber-missing signature).
+- 🟧 US5-0-GAP — PRODUCT GAP: no compose-new-thread control (known, ruled).
+- ❌ US5-3a — PRODUCT BUG (MED): CRM-UI composer never produces tracked links.
+- ❌ US9-3 — PRODUCT BUG (HIGH): retroactive web-visit binding never happens with the product's own form embed.
+`--clean`: 56 rows (incl. 12 crmDeal, fileAsset via storage). Probe: 0 rows from round 5; 45 pre-existing 28 Sep rows;
+0 shop-host web sessions; recording FileAssets 0/2 remain; `crm.ai` absent, `crm.tracking` absent (baseline).
+
+### Product fix list (updated)
+1. BUG HIGH (R4-B1) — form→web-session binding unreachable for the product's own embed: sd_vid is host-only on the
+   shop domain; `/f/` iframe (forms/service.ts:390-394) never carries it; actions.ts:19-25 cookie-only; no FORM ticket;
+   tracker decorates nothing. Mechanism to extend: the existing signed one-shot ticket (`emailClickTicket`/
+   `readIdentifyTicket`/`consumeIdentifyTicket`) — e.g. tracker passes a ticket/visitor proof into the iframe.
+2. BUG MED — EmailComposer.tsx:98-103 / :48: UI mail never carries tracked links (template anchors stripped).
+3. GAP — call transcription: no STT provider (transcriber.ts:53) + no settings UI (setCrmAiKey settings.ts:67 uncalled).
+4. BUG LOW — CRM_CALL_AI_OFF_MSG (calls-shared.ts:147) points to a non-existent settings section.
+5. OBSERVATION (severity depends on N4) — replies matched only by +t tag / subject never set parent ⇒ no stop-on-reply;
+   HIGH if the mail provider rewrites Message-ID. Cheap fix: a +t match may take the thread's latest OUT as parent.
+
+### Not verified
+- Whether Resend preserves our Message-ID (N4) — needs one real send, not done by rule.
+- The READY branch of US4 (no transcriber exists). The `--clean` fileAsset fallback only ran as a no-op.

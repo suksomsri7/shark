@@ -197,7 +197,7 @@ export async function run(ctx: Any): Promise<void> {
     const html = capturedHtml as string | null;
     const pixelM = html ? /<img[^>]+src="([^"]*\/t\/o\/([^"/]+)\.gif)"/.exec(html) : null;
     const linkM = html ? /href="([^"]*\/t\/c\/([^"/]+))"/.exec(html) : null;
-    ctx.check("US5-3", `the delivered mail carries the real open pixel (/t/o/<token>.gif) and a click-wrapped link (/t/c/<token>) — pixel=${!!pixelM} link=${!!linkM}`, { pixel: true, link: true }, { pixel: !!pixelM, link: !!linkM });
+    ctx.check("US5-3", `[on the SETUP re-send — API/template-shaped mail with a real <a href>, same sendEmail→sendCore→composeOutgoing as the UI action] the delivered mail carries the real open pixel (/t/o/<token>.gif) and a click-wrapped link (/t/c/<token>) — pixel=${!!pixelM} link=${!!linkM}`, { pixel: true, link: true }, { pixel: !!pixelM, link: !!linkM });
     let clickLandedOn: string | null = null;
     if (html && pixelM && linkM) {
       // the tracked URLs carry the sender process's APP_URL origin; point them at the QC server under test
@@ -239,7 +239,7 @@ export async function run(ctx: Any): Promise<void> {
       await mail.close();
     }
     ctx.log(`   click landed on: ${clickLandedOn}`);
-    ctx.check("US5-3b", "the wrapped link redirected the customer to the ORIGINAL link target (the shop portal page)", quoteLinkTarget, clickLandedOn ? clickLandedOn.split("?")[0] : null);
+    ctx.check("US5-3b", "[on the SETUP re-send — API/template-shaped mail] the wrapped link redirected the customer to the ORIGINAL link target (the shop portal page)", quoteLinkTarget, clickLandedOn ? clickLandedOn.split("?")[0] : null);
   }
 
   ctx.plan("SETUP (facade — inbound is a provider webhook, not a UI): customer replies in the same thread");
@@ -292,8 +292,8 @@ export async function run(ctx: Any): Promise<void> {
       ? await pollUntil(() => P.crmEmailMessage.findFirst({ where: { id: mailboxEmailId }, select: { openCount: true, clickCount: true } }).then((m: Any) => (m && m.openCount >= 2 && m.clickCount >= 1 ? m : null)))
           .then(async (m: Any) => m ?? P.crmEmailMessage.findFirst({ where: { id: mailboxEmailId }, select: { openCount: true, clickCount: true } }))
       : null;
-    ctx.check("US5-4", "the customer opened the quotation twice → the message counts exactly 2 opens (real /t/o pixel, mail-client UA)", 2, outMsg?.openCount ?? null);
-    ctx.check("US5-5", "the customer clicked the link once → the message counts exactly 1 click (real /t/c)", 1, outMsg?.clickCount ?? null);
+    ctx.check("US5-4", "[on the SETUP re-send — API/template-shaped mail] the customer opened the quotation twice → the message counts exactly 2 opens (real /t/o pixel, mail-client UA)", 2, outMsg?.openCount ?? null);
+    ctx.check("US5-5", "[on the SETUP re-send — API/template-shaped mail] the customer clicked the link once → the message counts exactly 1 click (real /t/c)", 1, outMsg?.clickCount ?? null);
 
     const inCount = await pollUntil(() => P.crmEmailMessage.count({ where: { tenantId: env.tenantId, threadKey, direction: "IN" } }).then((n: number) => (n >= 2 ? n : null)));
     ctx.check("US5-6", "the customer's reply landed on the SAME thread (>=2 inbound messages, same threadKey)", true, (inCount ?? 0) >= 2);

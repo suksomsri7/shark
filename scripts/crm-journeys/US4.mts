@@ -135,6 +135,37 @@ export async function run(ctx: Any): Promise<void> {
   // So on the QC server the button cannot appear: US4-5b is a PRODUCT GAP, recorded red-for-gap. If a later build
   // ships an STT provider + settings toggle, the READY branch below drives transcribe → accept for real and US4-5b
   // becomes a normal pass/fail check on the CALL activity's aiSummary.
+  // ROUND 5 (R4-S2): the SETUP below turns `callTranscribe` on through the module because no UI can. So that a future
+  // STT provider can't turn US4 green through that SETUP alone, the missing settings control is its own red-for-gap
+  // check, driven by looking at the real settings UI (index + integrations) for a control labelled ถอดเสียง/transcri*.
+  ctx.plan("SCRIPTED CHECK (real UI, owner): the CRM settings expose a control to turn call transcription on (settings index + integrations page)");
+  if (!ctx.dry) {
+    const page = await ctx.loginStaff("owner");
+    const scanned: { path: string; status: number | null; hits: string[] }[] = [];
+    for (const path of ["settings", "settings/integrations"]) {
+      const resp = await page.goto(`${ctx.BASE}/app/sys/${env.SYS}/crm/${path}`, { waitUntil: "networkidle2", timeout: 30_000 }).catch(() => null);
+      const hits: string[] = await page.evaluate(() => {
+        const re = /ถอดเสียง|transcri/i;
+        const ctrls = Array.from(document.querySelectorAll('input[type=checkbox], [role=switch], select, button, a'));
+        return ctrls
+          .filter((el) => re.test(((el.closest("label, section, li, div") as HTMLElement | null)?.innerText ?? (el as HTMLElement).innerText ?? "").slice(0, 400)))
+          .map((el) => `${el.tagName.toLowerCase()}[${el.getAttribute("data-testid") ?? ""}]`)
+          .slice(0, 5);
+      }).catch(() => []);
+      scanned.push({ path, status: resp?.status() ?? null, hits });
+      await ctx.shot(page, `00-settings-${path.replace("/", "-")}`);
+    }
+    await page.close();
+    const found = scanned.some((s) => s.hits.length > 0);
+    ctx.check(
+      "US4-5d",
+      `PRODUCT GAP — a CRM settings control exists to turn call transcription on (settings.crm.ai.callTranscribe; setCrmAiKey settings.ts:67 has no caller in src/; the OFF message calls-shared.ts:147 points to a "ผู้ช่วย AI" section that doesn't exist) — scanned ${JSON.stringify(scanned)}`,
+      "a call-transcription control in the CRM settings UI",
+      found ? "a call-transcription control in the CRM settings UI" : "none found on the settings index or integrations page",
+      !found,
+    );
+  }
+
   let restoreAiSettings: (() => Promise<void>) | null = null;
   ctx.plan("SETUP (no UI exists — part of the US4-5b gap): settings.crm.ai.callTranscribe=true via the module's own setCrmAiKey (settings.ts:67), path-scoped restore after — so the modal shows the NEXT blocker (transcriber) rather than stopping at OFF");
   if (!ctx.dry) {
@@ -208,16 +239,30 @@ export async function run(ctx: Any): Promise<void> {
     const call = await pollUntil(() => P.crmActivity.findFirst({ where: { tenantId: env.tenantId, dealId, type: "CALL" }, orderBy: { createdAt: "desc" } }));
     ctx.check("US4-5", "a CALL activity was recorded on the deal", true, !!call);
     ctx.own("fileAsset", call?.recordingFileId);
+    if (call?.recordingFileId) {
+      // ROUND 5 (N5): standing list of every recording FileAsset this journey ever created — the leftover probe
+      // verifies each one is gone from the DB after cleanup (FileAsset has no tag-bearing column to search by)
+      const { appendFileSync } = await import("node:fs");
+      appendFileSync(`${ctx.outDir}/../us4-recording-fileassets.log`, `${new Date().toISOString()} ${call.recordingFileId}\n`);
+    }
     ctx.check("US4-5c", `the call recording picked in the modal was stored on the CALL activity (recordingFileId set; inline save error: ${JSON.stringify(saveError)})`, true, !!call?.recordingFileId);
     if (aiUiState === "READY") {
       ctx.check("US4-5b", "the AI transcript/summary proposal was accepted in the modal and landed on the CALL activity (story: \"AI ถอด/สรุป\")", true, !!call?.aiSummary);
     } else {
+      // ROUND 5 (R4-S1): the known gap has exactly ONE signature — section present, state UNAVAILABLE, text ===
+      // CRM_TRANSCRIBER_MISSING_MSG (calls-shared.ts:145). Section missing after save, not reached, or the OFF text
+      // (= the SETUP above did nothing) is a regression, reported as a plain ❌, never as the known gap.
+      const shared = (await import("@/lib/modules/crm/calls-shared" as string)) as Any;
+      const missingMsg = String(shared.CRM_TRANSCRIBER_MISSING_MSG ?? "");
+      const isKnownGap = aiUiState === "UNAVAILABLE" && !!missingMsg && String(aiUiText ?? "").trim() === missingMsg.trim();
       ctx.check(
         "US4-5b",
-        "PRODUCT GAP — story \"AI ถอด/สรุป\": after saving a call WITH a recording, the modal's ถอดเสียง section offers no transcribe button because no speech-to-text provider is registered in the server process (transcriber.ts:53 getCrmTranscriber() → null; registerCrmTranscriber has no caller in src/; SHARK_AI_MOCK only mocks the chat model, provider.ts:211) — and settings.crm.ai.callTranscribe has no UI at all (setCrmAiKey settings.ts:67 has no caller). The AI summary never reaches the CALL activity",
+        isKnownGap
+          ? "PRODUCT GAP — story \"AI ถอด/สรุป\": after saving a call WITH a recording, the modal's ถอดเสียง section offers no transcribe button because no speech-to-text provider is registered in the server process (transcriber.ts:53 getCrmTranscriber() → null; registerCrmTranscriber has no caller in src/; SHARK_AI_MOCK only mocks the chat model, provider.ts:211). The AI summary never reaches the CALL activity"
+          : "REGRESSION (not the known gap) — after saving a call with a recording, the ถอดเสียง section must show either the transcribe button (READY) or exactly the 'transcriber missing' notice; it showed neither",
         { section: "READY (crm-call-ai-transcribe shown)", activityAiSummary: "non-empty" },
         { section: `${aiUiState}: ${aiUiText ?? "<none>"}`, activityAiSummary: call?.aiSummary ?? null },
-        true,
+        isKnownGap,
       );
     }
     const dealAfter = await P.crmDeal.findFirst({ where: { id: dealId }, select: { stalledAt: true } });

@@ -6,7 +6,36 @@ type Any = any;
 const lib = (await import("./lib.mts" as string)) as Any;
 const { actorFor, drainQuiet, pollUntil } = lib;
 
+// ROUND 5 (R4-S3): the rule this journey builds is system-wide and stays live until --clean — any later
+// runCronTriggers on QC1 (other suites/lanes) would keep opening "(qc-jrn-us8)" renewal deals no manifest holds.
+// `run` now disables it in a `finally` (product's own toggleRule) and only THEN snapshots every deal it opened.
+type Us8State = { ruleId: string | null };
 export async function run(ctx: Any): Promise<void> {
+  const state: Us8State = { ruleId: null };
+  try {
+    await runInner(ctx, state);
+  } finally {
+    if (!ctx.dry && state.ruleId) {
+      ctx.plan("CLEANUP (R4-S3): disable this journey's system-wide field_due rule (product toggleRule), THEN register every deal it opened for --clean");
+      const P = ctx.prisma as Any;
+      const { ctx: octx, actor } = await actorFor(ctx.prisma, ctx.env, "owner");
+      const crm = await import("@/lib/modules/crm");
+      await (crm as any).automation.toggleRule(octx, actor, state.ruleId, false).catch(async (e: unknown) => {
+        ctx.log(`⚠️ toggleRule(false) failed (${e instanceof Error ? e.message : e}) — forcing enabled=false on the journey's own rule row`);
+        await P.automationRule.updateMany({ where: { id: state.ruleId }, data: { enabled: false } });
+      });
+      const ruleRow = await P.automationRule.findFirst({ where: { id: state.ruleId }, select: { createdAt: true, enabled: true } });
+      ctx.log(`   rule ${state.ruleId} enabled after teardown: ${ruleRow?.enabled}`);
+      // the rule's title template stamps "(<tag>)" into every deal it opens (incl. QC1's seeded contracts on other
+      // companies — correct product behaviour); createdAt >= rule.createdAt keeps earlier runs' rows out
+      const sideDeals = ruleRow ? await P.crmDeal.findMany({ where: { tenantId: ctx.env.tenantId, systemId: ctx.env.SYS, title: { contains: `(${ctx.tag})` }, createdAt: { gte: ruleRow.createdAt } }, select: { id: true } }) : [];
+      for (const d of sideDeals) ctx.own("crmDeal", d.id);
+      ctx.log(`   deals opened by this run's rule (all registered for --clean): ${sideDeals.length}`);
+    }
+  }
+}
+
+async function runInner(ctx: Any, state: Us8State): Promise<void> {
   const { prisma, env } = ctx;
   const P = prisma as any;
 
@@ -143,6 +172,7 @@ export async function run(ctx: Any): Promise<void> {
     await page.close();
     const rule = await pollUntil(() => P.automationRule.findFirst({ where: { tenantId: env.tenantId, crmSystemId: env.SYS, scope: "CRM", name: `${ctx.tag}-contract-renewal` } }));
     ruleId = rule?.id ?? null;
+    state.ruleId = ruleId;
     ctx.own("automationRule", ruleId);
     // B3: assert the FULL saved shape, not just `event` — trigger.params (objectKey/fieldKey/daysBefore) and the
     // CREATE_DEAL action must all be exactly what was entered, or a later "the rule didn't fire" finding could
@@ -211,17 +241,7 @@ export async function run(ctx: Any): Promise<void> {
         .then((d: Any) => d ?? P.crmDeal.findFirst({ where: { tenantId: env.tenantId, systemId: env.SYS, companyId }, orderBy: { createdAt: "desc" } })),
     );
     ctx.own("crmDeal", deal?.id);
-    // ROUND 4 cleanup fix: the rule this journey builds is system-wide (every "contract" record whose endAt is due),
-    // so it ALSO opens renewal deals for QC1's seeded contracts on other companies — correct product behaviour, but
-    // those deals (title carries this story's tag via the rule's title template) were never registered and survived
-    // --clean (2 per run: seen from the 30 Sep 10:06 acceptance run and round-4's c44-r4-all). Register every deal
-    // THIS run's rule opened. Its own "createdAt ≥ rule.createdAt" bound keeps earlier runs' rows out.
-    if (ruleId) {
-      const ruleRow = await P.automationRule.findFirst({ where: { id: ruleId }, select: { createdAt: true } });
-      const sideDeals = ruleRow ? await P.crmDeal.findMany({ where: { tenantId: env.tenantId, systemId: env.SYS, title: { contains: `(${ctx.tag})` }, createdAt: { gte: ruleRow.createdAt } }, select: { id: true } }) : [];
-      for (const d of sideDeals) if (d.id !== deal?.id) ctx.own("crmDeal", d.id);
-      ctx.log(`   deals opened by this run's rule (all registered for --clean): ${sideDeals.length}`);
-    }
+    // (ROUND 5: side deals the system-wide rule opened are registered in run()'s finally, AFTER the rule is disabled)
     ctx.check("US8-3", "a renewal deal exists for the company after the field-due rule ran (PRODUCT BUG expected — see TRACE above: automation.ts:671-696,909-912 — CREATE_DEAL structurally cannot fire without s.contact, which is never populated for COMPANY-parented triggers, even with a primary contact on the company)", true, !!deal);
     if (!deal && ruleId) {
       const run = await pollUntil(() => P.automationRun.findFirst({ where: { tenantId: env.tenantId, ruleId }, orderBy: { createdAt: "desc" } }));
