@@ -121,3 +121,69 @@ There is no BLOCKER. Crypto, the gates, cross-tenant/system checks, v1 inertness
 6. After a shop publishes a new cookie text, earlier anonymous browsing is never linked to a lead any more (stricter than before).
 7. The public form link reveals that the shop uses CRM v2 web tracking. The tracking script link already reveals this.
 8. If the form is served from a different address than the tracking script (custom domain, misconfigured APP_URL), linking quietly does not happen. The form still works.
+
+---
+
+## Round 2 — re-review of `git diff a300d68d 8f41f9ae`
+
+Same rules as round 1: read-only, no DB/suites/build/server. I executed only a pure parity replica: `/tmp/cj3-r2-parity.mjs` extracts both functions verbatim from the committed files.
+
+### Verdict: **MERGEABLE**
+
+Every round-1 ruling is implemented as ruled and is correct. No BLOCKER and no SHOULD-FIX. The notes below are optional.
+
+### Rulings checked
+
+- **S1 (verified).** `tracking.ts:1183`: the IDENTIFY dedup query now has `AND s."consentVersion" IS NOT NULL`, the same predicate as `lastIdentifiedContact` (`:752`). Probe J3-r1 was red on the old source (`s3=null`) and is green now: a new IDENTIFY lands on the post-consent session and the next session inherits.
+- **S2 (verified, code + real browser).**
+  - Tracker: `waiting` (`tracking.ts:1722-1748`) holds at most 10 WindowProxies, deduplicated. It is served by `afterAccept` (`:1736`) from `yes.onclick` (`:1701`) once the accept POST settles. `post`/`consent` now return the fetch promise (`:1675`).
+  - Form: `currentTicket` (`PublicForm.tsx:156-160`) asks once when no ticket ever arrived, and on refresh keeps the old ticket for up to 14 min (`:53`).
+  - `browser-j3` B-A (run21): the form loaded, 10.5 s passed with the banner still up, then accept. `/t/v` fired only at accept+243 ms (0 before), `webSessionId` is non-null and the session is bound. That proves the push path, not the submit-time ask.
+- **N2 (verified).** `tracking.ts:222`: the burn window is TTL + 120 s (J3-r3). Burn rows are still swept at 24 h.
+- **N6 (verified).** The page passes the target system's tracking domains (`page.tsx:73`, `visitorHandoverHosts`). The form drops any `sd:visitor-ticket` unless `parentOriginAllowed(e.origin, hosts)` (`PublicForm.tsx:109`).
+  - Parity: `handover-shared.ts` is algorithmically identical to `originAllowed`. The probe's 14 cases plus my 18 extra cases gave 0 mismatches: trailing-dot FQDN, `:443`, userinfo, IPv4/IPv6, unicode vs punycode host, `%2e` in host, NUL, `.evil` suffix, `wss:`, whitespace, path/query. Both reject a trailing-dot origin (a consistent false negative). A browser's `e.origin` is always ASCII-serialized, so IDN reduces to the punycode comparison, and domains are stored ASCII-only by `normalizeDomain`.
+  - Real browser (B-N6 / B-N6c): a real, valid ticket planted every 250 ms by a non-listed https parent is ignored. The same page served from the listed host binds (positive control).
+- **N8 (verified).** `recordConsent` reuses a fresh row only if it already holds the current version (`tracking.ts:1017`). `openSession` reuses only a row with the same version (`:772`). Redeem re-checks opt-out after `latestConsentedSessionId` (`:1108-1109`, WARN OPT_OUT, J3-r6).
+
+### Attack points
+
+1. **`waiting` list (verified by code; frame semantics per the HTML spec).**
+   - A frame is enqueued only after `e.origin===AO` and `ownFrame(src)`. A hostile frame of any other origin never reaches the list, and only `/f/*` is framable on the app origin, so the 10 slots can only be taken by SHARK form frames the shop itself placed.
+   - Serve time re-checks `ownFrame` (`:1738`) plus `accepted()` and the cookie inside `serve`. A removed iframe has a null `contentWindow`, so it is not served.
+   - A navigated iframe keeps the same WindowProxy, so it still passes `ownFrame`. But the reply uses targetOrigin `AO`, so a non-app document receives nothing. Another app-origin `/f` page would receive it and then drop it (N6 host check) or get MISMATCH at redeem. This is the same as round 1's async reply.
+   - A page with more than 10 form frames: the extras are only linked through the submit-time ask. Harmless.
+2. **Accept ordering (verified).**
+   - `/t/consent` awaits `recordConsent` (including the `openSession` transaction) before it responds (`src/app/t/consent/route.ts`, POST body). So `afterAccept` can only mint after the accept row has committed, and `/t/v`'s "latest session holds the current version" check sees it.
+   - Network failure: `.catch` resolves, then `serve` mints nothing (204).
+   - A double click is impossible because `closeBanner()` runs first.
+   - Narrow window: a first ping that lands between the cookie write and the POST landing gets a 204 and is not enqueued. It is covered by the submit-time ask.
+3. **Submit-time ask (verified).**
+   - v1 gets no prop (`page.tsx:73`), so `handoverOn` is false. An unframed form fails `isFramed()`. Both return null immediately (`PublicForm.tsx:156`) with no wait.
+   - Double submit is still blocked by the synchronous `sending` flag.
+   - A parent that never answers, or that answers from a non-listed origin (dropped before the waiter fires), just runs out the 1.5 s timer.
+4. **Fallback ticket (verified).**
+   - A kept ticket that has expired server-side comes back INVALID. The redeem returns null, `service.ts:386-388` continues, the submission is stored, and one WARN is written.
+   - After a version bump the old ticket is STALE server-side (`:1097-1098`, J3-r8). The fallback only chooses which ticket to send, so it cannot bring a stale one back.
+   - A ticket reused after an error that happened post-burn comes back REPLAY and the form is stored unbound. Same as round 1.
+5. **Domains in the public RSC payload (agree: low).** They are the shop's own websites, where the form is embedded anyway, capped at `TRACKING_MAX_DOMAINS`. The new exposure is only for hosts a shop lists but does not publish (staging, not-yet-launched, a partner's site): anyone holding the form link can now read them. Owner-visible (residual 7). Optional: send sha256 of the domains and compare the hashed suffixes of `e.origin`'s host on the client. v1 props are unchanged from the base (no prop at all).
+6. **N8 analytics (acceptable).** The only continuity change is when a visitor re-accepts within 30 min after a version bump (or after a revoke, as in round 1): it now counts as a new session, so `webStats.sessions` goes up by one in those rare moments. Normal browsing is unchanged: the collect path only calls `openSession` after idle, and concurrent opens at the same version still reuse under the lock. `qc-crm-c2.6` does not pin this rule: C2.6-S3.8 (the bump + re-accept case) sums page views across rows (`oldRe.pv===2`) and passes either way. Its spec line 117 ("reuse the latest non-idle one or create") only narrows.
+7. **Browser proof + journey (verified from logs).**
+   - `run21-browser.log`: 4/4 (B-A timing above; B-N6 `webSessionId=null` and unbound; B-N6c bound; clean).
+   - `run21-us9.log`: 8/8, US9-3 `webSessionId = cmuofxsbh00021bkzdov7c06l`, US9-4 zero rows.
+   - Suites: c2.6-web 35/35 · run18 c2.6 87/87, c2.5 105/105, c1.8 81/81, c3.9 49/49, qc-form 10/10, c1.11 66/66 with `CRM_V2_SWITCH=all` (settles round 1's env question) · run19 probe 32/32, c2.6 87/87.
+8. **RED baseline (verified by content, which is stronger than mtimes; historic source mtimes cannot be recovered).** `RED-r2-run12b.log` 25/32 prints old-source values: J3-r3 `windowMs:900000`, J3-l `hand v1=false v2=true` (the old boolean API), J3-r1 `s3=null`, J3-r9 upgraded row `old=4:3:CT`. It ran at 17:27–17:28, before run13/14 (17:30). The r5 helper fix (match the row by its own answer instead of "last row") is legitimate: run12 showed `bound=2` only because both parallel calls read the same row. r5 is green on the old source, consistent with round 1 N2 (the burn is atomic).
+9. **Other new code: nothing wrong.** `send()` ignores `post()`'s new return value. C3.9-X6.2 still passes (keepalive within 160 chars). `redeemVisitorTicket` burns before the OPT_OUT refusal, which is fine because it is single-use either way.
+
+### NOTE (round 2, optional)
+
+- **R2-N1 · The 1.5 s submit wait hits every non-consenting visitor on a framed v2 form (and every visitor when the shop page has no tracker).** `PublicForm.tsx:158` combined with the tracker enqueueing instead of answering (`tracking.ts:1748`). Optional: when the visitor has not accepted, the tracker replies right away with a `{type:"sd:visitor-ticket-none"}` (no secret; the parent knows its own consent state) and the form's waiter resolves on it. This does not help pages without a tracker. Bounded; owner-visible as residual 9.
+- **R2-N2 · Hashed hosts for the RSC prop** (see point 5), if the owner considers unpublished tracking domains sensitive.
+
+### Residual risk, round-2 update (plain words)
+
+Items 1, 2, 3, 5, 6 and 8 of the round-1 list are unchanged. Changes:
+
+- 4. **Closed for the ticket channel:** the form now takes tickets only from the shop's own tracking domains. Still possible by other means (a forged cookie, item 1).
+- 6. Additionally, re-accepting a new cookie text always starts a new visit, so visit counts rise by one in that moment.
+- 7. The public form link now also reveals the shop's tracking domains, including any the shop lists but does not publish.
+- 9. **New:** on a shop page, a form whose visitor has not accepted cookies (or a page without the tracking script) waits up to 1.5 s when "send" is pressed before it goes out.
