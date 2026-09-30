@@ -237,13 +237,32 @@ export async function withStaffPermissions<T>(prisma: Any, opts: { tenantId: str
 
 const PPTR_PATH = "/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js";
 
+/**
+ * ROUND 4 (US9): the shop's own website host. Web tracking only accepts beacons whose Origin is **https** and whose
+ * host is one of the shop's tracking domains (`originAllowed`, tracking-shared.ts:161-176), and a tracking domain
+ * must be a real dotted hostname — no IP, no port, no `localhost` (`normalizeDomain`, tracking-shared.ts:146-156).
+ * The plain-http QC server (http://127.0.0.1:3215) can therefore never be a tracked site. US9 stands up a local TLS
+ * terminator for this host (see US9.mts) and the browser resolves it to 127.0.0.1 via `--host-resolver-rules`.
+ * `.test` is an IANA-reserved TLD: without the resolver rule the name cannot resolve anywhere, so nothing can leak.
+ */
+export const SHOP_HOST = "qc-jrn-shop.shark-qc.test";
+
 export async function launchBrowser(pid: number): Promise<Any> {
   const pptr = (await import(PPTR_PATH as string).catch((e: unknown) => {
     throw new Fatal(`puppeteer-core unavailable (${e instanceof Error ? e.message : e}) — need /root/dive3d/node_modules/puppeteer-core`);
   })) as Any;
   return pptr.default.launch({
     executablePath: "/usr/bin/chromium-browser",
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=/tmp/chr-crm-jrn-${pid}`],
+    args: [
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      `--user-data-dir=/tmp/chr-crm-jrn-${pid}`,
+      // ROUND 4 (US9): see SHOP_HOST — map ONLY the reserved shop host to loopback; the self-signed cert of the local
+      // TLS terminator is accepted. Every other request is still subject to the B1 origin guard below.
+      `--host-resolver-rules=MAP ${SHOP_HOST} 127.0.0.1`,
+      "--ignore-certificate-errors",
+    ],
   });
 }
 
@@ -390,6 +409,9 @@ export class JourneyCtx {
   stepN = 0;
   readonly checks: CheckRow[] = [];
   readonly created: Record<string, string[]> = {};
+  /** ROUND 4: extra origins the B1 guard lets through — ONLY a local TLS terminator that itself forwards solely to
+   *  the QC BASE (US9's shop host). Add right before use, remove in `finally`. */
+  readonly extraAllowedOrigins = new Set<string>();
 
   constructor(opts: { dry: boolean; prisma: Any; env: Env; BASE: string; story: string; browser: Any | null; minter: SessionMinter }) {
     this.dry = opts.dry;
@@ -455,9 +477,19 @@ export class JourneyCtx {
   }
 
   /** Anonymous page (no login) — public form / tracking pixel / portal invite link. */
-  async newAnonPage(): Promise<Any> {
+  async newAnonPage(opts: { isolated?: boolean } = {}): Promise<Any> {
     if (this.dry || !this.browser) throw new Fatal("newAnonPage() called in --dry mode — guard with `if (!ctx.dry)`");
-    const page = await this.browser.newPage();
+    // ROUND 4: `isolated` = a separate browser context (own cookie jar) — a DIFFERENT person. Without it every anon
+    // page shares the default context's cookies (US9's "declining visitor" silently inherited the accepting visitor's
+    // sd_consent=a cookie and was tracked — it never even saw the banner).
+    let page: Any;
+    if (opts.isolated) {
+      const bc = await this.browser.createBrowserContext();
+      page = await bc.newPage();
+      page.once("close", () => { bc.close().catch(() => {}); });
+    } else {
+      page = await this.browser.newPage();
+    }
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
     await page.evaluateOnNewDocument("window.__name = function (f) { return f; };");
     await installOriginGuard(page, this, new URL(this.BASE).origin);
@@ -503,7 +535,7 @@ async function installOriginGuard(page: Any, ctx: JourneyCtx, baseOrigin: string
       req.continue().catch(() => {});
       return;
     }
-    if (url.origin !== baseOrigin) {
+    if (url.origin !== baseOrigin && !ctx.extraAllowedOrigins.has(url.origin)) {
       ctx.log(`   🛑 B1 origin guard ABORTED request to ${url.origin} (not QC BASE ${baseOrigin}) — ${req.method()} ${url.pathname}`);
       req.abort().catch(() => {});
       return;
@@ -595,6 +627,7 @@ const CLEAN_ORDER: readonly string[] = [
   "formDef",
   "appNotification",
   "crmActivity",
+  "fileAsset", // ROUND 4 (US4): call-recording FileAsset — normally removed by the product's own removeRecording() in US4's cleanup; this is the fallback (no FK from crmActivity.recordingFileId)
   "crmCompanyContact",
   "crmDeal",
   "crmContact",

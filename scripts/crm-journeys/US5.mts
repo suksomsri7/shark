@@ -27,6 +27,7 @@ export async function run(ctx: Any): Promise<void> {
   const contactEmail = `${ctx.tag}@example.com`;
   let contactId: string | null = null;
   let sequenceId: string | null = null;
+  let mailboxEmailId: string | null = null; // ROUND 4: the message the customer's mailbox actually received (see SETUP in step 06)
 
   ctx.plan("SETUP (facade): contact with an email · a sequence (stopOnReply=true) the contact is enrolled in");
   if (!ctx.dry) {
@@ -40,12 +41,16 @@ export async function run(ctx: Any): Promise<void> {
       stopOnWon: true,
       stopOnLost: true,
       businessDaysOnly: false,
-      steps: [{ kind: "EMAIL", subject: "ใบเสนอราคา", body: "เรียนคุณ {{contact.firstName}}" }, { kind: "WAIT", waitDays: 3 }],
+      // ROUND 4: a follow-up sequence that WAITs 3 days before its first e-mail — the old EMAIL-first fixture let the
+      // server's minute job ("crm.sequences" runDue) send/advance the enrollment on its own mid-journey, which could
+      // change the enrollment's state before the reply and make US5-7 unattributable.
+      steps: [{ kind: "WAIT", waitDays: 3 }, { kind: "EMAIL", subject: "ติดตามใบเสนอราคา", body: "เรียนคุณ {{contact.firstName}}" }],
     });
     sequenceId = seq.id;
     ctx.own("crmSequence", sequenceId);
     const enr = await (crm as any).sequences.enroll(octx, ownerActor, { sequenceId, contactId });
     ctx.own("crmSequenceEnrollment", (enr as any).enrollmentId ?? (enr as any).id);
+    ctx.log(`   enroll → ${JSON.stringify(enr)}`);
     const settings = await (crm as any).emails.getEmailSettings(octx, ownerActor);
     ctx.check("US5-0", "shop email settings have open/click tracking on (or this journey can't observe opens/clicks)", true, !!settings.trackOpens && !!settings.trackClicks);
   }
@@ -143,40 +148,119 @@ export async function run(ctx: Any): Promise<void> {
     const replyTo = (sent?.routing as Any)?.replyTo ?? null;
     ctx.check("US5-2c", `sent message's Reply-To follows the shop's C4 email settings (routing.replyTo=${replyTo})`, true, !!replyTo);
 
-    ctx.plan("SCRIPTED ACTION (real HTTP, anon browser = customer's mail client): hit the real /t/o pixel twice and one /t/c link once, parsed out of the sent body");
-    // ROUND 3 (controller): proved this BEFORE assuming it cascades from I1 — traced emails.ts's own send path
-    // (sendCore, ~line 1177-1225): `composed = composeOutgoing(...)` builds the tracking-embedded HTML that's
-    // ACTUALLY transmitted to the provider (`args.composed.html`, line 1315), but the DB row stores
-    // `bodyHtml: storedHtml` — the PRE-tracking body (line 1214). The composed HTML with the real `/t/o/<token>.gif`
-    // pixel is never persisted anywhere queryable after send; only `trackTokenHash` (a SHA256 HASH, not the token
-    // itself) is kept. So a bodyHtml regex for `/t/o/` can NEVER match, on ANY status, SENT or FAILED — this was a
-    // RUNNER BUG in the test's own design, independent of the I1 RESEND_API_KEY gap. What IS genuinely persisted
-    // and real: `routing.links` (line 1188, `composed.links` — the per-link click-tracking table), stored
-    // regardless of provider outcome. Use that for the click half; the open-pixel half has no DB-retrievable
-    // ground truth at all with this architecture, and is reported as a runner limitation, not asserted false.
-    const clickLinks = (sent?.routing as Any)?.links;
-    const hasClickLinks = Array.isArray(clickLinks) && clickLinks.length > 0;
-    ctx.check("US5-3", `RUNNER-LIMITATION-NOTED: the composed tracking HTML (open pixel + wrapped links) is sent straight to the provider and never persisted in bodyHtml — only routing.links (click targets) survive in the DB. Click-tracking data present: ${hasClickLinks}. Open-pixel token cannot be independently recovered from QC1's DB with any test client (not an I1 cascade — proven true on SENT rows too, not just FAILED ones)`, true, hasClickLinks);
-    if (hasClickLinks) {
-      const codeOrUrl = (clickLinks[0]?.code ?? clickLinks[0]?.url ?? null) as string | null;
-      if (codeOrUrl) {
-        const page2 = await ctx.newAnonPage();
-        const clickUrl = /^https?:\/\//.test(codeOrUrl) ? codeOrUrl : `${ctx.BASE}/t/c/${codeOrUrl}`;
-        await page2.goto(clickUrl, { waitUntil: "networkidle2", timeout: 15_000 }).catch(() => {});
-        await page2.close();
+    // ROUND 4 — PRODUCT BUG (click tracking can never apply to a quotation composed in the CRM UI): the body above
+    // contains a URL, click tracking is ON (US5-0), yet `routing.links` of the UI-sent message is empty. Traced:
+    //   • EmailComposer.tsx:98-103 HTML-escapes the whole textarea into <p> text — a typed URL never becomes <a href>;
+    //   • EmailComposer.tsx:48 strips EVERY tag when a template is picked — a template's links are destroyed too;
+    //   • composeOutgoing (emails.ts:924-931) only wraps `href="http(s)://…"` ⇒ nothing to wrap ⇒ links: [].
+    // (Links DO work for bodies that carry real anchors — REST/API sends — see the SETUP send below.)
+    const uiLinks = (sent?.routing as Any)?.links;
+    ctx.check("US5-3a", "PRODUCT BUG — the quotation composed in the CRM UI (its body contains a URL, click tracking is on) carries at least one click-tracked link (routing.links); EmailComposer escapes the body to plain text (EmailComposer.tsx:98-103) and strips template tags (:48), so no <a href> ever reaches composeOutgoing (emails.ts:924-931)", ">= 1 tracked link", Array.isArray(uiLinks) && uiLinks.length >= 1 ? ">= 1 tracked link" : `routing.links=${JSON.stringify(uiLinks ?? null)}`);
+
+    // ROUND 4 (controller ruling: "a check that cannot be evaluated may neither stay red forever nor be counted as a
+    // pass"): the open pixel + wrapped links exist ONLY in the HTML handed to the mail transport — by design the DB
+    // keeps hashes, never tokens (X7, emails.ts:914-919 · trackTokenHash / routing.links[].h) — and on QC the dev
+    // fallback of sendEmailRich (src/lib/core/email.ts:128-131) logs the subject and DROPS that HTML. So the mail the
+    // UI just sent is unobservable by any "customer" on QC. Stand-in: send the quotation once more through the
+    // product's OWN exported `emails.sendEmail` (same sendCore/composeOutgoing as the UI's server action) with an
+    // injected transport that captures exactly what the provider would receive = the customer's mailbox. The body
+    // carries a real anchor (as a template/API-sent quotation would), pointing at the shop's portal page on QC so
+    // the click's redirect never leaves QC (B1 guard stays silent).
+    let capturedHtml: string | null = null;
+    ctx.plan("SETUP (customer's mailbox stand-in — QC's dev mail fallback discards the composed HTML, email.ts:128-131): thana re-sends the quotation on the same thread via the product's own emails.sendEmail with a capturing transport; body has a real <a href> to the shop portal");
+    const tenantRow = await P.tenant.findFirst({ where: { id: env.tenantId }, select: { slug: true } });
+    const quoteLinkTarget = `${ctx.BASE}/b/${encodeURIComponent(tenantRow?.slug ?? "-")}/login`;
+    await withStaffPermissions(prisma, { tenantId: env.tenantId, userId: env.users.thana.userId, keys: ["crm.email.read", "crm.email.send"] }, async () => {
+      const crm = await import("@/lib/modules/crm");
+      const { ctx: tctx, actor: thanaActor } = await actorFor(prisma, env, "thana");
+      const res = await (crm as any).emails.sendEmail(
+        tctx,
+        thanaActor,
+        {
+          contactId,
+          subject: `ใบเสนอราคาแพ็กเกจดำน้ำ — ลิงก์ดูออนไลน์ (${ctx.tag})`,
+          bodyHtml: `<p>เรียนคุณลูกค้า แนบใบเสนอราคามาให้แล้วนะคะ</p><p><a href="${quoteLinkTarget}">ดูใบเสนอราคาออนไลน์</a></p>`,
+          replyToEmailId: sentEmailId,
+        },
+        { transport: async (msg: Any) => { capturedHtml = String(msg?.html ?? ""); return { ok: true, providerId: `${ctx.tag}-mailbox-${Date.now().toString(36)}` }; } },
+      ).catch((e: unknown) => { ctx.log(`⚠️ SETUP sendEmail: ${e instanceof Error ? e.message : e}`); return null; });
+      mailboxEmailId = res?.emailId ?? null;
+      ctx.own("crmEmailMessage", mailboxEmailId);
+      ctx.log(`   SETUP send → status=${res?.status} emailId=${mailboxEmailId} capturedHtml=${capturedHtml ? `${(capturedHtml as string).length} chars` : "none"}`);
+    });
+
+    ctx.plan("SCRIPTED ACTION (real HTTP, anon browser with a real mail-client UA = the customer): open the delivered mail twice (its real /t/o pixel loads each time) and click its wrapped link once (real /t/c → 302)");
+    // RUNNER FIX (ROUND 4): puppeteer's default UA contains "HeadlessChrome"; BOT_UA_RE (emails-shared.ts:193) treats
+    // any "headless" UA as a link scanner and does NOT count it (trackOpen/trackClick) — a correct product rule. The
+    // customer's mail client is not headless: use an Apple Mail UA.
+    const MAIL_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+    const html = capturedHtml as string | null;
+    const pixelM = html ? /<img[^>]+src="([^"]*\/t\/o\/([^"/]+)\.gif)"/.exec(html) : null;
+    const linkM = html ? /href="([^"]*\/t\/c\/([^"/]+))"/.exec(html) : null;
+    ctx.check("US5-3", `the delivered mail carries the real open pixel (/t/o/<token>.gif) and a click-wrapped link (/t/c/<token>) — pixel=${!!pixelM} link=${!!linkM}`, { pixel: true, link: true }, { pixel: !!pixelM, link: !!linkM });
+    let clickLandedOn: string | null = null;
+    if (html && pixelM && linkM) {
+      // the tracked URLs carry the sender process's APP_URL origin; point them at the QC server under test
+      const baseOf = (u: string) => { try { return new URL(u).origin; } catch { return ""; } };
+      const composedBase = baseOf(pixelM[1]!);
+      const qcOrigin = new URL(ctx.BASE).origin;
+      const mailHtml = composedBase && composedBase !== qcOrigin ? html.split(composedBase).join(qcOrigin) : html;
+      if (composedBase !== qcOrigin) ctx.log(`   note: tracked URLs were composed with base ${composedBase} — rewritten to the QC server ${qcOrigin}`);
+      await new Promise((r) => setTimeout(r, 2_500)); // opens < 2 s after send are ignored by design (OPEN_MIN_AGE_MS, emails.ts:305)
+      // each "open" = the mail client renders the message → its <img> fetches the real /t/o pixel. Each open is its
+      // own mail-client session (fresh page + context): round-4 run b showed that re-rendering in the SAME page lets
+      // Chrome reuse the already-decoded image without a second request (pixel responses [200,-1] → openCount 1),
+      // which is a browser-cache artefact, not what two separate openings of a mail do.
+      const pixelStatuses: number[] = [];
+      let mail: Any = null;
+      for (const n of [1, 2]) {
+        if (mail) await mail.close();
+        mail = await ctx.newAnonPage({ isolated: true });
+        await mail.setUserAgent(MAIL_UA);
+        const pixelResp = mail.waitForResponse((r: Any) => r.url().includes("/t/o/"), { timeout: 15_000 }).catch(() => null);
+        await mail.setContent(`<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:16px">${mailHtml}</body>`, { waitUntil: "domcontentloaded", timeout: 15_000 });
+        const r = await pixelResp;
+        pixelStatuses.push(r ? r.status() : -1);
+        await new Promise((res) => setTimeout(res, 800));
+        await ctx.shot(mail, `06-0${n}-mail-opened-${n}`);
       }
+      ctx.log(`   pixel responses for the 2 opens: ${JSON.stringify(pixelStatuses)}`);
+      // the click: the customer's mail client opens the wrapped href (a GET of /t/c/<token>, following the 302).
+      // Round-4 run b: a synthetic element click inside the setContent (about:blank) document never navigated
+      // (url stayed about:blank, clickCount 0) — so request the exact href taken from the rendered anchor.
+      const href = String(await mail.$eval('a[href*="/t/c/"]', (a: any) => a.href).catch(() => ""));
+      if (href) {
+        const resp = await mail.goto(href, { waitUntil: "networkidle2", timeout: 20_000 }).catch((e: unknown) => { ctx.log(`⚠️ click navigation: ${e instanceof Error ? e.message : e}`); return null; });
+        const chain = resp ? [...resp.request().redirectChain().map((q: Any) => `${q.response()?.status() ?? "?"} ${q.url()}`), `${resp.status()} ${resp.url()}`] : [];
+        ctx.log(`   click redirect chain: ${JSON.stringify(chain)}`);
+      }
+      clickLandedOn = mail.url();
+      await ctx.shot(mail, "06-03-after-click");
+      await mail.close();
     }
+    ctx.log(`   click landed on: ${clickLandedOn}`);
+    ctx.check("US5-3b", "the wrapped link redirected the customer to the ORIGINAL link target (the shop portal page)", quoteLinkTarget, clickLandedOn ? clickLandedOn.split("?")[0] : null);
   }
 
   ctx.plan("SETUP (facade — inbound is a provider webhook, not a UI): customer replies in the same thread");
   // Thread matching (emails.ts ingestInbound): (1) In-Reply-To/References header → parent's threadKey, else
   // (2) a `+t<short>` tag on the reply-to address, else (3) same contact + normalized subject among recent messages.
-  // This oracle doesn't fabricate a Message-ID header for the sent message, so it relies on (3) — same contact,
-  // subject "Re: <original>" — which is what a real mail client reply does anyway.
+  // RUNNER BUG FIXED (ROUND 4, root cause of US5-7): the old reply carried `headers: {}` on the theory that subject
+  // matching (3) "is what a real mail client reply does anyway" — false: every real client sends In-Reply-To and
+  // References with the Message-ID it received. And only (1) sets `parent` (emails.ts:2074-2083); (2)/(3) set the
+  // threadKey but leave parent=null, and the repliedAt flip + `stopSequencesFor(REPLY)` run only when parent is an
+  // OUT message (emails.ts:2186-2196) — so the sequence could never stop. The reply now carries the Message-ID the
+  // UI-sent quotation actually went out with (`<rfcId>`, emails.ts:1317; stored as `<systemId>:<rfcId>`).
+  let enrollmentBeforeReply: string | null = null;
   if (!ctx.dry && threadKey && sentEmailId) {
     const crm = await import("@/lib/modules/crm");
     const settings = await (crm as any).emails.getEmailSettings(octx, ownerActor);
-    const sentRow = await P.crmEmailMessage.findFirst({ where: { id: sentEmailId }, select: { subject: true } });
+    const sentRow = await P.crmEmailMessage.findFirst({ where: { id: sentEmailId }, select: { subject: true, messageId: true } });
+    const stored = String(sentRow?.messageId ?? "");
+    const rfcId = stored.includes(":") ? stored.slice(stored.indexOf(":") + 1) : stored;
+    const enrBefore = sequenceId && contactId ? await P.crmSequenceEnrollment.findFirst({ where: { tenantId: env.tenantId, sequenceId, contactId }, orderBy: { createdAt: "desc" }, select: { status: true, stoppedReason: true } }) : null;
+    enrollmentBeforeReply = enrBefore?.status ?? null;
+    ctx.log(`   enrollment before the reply: ${JSON.stringify(enrBefore)} · replying to Message-ID <${rfcId}>`);
     const deps = { transport: async () => ({ ok: true, providerId: `${ctx.tag}-reply-${Date.now().toString(36)}` }), put: async () => {}, del: async () => 200 };
     const reply = await (crm as any).emails.ingestInbound(
       {
@@ -186,7 +270,7 @@ export async function run(ctx: Any): Promise<void> {
         subject: `Re: ${sentRow?.subject ?? `ใบเสนอราคาแพ็กเกจดำน้ำ (${ctx.tag})`}`,
         text: "ขอบคุณค่ะ กำลังดูรายละเอียดอยู่",
         html: "<p>ขอบคุณค่ะ กำลังดูรายละเอียดอยู่</p>",
-        headers: {},
+        headers: rfcId ? { "in-reply-to": `<${rfcId}>`, references: `<${rfcId}>` } : {},
         attachments: [],
       },
       deps,
@@ -202,16 +286,25 @@ export async function run(ctx: Any): Promise<void> {
     // previously ONE pollUntil requiring BOTH conditions, so a failure on one side (e.g. no click ever landed)
     // silently reported the OTHER, functionally-unrelated side as failed too, even when the reply genuinely DID
     // land (it's a separate ingestInbound() call above, nothing to do with opens/clicks).
-    const outMsg = await pollUntil(() => P.crmEmailMessage.findFirst({ where: { id: sentEmailId }, select: { openCount: true, clickCount: true } }).then((m: Any) => (m?.clickCount >= 1 ? m : null)));
-    // US5-4 (2 opens) can no longer be exercised — see the RUNNER-LIMITATION-NOTED comment on US5-3 above: there is
-    // no real open-pixel token recoverable from the DB to hit with a test client, on ANY message status.
-    ctx.check("US5-4", "RUNNER-LIMITATION-NOTED (see US5-3): open-pixel token not recoverable from the DB — cannot drive a real open hit, so this is not evaluated as pass/fail", "not evaluable with this architecture", "not evaluable with this architecture");
-    ctx.check("US5-5", "the sent message shows at least 1 click (via the real routing.links click target)", true, (outMsg?.clickCount ?? 0) >= 1);
+    // ROUND 4: US5-4/5 read the counters of the message the customer actually opened/clicked (the mailbox stand-in
+    // above). The old US5-4 was an unconditional pass ("not evaluable" === "not evaluable") — replaced by a real check.
+    const outMsg = mailboxEmailId
+      ? await pollUntil(() => P.crmEmailMessage.findFirst({ where: { id: mailboxEmailId }, select: { openCount: true, clickCount: true } }).then((m: Any) => (m && m.openCount >= 2 && m.clickCount >= 1 ? m : null)))
+          .then(async (m: Any) => m ?? P.crmEmailMessage.findFirst({ where: { id: mailboxEmailId }, select: { openCount: true, clickCount: true } }))
+      : null;
+    ctx.check("US5-4", "the customer opened the quotation twice → the message counts exactly 2 opens (real /t/o pixel, mail-client UA)", 2, outMsg?.openCount ?? null);
+    ctx.check("US5-5", "the customer clicked the link once → the message counts exactly 1 click (real /t/c)", 1, outMsg?.clickCount ?? null);
 
     const inCount = await pollUntil(() => P.crmEmailMessage.count({ where: { tenantId: env.tenantId, threadKey, direction: "IN" } }).then((n: number) => (n >= 2 ? n : null)));
     ctx.check("US5-6", "the customer's reply landed on the SAME thread (>=2 inbound messages, same threadKey)", true, (inCount ?? 0) >= 2);
-    const enrollment = sequenceId && contactId ? await pollUntil(() => P.crmSequenceEnrollment.findFirst({ where: { tenantId: env.tenantId, sequenceId, contactId, status: "STOPPED" }, select: { status: true } })) : null;
-    ctx.check("US5-7", "the sequence enrollment stopped itself on the reply (stopOnReply)", "STOPPED", enrollment?.status ?? null);
+    const repliedFlag = sentEmailId ? await P.crmEmailMessage.findFirst({ where: { id: sentEmailId }, select: { repliedAt: true } }) : null;
+    ctx.check("US5-6b", "the reply was recognised as a reply TO the sent quotation (quotation.repliedAt set)", true, !!repliedFlag?.repliedAt);
+    ctx.check("US5-7a", "precondition: the contact's enrollment was live (ACTIVE) right before the reply — otherwise US5-7 could not be attributed to the reply", "ACTIVE", enrollmentBeforeReply);
+    const enrollment = sequenceId && contactId
+      ? await pollUntil(() => P.crmSequenceEnrollment.findFirst({ where: { tenantId: env.tenantId, sequenceId, contactId, status: "STOPPED" }, select: { status: true, stoppedReason: true } }))
+          .then(async (e: Any) => e ?? P.crmSequenceEnrollment.findFirst({ where: { tenantId: env.tenantId, sequenceId, contactId }, orderBy: { createdAt: "desc" }, select: { status: true, stoppedReason: true } }))
+      : null;
+    ctx.check("US5-7", "the sequence enrollment stopped itself BECAUSE of the reply (stopOnReply → STOPPED, reason REPLY)", { status: "STOPPED", stoppedReason: "REPLY" }, enrollment ? { status: enrollment.status, stoppedReason: enrollment.stoppedReason } : null);
   } else {
     ctx.check("US5-0..7", "dry mode — assertions require the real send + real pixel/click hits + inbound reply", "skipped in --dry", "skipped in --dry");
   }

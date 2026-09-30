@@ -738,3 +738,79 @@ the specific keys, confirmed by the controller's ruling as legitimate fixture se
 
 **All 10 stories now have a fresh, classified result. Ready for the reviewer's judgment on whether C4.4 is
 mergeable as an oracle with the fix list above.**
+
+## Round 4 (30 Sep)
+
+Runner-only changes (`scripts/crm-journeys/{lib,US4,US5,US8,US9}.mts`); no product code touched. All runs as systemd units
+under `with-gate-lock.sh` on QC1 against the running `crm-qc1-serve` (:3215, SHARK_AI_MOCK=1). Journey files type-check
+clean (`tsc -p .qc-shots/crm/c44-r4/tsconfig.journeys.json` → exit 0; they are inside the build's `**/*.mts` include).
+
+### Per red check
+- **US4-5b → PRODUCT GAP (now 🟧, was ❌).** Diagnosis 1 confirmed: the ถอดเสียง fieldset renders only after save
+  (`CrmCallLogModal.tsx:227`) and the button only when `aiState==="READY"` (:230); the old runner looked before saving
+  and attached no recording (`transcribeCall` also refuses a CALL without `recordingFileId`, calls.ts:411-413). Runner
+  now drives the real order: fill → `crm-call-recording-input` (1 s WAV) → save → ถอดเสียง section. Even so the button
+  cannot appear on QC: `callAiStatus` (calls.ts:350-358) → OFF unless `settings.crm.ai.callTranscribe` — no UI sets it
+  (`setCrmAiKey` settings.ts:67 has no caller in src/) — and NO_PROVIDER because `getCrmTranscriber()` (transcriber.ts:53)
+  is null: `registerCrmTranscriber` has no caller; SHARK_AI_MOCK mocks only the chat model (ai/provider.ts:211).
+  Marked SETUP turns callTranscribe on via the module's own setCrmAiKey (path-scoped restore, try/finally) so the
+  screen shows the next blocker; screenshot `journeys/US4/07-04-…png` shows the recording attached + "ยังไม่ได้เชื่อม
+  บริการถอดเสียง". New real check **US4-5c** (recording stored on the CALL) ✅. If a transcriber ever registers, the
+  READY branch drives transcribe → accept and US4-5b becomes a normal check. Cleanup via the product's
+  `removeRecording`; `fileAsset` added to CLEAN_ORDER as fallback.
+- **US9-2 / US9-3 → RUNNER (fixed, ✅).** Beyond diagnosis 2: `originAllowed` (tracking-shared.ts:161-176) accepts only
+  **https** origins, and `normalizeDomain` (:146-156) rejects IPs/ports/localhost — so the plain-http QC origin can never
+  be a tracked site, whatever the domain list says (by design, X7). New real check **US9-1b** ✅: the settings UI refuses
+  `127.0.0.1` inline and stores nothing. Runner now: adds the shop domain `qc-jrn-shop.shark-qc.test` (reserved .test,
+  mapped to loopback only via chromium `--host-resolver-rules`) through the real /settings/tracking UI; a SETUP local TLS
+  terminator serves the shop's own pages containing the VERBATIM embed code (before `</body>`, as the page instructs)
+  and forwards every other path only to QC (form `/f/<token>`, assets, server action). B1 guard allows exactly that
+  origin (`ctx.extraAllowedOrigins`, removed in finally). No B1 aborts in the log.
+- **US9-4 → RUNNER (fixed, ✅ real).** Two runner bugs: (a) every anon page shared one cookie jar, so the "decliner"
+  inherited the accepter's `sd_consent=a` (never saw the banner, got tracked) → `newAnonPage({isolated:true})` = own
+  browser context; (b) the old lookup by the decliner's `sd_vid` was vacuous — declining never creates sd_vid → now
+  counts sessions/events carrying this run's `utm_content=<run>-decline` marker, with **US9-2b** (same query finds the
+  accepter's 4 events) as positive control. Asserts banner shown + ปฏิเสธ clicked + no banner next page + 0 sessions + 0 events.
+- **US5-3 → split.** **US5-3a ❌ PRODUCT BUG**: UI-composed quotation has `routing.links=[]` although its body has a URL
+  and click tracking is on — `EmailComposer.tsx:98-103` HTML-escapes the body (URLs never become `<a href>`) and `:48`
+  strips every tag from a picked template; `composeOutgoing` (emails.ts:924-931) only wraps `href="http(s)…"`.
+  **US5-3 ✅**: tokens exist only in the HTML handed to the transport (DB keeps hashes by design, X7) and QC's dev
+  fallback (`core/email.ts:128-131`) drops that HTML → marked SETUP re-sends the quotation on the same thread via the
+  product's own `emails.sendEmail` with a capturing transport (= customer's mailbox; body has a real anchor to the
+  shop portal on QC). **US5-3b ✅**: 302 lands on the original target.
+- **US5-4 (was an unconditional pass) / US5-5 → RUNNER (fixed, ✅ real).** Customer renders the captured mail twice
+  (each open its own page/context — same-page re-render reused the image, [200,-1]) and GETs the wrapped href once.
+  Also: puppeteer's UA contains "HeadlessChrome" → `BOT_UA_RE` (emails-shared.ts:193) correctly refuses to count →
+  Apple Mail UA. openCount==2, clickCount==1.
+- **US5-7 → RUNNER (fixed, ✅).** Reply had `headers:{}`; only In-Reply-To/References set `parent`
+  (emails.ts:2074-2083) and the repliedAt flip + `stopSequencesFor(REPLY)` need an OUT parent (:2186-2196). Reply now
+  carries `In-Reply-To/References: <rfcId>` of the UI-sent quotation (emails.ts:1317). New **US5-6b** (repliedAt) ✅,
+  **US5-7a** (enrollment ACTIVE before reply) ✅, US5-7 asserts STOPPED + reason REPLY. Sequence fixture is WAIT-first so
+  the server's minute job can't advance it mid-journey.
+- **US8 (was green) → RUNNER cleanup bug fixed.** The system-wide field_due rule also opens renewal deals for QC1's
+  seeded contracts (tagged via the title template); they weren't registered and survived --clean (2 per run, incl. the
+  10:06 acceptance run). Now every deal with this story's tag created after the rule is registered. US8 re-run 5/5,
+  4 deals opened and all cleaned; the 4 stranded ones were removed via the retry manifest.
+
+### Final run
+`--journey all` (unit c44-r4-all) → `.qc-shots/crm/c44-r4/all-journeys.log`:
+`JSON_SUMMARY {"total":92,"passed":89,"failures":3,"gaps":2,"fatal":null}` — non-pass = US4-5b 🟧, US5-0-GAP 🟧,
+US5-3a ❌ (product bug). `--clean` after: 53 rows; after the US8 re-run: 9 more (US8 5/5). Shared settings restored
+(`crm.ai` absent, `crm.tracking.web.domains` back to null). Leftover probe: **0 rows from round 4**; **45 qc-jrn rows
+remain, all created 28 Sep** (12 contacts, 7 companies, 10 deals, 1 sequence, 2 forms, 3 emails, 10 activities —
+from earlier rounds, not in any manifest). Not deleted — controller's call.
+
+### Product fix list (new this round)
+1. BUG — `EmailComposer.tsx:98-103` / `:48`: CRM-UI emails can never carry a tracked link (URLs not linkified;
+   template anchors stripped) ⇒ click tracking is dead for staff-composed mail although the setting is on.
+2. GAP — call transcription: no STT provider registered (`transcriber.ts:53`, `registerCrmTranscriber` uncalled) and no
+   settings UI for `settings.crm.ai.callTranscribe` (`setCrmAiKey` settings.ts:67 uncalled).
+3. BUG (small) — `CRM_CALL_AI_OFF_MSG` (calls-shared.ts:147) sends staff to "ตั้งค่า CRM → ผู้ช่วย AI", which doesn't
+   exist on the CRM settings index.
+4. OBSERVATION — replies matched only by the `+t<short>` address tag or by subject (emails.ts:2084-2106) never set
+   `repliedAt` or stop sequences (parent is set only from In-Reply-To/References).
+5. OBSERVATION (design) — form→session binding reads `sd_vid` from the FORM request's own host cookie
+   (f/[token]/actions.ts:19-25) ⇒ retroactive linking works only if the form is served on the same host as the tracked
+   site (custom domain in front of SHARK); a shop site on its own domain linking to shark.in.th/f/<token> gets no binding.
+6. QC-env note — web tracking can't be exercised on the plain-http QC origin (https-only origin, no IP domains — correct
+   for prod); the oracle now uses a TLS shop domain.

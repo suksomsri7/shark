@@ -2,7 +2,9 @@
 // creates a follow-up task + notifies the team's managers → the employee calls (call log + recording → AI summary) →
 // the stale tag clears.
 //
-// DECISION-US4-1: the AI transcribe/summarize buttons (`crm-call-ai-transcribe`/`-accept`) call a real model and
+// ROUND 4: DECISION-US4-1 below is superseded (SHARK_AI_MOCK=1 on QC) — see the ROUND 4 block above step 06 for why
+// the transcribe button still cannot appear (no STT provider, no settings UI) and how US4-5b is now recorded.
+// DECISION-US4-1 (historical): the AI transcribe/summarize buttons (`crm-call-ai-transcribe`/`-accept`) call a real model and
 // spend AI credits (see registry: `AiCreditTxn(source=CRM_ASSIST)`), the same reason other WOs' journeys avoid
 // pressing AI buttons (visual-crm.mts C3.4 notes: "ไม่กดปุ่ม AI"). This oracle fills the call-log fields directly
 // (outcome/duration/note) instead of exercising the AI path — the assertion that matters for this story (call log →
@@ -118,8 +120,47 @@ export async function run(ctx: Any): Promise<void> {
     ctx.check("US4-4", `the phuket team's manager was notified BY THIS RULE (NOTIFY_STAFF to=managers, body contains "${ruleName}")`, true, !!notif);
   }
 
-  ctx.plan("SCRIPTED ACTION (real UI, thana): open deal 360, log a call (outcome/duration/note) — clears the stale flag");
+  // ROUND 4 (controller diagnosis 1, verified): the "ถอดเสียง" fieldset of CrmCallLogModal.tsx is rendered ONLY after
+  // the call is saved (`{saved && …}`, line 227) and the transcribe button ONLY when `aiState === "READY"` (line 230).
+  // The old runner looked for the button BEFORE saving and attached no recording (transcribeCall refuses a CALL
+  // without `recordingFileId`, calls.ts:411-413) — so it could never have appeared. This step now drives the modal's
+  // real order: fill → attach a recording (`crm-call-recording-input`) → save → the transcribe section.
+  // `aiState` comes from `calls.callAiStatus` (calls.ts:350-358, read server-side by deals/[dealId]/page.tsx:82):
+  //   OFF         ⇐ settings.crm.ai.callTranscribe !== true — and NO UI can set it: `setCrmAiKey` (settings.ts:67) has
+  //                 no caller anywhere in src/, and the CRM settings index has no "ผู้ช่วย AI" section even though the
+  //                 OFF message (calls-shared.ts:147) tells staff to go to "ตั้งค่า CRM → ผู้ช่วย AI".
+  //   NO_PROVIDER ⇐ getCrmTranscriber() === null — transcriber.ts:53 returns null unless registerCrmTranscriber() was
+  //                 called, and nothing in src/ calls it (transcriber.ts:3-4: "RUN นี้ไม่มีผู้ให้บริการ STT").
+  //                 SHARK_AI_MOCK=1 mocks only the chat model (src/lib/ai/provider.ts:211), not speech-to-text.
+  // So on the QC server the button cannot appear: US4-5b is a PRODUCT GAP, recorded red-for-gap. If a later build
+  // ships an STT provider + settings toggle, the READY branch below drives transcribe → accept for real and US4-5b
+  // becomes a normal pass/fail check on the CALL activity's aiSummary.
+  let restoreAiSettings: (() => Promise<void>) | null = null;
+  ctx.plan("SETUP (no UI exists — part of the US4-5b gap): settings.crm.ai.callTranscribe=true via the module's own setCrmAiKey (settings.ts:67), path-scoped restore after — so the modal shows the NEXT blocker (transcriber) rather than stopping at OFF");
   if (!ctx.dry) {
+    restoreAiSettings = await lib.snapshotSettingsPath(prisma, env.SYS, ["crm", "ai"]);
+    const settingsMod = (await import("@/lib/modules/crm/settings" as string)) as Any;
+    await settingsMod.setCrmAiKey({ tenantId: env.tenantId, systemId: env.SYS }, "callTranscribe", true);
+  }
+
+  try { // restore settings.crm.ai even if a step below throws (shared QC1 config)
+  let aiUiState = "not-reached";
+  let aiUiText: string | null = null;
+  let aiSummaryInUi: string | null = null;
+  let saveError: string | null = null;
+  ctx.plan("SCRIPTED ACTION (real UI, thana): open deal 360, log a call (outcome/note) + attach the call recording → save — clears the stale flag; then the ถอดเสียง section (transcribe → accept if the button exists)");
+  if (!ctx.dry) {
+    // a real (tiny) recording: 1 s of 8 kHz 8-bit mono PCM silence as a standard RIFF/WAVE file (audio/wav is on
+    // CRM_RECORDING_MIME_ALLOWLIST, calls-shared.ts:28)
+    const { writeFileSync } = await import("node:fs");
+    const samples = 8000;
+    const wav = Buffer.alloc(44 + samples, 0x80);
+    wav.write("RIFF", 0); wav.writeUInt32LE(36 + samples, 4); wav.write("WAVE", 8); wav.write("fmt ", 12);
+    wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24);
+    wav.writeUInt32LE(8000, 28); wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write("data", 36); wav.writeUInt32LE(samples, 40);
+    const wavPath = `${ctx.outDir}/qc-jrn-us4-call.wav`;
+    writeFileSync(wavPath, wav);
+
     const page = await ctx.loginStaff("thana");
     await page.goto(`${ctx.BASE}/app/sys/${env.SYS}/crm/deals/${dealId}`, { waitUntil: "networkidle2", timeout: 30_000 });
     await page.waitForSelector("[data-testid=crm-call-log-open]", { timeout: 15_000 });
@@ -129,38 +170,70 @@ export async function run(ctx: Any): Promise<void> {
     if (outcomeSel) await page.select("[data-testid=crm-call-outcome]", await page.$eval("[data-testid=crm-call-outcome] option:not([value=''])", (o: any) => o.value)).catch(() => {});
     await page.click("[data-testid=crm-call-note]");
     await page.keyboard.type("โทรติดตามดีลที่นิ่ง — ลูกค้าขอคิดอีก 3 วัน (qc-jrn-us4)", { delay: 5 });
-    // ROUND 3 (controller): SHARK_AI_MOCK=1 is confirmed on the QC server — the AI transcribe/summarize step is now
-    // free and deterministic, so drive it for real instead of the earlier DECISION-US4-1 (avoid real model cost).
+    const fileInput = await page.$("[data-testid=crm-call-recording-input]");
+    if (fileInput) await fileInput.uploadFile(wavPath);
+    else ctx.log("   ⚠️ crm-call-recording-input not found in the modal");
+    await page.waitForSelector("[data-testid=crm-call-recording-player]", { timeout: 5_000 }).catch(() => ctx.log("   ⚠️ recording preview player did not appear after picking the file"));
+    await ctx.shot(page, "03-call-log-filled");
+    await page.click("[data-testid=crm-call-save]");
+    await page.waitForSelector("[data-testid=crm-call-saved], [data-testid=crm-call-error]", { timeout: 20_000 }).catch(() => {});
+    saveError = await page.$eval("[data-testid=crm-call-error]", (el: any) => el.textContent).catch(() => null);
+    if (saveError) ctx.log(`   ⚠️ call-log save error shown inline: ${saveError}`);
+    await ctx.shot(page, "04-after-call-save-transcribe-section");
     const aiBtn = await page.$("[data-testid=crm-call-ai-transcribe]");
-    let aiSummaryFilled = false;
     if (aiBtn) {
+      aiUiState = "READY";
       await aiBtn.click();
-      await page.waitForSelector("[data-testid=crm-call-ai-accept]", { timeout: 15_000 }).catch(() => {});
-      await ctx.shot(page, "03b-call-ai-proposal");
+      await page.waitForSelector("[data-testid=crm-call-ai-card], [data-testid=crm-call-ai-error]", { timeout: 30_000 }).catch(() => {});
+      await ctx.shot(page, "04b-call-ai-proposal");
+      aiUiText = await page.$eval("[data-testid=crm-call-ai-error]", (el: any) => el.textContent).catch(() => null);
+      aiSummaryInUi = await page.$eval("[data-testid=crm-call-ai-summary]", (el: any) => el.value || el.textContent).catch(() => null);
       const acceptBtn = await page.$("[data-testid=crm-call-ai-accept]");
       if (acceptBtn) {
         await acceptBtn.click();
-        await new Promise((r) => setTimeout(r, 800));
-        aiSummaryFilled = !!(await page.$eval("[data-testid=crm-call-ai-summary]", (el: any) => el.value || el.textContent).catch(() => null));
+        await page.waitForFunction(() => !document.querySelector("[data-testid=crm-call-ai-card]"), { timeout: 15_000 }).catch(() => {});
+        await ctx.shot(page, "04c-call-ai-accepted");
       }
+    } else {
+      const unavailable = await page.$eval("[data-testid=crm-call-ai-unavailable]", (el: any) => el.textContent).catch(() => null);
+      aiUiState = unavailable !== null ? "UNAVAILABLE" : "SECTION-ABSENT";
+      aiUiText = unavailable;
     }
-    ctx.log(`   AI transcribe/accept (SHARK_AI_MOCK=1): button present=${!!aiBtn} summaryFilled=${aiSummaryFilled}`);
-    await ctx.shot(page, "03-call-log-filled");
-    await page.click("[data-testid=crm-call-save]");
-    await new Promise((r) => setTimeout(r, 1_200));
-    await ctx.shot(page, "04-after-call-log");
+    ctx.log(`   ถอดเสียง section: state=${aiUiState} text=${JSON.stringify(aiUiText)} summaryInUi=${JSON.stringify(aiSummaryInUi)}`);
     await page.close();
   }
 
-  ctx.plan("assert: CrmActivity(type=CALL) recorded · deal.stalledAt cleared");
+  ctx.plan("assert: CrmActivity(type=CALL) recorded with its recording · AI summary on the CALL (gap if no transcriber) · deal.stalledAt cleared");
   if (!ctx.dry) {
-    const call = await P.crmActivity.findFirst({ where: { tenantId: env.tenantId, dealId, type: "CALL" }, orderBy: { createdAt: "desc" } });
+    const call = await pollUntil(() => P.crmActivity.findFirst({ where: { tenantId: env.tenantId, dealId, type: "CALL" }, orderBy: { createdAt: "desc" } }));
     ctx.check("US4-5", "a CALL activity was recorded on the deal", true, !!call);
-    ctx.check("US4-5b", "the AI (SHARK_AI_MOCK=1) transcript/summary proposal was accepted and landed on the CALL activity (story: \"AI ถอด/สรุป\")", true, !!call?.aiSummary);
+    ctx.own("fileAsset", call?.recordingFileId);
+    ctx.check("US4-5c", `the call recording picked in the modal was stored on the CALL activity (recordingFileId set; inline save error: ${JSON.stringify(saveError)})`, true, !!call?.recordingFileId);
+    if (aiUiState === "READY") {
+      ctx.check("US4-5b", "the AI transcript/summary proposal was accepted in the modal and landed on the CALL activity (story: \"AI ถอด/สรุป\")", true, !!call?.aiSummary);
+    } else {
+      ctx.check(
+        "US4-5b",
+        "PRODUCT GAP — story \"AI ถอด/สรุป\": after saving a call WITH a recording, the modal's ถอดเสียง section offers no transcribe button because no speech-to-text provider is registered in the server process (transcriber.ts:53 getCrmTranscriber() → null; registerCrmTranscriber has no caller in src/; SHARK_AI_MOCK only mocks the chat model, provider.ts:211) — and settings.crm.ai.callTranscribe has no UI at all (setCrmAiKey settings.ts:67 has no caller). The AI summary never reaches the CALL activity",
+        { section: "READY (crm-call-ai-transcribe shown)", activityAiSummary: "non-empty" },
+        { section: `${aiUiState}: ${aiUiText ?? "<none>"}`, activityAiSummary: call?.aiSummary ?? null },
+        true,
+      );
+    }
     const dealAfter = await P.crmDeal.findFirst({ where: { id: dealId }, select: { stalledAt: true } });
     ctx.check("US4-6", `deal.stalledAt cleared after the logged activity touched the deal (was: ${dealAfter?.stalledAt ?? "null"})`, null, dealAfter?.stalledAt ?? null);
+
+    ctx.plan("CLEANUP: remove the call recording through the product's own removeRecording (deletes the stored object + FileAsset) · restore settings.crm.ai");
+    if (call?.recordingFileId) {
+      const { ctx: tctx, actor: thanaActor } = await actorFor(prisma, env, "thana");
+      const callsMod = (await import("@/lib/modules/crm/calls" as string)) as Any;
+      await callsMod.removeRecording(tctx, thanaActor, call.id, { confirm: true, reason: "qc-jrn-us4 cleanup of the test recording" }).catch((e: unknown) => ctx.log(`⚠️ removeRecording cleanup: ${e instanceof Error ? e.message : e} — FileAsset id kept in created.json for --clean`));
+    }
   } else {
     ctx.check("US4-1..6", "dry mode — assertions require markStale + cron trigger + real call-log click", "skipped in --dry", "skipped in --dry");
+  }
+  } finally {
+    if (restoreAiSettings) await restoreAiSettings();
   }
 
   if (!ctx.dry) {
