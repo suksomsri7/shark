@@ -53,7 +53,13 @@ try {
   };
   {
     const x = await mkGroup();
-    log(`G0 group cheque: cheque amount=${x.chq.amount} · child payments=${x.pays.length} linked-to-cheque=${x.pays.filter((p: Any) => p.chequeId).length}`);
+    // ORACLE-EDIT (controller ruling R8-1 option a, 30 Sep): AccountDocumentPayment.chequeId is UNIQUE ⇒ the cheque stays linked to the FIRST
+    //   child payment only; every child payment of the batch must be RESOLVED from the cheque by the shared helper (group-batch.paymentsOfCheque).
+    //   Old assertion (cannot hold by design without a migration):
+    //   log(`G0 group cheque: cheque amount=${x.chq.amount} · child payments=${x.pays.length} linked-to-cheque=${x.pays.filter((p: Any) => p.chequeId).length}`);
+    const gb = (await import("@/lib/modules/account/group-batch" as string)) as Any;
+    const resolved = (await gb.paymentsOfCheque(P, T, A, x.cqId)).filter((p: Any) => x.pays.some((q: Any) => q.id === p.id)).length;
+    log(`G0 group cheque: cheque amount=${x.chq.amount} · child payments=${x.pays.length} resolved-from-cheque (shared helper)=${resolved}/${x.pays.length} (expect ${x.pays.length}/${x.pays.length}) · linked by chequeId=${x.pays.filter((p: Any) => p.chequeId).length} (1 by design)`);
     const v = await grp.voidGroupPayment(T, A, x.g.id, x.r.batchKey, "x");
     log(`G1 voidGroupPayment with live cheque → ${short(v)} · i1=${JSON.stringify(await st(x.i1))} i2=${JSON.stringify(await st(x.i2))} (partial write if one child voided and the other not)`);
     const vDirect = await accSvc.voidPayment(T, A, x.pays.find((p: Any) => !p.chequeId)?.documentId ?? x.i2, x.pays.find((p: Any) => !p.chequeId)?.id, "x");

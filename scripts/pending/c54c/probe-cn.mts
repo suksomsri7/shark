@@ -387,38 +387,158 @@ try {
           && /ยกเลิกได้เฉพาะเช็คจ่าย/.test(String(wrongVoid.reason)) && /เด้งได้เฉพาะเช็ครับ/.test(String(wrongBounce.reason)),
           `legacy phrases kept — clear(BOUNCED)=${cl.reason} · bounce twice=${b2.reason} · void twice=${v2.reason} · void IN=${wrongVoid.reason} · bounce OUT=${wrongBounce.reason}`);
       }
-      { // G1b (round 8 · R8-1) group (billing note) paid by ONE cheque: every child payment linked · group void with live cheque refused, nothing written ·
-        //   bounce restores BOTH children and GL AR = Σ outstanding · backfill links legacy (first-child-only) data
+      { // G (round 8b · R8-1 option a) group payment by ONE cheque — the cheque is linked to the FIRST child payment only (chequeId is UNIQUE);
+        //   the other child payments of the same batch are found through the idempotency key `GRP#<group>#<client>#<child>`.
+        //   G1b sales ×2 · G1c sales ×3 + sibling void · G1d purchase ×2/×3 · G1e transfer batch unaffected · G1f two cheque batches on one group ·
+        //   G1g concurrency ×10 (bounce ∥ voidPayment(sibling) · bounce ∥ voidGroupPayment · bounce ∥ bounce) + purchase ×5 pairs
         const grp = (await import("@/lib/modules/account/group" as string)) as Any;
-        const ar = async () => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 AND a."code" = '1100'`, A)) as Any[])[0]?.n);
+        const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+        const bal = async (code: string) => Number(((await P.$queryRawUnsafe(`SELECT COALESCE(sum(l."debit" - l."credit"),0)::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 AND a."code" = $2`, A, code)) as Any[])[0]?.n);
         const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
-        const mkG = async () => {
-          const i1 = await invOf(); const i2 = await invOf();
-          const g = await grp.createGroupDoc(T, A, { docType: "BILLING_NOTE", contactId: cust.id, issueDate: today, dueDate: null, note: null, childIds: [i1, i2], createdById: null, source: "MANUAL", tags: [] });
-          const r = await grp.recordGroupPayment(T, A, g.id, { paidAt: today, financeAccountId: null, tieOffSatang: 21_400_000, note: "", feeSatang: 0, wht: [], cheque: { chequeNo: `G${Math.random().toString(36).slice(2, 6)}`, bankName: "KBank", chequeDate: today } }, { clientKey: Math.random().toString(36).slice(2, 10) });
-          const pays = await P.accountDocumentPayment.findMany({ where: { documentId: { in: [i1, i2] }, voidedAt: null }, select: { id: true, chequeId: true } });
-          return { g, r, i1, i2, pays, cq: pays.find((p: Any) => p.chequeId)?.chequeId as string };
+        const bank = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: `ออมทรัพย์ ${TAG}`, bankName: "กสิกรไทย" });
+        if (!bank?.ok) throw new Error(`bank: ${bank?.reason}`);
+        const expOf = async () => {
+          const ex = await exp.createExpenseDoc({ tenantId: T, systemId: A, docType: "EXPENSE", contactId: vend.id, vatMode: "EXCLUDE", vatPurchaseMode: "CLAIM", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 10_000_000 }] });
+          const r = await exp.issueExpenseDoc(T, A, ex.id); if (!r.ok) throw new Error(`issue exp: ${r.reason}`);
+          return ex.id as string;
         };
-        const outOf = async (ids: string[]) => { let o = 0; for (const id of ids) o += accSvc.paymentOutstandingOf((await accSvc.paymentTargetOf(T, A, id)).target); return o; };
-        const x = await mkG();
-        const linked = x.pays.filter((p: Any) => p.chequeId === x.cq).length;
-        const v = await grp.voidGroupPayment(T, A, x.g.id, x.r.batchKey, "x");
-        const afterV = [await docSt(x.i1), await docSt(x.i2)];
-        const ar0 = await ar();
-        const b = await cheque.bounceCheque(T, A, x.cq, "x");
-        const afterB = [await docSt(x.i1), await docSt(x.i2)];
-        const o = await outOf([x.i1, x.i2]);
-        const arB = await ar();
-        // legacy data (only the first child linked) → backfill --apply for this tenant links the second
-        const y = await mkG();
-        const other = y.pays.find((p: Any) => p.id !== y.pays[0].id)!;
-        await P.accountDocumentPayment.updateMany({ where: { id: { in: y.pays.map((p: Any) => p.id).filter((id: string) => id !== y.pays.find((p: Any) => p.chequeId)?.id) } }, data: { chequeId: null } });
-        const { spawnSync } = await import("node:child_process");
-        const bf = spawnSync("pnpm", ["exec", "tsx", "scripts/pending/c54c/backfill-group-cheque-links.mts", `--tenant=${T}`, "--apply"], { env: process.env, encoding: "utf8" });
-        const relinked = (await P.accountDocumentPayment.findMany({ where: { documentId: { in: [y.i1, y.i2] }, voidedAt: null }, select: { chequeId: true } })).filter((p: Any) => p.chequeId === y.cq).length;
-        chk("G1b", linked === 2 && v?.ok === false && /ทะเบียนเช็ค/.test(String(v?.reason)) && afterV.every((d: Any) => d.status === "PAID" && d.paidTotal === 10_700_000)
-          && b?.ok === true && afterB.every((d: Any) => d.paidTotal === 0 && d.status === "AWAITING_PAYMENT") && o === 21_400_000 && arB - ar0 === 21_400_000 && relinked === 2,
-          `group cheque: linked ${linked}/2 · group void with live cheque → ${JSON.stringify(v)} (both still PAID) · bounce → ${JSON.stringify(b)} both AWAITING_PAYMENT paid 0 · Σ outstanding ${o} = GL AR Δ ${arB - ar0} · backfill relinked ${relinked}/2 (${String(bf.stdout).match(/JSON_SUMMARY.*/)?.[0] ?? String(bf.stderr).slice(0, 120)}) · other=${other.id.slice(-4)}`);
+        let gseq = 0;
+        const payGrp = async (x: Any, how: "CHEQUE" | "TRANSFER", tieOff: number) => {
+          gseq += 1;
+          const r = await grp.recordGroupPayment(T, A, x.g.id, { paidAt: today, financeAccountId: bank.id, tieOffSatang: tieOff, note: "", feeSatang: 0, wht: [], cheque: how === "CHEQUE" ? { chequeNo: `GC${gseq}`, bankName: "KBank", chequeDate: today } : null }, { clientKey: `k${gseq}_${randomBytes(3).toString("hex")}` });
+          if (!r.ok) throw new Error(`group pay: ${r.reason}`);
+          const pays = (await P.accountDocumentPayment.findMany({ where: { tenantId: T, systemId: A, idempotencyKey: { startsWith: `${r.batchKey}#` } }, orderBy: [{ documentId: "asc" }], select: { id: true, documentId: true, chequeId: true } })) as Any[];
+          return { r, batchKey: r.batchKey as string, pays, cq: (pays.find((p) => p.chequeId)?.chequeId ?? null) as string | null };
+        };
+        const mkGrp = async (side: "IN" | "OUT", n: number, how: "CHEQUE" | "TRANSFER" | null) => {
+          const ar0 = await bal("1100"); const ap0 = -(await bal("2100"));
+          const kids: string[] = []; for (let i = 0; i < n; i += 1) kids.push(side === "IN" ? await invOf() : await expOf());
+          const g = await grp.createGroupDoc(T, A, { docType: side === "IN" ? "BILLING_NOTE" : "COMBINED_PAYMENT", contactId: side === "IN" ? cust.id : vend.id, issueDate: today, dueDate: null, note: null, childIds: kids, createdById: null, source: "MANUAL", tags: [] });
+          if (!g.ok) throw new Error(`group: ${g.reason}`);
+          const x: Any = { side, g, kids, ar0, ap0, b: null };
+          if (how) x.b = await payGrp(x, how, n * 10_700_000);
+          return x;
+        };
+        const outOf = async (x: Any) => { let o = 0; for (const id of x.kids) { if (x.side === "IN") o += accSvc.paymentOutstandingOf((await accSvc.paymentTargetOf(T, A, id)).target); else { const s = await docSt(id); o += s.grandTotal - s.paidTotal; } } return o; };
+        // GL: AR (1100 Dr) or AP (2100 Cr) movement since before the children were issued = Σ outstanding (true debt) when every payment is undone
+        const glDelta = async (x: Any) => (x.side === "IN" ? (await bal("1100")) - x.ar0 : -(await bal("2100")) - x.ap0);
+        const inv = async (x: Any) => { const bad: string[] = []; for (const id of x.kids) { const s = await docSt(id); const l = await liveSum(id); if (s.paidTotal !== l) bad.push(`${id.slice(-4)} paid ${s.paidTotal} ≠ live ${l}`); } return bad; };
+        const snap = async (x: Any) => JSON.stringify({
+          je: await P.accountJournalEntry.count({ where: { systemId: A } }),
+          ob: await P.outboxEvent.count({ where: { tenantId: T } }),
+          voided: await P.accountDocumentPayment.count({ where: { documentId: { in: x.kids }, voidedAt: { not: null } } }),
+          docs: await Promise.all(x.kids.map((id: string) => docSt(id))),
+        });
+        const sib = (x: Any) => x.b.pays.find((p: Any) => !p.chequeId) as Any; // a child payment NOT carrying the chequeId
+        const lastSib = (x: Any) => [...x.b.pays].reverse().find((p: Any) => !p.chequeId) as Any;
+        const allZero = async (x: Any) => (await Promise.all(x.kids.map((id: string) => docSt(id)))).every((d: Any) => d.paidTotal === 0 && d.status === "AWAITING_PAYMENT");
+        const J = (v: Any) => JSON.stringify(v?.ok ? { ok: true, ...(v.voided !== undefined ? { voided: v.voided } : {}) } : v);
+
+        { // G1b (i)+(ii-sales)+(iv) sales ×2 — linked 1/2 · voidGroupPayment with live cheque refused, ZERO writes · bounce restores BOTH · Σ outstanding = true debt = GL AR Δ
+          const x = await mkGrp("IN", 2, "CHEQUE");
+          const linked = x.b.pays.filter((p: Any) => p.chequeId === x.b.cq).length;
+          const s0 = await snap(x);
+          const v = await grp.voidGroupPayment(T, A, x.g.id, x.b.batchKey, "x");
+          const s1 = await snap(x);
+          const b = await cheque.bounceCheque(T, A, x.b.cq, "x");
+          const o = await outOf(x); const gd = await glDelta(x); const bad = await inv(x);
+          chk("G1b", linked === 1 && x.b.pays.length === 2 && v?.ok === false && /ทะเบียนเช็ค/.test(String(v?.reason)) && s0 === s1 && b?.ok === true && (await allZero(x)) && o === 21_400_000 && gd === 21_400_000 && bad.length === 0,
+            `sales group cheque ×2: linked ${linked}/${x.b.pays.length} (by design) · voidGroupPayment(live) → ${J(v)} · zero writes ${s0 === s1} · bounce → ${J(b)} both AWAITING_PAYMENT paid 0 · Σ outstanding ${o} = true debt 21,400,000 = GL AR Δ ${gd} · paid==live ${bad.join(";") || "held"}`);
+        }
+        { // G1c (i)+(iii) sales ×3 — voidPayment on a NON-linked sibling while the cheque is live ⇒ refused, nothing written · bounce restores ALL 3 · after bounce ⇒ calm "already voided"
+          const x = await mkGrp("IN", 3, "CHEQUE");
+          const p = lastSib(x);
+          const s0 = await snap(x);
+          const vp = await accSvc.voidPayment(T, A, p.documentId, p.id, "x");
+          const s1 = await snap(x);
+          const b = await cheque.bounceCheque(T, A, x.b.cq, "x");
+          const o = await outOf(x); const gd = await glDelta(x); const bad = await inv(x);
+          const vAfter = await accSvc.voidPayment(T, A, p.documentId, p.id, "x");
+          chk("G1c", vp?.ok === false && /ทะเบียนเช็ค/.test(String(vp?.reason)) && s0 === s1 && b?.ok === true && (await allZero(x)) && o === 32_100_000 && gd === 32_100_000 && bad.length === 0
+            && vAfter?.ok === false && /ถูกยกเลิกแล้ว/.test(String(vAfter?.reason)),
+            `sales group cheque ×3: voidPayment(sibling, live cheque) → ${J(vp)} · zero writes ${s0 === s1} · bounce → ${J(b)} · all 3 restored ${await allZero(x)} · Σ outstanding ${o} = true debt 32,100,000 = GL AR Δ ${gd} · paid==live ${bad.join(";") || "held"} · voidPayment(sibling) after bounce → ${J(vAfter)}`);
+        }
+        { // G1d (v) purchase ×2 and ×3 — voidVendorPayment(sibling) refused + voidGroupPayment refused (zero writes) · voidCheque restores ALL · Σ outstanding = true debt = GL AP Δ
+          const msgs: string[] = []; let ok = true;
+          for (const n of [2, 3]) {
+            const x = await mkGrp("OUT", n, "CHEQUE");
+            const linked = x.b.pays.filter((p: Any) => p.chequeId === x.b.cq).length;
+            const p = lastSib(x);
+            const s0 = await snap(x);
+            const vp = await exp.voidVendorPayment(T, A, p.documentId, p.id, "x");
+            const vg = await grp.voidGroupPayment(T, A, x.g.id, x.b.batchKey, "x");
+            const s1 = await snap(x);
+            const vc = await cheque.voidCheque(T, A, x.b.cq, "x");
+            const o = await outOf(x); const gd = await glDelta(x); const bad = await inv(x);
+            const vAfter = await exp.voidVendorPayment(T, A, p.documentId, p.id, "x");
+            const want = n * 10_700_000;
+            const good = linked === 1 && vp?.ok === false && /ทะเบียนเช็ค/.test(String(vp?.reason)) && vg?.ok === false && /ทะเบียนเช็ค/.test(String(vg?.reason)) && s0 === s1
+              && vc?.ok === true && (await allZero(x)) && o === want && gd === want && bad.length === 0 && vAfter?.ok === false && /ถูกยกเลิกแล้ว/.test(String(vAfter?.reason));
+            ok &&= good;
+            msgs.push(`×${n}: linked ${linked}/${n} · voidVendorPayment(sibling) → ${J(vp)} · voidGroupPayment → ${J(vg)} · zero writes ${s0 === s1} · voidCheque → ${J(vc)} · all restored ${await allZero(x)} · Σ outstanding ${o} = GL AP Δ ${gd} (true ${want}) · paid==live ${bad.join(";") || "held"} · after → ${J(vAfter)}`);
+          }
+          chk("G1d", ok, `purchase group cheque: ${msgs.join(" ‖ ")}`);
+        }
+        { // G1e (vi) transfer batch (no cheque) — voidPayment of one child still works · voidGroupPayment voids the rest
+          const x = await mkGrp("IN", 2, "TRANSFER");
+          const p = x.b.pays[1];
+          const vp = await accSvc.voidPayment(T, A, p.documentId, p.id, "x");
+          const one = await docSt(p.documentId);
+          const vg = await grp.voidGroupPayment(T, A, x.g.id, x.b.batchKey, "x");
+          const o = await outOf(x); const gd = await glDelta(x); const bad = await inv(x);
+          chk("G1e", x.b.cq === null && vp?.ok === true && one.paidTotal === 0 && vg?.ok === true && vg.voided === 1 && (await allZero(x)) && o === 21_400_000 && gd === 21_400_000 && bad.length === 0,
+            `transfer batch: voidPayment(child 2) → ${J(vp)} (paid ${one.paidTotal}) · voidGroupPayment → ${J(vg)} · all restored · Σ outstanding ${o} = GL AR Δ ${gd} · paid==live ${bad.join(";") || "held"}`);
+        }
+        { // G1f (vii) two cheque batches on the same group (16,050,000 each over 3 invoices) — bouncing batch 1 must not touch batch 2's payments (and vice versa)
+          const x = await mkGrp("IN", 3, null);
+          const b1 = await payGrp(x, "CHEQUE", 16_050_000);
+          const b2 = await payGrp(x, "CHEQUE", 16_050_000);
+          const shared = b1.pays.filter((p: Any) => b2.pays.some((q: Any) => q.documentId === p.documentId)).length;
+          const r1 = await cheque.bounceCheque(T, A, b1.cq, "x");
+          const st = async (ids: string[]) => P.accountDocumentPayment.findMany({ where: { id: { in: ids } }, select: { voidedAt: true } });
+          const b1v = (await st(b1.pays.map((p: Any) => p.id))).every((p: Any) => p.voidedAt !== null);
+          const b2l = (await st(b2.pays.map((p: Any) => p.id))).every((p: Any) => p.voidedAt === null);
+          const o1 = await outOf(x); const g1 = await glDelta(x); const bad1 = await inv(x);
+          const sb = b2.pays.find((p: Any) => !p.chequeId);
+          const vp = await accSvc.voidPayment(T, A, sb.documentId, sb.id, "x"); // batch 2's cheque still live ⇒ refused
+          const r2 = await cheque.bounceCheque(T, A, b2.cq, "x");
+          const o2 = await outOf(x); const g2 = await glDelta(x); const bad2 = await inv(x);
+          chk("G1f", b1.batchKey !== b2.batchKey && b1.cq !== b2.cq && shared === 1 && r1?.ok === true && b1v && b2l && o1 === 16_050_000 && g1 === 16_050_000 && bad1.length === 0
+            && vp?.ok === false && /ทะเบียนเช็ค/.test(String(vp?.reason)) && r2?.ok === true && (await allZero(x)) && o2 === 32_100_000 && g2 === 32_100_000 && bad2.length === 0,
+            `two cheque batches (${b1.pays.length}+${b2.pays.length} payments, ${shared} invoice shared): bounce #1 → ${J(r1)} · batch1 all voided ${b1v} · batch2 all live ${b2l} · Σ outstanding ${o1} = GL AR Δ ${g1} (want 16,050,000) · voidPayment(batch2 sibling) → ${J(vp)} · bounce #2 → ${J(r2)} · Σ ${o2} = GL ${g2} (want 32,100,000) · paid==live ${[...bad1, ...bad2].join(";") || "held"}`);
+        }
+        { // G1g (viii) concurrency — no deadlock / generic error · paidTotal = Σ live · Σ outstanding = GL Δ = true debt · exactly one bounce wins
+          const kind = (q: Any) => (q?.ok ? "ok" : /deadlock|40P01|P2034|ไม่สำเร็จ$/i.test(String(q?.reason)) ? `GENERIC(${String(q?.reason).slice(0, 60)})` : "refused");
+          const tally: Record<string, number> = {}; const badG: string[] = [];
+          const run = async (name: string, rounds: number, side: "IN" | "OUT", race: (x: Any) => Promise<Any[]>, extra?: (x: Any, r: Any[]) => Promise<string | null>) => {
+            for (let k = 0; k < rounds; k += 1) {
+              const x = await mkGrp(side, 2, "CHEQUE");
+              x.round = k; x.je0 = await P.accountJournalEntry.count({ where: { systemId: A, refType: "AccountCheque", refId: x.b.cq } });
+              const r = await race(x);
+              const key = `${name}: ${r.map(kind).join("|")}`; tally[key] = (tally[key] ?? 0) + 1;
+              const bad = await inv(x); const o = await outOf(x); const gd = await glDelta(x);
+              if (r.some((q: Any) => kind(q).startsWith("GENERIC"))) badG.push(`${name}#${k} generic ${r.map((q: Any) => q?.reason ?? "ok").join("|")}`);
+              if (bad.length) badG.push(`${name}#${k} ${bad.join(";")}`);
+              if (!(await allZero(x)) || o !== 21_400_000 || gd !== 21_400_000) badG.push(`${name}#${k} not fully restored: Σ ${o} GL ${gd}`);
+              const e = extra ? await extra(x, r) : null; if (e) badG.push(`${name}#${k} ${e}`);
+            }
+          };
+          // odd rounds: the cheque side starts ~120 ms late so the other side can take the cheque lock first (both orders exercised)
+          const late = <R,>(x: Any, f: () => Promise<R>) => (x.round % 2 === 1 ? new Promise<R>((ok, no) => setTimeout(() => f().then(ok, no), 120)) : f());
+          // exactly ONE new cheque journal entry per race (a payment-linked group cheque has no REGISTER entry — its GL lives on the payments)
+          const oneEntry = async (x: Any) => (await P.accountJournalEntry.count({ where: { systemId: A, refType: "AccountCheque", refId: x.b.cq } })) - x.je0;
+          await run("bounce∥voidPayment(sibling)", 10, "IN", (x) => { const p = sib(x); return Promise.all([late(x, () => cheque.bounceCheque(T, A, x.b.cq, "x")), accSvc.voidPayment(T, A, p.documentId, p.id, "x")]); },
+            async (x, r) => (r[0]?.ok !== true || r[1]?.ok !== false ? "bounce must win, sibling void must be refused" : (await oneEntry(x)) !== 1 ? `cheque entries +${await oneEntry(x)}` : null));
+          await run("bounce∥voidGroupPayment", 10, "IN", (x) => Promise.all([late(x, () => cheque.bounceCheque(T, A, x.b.cq, "x")), grp.voidGroupPayment(T, A, x.g.id, x.b.batchKey, "x")]),
+            async (x, r) => (r[0]?.ok !== true || (r[1]?.ok === true && r[1].voided !== 0) ? "bounce must win; group void may only be refused or a no-op" : (await oneEntry(x)) !== 1 ? `cheque entries +${await oneEntry(x)}` : null));
+          await run("bounce∥bounce", 10, "IN", (x) => Promise.all([cheque.bounceCheque(T, A, x.b.cq, "x"), cheque.bounceCheque(T, A, x.b.cq, "x")]),
+            async (x, r) => { const wins = r.filter((q: Any) => q?.ok).length; const d = await oneEntry(x); return wins !== 1 || d !== 1 ? `wins=${wins} cheque entries +${d}` : null; });
+          await run("voidCheque∥voidVendorPayment(sibling)", 6, "OUT", (x) => { const p = sib(x); return Promise.all([late(x, () => cheque.voidCheque(T, A, x.b.cq, "x")), exp.voidVendorPayment(T, A, p.documentId, p.id, "x")]); },
+            async (x, r) => (r[0]?.ok !== true || r[1]?.ok !== false ? "voidCheque must win, sibling void must be refused" : (await oneEntry(x)) !== 1 ? `cheque entries +${await oneEntry(x)}` : null));
+          await run("voidCheque∥voidGroupPayment", 6, "OUT", (x) => Promise.all([late(x, () => cheque.voidCheque(T, A, x.b.cq, "x")), grp.voidGroupPayment(T, A, x.g.id, x.b.batchKey, "x")]),
+            async (x, r) => (r[0]?.ok !== true || (r[1]?.ok === true && r[1].voided !== 0) ? "voidCheque must win; group void may only be refused or a no-op" : (await oneEntry(x)) !== 1 ? `cheque entries +${await oneEntry(x)}` : null));
+          chk("G1g", badG.length === 0, `group-cheque races: ${JSON.stringify(tally)} · problems ${badG.length}${badG.length ? ` — ${badG.slice(0, 6).join(" ; ")}` : ""}`);
+        }
       }
       chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
     }

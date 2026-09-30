@@ -43,6 +43,8 @@ import {
 } from "./gl";
 // WO 1.4: เอกสารภาษีถูกหัก ณ ที่จ่าย ฝั่งขาย (WTI) — ออกอัตโนมัติตอนรับชำระที่ลูกค้าหักภาษี
 import { issueWhtCreditCert } from "./wht";
+// CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คของงวดในชุดใบวางบิล/ใบรวมจ่าย (ผูกไว้ที่งวดแรกของชุด) — leaf module ไม่ import วน ◂
+import { chequeIdsHoldingPayments } from "./group-batch";
 // WO 1.1: แหล่งเดียวของแมป flyout tab → สถานะ (ร่วมกับ LIST_TABS ของหน้ารายการ V2)
 import { NAV_FLYOUT_TABS } from "./list-tabs";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.4): ตัวตนกลางระดับ tenant · เรียกผ่าน facade เท่านั้น (F2.2)
@@ -2956,7 +2958,8 @@ export async function voidPayment(
 
 /**
  * CRM C5.4-C ▸ (round 8 · R8-1) ยกเลิก "การชำระครั้งเดียว" ของเอกสารกลุ่ม (ใบวางบิล/ใบรวมจ่าย) = ทุกใบลูก **ในธุรกรรมเดียว**:
- *   ① ล็อกเช็คทุกใบของครั้งนั้น (เรียง id) ก่อน — เช็คใดยังมีผล (ไม่ใช่ BOUNCED/VOIDED) ⇒ ปฏิเสธทั้งครั้ง ไม่มีอะไรถูกเขียน (มติ B2c)
+ *   ① ล็อกเช็คทุกใบของครั้งนั้น (เรียง id · หาผ่านคีย์ชุดด้วย group-batch.chequeIdsHoldingPayments) ก่อน — เช็คใดยังมีผล (ไม่ใช่ BOUNCED/VOIDED)
+ *      ⇒ ปฏิเสธทั้งครั้ง ไม่มีอะไรถูกเขียน (มติ B2c)
  *   ② ใบลูกเรียงตาม documentId (ลำดับล็อกคงที่) · ข้ามงวดที่ถูกยกเลิกไปแล้ว · ใบใดล้ม = ย้อนทั้งครั้ง (เดิมทีละธุรกรรม ⇒ ใบแรกถูกปฏิเสธแต่ใบหลังถูกยกเลิกไปแล้ว)
  *   ตัวยกเลิกต่อใบส่งเข้ามา (ขาย = voidPaymentInTx · ซื้อ = voidVendorPaymentInTx ของ expense.ts — ไม่ import วนกัน) ◂
  */
@@ -2969,9 +2972,8 @@ export async function voidPaymentBatchInOneTx(
 ): Promise<{ ok: true; voided: number } | { ok: false; reason: string }> {
   try {
     const voided = await prisma.$transaction(async (tx) => {
-      const ids = payments.map((p) => p.id);
-      const rows = await tx.accountDocumentPayment.findMany({ where: { id: { in: ids }, tenantId, systemId }, select: { chequeId: true } });
-      const cheques = [...new Set(rows.map((r) => r.chequeId).filter((x): x is string => !!x))].sort();
+      // round 8b: เช็คของชุด = chequeId ของงวดเอง + เช็คที่ผูกไว้กับงวดแรกของชุด (หาจากคีย์ `GRP#…`) — ไม่พึ่งว่างวดที่ส่งมามี chequeId
+      const cheques = await chequeIdsHoldingPayments(tx, tenantId, systemId, payments.map((p) => p.id));
       for (const c of cheques) {
         await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${c} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
         const cs = (await tx.accountCheque.findFirst({ where: { id: c, tenantId, systemId }, select: { status: true } }))?.status;
@@ -3012,8 +3014,9 @@ export async function voidPaymentInTx(
     // CRM C5.4-C ▸ (round 6 · F3) ใบกำกับภาษีที่ออกต่อการชำระงวดนี้ (บริการ ON_PAYMENT) ถูกยกเลิกตามด้านล่าง — ล็อกมัน **ก่อน** ใบแจ้งหนี้
     //   (ลำดับล่าง → บน เหมือนการออกใบลดหนี้ที่อ้างใบกำกับนั้น) แล้วปฏิเสธถ้ามีใบลดหนี้ที่ยังมีผลอ้างอยู่ ◂
     // round 7 · N1: การรับชำระที่ผูกเช็ค ⇒ ล็อกแถวเช็คก่อน (ลำดับเดียวกับ bounce/void/clear เช็ค: เช็ค → เอกสาร → แถวรับชำระ)
-    const chq = (await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId, tenantId, systemId }, select: { chequeId: true } }))?.chequeId ?? null;
-    if (chq) {
+    //   round 8b · R8-1 (option a): งวดของใบวางบิลที่รับเป็นเช็คใบเดียว — เช็คผูกไว้ที่งวดแรกของชุด ⇒ งวดอื่นหาเช็คจากคีย์ชุด (กติกาเดียวกัน)
+    const own = await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId, tenantId, systemId }, select: { id: true } });
+    for (const chq of own ? await chequeIdsHoldingPayments(tx, tenantId, systemId, [own.id]) : []) {
       await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${chq} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
       // มติผู้คุมงาน (round 7 · B2c): บัญชีของการรับเป็นเช็คอยู่ที่ทะเบียนเช็ค ⇒ เช็คที่ยังมีผลต้องกลับรายการที่ทะเบียนเช็ค (เด้ง/ยกเลิก) เท่านั้น
       const cs = (await tx.accountCheque.findFirst({ where: { id: chq, tenantId, systemId }, select: { status: true } }))?.status;

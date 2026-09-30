@@ -20,7 +20,11 @@ import {
 import { EXP_DOC_LABEL, issueExpenseDoc, recordVendorPayment, voidVendorPaymentInTx } from "./expense";
 import { listPaymentChannels, type FinanceOption } from "./payment";
 import { createCheque } from "./cheque";
+// CRM C5.4-C ▸ (round 8b · R8-1 option a) คีย์ของชุดการชำระ — ที่เดียวกับตัวหา "เช็คของชุด" (service/expense/cheque ใช้ร่วม ไม่ import วน) ◂
+import { GROUP_KEY_SEP, groupBatchKey, groupChildKey, groupKeyPrefix } from "./group-batch";
 import { formatDateTh } from "@/lib/ui/date";
+
+export { groupBatchKey, groupChildKey, groupKeyPrefix };
 
 // ─────────────────────────────────────────────────────────────────────────
 // group.ts — WO 1.7 · "ใบวางบิลรวม (BN)" + "ใบรวมจ่าย (CP)"
@@ -259,17 +263,7 @@ export async function createGroupDoc(
 
 // ─────────────────── ③ แผงรับ/จ่ายของกลุ่ม ───────────────────
 
-/** คีย์กันซ้ำของการชำระที่กระจายจากกลุ่ม — `GRP#<groupId>#<clientKey>#<childId>` */
-const GROUP_KEY_SEP = "#";
-export function groupKeyPrefix(groupId: string): string {
-  return `GRP${GROUP_KEY_SEP}${groupId}${GROUP_KEY_SEP}`;
-}
-export function groupBatchKey(groupId: string, clientKey: string): string {
-  return `${groupKeyPrefix(groupId)}${clientKey.replace(/#/g, "-").slice(0, 60)}`;
-}
-export function groupChildKey(batchKey: string, childId: string): string {
-  return `${batchKey}${GROUP_KEY_SEP}${childId}`;
-}
+/** คีย์กันซ้ำของการชำระที่กระจายจากกลุ่ม — `GRP#<groupId>#<clientKey>#<childId>` (ตัวสร้างคีย์อยู่ที่ group-batch.ts) */
 const batchKeyOf = (childKey: string) => childKey.slice(0, childKey.lastIndexOf(GROUP_KEY_SEP));
 
 export type GroupChildView = {
@@ -576,7 +570,6 @@ export async function recordGroupPayment(
   const certNos: string[] = [];
   let recorded = 0;
   let firstPaymentId = "";
-  const paymentIds: string[] = []; // round 8 · R8-1: การชำระของทุกใบลูกในครั้งนี้ (ผูกเช็คทุกงวด)
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const w = whtOf.get(r.childDocId);
@@ -601,7 +594,6 @@ export async function recordGroupPayment(
     if (!res.ok) return { ok: false, reason: `${r.docNo ?? "(ร่าง)"}: ${res.reason}` };
     recorded++;
     if (!firstPaymentId && res.paymentId) firstPaymentId = res.paymentId;
-    if (res.paymentId) paymentIds.push(res.paymentId);
     const certNo = (res as { whtCertNo?: string }).whtCertNo;
     if (certNo) certNos.push(certNo);
   }
@@ -617,11 +609,9 @@ export async function recordGroupPayment(
       amount: rows.reduce((s, r) => s + r.cash, 0),
       financeAccountId,
       documentId: rows[0].childDocId,
-      // CRM C5.4-C ▸ (round 8 · R8-1) ผูกเช็คกับ **ทุก** งวดของครั้งนี้ (เดิมเฉพาะใบแรก ⇒ เช็คเด้งคืนหนี้ใบแรกใบเดียว ใบอื่นค้าง PAID ด้วยเงินที่เด้ง ·
-      //   ยกเลิกการชำระของใบอื่นเลี่ยงกติกาเช็คได้) — ชุดของครั้งนี้ = งวดที่เพิ่งบันทึกในลูปข้างบน (คีย์กันซ้ำ `<batchKey>#<childId>` เดียวกัน) ◂
+      // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คผูกกับงวดของใบลูกใบแรกเท่านั้น (chequeId UNIQUE) — งวดอื่นของครั้งนี้หาจากคีย์ชุด
+      //   `<batchKey>#<childId>` (group-batch.ts): เด้ง/ยกเลิกเช็คคืนหนี้ทุกใบลูก · ยกเลิกการชำระของงวดใดก็ตามเจอเช็คใบนี้ (กติกา B2c) ◂
       paymentId: firstPaymentId,
-      // ⚠️ round 8 CHECKPOINT: `paymentIds` (ผูกทุกงวด) ถอดไว้ก่อน — AccountDocumentPayment.chequeId เป็น UNIQUE ในฐาน ⇒ ผูกเช็คใบเดียวหลายงวดไม่ได้
-      //   (Unique constraint failed on chequeId) · ทางต่อ: หาพี่น้องจากคีย์ batch แทน (ดู ledger/wo-notes/crm-C5.4-C.md ROUND 8 CHECKPOINT)
       note,
     });
     if (!cq.ok) return { ok: false, reason: cq.reason };

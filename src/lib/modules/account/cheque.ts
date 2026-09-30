@@ -7,6 +7,8 @@ import { emitChequeChanged, emitPaymentVoided } from "./events";
 import { emitOutboxMany } from "@/lib/core/outbox";
 // CRM C5.4-C ▸ (round 6 · F4) ด่านหนี้เดียวกับ recordPayment: ล็อกแถวเอกสาร · หนี้จริงหักใบลดหนี้ทั้งครอบครัว · สถานะจาก receivableStatusOf ◂
 import { liveCreditTotalInTx, lockDocumentRow, receivableStatusOf } from "./service";
+// CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คใบเดียวของใบวางบิล/ใบรวมจ่าย ผูกได้แค่งวดแรก — งวดอื่นของชุดหาจากคีย์กันซ้ำ ◂
+import { paymentsOfCheque } from "./group-batch";
 
 // ─────────────────────────────────────────────────────────────
 // cheque.ts — ทะเบียนเช็ครับ/เช็คจ่าย (§3.5)
@@ -308,8 +310,6 @@ export async function createCheque(input: {
   /** WO 1.4: เช็คที่เกิดจากการรับ/จ่ายชำระในฟอร์ม §5.2 F — payment + JV (Dr 1040 / Cr 1100) ลงไปแล้ว
    *  ⇒ ที่นี่ทำแค่ "ขึ้นทะเบียนเช็ค" + ผูกกลับไปที่ payment · ห้ามตัดหนี้/โพสต์ซ้ำ */
   paymentId?: string | null;
-  /** CRM C5.4-C ▸ (round 8 · R8-1) เช็คใบเดียวจ่ายหลายงวด (ใบวางบิล/ใบรวมจ่าย) — ผูกกลับทุกงวด (รวม `paymentId`) ◂ */
-  paymentIds?: string[] | null;
 }): Promise<{ ok: true; id: string } | { ok: false; reason: string }> {
   if (!input.chequeNo.trim()) return { ok: false, reason: "กรุณากรอกเลขที่เช็ค" };
   if (!input.bankName.trim()) return { ok: false, reason: "กรุณากรอกชื่อธนาคาร" };
@@ -324,8 +324,7 @@ export async function createCheque(input: {
       let contactId: string | null = null;
       let doc: { id: string; contactId: string | null; grandTotal: number; paidTotal: number; docType: string } | null = null;
       let creditTotal = 0;
-      const linkIds = [...new Set([...(input.paymentId ? [input.paymentId] : []), ...(input.paymentIds ?? []).filter(Boolean)])];
-      if (input.documentId && linkIds.length === 0) {
+      if (input.documentId && !input.paymentId) {
         // round 6 · F4: ล็อกแถวเอกสารก่อนอ่านยอด (เช็คพร้อมรับชำระ/ใบลดหนี้ = อ่านยอดเก่า → เก็บเกิน)
         await lockDocumentRow(tx, ctx.tenantId, ctx.systemId, input.documentId);
         const d = await tx.accountDocument.findFirst({
@@ -404,17 +403,15 @@ export async function createCheque(input: {
       }
 
       // WO 1.4: เช็คของ payment ที่โพสต์แล้ว → ผูกกลับ แล้วจบ (ไม่ตัดหนี้ซ้ำ ไม่โพสต์ซ้ำ)
-      if (linkIds.length > 0) {
-        for (const pid of linkIds.sort()) {
-          const pay = await tx.accountDocumentPayment.findFirst({
-            where: { id: pid, tenantId: ctx.tenantId, systemId: ctx.systemId },
-            select: { id: true, chequeId: true },
-          });
-          if (!pay) throw new Error("ไม่พบรายการชำระที่จะผูกเช็ค");
-          if (pay.chequeId) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
-          const n = await tx.accountDocumentPayment.updateMany({ where: { id: pay.id, chequeId: null }, data: { chequeId: cq.id } });
-          if (n.count !== 1) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
-        }
+      if (input.paymentId) {
+        const pay = await tx.accountDocumentPayment.findFirst({
+          where: { id: input.paymentId, tenantId: ctx.tenantId, systemId: ctx.systemId },
+          select: { id: true, chequeId: true },
+        });
+        if (!pay) throw new Error("ไม่พบรายการชำระที่จะผูกเช็ค");
+        if (pay.chequeId) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
+        const n = await tx.accountDocumentPayment.updateMany({ where: { id: pay.id, chequeId: null }, data: { chequeId: cq.id } });
+        if (n.count !== 1) throw new Error("รายการชำระนี้ผูกเช็คไว้แล้ว");
         return cq.id;
       }
 
@@ -498,19 +495,16 @@ function alreadyMsg(status: string, action: "เด้ง" | "ยกเลิก
 
 // คืนหนี้เอกสารเมื่อเช็คเด้ง/ยกเลิก (void payment ที่ผูก + ถอย paidTotal/สถานะ)
 //   round 7 · N1: ผู้เรียกถือล็อกแถวเช็คอยู่ · ล็อกเอกสารก่อน → อ่านแถวรับชำระใหม่ใต้ล็อก → ยกเลิกด้วย CAS (voidedAt null)
-//   round 8 · R8-1: เช็คใบเดียวผูกได้หลายงวด (ใบวางบิล) ⇒ ทุกงวดที่ยังมีผล · ล็อกเอกสารเรียง id (ลำดับคงที่: เช็ค → เอกสาร ↑id) ·
+//   round 8b · R8-1 (option a): เช็คของใบวางบิล/ใบรวมจ่ายผูกได้แค่งวดแรก (chequeId UNIQUE) ⇒ ชุดที่ต้องคืน = งวดที่ผูก + งวดอื่นของ
+//   ชุดเดียวกันจากคีย์ `GRP#<group>#<client>#<child>` (group-batch.paymentsOfCheque) · ล็อกเอกสารเรียง id (ลำดับคงที่: เช็ค → เอกสาร ↑id) ·
 //   ต่องวด: ยกเลิกด้วย CAS → ถอยยอดของเอกสารนั้น + สถานะจาก receivableStatusOf + `account.payment.voided` หนึ่งใบ — เฉพาะเมื่อคำสั่งนี้เป็นคนยกเลิก
 async function restoreDocForCheque(tx: Tx, tenantId: string, systemId: string, chequeId: string): Promise<string | null> {
-  const all = await tx.accountDocumentPayment.findMany({
-    where: { chequeId, tenantId, systemId },
-    orderBy: [{ documentId: "asc" }, { id: "asc" }],
-    select: { documentId: true, document: { select: { contactId: true } } },
-  });
+  const all = await paymentsOfCheque(tx, tenantId, systemId, chequeId);
   if (all.length === 0) return null;
   const docIds = [...new Set(all.map((p) => p.documentId))].sort();
   for (const d of docIds) await lockDocumentRow(tx, tenantId, systemId, d);
   const live = await tx.accountDocumentPayment.findMany({
-    where: { chequeId, tenantId, systemId, voidedAt: null },
+    where: { id: { in: all.map((p) => p.id) }, tenantId, systemId, voidedAt: null },
     orderBy: [{ documentId: "asc" }, { id: "asc" }],
     select: { id: true, amount: true, documentId: true },
   });
@@ -527,7 +521,9 @@ async function restoreDocForCheque(tx: Tx, tenantId: string, systemId: string, c
       await emitPaymentVoided(tx, { tenantId, systemId }, { paymentId: pay.id, documentId: pay.documentId, docNo: doc.docNo, amountSatang: pay.amount, reason: "เช็คเด้ง/ยกเลิก" });
     }
   }
-  return all[0]?.document?.contactId ?? null;
+  // ผู้ติดต่อของบรรทัด AR/AP = เอกสารของงวดที่ผูกเช็ค (ทุกใบลูกของกลุ่มเป็นผู้ติดต่อเดียวกัน)
+  const head = all.find((p) => p.chequeId === chequeId) ?? all[0];
+  return (await tx.accountDocument.findFirst({ where: { id: head.documentId }, select: { contactId: true } }))?.contactId ?? null;
 }
 
 // ─────────────────── เปลี่ยนสถานะ (lifecycle) ───────────────────

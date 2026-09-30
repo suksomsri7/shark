@@ -37,6 +37,8 @@ import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 import { emitDocumentApproved, emitDocumentIssued, emitDocumentVoided, emitPaymentVoided } from "./events";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 import { clampSearch } from "./search-input";
+// CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คจ่ายใบเดียวของใบรวมจ่ายผูกไว้ที่งวดแรก — งวดอื่นหาเช็คจากคีย์ชุด ◂
+import { chequeIdsHoldingPayments } from "./group-batch";
 
 // ─────────────────────────────────────────────────────────────
 // expense.ts — ฝั่งรายจ่าย (P2) direction=IN
@@ -1292,8 +1294,9 @@ export async function voidVendorPaymentInTx(
   reason: string,
 ): Promise<void> {
     // CRM C5.4-C ▸ (round 7 · N1) ลำดับล็อกเดียวกับทะเบียนเช็ค: เช็คที่ผูก → เอกสาร → แถวรับ/จ่าย (CAS) — ยกเลิกการจ่าย ∥ ยกเลิกเช็คจ่าย ไม่ถอยยอดซ้ำ ◂
-    const chq = (await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId, tenantId, systemId }, select: { chequeId: true } }))?.chequeId ?? null;
-    if (chq) {
+    //   round 8b · R8-1: งวดของใบรวมจ่ายที่จ่ายเช็คใบเดียว — เช็คผูกไว้ที่งวดแรกของชุด ⇒ งวดอื่นหาเช็คจากคีย์ชุด (กติกาเดียวกัน)
+    const own = await tx.accountDocumentPayment.findFirst({ where: { id: paymentId, documentId, tenantId, systemId }, select: { id: true } });
+    for (const chq of own ? await chequeIdsHoldingPayments(tx, tenantId, systemId, [own.id]) : []) {
       await tx.$queryRaw`SELECT "id" FROM "AccountCheque" WHERE "id" = ${chq} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId} FOR UPDATE`;
       // มติผู้คุมงาน (round 7 · B2c): เช็คจ่ายที่ยังมีผล ⇒ ยกเลิกที่ทะเบียนเช็คเท่านั้น (บัญชีของการจ่ายอยู่ที่ทะเบียนเช็ค)
       const cs = (await tx.accountCheque.findFirst({ where: { id: chq, tenantId, systemId }, select: { status: true } }))?.status;
