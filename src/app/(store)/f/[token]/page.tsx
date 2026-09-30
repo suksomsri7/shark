@@ -1,4 +1,4 @@
-import { getPublicForm } from "@/lib/modules/forms/service";
+import { formVisitorHandover, getPublicForm } from "@/lib/modules/forms/service";
 // CRM C2.6 ▸ ด่านกันสแปม (มติ C24): ตั๋ว "เริ่มกรอก" + ชื่อช่องหลอกบอต มาจากโมดูลฟอร์มที่เดียว ◂
 import { FORM_HONEYPOT_FIELD, FORM_START_FIELD, issueFormStartToken } from "@/lib/modules/forms/spam-guard";
 import { getPublicBranding } from "@/lib/branding/service";
@@ -32,6 +32,9 @@ export default async function PublicFormPage({ params }: { params: Promise<{ tok
 
   const { form } = pub;
   const branding = await getPublicBranding(pub.tenantId);
+  // CRM C4.4-fix3 ▸ รับตั๋วผู้เข้าชมจากเว็บที่ฝังฟอร์มไหม — เปิดเฉพาะฟอร์มที่ส่งเข้าระบบ CRM uiVersion 2 ที่เปิดติดตามเว็บอยู่
+  //   (ร้าน uiVersion 1 ได้ props ชุดเดิมทุกตัว ⇒ หน้าฟอร์มไม่ฟัง/ไม่ส่งข้อความ/ไม่แนบอะไรเพิ่ม) ◂
+  const handover = await formVisitorHandover({ id: form.id, tenantId: pub.tenantId }).catch(() => false);
   const accentStyle = publicThemeStyle(branding);
   return shell(
     <>
@@ -66,6 +69,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ tok
         startField={FORM_START_FIELD}
         honeypotField={FORM_HONEYPOT_FIELD}
         submitAction={submitFormAction}
+        {...(handover ? { visitorHandover: true } : {})}
       />
 
       <p className="text-center text-[11px] text-[color:var(--color-muted)]">

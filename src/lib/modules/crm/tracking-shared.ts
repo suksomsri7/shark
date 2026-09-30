@@ -59,11 +59,14 @@ export const TRACKED_URL_MAX = 2048;
  * 🔴 ต่อ IP ต้องพอให้คนอ่านเว็บจริง ๆ (เปิดหลายหน้าติดกัน) แต่ไม่พอให้ยิงถล่ม · ต่อเว็บไซต์ตั้งสูงกว่ามาก
  *    (ร้านที่คนเข้าเยอะต้องไม่ถูกตัดข้อมูลทิ้งเพราะเพดานของตัวเอง)
  */
-export const TRACKING_RATE_LIMITS: Readonly<Record<"collectPerIp" | "collectPerSite" | "consentPerIp" | "linkPerIp", { limit: number; windowMs: number }>> = Object.freeze({
+export const TRACKING_RATE_LIMITS: Readonly<Record<"collectPerIp" | "collectPerSite" | "consentPerIp" | "linkPerIp" | "visitorTicketPerIp", { limit: number; windowMs: number }>> = Object.freeze({
   collectPerIp: Object.freeze({ limit: 60, windowMs: 60_000 }),
   collectPerSite: Object.freeze({ limit: 5000, windowMs: 60_000 }),
   consentPerIp: Object.freeze({ limit: 30, windowMs: 60_000 }),
   linkPerIp: Object.freeze({ limit: 30, windowMs: 60_000 }),
+  // CRM C4.4-fix3 ▸ `POST /t/v` (ตั๋วผู้เข้าชมให้ฟอร์มที่ฝังด้วย iframe) — หน้าหนึ่งมีฟอร์มไม่กี่อัน ตั๋วละครั้ง ⇒ เพดานต่ำกว่าการเก็บการเข้าชมมาก
+  //   (ถังต่อเว็บไซต์ใช้ถังเดียวกับ `/t/e` = collectPerSite) ◂
+  visitorTicketPerIp: Object.freeze({ limit: 20, windowMs: 60_000 }),
 });
 
 /** ชนิดของการระบุตัวตน (คอลัมน์ `CrmWebSession.identifiedBy`) */

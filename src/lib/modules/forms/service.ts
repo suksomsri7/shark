@@ -4,7 +4,9 @@ import { prisma, tenantDb } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
 // CRM C2.6 ▸ ด่านกันสแปม (มติ C24) — ตัวตรวจบริสุทธิ์ + เพดานความถี่บนฐาน อยู่ที่ `./spam-guard` ◂
-import { submissionIpHash, submissionPageUrl, submissionReferrer, submissionWebSessionId } from "./crm-source";
+import { submissionIpHash, submissionPageUrl, submissionReferrer, submissionWebSessionId, submissionWebSessionFromTicket } from "./crm-source";
+// CRM C4.4-fix3 ▸ หน้า `/f/<token>` ถามว่าเปิดตัวรับตั๋วผู้เข้าชมไหม (ตัวตัดสินอยู่ใน `./crm-source` — ไฟล์นี้ไม่อ้างโมดูล CRM ตามด่าน C1.8-S0.3) ◂
+export { formVisitorHandover } from "./crm-source";
 import {
   FORM_HONEYPOT_FIELD,
   FORM_RESERVED_KEY_MSG,
@@ -294,6 +296,8 @@ export type GuardedFormMeta = {
   referrer?: string | null;
   utm?: Record<string, string> | null;
   visitorId?: string | null;
+  /** CRM C4.4-fix3 ▸ ตั๋วผู้เข้าชมที่หน้า `/f` ได้จากสคริปต์ติดตามของเว็บที่ฝังฟอร์ม (ผนึกโดยเซิร์ฟเวอร์ · ใช้ครั้งเดียว) — ไม่ใช่รหัสผู้เข้าชม ◂ */
+  visitorTicket?: string | null;
 };
 export type GuardedFormDeps = {
   turnstileVerify?: (token: string, ip: string) => Promise<boolean>;
@@ -374,6 +378,13 @@ export async function submitPublicFormGuarded(
   //   🔴 ถ้าเผาก่อนตรวจคำตอบ คนที่กรอกไม่ครบแล้วกดส่งใหม่จะโดนปฏิเสธทั้งที่ไม่ได้ทำอะไรผิด ◂
   if (st && !(await consumeFormStartToken(st.nonce, deps?.limiter))) {
     return { ok: false, reason: "TOO_FAST", message: "ฟอร์มนี้ถูกส่งไปแล้ว — ถ้าต้องการส่งอีกครั้ง กรุณาเปิดฟอร์มใหม่แล้วกรอกใหม่นะ" };
+  }
+
+  // CRM C4.4-fix3 ▸ (J3) ฟอร์มที่ร้านฝังด้วย iframe: คุกกี้ของเว็บร้านมาไม่ถึง ⇒ ใช้ "ตั๋วผู้เข้าชม" ที่หน้าได้จากสคริปต์ติดตามของร้าน
+  //   🔴 เฉพาะเมื่อทางคุกกี้ (ด้านบน · พฤติกรรมเดิม) ไม่ให้ผล · แลกหลังด่านทุกด่านผ่านและตั๋วเริ่มกรอกถูกเผาแล้ว (คำขอที่ถูกปฏิเสธ
+  //      ต้องไม่เผาตั๋วผู้เข้าชมทิ้ง) · ตั๋วใช้ไม่ได้ = คำตอบยังบันทึกตามปกติ แค่ไม่ผูกการเข้าชม (ผู้กรอกไม่เห็นข้อความใด ๆ) ◂
+  if (!webSessionId && typeof meta?.visitorTicket === "string" && meta.visitorTicket) {
+    webSessionId = await submissionWebSessionFromTicket({ id: form.id, tenantId: form.tenantId }, meta.visitorTicket).catch(() => null);
   }
 
   const sub = await writeSubmission({ id: form.id, tenantId: form.tenantId, name: form.name }, clean, {
