@@ -11,7 +11,7 @@
 // 🔴 ข้อความ error เป็นภาษาไทยที่ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดออกหน้าจอ)
 // 🔴 AUDIT-CLASS X8: ไม่ log url ของลูกค้า/ข้อความ consent — บันทึกเฉพาะชนิดของ error
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -45,8 +45,8 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
 }
 
 const touch = (systemId: string) => {
-  revalidatePath(`/app/sys/${systemId}/crm/settings/tracking`);
-  revalidatePath(`/app/sys/${systemId}/crm/settings/forms`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/settings/tracking`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/settings/forms`);
 };
 
 const linkRow = (l: Awaited<ReturnType<typeof tracking.createLink>>): CrmTrackLinkRow => ({

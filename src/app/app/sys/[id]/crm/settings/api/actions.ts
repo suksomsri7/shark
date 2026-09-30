@@ -9,7 +9,7 @@
 // 🔴 ไฟล์ "use server" export ได้เฉพาะฟังก์ชัน async (ชนิดผลลัพธ์อยู่ที่ `_components/shared.ts`)
 // 🔴 ตัวกรองทีมของคีย์ต้องเป็นทีมของร้านนี้ (ตรวจกับฐานก่อนออกคีย์ — ทีมร้านอื่น = ปฏิเสธ)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { assertCan, ForbiddenError } from "@/lib/core/rbac";
 import { requireTenant } from "@/lib/core/context";
 import { writeAudit } from "@/lib/core/audit";
@@ -91,7 +91,7 @@ export async function createCrmApiKeyAction(fd: FormData): Promise<CrmKeyResult>
     const expiresAt = new Date(Date.now() + DEFAULT_KEY_TTL_DAYS * 86_400_000);
     const { rawKey } = await createApiKey({ tenantId }, name, { scopes, systemId, expiresAt, createdById: userId });
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "ApiKey", after: { created: name, bundle, teamId: teamId || null, systemId, expiresAt } });
-    revalidatePath(PATH(systemId));
+    revalidateAndWake(PATH(systemId));
     return { ok: true, rawKey };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "สร้างคีย์ไม่สำเร็จ — ลองใหม่อีกครั้ง") };
@@ -110,7 +110,7 @@ export async function revokeCrmApiKeyAction(fd: FormData): Promise<CrmActionResu
     if (!owned) return { ok: false, reason: "ไม่พบคีย์นี้ในระบบ CRM นี้ — รีเฟรชหน้าแล้วลองใหม่" };
     await revokeApiKey({ tenantId }, owned.id);
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "ApiKey", targetId: owned.id, after: { revoked: true, systemId } });
-    revalidatePath(PATH(systemId));
+    revalidateAndWake(PATH(systemId));
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เพิกถอนคีย์ไม่สำเร็จ — ลองใหม่อีกครั้ง") };
@@ -136,7 +136,7 @@ export async function createCrmWebhookAction(fd: FormData): Promise<CrmWebhookCr
     if (!checked.ok) return fieldFail("events", checked.reason);
     const res = await createEndpoint({ tenantId }, { url, events: checked.events });
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: res.id, after: { created: true, events: checked.events, systemId } });
-    revalidatePath(PATH(systemId));
+    revalidateAndWake(PATH(systemId));
     return { ok: true, id: res.id, secret: res.secret };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เพิ่มปลายทางไม่สำเร็จ — ลองใหม่อีกครั้ง") };
@@ -155,7 +155,7 @@ export async function toggleCrmWebhookAction(fd: FormData): Promise<CrmActionRes
     const active = s(fd, "active") === "true";
     await setEndpointActive({ tenantId }, row.id, active);
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { active } });
-    revalidatePath(PATH(systemId));
+    revalidateAndWake(PATH(systemId));
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกไม่สำเร็จ — ลองใหม่อีกครั้ง") };
@@ -173,7 +173,7 @@ export async function deleteCrmWebhookAction(fd: FormData): Promise<CrmActionRes
     if (!row) return { ok: false, reason: "ไม่พบปลายทางนี้ของ CRM — อาจถูกลบไปแล้ว" };
     await deleteEndpoint({ tenantId }, row.id);
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { deleted: true } });
-    revalidatePath(PATH(systemId));
+    revalidateAndWake(PATH(systemId));
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ลบไม่สำเร็จ — ลองใหม่อีกครั้ง") };

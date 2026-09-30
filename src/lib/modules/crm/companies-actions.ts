@@ -7,6 +7,7 @@
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } เป็นภาษาไทยที่ไม่โทษผู้ใช้
 
 import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -87,7 +88,7 @@ export async function createCompanyAction(
   try {
     const { ctx, actor } = await session(systemId, "crm.company.create");
     const r = await createCompany(ctx, actor, input, { requireCustom: true });
-    if (r.created) revalidatePath(base(systemId));
+    if (r.created) revalidateAndWake(base(systemId));
     return { ok: true, id: r.company.id, created: r.created, duplicateOf: r.duplicateOf, duplicateArchived: !!r.duplicateArchived, candidates: r.candidates };
   } catch (e) {
     // C4.3-fix part 2 ▸ ข้อความปฏิเสธของบริการชี้กลับไปที่ช่อง (ฟอร์มแสดงใต้ช่อง + โฟกัส) · ตัวตรวจชุดเดียวกับฝั่งจอ ◂
@@ -107,7 +108,7 @@ export async function updateCompanyAction(systemId: string, companyId: string, p
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await updateCompany(ctx, actor, companyId, patch);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -118,8 +119,8 @@ export async function archiveCompanyAction(systemId: string, companyId: string, 
   try {
     const { ctx, actor } = await session(systemId, "crm.company.archive");
     await archiveCompany(ctx, actor, companyId, { confirm, reason });
-    revalidatePath(base(systemId));
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -130,7 +131,7 @@ export async function setOwnerAction(systemId: string, companyId: string, userId
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await setOwner(ctx, actor, companyId, userId || null);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -141,8 +142,8 @@ export async function setParentAction(systemId: string, companyId: string, paren
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await setParent(ctx, actor, companyId, parentId || null);
-    revalidatePath(`${base(systemId)}/${companyId}`);
-    if (parentId) revalidatePath(`${base(systemId)}/${parentId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
+    if (parentId) revalidateAndWake(`${base(systemId)}/${parentId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -157,7 +158,7 @@ export async function addContactAction(
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     const r = await addContact(ctx, actor, companyId, input);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true, created: r.created };
   } catch (e) {
     return failOf(e);
@@ -168,7 +169,7 @@ export async function removeContactAction(systemId: string, companyId: string, c
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await removeContact(ctx, actor, companyId, contactId);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -179,7 +180,7 @@ export async function setPrimaryAction(systemId: string, companyId: string, cont
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await setPrimary(ctx, actor, companyId, contactId);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -190,7 +191,7 @@ export async function setRoleAction(systemId: string, companyId: string, contact
   try {
     const { ctx, actor } = await session(systemId, "crm.company.update");
     await setRole(ctx, actor, companyId, contactId, role);
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -205,8 +206,8 @@ export async function mergeCompaniesAction(
   try {
     const { ctx, actor } = await session(systemId, "crm.company.merge");
     const r = await mergeCompanies(ctx, actor, { ...input, fieldChoices: (input?.fieldChoices ?? null) as MergeCompaniesInput["fieldChoices"] }); // CRM C1.11 ◂
-    revalidatePath(base(systemId));
-    revalidatePath(`${base(systemId)}/${r.keptId}`);
+    revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${r.keptId}`);
     return {
       ok: true,
       keptId: r.keptId,
@@ -223,8 +224,8 @@ export async function restoreCompanyAction(systemId: string, companyId: string, 
   try {
     const { ctx, actor } = await session(systemId, "crm.company.archive");
     await restoreCompany(ctx, actor, companyId, { confirm, reason });
-    revalidatePath(base(systemId));
-    revalidatePath(`${base(systemId)}/${companyId}`);
+    revalidateAndWake(base(systemId));
+    revalidateAndWake(`${base(systemId)}/${companyId}`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -255,10 +256,12 @@ export async function importCompaniesAction(systemId: string, csv: string): Prom
   try {
     const { ctx, actor } = await session(systemId, "crm.company.import");
     const r = await importCompanies(ctx, actor, { csv });
-    revalidatePath(base(systemId));
+    revalidateAndWake(base(systemId));
     return { ok: true, ...r };
   } catch (e) {
-    revalidatePath(base(systemId));
+    // CRM C5.4-D r2 ▸ N4: นำเข้าล้มกลางทางอาจเขียนไปบางส่วนแล้ว ⇒ ปลุกคิว · แต่ระบบรุ่น 1 (CrmV2DisabledError) ไม่ได้เขียนอะไร = ไม่ปลุก ◂
+    if (e instanceof CrmV2DisabledError) revalidatePath(base(systemId));
+    else revalidateAndWake(base(systemId));
     return failOf(e, true);
   }
 }

@@ -7,7 +7,7 @@
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน `{ ok:false, error }` ภาษาไทยที่ไม่โทษผู้ใช้ (ช่องแจ้งแบบ inline ไม่ใช่ alert)
 // 🔴 ไฟล์เสียง/รูปนามบัตรมาทาง `FormData` (ไม่ใช่ base64 ใน JSON): เสียง 25 MB ที่แปลง base64 จะบวมเป็น ~33 MB บนสาย
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -106,7 +106,7 @@ export async function logCallAction(
       recording: await fileOf(form, "recording"),
     };
     const r = await logCall(ctx, actor, input);
-    revalidatePath(`/app/sys/${systemId}/crm/activities`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/activities`);
     return { ok: true, activityId: r.activity.id, nextTaskId: r.nextTaskId, hasRecording: !!r.recording };
   } catch (e) {
     return failOf(e);
@@ -131,7 +131,7 @@ export async function acceptCallAiAction(
   try {
     const { ctx, actor } = await session(systemId, "crm.activity.create");
     const dto = await acceptCallAiProposal(ctx, actor, proposalId, edits ?? null);
-    revalidatePath(`/app/sys/${systemId}/crm/activities`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/activities`);
     return { ok: true, activityId: dto.id };
   } catch (e) {
     return failOf(e);
@@ -152,7 +152,7 @@ export async function removeRecordingAction(systemId: string, activityId: string
   try {
     const { ctx, actor } = await session(systemId, "crm.activity.create");
     await removeRecording(ctx, actor, activityId, { confirm: opts?.confirm === true, reason: opts?.reason ?? null });
-    revalidatePath(`/app/sys/${systemId}/crm/activities`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/activities`);
     return { ok: true };
   } catch (e) {
     return failOf(e);
@@ -189,7 +189,7 @@ export async function acceptLeadProposalAction(systemId: string, proposalId: str
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.create");
     const r = await acceptLeadProposal(ctx, actor, proposalId);
-    revalidatePath(`/app/sys/${systemId}/crm/contacts`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/contacts`);
     return { ok: true, contactId: r.contactId };
   } catch (e) {
     return failOf(e);

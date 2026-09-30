@@ -11,6 +11,7 @@ import { CRM_OPS } from "./registry";
 // CRM C3.5 ▸ เลนลูกค้าของพอร์ทัล `/portal/*` — ทะเบียนแยก + ด่าน token พอร์ทัล (ไม่ใช่คีย์ร้าน) บน dispatch ของแกนตัวเดียวกัน ◂
 import type { ApiModuleConfig } from "@/lib/api/require";
 import { PORTAL_OPS, portalApiConfig } from "./portal-lane";
+import { wakeOutbox } from "../outbox-wake"; // CRM C5.4-D ▸ L3-M1b ◂
 
 // AUDIT-CLASS X6 (มติผู้คุมงาน C1.10 S3): เพดานขนาด body — 1 MB ทั่วไป · 10 MB เฉพาะนำเข้าผู้ติดต่อ
 export const CRM_BODY_MAX_BYTES = 1024 * 1024;
@@ -55,7 +56,12 @@ async function run(ops: readonly ApiOp[], method: ApiMethod, req: Request, path:
   const hit = matchOpIn(ops, method, path);
   const capped = await capBody(req, hit && BIG_BODY_OPS.has(hit.op.id) ? CRM_IMPORT_BODY_MAX_BYTES : CRM_BODY_MAX_BYTES);
   if (capped instanceof Response) return capped;
-  return coreDispatch(ops, method, capped, { path }, cfg);
+  const res = await coreDispatch(ops, method, capped, { path }, cfg);
+  // CRM C5.4-D ▸ L3-M1b: งานเขียนผ่าน REST ที่สำเร็จ (ไม่ใช่ GET · สถานะ < 400) ปลุกคิว outbox หลังตอบ — event ของ CRM
+  //   (ชนะ/แพ้ → หยุดลำดับ · ออกใบแจ้งหนี้ · เว็บฮุคของร้าน …) ไม่ต้องรอ cron · ระบบรุ่น 1 ถูกประตู altAuth ปฏิเสธก่อนเขียน (≥ 400) จึงไม่ปลุก
+  //   คำตอบที่เล่นซ้ำจากกุญแจ Idempotency ก็ปลุก (ไม่เสียหาย — ระบายคิวว่างคือคำสั่งอ่านคำสั่งเดียว) ◂
+  if (method !== "GET" && res.status < 400) wakeOutbox();
+  return res;
 }
 
 // CRM C3.5 ▸ config ของเลนพอร์ทัล (สร้างครั้งเดียว — ข้อความ/ชนิดระบบเดียวกับ CRM · ด่าน = token พอร์ทัลเท่านั้น) ◂

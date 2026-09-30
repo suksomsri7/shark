@@ -5,7 +5,7 @@
 // 🔴 tenantId มาจาก session เสมอ · systemId จากหน้าเป็นแค่ "ตัวเลือก" — บริการ resolve ใหม่ (ต้องเป็นระบบ CRM ของร้านนี้)
 // 🔴 F6: ทุก action ตรวจสิทธิ์ด้วย assertCanCrm ก่อนลงมือ (บริการตรวจซ้ำอีกชั้น) · ไม่โยน error ดิบถึงหน้าจอ — ข้อความไทยไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { writeAudit } from "@/lib/core/audit";
@@ -50,8 +50,8 @@ export async function eraseContactAction(
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.delete");
     const r = await eraseContact(ctx, actor, { contactId, confirm: input?.confirm === true, reason: String(input?.reason ?? ""), source: "REQUEST" });
-    revalidatePath(`/app/sys/${systemId}/crm/contacts`);
-    revalidatePath(`/app/sys/${systemId}/crm/contacts/${contactId}`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/contacts`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/contacts/${contactId}`);
     const message = !r.erased
       ? "ผู้ติดต่อนี้ถูกลบข้อมูลไปก่อนหน้านี้แล้ว — ระบบกวาดข้อมูลที่หลงเข้ามาใหม่ (ถ้ามี) ให้อีกรอบแล้ว" // C3.9-fix H7 · รีวิว NOTE
       : r.followUp === "PENDING"
@@ -86,7 +86,7 @@ export async function startTenantExportAction(systemId: string, format: string, 
     const { ctx, actor } = await session(systemId, "crm.contact.export");
     // CRM C5.4-B ▸ L5-m7: ยืนยัน + เหตุผล ส่งต่อให้บริการ (บริการเป็นด่านจริง) ◂
     const r = await exportTenant(ctx, actor, { format, confirm: danger?.confirm === true, reason: danger?.reason ?? null });
-    revalidatePath(`/app/sys/${systemId}/crm/settings`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/settings`);
     return { ok: true, jobId: r.jobId };
   } catch (e) {
     return failOf(e);
@@ -136,7 +136,7 @@ export async function saveRetentionAction(
     }
     await setCrmRetentionKeys(ctx, { exportDays, leadMonths });
     await writeAudit({ tenantId: ctx.tenantId, actorId: actor.userId, action: "crm.settings.retention", targetType: "AppSystem", targetId: ctx.systemId, before: { exportDays: cur.exportDays, leadMonths: cur.leadMonths }, after: { exportDays, leadMonths, lowered: lowering } });
-    revalidatePath(`/app/sys/${systemId}/crm/settings`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/settings`);
     return { ok: true };
   } catch (e) {
     return failOf(e);

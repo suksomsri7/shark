@@ -164,7 +164,10 @@ export type SendInput = {
   idempotencyKey?: string | null;
 };
 /** `failCode` (C4.3-fix) = รหัสใน providerError เมื่อ status เป็น FAILED — ให้หน้าจอบอกเหตุจริง (แปลไทยด้วย `crmEmailFailText`) */
-export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean; failCode?: string | null };
+// CRM C5.4-D r3 ▸ `inFlightUntil` (R2-N3): แถวเดิมของกุญแจนี้ยัง QUEUED — lease หมดเมื่อไร · `unconfirmed` (R2-S2): SENT จาก 409 ของการส่งซ้ำ ◂
+export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean; failCode?: string | null; inFlightUntil?: Date | null; unconfirmed?: boolean };
+/** CRM C5.4-D r3 ▸ R2-S2: สถานะของการส่งซ้ำหนึ่งครั้ง — ค่าแฮช token ของครั้งก่อน (คืนให้แถวเมื่อผู้ให้บริการตอบ 409) ◂ */
+type Redelivery = { prevTrackTokenHash: string; prevRouting: Record<string, unknown>; unconfirmed: boolean };
 
 export type EmailDomainRecord = { type: "TXT" | "MX" | "CNAME"; name: string; value: string; priority?: number; status?: string };
 export type EmailDomainDto = { id: string; domain: string; status: "PENDING" | "VERIFIED" | "FAILED"; records: EmailDomainRecord[]; verifiedAt: string | null };
@@ -1011,7 +1014,28 @@ async function storeAttachments(
 
 // ───────────────────────── sendEmail / sendAsSystem ─────────────────────────
 
-type SendCore = SendInput & { senderUserId?: string | null; sequenceStepId?: string | null };
+// CRM C5.4-D r2 ▸ N1b: `redeliverFailed` (ทางระบบ — ลำดับการติดตามเท่านั้น) = ส่งซ้ำด้วยกุญแจเดิมแล้วแถวเดิมเป็น FAILED ⇒ ส่งแถวเดิมใหม่
+//   (Message-ID เดิม = Resend Idempotency-Key เดิม) แทนการคืน "ฉบับเดิมที่ล้ม" — หน้าจอ/REST ไม่ส่งธงนี้ พฤติกรรมเดิมทุกประการ ◂
+type SendCore = SendInput & { senderUserId?: string | null; sequenceStepId?: string | null; redeliverFailed?: boolean };
+
+/**
+ * CRM C5.4-D r2 ▸ N1a · r3 ▸ R2-S3 (มติผู้คุมงานฉบับแก้): รหัสความล้มเหลวที่ "ผิดที่จดหมายฉบับนี้" = ถาวร (ไม่ลองซ้ำ · บันทึก FAILED แล้วไปขั้นถัดไป)
+ *   เฉพาะ `PROVIDER_400/404/405/422` + `INVALID_HEADER` + `NO_RECIPIENT` · ที่เหลือทั้งหมด = ชั่วคราว (ลองขั้นเดิมใหม่ตามรอบพัก) ◂
+ */
+export function isPermanentSendFailure(code: string | null | undefined): boolean {
+  const c = String(code ?? "").trim().toUpperCase();
+  return c === "INVALID_HEADER" || c === "NO_RECIPIENT" || c === "PROVIDER_400" || c === "PROVIDER_404" || c === "PROVIDER_405" || c === "PROVIDER_422";
+}
+/**
+ * CRM C5.4-D r3 ▸ R2-S3: ระบบส่งอีเมล "ของร้าน/ผู้ให้บริการ" ล่มทั้งก้อน (ไม่ใช่ความผิดของจดหมายฉบับนี้) — กุญแจหลุด/ถูกเพิกถอน (401) ·
+ *   โดเมนผู้ส่งยังไม่ยืนยัน/DNS หลุด (403) · โควตา/ความถี่เต็ม (429) ⇒ ลองต่อไม่นับรวมเพดาน 5 ครั้ง จนครบ 72 ชม. นับจากที่ขั้นล้มครั้งแรก ◂
+ */
+export function isOutageSendFailure(code: string | null | undefined): boolean {
+  const c = String(code ?? "").trim().toUpperCase();
+  return c === "PROVIDER_401" || c === "PROVIDER_403" || c === "PROVIDER_429";
+}
+/** CRM C5.4-D r3 ▸ R2-S2: เครื่องหมายบนแถวที่ถือว่าส่งแล้วจาก 409 ของการส่งซ้ำ (ผู้ให้บริการรับฉบับก่อนไปแล้ว — ไม่รู้รหัสอ้างอิง) ◂ */
+export const CRM_EMAIL_DELIVERY_UNCONFIRMED = "DELIVERY_UNCONFIRMED";
 
 function cleanSubject(raw: unknown): string {
   const s = str(raw);
@@ -1182,7 +1206,10 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   // AUDIT-CLASS X4: กุญแจกันซ้ำของผู้เรียกกลายเป็น Message-ID (คอลัมน์ unique ทั้งระบบ) ⇒ ฐานเป็นคนตัดสิน
   const idem = strOrNull(input?.idempotencyKey);
-  const rfcId = idem ? `ik-${sha256(`${ctx.systemId}:${idem}`).slice(0, 40)}@${CRM_EMAIL_SHARK_DOMAIN}` : newRfcId();
+  // CRM C5.4-D r3 ▸ R2-N2 (มติผู้คุมงาน): กุญแจของ "ระบบ" (ส่งแทนระบบ · actor ว่าง — ลำดับการติดตาม) กับของผู้เรียก REST/หน้าจอ อยู่คนละ
+  //   namespace — คำนำหน้าของ Message-ID ต่างกัน (`sk-` / `ik-`) ⇒ สตริงกุญแจใด ๆ ที่ผู้ถือคีย์ส่งมา (เช่น "seq:<enrollment>:v1:0")
+  //   ไม่มีทางได้ Message-ID ของขั้นในลำดับ และกลับกัน · กุญแจของผู้เรียก REST/หน้าจอคงค่าแฮชเดิมทุกไบต์ (ไม่กระทบคำขอที่ลองซ้ำข้าม deploy) ◂
+  const rfcId = idem ? `${actor ? "ik" : "sk"}-${sha256(`${ctx.systemId}:${idem}`).slice(0, 40)}@${CRM_EMAIL_SHARK_DOMAIN}` : newRfcId();
   const emailId = randomUUID().replace(/-/g, "");
   const messageId = scopedMessageId(ctx.systemId, rfcId);
   const references = parent ? uniq([...(parent.references ?? []), rfcIdOf(parent.messageId)]) : [];
@@ -1252,6 +1279,54 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     // CRM C3.9 ▸ ส่งซ้ำด้วยกุญแจเดิมตอนเต็มเพดาน = ได้ฉบับเดิมคืน (ไม่ใช่ LIMIT) ◂
     if (idem && (isUniqueViolation(e) || e instanceof CrmLimitError)) {
       const prior = await prisma.crmEmailMessage.findFirst({ where: { messageId } });
+      // CRM C5.4-D r3 ▸ R2-N1b (มติผู้คุมงาน): ทางระบบ (`redeliverFailed`) กับเพดานต่อวันที่เต็ม = "รอ" เสมอ — ไม่เข้าเส้นส่งซ้ำ/ส่ง ·
+      //   ฉบับเดิมที่ส่งไปแล้ว (SENT…) คืนได้ตามเดิม (ไม่ใช่การส่ง) · นอกนั้นโยน CrmLimitError ให้ผู้เรียกเลื่อนไปวันไทยถัดไป ◂
+      if (input?.redeliverFailed === true && e instanceof CrmLimitError && (!prior || prior.status === "FAILED" || prior.status === "QUEUED")) throw e;
+      // CRM C5.4-D r3 ▸ R2-N3: ทางระบบ + แถวเดิมยัง QUEUED (การส่งก่อนหน้าตายกลางทาง/ยังวิ่งอยู่) = "กำลังส่ง" ไม่ใช่ "ส่งแล้ว" — คืนเวลา lease
+      //   ให้ผู้เรียกรอ (ตัวเก็บซากของ runScheduled ปิดเป็น FAILED เมื่อหมด lease แล้วรอบถัดไปค่อยส่งซ้ำแถวเดิม) ◂
+      if (prior && input?.redeliverFailed === true && prior.status === "QUEUED" && !prior.scheduledAt) {
+        return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: "QUEUED", reused: true, inFlightUntil: prior.leaseUntil ?? null };
+      }
+      // CRM C5.4-D r2 ▸ N1b: ทางระบบที่ขอ `redeliverFailed` + แถวเดิมของกุญแจนี้ "ล้ม" + ผู้ติดต่อเดียวกัน + ไม่มีไฟล์แนบ + ไม่ใช่จดหมายตั้งเวลา
+      //   ⇒ จองแถวเดิมกลับเป็น QUEUED แบบมีเงื่อนไข (FAILED → QUEUED + lease · สองตัวลองพร้อมกันได้คนเดียว) แล้วส่งแถวเดิมอีกครั้ง
+      //   Message-ID เดิม = Resend Idempotency-Key เดิม ⇒ ถ้าครั้งก่อนผู้ให้บริการรับไปแล้วจริง (เน็ตหลุดหลังรับ) ลูกค้าไม่ได้ฉบับที่สอง
+      //   ความยินยอม/ผู้รับถูกตรวจใหม่แล้วด้านบน (ตอนส่งซ้ำ) · เนื้อความ/ผู้รับ/หัวเรื่องใช้ของแถวเดิม (ฉบับเดียวกัน) ◂
+      // CRM C5.4-D r3 ▸ R2-S2 (มติผู้คุมงาน): เนื้อความของการส่งซ้ำมี token ติดตาม/ยกเลิกรับชุดใหม่ ⇒ ผู้ให้บริการที่รับฉบับก่อนไปแล้วตอบ 409
+      //   (กุญแจเดิม เนื้อความต่าง) · ค่าแฮชของ token **ของแต่ละครั้ง** ถูกเขียนลงแถวก่อนเรียกผู้ให้บริการ (ในคำสั่งจองเดียวกัน) และเก็บค่าของ
+      //   ครั้งก่อนไว้ (`prev`) — 409 ของการส่งซ้ำ = ครั้งก่อนถูกรับแล้ว ⇒ `deliver` คืนค่าแฮชของครั้งก่อน (ฉบับที่ลูกค้าได้จริง) และปิดแถวเป็น SENT
+      //   พร้อมเครื่องหมาย "ยืนยันการส่งไม่ได้" · ลิงก์เปิด/คลิก/ยกเลิกรับในจดหมายที่ลูกค้าได้จริงจึงยังใช้ได้ ◂
+      if (prior && input?.redeliverFailed === true && isUniqueViolation(e) && !queued && prior.status === "FAILED" && prior.direction === "OUT" && prior.contactId === contact.id && !prior.attachments) {
+        const again = composeOutgoing({ emailId: prior.id, storedHtml: prior.bodyHtml ?? "", trackOpens, trackClicks });
+        const prevRouting = isObj(prior.routing) ? (prior.routing as Record<string, unknown>) : {};
+        const claimed = await prisma.crmEmailMessage.updateMany({
+          where: { id: prior.id, status: "FAILED" },
+          data: {
+            status: "QUEUED",
+            providerError: null,
+            leaseUntil: new Date(now.getTime() + CRM_EMAIL_LEASE_MS),
+            trackTokenHash: again.openHash,
+            routing: { ...prevRouting, links: again.links, unsub: again.unsubHash } as unknown as Prisma.InputJsonValue,
+          },
+        });
+        if (claimed.count === 1) {
+          const redo: Redelivery = { prevTrackTokenHash: prior.trackTokenHash, prevRouting, unconfirmed: false };
+          const result = await deliver(ctx, { ...prior, status: "QUEUED" }, {
+            composed: again,
+            routing,
+            inboundKey,
+            rfcId, // = rfcIdOf(prior.messageId): same key ⇒ same deterministic id
+            references: prior.references ?? [],
+            parentRfc: prior.inReplyTo ?? null,
+            attachments: [],
+            deps,
+            now,
+            redelivery: redo,
+          });
+          await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: result, ...(redo.unconfirmed ? { providerConflict: true } : {}) } });
+          const f = result === "FAILED" ? await prisma.crmEmailMessage.findUnique({ where: { id: prior.id }, select: { providerError: true } }) : null;
+          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: result, reused: true, ...(f ? { failCode: f.providerError } : {}), ...(redo.unconfirmed ? { unconfirmed: true } : {}) };
+        }
+      }
       if (prior) {
         return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: statusOf(prior.status), reused: true, ...(statusOf(prior.status) === "FAILED" ? { failCode: prior.providerError } : {}) };
       }
@@ -1310,6 +1385,8 @@ async function deliver(
     attachments: SendAttachmentInput[];
     deps?: EmailDeps;
     now: Date;
+    /** CRM C5.4-D r3 ▸ R2-S2: การส่งซ้ำของแถวที่เคยล้ม — 409 ของผู้ให้บริการ = ครั้งก่อนถูกรับแล้ว ◂ */
+    redelivery?: Redelivery;
   },
 ): Promise<"SENT" | "FAILED"> {
   const transport = await transportOf(args.deps);
@@ -1346,26 +1423,40 @@ async function deliver(
     res = { ok: false, error: "TRANSPORT_ERROR" };
   }
 
-  if (!res.ok) {
+  // CRM C5.4-D r3 ▸ R2-S2 (มติผู้คุมงาน): การส่งซ้ำ (กุญแจเดิม · เนื้อความใหม่) ที่ผู้ให้บริการตอบ 409 = ผู้ให้บริการถือจดหมายของกุญแจนี้อยู่แล้ว
+  //   (ครั้งก่อนถูกรับ แต่คำตอบหายระหว่างทาง) ⇒ ปิดแถวเป็น SENT ด้วยค่าแฮช token **ของครั้งก่อน** (ฉบับที่ลูกค้าได้จริง — ไม่ใช่ของครั้งนี้
+  //   ที่ถูกปฏิเสธ) + เครื่องหมาย `DELIVERY_UNCONFIRMED` (ไม่รู้รหัสอ้างอิงของผู้ให้บริการ) · ขั้นในลำดับเดินต่อ ไม่นับเป็นครั้งที่ล้ม ◂
+  const conflictSent = !res.ok && !!args.redelivery && str(res.error).toUpperCase() === "PROVIDER_409";
+  if (!res.ok && !conflictSent) {
     // AUDIT-CLASS X8: เก็บเฉพาะรหัสความล้มเหลว — ไม่มีที่อยู่ผู้รับในคอลัมน์ที่ใครก็อ่านได้
     await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: str(res.error).slice(0, 200) || "SEND_FAILED", leaseUntil: null } });
     return "FAILED";
   }
-
-  await prisma.$transaction(async (tx) => {
-    const n = await tx.crmEmailMessage.updateMany({
-      where: { id: row.id, status: "QUEUED" },
-      data: {
-        status: "SENT",
-        providerId: strOrNull(res.providerId),
-        sentAt: args.now,
-        leaseUntil: null,
+  if (conflictSent && args.redelivery) args.redelivery.unconfirmed = true;
+  const sentHashes = conflictSent && args.redelivery
+    ? {
+        trackTokenHash: args.redelivery.prevTrackTokenHash,
+        routing: { ...args.redelivery.prevRouting, deliveryUnconfirmed: true } as unknown as Prisma.InputJsonValue,
+      }
+    : {
         trackTokenHash: args.composed.openHash,
         routing: {
           ...(isObj(row.routing) ? row.routing : {}),
           links: args.composed.links,
           unsub: args.composed.unsubHash,
         } as unknown as Prisma.InputJsonValue,
+      };
+
+  await prisma.$transaction(async (tx) => {
+    const n = await tx.crmEmailMessage.updateMany({
+      where: { id: row.id, status: "QUEUED" },
+      data: {
+        status: "SENT",
+        providerId: conflictSent ? null : strOrNull(res.providerId),
+        providerError: conflictSent ? CRM_EMAIL_DELIVERY_UNCONFIRMED : null,
+        sentAt: args.now,
+        leaseUntil: null,
+        ...sentHashes,
       },
     });
     if (n.count !== 1) return;
@@ -1517,7 +1608,7 @@ export async function sendBulk(ctx: EmailsCtx, actor: MemberActor, input: BulkSe
  */
 export async function sendAsSystem(
   ctx: { tenantId: string; systemId: string },
-  input: SendInput & { senderUserId?: string | null; sequenceStepId?: string | null },
+  input: SendInput & { senderUserId?: string | null; sequenceStepId?: string | null; redeliverFailed?: boolean },
   deps?: EmailDeps,
 ): Promise<SendResult> {
   return sendCore({ ...ctx, actorUserId: strOrNull(input?.senderUserId) }, null, input, deps);
@@ -2783,6 +2874,85 @@ function svixOk(headers: Record<string, string>, rawBody: string, nowSec: number
   return false;
 }
 
+// CRM C5.4-D ▸ L3-m2: ขั้น "หลัง commit" ของเหตุการณ์ตีกลับ/แจ้งสแปม — idempotent และถูกเรียกซ้ำเมื่อ Svix ยิงซ้ำ
+//   เดิม: tx บันทึกแถวเหตุการณ์ (providerEventId unique) + ธง แล้ว "หลัง commit" ค่อยเขียนแถวถอนความยินยอม (กลืน error) + หยุดลำดับ
+//   ⇒ เครื่องดับ/ฐานสะดุดตรงนั้น = การยิงซ้ำทุกครั้งชนกุญแจ → ตอบ 200 "replay" → ขั้นเหล่านั้นไม่เคยเกิดอีกเลย
+//   (สมุด PDPA ไม่มีแถวถอน · ลำดับที่ส่ง LINE/SMS ยังเดินต่อ) · และ error ชั่วคราวของ consents.set ทำแถวหายถาวรแม้ไม่มีเครื่องดับ
+//   ตอนนี้: ขั้นเหล่านี้ล้มแบบชั่วคราว = โยน ⇒ ผู้เรียกตอบ 500 (Svix ยิงใหม่) · การยิงซ้ำ (ชนกุญแจ) เรียกขั้นเหล่านี้อีกครั้ง
+//   🔴 การยิงซ้ำทำเฉพาะเมื่อผู้ติดต่อ "ยังอยู่ในสถานะที่เหตุการณ์นั้นตั้งไว้" (ยังขอไม่รับ/ยังเป็นอีเมลเด้ง) — ลูกค้าที่กลับมาให้ความยินยอม
+//      ใหม่หลังเหตุการณ์ต้องไม่ถูกถอนซ้ำโดยการยิงซ้ำที่มาช้า (แถวถอนเขียนเมื่อความยินยอมอีเมลยังไม่ถูกถอน และไม่มีใครแก้หลังเหตุการณ์)
+//   error ถาวร (ผู้ติดต่อถูกรวม/สมาชิกที่ผูกหายไป — VALIDATION/CONFLICT/NOT_FOUND/FORBIDDEN) = WARN แล้วเดินต่อ ไม่ให้ Svix ยิงวนไม่รู้จบ ◂
+const PERMANENT_AFTER_STEP = new Set(["VALIDATION", "CONFLICT", "NOT_FOUND", "FORBIDDEN"]);
+
+const isPermanentAfterStep = (e: unknown) => PERMANENT_AFTER_STEP.has(String((e as { code?: unknown })?.code ?? ""));
+async function warnAfterStep(tenantId: string, what: string, e: unknown): Promise<void> {
+  await logOps("WARN", "crm.email.webhook", what, { tenantId, detail: (e instanceof Error ? e.name : "Error").slice(0, 80) }).catch(() => {});
+}
+
+// CRM C5.4-D r2 ▸ (มติผู้คุมงาน) S4: แถวถอนความยินยอมเขียนด้วย `consents.set(..., { ifChanged: true })` — ตรวจ "มีอะไรต้องเปลี่ยนไหม" ซ้ำ
+//   ภายใต้ล็อกแถวผู้ติดต่อ ⇒ ยิงซ้ำพร้อมกันกี่ทางก็ได้แถว/event/สมุดตรวจเดียว (เดิมอ่านก่อนแล้วค่อยเขียน = สองแถว)
+//   N2: การยิงซ้ำหยุดเฉพาะแถวลงทะเบียนที่มีอยู่ก่อน/พร้อมเหตุการณ์ (`eventAt`) — แถวที่พนักงานลงทะเบียนใหม่หลังจากนั้นไม่ถูกหยุด
+//   N3: การอ่านความยินยอมตอนยิงซ้ำอยู่ใต้กติกา error ถาวรเดียวกัน (NOT_FOUND ที่มีรหัส ≠ ให้ Svix ยิงวนหลายวัน) ◂
+async function complaintAfterSteps(ctx: { tenantId: string; systemId: string }, contactId: string, flipped: boolean | null, eventAt: Date | null): Promise<{ consent: boolean; stopped: number }> {
+  const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { emailOptOut: true, mergedIntoId: true } });
+  if (!c) return { consent: false, stopped: 0 };
+  // ยิงซ้ำ (flipped = null): สถานะขอไม่รับถูกยกเลิกไปแล้ว = ผลของเหตุการณ์นี้ถูกแทนที่ ⇒ ไม่แตะอะไร
+  if (flipped === null && !c.emailOptOut) return { consent: false, stopped: 0 };
+  let write = flipped === true;
+  if (flipped === null && !c.mergedIntoId) {
+    try {
+      const view = await consents.current({ ...ctx, actorUserId: null }, SYSTEM_ACTOR, contactId);
+      const email = view.channels.find((ch) => ch.channel === "EMAIL");
+      const changedAt = email?.at ? new Date(email.at).getTime() : 0;
+      write = email?.granted !== false && (!eventAt || changedAt <= eventAt.getTime());
+    } catch (e) {
+      if (!isPermanentAfterStep(e)) throw e;
+      write = false;
+      await warnAfterStep(ctx.tenantId, "อ่านความยินยอมของผู้ติดต่อตอนประมวลผลแจ้งสแปมซ้ำไม่ได้ (ข้อมูลผู้ติดต่อไม่พร้อม)", e);
+    }
+  }
+  let consent = false;
+  if (write && !c.mergedIntoId) {
+    try {
+      // ที่มาใช้ค่าเดียวกับการกดยกเลิกรับ (`UNSUBSCRIBE` — ทะเบียนที่มาเป็นของใบ C1.x ไม่มีค่า COMPLAINT)
+      const r = await consents.set(
+        { ...ctx, actorUserId: null },
+        SYSTEM_ACTOR,
+        contactId,
+        { channel: "EMAIL", granted: false, source: "UNSUBSCRIBE", note: "ผู้ให้บริการอีเมลแจ้งว่าลูกค้ากดรายงานว่าเป็นสแปม" },
+        { ifChanged: true },
+      );
+      consent = r.unchanged !== true;
+    } catch (e) {
+      if (!isPermanentAfterStep(e)) throw e;
+      await warnAfterStep(ctx.tenantId, "บันทึกการถอนความยินยอมหลังแจ้งสแปมไม่ได้ (ข้อมูลผู้ติดต่อไม่พร้อม)", e);
+    }
+  }
+  const seq = await import("./sequences");
+  const stopped = await seq.stopFor(ctx, contactId, "OPT_OUT", flipped === null ? { enrolledAtOrBefore: eventAt } : {});
+  return { consent, stopped };
+}
+
+async function bounceAfterSteps(ctx: { tenantId: string; systemId: string }, contactId: string, replay: boolean, eventAt: Date | null = null): Promise<number> {
+  if (replay) {
+    const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { emailBouncedAt: true } });
+    if (!c?.emailBouncedAt) return 0; // ธงเด้งถูกล้างไปแล้ว (แก้อีเมล/ผู้ดูแลล้าง) = ไม่หยุดซ้ำ
+  }
+  const seq = await import("./sequences");
+  // CRM C5.4-D r2 ▸ N2 (กติกาเดียวกับแจ้งสแปม): การยิงซ้ำหยุดเฉพาะแถวที่มีอยู่ก่อน/พร้อมเหตุการณ์ ◂
+  return seq.stopFor(ctx, contactId, "BOUNCE", replay ? { enrolledAtOrBefore: eventAt } : {});
+}
+
+/** ขั้นหลัง commit ล้มแบบชั่วคราว ⇒ 500 ให้ Svix ยิงใหม่ (การยิงซ้ำเรียกขั้นเหล่านี้อีกครั้ง) */
+async function afterStepsFailed(tenantId: string, what: string, e: unknown): Promise<ProviderWebhookResult> {
+  await logOps("WARN", "crm.email.webhook", `ขั้นหลังบันทึก${what}ไม่สำเร็จ — ผู้ให้บริการจะส่งเหตุการณ์ซ้ำแล้วระบบทำขั้นนี้ใหม่`, {
+    tenantId,
+    detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
+  }).catch(() => {});
+  return { status: 500, handled: false, reason: "after_steps_failed" };
+}
+// ◂ CRM C5.4-D
+
 export async function providerWebhook(input: ProviderWebhookInput): Promise<ProviderWebhookResult> {
   const rawBody = typeof input?.rawBody === "string" ? input.rawBody : "";
   if (Buffer.byteLength(rawBody, "utf8") > WEBHOOK_MAX_BYTES) return { status: 413, handled: false, reason: "too_large" };
@@ -2832,14 +3002,34 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
         await emitEmailEvent(tx, ctx, EVT.bounced, row, eventId);
       });
     } catch (e) {
-      if (isUniqueViolation(e)) return { status: 200, handled: true, reason: "replay" };
+      if (isUniqueViolation(e)) {
+        // CRM C5.4-D ▸ L3-m2: ยิงซ้ำ = ทำขั้นหลัง commit ซ้ำแบบ idempotent (ครั้งก่อนอาจดับก่อนถึง) ◂
+        if (!row.contactId) return { status: 200, handled: true, reason: "replay" };
+        try {
+          const bev = await prisma.crmEmailEvent.findUnique({ where: { providerEventId: eventId }, select: { at: true } });
+          const stopped = await bounceAfterSteps(ctx, row.contactId, true, bev?.at ?? null);
+          if (stopped > 0) {
+            await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.bounced", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "BOUNCE", replay: true, stopped } });
+          }
+        } catch (e2) {
+          return afterStepsFailed(row.tenantId, "อีเมลตีกลับ", e2);
+        }
+        return { status: 200, handled: true, reason: "replay" };
+      }
       await logOps("WARN", "crm.email.webhook", "บันทึกเหตุการณ์อีเมลตีกลับไม่สำเร็จ", {
         tenantId: row.tenantId,
         detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
       }).catch(() => {});
       return { status: 500, handled: false, reason: "db_error" };
     }
-    if (row.contactId) await stopSequencesFor(ctx, row.contactId, "BOUNCE");
+    // CRM C5.4-D ▸ L3-m2: ขั้นหลัง commit ล้ม = 500 (เดิมกลืนเงียบ) — Svix ยิงซ้ำแล้วเส้น "ยิงซ้ำ" ข้างบนทำให้ครบ ◂
+    if (row.contactId) {
+      try {
+        await bounceAfterSteps(ctx, row.contactId, false);
+      } catch (e2) {
+        return afterStepsFailed(row.tenantId, "อีเมลตีกลับ", e2);
+      }
+    }
     await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.bounced", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "BOUNCE" } });
     return { status: 200, handled: true };
   }
@@ -2855,7 +3045,20 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
         return contacts.markEmailOptOutInTx(tx, ctx, row.contactId);
       });
     } catch (e) {
-      if (isUniqueViolation(e)) return { status: 200, handled: true, reason: "replay" };
+      if (isUniqueViolation(e)) {
+        // CRM C5.4-D ▸ L3-m2: ยิงซ้ำ = ทำขั้นหลัง commit ซ้ำแบบ idempotent (แถวถอนความยินยอม + หยุดลำดับ) — ครั้งก่อนอาจดับก่อนถึง ◂
+        if (!row.contactId) return { status: 200, handled: true, reason: "replay" };
+        try {
+          const ev = await prisma.crmEmailEvent.findUnique({ where: { providerEventId: eventId }, select: { at: true } });
+          const r = await complaintAfterSteps(ctx, row.contactId, null, ev?.at ?? null);
+          if (r.consent || r.stopped > 0) {
+            await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.complained", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "COMPLAINT", replay: true, consentWritten: r.consent, stopped: r.stopped } });
+          }
+        } catch (e2) {
+          return afterStepsFailed(row.tenantId, "การแจ้งสแปม", e2);
+        }
+        return { status: 200, handled: true, reason: "replay" };
+      }
       await logOps("WARN", "crm.email.webhook", "บันทึกเหตุการณ์แจ้งสแปมไม่สำเร็จ", {
         tenantId: row.tenantId,
         detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
@@ -2865,19 +3068,13 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
     if (row.contactId) {
       // 🔴 การแจ้งสแปมคือ "ถอนความยินยอม" ที่หนักที่สุดที่ลูกค้าทำได้ — ต้องมีแถวประวัติความยินยอมเหมือน
       //    การกดลิงก์ยกเลิกรับ ไม่ใช่แค่ธงบูลีนบนผู้ติดต่อ (หน้าความยินยอม/รายงาน PDPA อ่านจากแถวนั้น
-      //    และการรวมผู้ติดต่อ/ซิงก์ฝั่งสมาชิกก็เดินตามแถวนั้น) · ที่มาใช้ค่าเดียวกับการกดยกเลิกรับ
-      //    (`UNSUBSCRIBE` — ทะเบียนที่มาเป็นของใบ C1.x ไม่มีค่า COMPLAINT และใบนี้ไม่ใช่เจ้าของทะเบียนนั้น)
-      if (flipped) {
-        await consents
-          .set({ ...ctx, actorUserId: null }, SYSTEM_ACTOR, row.contactId, {
-            channel: "EMAIL",
-            granted: false,
-            source: "UNSUBSCRIBE",
-            note: "ผู้ให้บริการอีเมลแจ้งว่าลูกค้ากดรายงานว่าเป็นสแปม",
-          })
-          .catch(() => null);
+      //    และการรวมผู้ติดต่อ/ซิงก์ฝั่งสมาชิกก็เดินตามแถวนั้น) · ครั้งแรก: แถวถอนเขียนเมื่อรอบนี้เป็นคนพลิกธง (เหมือนเดิม)
+      // CRM C5.4-D ▸ L3-m2: ขั้นเหล่านี้ล้มแบบชั่วคราว = 500 (เดิม `.catch(() => null)` กลืนแถวถอนหายถาวร) ◂
+      try {
+        await complaintAfterSteps(ctx, row.contactId, flipped, null);
+      } catch (e2) {
+        return afterStepsFailed(row.tenantId, "การแจ้งสแปม", e2);
       }
-      await stopSequencesFor(ctx, row.contactId, "OPT_OUT");
     }
     await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.complained", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "COMPLAINT" } });
     return { status: 200, handled: true };

@@ -4,7 +4,7 @@
 // 🔴 "use server" = export ได้เฉพาะ async function · tenantId จาก session · systemId ถูก resolve ใหม่ในบริการ
 // 🔴 F6: assertCan `crm.settings.manage` ก่อนลงมือทุกครั้ง · error เป็นข้อความไทยที่ไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -57,7 +57,7 @@ function failOf(e: unknown): Fail {
 }
 
 const touch = (systemId: string) => {
-  for (const p of ["settings/pipelines", "settings/stages", "pipelines", "deals"]) revalidatePath(`/app/sys/${systemId}/crm/${p}`);
+  for (const p of ["settings/pipelines", "settings/stages", "pipelines", "deals"]) revalidateAndWake(`/app/sys/${systemId}/crm/${p}`);
 };
 
 export async function createPipelineAction(systemId: string, input: { name: string; stages: StageInput[] }): Promise<{ ok: true; id: string } | Fail> {
