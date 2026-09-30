@@ -8,18 +8,21 @@ import {
   getGroupDocHead,
   groupCandidateDocs,
   groupChildDocs,
+  getSettings,
   issueDocument,
   openGroupOfChild,
-  recordPayment,
+  recordPaymentBatchInOneTx,
+  recordPaymentInTx,
   updateGroupProgress,
   voidPaymentBatchInOneTx,
   voidPaymentInTx,
   type GroupChildDoc,
   type GroupRelType,
 } from "./service";
-import { EXP_DOC_LABEL, issueExpenseDoc, recordVendorPayment, voidVendorPaymentInTx } from "./expense";
+import { EXP_DOC_LABEL, issueExpenseDoc, recordVendorPaymentInTx, voidVendorPaymentInTx } from "./expense";
 import { listPaymentChannels, type FinanceOption } from "./payment";
-import { createCheque } from "./cheque";
+import { chequeDraftProblem, createChequeInTx } from "./cheque";
+import { safeReason } from "./errors";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) คีย์ของชุดการชำระ — ที่เดียวกับตัวหา "เช็คของชุด" (service/expense/cheque ใช้ร่วม ไม่ import วน) ◂
 import { GROUP_KEY_SEP, groupBatchKey, groupChildKey, groupKeyPrefix } from "./group-batch";
 import { formatDateTh } from "@/lib/ui/date";
@@ -488,24 +491,23 @@ export async function recordGroupPayment(
   // 🔴 idempotency ต้องมาก่อนด่านสถานะ (บทเรียน WO 1.4): ยิงชุดเดิมซ้ำหลังกลุ่มปิดไปแล้ว
   //    ต้องคืนผลเดิมเงียบ ๆ ไม่ใช่เด้ง "ชำระไม่ได้ในสถานะปัจจุบัน" (ผู้ใช้เน็ตหลุดแล้วกดซ้ำจะไม่รู้ว่าเงินเข้าหรือยัง)
   const batchKey = groupBatchKey(groupId, opts.clientKey);
+  const answerDone = (done: Awaited<ReturnType<typeof findGroupChildPayments>>, head: { status: string; outstanding: number }): RecordGroupPaymentResult => ({
+    ok: true,
+    batchKey,
+    recorded: 0,
+    allocations: done.map((p) => ({
+      childDocId: p.documentId,
+      docNo: p.docNo,
+      tieOff: p.amount + p.whtAmount,
+      wht: p.whtAmount,
+      cash: p.amount,
+    })),
+    status: head.status,
+    outstanding: head.outstanding,
+    certNos: [],
+  });
   const done = await findGroupChildPayments(tenantId, systemId, `${batchKey}${GROUP_KEY_SEP}`);
-  if (done.length > 0) {
-    return {
-      ok: true,
-      batchKey,
-      recorded: 0,
-      allocations: done.map((p) => ({
-        childDocId: p.documentId,
-        docNo: p.docNo,
-        tieOff: p.amount + p.whtAmount,
-        wht: p.whtAmount,
-        cash: p.amount,
-      })),
-      status: panel.status,
-      outstanding: panel.outstanding,
-      certNos: [],
-    };
-  }
+  if (done.length > 0) return answerDone(done, panel);
 
   if (!["AWAITING_PAYMENT", "PARTIAL"].includes(panel.status))
     return { ok: false, reason: `${def.label}นี้${def.texts.payAction}ไม่ได้ในสถานะปัจจุบัน` };
@@ -567,65 +569,88 @@ export async function recordGroupPayment(
     ? "CHEQUE"
     : channelOfFinanceType(financeTypes.get(financeAccountId ?? ""));
 
-  const certNos: string[] = [];
-  let recorded = 0;
-  let firstPaymentId = "";
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const w = whtOf.get(r.childDocId);
-    const common = {
-      paidAt,
-      channel,
-      financeAccountId: draft.cheque ? null : financeAccountId,
-      amount: r.cash,
-      whtAmountSatang: r.wht,
-      whtRateBp: w?.rateBp ?? null,
-      whtIncomeType: w?.incomeType ?? null,
-      // ค่าธรรมเนียมของ "การโอน 1 ครั้ง" → ลงที่ใบแรกใบเดียว (ไม่ซอยตามใบลูก)
-      feeAmount: i === 0 ? Math.max(0, Math.round(draft.feeSatang || 0)) : 0,
-      note,
-      createdById: opts.userId ?? null,
-      idempotencyKey: groupChildKey(batchKey, r.childDocId),
-    };
-    const res =
-      def.side === "expense"
-        ? await recordVendorPayment(tenantId, systemId, r.childDocId, common)
-        : await recordPayment(tenantId, systemId, r.childDocId, common);
-    if (!res.ok) return { ok: false, reason: `${r.docNo ?? "(ร่าง)"}: ${res.reason}` };
-    recorded++;
-    if (!firstPaymentId && res.paymentId) firstPaymentId = res.paymentId;
-    const certNo = (res as { whtCertNo?: string }).whtCertNo;
-    if (certNo) certNos.push(certNo);
+  // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ร่างเช็คต้องผ่านด่านที่ไม่ต้องอ่านฐานข้อมูล **ก่อนเขียนอะไร** (เดิมตรวจหลังบันทึกงวดของทุกใบลูกไปแล้ว) ◂
+  const chequeAmount = rows.reduce((s, r) => s + r.cash, 0);
+  if (draft.cheque) {
+    const bad = chequeDraftProblem({ chequeNo: draft.cheque.chequeNo, bankName: draft.cheque.bankName, amount: chequeAmount });
+    if (bad) return { ok: false, reason: bad };
   }
-
-  if (draft.cheque && firstPaymentId) {
-    const cq = await createCheque({
-      tenantId,
-      systemId,
-      direction: def.side === "expense" ? "OUT" : "IN",
-      chequeNo: String(draft.cheque.chequeNo).trim().slice(0, 40),
-      bankName: String(draft.cheque.bankName ?? "").trim().slice(0, 80),
-      chequeDate: isIsoDay(draft.cheque.chequeDate) ? dateOf(draft.cheque.chequeDate) : paidAt,
-      amount: rows.reduce((s, r) => s + r.cash, 0),
-      financeAccountId,
-      documentId: rows[0].childDocId,
-      // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คผูกกับงวดของใบลูกใบแรกเท่านั้น (chequeId UNIQUE) — งวดอื่นของครั้งนี้หาจากคีย์ชุด
-      //   `<batchKey>#<childId>` (group-batch.ts): เด้ง/ยกเลิกเช็คคืนหนี้ทุกใบลูก · ยกเลิกการชำระของงวดใดก็ตามเจอเช็คใบนี้ (กติกา B2c) ◂
-      paymentId: firstPaymentId,
-      note,
-    });
-    if (!cq.ok) return { ok: false, reason: cq.reason };
+  const fee = Math.max(0, Math.round(draft.feeSatang || 0));
+  // ค่าธรรมเนียมของ "การโอน 1 ครั้ง" → ลงที่ใบแรกของการจัดสรร (FIFO) ใบเดียว (ไม่ซอยตามใบลูก) — เหมือนเดิม
+  const feeChildId = rows[0].childDocId;
+  // round 10 · มติ B: ทุกใบลูก ↑documentId (ลำดับล็อกเดียวกับยกเลิก/เช็คเด้ง) + เช็ค + ผูก + หัวกลุ่ม ในธุรกรรมเดียว — ล้ม = ไม่มีอะไรถูกเขียน ไม่มี event
+  const ordered = [...rows].sort((a, b) => (a.childDocId < b.childDocId ? -1 : a.childDocId > b.childDocId ? 1 : 0));
+  const settings = def.side === "revenue" ? await getSettings(tenantId, systemId) : null;
+  const failMsg = def.side === "expense" ? "บันทึกจ่ายไม่สำเร็จ" : "บันทึกชำระไม่สำเร็จ";
+  const res = await recordPaymentBatchInOneTx(
+    tenantId,
+    systemId,
+    { groupId, childIds: rows.map((r) => r.childDocId), batchKey, failMsg },
+    async (tx) => {
+      const certNos: string[] = [];
+      const paymentOf = new Map<string, string>();
+      for (const r of ordered) {
+        const w = whtOf.get(r.childDocId);
+        const common = {
+          paidAt,
+          channel,
+          financeAccountId: draft.cheque ? null : financeAccountId,
+          amount: r.cash,
+          whtAmountSatang: r.wht,
+          whtRateBp: w?.rateBp ?? null,
+          whtIncomeType: w?.incomeType ?? null,
+          feeAmount: r.childDocId === feeChildId ? fee : 0,
+          note,
+          createdById: opts.userId ?? null,
+          idempotencyKey: groupChildKey(batchKey, r.childDocId),
+        };
+        try {
+          const one =
+            def.side === "expense"
+              ? await recordVendorPaymentInTx(tx, tenantId, systemId, r.childDocId, common)
+              : await recordPaymentInTx(tx, tenantId, systemId, r.childDocId, common, settings!);
+          if (one.duplicate) throw new Error("รายการชำระของใบนี้ถูกบันทึกไปแล้ว — รีเฟรชหน้าแล้วตรวจสอบอีกครั้ง");
+          paymentOf.set(r.childDocId, one.paymentId);
+          const certNo = (one as { whtCertNo?: string }).whtCertNo;
+          if (certNo) certNos.push(certNo);
+        } catch (e) {
+          throw new Error(`${r.docNo ?? "(ร่าง)"}: ${safeReason(e, failMsg)}`);
+        }
+      }
+      if (draft.cheque) {
+        await createChequeInTx(tx, {
+          tenantId,
+          systemId,
+          direction: def.side === "expense" ? "OUT" : "IN",
+          chequeNo: String(draft.cheque.chequeNo).trim().slice(0, 40),
+          bankName: String(draft.cheque.bankName ?? "").trim().slice(0, 80),
+          chequeDate: isIsoDay(draft.cheque.chequeDate) ? dateOf(draft.cheque.chequeDate) : paidAt,
+          amount: chequeAmount,
+          financeAccountId,
+          documentId: rows[0].childDocId,
+          // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คผูกกับงวดของใบลูกใบแรก (ของการจัดสรร) เท่านั้น (chequeId UNIQUE) — งวดอื่นของครั้งนี้หาจากคีย์ชุด
+          //   `<batchKey>#<childId>` (group-batch.ts): เด้ง/ยกเลิกเช็คคืนหนี้ทุกใบลูก · ยกเลิกการชำระของงวดใดก็ตามเจอเช็คใบนี้ (กติกา B2c) ◂
+          paymentId: paymentOf.get(rows[0].childDocId) ?? null,
+          note,
+        });
+      }
+      return { certNos };
+    },
+  );
+  if (!res.ok) return { ok: false, reason: res.reason };
+  if (res.duplicate) {
+    // คำขอเดียวกันที่ยิงซ้อน — อีกคำขอบันทึกไปแล้ว: คืนผลเดิมเงียบ ๆ แบบเดียวกับการยิงซ้ำ (ด้านบน)
+    const fresh = await groupPanelData(tenantId, systemId, groupId);
+    return answerDone(await findGroupChildPayments(tenantId, systemId, `${batchKey}${GROUP_KEY_SEP}`), fresh ?? panel);
   }
-
-  const after = await syncGroupStatus(tenantId, systemId, groupId);
   return {
     ok: true,
     batchKey,
-    recorded,
+    recorded: rows.length,
     allocations: rows,
-    status: after.status,
-    outstanding: after.outstanding,
-    certNos,
+    status: res.head?.status ?? "",
+    outstanding: res.head?.outstanding ?? 0,
+    certNos: res.result.certNos,
   };
 }
 

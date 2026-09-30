@@ -13,7 +13,7 @@ import {
 } from "./service";
 import { recordVendorPayment, voidVendorPayment } from "./expense";
 import { listFinanceAccounts } from "./finance";
-import { createCheque } from "./cheque";
+import { chequeDraftProblem, createCheque, recordPaymentWithChequeInOneTx } from "./cheque";
 import { issueWhtCreditCertStandalone } from "./wht";
 
 // ─────────────────────────────────────────────────────────────
@@ -265,12 +265,19 @@ export async function recordPayments(
   const paymentIds: string[] = [];
   let recorded = 0;
 
+  // CRM C5.4-C ▸ round 10 · มติ B (R9-5): ด่านที่ไม่ต้องเขียนอะไร ตรวจครบ **ทุกครั้ง** ก่อนบันทึกครั้งแรก (เดิมตรวจทีละครั้งกลางลูป) ◂
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (r.financeAccountId && !financeTypes.has(r.financeAccountId))
       return { ok: false, reason: "ช่องทางการเงินไม่ถูกต้อง" };
     if (r.cheque && r.feeSatang > 0)
       return { ok: false, reason: "การชำระด้วยเช็คยังไม่รองรับค่าธรรมเนียมธนาคาร" };
+    const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amountSatang }) : null;
+    if (bad) return { ok: false, reason: rows.length > 1 ? `ครั้งที่ ${i + 1}: ${bad}` : bad };
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
     const channel: AccountPayChannel = r.cheque ? "CHEQUE" : channelOfFinanceType(financeTypes.get(r.financeAccountId ?? ""));
     const idempotencyKey = opts.keyBase ? `${opts.keyBase}:${i}` : null;
     const common = {
@@ -286,31 +293,25 @@ export async function recordPayments(
       createdById: opts.userId ?? null,
       idempotencyKey,
     };
-    const res = isPayable
-      ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType })
-      : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
+    // CRM C5.4-C ▸ round 10 · มติ B (R9-4): รับ/จ่ายด้วยเช็ค = งวด + เช็ค + ผูก ในธุรกรรมเดียว (ไม่มีช่องให้ยกเลิกงวดแทรกก่อนผูก · เช็คล้ม = งวดไม่เกิด) ◂
+    const res = r.cheque
+      ? await recordPaymentWithChequeInOneTx(tenantId, systemId, target.id, isPayable ? "expense" : "revenue", { ...common, whtIncomeType: r.whtIncomeType }, {
+          chequeNo: r.cheque.chequeNo,
+          bankName: r.cheque.bankName,
+          chequeDate: dateOf(r.cheque.chequeDate),
+          amount: r.amountSatang,
+          financeAccountId: r.financeAccountId,
+          note: clampNote(r.note),
+        })
+      : isPayable
+        ? await recordVendorPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType })
+        : await recordPayment(tenantId, systemId, target.id, { ...common, whtIncomeType: r.whtIncomeType });
     if (!res.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${res.reason}` };
     recorded++;
     if (res.paymentId) paymentIds.push(res.paymentId);
     // ฝั่งขายคืนเลขใบภาษีถูกหัก (WTI) มาด้วย · ฝั่งจ่ายออก 50 ทวิ เองภายใน recordVendorPayment
     const certNo = (res as { whtCertNo?: string }).whtCertNo;
     if (certNo) certNos.push(certNo);
-    if (r.cheque && res.paymentId) {
-      const cq = await createCheque({
-        tenantId,
-        systemId,
-        direction: isPayable ? "OUT" : "IN",
-        chequeNo: r.cheque.chequeNo,
-        bankName: r.cheque.bankName,
-        chequeDate: dateOf(r.cheque.chequeDate),
-        amount: r.amountSatang,
-        financeAccountId: r.financeAccountId,
-        documentId: target.id,
-        paymentId: res.paymentId,
-        note: clampNote(r.note),
-      });
-      if (!cq.ok) return { ok: false, reason: `ครั้งที่ ${i + 1}: ${cq.reason}` };
-    }
   }
 
   const after = (await paymentTargetOf(tenantId, systemId, target.id))?.target;
@@ -373,6 +374,11 @@ export async function approveReceiptWithPayments(
   for (const r of rows)
     if (r.financeAccountId && !financeTypes.has(r.financeAccountId))
       return { ok: false, reason: "ช่องทางการเงินไม่ถูกต้อง" };
+  // CRM C5.4-C ▸ round 10 · มติ B: ร่างเช็คตรวจก่อนผูกรายการ/ออกเอกสาร (ทางนี้ยังเป็นหลายขั้น — createCheque{paymentId} ปฏิเสธงวดที่ถูกยกเลิกเป็นด่านหลัง) ◂
+  for (const r of rows) {
+    const bad = r.cheque ? chequeDraftProblem({ chequeNo: r.cheque.chequeNo, bankName: r.cheque.bankName, amount: r.amountSatang }) : null;
+    if (bad) return { ok: false, reason: bad };
+  }
 
   const attached = await attachDraftReceiptPayments(
     tenantId,

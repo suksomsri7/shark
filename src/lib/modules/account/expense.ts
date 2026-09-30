@@ -28,13 +28,18 @@ import {
   type LineInput,
   type DocStatusFilter,
   type DocSort,
+  // CRM C5.4-C ▸ round 10 · มติ A/C: การถอยงวดตัวเดียวของทั้งระบบ + หัวกลุ่มตามใบลูก ◂
+  assertDepositNotAppliedInTx,
+  unwindPaymentInTx,
+  syncGroupHeadsOfDocsInTx,
+  lockDocumentRow,
 } from "./service";
 // WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
 import { issueDocNo, peekDocNo } from "./doc-numbering";
 // WO 8.2 (§9.3) — ล็อกข้อมูลก่อนวันที่ + ค่าเริ่มต้นหัก ณ ที่จ่าย/การแปลงเอกสาร
 import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 // WO C4 — เหตุการณ์บัญชีที่ออกทาง webhook (ตัวประกอบ payload + คีย์กันซ้ำอยู่ที่ events.ts ที่เดียว)
-import { emitDocumentApproved, emitDocumentIssued, emitDocumentVoided, emitPaymentVoided } from "./events";
+import { emitDocumentApproved, emitDocumentIssued, emitDocumentVoided } from "./events";
 import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 import { clampSearch } from "./search-input";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คจ่ายใบเดียวของใบรวมจ่ายผูกไว้ที่งวดแรก — งวดอื่นหาเช็คจากคีย์ชุด ◂
@@ -1114,27 +1119,28 @@ export async function markAssetReceived(
 }
 
 // ─────────────────── บันทึกจ่ายชำระ (+ WHT + 50 ทวิ) ───────────────────
+export type RecordVendorPaymentInput = {
+  paidAt?: Date;
+  channel?: AccountPayChannel;
+  financeAccountId?: string | null;
+  amount: number; // เงินออกจริง (ไม่รวม WHT)
+  whtAmountSatang?: number; // WHT ที่เราหัก vendor (ตัดเจ้าหนี้ด้วย)
+  whtRateBp?: number | null;
+  whtIncomeType?: AccountWhtIncomeType | null; // ออก 50 ทวิ ถ้ามี
+  feeAmount?: number;
+  note?: string | null;
+  createdById?: string | null;
+  /** WO 1.4: กันบันทึกซ้ำจากการกดปุ่ม/รีทรายซ้ำ — คีย์เดิม = ไม่สร้าง payment/JV ใหม่ */
+  idempotencyKey?: string | null;
+};
+
 export async function recordVendorPayment(
   tenantId: string,
   systemId: string,
   id: string,
-  input: {
-    paidAt?: Date;
-    channel?: AccountPayChannel;
-    financeAccountId?: string | null;
-    amount: number; // เงินออกจริง (ไม่รวม WHT)
-    whtAmountSatang?: number; // WHT ที่เราหัก vendor (ตัดเจ้าหนี้ด้วย)
-    whtRateBp?: number | null;
-    whtIncomeType?: AccountWhtIncomeType | null; // ออก 50 ทวิ ถ้ามี
-    feeAmount?: number;
-    note?: string | null;
-    createdById?: string | null;
-    /** WO 1.4: กันบันทึกซ้ำจากการกดปุ่ม/รีทรายซ้ำ — คีย์เดิม = ไม่สร้าง payment/JV ใหม่ */
-    idempotencyKey?: string | null;
-  },
+  input: RecordVendorPaymentInput,
 ): Promise<{ ok: true; status: AccountDocStatus; paymentId?: string } | { ok: false; reason: string }> {
   if (!input.amount || input.amount <= 0) return { ok: false, reason: "ยอดชำระต้องมากกว่า 0" };
-  const wht = Math.max(0, input.whtAmountSatang ?? 0);
   if (input.idempotencyKey) {
     const dup = await prisma.accountDocumentPayment.findFirst({
       where: { idempotencyKey: input.idempotencyKey, tenantId, systemId },
@@ -1146,9 +1152,44 @@ export async function recordVendorPayment(
     }
   }
   try {
-    let status: AccountDocStatus = "PARTIAL";
-    let paymentId = "";
-    await prisma.$transaction(async (tx) => {
+    const r = await prisma.$transaction(async (tx) => {
+      const r = await recordVendorPaymentInTx(tx, tenantId, systemId, id, input);
+      await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // CRM C5.4-C ▸ round 10 · มติ C ◂
+      return r;
+    });
+    return { ok: true, status: r.status, paymentId: r.paymentId };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกจ่ายไม่สำเร็จ") };
+  }
+}
+
+/**
+ * CRM C5.4-C ▸ (round 10 · มติ B) บันทึกจ่าย 1 งวด **ในธุรกรรมของผู้เรียก** (แยกจาก recordVendorPayment แบบกลไก + ล็อกแถวเอกสาร)
+ *   คีย์กันซ้ำที่มีอยู่แล้ว = คืนงวดเดิม `duplicate: true` ไม่เขียนอะไร · ล้ม = throw ข้อความไทย ◂
+ */
+export async function recordVendorPaymentInTx(
+  tx: Prisma.TransactionClient,
+  tenantId: string,
+  systemId: string,
+  id: string,
+  input: RecordVendorPaymentInput,
+): Promise<{ status: AccountDocStatus; paymentId: string; duplicate: boolean }> {
+  if (!input.amount || input.amount <= 0) throw new Error("ยอดชำระต้องมากกว่า 0");
+  const wht = Math.max(0, input.whtAmountSatang ?? 0);
+  if (input.idempotencyKey) {
+    const dup = await tx.accountDocumentPayment.findFirst({
+      where: { idempotencyKey: input.idempotencyKey, tenantId, systemId },
+      select: { id: true, documentId: true, document: { select: { status: true } } },
+    });
+    if (dup) {
+      if (dup.documentId !== id) throw new Error("คีย์กันซ้ำนี้ถูกใช้กับเอกสารอื่นแล้ว");
+      return { status: dup.document.status, paymentId: dup.id, duplicate: true };
+    }
+  }
+  let status: AccountDocStatus = "PARTIAL";
+  let paymentId = "";
+      // CRM C5.4-C ▸ round 10: ล็อกแถวเอกสารก่อนอ่านยอด (เหมือน recordPayment · ลำดับล็อกเดียวกับยกเลิกการจ่าย/ยกเลิกเช็ค) ◂
+      await lockDocumentRow(tx, tenantId, systemId, id);
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId },
         include: { contact: true },
@@ -1207,11 +1248,7 @@ export async function recordVendorPayment(
         // C3: 50 ทวิ ใช้ paidAt (WHT ตกงวด ภงด. ถูกเดือน)
         await issueWhtCert(tx, tenantId, systemId, doc, payment.id, wht, input.whtRateBp ?? null, input.whtIncomeType, realBase, payment.paidAt);
       }
-    });
-    return { ok: true, status, paymentId };
-  } catch (e) {
-    return { ok: false, reason: safeReason(e, "บันทึกจ่ายไม่สำเร็จ") };
-  }
+  return { status, paymentId, duplicate: false };
 }
 
 /** WO 1.4 — คู่แฝดของ `depositRepostEvent` ฝั่งขาย (service.ts) · ดูคำอธิบายเหตุผลที่นั่น */
@@ -1277,7 +1314,10 @@ export async function voidVendorPayment(
   reason: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    await prisma.$transaction((tx) => voidVendorPaymentInTx(tx, tenantId, systemId, documentId, paymentId, reason), { maxWait: 20_000, timeout: 40_000 });
+    await prisma.$transaction(async (tx) => {
+      await voidVendorPaymentInTx(tx, tenantId, systemId, documentId, paymentId, reason);
+      await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [documentId]); // round 10 · มติ C
+    }, { maxWait: 20_000, timeout: 40_000 });
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ยกเลิกการจ่ายไม่สำเร็จ") };
@@ -1313,50 +1353,10 @@ export async function voidVendorPaymentInTx(
     const doc = await tx.accountDocument.findFirst({ where: { id: documentId, tenantId, systemId } });
     if (!doc) throw new Error("ไม่พบเอกสาร");
     // WO 1.4: ใบมัดจำจ่ายที่ถูกหักในบันทึกซื้อแล้ว ยกเลิกการจ่ายไม่ได้ (ต้องแก้ที่ปลายทางก่อน)
-    if (doc.docType === "DEPOSIT_PAYMENT") {
-      const applied = await tx.accountDocumentRelation.findMany({
-        where: { systemId, fromId: documentId, type: "DEPOSIT_APPLY" },
-        include: { to: { select: { status: true } } },
-      });
-      if (applied.some((r) => r.to.status !== "VOIDED" && r.to.status !== "CANCELLED"))
-        throw new Error("ใบมัดจำนี้ถูกหักในเอกสารอื่นแล้ว — ยกเลิกการหักที่เอกสารนั้นก่อน");
-    }
-    const voidedNow = await tx.accountDocumentPayment.updateMany({
-      where: { id: paymentId, voidedAt: null },
-      data: { voidedAt: new Date(), voidReason: reason || null },
-    });
-    if (voidedNow.count !== 1) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
-    const tieOff = pay.amount + pay.whtAmountSatang;
-    const newPaid = Math.max(0, doc.paidTotal - tieOff);
-    await tx.accountDocument.update({
-      where: { id: documentId },
-      data: { paidTotal: newPaid, status: newPaid > 0 ? "PARTIAL" : "AWAITING_PAYMENT" },
-    });
-    await reverseFor({ tenantId, systemId }, "AccountDocumentPayment", paymentId, reason, tx);
-
-    // ── WO 1.4 (ปิดรูรั่ว 1.2 §8.1): JV ของใบจ่ายมัดจำ (Dr 1130 + Dr 1150 / Cr เงิน) ผูกกับ
-    //    *ตัวเอกสาร* ไม่ใช่ payment ⇒ reversal ข้างบนไม่แตะ · ต้องกลับรายการเอกสารด้วย
-    if (doc.docType === "DEPOSIT_PAYMENT" && doc.status === "AWAITING_DEDUCT") {
-      await reverseFor({ tenantId, systemId }, "AccountDocument", documentId, reason, tx);
-    }
-
-    // ── R-A/C2: cascade → 50 ทวิ (WHT_CERT) ที่ผูก payment นี้ → VOIDED + ล้าง link ──
-    //    ไม่งั้น ภงด.53 นำส่งบนเงินที่ไม่ได้จ่าย (จ่าย void แต่ cert ยัง ISSUED)
-    if (pay.whtCertDocId) {
-      await tx.accountDocument.updateMany({
-        where: { id: pay.whtCertDocId, systemId, docType: "WHT_CERT", status: { notIn: ["VOIDED", "CANCELLED"] } },
-        data: { status: "VOIDED", voidedAt: new Date(), voidReason: `ยกเลิกตามการยกเลิกจ่าย: ${reason}` },
-      });
-      await tx.accountDocumentPayment.update({ where: { id: paymentId }, data: { whtCertDocId: null } });
-    }
-    // WO C4: "ยกเลิกการจ่าย" — event เดียวกับฝั่งรับ (`voidPaymentAny` ส่งต่อมาที่นี่ตามทิศทางเอกสาร)
-    await emitPaymentVoided(tx, { tenantId, systemId }, {
-      paymentId,
-      documentId,
-      docNo: doc.docNo,
-      amountSatang: pay.amount,
-      reason,
-    });
+    await assertDepositNotAppliedInTx(tx, systemId, doc);
+    // round 10 · มติ A: ถอยยอด (เงิน + WHT) · กลับ JV งวด · กลับ JV ใบจ่ายมัดจำ · 50 ทวิ VOIDED · payment.voided — ตัวเดียวกับเช็คเด้ง/ยกเลิกเช็ค
+    const done = await unwindPaymentInTx(tx, { tenantId, systemId }, paymentId, reason, "VOID");
+    if (!done) throw new Error("รายการจ่ายนี้ถูกยกเลิกแล้ว");
 }
 
 // ยกเลิกเอกสาร: DRAFT → CANCELLED · มีผลแล้ว → VOIDED + reversal
