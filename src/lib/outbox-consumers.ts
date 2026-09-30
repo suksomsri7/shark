@@ -2,7 +2,7 @@
 // ผูก event type → handler · handler อ่านข้อมูลจาก prisma ตรง แล้วส่งให้ pos/account-bridge
 // WO-0002: "pos.sale.paid" (ขายสด→บัญชี) · "pos.sale.voided" (void→กลับรายการ)
 
-import { after } from "next/server";
+import { scheduleCoalescedDrain } from "@/lib/core/after-drain";
 import { prisma } from "@/lib/core/db";
 import { drainOutbox, type OutboxHandler } from "@/lib/core/outbox";
 import { bridgePosSalePaid, bridgePosSaleVoided } from "@/lib/modules/pos/account-bridge";
@@ -1269,15 +1269,7 @@ export async function drainAll() {
  *    จะโยน error ⇒ ตกกลับไปใช้แบบเดิมซึ่งใช้ได้ดีนอก serverless
  */
 export function scheduleDrain(): void {
-  try {
-    // CRM C5.4-D r2 ▸ N9 (มติผู้คุมงาน · ตรวจกับ node_modules/next/dist/docs/…/after.md): งานของ `after()` ต้อง **คืน promise**
-    //   ของการระบาย — เดิม `void drainAll()` ข้างใน = งานจบทันที waitUntil ไม่ครอบการระบาย แลมบ์ดาจึงถูกแช่แข็งกลางงานได้
-    //   (บั๊กชนิดเดียวกับ 1 ก.ย. ข้างบน) · ตอนนี้คำขอของผู้เรียกทุกรายถือฟังก์ชันไว้จนระบายจบ (≤ ~20 วิ + รอบสุดท้าย — drainUntilQuiet) ◂
-    after(() => drainAll().then(
-      () => undefined,
-      () => undefined,
-    ));
-  } catch {
-    void drainAll().catch(() => {});
-  }
+  // CRM C5.4-D r2 ▸ N9 + r3 ▸ R2-N6 (มติผู้คุมงาน): งานของ `after()` คืน promise ของการระบาย (waitUntil ครอบ) และรวมการตั้งซ้อน
+  //   ผ่านจุดเดียวกับ `wakeOutbox` ของ CRM (`core/after-drain.ts`) — การระบายที่ตั้งไว้แล้วแต่ยังไม่เริ่มไม่ถูกตั้งซ้ำ ◂
+  scheduleCoalescedDrain(() => drainAll());
 }

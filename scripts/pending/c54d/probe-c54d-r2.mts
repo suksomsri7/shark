@@ -269,12 +269,15 @@ try {
     const OC = (await import("@/lib/outbox-consumers" as string)) as Any;
     const WK = (await import("@/lib/modules/crm/outbox-wake" as string)) as Any;
     const t1: Any[] = []; const t2: Any[] = [];
-    await inScope(cookie, "/x", t1, async () => { OC.scheduleDrain(); });
-    await new Promise((r) => setTimeout(r, 10));
-    await inScope(cookie, "/y", t2, async () => { WK.wakeOutbox(); });
-    const r1 = t1[0] ? t1[0]() : null; const r2 = t2[0] ? t2[0]() : null;
+    // C5.4-D r3 (R2-N6): scheduleDrain and wakeOutbox share ONE coalescing point ⇒ run the first task before the second request
+    //   (a wake while a drain is registered-but-not-started is coalesced on purpose — probe-c54d-r3 R2N6 pins that)
     const isP = (x: Any) => !!x && typeof x.then === "function";
-    await Promise.resolve(r1).catch(() => undefined); await Promise.resolve(r2).catch(() => undefined);
+    await inScope(cookie, "/x", t1, async () => { OC.scheduleDrain(); });
+    const r1 = t1[0] ? t1[0]() : null;
+    await Promise.resolve(r1).catch(() => undefined);
+    await inScope(cookie, "/y", t2, async () => { WK.wakeOutbox(); });
+    const r2 = t2[0] ? t2[0]() : null;
+    await Promise.resolve(r2).catch(() => undefined);
     chk("N9a", "scheduleDrain's after() task returns the drain promise (covered by waitUntil)", t1.length === 1 && isP(r1), `tasks=${t1.length} returnsPromise=${isP(r1)}`);
     chk("N9b", "wakeOutbox's after() task returns the drain promise", t2.length === 1 && isP(r2), `tasks=${t2.length} returnsPromise=${isP(r2)}`);
   });

@@ -174,7 +174,13 @@ export async function set(
     if (!pre) throw fail("NOT_FOUND", NOT_FOUND_MSG);
     if (pre.mergedIntoId) throw fail("VALIDATION", "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — บันทึกความยินยอมที่ผู้ติดต่อที่เก็บไว้แทน");
     if (pre.memberCustomerId && ifChanged) {
-      const sysId = pre.memberCustomerId === contact.memberCustomerId ? (preMemberSys?.systemId ?? null) : null;
+      // CRM C5.4-D r3 ▸ R2-N5 (มติผู้คุมงาน): ผู้ติดต่อเพิ่งถูกผูกสมาชิก (หรือเปลี่ยนสมาชิก) ระหว่างที่อ่านไว้กับตอนล็อก = สถานะชั่วคราว
+      //   ⇒ โยน error ที่ไม่มีรหัส (ผู้เรียกลองใหม่ได้ — webhook ตอบ 500 ให้ผู้ให้บริการยิงซ้ำ แล้วรอบนั้นเห็นการผูกครบ) ไม่ใช่ CONFLICT
+      //   ถาวรที่ทำให้การถอนความยินยอมถูกข้ามเงียบ ๆ · สมาชิกที่ผูกไว้แต่หาไม่เจอจริง ๆ ยังเป็น CONFLICT เหมือนเดิม ◂
+      if (pre.memberCustomerId !== contact.memberCustomerId) {
+        throw new Error("ผู้ติดต่อนี้เพิ่งถูกผูกกับสมาชิกระหว่างบันทึกความยินยอม — ระบบจะบันทึกใหม่อีกครั้งอัตโนมัติ");
+      }
+      const sysId = preMemberSys?.systemId ?? null;
       if (!sysId) throw fail("CONFLICT", "ผู้ติดต่อนี้ผูกกับสมาชิกที่ไม่พบในระบบสมาชิกแล้ว — ตรวจการผูกสมาชิกก่อนบันทึกความยินยอม");
       try {
         const m = await memberFacade();

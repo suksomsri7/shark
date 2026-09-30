@@ -266,3 +266,211 @@ See N7. The per-job cap was not tested by the builder in a real 80 s run. It is 
 
 **Worktree**
 - `scripts/crm-expected.json` and `scripts/member-expected.json` are modified in the worktree and not committed, as stated.
+
+---
+
+## Round 2 — re-review of `git diff d7109718 54e3a942` (read-only · 30 Sep 2026)
+
+### VERDICT: MERGEABLE AFTER SHOULD-FIX (R2-S1, R2-S2, R2-S3)
+
+- Round-1 S1–S4 and N2, N3, N4, N9, N12 are all implemented as the controller ruled, and the logs back them up.
+- Three problems are left:
+  - One hole in the S1 time rule (verified).
+  - One suspected provider-semantics defect in the new redelivery path.
+  - A permanent-error list that turns shop-side sending outages into silently skipped e-mails (suspected, needs a controller re-ruling).
+- R2-S2 and R2-S3 both depend on Resend behaviour I could not check offline. The controller can accept R2-S2 as a documented residual if Resend's docs say otherwise.
+
+### Rulings checked (verified in code)
+
+| Item | Where | Status |
+|---|---|---|
+| S1 guard | `sequences.ts:1420-1427` | Stops only if the close time (`closedAt ?? stageEnteredAt`) is ≥ `e.createdAt`. |
+| S1 consumer | `crm-bridges/sequences.ts:22-40` | `enrolledAtOrBefore: deal.closedAt`. A null `closedAt` (reopened) keeps the old behaviour. |
+| S1 `stopFor` | `sequences.ts:842` | Date filter on `createdAt`. |
+| S2 | `deals.ts:1521-1535` | After the delete tx, a LOST deal gets `stopFor(…, kind, {dealId, enrolledAtOrBefore})`. Not gated on bridgesEnabled. A failure is WARN only. Deleting an OPEN deal continues. |
+| S3 | `outbox-wake.ts:31-49` | Per-process pending flag, cleared when the task starts, stale after 6 min. |
+| S4 | `consents.ts:156-227` | `ifChanged` re-reads under the `CrmContact FOR UPDATE` lock. On the member path, `getConsents` and `setConsent` run on the same tx; the audit is written after the tx. |
+| N1a | `emails.ts:1017-1030`, `sequences.ts:1172-1178, 1256-1262, 1514` | Permanent failures advance the step; transient ones retry. |
+| N1b | `sequences.ts:1169-1170`, `emails.ts:1271-1297` | Key `seq:<enr>:v<ver>:<idx>`. Redelivery does a FAILED→QUEUED compare-and-set on the same row. |
+| N2 | `emails.ts` | Replays use `enrolledAtOrBefore = eventAt` for both complaint and bounce. |
+| N3 | `emails.ts` | `consents.current` is inside the permanent-error catch. |
+| N4 | `companies-actions.ts:262`, `contacts-actions.ts:248` | No wake on `CrmV2DisabledError`. |
+| N12 | `sequences.ts:1523-1535` | No log entry when the lease was lost; a counter failure is caught. |
+| N9 | `outbox-consumers.ts:1277`, `outbox-wake.ts:38-41` | The `after()` tasks now return the drain promise. |
+
+### SHOULD-FIX
+
+#### R2-S1 — WON→WON and LOST→LOST stage moves re-stamp `closedAt`, so the guard stops after-close enrollments again · verified in code
+
+**Where**
+- `moveCore` writes `closedAt: state.closedAt` and `stageEnteredAt: now` on every move (`deals.ts:850-859`).
+- `dealStateForStage` returns `now` for any closed kind (`rules.ts:24-25`), including moves between two WON stages. Those moves are explicitly supported and fire no `crm.deal.won` (`deals.ts:829-830`).
+- The same timestamp feeds the send-time guard (`sequences.ts:1424-1427`) and `deleteDeal` (`deals.ts:1527`).
+
+**Scenario**
+- The deal is WON at T1 in "ชนะ".
+- At T2, staff enrol an after-sale sequence with `stopOnWon` (the default). S1 now lets it run.
+- At T3 the deal moves to a second WON stage, e.g. "ส่งมอบแล้ว". `closedAt` becomes T3, which is ≥ T2.
+- The next non-WAIT step is STOPPED "WON". No event fires, so only the guard does this.
+- The same happens with LOST→LOST, and with `deleteDeal` of a LOST deal that moved between lost stages.
+
+**Wanted (either)**
+- (a) In `moveCore`, keep `closedAt` (and use it as the close time) when the deal is already of the target closed kind: `closedAt: deal.kind === target.kind && target.kind !== "OPEN" ? (deal.closedAt ?? now) : state.closedAt`.
+  - This also stops a WON→WON move from shifting the deal's win date in reports that read `closedAt`. The controller should confirm, because report periods could move.
+- (b) Guard-local: take the close time from the latest `CrmDealStageHistory` row whose from-stage kind differs from the current kind.
+- Either way, add a probe twin: enrol after WON, move WON→WON, the step still sends.
+
+#### R2-S2 — Redelivery sends a *different* body under the same Idempotency-Key · suspected (Resend semantics not verifiable offline)
+
+**Where**
+- The redelivery branch re-composes the mail (`emails.ts:1283`, `composeOutgoing`).
+- `newToken` is random (`emails.ts:328-330`), so the click/open/unsubscribe tokens in the HTML and the `List-Unsubscribe` header (`deliver`, `emails.ts:1321-1325`) differ on every attempt. The Message-ID, and therefore the `Idempotency-Key`, stays the same.
+
+**Why it matters**
+- My understanding of Resend (please verify in their docs): a key reused within 24 h with a different payload returns **409** `invalid_idempotent_request` rather than the original result.
+- N1b exists for exactly this case: attempt 1 was accepted by Resend but the answer was lost (`TRANSPORT_ERROR`, or a 5xx after processing).
+- In that case every redelivery gets 409. `isPermanentSendFailure` treats 409 as transient, so the step retries 5× and then the enrollment is STOPPED FAILED.
+- Result: the customer did get step 1, the timeline says FAILED, and **every later step of the sequence is never sent**.
+- The N1b probe stub (`probe-c54d-r2.mts:28-37`) does not compare bodies, so it cannot see this.
+
+**Wanted (either)**
+- (a) Make redelivery byte-identical: derive the open/click/unsubscribe tokens deterministically from `emailId` (e.g. HMAC(server secret, `emailId|purpose|i`)). Then re-composing gives the same HTML and headers, and Resend returns the original 200.
+- (b) On a redelivery only, map `PROVIDER_409` to "the provider already holds this message": mark the row SENT (unconfirmed), audit it with `redelivery:true, providerConflict:true`, and advance.
+- Extend the N1b stub to fail on a same-key/different-body request.
+
+#### R2-S3 — The N1a "permanent" list includes shop-side sending outages · suspected (provider semantics) · needs a controller re-ruling
+
+**Where:** `emails.ts:1017-1030`. Every `PROVIDER_4xx` except 408/409/425/429 is treated as permanent.
+
+**Which Resend 4xx are really transient (as I understand their error codes)**
+- 401/403: API key missing, revoked or being rotated; sending domain not verified or DNS lapsed; testing-mode restriction.
+- 422 `invalid_from_address`.
+- These describe the *sender*, not the message. They hit every e-mail of the shop equally and are fixed by the owner or the platform.
+
+**What happens during such an outage**
+- Every running enrollment advances past **every** e-mail step, each logged FAILED. LINE and TASK steps still run, and the sequences end DONE.
+- Once the domain is fixed, nothing is resent.
+
+**What staff see**
+- Only the step log line ("ผู้ให้บริการอีเมลไม่รับจดหมายฉบับนี้ … ระบบจึงไปขั้นถัดไป") and FAILED mail rows on each contact.
+- The only alert is a platform ops WARN (`email.rich`). No shop-facing notice.
+
+**Related, carried over from round 1**
+- 429 daily/monthly quota is "transient", so on a quota day every enrollment that tries to send is STOPPED FAILED after about 3 h 45 m.
+
+**Wanted**
+- Permanent = message-specific codes only: 400, 404, 405, 422 other than the from-address case. Since only the status is available, 422 as a whole is acceptable.
+- 401/403 → transient with backoff, and notify the shop owner once per outage.
+- Optionally: quota 429 defers without counting toward `MAX_STEP_ATTEMPTS`.
+
+### NOTES
+
+#### R2-N1 — What a redelivery re-enforces · verified in code
+**Enforced**
+- Consent, opt-out and bounce are re-checked on attempt 2 (`canContact`, `emails.ts:1203`, before the insert). A contact who opts out between attempts gets `EMAIL_BLOCKED`, which means skipped. ✓
+- Threading: same Message-ID, `threadKey`, `inReplyTo` and references. ✓
+- Attachments are excluded (`!prior.attachments`). ✓
+- `deliver` rewrites `trackTokenHash`, `routing.links` and `routing.unsub` on SENT (`emails.ts:1398-1410`), so tracking and unsubscribe tokens still resolve. ✓
+- Concurrency: the FAILED→QUEUED compare-and-set plus the enrollment lease give exactly one delivery. ✓
+- After success: one row SENT, one activity, one `crm.email.sent`. After a second failure: the row goes back to FAILED with an audit `redelivery:true`. ✓
+
+**Not enforced**
+- The recipient is the stored `prior.toAddrs`, not the contact's *current* e-mail. If staff changed the address between attempts, the old address still receives the mail. Suggest skipping redelivery (as permanent) when `prior.toAddrs` is not among the contact's current addresses.
+- The daily cap: a `CrmLimitError` also routes into redelivery (`emails.ts:1269`), so an already-counted row can be re-sent while the cap is full. This is bounded to one row per step.
+
+#### R2-N2 — Who can reach `redeliverFailed` · verified in code
+- Only `sequences.defaultSender` sets it (`sequences.ts:1169`). REST (`api/ops/emails.ts:143,212`), UI (`emails-actions.ts:80`) and bulk (`emails.ts:1519`) build their inputs field by field.
+- But the key namespace is shared. A REST `Idempotency-Key` header goes raw into the same hash (`emails.ts:1185`, `sha256(systemId:idem)`).
+- So a key holder who sends `Idempotency-Key: seq:<enrollmentId>:v1:0` (enrollment ids are readable over REST) pre-occupies a step's Message-ID.
+  - The step then returns "reused SENT" with the caller's content.
+  - Or, if that row is FAILED for the same contact, the step redelivers the caller's row.
+- Fix: namespace system keys, e.g. hash `sys:` + key vs `api:` + key into `rfcId`.
+
+#### R2-N3 — A stuck QUEUED row is treated as sent · suspected (crash-window edge)
+- If a previous process died mid-send, the prior row is QUEUED with an active lease. The unique hit returns "reused QUEUED".
+- `defaultSender` treats anything but FAILED as ok, so the step advances. The stuck-send reaper later marks the row FAILED, and the step is lost silently.
+- Suggest: treat QUEUED as transient (retry).
+
+#### R2-N4 — S3 flag · verified by reasoning
+**The ordering is sound**
+- Every waker calls `wakeOutbox` after its write commits.
+- A waker that sees the flag set knows a drain task has been registered and has not started. That drain's candidate query necessarily runs later, so it sees the waker's row.
+- The case "B commits after A's drain started" is covered too: the flag is cleared at start, so B registers its own drain.
+- The case "A's drain runs before B's tx commits" cannot happen: B only calls wake after commit.
+
+**Contexts**
+- Outside a request, `after()` throws and the task runs immediately, which clears the flag. No coalescing, correct.
+- Without Fluid (one request per instance) the flag only coalesces within a request.
+
+**Residual**
+- If a registered `after()` task never starts (the invocation is killed or times out before `after` runs, but the instance survives), every wake in that instance is skipped for ≤ 6 min. Events wait for other drains or the hourly cron.
+
+#### R2-N5 — S4 member path (not exercised by the probe) · verified in code / suspected where marked
+**Lock order**
+- `CrmContact FOR UPDATE`, then the member facade on the same tx: `loadMemberRow`, the MemberConsent write, `emitOutbox` (`member/privacy.ts:650-740`).
+- I found no `Customer FOR UPDATE` in that path, and no member-module code that writes `CrmContact`.
+- So I see no lock-order inversion. It is the same pattern as `revokeOnMember`.
+- Any deadlock would be detected by Postgres (40P01), and the webhook would retry through a 500.
+
+**Audit after the tx**
+- A crash between commit and `writeAudit` loses the audit.
+- A replay then sees "unchanged" and never writes it. So the audit is lost, but never duplicated.
+- Suggest writing it inside the tx.
+
+**Race (suspected, rare)**
+- If the contact becomes member-linked between `loadContact` and the tx, `sysId` is null and a coded CONFLICT is thrown.
+- CONFLICT is in `PERMANENT_AFTER_STEP`, so the complaint's withdrawal is **skipped with only a WARN**.
+- Suggest throwing an uncoded (retryable) error when `pre.memberCustomerId !== contact.memberCustomerId`.
+
+#### R2-N6 — N9 consequences · verified against `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md` + code
+**What does not change**
+- `after` callbacks run after the response, so the latency users see is unchanged.
+- Both wrappers are rejection-proof (`then(()=>undefined, ()=>undefined)`; `drainNow` catches). No unhandled rejection, no error page, no failed action.
+- No caller runs on the edge runtime, and `proxy.ts` does not drain.
+- Webhook routes (LINE/Meta through `chat/service.ts`, Resend) answer before `after` runs, so provider timeouts are unaffected.
+
+**What changes, prod-wide for every module**
+- The function lifetime is now the drain time.
+- `drainOutbox` serialises drains in-process (`core/outbox.ts:140-148`). Under a burst in one Fluid instance, each invocation's waitUntil therefore waits for every drain queued ahead of it.
+- With a busy global queue, lifetimes stack (about 20 s × N) up to the platform maxDuration. No route sets it except `/api/cron/outbox` (60 s).
+- That means kills mid-drain. The claim-time leases from batch A (L3-M3) make this safe for correctness, but not for cost or DB connections.
+
+**Suggest**
+- Coalesce `scheduleDrain` with the same pending flag as `wakeOutbox` (one shared flag).
+- Watch function duration and DB connections after deploy.
+
+#### R2-N7 — N2 applies on every replay
+- `enrolledAtOrBefore = eventAt` is applied on every replay, not only after a re-grant.
+- Enrollments created between the event and a late replay are not stopped. That is acceptable: e-mail is blocked by the flag anyway.
+
+#### R2-N8 — Probe quality (`probe-c54d-r2.mts`)
+**Can fail**
+- S4 is really concurrent: `Promise.all` of 2 webhooks × 10 contacts. Run7's RED-before showed 2/2/2 rows/events/audits for every contact.
+- S1, S2a, N1a, N1b, S4, N2, N3, S3 and N9a were red before the fix and green after.
+
+**Proves nothing about the race**
+- N10 is green both before and after. It does not show that the race was actually interleaved; it only shows the outcome is right.
+
+**Missing**
+- Member-linked S4.
+- WON→WON after an after-close enrollment (R2-S1).
+- Same-key/different-body at the provider (R2-S2).
+- Opt-out between two attempts (R2-N1).
+- S3 across two requests.
+
+#### R2-N9 — Logs · verified
+**run9**
+- Summary: probe-r2 13/13 · probe 10/10 · C5.3 L3 11/11 · c2.2 73/73 · c2.1 84/84 · c0.5 50/50 · c2.5 105/105 · c2.6 87/87 · c2.10 41/41 · c2.11 47/47 · c1.4 110/110 · c1.5 103/103 · c1.8 81/81 · c3.9 49/49 · forms-notify 9/9 (`QC Forms Notify: 9/9 ผ่าน`; the log has no JSON_SUMMARY line) · m1.9 26/26 · typecheck exit 0 · fitness 33/33 ×2.
+- 0 ❌ in every run9 log.
+- The C5.3 copy is regenerated by `sed` from the committed suite. `run9/c53-copy.diff` is the single host-guard line 57.
+
+**RED-before (source at d7109718)**
+- run6 and run7: probe-r2 4/13, red on S1, S2a, N1a, N1b, S4, N2, N3, S3, N9a.
+- run8: typecheck exit 2, the probe-only TS2339.
+
+**mtimes**
+- The last source edit was at 12:33:07 (`companies-actions.ts`, `contacts-actions.ts`).
+- probe-r2 was edited at 12:36:47.
+- The run9 directory was created at 12:37:05.
+- The commit holds no source edit made after run9 started.
+- `scripts/{crm,member}-expected.json` are modified in the worktree and not committed.

@@ -848,6 +848,12 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
       data: { tenantId: ctx.tenantId, dealId: deal.id, fromStageId: deal.stageId, toStageId: target.id, byUserId: actorIdOf(ctx), bySource: who ? "MANUAL" : "API", enteredAt: now, note: opts.reopenReason ?? note },
     });
     const state = dealStateForStage(target.kind as CrmStageKind, now);
+    // CRM C5.4-D r3 ▸ R2-S1 (มติผู้คุมงาน): ย้ายระหว่างขั้นปิดชนิดเดียวกัน (WON→WON · LOST→LOST) **คงวันปิดเดิม** — ดีลชนะ/แพ้ตั้งแต่ตอนปิด
+    //   ครั้งแรก (ไม่มี `crm.deal.won/lost` ใหม่ · `stageEnteredAt` ยังเดินตามปกติ) · เดิมประทับ closedAt ใหม่ ⇒ ด่านลำดับการติดตาม/ลบดีล
+    //   เห็นว่า "ปิดทีหลังการลงทะเบียน" แล้วหยุดลำดับหลังการขาย/win-back ที่ลงทะเบียนหลังการปิดจริง · รายงานชนะ/แพ้ตามงวด · กฎคอมมิชชัน
+    //   (`closedAt ≥ rule.createdAt`) ก็เลื่อนตามโดยไม่มีการชนะใหม่ · WON↔LOST · เปิด→ปิด · เปิดใหม่ = เหมือนเดิม · ทาง v1 (`legacy`) ไม่แตะ ◂
+    const keepCloseDate = !opts.legacy && fromClosed && deal.kind === target.kind && !!deal.closedAt;
+    const closedAt = keepCloseDate ? deal.closedAt : state.closedAt;
     const reopened = fromClosed && target.kind === "OPEN";
     // CRM C3.9 ▸ NOTE รีวิว: เปิดดีลที่ปิดแล้วกลับมา = กลับมานับในเพดานดีลเปิด — ล็อก + นับ + เขียนใน tx เดียว (ดีลที่เก็บถาวรไม่นับ) ◂
     if (reopened && !deal.archivedAt) await assertCrmLimit(ctx, "openDeals", 1, tx);
@@ -856,7 +862,7 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
       data: {
         stageId: target.id,
         kind: state.kind,
-        closedAt: state.closedAt,
+        closedAt,
         stageEnteredAt: now,
         stalledAt: null,
         lastActivityAt: now,
