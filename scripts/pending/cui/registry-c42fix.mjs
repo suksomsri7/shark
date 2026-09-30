@@ -25,7 +25,9 @@ const exact = new Set([
   "deal-lines-discount", "deal-lines-save", "deal-menu", "deal-delete-btn", "deal-delete-reason", "deal-delete-confirm", "deal-delete-cancel", "deal-delete-submit",
   "deal-change-pipeline", "deal-change-pipeline-btn",
   "crm-ai-deal-next-step",
-  // /objects/[key] — B4 parent link to a COMPANY (crm.company.read) the staff personas cannot open
+  // /objects/[key] — B4: for the SEEDED personas the whole /objects pages 404 (they lack crm.record.read), so the link is
+  //   never visible to them; B4 itself (parent link only when the viewer can open the parent) is proven by probe-b4-parent.mts
+  //   (review addendum 1, 30 Sep — reason text corrected; the row move is unchanged)
   "object-record-parent-link",
 ]);
 const isTarget = (r) => exact.has(r.testid) || r.testid.startsWith("contact-convert-");

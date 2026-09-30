@@ -641,7 +641,20 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
 
 // ───────────────────────── ความยินยอม / ไม่รับข่าวสาร (C20) ─────────────────────────
 
-export function ConsentBlock({ systemId, contactId, consent, disabled }: { systemId: string; contactId: string; consent: ConsentView; disabled: boolean }) {
+export function ConsentBlock({
+  systemId,
+  contactId,
+  consent,
+  disabled,
+  memberConsentLocked = false,
+}: {
+  systemId: string;
+  contactId: string;
+  consent: ConsentView;
+  disabled: boolean;
+  /** CRM C4.2-fix r2 ▸ ผูกสมาชิกแต่ผู้ดูไม่มี member.customer.update — ปุ่มยินยอม/ไม่ยินยอมกดไม่ได้ (ระบบสมาชิกจะปฏิเสธ) ◂ */
+  memberConsentLocked?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -680,6 +693,11 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
         <input type="checkbox" checked={consent.trackingOptOut} disabled={disabled || pending} onChange={(e) => run(() => setTrackingOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-tracking-optout-toggle" />
       </label>
       {consent.emailBounced && <p className="text-xs text-[color:var(--color-danger)]">อีเมลของผู้ติดต่อนี้ส่งไม่ถึง (เด้งกลับ) — ระบบหยุดส่งอีเมลให้แล้ว</p>}
+      {memberConsentLocked && (
+        <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-consent-member-locked">
+          ความยินยอมรายช่องทางของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์ &quot;แก้ไขข้อมูลสมาชิก&quot; จึงเปลี่ยนได้ ขอให้เจ้าของร้านเปิดสิทธิ์ให้หากต้องแก้
+        </p>
+      )}
       <ul className="flex flex-col divide-y text-sm">
         {consent.channels.map((c) => (
           <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -692,7 +710,7 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
                 type="button"
                 className="btn btn-ghost px-2 py-1 text-xs"
                 style={c.granted === true ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === true}
+                disabled={disabled || memberConsentLocked || pending || c.granted === true}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, true))}
                 data-testid="contact-consent-grant"
               >
@@ -702,7 +720,7 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
                 type="button"
                 className="btn btn-ghost px-2 py-1 text-xs"
                 style={c.granted === false ? { borderColor: "var(--color-danger)", color: "var(--color-danger)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === false}
+                disabled={disabled || memberConsentLocked || pending || c.granted === false}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, false))}
                 data-testid="contact-consent-revoke"
               >

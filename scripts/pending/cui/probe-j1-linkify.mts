@@ -11,6 +11,7 @@ const chk = (id: string, ok: boolean, msg: string) => {
   console.log(`${ok ? "✅" : "❌"} ${id} ${msg}`);
 };
 
+const decodeAttr = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 const S = (await import("@/lib/modules/crm/emails-shared" as string)) as Any;
 const toHtml: ((t: string) => string) | undefined = S.crmPlainTextToEmailHtml;
 const toText: ((h: string) => string) | undefined = S.crmEmailHtmlToComposerText;
@@ -19,7 +20,6 @@ chk("J1.0b", typeof toText === "function", `emails-shared exports crmEmailHtmlTo
 
 if (typeof toHtml === "function") {
   // the send path wraps exactly what composeOutgoing's regex sees, decoded the way composeOutgoing decodes (emails.ts)
-  const decodeAttr = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
   // every tag in the output must be one of OUR shapes — anything else = HTML injection
   const TAG_OK = /^<(?:p|\/p|br|\/a|a href="https?:\/\/[^"<>\s]+" rel="noopener" target="_blank")>$/i;
   const tagsOk = (h: string) => [...h.matchAll(/<[^>]*>/g)].every((m) => TAG_OK.test(m[0])) && !/<[^>]*$/.test(h.replace(/<[^>]*>/g, ""));
@@ -57,8 +57,30 @@ if (typeof toHtml === "function") {
   const body = toHtml("ใบเสนอราคา https://example.com/quote?id=7&x=1 ครับ");
   const wrapped = [...body.matchAll(/href="(https?:\/\/[^"]*)"/gi)].map((m) => decodeAttr(m[1]!));
   chk("J1.19", wrapped.length === 1 && wrapped[0] === "https://example.com/quote?id=7&x=1", `composeOutgoing's href regex finds exactly the typed URL (decoded) — got ${JSON.stringify(wrapped)}`);
+  // r2 (SF-2): `"` IS escaped now (so a literal href="…" in text can never be picked up) — the plain-text alternative must still read `It's "fine"`
+  const { htmlToText } = (await import("@/lib/core/sanitize" as string)) as Any;
   const quote = toHtml(`It's "fine" — https://example.com/q`);
-  chk("J1.19b", quote.includes(`It's "fine"`), `quotes in text are not turned into entities (htmlToText can't decode &#39;) — got ${quote}`);
+  chk("J1.19b", htmlToText(quote).includes(`It's "fine"`) && !/&#39;/.test(quote), `text alternative reads It's "fine" · apostrophe kept literal — got ${quote}`);
+
+  // ── r2 SF-2: text that LOOKS like an attribute is never rewritten by composeOutgoing's href wrapper ──
+  const wrapRe = /href="(https?:\/\/[^"]*)"/gi;
+  for (const [id, input] of [
+    ["SF2.1", 'xx href="https://.evil/path" yy'],
+    ["SF2.2", `zz href="https://example.com/${"a".repeat(2100)}" zz`],
+    ["SF2.3", `href="https://ok.example/p" and https://ok.example/q`],
+  ] as const) {
+    const h = toHtml(input);
+    const wrapped = [...h.matchAll(wrapRe)].map((m) => decodeAttr(m[1]!));
+    const own = [...h.matchAll(/<a href="([^"]*)" rel="noopener" target="_blank">/g)].map((m) => decodeAttr(m[1]!));
+    chk(id, JSON.stringify(wrapped) === JSON.stringify(own) && tagsOk(h), `composeOutgoing wraps only the linkifier's own anchors — wrapped=${JSON.stringify(wrapped).slice(0, 120)} own=${JSON.stringify(own).slice(0, 120)}`);
+  }
+
+  // ── r2 SF-1: linear conversion — 400 KB of the reviewer's worst case (URLs of 2030 ")") well under 1 s ──
+  const worst = ("https://a" + ")".repeat(2030) + " ").repeat(200);
+  const tw = Date.now();
+  toHtml(worst);
+  const wMs = Date.now() - tw;
+  chk("SF1.u", wMs < 500, `${(worst.length / 1024).toFixed(0)} KB worst-case trailing ")" input converted in ${wMs} ms (< 500)`);
 }
 
 if (typeof toText === "function") {
@@ -70,6 +92,17 @@ if (typeof toText === "function") {
   chk("J1.22", t3 === "a <b> & c\nd", `entities decoded once · <br> → newline — got ${JSON.stringify(t3)}`);
   const t4 = toText('<p><a href="mailto:x@y.test">เขียนถึงเรา</a></p>');
   chk("J1.23", t4.includes("เขียนถึงเรา"), `non-http link keeps its label — got ${JSON.stringify(t4)}`);
+  // ── r2 N-2: mailto:/tel: targets kept as text · hrefs with a space or a trailing ")" survive template → text → HTML ──
+  const t5 = toText('<p><a href="mailto:hello@shop.test">เขียนถึงเรา</a> · <a href="tel:+6621234567">โทร</a></p>');
+  chk("N2.1", t5.includes("hello@shop.test") && t5.includes("+6621234567") && t5.includes("เขียนถึงเรา"), `mailto/tel address kept as plain text — got ${JSON.stringify(t5)}`);
+  if (typeof toHtml === "function") {
+    for (const [id, href] of [["N2.2", "https://shop.test/a b/c"], ["N2.3", "https://shop.test/x)"], ["N2.4", "https://en.wikipedia.org/wiki/Foo_(bar)"]] as const) {
+      const t = toText(`<p><a href="${href.replace(/"/g, "&quot;")}">ป้าย</a></p>`);
+      const h = toHtml(t);
+      const got = [...h.matchAll(/<a href="([^"]*)"/g)].map((m) => decodeURI(decodeAttr(m[1]!)));
+      chk(id, got.length === 1 && got[0] === href, `template href ${JSON.stringify(href)} survives template → text → HTML — text=${JSON.stringify(t)} got=${JSON.stringify(got)}`);
+    }
+  }
   if (typeof toHtml === "function") {
     const round = toHtml(t1);
     chk("J1.24", /href="https:\/\/shop\.test\/promo\?a=1&amp;b=2"/.test(round), `template → text → send HTML carries the template's link again — got ${round}`);

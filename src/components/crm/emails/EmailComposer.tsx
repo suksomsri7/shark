@@ -61,7 +61,8 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
     if (
       fe.show({
         subject: !subject.trim() ? "ใส่หัวข้อจดหมายก่อนส่ง — ลูกค้าเห็นหัวข้อก่อนเปิดอ่านเสมอ" : undefined,
-        body: !body.trim() ? "ยังไม่มีเนื้อความ — พิมพ์ข้อความที่จะส่งถึงลูกค้าก่อน" : undefined,
+        // CRM C4.4-fix2 r2 ▸ SF-1: เพดานเดียวกับบริการ (ข้อความเดียวกัน) — บอกก่อนส่ง ไม่ต้องรอเซิร์ฟเวอร์ปฏิเสธ ◂
+        body: !body.trim() ? "ยังไม่มีเนื้อความ — พิมพ์ข้อความที่จะส่งถึงลูกค้าก่อน" : new TextEncoder().encode(body).length > data.bodyMaxBytes ? data.bodyTooLongMsg : undefined,
         attach: files.length > data.attachMaxCount ? `แนบไฟล์ได้ไม่เกิน ${data.attachMaxCount} ไฟล์ต่อจดหมาย 1 ฉบับ — เอาบางไฟล์ออกหรือส่งแยกฉบับ` : undefined,
       })
     )

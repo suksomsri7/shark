@@ -1169,7 +1169,10 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
           dealId: env.subject.dealId,
           to: [core.to],
           subject: core.subject ?? "",
-          bodyText: String(core.body ?? ""),
+          // r2 (รีวิว BL-1): ข้อความของขั้น (ผู้เขียน) + ค่า `{{contact.*}}` แยกกัน ⇒ ลิงก์มาจากข้อความของขั้นเท่านั้น ◂
+          ...(typeof core.bodyTemplate === "string"
+            ? { bodyText: core.bodyTemplate, bodyVars: { syntax: "mustache" as const, values: core.vars ?? {} } }
+            : { bodyText: String(core.body ?? "") }),
           ...(env.subject.stepId ? { sequenceStepId: env.subject.stepId } : {}),
           // CRM C5.4-D r2 ▸ N1b (+ hunter L3-m3): กุญแจกันซ้ำ "หนึ่งดอกต่อ (แถวลงทะเบียน, เวอร์ชัน, ขั้น)" — ทุกครั้งที่ลองขั้นเดิมใช้
           //   Message-ID เดียวกัน = Resend `Idempotency-Key` เดียวกัน ⇒ จดหมายที่ผู้ให้บริการรับไปแล้ว (เน็ตหลุดก่อนได้คำตอบ ·

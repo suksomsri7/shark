@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { toMemberActor } from "@/lib/modules/member";
+import { hasMemberPerm, toMemberActor } from "@/lib/modules/member";
 import { convertOptions, getContact360, ownerOptions } from "@/lib/modules/crm/contacts";
 import {
   CONTACT_SOURCE_LABEL,
@@ -166,11 +166,11 @@ export default async function Contact360Page({
           systemId={id}
           owners={owners}
           can={{
-            // CRM C4.2-fix ▸ คีย์ของ action (contacts-actions.ts) + ของบริการเมื่อสองชั้นตรวจคนละคีย์ (โอน: assign+update · เก็บถาวร/กู้คืน: archive+delete) ◂
+            // CRM C4.2-fix ▸ คีย์ของ action = ของบริการ (r2 SF-3: โอน = crm.contact.update · เก็บถาวร/กู้คืน = crm.contact.delete) ◂
             update: crmCan(actor, "crm.contact.update"),
-            assign: crmCan(actor, "crm.contact.assign") && crmCan(actor, "crm.contact.update"),
+            assign: crmCan(actor, "crm.contact.update"),
             merge: crmCan(actor, "crm.contact.merge"),
-            archive: crmCan(actor, "crm.contact.archive") && crmCan(actor, "crm.contact.delete"),
+            archive: crmCan(actor, "crm.contact.delete"),
           }}
           contact={{
             id: c.id,
@@ -263,6 +263,13 @@ export default async function Contact360Page({
                     aiMessage={callAi.message}
                     page="contact"
                   />
+                )}
+                {/* CRM C4.2-fix r2 ▸ (รีวิว addendum 2b) ไม่มีคีย์บันทึกสาย = ยังโทรได้ด้วยลิงก์ tel: เปล่า ๆ (ไม่มีฟอร์มบันทึกสาย) —
+                    เดิมรอบ 1 ทำให้เบอร์กดโทรไม่ได้เลย ◂ */}
+                {!crmCan(actor, "crm.activity.create") && c.phone && c.phone.replace(/[^\d+]/g, "") && (
+                  <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="btn btn-ghost text-sm" data-testid="contact-phone-tel">
+                    ☎ โทร
+                  </a>
                 )}
                 {bookingLink && (
                   <Link href={bookingLink.href} className="btn btn-ghost text-sm" data-testid="crm-book-via-booking">
@@ -457,7 +464,14 @@ export default async function Contact360Page({
           {/* ◂ CRM C2.2 */}
           {/* CRM C2.6 ▸ การเข้าชมเว็บ (คุกกี้ที่ลูกค้ายอมรับ) ◂ */}
           <CrmWebTimeline sessions={webSessions} />
-          <ConsentBlock systemId={id} contactId={c.id} consent={data.consent} disabled={!live || !crmCan(actor, "crm.contact.update")} />
+          <ConsentBlock
+            systemId={id}
+            contactId={c.id}
+            consent={data.consent}
+            disabled={!live || !crmCan(actor, "crm.contact.update")}
+            // CRM C4.2-fix r2 ▸ (รีวิว addendum 2c) ผู้ติดต่อที่ผูกสมาชิก: ยินยอม/ไม่ยินยอมเขียนลงระบบสมาชิก (member/privacy.ts ต้องมี member.customer.update) ◂
+            memberConsentLocked={data.consent.memberLinked && !hasMemberPerm(actor, "member.customer.update")}
+          />
           {/* CRM C3.9 ▸ PDPA ◂ */}
           <ContactPrivacyBlock
             systemId={id}

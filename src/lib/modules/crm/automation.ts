@@ -95,6 +95,9 @@ export type CrmSendRequest = {
   body: string;
   subject?: string;
   title?: string;
+  /** CRM C4.4-fix2 r2 ▸ BL-1: ข้อความของผู้เขียนกฎก่อนแทนค่า + ค่าตัวแปร (จากตัวรันกลาง — อีเมลเท่านั้น) ◂ */
+  bodyTemplate?: string;
+  vars?: Record<string, string | undefined>;
 };
 export type CrmSendFn = (req: CrmSendRequest) => Promise<RunnerSendResult>;
 export type CrmKanbanRequest = { tenantId: string; systemId: string; ruleId: string; runId: string; contactId: string | null; dealId?: string | null; boardId: string; title: string; description: string; sourceKey: string };
@@ -1153,10 +1156,18 @@ export const CRM_DEFAULT_DEPS: Required<Omit<CrmRuleDeps, "kanban" | "post">> & 
     if (!req.contactId) return { ok: false, skipped: true, error: "ไม่มีผู้ติดต่อปลายทางของอีเมลนี้ จึงข้ามขั้นนี้" };
     try {
       const emails = await import("./emails");
-      // CRM C4.4-fix2 ▸ J1: ข้อความของกฎส่งเป็น `bodyText` — ตัวแปลงกลางตัวเดียว (escape + URL http(s) เป็นลิงก์นับคลิก) แทนการ escape เองที่นี่ ◂
+      // CRM C4.4-fix2 ▸ J1: ข้อความของกฎส่งเป็น `bodyText` — ตัวแปลงกลางตัวเดียว (escape + URL http(s) เป็นลิงก์นับคลิก) แทนการ escape เองที่นี่
+      //   r2 (รีวิว BL-1): ส่ง "ข้อความของผู้เขียนกฎ" + ค่า `{ชื่อ}`/`{ดีล}` แยกกัน ⇒ ลิงก์มาจากข้อความของกฎเท่านั้น · ค่าเป็นข้อความ escape ◂
+      const authored = typeof req.bodyTemplate === "string";
       const r = await emails.sendAsSystem(
         { tenantId: req.tenantId, systemId: req.systemId },
-        { contactId: req.contactId, ...(req.to ? { to: [req.to] } : {}), subject: req.subject ?? "", bodyText: String(req.body ?? "") },
+        {
+          contactId: req.contactId,
+          ...(req.to ? { to: [req.to] } : {}),
+          subject: req.subject ?? "",
+          bodyText: authored ? (req.bodyTemplate as string) : String(req.body ?? ""),
+          ...(authored ? { bodyVars: { syntax: "brace" as const, values: req.vars ?? {} } } : {}),
+        },
       );
       if (r.status === "FAILED") return { ok: false, error: "ส่งอีเมลไม่สำเร็จ — ระบบจะลองกฎนี้อีกครั้งในรอบถัดไป" };
       return { ok: true };

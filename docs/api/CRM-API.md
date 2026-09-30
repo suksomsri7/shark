@@ -40,7 +40,7 @@ Create keys in CRM > Settings > API. A key is bound to one CRM system and holds 
 | --- | --- | --- | --- |
 | `crm.readonly` | CRM — อ่านอย่างเดียว | Read the CRM system: contacts, companies, deals, pipelines, activities, custom object records and the reports of the whole system (read). Phone numbers and e-mail addresses come back masked, sensitive custom fields are never shown, and nothing can be written. | 6 |
 | `crm.operate` | CRM — งานของพนักงานขาย | Everything in crm.readonly plus the sales-rep work: create and edit contacts, companies and deals, move deals between stages, set deal lines, issue quotations, log and complete activities and write custom object records. No settings, no merging, no deleting deals, no export and no cross-team reassignment. | 23 |
-| `crm.admin` | CRM — ผู้ดูแล | Every CRM permission: settings, sales teams, visibility, merging and archiving contacts and companies, deleting deals, exporting, reassigning deals across teams and managing the CRM API keys. Designing custom objects is still only possible from the settings screen. | 51 |
+| `crm.admin` | CRM — ผู้ดูแล | Every CRM permission: settings, sales teams, visibility, merging and archiving contacts and companies, deleting deals, exporting, reassigning deals across teams and managing the CRM API keys. Designing custom objects is still only possible from the settings screen. | 54 |
 
 Optional filters are stored with the key as extra scopes: `crm.filter.team:<teamId>` and `crm.filter.owner:<userId>`. They narrow every read and write of the key to that team's or that user's contacts, companies, deals and activities; anything else answers 404.
 

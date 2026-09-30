@@ -84,7 +84,7 @@ const TONE: Record<ContactScoreBand, string> = { HOT: "var(--color-danger)", WAR
 
 // ───────────────────────── ตาราง + โอนเป็นกลุ่ม ─────────────────────────
 
-// CRM C4.2-fix ▸ `canAssign` = crmCan(crm.contact.assign + crm.contact.update) ของหน้า — ช่องติ๊กมีไว้ให้โอนเป็นกลุ่มอย่างเดียว
+// CRM C4.2-fix ▸ `canAssign` = crmCan(crm.contact.update) ของหน้า (r2 SF-3) — ช่องติ๊กมีไว้ให้โอนเป็นกลุ่มอย่างเดียว
 //   ⇒ ไม่มีสิทธิ์โอน = ไม่มีช่องติ๊ก/แถบคำสั่งกลุ่ม (ไม่ทิ้งคอลัมน์ว่าง) ◂
 export function ContactTable({ systemId, rows, owners, canAssign }: { systemId: string; rows: ContactRowView[]; owners: Opt[]; canAssign: boolean }) {
   const router = useRouter();

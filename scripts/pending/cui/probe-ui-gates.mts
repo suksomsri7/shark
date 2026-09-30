@@ -1,4 +1,4 @@
-// CRM C4.2-fix ▸ UI permission-gate probe (B1 B2 B3 B4 B5 B6 + sweep) — headless against a PRODUCTION build ◂
+// CRM C4.2-fix ▸ UI permission-gate probe (B1 B2 B3 B4 B5 B6 + sweep) · r2: contact assign = crm.contact.update · archive = crm.contact.delete (SF-3 re-ruling) — headless against a PRODUCTION build ◂
 //   For every persona the EXPECTED visibility comes from the real `crmCan` on the persona's live membership (the same
 //   decider the server actions use) — a control visible without its key = LEAK (red) · the owner (holds every key)
 //   must see each control that the page state allows = positive control (proves the selector is right).
@@ -105,7 +105,7 @@ try {
       await expect("B1.import", '[data-testid="contacts-import-btn"]', can("crm.contact.import"));
       await expect("B1.export", '[data-testid="contacts-export-btn"]', can("crm.contact.export"));
       await expect("SW.contacts-new", '[data-testid="contacts-new-btn"]', can("crm.contact.create"));
-      await expect("SW.contacts-select", '[data-testid="contacts-select-all"]', can("crm.contact.assign", "crm.contact.update"));
+      await expect("SW.contacts-select", '[data-testid="contacts-select-all"]', can("crm.contact.update"));
       await shot(page, `contacts-${role}`);
     } else console.log(`   · /contacts → ${s1} for ${role}`);
 
@@ -125,9 +125,9 @@ try {
           await new Promise((r) => setTimeout(r, 250));
           const items = await visible(page, '[data-testid^="contact-menu-"][role="menuitem"]');
           chk(`SW.contact-menu-nonempty[${role}]`, items > 0, `the contact menu, when shown, is not empty — items=${items}`);
-          await expect("SW.contact-menu-owner", '[data-testid="contact-menu-owner"]', can("crm.contact.assign", "crm.contact.update"));
+          await expect("SW.contact-menu-owner", '[data-testid="contact-menu-owner"]', can("crm.contact.update"));
           await expect("SW.contact-menu-merge", '[data-testid="contact-menu-merge"]', can("crm.contact.merge"));
-          await expect("SW.contact-menu-archive", '[data-testid="contact-menu-archive"]', can("crm.contact.archive", "crm.contact.delete"));
+          await expect("SW.contact-menu-archive", '[data-testid="contact-menu-archive"]', can("crm.contact.delete"));
           await expect("SW.contact-menu-edit", '[data-testid="contact-menu-edit"]', can("crm.contact.update"));
           if (OUT) await shot(page, `contact360-menu-${role}`);
           await page.click('[data-testid="contact-menu-btn"]');

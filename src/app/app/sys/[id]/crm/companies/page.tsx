@@ -222,7 +222,7 @@ export default async function CompaniesPage({
       {list.items.length === 0 ? (
         <div className="card py-10 text-center" data-testid="companies-empty">
           <p className="text-sm text-[color:var(--color-muted)]">
-            {q || industry || size || owner || open ? "ไม่พบบริษัทที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก หรือนำเข้าจากไฟล์ CSV"}
+            {q || industry || size || owner || open ? "ไม่พบบริษัทที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : (can.create && can.importCsv ? "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก หรือนำเข้าจากไฟล์ CSV" : can.create ? "ยังไม่มีบริษัทในระบบนี้ — เริ่มจากเพิ่มบริษัทแรก" : "ยังไม่มีบริษัทที่บัญชีนี้มองเห็นในระบบนี้") /* r2 addendum 2e */}
           </p>
           {can.create && (
             <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="companies-empty-new">

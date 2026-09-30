@@ -234,59 +234,72 @@ export function escapeHtmlText(v: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-// ───────────────────────── เนื้อความข้อความล้วน → HTML ของจดหมาย (CRM C4.4-fix2 · J1) ─────────────────────────
+// ───────────────────────── เนื้อความข้อความล้วน → HTML ของจดหมาย (CRM C4.4-fix2 · J1 · รอบแก้ 2) ─────────────────────────
 
 // CRM C4.4-fix2 ▸ J1: ตัวแปลง "ข้อความล้วนที่พนักงาน/กฎ/ลำดับติดตามพิมพ์" → HTML ของจดหมาย **ตัวเดียวของระบบ**
 //   (เดิม 3 ที่ทำเอง: ช่องเขียนจดหมาย · SEND_EMAIL ของกฎ · ขั้นอีเมลของลำดับติดตาม — escape ทั้งก้อน ⇒ URL ที่พิมพ์
 //   ไม่เคยเป็น `<a href>` ⇒ composeOutgoing ไม่มีอะไรให้ห่อ ⇒ การนับคลิกไม่เคยเกิดกับจดหมายที่คนพิมพ์เอง)
-//   🔴 ทุกอักขระเป็น "ข้อความ" (escape) — ส่วนเดียวที่กลายเป็นแท็กคือ URL ที่ขึ้นต้น `http://`/`https://` ตรงตัว
-//      (`javascript:`/`data:`/อื่น ๆ ไม่มีทางเป็นลิงก์) · regex เชิงเส้น ไม่มีตัวซ้ำซ้อนกัน (ไม่มี backtracking ระเบิด)
-//   🔴 วรรคตอนท้าย URL (`.,;:!?` · วงเล็บ/เครื่องหมายคำพูดปิดที่ไม่มีคู่) อยู่นอกลิงก์ ◂
+//   🔴 ทุกอักขระเป็น "ข้อความ" (escape รวม `"`) — ส่วนเดียวที่กลายเป็นแท็กคือ URL ที่ขึ้นต้น `http://`/`https://` ตรงตัว
+//      (`javascript:`/`data:`/อื่น ๆ ไม่มีทางเป็นลิงก์) · regex เชิงเส้น · ตัดวรรคตอนท้ายแบบนับวงเล็บครั้งเดียว (เชิงเส้น — รีวิว SF-1)
+//   🔴 วรรคตอนท้าย URL (`.,;:!?'` · วงเล็บปิดที่ไม่มีคู่) อยู่นอกลิงก์
+//   🔴 รีวิว BL-1: ทำเป็นลิงก์ได้เฉพาะ "ข้อความของผู้เขียน" (กฎ/ขั้น/ช่องเขียนจดหมาย) — ค่าที่แทนลงตัวแปร ({ชื่อ} · {{contact.*}})
+//      มาจากลูกค้า (ฟอร์มสาธารณะ/แชท) ⇒ แทนเป็น "ข้อความที่ escape แล้ว" **หลัง** ทำลิงก์เสร็จ ไม่มีทางเป็น href
+//      (ไม่งั้นลูกค้าตั้งชื่อเป็น URL แล้วได้ลิงก์ /t/c/<token> ที่พาไปเว็บตัวเองแบบถาวร = open redirect ผ่านโดเมนเรา) ◂
 
-/** URL ที่พิมพ์ในข้อความ — ต้องไม่ติดตัวอักษรละติน/ตัวเลขข้างหน้า (`xhttps://` ไม่ใช่ลิงก์) · จบที่ช่องว่าง/อักขระที่ใช้ใน URL ไม่ได้ */
-const CRM_TEXT_URL_RE = /(^|[^A-Za-z0-9_])(https?:\/\/[^\s<>"`\u0000-\u001f\u007f]+)/gi;
-/** URL ยาวกว่านี้ = ข้อความธรรมดา (ลิงก์จริงไม่ยาวขนาดนี้ · กันเนื้อความ 500 KB ที่เป็น "URL" เดียว) */
+/** URL ที่พิมพ์ในข้อความ — ต้องไม่ติดตัวอักษรละติน/ตัวเลขข้างหน้า (`xhttps://` ไม่ใช่ลิงก์) · จบที่ช่องว่าง/อักขระที่ใช้ใน URL ไม่ได้/ตัวคั่นค่าตัวแปร */
+const CRM_TEXT_URL_RE = /(^|[^A-Za-z0-9_])(https?:\/\/[^\s<>"`\u0000-\u001f\u007f]+)/gi;
+/** URL ยาวกว่านี้ = ข้อความธรรมดา (ลิงก์จริงไม่ยาวขนาดนี้) */
 const CRM_TEXT_URL_MAX = 2048;
 const TRAIL_PUNCT = ".,;:!?'";
-const PAIRS: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+const CLOSE_OF: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+/** ตัวคั่น "ช่องค่าตัวแปร" ภายใน (อักขระ Private Use — ถูกลบออกจากข้อความของผู้เขียนและจากค่าก่อนใช้เสมอ) */
+const SLOT_OPEN = "";
+const SLOT_CLOSE = "";
+const SLOT_CHARS_RE = /[]/g;
+const SLOT_RE = /(\d+)/g;
 
-function countChar(s: string, c: string): number {
-  let n = 0;
-  for (let i = 0; i < s.length; i++) if (s[i] === c) n++;
-  return n;
-}
-
-/** ตัดวรรคตอนท้าย URL ออก (คืน [url, ส่วนที่ตัดออก]) — วงเล็บปิดที่ "มีคู่" ในตัว URL เก็บไว้ (`…/Foo_(bar)`) */
-function trimUrlTail(raw: string): [string, string] {
-  let url = raw;
-  let tail = "";
-  for (;;) {
-    const last = url.slice(-1);
-    if (!last) break;
+/**
+ * ตัดวรรคตอนท้าย URL — วงเล็บปิดที่ "มีคู่" ในตัว URL เก็บไว้ (`…/Foo_(bar)`)
+ * รีวิว SF-1: นับวงเล็บครั้งเดียวแล้วลดลงทีละตัว (เดิมนับใหม่ทุกตัวอักษรที่ตัด = O(L²))
+ */
+function trimUrlTail(raw: string): string {
+  const opens: Record<string, number> = { "(": 0, "[": 0, "{": 0 };
+  const closes: Record<string, number> = { ")": 0, "]": 0, "}": 0 };
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i]!;
+    if (c in opens) opens[c]! += 1;
+    else if (c in closes) closes[c]! += 1;
+  }
+  let end = raw.length;
+  while (end > 0) {
+    const last = raw[end - 1]!;
     if (TRAIL_PUNCT.includes(last)) {
-      url = url.slice(0, -1);
-      tail = last + tail;
+      end -= 1;
       continue;
     }
-    const open = PAIRS[last];
-    if (open && countChar(url, last) > countChar(url, open)) {
-      url = url.slice(0, -1);
-      tail = last + tail;
+    const open = CLOSE_OF[last];
+    if (open && closes[last]! > opens[open]!) {
+      closes[last]! -= 1;
+      end -= 1;
       continue;
     }
     break;
   }
-  return [url, tail];
+  return raw.slice(0, end);
 }
 
 /** ต้องมีโฮสต์จริงหลัง `://` (กติกาเดียวกับตัวตัด `core/sanitize` linkSchemeOk) */
 const hasHost = (url: string) => /^https?:\/\/[^/\\?#.]/i.test(url);
 
-/** escape เฉพาะที่ข้อความใน HTML ต้องการ (`& < >`) — ไม่แปลง `'`/`"` เป็น entity: `htmlToText` (ข้อความสำรองของจดหมาย)
- *  ถอด `&#39;` ไม่เป็น ⇒ "It's" จะกลายเป็น "It&#39;s" ในฉบับข้อความ · ใน href (ครอบด้วย `"`) URL ไม่มี `"` อยู่แล้ว (regex ตัดทิ้ง) */
-const escText = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/**
+ * escape ข้อความสำหรับ HTML ของจดหมาย: `& < > "`
+ * รีวิว SF-2: `"` ต้อง escape — ข้อความ `href="https://…"` ที่ตัวทำลิงก์ข้ามไป (โฮสต์ไม่ผ่าน/ยาวเกิน) จะไม่ถูกตัวห่อของ
+ *   composeOutgoing (`href="(https?://…)"`) หยิบไปเป็นลิงก์นับคลิก · `htmlToText` ถอด `&quot;` คืน ⇒ ข้อความสำรองถูกต้อง
+ * `'` ไม่แปลง: ตัวห่อจับเฉพาะ href ที่ครอบด้วย `"` และ `htmlToText` ไม่ถอด `&#39;` (ข้อความสำรองจะเป็น "It&#39;s")
+ */
+const escText = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** escape ข้อความ + ทำ URL http(s) เป็นลิงก์ — ใช้กับ "หนึ่งบรรทัด/ย่อหน้า" ของข้อความล้วน */
+/** escape ข้อความ + ทำ URL http(s) เป็นลิงก์ — ใช้กับ "หนึ่งบรรทัด/ย่อหน้า" ของข้อความล้วน (ตัวคั่นช่องตัวแปรผ่านไปตามเดิม) */
 export function crmLinkifyText(text: string): string {
   const src = String(text ?? "");
   let out = "";
@@ -295,8 +308,8 @@ export function crmLinkifyText(text: string): string {
   for (let m = CRM_TEXT_URL_RE.exec(src); m; m = CRM_TEXT_URL_RE.exec(src)) {
     const lead = m[1] ?? "";
     const raw = m[2] ?? "";
-    if (raw.length > CRM_TEXT_URL_MAX) continue; // ยาวผิดปกติ = ข้อความธรรมดา (และกันงานตัดท้ายวนยาว)
-    const [url] = trimUrlTail(raw);
+    if (raw.length > CRM_TEXT_URL_MAX) continue; // ยาวผิดปกติ = ข้อความธรรมดา
+    const url = trimUrlTail(raw);
     const start = m.index + lead.length;
     if (!hasHost(url)) continue; // ไม่ใช่ลิงก์ที่ใช้ได้ — ปล่อยเป็นข้อความ (ถูก escape รวมกับข้อความรอบข้าง)
     out += escText(src.slice(at, start));
@@ -309,44 +322,128 @@ export function crmLinkifyText(text: string): string {
 }
 
 /**
- * ข้อความล้วน → HTML ของจดหมาย: บรรทัดว่าง = ขึ้นย่อหน้าใหม่ (`<p>`) · ขึ้นบรรทัดเดียว = `<br>` · URL http(s) = ลิงก์
- * ผลลัพธ์ผ่าน `sanitizeHtml` ของตัวส่งแล้ว "ไม่เปลี่ยน" (ลิงก์อยู่รอดครบ) ⇒ composeOutgoing ห่อลิงก์เพื่อนับคลิกได้
+ * ตัวแปรที่จะแทนลงข้อความของผู้เขียน — รูปแบบของโลกที่เรียก
+ *   `brace`    = `{ชื่อ}` ของกฎอัตโนมัติ (ตัวรันกลาง `renderTemplate`: ไม่รู้จัก = คงไว้ตามเดิม · ช่องว่างซ้อนถูกยุบ · ตัดหัวท้าย)
+ *   `mustache` = `{{contact.firstName}}` ของลำดับการติดตาม (ไม่รู้จัก = ว่าง)
  */
-export function crmPlainTextToEmailHtml(text: string | null | undefined): string {
-  return String(text ?? "")
-    .replace(/\r\n?/g, "\n")
+export type CrmTextPlaceholders = { syntax: "brace" | "mustache"; values: Readonly<Record<string, string | undefined>> };
+
+/**
+ * ข้อความล้วน → HTML ของจดหมาย: บรรทัดว่าง = ขึ้นย่อหน้าใหม่ (`<p>`) · ขึ้นบรรทัดเดียว = `<br>` · URL http(s) ของผู้เขียน = ลิงก์
+ * `placeholders` (ถ้ามี) = ค่าตัวแปรที่แทน **หลัง** ทำลิงก์ — escape เป็นข้อความเสมอ ไม่มีทางเป็นลิงก์ (รีวิว BL-1)
+ * 🔴 ผลลัพธ์ **ไม่** ต้องผ่าน `sanitizeHtml` อีก (และไม่ควร: ตัวตัดกลาง escape `&` ใน href ซ้ำอีกชั้น ⇒ `&amp;amp;` = ลิงก์เสีย)
+ *    โครงสร้างของผลมีแค่ `<p>` `<br>` และ `<a href="http(s)…" rel="noopener" target="_blank">` ที่ตัวนี้สร้างเอง
+ * ผู้เรียกต้องจำกัดขนาด `text` ก่อนเรียก (`crmEmailBodyTooLong`) — ตัวนี้เชิงเส้นแต่ไม่ตัดความยาวเอง
+ */
+export function crmPlainTextToEmailHtml(text: string | null | undefined, placeholders?: CrmTextPlaceholders | null): string {
+  let src = String(text ?? "").replace(/\r\n?/g, "\n").replace(SLOT_CHARS_RE, "");
+  const vals: string[] = [];
+  if (placeholders) {
+    const brace = placeholders.syntax === "brace";
+    const slot = (v: string) => {
+      const clean = String(v ?? "").replace(SLOT_CHARS_RE, "");
+      vals.push(brace ? clean.replace(/[ \t]{2,}/g, " ") : clean);
+      return `${SLOT_OPEN}${vals.length - 1}${SLOT_CLOSE}`;
+    };
+    if (brace) {
+      src = src
+        .replace(/\{([^{}]+)\}/g, (whole, key: string) => {
+          const v = placeholders.values[key.trim()];
+          return v === undefined ? whole : slot(v);
+        })
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+    } else {
+      src = src.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_w, key: string) => slot(placeholders.values[key] ?? ""));
+    }
+  }
+  const html = src
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => `<p>${p.split("\n").map(crmLinkifyText).join("<br>")}</p>`)
     .join("");
+  if (vals.length === 0) return html;
+  return html.replace(SLOT_RE, (_m, i: string) => escText(vals[Number(i)] ?? "")).replace(/<p><\/p>/g, "");
 }
+
+/** ข้อความของรูปแบบ "เนื้อความยาวเกิน" — ตัวเดียวทุกทาง (ช่องเขียนจดหมาย · action · บริการ) — รีวิว SF-1 */
+export const CRM_EMAIL_BODY_TOO_LONG_MSG = `เนื้อความจดหมายยาวเกิน ${Math.round(CRM_EMAIL_BODY_MAX_BYTES / 1024)} KB — ย่อเนื้อความหรือส่งเป็นไฟล์แนบแทน`;
+
+/** เนื้อความ (ข้อความล้วนหรือ HTML) ยาวเกินเพดานของจดหมาย 1 ฉบับไหม — ตรวจ **ก่อน** แปลง (รีวิว SF-1) */
+export function crmEmailBodyTooLong(body: string | null | undefined): boolean {
+  const s = String(body ?? "");
+  if (s.length > CRM_EMAIL_BODY_MAX_BYTES) return true; // ≥ 1 ไบต์ต่ออักขระ — ตัดสินได้ทันทีโดยไม่ต้องเข้ารหัส
+  return new TextEncoder().encode(s).length > CRM_EMAIL_BODY_MAX_BYTES;
+}
+
+/** ลิงก์ในแม่แบบ → ข้อความที่พิมพ์ต่อได้ในช่องเขียนจดหมาย แล้วยังได้ลิงก์เดิมกลับเมื่อส่ง (รีวิว N-2) */
+function composerUrlText(url: string): string {
+  // อักขระที่ตัวทำลิงก์หยุดอ่าน → percent-encode (ลิงก์เดิม ความหมายเดิม)
+  let u = url.replace(/[\s"<>`]/g, (c) => encodeURIComponent(c));
+  // วรรคตอนท้ายที่ตัวทำลิงก์จะตัดออก → percent-encode ตัวที่ถูกตัด (`…/x)` ยังเป็น `…/x)` เมื่อถอดกลับ)
+  const kept = trimUrlTail(u);
+  if (kept.length < u.length) u = kept + [...u.slice(kept.length)].map((c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`).join("");
+  return u;
+}
+
+const decodeEntities = (v: string) =>
+  v.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'").replace(/&amp;/gi, "&");
 
 /**
  * HTML ของแม่แบบ → ข้อความในช่องเขียนจดหมาย (ช่องนั้นเป็นข้อความล้วน)
  * 🔴 เดิมตัดแท็กทิ้งหมด ⇒ ลิงก์ในแม่แบบหายทั้ง URL · ตอนนี้ลิงก์ http(s) เหลือเป็น "ป้าย (URL)" (หรือ URL เดียวถ้าป้าย = URL)
- *    แล้ว `crmPlainTextToEmailHtml` ตอนส่งทำให้เป็นลิงก์ที่นับคลิกได้อีกครั้ง · ลิงก์อื่น (mailto:/tel:) เหลือป้าย
+ *    แล้ว `crmPlainTextToEmailHtml` ตอนส่งทำให้เป็นลิงก์ที่นับคลิกได้อีกครั้ง · mailto:/tel: = "ป้าย (ที่อยู่/เบอร์)" เป็นข้อความ (รีวิว N-2)
+ * รีวิว N-2: ไล่แท็กครั้งเดียวแบบเชิงเส้น (`<[^<>]*>` หยุดที่ `<` ถัดไป) — ไม่มี regex ขี้เกียจที่ย้อนหา `</a>` ทุกจุด
  */
 export function crmEmailHtmlToComposerText(html: string | null | undefined): string {
-  const decode = (v: string) =>
-    v.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'").replace(/&amp;/gi, "&");
-  const strip = (v: string) => v.replace(/<[^>]*>/g, "");
-  return String(html ?? "")
-    .replace(/<a\b[^>]*?href\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a\s*>/gi, (_m, href: string, inner: string) => {
-      // href ที่เก็บไว้อาจถูก escape ซ้ำ (`&amp;amp;` — ตัวตัดกลาง escape `&` ใน href อีกชั้นตอนบันทึกแม่แบบ) ⇒ ถอดจนนิ่ง (≤ 3 รอบ)
-      let url = href.trim();
-      for (let i = 0; i < 3 && /&(amp|quot|lt|gt|#39);/i.test(url); i++) url = decode(url);
-      const label = decode(strip(inner)).trim();
-      // ผลที่ใส่กลับ escape `& < >` อีกครั้ง ⇒ การถอดรอบสุดท้าย (ทั้งข้อความ) ถอดให้พอดีหนึ่งครั้ง
-      if (!/^https?:\/\//i.test(url)) return escText(label);
-      if (!label || label === url) return escText(url);
-      return escText(`${label} (${url})`);
-    })
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|h1|h2|h3|li|blockquote|pre)\s*>/gi, "\n\n")
-    .replace(/<[^>]*>/g, "")
+  const parts = String(html ?? "").split(/(<[^<>]*>)/);
+  let out = "";
+  let link: { href: string; label: string } | null = null;
+  const emit = (t: string) => {
+    if (link) link.label += t;
+    else out += t;
+  };
+  const closeLink = () => {
+    if (!link) return;
+    let href = link.href.trim();
+    for (let i = 0; i < 3 && /&(amp|quot|lt|gt|#39);/i.test(href); i++) href = decodeEntities(href); // href ที่ถูก escape ซ้ำ (&amp;amp;)
+    const label = decodeEntities(link.label).replace(/\s+/g, " ").trim();
+    link = null;
+    const m = href.match(/^(mailto|tel):(.*)$/i);
+    let target = "";
+    if (/^https?:\/\//i.test(href)) target = composerUrlText(href);
+    else if (m) {
+      try {
+        target = decodeURIComponent((m[2] ?? "").split("?")[0] ?? "").trim();
+      } catch {
+        target = (m[2] ?? "").split("?")[0]!.trim();
+      }
+    }
+    const text = !target ? label : !label || label === target || label === href ? target : `${label} (${target})`;
+    out += escText(text).replace(/&quot;/g, '"'); // ถอดรอบเดียวตอนท้าย (decodeEntities) — escape ไว้ให้เท่ากับข้อความรอบข้าง
+  };
+  for (const part of parts) {
+    if (!part) continue;
+    if (part[0] !== "<" || part[part.length - 1] !== ">") {
+      emit(part);
+      continue;
+    }
+    const tag = part.match(/^<\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)/);
+    const name = (tag?.[2] ?? "").toLowerCase();
+    const closing = tag?.[1] === "/";
+    if (name === "a" && !closing) {
+      closeLink();
+      const h = part.match(/href\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i);
+      link = { href: h ? (h[2] ?? h[3] ?? h[4] ?? "") : "", label: "" };
+    } else if (name === "a" && closing) closeLink();
+    else if (name === "br") emit("\n");
+    else if (closing && ["p", "h1", "h2", "h3", "li", "blockquote", "pre", "div"].includes(name)) emit("\n\n");
+  }
+  closeLink();
+  return out
     .split("\n")
-    .map((l) => decode(l).replace(/[ \t]+$/g, ""))
+    .map((l) => decodeEntities(l).replace(/[ \t]+$/g, ""))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

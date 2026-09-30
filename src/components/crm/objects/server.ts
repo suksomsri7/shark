@@ -71,10 +71,12 @@ export async function parentLinks(
   refs: readonly { parentType: string; parentId: string | null }[],
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
+  // r2 (รีวิว N-6): เฉพาะแม่ใน "ระบบ CRM นี้" (`systemId` ของ visibleIdsAmong) — เดิมดูทุกระบบของร้าน ⇒ แม่ที่อยู่อีกระบบได้ลิงก์ใต้ระบบนี้ = 404
+  //   (ไม่คิวรีตารางเองที่นี่ — กติกา C1.3-S0.3/C1.4: การอ่านผ่านบริการ/visibility เท่านั้น) · 1 คิวรีต่อชนิดแม่ ◂
   for (const type of ["CONTACT", "COMPANY", "DEAL"] as const) {
     const ids = [...new Set(refs.filter((r) => r.parentType === type && r.parentId).map((r) => r.parentId as string))];
     if (ids.length === 0) continue;
-    const seen = await visibility.visibleIdsAmong(ctx.tenantId, actor, type, ids);
+    const seen = await visibility.visibleIdsAmong(ctx.tenantId, actor, type, ids, { systemId: ctx.systemId });
     for (const id of seen) out.set(`${type}:${id}`, `/app/sys/${ctx.systemId}/crm/${PARENT_PATH[type]}/${id}`);
   }
   const cust = [...new Set(refs.filter((r) => r.parentType === "CUSTOMER" && r.parentId).map((r) => r.parentId as string))];

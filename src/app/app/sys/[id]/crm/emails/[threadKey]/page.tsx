@@ -6,7 +6,7 @@ import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { getThread, listTemplates } from "@/lib/modules/crm/emails";
-import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
+import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -87,6 +87,8 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
     composerMaxBytes: CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES,
     attachMaxCount: CRM_EMAIL_ATTACH_MAX_COUNT,
     subjectMax: CRM_EMAIL_SUBJECT_MAX,
+    bodyMaxBytes: CRM_EMAIL_BODY_MAX_BYTES, // CRM C4.4-fix2 r2 ▸ SF-1 ◂
+    bodyTooLongMsg: CRM_EMAIL_BODY_TOO_LONG_MSG,
   };
 
   const def = systemDef(sys.type);

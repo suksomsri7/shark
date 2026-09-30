@@ -59,12 +59,12 @@ export default async function ContactsPage({
   if (pickCrmPage(await crmUiVersion({ tenantId, systemId: id })) === "v1") return <ContactsV1Page params={params} />;
   const actor = toMemberActor(auth.user.id, auth.active);
   // CRM C4.2-fix ▸ ปุ่มของหน้านี้ใช้คีย์เดียวกับ server action ที่มันเรียก (contacts-actions.ts · crmCan ตัวเดียวของ C1.7)
-  //   โอนผู้ดูแล: action ตรวจ `crm.contact.assign` + บริการตรวจ `crm.contact.update` ⇒ ต้องผ่านทั้งคู่ ◂
+  //   โอนผู้ดูแล: action + บริการตรวจ `crm.contact.update` (r2 SF-3: ถอดคีย์ผี crm.contact.assign ออกจาก action แล้ว) ◂
   const can = {
     create: crmCan(actor, "crm.contact.create"),
     importCsv: crmCan(actor, "crm.contact.import"),
     exportCsv: crmCan(actor, "crm.contact.export"),
-    assign: crmCan(actor, "crm.contact.assign") && crmCan(actor, "crm.contact.update"),
+    assign: crmCan(actor, "crm.contact.update"),
   };
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
@@ -300,7 +300,14 @@ export default async function ContactsPage({
       {rows.length === 0 ? (
         <div className="card py-10 text-center" data-testid="contacts-empty">
           <p className="text-sm text-[color:var(--color-muted)]">
-            {anyFilter ? "ไม่พบผู้ติดต่อที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น" : "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก หรือนำเข้าจากไฟล์ CSV"}
+            {/* r2 (รีวิว addendum 2e): ไม่ชวนกดปุ่มที่คนนี้ไม่เห็น ◂ */}
+            {anyFilter
+              ? "ไม่พบผู้ติดต่อที่ตรงกับตัวกรองนี้ — ลองล้างตัวกรองหรือค้นด้วยคำอื่น"
+              : can.create && can.importCsv
+                ? "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก หรือนำเข้าจากไฟล์ CSV"
+                : can.create
+                  ? "ยังไม่มีผู้ติดต่อในระบบนี้ — เริ่มจากเพิ่มผู้ติดต่อคนแรก"
+                  : "ยังไม่มีผู้ติดต่อที่บัญชีนี้มองเห็นในระบบนี้"}
           </p>
           {can.create && (
             <Link href={`${base}/new`} className="btn btn-ghost mt-3 text-sm" data-testid="contacts-empty-new">

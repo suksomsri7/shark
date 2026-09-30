@@ -170,7 +170,8 @@ export default async function Deal360Page({
               aiMessage={callAi.message}
             />
           )}
-          {((canManage && canChangePipeline) || canDelete) && (
+          {/* r2 (รีวิว addendum 2e): เมนูไม่เปิดเป็นแผงว่าง — ย้าย pipeline ต้องมี pipeline อื่นให้เลือกจริง ◂ */}
+          {((canManage && canChangePipeline && pipelines.some((p) => p.id !== d.pipelineId)) || canDelete) && (
             <DealMenu
               systemId={id}
               dealId={d.id}

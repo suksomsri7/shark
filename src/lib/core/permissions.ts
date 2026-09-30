@@ -396,7 +396,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     module: "crm",
     label: "งานขาย (CRM)",
     group: "customer",
-    // CRM C1.7 ▸ คีย์ครบตามพิมพ์เขียว §6.1 (51 คีย์) — 6 คีย์เดิม (contact.create · deal.create · deal.move · deal.quote ·
+    // CRM C1.7 ▸ คีย์ครบตามพิมพ์เขียว §6.1 (51 คีย์ · + 3 คีย์ของ C4.2-fix r2 = 54) — 6 คีย์เดิม (contact.create · deal.create · deal.move · deal.quote ·
     //   activity.create · activity.complete) คงชื่อเดิมทุกตัวอักษร · ค่าเริ่มต้นต่อบทบาท + read-โดยนัย อยู่ที่ `crm/access.ts`
     //   (MANAGER ไม่ได้ settings/api/object/visibility/team.manage จนกว่าเจ้าของร้านให้เอง — ตัดสินใน access.ts ไม่ใช่ rbac.evaluate)
     actions: {
@@ -413,6 +413,11 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "crm.company.update": "แก้ไขบริษัท",
       "crm.company.delete": "ลบ/เก็บถาวรบริษัท",
       "crm.company.merge": "รวมบริษัทที่ซ้ำกัน",
+      // CRM C4.2-fix r2 ▸ SF-3 (มติผู้คุมงาน 30 ก.ย.): 3 คีย์ที่ action ตรวจอยู่แล้วแต่ไม่มีในทะเบียน (ให้พนักงานไม่ได้เลย) —
+      //   ลงทะเบียนตามแบบคีย์ของผู้ติดต่อ · ค่าเริ่มต้นเท่าคีย์พี่น้อง: company.import ≈ contact.import · company.export ≈ contact.export ·
+      //   deal.export ≈ contact.export (ไม่อยู่ในชุดแนะนำของ STAFF · MANAGER ได้โดยปริยายเหมือนเดิม — ไม่มีใครได้/เสียสิทธิ์) ◂
+      "crm.company.import": "นำเข้าบริษัทจากไฟล์",
+      "crm.company.export": "ส่งออกรายชื่อบริษัท",
       "crm.deal.read": "ดูดีล",
       "crm.deal.create": "เปิดดีล",
       "crm.deal.update": "แก้ไขดีล",
@@ -422,6 +427,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "crm.deal.reassign": "โอนดีลให้คนอื่น/ข้ามทีม",
       "crm.deal.lines": "แก้รายการสินค้าและส่วนลดในดีล",
       "crm.deal.forecast": "ตั้งหมวดพยากรณ์ยอดขายของดีล",
+      "crm.deal.export": "ส่งออกรายการดีล", // CRM C4.2-fix r2 ▸ SF-3 ◂
       "crm.activity.read": "ดูกิจกรรมติดตาม",
       "crm.activity.create": "บันทึกกิจกรรมติดตาม",
       "crm.activity.complete": "ปิดกิจกรรมติดตาม",

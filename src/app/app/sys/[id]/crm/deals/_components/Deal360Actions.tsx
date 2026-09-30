@@ -395,6 +395,34 @@ export function DealLinesEditor({
       {rows.length === 0 && <p className="text-sm text-[color:var(--color-muted)]">ยังไม่มีรายการ — มูลค่าดีลกรอกเองได้จนกว่าจะเพิ่มรายการ</p>}
       {rows.map((r, i) => {
         const amt = lineAmountSatang({ qty: Number(r.qty) || 0, unitPriceSatang: bahtTextToSatang(r.price) ?? 0, discountBp: Math.round(Number(r.disc || "0") * 100) });
+        // CRM C4.2-fix r2 ▸ (รีวิว addendum 1) ไม่มีคีย์ crm.deal.lines หรือดีลปิดแล้ว = อ่านอย่างเดียวเป็นข้อความ — ไม่มีช่องกรอก
+        //   (ช่องที่ disabled ยังเป็นคอนโทรลที่ "เห็น" ในสายตาผู้ตรวจปุ่ม และในสายตาคนก็ดูเหมือนแก้ได้) ◂
+        if (!editable) {
+          const vatLabel = VAT_OPTIONS.find((o) => o.value === r.vat)?.label ?? VAT_OPTIONS[0]!.label;
+          return (
+            <div key={r.key} className="grid grid-cols-2 gap-x-2 gap-y-1 border-b pb-2 text-sm md:grid-cols-[minmax(0,1fr)_70px_100px_70px_100px_28px] md:items-center md:border-0 md:pb-0">
+              <span className="col-span-2 min-w-0 break-words font-medium md:col-span-1">{r.name || "—"}</span>
+              <span className="text-[color:var(--color-muted)] md:text-right md:text-[color:inherit]">
+                <span className="md:hidden">จำนวน </span>
+                {Number(r.qty).toLocaleString("th-TH")}
+              </span>
+              <span className="text-right">
+                <span className="text-[color:var(--color-muted)] md:hidden">ราคา/หน่วย </span>
+                {formatBaht(bahtTextToSatang(r.price) ?? 0)}
+              </span>
+              <span className="text-[color:var(--color-muted)] md:text-right md:text-[color:inherit]">
+                <span className="md:hidden">ส่วนลด </span>
+                {Number(r.disc || "0").toLocaleString("th-TH")}%
+              </span>
+              <span className="text-right font-medium">{formatBaht(amt)}</span>
+              <span className="hidden md:block" />
+              <span className="col-span-2 text-xs text-[color:var(--color-muted)] md:col-span-6">
+                {vatLabel}
+                {r.note ? ` · ${r.note}` : ""}
+              </span>
+            </div>
+          );
+        }
         return (
           <div key={r.key} className="grid grid-cols-2 gap-2 border-b pb-2 md:grid-cols-[minmax(0,1fr)_70px_100px_70px_100px_28px] md:items-center md:border-0 md:pb-0">
             <input value={r.name} onChange={(e) => set(r.key, { name: e.target.value })} disabled={!editable} aria-label={`ชื่อสินค้า บรรทัด ${i + 1}`} className="input col-span-2 min-w-0 text-sm md:col-span-1" data-testid={`deal-line-name-${i}`} />

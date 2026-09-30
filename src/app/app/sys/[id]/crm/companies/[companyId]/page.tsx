@@ -71,12 +71,12 @@ export default async function Company360Page({
 
   const c = data.company;
   const live = !c.archivedAt && !c.mergedIntoId;
-  // CRM C4.2-fix ▸ คีย์ของ server action แต่ละปุ่ม (companies-actions.ts) · เก็บถาวร = archive (action) + delete (บริการ) ◂
+  // CRM C4.2-fix ▸ คีย์ของ server action แต่ละปุ่ม (companies-actions.ts) · เก็บถาวร = crm.company.delete (action + บริการ · r2 SF-3) ◂
   const canUpdate = crmCan(actor, "crm.company.update");
   const menuCan = {
     update: canUpdate,
     merge: crmCan(actor, "crm.company.merge"),
-    archive: crmCan(actor, "crm.company.archive") && crmCan(actor, "crm.company.delete"),
+    archive: crmCan(actor, "crm.company.delete"), // r2 SF-3: action + บริการตรวจ crm.company.delete
   };
   const owners = live ? await ownerOptions(ctx, actor) : [];
   const mergedFlag = sp.merged === "1";
@@ -330,7 +330,10 @@ function ContactsCard({ data, systemId, live }: { data: Company360; systemId: st
         ผู้ติดต่อ <span className="text-xs font-normal text-[color:var(--color-muted)]">{data.contacts.length.toLocaleString("th-TH")} คน</span>
       </h2>
       {data.contacts.length === 0 ? (
-        <p className="px-4 pb-4 text-sm text-[color:var(--color-muted)]">ยังไม่มีผู้ติดต่อในบริษัทนี้ — กด &quot;+ เพิ่มผู้ติดต่อ&quot; ด้านบน</p>
+        <p className="px-4 pb-4 text-sm text-[color:var(--color-muted)]">
+          {/* r2 (รีวิว addendum 2e): ชวนกดปุ่มเฉพาะเมื่อปุ่มนั้นอยู่จริง (live = บริษัทยังใช้งาน + มีคีย์ crm.company.update) ◂ */}
+          {live ? <>ยังไม่มีผู้ติดต่อในบริษัทนี้ — กด &quot;+ เพิ่มผู้ติดต่อ&quot; ด้านบน</> : "ยังไม่มีผู้ติดต่อในบริษัทนี้"}
+        </p>
       ) : (
         <CompanyContactsTable
           systemId={systemId}

@@ -19,7 +19,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
-import { CRM_EMAIL_SUBJECT_MAX, crmEmailFailText, crmEmailHtmlToComposerText } from "./emails-shared";
+import { CRM_EMAIL_SUBJECT_MAX, CRM_EMAIL_BODY_TOO_LONG_MSG, crmEmailBodyTooLong, crmEmailFailText, crmEmailHtmlToComposerText } from "./emails-shared";
 import { withFieldError } from "./field-errors-shared";
 import * as emails from "./emails";
 import * as activities from "./activities";
@@ -73,6 +73,10 @@ export async function sendCrmEmailAction(
     attachments?: { filename: string; contentType: string; base64: string }[];
   },
 ): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string; failReason?: string }>> {
+  // CRM C4.4-fix2 r2 ▸ SF-1: เพดานเนื้อความตรวจก่อนทุกอย่าง (ก่อนเปิด session/แปลง) — ข้อความเดียวกับบริการ ใต้ช่องเนื้อความ ◂
+  if (typeof input?.bodyText === "string" && crmEmailBodyTooLong(input.bodyText)) {
+    return { ok: false, error: CRM_EMAIL_BODY_TOO_LONG_MSG, code: "VALIDATION", fieldErrors: { body: CRM_EMAIL_BODY_TOO_LONG_MSG } };
+  }
   try {
     const { ctx, actor } = await session(systemId, "crm.email.send");
     const files = (input?.attachments ?? []).map((a) => ({
