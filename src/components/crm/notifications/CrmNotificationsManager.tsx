@@ -8,7 +8,7 @@
 // 🔴 ตรวจค่าแบบ inline ใต้ช่อง ไม่ใช่ alert() · ข้อความไม่โทษผู้ใช้
 // 🔴 390 px: ตารางเทมเพลตกลายเป็นการ์ดต่อเรื่อง (ไม่มีตารางที่ล้นแนวนอน)
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import type { CrmNotifyActions, CrmNotifyChannelKey, CrmNotifyPageData, CrmNotifyQuiet, CrmNotifyTemplateRow } from "./types";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -18,6 +18,7 @@ type Tab = "shop" | "mine";
 
 export function CrmNotificationsManager({ data, actions }: { data: CrmNotifyPageData; actions: CrmNotifyActions }) {
   const [tab, setTab] = useState<Tab>(data.canManageShop ? "shop" : "mine");
+  const tabIds = useId();
   const [rows, setRows] = useState<CrmNotifyTemplateRow[]>(data.templates);
   const [shopQuiet, setShopQuiet] = useState<CrmNotifyQuiet>(data.shopQuiet);
   const [digestHour, setDigestHour] = useState<string>(String(data.digestHour));
@@ -70,13 +71,33 @@ export function CrmNotificationsManager({ data, actions }: { data: CrmNotifyPage
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="crm-notify-page">
-      <div className="flex min-w-0 flex-wrap gap-2">
+      {/* CRM C4.2-fix ▸ B3: แท็บบอกสถานะให้โปรแกรมอ่านจอ (role=tab + aria-selected ในกลุ่ม role=tablist · แผงด้านล่าง = tabpanel)
+          แบบเดียวกับแถบกรองขั้นของหน้าแรก (MyDealsList) ◂ */}
+      <div className="flex min-w-0 flex-wrap gap-2" role="tablist" aria-label="ค่าการแจ้งเตือน">
         {data.canManageShop && (
-          <button type="button" className={tabBtn(tab === "shop")} onClick={() => setTab("shop")} data-testid="crm-notify-tab-shop">
+          <button
+            type="button"
+            role="tab"
+            id={`${tabIds}-shop`}
+            aria-selected={tab === "shop"}
+            aria-controls={`${tabIds}-panel`}
+            className={tabBtn(tab === "shop")}
+            onClick={() => setTab("shop")}
+            data-testid="crm-notify-tab-shop"
+          >
             ของร้าน
           </button>
         )}
-        <button type="button" className={tabBtn(tab === "mine")} onClick={() => setTab("mine")} data-testid="crm-notify-tab-mine">
+        <button
+          type="button"
+          role="tab"
+          id={`${tabIds}-mine`}
+          aria-selected={tab === "mine"}
+          aria-controls={`${tabIds}-panel`}
+          className={tabBtn(tab === "mine")}
+          onClick={() => setTab("mine")}
+          data-testid="crm-notify-tab-mine"
+        >
           ของฉัน
         </button>
       </div>
@@ -90,6 +111,7 @@ export function CrmNotificationsManager({ data, actions }: { data: CrmNotifyPage
         </p>
       )}
 
+      <div className="flex min-w-0 flex-col gap-4" role="tabpanel" id={`${tabIds}-panel`} aria-labelledby={`${tabIds}-${tab}`}>
       <section className="card flex min-w-0 flex-col gap-3 p-4">
         <div className="flex flex-col gap-1">
           <h2 className="text-base font-semibold">{tab === "shop" ? "เรื่องที่แจ้งเตือน (ค่าของร้าน)" : "เรื่องที่แจ้งเตือน (ของฉัน)"}</h2>
@@ -241,6 +263,7 @@ export function CrmNotificationsManager({ data, actions }: { data: CrmNotifyPage
           </div>
         </section>
       )}
+      </div>
     </div>
   );
 }

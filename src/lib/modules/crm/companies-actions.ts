@@ -10,7 +10,7 @@ import { revalidatePath } from "next/cache";
 import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
-import { assertCanCrm } from "./access";
+import { assertCanCrm, crmCan } from "./access";
 import { toMemberActor } from "@/lib/modules/member";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import {
@@ -52,11 +52,14 @@ import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 
 type Fail = { ok: false; error: string; code?: string; duplicateOf?: string; fieldErrors?: CrmFieldErrors };
 
-async function session(systemId: string, action: string) {
+// CRM C4.2-fix r2 ▸ (รีวิว addendum 2a) `action` เป็นรายการได้ = "คีย์ใดคีย์หนึ่ง" — ใช้กับช่องเลือกที่หลายฟอร์มเปิดใช้
+//   (ไม่มีสักคีย์ = FORBIDDEN ด้วยข้อความของคีย์แรก · การมองเห็นของผลยังตัดสินที่บริการเหมือนเดิม) ◂
+async function session(systemId: string, action: string | readonly string[]) {
   const auth = await requireTenant();
   // CRM C1.7 ▸ มติผู้คุมงาน C1.7 ข้อ 3: ด่านคีย์ผ่าน `crm/access.ts` (MANAGER ปริยายไม่ได้ 5 คีย์ตั้งค่า · อ่านโดยนัยของคน) ◂
   const actor = toMemberActor(auth.user.id, auth.active);
-  assertCanCrm(actor, action);
+  const keys = typeof action === "string" ? [action] : action;
+  if (!keys.some((k) => crmCan(actor, k))) assertCanCrm(actor, keys[0] ?? "crm.contact.read");
   const ctx: CompaniesCtx = { tenantId: auth.active.tenantId, systemId: String(systemId ?? ""), actorUserId: auth.user.id };
   // CRM uiVersion gate ▸ action ของหน้า v2 ใช้ได้เฉพาะระบบที่เปิด CRM ใหม่ (settings.crm.uiVersion = 2) — action v1 (`actions.ts`) ไม่ผ่านที่นี่ ◂
   await assertCrmV2(ctx);
@@ -117,7 +120,7 @@ export async function updateCompanyAction(systemId: string, companyId: string, p
 
 export async function archiveCompanyAction(systemId: string, companyId: string, confirm: boolean, reason: string): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.company.archive");
+    const { ctx, actor } = await session(systemId, "crm.company.delete") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.company.archive" (ไม่มีในทะเบียน) · บริการตรวจ crm.company.delete (companies.ts:894/922) ◂ */;
     await archiveCompany(ctx, actor, companyId, { confirm, reason });
     revalidateAndWake(base(systemId));
     revalidateAndWake(`${base(systemId)}/${companyId}`);
@@ -222,7 +225,7 @@ export async function mergeCompaniesAction(
 
 export async function restoreCompanyAction(systemId: string, companyId: string, confirm: boolean, reason: string): Promise<{ ok: true } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.company.archive");
+    const { ctx, actor } = await session(systemId, "crm.company.delete") /* CRM C4.2-fix r2 ▸ SF-3: เดิม "crm.company.archive" (ไม่มีในทะเบียน) · บริการตรวจ crm.company.delete (companies.ts:894/922) ◂ */;
     await restoreCompany(ctx, actor, companyId, { confirm, reason });
     revalidateAndWake(base(systemId));
     revalidateAndWake(`${base(systemId)}/${companyId}`);
@@ -245,7 +248,8 @@ export async function searchContactOptionsAction(systemId: string, companyId: st
 /** ช่องเลือกบริษัท (บริษัทแม่ · คู่รวม) — ค้นฝั่งเซิร์ฟเวอร์ */
 export async function searchCompanyOptionsAction(systemId: string, excludeId: string | null, q: string): Promise<{ ok: true; items: { id: string; name: string }[] } | Fail> {
   try {
-    const { ctx, actor } = await session(systemId, "crm.company.update");
+    // CRM C4.2-fix r2 ▸ (รีวิว addendum 2a) ช่องนี้เปิดจาก: บริษัทแม่ (update) · คู่รวม (merge) · ฟอร์มเพิ่มบริษัท (create) ◂
+    const { ctx, actor } = await session(systemId, ["crm.company.update", "crm.company.merge", "crm.company.create"]);
     return { ok: true, items: await companyOptions(ctx, actor, { excludeId, q }) };
   } catch (e) {
     return failOf(e);

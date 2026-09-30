@@ -45,7 +45,8 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
     setBusy(false);
     if (r.ok) {
       setSubject(r.subject);
-      setBody(r.bodyHtml.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]*>/g, "").trim());
+      // CRM C4.4-fix2 ▸ J1: ข้อความของแม่แบบมาจากเซิร์ฟเวอร์ (เก็บ URL ของลิงก์ไว้) — เดิมตัดแท็กที่นี่ ⇒ ลิงก์ในแม่แบบหาย ◂
+      setBody(r.bodyText);
       setMsg(null);
     } else {
       setMsg({ ok: false, text: r.error });
@@ -60,7 +61,8 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
     if (
       fe.show({
         subject: !subject.trim() ? "ใส่หัวข้อจดหมายก่อนส่ง — ลูกค้าเห็นหัวข้อก่อนเปิดอ่านเสมอ" : undefined,
-        body: !body.trim() ? "ยังไม่มีเนื้อความ — พิมพ์ข้อความที่จะส่งถึงลูกค้าก่อน" : undefined,
+        // CRM C4.4-fix2 r2 ▸ SF-1: เพดานเดียวกับบริการ (ข้อความเดียวกัน) — บอกก่อนส่ง ไม่ต้องรอเซิร์ฟเวอร์ปฏิเสธ ◂
+        body: !body.trim() ? "ยังไม่มีเนื้อความ — พิมพ์ข้อความที่จะส่งถึงลูกค้าก่อน" : new TextEncoder().encode(body).length > data.bodyMaxBytes ? data.bodyTooLongMsg : undefined,
         attach: files.length > data.attachMaxCount ? `แนบไฟล์ได้ไม่เกิน ${data.attachMaxCount} ไฟล์ต่อจดหมาย 1 ฉบับ — เอาบางไฟล์ออกหรือส่งแยกฉบับ` : undefined,
       })
     )
@@ -95,17 +97,13 @@ export function EmailComposer({ data }: { data: CrmEmailThreadData }) {
         fe.show({ attach: "อ่านไฟล์แนบไม่สำเร็จ — เลือกไฟล์ใหม่แล้วลองอีกครั้ง" });
         return;
       }
-      const paragraphs = body
-        .split(/\n{2,}/)
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .map((p) => `<p>${p.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</p>`)
-        .join("");
+      // CRM C4.4-fix2 ▸ J1: ส่ง "ข้อความล้วน" ตามที่พิมพ์ — บริการแปลงเป็น HTML ด้วยตัวแปลงกลางตัวเดียว (escape ทุกอย่าง · URL http(s)
+      //   เป็นลิงก์ที่นับคลิกได้) · เดิม escape เป็น HTML ที่นี่ ⇒ URL ที่พิมพ์ไม่เคยเป็นลิงก์ = การนับคลิกไม่เกิดกับจดหมายที่พนักงานเขียน ◂
       const r = await sendCrmEmailAction(data.systemId, {
         contactId: data.contactId ?? "",
         ...(to.trim() ? { to: [to.trim()] } : {}),
         subject: subject.trim(),
-        bodyHtml: paragraphs,
+        bodyText: body,
         ...(schedule ? { scheduledAt: new Date(schedule).toISOString() } : {}),
         ...(data.replyToEmailId ? { replyToEmailId: data.replyToEmailId } : {}),
         ...(attachments.length ? { attachments } : {}),

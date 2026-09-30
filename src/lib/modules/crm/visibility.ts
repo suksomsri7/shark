@@ -589,12 +589,19 @@ export async function canSee(ctx: VisCtx, actor: Actor, entity: VisTarget | CrmV
  * ต่อ (ระบบ · ชนิด): where การมองเห็น 1 ครั้ง + findMany ของ id ที่ขอ 1 ครั้ง (ไม่ canSee ทีละ id) · ระบบ uiVersion 1 = เห็นทุก id
  * (R-E.14 — ด่านโมดูลเดิมของผู้เรียกตัดสินเอง) · ระบบ CRM ของแต่ละแถวอ่านจากแถวนั้นเอง (การ์ดอาจชี้หลายระบบของร้านเดียวกัน)
  */
-export async function visibleIdsAmong(tenantId: string, actor: Actor, entity: VisTarget, ids: readonly string[], opts: { db?: VisDb } = {}): Promise<Set<string>> {
+export async function visibleIdsAmong(
+  tenantId: string,
+  actor: Actor,
+  entity: VisTarget,
+  ids: readonly string[],
+  // CRM C4.2-fix r2 ▸ (รีวิว N-6) `systemId` = เฉพาะแถวของระบบ CRM นี้ (ลิงก์ใต้ /sys/<systemId>/crm/… ต้องเป็นของระบบนั้น) — ไม่ส่ง = ทุกระบบของร้าน (เดิม) ◂
+  opts: { db?: VisDb; systemId?: string | null } = {},
+): Promise<Set<string>> {
   const want = [...new Set(ids.filter((x) => typeof x === "string" && x))];
   const out = new Set<string>();
   if (want.length === 0 || !actor) return out;
   const db = dbOf(opts);
-  const base = { tenantId, id: { in: want } };
+  const base = { tenantId, id: { in: want }, ...(opts.systemId ? { systemId: opts.systemId } : {}) };
   const rows =
     entity === "DEAL"
       ? await db.crmDeal.findMany({ where: base, select: { id: true, systemId: true } })

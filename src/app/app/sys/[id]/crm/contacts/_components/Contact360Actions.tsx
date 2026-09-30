@@ -371,7 +371,11 @@ type MenuContact = {
   companyId: string | null;
 };
 
-export function ContactMenu({ systemId, contact, owners }: { systemId: string; contact: MenuContact; owners: Opt[] }) {
+// CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
+//   ไม่มีเมนูที่ทำได้เลย = ไม่มีปุ่ม "…" (ไม่เปิดเมนูว่าง) ◂
+export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean };
+
+export function ContactMenu({ systemId, contact, owners, can }: { systemId: string; contact: MenuContact; owners: Opt[]; can: ContactMenuCan }) {
   const router = useRouter();
   const [menu, setMenu] = useState(false);
   const [sheet, setSheet] = useState<null | "edit" | "owner" | "status" | "tags" | "merge" | "archive">(null);
@@ -460,13 +464,14 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
   );
 
   const ITEMS: { key: NonNullable<typeof sheet>; label: string; show: boolean }[] = [
-    { key: "edit", label: "แก้ไขข้อมูลติดต่อ", show: !contact.archived },
-    { key: "owner", label: "เปลี่ยนผู้ดูแล", show: !contact.archived },
-    { key: "status", label: "ขั้น / สถานะ lead", show: !contact.archived },
-    { key: "tags", label: "แท็ก", show: !contact.archived },
-    { key: "merge", label: "รวมกับผู้ติดต่อที่ซ้ำ", show: !contact.archived },
-    { key: "archive", label: contact.archived ? "กู้คืนผู้ติดต่อ" : "เก็บถาวร", show: true },
+    { key: "edit", label: "แก้ไขข้อมูลติดต่อ", show: !contact.archived && can.update },
+    { key: "owner", label: "เปลี่ยนผู้ดูแล", show: !contact.archived && can.assign },
+    { key: "status", label: "ขั้น / สถานะ lead", show: !contact.archived && can.update },
+    { key: "tags", label: "แท็ก", show: !contact.archived && can.update },
+    { key: "merge", label: "รวมกับผู้ติดต่อที่ซ้ำ", show: !contact.archived && can.merge },
+    { key: "archive", label: contact.archived ? "กู้คืนผู้ติดต่อ" : "เก็บถาวร", show: can.archive },
   ];
+  if (!ITEMS.some((i) => i.show)) return null;
 
   return (
     <div className="relative">
@@ -636,7 +641,20 @@ export function ContactMenu({ systemId, contact, owners }: { systemId: string; c
 
 // ───────────────────────── ความยินยอม / ไม่รับข่าวสาร (C20) ─────────────────────────
 
-export function ConsentBlock({ systemId, contactId, consent, disabled }: { systemId: string; contactId: string; consent: ConsentView; disabled: boolean }) {
+export function ConsentBlock({
+  systemId,
+  contactId,
+  consent,
+  disabled,
+  memberConsentLocked = false,
+}: {
+  systemId: string;
+  contactId: string;
+  consent: ConsentView;
+  disabled: boolean;
+  /** CRM C4.2-fix r2 ▸ ผูกสมาชิกแต่ผู้ดูไม่มี member.customer.update — ปุ่มยินยอม/ไม่ยินยอมกดไม่ได้ (ระบบสมาชิกจะปฏิเสธ) ◂ */
+  memberConsentLocked?: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -675,6 +693,11 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
         <input type="checkbox" checked={consent.trackingOptOut} disabled={disabled || pending} onChange={(e) => run(() => setTrackingOptOutAction(systemId, contactId, e.target.checked))} data-testid="contact-tracking-optout-toggle" />
       </label>
       {consent.emailBounced && <p className="text-xs text-[color:var(--color-danger)]">อีเมลของผู้ติดต่อนี้ส่งไม่ถึง (เด้งกลับ) — ระบบหยุดส่งอีเมลให้แล้ว</p>}
+      {memberConsentLocked && (
+        <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-consent-member-locked">
+          ความยินยอมรายช่องทางของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์ &quot;แก้ไขข้อมูลสมาชิก&quot; จึงเปลี่ยนได้ ขอให้เจ้าของร้านเปิดสิทธิ์ให้หากต้องแก้
+        </p>
+      )}
       <ul className="flex flex-col divide-y text-sm">
         {consent.channels.map((c) => (
           <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -687,7 +710,7 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
                 type="button"
                 className="btn btn-ghost px-2 py-1 text-xs"
                 style={c.granted === true ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === true}
+                disabled={disabled || memberConsentLocked || pending || c.granted === true}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, true))}
                 data-testid="contact-consent-grant"
               >
@@ -697,7 +720,7 @@ export function ConsentBlock({ systemId, contactId, consent, disabled }: { syste
                 type="button"
                 className="btn btn-ghost px-2 py-1 text-xs"
                 style={c.granted === false ? { borderColor: "var(--color-danger)", color: "var(--color-danger)", fontWeight: 600 } : undefined}
-                disabled={disabled || pending || c.granted === false}
+                disabled={disabled || memberConsentLocked || pending || c.granted === false}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, false))}
                 data-testid="contact-consent-revoke"
               >

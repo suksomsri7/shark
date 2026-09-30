@@ -68,6 +68,8 @@ export default async function CrmActivitiesPage({
   const m = { role: auth.active.role as Role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
   const canLog = crmCan(m, "crm.activity.create");
   const canComplete = crmCan(m, "crm.activity.complete");
+  // CRM C4.2-fix ▸ B2: ปุ่มลบ = คีย์ของ action (crm.activity.create) + ของบริการ (crm.activity.delete) · เดิมอิงบทบาท/เจ้าของอย่างเดียว ◂
+  const canDelete = canLog && crmCan(m, "crm.activity.delete");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
   const base = `/app/sys/${id}/crm/activities`;
   const href = (patch: Record<string, string | null>) => {
@@ -156,7 +158,7 @@ export default async function CrmActivitiesPage({
         ) : (
           <ul className="flex flex-col divide-y">
             {list.items.map((i) => (
-              <ActivityRow key={i.id} systemId={id} item={i} currentUserId={auth.user.id} canManage={canManage} boards={canLog ? boards : []} canComplete={canComplete} showTarget />
+              <ActivityRow key={i.id} systemId={id} item={i} currentUserId={auth.user.id} canManage={canManage} boards={canLog ? boards : []} canComplete={canComplete} canLog={canLog} canDelete={canDelete} showTarget />
             ))}
           </ul>
         )}

@@ -31,7 +31,9 @@ const STAFF_DEFAULT: readonly string[] = [
 const ALL_KEYS: readonly string[] = [
   "crm.contact.read", "crm.contact.create", "crm.contact.update", "crm.contact.delete", "crm.contact.convert", "crm.contact.import", "crm.contact.export", "crm.contact.merge",
   "crm.company.read", "crm.company.create", "crm.company.update", "crm.company.delete", "crm.company.merge",
+  "crm.company.import", "crm.company.export", // CRM C4.2-fix r2 ▸ SF-3 (ค่าเริ่มต้นเท่า contact.import/export) ◂
   "crm.deal.read", "crm.deal.create", "crm.deal.update", "crm.deal.move", "crm.deal.delete", "crm.deal.quote", "crm.deal.reassign", "crm.deal.lines", "crm.deal.forecast",
+  "crm.deal.export", // CRM C4.2-fix r2 ▸ SF-3 (ค่าเริ่มต้นเท่า contact.export) ◂
   "crm.activity.read", "crm.activity.create", "crm.activity.complete", "crm.activity.delete",
   "crm.email.read", "crm.email.send", "crm.email.settings",
   "crm.sequence.manage", "crm.sequence.enroll", "crm.automation.manage", "crm.score.manage", "crm.assignment.manage",

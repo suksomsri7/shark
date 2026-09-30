@@ -107,6 +107,9 @@ export type CrmEmailThreadData = {
   composerMaxBytes: number;
   attachMaxCount: number;
   subjectMax: number;
+  /** CRM C4.4-fix2 r2 ▸ SF-1: เพดานเนื้อความ (ไบต์) + ข้อความเดียวกับบริการ — ช่องเขียนตรวจก่อนส่ง ◂ */
+  bodyMaxBytes: number;
+  bodyTooLongMsg: string;
 };
 
 // ───────────────────────── ตั้งค่า (ภาพ 15) ─────────────────────────

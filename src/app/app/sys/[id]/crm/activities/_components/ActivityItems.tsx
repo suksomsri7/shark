@@ -35,6 +35,8 @@ export function ActivityRow({
   boards = [],
   showTarget = false,
   canComplete = true,
+  canLog = false,
+  canDelete = false,
 }: {
   systemId: string;
   item: ActivityListItem;
@@ -44,6 +46,10 @@ export function ActivityRow({
   showTarget?: boolean;
   /** มีสิทธิ์ crm.activity.complete ไหม (ไม่มี = ซ่อนปุ่มปิดงาน — มติผู้คุมงาน C1.6 S10) */
   canComplete?: boolean;
+  /** CRM C4.2-fix ▸ crm.activity.create (ปักหมุด/เลื่อนนัดใช้คีย์นี้ใน action/บริการ) — ไม่ส่ง = ไม่แสดง ◂ */
+  canLog?: boolean;
+  /** CRM C4.2-fix ▸ B2: crm.activity.delete (+ create ที่ action ตรวจ) — เดิมปุ่มลบอิงบทบาท/เจ้าของอย่างเดียว ⇒ พนักงานที่ไม่มีคีย์เห็นปุ่มแล้วโดนปฏิเสธ ◂ */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -104,7 +110,7 @@ export function ActivityRow({
           {item.body && <p className="whitespace-pre-wrap break-words text-sm text-[color:var(--color-muted)]">{item.body}</p>}
         </div>
         <div className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
-          {item.type === "NOTE" && canEdit && (
+          {item.type === "NOTE" && canEdit && canLog && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => run(() => setPinnedAction(systemId, item.id, !item.pinned))} data-testid="activity-row-pin" aria-label={item.pinned ? "ถอดหมุดโน้ต" : "ปักหมุดโน้ต"}>
               {item.pinned ? "ถอดหมุด" : "ปักหมุด"}
             </button>
@@ -114,7 +120,10 @@ export function ActivityRow({
               ปิดงาน
             </button>
           )}
-          {!item.doneAt && item.type !== "NOTE" && canEdit && (
+          {/* CRM C4.2-fix r2 ▸ (รีวิว N-11) เลื่อนนัด: action ตรวจ crm.activity.complete (activities/_components/actions.ts:97
+              rescheduleActivityAction) + บริการตรวจ crm.activity.create (activities.ts:754) ⇒ ต้องผ่านทั้งคู่ — ถอด canComplete
+              = ปุ่มที่ action ปฏิเสธ (สำหรับคนที่มี create แต่ไม่มี complete) ◂ */}
+          {!item.doneAt && item.type !== "NOTE" && canEdit && canLog && canComplete && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => setMode(mode === "reschedule" ? "" : "reschedule")} data-testid="activity-row-reschedule">
               เลื่อน
             </button>
@@ -124,7 +133,7 @@ export function ActivityRow({
               เปิดการ์ดงาน
             </button>
           )}
-          {canEdit && (
+          {canEdit && canDelete && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => setMode(mode === "delete" ? "" : "delete")} data-testid="activity-row-delete" aria-label="ลบกิจกรรม">
               ลบ
             </button>

@@ -107,9 +107,11 @@ export default async function DealsPage({
             <Link href={`/app/sys/${id}/crm/pipelines`} className="btn btn-ghost text-sm" data-testid="deals-pipelines-link">
               pipeline ทั้งหมด
             </Link>
-            <Link href={`${base}/new${one("pipeline") ? `?pipeline=${encodeURIComponent(one("pipeline"))}` : ""}`} className="btn btn-primary text-sm" data-testid="deals-new-btn">
-              + เพิ่มดีล
-            </Link>
+            {crmCan(m, "crm.deal.create") && (
+              <Link href={`${base}/new${one("pipeline") ? `?pipeline=${encodeURIComponent(one("pipeline"))}` : ""}`} className="btn btn-primary text-sm" data-testid="deals-new-btn">
+                + เพิ่มดีล
+              </Link>
+            )}
           </>
         }
       />
@@ -361,7 +363,15 @@ export default async function DealsPage({
 
       {table && (
         <>
-          <DealTable systemId={id} rows={table.items} stages={pipe.stages.map((s) => ({ id: s.id, name: s.name }))} owners={owners} filters={filters} />
+          <DealTable
+            systemId={id}
+            rows={table.items}
+            stages={pipe.stages.map((s) => ({ id: s.id, name: s.name }))}
+            owners={owners}
+            filters={filters}
+            // CRM C4.2-fix ▸ B6: คีย์เดียวกับ bulkMove/bulkReassign/bulkTag/exportDeals action (+ update ที่บริการตรวจตอนโอน) ◂
+            can={{ move: canMove, reassign: crmCan(m, "crm.deal.reassign") && crmCan(m, "crm.deal.update"), tag: crmCan(m, "crm.deal.update"), exportCsv: crmCan(m, "crm.deal.export") }}
+          />
           <div className="flex justify-end gap-3 text-sm">
             {one("cursor") && (
               <Link href={qs({ cursor: null })} className="underline" data-testid="deals-first-page">

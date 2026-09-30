@@ -35,6 +35,8 @@ export default async function NewDealPage({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C4.2-fix r2 ▸ (รีวิว addendum 2d) ไม่มีคีย์ crm.deal.create = notFound() แบบเดียวกับหน้านำเข้า (404-not-403) — เดิมฟอร์มเปิดได้แต่บันทึกแล้วโดนปฏิเสธ ◂
+  if (!crmCan(actor, "crm.deal.create")) notFound();
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const companyId = one("companyId");
