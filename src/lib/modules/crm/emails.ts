@@ -102,6 +102,7 @@ import {
   type CrmEmailCopyMode,
   type CrmEmailRoutingView,
   type CrmEmailSettings,
+  crmPlainTextToEmailHtml, // CRM C4.4-fix2 ▸ J1 ◂
 } from "./emails-shared";
 import { renderKbTokens } from "./kb-tokens"; // CRM C3.4 ◂
 import "./emails-job";
@@ -156,6 +157,11 @@ export type SendInput = {
   bcc?: string[];
   subject?: string | null;
   bodyHtml?: string | null;
+  /**
+   * CRM C4.4-fix2 ▸ J1: เนื้อความแบบ "ข้อความล้วน" (ช่องเขียนจดหมาย · SEND_EMAIL ของกฎ · ขั้นอีเมลของลำดับติดตาม) — ระบบแปลงเป็น HTML
+   * ด้วยตัวแปลงตัวเดียว `crmPlainTextToEmailHtml` (escape ทุกอย่าง · URL http(s) เป็นลิงก์ ⇒ นับคลิกได้) · ใช้เมื่อไม่มี `templateId`/`bodyHtml` ◂
+   */
+  bodyText?: string | null;
   templateId?: string | null;
   vars?: Record<string, string>;
   attachments?: SendAttachmentInput[];
@@ -1158,11 +1164,15 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
   const templateId = strOrNull(input?.templateId);
   const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars) : null;
   const subject = cleanSubject(rendered ? rendered.subject : input?.subject);
-  const rawBody = rendered ? rendered.bodyHtml : str(input?.bodyHtml);
+  // CRM C4.4-fix2 ▸ J1: ข้อความล้วน (ไม่มีแม่แบบ/ไม่มี HTML) → HTML ด้วยตัวแปลงกลางตัวเดียว — ผลเป็น "ข้อความที่ escape แล้ว + ลิงก์ http(s)"
+  //   โดยโครงสร้าง ⇒ **ไม่** ส่งเข้า `sanitizeHtml` ซ้ำ: ตัวตัดกลาง escape `&` ใน href อีกชั้น (`?a=1&amp;b=2` → `&amp;amp;` = ลิงก์เสีย)
+  //   (ข้อสอบ probe-j1-linkify ตรวจว่าแท็กที่ออกมามีแค่ p/br/a href=http(s) ของเราเอง) ◂
+  const plainText = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" ? input.bodyText : null;
+  const rawBody = rendered ? rendered.bodyHtml : plainText !== null ? crmPlainTextToEmailHtml(plainText) : str(input?.bodyHtml);
   if (Buffer.byteLength(rawBody, "utf8") > CRM_EMAIL_BODY_MAX_BYTES) {
     throw fail("VALIDATION", `เนื้อความจดหมายยาวเกิน ${Math.round(CRM_EMAIL_BODY_MAX_BYTES / 1024)} KB — ย่อเนื้อความหรือส่งเป็นไฟล์แนบแทน`);
   }
-  const storedHtml = sanitizeHtml(rawBody, { allowLinkSchemes: ["http", "https", "mailto", "tel"] });
+  const storedHtml = plainText !== null ? rawBody : sanitizeHtml(rawBody, { allowLinkSchemes: ["http", "https", "mailto", "tel"] });
   if (!storedHtml) throw fail("VALIDATION", "เนื้อความจดหมายยังว่างอยู่ (หรือเหลือแต่ส่วนที่ระบบตัดออกเพื่อความปลอดภัย) — พิมพ์เนื้อความแล้วส่งอีกครั้ง");
   const toList = cleanAddrList(input?.to ?? (contact.email ? [contact.email] : []), "รายชื่อผู้รับ");
   if (toList.length === 0) throw fail("VALIDATION", "ผู้ติดต่อรายนี้ยังไม่มีอีเมล — เพิ่มอีเมลในหน้าผู้ติดต่อก่อนส่งจดหมาย");

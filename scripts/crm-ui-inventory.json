@@ -1556,7 +1556,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "contacts-import-modal"
@@ -1572,7 +1575,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-import-error"
@@ -1588,7 +1594,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-import-error"
@@ -1604,7 +1613,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-import-error"
@@ -1620,7 +1632,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "mutation",
         "target": "op:contacts.importContacts",
@@ -1637,7 +1652,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "ui",
         "target": "contacts-import-modal",
@@ -1654,7 +1672,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "contacts-export-modal"
@@ -1670,7 +1691,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-*-error"
@@ -1686,7 +1710,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-*-error"
@@ -1702,7 +1729,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "download",
         "target": "file:csv"
@@ -1718,7 +1748,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "ui",
         "target": "contacts-export-modal",
@@ -2023,7 +2056,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-bulk-bar"
@@ -2039,7 +2075,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-bulk-bar"
@@ -2055,7 +2094,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-bulk-bar"
@@ -2071,7 +2113,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "contacts-bulk-assign-modal"
@@ -2087,7 +2132,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "ui",
         "target": "contacts-bulk-bar",
@@ -2104,7 +2152,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contacts-bulk-assign-error"
@@ -2120,7 +2171,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "mutation",
         "target": "op:contacts.bulkAssign",
@@ -2137,7 +2191,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "ui",
         "target": "contacts-bulk-assign-modal",
@@ -2461,11 +2518,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "contact-convert-modal"
@@ -2479,11 +2537,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2497,11 +2556,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2515,11 +2575,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2533,11 +2594,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2551,11 +2613,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2569,11 +2632,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2587,11 +2651,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error",
@@ -2606,11 +2671,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error",
@@ -2625,11 +2691,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-convert-modal",
@@ -2645,11 +2712,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2663,11 +2731,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2681,11 +2750,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2699,11 +2769,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2717,11 +2788,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-convert-error"
@@ -2735,11 +2807,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:contacts.convertContact",
@@ -2754,11 +2827,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-convert-modal",
@@ -2846,11 +2920,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-owner-error"
@@ -3642,11 +3717,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "download",
         "target": "file:csv",
@@ -3681,11 +3757,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-bulk-msg"
@@ -3759,11 +3836,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.bulkReassign",
@@ -3780,11 +3858,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-bulk-msg"
@@ -3799,11 +3878,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.bulkTag",
@@ -4275,11 +4355,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.issueQuotation",
@@ -4294,11 +4375,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.issueInvoice",
@@ -4313,11 +4395,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-fields-msg"
@@ -4331,11 +4414,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.updateDeal(title)",
@@ -4350,11 +4434,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-fields-msg"
@@ -4368,11 +4453,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.updateDeal(valueSatang)",
@@ -4388,11 +4474,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-fields-msg"
@@ -4406,11 +4493,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.updateDeal(expectedCloseAt)",
@@ -4425,11 +4513,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.reassignDeal",
@@ -4444,11 +4533,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.setForecastCategory",
@@ -4463,11 +4553,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-fields-msg"
@@ -4481,11 +4572,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.setNextStep",
@@ -4500,11 +4592,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg"
@@ -4518,11 +4611,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg"
@@ -4536,11 +4630,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg"
@@ -4554,11 +4649,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg"
@@ -4572,11 +4668,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "deal-line-name-*",
@@ -4592,11 +4689,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "deal-line-name-*",
@@ -4612,11 +4710,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg"
@@ -4630,11 +4729,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.setLines",
@@ -4650,11 +4750,12 @@
       "kind": "menu",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "deal-menu-panel",
@@ -4672,6 +4773,7 @@
         "manager"
       ],
       "hiddenFor": [
+        "nok",
         "thana"
       ],
       "expect": {
@@ -4690,6 +4792,7 @@
         "manager"
       ],
       "hiddenFor": [
+        "nok",
         "thana"
       ],
       "expect": {
@@ -4707,11 +4810,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "deal-delete-modal",
@@ -4726,11 +4830,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-delete-msg"
@@ -4744,11 +4849,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-delete-msg"
@@ -4762,11 +4868,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "deal-delete-modal",
@@ -4781,11 +4888,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:deals.deleteDeal",
@@ -5917,11 +6025,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg",
@@ -5937,11 +6046,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-lines-msg",
@@ -6734,11 +6844,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "modal",
         "target": "activity-row-delete-reason",
@@ -6756,11 +6867,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "activity-row-error"
@@ -6774,11 +6886,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "activity-row-error"
@@ -6792,11 +6905,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "op:activities.deleteActivity",
@@ -8818,11 +8932,12 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/companies/[companyId]",
@@ -10100,11 +10215,11 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
-        "thana"
+        "manager"
       ],
       "hiddenFor": [
-        "nok"
+        "nok",
+        "thana"
       ],
       "expect": {
         "type": "ui",
@@ -10121,11 +10236,11 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
-        "thana"
+        "manager"
       ],
       "hiddenFor": [
-        "nok"
+        "nok",
+        "thana"
       ],
       "expect": {
         "type": "inline-error",
@@ -10141,11 +10256,11 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
-        "thana"
+        "manager"
       ],
       "hiddenFor": [
-        "nok"
+        "nok",
+        "thana"
       ],
       "expect": {
         "type": "inline-error",
@@ -20007,11 +20122,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:runAssistAction",

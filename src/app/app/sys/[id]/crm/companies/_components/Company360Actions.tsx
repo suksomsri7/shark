@@ -256,7 +256,10 @@ function ContactRow({ systemId, companyId, row, disabled }: { systemId: string; 
 
 type Mode = null | "edit" | "owner" | "parent" | "merge" | "archive";
 
-export function CompanyMenu({ systemId, company, owners, parent: currentParent }: { systemId: string; company: CompanyDto; owners: Opt[]; parent: Opt | null }) {
+// CRM C4.2-fix ▸ `can` = คีย์ของ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น · ไม่มีเลย = ไม่มีปุ่ม "…" ◂
+export type CompanyMenuCan = { update: boolean; merge: boolean; archive: boolean };
+
+export function CompanyMenu({ systemId, company, owners, parent: currentParent, can }: { systemId: string; company: CompanyDto; owners: Opt[]; parent: Opt | null; can: CompanyMenuCan }) {
   const router = useRouter();
   const base = `/app/sys/${systemId}/crm/companies`;
   const [menu, setMenu] = useState(false);
@@ -362,6 +365,7 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
     </label>
   );
 
+  if (!can.update && !can.merge && !can.archive) return null;
   return (
     <div className="relative">
       <button type="button" className="btn btn-ghost px-3 text-sm" aria-label="เมนูเพิ่มเติมของบริษัท" aria-expanded={menu} data-testid="company-menu-btn" onClick={() => setMenu((v) => !v)}>
@@ -369,21 +373,31 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent }
       </button>
       {menu && (
         <div className="absolute right-0 z-40 mt-1 flex w-52 flex-col rounded-xl border bg-[color:var(--color-surface)] p-1 text-sm shadow-lg" role="menu" data-testid="company-menu">
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-edit" disabled={!live} onClick={() => openMode("edit")}>
-            แก้ไขข้อมูลบริษัท
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-owner" disabled={!live} onClick={() => openMode("owner")}>
-            เปลี่ยนผู้ดูแล
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-parent" disabled={!live} onClick={() => openMode("parent")}>
-            ตั้งบริษัทแม่
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-merge" disabled={!live} onClick={() => openMode("merge")}>
-            รวมกับบริษัทที่ซ้ำ
-          </button>
-          <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" style={{ color: "var(--color-danger)" }} data-testid="company-menu-archive" disabled={!live} onClick={() => openMode("archive")}>
-            เก็บถาวร
-          </button>
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-edit" disabled={!live} onClick={() => openMode("edit")}>
+              แก้ไขข้อมูลบริษัท
+            </button>
+          )}
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-owner" disabled={!live} onClick={() => openMode("owner")}>
+              เปลี่ยนผู้ดูแล
+            </button>
+          )}
+          {can.update && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-parent" disabled={!live} onClick={() => openMode("parent")}>
+              ตั้งบริษัทแม่
+            </button>
+          )}
+          {can.merge && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" data-testid="company-menu-merge" disabled={!live} onClick={() => openMode("merge")}>
+              รวมกับบริษัทที่ซ้ำ
+            </button>
+          )}
+          {can.archive && (
+            <button type="button" role="menuitem" className="rounded-lg px-3 py-2 text-left hover:bg-[color:var(--color-surface-2)]" style={{ color: "var(--color-danger)" }} data-testid="company-menu-archive" disabled={!live} onClick={() => openMode("archive")}>
+              เก็บถาวร
+            </button>
+          )}
         </div>
       )}
 

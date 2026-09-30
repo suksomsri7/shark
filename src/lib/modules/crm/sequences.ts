@@ -1161,11 +1161,7 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
   if (channel === "EMAIL") {
     try {
       const emails = await import("./emails");
-      const body = String(core.body ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
+      // CRM C4.4-fix2 ▸ J1: ข้อความของขั้นส่ง `bodyText` — ตัวแปลงกลางตัวเดียวกับช่องเขียนจดหมาย/กฎ (URL http(s) = ลิงก์นับคลิก) ◂
       const r = await emails.sendAsSystem(
         { tenantId: env.subject.tenantId, systemId: env.subject.systemId },
         {
@@ -1173,7 +1169,7 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
           dealId: env.subject.dealId,
           to: [core.to],
           subject: core.subject ?? "",
-          bodyHtml: `<p>${body}</p>`,
+          bodyText: String(core.body ?? ""),
           ...(env.subject.stepId ? { sequenceStepId: env.subject.stepId } : {}),
           // CRM C5.4-D r2 ▸ N1b (+ hunter L3-m3): กุญแจกันซ้ำ "หนึ่งดอกต่อ (แถวลงทะเบียน, เวอร์ชัน, ขั้น)" — ทุกครั้งที่ลองขั้นเดิมใช้
           //   Message-ID เดียวกัน = Resend `Idempotency-Key` เดียวกัน ⇒ จดหมายที่ผู้ให้บริการรับไปแล้ว (เน็ตหลุดก่อนได้คำตอบ ·

@@ -1153,14 +1153,10 @@ export const CRM_DEFAULT_DEPS: Required<Omit<CrmRuleDeps, "kanban" | "post">> & 
     if (!req.contactId) return { ok: false, skipped: true, error: "ไม่มีผู้ติดต่อปลายทางของอีเมลนี้ จึงข้ามขั้นนี้" };
     try {
       const emails = await import("./emails");
-      const body = String(req.body ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
+      // CRM C4.4-fix2 ▸ J1: ข้อความของกฎส่งเป็น `bodyText` — ตัวแปลงกลางตัวเดียว (escape + URL http(s) เป็นลิงก์นับคลิก) แทนการ escape เองที่นี่ ◂
       const r = await emails.sendAsSystem(
         { tenantId: req.tenantId, systemId: req.systemId },
-        { contactId: req.contactId, ...(req.to ? { to: [req.to] } : {}), subject: req.subject ?? "", bodyHtml: `<p>${body}</p>` },
+        { contactId: req.contactId, ...(req.to ? { to: [req.to] } : {}), subject: req.subject ?? "", bodyText: String(req.body ?? "") },
       );
       if (r.status === "FAILED") return { ok: false, error: "ส่งอีเมลไม่สำเร็จ — ระบบจะลองกฎนี้อีกครั้งในรอบถัดไป" };
       return { ok: true };

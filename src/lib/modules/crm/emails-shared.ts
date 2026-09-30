@@ -234,6 +234,124 @@ export function escapeHtmlText(v: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+// ───────────────────────── เนื้อความข้อความล้วน → HTML ของจดหมาย (CRM C4.4-fix2 · J1) ─────────────────────────
+
+// CRM C4.4-fix2 ▸ J1: ตัวแปลง "ข้อความล้วนที่พนักงาน/กฎ/ลำดับติดตามพิมพ์" → HTML ของจดหมาย **ตัวเดียวของระบบ**
+//   (เดิม 3 ที่ทำเอง: ช่องเขียนจดหมาย · SEND_EMAIL ของกฎ · ขั้นอีเมลของลำดับติดตาม — escape ทั้งก้อน ⇒ URL ที่พิมพ์
+//   ไม่เคยเป็น `<a href>` ⇒ composeOutgoing ไม่มีอะไรให้ห่อ ⇒ การนับคลิกไม่เคยเกิดกับจดหมายที่คนพิมพ์เอง)
+//   🔴 ทุกอักขระเป็น "ข้อความ" (escape) — ส่วนเดียวที่กลายเป็นแท็กคือ URL ที่ขึ้นต้น `http://`/`https://` ตรงตัว
+//      (`javascript:`/`data:`/อื่น ๆ ไม่มีทางเป็นลิงก์) · regex เชิงเส้น ไม่มีตัวซ้ำซ้อนกัน (ไม่มี backtracking ระเบิด)
+//   🔴 วรรคตอนท้าย URL (`.,;:!?` · วงเล็บ/เครื่องหมายคำพูดปิดที่ไม่มีคู่) อยู่นอกลิงก์ ◂
+
+/** URL ที่พิมพ์ในข้อความ — ต้องไม่ติดตัวอักษรละติน/ตัวเลขข้างหน้า (`xhttps://` ไม่ใช่ลิงก์) · จบที่ช่องว่าง/อักขระที่ใช้ใน URL ไม่ได้ */
+const CRM_TEXT_URL_RE = /(^|[^A-Za-z0-9_])(https?:\/\/[^\s<>"`\u0000-\u001f\u007f]+)/gi;
+/** URL ยาวกว่านี้ = ข้อความธรรมดา (ลิงก์จริงไม่ยาวขนาดนี้ · กันเนื้อความ 500 KB ที่เป็น "URL" เดียว) */
+const CRM_TEXT_URL_MAX = 2048;
+const TRAIL_PUNCT = ".,;:!?'";
+const PAIRS: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+
+function countChar(s: string, c: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) if (s[i] === c) n++;
+  return n;
+}
+
+/** ตัดวรรคตอนท้าย URL ออก (คืน [url, ส่วนที่ตัดออก]) — วงเล็บปิดที่ "มีคู่" ในตัว URL เก็บไว้ (`…/Foo_(bar)`) */
+function trimUrlTail(raw: string): [string, string] {
+  let url = raw;
+  let tail = "";
+  for (;;) {
+    const last = url.slice(-1);
+    if (!last) break;
+    if (TRAIL_PUNCT.includes(last)) {
+      url = url.slice(0, -1);
+      tail = last + tail;
+      continue;
+    }
+    const open = PAIRS[last];
+    if (open && countChar(url, last) > countChar(url, open)) {
+      url = url.slice(0, -1);
+      tail = last + tail;
+      continue;
+    }
+    break;
+  }
+  return [url, tail];
+}
+
+/** ต้องมีโฮสต์จริงหลัง `://` (กติกาเดียวกับตัวตัด `core/sanitize` linkSchemeOk) */
+const hasHost = (url: string) => /^https?:\/\/[^/\\?#.]/i.test(url);
+
+/** escape เฉพาะที่ข้อความใน HTML ต้องการ (`& < >`) — ไม่แปลง `'`/`"` เป็น entity: `htmlToText` (ข้อความสำรองของจดหมาย)
+ *  ถอด `&#39;` ไม่เป็น ⇒ "It's" จะกลายเป็น "It&#39;s" ในฉบับข้อความ · ใน href (ครอบด้วย `"`) URL ไม่มี `"` อยู่แล้ว (regex ตัดทิ้ง) */
+const escText = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** escape ข้อความ + ทำ URL http(s) เป็นลิงก์ — ใช้กับ "หนึ่งบรรทัด/ย่อหน้า" ของข้อความล้วน */
+export function crmLinkifyText(text: string): string {
+  const src = String(text ?? "");
+  let out = "";
+  let at = 0;
+  CRM_TEXT_URL_RE.lastIndex = 0;
+  for (let m = CRM_TEXT_URL_RE.exec(src); m; m = CRM_TEXT_URL_RE.exec(src)) {
+    const lead = m[1] ?? "";
+    const raw = m[2] ?? "";
+    if (raw.length > CRM_TEXT_URL_MAX) continue; // ยาวผิดปกติ = ข้อความธรรมดา (และกันงานตัดท้ายวนยาว)
+    const [url] = trimUrlTail(raw);
+    const start = m.index + lead.length;
+    if (!hasHost(url)) continue; // ไม่ใช่ลิงก์ที่ใช้ได้ — ปล่อยเป็นข้อความ (ถูก escape รวมกับข้อความรอบข้าง)
+    out += escText(src.slice(at, start));
+    const safe = escText(url);
+    out += `<a href="${safe}" rel="noopener" target="_blank">${safe}</a>`;
+    at = start + url.length; // วรรคตอนที่ตัดออกอยู่ต่อจาก URL ในต้นฉบับ ⇒ ถูก escape เป็นข้อความในรอบถัดไป
+  }
+  out += escText(src.slice(at));
+  return out;
+}
+
+/**
+ * ข้อความล้วน → HTML ของจดหมาย: บรรทัดว่าง = ขึ้นย่อหน้าใหม่ (`<p>`) · ขึ้นบรรทัดเดียว = `<br>` · URL http(s) = ลิงก์
+ * ผลลัพธ์ผ่าน `sanitizeHtml` ของตัวส่งแล้ว "ไม่เปลี่ยน" (ลิงก์อยู่รอดครบ) ⇒ composeOutgoing ห่อลิงก์เพื่อนับคลิกได้
+ */
+export function crmPlainTextToEmailHtml(text: string | null | undefined): string {
+  return String(text ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${p.split("\n").map(crmLinkifyText).join("<br>")}</p>`)
+    .join("");
+}
+
+/**
+ * HTML ของแม่แบบ → ข้อความในช่องเขียนจดหมาย (ช่องนั้นเป็นข้อความล้วน)
+ * 🔴 เดิมตัดแท็กทิ้งหมด ⇒ ลิงก์ในแม่แบบหายทั้ง URL · ตอนนี้ลิงก์ http(s) เหลือเป็น "ป้าย (URL)" (หรือ URL เดียวถ้าป้าย = URL)
+ *    แล้ว `crmPlainTextToEmailHtml` ตอนส่งทำให้เป็นลิงก์ที่นับคลิกได้อีกครั้ง · ลิงก์อื่น (mailto:/tel:) เหลือป้าย
+ */
+export function crmEmailHtmlToComposerText(html: string | null | undefined): string {
+  const decode = (v: string) =>
+    v.replace(/&nbsp;/gi, " ").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/g, "'").replace(/&amp;/gi, "&");
+  const strip = (v: string) => v.replace(/<[^>]*>/g, "");
+  return String(html ?? "")
+    .replace(/<a\b[^>]*?href\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a\s*>/gi, (_m, href: string, inner: string) => {
+      // href ที่เก็บไว้อาจถูก escape ซ้ำ (`&amp;amp;` — ตัวตัดกลาง escape `&` ใน href อีกชั้นตอนบันทึกแม่แบบ) ⇒ ถอดจนนิ่ง (≤ 3 รอบ)
+      let url = href.trim();
+      for (let i = 0; i < 3 && /&(amp|quot|lt|gt|#39);/i.test(url); i++) url = decode(url);
+      const label = decode(strip(inner)).trim();
+      // ผลที่ใส่กลับ escape `& < >` อีกครั้ง ⇒ การถอดรอบสุดท้าย (ทั้งข้อความ) ถอดให้พอดีหนึ่งครั้ง
+      if (!/^https?:\/\//i.test(url)) return escText(label);
+      if (!label || label === url) return escText(url);
+      return escText(`${label} (${url})`);
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h1|h2|h3|li|blockquote|pre)\s*>/gi, "\n\n")
+    .replace(/<[^>]*>/g, "")
+    .split("\n")
+    .map((l) => decode(l).replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** DTO ของไฟล์แนบที่เก็บใน `CrmEmailMessage.attachments` (ไม่มี path/URL — AUDIT-CLASS X10) */
 export type CrmEmailAttachmentRef = { fileId: string; name: string; size: number; mime: string };
 

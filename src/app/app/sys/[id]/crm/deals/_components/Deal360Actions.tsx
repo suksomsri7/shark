@@ -53,6 +53,7 @@ export function DealStageStepper({
   fieldLabels,
   canReopen,
   daysInStage,
+  canMove,
 }: {
   systemId: string;
   dealId: string;
@@ -63,6 +64,8 @@ export function DealStageStepper({
   fieldLabels: Record<string, string>;
   canReopen: boolean;
   daysInStage: number;
+  /** CRM C4.2-fix ▸ crm.deal.move (คีย์ของ moveDealAction/reopenDealAction) — ไม่มี = เห็นขั้นแต่กดย้าย/แพ้/เปิดใหม่ไม่ได้ ◂ */
+  canMove: boolean;
 }) {
   const router = useRouter();
   const mover = useDealMover({ systemId, lostReasons, fieldLabels, canReopen, onMoved: () => router.refresh() });
@@ -79,6 +82,17 @@ export function DealStageStepper({
           const cur = s.id === currentStageId;
           return (
             <li key={s.id} className="flex items-center gap-1.5">
+              {!canMove ? (
+                <span
+                  aria-current={cur ? "step" : undefined}
+                  className="rounded-full border px-2.5 py-1"
+                  style={cur ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 700 } : { color: "var(--color-muted)" }}
+                >
+                  {cur ? "● " : ""}
+                  {s.name}
+                  {cur && s.kind === "OPEN" ? ` — ${s.probability}%` : ""}
+                </span>
+              ) : (
               <button
                 type="button"
                 onClick={() => go(s)}
@@ -91,6 +105,7 @@ export function DealStageStepper({
                 {s.name}
                 {cur && s.kind === "OPEN" ? ` — ${s.probability}%` : ""}
               </button>
+              )}
               {i < stages.length - 1 && <span className="text-[color:var(--color-muted)]" aria-hidden>›</span>}
             </li>
           );
@@ -98,12 +113,12 @@ export function DealStageStepper({
         <li className="text-[color:var(--color-muted)]">อยู่ขั้นนี้มา {daysInStage.toLocaleString("th-TH")} วัน</li>
       </ol>
       <div className="flex flex-wrap gap-2">
-        {kind === "OPEN" && lostStage && (
+        {canMove && kind === "OPEN" && lostStage && (
           <button type="button" className="btn btn-ghost text-sm" onClick={() => go(lostStage)} data-testid="deal-lost-btn">
             แพ้ (ระบุเหตุผล)
           </button>
         )}
-        {kind !== "OPEN" && canReopen && firstOpen && (
+        {canMove && kind !== "OPEN" && canReopen && firstOpen && (
           <button type="button" className="btn btn-ghost text-sm" onClick={() => go(firstOpen)} data-testid="deal-reopen-btn">
             เปิดดีลใหม่
           </button>
@@ -163,6 +178,8 @@ export function DealFieldsEditor({
   owners,
   forecastCategory,
   nextStep,
+  canReassign,
+  canForecast,
 }: {
   systemId: string;
   dealId: string;
@@ -175,6 +192,10 @@ export function DealFieldsEditor({
   owners: Opt[];
   forecastCategory: ForecastCategory;
   nextStep: string | null;
+  /** CRM C4.2-fix ▸ crm.deal.reassign (reassignDealAction) — ไม่มี = แสดงชื่อผู้ดูแลเป็นข้อความ ◂ */
+  canReassign: boolean;
+  /** CRM C4.2-fix ▸ crm.deal.forecast (บริการ setForecastCategory) — ไม่มี = แสดงหมวดเป็นข้อความ ◂ */
+  canForecast: boolean;
 }) {
   const router = useRouter();
   const [t, setT] = useState(title);
@@ -237,6 +258,9 @@ export function DealFieldsEditor({
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         <span>ผู้ดูแล</span>
+        {!canReassign ? (
+          <span className="text-sm text-[color:var(--color-fg,inherit)]">{owners.find((o) => o.id === owner)?.name ?? "ยังไม่มีผู้ดูแล"}</span>
+        ) : (
         <select
           value={owner}
           onChange={(e) => {
@@ -253,9 +277,13 @@ export function DealFieldsEditor({
             </option>
           ))}
         </select>
+        )}
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         <span>หมวดพยากรณ์</span>
+        {!canForecast ? (
+          <span className="text-sm text-[color:var(--color-fg,inherit)]">{FORECAST_CATEGORY_LABEL[cat as ForecastCategory] ?? cat}</span>
+        ) : (
         <select
           value={cat}
           onChange={(e) => {
@@ -271,6 +299,7 @@ export function DealFieldsEditor({
             </option>
           ))}
         </select>
+        )}
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-xs text-[color:var(--color-muted)] sm:col-span-2">
         <span>ขั้นถัดไป</span>
@@ -441,6 +470,8 @@ export function DealMenu({
   currentPipelineId,
   canManage,
   deletable,
+  canChangePipeline,
+  canDelete,
 }: {
   systemId: string;
   dealId: string;
@@ -448,6 +479,10 @@ export function DealMenu({
   currentPipelineId: string;
   canManage: boolean;
   deletable: boolean;
+  /** CRM C4.2-fix ▸ changePipelineAction ตรวจ crm.deal.move · บริการตรวจ crm.deal.update ⇒ หน้าส่งผลของทั้งคู่ ◂ */
+  canChangePipeline: boolean;
+  /** CRM C4.2-fix ▸ crm.deal.delete (deleteDealAction + บริการ) — เดิมเมนูทั้งก้อนอิง crm.deal.update ◂ */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -465,7 +500,7 @@ export function DealMenu({
       </button>
       {open && (
         <div className="card absolute right-0 z-40 mt-1 flex w-[min(20rem,86vw)] flex-col gap-3 p-3 text-sm shadow-lg" data-testid="deal-menu-panel">
-          {canManage && others.length > 0 && (
+          {canManage && canChangePipeline && others.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-xs text-[color:var(--color-muted)]">ย้ายไป pipeline อื่น (ไปขั้นเปิดแรก)</span>
               <span className="flex gap-2">
@@ -495,13 +530,14 @@ export function DealMenu({
               </span>
             </div>
           )}
-          {deletable ? (
-            <button type="button" className="btn btn-ghost text-sm" style={{ color: "var(--color-danger)" }} onClick={() => setDel(true)} data-testid="deal-delete-btn">
-              ลบดีลนี้
-            </button>
-          ) : (
-            <p className="text-xs text-[color:var(--color-muted)]">ดีลที่ชนะแล้วหรือมีเอกสารบัญชีลบไม่ได้ — ย้ายเป็นแพ้พร้อมเหตุผลแทน</p>
-          )}
+          {canDelete &&
+            (deletable ? (
+              <button type="button" className="btn btn-ghost text-sm" style={{ color: "var(--color-danger)" }} onClick={() => setDel(true)} data-testid="deal-delete-btn">
+                ลบดีลนี้
+              </button>
+            ) : (
+              <p className="text-xs text-[color:var(--color-muted)]">ดีลที่ชนะแล้วหรือมีเอกสารบัญชีลบไม่ได้ — ย้ายเป็นแพ้พร้อมเหตุผลแทน</p>
+            ))}
           <Msg m={msg} testid="deal-menu-msg" />
         </div>
       )}

@@ -64,6 +64,7 @@ export async function CrmActivityBlock({
       canManage={actor.role === "OWNER" || actor.role === "MANAGER"}
       canLog={canLog}
       canComplete={can("crm.activity.complete")}
+      canDelete={canLog && can("crm.activity.delete")}
       allHref={`/app/sys/${ctx.systemId}/crm/activities?${q.toString()}`}
     />
   );

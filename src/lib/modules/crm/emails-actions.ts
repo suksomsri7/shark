@@ -19,7 +19,7 @@ import type { MemberActor } from "@/lib/modules/member";
 import { assertCanCrm } from "./access";
 import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
-import { CRM_EMAIL_SUBJECT_MAX, crmEmailFailText } from "./emails-shared";
+import { CRM_EMAIL_SUBJECT_MAX, crmEmailFailText, crmEmailHtmlToComposerText } from "./emails-shared";
 import { withFieldError } from "./field-errors-shared";
 import * as emails from "./emails";
 import * as activities from "./activities";
@@ -63,7 +63,10 @@ export async function sendCrmEmailAction(
     contactId: string;
     to?: string[];
     subject: string;
-    bodyHtml: string;
+    /** HTML (ผู้เรียกเดิม) — ช่องเขียนจดหมายบนหน้าจอส่ง `bodyText` แทนตั้งแต่ CRM C4.4-fix2 */
+    bodyHtml?: string;
+    /** CRM C4.4-fix2 ▸ J1: ข้อความล้วนจากช่องเขียนจดหมาย — บริการแปลงเป็น HTML ที่มีลิงก์นับคลิก (ตัวแปลงเดียวกับกฎ/ลำดับติดตาม) ◂ */
+    bodyText?: string;
     templateId?: string | null;
     scheduledAt?: string | null;
     replyToEmailId?: string | null;
@@ -81,7 +84,7 @@ export async function sendCrmEmailAction(
       contactId: String(input?.contactId ?? ""),
       ...(Array.isArray(input?.to) && input.to.length ? { to: input.to } : {}),
       subject: String(input?.subject ?? ""),
-      bodyHtml: String(input?.bodyHtml ?? ""),
+      ...(typeof input?.bodyText === "string" && !input?.bodyHtml ? { bodyText: input.bodyText } : { bodyHtml: String(input?.bodyHtml ?? "") }),
       ...(input?.templateId ? { templateId: input.templateId } : {}),
       ...(input?.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
       ...(input?.replyToEmailId ? { replyToEmailId: input.replyToEmailId } : {}),
@@ -96,7 +99,7 @@ export async function sendCrmEmailAction(
     const subject = String(input?.subject ?? "").trim();
     return withFieldError(failOf(e), {
       subject: !subject || subject.length > CRM_EMAIL_SUBJECT_MAX || /[\r\n]/.test(subject),
-      body: !String(input?.bodyHtml ?? "").replace(/<[^>]*>/g, "").trim(),
+      body: !(String(input?.bodyText ?? "").trim() || String(input?.bodyHtml ?? "").replace(/<[^>]*>/g, "").trim()),
     });
   }
 }
@@ -244,14 +247,18 @@ export async function deleteCrmEmailTemplateAction(systemId: string, templateId:
   }
 }
 
-/** เนื้อความของแม่แบบ 1 ใบ (ให้หน้าเขียนจดหมายเติมลงช่องเมื่อเลือกแม่แบบ) */
-export async function getCrmEmailTemplateAction(systemId: string, templateId: string): Promise<CrmEmailActionResult<{ subject: string; bodyHtml: string }>> {
+/**
+ * เนื้อความของแม่แบบ 1 ใบ (ให้หน้าเขียนจดหมายเติมลงช่องเมื่อเลือกแม่แบบ)
+ * CRM C4.4-fix2 ▸ J1: + `bodyText` = ข้อความสำหรับช่องเขียนจดหมาย (ข้อความล้วน) ที่ **เก็บ URL ของลิงก์ในแม่แบบไว้** — เดิมหน้าจอตัดแท็กทิ้งเอง
+ *   ⇒ ลิงก์ในแม่แบบหายทั้ง URL · ตอนส่ง ตัวแปลงกลางทำ URL กลับเป็นลิงก์ที่นับคลิกได้ ◂
+ */
+export async function getCrmEmailTemplateAction(systemId: string, templateId: string): Promise<CrmEmailActionResult<{ subject: string; bodyHtml: string; bodyText: string }>> {
   try {
     const { ctx, actor } = await session(systemId, "crm.email.read");
     const rows = await emails.listTemplates(ctx, actor);
     const one = rows.find((t) => t.id === String(templateId ?? ""));
     if (!one) return { ok: false, error: "ไม่พบแม่แบบจดหมายนี้แล้ว — รีเฟรชหน้าแล้วเลือกใหม่", code: "NOT_FOUND" };
-    return { ok: true, subject: one.subject, bodyHtml: one.bodyHtml };
+    return { ok: true, subject: one.subject, bodyHtml: one.bodyHtml, bodyText: crmEmailHtmlToComposerText(one.bodyHtml) };
   } catch (e) {
     return failOf(e);
   }

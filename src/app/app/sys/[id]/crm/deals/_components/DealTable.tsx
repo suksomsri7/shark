@@ -10,18 +10,25 @@ import { useState } from "react";
 import { bulkMoveAction, bulkReassignAction, bulkTagAction, exportDealsAction } from "@/lib/modules/crm/deals-actions";
 import { DEAL_BULK_MAX, DEAL_REASON_MIN, FORECAST_CATEGORY_LABEL, formatBaht, formatThaiDay, type DealListInput, type DealListRow } from "@/lib/modules/crm/deals-shared";
 
+// CRM C4.2-fix ▸ B6: `can` = คีย์ของ server action แต่ละคำสั่งกลุ่ม (deals-actions.ts · หน้าคำนวณด้วย crmCan ของ C1.7)
+//   ย้ายขั้น = crm.deal.move · โอน = crm.deal.reassign (+ crm.deal.update ที่บริการตรวจต่อดีล) · แท็ก = crm.deal.update ·
+//   ส่งออก = crm.deal.export — ไม่มีคำสั่งกลุ่มที่ทำได้เลย ⇒ ไม่มีช่องติ๊ก/แถบคำสั่ง (ไม่ทิ้งแถบว่าง) ◂
+export type DealTableCan = { move: boolean; reassign: boolean; tag: boolean; exportCsv: boolean };
+
 export function DealTable({
   systemId,
   rows,
   stages,
   owners,
   filters,
+  can,
 }: {
   systemId: string;
   rows: DealListRow[];
   stages: { id: string; name: string }[];
   owners: { id: string; name: string }[];
   filters: DealListInput;
+  can: DealTableCan;
 }) {
   const router = useRouter();
   const base = `/app/sys/${systemId}/crm/deals`;
@@ -35,6 +42,7 @@ export function DealTable({
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const all = rows.length > 0 && picked.length === rows.length;
+  const bulk = can.move || can.reassign || can.tag;
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const needDanger = (): string | null => {
@@ -88,14 +96,19 @@ export function DealTable({
 
   return (
     <div className="flex min-w-0 flex-col gap-3" data-testid="deal-table">
+      {(bulk || can.exportCsv) && (
       <div className="card flex flex-col gap-2 p-3 text-sm" data-testid="deal-bulk-bar">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="font-medium">เลือกแล้ว {picked.length.toLocaleString("th-TH")} ดีล</span>
-          <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doExport()} data-testid="deal-export-btn">
-            ส่งออก CSV
-          </button>
+          {bulk ? <span className="font-medium">เลือกแล้ว {picked.length.toLocaleString("th-TH")} ดีล</span> : <span className="text-[color:var(--color-muted)]">ดีล {rows.length.toLocaleString("th-TH")} รายการในหน้านี้</span>}
+          {can.exportCsv && (
+            <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doExport()} data-testid="deal-export-btn">
+              ส่งออก CSV
+            </button>
+          )}
         </div>
+        {(can.move || can.reassign) && (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {can.move && (
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>ย้ายไปขั้น</span>
             <select value={stageId} onChange={(e) => setStageId(e.target.value)} className="input text-sm" data-testid="deal-bulk-stage">
@@ -107,6 +120,8 @@ export function DealTable({
               ))}
             </select>
           </label>
+          )}
+          {can.reassign && (
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
             <span>โอนให้</span>
             <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="input text-sm" data-testid="deal-bulk-owner">
@@ -118,39 +133,52 @@ export function DealTable({
               ))}
             </select>
           </label>
+          )}
           <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)] lg:col-span-2">
-            <span>เหตุผล (ย้ายขั้น/โอน · อย่างน้อย {DEAL_REASON_MIN} ตัวอักษร)</span>
+            <span>เหตุผล ({[can.move ? "ย้ายขั้น" : "", can.reassign ? "โอน" : ""].filter(Boolean).join("/")} · อย่างน้อย {DEAL_REASON_MIN} ตัวอักษร)</span>
             <input value={reason} onChange={(e) => setReason(e.target.value)} className="input text-sm" data-testid="deal-bulk-reason" />
           </label>
         </div>
+        )}
+        {bulk && (
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} data-testid="deal-bulk-confirm" />
-            ยืนยันทำกับดีลที่เลือก
-          </label>
-          <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doMove()} data-testid="deal-bulk-move">
-            ย้ายขั้น
-          </button>
-          <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doReassign()} data-testid="deal-bulk-reassign">
-            โอนผู้ดูแล
-          </button>
-          <span className="flex items-center gap-1">
-            <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="แท็ก" aria-label="แท็กที่จะติด" className="input w-28 text-sm" data-testid="deal-bulk-tag-input" />
-            <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doTag()} data-testid="deal-bulk-tag">
-              ติดแท็ก
+          {(can.move || can.reassign) && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={confirm} onChange={(e) => setConfirm(e.target.checked)} data-testid="deal-bulk-confirm" />
+              ยืนยันทำกับดีลที่เลือก
+            </label>
+          )}
+          {can.move && (
+            <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doMove()} data-testid="deal-bulk-move">
+              ย้ายขั้น
             </button>
-          </span>
+          )}
+          {can.reassign && (
+            <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doReassign()} data-testid="deal-bulk-reassign">
+              โอนผู้ดูแล
+            </button>
+          )}
+          {can.tag && (
+            <span className="flex items-center gap-1">
+              <input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="แท็ก" aria-label="แท็กที่จะติด" className="input w-28 text-sm" data-testid="deal-bulk-tag-input" />
+              <button type="button" className="btn btn-ghost text-sm" disabled={busy} onClick={() => void doTag()} data-testid="deal-bulk-tag">
+                ติดแท็ก
+              </button>
+            </span>
+          )}
         </div>
+        )}
         {msg && (
           <p className="text-sm" style={{ color: msg.ok ? "var(--color-accent)" : "var(--color-danger)" }} role="status" data-testid="deal-bulk-msg">
             {msg.text}
           </p>
         )}
       </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="hidden grid-cols-[32px_minmax(0,2fr)_minmax(0,1fr)_110px_110px_110px_120px] gap-2 border-b px-3 py-2 text-xs font-semibold text-[color:var(--color-muted)] md:grid">
-          <input type="checkbox" checked={all} onChange={() => setPicked(all ? [] : rows.map((r) => r.id))} aria-label="เลือกทั้งหมด" data-testid="deal-check-all" />
+          {bulk ? <input type="checkbox" checked={all} onChange={() => setPicked(all ? [] : rows.map((r) => r.id))} aria-label="เลือกทั้งหมด" data-testid="deal-check-all" /> : <span aria-hidden="true" />}
           <span>ดีล</span>
           <span>ขั้น</span>
           <span className="text-right">มูลค่า</span>
@@ -162,7 +190,7 @@ export function DealTable({
         <ul className="divide-y">
           {rows.map((r) => (
             <li key={r.id} className="grid grid-cols-[32px_minmax(0,1fr)] gap-2 px-3 py-2 text-sm md:grid-cols-[32px_minmax(0,2fr)_minmax(0,1fr)_110px_110px_110px_120px] md:items-center">
-              <input type="checkbox" checked={picked.includes(r.id)} onChange={() => toggle(r.id)} aria-label={`เลือกดีล ${r.title}`} data-testid={`deal-row-check-${r.id}`} />
+              {bulk ? <input type="checkbox" checked={picked.includes(r.id)} onChange={() => toggle(r.id)} aria-label={`เลือกดีล ${r.title}`} data-testid={`deal-row-check-${r.id}`} /> : <span aria-hidden="true" />}
               <span className="flex min-w-0 flex-col">
                 <Link href={`${base}/${r.id}`} className="break-words font-medium hover:underline" data-testid={`deal-row-link-${r.id}`}>
                   {r.title}
