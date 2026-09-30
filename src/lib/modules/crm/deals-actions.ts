@@ -6,7 +6,7 @@
 // 🔴 F6: ทุก action ตรวจสิทธิ์ด้วย assertCan ก่อนลงมือ (convention crm.deal.<verb> — OWNER/MANAGER ผ่าน · STAFF ตามสิทธิ์)
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้ (+ `missing` ของเงื่อนไขก่อนเข้าขั้น)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -68,8 +68,8 @@ function failOf(e: unknown, multiStep = false): Fail {
 
 const base = (systemId: string) => `/app/sys/${systemId}/crm/deals`;
 const touch = (systemId: string, dealId?: string) => {
-  revalidatePath(base(systemId));
-  if (dealId) revalidatePath(`${base(systemId)}/${dealId}`);
+  revalidateAndWake(base(systemId));
+  if (dealId) revalidateAndWake(`${base(systemId)}/${dealId}`);
 };
 
 export async function createDealAction(systemId: string, input: CreateDealInput): Promise<{ ok: true; id: string } | Fail> {

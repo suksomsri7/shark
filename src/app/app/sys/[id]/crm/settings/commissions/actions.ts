@@ -6,7 +6,7 @@
 // 🔴 uiVersion: หน้านี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด = ปฏิเสธภาษาไทย (assertCrmV2 · CRM_V2_DISABLED)
 // 🔴 คีย์ตรวจในบริการทุกคำสั่ง (crm.settings.manage · crm.commission.approve + เพดานวงเงินของผู้กด) · ข้อความ error ไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -33,8 +33,8 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
 }
 
 const touch = (systemId: string) => {
-  revalidatePath(`/app/sys/${systemId}/crm/settings/commissions`);
-  revalidatePath(`/app/sys/${systemId}/crm/commissions`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/settings/commissions`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/commissions`);
 };
 
 function ruleInputOf(d: CrmCommissionRuleDraft): RuleInput {

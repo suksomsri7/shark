@@ -7,7 +7,7 @@
 // 🔴 AUDIT-CLASS X9: ลงทะเบียนเป็นกลุ่ม/เก็บลำดับ = การกระทำอันตราย — ยืนยัน + เหตุผล ตรวจในบริการ (หน้าแค่ส่งค่าที่ผู้ใช้กรอก)
 // 🔴 ข้อความผิดพลาดเป็นภาษาไทยที่ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดไปหน้าจอ)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -72,8 +72,8 @@ function createSeqFieldBad(input: SeqSequenceInput): Record<string, boolean> {
   };
 }
 
-const touchList = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/sequences`);
-const touchOne = (systemId: string, id: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/sequences/${id}`);
+const touchList = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/sequences`);
+const touchOne = (systemId: string, id: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/sequences/${id}`);
 
 /** สร้างลำดับการติดตามใหม่ (ต้องมีอย่างน้อย 1 ขั้น) */
 export async function createSequenceAction(systemId: string, input: SeqSequenceInput): Promise<{ ok: true; id: string } | Fail> {
@@ -126,7 +126,7 @@ export async function enrollContactAction(
       dealId: input?.dealId ? String(input.dealId) : null,
       replace: input?.replace === true,
     });
-    revalidatePath(`/app/sys/${systemId}/crm/contacts/${String(input?.contactId ?? "")}`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/contacts/${String(input?.contactId ?? "")}`);
     touchList(systemId);
     if ("skipped" in r) return { ok: true, status: "SKIPPED", skipped: true, note: r.reason };
     return { ok: true, status: r.status, skipped: false, note: r.status === "REPLACED" ? "เริ่มลำดับใหม่ให้แล้ว (ของเดิมถูกหยุด)" : "ใส่เข้าลำดับการติดตามแล้ว" };
@@ -149,7 +149,7 @@ export async function bulkEnrollContactsAction(
       reason: String(input?.reason ?? ""),
       replace: input?.replace === true,
     });
-    revalidatePath(`/app/sys/${systemId}/crm/contacts`);
+    revalidateAndWake(`/app/sys/${systemId}/crm/contacts`);
     touchList(systemId);
     return { ok: true, enrolled: r.enrolled, skipped: r.skipped.length, conflicts: r.conflicts };
   } catch (e) {
@@ -197,7 +197,7 @@ export async function resumeEnrollmentAction(systemId: string, enrollmentId: str
   }
 }
 
-const touchCalendar = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/holidays`);
+const touchCalendar = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/holidays`);
 
 /** วันทำการของร้าน (settings.crm.businessDays) */
 export async function setBusinessDaysAction(systemId: string, days: number[]): Promise<{ ok: true; businessDays: number[] } | Fail> {

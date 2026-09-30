@@ -11,7 +11,7 @@
 // 🔴 ข้อความ error เป็นภาษาไทยที่ไม่โทษผู้ใช้ · error ที่ไม่รู้จัก = ข้อความกลาง (รายละเอียดไม่หลุดออกหน้าจอ)
 // 🔴 AUDIT-CLASS X8: ไม่ log หัวเรื่อง/เนื้อความ/ที่อยู่ — บันทึกเฉพาะชนิดของ error
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -47,9 +47,9 @@ function failOf(e: unknown): { ok: false; error: string; code?: string } {
   return { ok: false, error: "ทำรายการไม่สำเร็จ ระบบยกเลิกให้แล้ว (ข้อมูลอีเมลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touchInbox = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/emails`);
-const touchThread = (systemId: string, threadKey: string) => revalidatePath(`/app/sys/${systemId}/crm/emails/${threadKey}`);
-const touchSettings = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/email`);
+const touchInbox = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/emails`);
+const touchThread = (systemId: string, threadKey: string) => revalidateAndWake(`/app/sys/${systemId}/crm/emails/${threadKey}`);
+const touchSettings = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/email`);
 
 // ───────────────────────── เขียนจดหมาย ─────────────────────────
 

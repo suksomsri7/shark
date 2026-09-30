@@ -6,7 +6,7 @@
 // 🔴 AUDIT-CLASS X9: ทุกการตั้ง/ลบ policy เขียน AuditLog `crm.visibility.policy.*` (targetId = id ของ policy) ในบริการ
 // 🔴 uiVersion: หน้านี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด = FORBIDDEN ภาษาไทย (assertCrmV2)
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -35,7 +35,7 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (การตั้งค่าไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touch = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/visibility`);
+const touch = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/visibility`);
 
 /** ตั้งระดับการมองเห็น (บทบาท/ทีม/pipeline × ชนิดข้อมูล) — มีอยู่แล้ว = แก้ระดับ (ไม่เกิดแถวซ้ำ) */
 export async function setVisibilityPolicyAction(

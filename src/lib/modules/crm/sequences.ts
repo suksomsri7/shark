@@ -1304,6 +1304,9 @@ async function advance(
  *   คืน true เมื่อ "ปิดจ๊อบ" แถวนี้แล้ว
  */
 const MAX_STEP_ATTEMPTS = 5;
+// CRM C5.4-D ▸ L3-M2: ระยะพักก่อนลองขั้นส่งที่ล้มอีกครั้ง — 15 นาที × 2^(ครั้งที่ล้มก่อนหน้า) สูงสุด 2 ชม. ◂
+const STEP_RETRY_BASE_MS = 15 * 60_000;
+const STEP_RETRY_MAX_MS = 2 * 60 * 60_000;
 
 async function failAttempt(enrollmentId: string, stepIndex: number, now: Date): Promise<boolean> {
   const e = await prisma.crmSequenceEnrollment.findUnique({
@@ -1387,6 +1390,39 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
   const cal = await calendarOf(cache, seq.systemId);
   const kind = step.kind as SeqStepKind;
 
+  // CRM C5.4-D ▸ L3-M1 (ส่วน CRM): ด่าน "ดีลปิดแล้ว" ณ เวลาขั้นทำงาน — ก่อนขั้นส่ง/ขั้นงานทุกขั้น
+  //   เดิมการหยุดเมื่อชนะ/แพ้มีทางเดียวคือตัวรับ event `crm.deal.won/lost` (crm-bridges/sequences.ts) ⇒ ช่วงที่ event ยังไม่ถูกระบาย
+  //   ลำดับยังส่งอีเมลหาลูกค้าที่ซื้อแล้ว/ปฏิเสธแล้ว และร้านที่ปิด "เชื่อมโมดูลอื่น" (bridgesEnabled=false) ไม่มีวันหยุดเลย
+  //   ⇒ อ่านดีลสดที่นี่ **ไม่ขึ้นกับ bridgesEnabled** (ลำดับการติดตามเป็นของ CRM เอง ไม่ใช่สะพาน) · เคารพธง stopOnWon/stopOnLost
+  //   รูปเดียวกับบล็อก OPT_OUT: เขียนสถานะแบบมีเงื่อนไข (lease ของฉัน + ขั้นเดิม) + บันทึกขั้น + finished + สมุดตรวจ ใน tx เดียว
+  //   ดีลที่ถูกลบ/เก็บแต่ยังเปิดอยู่ = เดินต่อ (ไม่มีโค้ดเหตุหยุดสำหรับกรณีนี้ในรายการปิด — รายงานผู้คุมงาน) · ร้านรุ่น 1 ไม่มาถึงที่นี่ (runDue ดึงเฉพาะระบบ v2)
+  if (kind !== "WAIT" && e.dealId && (seq.stopOnWon || seq.stopOnLost)) {
+    const deal = await prisma.crmDeal.findFirst({ where: { id: e.dealId, tenantId: e.tenantId, systemId: seq.systemId }, select: { kind: true } });
+    const closedAs: "WON" | "LOST" | null = deal?.kind === "WON" && seq.stopOnWon ? "WON" : deal?.kind === "LOST" && seq.stopOnLost ? "LOST" : null;
+    if (closedAs) {
+      const ok = await prisma.$transaction(async (tx) => {
+        const n = await tx.crmSequenceEnrollment.updateMany({
+          where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } },
+          data: { status: "STOPPED", stoppedReason: closedAs, stoppedAt: now, nextAt: null, leaseUntil: null },
+        });
+        if (n.count !== 1) return false;
+        await appendLog(tx, e.id, {
+          ...base,
+          outcome: "SKIPPED",
+          reason: closedAs === "WON" ? "ไม่ได้ทำขั้นนี้ — ดีลที่ผูกไว้ปิดเป็นชนะแล้ว ระบบหยุดลำดับนี้ให้" : "ไม่ได้ทำขั้นนี้ — ดีลที่ผูกไว้ปิดเป็นแพ้แล้ว ระบบหยุดลำดับนี้ให้",
+        });
+        await emitFinished(tx, seq!.systemId, e, "STOPPED", closedAs);
+        await auditTx(tx, { tenantId: e.tenantId }, null, "crm.sequence.auto_stop", "CrmSequenceEnrollment", e.id, {
+          before: { status: "ACTIVE", stepIndex: c.stepIndex },
+          after: { status: "STOPPED", reason: closedAs, by: "engine" },
+        });
+        return true;
+      });
+      return ok ? "finished" : "failed";
+    }
+  }
+  // ◂ CRM C5.4-D
+
   if (kind === "WAIT") {
     const next = afterWait(now, step.waitDays ?? 0, step.waitHours ?? 0, rules, cal);
     const moved = await advance(e, seq.systemId, c, isLast, next, { ...base, outcome: "DONE", reason: null });
@@ -1441,6 +1477,29 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
     o = { i: c.stepIndex, type: action.type, ok: false, note: `ทำขั้นนี้ไม่สำเร็จ — ${errText(err)}` };
   }
   const outcome: SeqOutcome = o.ok ? (kind === "TASK" ? "DONE" : "SENT") : o.skipped ? "SKIPPED" : "FAILED";
+  // CRM C5.4-D ▸ L3-M2: ขั้น "ส่ง" ที่ตัวส่งตอบว่าไม่สำเร็จ (Resend 429/5xx/หมดเวลา · LINE ล่ม — ไม่ใช่ "ข้าม") **ไม่เลื่อนขั้น**
+  //   เดิม advance() ทุกผล ⇒ ข้อความ "ระบบจะลองขั้นนี้อีกครั้งในรอบถัดไป" ไม่เคยจริง: ขั้นนั้นหายถาวร และขั้นถัดไปยิงต่อในรอบเดียวกัน
+  //   ⇒ คงขั้นเดิม · ปล่อย lease · nextAt = now + พักตามจำนวนครั้ง (15 นาที × 2^ครั้งก่อน ≤ 2 ชม.) · บันทึกขั้น (tx เดียว · เงื่อนไข lease ของฉัน)
+  //   แล้วนับครั้งด้วย `failAttempt` ตัวเดิม (ครบ MAX_STEP_ATTEMPTS ⇒ STOPPED "FAILED" + finished + สมุดตรวจ ใน tx ของมัน)
+  //   🔴 ลำดับจงใจ: tx ปล่อยขั้นก่อน แล้วค่อยนับ — ธุรกรรม "หยุดเพราะล้มครบ" ต้องเป็นการเขียนสุดท้ายของแถว (C2.2-X9.5 เทียบ xmin
+  //      ของแถว/สมุดตรวจ/event) และถ้า tx แรกล้ม (เช่นข้อความผิดพลาดเขียนลง jsonb ไม่ได้) เส้น exception ของ runDue นับให้ครั้งเดียวเหมือนเดิม
+  //   ขั้นงาน (TASK) คงพฤติกรรมเดิม — ตัวส่งงานมีกุญแจกันซ้ำของมันเอง และผลตรวจครอบเฉพาะขั้นส่ง
+  if (outcome === "FAILED" && SEQ_SEND_KINDS.has(kind)) {
+    const statsObj = e.stats && typeof e.stats === "object" && !Array.isArray(e.stats) ? (e.stats as Record<string, unknown>) : {};
+    const tries = statsObj.attempts && typeof statsObj.attempts === "object" ? Number((statsObj.attempts as Record<string, unknown>)[`v${e.sequenceVersion}:${c.stepIndex}`] ?? 0) : 0;
+    const retryAt = new Date(now.getTime() + Math.min(STEP_RETRY_BASE_MS * 2 ** Math.max(0, Math.min(tries, 6)), STEP_RETRY_MAX_MS));
+    const held = await prisma.$transaction(async (tx) => {
+      const n = await tx.crmSequenceEnrollment.updateMany({
+        where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } },
+        data: { nextAt: retryAt, leaseUntil: null },
+      });
+      await appendLog(tx, e.id, { ...base, outcome, reason: o.note || "ทำขั้นนี้ไม่สำเร็จ — ระบบจะลองขั้นนี้อีกครั้งภายหลัง" });
+      return n.count === 1;
+    });
+    if (held) await failAttempt(e.id, c.stepIndex, now);
+    return "failed";
+  }
+  // ◂ CRM C5.4-D
   const moved = await advance(e, seq.systemId, c, isLast, now, { ...base, outcome, reason: o.ok ? null : o.note || "ทำขั้นนี้ไม่สำเร็จ" });
   if (!moved) return "failed";
   return isLast ? "finished" : outcome === "FAILED" ? "failed" : "executed";

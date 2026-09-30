@@ -4,7 +4,7 @@
 // 🔴 "use server" = ส่งออกได้เฉพาะ async function (ชนิดข้อมูลอยู่ที่ integrations-shared.ts)
 // 🔴 tenantId มาจาก session เสมอ · systemId ถูกตรวจใหม่ในบริการ (ระบบ CRM ของร้านนี้จริง) · id ของระบบปลายทางถูกตรวจว่าเป็นของร้านนี้
 // 🔴 ด่าน: uiVersion 2 → คีย์ `crm.settings.manage` → บริการตรวจซ้ำ (jsonb_set คำสั่งเดียว + audit `crm.integrations.targets`)
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { toMemberActor } from "@/lib/modules/member";
@@ -32,7 +32,7 @@ export async function saveIntegrationTargetsAction(systemId: string, patch: Part
       clean[key] = typeof v === "string" && v.trim() ? v.trim() : null;
     }
     const targets = await setTargets(ctx, actor, clean);
-    revalidatePath(`/app/sys/${ctx.systemId}/crm/settings/integrations`);
+    revalidateAndWake(`/app/sys/${ctx.systemId}/crm/settings/integrations`);
     return { ok: true, targets };
   } catch (e) {
     if (e instanceof IntegrationsError || e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };

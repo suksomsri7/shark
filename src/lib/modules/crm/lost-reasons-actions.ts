@@ -3,7 +3,7 @@
 // lost-reasons-actions.ts — server actions ของหน้าตั้งค่า "เหตุผลที่แพ้" (CRM v2 · ใบ C1.5)
 // 🔴 "use server" = export ได้เฉพาะ async function · F6: assertCan `crm.settings.manage` · error ไทยที่ไม่โทษผู้ใช้
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "./outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "./access";
@@ -34,7 +34,7 @@ function failOf(e: unknown): Fail {
   return { ok: false, error: "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง" };
 }
 
-const touch = (systemId: string) => revalidatePath(`/app/sys/${systemId}/crm/settings/lost-reasons`);
+const touch = (systemId: string) => revalidateAndWake(`/app/sys/${systemId}/crm/settings/lost-reasons`);
 
 export async function createLostReasonAction(systemId: string, label: string): Promise<{ ok: true } | Fail> {
   try {

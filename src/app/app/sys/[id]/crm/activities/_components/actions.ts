@@ -7,7 +7,7 @@
 // 🔴 ไม่โยน error ดิบถึงหน้าจอ — คืน { ok:false, error } ภาษาไทยที่ไม่โทษผู้ใช้ · log แค่ชนิด error (ไม่มีเนื้อโน้ต/ชื่อไฟล์ — X8)
 // 🔴 actor มาจาก `toMemberActor` เท่านั้น
 
-import { revalidatePath } from "next/cache";
+import { revalidateAndWake } from "@/lib/modules/crm/outbox-wake"; // CRM C5.4-D ▸ L3-M1b: รีเฟรชหน้า + ปลุกคิว outbox หลังเขียนสำเร็จ ◂
 import { requireTenant } from "@/lib/core/context";
 import { ForbiddenError } from "@/lib/core/rbac";
 import { assertCanCrm } from "@/lib/modules/crm/access";
@@ -54,11 +54,11 @@ function failOf(e: unknown): Fail {
 
 /** หน้าที่แสดงกิจกรรม/ไฟล์: รายการ · ปฏิทิน (ของระบบนี้) + หน้า 360 ทั้งสามชนิด (แพตเทิร์น — ผู้กดยัง router.refresh() เองด้วย) */
 const touch = (systemId: string) => {
-  revalidatePath(`/app/sys/${systemId}/crm/activities`);
-  revalidatePath(`/app/sys/${systemId}/crm/calendar`);
-  revalidatePath("/app/sys/[id]/crm/contacts/[contactId]", "page");
-  revalidatePath("/app/sys/[id]/crm/companies/[companyId]", "page");
-  revalidatePath("/app/sys/[id]/crm/deals/[dealId]", "page");
+  revalidateAndWake(`/app/sys/${systemId}/crm/activities`);
+  revalidateAndWake(`/app/sys/${systemId}/crm/calendar`);
+  revalidateAndWake("/app/sys/[id]/crm/contacts/[contactId]", "page");
+  revalidateAndWake("/app/sys/[id]/crm/companies/[companyId]", "page");
+  revalidateAndWake("/app/sys/[id]/crm/deals/[dealId]", "page");
 };
 
 export async function logActivityAction(systemId: string, input: LogActivityInput): Promise<{ ok: true; id: string; nextTaskId: string | null; notified: string[] } | Fail> {

@@ -2783,6 +2783,71 @@ function svixOk(headers: Record<string, string>, rawBody: string, nowSec: number
   return false;
 }
 
+// CRM C5.4-D ▸ L3-m2: ขั้น "หลัง commit" ของเหตุการณ์ตีกลับ/แจ้งสแปม — idempotent และถูกเรียกซ้ำเมื่อ Svix ยิงซ้ำ
+//   เดิม: tx บันทึกแถวเหตุการณ์ (providerEventId unique) + ธง แล้ว "หลัง commit" ค่อยเขียนแถวถอนความยินยอม (กลืน error) + หยุดลำดับ
+//   ⇒ เครื่องดับ/ฐานสะดุดตรงนั้น = การยิงซ้ำทุกครั้งชนกุญแจ → ตอบ 200 "replay" → ขั้นเหล่านั้นไม่เคยเกิดอีกเลย
+//   (สมุด PDPA ไม่มีแถวถอน · ลำดับที่ส่ง LINE/SMS ยังเดินต่อ) · และ error ชั่วคราวของ consents.set ทำแถวหายถาวรแม้ไม่มีเครื่องดับ
+//   ตอนนี้: ขั้นเหล่านี้ล้มแบบชั่วคราว = โยน ⇒ ผู้เรียกตอบ 500 (Svix ยิงใหม่) · การยิงซ้ำ (ชนกุญแจ) เรียกขั้นเหล่านี้อีกครั้ง
+//   🔴 การยิงซ้ำทำเฉพาะเมื่อผู้ติดต่อ "ยังอยู่ในสถานะที่เหตุการณ์นั้นตั้งไว้" (ยังขอไม่รับ/ยังเป็นอีเมลเด้ง) — ลูกค้าที่กลับมาให้ความยินยอม
+//      ใหม่หลังเหตุการณ์ต้องไม่ถูกถอนซ้ำโดยการยิงซ้ำที่มาช้า (แถวถอนเขียนเมื่อความยินยอมอีเมลยังไม่ถูกถอน และไม่มีใครแก้หลังเหตุการณ์)
+//   error ถาวร (ผู้ติดต่อถูกรวม/สมาชิกที่ผูกหายไป — VALIDATION/CONFLICT/NOT_FOUND/FORBIDDEN) = WARN แล้วเดินต่อ ไม่ให้ Svix ยิงวนไม่รู้จบ ◂
+const PERMANENT_AFTER_STEP = new Set(["VALIDATION", "CONFLICT", "NOT_FOUND", "FORBIDDEN"]);
+
+async function complaintAfterSteps(ctx: { tenantId: string; systemId: string }, contactId: string, flipped: boolean | null, eventAt: Date | null): Promise<{ consent: boolean; stopped: number }> {
+  const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { emailOptOut: true, mergedIntoId: true } });
+  if (!c) return { consent: false, stopped: 0 };
+  // ยิงซ้ำ (flipped = null): สถานะขอไม่รับถูกยกเลิกไปแล้ว = ผลของเหตุการณ์นี้ถูกแทนที่ ⇒ ไม่แตะอะไร
+  if (flipped === null && !c.emailOptOut) return { consent: false, stopped: 0 };
+  let write = flipped === true;
+  if (flipped === null && !c.mergedIntoId) {
+    const view = await consents.current({ ...ctx, actorUserId: null }, SYSTEM_ACTOR, contactId);
+    const email = view.channels.find((ch) => ch.channel === "EMAIL");
+    const changedAt = email?.at ? new Date(email.at).getTime() : 0;
+    write = email?.granted !== false && (!eventAt || changedAt <= eventAt.getTime());
+  }
+  let consent = false;
+  if (write && !c.mergedIntoId) {
+    try {
+      // ที่มาใช้ค่าเดียวกับการกดยกเลิกรับ (`UNSUBSCRIBE` — ทะเบียนที่มาเป็นของใบ C1.x ไม่มีค่า COMPLAINT)
+      await consents.set({ ...ctx, actorUserId: null }, SYSTEM_ACTOR, contactId, {
+        channel: "EMAIL",
+        granted: false,
+        source: "UNSUBSCRIBE",
+        note: "ผู้ให้บริการอีเมลแจ้งว่าลูกค้ากดรายงานว่าเป็นสแปม",
+      });
+      consent = true;
+    } catch (e) {
+      if (!PERMANENT_AFTER_STEP.has(String((e as { code?: unknown })?.code ?? ""))) throw e;
+      await logOps("WARN", "crm.email.webhook", "บันทึกการถอนความยินยอมหลังแจ้งสแปมไม่ได้ (ข้อมูลผู้ติดต่อไม่พร้อม)", {
+        tenantId: ctx.tenantId,
+        detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
+      }).catch(() => {});
+    }
+  }
+  const seq = await import("./sequences");
+  const stopped = await seq.stopFor(ctx, contactId, "OPT_OUT");
+  return { consent, stopped };
+}
+
+async function bounceAfterSteps(ctx: { tenantId: string; systemId: string }, contactId: string, replay: boolean): Promise<number> {
+  if (replay) {
+    const c = await prisma.crmContact.findFirst({ where: { id: contactId, tenantId: ctx.tenantId }, select: { emailBouncedAt: true } });
+    if (!c?.emailBouncedAt) return 0; // ธงเด้งถูกล้างไปแล้ว (แก้อีเมล/ผู้ดูแลล้าง) = ไม่หยุดซ้ำ
+  }
+  const seq = await import("./sequences");
+  return seq.stopFor(ctx, contactId, "BOUNCE");
+}
+
+/** ขั้นหลัง commit ล้มแบบชั่วคราว ⇒ 500 ให้ Svix ยิงใหม่ (การยิงซ้ำเรียกขั้นเหล่านี้อีกครั้ง) */
+async function afterStepsFailed(tenantId: string, what: string, e: unknown): Promise<ProviderWebhookResult> {
+  await logOps("WARN", "crm.email.webhook", `ขั้นหลังบันทึก${what}ไม่สำเร็จ — ผู้ให้บริการจะส่งเหตุการณ์ซ้ำแล้วระบบทำขั้นนี้ใหม่`, {
+    tenantId,
+    detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
+  }).catch(() => {});
+  return { status: 500, handled: false, reason: "after_steps_failed" };
+}
+// ◂ CRM C5.4-D
+
 export async function providerWebhook(input: ProviderWebhookInput): Promise<ProviderWebhookResult> {
   const rawBody = typeof input?.rawBody === "string" ? input.rawBody : "";
   if (Buffer.byteLength(rawBody, "utf8") > WEBHOOK_MAX_BYTES) return { status: 413, handled: false, reason: "too_large" };
@@ -2832,14 +2897,33 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
         await emitEmailEvent(tx, ctx, EVT.bounced, row, eventId);
       });
     } catch (e) {
-      if (isUniqueViolation(e)) return { status: 200, handled: true, reason: "replay" };
+      if (isUniqueViolation(e)) {
+        // CRM C5.4-D ▸ L3-m2: ยิงซ้ำ = ทำขั้นหลัง commit ซ้ำแบบ idempotent (ครั้งก่อนอาจดับก่อนถึง) ◂
+        if (!row.contactId) return { status: 200, handled: true, reason: "replay" };
+        try {
+          const stopped = await bounceAfterSteps(ctx, row.contactId, true);
+          if (stopped > 0) {
+            await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.bounced", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "BOUNCE", replay: true, stopped } });
+          }
+        } catch (e2) {
+          return afterStepsFailed(row.tenantId, "อีเมลตีกลับ", e2);
+        }
+        return { status: 200, handled: true, reason: "replay" };
+      }
       await logOps("WARN", "crm.email.webhook", "บันทึกเหตุการณ์อีเมลตีกลับไม่สำเร็จ", {
         tenantId: row.tenantId,
         detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
       }).catch(() => {});
       return { status: 500, handled: false, reason: "db_error" };
     }
-    if (row.contactId) await stopSequencesFor(ctx, row.contactId, "BOUNCE");
+    // CRM C5.4-D ▸ L3-m2: ขั้นหลัง commit ล้ม = 500 (เดิมกลืนเงียบ) — Svix ยิงซ้ำแล้วเส้น "ยิงซ้ำ" ข้างบนทำให้ครบ ◂
+    if (row.contactId) {
+      try {
+        await bounceAfterSteps(ctx, row.contactId, false);
+      } catch (e2) {
+        return afterStepsFailed(row.tenantId, "อีเมลตีกลับ", e2);
+      }
+    }
     await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.bounced", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "BOUNCE" } });
     return { status: 200, handled: true };
   }
@@ -2855,7 +2939,20 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
         return contacts.markEmailOptOutInTx(tx, ctx, row.contactId);
       });
     } catch (e) {
-      if (isUniqueViolation(e)) return { status: 200, handled: true, reason: "replay" };
+      if (isUniqueViolation(e)) {
+        // CRM C5.4-D ▸ L3-m2: ยิงซ้ำ = ทำขั้นหลัง commit ซ้ำแบบ idempotent (แถวถอนความยินยอม + หยุดลำดับ) — ครั้งก่อนอาจดับก่อนถึง ◂
+        if (!row.contactId) return { status: 200, handled: true, reason: "replay" };
+        try {
+          const ev = await prisma.crmEmailEvent.findUnique({ where: { providerEventId: eventId }, select: { at: true } });
+          const r = await complaintAfterSteps(ctx, row.contactId, null, ev?.at ?? null);
+          if (r.consent || r.stopped > 0) {
+            await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.complained", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "COMPLAINT", replay: true, consentWritten: r.consent, stopped: r.stopped } });
+          }
+        } catch (e2) {
+          return afterStepsFailed(row.tenantId, "การแจ้งสแปม", e2);
+        }
+        return { status: 200, handled: true, reason: "replay" };
+      }
       await logOps("WARN", "crm.email.webhook", "บันทึกเหตุการณ์แจ้งสแปมไม่สำเร็จ", {
         tenantId: row.tenantId,
         detail: (e instanceof Error ? e.name : "Error").slice(0, 80),
@@ -2865,19 +2962,13 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
     if (row.contactId) {
       // 🔴 การแจ้งสแปมคือ "ถอนความยินยอม" ที่หนักที่สุดที่ลูกค้าทำได้ — ต้องมีแถวประวัติความยินยอมเหมือน
       //    การกดลิงก์ยกเลิกรับ ไม่ใช่แค่ธงบูลีนบนผู้ติดต่อ (หน้าความยินยอม/รายงาน PDPA อ่านจากแถวนั้น
-      //    และการรวมผู้ติดต่อ/ซิงก์ฝั่งสมาชิกก็เดินตามแถวนั้น) · ที่มาใช้ค่าเดียวกับการกดยกเลิกรับ
-      //    (`UNSUBSCRIBE` — ทะเบียนที่มาเป็นของใบ C1.x ไม่มีค่า COMPLAINT และใบนี้ไม่ใช่เจ้าของทะเบียนนั้น)
-      if (flipped) {
-        await consents
-          .set({ ...ctx, actorUserId: null }, SYSTEM_ACTOR, row.contactId, {
-            channel: "EMAIL",
-            granted: false,
-            source: "UNSUBSCRIBE",
-            note: "ผู้ให้บริการอีเมลแจ้งว่าลูกค้ากดรายงานว่าเป็นสแปม",
-          })
-          .catch(() => null);
+      //    และการรวมผู้ติดต่อ/ซิงก์ฝั่งสมาชิกก็เดินตามแถวนั้น) · ครั้งแรก: แถวถอนเขียนเมื่อรอบนี้เป็นคนพลิกธง (เหมือนเดิม)
+      // CRM C5.4-D ▸ L3-m2: ขั้นเหล่านี้ล้มแบบชั่วคราว = 500 (เดิม `.catch(() => null)` กลืนแถวถอนหายถาวร) ◂
+      try {
+        await complaintAfterSteps(ctx, row.contactId, flipped, null);
+      } catch (e2) {
+        return afterStepsFailed(row.tenantId, "การแจ้งสแปม", e2);
       }
-      await stopSequencesFor(ctx, row.contactId, "OPT_OUT");
     }
     await writeAudit({ tenantId: row.tenantId, actorId: null, actorType: "SYSTEM", action: "crm.email.complained", targetType: "CrmEmailMessage", targetId: row.id, after: { kind: "COMPLAINT" } });
     return { status: 200, handled: true };
