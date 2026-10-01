@@ -5,6 +5,15 @@
 > Logs (not committed): `.qc-shots/pos/p0.3/force.log`, `force2.log`
 
 ## Ratified names (controller 1 Oct)
+### Round 3.2 (controller rulings on the B1 review · oracle 119 checks · ratified with the ruling)
+- **`MEMBER_RIGHTS_UNSUPPORTED`** — new refusal code: the cart has a member whose tier grants an automatic discount (or any member right P1.3 cannot price); returned by `quoteRegisterCart` **and** `submitRegisterSale`, nothing written; i18n key `errors.memberRightsUnsupported` (`refusalMessageKey`). P1.12 removes the need.
+- **`registerScanAction`** — `"use server"` export in `register-actions.ts` wrapping `registerScan` (Q24 Enter on an exact barcode); same rules as the other four actions.
+- **`IDEMPOTENCY_CONFLICT` refusal payload** — means "a bill with this key already exists": carries `saleId` of that bill (always) and the bill's status as `saleStatus` (`status` accepted by the oracle) — required when the bill is `VOIDED`.
+- Ceiling rule: a PERCENT discount whose bp ≤ the seller's ceiling is never refused because of satang rounding; an AMOUNT discount is compared with the ceiling amount rounded half-up.
+- Payments: an entry with amount 0 ⇒ `VALIDATION`; a zero-total bill is submitted with `payMethods: []`; `[]` with a non-zero total ⇒ `PAYMENT_MISMATCH`.
+- `idempotencyKey`: non-empty string, not whitespace-only, ≤ 100 chars, else `VALIDATION`.
+- Idempotency comparison is order-independent (lines are a multiset).
+
 ### Round 3 (final brief `ledger/pos-briefs/pos-brief-P1.3.md` · oracle round 3 on `wip/pos-p1.3` · **RATIFIED by the controller 1 Oct 2026 with the round-3.1 rulings below**; details in `ledger/wo-notes/pos-P1.3-oracle-r3.md` "Round 3.1")
 Round-3.1 rulings (bind the builder): (1) required-option refusal = `OPTIONS_REQUIRED` exactly · (2) `submitRegisterSale` input has a REQUIRED integer `expectedGrandTotalSatang`; order re-price → `PRICE_CHANGED` (carries fresh quote fields) → `PAYMENT_MISMATCH`; missing/non-integer/negative ⇒ `VALIDATION`; part of the idempotency payload · (3) unsellable product line ⇒ `PRODUCT_NOT_FOUND`; `NOT_FOUND` only for ctx · (4) P1.3 pay methods `CASH`/`PROMPTPAY` only (else `VALIDATION`); `cashReceivedSatang` required with cash and ≥ cash portion (else `PAYMENT_MISMATCH`); `changeSatang` = received − cash portion · (5) `CONFLICT → errors.conflict`, `OPTIONS_REQUIRED → errors.optionsRequired` · (6) `pos-reg-coupon-line` not required in P1.3 · (7) byte pins = wanted tripwire · (8) S5.16 excludes `register.ts` · (9) bad `limit` / malformed cursor ⇒ `VALIDATION`, foreign cursor ⇒ `VALIDATION` or own-unit page · (10) legacy `page.tsx` branch may keep Thai · (11) fixtures ratified · (12) manual 86 wins over stock-out in `soldOutReason`.
 Items 1–7 below are therefore ratified as written, with item 1 narrowed to `OPTIONS_REQUIRED` and item 7 now 104 checks (S3.37–S3.39 added).
