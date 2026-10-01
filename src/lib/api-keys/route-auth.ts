@@ -64,3 +64,23 @@ export async function authenticateApiRequest(req: Request): Promise<ApiAuth> {
     expiresAt: v.expiresAt,
   };
 }
+
+// HF-APIV1 ▸ route ข้อมูลรุ่นเดิมของ `/api/v1/*` (ขาย POS · ลูกค้า · คลัง · นัด · คิว · ห้องพัก · ร้านค้า · ตั๋ว)
+//   สร้างมาให้ "คีย์รุ่นเดิมระดับร้าน" เท่านั้น = scopes [] และไม่ผูกระบบ (service.ts: `[] = คีย์อ่านรุ่นเดิมของ /api/v1/*`)
+//   คีย์ที่ออกจากหน้าตั้งค่าของโมดูล (บัญชี/บอร์ดงาน/สมาชิก/CRM) มี scope และ/หรือผูกระบบเสมอ ⇒ ใช้ได้เฉพาะ REST ของโมดูลนั้น
+//   🔴 ปิดไว้ก่อน (fail closed): ไม่ใช่คีย์รุ่นเดิม = 403 ข้อความเดียวกันทุก route ไม่บอกว่ามีข้อมูลหรือไม่
+//   เรียกหลัง authenticateApiRequest() ผ่านแล้ว: `const denied = requireLegacyFullAccessKey(auth); if (denied) return denied;`
+export function requireLegacyFullAccessKey(auth: Extract<ApiAuth, { ok: true }>): Response | null {
+  if (auth.scopes.length === 0 && auth.systemId === null) return null;
+  return apiJson(
+    {
+      error:
+        "คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ได้ — หากต้องการข้อมูลส่วนนี้ ใช้คีย์ API กลางของร้าน (สร้างได้ที่ ตั้งค่า › API สำหรับนักพัฒนา)",
+      error_en:
+        "This API key is limited to the system API it was issued for and cannot read this endpoint. Use a general shop API key (Settings › API for developers).",
+      code: "scope_missing",
+    },
+    403,
+  );
+}
+// ◂ HF-APIV1
