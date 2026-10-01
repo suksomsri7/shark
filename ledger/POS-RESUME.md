@@ -255,3 +255,10 @@
 - รายการ "พฤติกรรมที่เปลี่ยน" ทั้ง branch 16 ข้อ (ฉบับผู้ตรวจ) → ใส่ใน O11 ตอนขอ deploy
 - เตรียม P1.3: tree `shark-pos-p11` สร้าง `wip/pos-p1.3` จาก origin/session/pos + merge `hotfix/pos-page-authz` (อัตโนมัติ ไม่ชน) · กำลังรัน baseline (qc-pos-p1.1 · qc-hf-pos-page-authz)
 - เลนเดิน: 1 = HF-HR-0 ผู้ตรวจรอบ 5b · 2 = (กำลังจะเปิด) ข้อสอบ P1.3 รอบ 3
+
+### P1.3 เริ่มแล้ว — ข้อสอบรอบ 3 (1 ต.ค. 19:05 UTC)
+- tree `shark-pos-p11` · branch `wip/pos-p1.3` = a670d313 (session/pos + merge `hotfix/pos-page-authz` อัตโนมัติ) · push แล้ว
+- baseline ผู้คุมงานบน head นี้: `qc-pos-p1.1` 113/113 · `qc-hf-pos-page-authz` 56/56 · fitness ผ่าน
+- ผู้เขียนข้อสอบรอบ 3 กำลังทำ (`scripts/qc-pos-p1.3.mts` → สัญญาสุดท้ายตาม `pos-brief-P1.3.md`) · โน้ต `ledger/wo-notes/pos-P1.3-oracle-r3.md`
+- ถัดไป: ผู้คุมงานรับรองชื่อใหม่ + ตอบคำถาม → builder (server ก่อน แล้ว UI) → ผู้คุมงานรัน visual-pos → ผู้ตรวจ → hunter
+- เลนเดิน: 1 = HF-HR-0 ผู้ตรวจรอบ 5b · 2 = P1.3 ข้อสอบรอบ 3
