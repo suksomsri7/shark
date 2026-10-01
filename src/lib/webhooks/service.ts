@@ -17,6 +17,7 @@ import type { LookupAddress } from "node:dns";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { privateTargetsAllowed } from "./private-targets";
+import { WEBHOOK_GUARDED_FAMILIES, type WebhookGuardedFamily } from "./labels"; // CRM C5.5-fix3b ▸ F4 ◂
 
 export type Ctx = { tenantId: string };
 /**
@@ -370,9 +371,13 @@ export type WebhookAuthorActor = { userId: string; role: string; unitAccess: str
 export type WebhookAuthor = { actor: WebhookAuthorActor } | { userId: string | null } | { apiKeyId: string | null };
 export type WebhookEventGuard = (tenantId: string, author: WebhookAuthorActor | null, events: readonly string[]) => Promise<string | null>;
 const EVENT_GUARDS = new Map<string, WebhookEventGuard>();
-/** โมดูลลงทะเบียนตัวกันเหตุการณ์ของตัวเอง (ชื่อซ้ำ = แทนที่) — คืน null = ผ่าน · ข้อความไทย = ปฏิเสธ */
-export function registerWebhookEventGuard(name: string, guard: WebhookEventGuard): void {
-  EVENT_GUARDS.set(name, guard);
+/**
+ * โมดูลลงทะเบียนตัวกันเหตุการณ์ของตัวเอง (ชื่อซ้ำ = แทนที่) — คืน null = ผ่าน · ข้อความไทย = ปฏิเสธ
+ * CRM C5.5 ▸ (fix3b · F4) ชื่อ = ครอบครัวเหตุการณ์ที่ตัวกันนี้รับผิดชอบ (`WEBHOOK_GUARDED_FAMILIES` ใน ./labels) — บริการปฏิเสธปลายทางที่แตะ
+ *   ครอบครัวที่ "ไม่มีตัวกันในชื่อนั้น" แม้ตัวกันของครอบครัวอื่นจะลงทะเบียนอยู่ (เดิมปิดเฉพาะตอนทะเบียนว่างทั้งหมด) ◂
+ */
+export function registerWebhookEventGuard(family: WebhookGuardedFamily, guard: WebhookEventGuard): void {
+  EVENT_GUARDS.set(family, guard);
 }
 /** ปฏิเสธโดยตัวกันเหตุการณ์ (403 ข้อความไทย — `mapError` ของ REST แปลงเป็น 403 forbidden) */
 export class WebhookGuardError extends Error {
@@ -404,25 +409,30 @@ async function authorActor(tenantId: string, by: WebhookAuthor): Promise<Webhook
 export function webhookAuthorOfApi(actor: { kind: string; keyId?: string; userId?: string | null }): WebhookAuthor {
   return actor.kind === "apikey" ? { apiKeyId: actor.keyId ?? null } : { userId: actor.userId ?? null };
 }
-// CRM C5.5 ▸ (fix3a · R2-2) ทะเบียนว่างหลังโหลด composition root = root ถูกแก้/ย้ายจนไม่ลงทะเบียนอะไร (สภาพผิดปกติเสมอ — ทุกเส้นทางที่มี `by`
-//   ผ่านบรรทัด import ด้านล่างก่อน ไม่ว่าคำขอจะมาจาก route / server action / REST / ข้อเสนอ AI / สคริปต์) ⇒ ปิด (fail closed) สำหรับปลายทางที่
-//   รับเหตุการณ์ CRM หรือ "ทุกเหตุการณ์" (รายการว่าง) — ตัดสินจากชื่อเหตุการณ์ล้วน ไม่ต้องรู้ว่าร้านมี CRM v2 ไหม (ไม่ import โมดูล CRM · RV-8)
-//   ปลายทางที่รับเฉพาะเหตุการณ์อื่น (สมาชิก · บัญชี · …) ผ่านตามเดิม · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) ไม่ตรวจเหมือนเดิม ◂
+// CRM C5.5 ▸ (fix3a · R2-2 → fix3b · F4) ตัวกันของครอบครัวที่ปลายทางแตะ "ไม่อยู่ในทะเบียน" หลังโหลด composition root = root ถูกแก้/ย้ายจน
+//   ไม่ลงทะเบียนครอบครัวนั้น (สภาพผิดปกติเสมอ — ทุกเส้นทางที่มี `by` ผ่านบรรทัด import ด้านล่างก่อน ไม่ว่าคำขอจะมาจาก route / server action /
+//   REST / ข้อเสนอ AI / สคริปต์) ⇒ ปิด (fail closed) **ต่อครอบครัว** — เดิม (fix3a) ปิดเฉพาะตอนทะเบียนว่างทั้งหมด ⇒ ถ้า root ลงทะเบียนตัวกันของ
+//   โมดูลอื่นไว้แต่ตัวกัน CRM หาย ปลายทาง CRM / ทุกเหตุการณ์ ผ่านโดยไม่มีใครตรวจ · ตัดสินจากชื่อเหตุการณ์ล้วน (ไม่ import โมดูล CRM · RV-8)
+//   ปลายทางที่รับเฉพาะเหตุการณ์นอกทุกครอบครัว (สมาชิก · บัญชี · …) ผ่านตามเดิม · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) ไม่ตรวจเหมือนเดิม ◂
 export const WEBHOOK_GUARDS_MISSING = "ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผู้ดูแลระบบ";
-/** คำนำหน้าเหตุการณ์ CRM — สำเนาของ `CRM_EVENT_PREFIXES` (`modules/crm/api/webhook-events.ts`) เพราะแพลตฟอร์มไม่ import โมดูล CRM (RV-8)
- *  · ด่าน: `scripts/pending/cf3/probe-cf3.mts` R2-2-prefixes เทียบสองรายการนี้ให้ตรงกัน */
-export const WEBHOOK_GUARDED_EVENT_PREFIXES = ["crm.", "custom.record.", "team."] as const;
-/** ปลายทางนี้ต้องมีตัวกันเหตุการณ์ไหม: รายการว่าง (= ทุกเหตุการณ์) หรือมีเหตุการณ์ CRM */
+/** คำนำหน้าของทุกครอบครัวที่ต้องมีตัวกัน (มาจาก `WEBHOOK_GUARDED_FAMILIES` — ไม่ใช่สำเนา) · คงชื่อเดิมไว้ให้ผู้อ่านเดิม (probe-cf3 R22) */
+export const WEBHOOK_GUARDED_EVENT_PREFIXES: readonly string[] = Object.values(WEBHOOK_GUARDED_FAMILIES).flat();
+const GUARDED_FAMILY_NAMES = Object.keys(WEBHOOK_GUARDED_FAMILIES) as WebhookGuardedFamily[];
+/** ครอบครัวที่ปลายทางนี้แตะ: รายการว่าง (= ทุกเหตุการณ์) ⇒ ทุกครอบครัว · ไม่งั้นครอบครัวที่มีคำนำหน้าตรงกับเหตุการณ์ใดเหตุการณ์หนึ่ง */
+export function webhookGuardedFamiliesOf(events: readonly string[]): WebhookGuardedFamily[] {
+  if (events.length === 0) return [...GUARDED_FAMILY_NAMES];
+  return GUARDED_FAMILY_NAMES.filter((f) => events.some((e) => WEBHOOK_GUARDED_FAMILIES[f].some((p) => e.startsWith(p))));
+}
+/** ปลายทางนี้ต้องมีตัวกันเหตุการณ์ไหม: แตะครอบครัวที่ต้องมีตัวกันอย่างน้อยหนึ่งครอบครัว */
 export function webhookEventsNeedGuard(events: readonly string[]): boolean {
-  return events.length === 0 || events.some((e) => WEBHOOK_GUARDED_EVENT_PREFIXES.some((p) => e.startsWith(p)));
+  return webhookGuardedFamiliesOf(events).length > 0;
 }
 async function runEventGuards(tenantId: string, by: WebhookAuthor | undefined, events: readonly string[]): Promise<void> {
   if (by === undefined) return;
   await import("@/lib/webhook-guards");
-  if (EVENT_GUARDS.size === 0) {
-    if (webhookEventsNeedGuard(events)) throw new WebhookGuardError(WEBHOOK_GUARDS_MISSING); // CRM C5.5 ▸ fix3a R2-2: fail closed ◂
-    return;
-  }
+  // CRM C5.5 ▸ fix3b F4: ทุกครอบครัวที่แตะต้องมีตัวกันในชื่อของมัน — ขาดครอบครัวเดียว = ปฏิเสธ (ก่อนรันตัวกันใด ๆ) ◂
+  if (webhookGuardedFamiliesOf(events).some((f) => !EVENT_GUARDS.has(f))) throw new WebhookGuardError(WEBHOOK_GUARDS_MISSING);
+  if (EVENT_GUARDS.size === 0) return;
   let actor: WebhookAuthorActor | null | undefined;
   for (const guard of EVENT_GUARDS.values()) {
     if (actor === undefined) actor = await authorActor(tenantId, by);

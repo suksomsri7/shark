@@ -223,6 +223,11 @@ export type ActivityListItem = ActivityDto & {
   companyName: string | null;
   dealTitle: string | null;
   ownerName: string | null;
+  /**
+   * CRM C5.5 ▸ (fix3b · รีวิว R2b-3) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ (ธงจาก `CrmEmailMessage.routing` ของ fix2)
+   *   ⇒ แถวไทม์ไลน์ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" เหมือนหน้าเธรด/กล่องจดหมาย · ไม่มีช่องนี้ = ไม่มีอะไรต้องเตือน ◂
+   */
+  unverifiedFrom?: true;
 };
 
 // CRM C3.7 ▸ `replayed` = มีแถวของ `opts.sourceRef` เดียวกันอยู่แล้ว ⇒ คืนแถวเดิม ไม่เขียนอะไรใหม่ (ไม่ส่ง sourceRef = ไม่มีช่องนี้) ◂

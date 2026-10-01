@@ -500,3 +500,12 @@ export function crmEmailFailText(code: string | null | undefined): string {
   }
   return `ส่งจดหมายไม่สำเร็จ — ${retry} ลองกดส่งอีกครั้ง`;
 }
+
+// CRM C5.5 ▸ (fix3b · รีวิว R2b-3) ธง "ไม่ยืนยันผู้ส่ง" ของจดหมาย 1 ฉบับ อ่านจาก `CrmEmailMessage.routing` (fix2 เป็นผู้เขียน:
+//   `unverifiedFrom` = From ของลูกค้าไม่มีหลักฐาน · `unverifiedShopFrom` = อ้างที่อยู่พนักงาน/โดเมนร้านโดยไม่มีหลักฐาน) —
+//   ตัวอ่านเดียวของหน้าเธรด (`getThread`) และแถวกิจกรรม EMAIL บนไทม์ไลน์ (`activities.enrich`) · รายการเธรดอ่านคีย์เดียวกันใน SQL ◂
+export function emailRoutingUnverified(routing: unknown): boolean {
+  if (!routing || typeof routing !== "object" || Array.isArray(routing)) return false;
+  const r = routing as Record<string, unknown>;
+  return r.unverifiedFrom === true || r.unverifiedShopFrom === true;
+}

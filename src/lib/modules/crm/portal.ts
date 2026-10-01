@@ -811,10 +811,15 @@ export async function listDocuments(token: string): Promise<{ items: PortalDocum
   return { items: recs.map((r) => ({ id: r.id, objectKey: r.object.key, objectLabel: r.object.label, title: r.title, updatedAt: r.updatedAt, files: files.get(r.id) ?? [] })) };
 }
 
-function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined): string {
+// CRM C5.5 ▸ (fix3b · H2b-5) ฟิลด์ DATETIME เก็บเป็นขณะจริง ⇒ แสดงเป็นวันเวลาไทย รูปแบบเดียวกับหน้าระเบียนของพนักงาน
+//   (`thaiDateTimeText` ใน components/crm/objects/types.ts — "9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
+//   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน ⇒ ตัดสตริงแบบเดิม (ค่าที่ลูกค้าเห็นและใช้ตั้งต้นช่อง "ขอแก้ข้อมูล" ไม่เปลี่ยน) ◂
+const PORTAL_DATETIME_FMT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" };
+function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined, type?: string): string {
   if (!v) return "";
   if (v.valueText !== null && v.valueText !== undefined) return v.valueText;
   if (v.valueNumber !== null && v.valueNumber !== undefined) return v.valueNumber.toString();
+  if (v.valueDate && type === "DATETIME") return v.valueDate.toLocaleString("th-TH", PORTAL_DATETIME_FMT);
   if (v.valueDate) return v.valueDate.toISOString().slice(0, 10);
   if (v.valueBool !== null && v.valueBool !== undefined) return v.valueBool ? "ใช่" : "ไม่ใช่";
   return v.valueOptions.join(", ");
@@ -847,7 +852,7 @@ export async function getRecord(token: string, recordId: string): Promise<Portal
     objectLabel: rec.object.label,
     title: rec.title,
     // editable = ฟิลด์เปิดให้ขอแก้ **และ** บทบาทขอแก้ข้อมูลได้ (ตารางสิทธิ์รอบ 4 — APPROVE ขึ้นไป)
-    fields: fields.map((f) => ({ key: f.key, label: f.label, value: valueText(byField.get(f.id)), editable: f.portalEditable && f.type !== "FILE" && f.type !== "LOOKUP" && portalCanChangeData(sc.role) })),
+    fields: fields.map((f) => ({ key: f.key, label: f.label, value: valueText(byField.get(f.id), f.type), editable: f.portalEditable && f.type !== "FILE" && f.type !== "LOOKUP" && portalCanChangeData(sc.role) })),
     files: files.get(rec.id) ?? [],
     updatedAt: rec.updatedAt,
   };

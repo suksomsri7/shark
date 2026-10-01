@@ -1709,9 +1709,12 @@ async function* cronCandidatePages(tenantId: string, systemId: string, trigger: 
       const obj = await prisma.customObject.findFirst({ where: { tenantId, systemId, key: objectKey }, select: { id: true } });
       const field = obj ? await prisma.memberField.findFirst({ where: { tenantId, systemId, objectKey, key: fieldKey }, select: { id: true } }) : null;
       if (!obj || !field) return;
-      // ฟิลด์ DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน (engine ฟิลด์ parseYmd) ⇒ เทียบ "วันที่" ตรง ๆ
-      const from = new Date(`${thaiYmd(new Date(now.getTime() + Math.max(0, d - CRON_CATCHUP_DAYS) * DAY_MS))}T00:00:00.000Z`);
-      const to = new Date(new Date(`${thaiYmd(new Date(now.getTime() + d * DAY_MS))}T00:00:00.000Z`).getTime() + DAY_MS);
+      // CRM C5.5 ▸ (fix3b · H2b-4) หน้าต่าง = ขอบ "วันไทย" (00:00 น.) แบบเดียวกับ close_due — ใช้ได้กับทั้งสองชนิดของฟิลด์:
+      //   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน (engine ฟิลด์ parseYmd = 07:00 น. ของวันนั้น ⇒ อยู่ในวันไทยเดียวกัน — ผลเท่าเดิม)
+      //   DATETIME เก็บเป็นขณะจริง (`new Date(iso).toISOString()`) — เดิมหน้าต่างขอบเที่ยงคืน UTC (= 07:00 น.) ⇒ ค่าเวลา 00:00–06:59 น.
+      //   ของวัน X ถูกนับเป็นวัน X-1 (กฎ "7 วันก่อน" ยิงก่อน 8 วัน · "วันครบกำหนด" ยิงตั้งแต่เย็นวันก่อน) · กุญแจกันซ้ำใช้วันไทยของค่า ◂
+      const from = thaiDayStart(thaiYmd(new Date(now.getTime() + Math.max(0, d - CRON_CATCHUP_DAYS) * DAY_MS)));
+      const to = new Date(thaiDayStart(thaiYmd(new Date(now.getTime() + d * DAY_MS))).getTime() + DAY_MS);
       for (let cursor: string | null = null; ; ) {
         const vals: { id: string; recordId: string; valueDate: Date | null }[] = await prisma.customRecordValue.findMany({
           where: { tenantId, fieldId: field.id, valueDate: { gte: from, lt: to }, ...after(cursor) },
@@ -1724,7 +1727,7 @@ async function* cronCandidatePages(tenantId: string, systemId: string, trigger: 
           const live = new Set(recs.map((r) => r.id));
           const page = vals
             .filter((v) => live.has(v.recordId))
-            .map((v) => ({ payload: { recordId: v.recordId, objectKey, fieldKey, daysBefore: d }, key: `custom.record.field_due#${objectKey}.${fieldKey}#${d}#${v.recordId}#${(v.valueDate ?? now).toISOString().slice(0, 10)}` }));
+            .map((v) => ({ payload: { recordId: v.recordId, objectKey, fieldKey, daysBefore: d }, key: `custom.record.field_due#${objectKey}.${fieldKey}#${d}#${v.recordId}#${thaiYmd(v.valueDate ?? now)}` }));
           if (page.length) yield page;
         }
         if (vals.length < CRON_PAGE) return;

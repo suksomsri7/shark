@@ -119,3 +119,14 @@ export const WEBHOOK_EVENTS: AutomationEventDef[] = [
 // event code → ป้ายไทย (สำหรับตารางการส่ง) — ไม่รู้จัก → คืน code เดิม
 export const webhookEventLabel = (event: string): string =>
   WEBHOOK_EVENTS.find((e) => e.value === event)?.label ?? event;
+
+// CRM C5.5 ▸ (fix3b · รีวิว F4) "ครอบครัวเหตุการณ์ที่ต้องมีตัวกัน" — แพลตฟอร์มเป็นเจ้าของรายการนี้ที่เดียว
+//   ปลายทาง webhook ที่รับเหตุการณ์ของครอบครัวใด (หรือ "ทุกเหตุการณ์" = รายการว่าง ⇒ ทุกครอบครัว) ต้องมีตัวกันที่ลงทะเบียนในชื่อครอบครัวนั้น
+//   (`registerWebhookEventGuard(<ครอบครัว>, …)` ที่ composition root `src/lib/webhook-guards.ts`) ไม่งั้นบริการปฏิเสธ (fail closed)
+//   · โมดูลอ่านคำนำหน้าของตัวเองจากที่นี่ (CRM: `CRM_EVENT_PREFIXES = WEBHOOK_GUARDED_FAMILIES.crm`) — ไม่มีสำเนาในบริการ/โมดูลอีกต่อไป
+//   · ไฟล์นี้ไม่ import โมดูลใด (แพลตฟอร์มไม่พึ่งโมดูล · RV-8) ◂
+export const WEBHOOK_GUARDED_FAMILIES = {
+  /** CRM: ของ CRM · รายการวัตถุกำหนดเอง (C1.2b) · ทีมขาย (core · C1.1) */
+  crm: ["crm.", "custom.record.", "team."],
+} as const;
+export type WebhookGuardedFamily = keyof typeof WEBHOOK_GUARDED_FAMILIES;

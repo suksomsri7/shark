@@ -1,0 +1,44 @@
+
+── F5 ──
+(node:1559781) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [F5-fixed-clock] PIPELINE deals closing 8 Oct (= Thai today + 7) / 9 Oct, COMMIT 8 Oct, through 1 Oct Thai: 00:30 TH 1 Oct: 8 Oct LATE · 9 Oct - · COMMIT - | 06:59 TH: 8 Oct LATE · 9 Oct - · COMMIT - | 07:01 TH: 8 Oct LATE · 9 Oct - · COMMIT - | 23:59 TH: 8 Oct LATE · 9 Oct - · COMMIT - (want 8 Oct late all day, 9 Oct never, COMMIT never)
+  ✅ [F5-next-day-00:30] 00:30 TH 2 Oct: 9 Oct deal PIPELINE_LATE_MONTH=true (want true — Thai 2 Oct + 7 = 9 Oct)
+  ✅ [F5-no-instant-compare] instant compare left: false · PIPELINE_LATE_MONTH pushed at 1 place(s)
+
+── H24 ──
+  ✅ [H24-datetime-d7] dry run 10:00 TH 1 Oct, DATETIME endsAt, 7 days before → matched [dt8mid,dt8eve,dt2mid,dt1ear] (want dt8mid,dt8eve — NOT dt9mid: 9 Oct 00:30 Thai is 8 Thai days away)
+  ✅ [H24-datetime-d0] same, "on the day" (0) → matched [dt1ear] (want dt1ear — NOT dt2mid: 2 Oct 00:30 Thai is tomorrow)
+  ✅ [H24-date-unchanged] DATE dueOn, 7 days before → matched [d8] (want d8 only — as before)
+  ✅ [H24-cron-keys] runCronTriggers(10:00 TH 1 Oct) → {"runs":5,"cutOff":false} · keys: dt8mid …w#2026-10-08 · dt8eve …9#2026-10-08 · dt9mid none · DATE d8 …p#2026-10-08 (want both DATETIME on #2026-10-08, dt9mid none, DATE key unchanged format)
+
+── H25 ──
+  ✅ [H25-datetime-thai] portal getRecord: DATETIME 9 Oct 00:30 Thai → "9 ต.ค. 2569 00:30" (staff page "9 ต.ค. 2569 00:30") · 9 Oct 09:30 → "9 ต.ค. 2569 09:30" (staff "9 ต.ค. 2569 09:30")
+  ✅ [H25-date-unchanged] DATE 2026-10-09 → "2026-10-09" (want 2026-10-09 as before)
+
+── R23 ──
+  ✅ [R23-premise] stored routing: forged {"unverifiedFrom":true} · authenticated null (positive control for the flag source)
+  ✅ [R23-dto] contact timeline listActivities: forged EMAIL row unverifiedFrom=true · authenticated row unverifiedFrom=undefined (rows found: true/true)
+  ✅ [R23-render] ActivityRow HTML: forged row badge=true · authenticated row badge=false (want true / false)
+
+── F4 ──
+  ✅ [F4-other-guard-only-fails-closed] registry = {member guard} only (CRM registration lost): toggle-on all-events → WebhookGuardError: ระบบตรวจสิทธิ์เหตุการณ์ของ webh… · set [] → WebhookGuardError: ระบบตรวจสิท… · [crm.*] → WebhookGuardError: ระบบตรวจสิท… · [custom.record.*] → WebhookGuardError: ระบบตรวจสิท… · [team.*] → WebhookGuardError: ระบบตรวจสิท… · [member+crm] → WebhookGuardError: ระบบตรวจสิท… · create [] → WebhookGuardError: ระบบตรวจสิท… (row created: false)
+  ✅ [F4-other-guard-others-pass] same child: toggle-off → ok · [member.created] → ok · author-less → ok · stored ["member.created"] active=false
+  ✅ [F4-crm-guard-present-passes] positive control — registry = {crm guard (passes)}: toggle-on ok · [] ok · crm ok · custom.record ok · team ok · mixed ok · create ok · guard ran 8×
+  ✅ [F4-one-prefix-list] literal prefix lists: service.ts 0 · crm webhook-events.ts 0 · webhooks/labels.ts 1 · CRM_EVENT_PREFIXES is the platform family list (same object): true (want 0/0/1/true)
+  ✅ [F4-no-cycle] service.ts imports [node:crypto, node:net, node:dns, @prisma/client, @/lib/core/db, ./private-targets, ./labels] (no module) · labels.ts imports no module · root registers the "crm" family: true
+  ✅ [CLEAN-jtcaiq] tenant rows left=0
+  ✅ [CLEAN-u75ebl] tenant rows left=0
+  ✅ [CLEAN-ripzhk] tenant rows left=0
+  ✅ [CLEAN-f1cnkt] tenant rows left=0
+  ✅ [CLEAN-ilfcs2] tenant rows left=0
+
+🟢 probe-cf5: 22/22
+JSON_SUMMARY {"total":22,"passed":22,"findings":[]}
