@@ -832,12 +832,8 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
 console.log("\n── F15: equals แบบ insensitive ต้องผ่าน ciEquals (ไม่มี wildcard รั่ว) ──");
 {
   const { findRawInsensitive, F15_SELF_TEST } = await import("./lib/ci-equals-scan.mjs");
-  const OWED: { file: string; snippet: string; count: number }[] = [
-    { file: "src/lib/modules/account/product.ts", snippet: `if (name) or.push({ name: { equals: name, mode: "insensitive" } });`, count: 1 },
-    { file: "src/lib/modules/account/product.ts", snippet: `if (sku) or.push({ sku: { equals: sku, mode: "insensitive" } });`, count: 1 },
-    { file: "src/lib/modules/account/service.ts", snippet: `if (name) or.push({ name: { equals: name, mode: "insensitive" } });`, count: 1 },
-    { file: "src/lib/modules/account/service.ts", snippet: `where: { tenantId, systemId, archivedAt: null, name: { equals: name, mode: "insensitive" } },`, count: 1 },
-  ];
+  // CRM C5.5-fix4 ▸ หนี้ 4 จุดของ account/** (product.ts ×2 · service.ts ×2) แก้เป็น ciEquals แล้ว ⇒ รายการว่าง (ratchet: ห้ามเพิ่ม) ◂
+  const OWED: { file: string; snippet: string; count: number }[] = [];
   const selfMiss = Object.entries(F15_SELF_TEST.mustHit).filter(([, src]) => findRawInsensitive(src).length !== 1).map(([k]) => k);
   const selfFalse = Object.entries(F15_SELF_TEST.mustNotHit).filter(([, src]) => findRawInsensitive(src).length !== 0).map(([k]) => k);
   chk("F15.0", "ตัวสแกนจับครบทุกรูป (shorthand · สลับลำดับ · '…' · comma ในค่า · key ในเครื่องหมายคำพูด · QueryMode · วัตถุในตัวแปร · spread · // ในสตริง · หลายบรรทัด · ตัวแปร mode) และไม่จับการค้นหา/คอมเมนต์/สตริง/ชนิดข้อมูล",

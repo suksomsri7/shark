@@ -33,6 +33,7 @@ import { safeReason } from "./errors";
 //   taken before postDocument) and inventory goods-doc numbers (product.ts) — they still hold their counter for the whole transaction.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { prisma } from "@/lib/core/db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO C4 — ตัวประกอบ payload + คีย์กันซ้ำของเหตุการณ์บัญชีที่ออกทาง webhook (ที่เดียวทั้งโมดูล)
 import {
@@ -906,7 +907,8 @@ export async function checkContactDuplicates(
   const or: Prisma.AccountContactWhereInput[] = [];
   if (taxId) or.push({ taxId, branchCode });
   if (phoneNorm) or.push({ phoneNorm });
-  if (name) or.push({ name: { equals: name, mode: "insensitive" } });
+  // CRM C5.5-fix4 ▸ `equals … insensitive` = ILIKE ไม่ escape — ชื่อที่มี `%`/`_` เคยเตือน "ชื่อซ้ำ" กับแถวอื่น (และกินที่ take 20) · ciEquals ◂
+  if (name) or.push({ name: ciEquals(name) });
   const policy = await getDupNamePolicy(systemId);
   if (or.length === 0) return { blocking: [], warnings: [], policy };
 
@@ -1159,7 +1161,8 @@ export async function findContactForImport(
   const name = input.name.trim();
   if (!name) return null;
   return prisma.accountContact.findFirst({
-    where: { tenantId, systemId, archivedAt: null, name: { equals: name, mode: "insensitive" } },
+    // CRM C5.5-fix4 ▸ `equals … insensitive` = ILIKE ไม่ escape — ไฟล์นำเข้าที่ชื่อผู้ติดต่อเป็น `%` / `บริษัท_ก` เคยผูกเอกสารกับผู้ติดต่อคนอื่น · ciEquals ◂
+    where: { tenantId, systemId, archivedAt: null, name: ciEquals(name) },
     select: { id: true, name: true },
   });
 }

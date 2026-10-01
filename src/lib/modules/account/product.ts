@@ -9,6 +9,7 @@
 //     ใบส่งคืนกลับด้าน · ใบปรับต้นทุน (CA) ลง JV กำไร/ขาดทุนจากการปรับมูลค่า
 // เจ้าของไฟล์นี้ = subagent Products
 import { prisma } from "@/lib/core/db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂
 import { safeReason } from "./errors";
 import type {
   AccountDocType,
@@ -476,8 +477,9 @@ export async function checkProductDuplicates(
   const name = (input.name ?? "").trim();
   const sku = (input.sku ?? "").trim();
   const or: Prisma.AccountProductWhereInput[] = [];
-  if (name) or.push({ name: { equals: name, mode: "insensitive" } });
-  if (sku) or.push({ sku: { equals: sku, mode: "insensitive" } });
+  // CRM C5.5-fix4 ▸ `equals … insensitive` = ILIKE ไม่ escape — ชื่อ/SKU ที่มี `%`/`_` เคยเท่ากับแถวอื่น · ciEquals = เท่ากันทุกตัวอักษร ◂
+  if (name) or.push({ name: ciEquals(name) });
+  if (sku) or.push({ sku: ciEquals(sku) });
   if (or.length === 0) return [];
   const rows = await prisma.accountProduct.findMany({
     where: {

@@ -1,3 +1,5 @@
+// @ts-nocheck
+// VERBATIM copy of src/lib/core/sanitize.ts @ 04d2ade9 (pre-hotfix prod) — reviewer differential baseline only
 // sanitize.ts — ตัด HTML ที่ผู้ใช้พิมพ์เองให้เหลือเฉพาะแท็กที่ปลอดภัย (allowlist)
 //
 // 🔴 ไฟล์นี้อยู่ที่ `core` เพราะมีผู้เรียกมากกว่าหนึ่งโมดูลแล้ว (M1.7: เนื้อความ "นโยบายความเป็น
@@ -6,19 +8,19 @@
 //    ตัวเองอยู่ (บอร์ดงานมี markdown-lite พ่วง) — รวมสองที่เป็นตัวเดียวเป็นงานเก็บกวาดใบแยก
 //    (บันทึกเป็นหนี้ไว้ใน ledger/wo-notes/member-M1.7.md)
 // 🔴 ไฟล์นี้ **บริสุทธิ์**: ไม่แตะ prisma/next/env — เรียกได้จากทั้ง server, client และสคริปต์
-// 🔴 ไม่มี DOM parser/ไลบรารีนอก (D12 "ไม่เพิ่ม dependency") — ตัวสแกนเชิงเส้นของเราเอง `core/html-allowlist.ts`
-// 🔴 HOTFIX 2026-10-01: เดิมเป็น regex `replace` บนข้อความดิบ ⇒ `<svg/onload=…>` (ตัวคั่น `/`) และ `<x-y on…>` หลุดผ่าน +
-//    `<a`+ช่องว่างยาว ๆ ใช้เวลา ~n³ — ตอนนี้ "ปฏิเสธเป็นค่าเริ่มต้น": ผลลัพธ์ประกอบจาก token ใหม่ทั้งหมด `<` ที่ไม่ใช่แท็ก
-//    ใน allowlist กลายเป็น `&lt;` (ledger/wo-notes/hotfix-sanitize-2026-10-01.md)
+// 🔴 ไม่มี DOM parser/ไลบรารีนอก (D12 "ไม่เพิ่ม dependency") — regex ล้วน
 //
 // กติกา: แท็กใน allowlist เก็บไว้ (ตัด attribute ทิ้งทั้งหมด ยกเว้น href ของ <a> ที่เป็น http/https)
 //   · script/style/iframe/object/embed/noscript → ตัดทั้งก้อนรวมเนื้อหาข้างใน (ไม่ใช่ข้อความที่คนตั้งใจอ่าน)
 //   · แท็กอื่นที่ไม่รู้จัก → "ปลด" แท็กออกแต่คงข้อความข้างในไว้
 
-import { attrOf, escapeAttr, parseAttrs, sanitizeWithPolicy, type HtmlAttr } from "./html-allowlist";
-
 /** แท็กที่ต้องตัดทิ้งทั้งก้อน (รวมเนื้อหาข้างใน) */
 const STRIP_WITH_CONTENT = ["script", "style", "iframe", "object", "embed", "noscript"] as const;
+
+/** แท็กเดี่ยว (void) ที่อันตราย/ไม่รองรับ — ตัดทั้งแท็กโดยไม่ต้องหาคู่ปิด */
+const VOID_DANGEROUS = /<(img|input|source|track|embed|object|iframe|script|style|noscript)\b[^>]*\/?>/gi;
+// CRM C2.5 ▸ ชุดเดียวกัน **ลบ img** — ใช้เฉพาะเมื่อผู้เรียกเปิด `allowImages` (อีเมลขาเข้า) ◂
+const VOID_DANGEROUS_KEEP_IMG = /<(input|source|track|embed|object|iframe|script|style|noscript)\b[^>]*\/?>/gi;
 
 /**
  * แท็กที่อนุญาตในเนื้อความยาว (เอกสารนโยบาย/คำอธิบาย)
@@ -29,26 +31,20 @@ const ALLOWLIST = new Set([
   "p", "br", "hr", "h1", "h2", "h3", "ul", "ol", "li", "strong", "b", "em", "i", "s", "u", "code", "pre", "blockquote", "a",
 ]);
 
-const STRIP = new Set<string>(STRIP_WITH_CONTENT);
-/** แท็กเปิด/ปิดรูปมาตรฐาน (สร้างครั้งเดียว — ข้อความที่มีแท็กเป็นแสนตัวไม่ต้องสร้างสตริงใหม่ทุกตัว) */
-const OPEN = new Map([...ALLOWLIST].map((t) => [t, `<${t}>`] as const));
-const CLOSE = new Map([...ALLOWLIST].map((t) => [t, `</${t}>`] as const));
+const TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9]*)(\s+[^>]*)?\s*\/?>/g;
+const HREF_RE = /href\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+// CRM C2.5 ▸ attribute ของ <img> ที่อยู่รอดในโหมด `allowImages` — src (http/https) · alt · width · height ◂
+const SRC_RE = /src\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+const ALT_RE = /alt\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+const NUM_ATTR_RE = (name: string) => new RegExp(`${name}\\s*=\\s*("(\\d{1,5})"|'(\\d{1,5})'|(\\d{1,5}))`, "i");
 
-/**
- * ค่า attribute (ถอดรหัสครั้งเดียวแล้ว) · ไม่มี/quote ไม่ปิด = ""
- * CRM C5.5-fix4 ▸ C5.4-E E1/SF-4 (ถอดรหัส entity ครั้งเดียว + escapeAttr ครบ & " < > ') ย้ายไปอยู่ใน `html-allowlist`
- *   (`parseAttrs` → `decodeAttr` · `escapeAttr`) — ชุด entity เดียวกัน ⇒ ตัดซ้ำกี่รอบก็ได้ผลเดิม ◂
- */
-function attrValue(attrs: readonly HtmlAttr[], name: string): string {
-  return attrOf(attrs, name)?.value ?? "";
+function escapeAttr(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-/** width/height ของ `<img>`: มี quote = ต้องเป็นตัวเลข 1-5 หลักทั้งค่า · ไม่มี quote = ตัวเลขนำหน้า 1-5 หลัก (เหมือนของเดิม) */
-function numAttr(attrs: readonly HtmlAttr[], name: string): string {
-  const a = attrOf(attrs, name);
-  if (!a || a.value === null) return "";
-  const m = a.quoted ? /^\d{1,5}$/.exec(a.value) : /^\d{1,5}/.exec(a.value);
-  return m ? m[0] : "";
+function attrValue(attrs: string | undefined, re: RegExp): string {
+  const m = attrs ? attrs.match(re) : null;
+  return m ? (m[2] ?? m[3] ?? m[4] ?? "") : "";
 }
 
 /**
@@ -93,33 +89,41 @@ export function sanitizeHtml(dirty: string | null | undefined, opts?: SanitizeOp
   if (!dirty) return "";
   const allowImages = opts?.allowImages === true;
   const schemes = (opts?.allowLinkSchemes ?? DEFAULT_LINK_SCHEMES).map((s) => String(s).toLowerCase());
-  // ตัวสแกนเชิงเส้น: script/style/iframe/object/embed/noscript ตัดทั้งก้อน (เปิดไม่ปิด = ตัดถึงท้าย) · แท็กใน allowlist เขียนใหม่
-  // ให้เหลือ attribute ที่อนุญาต · แท็กอื่นทั้งหมด (รวม img เมื่อไม่ได้เปิดรูป) ปลดทิ้งแต่คงข้อความ · comment ทิ้ง · `<` อื่น → `&lt;`
-  const out = sanitizeWithPolicy(String(dirty), {
-    stripWithContent: STRIP,
-    unclosedStripDropsRest: true,
-    rewrite: (tag, isClosing, rawAttrs) => {
-      if (allowImages && tag === "img") {
-        if (isClosing) return "";
-        const attrs = parseAttrs(rawAttrs);
-        const src = attrValue(attrs, "src");
-        if (!/^https?:\/\//i.test(src)) return "";
-        const alt = attrValue(attrs, "alt");
-        const w = numAttr(attrs, "width");
-        const h = numAttr(attrs, "height");
-        return `<img src="${escapeAttr(src)}"${alt ? ` alt="${escapeAttr(alt)}"` : ""}${w ? ` width="${w}"` : ""}${h ? ` height="${h}"` : ""}>`;
-      }
-      if (!ALLOWLIST.has(tag)) return "";
-      if (isClosing) return CLOSE.get(tag) ?? "";
-      if (tag === "br") return "<br>";
-      if (tag === "hr") return "<hr>";
-      if (tag === "a") {
-        const href = attrValue(parseAttrs(rawAttrs), "href");
-        if (!linkSchemeOk(href, schemes)) return ""; // javascript: / data: ฯลฯ — ปลดแท็กทิ้ง
-        return `<a href="${escapeAttr(href)}" rel="noopener" target="_blank">`;
-      }
-      return OPEN.get(tag) ?? "";
-    },
+  let out = String(dirty);
+
+  // 1) ตัดทั้งก้อน (แท็ก + เนื้อหา) ของแท็กอันตรายที่มีคู่เปิด-ปิด
+  for (const tag of STRIP_WITH_CONTENT) {
+    out = out.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`, "gi"), "");
+    // เปิดแล้วไม่ปิด (ตั้งใจให้ตัวตัดพลาด) → ตัดตั้งแต่แท็กเปิดจนจบข้อความ
+    out = out.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, "gi"), "");
+  }
+  // 2) แท็กเดี่ยวอันตราย/ไม่รองรับ
+  out = out.replace(allowImages ? VOID_DANGEROUS_KEEP_IMG : VOID_DANGEROUS, "");
+
+  // 3) ไล่ทุกแท็กที่เหลือ: อยู่ใน allowlist → เขียนใหม่ให้เหลือ attribute ที่อนุญาตเท่านั้น
+  out = out.replace(TAG_RE, (match, tagNameRaw: string, attrsRaw: string | undefined) => {
+    const tag = tagNameRaw.toLowerCase();
+    const isClosing = match.startsWith("</");
+    if (allowImages && tag === "img") {
+      if (isClosing) return "";
+      const src = attrValue(attrsRaw, SRC_RE);
+      if (!/^https?:\/\//i.test(src)) return "";
+      const alt = attrValue(attrsRaw, ALT_RE);
+      const w = attrValue(attrsRaw, NUM_ATTR_RE("width"));
+      const h = attrValue(attrsRaw, NUM_ATTR_RE("height"));
+      return `<img src="${escapeAttr(src)}"${alt ? ` alt="${escapeAttr(alt)}"` : ""}${w ? ` width="${w}"` : ""}${h ? ` height="${h}"` : ""}>`;
+    }
+    if (!ALLOWLIST.has(tag)) return "";
+    if (isClosing) return `</${tag}>`;
+    if (tag === "br") return "<br>";
+    if (tag === "hr") return "<hr>";
+    if (tag === "a") {
+      const m = attrsRaw ? attrsRaw.match(HREF_RE) : null;
+      const href = m ? (m[2] ?? m[3] ?? m[4] ?? "") : "";
+      if (!linkSchemeOk(href, schemes)) return ""; // javascript: / data: ฯลฯ — ปลดแท็กทิ้ง
+      return `<a href="${escapeAttr(href)}" rel="noopener" target="_blank">`;
+    }
+    return `<${tag}>`;
   });
 
   return out.trim();
