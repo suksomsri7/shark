@@ -487,3 +487,14 @@ SELECT count(*), count(DISTINCT "tenantId") FROM "Membership" WHERE role = 'STAF
 12. Forward-port to `session/crm`: sanitize files wholesale, plus the two render hunks, the 1 MB cap (make HS-G.1 fail when the file is missing), and Items 2–4 by cherry-pick. Run all four suites there.
 
 - R9 Item 4 reviewed: SHIP; release verdict written.
+
+## Controller pre-deploy record (1 Oct, owner GO received in chat: "Prod สำหรับ hotfix 4 ข้อ")
+
+Tip 0b7e7285 on QC3 (`scripts/pending/hsan-review/run-predeploy.sh`, log `.qc-shots/predeploy.log`):
+- pure: judge-selftest OK · attack vectors+fuzz exit 0 · typecheck exit 0 · fitness (no env) exit 0
+- hotfix suites: sanitize · automation-authz · payment-authz · mobile-authz — all exit 0
+- kanban: k1.6 · k1.12 · k2.6 · k2.7 · k3.1 green; k3.3 / k3.7 / k3.9 red only on "real screenshots exist in .qc-shots" checks (fresh worktree); member-public 33/33
+- red on QC3: k3.5 10/12 · m1.7 crash (null role) · m3.10 5/21 (401s) · m3.11 crash · c2.5 96/105 (tests CRM v2 code that is not on main)
+- **Baseline** (`run-baseline.sh`, tree at 04d2ade9, same DB, log `.qc-shots/baseline.log`): the five red suites give byte-identical JSON_SUMMARY lines at base and at tip ⇒ none is caused by the hotfix (QC3 lacks the member/kanban seed these suites need; c2.5 does not apply to main).
+- Coverage gap stated plainly: m1.7 (policy) and m3.11 (join form) did not execute on either tree; the sanitizer path they cover is covered by qc-sanitize-hotfix oracle C (byte-identical fixtures) + member-public + the post-deploy smoke on real join pages.
+- `git diff 04d2ade9..tip -- prisma` = empty (no migration).
