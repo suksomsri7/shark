@@ -1,5 +1,5 @@
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1112965) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1112145) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -57,14 +57,14 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [D-4c] ทางที่ไม่มีผู้ตัดสิน (ข้อเสนอ AI · decidedById null) ยังตัดสิน PENDING ได้
   ✅ [D-5] 🔴 ตัดสินพร้อมกัน 2 ทาง → สำเร็จทางเดียว และสถานะตรงกับผู้ชนะ (3/3 รอบ)
   ✅ [R-0] fixture: วันลาอนุมัติแล้ว → วันนั้นไม่ว่าง
-  ✅ [R-1] ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่
-  ✅ [R-1b] ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง
-  ✅ [R-2] 🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน
-  ✅ [R-3] 🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED)
+  ❌ [R-1] ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่ — expected REJECTED | actual APPROVED ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
+  ❌ [R-1b] ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง — expected true | actual false
+  ❌ [R-2] 🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน — expected ปฏิเสธ | actual err=ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
+  ❌ [R-3] 🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED) — expected ปฏิเสธ | actual APPROVED err=ใบลานี้อนุมัติแล้ว — เปลี่ยนผลไม่ได้
   ✅ [R-4] 🔴 ถอนอนุมัติใบลาของตัวเองไม่ได้
-  ✅ [R-5] 🔴 ถอนอนุมัติพร้อมกัน → สำเร็จทางเดียว (3/3 รอบ · รอบที่ 3 = ถอน vs อนุมัติซ้ำ)
+  ❌ [R-5] 🔴 ถอนอนุมัติพร้อมกัน → สำเร็จทางเดียว (3/3 รอบ · รอบที่ 3 = ถอน vs อนุมัติซ้ำ) — expected 3/3 | actual 0:APPROVED:false 0:APPROVED:false 0:APPROVED:false
   ✅ [R-6] 🔴 ปุ่มจากรายการ 'รออนุมัติ' (from PENDING) ไม่ถอนใบที่เพิ่งถูกอนุมัติไปก่อน
-  ✅ [R-7] bulkDecideLeaveAction (หน้ารายการรออนุมัติ) ส่ง from PENDING
+  ❌ [R-7] bulkDecideLeaveAction (หน้ารายการรออนุมัติ) ส่ง from PENDING — expected ใช่ | actual ไม่ใช่
   ✅ [D-6] bulk: ใบที่อนุมัติแล้วไม่ถูกอนุมัติซ้ำ (done 1 · failed 1) + เหตุผลไทย
   ✅ [D-7] ร้านอื่นตัดสินใบลาของร้านนี้ไม่ได้
   ✅ [D-8.0] fixture: ใบลาเข้าสายอนุมัติ (ApprovalRequest PENDING)
@@ -82,7 +82,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 64/64
-FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+ผ่าน 58/64
+FINDINGS: CRITICAL 6 · MAJOR 0 · MINOR 0
 
-JSON_SUMMARY {"total":64,"passed":64,"findings":[]}
+JSON_SUMMARY {"total":64,"passed":58,"findings":[{"id":"R-1","sev":"CRITICAL"},{"id":"R-1b","sev":"CRITICAL"},{"id":"R-2","sev":"CRITICAL"},{"id":"R-3","sev":"CRITICAL"},{"id":"R-5","sev":"CRITICAL"},{"id":"R-7","sev":"CRITICAL"}]}

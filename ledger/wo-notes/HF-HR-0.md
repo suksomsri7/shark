@@ -117,3 +117,12 @@ qc-ai-actions 11/12 (CRASH) is pre-existing on QC4 and line-for-line identical b
 - A3 fitness: no env 33/33 → 33/33 · QC4 env 33/33 → 33/33 (check lines identical)
 - A4 typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 0
 - A5 this file
+
+## Round 2 (controller rulings · 1 Oct) — C1 = (b) revocation allowed; C2/C3 approved; C4 noted
+- Transitions now: PENDING→APPROVED · PENDING→REJECTED · APPROVED→REJECTED (revocation, same writes as before ⇒ booking slots return). Everything else refused (REJECTED/CANCELLED→any, APPROVED→APPROVED). Single `updateMany where {id, status: <current>}`; self-decision and PENDING approval-request guards unchanged.
+- Added `opts.from` to `decideLeave`/`bulkDecideLeave`: the pending-list bulk action passes `{ from: "PENDING" }` so a reject click that loses a race to an approve is refused instead of silently revoking. Calls without `from` (decideLeaveAction, AI proposal, tests) use the current status.
+- Oracle: D-2 = APPROVED→APPROVED refused · D-5 pinned to `from: PENDING` · new R-0…R-7 (revoke by non-self + slot back, revoke twice refused, REJECTED→APPROVED refused, self-revoke refused, 3× concurrent revoke/revoke and revoke/re-approve → exactly one wins, pending-list click does not revoke, action passes from PENDING) · D-6 bulk now re-approve. RED on b2087d59 `ผ่าน 58/64 · CRITICAL 6` (`HF-HR-0-red2.txt`) → GREEN `ผ่าน 64/64` (`HF-HR-0-green.txt`).
+- Regressions round 2: all 15 suites identical to the original BEFORE baseline — **qc-hr-leave-booking back to 14/14 (unedited)**; qc-ai-actions 11/12 pre-existing, identical.
+- Fitness 33/33 both modes, check lines identical to base.
+- Tiny window (direct decision between leave creation and `submitForApproval`): **left**. No correct ≤10-line fix inside hr/service.ts — refusing whenever a policy applies would make pre-policy leaves undecidable, a time heuristic is not a guard, and a post-submit cancel only narrows the window. Real fix = create leave + approval request in one transaction (approval/service.ts, CRM-shared area).
+- C1 above is resolved; C2/C3 approved as shipped.

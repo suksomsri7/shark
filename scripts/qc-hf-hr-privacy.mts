@@ -8,7 +8,7 @@
 //      ข้อมูลที่ส่งให้ client = DTO รายช่องที่อนุญาต (whitelist) · ช่องอ่อนไหว + เอกสาร เฉพาะผู้ดูเงินเดือน · PIN ไม่ออกจาก server เลย
 // [L]  D9 เหตุผลการลา (ข้อมูลสุขภาพ) เห็นเฉพาะผู้มี hr.leave.read · AI pending_leaves ไม่คืนเหตุผลเลย (ToolCtx ไม่รู้ว่าใครถาม)
 // [N]  D8 ตั้ง PIN ซ้ำ → ข้อความกลาง ไม่บอกชื่อเจ้าของ PIN
-// [D]  D10 ตัดสินใบลา: PENDING → APPROVED/REJECTED เท่านั้น (updateMany มีเงื่อนไข · แข่งกันกดได้ผลเดียว) ·
+// [D]  D10 ตัดสินใบลา: PENDING → APPROVED/REJECTED + ถอนอนุมัติ APPROVED → REJECTED (มติผู้คุมงาน C1) เท่านั้น (updateMany มีเงื่อนไข · แข่งกันกดได้ผลเดียว) ·
 //      ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา · ใบลาที่อยู่ในสายอนุมัติ (ApprovalRequest PENDING) ห้ามตัดสินทางตรง
 // [S]  static: หน้าเพจ/ส่วนจอใช้ตัวโหลดด้านบนจริง และไม่มี client component ได้แถวดิบ
 //
@@ -222,8 +222,9 @@ try {
   const e01 = await errMsg(() => hr.decideLeave(ctx, l1, "APPROVED", U.hrStaff));
   chk("D-1", "PENDING → APPROVED ตามปกติ (ผู้ตัดสินไม่ใช่เจ้าของใบลา)", e01 === null && (await statusOf(l1)) === "APPROVED", "APPROVED", `${await statusOf(l1)} ${e01 ?? ""}`);
   chk("D-1b", "decidedById ถูกบันทึก", (await prisma.hrLeave.findUnique({ where: { id: l1 } }))?.decidedById === U.hrStaff, U.hrStaff, String((await prisma.hrLeave.findUnique({ where: { id: l1 } }))?.decidedById), "MAJOR");
-  const e02 = await errMsg(() => hr.decideLeave(ctx, l1, "REJECTED", U.owner));
-  chk("D-2", "🔴 ใบลาที่อนุมัติแล้ว ห้ามพลิกเป็นไม่อนุมัติ (สถานะคงเดิม)", (await statusOf(l1)) === "APPROVED" && e02 !== null, "ปฏิเสธ + คง APPROVED", `${await statusOf(l1)} err=${e02}`);
+  // ผู้คุมงาน C1 (รอบ 2): ทางที่อนุญาต = PENDING→APPROVED · PENDING→REJECTED · APPROVED→REJECTED (ถอนอนุมัติ) — นอกนั้นปฏิเสธ
+  const e02 = await errMsg(() => hr.decideLeave(ctx, l1, "APPROVED", U.owner));
+  chk("D-2", "🔴 ใบลาที่อนุมัติแล้ว อนุมัติซ้ำไม่ได้ (APPROVED→APPROVED ปฏิเสธ · decidedById เดิม)", (await statusOf(l1)) === "APPROVED" && e02 !== null && (await prisma.hrLeave.findUnique({ where: { id: l1 } }))?.decidedById === U.hrStaff, "ปฏิเสธ + คงเดิม", `${await statusOf(l1)} err=${e02}`);
   chk("D-2b", "ข้อความปฏิเสธเป็นภาษาไทย", !!e02 && THAI.test(e02), "ไทย", String(e02), "MAJOR");
   const l2 = await mkLeave(e2.id, "2026-09-12");
   await prisma.hrLeave.update({ where: { id: l2 }, data: { status: "CANCELLED" } }); // fixture: ใบลาที่ยกเลิกแล้ว
@@ -244,8 +245,9 @@ try {
   for (let i = 0; i < 3; i++) {
     const lr = await mkLeave(e2.id, `2026-09-${15 + i}`);
     const [a, b] = await Promise.allSettled([
-      hr.decideLeave(ctx, lr, "APPROVED", U.owner),
-      hr.decideLeave(ctx, lr, "REJECTED", U.hrStaff),
+      // ทั้งสองกดจากรายการ "รออนุมัติ" ⇒ คาดสถานะต้นทาง PENDING (ไม่ให้ทางที่ช้ากว่ากลายเป็นการถอนอนุมัติเงียบ ๆ)
+      hr.decideLeave(ctx, lr, "APPROVED", U.owner, { from: "PENDING" }),
+      hr.decideLeave(ctx, lr, "REJECTED", U.hrStaff, { from: "PENDING" }),
     ]);
     const wins = [a, b].filter((x) => x.status === "fulfilled").length;
     const st = await statusOf(lr);
@@ -255,12 +257,52 @@ try {
   }
   chk("D-5", "🔴 ตัดสินพร้อมกัน 2 ทาง → สำเร็จทางเดียว และสถานะตรงกับผู้ชนะ (3/3 รอบ)", raceOk === 3, "3/3", raceLog.join(" "));
 
-  // bulk: ใบที่ตัดสินแล้ว = failed พร้อมเหตุผลไทย · ใบที่รอ = done
+  // ═══ [R] ถอนอนุมัติ (APPROVED → REJECTED) — ฟีเจอร์ "เปลี่ยนใจ" เดิมของร้าน (qc-hr-leave-booking LV-9) ═══
+  const r1 = await mkLeave(e2.id, "2026-10-01");
+  await hr.decideLeave(ctx, r1, "APPROVED", U.hrStaff);
+  chk("R-0", "fixture: วันลาอนุมัติแล้ว → วันนั้นไม่ว่าง", (await hr.isAvailable(ctx, e2.id, new Date("2026-10-01"))) === false, "false", "true", "MAJOR");
+  const er1 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.owner));
+  chk("R-1", "ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่", er1 === null && (await statusOf(r1)) === "REJECTED" && (await prisma.hrLeave.findUnique({ where: { id: r1 } }))?.decidedById === U.owner, "REJECTED", `${await statusOf(r1)} ${er1 ?? ""}`);
+  chk("R-1b", "ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง", (await hr.isAvailable(ctx, e2.id, new Date("2026-10-01"))) === true, "true", "false");
+  const er2 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.hrStaff));
+  chk("R-2", "🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน", er2 !== null && (await prisma.hrLeave.findUnique({ where: { id: r1 } }))?.decidedById === U.owner, "ปฏิเสธ", `err=${er2}`);
+  const er3 = await errMsg(() => hr.decideLeave(ctx, r1, "APPROVED", U.hrStaff));
+  chk("R-3", "🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED)", er3 !== null && (await statusOf(r1)) === "REJECTED", "ปฏิเสธ", `${await statusOf(r1)} err=${er3}`);
+  const r2 = await mkLeave(e1.id, "2026-10-02");
+  await hr.decideLeave(ctx, r2, "APPROVED", U.owner);
+  const er4 = await errMsg(() => hr.decideLeave(ctx, r2, "REJECTED", U.self));
+  chk("R-4", "🔴 ถอนอนุมัติใบลาของตัวเองไม่ได้", er4 !== null && (await statusOf(r2)) === "APPROVED", "คง APPROVED", `${await statusOf(r2)} err=${er4}`);
+  // ถอนพร้อมกัน 2 ทาง (และ ถอน vs อนุมัติซ้ำ) บนใบที่อนุมัติแล้ว — ต้องสำเร็จทางเดียว ×3 รอบ
+  let revOk = 0;
+  const revLog: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const lr = await mkLeave(e2.id, `2026-10-${10 + i}`);
+    await hr.decideLeave(ctx, lr, "APPROVED", U.hrMgr);
+    const [a, b] = await Promise.allSettled([
+      hr.decideLeave(ctx, lr, "REJECTED", U.owner),
+      hr.decideLeave(ctx, lr, i === 2 ? "APPROVED" : "REJECTED", U.hrStaff),
+    ]);
+    const wins = [a, b].filter((x) => x.status === "fulfilled").length;
+    const row = await prisma.hrLeave.findUnique({ where: { id: lr } });
+    const winner = a.status === "fulfilled" ? U.owner : U.hrStaff;
+    revLog.push(`${wins}:${row?.status}:${row?.decidedById === winner}`);
+    if (wins === 1 && row?.status === "REJECTED" && row.decidedById === winner) revOk++;
+  }
+  chk("R-5", "🔴 ถอนอนุมัติพร้อมกัน → สำเร็จทางเดียว (3/3 รอบ · รอบที่ 3 = ถอน vs อนุมัติซ้ำ)", revOk === 3, "3/3", revLog.join(" "));
+
+  const r3 = await mkLeave(e2.id, "2026-10-20");
+  await hr.decideLeave(ctx, r3, "APPROVED", U.hrMgr);
+  const bRev = await hr.bulkDecideLeave(ctx, [r3], "REJECTED", U.owner, { from: "PENDING" });
+  chk("R-6", "🔴 ปุ่มจากรายการ 'รออนุมัติ' (from PENDING) ไม่ถอนใบที่เพิ่งถูกอนุมัติไปก่อน", bRev.done === 0 && bRev.failed.length === 1 && (await statusOf(r3)) === "APPROVED", "failed 1 · คง APPROVED", `${JSON.stringify(bRev)} ${await statusOf(r3)}`);
+  const actSrc = readFileSync("src/lib/modules/hr/actions.ts", "utf8");
+  chk("R-7", "bulkDecideLeaveAction (หน้ารายการรออนุมัติ) ส่ง from PENDING", /bulkDecideLeave\(ctx, leaveIds, rawStatus, auth\.active\.userId, \{ from: "PENDING" \}\)/.test(actSrc), "ใช่", "ไม่ใช่");
+
+  // bulk: ใบที่อนุมัติแล้วอนุมัติซ้ำ = failed พร้อมเหตุผลไทย · ใบที่รอ = done
   const l5 = await mkLeave(e2.id, "2026-09-20");
-  const bulk = await hr.bulkDecideLeave(ctx, [l1, l5], "REJECTED", U.owner);
-  chk("D-6", "bulk: ใบที่ตัดสินไปแล้วไม่ถูกพลิก (done 1 · failed 1) + เหตุผลไทย", bulk.done === 1 && bulk.failed.length === 1 && bulk.failed[0]?.id === l1 && THAI.test(bulk.failed[0]?.reason ?? "") && (await statusOf(l1)) === "APPROVED" && (await statusOf(l5)) === "REJECTED", "done1/failed1", JSON.stringify(bulk));
-  const e07 = await errMsg(() => hr.decideLeave({ tenantId: otherTid, systemId: hrSys.id }, l5, "APPROVED", U.other));
-  chk("D-7", "ร้านอื่นตัดสินใบลาของร้านนี้ไม่ได้", e07 !== null && (await statusOf(l5)) === "REJECTED", "ปฏิเสธ", `${await statusOf(l5)} err=${e07}`);
+  const bulk = await hr.bulkDecideLeave(ctx, [l1, l5], "APPROVED", U.owner);
+  chk("D-6", "bulk: ใบที่อนุมัติแล้วไม่ถูกอนุมัติซ้ำ (done 1 · failed 1) + เหตุผลไทย", bulk.done === 1 && bulk.failed.length === 1 && bulk.failed[0]?.id === l1 && THAI.test(bulk.failed[0]?.reason ?? "") && (await statusOf(l1)) === "APPROVED" && (await statusOf(l5)) === "APPROVED", "done1/failed1", JSON.stringify(bulk));
+  const e07 = await errMsg(() => hr.decideLeave({ tenantId: otherTid, systemId: hrSys.id }, l5, "REJECTED", U.other));
+  chk("D-7", "ร้านอื่นตัดสินใบลาของร้านนี้ไม่ได้", e07 !== null && (await statusOf(l5)) === "APPROVED", "ปฏิเสธ", `${await statusOf(l5)} err=${e07}`);
 
   // ใบลาที่อยู่ในสายอนุมัติ — ทางตรงต้องส่งไปที่สายอนุมัติ (ทำท้ายสุด: นโยบายมีผลกับใบลาใหม่ทุกใบของร้าน)
   const pol = await ap.createPolicy({ tenantId: tid }, { name: "ใบลาทุกใบ", entityType: "HrLeave", steps: [{ order: 1, approverRole: "OWNER" }] });

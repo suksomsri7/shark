@@ -310,7 +310,8 @@ export async function bulkDecideLeaveAction(
   }
   if (leaveIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
-  const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId);
+  // HF-HR-0: ปุ่มนี้อยู่บนรายการ "รออนุมัติ" ⇒ ตัดสินเฉพาะใบที่ยังรอ (ไม่ถอนใบที่มีคนอนุมัติไปก่อนแบบเงียบ ๆ)
+  const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId, { from: "PENDING" });
   revalidate(systemId);
   return { status: "done", done: res.done, failed: res.failed };
 }

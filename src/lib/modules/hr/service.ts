@@ -440,7 +440,8 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
 }
 
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)
-// HF-HR-0 (D10): ตัดสินได้เฉพาะใบที่ "รออนุมัติ" (PENDING → APPROVED/REJECTED) · ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา ·
+// HF-HR-0 (D10 · มติผู้คุมงาน C1): ทางที่อนุญาต = PENDING → APPROVED/REJECTED · APPROVED → REJECTED (ถอนอนุมัติ = "เปลี่ยนใจ"
+//   ช่องจองกลับมาเอง · qc-hr-leave-booking LV-9) — นอกนั้นปฏิเสธ · ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา ·
 //   ใบที่อยู่ในสายอนุมัติต้องตัดสินที่สายอนุมัติ (effect ใน approval-effects.ts เขียนใบลาเอง)
 //   ไม่ผ่าน = โยน HrLeaveDecisionError (ข้อความไทย) — ผู้เรียกเดิม (action/bulk/ข้อเสนอ AI) โยนต่อ/เก็บเหตุผลได้ตามเดิม
 export class HrLeaveDecisionError extends Error {
@@ -456,6 +457,8 @@ export async function decideLeave(
   leaveId: string,
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
+  // from = สถานะต้นทางที่ผู้กดเห็นบนจอ (เช่นรายการ "รออนุมัติ" ส่ง PENDING) — ไม่ส่ง = ใช้สถานะปัจจุบัน
+  opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<void> {
   const db = tenantDb(ctx);
   const leave = await db.hrLeave.findFirst({
@@ -463,8 +466,11 @@ export async function decideLeave(
     select: { status: true, employee: { select: { linkedUserId: true } } },
   });
   if (!leave) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
-  if (leave.status !== "PENDING") {
-    throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
+  const from = leave.status;
+  const allowed = from === "PENDING" || (from === "APPROVED" && status === "REJECTED");
+  if (opts.from && opts.from !== from) throw new HrLeaveDecisionError("ใบลานี้มีผู้ตัดสินไปก่อนหน้านี้แล้ว");
+  if (!allowed) {
+    throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[from] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
   }
   if (decidedById && leave.employee.linkedUserId === decidedById) {
     throw new HrLeaveDecisionError("ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน");
@@ -477,9 +483,9 @@ export async function decideLeave(
   if (inChain) {
     throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
   }
-  // เงื่อนไข status ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
+  // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
   const res = await db.hrLeave.updateMany({
-    where: { id: leaveId, status: "PENDING" },
+    where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
   if (res.count === 0) throw new HrLeaveDecisionError("ใบลานี้มีผู้ตัดสินไปก่อนหน้านี้แล้ว");
@@ -493,11 +499,12 @@ export async function bulkDecideLeave(
   leaveIds: string[],
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
+  opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<BulkLeaveResult> {
   const result: BulkLeaveResult = { done: 0, failed: [] };
   for (const id of leaveIds) {
     try {
-      await decideLeave(ctx, id, status, decidedById ?? null);
+      await decideLeave(ctx, id, status, decidedById ?? null, opts);
       result.done += 1;
     } catch (e) {
       // HF-HR-0: เหตุผลไทยจาก decideLeave (ตัดสินแล้ว/ของตัวเอง/อยู่ในสายอนุมัติ) · อื่น ๆ (DB) → ข้อความกลาง
