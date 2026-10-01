@@ -1,0 +1,29 @@
+(node:853621) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [RV-T1] secret changed between the accepted-but-lost attempt and the redelivery ⇒ the customer's List-Unsubscribe one-click of the mail they HOLD must still opt them out (row hashes must not be overwritten by a non-reproducible attempt)
+        — ACTUAL a=FAILED/FAILED/PROVIDER_409 row=FAILED/PROVIDER_409 accepted=1 calls=["lost","409"] bodyFieldsDiffer=["html","headers"] heldMailUnsubWorks=false
+  ❌ [RV-T2] owner rotates the CRM inbound key between the accepted-but-lost attempt and the redelivery ⇒ redelivery must still be byte-identical (replayed 200, row SENT with the accepted id)
+        — ACTUAL a=FAILED/FAILED/PROVIDER_409 row=FAILED/PROVIDER_409 accepted=1 calls=["lost","409"] fieldsDiffer=["reply_to"] reply_to CHANGED
+  ❌ [RV-F4] cap full on day 0 (one wait) · paused/resumed · cap full again ONE day a week later ⇒ must wait again (new episode, new step_wait line) — not 'cap full for more than 3 days' STOPPED FAILED
+        — ACTUAL mid=ACTIVE waits={"v1:0:cap":"2026-10-01T08:00:46.895Z"} final=STOPPED/FAILED log=["0:FAILED"] audits=["crm.sequence.step_wait","crm.sequence.auto_stop"]
+  ❌ [RV-W1] an unhandled event type carrying the Message-ID must not back-fill providerId · the genuine complaint that follows still opts the contact out
+        — ACTUAL received={"status":200,"handled":false,"reason":"ignored_type"} providerIdAfter=INBOUND-ID complaint={"status":200,"handled":false,"reason":"unknown_email"} optOut=false
+  ❌ [RV-W2] a complaint about tenant A's mail must never change tenant B's contact (fallback restricted to rows our send path wrote)
+        — ACTUAL hook={"status":200,"handled":true} tenantB contact optOut=true
+  ✅ [RV-X] informational: row counts + plans of the fallback scan and of the (pre-existing) providerId lookup
+        — ACTUAL counts={"total":4,"out":4,"out_null":2}
+        fallback: Limit  (cost=0.00..1.10 rows=1 width=33) (actual time=0.022..0.023 rows=0.00 loops=1) |   Buffers: shared hit=1 |   ->  Seq Scan on "CrmEmailMessage"  (cost=0.00..1.10 rows=1 width=33) (actual time=0.021..0.022 rows=0.00 loops=1) |         Filter: (("providerId" IS NULL) AND (direction = 'OUT'::"CrmDirection") AND (lower("right"("messageId", 32)) = ':zz-qc-cd2r-dfubyxyu@shark.in.th'::text)) |         Rows Removed by Filter: 4 |         Buffers: shared hit=1 | Planning Time: 0.114 ms | Execution Time: 0.048 ms
+        byProviderId: Limit  (cost=0.00..1.06 rows=1 width=33) (actual time=0.018..0.019 rows=0.00 loops=1) |   Buffers: shared hit=1 |   ->  Seq Scan on "CrmEmailMessage"  (cost=0.00..1.06 rows=1 width=33) (actual time=0.017..0.017 rows=0.00 loops=1) |         Filter: ("providerId" = 're_none_qc-cd2r-dfubyxyu'::text) |         Rows Removed by Filter: 4 |         Buffers: shared hit=1 | Planning Time: 0.098 ms | Execution Time: 0.040 ms
+  ✅ [CLEAN] throwaway tenants and users removed (0 rows left)
+        — ACTUAL -
+
+🔴 probe-cd2-review: 2/7
+JSON_SUMMARY {"total":7,"passed":2,"findings":[{"id":"RV-T1"},{"id":"RV-T2"},{"id":"RV-F4"},{"id":"RV-W1"},{"id":"RV-W2"}]}
+exit=1
