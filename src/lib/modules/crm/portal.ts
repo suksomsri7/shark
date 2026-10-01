@@ -48,6 +48,7 @@ import * as companies from "./companies";
 import { bindPortalLineUserIdInTx } from "./contacts";
 import { thaiDayStartMs } from "./activities-shared";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { logOps } from "@/lib/core/ops";
 import {
   PORTAL_APPROVAL_ENTITY,
@@ -233,8 +234,10 @@ async function accessesOfContacts(tenantId: string, systemId: string, contactIds
 async function contactsByTarget(tenantId: string, systemId: string, channel: "PHONE" | "EMAIL", target: string): Promise<string[]> {
   if (!target) return [];
   if (channel === "EMAIL") {
-    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: { equals: target, mode: "insensitive" } }, select: { id: true }, take: 20 });
-    return rows.map((r) => r.id);
+    // CRM C5.5-fix2 ▸ hunter 2a-6: `equals … insensitive` = ILIKE ⇒ `somchai_k@` เคย "เท่ากับ" `somchai.k@` (OTP ของกล่องที่หน้าตาคล้าย
+    //   ออก session ของเหยื่อ) — ciEquals (escape wildcard) + ตรวจซ้ำว่าอีเมลของแถว = ปลายทางทุกตัวอักษร (ไม่พึ่ง SQL ที่ Prisma ปล่อย) ◂
+    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: ciEquals(target) }, select: { id: true, email: true }, take: 20 });
+    return rows.filter((r) => normEmail(r.email) === normEmail(target)).map((r) => r.id);
   }
   const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, phone: { contains: target.slice(-9) } }, select: { id: true, phone: true }, take: 50 });
   return rows.filter((r) => normPhone(r.phone) === target).map((r) => r.id);
@@ -337,9 +340,12 @@ export async function loginWithLine(
   }
 
   // ไม่มีคำเชิญ: ผู้ติดต่อที่ตรงกับตัวตน LINE และมีสิทธิ์ที่ยอมรับ LINE
+  // CRM C5.5-fix2 ▸ hunter 2a-6 (ทาง LINE): อีเมล LINE ที่หน้าตาคล้าย (`_`/`%`) ห้ามจับคู่ผู้ติดต่อคนอื่น — ciEquals + ตรวจซ้ำทุกแถว ◂
   const or: { lineUserId?: string; email?: { equals: string; mode: "insensitive" } }[] = [{ lineUserId }];
-  if (email) or.push({ email: { equals: email, mode: "insensitive" } });
-  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true }, take: 20 })).map((r) => r.id);
+  if (email) or.push({ email: ciEquals(email) });
+  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true, email: true, lineUserId: true }, take: 20 }))
+    .filter((r) => r.lineUserId === lineUserId || (!!email && normEmail(r.email) === email))
+    .map((r) => r.id);
   if (phone) ids = [...new Set([...ids, ...(await contactsByTarget(shop.tenantId, shop.systemId, "PHONE", phone))])];
   const accessId = (await accessesOfContacts(shop.tenantId, shop.systemId, ids, "LINE"))[0];
   if (!accessId) throw new CustomerAuthError("ยังไม่พบสิทธิ์พอร์ทัลที่ตรงกับบัญชี LINE นี้ — เปิดลิงก์เชิญจากร้าน หรือเข้าด้วยอีเมลแทน");
@@ -1105,7 +1111,10 @@ export async function invite(
       select: { id: true, tenantId: true, systemId: true },
     });
     if (row.tenantId !== ctx.tenantId || row.systemId !== ctx.systemId) throw new PortalError("NOT_FOUND", "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
-    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString() } } });
+    // CRM C5.5-fix2 ▸ hunter 2a-8: เชิญซ้ำ = เริ่มสิทธิ์ใหม่ ⇒ session ที่ยังเปิดอยู่ของสิทธิ์นี้ตายทันที (พนักงาน "ส่งคำเชิญใหม่" หลังลูกค้า
+    //   แจ้งมือถือหาย/กล่องจดหมายถูกเจาะ ⇒ เครื่องเก่าต้องหลุด — เดิมอยู่ต่อจนหมดอายุ session) · ในธุรกรรมเดียวกับการหมุน hash ◂
+    const killed = await tx.portalSession.updateMany({ where: { portalAccessId: row.id, revokedAt: null }, data: { revokedAt: now } });
+    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString(), sessionsRevoked: killed.count } } });
     return row;
   });
   const inviteUrl = `${appBase()}${portalPath(tenant.slug, "invite", token)}`;

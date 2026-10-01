@@ -49,6 +49,8 @@ export default async function CompaniesPage({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C5.5-fix2 ▸ it4 F1: ไม่มีคีย์อ่านบริษัท = 404 (404-not-403 แบบหน้ารายงาน/อีเมล) — เดิมหน้าเปิดได้ (ตัวกรอง + "ยังไม่มีบริษัท…") ◂
+  if (!crmCan(actor, "crm.company.read")) notFound();
   // CRM C4.2-fix ▸ ปุ่มของหน้านี้ = คีย์ของ server action ที่เรียก (companies-actions.ts) · นำเข้าต้องผ่านคีย์ของบริการ (create) ด้วย ◂
   const can = {
     create: crmCan(actor, "crm.company.create"),
@@ -123,7 +125,7 @@ export default async function CompaniesPage({
           </>
         }
       />
-      <ModuleTabs items={crmNavItems(id)} />
+      <ModuleTabs items={crmNavItems(id, (k) => crmCan(actor, k))} />
 
       <form method="get" action={base} className="card flex flex-wrap items-end gap-2 p-3" data-testid="companies-filter-form">
         <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">

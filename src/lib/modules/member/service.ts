@@ -1,6 +1,7 @@
 import { randomCode } from "@/lib/core/hash";
 import { resolvePublicUnit } from "@/lib/core/storefront";
 import { prisma, tenantDb } from "@/lib/core/db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { cell, columnIndex, type CsvTable, type ImportSummary } from "@/lib/core/csv";
 import type { MemberTier, Prisma, PrismaClient } from "@prisma/client";
 // WO 3.1 — Party (INTEGRATION-MAP §F.1/§F.7): findOrCreate คือทางเข้าที่แชท (maybeAutoLinkMember)
@@ -529,7 +530,8 @@ export async function findCustomersForLink(
   const or: Prisma.CustomerWhereInput[] = [];
   const phones = [...new Set((keys.phoneVariants ?? []).map((p) => p.trim()).filter(Boolean))];
   if (phones.length > 0) or.push({ phone: { in: phones } });
-  if (keys.email?.trim()) or.push({ email: { equals: keys.email.trim(), mode: "insensitive" } });
+  // CRM C5.5-fix2 ▸ hunter 2a (prod-live): `equals … insensitive` = ILIKE — `a_b@`/`%@โดเมน` เคยคืนสมาชิกคนอื่นในบล็อก "คนเดียวกันไหม" ◂
+  if (keys.email?.trim()) or.push({ email: ciEquals(keys.email.trim()) });
   if (keys.partyId) or.push({ partyId: keys.partyId });
   if (or.length === 0) return [];
   if (viewer === undefined || viewer === null) return []; // C5.4 (H2): fail-closed

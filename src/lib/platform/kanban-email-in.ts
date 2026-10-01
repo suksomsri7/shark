@@ -16,6 +16,7 @@
 //  5. **เพดานชัดเจน** — ไฟล์แนบ ≤ 20 ชิ้น/ฉบับ ชิ้นละ ≤ 10MB · หัวข้อ ≤ 120 ตัวอักษร (ชื่อการ์ดต้องอ่านออกบนบอร์ด)
 
 import { prisma } from "@/lib/core/db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { findBoardByEmailKey, boardEmailKeyFromRecipients } from "@/lib/modules/kanban/boards-email";
 import { getIntegrations } from "@/lib/modules/kanban/integrations";
 import { createCardFromExternal } from "@/lib/modules/kanban/links";
@@ -102,7 +103,9 @@ function safeFileName(raw: string | null | undefined): string {
 async function senderMemberId(tenantId: string, fromEmail: string): Promise<string | null> {
   if (!fromEmail) return null;
   const user = await prisma.user.findFirst({
-    where: { email: { equals: fromEmail, mode: "insensitive" } },
+    // CRM C5.5-fix2 ▸ hunter 2a (prod-live): `equals … insensitive` = ILIKE — From `somchai_k@` เคยถูกนับเป็นพนักงาน `somchai.k@`
+    //   (การ์ดถูกมอบหมายให้พนักงาน + ไม่ขึ้น "จาก: <ผู้ส่ง>") · ciEquals = เท่ากันทุกตัวอักษร ◂
+    where: { email: ciEquals(fromEmail) },
     select: { id: true },
   });
   if (!user) return null;

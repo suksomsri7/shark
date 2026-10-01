@@ -823,6 +823,32 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
     bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
 }
 
+// ─────────────────── F15: เท่ากันแบบไม่สนตัวพิมพ์ต้องผ่าน ciEquals (CRM C5.5-fix2 · hunter 2a-5/2a-6) ───────────────────
+// Prisma `{ equals: x, mode: "insensitive" }` = `ILIKE $1` ไม่ escape ⇒ `_`/`%`/`\` ของผู้ใช้เป็น wildcard
+// (`somchai_k@` "เท่ากับ" `somchai.k@` → OTP พอร์ทัลออก session ของเหยื่อ) ⇒ ทุกจุดต้องใช้ `ciEquals()` ของ core/ci-equals.ts
+// OWED: 4 จุดใน account/** เป็นของเลนบัญชี (ห้ามแตะจากเลน CRM) — ลบออกจากรายการเมื่อเลนนั้นแก้แล้ว (ห้ามเพิ่มรายการ)
+console.log("\n── F15: equals แบบ insensitive ต้องผ่าน ciEquals (ไม่มี wildcard รั่ว) ──");
+{
+  const OWED = new Set(["src/lib/modules/account/product.ts:name", "src/lib/modules/account/product.ts:sku", "src/lib/modules/account/service.ts:name"]);
+  const RAW_RE = /(\w+)\s*:\s*\{\s*equals\s*:\s*[^,{};]+,\s*mode\s*:\s*"insensitive"/g;
+  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const bad: string[] = [];
+  const owedSeen = new Set<string>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
+    if (rel(p) === "src/lib/core/ci-equals.ts") continue;
+    const src = strip(readFileSync(p, "utf8"));
+    for (const m of src.matchAll(RAW_RE)) {
+      const k = `${rel(p)}:${m[1]}`;
+      if (OWED.has(k)) owedSeen.add(k);
+      else bad.push(`${k}@${src.slice(0, m.index!).split("\n").length}`);
+    }
+  }
+  chk("F15.1", "ไม่มี `{ equals: …, mode: \"insensitive\" }` ดิบนอก core/ci-equals.ts (ยกเว้นหนี้ของเลนบัญชีที่ระบุชื่อ)", bad.length === 0,
+    bad.length ? `ใช้ ciEquals() แทน: ${bad.join(" · ")}` : "ครบ");
+  chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", [...OWED].every((k) => owedSeen.has(k)),
+    `แก้แล้วแต่ยังอยู่ในรายการ: ${[...OWED].filter((k) => !owedSeen.has(k)).join(" · ")}`);
+}
+
 // ─────────────────── F13: ทะเบียน API (บัญชี + บอร์ดงาน) ───────────────────
 // A4 ทำให้ "ทะเบียน op" เป็นแหล่งความจริงเดียวของ REST + OpenAPI + คู่มือ + สกิล AI
 // ด่านนี้กันของ 3 อย่างที่พังเงียบเป็นประจำเวลาเพิ่ม endpoint ใหม่:

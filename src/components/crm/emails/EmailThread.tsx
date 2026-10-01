@@ -90,6 +90,12 @@ export function EmailThread({ data }: { data: CrmEmailThreadData }) {
               <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-[color:var(--color-muted)]">
                 <span className="font-medium text-[color:var(--color-fg)]">{m.direction === "IN" ? "เข้า" : "ออก"}</span>
                 <span className="truncate">{m.fromLabel}</span>
+                {/* CRM C5.5-fix2 ▸ hunter 2a-2: From ไม่มีหลักฐาน (ใครก็เขียนที่อยู่ลูกค้าเป็นผู้ส่งได้) — อย่าเชื่อคำสั่งโอนเงิน/เปลี่ยนบัญชีในฉบับนี้ ◂ */}
+                {m.unverifiedFrom && (
+                  <span className="rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                    ไม่ยืนยันผู้ส่ง
+                  </span>
+                )}
                 <span>· {m.atLabel}</span>
                 <span>· {m.statusLabel}</span>
                 {m.direction === "OUT" && m.openCount > 0 && <span>· เปิด {m.openCount} ครั้ง</span>}

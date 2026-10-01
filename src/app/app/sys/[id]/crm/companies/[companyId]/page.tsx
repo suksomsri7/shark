@@ -61,6 +61,8 @@ export default async function Company360Page({
   // CRM uiVersion gate ▸ route นี้มีเฉพาะ CRM v2 — ระบบที่ยังไม่เปิด (settings.crm.uiVersion ≠ 2) = 404 ◂
   await requireCrmV2Page({ tenantId: tenantId, systemId: id });
   const actor = toMemberActor(auth.user.id, auth.active);
+  // CRM C5.5-fix2 ▸ it4 F1: คีย์อ่านบริษัทตรวจที่หน้าเองด้วย (เดิมพึ่ง companyWhere ว่างอย่างเดียว) ◂
+  if (!crmCan(actor, "crm.company.read")) notFound();
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
 
   const data = await getCompany360(ctx, actor, companyId).catch((e: unknown) => {

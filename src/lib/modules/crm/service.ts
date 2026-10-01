@@ -1,4 +1,5 @@
 import { tenantDb } from "@/lib/core/db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import type { MemberActor } from "@/lib/modules/member";
 import * as party from "@/lib/modules/party";
 import { crmCan, CrmForbiddenError } from "./access";
@@ -307,7 +308,7 @@ export async function findContactsForLink(
   const or: Prisma.CrmContactWhereInput[] = [];
   const phones = [...new Set((keys.phoneVariants ?? []).map((p) => p.trim()).filter(Boolean))];
   if (phones.length > 0) or.push({ phone: { in: phones } });
-  if (keys.email?.trim()) or.push({ email: { equals: keys.email.trim(), mode: "insensitive" } });
+  if (keys.email?.trim()) or.push({ email: ciEquals(keys.email.trim()) }); // CRM C5.5-fix2 ▸ ไม่มี wildcard ◂
   if (keys.partyId) or.push({ partyId: keys.partyId });
   if (or.length === 0) return [];
   return tenantDb(ctx).crmContact.findMany({

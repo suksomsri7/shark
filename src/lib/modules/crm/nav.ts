@@ -27,7 +27,8 @@ export const CRM_NAV: readonly CrmNavEntry[] = Object.freeze([
   { key: "activities", label: "งานติดตาม", path: "/crm/activities", status: "ready" },
   { key: "contacts", label: "ผู้ติดต่อ", path: "/crm/contacts", status: "ready", wo: "C1.4" },
   // C1.3 ▸ รายชื่อบริษัท + บริษัท 360 (`/crm/companies/[companyId]`) + เพิ่มบริษัท
-  { key: "companies", label: "บริษัท", path: "/crm/companies", status: "ready", wo: "C1.3" },
+  // CRM C5.5-fix2 ▸ it4 F1: หน้ารายชื่อบริษัท = 404 สำหรับคนที่ไม่มี `crm.company.read` ⇒ แท็บขึ้นเฉพาะคนที่มีคีย์ (แบบเดียวกับอีเมล/รายงาน) ◂
+  { key: "companies", label: "บริษัท", path: "/crm/companies", status: "ready", wo: "C1.3", perm: "crm.company.read" },
   // CRM C1.6 ▸ ปฏิทินกิจกรรม (วัน | สัปดาห์ | เดือน · ของฉัน/ทีม) — หน้า "งานติดตาม" ข้างบนเป็นกิจกรรม v2 แล้ว
   { key: "calendar", label: "ปฏิทิน", path: "/crm/calendar", status: "ready", wo: "C1.6" },
   // ◂ CRM C1.6

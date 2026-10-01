@@ -22,6 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CrmCompany, CrmCompanySize, CrmContactRole, Role } from "@prisma/client";
+import { ciEquals, likeEscape } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { cell, columnIndex, csvRow, parseCsv } from "@/lib/core/csv";
 import { logOps } from "@/lib/core/ops";
@@ -1376,7 +1377,7 @@ async function listWhereFrom(ctx: CompaniesCtx, actor: MemberActor, input: Compa
   const team = str(input.team);
   if (team) AND.push({ teamId: team });
   const industry = str(input.industry);
-  if (industry) AND.push({ industry: { equals: industry, mode: "insensitive" } });
+  if (industry) AND.push({ industry: ciEquals(industry) }); // CRM C5.5-fix2 ▸ ไม่มี wildcard ◂
   if (input.size !== undefined && input.size !== null && input.size !== "") AND.push({ size: parseSize(input.size) });
   if (input.hasOpenDeals === true) AND.push({ openDealCount: { gt: 0 } });
   if (input.hasOpenDeals === false) AND.push({ openDealCount: 0 });
@@ -1415,7 +1416,7 @@ async function listSqlWhere(ctx: CompaniesCtx, actor: MemberActor, input: Compan
   const team = str(input.team);
   if (team) AND.push(Prisma.sql`${A}."teamId" = ${team}`);
   const industry = str(input.industry);
-  if (industry) AND.push(Prisma.sql`${A}."industry" ILIKE ${industry}`);
+  if (industry) AND.push(Prisma.sql`${A}."industry" ILIKE ${likeEscape(industry)}`); // CRM C5.5-fix2 ▸ = ciEquals ของทาง Prisma (ทางเดียวกันทุกตัวอักษร) ◂
   if (input.size !== undefined && input.size !== null && input.size !== "") {
     const size = parseSize(input.size);
     AND.push(size === null ? Prisma.sql`${A}."size" IS NULL` : enumEqSql(co, "size", "CrmCompanySize", size));
@@ -2563,7 +2564,7 @@ export async function companyByEmailDomain(systemId: string, domain: string): Pr
   // CRM C5.4-E ▸ L6-m8: โดเมนสาธารณะ (gmail.com …) ไม่ใช่ของบริษัทใด — แถวเก่าที่ตั้งไว้ก่อนไม่ดึงคนแปลกหน้าเข้าบริษัท ◂
   if (isFreeMailDomain(domain)) return null;
   return prisma.crmCompany.findFirst({
-    where: { systemId, mergedIntoId: null, archivedAt: null, emailDomain: { equals: domain, mode: "insensitive" } },
+    where: { systemId, mergedIntoId: null, archivedAt: null, emailDomain: ciEquals(domain) }, // CRM C5.5-fix2 ▸ From `x@dom_…`/`x@%` (ปลอมได้) เคยถูกแปะบริษัทอื่น ◂
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
 }
@@ -2622,7 +2623,7 @@ export async function countVisibleByIds(ctx: CrmScopeCtx, actor: MemberActor, id
 
 export async function matchByExactName(ctx: CrmScopeCtx, actor: MemberActor, name: string): Promise<{ id: string } | null> {
   return prisma.crmCompany.findFirst({
-    where: { AND: [await companyWhere(ctx, actor), { name: { equals: name, mode: "insensitive" }, archivedAt: null, mergedIntoId: null }] },
+    where: { AND: [await companyWhere(ctx, actor), { name: ciEquals(name) /* CRM C5.5-fix2 ◂ */, archivedAt: null, mergedIntoId: null }] },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
