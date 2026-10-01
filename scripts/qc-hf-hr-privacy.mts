@@ -10,10 +10,14 @@
 // [N]  D8 ตั้ง PIN ซ้ำ → ข้อความกลาง ไม่บอกชื่อเจ้าของ PIN
 // [D]  D10 ตัดสินใบลา: PENDING → APPROVED/REJECTED + ถอนอนุมัติ APPROVED → REJECTED (มติผู้คุมงาน C1) เท่านั้น (updateMany มีเงื่อนไข · แข่งกันกดได้ผลเดียว) ·
 //      ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา · ใบลาที่อยู่ในสายอนุมัติ (ApprovalRequest PENDING) ห้ามตัดสินทางตรง
-// [S]  static: หน้าเพจ/ส่วนจอใช้ตัวโหลดด้านบนจริง และไม่มี client component ได้แถวดิบ
+// [S]  static: หน้าเพจ/ส่วนจอใช้ตัวโหลดด้านบนจริง และไม่มี client component ได้แถวดิบ · การเขียนใบลาเป็น updateMany ตามสถานะที่คาด
+// [C]  ใบลาที่อนุมัติผ่านสายอนุมัติ ถอนทางตรงไม่ได้ · [R] ถอนอนุมัติ + ประวัติ (audit) · [W] แข่งกดข้าม process
+// [G]  grantStaffAccess: ห้ามผูกเข้าบัญชีตัวเอง · 1 บัญชี ↔ 1 พนักงาน · พนักงานที่มีเงินเดือนต้องผูกโดยผู้ดูเงินเดือน · [B] backfill กติกาเดียวกัน
+// [Q]  ยื่น OT โดยคนที่ไม่ใช่ผู้ดูเงินเดือน: ไม่เห็นยอด · ไม่รู้ว่ามีโปรไฟล์ไหม · [V] hr.* / MANAGER จำกัดสาขา · [F] บันทึกโปรไฟล์ไม่แตะช่องอ่อนไหว
 //
 // รัน (POS lane): bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-hf-hr-privacy.mts
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-hf-hr-privacy"); // 🔴 กัน prod
 
@@ -23,6 +27,8 @@ const hr = await import("@/lib/modules/hr/service");
 const pay = await import("@/lib/modules/hr/payroll");
 const ap = await import("@/lib/modules/approval/service");
 const tools = await import("@/lib/ai/tools");
+const proposals = await import("@/lib/ai/proposals");
+const staffSvc = await import("@/lib/staff/service");
 // ตัวโหลดใหม่ของใบนี้ — โค้ดก่อนแก้ยังไม่มี ⇒ null (ทุกข้อที่พึ่งมันแดง ไม่ใช่ CRASH)
 type PrivacyMod = {
   loadPayslipForViewer: (ctx: Ctx, v: Viewer, runId: string, employeeId: string) => Promise<unknown | null>;
@@ -35,6 +41,8 @@ type PrivacyMod = {
     ctx: Ctx,
     v: Viewer,
   ) => Promise<{ pending: Record<string, unknown>[]; history: Record<string, unknown>[]; canReadReason: boolean }>;
+  employeeProfileInputFromForm?: (form: FormData, v: Viewer) => Record<string, unknown>;
+  adjustmentReplyForViewer?: (payrollViewer: boolean, res: { ok: boolean; reason?: string; amountSatang?: number }) => { status: string; message: string };
 };
 const privacyPath = "@/lib/modules/hr/privacy";
 const priv = (await import(privacyPath as string).catch(() => null)) as PrivacyMod | null;
@@ -44,6 +52,27 @@ const shared = (await import("@/lib/modules/hr/privacy-shared" as string).catch(
 } | null;
 
 type Ctx = { tenantId: string; systemId: string };
+// ── โหมดผู้แข่ง (worker): เรียกจาก process แม่ เพื่อให้การตัดสินสองทางมาจากคนละ process/connection จริง ──
+if (process.argv[2] === "--race-worker") {
+  const [, , , wTenant, wSystem, wStatus, wDecider, wGoAt, wIds] = process.argv as string[];
+  await prisma.$queryRaw`SELECT 1`; // อุ่น connection ก่อนถึงเวลานัด
+  const out: string[] = [];
+  const ids = String(wIds).split(",");
+  const late = Date.now() > Number(wGoAt);
+  for (let i = 0; i < ids.length; i++) {
+    const at = Number(wGoAt) + i * 800;
+    while (Date.now() < at) await new Promise((r) => setTimeout(r, 2));
+    try {
+      await hr.decideLeave({ tenantId: String(wTenant), systemId: String(wSystem) }, ids[i]!, wStatus as "APPROVED" | "REJECTED", wDecider, { from: "PENDING" });
+      out.push("ok");
+    } catch {
+      out.push("no");
+    }
+  }
+  console.log("RACE_RESULT " + JSON.stringify({ out, late }));
+  await prisma.$disconnect();
+  process.exit(0);
+}
 type Viewer = { role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown>; userId: string };
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 type Check = { id: string; name: string; ok: boolean; expected: string; actual: string; sev: Sev };
@@ -235,9 +264,19 @@ try {
   chk("D-4", "🔴 อนุมัติใบลาของตัวเองไม่ได้", (await statusOf(l3)) === "PENDING" && e04 !== null, "คง PENDING", `${await statusOf(l3)} err=${e04}`);
   const e04b = await errMsg(() => hr.decideLeave(ctx, l3, "APPROVED", U.owner));
   chk("D-4b", "คนอื่นอนุมัติใบเดียวกันได้ตามปกติ", e04b === null && (await statusOf(l3)) === "APPROVED", "APPROVED", `${await statusOf(l3)} ${e04b ?? ""}`, "MAJOR");
+  // ทาง AI จริง: proposals.runKind → dispatch → decideLeave (เส้นเดียวกับการกดยืนยันข้อเสนอ)
+  const OWNER_M = { role: "OWNER" as const, unitAccess: ["*"], permissions: {} };
   const l4 = await mkLeave(e2.id, "2026-09-14");
-  const e04c = await errMsg(() => hr.decideLeave(ctx, l4, "REJECTED", null));
-  chk("D-4c", "ทางที่ไม่มีผู้ตัดสิน (ข้อเสนอ AI · decidedById null) ยังตัดสิน PENDING ได้", e04c === null && (await statusOf(l4)) === "REJECTED", "REJECTED", `${await statusOf(l4)} ${e04c ?? ""}`, "MAJOR");
+  const e04c = await errMsg(() => proposals.runKind(OWNER_M, tid, "hr_decide_leave", { leaveId: l4, decision: "REJECTED" }, `qc-hfhr-${ts}-a1`, U.owner));
+  chk("D-4c", "🔴 ทาง AI: บันทึกผู้กดยืนยันเป็นผู้ตัดสิน (ไม่ใช่ null)", e04c === null && (await statusOf(l4)) === "REJECTED" && (await prisma.hrLeave.findUnique({ where: { id: l4 } }))?.decidedById === U.owner, `REJECTED · ${U.owner}`, `${await statusOf(l4)} ${String((await prisma.hrLeave.findUnique({ where: { id: l4 } }))?.decidedById)} ${e04c ?? ""}`);
+  const l4b = await mkLeave(e1.id, "2026-09-24");
+  const e04d = await errMsg(() => proposals.runKind(OWNER_M, tid, "hr_decide_leave", { leaveId: l4b, decision: "APPROVED" }, `qc-hfhr-${ts}-a2`, U.self));
+  chk("D-4d", "🔴 ทาง AI: อนุมัติใบลาของตัวเองไม่ได้", e04d !== null && (await statusOf(l4b)) === "PENDING", "ปฏิเสธ + คง PENDING", `${await statusOf(l4b)} err=${e04d}`);
+  const l4c = await mkLeave(e2.id, "2026-09-25");
+  await hr.decideLeave(ctx, l4c, "APPROVED", U.hrStaff, { from: "PENDING" }); // ข้อเสนอ "ไม่อนุมัติ" ถูกสร้างตอนยัง PENDING แล้วมีคนอนุมัติไปก่อน
+  const e04e = await errMsg(() => proposals.runKind(OWNER_M, tid, "hr_decide_leave", { leaveId: l4c, decision: "REJECTED" }, `qc-hfhr-${ts}-a3`, U.owner));
+  chk("D-4e", "🔴 ทาง AI: ข้อเสนอ 'ไม่อนุมัติ' ที่ค้างจากตอน PENDING ไม่ถอนการอนุมัติที่เกิดทีหลังแบบเงียบ ๆ",
+    e04e !== null && /สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่/.test(e04e) && (await statusOf(l4c)) === "APPROVED", "ปฏิเสธ + คง APPROVED", `${await statusOf(l4c)} err=${e04e}`);
 
   // แข่งกันกด 2 ทางพร้อมกัน (คนละ connection ของ pool) — ต้องมีผลเดียว ×3 รอบ
   let raceOk = 0;
@@ -261,16 +300,26 @@ try {
   const r1 = await mkLeave(e2.id, "2026-10-01");
   await hr.decideLeave(ctx, r1, "APPROVED", U.hrStaff);
   chk("R-0", "fixture: วันลาอนุมัติแล้ว → วันนั้นไม่ว่าง", (await hr.isAvailable(ctx, e2.id, new Date("2026-10-01"))) === false, "false", "true", "MAJOR");
-  const er1 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.owner));
+  const er1 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.owner, { from: "APPROVED" }));
   chk("R-1", "ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่", er1 === null && (await statusOf(r1)) === "REJECTED" && (await prisma.hrLeave.findUnique({ where: { id: r1 } }))?.decidedById === U.owner, "REJECTED", `${await statusOf(r1)} ${er1 ?? ""}`);
+  const audR1 = await prisma.auditLog.findMany({ where: { tenantId: tid, targetType: "HrLeave", targetId: r1 }, orderBy: { createdAt: "asc" } });
+  const lastAud = audR1[audR1.length - 1] as { before?: { status?: string; decidedById?: string | null }; after?: { status?: string; decidedById?: string | null } } | undefined;
+  chk("R-1c", "🔴 ประวัติไม่หาย: audit 2 แถว (อนุมัติ + ถอน) · แถวถอนเก็บผู้อนุมัติเดิมใน before",
+    audR1.length === 2 && lastAud?.before?.status === "APPROVED" && lastAud.before.decidedById === U.hrStaff && lastAud.after?.status === "REJECTED" && lastAud.after.decidedById === U.owner,
+    "2 แถว · before hrStaff/APPROVED → after owner/REJECTED", JSON.stringify(audR1.map((a) => [a.action, a.before, a.after])).slice(0, 220));
+  const r1d = await mkLeave(e2.id, "2026-10-03");
+  await hr.decideLeave(ctx, r1d, "APPROVED", U.hrStaff);
+  const er1d = await errMsg(() => hr.decideLeave(ctx, r1d, "REJECTED", U.owner));
+  chk("R-1d", "🔴 ผู้ตัดสินที่ไม่บอกสถานะที่เห็น (ไม่มี from) ถอนใบที่อนุมัติแล้วไม่ได้ — 'สถานะใบลาเปลี่ยนไปแล้ว'",
+    er1d !== null && /สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่/.test(er1d) && (await statusOf(r1d)) === "APPROVED", "ปฏิเสธ + คง APPROVED", `${await statusOf(r1d)} err=${er1d}`);
   chk("R-1b", "ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง", (await hr.isAvailable(ctx, e2.id, new Date("2026-10-01"))) === true, "true", "false");
-  const er2 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.hrStaff));
+  const er2 = await errMsg(() => hr.decideLeave(ctx, r1, "REJECTED", U.hrStaff, { from: "APPROVED" }));
   chk("R-2", "🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน", er2 !== null && (await prisma.hrLeave.findUnique({ where: { id: r1 } }))?.decidedById === U.owner, "ปฏิเสธ", `err=${er2}`);
   const er3 = await errMsg(() => hr.decideLeave(ctx, r1, "APPROVED", U.hrStaff));
   chk("R-3", "🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED)", er3 !== null && (await statusOf(r1)) === "REJECTED", "ปฏิเสธ", `${await statusOf(r1)} err=${er3}`);
   const r2 = await mkLeave(e1.id, "2026-10-02");
   await hr.decideLeave(ctx, r2, "APPROVED", U.owner);
-  const er4 = await errMsg(() => hr.decideLeave(ctx, r2, "REJECTED", U.self));
+  const er4 = await errMsg(() => hr.decideLeave(ctx, r2, "REJECTED", U.self, { from: "APPROVED" }));
   chk("R-4", "🔴 ถอนอนุมัติใบลาของตัวเองไม่ได้", er4 !== null && (await statusOf(r2)) === "APPROVED", "คง APPROVED", `${await statusOf(r2)} err=${er4}`);
   // ถอนพร้อมกัน 2 ทาง (และ ถอน vs อนุมัติซ้ำ) บนใบที่อนุมัติแล้ว — ต้องสำเร็จทางเดียว ×3 รอบ
   let revOk = 0;
@@ -279,8 +328,8 @@ try {
     const lr = await mkLeave(e2.id, `2026-10-${10 + i}`);
     await hr.decideLeave(ctx, lr, "APPROVED", U.hrMgr);
     const [a, b] = await Promise.allSettled([
-      hr.decideLeave(ctx, lr, "REJECTED", U.owner),
-      hr.decideLeave(ctx, lr, i === 2 ? "APPROVED" : "REJECTED", U.hrStaff),
+      hr.decideLeave(ctx, lr, "REJECTED", U.owner, { from: "APPROVED" }),
+      hr.decideLeave(ctx, lr, i === 2 ? "APPROVED" : "REJECTED", U.hrStaff, { from: "APPROVED" }),
     ]);
     const wins = [a, b].filter((x) => x.status === "fulfilled").length;
     const row = await prisma.hrLeave.findUnique({ where: { id: lr } });
@@ -315,7 +364,133 @@ try {
     "ปฏิเสธ", `${await statusOf(l6)} err=${e08}`);
   chk("D-8b", "ข้อความชี้ไปที่สายอนุมัติ (ภาษาไทย)", !!e08 && THAI.test(e08) && /อนุมัติ/.test(e08), "ชี้ไปสายอนุมัติ", String(e08), "MAJOR");
   // ทางที่ถูก: ตัดสินผ่านสายอนุมัติ → effect เขียนใบลา (เส้นเดิมไม่เสีย — ตรวจผ่าน approval.decide + effect ใน qc-approval-wiring)
+  // ใบลาที่อนุมัติผ่านสายอนุมัติ — ห้ามถอนทางตรง (approval core ไม่มีทางถอนผล ⇒ ปฏิเสธ + ชี้ทาง)
+  const lc = await mkLeave(e2.id, "2026-09-22");
+  const reqC = await prisma.approvalRequest.findFirst({ where: { tenantId: tid, entityType: "HrLeave", entityId: lc } });
+  // fixture: สายตัดสินแล้ว + effect เขียนใบลา (รูปเดียวกับ approval-effects.ts)
+  await prisma.approvalRequest.update({ where: { id: reqC?.id ?? "-" }, data: { status: "APPROVED", decidedAt: new Date() } });
+  await prisma.hrLeave.update({ where: { id: lc }, data: { status: "APPROVED", decidedById: "approval-engine" } });
+  const eC1 = await errMsg(() => hr.decideLeave(ctx, lc, "REJECTED", U.owner, { from: "APPROVED" }));
+  chk("C-1", "🔴 ใบลาที่อนุมัติผ่านสายอนุมัติ ถอนทางตรงไม่ได้ (แม้เจ้าของร้าน) + ข้อความไทยชี้ทาง", eC1 !== null && THAI.test(eC1) && /สายอนุมัติ/.test(eC1) && (await statusOf(lc)) === "APPROVED", "ปฏิเสธ + คง APPROVED", `${await statusOf(lc)} err=${eC1}`);
+  const eC2 = await errMsg(() => hr.decideLeave(ctx, lc, "REJECTED"));
+  chk("C-2", "🔴 ทางภายในที่ไม่มีผู้ตัดสินก็ถอนใบที่อนุมัติผ่านสายไม่ได้", eC2 !== null && (await statusOf(lc)) === "APPROVED", "ปฏิเสธ", `${await statusOf(lc)} err=${eC2}`);
   await ap.setPolicyActive({ tenantId: tid }, pol.id, false);
+
+  // ═══ [G] ผูกบัญชีผู้ใช้กับพนักงาน (grantStaffAccess จริง) — ห้ามใช้เป็นทางลัดเปิดสลิปคนอื่น ═══
+  console.log("── [G] ผูกบัญชีผู้ใช้ (staff) ──");
+  const mkUser = async (tag: string, role: "OWNER" | "MANAGER" | "STAFF" | null) => {
+    const u = await prisma.user.create({ data: { email: `hfhr-${ts}-${tag}@example.com`, name: `QC ${tag}` } });
+    if (role) await prisma.membership.create({ data: { userId: u.id, tenantId: tid, role, unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+    return u;
+  };
+  const uMgr = await mkUser("mgr", "MANAGER");
+  const uOwn = await mkUser("own", "OWNER");
+  const uL = await mkUser("l", null);
+  const uP = await mkUser("p", "STAFF");
+  const gX = await hr.createEmployee(ctx, { name: `มีเงินเดือน ${ts}` });
+  await pay.setSalaryProfile(ctx, { employeeId: gX.id, baseSalarySatang: 4_000_000, ssoEligible: true });
+  const gW = await hr.createEmployee(ctx, { name: `ไม่มีเงินเดือน ${ts}` });
+  const gY = await hr.createEmployee(ctx, { name: `ผูกแล้ว ${ts}` });
+  const linkOf = async (id: string) => (await prisma.hrEmployee.findUnique({ where: { id } }))?.linkedUserId ?? null;
+  const grant = (actor: string, employeeId: string, email: string) => staffSvc.grantStaffAccess({ tenantId: tid, actorUserId: actor, employeeId, email });
+  const g1 = await grant(uMgr.id, gW.id, uMgr.email);
+  chk("G-1", "🔴 ผูกพนักงานเข้าบัญชีของผู้สั่งเอง → ปฏิเสธ (ข้อความไทย)", g1.ok === false && THAI.test((g1 as { reason?: string }).reason ?? "") && (await linkOf(gW.id)) === null, "ปฏิเสธ · ไม่ผูก", `${JSON.stringify(g1)} link=${await linkOf(gW.id)}`);
+  const g2 = await grant(uOwn.id, gY.id, uL.email);
+  chk("G-2", "เจ้าของร้านผูกพนักงาน (ไม่มีเงินเดือน) เข้าบัญชีใหม่ได้ตามปกติ", g2.ok === true && (await linkOf(gY.id)) === uL.id, "ok", JSON.stringify(g2), "MAJOR");
+  const g2b = await grant(uOwn.id, gY.id, uL.email);
+  chk("G-2b", "ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)", g2b.ok === true, "ok", JSON.stringify(g2b), "MAJOR");
+  const g3 = await grant(uOwn.id, gW.id, uL.email);
+  chk("G-3", "🔴 บัญชีที่ผูกกับพนักงานคนอื่นในร้านแล้ว → ปฏิเสธ (1 บัญชี ↔ 1 พนักงาน)", g3.ok === false && (await linkOf(gW.id)) === null, "ปฏิเสธ", `${JSON.stringify(g3)} link=${await linkOf(gW.id)}`);
+  const g4 = await grant(uMgr.id, gX.id, `hfhr-${ts}-n@example.com`);
+  chk("G-4", "🔴 ผู้จัดการที่ไม่มีสิทธิ์ดูเงินเดือน ผูกพนักงานที่มีโปรไฟล์เงินเดือน → ปฏิเสธ", g4.ok === false && (await linkOf(gX.id)) === null, "ปฏิเสธ", `${JSON.stringify(g4)} link=${await linkOf(gX.id)}`);
+  const g5 = await grant(uMgr.id, gW.id, `hfhr-${ts}-m@example.com`);
+  chk("G-5", "ผู้จัดการผูกพนักงานที่ไม่มีเงินเดือนเข้าบัญชีใหม่ได้ตามปกติ", g5.ok === true && !!(await linkOf(gW.id)), "ok", JSON.stringify(g5), "MAJOR");
+  const g6 = await grant(uOwn.id, gX.id, `hfhr-${ts}-o@example.com`);
+  chk("G-6", "เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกพนักงานที่มีเงินเดือนได้", g6.ok === true && !!(await linkOf(gX.id)), "ok", JSON.stringify(g6), "MAJOR");
+
+  // ═══ [B] สคริปต์ backfill ผูกบัญชีจากอีเมล (เขียน linkedUserId ที่สอง) — กติกาเดียวกัน ═══
+  console.log("── [B] backfill ผูกบัญชี ──");
+  const b1 = await hr.createEmployee(ctx, { name: `bf มีเงินเดือน ${ts}` });
+  await hr.saveEmployeeProfile(ctx, b1.id, { email: uMgr.email }); // ผู้จัดการแก้อีเมลพนักงานเป็นของตัวเอง
+  await pay.setSalaryProfile(ctx, { employeeId: b1.id, baseSalarySatang: 5_000_000, ssoEligible: true });
+  const b2 = await hr.createEmployee(ctx, { name: `bf ปกติ ${ts}` });
+  await hr.saveEmployeeProfile(ctx, b2.id, { email: uP.email });
+  const b3 = await hr.createEmployee(ctx, { name: `bf ซ้ำบัญชี ${ts}` });
+  await hr.saveEmployeeProfile(ctx, b3.id, { email: uP.email });
+  const bf = spawnSync("pnpm", ["exec", "tsx", "scripts/member-backfill-hr-users.mts", "--tenant", `qc-hfhr-${ts}`], { env: process.env, encoding: "utf8", timeout: 240_000 });
+  const bfSum = /BACKFILL_SUMMARY (.*)/.exec(String(bf.stdout ?? ""))?.[1] ?? `exit=${bf.status} ${String(bf.stderr ?? "").slice(0, 160)}`;
+  chk("B-0", "backfill รันจบ", bf.status === 0, "exit 0", bfSum, "MAJOR");
+  chk("B-1", "🔴 backfill ไม่ผูกพนักงานที่มีเงินเดือน (ไม่มีผู้สั่งที่มีสิทธิ์ดูเงินเดือน)", (await linkOf(b1.id)) === null, "null", String(await linkOf(b1.id)));
+  chk("B-2", "backfill ผูกพนักงานปกติจากอีเมลได้ตามเดิม", (await linkOf(b2.id)) === uP.id, uP.id, String(await linkOf(b2.id)), "MAJOR");
+  chk("B-3", "🔴 backfill ไม่ผูกบัญชีเดียวกับพนักงานคนที่สอง", (await linkOf(b3.id)) === null, "null", String(await linkOf(b3.id)));
+
+  // ═══ [Q] ยื่น OT โดยคนที่ไม่ใช่ผู้ดูเงินเดือน — ห้ามรู้ยอด/ห้ามรู้ว่ามีโปรไฟล์เงินเดือนไหม ═══
+  console.log("── [Q] คำตอบการยื่นรายการเงิน ──");
+  const reply = priv?.adjustmentReplyForViewer;
+  const resNo = await pay.requestAdjustment(ctx, { employeeId: gW.id, periodKey: "2026-09", kind: "OT", hours: 2, requestedById: U.member });
+  const resYes = await pay.requestAdjustment(ctx, { employeeId: e2.id, periodKey: "2026-09", kind: "OT", hours: 2, requestedById: U.member });
+  chk("Q-0", "มีตัวสร้างคำตอบตามสิทธิ์ (privacy.adjustmentReplyForViewer)", !!reply, "มี", "ไม่มี");
+  const qNo = reply?.(false, resNo);
+  chk("Q-1", "🔴 ไม่ใช่ผู้ดูเงินเดือน + ไม่มีโปรไฟล์ → ข้อความกลาง (ไม่บอกให้ตั้งเงินเดือน)", !!qNo && qNo.status === "error" && !/เงินเดือน/.test(qNo.message) && THAI.test(qNo.message), "ข้อความกลาง", JSON.stringify(qNo ?? resNo));
+  const qYes = reply?.(false, resYes);
+  chk("Q-2", "🔴 ไม่ใช่ผู้ดูเงินเดือน + ยื่นสำเร็จ → ไม่บอกยอดเงิน", !!qYes && qYes.status === "ok" && !/[0-9๐-๙]/.test(qYes.message), "ไม่มีตัวเลข", JSON.stringify(qYes ?? null));
+  const qV = reply?.(true, resYes);
+  chk("Q-3", "ผู้ดูเงินเดือน: คำตอบเดิม (มียอด)", !!qV && qV.status === "ok" && qV.message.includes(((resYes.amountSatang ?? 0) / 100).toLocaleString("th-TH")), "มียอด", JSON.stringify(qV ?? null), "MAJOR");
+  const qVn = reply?.(true, resNo);
+  chk("Q-4", "ผู้ดูเงินเดือน: ไม่มีโปรไฟล์ → บอกให้ตั้งเงินเดือนตามเดิม", !!qVn && /ตั้งเงินเดือน/.test(qVn.message), "ข้อความเดิม", JSON.stringify(qVn ?? null), "MAJOR");
+
+  // ═══ [V] ผู้ดูชนิดอื่น: wildcard hr.* · MANAGER ที่จำกัดสาขา ═══
+  console.log("── [V] wildcard / MANAGER จำกัดสาขา ──");
+  V.wild = { role: "STAFF", unitAccess: [], permissions: { "hr.*": true }, userId: `u-wild-${ts}` };
+  V.mgrUnit = { role: "MANAGER", unitAccess: [`unit-elsewhere-${ts}`], permissions: {}, userId: `u-mgru-${ts}` };
+  chk("V-1", "🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ", (await slip("wild", e2.id)) === null, "null", "เปิดได้");
+  const pW = await prof("wild", e2.id);
+  chk("V-2", "🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร", !!pW && SENS.every((k) => !(k in pW.profile)) && pW.docs.length === 0, "ไม่มี", JSON.stringify(pW && SENS.filter((k) => k in pW.profile)));
+  chk("V-3", "🔴 MANAGER จำกัดสาขา: สลิป → ไม่พบ", (await slip("mgrUnit", e2.id)) === null, "null", "เปิดได้");
+  const pMu = await prof("mgrUnit", e2.id);
+  chk("V-4", "MANAGER จำกัดสาขา: ไม่มีช่องอ่อนไหว (HR ไม่มีแกนสาขา — เปิดโปรไฟล์ได้ · บันทึกเป็นข้อค้นพบ)", !!pMu && SENS.every((k) => !(k in pMu.profile)), "ไม่มีช่องอ่อนไหว", JSON.stringify(pMu && SENS.filter((k) => k in pMu.profile)), "MAJOR");
+
+  // ═══ [F] บันทึกโปรไฟล์โดยผู้จัดการที่ไม่ใช่ผู้ดูเงินเดือน — 6 ช่องอ่อนไหวต้องไม่ถูกแตะ ═══
+  console.log("── [F] บันทึกโปรไฟล์ ──");
+  const fd = new FormData();
+  fd.set("addressLine", "2 ถนนใหม่");
+  for (const k of SENS) fd.set(k, k === "nationalId" ? "9999999999999" : `แก้โดยผู้จัดการ-${k}`);
+  const inMgr = priv?.employeeProfileInputFromForm?.(fd, V.manager!);
+  if (inMgr) await hr.saveEmployeeProfile(ctx, e2.id, inMgr);
+  const rowF = await prisma.hrEmployee.findUnique({ where: { id: e2.id } });
+  chk("F-1", "🔴 ผู้จัดการ (ไม่มี hr.payroll.read) ส่งช่องอ่อนไหวมา → 6 คอลัมน์คงเดิม · ช่องทั่วไปบันทึกได้",
+    !!inMgr && rowF?.nationalId === "1101700000022" && rowF.bankAccountNo === "5556667778" && rowF.ssoNumber === "SSO-0022" && rowF.houseRegAddress === "99 หมู่ 1 ต.ทดสอบ" && rowF.bankName === "กสิกรไทย" && rowF.bankAccountName === "ชื่อบัญชีทดสอบ" && rowF.addressLine === "2 ถนนใหม่",
+    "คงเดิม", JSON.stringify(rowF && SENS.map((k) => (rowF as unknown as Record<string, unknown>)[k])));
+  const inPay = priv?.employeeProfileInputFromForm?.(fd, V.hrMgr!);
+  chk("F-2", "ผู้ดูเงินเดือน: ช่องอ่อนไหวผ่านเข้า service ได้ตามเดิม", !!inPay && inPay.nationalId === "9999999999999", "มี", JSON.stringify(inPay ?? null).slice(0, 120), "MAJOR");
+
+  // ═══ [W] แข่งกดจากคนละ process (คนละ connection) 5 รอบ ═══
+  console.log("── [W] แข่งกดข้าม process ──");
+  const raceIds: string[] = [];
+  for (let i = 0; i < 5; i++) raceIds.push(await mkLeave(e2.id, `2026-11-${String(i + 1).padStart(2, "0")}`));
+  const goAt = Date.now() + 35_000;
+  const worker = (status: string, decider: string) =>
+    new Promise<{ out: string[]; late: boolean } | null>((res) => {
+      const c = spawn("pnpm", ["exec", "tsx", "scripts/qc-hf-hr-privacy.mts", "--race-worker", tid, hrSys.id, status, decider, String(goAt), raceIds.join(",")], { env: process.env });
+      let o = "";
+      c.stdout.on("data", (d) => (o += String(d)));
+      c.on("close", () => {
+        const m = /RACE_RESULT (.*)/.exec(o);
+        res(m ? (JSON.parse(m[1]!) as { out: string[]; late: boolean }) : null);
+      });
+    });
+  const [wa, wb] = await Promise.all([worker("APPROVED", U.owner), worker("REJECTED", U.hrStaff)]);
+  let wOk = 0;
+  const wLog: string[] = [];
+  for (let i = 0; i < raceIds.length; i++) {
+    const st = await statusOf(raceIds[i]!);
+    const a = wa?.out[i];
+    const b = wb?.out[i];
+    const wins = [a, b].filter((x) => x === "ok").length;
+    wLog.push(`${a}/${b}:${st}`);
+    if (wins === 1 && st === (a === "ok" ? "APPROVED" : "REJECTED")) wOk++;
+  }
+  chk("W-1", "🔴 แข่งกดจากคนละ process 5 รอบ → สำเร็จทางเดียวทุกรอบ", wOk === 5 && !!wa && !!wb, "5/5", `${wLog.join(" ")} late=${wa?.late}/${wb?.late}`);
 } catch (e) {
   chk("CRASH", "harness ทำงานจนจบ", false, "จบปกติ", e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e));
 } finally {
@@ -332,10 +507,15 @@ try {
       "approvalDecision", "approvalRequest", "approvalStep", "approvalPolicy",
       "hrPayrollItem", "hrPayrollRun", "hrPayAdjustment", "hrSalaryProfile",
       "hrEmployeeDoc", "hrAttendance", "hrLeave", "hrWorkSchedule", "hrEmployee",
-      "outboxEvent", "appNotification", "webhookDelivery", "auditLog", "appSystemUnit", "appSystem",
+      "outboxEvent", "appNotification", "webhookDelivery", "auditLog", "aiProposal", "membership", "appSystemUnit", "appSystem",
     ]) await del(m, () => M[m]!.deleteMany({ where: { tenantId: id } }));
     await del("party", () => M["party"]!.deleteMany({ where: { tenantId: id } }));
     await del("tenant", () => prisma.tenant.delete({ where: { id } }));
+  }
+  try {
+    await prisma.user.deleteMany({ where: { email: { startsWith: `hfhr-${ts}-` } } });
+  } catch (err) {
+    console.log(`  ⚠ cleanup users: ${err instanceof Error ? err.message.slice(0, 60) : err}`);
   }
   console.log("\n[cleanup] ลบร้านทดสอบเรียบร้อย");
 }
@@ -349,11 +529,28 @@ const rd = (p: string) => {
     return "";
   }
 };
+// client component ที่หน้าใช้ (ไฟล์ขึ้นต้นด้วย "use client") — ต้องไม่ได้แถวดิบผ่าน prop ใดเลย
+const clientImports = (src: string): string[] =>
+  [...src.matchAll(/from "(@\/[^"]+)"/g)]
+    .map((m) => m[1]!)
+    .filter((spec) => {
+      const base = "src/" + spec.slice(2);
+      const f = [`${base}.tsx`, `${base}.ts`, `${base}/index.tsx`].find((x) => existsSync(x));
+      return !!f && /^\s*["']use client["']/.test(rd(f));
+    });
+const RAW_ROW = /getEmployee\(|payslipData\(|hrEmployee|hrPayrollItem|tenantDb|from "@\/lib\/modules\/hr\/(service|payroll)"/;
 const slipPage = rd("src/app/app/sys/[id]/payroll/[runId]/slip/[employeeId]/page.tsx");
-chk("S-1", "หน้าสลิปเรียก loadPayslipForViewer และไม่เรียก payslipData ตรง", /loadPayslipForViewer\(/.test(slipPage) && !/payslipData\(/.test(slipPage), "ใช่", "ไม่ใช่");
+chk("S-1", "หน้าสลิป: ข้อมูลมาจาก loadPayslipForViewer ทางเดียว · ไม่มีทางอ่านแถว HR ดิบ · ไม่มี client component",
+  /loadPayslipForViewer\(/.test(slipPage) && !RAW_ROW.test(slipPage) && clientImports(slipPage).length === 0, "ใช่", JSON.stringify(clientImports(slipPage)));
 const profPage = rd("src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx");
-chk("S-2", "หน้าโปรไฟล์เรียก loadEmployeeProfileForViewer · ไม่เรียก getEmployee ตรง · ไม่ส่ง emp={emp} (แถวดิบ) ให้ฟอร์ม",
-  /loadEmployeeProfileForViewer\(/.test(profPage) && !/getEmployee\(/.test(profPage) && !/emp=\{emp\}/.test(profPage), "ใช่", "ไม่ใช่");
+const profClients = clientImports(profPage);
+const viewRefs = [...new Set([...profPage.matchAll(/\bview\.(\w+)/g)].map((m) => m[1]))].sort();
+chk("S-2", "หน้าโปรไฟล์: ข้อมูลพนักงานมาจาก DTO ทางเดียว (ไม่มี getEmployee/hrEmployee/tenantDb/service) · client component เดียวที่รับข้อมูล = EmployeeProfileForm ด้วย emp={view.profile}",
+  /loadEmployeeProfileForViewer\(/.test(profPage) && !RAW_ROW.test(profPage) &&
+    profClients.every((c) => c === "@/lib/modules/hr/EmployeeProfileForm" || c.startsWith("@/components/")) &&
+    (profPage.match(/<EmployeeProfileForm\b[^>]*>/g) ?? []).join("") === "<EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />" &&
+    JSON.stringify(viewRefs) === JSON.stringify(["canSeeSensitive", "docs", "profile"]),
+  "ใช่", JSON.stringify({ profClients, viewRefs }));
 const form = rd("src/lib/modules/hr/EmployeeProfileForm.tsx");
 chk("S-3", "ฟอร์มโปรไฟล์ (client) ใช้ type จาก privacy-shared และไม่รู้จัก pinCode", /from "\.\/privacy-shared"/.test(form) && !/pinCode/.test(form), "ใช่", "ไม่ใช่");
 const sharedSrc = rd("src/lib/modules/hr/privacy-shared.ts");
@@ -364,6 +561,18 @@ chk("S-5", "ส่วนจอใบลาใช้ leaveItemsForViewer แล�
 const toolsSrc = rd("src/lib/ai/tools.ts");
 const plBlock = toolsSrc.slice(toolsSrc.indexOf("const pendingLeaves: AiTool"), toolsSrc.indexOf("// ── 5) member_count"));
 chk("S-6", "AI pending_leaves ไม่อ่าน l.reason", plBlock.length > 0 && !/l\.reason/.test(plBlock), "ใช่", "ไม่ใช่");
+const svcSrc = rd("src/lib/modules/hr/service.ts");
+const decideBody = svcSrc.slice(svcSrc.indexOf("export async function decideLeave"), svcSrc.indexOf("export type BulkLeaveResult"));
+chk("S-8", "decideLeave เขียนครั้งสุดท้ายด้วย updateMany ที่มีเงื่อนไขสถานะที่คาดไว้ (ไม่มี hrLeave.update ธรรมดา)",
+  /hrLeave\.updateMany\(\{\s*where: \{ id: leaveId, status: from \}/.test(decideBody) && !/hrLeave\.update\(/.test(decideBody), "ใช่", "ไม่ใช่");
+const actSrc2 = rd("src/lib/modules/hr/actions.ts");
+const decideActBody = actSrc2.slice(actSrc2.indexOf("export async function decideLeaveAction"), actSrc2.indexOf("export type BulkLeaveState"));
+chk("S-9", "decideLeaveAction ส่ง from (สถานะที่ผู้ใช้เห็น) ให้ decideLeave", /formData\.get\("from"\)/.test(decideActBody) && /decideLeave\(ctx, leaveId, rawStatus, auth\.active\.userId, \{ from/.test(decideActBody), "ใช่", "ไม่ใช่");
+const propSrc = rd("src/lib/ai/proposals.ts");
+chk("S-10", "proposals: hr_decide_leave ส่งผู้กดยืนยันเป็นผู้ตัดสิน (userId ?? null)", /hrSvc\.decideLeave\(\{ tenantId, systemId: system\.id \}, String\(p\.leaveId \?\? ""\), decision, userId \?\? null\)/.test(propSrc), "ใช่", "ไม่ใช่");
+chk("S-11", "saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm", /employeeProfileInputFromForm\(formData, hrViewerOf\(auth\)\)/.test(actSrc2), "ใช่", "ไม่ใช่");
+const payActSrc = rd("src/lib/modules/hr/payroll-actions.ts");
+chk("S-12", "requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer", /adjustmentReplyForViewer\(/.test(payActSrc), "ใช่", "ไม่ใช่");
 chk("S-7", "รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service",
   JSON.stringify([...(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? [])]) === JSON.stringify([...hr.SENSITIVE_EMPLOYEE_FIELDS]), "ตรง",
   JSON.stringify(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? null), "MAJOR");

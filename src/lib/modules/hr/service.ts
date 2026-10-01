@@ -1,5 +1,6 @@
 import { tenantDb } from "@/lib/core/db";
 import { emitOutboxOutsideTx } from "@/lib/core/outbox";
+import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
 import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
@@ -442,8 +443,11 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)
 // HF-HR-0 (D10 · มติผู้คุมงาน C1): ทางที่อนุญาต = PENDING → APPROVED/REJECTED · APPROVED → REJECTED (ถอนอนุมัติ = "เปลี่ยนใจ"
 //   ช่องจองกลับมาเอง · qc-hr-leave-booking LV-9) — นอกนั้นปฏิเสธ · ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา ·
-//   ใบที่อยู่ในสายอนุมัติต้องตัดสินที่สายอนุมัติ (effect ใน approval-effects.ts เขียนใบลาเอง)
+//   ใบที่อยู่ในสายอนุมัติต้องตัดสินที่สายอนุมัติ (effect ใน approval-effects.ts เขียนใบลาเอง) ·
+//   ใบที่อนุมัติผ่านสายแล้ว ถอนทางตรงไม่ได้ (approval core ยังไม่มีทางถอนผล)
+//   ⚠️ ตรวจ "ตัดสินใบของตัวเอง" ได้เฉพาะพนักงานที่ผูกบัญชีผู้ใช้ (linkedUserId) — ใบของพนักงานที่ไม่ผูกบัญชี ตรวจไม่ได้
 //   ไม่ผ่าน = โยน HrLeaveDecisionError (ข้อความไทย) — ผู้เรียกเดิม (action/bulk/ข้อเสนอ AI) โยนต่อ/เก็บเหตุผลได้ตามเดิม
+//   ทุกการตัดสิน/ถอน = AuditLog 1 แถว (before/after: สถานะ + ผู้ตัดสิน) — ผู้อนุมัติเดิมไม่หายแม้ถูกถอน
 export class HrLeaveDecisionError extends Error {
   constructor(message: string) {
     super(message);
@@ -451,44 +455,58 @@ export class HrLeaveDecisionError extends Error {
   }
 }
 const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
+const LEAVE_STALE = "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่";
 
 export async function decideLeave(
   ctx: Ctx,
   leaveId: string,
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
-  // from = สถานะต้นทางที่ผู้กดเห็นบนจอ (เช่นรายการ "รออนุมัติ" ส่ง PENDING) — ไม่ส่ง = ใช้สถานะปัจจุบัน
+  // from = สถานะที่ผู้ตัดสินเห็นบนจอ · ไม่ส่ง: มีผู้ตัดสิน (คน/ข้อเสนอ AI) = ถือว่าเห็น "รออนุมัติ" ·
+  //   ไม่มีผู้ตัดสินเลย (งานภายใน/ผู้เรียกรุ่นเก่า) = ใช้สถานะปัจจุบัน
   opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<void> {
   const db = tenantDb(ctx);
   const leave = await db.hrLeave.findFirst({
     where: { id: leaveId },
-    select: { status: true, employee: { select: { linkedUserId: true } } },
+    select: { status: true, decidedById: true, employee: { select: { linkedUserId: true } } },
   });
   if (!leave) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
-  const from = leave.status;
+  const from = opts.from ?? (decidedById ? "PENDING" : leave.status);
+  // ข้อเสนอ/หน้าจอที่ค้าง (เห็นสถานะหนึ่ง แต่ตอนนี้เป็นอีกสถานะ) ห้ามเปลี่ยนผลแบบเงียบ ๆ
+  if (from !== leave.status) throw new HrLeaveDecisionError(LEAVE_STALE);
   const allowed = from === "PENDING" || (from === "APPROVED" && status === "REJECTED");
-  if (opts.from && opts.from !== from) throw new HrLeaveDecisionError("ใบลานี้มีผู้ตัดสินไปก่อนหน้านี้แล้ว");
-  if (!allowed) {
-    throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[from] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
-  }
+  if (!allowed) throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[from] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
   if (decidedById && leave.employee.linkedUserId === decidedById) {
     throw new HrLeaveDecisionError("ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน");
   }
-  // ใบลาที่ยื่นเข้าสายอนุมัติแล้ว (requestLeave → submitForApproval) — อ่านอย่างเดียว ผูกร้าน
-  const inChain = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({
-    where: { entityType: "HrLeave", entityId: leaveId, status: "PENDING" },
-    select: { id: true },
+  // สายอนุมัติ (requestLeave → submitForApproval) — อ่านอย่างเดียว ผูกร้าน
+  const chain = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({
+    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED"] } },
+    select: { status: true },
   });
-  if (inChain) {
+  if (chain?.status === "PENDING") {
     throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
+  }
+  if (from === "APPROVED" && (chain?.status === "APPROVED" || leave.decidedById === "approval-engine")) {
+    throw new HrLeaveDecisionError("ใบลานี้อนุมัติผ่านสายอนุมัติแล้ว — ระบบยังไม่มีการถอนผลของสายอนุมัติ ดูรายละเอียดได้ที่หน้า “อนุมัติ” หรือติดต่อเจ้าของกิจการ");
   }
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
   const res = await db.hrLeave.updateMany({
     where: { id: leaveId, status: from },
     data: { status, decidedById: decidedById ?? null },
   });
-  if (res.count === 0) throw new HrLeaveDecisionError("ใบลานี้มีผู้ตัดสินไปก่อนหน้านี้แล้ว");
+  if (res.count === 0) throw new HrLeaveDecisionError(LEAVE_STALE);
+  await writeAudit({
+    tenantId: ctx.tenantId,
+    actorType: decidedById ? "USER" : "SYSTEM",
+    actorId: decidedById ?? null,
+    action: "hr.leave.decide",
+    targetType: "HrLeave",
+    targetId: leaveId,
+    before: { status: from, decidedById: leave.decidedById },
+    after: { status, decidedById: decidedById ?? null },
+  });
 }
 
 // อนุมัติ/ปฏิเสธใบลาหลายใบพร้อมกัน (bulk) — วน decideLeave() ทีละใบ (แต่ละใบ scope tenant+system เดิม)

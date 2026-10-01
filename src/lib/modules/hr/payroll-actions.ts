@@ -18,6 +18,7 @@ import {
   type AdjustKind,
   type Ctx,
 } from "./payroll";
+import { adjustmentReplyForViewer } from "./privacy";
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -139,15 +140,15 @@ export async function markPaidAction(formData: FormData) {
 //   ยื่น    = hr.payadjust.request (หัวหน้างาน/ธุรการยื่นได้ ไม่ต้องเห็นเงินเดือนคนอื่น)
 //   อนุมัติ = hr.payadjust.approve + ต้องผ่านด่านข้อมูลอ่อนไหว (OWNER หรือ hr.payroll.read)
 // 🔴 คนยื่น ≠ คนอนุมัติ (service บังคับอีกชั้นด้วย isOwner)
+function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  return {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+}
 function assertRequestAdjust(auth: Awaited<ReturnType<typeof requireTenant>>) {
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "hr", action: "hr.payadjust.request" },
-  );
+  assertCan(membershipOf(auth), { module: "hr", action: "hr.payadjust.request" });
 }
 
 export type AdjustState =
@@ -185,9 +186,10 @@ export async function requestAdjustmentAction(
       requestedById: auth.active.userId,
     },
   );
-  if (!res.ok) return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
-  revalidatePath(`/app/sys/${systemId}/hr/payroll`);
-  return { status: "ok", message: `ยื่นแล้ว ${((res.amountSatang ?? 0) / 100).toLocaleString("th-TH")} บาท — รออนุมัติ` };
+  // HF-HR-0: ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน ไม่เห็นยอดที่คิดจากเงินเดือน และไม่รู้ว่ามีโปรไฟล์เงินเดือนไหม
+  const reply = adjustmentReplyForViewer(canViewPayroll(membershipOf(auth)), res);
+  if (res.ok) revalidatePath(`/app/sys/${systemId}/hr/payroll`);
+  return reply;
 }
 
 export async function decideAdjustmentAction(formData: FormData) {

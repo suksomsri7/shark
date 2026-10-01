@@ -1,5 +1,5 @@
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1131036) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1125314) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -54,14 +54,14 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [D-3] 🔴 ใบลาที่ยกเลิกแล้ว ห้ามอนุมัติ
   ✅ [D-4] 🔴 อนุมัติใบลาของตัวเองไม่ได้
   ✅ [D-4b] คนอื่นอนุมัติใบเดียวกันได้ตามปกติ
-  ✅ [D-4c] 🔴 ทาง AI: บันทึกผู้กดยืนยันเป็นผู้ตัดสิน (ไม่ใช่ null)
-  ✅ [D-4d] 🔴 ทาง AI: อนุมัติใบลาของตัวเองไม่ได้
-  ✅ [D-4e] 🔴 ทาง AI: ข้อเสนอ 'ไม่อนุมัติ' ที่ค้างจากตอน PENDING ไม่ถอนการอนุมัติที่เกิดทีหลังแบบเงียบ ๆ
+  ❌ [D-4c] 🔴 ทาง AI: บันทึกผู้กดยืนยันเป็นผู้ตัดสิน (ไม่ใช่ null) — expected REJECTED · u-owner-1790852182563 | actual REJECTED null 
+  ❌ [D-4d] 🔴 ทาง AI: อนุมัติใบลาของตัวเองไม่ได้ — expected ปฏิเสธ + คง PENDING | actual APPROVED err=null
+  ❌ [D-4e] 🔴 ทาง AI: ข้อเสนอ 'ไม่อนุมัติ' ที่ค้างจากตอน PENDING ไม่ถอนการอนุมัติที่เกิดทีหลังแบบเงียบ ๆ — expected ปฏิเสธ + คง APPROVED | actual REJECTED err=null
   ✅ [D-5] 🔴 ตัดสินพร้อมกัน 2 ทาง → สำเร็จทางเดียว และสถานะตรงกับผู้ชนะ (3/3 รอบ)
   ✅ [R-0] fixture: วันลาอนุมัติแล้ว → วันนั้นไม่ว่าง
   ✅ [R-1] ถอนอนุมัติโดยคนที่ไม่ใช่เจ้าของใบลา → REJECTED + decidedById ใหม่
-  ✅ [R-1c] 🔴 ประวัติไม่หาย: audit 2 แถว (อนุมัติ + ถอน) · แถวถอนเก็บผู้อนุมัติเดิมใน before
-  ✅ [R-1d] 🔴 ผู้ตัดสินที่ไม่บอกสถานะที่เห็น (ไม่มี from) ถอนใบที่อนุมัติแล้วไม่ได้ — 'สถานะใบลาเปลี่ยนไปแล้ว'
+  ❌ [R-1c] 🔴 ประวัติไม่หาย: audit 2 แถว (อนุมัติ + ถอน) · แถวถอนเก็บผู้อนุมัติเดิมใน before — expected 2 แถว · before hrStaff/APPROVED → after owner/REJECTED | actual []
+  ❌ [R-1d] 🔴 ผู้ตัดสินที่ไม่บอกสถานะที่เห็น (ไม่มี from) ถอนใบที่อนุมัติแล้วไม่ได้ — 'สถานะใบลาเปลี่ยนไปแล้ว' — expected ปฏิเสธ + คง APPROVED | actual REJECTED err=null
   ✅ [R-1b] ผลข้างเคียงเหมือนเดิม: ถอนแล้ววันนั้นกลับมาว่าง
   ✅ [R-2] 🔴 ถอนซ้ำครั้งที่สอง → ปฏิเสธ (REJECTED→REJECTED) · decidedById ไม่เปลี่ยน
   ✅ [R-3] 🔴 ใบลาที่ไม่อนุมัติแล้ว กลับไปอนุมัติไม่ได้ (REJECTED→APPROVED)
@@ -74,35 +74,35 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [D-8.0] fixture: ใบลาเข้าสายอนุมัติ (ApprovalRequest PENDING)
   ✅ [D-8] 🔴 ใบลาที่รอสายอนุมัติ ห้ามตัดสินทางตรง (ใบลาคง PENDING · คำขอคง PENDING)
   ✅ [D-8b] ข้อความชี้ไปที่สายอนุมัติ (ภาษาไทย)
-  ✅ [C-1] 🔴 ใบลาที่อนุมัติผ่านสายอนุมัติ ถอนทางตรงไม่ได้ (แม้เจ้าของร้าน) + ข้อความไทยชี้ทาง
-  ✅ [C-2] 🔴 ทางภายในที่ไม่มีผู้ตัดสินก็ถอนใบที่อนุมัติผ่านสายไม่ได้
+  ❌ [C-1] 🔴 ใบลาที่อนุมัติผ่านสายอนุมัติ ถอนทางตรงไม่ได้ (แม้เจ้าของร้าน) + ข้อความไทยชี้ทาง — expected ปฏิเสธ + คง APPROVED | actual REJECTED err=null
+  ❌ [C-2] 🔴 ทางภายในที่ไม่มีผู้ตัดสินก็ถอนใบที่อนุมัติผ่านสายไม่ได้ — expected ปฏิเสธ | actual REJECTED err=ใบลานี้ไม่อนุมัติแล้ว — เปลี่ยนผลไม่ได้
 ── [G] ผูกบัญชีผู้ใช้ (staff) ──
-  ✅ [G-1] 🔴 ผูกพนักงานเข้าบัญชีของผู้สั่งเอง → ปฏิเสธ (ข้อความไทย)
+  ❌ [G-1] 🔴 ผูกพนักงานเข้าบัญชีของผู้สั่งเอง → ปฏิเสธ (ข้อความไทย) — expected ปฏิเสธ · ไม่ผูก | actual {"ok":true,"userId":"cmupf5jh9001raqkzblamgygi","membershipId":"cmupf5jhw001saqkzfw22bazz"} link=cmupf5jh9001raqkzblamgygi
   ✅ [G-2] เจ้าของร้านผูกพนักงาน (ไม่มีเงินเดือน) เข้าบัญชีใหม่ได้ตามปกติ
   ✅ [G-2b] ให้สิทธิ์ซ้ำคนเดิม-บัญชีเดิม ยังผ่าน (idempotent)
-  ✅ [G-3] 🔴 บัญชีที่ผูกกับพนักงานคนอื่นในร้านแล้ว → ปฏิเสธ (1 บัญชี ↔ 1 พนักงาน)
-  ✅ [G-4] 🔴 ผู้จัดการที่ไม่มีสิทธิ์ดูเงินเดือน ผูกพนักงานที่มีโปรไฟล์เงินเดือน → ปฏิเสธ
-  ✅ [G-5] ผู้จัดการผูกพนักงานที่ไม่มีเงินเดือนเข้าบัญชีใหม่ได้ตามปกติ
-  ✅ [G-6] เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกพนักงานที่มีเงินเดือนได้
+  ❌ [G-3] 🔴 บัญชีที่ผูกกับพนักงานคนอื่นในร้านแล้ว → ปฏิเสธ (1 บัญชี ↔ 1 พนักงาน) — expected ปฏิเสธ | actual {"ok":false,"reason":"“ไม่มีเงินเดือน 1790852182563” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน"} link=cmupf5jh9001raqkzblamgygi
+  ❌ [G-4] 🔴 ผู้จัดการที่ไม่มีสิทธิ์ดูเงินเดือน ผูกพนักงานที่มีโปรไฟล์เงินเดือน → ปฏิเสธ — expected ปฏิเสธ | actual {"ok":true,"userId":"cmupf5k0m0029aqkznd2b8388","membershipId":"cmupf5k1f002aaqkzhiltunhl"} link=cmupf5k0m0029aqkznd2b8388
+  ❌ [G-5] ผู้จัดการผูกพนักงานที่ไม่มีเงินเดือนเข้าบัญชีใหม่ได้ตามปกติ — expected ok | actual {"ok":false,"reason":"“ไม่มีเงินเดือน 1790852182563” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน"}
+  ❌ [G-6] เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกพนักงานที่มีเงินเดือนได้ — expected ok | actual {"ok":false,"reason":"“มีเงินเดือน 1790852182563” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน"}
 ── [B] backfill ผูกบัญชี ──
   ✅ [B-0] backfill รันจบ
-  ✅ [B-1] 🔴 backfill ไม่ผูกพนักงานที่มีเงินเดือน (ไม่มีผู้สั่งที่มีสิทธิ์ดูเงินเดือน)
+  ❌ [B-1] 🔴 backfill ไม่ผูกพนักงานที่มีเงินเดือน (ไม่มีผู้สั่งที่มีสิทธิ์ดูเงินเดือน) — expected null | actual cmupf5jh9001raqkzblamgygi
   ✅ [B-2] backfill ผูกพนักงานปกติจากอีเมลได้ตามเดิม
-  ✅ [B-3] 🔴 backfill ไม่ผูกบัญชีเดียวกับพนักงานคนที่สอง
+  ❌ [B-3] 🔴 backfill ไม่ผูกบัญชีเดียวกับพนักงานคนที่สอง — expected null | actual cmupf5jjd001waqkzx1bo9fx5
 ── [Q] คำตอบการยื่นรายการเงิน ──
-  ✅ [Q-0] มีตัวสร้างคำตอบตามสิทธิ์ (privacy.adjustmentReplyForViewer)
-  ✅ [Q-1] 🔴 ไม่ใช่ผู้ดูเงินเดือน + ไม่มีโปรไฟล์ → ข้อความกลาง (ไม่บอกให้ตั้งเงินเดือน)
-  ✅ [Q-2] 🔴 ไม่ใช่ผู้ดูเงินเดือน + ยื่นสำเร็จ → ไม่บอกยอดเงิน
-  ✅ [Q-3] ผู้ดูเงินเดือน: คำตอบเดิม (มียอด)
-  ✅ [Q-4] ผู้ดูเงินเดือน: ไม่มีโปรไฟล์ → บอกให้ตั้งเงินเดือนตามเดิม
+  ❌ [Q-0] มีตัวสร้างคำตอบตามสิทธิ์ (privacy.adjustmentReplyForViewer) — expected มี | actual ไม่มี
+  ❌ [Q-1] 🔴 ไม่ใช่ผู้ดูเงินเดือน + ไม่มีโปรไฟล์ → ข้อความกลาง (ไม่บอกให้ตั้งเงินเดือน) — expected ข้อความกลาง | actual {"ok":false,"reason":"ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้"}
+  ❌ [Q-2] 🔴 ไม่ใช่ผู้ดูเงินเดือน + ยื่นสำเร็จ → ไม่บอกยอดเงิน — expected ไม่มีตัวเลข | actual null
+  ❌ [Q-3] ผู้ดูเงินเดือน: คำตอบเดิม (มียอด) — expected มียอด | actual null
+  ❌ [Q-4] ผู้ดูเงินเดือน: ไม่มีโปรไฟล์ → บอกให้ตั้งเงินเดือนตามเดิม — expected ข้อความเดิม | actual null
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
   ✅ [V-2] 🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
   ✅ [V-3] 🔴 MANAGER จำกัดสาขา: สลิป → ไม่พบ
   ✅ [V-4] MANAGER จำกัดสาขา: ไม่มีช่องอ่อนไหว (HR ไม่มีแกนสาขา — เปิดโปรไฟล์ได้ · บันทึกเป็นข้อค้นพบ)
 ── [F] บันทึกโปรไฟล์ ──
-  ✅ [F-1] 🔴 ผู้จัดการ (ไม่มี hr.payroll.read) ส่งช่องอ่อนไหวมา → 6 คอลัมน์คงเดิม · ช่องทั่วไปบันทึกได้
-  ✅ [F-2] ผู้ดูเงินเดือน: ช่องอ่อนไหวผ่านเข้า service ได้ตามเดิม
+  ❌ [F-1] 🔴 ผู้จัดการ (ไม่มี hr.payroll.read) ส่งช่องอ่อนไหวมา → 6 คอลัมน์คงเดิม · ช่องทั่วไปบันทึกได้ — expected คงเดิม | actual ["1101700000022","SSO-0022","99 หมู่ 1 ต.ทดสอบ","กสิกรไทย","5556667778","ชื่อบัญชีทดสอบ"]
+  ❌ [F-2] ผู้ดูเงินเดือน: ช่องอ่อนไหวผ่านเข้า service ได้ตามเดิม — expected มี | actual null
 ── [W] แข่งกดข้าม process ──
   ✅ [W-1] 🔴 แข่งกดจากคนละ process 5 รอบ → สำเร็จทางเดียวทุกรอบ
 
@@ -115,14 +115,14 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [S-5] ส่วนจอใบลาใช้ leaveItemsForViewer และไม่อ่าน .reason ตรง
   ✅ [S-6] AI pending_leaves ไม่อ่าน l.reason
   ✅ [S-8] decideLeave เขียนครั้งสุดท้ายด้วย updateMany ที่มีเงื่อนไขสถานะที่คาดไว้ (ไม่มี hrLeave.update ธรรมดา)
-  ✅ [S-9] decideLeaveAction ส่ง from (สถานะที่ผู้ใช้เห็น) ให้ decideLeave
-  ✅ [S-10] proposals: hr_decide_leave ส่งผู้กดยืนยันเป็นผู้ตัดสิน (userId ?? null)
-  ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
-  ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
+  ❌ [S-9] decideLeaveAction ส่ง from (สถานะที่ผู้ใช้เห็น) ให้ decideLeave — expected ใช่ | actual ไม่ใช่
+  ❌ [S-10] proposals: hr_decide_leave ส่งผู้กดยืนยันเป็นผู้ตัดสิน (userId ?? null) — expected ใช่ | actual ไม่ใช่
+  ❌ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm — expected ใช่ | actual ไม่ใช่
+  ❌ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer — expected ใช่ | actual ไม่ใช่
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 98/98
-FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+ผ่าน 73/98
+FINDINGS: CRITICAL 20 · MAJOR 5 · MINOR 0
 
-JSON_SUMMARY {"total":98,"passed":98,"findings":[]}
+JSON_SUMMARY {"total":98,"passed":73,"findings":[{"id":"D-4c","sev":"CRITICAL"},{"id":"D-4d","sev":"CRITICAL"},{"id":"D-4e","sev":"CRITICAL"},{"id":"R-1c","sev":"CRITICAL"},{"id":"R-1d","sev":"CRITICAL"},{"id":"C-1","sev":"CRITICAL"},{"id":"C-2","sev":"CRITICAL"},{"id":"G-1","sev":"CRITICAL"},{"id":"G-3","sev":"CRITICAL"},{"id":"G-4","sev":"CRITICAL"},{"id":"G-5","sev":"MAJOR"},{"id":"G-6","sev":"MAJOR"},{"id":"B-1","sev":"CRITICAL"},{"id":"B-3","sev":"CRITICAL"},{"id":"Q-0","sev":"CRITICAL"},{"id":"Q-1","sev":"CRITICAL"},{"id":"Q-2","sev":"CRITICAL"},{"id":"Q-3","sev":"MAJOR"},{"id":"Q-4","sev":"MAJOR"},{"id":"F-1","sev":"CRITICAL"},{"id":"F-2","sev":"MAJOR"},{"id":"S-9","sev":"CRITICAL"},{"id":"S-10","sev":"CRITICAL"},{"id":"S-11","sev":"CRITICAL"},{"id":"S-12","sev":"CRITICAL"}]}

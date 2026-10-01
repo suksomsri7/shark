@@ -551,7 +551,7 @@ async function dispatch(
     const system = await resolveSystem(tenantId, "HR");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
-    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, null);
+    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, userId ?? null); // HF-HR-0 ▸ ผู้กดยืนยัน = ผู้ตัดสิน (กันอนุมัติใบลาของตัวเอง) ◂
     return decision === "APPROVED" ? "อนุมัติใบลาเรียบร้อยแล้ว" : "ไม่อนุมัติใบลาเรียบร้อยแล้ว";
   }
 

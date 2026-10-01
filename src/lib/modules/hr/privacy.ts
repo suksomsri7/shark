@@ -7,7 +7,7 @@
 //   • ไม่ผ่านด่าน = คืน null ⇒ หน้าเรียก notFound() (404 ไม่ใช่ 403 — ไม่บอกว่ามีข้อมูลอยู่)
 import { tenantDb } from "@/lib/core/db";
 import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac";
-import { listLeaves, pendingLeaves, type Ctx } from "./service";
+import { listLeaves, pendingLeaves, type Ctx, type EmployeeProfileInput } from "./service";
 import { payslipData } from "./payroll";
 import type { EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 
@@ -137,4 +137,67 @@ export async function leaveItemsForViewer(
     ...(canReadReason ? { reason: l.reason } : {}),
   });
   return { pending: pending.map(toItem), history: history.map(toItem), canReadReason };
+}
+
+/**
+ * ฟอร์มโปรไฟล์ → input ของ saveEmployeeProfile — ช่องที่ไม่ส่งมา = ไม่แตะ
+ * 🔒 ช่องอ่อนไหว 6 ช่องผ่านเฉพาะผู้ดูเงินเดือน (ไม่มีสิทธิ์ = ไม่ส่งเข้า service เลย ค่าเดิมคงอยู่ ไม่ถูกล้าง)
+ */
+export function employeeProfileInputFromForm(form: FormData, v: HrViewer): EmployeeProfileInput {
+  const f = (k: string) => (form.has(k) ? String(form.get(k) ?? "") : undefined);
+  return {
+    name: f("name"),
+    nickname: f("nickname"),
+    code: f("code"),
+    phone: f("phone"),
+    email: f("email"),
+    gender: (f("gender") || null) as EmployeeProfileInput["gender"],
+    birthDate: f("birthDate"),
+    maritalStatus: (f("maritalStatus") || null) as EmployeeProfileInput["maritalStatus"],
+    position: f("position"),
+    department: f("department"),
+    employmentType: (f("employmentType") || null) as EmployeeProfileInput["employmentType"],
+    startDate: f("startDate"),
+    endDate: f("endDate"),
+    addressLine: f("addressLine"),
+    subdistrict: f("subdistrict"),
+    district: f("district"),
+    province: f("province"),
+    postcode: f("postcode"),
+    emergencyName: f("emergencyName"),
+    emergencyPhone: f("emergencyPhone"),
+    emergencyRelation: f("emergencyRelation"),
+    note: f("note"),
+    ...(canViewPayroll(v)
+      ? {
+          nationalId: f("nationalId"),
+          ssoNumber: f("ssoNumber"),
+          houseRegAddress: f("houseRegAddress"),
+          bankName: f("bankName"),
+          bankAccountNo: f("bankAccountNo"),
+          bankAccountName: f("bankAccountName"),
+        }
+      : {}),
+  };
+}
+
+/**
+ * คำตอบของการยื่นรายการเพิ่ม/หักเงิน — ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือนต้องไม่รู้ยอดที่ระบบคิดจากเงินเดือน (OT)
+ * และไม่รู้ว่าพนักงานคนนั้นมีโปรไฟล์เงินเดือนหรือไม่ · ผู้ดูเงินเดือน = คำตอบเดิมทุกตัวอักษร
+ */
+export function adjustmentReplyForViewer(
+  payrollViewer: boolean,
+  res: { ok: boolean; reason?: string; amountSatang?: number },
+): { status: "ok" | "error"; message: string } {
+  if (payrollViewer) {
+    return res.ok
+      ? { status: "ok", message: `ยื่นแล้ว ${((res.amountSatang ?? 0) / 100).toLocaleString("th-TH")} บาท — รออนุมัติ` }
+      : { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
+  }
+  if (res.ok) return { status: "ok", message: "ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)" };
+  // เหตุผลที่ขึ้นกับข้อมูลเงินเดือน → ข้อความกลาง · เหตุผลจากข้อมูลที่ผู้ยื่นกรอกเอง (งวด/ยอด/ชนิด) แสดงตามเดิม
+  if (/เงินเดือน/.test(res.reason ?? "")) {
+    return { status: "error", message: "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้" };
+  }
+  return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
 }

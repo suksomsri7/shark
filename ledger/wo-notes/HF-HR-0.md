@@ -12,7 +12,8 @@ Worktree `/root/projects/shark-hf3` · branch `hotfix/hr-privacy` (base origin/m
 
 ## 1. Audit — every HR surface that ships employee / payroll / leave data to a client or returns it (verified in THIS tree)
 
-Employee ↔ user link: `HrEmployee.linkedUserId` (schema `hr.prisma:74`, set only by `staff/service.ts:412-415` with a "already linked to another user" guard) ⇒ "the employee themself" = `linkedUserId === auth.user.id`. Not `@unique` (one user could be linked to rows in 2 HR systems — the check is per row, so that is fine).
+Employee ↔ user link: `HrEmployee.linkedUserId` (schema `hr.prisma:74`, not `@unique`). **Writers (corrected in round 3):** `staff/service.ts` `grantStaffAccess` (~:412, actor needs `settings.staff.write` — MANAGER passes) **and** `scripts/member-backfill-hr-users.mts` (operator script, matches `HrEmployee.email` — which any `hr.employee.create` holder can edit — to a member's login e-mail). Before round 3 neither enforced self/uniqueness/payroll rules ⇒ a MANAGER could link a salaried employee to their own account and open that employee's payslips via the self-view branch. Round 3 closes both writers (see below). Test fixtures in other oracles write it directly (not product code).
+⚠️ The self-decision check on leave (`decidedById === employee.linkedUserId`) only works for **linked** employees — most rows are unlinked, and for those self-decision cannot be detected. Same limit for payslip self-view (unlinked employee = no self-view at all, payroll viewers only).
 
 | # | surface (file:line) | guard before | data that reaches the browser / caller before | verdict |
 |---|---|---|---|---|
@@ -83,14 +84,16 @@ qc-ai-actions 11/12 (CRASH) is pre-existing on QC4 and line-for-line identical b
 | /hr/leave pending list (client prop `meta`) | everyone: reason text | reason only with `hr.leave.read` (OWNER/MANAGER pass); others see name · type · dates |
 | AI `pending_leaves` | reason to any AI-chat user / API key | no reason for anyone (name/type/dates unchanged) |
 | setPin duplicate | holder's name | generic message |
-| Leave decision | flip any status, self-approve, bypass approval chain | PENDING→decided once; not own leave; chain leaves go through the chain |
+| Leave decision | flip any status, self-approve, bypass approval chain | PENDING→APPROVED/REJECTED once; APPROVED→REJECTED revoke with stated status (not for chain-approved); not own (linked) leave; chain leaves go through the chain; audit row each |
 
 ## Who loses access
 - Plain members / STAFF without HR keys: employee profile pages (404), colleagues' payslips (404), leave reasons on /hr/leave.
 - MANAGER (no `hr.payroll.read`) and HR staff without payroll.read: payslips (404); they never saw sensitive fields on screen, and now also not in the payload.
 - Employees (linked users): may now see their OWN payslip (APPROVED/PAID) — a gain.
 - AI chat / API keys: leave reasons.
-- Deciders: can no longer revoke an APPROVED leave, re-open CANCELLED/REJECTED ones, decide their own leave, or decide a leave sitting in an approval chain.
+- Deciders: can no longer re-open CANCELLED/REJECTED leaves, re-approve, decide their own (linked) leave, decide a leave sitting in an approval chain, or revoke a chain-approved leave. Revoking a directly-approved leave stays allowed (round 2 · C1 b) but needs the stated status `from: APPROVED`.
+- MANAGERs without payroll view: can no longer link a salaried employee to an account, nor link anyone to their own account (round 3).
+- Non-payroll-viewer requesters of pay adjustments: no longer see the computed OT amount nor the "set the salary first" hint.
 
 ## Found but left (report only)
 | where | what | why left |
@@ -106,7 +109,7 @@ qc-ai-actions 11/12 (CRASH) is pre-existing on QC4 and line-for-line identical b
 | out of scope per brief | D1, D2, D5, D6, D7, D11–D15, PIN hashing/uniqueness | money rules / migration |
 
 ## Decisions for the controller before deploy
-- **C1** D10 vs contract [6] of `qc-hr-leave-booking` (LV-9): the brief forbids APPROVED→REJECTED; the Auditor's oracle requires it ("change your mind"). Either (a) keep strict D10 and have the Auditor rewrite LV-9 (e.g. revoke via a dedicated, audited "cancel approved leave" action later), or (b) allow APPROVED→REJECTED by a non-owner decider only (still race-safe) and keep LV-9. As shipped = (a); LV-9 is red until decided.
+- **C1** D10 vs contract [6] of `qc-hr-leave-booking` (LV-9): the brief forbids APPROVED→REJECTED; the Auditor's oracle requires it ("change your mind"). Either (a) keep strict D10 and have the Auditor rewrite LV-9 (e.g. revoke via a dedicated, audited "cancel approved leave" action later), or (b) allow APPROVED→REJECTED by a non-owner decider only (still race-safe) and keep LV-9. **Resolved: controller chose (b) — round 2.**
 - **C2** Payslip self-view limited to APPROVED/PAID runs (DRAFT/REVERSED hidden from the employee) — confirm.
 - **C3** Profile-page guard = `hr.employee.create` OR `hr.leave.read` OR payroll viewer (there is no `hr.employee.read` key; adding one = permissions.ts, off-limits). Employee self-view of own profile: not provided.
 - **C4** Commit made with `--no-verify`: the shared pre-commit hook runs tsx outside iso.sh; the same `scripts/fitness.mts` was run through iso.sh in both modes (33/33).
@@ -126,3 +129,33 @@ qc-ai-actions 11/12 (CRASH) is pre-existing on QC4 and line-for-line identical b
 - Fitness 33/33 both modes, check lines identical to base.
 - Tiny window (direct decision between leave creation and `submitForApproval`): **left**. No correct ≤10-line fix inside hr/service.ts — refusing whenever a policy applies would make pre-policy leaves undecidable, a time heuristic is not a guard, and a post-submit cancel only narrows the window. Real fix = create leave + approval request in one transaction (approval/service.ts, CRM-shared area).
 - C1 above is resolved; C2/C3 approved as shipped.
+
+## Round 3 (reviewer on b2087d59 · controller 1 Oct) — commit after 2de0f4ba
+| item | change | oracle |
+|---|---|---|
+| 1 staff linking | `grantStaffAccess`: refuse linking to the actor's own account; refuse when that account is already linked to another employee of the tenant (1↔1); employee with a salary profile needs `canViewPayroll(actor)`. Backfill script: same 1↔1 rule + never auto-links an employee with a salary profile (no actor) — new counters `ข้าม_มีเงินเดือน`, `ข้าม_บัญชีผูกคนอื่นแล้ว` | G-1…G-6 via real `grantStaffAccess`; B-0…B-3 run the real backfill script on the temp tenant |
+| 2 AI self-approval | `proposals.ts:554` one token `null` → `userId ?? null` (marked) | D-4c decider recorded · D-4d self via AI refused (via `proposals.runKind` → `dispatch`) |
+| 3 salary inference | `requestAdjustmentAction` replies via `privacy.adjustmentReplyForViewer`: non-payroll-viewer gets no amount and a generic message instead of "ตั้งเงินเดือน…"; payroll viewers unchanged | Q-0…Q-4, S-12 |
+| 4a chain revoke | revoke refused when an APPROVED ApprovalRequest exists or `decidedById === "approval-engine"` (approval core has no revoke path) | C-1, C-2 |
+| 4b expected status | `decideLeave(…, { from })`: no `from` + decider present (human/AI confirm) ⇒ expected PENDING; no decider at all (internal/legacy, e.g. LV-9) ⇒ current status. Mismatch ⇒ "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่". `decideLeaveAction` reads `from` from the form (default PENDING); bulk action passes PENDING; AI path (decider set) can therefore never revoke | R-1d, D-4e, S-9 |
+| 4c history | every decision/revoke writes `AuditLog` (`core/audit.writeAudit`, action `hr.leave.decide`, before/after {status, decidedById}) | R-1c |
+| 5 docs | link writers + self-check limit corrected above | – |
+| 6 hardening | S-8 static: final write is `updateMany where {id, status: from}` and no plain `update`; W-1: 5 rounds of approve vs reject from two **separate processes** (separate connections); S-1/S-2: page imports no raw-row path (`getEmployee`/`payslipData`/`hrEmployee`/`tenantDb`/hr service/payroll), client components = EmployeeProfileForm + `@/components/*` only, exactly `emp={view.profile}`; V-1…V-4 (`hr.*` ≠ payroll view; branch-restricted MANAGER); F-1/F-2 profile save by non-payroll manager leaves the 6 columns untouched (`privacy.employeeProfileInputFromForm`, now used by `saveEmployeeProfileAction`) | – |
+| 7 server-only | repo has no `import "server-only"` convention (grep: 0 files, not in package.json) ⇒ skipped | – |
+
+Oracle: RED on 2de0f4ba `ผ่าน 73/98 · CRITICAL 20 · MAJOR 5` (`HF-HR-0-red3.txt`) → GREEN `ผ่าน 98/98` (`HF-HR-0-green.txt`).
+Regressions round 3 (QC4): the 15 suites identical to the round-1 baseline, **qc-hr-leave-booking 14/14 unedited**, qc-ai-actions 11/12 pre-existing identical, qc-ai-proposals 16/16. Staff suites: `qc-chat-staff-perms` 49/49 → 49/49; `qc-acc-v2-permissions` red on QC4 before and after (acc-v2 seed absent on QC4) — ✅/❌ lines identical (137 ✅). `qc-member-m1.1` (runs the backfill) NOT run: it re-seeds the shared member QC shop on QC4 (known to wipe CRM rows); the backfill behaviour is covered by B-0…B-3 instead.
+Fitness 33/33 both modes, identical to base. Typecheck (5632 MB heap command) → exit 0.
+
+### Residual (round 3)
+- `src/lib/ai/plans.ts:112` `runKind(...)` passes no userId ⇒ a plan step `hr_decide_leave` has no decider ⇒ derive mode (could revoke an APPROVED leave if the plan says REJECTED; self-check cannot apply). Fix = pass the user id there (outside allowed files).
+- Salary-profile existence is still inferable by a non-viewer from success vs. failure of an OT-by-hours request (only the wording/amount are hidden). Full fix = price OT at approval time (money rule).
+- Existing links created before this fix (prod) are not re-validated — controller may want a one-off audit query: employees with a salary profile whose `linkedUserId` belongs to a non-payroll-viewer MANAGER, or users linked to >1 employee.
+
+### Findings recorded for HR V2 (not in this hotfix)
+- `/hr/leave` (names/types/dates), `/hr/employees`, `/hr/attendance` open to every member of the tenant.
+- AI calendar tool exposes leave types tenant-wide.
+- Employee document URLs are user-pasted links — gating hides the list, not the files.
+- Duplicate-PIN message still confirms that a PIN is taken (no name any more); needs hashing/uniqueness (schema).
+- Profile via `hr.leave.read` shows address / birth date / emergency contact.
+- MANAGER `unitAccess` is not applied anywhere in HR (no branch axis): a branch-restricted manager sees every branch's employees (not payroll).

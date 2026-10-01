@@ -28,6 +28,7 @@ import {
   canGrantPermission,
   canGrantPermissionValue,
   canGrantUnitAccess,
+  canViewPayroll,
   evaluate,
   type MembershipCtx,
 } from "@/lib/core/rbac";
@@ -376,6 +377,24 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       if (employee.linkedUserId && employee.linkedUserId !== user.id) {
         throw new StaffRuleError(`“${employee.name}” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน`);
       }
+      // HF-HR-0 ▸ การผูกบัญชี = สิทธิ์ "ตัวพนักงานเอง" (เช่นเปิดสลิปเงินเดือนของตัวเอง) ⇒ ห้ามเป็นทางลัด:
+      //   (ก) ห้ามผูกเข้าบัญชีของผู้ทำรายการเอง · (ข) 1 บัญชี ↔ พนักงาน 1 คนต่อร้าน ·
+      //   (ค) พนักงานที่มีโปรไฟล์เงินเดือน ต้องผูกโดยผู้ดูเงินเดือน (OWNER / hr.payroll.read)
+      if (user.id === input.actorUserId) {
+        throw new StaffRuleError("ผูกพนักงานเข้ากับบัญชีของผู้ทำรายการเองไม่ได้ — กรุณาใช้อีเมลของพนักงานคนนั้น หรือให้ผู้ดูแลคนอื่นเป็นผู้ให้สิทธิ์");
+      }
+      const otherLink = await tx.hrEmployee.findFirst({
+        where: { tenantId: input.tenantId, linkedUserId: user.id, NOT: { id: employee.id } },
+        select: { id: true },
+      });
+      if (otherLink) {
+        throw new StaffRuleError("บัญชีนี้ผูกกับพนักงานอีกคนในกิจการนี้อยู่แล้ว (1 บัญชีผูกได้กับพนักงาน 1 คน) — กรุณาใช้อีเมลอื่น");
+      }
+      const hasSalary = await tx.hrSalaryProfile.count({ where: { tenantId: input.tenantId, employeeId: employee.id } });
+      if (hasSalary > 0 && !canViewPayroll(actor.ctx)) {
+        throw new StaffRuleError("พนักงานคนนี้มีข้อมูลเงินเดือน — การผูกบัญชีต้องทำโดยเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน");
+      }
+      // ◂ HF-HR-0
 
       // 3) Membership — มีอยู่แล้วในร้านนี้ใช้ตัวเดิม (@@unique([userId, tenantId]))
       const existing = await tx.membership.findFirst({
