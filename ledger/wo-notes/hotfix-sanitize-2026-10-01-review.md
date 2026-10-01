@@ -1,9 +1,13 @@
 # REVIEW — hotfix sanitize 2026-10-01 (independent security review of 6513a9f7)
 
-VERDICT (branch `hotfix/sanitize-2026-10-01`, both commits): **SHIP**.
-- Item 1 sanitizer (6513a9f7): SHIP — no BLOCKER. Use the reviewer's `finder.sql` instead of the note's query (S1). S2 and S3 are fast follow-ups, not gates.
-- Item 2 automation authz (4d64b0dc): SHIP. See the section at the end.
-- New, separate hole found while sweeping siblings: **A1 `savePaymentProfileAction` has no permission check.** It is not caused by this branch and does not block it, but it should be the next hotfix.
+VERDICT (branch `hotfix/sanitize-2026-10-01` at ca5a28be + review commits): **SHIP all three items**.
+- Item 1, sanitizer: SHIP. Use the reviewer's `finder.sql` instead of the note's query.
+- Item 2, automation authz: SHIP.
+- Item 3: SHIP.
+  - 3a: payment profile restricted to OWNER/MANAGER, with audit.
+  - 3b: sweep of shop actions guarded only by "logged in to the shop".
+  - 3c: CRM inbound HTML capped at 1 MB.
+- No blocker. Not caused by this branch, but the next hotfix candidate: **M1 (HIGH)**, the mobile AI routes have no `ai.*` permission check. Any staff member's mobile token can use the shop AI to read customer phone numbers, CRM leads and finances, read and delete the shop's AI chat history, and plant facts in AI memory. Details are in Item 3.
 
 Scope: `git diff 04d2ade9 6513a9f7 -- src` (engine `core/html-allowlist.ts`, `core/sanitize.ts`, `kanban/sanitize.ts`, render hunks `member/join.ts joinForm`, `kanban/cards.ts getCardDetail`).
 Not reviewed: the "Item 2 — automation page authz" work that another session is doing, uncommitted, in this same worktree.
@@ -241,3 +245,91 @@ SELECT r."tenantId", r."ruleId", max(r."createdAt") FROM "AutomationRun" r LEFT 
 - Rollback: same as Item 1. There is no migration.
 
 - R7 Item 2 reviewed: SHIP; A1 payment-profile hole reported.
+
+## Item 3 — payment profile gate + sweep + inbound cap (0013b8ae, ca5a28be)
+
+VERDICT: **SHIP**.
+- 3a: QC3 suite `qc-payment-authz-hotfix.mts` **8/8 GREEN**, run with the allowed `qc3.sh`/gate-lock command, cleaned up to 0 rows.
+- 3c:
+  - `qc-sanitize-hotfix.mts` on the new tip: **29/29 GREEN**. HS-G.1 at the cap = 170 ms.
+  - `attack.mts` (3 027 vectors + 20 000 fuzz × 6 modes): 0 violations, positive control 63 672.
+  - Judge self-test OK.
+
+**3a payment profile**
+- **The role is read on the server.** `canManagePaymentProfile(auth.active)` uses the role from `requireTenant()`; no client field is used. The audit actor is `auth.user.id`.
+- **There is only one writer.** I searched `src/` for the model and the save function:
+  - `PaymentProfile` is written only by `payment/service.ts savePaymentProfile`, called only from `savePaymentProfileAction`, used only by `components/payment-profile-form.tsx`, which appears only on `/app/settings/payment`.
+  - No REST op, no `/api/mobile` route, no AI tool, no seed, no onboarding/DNA step writes it.
+  - The DNA `ACCOUNT_SETTINGS` step writes the account system's settings, not PaymentProfile.
+- **Other money destinations are already guarded.** Account-module payment channels (`FinanceAccount.promptpayId`) are written by `account/finance/actions.ts`, which requires `account.finance.manage`, and by REST `finance-write.ts`, which requires an API-key scope.
+- **Nothing legitimate breaks.** No cashier, onboarding or POS-setup flow saves the profile. Only STAFF lose the ability to save it, which is the intended fix.
+- **The full PromptPay ID does not leak.**
+  - The audit row stores only the last 4 digits.
+  - The validation error does not repeat the number.
+  - `writeAudit` swallows its own errors, so a failed audit write cannot fail the save. The service does no logging.
+  - The settings page still shows the current full ID to every member. It is printed on POS QR codes anyway — NOTE.
+- **NOTE: branch managers.** MANAGER passes even when its `unitAccess` covers a single branch. A branch manager can therefore redirect payments for the whole shop.
+  - Precedent: domain actions are OWNER-only.
+  - Suggest an owner ruling: OWNER-only, or MANAGER only with `unitAccess` `["*"]`. This is a follow-up, not a gate for the hotfix.
+- **Agree with leaving `uploadLogoAction` and `loadMoreTxnsAction` ungated.**
+  - `uploadLogoAction` only uploads a file and sets nothing.
+  - The page already shows the first rows of the credit ledger to every member.
+
+**3b sweep**
+- I spot-checked 8 rows by reading the service code:
+  - `confirmProposal` → `executeProposal` calls `assertCan(m, access)` (proposals.ts:406): OK.
+  - `saveBoardAsTemplate` → `assertBoardRole(ADMIN)`: OK.
+  - `saveCrmEmailUserSetting` → `crm.email.send` for your own row, `crm.email.settings` for other people's: OK.
+  - `cancelMyRequest` → requester check: OK.
+  - `dna applyStepAction`/`applyAction` → `applyBlueprint(tenantId, id)` with no check: MED confirmed. It creates systems and units, and its ACCOUNT_SETTINGS step only writes the new system. Not HIGH.
+  - `rejectPlanAction`: LOW.
+  - `dismissAnnouncement`: LOW.
+  - support actions: LOW (any member reads the shop's support cases).
+- None of the MED/LOW rows should be HIGH.
+- **The sweep missed `src/app/api/**` route handlers.** I swept all 100 of them separately; they are guarded only by `requireMobile` (bearer token + accepted membership):
+  - **M1 HIGH — `api/mobile/chat/send/route.ts:6`.**
+    - Path: `sendMobileChat` → `ai/service.sendMessage({tenantId})`.
+    - It has no `ai.chat.send` check. The web version has it (`ai/actions.ts:225 assertAiCan`).
+    - The AI's read tools run with no module or visibility check:
+      - `customer_search` (tools.ts:192): name + phone
+      - `recent_leads` (tools.ts:1860): CRM phones, without the `contactWhere` visibility filter
+      - `financial_summary` (tools.ts:1808)
+      - points, sales, leave and chat tools
+    - Result: any STAFF member can pull customer PII and the shop's finances, and spends the shop's AI credit doing it. Writes still go through proposals, which check `assertCan` on confirm.
+  - **M2 HIGH/MED — AI conversations.** `api/mobile/conversations/route.ts:5`, `[id]/messages/route.ts:5`, and `[id]/route.ts:6` (PATCH) / `:22` (DELETE) let any member read, rename or delete the shop's AI conversations (shared across the shop). The web version requires `ai.chat.send`.
+  - **M3 MED.** The `remember_fact` tool (tools.ts:2130), reached through M1, writes to the shop's AI memory immediately, without a proposal step.
+  - **M4 LOW.**
+    - `mobile/proposals/reject` and `mobile/plans/reject`: any member can reject any pending AI proposal or plan.
+    - `mobile/chat/welcome`: reveals the onboarding checklist and DNA summary.
+    - `mobile/usage`: reveals the AI wallet balance to any member.
+    - `mobile/push/register:6`: upserts on the Expo token alone, so a token can be re-bound to another user.
+    - `mobile/dna/answers:7` + `mobile/dna/apply:5`: the known MED.
+  - Fix: one `assertCan({module:"ai", action:"ai.chat.send"})` on the mobile AI routes, using `g.membership`, matching web. Later, pass the caller's membership into `runTool`.
+  - Checked and gated:
+    - mobile CRM: all `mobile/crm/*` routes
+    - mobile member: scan, search, summary, stamp
+    - AI confirms: `proposals/confirm`, `plans/confirm`
+    - `account-files`, `files`, `realtime/*`, `calendar/month`
+    - excluded: v1 API-key routes, and cron/webhook routes that check a secret or signature
+
+**3c inbound cap**
+- **Truncation is safe.** I judged all **585 201 prefixes** of the vector corpus + 3 000 fuzz inputs through the inbound mode with the cap applied (`truncation.mts`): **0 XSS**.
+  - A cut inside a tag leaves a `<` with no `>` after it, so the rest becomes escaped text.
+  - A cut inside an entity leaves literal text.
+  - A cut after an unclosed `<style>`/`<script>` drops everything to the end, which is the existing rule.
+- Worst case at the cap: `sanitizeHtml` + `htmlToText` take ≤ 197 ms, down from ≈ 3 s at 8 MB.
+- Side effects:
+  - A cut through an emoji leaves half a character (lone high surrogate) at the end. UTF-8 encoders write U+FFFD; nothing throws.
+  - `bodyText` comes from the uncapped `payload.text` when present, so text and HTML can differ in length. That only affects display, and `payload.text` was never capped.
+- **HS-G.1 is meaningful but slightly vacuous.** It checks statically that both calls use the capped variable and that no raw call is left, and it times the cap.
+  - But `src === ""` (file missing) passes. On a branch where the file moved, the check would pass silently. NOTE for the CRM forward-port: make a missing file fail.
+
+**Rollout delta**
+- Right after deploy:
+  - As OWNER, save the PromptPay ID on `/app/settings/payment`. Check the QR on the POS register, and that the AuditLog `payment.profile.update` row shows `******1234`.
+  - As a STAFF member (QC tenant), saving must show the Thai error.
+  - Send a CRM inbound test mail, normal size: it is stored and rendered as before.
+- Next hotfix: M1/M2 (mobile AI `ai.chat.send` gate), the DNA apply MED, the payment MANAGER-scope ruling.
+- Rollback: unchanged. There is no migration, and the new audit rows are harmless.
+
+- R8 Item 3 reviewed: SHIP; M1/M2 mobile AI found (HIGH, separate).
