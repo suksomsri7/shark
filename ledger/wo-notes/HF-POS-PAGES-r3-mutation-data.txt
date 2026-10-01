@@ -1,0 +1,4 @@
+D1 posSaleWhere ignores scope (x1): exit 1 red=['S-4', 'S-5', 'O-4'] · restored=yes
+D2 closeDay ignores unitIds (x2): exit 1 red=['O-4', 'C-0', 'C-3', 'C-4', 'C-5', 'C-6'] · restored=yes
+D3 price units = POS units only (no shared inventory) (x1): exit 1 red=['P-15a', 'P-15'] · restored=yes
+D4 cleanup failure must be red (oracle) (x1): exit 1 red=['CLEANUP-tenant', 'CLEANUP-tenant'] · restored=yes

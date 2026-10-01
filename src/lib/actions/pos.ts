@@ -5,9 +5,10 @@ import { redirect } from "next/navigation";
 import type { PosPayType } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requireTenant, type Auth } from "@/lib/core/context";
-import { assertCan } from "@/lib/core/rbac";
+import { assertCan, ForbiddenError } from "@/lib/core/rbac";
+import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
-import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds } from "@/lib/modules/pos/register";
 import type {
   PosDealOption,
   PosMemberChoicesInput,
@@ -340,21 +341,16 @@ export async function posQuoteAction(input: QuoteInput): Promise<QuoteState> {
 
 // ── export CSV ปิดวัน (รายการบิลวันนั้น + สรุป · BOM) ──
 // gate: ระบบต้องเป็น POS ของ tenant นี้ + สิทธิ์ pos.sale.create (คนที่ขายได้ ปิดวัน/ดูสรุปได้)
+// HF-POS-PAGES: คนจำกัดสาขาได้ CSV เฉพาะสาขาของตัวเอง (เดิม assertCan ไม่ส่ง unit ⇒ ได้ทุกสาขา)
 export async function exportDaySalesCsvAction(systemId: string, businessDate?: string): Promise<string> {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
   if (!sys) throw new Error("ไม่พบระบบขายนี้");
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "pos", action: "pos.sale.create" },
-  );
+  const scope = posSalesScope(posMembership(auth.active));
+  if (!scope) throw new ForbiddenError({ module: "pos", action: "pos.sale.create" });
   const date = businessDate?.trim() || undefined;
-  return closeDayCsv({ tenantId, systemId }, date);
+  return closeDayCsv({ tenantId, systemId, unitIds: posScopeUnitIds(scope) }, date);
 }
 
 // ── ยืนยันขาย (createSale — PAID_NOW) → คืนเลขใบเสร็จ + แต้ม + เงินทอน หรือ error inline ──
@@ -463,7 +459,7 @@ export async function registerSaleAction(input: SaleInput): Promise<RegisterSale
 }
 
 // ── ตั้งราคาขายต่อสินค้า (หน้า "สินค้า/ราคา") — ราคาบาทจากฟอร์ม → สตางค์ · redirect กลับพร้อม ?err/?ok ──
-// gate: ระบบต้องเป็น POS ของ tenant นี้ + สิทธิ์ pos.product.setPrice (OWNER/MANAGER ผ่าน · STAFF ต้องมี permission)
+// gate: ระบบต้องเป็น POS ของ tenant นี้ + สิทธิ์ pos.product.setPrice + เข้าได้ทุกสาขา (OWNER/MANAGER ทุกสาขาผ่าน · STAFF ต้องมี permission)
 export async function setItemSalePriceAction(formData: FormData): Promise<void> {
   const systemId = String(formData.get("systemId") ?? "").trim();
   const itemId = String(formData.get("itemId") ?? "").trim();
@@ -473,14 +469,9 @@ export async function setItemSalePriceAction(formData: FormData): Promise<void> 
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
   if (!sys) throw new Error("ไม่พบระบบขายนี้");
-  assertCan(
-    {
-      role: auth.active.role,
-      unitAccess: auth.active.unitAccess as string[],
-      permissions: auth.active.permissions as Record<string, unknown>,
-    },
-    { module: "pos", action: "pos.product.setPrice" },
-  );
+  // HF-POS-PAGES: ราคาใช้ทั้งร้าน ⇒ ต้องตั้งได้ทุกสาขาที่ราคานี้ไปถึง (POS นี้ + คลังร่วม) — เดิม assertCan ไม่ส่ง unit
+  const priceUnitIds = await posPriceUnitIds(tenantId, systemId);
+  if (!posCanSetTenantPrice(posMembership(auth.active), priceUnitIds)) throw new ForbiddenError({ module: "pos", action: "pos.product.setPrice" });
 
   const base = `/app/sys/${systemId}/pos/products`;
   const priceBaht = Number(priceRaw);

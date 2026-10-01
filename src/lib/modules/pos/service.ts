@@ -460,7 +460,8 @@ export async function daySummary(tenantId: string, unitId: string): Promise<{ co
 // สรุปยอดของ "ระบบ POS" (scope tenantId+systemId — ครอบทุกสาขาที่ผูก POS นี้) รายวัน (BKK)
 // read-only: ไม่มี shift state machine — อ่านจาก posSale/posPayment ที่มีอยู่ · follow-up = ปิดรอบจริง
 
-export type CloseCtx = { tenantId: string; systemId: string };
+// unitIds (HF-POS-PAGES) = จำกัดเฉพาะสาขาที่ผู้ใช้เข้าได้ · ไม่ระบุ = ทุกสาขาของ POS นี้ (เหมือนเดิม)
+export type CloseCtx = { tenantId: string; systemId: string; unitIds?: string[] };
 
 export type PayMethodLine = { type: PosPayType; label: string; amountSatang: number; count: number };
 
@@ -520,7 +521,7 @@ export async function closeDaySummary(ctx: CloseCtx, businessDate?: string): Pro
 
   // บิลทั้งหมดของระบบ POS นี้ในวันนั้น (PAID + VOIDED)
   const sales = await prisma.posSale.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end } },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
     select: { id: true, status: true, grandTotalSatang: true },
   });
   const paid = sales.filter((s) => s.status === "PAID");
@@ -583,7 +584,7 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
   const date = businessDate ?? bkkToday();
   const { start, end } = bkkDayRange(date);
   const sales = await prisma.posSale.findMany({
-    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end } },
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, createdAt: { gte: start, lt: end }, ...(ctx.unitIds ? { unitId: { in: ctx.unitIds } } : {}) },
     orderBy: { createdAt: "asc" },
     select: { id: true, receiptNo: true, createdAt: true, grandTotalSatang: true, status: true },
   });
