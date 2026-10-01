@@ -11,6 +11,7 @@ import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
 import { skillById, skillToolsForApiKey, skillsForTenant } from "@/lib/ai/skills";
 import { toolRegistry } from "@/lib/ai/tools";
 import { crmApi } from "@/lib/modules/crm";
+import { generalToolGate } from "../../general-key-gate";
 
 export async function GET(
   req: Request,
@@ -31,7 +32,7 @@ export async function GET(
   // สกิลที่คีย์ใบนี้ไม่มีสิทธิ์แตะเลย (scope ไม่ถึง) ก็ตอบ 404 เหมือนกัน — ไม่บอกใบ้ว่ามีอะไรอยู่หลังกำแพง
   // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` ยังเปิดให้ทุกคีย์เหมือนก่อน C1.10 ◂
   const crmLegacyLead = id === "crm" && (await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get("x-shark-system")?.trim() ?? null));
-  const allowed = skillToolsForApiKey(skill, auth.scopes, { crmLegacyLead });
+  const allowed = skillToolsForApiKey(skill, auth.scopes, { crmLegacyLead }).filter((n) => generalToolGate(n, auth)); // HF-APIV1
   if (!skillsForTenant(systems.map((s) => s.type)).some((s) => s.id === id) || allowed.length === 0) {
     return apiJson({ error: "ร้านนี้ยังไม่ได้เปิดระบบที่รองรับสกิลนี้" }, 404);
   }

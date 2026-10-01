@@ -117,6 +117,8 @@ export type VerifiedApiKey = {
   createdById?: string | null;
   /** [] = คีย์รุ่นเดิม (ผู้เรียกเดิมไม่เคยอ่านฟิลด์นี้ → พฤติกรรมเดิมไม่เปลี่ยน) */
   scopes: string[];
+  /** HF-APIV1 ▸ scopesJson ในแถวไม่ใช่ array ของ string (แถวเสีย/แก้มือ) — `scopes` ถูกกรองเหลือ [] แต่ห้ามนับเป็นคีย์รุ่นเดิม ◂ */
+  scopesMalformed?: boolean;
   systemId: string | null;
   expiresAt: Date | null;
 };
@@ -156,6 +158,7 @@ export async function verifyApiKeyDetailed(rawKey: unknown): Promise<ApiKeyVerif
       tenantId: row.tenantId,
       keyId: row.id,
       scopes: parseScopes(row.scopesJson),
+      scopesMalformed: !Array.isArray(row.scopesJson) || row.scopesJson.some((v) => typeof v !== "string"), // HF-APIV1
       systemId: row.systemId,
       expiresAt: row.expiresAt,
       createdById: row.createdById,
@@ -172,6 +175,7 @@ export async function verifyApiKey(rawKey: unknown): Promise<VerifiedApiKey | nu
     tenantId: v.key.tenantId,
     keyId: v.key.keyId,
     scopes: v.key.scopes,
+    scopesMalformed: v.key.scopesMalformed, // HF-APIV1
     systemId: v.key.systemId,
     expiresAt: v.key.expiresAt,
     createdById: v.key.createdById,

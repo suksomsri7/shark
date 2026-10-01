@@ -69,3 +69,64 @@ Called right after auth in each of the 8 data routes (+1 import, +2 lines each).
 - D1: confirm nobody in prod relies on a module key for the legacy routes — e.g. `SELECT id, tenantId, name, "systemId", "scopesJson", "lastUsedAt" FROM "ApiKey" WHERE "revokedAt" IS NULL AND ("systemId" IS NOT NULL OR jsonb_array_length("scopesJson") > 0) AND "lastUsedAt" > now() - interval '30 days'` (CONTROLLER-RUN, read-only on prod; request logs for /api/v1/{sales,…} would be the exact answer).
 - D2: house semantics note — in module REST (`require.ts:217`) empty scopes = NO access, while on the legacy lane empty scopes = full shop read. I kept the legacy meaning (service.ts:23, scopes.ts:403) so today's legacy callers keep working. Consequence: an account-module key issued with no tick and no bundle (scopes [] + bound) is now treated as bound ⇒ 403 here (and it already had no access in account REST).
 - D3: audit #1 (chat) and #2 (AI tools) are the same class of hole and remain open; schedule follow-up hotfixes.
+
+# Round 2 (checkpoint)
+- [x] oracle extended (S1 chat · S2 AI · S3 rotated + seeds for all 8 routes · N2 malformed · N4 code) — RED2 on c2287e53: `ผ่าน 61/120` saved `ledger/wo-notes/HF-APIV1-red2.txt`
+- [x] before2 baseline (c2287e53) of 51 qc-chat*/qc-ai* suites captured in scratchpad reg-before2/ (21 API suites = round-1 "after")
+- [x] implement N2/N4 · S1 · S2 · docs — GREEN 120/120 · after2 72 suites identical (3 ORACLE-EDITs on fake apiKey rows) · fitness 33/33 both
+- [x] GREEN · after2 regressions · fitness · typecheck (exit 0) · notes · commit/push
+
+## Round 2 — rule (one predicate for every general-key lane)
+`src/lib/api-keys/route-auth.ts` `isGeneralApiKey(k)` = `scopes.length === 0 && systemId === null && scopesMalformed !== true`;
+`keyNotGeneralResponse()` = fixed 403 `{error (Thai, no blame), error_en, code: "key_not_general"}` (N4: was `scope_missing`);
+`requireLegacyFullAccessKey(auth)` now delegates to both. Used by: 8 legacy data routes (round 1) · chat secret mode (S1) · AI non-module tools (S2).
+
+- **N2** `src/lib/api-keys/service.ts`: `verifyApiKeyDetailed`/`verifyApiKey` expose `scopesMalformed` (scopesJson not an array of strings); `parseScopes` unchanged (still returns string[] for every other caller). `ApiAuth` gets the same optional field. 4 + 3 lines.
+- **S1** `src/lib/modules/chat/public-auth.ts` `authenticateSecret` (after verify + rate limit, before any chat data):
+  (a) general key → the original line `resolveChatSystemId(key.tenantId, X-Shark-System)` unchanged (SiamDive flow byte-for-byte);
+  (b) key bound to an active CHAT system of the same tenant (and scopes not malformed) → that system; a different `X-Shark-System` → 403 `system_mismatch`;
+  anything else → 403 `key_not_general`, so no route reaches `ensureWebchatConnection` / contact / message / attachment code.
+  No chat key issuer exists today (issuers: platform `/app/settings/api` = general; account/kanban/member/CRM settings bind their own system type). (b) is implemented for the future/for keys made directly via the service.
+- **S2** new `src/app/api/v1/ai/general-key-gate.ts` (beside the routes; skills.ts/tools.ts untouched): a tool is "module-scoped" when any of `accountToolScope` / `kanbanToolScope` / `memberToolScope` / `crmApi.crmToolScope` is non-null; otherwise `generalToolGate` requires `isGeneralApiKey`. Convention: listing routes FILTER (skills list drops skills left with 0 tools, `core.tools` filtered — empty for module keys; `/skills/<id>` → existing 404); execution `/tools/<name>` → 403 `key_not_general` (checked after the existing scope check, so module-tool behaviour and its 403 body are unchanged).
+- **Docs**: one paragraph in `src/app/developers/page.tsx` §1. No chat API doc exists under `docs/api/` (chat contract lives in `ledger/PLAN-CHAT-PLATFORM.md` — not edited).
+
+### Chat auth modes (not changed)
+- **secret** — `Authorization: Bearer shark_…` → `verifyApiKey` (now gated as above); no CORS; identity of the customer comes from the body.
+- **widget** — `X-Shark-Widget: swk_…` (hash in `ChatChannelConnection`) + `Origin` in `originAllowlist` (empty = deny all); customer identity only from the server-signed HMAC guest token (`X-Shark-Guest`/cookie), never from body/query; rate limit per guest or per IP.
+- **guest mint** (`/chat/guest`, widget only) — issues the HMAC guest token bound to the connection.
+- Sending both headers → 401. Member customer sessions (`cs_…`) belong to `/api/v1/member/*` altAuth, not chat.
+
+### Per-route table (round 2 additions; before → after)
+| lane | general key (incl. rotated) | module key (scoped and/or bound to non-chat system) | key bound to a CHAT system | malformed scopesJson |
+|---|---|---|---|---|
+| 8 legacy data routes | 200 → 200 | 403 → 403 (`code` scope_missing → key_not_general) | 200 → **403** | 200 → **403** |
+| chat secret: identities/messages/thread/unread/replies/read/attachments | 200 → 200 (same system resolution) | 200 (+writes) → **403**, no rows | 200 (first CHAT system!) → 200 on its bound system; other header → **403** | 200 → **403** |
+| chat widget / guest | unchanged | n/a | n/a | n/a |
+| AI `/skills` | all → all | non-module skills + core listed → **filtered** (core []) | (same as module key) | listed → filtered |
+| AI `/skills/<id>` non-module | 200 → 200 | 200 → **404** | 404 | 404 |
+| AI `/tools/<non-module>` | 200 → 200 | 200 (+writes: aiMemory, kb) → **403** | 403 | 403 |
+| AI module tools (account/kanban/member/crm) | unchanged | unchanged scope logic | unchanged | unchanged |
+| `/me` | 200 | 200 | 200 | 200 |
+
+### Acceptance round 2
+- Oracle `qc-hf-apiv1-scope`: RED2 on c2287e53 `ผ่าน 61/120` (`ledger/wo-notes/HF-APIV1-red2.txt`: chat writes `chatMessage 1→15, chatContact 2→3 …`, AI write `aiMemory 0→1`, malformed keys read data, chat-bound key ignored its binding) → GREEN `ผ่าน 120/120 · JSON_SUMMARY {"total":120,"passed":120,"findings":[]}`.
+  S3 included: rotated legacy key = positive control on 8 routes + chat + AI; the pre-rotation key → 401; every data route now has a seeded row per shop (appointment/queue/reservation/ticket included) so "200 + data" and "other shop sees only its own" are real.
+- Regressions (before = c2287e53, after = round 2), identical final summary line on all 72 suites: the 21 API suites (same numbers as round 1) + 51 `qc-chat*`/`qc-ai*` (all green except pre-existing `qc-ai-actions 11/12` CRASH finding, same before/after).
+- ORACLE-EDIT (3, identical): `scripts/qc-chat-api-v1.mts`, `qc-chat-replies.mts`, `qc-chat-business-hours.mts` — their fake prisma `tables.apiKey` rows lacked the schema columns.
+  before: `{ id: "key-1", …, lastUsedAt: new Date(), createdAt: new Date() }` → after: `{ …, createdAt: new Date(), scopesJson: [], systemId: null }` (+1 comment line).
+  Reason: real rows always have `scopesJson` (NOT NULL DEFAULT '[]') and `systemId` (null); without them the fake key reads as malformed/bound and is (correctly) refused. Without the edit: 64/81 · 27/52 · 53/73; with it: 89/89 · 60/60 · 73/73 (= before).
+- Fitness 33/33 with and without env (unchanged). Typecheck (5632 MB heap command, once) → `tsc --noEmit` exit 0.
+
+### Customer impact (round 2)
+- SiamDive (general key from /app/settings/api): no change on any chat endpoint or system resolution.
+- Any module key (account/kanban/member/CRM) used on `/api/v1/chat/*` secret mode: now 403 (previously could impersonate customers, post messages/replies, read threads).
+- Module keys on `/api/v1/ai/*`: no longer see/run non-module tools (sales/financial summaries, stock, chat inbox, memory, KB, core tools such as list_systems/kb_search/remember_fact/support_open_case). Their own module tools work as before.
+- Keys whose stored scopesJson is malformed (only possible by hand-editing the DB) lose all general-key lanes.
+
+### Controller decisions (round 2)
+- D4: module keys lose the AI **core** tools too (`list_systems`, `ask_clarify`, `propose_plan`, `open_system`, `kb_search`, `remember_fact`, `list_memories`, `support_open_case`) — strict reading of "belongs to none of the four modules". If an external agent built on a module key relies on e.g. `list_systems`/`ask_clarify`, whitelist the harmless ones in `general-key-gate.ts`.
+- D5: the 3 ORACLE-EDITs touch Fable oracles; CRM-branch oracles with fake `apiKey` rows lacking `scopesJson/systemId` will fail the same way after merge if they hit chat secret mode/AI non-module tools — fix the fake, not the gate.
+- D6: chat-bound keys have no issuer UI yet; if one is added later it inherits rule (b).
+
+### Follow-ups (NOT in this hotfix)
+- N1 account/kanban settings can rotate/revoke another system's key · N3 label of bound `[]` keys ("อ่าน API กลาง (คีย์รุ่นเดิม)" shown for a bound key) · N5 · `shop/orders` missing `take`.
