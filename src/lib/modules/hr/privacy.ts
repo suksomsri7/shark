@@ -181,6 +181,8 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
   };
 }
 
+// ข้อความปฏิเสธกลาง (ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน) — ใช้ร่วมกันเพื่อให้ทุกทางปฏิเสธได้ไบต์เดียวกัน
+const ADJUST_REFUSED_GENERIC = "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้";
 /**
  * คำตอบของการยื่นรายการเพิ่ม/หักเงิน — ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือนต้องไม่รู้ยอดที่ระบบคิดจากเงินเดือน (OT)
  * และไม่รู้ว่าพนักงานคนนั้นมีโปรไฟล์เงินเดือนหรือไม่ · ผู้ดูเงินเดือน = คำตอบเดิมทุกตัวอักษร
@@ -188,6 +190,8 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
 export function adjustmentReplyForViewer(
   payrollViewer: boolean,
   res: { ok: boolean; reason?: string; amountSatang?: number },
+  // รอบ 4 (R4.6): byHours = ยื่น OT แบบกรอกชั่วโมง (ระบบคิดยอดจากเงินเดือนเอง)
+  req: { byHours?: boolean } = {},
 ): { status: "ok" | "error"; message: string } {
   if (payrollViewer) {
     return res.ok
@@ -195,9 +199,12 @@ export function adjustmentReplyForViewer(
       : { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
   }
   if (res.ok) return { status: "ok", message: "ยื่นแล้ว — รออนุมัติ (ผู้ดูแลเงินเดือนจะเห็นยอดที่คำนวณ)" };
+  // รอบ 4 (R4.6): OT ตามชั่วโมงที่ถูกปฏิเสธ — ทุกเหตุผล (ไม่มีเงินเดือน · ยอดปัดเป็น 0 · อื่น ๆ) ตอบข้อความเดียวกันทุกไบต์
+  //   ไม่งั้นลองชั่วโมงเล็ก ๆ ไล่หาจุดที่ข้อความเปลี่ยน = เดาอัตราค่าจ้างได้
+  if (req.byHours) return { status: "error", message: ADJUST_REFUSED_GENERIC };
   // เหตุผลที่ขึ้นกับข้อมูลเงินเดือน → ข้อความกลาง · เหตุผลจากข้อมูลที่ผู้ยื่นกรอกเอง (งวด/ยอด/ชนิด) แสดงตามเดิม
   if (/เงินเดือน/.test(res.reason ?? "")) {
-    return { status: "error", message: "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้" };
+    return { status: "error", message: ADJUST_REFUSED_GENERIC };
   }
   return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
 }

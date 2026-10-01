@@ -1,5 +1,5 @@
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1478081) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1451824) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -77,16 +77,16 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [C-1] 🔴 ใบลาที่อนุมัติผ่านสายอนุมัติ ถอนทางตรงไม่ได้ (แม้เจ้าของร้าน) + ข้อความไทยชี้ทาง
   ✅ [C-2] 🔴 ทางภายในที่ไม่มีผู้ตัดสินก็ถอนใบที่อนุมัติผ่านสายไม่ได้
 ── [A] ไม่มีผู้ตัดสินจริง (แผน AI / service) ──
-  ✅ [A-1] 🔴 แผนงาน AI (ไม่รู้ตัวผู้กดยืนยัน) อนุมัติใบลาไม่ได้ — ใบลาคง PENDING
-  ✅ [A-1b] ข้อความไทยชี้ไปหน้าระบบพนักงาน (ไม่โทษผู้ใช้)
-  ✅ [A-2] 🔴 แผนงาน AI ถอนใบลาที่อนุมัติแล้วไม่ได้ — คง APPROVED · ผู้อนุมัติเดิม
-  ✅ [A-3] 🔴 runKind ไม่มี userId → ปฏิเสธ (ไม่ตัดสินแม้แต่ไม่อนุมัติ) · ใบลาคง PENDING
-  ✅ [A-4] 🔴 service: ผู้ตัดสิน null → ไม่อนุมัติ
-  ✅ [A-4b] ข้อความปฏิเสธเป็นภาษาไทย
-  ✅ [A-5] 🔴 service: ผู้ตัดสินเป็นสตริงว่าง → ไม่อนุมัติ
-  ✅ [A-6] 🔴 service: ผู้ตัดสิน null ถอนอนุมัติไม่ได้ (แม้บอก from APPROVED)
-  ✅ [A-7] 🔴 bulk ไม่มีผู้ตัดสิน → ไม่อนุมัติสักใบ (failed + เหตุผลไทย)
-  ✅ [A-8] ผู้เรียกภายในรุ่นเก่าที่ไม่ส่งช่องผู้ตัดสินเลย (ข้อสอบเดิม qc-hr / LV-9) ยังทำงานเดิม — ไม่มีโค้ดใน src เรียกแบบนี้ (S-14)
+  ❌ [A-1] 🔴 แผนงาน AI (ไม่รู้ตัวผู้กดยืนยัน) อนุมัติใบลาไม่ได้ — ใบลาคง PENDING — expected ok:false · PENDING | actual true APPROVED อนุมัติใบลาเรียบร้อยแล้ว
+  ❌ [A-1b] ข้อความไทยชี้ไปหน้าระบบพนักงาน (ไม่โทษผู้ใช้) — expected ชี้ทาง | actual อนุมัติใบลาเรียบร้อยแล้ว
+  ❌ [A-2] 🔴 แผนงาน AI ถอนใบลาที่อนุมัติแล้วไม่ได้ — คง APPROVED · ผู้อนุมัติเดิม — expected คง APPROVED | actual true REJECTED ไม่อนุมัติใบลาเรียบร้อยแล้ว
+  ❌ [A-3] 🔴 runKind ไม่มี userId → ปฏิเสธ (ไม่ตัดสินแม้แต่ไม่อนุมัติ) · ใบลาคง PENDING — expected ปฏิเสธ | actual REJECTED err=null
+  ❌ [A-4] 🔴 service: ผู้ตัดสิน null → ไม่อนุมัติ — expected ปฏิเสธ · PENDING | actual APPROVED err=null
+  ❌ [A-4b] ข้อความปฏิเสธเป็นภาษาไทย — expected ไทย | actual null
+  ❌ [A-5] 🔴 service: ผู้ตัดสินเป็นสตริงว่าง → ไม่อนุมัติ — expected ปฏิเสธ · PENDING | actual APPROVED err=null
+  ❌ [A-6] 🔴 service: ผู้ตัดสิน null ถอนอนุมัติไม่ได้ (แม้บอก from APPROVED) — expected ปฏิเสธ · APPROVED | actual REJECTED err=สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่
+  ❌ [A-7] 🔴 bulk ไม่มีผู้ตัดสิน → ไม่อนุมัติสักใบ (failed + เหตุผลไทย) — expected done 0 | actual {"done":1,"failed":[]} APPROVED
+  ✅ [A-8] ผู้เรียกภายในรุ่นเก่าที่ไม่ส่งช่องผู้ตัดสินเลย (ข้อสอบเดิม qc-hr / LV-9) ยังทำงานเดิม — ไม่มีโค้ดใน src เรียกแบบนี้ (A-9)
 ── [G] ผูกบัญชีผู้ใช้ (staff) ──
   ✅ [G-1] 🔴 ผูกพนักงานเข้าบัญชีของผู้สั่งเอง → ปฏิเสธ (ข้อความไทย)
   ✅ [G-2] เจ้าของร้านผูกพนักงาน (ไม่มีเงินเดือน) เข้าบัญชีใหม่ได้ตามปกติ
@@ -95,10 +95,10 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [G-4] 🔴 ผู้จัดการที่ไม่มีสิทธิ์ดูเงินเดือน ผูกพนักงานที่มีโปรไฟล์เงินเดือน → ปฏิเสธ
   ✅ [G-5] ผู้จัดการผูกพนักงานที่ไม่มีเงินเดือนเข้าบัญชีใหม่ได้ตามปกติ
   ✅ [G-6] เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกพนักงานที่มีเงินเดือนได้
-  ✅ [G-7] 🔴 เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกแถวพนักงานของตัวเอง (มีเงินเดือน) เข้าบัญชีตัวเองได้
+  ❌ [G-7] 🔴 เจ้าของร้าน (ผู้ดูเงินเดือน) ผูกแถวพนักงานของตัวเอง (มีเงินเดือน) เข้าบัญชีตัวเองได้ — expected ok · ผูก | actual {"ok":false,"reason":"ผูกพนักงานเข้ากับบัญชีของผู้ทำรายการเองไม่ได้ — กรุณาใช้อีเมลของพนักงานคนนั้น หรือให้ผู้ดูแลคนอื่นเป็นผู้ให้สิทธิ์"} link=null
   ✅ [G-7b] 🔴 ผู้จัดการ (ไม่ใช่ผู้ดูเงินเดือน) ผูกตัวเองยังไม่ได้ (พนักงานไม่มีเงินเดือนก็ตาม)
-  ✅ [GR-1] 🔴 ให้สิทธิ์พนักงานคนเดียวพร้อมกัน 2 บัญชี (คนละ process) → ผูกได้ทางเดียว และผูกกับบัญชีของผู้ชนะ (4/4 รอบ)
-  ✅ [GR-2] ผู้แพ้ไม่มีสมาชิกภาพค้างในร้าน (ย้อนทั้งธุรกรรม)
+  ❌ [GR-1] 🔴 ให้สิทธิ์พนักงานคนเดียวพร้อมกัน 2 บัญชี (คนละ process) → ผูกได้ทางเดียว และผูกกับบัญชีของผู้ชนะ (4/4 รอบ) — expected 4/4 | actual ok/ok:true ok/ok:false ok/ok:false ok/ok:true late=false/false
+  ❌ [GR-2] ผู้แพ้ไม่มีสมาชิกภาพค้างในร้าน (ย้อนทั้งธุรกรรม) — expected 4/4 | actual 0
 ── [B] backfill ผูกบัญชี ──
   ✅ [B-0] backfill รันจบ
   ✅ [B-1] 🔴 backfill ไม่ผูกพนักงานที่มีเงินเดือน (ไม่มีผู้สั่งที่มีสิทธิ์ดูเงินเดือน)
@@ -111,7 +111,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [Q-3] ผู้ดูเงินเดือน: คำตอบเดิม (มียอด)
   ✅ [Q-4] ผู้ดูเงินเดือน: ไม่มีโปรไฟล์ → บอกให้ตั้งเงินเดือนตามเดิม
   ✅ [Q-5] fixture: ทั้งสามคำขอถูกปฏิเสธ (ยอดปัดเป็น 0 · ไม่มีเงินเดือน 2 ชม. · 3 ชม.)
-  ✅ [Q-6] 🔴 ไม่ใช่ผู้ดูเงินเดือน: คำปฏิเสธ OT ตามชั่วโมงเหมือนกันทุกไบต์ (ชั่วโมงต่างกัน/มีเงินเดือนหรือไม่)
+  ❌ [Q-6] 🔴 ไม่ใช่ผู้ดูเงินเดือน: คำปฏิเสธ OT ตามชั่วโมงเหมือนกันทุกไบต์ (ชั่วโมงต่างกัน/มีเงินเดือนหรือไม่) — expected 1 ข้อความ | actual ["ระบุจำนวนเงิน (หรือชั่วโมง OT) ให้มากกว่า 0","ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้","ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้"]
   ✅ [Q-7] ผู้ดูเงินเดือน: คำปฏิเสธเดิมทุกตัวอักษร
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
@@ -137,14 +137,14 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [S-10] proposals: hr_decide_leave ส่งผู้กดยืนยันเป็นผู้ตัดสิน (userId ?? null)
   ✅ [S-11] saveEmployeeProfileAction กรองช่องอ่อนไหวผ่าน employeeProfileInputFromForm
   ✅ [S-12] requestAdjustmentAction ตอบผ่าน adjustmentReplyForViewer
-  ✅ [S-13] proposals: hr_decide_leave ไม่มี userId → throw ก่อนเรียก decideLeave (R4.1a)
+  ❌ [S-13] proposals: hr_decide_leave ไม่มี userId → throw ก่อนเรียก decideLeave (R4.1a) — expected ใช่ | actual ไม่ใช่
   ✅ [S-14] ทุกจุดใน src ที่ตัดสินใบลาส่งผู้ตัดสินจริง (ไม่มีจุดที่ละไว้/ส่ง null ตรง ๆ)
-  ✅ [S-15] requestAdjustmentAction บอกว่าเป็น OT ตามชั่วโมง (byHours) ให้ตัวสร้างคำตอบ
-  ✅ [S-16] grantStaffAccess ผูกด้วย updateMany ที่มีเงื่อนไข linkedUserId (null หรือบัญชีเดิม) + ตรวจ count === 1
+  ❌ [S-15] requestAdjustmentAction บอกว่าเป็น OT ตามชั่วโมง (byHours) ให้ตัวสร้างคำตอบ — expected ใช่ | actual ไม่ใช่
+  ❌ [S-16] grantStaffAccess ผูกด้วย updateMany ที่มีเงื่อนไข linkedUserId (null หรือบัญชีเดิม) + ตรวจ count === 1 — expected ใช่ | actual ไม่ใช่
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 119/119
-FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+ผ่าน 103/119
+FINDINGS: CRITICAL 13 · MAJOR 3 · MINOR 0
 
-JSON_SUMMARY {"total":119,"passed":119,"findings":[]}
+JSON_SUMMARY {"total":119,"passed":103,"findings":[{"id":"A-1","sev":"CRITICAL"},{"id":"A-1b","sev":"MAJOR"},{"id":"A-2","sev":"CRITICAL"},{"id":"A-3","sev":"CRITICAL"},{"id":"A-4","sev":"CRITICAL"},{"id":"A-4b","sev":"MAJOR"},{"id":"A-5","sev":"CRITICAL"},{"id":"A-6","sev":"CRITICAL"},{"id":"A-7","sev":"CRITICAL"},{"id":"G-7","sev":"CRITICAL"},{"id":"GR-1","sev":"CRITICAL"},{"id":"GR-2","sev":"MAJOR"},{"id":"Q-6","sev":"CRITICAL"},{"id":"S-13","sev":"CRITICAL"},{"id":"S-15","sev":"CRITICAL"},{"id":"S-16","sev":"CRITICAL"}]}

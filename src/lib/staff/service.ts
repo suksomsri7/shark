@@ -380,7 +380,8 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       // HF-HR-0 ▸ การผูกบัญชี = สิทธิ์ "ตัวพนักงานเอง" (เช่นเปิดสลิปเงินเดือนของตัวเอง) ⇒ ห้ามเป็นทางลัด:
       //   (ก) ห้ามผูกเข้าบัญชีของผู้ทำรายการเอง · (ข) 1 บัญชี ↔ พนักงาน 1 คนต่อร้าน ·
       //   (ค) พนักงานที่มีโปรไฟล์เงินเดือน ต้องผูกโดยผู้ดูเงินเดือน (OWNER / hr.payroll.read)
-      if (user.id === input.actorUserId) {
+      // HF-HR-0 ▸ รอบ 4 (R4.4): (ก) ใช้กับผู้ที่ไม่ใช่ผู้ดูเงินเดือนเท่านั้น — เจ้าของร้านคนเดียวต้องผูกแถวพนักงานของตัวเองได้ ◂
+      if (user.id === input.actorUserId && !canViewPayroll(actor.ctx)) {
         throw new StaffRuleError("ผูกพนักงานเข้ากับบัญชีของผู้ทำรายการเองไม่ได้ — กรุณาใช้อีเมลของพนักงานคนนั้น หรือให้ผู้ดูแลคนอื่นเป็นผู้ให้สิทธิ์");
       }
       const otherLink = await tx.hrEmployee.findFirst({
@@ -428,10 +429,15 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       }
 
       // 4) ปิดหนี้ G7 — ผูกทะเบียนพนักงานเข้ากับบัญชีที่ล็อกอินได้
-      await tx.hrEmployee.updateMany({
-        where: { id: employee.id, tenantId: input.tenantId },
+      // HF-HR-0 ▸ รอบ 4 (R4.3): ผูกแบบมีเงื่อนไขในคำสั่งเดียว (ยังว่าง หรือเป็นบัญชีเดิม) — ให้สิทธิ์พร้อมกัน 2 บัญชีได้ผลทางเดียว
+      //   ทางที่แพ้ได้ 0 แถว ⇒ โยน ⇒ ธุรกรรมทั้งก้อน (รวมสมาชิกภาพที่เพิ่งสร้าง) ถูกย้อน ◂
+      const linked = await tx.hrEmployee.updateMany({
+        where: { id: employee.id, tenantId: input.tenantId, OR: [{ linkedUserId: null }, { linkedUserId: user.id }] },
         data: { linkedUserId: user.id },
       });
+      if (linked.count !== 1) {
+        throw new StaffRuleError(`“${employee.name}” เพิ่งถูกผูกกับบัญชีผู้ใช้อื่น — กรุณารีเฟรชหน้าแล้วตรวจอีกครั้ง`);
+      }
 
       return { userId: user.id, membershipId, createdNew, employeeName: employee.name };
     });

@@ -9,6 +9,7 @@ Worktree `/root/projects/shark-hf3` · branch `hotfix/hr-privacy` (base origin/m
 - [x] 4. GREEN 55/55 (`HF-HR-0-green.txt`) + regressions before/after (below)
 - [x] 5. fitness both modes 33/33 before = after · typecheck (see A4)
 - [x] 6. notes final · commit · push
+- [x] round 4 (2 Oct): merge main 929c39ce · R4.1a–R4.6 · oracle 119 · see "Round 4" at the end
 
 ## 1. Audit — every HR surface that ships employee / payroll / leave data to a client or returns it (verified in THIS tree)
 
@@ -148,9 +149,9 @@ Regressions round 3 (QC4): the 15 suites identical to the round-1 baseline, **qc
 Fitness 33/33 both modes, identical to base. Typecheck (5632 MB heap command) → exit 0.
 
 ### Residual (round 3)
-- `src/lib/ai/plans.ts:112` `runKind(...)` passes no userId ⇒ a plan step `hr_decide_leave` has no decider ⇒ derive mode (could revoke an APPROVED leave if the plan says REJECTED; self-check cannot apply). Fix = pass the user id there (outside allowed files).
-- Salary-profile existence is still inferable by a non-viewer from success vs. failure of an OT-by-hours request (only the wording/amount are hidden). Full fix = price OT at approval time (money rule).
-- Existing links created before this fix (prod) are not re-validated — controller may want a one-off audit query: employees with a salary profile whose `linkedUserId` belongs to a non-payroll-viewer MANAGER, or users linked to >1 employee.
+- `src/lib/ai/plans.ts:112` `runKind(...)` passes no userId ⇒ a plan step `hr_decide_leave` has no decider ⇒ derive mode (could revoke an APPROVED leave if the plan says REJECTED; self-check cannot apply). Fix = pass the user id there (outside allowed files). **→ round 4: closed by R4.1a (plan steps refuse to decide leave) + R4.2 (service refuses an empty decider).**
+- Salary-profile existence is still inferable by a non-viewer from success vs. failure of an OT-by-hours request (only the wording/amount are hidden). Full fix = price OT at approval time (money rule). **→ round 4: refusals now byte-identical (R4.6); success-vs-refusal still open (C7).**
+- Existing links created before this fix (prod) are not re-validated — controller may want a one-off audit query: employees with a salary profile whose `linkedUserId` belongs to a non-payroll-viewer MANAGER, or users linked to >1 employee. **→ round 4: query given under R4.7.**
 
 ### Findings recorded for HR V2 (not in this hotfix)
 - `/hr/leave` (names/types/dates), `/hr/employees`, `/hr/attendance` open to every member of the tenant.
@@ -159,3 +160,108 @@ Fitness 33/33 both modes, identical to base. Typecheck (5632 MB heap command) �
 - Duplicate-PIN message still confirms that a PIN is taken (no name any more); needs hashing/uniqueness (schema).
 - Profile via `hr.leave.read` shows address / birth date / emergency contact.
 - MANAGER `unitAccess` is not applied anywhere in HR (no branch axis): a branch-restricted manager sees every branch's employees (not payroll).
+
+## Round 4 (final reviewer on b2087d59..7915656d · "ship after" items) — merge of origin/main 929c39ce first (83989a1e, clean; main touched no `src/lib/ai/**`, `hr/**`, `staff/**` — the round-3 hunks in `ai/tools.ts` / `ai/proposals.ts` sit unchanged)
+CRM overlap check (read-only): `git log origin/main -3 -- src/lib/ai/plans.ts` = 255e8114 only; `git diff origin/main...origin/session/crm -- plans.ts proposals.ts` = one hunk `proposals.ts @@ -977` (+5, inside `dispatch`, far below `hr_decide_leave` ~:549 and `runKind` :455); `plans.ts` untouched by every `crm*` branch ⇒ no collision.
+
+| item | change (file:line) | oracle |
+|---|---|---|
+| R4.1 (a) | `ai/proposals.ts:551-553` `hr_decide_leave`: no `userId` ⇒ `throw "ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน"` before `resolveSystem`/`decideLeave` | A-1, A-1b, A-2, A-3, S-13 |
+| R4.1 (b) | **not done**: `executePlan(m, ctx, …)` gets `MembershipCtx` {role, unitAccess, permissions} + `ctx` {tenantId} — neither carries the user id (`membershipOf()` / mobile route build `m` without it). Passing it = new `opts.userId` through `confirmPlanAction` (`ai/actions.ts:185`) + `api/mobile/plans/confirm/route.ts:22` ⇒ out of brief ("do not invent a chain"). (a) alone is the fix: plan steps `hr_decide_leave` now FAIL with the Thai message, the plan stops (FAILED), nothing decided | – |
+| R4.2 | `hr/service.ts:469-474` `decideLeave`: a decider argument that is **passed but empty** (`null`, `""`, whitespace) ⇒ `HrLeaveDecisionError` "ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน" — refuses approve, reject and revoke (fail closed). `bulkDecideLeave` forwards `?? null` ⇒ bulk without decider decides nothing. Argument **omitted** (`undefined`) keeps the legacy derive mode — see C5 | A-4…A-8, S-14 (static: every `decideLeave`/`bulkDecideLeave` call in `src/` passes a 4th arg that is not literal null/undefined — 4 calls) |
+| R4.3 | `staff/service.ts:432-440` link = `updateMany where {id, tenantId, OR:[{linkedUserId:null},{linkedUserId:user.id}]}` + `count !== 1` ⇒ `StaffRuleError` (rolls back the whole tx incl. a just-created membership). Re-grant same employee/same account still idempotent | GR-1 (4 rounds, two processes): before = 4/4 double wins; after = 1 winner each, link = winner · GR-2 loser has no membership · S-16 |
+| R4.4 | `staff/service.ts:383-384` self-link rule `user.id === actorUserId && !canViewPayroll(actor.ctx)` — OWNER / `hr.payroll.read` may link their own employee row (salaried or not); others still refused. 1↔1 and salary rules unchanged | G-7 (owner self-link, salaried row → ok), G-7b + G-1 (MANAGER self-link → refused) |
+| R4.5 | **left**: `core/audit.writeAudit` takes no tx client (uses global `prisma`, swallows its own errors by design), and `hr/service.ts` writes only through `tenantDb` (chokepoint F5.1 — no raw prisma / `$transaction` here). Making the audit atomic = new helper signature in core (shared file) ⇒ not a small hunk. Current order: conditional `updateMany` first, audit right after (awaited); a crash between the two loses only the history row, never the decision guard | – |
+| R4.6 | `hr/privacy.ts:186-205` `adjustmentReplyForViewer(viewer, res, { byHours })`: non-payroll-viewer + OT by hours + refused ⇒ ONE constant message (`ADJUST_REFUSED_GENERIC`, same text as the existing salary-hint replacement) for every reason (no salary · amount rounds to 0 · employee not found · period format). `hr/payroll-actions.ts:190` passes `byHours: kind === "OT" && hours !== undefined`. Payroll viewers: unchanged byte-for-byte | Q-5, Q-6 (0.00001 h on a salaried employee vs 2 h / 3 h on an unsalaried one ⇒ 1 distinct message), Q-7, S-15 |
+| R4.7 | correction below | – |
+
+### `decideLeave` callers (after round 4)
+| caller | decider passed | notes |
+|---|---|---|
+| `decideLeaveAction` `hr/actions.ts:259` | `auth.active.userId` (session) | + `{ from }` from the form |
+| `bulkDecideLeaveAction` `hr/actions.ts:286` | `auth.active.userId` | `{ from: "PENDING" }` |
+| AI proposal confirm `executeProposal` → `dispatch` `proposals.ts:433` → `:557` | `opts.userId`: `ai/actions.ts:151` `auth.user.id` · `api/mobile/proposals/confirm/route.ts:24` `g.user.id` · `member/assistant-actions.ts:80` `auth.user.id` (via `gate`) | missing ⇒ R4.1a throw (never reaches the service) |
+| AI plan `executePlan` → `runKind` `plans.ts:112` | none (no user id in scope) | always R4.1a throw ⇒ step FAILED, plan stops |
+| approval core `approval-effects.ts:161` | does **not** call `decideLeave`: own `updateMany where status PENDING` with `decidedById: "approval-engine"`; the decider is the approval request's step approver (checked in approval core) | unchanged, safe |
+| cron / outbox / automation / REST | none (`grep decideLeave(` in `src/`: only the rows above) | – |
+| internal `bulkDecideLeave` → `decideLeave` `service.ts:~532` | forwards `decidedById ?? null` | omitted ⇒ null ⇒ refused |
+| test oracles qc-hr :32, qc-hr-attendance :119, qc-hr-leave-booking :82/:112 | omitted | legacy derive mode kept (C5) |
+
+### R4.7 — correction to round 3 (NOT closed)
+Round 3 makes `grantStaffAccess` require a payroll viewer only when the employee **already has** a salary profile. Residual, still open: a MANAGER (no `hr.payroll.read`) links employee X (no salary yet) to some account A (not their own — that is refused) → later someone sets X's salary → A opens X's APPROVED/PAID payslips through the self-view branch, and no payroll viewer ever approved the link. Same for links created by the backfill script before a salary exists. Closing it needs to know *who* approved a link (a schema flag such as `linkApprovedByPayrollViewer`, or re-validating at salary-set time) ⇒ HR V2.
+Read-only audit query for the owner (prod, **do not run from this lane**; a READ ONLY transaction, nothing is written). Lists every linked employee whose latest grant was made by someone who is not a payroll viewer **today**, or that has no grant record at all (backfill script / pre-audit / direct write); salaried rows first:
+```sql
+BEGIN READ ONLY;
+SELECT e."tenantId", e.id AS employee_id, e.name AS employee_name, e."linkedUserId",
+       g."actorId" AS granted_by, g."createdAt" AS granted_at, m.role AS granter_role_now,
+       m.permissions->>'hr.payroll.read' AS granter_payroll_read_now,
+       EXISTS (SELECT 1 FROM "HrSalaryProfile" s WHERE s."tenantId" = e."tenantId" AND s."employeeId" = e.id) AS has_salary_now,
+       CASE WHEN g."actorId" IS NULL THEN 'no grant record (backfill / legacy / direct write)'
+            WHEN m.id IS NULL THEN 'granter no longer a member'
+            ELSE 'granted by a non-payroll-viewer' END AS why
+FROM "HrEmployee" e
+LEFT JOIN LATERAL (
+  SELECT a."actorId", a."createdAt" FROM "AuditLog" a
+  WHERE a."tenantId" = e."tenantId" AND a.action = 'membership.access.grant' AND a.after->>'employeeId' = e.id
+  ORDER BY a."createdAt" DESC LIMIT 1
+) g ON true
+LEFT JOIN "Membership" m ON m."tenantId" = e."tenantId" AND m."userId" = g."actorId"
+WHERE e."linkedUserId" IS NOT NULL
+  AND (g."actorId" IS NULL OR m.id IS NULL
+       OR (m.role <> 'OWNER' AND COALESCE(m.permissions->>'hr.payroll.read', '') <> 'true'))
+ORDER BY has_salary_now DESC, e."tenantId", granted_at;
+ROLLBACK;
+```
+Caveat: the granter's role is today's, not the role at grant time (no history of role changes in this query). Rows with `has_salary_now = true` are the ones to review/unlink first.
+
+### Oracle — round 4
+`scripts/qc-hf-hr-privacy.mts` 98 → **119** checks (+A-1…A-8 incl. A-1b/A-4b, G-7, G-7b, GR-1, GR-2, Q-5…Q-7, S-13…S-16; new `--grant-worker` mode = second process/connection; `aiPlan`/`aiConversation` added to cleanup).
+- RED on the merge commit 83989a1e (code before round 4): `ผ่าน 103/119 · CRITICAL 13 · MAJOR 3` — A-1/A-1b/A-2/A-3/A-4/A-4b/A-5/A-6/A-7, G-7, GR-1 (ok/ok in all 4 rounds), GR-2, Q-6, S-13, S-15, S-16 (`HF-HR-0-red4.txt`; S-15's regex was tightened after this run — it is red on that code with either regex, see control r46)
+- GREEN: 3 runs `ผ่าน 119/119 · CRITICAL 0 · MAJOR 0 · MINOR 0` (run 1 = 118/119, the one red was the S-15 oracle regex, fixed; runs 2 and 3 clean) — `HF-HR-0-green.txt`
+- Control (`HF-HR-0-control4.txt`, each fix reverted alone): R4.1a → A-1b + S-13 red (A-1/A-2/A-3 stay green because R4.2 still refuses = defence in depth) · R4.2 → A-4, A-4b, A-5, A-6, A-7 · R4.3 → GR-1 (ok/ok ×4), GR-2, S-16 · R4.4 → G-7 · R4.6 → Q-6, S-15. Nothing else moved.
+
+### Regressions round 4 (QC4, gate lock) — BEFORE = merge 83989a1e · AFTER = round-4 tree; ✅/❌ lines diffed
+| suite | before | after |
+|---|---|---|
+| qc-hr | 9/9 | 9/9 |
+| qc-hr-attendance | 31/31 | 31/31 (only a clock time in a check title differs) |
+| qc-hr-leave-booking | 14/14 | 14/14 (unedited) |
+| qc-hr-payadjust | 27/27 | 27/27 |
+| qc-hr-roster | 24/24 | 24/24 |
+| qc-nav-functions | 12 ✅ (static; 11 → 12 came with main) | same |
+| qc-payroll | 19/19 | 19/19 |
+| qc-payroll-reverse | 14/14 | 14/14 |
+| qc-ai-tools | 18/18 | 18/18 |
+| qc-ai-proposals | 16/16 | **15/16 — PZ-6.1 by design (C6)** |
+| qc-ai-actions | 11/12 CRASH (pre-existing on QC4) | identical |
+| qc-ai-phase-b2 | 11/11 | 11/11 |
+| qc-ai-plan | 7/7 | 7/7 |
+| qc-bulk-ops | 13/13 | 13/13 |
+| qc-approval-wiring | 7/7 | 7/7 |
+| qc-calendar | 9/9 | 9/9 |
+| qc-chat-staff-perms | 49/49 | 49/49 |
+| qc-acc-v2-permissions | 137 ✅ / 24 ❌ (acc-v2 seed absent on QC4) | identical lines |
+| qc-mobile-chat | 29/29 | 29/29 |
+PZ-6.1 proof: a throw-away copy of `qc-ai-proposals.mts` with only that `executeProposal(OWNER, ctx, p4.id)` call given `{ userId: "qc-r4-confirmer" }` ran **16/16** and was deleted.
+Fitness: no env 33/33 → 33/33 · QC4 env 33/33 → 33/33 (check lines identical). Typecheck (5632 MB heap command) → exit 0.
+
+### Who loses what (round 4)
+- **AI plans (multi-step "propose_plan")**: can no longer approve / reject / revoke leave at all — the step fails with the Thai message and the plan stops there (later steps stay PENDING, plan FAILED). Single AI proposals confirmed from the web chat, mobile app or member assistant keep working (they carry the confirming user id).
+- Any caller of `executeProposal` for `hr_decide_leave` without `opts.userId` (only the Auditor's `qc-ai-proposals` PZ-6.1 today) — refused.
+- Any code calling `decideLeave`/`bulkDecideLeave` with `null`/`""` as decider — refused (no such caller in `src/`).
+- MANAGER / staff without payroll view: unchanged (still cannot self-link). OWNER / `hr.payroll.read`: **gain** — may link their own employee row.
+- Non-payroll-viewers filing OT by hours: every refusal now reads "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้" — including a typo'd period or 0 hours (they lose the specific hint for those inputs).
+- Concurrent double grant on one employee: the slower one now gets "…เพิ่งถูกผูกกับบัญชีผู้ใช้อื่น — กรุณารีเฟรชหน้าแล้วตรวจอีกครั้ง" instead of silently overwriting the link.
+
+### Not covered / still open after round 4
+- R4.7 residual (link before salary) — above; HR V2.
+- 1↔1 race across rows: two concurrent grants of the **same account** to **two different employees** can both pass the `otherLink` check (different rows; the conditional update guards one row only). Only matters when the account already has a membership (otherwise the `Membership @@unique([userId, tenantId])` create serialises them). Real fix = a unique index on (tenantId, linkedUserId) ⇒ schema.
+- OT-by-hours success vs refusal still differs (salary profile exists or not), and with tiny hour values the success threshold (`round(hours × rate) ≥ 1`) still bounds the hourly rate. Closing it = an input rule (e.g. hours ≥ 0.25 / step 0.25) or pricing OT at approval time — C7.
+- Audit row not atomic with the decision (R4.5).
+- Self-decision check still needs `linkedUserId` (unlinked employees: cannot detect self-decision) — unchanged from round 1.
+
+### Decisions for the controller (round 4)
+- **C5 (R4.2 shape)**: the service refuses an *explicitly empty* decider (null/""/whitespace) but keeps the legacy behaviour when the argument is *omitted*, because three Auditor-owned suites call `decideLeave(ctx, id, status)` with no decider and must stay identical (qc-hr :32, qc-hr-attendance :119, qc-hr-leave-booking :82 approve and :112 LV-9 revoke). No product caller omits it (S-14 static, 4 call sites). Strict variant (omitted ⇒ refused too) = 1-line change but turns those three suites red until the Auditor passes a decider — say if you want it.
+- **C6**: `qc-ai-proposals` PZ-6.1 confirms an `hr_decide_leave` proposal with no user id and expects APPROVED — exactly the "no real decider" case the brief forbids. Oracle is Auditor-owned ⇒ not edited; fix = pass `{ userId }` in that call (proven 16/16).
+- **C7**: R4.6 as written (refusals byte-identical) is done; the success/refusal threshold residual needs an input-granularity rule for OT hours (product decision, affects every user's form).
+- **C8**: R4.1(b) not done — plan confirm has no user id in scope; adding `opts.userId` to `executePlan` + its 2 callers would restore AI-plan leave decisions with self-check (3 files, `ai/actions.ts` + mobile route) — CRM does not touch `plans.ts`, so it is safe to do later if wanted.

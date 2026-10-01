@@ -548,6 +548,9 @@ async function dispatch(
 
   if (kind === "hr_decide_leave") {
     const p = payload as DecideLeavePayload;
+    // HF-HR-0 ▸ รอบ 4 (R4.1a): ไม่รู้ตัวคนกดยืนยัน (เช่นแผนงานหลายขั้น — MembershipCtx ไม่มี user id) = ไม่มีผู้ตัดสินจริง
+    //   ⇒ ห้ามอนุมัติ/ไม่อนุมัติ/ถอน (กติกาห้ามตัดสินใบของตัวเอง + การถอนต้องมีผู้ตัดสิน จะถูกข้ามเงียบ ๆ) ◂
+    if (!userId) throw new Error("ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
     const system = await resolveSystem(tenantId, "HR");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";

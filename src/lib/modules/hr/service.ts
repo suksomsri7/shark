@@ -466,6 +466,12 @@ export async function decideLeave(
   //   ไม่มีผู้ตัดสินเลย (งานภายใน/ผู้เรียกรุ่นเก่า) = ใช้สถานะปัจจุบัน
   opts: { from?: "PENDING" | "APPROVED" } = {},
 ): Promise<void> {
+  // HF-HR-0 ▸ รอบ 4 (R4.2): ผู้เรียกที่ "ส่งช่องผู้ตัดสินมาแต่ว่าง" (null / สตริงว่าง = ไม่รู้ว่าใครตัดสิน) ห้ามตัดสินทุกทาง —
+  //   กติกาห้ามตัดสินใบของตัวเอง + การถอนอนุมัติ ต้องรู้ตัวผู้ตัดสิน · ผู้เรียกใน src ทุกจุดส่ง user id จริง (oracle S-14) ·
+  //   ไม่ส่งช่องนี้เลย (undefined) = งานภายใน/ข้อสอบรุ่นเก่า (qc-hr · qc-hr-attendance · qc-hr-leave-booking LV-9) คงพฤติกรรมเดิม ◂
+  if (decidedById !== undefined && !(typeof decidedById === "string" && decidedById.trim())) {
+    throw new HrLeaveDecisionError("ระบบไม่ทราบผู้ตัดสินใบลานี้ จึงยังบันทึกผลไม่ได้ — กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
+  }
   const db = tenantDb(ctx);
   const leave = await db.hrLeave.findFirst({
     where: { id: leaveId },

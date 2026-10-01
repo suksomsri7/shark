@@ -187,7 +187,7 @@ export async function requestAdjustmentAction(
     },
   );
   // HF-HR-0: ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน ไม่เห็นยอดที่คิดจากเงินเดือน และไม่รู้ว่ามีโปรไฟล์เงินเดือนไหม
-  const reply = adjustmentReplyForViewer(canViewPayroll(membershipOf(auth)), res);
+  const reply = adjustmentReplyForViewer(canViewPayroll(membershipOf(auth)), res, { byHours: kind === "OT" && hours !== undefined }); // HF-HR-0 ▸ รอบ 4 (R4.6) ◂
   if (res.ok) revalidatePath(`/app/sys/${systemId}/hr/payroll`);
   return reply;
 }
