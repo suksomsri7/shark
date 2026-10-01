@@ -1,0 +1,9 @@
+  ✅ [RV5-A-deployed-000003] prosrc == 000003 true · config ["search_path=pg_catalog, public"] · owner/acl = sibling true · checksums 000002 true 000003 true · rows 000000✓ 000001✓ 000002✓ 000003✓
+  ✅ [RV5-B-deviation-at-above-floor] lock held elsewhere · taken AT floor → returned 1602 in 50 ms · taken ABOVE book floor (other-book row) → returned 1652 in 44 ms · taken 1000 below → FAILED 55P03 after 377 ms, sequence next 602 (moved by its one nextval only)
+  ✅ [RV5-C-review-interleavings-closed] RV3-A floor 1601: 1602 · 1603 | RV4-B floor 1603: 1604 · 1605 · 1606
+  ✅ [RV5-D-stress-deployed] 6 rounds × 24 cashiers (random gap 1..1599 below the floor each round) · failures [] · duplicates 0 · at/below floor 0 · sampler 134 samples, backwards 0
+  ✅ [RV5-E-residual-info] INFO BACKWARDS MOVE (residual is real under an extreme stand-in) · floor 1750 · next value after 1200 lock-free nextvals 1949 · healer → 1751 · next value after the healer 1752
+  ✅ [RV5-CLEAN] copies left 0 · journal sequences left 0 · deployed account_alloc_journal_no still == 000003 file: true
+  ✅ [CLEAN-f9qj2t] tenant rows left=0
+🟢 rv5-r2: 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}

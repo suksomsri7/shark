@@ -82,3 +82,96 @@ I did not re-run the builder's regression list. I read `/tmp/cf3-logs/regress/SU
 - The deployed `account_alloc_journal_no` is still byte-equal to the 000002 file.
 
 VERDICT: NOT MERGEABLE (F1 MED: move the advisory lock before the ≤ 1000 split, or at minimum correct the "forward-only" header and runbook; F2 runbook corrections; F3 lock-order header text)
+
+---
+
+## Round 2 — re-review of `git diff 288223d8 f6d7ad1a` (builder tip f6d7ad1a)
+Finished 2026-10-01 15:52 UTC. QC2 only. Every job ran through `scripts/iso.sh` + the gate lock.
+
+### What I ran
+| run | result |
+|---|---|
+| builder `probe-cf3-r2.mts` (re-run) | **13/13**. Both positive controls on 000002 REPRODUCED again; the installed and mixed shapes were clean |
+| my `review/rv5-r2.mts` (new; rv3/rv4 not edited) | **7/7** (`review/rv5-r2.log`) |
+| `scripts/pending/c54n/check-jno-fns-r2.mts` (after its ORACLE-EDIT) | `CHECK OK`: 10/10 functions equal, none extra; rows 000000(orphan)…000003 finished |
+
+I did not re-run typecheck or fitness: the only `src/` change this round is a comment in `account/service.ts`. The builder reports typecheck 0 and fitness 33/33.
+
+### (a) The deviation from RV4-C is safe
+000003 takes the lock only when the taken number lies below the book floor (`f > n`). RV4-C took it for every taken number.
+
+A taken number at or above the floor can only come from two places: the row holding the maximum number itself (`n = f`), or a same-docNo row in another book (the floor is per book, the existence check is per system). In both cases the function just loops to the next `nextval`. It never calls `setval` and never walks, so it can only move the sequence forward.
+
+| check | result |
+|---|---|
+| RV5-B: another transaction holds the advisory lock | taken AT the floor → 1602 in 50 ms · taken ABOVE the book floor (GENERAL-book row) → 1652 in 44 ms · taken 1000 below → waits (55P03 after 377 ms) and the sequence moved by its one `nextval` only |
+| RV5-C: RV3-A and RV4-B against the installed body (healer = 000003 copy + 600 ms, cashiers = deployed) | 1602/1603 and 1604/1605/1606, 0 failures |
+| RV5-D: deployed only, 6 rounds × 24 cashiers, random gap 1..1599 each round, sampler every 10 ms | 0 failures, 0 duplicates, 0 at/below the floor, 0 backwards in 134 samples |
+| other callers that could move the sequence | none in `src/`: no `setval`, `account_next_journal_no` or `account_jno_create`. `account_jno_drop` runs only on PDPA delete |
+| raised isolation levels | none in `src/`, so the floor re-read under the lock sees the previous healer's commit |
+
+I found no interleaving where the installed body moves the sequence backwards or makes a caller fail, other than the residual below.
+
+### (a) The stated residual is real in mechanism; reaching it in production is out of the question
+**RV5-E (INFO, extreme stand-in):**
+- Set-up: the healer is a 000003 copy with a 600 ms window after its read; it reads a gap of 1001 and chooses `setval`. Inside that window, another session runs 1200 raw `nextval`s.
+- Result: the sequence went from next 1949 back to 1752. The healer got 1751.
+
+**Why it is not reachable:**
+- The window is the gap between two adjacent plpgsql statements, which takes microseconds unless the backend is descheduled.
+- Every allocation call adds at most one `nextval` before it either returns (free number) or blocks (taken number below the floor).
+- So more than 1000 concurrent allocation calls on one book would have to land inside that gap.
+
+**Recommendation:** do not close it in this card. The header and runbook state it correctly. Their wording "Not reproduced; not proven impossible" could add "reproduced only with 1200 raw nextvals inside a 600 ms injected window (review RV5-E)". That is a nit, not required.
+
+### (b) The lock-wait probe tells the two bodies apart
+- R2-WAITS holds the real key (`hashtextextended('account_jno:'||seq_name,0)`) in another transaction and uses `lock_timeout` 300 ms.
+- The deployed function waits (55P03) at gaps 1, 500 and 1000. The 000002 copy returns at once at 500 and 1000 (positive control re-ran green).
+- Gaps 1001 and 1599 wait under both bodies, so they only check consistency; that is fine.
+- My RV5-B repeats the gap-1000 case independently and adds the at/above-floor cases.
+
+### (c) The ORACLE-EDIT is legitimate
+- `check-jno-fns-r2.mts` is a builder check under `scripts/pending`, not a seeded `*-expected` oracle.
+- The edit composes 000001 → 000002 → 000003, later file wins, which is exactly the set of functions in force. It still demands byte-equal `prosrc` and the pinned config for all 10 functions, and still reports extra functions. Nothing got weaker.
+- The controller should log it as an approved ORACLE-EDIT in the register.
+
+### (d) Runbook (`crm-C5.4-N.md` addendum + §2 "Healing exception")
+- **Apply order** 000001 → 000002 → 000003: correct.
+- **Pre-check 4** (`LIKE '2026110400000%'`) does cover all three names (line 478).
+- **"Prod has none":** `origin/main`'s newest migration folder is `20261102000000_crm_v2_c` (verified). Production itself was not queried, which the runbook says.
+- **POS:** `origin/session/pos` carries `20261120000000_pos_v2_a` and `…01_pos_v2_a_links`. Neither mentions `AccountJournal`, `account_jno` or `journal_no` (grep: 0 lines each).
+- **Out-of-order apply by `migrate deploy`:** still not tested on a throwaway database. The runbook says so and routes it to the CI rehearsal (pre-check 5). Acceptable.
+- **Pre-check 7** (`pg_get_userbyid(proowner) = current_user`) is conservative: a role that is only a *member* of the owner role would read `false`. That is safe.
+- **Pre-check 8** is correct.
+- **Smoke string** `IF f - nv <= 1000 THEN` matches only the 000003 body; 000002 has `< 1000`.
+- **Rollback warning** (never re-run 000002 alone; re-running 000001 brings back the unlocked race) is correct.
+  - Nit: after such a rollback `_prisma_migrations` still lists 000002/000003, so `check-jno-fns-r2` would report the difference. That is expected.
+- **§2 "Healing exception"** names the phase-2 counters (`issueDocNo`, goods-doc) that the step-7 proof does not cover. Good.
+  - Nit: the `service.ts:16-21` header names "step 1–6 rows" only, not the phase-2 counters. The "NOT yet at step 7" paragraph a few lines below already says they are held across the posting. INFO.
+
+### (e) Stale assertions
+- `rv3-jno.mts` RV3-D/RV3-CLEAN and `rv4-review.mts` RV4-D/RV4-CLEAN assert "deployed == 000002" and are now red by design (the builder's run: 5/7 each).
+- Their interleaving checks now read "not reproduced" (RV3-A, RV4-B), which is the intended result.
+- They are kept unedited as history. Use `rv5-r2.mts` for the body in force; do not use rv3/rv4 as gates.
+
+### Round-1 findings, status
+| finding | status |
+|---|---|
+| F1 MED | **closed** (000003; verified as above) |
+| F2 LOW | **closed** (runbook rewritten and accurate; see (d)) |
+| F3 LOW | **closed** (service.ts header + N §2; 40P01 is still possible during healing, as documented) |
+| F4 LOW, F5 INFO | open as debt. They are listed in the builder note, but `ledger/CRM-C6-REGISTER-DRAFT.md` was not updated in this diff; the controller should copy them there |
+
+### Round 2 findings
+- **INFO:** RV5-E residual (above), documented, not worth closing now.
+- **INFO:** service.ts header nit (above).
+- **INFO:** F4/F5 are missing from the C6 register.
+
+No BLOCKER, HIGH, MED or LOW.
+
+### Hygiene
+- RV5-CLEAN: 0 function copies `rv5_alloc_*`, 0 journal sequences, 0 tenant rows.
+- QC2's `account_alloc_journal_no` is still byte-equal to the 000003 file.
+- The builder probe re-run also cleaned up (R2-CLEAN, tenant CLEAN).
+
+VERDICT: MERGEABLE
