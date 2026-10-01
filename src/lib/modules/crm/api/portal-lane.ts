@@ -12,7 +12,7 @@ import { z } from "zod";
 import type { ApiActor } from "@/lib/api/actor";
 import { defineOp, rateKindOf, type ApiOp } from "@/lib/api/op";
 import type { ApiModuleConfig, RequireResult } from "@/lib/api/require";
-import { ApiError, fail } from "@/lib/api/respond";
+import { ApiError, fail, nothingWritten } from "@/lib/api/respond"; // CRM C5.5 ▸ RV-2 +nothingWritten ◂
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { getPortalSession, isPortalToken } from "@/lib/modules/member/session-facade"; // facade ที่สองของสมาชิก (ผิว session เท่านั้น — กันวงโหลดของบัญชี)
 import * as portal from "../portal";
@@ -85,7 +85,7 @@ function mapPortalError(e: unknown): unknown {
   const code = (e as { code?: unknown })?.code;
   const msg = e instanceof Error ? e.message : "";
   if (code === "UNAUTHORIZED" && /[ก-๙]/.test(msg)) return crmApiError(401, "unauthorized", msg, "The portal session is expired or revoked.");
-  if ((code === "RATE_LIMITED" || (e as { name?: unknown })?.name === "CustomerRateLimitError") && /[ก-๙]/.test(msg)) return crmApiError(429, "rate_limited", msg, "Too many attempts. Try again later.");
+  if ((code === "RATE_LIMITED" || (e as { name?: unknown })?.name === "CustomerRateLimitError") && /[ก-๙]/.test(msg)) return nothingWritten(crmApiError(429, "rate_limited", msg, "Too many attempts. Try again later.")); // CRM C5.5 ▸ RV-2: ถูกจำกัดอัตรา = ยังไม่ได้ทำงาน ◂
   if (code === "CUSTOMER_AUTH" && /[ก-๙]/.test(msg)) return crmApiError(422, "validation", msg, "The request cannot be accepted.");
   return toCrmApiError(e);
 }

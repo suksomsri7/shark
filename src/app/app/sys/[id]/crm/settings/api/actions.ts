@@ -137,7 +137,7 @@ export async function createCrmWebhookAction(fd: FormData): Promise<CrmWebhookCr
     // CRM C5.5 ▸ L55-4: ปลายทางได้ event ของทุกระเบียนทุกทีม ⇒ คนเพิ่มต้องเห็น ALL ทั้งร้าน (กติกาเดียวกับคีย์ไม่กรอง C5.4-B) ◂
     const wider = await crmWebhookWiderThanCreator({ tenantId, systemId }, g.actor);
     if (wider) return { ok: false, reason: wider };
-    const res = await createEndpoint({ tenantId }, { url, events: checked.events });
+    const res = await createEndpoint({ tenantId }, { url, events: checked.events, by: { actor: g.actor } }); // CRM C5.5 ▸ by ◂
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: res.id, after: { created: true, events: checked.events, systemId } });
     revalidateAndWake(PATH(systemId));
     return { ok: true, id: res.id, secret: res.secret };
@@ -161,7 +161,7 @@ export async function toggleCrmWebhookAction(fd: FormData): Promise<CrmActionRes
       const wider = await crmWebhookWiderThanCreator({ tenantId, systemId }, g.actor);
       if (wider) return { ok: false, reason: wider };
     }
-    await setEndpointActive({ tenantId }, row.id, active);
+    await setEndpointActive({ tenantId }, row.id, active, { actor: g.actor }); // CRM C5.5 ▸ by ◂
     await writeAudit({ tenantId, actorId: userId, action: "crm.api.manage", targetType: "WebhookEndpoint", targetId: row.id, after: { active } });
     revalidateAndWake(PATH(systemId));
     return { ok: true };

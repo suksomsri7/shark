@@ -79,3 +79,50 @@ Controller on QC1 (optional): the account write/key suites that use the acc-v2 s
 
 ### r1b regression (`scripts/pending/c55/run-fix1-r1b.sh` → /tmp/c55-logs/r1b/)
 probe-fix1 61/61 · probe-auto 9/9 · probe-idem 3/3 · c1.10 65/67 (S7.2 + H.1 only — proven baseline above) · c2.1 84/84 · c2.9 52/52 · c3.9 49/49 · c0.2 27/27 · member m2.2 14/15 (point-adjust approval S2.1–S2.3 green; S5.1 = screenshots, environmental) · member m2.5 25/26 (voucher STAFF cap S2.4 + approval S2.5 green; S7.2 = HTTP/screenshots, environmental) · qc-webhook 15/15 · qc-webhook-ui 11/11 · gen docs --check ×4 exit 0 · typecheck exit 0 · fitness 33/33 with and without env.
+
+## ROUND 2 (rulings after review `crm-C5.5-fix1-review.md` @2e8eafd4) — checkpoint
+Plan / status:
+- [x] probe-fix1 extended first → RED /tmp/c55-logs/red5-probe-fix1-r2.log 62/70 (8 new checks red, controls green) → GREEN g5-probe-fix1.log 71/71 (+WB-static)
+- [x] RV-6 approval verdict via approval facade `resolvePolicy` (no matching policy ⇒ DIRECT)
+- [x] RV-1 stale takeover ⇒ store + answer 409 outcome_unknown (never run) · NOTE: oracle C5.3-L3-m1 (a) pins "takeover runs once" ⇒ will go red ⇒ ORACLE-EDIT request (not authorised)
+- [x] RV-2 thrown 409/429/503 released only when the thrower flags `nothingWritten` (respond.ts) · returned RunResult statuses keep the C5.4 release (test-only path; c5.3 L3-m1 (b))
+- [x] RV-3 beforeHandler wired in core dispatch (runOpAsActor scope check) + note sentence corrected
+- [x] webhook choke point in `webhooks/service.ts` (author mandatory in types · registered guards · composition root) + 16 call sites incl. account connections/REST (authorised for this only)
+- [x] ORACLE-EDIT c1.10 S7.2 (authorised) · RV-5 generator skill text · RV-7 inventory rows in note
+- [~] regression r2 RUNNING `scripts/pending/c55/run-fix1-r2.sh` → /tmp/c55-logs/r2/SUMMARY
+Correction (RV-3): the round-1 sentence "dispatch wraps the actorCan check in beforeHandler" was FALSE at 44e5c77c/24b86d18 — no door called ctl.beforeHandler; fixed in r2 (see below).
+
+### r2 implementation (code)
+- RV-6: `approval` facade exports read-only `resolvePolicy`. `point/adjust.ts manualAdjustVerdict` and `voucher/service.ts manualIssueVerdict` turn APPROVAL into DIRECT when no policy would match, asking with exactly the manual door's arguments: points = `member.point.adjust`, systemId = each member system's point system (`resolvePointSystemIds`, global-only when none), no unit/amount; vouchers = `member.voucher.issue`, systemId = template's member system, amount = face × count, no unit. The manual doors are byte-identical; only the verdict exported to CRM changed.
+- RV-1: `withIdempotency` stale (>6 min NULL) claim ⇒ CAS to status 409 + `idempotency_outcome_unknown` body, TTL 24 h from now, answer it; the handler never runs; a lost CAS ⇒ re-read and replay/in_progress. Window: 6 min vs the longest known real handler (group payment ≤ ~40 s; Vercel default maxDuration 300 s) ⇒ a still-running request is not hit. ⚠️ ORACLE CONFLICT: `scripts/qc-crm-c5.3.mts` C5.3-L3-m1 (a) asserts "aged NULL claim ⇒ retry 200 and run() executed once" — now 409 outcome_unknown / ran 0 ⇒ that check turns RED (not authorised to edit) ⇒ ORACLE-EDIT request: expect `resA.status===409 && code idempotency_outcome_unknown && ranA===0`.
+- RV-2: `respond.ts nothingWritten(e)` / `isNothingWritten(e)`. A THROWN 409/429/503 releases the claim only when flagged (or raised inside `ctl.beforeHandler`); unflagged ⇒ stored + replayed. A RETURNED RunResult with 409/429/503 keeps the C5.4 release (only test harnesses return non-200; dispatch returns 200) ⇒ C5.3-L3-m1 (b) unchanged.
+- RV-3: `runOpAsActor` takes `beforeHandler`; core `dispatch.ts` passes `ctl.beforeHandler`, so the scope check inside the claim runs in that zone (all four modules use core dispatch). The DB steps before it (key lookup, system lookup, rate limit, altAuth / creator entitlement) run BEFORE the claim exists, so a transient there leaves nothing to release. Probes: H1-B-route (real CRM route, P1001 on the key lookup ⇒ 503, no claim, same-key retry 200, 1 contact) and H1-B-dispatch (real core dispatch, P1001 inside beforeHandler ⇒ 503, released, retry runs once).
+- Webhook choke point: `webhooks/service.ts` `createEndpoint(ctx, {url, events, by})`, `setEndpointActive(ctx, id, active, by)` (checks stored events when turning ON) and `setEndpointEvents(ctx, id, events, by)`. `by` is mandatory in the types: `{actor} | {userId} | {apiKeyId}` (API key ⇒ the key creator's accepted membership). Registered event guards run there and throw `WebhookGuardError` (403, Thai). The composition root `src/lib/webhook-guards.ts` (lazy-loaded by the service) registers `crmPlatformWebhookProblem` from the CRM facade. Removed the platform→CRM dynamic import (RV-8). Untyped callers (scripts/oracles that call the service directly) send no `by` ⇒ no guard. Call sites updated (13 in src): CRM settings create/toggle · platform create/toggle/updateEvents · member UI create/toggle · member REST create/updateEvents/updateActive · account REST create/updateEvents/updateActive · account connections create (events now FILTERED to registered `account.*`) / toggle. A null author (keyless creator, ex-member) ⇒ refused only when the list touches CRM and the tenant has CRM v2. Tenants without CRM v2 ⇒ guard null ⇒ unchanged (probe WB-control-no-v2).
+- ORACLE-EDIT (authorised) `scripts/qc-crm-c1.10.mts` S7.2: `before = HOOKS.length` moved above the REST calls, marked `// ORACLE-EDIT C5.5-fix1 (review · S7.2 stale since C5.4-D: REST write wakes the outbox immediately)`.
+- RV-5: the in-repo generators own only the docs text (code table already had `idempotency_outcome_unknown`). Added a replay/new-key sentence to the account Conventions "Idempotency" bullet and to CRM OpenAPI rule 7. The installed `/root/.claude/skills/*/SKILL.md` ("Reuse the same key when you retry…") is the controller's — it should add: "409 idempotency_outcome_unknown ⇒ check whether the record exists, then retry with a NEW key; stored error answers replay for 24 h."
+
+### RV-2 audit — every 409/429/503 raised INSIDE the claim (crm · member · kanban · account)
+| module | site | code | before/after write | r2 |
+|---|---|---|---|---|
+| crm | http-errors CONFIRM_REQUIRED (28 service throw sites — confirmation gates) | 409 confirm_required | before | FLAGGED (released) |
+| crm | http-errors CRM_V2_DISABLED (assertCrmV2 at service entry) | 409 crm_v2_disabled | before | FLAGGED |
+| crm | http-errors STAGE_REQUIREMENTS (deals.ts moveCore :912 "ไม่เขียนอะไรเลย") | 409 stage_requirements | before | FLAGGED |
+| crm | http-errors APPROVAL_REQUIRED (deals.ts reassign :1177-1184 · deal lines discount) | 409 approval_required | AFTER (submitForApproval + audit) | kept + replayed (H1-reassign-replay: 1 request) |
+| crm | http-errors DUPLICATE · CONFLICT/PARTIAL · EMAIL_BLOCKED · NOT_CONFIGURED · LIMIT | 409 | mostly before, PARTIAL = after; not provable per site | kept + replayed |
+| crm | portal-lane RATE_LIMITED | 429 | before (limiter) | FLAGGED |
+| member | api/http-errors as400 status 429 (service limiters) | 429 | before | FLAGGED |
+| member | api/campaign-port.ts campaignPort() port missing | 503 | before | FLAGGED |
+| kanban | api/ops/cards.ts :214/:216 move (WIP limit / not movable), :337 no done column | 409 | before (validation) — unflagged by choice | kept + replayed |
+| account | payments-write :66 · finance-write :82/:86 · settings-write :74 · contacts-write :160/:218 · files-write :41 · gl-write :104/:126/:563/:650 · reconcile-write :45 | 409 | mostly before; account/** belongs to another lane (not authorised) | kept + replayed |
+| account | files-write :252 SKIPPED (AI not configured) | 503 | after the read job ran | kept + replayed |
+| account | import.ts :35 | 429 | before — not authorised to flag | kept + replayed (residual: same-key retry after the window replays 429 → use a new key; documented) |
+| core | mapError Thai-word 409s (ปิดงวด/ล็อก/สถานะ/ซ้ำ) | 409 | unknown | kept + replayed |
+| core | per-key `rate_limited` (require.ts), `idempotency_*` | 429/409 | before the claim | never stored (unchanged) |
+
+### RV-7 (for the it4 / inventory lane — do NOT edit here)
+Rows `scripts/crm-ui-inventory.json`:
+`{"page":"/settings/automation","testid":"crm-auto-save","kind":"button","roles":["owner","manager"],"hiddenFor":["nok","thana"],"expect":{"type":"mutation","target":"action:createCrmRuleAction",…,"anyOf":["action:updateCrmRuleAction"]},"wo":"C2.1"}` and
+`{"page":"/settings/automation","testid":"crm-auto-rule-toggle","kind":"toggle","roles":["owner","manager"],"hiddenFor":["nok","thana"],"expect":{"type":"mutation","target":"action:toggleCrmRuleAction",…},"wo":"C2.1"}`.
+New expectation: persona `manager` (MANAGER, unitAccess [patong] — branch-limited) passes only for rules whose actions are NOTIFY_STAFF / SEND_PUSH (or WAIT_THEN of those). Any record-touching action is refused with the Thai "มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา)" message (no DB change). So either (a) the manager journey saves and toggles a NOTIFY_STAFF-only rule, or (b) add a refusal expectation for `manager` on record-action rules: `{"type":"refused","message":"กฎอัตโนมัติทำได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้"}`. `owner` is unchanged.
+
+- Deviation (needs controller): `createEndpoint` keeps a `@deprecated` overload WITHOUT `by` because the oracle `scripts/qc-acc-v2-permissions.mts:768` (not editable) and `seed-acc-v2-qc.mts:2058` call it typed without an author; every src/ call passes `by` (probe WB-static: 15 call sites, 0 without author). After an ORACLE-EDIT adding `by: { userId: null }` (or an owner id) there, the overload can be removed. setEndpointActive / setEndpointEvents: `by` mandatory without escape.

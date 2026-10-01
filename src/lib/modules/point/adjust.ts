@@ -21,6 +21,7 @@
 import { randomToken } from "@/lib/core/hash";
 import { canReadMember, type MemberActor } from "@/lib/modules/member/access";
 import * as approval from "@/lib/modules/approval/service";
+import { resolvePolicy } from "@/lib/modules/approval"; // CRM C5.5 ▸ RV-6 (facade อ่านล้วน) ◂
 import {
   addMonths,
   balanceIn,
@@ -34,6 +35,7 @@ import {
   type PointCtx,
 } from "./internal";
 import type { LotUse } from "./lots";
+import { resolvePointSystemIds } from "./service"; // CRM C5.5 ▸ RV-6 ◂
 
 export type { PointCtx };
 
@@ -164,10 +166,24 @@ function adjustVerdictOf(cap: number | null, actor: MemberActor, delta: number):
   if (actor.role === "OWNER" || cap === null || Math.abs(delta) <= cap) return "DIRECT";
   return actor.role === "STAFF" ? "REFUSED" : "APPROVAL";
 }
-/** คำตัดสินของประตูมือสำหรับ `delta` แต้ม ตามการตั้งค่าแต้มปัจจุบันของร้าน (อ่านอย่างเดียว) */
+/**
+ * คำตัดสินของประตูมือสำหรับ `delta` แต้ม ตามการตั้งค่าแต้มปัจจุบันของร้าน (อ่านอย่างเดียว)
+ * CRM C5.5 ▸ RV-6: APPROVAL ⇒ ถามนโยบายแบบเดียวกับที่ `adjustWithApproval` ยื่น (entityType member.point.adjust · systemId = ระบบแต้ม
+ *   ของระบบสมาชิก · ไม่มี unit/ยอด) — ไม่มีนโยบายไหนจับ = ประตูมือ autoApprove ทันที ⇒ DIRECT · ระบบสมาชิกใดก็ได้ของร้าน
+ *   (กฎ CRM ให้แต้มกับสมาชิกของระบบใดก็ได้) จับ ⇒ APPROVAL · ไม่มีระบบแต้มเลย ⇒ ถามเฉพาะนโยบายทั้งร้าน ◂
+ */
 export async function manualAdjustVerdict(tenantId: string, actor: MemberActor, delta: number): Promise<ManualAdjustVerdict> {
   const settings = await getSettings(prisma, tenantId);
-  return adjustVerdictOf(settings.adjustApprovalOver, actor, delta);
+  const v = adjustVerdictOf(settings.adjustApprovalOver, actor, delta);
+  if (v !== "APPROVAL") return v;
+  const members = await prisma.appSystem.findMany({ where: { tenantId, type: "MEMBER" }, select: { id: true } });
+  const pointSystems = [...new Set((await Promise.all(members.map(async (m) => (await resolvePointSystemIds(tenantId, m.id))[0] ?? null))).filter((x): x is string => !!x))];
+  // ยังไม่มีระบบแต้มที่ผูกกับระบบสมาชิกใด (กฎให้แต้มจะถูกข้ามตอนทำงานอยู่แล้ว) ⇒ ถามเฉพาะนโยบายทั้งร้าน (systemId null)
+  const candidates: (string | null)[] = pointSystems.length ? pointSystems : [null];
+  const hits = await Promise.all(
+    candidates.map((systemId) => resolvePolicy({ tenantId }, { entityType: "member.point.adjust", systemId, unitId: null, amountSatang: null })),
+  );
+  return hits.some(Boolean) ? "APPROVAL" : "DIRECT";
 }
 // ◂ CRM C5.5
 

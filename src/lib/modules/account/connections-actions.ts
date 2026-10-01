@@ -13,6 +13,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { createApiKey, revokeApiKey, rotateApiKey } from "@/lib/api-keys/service";
 import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
 import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
+import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels"; // CRM C5.5 ▸ กรองเหตุการณ์ ◂
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
 import { accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections";
@@ -181,9 +182,14 @@ export async function createWebhookAction(fd: FormData): Promise<ConnResult> {
   assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.create" });
   const url = s(fd, "url");
   if (!/^https?:\/\//i.test(url)) return { ok: false, reason: "ที่อยู่ปลายทางต้องขึ้นต้นด้วย http:// หรือ https://" };
-  const events = fd.getAll("events").map((e) => String(e));
+  // CRM C5.5 ▸ (fix1 r2 · มติผู้คุมงานข้อ 5) หน้านี้เลือกได้เฉพาะเหตุการณ์บัญชี ⇒ กรองให้เหลือ account.* ที่มีในทะเบียนจริง (เดิมรับทุกค่าที่ส่งมา)
+  //   · ผู้ทำ = ผู้ใช้ที่ล็อกอิน (ตัวกันเหตุการณ์กลาง — รายการว่าง = ทุกเหตุการณ์ ต้องผ่านกติกา CRM เมื่อร้านมี CRM v2) ◂
+  const events = fd
+    .getAll("events")
+    .map((e) => String(e))
+    .filter((e) => e.startsWith("account.") && WEBHOOK_EVENTS.some((w) => w.value === e));
   try {
-    await createEndpoint({ tenantId }, { url, events });
+    await createEndpoint({ tenantId }, { url, events, by: { userId } });
   } catch (e) {
     return { ok: false, reason: safeReason(e, "เพิ่มปลายทางไม่สำเร็จ") };
   }
@@ -204,7 +210,7 @@ export async function updateWebhookAction(fd: FormData): Promise<ConnResult> {
     await deleteEndpoint({ tenantId }, id);
   } else {
     assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
-    await setEndpointActive({ tenantId }, id, op === "on");
+    await setEndpointActive({ tenantId }, id, op === "on", { userId }); // CRM C5.5 ▸ by: เปิด = ตัวกันเหตุการณ์ตรวจ ◂
   }
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", targetId: id, after: { op } });
   revalidatePath(PATH(systemId));

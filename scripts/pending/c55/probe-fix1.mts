@@ -42,7 +42,7 @@ async function sessionCookie(uid: string, tid: string): Promise<string> {
 // ── REST in-process (technique of qc-crm-c1.10 callRoute) ──
 const ROUTE = (await import("@/app/api/v1/crm/[...path]/route" as string)) as Any;
 let seq = 0;
-async function rest(method: string, path: string, key: string, body?: unknown, idem?: string): Promise<{ status: number; body: Any }> {
+async function rest(method: string, path: string, key: string, body?: unknown, idem?: string): Promise<{ status: number; body: Any; replayed: string | null }> {
   const headers: Record<string, string> = { authorization: `Bearer ${key}` };
   if (method !== "GET") headers["idempotency-key"] = idem ?? `${TAG}-${(seq += 1)}`;
   let b: string | undefined;
@@ -58,7 +58,7 @@ async function rest(method: string, path: string, key: string, body?: unknown, i
   } catch {
     parsed = { _raw: text.slice(0, 200) };
   }
-  return { status: res.status, body: parsed };
+  return { status: res.status, body: parsed, replayed: res.headers.get("Idempotent-Replayed") };
 }
 const AK = (await import("@/lib/api-keys/service" as string)) as Any;
 
@@ -104,26 +104,75 @@ try {
       chk(`H1-A-${code}-ttl`, !!row && row.status === 409 && ttlH > 23 && ttlH <= 24.01, `claim kept in outcome-unknown state with the normal TTL: status=${row?.status} ttl≈${ttlH.toFixed(2)} h`);
     }
 
-    // (B) control: transient error proven BEFORE the handler started ⇒ claim released, the retry runs, exactly one row
+    // (B) r2 · REAL DOORS — a transient error BEFORE the handler stays retryable with the same key (claim released / never made)
     {
-      let runs = 0;
-      const k = `${TAG}-B`;
-      const runB = async (ctl?: Any) => {
-        runs += 1;
-        if (runs === 1) {
-          if (ctl?.beforeHandler) await ctl.beforeHandler(async () => { throw transient("P1001"); });
-          else throw transient("P1001");
-        }
-        await write("b");
-        return { status: 200, body: { data: { ok: true } } };
+      const RESP = (await import("@/lib/api/respond" as string)) as Any;
+      const key = (await AK.createApiKey({ tenantId: shop.tid }, `${TAG} h1b`, { scopes: ["crm.contact.read", "crm.contact.create"], systemId: shop.S, createdById: shop.uid })).rawKey as string;
+      // (B1) real CRM route: the API-key lookup (auth phase, before any claim) hits P1001 once
+      const origFind = P.apiKey.findUnique;
+      let fired = false;
+      P.apiKey.findUnique = async (a: Any) => {
+        if (!fired) { fired = true; throw transient("P1001"); }
+        return origFind.call(P.apiKey, a);
       };
-      const b1 = await withIdempotency(actor, mkReq(k), op, "{}", "req-b1", {}, runB);
-      const e1 = await errOf(b1);
-      const afterFirst = await claim(k);
-      const b2 = await withIdempotency(actor, mkReq(k), op, "{}", "req-b2", {}, runB);
-      const n = await rows("b");
-      chk("H1-B(control)", b1.status === 503 && e1.code === "upstream_unavailable" && !afterFirst && b2.status === 200 && runs === 2 && n === 1,
-        `transient before the handler: first ${b1.status}/${e1.code} · claim after first=${afterFirst ? "KEPT" : "released"} · retry ${b2.status} · runs=${runs} rows=${n}`);
+      const kb = `${TAG}-B1`;
+      const name = `H1B ${TAG}`;
+      let r1: Any;
+      try { r1 = await rest("POST", "/contacts", key, { firstName: name }, kb); } finally { P.apiKey.findUnique = origFind; }
+      const claimAfter = await claim(kb);
+      const r2 = await rest("POST", "/contacts", key, { firstName: name }, kb);
+      const nC = await P.crmContact.count({ where: { tenantId: shop.tid, firstName: name } });
+      chk("H1-B-route", fired && r1.status === 503 && r1.body?.error?.code === "upstream_unavailable" && !claimAfter && r2.status === 200 && nC === 1,
+        `real route POST /contacts, key lookup P1001 once: first ${r1.status} ${r1.body?.error?.code} · claim=${claimAfter ? "KEPT" : "none"} · same-key retry ${r2.status} · contacts=${nC} (want 1)`);
+      // (B2) real core dispatch + withIdempotency + runOpAsActor: the scope check inside the claim (ctl.beforeHandler) hits P1001 once
+      const { dispatch: coreDispatch } = (await import("@/lib/api/dispatch" as string)) as Any;
+      const { CRM_API_CONFIG } = (await import("@/lib/modules/crm/api/config" as string)) as Any;
+      const { z } = (await import("zod" as string)) as Any;
+      let firedIn = false;
+      let hRuns = 0;
+      const synth: Any = { id: "probe.synth", method: "POST", path: "/probe-synth", kind: "write", input: z.object({}).strict(), summary: "probe", label: "probe", test: "probe",
+        async handler() { hRuns += 1; await write("synth"); return { ok: true }; } };
+      Object.defineProperty(synth, "action", { get() { if (!firedIn && (new Error().stack ?? "").includes("runOpAsActor")) { firedIn = true; throw transient("P1001"); } return "crm.contact.create"; } });
+      const sreq = (k: string) => new Request("http://qc.invalid/api/v1/crm/probe-synth", { method: "POST", headers: { authorization: `Bearer ${key}`, "idempotency-key": k, "content-type": "application/json" }, body: "{}" });
+      const ks = `${TAG}-B2`;
+      const d1: Response = await coreDispatch([synth], "POST", sreq(ks), { path: ["probe-synth"] }, CRM_API_CONFIG);
+      const d1b = JSON.parse(await d1.text());
+      const claimD = await claim(ks);
+      const d2: Response = await coreDispatch([synth], "POST", sreq(ks), { path: ["probe-synth"] }, CRM_API_CONFIG);
+      const nS = await rows("synth");
+      chk("H1-B-dispatch", firedIn && d1.status === 503 && d1b?.error?.code === "upstream_unavailable" && !claimD && d2.status === 200 && hRuns === 1 && nS === 1,
+        `core dispatch, P1001 inside ctl.beforeHandler (scope check): first ${d1.status} ${d1b?.error?.code} · claim=${claimD ? "KEPT" : "released"} · retry ${d2.status} · handler runs=${hRuns} rows=${nS}`);
+
+      // (S) r2 · RV-1 stale takeover never runs the handler: claim NULL 7 min (first attempt committed then died)
+      const kst = `${TAG}-stale`;
+      await write("stale");
+      await P.apiIdempotency.create({ data: { tenantId: shop.tid, keyId: actor.keyId, idemKey: kst, requestHash: (await import("node:crypto")).createHash("sha256").update("POST /api/v1/crm/probe\n{}").digest("hex"), expiresAt: new Date(Date.now() + 86_400_000), createdAt: new Date(Date.now() - 7 * 60_000) } });
+      let sRuns = 0;
+      const runS = async () => { sRuns += 1; await write("stale"); return { status: 200, body: { data: { ok: true } } }; };
+      const s1 = await withIdempotency(actor, mkReq(kst), op, "{}", "req-s1", {}, runS);
+      const es1 = await errOf(s1);
+      const s2 = await withIdempotency(actor, mkReq(kst), op, "{}", "req-s2", {}, runS);
+      const es2 = await errOf(s2);
+      const rowS = await claim(kst);
+      const ttlS = rowS ? (rowS.expiresAt.getTime() - Date.now()) / 3_600_000 : -1;
+      chk("H1-stale", sRuns === 0 && (await rows("stale")) === 1 && s1.status === 409 && es1.code === "idempotency_outcome_unknown" && s2.status === 409 && es2.code === "idempotency_outcome_unknown" && s2.headers.get("Idempotent-Replayed") === "true" && rowS?.status === 409 && ttlS > 23,
+        `stale NULL claim (7 min) after a committed write: ${s1.status} ${es1.code} → ${s2.status} ${es2.code} replayed=${s2.headers.get("Idempotent-Replayed")} · handler runs=${sRuns} (want 0) · claim status=${rowS?.status} ttl≈${ttlS.toFixed(1)} h`);
+
+      // (F) r2 · RV-2 a thrown 409 is released ONLY when the thrower flags "nothing written"
+      let fRuns = 0;
+      const kf1 = `${TAG}-F1`;
+      const runF1 = async () => { fRuns += 1; await write("f1"); throw new RESP.ApiError(409, "approval_required", "ส่งคำขออนุมัติแล้ว", "Approval required."); };
+      const f1a = await withIdempotency(actor, mkReq(kf1), op, "{}", "req-f1a", {}, runF1);
+      const f1b = await withIdempotency(actor, mkReq(kf1), op, "{}", "req-f1b", {}, runF1);
+      chk("H1-flag-unflagged-kept", f1a.status === 409 && f1b.status === 409 && f1b.headers.get("Idempotent-Replayed") === "true" && fRuns === 1 && (await rows("f1")) === 1,
+        `unflagged ApiError 409 after a write: ${f1a.status}/${f1b.status} replayed=${f1b.headers.get("Idempotent-Replayed")} runs=${fRuns} (want 1)`);
+      let gRuns = 0;
+      const kf2 = `${TAG}-F2`;
+      const flag = typeof RESP.nothingWritten === "function" ? RESP.nothingWritten : (e: Any) => e;
+      const runF2 = async () => { gRuns += 1; if (gRuns === 1) throw flag(new RESP.ApiError(409, "state_conflict", "สถานะไม่พร้อม", "Not ready.")); await write("f2"); return { status: 200, body: { data: { ok: true } } }; };
+      const f2a = await withIdempotency(actor, mkReq(kf2), op, "{}", "req-f2a", {}, runF2);
+      const f2b = await withIdempotency(actor, mkReq(kf2), op, "{}", "req-f2b", {}, runF2);
+      chk("H1-flag-flagged-released(control)", f2a.status === 409 && f2b.status === 200 && gRuns === 2 && (await rows("f2")) === 1, `flagged nothing-written 409 before any write: ${f2a.status} then same-key retry ${f2b.status} · runs=${gRuns}`);
     }
 
     // (C) control: an ordinary (non-transient) error after the write is still stored and replayed — one row
@@ -160,6 +209,30 @@ try {
     // (F) the four REST guides document the new code
     const docs = ["CRM", "MEMBER", "KANBAN", "ACCOUNT"].map((n) => [n, readFileSync(`docs/api/${n}-API.md`, "utf8").includes("idempotency_outcome_unknown")] as const);
     chk("H1-F", docs.every(([, ok]) => ok), `docs/api/*-API.md mention idempotency_outcome_unknown: ${docs.map(([n, ok]) => `${n}=${ok}`).join(" ")}`);
+    // (R) r2 · real door of RV-2: REST deals.reassign over the daily cap files ONE approval request and the same-key retry REPLAYS
+    {
+      const mUid = await mkUser("-h1mgr");
+      await P.membership.create({ data: { userId: mUid, tenantId: shop.tid, role: "MANAGER", unitAccess: ["*"], permissions: { "crm.api.manage": true, "crm._maxReassignPerDay": 0 }, acceptedAt: new Date() } });
+      const tA = await P.team.create({ data: { tenantId: shop.tid, name: `A ${TAG}` } });
+      const tB = await P.team.create({ data: { tenantId: shop.tid, name: `B ${TAG}` } });
+      const other = await mkUser("-h1rep");
+      await P.membership.create({ data: { userId: other, tenantId: shop.tid, role: "STAFF", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+      await P.teamMember.create({ data: { tenantId: shop.tid, teamId: tB.id, userId: other } });
+      const pol = await P.approvalPolicy.create({ data: { tenantId: shop.tid, name: `qc ${TAG}`, entityType: "crm.reassign", active: true, steps: { create: [{ tenantId: shop.tid, order: 1, approverRole: "OWNER" }] } } });
+      void pol;
+      const crmF = (await import("@/lib/modules/crm" as string)) as Any;
+      const c = await crmF.contacts.createContact(shop.ctx, shop.owner, { firstName: `R ${TAG}` });
+      const open0 = shop.stages.find((x: Any) => x.kind === "OPEN");
+      const d = await crmF.deals.createDeal(shop.ctx, shop.owner, { pipelineId: shop.pipe.id, stageId: open0.id, title: `ดีล ${TAG}`, contactId: c.contact?.id ?? c.id });
+      await P.crmDeal.update({ where: { id: d.id }, data: { teamId: tA.id } });
+      const kRe = (await AK.createApiKey({ tenantId: shop.tid }, `${TAG} reassign`, { scopes: ["crm.deal.read", "crm.deal.update", "crm.deal.reassign"], systemId: shop.S, createdById: mUid })).rawKey as string;
+      const kr = `${TAG}-reassign`;
+      const a1 = await rest("PUT", `/deals/${d.id}/owner`, kRe, { ownerUserId: other }, kr);
+      const a2 = await rest("PUT", `/deals/${d.id}/owner`, kRe, { ownerUserId: other }, kr);
+      const reqs = await P.approvalRequest.count({ where: { tenantId: shop.tid, entityType: "crm.reassign" } });
+      chk("H1-reassign-replay", a1.status === 409 && a1.body?.error?.code === "approval_required" && a2.status === 409 && a2.replayed === "true" && reqs === 1,
+        `REST PUT /deals/{id}/owner over crm._maxReassignPerDay=0 (policy crm.reassign): ${a1.status} ${a1.body?.error?.code} → same key ${a2.status} replayed=${a2.replayed} · approval requests=${reqs} (want 1)`);
+    }
     await P.apiIdempotency.deleteMany({ where: { tenantId: shop.tid } });
   });
 
@@ -286,26 +359,33 @@ try {
     await setPerms(FULL);
     const ruleG = (type: string, params: Record<string, unknown>, enabled = true) => ({ name: `${TAG} grant ${++n}`, trigger: { event: "crm.contact.updated" }, conditions: { mode: "AND", items: [] }, actions: [{ type, params }], enabled });
     const ok = (r: Any) => (r.ok ? "ok" : `${r.err?.code}`);
+    const mkPolicy = async (entityType: string) => (await P.approvalPolicy.create({ data: { tenantId: tid, name: `qc ${TAG} ${entityType}`, entityType, active: true, steps: { create: [{ tenantId: tid, order: 1, approverRole: "OWNER" }] } } })).id as string;
+    // no approval policy: a MANAGER over the cap is auto-approved by hand (RV-6) ⇒ DIRECT; STAFF over the cap is refused by hand
     const g1 = await call(() => auto.createRule(sctx, staffA, ruleG("GIVE_POINTS", { points: 400 })));
     const g2 = await call(() => auto.createRule(sctx, staffA, ruleG("GIVE_POINTS", { points: 600 })));
     const g3 = await call(() => auto.createRule(mctx, mgrA, ruleG("GIVE_POINTS", { points: 600 })));
+    const polP = await mkPolicy("member.point.adjust");
+    const g3p = await call(() => auto.createRule(mctx, mgrA, ruleG("GIVE_POINTS", { points: 600 })));
     const g4 = await call(() => auto.createRule(shop.ctx, shop.owner, ruleG("GIVE_POINTS", { points: 600 })));
     const g5 = await call(() => auto.createRule(mctx, mgrA, ruleG("WAIT_THEN", { days: 1, thenActions: [{ type: "GIVE_POINTS", params: { points: 600 } }] })));
-    chk("H2-ceiling-points", g1.ok && !g2.ok && !g3.ok && g4.ok && !g5.ok && g2.err?.code === "FORBIDDEN" && g3.err?.code === "FORBIDDEN",
-      `adjustApprovalOver=500: STAFF 400 → ${ok(g1)} · STAFF 600 → ${ok(g2)} (manual: refused) · MANAGER 600 → ${ok(g3)} (manual: approval) · OWNER 600 → ${ok(g4)} · MANAGER WAIT_THEN›600 → ${ok(g5)}`);
+    chk("H2-ceiling-points", g1.ok && !g2.ok && g3.ok && !g3p.ok && g4.ok && !g5.ok && g2.err?.code === "FORBIDDEN" && g3p.err?.code === "FORBIDDEN",
+      `adjustApprovalOver=500: STAFF 400 → ${ok(g1)} · STAFF 600 → ${ok(g2)} (manual: refused) · MANAGER 600 no policy → ${ok(g3)} (manual: auto-approved) · MANAGER 600 with policy → ${ok(g3p)} (manual: approval) · OWNER 600 → ${ok(g4)} · MANAGER WAIT_THEN›600 with policy → ${ok(g5)}`);
     const v1 = await call(() => auto.createRule(sctx, staffA, ruleG("ISSUE_VOUCHER", { templateId: tplSmall })));
     const v2 = await call(() => auto.createRule(sctx, staffA, ruleG("ISSUE_VOUCHER", { templateId: tplMid })));
     const v3 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: tplMid })));
     const v4 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: tplBig })));
+    const polV = await mkPolicy("member.voucher.issue");
+    const v4p = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: tplBig })));
     const v5 = await call(() => auto.createRule(shop.ctx, shop.owner, ruleG("ISSUE_VOUCHER", { templateId: tplBig })));
     const v6 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: `${TAG}-none` })));
-    chk("H2-ceiling-voucher", v1.ok && !v2.ok && v3.ok && !v4.ok && v5.ok && !v6.ok && v4.err?.code === "FORBIDDEN",
-      `STAFF ฿100 → ${ok(v1)} · STAFF ฿2,000 (> staff cap) → ${ok(v2)} · MANAGER ฿2,000 → ${ok(v3)} · MANAGER ฿20,000 (> approval ceiling) → ${ok(v4)} · OWNER ฿20,000 → ${ok(v5)} · MANAGER unknown template → ${ok(v6)}`);
+    chk("H2-ceiling-voucher", v1.ok && !v2.ok && v3.ok && v4.ok && !v4p.ok && v5.ok && !v6.ok && v4p.err?.code === "FORBIDDEN",
+      `STAFF ฿100 → ${ok(v1)} · STAFF ฿2,000 (> staff cap) → ${ok(v2)} · MANAGER ฿2,000 → ${ok(v3)} · MANAGER ฿20,000 no policy → ${ok(v4)} (manual: auto-approved) · with policy → ${ok(v4p)} · OWNER ฿20,000 → ${ok(v5)} · MANAGER unknown template → ${ok(v6)}`);
     const offBig = await auto.createRule(shop.ctx, shop.owner, ruleG("GIVE_POINTS", { points: 600 }, false));
     const en1 = await call(() => auto.toggleRule(mctx, mgrA, offBig.id, true));
-    await P.pointSettings.update({ where: { tenantId: tid }, data: { adjustApprovalOver: null } });
+    await P.approvalPolicy.update({ where: { id: polP }, data: { active: false } });
     const en2 = await call(() => auto.toggleRule(mctx, mgrA, offBig.id, true));
-    chk("H2-ceiling-enable", !en1.ok && en2.ok, `MANAGER enables the owner's 600-point rule: ceiling 500 → ${ok(en1)} · no ceiling → ${ok(en2)}`);
+    void polV;
+    chk("H2-ceiling-enable", !en1.ok && en2.ok, `MANAGER enables the owner's 600-point rule (cap 500): policy active → ${ok(en1)} · policy switched off → ${ok(en2)}`);
 
     // REST + AI tool doors: no op / tool writes an automation rule (list + dry-run only) ⇒ nothing to bypass
     const key = await AK.createApiKey({ tenantId: tid }, `${TAG} admin`, { scopes: ["crm.automation.manage", "crm.contact.read"], systemId: S, createdById: shop.uid });
@@ -416,6 +496,91 @@ try {
     out.push(`crm-less tenant left=${left}`);
     good = good && left === 0;
     chk("PW-control-no-v2", good, out.join(" | "));
+  });
+
+  // ═══════════════════════ r2 · webhook choke point: every door that writes an endpoint runs the CRM guard ═══════════════════════
+  await sub("WB", async () => {
+    const WH = (await import("@/lib/webhooks/actions" as string)) as Any;
+    const CONN = (await import("@/lib/modules/account/connections-actions" as string)) as Any;
+    const AROUTE = (await import("@/app/api/v1/account/[...path]/route" as string)) as Any;
+    const arest = async (method: string, path: string, key: string, body: unknown) => {
+      const res: Response = await AROUTE[method](new Request(`http://qc.invalid/api/v1/account${path}`, { method, headers: { authorization: `Bearer ${key}`, "idempotency-key": `${TAG}-${(seq += 1)}`, "content-type": "application/json" }, body: JSON.stringify(body) }), { params: Promise.resolve({ path: path.split("/").filter(Boolean) }) });
+      const t = await res.text();
+      let b: Any = null;
+      try { b = JSON.parse(t); } catch { b = { _raw: t.slice(0, 200) }; }
+      return { status: res.status, body: b };
+    };
+    const fdx = (o: Record<string, string | string[]>) => {
+      const f = new FormData();
+      for (const [k, v] of Object.entries(o)) for (const x of Array.isArray(v) ? v : [v]) f.append(k, x);
+      return f;
+    };
+    const run = async (label: string, crmV2: boolean) => {
+      const shop = await mkShop(label, { account: true });
+      if (!crmV2) await setCrm(shop.S, { uiVersion: 1 });
+      const mid = await mkUser(`-${label}m`);
+      await P.membership.create({ data: { userId: mid, tenantId: shop.tid, role: "MANAGER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+      const mc = await sessionCookie(mid, shop.tid);
+      // an all-events endpoint made by the OWNER, then paused
+      const ownerAll = await P.webhookEndpoint.create({ data: { tenantId: shop.tid, url: "https://example.com/qc-c55-all", secret: "x".repeat(48), eventsJson: [], active: false } });
+      const out: Record<string, string> = {};
+      // platform toggle (re-activation of an all-events endpoint)
+      const pt = await call(() => inScope(mc, "/app/settings/webhooks", () => WH.toggleEndpointAction(fdx({ id: ownerAll.id, active: "true" }))));
+      out.platformToggleOn = `${pt.ok ? "returned" : "threw"} active=${(await P.webhookEndpoint.findUnique({ where: { id: ownerAll.id } }))?.active}`;
+      await P.webhookEndpoint.update({ where: { id: ownerAll.id }, data: { active: false } });
+      // account connections page: create (crm event ⇒ filtered away ⇒ empty = all · and [] directly) · create account-only · toggle on
+      const path = `/app/sys/${shop.A}/account/settings/connections`;
+      const c1: Any = await inScope(mc, path, () => CONN.createWebhookAction(fdx({ systemId: shop.A!, url: "https://example.com/qc-c55-c1", events: ["crm.deal.won"] })));
+      const c2: Any = await inScope(mc, path, () => CONN.createWebhookAction(fdx({ systemId: shop.A!, url: "https://example.com/qc-c55-c2", events: ["account.document.issued"] })));
+      const c2row = await P.webhookEndpoint.findFirst({ where: { tenantId: shop.tid, url: "https://example.com/qc-c55-c2" }, select: { eventsJson: true } });
+      const c3: Any = await inScope(mc, path, () => CONN.createWebhookAction(fdx({ systemId: shop.A!, url: "https://example.com/qc-c55-c3", events: ["account.document.issued", "pos.sale.paid"] })));
+      const c3row = await P.webhookEndpoint.findFirst({ where: { tenantId: shop.tid, url: "https://example.com/qc-c55-c3" }, select: { eventsJson: true } });
+      const ct: Any = await call(() => inScope(mc, path, () => CONN.updateWebhookAction(fdx({ systemId: shop.A!, id: ownerAll.id, op: "on" }))));
+      const ctActive = (await P.webhookEndpoint.findUnique({ where: { id: ownerAll.id } }))?.active;
+      await P.webhookEndpoint.update({ where: { id: ownerAll.id }, data: { active: false } });
+      // account REST with a key created by the limited MANAGER
+      const key = (await AK.createApiKey({ tenantId: shop.tid }, `${TAG} acc ${label}`, { scopes: ["account.settings.manage"], systemId: shop.A, createdById: mid })).rawKey as string;
+      const r1 = await arest("POST", "/webhooks", key, { url: "https://example.com/qc-c55-r1", events: [] });
+      const r2 = await arest("POST", "/webhooks", key, { url: "https://example.com/qc-c55-r2", events: ["crm.deal.won"] });
+      const r3 = await arest("POST", "/webhooks", key, { url: "https://example.com/qc-c55-r3", events: ["account.document.issued"] });
+      const r3id = r3.body?.data?.id as string | undefined;
+      const r4 = r3id ? await arest("PATCH", `/webhooks/${r3id}`, key, { events: [] }) : { status: 0, body: null };
+      const r5 = await arest("PATCH", `/webhooks/${ownerAll.id}`, key, { active: true });
+      const r5Active = (await P.webhookEndpoint.findUnique({ where: { id: ownerAll.id } }))?.active;
+      return { out, c1, c2, c2row, c3, c3row, ct, ctActive, r1, r2, r3, r4, r5, r5Active };
+    };
+    // static: every src/ call of the three writers passes the author (the deprecated no-`by` createEndpoint overload exists only for an untouchable oracle)
+    {
+      const fs = await import("node:fs");
+      const pathM = await import("node:path");
+      const files: string[] = [];
+      const walk = (d: string) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const f = pathM.join(d, e.name); if (e.isDirectory()) walk(f); else if (/\.(ts|tsx)$/.test(e.name)) files.push(f); } };
+      walk("src");
+      const bad: string[] = [];
+      let n = 0;
+      for (const f of files) {
+        if (f.endsWith("src/lib/webhooks/service.ts")) continue;
+        const src = fs.readFileSync(f, "utf8");
+        for (const m of src.matchAll(/\b(createEndpoint|setEndpointActive|setEndpointEvents)\(/g)) {
+          const start = (m.index ?? 0) + m[0].length;
+          let depth = 1, i = start, commas = 0;
+          for (; i < src.length && depth > 0; i += 1) { const ch = src[i]; if ("([{".includes(ch!)) depth += 1; else if (")]}".includes(ch!)) depth -= 1; else if (ch === "," && depth === 1) commas += 1; }
+          const args = src.slice(start, i - 1);
+          if (/^\s*$/.test(args)) continue;
+          n += 1;
+          const ok = m[1] === "createEndpoint" ? /\bby\s*:/.test(args) : commas >= 3;
+          if (!ok) bad.push(`${f}:${src.slice(0, m.index).split("\n").length}`);
+        }
+      }
+      chk("WB-static", n >= 13 && bad.length === 0, `src/ calls of createEndpoint/setEndpointActive/setEndpointEvents = ${n} · without author: [${bad.join(", ")}]`);
+    }
+    const v2 = await run("wb2", true);
+    chk("WB-crm-v2-refused", v2.out.platformToggleOn.includes("active=false") && v2.c1?.ok === false && v2.c2?.ok === true && j(v2.c2row?.eventsJson) === j(["account.document.issued"]) && v2.c3?.ok === true && j(v2.c3row?.eventsJson) === j(["account.document.issued"]) && v2.ctActive === false
+      && v2.r1.status === 403 && v2.r2.status === 403 && v2.r3.status === 200 && v2.r4.status === 403 && v2.r5.status === 403 && v2.r5Active === false,
+      `tenant with CRM v2 · MANAGER w/o crm.api.manage: platform toggle-on(all events) → ${v2.out.platformToggleOn} · connections create [crm.deal.won] → ${v2.c1?.ok ? "ok" : `refused "${String(v2.c1?.reason).slice(0, 50)}"`} · [account.*] → ${v2.c2?.ok ? "ok" : v2.c2?.reason} stored=${j(v2.c2row?.eventsJson)} · [account.*,pos.*] stored=${j(v2.c3row?.eventsJson)} (filtered) · connections toggle on → active=${v2.ctActive} · REST create [] → ${v2.r1.status} · [crm.deal.won] → ${v2.r2.status} · [account.*] → ${v2.r3.status} · PATCH events [] → ${v2.r4.status} · PATCH active(all-events) → ${v2.r5.status} active=${v2.r5Active}`);
+    const v1 = await run("wb1", false);
+    chk("WB-control-no-v2", v1.out.platformToggleOn.includes("active=true") && v1.c2?.ok === true && v1.ctActive === true && v1.r1.status === 200 && v1.r3.status === 200 && v1.r4.status === 200 && v1.r5.status === 200,
+      `tenant with CRM v1 only (no v2): platform toggle-on → ${v1.out.platformToggleOn} · connections toggle on → active=${v1.ctActive} · REST create [] → ${v1.r1.status} · [account.*] → ${v1.r3.status} · PATCH events [] → ${v1.r4.status} · PATCH active → ${v1.r5.status} (unchanged behaviour)`);
   });
 
   // ═══════════════════════ L55-3 · activity reschedule / delete: one key per operation ═══════════════════════

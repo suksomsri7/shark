@@ -1069,12 +1069,12 @@ try {
     const wPhone = phoneOf();
     const wEmail = `${TAG}-hook@mail.invalid`;
     CONTACT_PII.push(wPhone, wEmail);
+    const before = HOOKS.length; // ORACLE-EDIT C5.5-fix1 (review · S7.2 stale since C5.4-D: REST write wakes the outbox immediately)
     const c = await api("POST", "/contacts", kOP.raw, { firstName: wName, phone: wPhone, email: wEmail, sourceKind: "API" });
     const mv = await api("PUT", `/deals/${dWon}/stage`, kAD.raw, { stageId: pMain.st[2] });
     await deferOutbox();
     const evts = (await P.outboxEvent.findMany({ where: { tenantId: T, type: { in: ["crm.deal.won", "crm.contact.created"] }, createdAt: { gte: t0 } }, orderBy: { createdAt: "asc" } })) as Any[];
     const cons = (OBC.consumers ?? {}) as Record<string, Any>;
-    const before = HOOKS.length;
     for (const e of evts) await call(cons[e.type], e);
     await P.outboxEvent.updateMany({ where: { id: { in: evts.map((e) => e.id) } }, data: { status: "DONE", processedAt: new Date() } });
     const mine = HOOKS.slice(before);

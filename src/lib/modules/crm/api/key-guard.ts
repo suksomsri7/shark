@@ -140,15 +140,25 @@ export async function crmSeesAllOf(
 export const CRM_PLATFORM_WEBHOOK_TH =
   "รายการเหตุการณ์นี้รวมเหตุการณ์ของ CRM (เลือกตรง ๆ หรือรวมอยู่ใน \"ทุกเหตุการณ์\") ซึ่งส่งข้อมูลของทุกทีมในร้าน แต่บัญชีนี้ยังมองเห็นข้อมูล CRM ไม่ครบทั้งร้าน — เลือกเฉพาะเหตุการณ์ที่ไม่ใช่ของ CRM หรือให้เจ้าของร้าน (หรือผู้ที่เห็นข้อมูล CRM ทั้งร้าน) เป็นผู้ตั้งปลายทางนี้";
 
-/** ปลายทาง webhook ของร้านที่รับ `events` (ว่าง = ทุกเหตุการณ์) ตั้งโดย `actor` ได้ไหม — `null` = ได้ */
-export async function crmPlatformWebhookProblem(tenantId: string, actor: MemberActor, events: readonly string[]): Promise<string | null> {
+/**
+ * ปลายทาง webhook ของร้านที่รับ `events` (ว่าง = ทุกเหตุการณ์) ตั้งโดย `actor` ได้ไหม — `null` = ได้
+ * r2: ลงทะเบียนเป็นตัวกันเหตุการณ์ของ `webhooks/service.ts` (ทุกประตู) · `actor` null = ระบุผู้ทำไม่ได้ (คีย์ไม่มีผู้สร้าง/ผู้สร้างออกจากร้าน)
+ *   ⇒ ร้านที่มี CRM v2 ปฏิเสธเมื่อรายการแตะเหตุการณ์ CRM
+ */
+export async function crmPlatformWebhookProblem(
+  tenantId: string,
+  actor: { userId: string; role: string; unitAccess: string[]; permissions: Record<string, unknown> } | null,
+  events: readonly string[],
+): Promise<string | null> {
   const crmSet = new Set(crmWebhookEvents());
   const touchesCrm = events.length === 0 || events.some((e) => crmSet.has(e) || CRM_EVENT_PREFIXES.some((p) => e.startsWith(p)));
   if (!touchesCrm) return null;
   const systems = await prisma.appSystem.findMany({ where: { tenantId, type: "CRM" }, select: { id: true, settings: true } });
   for (const sys of systems) {
     if (parseCrmSettings(sys.settings).uiVersion !== 2) continue;
-    if (await crmWebhookWiderThanCreator({ tenantId, systemId: sys.id }, actor)) return CRM_PLATFORM_WEBHOOK_TH;
+    if (!actor) return CRM_PLATFORM_WEBHOOK_TH;
+    // บทบาทมาจาก Membership จริง (OWNER/MANAGER/STAFF) — รูปเดียวกับ MemberActor
+    if (await crmWebhookWiderThanCreator({ tenantId, systemId: sys.id }, actor as MemberActor)) return CRM_PLATFORM_WEBHOOK_TH;
   }
   return null;
 }

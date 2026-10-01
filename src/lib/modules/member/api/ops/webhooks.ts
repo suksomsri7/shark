@@ -21,6 +21,7 @@ import {
   setEndpointEvents,
   testEndpoint,
   webhookSaveProblem,
+  webhookAuthorOfApi, // CRM C5.5 ▸ ผู้ทำของคำขอ REST ◂
 } from "@/lib/webhooks/service";
 import type { ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
@@ -117,7 +118,7 @@ const create = defineMemberOp({
     //    C5.4 (L4-M2): ด่านตอนบันทึก — โดเมนที่ DNS ยังไม่กระจายบันทึกได้ (ทุกการส่งตรวจซ้ำ + ตรึง IP ใน outboundFetch)
     const unsafe = await webhookSaveProblem(url);
     if (unsafe) throw badRequest(unsafe, "The endpoint URL must resolve to a public address.", [{ path: "url", message: unsafe }]);
-    const res = await createEndpoint({ tenantId: actor.tenantId }, { url, events });
+    const res = await createEndpoint({ tenantId: actor.tenantId }, { url, events, by: webhookAuthorOfApi(actor) }); // CRM C5.5 ▸ by ◂
     return jsonSafe({ id: res.id, secret: res.secret, url, events, active: true });
   },
 });
@@ -140,8 +141,8 @@ const update = defineMemberOp({
   async handler({ actor, params, input }) {
     const ctx = { tenantId: actor.tenantId };
     const row = await loadMine(actor, params.id ?? "");
-    if (input.events) await setEndpointEvents(ctx, row.id, checkEvents(input.events));
-    if (input.active !== undefined) await setEndpointActive(ctx, row.id, input.active);
+    if (input.events) await setEndpointEvents(ctx, row.id, checkEvents(input.events), webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
+    if (input.active !== undefined) await setEndpointActive(ctx, row.id, input.active, webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
     const after = await getEndpoint(ctx, row.id);
     return jsonSafe(after ? view(after) : view(row));
   },

@@ -205,6 +205,20 @@ export type MappedError = {
  * error ที่ handler ต้องการชี้ status/code ตรง ๆ (WO B2 — DBD ไม่มีกุญแจ/ล่ม ⇒ 503 `upstream_unavailable`,
  * ไม่ใช่ 422 ทั่วไปที่ `mapError` เดาจากคำไทย) · `mapError` มองหาชนิดนี้ก่อนสิ่งอื่นเสมอ
  */
+// CRM C5.5 ▸ RV-2 (มติผู้คุมงาน r2): สัญญาณชัดเจนจาก "ผู้โยน" ว่า error นี้เกิด **ก่อนเขียนอะไรเลย** — `withIdempotency` ปล่อยการจอง
+//   ของคำตอบ 409/429/503 ที่โยนออกมาก็ต่อเมื่อมีธงนี้เท่านั้น (ไม่มีธง = เก็บ + ตอบซ้ำคำตอบเดิม เพราะงานอาจเขียนไปแล้ว —
+//   เช่น `deals.reassign` ยื่นคำขออนุมัติแล้วจึงโยน 409 approval_required) · ใส่ธงเฉพาะจุดที่พิสูจน์ได้ว่าไม่มีการเขียนก่อนหน้า
+const NOTHING_WRITTEN = new WeakSet<object>();
+/** ติดธง "ยังไม่ได้เขียนอะไร" ให้ error (คืนตัวเดิม) — ใช้ตรงจุดโยนที่พิสูจน์ได้ว่าอยู่ก่อนการเขียนทุกอย่าง */
+export function nothingWritten<E extends object>(e: E): E {
+  NOTHING_WRITTEN.add(e);
+  return e;
+}
+export function isNothingWritten(e: unknown): boolean {
+  return typeof e === "object" && e !== null && NOTHING_WRITTEN.has(e);
+}
+// ◂ CRM C5.5
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: ApiErrorCode;

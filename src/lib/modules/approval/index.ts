@@ -23,3 +23,7 @@ export { cancelRequest } from "./service";
 
 // CRM C3.3 ▸ ผู้ตัดสินขั้นสุดท้ายของคำขอ (อ่านล้วน) — ผู้เรียก: crm/commissions.ts (ห้ามอนุมัติคอมมิชชันของตัวเองผ่านสายอนุมัติ) ◂ CRM C3.3
 export { lastDecisionOf, requestStatuses } from "./service";
+
+// CRM C5.5 ▸ RV-6 (fix1 r2): นโยบายที่ "จะ" จับคำขอนี้ (อ่านล้วน · ไม่มี = ต้นทางจะ autoApprove) — ผู้เรียก: point/adjust.ts ·
+//   voucher/service.ts (คำตัดสินของประตูมือที่กฎอัตโนมัติ CRM ใช้ตรวจตอนบันทึก) · ห่อบาง ๆ ของ service เดิม ไม่มีตรรกะใหม่ ◂ CRM C5.5
+export { resolvePolicy } from "./service";

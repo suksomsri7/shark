@@ -18,6 +18,7 @@ import {
   setEndpointActive,
   setEndpointEvents,
   testEndpoint,
+  webhookAuthorOfApi, // CRM C5.5 ▸ ผู้ทำของคำขอ REST ◂
 } from "@/lib/webhooks/service";
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 import { defineOp, type ApiOp } from "../op";
@@ -102,7 +103,7 @@ const webhooksCreate = defineOp({
   input: webhooksCreateInput,
   test: "D4-S6.1",
   async handler({ actor, input }) {
-    const res = await createEndpoint({ tenantId: actor.tenantId }, { url: input.url.trim(), events: input.events });
+    const res = await createEndpoint({ tenantId: actor.tenantId }, { url: input.url.trim(), events: input.events, by: webhookAuthorOfApi(actor) }); // CRM C5.5 ▸ by: ตัวกันเหตุการณ์กลาง (เหตุการณ์ CRM/ทุกเหตุการณ์) ◂
     return { id: res.id, url: input.url.trim(), events: input.events, active: true, secret: res.secret };
   },
 });
@@ -131,9 +132,9 @@ const webhooksUpdate = defineOp({
     await requireEndpoint(actor.tenantId, id);
     if (input.events !== undefined) {
       for (const e of input.events) if (!EVENT_VALUES.has(e)) throw unknownEvent(e);
-      await setEndpointEvents({ tenantId: actor.tenantId }, id, input.events);
+      await setEndpointEvents({ tenantId: actor.tenantId }, id, input.events, webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
     }
-    if (input.active !== undefined) await setEndpointActive({ tenantId: actor.tenantId }, id, input.active);
+    if (input.active !== undefined) await setEndpointActive({ tenantId: actor.tenantId }, id, input.active, webhookAuthorOfApi(actor)); // CRM C5.5 ▸ by ◂
     const fresh = await requireEndpoint(actor.tenantId, id);
     return endpointView(fresh);
   },

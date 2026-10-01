@@ -337,9 +337,18 @@ function issueVerdictOf(actor: MemberActor, spec: { kind: VoucherKind; value: nu
  */
 export async function manualIssueVerdict(tenantId: string, actor: MemberActor, templateId: string, count = 1): Promise<ManualIssueVerdict | "NOT_FOUND"> {
   if (!hasMemberPerm(actor, "member.promo.issue")) return "REFUSED";
-  const tpl = templateId ? await prisma.voucherTemplate.findFirst({ where: { id: templateId, tenantId }, select: { kind: true, value: true, config: true, active: true } }) : null;
+  const tpl = templateId ? await prisma.voucherTemplate.findFirst({ where: { id: templateId, tenantId }, select: { systemId: true, kind: true, value: true, config: true, active: true } }) : null;
   if (!tpl || !tpl.active) return "NOT_FOUND";
-  return issueVerdictOf(actor, { kind: tpl.kind, value: tpl.value, config: configOf(tpl.config) }, count);
+  const spec = { kind: tpl.kind, value: tpl.value, config: configOf(tpl.config) };
+  const v = issueVerdictOf(actor, spec, count);
+  if (v !== "APPROVAL") return v;
+  // CRM C5.5 ▸ RV-6: ถามนโยบายด้วยค่าเดียวกับที่ `submitIssueForApproval` ยื่น (member.voucher.issue · ระบบของแบบ · ยอดรวม) —
+  //   ไม่มีนโยบายจับ = ประตูมือ autoApprove ออกทันที ⇒ DIRECT ◂
+  const policy = await approval.resolvePolicy(
+    { tenantId },
+    { entityType: "member.voucher.issue", systemId: tpl.systemId, unitId: null, amountSatang: faceValueSatang(spec.kind, spec.value, spec.config) * count },
+  );
+  return policy ? "APPROVAL" : "DIRECT";
 }
 // ◂ CRM C5.5
 

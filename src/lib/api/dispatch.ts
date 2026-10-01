@@ -6,7 +6,7 @@
 //
 // ลำดับ: จับคู่ path → ด่านหน้า (คีย์/สมุด/เพดาน/สิทธิ์) → แปลง input → กันซ้ำ → handler → audit → ตอบ
 
-import { withIdempotency, type RunResult } from "./idempotency";
+import { withIdempotency, type RunControl, type RunResult } from "./idempotency";
 import { API_METHODS, type ApiMethod, type ApiOp } from "./op";
 import { csvResponse, fail, failBody, mapError, newRequestId, ok, okBody, unwrapEnvelope, wantsCsv } from "./respond";
 import { requireApi, type ApiModuleConfig } from "./require";
@@ -219,7 +219,9 @@ export async function dispatch(
 
     // ── เขียน/อันตราย: กันซ้ำ → handler → audit ─────────────────────────────
     // (audit อยู่ใน runOpAsActor — เขียนหลังงานสำเร็จเท่านั้น · การตอบซ้ำไม่ผ่านทางนี้ ⇒ ไม่มี audit ซ้ำ)
-    const run = async (): Promise<RunResult> => {
+    // CRM C5.5 ▸ RV-3: ด่าน scope ใน runOpAsActor อยู่ในเขต `ctl.beforeHandler` (error ชั่วคราวตรงนั้น = ยังไม่ได้เขียน ⇒ ปล่อยการจอง)
+    //   ด่านที่แตะฐานก่อนหน้านี้ (คีย์ · ระบบ · เพดานอัตรา · altAuth) อยู่ "ก่อนจอง" ⇒ error ชั่วคราวตรงนั้นไม่มีการจองให้ค้างอยู่แล้ว ◂
+    const run = async (ctl: RunControl): Promise<RunResult> => {
       const env = await runOpAsActor(op, actor, {
         input,
         params: matched.params,
@@ -227,6 +229,7 @@ export async function dispatch(
         idempotencyKey: ctx.idempotencyKey,
         reason: dangerReason,
         audit: { keyName: actor.keyName },
+        beforeHandler: ctl.beforeHandler,
       });
       return { status: 200, body: okBody(env.data, requestId, { page: env.page, extra: env.extra }) };
     };
