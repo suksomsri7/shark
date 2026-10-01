@@ -34,3 +34,13 @@ A1 `qc-pos-p1.3` all green (state total) on QC4, twice in a row, no residue. A2 
 - F15.6: nothing under `src/**` may import from `scripts/**`. F15.5: the system marker must not appear in register code at all.
 - P1.1b runs in parallel in `/root/projects/shark-pos-b` (`wip/pos-p1.1b`) and edits `pos/register.ts` `setItemSalePrice` only — keep your `register.ts` additions as new exports in their own region; do not reformat the file.
 - `origin/session/crm` touches `src/lib/core/permissions.ts` (+7/−1): add `pos.sale.priceOverride` as ONE line next to the existing POS keys.
+
+## Addendum 2 (oracle round 3.1 at 0002997e — 104 checks — binding; where it differs from the text above, this wins)
+- Refusal codes: required options ⇒ `OPTIONS_REQUIRED`; a product line not sellable at this unit (other branch / other tenant / archived / unknown) ⇒ `PRODUCT_NOT_FOUND` (`NOT_FOUND` = the context itself); switched-off product ⇒ `PRODUCT_UNAVAILABLE`, `soldOutReason` manual-off wins over stock-out.
+- Submit contract: REQUIRED integer `expectedGrandTotalSatang`. Order at submit: idempotency-key lookup first (same key + same payload incl. expected total ⇒ the original sale, `duplicated:true`, even if prices changed since; same key + different payload ⇒ `IDEMPOTENCY_CONFLICT`) → re-price from the DB → server total ≠ expected ⇒ `PRICE_CHANGED` carrying the fresh quote → Σ payMethods ≠ server total ⇒ `PAYMENT_MISMATCH`. Missing/non-integer/negative expected ⇒ `VALIDATION`.
+- Payment methods in P1.3: only `CASH` and `PROMPTPAY`; anything else ⇒ `VALIDATION`. `cashReceivedSatang` required with a CASH portion and ≥ that portion, else `PAYMENT_MISMATCH`; `changeSatang` = received − cash portion.
+- Catalogue paging: `limit` not an integer ≥ 1 ⇒ `VALIDATION`; > 500 clamps to 500; malformed cursor ⇒ `VALIDATION`; a foreign cursor ⇒ `VALIDATION` or only this unit's rows.
+- i18n mapping: `CONFLICT` → `errors.conflict`, `OPTIONS_REQUIRED` → `errors.optionsRequired`, `UNKNOWN`/anything else → `errors.unknown`, `BUSY` → `errors.busy`.
+- Testids: `pos-reg-coupon-line` is NOT required in P1.3 (P1.12); `pos-reg-coupon` (soon) is.
+- S5.12 byte pins on `register-ui.tsx` and `actions/pos.ts` are a tripwire: the builder must not change those files; a legitimate later merge updates the hash by ORACLE-EDIT.
+- Builder split: **B1 (server)** = `pricing-shared.ts`, `register-shared.ts`, new exports in `register.ts`, `register-actions.ts`, the one-line permission key, the seed flag hunk — until groups S1–S4 and the server-side static checks of S5 are green; stop and report. **B2 (UI)** = spec §3.1 components, i18n files + the one `request.ts` hunk, `page.tsx` flag gate, inventory rows, shell hunks — until the whole oracle is green.
