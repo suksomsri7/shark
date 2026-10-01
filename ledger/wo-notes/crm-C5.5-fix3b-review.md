@@ -144,3 +144,99 @@ RV-1 (MED) is an incomplete fix of a LOW should-fix, not a regression. Fix it on
 (pre-deploy prod count or legacy-key bridge) and RV-3. Nothing else blocks.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 — re-review of `ac1bd09d` (diff `5e90b492..ac1bd09d`)
+
+Round-2 review ran 17:49–18:13 UTC (`date -u`). New probe `scripts/pending/cf5/review/rv-cf5-r2.mts` (round-1 files untouched), runner
+`run-rv-r2.sh`, summary `regress-r2.summary`, full logs `/tmp/cf5-rv-logs/regress-r2/`.
+
+## Summary
+- RV-1 is closed. The contact 360 card, the company 360 card, REST `contacts.get` / `companies.get` and the activity block all carry
+  `unverifiedFrom` on the forged inbound row only.
+- The new "only the inbound EMAIL row" rule holds for every decoy and path I tried.
+- RV-5 does not break any existing door; it is a backstop behind doors that already validate.
+- Two LOWs remain, neither introduced by this card: the AI brief has no flag (R2-2) and a manually attached mail is unflagged (R2-1, fix2 rule).
+
+## Findings (round 2)
+
+### R2-1 · LOW (pre-existing fix2 rule, not introduced here) · forged mail from a not-yet-known address stays unflagged after "attach to contact"
+- **Where.** `emails.ts:2502`: `unverifiedFrom = IN ∧ !fromProof ∧ (contact ∨ companyId)`. Mail that matches no contact or company is stored without the
+  flag. `attachToContact` (`emails.ts:2892-2915`) later writes an EMAIL/IN activity for it but never sets the flag.
+- **Effect.** No badge anywhere for that mail: thread, inbox, activity block or 360 cards.
+- **Repro.** `INFO-R2-attach-path`: an unknown-sender mail is stored with `contactId=null`, flag `undefined` → attached → 360 flag `undefined`.
+- **Fix (debt).** Record "From not proven" for every inbound mail at ingest, e.g. `routing.unverifiedFrom` whenever `IN ∧ !fromProof`. The outbox
+  anonymity for unmatched mail already holds, so nothing else changes. Alternatively, keep the proof bit in `routing` so that `attachToContact`
+  can raise the flag.
+
+### R2-2 · LOW · AI assist briefs pass forged-mail subjects to the model without the flag
+- **Where.** `ai-bridges.ts:324` (`contactFacts`) and `:352` (`companyFacts`). They select `type/title/startAt/dueAt[/doneAt]` and write
+  `- EMAIL <day> <subject>` into the prompt. The same holds for the deal brief activity lines.
+- **Severity: LOW.**
+  - The output is a draft or summary for staff, not an action.
+  - Every staff list that shows the row now shows the badge.
+  - Subjects of any inbound mail were already attacker-controlled prompt text before this card, so that is not new.
+  - The residual risk: a summary like "the customer asked to change the bank account" read without the badge.
+- **Fix (cheap).** Add `source/direction/sourceRef/id` to the two selects. Call `unverifiedEmailRefs(scope, acts)` (one query) and append
+  `(sender not verified)` to flagged lines. Register as debt, or take it with R2-1.
+
+### R2-3 · INFO · RV-5 (422 for unknown event names) is a backstop; no door regresses
+- **Doors already validate first.**
+  - Platform create/edit filter the selection to `WEBHOOK_EVENTS` (`webhooks/actions.ts:68,118`).
+  - Account UI filters to `account.*`; account REST returns its own 422 (`EVENT_VALUES`).
+  - Member UI/REST use `memberWebhookEventsCheck`; CRM uses `crmWebhookEventsCheck`.
+  - So from `src/` the service 422 is reachable only by a door that forgets to validate.
+- **Existing rows that store a now-invalid name** (`RV5r-existing-invalid-row` ✅):
+  - enable, disable and delete still work, because `setEndpointActive` does not check names;
+  - re-saving the same stale list is refused with 422;
+  - saving known names works.
+  - The UI edit path drops unknown names silently (pre-existing filter), so a shop is never stuck.
+- **Behaviour checks.**
+  - Trimming and de-duplication work; `[]` means all events (`RV5r-trim-empty` ✅).
+  - Unknown or wrong-case names give 422 and no row is written (`RV5r-unknown-422` ✅).
+  - The guard runs first: an unknown CRM name from a refused author gets the guard's 403, not 422 (`RV5r-guard-first` ✅).
+  - Author-less calls stay byte-for-byte unchanged, and 0 of the 15 `src/` call sites lack an author (`RV5r-authorless` ✅).
+- **Note.** `["  ", ""]` from an authored caller becomes `[]` = all events. This is pre-existing; the guard runs on `[]`, so it is guarded.
+
+### R2-4 · INFO · flag visibility, scoping and layering
+- `email-flags.ts` is one batched `findMany` scoped by `tenantId + systemId`, and it imports only `./db` and `./emails-shared`. No `.tsx` imports it.
+  The `*-shared.ts` type changes are type-only, so they stay client-safe (`R2-helper-shape`, `R2-not-in-client` ✅).
+- The flag is returned only on rows that already passed `activityWhere`, and the subject is already the row title. A REST key without
+  `crm.activity.read` gets an empty timeline (unchanged). So the flag adds one bit (sender not authenticated) to a row the viewer already sees.
+  No cross-tenant or cross-system leak: the `cross` decoy pointing at another system's flagged mail is unflagged on all three surfaces.
+- **The "only inbound EMAIL" rule cannot miss a legitimate row.** A flagged mail is always `direction IN`, because an unproven sender never
+  becomes `OUT` (`emails.ts:2419-2421`).
+  - Decoys sharing the flagged `sourceRef` are unflagged on contact 360, company 360 and the activity block: a NOTE (MANUAL) and an EMAIL/OUT row
+    (`R2-contact-360`, `R2-company-360`, `R2-activity-block` ✅).
+  - The company roll-up via `companyId` is flagged.
+  - After a contact merge (5 activities moved), the forged row is still flagged on the winner's 360 (`R2-merge` ✅).
+  - Re-ingest is impossible: `messageId` is unique.
+- **Docs.** `docs/api/CRM-API.md` was regenerated and `--check` is green. The gitignored `.claude/skills/shark-crm-api/references/endpoints.md` in
+  the main checkout must be regenerated after merge (3 summaries changed), or C3.8-S7.1 will report a mismatch there.
+
+## What I ran (round 2, QC2, each job `iso.sh` + gate lock, one at a time)
+Window 17:53:28–18:11:27 UTC. My development run of `rv-cf5-r2` at 17:51 was red 13/16; all three reds came from one fact, which is now
+recorded as `INFO-R2-attach-path` (R2-1).
+
+| job | result |
+|---|---|
+| rv-cf5-r2 (this round) | 16/16. 2 throwaway tenants were swept to 0 rows, and `ChatRateBucket` keys were deleted |
+| rv-cf5 (round 1) | **32/32**. `R23r-360-timeline` is now green |
+| probe-cf5 / probe-cf5-r2 (builder) | 22/22 · 14/14 |
+| probe-cf3 | 27/27 |
+| qc-webhook · qc-account-api-webhooks | 15/15 · 22/22 |
+| qc-crm-c1.10 · c1.3 (company 360) · c1.4 (contact 360) · c1.6 | 66/66 · 89/89 · 110/110 · 79/79 |
+| docs-crm `--check` | ✅ 123 op (no gitignored file written) |
+| `pnpm typecheck` | exit 0 |
+| fitness (QC2 env / no env) | 36/36 · 36/36 |
+
+## Not verified (round 2)
+- QC3 suites (probe-cf2, c3.5, c3.8). No browser render of the two 360 cards. REST `contacts.get` with a real API key was not re-run; it is
+  covered by the builder's `RV1-rest` and by `qc-crm-c1.10` / `c1.4` in my run. qc-crm-c2.1 was not re-run in round 2, because no automation file
+  changed.
+
+Round 2 leaves no BLOCKER, HIGH or MED. RV-1 is closed and RV-5 is safe. The two remaining LOWs (R2-1 pre-existing, R2-2 AI brief) and round 1's
+RV-2 and RV-3 go to the debt register.
+
+VERDICT: MERGEABLE

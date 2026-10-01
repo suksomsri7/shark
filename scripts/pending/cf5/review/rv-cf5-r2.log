@@ -1,0 +1,32 @@
+
+── FLAG ──
+(node:1678281) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [R2-premise] forged mail routing {"unverifiedFrom":true} · activity direction IN companyId cmupu1v4a000byxkzhl55rulb
+  ✅ [R2-contact-360] contact 360: forged=true note=undefined out=undefined cross=undefined attached=undefined
+  ✅ [R2-company-360] company 360 (companyId roll-up): forged=true note=undefined out=undefined cross=undefined attached=undefined
+  ✅ [R2-activity-block] activity block: forged=true note=undefined out=undefined cross=undefined attached=undefined
+  ✅ [INFO-R2-attach-path] pre-existing fix2 rule (emails.ts:2502 flags only mail matched to a contact/company at ingest): unknown-sender forged mail stored contactId=null flag=undefined → attached → 360 flag undefined
+  ✅ [R2-merge] moved activities 5 · winner 360 forged row flag=true
+  ✅ [R2-helper-shape] email-flags.ts: one batched findMany scoped tenantId+systemId · imports ./db,./emails-shared
+  ✅ [R2-not-in-client] .tsx files importing email-flags: none
+
+── RV5 ──
+  ✅ [RV5r-existing-invalid-row] row storing [" member.created","member.gone.legacy"]: enable ok · disable ok · re-save same names → WebhookEventNameError 422 · save known name → ok · delete ok
+  ✅ [RV5r-trim-empty] [" member.created ","member.created","\tmember.updated"] → ["member.created","member.updated"] · [] → ok (all events) · ["  ",""] → stored [] (= all events, guard ran on [])
+  ✅ [RV5r-unknown-422] [member.created, nope.unknown] → WebhookEventNameError 422 "ไม่รู้จักเหตุการณ์ “nope.unknown” — เลือกจากรายการเหตุการณ์ของระบบ (ชื" · ["Member.Created"] → WebhookEventNameError 422 · rows 3→3
+  ✅ [RV5r-guard-first] actor null, v2 shop: [crm.nope.unknown] → WebhookGuardError 403 · [crm.deal.won, nope.unknown] → WebhookGuardError 403
+  ✅ [RV5r-authorless] author-less create stored [" junk.event"] (unchanged) · src call sites 15, without an author: none
+  ✅ [INFO-RV5r-doors-prevalidate] UI/REST doors filter or 4xx before the service (platform actions filter to WEBHOOK_EVENTS · account REST EVENT_VALUES 422 · member REST memberWebhookEventsCheck · CRM crmWebhookEventsCheck) ⇒ the service 422 is a backstop · member http-errors reads e.status: true
+  ✅ [CLEAN-v1jd1l] tenant rows left=0
+  ✅ [CLEAN-14q5vp] tenant rows left=0
+
+🟢 rv-cf5-r2: 16/16
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}
