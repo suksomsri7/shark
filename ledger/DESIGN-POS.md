@@ -4,6 +4,7 @@
 > ขอบเขต: วิเคราะห์ของเราวันนี้ (โค้ดจริง ไม่ใช่สเปก) → เทียบคู่แข่ง 4 ราย → ออกแบบฟังก์ชันครบทุกโมดูล + การเชื่อมกับทุกระบบ SHARK + UX/UI
 > ภาพประกอบ: `ledger/design-pos/` (12 ภาพ — ดู `README.md` ในโฟลเดอร์นั้น)
 > ⚠️ เอกสารนี้เป็น **แบบ** ยังไม่ได้แตะโค้ดจริงแม้แต่บรรทัดเดียว
+> เอกสารประกอบ (1 ต.ค.): สัญญาการเชื่อม `POS-CONTRACTS.md` · API `POS-API.md` · migration `POS-MIGRATION-PLAN.md` · แผนงาน 55 ใบ `POS-MASTER-PLAN.md` · brief `pos-briefs/`
 > เอกสารที่เกี่ยว: สเปกเดิม `docs/modules/14-pos.md` (ก.ค. 2569 · 1,102 บรรทัด) · as-built `docs/sds/modules/pos.md` · ร้านอาหาร `docs/modules/02-restaurant.md` · พิมพ์เขียวการเชื่อม `docs/BLUEPRINT_CONNECTIONS.md`
 
 ---
@@ -291,7 +292,14 @@ POS ของเราวันนี้คือ **"จุดตัดเงิ
 | **ช่องทางภายนอก** | LINE MAN · Grab · foodpanda · Shopee · Lazada · TikTok — adapter interface เดียว: `pullOrders / acceptOrder / rejectOrder / setReady / syncMenu / set86 / setHours` | ออเดอร์เข้า M7 | 🆕 รอ partner API |
 | **Beam (ชำระเงิน)** | สร้าง QR/บัตร · webhook ยืนยัน → `confirmSalePaid` (interface D1 มี) | | 🆕 รอ creds |
 
-**Event ใหม่ที่ต้องประกาศ (ต่อจาก `pos.sale.paid/voided`)**: `pos.sale.refunded` · `pos.sale.expired` · `pos.shift.opened/closed` · `pos.shift.overshort` · `pos.product.out_of_stock` (86) · `pos.order.received/accepted/rejected/ready` (ช่องทาง) · `pos.stockcount.confirmed` — ทุก event มี consumer (กฎ `reference_outbox_new_event_needs_consumer`)
+| **อนุมัติ (Approval core)** | void/คืนเงิน/ส่วนลดเกินสิทธิ์/ราคาเปิด/เปิดลิ้นชัก → `resolvePolicy`+`submitForApproval` (มีอยู่แล้ว) · ไม่มีนโยบาย = PIN ผู้จัดการ | ผลอนุมัติ → consumer ทำ void/refund ด้วย idempotencyKey=requestId | 🆕 (C-9) |
+| **แพ็กสมาชิก (Subscription)** | ขายแพ็ก/ต่ออายุที่หน้าขาย = บรรทัดสินค้า kind=PLAN → `createSale` เดิมของ subscription | สิทธิ์แพ็ก (ส่วนลด/โควตา) โชว์ที่จอชำระ | 🆕 |
+| **ฟอร์ม (Forms)** | ใบสมัครสมาชิกหน้าร้านใช้ `FormDef` ที่ร้านตั้ง (ไม่บังคับ) | | 🆕 |
+| **ไฟล์ (Storage/Bunny)** | รูปสินค้า/สลิปโอน/รูปสินค้าที่คืน ผ่าน storage เดิม | | 🆕 |
+| **ภาษา (i18n)** | ทุกสตริง `pos.*` th/en · ใบเสร็จตามภาษาสาขา · `PosProduct.nameEn` | | 🆕 |
+| **สมาชิก v2: ว่อชเชอร์ · บัตรของขวัญ · สแตมป์ · ที่มาลูกค้า · สิทธิ์ระดับ** | ใช้ตาราง `Voucher/GiftCard/StampCard/MemberAttribution/MemberTierBenefit` ที่มีแล้ว — `PosSale` มีคอลัมน์ผูกแล้ว (`voucherUseIds` ฯลฯ) | quote/redeem/release ใน tx เดียวกับบิล | ✅ ตาราง → 🆕 ต่อสาย |
+
+**Event ใหม่ที่ต้องประกาศ (ต่อจาก `pos.sale.paid/voided`)** — ตาราง payload/consumer เต็มใน `POS-CONTRACTS.md`: `pos.sale.refunded` · `pos.sale.expired` · `pos.shift.opened/closed` · `pos.shift.overshort` · `pos.product.out_of_stock` (86) · `pos.order.received/accepted/rejected/ready` (ช่องทาง) · `pos.stockcount.confirmed` — ทุก event มี consumer (กฎ `reference_outbox_new_event_needs_consumer`)
 
 ---
 
@@ -321,6 +329,15 @@ POS ของเราวันนี้คือ **"จุดตัดเงิ
 | 10 | ตั้งค่าและการเชื่อมต่อ | การ์ด 13 ระบบ SHARK เปิด/ปิด · ช่องทางภายนอก · วิธีรับเงิน · ภาษี · ออฟไลน์ |
 | 11 | จอลูกค้า · ใบเสร็จ 80 มม. · ใบเสร็จออนไลน์ | |
 | 12 | บิลวันนี้ · ยกเลิก/คืนเงิน | ตารางบิล · ลิ้นชักบิล · modal คืนเงินบางส่วน (ใบลดหนี้ · คืนสต็อก · ดึงแต้ม) |
+| 13 (รอวาด) | เปิดกะ + ล็อกหน้าจอ PIN | เงินตั้งต้น · เลือกเครื่อง · PIN · สลับพนักงาน |
+| 14 (รอวาด) | แผ่นสมาชิก + พักบิล | ค้นหา/สแกน/สมัครจากหน้าขาย · รายการบิลพัก/เรียกคืน |
+| 15 (รอวาด) | ใบกำกับเต็มรูป + แยกบิล | ฟอร์มผู้ซื้อ (ค้น DBD) · แยกรายรายการ/หารเท่า/ตามที่นั่ง |
+| 16 (รอวาด) | รับของเข้า/โอน/ปรับ จาก POS | ทางลัดเข้าคลัง · สแกนเพิ่มบรรทัด · ต้นทุน |
+| 17 (รอวาด) | ตั้งค่า: ใบเสร็จ/ภาษี · เครื่อง/เครื่องพิมพ์ · พนักงาน/สิทธิ์ | 3 หน้าย่อย |
+| 18 (รอวาด) | ตั้งร้านครั้งแรก | 5 ขั้นใน 10 นาที: ร้าน → สินค้า (CSV/ตัวอย่าง) → รับเงิน → เครื่องพิมพ์ → ขายบิลแรก |
+| 19 (รอวาด) | สถานะว่าง/ผิดพลาด/ออฟไลน์ | empty state ทุกจอหลัก · error ภาษาคน · แถบออฟไลน์ + คิวซิงก์ |
+| 20 (รอวาด) | หน้าขายภาษาอังกฤษ + iPad 1024×768 | พิสูจน์ i18n และขนาดแท็บเล็ตจริง |
+| 21 (รอวาด) | คำขออนุมัติ + ขายแพ็กสมาชิก | void/คืนเงินผ่าน approval (มือถือผู้จัดการ) · แพ็กรายเดือนที่หน้าขาย |
 
 ---
 
@@ -345,6 +362,8 @@ Migration ที่ต้องระวัง (บทเรียน `reference
 ---
 
 ## 8. แผนงาน (ประมาณการหยาบ — แตกใบงานจริงตอนเริ่ม RUN)
+
+> 🆕 1 ต.ค.: แตกใบงานจริงแล้ว 55 ใบ 7 เฟส (P0 เตรียม 3 · P1 18 · P2 14 · P3 12 · P4 ทุกปุ่ม 3 · P5 ล่าบั๊ก 3 · P6 prod 2) พร้อมเลน/ลำดับ/เกณฑ์ตรวจรับ/ค่าใช้จ่ายร้าน/ความเสี่ยง → **`POS-MASTER-PLAN.md`** · รายการด้านล่างคงไว้เป็นภาพรวม
 
 > ✅ เจ้าของเคาะ 30 ก.ย.: **ทำครบวงจรใน RUN เดียว** — P1 และ P2 ด้านล่างรวมเป็น RUN "POS ครบวงจร" 32 WO แบ่งเลนขนาน (เลน A เครื่องคิดเงิน+ชำระ+กะ · เลน B แคตตาล็อก+สต็อก+BOM · เลน C โต๊ะ/ครัว/ช่องทาง) โดย WO 1.1 แคตตาล็อกเดียวต้องจบก่อนเลนอื่นแตะสินค้า · P3 เป็น RUN ถัดไป
 
