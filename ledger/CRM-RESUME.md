@@ -40,6 +40,27 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.22 🔴 HANDOFF 1 Oct 2026 ~11:45 UTC — owner moves the working session again (new session starts HERE)
+**OWNER ORDER (11:45 UTC): as each running lane finishes, do NOT open another; record everything; leave things clean.** Accepted **46/53 (87%)** · branch `session/crm` (pushed) · prod = main (NOT touched today; origin/main has 12 design commits session/crm lacks — merge needed before any prod push) · ⛔ every prod push = ask the owner.
+
+#### State table (updated by the controller as lanes end — the LAST edit time is at the bottom of this section)
+| item | state | where | next step |
+|---|---|---|---|
+| C5.4 (all batches incl. D2 8cf86985, N 264c5440) | ✅ accepted, on session/crm | main tree | prod = owner go; runbook in `ledger/wo-notes/crm-C5.4-N.md`; owner Q1 (JV numbers do not reset monthly) open; CI `pnpm drift` unproven; QC3 lacks the N migration (`bash scripts/qc3.sh bash scripts/qc-prisma.sh migrate deploy` from a tree ≥264c5440) |
+| C4.1/C4.2 it4 | phase A done (c42b 9e4df558, wip/crm-c42b) · **run3 full pass launched as unit `crm-c42b-run3` on QC1 / server :3215 (build of 264c5440)** — see row update below | worktree c42b · logs `/tmp/c42b-logs/run3-*` · status file `/tmp/c42b-logs/run3.status` (ends RUN3-ALLDONE) | new agent: triage run3 per c42b `ledger/wo-notes/crm-C4.2.md` → after fix1+fix2 are on main: rebuild :3215, rerun affected chunks (companies · activities · automation · settings · emails) → land runner+registry on main (copy `scripts/pending/c42b/next/*` into `scripts/`) → accept C4.1 + C4.2 |
+| C5.5-fix1 | r1+r1b built, review = MERGEABLE AFTER RV-6; **builder round 2 running** (RV-1 RV-2 RV-3 RV-6 · webhook choke point · ORACLE-EDIT c1.10 S7.2) | worktree c54e (wip/crm-c55) · notes `crm-C5.5-fix1.md` + `-review.md` there | short re-review of r2 → patch `git -C c54e diff 288cca97 <final> -- src docs scripts/pending/c55 scripts/qc-crm-c1.10.mts ledger/wo-notes/crm-C5.5-*.md` onto main (check apply on HEAD; D2/N landed since) → gate → commit |
+| C5.5-fix2 | **builder running** (probe-cf2 28/28 at checkpoint 5f7f17b2; regression pending) | worktree cf2 (wip/crm-cf2) · note `crm-C5.5-fix2.md` there | independent review → merge → gate. 4 account ILIKE sites still owed (exact replacement in the note) |
+| Production HOTFIX (4 items) | items 1–3 reviewed SHIP; **item 4 final review running**; branch `hotfix/sanitize-2026-10-01` (base origin/main) | worktree hsan · notes `hotfix-sanitize-2026-10-01.md` + `-review.md` there | controller DB suites on a QC DB from hsan (kanban k1.6 k1.12 k2.6 k2.7 k3.1 k3.3 k3.5 k3.7 k3.9 · member m1.7 m3.10 m3.11 public · crm c2.5; the 3 authz suites + sanitize oracle already green on QC3) → **owner go** → merge to main (prod) → smoke per the review's release checklist → forward-port all 4 commits to session/crm |
+| C5.5 close | hunts 1 + 2a done; part 2 (hunter on N + D2 diffs + second random lens) NOT started; "authz sweep" card (LOW/MED rows of the hotfix sweep, mobile LOW routes, M3 remember_fact, account webhook doors if not covered by fix1 r2) NOT started | — | after fix1/fix2 merge |
+| C3.10 / C6 | not started | `ledger/CRM-C6-REGISTER-DRAFT.md` = everything owed (C6.1 candidates, runbook inputs, owner decisions, debt, follow-ups, QC1 reseed order) | — |
+
+#### Machine state at handoff
+- Server :3215 = build of 264c5440 on QC1 (used by run3; `bash scripts/acc-v2-serve.sh stop` only after run3 ends).
+- QC DBs: QC1 = it4 run3 (do not write CRM data there until RUN3-ALLDONE) · QC2 free · QC3 = fix1/fix2 lanes.
+- Worktrees created today (node_modules bind-mounted — `umount <wt>/node_modules` before `git worktree remove`): `shark-crm-cd2` (merged, removable) · `shark-crm-cf2` · `shark-crm-hsan` (hotfix, base origin/main, has `.env.qc3`) · reused: c42b, c54c (merged, removable), c54e. All their commits are pushed to origin wip/hotfix branches. `/tmp/*-logs` copies live in each worktree's `.qc-shots/`.
+- Real docs gate = `pnpm exec tsx scripts/gen-{crm,member,kanban,account}-api-docs.mts --check` (`pnpm docs --check` is a no-op).
+- Owner decisions open: Q1 JV monthly reset · prod DB role CREATE on schema public (pre-check) · hotfix go · payment profile MANAGER scope / delegation key · P11 `/l/<code>` open redirect · branch/TEAM manager can automate only 2 action types (RV-7) · P18–P21.
+
 ### 0.21 ▶️ 1 Oct 2026 04:55 UTC — RESUMED (new session) · owner: **2 lanes** · 45/53 = 85%
 - C gate (`main-c2.log`) read: ALLDONE · only non-zero = ai-skill E1-K2.3 (date) · cheque-audit "60 checks · fail 7" = same 7 legacy audit findings as every round (exit 0). C stays committed (1b524af3).
 - **Lane 1 = C4.2 it4 phase A** (Opus · c42b): run2 `owner` done 04:52; `manager` running; controller edited `/tmp/c42b-logs/run2.md5` so the unit stops itself before `nok` (orig = `run2.md5.orig`). Agent: triage owner+manager · promote staged S1–S9 · typecheck · targeted debug runs after run2 ends · prepare run3 (NOT launch) · commit+push wip/crm-c42b · hand back. Controller then: rebuild 3215 from HEAD (after E commit; `acc-v2-serve.sh stop` first) → give the agent the commit id (E adds 3 registry rows) → run3.
