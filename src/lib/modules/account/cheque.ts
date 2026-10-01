@@ -25,6 +25,8 @@ import {
   type DraftReceiptPaymentRow,
 } from "./service";
 import { recordVendorPaymentInTx, type RecordVendorPaymentInput } from "./expense";
+// CRM C5.4-N ▸ เลขเอกสารภาษีจองท้ายธุรกรรม (doc-numbering.ts · LOCK ORDER ขั้น 7) ◂
+import { finalizeDocNos, openDocNumbering } from "./doc-numbering";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คใบเดียวของใบวางบิล/ใบรวมจ่าย ผูกได้แค่งวดแรก — งวดอื่นของชุดหาจากคีย์กันซ้ำ ◂
 import { paymentsOfCheque } from "./group-batch";
 
@@ -371,6 +373,7 @@ export async function recordPaymentWithChequeInOneTx(
   try {
     const settings = side === "revenue" ? await getSettings(tenantId, systemId) : null;
     const r = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx); // CRM C5.4-N ▸ เลขใบกำกับภาษี/WTI/50 ทวิ จองท้ายธุรกรรม (LOCK ORDER ขั้น 7) ◂
       const one = side === "expense"
         ? await recordVendorPaymentInTx(tx, tenantId, systemId, documentId, payment)
         : await recordPaymentInTx(tx, tenantId, systemId, documentId, payment, settings!);
@@ -392,9 +395,11 @@ export async function recordPaymentWithChequeInOneTx(
           note: chq.note ?? null,
         });
       await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [documentId]);
-      return one;
+      const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย ◂
+      const certId = (one as { whtCertDocId?: string }).whtCertDocId;
+      return { ...one, whtCertNo: certId ? nos.get(certId) : undefined };
     }, { maxWait: 20_000, timeout: 40_000 });
-    return { ok: true, status: r.status, paymentId: r.paymentId, whtCertNo: (r as { whtCertNo?: string }).whtCertNo };
+    return { ok: true, status: r.status, paymentId: r.paymentId, whtCertNo: r.whtCertNo };
   } catch (e) {
     return { ok: false, reason: safeReason(e, failMsg) };
   }

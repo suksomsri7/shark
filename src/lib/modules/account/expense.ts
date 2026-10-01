@@ -37,7 +37,7 @@ import {
   releaseDepositDeductionsInTx,
 } from "./service";
 // WO 8.1 — เครื่องออกเลขที่เอกสารร่วม (ที่เดียวทั้งรายรับ/รายจ่าย) + ตารางคำนำหน้ากลาง
-import { issueDocNo, peekDocNo } from "./doc-numbering";
+import { issueDocNo, peekDocNo, openDocNumbering, deferDocNo, finalizeDocNos } from "./doc-numbering";
 // WO 8.2 (§9.3) — ล็อกข้อมูลก่อนวันที่ + ค่าเริ่มต้นหัก ณ ที่จ่าย/การแปลงเอกสาร
 import { assertNotLockedTx, assertNotLockedWith } from "./policy";
 // WO C4 — เหตุการณ์บัญชีที่ออกทาง webhook (ตัวประกอบ payload + คีย์กันซ้ำอยู่ที่ events.ts ที่เดียว)
@@ -939,6 +939,7 @@ export async function issueExpenseDoc(
   try {
     let docNo = "";
     await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx); // CRM C5.4-N ▸ ใบกำกับภาษีซื้อรอรับ จองเลขท้ายธุรกรรม (เลขของตัวเอกสารเอง = phase 2 · ยังจองที่เดิม) ◂
       const doc = await tx.accountDocument.findFirst({
         where: { id, tenantId, systemId },
         include: { lines: true, contact: true },
@@ -1018,6 +1019,7 @@ export async function issueExpenseDoc(
         issueDate: doc.issueDate,
         source: doc.source,
       });
+      await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย (LOCK ORDER ขั้น 7) ◂
     });
     return { ok: true, docNo };
   } catch (e) {
@@ -1040,7 +1042,7 @@ async function createPendingTaxInvoice(
   sourceDocNo: string,
 ): Promise<void> {
   const issueDate = new Date();
-  const docNo = await nextDocNo(tx, tenantId, systemId, "PURCHASE_TAX_INVOICE", issueDate);
+  // CRM C5.4-N ▸ ยังไม่มีเลข — finalizeDocNos ของตัวห่อออกเลขท้ายธุรกรรม ◂
   const ptx = await tx.accountDocument.create({
     data: {
       tenantId,
@@ -1048,7 +1050,7 @@ async function createPendingTaxInvoice(
       docType: "PURCHASE_TAX_INVOICE",
       status: "AWAITING_RECEIVE",
       direction: "IN",
-      docNo,
+      docNo: null,
       issueDate,
       contactId: source.contactId,
       contactSnapshot: (source.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -1076,6 +1078,13 @@ async function createPendingTaxInvoice(
         ],
       },
     },
+  });
+  deferDocNo(tx, {
+    docId: ptx.id,
+    tenantId,
+    systemId,
+    date: issueDate,
+    series: { kind: "configured", docType: "PURCHASE_TAX_INVOICE", fallbackPrefix: fallbackPrefixOf("PURCHASE_TAX_INVOICE") },
   });
   await tx.accountDocumentRelation.create({
     data: { tenantId, systemId, fromId: source.id, toId: ptx.id, type: "TAX_FOR", amount: source.vatAmount },
@@ -1155,8 +1164,10 @@ export async function recordVendorPayment(
   }
   try {
     const r = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx); // CRM C5.4-N ▸ เลข 50 ทวิ จองท้ายธุรกรรม ◂
       const r = await recordVendorPaymentInTx(tx, tenantId, systemId, id, input);
       await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // CRM C5.4-C ▸ round 10 · มติ C ◂
+      await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย (LOCK ORDER ขั้น 7) ◂
       return r;
     });
     return { ok: true, status: r.status, paymentId: r.paymentId };
@@ -1275,7 +1286,7 @@ async function issueWhtCert(
   base: number, // M5: ฐานเงินได้จริง (คำนวณจากยอดจ่ายจริง ไม่ย้อนจาก wht/rate)
   issueDate: Date, // C3: = paidAt (WHT ตกงวด ภงด. ถูกเดือน)
 ): Promise<void> {
-  const docNo = await nextDocNo(tx, tenantId, systemId, "WHT_CERT", issueDate);
+  // CRM C5.4-N ▸ ยังไม่มีเลข — finalizeDocNos ของตัวห่อออกเลข 50 ทวิ ท้ายธุรกรรม ◂
   const cert = await tx.accountDocument.create({
     data: {
       tenantId,
@@ -1283,7 +1294,7 @@ async function issueWhtCert(
       docType: "WHT_CERT",
       status: "ISSUED",
       direction: "IN",
-      docNo,
+      docNo: null,
       issueDate,
       contactId: source.contactId,
       contactSnapshot: (source.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -1298,6 +1309,13 @@ async function issueWhtCert(
       sourcePaymentId: paymentId,
       note: "หนังสือรับรองหัก ณ ที่จ่าย (50 ทวิ)",
     },
+  });
+  deferDocNo(tx, {
+    docId: cert.id,
+    tenantId,
+    systemId,
+    date: issueDate,
+    series: { kind: "configured", docType: "WHT_CERT", fallbackPrefix: fallbackPrefixOf("WHT_CERT") },
   });
   await tx.accountDocumentPayment.update({
     where: { id: paymentId },

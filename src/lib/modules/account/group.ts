@@ -589,7 +589,7 @@ export async function recordGroupPayment(
     systemId,
     { groupId, childIds: rows.map((r) => r.childDocId), batchKey, failMsg },
     async (tx) => {
-      const certNos: string[] = [];
+      const certIds: string[] = []; // CRM C5.4-N ▸ เลข WTI ออกท้ายธุรกรรม (res.docNos) — ที่นี่เก็บ id ตามลำดับใบลูก ◂
       const paymentOf = new Map<string, string>();
       for (const r of ordered) {
         const w = whtOf.get(r.childDocId);
@@ -613,8 +613,8 @@ export async function recordGroupPayment(
               : await recordPaymentInTx(tx, tenantId, systemId, r.childDocId, common, settings!);
           if (one.duplicate) throw new Error("รายการชำระของใบนี้ถูกบันทึกไปแล้ว — รีเฟรชหน้าแล้วตรวจสอบอีกครั้ง");
           paymentOf.set(r.childDocId, one.paymentId);
-          const certNo = (one as { whtCertNo?: string }).whtCertNo;
-          if (certNo) certNos.push(certNo);
+          const certId = (one as { whtCertDocId?: string }).whtCertDocId;
+          if (certId) certIds.push(certId);
         } catch (e) {
           throw new Error(`${r.docNo ?? "(ร่าง)"}: ${safeReason(e, failMsg)}`);
         }
@@ -636,7 +636,7 @@ export async function recordGroupPayment(
           note,
         });
       }
-      return { certNos };
+      return { certIds };
     },
   );
   if (!res.ok) return { ok: false, reason: res.reason };
@@ -652,7 +652,7 @@ export async function recordGroupPayment(
     allocations: rows,
     status: res.head?.status ?? "",
     outstanding: res.head?.outstanding ?? 0,
-    certNos: res.result.certNos,
+    certNos: res.result.certIds.map((id) => res.docNos.get(id) ?? "").filter(Boolean),
   };
 }
 
