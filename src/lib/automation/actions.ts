@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import type { AutomationActionType } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import {
+  canManageShopAutomation,
   createRule,
   deleteRule,
   markNotificationRead,
@@ -16,6 +17,15 @@ import { AUTOMATION_EVENTS } from "./labels";
 
 const SETTINGS_PATH = "/app/settings/automation";
 const NOTIFICATIONS_PATH = "/app/notifications";
+
+/** 🔴 HOTFIX 2026-10-01: สิทธิ์ตั้งกฎของร้าน (OWNER/MANAGER หรือ STAFF ที่มี `automation.rule.create`) — ด่านเดียวกับข้อเสนอ AI */
+function mayManage(auth: Awaited<ReturnType<typeof requireTenant>>): boolean {
+  return canManageShopAutomation({
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  });
+}
 
 export type CreateRuleState =
   | { status: "idle" }
@@ -28,6 +38,7 @@ export async function createRuleAction(
   formData: FormData,
 ): Promise<CreateRuleState> {
   const auth = await requireTenant();
+  if (!mayManage(auth)) return { status: "error", message: "บัญชีของคุณยังไม่ได้รับสิทธิ์ตั้งกฎอัตโนมัติ — ขอสิทธิ์ \"สร้าง/แก้กฎอัตโนมัติ\" จากเจ้าของร้านก่อน" };
 
   const name = String(formData.get("name") ?? "").trim();
   const event = String(formData.get("event") ?? "").trim();
@@ -82,7 +93,7 @@ export async function toggleRuleAction(formData: FormData): Promise<void> {
   const auth = await requireTenant();
   const id = String(formData.get("id") ?? "");
   const enabled = String(formData.get("enabled") ?? "") === "true";
-  if (!id) return;
+  if (!id || !mayManage(auth)) return; // ไม่มีสิทธิ์ = ไม่ทำอะไร (หน้าโหลดใหม่ก็เห็นสถานะเดิม)
   await setRuleEnabled({ tenantId: auth.active.tenantId }, id, enabled);
   revalidatePath(SETTINGS_PATH);
 }
@@ -91,7 +102,7 @@ export async function toggleRuleAction(formData: FormData): Promise<void> {
 export async function deleteRuleAction(formData: FormData): Promise<void> {
   const auth = await requireTenant();
   const id = String(formData.get("id") ?? "");
-  if (!id) return;
+  if (!id || !mayManage(auth)) return;
   await deleteRule({ tenantId: auth.active.tenantId }, id);
   revalidatePath(SETTINGS_PATH);
 }
