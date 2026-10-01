@@ -1,0 +1,39 @@
+[env] qc-pos-coupon · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้านค้า + POS + ระบบคูปอง (ลด 50 บาท ใช้ได้ 2 สิทธิ์) ──
+(node:1109551) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── Act 1: ขาย 200 ใช้คูปอง SAVE50 → จ่ายจริง 150 ──
+  ✅ [CPN-1.1] grandTotal = 150.00 (หักคูปองแล้ว)
+  ✅ [CPN-1.2] เกิด CouponRedemption ผูกบิล (refId=saleId)
+
+── Act 2: โค้ดปลอม → ต้องล้มเสียงดัง (ห้ามขายต่อเงียบ ๆ) ──
+  ✅ [CPN-2.1] โค้ดปลอม → createSale ปฏิเสธ
+
+── Act 3: replay idempotencyKey เดิม → ไม่ redeem ซ้ำ ──
+  ✅ [CPN-3.1] redemption ยังเป็น 1 (idempotent)
+
+── Act 4: ใช้สิทธิ์ที่ 2 แล้วสิทธิ์เต็ม → ใบที่ 3 ถูกปัด ──
+  ✅ [CPN-4.1] ใช้ครบ 2 สิทธิ์ → ครั้งที่ 3 ถูกปัด
+
+── Act 5: void บิลแรก → สิทธิ์คืน ใช้ได้อีก ──
+  ✅ [CPN-5.1] void → release (สิทธิ์ REDEEMED เหลือ 1)
+  ✅ [CPN-5.2] ใช้โค้ดได้อีกครั้งหลัง void
+
+── กันถอยหลัง: ขายไม่ใส่คูปองยังปกติ ──
+  ✅ [CPN-6.1] ขายปกติไม่กระทบ
+
+[cleanup] เรียบร้อย
+
+===== QC POS×Coupon =====
+ผ่าน 8/8
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":8,"passed":8,"findings":[]}

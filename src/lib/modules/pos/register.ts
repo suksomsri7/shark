@@ -112,6 +112,27 @@ export async function posUnits(tenantId: string, posSystemId: string): Promise<P
   return units;
 }
 
+// HF-POS-PAGES: สาขาที่ "ราคาขาย" ของ POS นี้ไปถึง — ราคาอยู่ที่ AccountProduct ผูก InvItem ของคลัง
+//   ⇒ ทุกหน้าขายที่สาขาใช้คลังเดียวกันเห็นราคาเดียวกัน (posCatalog) · คืน = สาขาของ POS นี้ + สาขาที่ผูกคลัง
+//   ที่สาขาของ POS นี้ใช้ (ไม่นับ archived) — ใช้ตัดสินว่าใครตั้งราคาได้ (posCanSetTenantPrice)
+export async function posPriceUnitIds(tenantId: string, posSystemId: string): Promise<string[]> {
+  const units = await posUnits(tenantId, posSystemId);
+  if (units.length === 0) return [];
+  const invLinks = await prisma.appSystemUnit.findMany({
+    where: { tenantId, type: "INVENTORY", unitId: { in: units.map((u) => u.id) } },
+    select: { systemId: true },
+  });
+  const invIds = [...new Set(invLinks.map((l) => l.systemId))];
+  const shared = invIds.length
+    ? await prisma.appSystemUnit.findMany({ where: { tenantId, type: "INVENTORY", systemId: { in: invIds } }, select: { unitId: true } })
+    : [];
+  const extra = shared.map((l) => l.unitId).filter((id) => !units.some((u) => u.id === id));
+  const live = extra.length
+    ? await prisma.businessUnit.findMany({ where: { tenantId, id: { in: extra }, status: { not: "ARCHIVED" } }, select: { id: true } })
+    : [];
+  return [...units.map((u) => u.id), ...live.map((u) => u.id)];
+}
+
 // ตรวจว่า unit นี้ผูกกับ POS นี้จริง (กันยิง unitId ข้ามร้าน/ข้ามระบบ) → true/false
 export async function posUnitIsLinked(tenantId: string, posSystemId: string, unitId: string): Promise<boolean> {
   const link = await prisma.appSystemUnit.findUnique({
