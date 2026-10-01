@@ -406,3 +406,135 @@ fixture รอบ 4: `r4-svc0-arch-ap` (SERVICE 0 + AP เก็บถาวร 
 - E3/E5 "ทุก fixture อยู่ในตัวอย่างของตัวนับเดียว" ต้องมี `samples.invalidLegacyPrice` (วันนี้ไม่มี) — oracle บังคับ
 - E2 per-statement บน prisma ที่ pin = พิสูจน์ของ builder (txid) — oracle ตรวจได้แค่รูปไฟล์ (ไม่รัน migrate บน QC4 ตามกติกาเลน)
 - E4 (F15.5 `||` · ternary · alias) ไม่อยู่ในขอบเขต E5 — ไม่ได้เพิ่มข้อสอบ (builder พิสูจน์ลบเอง)
+
+# Round 4 (builder · brief `pos-brief-P1.1a-R4.md` E1–E4 + มติผู้คุมงานเรื่องข้อเปิดของ oracle writer) — checkpoint
+| # | ขั้น | สถานะ |
+|---|---|---|
+| R4-0 | fingerprint ก่อน (r4-before) + schema snapshot | ✅ ตารางเดิม = r3-final ทุก byte · `cols 133:fe6c18c9… idx 37:d3adfa30… con 106:b5c79e95…` (= round 3) |
+| R4-1 | โค้ด E1 E3 E4 | ✅ |
+| R4-2 | E2 probe (schema แยก `p11probe4` บน QC4 · ลบแล้ว) | ✅ links = ทีละคำสั่ง (xid ต่างกัน 5 ตัว) · ไฟล์แรก = atomic · lock timeout → P3018 → P3009 → กู้ได้ · `db execute` = tx เดียว |
+| R4-3 | QC4: rollback (links → ตาราง) → แยกไฟล์ → deploy → รันซ้ำด้วยมือทั้งสองไฟล์ → status → rollback อีกรอบ → deploy | ✅ โครงสร้างสุดท้าย = round 3 ทุก hash · `Database schema is up to date!` |
+| R4-4 | backfill ร้าน QC (dry/real/again/overlap) | ✅ 13/3/4 → 13/3/4 → 0 → ถอย → A 0 · B 13/3/4 · INVARIANTS สะอาด · ตารางเดิม = r3-final |
+| R4-5 | oracle | ✅ exit 0 · `ผ่าน 99/99` (P1.1b 28 ข้อข้ามตาม guard) |
+| R4-6 | regression 17 ชุด · fitness 2 โหมด (+F15.5 E4 + หลักฐานลบ) | ✅ 17 SAME กับ round 3 · 39/39 ทั้งคู่ · หลักฐานลบครบ 3 รูป |
+| R4-7 | typecheck | ✅ exit 0 (`tsc --noEmit` · รอบเดียว) |
+| R4-8 | notes · commit · push | ✅ |
+
+## Round 4 — รายงานต่อข้อ
+| ข้อ | ก่อน (round 3) | หลัง (round 4 · file:line) | check |
+|---|---|---|---|
+| E1 | `checkCatalogWrite(actor: MembershipCtx \| null)` · null = OK (ข้ามสิทธิ์) · ตัวบ่งชี้ = TypeError · unitId ไม่ตรวจ | `catalog.ts:198` export (facade `catalog.checkCatalogWrite`) รับ `MembershipCtx` จริงเท่านั้น — `isMembershipCtx :174` (role ∈ OWNER/MANAGER/STAFF · unitAccess สตริง[] · permissions ออบเจกต์) ไม่ผ่าน (null/undefined/ตัวบ่งชี้/อื่น) = `"PERMISSION_DENIED"` (คืนค่า ไม่ throw) · where ต้องเป็น POS เปิดใช้งานของร้าน · `row.unitId` ต้องเป็นสาขาไม่เก็บถาวรที่ผูก where.systemId (AppSystemUnit unique tenant+unit+POS) ไม่ใช่ = `"NOT_FOUND"` · ทางข้ามสิทธิ์ของระบบเหลือที่ `rowWriteVerdict :230` (ไม่ export · actor null มาจาก `actorOf :152` เมื่อเห็นตัวบ่งชี้เท่านั้น) · `requireRowWrite :258` ใช้ทางภายใน (พฤติกรรมผู้เขียนเดิมไม่เปลี่ยน) | S3.40 S3.41 ✅ · S3.27/S3.28/X3.* ✅ |
+| E2 | ไฟล์เดียว (DO $$ ⇒ ทั้งไฟล์ tx เดียว ⇒ ล็อก ACCESS EXCLUSIVE ตารางเดิม 5 ตัวถือจนจบไฟล์) | `20261120000000_pos_v2_a` = enum + 4 ตาราง + index + FK (atomic · DO $$ เดิม) — ไม่มี ALTER ตารางเดิม · ใหม่ `20261120000001_pos_v2_a_links` = `SET lock_timeout = '3s';` → ADD COLUMN IF NOT EXISTS ×5 คำสั่งเดี่ยว → `RESET lock_timeout;` ไม่มี DO/dollar-quote (คอมเมนต์ไม่มีคำนั้นด้วย) · วัดผลข้างล่าง | S3.42 S3.43 S3.22/23/31/32 ✅ |
+| E3 | ตัดสิน "ลิ้นชัก" จาก salePrice อย่างเดียว · ตัวนับราคา null ซ้อนกัน (invalidLegacy นับคู่ · บริการ+AP เก็บถาวรเข้า apIgnored) | `tillPriceToday catalog.ts:1088` = ราคาที่ลิ้นชักคิดวันนี้ (อ้างบรรทัดข้างล่าง) ใช้ทุกการตัดสิน · partition ราคา null `:1168` · `catalogPriceDiffersFromTill` `:1186` (ตัวอย่าง ≤20/ร้าน: `id · name · catalogPriceSatang · tillPriceSatang`) · `samples.invalidLegacyPrice` (≤20/ร้าน · ขั้นเมนู `:1248` · เว็บร้าน `:1300`) · สคริปต์พิมพ์ตัวอย่างพร้อมสองราคา `pos-backfill-catalog.mts:132` | S3.30 S3.44 S3.12 S3.13 ✅ |
+| E4 | F15.5 จับแค่ `x ?? <ตัวบ่งชี้>` | `fitness-pos.mts:963 markerMisuse` (AST): `x ?? M` · `x \|\| M` · `c ? M : y` / `c ? y : M` — **ทุกไฟล์** (อนุญาตหรือไม่) · alias นอก catalog.ts: `const S = M` (รวมค่าที่ถือ M ผ่าน ?? / \|\| / && / ?: / ลูกศร `() => M` — `carriesMarker :946`) · `S = M` · `{ M: S } = …` · `import/export { M as S }` · `M` = ชื่อตรง · `m.M` · `m?.M` · `m["M"]` (`isMarkerRef :936`) · การหลบด้วยคีย์ที่คำนวณตอนรัน (`m[k]`) อยู่นอกขอบเขต · alias ยกเว้นข้อสอบ `scripts/qc-*.mts` (ดู "ตัดสิน" ข้อ 1) | F15.5 ✅ + หลักฐานลบ |
+
+### E3 — ราคาลิ้นชักวันนี้ (ตรวจเองในโค้ด)
+- PRODUCT: `register.ts:137` `posCatalog` → `inventory.listItems` (สินค้า · `archivedAt: null` · 200 ตัว `inventory/service.ts:793-799`) · AP หาด้วย `InvItem.accountProductId` `where: { tenantId, id: { in: acctIds } }` (`:142` — ไม่กรองเก็บถาวร/สมุดบัญชี) · `const priceSatang = sale && sale > 0 ? sale : Math.max(0, i.costSatang);` (`:149`) — ไม่อ่าน posPrice
+- SERVICE: `register.ts:163` `posServices` → `inventory.listServices` (`archivedAt: null` · `:802-807`) · `priceSatang: r.priceSatang` (`:174`) — ไม่อ่าน AccountProduct
+- `tillPriceToday` = null เมื่อ InvItem เก็บถาวร (ลิ้นชักไม่แสดง) · ไม่จำลองเพดาน 200 รายการของหน้าขาย (ข้อจำกัดหน้าจอ ไม่ใช่ราคา)
+- **ลำดับตัดสิน partition ราคา null** (ตัวแรกที่จริงชนะ · คอมเมนต์ในโค้ด `:1168`): 1) `soldAtCostToday` (ลิ้นชักคิดราคาทุนจริงวันนี้: สินค้า · sale ≤ 0/ว่าง · ต้นทุน > 0) → 2) `apIgnoredButTillPriced` (ลิ้นชักคิด salePrice > 0 ของ AP ที่ C7 ไม่นับ) → 3) `invalidLegacyPrice` → 4) `priceNotSetOther` ⇒ AP −100 + ต้นทุน 800 = `soldAtCostToday` เท่านั้น · บริการราคา 0 + AP เก็บถาวร = `priceNotSetOther` (ลิ้นชักบริการไม่อ่าน AP) · เมนู/แถวเว็บร้านเอง: มีแค่ 3) / 4)
+- ลำดับราคาแคตตาล็อกที่รับรองแล้ว (C7) ไม่เปลี่ยน — ตัวนับใหม่คือสิ่งที่เจ้าของอ่านก่อนสลับ
+- `catalogPriceDiffersFromTill` นับเฉพาะแถวที่มาจาก InvItem (ขั้น 1 · PRODUCT/SERVICE ผูก invItemId) — แถวของเมนู/เว็บร้านเองไม่นับ (มติผู้คุมงาน)
+
+### E2 — การวัด (prisma 7.8.0 · `pnpm exec prisma --version`)
+วิธี: schema Postgres แยก `p11probe4` บน QC4 (config `.qc-shots/pos/p1.1a/r4b/probe/prisma.config.ts` ต่อ DIRECT_URL ของ qc4.sh + `schema=p11probe4` · ไฟล์ migration ในโฟลเดอร์ probe = สำเนา **ตรงทุก byte** ของสองไฟล์จริง (`cmp`) · ตารางแทน 5 ตัวชื่อเดียวกับตารางเดิม) · คำสั่ง `bash scripts/iso.sh bash scripts/qc4.sh pnpm exec prisma migrate deploy --config <probe>` · อ่าน xid ที่เขียน catalog row (`pg_attribute.xmin` ของคอลัมน์ใหม่ · `pg_class/pg_type/pg_constraint.xmin` ของไฟล์แรก) — วัดไฟล์จริง ไม่ต้องแทรกคำสั่ง txid · ลบ schema แล้ว (`DROPPED []`)
+| การทดลอง | ผลดิบ | ความหมาย |
+|---|---|---|
+| deploy ไฟล์ links | `ShopProduct@4427576 · ShopOrderLine@4427577 · PosSaleLine@4427578 · MenuItem@4427579 · RestaurantOrderItem@4427580` | 5 คำสั่ง = 5 transaction (ทีละคำสั่ง) ⇒ ACCESS EXCLUSIVE ต่อตารางถือแค่คำสั่งเดียว |
+| deploy ไฟล์แรก | ตาราง 4 + index 18 ทั้งหมด `@4427551` · enum `@4427552` · FK `@4427553..56` | CREATE TABLE 4 + CREATE INDEX 14 = 18 คำสั่ง xid เดียวกัน = transaction เดียว · enum/FK อยู่ใน `DO … EXCEPTION` = subtransaction (xid ย่อยได้หลังตัวแม่เสมอ ตามที่ PG แจก) — ถ้าทีละคำสั่ง CREATE TABLE แต่ละตัวจะได้ xid ต่างกัน |
+| ไฟล์แรก + `SELECT 1/0;` ท้ายไฟล์ (สำเนา probe เท่านั้น) | `P3018 division by zero` · หลังล้ม `MAINFILE objects 0` · แถว migration `done false` | ทั้งไฟล์ rollback = atomic |
+| ไฟล์ links ขณะอีก session ถือ `ACCESS SHARE` บน MenuItem (ตัวที่ 4) | `P3018 … canceling statement due to lock timeout` (≈3 วินาทีหลังเริ่ม) · คอลัมน์ที่มี = ShopProduct/ShopOrderLine/PosSaleLine (3 ตัวแรก) | ทีละคำสั่งจริง: 3 ตัวแรก commit แล้ว · lock_timeout ระดับ session มีผล |
+| deploy ซ้ำ → ลบแถว `_prisma_migrations` ที่ล้ม → deploy | `P3009` → `FORGOT failed rows 1` → `All migrations have been successfully applied` · คอลัมน์ 5 ตัว (3 ตัวแรก xid เดิม · 2 ตัวหลัง xid ใหม่) | กู้ได้โดยไม่ต้อง rollback (IF NOT EXISTS ข้ามที่มีแล้ว) |
+| `prisma db execute` ไฟล์ SET + CREATE TABLE AS txid ×2 | `dbx1 4431922 3s · dbx2 4431922 3s` | db execute ส่งทั้งไฟล์ = transaction เดียว (สำคัญต่อ rollback บน prod) |
+logs: `.qc-shots/pos/p1.1a/r4b/probe-*.log`
+
+### E2 — บน QC4 (ลำดับจริง · ด่าน host `ep-frosty-lab`)
+1. rollback ของรูป round 3 ด้วยไฟล์ใหม่ (links → ตาราง) → `Script executed successfully.` ×2 · `LOCALONLY [_pos_v2_a, _pos_v2_a_links]` · enum [] · fingerprint ตารางเดิม = r3-after-rollback (= ก่อน P1.1a) ทุก byte
+2. แยกไฟล์ → `migrate deploy` → `Applying … 20261120000000_pos_v2_a · 20261120000001_pos_v2_a_links · All migrations have been successfully applied.`
+3. snapshot = `cols 133:fe6c18c906a31d3c61ef219c07a6e27f idx 37:d3adfa308d42a24677ba77c65294e84a con 106:b5c79e95e19bd7a8a05c120e20016e7e enum [PRODUCT,SERVICE,MENU,BUNDLE]` = round 3 ทุก hash
+4. รันซ้ำด้วยมือ `prisma db execute --file prisma/migrations/<ทั้งสองไฟล์>/migration.sql` → `Script executed successfully.` ×2 · snapshot ไม่เปลี่ยน
+5. `migrate status` → `149 migrations found … Database schema is up to date!`
+6. พิสูจน์ rollback ใหม่บนรูป round 4: rollback (links → ตาราง) → snapshot `cols 78 … enum []` · fingerprint = ก่อน P1.1a → `migrate deploy` → snapshot = round 3 · status up to date
+logs: `.qc-shots/pos/p1.1a/r4b/qc4-*.log` · ไม่ต้อง `prisma generate` (schema ไม่เปลี่ยนใน round 4)
+
+### rollback ฉบับสุดท้าย (round 4 · ใช้แทนฉบับก่อน) — ขั้น 1 links แล้วขั้น 2 ตาราง · ใช้ได้กับทั้งรูป round 3 และ round 4
+ลำดับบน prod: revert โค้ด + deploy ก่อน (client ที่ generate ใหม่อ้างคอลัมน์ใหม่) → ขั้น 1 → ขั้น 2
+```sql
+-- ขั้น 1/2 — rollback-1-pos_v2_a_links.sql · 🔴 บน prod ส่งทีละคำสั่ง (psql -f โหมด autocommit) — `prisma db execute` รวมเป็น tx เดียว (วัดแล้ว)
+SET lock_timeout = '3s';
+ALTER TABLE "MenuItem" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopProduct" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopOrderLine" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "PosSaleLine" DROP COLUMN IF EXISTS "productId";
+ALTER TABLE "RestaurantOrderItem" DROP COLUMN IF EXISTS "productId";
+DELETE FROM "_prisma_migrations" WHERE migration_name = '20261120000001_pos_v2_a_links';
+RESET lock_timeout;
+```
+```sql
+-- ขั้น 2/2 — rollback-2-pos_v2_a.sql (atomic · ไม่แตะตารางเดิม)
+SET lock_timeout = '3s';
+BEGIN;
+ALTER TABLE IF EXISTS "PosProductOptionGroup" DROP CONSTRAINT IF EXISTS "PosProductOptionGroup_productId_fkey";
+ALTER TABLE IF EXISTS "RecipeLine" DROP CONSTRAINT IF EXISTS "RecipeLine_productId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_categoryId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_parentId_fkey";
+DROP TABLE IF EXISTS "PosProductOptionGroup";
+DROP TABLE IF EXISTS "RecipeLine";
+DROP TABLE IF EXISTS "PosProduct";
+DROP TABLE IF EXISTS "PosCategory";
+DROP TYPE IF EXISTS "PosProductKind";
+DELETE FROM "_prisma_migrations" WHERE migration_name = '20261120000000_pos_v2_a';
+COMMIT;
+RESET lock_timeout;
+```
+
+### Runbook P6.1 (deploy ขั้น schema ของ P1.1a บน prod)
+1. **ช่วงเวลา**: นอกเวลาขาย (off-peak) ของร้านส่วนใหญ่ — ไฟล์ links ต้องได้ ACCESS EXCLUSIVE ทีละตารางบน ShopProduct · ShopOrderLine · PosSaleLine · MenuItem · RestaurantOrderItem (ตารางร้อนของการขาย/สั่งอาหาร)
+2. **pre-flight** (อ่านล้วน ก่อน deploy ทันที):
+   - `pg_stat_activity`: ไม่มี session ที่ `state = 'idle in transaction'` หรือ `xact_start` เก่ากว่า ~1 นาที ที่แตะ 5 ตาราง (join `pg_locks` บน `relation = '"<table>"'::regclass`)
+   - `pg_locks` บน 5 ตาราง: ไม่มีล็อกค้าง / คิวรอ (`granted = false`)
+   - ไม่มี backfill (`pos-backfill-catalog`) หรือ job ยาวที่เขียนตารางเหล่านี้กำลังรัน
+   - ไม่มี autovacuum แบบกัน wraparound บน 5 ตาราง (`pg_stat_activity.query LIKE 'autovacuum:%(to prevent wraparound)%'`) — ตัวนี้ไม่ยอมหลีกให้ ALTER
+3. **ผลที่คาดเมื่อรอล็อกเกิน 3 วินาที**: `P3018 … canceling statement due to lock timeout` (วัดแล้วบน QC4) · ไฟล์ links ทีละคำสั่ง ⇒ คอลัมน์ที่ทำไปแล้วคงอยู่ (ไม่อันตราย — nullable ไม่มีใครอ่าน) · ไฟล์แรก atomic ⇒ ไม่เหลืออะไร
+   **นโยบายลองใหม่**: หาเหตุจาก pre-flight ข้อ 2 → รอให้ธุรกรรมยาวจบ (ห้าม kill ธุรกรรมขายเอง) → ลองใหม่ได้สูงสุด 3 ครั้ง ห่าง ≥ 1 นาที → ยังไม่ได้ = เลื่อนไปช่วงเงียบถัดไป (ห้ามเพิ่ม lock_timeout เพื่อดันผ่าน — คิวที่รอหลัง ALTER จะหยุดการขายทั้งหมด)
+4. **กู้หลังไฟล์ล้ม (ทั้งไฟล์แรกแบบ atomic และไฟล์ links)**: `prisma migrate resolve --rolled-back <ชื่อ migration>` (หรือลบแถว `_prisma_migrations` ที่ล้ม — วิธีที่ซ้อมบน QC4) แล้ว `migrate deploy` ใหม่ (IF NOT EXISTS ข้ามของที่มีแล้ว) — **ไม่ใช่** rollback SQL ฉบับเต็ม: `DROP COLUMN IF EXISTS` ถือ ACCESS EXCLUSIVE แม้คอลัมน์ไม่มี และ rollback **ทำลายข้อมูล** เมื่อ P1.1b เขียนคอลัมน์เชื่อมแล้ว
+5. **ตรวจซ้ำกับ prisma รุ่นที่ใช้ deploy prod จริง**: พฤติกรรม "ไฟล์ไม่มี DO = ทีละคำสั่ง · มี DO/dollar-quote = ทั้งไฟล์ tx เดียว" วัดบน prisma **7.8.0** เท่านั้น — ก่อน deploy prod ให้รัน probe เดิม (schema แยก · อ่าน xmin) กับรุ่นที่ pin ใน lockfile ตอนนั้น ถ้าต่าง = หยุดและแจ้งผู้คุมงาน
+6. rollback (ถ้าจำเป็นจริง ก่อน P1.1b เขียนลิงก์): revert โค้ด + deploy → ขั้น 1 ทีละคำสั่ง → ขั้น 2 (ข้างบน)
+
+### Backfill รอบ 4 (ร้าน QC ของ POS · `--tenant=posqc-coffee-tenant --tenant=posqc-resto-tenant`)
+| ขั้น | exit | created | updated |
+|---|---|---|---|
+| dry-run | 0 | posProduct 13 · posCategory 3 · og 0 · recipe 0 · invItem 0 | menuItem 4 |
+| จริง | 0 | 13 · 3 | menuItem 4 |
+| จริงซ้ำ | 0 | 0 ทั้งหมด (มีอยู่แล้ว invItem 9 · menuItem 4) | 0 |
+| ถอย (unbackfill `menuLinks 4 … product 13 category 3`) → 2 โปรเซสซ้อน | 0/0 | A 0 (รอล็อกร้าน แล้ววางแผนใหม่) · B 13/3 | B menuItem 4 |
+counts ร้าน QC (ทุกขั้น): `{"soldAtCostToday":0,"zeroPriceProduct":2,"invalidLegacyPrice":0,"apIgnoredButTillPriced":0,"priceNotSetOther":0,"servicePriceDiffersFromAccountProduct":0,"catalogPriceDiffersFromTill":0,"trackStockAutoOn":3, อื่น 0}` · INVARIANTS `{"products":13,"categories":3,"dupInv":0,"invWithout":0,"menuUnlinked":0,"menuShared":0,"orphanMenuProducts":0,"dupCat":0}`
+ทั้ง QC4 (dry-run ทุกร้าน · อ่านล้วน): `ร้าน 19 · InvItem 17 · MenuItem 4 · ShopProduct 0` · `soldAtCostToday 6 · zeroPriceProduct 2 · trackStockAutoOn 11 · catalogPriceDiffersFromTill 0 · อื่น 0` · จะสร้าง 8 (ร้านอื่น — ไม่ได้รันจริง)
+logs `.qc-shots/pos/p1.1a/r4b/a2-*.log`
+
+### A3 (round 4)
+fingerprint ตารางเดิม (count + md5 รวม updatedAt · ร้าน QC POS / ร้านอื่น): r4-before = r3-final · หลัง rollback ทั้งสองรอบ = ก่อน P1.1a · หลัง backfill = r3-final · หลัง 17 ชุด (r4-final) = r3-final ทุก byte (16 รายการ)
+
+### F15.5 (E4) — หลักฐานลบ (negative proof)
+- ในต้นไม้จริง (ฝังแล้วลบทันที · `git status` สะอาดหลังลบ): `scripts/qc-__f155r4-probe.mts` (ทางที่อนุญาต: `u || C.<ตัวบ่งชี้>` · `f ? C.<ตัวบ่งชี้> : u` · `f ? u : C.<ตัวบ่งชี้>`) + `src/lib/modules/pos/__f155r4_alias_probe.ts` (`const S = <ตัวบ่งชี้>`) → `pnpm fitness` (ไม่มี env) exit 1 · `{"total":39,"passed":38}` · F15.5 ❌ ระบุ `qc-__f155r4-probe.mts:3 || …` · `:4 ? … : …` · `:5 ? … : …` · `__f155r4_alias_probe.ts:3 alias (ตัวแปร)` (+ "นอกไฟล์ที่อนุญาต") — log `.qc-shots/pos/p1.1a/r4b/f155-negative.log`
+- root ชั่วคราว (scratchpad · `scanSystemMarker(<root>)`): `scripts/pos-backfill-catalog.mts` (ทางที่อนุญาต · ไม่ใช่ qc) มี alias ทุกรูป → จับครบ 7: `import { M as X }` · `const S = M` · `const S2 = C.M` · `const S3 = C["M"]` · `S4 = M` · `const { M: S5 } = C` · `const S6 = () => M` · ส่วน `{ actorUserId: M }` (ส่งตัวบ่งชี้ด้วยชื่อเดิม — ทางที่ถูก) ไม่ถูกจับ · `scripts/qc-planted.mts`: `||` · `?:` ×2 · `??` ถูกจับ · `const marker = C.M` ในไฟล์ qc ไม่ถูกจับ (ข้อยกเว้น) — log `r4b/f155-tmproot.log`
+- หลังลบ: ไม่มี env exit 0 `{"total":39,"passed":39,"findings":[]}` · มี env (`bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness`) exit 0 `{"total":39,"passed":39,"findings":[]}`
+
+### ORACLE-EDIT requests (round 4 · builder)
+ไม่มีข้อที่แดง (99/99) — มีเงื่อนไขข้อเดียว: ถ้าผู้คุมงาน **ไม่** รับข้อยกเว้น alias สำหรับ `scripts/qc-*.mts` (ตัดสินข้อ 1) ⇒ ต้องแก้ oracle `scripts/qc-pos-p1.1.mts:1348` `const marker = C.CATALOG_SYSTEM_ACTOR;` (และ `:468` ถ้านับฟังก์ชันลูกศร) เป็นการอ้าง `C.CATALOG_SYSTEM_ACTOR` ตรงทุกที่ — และ `scripts/qc-pos-p1.3.mts:695` ของใบ P1.3 ด้วย
+
+### ข้อที่ผู้คุมงานต้องตัดสิน (round 4)
+1. **E4 alias ยกเว้นข้อสอบ `scripts/qc-*.mts`** — brief บอก "ทุกไฟล์ อนุญาตหรือไม่" แต่ oracle ที่ห้ามแก้ (`qc-pos-p1.1.mts:1348`) และ `qc-pos-p1.3.mts:695` ถือตัวบ่งชี้ไว้ในตัวแปรเพื่อทดสอบ (S3.40/S3.45/S3.33) ⇒ ทำตามตัวอักษร = F15.5 แดงถาวร · ทางที่ปลอดภัยที่สุด: `??`/`||`/`?:` ใช้ทุกไฟล์รวม qc-* · alias ใช้ทุกไฟล์ยกเว้น catalog.ts (บ้าน) และ qc-* (ข้อสอบ ไม่ถูก import โดยโค้ดที่รับคำขอ — F15.5 ข้ออื่นยังคุม)
+2. `invalidLegacyPrice` เปลี่ยนความหมายเป็นสมาชิก partition ราคา null (ตามมติ) — แถวที่ได้ราคาจากขั้นอื่นแม้มีราคาเดิมผิดรูปบางช่อง (เช่น salePrice −100 แต่ posPrice 3000 เปิดใช้) **ไม่ถูกนับแล้ว** (round 3 นับ) — แถวแบบนี้ราคาแคตตาล็อก ≠ ลิ้นชักจะโผล่ใน `catalogPriceDiffersFromTill` แทน
+3. `tillPriceToday` = null เมื่อ InvItem เก็บถาวร (ลิ้นชักไม่แสดง — `listItems/listServices` กรอง archivedAt) ⇒ สินค้าเก็บถาวรต้นทุน > 0 ไม่มีราคา = `priceNotSetOther` (round 3 = soldAtCostToday) และไม่เข้าตัวนับ differs · เพดาน 200 รายการของหน้าขายไม่จำลอง
+4. ตัวนับทุกตัวใช้ "ราคาที่ backfill คิดจากของเดิม" ทั้งแถวใหม่และแถวที่มีแล้ว (เหมือน round 3) — หลัง P1.1b มี setPrice/dual-write ราคาที่เก็บจริงอาจต่าง ⇒ ตัวนับ differs ก่อน cut-over ควรเทียบ `PosProduct.basePriceSatang` ที่เก็บจริงของแถวที่มีแล้ว (เสนอเป็นงาน P1.1b/P6.1 — ไม่ทำในใบนี้เพราะเปลี่ยนความหมายของตัวนับเดิม)
+5. `checkCatalogWrite` (export) ตรวจเพิ่ม: where = POS เปิดใช้งานของร้าน (ไม่ใช่ = NOT_FOUND) · รูปของ row/action ผิด = NOT_FOUND/PERMISSION_DENIED (ไม่ throw) · ทางภายใน `requireRowWrite` **ไม่** ตรวจสาขาซ้ำ (ผู้เรียกภายในตรวจด้วย `assertUnit` แล้ว) ⇒ แถวของสาขาที่ถูกเก็บถาวรภายหลังยังแก้ราคา/เก็บถาวรได้ตามเดิม (ถ้าใช้ตัว export ภายในด้วยจะกลายเป็น NOT_FOUND — เปลี่ยนพฤติกรรม)
+6. rollback ขั้น 1 บน prod ต้องส่งทีละคำสั่ง — `prisma db execute` รวมทั้งไฟล์เป็น transaction เดียว (วัดแล้ว: txid เดียวกัน) · ไฟล์ rollback อยู่ใน `.qc-shots` (ไม่ commit — เนื้อหาเต็มอยู่ใน notes นี้ เหมือน round 3)
+7. lock helper ของ probe จบด้วย `UnsupportedNativeDataType` (pg_sleep คืน void) หลังถือล็อกครบ — ไม่กระทบผล (deploy ล้มด้วย lock timeout ระหว่างที่ถือ · process จบ = tx rollback = ปล่อยล็อก)
+
+### Acceptance (round 4)
+- oracle `qc-pos-p1.1`: exit 0 · `===== qc-pos-p1.1 ===== ผ่าน 99/99` · `JSON_SUMMARY {"suite":"qc-pos-p1.1","total":99,"passed":99,"failed":[],…,"catalogue":127,"skippedGroups":{"S2":"P1.1b ยังไม่เริ่ม … ข้าม 28 ข้อ"}}` · ROWCOUNTS เท่าเดิม (log `r4b/oracle-1.log`)
+- regression 17 ชุด (logs `r4b/after/`): qc-pos-register 42/42 · qc-pos-account 16/16 · qc-pos-products 24/24 · qc-pos-coupon 8/8 · qc-pos-closeday 22/22 · qc-pos-inventory 25/25 · qc-pos-p0.2 55/55 SKIP 1 (P0.2-S6.7) · qc-restaurant-money 6/6 · qc-restaurant-void 11/11 · qc-shop-refund 12/12 · qc-account-cpa 107/107 · qc-restaurant 🎉 · qc-restaurant-pay 19/19 · qc-shop 15/15 · qc-inventory 12/12 · qc-inventory-item 11/11 · qc-inventory-account 23/23 — ทุกตัว exit 0 · **17 SAME** กับ round 3 (เทียบบรรทัดสรุป)
+- fitness: มี env / ไม่มี env exit 0 `{"total":39,"passed":39,"findings":[]}` · F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" เท่าเดิม · F15.5 ✅ + หลักฐานลบ
+- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 0 · 0 error (รอบเดียว)
+- หมายเหตุ: ระหว่างรัน มีเลน HF ของ POS (`shark-hf5`) ใช้ QC4 ผ่าน gate lock เดียวกัน — ไม่มีชุดไหนซ้อนกัน · fingerprint ร้านอื่นไม่เปลี่ยน

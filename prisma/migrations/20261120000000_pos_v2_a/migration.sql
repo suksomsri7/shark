@@ -1,15 +1,16 @@
--- POS P1.1a — แคตตาล็อกเดียว (PosProduct · PosCategory · PosProductOptionGroup · RecipeLine) + คอลัมน์เชื่อม nullable 5 ตัว · round 3
--- 🔴 additive ล้วน: ไม่มี DROP/RENAME/SET NOT NULL · FK เฉพาะระหว่างตารางใหม่ · ไม่แตะ enum InvItemKind (R1)
+-- POS P1.1a — แคตตาล็อกเดียว (PosProduct · PosCategory · PosProductOptionGroup · RecipeLine) · round 4 (E2: แยกไฟล์)
+-- 🔴 additive ล้วน: ไม่มี DROP/RENAME/SET NOT NULL · FK เฉพาะระหว่างตารางใหม่ · ไม่แตะ enum InvItemKind (R1) · ไม่แตะตารางเดิมเลย
+-- E2: คอลัมน์เชื่อม nullable 5 ตัวบนตารางเดิม (ShopProduct · ShopOrderLine · PosSaleLine · MenuItem · RestaurantOrderItem) ย้ายไป
+--     migration ถัดไป `20261120000001_pos_v2_a_links` (ไม่มี DO ⇒ prisma รันทีละคำสั่ง ⇒ ล็อก ACCESS EXCLUSIVE ของตารางเดิมยาวแค่คำสั่งเดียว)
 -- D4: ทุกคำสั่งรันซ้ำได้ (IF NOT EXISTS · DO $$ … EXCEPTION WHEN duplicate_object …) ⇒ รันมือซ้ำหลังล้มกลางทาง = ไม่ error ไม่เปลี่ยนอะไร
---     prisma 7.8 กับไฟล์ที่มี DO $$ … $$: ส่งทั้งไฟล์เป็นสคริปต์เดียว = transaction เดียว (วัดบน QC4: txid เดียวกันทุกคำสั่ง ·
---     ล้มกลางไฟล์ = ไม่เหลืออะไร · P3018 แล้วรอบถัดไป P3009) — ไฟล์ที่ไม่มี DO ถูกแยกทีละคำสั่งคนละ transaction (วัดแล้วเช่นกัน)
---     lock_timeout: SET ระดับ session (มีผลทั้งสองแบบ) ต้นไฟล์ · RESET ท้ายไฟล์
---     ลำดับ: enum → ตารางใหม่ → index/partial unique/FK ของตารางใหม่ (ว่างเปล่า ฟรี) → ADD COLUMN ตารางเดิม 5 ตัวท้ายสุด
+--     prisma 7.8 กับไฟล์ที่มี DO $$ … $$: ส่งทั้งไฟล์เป็นสคริปต์เดียว = transaction เดียว (วัดบน QC4 round 3 + round 4: xid เดียวกันทุกคำสั่ง ·
+--     ล้มกลางไฟล์ = ไม่เหลืออะไร · P3018 แล้วรอบถัดไป P3009) — ไฟล์นี้ atomic ทั้งไฟล์
+--     lock_timeout: SET ระดับ session ต้นไฟล์ · RESET ท้ายไฟล์ · ลำดับ: enum → ตารางใหม่ → index/partial unique/FK ของตารางใหม่ (ว่างเปล่า)
 -- M1: ไม่มี index บนคอลัมน์เชื่อมของตารางเดิม — เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate
 -- M3: คอลัมน์ trackStock ของ PosProduct เป็นค่าจริง/เท็จที่ว่างได้ ไม่มีค่าตั้งต้น (ว่าง = AUTO · C2) · M4: index (systemId, archivedAt, name, id) · M5: partial unique หมวดทุกสาขา
 -- unique (systemId, invItemId): Postgres ถือ NULL ไม่เท่ากัน ⇒ แถว invItemId null (เมนู/เว็บล้วน) หลายแถวได้ = ตรงเจตนา R1
--- ชื่อเวลา 20261120… = หลัง migration ล่าสุดบน origin ทุกสาขา (สูงสุด 20261104 wip/crm-c54c-r8) + เผื่อ · ผู้คุมงานเปลี่ยนชื่อได้ตอน merge
--- rollback ฉบับเต็ม + วิธีกู้ P3009 (ซ้อมจริงบน QC4): ledger/wo-notes/pos-P1.1a.md §Round 3
+-- ชื่อเวลา 20261120… = หลัง migration ล่าสุดบน origin ทุกสาขา (สูงสุด 20261104 wip/crm-c54c-r8) + เผื่อ · ผู้คุมงานเปลี่ยนชื่อได้ตอน merge (คู่ _links ต้องตามหลังเสมอ)
+-- rollback ฉบับเต็ม (links ก่อน แล้วตาราง) + วิธีกู้ P3009 + runbook P6.1 (ซ้อมจริงบน QC4): ledger/wo-notes/pos-P1.1a.md §Round 4
 
 SET lock_timeout = '3s';
 
@@ -143,20 +144,5 @@ DO $$ BEGIN ALTER TABLE "PosProductOptionGroup" ADD CONSTRAINT "PosProductOption
 
 -- AddForeignKey
 DO $$ BEGIN ALTER TABLE "RecipeLine" ADD CONSTRAINT "RecipeLine_productId_fkey" FOREIGN KEY ("productId") REFERENCES "PosProduct"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
--- AlterTable (M2: ตารางเดิม · metadata-only — nullable ไม่มี default · ไม่สร้าง index ตามหลัง)
-ALTER TABLE "ShopProduct" ADD COLUMN IF NOT EXISTS "posProductId" TEXT;
-
--- AlterTable (M2: ตารางเดิม · metadata-only — nullable ไม่มี default · ไม่สร้าง index ตามหลัง)
-ALTER TABLE "ShopOrderLine" ADD COLUMN IF NOT EXISTS "posProductId" TEXT;
-
--- AlterTable (M2: ตารางเดิม · metadata-only — nullable ไม่มี default · ไม่สร้าง index ตามหลัง)
-ALTER TABLE "PosSaleLine" ADD COLUMN IF NOT EXISTS "productId" TEXT;
-
--- AlterTable (M2: ตารางเดิม · metadata-only — nullable ไม่มี default · ไม่สร้าง index ตามหลัง)
-ALTER TABLE "MenuItem" ADD COLUMN IF NOT EXISTS "posProductId" TEXT;
-
--- AlterTable (M2: ตารางเดิม · metadata-only — nullable ไม่มี default · ไม่สร้าง index ตามหลัง)
-ALTER TABLE "RestaurantOrderItem" ADD COLUMN IF NOT EXISTS "productId" TEXT;
 
 RESET lock_timeout;

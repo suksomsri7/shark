@@ -123,11 +123,16 @@ console.log(`ตัวนับ (เจ้าของควรดูก่อ�
 const SAMPLE_LABEL: Record<string, string> = {
   soldAtCostToday: "ลิ้นชักวันนี้คิดราคาทุน → แคตตาล็อกใหม่ \"ยังไม่ตั้งราคา\"",
   apIgnoredButTillPriced: "ลิ้นชักวันนี้คิดราคาจากสินค้าบัญชีที่เก็บถาวร/สมุดอื่น → \"ยังไม่ตั้งราคา\"",
+  invalidLegacyPrice: "ราคาเดิมผิดรูป (ติดลบ ฯลฯ) → \"ยังไม่ตั้งราคา\"",
   priceNotSetOther: "ไม่มีราคาขายจากแหล่งใดเลย → \"ยังไม่ตั้งราคา\"",
   servicePriceDiffersFromAccountProduct: "บริการ: ราคาในคลัง ≠ ราคาขายในบัญชี (ใช้ราคาบัญชี)",
+  catalogPriceDiffersFromTill: "ราคาแคตตาล็อก ≠ ราคาที่ลิ้นชักคิดวันนี้ (แคตตาล็อก/ลิ้นชัก สตางค์)",
 };
+// R4/E3: ตัวนับราคา null 4 ตัวแบ่งแถวราคา null ไม่ซ้อนกัน (soldAtCostToday → apIgnoredButTillPriced → invalidLegacyPrice → priceNotSetOther)
+const sampleText = (r: { name: string; catalogPriceSatang?: number; tillPriceSatang?: number }) =>
+  typeof r.catalogPriceSatang === "number" ? `${r.name} (${r.catalogPriceSatang}/${r.tillPriceSatang})` : r.name;
 for (const [k, byTenant] of Object.entries(s.samples))
-  for (const [t, rows] of Object.entries(byTenant)) if (rows.length) console.log(`  ร้าน ${t} ${SAMPLE_LABEL[k] ?? k} (ตัวอย่าง ≤20): ${rows.map((r) => r.name).join(" · ")}`);
+  for (const [t, rows] of Object.entries(byTenant)) if (rows.length) console.log(`  ร้าน ${t} ${SAMPLE_LABEL[k] ?? k} (ตัวอย่าง ≤20): ${rows.map(sampleText).join(" · ")}`);
 console.log(`${verb}สร้าง ${JSON.stringify(s.created)} · ${verb}ผูกคอลัมน์เชื่อม ${JSON.stringify(s.updated)} · มีอยู่แล้ว ${JSON.stringify(s.alreadyDone)} · ${Date.now() - t0} ms`);
 for (const f of s.failedTenants) console.error(`🔴 ร้าน ${f.tenantId} ล้ม (ไม่มีอะไรค้างครึ่งทาง): ${f.error}`);
 if (isProd && dryRun && !s.failedTenants.length) {

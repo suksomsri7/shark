@@ -169,23 +169,72 @@ const isAllBranchActor = (m: MembershipCtx): boolean => canGrantUnitAccess(m, ["
 export type CatalogRowScope = { unitId: string | null; invItemId: string | null };
 export type CatalogWriteVerdict = "OK" | "NOT_FOUND" | "PERMISSION_DENIED";
 
+const ROLES: ReadonlySet<string> = new Set(["OWNER", "MANAGER", "STAFF"]);
+/** E1: ค่านี้เป็น MembershipCtx จริงไหม (role ถูกชนิด · unitAccess เป็นรายการสตริง · permissions เป็นออบเจกต์) — null/undefined/ตัวบ่งชี้ระบบ/อื่น ๆ = ไม่ใช่ */
+function isMembershipCtx(v: unknown): v is MembershipCtx {
+  return (
+    isRecord(v) &&
+    typeof v.role === "string" &&
+    ROLES.has(v.role) &&
+    Array.isArray(v.unitAccess) &&
+    v.unitAccess.every((x) => typeof x === "string") &&
+    isRecord(v.permissions)
+  );
+}
+
 /**
- * D1 — ตัวตัดสินเดียว "ผู้กระทำนี้เขียนแถวนี้ได้ไหม" (หน้า POS ใช้ร่วมได้ · คู่กับ `posCanSetTenantPrice` ของ hotfix/pos-page-authz — ต้องตรงกันตอน merge)
- *   • แถวของสาขา (unitId มีค่า): เข้าสาขาไม่ได้ = NOT_FOUND · ไม่มีคีย์ที่สาขานั้น = PERMISSION_DENIED
+ * D1 + E1 — ตัวตัดสินเดียว "สมาชิกคนนี้เขียนแถวนี้ได้ไหม" (export ผ่าน facade `catalog.checkCatalogWrite` · หน้า POS ใช้ร่วมได้ ·
+ * คู่กับ `posCanSetTenantPrice` ของ hotfix/pos-page-authz — ต้องตรงกันตอน merge) — คืนค่าเสมอ ไม่ throw สำหรับกรณีปฏิเสธ
+ *   • actor ต้องเป็น MembershipCtx จริง — null / undefined / ตัวบ่งชี้ระบบ / ค่าอื่น = "PERMISSION_DENIED" (กติกาบ้าน `evaluate(null)` = false ·
+ *     ทางข้ามสิทธิ์ของระบบมีเฉพาะทางภายใน `rowWriteVerdict` ที่ `actorOf` ส่ง null มาเมื่อเห็นตัวบ่งชี้)
+ *   • where ต้องเป็นระบบ POS ที่เปิดใช้งานของร้านนั้น · row.unitId (ถ้ามี) ต้องเป็นสาขาไม่เก็บถาวรที่ผูก where.systemId — ไม่ใช่ = "NOT_FOUND"
+ *     (ผู้เรียกไม่ต้องจำไปตรวจเอง)
+ *   • แถวของสาขา: เข้าสาขาไม่ได้ = NOT_FOUND · ไม่มีคีย์ที่สาขานั้น = PERMISSION_DENIED
  *   • แถวทุกสาขา (unitId null): ขอบเขต = สาขา (ไม่เก็บถาวร) ของ POS นี้ที่ขายแถวนี้ได้จริง — แถวผูก InvItem นับเฉพาะสาขาที่คลังของสาขา
  *     คือคลังของ InvItem (C3) · ต้องมีคีย์ (`evaluate(action, unitId)`) ที่ **ทุก** สาขาในขอบเขต · ขอบเขตว่าง = OWNER หรือ unitAccess `*` เท่านั้น
- *   • ผู้กระทำระดับระบบ (null) = OK เสมอ
  * ผลที่ต้องเป็น: ผู้จัดการร้านสาขาเดียว (unitAccess=[สาขานั้น]) เขียนสินค้าทุกสาขาของร้านตัวเองได้ · ผู้จัดการที่ระบุครบทุกสาขาได้ ·
  *   ผู้จัดการสาขา A ในร้านสองสาขาเขียนแถวทุกสาขาที่ขายที่ B ไม่ได้ แต่เขียนแถวทุกสาขาที่ (ตาม C3) ขายได้แค่ที่ A ได้
  */
 export async function checkCatalogWrite(
-  actor: MembershipCtx | null,
+  actor: MembershipCtx,
   where: { tenantId: string; systemId: string },
   row: CatalogRowScope,
   action: string,
   client: CatalogClient = prisma,
 ): Promise<CatalogWriteVerdict> {
-  if (!actor) return "OK";
+  if (!isMembershipCtx(actor)) return "PERMISSION_DENIED";
+  if (!isRecord(where) || typeof where.tenantId !== "string" || !where.tenantId || typeof where.systemId !== "string" || !where.systemId) return "NOT_FOUND";
+  if (!isRecord(row) || (row.unitId !== null && (typeof row.unitId !== "string" || !row.unitId))) return "NOT_FOUND";
+  if (row.invItemId !== null && typeof row.invItemId !== "string") return "NOT_FOUND";
+  if (typeof action !== "string" || !action) return "PERMISSION_DENIED";
+  // AUDIT-CLASS X2: ระบบ POS ของร้านนี้ที่เปิดใช้งาน (ห้ามเชื่อ systemId ของผู้เรียก)
+  const sys = await client.appSystem.findFirst({ where: { id: where.systemId, tenantId: where.tenantId, type: "POS", active: true }, select: { id: true } });
+  if (!sys) return "NOT_FOUND";
+  if (row.unitId !== null) {
+    // AUDIT-CLASS X2 + E1: สาขาต้องผูก POS นี้ (unique tenant+unit+type ⇒ สาขาร้านอื่น/POS อื่น/ไม่ผูก POS/ไม่มีจริง = ไม่พบ) และไม่เก็บถาวร
+    const link = await client.appSystemUnit.findUnique({
+      where: { tenantId_unitId_type: { tenantId: where.tenantId, unitId: row.unitId, type: "POS" } },
+      select: { systemId: true },
+    });
+    if (!link || link.systemId !== where.systemId) return "NOT_FOUND";
+    const unit = await client.businessUnit.findFirst({ where: { id: row.unitId, tenantId: where.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } });
+    if (!unit) return "NOT_FOUND";
+  }
+  return rowWriteVerdict(actor, where, { unitId: row.unitId, invItemId: row.invItemId }, action, client);
+}
+
+/**
+ * ทางภายใน (ไม่ export): ตัวตัดสินจริงของ D1 — `actor === null` = ผู้เรียกระดับระบบ (มาจาก `actorOf` เมื่อเห็น CATALOG_SYSTEM_ACTOR เท่านั้น) = OK
+ * ผู้เรียกภายในตรวจสาขาด้วย `assertUnit` มาก่อนแล้ว (สาขาของแถวเดิมที่ถูกเก็บถาวรไปภายหลังยังแก้/เก็บถาวรได้ตามเดิม)
+ */
+async function rowWriteVerdict(
+  actor: MembershipCtx | null,
+  where: { tenantId: string; systemId: string },
+  row: CatalogRowScope,
+  action: string,
+  client: CatalogClient,
+): Promise<CatalogWriteVerdict> {
+  if (actor === null) return "OK";
   if (row.unitId !== null) {
     if (!canAccessUnit(actor, row.unitId)) return "NOT_FOUND";
     return evaluate(actor, { module: "pos", action, unitId: row.unitId }) ? "OK" : "PERMISSION_DENIED";
@@ -205,9 +254,9 @@ export async function checkCatalogWrite(
   return scope.every((u) => evaluate(actor, { module: "pos", action, unitId: u })) ? "OK" : "PERMISSION_DENIED";
 }
 
-/** AUDIT-CLASS X3 + D1: บังคับผลของ checkCatalogWrite (โยน CatalogError) */
+/** AUDIT-CLASS X3 + D1: บังคับผลของ rowWriteVerdict (โยน CatalogError) — ทางภายในเท่านั้น (actor null = ระบบ จาก actorOf) */
 async function requireRowWrite(ctx: CatalogCtx, actor: MembershipCtx | null, row: CatalogRowScope, action: string, db: CatalogClient): Promise<void> {
-  const v = await checkCatalogWrite(actor, ctx, row, action, db);
+  const v = await rowWriteVerdict(actor, ctx, row, action, db);
   if (v === "NOT_FOUND") throw notFound();
   if (v === "PERMISSION_DENIED") throw denied();
 }
@@ -941,6 +990,7 @@ export type BackfillCounts = {
   zeroPriceProduct: number;
   zeroPriceMenu: number;
   zeroPriceWeb: number;
+  /** แถวราคา null ที่ราคาเดิมผิดรูป (ติดลบ ฯลฯ) — R4/E3: เป็นตัวนับใน partition ราคา null (แถวที่ได้ราคาจากขั้นอื่นไม่นับ) */
   invalidLegacyPrice: number;
   posPriceDiffersFromSalePrice: number;
   shopPriceDiffersFromCatalog: number;
@@ -952,12 +1002,16 @@ export type BackfillCounts = {
   trackStockAutoOn: number;
   /** D3: AccountProduct ที่ลิ้นชักใช้คิด salePrice > 0 วันนี้ แต่ C7 ไม่นับ (เก็บถาวร/สมุดอื่น) ⇒ แคตตาล็อก "ยังไม่ตั้งราคา" */
   apIgnoredButTillPriced: number;
-  /** D3: แถวอื่นทั้งหมดที่จบที่ราคา null และไม่ถูกนับในตัวนับอื่น (ขายราคาทุน · AP ถูกข้าม · ราคาเดิมผิดรูป) */
+  /** D3: แถวราคา null ที่ไม่เข้าตัวนับราคา null ตัวอื่น (ไม่มีราคาจากแหล่งใด · ลิ้นชักวันนี้ก็คิด 0 หรือไม่ได้ขาย) */
   priceNotSetOther: number;
   /** D3: บริการที่ราคาในคลัง (InvItem.priceSatang) ≠ salePrice ของ AccountProduct (C7 ใช้ salePrice) */
   servicePriceDiffersFromAccountProduct: number;
+  /** E3: แถวจาก InvItem ที่ราคาแคตตาล็อกไม่ว่าง และ ≠ ราคาที่ลิ้นชักคิดวันนี้ (`tillPriceToday`) — ตัวที่เจ้าของอ่านก่อนสลับลิ้นชักมาใช้แคตตาล็อก */
+  catalogPriceDiffersFromTill: number;
 };
 type SampleRow = { id: string; name: string };
+/** E3: ตัวอย่างของ catalogPriceDiffersFromTill — มีทั้งสองราคา (สตางค์) */
+type PriceDiffSample = SampleRow & { catalogPriceSatang: number; tillPriceSatang: number };
 export type BackfillSummary = {
   dryRun: boolean;
   tenants: number;
@@ -968,12 +1022,18 @@ export type BackfillSummary = {
   skipped: { invItemNoPos: number; invItemAmbiguousPos: number; menuItemNoPos: number; shopProductNoPos: number; recipeInvItemMissing: number };
   skippedAmbiguousPos: number;
   counts: BackfillCounts;
-  /** ตัวอย่างต่อร้าน (≤20) — เจ้าของตั้งราคาจริงก่อนเปิดใช้ · priceNotSetOther: แถวที่มีร่องรอยราคาเดิม (AP/ราคาบริการ) ขึ้นก่อน */
+  /**
+   * ตัวอย่างต่อร้าน (≤20) — เจ้าของตั้งราคาจริงก่อนเปิดใช้ · priceNotSetOther: แถวที่มีร่องรอยราคาเดิม (AP/ราคาบริการ) ขึ้นก่อน
+   * R4/E3: ตัวนับราคา null 4 ตัว (soldAtCostToday → apIgnoredButTillPriced → invalidLegacyPrice → priceNotSetOther) แบ่งแถวราคา null
+   * แบบไม่ซ้อนกัน (ตัวแรกที่จริงชนะ) · catalogPriceDiffersFromTill มี catalogPriceSatang + tillPriceSatang
+   */
   samples: {
     soldAtCostToday: Record<string, SampleRow[]>;
     apIgnoredButTillPriced: Record<string, SampleRow[]>;
+    invalidLegacyPrice: Record<string, SampleRow[]>;
     priceNotSetOther: Record<string, SampleRow[]>;
     servicePriceDiffersFromAccountProduct: Record<string, SampleRow[]>;
+    catalogPriceDiffersFromTill: Record<string, PriceDiffSample[]>;
   };
   created: { posProduct: number; posCategory: number; posProductOptionGroup: number; recipeLine: number; invItem: number };
   updated: { posProduct: number; menuItem: number; shopProduct: number };
@@ -994,7 +1054,7 @@ function emptyCounts(): BackfillCounts {
   return {
     soldAtCostToday: 0, zeroPriceProduct: 0, zeroPriceMenu: 0, zeroPriceWeb: 0, invalidLegacyPrice: 0, posPriceDiffersFromSalePrice: 0,
     shopPriceDiffersFromCatalog: 0, shopInactiveLinked: 0, shopOwnRowInvItemOutsideFirstPos: 0, shopDanglingInvItem: 0, shopBranchNotInFirstPos: 0, trackStockAutoOn: 0,
-    apIgnoredButTillPriced: 0, priceNotSetOther: 0, servicePriceDiffersFromAccountProduct: 0,
+    apIgnoredButTillPriced: 0, priceNotSetOther: 0, servicePriceDiffersFromAccountProduct: 0, catalogPriceDiffersFromTill: 0,
   };
 }
 function emptySummary(dryRun: boolean): BackfillSummary {
@@ -1007,12 +1067,33 @@ function emptySummary(dryRun: boolean): BackfillSummary {
     skipped: { invItemNoPos: 0, invItemAmbiguousPos: 0, menuItemNoPos: 0, shopProductNoPos: 0, recipeInvItemMissing: 0 },
     skippedAmbiguousPos: 0,
     counts: emptyCounts(),
-    samples: { soldAtCostToday: {}, apIgnoredButTillPriced: {}, priceNotSetOther: {}, servicePriceDiffersFromAccountProduct: {} },
+    samples: { soldAtCostToday: {}, apIgnoredButTillPriced: {}, invalidLegacyPrice: {}, priceNotSetOther: {}, servicePriceDiffersFromAccountProduct: {}, catalogPriceDiffersFromTill: {} },
     created: { posProduct: 0, posCategory: 0, posProductOptionGroup: 0, recipeLine: 0, invItem: 0 },
     updated: { posProduct: 0, menuItem: 0, shopProduct: 0 },
     alreadyDone: { invItem: 0, menuItem: 0, shopProduct: 0 },
     failedTenants: [],
   };
+}
+
+/**
+ * E3 — ราคาที่ลิ้นชัก (หน้าขายเดิม) คิดวันนี้ สำหรับ InvItem หนึ่งตัว · null = ลิ้นชักไม่ได้ขายมัน (InvItem เก็บถาวร — `listItems`/`listServices`
+ * กรอง `archivedAt: null` · inventory/service.ts:793-807) · ทางเดียวกับ `register.ts`:
+ *   • PRODUCT — `posCatalog` (register.ts:137-151): AP หาด้วย `InvItem.accountProductId` ในร้านเดียวกัน (:139-146 — ไม่กรองเก็บถาวร/สมุดบัญชี)
+ *     แล้ว `sale && sale > 0 ? sale : Math.max(0, i.costSatang)` (:149) — ไม่อ่าน posPrice เลย
+ *   • SERVICE — `posServices` (register.ts:163-176): `priceSatang: r.priceSatang` (:174) = InvItem.priceSatang ล้วน ไม่อ่าน AccountProduct
+ *   ไม่จำลองเพดาน 200 รายการของหน้าขาย (`listItems(ctx, take = 200)`) — เป็นข้อจำกัดของหน้าจอ ไม่ใช่ราคา
+ * `atCost` = ลิ้นชักคิดราคาทุนจริงวันนี้ (สินค้า · sale ≤ 0/ว่าง · ต้นทุน > 0) · `fromAp` = ราคามาจาก salePrice ของ AP
+ */
+type TillPrice = { price: number; atCost: boolean; fromAp: boolean };
+function tillPriceToday(
+  inv: { kind: string; priceSatang: number; costSatang: number; accountProductId: string | null; archivedAt: Date | null },
+  apById: Map<string, { salePrice: number | null }>,
+): TillPrice | null {
+  if (inv.archivedAt) return null;
+  if (inv.kind === "SERVICE") return { price: inv.priceSatang, atCost: false, fromAp: false };
+  const sale = inv.accountProductId ? (apById.get(inv.accountProductId)?.salePrice ?? null) : null;
+  if (sale !== null && sale > 0) return { price: sale, atCost: false, fromAp: true };
+  return { price: Math.max(0, inv.costSatang), atCost: inv.costSatang > 0, fromAp: false };
 }
 
 /** วางแผนของร้านเดียว (อ่านล้วน) — dry-run และรันจริงใช้แผนเดียวกัน ⇒ ตัวเลขที่ dry-run ทำนาย = ที่สร้างจริง */
@@ -1053,9 +1134,14 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
   for (const l of bookLinks) if (!bookOf.has(l.linkedId)) bookOf.set(l.linkedId, { accountSystemId: l.systemId, vatRegistered: vatRegOf.get(l.systemId) ?? true });
   const book = (posSys: string): BookInfo => bookOf.get(posSys) ?? { accountSystemId: null, vatRegistered: false };
   // ตัวอย่าง ≤20 ต่อร้าน — priceNotSetOther เก็บผู้สมัครทั้งหมดก่อนแล้วจัดลำดับท้ายร้าน (มีร่องรอยราคาเดิมก่อน)
-  const sample = (k: Exclude<keyof BackfillSummary["samples"], "priceNotSetOther">, row: SampleRow) => {
+  const sample = (k: Exclude<keyof BackfillSummary["samples"], "priceNotSetOther" | "catalogPriceDiffersFromTill">, row: SampleRow) => {
     const arr = (s.samples[k][tenantId] ??= []);
     if (arr.length < 20) arr.push(row);
+  };
+  /** ราคาที่ผิดรูปของแหล่งเดิม (แถวราคา null) — ตัวนับใน partition ราคา null ลำดับที่ 3 */
+  const invalidLegacy = (row: SampleRow) => {
+    s.counts.invalidLegacyPrice++;
+    sample("invalidLegacyPrice", row);
   };
   const notSet: { row: SampleRow; signal: boolean }[] = [];
   const apHalfLinked = new Set(aps.map((a) => a.invItemId).filter((x): x is string => !!x));
@@ -1074,22 +1160,32 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     const bk = book(r.systemId);
     const ap = strictAp(inv, apById, bk);
     const pr = initialPrice({ ap, inv });
-    // ตัวนับ C7 (จากแหล่งทุกแถว): ลิ้นชักวันนี้หา AP แบบ InvItem.accountProductId (ไม่กรองสมุด/เก็บถาวร) แล้ว salePrice > 0 ? ราคานั้น : ต้นทุน
+    // ตัวนับ (จากแหล่งทุกแถว) — ทุกการตัดสิน "ลิ้นชัก" ใช้ราคาที่ลิ้นชักคิดวันนี้จริง (E3 · `tillPriceToday`)
+    const till = tillPriceToday(inv, apById);
     const tillAp = inv.accountProductId ? apById.get(inv.accountProductId) : undefined;
-    const tillSale = tillAp?.salePrice ?? null;
     const row = { id: inv.id, name: inv.name };
-    if (pr.invalidLegacy) s.counts.invalidLegacyPrice++;
-    const tillPriced = legalPrice(tillSale) && tillSale > 0;
-    if (inv.kind !== "SERVICE" && pr.price === null && !tillPriced && inv.costSatang > 0) {
-      s.counts.soldAtCostToday++;
-      sample("soldAtCostToday", row);
-    } else if (pr.price === null && tillPriced && !ap) {
-      // D3: ลิ้นชักวันนี้คิด salePrice > 0 จาก AP ที่ C7 ไม่นับ (เก็บถาวร / สมุดบัญชีอื่น)
-      s.counts.apIgnoredButTillPriced++;
-      sample("apIgnoredButTillPriced", row);
-    } else if (pr.price === null && !pr.invalidLegacy) {
-      s.counts.priceNotSetOther++;
-      notSet.push({ row, signal: !!tillAp || apHalfLinked.has(inv.id) || (inv.kind === "SERVICE" && inv.priceSatang !== 0) });
+    if (pr.price === null) {
+      // E3 partition ของแถวราคา null — แต่ละแถวเข้าตัวนับเดียวพอดี ตามลำดับตัดสิน (ตัวแรกที่จริงชนะ):
+      //   1) soldAtCostToday        ลิ้นชักคิดราคาทุนจริงวันนี้ (สินค้า · sale ≤ 0/ว่าง · ต้นทุน > 0)
+      //   2) apIgnoredButTillPriced ลิ้นชักคิด salePrice > 0 จาก AP ที่ C7 ไม่นับ (เก็บถาวร / สมุดบัญชีอื่น)
+      //   3) invalidLegacyPrice     ราคาเดิมผิดรูป (ติดลบ ฯลฯ) ⇒ ไม่นับ
+      //   4) priceNotSetOther       ที่เหลือ (ไม่มีราคาจากแหล่งใด — เช่น บริการราคา 0 ที่มี AP เก็บถาวร: ลิ้นชักบริการไม่อ่าน AP)
+      if (till?.atCost) {
+        s.counts.soldAtCostToday++;
+        sample("soldAtCostToday", row);
+      } else if (till?.fromAp) {
+        s.counts.apIgnoredButTillPriced++;
+        sample("apIgnoredButTillPriced", row);
+      } else if (pr.invalidLegacy) invalidLegacy(row);
+      else {
+        s.counts.priceNotSetOther++;
+        notSet.push({ row, signal: !!tillAp || apHalfLinked.has(inv.id) || (inv.kind === "SERVICE" && inv.priceSatang !== 0) });
+      }
+    } else if (till && pr.price !== till.price) {
+      // E3: ราคาแคตตาล็อก ≠ ราคาที่ลิ้นชักคิดวันนี้ — เจ้าของเห็นก่อนสลับ (ลำดับราคาที่รับรองแล้วไม่เปลี่ยน)
+      s.counts.catalogPriceDiffersFromTill++;
+      const arr = (s.samples.catalogPriceDiffersFromTill[tenantId] ??= []);
+      if (arr.length < 20) arr.push({ ...row, catalogPriceSatang: pr.price, tillPriceSatang: till.price });
     }
     if (inv.kind === "SERVICE" && legalPrice(inv.priceSatang) && inv.priceSatang > 0 && ap && legalPrice(ap.salePrice) && ap.salePrice > 0 && ap.salePrice !== inv.priceSatang) {
       s.counts.servicePriceDiffersFromAccountProduct++;
@@ -1147,8 +1243,11 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     }
     per(r.systemId).menuItem++;
     const pr = initialPrice({ own: m.basePrice });
-    if (pr.invalidLegacy) s.counts.invalidLegacyPrice++;
-    else if (pr.price === null) (s.counts.priceNotSetOther++, notSet.push({ row: { id: m.id, name: m.name }, signal: false }));
+    // partition ราคา null (ลำดับเดียวกับขั้น 1 — เมนูไม่มีราคาลิ้นชักจาก InvItem ⇒ เหลือ 3) / 4))
+    if (pr.price === null) {
+      if (pr.invalidLegacy) invalidLegacy({ id: m.id, name: m.name });
+      else (s.counts.priceNotSetOther++, notSet.push({ row: { id: m.id, name: m.name }, signal: false }));
+    }
     if (pr.price === 0) s.counts.zeroPriceMenu++;
     if (m.posProductId && productIds.has(m.posProductId)) {
       s.alreadyDone.menuItem++;
@@ -1196,8 +1295,11 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     if (!(inv && shared && sharedIsInvRow)) {
       // แถวของเว็บร้านเอง (C9b/c/d): นับจากราคาสุดท้ายจริง — zeroPriceWeb เฉพาะเมื่อราคาสุดท้ายคือราคาเว็บ 0 (D6)
       const fin = initialPrice({ ap: inv ? strictAp(inv, apById, book(r.systemId)) : null, inv, own: sp.priceSatang });
-      if (fin.invalidLegacy) s.counts.invalidLegacyPrice++;
-      else if (fin.price === null) (s.counts.priceNotSetOther++, notSet.push({ row: { id: sp.id, name: sp.name }, signal: false }));
+      // partition ราคา null (แถวของเว็บร้านเอง — ไม่ใช่ราคาลิ้นชัก ⇒ เหลือ 3) / 4))
+      if (fin.price === null) {
+        if (fin.invalidLegacy) invalidLegacy({ id: sp.id, name: sp.name });
+        else (s.counts.priceNotSetOther++, notSet.push({ row: { id: sp.id, name: sp.name }, signal: false }));
+      }
       if (fin.rung === "own" && fin.price === 0) s.counts.zeroPriceWeb++;
     }
     if (sp.posProductId && productIds.has(sp.posProductId)) {

@@ -917,8 +917,8 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
     );
   });
 
-  // ── F15.5 ── POS P1.1a R3 ▸ D5
-  const n155 = "ตัวบ่งชี้ผู้เรียกระดับระบบของแคตตาล็อก + backfill ไม่หลุดถึงโค้ดที่รับคำขอ (catalog.ts · สคริปต์ backfill · qc-* · allowlist เท่านั้น)";
+  // ── F15.5 ── POS P1.1a R3 ▸ D5 · R4 ▸ E4
+  const n155 = "ตัวบ่งชี้ผู้เรียกระดับระบบของแคตตาล็อก + backfill ไม่หลุดถึงโค้ดที่รับคำขอ (catalog.ts · สคริปต์ backfill · qc-* · allowlist เท่านั้น) · R4: ห้าม ?? / || / ?: / alias ของตัวบ่งชี้";
   guarded(chk, "F15.5", n155, () => {
     const v = scanSystemMarker(ROOT);
     chk("F15.5", n155, v.length === 0, v.length ? v.slice(0, 6).join(" · ") : "สะอาด", "CRITICAL");
@@ -932,20 +932,55 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
 const MARKER_ID = ["CATALOG", "SYSTEM", "ACTOR"].join("_");
 const BACKFILL_ID = ["backfill", "Catalog"].join("");
 const MARKER_USE_RE = new RegExp(`\\b(${MARKER_ID}|${BACKFILL_ID})\\b`);
-/** `x ?? <ตัวบ่งชี้>` ในโค้ดจริง (AST — ข้อความ/คอมเมนต์ที่อธิบายกติกาไม่นับ) */
-function markerFallbacks(abs: string, text: string): number[] {
+/** นิพจน์นี้คือตัวบ่งชี้ตรง ๆ ไหม: `X` · `m.X` · `m?.X` · `m["X"]` (ห่อวงเล็บ/as/!/satisfies ได้) — คีย์ที่คำนวณ (`m[k]`) อยู่นอกขอบเขต (R4 E4) */
+function isMarkerRef(e: ts.Expression | undefined): boolean {
+  if (!e) return false;
+  const r = unwrap(e);
+  if (ts.isIdentifier(r)) return r.text === MARKER_ID;
+  if (ts.isPropertyAccessExpression(r)) return r.name.text === MARKER_ID;
+  if (ts.isElementAccessExpression(r)) return ts.isStringLiteralLike(r.argumentExpression) && r.argumentExpression.text === MARKER_ID;
+  return false;
+}
+const LOGICAL = new Set([ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken]);
+/** ค่าที่ "ถือ" ตัวบ่งชี้: ตัวบ่งชี้ตรง ๆ · ตัวถูกดำเนินการของ ?? / || / && · กิ่งของ ?: · ฟังก์ชันลูกศรที่คืนค่าเหล่านี้ */
+function carriesMarker(e: ts.Expression | undefined): boolean {
+  if (!e) return false;
+  const r = unwrap(e);
+  if (isMarkerRef(r)) return true;
+  if (ts.isBinaryExpression(r) && LOGICAL.has(r.operatorToken.kind)) return carriesMarker(r.left) || carriesMarker(r.right);
+  if (ts.isConditionalExpression(r)) return carriesMarker(r.whenTrue) || carriesMarker(r.whenFalse);
+  if (ts.isArrowFunction(r) && !ts.isBlock(r.body)) return carriesMarker(r.body);
+  return false;
+}
+/**
+ * การใช้ตัวบ่งชี้ที่ห้ามในโค้ดจริง (AST — ข้อความ/คอมเมนต์ที่อธิบายกติกาไม่นับ):
+ *   • `x ?? <ตัวบ่งชี้>` (R3) · `x || <ตัวบ่งชี้>` (R4 E4) — ค่าว่าง/เท็จกลายเป็นผู้เรียกระดับระบบ — ทุกไฟล์
+ *   • `c ? <ตัวบ่งชี้> : y` / `c ? y : <ตัวบ่งชี้>` (R4 E4) — ทุกไฟล์
+ *   • alias (R4 E4) นอก catalog.ts: `const S = <ตัวบ่งชี้>` (รวมค่าที่ถือตัวบ่งชี้ตาม carriesMarker) · `S = <ตัวบ่งชี้>` ·
+ *     `{ <ตัวบ่งชี้>: S } = …` · `import/export { <ตัวบ่งชี้> as S }` — `allowAlias` = ข้อสอบ `scripts/qc-*.mts` (ต้องถือตัวบ่งชี้ไว้ทดสอบ — มติที่ขอผู้คุมงาน)
+ * การหลบด้วยคีย์ที่คำนวณ (`m[k]` ที่ k ประกอบตอนรัน) อยู่นอกขอบเขต (R4 E4)
+ */
+function markerMisuse(abs: string, text: string, allowAlias: boolean): { line: number; why: string }[] {
   const sf = parse(abs, text);
-  const lines: number[] = [];
+  const out: { line: number; why: string }[] = [];
   const visit = (n: ts.Node) => {
-    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
-      const r = unwrap(n.right);
-      const name = ts.isIdentifier(r) ? r.text : ts.isPropertyAccessExpression(r) ? r.name.text : "";
-      if (name === MARKER_ID) lines.push(lineAt(sf, n));
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken && isMarkerRef(n.right))
+      out.push({ line: lineAt(sf, n), why: `\`?? ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)` });
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.BarBarToken && isMarkerRef(n.right))
+      out.push({ line: lineAt(sf, n), why: `\`|| ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)` });
+    if (ts.isConditionalExpression(n) && (isMarkerRef(n.whenTrue) || isMarkerRef(n.whenFalse)))
+      out.push({ line: lineAt(sf, n), why: `\`? … : …\` มี ${MARKER_ID} ในกิ่ง (ห้ามเลือกผู้เรียกระดับระบบตามเงื่อนไข)` });
+    if (!allowAlias) {
+      const alias = (why: string) => out.push({ line: lineAt(sf, n), why: `alias ของ ${MARKER_ID} (${why}) — ใช้ชื่อเดิมเท่านั้น นอก catalog.ts ห้ามตั้งชื่อใหม่` });
+      if (ts.isVariableDeclaration(n) && carriesMarker(n.initializer)) alias("ตัวแปร");
+      else if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken && carriesMarker(n.right)) alias("กำหนดค่า");
+      else if (ts.isBindingElement(n) && (n.propertyName ? propName(n.propertyName) === MARKER_ID : false) && propName(n.name) !== MARKER_ID) alias("แยกค่าเปลี่ยนชื่อ");
+      else if ((ts.isImportSpecifier(n) || ts.isExportSpecifier(n)) && n.propertyName && propName(n.propertyName as ts.Identifier) === MARKER_ID && n.name.text !== MARKER_ID) alias("import/export as");
     }
     ts.forEachChild(n, visit);
   };
   visit(sf);
-  return lines;
+  return out;
 }
 const MARKER_HOME = "src/lib/modules/pos/catalog.ts";
 /** ไฟล์ที่ได้รับอนุญาตเพิ่ม (ว่างวันนี้ — P1.1b เติมไฟล์ legacy-sync ของตัวเอง พร้อมเหตุผล) */
@@ -968,7 +1003,8 @@ export function scanSystemMarker(ROOT: string): string[] {
     if (f === self) continue;
     const text = readFileSync(abs, "utf8");
     if (!MARKER_USE_RE.test(text)) continue;
-    for (const ln of markerFallbacks(abs, text)) out.push(`${f}:${ln}: \`?? ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)`);
+    // R4 E4: ทุกไฟล์ (อนุญาตหรือไม่ก็ตาม) — alias ยกเว้นเฉพาะ catalog.ts (บ้านของมัน) และข้อสอบ scripts/qc-*.mts
+    for (const m of markerMisuse(abs, text, f === MARKER_HOME || /^scripts\/qc-[^/]+\.mts$/.test(f))) out.push(`${f}:${m.line}: ${m.why}`);
     if (!isMarkerAllowedPath(f)) out.push(`${f}: ใช้ ${MARKER_ID}/${BACKFILL_ID} นอกไฟล์ที่อนุญาต`);
     else if (isRequestPath(f, text)) out.push(`${f}: ไฟล์รับคำขอ ("use server" / src/app / src/lib/actions) ห้ามมีตัวบ่งชี้`);
   }
