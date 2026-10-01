@@ -24,6 +24,7 @@
 
 import { randomToken, sha256 } from "@/lib/core/hash";
 import { getChannel } from "@/lib/core/channels";
+import { sanitizeHtml } from "@/lib/core/sanitize";
 import * as point from "@/lib/modules/point";
 import { prisma } from "./db";
 import type { MemberActor } from "./access";
@@ -253,7 +254,9 @@ export async function joinForm(tenantSlug: string): Promise<JoinFormDto> {
     fields: withNameFields(fields.map(toFieldDto)),
     consents: JOIN_CONSENT_CHANNELS.map((c) => ({ channel: c, label: getChannel(c)?.label ?? c })),
     policyVersion: policy?.version ?? 0,
-    policyHtml: policy?.bodyHtml ?? null,
+    // 🔴 HOTFIX 2026-10-01: ตัดซ้ำตอนแสดง (หน้าสาธารณะ `dangerouslySetInnerHTML`) — แถวที่บันทึกด้วยตัวตัดรุ่นเก่า
+    //    อาจมี `<svg/onload=…>` ค้างอยู่ · ตัวตัดใหม่ idempotent ⇒ เนื้อความปกติได้ผลเดิมทุกไบต์
+    policyHtml: policy?.bodyHtml ? sanitizeHtml(policy.bodyHtml) || null : null,
     welcomePoints: welcome.points,
     referralEnabled,
   };

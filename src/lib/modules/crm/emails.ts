@@ -1822,8 +1822,11 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     const auto = isAutoSubmitted(headers, str(payload?.from));
     const subject = str(payload?.subject).slice(0, CRM_EMAIL_SUBJECT_MAX) || "(ไม่มีหัวข้อ)";
     // AUDIT-CLASS X6: HTML ของคนนอกร้านผ่านตัวตัดกลางก่อน "เก็บ" (รูปเก็บไว้ให้กด "แสดงรูป" เองทีหลัง)
-    const storedHtml = sanitizeHtml(str(payload?.html), { allowImages: true, allowLinkSchemes: ["http", "https", "mailto", "tel"] });
-    const bodyText = str(payload?.text) || htmlToText(str(payload?.html));
+    // HOTFIX 2026-10-01 (review S2): HTML ของคนนอกร้านตัดที่ 1,000,000 ตัวก่อนเข้าตัวตัด/แปลงข้อความ — ทั้งสองเป็นเชิงเส้นแล้ว
+    //   แต่ route รับได้ถึง 10 MB ⇒ ไม่ตัด = ~3 วินาที CPU ต่อฉบับที่ใครก็ส่งมาได้ · จดหมายจริงไม่ถึง 1 MB ของ HTML
+    const inboundHtml = str(payload?.html).slice(0, 1_000_000);
+    const storedHtml = sanitizeHtml(inboundHtml, { allowImages: true, allowLinkSchemes: ["http", "https", "mailto", "tel"] });
+    const bodyText = str(payload?.text) || htmlToText(inboundHtml);
 
     // ── ทิศทาง: From เป็นพนักงานของร้านนี้ ⇒ เก็บเป็นขาออก (สำเนา BCC ของจดหมายที่พนักงานส่งจากกล่องตัวเอง) ──
     const staff = fromAddr

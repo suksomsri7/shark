@@ -1,0 +1,39 @@
+# HF-INV-1 round 3b — GREEN (QC4 · 1 Oct 2026) · working tree = 13ac174c + round-3b fix (B1–B4)
+
+===== qc-hf-inventory-atomic run 1 =====
+ผ่าน 139/139
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-inventory-authz run 1 =====
+ผ่าน 116/116
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-reports-authz run 1 =====
+ผ่าน 57/57
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-inventory-atomic run 2 =====
+ผ่าน 139/139
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-inventory-authz run 2 =====
+ผ่าน 116/116
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-reports-authz run 2 =====
+ผ่าน 57/57
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-inventory-atomic run 3 (AFTER regression run, final tree) =====
+ผ่าน 139/139
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-inventory-authz run 3 (AFTER regression run, final tree) =====
+ผ่าน 116/116
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== qc-hf-reports-authz run 3 (AFTER regression run, final tree) =====
+ผ่าน 57/57
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+note: green1 reports/atomic ran before the B3 edit (PoReceiveForm.tsx, not exercised by any oracle); runs 2 and 3 = final tree
