@@ -162,6 +162,8 @@ model MenuItem {
   archivedAt DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+  // P1.1a: PosProduct.id ของเมนูนี้ (kind MENU · id หลวมข้ามไฟล์ schema) · null = ยังไม่ backfill / สาขาไม่มี POS
+  posProductId String?
 
   optionGroups MenuItemOptionGroup[]
   orderItems   RestaurantOrderItem[]
@@ -171,6 +173,7 @@ model MenuItem {
   @@index([unitId, categoryId, sortOrder])
   @@index([unitId, status, isOutOfStock])
   @@index([unitId, invItemId]) // V2 (WO 4.1)
+  @@index([posProductId]) // P1.1a
 }
 
 model MenuOptionGroup {
@@ -405,6 +408,7 @@ model RestaurantOrderItem {
   // ชำระเงิน (แยกบิลรายรายการ)
   saleId    String? // PosSale.id เมื่อรายการนี้ถูกชำระ → lock
   settledAt DateTime?
+  productId String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว · id หลวม) · null = ออเดอร์เดิม
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -417,6 +421,7 @@ model RestaurantOrderItem {
   @@index([orderId])
   @@index([unitId, menuItemId])
   @@index([saleId])
+  @@index([productId]) // P1.1a
 }
 
 model RestaurantOrderItemOption {

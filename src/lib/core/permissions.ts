@@ -132,6 +132,7 @@ const MODULE_DEFS: readonly ModuleDef[] = [
     actions: {
       "pos.sale.create": "บันทึกการขาย / เปิดหน้าขาย / ดึงรายงานขายรายวัน",
       "pos.product.setPrice": "ตั้งราคาขายสินค้า",
+      "pos.product.manage": "เพิ่ม/แก้/เก็บสินค้าและหมวดในแคตตาล็อกขาย", // POS P1.1a ▸ แคตตาล็อกเดียว (pos/catalog.ts) ◂
       "pos.sale.void": "ยกเลิกบิลขาย (ใช้กับข้อเสนอของผู้ช่วย AI)",
     },
   },

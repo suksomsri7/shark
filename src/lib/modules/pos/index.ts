@@ -27,3 +27,8 @@ export {
   closeDayBills,
   bkkToday,
 } from "./service";
+
+// POS P1.1a ▸ แคตตาล็อกเดียว (PosProduct) — ผู้เขียน/ผู้อ่านเดียวของแคตตาล็อกขาย · ผู้เรียกนอกโมดูลใช้ `catalog.<fn>` ◂
+export * as catalog from "./catalog";
+export type { CatalogCtx, CatalogClient, CatalogErrorCode, PosProductView, PosOptionGroupView, BackfillSummary } from "./catalog";
+export { CatalogError } from "./catalog";

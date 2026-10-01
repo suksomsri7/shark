@@ -72,8 +72,10 @@ model PosSaleLine {
   itemId          String? // InvItem.id ที่ผูก (ตัด/คืนสต็อก perpetual) · null = บริการ/รายการเพิ่มเอง (ไม่ตัดสต็อก)
   serviceId       String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
   // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
+  productId       String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว) · id หลวมแบบ itemId/serviceId · null = บิลเดิม
 
   @@index([saleId])
+  @@index([productId])
 }
 
 model PosPayment {
@@ -99,4 +101,110 @@ model PosReceiptCounter {
   seq      Int    @default(0)
 
   @@unique([unitId, period])
+}
+
+// ═══════════════════ P1.1a — แคตตาล็อกเดียว (PosProduct) · ตารางใหม่ล้วน ═══════════════════
+// ขอบเขต (มติ R1): tenantId + systemId (AppSystem type POS) · unitId null = ขายทุกสาขาของระบบนี้
+//   · invItemId null = ไม่ผูกคลัง (เมนู/สินค้าเว็บล้วน) · ไม่ซ้ำต่อ (systemId, invItemId) เมื่อมีค่า
+// ผู้เขียนเดียว = src/lib/modules/pos/catalog.ts (fitness F15.1) · P1.1a ยังไม่มี dual-write (P1.1b)
+// 🔴 ฟิลด์เมนู (stationId · stockQty · dailyStockQty · isOutOfStock) และช่วงเวลาขายของหมวด = **สำเนาอย่างเดียว**
+//    ต้นฉบับที่ระบบใช้จริงยังเป็น MenuItem/MenuCategory จนถึง P1.1b/P2.4 — ห้ามอ่านค่าพวกนี้ไปตัดสินการขาย
+
+enum PosProductKind {
+  PRODUCT
+  SERVICE
+  MENU
+  BUNDLE
+}
+
+model PosCategory {
+  id            String    @id @default(cuid())
+  tenantId      String
+  systemId      String // AppSystem.id (type POS)
+  unitId        String? // null = ทุกสาขาของระบบ POS นี้ · มีค่า = หมวดของสาขานั้น (หมวดเมนูเป็นของสาขา)
+  name          String
+  nameEn        String?
+  sortOrder     Int       @default(0)
+  isVisible     Boolean   @default(true) // สำเนาจาก MenuCategory.isVisible
+  availableFrom String? // สำเนาจาก MenuCategory (ช่วงเวลาขาย "06:00") — ต้นฉบับยังอยู่ที่ MenuCategory
+  availableTo   String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  products PosProduct[]
+
+  @@unique([systemId, unitId, name])
+  @@index([tenantId])
+}
+
+model PosProduct {
+  id                 String         @id @default(cuid())
+  tenantId           String
+  systemId           String // AppSystem.id (type POS) — ระบบที่ขายแถวนี้
+  unitId             String? // null = ทุกสาขาของระบบ POS นี้
+  invItemId          String? // InvItem.id (ต้นฉบับ "ของ" · สต็อก/ต้นทุน/บาร์โค้ด/SKU) · null = ไม่ผูกคลัง
+  parentId           String? // R3: แม่ของตัวแปร (ขนาด/สี) — P1.2 เป็นเจ้าของ · P1.1a ว่างไว้
+  parent             PosProduct?    @relation("PosProductVariants", fields: [parentId], references: [id], onDelete: SetNull)
+  children           PosProduct[]   @relation("PosProductVariants")
+  kind               PosProductKind @default(PRODUCT)
+  name               String
+  nameEn             String?
+  categoryId         String?
+  category           PosCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  basePriceSatang    Int? // สตางค์ · null = ยังไม่ตั้งราคา (ไม่ใช้ต้นทุนแทน) · 0 = ตั้งใจให้ฟรี
+  vatRateBp          Int? // สำเนาจาก AccountProduct.vatRateBp · null = ไม่มีบัญชีผูก
+  barcode            String? // บาร์โค้ดของแถวนี้เอง (แถวที่ผูกคลังใช้ InvItem.barcode — ไม่คัดลอก)
+  images             Json           @default("[]") // ["url", …] index 0 = ปก
+  sortOrder          Int            @default(0)
+  trackStock         Boolean        @default(false) // ตัดสต็อกไหม — หลัง backfill คอลัมน์นี้คือความจริง (ไม่ derive ซ้ำ)
+  unavailableUnitIds String[]       @default([]) // สาขาที่ปิดขายชั่วคราว (availability[unit] = false)
+  // ── สำเนาจาก MenuItem (copy-only ถึง P1.1b/P2.4) ──
+  stationId          String? // KdsStation.id
+  stockQty           Int?
+  dailyStockQty      Int?
+  isOutOfStock       Boolean        @default(false)
+  archivedAt         DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  optionGroups PosProductOptionGroup[]
+  recipeLines  RecipeLine[]
+
+  @@unique([systemId, invItemId])
+  @@index([tenantId])
+  @@index([systemId, unitId, archivedAt])
+  @@index([systemId, barcode])
+  @@index([parentId])
+}
+
+// ผูกสินค้า ↔ กลุ่มตัวเลือกเดิมของร้านอาหาร (MenuOptionGroup ใช้ต่อ ไม่สร้างใหม่ · ต่อสาขาเหมือนเดิม)
+model PosProductOptionGroup {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  groupId   String // MenuOptionGroup.id (คนละไฟล์ schema — id หลวมแบบเดียวกับ MenuItem.invItemId)
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+
+  @@unique([productId, groupId])
+  @@index([tenantId])
+  @@index([groupId])
+}
+
+// สูตร/BOM: ขาย 1 หน่วยของ productId ใช้ InvItem เท่าไร (P2.3 เป็นเจ้าของ) · P1.1a: เมนูที่มี MenuItem.invItemId → 1 แถว qty 1
+model RecipeLine {
+  id        String     @id @default(cuid())
+  tenantId  String
+  productId String
+  product   PosProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  invItemId String // InvItem.id (หน่วยเดียวกับ InvMovement — จำนวนเต็ม)
+  qty       Int        @default(1)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([productId, invItemId])
+  @@index([tenantId])
+  @@index([invItemId])
 }

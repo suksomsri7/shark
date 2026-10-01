@@ -298,6 +298,11 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   PosSaleLine: unit,
   PosPayment: unit,
   PosReceiptCounter: unit,
+  // POS P1.1a — แคตตาล็อกเดียว (ผู้เขียนเดียว = pos/catalog.ts) · ลูกของ PosProduct มี tenantId ของตัวเอง
+  PosProduct: sys(),
+  PosCategory: sys(),
+  PosProductOptionGroup: tenant,
+  RecipeLine: tenant,
   // Booking
   BookingService: unit,
   BookingStaff: unit,

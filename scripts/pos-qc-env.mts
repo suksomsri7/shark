@@ -146,12 +146,17 @@ export const POS_MODELS = {
   businessUnit: { model: "BusinessUnit", file: "core.prisma", role: "สาขา/หน้าร้าน (UnitType SHOP|RESTAURANT|…)" },
   paymentProfile: { model: "PaymentProfile", file: "payment.prisma", role: "PromptPay ID ของร้าน (หน้าขายแสดง QR)" },
   outboxEvent: { model: "OutboxEvent", file: "outbox.prisma", role: "คิว pos.sale.paid / pos.sale.voided" },
+  // ── P1.1a แคตตาล็อกเดียว (migration 20261120000000_pos_v2_a) — ผู้เขียนเดียว pos/catalog.ts ──
+  posProduct: { model: "PosProduct", file: "pos.prisma", role: "สินค้าชั้นขาย (systemId POS · unitId? · invItemId? · kind PRODUCT/SERVICE/MENU/BUNDLE)" },
+  posCategory: { model: "PosCategory", file: "pos.prisma", role: "หมวดของแคตตาล็อกขาย (backfill จาก MenuCategory)" },
+  posProductOptionGroup: { model: "PosProductOptionGroup", file: "pos.prisma", role: "ผูกสินค้า↔MenuOptionGroup เดิม" },
+  recipeLine: { model: "RecipeLine", file: "pos.prisma", role: "สูตร/BOM (P1.1a: เมนูที่มี MenuItem.invItemId → 1 แถว qty 1)" },
 } as const;
 export type PosModelKey = keyof typeof POS_MODELS;
 
 /** ตารางที่แผน POS จะสร้าง (POS-MIGRATION-PLAN §1) — **ยังไม่มี** ณ P0.1 · ใบที่สร้างย้ายเข้า POS_MODELS */
 export const POS_FUTURE_MODELS = [
-  "PosProduct", "PosCategory", "PosVariant", "RecipeLine", "PosProductOptionGroup", "SalesChannel", "PosProductChannelPrice",
+  "PosVariant", "SalesChannel", "PosProductChannelPrice", // P1.1a ย้าย PosProduct/PosCategory/RecipeLine/PosProductOptionGroup ไป POS_MODELS แล้ว
   "ExternalOrder", "ExternalOrderEvent", "PosShift", "PosDevice", "PosHeldCart", "PosPaymentIntent", "PosReceiptToken",
   "PosStockCount", "PosStockCountLine", "PosStaffPin", "PosDocCounter",
 ] as const;
