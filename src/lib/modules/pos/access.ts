@@ -37,9 +37,19 @@ export function posScopeUnitIds(scope: PosUnitScope): string[] | undefined {
   return scope.allUnits ? undefined : scope.unitIds;
 }
 
+/** where ของ posSale ตามขอบเขต — หน้าประวัติบิล/หน้าภาพรวมระบบ และ oracle ใช้ตัวเดียวกัน */
+export function posSaleWhere(
+  tenantId: string,
+  systemId: string,
+  scope: PosUnitScope,
+): { tenantId: string; systemId: string; unitId?: { in: string[] } } {
+  return scope.allUnits ? { tenantId, systemId } : { tenantId, systemId, unitId: { in: scope.unitIds } };
+}
+
 /**
  * ตั้งราคาขาย: ราคาเก็บที่ AccountProduct = ใช้ทั้งร้านทุกสาขา ⇒ ต้องมีสิทธิ์ pos.product.setPrice "ทุกสาขา"
- * ทุกสาขา = OWNER · unitAccess "*" · หรือเข้าได้ครบทุกสาขาที่ผูก POS นี้ (linkedUnitIds = posUnits — ไม่นับสาขา archived)
+ * ทุกสาขา = OWNER · unitAccess "*" · หรือเข้าได้ครบทุกสาขาที่ราคานี้ไปถึง
+ *   (linkedUnitIds = posPriceUnitIds ใน register.ts: สาขาของ POS นี้ + สาขาที่ใช้คลังเดียวกัน — ไม่นับสาขา archived)
  * (ร้านสาขาเดียว / ผู้จัดการที่ระบุครบทุกสาขาตั้งได้ · คนที่ขาดแม้สาขาเดียวตั้งราคาที่สาขาอื่นใช้ด้วยไม่ได้)
  * POS ยังไม่ผูกสาขา (linkedUnitIds ว่าง) → เฉพาะ OWNER / "*"
  */

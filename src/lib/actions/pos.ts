@@ -8,7 +8,7 @@ import { requireTenant, type Auth } from "@/lib/core/context";
 import { assertCan, ForbiddenError } from "@/lib/core/rbac";
 import { posMembership, posSalesScope, posScopeUnitIds, posCanSetTenantPrice } from "@/lib/modules/pos/access";
 import { createSale, closeDayCsv } from "@/lib/modules/pos/service";
-import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posUnits } from "@/lib/modules/pos/register";
+import { posUnitIsLinked, resolvePosLinks, setItemSalePrice, posOpenDeals, posLinkSaleToDeal, posPriceUnitIds } from "@/lib/modules/pos/register";
 import type {
   PosDealOption,
   PosMemberChoicesInput,
@@ -469,9 +469,9 @@ export async function setItemSalePriceAction(formData: FormData): Promise<void> 
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "POS" }, select: { id: true } });
   if (!sys) throw new Error("ไม่พบระบบขายนี้");
-  // HF-POS-PAGES: ราคาใช้ทั้งร้าน ⇒ ต้องตั้งได้ทุกสาขาที่ผูก POS นี้ (OWNER · "*" · หรือระบุครบทุกสาขา) — เดิม assertCan ไม่ส่ง unit
-  const linkedUnitIds = (await posUnits(tenantId, systemId)).map((u) => u.id);
-  if (!posCanSetTenantPrice(posMembership(auth.active), linkedUnitIds)) throw new ForbiddenError({ module: "pos", action: "pos.product.setPrice" });
+  // HF-POS-PAGES: ราคาใช้ทั้งร้าน ⇒ ต้องตั้งได้ทุกสาขาที่ราคานี้ไปถึง (POS นี้ + คลังร่วม) — เดิม assertCan ไม่ส่ง unit
+  const priceUnitIds = await posPriceUnitIds(tenantId, systemId);
+  if (!posCanSetTenantPrice(posMembership(auth.active), priceUnitIds)) throw new ForbiddenError({ module: "pos", action: "pos.product.setPrice" });
 
   const base = `/app/sys/${systemId}/pos/products`;
   const priceBaht = Number(priceRaw);

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { listPosProducts, posUnits, posServices } from "@/lib/modules/pos/register";
+import { listPosProducts, posUnits, posServices, posPriceUnitIds } from "@/lib/modules/pos/register";
 import { setItemSalePriceAction } from "@/lib/actions/pos";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posCanSetTenantPrice } from "@/lib/modules/pos/access";
@@ -31,7 +31,7 @@ export default async function PosProductsPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   // HF-POS-PAGES: ราคาขายใช้ทั้งร้าน ⇒ ต้องเข้าได้ทุกสาขา (เดิม assertCan ไม่ส่ง unit ⇒ คนสาขาเดียวก็เข้าได้)
-  if (!posCanSetTenantPrice(posMembership(auth.active), (await posUnits(tenantId, id)).map((u) => u.id))) notFound();
+  if (!posCanSetTenantPrice(posMembership(auth.active), await posPriceUnitIds(tenantId, id))) notFound();
   const def = systemDef(sys.type);
 
   const tabs = posTabs(id);
