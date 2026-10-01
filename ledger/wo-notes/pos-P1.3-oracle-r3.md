@@ -102,3 +102,31 @@ Untouched (S5.12): `src/lib/modules/pos/register-ui.tsx`, `src/lib/actions/pos.t
 - typecheck (once, at the end): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` (19:26:06Z → 19:28:14Z incl. lock) → **exit 0**, `tsc --noEmit` no diagnostics.
 - fitness with/without env: exit 0, 40/40 (§4).
 - commit: one commit on `wip/pos-p1.3` + push of that branch only.
+
+## Round 3.1 — controller rulings on Q-R3-1…11 applied (1 Oct 2026)
+101 → **104 checks** (3 added · 13 narrowed/extended · 0 removed). Names of round 3 ratified (see `pos-P0.3-register.md`).
+
+### Rulings → oracle
+| # | ruling | applied in |
+|---|---|---|
+| 1 | required-option refusal = exactly `OPTIONS_REQUIRED` (quote + submit) | S3.26 narrowed |
+| 2 | submit carries REQUIRED integer `expectedGrandTotalSatang`; order: re-price → expected ≠ server total ⇒ `PRICE_CHANGED` (no sale, refusal carries fresh quote fields) → Σ payMethods ≠ total ⇒ `PAYMENT_MISMATCH`; missing / non-integer / negative ⇒ `VALIDATION`; idempotency payload includes it | helper `sub()` now fills `expectedGrandTotalSatang` = Σ payMethods and `cashReceivedSatang` = cash portion **only when the test does not set the key** (`subRaw()` sends exactly what the test gives); S3.5 narrowed to `PRICE_CHANGED` + fresh `grandTotalSatang` (tamper-paid variant: PAID @6500 or `VALIDATION`/`PERMISSION_DENIED`); S3.6 now sends expected = server total ⇒ `PAYMENT_MISMATCH`; S3.31 narrowed to `PRICE_CHANGED` for stale expectation with stale payment **and** with new payment (order), refusal must carry `grandTotalSatang` = fresh quote and `lines[0].unitPriceSatang` 5,600; S3.16 adds "same key + different expected ⇒ `IDEMPOTENCY_CONFLICT`" (implies key lookup before re-pricing); **new S3.37** (missing / 6500.5 / −1 / string ⇒ `VALIDATION`; expected = total but payments differ ⇒ `PAYMENT_MISMATCH`; expected wrong and payments wrong ⇒ `PRICE_CHANGED`; no sale in any case); S3.32 refused cases now send expected = server total |
+| 3 | product line not sellable at this unit (other branch / tenant / archived / unknown) ⇒ `PRODUCT_NOT_FOUND`; `NOT_FOUND` only for the context | S3.12, S3.35 narrowed (shared constant `PNF`) |
+| 4 | P1.3 pay methods = `CASH` / `PROMPTPAY` only, others ⇒ `VALIDATION`; `cashReceivedSatang` required with a cash portion and ≥ it, else `PAYMENT_MISMATCH`; change = received − cash portion (0 without cash) | **new S3.38** (TRANSFER, DEPOSIT, ROOM_CHARGE, CARD, unknown ⇒ `VALIDATION`, no sale; PROMPTPAY-only ⇒ PAID, change 0, one PROMPTPAY row) · **new S3.39** (no `cashReceivedSatang` ⇒ `PAYMENT_MISMATCH`; received = cash − 1 ⇒ `PAYMENT_MISMATCH`; CASH 4,000 + PROMPTPAY rest, received 5,000 ⇒ PAID, change 1,000) · S3.22 (legacy createSale) unchanged |
+| 5 | `CONFLICT → errors.conflict`, `OPTIONS_REQUIRED → errors.optionsRequired` | S5.13 exact; also `UNKNOWN → errors.unknown` made exact (spec §3.1 action catch-all code + §4.6 "anything else") — the "any existing key" list is now empty |
+| 6 | drop `pos-reg-coupon-line` from required testids; `pos-reg-coupon` stays | S5.4 (35 testids) |
+| 7 | byte pins are a wanted tripwire | comment next to the pins in S5.12 |
+| 8 | S5.16 excludes `register.ts` (F15.5 covers it) | unchanged |
+| 9 | `limit` not an integer ≥ 1 ⇒ `VALIDATION`; > 500 clamps; malformed cursor ⇒ `VALIDATION`; foreign well-formed cursor ⇒ `VALIDATION` or own-unit page | S3.36 narrowed + `limit: 1.5`, `limit: "10"` added (8 cases; `q` with NUL still "VALIDATION or ok"); S1.26 refusal narrowed to `VALIDATION` |
+| 10 | legacy branch of `page.tsx` may keep Thai | no change (S5.3 already scans only `pos-reg-` files) |
+| 11 | fixtures ratified | no change |
+| 12 | manual 86/off wins over stock-out | new fixture BOTH (tracked, consumed to 0, `availability[unit] = false`): S1.24 expects `soldOutReason: "UNAVAILABLE"`; S3.27 expects quote and submit `PRODUCT_UNAVAILABLE`, no totals, no sale |
+
+### Run records (round 3.1)
+- `--list` → exit 0 · `qc-pos-p1.3 — 104 ข้อ` · `X-coverage: -=41 X4=32 X2=11 X3=9 X1=3 X6=3 X8=1 X7=1 X11=3`.
+- normal (QC4, gate lock) → **exit 0** `⏭️ SKIPPED` · `registered: 104` · same two reasons as round 3.
+- `QC_FORCE=1` (19:34:01Z → 19:36:58Z incl. lock) → **exit 1** · `ผ่าน 5/104` (same five guards: S3.22, S5.10, S5.12, S9.1, S9.2) · 99 red, all `MISSING:<export>` / missing file / missing key (S5.4 "ขาด 35", S5.13 "ยังไม่มี register-shared.ts", S3.37–S3.39 `MISSING:submitRegisterSale`, S3.31 `set true` = fixture price change worked) · no `💥`, no fixture warning · cleanup `product 523 · invItem 19 · menuGroup 2 · invJournal 17` · `"a5":{"drift":[]}` · S9.2 fingerprint unchanged.
+- fitness: with QC4 env exit 0 `{"total":40,"passed":40}` · without env exit 0 `{"total":40,"passed":40}`.
+- single-file tsc of the oracle → exit 0; full typecheck once at the end → below.
+- typecheck (once, end of round 3.1): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` (19:37:52Z → 19:38:05Z) → **exit 0**, no diagnostics.
+- commit: one commit on `wip/pos-p1.3` + push of that branch only.
