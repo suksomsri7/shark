@@ -375,3 +375,10 @@ Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash script
 6. **R3.7 grouped cap** = `clampReportTake(take, EXPORT_CAP)` (50 000 default, client can lower) + `truncated`, not the 500 screen cap — grouping 500 rows would make totals meaningless.
 7. **R3.5 scope**: typed error also on `adjust` (same key, different counted qty); `transfer` keeps its `{ ok:false }` duplicate answer.
 8. **R3.8 idempotency** is decided in the action (PO now `RECEIVED` ⇒ ok) so `receivePo`'s contract (used by AT-9 and the vendor portal) is unchanged.
+
+## Round 3 — controller rulings (2026-10-01 15:32 UTC)
+- Controller re-run confirmed atomic 133/133 · authz 116/116 · reports 23/23. Decisions 2–8 **accepted as built**.
+- Decision 1: **ORACLE-EDIT approved** for `scripts/qc-clinic.mts` CL-2.2 + CL-2.3 only (nothing else in the file, no product code): CL-2.2 expects 80 and its label says the second dispense is a real second dispense that cuts stock and is recorded in dispenseJson; CL-2.3 looks the movement up with `idempotencyKey: { startsWith: \`clinic-${v.id}-\` }`.
+- Results on QC4 after the edit: qc-clinic **8/8** · qc-clinic-refund **13/13**.
+- Typecheck not re-run by the builder: CL-2.3's `idempotencyKey` filter changed from a string to a `{ startsWith }` object (an expression-type change) ⇒ left to the controller as instructed.
+- NOT covered (added): clinic dispense has no client request key ⇒ two sequential identical submits (double click) now cut and record twice (consistent record==stock; before: recorded twice, cut once). Real double-submit protection = request id from the form — later work order.
