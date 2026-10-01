@@ -190,3 +190,8 @@
 - HF-INV-1: oracle edit เข้าแล้ว head 13ac174c · ผู้คุมงานรัน qc-clinic 8/8 · ผู้ตรวจรอบ 3 กำลังทำ · typecheck ผู้คุมงานกำลังรัน
 - ถัดไป: HR → ผู้ตรวจรอบ 4 (คำสั่ง `pos-brief-HF-HR-0-R4-REVIEW.md`) หลัง oracle edit
 - เลนเดิน: 1 = HF-HR-0 (oracle edit แล้วผู้ตรวจ) · 2 = HF-INV-1 ผู้ตรวจรอบ 3
+
+### สถานะเลน (1 ต.ค. 15:43 UTC)
+- HF-HR-0: oracle edit เข้าแล้ว head 8c5815fb · ผู้คุมงานรัน `qc-ai-proposals` 16/16 · ผู้ตรวจรอบ 4 เริ่มแล้ว (เลน 1)
+- HF-INV-1: typecheck ผู้คุมงานที่ 13ac174c = ไม่มี error ในไฟล์ที่ track (exit 2 เพราะ 2 error ในไฟล์ probe ชั่วคราวของผู้ตรวจ `scripts/_probe-r3-storm.mts` ที่ยังไม่ลบ) → ต้องรันซ้ำหลังผู้ตรวจลบ probe ถ้าจะบันทึกเป็น exit 0 · ผู้ตรวจรอบ 3 ยังทำ (เลน 2)
+- typecheck ของ HR หลัง oracle edit: ยังไม่รัน (ตัวแก้รายงาน exit 0 ที่ f711f3eb · edit เพิ่ม argument ที่ฟังก์ชันรับอยู่แล้ว) → รันหลังผู้ตรวจจบ
