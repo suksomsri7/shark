@@ -17,7 +17,7 @@
 | 5 | `scripts/fitness-pos.mts` + `scripts/pos-sale-contract.json` + hook ใน `scripts/fitness.mts` | ✅ | 449459bd |
 | 6 | `ledger/wo-notes/TEMPLATE-pos.md` | ✅ | 555e3610 |
 | 7 | notes ฉบับนี้ | ✅ | (commit สุดท้าย) |
-| — | `pnpm typecheck` (A5) | ดูหัวข้อ §5 | — |
+| — | `pnpm typecheck` (A5) | ✅ exit 0 (ครั้งที่ 2 ตามมติ heap ผู้คุมงาน · §5) | — |
 
 ## 1. ไฟล์ที่แตะ
 | ไฟล์ | สถานะ | ทำอะไร |
@@ -92,7 +92,7 @@
 
 ## 5. typecheck (A5)
 - ครั้งที่ 1 (07:22) `bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` — **หยุดเองขณะยังรอล็อก (tsc ไม่เคยเริ่ม)** หลังผู้คุมงานแจ้งว่า heap ปริยาย 3584 MB OOM (exit 134) บน main ปัจจุบัน · หยุดเฉพาะ unit ของตัวเอง (`iso-797634-…`) ซึ่งถือล็อก gate+qc2 อยู่ระหว่างรอ qc3 — ปล่อยแล้ว CRM ได้คิวต่อ
-- ครั้งที่ 2 (คำสั่งตามมติผู้คุมงาน): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` — ผล: (เติมเมื่อเสร็จ)
+- ครั้งที่ 2 (คำสั่งตามมติผู้คุมงาน): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` — **exit 0** · `> tsc --noEmit` ไม่มี error สักบรรทัด (ครอบ `scripts/**/*.mts` ทั้ง 5 ไฟล์ใหม่ตาม tsconfig include)
 
 ## 6. คำถามที่ใบสั่งให้รายงาน: มี fitness "ทุก event outbox มี consumer" หรือยัง
 - **ไม่มีใน `scripts/fitness.mts`** · มีแต่ในข้อสอบ: `qc-chat-push-badge.mts` CP-6.1/6.2 (สแกน static `emitOutbox(… type: "x")` เทียบคีย์ใน `outbox-consumers.ts` + คู่บวก) และ `qc-account-api-webhooks.mts` C4-E1.2 / `qc-account-api-write-settings.mts` D4-S7.1 (import consumers ⇒ ต้องมี env)
