@@ -133,7 +133,10 @@ export async function receivePoAction(formData: FormData) {
   if (!systemId || !poId) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   const locationId = String(formData.get("locationId") ?? "").trim();
-  await receivePo(ctx, poId, locationId ? { locationId } : undefined);
+  const r = await receivePo(ctx, poId, locationId ? { locationId } : undefined);
+  // HF-INV-0 S3: ไม่สำเร็จ (คลังที่เลือกไม่มีแล้ว / ใบไม่อยู่สถานะสั่งซื้อแล้ว) ต้องบอกคนกด — เดิมเงียบ คนกดนึกว่ารับของแล้ว
+  //   ฟอร์มนี้คืน void ⇒ แจ้งด้วยการโยนข้อความไทยของ receivePo (แบบเดียวกับ action อื่นในไฟล์ที่โยน error)
+  if (!r.ok) throw new Error(r.note);
   revalidate(systemId);
 }
 
