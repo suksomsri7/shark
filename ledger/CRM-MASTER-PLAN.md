@@ -408,7 +408,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C4 | C4.1 | 🔨 | `15707b04` | ทะเบียน 1,052 แถว · crawler --inventory · testid ใหม่ 11 · ผู้ตรวจ MERGEABLE AFTER SHOULD-FIX (ปิดแล้ว) · รอ C4.2 รันจริงยืนยัน backdrop |
 | C4 | C4.2 | 🔨 | `15707b04` | qc-crm-buttons.mts (dry 7,122 กด) รอรันจริงกับ server จาก HEAD |
 | C4 | C4.3 | ✅ | (this commit) | every form: 669/669 on main build c6fe26d2 · 22 forms inline errors + focus · required custom fields enforced server-side · reviewer rounds on oracle + fixes |
-| C4 | C4.4 | 🔨 | — | 10 journeys run (59/78 + 4 gaps) · C4.4-fix list 7 · reviewer round 2 pending |
+| C4 | C4.4 | ✅ | 46f952cc | journey oracle US1–US10 (5 rounds · 2 reviews) · ACCEPTED 1 Oct on main 46f952cc: `--journey all` 92/95 with 0 failures — the 3 non-passes are documented PRODUCT GAPS (US4-5b/US4-5d call transcription: no STT provider + no settings UI → owner P18 · US5-0 compose-new-thread: ruled gap DECISION-US5-1) · product bugs found by the oracle fixed in C4.4-fix (03848b5b-era), C4.4-fix2 (03848b5b) and C4.4-fix3/J3 (46f952cc) |
 | C5 | C5.2 | ✅ | (this commit) | 6 hunters read-only · 0 BLOCKER · 22 MAJOR · 40 MINOR · `wo-notes/crm-C5.2*.md` · C5.3 pinning in progress |
 | C5 | C5.1 | ✅ | (this commit) | perf at real size: 32/32 budgets · P2029 crashes fixed · migration crm_perf_indexes (index-only) · reviewer MERGEABLE · equivalence 0 diffs |
 | C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
