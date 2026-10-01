@@ -12,9 +12,13 @@ import { moveDealAction, reopenDealAction } from "@/lib/modules/crm/deals-action
 import { DEAL_REASON_MIN, STAGE_FILLABLE_SYSTEM_KEYS, STAGE_REQUIRABLE_LABEL, type DealKind } from "@/lib/modules/crm/deals-shared";
 
 export type MoveTarget = { id: string; name: string; kind: DealKind };
+/** CRM C5.4-E ▸ L6-M1: ชนิด + ตัวเลือกของฟิลด์กำหนดเองของดีล — หน้าต่างเงื่อนไขแสดงช่องตามชนิด (เดิมเป็นช่องข้อความทุกช่อง) ◂ */
+export type DealFieldInput = { type: string; choices: { value: string; label: string }[] };
 export type MoveRequest = { dealId: string; fromKind: DealKind; to: MoveTarget; onDone?: (ok: boolean) => void };
 
 const FILLABLE = new Set<string>(STAGE_FILLABLE_SYSTEM_KEYS);
+/** ชนิดฟิลด์ที่กรอกในหน้าต่างไม่ได้ (ไฟล์ · ลิงก์ไปรายการอื่น) — ไปกรอกที่หน้าดีล */
+const NOT_IN_DIALOG = new Set(["FILE", "LOOKUP"]);
 const SYSTEM_LABEL = STAGE_REQUIRABLE_LABEL as Record<string, string>;
 
 function Modal({ testid, title, children }: { testid: string; title: string; children: React.ReactNode }) {
@@ -32,10 +36,12 @@ export function useDealMover(opts: {
   systemId: string;
   lostReasons: { id: string; label: string }[];
   fieldLabels: Record<string, string>;
+  fieldInputs?: Record<string, DealFieldInput>;
   canReopen: boolean;
   onMoved: () => void;
 }) {
   const { systemId, lostReasons, fieldLabels, canReopen, onMoved } = opts;
+  const fieldInputs = opts.fieldInputs ?? {};
   const [lost, setLost] = useState<MoveRequest | null>(null);
   const [reopen, setReopen] = useState<MoveRequest | null>(null);
   const [req, setReq] = useState<{ r: MoveRequest; missing: string[]; message: string } | null>(null);
@@ -44,6 +50,7 @@ export function useDealMover(opts: {
   const [reason, setReason] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [multi, setMulti] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -80,6 +87,7 @@ export function useDealMover(opts: {
       if (res.code === "STAGE_REQUIREMENTS") {
         setLost(null);
         setValues({});
+        setMulti({});
         setReq({ r, missing: res.missing ?? [], message: res.error });
         return;
       }
@@ -149,8 +157,71 @@ export function useDealMover(opts: {
   };
 
   const labelOf = (k: string) => (k === "LINES" ? "รายการสินค้า" : k === "QUOTATION" ? "ใบเสนอราคา" : (SYSTEM_LABEL[k] ?? fieldLabels[k] ?? k));
-  const fillable = req ? req.missing.filter((k) => k !== "LINES" && k !== "QUOTATION" && (FILLABLE.has(k) || !(k in SYSTEM_LABEL))) : [];
+  // CRM C5.4-E ▸ L6-M1: ชนิดของช่อง — ฟิลด์ระบบที่กรอกได้ (วันคาดว่าจะปิด · โอกาสปิด · ขั้นถัดไป) หรือชนิดของฟิลด์กำหนดเอง ◂
+  const typeOf = (k: string): string => (k === "expectedCloseAt" ? "DATE" : k === "probabilityOverride" ? "NUMBER" : FILLABLE.has(k) ? "TEXT" : (fieldInputs[k]?.type ?? "TEXT"));
+  const fillable = req ? req.missing.filter((k) => k !== "LINES" && k !== "QUOTATION" && (FILLABLE.has(k) || !(k in SYSTEM_LABEL)) && !NOT_IN_DIALOG.has(typeOf(k))) : [];
   const elsewhere = req ? req.missing.filter((k) => !fillable.includes(k)) : [];
+  /** ค่าที่ส่ง = ชนิดที่ engine ต้องการ (ตัวเลข · ใช่/ไม่ใช่ · รหัสตัวเลือก · รายการ) — ว่าง = undefined */
+  const valueOf = (k: string): unknown => {
+    const t = typeOf(k);
+    if (t === "MULTI_SELECT") return (multi[k] ?? []).length ? multi[k] : undefined;
+    const v = (values[k] ?? "").trim();
+    if (!v) return undefined;
+    if (t === "NUMBER" || t === "MONEY") return Number(v);
+    if (t === "BOOLEAN") return v === "true";
+    if (t === "DATETIME") return new Date(v).toISOString();
+    return v;
+  };
+  const control = (k: string) => {
+    const t = typeOf(k);
+    const common = { className: "input text-sm", "data-testid": `deal-req-field-${k}`, "aria-label": labelOf(k) };
+    const set = (v: string) => setValues((cur) => ({ ...cur, [k]: v }));
+    if (t === "SELECT" || t === "BOOLEAN") {
+      const opts = t === "BOOLEAN" ? [{ value: "true", label: "ใช่" }, { value: "false", label: "ไม่ใช่" }] : (fieldInputs[k]?.choices ?? []);
+      return (
+        <select {...common} value={values[k] ?? ""} onChange={(e) => set(e.target.value)}>
+          <option value="">— เลือก —</option>
+          {opts.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (t === "MULTI_SELECT") {
+      const picked = multi[k] ?? [];
+      return (
+        <span className="flex flex-wrap gap-x-4 gap-y-2" role="group" aria-label={labelOf(k)}>
+          {(fieldInputs[k]?.choices ?? []).map((o) => (
+            <label key={o.value} className="flex min-h-[24px] items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={picked.includes(o.value)}
+                onChange={(e) => setMulti((cur) => ({ ...cur, [k]: e.target.checked ? [...picked, o.value] : picked.filter((x) => x !== o.value) }))}
+                data-testid={`deal-req-field-${k}-${o.value}`}
+              />
+              {o.label}
+            </label>
+          ))}
+        </span>
+      );
+    }
+    if (t === "LONG_TEXT") return <textarea {...common} rows={3} value={values[k] ?? ""} onChange={(e) => set(e.target.value)} />;
+    return (
+      <input
+        {...common}
+        type={t === "DATE" ? "date" : t === "DATETIME" ? "datetime-local" : t === "NUMBER" || t === "MONEY" ? "number" : "text"}
+        inputMode={t === "NUMBER" || t === "MONEY" ? "decimal" : undefined}
+        step={t === "NUMBER" || t === "MONEY" ? "any" : undefined}
+        min={k === "probabilityOverride" ? 0 : undefined}
+        max={k === "probabilityOverride" ? 100 : undefined}
+        value={values[k] ?? ""}
+        onChange={(e) => set(e.target.value)}
+      />
+    );
+  };
 
   const dialogs = (
     <>
@@ -214,20 +285,19 @@ export function useDealMover(opts: {
       {req && (
         <Modal testid="deal-req-modal" title={`ขั้น "${req.r.to.name}" ต้องมีข้อมูลก่อน`}>
           <p className="text-sm text-[color:var(--color-muted)]">กรอกช่องที่ขาดด้านล่าง แล้วระบบจะย้ายดีลต่อให้</p>
-          {fillable.map((k) => (
-            <label key={k} className="flex flex-col gap-1 text-sm">
-              <span>{labelOf(k)}</span>
-              <input
-                type={k === "expectedCloseAt" ? "date" : k === "probabilityOverride" ? "number" : "text"}
-                min={k === "probabilityOverride" ? 0 : undefined}
-                max={k === "probabilityOverride" ? 100 : undefined}
-                value={values[k] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [k]: e.target.value }))}
-                className="input text-sm"
-                data-testid={`deal-req-field-${k}`}
-              />
-            </label>
-          ))}
+          {fillable.map((k) =>
+            typeOf(k) === "MULTI_SELECT" ? (
+              <div key={k} className="flex flex-col gap-1 text-sm">
+                <span>{labelOf(k)}</span>
+                {control(k)}
+              </div>
+            ) : (
+              <label key={k} className="flex flex-col gap-1 text-sm">
+                <span>{labelOf(k)}</span>
+                {control(k)}
+              </label>
+            ),
+          )}
           {elsewhere.length > 0 && (
             <p className="text-sm">
               ยังขาด {elsewhere.map(labelOf).join(" · ")} — ทำที่หน้าดีลก่อน{" "}
@@ -249,9 +319,9 @@ export function useDealMover(opts: {
                 onClick={() => {
                   const out: Record<string, unknown> = {};
                   for (const k of fillable) {
-                    const v = (values[k] ?? "").trim();
-                    if (!v) return setError(`กรอก "${labelOf(k)}" ก่อน`);
-                    out[k] = k === "probabilityOverride" ? Number(v) : v;
+                    const v = valueOf(k);
+                    if (v === undefined) return setError(typeOf(k) === "SELECT" || typeOf(k) === "BOOLEAN" || typeOf(k) === "MULTI_SELECT" ? `เลือก "${labelOf(k)}" ก่อน` : `กรอก "${labelOf(k)}" ก่อน`);
+                    out[k] = v;
                   }
                   void run(req.r, { requireFieldsValues: out });
                 }}

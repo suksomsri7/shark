@@ -166,7 +166,7 @@ if (has("crmCompany")) {
     const withTax = i <= CQC.companies.withTaxId;
     const party = await P.party.create({ data: { tenantId, kind: "COMPANY", name: CQC.companies.nameOf(i), taxId: withTax ? CQC.companies.taxIdOf(i) : null, branchCode: "00000", email: `info@${CQC.companies.domainOf(i)}` } });
     const owner = i <= 10 ? "thana" : i <= 15 ? "nok" : "manager";
-    const c = await P.crmCompany.create({ data: { tenantId, systemId: SYS, partyId: party.id, name: CQC.companies.nameOf(i), taxId: withTax ? CQC.companies.taxIdOf(i) : null, branchCode: "00000", emailDomain: CQC.companies.domainOf(i), industry: i % 2 ? "ท่องเที่ยว/ทัวร์" : "โรงแรม", size: ["MICRO", "SMALL", "MEDIUM", "LARGE"][i % 4], website: `https://${CQC.companies.domainOf(i)}`, ownerUserId: users[owner]!.userId, teamId: teamOfUser(owner), lifecycleStage: i <= 10 ? "CUSTOMER" : "PROSPECT", score: (i * 7) % 100 } });
+    const c = await P.crmCompany.create({ data: { tenantId, systemId: SYS, partyId: party.id, name: CQC.companies.nameOf(i), taxId: withTax ? CQC.companies.taxIdOf(i) : null, branchCode: "00000", emailDomain: CQC.companies.domainOf(i), industry: i % 2 ? "ท่องเที่ยว/ทัวร์" : "โรงแรม", size: ["MICRO", "SMALL", "MEDIUM", "LARGE"][i % 4], website: `https://${CQC.companies.domainOf(i)}`, ownerUserId: users[owner]!.userId, teamId: teamOfUser(owner) } }); // CRM C5.4-E ▸ มติ C5.3 ข้อ 8: ไม่เขียน lifecycleStage/score ของบริษัทเอง — ขั้นมาจากดีล (UPDATE ท้ายไฟล์ = สูตรของ companies.ts) ◂
     companyIds.push(c.id);
   }
 }
@@ -402,7 +402,11 @@ const expected = {
 await prisma.$executeRawUnsafe(`UPDATE "CrmCompany" co SET
   "openDealCount" = (SELECT count(*)::int FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'OPEN'),
   "wonValueSatang" = (SELECT COALESCE(sum(COALESCE(d."wonValueSatang", d."valueSatang")), 0)::bigint FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'WON'),
-  "lastActivityAt" = (SELECT max(COALESCE(a."doneAt", a."startAt", a."createdAt")) FROM "CrmActivity" a LEFT JOIN "CrmDeal" d ON d."id" = a."dealId" WHERE a."companyId" = co."id" OR d."companyId" = co."id")
+  "lastActivityAt" = (SELECT max(COALESCE(a."doneAt", a."startAt", a."createdAt")) FROM "CrmActivity" a LEFT JOIN "CrmDeal" d ON d."id" = a."dealId" WHERE a."companyId" = co."id" OR d."companyId" = co."id"),
+  "lifecycleStage" = CASE
+    WHEN co."lifecycleStage" IN ('LEAD', 'PROSPECT', 'LOST') AND EXISTS (SELECT 1 FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'WON') THEN 'CUSTOMER'::"CrmLifecycleStage"
+    WHEN co."lifecycleStage" IN ('LEAD', 'LOST') AND EXISTS (SELECT 1 FROM "CrmDeal" d WHERE d."companyId" = co."id" AND d."systemId" = co."systemId" AND d."kind" = 'OPEN') THEN 'PROSPECT'::"CrmLifecycleStage"
+    ELSE co."lifecycleStage" END
   WHERE co."systemId" = $1`, SYS);
 writeFileSync(CQC.expectedPath, JSON.stringify(expected, null, 2));
 console.log(`\n✅ seed CRM: ร้าน ${tenantId} · ระบบ CRM ${SYS} · บริษัท ${companyIds.length} · ผู้ติดต่อ ${contactIds.length} · ดีล ${dealIds.length} · กิจกรรม ${actCount} · สัญญา ${contractRecords} · ทีม ${Object.keys(teams).length} · backfill ${backfillRan.length}/${CRM_BACKFILLS.length} · สมาชิกในร้าน ${memberTotal} (CRM ${memberFromCrm}) · outbox ที่ยังไม่ DONE จากรอบนี้ ${pendingMine} · เฉลย ${CQC.expectedPath} · ${Math.round((Date.now() - t0) / 1000)}s`);

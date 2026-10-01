@@ -144,8 +144,10 @@ const memberFacade = () => import("@/lib/modules/member");
 /** คีย์อ่านที่ผู้รับต้องถือ เพื่อจะ "มีสิทธิ์รู้" เรื่องของระเบียนชนิดนี้ (AUDIT-CLASS X1) */
 function readKeyOf(refType: string): string {
   if (refType === "CrmContact") return "crm.contact.read";
+  if (refType === "CrmContactBatch") return "crm.contact.read"; // CRM C5.4-E r2 ▸ SF-3: สรุป lead ที่ได้รับเป็นชุด (ผู้ส่งเลือกเฉพาะผู้ดูแลของชุดนั้น) ◂
   if (refType === "CrmCompany") return "crm.company.read";
   if (refType === "CrmActivity") return "crm.activity.read";
+  if (refType === "CrmTasksToday") return "crm.activity.read"; // CRM C5.4-E ▸ L6-M4: สรุปงานวันนี้ (เรื่องระดับระบบ — ผู้ส่งนับเฉพาะงานของผู้รับเอง) ◂
   if (refType === "CustomRecord") return "crm.record.read";
   return "crm.deal.read";
 }

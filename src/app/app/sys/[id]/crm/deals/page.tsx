@@ -33,7 +33,7 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { DealBoard } from "./_components/DealBoard";
 import { DealTable } from "./_components/DealTable";
 // CRM C3.2 ▸ บันทึก/ลบมุมมองของรายการดีล (objectKey "deal" · ทีมจริง) + pipeline ของมุมมองที่เลือก ◂
-import { resolveViewFilters, viewOptions, viewTeamOptions } from "@/lib/modules/crm/views";
+import { resolveViewFilters, viewOptions, viewSkippedFilters, viewTeamOptions } from "@/lib/modules/crm/views";
 import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
 import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
@@ -163,11 +163,14 @@ export default async function DealsPage({
     sort: (DEAL_SORTS as readonly string[]).includes(one("sort")) ? one("sort") : null,
   };
   const fieldLabels = Object.fromEntries(layout.map((x) => [x.key, x.label]));
+  // CRM C5.4-E ▸ L6-M1: ชนิด/ตัวเลือกของฟิลด์กำหนดเอง → ช่องตามชนิดในหน้าต่างเงื่อนไขก่อนเข้าขั้น ◂
+  const fieldInputs = Object.fromEntries(layout.filter((x) => !x.isSystem).map((x) => [x.key, { type: x.type, choices: x.choices }]));
 
   let board: BoardDto | null = null;
   let table: DealListResult | null = null;
   let fc: ForecastResult | null = null;
   let loadError: string | null = null;
+  const viewSkipped = one("saved") ? await viewSkippedFilters(ctx, actor, "deal", one("saved")).catch(() => [] as string[]) : []; // CRM C5.4-E ▸ L6-m11 ◂
   const group = (FORECAST_GROUPS as readonly string[]).includes(one("group")) ? one("group") : "month";
   const category = (FORECAST_CATEGORIES as readonly string[]).includes(one("category")) ? one("category") : "";
   try {
@@ -347,6 +350,12 @@ export default async function DealsPage({
           {loadError}
         </p>
       )}
+      {/* CRM C5.4-E ▸ L6-m11: ตัวกรองของมุมมองที่ฟิลด์ถูกเก็บเข้าคลัง/ปิดการกรอง = ข้าม (รายการยังขึ้น) + บอกให้รู้ ◂ */}
+      {viewSkipped.length > 0 && (
+        <p className="card p-3 text-sm text-[color:var(--color-muted)]" data-testid="deals-view-skipped">
+          ตัวกรองบางตัวของมุมมองนี้ถูกข้าม เพราะฟิลด์ถูกเก็บเข้าคลังหรือปิดการกรองไปแล้ว: {viewSkipped.join(" · ")} — รายการด้านล่างกรองด้วยตัวกรองที่เหลือ
+        </p>
+      )}
 
       {board && (
         <DealBoard
@@ -357,6 +366,7 @@ export default async function DealsPage({
           canReopen={canReopen}
           lostReasons={lostReasons}
           fieldLabels={fieldLabels}
+          fieldInputs={fieldInputs}
           nowKey={thaiToday()}
         />
       )}

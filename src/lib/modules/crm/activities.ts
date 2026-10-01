@@ -885,7 +885,14 @@ function targetFilter(input: { contactId?: unknown; companyId?: unknown; dealId?
   return w;
 }
 
-/** ช่วงสถานะตามเวลาไทย (+07:00): today = วันปฏิทินไทยของตอนนี้ · week = [วันนี้ 00:00 ไทย, +7 วัน) (มติผู้คุมงาน C1.6 ข้อ 1) */
+/**
+ * ช่วงสถานะตามเวลาไทย (+07:00): today = วันปฏิทินไทยของตอนนี้ · week = [วันนี้ 00:00 ไทย, +7 วัน) (มติผู้คุมงาน C1.6 ข้อ 1)
+ * CRM C5.4-E ▸ L6-m1: overdue = ก่อน 00:00 ไทยของวันนี้ (`isActivityOverdue` ใน activities-shared) — ตัวนี้คือนิยามเดียวที่แอปมือถือ
+ *   (mobile.todayTasks) และวิดเจ็ต (widgets.todayTasks) ใช้นับด้วย ◂
+ */
+export function activityStatusWhere(status: ActivityStatus | null, nowMs: number): Prisma.CrmActivityWhereInput {
+  return statusFilter(status, nowMs);
+}
 function statusFilter(status: ActivityStatus | null, nowMs: number): Prisma.CrmActivityWhereInput {
   const d0 = new Date(thaiDayStartMs(nowMs));
   // มติผู้คุมงาน C1.6 S3: โน้ตไม่ใช่งาน (ไม่อยู่ในสถานะค้าง/วันนี้/สัปดาห์/เลยกำหนด) · เวลาอ้างอิง = COALESCE(dueAt, startAt)
@@ -895,7 +902,7 @@ function statusFilter(status: ActivityStatus | null, nowMs: number): Prisma.CrmA
     case "pending":
       return open;
     case "overdue":
-      return { AND: [open, when({ lt: new Date(nowMs) })] };
+      return { AND: [open, when({ lt: d0 })] }; // CRM C5.4-E ▸ L6-m1 (เดิม lt: ตอนนี้) ◂
     case "today":
       return { AND: [open, when({ gte: d0, lt: new Date(d0.getTime() + DAY_MS) })] };
     case "week":

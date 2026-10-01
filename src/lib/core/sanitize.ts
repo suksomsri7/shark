@@ -37,12 +37,33 @@ const ALT_RE = /alt\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
 const NUM_ATTR_RE = (name: string) => new RegExp(`${name}\\s*=\\s*("(\\d{1,5})"|'(\\d{1,5})'|(\\d{1,5}))`, "i");
 
 function escapeAttr(v: string): string {
-  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  // CRM C5.4-E r2 ▸ รีวิว SF-4: `<` `>` `'` ต้อง escape ด้วย — ค่าที่ถอดรหัสแล้วอาจมี `<…>` (จาก `&lt;…&gt;`) ซึ่งรอบตัดถัดไป (บันทึกแม่แบบ → ส่ง)
+  //   อ่านเป็นแท็กแล้วตัดเนื้อความเพี้ยน ⇒ ถอดรหัสครั้งเดียว + escape ครบ = ตัดกี่รอบก็ได้ผลเดิมจริง · ค่าที่ไม่มีอักขระเหล่านี้ = ผลเดิมทุกไบต์ ◂
+  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/'/g, "&#39;");
+}
+
+/**
+ * CRM C5.4-E ▸ E1: ค่า attribute ใน HTML เป็นข้อความที่ "เข้ารหัส entity ไว้แล้ว" (`&amp;` = `&`) — เดิม `escapeAttr` เข้ารหัสซ้ำทุกรอบ
+ * (`&amp;` → `&amp;amp;`) ⇒ ลิงก์ที่มี query 2 ตัวขึ้นไปผ่านตัวตัดกี่รอบก็เพี้ยนเพิ่มทีละชั้น (บันทึกแม่แบบ + ส่ง = 2 รอบ → ลิงก์ติดตามพัง)
+ * ⇒ ถอดรหัส **ครั้งเดียว** เป็นค่าที่เบราว์เซอร์เห็นจริง แล้วค่อยเข้ารหัสกลับ (`escapeAttr` ครบ & " < > ' — r2 SF-4) ⇒ ตัดซ้ำกี่รอบก็ได้ผลเดิม ·
+ * ค่าที่ไม่มี entity = ผลเดิมทุกไบต์ ◂
+ */
+function decodeAttr(v: string): string {
+  return v.replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|amp|quot|apos|lt|gt);/gi, (whole, ent: string) => {
+    const e = ent.toLowerCase();
+    if (e === "amp") return "&";
+    if (e === "quot") return '"';
+    if (e === "apos") return "'";
+    if (e === "lt") return "<";
+    if (e === "gt") return ">";
+    const code = e.startsWith("#x") ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
 }
 
 function attrValue(attrs: string | undefined, re: RegExp): string {
   const m = attrs ? attrs.match(re) : null;
-  return m ? (m[2] ?? m[3] ?? m[4] ?? "") : "";
+  return m ? decodeAttr(m[2] ?? m[3] ?? m[4] ?? "") : "";
 }
 
 /**
@@ -116,8 +137,8 @@ export function sanitizeHtml(dirty: string | null | undefined, opts?: SanitizeOp
     if (tag === "br") return "<br>";
     if (tag === "hr") return "<hr>";
     if (tag === "a") {
-      const m = attrsRaw ? attrsRaw.match(HREF_RE) : null;
-      const href = m ? (m[2] ?? m[3] ?? m[4] ?? "") : "";
+      // CRM C5.4-E ▸ E1: ค่าที่ถอดรหัสแล้ว (ตัวตรวจ scheme เห็นค่าเดียวกับเบราว์เซอร์ · เข้ารหัสกลับครั้งเดียว) ◂
+      const href = attrValue(attrsRaw, HREF_RE);
       if (!linkSchemeOk(href, schemes)) return ""; // javascript: / data: ฯลฯ — ปลดแท็กทิ้ง
       return `<a href="${escapeAttr(href)}" rel="noopener" target="_blank">`;
     }

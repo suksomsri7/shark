@@ -33,7 +33,7 @@ import { CrmCardScanButton } from "@/components/crm/call/CrmCardScanButton";
 import { crmCan } from "@/lib/modules/crm/access";
 import { CRM_CARD_MAX_BYTES } from "@/lib/modules/crm/calls-shared";
 // CRM C3.2 ▸ บันทึก/ลบมุมมองของรายชื่อผู้ติดต่อ (objectKey "contact" · ทีมจริง) ◂
-import { viewOptions, viewTeamOptions } from "@/lib/modules/crm/views";
+import { viewOptions, viewSkippedFilters, viewTeamOptions } from "@/lib/modules/crm/views";
 import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
 import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
@@ -116,6 +116,7 @@ export default async function ContactsPage({
     throw e;
   });
   const listError = failed.message;
+  const viewSkipped = view ? await viewSkippedFilters(ctx, actor, "contact", view).catch(() => [] as string[]) : []; // CRM C5.4-E ▸ L6-m11 ◂
   const def = systemDef(sys.type);
   const base = `/app/sys/${id}/crm/contacts`;
   const qs = (extra: Record<string, string>) => {
@@ -295,6 +296,12 @@ export default async function ContactsPage({
         <div className="card p-3 text-sm" style={{ borderColor: "var(--color-danger)" }} data-testid="contacts-list-error" role="alert">
           {listError}
         </div>
+      )}
+      {/* CRM C5.4-E ▸ L6-m11: ตัวกรองของมุมมองที่ฟิลด์ถูกเก็บเข้าคลัง/ปิดการกรอง = ข้าม (รายการยังขึ้น) + บอกให้รู้ ◂ */}
+      {viewSkipped.length > 0 && (
+        <p className="card p-3 text-sm text-[color:var(--color-muted)]" data-testid="contacts-view-skipped">
+          ตัวกรองบางตัวของมุมมองนี้ถูกข้าม เพราะฟิลด์ถูกเก็บเข้าคลังหรือปิดการกรองไปแล้ว: {viewSkipped.join(" · ")} — รายการด้านล่างกรองด้วยตัวกรองที่เหลือ
+        </p>
       )}
 
       {rows.length === 0 ? (

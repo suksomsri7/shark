@@ -255,6 +255,18 @@ export function thaiDayStartMs(ms: number): number {
   return Math.floor((ms + TH_OFFSET_MS) / DAY_MS) * DAY_MS - TH_OFFSET_MS;
 }
 
+/**
+ * CRM C5.4-E ▸ L6-m1: นิยาม "วันนี้ / เลยกำหนด" ชุดเดียวของทุกหน้าจอ (แท็บงานบนเว็บ · หน้าแรก · แอปมือถือ · วิดเจ็ต):
+ *   เวลาอ้างอิง = กำหนดส่ง (ไม่มี = เวลาเริ่มนัด) · **วันนี้** = อยู่ในวันปฏิทินไทยนี้ (รวมที่เลยเวลาไปแล้ววันนี้) ·
+ *   **เลยกำหนด** = ก่อน 00:00 ของวันนี้ (เวลาไทย) · งานหนึ่งชิ้นอยู่ได้แท็บเดียว (เดิมเว็บนับ "ก่อนตอนนี้" ⇒ งานที่เลยเวลาวันนี้อยู่ทั้งสองแท็บ
+ *   ขณะที่แอป/วิดเจ็ตนับเป็นวันนี้) ◂
+ * r2 (รีวิว SF-5): ป้าย "เลยกำหนด" ของแถวกิจกรรม (ActivityItems) ใช้ฟังก์ชันนี้ด้วย · **ไม่รวม** งานรายชั่วโมง `overdueSweep` และ trigger
+ *   `crm.activity.overdue` ของกฎอัตโนมัติ — สองตัวนั้นเป็น "เหตุการณ์ตอนเลยเวลากำหนด" (dueAt < ตอนนี้) ไม่ใช่แท็บ จึงคงนิยามเดิมโดยตั้งใจ
+ */
+export function isActivityOverdue(dueMs: number | null | undefined, nowMs: number): boolean {
+  return typeof dueMs === "number" && Number.isFinite(dueMs) && dueMs < thaiDayStartMs(nowMs);
+}
+
 /** วันในสัปดาห์แบบไทย (0 = อาทิตย์) ของขณะ `ms` */
 export function thaiWeekday(ms: number): number {
   return new Date(ms + TH_OFFSET_MS).getUTCDay();

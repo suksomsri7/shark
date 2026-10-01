@@ -233,6 +233,31 @@ async function stopOneTx(tx: Tx, systemId: string, row: { id: string; tenantId: 
 }
 
 /**
+ * CRM C5.4-E ▸ L6-M3: รวมผู้ติดต่อ (`contacts.mergeContacts` · ใน tx ของการรวม ถือล็อกแถวผู้ติดต่อทั้งสองแล้ว) — ประวัติลำดับการติดตาม
+ * ของคนที่ถูกรวม **ย้ายมาที่คนที่เก็บไว้ทั้งหมด** (เดิมค้างที่แถวที่ถูกรวม ⇒ ตัวรันหยุดเป็น CONTACT_GONE เงียบ ๆ · ประวัติหายจากหน้า 360)
+ * ลำดับเดียวกันเดินอยู่ทั้งสองคน ⇒ คงของคนที่เก็บไว้ · ของคนที่ถูกรวมหยุดด้วยรหัสเดิม "REPLACED" (ไม่มีรหัสใหม่ — ป้าย "ลงทะเบียนใหม่แทน")
+ * ⇒ แต่ละลำดับมี ACTIVE ได้แถวเดียวต่อคนเสมอ (partial unique ของฐาน) · คืนจำนวนแถวที่ย้าย/หยุด ◂
+ */
+export async function transferEnrollmentsInTx(tx: Tx, ctx: { tenantId: string; systemId: string }, fromContactId: string, toContactId: string, at: Date): Promise<{ moved: number; stopped: number }> {
+  const [drop, keep] = await Promise.all([
+    tx.crmSequenceEnrollment.findMany({ where: { tenantId: ctx.tenantId, contactId: fromContactId }, select: { id: true, tenantId: true, sequenceId: true, contactId: true, status: true } }),
+    tx.crmSequenceEnrollment.findMany({ where: { tenantId: ctx.tenantId, contactId: toContactId, status: { in: ACTIVE_OR_PAUSED } }, select: { sequenceId: true } }),
+  ]);
+  if (drop.length === 0) return { moved: 0, stopped: 0 };
+  const keepLive = new Set(keep.map((r) => r.sequenceId));
+  let stopped = 0;
+  for (const r of drop) {
+    if ((r.status === "ACTIVE" || r.status === "PAUSED") && keepLive.has(r.sequenceId)) {
+      if (await stopOneTx(tx, ctx.systemId, r, "REPLACED", at)) stopped += 1;
+    } else if (r.status === "ACTIVE" || r.status === "PAUSED") {
+      keepLive.add(r.sequenceId); // ย้ายมาเป็นแถวที่เดินของคนที่เก็บไว้ — แถวที่สองของลำดับเดียวกัน (ถ้ามี) หยุดแทน
+    }
+  }
+  const moved = (await tx.crmSequenceEnrollment.updateMany({ where: { tenantId: ctx.tenantId, contactId: fromContactId }, data: { contactId: toContactId } })).count;
+  return { moved, stopped };
+}
+
+/**
  * หยุดผู้ลงทะเบียนของ "ลำดับหนึ่ง" เป็นชุด (≤ `limit` แถว) ใน **ธุรกรรมเดียว 3 คำสั่ง** — ใช้ตอนเก็บลำดับ
  * 🔴 ทำไมไม่วน stopOneTx ทีละแถว (มติผู้คุมงานรอบสอง ข้อ 1): หนึ่งธุรกรรมต่อคน = ~58 มิลลิวินาที/คน ⇒ 600 คนใช้ ~35 วินาที
  *    ซึ่งเกินเพดานเวลาของคำขอเดียว ⇒ ลำดับใหญ่จะเหลือคนค้าง ACTIVE ทั้งที่ลำดับถูกเก็บแล้ว (runDue ข้ามลำดับที่เก็บ = ซอมบี้)

@@ -66,6 +66,7 @@ import * as consents from "./consents";
 import { contactWhere, dealWhere, visibleEmailRowSql } from "./where";
 import { crmScope } from "./request-scope";
 import { companyByEmailDomain, countVisibleCompany, visibleCompanyIds } from "./companies";
+import { FREE_MAIL_DOMAINS } from "./companies-shared"; // CRM C5.4-E ▸ L6-m8 ◂
 import { resolve as resolveVisibility } from "./visibility";
 import * as contacts from "./contacts";
 import * as activities from "./activities";
@@ -1113,6 +1114,17 @@ async function isTransactionalReply(
   return { transactional: thread.some((r) => r.direction === "IN"), parent };
 }
 
+/** ค่าตัวแปร `{{contact.*}}` ของผู้ติดต่อ — ชุดเดียวกันทั้งแม่แบบ (templateId) และข้อความที่ส่งจากช่องเขียนจดหมาย (C5.4-E ▸ E2) */
+function contactMergeVars(contact: CrmContact): Record<string, string> {
+  return {
+    "contact.firstName": contact.firstName?.trim() || contact.name?.trim() || "ลูกค้า",
+    "contact.lastName": contact.lastName?.trim() ?? "",
+    "contact.name": contact.name?.trim() || "ลูกค้า",
+    "contact.companyName": contact.company?.trim() ?? "",
+  };
+}
+const HAS_MUSTACHE = /\{\{\s*[\w.]+\s*\}\}/;
+
 async function renderTemplate(
   ctx: EmailsCtx,
   templateId: string,
@@ -1122,12 +1134,7 @@ async function renderTemplate(
   const tpl = await prisma.crmEmailTemplate.findFirst({ where: { id: templateId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   if (!tpl) throw fail("NOT_FOUND", TEMPLATE_NOT_FOUND);
   // AUDIT-CLASS X6: ค่าที่หยอดเข้าไปถูก escape ครั้งเดียว ⇒ `<img onerror=…>` ในค่าตัวแปรกลายเป็นข้อความ
-  const merged: Record<string, string> = {
-    "contact.firstName": contact.firstName?.trim() || contact.name?.trim() || "ลูกค้า",
-    "contact.lastName": contact.lastName?.trim() ?? "",
-    "contact.name": contact.name?.trim() || "ลูกค้า",
-    "contact.companyName": contact.company?.trim() ?? "",
-  };
+  const merged: Record<string, string> = contactMergeVars(contact);
   for (const [k, v] of Object.entries(vars ?? {})) merged[k] = String(v ?? "");
   const escaped: Record<string, string> = {};
   for (const [k, v] of Object.entries(merged)) escaped[k] = escapeHtmlText(v);
@@ -1171,14 +1178,20 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
   // ── ตรวจก่อนแตะอะไรทั้งนั้น (AUDIT-CLASS X6) ──
   const templateId = strOrNull(input?.templateId);
   const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars) : null;
-  const subject = cleanSubject(rendered ? rendered.subject : input?.subject);
+  // CRM C5.4-E ▸ E2: ช่องเขียนจดหมายส่ง "ข้อความ" ของแม่แบบที่เลือก (ไม่ส่ง templateId) ⇒ เดิม `{{contact.firstName}}` ออกไปถึงลูกค้าตรงตัว ·
+  //   ตอนนี้ข้อความล้วนที่ไม่มีค่าตัวแปรมาด้วย (`bodyVars`) ใช้ค่าชุดเดียวกับแม่แบบ — เนื้อความแทน **หลัง** ทำลิงก์ (escape · ไม่มีทางเป็นลิงก์
+  //   กติกาเดียวกับลำดับการติดตาม) · หัวข้อแทนเป็นข้อความ · ไม่มี `{{…}}` = ผลเดิมทุกไบต์ ◂
+  const composerVars = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars ? contactMergeVars(contact) : null;
+  const subjectIn = composerVars && typeof input?.subject === "string" && HAS_MUSTACHE.test(input.subject) ? renderEmailVars(input.subject, composerVars) : input?.subject;
+  const subject = cleanSubject(rendered ? rendered.subject : subjectIn);
   // CRM C4.4-fix2 ▸ J1: ข้อความล้วน (ไม่มีแม่แบบ/ไม่มี HTML) → HTML ด้วยตัวแปลงกลางตัวเดียว — ผลเป็น "ข้อความที่ escape แล้ว + ลิงก์ http(s)
   //   ของผู้เขียน" โดยโครงสร้าง ⇒ **ไม่** ส่งเข้า `sanitizeHtml` ซ้ำ: ตัวตัดกลาง escape `&` ใน href อีกชั้น (`&amp;` → `&amp;amp;` = ลิงก์เสีย)
   //   รอบแก้ 2 (รีวิว SF-1): ตรวจเพดานขนาด **ก่อน** แปลง (ข้อความเดียวกันทุกทาง) · (รีวิว BL-1): ค่าตัวแปรของกฎ/ลำดับติดตาม
   //   (`bodyVars`) แทน **หลัง** ทำลิงก์ — escape เป็นข้อความ ไม่มีทางเป็นลิงก์นับคลิก ◂
   const plainText = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" ? input.bodyText : null;
   if (plainText !== null && crmEmailBodyTooLong(plainText)) throw fail("VALIDATION", CRM_EMAIL_BODY_TOO_LONG_MSG);
-  const rawBody = rendered ? rendered.bodyHtml : plainText !== null ? crmPlainTextToEmailHtml(plainText, input?.bodyVars ?? null) : str(input?.bodyHtml);
+  const textVars: CrmTextPlaceholders | null = input?.bodyVars ?? (composerVars && plainText !== null && HAS_MUSTACHE.test(plainText) ? { syntax: "mustache", values: composerVars } : null);
+  const rawBody = rendered ? rendered.bodyHtml : plainText !== null ? crmPlainTextToEmailHtml(plainText, textVars) : str(input?.bodyHtml);
   if (Buffer.byteLength(rawBody, "utf8") > CRM_EMAIL_BODY_MAX_BYTES) {
     throw fail("VALIDATION", CRM_EMAIL_BODY_TOO_LONG_MSG);
   }
@@ -1450,6 +1463,8 @@ async function deliver(
   if (!res.ok && !conflictSent) {
     // AUDIT-CLASS X8: เก็บเฉพาะรหัสความล้มเหลว — ไม่มีที่อยู่ผู้รับในคอลัมน์ที่ใครก็อ่านได้
     await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: str(res.error).slice(0, 200) || "SEND_FAILED", leaseUntil: null } });
+    // CRM C5.4-E ▸ E3: ล้มแบบทั้งร้าน (401/403/429) ⇒ บอกเจ้าของร้าน/ผู้จัดการในแอป วันละครั้งต่อร้าน · ล้ม = ไม่กระทบผลของการส่ง ◂
+    if (isOutageSendFailure(res.error)) await (await import("./notify-senders")).noticeEmailOutage({ tenantId: ctx.tenantId, systemId: ctx.systemId }, str(res.error), args.now).catch(() => false);
     return "FAILED";
   }
   if (conflictSent && args.redelivery) args.redelivery.unconfirmed = true;
@@ -2006,10 +2021,7 @@ function authResultsInstances(rawValue: string): { authservId: string; clauses: 
 }
 
 /** โดเมนอีเมลสาธารณะที่พนักงานใช้ร่วมกับลูกค้าได้ — โดเมนเหล่านี้ไม่ถือเป็น "โดเมนของพนักงาน" (ไม่งั้นลูกค้า gmail ทั้งหมดไม่เป็น lead) */
-const PUBLIC_MAIL_DOMAINS: ReadonlySet<string> = new Set([
-  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.co.th", "live.com", "msn.com",
-  "yahoo.com", "yahoo.co.th", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "aol.com", "gmx.com",
-]);
+const PUBLIC_MAIL_DOMAINS: ReadonlySet<string> = FREE_MAIL_DOMAINS; // CRM C5.4-E ▸ รายการเดียวกับบริษัท (companies-shared) ◂
 
 /**
  * CRM C5.4-F ▸ hunt #5 — คนแปลกหน้าที่ **ดูเหมือนพนักงาน** ห้ามกลายเป็น lead อัตโนมัติ: ที่อยู่เป็นรูป +tag ของที่อยู่พนักงาน
@@ -2306,6 +2318,10 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
       });
       if (flipped && contact) await stopSequencesFor(ctx, contact.id, "REPLY");
     }
+
+    // CRM C5.4-E ▸ L6-M4: จดหมายจากลูกค้าที่จับคู่ผู้ติดต่อได้ (ไม่ใช่เครื่องตอบอัตโนมัติ) ⇒ แจ้งผู้ดูแล "ลูกค้าตอบกลับ" ·
+    //   ล้ม = ไม่กระทบการเก็บจดหมาย (ตัวส่ง WARN เอง) ◂
+    if (direction === "IN" && contact && !auto) await (await import("./notify-senders")).customerRepliedByEmail(ctx, contact.id).catch(() => undefined);
 
     // ── สำเนาขาเข้า (copyMode IN/BOTH) ──
     const copyIn = settings.copyMode === "IN" || settings.copyMode === "BOTH" ? bareEmail(settings.copyToAddr) : "";
