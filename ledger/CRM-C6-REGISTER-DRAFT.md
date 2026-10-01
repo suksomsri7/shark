@@ -252,3 +252,10 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - Journal-number allocator residual (migration 20261104000003): a backwards `setval` needs > 1000 lock-free allocations on one book between two adjacent healer statements; reproduced only with 1200 raw `nextval`s in a 600 ms injected window. Accepted, not closed.
 - Reviewer probes `scripts/pending/cf3/review/rv3-jno.mts` / `rv4-review.mts` assert "deployed == 000002" → red by design after 000003; use `rv5-r2.mts`.
 - `migrate deploy` with an earlier-named pending folder after the POS `20261120*` folders: argued in the N runbook, never run on a throwaway DB.
+
+## fix3b / fix4 review debt (2026-10-01)
+
+- **RV-2 (fix3b) pre-launch check:** H2b-4 changed the field-due dedupe key for DATETIME values (Thai day). A DATETIME rule that already fired under the old key fires once more after deploy (DATE keys byte-identical, no re-fire). Before switching CRM v2 on anywhere that already ran rules: count `AutomationRun` with eventKey like `custom.record.field_due#%`; if > 0 add the ~10-line bridge described in `wo-notes/crm-C5.5-fix3b-review.md`.
+- **RV-3 (pre-existing):** `src/lib/modules/crm/contacts.ts:1385` `displayOf` shows DATETIME custom fields as UTC text on the contact page and in the export (`:2514`) — differs from the custom-record staff page and the portal.
+- **RV-4 UX:** portal "ขอแก้ข้อมูล" box for DATETIME needs typed ISO (seed text refused before and after fix3b).
+- **fix4:** account `contains` searches still treat `%`/`_` as wildcards (sites listed in `wo-notes/crm-C5.5-fix4.md`); hsan `pgtest.mts` reads the wrong SQL block (should read `finder.sql`); `linkSchemeOk` accepts `ht tp://` (harmless relative link, same on prod); `qc-acc-v2-policy` crashes before the product-duplicate checks on QC3 (both trees).
