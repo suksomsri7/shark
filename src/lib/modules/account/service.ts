@@ -63,6 +63,7 @@ import type {
 // ctx = { tenantId, systemId } · ทุกฟังก์ชันรับ tx? เพื่อโพสต์ใน transaction เดียวกับเอกสาร
 import {
   ensureAccounting,
+  ensureJournalSequences,
   postDocument,
   postPayment,
   postChequeEntry,
@@ -571,9 +572,13 @@ export async function saveSettings(
     docConfig: docConfig as Prisma.InputJsonValue,
   };
   if (existing) {
-    return prisma.accountSettings.update({ where: { id: existing.id }, data });
+    const updated = await prisma.accountSettings.update({ where: { id: existing.id }, data });
+    await ensureJournalSequences(systemId); // CRM C5.4-N r2 ▸ ตั้งค่าระบบ = จุดสร้าง sequence เลขที่ใบสำคัญ (autocommit) ◂
+    return updated;
   }
-  return prisma.accountSettings.create({ data: { tenantId, systemId, ...data } });
+  const created = await prisma.accountSettings.create({ data: { tenantId, systemId, ...data } });
+  await ensureJournalSequences(systemId); // CRM C5.4-N r2 ▸ ตั้งค่าระบบ = จุดสร้าง sequence เลขที่ใบสำคัญ (autocommit) ◂
+  return created;
 }
 
 // ─────────────────── WO-0002: POS→Account link + VAT config (ใช้โดย facade index.ts) ───────────────────

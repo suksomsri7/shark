@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { accountCan, assertAccountCan } from "./access";
+import { ensureJournalSequences } from "./gl";
 
 // โหลดระบบบัญชี (feature) + ตรวจว่าเป็นของ tenant + ชนิด ACCOUNT
 // opts.can = action สิทธิ์ที่ต้องมี "ก่อนโหลดข้อมูลใด ๆ" (WO 0.2 — ด่านระดับ page)
@@ -12,6 +13,7 @@ export async function loadAccountSystem(systemId: string, opts?: { can?: string 
   const sys = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId } });
   if (!sys || sys.type !== "ACCOUNT") notFound();
   if (opts?.can) assertAccountCan(auth, opts.can);
+  await ensureJournalSequences(systemId); // CRM C5.4-N r2 ▸ sequence เลขที่ใบสำคัญ สร้าง autocommit ก่อนแอ็กชันเงินใด ๆ (จำต่อโปรเซส) ◂
   return { auth, tenantId, systemId, sys, userId: auth.user.id };
 }
 

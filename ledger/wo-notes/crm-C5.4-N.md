@@ -399,3 +399,112 @@ Q2 phase 1 + N-1 only (phase 2 = follow-up entry below) · Q3/Q4 note only · Q5
   F2.1–3,5–7 identical). ai-skill E1-K2.3 is a QC1 suite — not run (QC2-only lane).
 - ORACLE-EDITs: none of OE-1..5 was needed (OE-1 kept: search is exact-first · OE-2/3/4 no change · OE-5 → sweeper script). One marked edit in the
   test author's probe `probe-legal-counters.mts` (2 lines, type annotation only, `// ORACLE-EDIT C5.4-N:`), required for `pnpm typecheck`.
+
+---
+
+## Builder ROUND 2 (controller rulings after review `crm-C5.4-N-review.md`, commit 342a16d3) — checkpoints
+Scope: M1 self-healing allocator · setup-time sequence creation (autocommit, lazy in-tx only as fallback + clear Thai error) · M3 bounded
+migration (90 days, hard cap, search_path pinned, floor tolerant of over-long tails) · m4 N7 ORACLE-EDIT · M2 runbook (note only) · n7 N6 ×5.
+
+### R2-CP-1 · plan (tests first)
+- QC2 migration record: `qc-prisma.sh` refuses `migrate resolve` and `db execute` (by design), so the "rewrite + repair the row" route is not
+  available through it. Route taken: the rewritten SQL ships under a NEW folder name `20261104000001_account_journal_no_sequence` (old
+  folder removed); on QC2 it is applied by the allowed `migrate deploy` (all objects are CREATE OR REPLACE / IF NOT EXISTS, so it upgrades the
+  functions in place); QC2's `_prisma_migrations` keeps an orphan row for `20261104000000_…` (applied, not in the folder) — the same state any
+  other branch on QC2 already sees for it. Production never ran either name, so prod applies only the new one. Proof: function bodies on
+  QC2 compared against the new file after deploy.
+- New probe `scripts/pending/c54n/probe-m1.mts` (M1 + setup + fallback + seams) · ORACLE-EDITs: r2-money R2-C1 contract flipped to the M1
+  contract, R2-D re-judged as the reviewer stated · oracle N7 per review m4.
+
+### R2-CP-2 · RED on the round-1 src (070b7825 + review 342a16d3; all three runs finished 07:52:52, before the first src edit 07:53:19)
+- `r2/RED-probe-m1.log` **3/10**: ❌ M1a (old code count+1 rows 3..5 → next 3 payments FAIL "บันทึกชำระไม่สำเร็จ", raw P2002 ×3) · ❌ M1b (imported
+  next/next+1/0900 → 2 FAIL, P2002 ×2) · ❌ M1d (18/24 ok, 6 FAIL) · ❌ S1 (after setup 0 sequences; created inside the first payment's tx) ·
+  ❌ S3 (squatted name → generic "บันทึกชำระไม่สำเร็จ", raw P2010/42809) · ❌ SEAM-null · ❌ SEAM-42501 · ✅ M1c, S2 (guards: drop self-heals,
+  lazy fallback) · CLEAN ✅.
+- `r2/RED-r2-money-CD.log` 5/6: ❌ R2-C1 (new M1 contract — ORACLE-EDIT) · ✅ C2 (hazard of a rollback to old code: still true, runbook) · ✅ C3 ·
+  ✅ D ×2 (D-creator-rolls-back re-judged per review — ORACLE-EDIT).
+- `r2/RED-oracle-N7.log`: N7 ✅ with the m4 ORACLE-EDIT (literal: stamped in the failed tx === next real) — the tail design already held; the
+  edit makes the check exercise it. Not a RED item.
+- Code written (R2-CP-3 next): migration `20261104000001_…` (new SQL) · gl.ts `account_alloc_journal_no` caller + Thai errors + NULL guard +
+  `ensureJournalSequences` · hooks: loadAccountSystem · requireAccountApi · saveSettings · ensureAccounting (no tx).
+
+### Production runbook — migration `20261104000001_account_journal_no_sequence` + C5.4-N code (review M2 · owner's step)
+The Vercel production build runs `prisma migrate deploy` itself (`scripts/vercel-build.sh`), BEFORE `tsc` + `next build`. So "merge to main" = "migrate prod".
+
+**Pre-checks — read-only, on production, before merging** (copy-paste; each must hold):
+```sql
+-- 1 lock capacity (M3). Pre-create = min(candidates, 500) systems × ≈5.1 lock entries; must be < 50 % of lock_slots.
+SELECT current_setting('max_locks_per_transaction')::int
+       * (current_setting('max_connections')::int + current_setting('max_prepared_transactions')::int) AS lock_slots;
+SELECT count(*) AS candidates FROM (SELECT "systemId" FROM "AccountJournalEntry"
+       WHERE "createdAt" > now() - interval '90 days' GROUP BY 1) s;          -- capped at 500 by the migration
+--   500 × 5.1 ≈ 2 550 ⇒ needs lock_slots ≥ 5 100: true on every Neon compute ≥ 0.25 CU (64 × 112 = 7 168). Measured on QC2:
+--   500 systems → 2 506 locks, 0 subtransactions, 3.1 s (r2/check-jno-fns-r2.log).
+-- 2 number shapes (n8) — both 0 expected; ≥ 7-digit tails only make that book's numbers jump (≥ 19 digits are now ignored, no abort)
+SELECT count(*) FROM "AccountJournalEntry" WHERE "docNo" !~ '^(SV|PV|RV|PY|JV)-\d{4}-\d{2}-\d{4,}$';
+SELECT count(*) FROM "AccountJournalEntry" WHERE "docNo" ~ '\d{7,}$';
+-- 3 roles: run once over DATABASE_URL (app, pooled) and once over DIRECT_URL (migrate). Same user, or the app user has CREATE:
+SELECT current_user, has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_in_public;
+--   app user without CREATE on public ⇒ new systems cannot get their sequences (pages still work; their FIRST posting is refused with
+--   "ออกเลขที่ใบสำคัญไม่ได้ — ฐานข้อมูลไม่อนุญาต…" and logged) — grant CREATE or run the migration role as the app role.
+-- 4 nothing of ours exists yet (the migration has never run on prod)
+SELECT count(*) FROM pg_class WHERE relname LIKE 'acc_jno_%';               -- 0
+SELECT count(*) FROM "_prisma_migrations" WHERE migration_name LIKE '2026110400000%';   -- 0
+```
+5. CI of the merge commit green — in particular `migrate deploy` on the fresh branch of the prod default branch (= prod-size rehearsal of the
+   DO block; note its duration) and `pnpm drift` (review n4: first standalone sequences/functions in the repo — unverified until CI runs).
+6. Owner answers Q1 (journal numbers do not restart monthly while the display carries yyyy-mm).
+
+**Timing:** a quiet hour, not during month-end close, no other migration in the same deploy, someone watching the build (migrate → tsc →
+next build, 5–40 min on record).
+
+**Order:**
+- (a) pre-checks 1–6 → (b) merge → Vercel production build (migrate deploy, then build).
+- (c) if the build fails AFTER migrate: old code keeps serving (count+1). With M1 merged this is no longer a numbering hazard — the new
+  allocator skips every number old code wrote — so fix and redeploy normally (old code still has the original R11 race until then).
+- (d) smoke, right after the new code is live:
+  - one service invoice paid with 3 % WHT → TI and WTI numbered, the journal entry `RV-yyyy-mm-…`;
+  - one vendor payment with 3 % WHT → 50 ทวิ numbered;
+  - journal page → "สร้าง JV" modal shows a preview number; open it twice, the preview does not move;
+  - set up a new ACCOUNT system (or open any account page of a system that had no sequences), then
+    `SELECT count(*) FROM pg_class WHERE relname LIKE 'acc_jno_<systemId>_%'` → 5.
+- (e) re-floor SQL — **NOT needed with M1** (kept only for a build without the M1 allocator). Diagnostic (read-only) first:
+```sql
+WITH s AS (SELECT sequencename, COALESCE(last_value, 0) AS lv FROM pg_sequences WHERE schemaname = 'public' AND sequencename LIKE 'acc_jno_%'),
+     t AS (SELECT public.account_jno_seq_name(e."systemId", e."book"::text) AS sequencename,
+                  public.account_jno_floor(e."systemId", e."book"::text) AS mx
+           FROM (SELECT DISTINCT "systemId", "book" FROM "AccountJournalEntry") e)
+SELECT t.sequencename, s.lv, t.mx FROM t JOIN s USING (sequencename) WHERE s.lv < t.mx;   -- with M1: harmless, healed on the next posting
+-- re-floor (only without M1): forward-only
+DO $$ DECLARE r record; q regclass; v bigint; f bigint; BEGIN
+  FOR r IN SELECT DISTINCT "systemId" s, "book"::text b FROM "AccountJournalEntry" LOOP
+    q := public.account_jno_ensure(r.s, r.b); f := public.account_jno_floor(r.s, r.b);
+    EXECUTE format('SELECT last_value FROM %s', q) INTO v; IF v < f THEN PERFORM setval(q, f, true); END IF;
+  END LOOP; END $$;
+```
+- (f) watch for 1 h: Vercel logs for `[account/gl] journal number allocation failed` and `journal sequences not created at setup` (both 0),
+  and P2002 on "AccountJournalEntry" (0).
+
+**Rollback rule (M2):** NEVER use Vercel Instant Rollback to a release before this deploy — old code's count+1 lands on the new gap-ful,
+non-resetting numbers and freezes a book for the rest of the month (review R2-C2, still true: `r2/GREEN-r2-money.log` C2).
+Prepare the rollback build BEFORE deploying = previous release + these C5.4-N parts cherry-picked:
+`gl.ts` (journalNoParts / journalNoDisplay / allocateJournalNo / peekJournalNo / ensureJournalSequences + the ensureAccounting hook) and
+`journal/page.tsx` (peek). The legal-tail part (doc-numbering registry, service/wht/expense/cheque/group wrappers) may be reverted safely —
+the AccountDocSequence counters are authoritative and shared by both versions. The DB objects stay (additive; nothing to undo); never drop
+the sequences while new code runs. No down-migration.
+
+**What M1 removes from the review's checklist:** step (e) re-floor (healed on the next posting, any time) · the "first days of a month"
+timing constraint · the urgency of (c) for numbering · the margin-100 reasoning (kept per Q5 but no longer needed for correctness).
+Still needed: pre-checks 1–6, smoke (d), watch (f), and the rollback rule (M1 does not protect OLD code).
+
+### R2-CP-3 · QC2 migration + first GREEN (src = round-2 code)
+- `migrate deploy` (qc-prisma.sh, QC2) applied `20261104000001_…` (`r2/migrate-deploy-r2.log`); `migrate status` "Database schema is up to date"
+  (no warning for the orphan 20261104000000 row). `check-jno-fns-r2` (`r2/check-jno-fns-r2.log`): all 10 functions on QC2 byte-equal to the
+  file (prosrc) with `search_path=pg_catalog, public`, no extra function; `_prisma_migrations`: …000000 (round 1, 05:06) + …000001 (07:54).
+- R2-E re-measured on the new SQL: migration path `account_jno_create` 500 systems → 2 506 locks (5.01/system), **0 subtransactions**, 3.1 s ·
+  ensure path (app fallback) 100 systems → 506 locks, 64 subxacts (overflowed — that is why the migration no longer uses it).
+  QC2 bounded-block candidates: 103 systems active in 90 days.
+- typecheck rc 0 (`r2/typecheck-r2a.log`) after an ORACLE-EDIT in the reviewer's `r1-db-facts.mts:44` (`1n` → `BigInt(1)`, TS2737).
+- GREEN: `r2/GREEN-probe-m1.log` **10/10** (RED 3/10) · `r2/GREEN-r2-money.log` **11/11** (A ×2, B ×2, C1 M1 contract, C2 hazard of old-code
+  rollback still shown, C3, D ×2, E, CLEAN).
+- Next: full oracle + N6 ×5, r11 Q3, deadlock ×40, run-main-c2 QC2 list, fitness ×2, docs.

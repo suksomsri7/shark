@@ -258,8 +258,12 @@ try {
       const sFail = await w.inv("ON_PAYMENT"); const sOk = await w.inv("ON_PAYMENT");
       const eFail = await w.expense("CLAIM", true); const eOk = await w.expense("CLAIM", true);
       const induced: string[] = [];
-      await P.$transaction(async (tx: Any) => { await accSvc.recordPaymentInTx(tx, w.T, w.A, sFail, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }, settings); throw new Error("QC-INDUCED failure after the payment, its tax invoice and its WTI were written"); }, { maxWait: 20_000, timeout: 60_000 }).catch((e: Any) => induced.push(cut(e?.message, 90)));
-      await P.$transaction(async (tx: Any) => { await exp.recordVendorPaymentInTx(tx, w.T, w.A, eFail, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }); throw new Error("QC-INDUCED failure after the vendor payment and its 50 ทวิ were written"); }, { maxWait: 20_000, timeout: 60_000 }).catch((e: Any) => induced.push(cut(e?.message, 90)));
+      // ORACLE-EDIT C5.4-N (controller, review m4): open the numbering registry and finalize (stamp the numbers) BEFORE the induced failure, so N7
+      //   literally proves "failure after the numbered documents were stamped rolls back and burns no legal number"; stamped-in-failed === next real
+      const dn = (await import("@/lib/modules/account/doc-numbering" as string)) as Any;
+      const stamped: Record<string, string> = {};
+      await P.$transaction(async (tx: Any) => { dn.openDocNumbering(tx); const r = await accSvc.recordPaymentInTx(tx, w.T, w.A, sFail, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }, settings); const nos: Map<string, string> = await dn.finalizeDocNos(tx); stamped.ti = (await tx.accountDocument.findFirst({ where: { systemId: w.A, docType: "TAX_INVOICE", sourceDocId: sFail }, select: { docNo: true } }))?.docNo ?? "-"; stamped.wti = r.whtCertDocId ? nos.get(r.whtCertDocId) ?? "-" : "-"; throw new Error("QC-INDUCED failure after the payment, its tax invoice and its WTI were written and stamped"); }, { maxWait: 20_000, timeout: 60_000 }).catch((e: Any) => induced.push(cut(e?.message, 90)));
+      await P.$transaction(async (tx: Any) => { dn.openDocNumbering(tx); await exp.recordVendorPaymentInTx(tx, w.T, w.A, eFail, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }); const nos: Map<string, string> = await dn.finalizeDocNos(tx); stamped.wht = [...nos.values()][0] ?? "-"; throw new Error("QC-INDUCED failure after the vendor payment and its 50 ทวิ were written and stamped"); }, { maxWait: 20_000, timeout: 60_000 }).catch((e: Any) => induced.push(cut(e?.message, 90)));
       const left = await P.accountDocumentPayment.count({ where: { documentId: { in: [sFail, eFail] } } });
       const r1 = await accSvc.recordPayment(w.T, w.A, sOk, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" });
       const r2 = await exp.recordVendorPayment(w.T, w.A, eOk, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" });
@@ -269,9 +273,10 @@ try {
       const rvNew = (await P.accountJournalEntry.findMany({ where: { systemId: w.A, book: "RECEIPTS", refType: "AccountDocumentPayment", refId: r1.ok ? r1.paymentId : "-" }, select: { docNo: true } })).map((e: Any) => tailNo(e.docNo));
       const jvGap = rvNew.length ? Math.min(...rvNew) - before.rv - 1 : NaN;
       chk("C5.4-N-N7", "a transaction that fails after its payment, tax invoice, WTI and 50 ทวิ were written leaves nothing and consumes no legal number — the next real payment gets previous + 1 for each (journal numbers MAY be consumed: P20)",
-        induced.length === 2 && left === 0 && r1.ok && r2.ok && tailNo(ti?.docNo) === before.ti + 1 && tailNo(wti?.docNo) === before.wti + 1 && tailNo(wht?.docNo) === before.wht + 1,
-        `both induced transactions rolled back (no payment rows) · next TI = ${before.ti + 1} · next WTI = ${before.wti + 1} · next 50 ทวิ = ${before.wht + 1}`,
-        `induced ${j(induced)} · leftover payments ${left} · real payments ${r1.ok ? "ok" : `FAIL(${r1.reason})`} / ${r2.ok ? "ok" : `FAIL(${r2.reason})`} · TI ${ti?.docNo ?? null} · WTI ${wti?.docNo ?? null} · 50 ทวิ ${wht?.docNo ?? null} · (info, allowed) journal numbers skipped in RV by the failed transaction: ${jvGap}`);
+        induced.length === 2 && induced.every((m) => /QC-INDUCED/.test(m)) && left === 0 && r1.ok && r2.ok && tailNo(ti?.docNo) === before.ti + 1 && tailNo(wti?.docNo) === before.wti + 1 && tailNo(wht?.docNo) === before.wht + 1 &&
+          stamped.ti === ti?.docNo && stamped.wti === wti?.docNo && stamped.wht === wht?.docNo, // ORACLE-EDIT C5.4-N (controller, review m4)
+        `both induced transactions failed with the QC-INDUCED error AFTER stamping (no payment rows) · next TI = ${before.ti + 1} · next WTI = ${before.wti + 1} · next 50 ทวิ = ${before.wht + 1} · stamped-in-failed === next real`,
+        `induced ${j(induced)} · stamped-in-failed ${j(stamped)} · leftover payments ${left} · real payments ${r1.ok ? "ok" : `FAIL(${r1.reason})`} / ${r2.ok ? "ok" : `FAIL(${r2.reason})`} · TI ${ti?.docNo ?? null} · WTI ${wti?.docNo ?? null} · 50 ทวิ ${wht?.docNo ?? null} · (info, allowed) journal numbers skipped in RV by the failed transaction: ${jvGap}`);
     });
   }
 

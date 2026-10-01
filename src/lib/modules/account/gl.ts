@@ -288,19 +288,53 @@ async function alreadyPosted(ctx: GlCtx, idempotencyKey: string, db: Db): Promis
 // ─────────────────── เลขที่ใบสำคัญ ───────────────────
 
 // CRM C5.4-N ▸ (owner decision P20 (a)) เลขที่ใบสำคัญ = SEQUENCE ของ Postgres ต่อ (ระบบ, เล่ม) — migration
-//   20261104000000_account_journal_no_sequence (ฟังก์ชัน account_next_journal_no / account_peek_journal_no)
+//   20261104000001_account_journal_no_sequence (account_alloc_journal_no / account_peek_journal_no / account_jno_ensure_system)
 //   · nextval ไม่รอใคร ไม่ชนกัน ไม่ถือล็อก ⇒ ธุรกรรมเงินที่ลงบัญชีพร้อมกันไม่ล้มด้วย P2002 อีก (เดิม count+1: hunter R11-2 80 % ล้ม)
 //   · ธุรกรรมที่ย้อนกลับ = เลขหาย 1 ตัว (ยอมรับตาม P20 — เลขเอกสารภาษี/ใบเสร็จ ยังต่อเนื่องไม่มีหายที่ doc-numbering.ts)
-//   · เลข n วิ่งต่อเนื่องต่อเล่ม **ไม่รีเซ็ตรายเดือน** (owner Q1 pending, default taken) — ตัดสินที่ journalNoDisplay ที่เดียว ◂
+//   · เลข n วิ่งต่อเนื่องต่อเล่ม **ไม่รีเซ็ตรายเดือน** (owner Q1 pending, default taken) — ตัดสินที่ journalNoParts ที่เดียว
+//   · round 2 (review M1): จัดสรรแบบ "หาเลขว่าง" — เลขที่มีในตารางแล้ว (โค้ดเก่า count+1 ช่วง migrate→deploy · นำเข้า · กู้คืน ·
+//     sequence ที่ถูกสร้างใหม่) ถูกข้าม และ sequence ถูกเลื่อนขึ้นเหนือเลขสูงสุดของเล่ม (เดินหน้าอย่างเดียว) — แคชเชียร์ไม่เห็น P2002
+//   · round 2: sequence ถูกสร้างตอนตั้งค่าระบบ (autocommit, ensureJournalSequences) ก่อนธุรกรรมเงินใด ๆ — สร้างในธุรกรรมเป็นทางสำรองเท่านั้น ◂
 
-/** รูปแบบที่แสดง `<SV|PV|RV|PY|JV>-<yyyy>-<mm>-<n เติม 0 ให้ครบ 4 หลัก>` · yyyy-mm = งวดไทยของรายการ (= periodKey)
- *  🔴 ถ้าเจ้าของตอบ Q1 ว่า "ต้องรีเซ็ตรายเดือน" แก้ที่นี่ + ตัวจัดสรร (ลำดับต่อเดือน) — ผู้อ่านทุกตัวถือเลขเป็นข้อความทึบ */
-function journalNoDisplay(book: AccountJournalBook, date: Date, n: bigint | number): string {
+/** ส่วนประกอบของรูปแบบที่แสดง `<SV|PV|RV|PY|JV>-<yyyy>-<mm>-<n เติม 0 ให้ครบ 4 หลัก>` · yyyy-mm = งวดไทยของรายการ (= periodKey)
+ *  🔴 ถ้าเจ้าของตอบ Q1 ว่า "ต้องรีเซ็ตรายเดือน" แก้ที่นี่ + ตัวจัดสรร (ลำดับต่อเดือน) — ผู้อ่านทุกตัวถือเลขเป็นข้อความทึบ
+ *  (SQL account_jno_pad ทำ padStart แบบเดียวกันเพื่อตรวจ "เลขนี้มีในตารางแล้วหรือยัง" — width ส่งจากที่นี่) */
+function journalNoParts(book: AccountJournalBook, date: Date): { prefix: string; width: number } {
   const { year, month } = bkkPeriod(date);
-  return `${BOOK_PREFIX[book] ?? "JV"}-${year}-${month}-${String(n).padStart(4, "0")}`;
+  return { prefix: `${BOOK_PREFIX[book] ?? "JV"}-${year}-${month}-`, width: 4 };
+}
+function journalNoDisplay(book: AccountJournalBook, date: Date, n: bigint | number): string {
+  const { prefix, width } = journalNoParts(book, date);
+  return `${prefix}${String(n).padStart(width, "0")}`;
 }
 
-/** จัดสรรเลขที่ใบสำคัญ (กินเลข) — เรียกได้เฉพาะตอนจะ insert รายการจริง (commitEntry / reverseFor / reverseEntry) */
+/** ข้อความไทยเมื่อออกเลขที่ใบสำคัญไม่ได้ (ไม่ใช่ "บันทึกชำระไม่สำเร็จ" แบบกว้าง ๆ — ผู้ใช้/แอดมินต้องรู้ว่าติดที่ตัวนับเลข) */
+export const JOURNAL_NO_UNAVAILABLE =
+  "ออกเลขที่ใบสำคัญไม่ได้ — ตัวนับเลขที่ใบสำคัญของระบบบัญชีนี้ใช้งานไม่ได้ ยังไม่มีอะไรถูกบันทึก กรุณาแจ้งผู้ดูแลระบบ";
+export const JOURNAL_NO_NO_PRIVILEGE =
+  "ออกเลขที่ใบสำคัญไม่ได้ — ฐานข้อมูลไม่อนุญาตให้สร้างตัวนับเลขที่ใบสำคัญของระบบบัญชีนี้ ยังไม่มีอะไรถูกบันทึก กรุณาแจ้งผู้ดูแลระบบ";
+
+/** รหัสข้อผิดพลาด Postgres ของคำสั่ง raw (Prisma P2010 / driver adapter) — undefined ถ้าไม่ใช่ข้อผิดพลาดจากฐานข้อมูล */
+function pgCodeOf(e: unknown): string | undefined {
+  const x = e as {
+    meta?: { code?: unknown; driverAdapterError?: { cause?: { originalCode?: unknown; code?: unknown } } };
+    cause?: { originalCode?: unknown; code?: unknown };
+    message?: unknown;
+  } | null;
+  const c =
+    x?.meta?.code ??
+    x?.meta?.driverAdapterError?.cause?.originalCode ??
+    x?.meta?.driverAdapterError?.cause?.code ??
+    x?.cause?.originalCode ??
+    (typeof x?.cause?.code === "string" && /^[0-9A-Z]{5}$/.test(x.cause.code) ? x.cause.code : undefined);
+  if (typeof c === "string" && /^[0-9A-Z]{5}$/.test(c)) return c;
+  const m = /Code: `([0-9A-Z]{5})`/.exec(String(x?.message ?? ""));
+  return m?.[1];
+}
+
+/** จัดสรรเลขที่ใบสำคัญ (กินเลข) — เรียกได้เฉพาะตอนจะ insert รายการจริง (commitEntry / reverseFor / reverseEntry)
+ *  account_alloc_journal_no = nextval ที่ข้ามเลขที่มีในตารางแล้ว (M1) · NULL ไม่มีวันถูกจัดรูปเป็น "…-null" (n1)
+ *  ข้อผิดพลาดของตัวนับ (สิทธิ์ 42501 · วัตถุผิดชนิด · หาเลขว่างไม่ได้) → ข้อความไทยชัดเจน + log สาเหตุ · อย่างอื่น (เช่น ธุรกรรมหมดเวลา) โยนต่อเดิม */
 export async function allocateJournalNo(
   ctx: GlCtx,
   book: string,
@@ -309,12 +343,54 @@ export async function allocateJournalNo(
 ): Promise<string> {
   const db: Db = tx ?? prisma;
   const b = book as AccountJournalBook;
-  const rows = (await db.$queryRawUnsafe(
-    `SELECT account_next_journal_no($1, $2) AS n`,
-    ctx.systemId,
-    b,
-  )) as { n: bigint | number }[];
-  return journalNoDisplay(b, date, rows[0].n);
+  const { prefix, width } = journalNoParts(b, date);
+  let rows: { n: bigint | number | null }[];
+  try {
+    rows = (await db.$queryRawUnsafe(
+      `SELECT account_alloc_journal_no($1, $2, $3, $4::int) AS n`,
+      ctx.systemId,
+      b,
+      prefix,
+      width,
+    )) as { n: bigint | number | null }[];
+  } catch (e) {
+    const code = pgCodeOf(e);
+    const msg = String((e as { message?: unknown })?.message ?? e);
+    const sequenceProblem =
+      code === "42501" || // insufficient privilege (CREATE on schema / USAGE on sequence)
+      code === "42809" || // wrong object type (a non-sequence relation holds the name)
+      code === "P0001" || // account_alloc_journal_no: no free number after its bounded attempts
+      code === "2200H" || // sequence limit reached
+      code === "42883" || // function missing (migration not applied)
+      /account_alloc_journal_no|account_jno_|acc_jno_/.test(msg);
+    if (!sequenceProblem) throw e;
+    console.error("[account/gl] journal number allocation failed", { systemId: ctx.systemId, book: b, code, message: msg.slice(0, 500) });
+    throw new Error(code === "42501" ? JOURNAL_NO_NO_PRIVILEGE : JOURNAL_NO_UNAVAILABLE);
+  }
+  const n = rows?.[0]?.n;
+  if (n == null || !(Number(n) > 0)) {
+    console.error("[account/gl] journal number allocation returned no number", { systemId: ctx.systemId, book: b, n: String(n) });
+    throw new Error(JOURNAL_NO_UNAVAILABLE);
+  }
+  return journalNoDisplay(b, date, n);
+}
+
+// CRM C5.4-N round 2 ▸ สร้าง sequence ทั้ง 5 เล่มของระบบตอนตั้งค่า (autocommit · ก่อนเปิดธุรกรรมเงินใด ๆ)
+//   เรียกจาก: loadAccountSystem (ทุกหน้า/แอ็กชันบัญชี) · REST บัญชี (requireAccountApi) · saveSettings · ensureAccounting ที่ไม่มี tx
+//   จำต่อโปรเซส (Set) ⇒ ไม่เกิน 1 คำสั่งต่อระบบต่อ instance · ล้มไม่ขวางการทำงาน (log) — ธุรกรรมแรกยังสร้างเองได้ (ทางสำรอง) ◂
+const journalSequencesReady = new Set<string>();
+export async function ensureJournalSequences(systemId: string): Promise<void> {
+  if (!systemId || journalSequencesReady.has(systemId)) return;
+  try {
+    await prisma.$queryRawUnsafe(`SELECT account_jno_ensure_system($1) AS c`, systemId);
+    journalSequencesReady.add(systemId);
+  } catch (e) {
+    console.error("[account/gl] journal sequences not created at setup — the first posting will try inside its transaction", {
+      systemId,
+      code: pgCodeOf(e),
+      message: String((e as { message?: unknown })?.message ?? e).slice(0, 300),
+    });
+  }
 }
 
 /** เลขที่ใบสำคัญ "ถัดไป" แบบดูอย่างเดียว (หน้าบัญชีรายวัน · กล่องสร้าง JV) — ไม่กินเลข ไม่สร้างอะไร
@@ -346,6 +422,7 @@ export async function ensureAccounting(ctx: GlCtx, tx?: Tx): Promise<void> {
       });
     }
   });
+  if (!tx) await ensureJournalSequences(ctx.systemId); // CRM C5.4-N r2 ▸ ตั้งค่าแบบ autocommit เท่านั้น — ในธุรกรรมเงินไม่สร้าง ◂
 }
 
 // ─────────────────── ตัวช่วยยอดเงิน/VAT ───────────────────

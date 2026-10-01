@@ -41,7 +41,7 @@ try {
     nseq += 1;
     const name = (await q(`SELECT account_jno_seq_name($1,$2) AS n`, r.s, r.b))[0].n;
     const v = (await q(`SELECT last_value, is_called FROM "${name}"`))[0];
-    const next = BigInt(v.is_called ? BigInt(v.last_value) + 1n : BigInt(v.last_value));
+    const next = BigInt(v.is_called ? BigInt(v.last_value) + BigInt(1) : BigInt(v.last_value)); // ORACLE-EDIT C5.4-N: `1n` → BigInt(1) only (TS2737 broke pnpm typecheck) — logic unchanged
     if (next <= BigInt(r.mx)) { behind += 1; if (ex.length < 8) ex.push({ s: r.s, b: r.b, tableMax: r.mx, seqNext: next, rows: r.n }); }
   }
   console.log(`(system, book) with entries: ${rows.length} · with sequence ${nseq} · without ${noseq} · sequence BEHIND table max (next nextval ≤ max suffix): ${behind} · ${Date.now() - t0} ms`);

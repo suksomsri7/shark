@@ -158,8 +158,10 @@ try {
     const e = (await rv()).at(-1);
     await P.accountJournalEntry.create({ data: { tenantId: w.T, systemId: w.A, docNo: c1no, book: "RECEIPTS", journal: e.journal, date: new Date(), periodKey: e.periodKey, source: "AUTO", memo: "review: written by OLD code in the window" } });
     const p3 = await pay(goods[2]!); const p4 = await pay(goods[3]!);
-    chk("R2-C1", "INFO/contract: a count+1 number written by OLD code after the sequence was created (margin 0) — the next new-code posting fails once with a duplicate journal number (no retry / self-heal), the one after succeeds",
-      p1.ok && p2.ok && !p3.ok && p4.ok,
+    // ORACLE-EDIT C5.4-N (controller M1): contract flipped from "hazard shown" (p3 fails once) to the M1 merge condition — allocate-until-free
+    const rvC1 = (await rv()).map((x) => x.docNo as string);
+    chk("R2-C1", "M1: a count+1 number written by OLD code after the sequence was created (margin 0) — the next new-code postings succeed (the allocator skips the taken number), all RV numbers unique",
+      p1.ok && p2.ok && p3.ok && p4.ok && new Set(rvC1).size === rvC1.length && rvC1.filter((n) => n === c1no).length === 1,
       `p1 ${p1.ok} p2 ${p2.ok} · old code wrote ${c1no} · p3 ${p3.ok ? "ok" : `FAIL "${cut(p3.reason, 90)}"`} · p4 ${p4.ok ? "ok" : p4.reason} · RV now ${j((await rv()).map((x) => x.docNo))}`);
     // C2: a gap (a money transaction that fails after its posting) then ROLLBACK TO OLD CODE
     await P.$transaction(async (tx: Any) => { await acc.recordPaymentInTx(tx, w.T, w.A, goods[4]!, { channel: "TRANSFER", financeAccountId: w.bank.id, amount: 1_070_000 }, settings); throw new Error("QC-INDUCED gap"); }).catch(() => undefined);
@@ -193,7 +195,8 @@ try {
           }, { maxWait: 20_000, timeout: 30_000 });
         } catch (e) { out.push(`${i}:ERR ${cut((e as Any)?.message, 90)}`); }
       }));
-      const nums = out.filter((x) => !/ERR/.test(x)).map((x) => Number(x.split(":")[1]));
+      // ORACLE-EDIT C5.4-N (controller, review D re-judged): the rolled-back creator's value was never committed — exclude it from the distinct check
+      const nums = out.filter((x) => !/ERR/.test(x) && !(creatorFails && x.startsWith("0:"))).map((x) => Number(x.split(":")[1]));
       const errs = out.filter((x) => /ERR/.test(x) && !/QC-INDUCED/.test(x));
       chk(`R2-D-${creatorFails ? "creator-rolls-back" : "creator-commits"}`, "6 concurrent first allocations on a brand-new book — all succeed (the 23505 catch path) with distinct numbers, no NULL",
         errs.length === 0 && new Set(nums).size === nums.length && nums.every((n) => Number.isFinite(n) && n > 0), j(out));
