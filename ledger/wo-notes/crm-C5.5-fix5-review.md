@@ -209,3 +209,114 @@ The prod hotfix must carry `core/linear-text.ts` and the new `inbound-address.ts
 - The base re-run of the red suites was not repeated by me; I compared against the builder's base logs.
 
 VERDICT: NOT MERGEABLE (RV5-1: the signature cap is on the input, not on the stored sanitized value, so the settings card cannot be re-saved; fix as in RV5-1, then mergeable. RV5-2 and RV5-3 can follow later.)
+
+---
+
+## Round 2 (builder tip 4e4f9c88 · fix commit b3ea41da · reviewed `git diff 7b434091 4e4f9c88`)
+Written 2026-10-01 19:43 UTC.
+
+**New probes** (the round-1 files are unchanged):
+- `scripts/pending/cf6/review/rv-cf6-r2-fuzz.mts` (pure).
+- `rv-cf6-r2-db.mts` (QC3, own tenant, cleaned up).
+- `run-review-r2.sh`.
+
+Logs are `/tmp/rv-cf6-logs/rv2*`.
+
+**The two round-1 checks that are now red are red by design.** `rv-cf6-db` SIG.resave and SIG.lost were written to *confirm* RV5-1. They now report "accepted" and `fromName` = "ชื่อใหม่", so that run is 9/11. That is the fix working.
+
+### (a) Signature: RV5-1 closed
+**Rule.** Raw input (trimmed) is at most 16 000 characters → `sanitizeHtml` → the result is at most 8 000, otherwise refused. Nothing is ever cut. REST `signature`/`signatureHtml` use `optText(16000)`, and the card uses `maxLength` 16 000.
+
+**Idempotency** (`rv-cf6-r2-fuzz`). This is the property the rule depends on.
+- I ran 40 000 adversarial HTML inputs: broken, nested and unclosed tags; `&amp;amp;`; `&#x3c;`; `&#xD800;`; bogus entities; `javascript:` and entity-split `java&#115;cript:` links; mailto; uppercase tags and attributes; newline inside a tag; NUL/CR/LS; comments and CDATA; script/style; img; Thai; lone surrogates.
+- `sanitize(sanitize(x)) === sanitize(x)` held on **every** input: 0 changed on the second pass, 0 grew. I found no x where a second pass differs or is longer.
+
+**Re-save.**
+- 2 000 random signatures were accepted on their first save. All passed both bounds again and re-saved unchanged.
+- On the DB (`rv-cf6-r2-db`): sanitized exactly 8 000 is accepted and re-saves; 8 001 is refused (VALIDATION), and the row is unchanged, including the other field in the same patch; raw 16 001 is refused. A link/entity-heavy signature (raw 2 439 → stored 4 539) re-saves unchanged.
+
+**Blow-up.**
+- The worst sanitized/raw ratio seen was ×2.42, on a tiny input. Link-heavy content is about ×1.86, and `&`×16 000 stays 16 000 characters.
+- A raw ≤ 16 000 that sanitizes past 8 000 is refused **on its first save**. Because of idempotency it can never be refused later. A user whose earlier save succeeded can therefore always save again.
+
+**Legacy rows** (old `sanitize(x).slice(0, 4000)`, cut anywhere).
+- Pure check: 2 634 cut rows all repair to at most 2 559 characters and are stable after one repair.
+- DB check: a row cut inside a rebuilt `<a href` tag, written straight into the table, re-saves together with a sender-name change (4 000 → 4 003, well-formed), then re-saves unchanged.
+- INFO: the cut tag is repaired as visible text (`…บรรทัด 38 &lt;a href`). That is acceptable, because the old row was already broken.
+
+**`signature` vs `signatureHtml`** (REST): `signatureHtml` wins when both are given. Both use the same bound and go to the same service rule. No gap.
+
+**ReDoS at 16 000 raw.** `sanitizeHtml` growth from 4 000 to 16 000 on 11 pumps (`<`, `<a`, `<a href="`, `&`, `&#`, `<!--`, `<script>`, a link, `"`, `<p`, `</`) is linear, at most 0.61 ms at 16 000.
+
+**Where the signature goes (INFO, pre-existing).** Nothing appends `signatureHtml` to outgoing mail. Repo-wide grep: its only consumers are the settings DTO, the card and the REST op. So "8 000 versus send limits" is moot today. If it is appended later, 8 000 is far under the 500 KiB body cap.
+
+### (b) F16 widened: no false positives, residual negatives (INFO)
+**False positives on the real tree.** None. Fitness without env is 39/39, and only the allow-listed `core/sanitize.ts` is hit. The three lookbehinds now in src are covered by the must-not-hit self-tests.
+
+**Caught now.** All 8 shapes from round 1, plus `<(\w+)\s+[^>]*>`, `<\s*[^>]*>`, `<.+?>` and `new RegExp(\`<[^>]+>\`)`.
+
+**Still missed** (each quadratic, ×14–19 on 4×):
+- `<[^>]{1,}>`
+- `<\/?[a-z]+\b[^>]*>`
+- `<[a-z][a-z0-9]*[^>]*>` (two pieces before the scan)
+- `<(?:[^>"']|"[^"]*"|'[^']*')*>`
+- `<(?:a|b(?:r|ig))[^>]*>` (nested group)
+- `\x3c[^>]*>`
+- `<\p{L}+[^>]*>`
+
+None of these exists in the tree. Any syntactic guard will have some residual gaps. If wanted later, add an empirical pump test in fitness for every literal that contains `<` or `\x3c`. **Not blocking.**
+
+### (c) bodyText cap at 1 000 000: fine
+**Surrogate pair at the cut** (DB `TXT.surrogate`): `"a"×999 999 + 😀 + "tail"` is stored without error as 1 000 000 code units ending in U+FFFD. The lone high surrogate is replaced on encoding, which costs one character. The tail is gone and the snippet is 200 × `a`.
+
+**Other consumers.**
+- Snippet and search use the head, so they are unaffected.
+- Threading does not read the body.
+- No code relates the text length to the HTML length: text is used only when non-empty, and it is never compared to the HTML.
+
+**Copy-to forward (INFO).** The forwarded copy (`emails.ts:2669`) now carries at most 1 MB of text instead of up to 10 MB. This is the intended effect.
+
+### (d) Header join before the cap: safe, and route ≡ direct ingest
+**Method** (DB `HDR.*`). The route's own `normalizeProviderPayload` + `crmExtras`, cut out of `route.ts` with the TS AST, feed `ingestInbound` as path A. The same raw provider object with its mixed-case headers goes straight into `ingestInbound` as path B. Eight cases were tested:
+- a clean staff copy with our A-R;
+- a `dmarc=fail` real header plus a forged `AUTHENTICATION-RESULTS` pass;
+- the real header plus a padded `authentication-results`;
+- the forged header padded past 16 KiB;
+- a ` Authentication-Results ` key with surrounding spaces;
+- Reply-To plus a padded `reply-to`;
+- `REPLY-TO` alone;
+- `References` short plus `references` 17 KiB.
+
+**Results.**
+- Both paths store **identical** direction, contact, sent-by, fromAddr, routing flags and references in every case.
+- The positive control (the clean case) is OUT, sent by staff.
+- Every duplicate-case, padded or spaced-key A-R variant is IN with `unverifiedShopFrom` and never sent-by-staff.
+- The padded Reply-To is dropped and attributes nobody.
+- The joined References is dropped on both paths.
+
+**Conclusion.** Adding duplicate-case headers can only drop the whole joined header, which moves the mail toward unauthenticated or unattributed. It can never move it toward authenticated or attributed. From is not part of the header map, so it cannot be dropped this way.
+
+### Round 2 tests (tree 4e4f9c88, `/tmp/rv-cf6-logs/rv2.summary` + `rv2b-rv-cf6-r2-db.log`)
+**Typecheck and probes**
+- typecheck (5 GB heap): exit 0.
+- rv-cf6-r2-fuzz: 16/16.
+- rv-cf6-r2-db: 14/14. The first run was 13/14 because my own SIG.grow fixture was refused on its first save (raw 4 939 → over 8 000). With a corrected fixture the check is green. Not a product issue.
+- rv-cf6-fuzz (round 1): 153/153.
+- rv-cf6-db (round 1): 9/11 (the two FINDING checks, red by design).
+- Builder probe-cf6-r2: 11/11.
+- probe-cf6-db: 12/12, SNAP identical.
+
+**Suites**
+- qc-crm-c2.5: 105/105.
+- qc-crm-c2.11: 47/47.
+- qc-kanban-k3.9: 12/13 (S4.2 screenshot count, identical at base).
+- qc-kanban-k1.6: 20/20.
+
+**Docs and fitness**
+- `gen-crm-api-docs --check`: exit 0. The regenerated docs diff is the 2 `max 16000` lines, and there is no other stale 4 000 reference.
+- Fitness without env: 39/39.
+- `git status -- src`: clean before and after.
+
+**Not verified (round 2):** the card in a browser (the `maxLength` attribute and the error rendering); production rows (none were read).
+
+VERDICT: MERGEABLE
