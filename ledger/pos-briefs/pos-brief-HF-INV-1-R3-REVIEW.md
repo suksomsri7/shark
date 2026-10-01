@@ -1,0 +1,26 @@
+# HF-INV-1 round 3 — independent review + adversarial re-check (controller, 1 Oct 2026)
+
+You are the independent reviewer AND hunter for round 3 of the inventory hotfix. You did not write it. Read-only on product code and oracles: you may write throw-away probe scripts ONLY under `scripts/_probe-r3-*.mts` in the tree (delete them before you finish; never commit, never push).
+
+## Where
+- Tree `/root/projects/shark-hf5`, branch `hotfix/inventory-atomic`. Round-3 diff = `git diff 2a759a8e..HEAD` (2a759a8e = merge of origin/main; everything before it was reviewed in rounds 1–2).
+- Brief the builder worked from: `/root/projects/shark-pos/ledger/pos-briefs/pos-brief-HF-INV-1-R3.md`. Builder notes: `ledger/wo-notes/HF-INV-1.md` section "Round 3" (+ `-red3`, `-control3`, `-green3`).
+- Machine rules: `/root/projects/shark-pos/ledger/pos-briefs/pos-brief-LANE-RULES.md` (QC4 only; never read `.env`; no prisma generate/migrate; no build/server; never touch `/root/projects/shark-crm*` or `shark-in-th`; never sweep `/tmp`). DB commands: `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<file>.mts`. Do NOT run typecheck (controller does). Run long commands in the foreground; report once, when everything is finished.
+
+## What the controller already verified
+atomic 133/133, authz 116/116, reports 23/23 on QC4 at 6799f65b; then one approved ORACLE-EDIT commit on `scripts/qc-clinic.mts` (CL-2.2/CL-2.3). Controller rulings: builder decisions 1–8 accepted. You may overturn any of them with evidence.
+
+## Check, by execution where possible
+1. **R3.1 locks**: every row lock added by this hotfix is `FOR NO KEY UPDATE` (grep `FOR UPDATE` across `src/lib/modules/{inventory,account,pos,clinic,shop,restaurant}`; list any that remain and say whether each is pre-existing and whether it can meet an FK insert on the same row). Re-run the hunter's interleaving and the storm yourself with your own probe (not only the oracle's): N goods issues ∥ N bundle cuts ∥ N POS consumes ∥ N transfers on overlapping items, several rounds; report deadlocks (pg_stat_database.deadlocks delta), failures, and final onHand vs sum of movements.
+2. **R3.2 lock timeout scope**: prove `lock_timeout` after the lock statement equals the value before it (inside the tx) and that nothing leaks to the pooled session after commit AND after rollback AND after a lock-timeout failure itself (the failing path is the one most likely to skip the restore). Check the retry: can the retry double-apply anything? Is the 15 s account budget inside the 30 s app transaction timeout with room for the document's remaining work?
+3. **R3.5 idempotency conflict**: same key + same payload ⇒ old answer, no second movement; same key + different item/direction/qty ⇒ `StockKeyConflictError`; two concurrent first-time sends of the same key ⇒ exactly one movement and no raw P2002 escaping. Check every caller that catches errors from receive/consume/adjust: does any of them now swallow the new error and continue in a way that loses stock or money (bundle.ts warn-and-skip; POS cut swallow; shop; restaurant; AI proposals)? Clinic position key: sequential dispenses, a retry after a mid-way failure, two concurrent dispenses on one visit, refund after two dispenses of the same drug (must restore both, once).
+4. **R3.6 return cap**: return vs DRAFT / VOIDED issue refused; two concurrent returns cannot exceed the issue; voided return counted (linked: by net movement; unlinked: always). Look for a way to make stock grow: return → void return → return again; issue → void issue → return.
+5. **R3.4**: cost adjustment ∥ cost adjustment, cost adjustment ∥ goods issue on an unlinked product — GL delta and counters consistent; no new deadlock from the added product-row lock (lock order vs documents).
+6. **R3.7 reports**: for each dataset × each path (screen, CSV export, groupBy) × each role (OWNER, MANAGER all-branch, MANAGER limited, STAFF with/without the owning key, a user of another tenant): who gets rows? Try dataset names `constructor`, `__proto__`, unknown; filter values that are objects/arrays (`{contains:…}`, `{not:null}`); `groupBy` on a field outside the projection; `take` huge/negative. Any server action in `reports/actions.ts` that does not go through `readScope`?
+7. **R3.8**: `receivePoAction` result shape used correctly by `PoReceiveForm.tsx`; `"use server"` file exports only async functions; the client component imports nothing that reaches prisma.
+8. **R3.3**: the log line carries no customer data and no message text.
+9. **R3.9**: audit script refuses a production-looking URL in every spelling it claims (uppercase, percent-encoded, `?host=`, PGHOST); checks E/F do not false-alarm on QC4.
+10. Anything in the diff that the brief did not ask for (scope creep), and anything the brief asked for that is missing.
+
+## Report (English, compact)
+Verdict: ACCEPT / ACCEPT-WITH-NOTES / REJECT. Then findings as `[CRITICAL|MAJOR|MINOR|NOTE] file:line — what — how you proved it (command + observed numbers)`. Separate "introduced by round 3" from "pre-existing". End with the list of probes you ran and confirm they are deleted and `git status` is clean (except untracked `scripts/qc4.sh`).
