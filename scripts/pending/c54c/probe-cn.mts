@@ -1005,6 +1005,60 @@ try {
           chk("R13-RETRY", ok, out.join(" ‖ "));
         });
       }
+      { // R14 (round 14) — WHT cash-sale draft: attach committed, issue failed, user reopens the editor and approves with NO manual input
+        //   (the editor sends the attached payments back as rows, income type suggested from the draft's lines) ⇒ issued once, exactly ONE WTI
+        //   certificate with the right amount/rate/type, live 1, recorded 1, trial balance Δ = the direct approve path
+        const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+        const pay = (await import("@/lib/modules/account/payment" as string)) as Any;
+        const bk = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: `บัญชี R14 ${TAG}`, bankName: "ทหารไทย" });
+        if (!bk?.ok) throw new Error(`bank: ${bk?.reason}`);
+        const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const day = new Date(`${today}T00:00:00Z`);
+        let ks = 0; const kb = () => `r14k${++ks}_${randomBytes(3).toString("hex")}`;
+        const tb = async (): Promise<Map<string, number>> => {
+          const rows = (await P.$queryRawUnsafe(`SELECT a."code" AS code, COALESCE(l."contactId",'-') AS c, sum(l."debit" - l."credit")::bigint AS n FROM "AccountJournalLine" l JOIN "AccountJournalEntry" e ON e."id" = l."entryId" JOIN "AccountLedger" a ON a."id" = l."accountId" WHERE e."systemId" = $1 GROUP BY 1,2`, A)) as Any[];
+          return new Map(rows.map((r) => [`${r.code}${r.c === "-" ? "" : r.c === cust.id ? "@cust" : "@other"}`, Number(r.n)]));
+        };
+        const tbDiff = (a: Map<string, number>, b: Map<string, number>) => { const out: string[] = []; for (const k of new Set([...a.keys(), ...b.keys()])) { const d = (b.get(k) ?? 0) - (a.get(k) ?? 0); if (d !== 0) out.push(`${k}:${d}`); } return out.sort(); };
+        // a WHT cash-sale draft: line WHT type M40_2 / 3 % as the editor stores it on the line (≠ the payment box default M40_8)
+        const mkRe = async () => {
+          const id = (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "RECEIPT", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 1_000_000 }] })).id as string;
+          await P.accountDocumentLine.updateMany({ where: { documentId: id }, data: { whtIncomeType: "M40_2", whtRateBp: 300 } });
+          return id;
+        };
+        const sub = async (id: string, f: () => Promise<void>) => { try { await f(); } catch (e) { chk(id, false, `FATAL ${e instanceof Error ? e.message : String(e)}`); } };
+        await sub("R14-WHT", async () => {
+          const out: string[] = []; let ok = true;
+          for (const how of ["cheque", "transfer"] as const) {
+            const chequeNo = `R14-${how}-${++ks}`;
+            const directRow = { paidAt: today, financeAccountId: bk.id, amountSatang: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2", feeSatang: 0, note: "", cheque: how === "cheque" ? { chequeNo: `${chequeNo}-D`, bankName: "KBank", chequeDate: today } : null };
+            // direct path (control)
+            const d0 = await tb(); const reD = await mkRe();
+            const apD = await pay.approveReceiptWithPayments(T, A, reD, [directRow], { keyBase: kb() });
+            const dDirect = tbDiff(d0, await tb());
+            // worst state: attach committed, issue never ran
+            const w0 = await tb(); const re = await mkRe();
+            const at = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, re, [{ paidAt: day, channel: how === "cheque" ? "CHEQUE" : "TRANSFER", financeAccountId: how === "cheque" ? null : bk.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${kb()}:0`, cheque: how === "cheque" ? { chequeNo, bankName: "KBank", chequeDate: day } : null, chequeFinanceAccountId: bk.id }]);
+            if (!at.ok) throw new Error(`attach: ${at.reason}`);
+            // reopen the editor: exactly the rows DocEditorV2 builds from the server-rendered attached payments (no manual input)
+            const att = await accSvc.draftReceiptAttachedPayments(T, A, re);
+            const rows = att.map((p: Any) => ({ paidAt: p.paidAt, financeAccountId: p.financeAccountId, amountSatang: p.amountSatang, note: "", whtIncomeType: p.whtAmountSatang > 0 ? (p.suggestedWhtIncomeType ?? "M40_8") : null, whtRateBp: p.whtAmountSatang > 0 ? p.whtRateBp : null, whtAmountSatang: p.whtAmountSatang, feeSatang: 0, cheque: p.chequeNo ? { chequeNo: p.chequeNo, bankName: p.bankName ?? "", chequeDate: p.chequeDate ?? p.paidAt } : null }));
+            const ap = await pay.approveReceiptWithPayments(T, A, re, rows, { keyBase: kb() });
+            const dWorst = tbDiff(w0, await tb());
+            const pays = (await P.accountDocumentPayment.findMany({ where: { documentId: re, voidedAt: null }, select: { id: true, whtCertDocId: true } })) as Any[];
+            const certs = (await P.accountDocument.findMany({ where: { systemId: A, docType: "WHT_CERT", sourceDocId: re, status: { notIn: ["VOIDED", "CANCELLED"] } }, select: { id: true, whtAmount: true, whtRateBp: true, whtIncomeType: true } })) as Any[];
+            const linked = pays[0]?.whtCertDocId ? certs.find((c) => c.id === pays[0].whtCertDocId) : null;
+            const rec = await P.outboxEvent.count({ where: { tenantId: T, type: "account.payment.recorded", payload: { path: ["documentId"], equals: re } } });
+            const doc = await P.accountDocument.findUnique({ where: { id: re }, select: { status: true, docNo: true, paidTotal: true } });
+            const sameTb = dWorst.join() === dDirect.join();
+            const good = apD?.ok === true && at.ok && att.length === 1 && rows[0].whtIncomeType === "M40_2" && ap?.ok === true && doc.status === "PAID" && !!doc.docNo && doc.paidTotal === 1_070_000
+              && pays.length === 1 && rec === 1 && certs.length === 1 && !!linked && linked.whtAmount === 30_000 && linked.whtRateBp === 300 && linked.whtIncomeType === "M40_2" && sameTb;
+            ok &&= good;
+            out.push(`${how}: editor rows type ${rows[0]?.whtIncomeType} rate ${rows[0]?.whtRateBp} · approve ${JSON.stringify(ap?.ok ? { ok: true } : ap)} → ${doc.status} ${doc.docNo} paid ${doc.paidTotal} · live ${pays.length} · recorded ${rec} · WTI certs ${certs.length} (${linked ? `${linked.whtIncomeType} ${linked.whtRateBp} ${linked.whtAmount}` : "not linked"}) · TBΔ ${JSON.stringify(dWorst)} = direct ${JSON.stringify(dDirect)} ${sameTb}`);
+          }
+          chk("R14-WHT", ok, out.join(" ‖ "));
+        });
+      }
       chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
     }
     // D3 · Q2: dashboard "paid" bucket (revenue) = grand − live CN of each PAID invoice ⇒ inv 107,000 + inv2 (107,000 − 10,700) = 203,300

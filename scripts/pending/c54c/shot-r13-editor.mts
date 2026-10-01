@@ -13,6 +13,9 @@ if (!/ep-cool-shadow/.test(host) || !/ep-cool-shadow/.test(String(process.env.DA
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3220";
+// round 14: MOBILE=1 ⇒ 390×844 (rows readable, no horizontal overflow) · draft A carries WHT so the income-type select is on screen
+const MOBILE = process.env.MOBILE === "1";
+const VW = MOBILE ? 390 : 1440; const VH = MOBILE ? 844 : 900; const SUFFIX = MOBILE ? "-390" : "";
 const OUT = "/root/projects/shark-crm-c54c/.qc-shots/r13";
 mkdirSync(OUT, { recursive: true });
 const TAG = `qc-c54c-shot-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
@@ -38,13 +41,14 @@ try {
   const bk = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: "ออมทรัพย์ R13", bankName: "กสิกรไทย" });
   const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
   const day = new Date(`${today}T00:00:00Z`);
-  const worst = async (chequeNo: string) => {
+  const worst = async (chequeNo: string, wht = 0) => {
     const re = (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "RECEIPT", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "ขายสด", qty: 1, unitPrice: 1_000_000 }] })).id as string;
-    const r = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, re, [{ paidAt: day, channel: "CHEQUE", financeAccountId: null, amount: 1_070_000, whtAmountSatang: 0, whtRateBp: null, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${TAG}-${chequeNo}:0`, cheque: { chequeNo, bankName: "KBank", chequeDate: day }, chequeFinanceAccountId: bk.id }]);
+    if (wht > 0) await P.accountDocumentLine.updateMany({ where: { documentId: re }, data: { whtIncomeType: "M40_2", whtRateBp: 300 } });
+    const r = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, re, [{ paidAt: day, channel: "CHEQUE", financeAccountId: null, amount: 1_070_000 - wht, whtAmountSatang: wht, whtRateBp: wht > 0 ? 300 : null, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${TAG}-${chequeNo}:0`, cheque: { chequeNo, bankName: "KBank", chequeDate: day }, chequeFinanceAccountId: bk.id }]);
     if (!r.ok) throw new Error(`attach: ${r.reason}`);
     return re;
   };
-  const reA = await worst("R13-SHOT-A");
+  const reA = await worst("R13-SHOT-A", MOBILE ? 30_000 : 0);
   const reB = await worst("R13-SHOT-B");
   const cqB = (await P.accountDocumentPayment.findFirst({ where: { documentId: reB }, select: { chequeId: true } })).chequeId;
   const b = await cheque.bounceCheque(T, A, cqB, "เช็คเด้ง (ภาพทดสอบ)");
@@ -60,7 +64,7 @@ try {
     for (const [name, re] of [["A-attached", reA], ["B-bounced", reB]] as const) {
       const page = await browser.newPage();
       await page.evaluateOnNewDocument("window.__name = window.__name || ((f) => f);");
-      await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+      await page.setViewport({ width: VW, height: VH, deviceScaleFactor: MOBILE ? 2 : 1 });
       await page.setCookie({ name: "shark_session", value: token, domain: hostName, path: "/" }, { name: "shark_tenant", value: T, domain: hostName, path: "/" });
       const url = `${BASE}${cfg.editorEditPath(`/app/sys/${A}/account`, "RECEIPT", re)}`;
       await page.goto(url, { waitUntil: "networkidle2", timeout: 90_000 }).catch((e: unknown) => log(`goto ${name}: ${e}`));
@@ -72,16 +76,21 @@ try {
         warning: !!document.querySelector("[data-testid=pay-voided-warning]"),
         confirm: !!document.querySelector("[data-testid=pay-voided-confirm]"),
         title: document.title,
+        scrollW: document.documentElement.scrollWidth,
+        innerW: window.innerWidth,
+        tableRight: (document.querySelector("[data-testid=attached-payments]") as HTMLElement | null)?.getBoundingClientRect().right ?? 0,
+        whtSelect: (document.querySelector("[data-testid=attached-pay-wht-type-1]") as HTMLSelectElement | null)?.value ?? null,
       }));
       const el = await page.$("[data-testid=attached-payments], [data-testid=pay-voided-warning]");
       if (el) await el.scrollIntoView().catch(() => undefined);
-      await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
+      await page.screenshot({ path: `${OUT}/${name}${SUFFIX}.png`, fullPage: true });
+      const noOverflow = dom.scrollW <= dom.innerW + 1;
       if (name === "A-attached")
-        chk("SHOT-A", dom.attached && dom.rows === 1 && /R13-SHOT-A/.test(dom.rowText) && /10,700\.00/.test(dom.rowText) && !dom.warning,
-          `attached cheque shown read-only: table ${dom.attached} rows ${dom.rows} text "${dom.rowText.replace(/\s+/g, " ")}" · warning ${dom.warning} · ${OUT}/${name}.png`);
+        chk(`SHOT-A${SUFFIX}`, dom.attached && dom.rows === 1 && /R13-SHOT-A/.test(dom.rowText) && /10,700\.00/.test(dom.rowText) && !dom.warning && noOverflow && dom.tableRight <= dom.innerW && (!MOBILE || dom.whtSelect === "M40_2"),
+          `attached cheque shown read-only: table ${dom.attached} rows ${dom.rows} text "${dom.rowText.replace(/\s+/g, " ")}" · WHT type ${dom.whtSelect} · warning ${dom.warning} · scrollWidth ${dom.scrollW}/${dom.innerW} · table right ${Math.round(dom.tableRight)} · ${OUT}/${name}${SUFFIX}.png`);
       else
-        chk("SHOT-B", !dom.attached && dom.warning && dom.confirm,
-          `bounced draft: warning ${dom.warning} confirm ${dom.confirm} attached ${dom.attached} · ${OUT}/${name}.png`);
+        chk(`SHOT-B${SUFFIX}`, !dom.attached && dom.warning && dom.confirm && noOverflow,
+          `bounced draft: warning ${dom.warning} confirm ${dom.confirm} attached ${dom.attached} · scrollWidth ${dom.scrollW}/${dom.innerW} · ${OUT}/${name}${SUFFIX}.png`);
       await page.close();
     }
   } finally { await browser.close(); }

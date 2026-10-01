@@ -226,7 +226,10 @@ export type DocEditorV2Props = {
    * CRM C5.4-C ▸ round 13 · R12-1: รายการรับชำระที่ผูกกับร่างใบเสร็จนี้แล้ว (ผูกสำเร็จแต่ยังไม่ได้ออก) — แสดงแบบอ่านอย่างเดียว
    *   แทนช่องกรอกใหม่ (กดอนุมัติ = ออกเอกสารด้วยรายการเดิม) · ไม่ส่ง = ไม่มี ◂
    */
-  attachedPayments?: { id: string; paidAt: string; amountSatang: number; whtAmountSatang: number; channel: string; financeName: string | null; chequeNo: string | null }[];
+  attachedPayments?: {
+    id: string; paidAt: string; amountSatang: number; whtAmountSatang: number; whtRateBp: number | null; suggestedWhtIncomeType: string | null;
+    channel: string; financeAccountId: string | null; financeName: string | null; chequeNo: string | null; bankName: string | null; chequeDate: string | null;
+  }[];
   /** round 13 · R12-2: ร่างนี้เคยผูกรายการรับชำระ แต่ถูกยกเลิก/เช็คเด้งหมดแล้ว — ออกตอนนี้โดยไม่กรอกการรับเงินใหม่ = บันทึกเป็นรับเงินสด */
   attachedAllVoided?: boolean;
   /** เลขที่ + ลิงก์ของใบแจ้งหนี้ต้นทาง (การ์ดหัวของ g2 "อ้างอิงใบแจ้งหนี้") */

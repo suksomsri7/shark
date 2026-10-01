@@ -33,6 +33,7 @@ import { ToastProvider, useToast } from "./Toast";
 import {
   PRICE_MODE_OPTIONS,
   REASON_OPTIONS,
+  WHT_TYPE_OPTIONS,
   newLineDraft,
   type ContactOption,
   type DocDraftPayload,
@@ -186,6 +187,10 @@ function EditorBody(props: DocEditorV2Props) {
   // CRM C5.4-C ▸ round 13 · R12-1/R12-2: รายการรับที่ผูกกับร่างไว้แล้ว (อ่านอย่างเดียว) · ธงยืนยัน "ออกเป็นรับเงินสด" เมื่อรายการเดิมถูกยกเลิกหมด ◂
   const attachedPays = props.attachedPayments ?? [];
   const [cashConfirmed, setCashConfirmed] = useState(false);
+  // round 14: ประเภทเงินได้ของรายการรับที่มีภาษีหัก ณ ที่จ่าย (แถวรับเงินไม่ได้เก็บไว้) — เสนอจากบรรทัดของร่าง · ไม่มี = ค่าเริ่มต้นเดียวกับกล่องรับเงิน (M40_8)
+  const [attachedWhtType, setAttachedWhtType] = useState<Record<string, string>>(() =>
+    Object.fromEntries(attachedPays.filter((p) => p.whtAmountSatang > 0).map((p) => [p.id, p.suggestedWhtIncomeType ?? "M40_8"])),
+  );
   const payKeyRef = useRef(`pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const approveFormRef = useRef<HTMLFormElement>(null);
   const approveNextRef = useRef<HTMLInputElement>(null);
@@ -395,8 +400,21 @@ function EditorBody(props: DocEditorV2Props) {
         const res = await approveReceiptWithPaymentsAction(
           props.systemId,
           id,
-          // round 13 · R12-1: ร่างที่ผูกรายการรับไว้แล้ว ⇒ ไม่ส่งรายการใหม่ (server ออกเอกสารด้วยรายการเดิม)
-          (attachedPays.length > 0 ? [] : payBoxes).filter((b) => boxTieOff(b) > 0).map((b) => ({
+          // round 13/14 · R12-1: ร่างที่ผูกรายการรับไว้แล้ว ⇒ ส่ง "รายการเดิม" กลับเป็นแถว (เท่ากันทุกช่อง ⇒ server ข้ามการผูก ออกเอกสาร
+          //   + ออกหนังสือรับรองหัก ณ ที่จ่ายด้วยประเภทเงินได้/อัตราของแถว — เหมือนกดซ้ำด้วยคีย์เดิม)
+          attachedPays.length > 0
+            ? attachedPays.map((p) => ({
+                paidAt: p.paidAt,
+                financeAccountId: p.financeAccountId,
+                amountSatang: p.amountSatang,
+                note: "",
+                whtIncomeType: p.whtAmountSatang > 0 ? (attachedWhtType[p.id] as never) : null,
+                whtRateBp: p.whtAmountSatang > 0 ? p.whtRateBp : null,
+                whtAmountSatang: p.whtAmountSatang,
+                feeSatang: 0,
+                cheque: p.chequeNo ? { chequeNo: p.chequeNo, bankName: p.bankName ?? "", chequeDate: p.chequeDate ?? p.paidAt } : null,
+              }))
+            : payBoxes.filter((b) => boxTieOff(b) > 0).map((b) => ({
             paidAt: b.paidAt,
             financeAccountId: b.financeAccountId,
             amountSatang: b.amountSatang,
@@ -1268,10 +1286,26 @@ function EditorBody(props: DocEditorV2Props) {
               <table className="mt-2 w-full text-sm" data-testid="attached-payments">
                 <tbody>
                   {attachedPays.map((p, i) => (
-                    <tr key={p.id} className="border-b last:border-0" data-testid={`attached-pay-row-${i + 1}`}>
-                      <td className="py-1">{formatDateTh(p.paidAt)}</td>
-                      <td className="py-1">{p.chequeNo ? `เช็ค ${p.chequeNo}` : (p.financeName ?? payChannelLabel(p.channel))}</td>
-                      <td className="py-1 text-right tabular-nums"><MoneyText satang={p.amountSatang + p.whtAmountSatang} decimals /></td>
+                    <tr key={p.id} className="border-b last:border-0 align-top" data-testid={`attached-pay-row-${i + 1}`}>
+                      <td className="py-1 pr-2 whitespace-nowrap">{formatDateTh(p.paidAt)}</td>
+                      <td className="py-1 pr-2 break-words">
+                        {p.chequeNo ? `เช็ค ${p.chequeNo}` : (p.financeName ?? payChannelLabel(p.channel))}
+                        {p.whtAmountSatang > 0 && (
+                          <div className="mt-1 text-xs text-[color:var(--color-muted)]">
+                            หัก ณ ที่จ่าย <MoneyText satang={p.whtAmountSatang} decimals /> ({((p.whtRateBp ?? 0) / 100).toFixed(2)}%)
+                            <select
+                              className="input mt-1 block w-full max-w-[16rem] text-xs"
+                              value={attachedWhtType[p.id] ?? "M40_8"}
+                              onChange={(e) => setAttachedWhtType((m) => ({ ...m, [p.id]: e.target.value }))}
+                              data-testid={`attached-pay-wht-type-${i + 1}`}
+                              aria-label="ประเภทเงินได้ของหนังสือรับรองหัก ณ ที่จ่าย"
+                            >
+                              {WHT_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-1 text-right tabular-nums whitespace-nowrap"><MoneyText satang={p.amountSatang + p.whtAmountSatang} decimals /></td>
                     </tr>
                   ))}
                 </tbody>

@@ -3721,6 +3721,49 @@ export async function attachDraftReceiptPayments(
   }
 }
 
+/**
+ * CRM C5.4-C ▸ round 14: รายการรับที่ผูกกับร่างใบเสร็จขายสดแล้ว (ยังมีผล) + ทุกอย่างที่ "แถวรับเงิน" ต้องใช้ — ฟอร์มส่งกลับเป็นแถวเดิม
+ *   (เส้นทาง "แถวเท่าเดิม" ของ approveReceiptWithPayments ⇒ ออกหนังสือรับรองหัก ณ ที่จ่าย (WTI) เหมือนกดซ้ำด้วยคีย์เดิม)
+ *   ประเภทเงินได้ไม่ได้เก็บที่แถวรับเงิน ⇒ เสนอจากบรรทัดของร่าง (อัตราเดียวกันก่อน · ยอดบรรทัดมากสุด) · ไม่มี = null (ฟอร์มให้เลือก) ◂
+ */
+export async function draftReceiptAttachedPayments(tenantId: string, systemId: string, docId: string): Promise<{
+  id: string; paidAt: string; amountSatang: number; whtAmountSatang: number; whtRateBp: number | null; suggestedWhtIncomeType: AccountWhtIncomeType | null;
+  channel: string; financeAccountId: string | null; financeName: string | null; chequeNo: string | null; bankName: string | null; chequeDate: string | null;
+}[]> {
+  const pays = await prisma.accountDocumentPayment.findMany({
+    where: { documentId: docId, tenantId, systemId, voidedAt: null },
+    orderBy: [{ paidAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, paidAt: true, amount: true, whtAmountSatang: true, whtRateBp: true, channel: true, financeAccountId: true, chequeId: true },
+  });
+  if (pays.length === 0) return [];
+  const lines = await prisma.accountDocumentLine.findMany({ where: { documentId: docId, tenantId, systemId, whtIncomeType: { not: null } }, select: { whtIncomeType: true, whtRateBp: true, amount: true } });
+  const suggest = (rate: number | null): AccountWhtIncomeType | null => {
+    const pool = lines.filter((l) => rate != null && l.whtRateBp === rate).length > 0 ? lines.filter((l) => l.whtRateBp === rate) : lines;
+    const sum = new Map<AccountWhtIncomeType, number>();
+    for (const l of pool) if (l.whtIncomeType) sum.set(l.whtIncomeType, (sum.get(l.whtIncomeType) ?? 0) + l.amount);
+    return [...sum.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  };
+  const fins = await prisma.accountFinance.findMany({ where: { tenantId, systemId, id: { in: pays.map((p) => p.financeAccountId).filter((x): x is string => !!x) } }, select: { id: true, name: true } });
+  const cqs = await prisma.accountCheque.findMany({ where: { tenantId, systemId, id: { in: pays.map((p) => p.chequeId).filter((x): x is string => !!x) } }, select: { id: true, chequeNo: true, bankName: true, chequeDate: true } });
+  return pays.map((p) => {
+    const cq = p.chequeId ? cqs.find((c) => c.id === p.chequeId) : undefined;
+    return {
+      id: p.id,
+      paidAt: p.paidAt.toISOString().slice(0, 10),
+      amountSatang: p.amount,
+      whtAmountSatang: p.whtAmountSatang,
+      whtRateBp: p.whtRateBp,
+      suggestedWhtIncomeType: p.whtAmountSatang > 0 ? suggest(p.whtRateBp) : null,
+      channel: p.channel,
+      financeAccountId: p.financeAccountId,
+      financeName: fins.find((f) => f.id === p.financeAccountId)?.name ?? null,
+      chequeNo: cq?.chequeNo ?? null,
+      bankName: cq?.bankName ?? null,
+      chequeDate: cq ? cq.chequeDate.toISOString().slice(0, 10) : null,
+    };
+  });
+}
+
 /** round 13 · R12-1 */
 export const DRAFT_RECEIPT_ALREADY_ATTACHED_MSG = "ใบเสร็จนี้มีรายการรับชำระอยู่แล้ว — ออกใบเสร็จต่อได้เลย หรือยกเลิกรายการเดิมก่อน";
 
