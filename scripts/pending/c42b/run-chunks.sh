@@ -11,7 +11,9 @@ BS=/root/projects/shark-crm/.qc-shots/crm/BUILD-STATE
 if [ -z "${CHUNKS_OVERRIDE:-}" ]; then
   CHUNKS=('re:^/companies' 're:^/contacts$' 're:^/contacts/\[' 're:^/contacts/(new|duplicates|import)' 're:^/deals$' 're:^/deals/\[' 're:^/deals/new' 're:^/(activities|calendar|commissions|pipelines)' 're:^/(reports|emails|objects)' 're:^/settings/(api|assignment|automation|commissions)' 're:^/settings/(email|forms|holidays|integrations|lost-reasons|notifications|objects)' 're:^/settings($|/(pipelines|portal|quotas|scoring|sequences|stages|tracking|visibility))' 're:^/(app|p|b|u)/')
 else
-  IFS='|' read -r -a CHUNKS <<< "$CHUNKS_OVERRIDE"
+  # it4-B: separator ';' — page regexes contain '|' (run3 customer: 're:^/(app|p|b|u)/' was split into 4 broken regexes ⇒
+  #   'Invalid regular expression: /^/(app/' FATAL + 3 empty chunks ⇒ the portal was never pressed)
+  IFS=';' read -r -a CHUNKS <<< "$CHUNKS_OVERRIDE"
 fi
 mkdir -p .qc-shots/c42b
 i=0

@@ -274,6 +274,7 @@ type Ctx = {
   unlinkedConversationId: string | null; // it4-A: a chat room whose ChatContact party has NO CRM contact (crm-panel-create-lead)
   attachThreadKey: string | null; // it4-A (dbg2): runner-owned thread with NO contact (company-linked) — `crm-email-attach-contact-*` rows open it
   lifecycleCompanyId: string | null; // it4-A (C5.4-E rows): runner-owned live CUSTOMER company with NO won deal (LIFECYCLE_ROW_RE rows open it)
+  portalRecordId: string | null; // it4-B: a CustomRecord the portal company may open (`/b/[slug]/documents/[id]` — [id] is a RECORD id, not a system id)
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
 };
 const UNRESOLVED: { placeholder: string; reason: string }[] = [];
@@ -297,7 +298,7 @@ async function buildCtx(): Promise<Ctx> {
     dealId: E.dealIds?.[0] ?? null, contactId: E.contactIds?.[0] ?? null, companyId: E.companyIds?.[0] ?? null,
     recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, pageSlug: null, perUser: {}, conversationId: null, linesDealId: null,
     unitId: E.units?.patong ?? E.units?.kata ?? null,
-    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null, lifecycleCompanyId: null, attachThreadKey: null,
+    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null, lifecycleCompanyId: null, attachThreadKey: null, portalRecordId: null,
     posSysId: E.systems?.POS ?? null, memberSysId: E.systems?.MEMBER ?? null, hrSysId: E.systems?.HR ?? null,
     accountSysId: E.systems?.ACCOUNT ?? null, chatSysId: E.systems?.CHAT ?? null,
   };
@@ -432,6 +433,16 @@ async function buildCtx(): Promise<Ctx> {
   // budget — guessing a wrong model name here risks matching an unrelated document, not just skipping the page).
   note("docType/docId", "ยังไม่ผูก resolver จริง (1 แถวในทะเบียน) — /app/sys/[id]/account/docs/… ข้ามทั้งหน้าเสมอในตอนนี้");
 
+  // it4-B (dbg4 portal): `/b/[slug]/documents/[id]` took `[id]` = the CRM SYSTEM id (resolveSystemId) ⇒ 404 + 8 dead. The route's
+  //   [id] is a record the portal company sees — same filter as the product's portal.ts visibleRecords (parentType COMPANY ·
+  //   parentId = the portal company · object portalVisible, not archived). The portal fixture is on ctx.companyId (portal access below).
+  try {
+    const rec = ctx.companyId ? await P.customRecord.findFirst({ where: { tenantId: TENANT, systemId: SYS, archivedAt: null, parentType: "COMPANY", parentId: ctx.companyId,
+      object: { portalVisible: true, archivedAt: null, tenantId: TENANT, systemId: SYS } }, orderBy: { updatedAt: "desc" }, select: { id: true } }) : null;
+    ctx.portalRecordId = rec?.id ?? null;
+    if (!ctx.portalRecordId) note("portal record [id]", "ไม่มีระเบียนวัตถุที่เปิดพอร์ทัลของบริษัทพอร์ทัล — /b/[slug]/documents/[id] ข้ามทั้งหน้า");
+  } catch (e) { note("portal record [id]", `query ล้ม — ${e instanceof Error ? e.message : e}`); }
+
   return ctx;
 }
 
@@ -471,7 +482,7 @@ function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | nu
   if (!sysR.id) return { path: null, reason: sysR.reason };
   const map: Record<string, string | null> = {
     // c42b: the lines tab opens the persona's oracle-owned deal WITH lines (QC1 seeds none — see LINES_DEALS)
-    id: sysR.id, dealId: /(^|&)tab=lines(&|$)/.test(row.query ?? "") ? (ctx.linesDealId ?? (DRY ? "dry-lines-deal" : null)) : ctx.dealId, contactId: ctx.contactId,
+    id: row.page.startsWith("/b/[slug]/documents/[id]") ? (ctx.portalRecordId ?? (DRY ? "dry-portal-record" : null)) : sysR.id, dealId: /(^|&)tab=lines(&|$)/.test(row.query ?? "") ? (ctx.linesDealId ?? (DRY ? "dry-lines-deal" : null)) : ctx.dealId, contactId: ctx.contactId,
     // it4-A (C5.4-E): the lifecycle-correction rows open the runner-owned CUSTOMER company without a won deal (see createExtraFixtures)
     companyId: LIFECYCLE_ROW_RE.test(row.testid) ? (ctx.lifecycleCompanyId ?? (DRY ? "dry-lifecycle-company" : null)) : ctx.companyId,
     recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: row.page.startsWith("/p/") ? ctx.pageSlug : ctx.slug,
@@ -735,6 +746,22 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
       let ok = false;
       try { const who = await actorOf(u); if (who) { const W = (await import("@/lib/modules/crm/where" as string)) as Any; ok = !!(await P.crmCompany.findFirst({ where: { AND: [await W.companyWhere({ tenantId: TENANT, systemId: SYS, actorUserId: who.uid }, who.actor), { id: co.id }] }, select: { id: true } })); } } catch { ok = false; }
       PICKS.push({ user: u, entity: "lifecycleCompany", id: co.id, why: `บริษัท CUSTOMER ไม่มีดีลชนะของตัวกด (qc-btn-lifecycle-) owner/team = ${srcId} · companyWhere ของ product ${ok ? "ยอมรับ" : "❌ ไม่ยอมรับ"}` });
+    }
+  }
+  // it4-B (run3 nok /activities): `activity-row-contact-link` renders only for an activity with NO deal (ActivityItems.tsx
+  //   `item.dealId ? deal-link : item.contactId ? contact-link …`) — every open contact-only activity on QC1 belongs to the
+  //   manager (team of thana) ⇒ nok's list (TEAM policy, other team) had none (facts10.mts). One OPEN contact-only TASK per
+  //   STAFF persona on its OWN picked contact, due 45 days ago ⇒ first row of "ค้างอยู่" (dueAt asc) · deleted in CLEAN.
+  if (selRow(/^activity-row-contact-link$/)) {
+    for (const u of ["nok", "thana"]) {
+      if (!userKeys.includes(u)) continue;
+      const uid = (E.users?.[u]?.userId as string | undefined) ?? null;
+      const cid = ctxForUser(ctx, u).contactId;
+      if (!uid || !cid) { note(`${u} contactActivity`, "ไม่มีผู้ติดต่อของบทบาทนี้ — ข้ามกิจกรรมผูกผู้ติดต่อของตัวกด"); continue; }
+      const act = await P.crmActivity.create({ data: { tenantId: TENANT, systemId: SYS, contactId: cid, dealId: null, type: "TASK",
+        title: `qc-btn-act-${rand}-${u}`, dueAt: new Date(Date.now() - 45 * 86_400_000), ownerUserId: uid }, select: { id: true } });
+      XFIX.push({ model: "crmActivity", id: act.id });
+      PICKS.push({ user: u, entity: "contactActivity", id: act.id, why: `กิจกรรมค้างผูกผู้ติดต่อ ${cid} ไม่ผูกดีล (qc-btn-act-) เจ้าของ = บทบาทนี้ — ซีดมีเฉพาะของ manager` });
     }
   }
   if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
