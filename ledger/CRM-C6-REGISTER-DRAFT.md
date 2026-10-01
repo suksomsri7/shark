@@ -231,3 +231,16 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
   - H2b-4 LOW confirmed — `automation.ts:1588-1593` `field_due` window wrong for DATETIME fields (00:00–06:59 Thai fires a day early).
   - H2b-5 LOW confirmed — `portal.ts:803` DATETIME custom values rendered as bare UTC date.
 - H2b-3..5 exist on origin/main but only on CRM v2 screens (hidden on prod). C5.4-D2 diff: no new defect.
+
+## Added 1 Oct — C5.5-fix1 merged (42acc952); round-2 review debt
+
+- R2-1 LOW (reproduced): account connections page — a request naming only non-`account.*` events becomes an all-events endpoint (v1 shop not refused). → fix3a.
+- R2-2 LOW: webhook guard registry fails open when empty. → fix3a (fail closed for CRM-event endpoints).
+- R2-3 LOW: refused webhook toggle-on throws to the error page instead of the Thai reason. → fix3a.
+- R2-4 LOW: existing all-events / CRM-event endpoints are never re-checked (no author column). Prod count unknown → C6.1 read-only query + owner decision.
+- `ApiIdempotency` has no cleanup job (rows now include stored 409s) → C6.1 cron list.
+- Account `import.run` 429 is replayed 24 h though docs say wait-and-retry → fix3a (flag nothingWritten). Some CRM 409s say "refresh and try again" but a same-key retry replays → docs wording, debt.
+- Account/kanban/member error tables in docs contradict "errors are stored" → docs debt.
+- RV-5: installed skill files under `/root/.claude/skills` still say "reuse the same key" — sentence in `crm-C5.5-fix1.md`; controller/owner.
+- Deprecated author-less `createEndpoint` overload stays until `qc-acc-v2-permissions.mts:768` and the seed script pass an author.
+- Vercel function max duration vs the 6-min stale-claim window: dashboard setting not verified → C6.1.
