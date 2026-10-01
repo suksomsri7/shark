@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { safeReason } from "@/lib/core/errors";
@@ -130,14 +131,22 @@ export async function markOrderedAction(formData: FormData) {
 // 🔴 HF-INV-1 R3.8: คืนผลรูปแบบบ้าน { status, message } ให้ PoReceiveForm (useActionState) แสดง — เดิม throw ข้อความไทย
 //    ซึ่ง Next ปิดบังใน production (คนกดเห็นแต่ "เกิดข้อผิดพลาด" หรือไม่เห็นอะไรเลย)
 //    กดซ้ำ/ดับเบิลคลิก: receivePo พลิกสถานะแบบมีเงื่อนไข ⇒ คำขอที่สองไม่รับซ้ำอยู่แล้ว · ถ้าใบนี้ "รับแล้ว" ก็ไม่ใช่ข้อผิดพลาดของคนกด
-//    ⇒ ตอบสำเร็จ (ไม่ขึ้น error ให้คำขอที่ซ้ำ) · ด่านสิทธิ์/ระบบผิดยังโยนเหมือน action อื่นในไฟล์
+//    ⇒ ตอบสำเร็จ (ไม่ขึ้น error ให้คำขอที่ซ้ำ)
+//    R3c (C4): ด่านก่อนรับของ (ร้าน · สิทธิ์ · ระบบคลังของร้านนี้) ก็คืนผลเป็นข้อมูล — ไม่หลุดไป error boundary ของหน้า
+//    redirect/notFound ของ Next (ยังไม่ล็อกอิน · ร้านถูกระงับ) ผ่านต่อด้วย unstable_rethrow
 export async function receivePoAction(formData: FormData): Promise<{ status: "ok" | "error"; message: string }> {
-  const auth = await requireTenant();
-  assertInventoryCan(auth, "inventory.po.receive");
   const systemId = String(formData.get("systemId") ?? "");
   const poId = String(formData.get("poId") ?? "").trim();
-  if (!systemId || !poId) return { status: "error", message: "ข้อมูลใบสั่งซื้อไม่ครบ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" };
-  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  let ctx: Awaited<ReturnType<typeof requireInventoryCtx>>;
+  try {
+    const auth = await requireTenant();
+    assertInventoryCan(auth, "inventory.po.receive");
+    if (!systemId || !poId) return { status: "error", message: "ข้อมูลใบสั่งซื้อไม่ครบ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" };
+    ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  } catch (e) {
+    unstable_rethrow(e);
+    return { status: "error", message: safeReason(e, "รับของเข้าคลังไม่สำเร็จ — ลองใหม่อีกครั้ง") };
+  }
   const locationId = String(formData.get("locationId") ?? "").trim();
   let r: { ok: boolean; note: string };
   try {

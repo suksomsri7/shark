@@ -35,6 +35,10 @@
 //   retry สลับลำดับ / แทรกยาอื่นข้างหน้า ⇒ ยาที่ตัดไปแล้วไม่ตัดซ้ำ · ยาตัวเดิม 2 บรรทัด = ตัด 2 ครั้ง · จ่ายใหม่หลังบันทึก = ตัดจริง
 //   retry เปลี่ยนจำนวน ⇒ error ชนิดเฉพาะ (เหมือนเดิม)
 //
+// รอบ 3c (C1 · แดงบน 7e9d70fc · เขียวหลังแก้): dispenseJson ต้องต่อท้ายแบบอะตอมมิก — จ่ายยาพร้อมกันใน visit เดียวไม่ทำรายการหาย
+//   [X5] ∥ [Y3] ⇒ บันทึกครบ 2 · [Y3] ครั้งถัดมาตัดจริง (เดิม: รายการหาย ⇒ คีย์ซ้ำ ⇒ ตอบ ok แต่ไม่ตัด) · 5 ยาพร้อมกัน ⇒ 5 รายการ 5 ตัด
+//   การแข่งบังคับลำดับด้วยเลนที่ถือล็อกสินค้า (ทุกคำขออ่าน visit แล้วไปรอที่ล็อก) — ไม่พึ่งดวง
+//
 // การแข่ง: ≥10 รายการพร้อมกัน × 5 รอบ ต่อสถานการณ์ · ครึ่งหนึ่งผ่านตัวห่อ (pool ของแอป = คนละ connection)
 //   อีกครึ่งผ่าน `*InTx` บน PrismaClient แยกต่อเลน (คนละ client · คนละ connection แน่นอน)
 // DB: ฐาน QC ผ่าน qc-env-guard (กัน prod) · ร้านชั่วคราว slug qc-hfatom-* · ลบใน finally
@@ -1028,6 +1032,71 @@ try {
       const after = await st(A, B);
       const ok2 = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }]));
       chk("AT-22.9", "[A5,B5] ล้มกลางทาง → retry เปลี่ยนจำนวน [A7,B5] ⇒ error ชนิดเฉพาะ (ไทย) · ไม่ตัดเพิ่ม (A/B 95/100) · retry รายการเดิม [A5,B5] ผ่าน (95/95 · json 2)", !f1.ok && !r.ok && isKeyConflict(r.e) && after === "95/100" && ok2.ok && (await st(A, B)) === "95/95" && (await jsonLen(v)) === 2, `retry7 ${r.ok ? "ok?!" : short(r.e).slice(0, 70)} · after ${after} · retry5 ${ok2.ok ? "ok" : short(ok2.e).slice(0, 50)} · ${await st(A, B)} · json ${await jsonLen(v)}`, "MAJOR");
+    }
+    // ═══════════ รอบ 3c · C1 · AT-22.10–22.13: dispenseJson ต่อท้ายแบบอะตอมมิก (จ่ายพร้อมกันใน visit เดียวไม่ทำรายการหาย) ═══════════
+    //   ตัวบังคับลำดับ: เลนถือล็อกแถวสินค้า (FOR UPDATE) จนกว่าจะปล่อย ⇒ คำขอที่ต้องตัดสินค้านั้นอ่าน visit แล้วไปรอที่ล็อก
+    console.log("\nAT-22 (3c) คลินิก: จ่ายยาพร้อมกันใน visit เดียว — dispenseJson ต้องไม่หาย · ครั้งถัดไปตัดจริง");
+    const holdItems = (ids: string[]) => {
+      let release!: () => void;
+      let locked!: () => void;
+      const gate = new Promise<void>((res) => { release = res; });
+      const gotLock = new Promise<void>((res) => { locked = res; });
+      const done = lanes[1].$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "InvItem" WHERE "id" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
+        locked();
+        await gate;
+        return "held";
+      }, { timeout: 40_000 });
+      done.catch(() => locked());
+      return { gotLock, release: async () => { release(); await done.catch(() => undefined); } };
+    };
+    const outOf = (vid: string, itemId: string) => prisma.invMovement.count({ where: { tenantId: tid, type: "OUT", refType: "clinicVisit", refId: vid, itemId } });
+    const jsonItems = async (vid: string) => {
+      const j = (await prisma.clinicVisit.findUniqueOrThrow({ where: { id: vid } })).dispenseJson as unknown;
+      return (Array.isArray(j) ? j : []).map((r) => String((r as { invItemId?: unknown })?.invItemId)).sort();
+    };
+    const vXY = await newVisit();
+    const X = await mkMed("AT2210X"), Y = await mkMed("AT2210Y");
+    {
+      const h = holdItems([X]);
+      await h.gotLock;
+      const px = attempt(cl.dispense(cctx, vXY, [{ invItemId: X, qty: 5 }]));
+      await sleep(1500); // [X5] อ่าน visit แล้ว รออยู่ที่ล็อกของ X
+      const ry = await attempt(cl.dispense(cctx, vXY, [{ invItemId: Y, qty: 3 }]));
+      await h.release();
+      const rx = await px;
+      const items = await jsonItems(vXY);
+      chk("AT-22.10", "[X5] ∥ [Y3] ใน visit เดียว (X รอล็อกอยู่ขณะ Y จบ) ⇒ ทั้งคู่สำเร็จ · dispenseJson บันทึกครบ 2 รายการ (X และ Y) · ตัด X 95 / Y 97", rx.ok && ry.ok && items.length === 2 && items.includes(X) && items.includes(Y) && (await st(X, Y)) === "95/97", `X ${rx.ok ? "ok" : short(rx.e).slice(0, 60)} · Y ${ry.ok ? "ok" : short(ry.e).slice(0, 60)} · json [${items.map((i) => (i === X ? "X" : i === Y ? "Y" : "?")).join(",")}] · X/Y ${await st(X, Y)}`);
+    }
+    {
+      const r = await attempt(cl.dispense(cctx, vXY, [{ invItemId: Y, qty: 3 }]));
+      chk("AT-22.11", "หลังจากนั้นจ่าย [Y3] จริงอีกครั้ง ⇒ ตัดจริง: Y 94 · OUT ของ Y 2 แถว · dispenseJson 3 (เดิม: รายการ Y หาย ⇒ ใช้คีย์ซ้ำ ⇒ ตอบ ok แต่ไม่ตัด)", r.ok && (await st(Y)) === "94" && (await outOf(vXY, Y)) === 2 && (await jsonItems(vXY)).length === 3, `${r.ok ? "ok" : short(r.e).slice(0, 60)} · Y ${await st(Y)} · OUT Y ${await outOf(vXY, Y)} · json ${(await jsonItems(vXY)).length}`);
+    }
+    const v5 = await newVisit();
+    const meds5 = await Promise.all([1, 2, 3, 4, 5].map((n) => mkMed(`AT2212M${n}`)));
+    {
+      const h = holdItems(meds5);
+      await h.gotLock;
+      const ps = meds5.map((m) => attempt(cl.dispense(cctx, v5, [{ invItemId: m, qty: 5 }])));
+      await sleep(2000); // ทั้ง 5 คำขออ่าน visit แล้ว รออยู่ที่ล็อก
+      await h.release();
+      const rs = await Promise.all(ps);
+      const items = await jsonItems(v5);
+      const outs5 = await prisma.invMovement.count({ where: { tenantId: tid, type: "OUT", refType: "clinicVisit", refId: v5 } });
+      chk("AT-22.12", "จ่ายยา 5 ตัว (คนละตัว ตัวละคำขอ) พร้อมกันใน visit เดียว ⇒ สำเร็จ 5 · dispenseJson 5 รายการ (ครบทุกตัว) · ตัด 5 ครั้ง (ทุกตัว 95)", rs.every((x) => x.ok) && items.length === 5 && meds5.every((m) => items.includes(m)) && outs5 === 5 && (await st(...meds5)) === "95/95/95/95/95", `ok ${rs.filter((x) => x.ok).length}/5 ${rs.filter((x) => !x.ok).map((x) => short((x as { e: unknown }).e).slice(0, 40)).join(" | ")} · json ${items.length} · OUT ${outs5} · ${await st(...meds5)}`);
+    }
+    {
+      const res: string[] = [];
+      for (const v of [vXY, v5]) {
+        const b = await cl.billVisit(cctx, v);
+        const rf = await cl.refundVisit(cctx, v);
+        const ins = await prisma.invMovement.count({ where: { tenantId: tid, type: "IN", refType: "clinicVisit", refId: v } });
+        const outsV = await prisma.invMovement.count({ where: { tenantId: tid, type: "OUT", refType: "clinicVisit", refId: v } });
+        res.push(`${b.ok && rf.ok ? "ok" : `bill ${b.ok} refund ${JSON.stringify(rf)}`} IN ${ins}/OUT ${outsV}`);
+        if (!(b.ok && rf.ok) || ins !== outsV) res.push("✗");
+      }
+      const back = await st(X, Y, ...meds5);
+      chk("AT-22.13", "คืนเงินทั้งสอง visit ⇒ คืนยาทุกครั้งที่ตัด (IN = OUT ต่อ visit) · ทุกตัวกลับเป็น 100", !res.includes("✗") && back === "100/100/100/100/100/100/100", `${res.join(" · ")} · ${back}`);
     }
   }
 

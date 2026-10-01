@@ -465,3 +465,87 @@ Fitness: 33/33 with QC4 env and 33/33 without DB env, check lines identical (F2.
 5. **B3**: dialog closes on every result (remount via `key`) and the message shows in place, because `ConfirmDialog` has no open/close prop or message slot.
 6. **Pre-commit hook**: `core.hooksPath` = `/root/projects/shark-in-th/.githooks` (a tree this lane may not touch) ⇒ fitness run by hand (both modes) and commit with `--no-verify`.
 Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, run once): **exit 0** after 395 s (incl. lock wait).
+
+# Round 3c (controller brief `pos-brief-HF-INV-1-R3c.md` · start 7e9d70fc)
+
+## Round 3c — status (checkpoint)
+- [x] 0. BEFORE regression on 7e9d70fc (QC4): atomic 139/139 · inventory-authz 116/116 · reports-authz 57/57 · clinic 8/8 · clinic-refund 13/13 · clinic-public 15/15 · report-builder 9/9 · procurement 12/12 · member-public 19/19 · member-tier 7/7
+- [x] 1. oracles: atomic 139 → 143 (AT-22.10–22.13) · inventory-authz 116 → 118 (HF-12.5/12.6; HF-11.1 contract) · reports 57 → 79 (RP-5.9.*, C5 fixture, RP-7/8/9) · RED → `HF-INV-1-red3c.txt` (140/143 · 116/118 · 68/79)
+- [x] 2. fix C1–C4 · [x] 3. GREEN ×2 (+ reports ×3) → `HF-INV-1-green3c.txt` · [x] 4. controls C1 · C2 · C3 · C4a–d → `HF-INV-1-control3c.txt`
+- [x] 5. AFTER regression · [x] 6. fitness 33/33 ×2 modes · [x] 7. typecheck exit 0 (once) · [x] 8. notes · commit · push
+
+## R3c.C1 [MINOR] — clinic `dispenseJson` append is atomic
+`clinic/service.ts:228-235`: the visit row is no longer overwritten with `[...prev, ...added]` read at the start; ONE statement appends:
+`UPDATE "ClinicVisit" SET "dispenseJson" = (CASE WHEN jsonb_typeof("dispenseJson") = 'array' THEN "dispenseJson" ELSE '[]'::jsonb END) || $added::jsonb WHERE id AND "tenantId" AND "unitId"`.
+Column = `JSONB NOT NULL DEFAULT '[]'` (migration wo0052) · no `updatedAt` on the model. `tenantDb` guards model operations only — `$executeRaw` passes through unfiltered (same as `inventory/service.ts` raw locks) ⇒ tenantId + unitId written explicitly (ClinicVisit is unit-scoped). A non-array value restarts as `[]` exactly as the old read did. The key (`clinic-<visit>-<item>-<n>`, n from the visit read at the start) is unchanged.
+Oracle AT-22.10–22.13 (ordering forced by a lane that holds the item row `FOR UPDATE` until released — every request reads the visit, then waits at the stock lock; no luck involved): [X5] ∥ [Y3] ⇒ both ok, record [X,Y] (RED: [X]) · later real [Y3] ⇒ Y 94, OUT(Y) 2, record 3 (RED: ok, Y 97, OUT 1 — the reviewer's proof) · 5 concurrent single-drug dispenses of 5 drugs ⇒ 5 ok, record 5, OUT 5, each 95 (RED: record 1) · refund of both visits ⇒ IN = OUT, all 100 (green on RED: refund walks movements).
+Accepted (brief): two truly simultaneous dispenses of the SAME drug and qty read the same n ⇒ same key ⇒ cut once and recorded twice (indistinguishable from a double click; a form request id is a later work order) · a multi-line retry that drops an already-cut drug leaves that cut unrecorded in `dispenseJson` (the movement exists; refund still restores it).
+
+## R3c.C2 [MINOR, security] — report CSV neutralises formulas
+`reports/service.ts:367-374` `esc()` → `csvCell` from `core/csv.ts` (imported, not edited) for every cell incl. headers (header/rows still joined by `toCsv` as before). Helper rule, stated: a cell whose text starts (after leading tab/CR/LF/space) with `= + - @` gets a leading `'`; **plain-number text** (`/^-?\d+(\.\d+)?$/`, e.g. `-12.5`, `-0844444444`) is left alone; a JS `number` goes through the numeric path (`String(n)`, never prefixed; non-finite → empty) ⇒ negative amounts in numeric columns stay numbers. Cells with `" , \n \r` are quoted (old escaper did not quote `\r`). Dates → ISO text (start with a digit, untouched).
+Oracle RP-7 (own shop `qc-hfrpt-c-*`, 7 members): every name/phone cell equals what `exportMembers` writes for the same member (`=HYPERLINK(...)`, `+SUM`, `-2+3+cmd…`, `@SUM`, tab, CR, phone `+66…`, `@08…`) and no cell is a formula · `-500` / `3` / `-12.5` unchanged · header = `csvRow(labels)` · grouped CSV (groupBy name) neutralised too.
+
+## R3c.C3 [MINOR, privacy] — saved reports only when the actor could run them now
+`reports/actions.ts:129-147`: `listReportsAction` keeps a saved report only if `canRunNow(m, config)` = `readScope(m, dataset)` passes AND `checkReport(scope, config)` passes — `checkReport` (`reports/service.ts:225-288`) is the validation block of `runReport` moved verbatim into a pure exported function that `runReport` calls first (no behaviour change for running). So a saved config is listed iff running it right now would not be refused: dataset readable, no masked column in filters / groupBy / `sum:` metric, valid shape. There is no get-by-id / run-saved / rename action in the file (loading = the list; running = `runReportAction` with the config, already gated). Delete keeps today's permission (`reports.report.save`) and returns `{ ok }` only.
+Oracle RP-8 (shop B, 5 saved reports: sales grouped · customers · inventory · customers with `phone eq 0811111111` · customers grouped by phone) × 4 actors: OWNER all 5 · STAFF all-branch member.customer.read (masked) → customers only · STAFF b1 export + pos.sale.create → sales + 3 customers ones (not inventory) · STAFF run-only → none and no `0811111111` in the response (RED: everyone got all 5) · RP-8.5 delete by a save-only STAFF works, result has no config (green on RED).
+
+## R3c.C4 — refusals reach the user in production
+- `reports/service.ts:30-47` `ReportResult.error?` + `export class ReportRefusal` (Thai; non-"use server" file). Every validation throw in the service (`getDataset`, `assertField`, single-value filter, op, filter shape, unmaskable column, masked column, metric, unit scope) and every `readScope` throw in `actions.ts:70-91` now throws `ReportRefusal`.
+- `reports/actions.ts:94-176`: `refusalOf(e)` = message of `ReportRefusal` or `rbac.ForbiddenError` (the `assertCan` refusal), else `null` ⇒ rethrow. `runReportAction` (screen + groupBy) → `{ columns: [], rows: [], error }`; `exportReportCsvAction` → `{ ok: true, csv } | { ok: false, error }` (discriminated result — smaller than a sibling action: one caller); `saveReportAction` → `{ id?, error? }` (empty/non-string name → `{ error: "กรุณาตั้งชื่อรายงาน" }`); `deleteReportAction` → `{ ok, error? }`. Unexpected errors (session lookup failure, DB, `requireTenant` redirects) still throw. No type/const export added to the `"use server"` file (only async functions; `refusalOf`/`canRunNow` are module-private).
+- `ReportBuilder.tsx` run :99-115 · download :117-137 · save :139-162 · remove :180-195: run / CSV / save / delete read `.error` (or `!r.ok`) and show it in the existing inline error box; the `catch` stays for unexpected errors.
+- `reports/service.ts:204-210` op missing / not a string ⇒ `ตัวกรองแต่ละข้อต้องเลือกเงื่อนไข (…)` (was `เงื่อนไข "undefined" ไม่รองรับ`); `:271-273` non-string metric ⇒ `ตัวชี้วัดไม่ถูกต้อง — …` (was `TypeError: metric.startsWith is not a function`); `metric: null` still means count.
+- `inventory/procurement-actions.ts:129-149` `receivePoAction`: `requireTenant` / `assertInventoryCan` / input check / `requireInventoryCtx` moved inside a `try`; `catch` → `unstable_rethrow(e)` (Next redirect/notFound keep working — not logged in, suspended shop) then `{ status: "error", message: safeReason(e, …) }` (ForbiddenError `ไม่มีสิทธิ์: inventory.po.receive` and the Thai "ไม่พบระบบสินค้า…" pass `safeReason`). `PoReceiveForm` unchanged (already renders `{status,message}`).
+Oracle RP-9: 9.1 seven screen/groupBy refusals (no member key · no reports.report.run · masked filter · masked groupBy · malformed filters · unknown dataset · field outside dataset) return `{ error }` Thai, no rows · 9.2 CSV permission / masked / malformed → `{ error }` · 9.3 service metric `5`/`{}`/`["count"]` + filter without op → Thai, no `undefined`/`TypeError`/`[object` · 9.4 same via the action → data · 9.5 save without `reports.report.save`, blank name, delete without save → `{ error }`, nothing saved · 9.6 unexpected error (fake `requireTenant` rejects) still throws from run / CSV / save (green on RED by design) · 9.7 positive OWNER run + CSV · 9.8 static: ReportBuilder reads `.error` ≥4×, no `setResult(await runReportAction(…))`. inventory-authz HF-12.5 STAFF without `inventory.po.receive` · HF-12.6 POS systemId → `{ status:"error", message Thai }`, nothing received.
+
+## R3c.C5 — oracle strength (no product change)
+`qc-hf-reports-authz` RP-5 fixture: member 8 home b2 whose only b1 activity is `module: "clinic"` (not a visit for the member module ⇒ invisible to b1-limited actors) · member 9 `CLOSED` home b1 · member 10 `SUSPENDED` home b2 (second member system) · new actor RP-5.9 STAFF `unitAccess: []` + member.customer.read (= whole shop per `isUnitScoped`, phone masked). ALL 6 → 9, U1 3 → 4 (CLOSED b1 joins; clinic-only and SUSPENDED-b2 do not). Drift comparison with `listMembers`/`exportMembers` covers them for all 7 readable actors. Green on 7e9d70fc (the mirrors already match) — that is the point of the check.
+
+## Oracle changes (round 3c)
+- `qc-hf-inventory-atomic` 139 → **143** (AT-22.10–22.13).
+- `qc-hf-inventory-authz` 116 → **118** (HF-12.5/12.6) · **HF-11.1 contract**: "refused" = throw (before) or `{ error }` Thai with no rows / no CSV text (after).
+- `qc-hf-reports-authz` 57 → **79** (RP-5.9.1–5.9.5, RP-7.1–7.4, RP-8.1–8.5, RP-9.1–9.8) · helper `run` now counts a returned `{ error }` as a refusal and unwraps `{ ok, csv }` to the CSV text, so every earlier RP check keeps asserting the same contract under both shapes (`runRaw` = old helper, used by RP-8.5/RP-9) · RP-5.1–5.4/5.6 labels changed only by the fixture counts (6→9, 3→4). Fake `requireTenant` got a `SESSION_FAIL` switch (RP-9.6).
+
+## Runs (round 3c · QC4)
+| run | atomic | inventory-authz | reports |
+|---|---|---|---|
+| BEFORE (7e9d70fc, round-3b oracles) | 139/139 | 116/116 | 57/57 |
+| RED (7e9d70fc, round-3c oracles) | 140/143 — AT-22.10/11/12 | 116/118 — HF-12.5/12.6 | 68/79 — RP-7.1/7.4, RP-8.2/8.3/8.4, RP-9.1/9.2/9.3/9.4/9.5/9.8 |
+| GREEN ×2 (+1 reports) | 143/143 ×2 | 118/118 ×2 | 79/79 ×3 |
+| CONTROL C1 clinic = 7e9d70fc | 140/143 — AT-22.10/11/12 | | |
+| CONTROL C2 old escaper | | | 77/79 — RP-7.1/7.4 |
+| CONTROL C3 no list filter | | | 76/79 — RP-8.2/8.3/8.4 |
+| CONTROL C4a refusals throw | | | 75/79 — RP-9.1/9.2/9.4/9.5 |
+| CONTROL C4b metric/op text | | | 77/79 — RP-9.3/9.4 |
+| CONTROL C4c ReportBuilder = 7e9d70fc | | | 78/79 — RP-9.8 |
+| CONTROL C4d procurement-actions = 7e9d70fc | | 116/118 — HF-12.5/12.6 | |
+Green on RED by design: AT-22.13 · RP-5.9.* + C5 fixture · RP-7.2/7.3 · RP-8.1/8.5 · RP-9.6/9.7.
+
+## Regressions on QC4 — BEFORE (7e9d70fc) vs AFTER (final tree), per-check lines (sorted; ids/long numbers stripped)
+identical (7): qc-clinic 8/8 · qc-clinic-refund 13/13 · qc-clinic-public 15/15 · qc-report-builder 9/9 (service still throws — its RB-3.1 refusal check unchanged) · qc-procurement 12/12 · qc-member-public 19/19 · qc-member-tier 7/7.
+changed by design (3): qc-hf-inventory-atomic 139/139 → 143/143 (AT-22.10–13 added; AT-Z label 32 → 39 items) · qc-hf-inventory-authz 116/116 → 118/118 (HF-12.5/12.6 added; HF-11.1 accepts refusal-as-data) · qc-hf-reports-authz 57/57 → 79/79 (above).
+Fitness: 33/33 with QC4 env and 33/33 with `env -u DATABASE_URL -u DIRECT_URL`, check lines identical (F2.1 100 edges / 104 — `reports → core/csv` is core, no new module edge).
+Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, run once at the end): **exit 0** (35 s incl. lock).
+
+## Who loses a previously working behaviour (round 3c, plus items the brief asked to record)
+- **Branch-limited users lose members with no home branch in the customers report** (since 3b: `homeUnitId IN unitAccess` or a pos/booking/restaurant visit there — a member with `homeUnitId = null` and no such visit is seen only by whole-shop readers, as on the member list).
+- C1 (clinic): two truly simultaneous dispenses of the same drug and quantity still cut once (same key; recorded twice) · a multi-line retry that drops an already-cut drug leaves that cut unrecorded in `dispenseJson` (movement exists, refund restores it).
+- C3: users stop seeing saved reports they cannot run right now (STAFF without the module's read key; masked-phone users lose saved reports that filter/group/sum by phone). The rows still exist; the owner still sees all; delete is unchanged.
+- C2: report CSV cells that start with `= + - @` (after leading whitespace) now begin with `'` in the spreadsheet (e.g. a name `-Somchai` → `'-Somchai`); plain numbers are unchanged.
+- C4: callers of the report actions receive data instead of an exception for refusals (only caller = ReportBuilder, updated); CSV action returns `{ ok, csv }` instead of a bare string.
+
+## NOT covered (round 3c)
+- Member module (not touched, stricter report rule intentional): member list search `q` matches raw phone digits for any member reader, and the member 360 page shows the full phone to any in-scope reader.
+- Customers report CSV writes no `member.export` AuditLog / access log (exportMembers does) — pre-existing.
+- `listReportsAction` is called by the page server component: an actor without `reports.report.run` still gets the page error boundary (ForbiddenError thrown at page load, not data); ReportBuilder's "save" then re-lists — a save-only actor gets the generic message there.
+- `saveReportAction` does not refuse configs the actor cannot run (they are saved, then hidden from that actor's list) — not in the brief.
+- Report builder UI still offers phone in its pickers to masked users (server refuses — now with a visible Thai message).
+- C1 accepted limits above; no form request id (later work order).
+- CONTROLLER-RUN: report screen refusals (no member key · masked phone filter · malformed) and CSV refusal visible in a production build; PO receive refusal (no permission) shows inline (plus 3b's owed visual check of PO receive success/failure/double click).
+
+## Decisions for the controller (round 3c)
+1. **C4 typed refusal**: `ReportRefusal` (service) + `rbac.ForbiddenError` are "expected"; everything else rethrows. `ForbiddenError`'s text is the generic `ไม่มีสิทธิ์: reports.report.run` (Thai, technical key) — keep, or map to a friendlier sentence?
+2. **CSV result shape** `{ ok: true, csv } | { ok: false, error }` (one caller) instead of a sibling action.
+3. **C3 rule = `checkReport` (full run validation) + `readScope`** — also hides malformed saved configs, not only masked/unreadable ones.
+4. **C4 PO**: `requireTenant` moved inside the `try` with `unstable_rethrow` so redirects still redirect; other session failures become `{ status:"error" }` with the generic Thai text.
+5. **C1 raw path**: `db.$executeRaw` through `tenantDb(ctx)` with explicit tenantId + unitId (no tenant-safe raw helper exists; inventory locks use the same pattern) — no transaction / row lock needed.
+6. Pre-commit hook path points into `/root/projects/shark-in-th` ⇒ fitness run by hand (both modes) and commit with `--no-verify`.

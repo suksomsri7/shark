@@ -225,10 +225,14 @@ export async function dispense(
     added.push({ invItemId: line.invItemId, name: nameOf.get(line.invItemId) ?? line.invItemId, qty });
   }
 
-  await db.clinicVisit.updateMany({
-    where: { id: visitId },
-    data: { dispenseJson: [...prev, ...added] as unknown as object },
-  });
+  // HF-INV-1 ▸ R3c (C1): ต่อท้ายใน SQL คำสั่งเดียว (เดิมเขียนทับด้วย [...prev, ...added] ที่อ่านไว้ตอนต้น ⇒ จ่ายพร้อมกันใน visit เดียว
+  //   รายการหนึ่งหาย แล้วการจ่ายจริงครั้งถัดไปได้คีย์ซ้ำกับครั้งที่หาย = ตอบ ok แต่ไม่ตัดสต็อก)
+  //   raw ไม่ผ่านตัวกรองของ tenantDb ⇒ ใส่ tenantId + unitId เองตรงตัว · ค่าเดิมที่ไม่ใช่ array = เริ่มใหม่ (ตามที่โค้ดเดิมอ่าน prev)
+  //   ยอมรับ (บันทึกใน wo-notes): จ่ายยาตัวเดียวกันจำนวนเท่ากันพร้อมกันเป๊ะ 2 คำขอ = คีย์เดียวกัน ⇒ ตัดครั้งเดียว (แยกจากดับเบิลคลิกไม่ได้) ◂
+  await db.$executeRaw`
+    UPDATE "ClinicVisit"
+    SET "dispenseJson" = (CASE WHEN jsonb_typeof("dispenseJson") = 'array' THEN "dispenseJson" ELSE '[]'::jsonb END) || ${JSON.stringify(added)}::jsonb
+    WHERE "id" = ${visitId} AND "tenantId" = ${ctx.tenantId} AND "unitId" = ${ctx.unitId}`;
 
   return { ok: true };
 }

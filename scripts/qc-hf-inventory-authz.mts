@@ -1,6 +1,8 @@
 // QC — HF-INV-0: สิทธิ์เข้าหน้าคลัง + id ที่มาจาก client (D14 · D3 + ชนิดเดียวกัน) · oracle-first
 // HF-INV-1 R3.8 (ส่วน 12 + HF-10.1): receivePoAction คืนผล { status, message } แทน throw · กดซ้ำไม่รับซ้ำ/ไม่ขึ้น error
 // HF-INV-1 R3.7 (HF-11.2): sales ต้องมี pos.sale.create ด้วย — ส่วนรายงานที่เหลืออยู่ใน qc-hf-reports-authz.mts
+// HF-INV-1 R3c (C4): การปฏิเสธที่คาดไว้ของรายงาน/รับของ PO กลับมาเป็นข้อมูล (Next ปิดบังข้อความที่ throw ใน production)
+//   HF-11.1 นับ "ปฏิเสธ" = throw หรือ { error } ไทย · HF-12.5/12.6 receivePoAction ล้มก่อน try (สิทธิ์ · ระบบผิด) ⇒ { status:"error", message ไทย } ไม่ throw
 // ⚠️ standalone-typesafe: โมดูลที่ยังไม่มี (guard.ts) ใช้ dynamic import + `as string` + wide cast
 //
 // สัญญาที่คุม (ต้องแดงบนโค้ดเดิม origin/main 04d2ade9 · เขียวหลังแก้):
@@ -459,7 +461,10 @@ try {
     asSess(STAFF({ "reports.report.run": true }));
     const inv1 = await run(() => rAct.runReportAction({ dataset: "inventory" }));
     const inv2 = await run(() => rAct.exportReportCsvAction({ dataset: "inventory" }));
-    chk("HF-11.1", "STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย", inv1.threw && inv2.threw && /[ก-๙]/.test(inv1.msg), "throw/throw ไทย", `${inv1.msg} | ${inv2.msg} | ${String(inv2.value ?? "").slice(0, 60)}`);
+    // R3c (C4): ปฏิเสธ = throw (ก่อน R3c) หรือคืน { error } ไทย (หลัง R3c — ข้อความถึงคนใช้ใน production)
+    const refusalMsg = (x: { threw: boolean; value: unknown; msg: string }) => (x.threw ? x.msg : (x.value as { error?: unknown } | null)?.error);
+    const refusedR = (x: { threw: boolean; value: unknown; msg: string }) => { const m = refusalMsg(x); return typeof m === "string" && /[ก-๙]/.test(m) && (x.threw || !(x.value as { rows?: unknown[] }).rows?.length); };
+    chk("HF-11.1", "STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย", refusedR(inv1) && refusedR(inv2) && typeof inv2.value !== "string" && !(inv2.value as { csv?: unknown } | undefined)?.csv, "ปฏิเสธ/ปฏิเสธ ไทย", `${String(refusalMsg(inv1))} | ${String(refusalMsg(inv2))} | ${JSON.stringify(inv2.value ?? "").slice(0, 60)}`);
     // HF-INV-1 R3.7: ชุดข้อมูล sales ต้องอ่านข้อมูลขายของ POS ได้ (pos.sale.create — กติกาเดียวกับหน้าประวัติบิล) — เดิมพอแค่ reports.report.run
     asSess(STAFF({ "reports.report.run": true, "pos.sale.create": true }));
     const salesOk = await run(() => rAct.runReportAction({ dataset: "sales" }));
@@ -509,6 +514,17 @@ try {
     const formFile = resolve(ROOT, "src/lib/modules/inventory/PoReceiveForm.tsx");
     const formSrc = strip(read(formFile));
     chk("HF-12.4", "[static] R3.8: หน้าจัดซื้อไม่ผูก receivePoAction เป็น form action ตรง ๆ (ผลถูกทิ้ง) — ใช้ PoReceiveForm (useActionState + แสดงข้อความ)", !/action=\{\s*receivePoAction\s*\}/.test(uiSrc) && /<PoReceiveForm\b/.test(uiSrc) && /useActionState/.test(formSrc) && /receivePoAction\(/.test(formSrc) && /\.message/.test(formSrc), "PoReceiveForm", `ui direct=${/action=\{\s*receivePoAction\s*\}/.test(uiSrc)} · form ${existsSync(formFile)}`);
+    // R3c (C4): ล้มก่อน try ของ action (สิทธิ์ · ระบบที่ไม่ใช่คลังของร้าน) ⇒ คืน { status:"error", message ไทย } — ไม่ throw ไปถึง error boundary
+    const poNo = await mkOrdered([1]);
+    const b5 = await totalOnHand();
+    asSess(STAFF({ "inventory.item.read": true }));
+    const noPerm = await run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: poNo })));
+    asSess({});
+    const npv = noPerm.value as { status?: string; message?: string } | undefined;
+    chk("HF-12.5", "R3c: STAFF ไม่มีสิทธิ์รับของ (inventory.po.receive) → คืน { status:\"error\", message ไทย } ไม่ throw · ไม่รับของ", !noPerm.threw && npv?.status === "error" && /[ก-๙]/.test(npv?.message ?? "") && (await inCount(poNo)) === 0 && (await totalOnHand()) === b5, "error ไทย/ไม่รับ", `${noPerm.threw ? `threw ${noPerm.msg}` : JSON.stringify(npv)} · IN ${await inCount(poNo)}`, "MAJOR");
+    const wrongSys = await run(() => pactions.receivePoAction(fd({ systemId: posA.id, poId: poNo })));
+    const wsv = wrongSys.value as { status?: string; message?: string } | undefined;
+    chk("HF-12.6", "R3c: systemId เป็นระบบ POS (ไม่ใช่คลังของร้าน) → คืน { status:\"error\", message ไทย } ไม่ throw · ไม่รับของ", !wrongSys.threw && wsv?.status === "error" && /[ก-๙]/.test(wsv?.message ?? "") && (await inCount(poNo)) === 0, "error ไทย/ไม่รับ", `${wrongSys.threw ? `threw ${wrongSys.msg}` : JSON.stringify(wsv)} · IN ${await inCount(poNo)}`, "MAJOR");
   }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 200)}` : String(e));

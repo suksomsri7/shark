@@ -19,6 +19,16 @@
 //     · ผู้ถูกจำกัดสาขาเอื้อมถึงสมาชิกสาขาอื่นด้วยตัวกรองใด ๆ ไม่ได้ · เทียบผลกับ listMembers/exportMembers ตรง ๆ (กันสองที่ลอยห่างกัน)
 //   RP-6 (B4) filters ที่ไม่ใช่รายการ/สมาชิกไม่ใช่ object ⇒ ข้อความไทย ไม่ใช่ TypeError
 //
+// รอบ 3c (แดงบน 7e9d70fc · เขียวหลังแก้):
+//   RP-5 (C5) fixture แข็งขึ้น: สมาชิกที่มีกิจกรรมที่ B1 แค่ "clinic" (ไม่ใช่การมาใช้บริการตามโมดูลสมาชิก ⇒ ผู้ถูกจำกัดสาขา B1 ไม่เห็น)
+//     · สมาชิก CLOSED และ SUSPENDED · STAFF unitAccess [] (= ทั้งร้านตามโมดูลสมาชิก) — เทียบ listMembers/exportMembers เหมือนเดิม
+//   RP-7 (C2) CSV ของรายงานกันสูตร spreadsheet ด้วยตัวช่วยกลาง core/csv (เหมือน exportMembers ทุกตัวอักษร) — หัวตารางด้วย
+//     · ค่าตัวเลขในคอลัมน์ตัวเลขยังเป็นตัวเลข (ติดลบไม่ถูกเติม ')
+//   RP-8 (C3) รายการรายงานที่บันทึกไว้: เห็นเฉพาะรายงานที่ actor "รันได้ตอนนี้" (อ่านชุดข้อมูลได้ · ไม่ใช้คอลัมน์ที่ถูกปิดบังสำหรับเขา)
+//   RP-9 (C4) การปฏิเสธที่คาดไว้ (สิทธิ์ · ตรวจค่า · คอลัมน์ปิดบัง) กลับมาเป็นข้อมูล { error } ไทย (Next ปิดบังข้อความที่ throw ใน production)
+//     · error ที่ไม่คาดไว้ยัง throw · metric ไม่ใช่ข้อความ / ตัวกรองไม่มี op ⇒ ไทย (ไม่มี undefined/TypeError) · หน้าจออ่าน .error
+//   ข้อสอบเดิม: helper `run` นับ { error } ที่คืนมาเป็น "ปฏิเสธ" เหมือน throw (สัญญาเดิมยังคุมอยู่ทั้งสองแบบ) · CSV { ok, csv } → ข้อความ CSV
+//
 // DB: ฐาน QC ผ่าน qc-env-guard (กัน prod) · ร้านชั่วคราว slug qc-hfrpt-* · ลบใน finally
 // session: ยัด fake `src/lib/core/context.ts` (requireTenant) ลง require.cache ก่อน import action
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
@@ -36,13 +46,14 @@ const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = 
 
 type Sess = { tenantId: string; role: "OWNER" | "MANAGER" | "STAFF"; unitAccess: string[]; permissions: Record<string, unknown> };
 let SESSION: Sess = { tenantId: "", role: "OWNER", unitAccess: ["*"], permissions: {} };
+let SESSION_FAIL = false; // RP-9.5: จำลอง error ที่ไม่คาดไว้ (ฐานข้อมูลล่ม ฯลฯ) ระหว่างหา session
 const req = createRequire(import.meta.url);
 const putModule = (absPath: string, exports: Record<string, unknown>) => {
   req.cache[absPath] = { id: absPath, filename: absPath, path: resolve(absPath, ".."), loaded: true, exports, children: [], paths: [] } as never;
 };
 const ROOT = resolve(import.meta.dirname, "..");
 putModule(resolve(ROOT, "src/lib/core/context.ts"), {
-  requireTenant: async () => ({
+  requireTenant: async () => (SESSION_FAIL ? Promise.reject(new Error("QC unexpected: connection reset")) : {
     user: { id: "U-QC-HFRPT", email: "qc-hfrpt@example.com", name: "QC" },
     memberships: [],
     active: {
@@ -65,9 +76,17 @@ type AnyFn = (...a: any[]) => Promise<any>; // any จงใจ: oracle ล้�
 const rAct = (await import("@/lib/modules/reports/actions" as string)) as { [k: string]: AnyFn };
 const rSvc = (await import("@/lib/modules/reports/service" as string)) as { [k: string]: unknown } & { DATASETS: Record<string, unknown>; runReport: AnyFn };
 
-const run = async (f: () => unknown): Promise<{ threw: boolean; value: unknown; msg: string }> => {
+const runRaw = async (f: () => unknown): Promise<{ threw: boolean; value: unknown; msg: string }> => {
   try { const v = await f(); return { threw: false, value: v, msg: "ไม่ throw" }; }
   catch (e) { return { threw: true, value: undefined, msg: e instanceof Error ? `${e.name}: ${e.message.slice(0, 120)}` : String(e) }; }
+};
+// รอบ 3c (C4): action คืนการปฏิเสธเป็นข้อมูล — ข้อสอบเดิมนับ { error } ไทยเป็น "ปฏิเสธ" เหมือน throw · CSV สำเร็จ { csv } → ข้อความ CSV
+const run = async (f: () => unknown): Promise<{ threw: boolean; value: unknown; msg: string }> => {
+  const r = await runRaw(f);
+  const v = r.value as { error?: unknown; csv?: unknown } | null | undefined;
+  if (!r.threw && v && typeof v === "object" && typeof v.error === "string" && v.error) return { threw: true, value: undefined, msg: `Refusal: ${v.error.slice(0, 120)}` };
+  if (!r.threw && v && typeof v === "object" && typeof v.csv === "string") return { ...r, value: v.csv };
+  return r;
 };
 const thai = (m: string) => /[ก-๙]/.test(m);
 const rowsOf = (v: unknown) => ((v as { rows?: Record<string, unknown>[] } | undefined)?.rows ?? []);
@@ -208,10 +227,15 @@ try {
   await mk(5, m1.id, b1.id, "0855555555", { status: "MERGED" });
   await mk(6, m1.id, null, null);
   await mk(7, m2.id, b1.id, "0877777777");
+  // รอบ 3c (C5): 8 home b2 + กิจกรรมที่ b1 แค่ "clinic" (โมดูลสมาชิกไม่นับเป็นการมาใช้บริการ) · 9 CLOSED home b1 · 10 SUSPENDED home b2
+  const k8 = await mk(8, m1.id, b2.id, "0888888888");
+  await mk(9, m1.id, b1.id, "0899999999", { status: "CLOSED" });
+  await mk(10, m2.id, b2.id, "0800000010", { status: "SUSPENDED" });
   await prisma.memberActivity.create({ data: { tenantId: tidB, customerId: (k3 as { id: string }).id, unitId: b1.id, module: "pos", type: "VISIT", summary: "QC ซื้อที่สาขา B1" } });
   await prisma.memberActivity.create({ data: { tenantId: tidB, customerId: (k4 as { id: string }).id, unitId: b1.id, module: "point", type: "EARN", summary: "QC แต้ม (ไม่ใช่การมาใช้บริการ)" } });
-  const ALL = [1, 2, 3, 4, 6, 7].map(code).sort();
-  const U1 = [1, 3, 7].map(code).sort();
+  await prisma.memberActivity.create({ data: { tenantId: tidB, customerId: (k8 as { id: string }).id, unitId: b1.id, module: "clinic", type: "VISIT", summary: "QC คลินิกที่สาขา B1 (โมดูลสมาชิกไม่นับ)" } });
+  const ALL = [1, 2, 3, 4, 6, 7, 8, 9, 10].map(code).sort();
+  const U1 = [1, 3, 7, 9].map(code).sort();
   const rawPhones = Object.values(PHONE).filter((p): p is string => !!p);
   const asB = (s: Partial<Sess>) => { SESSION = { tenantId: tidB, role: "OWNER", unitAccess: ["*"], permissions: {}, ...s }; };
   const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
@@ -244,6 +268,8 @@ try {
     { n: 4, label: "STAFF สาขา B1 + member.customer.read", s: { role: "STAFF", unitAccess: [b1.id], permissions: { ...RUNK, "member.customer.read": true } }, rows: U1, masked: true, limited: true },
     { n: 5, label: "STAFF สาขา B1 + member.loyalty.stamp อย่างเดียว", s: { role: "STAFF", unitAccess: [b1.id], permissions: { ...RUNK, "member.loyalty.stamp": true } }, rows: U1, masked: true, limited: true },
     { n: 6, label: "STAFF สาขา B1 + member.customer.export", s: { role: "STAFF", unitAccess: [b1.id], permissions: { ...RUNK, "member.customer.export": true } }, rows: U1, masked: false, limited: true },
+    // รอบ 3c (C5): unitAccess [] = ทั้งร้านตามโมดูลสมาชิก (isUnitScoped) · เบอร์ปิดบัง (ไม่มีคีย์ส่งออก)
+    { n: 9, label: "STAFF unitAccess [] + member.customer.read", s: { role: "STAFF", unitAccess: [], permissions: { ...RUNK, "member.customer.read": true } }, rows: ALL, masked: true, limited: false },
   ];
   for (const a of actors) {
     const id = `RP-5.${a.n}`;
@@ -343,6 +369,171 @@ try {
     chk("RP-6.1", "runReport: filters ไม่ใช่รายการ / สมาชิกไม่ใช่ object ({} · 5 · \"phone\" · [null] · [5] · object เดี่ยว) → ข้อความไทยเรื่องตัวกรอง (ไม่ใช่ TypeError / ฟิลด์ \"undefined\")", sv.every(okMsg), "ไทย ×6", sv.map((r, i) => `${bads[i][0]}:${r.threw ? r.msg.slice(0, 45) : "ไม่ throw"}`).join(" | "), "MAJOR");
     const ac = await Promise.all([run(() => rAct.runReportAction({ dataset: "customers", filters: {} })), run(() => rAct.exportReportCsvAction({ dataset: "customers", filters: [null] }))]);
     chk("RP-6.2", "action (จอ {} · CSV [null]) → ข้อความไทยเรื่องตัวกรองเหมือนกัน", ac.every(okMsg), "ไทย ×2", ac.map((r) => (r.threw ? r.msg.slice(0, 50) : "ไม่ throw")).join(" | "), "MAJOR");
+  }
+
+  // ═════════ RP-7 (รอบ 3c · C2): CSV ของรายงานกันสูตร spreadsheet ด้วยตัวช่วยกลาง (เหมือน exportMembers) ═════════
+  {
+    const csvMod = (await import("@/lib/core/csv" as string)) as { csvRow: (c: readonly (string | number | null | undefined)[]) => string; neutralizeFormula: (v: string) => string };
+    const tC = await prisma.tenant.create({ data: { name: "QC HFRPT C", slug: `qc-hfrpt-c-${stamp}` } });
+    tenants.push(tC.id);
+    const mC = await sysSvc.createSystem(tC.id, "MEMBER", "สมาชิก C");
+    const ccode = (n: number) => `HFRPTC${stamp}-${n}`;
+    const evil: { n: number; name: string; phone: string; spent?: number; visits?: number }[] = [
+      { n: 1, name: '=HYPERLINK("http://evil.example/x","คลิก")', phone: "+66811111111" },
+      { n: 2, name: "+SUM(1,2)", phone: "@0822222222" },
+      { n: 3, name: "-2+3+cmd|' /C calc'!A0", phone: "0833333333" },
+      { n: 4, name: "@SUM(A1:A2)", phone: "-0844444444" },
+      { n: 5, name: "\t=1+1", phone: "0855555555" },
+      { n: 6, name: "\r=2+2", phone: "0866666666" },
+      { n: 7, name: "-12.5", phone: "0877777777", spent: -500, visits: 3 },
+    ];
+    for (const e of evil) {
+      await prisma.customer.create({ data: { tenantId: tC.id, memberSystemId: mC.id, memberCode: ccode(e.n), name: e.name, phone: e.phone, totalSpentSatang: e.spent ?? 0, visitCount: e.visits ?? 0 } as never });
+    }
+    SESSION = { tenantId: tC.id, role: "OWNER", unitAccess: ["*"], permissions: {} };
+    const rep = await run(() => rAct.exportReportCsvAction({ dataset: "customers" }));
+    const text = typeof rep.value === "string" ? rep.value : "";
+    const actor = MA.toMemberActor(UID, { role: "OWNER", unitAccess: ["*"], permissions: {} });
+    const ex = (await L.exportMembers({ tenantId: tC.id, systemId: mC.id, actorUserId: UID }, actor, { columns: ["memberCode", "name", "phone"] })) as { csv: string };
+    const exRows = new Map(parseCsv(ex.csv).rows.map((r): [string, string[]] => [r[0], r]));
+    const tbl = parseCsv(text);
+    const col = (label: string) => tbl.headers.indexOf(label);
+    const [iCode, iName, iPhone, iSpent, iVisit] = ["รหัสสมาชิก", "ชื่อ", "เบอร์โทร", "ยอดใช้จ่ายสะสม (สตางค์)", "จำนวนครั้งที่มา"].map(col);
+    const dangerous = (v: string) => !/^-?\d+(\.\d+)?$/.test(v) && /^[\t\r\n ]*[=+\-@]/.test(v);
+    const probs: string[] = [];
+    for (const e of evil) {
+      const row = tbl.rows.find((r) => r[iCode] === ccode(e.n));
+      const exr = exRows.get(ccode(e.n));
+      if (!row || !exr) { probs.push(`${e.n}: ไม่มีแถว (report ${!!row} · export ${!!exr})`); continue; }
+      if (row[iName] !== exr[1]) probs.push(`${e.n} ชื่อ ${JSON.stringify(row[iName])} ≠ export ${JSON.stringify(exr[1])}`);
+      if (row[iPhone] !== exr[2]) probs.push(`${e.n} เบอร์ ${JSON.stringify(row[iPhone])} ≠ export ${JSON.stringify(exr[2])}`);
+      if (row[iName] !== csvMod.neutralizeFormula(e.name)) probs.push(`${e.n} ชื่อ ≠ neutralizeFormula`);
+    }
+    const unsafe = tbl.rows.flatMap((r) => r.filter(dangerous)).map((v) => JSON.stringify(v).slice(0, 30));
+    chk("RP-7.1", "CSV รายงาน (OWNER): ชื่อ/เบอร์ที่ขึ้นต้นด้วย = + - @ tab CR ถูกกันสูตรตรงกับ exportMembers ทุกตัวอักษร · ไม่มีช่องไหนเป็นสูตร", !rep.threw && tbl.rows.length === evil.length && probs.length === 0 && unsafe.length === 0, "0 ต่าง · 0 สูตร", `${rep.msg} · ${tbl.rows.length} แถว · ${probs.slice(0, 3).join(" | ")} · สูตร [${unsafe.slice(0, 4).join(",")}]`);
+    const r7 = tbl.rows.find((r) => r[iCode] === ccode(7));
+    chk("RP-7.2", "คอลัมน์ตัวเลขยังเป็นตัวเลข: ยอดสะสม -500 ออกเป็น -500 (ไม่เติม ') · จำนวนครั้ง 3 · ชื่อที่เป็นตัวเลขล้วน \"-12.5\" ตามกติกาตัวช่วยกลาง (ไม่เติม)", !!r7 && r7[iSpent] === "-500" && r7[iVisit] === "3" && r7[iName] === "-12.5", "-500/3/-12.5", r7 ? `${r7[iSpent]}/${r7[iVisit]}/${r7[iName]}` : "ไม่มีแถว", "MAJOR");
+    const firstLine = text.replace(/^﻿/, "").split("\n")[0] ?? "";
+    const labels = ((rSvc.DATASETS.customers as { columns: { label: string }[] }).columns).map((c) => c.label);
+    chk("RP-7.3", "หัวตาราง CSV เขียนผ่านตัวช่วยกลาง (csvRow ของป้ายคอลัมน์)", firstLine.replace(/\r$/, "") === csvMod.csvRow(labels), csvMod.csvRow(labels).slice(0, 60), firstLine.slice(0, 60), "MINOR");
+    const g = await run(() => rAct.exportReportCsvAction({ dataset: "customers", groupBy: "name" }));
+    const gt = parseCsv(typeof g.value === "string" ? g.value : "");
+    const gUnsafe = gt.rows.flatMap((r) => r.filter(dangerous));
+    const gOk = evil.every((e) => gt.rows.some((r) => r[0] === csvMod.neutralizeFormula(e.name)));
+    chk("RP-7.4", "CSV แบบจัดกลุ่มตามชื่อ: ค่ากลุ่มถูกกันสูตรเหมือนกัน", !g.threw && gt.rows.length === evil.length && gUnsafe.length === 0 && gOk, "0 สูตร", `${g.msg} · ${gt.rows.length} แถว · สูตร ${gUnsafe.length} · ตรง ${gOk}`);
+  }
+
+  // ═════════ RP-8 (รอบ 3c · C3): รายงานที่บันทึกไว้ — เห็นเฉพาะที่ actor รันได้ตอนนี้ ═════════
+  {
+    const saved: [string, Record<string, unknown>][] = [
+      ["S1 ยอดขายรายสาขา", { dataset: "sales", groupBy: "unitId", metric: "sum:grandTotalSatang" }],
+      ["S2 ลูกค้าทั้งหมด", { dataset: "customers" }],
+      ["S3 สินค้าคงคลัง", { dataset: "inventory" }],
+      ["S4 ลูกค้าเบอร์ 0811111111", { dataset: "customers", filters: [{ field: "phone", op: "eq", value: "0811111111" }] }],
+      ["S5 ลูกค้าตามเบอร์", { dataset: "customers", groupBy: "phone" }],
+    ];
+    const ids: Record<string, string> = {};
+    for (const [name, config] of saved) ids[name] = ((await (rSvc.saveReport as AnyFn)({ tenantId: tidB }, { name, config })) as { id: string }).id;
+    const S = saved.map(([n]) => n);
+    const matrix: [string, string, Partial<Sess>, string[]][] = [
+      ["RP-8.1", "OWNER", { role: "OWNER", unitAccess: ["*"], permissions: {} }, S],
+      ["RP-8.2", "STAFF ทุกสาขา + member.customer.read (เบอร์ปิดบัง)", { role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK, "member.customer.read": true } }, [S[1]]],
+      ["RP-8.3", "STAFF สาขา B1 + member.customer.export + pos.sale.create", { role: "STAFF", unitAccess: [b1.id], permissions: { ...RUNK, "member.customer.export": true, "pos.sale.create": true } }, [S[0], S[1], S[3], S[4]]],
+      ["RP-8.4", "STAFF มีแค่ reports.report.run", { role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK } }, []],
+    ];
+    for (const [id, label, s, want] of matrix) {
+      asB(s);
+      const l = await run(() => rAct.listReportsAction());
+      const got = Array.isArray(l.value) ? (l.value as { name: string }[]).map((r) => r.name) : [];
+      const leak = JSON.stringify(l.value ?? "").includes("0811111111") && !want.includes(S[3]);
+      chk(id, `${label} → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [${want.map((n) => n.split(" ")[0]).join(",")}]${want.includes(S[3]) ? "" : " · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น"}`, !l.threw && same(got, want) && !leak, want.map((n) => n.split(" ")[0]).join(","), `${l.msg} · [${got.map((n) => n.split(" ")[0]).join(",")}] · leak ${leak}`);
+    }
+    // ลบ: สิทธิ์เดิม (reports.report.save) · ไม่คืนนิยามรายงาน
+    asB({ role: "STAFF", unitAccess: ["*"], permissions: { "reports.report.save": true } });
+    const del = await runRaw(() => rAct.deleteReportAction(ids[S[3]]));
+    const delKeys = del.value && typeof del.value === "object" ? Object.keys(del.value as object) : [];
+    const gone = (await prisma.reportDef.count({ where: { id: ids[S[3]] } })) === 0;
+    chk("RP-8.5", "ลบรายงาน: สิทธิ์เดิม (reports.report.save) ยังลบได้ · ผลไม่มีนิยามรายงาน (config/filters)", !del.threw && gone && delKeys.every((k) => k === "ok" || k === "error") && !JSON.stringify(del.value ?? "").includes("0811111111"), "ลบได้ · {ok}", `${del.msg} · keys [${delKeys.join(",")}] · gone ${gone}`, "MINOR");
+  }
+
+  // ═════════ RP-9 (รอบ 3c · C4): การปฏิเสธที่คาดไว้กลับมาเป็นข้อมูล (ข้อความไทยถึงคนใช้ใน production) ═════════
+  {
+    const asData = (r: { threw: boolean; value: unknown; msg: string }) => {
+      const v = r.value as { error?: unknown; rows?: unknown[]; csv?: unknown } | null | undefined;
+      return !r.threw && !!v && typeof v === "object" && typeof v.error === "string" && thai(v.error) && !/undefined/.test(v.error) && !(v.rows?.length) && typeof v.csv !== "string";
+    };
+    const show = (r: { threw: boolean; value: unknown; msg: string }) => (r.threw ? `throw ${r.msg.slice(0, 50)}` : JSON.stringify(r.value).slice(0, 70));
+    const masked = { role: "STAFF" as const, unitAccess: ["*"], permissions: { ...RUNK, "member.customer.read": true } };
+    const cases: [string, Partial<Sess>, () => unknown][] = [
+      ["สิทธิ์: ไม่มีคีย์สมาชิก", { role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK } }, () => rAct.runReportAction({ dataset: "customers" })],
+      ["สิทธิ์: ไม่มี reports.report.run", { role: "STAFF", unitAccess: ["*"], permissions: { "member.customer.read": true } }, () => rAct.runReportAction({ dataset: "customers" })],
+      ["คอลัมน์ปิดบัง: กรองด้วยเบอร์", masked, () => rAct.runReportAction({ dataset: "customers", filters: [{ field: "phone", op: "contains", value: "0811" }] })],
+      ["คอลัมน์ปิดบัง: groupBy เบอร์", masked, () => rAct.runReportAction({ dataset: "customers", groupBy: "phone" })],
+      ["ตรวจค่า: ตัวกรองผิดรูป", {}, () => rAct.runReportAction({ dataset: "customers", filters: {} })],
+      ["ตรวจค่า: ชุดข้อมูลไม่รู้จัก", {}, () => rAct.runReportAction({ dataset: "ไม่มีจริง" })],
+      ["ตรวจค่า: ฟิลด์นอกชุดข้อมูล", {}, () => rAct.runReportAction({ dataset: "customers", filters: [{ field: "tenantId", op: "eq", value: "x" }] })],
+    ];
+    const rs: string[] = [];
+    let allData = true;
+    for (const [label, s, f] of cases) {
+      asB(s);
+      const r = await runRaw(f);
+      if (!asData(r)) { allData = false; rs.push(`${label}: ${show(r)}`); }
+    }
+    chk("RP-9.1", `จอ/groupBy: การปฏิเสธที่คาดไว้ ${cases.length} แบบ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีแถว`, allData, "data ×7", rs.join(" | ").slice(0, 300), "MAJOR");
+    const csvCases: [string, Partial<Sess>, () => unknown][] = [
+      ["สิทธิ์", { role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK } }, () => rAct.exportReportCsvAction({ dataset: "customers" })],
+      ["คอลัมน์ปิดบัง", masked, () => rAct.exportReportCsvAction({ dataset: "customers", filters: [{ field: "phone", op: "eq", value: "0811111111" }] })],
+      ["ตรวจค่า", {}, () => rAct.exportReportCsvAction({ dataset: "customers", filters: [null] })],
+    ];
+    const cr: string[] = [];
+    let csvData = true;
+    for (const [label, s, f] of csvCases) {
+      asB(s);
+      const r = await runRaw(f);
+      if (!asData(r)) { csvData = false; cr.push(`${label}: ${show(r)}`); }
+    }
+    chk("RP-9.2", "CSV: การปฏิเสธ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีข้อความ CSV", csvData, "data ×3", cr.join(" | ").slice(0, 300), "MAJOR");
+    asB({});
+    const metrics: unknown[] = [5, {}, ["count"], null];
+    const ms = await Promise.all(metrics.map((m) => runRaw(() => rSvc.runReport({ tenantId: tidB }, { dataset: "customers", groupBy: "tier", metric: m }))));
+    const noOp = await runRaw(() => rSvc.runReport({ tenantId: tidB }, { dataset: "customers", filters: [{ field: "name", value: "x" }] }));
+    const thaiErr = (r: { threw: boolean; msg: string }) => r.threw && thai(r.msg) && !/^TypeError/.test(r.msg) && !/undefined|\[object/.test(r.msg);
+    const nullOk = !ms[3].threw; // metric null = ค่าปริยาย count (เหมือนไม่ส่ง)
+    chk("RP-9.3", "runReport: metric ไม่ใช่ข้อความ (5 · {} · [\"count\"]) และตัวกรองไม่มี op → ข้อความไทย (ไม่ใช่ TypeError · ไม่มี undefined) · metric null = count", ms.slice(0, 3).every(thaiErr) && thaiErr(noOp) && nullOk, "ไทย ×4", `${ms.map((r) => (r.threw ? r.msg.slice(0, 40) : "ไม่ throw")).join(" | ")} · noOp ${noOp.threw ? noOp.msg.slice(0, 50) : "ไม่ throw"}`, "MAJOR");
+    const am = await Promise.all([
+      runRaw(() => rAct.runReportAction({ dataset: "customers", groupBy: "tier", metric: 5 })),
+      runRaw(() => rAct.runReportAction({ dataset: "customers", filters: [{ field: "name", value: "x" }] })),
+    ]);
+    chk("RP-9.4", "action: metric 5 · ตัวกรองไม่มี op → คืน { error } ไทยเป็นข้อมูล", am.every(asData), "data ×2", am.map(show).join(" | "), "MAJOR");
+    asB({ role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK } });
+    const sv1 = await runRaw(() => rAct.saveReportAction({ name: "QC ไม่มีสิทธิ์บันทึก", config: { dataset: "customers" } }));
+    asB({});
+    const sv2 = await runRaw(() => rAct.saveReportAction({ name: "   ", config: { dataset: "customers" } }));
+    asB({ role: "STAFF", unitAccess: ["*"], permissions: { ...RUNK } });
+    const dl = await runRaw(() => rAct.deleteReportAction("ไม่มีจริง"));
+    const svOk = (r: { threw: boolean; value: unknown }) => !r.threw && typeof (r.value as { error?: unknown })?.error === "string" && thai((r.value as { error: string }).error) && !(r.value as { id?: unknown }).id;
+    const leftSaved = await prisma.reportDef.count({ where: { tenantId: tidB, name: { in: ["QC ไม่มีสิทธิ์บันทึก", "   ", ""] } } });
+    chk("RP-9.5", "บันทึก/ลบรายงาน: ไม่มีสิทธิ์ reports.report.save · ชื่อว่าง → คืน { error } ไทย ไม่ throw · ไม่มีอะไรถูกบันทึก", svOk(sv1) && svOk(sv2) && svOk(dl) && leftSaved === 0, "data ×3 · 0", `${show(sv1)} | ${show(sv2)} | ${show(dl)} · saved ${leftSaved}`, "MAJOR");
+    asB({});
+    SESSION_FAIL = true;
+    let unexpected: { threw: boolean; value: unknown; msg: string }[] = [];
+    try {
+      unexpected = await Promise.all([
+        runRaw(() => rAct.runReportAction({ dataset: "customers" })),
+        runRaw(() => rAct.exportReportCsvAction({ dataset: "customers" })),
+        runRaw(() => rAct.saveReportAction({ name: "QC", config: { dataset: "customers" } })),
+      ]);
+    } finally { SESSION_FAIL = false; }
+    chk("RP-9.6", "error ที่ไม่คาดไว้ (หา session ไม่ได้ / ฐานข้อมูลล่ม) ยัง throw ตามเดิม — ไม่ถูกแปลงเป็นข้อมูล (จอ · CSV · บันทึก)", unexpected.length === 3 && unexpected.every((r) => r.threw && /QC unexpected/.test(r.msg)), "throw ×3", unexpected.map(show).join(" | "), "MAJOR");
+    const okRun = await runRaw(() => rAct.runReportAction({ dataset: "customers" }));
+    const okCsv = await runRaw(() => rAct.exportReportCsvAction({ dataset: "customers" }));
+    const csvText = typeof okCsv.value === "string" ? okCsv.value : (okCsv.value as { csv?: unknown } | undefined)?.csv;
+    chk("RP-9.7", "คู่บวก: OWNER รันได้ → มีแถว ไม่มี error · CSV ได้ข้อความ CSV", !okRun.threw && rowsOf(okRun.value).length > 0 && !(okRun.value as { error?: unknown }).error && !okCsv.threw && typeof csvText === "string" && csvText.length > 0, "rows · csv", `${show(okRun).slice(0, 40)} · ${show(okCsv).slice(0, 40)}`, "MAJOR");
+    const { readFileSync } = await import("node:fs");
+    const ui = readFileSync(resolve(ROOT, "src/app/app/reports/ReportBuilder.tsx"), "utf8").replace(/\/\/.*$/gm, "");
+    const reads = (ui.match(/\.error\b/g) ?? []).length;
+    chk("RP-9.8", "[static] หน้าจอ ReportBuilder อ่าน .error จากผลของ action (จอ · CSV · บันทึก · ลบ) แทนการรอ throw · ไม่ setResult ผลดิบตรง ๆ", reads >= 4 && !/setResult\(\s*await\s+runReportAction/.test(ui) && !/new Blob\(\[\s*await/.test(ui), "อ่าน .error ≥4", `.error ×${reads} · setResult(await …) ${/setResult\(\s*await\s+runReportAction/.test(ui)}`, "MAJOR");
   }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 200) : String(e));

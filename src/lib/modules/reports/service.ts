@@ -1,4 +1,5 @@
 import { tenantDb, type TenantDb } from "@/lib/core/db";
+import { csvCell } from "@/lib/core/csv";
 import type { Prisma, SystemType } from "@prisma/client";
 
 // Report builder v1 (WO-0055) — สร้างรายงานจากชุดข้อมูลกลาง (READ-ONLY) + บันทึกนิยามรายงาน
@@ -26,7 +27,24 @@ export type ReportInput = {
   take?: number;
 };
 
-export type ReportResult = { columns: Column[]; rows: Record<string, unknown>[]; truncated?: boolean };
+export type ReportResult = {
+  columns: Column[];
+  rows: Record<string, unknown>[];
+  truncated?: boolean;
+  /** HF-INV-1 R3c (C4): การปฏิเสธที่คาดไว้ (สิทธิ์ · ตรวจค่า · คอลัมน์ปิดบัง) จาก server action — Next ปิดบังข้อความที่ throw ใน production */
+  error?: string;
+};
+
+/**
+ * HF-INV-1 R3c (C4): การปฏิเสธที่ "คาดไว้" ของรายงาน (ตรวจค่า · สิทธิ์อ่านชุดข้อมูล · คอลัมน์ปิดบัง) — ข้อความไทยสำหรับคนใช้
+ * server action แปลงเป็นข้อมูล `{ error }` · error ชนิดอื่นยัง throw ตามเดิม
+ */
+export class ReportRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReportRefusal";
+  }
+}
 
 type DatasetDef = {
   label: string;
@@ -158,14 +176,14 @@ export const DATASETS: Record<string, DatasetDef> = {
 function getDataset(name: string): DatasetDef {
   // HF-INV-1 R3.7: ต้องเป็นคีย์ของตารางเอง — `DATASETS["constructor"]` / `["__proto__"]` เคยได้ของจาก prototype แล้ววิ่งต่อ
   //   (ไม่มี systemType ⇒ ดึงระบบทุกประเภทของร้าน) · ตรวจก่อนแตะฐานข้อมูล
-  if (typeof name !== "string" || !Object.hasOwn(DATASETS, name)) throw new Error(`ไม่รู้จักชุดข้อมูล "${String(name).slice(0, 40)}"`);
+  if (typeof name !== "string" || !Object.hasOwn(DATASETS, name)) throw new ReportRefusal(`ไม่รู้จักชุดข้อมูล "${String(name).slice(0, 40)}"`);
   return DATASETS[name];
 }
 
 /** field ต้องอยู่ใน columns ของ dataset เท่านั้น (กัน field injection) */
 function assertField(ds: DatasetDef, field: string, where: string): void {
   if (!ds.columns.some((c) => c.key === field)) {
-    throw new Error(`ฟิลด์ "${field}" ใช้ใน${where}ไม่ได้ (ไม่อยู่ในชุดข้อมูลนี้)`);
+    throw new ReportRefusal(`ฟิลด์ "${field}" ใช้ใน${where}ไม่ได้ (ไม่อยู่ในชุดข้อมูลนี้)`);
   }
 }
 
@@ -174,7 +192,7 @@ function opClause(op: FilterOp, value: unknown): unknown {
   // HF-INV-1 R3.7: ค่าตัวกรองต้องเป็นค่าเดี่ยว — object/array ที่ส่งมาตรง ๆ กลายเป็น "ตัวดำเนินการ" ของ Prisma
   //   (เช่น eq { not: … } / { in: [...] } ⇒ ไล่อ่านข้อมูลทีละช่วงได้) · Date ผ่านได้ (ชุดข้อมูลมีคอลัมน์วันที่)
   if (value !== null && typeof value === "object" && !(value instanceof Date)) {
-    throw new Error("ค่าที่ใช้กรองต้องเป็นค่าเดียว (ข้อความ ตัวเลข หรือวันที่)");
+    throw new ReportRefusal("ค่าที่ใช้กรองต้องเป็นค่าเดียว (ข้อความ ตัวเลข หรือวันที่)");
   }
   switch (op) {
     case "eq":
@@ -185,8 +203,11 @@ function opClause(op: FilterOp, value: unknown): unknown {
       return { lte: value };
     case "contains":
       return { contains: value, mode: "insensitive" };
-    default:
-      throw new Error(`เงื่อนไข "${op as string}" ไม่รองรับ`);
+    default: {
+      // R3c (C4): ไม่ส่ง op / op ไม่ใช่ข้อความ ⇒ บอกว่าต้องเลือกเงื่อนไข (เดิม `เงื่อนไข "undefined" ไม่รองรับ`)
+      const o: unknown = op;
+      throw new ReportRefusal(typeof o === "string" ? `เงื่อนไข "${o.slice(0, 20)}" ไม่รองรับ` : "ตัวกรองแต่ละข้อต้องเลือกเงื่อนไข (เท่ากับ · มากกว่าหรือเท่ากับ · น้อยกว่าหรือเท่ากับ · มีคำว่า)");
+    }
   }
 }
 
@@ -201,24 +222,26 @@ async function systemIds(tenantId: string, type: SystemType): Promise<string[]> 
   }
 }
 
-export async function runReport(
+/**
+ * HF-INV-1 R3c (C3/C4): ตรวจคำขอรายงานทั้งหมดที่ไม่ต้องแตะฐานข้อมูล — ไม่ผ่าน = `ReportRefusal` (ไทย)
+ * runReport เรียกก่อนทำงานเสมอ · action ใช้ตัดสินว่ารายงานที่บันทึกไว้ "actor รันได้ตอนนี้" ไหม (ตัวตรวจเดียวกับตอนรันจริง)
+ */
+export function checkReport(
   ctx: {
-    tenantId: string;
     /** HF-INV-1 R3.7: จำกัดสาขา (ผู้รันเข้าได้เฉพาะสาขาเหล่านี้) · ไม่ส่ง = ทุกสาขา */
     unitIds?: readonly string[];
     /** HF-INV-1 R3b: คอลัมน์ที่ต้องปิดบังสำหรับผู้รันคนนี้ (ต้องมีตัวปิดบังใน `masks` ของชุดข้อมูล) */
     masked?: readonly string[];
   },
   input: ReportInput,
-): Promise<ReportResult> {
-  const { tenantId } = ctx;
-  const ds = getDataset(input.dataset);
+) {
+  const ds = getDataset(input?.dataset);
   // HF-INV-1 R3b (B4): filters มาจาก client — ไม่ใช่รายการ / สมาชิกไม่ใช่ object ⇒ ข้อความไทย (เดิม TypeError ดิบ หรือ `ฟิลด์ "undefined"`)
   const rawFilters: unknown = input.filters ?? [];
-  if (!Array.isArray(rawFilters)) throw new Error("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองต้องเป็นรายการเงื่อนไข (ฟิลด์ · เงื่อนไข · ค่า)");
+  if (!Array.isArray(rawFilters)) throw new ReportRefusal("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองต้องเป็นรายการเงื่อนไข (ฟิลด์ · เงื่อนไข · ค่า)");
   for (const f of rawFilters) {
     if (f === null || typeof f !== "object" || Array.isArray(f) || typeof (f as { field?: unknown }).field !== "string") {
-      throw new Error("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองแต่ละข้อต้องระบุฟิลด์ เงื่อนไข และค่า");
+      throw new ReportRefusal("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองแต่ละข้อต้องระบุฟิลด์ เงื่อนไข และค่า");
     }
   }
   const filters = rawFilters as Filter[];
@@ -226,13 +249,13 @@ export async function runReport(
   // HF-INV-1 R3b (B1): คอลัมน์ที่ปิดบังต้องมีตัวปิดบังจริง (ขอปิดคอลัมน์ที่ปิดไม่ได้ = ปฏิเสธ ไม่ใช่ส่งค่าเต็มออกไป)
   const masked = new Set(ctx.masked ?? []);
   for (const k of masked) {
-    if (!ds.masks || !Object.hasOwn(ds.masks, k)) throw new Error(`ชุดข้อมูลนี้ปิดบังคอลัมน์ "${String(k).slice(0, 40)}" ไม่ได้`);
+    if (!ds.masks || !Object.hasOwn(ds.masks, k)) throw new ReportRefusal(`ชุดข้อมูลนี้ปิดบังคอลัมน์ "${String(k).slice(0, 40)}" ไม่ได้`);
   }
   // คอลัมน์ที่ถูกปิดบังใช้กรอง/จัดกลุ่ม/รวมค่าไม่ได้ — ไม่งั้น `contains "0811"` + นับแถว = อ่านเลขกลับได้ทีละหลัก
   const assertVisible = (field: string, where: string) => {
     if (!masked.has(field)) return;
     const label = ds.columns.find((c) => c.key === field)?.label ?? field;
-    throw new Error(`บัญชีนี้เห็น "${label}" แบบปิดบังบางส่วน — ใช้ใน${where}ไม่ได้ (ต้องมีสิทธิ์ส่งออกรายชื่อสมาชิกจากเจ้าของร้าน)`);
+    throw new ReportRefusal(`บัญชีนี้เห็น "${label}" แบบปิดบังบางส่วน — ใช้ใน${where}ไม่ได้ (ต้องมีสิทธิ์ส่งออกรายชื่อสมาชิกจากเจ้าของร้าน)`);
   };
 
   // ── validate ทุก field ที่ผู้ใช้อ้าง ก่อนแตะ DB ──
@@ -245,20 +268,37 @@ export async function runReport(
     assertVisible(input.groupBy, "การจัดกลุ่ม");
   }
 
-  const metric = input.metric ?? "count";
+  const metric: unknown = input.metric ?? "count";
+  // R3c (C4): metric มาจาก client — ไม่ใช่ข้อความ ⇒ ไทย (เดิม TypeError `metric.startsWith is not a function`)
+  if (typeof metric !== "string") throw new ReportRefusal("ตัวชี้วัดไม่ถูกต้อง — เลือก “นับจำนวน” หรือ “รวมค่า” ของฟิลด์ตัวเลข");
   let sumField: string | null = null;
   if (metric.startsWith("sum:")) {
     sumField = metric.slice(4);
     assertField(ds, sumField, "การรวมค่า");
     assertVisible(sumField, "การรวมค่า");
   } else if (metric !== "count") {
-    throw new Error(`ตัวชี้วัด "${metric}" ไม่รองรับ`);
+    throw new ReportRefusal(`ตัวชี้วัด "${metric.slice(0, 40)}" ไม่รองรับ`);
   }
 
   // ── สร้าง where จาก baseWhere + ขอบเขตสาขา + filter (field ผ่าน whitelist แล้ว) ──
   const conds = filters.map((f) => ({ [f.field]: opClause(f.op, f.value) }));
   // HF-INV-1 R3.7: ขอบเขตสาขาของผู้รันเป็นเงื่อนไขฐาน (ตัวกรองของผู้ใช้อยู่ใน AND — หลุดขอบเขตไม่ได้)
-  if (ctx.unitIds && !ds.unitScope) throw new Error("ชุดข้อมูลนี้กรองตามสาขาไม่ได้");
+  if (ctx.unitIds && !ds.unitScope) throw new ReportRefusal("ชุดข้อมูลนี้กรองตามสาขาไม่ได้");
+  return { ds, masked, sumField, conds };
+}
+
+export async function runReport(
+  ctx: {
+    tenantId: string;
+    /** HF-INV-1 R3.7: จำกัดสาขา (ผู้รันเข้าได้เฉพาะสาขาเหล่านี้) · ไม่ส่ง = ทุกสาขา */
+    unitIds?: readonly string[];
+    /** HF-INV-1 R3b: คอลัมน์ที่ต้องปิดบังสำหรับผู้รันคนนี้ (ต้องมีตัวปิดบังใน `masks` ของชุดข้อมูล) */
+    masked?: readonly string[];
+  },
+  input: ReportInput,
+): Promise<ReportResult> {
+  const { tenantId } = ctx;
+  const { ds, masked, sumField, conds } = checkReport(ctx, input);
   const scope = ctx.unitIds && ds.unitScope ? ds.unitScope(ctx.unitIds) : null;
   const parts = [ds.baseWhere, scope, ...conds].filter((p): p is Record<string, unknown> => !!p && Object.keys(p).length > 0);
   const where: Record<string, unknown> = parts.length ? { AND: parts } : {};
@@ -324,10 +364,13 @@ export async function runReport(
 // ── CSV ──
 const BOM = "﻿";
 
+// HF-INV-1 R3c (C2): ทุกช่อง (หัวตารางด้วย) ผ่าน `csvCell` ของ core/csv — ตัวเดียวกับ exportMembers
+//   (ชื่อจากหน้าสมัครสาธารณะเช่น `=HYPERLINK(...)` / เบอร์ `+66…` เคยออกเป็นสูตรสด ๆ ในไฟล์ของเจ้าของร้าน)
+//   ตัวเลข (number) ผ่านตรง ไม่เติม ' แม้ติดลบ · วันที่ → ISO · ค่าอื่น → ข้อความแล้วกันสูตร (ข้อความที่เป็นตัวเลขล้วนไม่ถูกเติม — กติกาของตัวช่วยกลาง)
 function esc(v: unknown): string {
   if (v == null) return "";
-  const s = v instanceof Date ? v.toISOString() : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  if (typeof v === "number") return csvCell(v);
+  return csvCell(v instanceof Date ? v.toISOString() : String(v));
 }
 
 export function toCsv(result: ReportResult): string {
