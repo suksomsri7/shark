@@ -23,7 +23,7 @@ Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIG
 | read briefs, docs, mockups 01/05/19/20, code | ✅ | 4367eaf0 (notes start) |
 | oracle written + rulings applied | ✅ | efc101c4 |
 | A1 / A2 / A3 / A5 runs | ✅ | 472073d3 (cleanup fix found by A3) |
-| A4 typecheck (once, at end) | see §2 | — |
+| A4 typecheck (once, at end) | ✅ exit 0 | — |
 | notes final + push | ✅ | (last commit) |
 
 ## 2. Acceptance
@@ -37,7 +37,7 @@ Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIG
   Green today (legitimately — regression guards, not blanket passes): S3.22 legacy `createSale` shape, S5.10 F15.2, S9.1 cleanup.
   Every registered id that was not reached is recorded red ("ไม่ถึง"), so a harness crash cannot look like a pass.
 - **A3 finding (fixed)**: the first forced run left **6 `AccountJournalEntry` rows** in `posqc-coffee-tenant` (S9.1 caught it: `accountJournalEntry 2→8`). Cause: `inventory.receive` posts GL to the tenant's *first* ACCOUNT system (`src/lib/modules/inventory/service.ts:390-397` `postMovementGl`) even though the sandbox inventory system is not linked to accounting. Cleanup now deletes `refType "InvMovement"` entries of the sandbox movements (lines cascade). The 6 orphans (created 07:54:08–10Z by that run, refIds = deleted sandbox movements) were removed with a one-off throw-away script (shown first, then `--apply`; script deleted). Second forced run: `"a5":{"drift":[]}`, `ลบแล้ว: {…"invJournal":6,"invItem":7}`.
-- **A4** `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → see §8 (run once at the end).
+- **A4** `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` (once, 07:57→08:07Z incl. lock wait) → **exit 0** · `> tsc --noEmit` with no diagnostics.
 - **A5** POS QC tenant row counts (18 tables + receipt seq sum, both tenants) printed by every run; SKIPPED run is read-only. After the forced runs + leak repair: coffee `accountJournalEntry 2`, `invItem 7`, `invMovement 2`, `appSystem 5`, `appSystemUnit 10`, `businessUnit 2`, `posSale 0`, `outboxEvent 0` … resto unchanged — identical to the first A1 snapshot. QC4 outbox before the forced run: `DONE 17271 · PENDING_DUE 0` (so `createSale`'s in-process `drainAll` only touched the sandbox's own events).
 - **A6** this file.
 
@@ -154,7 +154,7 @@ i18n keys (namespace `pos.register.`): search.placeholder · search.customItem �
 - 14-pos §7.1 "subtotal = Σ qty×unitPrice"; `createSale` stores `subtotalSatang = Σ lineTotal` (after line discounts) and `discountSatang = bill + coupon (+member)` (`service.ts:115-120,174-176`). S3.2 asserts the code's meaning.
 - §7.1 VAT 3 modes from `unit.settings.account.{vatRegistered, priceIncludesVat, vatRate}` — no such unit settings; VAT config is `AccountSettings.vatRegistered/vatRateBp` per account system, no `priceIncludesVat`; `createSale` stores vat 0 and Accounting re-derives (→ R7, P1.6).
 - §9 `maxDiscountBp` / rbac comment `_maxDiscountBp` — no reader anywhere (`permissions.ts:746`).
-- Today `registerSaleAction` clamps bill discount to subtotal (`actions/pos.ts:106`) — design says refuse; S2.5/S2.6 assert refusal.
+- Today `registerSaleAction` clamps bill discount to subtotal (`actions/pos.ts:110`) — design says refuse; S2.5/S2.6 assert refusal.
 - Today client `itemId` is unchecked and client unit price is trusted, catalogue falls back to cost (`register.ts:147-150`, `actions/pos.ts:78-94,435`) (→ R2).
 - `inventory.listItems` caps at 200 (`inventory/service.ts:793-799`) (→ R4).
 - Service lines keep `serviceId` only for BookingService ids (`actions/pos.ts:411-422`) (→ R5).
