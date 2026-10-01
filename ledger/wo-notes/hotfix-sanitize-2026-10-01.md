@@ -65,19 +65,7 @@ Source items: `/root/projects/shark-crm/ledger/wo-notes/crm-C5.5-hunt-2a.md` H55
 - KanbanCard.description: sanitised at write on some paths, RAW on others (REST create, AI, templates) ⇒ now re-sanitised at READ in getCardDetail (only innerHTML sink). REST `GET` card / `descriptionToText` consumers still get the stored value (API consumers render at their own risk — follow-up).
 - KanbanCardTemplate.description: raw at write; only reaches HTML through cards created from it ⇒ covered by getCardDetail.
 - CrmEmailMessage/CrmEmailTemplate/CrmEmailUserSetting HTML: rendered only via renderInboundHtml (re-sanitises at render) into sandbox="" iframe ⇒ not XSS; REST thread read returns stored bodyHtml raw (follow-up).
-- Read-only finder for the owner (Postgres; run in a read-only transaction; matches are "suspicious", expect some `<br/` / `<o:p>` noise):
-```sql
-BEGIN READ ONLY;
-WITH p AS (SELECT '<[a-z][^\s>/]*/|<[a-z][a-z0-9]*[-:]|<(svg|math|details|video|audio|body|iframe|object|embed|form|input|select|textarea|marquee|meta|base|link|style|script|img)[\s/>]|\son[a-z]+\s*=|javascript:|vbscript:|data:text' AS re)
-SELECT 'MemberPrivacyPolicy' AS tbl, t.id, t."tenantId", t."createdAt", left(t."bodyHtml", 300) AS sample FROM "MemberPrivacyPolicy" t, p WHERE t."bodyHtml" ~* p.re
-UNION ALL SELECT 'KanbanCard', t.id, t."tenantId", t."createdAt", left(t.description, 300) FROM "KanbanCard" t, p WHERE t.description ~* p.re
-UNION ALL SELECT 'KanbanCardTemplate', t.id, t."tenantId", t."createdAt", left(t.description, 300) FROM "KanbanCardTemplate" t, p WHERE t.description ~* p.re
-ORDER BY 1, 4 DESC;
--- informational (sandboxed viewer, but REST returns it raw):
-SELECT 'CrmEmailMessage' AS tbl, id, "tenantId", "createdAt", left("bodyHtml", 300) FROM "CrmEmailMessage" WHERE "bodyHtml" ~* '<[a-z][^\s>/]*/[a-z]|\son[a-z]+\s*=|javascript:' ORDER BY "createdAt" DESC LIMIT 200;
-ROLLBACK;
-```
-(If a column name differs on prod — e.g. no `createdAt` on a table — drop that column from the select.)
+- Read-only finder for the owner: **use `scripts/pending/hsan-review/finder.sql`** (reviewer version, review S1 — replaces the query that was here: `BEGIN READ ONLY` + `statement_timeout`, LIMIT 500/2000/500, a `hit` column with the matched fragment, obfuscated `javascript:` shapes covered — 0 misses vs 37/27/447 for the old pattern; the CrmEmailMessage part is separate, off-peak, 90-day window). Matches are suspicious, not proof (`<br/>`, `<o:p>`, "data:" in prose).
 
 ## What the controller must run on a QC DB (not run here — need DB)
 qc-kanban-k1.6 (S1 sanitize fixture — byte-identical in oracle C) · qc-kanban-k3.1 · qc-kanban-k3.3 · qc-kanban-k3.7 (getCardDetail) · qc-kanban-k3.9 (mail-to-board) · qc-kanban-k2.6 · qc-kanban-k2.7 · qc-kanban-k1.12 · qc-kanban-k3.5 · qc-member-m1.7 (policy) · qc-member-m3.11 (joinForm) · qc-member-m3.10 · qc-member-public · qc-crm-c2.5 (S9.10 baseline — the 3 fixtures are byte-identical in oracle C; X6.3/X6.4/S9.3) · visual-kanban.mts (card back render). Pure, run here: qc-sanitize-hotfix (GREEN), typecheck (0), fitness 33/33.
@@ -116,3 +104,44 @@ Test: `scripts/qc-automation-authz-hotfix.mts` (QC DB, own tenants `qc-hsan-auth
 Ruling needed: scope KANBAN still includes BOARD rules (boardId ≠ null), which `listRules` shows on this page ⇒ a holder of `automation.rule.create` (or any MANAGER) can toggle/delete a board's rules here without being board ADMIN (`kanban.automation.manage`). Kept as-is ("don't change what legitimate users can do"); stricter option = also require `boardId: null` in list + writers.
 
 Forward-port (CRM branch): `src/lib/automation/service.ts` and `actions.ts` are identical on session/crm ⇒ the commit applies cleanly. CRM's own doors (`modules/crm/automation.ts` toggleRule/deleteRule/updateRule via findFirst `scope: "CRM", crmSystemId` + crm.automation.manage) are already scoped — nothing to port there; run this suite + qc-crm automation suites on the CRM branch after the merge.
+
+## Item 3 — payment profile authz + sweep + inbound cap + finder (review A1, S1, S2)
+
+### 3a payment profile (commit "fix(security): shop payment profile — permission check + audit")
+- Hole (review A1, verified): `src/lib/payment/actions.ts savePaymentProfileAction` only `requireTenant()`; `/app/settings/payment` page ungated ⇒ any STAFF (zero keys) could replace the shop's PromptPay ID ⇒ customer QR payments redirected.
+- Gate chosen: **OWNER + MANAGER** (`payment/service.ts canManagePaymentProfile`). The permission registry has no key for the shop-level payment profile (`account.finance.manage` etc. are per-account-system keys of the account module, not this tenant table). Registry header: "MANAGER → passes everything" for tenant-level checks (webhook/API key/branding admin keys all let MANAGER through) ⇒ MANAGER kept; STAFF can never change it (no key to delegate — add `payment.profile.update` to the registry later if owners ask). Denied → Thai error state on the form.
+- Audit: `writeAudit` (core/audit.ts) `payment.profile.update`, targetType PaymentProfile, before/after `{ promptpayId: "******5678", displayName }` (last 4 digits only), actorId = user; written on create and on any change, not on an identical re-save.
+- Writers of PaymentProfile in src/ and apps/: only `service.savePaymentProfile` ← only `savePaymentProfileAction` (no REST op, no `/api/mobile` route, no AI tool). Readers: settings/payment page, POS register page (`sys/[id]/pos/register/page.tsx:53`), `lib/actions/pos.ts:320`, restaurant storefront (`modules/restaurant/storefront.ts:158`), shop/ticket/school services via their own reads, account payment-request fallback.
+- Other exported action in the file: `listMyInvoicesAction` (reader — the shop's platform bills to any member; LOW, listed in 3b).
+- Decided NOT to gate: `storage/actions.ts uploadLogoAction` (upload-only, sets nothing; used by `image-asset-field` in account settings — gating would break keyed staff there; size/type-limited by `uploadFile`; LOW) and `ai/credit-actions.ts loadMoreTxnsAction` (the ungated `/app/settings/credit` page already shows the first 20 ledger rows to every member — gating "more" alone changes nothing; AI-credit ledger, not shop money; LOW).
+- Test: `scripts/qc-payment-authz-hotfix.mts` — run on QC3 by the builder (allowed command): **8/8 GREEN**, cleans to 0 (own tenant `qc-hsan-pay-*`). RED on base by construction (gate/mask functions absent, no audit row).
+
+### 3b sweep — `"use server"` actions under `src/lib/**/actions.ts`, `src/lib/**/*-actions.ts`, `src/lib/actions/*.ts`, `src/app/app/settings/**` whose only check is `requireTenant()`
+Method: script over every exported action; an action counts as gated if its body (or a local helper it calls) has `assert*(`/`require<X≠Tenant>(`/`evaluate(`/`can*(`/role/permissions; actions that hand an actor to a module service were assumed checked inside (spot-checked: kanban templates, crm email user setting, approval cancel, AI confirm). 29 rows left; triaged by reading the service.
+| file:line | action | writes / reveals | risk |
+|---|---|---|---|
+| (fixed) payment/actions.ts:17 | savePaymentProfileAction | shop PromptPay ID | HIGH → fixed 3a |
+| (fixed) automation/actions.ts | create/toggle/deleteRule | rules of all scopes | HIGH → fixed item 2 |
+| dna/actions.ts:85 | applyStepAction | creates systems/units from a blueprint (no `systems.system.create`) | MED |
+| dna/actions.ts:91 | applyAction (also `/api/mobile/dna/apply`) | same, all steps | MED |
+| dna/actions.ts:24 | answerQuestion | overwrites shop DNA facts (AI context) | LOW |
+| dna/actions.ts:78 | proposeAction | creates a blueprint row | LOW |
+| ai/actions.ts:207 | rejectPlanAction | cancels any pending AI plan of the shop | LOW |
+| ai/credit-actions.ts:44 | loadMoreTxnsAction | AI credit ledger (page shows it anyway) | LOW |
+| announce/actions.ts:11 | dismissAnnouncementAction | dismisses a platform announcement for the whole shop | LOW |
+| coupon/actions.ts:98 | testValidateAction | read: coupon validity/discount | LOW |
+| payment/actions.ts:52 | listMyInvoicesAction | read: shop's platform invoices | LOW |
+| storage/actions.ts:8 | uploadLogoAction | uploads LOGO-kind files (storage) | LOW |
+| storage/actions.ts:36 | fetchImageForEditingAction | fetch from own CDN host only (SSRF-guarded) | LOW |
+| support/actions.ts:55,69,75,88,95,112,142 | loadMyCases · unreadCaseTotal · loadCaseThread · markCaseRead · openCase · addMessage · loadNavBadges | shop↔platform support cases: any member reads/writes all of the shop's cases | LOW (7) |
+| ai/actions.ts:143,178 · automation/actions.ts:111 · approval/actions.ts:196 · crm/emails-actions.ts:155 · kanban/actions.ts:1223,1246,1560,1617 · dna/actions.ts:46 · storage/actions.ts:67 | confirmProposal/confirmPlan (per-kind check inside) · markRead (per-user) · cancelMyRequest (own) · saveCrmEmailUserSetting (own unless manager, inside) · save/deleteBoardTemplate (ADMIN/canManageTemplates inside) · prefs (per-user) · interviewEnabled/storageEnabled (flags) | OK by design (11) |
+Counts: HIGH 0 open (2 fixed) · MED 2 · LOW 16 · OK 11. All listed modules are on prod (core platform; DNA wizard = onboarding; support = shop help). Limit: actions passing an actor were not deep-verified beyond the spot checks.
+
+### 3c CRM inbound cap (review S2) — exists on this base
+`crm/emails.ts ingestInbound`: `const inboundHtml = str(payload?.html).slice(0, 1_000_000)` fed to both `sanitizeHtml` and `htmlToText`. Oracle case HS-G.1 (static + worst shape at the cap 297 ms). Forward-port: same 3 lines on the CRM branch (line numbers moved: reviewer cited the CRM-branch position).
+
+### 3d finder
+The SQL in "Stored data" now points to `scripts/pending/hsan-review/finder.sql` (not duplicated).
+
+### Forward-port (CRM branch)
+`payment/actions.ts` + `payment/service.ts` are untouched on session/crm (check with `git diff origin/main session/crm -- src/lib/payment`) ⇒ cherry-pick. Run `qc-payment-authz-hotfix.mts` there too.

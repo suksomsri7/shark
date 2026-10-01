@@ -2437,8 +2437,12 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     // CRM C5.5-fix2 ▸ รีวิว RV2-3 (มติผู้คุมงาน): ถังของทั้งระบบนับ/ทิ้งเฉพาะจดหมายที่พิสูจน์ผู้ส่งไม่ได้ ◂
     if (!fromProof && !threadProof && (await inboundSystemLimited(system.tenantId, system.id))) return { ok: true, handled: false, reason: "rate_limited", attachmentsDropped: 0 };
     // AUDIT-CLASS X6: HTML ของคนนอกร้านผ่านตัวตัดกลางก่อน "เก็บ" (รูปเก็บไว้ให้กด "แสดงรูป" เองทีหลัง) — หลังด่านเพดาน (จดหมายที่ถูกทิ้งไม่กินเครื่อง)
-    const storedHtml = sanitizeHtml(str(payload?.html), { allowImages: true, allowLinkSchemes: ["http", "https", "mailto", "tel"] });
-    const bodyText = str(payload?.text) || htmlToText(str(payload?.html));
+    // HOTFIX 2026-10-01 (review S2): HTML ของคนนอกร้านตัดที่ 1,000,000 ตัวก่อนเข้าตัวตัด/แปลงข้อความ — ทั้งสองเป็นเชิงเส้นแล้ว
+    //   แต่ route รับได้ถึง 10 MB ⇒ ไม่ตัด = ~3 วินาที CPU ต่อฉบับที่ใครก็ส่งมาได้ · จดหมายจริงไม่ถึง 1 MB ของ HTML
+    //   (CRM C5.5-fix4 ▸ forward-port: บน session/crm ตัวตัดย้ายมาอยู่หลังด่านเพดานผู้ส่ง/ระบบ (C5.5-fix2) — เพดาน 1 MB ตามมาที่นี่ ◂)
+    const inboundHtml = str(payload?.html).slice(0, 1_000_000);
+    const storedHtml = sanitizeHtml(inboundHtml, { allowImages: true, allowLinkSchemes: ["http", "https", "mailto", "tel"] });
+    const bodyText = str(payload?.text) || htmlToText(inboundHtml);
 
     let contact: CrmContact | null = null;
     let companyId: string | null = null;
