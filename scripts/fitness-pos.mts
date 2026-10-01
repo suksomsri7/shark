@@ -16,6 +16,8 @@
 //   F15.3 ทะเบียนปุ่ม POS ซื่อสัตย์ (F15.3a ครบ · F15.3b ตรงโค้ด) — ตัวสแกน testid ของ F14 (import อย่างเดียว) +
 //         หนี้ "ปุ่มไร้ testid" นับด้วย JSX AST ต่อไฟล์ต่อชื่อแท็ก (ratchet สองทาง)
 //   F15.4 ข้อความ pos.* สองภาษา — ครบสองฝั่ง ไม่ว่าง · ค่าภาษาไทยต้องมีอักษรไทย (ยกเว้นคำสากลใน UNIVERSAL_TOKENS)
+//   F15.5 ตัวบ่งชี้ผู้เรียกระดับระบบของแคตตาล็อก (P1.1a R3–R5) — ไม่หลุดถึงโค้ดที่รับคำขอ · ห้ามเป็นค่าสำรอง/ค่าปริยาย/alias ที่ส่งออก
+//   F15.6 `src/**` ห้าม import จาก `scripts/**` (static · `import()` · `require` · `import x = require` · `typeof import()`) (P1.1a R5)
 //
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` หรือ `src/lib/env` (pre-commit ไม่มี env — X12)
 // 🔴 ทุกด่านห่อ try/catch — ไฟล์พัง/JSON เสีย = ด่านนั้นแดงพร้อมข้อความ ไม่ล้มทั้ง fitness
@@ -923,6 +925,16 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
     const v = scanSystemMarker(ROOT);
     chk("F15.5", n155, v.length === 0, v.length ? v.slice(0, 6).join(" · ") : "สะอาด", "CRITICAL");
   });
+
+  // ── F15.6 ── POS P1.1a R5 ▸ F5
+  const n156 = `src/** ห้าม import จาก scripts/** (static · import() · require · import = require · typeof import()) · baseline ${SRC_IMPORTS_SCRIPTS_BASELINE.size} จุด`;
+  guarded(chk, "F15.6", n156, () => {
+    const v = scanSrcImportsScripts(ROOT);
+    const fresh = v.filter((x) => !SRC_IMPORTS_SCRIPTS_BASELINE.has(x.key));
+    const gone = [...SRC_IMPORTS_SCRIPTS_BASELINE.keys()].filter((k) => !v.some((x) => x.key === k));
+    const problems = [...fresh.map((x) => `${x.where}: ${x.why}`), ...gone.map((k) => `${k}: อยู่ใน baseline แต่หายแล้ว — ลบออกจาก SRC_IMPORTS_SCRIPTS_BASELINE`)];
+    chk("F15.6", n156, problems.length === 0, problems.length ? problems.slice(0, 6).join(" · ") : `สะอาด (${v.length} จุดตาม baseline)`, "CRITICAL");
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -942,6 +954,8 @@ function isMarkerRef(e: ts.Expression | undefined): boolean {
   return false;
 }
 const LOGICAL = new Set([ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.AmpersandAmpersandToken]);
+/** R5 F5: การกำหนดค่าแบบตรรกะ `??=` / `||=` / `&&=` */
+const LOGICAL_ASSIGN = new Set([ts.SyntaxKind.QuestionQuestionEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken]);
 /** ค่าที่ "ถือ" ตัวบ่งชี้: ตัวบ่งชี้ตรง ๆ · ตัวถูกดำเนินการของ ?? / || / && · กิ่งของ ?: · ฟังก์ชันลูกศรที่คืนค่าเหล่านี้ */
 function carriesMarker(e: ts.Expression | undefined): boolean {
   if (!e) return false;
@@ -952,6 +966,22 @@ function carriesMarker(e: ts.Expression | undefined): boolean {
   if (ts.isArrowFunction(r) && !ts.isBlock(r.body)) return carriesMarker(r.body);
   return false;
 }
+/** R5 F5: ค่าที่ส่งออกได้ซึ่ง "พก" ตัวบ่งชี้ — carriesMarker + ค่าในออบเจกต์/อาร์เรย์ลิเทอรัล (`{ M }` · `{ k: M }` · `[M]` · spread) */
+function holdsMarker(e: ts.Expression | undefined): boolean {
+  if (!e) return false;
+  if (carriesMarker(e)) return true;
+  const r = unwrap(e);
+  if (ts.isObjectLiteralExpression(r))
+    return r.properties.some(
+      (p) =>
+        (ts.isPropertyAssignment(p) && holdsMarker(p.initializer)) ||
+        (ts.isShorthandPropertyAssignment(p) && p.name.text === MARKER_ID) ||
+        (ts.isSpreadAssignment(p) && holdsMarker(p.expression)),
+    );
+  if (ts.isArrayLiteralExpression(r)) return r.elements.some((x) => holdsMarker(ts.isSpreadElement(x) ? x.expression : x));
+  return false;
+}
+const isExported = (n: ts.Node) => !!(ts.canHaveModifiers(n) && ts.getModifiers(n)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
 /**
  * การใช้ตัวบ่งชี้ที่ห้ามในโค้ดจริง (AST — ข้อความ/คอมเมนต์ที่อธิบายกติกาไม่นับ):
  *   • `x ?? <ตัวบ่งชี้>` (R3) · `x || <ตัวบ่งชี้>` (R4 E4) — ค่าว่าง/เท็จกลายเป็นผู้เรียกระดับระบบ — ทุกไฟล์
@@ -960,10 +990,33 @@ function carriesMarker(e: ts.Expression | undefined): boolean {
  *     `{ <ตัวบ่งชี้>: S } = …` · `import/export { <ตัวบ่งชี้> as S }` — `allowAlias` = ข้อสอบ `scripts/qc-*.mts` (ต้องถือตัวบ่งชี้ไว้ทดสอบ — มติที่ขอผู้คุมงาน)
  * การหลบด้วยคีย์ที่คำนวณ (`m[k]` ที่ k ประกอบตอนรัน) อยู่นอกขอบเขต (R4 E4)
  */
-function markerMisuse(abs: string, text: string, allowAlias: boolean): { line: number; why: string }[] {
+function markerMisuse(abs: string, text: string, allowAlias: boolean, isHome = false): { line: number; why: string }[] {
   const sf = parse(abs, text);
   const out: { line: number; why: string }[] = [];
   const visit = (n: ts.Node) => {
+    // R5 F5 — ทุกไฟล์ (รวม catalog.ts และ qc-*): ค่าปริยายของพารามิเตอร์ · ค่าปริยายตอนแยกค่า · `??=` / `||=` / `&&=` · `&& <ตัวบ่งชี้>`
+    if (ts.isParameter(n) && carriesMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายของพารามิเตอร์ = ${MARKER_ID} (ผู้เรียกที่ไม่ส่งค่ากลายเป็นผู้เรียกระดับระบบ)` });
+    if (ts.isBindingElement(n) && carriesMarker(n.initializer)) out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (destructuring) = ${MARKER_ID}` });
+    if (ts.isShorthandPropertyAssignment(n) && carriesMarker(n.objectAssignmentInitializer))
+      out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (\`{ x = ${MARKER_ID} } = …\`)` });
+    if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      carriesMarker(n.right) &&
+      (ts.isArrayLiteralExpression(n.parent) || ts.isPropertyAssignment(n.parent))
+    )
+      out.push({ line: lineAt(sf, n), why: `ค่าปริยายตอนแยกค่า (\`[x = ${MARKER_ID}] = …\` / \`{ k: x = ${MARKER_ID} } = …\`)` });
+    if (ts.isBinaryExpression(n) && LOGICAL_ASSIGN.has(n.operatorToken.kind) && carriesMarker(n.right))
+      out.push({ line: lineAt(sf, n), why: `\`${n.operatorToken.getText(sf)} ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)` });
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && isMarkerRef(n.right))
+      out.push({ line: lineAt(sf, n), why: `\`&& ${MARKER_ID}\` (ห้ามเลือกผู้เรียกระดับระบบตามเงื่อนไข)` });
+    // R5 F5 — ส่งออกตัวบ่งชี้ในชื่อใหม่/ชื่อเดิมจากไฟล์อื่นนอก catalog.ts = ห้าม (qc-* ตั้ง alias ได้แค่ตัวแปรภายในที่ไม่ส่งออก)
+    if (!isHome) {
+      const exp = (why: string) => out.push({ line: lineAt(sf, n), why: `ส่งออก ${MARKER_ID} (${why}) — มีบ้านเดียวคือ catalog.ts` });
+      if (ts.isVariableStatement(n) && isExported(n) && n.declarationList.declarations.some((d) => holdsMarker(d.initializer))) exp("export const");
+      else if (ts.isExportSpecifier(n) && (n.propertyName ? propName(n.propertyName as ts.Identifier) : n.name.text) === MARKER_ID) exp("export { … }");
+      else if (ts.isExportAssignment(n) && holdsMarker(n.expression)) exp("export default");
+    }
     if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken && isMarkerRef(n.right))
       out.push({ line: lineAt(sf, n), why: `\`?? ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)` });
     if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.BarBarToken && isMarkerRef(n.right))
@@ -1004,13 +1057,100 @@ export function scanSystemMarker(ROOT: string): string[] {
     const text = readFileSync(abs, "utf8");
     if (!MARKER_USE_RE.test(text)) continue;
     // R4 E4: ทุกไฟล์ (อนุญาตหรือไม่ก็ตาม) — alias ยกเว้นเฉพาะ catalog.ts (บ้านของมัน) และข้อสอบ scripts/qc-*.mts
-    for (const m of markerMisuse(abs, text, f === MARKER_HOME || /^scripts\/qc-[^/]+\.mts$/.test(f))) out.push(`${f}:${m.line}: ${m.why}`);
+    for (const m of markerMisuse(abs, text, f === MARKER_HOME || /^scripts\/qc-[^/]+\.mts$/.test(f), f === MARKER_HOME)) out.push(`${f}:${m.line}: ${m.why}`);
     if (!isMarkerAllowedPath(f)) out.push(`${f}: ใช้ ${MARKER_ID}/${BACKFILL_ID} นอกไฟล์ที่อนุญาต`);
     else if (isRequestPath(f, text)) out.push(`${f}: ไฟล์รับคำขอ ("use server" / src/app / src/lib/actions) ห้ามมีตัวบ่งชี้`);
+  }
+  // R5 F5: `export * from <catalog>` นอก catalog.ts = ส่งออกตัวบ่งชี้ต่อโดยไม่เอ่ยชื่อ (ไฟล์แบบนี้ไม่มีชื่อตัวบ่งชี้ — สแกนแยก)
+  for (const abs of files) {
+    const f = relative(ROOT, abs).replace(/\\/g, "/");
+    if (f === self || f === MARKER_HOME) continue;
+    const text = readFileSync(abs, "utf8");
+    if (!/export\s*\*/.test(text)) continue;
+    const sf = parse(abs, text);
+    for (const st of sf.statements) {
+      if (!ts.isExportDeclaration(st) || (st.exportClause && !ts.isNamespaceExport(st.exportClause)) || !st.moduleSpecifier || !ts.isStringLiteralLike(st.moduleSpecifier)) continue;
+      if (resolvesTo(ROOT, abs, st.moduleSpecifier.text, MARKER_HOME)) out.push(`${f}:${lineAt(sf, st)}: \`export *\` จาก catalog.ts — ส่งออก ${MARKER_ID} ต่อ (ใช้รายการชื่อชัดเจนแบบ pos/index.ts)`);
+    }
   }
   const home = existsSync(join(ROOT, MARKER_HOME)) ? readFileSync(join(ROOT, MARKER_HOME), "utf8") : "";
   if (home && !new RegExp(`${MARKER_ID}[^=\\n]*=\\s*Symbol\\(`).test(home)) out.push(`${MARKER_HOME}: ${MARKER_ID} ต้องสร้างด้วย Symbol(…)`);
   if (/Symbol\.for\(/.test(home)) out.push(`${MARKER_HOME}: ห้าม Symbol.for( (ลงทะเบียนกลาง = ปลอมได้)`);
+  return out;
+}
+
+/** ตัวระบุโมดูลนี้ชี้ไฟล์ `targetRel` (ไม่มีนามสกุล/มี .ts/.mts/.js · หรือโฟลเดอร์ที่มี index) ไหม — รองรับ `./` `../` `@/` และ path เต็ม */
+function resolvesTo(ROOT: string, fromAbs: string, spec: string, targetRel: string): boolean {
+  const abs = specToAbs(ROOT, fromAbs, spec);
+  if (!abs) return false;
+  const rel = relative(ROOT, abs).replace(/\\/g, "/");
+  const base = targetRel.replace(/\.(ts|tsx|mts|js|mjs)$/, "");
+  return rel === targetRel || rel === base || rel.replace(/\.(ts|tsx|mts|js|mjs)$/, "") === base;
+}
+/** ตัวระบุโมดูล → path จริง (null = แพ็กเกจ / ไม่ใช่ path) · `@/x` = `src/x` (tsconfig paths) */
+function specToAbs(ROOT: string, fromAbs: string, spec: string): string | null {
+  if (spec.startsWith("./") || spec.startsWith("../") || spec === "." || spec === "..") return resolve(dirname(fromAbs), spec);
+  if (spec.startsWith("@/")) return resolve(ROOT, "src", spec.slice(2));
+  if (spec.startsWith("/")) return resolve(spec);
+  if (spec.startsWith("file:")) {
+    try {
+      return new URL(spec).pathname;
+    } catch {
+      return null;
+    }
+  }
+  if (spec === "scripts" || spec.startsWith("scripts/")) return resolve(ROOT, spec); // ไม่มี baseUrl — กันไว้ (fail-closed)
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// F15.6 — src/** ห้าม import จาก scripts/** (POS P1.1a round 5 · F5)
+// ═══════════════════════════════════════════════════════════════
+/** จุดที่มีอยู่แล้ว (key = `<ไฟล์>|<ตัวระบุ>`) — ว่าง: ต้นไม้วันนี้ไม่มีจุดละเมิด (ตรวจแล้ว R5) · ห้ามเพิ่มโดยไม่มีมติผู้คุมงาน */
+export const SRC_IMPORTS_SCRIPTS_BASELINE: ReadonlyMap<string, string> = new Map<string, string>([]);
+/** ข้อความหัวของตัวระบุ: สตริง · template ไม่มีตัวแทน · template ที่มีตัวแทน (ใช้ส่วนหัวก่อน `${`) — อย่างอื่น (ตัวแปร) = null (นอกขอบเขต) */
+function specText(e: ts.Expression | undefined): string | null {
+  if (!e) return null;
+  const r = unwrap(e);
+  if (ts.isStringLiteralLike(r)) return r.text;
+  if (ts.isTemplateExpression(r)) return r.head.text;
+  return null;
+}
+/** คืนจุดที่ไฟล์ใต้ src/ อ้างโมดูลใต้ scripts/ (AST · คอมเมนต์/สตริงธรรมดาไม่นับ) — export ไว้ให้หลักฐานลบเรียกตรง */
+export function scanSrcImportsScripts(ROOT: string): { key: string; where: string; why: string }[] {
+  const out: { key: string; where: string; why: string }[] = [];
+  const scriptsDir = resolve(ROOT, "scripts");
+  const underScripts = (abs: string | null) => !!abs && (abs === scriptsDir || abs.startsWith(scriptsDir + "/") || abs.startsWith(scriptsDir + "\\"));
+  for (const abs of walk(join(ROOT, "src"), (p) => /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(p))) {
+    const f = relative(ROOT, abs).replace(/\\/g, "/");
+    const text = readFileSync(abs, "utf8");
+    if (!/scripts|import\s*\(|require/.test(text)) continue;
+    const sf = parse(abs, text);
+    const hit = (n: ts.Node, spec: string, how: string) => {
+      if (!underScripts(specToAbs(ROOT, abs, spec))) return;
+      out.push({ key: `${f}|${spec}`, where: `${f}:${lineAt(sf, n)}`, why: `${how} "${spec}" — โค้ดแอปห้ามพึ่งสคริปต์ (scripts/** ไม่ถูก build/ไม่มีด่านของแอป)` });
+    };
+    const visit = (n: ts.Node) => {
+      if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier && ts.isStringLiteralLike(n.moduleSpecifier))
+        hit(n, n.moduleSpecifier.text, ts.isImportDeclaration(n) ? "import" : "export … from");
+      else if (ts.isImportEqualsDeclaration(n) && ts.isExternalModuleReference(n.moduleReference)) {
+        const t = specText(n.moduleReference.expression);
+        if (t !== null) hit(n, t, "import = require");
+      } else if (ts.isCallExpression(n)) {
+        const callee = n.expression;
+        const isDyn = callee.kind === ts.SyntaxKind.ImportKeyword;
+        const isReq =
+          (ts.isIdentifier(callee) && callee.text === "require") ||
+          (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression) && callee.expression.text === "require" && callee.name.text === "resolve");
+        if (isDyn || isReq) {
+          const t = specText(n.arguments[0]);
+          if (t !== null) hit(n, t, isDyn ? "import()" : "require");
+        }
+      } else if (ts.isImportTypeNode(n) && ts.isLiteralTypeNode(n.argument) && ts.isStringLiteral(n.argument.literal)) hit(n, n.argument.literal.text, "typeof import()");
+      ts.forEachChild(n, visit);
+    };
+    visit(sf);
+  }
   return out;
 }
 

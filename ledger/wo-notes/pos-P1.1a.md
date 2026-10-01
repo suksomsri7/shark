@@ -582,3 +582,92 @@ X9.1 / X6.3 คงเดิม (ตาม F8): X9.1 ตรวจ consumer ขอ
 7. **INTERNAL** — พิสูจน์ด้วย `client` ปลอม (`{appSystem:{findFirst: throw}}`) ส่งเป็นอาร์กิวเมนต์ท้ายของ listForUnit/setPrice ⇒ ตัวห่อต้องอยู่รอบฟังก์ชัน ไม่ขึ้นกับว่าเป็น Prisma error · ข้อความ INTERNAL ต้องเป็นข้อความเดียวกันทุกฟังก์ชัน
 8. F5 (`??=`/default/alias/F15.6 negative proof) ไม่อยู่ในข้อสอบนี้ นอกจากการลงทะเบียน F15.6 (S3.59)
 9. **กติกาสำหรับ P1.1b (จาก F1)**: legacy sync เรียก `restore` เมื่อร้านปลดเก็บถาวร InvItem — `ensureForInvItem` ไม่ปลดเอง (S3.48 ตรึง)
+
+# Round 5 (builder · brief `pos-brief-P1.1a-R5.md` F1–F7 + มติผู้คุมงาน 7 ข้อเรื่องข้อเปิดของ oracle writer) — checkpoint
+| # | ขั้น | สถานะ |
+|---|---|---|
+| R5-0 | fingerprint ก่อน (r5-before) | ✅ = r4-final ทุก byte |
+| R5-1 | วัดเพดาน tx จริง (มติ 6) | ✅ 30 วิ (ไม่ใช่ 5) — ข้างล่าง |
+| R5-2 | โค้ด F1 F2 F3 F4 F6 F7 (catalog.ts · index.ts · pos-backfill-catalog.mts) | ✅ |
+| R5-3 | F5 fitness (F15.5 เพิ่ม + F15.6) + หลักฐานลบ | ✅ ต้นไม้จริง F15.6 = 0 จุด (ไม่ต้องมี baseline) |
+| R5-4 | oracle | ✅ exit 0 · `ผ่าน 113/113` (P1.1b 28 ข้อข้ามตาม guard) · รันแรก |
+| R5-5 | backfill ร้าน QC (dry-all/ถอย/dry/real/again/ถอย/2 โปรเซสซ้อน) + INVARIANTS + A3 | ✅ |
+| R5-6 | regression 17 ชุด · fitness 2 โหมด | ✅ 17 SAME กับ round 4 · 40/40 ทั้งคู่ |
+| R5-7 | typecheck | ✅ exit 0 (รอบเดียว) |
+| R5-8 | notes · commit · push | ✅ |
+
+## Round 5 — รายงานต่อข้อ (file:line ที่ commit นี้)
+| ข้อ | หลัง (round 5) | check |
+|---|---|---|
+| F1 restore | `catalog.ts:1047 restore(ctx, id, client?)` (มติ 1) → `{ id, archivedAt: null, restored }` · สิทธิ์ `pos.product.manage` ผ่าน `requireRowWrite` เดียวกับ archive · ไม่ได้เก็บ = OK `restored:false` ไม่มี audit · กู้จริง = audit `pos.product.restore` before `{archivedAt: ISO}` → after `{archivedAt: null}` · แถวมีบาร์โค้ด: ล็อกร้านแบบมีงบ (ก่อนล็อกแถว) + `assertBarcodeFree` ⇒ ชน = CONFLICT · facade `index.ts:53` · `ensureForInvItem :1085` คืน `{id, created, archived}` ไม่ปลดเก็บถาวร · `createProduct({invItemId})` ทับแถวเก็บถาวร = CONFLICT ข้อความ "…ถูกเก็บถาวรไว้ — กู้คืนรายการเดิมได้แทนการเพิ่มใหม่" ไม่มี id (`:888` · มติ 4) · setPrice/updateProduct บนแถวเก็บถาวรยังทำได้ (ตรึง S3.50) | S3.46–S3.51 ✅ |
+| F2 hygiene + INTERNAL | `boundary :126` ห่อทุกฟังก์ชัน facade 10 ตัว (อยู่ใน catalog.ts ⇒ ผู้ import ตรงก็ได้ด้วย): CatalogError ผ่าน · P2002 = CONFLICT · อื่น ๆ = `INTERNAL` ข้อความไทยคงที่ `cause` = ต้นฉบับ · `console.error` ครั้งเดียว · `isCleanText :138` (NUL + surrogate เดี่ยว — เท่ากับ `isWellFormed` แต่ไม่พึ่ง lib es2024) · `assertCleanInputs :158` สแกนสตริงทุกตัวใน ctx/id/input/patch (ค่า+คีย์ ลึก ≤4) เป็นคำสั่งแรก = VALIDATION ก่อนแตะ DB (มติ 3: id/unitId/ctx = VALIDATION) · cursor ที่ถอดได้ `:590` · q ตัด 100 แล้วไม่ทิ้งครึ่งคู่ surrogate · byBarcode รหัสสกปรก = `{items: []}` `:746` · `checkCatalogWrite` สตริงสกปรก = คืน `"NOT_FOUND"` (สัญญาคืนค่า ไม่ throw) | S3.52–S3.54 ✅ |
+| F3 BUSY | `tryLockTenant :409` `pg_try_advisory_xact_lock` + หน่วงสุ่ม 40→400 ms ×0.5–1.5 · งบ `LOCK_BUDGET_MS = 3_500 :408` แล้ว `BUSY` · createProduct: ตัดสินจากข้อมูลเข้า (คีย์ของตัวเอง invItemId/บาร์โค้ด) แล้วล็อกเป็น **คำสั่งแรกของธุรกรรม** `:857` · ensureForInvItem: อ่านแถวที่มีแล้วคำสั่งเดียวก่อน (มี = ไม่ล็อก — แถวที่มีแล้วไม่ BUSY ระหว่าง backfill) ไม่มี = ล็อกก่อนตรวจอย่างอื่น `:1095` · restore: ล็อกเมื่อแถวมีบาร์โค้ด ก่อน `FOR UPDATE` · backfill ยังใช้ `lockTenant` แบบรอ ต่อร้าน | S3.55 ✅ |
+| F4 ตัวนับ | `ownRowCounted :1466` คีย์ ระบบ\|InvItem (เดียวกับ byInvKey) · แถวเว็บร้านที่ใช้แถวแคตตาล็อกของเว็บร้านแถวก่อนหน้าร่วม (C9b) = บันทึกลิงก์อย่างเดียว ข้าม shopOwnRow/zeroPriceWeb/partition ราคา null `:1482` ⇒ รอบแรกกับรอบซ้ำนับเท่ากัน · C9a (แถวร่วมของ InvItem) นับต่อแถวเดิมตามเดิม | S3.56 ✅ |
+| F5 fitness | `fitness-pos.mts` — F15.5 ทุกไฟล์ (รวม catalog.ts/qc-*): ค่าปริยายพารามิเตอร์ · ค่าปริยายตอนแยกค่า (BindingElement · `{x = M} = …` · `[x = M] = …` · `{k: x = M} = …`) · `??=`/`||=`/`&&=` (`LOGICAL_ASSIGN :958`) · `&& M` (เพิ่มเอง — กิ่งเลือกแบบเดียวกับ `?:`) `:997` · ส่งออกนอก catalog.ts (`export const` ที่พกตัวบ่งชี้ รวมในออบเจกต์/อาร์เรย์ลิเทอรัล `holdsMarker :970` · `export { M }`/`as` · `export default` · `export *` จาก catalog.ts — สแกนแยกเพราะไฟล์ไม่มีชื่อตัวบ่งชี้) `:1013` · qc-* ยังตั้ง alias ภายในที่ไม่ส่งออกได้ · F15.6 `scanSrcImportsScripts :1120` (import/export from · import() · require/require.resolve · `import = require` · `typeof import()` · template = ส่วนหัว · `@/` = src/) baseline ว่าง `:1110` · ลงทะเบียน `guarded(chk, "F15.6"` `:931` | S3.59 ✅ + หลักฐานลบ |
+| F6 | `checkCatalogWrite` ตรวจ `row.invItemId` ทุกผู้กระทำ (ไม่มีจริง/ร้านอื่น/คลังที่ไม่ขายผ่าน POS นี้ = NOT_FOUND) `:294` — เฉพาะตัว export (ทางภายใน rowWriteVerdict ไม่เปลี่ยน) · `ownFields :167` (Object.keys = คีย์ของตัวเอง · null/อาร์เรย์/ค่าเดี่ยว = VALIDATION · คีย์แปลกของตัวเอง = VALIDATION) ใช้ใน createProduct (`CREATE_KEYS :839` · sku = คีย์แปลก มติ 2) และ updateProduct `:933` · คีย์จาก prototype = ไม่นับ → สำเร็จโดยไม่มีอะไรขยับ (มติ 5) | S3.57 S3.58 ✅ |
+| F7 | header catalog.ts `:15-27` (BUSY/INTERNAL/hygiene/กติกา isMembershipCtx) · คอมเมนต์ checkCatalogWrite `:264` · backfill พิมพ์ `ลิ้นชักวันนี้อาจคิดราคาทุน: สูงสุด N รายการ (…หน้าขายแสดงเพียง 200 รายการล่าสุด — จำนวนจริงอาจน้อยกว่านี้)` + ป้ายตัวอย่าง "อาจ…นับสูงสุด" (`pos-backfill-catalog.mts:125-127`) · runbook ข้างล่าง | — |
+
+### มติ 6 — เพดาน interactive tx ที่ catalog.ts ใช้จริง (วัด · `.qc-shots/pos/p1.1a/r5/txprobe.mts`)
+`inTx` = `client.$transaction((tx) => fn(tx))` ไม่ส่ง options ⇒ ใช้ค่าปริยายของ client · client ของ catalog.ts = `pos/db.ts` → `core/db.ts` ที่ตั้ง `transactionOptions: { timeout: 30_000, maxWait: 10_000 }` ⇒ **30 วิ** (hunter ถูก · ข้อสมมติ 5 วิ ของ oracle writer ใช้กับ client เปล่าเท่านั้น)
+| client | pg_sleep | ผล |
+|---|---|---|
+| แอป (pos/db) | 6 วิ | OK 6326 ms |
+| เปล่า (ไม่มี transactionOptions) | 6 วิ | P2028 "timeout … was 5000 ms" ที่ 6151 ms |
+| แอป (pos/db) | 31 วิ | P2028 "timeout … was 30000 ms" ที่ 31069 ms |
+งบ BUSY 3.5 วิ (+1 round-trip) อยู่ใต้ 5 วิ (client เปล่าที่ผู้เรียกอาจส่งมา) · 30 วิ · และ 7 วิ ของ S3.55 — วัดจริงขณะอีก connection ถือล็อก 8 วิ (`r5/busyprobe.mts` · ไม่เขียนอะไร · rows written 0):
+| client | createProduct(บาร์โค้ด) | createProduct(invItemId) | ensureForInvItem |
+|---|---|---|---|
+| แอป (30 วิ) | BUSY 3529 ms | BUSY 3588 ms | BUSY 3594 ms |
+| เปล่า (5 วิ) | BUSY 3645 ms | BUSY 3643 ms | BUSY 3651 ms |
+P2028 ที่อาจเกิดจากทางอื่น (ไม่ใช่ล็อก) = INTERNAL (ไม่แปลงเป็น BUSY)
+
+### Backfill รอบ 5 (ร้าน QC ของ POS · `--tenant=posqc-coffee-tenant --tenant=posqc-resto-tenant` · logs `.qc-shots/pos/p1.1a/r5/a2-*.log`)
+| ขั้น | exit | created | updated / มีอยู่แล้ว |
+|---|---|---|---|
+| dry-run ทุกร้าน (อ่านล้วน) | 0 | จะสร้าง posProduct 8 (ร้านอื่น · ไม่ได้รันจริง) | มีอยู่แล้ว invItem 9 · menuItem 4 |
+| ถอย (unbackfill) | — | `menuLinks 4 … product 13 category 3` | |
+| dry-run | 0 | posProduct 13 · posCategory 3 · og 0 · recipe 0 · invItem 0 | menuItem 4 |
+| จริง | 0 | 13 · 3 | menuItem 4 |
+| จริงซ้ำ | 0 | 0 ทั้งหมด | มีอยู่แล้ว invItem 9 · menuItem 4 |
+| ถอย → 2 โปรเซสซ้อน (ใต้ gate lock ก้อนเดียว) | 0/0 | B 13/3 · A 0 (รอล็อกร้านแล้ววางแผนใหม่) | B menuItem 4 · A มีอยู่แล้ว 9/4 |
+counts ร้าน QC (ทุกขั้น): `soldAtCostToday 0 · zeroPriceProduct 2 · trackStockAutoOn 3 · อื่น 0` (บรรทัด "สูงสุด 0 รายการ") · ทั้ง QC4: `ร้าน 19 · InvItem 17 · MenuItem 4 · soldAtCostToday 6 ("สูงสุด 6 รายการ") · zeroPriceProduct 2 · trackStockAutoOn 11 · อื่น 0` · INVARIANTS `{"products":13,"categories":3,"dupInv":0,"invWithout":0,"menuUnlinked":0,"menuShared":0,"orphanMenuProducts":0,"dupCat":0}`
+หมายเหตุ: รอบแรกของคู่ซ้อนรันใต้ iso+qc4 โดยไม่ผ่าน gate lock (ผลเหมือนกัน A 13/3 · B 0) — ทำใหม่ใต้ `with-gate-lock.sh bash -c '(A)&(B)&wait'` ตามกติกาเครื่อง (ผลในตาราง)
+
+### A3 (round 5)
+fingerprint ตารางเดิม (count + md5 รวม updatedAt · ร้าน QC POS / ร้านอื่น · 16 รายการ): r5-before = r4-final · หลัง backfill = r4-final · หลัง oracle + 17 ชุด (r5-final) = r4-final ทุก byte
+
+### F5 — หลักฐานลบ (negative proof · log `.qc-shots/pos/p1.1a/r5/f155-f156-negative*.log`, `f155-tmproot.log`)
+- ฝังในต้นไม้จริงแล้วลบทันที: `scripts/qc-__f155r5-probe.mts` + `src/lib/modules/pos/__f156r5_probe.ts` → `pnpm fitness` (ไม่มี env) exit 1 · `{"total":40,"passed":38}` · F15.5 ❌ 13 จุด: export const ×2 (ตรง + ในออบเจกต์) · `export { M }` · `export default M` · `function f(a = M)` · `const { a = M } = …` · `[y = M] = []` · `({ x = M } = …)` · `??=` · `||=` · `&&=` · `&& M` · `export * from "./catalog"` (ไฟล์ src) — ส่วน `const local = C.M` ในไฟล์ qc (alias ภายใน) และ `import { M }` ชื่อเดิม **ไม่ถูกจับ** (ถูกต้อง) · F15.6 ❌ 8 จุด: `import a from "../../../../scripts/…"` · `export { b } from` · `import c = require(…)` · `typeof import(…)` · `import(…)` · `` import(`../../../../scripts/${k}.mts`) `` · `require(…)` · `require.resolve("@/../scripts/…")` — คอมเมนต์และสตริงธรรมดาที่มีคำว่า scripts ไม่ถูกจับ
+- root ชั่วคราว (scratchpad): `catalog.ts` + `function __planted(a = M) { b ??= M }` → จับ 2 (กติกา "ทุกไฟล์" ใช้กับบ้านด้วย) · `export const __homeAlias = M` ใน catalog.ts ไม่จับ (บ้าน) · `scripts/pos-backfill-catalog.mts` `function g(x = M)` → จับ
+- หลังลบ: `git status` = เฉพาะไฟล์งานจริง 4 ไฟล์ · ไม่มี env exit 0 `{"total":40,"passed":40,"findings":[]}` · มี env (`bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness`) exit 0 `{"total":40,"passed":40,"findings":[]}` · F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" เท่าเดิม
+- F15.6 บนต้นไม้จริงก่อนเปิดกฎ: 0 จุด (สแกน AST ทุกไฟล์ใต้ src/) ⇒ `SRC_IMPORTS_SCRIPTS_BASELINE` ว่าง
+
+### Runbook P6.1 — เพิ่มจาก round 5 (F7 · ใช้ร่วมกับ runbook round 4)
+0. **ก่อน `prisma migrate deploy`**: ตรวจ host ของ URL ที่ migrate ใช้ (DIRECT_URL / `datasource.url` ของ prisma.config) **ต้องไม่มี `-pooler`** — ไฟล์ `_pos_v2_a_links` ใช้ `SET lock_timeout` ระดับ session + ทีละคำสั่ง ผ่าน pooler โหมด transaction ค่า lock_timeout จะรั่วไป session ของแอปที่ได้ connection นั้นต่อ และ ALTER อาจวิ่งบน connection ที่ไม่มี timeout (รอ ACCESS EXCLUSIVE ไม่จำกัด = หยุดการขายทั้งร้าน) · มี `-pooler` = หยุด แก้ URL ก่อน
+7. **ระหว่าง backfill กับ deploy dual-write (P1.1b)**: รัน **re-sync pass** ของ "สถานะเก็บถาวร + ราคา" จากของเดิมเข้าแถวแคตตาล็อกที่มีแล้ว — backfill คัดลอก `archivedAt`/ราคาเฉพาะตอนสร้างครั้งแรก (รอบซ้ำข้ามแถวที่มีแล้ว) ⇒ ร้านที่ปลด/เก็บถาวร InvItem หรือแก้ราคาในช่วงนั้นจะค้างค่าเก่า · re-sync ต้องเรียก `restore`/`archive`/`setPrice` ของ catalog.ts (ผู้เขียนเดียว · มี audit) ไม่ UPDATE ตรง · ตัวนับ `catalogPriceDiffersFromTill` ควรเทียบ `PosProduct.basePriceSatang` ที่เก็บจริง (ข้อ 4 ของ round 4)
+8. ข้อความถึงเจ้าของร้าน: `soldAtCostToday` เป็น **"สูงสุด"** — นับเกินได้ในร้านที่มีสินค้า (PRODUCT) เกิน 200 รายการ เพราะหน้าขายวันนี้แสดงแค่ 200 รายการล่าสุด (`inventory.listItems` take 200)
+
+### กติกาสำหรับ P1.1b (round 5 · ใส่ใน brief P1.1b ด้วย)
+1. **legacy sync เรียก `catalog.restore(ctx, id)` เมื่อร้านปลดเก็บถาวร InvItem** — `ensureForInvItem` ไม่ปลดเก็บถาวรเอง (คืน `archived: true` ให้ผู้เรียกตัดสิน · แถวอาจถูกเก็บที่หน้าขายโดยตั้งใจทั้งที่ของยังอยู่ในคลัง) · ทางกลับ (ร้านเก็บถาวร InvItem) = `archive`
+2. **`checkCatalogWrite(actor, …)`: `actor` ต้องเป็น MembershipCtx ของ SESSION** (core/context โหลดจาก DB) — `isMembershipCtx` ตรวจรูปร่างเท่านั้น ห้ามประกอบออบเจกต์จาก body/query/คุกกี้
+3. ผู้เรียกที่ส่ง tx ของตัวเอง: error ใด ๆ จาก catalog (รวม CONFLICT/BUSY/INTERNAL) = Postgres ยกเลิกธุรกรรมของผู้เรียกแล้ว (เหมือน R3) — ต้อง rollback ทั้งก้อน · BUSY = ลองใหม่ทั้งธุรกรรม
+4. `restore` ล็อกร้านแบบมีงบเมื่อแถวมีบาร์โค้ด ⇒ ระหว่าง backfill อาจได้ BUSY (ลองใหม่ได้)
+
+### ORACLE-EDIT requests (round 5 · builder)
+ไม่มี — 113/113 ในรันแรก ไม่มีข้อที่ดูผิด
+
+### ข้อที่ผู้คุมงานต้องตัดสิน (round 5)
+1. `restore` คืน `{ id, archivedAt: null, restored: boolean }` (brief ไม่กำหนดรูป · คู่กับ archive ที่คืน `{id, archivedAt}`)
+2. ตัวห่อ INTERNAL อยู่ใน catalog.ts รอบฟังก์ชันของ facade 10 ตัว (ไม่ใช่ใน index.ts) ⇒ ผู้ import `./catalog` ตรงก็ได้ด้วย · ฟังก์ชัน export อื่นที่ไม่อยู่ใน facade (`backfillCatalog` · `loadPosResolution` · `resolvePosSystem` · `initialPrice` · `effectiveTrackStock`) ไม่ห่อ — backfill จับ error ต่อร้านเองใน `failedTenants` (ข้อความบรรทัดสุดท้ายของ error เดิม · ใช้ในสคริปต์เท่านั้น)
+3. ลำดับ: สแกนสตริงสกปรก (VALIDATION) มาก่อนทุกการตรวจ (รวมก่อน NOT_FOUND/PERMISSION_DENIED) — ไม่รั่วอะไร (ผลไม่ขึ้นกับแถว) · คีย์แปลกของ createProduct/updateProduct ตรวจหลังสิทธิ์ (ลำดับเดิม)
+4. ensureForInvItem ไม่ล็อกเป็นคำสั่งแรกเป๊ะ: อ่านแถวที่มีแล้ว 1 คำสั่งก่อน (ไม่ถือล็อกแถว) เพื่อให้แถวที่มีแล้ว (ทางที่ P1.1b เรียกบ่อย) ไม่ BUSY ระหว่าง backfill · ไม่มีแถว = ล็อกก่อนตรวจอย่างอื่น · restore ล็อกหลังตรวจสิทธิ์ (ต้องรู้ว่ามีบาร์โค้ด) แต่ก่อนล็อกแถว
+5. `restore` ไม่ตรวจว่า InvItem ยังขายผ่าน POS นี้/ยังไม่เก็บถาวร และไม่ตรวจหมวดที่ถูกเก็บ — ตัวอ่านกรองตาม C3 อยู่แล้ว · unique(systemId, invItemId) นับแถวเก็บถาวรด้วย ⇒ กู้คืนชนได้แค่บาร์โค้ด (ตรวจแล้ว)
+6. F15.5 เพิ่ม `&& M` (brief ไม่ได้สั่ง — รูปเดียวกับ `?:`) · "ส่งออก" นับ `export const`/specifier/default/`export *` — ฟังก์ชันที่ export แล้วคืนตัวบ่งชี้ (`export function f() { return M }`) อยู่นอกขอบเขต (ต้องวิเคราะห์การไหลของค่า) · F15.6: `import()`/`require` ที่อาร์กิวเมนต์เป็นตัวแปรล้วนอยู่นอกขอบเขต (template ใช้ส่วนหัว)
+7. `checkCatalogWrite` ตรวจ invItemId เฉพาะตัว export — ทางภายใน (`rowWriteVerdict`) ไม่ตรวจ ⇒ แถวเดิมที่คลังเลิกขายผ่าน POS นี้ภายหลังยังแก้/เก็บได้ตามเดิม (ผู้เขียนตรวจ InvItem ใหม่ด้วย `loadSellableItem` อยู่แล้ว)
+
+### Acceptance (round 5)
+- oracle `qc-pos-p1.1`: exit 0 · `===== qc-pos-p1.1 ===== ผ่าน 113/113` · `JSON_SUMMARY {"suite":"qc-pos-p1.1","total":113,"passed":113,"failed":[],…,"catalogue":141,"skippedGroups":{"S2":"P1.1b ยังไม่เริ่ม … ข้าม 28 ข้อ"}}` · ROWCOUNTS เท่าเดิม (log `r5/oracle-1.log` · tag `qc-p1.1-2e3030`)
+- regression 17 ชุด (logs `r5/after/`): qc-pos-register 42/42 · qc-pos-account 16/16 · qc-pos-products 24/24 · qc-pos-coupon 8/8 · qc-pos-closeday 22/22 · qc-pos-inventory 25/25 · qc-pos-p0.2 55/55 · qc-restaurant-money 6/6 · qc-restaurant-void 11/11 · qc-shop-refund 12/12 · qc-account-cpa 107/107 · qc-restaurant 🎉 · qc-restaurant-pay 19/19 · qc-shop 15/15 · qc-inventory 12/12 · qc-inventory-item 11/11 · qc-inventory-account 23/23 — ทุกตัว exit 0 · **17 SAME** กับ round 4 (เทียบบรรทัดสรุปตัด tag/ms)
+- fitness: ไม่มี env / มี env exit 0 `{"total":40,"passed":40,"findings":[]}` (39 + F15.6) + หลักฐานลบ
+- migrations: `git diff b9d192ec -- prisma/` ว่าง (ทั้งสองไฟล์ตรงทุก byte) · ไม่ได้รันคำสั่ง prisma
+- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 0 · 0 error (รอบเดียว · 129 วิ)

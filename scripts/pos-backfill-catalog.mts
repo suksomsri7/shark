@@ -120,8 +120,11 @@ console.log(`ร้าน ${s.tenants} · แหล่ง InvItem ${s.sources.in
 for (const [sys, v] of Object.entries(s.perSystem)) console.log(`  ระบบ POS ${sys}: InvItem ${v.invItem} · MenuItem ${v.menuItem} · ShopProduct ${v.shopProduct}`);
 console.log(`ข้าม (หา POS ไม่เจอ): InvItem ${s.skippedNoPosSystem.invItem} · MenuItem ${s.skippedNoPosSystem.menuItem} · ShopProduct ${s.skippedNoPosSystem.shopProduct} · เหตุ ${JSON.stringify(s.skipped)}`);
 console.log(`ตัวนับ (เจ้าของควรดูก่อนเปิดใช้): ${JSON.stringify(s.counts)}`);
+// R5 F7: soldAtCostToday นับเกินได้สำหรับร้านที่มีสินค้า (PRODUCT) เกิน 200 รายการ — หน้าขายวันนี้แสดงแค่ 200 รายการล่าสุด
+//   (`inventory.listItems` take 200) ⇒ ข้อความถึงเจ้าของต้องเป็น "สูงสุด" ไม่ใช่จำนวนแน่นอน
+console.log(`ลิ้นชักวันนี้อาจคิดราคาทุน: สูงสุด ${s.counts.soldAtCostToday} รายการ (ร้านที่มีสินค้าเกิน 200 รายการ หน้าขายแสดงเพียง 200 รายการล่าสุด — จำนวนจริงอาจน้อยกว่านี้)`);
 const SAMPLE_LABEL: Record<string, string> = {
-  soldAtCostToday: "ลิ้นชักวันนี้คิดราคาทุน → แคตตาล็อกใหม่ \"ยังไม่ตั้งราคา\"",
+  soldAtCostToday: "ลิ้นชักวันนี้อาจคิดราคาทุน (นับสูงสุด — หน้าขายแสดง 200 รายการล่าสุด) → แคตตาล็อกใหม่ \"ยังไม่ตั้งราคา\"",
   apIgnoredButTillPriced: "ลิ้นชักวันนี้คิดราคาจากสินค้าบัญชีที่เก็บถาวร/สมุดอื่น → \"ยังไม่ตั้งราคา\"",
   invalidLegacyPrice: "ราคาเดิมผิดรูป (ติดลบ ฯลฯ) → \"ยังไม่ตั้งราคา\"",
   priceNotSetOther: "ไม่มีราคาขายจากแหล่งใดเลย → \"ยังไม่ตั้งราคา\"",

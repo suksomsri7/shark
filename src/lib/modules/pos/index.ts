@@ -29,6 +29,7 @@ export {
 } from "./service";
 
 // POS P1.1a ▸ แคตตาล็อกเดียว (PosProduct) — ผู้เขียน/ผู้อ่านเดียวของแคตตาล็อกขาย · ผู้เรียกนอกโมดูลใช้ `catalog.<fn>` ◂
+// 🔁 R5: ทุกฟังก์ชันข้างล่างห่อขอบ facade ใน catalog.ts (`boundary`) — error ที่ไม่คาดคิด = CatalogError INTERNAL (ไม่มี error ดิบหลุด)
 // 🔴 D5 (round 3): รายการชัดเจน ไม่ใช่ `export *` — ตัวบ่งชี้ผู้เรียกระดับระบบและ backfill ห้ามหลุดถึงโค้ดที่รับคำขอ
 //    (สคริปต์ backfill import จาก ./catalog ตรง · fitness F15.5 คุม)
 import {
@@ -36,6 +37,7 @@ import {
   updateProduct as catalogUpdateProduct,
   setPrice as catalogSetPrice,
   archive as catalogArchive,
+  restore as catalogRestore,
   listForUnit as catalogListForUnit,
   byBarcode as catalogByBarcode,
   ensureForInvItem as catalogEnsureForInvItem,
@@ -47,6 +49,8 @@ export const catalog = {
   updateProduct: catalogUpdateProduct,
   setPrice: catalogSetPrice,
   archive: catalogArchive,
+  /** R5 F1 — กู้คืนแถวที่เก็บถาวร (สิทธิ์/ขอบเขตเดียวกับ archive) */
+  restore: catalogRestore,
   listForUnit: catalogListForUnit,
   byBarcode: catalogByBarcode,
   ensureForInvItem: catalogEnsureForInvItem,

@@ -12,6 +12,17 @@
 // 🔴 ห้ามแตะ createSale/voidSale (service.ts) · register.ts — จอเดิมทุกจอยังอ่านตารางเดิมตามเดิม
 // หนี้ (N5 → P1.1b): อ่านตารางของโมดูลอื่นตรง (AppSystemUnit · InvItem · AccountProduct · AccountSystemLink · AccountSettings · Menu*)
 //   แบบเดียวกับ register.ts — P1.1b ตัดสินว่าจะย้ายไป facade หรือบันทึกเป็นข้อยกเว้น
+// 🔁 R5 (brief pos-brief-P1.1a-R5.md F1–F7):
+//   • ทุกฟังก์ชันของ facade (`catalog.<fn>` — createProduct · updateProduct · setPrice · archive · restore · listForUnit · byBarcode ·
+//     ensureForInvItem · createCategory · checkCatalogWrite) ห่อด้วย `boundary`: error ที่ไม่ใช่ CatalogError = CatalogError `INTERNAL`
+//     ข้อความไทยคงที่ (ไม่มี path/SQL/ข้อความต้นฉบับ) · ต้นฉบับอยู่ใน `cause` + console.error ครั้งเดียวฝั่งเซิร์ฟเวอร์ · P2002 = CONFLICT
+//     ผู้เรียกที่ส่ง tx ของตัวเองมา: error ใด ๆ ใน tx (รวม CONFLICT/INTERNAL) = ธุรกรรมของผู้เรียกถูก Postgres ยกเลิกแล้ว — ต้อง rollback ทั้งก้อน (เหมือน R3)
+//   • สตริงทุกตัวที่จะถึง DB (ctx · id · ชื่อ · บาร์โค้ด · q · cursor) ที่มี NUL หรือ UTF-16 ผิดรูป = VALIDATION ก่อนแตะ DB
+//     (byBarcode: รหัสสแกนผิดรูป = `{items: []}` — เครื่องสแกนสะดุดต้องไม่ throw)
+//   • ล็อกร้าน = `pg_try_advisory_xact_lock` ลองซ้ำแบบสุ่มหน่วง ≤ LOCK_BUDGET_MS แล้ว `BUSY` (ลองใหม่ได้) — เพดาน tx ของ client แอป = 30 วิ
+//     (core/db.ts transactionOptions · วัดแล้ว) · client เปล่า = 5 วิ ⇒ งบ 3.5 วิ อยู่ใต้ทั้งคู่ · backfill ยังใช้ล็อกแบบรอ (ผู้ถือยาว · ต่อร้าน)
+//   • 🔴 กติกาผู้เรียก `checkCatalogWrite`: `isMembershipCtx` ตรวจ "รูปร่าง" เท่านั้น — ต้องส่ง MembershipCtx ของ SESSION ที่โหลดจาก DB
+//     (core/context) เสมอ ห้ามประกอบออบเจกต์จากข้อมูลในคำขอ (body/query/คุกกี้) — รูปร่างถูกไม่ได้แปลว่าเป็นสิทธิ์จริง
 
 import { randomUUID } from "node:crypto";
 import { Prisma, type PosProduct, type PosProductKind, type PrismaClient } from "@prisma/client";
@@ -27,13 +38,14 @@ export type CatalogCtx = { tenantId: string; systemId: string; actorUserId: Cata
 /** client ของผู้เรียก — PrismaClient (เปิดธุรกรรมให้เอง) หรือ tx ที่ผู้เรียกเปิดไว้แล้ว */
 export type CatalogClient = PrismaClient | Prisma.TransactionClient;
 
-export type CatalogErrorCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "CONFLICT";
+/** R5: BUSY = ล็อกร้านไม่ว่างเกินงบรอ (ลองใหม่ได้) · INTERNAL = ขัดข้องที่ไม่คาดคิด (ต้นฉบับอยู่ใน `cause` · log ฝั่งเซิร์ฟเวอร์เท่านั้น) */
+export type CatalogErrorCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "CONFLICT" | "BUSY" | "INTERNAL";
 
 /** error ของแคตตาล็อก — ผู้เรียกตัดสินจาก `.code` เท่านั้น (ข้อความไว้แสดงผู้ใช้) */
 export class CatalogError extends Error {
   readonly code: CatalogErrorCode;
-  constructor(code: CatalogErrorCode, message: string) {
-    super(message);
+  constructor(code: CatalogErrorCode, message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "CatalogError";
     this.code = code;
   }
@@ -43,6 +55,10 @@ const notFound = () => new CatalogError("NOT_FOUND", "ไม่พบราย�
 const denied = () => new CatalogError("PERMISSION_DENIED", "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ขอสิทธิ์จากเจ้าของร้าน");
 const invalid = (message: string) => new CatalogError("VALIDATION", message);
 const conflict = (message: string) => new CatalogError("CONFLICT", message);
+const busy = () => new CatalogError("BUSY", "ระบบกำลังบันทึกแคตตาล็อกของร้านนี้อยู่ — ยังไม่ได้บันทึกรายการนี้ ลองอีกครั้งในอีกสักครู่");
+/** R5 F2: ข้อความเดียวของ INTERNAL ทุกฟังก์ชัน — ไม่มี path / SQL / ข้อความต้นฉบับ */
+const INTERNAL_MESSAGE = "ระบบขายขัดข้องชั่วคราว ยังไม่ได้บันทึกรายการนี้ — ลองอีกครั้ง หากยังไม่ได้โปรดแจ้งผู้ดูแลระบบ";
+const DIRTY_TEXT_MESSAGE = "ข้อมูลที่ส่งมามีอักขระที่ระบบขายบันทึกไม่ได้ (เช่น อักขระว่าง) — ยังไม่ได้บันทึกอะไร";
 
 export const PRODUCT_KINDS: readonly PosProductKind[] = ["PRODUCT", "SERVICE", "MENU", "BUNDLE"];
 /** สิทธิ์: เปลี่ยนราคา · เพิ่ม/แก้/เก็บสินค้าและหมวด (อ่านรายการ = แค่เข้าถึงสาขาได้ — แคชเชียร์ต้องขายได้) */
@@ -102,17 +118,61 @@ async function inTx<T>(client: CatalogClient, fn: (tx: Prisma.TransactionClient)
   return fn(client);
 }
 
-/** C10: unique violation (P2002) จากการเขียนใด ๆ = CatalogError CONFLICT — ไม่ส่ง error ดิบของ Prisma ถึงผู้เรียก */
-async function writeGuard<T>(fn: () => Promise<T>): Promise<T> {
+/**
+ * R5 F2 — ขอบของ facade (ทุกฟังก์ชันที่ export ผ่าน `catalog.<fn>`): CatalogError ผ่านตามเดิม · C10 P2002 = CONFLICT ·
+ * อย่างอื่นทั้งหมด (Prisma/driver/TypeError/client ของผู้เรียกพัง) = CatalogError `INTERNAL` ข้อความคงที่ · ต้นฉบับใน `cause` ·
+ * console.error ครั้งเดียวฝั่งเซิร์ฟเวอร์ · ค่าที่คืนเมื่อสำเร็จไม่เปลี่ยน
+ */
+async function boundary<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (e) {
+    if (e instanceof CatalogError) throw e;
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw conflict("มีรายการนี้อยู่แล้ว (ชื่อ/บาร์โค้ด/สินค้าคลังซ้ำ)");
-    throw e;
+    console.error("[pos/catalog] INTERNAL", e);
+    throw new CatalogError("INTERNAL", INTERNAL_MESSAGE, { cause: e });
   }
 }
 
+/** R5 F2: ไม่มี NUL และเป็น UTF-16 ที่ถูกรูป (surrogate ครบคู่) — แบบเดียวกับ `String.prototype.isWellFormed` + ห้าม U+0000 */
+function isCleanText(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 0) return false;
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const d = s.charCodeAt(i + 1);
+      if (!(d >= 0xdc00 && d <= 0xdfff)) return false;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) return false;
+  }
+  return true;
+}
+/** มีสตริงสกปรกไหม — สตริง · คีย์/ค่าของออบเจกต์และอาร์เรย์ (เฉพาะของตัวเอง · ลึก ≤ 4) */
+function hasDirtyText(v: unknown, depth = 0): boolean {
+  if (typeof v === "string") return !isCleanText(v);
+  if (depth >= 4 || !v || typeof v !== "object") return false;
+  for (const k of Object.keys(v)) if (!isCleanText(k) || hasDirtyText((v as Record<string, unknown>)[k], depth + 1)) return true;
+  return false;
+}
+/** R5 F2: ด่านแรกของทุกฟังก์ชัน facade — ก่อนแตะ DB (ไม่ส่ง client เข้ามา) */
+function assertCleanInputs(...vals: unknown[]): void {
+  if (vals.some((v) => hasDirtyText(v))) throw invalid(DIRTY_TEXT_MESSAGE);
+}
+
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/**
+ * R5 F6: อ่านเฉพาะคีย์ของตัวเอง (Object.keys = own enumerable · คีย์จาก prototype ไม่นับ) · ไม่ใช่ออบเจกต์ (null · อาร์เรย์ · ค่าเดี่ยว) = VALIDATION
+ * คีย์ของตัวเองที่ไม่อยู่ใน `allowed` = VALIDATION (ไม่เงียบทิ้ง)
+ */
+function ownFields(v: unknown, allowed: ReadonlySet<string>, what: string, unknownMessage: string): Record<string, unknown> {
+  if (!isRecord(v)) throw invalid(`ข้อมูล${what}ต้องเป็นชุดช่อง (ออบเจกต์) — ยังไม่ได้บันทึกอะไร`);
+  const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const k of Object.keys(v)) {
+    if (!allowed.has(k)) throw invalid(unknownMessage);
+    out[k] = v[k];
+  }
+  return out;
+}
 const toStrings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 /** จำนวนเต็มสตางค์ 0..Int4 */
 const isSatang = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= MAX_INT4;
@@ -139,8 +199,12 @@ function cleanTrackStock(v: unknown): boolean | null {
 /**
  * AUDIT-CLASS X2 + C12: ctx ต้องชี้ระบบ POS ที่เปิดใช้งานของร้านนี้จริง (ห้ามเชื่อ systemId จากผู้เรียก) — ไม่ใช่ = NOT_FOUND
  */
+/** รูปของ ctx (ร้าน + ระบบเป็นสตริงไม่ว่าง) — ไม่ใช่ = NOT_FOUND (ก่อนใช้ ctx.tenantId ทำคีย์ล็อก/คำสั่งใด ๆ) */
+function assertCtxShape(ctx: CatalogCtx): void {
+  if (!isRecord(ctx) || typeof ctx.tenantId !== "string" || !ctx.tenantId || typeof ctx.systemId !== "string" || !ctx.systemId) throw notFound();
+}
 async function assertPosSystem(ctx: CatalogCtx, db: CatalogClient): Promise<void> {
-  if (!ctx || typeof ctx.tenantId !== "string" || !ctx.tenantId || typeof ctx.systemId !== "string" || !ctx.systemId) throw notFound();
+  assertCtxShape(ctx);
   const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS", active: true }, select: { id: true } });
   if (!sys) throw notFound();
 }
@@ -194,6 +258,10 @@ function isMembershipCtx(v: unknown): v is MembershipCtx {
  *     คือคลังของ InvItem (C3) · ต้องมีคีย์ (`evaluate(action, unitId)`) ที่ **ทุก** สาขาในขอบเขต · ขอบเขตว่าง = OWNER หรือ unitAccess `*` เท่านั้น
  * ผลที่ต้องเป็น: ผู้จัดการร้านสาขาเดียว (unitAccess=[สาขานั้น]) เขียนสินค้าทุกสาขาของร้านตัวเองได้ · ผู้จัดการที่ระบุครบทุกสาขาได้ ·
  *   ผู้จัดการสาขา A ในร้านสองสาขาเขียนแถวทุกสาขาที่ขายที่ B ไม่ได้ แต่เขียนแถวทุกสาขาที่ (ตาม C3) ขายได้แค่ที่ A ได้
+ *   • R5 F6: `row.invItemId` (ถ้ามี) ต้องเป็น InvItem ของร้านนี้ในคลังที่ขายผ่าน POS นี้ — ไม่มีจริง/ร้านอื่น/คลังอื่น = "NOT_FOUND" ทุกผู้กระทำ (รวมเจ้าของ)
+ *     (ทางภายใน `rowWriteVerdict` ไม่ตรวจซ้ำ — ผู้เขียนตรวจด้วย `loadSellableItem` · แถวเดิมที่คลังเลิกขายผ่าน POS นี้ภายหลังยังแก้ได้ตามเดิม)
+ *   • R5 F2: สตริงสกปรก (NUL / UTF-16 ผิดรูป) ใน where/row = "NOT_FOUND" · action = "PERMISSION_DENIED" (คืนค่า ไม่ throw)
+ * 🔴 `actor` ต้องเป็น MembershipCtx ของ SESSION (โหลดจาก DB) — `isMembershipCtx` ตรวจรูปร่างเท่านั้น ห้ามประกอบจากข้อมูลในคำขอ
  */
 export async function checkCatalogWrite(
   actor: MembershipCtx,
@@ -202,25 +270,33 @@ export async function checkCatalogWrite(
   action: string,
   client: CatalogClient = prisma,
 ): Promise<CatalogWriteVerdict> {
-  if (!isMembershipCtx(actor)) return "PERMISSION_DENIED";
-  if (!isRecord(where) || typeof where.tenantId !== "string" || !where.tenantId || typeof where.systemId !== "string" || !where.systemId) return "NOT_FOUND";
-  if (!isRecord(row) || (row.unitId !== null && (typeof row.unitId !== "string" || !row.unitId))) return "NOT_FOUND";
-  if (row.invItemId !== null && typeof row.invItemId !== "string") return "NOT_FOUND";
-  if (typeof action !== "string" || !action) return "PERMISSION_DENIED";
-  // AUDIT-CLASS X2: ระบบ POS ของร้านนี้ที่เปิดใช้งาน (ห้ามเชื่อ systemId ของผู้เรียก)
-  const sys = await client.appSystem.findFirst({ where: { id: where.systemId, tenantId: where.tenantId, type: "POS", active: true }, select: { id: true } });
-  if (!sys) return "NOT_FOUND";
-  if (row.unitId !== null) {
-    // AUDIT-CLASS X2 + E1: สาขาต้องผูก POS นี้ (unique tenant+unit+type ⇒ สาขาร้านอื่น/POS อื่น/ไม่ผูก POS/ไม่มีจริง = ไม่พบ) และไม่เก็บถาวร
-    const link = await client.appSystemUnit.findUnique({
-      where: { tenantId_unitId_type: { tenantId: where.tenantId, unitId: row.unitId, type: "POS" } },
-      select: { systemId: true },
-    });
-    if (!link || link.systemId !== where.systemId) return "NOT_FOUND";
-    const unit = await client.businessUnit.findFirst({ where: { id: row.unitId, tenantId: where.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } });
-    if (!unit) return "NOT_FOUND";
-  }
-  return rowWriteVerdict(actor, where, { unitId: row.unitId, invItemId: row.invItemId }, action, client);
+  return boundary<CatalogWriteVerdict>(async () => {
+    if (!isMembershipCtx(actor)) return "PERMISSION_DENIED";
+    if (!isRecord(where) || typeof where.tenantId !== "string" || !where.tenantId || typeof where.systemId !== "string" || !where.systemId) return "NOT_FOUND";
+    if (!isRecord(row) || (row.unitId !== null && (typeof row.unitId !== "string" || !row.unitId))) return "NOT_FOUND";
+    if (row.invItemId !== null && (typeof row.invItemId !== "string" || !row.invItemId)) return "NOT_FOUND";
+    if (typeof action !== "string" || !action || !isCleanText(action)) return "PERMISSION_DENIED";
+    if (hasDirtyText([where.tenantId, where.systemId, row.unitId, row.invItemId])) return "NOT_FOUND";
+    // AUDIT-CLASS X2: ระบบ POS ของร้านนี้ที่เปิดใช้งาน (ห้ามเชื่อ systemId ของผู้เรียก)
+    const sys = await client.appSystem.findFirst({ where: { id: where.systemId, tenantId: where.tenantId, type: "POS", active: true }, select: { id: true } });
+    if (!sys) return "NOT_FOUND";
+    if (row.unitId !== null) {
+      // AUDIT-CLASS X2 + E1: สาขาต้องผูก POS นี้ (unique tenant+unit+type ⇒ สาขาร้านอื่น/POS อื่น/ไม่ผูก POS/ไม่มีจริง = ไม่พบ) และไม่เก็บถาวร
+      const link = await client.appSystemUnit.findUnique({
+        where: { tenantId_unitId_type: { tenantId: where.tenantId, unitId: row.unitId, type: "POS" } },
+        select: { systemId: true },
+      });
+      if (!link || link.systemId !== where.systemId) return "NOT_FOUND";
+      const unit = await client.businessUnit.findFirst({ where: { id: row.unitId, tenantId: where.tenantId, status: { not: "ARCHIVED" } }, select: { id: true } });
+      if (!unit) return "NOT_FOUND";
+    }
+    if (row.invItemId !== null) {
+      // R5 F6 + AUDIT-CLASS X2: InvItem ของร้านนี้ (tenantId ในคำสั่ง) ในคลังที่ขายผ่าน POS นี้ — ทุกผู้กระทำ
+      const inv = await client.invItem.findFirst({ where: { id: row.invItemId, tenantId: where.tenantId }, select: { systemId: true } });
+      if (!inv || !(await inventorySystemsOfPos(where.tenantId, where.systemId, client)).includes(inv.systemId)) return "NOT_FOUND";
+    }
+    return rowWriteVerdict(actor, where, { unitId: row.unitId, invItemId: row.invItemId }, action, client);
+  });
 }
 
 /**
@@ -322,6 +398,26 @@ async function inventorySystemsOfPos(tenantId: string, posSystemId: string, db: 
  */
 async function lockTenant(tx: Prisma.TransactionClient, key: string): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
+/**
+ * R5 F3 — งบรอล็อกร้านของผู้เขียนที่รับคำขอ (ไม่ใช่ backfill): ลองด้วย `pg_try_advisory_xact_lock` ซ้ำแบบสุ่มหน่วง (40→400 ms ×0.5–1.5)
+ * จนครบงบแล้ว `BUSY` — ไม่ปล่อยให้จบเป็น P2028/INTERNAL: เพดาน tx ของ client แอป = 30 วิ (core/db.ts · วัดแล้ว) · client เปล่าของ Prisma = 5 วิ
+ * · ข้อสอบ S3.55 = < 7 วิ ⇒ 3.5 วิ (+ 1 round-trip) อยู่ใต้ทุกตัวพร้อมที่เหลือให้คำสั่งก่อน/หลัง
+ */
+const LOCK_BUDGET_MS = 3_500;
+async function tryLockTenant(tx: Prisma.TransactionClient, tenantId: string): Promise<void> {
+  const key = `pos-catalog:${tenantId}`;
+  const start = Date.now();
+  let step = 40;
+  for (;;) {
+    const r = await tx.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${key})) AS ok`;
+    if (r[0]?.ok === true) return;
+    const left = LOCK_BUDGET_MS - (Date.now() - start);
+    if (left <= 0) throw busy();
+    await new Promise((res) => setTimeout(res, Math.max(1, Math.min(left, Math.round(step * (0.5 + Math.random()))))));
+    step = Math.min(step * 2, 400);
+  }
 }
 
 async function audit(
@@ -490,7 +586,8 @@ function decodeCursor(v: unknown): Cursor {
   if (typeof v !== "string" || !v) throw invalid("ตำแหน่งหน้าถัดไปไม่ถูกต้อง — โหลดรายการใหม่อีกครั้ง");
   try {
     const o: unknown = JSON.parse(Buffer.from(v, "base64url").toString("utf8"));
-    if (isRecord(o) && typeof o.n === "string" && typeof o.i === "string") return { n: o.n, i: o.i };
+    // R5 F2: ค่าที่ถอดได้ไปถึง SQL — NUL / surrogate เดี่ยว (JSON `\u0000` · `\ud800`) = ไม่ถูกต้อง
+    if (isRecord(o) && typeof o.n === "string" && typeof o.i === "string" && isCleanText(o.n) && isCleanText(o.i)) return { n: o.n, i: o.i };
   } catch {
     /* ตกไปโยนด้านล่าง */
   }
@@ -600,32 +697,38 @@ export async function listForUnit(
   opts: { q?: string; limit?: number; cursor?: string | null } = {},
   client: CatalogClient = prisma,
 ): Promise<{ items: PosProductView[]; nextCursor: string | null }> {
-  await assertPosSystem(ctx, client);
-  const actor = await actorOf(ctx, client);
-  const unit = await assertUnit(ctx, actor, unitId, client);
-  const o = isRecord(opts) ? opts : {};
-  let limit = PAGE_DEFAULT;
-  if (o.limit !== undefined && o.limit !== null) {
-    if (typeof o.limit !== "number" || !Number.isInteger(o.limit) || o.limit < 1) throw invalid("จำนวนต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1");
-    limit = Math.min(o.limit, PAGE_MAX);
-  }
-  const cur = o.cursor === undefined || o.cursor === null ? null : decodeCursor(o.cursor);
-  const q = typeof o.q === "string" ? o.q.trim().slice(0, 100) : "";
-  const unitInv = await unitInventory(ctx.tenantId, unit, client);
-  const pat = q ? likePattern(q) : null;
-  const ids = await client.$queryRaw<{ id: string }[]>`
-    SELECT p.id FROM "PosProduct" p
-    WHERE p."tenantId" = ${ctx.tenantId} AND p."systemId" = ${ctx.systemId} AND p."archivedAt" IS NULL
-      AND (p."unitId" IS NULL OR p."unitId" = ${unit})
-      AND ${warehouseCond(ctx.tenantId, unitInv)}
-      ${pat ? Prisma.sql`AND (p.name ILIKE ${pat} OR p."nameEn" ILIKE ${pat} OR p.barcode ILIKE ${pat}
-        OR EXISTS (SELECT 1 FROM "InvItem" s WHERE s.id = p."invItemId" AND s."tenantId" = ${ctx.tenantId} AND (s.sku ILIKE ${pat} OR s.barcode ILIKE ${pat})))` : Prisma.empty}
-      ${cur ? Prisma.sql`AND (p.name > ${cur.n} OR (p.name = ${cur.n} AND p.id > ${cur.i}))` : Prisma.empty}
-    ORDER BY p.name, p.id
-    LIMIT ${limit + 1}`;
-  const page = await rowsInOrder(ids.slice(0, limit).map((r) => r.id), ctx.tenantId, client);
-  const nextCursor = ids.length > limit && page.length ? encodeCursor(page[page.length - 1]!) : null;
-  return { items: await toViews(ctx.tenantId, unit, unitInv, page, client), nextCursor };
+  return boundary(async () => {
+    // R5 F2: ctx · สาขา · q · cursor ที่มี NUL / UTF-16 ผิดรูป = VALIDATION ก่อนแตะ DB
+    assertCleanInputs(ctx, unitId, isRecord(opts) ? [opts.q, opts.cursor] : null);
+    await assertPosSystem(ctx, client);
+    const actor = await actorOf(ctx, client);
+    const unit = await assertUnit(ctx, actor, unitId, client);
+    const o = isRecord(opts) ? opts : {};
+    let limit = PAGE_DEFAULT;
+    if (o.limit !== undefined && o.limit !== null) {
+      if (typeof o.limit !== "number" || !Number.isInteger(o.limit) || o.limit < 1) throw invalid("จำนวนต่อหน้าต้องเป็นจำนวนเต็มตั้งแต่ 1");
+      limit = Math.min(o.limit, PAGE_MAX);
+    }
+    const cur = o.cursor === undefined || o.cursor === null ? null : decodeCursor(o.cursor);
+    // ตัด 100 ตัวอักษร (code unit) — ถ้าตัดกลางคู่ surrogate ให้ทิ้งครึ่งที่ค้าง (ไม่ส่ง UTF-16 ผิดรูปถึง SQL)
+    let q = typeof o.q === "string" ? o.q.trim().slice(0, 100) : "";
+    if (q && !isCleanText(q)) q = q.slice(0, -1);
+    const unitInv = await unitInventory(ctx.tenantId, unit, client);
+    const pat = q ? likePattern(q) : null;
+    const ids = await client.$queryRaw<{ id: string }[]>`
+      SELECT p.id FROM "PosProduct" p
+      WHERE p."tenantId" = ${ctx.tenantId} AND p."systemId" = ${ctx.systemId} AND p."archivedAt" IS NULL
+        AND (p."unitId" IS NULL OR p."unitId" = ${unit})
+        AND ${warehouseCond(ctx.tenantId, unitInv)}
+        ${pat ? Prisma.sql`AND (p.name ILIKE ${pat} OR p."nameEn" ILIKE ${pat} OR p.barcode ILIKE ${pat}
+          OR EXISTS (SELECT 1 FROM "InvItem" s WHERE s.id = p."invItemId" AND s."tenantId" = ${ctx.tenantId} AND (s.sku ILIKE ${pat} OR s.barcode ILIKE ${pat})))` : Prisma.empty}
+        ${cur ? Prisma.sql`AND (p.name > ${cur.n} OR (p.name = ${cur.n} AND p.id > ${cur.i}))` : Prisma.empty}
+      ORDER BY p.name, p.id
+      LIMIT ${limit + 1}`;
+    const page = await rowsInOrder(ids.slice(0, limit).map((r) => r.id), ctx.tenantId, client);
+    const nextCursor = ids.length > limit && page.length ? encodeCursor(page[page.length - 1]!) : null;
+    return { items: await toViews(ctx.tenantId, unit, unitInv, page, client), nextCursor };
+  });
 }
 
 /**
@@ -633,26 +736,30 @@ export async function listForUnit(
  * บาร์โค้ดซ้ำใน legacy เป็นเรื่องปกติ (InvItem.barcode ไม่ unique) — หน้าขายให้แคชเชียร์เลือก ไม่เดาตัวเก่าสุด
  */
 export async function byBarcode(ctx: CatalogCtx, unitId: string, barcode: string, client: CatalogClient = prisma): Promise<{ items: PosProductView[] }> {
-  await assertPosSystem(ctx, client);
-  const actor = await actorOf(ctx, client);
-  const unit = await assertUnit(ctx, actor, unitId, client);
-  const code = typeof barcode === "string" ? barcode.trim() : "";
-  if (!code) return { items: [] };
-  const unitInv = await unitInventory(ctx.tenantId, unit, client);
-  // D6: UNION สองทาง — บาร์โค้ดของแถวเอง (ใช้ index PosProduct(systemId, barcode)) ∪ บาร์โค้ดของ InvItem ที่ผูก
-  //     (index บาร์โค้ดของ InvItem = หนี้ P6.1)
-  const ids = await client.$queryRaw<{ id: string; name: string }[]>`
-    SELECT p.id, p.name FROM "PosProduct" p
-    WHERE p."systemId" = ${ctx.systemId} AND p.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
-      AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
-    UNION
-    SELECT p.id, p.name FROM "InvItem" b JOIN "PosProduct" p ON p."invItemId" = b.id AND p."systemId" = ${ctx.systemId}
-    WHERE b."tenantId" = ${ctx.tenantId} AND b.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
-      AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
-    ORDER BY name, id
-    LIMIT ${PAGE_MAX}`;
-  const rows = await rowsInOrder(ids.map((r) => r.id), ctx.tenantId, client);
-  return { items: await toViews(ctx.tenantId, unit, unitInv, rows, client) };
+  return boundary(async () => {
+    assertCleanInputs(ctx, unitId);
+    await assertPosSystem(ctx, client);
+    const actor = await actorOf(ctx, client);
+    const unit = await assertUnit(ctx, actor, unitId, client);
+    const code = typeof barcode === "string" ? barcode.trim() : "";
+    // R5 F2: รหัสที่สแกนมาผิดรูป (NUL / UTF-16 ผิดรูป) = ไม่พบ — เครื่องสแกนสะดุดต้องไม่ทำให้หน้าขายล้ม
+    if (!code || !isCleanText(code)) return { items: [] };
+    const unitInv = await unitInventory(ctx.tenantId, unit, client);
+    // D6: UNION สองทาง — บาร์โค้ดของแถวเอง (ใช้ index PosProduct(systemId, barcode)) ∪ บาร์โค้ดของ InvItem ที่ผูก
+    //     (index บาร์โค้ดของ InvItem = หนี้ P6.1)
+    const ids = await client.$queryRaw<{ id: string; name: string }[]>`
+      SELECT p.id, p.name FROM "PosProduct" p
+      WHERE p."systemId" = ${ctx.systemId} AND p.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
+        AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
+      UNION
+      SELECT p.id, p.name FROM "InvItem" b JOIN "PosProduct" p ON p."invItemId" = b.id AND p."systemId" = ${ctx.systemId}
+      WHERE b."tenantId" = ${ctx.tenantId} AND b.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
+        AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
+      ORDER BY name, id
+      LIMIT ${PAGE_MAX}`;
+    const rows = await rowsInOrder(ids.map((r) => r.id), ctx.tenantId, client);
+    return { items: await toViews(ctx.tenantId, unit, unitInv, rows, client) };
+  });
 }
 
 // ═══════════════════ ตัวเขียน ═══════════════════
@@ -728,16 +835,29 @@ async function loadSellableItem(ctx: CatalogCtx, invItemId: unknown, db: Catalog
   return inv;
 }
 
+/** R5 F6: คีย์ที่ createProduct รับ (sku ไม่อยู่ — SKU เป็นของ InvItem · ส่งมา = คีย์แปลก VALIDATION) */
+const CREATE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "kind", "categoryId", "basePriceSatang", "vatRateBp", "barcode", "unitId", "invItemId", "trackStock"]);
+const ownHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
 /**
  * เพิ่มสินค้าในแคตตาล็อก (สิทธิ์ pos.product.manage ตามขอบเขต D1) — kind ปริยาย PRODUCT (ผูก InvItem แล้วไม่ส่ง = ชนิดของ InvItem)
  * D6: สินค้าธรรมดา (ไม่ผูก InvItem · ไม่มีบาร์โค้ด) ไม่จับล็อกร้าน — ไม่ต้องรอ backfill ที่ถือล็อกอยู่
+ * R5: F6 อ่านเฉพาะคีย์ของตัวเอง (คีย์แปลก/ไม่ใช่ออบเจกต์ = VALIDATION) · F3 ผูกคลัง/มีบาร์โค้ด = ล็อกร้านแบบมีงบเป็นคำสั่งแรกของธุรกรรม
+ *     (ตัดสินจากข้อมูลเข้าล้วน — ระหว่างรอไม่ถืออะไร) ไม่ว่าง = BUSY · F1 InvItem ที่มีแถวเก็บถาวรอยู่ = CONFLICT ที่บอกให้กู้คืน (ไม่มี id)
  */
 export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, client: CatalogClient = prisma): Promise<PosProduct> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+  return boundary(async () => {
+    assertCleanInputs(ctx, input);
+    assertCtxShape(ctx);
+    const raw: Record<string, unknown> = isRecord(input) ? input : {};
+    const wantsLock =
+      (ownHas(raw, "invItemId") && raw.invItemId !== undefined && raw.invItemId !== null) || (ownHas(raw, "barcode") && typeof raw.barcode === "string" && raw.barcode.trim() !== "");
+    return inTx(client, async (tx) => {
+      // AUDIT-CLASS X6 + R5 F3: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
+      if (wantsLock) await tryLockTenant(tx, ctx.tenantId);
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
-      const i: Record<string, unknown> = isRecord(input) ? input : {};
+      const i = ownFields(input, CREATE_KEYS, "สินค้า", "มีช่องที่เพิ่มสินค้าผ่านทางนี้ไม่ได้ (เช่น SKU อยู่ที่สินค้าคลัง) — ยังไม่ได้บันทึกอะไร");
       const unitId = i.unitId === undefined || i.unitId === null ? null : await assertUnit(ctx, actor, i.unitId, tx);
       const wantInv = typeof i.invItemId === "string" && i.invItemId ? i.invItemId : null;
       await requireRowWrite(ctx, actor, { unitId, invItemId: wantInv }, PERM_MANAGE, tx);
@@ -752,8 +872,6 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       const categoryId = await assertCategory(ctx, i.categoryId, unitId, tx);
       let kind: PosProductKind = (i.kind as PosProductKind | undefined) ?? "PRODUCT";
       let invItemId: string | null = null;
-      // AUDIT-CLASS X6: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
-      if ((i.invItemId !== undefined && i.invItemId !== null) || barcode) await lockTenant(tx, `pos-catalog:${ctx.tenantId}`);
       if (i.invItemId !== undefined && i.invItemId !== null) {
         // C10: เมนู/ชุดไม่ผูก InvItem ตรง (ใช้ RecipeLine) · InvItem ต้องยังใช้งาน · ชนิดต้องตรง
         if (i.kind === "MENU" || i.kind === "BUNDLE") throw invalid("เมนู/ชุดสินค้าผูกสินค้าคลังตรงไม่ได้ — ใช้สูตร (ส่วนประกอบ) แทน");
@@ -763,8 +881,14 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
         if ((inv.kind === "SERVICE") !== (kind === "SERVICE")) throw invalid("ชนิดสินค้าไม่ตรงกับสินค้าคลัง (สินค้า ↔ บริการ)");
         // D6: แถวของสาขาต้องผูก InvItem ของคลังที่เสิร์ฟสาขานั้น — ไม่งั้นจะเป็นแถวที่มองไม่เห็นแต่ยึดช่อง unique (systemId, invItemId)
         if (unitId && (await unitInventory(ctx.tenantId, unitId, tx)) !== inv.systemId) throw invalid("สินค้าคลังรายการนี้ไม่ได้อยู่ในคลังของสาขาที่เลือก");
-        if (await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true } }))
-          throw conflict("สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว");
+        const prior = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { archivedAt: true } });
+        // R5 F1: แถวเดิมที่เก็บถาวร = บอกให้กู้คืน (ไม่ใส่ id — ผู้กระทำอาจมองไม่เห็นสาขาของแถวนั้น)
+        if (prior)
+          throw conflict(
+            prior.archivedAt
+              ? "สินค้าจากคลังรายการนี้มีในแคตตาล็อกขายแล้วแต่ถูกเก็บถาวรไว้ — กู้คืนรายการเดิมได้แทนการเพิ่มใหม่"
+              : "สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว",
+          );
         invItemId = inv.id;
       }
       if (trackStock === true && !invItemId) throw invalid("ตัดสต็อกได้เฉพาะสินค้าที่ผูกสินค้าคลัง");
@@ -777,8 +901,8 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
         name, kind, unitId, invItemId, basePriceSatang: row.basePriceSatang, vatRateBp, barcode, categoryId, trackStock,
       });
       return row;
-    }),
-  );
+    });
+  });
 }
 
 export type UpdateProductPatch = {
@@ -791,21 +915,22 @@ export type UpdateProductPatch = {
   /** เปิด/ปิดขายรายสาขา { [unitId]: true|false } — แทน setAvailability (ไม่มีฟังก์ชันนั้น) */
   availability?: Record<string, boolean>;
 };
-const PATCH_KEYS = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability"]);
+const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "categoryId", "unitId", "trackStock", "availability"]);
 
 /**
  * แก้ชื่อ/หมวด/สาขา/การตัดสต็อก/ความพร้อมขาย (สิทธิ์ pos.product.manage) — ราคาไปทาง setPrice
  * D1: สิทธิ์ตามขอบเขตของแถว (checkCatalogWrite) · ย้ายสาขา = ต้องมีสิทธิ์ทั้งขอบเขตเดิมและใหม่ (ไปสาขาที่เข้าไม่ได้ = NOT_FOUND) · หมวดต้องเข้ากับสาขาปลายทาง
+ * R5 F6: อ่านเฉพาะคีย์ของตัวเอง (คีย์จาก prototype ไม่นับ) · patch ที่ไม่ใช่ออบเจกต์ (null/อาร์เรย์) = VALIDATION · F1 แถวเก็บถาวรแก้ได้ (กู้คืนแล้วพกค่าล่าสุด)
  */
 export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdateProductPatch, client: CatalogClient = prisma): Promise<PosProduct> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+  return boundary(async () => {
+    assertCleanInputs(ctx, id, patch);
+    return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, id, tx, true);
       await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
-      const p: Record<string, unknown> = isRecord(patch) ? patch : {};
-      if (Object.keys(p).some((k) => !PATCH_KEYS.has(k))) throw invalid("มีช่องที่แก้ผ่านทางนี้ไม่ได้ (ราคาใช้การตั้งราคา)");
+      const p = ownFields(patch, PATCH_KEYS, "ที่แก้", "มีช่องที่แก้ผ่านทางนี้ไม่ได้ (ราคาใช้การตั้งราคา)");
       const data: Prisma.PosProductUncheckedUpdateManyInput = {};
       const changed: Record<string, unknown> = {};
       let unitId = before.unitId;
@@ -858,19 +983,23 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       for (const k of Object.keys(changed)) prev[k] = k === "availability" ? before.unavailableUnitIds : (before as unknown as Record<string, unknown>)[k];
       await audit(tx, ctx, "pos.product.update", "PosProduct", before.id, prev, changed);
       return (await tx.posProduct.findFirst({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? before;
-    }),
-  );
+    });
+  });
 }
 
-/** ตั้งราคาขาย (สตางค์ Int ≥ 0 · 0 = ฟรี) — สิทธิ์ pos.product.setPrice (+ ขอบเขตสาขา C4) · P1.1a ไม่เขียนกลับตารางเดิม (P1.1b) */
+/**
+ * ตั้งราคาขาย (สตางค์ Int ≥ 0 · 0 = ฟรี) — สิทธิ์ pos.product.setPrice (+ ขอบเขตสาขา C4) · P1.1a ไม่เขียนกลับตารางเดิม (P1.1b)
+ * R5 F1: แถวเก็บถาวรตั้งราคาได้ (กู้คืนแล้วขายราคาปัจจุบัน — ตรึงใน S3.50)
+ */
 export async function setPrice(
   ctx: CatalogCtx,
   id: string,
   priceSatang: number,
   client: CatalogClient = prisma,
 ): Promise<{ id: string; basePriceSatang: number }> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+  return boundary(async () => {
+    assertCleanInputs(ctx, id);
+    return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       // AUDIT-CLASS X6 + C11: ล็อกแถวก่อนอ่านราคาเดิม ⇒ 2 เลนพร้อมกันได้ audit 100→200, 200→300 (ไม่ใช่ 100→200, 100→300)
@@ -881,14 +1010,15 @@ export async function setPrice(
       await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { basePriceSatang: priceSatang } });
       await audit(tx, ctx, "pos.product.price", "PosProduct", before.id, { basePriceSatang: before.basePriceSatang }, { basePriceSatang: priceSatang });
       return { id: before.id, basePriceSatang: priceSatang };
-    }),
-  );
+    });
+  });
 }
 
-/** เก็บถาวร (soft · กดซ้ำได้ไม่ error) — สิทธิ์ pos.product.manage · C11 คืนเวลาที่เก็บจริงเสมอ (แม้แพ้การแข่ง) */
+/** เก็บถาวร (soft · กดซ้ำได้ไม่ error) — สิทธิ์ pos.product.manage · C11 คืนเวลาที่เก็บจริงเสมอ (แม้แพ้การแข่ง) · กู้คืนด้วย `restore` (R5 F1) */
 export async function archive(ctx: CatalogCtx, id: string, client: CatalogClient = prisma): Promise<{ id: string; archivedAt: Date }> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+  return boundary(async () => {
+    assertCleanInputs(ctx, id);
+    return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, id, tx, true);
@@ -899,27 +1029,80 @@ export async function archive(ctx: CatalogCtx, id: string, client: CatalogClient
       if (!stored?.archivedAt) throw notFound();
       if (r.count === 1) await audit(tx, ctx, "pos.product.archive", "PosProduct", before.id, { archivedAt: null }, { archivedAt: stored.archivedAt.toISOString() });
       return { id: before.id, archivedAt: stored.archivedAt };
-    }),
-  );
+    });
+  });
+}
+
+/**
+ * R5 F1 — กู้คืนแถวที่เก็บถาวร (ล้าง archivedAt) · ลายเซ็นแบบตัวเขียนอื่น `(ctx, id, client?)` — ผู้กระทำ = ctx.actorUserId (มติผู้คุมงาน)
+ *   • สิทธิ์/ขอบเขตเดียวกับ archive (pos.product.manage · D1 requireRowWrite) · ร้านอื่น/ไม่มีจริง/สาขาที่เข้าไม่ได้ = NOT_FOUND
+ *   • idempotent: แถวที่ไม่ได้เก็บถาวร (หรือกู้แล้ว) = OK `restored: false` ไม่มี audit · กู้จริง = audit `pos.product.restore`
+ *     before `{ archivedAt: เวลาที่เก็บ }` → after `{ archivedAt: null }` ในธุรกรรมเดียวกัน
+ *   • ชนกติกาไม่ซ้ำของชุดที่ขายอยู่ (บาร์โค้ดของแถวนี้มีแถวอื่นที่ขายอยู่/InvItem ในคลังของ POS นี้ใช้แล้ว) = CONFLICT — ไม่ใช่ P2002 ดิบ
+ *     แถวมีบาร์โค้ด: ตรวจ+เขียนภายใต้ล็อกร้านแบบมีงบ (F3 · คู่กับ createProduct ที่มีบาร์โค้ด) — ล็อกร้านก่อนล็อกแถว ไม่ถือแถวระหว่างรอ
+ *     (unique(systemId, invItemId) นับแถวเก็บถาวรด้วยอยู่แล้ว ⇒ กู้คืนไม่มีทางชนตัวนี้)
+ *   • ไม่ตรวจว่า InvItem ยังขาย/ยังไม่เก็บถาวร — ตัวอ่านกรองคลังเอง (C3) · P1.1b: legacy sync เรียก restore เมื่อร้านปลดเก็บถาวร InvItem
+ *     (`ensureForInvItem` ไม่ปลดเก็บถาวรเอง)
+ */
+export async function restore(ctx: CatalogCtx, id: string, client: CatalogClient = prisma): Promise<{ id: string; archivedAt: null; restored: boolean }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, id);
+    return inTx(client, async (tx) => {
+      await assertPosSystem(ctx, tx);
+      const actor = await actorOf(ctx, tx);
+      const peek = await loadProduct(ctx, actor, id, tx);
+      await requireRowWrite(ctx, actor, peek, PERM_MANAGE, tx);
+      if (!peek.archivedAt) return { id: peek.id, archivedAt: null, restored: false };
+      let locked = false;
+      if (peek.barcode) {
+        await tryLockTenant(tx, ctx.tenantId);
+        locked = true;
+      }
+      // AUDIT-CLASS X6 + C11: ล็อกแถวก่อนอ่านค่าเดิม ⇒ กดพร้อมกันได้ audit แถวเดียว
+      const before = await loadProduct(ctx, actor, id, tx, true);
+      if (!before.archivedAt) return { id: before.id, archivedAt: null, restored: false };
+      if (before.barcode) {
+        if (!locked) await tryLockTenant(tx, ctx.tenantId);
+        await assertBarcodeFree(ctx, before.barcode, before.invItemId, before.id, tx);
+      }
+      const r = await tx.posProduct.updateMany({
+        where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: { not: null } },
+        data: { archivedAt: null },
+      });
+      if (r.count === 1) await audit(tx, ctx, "pos.product.restore", "PosProduct", before.id, { archivedAt: before.archivedAt.toISOString() }, { archivedAt: null });
+      return { id: before.id, archivedAt: null, restored: r.count === 1 };
+    });
+  });
 }
 
 /**
  * ให้แน่ใจว่า InvItem นี้มีแถว (ทุกสาขา) ในแคตตาล็อกของระบบ POS ใน ctx — สร้างครั้งเดียว · เรียกซ้ำได้ id เดิม
  * ราคา C7 · VAT C8 · trackStock = null (AUTO · C2) · ชื่อ/ชนิด/เก็บถาวร ตาม InvItem · สิทธิ์ตามขอบเขต D1 (สาขาที่คลังถือ InvItem นี้)
  * AUDIT-CLASS X1 + X6: ล็อกร้าน + INSERT … ON CONFLICT DO NOTHING บน unique(systemId, invItemId) ⇒ 10 เลนพร้อมกันได้แถวเดียว id เดียว
+ * R5 F1: คืน `archived` ด้วย · ไม่ปลดเก็บถาวรเอง (ตั้งใจเก็บที่หน้าขายได้แม้ของยังอยู่ในคลัง — P1.1b เรียก `restore` เมื่อร้านปลดเก็บถาวร InvItem)
+ * R5 F3: ทางลัดอ่านแถวที่มีแล้ว (คำสั่งเดียว · ไม่ล็อก) — ไม่มี = ล็อกร้านแบบมีงบก่อนตรวจอย่างอื่น ⇒ แถวที่มีแล้วไม่ BUSY ระหว่าง backfill
  */
-export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, client: CatalogClient = prisma): Promise<{ id: string; created: boolean }> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, client: CatalogClient = prisma): Promise<{ id: string; created: boolean; archived: boolean }> {
+  return boundary(async () => {
+    assertCleanInputs(ctx, invItemId);
+    assertCtxShape(ctx);
+    return inTx(client, async (tx) => {
+      const quick =
+        typeof invItemId === "string" && invItemId
+          ? await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId }, select: { id: true } })
+          : null;
+      let locked = false;
+      if (!quick) {
+        await tryLockTenant(tx, ctx.tenantId);
+        locked = true;
+      }
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       await requireRowWrite(ctx, actor, { unitId: null, invItemId: typeof invItemId === "string" ? invItemId : null }, PERM_MANAGE, tx);
       const inv = await loadSellableItem(ctx, invItemId, tx);
-      const existing = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true } });
-      if (existing) return { id: existing.id, created: false };
-      await lockTenant(tx, `pos-catalog:${ctx.tenantId}`);
-      const again = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true } });
-      if (again) return { id: again.id, created: false };
+      const existing = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true, archivedAt: true } });
+      if (existing) return { id: existing.id, created: false, archived: existing.archivedAt !== null };
+      if (!locked) await tryLockTenant(tx, ctx.tenantId);
       const book = await bookOfPos(ctx.tenantId, ctx.systemId, tx);
       const apRows = inv.accountProductId
         ? await tx.accountProduct.findMany({
@@ -945,12 +1128,15 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
         }],
         skipDuplicates: true,
       });
-      const row = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true, basePriceSatang: true } });
+      const row = await tx.posProduct.findFirst({
+        where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id },
+        select: { id: true, basePriceSatang: true, archivedAt: true },
+      });
       if (!row) throw notFound();
       if (r.count === 1) await audit(tx, ctx, "pos.product.create", "PosProduct", row.id, null, { invItemId: inv.id, kind, basePriceSatang: row.basePriceSatang, source: "ensureForInvItem" });
-      return { id: row.id, created: r.count === 1 };
-    }),
-  );
+      return { id: row.id, created: r.count === 1, archived: row.archivedAt !== null };
+    });
+  });
 }
 
 /**
@@ -962,8 +1148,9 @@ export async function createCategory(
   input: { name: string; nameEn?: string | null; unitId?: string | null; sortOrder?: number },
   client: CatalogClient = prisma,
 ): Promise<{ id: string; name: string; unitId: string | null }> {
-  return writeGuard(() =>
-    inTx(client, async (tx) => {
+  return boundary(async () => {
+    assertCleanInputs(ctx, input);
+    return inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const i: Record<string, unknown> = isRecord(input) ? input : {};
@@ -978,8 +1165,8 @@ export async function createCategory(
       const row = await tx.posCategory.create({ data: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId, name, nameEn, sortOrder } });
       await audit(tx, ctx, "pos.category.create", "PosCategory", row.id, null, { name, nameEn, unitId, sortOrder });
       return { id: row.id, name: row.name, unitId: row.unitId };
-    }),
-  );
+    });
+  });
 }
 
 // ═══════════════════ backfill (ขั้น 1 ของ POS-MIGRATION-PLAN) ═══════════════════
@@ -1274,6 +1461,9 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
   //    ทุกกรณี ShopProduct.posProductId ถูกตั้ง · สาขาที่ไม่อยู่ใน POS แรก = นับ (เว็บล้วน · แก้ไขได้ใน P2.8)
   s.sources.shopProduct += shops.length;
   const firstPosUnits = new Set([...res.unitPos.entries()].filter(([, sys]) => sys === res.firstPos).map(([u]) => u));
+  // R5 F4: แถวแคตตาล็อกของเว็บร้านเองที่ถูกนับแล้ว (หลายแถวเว็บร้านชี้ InvItem เดียวกัน = แถวแคตตาล็อกเดียว · C9b) — นับครั้งเดียวต่อแถวแคตตาล็อก
+  //   ใช้คีย์เดียวกับ byInvKey (ระบบ|InvItem) ⇒ รอบแรก (สร้างใหม่) และรอบซ้ำ (แถวมีอยู่แล้ว) นับเท่ากัน
+  const ownRowCounted = new Set<string>();
   for (const sp of shops) {
     const r = resolvePosSystem(res, { kind: "shopProduct" });
     if (!r.systemId) {
@@ -1286,13 +1476,19 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     const inv = sp.invItemId ? itemById.get(sp.invItemId) ?? null : null;
     const shared = inv ? byInvKey.get(`${r.systemId}|${inv.id}`) : undefined;
     const sharedIsInvRow = !!inv && resolvePosSystem(res, { kind: "invItem", inventorySystemId: inv.systemId }).systemId === r.systemId;
+    // R5 F4: แถวเว็บร้านที่ใช้แถวแคตตาล็อกของเว็บร้านแถวก่อนหน้าร่วม (C9b) = บันทึกลิงก์อย่างเดียว ไม่นับซ้ำ
+    //   (ตัวนับ shopOwnRow/zeroPriceWeb/ราคา null นับ "แถวแคตตาล็อก" ⇒ Σ ตัวนับราคา null = จำนวนแถวราคา null ที่สร้าง แม้มีแถวร่วม)
+    const ownKey = inv && !sharedIsInvRow ? `${r.systemId}|${inv.id}` : null;
+    const ownCountedBefore = ownKey !== null && ownRowCounted.has(ownKey);
+    if (ownKey !== null) ownRowCounted.add(ownKey);
     if (inv && shared && sharedIsInvRow) {
       // C9a — นับอย่างเดียว ไม่แก้แถวร่วม
       if (priceOfProduct.get(shared) !== sp.priceSatang) s.counts.shopPriceDiffersFromCatalog++;
       if (!sp.active) s.counts.shopInactiveLinked++;
-    } else if (inv) s.counts.shopOwnRowInvItemOutsideFirstPos++;
-    else if (sp.invItemId) s.counts.shopDanglingInvItem++;
-    if (!(inv && shared && sharedIsInvRow)) {
+    } else if (inv) {
+      if (!ownCountedBefore) s.counts.shopOwnRowInvItemOutsideFirstPos++;
+    } else if (sp.invItemId) s.counts.shopDanglingInvItem++;
+    if (!(inv && shared && sharedIsInvRow) && !ownCountedBefore) {
       // แถวของเว็บร้านเอง (C9b/c/d): นับจากราคาสุดท้ายจริง — zeroPriceWeb เฉพาะเมื่อราคาสุดท้ายคือราคาเว็บ 0 (D6)
       const fin = initialPrice({ ap: inv ? strictAp(inv, apById, book(r.systemId)) : null, inv, own: sp.priceSatang });
       // partition ราคา null (แถวของเว็บร้านเอง — ไม่ใช่ราคาลิ้นชัก ⇒ เหลือ 3) / 4))
