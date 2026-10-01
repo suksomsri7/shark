@@ -245,3 +245,82 @@ I did not repair the round-1 probe; its R9 is superseded by Q6.
    - Alternatively, the controller records an explicit acceptance as a tracked LOW follow-up.
 
 Should-fix (follow-up): R2b-2 (extend the scanner or accept as documented), R2b-3 (flag EMAIL activities from unverified mail), R2b-6 (optional). Carried over: RV2-10, RV2-11 (P14 launch prerequisite), and the wrong comment at `kanban/archive.ts:8`.
+
+---
+
+# ROUND 3 CHECK (3bd78c23 on 519ec451): only R2b-1 changed
+
+Probe: `scripts/pending/cf2/review/probe-cf2-review-r3.mts`, run on QC3 under the gate lock. Final log: `probe-cf2-review-r3.r3.log`, 3/3, CLEAN 0.
+
+The earlier `.r1` and `.r2` runs reported reds that were my own bugs:
+- `.r1`: the switch and invite results were swapped in the invite-first order.
+- `.r2`: the errors it printed under "invite" were therefore the expected switch refusals.
+- In both runs: 0 survivors and no real invite error.
+
+## (1) The race is closed in both orders
+
+44 trials ran: 22 with the switch started first and the re-invite delayed 0 to 60 ms, and 22 with the re-invite started first and the switch delayed. **0 live sessions** of the contact remained after every trial. Every re-invite succeeded, with no deadlock or timeout. Both serialisation outcomes occurred:
+- `sw0`: the switch committed first, and its new session was then killed by the re-invite.
+- `x0`: the re-invite committed first, and the switch was refused with the generic not-found.
+
+Positive control: an uncontended B→A switch still gives exactly 1 live session, on A. The builder's own run is 0 of 24 (`/tmp/cf2-logs/probe-r3-g1.log`, 36/36). My r2 probe also shows `survived=0` in `reg4`.
+
+## (2) The `inTx` hook in `mintPortalSession`
+
+**Default path.** The only change is an optional third parameter and `if (opts.inTx) await opts.inTx(tx);` as the first statement of the existing `$transaction`. Without it, the function runs the same statements in the same order. Callers:
+- `portal.ts:201`: invite accept (link).
+- `portal.ts:336`: LINE with invite.
+- `portal.ts:354`: LINE without invite.
+- `customer-session.ts:795`: OTP verify, through `verifyPortalOtp`.
+- `portal.ts:382`: `switchCompany`, the only caller that passes `inTx`.
+
+All of the first four use the default path.
+
+**Visibility before commit.** The session row is inserted inside the interactive transaction and is invisible to other connections until commit. The token string is generated before the transaction but is only *returned* after `$transaction` resolves.
+
+**Rollback.** A rolled-back transaction (lock, then the re-check throws `nf()`) leaves no session row. `switchCompany` catches the error and throws not-found, so no token or cookie reaches the client. The cookie is set by the route only from a returned token.
+
+## (3) Lock order and collisions
+
+**Lock order.** Both transactions take `pg_advisory_xact_lock` as their **first** statement:
+- `invite`: then the access upsert, the session `updateMany` and the audit insert.
+- switch: then the session re-check, the session insert and the `crmPortalAccess.lastLoginAt` update.
+
+Every taker acquires the advisory key before any row lock, and nothing that holds a row lock waits on this key. So no cycle with other row locks is possible.
+
+**Collisions.** `hashtext` is 32-bit; the rest of the codebase uses `hashtextextended(…, 0)`, which is 64-bit (R3c-1, LOW style). A collision with another tenant's key, or with another advisory user's key, only adds waiting. Every holder of a colliding key either takes it first in its own transaction or holds no lock this path needs, so correctness and deadlock-freedom are unaffected.
+
+## (4) Pooler safety
+
+It is the transaction-scoped `pg_advisory_xact_lock`, issued through `tx.$executeRaw` inside interactive Prisma transactions (pg adapter, one connection for the whole callback). It is released at commit or rollback and cannot leak across pooled connections. No session-level `pg_advisory_lock` is used.
+
+## (5) Regressions (`/tmp/cf2-logs/reg4.summary` and logs)
+
+- c3.5: 67/67.
+- c2.5: 104/105; the only ❌ is the U.5 sha pin (ORACLE-EDIT already approved).
+- Fitness 36/36 with and without env; typecheck exit 0; docs-crm OK.
+- Reviewer r2 probe: 10/10, race `survived=0`.
+- probe-cf2: 36/36 (`probe-r3-g1.log`, 13:30).
+- Timing: `portal.ts` and `customer-session.ts` mtime 13:29 precedes every reg4 run.
+
+## New finding
+
+| id | sev | finding |
+|---|---|---|
+| R3c-1 | LOW (style) | `lockPortalContactInTx` uses `hashtext` (int4) where the codebase convention is `hashtextextended(…, 0)` (int8). This only means more collisions, which cost extra waiting; there is no correctness impact. Optional alignment. |
+
+## FINAL VERDICT for the whole card: **MERGEABLE**
+
+- **No must-fix remaining.** All BLOCKER, HIGH and MED findings from rounds 1 to 3 (RV2-1 to RV2-5, R2b-1) are closed and were re-tested.
+- **ORACLE-EDIT C2.5-U.5:** `SHA_BOARD_IN = 1405870825b2e9f1ab0d35321650861584fc384ca91ab96b6fdf21aa3d1bf496`. `kanban-email-in.ts` is unchanged since round 1.
+- **Tracked LOW and ops follow-ups:**
+  - RV2-10: unsalted sender hash.
+  - RV2-11: P14 / `CRM_INBOUND_AUTHSERV_ID` is a launch prerequisite.
+  - RV2-12: the wrong `kanban/archive.ts:8` comment.
+  - R2b-2: the remaining F15 spellings.
+  - R2b-3: no flag on timeline EMAIL activities.
+  - R2b-4 and R2b-5: info only.
+  - R2b-6: flood cost.
+  - R3c-1: `hashtext` style.
+  - The 4 OWED `account/**` sites belong to the account lane.
+  - The inbound forwarder's header serialisation is unverified; it decides whether X-SHARK-Loop and A-R work in production.

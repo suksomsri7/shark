@@ -1,0 +1,18 @@
+(node:1369423) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [R3] R2b-1 CLOSED? ≥40 trials of switchCompany(B→A) vs re-invite(A) in both interleavings (0–60 ms staggers) ⇒ 0 live sessions of the contact after every trial · every re-invite succeeds (no deadlock/timeout) · switch failures are only the generic not-found
+        — ACTUAL trials=44 survived=0 inviteErr=0 switchOdd=0 invErrs=[] s0:x0 s0:sw0 s1:sw0 s2:sw0 s3:sw0 s5:sw0 s8:sw0 s12:sw0 s20:sw0 s35:sw0 s60:sw0 s0:sw0 s0:sw0 s1:sw0 s2:sw0 s3:sw0 s5:sw0 s8:sw0 s12:sw0 s20:sw0 s35:sw0 s60:sw0 i0:sw0 i0:sw0 i1:sw0 i2:sw0 i3:sw0 i5:sw0 i8:x0 i12:sw0 i20:sw0 i35:x0 i60:x0 i0:sw0 i0:sw0 i1:sw0 i2:sw0 i3:sw0 i5:sw0 i8:sw0 i12:sw0 i20:sw0 i35:x0 i60:x0
+  ✅ [R3.ctl] positive control: an uncontended switch B→A succeeds (1 live session, on A)
+        — ACTUAL ok=true live=1
+  ✅ [CLEAN] throwaway tenant, users, systems and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+🟢 probe-cf2-review-r3: 3/3
+JSON_SUMMARY {"total":3,"passed":3,"findings":[]}
