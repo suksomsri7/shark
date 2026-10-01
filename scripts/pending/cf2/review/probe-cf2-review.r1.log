@@ -1,0 +1,44 @@
+  ✅ [R9.1] F15 RAW_RE: positive controls (single-line + multi-line object) match · list of realistic spellings it does NOT catch
+        — ACTUAL control=1 multi=1 missed=[shorthand, swapped, singleQuote, commaInValue, quotedKey, queryModeEnum, variableObject, spread, urlOnSameLine] of 9
+  ✅ [R9.2] F15 OWED is keyed by file:field (not by site) ⇒ the two account/service.ts sites share ONE key and a third NEW `name: {equals, mode}` in that file is NOT flagged
+        — ACTUAL owed=["src/lib/modules/account/product.ts:name","src/lib/modules/account/product.ts:sku","src/lib/modules/account/service.ts:name"] sitesBefore=2 sitesAfterAddingOne=3 flagged=0
+(node:1256400) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+        R1 equals+insensitive : {"frag":" (\"public\".\"CrmContact\".\"systemId\" = $1 AND \"public\".\"CrmContact\".\"email\" ILIKE $2) OFFSET $3","params":"[\"cmupihuzl0003g0kzl6xlmjxy\",\"sq_l-uzutacvs@qc.invalid\",\"0\"]"}
+        R1 ciEquals           : {"frag":" (\"public\".\"CrmContact\".\"systemId\" = $1 AND \"public\".\"CrmContact\".\"email\" ILIKE $2) OFFSET $3","params":"[\"cmupihuzl0003g0kzl6xlmjxy\",\"sq\\\\_l-uzutacvs@qc.invalid\",\"0\"]"}
+        R1 contains+insensitive: {"frag":" (\"public\".\"CrmContact\".\"systemId\" = $1 AND \"public\".\"CrmContact\".\"email\" ILIKE ('%' || $2 || '%')) OFFSET $3","params":"[\"cmupihuzl0003g0kzl6xlmjxy\",\"q_l\",\"0\"]"}
+        R1 equals (sensitive) : {"frag":" (\"public\".\"CrmContact\".\"systemId\" = $1 AND \"public\".\"CrmContact\".\"email\" = $2) OFFSET $3","params":"[\"cmupihuzl0003g0kzl6xlmjxy\",\"sq_l-uzutacvs@qc.invalid\",\"0\"]"}
+  ✅ [R1.1] Prisma 7 emits `ILIKE $n` with NO ESCAPE clause for equals+insensitive (⇒ Postgres default escape `\` applies) · ciEquals passes the escaped value as the bound param
+        — ACTUAL raw= ("public"."CrmContact"."systemId" = $1 AND "public"."CrmContact"."email" ILIKE $2) OFFSET $3 | safeParams=["cmupihuzl0003g0kzl6xlmjxy","sq\\_l-uzutacvs@qc.invalid","0"]
+  ✅ [R1.2] info: contains+insensitive SQL/param (does Prisma escape wildcards in contains?)
+        — ACTUAL  ("public"."CrmContact"."systemId" = $1 AND "public"."CrmContact"."email" ILIKE ('%' || $2 || '%')) OFFSET $3 | params=["cmupihuzl0003g0kzl6xlmjxy","q_l","0"]
+        R2 cases={"backslashSelf":{"ok":true,"v":true},"backslashRawSelf":{"ok":true,"v":false},"trailingBsSafe":{"ok":true,"v":true},"trailingBsRaw":{"ok":false,"err":"PrismaClientKnownRequestError:\nInvalid `prisma.$queryRaw()` invocation:\n\n\nRaw query failed. Code: `22025`. Message: `LIKE pattern must not end with escape character`"},"doubleBsSafe":{"ok":true,"v":true},"pctLiteral":{"ok":true,"v":true},"pctNoMatch":{"ok":true,"v":false},"thaiCase":{"ok":true,"v":true}}
+        R2 db={"scs":"on","coll":"C.UTF-8","ctype":"C.UTF-8"} unicode={"kelvinDb":{"ok":true,"v":true},"kelvinJs":true,"dottedIDb":{"ok":true,"v":true},"dottedIJs":false,"sharpSDb":{"ok":true,"v":false}}
+  ✅ [R2.1] likeEscape is correct under Postgres default escape: literal `\` (incl. trailing `\` and `\\`) matches itself, `%` literal, no wildcard · the OLD raw form with a trailing `\` errors (500 before the fix) and `a\b` did not match itself
+        — ACTUAL {"backslashSelf":true,"backslashRawSelf":false,"trailingBsSafe":true,"trailingBsRaw":"ERR PrismaClientKnownRequestError:\nInvalid `prisma.$queryRaw()` invocation:\n\n\nRaw qu","doubleBsSafe":true,"pctLiteral":true,"pctNoMatch":false,"thaiCase":true}
+  ✅ [R2.2] info: Unicode folding DB-ILIKE vs JS toLowerCase (portal re-check is an AND ⇒ can only narrow)
+        — ACTUAL {"scs":"on","coll":"C.UTF-8","ctype":"C.UTF-8"} {"kelvinDb":true,"kelvinJs":true,"dottedIDb":true,"dottedIJs":false,"sharpSDb":false}
+  ✅ [R3] REPRODUCED: copy target outside SHARK that forwards back with `FW:` and without our X- header ⇒ every hop is stored AND re-copied (subject prefix guard is startsWith only; no From==copy-target guard) — bounded only by the 100/h per-sender cap · positive control: a redirect that keeps X-SHARK-Loop is dropped
+        — ACTUAL first=true hops=4 copies=5 rows+5 lastSubject="[สำเนาจดหมายเข้า] FW: [สำเนาจดหมายเข้า] FW: [สำเนาจดหมายเข้า] FW: [สำเนาจดหมายเข้า] FW: [สำเนาจดหมายเข้า] สอบถามราคา qc-" redirect=loop
+  ✅ [R4] REPRODUCED: forged `ceo@<company domain>` (no contact, no A-R) is filed on the company with NO unverifiedFrom flag/badge and crm.email.received carries companyId (claim C says unproven mail is flagged + anonymous) · positive control: forged From of an existing contact IS flagged
+        — ACTUAL company=true routing=null badge=false evt={"emailId":"cmupihwqj000jg0kza5j30fos","companyId":"cmupihwmv000ig0kz62rbczmm","threadKey":"17aec452872050944bbb0d3a1b7a8b93"} contactCase={"unverifiedFrom":true}
+  ✅ [R5] ruling (a) residual, as documented: a holder of our Message-ID (the CC'd party) forging From = the To recipient, no A-R ⇒ OUT repliedAt · crm.email.replied WITH contactId (not anonymised) · recipient's sequence STOPPED · the stored mail itself is badged
+        — ACTUAL replied=true evt={"emailId":"cmupihy7r0014g0kz8851ldhe","contactId":"cmupihxun000tg0kzxeuaiq7e","threadKey":"thr5uzutacvs"} enr=STOPPED rowFlag={"unverifiedFrom":true}
+  ✅ [R6] sender-supplied X-SHARK-Loop drops only that sender's own mail (handled false · reason loop · 200) · positive control: same sender without the header is stored
+        — ACTUAL withHeader={"ok":true,"handled":false,"reason":"loop","attachmentsDropped":0} without=true rows+1
+  ✅ [R7] DoS trade-off REPRODUCED: once the per-system bucket is full (1000 mails/h from 1000 forged Froms — sender key = hash of the unauthenticated From, rotated for free), a DMARC-pass mail from a known customer is accepted-and-dropped (no row, no bounce)
+        — ACTUAL verifiedCustomer={"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0} senderKeysDiffer=true
+  ✅ [R8] REPRODUCED (multi-company contact): re-invite of access A kills A's sessions (positive control) but the old device's session on the same contact's access B survives and switchCompany(B→A) mints a fresh APPROVE session on A
+        — ACTUAL A=false B=true switchBackToA=true alive=true
+  ✅ [CLEAN] throwaway tenant, users, systems and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+🟢 probe-cf2-review: 13/13 (✅ on R3/R4/R5/R7/R8/R9 = the finding REPRODUCED)
+JSON_SUMMARY {"total":13,"passed":13,"findings":[]}
