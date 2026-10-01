@@ -18,6 +18,7 @@ import ImageEditor from "./ImageEditor";
 import { formatBaht } from "@/lib/ui/money";
 import BarcodeSearch from "./BarcodeSearch";
 import StockCount from "./StockCount";
+import { requireInventoryPage } from "./guard";
 import {
   ensureDefaultLocation,
   getSettings,
@@ -824,8 +825,8 @@ export async function InvProcurementSection({ systemId }: { systemId: string }) 
 // ───────────── InvHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
 // การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
 export async function InvHub({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  // HF-INV-0: หน้า /app/sys/[id] (ไฟล์กลาง) ไม่มีด่านคลัง → กั้นที่นี่ก่อนอ่าน/เขียนอะไร (ไม่ผ่าน = 404)
+  const { ctx } = await requireInventoryPage(systemId);
 
   await ensureDefaultLocation(ctx);
   const [items, low, locations, pos, pendingPoIds] = await Promise.all([

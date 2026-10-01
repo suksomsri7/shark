@@ -696,6 +696,15 @@ export async function transfer(ctx: Ctx, input: TransferInput): Promise<{ ok: bo
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
+    // 🔴 HF-INV-0 (D3): คลังต้นทาง/ปลายทางมาจากฟอร์ม — ต้องเป็นคลังของระบบนี้ที่ยังใช้งานอยู่ทั้งคู่
+    //    เดิมไม่ตรวจ: id มั่ว/คลังของระบบอื่น/คลังที่ปิดแล้ว → applyLocationDelta สร้างแถวผีติดลบ แล้วคลังจริงได้ของเพิ่มฟรี
+    //    (ต้นทางติดลบยังยอมตามนโยบายเดิม — ตรงนี้ตรวจแค่ว่าคลังมีจริง)
+    const locs = await tx.invLocation.findMany({
+      where: { ...scope(ctx), id: { in: [input.fromLocationId, input.toLocationId] }, archivedAt: null },
+      select: { id: true },
+    });
+    if (locs.length !== 2) throw new Error("ไม่พบคลังต้นทางหรือปลายทางที่เลือก — รีเฟรชหน้าแล้วเลือกคลังใหม่อีกครั้ง");
+
     await seedDefaultStockIfNeeded(txc, ctx, item);
 
     // คำนวณยอดหลังโอนไว้ก่อน apply (สำหรับ balanceAfter/needsReview)

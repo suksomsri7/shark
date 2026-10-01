@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import type { Ctx } from "./service";
+import { requireInventoryCtx } from "./guard";
 import {
   cancelPo,
   createPo,
@@ -48,7 +48,7 @@ export async function createSupplierAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await createSupplier(ctx, {
     name,
     phone: String(formData.get("phone") ?? "").trim() || null,
@@ -65,7 +65,7 @@ export async function enableVendorPortalAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const supplierId = String(formData.get("supplierId") ?? "").trim();
   if (!systemId || !supplierId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await enableVendorPortal(ctx, supplierId);
   revalidate(systemId);
 }
@@ -77,7 +77,7 @@ export async function disableVendorPortalAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const supplierId = String(formData.get("supplierId") ?? "").trim();
   if (!systemId || !supplierId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await disableVendorPortal(ctx, supplierId);
   revalidate(systemId);
 }
@@ -103,7 +103,7 @@ export async function createPoAction(formData: FormData) {
     .filter((l) => l.itemId && l.qty > 0);
   if (lines.length === 0) return;
 
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await createPo(ctx, { supplierId, note: String(formData.get("note") ?? "").trim() || null, lines });
   revalidate(systemId);
 }
@@ -119,7 +119,7 @@ export async function markOrderedAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const poId = String(formData.get("poId") ?? "").trim();
   if (!systemId || !poId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await markOrdered(ctx, poId, auth.user.id);
   revalidate(systemId);
 }
@@ -131,7 +131,7 @@ export async function receivePoAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const poId = String(formData.get("poId") ?? "").trim();
   if (!systemId || !poId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   const locationId = String(formData.get("locationId") ?? "").trim();
   await receivePo(ctx, poId, locationId ? { locationId } : undefined);
   revalidate(systemId);
@@ -144,7 +144,7 @@ export async function cancelPoAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const poId = String(formData.get("poId") ?? "").trim();
   if (!systemId || !poId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await cancelPo(ctx, poId);
   revalidate(systemId);
 }
