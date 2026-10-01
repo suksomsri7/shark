@@ -1,6 +1,9 @@
 # REVIEW — hotfix sanitize 2026-10-01 (independent security review of 6513a9f7)
 
-VERDICT: **SHIP** — no BLOCKER. Use the reviewer's `finder.sql` instead of the note's query (S1). S2 and S3 are fast follow-ups, not gates.
+VERDICT (branch `hotfix/sanitize-2026-10-01`, both commits): **SHIP**.
+- Item 1 sanitizer (6513a9f7): SHIP — no BLOCKER. Use the reviewer's `finder.sql` instead of the note's query (S1). S2 and S3 are fast follow-ups, not gates.
+- Item 2 automation authz (4d64b0dc): SHIP. See the section at the end.
+- New, separate hole found while sweeping siblings: **A1 `savePaymentProfileAction` has no permission check.** It is not caused by this branch and does not block it, but it should be the next hotfix.
 
 Scope: `git diff 04d2ade9 6513a9f7 -- src` (engine `core/html-allowlist.ts`, `core/sanitize.ts`, `kanban/sanitize.ts`, render hunks `member/join.ts joinForm`, `kanban/cards.ts getCardDetail`).
 Not reviewed: the "Item 2 — automation page authz" work that another session is doing, uncommitted, in this same worktree.
@@ -140,3 +143,101 @@ Harness: `scripts/pending/hsan-review/` (every file `@ts-nocheck`; tsc on these 
 - R4 sinks swept; S3 listed.
 - R5 perf done; S2 quantified.
 - R6 verdict SHIP.
+
+## Item 2 — automation page authz (4d64b0dc)
+
+VERDICT: **SHIP**.
+- This was read-only review plus a narrow `tsc` over `src/lib/automation/*.ts` and the sanitizer files: 0 errors.
+- The DB suite was not run (no DB).
+
+**Fix correctness**
+- **Tenant isolation holds.** `tenantDb` puts `updateMany`/`deleteMany` in `WHERE_OPS`, so it ANDs `{tenantId}` into the where clause (`core/db.ts:36-42, 99-101`).
+  - `AutomationRule` is registered `tenant` in `core/scope.ts:166`.
+  - So `{ id, scope: "KANBAN" }` cannot write cross-tenant.
+  - Before the fix, `update`/`delete` by bare id were already converted to tenant-guarded writes. The hole was cross-SCOPE inside one tenant, plus the missing permission check.
+- **The gate is correct.** `canManageShopAutomation` → `rbac.evaluate`:
+  - OWNER: always.
+  - MANAGER: `canAccessUnit` with no unitId is true, so always.
+  - STAFF: only with `automation.rule.create` or `automation.*`.
+  - The built context has the same shape as `chat/guard.ts membershipOf`. It is the same key the AI proposal `automation_create_rule` (`proposals.ts:179`) already enforces for the same `createRule`.
+- **The return-type change breaks nothing.**
+  - The only callers of `setRuleEnabled`/`deleteRule` are `automation/actions.ts:97,106`, and they ignore the return value.
+  - The CRM `deleteRule` imports at `app/app/sys/[id]/crm/settings/{scoring,assignment,automation}/actions.ts` are different functions from CRM modules.
+  - `proposals.ts:1354` uses only `createRule`.
+- Other writers in the service:
+  - `createRule` creates scope KANBAN with `boardId` null (default). It is now gated by the page action, and the AI path was already gated.
+  - `markNotificationRead` already uses `updateMany` + `visibleTo(userId)`. OK.
+
+**Who loses access on production**
+- Un-keyed STAFF lose access. Before the fix, every STAFF member could create, toggle and delete shop rules. Now they need `automation.rule.create` or `automation.*`.
+- No role preset or seed grants it: the only registry entry is `core/permissions.ts:666`.
+- The page and the nav link (`NavDrawer.tsx:362`) are still shown to everyone.
+  - create → Thai error message.
+  - toggle/delete → silent no-op. That is a UX NOTE: hide the buttons when `!mayManage`.
+- This is intended and matches the house key. No OWNER or MANAGER loses anything.
+- Impact query (read-only):
+```sql
+BEGIN READ ONLY; SET LOCAL statement_timeout='30s';
+SELECT count(*) AS staff_without_key, count(DISTINCT m."tenantId") AS tenants
+  FROM "Membership" m
+ WHERE m.role = 'STAFF'
+   AND coalesce(m.permissions->>'automation.rule.create','') <> 'true' AND coalesce(m.permissions->>'automation.*','') <> 'true'
+   AND m."tenantId" IN (SELECT "tenantId" FROM "AutomationRule" WHERE scope = 'KANBAN' AND "boardId" IS NULL);
+ROLLBACK;
+```
+
+**Ruling check (board-level KANBAN rules stay toggle/deletable here without board ADMIN): acceptable for the hotfix.**
+- Who can do it: only OWNER, MANAGER, or a STAFF member the owner explicitly granted `automation.rule.create`. Before the fix, any STAFF member could.
+- Worst case: a shop-level automation manager disables or deletes a board's rule. That is integrity/availability inside one shop. The rule is not modified, its actions are not changed, and no data is exposed.
+- No escalation path or cross-board data read. Follow-up: filter on `boardId: null` in `listRules` and both writers.
+
+**QC suite `scripts/qc-automation-authz-hotfix.mts` (read, not run): non-vacuous.**
+- It has positive controls: S1.4 toggles off→on, S2.3 deletes own rule.
+- It covers cross-scope (journey/tier/CRM), cross-tenant, unknown id with no throw, `listRules` unchanged, the gate truth table (7 cases incl. `automation.*` and `kanban.automation.manage` ✗), and static wiring order.
+- Safety:
+  - It uses `loadQcEnv` (which has a prod-host guard) BEFORE the dynamic `import("@/lib/core/db")`.
+  - It creates its own tenants and cleans up to 0.
+- Limits: the server actions are only checked statically (S5 regex/indexOf). No session-level test.
+
+**Same pattern elsewhere (listed, NOT fixed)**
+- **A1 (HIGH, separate hotfix): `src/lib/payment/actions.ts:17-31 savePaymentProfileAction`.**
+  - It only calls `requireTenant()`; there is no role or permission check. `/app/settings/payment/page.tsx` is not gated either.
+  - Any STAFF member of the shop, even one with zero permissions (e.g. a cashier), can therefore replace the shop's PromptPay ID.
+  - That ID is read by:
+    - the POS register QR (`app/app/sys/[id]/pos/register/page.tsx:53`, `lib/actions/pos.ts:320`)
+    - the online shop (`modules/shop/service.ts:195`)
+    - tickets (`modules/ticket/service.ts:612`)
+    - school fees (`modules/school/service.ts:425`)
+  - Impact: customer payments are redirected to the attacker's account.
+- NOTE `src/lib/storage/actions.ts:8 uploadLogoAction`: any STAFF member can upload files of kind LOGO (storage abuse; it does not set the logo).
+- NOTE `src/lib/ai/credit-actions.ts:44 loadMoreTxnsAction`: any STAFF member can read the AI credit ledger.
+- NOTE automation WEBHOOK rules POST to any `http(s)://` URL with no private-address guard (`automation/engine.ts:33`). This is now behind the key.
+- NOTE `listRules` shows webhook URLs (which may contain tokens) to every member who opens the page.
+- Checked and OK:
+  - domain actions: `assertOwner`
+  - webhooks: `assertWebhookCan`
+  - marketplace: `assertMarketplaceCan`
+  - systems, approval, staff and branding actions: gated
+  - `cancelMyRequestAction`: requester check
+  - `fetchImageForEditingAction`: CDN host allowlist
+
+**Forensics for Item 2.** The old hole wrote no audit log. Read-only hints:
+- Non-KANBAN rules that are disabled:
+```sql
+SELECT id, "tenantId", scope, name, "updatedAt" FROM "AutomationRule" WHERE scope <> 'KANBAN' AND enabled = false ORDER BY "updatedAt" DESC LIMIT 200;
+```
+- Run history that points at deleted rules:
+```sql
+SELECT r."tenantId", r."ruleId", max(r."createdAt") FROM "AutomationRun" r LEFT JOIN "AutomationRule" a ON a.id = r."ruleId" WHERE a.id IS NULL GROUP BY 1, 2 LIMIT 200;
+```
+  - Cross-check these against the member and CRM modules' own audit logs.
+
+**Rollout additions**
+- After deploy, as OWNER: create, toggle and delete a shop rule on `/app/settings/automation`.
+- As a STAFF member without the key (QC tenant):
+  - create shows the Thai error
+  - toggle/delete change nothing
+  - member journeys and tier rules are untouched
+- Rollback: same as Item 1. There is no migration.
+
+- R7 Item 2 reviewed: SHIP; A1 payment-profile hole reported.
