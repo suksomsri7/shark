@@ -115,3 +115,50 @@
 ## 8. คืนสภาพ QC4
 - seed ไม่ลบอะไร — ร้าน `pos-qc-coffee` / `pos-qc-resto` + ผู้ใช้ `pos-qc-*@shark.local` 4 คน **ตั้งใจให้คงอยู่** (เป็นชุดข้อมูลของ RUN) · ไม่มีแถวชั่วคราวอื่น
 - ไม่มี session `qc-visual-pos` (ไม่ได้รันจริง) · ไม่มีโปรไฟล์ `chr-pos-*` · ไฟล์ scratch ของ A2 ลบแล้ว (`git status` สะอาด)
+
+---
+
+## Round 2 (มติผู้คุมงานหลังผู้ตรวจอิสระ · 1 ต.ค. 2569) — commit 3dacd014 + notes
+log: `.qc-shots/pos/p0.1/r2-*.txt` · ข้อพิสูจน์ด้านลบ `r2-negatives.txt` (ทุกข้อแก้ชั่วคราว → แดง → คืน · `git status -- src scripts` ว่างหลังทุกข้อ)
+
+| # | ก่อน (รอบ 1) | หลัง (รอบ 2) | หลักฐาน |
+|---|---|---|---|
+| 1 | baseline ต่อ "ไฟล์" (ไฟล์ที่เขียนอยู่แล้วเพิ่มจุดเขียนได้ไม่จำกัด) | `CATALOG_WRITER_BASELINE` = ไฟล์ → {ชนิด → จำนวน call site} · เพิ่ม = แดง · ลดโดยไม่ลดตัวเลข = แดง | 1a `MenuItem.write 6→7` แดง · 1b `ShopProduct.write 3→2` แดง (ratchet) |
+| 2 | menuItem/shopProduct + AccountProduct.salePrice | + `AccountProduct.posPrice` · `InvItem.priceSatang` · `BookingService.priceSatang` · ทุก write ของ `MenuCategory` `MenuOptionGroup` `MenuOptionChoice` `MenuItemOptionGroup` (ตารางล่าง) | `--print-catalog-writers` |
+| 3 | `stripComments` แบบ regex (เคยลบโค้ดหลัง `accept="image/*"` จนถึง `/** */` ถัดไป) | TypeScript AST ล้วน (F15.1 call/สตริง · F15.3 หนี้ = JSX AST) — คอมเมนต์/สตริงไม่ใช่โค้ดตามธรรมชาติของ parser | fixture `_neg_accept.tsx` ตรงตามมติ: F15.1 เห็น `menuItem.update@12` · F15.3a เห็น `<input>@5` + `<button>@6` |
+| 4 | regex ชื่อ delegate ตามด้วย `.method(` | AST: `prisma.`/`tx.`/พารามิเตอร์ client/`tenantDb(...)`/`x["menuItem"]`/ตัวแปรที่ถือ delegate (`const d = prisma.x` · `const { invItem } = prisma` · พารามิเตอร์ชนิด `Prisma.XDelegate`) · โมเดลราคา: data ไม่ใช่ object literal / มี spread / คีย์คำนวณ = นับ (fail-closed) · nested relation write ตาม **แผนที่ relation จาก prisma/schema** (ไม่ใช่เดาชื่อ field) ไล่ลึกได้ · delegate ไดนามิก `client[x].write(` = นับ · SQL ดิบใน string/template | 4a ตัวแปร: `MenuOptionChoice.write` + `InvItem.price` (destructure) แดง · 4b data ตัวแปร/spread/ternary แดงทั้ง 3 และ `data:{name}` ไม่นับ · 4c `nested:RestaurantOrderItem.menuItem→MenuItem` + `nested:AccountDocumentLine.product→AccountProduct.price` แดง |
+| 5 | ทิศเดียว · ลายเซ็นตัวสุดท้าย | ขาเข้า (พารามิเตอร์ · CreateSaleInput · MemberSaleChoices): ลบ/เปลี่ยนชื่อ/เปลี่ยนชนิด/ใหม่ที่บังคับ = แดง · ขาออก (SaleResult · return): ลบ/เปลี่ยนชื่อ/เปลี่ยนชนิด/บังคับ→ไม่บังคับ/เติม `\| undefined` = แดง · เพิ่ม = เขียว · snapshot เก็บ **ทุก overload** (`functions: {name: FnSig[]}` — สร้าง snapshot ใหม่ในรูปแบบนี้ เนื้อหาเดิม + ผู้เรียกใหม่ `pos/api/ops/sales.ts` จาก P0.2 · `contracts.ts` หลุดเพราะเป็นแค่คอมเมนต์ ⇒ AST ถูก) · snapshot หาย = แดง · TEMPLATE D10: ผู้ตรวจต้อง diff กับ `git show <base>:scripts/pos-sale-contract.json` | 5a receiptNo?→แดง · 5b `number \| undefined` แดง · 5c ฟิลด์ขาออกใหม่ เขียว · 5d couponCode→number แดง · 5e overload #1 ตัด unitId แดง · 5f ลบ snapshot แดง |
+| 6 | เตือนอย่างเดียวเมื่อไม่ใช่ QC4 · ปลด QC1–3 ได้ด้วย env | `loadPosQcEnv` exit 4: prod (ปลดไม่ได้) · QC1–3 (ปลดไม่ได้) · host อื่น (ปลดได้ด้วย `POS_QC_ALLOW_HOST=<ส่วนของ host ≥6>` เท่านั้น) · seed ตัดด่านซ้ำของตัวเองออก | `r2-envloader.txt`: host อื่น/prod/QC1/prod+override = exit 4 ทั้ง 4 |
+| 7 | JSON พัง = throw ทั้ง fitness | ทุกด่านห่อ `guarded()` → ด่านนั้นแดง "ด่านนี้พังระหว่างตรวจ — <error>" · symlink เสียถูกข้ามใน walk | 7a snapshot พัง: F15.2 แดง ที่เหลือเขียว · 7b ทะเบียนพัง: F15.3a/b แดงพร้อมข้อความ |
+| 8 | โฟลเดอร์ชื่อ `pos` เป๊ะ | ค้นด้วย path: `src/app/**` ที่มี segment `pos` · `src/lib/modules/pos/**` · `src/components/**/pos*/**` · + ไฟล์ที่ไฟล์ POS import ซึ่งอยู่ในโฟลเดอร์ `register*`/`pos*` (ไล่จนนิ่ง · วันนี้ไม่มีเพิ่ม → 15 ไฟล์) · ตรวจฟิลด์แถว: page ขึ้นต้น `/` · kind ∈ ชุด CRM · roles ไม่ว่าง ⊆ {owner, manager, cashier} · hiddenFor ⊆ ชุดเดียวกัน · expect.type ∈ ชุด CRM · หนี้ ratchet **ต่อไฟล์ต่อชื่อแท็ก** (`byTag`) — ไม่ทำลายเซ็นราย element (ตำแหน่ง/ข้อความเปลี่ยนบ่อย = ratchet สั่นเอง) | 8a roles nok/kind clicky/page ไม่มี / แดง 3 แถว · 8b `src/components/pos-neg/Widget.tsx` ถูกค้นเจอ แดง |
+| 9 | pos.json / คีย์ pos · กฎ `^[A-Z_]+$` | + `src/messages/<loc>/pos/*.json` (= `pos.<ไฟล์>.*`) · คีย์แบน `"pos.x"` · ค่า th ต้องมีอักษรไทย เว้นประกอบด้วยคำใน `UNIVERSAL_TOKENS` (VAT QR PIN OK SKU POS PromptPay ID CSV PDF LINE KDS EAN Wi-Fi Bluetooth USB x X Z %) + ตัวเลข/placeholder | 9 `pos.register.total="Total"` แดง · `"VAT 7%"` ผ่าน · คีย์ th อย่างเดียวแดง · 9b `"pos.pay":"Pay"` ใน common.json แดง |
+| 10 | — | `<wo>` ต้อง `^[A-Za-z0-9._-]+$` ไม่มี `..` (exit 2) · SIGINT/SIGTERM/SIGHUP: ปิด chromium + ลบ session ของรอบ + ซาก + ลบโปรไฟล์ แล้ว exit 130 (ตัวลบ session ใช้ร่วมกับ finally · กันลบซ้ำ) · overflow ตรวจ html/body/main/[role=main] · คำขอย่อย 5xx = ภาพตก (4xx บันทึก) · ตาราง `PAGE_EXPECT` owner=200 · cashier="record" (มติ) | `--dry` คาด/แผน 12 ภาพ · `../x` exit 2 · ทางสัญญาณ/5xx = **CONTROLLER-RUN** (ต้องมีเซิร์ฟเวอร์) |
+| 11 | 7 ชุด | + qc-pos-register/products/coupon/closeday/inventory · qc-member-m2.6 · m2.8 · qc-booking-deposit · qc-clinic-refund · qc-school-refund · qc-rental-refund · qc-hotel-refund · qc-ticket-cancel · qc-restaurant-void (ทุกไฟล์มีจริงใน scripts/) | TEMPLATE-pos §5 |
+
+### F15.1 baseline สุดท้าย (36 จุด · 9 ไฟล์ · P1.1b ต้องทำให้ว่าง)
+| ไฟล์ | ชนิด → จำนวน | คืออะไร |
+|---|---|---|
+| `src/lib/modules/restaurant/menu.ts` | MenuItem.write 6 · MenuCategory.write 2 · MenuOptionGroup.write 2 · MenuOptionChoice.write 2 · MenuItemOptionGroup.write 5 | เมนู/หมวด/กลุ่มตัวเลือก/ตัวเลือก (priceDelta)/ผูกเมนู↔กลุ่ม/สต็อกเมนู/reset รายวัน |
+| `src/lib/modules/restaurant/order.ts` | MenuItem.write 3 | หักสต็อกเมนู + 86 ตอนยืนยัน/ยกเลิกออเดอร์ (availability — P1.1b ตัดสินปลายทาง) |
+| `src/lib/modules/shop/service.ts` | ShopProduct.write 2 | createProduct · updateProduct |
+| `src/lib/modules/account/service.ts` | AccountProduct.price 2 | updateAccountProductSalePrice · createAccountProductWithSalePrice (หน้า POS "สินค้า/ราคา") |
+| `src/lib/modules/account/product.ts` | AccountProduct.price 2 | createProduct · updateProduct (data ทางอ้อม — มี salePrice/posPrice จริง · ทางเข้า: หน้าบัญชี · import · REST/AI products-write) |
+| `src/lib/modules/account/inventory-link.ts` | AccountProduct.price 2 · InvItem.price 2 | ซิงก์ลิงก์คลัง↔บัญชี — data เป็นตัวแปร ⇒ fail-closed (อ่านโค้ดแล้ว **วันนี้ไม่ได้ตั้งราคา** ตั้งแค่ name/sku/unit/link — ผลบวกลวงที่ยอมรับตามมติ fail-closed) |
+| `src/lib/modules/inventory/service.ts` | InvItem.price 2 | createItem (:191) · updateItem (:350) |
+| `src/lib/modules/booking/service.ts` | BookingService.price 3 | ซิงก์ราคาจาก InvItem ใน serviceRoster (:254) · ตั้งค่าบริการ (:301 updateMany · :302 create ด้วย spread) |
+| `src/lib/platform/pdpa.ts` | dynamic 1 | ลบทั้งร้านตาม PDPA `client[clientKey(model)].deleteMany` (ทุกโมเดล) — ถูกต้อง แต่ static มองไม่เห็นว่าโมเดลอะไร |
+- ตรวจกับ REVIEW §2.3/§2.5: `ai/proposals.ts:618` และ `booking/service.ts:329` **ไม่ได้เขียน Prisma เอง** — เรียก `inventory.createItem(...)` (จุดเขียนจริงคือ `inventory/service.ts:191` ซึ่งอยู่ใน baseline แล้ว) · `account/inventory-link.ts:221-227` ก็เรียก `createItem` เช่นกัน · F15.1 นับ "จุดเขียน Prisma" ไม่นับผู้เรียกฟังก์ชัน — P1.1b ย้ายจุดเขียนแล้วผู้เรียกตามไปเอง
+- `KdsStation` ไม่อยู่ในชุด (มติข้อ 2 ไม่ได้สั่ง) · สแกน `src/` เท่านั้น (scripts/ ของ QC เขียนตรงได้)
+
+### มติที่บันทึก (ไม่มีโค้ดเพิ่ม)
+- F15.3a/F15.3b แยกต่อไป · นับเฉพาะ testid ที่กดได้ (เหมือน F14)
+- **F15.5** (ทุก event outbox มี consumer): อนุมัติหลักการ แต่ **ไม่ทำตอนนี้** — หนี้ของใบ POS แรกที่เพิ่ม event (P1.8) · ทำใน `fitness-pos.mts` เฉพาะ event `pos.*` (ไม่ขยาย hunk ใน fitness.mts)
+- seed: กันรันพร้อมกันด้วย gate lock ของ QC4 (เขียนไว้หัวไฟล์) · รันซ้ำปรับ role/unitAccess/permissions ของ membership QC ให้ตรง PQC — พิสูจน์: เพิ่ม `pos.sale.void` ชั่วคราว → `membershipReconciled: 2` · คืนค่า → `membershipReconciled: 2` · รันอีกรอบ → `createdThisRun: {}`
+- visual-pos cashier = "record" ไม่ตัดสิน จนผู้คุมงานรันจริงครั้งแรก
+
+### ผลรอบ 2
+- fitness มี env (qc4) / ไม่มี env: exit 0 · `ผ่าน 38/38` · `FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0` ทั้งสอง · 33 ข้อเดิมผลเดิม + F15.1 F15.2 F15.3a F15.3b F15.4 (diff กับ fitness-before)
+- seed รอบ 2 (3 รอบ + 1 รอบพิสูจน์ปรับสิทธิ์): `SEED_SUMMARY` md5 `ccbdc3dd…` เท่ากับรอบ 1 · ลายนิ้วมือร้านอื่น md5 `bc93cd8c…` เท่ากับรอบ 1 · `drift: []` ทุกรอบ
+- `visual-pos all --user cashier --dry` exit 0 · 12 ภาพ (มีคอลัมน์ "คาด") · `../x` exit 2
+- typecheck: ดูบรรทัดถัดไป
+- typecheck (ครั้งเดียวของรอบ 2): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → **exit 0** · `tsc --noEmit` ไม่มี error
