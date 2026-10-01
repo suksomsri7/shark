@@ -1,7 +1,8 @@
-# HF-HR-0 round 5 — GREEN ×2 on the round-5 tree (base 8c5815fb + R5.1–R5.5) · QC4 · gate lock
-## run 1 (16:34–16:38 UTC)
+# HF-HR-0 round 5b — GREEN ×2 on the round-5b tree (base dc9e04c9 + H1–H5) · QC4 · gate lock
+## run 1
+## start 18:16:21 UTC
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1575254) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1709939) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -145,6 +146,27 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [OT-3b] รายการที่ไม่ใช่ OT / OT ที่ไม่กรอกชั่วโมง: ด่านไม่ทำอะไร
   ✅ [OT-4] 🔴 probe: ไล่ชั่วโมง 13 ค่า × 6 อัตรา (เงินเดือน 9k–200k บาท + อัตราตั้งเอง 2 สตางค์/ชม.) → สิ่งที่ผู้ยื่นเห็นเหมือนกันทุกอัตรา
   ✅ [OT-5] อัตรา 1 สตางค์/ชม. (อัตราเดียวที่ 0.25 ชม. ปัดเป็น 0): คำปฏิเสธเหมือน 'ไม่มีเงินเดือน' ทุกไบต์ (ข้อจำกัดที่ยอมรับ — บอกได้แค่ว่าไม่มีอัตราที่ใช้ได้)
+  ✅ [OT-8] 🔴 ผู้ดูเงินเดือนยื่น OT 1,000,000 ชม. / 745 ชม. → ปฏิเสธด้วยข้อความไทยที่บอกเพดาน 744 ชม. (ไม่ใช่ error ดิบของฐานข้อมูล) · ไม่มีแถวใหม่
+  ✅ [OT-9] ผู้ดูเงินเดือน: คำตอบบนจอ = ข้อความเฉพาะของเพดาน (ไม่ถูกแทนด้วยคำปฏิเสธกลาง)
+  ✅ [OT-10] ไม่ใช่ผู้ดูเงินเดือน: เกิน 744 ชม. ที่ถึง service → คำปฏิเสธกลางเดิมทุกไบต์
+  ✅ [OT-11] ขอบ: 744 ชม. พอดี → ยื่นได้ (ผู้ดูเงินเดือน)
+── [PA] อนุมัติรายการเงินของตัวเอง (H1) ──
+  ✅ [PA-1] 🔴 ผู้อนุมัติเงินเดือน (STAFF + hr.payroll.read · ผูกกับแถวพนักงานของตัวเอง) อนุมัติโบนัส 50,000 บาทที่ผู้จัดการยื่นให้แถวของตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน
+  ✅ [PA-1b] เหตุผล = 'อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน'
+  ✅ [PA-2] ผู้อนุมัติคนเดิม × รายการของเพื่อนร่วมงาน → อนุมัติได้ตามปกติ
+  ✅ [PA-3] เจ้าของร้าน × แถวพนักงานของตัวเอง (ผู้จัดการยื่น) → อนุมัติได้ (ข้อยกเว้นเจ้าของร้าน)
+  ✅ [PA-4] 🔴 หลายรายการ (ของตัวเอง + ของคนอื่น) → ของตัวเองถูกปฏิเสธ (เหตุผลเดียวกัน · คง PENDING) · ของคนอื่นอนุมัติได้
+  ✅ [PA-5] ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก
+  ✅ [PA-6] 🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING
+  ✅ [PA-7] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ
+── [CH] ทางตรง vs สายอนุมัติ (H2) ──
+  ✅ [CH-1] 🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING
+  ✅ [CH-1b] ข้อความไทยชี้ไปหน้า “อนุมัติ”
+  ✅ [CH-1c] effect ของสายมาทีหลัง → ใบลา = ผลของสาย (REJECTED) ไม่ขัดกัน
+  ✅ [CH-2] 🔴 สายอนุมัติแล้ว (effect ยังไม่เขียน) + ทางตรงปฏิเสธ → ปฏิเสธ · ใบลาคง PENDING
+  ✅ [CH-3] 🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING)
+  ✅ [CH-4] คำขอที่ถูกยกเลิก (CANCELLED — สายจะไม่ตัดสิน/ไม่เขียนใบลาอีก) → ปล่อยให้ทางตรงตัดสินได้ (ไม่ค้างถาวร)
+  ✅ [CH-5] ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
   ✅ [V-2] 🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
@@ -174,21 +196,27 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [S-15] requestAdjustmentAction บอกว่าเป็น OT ตามชั่วโมง (byHours) ให้ตัวสร้างคำตอบ
   ✅ [S-16] grantStaffAccess ผูกด้วย updateMany ที่มีเงื่อนไข linkedUserId (null หรือบัญชีเดิม) + ตรวจ count === 1
   ✅ [OT-6] requestAdjustmentAction เรียกด่านชั่วโมง OT ก่อนตรวจรูปแบบชั่วโมงและก่อน requestAdjustment (ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน)
-  ✅ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step 0.25 · min 0.25 (ทุกคน · ความสวยงาม — กติกาจริงอยู่ฝั่ง server)
+  ✅ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step any · min 0 · max 744 (ไม่บล็อกค่าที่ server รับจากผู้ดูเงินเดือน — กติกาจริงอยู่ฝั่ง server) + คำแนะนำ 'กรอกทีละ 0.25 ชม.'
   ✅ [S-17] approval.decide ตรวจ 'คำขอของตัวเอง' ก่อนเปิดธุรกรรมเขียนการตัดสิน (ไม่ใช่ใน effect)
   ✅ [S-18] proposals approval_decide: ไม่รู้ตัวผู้กดยืนยัน → throw ไทยก่อนค้น/เขียน · ส่ง userId ของผู้กดยืนยันให้ decide (ไม่ cast แบบเดาเอา)
   ✅ [S-19] grantStaffAccess: ล็อก advisory ต่อ (ร้าน, บัญชี) ก่อนตรวจ 'บัญชีนี้ผูกกับพนักงานอื่นแล้ว' · ยังมีด่านแถว R4.3
+  ✅ [S-20] อนุมัติรายการเงินมีทางเดียว: decideAdjustment ถูกเรียกใน src จุดเดียว (decideAdjustmentAction · userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER) · ไม่มีไฟล์อื่นเขียนแถวรายการเงินตรง
+  ✅ [UI-1] decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ
+  ✅ [UI-2] หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ
+  ✅ [UI-3] approval/actions.ts + hr/payroll-actions.ts ("use server") export แค่ async function/type · BulkApprovals ("use client") import แค่ react + server actions
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 150/150
+ผ่าน 173/173
 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 
-JSON_SUMMARY {"total":150,"passed":150,"findings":[]}
+JSON_SUMMARY {"total":173,"passed":173,"findings":[]}
+## end 18:18:40 UTC rc=0
 
-## run 2 (16:38–16:41 UTC)
+## run 2
+## start 18:18:44 UTC
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1578180) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1713696) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -332,6 +360,27 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [OT-3b] รายการที่ไม่ใช่ OT / OT ที่ไม่กรอกชั่วโมง: ด่านไม่ทำอะไร
   ✅ [OT-4] 🔴 probe: ไล่ชั่วโมง 13 ค่า × 6 อัตรา (เงินเดือน 9k–200k บาท + อัตราตั้งเอง 2 สตางค์/ชม.) → สิ่งที่ผู้ยื่นเห็นเหมือนกันทุกอัตรา
   ✅ [OT-5] อัตรา 1 สตางค์/ชม. (อัตราเดียวที่ 0.25 ชม. ปัดเป็น 0): คำปฏิเสธเหมือน 'ไม่มีเงินเดือน' ทุกไบต์ (ข้อจำกัดที่ยอมรับ — บอกได้แค่ว่าไม่มีอัตราที่ใช้ได้)
+  ✅ [OT-8] 🔴 ผู้ดูเงินเดือนยื่น OT 1,000,000 ชม. / 745 ชม. → ปฏิเสธด้วยข้อความไทยที่บอกเพดาน 744 ชม. (ไม่ใช่ error ดิบของฐานข้อมูล) · ไม่มีแถวใหม่
+  ✅ [OT-9] ผู้ดูเงินเดือน: คำตอบบนจอ = ข้อความเฉพาะของเพดาน (ไม่ถูกแทนด้วยคำปฏิเสธกลาง)
+  ✅ [OT-10] ไม่ใช่ผู้ดูเงินเดือน: เกิน 744 ชม. ที่ถึง service → คำปฏิเสธกลางเดิมทุกไบต์
+  ✅ [OT-11] ขอบ: 744 ชม. พอดี → ยื่นได้ (ผู้ดูเงินเดือน)
+── [PA] อนุมัติรายการเงินของตัวเอง (H1) ──
+  ✅ [PA-1] 🔴 ผู้อนุมัติเงินเดือน (STAFF + hr.payroll.read · ผูกกับแถวพนักงานของตัวเอง) อนุมัติโบนัส 50,000 บาทที่ผู้จัดการยื่นให้แถวของตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน
+  ✅ [PA-1b] เหตุผล = 'อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน'
+  ✅ [PA-2] ผู้อนุมัติคนเดิม × รายการของเพื่อนร่วมงาน → อนุมัติได้ตามปกติ
+  ✅ [PA-3] เจ้าของร้าน × แถวพนักงานของตัวเอง (ผู้จัดการยื่น) → อนุมัติได้ (ข้อยกเว้นเจ้าของร้าน)
+  ✅ [PA-4] 🔴 หลายรายการ (ของตัวเอง + ของคนอื่น) → ของตัวเองถูกปฏิเสธ (เหตุผลเดียวกัน · คง PENDING) · ของคนอื่นอนุมัติได้
+  ✅ [PA-5] ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก
+  ✅ [PA-6] 🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING
+  ✅ [PA-7] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ
+── [CH] ทางตรง vs สายอนุมัติ (H2) ──
+  ✅ [CH-1] 🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING
+  ✅ [CH-1b] ข้อความไทยชี้ไปหน้า “อนุมัติ”
+  ✅ [CH-1c] effect ของสายมาทีหลัง → ใบลา = ผลของสาย (REJECTED) ไม่ขัดกัน
+  ✅ [CH-2] 🔴 สายอนุมัติแล้ว (effect ยังไม่เขียน) + ทางตรงปฏิเสธ → ปฏิเสธ · ใบลาคง PENDING
+  ✅ [CH-3] 🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING)
+  ✅ [CH-4] คำขอที่ถูกยกเลิก (CANCELLED — สายจะไม่ตัดสิน/ไม่เขียนใบลาอีก) → ปล่อยให้ทางตรงตัดสินได้ (ไม่ค้างถาวร)
+  ✅ [CH-5] ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
   ✅ [V-2] 🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
@@ -361,14 +410,19 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [S-15] requestAdjustmentAction บอกว่าเป็น OT ตามชั่วโมง (byHours) ให้ตัวสร้างคำตอบ
   ✅ [S-16] grantStaffAccess ผูกด้วย updateMany ที่มีเงื่อนไข linkedUserId (null หรือบัญชีเดิม) + ตรวจ count === 1
   ✅ [OT-6] requestAdjustmentAction เรียกด่านชั่วโมง OT ก่อนตรวจรูปแบบชั่วโมงและก่อน requestAdjustment (ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน)
-  ✅ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step 0.25 · min 0.25 (ทุกคน · ความสวยงาม — กติกาจริงอยู่ฝั่ง server)
+  ✅ [OT-7] ฟอร์ม OT: ช่องชั่วโมง step any · min 0 · max 744 (ไม่บล็อกค่าที่ server รับจากผู้ดูเงินเดือน — กติกาจริงอยู่ฝั่ง server) + คำแนะนำ 'กรอกทีละ 0.25 ชม.'
   ✅ [S-17] approval.decide ตรวจ 'คำขอของตัวเอง' ก่อนเปิดธุรกรรมเขียนการตัดสิน (ไม่ใช่ใน effect)
   ✅ [S-18] proposals approval_decide: ไม่รู้ตัวผู้กดยืนยัน → throw ไทยก่อนค้น/เขียน · ส่ง userId ของผู้กดยืนยันให้ decide (ไม่ cast แบบเดาเอา)
   ✅ [S-19] grantStaffAccess: ล็อก advisory ต่อ (ร้าน, บัญชี) ก่อนตรวจ 'บัญชีนี้ผูกกับพนักงานอื่นแล้ว' · ยังมีด่านแถว R4.3
+  ✅ [S-20] อนุมัติรายการเงินมีทางเดียว: decideAdjustment ถูกเรียกใน src จุดเดียว (decideAdjustmentAction · userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER) · ไม่มีไฟล์อื่นเขียนแถวรายการเงินตรง
+  ✅ [UI-1] decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ
+  ✅ [UI-2] หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ
+  ✅ [UI-3] approval/actions.ts + hr/payroll-actions.ts ("use server") export แค่ async function/type · BulkApprovals ("use client") import แค่ react + server actions
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 150/150
+ผ่าน 173/173
 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 
-JSON_SUMMARY {"total":150,"passed":150,"findings":[]}
+JSON_SUMMARY {"total":173,"passed":173,"findings":[]}
+## end 18:21:06 UTC rc=0

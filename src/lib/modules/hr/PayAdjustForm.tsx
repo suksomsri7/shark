@@ -65,7 +65,9 @@ export default function PayAdjustForm({
       {isOt ? (
         <label className={`flex flex-col gap-1 text-xs ${muted}`}>
           ชั่วโมง OT
-          <input name="hours" type="number" step="0.25" min="0.25" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
+          {/* HF-HR-0 ▸ รอบ 5b (H4): step any — เบราว์เซอร์ไม่บล็อกค่าที่ server รับจากผู้ดูเงินเดือน (เช่น 1.3) · กติกาจริงอยู่ฝั่ง server ที่เดียว ◂ */}
+          <input name="hours" type="number" step="any" min="0" max="744" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
+          <span className="text-[11px]">กรอกทีละ 0.25 ชม.</span>
         </label>
       ) : (
         <label className={`flex flex-col gap-1 text-xs ${muted}`}>

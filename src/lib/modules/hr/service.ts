@@ -487,15 +487,23 @@ export async function decideLeave(
     throw new HrLeaveDecisionError("ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน");
   }
   // สายอนุมัติ (requestLeave → submitForApproval) — อ่านอย่างเดียว ผูกร้าน
-  const chain = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({
-    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED"] } },
+  // HF-HR-0 ▸ รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ "สถานะใดก็ได้" (รอ · อนุมัติ · ปฏิเสธ) = สายเป็นเจ้าของการตัดสิน — ทางตรงปฏิเสธทุกกรณี
+  //   (เดิมดูแค่ รอ/อนุมัติ ⇒ ช่วงระหว่าง "สายตัดสินแล้ว" กับ "effect เขียนใบลา" ทางตรงตัดสินสวนผลของสายได้) ·
+  //   ยกเว้นเดียว: CANCELLED (cancelRequest — สายจะไม่ตัดสินและไม่มี effect เขียนใบลาอีก) ⇒ ปล่อยให้ทางตรง ไม่งั้นใบลาค้างถาวร ◂
+  const chains = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findMany({
+    where: { entityType: "HrLeave", entityId: leaveId, status: { in: ["PENDING", "APPROVED", "REJECTED"] } },
     select: { status: true },
+    take: 20,
   });
-  if (chain?.status === "PENDING") {
+  const chainHas = (s: string) => chains.some((c) => c.status === s);
+  if (chainHas("PENDING")) {
     throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
   }
-  if (from === "APPROVED" && (chain?.status === "APPROVED" || leave.decidedById === "approval-engine")) {
+  if (from === "APPROVED" && (chainHas("APPROVED") || leave.decidedById === "approval-engine")) {
     throw new HrLeaveDecisionError("ใบลานี้อนุมัติผ่านสายอนุมัติแล้ว — ระบบยังไม่มีการถอนผลของสายอนุมัติ ดูรายละเอียดได้ที่หน้า “อนุมัติ” หรือติดต่อเจ้าของกิจการ");
+  }
+  if (chains.length > 0) {
+    throw new HrLeaveDecisionError("ใบลานี้ตัดสินผ่านสายอนุมัติแล้ว — ผลของใบลามาจากหน้า “อนุมัติ” เท่านั้น (ตัดสินซ้ำทางนี้ไม่ได้) หากต้องเปลี่ยนผล กรุณาติดต่อเจ้าของกิจการ");
   }
   // เงื่อนไข "สถานะต้นทางที่คาดไว้" ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
   const res = await db.hrLeave.updateMany({

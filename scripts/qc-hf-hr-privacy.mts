@@ -19,6 +19,9 @@
 // [SC] รอบ 5 (R5.1): ห้ามตัดสินคำขอ HR ของแถวพนักงานที่ผูกกับบัญชีตัวเองผ่านสายอนุมัติ (ทุกขั้น · รายใบ/หลายใบ · AI approval_decide) ·
 //      [AD] (R5.5) AI approval_decide ไม่รู้ตัวผู้กดยืนยัน = ปฏิเสธไทยก่อนเขียน · [OT] (R5.2) ชั่วโมง OT ของผู้ไม่ดูเงินเดือน = ทีละ 0.25 ·
 //      [GA] (R5.3) บัญชีเดียว → พนักงาน 2 คนพร้อมกัน = ผูกได้คนเดียว · [PL5] (R5.4) แผนที่มีขั้นที่ไม่มีวันทำได้ = ปฏิเสธตอนสร้าง + ไม่ทำสักขั้น
+// [PA] รอบ 5b (H1): รายการเพิ่ม/หักเงินของแถวพนักงานที่ผูกกับบัญชีผู้อนุมัติเอง = อนุมัติไม่ได้ (ยกเว้นเจ้าของร้าน) · ปฏิเสธได้ ·
+//      [CH] (H2) ใบลาที่มีคำขอในสายอนุมัติ (รอ/อนุมัติ/ปฏิเสธ) ทางตรงตัดสินไม่ได้ · [UI] (H3) ปุ่มตัดสินคืนเหตุผลเป็นข้อมูล + แสดงที่แถว ·
+//      OT-7 (H4) ฟอร์มไม่บล็อกค่าที่ server รับ · OT-8…OT-11 (H5) ชั่วโมง OT สูงสุด 744 สำหรับทุกคน
 //
 // รัน (POS lane): bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-hf-hr-privacy.mts
 import { existsSync, readFileSync } from "node:fs";
@@ -779,6 +782,102 @@ try {
   const rNoSal = await seen(gW.id, 0.25);
   chk("OT-5", "อัตรา 1 สตางค์/ชม. (อัตราเดียวที่ 0.25 ชม. ปัดเป็น 0): คำปฏิเสธเหมือน 'ไม่มีเงินเดือน' ทุกไบต์ (ข้อจำกัดที่ยอมรับ — บอกได้แค่ว่าไม่มีอัตราที่ใช้ได้)",
     r1s === rNoSal && r1s === GENERIC, GENERIC, `${r1s} | ${rNoSal}`, "MINOR");
+  // รอบ 5b (H5): ชั่วโมง OT สูงสุด 744 (31 วัน × 24 ชม.) สำหรับทุกคน — ผู้ดูเงินเดือนได้ข้อความเฉพาะ · ผู้ไม่ดูได้คำปฏิเสธกลางเดิม
+  type ReqRes = { ok: boolean; reason?: string; amountSatang?: number };
+  const otBig = async (h: number): Promise<ReqRes> =>
+    pay.requestAdjustment(ctx, { employeeId: e2.id, periodKey: "2026-11", kind: "OT", hours: h, requestedById: U.hrMgr }).catch((e: unknown) => ({ ok: false, reason: `THROW ${e instanceof Error ? e.message.slice(0, 120) : String(e)}` }));
+  const adjBefore = await prisma.hrPayAdjustment.count({ where: { tenantId: tid, employeeId: e2.id, periodKey: "2026-11" } });
+  const o1e6 = await otBig(1e6);
+  const o745 = await otBig(745);
+  const adjAfter = await prisma.hrPayAdjustment.count({ where: { tenantId: tid, employeeId: e2.id, periodKey: "2026-11" } });
+  chk("OT-8", "🔴 ผู้ดูเงินเดือนยื่น OT 1,000,000 ชม. / 745 ชม. → ปฏิเสธด้วยข้อความไทยที่บอกเพดาน 744 ชม. (ไม่ใช่ error ดิบของฐานข้อมูล) · ไม่มีแถวใหม่",
+    [o1e6, o745].every((r) => r.ok === false && THAI.test(r.reason ?? "") && (r.reason ?? "").includes("744") && !/THROW|prisma|invocation/i.test(r.reason ?? "")) && adjAfter === adjBefore,
+    "ปฏิเสธ · 744", `${JSON.stringify([o1e6, o745]).slice(0, 240)} rows ${adjBefore}→${adjAfter}`, "MAJOR");
+  const vMsg = replyH?.(true, o1e6, { byHours: true });
+  chk("OT-9", "ผู้ดูเงินเดือน: คำตอบบนจอ = ข้อความเฉพาะของเพดาน (ไม่ถูกแทนด้วยคำปฏิเสธกลาง)", !!vMsg && vMsg.status === "error" && vMsg.message === o1e6.reason, String(o1e6.reason), JSON.stringify(vMsg ?? null), "MAJOR");
+  const nvMsg = replyH?.(false, o1e6, { byHours: true });
+  chk("OT-10", "ไม่ใช่ผู้ดูเงินเดือน: เกิน 744 ชม. ที่ถึง service → คำปฏิเสธกลางเดิมทุกไบต์", !!nvMsg && nvMsg.message === GENERIC, GENERIC, JSON.stringify(nvMsg ?? null), "MAJOR");
+  const o744 = await otBig(744);
+  chk("OT-11", "ขอบ: 744 ชม. พอดี → ยื่นได้ (ผู้ดูเงินเดือน)", o744.ok === true, "ok", JSON.stringify(o744).slice(0, 160), "MAJOR");
+
+  // ═══ [PA] รอบ 5b (H1): รายการเงินของ "แถวพนักงานที่ผูกกับบัญชีผู้อนุมัติเอง" — อนุมัติไม่ได้ (ยกเว้นเจ้าของร้าน) · ปฏิเสธได้ ═══
+  console.log("── [PA] อนุมัติรายการเงินของตัวเอง (H1) ──");
+  const SELF_ADJ_TH = "อนุมัติรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน";
+  const PA_P = "2027-03";
+  const ePA = await hr.createEmployee(ctx, { name: `ผู้อนุมัติเงินเดือน ${ts}` });
+  await prisma.hrEmployee.update({ where: { id: ePA.id }, data: { linkedUserId: U.hrMgr } }); // V.hrMgr = STAFF + hr.payroll.read
+  await pay.setSalaryProfile(ctx, { employeeId: ePA.id, baseSalarySatang: 3_000_000, ssoEligible: false });
+  const fileAdj = async (employeeId: string, amountSatang: number) =>
+    (await pay.requestAdjustment(ctx, { employeeId, periodKey: PA_P, kind: "BONUS", amountSatang, requestedById: U.manager })).id ?? "-";
+  const adjRow = (id: string) => prisma.hrPayAdjustment.findUnique({ where: { id } });
+  const payApprover = { userId: U.hrMgr, isOwner: false };
+  const decAdj = async (id: string, st: "APPROVED" | "REJECTED", d: { userId?: string | null; isOwner: boolean }): Promise<ReqRes> =>
+    pay.decideAdjustment(ctx, id, st, d).catch((e: unknown) => ({ ok: false, reason: `THROW ${e instanceof Error ? e.message.slice(0, 120) : String(e)}` }));
+  const aOwn = await fileAdj(ePA.id, 5_000_000);
+  const dOwn = await decAdj(aOwn, "APPROVED", payApprover);
+  const rOwn = await adjRow(aOwn);
+  chk("PA-1", "🔴 ผู้อนุมัติเงินเดือน (STAFF + hr.payroll.read · ผูกกับแถวพนักงานของตัวเอง) อนุมัติโบนัส 50,000 บาทที่ผู้จัดการยื่นให้แถวของตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน",
+    dOwn.ok === false && rOwn?.status === "PENDING" && rOwn.decidedById === null, "ปฏิเสธ · PENDING", `${JSON.stringify(dOwn)} row=${rOwn?.status}/${rOwn?.decidedById}`);
+  chk("PA-1b", `เหตุผล = '${SELF_ADJ_TH}'`, dOwn.reason === SELF_ADJ_TH, SELF_ADJ_TH, String(dOwn.reason), "MAJOR");
+  const aCol = await fileAdj(e2.id, 100_000);
+  const dCol = await decAdj(aCol, "APPROVED", payApprover);
+  chk("PA-2", "ผู้อนุมัติคนเดิม × รายการของเพื่อนร่วมงาน → อนุมัติได้ตามปกติ", dCol.ok === true && (await adjRow(aCol))?.status === "APPROVED", "APPROVED", `${JSON.stringify(dCol)} ${(await adjRow(aCol))?.status}`, "MAJOR");
+  const aOw = await fileAdj(eOw.id, 200_000);
+  const dOw = await decAdj(aOw, "APPROVED", { userId: U.owner, isOwner: true });
+  chk("PA-3", "เจ้าของร้าน × แถวพนักงานของตัวเอง (ผู้จัดการยื่น) → อนุมัติได้ (ข้อยกเว้นเจ้าของร้าน)", dOw.ok === true && (await adjRow(aOw))?.status === "APPROVED", "APPROVED", `${JSON.stringify(dOw)} ${(await adjRow(aOw))?.status}`, "MAJOR");
+  // หลายรายการในครั้งเดียว: src ยังไม่มีปุ่มหลายรายการของรายการเงิน ⇒ วนผ่าน service แบบเดียวกับที่ทางหลายรายการจะทำ
+  const aB1 = await fileAdj(ePA.id, 300_000);
+  const aB2 = await fileAdj(e2.id, 400_000);
+  const bRes: ReqRes[] = [];
+  for (const id of [aB1, aB2]) bRes.push(await decAdj(id, "APPROVED", payApprover));
+  chk("PA-4", "🔴 หลายรายการ (ของตัวเอง + ของคนอื่น) → ของตัวเองถูกปฏิเสธ (เหตุผลเดียวกัน · คง PENDING) · ของคนอื่นอนุมัติได้",
+    bRes[0]?.ok === false && bRes[0]?.reason === SELF_ADJ_TH && (await adjRow(aB1))?.status === "PENDING" && bRes[1]?.ok === true && (await adjRow(aB2))?.status === "APPROVED",
+    "ของตัวเองปฏิเสธ · ของคนอื่น APPROVED", `${JSON.stringify(bRes)} own=${(await adjRow(aB1))?.status} other=${(await adjRow(aB2))?.status}`);
+  const dRej = await decAdj(aB1, "REJECTED", payApprover);
+  chk("PA-5", "ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก",
+    dRej.ok === true && (await adjRow(aB1))?.status === "REJECTED" && (await adjRow(aB1))?.decidedById === U.hrMgr, "REJECTED", `${JSON.stringify(dRej)} ${(await adjRow(aB1))?.status}`, "MAJOR");
+  const aNo = await fileAdj(e2.id, 500_000);
+  const dNo = await decAdj(aNo, "APPROVED", { userId: null, isOwner: false });
+  chk("PA-6", "🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING",
+    dNo.ok === false && THAI.test(dNo.reason ?? "") && (await adjRow(aNo))?.status === "PENDING", "ปฏิเสธ", `${JSON.stringify(dNo)} ${(await adjRow(aNo))?.status}`, "MAJOR");
+  const runPA = await pay.createPayrollRun(ctx, { periodKey: PA_P, payDate: new Date("2027-03-31") }).catch(() => null);
+  const itPA = runPA ? await prisma.hrPayrollItem.findFirst({ where: { runId: runPA.id, employeeId: ePA.id } }) : null;
+  const itCol = runPA ? await prisma.hrPayrollItem.findFirst({ where: { runId: runPA.id, employeeId: e2.id } }) : null;
+  chk("PA-7", "🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ",
+    !!itPA && itPA.addSatang === 0 && (await adjRow(aOwn))?.runId === null && !!itCol && itCol.addSatang >= 500_000,
+    "ผู้อนุมัติ add 0 · เพื่อน add ≥ 5,000 บาท", `run=${!!runPA} own.add=${itPA?.addSatang} col.add=${itCol?.addSatang} ownRun=${(await adjRow(aOwn))?.runId}`);
+
+  // ═══ [CH] รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ (รอ/อนุมัติ/ปฏิเสธ) — สายเป็นเจ้าของการตัดสิน ทางตรงตัดสินไม่ได้ ═══
+  console.log("── [CH] ทางตรง vs สายอนุมัติ (H2) ──");
+  const polCH = await ap.createPolicy(apCtx, { name: "ใบลา 5b", entityType: "HrLeave", steps: [{ order: 1, approverRole: "OWNER" }] });
+  const ch1 = await mkLeave(e2.id, "2027-02-01");
+  const rCh1 = await reqOf(ch1);
+  // fixture: ช่องเวลาระหว่าง "สายตัดสินแล้ว" กับ "effect เขียนใบลา" — คำขอ REJECTED · ใบลายัง PENDING
+  await prisma.approvalRequest.update({ where: { id: rCh1 }, data: { status: "REJECTED", decidedAt: new Date() } });
+  const eCh1 = await errMsg(() => hr.decideLeave(ctx, ch1, "APPROVED", U.owner, { from: "PENDING" }));
+  chk("CH-1", "🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING", eCh1 !== null && (await statusOf(ch1)) === "PENDING", "ปฏิเสธ · PENDING", `${await statusOf(ch1)} err=${eCh1}`);
+  chk("CH-1b", "ข้อความไทยชี้ไปหน้า “อนุมัติ”", !!eCh1 && THAI.test(eCh1) && eCh1.includes("“อนุมัติ”"), "ชี้หน้าอนุมัติ", String(eCh1), "MAJOR");
+  await effects.applyApprovalEffect({ tenantId: tid, type: "approval.request.rejected", payload: { requestId: rCh1, entityType: "HrLeave", entityId: ch1 } });
+  chk("CH-1c", "effect ของสายมาทีหลัง → ใบลา = ผลของสาย (REJECTED) ไม่ขัดกัน", (await statusOf(ch1)) === "REJECTED", "REJECTED", String(await statusOf(ch1)), "MAJOR");
+  const ch2 = await mkLeave(e2.id, "2027-02-02");
+  const rCh2 = await reqOf(ch2);
+  await prisma.approvalRequest.update({ where: { id: rCh2 }, data: { status: "APPROVED", decidedAt: new Date() } });
+  const eCh2 = await errMsg(() => hr.decideLeave(ctx, ch2, "REJECTED", U.owner, { from: "PENDING" }));
+  chk("CH-2", "🔴 สายอนุมัติแล้ว (effect ยังไม่เขียน) + ทางตรงปฏิเสธ → ปฏิเสธ · ใบลาคง PENDING", eCh2 !== null && THAI.test(eCh2) && (await statusOf(ch2)) === "PENDING", "ปฏิเสธ · PENDING", `${await statusOf(ch2)} err=${eCh2}`);
+  const ch3 = await mkLeave(e2.id, "2027-02-03");
+  await prisma.approvalRequest.update({ where: { id: await reqOf(ch3) }, data: { status: "REJECTED", decidedAt: new Date() } });
+  const bCh = await hr.bulkDecideLeave(ctx, [ch3], "APPROVED", U.owner, { from: "PENDING" });
+  chk("CH-3", "🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING)",
+    bCh.done === 0 && bCh.failed.length === 1 && THAI.test(bCh.failed[0]?.reason ?? "") && (await statusOf(ch3)) === "PENDING", "done 0", `${JSON.stringify(bCh)} ${await statusOf(ch3)}`);
+  const ch4 = await mkLeave(e2.id, "2027-02-04");
+  const cancelled = await ap.cancelRequest(apCtx, await reqOf(ch4));
+  const eCh4 = await errMsg(() => hr.decideLeave(ctx, ch4, "APPROVED", U.owner, { from: "PENDING" }));
+  chk("CH-4", "คำขอที่ถูกยกเลิก (CANCELLED — สายจะไม่ตัดสิน/ไม่เขียนใบลาอีก) → ปล่อยให้ทางตรงตัดสินได้ (ไม่ค้างถาวร)",
+    cancelled === true && eCh4 === null && (await statusOf(ch4)) === "APPROVED", "APPROVED", `cancel=${cancelled} ${await statusOf(ch4)} err=${eCh4}`, "MAJOR");
+  await ap.setPolicyActive(apCtx, polCH.id, false);
+  const ch5 = await mkLeave(e2.id, "2027-02-05");
+  const eCh5 = await errMsg(() => hr.decideLeave(ctx, ch5, "APPROVED", U.owner, { from: "PENDING" }));
+  chk("CH-5", "ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม", eCh5 === null && (await statusOf(ch5)) === "APPROVED" && (await reqOf(ch5)) === "-", "APPROVED", `${await statusOf(ch5)} req=${await reqOf(ch5)} err=${eCh5}`, "MAJOR");
 
   // ═══ [V] ผู้ดูชนิดอื่น: wildcard hr.* · MANAGER ที่จำกัดสาขา ═══
   console.log("── [V] wildcard / MANAGER จำกัดสาขา ──");
@@ -943,7 +1042,9 @@ chk("OT-6", "requestAdjustmentAction เรียกด่านชั่วโ�
   scrAt >= 0 && scrAt < reqActBody.indexOf("!Number.isFinite(hours)") && scrAt < reqActBody.indexOf("await requestAdjustment("), "ใช่", "ไม่ใช่");
 const payForm = rd("src/lib/modules/hr/PayAdjustForm.tsx");
 const hoursInput = /<input name="hours"[^>]*>/.exec(payForm)?.[0] ?? "";
-chk("OT-7", "ฟอร์ม OT: ช่องชั่วโมง step 0.25 · min 0.25 (ทุกคน · ความสวยงาม — กติกาจริงอยู่ฝั่ง server)", /type="number"/.test(hoursInput) && /step="0\.25"/.test(hoursInput) && /min="0\.25"/.test(hoursInput), "มี", hoursInput, "MINOR");
+// รอบ 5b (H4) — ORACLE-EDIT (แจ้งผู้คุมงาน): ข้อเดิม "step 0.25 · min 0.25" บล็อกค่าที่ server รับจากผู้ดูเงินเดือน (0.1 / 1.3 ชม.) ⇒ เปลี่ยนเป็นข้อนี้
+chk("OT-7", "ฟอร์ม OT: ช่องชั่วโมง step any · min 0 · max 744 (ไม่บล็อกค่าที่ server รับจากผู้ดูเงินเดือน — กติกาจริงอยู่ฝั่ง server) + คำแนะนำ 'กรอกทีละ 0.25 ชม.'",
+  /type="number"/.test(hoursInput) && /step="any"/.test(hoursInput) && /min="0"/.test(hoursInput) && /max="744"/.test(hoursInput) && payForm.includes("กรอกทีละ 0.25 ชม."), "มี", hoursInput, "MINOR");
 const apSrc = rd("src/lib/modules/approval/service.ts");
 const apDecideBody = apSrc.slice(apSrc.indexOf("export async function decide("), apSrc.indexOf("// ── ตัดสินหลายใบพร้อมกัน"));
 const ownAt = apDecideBody.indexOf("isOwnHrSubject(");
@@ -955,6 +1056,36 @@ chk("S-18", "proposals approval_decide: ไม่รู้ตัวผู้ก�
 const lockAt = grantBody.search(/pg_advisory_xact_lock\(hashtextextended\(\$\{`staff-link:\$\{input\.tenantId\}:\$\{user\.id\}`\}, 0\)\)/);
 chk("S-19", "grantStaffAccess: ล็อก advisory ต่อ (ร้าน, บัญชี) ก่อนตรวจ 'บัญชีนี้ผูกกับพนักงานอื่นแล้ว' · ยังมีด่านแถว R4.3",
   lockAt >= 0 && lockAt < grantBody.indexOf("const otherLink") && /\.count !== 1/.test(grantBody), "ใช่", "ไม่ใช่", "MAJOR");
+// ── รอบ 5b ──
+// H1: ทุกทางที่อนุมัติรายการเงินผ่าน decideAdjustment (จุดเรียกเดียวใน src = decideAdjustmentAction ส่งผู้ใช้จริง + isOwner จากบทบาท) ·
+//     ไม่มีไฟล์อื่นนอก payroll.ts เขียนแถว HrPayAdjustment ตรง (จะข้ามด่านได้)
+const decAdjCalls: string[] = [];
+const adjWriters: string[] = [];
+for (const f of srcFiles) {
+  const txt = rd(f);
+  for (const m of txt.matchAll(/(?<!function )\bdecideAdjustment\(([^;]*?)\);/g)) decAdjCalls.push(`${f}: ${m[0].replace(/\s+/g, " ").slice(0, 160)}`);
+  if (f !== "src/lib/modules/hr/payroll.ts" && /hrPayAdjustment\.(update|updateMany|upsert|create|createMany|createManyAndReturn)\(/.test(txt)) adjWriters.push(f);
+}
+chk("S-20", "อนุมัติรายการเงินมีทางเดียว: decideAdjustment ถูกเรียกใน src จุดเดียว (decideAdjustmentAction · userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER) · ไม่มีไฟล์อื่นเขียนแถวรายการเงินตรง",
+  decAdjCalls.length === 1 && decAdjCalls[0]!.startsWith("src/lib/modules/hr/payroll-actions.ts") && /userId: auth\.active\.userId/.test(decAdjCalls[0]!) && /isOwner: auth\.active\.role === "OWNER"/.test(decAdjCalls[0]!) && adjWriters.length === 0,
+  "1 จุด · 0 ไฟล์", JSON.stringify({ decAdjCalls, adjWriters }), "MAJOR");
+// H3: ปุ่มตัดสินรายใบคืนเหตุผลเป็นข้อมูล · หน้า “อนุมัติ” แสดงเหตุผลที่แถวของคำขอนั้น · ไฟล์ "use server" export แค่ async function (+ type เดิม)
+const apActSrc = rd("src/lib/modules/approval/actions.ts");
+const decActBody2 = apActSrc.slice(apActSrc.indexOf("export async function decideAction("), apActSrc.indexOf("export type BulkDecideState"));
+chk("UI-1", "decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ",
+  decActBody2.length > 0 && !/Promise<void>/.test(decActBody2) && /Promise<\{ ok: boolean; reason\?: string \}>/.test(decActBody2) && /reason/.test(decActBody2.slice(decActBody2.indexOf("{"))) && !/\bthrow\b/.test(decActBody2),
+  "คืนข้อมูล", decActBody2.slice(0, 160), "MAJOR");
+const bulkUi = rd("src/app/app/approvals/BulkApprovals.tsx");
+const rowAt = bulkUi.indexOf("{items.map((i) =>");
+const rowBlock = rowAt >= 0 ? bulkUi.slice(rowAt, bulkUi.indexOf("</label>", rowAt)) : "";
+chk("UI-2", "หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ",
+  /const refusedOf = \(id: string\) =>[^\n]*state\.failed[^\n]*\.reason/.test(bulkUi) && /refusedOf\(i\.id\)/.test(rowBlock),
+  "มี", rowBlock.slice(0, 120), "MAJOR");
+const useServerExports = (src: string) => [...src.matchAll(/^export\s+(?!async function\b|type\b)(\S+\s+\S+)/gm)].map((m) => m[1]);
+const bulkImports = [...bulkUi.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort();
+chk("UI-3", "approval/actions.ts + hr/payroll-actions.ts (\"use server\") export แค่ async function/type · BulkApprovals (\"use client\") import แค่ react + server actions",
+  /^"use server";/.test(apActSrc) && useServerExports(apActSrc).length === 0 && useServerExports(payActSrc).length === 0 && /^"use client";/.test(bulkUi) && JSON.stringify(bulkImports) === JSON.stringify(["@/lib/modules/approval/actions", "react"]),
+  "สะอาด", JSON.stringify({ ap: useServerExports(apActSrc), pay: useServerExports(payActSrc), bulkImports }), "MAJOR");
 chk("S-7", "รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service",
   JSON.stringify([...(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? [])]) === JSON.stringify([...hr.SENSITIVE_EMPLOYEE_FIELDS]), "ตรง",
   JSON.stringify(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? null), "MAJOR");
