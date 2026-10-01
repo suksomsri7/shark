@@ -327,11 +327,12 @@ export async function setPin(ctx: Ctx, employeeId: string, pin: string): Promise
   if (!emp) return { ok: false, reason: "ไม่พบพนักงาน" };
   if (clean) {
     // PIN ซ้ำกับคนอื่นในร้านได้ (เลือกชื่อก่อนใส่ PIN อยู่แล้ว) แต่เตือนไว้ว่าอย่าซ้ำจะดีกว่า
+    // HF-HR-0 (D8): ห้ามบอกว่าใครถือ PIN นี้ — เดิมตอบชื่อเจ้าของ ⇒ ไล่เดา PIN ได้ว่าเป็นของใคร
     const dup = await tenantDb(ctx).hrEmployee.findFirst({
       where: { pinCode: clean, active: true, NOT: { id: employeeId } },
-      select: { name: true },
+      select: { id: true },
     });
-    if (dup) return { ok: false, reason: `PIN นี้ ${dup.name} ใช้อยู่ — ตั้งเลขอื่นเพื่อไม่ให้สับสน` };
+    if (dup) return { ok: false, reason: "PIN นี้ใช้ไม่ได้ กรุณาเลือก PIN อื่น" };
   }
   await tenantDb(ctx).hrEmployee.updateMany({ where: { id: employeeId }, data: { pinCode: clean || null } });
   return { ok: true };
@@ -439,16 +440,49 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
 }
 
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)
+// HF-HR-0 (D10): ตัดสินได้เฉพาะใบที่ "รออนุมัติ" (PENDING → APPROVED/REJECTED) · ผู้ตัดสินต้องไม่ใช่เจ้าของใบลา ·
+//   ใบที่อยู่ในสายอนุมัติต้องตัดสินที่สายอนุมัติ (effect ใน approval-effects.ts เขียนใบลาเอง)
+//   ไม่ผ่าน = โยน HrLeaveDecisionError (ข้อความไทย) — ผู้เรียกเดิม (action/bulk/ข้อเสนอ AI) โยนต่อ/เก็บเหตุผลได้ตามเดิม
+export class HrLeaveDecisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HrLeaveDecisionError";
+  }
+}
+const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
+
 export async function decideLeave(
   ctx: Ctx,
   leaveId: string,
   status: "APPROVED" | "REJECTED",
   decidedById?: string | null,
 ): Promise<void> {
-  await tenantDb(ctx).hrLeave.update({
+  const db = tenantDb(ctx);
+  const leave = await db.hrLeave.findFirst({
     where: { id: leaveId },
+    select: { status: true, employee: { select: { linkedUserId: true } } },
+  });
+  if (!leave) throw new HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้");
+  if (leave.status !== "PENDING") {
+    throw new HrLeaveDecisionError(`ใบลานี้${LEAVE_STATUS_TH[leave.status] ?? "ตัดสินแล้ว"} — เปลี่ยนผลไม่ได้`);
+  }
+  if (decidedById && leave.employee.linkedUserId === decidedById) {
+    throw new HrLeaveDecisionError("ใบลานี้เป็นของบัญชีผู้ตัดสินเอง — ให้หัวหน้าหรือเจ้าของกิจการเป็นผู้ตัดสิน");
+  }
+  // ใบลาที่ยื่นเข้าสายอนุมัติแล้ว (requestLeave → submitForApproval) — อ่านอย่างเดียว ผูกร้าน
+  const inChain = await tenantDb({ tenantId: ctx.tenantId }).approvalRequest.findFirst({
+    where: { entityType: "HrLeave", entityId: leaveId, status: "PENDING" },
+    select: { id: true },
+  });
+  if (inChain) {
+    throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
+  }
+  // เงื่อนไข status ใน SQL เดียว ⇒ กดพร้อมกันสองทางได้ผลเดียว (อีกทางได้ 0 แถว)
+  const res = await db.hrLeave.updateMany({
+    where: { id: leaveId, status: "PENDING" },
     data: { status, decidedById: decidedById ?? null },
   });
+  if (res.count === 0) throw new HrLeaveDecisionError("ใบลานี้มีผู้ตัดสินไปก่อนหน้านี้แล้ว");
 }
 
 // อนุมัติ/ปฏิเสธใบลาหลายใบพร้อมกัน (bulk) — วน decideLeave() ทีละใบ (แต่ละใบ scope tenant+system เดิม)
@@ -465,9 +499,9 @@ export async function bulkDecideLeave(
     try {
       await decideLeave(ctx, id, status, decidedById ?? null);
       result.done += 1;
-    } catch {
-      // id ข้ามร้าน/ไม่พบ → guard โยน P2025 (ข้อความอังกฤษ) → ใช้เหตุผลไทยแทน
-      result.failed.push({ id, reason: "ไม่พบใบลา หรืออยู่นอกร้านนี้" });
+    } catch (e) {
+      // HF-HR-0: เหตุผลไทยจาก decideLeave (ตัดสินแล้ว/ของตัวเอง/อยู่ในสายอนุมัติ) · อื่น ๆ (DB) → ข้อความกลาง
+      result.failed.push({ id, reason: e instanceof HrLeaveDecisionError ? e.message : "ไม่พบใบลา หรืออยู่นอกร้านนี้" });
     }
   }
   return result;
