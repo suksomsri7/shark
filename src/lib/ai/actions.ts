@@ -3,6 +3,7 @@
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
 import { aiEnabled, latestConversation, listMessages, sendMessage, type Clarify } from "./service";
+import { aiMemberActor } from "./actor";
 import { executeProposal, listPendingProposals, rejectProposal } from "./proposals";
 import { executePlan, listPendingPlans, rejectPlan } from "./plans";
 import { recordFeedback, type FeedbackRating } from "./feedback";
@@ -224,7 +225,11 @@ export async function sendAiMessageAction(input: {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
   try {
-    const res = await sendMessage({ tenantId: auth.active.tenantId }, input);
+    // CRM C5.5-G1 ▸ ผู้กระทำ = คนที่ล็อกอิน (Membership จาก session ของคำขอนี้) — เครื่องมือทุกตัวรันด้วยสิทธิ์ของเขา ◂
+    const res = await sendMessage(
+      { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) },
+      input,
+    );
     if (res.ok) return res;
     const msg: Record<typeof res.error, string> = {
       ai_disabled: "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้",

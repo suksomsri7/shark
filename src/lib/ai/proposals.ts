@@ -449,6 +449,12 @@ export function isKnownKind(kind: string): kind is ProposalKind {
   return Object.prototype.hasOwnProperty.call(KIND_ACCESS, kind);
 }
 
+// CRM C5.5-G1 ▸ คีย์สิทธิ์ที่คนกดยืนยันต้องมี (ตารางเดียวกับ executeProposal/runKind) — ด่านของ tool ใช้ตัดสินว่า "ผู้ถามเสนอ kind นี้ได้ไหม"
+//   (ผู้ถามที่ไม่มีคีย์นี้เอง ไม่ได้รับเครื่องมือเสนอของ kind นั้น · ไม่มี kind = null) ◂
+export function kindAccessOf(kind: string): { module: string; action: string } | null {
+  return isKnownKind(kind) ? KIND_ACCESS[kind] : null;
+}
+
 // ── รันงานหนึ่งชิ้น (kind) ด้วยสิทธิ์ของ "คนกด" — ห่อ assertCan (KIND_ACCESS) + dispatch เดิม ──
 // ใช้โดย AI Plan (plans.ts) เพื่อรันหลาย step ต่อเนื่องผ่าน dispatch ตัวเดียวกับ proposal เดี่ยว
 // refId = คีย์ idempotency/อ้างอิงต่อ step (เช่น plan-<planId>-<index>) · assertCan ไม่ผ่าน → โยน error ไทย

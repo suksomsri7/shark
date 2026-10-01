@@ -14,6 +14,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { requireTenant } from "@/lib/core/context";
 import { safeReason } from "@/lib/core/errors";
 import { sendMessage } from "@/lib/ai/service";
+import { aiMemberActor } from "@/lib/ai/actor";
 import { executeProposal, rejectProposal } from "@/lib/ai/proposals";
 import { prisma } from "./db";
 import { canReadMember, toMemberActor } from "./access";
@@ -33,7 +34,14 @@ async function gate(systemId: string) {
   }
   const system = await prisma.appSystem.findFirst({ where: { id: systemId, tenantId, type: "MEMBER" }, select: { id: true } });
   if (!system) throw new Error("ไม่พบระบบสมาชิกนี้ในร้านนี้ — รีเฟรชหน้าแล้วลองใหม่");
-  return { tenantId, userId: auth.user.id, mc, viewer: { systemId, actor, userId: auth.user.id } };
+  return {
+    tenantId,
+    userId: auth.user.id,
+    mc,
+    viewer: { systemId, actor, userId: auth.user.id },
+    // CRM C5.5-G1 ▸ ผู้กระทำของผู้ช่วย = คนที่เปิดหน้านี้ (เครื่องมือทุกสกิลรันด้วยสิทธิ์ของเขา ไม่ใช่ทั้งร้าน) ◂
+    aiActor: aiMemberActor(tenantId, auth.user.id, auth.active),
+  };
 }
 
 const DISABLED = "ผู้ช่วย AI ยังไม่เปิดให้ใช้ในร้านนี้ — ติดต่อผู้ดูแลระบบเพื่อเปิดใช้งาน";
@@ -47,14 +55,14 @@ export async function sendMemberAssistantAction(
   text: string,
 ): Promise<AssistantActionResult<AssistantStateDto>> {
   try {
-    const { tenantId, viewer } = await gate(systemId);
+    const { tenantId, viewer, aiActor } = await gate(systemId);
     const body = String(text ?? "").trim();
     if (!body) return { ok: false, reason: "พิมพ์คำถามก่อนกดส่ง" };
     if (body.length > TEXT_MAX) return { ok: false, reason: `คำถามยาวได้ไม่เกิน ${TEXT_MAX.toLocaleString("th-TH")} ตัวอักษร` };
     const current = conversationId ? await assistantState(tenantId, conversationId) : null;
     const used: string[] = [];
     const res = await sendMessage(
-      { tenantId },
+      { tenantId, actor: aiActor },
       { text: body, ...(current?.conversationId ? { conversationId: current.conversationId } : {}) },
       { source: "MEMBER_ASSIST", onToolCall: (name) => used.push(name) },
     );

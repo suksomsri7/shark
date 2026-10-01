@@ -3,6 +3,8 @@
 process.env.SHARK_AI_MOCK = "1";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 const { prisma } = await import("@/lib/core/db");
 const rules = await import("@/lib/ai/rules");
 const prov = await import("@/lib/ai/provider");
@@ -26,7 +28,7 @@ let tid = ""; let tid2 = "";
 try {
   const svc = await import("@/lib/ai/service");
   const t = await prisma.tenant.create({ data: { name: "QC AI", slug: `qc-ai-${Date.now()}` } }); tid = t.id;
-  const ctx = { tenantId: tid };
+  const ctx = { tenantId: tid, actor: qcOwner(tid) };
 
   chk("AI-0.1", "aiEnabled = true (mock)", svc.aiEnabled() === true, "true", String(svc.aiEnabled()));
 

@@ -11,6 +11,7 @@ import { skillOfTool, toolAllowedForApiKey } from "@/lib/ai/skills";
 import { accountToolScope } from "@/lib/ai/account-ops";
 import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
+import { aiApiKeyActor } from "@/lib/ai/actor";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -66,9 +67,11 @@ export async function POST(
     conversationId = conv.id;
   }
 
+  // CRM C5.5-G1 ▸ ผู้กระทำ = คีย์ใบนี้ (scope + ระบบที่ผูก) · runTool ตรวจซ้ำด้วยกติกาคีย์ของ tool-access (ชั้นที่สองหลังด่านข้างบน) ◂
   const result = await runTool(
     {
       tenantId: auth.tenantId,
+      actor: aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId }),
       ...(conversationId ? { conversationId } : {}),
       ...(systemId ? { systemId } : {}),
     },

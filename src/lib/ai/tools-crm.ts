@@ -14,6 +14,7 @@
 import { crmApi } from "@/lib/modules/crm";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
+import { aiActorMembership, aiActorUserId } from "./actor";
 
 /** สถานะที่ตอบเมื่อข้อเสนอถูกสร้างแล้วและรอคนกดยืนยัน (รูปแบบเดียวกับ action tool ทุกตัว) */
 const pendingConfirmation = "user_confirm" as const;
@@ -29,7 +30,13 @@ export function crmTools(): AiTool[] {
       ? { name: crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name, description: crmApi.LEGACY_CRM_LEAD_TOOL_DEF.description, parameters: crmApi.LEGACY_CRM_LEAD_TOOL_DEF.parameters }
       : { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
-      const tctx = { tenantId: ctx.tenantId, ...(ctx.systemId ? { systemId: ctx.systemId } : {}) };
+      // CRM C5.5-G1 ▸ ผู้ถามส่งตรง (เดิมเดาจาก cookie ⇒ แอปมือถือ/งานประจำ = NO_HUMAN) · คีย์ API/งานภายใน = ไม่มีคน ⇒ CRM ปฏิเสธการอ่านเอง ◂
+      const m = aiActorMembership(ctx.actor);
+      const tctx = {
+        tenantId: ctx.tenantId,
+        ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+        ...(m ? { userId: aiActorUserId(ctx.actor), role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } : {}),
+      };
       const outcome = legacy ? await crmApi.runCrmLeadTool(tctx, args) : await crmApi.runCrmTool(tctx, info.name, args);
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);

@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string }; QC: { expectedPath: string } };
 const { loadQcEnv, QC } = accEnv;
 loadQcEnv();
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 // ⏭️ WO ยังไม่สร้าง → ข้ามแบบเห็นชัด (exit 0) ไม่ทำ qc:all/CI แดงค้าง (บทเรียน WO 0.7) — ด่านนี้หายไปเองเมื่อ WO ลงจริง
 if (!((await import("@/lib/ai/skills" as string)) as { SKILLS: { id: string }[] }).SKILLS.some((x) => x.id === "account")) {
   console.log("⚠️  SKIPPED — WO ยังไม่สร้าง (account)");
@@ -56,7 +58,7 @@ try {
   chk("E1-K1.8", "skillsForTenant([\"POS\"]) ไม่เห็น account · ([\"ACCOUNT\"]) เห็น", !(skills.skillsForTenant(["POS"]) as Any[]).some((s) => s.id === "account") && (skills.skillsForTenant(["ACCOUNT"]) as Any[]).some((s) => s.id === "account"), "กรองตามระบบ", "?");
 
   // ═══ K2 อ่าน (seed) ═══
-  const seedCtx = { tenantId: E.tenantId as string };
+  const seedCtx = { tenantId: E.tenantId as string, actor: qcOwner(E.tenantId as string) };
   const dash = parse(await tools.runTool(seedCtx, "account_dashboard", {}));
   const dashStr = JSON.stringify(dash);
   chk("E1-K2.1", "account_dashboard → JSON ไม่ error · มียอดค้างรับ (บาท) = เฉลย", !dash.error && dashStr.includes(String(E.receivable / 100)) , `${E.receivable / 100}`, dashStr.slice(0, 200));
@@ -69,7 +71,7 @@ try {
   chk("E1-K2.5", "account_report {kind:profit-loss} → มีกำไรสุทธิ/รายได้ (ตัวเลขจาก GL จริง)", !rep.error && /กำไร|รายได้/.test(JSON.stringify(rep)), "มี", JSON.stringify(rep).slice(0, 200));
   const aging = parse(await tools.runTool(seedCtx, "account_report", { kind: "aging", direction: "AR" }));
   chk("E1-K2.6", "account_report {kind:aging} → ยอดรวม = เฉลย receivable (บาท)", !aging.error && JSON.stringify(aging).includes(String(E.receivable / 100)), `${E.receivable / 100}`, JSON.stringify(aging).slice(0, 160));
-  const noSys = parse(await tools.runTool({ tenantId: "no-such-tenant" }, "account_dashboard", {}));
+  const noSys = parse(await tools.runTool({ tenantId: "no-such-tenant", actor: qcOwner("no-such-tenant") }, "account_dashboard", {}));
   chk("E1-K2.7", "ร้านที่ไม่มีระบบบัญชี → {error: 'ยังไม่ได้เปิดระบบบัญชี'} ไทย", typeof noSys.error === "string" && /[ก-๙]/.test(noSys.error), "error ไทย", JSON.stringify(noSys).slice(0, 120));
   const contacts = parse(await tools.runTool(seedCtx, "account_search_contacts", { q: "ณัฐพล" }));
   chk("E1-K2.8", "account_search_contacts {q} → เจอ ณัฐพล", !contacts.error && /ณัฐพล/.test(JSON.stringify(contacts)), "เจอ", JSON.stringify(contacts).slice(0, 160));
@@ -84,7 +86,7 @@ try {
   const customer = await acc.createContact({ tenantId: tid, systemId: SYS, kind: "CUSTOMER", name: "ณัฐพล ทดสอบ" });
   const cash = await fin.createFinanceAccount({ tenantId: tid, systemId: SYS, type: "CASH", name: "เงินสด" });
   const conv = await prisma.aiConversation.create({ data: { tenantId: tid, title: "QC E1" } });
-  const ctx = { tenantId: tid, conversationId: conv.id };
+  const ctx = { tenantId: tid, actor: qcOwner(tid), conversationId: conv.id };
   const owner: Any = { role: "OWNER", unitAccess: ["*"], permissions: {} };
   const staffNoPerm: Any = { role: "STAFF", unitAccess: ["*"], permissions: {} };
 

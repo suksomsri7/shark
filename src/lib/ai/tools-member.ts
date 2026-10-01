@@ -20,6 +20,7 @@ import { memberToolInfos, runMemberTool } from "@/lib/modules/member/api/tools";
 import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
+import { aiActorMembership, aiActorUserId } from "./actor";
 
 /** สถานะที่ตอบกลับเมื่อข้อเสนอถูกสร้างแล้วและกำลังรอคนกดยืนยัน (รูปแบบเดียวกับ action tool ทุกตัว) */
 const pendingConfirmation = "user_confirm" as const;
@@ -34,8 +35,15 @@ export function memberTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      // CRM C5.5-G1 ▸ ผู้ถามส่งตรง (เดิมเดาจาก cookie ของคำขอ ⇒ แอป/งานประจำไม่มี session = อ่านด้วยชุดของผู้ช่วยทั้งร้าน) ·
+      //   คีย์ API = ไม่ส่ง (ผ่านด่าน scope ของ route + tool-access แล้ว — พฤติกรรมเดิม) ◂
+      const m = aiActorMembership(ctx.actor);
       const outcome = await runMemberTool(
-        { tenantId: ctx.tenantId, ...(ctx.systemId ? { systemId: ctx.systemId } : {}) },
+        {
+          tenantId: ctx.tenantId,
+          ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+          ...(m ? { userId: aiActorUserId(ctx.actor), role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } : {}),
+        },
         info.name,
         args,
       );

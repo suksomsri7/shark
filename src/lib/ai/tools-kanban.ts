@@ -16,6 +16,8 @@ import { kanbanToolInfos, runKanbanTool } from "./kanban-ops";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
 import { prisma } from "@/lib/core/db";
+import { visibleBoardsWhere } from "@/lib/modules/kanban/access";
+import { aiActorMembership, aiActorUserId } from "./actor";
 
 /** สถานะที่ตอบกลับเมื่อข้อเสนอถูกสร้างแล้วและกำลังรอคนกดยืนยัน (รูปแบบเดียวกับ action tool ทุกตัว) */
 const pendingConfirmation = "user_confirm" as const;
@@ -30,8 +32,12 @@ export function kanbanTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      const m = aiActorMembership(ctx.actor);
       const outcome = await runKanbanTool(ctx.tenantId, info.name, args, {
         ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+        // CRM C5.5-G1 ▸ อ่านด้วยสิทธิ์ + บทบาทในบอร์ดของผู้ถาม (บอร์ดลับที่ไม่ได้เป็นสมาชิก = มองไม่เห็นเหมือนหน้าจอ) ·
+        //   คีย์ API = ไม่ส่ง (actor ระดับร้านตาม D18 หลังผ่านด่าน scope) ◂
+        viewer: m ? { userId: aiActorUserId(ctx.actor) ?? "", membership: m } : null,
       });
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);
@@ -94,6 +100,9 @@ function legacyMyTasks(description: string): AiTool {
       if (!kanban) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)" });
       const assignee = String((args as { assignee?: unknown } | null)?.assignee ?? "").trim();
       const include = { board: { select: { name: true } }, column: { select: { name: true } } } as const;
+      // CRM C5.5-G1 ▸ เฉพาะการ์ดบนบอร์ดที่ผู้ถามมองเห็น (`visibleBoardsWhere` ของบอร์ดงาน — ตัวเดียวกับทุกรายการ §6.2) · คีย์ API = ทุกบอร์ด (D18) ◂
+      const m = aiActorMembership(ctx.actor);
+      const boardScope = m ? { board: visibleBoardsWhere({ userId: aiActorUserId(ctx.actor) ?? "", role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }) } : {};
       const order = [{ dueAt: { sort: "asc" as const, nulls: "last" as const } }, { createdAt: "asc" as const }];
       if (assignee) {
         const members = await prisma.membership.findMany({
@@ -113,7 +122,7 @@ function legacyMyTasks(description: string): AiTool {
         const target = members[0]!;
         const cards = await prisma.kanbanCard.findMany({
           where: {
-            tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE",
+            tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", ...boardScope,
             OR: [{ assigneeUserId: target.userId }, { assignees: { some: { userId: target.userId } } }],
           },
           include, orderBy: order, take: 50,
@@ -121,8 +130,8 @@ function legacyMyTasks(description: string): AiTool {
         return JSON.stringify({ ผู้รับงาน: target.user.name ?? target.user.email, จำนวนงาน: cards.length, งานของฉัน: cards.map(cardOut) });
       }
       const [unassigned, all] = await Promise.all([
-        prisma.kanbanCard.findMany({ where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", assigneeUserId: null, assignees: { none: {} } }, include, orderBy: order, take: 50 }),
-        prisma.kanbanCard.findMany({ where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE" }, include, orderBy: order, take: 50 }),
+        prisma.kanbanCard.findMany({ where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", assigneeUserId: null, assignees: { none: {} }, ...boardScope }, include, orderBy: order, take: 50 }),
+        prisma.kanbanCard.findMany({ where: { tenantId: ctx.tenantId, systemId: kanban.id, status: "ACTIVE", ...boardScope }, include, orderBy: order, take: 50 }),
       ]);
       return JSON.stringify({
         หมายเหตุ: "ยังไม่ทราบว่าใครกำลังคุยอยู่ — ระบุชื่อพนักงาน (assignee) เพื่อดูงานของคนนั้นโดยเฉพาะ",

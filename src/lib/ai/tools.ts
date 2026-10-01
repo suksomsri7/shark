@@ -25,15 +25,29 @@ import { kanbanTools } from "./tools-kanban";
 import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
-import { createProposal, type ProposalKind } from "./proposals";
+import { createProposal, isKnownKind as isKnownKindName, type ProposalKind } from "./proposals";
 import { createPlan } from "./plans";
 import { dayKeyBangkok } from "./rules";
 import { rememberFact, forgetMemory, listMemories } from "./memory";
 import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
+// CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
+import { aiActorUserId, type AiActor } from "./actor";
+import { actorCanConfirmKind, toolVerdict } from "./tool-access";
+import { contactWhere, crmApi } from "@/lib/modules/crm";
+import { visibleCustomerIds } from "@/lib/modules/member/service";
+import { toMemberActor } from "@/lib/modules/member/access";
+import { listPending as approvalListPending } from "@/lib/modules/approval/service";
+import { membershipCan } from "./tool-access";
 
 export type ToolCtx = {
   tenantId: string;
+  /**
+   * CRM C5.5-G1 ▸ **ผู้กระทำ (บังคับ)** — คนที่ถาม / คีย์ API / งานภายในที่ประกาศชื่อ (ดู ./actor.ts)
+   *   ทุก tool รันด้วยสิทธิ์ + ขอบเขตการมองเห็นของผู้กระทำนี้ (ด่านคีย์ใน runTool · รายแถวในตัว tool)
+   *   ไม่มีค่าปริยาย: ประตูใหม่ที่ลืมส่ง = typecheck แดง ไม่ใช่เห็นทั้งร้าน ◂
+   */
+  actor: AiActor;
   conversationId?: string;
   /**
    * ระบบ (AppSystem) ที่ผู้เรียกล็อกไว้แล้ว — ปัจจุบันใช้กับสกิลบัญชีเท่านั้น
@@ -63,6 +77,70 @@ async function findSystem(tenantId: string, type: SystemType): Promise<{ id: str
     orderBy: { createdAt: "asc" },
     select: { id: true },
   });
+}
+
+// ── CRM C5.5-G1 ▸ ขอบเขตรายแถวของผู้กระทำ (ด่านคีย์อยู่ที่ runTool → tool-access.ts) ──
+
+/**
+ * สาขาที่ผู้กระทำเปิดได้ — ประตูเว็บของโมดูลแกนสาขา (นัด/คิว/ร้านค้า/เช่า/ร้านอาหาร/ตั๋ว) = `requireUnit` → `canAccessUnit`
+ * null = ไม่จำกัด (OWNER · unitAccess "*" · คีย์ API = ระดับร้านแบบ REST รุ่นเดิมที่วนทุกสาขา) · [] = ไม่มีสาขาใดเลย
+ * (ความหมายเดียวกับ `canAccessUnit` ของ rbac ทุกกรณี — ทำเป็น where เพื่อให้นับ/รวมยอดในฐานข้อมูลได้)
+ */
+function unitScope(actor: AiActor): string[] | null {
+  if (!actor) return []; // เรียก execute ตรง ๆ โดยไม่มี actor (ข้าม runTool) = ไม่มีสาขาใดเลย (ปิดไว้ก่อน)
+  if (actor.kind === "apiKey") return null;
+  const m = actor.membership;
+  if (m.role === "OWNER" || m.unitAccess.includes("*")) return null;
+  return [...m.unitAccess];
+}
+const unitWhere = (actor: AiActor): { unitId?: { in: string[] } } => {
+  const s = unitScope(actor);
+  return s === null ? {} : { unitId: { in: s } };
+};
+
+/**
+ * แถวลูกค้า (จาก listCustomers) ที่ผู้กระทำมองเห็นได้ — ตัวตัดสินของโมดูลสมาชิก `visibleCustomerIds`
+ * (`canReadMember` + ขอบเขตสาขา `briefFor` — ตัวเดียวกับบล็อกเชื่อมสมาชิกของบัญชี) · ลำดับเดิม · OWNER = ทุกแถว (เดิมทุกไบต์)
+ * คีย์ API = ไม่มีแถว (เครื่องมือรุ่นแรกของสมาชิกปิดให้คีย์ทุกใบ — AUDIT H1) · แถวที่ไม่ผูกระบบสมาชิก = ตัดสินไม่ได้ ⇒ ซ่อน
+ */
+async function visibleMembers<T extends { id: string; memberSystemId: string | null }>(actor: AiActor, tenantId: string, rows: T[]): Promise<T[]> {
+  if (actor && actor.kind !== "apiKey" && actor.membership.role === "OWNER") return rows;
+  const viewer = memberActorOf(actor);
+  if (!viewer || rows.length === 0) return [];
+  const bySystem = new Map<string, string[]>();
+  for (const r of rows) if (r.memberSystemId) bySystem.set(r.memberSystemId, [...(bySystem.get(r.memberSystemId) ?? []), r.id]);
+  const visible = new Set<string>();
+  for (const [systemId, ids] of bySystem) for (const id of await visibleCustomerIds(tenantId, systemId, viewer, ids)) visible.add(id);
+  return rows.filter((r) => visible.has(r.id));
+}
+
+/**
+ * ผู้ติดต่อ CRM ล่าสุดที่ผู้กระทำมองเห็น — ทุกระบบ CRM ของร้าน แต่ละระบบผ่าน `contactWhere` ของ CRM (ตัวเดียวกับหน้าผู้ติดต่อ):
+ *   CRM ใหม่ (uiVersion 2) = `crm.contact.read` ผ่าน `crmCan` + OWN/TEAM/ALL + ทีมตามสาขา · CRM รุ่นเดิม = ขอบเขตระบบตามเดิม
+ *   (หน้า CRM รุ่นเดิมไม่มีคีย์อ่าน — R-E.14 · `visibleWhere` ของ CRM ตัดสินเอง ไม่เขียนซ้ำที่นี่)
+ * ค่าติดต่อ = `maskPiiDeep` ของ CRM: ผู้ช่วยได้เบอร์/อีเมลแบบปิดบังเสมอ แม้เจ้าของร้านถาม (C5.4-B L5-m3 — กติกาเดียวกับ crm_search)
+ * คีย์ API ไม่มาถึงที่นี่ (recent_leads ปิดให้คีย์ใน tool-access)
+ */
+async function visibleCrmLeads(actor: AiActor, tenantId: string, limit: number) {
+  const viewer = memberActorOf(actor);
+  if (!viewer) return [];
+  const systems = await tenantDb({ tenantId }).appSystem.findMany({ where: { type: "CRM" }, select: { id: true } });
+  if (systems.length === 0) return [];
+  const perSystem = await Promise.all(systems.map((s) => contactWhere({ tenantId, systemId: s.id }, viewer)));
+  const rows = await prisma.crmContact.findMany({
+    where: { tenantId, archivedAt: null, OR: perSystem },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    select: { name: true, source: true, phone: true, createdAt: true },
+  });
+  return crmApi.maskPiiDeep(rows) as typeof rows;
+}
+
+/** ผู้กระทำที่เป็นคน/งานภายใน → MemberActor ของโมดูลสมาชิก/CRM · คีย์ API = null (เครื่องมือเขียนมือของ 2 โมดูลนี้ปิดให้คีย์แล้ว) */
+function memberActorOf(actor: AiActor) {
+  if (!actor || actor.kind === "apiKey") return null;
+  const m = actor.membership;
+  return toMemberActor(aiActorUserId(actor) ?? "", { role: m.role, unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess, permissions: m.permissions });
 }
 
 // วันที่แบบปลอดภัย — Invalid Date → null (กัน toISOString throw)
@@ -206,7 +284,8 @@ const customerSearch: AiTool = {
   async execute(ctx, args) {
     const query = String(asRecord(args).query ?? "").trim();
     // listCustomers เป็น tenant-scoped อยู่แล้ว (กรอง tenantId ให้) — ค้นชื่อ/เบอร์/รหัสสมาชิก
-    const rows = await memberListCustomers(ctx.tenantId, query);
+    // CRM C5.5-G1 ▸ เหลือเฉพาะสมาชิกที่ผู้ถามมองเห็น (ขอบเขตสาขาของโมดูลสมาชิก) ◂
+    const rows = await visibleMembers(ctx.actor, ctx.tenantId, await memberListCustomers(ctx.tenantId, query));
     return JSON.stringify({
       ลูกค้า: rows.slice(0, 10).map((c) => ({
         ชื่อ: c.name ?? "ไม่ระบุชื่อ",
@@ -958,6 +1037,12 @@ const proposePlan: AiTool = {
         payload: asRecord(s.payload),
       };
     });
+    // CRM C5.5-G1 ▸ ทุกขั้นต้องเป็นงานที่ผู้ถามกดยืนยันเองได้ (ตาราง KIND_ACCESS เดียวกับตอนลงมือ) — ไม่ได้ = ปฏิเสธทั้งแผน
+    //   (kind ที่ไม่รู้จักปล่อยให้ createPlan ปฏิเสธด้วยข้อความเดิม) ◂
+    const denied = steps.find((st) => st.kind && isKnownKindName(st.kind) && !actorCanConfirmKind(ctx.actor, st.kind));
+    if (denied) {
+      return JSON.stringify({ error: `คุณไม่มีสิทธิ์ทำขั้นตอน "${denied.summary || denied.kind}" ในแผนนี้ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน หรือให้ผู้มีสิทธิ์เป็นผู้สั่ง` });
+    }
     try {
       const p = await createPlan(
         { tenantId: ctx.tenantId },
@@ -1283,6 +1368,7 @@ const todayAppointments: AiTool = {
         tenantId: ctx.tenantId,
         status: { notIn: ["CANCELLED", "NO_SHOW"] },
         startAt: { gte: start, lt: end },
+        ...unitWhere(ctx.actor), // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ (หน้านัดหมาย = requireUnit) ◂
       },
       orderBy: { startAt: "asc" },
       include: { service: { select: { name: true } }, staff: { select: { name: true } } },
@@ -1308,7 +1394,7 @@ const queueWaiting: AiTool = {
   },
   async execute(ctx) {
     const tickets = await prisma.queueTicket.findMany({
-      where: { tenantId: ctx.tenantId, status: "WAITING" },
+      where: { tenantId: ctx.tenantId, status: "WAITING", ...unitWhere(ctx.actor) }, // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ ◂
       orderBy: { seq: "asc" },
       include: { type: { select: { name: true } } },
     });
@@ -1339,7 +1425,7 @@ const shopPendingOrders: AiTool = {
   },
   async execute(ctx) {
     const orders = await prisma.shopOrder.findMany({
-      where: { tenantId: ctx.tenantId, status: "PENDING_PAYMENT" },
+      where: { tenantId: ctx.tenantId, status: "PENDING_PAYMENT", ...unitWhere(ctx.actor) }, // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ ◂
       orderBy: { createdAt: "desc" },
       select: { code: true, totalSatang: true, customerName: true },
     });
@@ -1365,8 +1451,14 @@ const chatUnreadConversations: AiTool = {
     parameters: NO_ARGS,
   },
   async execute(ctx) {
+    // CRM C5.5-G1 ▸ ด่านคีย์ chat.conversation.read อยู่ที่ runTool · สาขา = `unitAccessWhere` ของแชท (ตัวเดียวกับกล่องแชท M11)
+    //   OWNER/คีย์ API = ทั้งร้าน · import แบบ lazy: บริการแชทไม่ต้องเข้ากราฟของทะเบียน (F10 โหมดไร้ env) ◂
+    const chatUnitWhere =
+      ctx.actor.kind === "apiKey" || ctx.actor.membership.role === "OWNER"
+        ? {}
+        : (await import("@/lib/modules/chat/service")).unitAccessWhere(ctx.actor.membership.unitAccess);
     const convs = await prisma.chatConversation.findMany({
-      where: { tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } },
+      where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
       take: 50,
       include: { contact: { select: { displayName: true, phone: true } } },
@@ -1647,11 +1739,19 @@ const approvalsPending: AiTool = {
     parameters: NO_ARGS,
   },
   async execute(ctx) {
-    const rows = await prisma.approvalRequest.findMany({
+    // CRM C5.5-G1 ▸ ประตูเว็บ (/app/approvals) = `listPending(ctx, m)` ของโมดูลอนุมัติ: เฉพาะคำขอที่ขั้นปัจจุบันรอ "คนนี้" ตัดสิน
+    //   (ผู้อนุมัติตรงตัว · OWNER ทุกขั้น · MANAGER ขั้น MANAGER) · คีย์ API กลาง = ทั้งร้านตามเดิม ◂
+    const actor = ctx.actor;
+    const all = await prisma.approvalRequest.findMany({
       where: { tenantId: ctx.tenantId, status: "PENDING" },
       orderBy: { createdAt: "desc" },
-      select: { entityType: true, entityId: true, amountSatang: true, createdAt: true },
+      select: { id: true, entityType: true, entityId: true, amountSatang: true, createdAt: true },
     });
+    const mine =
+      actor.kind === "apiKey"
+        ? null
+        : new Set((await approvalListPending({ tenantId: ctx.tenantId }, { ...actor.membership, userId: aiActorUserId(actor) ?? "" })).map((r) => r.id));
+    const rows = mine ? all.filter((r) => mine.has(r.id)) : all;
     const byType = new Map<string, { เอกสาร: string; ยอดบาท: number | null; วันที่: string | null }[]>();
     for (const r of rows) {
       const arr = byType.get(r.entityType) ?? [];
@@ -1682,7 +1782,7 @@ const rentalActive: AiTool = {
   },
   async execute(ctx) {
     const rows = await prisma.rentalBooking.findMany({
-      where: { tenantId: ctx.tenantId, status: { in: ["BOOKED", "PICKED_UP"] } },
+      where: { tenantId: ctx.tenantId, status: { in: ["BOOKED", "PICKED_UP"] }, ...unitWhere(ctx.actor) }, // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ ◂
       orderBy: { startDate: "asc" },
       include: { asset: { select: { name: true } } },
     });
@@ -1723,10 +1823,11 @@ const restaurantToday: AiTool = {
     const today = dayKeyBangkok(new Date());
     const dayStart = new Date(`${today}T00:00:00+07:00`);
     const [orderCount, openTables, revAgg] = await Promise.all([
-      prisma.restaurantOrder.count({ where: { tenantId: ctx.tenantId, bizDate: today, status: { not: "CANCELLED" } } }),
-      prisma.tableSession.count({ where: { tenantId: ctx.tenantId, status: "OPEN" } }),
+      // CRM C5.5-G1 ▸ ทุกตัวนับเฉพาะสาขาที่ผู้ถามเปิดได้ (หน้าร้านอาหาร = requireUnit) ◂
+      prisma.restaurantOrder.count({ where: { tenantId: ctx.tenantId, bizDate: today, status: { not: "CANCELLED" }, ...unitWhere(ctx.actor) } }),
+      prisma.tableSession.count({ where: { tenantId: ctx.tenantId, status: "OPEN", ...unitWhere(ctx.actor) } }),
       prisma.posSale.aggregate({
-        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", createdAt: { gte: dayStart } },
+        where: { tenantId: ctx.tenantId, sourceModule: "RESTAURANT", status: "PAID", createdAt: { gte: dayStart }, ...unitWhere(ctx.actor) },
         _sum: { grandTotalSatang: true },
       }),
     ]);
@@ -1759,7 +1860,7 @@ const ticketEventSales: AiTool = {
   async execute(ctx, args) {
     const eventId = String(asRecord(args).eventId ?? "").trim();
     const events = await prisma.ticketEvent.findMany({
-      where: { tenantId: ctx.tenantId, archivedAt: null, ...(eventId ? { id: eventId } : {}) },
+      where: { tenantId: ctx.tenantId, archivedAt: null, ...(eventId ? { id: eventId } : {}), ...unitWhere(ctx.actor) }, // CRM C5.5-G1 ▸ สาขาที่ผู้ถามเปิดได้ ◂
       orderBy: { startAt: "desc" },
       take: 20,
       select: { id: true, name: true, startAt: true, status: true },
@@ -1874,12 +1975,8 @@ const recentLeads: AiTool = {
     const raw = Number(asRecord(args).limit);
     const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 50) : 15;
     const [contacts, subs] = await Promise.all([
-      prisma.crmContact.findMany({
-        where: { tenantId: ctx.tenantId, archivedAt: null },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        select: { name: true, source: true, phone: true, createdAt: true },
-      }),
+      // CRM C5.5-G1 ▸ เดิม = ผู้ติดต่อทุกระบบ CRM ของร้านพร้อมเบอร์เต็ม · ตอนนี้ = เฉพาะที่ผู้ถามมองเห็น + เบอร์ปิดบังตามกติกาผู้ช่วยของ CRM ◂
+      visibleCrmLeads(ctx.actor, ctx.tenantId, limit),
       prisma.formSubmission.findMany({
         where: { tenantId: ctx.tenantId, crmContactId: null },
         orderBy: { createdAt: "desc" },
@@ -1927,7 +2024,8 @@ const customerPoints: AiTool = {
   async execute(ctx, args) {
     const query = String(asRecord(args).query ?? "").trim();
     if (!query) return JSON.stringify({ ข้อความ: "ยังไม่ได้ระบุชื่อ/เบอร์/รหัสสมาชิกของลูกค้า" });
-    const rows = await memberListCustomers(ctx.tenantId, query);
+    // CRM C5.5-G1 ▸ เฉพาะสมาชิกที่ผู้ถามมองเห็น (ไม่เห็น = "ไม่พบ" เหมือนหน้าสมาชิก ไม่บอกว่ามีอยู่) ◂
+    const rows = await visibleMembers(ctx.actor, ctx.tenantId, await memberListCustomers(ctx.tenantId, query));
     if (rows.length === 0) {
       return JSON.stringify({ ข้อความ: `ไม่พบลูกค้าที่ตรงกับ "${query}"` });
     }
@@ -1948,8 +2046,7 @@ const customerPoints: AiTool = {
 };
 
 // ── W5-R6) upcoming_schedule — นัด/เข้าพัก/วันลา ที่กำลังจะถึง (N วันข้างหน้า) ──
-// ToolCtx ไม่มี membership → query prisma ตรง scope tenantId (แนวเดียวกับ pending_leaves/today_appointments
-// ที่เปิดให้ AI เห็นข้อมูลทั้งร้านอยู่แล้ว) — ไม่มี write path
+// CRM C5.5-G1 ▸ ขอบเขต = ของปฏิทิน (calendar.event.read · สาขาที่เปิดได้ · วันลาต้อง hr.leave.read) — ไม่มี write path ◂
 const upcomingSchedule: AiTool = {
   def: {
     name: "upcoming_schedule",
@@ -1968,25 +2065,30 @@ const upcomingSchedule: AiTool = {
     const days = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 90) : 7;
     const from = new Date();
     const to = new Date(from.getTime() + days * 86_400_000);
+    // CRM C5.5-G1 ▸ ประตูเว็บ = ปฏิทิน (`calendar.event.read` ที่ runTool) · นัด/เข้าพักกรองสาขาด้วย filterAccessibleUnitIds
+    //   ความหมายเดียวกัน (unitWhere) · วันลาต้องมี `hr.leave.read` เพิ่ม (calendar/service ตัวเดียวกัน) — ไม่มี = ไม่ดึงเลย ◂
+    const seesLeaves = ctx.actor.kind === "apiKey" || membershipCan(ctx.actor.membership, { module: "hr", action: "hr.leave.read" });
     const [appts, stays, leaves] = await Promise.all([
       prisma.appointment.findMany({
-        where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to } },
+        where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
         orderBy: { startAt: "asc" },
         take: 50,
         include: { service: { select: { name: true } } },
       }),
       prisma.hotelReservation.findMany({
-        where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to } },
+        where: { tenantId: ctx.tenantId, status: { not: "CANCELLED" }, checkInDate: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
         orderBy: { checkInDate: "asc" },
         take: 50,
         include: { roomType: { select: { name: true } } },
       }),
-      prisma.hrLeave.findMany({
-        where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to } },
-        orderBy: { fromDate: "asc" },
-        take: 50,
-        include: { employee: { select: { name: true } } },
-      }),
+      seesLeaves
+        ? prisma.hrLeave.findMany({
+            where: { tenantId: ctx.tenantId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { gte: from, lt: to } },
+            orderBy: { fromDate: "asc" },
+            take: 50,
+            include: { employee: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
     ]);
     if (appts.length === 0 && stays.length === 0 && leaves.length === 0) {
       return JSON.stringify({ ข้อความ: `ยังไม่มีนัด/เข้าพัก/วันลา ในช่วง ${days} วันข้างหน้า` });
@@ -2378,10 +2480,20 @@ export function toolRegistry(): AiTool[] {
 }
 
 // เรียกเครื่องมือตามชื่อ — กันพังทุกทาง: ไม่รู้จัก/execute พัง → JSON {"error":"..."} ห้าม throw
+// CRM C5.5-G1 ▸ `ctx.actor` บังคับ (ชนิด) · ตรวจสิทธิ์ของผู้กระทำก่อนแตะข้อมูลทุกครั้ง (ชั้นที่สองหลังการกรองตอนยื่นเครื่องมือ):
+//   ไม่มี actor / actor คนละร้าน / ไม่มีสิทธิ์ = ข้อความปฏิเสธสั้น ๆ ให้โมเดลบอกผู้ใช้ — ไม่มีข้อมูลบางส่วน ไม่ throw ◂
 export async function runTool(ctx: ToolCtx, name: string, args: unknown): Promise<string> {
   const tool = toolRegistry().find((t) => t.def.name === name);
   if (!tool) return JSON.stringify({ error: `ไม่รู้จักเครื่องมือ "${name}"` });
+  const actor = (ctx as { actor?: unknown }).actor as AiActor | undefined;
+  if (!actor || typeof actor !== "object" || !["member", "apiKey", "system"].includes(actor.kind) || actor.tenantId !== ctx.tenantId) {
+    return JSON.stringify({ error: "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้" });
+  }
   try {
+    const crmLegacyLead =
+      actor.kind === "apiKey" && name === crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name ? await crmApi.crmLegacyLeadOpen(ctx.tenantId, ctx.systemId ?? null) : false;
+    const verdict = toolVerdict(actor, name, { crmLegacyLead });
+    if (!verdict.ok) return JSON.stringify({ error: verdict.reason });
     return await tool.execute(ctx, args);
   } catch (e) {
     return JSON.stringify({ error: e instanceof Error ? e.message : "เครื่องมือทำงานผิดพลาด" });
