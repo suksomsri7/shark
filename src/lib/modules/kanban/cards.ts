@@ -278,7 +278,9 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
   ]);
   return {
     id: card.id,
-    description: card.description,
+    // 🔴 HOTFIX 2026-10-01: ตัดซ้ำตอนอ่าน — CardBack แสดงด้วย `dangerouslySetInnerHTML` และมีทางเขียนที่ไม่ผ่านตัวตัด
+    //    (REST/AI `service.createCard`, เทมเพลตการ์ด) + แถวที่ตัวตัดรุ่นเก่าปล่อย `<svg/onload=…>` ไว้ · idempotent ⇒ ของปกติไม่เปลี่ยน
+    description: card.description === null ? null : sanitizeDescription(card.description),
     dueAt: card.dueAt ? card.dueAt.toISOString() : null,
     startAt: card.startAt ? card.startAt.toISOString() : null,
     reminderMinutesBefore: card.reminderMinutesBefore,
