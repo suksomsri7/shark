@@ -18,6 +18,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
 import { TESTID_RE, ANY_TESTID_RE, normId, globRe, tagAround, isInteractive, lineOf } from "./lib/crm-testid-scan.mjs";
+import { runPosFitness } from "./fitness-pos.mjs"; // POS P0.1 ▸ ด่าน F15.1–F15.4 ของ RUN POS ◂
 
 const ROOT = resolve(import.meta.dirname, "..");
 
@@ -1238,6 +1239,9 @@ console.log("\n── F14: ทะเบียนปุ่ม CRM (ปุ่ม�
     invErr ? `อ่านทะเบียนไม่ได้ — ${invErr}` : problems.length ? problems.join(" · ") : "ตรง",
   );
 }
+
+// POS P0.1 ▸ F15 — ด่านของ RUN POS (แคตตาล็อกผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.*) อยู่ใน scripts/fitness-pos.mts ◂
+runPosFitness(chk, ROOT);
 
 // ─────────────────── สรุป ───────────────────
 const failed = checks.filter((c) => !c.ok);

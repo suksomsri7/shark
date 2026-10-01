@@ -1,0 +1,72 @@
+{
+  "$schema": "ทะเบียนปุ่มของ POS ใหม่ — 1 แถวต่อ element ที่กดได้/กรอกได้ (POS-MASTER-PLAN §4 P4.1 · ด่าน D8 ของทุกใบ UI). สคีมาเดียวกับ scripts/crm-ui-inventory.json (คำอธิบายคีย์ดู $fields ของไฟล์นั้น) — ทุกคีย์ที่ขึ้นต้นด้วย $ คือเอกสาร ไม่ใช่ข้อมูล. ตัวตรวจ (F15.3 ใน scripts/fitness-pos.mts) อ่าน rows · $foreign · baselineDebt",
+  "$owner": "ทุกใบ UI ของ POS เติมแถวของหน้าตัวเองก่อนปิดใบ (D8) · P1.3 (หน้าขายใหม่) และ P4.1 (ทะเบียนครบทุกจอ) ปิดหนี้ใน baselineDebt · ด่าน F15.3 บังคับให้ตรงกับโค้ดเสมอ",
+  "$fields": {
+    "page": "path เต็มของ route ตามโฟลเดอร์จริง เช่น \"/app/sys/[id]/pos/register\" (ห้ามใส่คำอธิบายต่อท้าย)",
+    "testid": "ค่า data-testid ตรงตัวในโค้ด · ชื่อที่สร้างจากตัวแปรเขียนเป็นแพตเทิร์นลงท้าย * (ตัวอักษรที่ไม่ใช่ * ≥ 4)",
+    "kind": "button | link | menu | tab | toggle | drag | form | filter | input | textarea | select (ความหมายเดียวกับทะเบียน CRM)",
+    "roles": "บทบาทที่ต้องเห็นและกดได้: owner · cashier (ผู้ใช้ QC จาก scripts/pos-qc-env.mts) · ใบหลังเพิ่ม manager ได้",
+    "hiddenFor": "บทบาทที่ต้องไม่เห็น element นี้",
+    "expect": "สิ่งที่ต้องเกิดเมื่อกด { type, target, … } — type เดียวกับทะเบียน CRM: modal · navigate · mutation · download · toast · inline-error · ui",
+    "wo": "ใบที่สร้าง element นี้ (ของเดิมก่อน RUN POS ใส่ใบเดิมที่สร้าง เช่น \"M2.8\" / \"Wave1-B\")",
+    "oracle": "id ข้อสอบที่กดจริง (ว่างได้จนกว่า P4.2 จะเขียนตัวกด)",
+    "system": "ประเภทระบบของ [id] = POS เสมอในทะเบียนนี้",
+    "query": "(ไม่บังคับ) query ที่ต้องต่อท้าย URL เช่น \"unit=[unitId]\""
+  },
+  "$foreign": {
+    "$doc": "testid ที่อยู่ในไฟล์ POS แต่เป็นของทะเบียนอื่น (ปุ่มของ CRM ที่อาศัยหน้าขาย POS · CRM_HOSTED_CONTROLS ใน fitness.mts) — F15.3 ไม่นับเป็นของ POS · ถ้ากดได้ต้องมีแถวในทะเบียนเจ้าของ · ห้ามมีแถวซ้ำในทะเบียนนี้",
+    "items": [
+      { "testid": "pos-deal-select", "owner": "scripts/crm-ui-inventory.json", "wo": "C2.7" },
+      { "testid": "pos-deal-hint", "owner": "scripts/crm-ui-inventory.json", "wo": "C2.7" }
+    ]
+  },
+  "baselineDebt": {
+    "$doc": "หนี้ที่มีอยู่ก่อนมีทะเบียน (P0.1 · 1 ต.ค. 2569): จำนวน element ที่กดได้แต่ยังไม่มี data-testid ต่อไฟล์ (นับด้วยกติกาเดียวกับ F14: แท็ก/คอมโพเนนต์/attribute ที่กดได้ · ไม่นับ <option> ภายใน select). Ratchet: จำนวนจริงต้อง = ตัวเลขที่นี่ — มากกว่า = ปุ่มใหม่ไม่มี testid (แดง) · น้อยกว่า = ปิดหนี้แล้วต้องลดตัวเลขที่นี่ (แดงจนกว่าจะลด) · ไฟล์ใหม่ใต้โฟลเดอร์ POS = หนี้ 0 เสมอ",
+    "items": [
+      { "file": "src/lib/modules/pos/register-ui.tsx", "untestid": 22, "closes": "P1.3 (หน้าขายใหม่แทนไฟล์นี้) / P4.1", "note": "ปุ่ม +/−/ลบในตะกร้า · ช่องค้นหา · รายการเอง · ส่วนลดท้ายบิล · คูปอง · สวิตช์สิทธิ์สมาชิก · จอชำระ" },
+      { "file": "src/app/app/sys/[id]/pos/register/page.tsx", "untestid": 5, "closes": "P1.3 / P4.1", "note": "แท็บโมดูล · EmptyState action · ลิงก์เลือกสาขา · ลิงก์ตั้ง PromptPay" },
+      { "file": "src/app/app/sys/[id]/pos/sales/page.tsx", "untestid": 1, "closes": "P1.16 / P4.1", "note": "แท็บโมดูล" },
+      { "file": "src/app/app/sys/[id]/pos/products/page.tsx", "untestid": 12, "closes": "P1.1b–P1.2 / P4.1", "note": "แท็บโมดูล · EmptyState action ×4 · ลิงก์ · ฟอร์มตั้งราคา (input ×3 · SubmitButton)" },
+      { "file": "src/app/app/sys/[id]/pos/close/page.tsx", "untestid": 4, "closes": "P1.9 / P4.1", "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · input · button)" },
+      { "file": "src/app/app/sys/[id]/pos/close/CloseDayTools.tsx", "untestid": 2, "closes": "P1.9 / P4.1", "note": "ช่องกรอกเงินนับจริง · ปุ่มดาวน์โหลด CSV" }
+    ]
+  },
+  "rows": [
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-pay-button",
+      "kind": "button",
+      "roles": ["owner", "cashier"],
+      "hiddenFor": [],
+      "expect": { "type": "ui", "target": "pos-register", "state": "changes", "note": "คิดยอดผ่าน posQuoteAction แล้วสลับไปจอชำระเงิน (เงินสด/PromptPay) · ปิดใช้เมื่อตะกร้าว่าง" },
+      "wo": "Wave1-B",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-member-select",
+      "kind": "select",
+      "roles": ["owner", "cashier"],
+      "hiddenFor": [],
+      "expect": { "type": "ui", "target": "pos-member-panel", "state": "appears", "note": "เลือกสมาชิก → โหลดสิทธิ์ (posMemberRightsAction) แล้วแผงสิทธิ์ขึ้นด้านขวา · แสดงเฉพาะสาขาที่ผูกระบบสมาชิกและมีสมาชิก" },
+      "wo": "M2.8",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-catalog-item",
+      "kind": "button",
+      "roles": ["owner", "cashier"],
+      "hiddenFor": [],
+      "expect": { "type": "ui", "target": "pos-register", "state": "changes", "note": "เพิ่มสินค้า/บริการลงตะกร้า (กดซ้ำ = +1) · ใช้ testid เดียวกันทั้งปุ่มบริการและปุ่มสินค้า" },
+      "wo": "Wave1-B",
+      "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    }
+  ]
+}
