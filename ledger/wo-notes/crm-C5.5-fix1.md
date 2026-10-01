@@ -89,7 +89,7 @@ Plan / status:
 - [x] RV-3 beforeHandler wired in core dispatch (runOpAsActor scope check) + note sentence corrected
 - [x] webhook choke point in `webhooks/service.ts` (author mandatory in types · registered guards · composition root) + 16 call sites incl. account connections/REST (authorised for this only)
 - [x] ORACLE-EDIT c1.10 S7.2 (authorised) · RV-5 generator skill text · RV-7 inventory rows in note
-- [~] regression r2 RUNNING `scripts/pending/c55/run-fix1-r2.sh` → /tmp/c55-logs/r2/SUMMARY
+- [x] regression r2 DONE (`scripts/pending/c55/run-fix1-r2.sh` → /tmp/c55-logs/r2/SUMMARY) — below
 Correction (RV-3): the round-1 sentence "dispatch wraps the actorCan check in beforeHandler" was FALSE at 44e5c77c/24b86d18 — no door called ctl.beforeHandler; fixed in r2 (see below).
 
 ### r2 implementation (code)
@@ -126,3 +126,6 @@ Rows `scripts/crm-ui-inventory.json`:
 New expectation: persona `manager` (MANAGER, unitAccess [patong] — branch-limited) passes only for rules whose actions are NOTIFY_STAFF / SEND_PUSH (or WAIT_THEN of those). Any record-touching action is refused with the Thai "มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา)" message (no DB change). So either (a) the manager journey saves and toggles a NOTIFY_STAFF-only rule, or (b) add a refusal expectation for `manager` on record-action rules: `{"type":"refused","message":"กฎอัตโนมัติทำได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้"}`. `owner` is unchanged.
 
 - Deviation (needs controller): `createEndpoint` keeps a `@deprecated` overload WITHOUT `by` because the oracle `scripts/qc-acc-v2-permissions.mts:768` (not editable) and `seed-acc-v2-qc.mts:2058` call it typed without an author; every src/ call passes `by` (probe WB-static: 15 call sites, 0 without author). After an ORACLE-EDIT adding `by: { userId: null }` (or an owner id) there, the overload can be removed. setEndpointActive / setEndpointEvents: `by` mandatory without escape.
+
+### r2 regression (QC3 unless noted · /tmp/c55-logs/r2/)
+probe-fix1 71/71 · probe-auto 9/9 · probe-idem 3/3 · review probe 9/10 (only HOLE-RV-A1 = RV-4, other agent) · c1.10 66/67 (H.1 environmental) · c1.6 79/79 · c1.7 57/57 · c2.1 84/84 · c2.2 73/73 · c2.9 52/52 · c2.10 41/41 · c3.9 49/49 · c0.2 27/27 · c0.5 50/50 · **QC2 c5.3 L1,L3 18/19 — C5.3-L3-m1 red by ruling RV-1** (act `aged=1 · retryA=409 ran=0 · b1=503 b2=200 ranB=2`; ORACLE-EDIT request above) · m2.2 14/15 (S5.1 screenshots) · m2.5 25/26 (S7.2 HTTP/screenshots) · qc-webhook 15/15 · qc-webhook-ui 11/11 · account-api-core 64/64 · account-api-webhooks 22/22 · account-deep 10/10 · acc-v2-permissions 137 ok / 23 red = all R-block seed comparisons (acc-v2 seed is QC1; W1–W2 webhook checks green) ⇒ controller on QC1 · account-api-docs 11/17 (F2.1-2.3,2.5-2.7 = gitignored .claude/skills absent in this worktree) · acc-v2-security: same 6 reds on base 288cca97 src (/tmp/c55-logs/base-acc-security.log — S5 Beam payment record + S17 hex debt) ⇒ pre-existing/QC3 · docs --check ×4 exit 0 · typecheck exit 0 · fitness 33/33 ×2.
