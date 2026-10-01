@@ -239,3 +239,96 @@ Not on prod: RV-1 (emails-actions catch), the composer trailing trim, and the Au
 - Render-level and screenshot checks: the screenshot-count reds are environmental and identical at base.
 - hsan attack/fuzz/pgtest harnesses: not re-run, because `core/sanitize.ts` is untouched (git diff b8e8ad52..ef43dfc1 -- src/lib/core/sanitize.ts is empty).
 - Member/account/chat suites. No member or account module file changed. Chat changed only by the `normalizeOrigin` one-liner, proven identical on a corpus (SW.trailing), but `qc-chat-security` was not run because it loads `.env.local`.
+
+## Round 2 — review C5.5-fix5 (7b434091: NOT MERGEABLE on RV5-1)
+Written 2026-10-01 19:33 UTC · fix commit b3ea41da · probe `scripts/pending/cf6/probe-cf6-r2.mts` (QC3, own tenant, cleaned) · runner `run-round3.sh` · logs `/tmp/cf6-logs/r3-*`.
+The RED run uses the tree detached at 335597dc (the round-1 tip); its result is 5/11.
+
+### RV5-1 MED: the signature cap blocked re-saving the settings card (regression from round 1)
+**Rule now** (`crm/emails.ts setUserSetting`, constants in `emails-shared.ts`):
+1. Raw input must be at most `CRM_EMAIL_SIGNATURE_INPUT_MAX` (16 000), checked before sanitising.
+2. Then `sanitizeHtml`.
+3. The **sanitized** result must be at most `CRM_EMAIL_SIGNATURE_MAX` (8 000). Over it, the save is refused and nothing is cut.
+
+Both refusals use one message, `CRM_EMAIL_SIGNATURE_TOO_LONG_MSG`, "…นับรวมรูปแบบ/ลิงก์ที่ระบบจัดให้".
+
+**Why a stored value always re-saves:**
+- `sanitizeHtml` is idempotent, so a stored value sanitizes to itself.
+- It is at most 8 000 characters, so it is under the 16 000 input bound.
+- Neither limit can refuse it.
+
+**Alignment with REST and the UI:**
+- REST `emails.userSettings.set` uses `optText(CRM_EMAIL_SIGNATURE_INPUT_MAX)` for `signature` and `signatureHtml`. `docs/api/CRM-API.md` was regenerated; the change is `max 4000` → `max 16000`, 2 lines.
+- The card (`MySendingCard.tsx`) gets `maxLength={data.signatureInputMax}`. The page passes the constant through props, because the card may not import the CRM module (F2.3).
+
+**Legacy rows** (≤ 4 000 characters, possibly cut mid-tag) are under both limits. They load as stored, and on save the engine repairs the cut tag.
+
+| check | RED @335597dc | GREEN @b3ea41da |
+|---|---|---|
+| SIG.resave: the reviewer's exact round trip (input 3 980 chars → stored 5 975; re-save with a new sender name) | refused "ลายเซ็นยาวเกิน 4,000…", name lost | accepted, name kept, signature unchanged |
+| SIG.rest: `userSettings.set` schema accepts the stored value (`signatureHtml` and `signature`) | too_big ≤ 4000 | ok |
+| SIG.roundtrip: 40 random signatures of 0–9 000 chars (links, entities, tags, script, img, mailto); every stored one is well-formed (no tag cut), ≤ 8 000, and re-saves to itself | 20 stored / ok (inputs over 4 000 were refused) | 40 stored, all ok |
+| SIG.cap: sanitized form over 8 000 (raw 15 826 → 24 541) refused; raw over 16 000 refused before sanitising; row unchanged | ok (old message) | ok |
+| SIG.legacy: a 4 000-char row cut mid-tag loads, re-saves with another field change (stored well-formed, 4 003 chars), and can be edited down to 300 | ok | ok |
+| SIG.align: card maxLength, page prop, REST bound | ✗ | ✓ |
+
+**The reviewer's `rv-cf6-db` "FINDING" checks flipped as intended.**
+- SIG.resave now reports "accepted".
+- SIG.lost now shows `fromName` = "ชื่อใหม่".
+- That makes the run 9/11, with the two red checks being the FINDING assertions. The reviewer's file was not edited.
+
+### RV5-2 LOW: F16 widened
+`scripts/lib/tag-strip-scan.mjs`. After `<`, the scanner now also accepts:
+- an optional `/`, `\/?` or `!`;
+- then a tag name, a `(…)`/`(?:…)` group, a lone `(`, a character class with an optional quantifier, or `\w` with an optional quantifier;
+- then an optional `\s` quantifier;
+- then `[^>]` / `.` / `[\s\S]`-like / `\S` with `*` or `+`.
+
+`RegExp(…)` without `new` is now scanned too.
+
+**Self-test:**
+- New must-hit cases (9): `<\/?[a-z][^>]*>`, `<\/?\w+[^>]*>`, `<[a-z]+[^>]*>`, `<(?:p|div)[^>]*>`, `<[a-z][\s\S]*?>`, `<\/[^>]*>`, `<![^>]*>`, `RegExp("<[^>]+>")`, `<\S+>`.
+- New must-not-hit cases (4): the three lookbehinds used in src (phone, maskPii, logo) and `<\/(p|div|li|h[1-6]|tr)>`.
+
+**On the tree:** only the allow-listed `core/sanitize.ts` is hit, and fitness is 39/39 both with and without env.
+
+**Bite.** Two reviewer shapes were appended: `/<\/?[a-z][^>]*>/gi` to `kanban/cards.ts`, and `RegExp("<![^>]*>", "g")` to the .tsx `MySendingCard.tsx`.
+- Fitness went red at 38/39, and F16.1 named `MySendingCard.tsx:106` and `cards.ts:847`.
+- Both files were restored with sha identical, and `src` is clean.
+
+### RV5-3 LOW: inbound bodyText capped
+- `crm/emails.ts ingestInbound`: `str(payload?.text).slice(0, 1_000_000)`, the same position and semantics as the HTML (cut after trim).
+- TEXT.cap: a 1.1 MB text keeps the head, not the tail, and stores ≤ 1 000 000 characters. A 0.9 MB control keeps the tail.
+- RED: stored 1 100 018 chars with the tail.
+- The board mail-in text path was already `trim().slice(0, BODY_MAX = 20 000)`, so it is unchanged. `kanban-email-in.ts` was not touched, so no SHA re-pin was needed.
+
+### RV5-4 nuance (INFO) closed
+`ingestInbound` now runs `capInboundEnvelope({ ...payload, headers: lowerHeaders(payload.headers) })`, which joins duplicate headers case-insensitively **before** capping, the same order as the route.
+
+HDR.join: a direct call with a short `References` and a 17 KiB `references`:
+- RED: the short half was kept (`["short-…"]`).
+- GREEN: the joined header is dropped (`[]`).
+
+### Round 2 tests (tip b3ea41da, `/tmp/cf6-logs/r3.summary`)
+**Typecheck and probes**
+- typecheck (5 GB heap): exit 0.
+- probe-cf6-r2: 11/11 (RED 5/11).
+- rv-cf6-db: 9/11, where the 2 reds are the flipped FINDING checks.
+- rv-cf6-fuzz (60 000): 153/153.
+- probe-cf6-linear: 28/28, SNAP identical.
+- probe-cf6-db: 12/12, SNAP identical. RV4.cap now follows the input bound; this probe is mine.
+
+**Suites**
+- qc-crm-c2.5: 105/105 (the signature/settings service).
+- qc-crm-c2.11: 47/47 (REST, including `userSettings`).
+- qc-crm-c2.4: 91/91.
+- qc-crm-c2.0: 73/73.
+- qc-kanban-k1.6: 20/20.
+
+**Docs and fitness**
+- Docs `--check` ×4: all exit 0, with no tracked diff after the CRM regeneration.
+- Fitness: 39/39 with env and 39/39 without env.
+
+### Not verified (round 2)
+- The card in a browser: the maxLength attribute and the error rendering were checked statically only.
+- Production rows: no prod data was read. "Legacy ≤ 4 000" follows from the old `.slice(0, 4000)` and was simulated on QC3.
