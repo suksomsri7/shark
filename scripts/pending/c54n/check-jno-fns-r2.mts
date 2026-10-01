@@ -1,5 +1,6 @@
 // C5.4-N round 2 builder check (QC2 only, read-only except a rolled-back measurement transaction)
-//   F  the account_jno_* / account_*_journal_no functions on QC2 equal the bodies + search_path of the migration file (byte-equal prosrc)
+//   F  the account_jno_* / account_*_journal_no functions on QC2 equal the bodies + search_path of the migration files (byte-equal prosrc;
+//      000001 + 000002 + 000003, later file wins — ORACLE-EDIT C5.5-fix3a r2)
 //   R  _prisma_migrations rows of both folder names (round-1 name = orphan on QC2 only)
 //   E  re-measure of review R2-E on the NEW SQL: lock-table entries + subtransactions per system for the migration's create path
 //      (account_jno_create, 500 fake systems × 5 books, one transaction, rolled back) and, for comparison, the ensure path (100 systems)
@@ -12,9 +13,12 @@ if (!/ep-cool-shadow/.test(host)) { console.log(`QC2 only — got ${host}`); pro
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 let bad = 0;
-const sql = readFileSync("prisma/migrations/20261104000001_account_journal_no_sequence/migration.sql", "utf8");
+// ORACLE-EDIT C5.5-fix3a r2: the functions in force = 000001, then 000002 and 000003 (each re-defines account_alloc_journal_no; the later file wins)
 const want = new Map<string, string>();
-for (const m of sql.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\([^)]*\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/g)) want.set(m[1]!, m[2]!);
+for (const f of ["20261104000001_account_journal_no_sequence", "20261104000002_account_journal_no_alloc_lock", "20261104000003_account_journal_no_alloc_lock_v2"]) {
+  const sql = readFileSync(`prisma/migrations/${f}/migration.sql`, "utf8");
+  for (const m of sql.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\([^)]*\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/g)) want.set(m[1]!, m[2]!);
+}
 const have = (await P.$queryRawUnsafe(`SELECT p.proname, p.prosrc, p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND (p.proname LIKE 'account_jno_%' OR p.proname LIKE 'account_%journal_no')`)) as Any[];
 for (const [name, body] of want) {
   const rows = have.filter((h) => h.proname === name);

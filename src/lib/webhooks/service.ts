@@ -404,10 +404,25 @@ async function authorActor(tenantId: string, by: WebhookAuthor): Promise<Webhook
 export function webhookAuthorOfApi(actor: { kind: string; keyId?: string; userId?: string | null }): WebhookAuthor {
   return actor.kind === "apikey" ? { apiKeyId: actor.keyId ?? null } : { userId: actor.userId ?? null };
 }
+// CRM C5.5 ▸ (fix3a · R2-2) ทะเบียนว่างหลังโหลด composition root = root ถูกแก้/ย้ายจนไม่ลงทะเบียนอะไร (สภาพผิดปกติเสมอ — ทุกเส้นทางที่มี `by`
+//   ผ่านบรรทัด import ด้านล่างก่อน ไม่ว่าคำขอจะมาจาก route / server action / REST / ข้อเสนอ AI / สคริปต์) ⇒ ปิด (fail closed) สำหรับปลายทางที่
+//   รับเหตุการณ์ CRM หรือ "ทุกเหตุการณ์" (รายการว่าง) — ตัดสินจากชื่อเหตุการณ์ล้วน ไม่ต้องรู้ว่าร้านมี CRM v2 ไหม (ไม่ import โมดูล CRM · RV-8)
+//   ปลายทางที่รับเฉพาะเหตุการณ์อื่น (สมาชิก · บัญชี · …) ผ่านตามเดิม · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) ไม่ตรวจเหมือนเดิม ◂
+export const WEBHOOK_GUARDS_MISSING = "ระบบตรวจสิทธิ์เหตุการณ์ของ webhook ยังไม่พร้อม — ยังสมัครรับเหตุการณ์ CRM หรือทุกเหตุการณ์ไม่ได้ ลองใหม่ภายหลังหรือแจ้งผู้ดูแลระบบ";
+/** คำนำหน้าเหตุการณ์ CRM — สำเนาของ `CRM_EVENT_PREFIXES` (`modules/crm/api/webhook-events.ts`) เพราะแพลตฟอร์มไม่ import โมดูล CRM (RV-8)
+ *  · ด่าน: `scripts/pending/cf3/probe-cf3.mts` R2-2-prefixes เทียบสองรายการนี้ให้ตรงกัน */
+export const WEBHOOK_GUARDED_EVENT_PREFIXES = ["crm.", "custom.record.", "team."] as const;
+/** ปลายทางนี้ต้องมีตัวกันเหตุการณ์ไหม: รายการว่าง (= ทุกเหตุการณ์) หรือมีเหตุการณ์ CRM */
+export function webhookEventsNeedGuard(events: readonly string[]): boolean {
+  return events.length === 0 || events.some((e) => WEBHOOK_GUARDED_EVENT_PREFIXES.some((p) => e.startsWith(p)));
+}
 async function runEventGuards(tenantId: string, by: WebhookAuthor | undefined, events: readonly string[]): Promise<void> {
   if (by === undefined) return;
   await import("@/lib/webhook-guards");
-  if (EVENT_GUARDS.size === 0) return;
+  if (EVENT_GUARDS.size === 0) {
+    if (webhookEventsNeedGuard(events)) throw new WebhookGuardError(WEBHOOK_GUARDS_MISSING); // CRM C5.5 ▸ fix3a R2-2: fail closed ◂
+    return;
+  }
   let actor: WebhookAuthorActor | null | undefined;
   for (const guard of EVENT_GUARDS.values()) {
     if (actor === undefined) actor = await authorActor(tenantId, by);

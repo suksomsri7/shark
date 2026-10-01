@@ -1,6 +1,6 @@
 import { requireTenant } from "@/lib/core/context";
 import { listEndpoints, listDeliveries } from "@/lib/webhooks/service";
-import { toggleEndpointAction, deleteEndpointAction } from "@/lib/webhooks/actions";
+import { deleteEndpointAction } from "@/lib/webhooks/actions";
 import { webhookEventLabel } from "@/lib/webhooks/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { WebhookEndpointForm } from "@/components/webhook-endpoint-form";
 import { WebhookEventsEditor } from "@/components/webhook-events-editor";
+import { WebhookToggleButton } from "@/components/webhook-toggle-button";
 import { formatThaiDateTime } from "@/lib/ui/date";
 
 // ตั้งค่า Webhooks ขาออก (WO-0062): สมัคร URL รับเหตุการณ์ + ลายเซ็น HMAC + ดูประวัติการส่ง
@@ -71,13 +72,8 @@ export default async function WebhooksSettingsPage() {
                     <WebhookEventsEditor id={ep.id} selected={events} />
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <form action={toggleEndpointAction}>
-                      <input type="hidden" name="id" value={ep.id} />
-                      <input type="hidden" name="active" value={ep.active ? "false" : "true"} />
-                      <button type="submit" className="btn-sm">
-                        {ep.active ? "ปิด" : "เปิด"}
-                      </button>
-                    </form>
+                    {/* CRM C5.5 ▸ (fix3a · R2-3) ปุ่ม client — การเปิดที่ถูกปฏิเสธแสดงเหตุผลไทยใต้ปุ่ม แทนหน้า error ◂ */}
+                    <WebhookToggleButton id={ep.id} active={ep.active} />
                     <ConfirmDialog
                       triggerLabel="ลบ"
                       triggerClassName="btn-sm"

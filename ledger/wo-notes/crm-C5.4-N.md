@@ -132,6 +132,9 @@ POS (`pos/account-bridge.ts` → `applyExternalSale`), inventory (`inventory/acc
 5. payment rows (CAS)
 6. postings (gl commitEntry / reverseFor) + any pre-existing row a posting path touches (inventory, deposits, statement lines,
    finance/asset rows, coupons, the original entry in reverseFor) — journal numbers come from nextval: no lock, never waits
+   [corrected 1 Oct, C5.5-fix3a r2 / review F3: true only in the normal case. While HEALING (the number is taken below the book's
+   highest number) account_alloc_journal_no takes a transaction-level advisory lock per (system, book) and waits for another healer
+   of that book — see "Healing exception" below]
 7. LEGAL COUNTERS — AccountDocSequence rows, ↑(docType enum order, periodKey), one UPSERT per group — the LAST lock of the
    transaction; after it the transaction only UPDATEs rows it created itself and INSERTs outbox rows, then commits
 ```
@@ -144,6 +147,21 @@ POS (`pos/account-bridge.ts` → `applyExternalSale`), inventory (`inventory/acc
 - So every path that leaves X through a counter runs along strictly increasing counters and ends at a transaction that waits on nothing. **No cycle passes through a counter.**
 - Cycles made only of row locks in steps 1–6 are pre-existing (the hunter's violator list) and unchanged by this card.
 - The R10-2 cycle came from step 6's unique journal number, which made others wait. It disappears because nextval never waits. Step 4 stays where it is; that is harmless.
+
+**Healing exception (added 1 Oct, C5.5-fix3a round 2 · review F3 — the proof above assumed step 6 never waits):**
+- Since migrations `20261104000002` / `20261104000003`, a step-6 allocation whose number is already taken below the book's highest
+  number takes `pg_advisory_xact_lock` per (system, book) and holds it to commit. That happens only while healing: after a restore or
+  import, or when old count+1 code wrote numbers ahead of the sequence.
+- So step 6 can wait on another healer of the same book. That healer may itself wait for a row lock (steps 1–6) that the first
+  transaction holds, or for an advisory lock of a second book. That is a cycle. The step-7 counter proof above still holds: the
+  advisory lock is taken in step 6, before step 7, and after step 7 the transaction allocates no journal number. Not covered by that
+  proof: the phase-2 counters still held across a posting (`issueDocNo` before `postDocument`, inventory goods-doc numbers), so a
+  holder of one of those can wait on the advisory lock too. The fix3a review traced those against the step-7 counters and found no
+  concrete pair on one book.
+- Postgres detects such a cycle (`40P01`, after `deadlock_timeout`): one transaction fails with the generic allocation/posting error,
+  nothing is half-written, and the user can retry. Reproduced at the mechanism level (review `rv4-review.mts` RV4-E: row lock, then
+  slow-path allocation vs healer holding the advisory lock, then the row). No concrete app flow was traced to it. It cannot happen
+  outside healing.
 
 **Remaining system-wide wait (not fixed here):**
 - `ensureAccounting` (`gl.ts:309`) inserts the month's `AccountPeriod` row inside the money transaction. On the first posting of a month, a concurrent first posting waits for that transaction's commit on the unique key, up to a batch's length, once per month.
@@ -538,3 +556,59 @@ Still needed: pre-checks 1–6, smoke (d), watch (f), and the rollback rule (M1 
 - Patch `c54c 63ea9f45..544d4cf6` (builder r1+r2, review r1+r2) applied clean on session/crm 8cf86985+; every changed `src/` file byte-identical to c54c ⇒ QC2 regression of record = builder r2 (run-main-c2 QC2 list 36/36, oracle 12/12, probe-m1 10/10, r2-money 11/11, race, deadlock ×40) + reviewer r2 reruns.
 - On MAIN (`scripts/pending/run-main-n.sh` → `.qc-shots/crm/main-n.log`): typecheck 0 · API docs gen `--check` ×4 exit 0 · fitness 33/33 ×2 · **QC1 `migrate deploy` of `20261104000001_account_journal_no_sequence`: applied, status "up to date"** · QC1 wht-cheque 69/69 · ai-skill 32/33 (E1-K2.3 = 1 Oct date roll, env, same before the card) · cheque-audit 60 checks / 7 legacy audit findings (same 7 as every round, exit 0) · acc-v2-payments exit 0.
 - QC3 still lacks the migration (owed before any tree at/after this commit runs account code there). Production: owner step — runbook in this note; owner Q1 (no monthly reset) open; CI `pnpm drift` on the merge commit unproven.
+
+### Runbook addendum (C5.5-fix3a · hunt 2b H2b-2, corrected in fix3a round 2) — migrations `20261104000002` + `20261104000003`
+Appended 1 Oct by the fix3a builder; rewritten in round 2 after review F1/F2/F3 (`crm-C5.5-fix3a-review.md`). The runbook above is unchanged.
+- **Production status (1 Oct):** production has NONE of `20261104000001_account_journal_no_sequence`, `20261104000002_account_journal_no_alloc_lock`,
+  `20261104000003_account_journal_no_alloc_lock_v2`. Pre-check 4 above (`migration_name LIKE '2026110400000%'` → 0) already covers all three
+  names. Evidence: `origin/main` has no `20261104*` folder (its newest is `20261102000000_crm_v2_c`) and the production build migrates from main;
+  production itself was not queried. QC: QC2 has all three (checked); per the ledger QC1 has 000001 only and QC3 has none (not re-checked).
+- **Apply list, in this order (one deploy is fine; `migrate deploy` applies pending folders oldest name first):**
+  1. `20261104000001_account_journal_no_sequence` — functions + sequences (runbook above).
+  2. `20261104000002_account_journal_no_alloc_lock` — `CREATE OR REPLACE` of `account_alloc_journal_no` only (first locked slow path). It is
+     NOT edited in round 2: it is already applied on QC2 and its stored checksum must keep matching the file.
+  3. `20261104000003_account_journal_no_alloc_lock_v2` — `CREATE OR REPLACE` of the same function again; this body is the one in force.
+  Final state after 3: a call whose number is TAKEN and lies below the book's highest number (the floor) takes
+  `pg_advisory_xact_lock(hashtextextended('account_jno:' || account_jno_seq_name(system, book), 0))` FIRST, re-reads the floor and the sequence
+  (`last_value`, `is_called`) under the lock, then moves the sequence only forward: nextval steps when the remaining gap is ≤ 1000, else
+  `setval(floor)` (only when the next value is still ≤ the floor). Free number (normal case) and a taken number at/above the floor: no lock.
+  Why 000003 exists (review F1): in 000002 only the "> 1000" branch took the lock; a caller in the "≤ 1000" branch walked lock-free past the
+  floor between a healer's read and its `setval(floor)`, so the sequence moved back and the healer got that number again (P2002). Reproduced
+  with ONE such caller (boundary: gap exactly 1000, `< 1000` vs `<= 1000`; and away from the boundary: gap 1001 + a second caller at 1000).
+  000003 also makes the comparison `<= 1000` everywhere.
+- **Ordering vs the POS lane:** POS carries `20261120000000_pos_v2_a` and `20261120000001_pos_v2_a_links` (names later than ours). If POS reaches
+  main and production first, the deploy that brings these folders finds them pending although later names are already applied, and
+  `migrate deploy` applies them anyway (it does not refuse an earlier-named pending folder; only `migrate dev` treats that as drift). The two
+  POS migrations do not touch `AccountJournalEntry` or any `account_jno_*` / `account_*_journal_no` function (grep of session/pos), so the
+  order between the lanes does not matter for correctness. Not tested with a real out-of-order apply on a throwaway database (the first
+  fix3a reviewer only saw QC2 with a diverged history); check `migrate status` in the CI rehearsal (pre-check 5) of the merge commit.
+  The CRM lane's `20261103000000_crm_perf_indexes` is not on main either; it rides in the same deploy.
+- **Pre-checks:** 1–6 above, plus:
+  - 7 — the role that runs `migrate deploy` (DIRECT_URL) must OWN `account_alloc_journal_no` after step 1 (`CREATE OR REPLACE` needs the owner);
+    when 000001–000003 run in one deploy this holds automatically (same role creates and replaces). If 000001 was applied separately, check:
+    `SELECT pg_get_userbyid(proowner) = current_user FROM pg_proc WHERE proname = 'account_alloc_journal_no';` → `true` (as the migrate role).
+  - 8 — `SELECT current_setting('server_version_num')::int >= 110000;` → `true` (`hashtextextended`; QC2 is 18.6).
+  `OR REPLACE` keeps owner, grants and the pinned `search_path`, so pre-check 3/3b is unchanged.
+- **Locks while migrating:** the function's catalog row only (sub-second each). In-flight calls finish on the old body; new calls get the new one.
+- **Behaviour change to know (only while healing — after a restore/import, or old count+1 code, left numbers above a sequence):**
+  - Every caller that lands on a taken number below the floor waits for the healer of the same book until that transaction commits (the lock is
+    transaction-level by design, so the waiter re-reads a floor that includes the healer's numbers). Normal postings never wait.
+  - Deadlock `40P01` is possible: a transaction that holds account rows (lock order steps 1–6, or a phase-2 counter) and then waits on the
+    advisory lock, while the healer waits for one of those rows; or two transactions healing two books in opposite order. Postgres detects it,
+    one transaction fails with the generic allocation/posting message and can be retried, nothing is half-written. Mechanism reproduced (review
+    RV4-E); no concrete app flow traced. See "Healing exception" in §2.
+- **Residual (000003):** free-number allocations by other sessions still run lock-free. For the healer's `setval(floor)` to move the sequence back,
+  those allocations would have to consume the whole remaining gap (> 1000 numbers, all free) between two adjacent statements of the healer;
+  every caller that lands on a taken number now waits after one nextval. Not reproduced; not proven impossible.
+- **Smoke after deploy (read-only):**
+  `SELECT prosrc LIKE '%pg_advisory_xact_lock%' AS locked, prosrc LIKE '%IF f - nv <= 1000 THEN%' AS v2, proconfig FROM pg_proc WHERE proname = 'account_alloc_journal_no';`
+  → `true`, `true`, `{"search_path=pg_catalog, public"}` (`v2 = false` means 000003 did not run). Watch (f) above is unchanged.
+- **Rollback:** not needed for correctness. If ever wanted, re-run the `account_alloc_journal_no` statement of `20261104000001` (OR REPLACE, no data
+  effect) — that brings back the unlocked slow path (H2b-2 race). Never re-run 000002's body alone (F1). The Instant-Rollback rule (M2) above
+  still applies to the C5.4-N code itself.
+- **QC2 evidence:** `migrate deploy` 000002 (`/tmp/cf3-logs/migrate-deploy.log`) and 000003 (`/tmp/cf3-logs/r2/migrate-deploy.log`), status up to
+  date. `scripts/pending/c54n/check-jno-fns-r2.mts` now compares QC2 with 000001 + 000002 + 000003 (later file wins; ORACLE-EDIT C5.5-fix3a r2).
+- **Proof:** `scripts/pending/cf3/probe-cf3.mts` JNO-* (forced 400 ms window on copies: 000001 body ⇒ P2002, latest body ⇒ 0 failures; deployed
+  function 16 parallel × 6 rounds in the slow path ⇒ 96/96 distinct; fast path 0 advisory locks) and `scripts/pending/cf3/probe-cf3-r2.mts`
+  (the review's RV3-A and RV4-B interleavings against the installed function, ×3 each, + deterministic "taken number below the floor waits
+  for the lock" for gaps 1 · 500 · 1000 · 1001 · 1599) — note `ledger/wo-notes/crm-C5.5-fix3a.md` § Round 2.

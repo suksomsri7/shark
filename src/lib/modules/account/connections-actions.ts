@@ -184,10 +184,16 @@ export async function createWebhookAction(fd: FormData): Promise<ConnResult> {
   if (!/^https?:\/\//i.test(url)) return { ok: false, reason: "ที่อยู่ปลายทางต้องขึ้นต้นด้วย http:// หรือ https://" };
   // CRM C5.5 ▸ (fix1 r2 · มติผู้คุมงานข้อ 5) หน้านี้เลือกได้เฉพาะเหตุการณ์บัญชี ⇒ กรองให้เหลือ account.* ที่มีในทะเบียนจริง (เดิมรับทุกค่าที่ส่งมา)
   //   · ผู้ทำ = ผู้ใช้ที่ล็อกอิน (ตัวกันเหตุการณ์กลาง — รายการว่าง = ทุกเหตุการณ์ ต้องผ่านกติกา CRM เมื่อร้านมี CRM v2) ◂
-  const events = fd
+  const named = fd
     .getAll("events")
-    .map((e) => String(e))
-    .filter((e) => e.startsWith("account.") && WEBHOOK_EVENTS.some((w) => w.value === e));
+    .map((e) => String(e).trim())
+    .filter((e) => e !== "");
+  const events = named.filter((e) => e.startsWith("account.") && WEBHOOK_EVENTS.some((w) => w.value === e));
+  // CRM C5.5 ▸ (fix3a · R2-1) ฟอร์มระบุเหตุการณ์มา ≥1 แต่ไม่มีตัวไหนเป็นเหตุการณ์บัญชีเลย ⇒ ปฏิเสธ (เดิมกรองจนเหลือ [] = "ทุกเหตุการณ์ของร้าน"
+  //   ทั้ง CRM/สมาชิก/แชท — ตรงข้ามกับที่ผู้ใช้ขอ) · ไม่ส่งเหตุการณ์มาเลย = ทุกเหตุการณ์ ตามที่หน้าบอกไว้ (ตัวกันเหตุการณ์กลางตรวจต่อ) ◂
+  if (named.length > 0 && events.length === 0) {
+    return { ok: false, reason: "หน้านี้เลือกได้เฉพาะเหตุการณ์ของระบบบัญชี — เหตุการณ์ของระบบอื่นตั้งที่หน้า ตั้งค่า › Webhooks ของร้าน" };
+  }
   try {
     await createEndpoint({ tenantId }, { url, events, by: { userId } });
   } catch (e) {
@@ -210,7 +216,12 @@ export async function updateWebhookAction(fd: FormData): Promise<ConnResult> {
     await deleteEndpoint({ tenantId }, id);
   } else {
     assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
-    await setEndpointActive({ tenantId }, id, op === "on", { userId }); // CRM C5.5 ▸ by: เปิด = ตัวกันเหตุการณ์ตรวจ ◂
+    // CRM C5.5 ▸ (fix3a · R2-3) ตัวกันเหตุการณ์ปฏิเสธการเปิด ⇒ คืนเหตุผลไทยทางช่องปกติของหน้า (เดิมโยนออกไปหน้า error) ◂
+    try {
+      await setEndpointActive({ tenantId }, id, op === "on", { userId }); // CRM C5.5 ▸ by: เปิด = ตัวกันเหตุการณ์ตรวจ ◂
+    } catch (e) {
+      return { ok: false, reason: safeReason(e, "แก้ปลายทางไม่สำเร็จ") };
+    }
   }
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", targetId: id, after: { op } });
   revalidatePath(PATH(systemId));
