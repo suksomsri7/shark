@@ -158,3 +158,98 @@ No schema, no prisma commands, no hot files, no `src/lib/ai/**`, no `permissions
 3. Accept the behaviour change for concurrent duplicate keys: callers now get the original movement instead of a thrown P2002.
 4. Accept wrapper retry-once + Thai message on lock contention (alternative: no retry, message only).
 5. Schedule the pool self-starvation fix in account (§7) — independent of this hotfix but surfaced by it.
+
+---
+
+# Round 2 (controller rulings after the review of c4ca074b · brief `pos-brief-HF-INV-1-R2.md`)
+
+## R2 status (checkpoint)
+- [x] 0. merged `origin/hotfix/inventory-authz` (55b4a678) → f3254ca2 · `qc-hf-inventory-authz` **112/112** · regression BEFORE captured on f3254ca2 (round-1 outputs not reusable: merge changed guard/actions/ui/reports)
+- [x] 1. oracle +31 checks (AT-12..AT-18) → RED on the pre-fix code **67/94** (`HF-INV-1-red2.txt`)
+- [x] 2. fix R2.1 · R2.2 · R2.3 · R2.5 (+ N6 label fix)
+- [x] 3. controls: 7 runs, each fix reverted in the working tree → its checks red (`HF-INV-1-control2.txt`)
+- [x] 4. GREEN ×3 **94/94** (`HF-INV-1-green2.txt`) · 24 regressions identical · fitness 33/33 ×2 modes identical · typecheck **exit 0** (once, 6 min 21 s incl. lock wait, heap 5632)
+- [x] 5. notes · commit · push
+
+## R2.1 — unlinked `AccountProduct.qtyOnHand` in ONE statement
+Writers of `qtyOnHand` (grep of the whole `src/`, verified): goods doc `applyGoodsDocInTx` (unlinked) · bundle components `consumeBundleComponentsInTx` (unlinked) · opening lot `addOpeningLot` (unlinked) — the three counter writers, all fixed;
+linked mirrors (`= mv.balanceAfter` in goods doc / bundle / opening lot, `syncItemToAccountProduct` `= item.onHand`) copy a value read under the InvItem lock or after commit — not counters, unchanged;
+`unlinkProductFromItem` freezes `= item.onHand` once (absolute set at unlink, not a counter) — unchanged.
+| site | before | after |
+|---|---|---|
+| `account/product.ts:892-911` goods issue/return (unlinked) | read `p.qtyOnHand` before any lock, write `current ± qty` | refusing rule (issue, `allowNegative` false): `updateMany({ id, tenantId, systemId, qtyOnHand ≥ qty }, decrement)` + `count === 1`, refusal text unchanged (`สต็อก "…" ไม่พอ (คงเหลือ X, เบิก Y)`, X re-read in the tx after the failed update) · otherwise `increment: ±qty` (negative still allowed where it was) · loop sorted by product id |
+| `account/bundle.ts:91-100, 136-138` unlinked components | `Number(comp.qtyOnHand) - qty` + in-memory copy | ordered pre-lock `SELECT … FROM "AccountProduct" … ORDER BY id COLLATE "C" FOR UPDATE` of the unlinked components, then `decrement: qty` (in-memory copy removed — no longer needed) · negative still allowed (sale must not block) |
+| `account/product.ts:1733-1737` opening lot (unlinked) | `Number(p.qtyOnHand) + qty` | `increment: qty` |
+No value is reported back from these writes (no balanceAfter-like field for unlinked products) ⇒ nothing to re-read.
+**Finding while testing**: goods docs of the SAME type and SAME month already serialise on the `AccountDocSequence` row (`nextGoodsDocNo` upsert-increment holds the row until commit, and `applyGoodsDocInTx` re-reads products after it). The race is real across months (back-dated docs), across types (issue vs return), bundle sales, opening lots — the oracle dates its documents in 12 different months of 2025.
+
+## R2.2 — bounded lock wait + visible contention
+- `inventory/service.ts:124-151`: both lock statements now start with `WITH lt AS MATERIALIZED (SELECT set_config('lock_timeout', '5s', true))` and lock `FOR UPDATE OF i`. `set_config(…, true)` = `SET LOCAL` (tx-scoped). Put in the SAME statement as the lock (the CTE must produce its row before any row reaches LockRows) ⇒ **no extra round trip** — chosen over a separate `SET LOCAL` statement because the brief requires the happy path not to slow down. It stays in force for the rest of that tx (later lock waits in the same stock/account tx are also bounded to 5 s).
+- `:162-194`: `stockContentionCode()` returns the SQLSTATE/Prisma code; on the first failure `console.warn("[inventory] stock write contention — retrying", { code, op, itemId })` (op = receive/consume/adjust/transfer; no payload/PII); second failure → same Thai busy message with `{ cause: e }` (it had no cause before).
+- Oracle AT-18: inside `consumeInTx`/`lockItemsInTx` `SHOW lock_timeout` = `5s`; after commit AND after rollback on the same backend (direct URL, pool max 1, same `pg_backend_pid`) = `0` (default); positive control: a session `SET lock_timeout='7s'` IS seen by the probe, then `RESET`. Holder keeps the item 12 s → wrapper fails at **10.1 s** with the Thai message, cause = 55P03, exactly one warn `{code:"55P03",op:"consume",itemId}`; after release the same key succeeds once. Account goods issue against a held item fails at **5.2 s** (was 9.0 s = the whole hold), no document, no stock change (message = generic `บันทึกเอกสารเบิกไม่สำเร็จ`, see N5).
+
+## R2.3 — return cap after the lock (+ a pre-existing cap defect)
+- `account/product.ts:836-845`: for a return with `sourceDocId`, lock the source issue document row (`SELECT … FROM "AccountDocument" WHERE id, tenantId, systemId FOR UPDATE`) **before** the item locks. Chosen guard: this one row lock serialises all returns of one issue for linked AND unlinked products (no InvItem exists for unlinked). Order issue-doc → items is the same order as approving a draft issue (doc row updated, then stock) ⇒ no new cycle.
+- `:879-889`: the cap check moved after the linked block (after `lockItemsInTx` + item reads), per the brief.
+- CONTROL 6: cap moved back before the item locks with the doc lock kept → still 94/94 (the doc lock is the guard that matters; the move is belt-and-braces). CONTROL 4: doc lock removed + cap moved back → 2 of 2 concurrent returns succeed (stock +10 for an issue of 5).
+- **Pre-existing defect found (brief item impossible as written without it)**: `returnableQtyForIssue` counted the return being created (it is inserted with status ISSUED in the same tx before the check) ⇒ a return could take at most HALF of what is left: issue 6 → "return 6" refused `เหลือคืนได้ 0`, "return 4" refused `เหลือคืนได้ 2`, "return 3" ok (probe on QC4). The UI (`returnableQtyForIssueNow`) shows the full figure. Fix: optional `excludeDocId` (`:727-748`), passed only by `applyGoodsDocInTx` (`input.docId`). Without it the brief's "exactly one of two returns of 5 succeeds" can never happen (both are refused) — on c4ca074b this defect also masked the race. AT-17.0 covers it (MAJOR). Existing AJ9 (adjust) / IV7 (invitem) checks unchanged.
+
+## R2.5 — `scripts/inv-cache-audit.mts`
+- `--tenant` now filters inside every CTE (`tf()` fragment, column names constant via `Prisma.raw`, tenant value as a parameter) — EXPLAIN (`--explain`, new, read-only) shows all three `InvMovement` scans as `Bitmap Index Scan … Index Cond: ("tenantId" = …)` instead of a full aggregate. Per-tenant runs 6+6+2+2 = 16 = all-tenant run (QC4: 0 drifted). Still one `SET TRANSACTION READ ONLY` tx; prod host without `ALLOW_PROD_AUDIT=1` → exit 4 before connecting (re-verified).
+- **No unlinked `qtyOnHand` check**: there is no reliable history. Bundle component cuts are derived from the CURRENT recipe (recipes are editable, not versioned) · unlink writes an absolute value with no record · nothing records that a product was ever linked. A sum over goods docs + opening lots would flag correct products ⇒ false alarms. Not added (stated in the script header).
+
+## Oracle `scripts/qc-hf-inventory-atomic.mts` — 63 → **94** checks
+AT-12 10 goods issues ×[A,B]/[B,A] unlinked, 20→10 · AT-13 5 issues −2 + 5 returns +1, 50→45 · AT-14 10 bundle docs AB/BA unlinked components on separate clients, −10 each · AT-15 opening lot +7 vs 8 issues −1 + a lane that decrements 1 and holds the row 1 s (deterministic stale pre-read), 30→28 · AT-16 5 issues of 3 from 10 with the refusing rule ⇒ exactly 3 ok, 2 refused with the unchanged text, 1 left, never negative · AT-17.0 full return passes · AT-17.1–6 two concurrent returns of 5 of an issue of 5 (different months) ⇒ exactly one, other `เกินจำนวนที่เบิกไว้`, stock +5 once, returnable 0 (linked / unlinked / mixed × 2) · AT-18.1–18.8 lock_timeout / no leak / leak-detector control / busy message 4.5–11.5 s / cause / warn shape / same key once after release / account path < 8 s + retry control. R2 rounds = 3 (AT-17: 6 cases).
+Oracle change to a round-1 check: **AT-10 receives now all go through `receiveInTx` on the lanes** (was half wrapper). Reason: the wrapper posts GL after commit and `gl.nextJournalNo` (= `count + 1`) collides with the cost adjustment's own JV — `P2002 (systemId, docNo)` on `AccountJournalEntry`, seen 2× in 10 rounds on the fixed tree, 0× in a 12-round probe; pre-existing GL defect, unrelated to stock (see Decisions). The AT-10 contract (cost adjustment serialises with receives on the InvItem lock) is unchanged; the wrapper uses the same lock.
+
+| run | result |
+|---|---|
+| RED pre-fix (f3254ca2) | **67/94** · CRITICAL 24 · MAJOR 3 — the 63 round-1 checks green; all 27 R2 findings red for the right reason (`HF-INV-1-red2.txt`) |
+| GREEN 1/2/3 | **94/94** · CRITICAL 0 each |
+| CONTROL 1 goods-doc hunk | 82/94 — AT-12/13/15/16 |
+| CONTROL 2 bundle + opening lot + lock_timeout | 86/94 — AT-14, AT-18.1/3/4/5/7 (AT-15 stayed green with the random-window draft ⇒ AT-15 made deterministic) |
+| CONTROL 3 id order only (sort + bundle pre-lock) + warn/cause + doc lock | 84/94 — AT-12 (deadlocks), AT-14 (deadlocks), AT-17.3/17.4 (unlinked returns 2 of 2), AT-18.4/18.5 |
+| CONTROL 4 doc lock + cap move | 88/94 — AT-17.1–17.6 (2 of 2 returns) |
+| CONTROL 5 exclude-own | 87/94 — AT-17.0–17.6 |
+| CONTROL 6 cap move only (informative) | 94/94 |
+| CONTROL 7 opening lot only (final oracle) | 91/94 — AT-15.1–3 (31/32/29 instead of 28) |
+
+### Timing (wall per round, 10 parallel, this VPS → Neon ap-southeast-1)
+| scenario | round 1 after | round 2 GREEN ×3 |
+|---|---|---|
+| AT-1 consume ×10 | 0.8–1.1 s | 0.7–1.1 s (one 2.1 s first-round warm-up) |
+| AT-2 receive ×10 | ≈0.8 s | 0.7–0.8 s |
+| AT-5 adjust vs consume | ≈0.8 s | 0.7–0.9 s (one 1.4) |
+| AT-8 POS createSale ×10 | ≈0.9–1.1 s | 0.9–1.1 s |
+| AT-7 multi-item | 3.0–3.6 s | 2.8–3.1 s (one 4.1–4.2 per run) |
+| AT-10 cost adjust vs receives | ≈1.0 s | 0.9–1.0 s |
+| AT-12 / 13 / 14 / 16 / 17 (new) | – | 1.9–2.1 / 1.8–2.6 / 0.3–0.4 / 0.6–0.9 / 0.4–0.6 s |
+R2.2 adds no statement to the happy path (set_config rides inside the lock statement) — no measurable change. RED same scenarios: AT-12 8.5–9.3 s and AT-14 3.2–5.1 s on the old code (deadlock detection), vs 2.0 s / 0.3 s now.
+
+## Regressions on QC4 — before (f3254ca2) vs after: per-check lines identical (sorted; ids, timestamps, doc numbers stripped)
+qc-inventory 12/12 · qc-inventory-item 11/11 · qc-inventory-account 23/23 · qc-warehouse 15/15 · qc-lot 13/13 · qc-procurement 12/12 · qc-vendor-portal 6/6 ·
+qc-approval-wiring 7/7 · qc-pos-inventory 25/25 · qc-pos-register 42/42 · qc-clinic 8/8 · qc-clinic-refund 13/13 · qc-shop-refund 12/12 · qc-nav-functions 11/11 ·
+qc-hf-inventory-authz **112/112** (was 46 in round 1 — HF-INV-0 round 2) · qc-pos-account 16/16 · qc-account-cpa 107/107 · qc-restaurant-money 6/6 · qc-restaurant-void 11/11 ·
+qc-acc-v2-adjust 96/96 · qc-acc-v2-detail 85/85 · pre-existing reds identical: qc-acc-v2-invitem 77/88 · qc-acc-v2-pos-lines 65/79 · qc-acc-v2-products 57/72 (missing "SIAM DIVE QC" seed on QC4, as round 1).
+Fitness 33/33 → 33/33 with QC4 env and with `env -u DATABASE_URL -u DIRECT_URL` (check lines identical; "before" = HEAD versions of the 3 src + 2 script files).
+
+## Hunks (round 2)
+`src/lib/modules/inventory/service.ts` (lock statements + retry/warn/cause) · `src/lib/modules/account/product.ts` (returnable excludeDocId · issue-doc lock · cap move · unlinked single-statement loop · opening lot increment) · `src/lib/modules/account/bundle.ts` (ordered pre-lock + decrement) · `scripts/qc-hf-inventory-atomic.mts` · `scripts/inv-cache-audit.mts` · `ledger/wo-notes/HF-INV-1-control.txt` label (N6). No schema, no prisma command, no hot files.
+
+## NOT covered (round 2 additions — notes only, R2.4)
+- **N1 void/refund restore cost** (money policy → Inventory V2 / owner+accountant): POS void, shop/clinic refund read the item's CURRENT average before the receive and restore at it. Reviewer's proposal: restore at the OUT movement's own `costSatang`. Worked example (reconstructed; the reviewer's text is not in the repo): 1 unit @ ฿100 → sold (OUT cost 100, onHand 0) → receive 1 @ ฿300 (avg 300) → void the sale: restored at 300 ⇒ 2 units @ 300 = ฿600 on the books of the item while only ฿400 was ever paid (100 + 300); if the sale's COGS reversal uses the sale's cost (฿100), ฿200 of inventory value is created by the void. Restoring at the OUT cost (100) gives avg (300+100)/2 = 200, value ฿400 = what was paid. Not changed.
+- **N3** inventory→account mirror sync after commit can apply out of order (two syncs racing) — mirror only, readers use `productStockMap`.
+- **N4** pool exhaustion: `unable to start a transaction` (P2028 after maxWait 10 s) is classified as contention ⇒ retried once, so a saturated pool costs ≈ 20 s before the Thai busy message; whether to retry it at all is left as is.
+- **N5** the busy message is masked in server actions/account (`safeReason` → generic `บันทึกเอกสารเบิกไม่สำเร็จ` — AT-18.7) · shop `confirmOrderPaid` can throw after the order is PAID when the stock cut fails.
+- **N6** done: `HF-INV-1-control.txt` CONTROL 2 label (57 checks = oracle before AT-11; final round-1 = 63).
+- `createCostAdjustment` on an UNLINKED product reads `qtyOnHand` and `buyPrice` before any lock (`account/product.ts` ~1240) and uses them for the GL amount `(new − old) × qty` — two concurrent cost adjustments, or one racing a goods issue, post a JV from stale values. Same defect class; not a `qtyOnHand` writer, not in the brief → not changed (see Decisions).
+- Account txs: after `lockItemsInTx` the rest of the tx has `lock_timeout 5s` (GL rows, doc rows) — a > 5 s wait anywhere later now fails the document instead of waiting up to 30 s.
+- GL journal numbering `count + 1` race (below).
+
+## Decisions for the controller (round 2)
+1. **R2.3 exclude-own** (behaviour change beyond the brief): a return can now take the full remaining quantity the screen shows (before: at most half). Needed for the brief's own acceptance test; arguably a bug fix users will notice. Accept?
+2. **R2.2 as `set_config(…, true)` inside the lock statement** instead of a separate `SET LOCAL` statement — identical semantics (tx-local, proven not to leak on the same backend), zero extra round trip. Accept?
+3. **R2.1 ordering additions**: id-sorted unlinked updates in goods docs + an ordered `FOR UPDATE` pre-lock of unlinked bundle components. Not literally in the brief; without them [A,B]/[B,A] documents deadlock (CONTROL 3: 8–9 of 10 fail per round) — the brief's "bundle with unlinked components in parallel" cannot pass otherwise.
+4. **R2.3 guard = issue-document row lock** (covers unlinked); cap also moved after the item locks as briefed (CONTROL 6 shows the doc lock alone suffices).
+5. **New finding, GL**: `gl.nextJournalNo` = `count(...) + 1` ⇒ concurrent JV postings in one system/book/period collide (`P2002 AccountJournalEntry (systemId, docNo)`). Inventory wrappers post GL after commit and swallow failures (`postMovementGl` catch) ⇒ a perpetual-inventory JV can be **silently lost**; in a tx (cost adjustment) the whole document fails. Pre-existing, outside inventory — recommend a separate WO (sequence row with upsert-increment like `nextGoodsDocNo`). AT-10 now avoids it.
+6. Unlinked `createCostAdjustment` stale read (above) — fix in a round 3 or Inventory V2? (≈4 lines: lock the AccountProduct row for unlinked products before reading qty/buyPrice.)

@@ -16,7 +16,11 @@
 //
 // ใช้ (QC4):  bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/inv-cache-audit.mts
 // ตัวเลือก:   --items=N  แสดงรายการสินค้าที่เพี้ยนต่อร้านสูงสุด N ตัว (ค่าเริ่มต้น 10 · 0 = ไม่แสดง)
-//             --tenant=<id>  ตรวจร้านเดียว
+//             --tenant=<id>  ตรวจร้านเดียว (R2.5: กรอง tenant ลงไปถึงทุก CTE — ไม่สแกน InvMovement ทั้งตาราง)
+//             --explain      พิมพ์แผนคิวรี (EXPLAIN · ไม่รันจริง) ไว้ตรวจว่าตัวกรอง tenant ลงไปถึงการสแกนแต่ละตาราง
+// ไม่ตรวจ AccountProduct.qtyOnHand ของสินค้าที่ไม่ผูกคลัง (R2.5): ไม่มีประวัติที่เชื่อถือได้ให้เทียบ —
+//   ตัดส่วนประกอบชุดคิดจากสูตร "ปัจจุบัน" (สูตรแก้ได้ ไม่เก็บรุ่น) · เลิกผูกคลังเขียนยอดสัมบูรณ์โดยไม่มีบันทึก
+//   (และไม่มีร่องรอยว่าสินค้าเคยผูกคลังมาก่อน) ⇒ ผลรวมจากเอกสารจะ "เพี้ยน" ทั้งที่ยอดถูก = สัญญาณหลอก
 import { isProdDbUrl } from "./qc-env-guard.mjs";
 
 const envFile = process.env.QC_ENV_FILE ?? ".env";
@@ -48,9 +52,10 @@ const host = (() => {
 const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split("=")[1];
 const showItems = Math.max(0, Number(arg("items") ?? 10) || 0);
 const onlyTenant = arg("tenant") ?? null;
+const explain = process.argv.includes("--explain");
 console.log(`[env] inv-cache-audit · ไฟล์ ${envFile} · DB ${host}${isProdDbUrl(dbUrl) ? " (PRODUCTION · ALLOW_PROD_AUDIT=1)" : ""}`);
 
-const { PrismaClient } = await import("@prisma/client");
+const { PrismaClient, Prisma } = await import("@prisma/client");
 const { PrismaPg } = await import("@prisma/adapter-pg");
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: dbUrl }) });
 
@@ -73,39 +78,40 @@ type TenantRow = { id: string; name: string; slug: string };
 
 try {
   const started = Date.now();
-  const { items, tenants } = await db.$transaction(
-    async (tx) => {
-      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-      const items = await tx.$queryRaw<ItemRow[]>`
+  // R2.5: ตัวกรอง tenant ใส่ "ในทุก CTE" (เดิมกรองแค่ปลายทาง ⇒ รวม InvMovement ของทุกร้านก่อนแล้วค่อยทิ้ง)
+  //   ชื่อคอลัมน์เป็นค่าคงที่ในสคริปต์ (Prisma.raw) · ค่า tenant ผ่านพารามิเตอร์
+  const tf = (col: string) => (onlyTenant ? Prisma.sql`AND ${Prisma.raw(col)} = ${onlyTenant}` : Prisma.empty);
+  const query = Prisma.sql`
         WITH defloc AS (
           SELECT DISTINCT ON ("systemId") "systemId", "id" FROM "InvLocation"
-          WHERE "isDefault" = true ORDER BY "systemId", "archivedAt" NULLS FIRST, "createdAt" ASC
+          WHERE "isDefault" = true ${tf(`"tenantId"`)} ORDER BY "systemId", "archivedAt" NULLS FIRST, "createdAt" ASC
         ),
         loc AS (
-          SELECT "itemId", COUNT(*)::int AS n, COALESCE(SUM("onHand"), 0)::int AS s FROM "InvLocationStock" GROUP BY "itemId"
+          SELECT "itemId", COUNT(*)::int AS n, COALESCE(SUM("onHand"), 0)::int AS s FROM "InvLocationStock" WHERE true ${tf(`"tenantId"`)} GROUP BY "itemId"
         ),
         mv AS (
-          SELECT "itemId", COUNT(*)::int AS n, COALESCE(SUM("qtyDelta"), 0)::int AS s FROM "InvMovement" GROUP BY "itemId"
+          SELECT "itemId", COUNT(*)::int AS n, COALESCE(SUM("qtyDelta"), 0)::int AS s FROM "InvMovement" WHERE true ${tf(`"tenantId"`)} GROUP BY "itemId"
         ),
         mvloc AS (
           SELECT m."itemId", COALESCE(m."locationId", d."id") AS "locationId", SUM(m."qtyDelta")::int AS s
           FROM "InvMovement" m LEFT JOIN defloc d ON d."systemId" = m."systemId"
+          WHERE true ${tf(`m."tenantId"`)}
           GROUP BY 1, 2
         ),
         badloc AS (
           SELECT ls."itemId", COUNT(*)::int AS n
           FROM "InvLocationStock" ls
           LEFT JOIN mvloc x ON x."itemId" = ls."itemId" AND x."locationId" = ls."locationId"
-          WHERE ls."onHand" <> COALESCE(x.s, 0)
+          WHERE ls."onHand" <> COALESCE(x.s, 0) ${tf(`ls."tenantId"`)}
           GROUP BY ls."itemId"
         ),
         mvlot AS (
-          SELECT "itemId", "lotCode", SUM("qtyDelta")::int AS s FROM "InvMovement" WHERE "lotCode" IS NOT NULL GROUP BY 1, 2
+          SELECT "itemId", "lotCode", SUM("qtyDelta")::int AS s FROM "InvMovement" WHERE "lotCode" IS NOT NULL ${tf(`"tenantId"`)} GROUP BY 1, 2
         ),
         badlot AS (
           SELECT l."itemId", COUNT(*)::int AS n
           FROM "InvLot" l LEFT JOIN mvlot x ON x."itemId" = l."itemId" AND x."lotCode" = l."lotCode"
-          WHERE l."onHand" <> COALESCE(x.s, 0)
+          WHERE l."onHand" <> COALESCE(x.s, 0) ${tf(`l."tenantId"`)}
           GROUP BY l."itemId"
         )
         SELECT i."tenantId", i."systemId", i."id", i."sku", i."name", i."onHand", i."costSatang",
@@ -117,7 +123,20 @@ try {
         LEFT JOIN mv ON mv."itemId" = i."id"
         LEFT JOIN badloc ON badloc."itemId" = i."id"
         LEFT JOIN badlot ON badlot."itemId" = i."id"
-        WHERE i."kind" = 'PRODUCT' AND (${onlyTenant}::text IS NULL OR i."tenantId" = ${onlyTenant})`;
+        WHERE i."kind" = 'PRODUCT' ${tf(`i."tenantId"`)}`;
+  if (explain) {
+    const plan = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      return tx.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN ${query}`);
+    });
+    console.log(plan.map((r) => r["QUERY PLAN"]).join("\n"));
+    await db.$disconnect();
+    process.exit(0);
+  }
+  const { items, tenants } = await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+      const items = await tx.$queryRaw<ItemRow[]>(query);
       const ids = [...new Set(items.map((r) => r.tenantId))];
       const tenants = ids.length
         ? await tx.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, slug: true } })

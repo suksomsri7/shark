@@ -10,6 +10,15 @@
 //   ผู้เรียกหลายสินค้าใน tx เดียว (ใบเบิกบัญชี · ตัดส่วนประกอบชุด) สลับลำดับสินค้า ⇒ สำเร็จทุกใบ ไม่มี deadlock
 //   ผู้เรียกจริง: POS createSale ×10 ขายสินค้าตัวเดียวกัน · รับของตาม PO ×2 ต่อใบพร้อมกัน
 //
+// รอบ 2 (R2 · แดงบน c4ca074b · เขียวหลังแก้):
+//   R2.1 สินค้าบัญชีที่ "ไม่ผูกคลัง" — AccountProduct.qtyOnHand เปลี่ยนในคำสั่งเดียว (ไม่อ่าน-คำนวณ-เขียน):
+//     เบิกพร้อมกัน (สลับลำดับบรรทัด) · เบิก+คืน · ตัดส่วนประกอบชุด [A,B]/[B,A] · ยอดยกมา+เบิก · กติกา "สต็อกไม่พอ" ใต้การแข่ง
+//     (เอกสารชนิด/งวดเดียวกันเรียงคิวที่แถวเลขที่เอกสารอยู่แล้ว ⇒ ข้อสอบลงวันที่คนละเดือน = ทางที่แข่งกันได้จริง)
+//   R2.2 รอล็อกสินค้าไม่เกิน 5 วิ (SET LOCAL lock_timeout · ไม่รั่วหลัง commit/rollback บน connection เดิม)
+//     ตัวห่อรอเกิน → ลองใหม่ 1 ครั้ง (console.warn ไม่มีข้อมูลลูกค้า) → ข้อความไทยพร้อม cause ภายใน ≈5–11 วิ (ไม่ใช่ 30)
+//   R2.3 เพดานคืนเบิกตรวจ "หลัง" ล็อก — คืน 2 ใบพร้อมกันเกินที่เบิก ⇒ สำเร็จใบเดียว (ผูกคลัง · ไม่ผูก · ปน)
+//     + คืนครบจำนวนที่ยังคืนได้ต้องผ่าน (ใบที่กำลังคืนต้องไม่ถูกนับซ้ำเป็น "คืนไปแล้ว")
+//
 // การแข่ง: ≥10 รายการพร้อมกัน × 5 รอบ ต่อสถานการณ์ · ครึ่งหนึ่งผ่านตัวห่อ (pool ของแอป = คนละ connection)
 //   อีกครึ่งผ่าน `*InTx` บน PrismaClient แยกต่อเลน (คนละ client · คนละ connection แน่นอน)
 // DB: ฐาน QC ผ่าน qc-env-guard (กัน prod) · ร้านชั่วคราว slug qc-hfatom-* · ลบใน finally
@@ -428,12 +437,294 @@ try {
       const q = rnd(1, 9);
       const c = rnd(500, 9_500);
       const key = `at10-${r}-${k}-${stamp}`;
-      calls.push(k % 2 === 0
-        ? inv.receive(ctx2, { itemId: C.itemId, qty: q, costSatang: c, idempotencyKey: key, sourceModule: "procurement" })
-        : viaLane(k, (tx) => inv.receiveInTx(tx, ctx2, { itemId: C.itemId, qty: q, costSatang: c, idempotencyKey: key, sourceModule: "procurement" })));
+      // R2: รับเข้าทั้งหมดผ่าน InTx บนเลน — ตัวห่อ `receive` โพสต์ GL หลัง commit และเลขที่ใบสำคัญ (gl.nextJournalNo = count+1)
+      //   ชนกับ GL ของใบปรับต้นทุนเป็นครั้งคราว (P2002 systemId+docNo — ปัญหา GL เดิม ไม่ใช่สต็อก · ดูโน้ต Round 2)
+      //   สัญญาของข้อนี้คือ "ใบปรับต้นทุนเรียงคิวกับรับเข้าที่ล็อก InvItem" — ตัวห่อกับ InTx ใช้ล็อกเดียวกัน
+      calls.push(viaLane(k, (tx) => inv.receiveInTx(tx, ctx2, { itemId: C.itemId, qty: q, costSatang: c, idempotencyKey: key, sourceModule: "procurement" })));
     }
     const res = await time("AT-10", () => settle(calls));
     await roundCheck(`AT-10.${r}`, `รอบ ${r}: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง`, [C.itemId], defLoc2, res.errs);
+  }
+
+  // ═══════════ R2.1 · AT-12..16: สินค้าบัญชีที่ไม่ผูกคลัง (AccountProduct.qtyOnHand) ═══════════
+  // เอกสารเบิก/คืนชนิดเดียวกัน งวดเดียวกัน เรียงคิวกันที่แถว AccountDocSequence (upsert increment ถือล็อกจน commit)
+  //   ⇒ การแข่งจริงเกิด "ข้ามงวด" (ลงวันที่ย้อนหลังคนละเดือน) · ข้ามชนิด (เบิก vs คืน) · ใบขายชุด · ยอดยกมา
+  const R2 = 3;
+  const acc = { tenantId: t2.id, systemId: accSys.id };
+  const monthDate = (k: number) => new Date(Date.UTC(2025, k % 12, 15, 5)); // 12 งวดของปี 2025 = แถวเลขที่คนละแถว
+  const mkUnlinked = async (sku: string) => {
+    const p = await prod.createProduct(t2.id, accSys.id, { name: `QC ${sku}`, type: "GOODS", sku: `${sku}-${stamp}`, buyPrice: 100, salePrice: 200 });
+    if (!p.ok) throw new Error(`createProduct ${sku}: ${p.reason}`);
+    return p.id;
+  };
+  const setQty = (pid: string, q: number) => prisma.accountProduct.update({ where: { id: pid }, data: { qtyOnHand: q } });
+  const qtyOf = async (pid: string) => Number((await prisma.accountProduct.findUniqueOrThrow({ where: { id: pid }, select: { qtyOnHand: true } })).qtyOnHand);
+  type GLine = { productId: string; qty: number };
+  const gDoc = (docType: "GOODS_ISSUE" | "GOODS_ISSUE_RETURN", lines: GLine[], issueDate: Date, extra: { sourceDocId?: string } = {}) =>
+    prod.createGoodsMovement({ ...acc, docType, issueDate, lines, note: "QC R2", ...extra });
+  const okOrThrow = (tag: string) => (x: { ok: boolean; reason?: string }) => {
+    if (!x.ok) throw new Error(`${tag}: ${x.reason}`);
+    return x;
+  };
+
+  console.log("\nAT-12 ใบเบิกสินค้าไม่ผูกคลัง 10 ใบพร้อมกัน (2 สินค้า สลับลำดับบรรทัด · คนละงวด) × 3 รอบ — จาก 20 เหลือ 10 พอดี");
+  const U1 = await mkUnlinked("U12A");
+  const U1b = await mkUnlinked("U12B");
+  for (let r = 1; r <= R2; r++) {
+    await setQty(U1, 20);
+    await setQty(U1b, 20);
+    const res = await time("AT-12", () =>
+      settle(Array.from({ length: PAR }, (_, k) =>
+        gDoc("GOODS_ISSUE", k % 2 === 0 ? [{ productId: U1, qty: 1 }, { productId: U1b, qty: 1 }] : [{ productId: U1b, qty: 1 }, { productId: U1, qty: 1 }], monthDate(k)).then(okOrThrow("goods issue")))),
+    );
+    const [q1, q2] = [await qtyOf(U1), await qtyOf(U1b)];
+    const probs = [...(q1 === 10 && q2 === 10 ? [] : [`qtyOnHand ${q1}/${q2} ≠ 10/10`]), ...(res.errs.length ? [`${res.errs.length} failed: ${[...new Set(res.errs)].slice(0, 2).join(" | ")}`] : [])];
+    chk(`AT-12.${r}`, `รอบ ${r}: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี`, probs.length === 0, probs.join(" · "));
+  }
+
+  console.log("\nAT-13 ใบเบิก ×5 (−2) + ใบคืน ×5 (+1) สินค้าไม่ผูกคลังพร้อมกัน × 3 รอบ — จาก 50 เหลือ 45 พอดี");
+  const U2 = await mkUnlinked("U13");
+  for (let r = 1; r <= R2; r++) {
+    await setQty(U2, 50);
+    const res = await time("AT-13", () =>
+      settle(Array.from({ length: PAR }, (_, k) => (k % 2 === 0
+        ? gDoc("GOODS_ISSUE", [{ productId: U2, qty: 2 }], monthDate(k)).then(okOrThrow("goods issue"))
+        : gDoc("GOODS_ISSUE_RETURN", [{ productId: U2, qty: 1 }], monthDate(k)).then(okOrThrow("goods return"))))),
+    );
+    const q = await qtyOf(U2);
+    const probs = [...(q === 45 ? [] : [`qtyOnHand ${q} ≠ 45`]), ...(res.errs.length ? [`${res.errs.length} failed: ${[...new Set(res.errs)].slice(0, 2).join(" | ")}`] : [])];
+    chk(`AT-13.${r}`, `รอบ ${r}: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี`, probs.length === 0, probs.join(" · "));
+  }
+
+  console.log("\nAT-14 ตัดส่วนประกอบชุดที่ไม่ผูกคลัง [A,B]/[B,A] 10 ใบพร้อมกัน (คนละ client) × 3 รอบ — ส่วนประกอบละ −10 พอดี");
+  const UA = await mkUnlinked("U14A");
+  const UB = await mkUnlinked("U14B");
+  const uAB = await mkBundle(`QC ชุดไม่ผูก AB ${stamp}`, [{ pid: UA }, { pid: UB }]);
+  const uBA = await mkBundle(`QC ชุดไม่ผูก BA ${stamp}`, [{ pid: UB }, { pid: UA }]);
+  for (let r = 1; r <= R2; r++) {
+    await setQty(UA, 100);
+    await setQty(UB, 100);
+    const docs: string[] = [];
+    for (let k = 0; k < PAR; k++) docs.push(await draftDoc(k % 2 === 0 ? uAB : uBA));
+    const res = await time("AT-14", () =>
+      settle(docs.map((d, k) => viaLane(k, (tx) => bundle.consumeBundleComponentsInTx(tx, accCtx, d)).then((x) => {
+        if (x.consumed !== 2) throw new Error(`bundle consumed ${x.consumed}/2 (${x.reason ?? ""})`);
+        return x;
+      }))),
+    );
+    const [qa, qb] = [await qtyOf(UA), await qtyOf(UB)];
+    const probs = [...(qa === 90 && qb === 90 ? [] : [`qtyOnHand ${qa}/${qb} ≠ 90/90`]), ...(res.errs.length ? [`${res.errs.length} failed: ${[...new Set(res.errs)].slice(0, 2).join(" | ")}`] : [])];
+    chk(`AT-14.${r}`, `รอบ ${r}: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี`, probs.length === 0, probs.join(" · "));
+  }
+
+  console.log("\nAT-15 ยอดยกมา (+7) แข่งกับใบเบิก ×8 (−1) + ผู้ถือแถวที่ลด 1 ค้างไว้ 1 วิ · สินค้าไม่ผูกคลัง × 3 รอบ — จาก 30 เป็น 28 พอดี");
+  const U3 = await mkUnlinked("U15");
+  for (let r = 1; r <= R2; r++) {
+    await setQty(U3, 30);
+    // ผู้ถือ (คนละ client): ลด 1 แล้วค้างล็อกแถวไว้ 1 วิ ⇒ ยอดยกมาที่อ่านยอดก่อนล็อก (โค้ดเดิม) อ่านได้ 30 แน่นอน
+    //   แล้วเขียน 37 ทับหลังผู้ถือ commit (29) = ยอดหาย 1 แบบกำหนดได้ — ไม่พึ่งจังหวะสุ่ม
+    const holder = viaLane(r, async (tx) => {
+      await tx.$executeRaw`UPDATE "AccountProduct" SET "qtyOnHand" = "qtyOnHand" - 1 WHERE "id" = ${U3}`;
+      await tx.$executeRaw`SELECT pg_sleep(1)`;
+      return "held";
+    });
+    await new Promise((res) => setTimeout(res, 150));
+    const calls: Promise<unknown>[] = [holder, prod.addOpeningLot(t2.id, accSys.id, U3, { lotDate: new Date(), qty: 7, unitCost: 100 }).then(okOrThrow("opening lot"))];
+    for (let k = 2; k < PAR; k++) calls.push(gDoc("GOODS_ISSUE", [{ productId: U3, qty: 1 }], monthDate(k)).then(okOrThrow("goods issue")));
+    const res = await time("AT-15", () => settle(calls));
+    const q = await qtyOf(U3);
+    const probs = [...(q === 28 ? [] : [`qtyOnHand ${q} ≠ 28`]), ...(res.errs.length ? [`${res.errs.length} failed: ${[...new Set(res.errs)].slice(0, 2).join(" | ")}`] : [])];
+    chk(`AT-15.${r}`, `รอบ ${r}: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี`, probs.length === 0, probs.join(" · "));
+  }
+
+  console.log("\nAT-16 กติกา 'สต็อกไม่พอ' ใต้การแข่ง: เบิก 3 × 5 ใบพร้อมกันจาก 10 (ไม่อนุญาตติดลบ) × 3 รอบ — สำเร็จ 3 ใบพอดี ไม่ติดลบ");
+  const U4 = await mkUnlinked("U16");
+  const u4name = `QC U16`;
+  for (let r = 1; r <= R2; r++) {
+    await setQty(U4, 10);
+    const docsBefore = await prisma.accountDocument.count({ where: { tenantId: t2.id, docType: "GOODS_ISSUE" } });
+    const res = await time("AT-16", () => settle(Array.from({ length: 5 }, (_, k) => gDoc("GOODS_ISSUE", [{ productId: U4, qty: 3 }], monthDate(k)))));
+    const outs = res.rs.flatMap((x) => (x.status === "fulfilled" ? [x.value as { ok: boolean; reason?: string }] : []));
+    const oks = outs.filter((o) => o.ok).length;
+    const refusals = outs.filter((o) => !o.ok).map((o) => o.reason ?? "");
+    const msgOk = refusals.every((m) => new RegExp(`^สต็อก "${u4name}" ไม่พอ \\(คงเหลือ 1, เบิก 3\\)$`).test(m));
+    const q = await qtyOf(U4);
+    const docsAfter = await prisma.accountDocument.count({ where: { tenantId: t2.id, docType: "GOODS_ISSUE" } });
+    const probs = [
+      ...(oks === 3 ? [] : [`${oks} succeeded (want 3)`]),
+      ...(q === 1 ? [] : [`qtyOnHand ${q} ≠ 1${q < 0 ? " (NEGATIVE)" : ""}`]),
+      ...(docsAfter - docsBefore === oks ? [] : [`documents +${docsAfter - docsBefore} ≠ successes ${oks}`]),
+      ...(msgOk ? [] : [`refusal text: ${[...new Set(refusals)].slice(0, 2).join(" | ")}`]),
+      ...(res.errs.length ? [`${res.errs.length} threw: ${res.errs[0]}`] : []),
+    ];
+    chk(`AT-16.${r}`, `รอบ ${r}: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ`, probs.length === 0, probs.join(" · "));
+  }
+
+  // ═══════════ R2.3 · AT-17: เพดานคืนเบิก (RPR อ้างอิง PRR) ═══════════
+  console.log("\nAT-17 เพดานคืนเบิก: คืนครบจำนวนผ่าน · คืน 2 ใบพร้อมกัน (คนละงวด) เกินที่เบิก ⇒ สำเร็จใบเดียว");
+  const U5 = await mkUnlinked("U17");
+  await setQty(U5, 1000);
+  const onHandA = async () => (await prisma.invItem.findUniqueOrThrow({ where: { id: A.itemId } })).onHand;
+  {
+    const iss = await gDoc("GOODS_ISSUE", [{ productId: A.pid, qty: 2 }, { productId: U5, qty: 2 }], new Date());
+    if (!iss.ok) throw new Error(`AT-17 issue: ${iss.reason}`);
+    const ret = await gDoc("GOODS_ISSUE_RETURN", [{ productId: A.pid, qty: 2 }, { productId: U5, qty: 2 }], new Date(), { sourceDocId: iss.id });
+    chk("AT-17.0", "คืนครบจำนวนที่ยังคืนได้ (เบิก 2 คืน 2 · ผูกคลัง+ไม่ผูก) ผ่าน — ใบที่กำลังคืนไม่ถูกนับเป็น 'คืนไปแล้ว'", ret.ok, ret.ok ? "" : ret.reason, "MAJOR");
+  }
+  const kinds: { label: string; lines: GLine[] }[] = [
+    { label: "ผูกคลัง", lines: [{ productId: A.pid, qty: 5 }] },
+    { label: "ไม่ผูกคลัง", lines: [{ productId: U5, qty: 5 }] },
+    { label: "ปน", lines: [{ productId: A.pid, qty: 5 }, { productId: U5, qty: 5 }] },
+  ];
+  let n17 = 0;
+  for (const kind of kinds) {
+    for (let r = 1; r <= 2; r++) {
+      n17++;
+      const iss = await gDoc("GOODS_ISSUE", kind.lines, new Date());
+      if (!iss.ok) throw new Error(`AT-17 issue: ${iss.reason}`);
+      const [a0, u0] = [await onHandA(), await qtyOf(U5)];
+      // คนละงวด = คนละแถวเลขที่ ⇒ ไม่มีอะไรเรียงคิวสองใบนี้นอกจากตัวกันของ R2.3
+      const res = await time("AT-17", () => settle([
+        gDoc("GOODS_ISSUE_RETURN", kind.lines, new Date(), { sourceDocId: iss.id }),
+        gDoc("GOODS_ISSUE_RETURN", kind.lines, monthDate(n17), { sourceDocId: iss.id }),
+      ]));
+      const outs = res.rs.flatMap((x) => (x.status === "fulfilled" ? [x.value as { ok: boolean; reason?: string }] : []));
+      const oks = outs.filter((o) => o.ok).length;
+      const refusal = outs.find((o) => !o.ok)?.reason ?? "";
+      const [a1, u1] = [await onHandA(), await qtyOf(U5)];
+      const wantA = kind.lines.some((l) => l.productId === A.pid) ? 5 : 0;
+      const wantU = kind.lines.some((l) => l.productId === U5) ? 5 : 0;
+      const left = await prod.returnableQtyForIssueNow(t2.id, accSys.id, iss.id);
+      const probs = [
+        ...(oks === 1 ? [] : [`${oks} returns succeeded (want 1)`]),
+        ...(oks === 1 && !/เกินจำนวนที่เบิกไว้/.test(refusal) ? [`refusal text: ${refusal}`] : []),
+        ...(a1 - a0 === wantA && u1 - u0 === wantU ? [] : [`stock +${a1 - a0}/+${u1 - u0} ≠ +${wantA}/+${wantU}`]),
+        ...([...left.values()].every((v) => v === 0) ? [] : [`returnable left ${JSON.stringify([...left.values()])}`]),
+        ...(res.errs.length ? [`${res.errs.length} threw: ${res.errs[0]}`] : []),
+      ];
+      chk(`AT-17.${n17}`, `${kind.label} รอบ ${r}: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว`, probs.length === 0, probs.join(" · "));
+    }
+  }
+
+  // ═══════════ R2.2 · AT-18: รอล็อกสินค้าไม่เกิน 5 วิ + ไม่รั่วหลัง tx ═══════════
+  console.log("\nAT-18 lock_timeout 5 วิ ใน tx สต็อก · ไม่รั่ว · ตัวห่อรอเกิน → ลองใหม่ 1 ครั้ง → ข้อความไทยใน ≈5–11 วิ");
+  const i18 = await mkItem("AT18", 400);
+  await inv.receive(ctx, { itemId: i18, qty: 40, costSatang: 400, idempotencyKey: `at18-seed-${stamp}` });
+  // connection ตรง (ไม่ผ่าน pooler) 1 เส้น ⇒ คำสั่งหลัง commit วิ่งบน backend เดิมแน่นอน (pid เดียวกัน)
+  const direct = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL, max: 1 }) });
+  try {
+    type Q = { $queryRaw: <T>(q: TemplateStringsArray, ...v: unknown[]) => Promise<T> };
+    const showLt = async (c: unknown) => (await (c as Q).$queryRaw<{ lock_timeout: string }[]>`SHOW lock_timeout`)[0]?.lock_timeout;
+    const pidOf = async (c: unknown) => Number((await (c as Q).$queryRaw<{ p: number }[]>`SELECT pg_backend_pid() AS p`)[0]?.p);
+    const base = await showLt(direct);
+    const pid0 = await pidOf(direct);
+    const inTxConsume = await direct.$transaction(async (tx) => {
+      await inv.consumeInTx(tx, ctx, { itemId: i18, qty: 1, idempotencyKey: `at18-lt1-${stamp}` });
+      return showLt(tx);
+    });
+    const afterCommit = await showLt(direct);
+    const inTxLockMany = await direct.$transaction(async (tx) => {
+      await inv.lockItemsInTx(tx, ctx, [i18]);
+      return showLt(tx);
+    });
+    const afterCommit2 = await showLt(direct);
+    await direct.$transaction(async (tx) => {
+      await inv.lockItemsInTx(tx, ctx, [i18]);
+      throw new Error("rollback on purpose");
+    }).catch(() => undefined);
+    const afterRollback = await showLt(direct);
+    const pid1 = await pidOf(direct);
+    chk("AT-18.1", `ใน tx สต็อก lock_timeout = 5s (consumeInTx: ${inTxConsume} · lockItemsInTx: ${inTxLockMany})`, inTxConsume === "5s" && inTxLockMany === "5s", `got ${inTxConsume}/${inTxLockMany}`);
+    chk("AT-18.2", `หลัง commit/rollback บน backend เดิม (pid ${pid0}) lock_timeout กลับเป็นค่าเดิม (${base})`, pid0 === pid1 && afterCommit === base && afterCommit2 === base && afterRollback === base, `pid ${pid0}→${pid1} · after ${afterCommit}/${afterCommit2}/${afterRollback} base ${base}`);
+    // ตัวควบคุมของตัวตรวจรั่ว: SET ระดับ session (connection ตรง ของเราเอง) ต้องถูกมองเห็น แล้ว RESET คืนทันที
+    await direct.$executeRaw`SET lock_timeout = '7s'`;
+    const seenLeak = await showLt(direct);
+    await direct.$executeRaw`RESET lock_timeout`;
+    const resetOk = (await showLt(direct)) === base;
+    chk("AT-18.2c", "ตัวควบคุม: ตัวตรวจเห็นค่าที่รั่วจริง (SET ระดับ session = 7s) แล้ว RESET คืน", seenLeak === "7s" && resetOk, `seen ${seenLeak} reset ${resetOk}`, "MAJOR");
+  } finally {
+    await direct.$disconnect();
+  }
+  {
+    const warns: unknown[][] = [];
+    const origWarn = console.warn;
+    const before = (await inv.onHand(ctx, [i18]))[0]?.onHand ?? NaN;
+    const key18 = `at18-busy-${stamp}`;
+    let w: { ok: true } | { ok: false; e: unknown };
+    let el = 0;
+    const holder = lanes[0].$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "InvItem" WHERE "id" = ${i18} FOR UPDATE`;
+      await tx.$executeRaw`SELECT pg_sleep(12)`;
+      return "held";
+    }, { timeout: 40_000 });
+    try {
+      await new Promise((res) => setTimeout(res, 400));
+      console.warn = (...a: unknown[]) => {
+        if (typeof a[0] === "string" && a[0].startsWith("[inventory]")) warns.push(a);
+        else origWarn(...a);
+      };
+      const t0 = Date.now();
+      w = await inv.consume(ctx, { itemId: i18, qty: 1, idempotencyKey: key18 }).then(() => ({ ok: true as const }), (e: unknown) => ({ ok: false as const, e }));
+      el = Date.now() - t0;
+    } finally {
+      console.warn = origWarn;
+      await holder.catch(() => undefined);
+    }
+    const msg = w.ok ? "(succeeded)" : short(w.e);
+    console.log(`     · ตัวห่อจบใน ${(el / 1000).toFixed(1)} วิ — ${msg.slice(0, 140)}`);
+    chk("AT-18.3", `ผู้ถือล็อก 12 วิ ⇒ ตัวห่อได้ข้อความไทย "ลองใหม่อีกครั้ง" ใน 4.5–11.5 วิ (ได้ ${(el / 1000).toFixed(1)} วิ)`, !w.ok && /ลองใหม่อีกครั้ง/.test(msg) && el >= 4_500 && el <= 11_500, `${msg} after ${el} ms`);
+    const cause = !w.ok && w.e instanceof Error ? (w.e as Error & { cause?: unknown }).cause : undefined;
+    // ไล่สาย cause/meta.driverAdapterError เก็บ message/code ทุกชั้น
+    const chainText = (e: unknown): string => {
+      const out: string[] = [];
+      let cur: unknown = e;
+      for (let d = 0; d < 6 && cur && typeof cur === "object"; d++) {
+        const o = cur as { message?: unknown; code?: unknown; originalCode?: unknown; cause?: unknown; meta?: { driverAdapterError?: unknown } };
+        out.push(String(o.message ?? ""), String(o.code ?? ""), String(o.originalCode ?? ""));
+        cur = o.cause ?? o.meta?.driverAdapterError;
+      }
+      return out.join(" ");
+    };
+    chk("AT-18.4", "error สุดท้ายเก็บ cause (ข้อผิดพลาดจริงของฐานข้อมูล: lock timeout / 55P03)", cause !== undefined && /lock timeout|55P03/i.test(chainText(cause)), `cause ${chainText(cause).slice(0, 120)}`, "MAJOR");
+    const w0 = warns[0];
+    const meta = (w0?.[1] ?? {}) as Record<string, unknown>;
+    chk(
+      "AT-18.5",
+      `console.warn ตอนลองใหม่ 1 ครั้ง: ข้อความคงที่ + { code, op, itemId } เท่านั้น (ได้ ${warns.length} ครั้ง)`,
+      warns.length === 1 && w0?.[0] === "[inventory] stock write contention — retrying" && Object.keys(meta).sort().join(",") === "code,itemId,op" && meta.code === "55P03" && meta.op === "consume" && meta.itemId === i18,
+      JSON.stringify(warns).slice(0, 200),
+      "MAJOR",
+    );
+    const again = await inv.consume(ctx, { itemId: i18, qty: 1, idempotencyKey: key18 }).then(() => "ok", (e: unknown) => short(e));
+    const n = await prisma.invMovement.count({ where: { tenantId: tid, idempotencyKey: key18 } });
+    const after = (await inv.onHand(ctx, [i18]))[0]?.onHand;
+    chk("AT-18.6", "ผู้ถือปล่อยแล้ว คีย์เดิมสำเร็จ · movement ของคีย์ = 1 · ตัดครั้งเดียว", again === "ok" && n === 1 && after === before - 1, `again ${again} · movements ${n} · onHand ${before}→${after}`);
+  }
+  {
+    // ทาง InTx (ใบเบิกบัญชี · tx ของผู้เรียก ไม่มีตัวห่อ) — รอเกิน 5 วิ ⇒ ใบล้มทั้งใบ (ไม่ค้าง 30 วิ) · ไม่มีเอกสาร/สต็อกครึ่ง ๆ
+    const holder = lanes[1].$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "InvItem" WHERE "id" = ${A.itemId} FOR UPDATE`;
+      await tx.$executeRaw`SELECT pg_sleep(9)`;
+      return "held";
+    }, { timeout: 40_000 });
+    let r: { ok: boolean; reason?: string } = { ok: false };
+    let el = 0;
+    const a0 = await onHandA();
+    const d0 = await prisma.accountDocument.count({ where: { tenantId: t2.id } });
+    try {
+      await new Promise((res) => setTimeout(res, 400));
+      const t0 = Date.now();
+      r = await gDoc("GOODS_ISSUE", [{ productId: A.pid, qty: 1 }], new Date());
+      el = Date.now() - t0;
+    } finally {
+      await holder.catch(() => undefined);
+    }
+    const d1 = await prisma.accountDocument.count({ where: { tenantId: t2.id } });
+    const a1 = await onHandA();
+    console.log(`     · ใบเบิกจบใน ${(el / 1000).toFixed(1)} วิ — ${r.ok ? "สำเร็จ" : r.reason}`);
+    chk("AT-18.7", `ใบเบิกบัญชีที่รอล็อกสินค้า (ผู้ถือ 9 วิ) ล้มใน < 8 วิ ทั้งใบ — ไม่มีเอกสาร ไม่แตะสต็อก (ได้ ${(el / 1000).toFixed(1)} วิ)`, !r.ok && el < 8_000 && d1 === d0 && a1 === a0, `ok ${r.ok} after ${el} ms · docs +${d1 - d0} · onHand ${a0}→${a1}`);
+    const retry = await gDoc("GOODS_ISSUE", [{ productId: A.pid, qty: 1 }], new Date());
+    chk("AT-18.8", "ตัวควบคุม: ผู้ถือปล่อยแล้ว ใบเบิกเดิมสำเร็จ", retry.ok, retry.ok ? "" : retry.reason, "MAJOR");
   }
 
   // ═══════════ ปิดท้าย: ทุกสินค้าในทั้งสองร้าน ═══════════
@@ -450,7 +741,7 @@ try {
     await d(() => P.accountJournalLine.deleteMany({ where: { tenantId: id } }));
     await d(() => P.accountJournalEntry.updateMany({ where: { tenantId: id }, data: { reversalOfId: null } }));
     for (const m of [
-      "accountJournalEntry", "accountDocumentRelation", "accountDocumentLine", "accountDocument", "accountProductBundleItem", "accountProduct",
+      "accountJournalEntry", "accountDocumentRelation", "accountDocumentLine", "accountDocument", "accountProductBundleItem", "accountProductOpeningLot", "accountProduct",
       "accountContact", "accountUnit", "accountCategory", "accountMapping", "accountLedger", "accountPeriod", "accountDocSequence", "accountSettings",
       "posPayment", "posSaleLine", "posSale", "posReceiptCounter",
       "invMovement", "invLot", "invLocationStock", "invLocation", "poLine", "purchaseOrder", "supplier", "invItemImage", "invItem", "invSettings", "invCategory",

@@ -88,6 +88,17 @@ export async function consumeBundleComponentsInTx(
     await inventory.lockItemsInTx(tx, invCtx, components.filter((c) => c.invItemId && c.type !== "SERVICE").map((c) => c.invItemId as string));
   }
 
+  // 🔴 HF-INV-1 R2.1: ส่วนประกอบที่ไม่ผูกคลัง — ล็อกแถวสินค้าตามลำดับ id ก่อนตัดตัวแรก (ชุด [A,B] กับ [B,A]
+  //    หรือใบเบิกที่แตะสินค้าเดียวกันพร้อมกัน ไม่วงล็อกกัน) แล้วลดยอดในคำสั่งเดียวด้านล่าง
+  const unlinkedIds = [...new Set(components.filter((c) => !c.invItemId && c.type !== "SERVICE").map((c) => c.id))].sort();
+  if (unlinkedIds.length > 0) {
+    await tx.$queryRaw`
+      SELECT "id" FROM "AccountProduct"
+      WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" = ANY(${unlinkedIds}::text[])
+      ORDER BY "id" COLLATE "C"
+      FOR UPDATE`;
+  }
+
   let consumed = 0;
   for (const line of lines) {
     if (!line.productId || !isBundle.has(line.productId)) continue;
@@ -122,12 +133,9 @@ export async function consumeBundleComponentsInTx(
           continue;
         }
       } else {
-        await tx.accountProduct.update({
-          where: { id: comp.id },
-          data: { qtyOnHand: Number(comp.qtyOnHand) - qty },
-        });
-        // อัปเดตในหน่วยความจำด้วย เผื่อชุดเดียวกันโผล่หลายบรรทัดในใบเดียว
-        compById.set(comp.id, { ...comp, qtyOnHand: (Number(comp.qtyOnHand) - qty) as unknown as typeof comp.qtyOnHand });
+        // HF-INV-1 R2.1: ลดในคำสั่งเดียว (เดิมเขียนค่าที่คิดจากยอดที่อ่านก่อนล็อก = ยอดหายเมื่อขายพร้อมกัน)
+        //   ชุดเดียวกันหลายบรรทัดในใบเดียวก็ลดต่อกันถูกเอง ไม่ต้องจำยอดในหน่วยความจำอีก
+        await tx.accountProduct.update({ where: { id: comp.id }, data: { qtyOnHand: { decrement: qty } } });
         consumed += 1;
       }
     }

@@ -121,13 +121,18 @@ async function applyLotDelta(
 //   = ไม่มีวงล็อก (deadlock) · ล็อกซ้ำตัวที่ถือไว้แล้วใน tx เดียวกันไม่มีผล
 type LockedItem = { id: string; name: string; kind: string; onHand: number; costSatang: number };
 
+// 🔴 HF-INV-1 R2.2: รอล็อกสินค้าได้ไม่เกิน 5 วิ (เดิมรอได้จนหมดเวลา tx 30 วิ) — ตั้งด้วย set_config(…, true) = SET LOCAL
+//    อยู่แค่ใน tx นี้ (หลัง commit/rollback กลับค่าเดิม · ห้าม SET ระดับ session: บน pooler รั่วไปถึง client อื่น)
+//    ตั้งใน "คำสั่งเดียวกับที่ล็อก" (CTE MATERIALIZED ถูกประเมินก่อนแถวใดจะถึงขั้นล็อก) ⇒ ไม่เพิ่มรอบเดินทาง
+//    ค่านี้มีผลกับการรอล็อกที่เหลือของ tx เดียวกันด้วย · เกินเวลา = 55P03 → ตัวห่อลองใหม่ 1 ครั้ง / tx ของผู้เรียกล้มทั้งก้อน
 // ล็อก + อ่านสินค้า 1 ตัวในคำสั่งเดียว (แทน findFirst เดิม — ไม่เพิ่มรอบเดินทาง) · ไม่พบ/ข้ามร้าน/ข้ามระบบ → null
 async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<LockedItem | null> {
   const rows = await db.$queryRaw<LockedItem[]>`
-    SELECT "id", "name", "kind"::text AS "kind", "onHand", "costSatang"
-    FROM "InvItem"
-    WHERE "id" = ${itemId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
-    FOR UPDATE`;
+    WITH lt AS MATERIALIZED (SELECT set_config('lock_timeout', '5s', true) AS v)
+    SELECT i."id", i."name", i."kind"::text AS "kind", i."onHand", i."costSatang"
+    FROM "InvItem" i, lt
+    WHERE i."id" = ${itemId} AND i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId}
+    FOR UPDATE OF i`;
   return rows[0] ?? null;
 }
 
@@ -138,11 +143,13 @@ async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<Locke
 export async function lockItemsInTx(tx: Db, ctx: Ctx, itemIds: readonly string[]): Promise<void> {
   const ids = [...new Set(itemIds.filter((x) => typeof x === "string" && x))].sort();
   if (ids.length === 0) return;
+  // R2.2: lock_timeout 5 วิ แบบ SET LOCAL ในคำสั่งเดียวกับที่ล็อก (ดู lockItemForStock)
   await tx.$queryRaw`
-    SELECT "id" FROM "InvItem"
-    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(ids)})
-    ORDER BY "id" COLLATE "C"
-    FOR UPDATE`;
+    WITH lt AS MATERIALIZED (SELECT set_config('lock_timeout', '5s', true) AS v)
+    SELECT i."id" FROM "InvItem" i, lt
+    WHERE i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId} AND i."id" IN (${Prisma.join(ids)})
+    ORDER BY i."id" COLLATE "C"
+    FOR UPDATE OF i`;
 }
 
 // รอล็อกนานเกิน/ชนกันจนฐานข้อมูลยกเลิก tx — tx ที่โมดูลคลังเปิดเองลองใหม่ได้ 1 ครั้ง (idempotencyKey กันซ้ำอยู่แล้ว)
@@ -151,29 +158,38 @@ const STOCK_BUSY_MESSAGE = "สินค้านี้กำลังถูก�
 const CONTENTION_CODES = new Set(["40P01", "55P03", "40001", "P2034", "P2028"]);
 const CONTENTION_RE = /deadlock detected|lock timeout|could not obtain lock|expired transaction|transaction already closed|unable to start a transaction/i;
 
-function isStockContention(e: unknown): boolean {
+// คืน "รหัส" ของการชนกัน (SQLSTATE/รหัส Prisma) ถ้าเป็นการชนกันของล็อก/tx · ไม่ใช่ → null
+function stockContentionCode(e: unknown): string | null {
   let cur: unknown = e;
+  let byMessage: string | null = null;
   for (let depth = 0; depth < 5 && cur && typeof cur === "object"; depth++) {
     const o = cur as { code?: unknown; originalCode?: unknown; kind?: unknown; message?: unknown; cause?: unknown; meta?: unknown };
-    if ([o.code, o.originalCode].some((c) => typeof c === "string" && CONTENTION_CODES.has(c))) return true;
-    if (o.kind === "TransactionWriteConflict") return true;
-    if (typeof o.message === "string" && CONTENTION_RE.test(o.message)) return true;
+    const hit = [o.originalCode, o.code].find((c): c is string => typeof c === "string" && CONTENTION_CODES.has(c));
+    if (hit) return hit;
+    if (o.kind === "TransactionWriteConflict") return "P2034";
+    if (!byMessage && typeof o.message === "string" && CONTENTION_RE.test(o.message)) {
+      byMessage = /deadlock/i.test(o.message) ? "40P01" : /lock timeout|could not obtain lock/i.test(o.message) ? "55P03" : "P2028";
+    }
     const meta = o.meta && typeof o.meta === "object" ? (o.meta as { driverAdapterError?: unknown }) : null;
     cur = o.cause ?? meta?.driverAdapterError;
   }
-  return false;
+  return byMessage;
 }
 
-async function withStockRetry<T>(run: () => Promise<T>): Promise<T> {
+// R2.2: ลองใหม่ต้อง "มองเห็นได้" — log เฉพาะรหัส/ชนิดงาน/รหัสสินค้า (ไม่มี payload · ไม่มีข้อมูลลูกค้า)
+//   ครั้งที่สองยังชน → ข้อความไทย โดยเก็บข้อผิดพลาดจริงไว้ใน cause ให้ไล่ต่อได้
+async function withStockRetry<T>(op: string, itemId: string, run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (e) {
-    if (!isStockContention(e)) throw e;
+    const code = stockContentionCode(e);
+    if (!code) throw e;
+    console.warn("[inventory] stock write contention — retrying", { code, op, itemId });
   }
   try {
     return await run();
   } catch (e) {
-    if (isStockContention(e)) throw new Error(STOCK_BUSY_MESSAGE);
+    if (stockContentionCode(e)) throw new Error(STOCK_BUSY_MESSAGE, { cause: e });
     throw e;
   }
 }
@@ -504,7 +520,7 @@ export type ReceiveInput = {
 
 export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
-  const mv = await withStockRetry(() => db.$transaction((tx) => receiveInTx(tx as unknown as Db, ctx, input)));
+  const mv = await withStockRetry("receive", input.itemId, () => db.$transaction((tx) => receiveInTx(tx as unknown as Db, ctx, input)));
   // perpetual: โพสต์ต้นทุนเข้าบัญชี (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
   await postMovementGl(ctx, mv);
   // WO 4.1: ต้นทุนถัวเฉลี่ยเปลี่ยนหลังรับเข้า → ดันไปที่ "ราคาซื้อ/หน่วย" ของสินค้าบัญชีที่ผูกกันไว้
@@ -589,7 +605,7 @@ export type ConsumeInput = {
 
 export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
-  const mv = await withStockRetry(() => db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input)));
+  const mv = await withStockRetry("consume", input.itemId, () => db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input)));
   // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
   await postMovementGl(ctx, mv);
   // WO 4.2: ตัดสต็อกจาก POS/ฝั่งขาย → กระจก `AccountProduct.qtyOnHand` ต้องตามทัน
@@ -671,7 +687,7 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
   const newQty = Math.round(input.newQty);
   const db = tenantDb(ctx);
 
-  return withStockRetry(() => db.$transaction(async (tx) => {
+  return withStockRetry("adjust", input.itemId, () => db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
@@ -766,7 +782,7 @@ export async function transfer(ctx: Ctx, input: TransferInput): Promise<{ ok: bo
   const note = input.note?.trim() || null;
   const db = tenantDb(ctx);
 
-  return withStockRetry(() => db.$transaction(async (tx) => {
+  return withStockRetry("transfer", input.itemId, () => db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent — เคยโอน key นี้แล้ว → ไม่ทำซ้ำ
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: outKey } });

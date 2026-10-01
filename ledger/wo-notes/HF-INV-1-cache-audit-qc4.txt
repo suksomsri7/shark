@@ -34,3 +34,103 @@ JSON_SUMMARY {"tenants":4,"driftedTenants":0,"items":16,"drifted":0,"a":0,"b":0,
 JSON_SUMMARY {"tenants":1,"driftedTenants":1,"items":2,"drifted":1,"a":1,"b":1,"c":1,"d":1,"deltaUnits":3,"exposureSatang":750}
 CONTROL PASS — expected items 2 · drifted 1 · A1 B1 C1 D1 · exposure 750 satang
 left: 0
+
+===== ROUND 2 (R2.5) · 2026-10-01 · QC4 =====
+--- all tenants ---
+[env] inv-cache-audit · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+ตรวจ 16 สินค้า (PRODUCT) ใน 4 ร้าน · ใช้เวลา 0.5 วิ · อ่านอย่างเดียว
+คอลัมน์: A=onHand≠Σคลัง · B=onHand≠ledger · C=แถวคลัง≠movementของคลัง · D=lot≠movementของlot
+===== inv-cache-audit =====
+ร้านที่ตรวจ 4 · ร้านที่มีสินค้าเพี้ยน 0 · สินค้าเพี้ยน 0/16 (A 0 · B 0 · C 0 · D 0) · ส่วนต่างรวม 0 หน่วย · มูลค่าเสี่ยง ≈ ฿0.00
+JSON_SUMMARY {"tenants":4,"driftedTenants":0,"items":16,"drifted":0,"a":0,"b":0,"c":0,"d":0,"deltaUnits":0,"exposureSatang":0}
+--- per tenant (--tenant=<id>): 6 + 6 + 2 + 2 = 16 items = the all-tenant total ---
+cmt18s53r00016kkzkmzadbns items 6 · posqc-coffee-tenant 6 · posqc-resto-tenant 2 · cmuk7wtu20000b5kznw08vv7o 2 · drifted 0 each
+--- EXPLAIN --tenant=posqc-coffee-tenant (tenant filter reaches every scan: InvItem, InvLocation, InvLocationStock, InvLot and all three InvMovement scans use the tenantId index) ---
+[env] inv-cache-audit · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+Hash Left Join  (cost=58.64..65.14 rows=7 width=147)
+  Hash Cond: (i.id = badlot."itemId")
+  ->  Hash Left Join  (cost=46.89..53.38 rows=7 width=143)
+        Hash Cond: (i.id = badloc."itemId")
+        ->  Hash Left Join  (cost=19.28..25.75 rows=7 width=139)
+              Hash Cond: (i.id = mv."itemId")
+              ->  Hash Left Join  (cost=8.55..15.01 rows=7 width=131)
+                    Hash Cond: (i.id = loc."itemId")
+                    ->  Seq Scan on "InvItem" i  (cost=0.00..6.43 rows=7 width=123)
+                          Filter: ((kind = 'PRODUCT'::"InvItemKind") AND ("tenantId" = 'posqc-coffee-tenant'::text))
+                    ->  Hash  (cost=8.53..8.53 rows=2 width=34)
+                          ->  Subquery Scan on loc  (cost=8.46..8.53 rows=2 width=34)
+                                ->  GroupAggregate  (cost=8.46..8.51 rows=2 width=34)
+                                      Group Key: "InvLocationStock"."itemId"
+                                      ->  Sort  (cost=8.46..8.46 rows=2 width=30)
+                                            Sort Key: "InvLocationStock"."itemId"
+                                            ->  Index Scan using "InvLocationStock_tenantId_idx" on "InvLocationStock"  (cost=0.28..8.45 rows=2 width=30)
+                                                  Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+              ->  Hash  (cost=10.70..10.70 rows=2 width=34)
+                    ->  Subquery Scan on mv  (cost=10.63..10.70 rows=2 width=34)
+                          ->  GroupAggregate  (cost=10.63..10.68 rows=2 width=34)
+                                Group Key: "InvMovement"."itemId"
+                                ->  Sort  (cost=10.63..10.63 rows=2 width=30)
+                                      Sort Key: "InvMovement"."itemId"
+                                      ->  Bitmap Heap Scan on "InvMovement"  (cost=4.29..10.62 rows=2 width=30)
+                                            Recheck Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                            ->  Bitmap Index Scan on "InvMovement_tenantId_idempotencyKey_key"  (cost=0.00..4.29 rows=2 width=0)
+                                                  Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+        ->  Hash  (cost=27.59..27.59 rows=2 width=30)
+              ->  Subquery Scan on badloc  (cost=27.42..27.59 rows=2 width=30)
+                    ->  GroupAggregate  (cost=27.42..27.57 rows=2 width=30)
+                          Group Key: ls."itemId"
+                          ->  Merge Left Join  (cost=27.42..27.53 rows=2 width=26)
+                                Merge Cond: ((ls."itemId" = m."itemId") AND (ls."locationId" = (COALESCE(m."locationId", d.id))))
+                                Filter: (ls."onHand" <> COALESCE(((sum(m."qtyDelta"))::integer), 0))
+                                ->  Sort  (cost=8.46..8.46 rows=2 width=56)
+                                      Sort Key: ls."itemId", ls."locationId"
+                                      ->  Index Scan using "InvLocationStock_tenantId_idx" on "InvLocationStock" ls  (cost=0.28..8.45 rows=2 width=56)
+                                            Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                ->  Materialize  (cost=18.97..19.04 rows=2 width=62)
+                                      ->  GroupAggregate  (cost=18.97..19.01 rows=2 width=62)
+                                            Group Key: m."itemId", (COALESCE(m."locationId", d.id))
+                                            ->  Sort  (cost=18.97..18.97 rows=2 width=62)
+                                                  Sort Key: m."itemId", (COALESCE(m."locationId", d.id))
+                                                  ->  Hash Left Join  (cost=12.62..18.96 rows=2 width=62)
+                                                        Hash Cond: (m."systemId" = d."systemId")
+                                                        ->  Bitmap Heap Scan on "InvMovement" m  (cost=4.29..10.62 rows=2 width=81)
+                                                              Recheck Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                                              ->  Bitmap Index Scan on "InvMovement_tenantId_idempotencyKey_key"  (cost=0.00..4.29 rows=2 width=0)
+                                                                    Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                                        ->  Hash  (cost=8.32..8.32 rows=1 width=51)
+                                                              ->  Subquery Scan on d  (cost=8.30..8.32 rows=1 width=51)
+                                                                    ->  Unique  (cost=8.30..8.31 rows=1 width=67)
+                                                                          ->  Sort  (cost=8.30..8.31 rows=1 width=67)
+                                                                                Sort Key: "InvLocation"."systemId", "InvLocation"."archivedAt" NULLS FIRST, "InvLocation"."createdAt"
+                                                                                ->  Index Scan using "InvLocation_tenantId_idx" on "InvLocation"  (cost=0.28..8.29 rows=1 width=67)
+                                                                                      Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                                                                      Filter: "isDefault"
+  ->  Hash  (cost=11.74..11.74 rows=1 width=30)
+        ->  Subquery Scan on badlot  (cost=11.70..11.74 rows=1 width=30)
+              ->  GroupAggregate  (cost=11.70..11.73 rows=1 width=30)
+                    Group Key: l."itemId"
+                    ->  Sort  (cost=11.70..11.71 rows=1 width=26)
+                          Sort Key: l."itemId"
+                          ->  Nested Loop Left Join  (cost=10.63..11.69 rows=1 width=26)
+                                Join Filter: (("InvMovement_1"."itemId" = l."itemId") AND ("InvMovement_1"."lotCode" = l."lotCode"))
+                                Filter: (l."onHand" <> COALESCE(((sum("InvMovement_1"."qtyDelta"))::integer), 0))
+                                ->  Seq Scan on "InvLot" l  (cost=0.00..1.01 rows=1 width=36)
+                                      Filter: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                ->  GroupAggregate  (cost=10.63..10.65 rows=1 width=36)
+                                      Group Key: "InvMovement_1"."itemId", "InvMovement_1"."lotCode"
+                                      ->  Sort  (cost=10.63..10.63 rows=1 width=36)
+                                            Sort Key: "InvMovement_1"."itemId", "InvMovement_1"."lotCode"
+                                            ->  Bitmap Heap Scan on "InvMovement" "InvMovement_1"  (cost=4.29..10.62 rows=1 width=36)
+                                                  Recheck Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+                                                  Filter: ("lotCode" IS NOT NULL)
+                                                  ->  Bitmap Index Scan on "InvMovement_tenantId_idempotencyKey_key"  (cost=0.00..4.29 rows=2 width=0)
+                                                        Index Cond: ("tenantId" = 'posqc-coffee-tenant'::text)
+--- EXPLAIN without --tenant: InvMovement scans ---
+29:                                                  ->  Seq Scan on "InvMovement" m  (cost=0.00..30.81 rows=581 width=81)
+49:                          Group Key: "InvMovement"."itemId"
+50:                          ->  Seq Scan on "InvMovement"  (cost=0.00..30.81 rows=581 width=30)
+58:                                Join Filter: (("InvMovement_1"."itemId" = l."itemId") AND ("InvMovement_1"."lotCode" = l."lotCode"))
+59:                                Filter: (l."onHand" <> COALESCE(((sum("InvMovement_1"."qtyDelta"))::integer), 0))
+62:                                      Group Key: "InvMovement_1"."itemId", "InvMovement_1"."lotCode"
+63:                                      ->  Seq Scan on "InvMovement" "InvMovement_1"  (cost=0.00..30.81 rows=31 width=36)
+--- prod guard: fake ep-royal-night URL, no ALLOW_PROD_AUDIT → exit 4 before any connection ---

@@ -1,0 +1,98 @@
+===== HF-INV-1 round 2 · CONTROL proofs — each fix reverted in the working tree (python patch), oracle run, tree restored (git diff src md5 d67b3dbb… checked after every run) =====
+Controls 1–6 ran on the oracle draft with the random-window AT-15 (in CONTROL 2 the opening-lot revert alone did NOT turn AT-15 red → AT-15 got a deterministic holder, then CONTROL 7 + RED + 3 greens were re-run on the final oracle).
+| control | result | red checks (expected = observed) |
+| 1 | ผ่าน 82/94 | AT-12.1 AT-12.2 AT-12.3 AT-13.1 AT-13.2 AT-13.3 AT-15.1 AT-15.2 AT-15.3 AT-16.1 AT-16.2 AT-16.3  |
+| 2 | ผ่าน 86/94 | AT-14.1 AT-14.2 AT-14.3 AT-18.1 AT-18.3 AT-18.4 AT-18.5 AT-18.7  |
+| 3 | ผ่าน 84/94 | AT-12.1 AT-12.2 AT-12.3 AT-14.1 AT-14.2 AT-14.3 AT-17.3 AT-17.4 AT-18.4 AT-18.5  |
+| 4 | ผ่าน 88/94 | AT-17.1 AT-17.2 AT-17.3 AT-17.4 AT-17.5 AT-17.6  |
+| 5 | ผ่าน 87/94 | AT-17.0 AT-17.1 AT-17.2 AT-17.3 AT-17.4 AT-17.5 AT-17.6  |
+| 6 | ผ่าน 94/94 |  |
+| 7 | ผ่าน 91/94 | AT-15.1 AT-15.2 AT-15.3  |
+
+===== CONTROL 1 · revert R2.1 goods-doc hunk (applyGoodsDocInTx unlinked: back to read-compute-write in line order) =====
+  ❌ [AT-12.1] รอบ 1: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.2] รอบ 2: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.3] รอบ 3: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 8 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-13.1] รอบ 1: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 48 ≠ 45
+  ❌ [AT-13.2] รอบ 2: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 51 ≠ 45
+  ❌ [AT-13.3] รอบ 3: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 48 ≠ 45
+  ❌ [AT-15.1] รอบ 1: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+  ❌ [AT-15.2] รอบ 2: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+  ❌ [AT-15.3] รอบ 3: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+  ❌ [AT-16.1] รอบ 1: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+  ❌ [AT-16.2] รอบ 2: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+  ❌ [AT-16.3] รอบ 3: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 82/94
+FINDINGS: CRITICAL 12 · MAJOR 0 · MINOR 0
+
+===== CONTROL 2 · revert R2.1 bundle hunks (pre-lock + decrement) AND R2.1 opening-lot hunk AND R2.2 lock_timeout (set_config removed from both lock statements) — disjoint checks =====
+  ❌ [AT-14.1] รอบ 1: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 8 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-14.2] รอบ 2: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 8 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-14.3] รอบ 3: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 7 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-18.1] ใน tx สต็อก lock_timeout = 5s (consumeInTx: 0 · lockItemsInTx: 0) — got 0/0
+     · ตัวห่อจบใน 11.8 วิ — (succeeded)
+  ❌ [AT-18.3] ผู้ถือล็อก 12 วิ ⇒ ตัวห่อได้ข้อความไทย "ลองใหม่อีกครั้ง" ใน 4.5–11.5 วิ (ได้ 11.8 วิ) — (succeeded) after 11820 ms
+  ❌ [AT-18.4] error สุดท้ายเก็บ cause (ข้อผิดพลาดจริงของฐานข้อมูล: lock timeout / 55P03) — cause 
+  ❌ [AT-18.5] console.warn ตอนลองใหม่ 1 ครั้ง: ข้อความคงที่ + { code, op, itemId } เท่านั้น (ได้ 0 ครั้ง) — []
+     · ใบเบิกจบใน 9.0 วิ — สำเร็จ
+  ❌ [AT-18.7] ใบเบิกบัญชีที่รอล็อกสินค้า (ผู้ถือ 9 วิ) ล้มใน < 8 วิ ทั้งใบ — ไม่มีเอกสาร ไม่แตะสต็อก (ได้ 9.0 วิ) — ok true after 9005 ms · docs +1 · onHand 4927→4926
+ผ่าน 86/94
+FINDINGS: CRITICAL 6 · MAJOR 2 · MINOR 0
+
+===== CONTROL 3 · keep atomic writes but revert the id ORDER (goods-doc sort + bundle ordered pre-lock) AND R2.2 warn+cause AND R2.3 issue-doc lock =====
+  ❌ [AT-12.1] รอบ 1: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.2] รอบ 2: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.3] รอบ 3: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 18/18 ≠ 10/10 · 8 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-14.1] รอบ 1: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 97/97 ≠ 90/90 · 7 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-14.2] รอบ 2: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 9 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-14.3] รอบ 3: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 98/98 ≠ 90/90 · 8 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-17.3] ไม่ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +0/+10 ≠ +0/+5
+  ❌ [AT-17.4] ไม่ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +0/+10 ≠ +0/+5
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+  ❌ [AT-18.4] error สุดท้ายเก็บ cause (ข้อผิดพลาดจริงของฐานข้อมูล: lock timeout / 55P03) — cause 
+  ❌ [AT-18.5] console.warn ตอนลองใหม่ 1 ครั้ง: ข้อความคงที่ + { code, op, itemId } เท่านั้น (ได้ 0 ครั้ง) — []
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 84/94
+FINDINGS: CRITICAL 8 · MAJOR 2 · MINOR 0
+
+===== CONTROL 4 · revert R2.3 issue-doc lock AND move the cap check back before the item locks (exclude-own kept) = the race itself =====
+  ❌ [AT-17.1] ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +10/+0 ≠ +5/+0
+  ❌ [AT-17.2] ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +10/+0 ≠ +5/+0
+  ❌ [AT-17.3] ไม่ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +0/+10 ≠ +0/+5
+  ❌ [AT-17.4] ไม่ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +0/+10 ≠ +0/+5
+  ❌ [AT-17.5] ปน รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +10/+10 ≠ +5/+5
+  ❌ [AT-17.6] ปน รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 2 returns succeeded (want 1) · stock +10/+10 ≠ +5/+5
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 88/94
+FINDINGS: CRITICAL 6 · MAJOR 0 · MINOR 0
+
+===== CONTROL 5 · revert R2.3 exclude-own only =====
+  ❌ [AT-17.0] คืนครบจำนวนที่ยังคืนได้ (เบิก 2 คืน 2 · ผูกคลัง+ไม่ผูก) ผ่าน — ใบที่กำลังคืนไม่ถูกนับเป็น 'คืนไปแล้ว' — คืน "QC AT7A" เกินจำนวนที่เบิกไว้ (เบิก-คืนไปแล้วเหลือคืนได้ 0)
+  ❌ [AT-17.1] ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+0 · returnable left [5]
+  ❌ [AT-17.2] ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+0 · returnable left [5]
+  ❌ [AT-17.3] ไม่ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +0/+5 · returnable left [5]
+  ❌ [AT-17.4] ไม่ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +0/+5 · returnable left [5]
+  ❌ [AT-17.5] ปน รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+5 · returnable left [5,5]
+  ❌ [AT-17.6] ปน รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+5 · returnable left [5,5]
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 87/94
+FINDINGS: CRITICAL 6 · MAJOR 1 · MINOR 0
+
+===== CONTROL 6 (informative) · move the cap check back before the item locks, issue-doc lock kept =====
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 94/94
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+===== CONTROL 7 · revert R2.1 opening-lot hunk only (final oracle with the deterministic AT-15 holder) =====
+  ❌ [AT-15.1] รอบ 1: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 31 ≠ 28
+  ❌ [AT-15.2] รอบ 2: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 32 ≠ 28
+  ❌ [AT-15.3] รอบ 3: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+     · ตัวห่อจบใน 10.1 วิ — Error::สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง
+     · ใบเบิกจบใน 5.2 วิ — บันทึกเอกสารเบิกไม่สำเร็จ
+ผ่าน 91/94
+FINDINGS: CRITICAL 3 · MAJOR 0 · MINOR 0

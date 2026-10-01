@@ -724,12 +724,15 @@ export type GoodsLineInput = {
 /**
  * WO 1.6 §5.2 J — จำนวนที่ยังคืนได้ต่อสินค้า ของใบเบิก (PRR) หนึ่งใบ = จำนวนที่เบิกไว้ − Σ ที่คืนไปแล้ว
  * (ใบส่งคืน RPR ก่อนหน้าที่อ้างอิง `sourceDocId` เดียวกัน) — ใช้ตรวจเพดานตอนสร้าง RPR ใหม่ (เพดานต่อบรรทัด/สินค้า)
+ * `excludeDocId` = ใบส่งคืนที่กำลังตรวจอยู่ (HF-INV-1 R2.3: ใบนี้ถูกสร้างสถานะ ISSUED ใน tx เดียวกันก่อนตรวจ
+ *   ⇒ เดิมนับตัวเองเป็น "คืนไปแล้ว" ด้วย = คืนได้แค่ครึ่งเดียวของที่เหลือ · หน้าจอโชว์เพดานเต็มแต่กดแล้วถูกปฏิเสธ)
  */
 export async function returnableQtyForIssue(
   db: Prisma.TransactionClient | typeof prisma,
   tenantId: string,
   systemId: string,
   issueId: string,
+  excludeDocId?: string,
 ): Promise<Map<string, number>> {
   const [issue, returns] = await Promise.all([
     db.accountDocument.findFirst({
@@ -742,6 +745,7 @@ export async function returnableQtyForIssue(
         systemId,
         docType: "GOODS_ISSUE_RETURN",
         sourceDocId: issueId,
+        ...(excludeDocId ? { id: { not: excludeDocId } } : {}),
         // ร่างยังไม่คืนของจริง — ไม่นับกินเพดาน (WO 4.3: ใบส่งคืนมีสถานะร่างได้แล้ว)
         status: { notIn: ["DRAFT", "CANCELLED", "VOIDED"] },
       },
@@ -829,16 +833,15 @@ async function applyGoodsDocInTx(
   const deltaById = new Map<string, number>();
   for (const l of lines) deltaById.set(l.productId as string, (deltaById.get(l.productId as string) ?? 0) + Number(l.qty));
 
-  // เพดานการคืน (RPR ที่อ้างอิง PRR)
-  if (docType === "GOODS_ISSUE_RETURN" && input.sourceDocId) {
-    const remaining = await returnableQtyForIssue(tx, tenantId, systemId, input.sourceDocId);
-    for (const [productId, qty] of deltaById) {
-      const left = remaining.get(productId) ?? 0;
-      if (qty > left + 1e-9) {
-        const name = byId.get(productId)?.name ?? productId;
-        throw new Error(`คืน "${name}" เกินจำนวนที่เบิกไว้ (เบิก-คืนไปแล้วเหลือคืนได้ ${qtyText(left)})`);
-      }
-    }
+  // 🔴 HF-INV-1 R2.3: ใบคืนที่อ้างอิงใบเบิก (RPR→PRR) — ล็อกแถวใบเบิกต้นทาง "ก่อน" ล็อกสินค้า ⇒ ใบคืนของใบเบิกเดียวกัน
+  //    เรียงคิวกันทุกกรณี รวมสินค้าที่ไม่ผูกคลัง (ไม่มี InvItem ให้ล็อก) · ลำดับ ใบเบิก → สินค้า ตรงกับตอนอนุมัติใบเบิก
+  //    (อัปเดตแถวใบเบิกก่อนตัดสต็อก) จึงไม่วงล็อกกัน · ตัวตรวจเพดานย้ายไปหลังล็อกสินค้าด้านล่าง
+  const capIssueId = docType === "GOODS_ISSUE_RETURN" && input.sourceDocId ? input.sourceDocId : null;
+  if (capIssueId) {
+    await tx.$queryRaw`
+      SELECT "id" FROM "AccountDocument"
+      WHERE "id" = ${capIssueId} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId}
+      FOR UPDATE`;
   }
 
   // ── สินค้าที่ผูกคลัง → ความจริงอยู่ที่ InvItem ──
@@ -873,16 +876,38 @@ async function applyGoodsDocInTx(
     }
   }
 
+  // เพดานการคืน (RPR ที่อ้างอิง PRR) — HF-INV-1 R2.3: อ่าน "หลัง" ล็อก (ใบเบิก + สินค้า) และไม่นับใบที่กำลังคืนอยู่
+  if (capIssueId) {
+    const remaining = await returnableQtyForIssue(tx, tenantId, systemId, capIssueId, input.docId);
+    for (const [productId, qty] of deltaById) {
+      const left = remaining.get(productId) ?? 0;
+      if (qty > left + 1e-9) {
+        const name = byId.get(productId)?.name ?? productId;
+        throw new Error(`คืน "${name}" เกินจำนวนที่เบิกไว้ (เบิก-คืนไปแล้วเหลือคืนได้ ${qtyText(left)})`);
+      }
+    }
+  }
+
   // ── สินค้าที่ไม่ผูกคลัง: เดิน qtyOnHand ของตัวเอง (พฤติกรรมเดิม) ──
+  // 🔴 HF-INV-1 R2.1: เปลี่ยนยอดใน "คำสั่งเดียว" (เดิมอ่านยอดก่อนล็อกแล้วเขียนค่าสัมบูรณ์ทับ = ยอดหายเมื่อทำพร้อมกัน)
+  //    ห้ามติดลบ → ลดแบบมีเงื่อนไข (qtyOnHand ≥ qty) ในคำสั่งเดียว · ไม่ผ่าน = ข้อความเดิมพร้อมยอดล่าสุด
+  //    เรียงตาม id ⇒ ใบที่บรรทัดสลับกัน (A,B กับ B,A) ไม่วงล็อกกัน
   let costTotal = 0;
-  for (const [productId, qty] of deltaById) {
+  for (const [productId, qty] of [...deltaById].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     if (itemByProductId.has(productId)) continue;
     const p = byId.get(productId)!;
-    const current = Number(p.qtyOnHand);
-    const nextQty = current + sign * qty;
-    if (sign < 0 && !input.allowNegative && nextQty < 0)
-      throw new Error(`สต็อก "${p.name}" ไม่พอ (คงเหลือ ${qtyText(current)}, เบิก ${qtyText(qty)})`);
-    await tx.accountProduct.update({ where: { id: productId }, data: { qtyOnHand: nextQty } });
+    if (sign < 0 && !input.allowNegative) {
+      const { count } = await tx.accountProduct.updateMany({
+        where: { id: productId, tenantId, systemId, qtyOnHand: { gte: qty } },
+        data: { qtyOnHand: { decrement: qty } },
+      });
+      if (count !== 1) {
+        const now = await tx.accountProduct.findFirst({ where: { id: productId, tenantId, systemId }, select: { qtyOnHand: true } });
+        throw new Error(`สต็อก "${p.name}" ไม่พอ (คงเหลือ ${qtyText(now?.qtyOnHand ?? p.qtyOnHand)}, เบิก ${qtyText(qty)})`);
+      }
+    } else {
+      await tx.accountProduct.update({ where: { id: productId }, data: { qtyOnHand: { increment: sign * qty } } });
+    }
   }
 
   // ── เดินสต็อกจริงต่อบรรทัด + เก็บต้นทุนที่ใช้ลงบัญชี ──
@@ -1705,9 +1730,10 @@ export async function addOpeningLot(
         );
         await tx.accountProduct.update({ where: { id: p.id }, data: { qtyOnHand: mv.balanceAfter } });
       } else {
+        // HF-INV-1 R2.1: บวกในคำสั่งเดียว (เดิมใช้ยอดที่อ่านก่อนหน้าแล้วเขียนทับ = ยอดหายเมื่อมีเบิก/ขายพร้อมกัน)
         await tx.accountProduct.update({
           where: { id: p.id },
-          data: { qtyOnHand: Number(p.qtyOnHand) + qty },
+          data: { qtyOnHand: { increment: qty } },
         });
       }
 

@@ -247,7 +247,7 @@ TIMING per round (wall, 10 parallel): AT-1 1.0/0.8/0.8/0.8/0.8s · AT-2 0.8/0.8/
 FINDINGS: CRITICAL 5 · MAJOR 0 · MINOR 0
 JSON_SUMMARY {"total":52,"passed":47,"findings":["AT-7.1","AT-7.2","AT-7.3","AT-7.4","AT-7.5"]}
 
-===== CONTROL 2: fix with only the createCostAdjustment lock commented out (final oracle) =====
+===== CONTROL 2: fix with only the createCostAdjustment lock commented out (oracle as of that run = 57 checks, before AT-11 (6 checks) was added — final round-1 oracle = 63; label corrected in round 2, N6) =====
 [env] qc-hf-inventory-atomic · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
 (node:1180881) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
