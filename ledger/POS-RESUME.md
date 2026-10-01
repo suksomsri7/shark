@@ -69,3 +69,4 @@
 - เลน E = สเปก UI หน้าขาย P1.3 จากภาพ (shark-pos-c · `wip/pos-spec-p1.3` → `ledger/pos-briefs/pos-spec-P1.3-register-ui.md`)
 - เลน F = **HF-POS-PAGES** ช่องโหว่สิทธิ์หน้า POS เดิม (shark-hf2 · `hotfix/pos-page-authz` จาก origin/main · brief `pos-brief-HF-POS-PAGES.md`) — ไม่แตะ `ai/proposals.ts` (CRM แก้ไฟล์นั้น ⇒ ช่องโหว่ AI tool เปิดบิล/ยกเลิกบิล รอ P1.6)
 - worktree bind-mount node_modules ของ shark-crm: shark-pos, -b, -c, -d, -e, shark-hf, shark-hf2 · ของตัวเอง: shark-pos-p11
+- **~16:20 UTC · เลน B ส่ง**: ข้อสอบ register ตามสัญญารอบ 2 (`wip/pos-p1.3-oracle-r2` 20aa4f83 · 76 ข้อ · SKIPPED exit 0) · **ยังไม่ merge** — รอรวมพร้อมข้อสอบ catalog รอบ 2 แล้ว typecheck รอบเดียว · มติ: รูป `registerScan → {ok:true, match:"one"|"choose"|"none", product?|products?}` = **รับรอง**
