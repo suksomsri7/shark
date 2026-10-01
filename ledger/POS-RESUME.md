@@ -164,3 +164,7 @@
   - → ตอน merge กับ `hotfix/pos-page-authz`: `checkCatalogWrite` ↔ `posCanSetTenantPrice` กติกาเดียวกัน · เพิ่ม `ep-frosty-lab` ใน `qc-prisma.sh`
   - → ข้อสอบ: restore BUSY · restore vs create บาร์โค้ดเดียวกันพร้อมกัน (จดไว้ ไม่บล็อก)
 - คิวถัดไป: เลน 1 = HF-HR-0 รอบ 4 (`pos-brief-HF-HR-0-R4.md`) · ผู้คุมงานเขียน brief P1.1b · แล้ว P1.3 (ข้อสอบรอบ 3 → builder) · เลน 2 = HF-INV-1 รอบ 3 (เดินอยู่)
+
+> 🕒 **แก้เวลา (ผู้คุมงานจดผิด)**: เวลา "UTC" ที่เขียนใน §0.2–§0.8 เป็นค่าประมาณที่คลาดจากนาฬิกาเครื่อง (ไม่ได้รัน `date -u`) — **ทุกเหตุการณ์ใน §0.1–§0.8 เกิดวันที่ 1 ต.ค. 2569 ทั้งหมด** · เวลาจริงดูจาก `git log --date=iso` ของ commit นั้น ๆ (เช่น รับ P1.1a = 1 ต.ค. 14:40 UTC · brief ที่หัวไฟล์เขียน "2 Oct" = 1 ต.ค.) · ตั้งแต่บรรทัดนี้ลงไปเวลาทุกค่ามาจาก `date -u`
+> 🔎 **1 ต.ค. 14:45 UTC (จริง)** — CRM: hotfix ความปลอดภัยของ session อื่น **deploy ขึ้น prod แล้ว** (main 929c39ce · ledger CRM 0e22d7d2) · branch `origin/session/crm` แตะไฟล์ที่ POS ต้องใช้: `account/service.ts` +991/−193 · `ai/proposals.ts` +5 · `core/permissions.ts` +7/−1 — **ไฟล์อื่นของ P1.1b/P1.3 ไม่ถูกแตะ** (restaurant/menu.ts · order.ts · shop/service.ts · account/product.ts · inventory-link.ts · inventory/service.ts · booking/service.ts · pos/* · app-shell · i18n)
+> ⇒ **P1.1b แบ่ง 2 ส่วน**: ส่วน A (ทำได้เลย · ไฟล์ที่ CRM ไม่แตะ) · ส่วน B = 2 จุดใน `account/service.ts` + `ai/proposals.ts` **รอ CRM ขึ้น main** → รับ P1.1b ได้เมื่อ B เสร็จ
