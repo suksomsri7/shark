@@ -49,7 +49,7 @@ const CHECKS: readonly Def[] = [
   // ── S1 · P1.1a โครงสร้าง ──
   D("S1.1", "-", "ตารางใหม่มีจริง: PosProduct (+parentId ว่างไว้ให้ P1.2) · PosCategory · PosProductOptionGroup · RecipeLine · ไม่มีตาราง PosVariant"),
   D("S1.2", "-", "คอลัมน์เชื่อมใหม่ nullable ครบ (R3): MenuItem/ShopProduct/ShopOrderLine.posProductId · PosSaleLine/RestaurantOrderItem.productId"),
-  D("S1.3", "-", "PosProduct มีคอลัมน์สัญญา (tenantId · systemId · unitId? · invItemId? · name · nameEn · kind · categoryId · basePriceSatang? · vatRateBp · stationId · dailyStockQty · images · archivedAt · trackStock NOT NULL default false) · unique(systemId, invItemId) · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index บนคอลัมน์เชื่อมทุกตัว (ไม่ตรวจโหมดสร้าง)"),
+  D("S1.3", "-", "PosProduct มีคอลัมน์สัญญา (tenantId · systemId · unitId? · invItemId? · name · nameEn · kind · categoryId · basePriceSatang? · vatRateBp · stationId · dailyStockQty · images · archivedAt · trackStock nullable ไม่มี default [C2]) · unique(systemId, invItemId) · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index ระบบ"),
   D("S1.4", "-", "migration <ts>_pos_v2_a additive ล้วน: ไม่มี DROP/RENAME/SET NOT NULL/ADD COLUMN NOT NULL ไร้ DEFAULT บนตารางเดิม · ALTER TYPE ADD VALUE ไม่ปนไฟล์ DDL อื่น · ไม่แตะ enum InvItemKind"),
   D("S1.5", "-", "src/lib/core/scope.ts ลงทะเบียนตารางใหม่ทุกตัว (F1 fail-closed)"),
   // ── S1 · backfill ──
@@ -61,12 +61,12 @@ const CHECKS: readonly Def[] = [
   D("S1.11", "-", "ทุก ShopProduct → POS ตัวแรกของร้าน (ทางเดียวกับ shop checkout): มี invItemId → ชี้ PosProduct ของ InvItem นั้น · ไม่มี → PosProduct ของตัวเอง (PRODUCT · unitId สาขา · invItemId null) — แม้สาขาไม่ผูก POS"),
   D("S1.12", "-", "InvItem ↔ ShopProduct(invItemId) = PosProduct เดียว (เว็บร้าน→น้ำดื่ม) · เมนู→โค้ก = 2 แถว: PRODUCT โค้ก (invItemId · 2000) + MENU (invItemId null · 2500 · RecipeLine→โค้ก)"),
   D("S1.13", "X4", "ราคาขั้น 2 (salePrice) ตรงสตางค์ทุกสินค้าใน seed รวมราคา 0 บาท (น้ำฟรี · น้ำแข็ง)"),
-  D("S1.14", "X4", "ลำดับราคาทีละขั้นด้วย fixture ของตัวเอง: posPrice 4500 ชนะ salePrice 5000 · posPrice 0 ไม่นับ (→ salePrice) · SERVICE 15000 · SERVICE ราคา 0 ไม่มีบัญชี = null · เมนู 9900 · เว็บล้วน 12345 · มีแต่ต้นทุน = null · เมนู→โค้ก ใช้ basePrice 2500 · ทุกแถวตรงสูตร"),
-  D("S1.15", "X8", "VAT ต่อสินค้า: vatRateBp = AccountProduct.vatRateBp (ไข่ 0 · อื่น 700) · ไม่มีบัญชี = null"),
+  D("S1.14", "X4", "ราคา = ที่ลิ้นชักคิดวันนี้ [C7] ทุกแถวตรงสูตร + ทีละขั้น: salePrice>0 ชนะ posPrice · posPrice>0 เมื่อ posEnabled · SERVICE 15000 · SERVICE 0 = null · เมนู 9900 · เว็บล้วน 12345 · มีแต่ต้นทุน = null · เมนูโค้ก 2500"),
+  D("S1.15", "X8", "VAT ต่อสินค้า [C8]: vatRateBp = AccountProduct.vatRateBp (หาแบบลิ้นชัก · สมุดบัญชีที่ผูก POS จด VAT) · ไข่ 0 · อื่น 700 · ไม่มีบัญชี/ไม่จด VAT = null"),
   D("S1.16", "-", "หมวด: เมนู → PosCategory ชื่อ/ชื่ออังกฤษเดียวกับ MenuCategory · 1 PosCategory ต่อ MenuCategory (สาขามี POS · ไม่ซ้ำ)"),
   D("S1.17", "-", "ฟิลด์เมนูย้ายครบ: stationId · dailyStockQty · images (ลำดับเดิม)"),
   D("S1.18", "-", "ตัวเลือก: PosProductOptionGroup (groupId · sortOrder) = MenuItemOptionGroup ของเมนูทุกตัว · MenuOptionGroup ใช้ต่อ ไม่สร้างใหม่"),
-  D("S1.19", "-", "บาร์โค้ดคงเดิม: byBarcode หา PosProduct เจอทุกบาร์โค้ดใน seed (น้ำดื่ม · โค้ก)"),
+  D("S1.19", "-", "บาร์โค้ดคงเดิม: byBarcode(...).items มี PosProduct ของทุกบาร์โค้ดใน seed (น้ำดื่ม · โค้ก)"),
   D("S1.20", "-", "InvItem ที่เก็บถาวร → PosProduct archivedAt ไม่ว่าง และไม่โผล่ใน listForUnit"),
   D("X1.1", "X1", "backfill รอบสอง: created ทุกตัว = 0 · updated ทุกตัว = 0 · ตารางใหม่ checksum เท่าเดิม"),
   D("X6.1", "X6", "backfill 2 โปรเซสพร้อมกัน (connection แยก) × 3 รอบ บนแหล่งใหม่ทุกรอบ → ต่อแหล่ง 1 แถว ไม่ซ้ำ · ทั้งคู่ exit 0"),
@@ -84,12 +84,12 @@ const CHECKS: readonly Def[] = [
   D("S1.31", "-", "archive: หายจาก listForUnit · กดซ้ำไม่ error · แถวยังอยู่ (soft)"),
   D("S1.32", "-", "listForUnit คืน {items, nextCursor} (ไม่ใช่ array เปล่า) · item ทรง POS-API §1: {id, invItemId, name, nameEn, kind, categoryId, basePriceSatang, images[], optionGroups[], variants[], recipe[], channelPrices[], availability{unitId→bool}, stock{unitId→qty}} · เงินเป็น Int"),
   D("S1.33", "-", "listForUnit: active ของระบบครบ (unitId null + unitId สาขานี้ · ไม่มีของสาขาอื่น) · stock[unit] = InvItem.onHand · availability[unit] = true · ตัวเลือกเมนูมี choices.priceDelta Int"),
-  D("S1.34", "-", "byBarcode: ตรงตัวในระบบ · บาร์โค้ดไม่มี = null"),
+  D("S1.34", "-", "byBarcode: {items} ตรงตัวในระบบ · บาร์โค้ดไม่มี = items ว่าง"),
   D("S1.35", "X1", "ensureForInvItem: เรียกซ้ำได้ id เดิม (created=false) · InvItem ใหม่ได้ราคาตามลำดับ R2"),
   D("S1.37", "-", "listForUnit ค้นฝั่ง server ด้วยชื่อไทย/SKU/บาร์โค้ด + แบ่งหน้าด้วย {limit, cursor} → nextCursor · ไม่มีเพดาน 200 (สินค้า >200 ตัวเดินครบทุกหน้า ไม่ซ้ำ)"),
   D("S1.39", "-", "createCategory(ctx, {name, nameEn?, unitId?, sortOrder?}) → PosCategory ระบบ POS นี้ · ชื่อว่าง = VALIDATION · ชื่อซ้ำ (ระบบ+สาขาเดียวกัน) = CONFLICT"),
   D("S1.40", "-", "createProduct ไม่ส่ง kind → PRODUCT · updateProduct availability {[unitId]: false} → ยังอยู่ใน listForUnit สาขานั้นแต่ availability[unit]=false · สาขาอื่นไม่กระทบ · เปิดคืนได้"),
-  D("S1.41", "-", "trackStock (คอลัมน์จริง default false): backfill = true เฉพาะแถวที่มี invItemId และ InvItem นั้นมี movement หรือ onHand ≠ 0 (ครัวซองต์/น้ำดื่ม/โค้ก true · อเมริกาโน่/ลาเต้ false · MENU/เว็บล้วน false) · updateProduct({trackStock}) สลับได้"),
+  D("S1.41", "-", "trackStock tri-state [C2]: updateProduct({trackStock}) true/false/null วนได้ · คอลัมน์เก็บค่าที่ตั้ง (null = AUTO)"),
   D("S1.38", "-", "ทุกการเขียน (createProduct · setPrice · archive) มีแถว AuditLog targetType PosProduct · targetId · actorId = ผู้กด"),
   // ── X · P1.1a ──
   D("X2.1", "X2", "ข้ามร้าน: updateProduct/setPrice/archive ด้วย productId ของอีกร้าน · ctx ที่ systemId เป็น POS ของอีกร้าน → throw NOT_FOUND และแถวไม่เปลี่ยน"),
@@ -128,10 +128,37 @@ const CHECKS: readonly Def[] = [
   D("S2.22", "-", "AI proposal inventory_create_item (ai/proposals.runKind) → PosProduct ของ InvItem ใหม่"),
   D("S2.23", "-", "booking.importServicesToCatalog (BookingService เก่า → InvItem SERVICE) → PosProduct SERVICE ราคา = BookingService.priceSatang"),
   D("S2.24", "-", "ย้อนทาง: catalog.setPrice บริการ → InvItem.priceSatang ตาม → booking.serviceRoster + BookingService.priceSatang เห็นราคาใหม่"),
-  D("S2.25", "-", "account/product.updateProduct posPrice → PosProduct = posPrice (ขั้น 1 ของ R2)"),
+  D("S2.25", "-", "account/product.updateProduct [C7]: posPrice ไม่ชนะ salePrice>0 · salePrice ว่าง + posEnabled + posPrice → PosProduct = posPrice"),
   D("S2.26", "-", "menu.createCategory → PosCategory ชื่อเดียวกัน 1 แถว · archiveCategory → PosCategory เก็บถาวร"),
   D("S2.27", "-", "menu.createOptionGroup + archiveOptionGroup → listForUnit ของเมนูที่ผูก เห็นตัวเลือก priceDelta ตรง แล้วหายเมื่อเก็บถาวร"),
   D("X6.5", "X6", "แข่งกัน: menu.updateItem ราคา ↔ catalog.setPrice เมนูเดียวกัน 10 เลน × 3 รอบ → MenuItem.basePrice = PosProduct.basePriceSatang ทุกรอบ"),
+  // ── S3 · ROUND 2 (brief P1.1a-R2 · มติหลังผู้ตรวจ+นักล่า) — 1 ข้อขึ้นไปต่อ C/M ──
+  D("S3.1", "X3", "C1 ผู้เรียกระดับระบบ = CATALOG_SYSTEM_ACTOR (unique symbol) ทำงาน · actorUserId null/undefined/\"\" = PERMISSION_DENIED (ensureForInvItem · createProduct · setPrice · createCategory)"),
+  D("S3.2", "-", "C2 backfill/ensure ทิ้ง trackStock = null (AUTO) · read model มี trackStock (ค่าจริง) + trackStockMode auto|on|off"),
+  D("S3.3", "-", "C2 AUTO คิดตอนอ่าน: สินค้าสร้างวันนี้ยังไม่มีของ = false → รับของเข้าทีหลัง = true เอง · ตั้ง off/on/null ได้ · true บนแถวไม่ผูกคลัง = VALIDATION"),
+  D("S3.4", "X2", "C3 POS เดียวสองคลัง: สาขา A เห็นเฉพาะของคลัง X (list + ค้น SKU/บาร์โค้ด) · สาขา B เฉพาะคลัง Y · stock[A] = onHand ของ X"),
+  D("S3.5", "X2", "C3 byBarcode ตามคลังของสาขา: บาร์โค้ดของคลัง Y ที่สาขา A = ว่าง · ที่สาขา B = เจอ"),
+  D("S3.6", "X3", "C4 ผู้จัดการเฉพาะสาขา: เขียนสินค้าทุกสาขา (setPrice · updateProduct · archive · trackStock) · createProduct unitId null · ensureForInvItem · createCategory unitId null = PERMISSION_DENIED"),
+  D("S3.7", "X3", "C4 ย้ายสาขา: ผู้จัดการย้ายของสาขาตัวเองเป็นทุกสาขา = PERMISSION_DENIED · ไปสาขาที่ไม่มีสิทธิ์ = NOT_FOUND · แก้/ตั้งราคาของสาขาตัวเองได้ · เจ้าของย้ายทุกสาขา→สาขาเดียวได้"),
+  D("S3.8", "-", "C4 หมวด: สินค้าสาขาสีลม + หมวดของสาขาอารีย์ = VALIDATION · หมวดทุกสาขาใช้ได้"),
+  D("S3.9", "-", "C5 byBarcode คืน {items} 0..n · บาร์โค้ดซ้ำใน legacy = 2 รายการ ลำดับคงที่ (เรียกสองครั้งได้ลำดับเดิม)"),
+  D("S3.10", "-", "C6 listForUnit ไม่ส่ง limit = 100 + nextCursor · limit 1000 = ตัดเหลือ 500 ไม่ error · เดินหน้า 100 ครบทุกแถวไม่ซ้ำ"),
+  D("S3.11", "-", "C6 (static) ค้นด้วยคำสั่งเดียว: listForUnit ไม่มี take: 2000 / invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว (ใช้ Map)"),
+  D("S3.12", "X4", "C7 ทีละขั้นด้วย fixture: salePrice>0 ชนะ posPrice · posPrice ใช้เมื่อ posEnabled · posEnabled=false ไม่นับ · AccountProduct เก็บถาวร/สมุดบัญชีอื่น/ผูกครึ่งทาง (AP.invItemId) ไม่นับ · salePrice 0 + ต้นทุน>0 = null · 0 + ต้นทุน 0 = 0 · ราคาติดลบ = null"),
+  D("S3.13", "-", "C7 ตัวนับใน dry-run: soldAtCostToday (+ ตัวอย่างชื่อ) · zeroPriceProduct · zeroPriceMenu · zeroPriceWeb · invalidLegacyPrice · posPriceDiffersFromSalePrice"),
+  D("S3.14", "X8", "C8 VAT: สมุดบัญชีที่ผูก POS ไม่จด VAT → vatRateBp null · จด VAT → ค่าจาก AccountProduct"),
+  D("S3.15", "-", "C9a เว็บร้านผูก InvItem ของ POS แรก = ชี้แถวเดิม ไม่แก้แถวร่วม · นับ shopPriceDiffersFromCatalog + shopInactiveLinked"),
+  D("S3.16", "-", "C9b เว็บร้านผูก InvItem นอกคลังของ POS แรก = แถวของตัวเองใน POS แรก (invItemId ตั้ง · unitId สาขาร้าน) + นับ shopOwnRowInvItemOutsideFirstPos"),
+  D("S3.17", "-", "C9c invItemId ชี้ InvItem ที่ไม่มีแล้ว = แถวของตัวเอง invItemId null + นับ shopDanglingInvItem · สาขาไม่อยู่ใน POS แรก = นับ shopBranchNotInFirstPos (unitId สาขาร้าน)"),
+  D("S3.18", "X4", "C10 createProduct: MENU/BUNDLE + invItemId = VALIDATION · InvItem เก็บถาวร = VALIDATION · ชนิดไม่ตรง = VALIDATION · บาร์โค้ดเท่ากับ InvItem ของตัวเองได้ · P2002 → CONFLICT (static)"),
+  D("S3.19", "X6", "C11 setPrice 2 เลนพร้อมกัน × 5 รอบ = audit ต่อเป็นสาย (ก่อน→หลัง ต่อกัน) · archive 2 เลนพร้อมกัน = ทั้งคู่คืน archivedAt ที่เก็บจริง"),
+  D("S3.20", "X2", "C12 สาขาเก็บถาวร: เมนูไม่ถูกผูก · listForUnit = NOT_FOUND · POS ที่ปิดใช้งาน (เก่ากว่า) ไม่ถูกเลือกเป็น POS แรก"),
+  D("S3.21", "-", "C13 backfill: prod ไม่มี --tenant/--all = ปฏิเสธ (static) · movement ใช้ groupBy/DISTINCT ไม่โหลดทั้งหมด · ตัวเลือกเมนูจัดกลุ่มด้วย Map · JSON_SUMMARY มีตัวนับครบทุกชื่อ"),
+  D("S3.22", "-", "M1 ไม่มี index บนคอลัมน์เชื่อมของ 5 ตารางเดิม (SQL · schema · DB)"),
+  D("S3.23", "-", "M2 คำสั่งแรก SET LOCAL lock_timeout · ALTER TABLE … ADD COLUMN ของตารางเดิมอยู่ท้ายสุด"),
+  D("S3.24", "-", "M3 SQL: \"trackStock\" BOOLEAN nullable ไม่มี DEFAULT"),
+  D("S3.25", "-", "M4 index PosProduct(systemId, archivedAt, name, id)"),
+  D("S3.26", "-", "M5 partial unique PosCategory(systemId, name) WHERE unitId IS NULL"),
   // ── ท้ายรัน ──
   D("S1.36", "X5", "rollback ปลายทาง: ลบแถวตารางใหม่ที่รันนี้สร้าง + คืนคอลัมน์เชื่อม + ลบ fixtures → ตารางเดิม (จำนวน + checksum) และตารางใหม่ เท่าก่อนรัน · ร้าน QC กลับสภาพเดิม"),
 ];
@@ -208,7 +235,7 @@ const LEGACY: Record<string, string[]> = {
   MenuCategory: ["updatedAt"], MenuItem: ["updatedAt", "posProductId"], MenuOptionGroup: ["updatedAt"], MenuOptionChoice: ["updatedAt"],
   MenuItemOptionGroup: [], KdsStation: ["updatedAt"], ShopProduct: ["updatedAt", "posProductId"], ShopOrder: [], ShopOrderLine: ["posProductId"],
   RestaurantOrderItem: ["updatedAt", "productId"], PosSale: ["updatedAt"], PosSaleLine: ["productId"], PosPayment: [], PosReceiptCounter: [],
-  BookingService: ["updatedAt"], Membership: ["updatedAt"],
+  BookingService: ["updatedAt"], Membership: ["updatedAt"], AppSystem: ["updatedAt"], AccountSettings: ["updatedAt"],
 };
 const NEW_TABLES = ["PosProduct", "PosCategory", "PosProductOptionGroup", "RecipeLine", "PosVariant", "PosProductChannelPrice"];
 const norm = (v: unknown): unknown => {
@@ -266,7 +293,7 @@ const diffText = (d: ReturnType<typeof diffSnap>) =>
   Object.entries(d).map(([t, v]) => `${t}+${v.added.length}/-${v.removed.length}/~${v.changed.length}`).join(" ") || "ไม่ต่าง";
 async function rowCounts(): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  for (const t of [...Object.keys(LEGACY), ...NEW_TABLES, "AppSystem", "OutboxEvent"]) {
+  for (const t of [...Object.keys(LEGACY), ...NEW_TABLES, "OutboxEvent"]) {
     if (!TABLES.has(t)) continue;
     out[t] = (await rowsOf(t, QC_TIDS)).length;
   }
@@ -301,6 +328,20 @@ const codeOf = (r: Try) => (r.ok ? "รับ" : r.threw ? (r.code ?? "throw ไ
 const idOf = (v: Any): string | undefined => (typeof v === "string" ? v : v?.id ?? v?.productId ?? v?.product?.id ?? undefined);
 const listOf = (v: Any): Any[] => (Array.isArray(v) ? v : Array.isArray(v?.items) ? v.items : Array.isArray(v?.products) ? v.products : []);
 const isInt = (n: unknown) => typeof n === "number" && Number.isInteger(n);
+/** C5 (round 2): byBarcode คืน {items} — ตัวช่วยอ่าน (ทรงเก่าที่คืนแถวเดียว/null ถือว่าไม่ใช่สัญญา → S3.9 แดง) */
+const bcItems = (v: Any): Any[] => (v && typeof v === "object" && Array.isArray(v.items) ? v.items : []);
+/** อ่านครบทุกหน้า (C6: ค่าปริยาย 100 ต่อหน้า) — เดินตาม nextCursor ด้วย limit 500 */
+async function listAll(C: Any, ctx: Any, unitId: string, opts: Record<string, unknown> = {}): Promise<Try & { items: Any[] }> {
+  const items: Any[] = []; let cursor: Any = undefined; let last: Try = { ok: false };
+  for (let i = 0; i < 50; i++) {
+    last = await attempt(() => C.listForUnit(ctx, unitId, { ...opts, limit: 500, ...(cursor ? { cursor } : {}) }));
+    if (!last.ok) return { ...last, items };
+    items.push(...listOf(last.value));
+    cursor = last.value?.nextCursor ?? null;
+    if (!cursor) break;
+  }
+  return { ...last, items };
+}
 const clients: Any[] = [];
 let laneFactory: ((i: number) => Any) | null = null;
 const lane = (i: number): Any => (laneFactory ? laneFactory(i) : prisma);
@@ -400,15 +441,21 @@ const rsOwner = await actorOf(RS.users.owner);
 const ctxOwner = { tenantId: cfT, systemId: sysC.POS, actorUserId: cfOwner.userId as string };
 const ctxCashier = { tenantId: cfT, systemId: sysC.POS, actorUserId: cfCashier.userId as string };
 const ctxRsOwner = { tenantId: rsT, systemId: sysR.POS, actorUserId: rsOwner.userId as string };
-const ctxSysCf = { tenantId: cfT, systemId: sysC.POS, actorUserId: null };
+/** C1 (round 2): ผู้เรียกระดับระบบ = ตัวบ่งชี้ CATALOG_SYSTEM_ACTOR (unique symbol ที่ catalog.ts export) — null/undefined/"" = PERMISSION_DENIED */
+const sysActor = (): Any => catalog?.CATALOG_SYSTEM_ACTOR ?? "__no_system_actor_export__";
+const ctxSys = (tenantId: string, systemId: string) => ({ tenantId, systemId, actorUserId: sysActor() });
 /** ให้สิทธิ์ชั่วคราวกับ Membership ของแคชเชียร์ แล้วคืนค่าเดิมทุกตัวอักษร (finally) */
 const cashierMb = CF.users.cashier.membershipId as string;
 const cashierPerm0 = (await P.membership.findFirst({ where: { id: cashierMb } }))?.permissions ?? {};
-async function withCashierPerm<T>(extra: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
-  await P.membership.update({ where: { id: cashierMb }, data: { permissions: { ...(cashierPerm0 as object), ...extra } } });
-  try { return await fn(); } finally { await P.membership.update({ where: { id: cashierMb }, data: { permissions: cashierPerm0 } }); }
+const cashierRole0 = (await P.membership.findFirst({ where: { id: cashierMb } }))?.role ?? "STAFF";
+async function withCashierPerm<T>(extra: Record<string, unknown>, fn: () => Promise<T>, role?: string): Promise<T> {
+  await P.membership.update({ where: { id: cashierMb }, data: { permissions: { ...(cashierPerm0 as object), ...extra }, ...(role ? { role } : {}) } });
+  try { return await fn(); } finally { await P.membership.update({ where: { id: cashierMb }, data: { permissions: cashierPerm0, role: cashierRole0 } }); }
 }
+/** C4: แคชเชียร์ชั่วคราวเป็น MANAGER เฉพาะสาขาสีลม (unitAccess เดิม = [สีลม]) — คืน role/สิทธิ์เดิมเสมอ */
+const asBranchManager = <T,>(fn: () => Promise<T>) => withCashierPerm({}, fn, "MANAGER");
 const itemBySku = (t: Any, sku: string) => (t.items as Any[]).find((i) => i.sku === sku);
+const BULK = 520; // C6: > 500 (เพดาน limit) และ > 200 (เพดานหน้าขายเดิม)
 
 // snapshot0 = ภาพก่อนแตะอะไรเลย (คืนสภาพท้ายรันเทียบกับตัวนี้)
 const snapLegacy0 = await snapLegacyLinks();
@@ -418,9 +465,10 @@ let catalog: Any = null;
 // fixtures แบบ "ข้อมูลเก่า" (เขียนตรงเหมือนข้อมูลก่อน P1.1 — ไม่ผ่าน catalog)
 const mkInv = async (tid: string, sys: string, sfx: string, extra: Record<string, unknown> = {}) =>
   (await P.invItem.create({ data: { tenantId: tid, systemId: sys, sku: `${TAG}-${sfx}`, name: `${TAG} ${sfx}`, ...extra } })) as Any;
-const mkAp = async (tid: string, accSys: string, inv: Any, salePrice: number | null, vatRateBp = 700, posPrice: number | null = null) => {
-  const ap = await P.accountProduct.create({ data: { tenantId: tid, systemId: accSys, name: inv.name, salePrice, posPrice, vatRateBp, invItemId: inv.id } });
-  await P.invItem.update({ where: { id: inv.id }, data: { accountProductId: ap.id } });
+const mkAp = async (tid: string, accSys: string, inv: Any, salePrice: number | null, vatRateBp = 700, posPrice: number | null = null, o: { posEnabled?: boolean; archivedAt?: Date; halfLink?: boolean } = {}) => {
+  const ap = await P.accountProduct.create({ data: { tenantId: tid, systemId: accSys, name: inv.name, salePrice, posPrice, vatRateBp, invItemId: inv.id, posEnabled: o.posEnabled ?? false, archivedAt: o.archivedAt ?? null } });
+  // halfLink = มีแค่ AccountProduct.invItemId (หน้าขายวันนี้หาไม่เจอ — C7 ห้าม fallback ทางนี้)
+  if (!o.halfLink) await P.invItem.update({ where: { id: inv.id }, data: { accountProductId: ap.id } });
   return ap as Any;
 };
 const rsCat = await P.menuCategory.findFirst({ where: { tenantId: rsT, unitId: RMAIN, name: "อาหารจานเดียว" } });
@@ -436,10 +484,11 @@ const countProducts = async (tid?: string) => Number((await q<{ n: number }>(`se
 const countWhere = async (table: string, tid: string) => Number((await q<{ n: number }>(`select count(*)::int as n from "${table}" where "tenantId" = $1`, tid))[0]?.n ?? -1);
 /** สาขา → ระบบ POS (AppSystemUnit type POS · unique ต่อสาขา) — แหล่งความจริงเดียวของ "เมนู/สินค้าเว็บนี้อยู่ POS ไหน" */
 const posOfUnit = async (): Promise<Map<string, string>> =>
-  new Map((await q<{ unitId: string; systemId: string }>(`select "unitId", "systemId" from "AppSystemUnit" where type = 'POS' and "tenantId" = any($1::text[])`, QC_TIDS)).map((r) => [r.unitId, r.systemId]));
+  new Map((await q<{ unitId: string; systemId: string }>(`select l."unitId", l."systemId" from "AppSystemUnit" l join "BusinessUnit" u on u.id = l."unitId" join "AppSystem" s on s.id = l."systemId"
+    where l.type = 'POS' and l."tenantId" = any($1::text[]) and u.status <> 'ARCHIVED' and s.active`, QC_TIDS)).map((r) => [r.unitId, r.systemId]));
 /** ร้าน → POS ตัวแรก (listSystems: type asc, createdAt asc) = ทางที่ shop checkout ใช้วันนี้ (shop/service.ts:217) */
 const firstPosOfTenant = async (): Promise<Map<string, string>> => {
-  const rows = await q<{ tenantId: string; id: string }>(`select "tenantId", id from "AppSystem" where type = 'POS' and "tenantId" = any($1::text[]) order by "createdAt" asc`, QC_TIDS);
+  const rows = await q<{ tenantId: string; id: string }>(`select "tenantId", id from "AppSystem" where type = 'POS' and active and "tenantId" = any($1::text[]) order by "createdAt" asc, id asc`, QC_TIDS);
   const m = new Map<string, string>();
   for (const r of rows) if (!m.has(r.tenantId)) m.set(r.tenantId, r.id);
   return m;
@@ -449,7 +498,8 @@ const posOfInventory = async (): Promise<Map<string, string[]>> => {
   const rows = await q<{ inv: string; pos: string }>(`
     select distinct i."systemId" as inv, p."systemId" as pos from "AppSystemUnit" i
     join "AppSystemUnit" p on p."unitId" = i."unitId" and p."tenantId" = i."tenantId" and p.type = 'POS'
-    where i.type = 'INVENTORY' and i."tenantId" = any($1::text[])`, QC_TIDS);
+    join "BusinessUnit" u on u.id = i."unitId" join "AppSystem" ps on ps.id = p."systemId" join "AppSystem" isys on isys.id = i."systemId"
+    where i.type = 'INVENTORY' and i."tenantId" = any($1::text[]) and u.status <> 'ARCHIVED' and ps.active and isys.active`, QC_TIDS);
   const m = new Map<string, string[]>();
   for (const r of rows) m.set(r.inv, [...(m.get(r.inv) ?? []), r.pos]);
   return m;
@@ -480,17 +530,19 @@ try {
     const needC = ["tenantId", "systemId", "unitId", "invItemId", "name", "nameEn", "kind", "categoryId", "basePriceSatang", "vatRateBp", "stationId", "dailyStockQty", "images", "archivedAt", "trackStock"];
     const missC = needC.filter((c) => !ppCols.has(c));
     const nullable = ["unitId", "invItemId", "basePriceSatang"].filter((c) => ppCols.get(c)?.is_nullable !== "YES");
-    const notNull = ["tenantId", "systemId", "name", "kind", "trackStock"].filter((c) => ppCols.get(c)?.is_nullable !== "NO");
-    const tsDefaultFalse = /false/i.test(ppCols.get("trackStock")?.column_default ?? "");
+    const notNull = ["tenantId", "systemId", "name", "kind"].filter((c) => ppCols.get(c)?.is_nullable !== "NO");
+    // C2/M3 (round 2): trackStock nullable ไม่มี default (null = AUTO)
+    const tsTri = ppCols.get("trackStock")?.is_nullable === "YES" && !ppCols.get("trackStock")?.column_default;
     const idx = await q<{ tablename: string; indexdef: string }>(`select tablename, indexdef from pg_indexes where schemaname='public' and tablename = any($1::text[])`, ["PosProduct", ...links.map((l) => l[0])]);
     const hasIdx = (t: string, c: string) => idx.some((r) => r.tablename === t && new RegExp(`\\(\\s*"${c}"`).test(r.indexdef));
     const uniqInv = idx.some((r) => r.tablename === "PosProduct" && /UNIQUE/i.test(r.indexdef) && /"invItemId"/.test(r.indexdef) && (/"systemId"/.test(r.indexdef) || /\(\s*"invItemId"\s*\)/.test(r.indexdef)));
-    const idxMiss = [...links.map(([t, c]) => (hasIdx(t, c) ? "" : `${t}.${c}`)), uniqInv ? "" : "PosProduct unique(systemId, invItemId)", hasIdx("PosProduct", "systemId") || hasIdx("PosProduct", "tenantId") ? "" : "PosProduct(systemId|tenantId)"].filter(Boolean);
+    void hasIdx;
+    const idxMiss = [uniqInv ? "" : "PosProduct unique(systemId, invItemId)", hasIdx("PosProduct", "systemId") || hasIdx("PosProduct", "tenantId") ? "" : "PosProduct(systemId|tenantId)"].filter(Boolean);
     const kindEnum = (await q<{ enumlabel: string }>(`select e.enumlabel from pg_enum e join pg_type t on t.oid = e.enumtypid join information_schema.columns c on c.udt_name = t.typname where c.table_name='PosProduct' and c.column_name='kind'`)).map((r) => r.enumlabel);
     const kindMiss = ["PRODUCT", "SERVICE", "MENU", "BUNDLE"].filter((k) => !kindEnum.includes(k));
-    chk("S1.3", missC.length === 0 && nullable.length === 0 && notNull.length === 0 && tsDefaultFalse && idxMiss.length === 0 && kindMiss.length === 0,
-      "คอลัมน์ครบ · unitId/invItemId/basePriceSatang nullable · tenantId/systemId/name/kind NOT NULL · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index ครบ",
-      `ขาดคอลัมน์: ${missC.join(",") || "-"} · trackStock default false ${tsDefaultFalse} · ควร nullable: ${nullable.join(",") || "-"} · ควร NOT NULL: ${notNull.join(",") || "-"} · kind ขาด: ${kindMiss.join(",") || "-"} · ขาด index: ${idxMiss.join(",") || "-"}`);
+    chk("S1.3", missC.length === 0 && nullable.length === 0 && notNull.length === 0 && tsTri && idxMiss.length === 0 && kindMiss.length === 0,
+      "คอลัมน์ครบ · unitId/invItemId/basePriceSatang/trackStock nullable · tenantId/systemId/name/kind NOT NULL · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index ครบ",
+      `ขาดคอลัมน์: ${missC.join(",") || "-"} · trackStock nullable+ไม่มี default ${tsTri} (${ppCols.get("trackStock")?.is_nullable}/${ppCols.get("trackStock")?.column_default ?? "-"}) · ควร nullable: ${nullable.join(",") || "-"} · ควร NOT NULL: ${notNull.join(",") || "-"} · kind ขาด: ${kindMiss.join(",") || "-"} · ขาด index: ${idxMiss.join(",") || "-"}`);
     const bad0: string[] = [];
     const migs = existsSync("prisma/migrations") ? readdirSync("prisma/migrations").filter((d) => existsSync(`prisma/migrations/${d}/migration.sql`)).sort() : [];
     const mine = migs.filter((d) => /CREATE TABLE\s+(IF NOT EXISTS\s+)?"PosProduct"/i.test(read(`prisma/migrations/${d}/migration.sql`)));
@@ -518,18 +570,47 @@ try {
     chk("S1.5", scopeMiss.length === 0, "ลงทะเบียนครบ", `ขาด: ${scopeMiss.join(",") || "-"}`);
   });
 
+  // ═══ S3.22–S3.26 · M1–M5 (static: migration.sql + schema · และ DB) ═══
+  await section("migration-r2", ["S3.22", "S3.23", "S3.24", "S3.25", "S3.26"], async () => {
+    const migDir = existsSync("prisma/migrations") ? readdirSync("prisma/migrations").find((d) => /_pos_v2_a$/.test(d)) : undefined;
+    const sql = migDir ? read(`prisma/migrations/${migDir}/migration.sql`) : "";
+    const stmts = sql.replace(/--.*$/gm, "").split(";").map((x) => x.trim()).filter(Boolean);
+    const OLD5: [string, string][] = [["ShopProduct", "posProductId"], ["ShopOrderLine", "posProductId"], ["PosSaleLine", "productId"], ["MenuItem", "posProductId"], ["RestaurantOrderItem", "productId"]];
+    const sqlIdx = OLD5.filter(([t, c]) => new RegExp(`CREATE\\s+(UNIQUE\\s+)?INDEX[^;]*ON\\s+"${t}"\\s*\\(\\s*"${c}"`, "i").test(sql)).map(([t, c]) => `${t}.${c}`);
+    const schemaAll = existsSync("prisma/schema") ? readdirSync("prisma/schema").filter((f) => f.endsWith(".prisma")).map((f) => read(`prisma/schema/${f}`)).join("\n") : "";
+    const modelBlock = (name: string) => { const m = new RegExp(`model\\s+${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(schemaAll); return m?.[1] ?? ""; };
+    const schIdx = OLD5.filter(([t, c]) => new RegExp(`@@index\\(\\[\\s*${c}\\s*\\]`).test(modelBlock(t))).map(([t, c]) => `${t}.${c}`);
+    const dbIdx = (await q<{ tablename: string; indexdef: string }>(`select tablename, indexdef from pg_indexes where schemaname='public' and tablename = any($1::text[])`, OLD5.map((x) => x[0])))
+      .filter((r) => OLD5.some(([t, c]) => r.tablename === t && new RegExp(`\\(\\s*"${c}"`).test(r.indexdef))).map((r) => r.tablename);
+    chk("S3.22", !!migDir && sqlIdx.length === 0 && schIdx.length === 0 && dbIdx.length === 0, "ไม่มี index บน 5 คอลัมน์เชื่อม (SQL/schema/DB)", `${migDir ?? "ไม่พบ *_pos_v2_a"} · SQL ${sqlIdx.join(",") || "-"} · schema ${schIdx.join(",") || "-"} · DB ${dbIdx.join(",") || "-"}`);
+    const first = stmts[0] ?? "";
+    const isAddOld = (x: string) => OLD5.some(([t]) => new RegExp(`^ALTER\\s+TABLE\\s+"${t}"\\s+ADD\\s+COLUMN`, "i").test(x));
+    const addIdx = stmts.map((x, i) => (isAddOld(x) ? i : -1)).filter((i) => i >= 0);
+    const lastFive = addIdx.length === 5 && addIdx.every((i, k) => i === stmts.length - 5 + k);
+    chk("S3.23", /^SET\s+(LOCAL\s+)?lock_timeout/i.test(first) && lastFive, "คำสั่งแรก SET LOCAL lock_timeout · ADD COLUMN 5 ตัวเดิมอยู่ท้าย", `คำสั่งแรก: ${first.slice(0, 60) || "-"} · ADD COLUMN ที่ตำแหน่ง ${addIdx.join(",") || "-"} / ${stmts.length}`);
+    const tsDef = /"trackStock"\s+BOOLEAN([^,\n]*)/i.exec(sql)?.[1] ?? null;
+    chk("S3.24", tsDef !== null && !/NOT\s+NULL|DEFAULT/i.test(tsDef), "\"trackStock\" BOOLEAN (nullable · ไม่มี DEFAULT)", tsDef === null ? "ไม่พบใน SQL" : `"trackStock" BOOLEAN${tsDef}`);
+    const ppIdx = await q<{ indexdef: string }>(`select indexdef from pg_indexes where schemaname='public' and tablename='PosProduct'`);
+    const cols = (d: string) => (/\(([^)]*)\)/.exec(d.slice(d.indexOf("USING")))?.[1] ?? "").split(",").map((c) => c.trim().replace(/"/g, "").split(/\s+/)[0]);
+    const m4 = ppIdx.some((r) => cols(r.indexdef).join(",") === "systemId,archivedAt,name,id");
+    chk("S3.25", m4, "index (systemId, archivedAt, name, id)", ppIdx.map((r) => cols(r.indexdef).join("+")).join(" · ") || "ไม่มี index");
+    const pcIdx = await q<{ indexdef: string }>(`select indexdef from pg_indexes where schemaname='public' and tablename='PosCategory'`);
+    const m5 = pcIdx.some((r) => /UNIQUE/i.test(r.indexdef) && cols(r.indexdef).join(",") === "systemId,name" && /WHERE[\s\S]*"?unitId"?\s+IS\s+NULL/i.test(r.indexdef));
+    chk("S3.26", m5, "UNIQUE (systemId, name) WHERE unitId IS NULL", pcIdx.map((r) => r.indexdef.replace(/^CREATE /, "").slice(0, 110)).join(" · ") || "ไม่มี");
+  });
+
   // ═══ fixtures (ข้อมูลเก่า) ก่อน backfill ═══
   const fx: Any = {};
   await section("fixtures", ["S1.6"], async () => {
     fx.water = itemBySku(CF, "PQC-CF-WATER"); fx.coke = itemBySku(RS, "PQC-RS-COKE"); fx.gift = itemBySku(CF, "PQC-CF-GIFT");
     fx.costOnly = await mkInv(cfT, sysC.INVENTORY, "costonly", { costSatang: 777 }); // มีแต่ต้นทุน → null (หน้าขายวันนี้โชว์ 7.77)
     fx.posPrice = await mkInv(cfT, sysC.INVENTORY, "posprice", { costSatang: 100 });
-    fx.posPriceAp = await mkAp(cfT, sysC.ACCOUNT, fx.posPrice, 5000, 700, 4500); // ขั้น 1 posPrice ชนะ salePrice
+    fx.posPriceAp = await mkAp(cfT, sysC.ACCOUNT, fx.posPrice, 5000, 700, 4500, { posEnabled: true }); // C7: salePrice>0 ชนะ posPrice (แม้ posEnabled)
     fx.posZero = await mkInv(cfT, sysC.INVENTORY, "poszero");
     await mkAp(cfT, sysC.ACCOUNT, fx.posZero, 5000, 700, 0); // posPrice 0 ไม่นับ (>0 เท่านั้น) → salePrice 5000
     fx.svcZero = await mkInv(cfT, sysC.INVENTORY, "svczero", { kind: "SERVICE", priceSatang: 0 }); // บริการราคา 0 ไม่มีบัญชี → null (แยก "ตั้ง 0" กับ "ยังไม่ตั้ง" ไม่ได้)
     // สินค้าจำนวนมากเกินเพดาน 200 ของหน้าขายเดิม (S1.37) — createMany คำสั่งเดียว
-    await P.invItem.createMany({ data: Array.from({ length: 201 }, (_, i) => ({ tenantId: cfT, systemId: sysC.INVENTORY, sku: `${TAG}-bulk-${String(i).padStart(3, "0")}`, name: `${TAG} bulk ${i}` })) });
+    await P.invItem.createMany({ data: Array.from({ length: BULK }, (_, i) => ({ tenantId: cfT, systemId: sysC.INVENTORY, sku: `${TAG}-bulk-${String(i).padStart(3, "0")}`, name: `${TAG} bulk ${i}` })) });
     fx.arch = await mkInv(cfT, sysC.INVENTORY, "arch", { archivedAt: new Date(), costSatang: 100 });
     await mkAp(cfT, sysC.ACCOUNT, fx.arch, 3300);
     fx.shShared = await mkShop("shop-shared", 1200, fx.water.id); // เว็บร้านชี้น้ำดื่ม (ราคาเว็บ 12.00 ≠ หน้าร้าน 10.00)
@@ -546,6 +627,49 @@ try {
     fx.noPosSt = await P.kdsStation.create({ data: { tenantId: cfT, unitId: fx.noPosUnit.id, name: `${TAG} st` } });
     fx.noPosMenu = await mkMenu("nopos-menu", { basePrice: 1111 }, fx.noPosUnit.id, cfT, fx.noPosCat.id, fx.noPosSt.id);
     fx.noPosShop = await mkShop("nopos-shop", 2222, null, fx.noPosUnit.id);
+    // ── round 2 fixtures ──
+    // C7 ทีละขั้น (คลังร้านกาแฟ · สมุดบัญชีที่ผูก POS = sysC.ACCOUNT)
+    fx.tempAcc = await P.appSystem.create({ data: { tenantId: cfT, type: "ACCOUNT", name: `${TAG} สมุดบัญชีอื่น` } });
+    const c7 = async (sfx: string, sale: number | null, pos: number | null, o: Any = {}, inv: Record<string, unknown> = {}) => {
+      const it = await mkInv(cfT, sysC.INVENTORY, sfx, inv);
+      await mkAp(cfT, o.acc ?? sysC.ACCOUNT, it, sale, 700, pos, o);
+      return it;
+    };
+    fx.p2 = await c7("c7-pos-enabled", null, 4400, { posEnabled: true });          // → 4400
+    fx.p3 = await c7("c7-pos-disabled", null, 4300, { posEnabled: false });        // → null
+    fx.p4 = await c7("c7-ap-archived", 3000, null, { archivedAt: new Date() });     // → null
+    fx.p5 = await c7("c7-ap-foreign", 3100, null, { acc: fx.tempAcc.id });          // → null (สมุดบัญชีอื่น)
+    fx.p6 = await c7("c7-half-link", 3200, null, { halfLink: true });               // → null (มีแต่ AP.invItemId)
+    fx.p7 = await c7("c7-sold-at-cost", 0, null, {}, { costSatang: 900 });          // → null + soldAtCostToday
+    fx.p8 = await c7("c7-zero-free", 0, null, {}, { costSatang: 0 });               // → 0 + zeroPriceProduct
+    fx.p9 = await c7("c7-negative", -100, null);                                    // → null + invalidLegacyPrice
+    fx.mZero = await mkMenu("c7-menu-zero", { basePrice: 0 });                      // → 0 + zeroPriceMenu
+    fx.mNeg = await mkMenu("c7-menu-negative", { basePrice: -500 });                // → null + invalidLegacyPrice
+    fx.sZero = await mkShop("c7-shop-zero", 0);                                     // → 0 + zeroPriceWeb
+    // C5 บาร์โค้ดซ้ำใน legacy (InvItem.barcode ไม่ unique)
+    fx.dupA = await mkInv(cfT, sysC.INVENTORY, "dup-a", { barcode: `98${RAND}55` });
+    fx.dupB = await mkInv(cfT, sysC.INVENTORY, "dup-b", { barcode: `98${RAND}55` });
+    // C3 POS ชั่วคราว 2 สาขา 2 คลัง (ไม่แตะ POS/คลังของ seed — แยกเป็นระบบใหม่ทั้งชุด)
+    fx.tPos = await P.appSystem.create({ data: { tenantId: cfT, type: "POS", name: `${TAG} POS สองคลัง` } });
+    fx.tInvX = await P.appSystem.create({ data: { tenantId: cfT, type: "INVENTORY", name: `${TAG} คลัง X` } });
+    fx.tInvY = await P.appSystem.create({ data: { tenantId: cfT, type: "INVENTORY", name: `${TAG} คลัง Y` } });
+    fx.uA = await P.businessUnit.create({ data: { tenantId: cfT, type: "SHOP", name: `${TAG} สาขา A`, slug: `${TAG}-a` } });
+    fx.uB = await P.businessUnit.create({ data: { tenantId: cfT, type: "SHOP", name: `${TAG} สาขา B`, slug: `${TAG}-b` } });
+    for (const [u, sys, type] of [[fx.uA.id, fx.tPos.id, "POS"], [fx.uA.id, fx.tInvX.id, "INVENTORY"], [fx.uB.id, fx.tPos.id, "POS"], [fx.uB.id, fx.tInvY.id, "INVENTORY"]] as const)
+      await P.appSystemUnit.create({ data: { tenantId: cfT, systemId: sys, unitId: u, type } });
+    fx.itX = await mkInv(cfT, fx.tInvX.id, "wh-x", { barcode: `97${RAND}01`, onHand: 7 });
+    fx.itY = await mkInv(cfT, fx.tInvY.id, "wh-y", { barcode: `97${RAND}02`, onHand: 9 });
+    // C9 เว็บร้าน (สาขาสีลม · POS แรก = POS ของ seed)
+    fx.shInactive = await P.shopProduct.create({ data: { tenantId: cfT, unitId: SILOM, name: `${TAG} shop-inactive`, priceSatang: 1000, invItemId: fx.water.id, active: false } }); // a: inactive linked
+    fx.shOutside = await mkShop("shop-outside-first-pos", 3333, fx.itX.id);        // b: InvItem นอกคลังของ POS แรก
+    fx.shDangling = await mkShop("shop-dangling", 4444, `${TAG}-ghost-item`);       // c: InvItem ไม่มีแล้ว
+    // C12 สาขาเก็บถาวรที่ยังผูก POS ของ seed + POS ปิดใช้งานที่เก่ากว่า
+    fx.archUnit = await P.businessUnit.create({ data: { tenantId: cfT, type: "RESTAURANT", name: `${TAG} สาขาปิด`, slug: `${TAG}-closed`, status: "ARCHIVED" } });
+    await P.appSystemUnit.create({ data: { tenantId: cfT, systemId: sysC.POS, unitId: fx.archUnit.id, type: "POS" } });
+    fx.archCat = await P.menuCategory.create({ data: { tenantId: cfT, unitId: fx.archUnit.id, name: `${TAG} cat-arch` } });
+    fx.archSt = await P.kdsStation.create({ data: { tenantId: cfT, unitId: fx.archUnit.id, name: `${TAG} st-arch` } });
+    fx.archMenu = await mkMenu("menu-in-archived-branch", { basePrice: 1234 }, fx.archUnit.id, cfT, fx.archCat.id, fx.archSt.id);
+    fx.oldPos = await P.appSystem.create({ data: { tenantId: cfT, type: "POS", name: `${TAG} POS ปิดใช้งาน`, active: false, createdAt: new Date("2000-01-01T00:00:00Z") } });
   });
 
   // ═══ ภาพก่อน backfill: จอเดิม + createSale (rollback ทิ้ง) ═══
@@ -591,6 +715,7 @@ try {
 
   // ═══ S1.6–S1.8 dry-run + จริง ═══
   let realSummary: Any = null;
+  let drySummary: Any = null;
   await section("backfill", ["S1.6", "S1.7", "S1.8"], async () => {
     const invs = await rowsOf("InvItem", QC_TIDS); const menus = await rowsOf("MenuItem", QC_TIDS); const shops = await rowsOf("ShopProduct", QC_TIDS);
     const uPos = await posOfUnit(); const iPos = await posOfInventory(); const tPos = await firstPosOfTenant();
@@ -602,6 +727,7 @@ try {
     };
     const nb = await snapNew(); const lb = await snapLegacyLinks();
     const dry = await runBackfill(["--dry-run"]);
+    drySummary = dry.summary;
     const s = dry.summary?.sources ?? {}; const sk = dry.summary?.skippedNoPosSystem ?? dry.summary?.skipped?.noPosSystem ?? {};
     chk("S1.6", dry.code === 0 && hashOf(norm({ invItem: s.invItem, menuItem: s.menuItem, shopProduct: s.shopProduct })) === hashOf(srcCount) &&
       hashOf(norm({ invItem: sk.invItem, menuItem: sk.menuItem, shopProduct: sk.shopProduct })) === hashOf(skipCount),
@@ -620,7 +746,7 @@ try {
   });
 
   // ═══ S1.9–S1.18 ค่าหลัง backfill ═══
-  await section("invariants", ["S1.41", "S1.9", "S1.10", "S1.11", "S1.12", "S1.13", "S1.14", "S1.15", "S1.16", "S1.17", "S1.18"], async () => {
+  await section("invariants", ["S3.12", "S3.13", "S3.15", "S3.16", "S3.17", "S1.9", "S1.10", "S1.11", "S1.12", "S1.13", "S1.14", "S1.15", "S1.16", "S1.17", "S1.18"], async () => {
     const invs = await rowsOf("InvItem", QC_TIDS);
     const prods = await rowsOf("PosProduct", QC_TIDS);
     const menus = await rowsOf("MenuItem", QC_TIDS); const shops = await rowsOf("ShopProduct", QC_TIDS);
@@ -632,8 +758,11 @@ try {
     const prodMap = new Map(prods.map((p) => [p.id, p]));
     // S1.9
     const sellable = invs.filter((i) => (iPos.get(i.systemId) ?? []).length === 1);
-    const notOne = sellable.filter((i) => (byInv.get(i.id) ?? []).length !== 1 || byInv.get(i.id)![0].systemId !== iPos.get(i.systemId)![0]).map((i) => `${i.sku}:${(byInv.get(i.id) ?? []).length}`);
-    const unsellableWithProd = invs.filter((i) => (iPos.get(i.systemId) ?? []).length !== 1 && (byInv.get(i.id) ?? []).length > 0).map((i) => i.sku);
+    // แถวของ InvItem ในระบบ POS ที่ขายมัน (round 2: InvItem เดียวกันมีแถวใน POS อื่นได้ — C9b แถวของเว็บร้านใน POS แรก)
+    const inSys = (i: Any) => (byInv.get(i.id) ?? []).filter((p) => p.systemId === iPos.get(i.systemId)![0]);
+    const notOne = sellable.filter((i) => inSys(i).length !== 1).map((i) => `${i.sku}:${inSys(i).length}`);
+    const shopOwnInv = new Set(shops.map((x) => x.posProductId).filter(Boolean));
+    const unsellableWithProd = invs.filter((i) => (iPos.get(i.systemId) ?? []).length !== 1 && (byInv.get(i.id) ?? []).some((p) => !shopOwnInv.has(p.id))).map((i) => i.sku);
     const orphan = prods.filter((p) => (p.invItemId && (!invById.has(p.invItemId) || invById.get(p.invItemId).tenantId !== p.tenantId)) || !posSystems.has(`${p.tenantId}/${p.systemId}`)).map((p) => p.id);
     chk("S1.9", sellable.length > 0 && notOne.length === 0 && unsellableWithProd.length === 0 && orphan.length === 0,
       `InvItem ที่ขายได้ ${sellable.length} ตัว → 1 แถวต่อตัว (systemId ตรง) · กำพร้า 0`, `ไม่ใช่ 1/ระบบผิด: ${notOne.slice(0, 6).join(",") || "-"} · ไม่ผูก POS แต่มีแถว: ${unsellableWithProd.join(",") || "-"} · กำพร้า/ข้ามร้าน ${orphan.length}`);
@@ -661,8 +790,11 @@ try {
       if (!sys) { if (s.posProductId) badShop.push(`${s.name}:ร้านไม่มี POS แต่ผูก`); continue; }
       const p = prodMap.get(s.posProductId);
       if (!p || p.tenantId !== s.tenantId) { badShop.push(`${s.name}:ไม่มีลิงก์`); continue; }
-      if (s.invItemId) { if (p.invItemId !== s.invItemId || p.systemId !== sys) badShop.push(`${s.name}:ไม่ชี้แถวของ InvItem ใน POS ${sys}`); }
-      else if (p.kind !== "PRODUCT" || p.unitId !== s.unitId || p.invItemId !== null || p.systemId !== sys) badShop.push(`${s.name}:kind ${p.kind} unit ${p.unitId === s.unitId} inv ${p.invItemId} sys ${p.systemId === sys}`);
+      const inv = s.invItemId ? invById.get(s.invItemId) : null;
+      const invInFirst = !!inv && (iPos.get(inv.systemId) ?? []).length === 1 && iPos.get(inv.systemId)![0] === sys;
+      if (s.invItemId && invInFirst) { if (p.invItemId !== s.invItemId || p.systemId !== sys) badShop.push(`${s.name}:ไม่ชี้แถวของ InvItem ใน POS ${sys}`); } // C9a
+      else if (s.invItemId && inv) { if (p.systemId !== sys || p.invItemId !== s.invItemId || p.unitId !== s.unitId) badShop.push(`${s.name}:C9b sys ${p.systemId === sys} inv ${p.invItemId === s.invItemId} unit ${p.unitId === s.unitId}`); } // C9b
+      else if (p.kind !== "PRODUCT" || p.unitId !== s.unitId || p.invItemId !== null || p.systemId !== sys) badShop.push(`${s.name}:kind ${p.kind} unit ${p.unitId === s.unitId} inv ${p.invItemId} sys ${p.systemId === sys}`); // C9c/d
     }
     const noPosShopLinked = !!shops.find((x) => x.id === fx.noPosShop.id)?.posProductId;
     chk("S1.11", badShop.length === 0 && shops.length > 0 && noPosShopLinked, `เว็บร้าน ${shops.length} ตัวผูกถูกทาง (รวมสาขาที่ไม่ผูก POS)`, `${badShop.slice(0, 5).join(" · ") || "ครบ"} · สาขาไม่มี POS ${noPosShopLinked ? "ผูกแล้ว" : "ไม่ผูก"}`);
@@ -674,37 +806,48 @@ try {
       waterP.length === 1 && shLink === waterP[0]?.id && waterP[0]?.unitId === null,
       "โค้ก PRODUCT 2000 + เมนูโค้ก MENU 2500 (inv null · RecipeLine→โค้ก) · น้ำดื่ม 1 แถว (unitId null) · เว็บร้านชี้น้ำดื่ม",
       `โค้ก ${cokeP.length} (${cokeP[0]?.kind} ${cokeP[0]?.basePriceSatang}) · เมนูโค้ก ${mCokeP ? `${mCokeP.kind} ${mCokeP.basePriceSatang} inv ${mCokeP.invItemId}` : "ไม่มี"} · recipe ${mCokeRl.length} · น้ำ ${waterP.length} (unit ${waterP[0]?.unitId}) · shop→${shLink === waterP[0]?.id}`);
-    // S1.41 trackStock (ส่วน backfill) — ส่วน updateProduct สลับค่าอยู่ใน section catalog
-    const mvItems = new Set((await q<{ itemId: string }>(`select distinct "itemId" from "InvMovement" where "tenantId" = any($1::text[])`, QC_TIDS)).map((r) => r.itemId));
-    const wantTrack = (p: Any) => !!p.invItemId && p.kind !== "MENU" && (mvItems.has(p.invItemId) || Number(invById.get(p.invItemId)?.onHand ?? 0) !== 0);
-    const badTrack = prods.filter((p) => (p.trackStock === true) !== wantTrack(p)).map((p) => `${p.name}:${p.trackStock}`);
-    const tsOf = (sku: string, t: Any) => byInv.get(itemBySku(t, sku).id)?.[0]?.trackStock;
-    const spotTs = { croissant: tsOf("PQC-CF-CROIS", CF) === true, water: tsOf("PQC-CF-WATER", CF) === true, coke: tsOf("PQC-RS-COKE", RS) === true, americano: tsOf("PQC-CF-AMER", CF) === false, latte: tsOf("PQC-CF-LATTE", CF) === false };
-    fx.trackBackfillOk = badTrack.length === 0 && Object.values(spotTs).every(Boolean);
-    fx.trackBackfillMsg = `ไม่ตรง: ${badTrack.slice(0, 5).join(",") || "-"} · ${Object.entries(spotTs).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")}`;
+    // S3.2 (C2) backfill ทิ้ง trackStock = null (AUTO) — ทุกแถวที่รันนี้สร้าง (แถวเดิมของ seed ถูกสร้างใหม่ตอนผู้สร้างซ้อม rollback M6)
+    const preIds = snapNew0.PosProduct ?? new Map();
+    const madeNow = prods.filter((p) => !preIds.has(p.id));
+    const tsNotNull = madeNow.filter((p) => p.trackStock !== null).map((p) => `${p.name}:${p.trackStock}`);
+    const seedTs = prods.filter((p) => preIds.has(p.id) && p.trackStock !== null).length;
+    fx.s32 = { ok: madeNow.length > 0 && tsNotNull.length === 0, msg: `แถวใหม่ ${madeNow.length} · ไม่ใช่ null ${tsNotNull.length}${tsNotNull.length ? ` (${tsNotNull.slice(0, 3).join(",")})` : ""} · แถวเดิม (ก่อนรัน) ที่ยังไม่ใช่ null ${seedTs}` };
     // S1.13–S1.14 ราคา (R2)
     const aps = await rowsOf("AccountProduct", QC_TIDS);
     const apById = new Map(aps.map((a) => [a.id, a]));
-    const apOfInv = (inv: Any) => (inv?.accountProductId ? apById.get(inv.accountProductId) : aps.find((a) => a.invItemId === inv?.id)) ?? null;
+    // C7/C8: AccountProduct หาแบบลิ้นชักวันนี้เท่านั้น (InvItem.accountProductId → AP) · ไม่เก็บถาวร · อยู่ในสมุดบัญชีที่ผูก POS นี้ (findAccountLinkForPos)
+    const acctLinks = await q<{ linkedId: string; systemId: string }>(`select "linkedId", "systemId" from "AccountSystemLink" where "tenantId" = any($1::text[]) and "linkedKind" = 'POS' and "archivedAt" is null and enabled`, QC_TIDS);
+    const acctOfPos = new Map(acctLinks.map((l) => [l.linkedId, l.systemId]));
+    const vatRows = await q<{ systemId: string; vatRegistered: boolean }>(`select "systemId", "vatRegistered" from "AccountSettings" where "tenantId" = any($1::text[])`, QC_TIDS);
+    const vatReg = (accSys: string | undefined) => !!accSys && (vatRows.find((r) => r.systemId === accSys)?.vatRegistered ?? true);
+    const apStrict = (p: Any): Any | null => {
+      const inv = p.invItemId ? invById.get(p.invItemId) : null;
+      const ap = inv?.accountProductId ? apById.get(inv.accountProductId) : null;
+      return ap && !ap.archivedAt && ap.systemId === acctOfPos.get(p.systemId) ? ap : null;
+    };
+    const legal = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 2_147_483_647;
     const expectPrice = (p: Any): number | null => {
       const inv = p.invItemId ? invById.get(p.invItemId) : null;
-      const ap = inv ? apOfInv(inv) : null;
-      if (typeof ap?.posPrice === "number" && ap.posPrice > 0) return ap.posPrice; // ขั้น 1 (>0)
-      if (ap?.salePrice !== null && ap?.salePrice !== undefined) return ap.salePrice; // ขั้น 2 — null = ยังไม่ตั้ง · 0 = ตั้งใจ (ดู notes)
-      if (inv?.kind === "SERVICE" && inv.priceSatang > 0) return inv.priceSatang; // ขั้น 3 (>0 — default 0 แยกไม่ออกว่าตั้งใจ)
+      const ap = apStrict(p);
+      if (ap && legal(ap.salePrice) && ap.salePrice > 0) return ap.salePrice; // 1
+      if (ap && ap.posEnabled && legal(ap.posPrice) && ap.posPrice > 0) return ap.posPrice; // 2
+      if (inv?.kind === "SERVICE" && legal(inv.priceSatang) && inv.priceSatang > 0) return inv.priceSatang; // 3
       const m = menus.find((x) => x.posProductId === p.id);
-      if (m) return m.basePrice;
-      const s = shops.find((x) => x.posProductId === p.id && !x.invItemId);
-      if (s) return s.priceSatang;
-      return null;
+      if (m) return legal(m.basePrice) ? m.basePrice : null; // 4 (0 คงไว้)
+      // แถวของเว็บร้านเอง (C9b/c/d: unitId = สาขาร้าน) — แถวที่มาจาก InvItem มี unitId null
+      const sp = shops.find((x) => x.posProductId === p.id && p.unitId !== null && p.unitId === x.unitId);
+      if (sp) return legal(sp.priceSatang) ? sp.priceSatang : null;
+      if (ap && ap.salePrice === 0 && Number(inv?.costSatang ?? 0) === 0) return 0; // ฟรีวันนี้ ฟรีพรุ่งนี้
+      return null; // 5 — ไม่ใช้ต้นทุนเด็ดขาด
     };
     const seedProducts = [...CF.items, ...RS.items].filter((i: Any) => i.kind === "PRODUCT");
     const badSeed = seedProducts.filter((i: Any) => byInv.get(i.id)?.[0]?.basePriceSatang !== i.salePrice).map((i: Any) => `${i.sku}:${byInv.get(i.id)?.[0]?.basePriceSatang}≠${i.salePrice}`);
     chk("S1.13", badSeed.length === 0, "ทุกตัว = salePrice (FREE/ICE = 0)", badSeed.join(" · ") || `ตรง ${seedProducts.length} ตัว`);
     const badAll = prods.filter((p) => (p.basePriceSatang ?? null) !== expectPrice(p)).map((p) => `${p.name}:${p.basePriceSatang ?? null}≠${expectPrice(p)}`);
     const pOf = (rows: Any[], id: string) => prodMap.get(rows.find((x) => x.id === id)?.posProductId);
+    const pInv = (it: Any) => (byInv.get(it.id) ?? [])[0]?.basePriceSatang;
     const rung = {
-      posPrice: byInv.get(fx.posPrice.id)?.[0]?.basePriceSatang === 4500,
+      saleBeatsPos: byInv.get(fx.posPrice.id)?.[0]?.basePriceSatang === 5000,
       posZero: byInv.get(fx.posZero.id)?.[0]?.basePriceSatang === 5000,
       svcZeroNull: byInv.get(fx.svcZero.id)?.[0]?.basePriceSatang === null,
       service: byInv.get(fx.gift.id)?.[0]?.basePriceSatang === 15000,
@@ -714,12 +857,35 @@ try {
       cokeProduct: cokeP[0]?.basePriceSatang === 2000,
       menuCokeBase: pOf(menus, fx.mCoke.id)?.basePriceSatang === 2500,
     };
-    chk("S1.14", badAll.length === 0 && Object.values(rung).every(Boolean), "posPrice 4500 · posPrice0→5000 · SERVICE 15000 · SERVICE 0 → null · เมนู 9900 · เว็บล้วน 12345 · ต้นทุนอย่างเดียว null · โค้ก PRODUCT 2000 · เมนูโค้ก 2500 · ทุกแถวตรงสูตร",
+    chk("S1.14", badAll.length === 0 && Object.values(rung).every(Boolean), "salePrice ชนะ posPrice 5000 · posPrice0→5000 · SERVICE 15000 · SERVICE 0 → null · เมนู 9900 · เว็บล้วน 12345 · ต้นทุนอย่างเดียว null · โค้ก PRODUCT 2000 · เมนูโค้ก 2500 · ทุกแถวตรงสูตร",
       `ไม่ตรง: ${badAll.slice(0, 5).join(" · ") || "-"} · ${Object.entries(rung).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")}`);
     // S1.15 VAT
-    const badVat = prods.filter((p) => { const inv = p.invItemId ? invById.get(p.invItemId) : null; const ap = inv ? apOfInv(inv) : null; return (p.vatRateBp ?? null) !== (ap ? ap.vatRateBp : null); }).map((p) => p.name);
+    const badVat = prods.filter((p) => { const ap = apStrict(p); return (p.vatRateBp ?? null) !== (ap && vatReg(acctOfPos.get(p.systemId)) ? ap.vatRateBp : null); }).map((p) => p.name);
     const egg = byInv.get(itemBySku(CF, "PQC-CF-EGG").id)?.[0];
     chk("S1.15", badVat.length === 0 && egg?.vatRateBp === 0 && byInv.get(fx.costOnly.id)?.[0]?.vatRateBp === null, "ตาม AccountProduct · ไข่ 0 · ไม่มีบัญชี null", `ไม่ตรง: ${badVat.slice(0, 5).join(",") || "-"} · ไข่ ${egg?.vatRateBp}`);
+    // S3.12 (C7) ทีละขั้น
+    const c7r = { posEnabled4400: pInv(fx.p2) === 4400, posDisabledNull: pInv(fx.p3) === null, apArchivedNull: pInv(fx.p4) === null, foreignBookNull: pInv(fx.p5) === null,
+      halfLinkNull: pInv(fx.p6) === null, soldAtCostNull: pInv(fx.p7) === null, zeroFree0: pInv(fx.p8) === 0, negativeNull: pInv(fx.p9) === null,
+      menuZero0: pOf(menus, fx.mZero.id)?.basePriceSatang === 0, menuNegNull: pOf(menus, fx.mNeg.id) !== undefined && pOf(menus, fx.mNeg.id)?.basePriceSatang === null, shopZero0: pOf(shops, fx.sZero.id)?.basePriceSatang === 0 };
+    chk("S3.12", Object.values(c7r).every(Boolean), "ทุกขั้นตรง", Object.entries(c7r).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" "));
+    // S3.13 / S3.15–S3.17 ตัวนับใน dry-run (ค่าในร้าน QC ≥ ที่ fixture ของรันนี้ทำให้เกิด) — อ่านจาก summary.counts.<ชื่อ> หรือ summary.<ชื่อ>
+    const cnt = (k: string): number | undefined => { const v = drySummary?.counts?.[k] ?? drySummary?.[k]; return typeof v === "number" ? v : undefined; };
+    const atLeast = (k: string, n: number) => (cnt(k) ?? -1) >= n;
+    const dryText = JSON.stringify(drySummary ?? {});
+    const s313 = { soldAtCostToday: atLeast("soldAtCostToday", 2), sample: dryText.includes(fx.p7.name) && dryText.includes(fx.costOnly.name), zeroPriceProduct: atLeast("zeroPriceProduct", 1),
+      zeroPriceMenu: atLeast("zeroPriceMenu", 1), zeroPriceWeb: atLeast("zeroPriceWeb", 1), invalidLegacyPrice: atLeast("invalidLegacyPrice", 2), posPriceDiffersFromSalePrice: atLeast("posPriceDiffersFromSalePrice", 1) };
+    chk("S3.13", Object.values(s313).every(Boolean), "ตัวนับครบ ≥ fixture + ตัวอย่างชื่อขายราคาทุน", Object.entries(s313).map(([k, v]) => `${k}${v ? "✓" : `✗(${cnt(k) ?? "ไม่มี"})`}`).join(" "));
+    const waterNow = waterP[0];
+    chk("S3.15", atLeast("shopPriceDiffersFromCatalog", 1) && atLeast("shopInactiveLinked", 1) && shops.find((x) => x.id === fx.shInactive.id)?.posProductId === waterNow?.id && waterNow?.basePriceSatang === 1000 && !(waterNow?.unavailableUnitIds ?? []).length,
+      "ชี้น้ำดื่มเดิม · น้ำดื่มคง 1000 เปิดขาย · นับ 2 ชื่อ", `diff ${cnt("shopPriceDiffersFromCatalog") ?? "ไม่มี"} · inactive ${cnt("shopInactiveLinked") ?? "ไม่มี"} · ลิงก์ ${shops.find((x) => x.id === fx.shInactive.id)?.posProductId === waterNow?.id} · น้ำ ${waterNow?.basePriceSatang}/${(waterNow?.unavailableUnitIds ?? []).length}`);
+    const outP = pOf(shops, fx.shOutside.id);
+    chk("S3.16", !!outP && outP.systemId === tPos.get(cfT) && outP.invItemId === fx.itX.id && outP.unitId === SILOM && atLeast("shopOwnRowInvItemOutsideFirstPos", 1),
+      "แถวของตัวเองใน POS แรก invItemId=X unitId=สีลม + นับ", `${outP ? `sys ${outP.systemId === tPos.get(cfT)} inv ${outP.invItemId === fx.itX.id} unit ${outP.unitId === SILOM}` : "ไม่ผูก"} · นับ ${cnt("shopOwnRowInvItemOutsideFirstPos") ?? "ไม่มี"}`);
+    const dP = pOf(shops, fx.shDangling.id); const npP = pOf(shops, fx.noPosShop.id);
+    chk("S3.17", !!dP && dP.invItemId === null && dP.systemId === tPos.get(cfT) && atLeast("shopDanglingInvItem", 1) && !!npP && npP.unitId === fx.noPosUnit.id && atLeast("shopBranchNotInFirstPos", 1),
+      "dangling = แถวตัวเอง inv null + นับ · สาขานอก POS แรก unitId สาขาร้าน + นับ", `dangling ${dP ? `inv ${dP.invItemId}` : "ไม่ผูก"} · ${cnt("shopDanglingInvItem") ?? "ไม่มี"} · นอก POS ${npP ? `unit ${npP.unitId === fx.noPosUnit.id}` : "ไม่ผูก"} · ${cnt("shopBranchNotInFirstPos") ?? "ไม่มี"}`);
+    // S3.20 (C12) ส่วน backfill: เมนูในสาขาเก็บถาวรไม่ถูกผูก · POS ปิดใช้งานที่เก่ากว่าไม่ถูกเลือก (เว็บร้านผูก POS ของ seed)
+    fx.s320 = { archMenuUnlinked: !menus.find((x) => x.id === fx.archMenu.id)?.posProductId, shopsOnSeedPos: pOf(shops, fx.shOnly.id)?.systemId === sysC.POS, noProdOnOldPos: !prods.some((x) => x.systemId === fx.oldPos.id) };
     // S1.16 หมวด
     const cats = await rowsOf("PosCategory", QC_TIDS); const mcats = (await rowsOf("MenuCategory", QC_TIDS)).filter((c) => uPos.has(c.unitId));
     const catCols = await colInfo("PosCategory");
@@ -795,7 +961,7 @@ try {
   });
 
   // ═══ S1.19–S1.35 + X2/X3/X6/X8 catalog.ts ═══
-  const catIds = ["S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
+  const catIds = ["S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6", "S3.7", "S3.8", "S3.9", "S3.10", "S3.11", "S3.14", "S3.18", "S3.19", "S3.20", "S3.21", "S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
   await section("catalog", catIds, async () => {
     catalog = await load("@/lib/modules/pos/catalog");
     const FN = ["createProduct", "updateProduct", "setPrice", "archive", "listForUnit", "byBarcode", "ensureForInvItem", "createCategory"];
@@ -809,10 +975,10 @@ try {
     const bw = await attempt(() => C.byBarcode(ctxOwner, SILOM, "8850999000015"));
     const bc = await attempt(() => C.byBarcode(ctxRsOwner, RMAIN, "8851959132012"));
     const waterP = (await prodByInv(fx.water.id))[0]; const cokeP = (await prodByInv(fx.coke.id))[0];
-    chk("S1.19", idOf(bw.value) === waterP?.id && idOf(bc.value) === cokeP?.id, `น้ำ ${waterP?.id} · โค้ก ${cokeP?.id}`, `${idOf(bw.value) ?? bw.err} · ${idOf(bc.value) ?? bc.err}`);
+    chk("S1.19", bcItems(bw.value).some((x) => idOf(x) === waterP?.id) && bcItems(bc.value).some((x) => idOf(x) === cokeP?.id), `items มีน้ำ ${waterP?.id} · โค้ก ${cokeP?.id}`, `${bw.ok ? `items ${bcItems(bw.value).length} (ทรง ${Array.isArray(bw.value?.items) ? "{items}" : typeof bw.value})` : bw.err} · ${bc.ok ? `items ${bcItems(bc.value).length}` : bc.err}`);
     const archP = (await prodByInv(fx.arch.id))[0];
-    const listCf = await attempt(() => C.listForUnit(ctxOwner, SILOM));
-    const listIds = new Set(listOf(listCf.value).map(idOf));
+    const listCf = await listAll(C, ctxOwner, SILOM);
+    const listIds = new Set(listCf.items.map(idOf));
     chk("S1.20", !!archP?.archivedAt && listCf.ok && !listIds.has(archP?.id), "archivedAt ไม่ว่าง · ไม่อยู่ใน list", `archivedAt ${archP?.archivedAt ?? "null"} · อยู่ใน list ${listIds.has(archP?.id)}${listCf.ok ? "" : ` · list ปฏิเสธ: ${listCf.err}`}`);
 
     // createProduct
@@ -840,7 +1006,7 @@ try {
     const sameTenantCat = anyCat?.tenantId === cfT ? anyCat : null;
     const up = await attempt(() => C.updateProduct(ctxOwner, pid, { name: `${TAG} ชื่อใหม่`, nameEn: `${TAG} renamed`, ...(sameTenantCat ? { categoryId: sameTenantCat.id } : {}) }));
     const npu = await prodById(pid);
-    const inList = listOf((await attempt(() => C.listForUnit(ctxOwner, SILOM))).value).find((x) => idOf(x) === pid);
+    const inList = (await listAll(C, ctxOwner, SILOM)).items.find((x) => idOf(x) === pid);
     chk("S1.29", up.ok && npu?.name === `${TAG} ชื่อใหม่` && npu?.nameEn === `${TAG} renamed` && (!sameTenantCat || npu?.categoryId === sameTenantCat.id) && inList?.name === `${TAG} ชื่อใหม่` && (await countProducts(cfT)) === pc1,
       "ชื่อ/ชื่ออังกฤษ/หมวด เปลี่ยน · list เห็น", up.ok ? `${npu?.name} · ${npu?.nameEn} · cat ${npu?.categoryId} · list ${inList?.name}` : `ปฏิเสธ: ${up.err}`);
     // setPrice
@@ -868,26 +1034,28 @@ try {
     // listForUnit เนื้อหา: สินค้าผูกสาขาอารีย์ต้องไม่โผล่ที่สีลม
     const ariP = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} เฉพาะอารีย์`, basePriceSatang: 1500, unitId: ARI }));
     const ariId = idOf(ariP.value);
-    const rows2 = listOf((await attempt(() => C.listForUnit(ctxOwner, SILOM))).value);
-    const rowsAri = listOf((await attempt(() => C.listForUnit(ctxOwner, ARI))).value);
-    const cfActive = (await rowsOf("PosProduct", [cfT])).filter((p) => !p.archivedAt && p.systemId === sysC.POS && (p.unitId === null || p.unitId === SILOM)).map((p) => p.id);
+    const rows2 = (await listAll(C, ctxOwner, SILOM)).items;
+    const rowsAri = (await listAll(C, ctxOwner, ARI)).items;
+    // C3: แถวผูก InvItem เห็นที่สาขาเฉพาะเมื่อ InvItem อยู่คลังของสาขานั้น (สีลม = คลัง seed)
+    const invSysOf = new Map((await q<{ id: string; systemId: string }>(`select id, "systemId" from "InvItem" where "tenantId" = $1`, cfT)).map((r) => [r.id, r.systemId]));
+    const cfActive = (await rowsOf("PosProduct", [cfT])).filter((p) => !p.archivedAt && p.systemId === sysC.POS && (p.unitId === null || p.unitId === SILOM) && (!p.invItemId || invSysOf.get(p.invItemId) === sysC.INVENTORY)).map((p) => p.id);
     const ids2 = new Set(rows2.map(idOf));
     const missing = cfActive.filter((id) => !ids2.has(id));
     const crois = itemBySku(CF, "PQC-CF-CROIS");
     const croisRow = rows2.find((r) => r.invItemId === crois.id);
     const croisOnHand = (await q(`select "onHand" from "InvItem" where id = $1`, crois.id))[0]?.onHand;
     const optLink = await linkOf("MenuItem", fx.mOpt.id);
-    const optRow = listOf((await attempt(() => C.listForUnit(ctxRsOwner, RMAIN))).value).find((r) => idOf(r) === optLink);
+    const optRow = (await listAll(C, ctxRsOwner, RMAIN)).items.find((r) => idOf(r) === optLink);
     const choicesOk = !!optRow && optRow.optionGroups?.length === 2 && optRow.optionGroups.every((g: Any) => Array.isArray(g.choices) && g.choices.length > 0 && g.choices.every((c: Any) => isInt(c.priceDelta ?? c.priceDeltaSatang)));
     chk("S1.33", ariP.ok && missing.length === 0 && !ids2.has(ariId) && rowsAri.some((r) => idOf(r) === ariId) && croisRow?.stock?.[SILOM] === croisOnHand && croisRow?.availability?.[SILOM] === true && choicesOk,
       `active ครบ ${cfActive.length} · ของอารีย์ไม่โผล่สีลม · stock[สีลม]=${croisOnHand} · availability=true · ตัวเลือก 2 กลุ่ม`,
       `ขาด ${missing.length} · อารีย์@สีลม ${ids2.has(ariId)} · อารีย์@อารีย์ ${rowsAri.some((r) => idOf(r) === ariId)}${ariP.ok ? "" : ` (สร้างไม่ได้: ${ariP.err})`} · stock ${croisRow?.stock?.[SILOM]} · avail ${croisRow?.availability?.[SILOM]} · ตัวเลือก ${choicesOk ? "✓" : `✗ (${optRow ? optRow.optionGroups?.length : "ไม่พบเมนู"})`}`);
     const bu = await attempt(() => C.byBarcode(ctxOwner, SILOM, `99${RAND}000`));
-    chk("S1.34", idOf(bw.value) === waterP?.id && bu.ok && (bu.value === null || bu.value === undefined), "ตรงตัว · ไม่มี = null", `น้ำ ${idOf(bw.value) ?? bw.err} · ไม่มี → ${bu.ok ? JSON.stringify(bu.value ?? null) : bu.err}`);
+    chk("S1.34", bcItems(bw.value).length === 1 && idOf(bcItems(bw.value)[0]) === waterP?.id && bu.ok && Array.isArray(bu.value?.items) && bu.value.items.length === 0, "{items:[น้ำ]} · ไม่มี = {items:[]}", `น้ำ ${bw.ok ? bcItems(bw.value).length : bw.err} · ไม่มี → ${bu.ok ? JSON.stringify(bu.value ?? null).slice(0, 60) : bu.err}`);
     // ensureForInvItem
     const eInv = await mkInv(cfT, sysC.INVENTORY, "ensure"); await mkAp(cfT, sysC.ACCOUNT, eInv, 6100, 0);
-    const e1 = await attempt(() => C.ensureForInvItem(ctxSysCf, eInv.id));
-    const e2 = await attempt(() => C.ensureForInvItem(ctxSysCf, eInv.id));
+    const e1 = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), eInv.id));
+    const e2 = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), eInv.id));
     const eRows = await prodByInv(eInv.id);
     chk("S1.35", e1.ok && e2.ok && idOf(e1.value) === idOf(e2.value) && e2.value?.created === false && eRows.length === 1 && eRows[0]?.basePriceSatang === 6100 && eRows[0]?.vatRateBp === 0 && eRows[0]?.systemId === sysC.POS,
       "id เดิม · created=false · 1 แถว · 6100/0 · ระบบ POS", `${idOf(e1.value) ?? e1.err} / ${idOf(e2.value) ?? e2.err} created2=${e2.value?.created} · ${eRows.length} แถว · ${eRows[0]?.basePriceSatang}/${eRows[0]?.vatRateBp}`);
@@ -909,14 +1077,14 @@ try {
     }
     const bulkIds = new Set((await q<{ id: string }>(`select p.id from "PosProduct" p join "InvItem" i on i.id = p."invItemId" where i.sku like $1`, `${TAG}-bulk-%`)).map((r) => r.id));
     const bulkSeen = [...bulkIds].filter((id) => seen.has(id)).length;
-    chk("S1.37", hasWater(qName) && hasWater(qSku) && hasWater(qBar) && narrow(qName) && narrow(qSku) && narrow(qBar) && bulkIds.size === 201 && bulkSeen === 201 && dupSeen === 0 && !overLimit,
-      "ชื่อ/SKU/บาร์โค้ด เจอน้ำดื่ม (ผลแคบ) · เดินทุกหน้าเห็น bulk 201/201 · ไม่ซ้ำ · หน้าละ ≤50",
+    chk("S1.37", hasWater(qName) && hasWater(qSku) && hasWater(qBar) && narrow(qName) && narrow(qSku) && narrow(qBar) && bulkIds.size === BULK && bulkSeen === BULK && dupSeen === 0 && !overLimit,
+      `ชื่อ/SKU/บาร์โค้ด เจอน้ำดื่ม (ผลแคบ) · เดินทุกหน้าเห็น bulk ${BULK}/${BULK} · ไม่ซ้ำ · หน้าละ ≤50`,
       `ชื่อ ${qName.ok ? listOf(qName.value).length : qName.err} · sku ${qSku.ok ? listOf(qSku.value).length : qSku.err} · barcode ${qBar.ok ? listOf(qBar.value).length : qBar.err} · bulk ${bulkSeen}/${bulkIds.size} · หน้า ${pages} · ซ้ำ ${dupSeen} · เกินหน้า ${overLimit}`);
     // S1.38 AuditLog
     const auditOf = async (id: string) => q<{ action: string; actorId: string | null; createdAt: Date }>(`select action, "actorId", "createdAt" from "AuditLog" where "tenantId" = $1 and "targetType" = 'PosProduct' and "targetId" = $2 and "createdAt" >= $3`, cfT, id, t0);
     // archive
     const ar1 = await attempt(() => C.archive(ctxOwner, pid)); const ar2 = await attempt(() => C.archive(ctxOwner, pid));
-    const afterList = new Set(listOf((await attempt(() => C.listForUnit(ctxOwner, SILOM))).value).map(idOf));
+    const afterList = new Set((await listAll(C, ctxOwner, SILOM)).items.map(idOf));
     const pa = await prodById(pid);
     chk("S1.31", ar1.ok && ar2.ok && !!pa?.archivedAt && !afterList.has(pid), "soft · ไม่อยู่ใน list · กดซ้ำได้", `${ar1.ok ? "✓" : ar1.err} ${ar2.ok ? "✓" : ar2.err} · archivedAt ${pa?.archivedAt ? "✓" : "null"} · list ${afterList.has(pid)}`);
     const au = await auditOf(pid);
@@ -935,7 +1103,7 @@ try {
     const avP = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} 86`, basePriceSatang: 3000 }));
     const avId = idOf(avP.value) as string;
     const av1 = await attempt(() => C.updateProduct(ctxOwner, avId, { availability: { [SILOM]: false } }));
-    const rowAt = async (u: string) => listOf((await attempt(() => C.listForUnit(ctxOwner, u, { q: `${TAG} 86` }))).value).find((x) => idOf(x) === avId);
+    const rowAt = async (u: string) => (await listAll(C, ctxOwner, u, { q: `${TAG} 86` })).items.find((x) => idOf(x) === avId);
     const sOff = await rowAt(SILOM); const aOn = await rowAt(ARI);
     const av2 = await attempt(() => C.updateProduct(ctxOwner, avId, { availability: { [SILOM]: true } }));
     const sBack = await rowAt(SILOM);
@@ -944,10 +1112,12 @@ try {
       "kind PRODUCT · สีลม false (ยังอยู่ในรายการ) · อารีย์ true · เปิดคืน true", `kind ${avRow?.kind} · ${av1.ok ? "" : av1.err} สีลม ${sOff ? sOff.availability?.[SILOM] : "หายจากรายการ"} · อารีย์ ${aOn?.availability?.[ARI]} · คืน ${sBack?.availability?.[SILOM]}`);
 
     // S1.41 (ต่อ) updateProduct สลับ trackStock
-    const tsOn = await attempt(() => C.updateProduct(ctxOwner, avId, { trackStock: true })); const tsA = (await prodById(avId))?.trackStock;
+    // C2: แถวไม่ผูกคลัง ⇒ ตั้ง true ไม่ได้ (VALIDATION) · false/null วนได้ (true บนแถวผูกคลังอยู่ใน S3.3)
     const tsOff = await attempt(() => C.updateProduct(ctxOwner, avId, { trackStock: false })); const tsB = (await prodById(avId))?.trackStock;
-    chk("S1.41", fx.trackBackfillOk === true && tsOn.ok && tsA === true && tsOff.ok && tsB === false, "backfill ตามกติกา · สลับ true/false ได้",
-      `${fx.trackBackfillMsg ?? "ส่วน invariants ไม่ได้รัน"} · สลับ ${tsOn.ok ? tsA : tsOn.err}/${tsOff.ok ? tsB : tsOff.err}`);
+    const tsNull = await attempt(() => C.updateProduct(ctxOwner, avId, { trackStock: null })); const tsC = (await prodById(avId))?.trackStock;
+    const tsTrue = await attempt(() => C.updateProduct(ctxOwner, avId, { trackStock: true }));
+    chk("S1.41", tsOff.ok && tsB === false && tsNull.ok && tsC === null && refused(tsTrue, "VALIDATION"), "false → null (AUTO) · true บนแถวไม่ผูกคลัง = VALIDATION",
+      `false ${tsOff.ok ? tsB : tsOff.err} · null ${tsNull.ok ? tsC : tsNull.err} · true ${codeOf(tsTrue)}`);
 
     // X2 ข้ามร้าน — เป้าหมาย = สินค้าชั่วคราวของร้านอาหาร
     const rsNew = await attempt(() => C.createProduct(ctxRsOwner, { name: `${TAG} resto target`, basePriceSatang: 5000 }));
@@ -963,14 +1133,14 @@ try {
     chk("X2.1", !!rsP0 && x1.every((r) => refused(r, "NOT_FOUND")) && hashOf(rsP0) === hashOf(rsP1), "NOT_FOUND 5/5 · แถวไม่เปลี่ยน", `${x1.map(codeOf).join("/")} · ${hashOf(rsP0) === hashOf(rsP1) ? "ไม่เปลี่ยน" : "⚠️ ถูกแก้"}${rsP0 ? "" : ` · สร้างเป้าไม่ได้: ${rsNew.err}`}`);
     const xInv = await mkInv(rsT, sysR.INVENTORY, "xinv");
     const pc2 = await countProducts(cfT);
-    const x2a = await attempt(() => C.ensureForInvItem(ctxSysCf, xInv.id));
+    const x2a = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), xInv.id));
     const x2b = await attempt(() => C.byBarcode(ctxOwner, SILOM, "8851959132012"));
     const x2c = await attempt(() => C.listForUnit(ctxOwner, RMAIN));
     const x2d = await attempt(() => C.createCategory(ctxOwner, { name: `${TAG} xcat`, unitId: RMAIN }));
     const rsIds = new Set((await rowsOf("PosProduct", [rsT])).map((p) => p.id));
-    const leakIds = listOf(listCf.value).map(idOf).filter((id) => rsIds.has(id as string));
-    chk("X2.2", refused(x2a, "NOT_FOUND") && (await countProducts(cfT)) === pc2 && (await prodByInv(xInv.id)).length === 0 && x2b.ok && !x2b.value && refused(x2c, "NOT_FOUND") && refused(x2d, "NOT_FOUND") && leakIds.length === 0,
-      "ensure NOT_FOUND · บาร์โค้ดร้านอื่น null · list สาขาร้านอื่น NOT_FOUND · createCategory สาขาร้านอื่น NOT_FOUND · ไม่รั่ว", `ensure ${codeOf(x2a)} · barcode ${x2b.ok ? JSON.stringify(idOf(x2b.value) ?? null) : x2b.err} · list ${codeOf(x2c)} · cat ${codeOf(x2d)} · รั่ว ${leakIds.length}`);
+    const leakIds = listCf.items.map(idOf).filter((id) => rsIds.has(id as string));
+    chk("X2.2", refused(x2a, "NOT_FOUND") && (await countProducts(cfT)) === pc2 && (await prodByInv(xInv.id)).length === 0 && x2b.ok && Array.isArray(x2b.value?.items) && x2b.value.items.length === 0 && refused(x2c, "NOT_FOUND") && refused(x2d, "NOT_FOUND") && leakIds.length === 0,
+      "ensure NOT_FOUND · บาร์โค้ดร้านอื่น items ว่าง · list สาขาร้านอื่น NOT_FOUND · createCategory สาขาร้านอื่น NOT_FOUND · ไม่รั่ว", `ensure ${codeOf(x2a)} · barcode ${x2b.ok ? `items ${bcItems(x2b.value).length}` : x2b.err} · list ${codeOf(x2c)} · cat ${codeOf(x2d)} · รั่ว ${leakIds.length}`);
     const u1 = await attempt(() => C.listForUnit(ctxCashier, ARI));
     const u2 = await attempt(() => C.byBarcode(ctxCashier, ARI, "8850999000015"));
     const u3 = await attempt(() => C.listForUnit(ctxCashier, SILOM));
@@ -997,7 +1167,7 @@ try {
     const notes2: string[] = []; let ok2 = true;
     for (let round = 1; round <= 3; round++) {
       const inv = await mkInv(cfT, sysC.INVENTORY, `race${round}`);
-      const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => attempt(() => C.ensureForInvItem(ctxSysCf, inv.id, lane(i)))));
+      const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), inv.id, lane(i)))));
       const rowsR = await prodByInv(inv.id);
       const idsR = new Set(rs.filter((r) => r.ok).map((r) => idOf(r.value)));
       const good = rowsR.length === 1 && rs.every((r) => r.ok) && idsR.size === 1 && idsR.has(rowsR[0]?.id);
@@ -1013,6 +1183,176 @@ try {
     const mix = await Promise.all(Array.from({ length: 10 }, (_, i) => (i % 2 === 0 ? attempt(() => C.setPrice(ctxOwner, tPid, 4000 + i, lane(i))) : attempt(() => C.updateProduct(ctxOwner, tPid, { nameEn: `${TAG} en${i}` }, lane(i))))));
     const fp = await prodById(tPid);
     chk("X6.4", mix.every((r) => r.ok) && [4000, 4002, 4004, 4006, 4008].includes(fp?.basePriceSatang) && /en[13579]$/.test(fp?.nameEn ?? ""), "ราคา ∈ 400x · nameEn ∈ enX", `ok ${mix.filter((r) => r.ok).length}/10 · ${fp?.basePriceSatang} · ${fp?.nameEn}`);
+    // ═════════ ROUND 2 (S3.*) — ขอบเขตของตัวเอง (ชื่อตัวแปรไม่ชนกับข้างบน) ═════════
+    {
+    // S3.1 C1 ผู้เรียกระดับระบบ
+    const marker = C.CATALOG_SYSTEM_ACTOR;
+    const c1Inv = await mkInv(cfT, sysC.INVENTORY, "c1-marker");
+    const c1ok = await attempt(() => C.ensureForInvItem({ tenantId: cfT, systemId: sysC.POS, actorUserId: marker }, c1Inv.id));
+    const c1bad: string[] = [];
+    for (const v of [null, undefined, ""]) {
+      const cx: Any = { tenantId: cfT, systemId: sysC.POS, actorUserId: v };
+      const tries = [
+        await attempt(() => C.ensureForInvItem(cx, fx.costOnly.id)),
+        await attempt(() => C.createProduct(cx, { name: `${TAG} c1-${String(v)}`, basePriceSatang: 100 })),
+        await attempt(async () => C.setPrice(cx, (await prodByInv(fx.costOnly.id))[0]?.id, 1)),
+        await attempt(() => C.createCategory(cx, { name: `${TAG} c1cat-${String(v)}` })),
+      ];
+      tries.forEach((r, k) => { if (!refused(r, "PERMISSION_DENIED")) c1bad.push(`${JSON.stringify(v) ?? "undefined"}#${k}→${codeOf(r)}`); });
+    }
+    chk("S3.1", typeof marker === "symbol" && c1ok.ok && c1bad.length === 0, "export เป็น symbol · marker ใช้ได้ · null/undefined/\"\" = PERMISSION_DENIED ×12",
+      `marker ${typeof marker} · ensure ${c1ok.ok ? "ok" : c1ok.err} · ผิด ${c1bad.slice(0, 4).join(" ") || "-"} (${c1bad.length})`);
+    // S3.2/S3.3 C2 tri-state
+    const c2Row = (await listAll(C, ctxOwner, SILOM, { q: c1Inv.sku })).items.find((x) => x.invItemId === c1Inv.id);
+    const c2Col0 = (await prodByInv(c1Inv.id))[0]?.trackStock;
+    chk("S3.2", fx.s32?.ok === true && c2Col0 === null && !!c2Row && typeof c2Row.trackStock === "boolean" && ["auto", "on", "off"].includes(c2Row.trackStockMode),
+      "backfill/ensure = null · view มี trackStock (boolean) + trackStockMode", `${fx.s32?.msg ?? "ส่วน invariants ไม่ได้รัน"} · ensure → ${c2Col0} · view ${c2Row ? `${c2Row.trackStock}/${c2Row.trackStockMode}` : "ไม่พบ"}`);
+    const viewOf = async () => (await listAll(C, ctxOwner, SILOM, { q: c1Inv.sku })).items.find((x) => x.invItemId === c1Inv.id);
+    const v0 = await viewOf();
+    // "รับของเข้าทีหลัง" = movement IN + onHand (เขียนตรงแบบข้อมูลคลัง — ไม่เรียก receive เพื่อไม่ให้เกิดรายการบัญชี)
+    await P.invMovement.create({ data: { tenantId: cfT, systemId: sysC.INVENTORY, itemId: c1Inv.id, type: "IN", qtyDelta: 3, balanceAfter: 3, idempotencyKey: `${TAG}-c2-recv` } });
+    await P.invItem.update({ where: { id: c1Inv.id }, data: { onHand: 3 } });
+    const v1 = await viewOf();
+    const c2pid = (await prodByInv(c1Inv.id))[0]?.id;
+    const sOff = await attempt(() => C.updateProduct(ctxOwner, c2pid, { trackStock: false })); const v2 = await viewOf();
+    const sOn = await attempt(() => C.updateProduct(ctxOwner, c2pid, { trackStock: true })); const v3 = await viewOf();
+    const sAuto = await attempt(() => C.updateProduct(ctxOwner, c2pid, { trackStock: null })); const v4 = await viewOf();
+    const vs = (v: Any) => (v ? `${v.trackStock}/${v.trackStockMode}` : "ไม่พบ");
+    chk("S3.3", v0?.trackStock === false && v0?.trackStockMode === "auto" && v1?.trackStock === true && v1?.trackStockMode === "auto" && sOff.ok && v2?.trackStock === false && v2?.trackStockMode === "off" &&
+      sOn.ok && v3?.trackStock === true && v3?.trackStockMode === "on" && sAuto.ok && v4?.trackStock === true && v4?.trackStockMode === "auto",
+      "ยังไม่มีของ false/auto → รับเข้า true/auto → off false/off → on true/on → null true/auto", `${vs(v0)} → ${vs(v1)} → ${sOff.ok ? vs(v2) : sOff.err} → ${sOn.ok ? vs(v3) : sOn.err} → ${sAuto.ok ? vs(v4) : sAuto.err}`);
+    // S3.4/S3.5 C3 POS เดียวสองคลัง
+    const ctxT = { tenantId: cfT, systemId: fx.tPos.id, actorUserId: cfOwner.userId as string };
+    const la = (await listAll(C, ctxT, fx.uA.id)).items; const lb = (await listAll(C, ctxT, fx.uB.id)).items;
+    const has = (rows: Any[], it: Any) => rows.some((r) => r.invItemId === it.id);
+    const sA = await attempt(() => C.listForUnit(ctxT, fx.uA.id, { q: fx.itY.sku, limit: 50 })); const sA2 = await attempt(() => C.listForUnit(ctxT, fx.uA.id, { q: fx.itX.sku, limit: 50 }));
+    const stockA = la.find((r) => r.invItemId === fx.itX.id)?.stock?.[fx.uA.id];
+    chk("S3.4", has(la, fx.itX) && !has(la, fx.itY) && has(lb, fx.itY) && !has(lb, fx.itX) && sA.ok && !has(listOf(sA.value), fx.itY) && sA2.ok && has(listOf(sA2.value), fx.itX) && stockA === 7,
+      "A: X ไม่มี Y · B: Y ไม่มี X · ค้น SKU ของ Y ที่ A = ว่าง · stock[A]=7", `A X${has(la, fx.itX) ? "✓" : "✗"} Y${has(la, fx.itY) ? "✗รั่ว" : "✓"} · B Y${has(lb, fx.itY) ? "✓" : "✗"} X${has(lb, fx.itX) ? "✗รั่ว" : "✓"} · ค้น ${sA.ok ? listOf(sA.value).length : sA.err}/${sA2.ok ? listOf(sA2.value).length : sA2.err} · stock ${stockA}`);
+    const bYA = await attempt(() => C.byBarcode(ctxT, fx.uA.id, fx.itY.barcode)); const bYB = await attempt(() => C.byBarcode(ctxT, fx.uB.id, fx.itY.barcode));
+    chk("S3.5", bYA.ok && bcItems(bYA.value).length === 0 && Array.isArray(bYA.value?.items) && bYB.ok && bcItems(bYB.value).some((x) => x.invItemId === fx.itY.id),
+      "บาร์โค้ด Y: ที่ A ว่าง · ที่ B เจอ", `A ${bYA.ok ? `${bcItems(bYA.value).length} (ทรง ${Array.isArray(bYA.value?.items) ? "{items}" : typeof bYA.value})` : bYA.err} · B ${bYB.ok ? bcItems(bYB.value).length : bYB.err}`);
+    // S3.6–S3.8 C4 ผู้จัดการเฉพาะสาขาสีลม (แคชเชียร์ชั่วคราวเป็น MANAGER)
+    const allP = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c4-all`, basePriceSatang: 1000 }));
+    const allId = idOf(allP.value) as string;
+    const allSnap = hashOf(await prodById(allId));
+    const silP = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c4-silom`, basePriceSatang: 1000, unitId: SILOM }));
+    const silId = idOf(silP.value) as string;
+    const c4Inv = await mkInv(cfT, sysC.INVENTORY, "c4-ensure");
+    const catAri = await attempt(() => C.createCategory(ctxOwner, { name: `${TAG} cat-ari`, unitId: ARI }));
+    const catAll = await attempt(() => C.createCategory(ctxOwner, { name: `${TAG} cat-all` }));
+    const m = await asBranchManager(async () => ({
+      setAll: await attempt(() => C.setPrice(ctxCashier, allId, 1)),
+      updAll: await attempt(() => C.updateProduct(ctxCashier, allId, { nameEn: "HACK" })),
+      arcAll: await attempt(() => C.archive(ctxCashier, allId)),
+      tsAll: await attempt(() => C.updateProduct(ctxCashier, allId, { trackStock: false })),
+      createAll: await attempt(() => C.createProduct(ctxCashier, { name: `${TAG} c4-mgr-all`, basePriceSatang: 1 })),
+      ensure: await attempt(() => C.ensureForInvItem(ctxCashier, c4Inv.id)),
+      catAll: await attempt(() => C.createCategory(ctxCashier, { name: `${TAG} c4-mgr-cat` })),
+      ownPrice: await attempt(() => C.setPrice(ctxCashier, silId, 1100)),
+      ownUpd: await attempt(() => C.updateProduct(ctxCashier, silId, { nameEn: `${TAG} mgr` })),
+      toNull: await attempt(() => C.updateProduct(ctxCashier, silId, { unitId: null })),
+      toAri: await attempt(() => C.updateProduct(ctxCashier, silId, { unitId: ARI })),
+    }));
+    const pd6 = ["setAll", "updAll", "arcAll", "tsAll", "createAll", "ensure", "catAll"] as const;
+    chk("S3.6", pd6.every((k) => refused(m[k], "PERMISSION_DENIED")) && hashOf(await prodById(allId)) === allSnap && (await prodByInv(c4Inv.id)).length === 0,
+      "PERMISSION_DENIED ×7 · แถวทุกสาขาไม่เปลี่ยน", pd6.map((k) => `${k}:${codeOf(m[k])}`).join(" "));
+    const ownerMove = await attempt(() => C.updateProduct(ctxOwner, allId, { unitId: SILOM }));
+    chk("S3.7", refused(m.toNull, "PERMISSION_DENIED") && refused(m.toAri, "NOT_FOUND") && m.ownPrice.ok && m.ownUpd.ok && (await prodById(silId))?.unitId === SILOM && ownerMove.ok && (await prodById(allId))?.unitId === SILOM,
+      "→null PERMISSION_DENIED · →อารีย์ NOT_FOUND · ของสาขาตัวเองแก้ได้ · เจ้าของย้ายได้", `toNull ${codeOf(m.toNull)} · toAri ${codeOf(m.toAri)} · own ${m.ownPrice.ok ? "✓" : m.ownPrice.err}/${m.ownUpd.ok ? "✓" : m.ownUpd.err} · owner ${ownerMove.ok ? "✓" : ownerMove.err}`);
+    const cAri = await attempt(() => C.updateProduct(ctxOwner, silId, { categoryId: idOf(catAri.value) }));
+    const cAll = await attempt(() => C.updateProduct(ctxOwner, silId, { categoryId: idOf(catAll.value) }));
+    chk("S3.8", catAri.ok && catAll.ok && refused(cAri, "VALIDATION") && cAll.ok, "หมวดสาขาอื่น VALIDATION · หมวดทุกสาขาได้", `ari ${codeOf(cAri)} · all ${cAll.ok ? "✓" : cAll.err}${catAri.ok && catAll.ok ? "" : ` · สร้างหมวด ${catAri.err ?? ""} ${catAll.err ?? ""}`}`);
+    // S3.9 C5
+    const d1 = await attempt(() => C.byBarcode(ctxOwner, SILOM, `98${RAND}55`)); const d2 = await attempt(() => C.byBarcode(ctxOwner, SILOM, `98${RAND}55`));
+    const ord = (r: Try) => bcItems(r.value).map(idOf).join(",");
+    const dupWant = new Set([(await prodByInv(fx.dupA.id))[0]?.id, (await prodByInv(fx.dupB.id))[0]?.id]);
+    chk("S3.9", d1.ok && Array.isArray(d1.value?.items) && bcItems(d1.value).length === 2 && bcItems(d1.value).every((x) => dupWant.has(idOf(x))) && ord(d1) === ord(d2),
+      "{items} 2 รายการ ลำดับคงที่", d1.ok ? `ทรง ${Array.isArray(d1.value?.items) ? "{items}" : typeof d1.value} · ${bcItems(d1.value).length} รายการ · ลำดับ ${ord(d1) === ord(d2) ? "คงที่" : "ไม่คงที่"}` : d1.err);
+    // S3.10 C6
+    const p0 = await attempt(() => C.listForUnit(ctxOwner, SILOM));
+    const pBig = await attempt(() => C.listForUnit(ctxOwner, SILOM, { limit: 1000 }));
+    const all100: string[] = []; let cur: Any = undefined; let pages = 0;
+    for (; pages < 30; pages++) {
+      const pg = await attempt(() => C.listForUnit(ctxOwner, SILOM, { limit: 100, ...(cur ? { cursor: cur } : {}) }));
+      if (!pg.ok) break;
+      all100.push(...listOf(pg.value).map((x) => idOf(x) as string));
+      cur = pg.value?.nextCursor ?? null; if (!cur) break;
+    }
+    const invSysNow = new Map((await q<{ id: string; systemId: string }>(`select id, "systemId" from "InvItem" where "tenantId" = $1`, cfT)).map((r) => [r.id, r.systemId]));
+    const total = (await rowsOf("PosProduct", [cfT])).filter((p) => !p.archivedAt && p.systemId === sysC.POS && (p.unitId === null || p.unitId === SILOM) && (!p.invItemId || invSysNow.get(p.invItemId) === sysC.INVENTORY)).length;
+    chk("S3.10", p0.ok && listOf(p0.value).length === 100 && !!p0.value?.nextCursor && pBig.ok && listOf(pBig.value).length === Math.min(500, total) && (total <= 500 || !!pBig.value?.nextCursor) && new Set(all100).size === all100.length && all100.length === total,
+      `ปริยาย 100 + nextCursor · 1000 → ${Math.min(500, total)} · เดินหน้า 100 ครบ ${total} ไม่ซ้ำ`,
+      `ปริยาย ${p0.ok ? `${listOf(p0.value).length} next ${!!p0.value?.nextCursor}` : p0.err} · 1000 → ${pBig.ok ? listOf(pBig.value).length : pBig.err} · เดิน ${all100.length}/${total} ซ้ำ ${all100.length - new Set(all100).size}`);
+    // S3.11 C6 static
+    const catSrc = read("src/lib/modules/pos/catalog.ts");
+    const fnBody = (name: string) => { const i0 = catSrc.search(new RegExp(`(export\\s+)?(async\\s+)?function\\s+${name}\\b`)); if (i0 < 0) return ""; const i1 = catSrc.slice(i0 + 10).search(/\n(export\s+)?(async\s+)?function\s+/); return catSrc.slice(i0, i1 < 0 ? undefined : i0 + 10 + i1); };
+    const lfb = fnBody("listForUnit"); const tvb = fnBody("toViews");
+    const s311 = { noTake2000: !/take:\s*2000/.test(lfb), noPreQuery: !/invItem\.findMany/.test(lfb), viewsMap: !!tvb && !/\.filter\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.productId\s*===\s*p\.id/.test(tvb) };
+    chk("S3.11", !!lfb && Object.values(s311).every(Boolean), "ไม่มี take:2000 · ไม่มี invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว", Object.entries(s311).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" "));
+    // S3.14 C8 VAT ตามการจด VAT ของสมุดบัญชีที่ผูก POS (ร้านอาหาร: ปิดจด VAT ชั่วคราวแล้วคืน)
+    const vRegInv = await mkInv(cfT, sysC.INVENTORY, "c8-reg"); await mkAp(cfT, sysC.ACCOUNT, vRegInv, 1500, 700);
+    const vNoInv = await mkInv(rsT, sysR.INVENTORY, "c8-novat"); await mkAp(rsT, sysR.ACCOUNT, vNoInv, 1500, 700);
+    const rsSet0 = await P.accountSettings.findFirst({ where: { systemId: sysR.ACCOUNT } });
+    let vNo: Try = { ok: false };
+    try {
+      if (rsSet0) await P.accountSettings.update({ where: { id: rsSet0.id }, data: { vatRegistered: false } });
+      else fx.tmpSettings = await P.accountSettings.create({ data: { tenantId: rsT, systemId: sysR.ACCOUNT, vatRegistered: false } });
+      vNo = await attempt(() => C.ensureForInvItem(ctxSys(rsT, sysR.POS), vNoInv.id));
+    } finally {
+      if (rsSet0) await P.accountSettings.update({ where: { id: rsSet0.id }, data: { vatRegistered: rsSet0.vatRegistered } });
+      else if (fx.tmpSettings) await P.accountSettings.delete({ where: { id: fx.tmpSettings.id } });
+    }
+    const vReg = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), vRegInv.id));
+    const vNoRow = (await prodByInv(vNoInv.id))[0]; const vRegRow = (await prodByInv(vRegInv.id))[0];
+    chk("S3.14", vNo.ok && vNoRow?.vatRateBp === null && vReg.ok && vRegRow?.vatRateBp === 700, "ไม่จด VAT → null · จด VAT → 700", `ไม่จด ${vNo.ok ? vNoRow?.vatRateBp : vNo.err} · จด ${vReg.ok ? vRegRow?.vatRateBp : vReg.err}`);
+    // S3.18 C10
+    const c10Inv = await mkInv(cfT, sysC.INVENTORY, "c10-prod", { barcode: `96${RAND}10` });
+    const c10Svc = await mkInv(cfT, sysC.INVENTORY, "c10-svc", { kind: "SERVICE", priceSatang: 500 });
+    const c10Arch = await mkInv(cfT, sysC.INVENTORY, "c10-arch", { archivedAt: new Date() });
+    const r10 = {
+      menuInv: await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c10m`, kind: "MENU", invItemId: c10Inv.id, basePriceSatang: 100 })),
+      bundleInv: await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c10b`, kind: "BUNDLE", invItemId: c10Inv.id, basePriceSatang: 100 })),
+      archived: await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c10a`, kind: "PRODUCT", invItemId: c10Arch.id, basePriceSatang: 100 })),
+      kindMismatch: await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c10k`, kind: "PRODUCT", invItemId: c10Svc.id, basePriceSatang: 100 })),
+    };
+    const ownBc = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c10own`, kind: "PRODUCT", invItemId: c10Inv.id, barcode: `96${RAND}10`, basePriceSatang: 100 }));
+    const p2002 = /P2002/.test(catSrc) && /CONFLICT/.test(catSrc);
+    chk("S3.18", Object.values(r10).every((r) => refused(r, "VALIDATION")) && ownBc.ok && p2002, "VALIDATION ×4 · บาร์โค้ดของ InvItem ตัวเองได้ · map P2002→CONFLICT",
+      `${Object.entries(r10).map(([k, r]) => `${k}:${codeOf(r)}`).join(" ")} · ownBarcode ${ownBc.ok ? "✓" : ownBc.err} · P2002 ${p2002 ? "✓" : "✗"}`);
+    // S3.19 C11 audit chain + archive race (connection แยก)
+    const chainBad: string[] = [];
+    for (let r = 1; r <= 5; r++) {
+      const cp = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c11-${r}`, basePriceSatang: 100 }));
+      const cid = idOf(cp.value) as string; const tStart = new Date();
+      await Promise.all([attempt(() => C.setPrice(ctxOwner, cid, 200, lane(0))), attempt(() => C.setPrice(ctxOwner, cid, 300, lane(1)))]);
+      const au = await q<{ before: Any; after: Any }>(`select before, after from "AuditLog" where "targetType" = 'PosProduct' and "targetId" = $1 and action like 'pos.product.%' and "createdAt" >= $2 and after::text like '%basePriceSatang%' order by "createdAt", id`, cid, tStart);
+      const b = au.map((a) => a.before?.basePriceSatang); const a2 = au.map((a) => a.after?.basePriceSatang);
+      const fin = (await prodById(cid))?.basePriceSatang;
+      if (!(au.length === 2 && b[0] === 100 && b[1] === a2[0] && a2[1] === fin)) chainBad.push(`รอบ${r}: ${b.map((x, k) => `${x}→${a2[k]}`).join(", ")} ท้าย ${fin}`);
+    }
+    const arcBad: string[] = [];
+    for (let r = 1; r <= 3; r++) {
+      const ap = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} c11a-${r}`, basePriceSatang: 100 }));
+      const aid = idOf(ap.value) as string;
+      const [x1, x2] = await Promise.all([attempt(() => C.archive(ctxOwner, aid, lane(2))), attempt(() => C.archive(ctxOwner, aid, lane(3)))]);
+      const stored = (await prodById(aid))?.archivedAt;
+      const iso = (d: Any) => (d ? new Date(d).toISOString() : String(d));
+      if (!(x1.ok && x2.ok && iso(x1.value?.archivedAt) === iso(stored) && iso(x2.value?.archivedAt) === iso(stored))) arcBad.push(`รอบ${r}: ${iso(x1.value?.archivedAt)}/${iso(x2.value?.archivedAt)} vs ${iso(stored)}`);
+    }
+    chk("S3.19", chainBad.length === 0 && arcBad.length === 0, "audit ต่อเป็นสาย 5/5 · archive คืนเวลาที่เก็บจริง 3/3", `${chainBad.slice(0, 2).join(" · ") || "สายครบ"} · ${arcBad.slice(0, 2).join(" · ") || "archive ตรง"}`);
+    // S3.20 C12
+    const arcList = await attempt(() => C.listForUnit(ctxOwner, fx.archUnit.id));
+    const s320 = { ...(fx.s320 ?? { invariants: false }), listArchivedUnitNotFound: refused(arcList, "NOT_FOUND") };
+    chk("S3.20", Object.values(s320).every(Boolean), "เมนูสาขาปิดไม่ผูก · เว็บร้านผูก POS seed · ไม่มีแถวใน POS ปิดใช้งาน · list สาขาปิด NOT_FOUND", Object.entries(s320).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ") + ` (${codeOf(arcList)})`);
+    // S3.21 C13 static + ชื่อตัวนับใน JSON_SUMMARY
+    const bfSrc = read("scripts/pos-backfill-catalog.mts");
+    const bfb = fnBody("planTenant") || catSrc;
+    const NAMES = ["soldAtCostToday", "zeroPriceProduct", "zeroPriceMenu", "zeroPriceWeb", "invalidLegacyPrice", "posPriceDiffersFromSalePrice", "shopPriceDiffersFromCatalog", "shopInactiveLinked", "shopOwnRowInvItemOutsideFirstPos", "shopDanglingInvItem", "shopBranchNotInFirstPos"];
+    const missNames = NAMES.filter((k) => typeof (drySummary?.counts?.[k] ?? drySummary?.[k]) !== "number");
+    const s321 = { prodNeedsTenantOrAll: /--all\b/.test(bfSrc) && /isProd[\s\S]{0,400}(tenantArgs\.length|--all|all\b)/.test(bfSrc), movementsGrouped: !/invMovement\.findMany/.test(bfb) && /groupBy|SELECT\s+DISTINCT/i.test(bfb), optionGroupsMap: !/menuOgs\.filter\(/.test(bfb), countNames: missNames.length === 0 };
+    chk("S3.21", Object.values(s321).every(Boolean), "prod ต้อง --tenant/--all · movement groupBy/DISTINCT · ตัวเลือกใช้ Map · ตัวนับครบ 11 ชื่อ", `${Object.entries(s321).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")} · ขาด: ${missNames.join(",") || "-"}`);
+    }
     // X8 ไม่เชื่อมบัญชี
     const naP = (await prodByInv(fx.costOnly.id))[0];
     const apC0 = await countWhere("AccountProduct", cfT);
@@ -1065,7 +1405,7 @@ try {
       const ls = sp?.id ? await linkOf("ShopProduct", sp.id) : null; const pls = await prodById(ls);
       chk("S2.7", pls?.basePriceSatang === 4321 && pls?.unitId === SILOM && (await countProducts(cfT)) === pc0 + 1, "4321 · unit สีลม · +1", `${pls?.basePriceSatang ?? "ไม่มีลิงก์"} · +${(await countProducts(cfT)) - pc0}`);
       const dwInv = await mkInv(cfT, sysC.INVENTORY, "dw-inv"); const dwAp = await mkAp(cfT, sysC.ACCOUNT, dwInv, 4000);
-      const ens = await attempt(() => C.ensureForInvItem(ctxSysCf, dwInv.id));
+      const ens = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), dwInv.id));
       const pc1 = await countProducts(cfT);
       const sp2 = await shop.createProduct({ tenantId: cfT, unitId: SILOM }, { name: `${TAG} dw-shop2`, priceSatang: 9999, invItemId: dwInv.id });
       const ls2 = sp2?.id ? await linkOf("ShopProduct", sp2.id) : null;
@@ -1075,7 +1415,7 @@ try {
       chk("S2.9", (await prodById(ls))?.basePriceSatang === 4444 && (await prodById(ls2))?.basePriceSatang === 4000, "เว็บล้วน 4444 · แชร์คง 4000", `${(await prodById(ls))?.basePriceSatang} · ${(await prodById(ls2))?.basePriceSatang}`);
       // ── บัญชี / คลัง / AI / จอง ──
       const sInv = await mkInv(cfT, sysC.INVENTORY, "dw-setprice");
-      await attempt(() => C.ensureForInvItem(ctxSysCf, sInv.id));
+      await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), sInv.id));
       const sp3 = await reg.setItemSalePrice(cfT, sysC.POS, sInv.id, 3900);
       chk("S2.10", sp3?.ok && (await prodByInv(sInv.id))[0]?.basePriceSatang === 3900, "3900", `${sp3?.ok ? "" : sp3?.reason} ${(await prodByInv(sInv.id))[0]?.basePriceSatang}`);
       await accountF.updateAccountProductSalePrice(cfT, dwAp.id, 4100);
@@ -1083,9 +1423,12 @@ try {
       const up2 = await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: 4200, vatRateBp: 0 });
       const a2 = (await prodByInv(dwInv.id))[0];
       chk("S2.11", a1 === 4100 && up2?.ok && a2?.basePriceSatang === 4200 && a2?.vatRateBp === 0, "4100 → 4200/vat 0", `${a1} → ${up2?.ok ? `${a2?.basePriceSatang}/${a2?.vatRateBp}` : up2?.reason}`);
-      const up3 = await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: 4200, vatRateBp: 0, posPrice: 3800 });
-      chk("S2.25", up3?.ok && (await prodByInv(dwInv.id))[0]?.basePriceSatang === 3800, "3800 (posPrice ชนะ salePrice)", `${up3?.ok ? (await prodByInv(dwInv.id))[0]?.basePriceSatang : up3?.reason}`);
-      await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: 4200, vatRateBp: 0, posPrice: null });
+      const up3 = await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: 4200, vatRateBp: 0, posPrice: 3800, posEnabled: true });
+      const k1 = (await prodByInv(dwInv.id))[0]?.basePriceSatang;
+      const up4 = await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: null, vatRateBp: 0, posPrice: 3800, posEnabled: true });
+      const k2 = (await prodByInv(dwInv.id))[0]?.basePriceSatang;
+      chk("S2.25", up3?.ok && k1 === 4200 && up4?.ok && k2 === 3800, "salePrice 4200 ชนะ · salePrice ว่าง → posPrice 3800", `${up3?.ok ? k1 : up3?.reason} · ${up4?.ok ? k2 : up4?.reason}`);
+      await accProduct.updateProduct(cfT, sysC.ACCOUNT, dwAp.id, { name: dwAp.name, salePrice: 4200, vatRateBp: 0, posPrice: null, posEnabled: false });
       const ci = await inventory.createItem({ tenantId: cfT, systemId: sysC.INVENTORY }, { sku: `${TAG}-ci`, name: `${TAG} ci` });
       const cs = await inventory.createItem({ tenantId: cfT, systemId: sysC.INVENTORY }, { sku: `${TAG}-cs`, name: `${TAG} cs`, kind: "SERVICE", priceSatang: 8800 });
       const pci = (await prodByInv(ci.id))[0]; const pcs = (await prodByInv(cs.id))[0];
@@ -1148,7 +1491,7 @@ try {
       chk("S2.26", cc?.ok && pcN.length === 1 && pcN[0].nameEn === `${TAG} newcat` && ac?.ok && !!pcA?.archivedAt, "PosCategory 1 แถว → archived", `${pcN.length} แถว · archived ${pcA?.archivedAt ? "✓" : "✗"}`);
       const og = await menu.createOptionGroup(rsT, RMAIN, { name: `${TAG} g3`, minSelect: 0, maxSelect: 1, choices: [{ name: "หวานน้อย", priceDelta: 0 }, { name: "เพิ่มช็อต", priceDelta: 2500 }] });
       await menu.setItemOptionGroups(rsT, RMAIN, r1.id, [fx.g2.id, fx.g1.id, og.id]);
-      const findRow = async () => listOf((await attempt(() => C.listForUnit(ctxRsOwner, RMAIN))).value).find((r) => idOf(r) === l1);
+      const findRow = async () => (await listAll(C, ctxRsOwner, RMAIN)).items.find((r) => idOf(r) === l1);
       const withG3 = (await findRow())?.optionGroups?.find((g: Any) => (g.id ?? g.groupId) === og.id);
       const deltaOk = !!withG3 && (withG3.choices as Any[]).some((c) => (c.priceDelta ?? c.priceDeltaSatang) === 2500);
       await menu.archiveOptionGroup(rsT, RMAIN, og.id);
@@ -1245,6 +1588,8 @@ try {
     await purge("AccountProduct", newAp);
     await purge("AppSystemUnit", fresh(nowLeg, snapLegacy0, "AppSystemUnit"));
     await purge("BusinessUnit", fresh(nowLeg, snapLegacy0, "BusinessUnit"));
+    await purge("AccountSettings", fresh(nowLeg, snapLegacy0, "AccountSettings"));
+    await purge("AppSystem", fresh(nowLeg, snapLegacy0, "AppSystem"));
     // 3) คอลัมน์เชื่อมของแถวเดิมที่ชี้ PosProduct ที่ไม่มีก่อนรัน
     if (TABLES.has("PosProduct")) {
       const pre = new Set([...(snapNew0.PosProduct?.keys() ?? [])]);
