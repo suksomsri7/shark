@@ -199,23 +199,25 @@ export async function dispense(
   const stockItems = await inventory.listItems(invCtx, 500);
   const nameOf = new Map(stockItems.map((s) => [s.id, s.name]));
 
+  // append ลง dispenseJson (สะสม)
+  const prev = Array.isArray(visit.dispenseJson) ? (visit.dispenseJson as unknown as DispenseRecord[]) : [];
   const added: DispenseRecord[] = [];
-  for (const line of lines) {
+  for (const [i, line] of lines.entries()) {
     const qty = Math.round(line.qty);
-    // ตัดสต็อกจริง — idempotencyKey ต่อ (visit, item) → จ่ายยาตัวเดิมใน visit เดิมซ้ำ = ไม่ตัดสต็อกซ้ำ
+    // ตัดสต็อกจริง — HF-INV-1 ▸ R3.5(b): idempotencyKey ต่อ "การจ่ายครั้งนี้" = ตำแหน่งที่บรรทัดนี้จะอยู่ใน dispenseJson + ยา
+    //   (เดิม `clinic-<visit>-<item>` ⇒ จ่ายยาตัวเดิมครั้งที่สองใน visit เดียวไม่ตัดสต็อกเงียบ ๆ)
+    //   retry ของครั้งเดิม (ล้มกลางทาง ยังไม่ append) ⇒ ตำแหน่งเดิม = คีย์เดิม = ไม่ตัดซ้ำ · จ่ายครั้งใหม่หลังบันทึกแล้ว ⇒ ตำแหน่งใหม่ ◂
     await inventory.consume(invCtx, {
       itemId: line.invItemId,
       qty,
       sourceModule: "CLINIC",
       refType: "clinicVisit",
       refId: visitId,
-      idempotencyKey: `clinic-${visitId}-${line.invItemId}`,
+      idempotencyKey: `clinic-${visitId}-${prev.length + i}-${line.invItemId}`,
     });
     added.push({ invItemId: line.invItemId, name: nameOf.get(line.invItemId) ?? line.invItemId, qty });
   }
 
-  // append ลง dispenseJson (สะสม)
-  const prev = Array.isArray(visit.dispenseJson) ? (visit.dispenseJson as unknown as DispenseRecord[]) : [];
   await db.clinicVisit.updateMany({
     where: { id: visitId },
     data: { dispenseJson: [...prev, ...added] as unknown as object },
@@ -293,7 +295,7 @@ export async function billVisit(
 //   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี+แต้ม) "นอก tx" — voidSale เปิด tx เอง (ไม่ nested) · เฉพาะบิลที่ยัง PAID
 //      (fee 0 → BILLED โดยไม่มีบิล → ข้าม void)
 //   3) คืนยาเข้าคลัง — mirror ของตอน dispense (consume) · อ้างจาก InvMovement ที่ตัดจริง (type OUT ผูก visit)
-//      → รับเข้าที่ต้นทุนปัจจุบัน (ต้นทุนถัวเฉลี่ยไม่เพี้ยน) · idempotencyKey `clinic-refund-<visitId>-<itemId>`
+//      → รับเข้าที่ต้นทุนปัจจุบัน (ต้นทุนถัวเฉลี่ยไม่เพี้ยน) · idempotencyKey `clinic-refund-<visitId>-<movementId>` (HF-INV-1 ▸ R3.5(b) ◂)
 //      หมายเหตุ: อ้าง movement จริง (ไม่ใช่ dispenseJson) → คืนตรงกับที่ตัด แม้ dispenseJson นับซ้ำ (idempotent)
 // cross-tenant: tenantDb(ctx) กรอง tenantId → claim ไม่ match → ok:false (record ร้านอื่นไม่ถูกแตะ)
 export async function refundVisit(
@@ -344,7 +346,8 @@ export async function refundVisit(
         itemId: mv.itemId,
         qty: returnQty,
         costSatang: item.costSatang, // คืนที่ต้นทุนปัจจุบัน → ไม่กระทบต้นทุนถัวเฉลี่ย
-        idempotencyKey: `clinic-refund-${visitId}-${mv.itemId}`,
+        // HF-INV-1 ▸ R3.5(b): คีย์ต่อ movement ที่ตัดจริง (เดิมต่อยา — ยาตัวเดิมถูกจ่าย 2 ครั้งแล้ว คืนได้ครั้งเดียว) ◂
+        idempotencyKey: `clinic-refund-${visitId}-${mv.id}`,
         sourceModule: "CLINIC",
         refType: "clinicVisit",
         refId: visitId,

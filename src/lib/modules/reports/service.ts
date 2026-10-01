@@ -32,6 +32,8 @@ type DatasetDef = {
   label: string;
   columns: Column[];
   systemType: SystemType;
+  /** HF-INV-1 R3.7: คอลัมน์สาขาที่ใช้กรองตามสิทธิ์สาขาของผู้รัน (มีเฉพาะชุดที่ผูกสาขา เช่น sales) */
+  unitField?: "unitId";
   /** เงื่อนไขฐาน (เช่น เฉพาะบิลที่ชำระแล้ว) — merge เข้ากับ filter ผู้ใช้ */
   baseWhere?: Record<string, unknown>;
   /** query โมเดลจริงต่อระบบ — คืนแถวดิบ (แยกไว้เพื่อคงชนิด Prisma ต่อโมเดล) */
@@ -62,6 +64,7 @@ export const DATASETS: Record<string, DatasetDef> = {
   sales: {
     label: "ยอดขาย (บิลที่ชำระแล้ว)",
     systemType: "POS",
+    unitField: "unitId",
     baseWhere: { status: "PAID" },
     columns: [
       { key: "receiptNo", label: "เลขที่ใบเสร็จ", type: "string" },
@@ -120,9 +123,10 @@ export const DATASETS: Record<string, DatasetDef> = {
 };
 
 function getDataset(name: string): DatasetDef {
-  const ds = DATASETS[name];
-  if (!ds) throw new Error(`ไม่รู้จักชุดข้อมูล "${name}"`);
-  return ds;
+  // HF-INV-1 R3.7: ต้องเป็นคีย์ของตารางเอง — `DATASETS["constructor"]` / `["__proto__"]` เคยได้ของจาก prototype แล้ววิ่งต่อ
+  //   (ไม่มี systemType ⇒ ดึงระบบทุกประเภทของร้าน) · ตรวจก่อนแตะฐานข้อมูล
+  if (typeof name !== "string" || !Object.hasOwn(DATASETS, name)) throw new Error(`ไม่รู้จักชุดข้อมูล "${String(name).slice(0, 40)}"`);
+  return DATASETS[name];
 }
 
 /** field ต้องอยู่ใน columns ของ dataset เท่านั้น (กัน field injection) */
@@ -134,6 +138,11 @@ function assertField(ds: DatasetDef, field: string, where: string): void {
 
 /** แปลง op → เงื่อนไข Prisma — op นอกรายการโยนไทย */
 function opClause(op: FilterOp, value: unknown): unknown {
+  // HF-INV-1 R3.7: ค่าตัวกรองต้องเป็นค่าเดี่ยว — object/array ที่ส่งมาตรง ๆ กลายเป็น "ตัวดำเนินการ" ของ Prisma
+  //   (เช่น eq { not: … } / { in: [...] } ⇒ ไล่อ่านข้อมูลทีละช่วงได้) · Date ผ่านได้ (ชุดข้อมูลมีคอลัมน์วันที่)
+  if (value !== null && typeof value === "object" && !(value instanceof Date)) {
+    throw new Error("ค่าที่ใช้กรองต้องเป็นค่าเดียว (ข้อความ ตัวเลข หรือวันที่)");
+  }
   switch (op) {
     case "eq":
       return value;
@@ -160,7 +169,7 @@ async function systemIds(tenantId: string, type: SystemType): Promise<string[]> 
 }
 
 export async function runReport(
-  ctx: { tenantId: string },
+  ctx: { tenantId: string; /** HF-INV-1 R3.7: จำกัดสาขา (ผู้รันเข้าได้เฉพาะสาขาเหล่านี้) · ไม่ส่ง = ทุกสาขา */ unitIds?: readonly string[] },
   input: ReportInput,
 ): Promise<ReportResult> {
   const { tenantId } = ctx;
@@ -182,14 +191,19 @@ export async function runReport(
 
   // ── สร้าง where จาก baseWhere + filter (field ผ่าน whitelist แล้ว) ──
   const conds = filters.map((f) => ({ [f.field]: opClause(f.op, f.value) }));
+  // HF-INV-1 R3.7: ขอบเขตสาขาของผู้รันเป็นเงื่อนไขฐาน (ตัวกรองของผู้ใช้อยู่ใน AND — หลุดขอบเขตไม่ได้)
+  if (ctx.unitIds && !ds.unitField) throw new Error("ชุดข้อมูลนี้กรองตามสาขาไม่ได้");
   const where: Record<string, unknown> = {
     ...(ds.baseWhere ?? {}),
+    ...(ctx.unitIds && ds.unitField ? { [ds.unitField]: { in: [...ctx.unitIds] } } : {}),
     ...(conds.length ? { AND: conds } : {}),
   };
 
   const grouped = !!input.groupBy;
-  const cap = clampReportTake(input.take, RAW_CAP); // HF-INV-0 S2c: เพดานฝั่ง server
-  const perSystemTake = grouped ? undefined : cap;
+  // HF-INV-0 S2c: เพดานฝั่ง server · HF-INV-1 R3.7: ทางจัดกลุ่มมีเพดานด้วย (เดิมอ่านทุกแถวทุกระบบไม่จำกัด)
+  //   ไม่ส่ง take = EXPORT_CAP · อ่านเกิน 1 แถวเพื่อรู้ว่าถูกตัด แล้วบอก truncated
+  const cap = clampReportTake(input.take, grouped ? EXPORT_CAP : RAW_CAP);
+  const perSystemTake = grouped ? cap + 1 : cap;
 
   // ── enumerate ทุกระบบตามประเภท แล้วรวมผล ──
   const ids = await systemIds(tenantId, ds.systemType);
@@ -208,7 +222,8 @@ export async function runReport(
   if (grouped && input.groupBy) {
     const gb = input.groupBy;
     const agg = new Map<string, number>();
-    for (const r of rows) {
+    const groupedTruncated = rows.length > cap;
+    for (const r of rows.slice(0, cap)) {
       const key = r[gb] == null ? "" : String(r[gb]);
       const prev = agg.get(key) ?? 0;
       agg.set(key, prev + (sumField ? Number(r[sumField] ?? 0) : 1));
@@ -225,7 +240,7 @@ export async function runReport(
       },
     ];
     const outRows = [...agg.entries()].map(([group, value]) => ({ group, value }));
-    return { columns, rows: outRows };
+    return { columns, rows: outRows, ...(groupedTruncated ? { truncated: true } : {}) };
   }
 
   // ── แถวดิบ (cap take ?? 500 · เพดาน EXPORT_CAP) — บอกชัดถ้าถูกตัด (เลิก "หายเงียบ") ──

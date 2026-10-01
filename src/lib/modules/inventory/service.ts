@@ -113,7 +113,7 @@ async function applyLotDelta(
 // เดิม: อ่าน onHand/ต้นทุน → คำนวณใน JS → เขียนค่าสัมบูรณ์ทับ โดยไม่มีล็อก ⇒ 2 รายการพร้อมกันอ่านค่าเดียวกัน
 //   แล้วเขียนทับกัน = ยอดหาย · รับเข้าทั้งก้อนหายพร้อมต้นทุน · balanceAfter ซ้ำ · Σคลัง ≠ ยอดรวม (วัดจริงบน QC4)
 // ตอนนี้: ทุกจุดที่เขียนสต็อกของสินค้า 1 ตัว (onHand · ต้นทุนถัวเฉลี่ย · แถวคลัง · lot · movement) ล็อกแถว InvItem
-//   ด้วย `SELECT … FOR UPDATE` ใน tx เดียวกับที่เขียน **ก่อน** อ่านยอด ⇒ รายการที่สองรอจนรายการแรก commit
+//   ด้วย `SELECT … FOR NO KEY UPDATE` (R3.1) ใน tx เดียวกับที่เขียน **ก่อน** อ่านยอด ⇒ รายการที่สองรอจนรายการแรก commit
 //   แล้วจึงอ่านค่าใหม่ (READ COMMITTED อ่านใหม่ทุกคำสั่ง) — ตรรกะอ่าน-คำนวณ-เขียนเดิมจึงถูกต้องโดยไม่ต้องรื้อ
 //   (ค่าเฉลี่ยเคลื่อนที่ต้องใช้ยอดก่อนรับ ⇒ `increment` อย่างเดียวไม่พอ ต้องล็อก)
 // ล็อกหลายตัวใน tx เดียว: `lockItemsInTx` เรียง id (COLLATE "C") แล้วล็อกในคำสั่งเดียว — ผู้เรียกที่แตะหลายสินค้า
@@ -121,35 +121,88 @@ async function applyLotDelta(
 //   = ไม่มีวงล็อก (deadlock) · ล็อกซ้ำตัวที่ถือไว้แล้วใน tx เดียวกันไม่มีผล
 type LockedItem = { id: string; name: string; kind: string; onHand: number; costSatang: number };
 
-// 🔴 HF-INV-1 R2.2: รอล็อกสินค้าได้ไม่เกิน 5 วิ (เดิมรอได้จนหมดเวลา tx 30 วิ) — ตั้งด้วย set_config(…, true) = SET LOCAL
-//    อยู่แค่ใน tx นี้ (หลัง commit/rollback กลับค่าเดิม · ห้าม SET ระดับ session: บน pooler รั่วไปถึง client อื่น)
-//    ตั้งใน "คำสั่งเดียวกับที่ล็อก" (CTE MATERIALIZED ถูกประเมินก่อนแถวใดจะถึงขั้นล็อก) ⇒ ไม่เพิ่มรอบเดินทาง
-//    ค่านี้มีผลกับการรอล็อกที่เหลือของ tx เดียวกันด้วย · เกินเวลา = 55P03 → ตัวห่อลองใหม่ 1 ครั้ง / tx ของผู้เรียกล้มทั้งก้อน
+// 🔴 HF-INV-1 R2.2 → R3.2: เพดานรอ "เฉพาะตอนขอล็อกสต็อก" — ตั้งด้วย set_config(…, true) = SET LOCAL (อยู่แค่ใน tx นี้
+//    · ห้าม SET ระดับ session: บน pooler รั่วไปถึง client อื่น) แล้ว "คืนค่าเดิม" ทันทีหลังได้ล็อกครบ ในคำสั่งเดียวกัน
+//    (ไม่เพิ่มรอบเดินทาง) ⇒ คำสั่งที่เหลือของ tx (GL · เลขที่เอกสาร · แถวอื่น) ไม่ถูกเพดานนี้ตัด (รอบ 2 ค้าง 5 วิ ทั้ง tx)
+//    ลำดับในคำสั่ง: prev (จำค่าเดิม) → lt (ตั้งเพดาน · ประเมินก่อนแถวใดถึงขั้นล็อก) → locked (ล็อกครบทุกแถว)
+//    → restore (นับแถวที่ล็อกให้ครบก่อน แล้วคืนค่าเดิม) → ส่งแถวออก (LEFT JOIN จาก restore ⇒ restore ถูกประเมินเสมอ แม้ไม่มีแถว)
+//    งบ: ตัวห่อที่โมดูลคลังเปิด tx เอง = 5 วิ + ลองใหม่ 1 ครั้ง · lockItemsInTx ของเอกสารบัญชี (ไม่มีตัวห่อลองใหม่) = 15 วิ
+// 🔴 HF-INV-1 R3.1: ล็อกแบบ FOR NO KEY UPDATE (ไม่ใช่ FOR UPDATE) — ผู้เขียนสต็อกยังเรียงคิวกันเหมือนเดิม (NO KEY UPDATE ชนกันเอง
+//    และ UPDATE คอลัมน์ที่ไม่ใช่คีย์ก็ถือล็อกระดับนี้) แต่ไม่ชนกับ FOR KEY SHARE ที่ FK insert ถือไว้ (บรรทัดเอกสาร/movement
+//    ที่อ้างแถวนี้) ⇒ ใบเบิกที่แทรกบรรทัดแล้วรอสินค้า กับการตัดชุดที่ถือสินค้าแล้วรอแถวสินค้าบัญชี ไม่วงล็อกกันอีก
+const STOCK_LOCK_WAIT_WRAPPER = "5s";
+const STOCK_LOCK_WAIT_ACCOUNT_DOC = "15s";
 // ล็อก + อ่านสินค้า 1 ตัวในคำสั่งเดียว (แทน findFirst เดิม — ไม่เพิ่มรอบเดินทาง) · ไม่พบ/ข้ามร้าน/ข้ามระบบ → null
 async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<LockedItem | null> {
-  const rows = await db.$queryRaw<LockedItem[]>`
-    WITH lt AS MATERIALIZED (SELECT set_config('lock_timeout', '5s', true) AS v)
-    SELECT i."id", i."name", i."kind"::text AS "kind", i."onHand", i."costSatang"
-    FROM "InvItem" i, lt
-    WHERE i."id" = ${itemId} AND i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId}
-    FOR UPDATE OF i`;
-  return rows[0] ?? null;
+  const rows = await db.$queryRaw<(LockedItem | { id: null })[]>`
+    WITH prev AS MATERIALIZED (SELECT current_setting('lock_timeout') AS v),
+    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${STOCK_LOCK_WAIT_WRAPPER}, true) AS v FROM prev),
+    locked AS MATERIALIZED (
+      SELECT i."id", i."name", i."kind"::text AS "kind", i."onHand", i."costSatang"
+      FROM "InvItem" i, lt
+      WHERE i."id" = ${itemId} AND i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId}
+      FOR NO KEY UPDATE OF i
+    ),
+    restore AS MATERIALIZED (
+      SELECT set_config('lock_timeout', (SELECT v FROM prev), true) AS v FROM (SELECT count(*) FROM locked) c
+    )
+    SELECT l.* FROM restore LEFT JOIN locked l ON true`;
+  return (rows.find((r) => r.id !== null) as LockedItem | undefined) ?? null;
 }
 
 /**
  * HF-INV-1 — ล็อกสินค้าหลายตัวตามลำดับ id ที่ตายตัว ภายใน tx ของผู้เรียก (กัน deadlock ของ tx ที่แตะหลายสินค้า)
  * เรียกก่อน `consumeInTx`/`receiveInTx` ตัวแรกของ tx นั้น · id ซ้ำ/ว่างตัดทิ้ง · id ที่ไม่มีในระบบนี้ข้ามเงียบ
+ * R3.2: รอล็อกได้ไม่เกิน 15 วิ (เอกสารบัญชีไม่มีตัวห่อลองใหม่) · หลังได้ล็อก lock_timeout ของ tx กลับเป็นค่าเดิม
  */
 export async function lockItemsInTx(tx: Db, ctx: Ctx, itemIds: readonly string[]): Promise<void> {
   const ids = [...new Set(itemIds.filter((x) => typeof x === "string" && x))].sort();
   if (ids.length === 0) return;
-  // R2.2: lock_timeout 5 วิ แบบ SET LOCAL ในคำสั่งเดียวกับที่ล็อก (ดู lockItemForStock)
   await tx.$queryRaw`
-    WITH lt AS MATERIALIZED (SELECT set_config('lock_timeout', '5s', true) AS v)
-    SELECT i."id" FROM "InvItem" i, lt
-    WHERE i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId} AND i."id" IN (${Prisma.join(ids)})
-    ORDER BY i."id" COLLATE "C"
-    FOR UPDATE OF i`;
+    WITH prev AS MATERIALIZED (SELECT current_setting('lock_timeout') AS v),
+    lt AS MATERIALIZED (SELECT set_config('lock_timeout', ${STOCK_LOCK_WAIT_ACCOUNT_DOC}, true) AS v FROM prev),
+    locked AS MATERIALIZED (
+      SELECT i."id" FROM "InvItem" i, lt
+      WHERE i."tenantId" = ${ctx.tenantId} AND i."systemId" = ${ctx.systemId} AND i."id" IN (${Prisma.join(ids)})
+      ORDER BY i."id" COLLATE "C"
+      FOR NO KEY UPDATE OF i
+    ),
+    restore AS MATERIALIZED (
+      SELECT set_config('lock_timeout', (SELECT v FROM prev), true) AS v FROM (SELECT count(*) FROM locked) c
+    )
+    SELECT l."id" FROM restore LEFT JOIN locked l ON true`;
+}
+
+// 🔴 HF-INV-1 R3.5: idempotencyKey ซ้ำ "แต่ข้อมูลไม่ตรง" (คนละสินค้า · คนละทิศ · คนละจำนวน) — เดิมคืนรายการแรกเหมือนว่า
+//    รายการนี้บันทึกแล้ว (ผู้เรียกเข้าใจว่าตัด/รับแล้วทั้งที่ไม่ได้ทำ) และคีย์เดียวกันพร้อมกันบนสองสินค้าหลุด P2002 ดิบ
+//    ⇒ โยน error ชนิดนี้ (รหัสคงที่ · ข้อความไทยไม่โทษผู้ใช้) · คีย์เดิม + ข้อมูลเดิม = คืนรายการเดิมเหมือนเดิม
+export const STOCK_KEY_CONFLICT_CODE = "INV_IDEMPOTENCY_CONFLICT";
+export class StockKeyConflictError extends Error {
+  readonly code = STOCK_KEY_CONFLICT_CODE;
+  constructor(options?: { cause?: unknown }) {
+    super(
+      "รหัสอ้างอิงของรายการสต็อกนี้ตรงกับรายการที่บันทึกไว้แล้ว แต่สินค้า ทิศทาง หรือจำนวนไม่ตรงกัน — ระบบยังไม่บันทึกรายการนี้ กรุณาตรวจประวัติสต็อกก่อนทำรายการใหม่",
+      options,
+    );
+    this.name = "StockKeyConflictError";
+  }
+}
+type DupMovement = { itemId: string; type: string; qtyDelta: number; balanceAfter: number };
+// รายการเดิมของคีย์นี้ตรงกับที่ขอไหม — ตรง = คืนรายการเดิม (idempotent) · ไม่ตรง = โยน StockKeyConflictError
+function sameMovementOrThrow<T extends DupMovement>(dup: T, want: { itemId: string; type: "IN" | "OUT" | "ADJUST"; qtyDelta?: number; balanceAfter?: number }): T {
+  const same =
+    dup.itemId === want.itemId &&
+    dup.type === want.type &&
+    (want.qtyDelta === undefined || dup.qtyDelta === want.qtyDelta) &&
+    (want.balanceAfter === undefined || dup.balanceAfter === want.balanceAfter);
+  if (!same) throw new StockKeyConflictError();
+  return dup;
+}
+// insert movement ชน unique (tenantId, idempotencyKey) = คีย์เดียวกันถูกใช้พร้อมกันกับสินค้าอื่น (ล็อกเป็นรายสินค้า
+//   จึงไม่เรียงคิวกัน) ⇒ แปลงเป็น error ชนิดเดียวกัน แทน P2002 ดิบ (InvMovement มี unique เดียวนอกจาก id)
+function rethrowKeyConflict(e: unknown): never {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new StockKeyConflictError({ cause: e });
+  throw e;
 }
 
 // รอล็อกนานเกิน/ชนกันจนฐานข้อมูลยกเลิก tx — tx ที่โมดูลคลังเปิดเองลองใหม่ได้ 1 ครั้ง (idempotencyKey กันซ้ำอยู่แล้ว)
@@ -540,15 +593,16 @@ export async function receiveInTx(tx: Db, ctx: Ctx, input: ReceiveInput): Promis
   {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
+    const want = { itemId: input.itemId, type: "IN" as const, qtyDelta: qty }; // R3.5: คีย์ซ้ำต้องข้อมูลตรงด้วย
     const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
-    if (dup) return dup;
+    if (dup) return sameMovementOrThrow(dup, want);
 
     // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด/ต้นทุน (ดูหัวข้อ HF-INV-1 ด้านบน)
     const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
     // key เดียวกันที่อีก tx เพิ่ง commit ระหว่างที่เรารอล็อก → คืนรายการเดิม (ไม่รับซ้ำ · ไม่ชน unique)
     const dupAfterLock = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
-    if (dupAfterLock) return dupAfterLock;
+    if (dupAfterLock) return sameMovementOrThrow(dupAfterLock, want);
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -585,7 +639,7 @@ export async function receiveInTx(tx: Db, ctx: Ctx, input: ReceiveInput): Promis
         note: input.note?.trim() || null,
         needsReview: isNegative(newOnHand),
       },
-    });
+    }).catch(rethrowKeyConflict); // R3.5(d)
   }
 }
 
@@ -623,15 +677,16 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
   const lotCode = input.lotCode?.trim() || null;
   {
     const txc = tx as unknown as Db;
+    const want = { itemId: input.itemId, type: "OUT" as const, qtyDelta: -qty }; // R3.5: คีย์ซ้ำต้องข้อมูลตรงด้วย
     const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
-    if (dup) return dup;
+    if (dup) return sameMovementOrThrow(dup, want);
 
     // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด (ดูหัวข้อ HF-INV-1 ด้านบน)
     const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
     // key เดียวกันที่อีก tx เพิ่ง commit ระหว่างที่เรารอล็อก → คืนรายการเดิม (ไม่ตัดซ้ำ · ไม่ชน unique)
     const dupAfterLock = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
-    if (dupAfterLock) return dupAfterLock;
+    if (dupAfterLock) return sameMovementOrThrow(dupAfterLock, want);
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -668,7 +723,7 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
         // ตัดจนติดลบ (ยอดรวม หรือ lot ที่ระบุ) = ตั้งธงให้ร้านมาเคลียร์ (ขายไปก่อน ไม่ block)
         needsReview: isNegative(newOnHand) || lotNegative,
       },
-    });
+    }).catch(rethrowKeyConflict); // R3.5(d)
   }
 }
 
@@ -690,14 +745,15 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
   return withStockRetry("adjust", input.itemId, () => db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
+    const want = { itemId: input.itemId, type: "ADJUST" as const, balanceAfter: newQty }; // R3.5: คีย์ซ้ำต้องยอดนับเดียวกัน
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dup) return { id: dup.id };
+    if (dup) return { id: sameMovementOrThrow(dup, want).id };
 
     // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
     const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
     const dupAfterLock = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
-    if (dupAfterLock) return { id: dupAfterLock.id };
+    if (dupAfterLock) return { id: sameMovementOrThrow(dupAfterLock, want).id };
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -727,7 +783,7 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
         // ปรับจนติดลบ = ตั้งธงให้ร้านมาเคลียร์
         needsReview: isNegative(newQty),
       },
-    });
+    }).catch(rethrowKeyConflict); // R3.5(d)
     return { id: mv.id };
   })).then(async (r) => {
     // WO 4.2: นับสต็อก/ปรับยอด ก็ทำให้กระจกฝั่งบัญชีล้าสมัยเหมือนกัน → sync หลัง commit (เงียบถ้าไม่ผูก)

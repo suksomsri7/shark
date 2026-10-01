@@ -312,6 +312,16 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
   return result;
 }
 
+// HF-INV-1 ▸ R3.3: รหัสสั้นของสาเหตุ (SQLSTATE/รหัส Prisma/ชื่อ error) สำหรับบรรทัด log — ไม่ใส่ข้อความ (อาจมีชื่อสินค้า) ◂
+function stockErrorCode(e: unknown): string {
+  for (let cur: unknown = e, d = 0; cur && typeof cur === "object" && d < 5; d++) {
+    const o = cur as { code?: unknown; cause?: unknown; meta?: { code?: unknown } };
+    if (typeof o.code === "string" && o.code) return o.meta && typeof o.meta.code === "string" ? `${o.code}/${o.meta.code}` : o.code;
+    cur = o.cause;
+  }
+  return e instanceof Error ? e.name : "unknown";
+}
+
 // ── ตัดสต็อกของบิล (perpetual) — เรียกหลัง createSale commit เท่านั้น ──
 // เฉพาะบิล PAID + line ที่ผูก itemId · idempotent ต่อ line (pos-consume-<saleId>-<lineId>) → retry/replay ไม่ตัดซ้ำ
 //   (ดึง line จาก DB → รองรับ retry หลัง crash: บิลถูกสร้างแล้วแต่ยังไม่ตัดสต็อก ก็ตัดครบ)
@@ -340,8 +350,10 @@ async function consumeSaleInventory(tenantId: string, unitId: string, saleId: st
         refId: saleId,
         idempotencyKey: `pos-consume-${saleId}-${l.id}`,
       });
-    } catch {
+    } catch (e) {
       // ตัดสต็อกล้ม → บิลชำระแล้ว ปล่อยผ่าน (ไม่ล้มการขาย)
+      // HF-INV-1 ▸ R3.3: แต่ต้องทิ้งร่องรอย (เดิมเงียบ — ตอนนี้ล้มได้จริงเมื่อสินค้าถูกล็อกนาน ≈10 วิ) · ไม่มีข้อมูลลูกค้า ◂
+      console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId: l.itemId, qty: l.qty, code: stockErrorCode(e) });
     }
   }
 }
@@ -427,8 +439,10 @@ async function restoreVoidedInventory(tenantId: string, unitId: string, saleId: 
         refId: saleId,
         note: "คืนสต็อกจากการยกเลิกบิล POS",
       });
-    } catch {
+    } catch (e) {
       // คืนล้ม → ปล่อยผ่าน (บัญชีขาย void แล้ว)
+      // HF-INV-1 ▸ R3.3: ทิ้งร่องรอยแบบเดียวกับตอนตัด (ไม่มีข้อมูลลูกค้า) ◂
+      console.error("[pos] stock restore failed — void committed without stock movement", { saleId, itemId: mv.itemId, qty: returnQty, code: stockErrorCode(e) });
     }
   }
 }

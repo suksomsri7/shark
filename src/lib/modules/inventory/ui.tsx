@@ -17,6 +17,7 @@ import ImageEditor from "./ImageEditor";
 import { formatBaht } from "@/lib/ui/money";
 import BarcodeSearch from "./BarcodeSearch";
 import StockCount from "./StockCount";
+import PoReceiveForm from "./PoReceiveForm";
 import {
   INVENTORY_PROCUREMENT_KEYS,
   INVENTORY_VENDOR_LINK_ACTION,
@@ -62,7 +63,6 @@ import {
   disableVendorPortalAction,
   enableVendorPortalAction,
   markOrderedAction,
-  receivePoAction,
 } from "./procurement-actions";
 
 const muted = "text-[color:var(--color-muted)]";
@@ -718,31 +718,17 @@ export async function InvProcurementSection({ systemId }: { systemId: string }) 
                       <SubmitButton>ยืนยันสั่งซื้อ</SubmitButton>
                     </form>
                   )}
-                  {po.status === "ORDERED" &&
-                    (multiWarehouse ? (
-                      <form action={receivePoAction} className="flex items-center gap-2">
-                        <input type="hidden" name="systemId" value={systemId} />
-                        <input type="hidden" name="poId" value={po.id} />
-                        <select name="locationId" className="input py-1 text-sm" defaultValue={locations[0].id} aria-label="รับเข้าคลัง">
-                          {locations.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.name}
-                            </option>
-                          ))}
-                        </select>
-                        <SubmitButton>รับของ</SubmitButton>
-                      </form>
-                    ) : (
-                      <ConfirmDialog
-                        triggerLabel="รับของ"
-                        triggerClassName="btn btn-primary text-sm"
-                        title={`รับของเข้าคลัง — ${po.code}?`}
-                        detail={`จะเพิ่มสต็อก ${po.totalQty.toLocaleString("th-TH")} ชิ้น จาก ${po.lineCount.toLocaleString("th-TH")} รายการ`}
-                        confirmLabel="ยืนยันรับของ"
-                        action={receivePoAction}
-                        fields={{ systemId, poId: po.id }}
-                      />
-                    ))}
+                  {po.status === "ORDERED" && (
+                    // HF-INV-1 R3.8: ฟอร์มรับของเป็น client component — แสดงผลจาก receivePoAction (เดิมผลถูกทิ้ง/ข้อความถูก Next ปิดบัง)
+                    <PoReceiveForm
+                      systemId={systemId}
+                      poId={po.id}
+                      code={po.code}
+                      totalQty={po.totalQty}
+                      lineCount={po.lineCount}
+                      locations={multiWarehouse ? locations.map((l) => ({ id: l.id, name: l.name })) : null}
+                    />
+                  )}
                   {(po.status === "DRAFT" || po.status === "ORDERED") && (
                     <ConfirmDialog
                       triggerLabel="ยกเลิก"

@@ -253,3 +253,125 @@ Fitness 33/33 → 33/33 with QC4 env and with `env -u DATABASE_URL -u DIRECT_URL
 4. **R2.3 guard = issue-document row lock** (covers unlinked); cap also moved after the item locks as briefed (CONTROL 6 shows the doc lock alone suffices).
 5. **New finding, GL**: `gl.nextJournalNo` = `count(...) + 1` ⇒ concurrent JV postings in one system/book/period collide (`P2002 AccountJournalEntry (systemId, docNo)`). Inventory wrappers post GL after commit and swallow failures (`postMovementGl` catch) ⇒ a perpetual-inventory JV can be **silently lost**; in a tx (cost adjustment) the whole document fails. Pre-existing, outside inventory — recommend a separate WO (sequence row with upsert-increment like `nextGoodsDocNo`). AT-10 now avoids it.
 6. Unlinked `createCostAdjustment` stale read (above) — fix in a round 3 or Inventory V2? (≈4 lines: lock the AccountProduct row for unlinked products before reading qty/buyPrice.)
+
+---
+
+# Round 3 (controller rulings after the hunter on bf5482d9 · brief `origin/session/pos:ledger/pos-briefs/pos-brief-HF-INV-1-R3.md`)
+
+## R3 status (checkpoint)
+- [x] 0. `git merge origin/main` (929c39ce, clean) → **2a759a8e** · regression BEFORE captured on 2a759a8e (29 suites)
+- [x] 1. oracles extended: `qc-hf-inventory-atomic` 94 → **133** · `qc-hf-inventory-authz` 112 → **116** · new `qc-hf-reports-authz` **23** — RED on 2a759a8e for the right reason (`HF-INV-1-red3.txt`: 94/133 · 111/116 · 8/23; every round-1/2 check green)
+- [x] 2. fix R3.1–R3.9 (below)
+- [x] 3. controls A–F, each fix reverted in the working tree → its own checks red, all others green (`HF-INV-1-control3.txt`)
+- [x] 4. GREEN ×3 (+1) atomic 133/133 · authz 116/116 ×2 · reports 23/23 ×2 (`HF-INV-1-green3.txt`) · regression 29 suites (27 identical, 2 by design) · fitness 33/33 ×2 modes identical · typecheck exit 0 (2nd run; 1st = exit 2 on the new oracle's typing, below)
+- [x] 5. notes · commit · push
+
+## R3.1 — every HF-INV-1 row lock is `FOR NO KEY UPDATE`
+`inventory/service.ts` `lockItemForStock` :136 / `lockItemsInTx` :158 (`FOR NO KEY UPDATE OF i`) · `account/product.ts` issue-document lock :875-882 · `account/bundle.ts` unlinked-component pre-lock :93-101 · the new R3.4 lock (:1303) uses it too. NO KEY UPDATE conflicts with itself and with plain UPDATEs (all stock writers still queue on the same row), but not with the FOR KEY SHARE that FK inserts take (`AccountDocumentLine.productId`, `InvMovement.itemId` …).
+AT-19: deterministic interleaving (lane holds X via `lockItemsInTx`, sleeps 1.2 s, runs the real `consumeBundleComponentsInTx` on bundle [U,X]; 300 ms later a goods issue [U,X] inserts its lines and waits for X) ×2 → both succeed, `pg_stat_database.deadlocks` +0 (RED: goods issue fails, +1 deadlock each round) · storm 5 goods issues [U,X] ∥ 5 bundle txs × 5 rounds → 0 failures, +0 deadlocks, U −10 exactly, X invariants (RED: 6–9 of 10 fail per round). All 63 round-1 + 31 round-2 lost-update checks stay green with the weaker lock (control A reverts all four sites → only AT-19 goes red).
+
+## R3.2 — the 5 s cap covers acquiring the stock lock only
+One statement per lock call (`inventory/service.ts:136-171`): `prev` (current_setting) → `lt` (set_config(..., true) = SET LOCAL to the budget, evaluated before any row reaches LockRows) → `locked` (FOR NO KEY UPDATE) → `restore` (count(*) over `locked` forces every lock first, then set_config back to `prev`, tx-local) → `SELECT … FROM restore LEFT JOIN locked ON true` (restore is always the outer side ⇒ evaluated even with 0 rows). Zero extra round trips. Budgets: `STOCK_LOCK_WAIT_WRAPPER = "5s"` (`lockItemForStock`, wrapper txs keep retry-once) · `STOCK_LOCK_WAIT_ACCOUNT_DOC = "15s"` (`lockItemsInTx`, called only by account documents: goods issue/return, bundle cut, cost adjustment).
+AT-18.1 inside the tx after `consumeInTx`/`lockItemsInTx` SHOW lock_timeout = the previous value (0) · caller's own `SET LOCAL '3s'` survives (3s) · AT-18.2 no leak after commit/rollback (same backend pid) · AT-18.3 wrapper 12 s hold → Thai busy at 10.1 s (unchanged) · **AT-18.7a 6 s hold → goods issue succeeds at 6.0 s** (RED: fails 5.2 s) · **AT-18.7b 20 s hold → fails at 15.1 s, no doc, no stock** with today's refusal (`บันทึกเอกสารเบิกไม่สำเร็จ`) · **AT-18.9** after the stock lock, the same tx waits 6.7 s for another row held 7 s and succeeds (RED: 55P03 at 5.1 s).
+
+## R3.3 — a sale committed without its stock cut leaves a trace
+`pos/service.ts:315-323` `stockErrorCode()` (code / Prisma meta code / error name — no message, it can carry a product name) · `:353-357` cut swallow → `console.error("[pos] stock cut failed — sale committed without stock movement", { saleId, itemId, qty, code })` · `:442-446` same one-liner at the void-restore swallow (`[pos] stock restore failed — void committed without stock movement`). Shop/clinic: **no swallow sites exist** (shop `confirmOrderPaid`/`refundOrder` and clinic dispense/refund let the error propagate) ⇒ nothing to add. CRM branch touches none of these files. AT-24.1/24.2: exactly one line each, keys exactly `code,itemId,qty,saleId`.
+
+## R3.4 — unlinked cost adjustment reads after a row lock
+`account/product.ts:1302-1314`: unlinked product ⇒ `SELECT "qtyOnHand","buyPrice" … WHERE id, tenantId, systemId FOR NO KEY UPDATE` before computing the GL delta. **Plus** `:958-965, :997`: goods issue/return reads the unlinked `buyPrice` after its own row-locking update (the pre-lock read was the other half of the inconsistency: adjustment saw qty before the issue, the issue costed at the price before the adjustment). AT-20.1 deterministic holder (100→200 held 1 s, adjustment →300) ⇒ oldCost 200, delta 1000 (RED 100/2000) · AT-20.2–4 100→200 ∥ 100→300 at qty 10 ⇒ Σ delta = (final−100)×10 and old costs chain (RED 3000 vs 1000) · AT-20.5–7 adjustment ∥ issue 3 ⇒ (qty 10 & issue cost 300) or (qty 7 & cost 100), stock 7.
+
+## R3.5 — idempotency keys
+(a) key schemes of every stock-writer caller (grep of all importers of `inventory/service`, verified):
+| caller | op | key | same key, different payload possible? |
+|---|---|---|---|
+| POS sale cut `pos/service.ts consumeSaleInventory` | consume | `pos-consume-<saleId>-<saleLineId>` | no (qty from the stored line) |
+| POS void restore | receive | `pos-refund-<saleId>-<outMovementId>` | no |
+| shop `confirmOrderPaid` / `refundOrder` | consume / receive | `ecom-<orderId>-<lineId>` / `ecom-refund-<orderId>-<lineId>` | no |
+| clinic `dispense` | consume | was `clinic-<visitId>-<itemId>` → **`clinic-<visitId>-<dispenseJson position>-<itemId>`** | **yes before (2nd dispense of a drug) — the defect** |
+| clinic `refundVisit` | receive | was `clinic-refund-<visitId>-<itemId>` → **`clinic-refund-<visitId>-<outMovementId>`** | would collide once a drug has 2 OUT rows ⇒ changed with (b) |
+| procurement `receivePo` | receive | `po-<poLineId>` | no |
+| AI proposals (receive/adjust/consume) | — | `ai-<proposalId>` | only if the proposal is re-executed after its sku was re-pointed to another item (now refused, was silently "done") |
+| manual actions / `bulkCount` | receive/consume/transfer/adjust | `manual-in/out/tf-<uuid>` / `count-<uuid>` | no (random) |
+| account goods issue / return | consumeInTx / receiveInTx | `acc-issue-<docLineId>` / `acc-return-<docLineId>` | no |
+| account bundle components | consumeInTx | `acc-issue-<docLineId>-<componentProductId>` | only if the recipe changed between two cuts of the same doc (now typed error → caught + warned inside bundle.ts; before: first movement returned) |
+| account opening lot | receiveInTx | `acc-open-<productId>-<seq>` | no |
+| transfer | — | `<key>-out` / `<key>-in` | unchanged (dup → `{ ok:false }`, not part of (c)) |
+`account-bridge.ts` keys off `"refund"` in the key → clinic refund keys still contain it. No legitimate flow relies on "same key, different payload" (the clinic case was the defect); 29 regression suites agree except the two clinic checks that encode the defect (below).
+(b) `clinic/service.ts:203-217, :349-350` — position in `dispenseJson` is stable across a retry of the same event (the JSON is appended only after every line is cut) and new for the next dispense.
+(c) `inventory/service.ts:173-206` `StockKeyConflictError` (code `INV_IDEMPOTENCY_CONFLICT`, Thai, non-blaming) · `sameMovementOrThrow` at both dup checks of `receiveInTx` :598/:605, `consumeInTx` :682/:689, `adjust` :750/:756 (item + type + qty; ADJUST compares the counted qty `balanceAfter`) · same payload ⇒ original movement as before.
+(d) `.catch(rethrowKeyConflict)` on the three movement inserts (:642, :726, :786): P2002 (the only unique besides id) ⇒ the same typed error.
+AT-21.1–21.4/21.6 (qty / item / direction / InTx / adjust) · 21.5 control · 21.7–21.9 same key concurrently on two items (wrapper + InTx) ⇒ one movement, other item's calls get the typed error, never raw P2002. AT-22.1 second dispense cut (80, 2 OUT) · 22.2 retry after a mid-way failure (2nd drug held 12 s) ⇒ first drug not cut twice (75/95, dispenseJson 4) · 22.3 refund restores every cut (IN 4 = OUT 4).
+
+## R3.6 — return cap cannot inflate stock
+`account/product.ts` `returnableQtyForIssue` :730-807 — (i) issue not `ISSUED` ⇒ every product returnable 0 (UI shows 0) and `applyGoodsDocInTx` :874-890 refuses with a clear Thai reason read after the (NO KEY UPDATE) lock: draft → `ใบเบิกต้นทางยังเป็นร่าง (ยังไม่ได้ตัดสต็อก) — อนุมัติใบเบิกก่อน…`, voided/cancelled → `ใบเบิกต้นทางถูกยกเลิกแล้ว — ทำใบคืนอ้างอิงใบเบิกนี้ไม่ได้`. (ii) VOIDED returns now counted by whether their stock still stands: linked lines = Σ `InvMovement.qtyDelta` with `refType "AccountDocument"`, `refId = return id`, per item (a future reversing OUT on the same ref is netted out); **unlinked lines have no movement record at all ⇒ counted as standing** (voidDocument in `account/service.ts` never touches `qtyOnHand`; safe direction = refuse). AT-23.1 voided issue · 23.2 draft issue · 23.3 linked / 23.4 unlinked issue 5 → return 5 → void return → return 5 again ⇒ `เกินจำนวนที่เบิกไว้`, stock +5 once · 23.5 control: return 3 → void → return 2 ok, 1 more refused.
+
+## R3.7 — report datasets need the owning module's read right
+`reports/actions.ts:20-80` (table :26, `readScope` :46): ONE table `DATASET_READ` (sales → `pos.sale.create` + branch scope, mirror of `posSalesScope` on `hotfix/pos-page-authz` with `evaluate`; customers → member read, mirror of `canReadMember`: OWNER/MANAGER or STAFF with any `member.*` key; inventory → `canReadInventory`) · `readScope()` runs before `runReport` for screen, CSV and groupBy alike; undeclared or non-own-property names refused. `reports/service.ts`: `getDataset` own-property check :128 · scalar filter values :140-145 (object/array refused, Date allowed) · `ctx.unitIds` → base `unitId IN (…)` that user filters (in `AND`) cannot escape :195-199 (`unitField` declared per dataset) · grouped path capped: `clampReportTake(take, EXPORT_CAP)`, reads cap+1, aggregates cap, returns `truncated` :202-206, :222-243. New oracle `scripts/qc-hf-reports-authz.mts` (23): RP-1 STAFF with only `reports.report.run` refused for customers (screen/CSV/groupBy phone) and sales · RP-2 positives (member.customer.read, member.loyalty.stamp, MANAGER, OWNER) · RP-3 branch scope (STAFF u1 → 2 rows, CSV 2, groupBy one group, `unitId eq u2` filter → 0, MANAGER u2 → 1, OWNER/"*" → 3, no branch → refused) · RP-4 operator objects, `constructor`/`__proto__`/`toString`/`hasOwnProperty` (action + service), grouped cap + truncated, undeclared dataset. `qc-hf-inventory-authz` HF-11.2 now positive with `pos.sale.create` (contract change).
+
+## R3.8 — `receivePoAction`
+`inventory/procurement-actions.ts:129-158` (action :134) returns `{ status: "ok" | "error", message }` (house shape of this module's useActionState actions); a non-ok `receivePo` on a PO that is now `RECEIVED` (double click / second request) ⇒ `{ status: "ok", "ใบสั่งซื้อนี้รับของเข้าคลังแล้ว" }`; thrown errors from the receive mapped through `safeReason`; system/permission guards still throw like the sibling actions. New client component `inventory/PoReceiveForm.tsx` (useActionState; multi-warehouse form or the existing ConfirmDialog; shows the error message inline) used by `ui.tsx:721-731`. `receivePo`'s own contract unchanged (AT-9 still 10 ok of 20). HF-10.1 (now: returned error, not a throw), HF-12.1–12.4.
+
+## R3.9 — `scripts/inv-cache-audit.mts`
+Own prod check :47-70: lowercase + repeated percent-decode of DATABASE_URL, DIRECT_URL, PGHOST, PGHOSTADDR (covers `?host=` and host-less URLs) against `PROD_HOST_MARK`; shared `qc-env-guard.mts` untouched. **E** :147-152 lot movements with no `InvLot` row. **F** :172-249 average cost replayed read-only from the movement chain (+ COST_ADJUSTMENT docs of linked products as chain points, status ≠ DRAFT/CANCELLED since void never reverts the cost): ordered by `createdAt` (verified on QC4: Prisma sets it client-side at INSERT time, i.e. after the stock lock — probe 2 038 ms after tx start), with a 2 s look-ahead for a row whose balance-before links (equal ms / clock skew between instances); IN = `movingAvgCost(balanceBefore, avg, qty, cost)`, OUT/ADJUST must record the running avg; items whose avg is unknowable (first IN at a non-zero balance before any cost) are counted as skipped, not drifted; `--no-cost` disables F. AT-25.1 four prod-URL forms ⇒ exit 4 without connecting (RED: uppercase/percent-encoded/PGHOST tried to connect) · AT-25.2 tenant 1 (all AT-1..AT-24 races + 2 deliberate defects) ⇒ E 1, F 1, A–D 0 · AT-25.3 tenant 2 (cost adjustments racing receives, goods docs, bundle cuts) ⇒ 0 drifted (no false F). Full QC4 run: 4 tenants, 0/16 drifted, F skipped 0.
+
+## Oracle changes to earlier checks (round 3)
+AT-18.1 (was: "inside the tx lock_timeout = 5s") → "after the lock = previous value" · AT-18.7 (was: 9 s hold fails < 8 s) → AT-18.7a/b (6 s succeeds, 20 s fails ≈15 s) + AT-18.9 · AT-Z excludes the 2 items AT-25 damages on purpose · HF-10.1 (throw → returned error) · HF-11.2 (STAFF needs `pos.sale.create` for sales). All by the brief's rulings.
+
+## Runs
+| run | atomic | authz | reports |
+|---|---|---|---|
+| RED (2a759a8e) | 94/133 (CRITICAL 36 · MAJOR 3 — all 39 = R3 checks) | 111/116 (HF-10.1, HF-12.*) | 8/23 |
+| GREEN | 133/133 ×3 | 116/116 ×2 | 23/23 ×2 |
+| CONTROL A R3.1+R3.3+R3.9 | 121/133 — AT-19.*, AT-24.*, AT-25.* | | |
+| CONTROL B R3.2+R3.5(b) | 126/133 — AT-18.1/7a/7b/9, AT-22.* | | |
+| CONTROL C R3.4+R3.5(c/d) | 118/133 — AT-20.*, AT-21.1–4/6–9 | | |
+| CONTROL D R3.6 | 128/133 — AT-23.* | | |
+| CONTROL E R3.7 | | | 8/23 (= RED set) |
+| CONTROL F R3.8 | | 111/116 — HF-10.1, HF-12.* | |
+
+### Timing (wall per round, 10 parallel, this VPS → Neon ap-southeast-1) — round 2 code (RED run) vs round 3 GREEN ×3
+| scenario | round 2 (round-2 notes / RED run on 2a759a8e) | round 3 GREEN |
+|---|---|---|
+| AT-1 consume ×10 | 0.7–1.1 / 0.8–1.2 | 0.8–1.0 (one 2.1 first-round warm-up) |
+| AT-2 receive ×10 | 0.7–0.8 / 0.7–0.9 | 0.7–0.8 |
+| AT-3 mixed + lots | – / 0.8–0.9 | 0.8–0.9 |
+| AT-4 transfers | – / 1.1 | 1.1 (one 1.4, one 1.8) |
+| AT-5 adjust vs consume | 0.7–0.9 / 0.7–0.8 | 0.8–0.9 |
+| AT-8 POS createSale ×10 | 0.9–1.1 / 0.8–1.0 | 0.8–1.1 |
+| AT-7 multi-item | 2.8–3.1 / 2.9–3.0 | 2.7–3.5 |
+| AT-10 cost adjust vs receives | 0.9–1.0 / 0.9 | 0.9 |
+| AT-12 / 13 / 14 / 16 / 17 | 1.9–2.1 / 1.8–2.6 / 0.3–0.4 / 0.6–0.9 / 0.4–0.6 | 2.0–2.5 / 1.8–2.0 / 0.3–0.5 / 0.6–1.1 / 0.3–0.5 |
+| AT-19 storm (new) | RED 1.5–6.1 with deadlocks | 2.1–3.1 |
+| AT-20 cost adj pair (new) | RED 0.4 (wrong GL) | 0.4–1.1 |
+The lock statement grew (prev/lt/locked/restore CTEs) but is still one round trip ⇒ no measurable change on the happy path.
+
+## Regressions on QC4 — BEFORE (2a759a8e) vs AFTER, per-check lines (sorted; ids, timestamps, doc numbers stripped)
+identical (27): qc-inventory 12/12 · qc-inventory-item 11/11 · qc-inventory-account 23/23 · qc-warehouse 15/15 · qc-lot 13/13 · qc-procurement 12/12 · qc-vendor-portal 6/6 · qc-approval-wiring 7/7 · qc-pos-inventory 25/25 · qc-pos-register 42/42 · qc-clinic-refund 13/13 · qc-shop-refund 12/12 · qc-nav-functions 11/11 · qc-pos-account 16/16 · qc-account-cpa 107/107 · qc-restaurant-money 6/6 · qc-restaurant-void 11/11 · qc-acc-v2-adjust 96/96 · qc-acc-v2-detail 85/85 · qc-clinic-public 15/15 · qc-pos-closeday 22/22 · qc-pos-coupon 8/8 · qc-pos-products 24/24 · qc-report-builder 9/9 · pre-existing reds identical: qc-acc-v2-invitem 77/88 · qc-acc-v2-pos-lines 65/79 · qc-acc-v2-products 57/72 (missing "SIAM DIVE QC" seed on QC4, as rounds 1–2).
+changed by design (2): **qc-clinic 8/8 → 6/8** — CL-2.2 asserts the defect R3.5(b) fixes ("dispense the same drug twice → stock 90, not cut again"; now 80) and CL-2.3 looks the movement up by the old key `clinic-<visit>-<item>`. The file is marked "Fable oracle, Builder ห้ามแตะ" ⇒ not edited; proposed ORACLE-EDIT for the controller: CL-2.2 expect 80 (second dispense is a real dispense; retry-of-the-same-event coverage lives in AT-22.2), CL-2.3 `idempotencyKey: { startsWith: \`clinic-${v.id}-\` }`. **qc-hf-inventory-authz 112/112 → 116/116** (HF-10.1/HF-11.2 rewritten per R3.8/R3.7, HF-12.1–12.4 new).
+Fitness: 33/33 → 33/33 with QC4 env and with `env -u DATABASE_URL -u DIRECT_URL` (check lines identical; "before" = HEAD versions of every changed file, new files moved aside; "after" re-run on the final tree).
+Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`): run 1 **exit 2** after 6 min 11 s — one error in the new oracle only (`scripts/qc-hf-inventory-atomic.mts` spawnSync `env: Record<string,string>` not assignable to Next's `ProcessEnv`) → env built as `NodeJS.ProcessEnv` (no runtime change; atomic re-run 133/133 = run 4 in `HF-INV-1-green3.txt`) · run 2 **exit 0** after 6 min 48 s (incl. lock wait). Two runs = the lane maximum.
+
+## Who loses a previously working behaviour (R3.5(c), R3.7 and others)
+- R3.5(c/d): any caller that re-sends an existing key with another item / direction / qty now gets `StockKeyConflictError` instead of the stored movement: an AI proposal re-executed after its sku was re-pointed; a bundle document re-cut after its recipe changed (caught inside bundle.ts → warn, component skipped, document still issues — same outward result, but the mirror qty is not rewritten and `consumed` is lower); a clinic dispense retried mid-failure with a **changed qty for the same position** (refused until the list changes). Concurrent same key on two items: raw P2002 → typed error.
+- R3.5(b): clinic — dispensing the same drug a second time in one visit now cuts stock (was silently not cut); refunds restore every cut. Deploy-window edge: a dispense that failed mid-way before deploy and is retried after deploy gets new keys ⇒ its already-cut lines are cut again (old behaviour also left those lines' stock un-recorded in dispenseJson).
+- R3.7: STAFF with `reports.report.run` but no `member.*` key lose the customers dataset (screen, CSV, groupBy); STAFF without `pos.sale.create`/`pos.*` lose the sales dataset; branch-limited STAFF/MANAGER now see only their branches' sales (were: all branches); requests with object/array filter values or odd dataset names are refused; grouped reports over 50 000 rows aggregate the first 50 000 and say `truncated` (were unbounded).
+- R3.6: returns against draft/voided issues refused (were accepted); after voiding a return, its quantity still counts against the cap (linked: while its IN movement stands; unlinked: always) ⇒ "void the return and enter it again" no longer works until void reverses stock (O15).
+- R3.2: an account goods document now waits up to 15 s for a busy item (was 5 s) before failing; statements after the stock lock are no longer cut at 5 s (they wait up to the 30 s tx timeout, as before round 2).
+- R3.8: none (a duplicate click now shows success instead of an error). R3.1/R3.3/R3.4/R3.9: none.
+
+## NOT covered (round 3)
+- `addOpeningLot` calls `receiveInTx` without `lockItemsInTx` ⇒ its item-lock budget is the wrapper's 5 s (no retry) — single item, unchanged from round 2.
+- Durable pending-cut record + sweeper for POS (P1.14) · void of goods documents not reversing stock (O15, `account/service.ts`) · journal numbering (CRM C5.4-N) · shop `confirmOrderPaid`/`refundOrder` (MINOR-3) · branch-limited managers on inventory actions (Inventory V2) · pool self-starvation (round 1 §7) — as briefed.
+- R3.6 (ii) for unlinked lines is decided by code knowledge (void never touches `qtyOnHand`), not by data — there is no stock record for unlinked products.
+- F (audit) cannot verify items whose first IN happened at a non-zero balance before any cost is known (reported as "skipped"); cross-instance clock skew > 2 s with interleaved writes could misorder (none seen on QC4).
+- Clinic `dispenseJson` itself is still read-modify-write (two concurrent dispenses on one visit can lose a JSON entry while both cuts happen) — pre-existing, not a stock counter.
+
+## Decisions for the controller (round 3)
+1. **qc-clinic CL-2.2/CL-2.3** are red by design (R3.5(b) vs a Builder-may-not-touch oracle) — apply the proposed ORACLE-EDIT above, or rule (b) out.
+2. **R3.6 (ii) unlinked**: voided returns count as standing (safe direction, no data exists) — accept, or (i)-only for unlinked?
+3. **R3.4 extra hunk**: goods issue/return reads the unlinked `buyPrice` after its row lock — required for "adjustment ∥ goods issue ⇒ consistent"; not literally in the brief.
+4. **R3.3 extra site**: the POS void-restore swallow got the same one-line trace (same file, same class).
+5. **R3.7 member rule** = any `member.*` key for STAFF (exact mirror of the member pages' `canReadMember`), not strictly `member.customer.read`; phone is exposed under the same rule the member list uses (no `member.sensitive.read` requirement).
+6. **R3.7 grouped cap** = `clampReportTake(take, EXPORT_CAP)` (50 000 default, client can lower) + `truncated`, not the 500 screen cap — grouping 500 rows would make totals meaningless.
+7. **R3.5 scope**: typed error also on `adjust` (same key, different counted qty); `transfer` keeps its `{ ok:false }` duplicate answer.
+8. **R3.8 idempotency** is decided in the action (PO now `RECEIVED` ⇒ ok) so `receivePo`'s contract (used by AT-9 and the vendor portal) is unchanged.

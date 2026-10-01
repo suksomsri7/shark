@@ -737,7 +737,7 @@ export async function returnableQtyForIssue(
   const [issue, returns] = await Promise.all([
     db.accountDocument.findFirst({
       where: { id: issueId, tenantId, systemId, docType: "GOODS_ISSUE" },
-      include: { lines: { select: { productId: true, qty: true } } },
+      select: { status: true, lines: { select: { productId: true, qty: true } } },
     }),
     db.accountDocument.findMany({
       where: {
@@ -746,10 +746,12 @@ export async function returnableQtyForIssue(
         docType: "GOODS_ISSUE_RETURN",
         sourceDocId: issueId,
         ...(excludeDocId ? { id: { not: excludeDocId } } : {}),
-        // ร่างยังไม่คืนของจริง — ไม่นับกินเพดาน (WO 4.3: ใบส่งคืนมีสถานะร่างได้แล้ว)
-        status: { notIn: ["DRAFT", "CANCELLED", "VOIDED"] },
+        // ร่างยังไม่คืนของจริง — ไม่นับกินเพดาน (WO 4.3: ใบส่งคืนมีสถานะร่างได้แล้ว) · ร่างที่ถูกยกเลิก (CANCELLED) ก็ไม่เคยคืน
+        // HF-INV-1 ▸ R3.6: ใบคืนที่ถูก "ยกเลิกหลังออกแล้ว" (VOIDED) ยังนับ ถ้าสต็อกที่คืนยังไม่ถูกกลับ (ดูด้านล่าง)
+        //    เดิมตัดทิ้งตามสถานะ ⇒ เบิก 5 → คืน 5 → ยกเลิกใบคืน (การยกเลิกไม่กลับสต็อก) → คืน 5 ได้อีก = สต็อกงอก ◂
+        status: { notIn: ["DRAFT", "CANCELLED"] },
       },
-      include: { lines: { select: { productId: true, qty: true } } },
+      select: { id: true, status: true, lines: { select: { productId: true, qty: true } } },
     }),
   ]);
   const issued = new Map<string, number>();
@@ -757,11 +759,45 @@ export async function returnableQtyForIssue(
     if (!l.productId) continue;
     issued.set(l.productId, (issued.get(l.productId) ?? 0) + Number(l.qty));
   }
+  // HF-INV-1 ▸ R3.6 (i): ใบเบิกต้นทางต้องอยู่สถานะ "ออกแล้ว" — ร่าง (ยังไม่ตัดสต็อก) / ยกเลิกแล้ว ⇒ คืนไม่ได้เลย ◂
+  if (issue?.status !== "ISSUED") return new Map([...issued.keys()].map((id): [string, number] => [id, 0]));
+
+  // HF-INV-1 ▸ R3.6 (ii): ใบคืนที่ VOIDED — ตัดสินจาก "สต็อกที่คืนยังอยู่ไหม" ไม่ใช่สถานะเอกสาร
+  //   ผูกคลัง: Σ movement ของใบคืนนั้น (refType AccountDocument · refId = ใบคืน) ต่อสินค้าในคลัง — มีรายการกลับ (OUT ผูกใบเดียวกัน) = หักออก
+  //   ไม่ผูกคลัง: ไม่มีบันทึกการเดินยอดให้ดู และการยกเลิกเอกสาร (account/service voidDocument) ไม่แตะ qtyOnHand เลย
+  //     ⇒ นับว่ายังอยู่ (ทางปลอดภัย: ปฏิเสธการคืนซ้ำ ไม่ปล่อยให้สต็อกงอก) — แก้จริง = ใบงานแยก (void ต้องกลับสต็อก) ◂
+  const voided = returns.filter((r) => r.status === "VOIDED");
+  const standing = new Map<string, number>(); // `${returnId}|${itemId}` → จำนวนที่คืนเข้าคลังแล้วยังไม่ถูกกลับ
+  const itemOfProduct = new Map<string, string | null>();
+  if (voided.length > 0) {
+    const pids = [...new Set(voided.flatMap((r) => r.lines.map((l) => l.productId).filter((x): x is string => !!x)))];
+    for (const p of await db.accountProduct.findMany({ where: { id: { in: pids }, tenantId, systemId }, select: { id: true, invItemId: true } })) {
+      itemOfProduct.set(p.id, p.invItemId);
+    }
+    const mvs = await db.invMovement.findMany({
+      where: { tenantId, refType: "AccountDocument", refId: { in: voided.map((r) => r.id) } },
+      select: { refId: true, itemId: true, qtyDelta: true },
+    });
+    for (const m of mvs) {
+      const k = `${m.refId}|${m.itemId}`;
+      standing.set(k, (standing.get(k) ?? 0) + m.qtyDelta);
+    }
+  }
   const returned = new Map<string, number>();
   for (const r of returns) {
     for (const l of r.lines) {
       if (!l.productId) continue;
-      returned.set(l.productId, (returned.get(l.productId) ?? 0) + Number(l.qty));
+      let q = Number(l.qty);
+      if (r.status === "VOIDED") {
+        const itemId = itemOfProduct.get(l.productId);
+        if (itemId) {
+          const k = `${r.id}|${itemId}`;
+          const left = Math.max(0, standing.get(k) ?? 0);
+          q = Math.min(q, left);
+          standing.set(k, left - q);
+        }
+      }
+      returned.set(l.productId, (returned.get(l.productId) ?? 0) + q);
     }
   }
   const out = new Map<string, number>();
@@ -836,12 +872,21 @@ async function applyGoodsDocInTx(
   // 🔴 HF-INV-1 R2.3: ใบคืนที่อ้างอิงใบเบิก (RPR→PRR) — ล็อกแถวใบเบิกต้นทาง "ก่อน" ล็อกสินค้า ⇒ ใบคืนของใบเบิกเดียวกัน
   //    เรียงคิวกันทุกกรณี รวมสินค้าที่ไม่ผูกคลัง (ไม่มี InvItem ให้ล็อก) · ลำดับ ใบเบิก → สินค้า ตรงกับตอนอนุมัติใบเบิก
   //    (อัปเดตแถวใบเบิกก่อนตัดสต็อก) จึงไม่วงล็อกกัน · ตัวตรวจเพดานย้ายไปหลังล็อกสินค้าด้านล่าง
+  //    HF-INV-1 ▸ R3.1: FOR NO KEY UPDATE — ใบคืนยังเรียงคิวกันเหมือนเดิม แต่ไม่ชนกับ FOR KEY SHARE ของ FK insert ที่อ้างแถวใบเบิก
+  //    R3.6 (i): ใบเบิกต้นทางที่ยังเป็นร่าง/ถูกยกเลิก ⇒ ปฏิเสธพร้อมเหตุ (อ่านสถานะ "หลัง" ล็อก · ไม่พบใบ = ตัวตรวจเพดานด้านล่างจัดการเหมือนเดิม) ◂
   const capIssueId = docType === "GOODS_ISSUE_RETURN" && input.sourceDocId ? input.sourceDocId : null;
   if (capIssueId) {
-    await tx.$queryRaw`
-      SELECT "id" FROM "AccountDocument"
+    const [src] = await tx.$queryRaw<{ status: string; docType: string }[]>`
+      SELECT "status"::text AS "status", "docType"::text AS "docType" FROM "AccountDocument"
       WHERE "id" = ${capIssueId} AND "tenantId" = ${tenantId} AND "systemId" = ${systemId}
-      FOR UPDATE`;
+      FOR NO KEY UPDATE`;
+    if (src?.docType === "GOODS_ISSUE" && src.status !== "ISSUED") {
+      throw new Error(
+        src.status === "DRAFT"
+          ? "ใบเบิกต้นทางยังเป็นร่าง (ยังไม่ได้ตัดสต็อก) — อนุมัติใบเบิกก่อน จึงจะทำใบคืนอ้างอิงใบนี้ได้"
+          : "ใบเบิกต้นทางถูกยกเลิกแล้ว — ทำใบคืนอ้างอิงใบเบิกนี้ไม่ได้",
+      );
+    }
   }
 
   // ── สินค้าที่ผูกคลัง → ความจริงอยู่ที่ InvItem ──
@@ -910,6 +955,15 @@ async function applyGoodsDocInTx(
     }
   }
 
+  // HF-INV-1 ▸ R3.4: ราคาซื้อของสินค้าไม่ผูกคลังอ่าน "หลัง" คำสั่งเปลี่ยนยอดด้านบน (ซึ่งถือล็อกแถวไว้แล้ว) — เดิมใช้ค่าที่อ่านก่อนล็อก
+  //    ⇒ ใบปรับต้นทุนที่ commit ระหว่างนั้นถูกข้าม (ใบปรับใช้ยอดก่อนเบิก แต่ใบเบิกใช้ต้นทุนก่อนปรับ = สองใบขัดกัน) ◂
+  const unlinkedIds = [...deltaById.keys()].filter((id) => !itemByProductId.has(id));
+  const buyPriceNow = new Map<string, number | null>(
+    unlinkedIds.length > 0
+      ? (await tx.accountProduct.findMany({ where: { id: { in: unlinkedIds }, tenantId, systemId }, select: { id: true, buyPrice: true } })).map((r): [string, number | null] => [r.id, r.buyPrice])
+      : [],
+  );
+
   // ── เดินสต็อกจริงต่อบรรทัด + เก็บต้นทุนที่ใช้ลงบัญชี ──
   const balanceByItem = new Map<string, number>();
   for (const line of lines) {
@@ -940,8 +994,8 @@ async function applyGoodsDocInTx(
       balanceByItem.set(it.id, mv.balanceAfter);
       unitCost = mv.costSatang;
     } else {
-      // ไม่ผูกคลัง = ไม่มีต้นทุนถัวเฉลี่ยของจริง → ใช้ "ราคาซื้อ/หน่วย" ของสินค้าเป็นตัวแทน
-      unitCost = p.buyPrice ?? 0;
+      // ไม่ผูกคลัง = ไม่มีต้นทุนถัวเฉลี่ยของจริง → ใช้ "ราคาซื้อ/หน่วย" ของสินค้าเป็นตัวแทน (HF-INV-1 ▸ R3.4: ค่าหลังล็อก ◂)
+      unitCost = (buyPriceNow.has(p.id) ? buyPriceNow.get(p.id) : p.buyPrice) ?? 0;
     }
     costTotal += Math.round(unitCost * qty);
     await tx.accountDocumentLine.update({
@@ -1245,6 +1299,19 @@ export async function createCostAdjustment(input: {
       let oldCost = p.buyPrice ?? 0;
       let qty = Number(p.qtyOnHand);
       let invCtx: { tenantId: string; systemId: string } | null = null;
+      if (!p.invItemId) {
+        // HF-INV-1 ▸ R3.4: ไม่ผูกคลัง — ล็อกแถวสินค้าบัญชี (FOR NO KEY UPDATE · ขอบเขตร้าน/ระบบ) แล้วอ่านยอด/ราคาซื้อ "หลัง" ล็อก
+        //    เดิมอ่านก่อนล็อก ⇒ ใบปรับ 2 ใบพร้อมกัน (100→200 · 100→300 ที่คงเหลือ 10) ลง GL รวม 3000 ทั้งที่มูลค่าเปลี่ยนจริง 2000
+        //    ลำดับล็อกเดียวกับใบเบิก/ตัดชุด/ยอดยกมา (แถวสินค้าบัญชีแถวเดียว) จึงไม่เพิ่มวงล็อก ◂
+        const [row] = await tx.$queryRaw<{ qtyOnHand: unknown; buyPrice: number | null }[]>`
+          SELECT "qtyOnHand", "buyPrice" FROM "AccountProduct"
+          WHERE "id" = ${p.id} AND "tenantId" = ${input.tenantId} AND "systemId" = ${input.systemId}
+          FOR NO KEY UPDATE`;
+        if (row) {
+          oldCost = row.buyPrice ?? 0;
+          qty = Number(row.qtyOnHand);
+        }
+      }
       if (p.invItemId) {
         const invSystemId = await inventorySystemId(input.tenantId);
         if (!invSystemId) throw new Error("สินค้านี้ผูกกับคลังสินค้าไว้ แต่ยังไม่พบระบบคลังสินค้าของกิจการ");

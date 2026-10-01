@@ -1,4 +1,6 @@
 // QC — HF-INV-0: สิทธิ์เข้าหน้าคลัง + id ที่มาจาก client (D14 · D3 + ชนิดเดียวกัน) · oracle-first
+// HF-INV-1 R3.8 (ส่วน 12 + HF-10.1): receivePoAction คืนผล { status, message } แทน throw · กดซ้ำไม่รับซ้ำ/ไม่ขึ้น error
+// HF-INV-1 R3.7 (HF-11.2): sales ต้องมี pos.sale.create ด้วย — ส่วนรายงานที่เหลืออยู่ใน qc-hf-reports-authz.mts
 // ⚠️ standalone-typesafe: โมดูลที่ยังไม่มี (guard.ts) ใช้ dynamic import + `as string` + wide cast
 //
 // สัญญาที่คุม (ต้องแดงบนโค้ดเดิม origin/main 04d2ade9 · เขียวหลังแก้):
@@ -410,7 +412,9 @@ try {
     const onHandBefore = await totalOnHand();
     const r = await run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: po2.id, locationId: locB.id })));
     const st = (await prisma.purchaseOrder.findUnique({ where: { id: po2.id } }))?.status;
-    chk("HF-10.1", "S3: receivePoAction คลังผิด → แจ้งเป็นข้อความไทย (ไม่เงียบ) · PO ยัง ORDERED · สต็อกไม่ขยับ", r.threw && /[ก-๙]/.test(r.msg) && st === "ORDERED" && (await totalOnHand()) === onHandBefore, "throw ไทย/ORDERED", `${r.msg} · ${st}`);
+    // HF-INV-1 R3.8: ผลไม่สำเร็จ "คืนค่า" รูปแบบบ้าน { status: "error", message } (ข้อความที่ throw ถูก Next ปิดบังใน production)
+    const rv = r.value as { status?: string; message?: string } | undefined;
+    chk("HF-10.1", "S3 + R3.8: receivePoAction คลังผิด → คืน { status: \"error\", message ไทย } (ไม่ throw · ไม่เงียบ) · PO ยัง ORDERED · สต็อกไม่ขยับ", !r.threw && rv?.status === "error" && /[ก-๙]/.test(rv?.message ?? "") && st === "ORDERED" && (await totalOnHand()) === onHandBefore, "error ไทย/ORDERED", `${r.threw ? `threw ${r.msg}` : JSON.stringify(rv)} · ${st}`);
     // id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ + ไม่มีอะไรเปลี่ยน
     const img = await svc.addItemImage(ctxA, item.id, { url: "https://example.com/hf.png" });
     const po3 = await proc.createPo(ctxA, { supplierId: supA.id, lines: [{ itemId: item.id, qty: 1, costSatang: 100 }] });
@@ -456,8 +460,10 @@ try {
     const inv1 = await run(() => rAct.runReportAction({ dataset: "inventory" }));
     const inv2 = await run(() => rAct.exportReportCsvAction({ dataset: "inventory" }));
     chk("HF-11.1", "STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย", inv1.threw && inv2.threw && /[ก-๙]/.test(inv1.msg), "throw/throw ไทย", `${inv1.msg} | ${inv2.msg} | ${String(inv2.value ?? "").slice(0, 60)}`);
+    // HF-INV-1 R3.7: ชุดข้อมูล sales ต้องอ่านข้อมูลขายของ POS ได้ (pos.sale.create — กติกาเดียวกับหน้าประวัติบิล) — เดิมพอแค่ reports.report.run
+    asSess(STAFF({ "reports.report.run": true, "pos.sale.create": true }));
     const salesOk = await run(() => rAct.runReportAction({ dataset: "sales" }));
-    chk("HF-11.2", "คู่บวก: STAFF reports.report.run ยังรัน dataset sales ได้", !salesOk.threw, "ผ่าน", salesOk.msg);
+    chk("HF-11.2", "คู่บวก: STAFF reports.report.run + pos.sale.create (ทุกสาขา) รัน dataset sales ได้", !salesOk.threw, "ผ่าน", salesOk.msg);
     asSess(STAFF({ "reports.report.run": true, "inventory.item.read": true }));
     const inv3 = await run(() => rAct.runReportAction({ dataset: "inventory" }));
     chk("HF-11.3", "คู่บวก: STAFF reports.report.run + inventory.item.read → รัน inventory ได้", !inv3.threw && ((inv3.value as { rows?: unknown[] })?.rows?.length ?? 0) > 0, "มีแถว", inv3.msg);
@@ -474,6 +480,35 @@ try {
     chk("HF-11.7", "clampReportTake: 1e9 → EXPORT_CAP · -5 → 1 · NaN/ไม่ส่ง → ค่าเริ่มต้น · 2.7 → 2", typeof clamp === "function" && clamp(1e9, 500) === cap && clamp(-5, 500) === 1 && clamp(Number.NaN, 500) === 500 && clamp(undefined, 500) === 500 && clamp(2.7, 500) === 2, `${cap}/1/500/500/2`, typeof clamp === "function" ? `${clamp(1e9, 500)}/${clamp(-5, 500)}/${clamp(Number.NaN, 500)}/${clamp(undefined, 500)}/${clamp(2.7, 500)}` : "ไม่มี");
     const rsrc = strip(read(resolve(ROOT, "src/lib/modules/reports/service.ts")));
     chk("HF-11.8", "[static] runReport ใช้ clampReportTake กับ take ที่มาจาก client", /clampReportTake\(\s*input\.take/.test(rsrc) && !/input\.take\s*\?\?\s*RAW_CAP/.test(rsrc), "ใช้", "ยังใช้ input.take ดิบ");
+  }
+
+  // ═════════ 12) HF-INV-1 R3.8: receivePoAction คืนผลรูปแบบบ้าน · กดซ้ำไม่รับซ้ำและไม่ขึ้น error ═════════
+  if (pactions) {
+    asSess({});
+    const mkOrdered = async (qtys: number[]) => {
+      const po = await proc.createPo(ctxA, { supplierId: supA.id, lines: qtys.map((q) => ({ itemId: item.id, qty: q, costSatang: 100 })) });
+      await prisma.purchaseOrder.update({ where: { id: po.id }, data: { status: "ORDERED" } });
+      return po.id as string;
+    };
+    const inCount = async (poId: string) => prisma.invMovement.count({ where: { tenantId: tA.id, type: "IN", refType: "PurchaseOrder", refId: poId } });
+    const poOk = await mkOrdered([2]);
+    const before = await totalOnHand();
+    const g = await run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: poOk })));
+    const gv = g.value as { status?: string; message?: string } | undefined;
+    const st = (await prisma.purchaseOrder.findUnique({ where: { id: poOk } }))?.status;
+    chk("HF-12.1", "R3.8: รับของสำเร็จ → คืน { status: \"ok\", message ไทย } · RECEIVED · สต็อก +2", !g.threw && gv?.status === "ok" && /[ก-๙]/.test(gv?.message ?? "") && st === "RECEIVED" && (await totalOnHand()) === (before ?? 0) + 2, "ok/RECEIVED/+2", `${g.threw ? `threw ${g.msg}` : JSON.stringify(gv)} · ${st} · ${before}→${await totalOnHand()}`);
+    const again = await run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: poOk })));
+    const av = again.value as { status?: string } | undefined;
+    chk("HF-12.2", "R3.8: กดรับซ้ำหลังรับแล้ว → ไม่ขึ้น error (status ok) · ไม่รับซ้ำ (IN 1 แถว · สต็อกคงเดิม)", !again.threw && av?.status === "ok" && (await inCount(poOk)) === 1 && (await totalOnHand()) === (before ?? 0) + 2, "ok/1", `${again.threw ? `threw ${again.msg}` : JSON.stringify(av)} · IN ${await inCount(poOk)}`);
+    const poDbl = await mkOrdered([3, 4]);
+    const b2 = await totalOnHand();
+    const both = await Promise.all([0, 1].map(() => run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: poDbl })))));
+    const sts = both.map((x) => (x.threw ? `threw:${x.msg}` : (x.value as { status?: string } | undefined)?.status));
+    chk("HF-12.3", "R3.8: ดับเบิลคลิก (2 คำขอพร้อมกัน) → ทั้งคู่ไม่ขึ้น error · รับครั้งเดียว (IN 2 แถว = 2 บรรทัด · สต็อก +7)", sts.every((x) => x === "ok") && (await inCount(poDbl)) === 2 && (await totalOnHand()) === (b2 ?? 0) + 7, "ok,ok/2/+7", `${sts.join(",")} · IN ${await inCount(poDbl)} · ${b2}→${await totalOnHand()}`);
+    const uiSrc = strip(read(UI_FILE));
+    const formFile = resolve(ROOT, "src/lib/modules/inventory/PoReceiveForm.tsx");
+    const formSrc = strip(read(formFile));
+    chk("HF-12.4", "[static] R3.8: หน้าจัดซื้อไม่ผูก receivePoAction เป็น form action ตรง ๆ (ผลถูกทิ้ง) — ใช้ PoReceiveForm (useActionState + แสดงข้อความ)", !/action=\{\s*receivePoAction\s*\}/.test(uiSrc) && /<PoReceiveForm\b/.test(uiSrc) && /useActionState/.test(formSrc) && /receivePoAction\(/.test(formSrc) && /\.message/.test(formSrc), "PoReceiveForm", `ui direct=${/action=\{\s*receivePoAction\s*\}/.test(uiSrc)} · form ${existsSync(formFile)}`);
   }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 200)}` : String(e));

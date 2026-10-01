@@ -90,13 +90,15 @@ export async function consumeBundleComponentsInTx(
 
   // 🔴 HF-INV-1 R2.1: ส่วนประกอบที่ไม่ผูกคลัง — ล็อกแถวสินค้าตามลำดับ id ก่อนตัดตัวแรก (ชุด [A,B] กับ [B,A]
   //    หรือใบเบิกที่แตะสินค้าเดียวกันพร้อมกัน ไม่วงล็อกกัน) แล้วลดยอดในคำสั่งเดียวด้านล่าง
+  //    HF-INV-1 ▸ R3.1: FOR NO KEY UPDATE — FOR UPDATE ชนกับ FOR KEY SHARE ของใบเบิกที่เพิ่งแทรกบรรทัดอ้างสินค้านี้ แล้วรอสินค้าที่เราถือ
+  //       = deadlock (40P01 · ทาง POS→บัญชีไม่ตัดซ้ำให้) · NO KEY UPDATE ยังเรียงคิวผู้ลดยอดด้วยกันเหมือนเดิม ◂
   const unlinkedIds = [...new Set(components.filter((c) => !c.invItemId && c.type !== "SERVICE").map((c) => c.id))].sort();
   if (unlinkedIds.length > 0) {
     await tx.$queryRaw`
       SELECT "id" FROM "AccountProduct"
       WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" = ANY(${unlinkedIds}::text[])
       ORDER BY "id" COLLATE "C"
-      FOR UPDATE`;
+      FOR NO KEY UPDATE`;
   }
 
   let consumed = 0;
