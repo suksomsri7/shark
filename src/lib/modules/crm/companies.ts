@@ -94,6 +94,7 @@ import {
   type MergeChoiceField,
 } from "./companies-shared";
 import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
+import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
 
 export { COMPANY_IMPORT_MAX_ROWS, COMPANY_IMPORT_MAX_BYTES, CompaniesError };
 
@@ -1289,6 +1290,8 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
   const documents: CompanyDocRow[] = docs
     .filter((d) => d.systemId === acc?.systemId)
     .map((d) => ({ id: d.id, docNo: d.docNo, docType: d.docType, docLabel: d.docLabel, status: d.status, statusLabel: d.statusLabel, totalSatang: d.totalSatang, issuedAt: d.issuedAt, href: d.href }));
+  // CRM C5.5 ▸ (fix3b r2 · รีวิว RV-1) การ์ด "ไทม์ไลน์รวม" ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" แบบเดียวกับบล็อกกิจกรรม (คิวรีเดียวต่อหน้า · ร้าน+ระบบเดียวกัน) ◂
+  const unverified = await unverifiedEmailRefs(ctx, activities);
   const timeline: CompanyTimelineItem[] = activities.map((t) => ({
     id: t.id,
     at: t.startAt ?? t.doneAt ?? t.createdAt,
@@ -1298,6 +1301,7 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
     contactId: t.contactId,
     contactName: t.contact?.name ?? null,
     dealId: t.dealId,
+    ...(unverified.has(t.id) ? { unverifiedFrom: true as const } : {}),
   }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   const open = agg.find((g) => g.kind === "OPEN");

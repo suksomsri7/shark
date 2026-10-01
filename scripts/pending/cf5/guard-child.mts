@@ -41,7 +41,7 @@ await errOf(() => svc.setEndpointActive({ tenantId }, endpointId, false, actor))
 out.allEvents = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, [], actor));
 out.crm = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["crm.deal.won"], actor));
 out.customRecord = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["custom.record.created"], actor));
-out.team = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["team.member.added"], actor));
+out.team = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["team.updated"], actor)); // r2: a REAL team.* event (RV-5 refuses unknown names once the guard passes)
 out.mixed = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["member.created", "crm.deal.won"], actor));
 out.createAll = await errOf(() => svc.createEndpoint({ tenantId }, { url: `https://example.com/qc-cf5-${mode}`, events: [], by: actor }, { lookup: async () => "93.184.216.34" }));
 out.member = await errOf(() => svc.setEndpointEvents({ tenantId }, endpointId, ["member.created"], actor));

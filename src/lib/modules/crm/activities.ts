@@ -83,6 +83,7 @@ export {
 
 import { ERASED_CONTACT_WRITE_MSG, erasedContactIds, isErasedContact } from "./erased"; // CRM C3.9-fix ▸ H7 ◂
 import { emailRoutingUnverified } from "./emails-shared"; // CRM C5.5-fix3b ▸ R2b-3 ◂
+import { isInboundEmailActivity } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ ธงเฉพาะแถว EMAIL ขาเข้า ◂
 import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 const kanbanLinks = () => import("@/lib/modules/kanban/links");
 const memberFacade = () => import("@/lib/modules/member");
@@ -858,7 +859,7 @@ async function enrich(ctx: ActivitiesCtx, a: MemberActor, rows: CrmActivity[]): 
   const companyIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
   // CRM C5.5 ▸ (fix3b · รีวิว R2b-3) กิจกรรม EMAIL ขาเข้าที่ระบบเขียน (sourceRef = id ของ CrmEmailMessage) ⇒ อ่านธง "ไม่ยืนยันผู้ส่ง" จากจดหมายฉบับนั้น
   //   (fix2 เก็บไว้ที่ `routing` — ไม่มีคอลัมน์ใหม่) · จำกัดร้าน/ระบบเดียวกับแถวกิจกรรม · คืนแค่ธงของแถวที่ผู้ดูเห็นอยู่แล้ว ◂
-  const emailIds = [...new Set(rows.filter((r) => r.type === "EMAIL" && r.source === "EMAIL" && r.direction === "IN" && !!r.sourceRef).map((r) => r.sourceRef!))];
+  const emailIds = [...new Set(rows.filter(isInboundEmailActivity).map((r) => r.sourceRef!))];
   const [deals, contacts, cos, people, mails] = await Promise.all([
     dealIds.length ? prisma.crmDeal.findMany({ where: { AND: [await dealWhere(ctx, a), { id: { in: dealIds } }] }, select: { id: true, title: true } }) : Promise.resolve([]),
     contactIds.length ? prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: contactIds } }] }, select: { id: true, name: true } }) : Promise.resolve([]),
@@ -876,7 +877,7 @@ async function enrich(ctx: ActivitiesCtx, a: MemberActor, rows: CrmActivity[]): 
     contactName: r.contactId ? (km.get(r.contactId) ?? null) : null,
     companyName: r.companyId ? (cm.get(r.companyId) ?? null) : null,
     ownerName: r.ownerUserId ? (people.get(r.ownerUserId) ?? null) : null,
-    ...(r.sourceRef && unverified.has(r.sourceRef) ? { unverifiedFrom: true as const } : {}),
+    ...(isInboundEmailActivity(r) && unverified.has(r.sourceRef!) ? { unverifiedFrom: true as const } : {}), // r2: แถวอื่นที่ sourceRef ตรงกันไม่ได้ธง
   }));
 }
 

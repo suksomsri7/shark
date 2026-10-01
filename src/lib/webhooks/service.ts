@@ -17,7 +17,7 @@ import type { LookupAddress } from "node:dns";
 import type { Prisma } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { privateTargetsAllowed } from "./private-targets";
-import { WEBHOOK_GUARDED_FAMILIES, type WebhookGuardedFamily } from "./labels"; // CRM C5.5-fix3b ▸ F4 ◂
+import { WEBHOOK_EVENTS, WEBHOOK_GUARDED_FAMILIES, type WebhookGuardedFamily } from "./labels"; // CRM C5.5-fix3b ▸ F4 · r2 RV-5 ◂
 
 export type Ctx = { tenantId: string };
 /**
@@ -427,6 +427,29 @@ export function webhookGuardedFamiliesOf(events: readonly string[]): WebhookGuar
 export function webhookEventsNeedGuard(events: readonly string[]): boolean {
   return webhookGuardedFamiliesOf(events).length > 0;
 }
+// CRM C5.5 ▸ (fix3b r2 · รีวิว RV-5) ชื่อเหตุการณ์ที่ "ผู้ทำ" ส่งมา (`by` มีค่า = ทุกประตูใน src/) ต้องเป็นชื่อจริงในทะเบียน `WEBHOOK_EVENTS` ตรงตัว
+//   หลังตัดช่องว่างหัวท้าย — เดิมเก็บ " crm.deal.won" / "CRM.deal.won" / "\tcrm.deal.won" ตามที่ส่งมา (พ้นตัวกันครอบครัว แต่ไม่มีวันได้รับอะไร
+//   เพราะตัวส่งเทียบชื่อตรงตัว = แถวตาย) · ประตูเดิมกรอง/ตอบ 422 ก่อนถึงบริการอยู่แล้ว ⇒ นี่คือด่านสุดท้ายของบริการ (422 ข้อความไทย)
+//   · ลำดับ: ตัดช่องว่าง → ตัวกันเหตุการณ์ (ครอบครัวที่ขาดตัวกัน = ปิดก่อน เหมือน fix3a/F4) → ชื่อต้องรู้จัก
+//   · ผู้เรียกที่ไม่มี `by` (สคริปต์/ข้อสอบเก่า) เก็บตามเดิมทุกไบต์ ◂
+const KNOWN_WEBHOOK_EVENTS = new Set(WEBHOOK_EVENTS.map((e) => e.value));
+export class WebhookEventNameError extends Error {
+  readonly status = 422;
+  constructor(message: string) {
+    super(message);
+    this.name = "WebhookEventNameError";
+  }
+}
+function cleanEventList(events: readonly unknown[], by: WebhookAuthor | undefined): string[] {
+  const raw = events.filter((e): e is string => typeof e === "string" && e.trim() !== "");
+  if (by === undefined) return raw;
+  return [...new Set(raw.map((e) => e.trim()))];
+}
+function assertKnownEvents(events: readonly string[], by: WebhookAuthor | undefined): void {
+  if (by === undefined) return;
+  const bad = events.find((e) => !KNOWN_WEBHOOK_EVENTS.has(e));
+  if (bad !== undefined) throw new WebhookEventNameError(`ไม่รู้จักเหตุการณ์ “${bad.slice(0, 60)}” — เลือกจากรายการเหตุการณ์ของระบบ (ชื่อต้องตรงตัว ตัวพิมพ์เล็ก)`);
+}
 async function runEventGuards(tenantId: string, by: WebhookAuthor | undefined, events: readonly string[]): Promise<void> {
   if (by === undefined) return;
   await import("@/lib/webhook-guards");
@@ -468,10 +491,9 @@ export async function createEndpoint(
   const problem = await webhookSaveProblem(url, deps);
   if (problem) throw new Error(problem);
   const secret = randomBytes(24).toString("hex"); // 48 ตัวอักษร
-  const events = Array.isArray(input.events)
-    ? input.events.filter((e) => typeof e === "string" && e.trim() !== "")
-    : [];
+  const events = Array.isArray(input.events) ? cleanEventList(input.events, input.by) : []; // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   await runEventGuards(ctx.tenantId, input.by, events); // CRM C5.5 ▸ ตัวกันเหตุการณ์ (รายการว่าง = ทุกเหตุการณ์) ◂
+  assertKnownEvents(events, input.by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   const ep = await tenantDb(ctx).webhookEndpoint.create({
     data: { tenantId: ctx.tenantId, url, secret, eventsJson: events as Prisma.InputJsonValue },
   });
@@ -502,8 +524,9 @@ export async function setEndpointActive(ctx: Ctx, id: string, active: boolean, b
  * รายการว่าง = รับทุกเหตุการณ์ (กติกาเดียวกับตอนสร้าง · ดู dispatchWebhooks)
  */
 export async function setEndpointEvents(ctx: Ctx, id: string, events: string[], by: WebhookAuthor) {
-  const clean = events.filter((e) => typeof e === "string" && e.trim() !== "");
+  const clean = cleanEventList(Array.isArray(events) ? events : [], by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   await runEventGuards(ctx.tenantId, by, clean); // CRM C5.5 ▸ ตัวกันเหตุการณ์ ◂
+  assertKnownEvents(clean, by); // CRM C5.5-fix3b r2 ▸ RV-5 ◂
   return tenantDb(ctx).webhookEndpoint.update({
     where: { id },
     data: { eventsJson: clean as Prisma.InputJsonValue },

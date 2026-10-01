@@ -359,6 +359,12 @@ export default async function Contact360Page({
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="break-words">{t.title}</span>
+                      {/* CRM C5.5-fix3b r2 ▸ รีวิว RV-1: ป้ายเดียวกับบล็อกกิจกรรม/หน้าเธรด — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+                      {t.unverifiedFrom && (
+                        <span className="w-fit rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                          ไม่ยืนยันผู้ส่ง
+                        </span>
+                      )}
                       <span className="text-xs text-[color:var(--color-muted)]">
                         {relativeThai(t.at, now)}
                         {t.done ? " · เสร็จแล้ว" : ""}

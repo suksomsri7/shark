@@ -1,0 +1,34 @@
+
+── RV1 ──
+(node:1637979) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [RV1-premise] inbound EMAIL activities on the contact: 2 (want 2) · all carry the company: true · ["EMAIL/IN","EMAIL/IN","MANUAL/-"]
+  ❌ [RV1-contact-360] getContact360().timeline: forged undefined · authenticated undefined · NOTE with the same sourceRef undefined (want true / undefined / undefined)
+  ❌ [RV1-company-360] getCompany360().timeline: forged undefined · authenticated undefined · NOTE undefined
+  ❌ [RV1-rest] GET /contacts/{id} → 200 flag undefined · GET /companies/{id} → 200 flag undefined  
+  ❌ [RV1-pages-render] contact page badge on t.unverifiedFrom: false · company page: false
+  ❌ [RV1-ERR] Error: ENOENT: no such file or directory, open 'src/lib/modules/crm/email-flags.ts'
+    at readFileSync (node:fs:448:20)
+    at <anonymous> (/root/projects/shark-crm-cd2/scripts/pending/cf5/probe-cf5-r2.mts:93:16)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async sub (/root/projects/shark-crm-cd2/scripts/pending/cf5/probe-cf5-r2.mts:27:5)
+    at async <anonymous> (/root/projects/shark-crm-cd2/scripts/pending/cf5/probe-cf5-r2.mts:37:3)
+
+── RV5 ──
+  ❌ [RV5-trimmed] OWNER, [" crm.deal.won", "\tmember.created", "crm.deal.won"] → ok · stored [" crm.deal.won","\tmember.created","crm.deal.won"] (want trimmed + deduped)
+  ❌ [RV5-unknown-refused] ["CRM.deal.won"] → ok · [member.created, member.nope] → ok · stored unchanged ["member.created","member.nope"]
+  ❌ [RV5-create] create ["CRM.deal.won"] → ok (row: true) · create [" crm.deal.won "] → ok stored [" crm.deal.won "]
+  ❌ [RV5-guard-first] MANAGER (no crm.api.manage), [" crm.deal.won"] → ok (the trimmed name reaches the CRM guard)
+  ✅ [RV5-authorless-unchanged] author-less script call [" legacy.script.event"] → ok · stored [" legacy.script.event"] (byte-for-byte as before)
+  ✅ [CLEAN-113vlq] tenant rows left=0
+  ✅ [CLEAN-bc1np5] tenant rows left=0
+
+🔴 probe-cf5-r2: 4/13
+JSON_SUMMARY {"total":13,"passed":4,"findings":["RV1-contact-360","RV1-company-360","RV1-rest","RV1-pages-render","RV1-ERR","RV5-trimmed","RV5-unknown-refused","RV5-create","RV5-guard-first"]}

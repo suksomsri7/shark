@@ -197,6 +197,8 @@ export type CompanyTimelineItem = {
   contactId: string | null;
   contactName: string | null;
   dealId: string | null;
+  /** CRM C5.5 ▸ (fix3b r2 · RV-1) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ ⇒ ป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom?: true;
 };
 
 export type CompanyRef = { id: string; name: string };

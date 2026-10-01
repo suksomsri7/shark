@@ -117,3 +117,90 @@ None. No suite pins a hash of a file I changed. Every suite that reads these fil
 
 ## Out of scope (left as debt per the card)
 Stale tab keys (R2b-5), flood cost (R2b-6), sub-domain mail (R2b-4), hashtext. These are not taken.
+
+---
+
+# Round 2 (review 5e90b492: RV-1 MED, RV-5 INFO) · builder · 2026-10-01 17:00–17:48 UTC
+
+Probe `scripts/pending/cf5/probe-cf5-r2.mts` (QC2, own tenants `qc-cf5-q-*`, swept).
+- RED at 17:23 UTC with the r2 src set aside (restored byte-for-byte, sha256 11/11): **4/13** (`probe-cf5-r2.red.log`).
+- GREEN **14/14** in the regression run (`probe-cf5-r2.green.log`). One check was added after RED: `RV1-activity-block-note`, see below.
+- Runner `scripts/pending/cf5/run-cf5-r2.sh` · summary `regress-r2.summary`.
+
+Not taken, per the controller: RV-2 (no legacy-key bridge, registered as a pre-launch check) and RV-3 (contacts `displayOf` UTC text, registered as debt).
+
+## RV-1 · the contact 360 "🕒 ไทม์ไลน์" and company 360 "ไทม์ไลน์รวม" cards now carry the flag. Fixed.
+- **Shared helper.** New leaf `src/lib/modules/crm/email-flags.ts` (imports only `./db` + `./emails-shared`). Putting the helper in `activities.ts` was not
+  possible: `activities` already imports `companies`, so `companies → activities` would create an import cycle.
+  - `isInboundEmailActivity(row)`: `type EMAIL ∧ source EMAIL ∧ direction IN ∧ sourceRef`.
+  - `unverifiedEmailRefs(ctx, rows)`: one `crmEmailMessage.findMany` scoped by `tenantId + systemId` over the page's inbound EMAIL rows, read
+    through the single reader `emailRoutingUnverified`. It returns the **activity ids** to flag.
+- **360 builders.** `contacts.ts:1466-1474` (`getContact360In`) and `companies.ts:1294-1304` (`getCompany360`) call the helper once each, with no N+1.
+  The flagged items get `unverifiedFrom: true` (optional field). Types: `contacts-shared.ts` `Contact360TimelineItem`,
+  `companies-shared.ts` `CompanyTimelineItem`.
+- **Pages.** `contacts/[contactId]/page.tsx` and `companies/[companyId]/page.tsx` render the same amber "ไม่ยืนยันผู้ส่ง" span, with the same tooltip,
+  under the title.
+- **REST.** `contacts.get` (`GET /contacts/{id}`) and `companies.get` (`GET /companies/{id}`) return the 360 objects, so they carry the flag.
+  - Their summaries, and the `activities.list` summary, now explain `unverifiedFrom`.
+  - `docs/api/CRM-API.md` was regenerated (6 lines), and `--check` is green (123 op).
+  - The generator also writes the gitignored `.claude/skills/shark-crm-api/references/endpoints.md`. That directory did not exist in this worktree, so I
+    removed it again.
+- **Round-1 hardening found by the new probe.**
+  - `activities.enrich` flagged any row whose `sourceRef` equalled a flagged mail id. A NOTE logged with that sourceRef (e.g. via REST `sourceRef`) was
+    flagged too.
+  - Now only the inbound EMAIL row is flagged (`activities.ts:880` uses `isInboundEmailActivity`).
+  - The query text in `activities.ts` is unchanged, so the reviewer's pinned `R23r-one-query` stays green.
+- **Other timeline builders checked.**
+  - Deal 360 (`deals.ts:2148`) lists `dealId` activities, and inbound mail activities are written with `dealId: null` (`emails.ts:2571`).
+  - The custom-record timeline (`objects.timelineFor`) lists `customRecordId` rows, which inbound mail never has.
+  - Mobile `todayTasks` lists the user's own tasks. `dealDetail` is deal-scoped.
+  - So there is no other surface. Not a timeline, and not changed: the AI assist briefs (`ai-bridges.ts:324,352`) pass contact/company activity titles
+    to the model without the flag.
+- **Probe ids.**
+  - Went red → green: `RV1-contact-360`, `RV1-company-360`, `RV1-rest`, `RV1-pages-render`, `RV1-one-reader`.
+  - `RV1-premise` ✅→✅.
+  - `RV1-activity-block-note` was added after the RED run; it was red on the first green attempt and is fixed by the hardening above.
+  - The reviewer's `R23r-360-timeline` is green: rv-cf5 **32/32**.
+- **Note for REST users.** An API key without `crm.activity.read` sees an empty 360 timeline. This is unchanged behaviour; the probe key needed that scope.
+
+## RV-5 · authored webhook writes trim event names and refuse unknown ones. Done (fits cleanly).
+- **Where.** `src/lib/webhooks/service.ts:431-452`, used by `createEndpoint` (`:494-496`) and `setEndpointEvents` (`:527-529`).
+- **Behaviour when an author (`by`) is given**, which is every `src/` door:
+  1. Names are trimmed and de-duplicated.
+  2. The family guard then runs. Its message wins, so fail-closed behaviour and the guard's 403 are unchanged.
+  3. Any name that is not exactly in `WEBHOOK_EVENTS` is then refused with `WebhookEventNameError` (status 422, Thai message). REST `mapError` honours the
+     declared status.
+- **Why after the guard.** probe-cf3 `R22-empty-registry-fails-closed` and the reviewer's `F4r-wrong-name-fails-closed` expect the
+  "ยังไม่พร้อม" refusal for non-existent CRM names, e.g. `team.member.added` and `crm.nope.unknown`.
+- **Author-less script calls are byte-for-byte unchanged.** `qc-member-fix-s4` stores a made-up probe event this way.
+- **Doors already validate before the service** (account REST 422, member REST list, CRM settings check, platform filter), so no UI/REST behaviour changes.
+- **Own probe change.** `guard-child.mts` used the non-existent `team.member.added` in the guard-present control. It now uses the real `team.updated`.
+- **Probe.** `RV5-trimmed`, `RV5-unknown-refused`, `RV5-create`, `RV5-guard-first`: ❌→✅. `RV5-authorless-unchanged`: ✅→✅.
+
+## Round 2 verification (`regress-r2.summary`, 17:26–17:48 UTC)
+| job | result |
+|---|---|
+| probe-cf5 | 22/22 |
+| probe-cf5-r2 | 14/14 |
+| reviewer rv-cf5 | **32/32** |
+| probe-cf3 | 27/27 |
+| qc-webhook | 15/15 |
+| qc-account-api-webhooks | 22/22 |
+| qc-crm-c1.10 | 66/66 |
+| qc-crm-c1.6 | 79/79 |
+| qc-crm-c3.4 | 53/53 |
+| qc-crm-c1.3 (company 360) | 89/89 |
+| qc-crm-c1.4 (contact 360) | 110/110 |
+| qc-crm-c2.1 | 83/84. The only ❌ is S6.2, the child `qc-member-m3.3` `M3.3-ERR` (no member seed on QC2). It is identical at 7d5dc93f (round 1 proof). |
+| docs-crm | ✅ after the regeneration |
+| docs-account | ✅ |
+| docs-member, docs-kanban | ❌ Only because the gitignored skill `endpoints.md` is missing from this worktree, as in round 1. |
+| typecheck | exit 0 |
+| fitness (QC2 env / no env) | 36/36 · 36/36 |
+
+ORACLE-EDITs: none. The reviewer's files were not edited.
+
+**Not run.**
+- `qc-crm-c51fix-equiv`: it needs an old/new two-tree compare run.
+- `qc-crm-perf`: it is a perf budget suite.
+- No browser render of the two 360 cards. The pages are covered by a source check (`RV1-pages-render`) plus the data checks.

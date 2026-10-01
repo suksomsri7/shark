@@ -61,7 +61,7 @@ const get = defineCrmOp({
   path: "/companies/{id}",
   kind: "read",
   action: "crm.company.read",
-  summary: "One company in full: details, contacts and their roles, deals, documents, custom fields and timeline.",
+  summary: "One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "บริษัท 360",
   tool: { name: "crm_company_360", hint: "Use to read everything about one company (people, open deals, money owed) before answering." },
   test: "C1.10-X1.1",

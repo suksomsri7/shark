@@ -56,6 +56,7 @@ import { canAdvanceLifecycle } from "./rules";
 import * as deals from "./deals";
 import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
+import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
 import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
   CONTACT_BULK_MAX,
@@ -96,6 +97,7 @@ import {
   type Contact360,
   type Contact360Company,
   type Contact360Section,
+  type Contact360TimelineItem,
   type ContactDto,
   type ContactLeadStatus,
   type ContactLifecycle,
@@ -1460,7 +1462,17 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
     .filter((l) => coRefs.has(l.companyId))
     .map((l) => ({ id: l.companyId, name: coRefs.get(l.companyId) ?? "", role: l.role, jobTitle: l.jobTitle, isPrimary: l.isPrimary, current: !l.endedAt }));
   const primary = (row.companyId ? companiesOut.find((c) => c.id === row.companyId && c.current) : null) ?? companiesOut.find((c) => c.current) ?? null;
-  const timeline = activities.map((t) => ({ id: t.id, at: t.startAt ?? t.doneAt ?? t.createdAt, type: t.type, title: t.title, source: t.source, done: !!t.doneAt }));
+  // CRM C5.5 ▸ (fix3b r2 · รีวิว RV-1) การ์ด "🕒 ไทม์ไลน์" ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" แบบเดียวกับบล็อกกิจกรรม (คิวรีเดียวต่อหน้า · ร้าน+ระบบเดียวกัน) ◂
+  const unverified = await unverifiedEmailRefs(ctx, activities);
+  const timeline: Contact360TimelineItem[] = activities.map((t) => ({
+    id: t.id,
+    at: t.startAt ?? t.doneAt ?? t.createdAt,
+    type: t.type,
+    title: t.title,
+    source: t.source,
+    done: !!t.doneAt,
+    ...(unverified.has(t.id) ? { unverifiedFrom: true as const } : {}),
+  }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   return {
     contact: toDto(row),

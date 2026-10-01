@@ -113,7 +113,7 @@ const get = defineCrmOp({
   path: "/contacts/{id}",
   kind: "read",
   action: "crm.contact.read",
-  summary: "One contact in full: details, owner, company, deals, custom fields, recent timeline and consent.",
+  summary: "One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "ผู้ติดต่อ 360",
   tool: { name: "crm_contact_360", hint: "Use after crm_search to read everything about one contact before answering." },
   test: "C1.10-X8.3",

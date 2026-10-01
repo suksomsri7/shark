@@ -224,7 +224,16 @@ export type Contact360Section = { key: string; label: string; sensitive: boolean
 export type Contact360Member = { customerId: string; systemId: string | null; memberCode: string | null; name: string | null; tierName: string | null; phoneMasked: string | null };
 export type Contact360Company = { id: string; name: string; role: string; jobTitle: string | null; isPrimary: boolean; current: boolean };
 export type Contact360Deal = { id: string; title: string; stageName: string; kind: "OPEN" | "WON" | "LOST"; valueSatang: number; expectedCloseAt: Date | null; pipelineName: string };
-export type Contact360TimelineItem = { id: string; at: Date; type: string; title: string; source: string; done: boolean };
+export type Contact360TimelineItem = {
+  id: string;
+  at: Date;
+  type: string;
+  title: string;
+  source: string;
+  done: boolean;
+  /** CRM C5.5 ▸ (fix3b r2 · RV-1) มีเฉพาะกิจกรรม EMAIL ขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ ⇒ ป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom?: true;
+};
 
 export type Contact360 = {
   contact: ContactDto;
