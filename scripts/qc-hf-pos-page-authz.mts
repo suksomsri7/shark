@@ -33,7 +33,7 @@ type RegView<T> = { ok: false } | { ok: true; units: T[]; active: T | null };
 type Access = {
   posSalesScope: (m: M | null) => Scope | null;
   posScopeUnitIds: (s: Scope) => string[] | undefined;
-  posCanSetTenantPrice: (m: M | null) => boolean;
+  posCanSetTenantPrice: (m: M | null, linkedUnitIds: string[]) => boolean;
   posRegisterView: <T extends { id: string }>(m: M | null, linked: T[], unitParam?: string) => RegView<T>;
 };
 let access: Access | null = null;
@@ -165,18 +165,39 @@ try {
 
   // ── 3) หน้าสินค้า/ราคา + ตั้งราคา (ราคาใช้ทั้งร้าน ⇒ ต้องเข้าได้ทุกสาขา) ──
   console.log("\n── /pos/products + setItemSalePriceAction ──");
-  const can = (m: M) => (access ? access.posCanSetTenantPrice(m) : null);
+  // round 2: "ทุกสาขา" = OWNER · unitAccess "*" · หรือเข้าได้ครบทุกสาขา (ไม่ archived) ที่ผูก POS นี้
+  const linkedAB = (await reg.posUnits(tenantId, posSys.id)).map((u) => u.id);
+  const can = (m: M, linked: string[] = linkedAB) => (access ? access.posCanSetTenantPrice(m, linked) : null);
   chk("P-1", "OWNER ตั้งราคาได้ (control)", can(P.owner) === true, "true", String(can(P.owner)));
   chk("P-2", "ผู้จัดการทุกสาขา ตั้งราคาได้", can(P.mgrAll) === true, "true", String(can(P.mgrAll)));
   chk("P-3", "STAFF ทุกสาขา + pos.product.setPrice ตั้งราคาได้", can(P.staffAllPrice) === true, "true", String(can(P.staffAllPrice)));
   chk("P-4", "ผู้จัดการสาขา A ตั้งราคาทั้งร้านไม่ได้", can(P.mgrA) === false, "false", String(can(P.mgrA)));
   chk("P-5", "STAFF สาขา A + setPrice ตั้งราคาทั้งร้านไม่ได้", can(P.priceA) === false, "false", String(can(P.priceA)));
   chk("P-6", "ไม่มีสิทธิ์ → ไม่ได้", can(P.noPerm) === false && can(P.cashierA) === false, "false", `${can(P.noPerm)}/${can(P.cashierA)}`);
+  // ร้านสาขาเดียว (S) + สาขาที่ archived แล้ว (C) ผูก POS เดียวกัน — C ต้องไม่นับ
+  const uS = await prisma.businessUnit.create({ data: { tenantId, type: "BOOKING", name: "สาขาเดียว", slug: `s-${Date.now()}` } });
+  const uC = await prisma.businessUnit.create({ data: { tenantId, type: "BOOKING", name: "สาขาปิดแล้ว", slug: `c-${Date.now()}` } });
+  const posSingle = await sys.createSystem(tenantId, "POS", "POS สาขาเดียว");
+  await sys.linkUnit(tenantId, posSingle.id, uS.id);
+  await sys.linkUnit(tenantId, posSingle.id, uC.id);
+  await prisma.businessUnit.update({ where: { id: uC.id }, data: { status: "ARCHIVED" } });
+  const linkedS = (await reg.posUnits(tenantId, posSingle.id)).map((u) => u.id);
+  chk("P-9a", "POS สาขาเดียว: posUnits ไม่นับสาขา archived (control)", linkedS.length === 1 && linkedS[0] === uS.id, "1 (S)", String(linkedS.length));
+  const mgrS: M = { role: "MANAGER", unitAccess: [uS.id], permissions: {} };
+  chk("P-9", "ร้านสาขาเดียว: ผู้จัดการ [S] ตั้งราคาได้ (สาขา archived ไม่นับ)", can(mgrS, linkedS) === true, "true", String(can(mgrS, linkedS)));
+  const mgrAB: M = { role: "MANAGER", unitAccess: [uA.id, uB.id], permissions: {} };
+  chk("P-10", "ร้าน 2 สาขา: ผู้จัดการ [A,B] ตั้งราคาได้", can(mgrAB) === true, "true", String(can(mgrAB)));
+  const staffABPrice: M = { role: "STAFF", unitAccess: [uA.id, uB.id], permissions: { "pos.product.setPrice": true } };
+  chk("P-11", "ร้าน 2 สาขา: STAFF [A,B] + setPrice ตั้งราคาได้", can(staffABPrice) === true, "true", String(can(staffABPrice)));
+  const staffABSell: M = { role: "STAFF", unitAccess: [uA.id, uB.id], permissions: { "pos.sale.create": true } };
+  chk("P-12", "ร้าน 2 สาขา: STAFF [A,B] ไม่มี setPrice → ไม่ได้", can(staffABSell) === false, "false", String(can(staffABSell)));
+  chk("P-13", "ร้าน 2 สาขา: ผู้จัดการ [A] เท่านั้น → ไม่ได้", can(P.mgrA) === false, "false", String(can(P.mgrA)));
+  chk("P-14", "POS ยังไม่ผูกสาขา: คนจำกัดสาขาไม่ได้ · OWNER ได้", can(mgrS, []) === false && can(P.owner, []) === true, "false/true", `${can(mgrS, [])}/${can(P.owner, [])}`);
   const prodPage = read("src/app/app/sys/[id]/pos/products/page.tsx");
-  chk("P-7", "[static] หน้าสินค้าใช้ posCanSetTenantPrice + notFound (ไม่เหลือ assertCan ไร้สาขา)", /posCanSetTenantPrice\(/.test(prodPage) && /notFound\(\)/.test(prodPage) && !/assertCan\(/.test(prodPage), "ครบ", "ไม่ครบ");
+  chk("P-7", "[static] หน้าสินค้าใช้ posCanSetTenantPrice + notFound (ไม่เหลือ assertCan ไร้สาขา)", /posCanSetTenantPrice\(/.test(prodPage) && prodPage.split("\n").some((l) => /posCanSetTenantPrice\(/.test(l) && /posUnits\(/.test(l)) && /notFound\(\)/.test(prodPage) && !/assertCan\(/.test(prodPage), "ครบ", "ไม่ครบ");
   const priceBody = actions.slice(actions.indexOf("export async function setItemSalePriceAction"));
   const priceFn = priceBody.slice(0, priceBody.indexOf("\n}\n") + 2);
-  chk("P-8", "[static] setItemSalePriceAction ใช้ posCanSetTenantPrice (ไม่เหลือ assertCan ไร้สาขา)", /posCanSetTenantPrice\(/.test(priceFn) && !/assertCan\(/.test(priceFn), "ครบ", "ไม่ครบ");
+  chk("P-8", "[static] setItemSalePriceAction ใช้ posCanSetTenantPrice (ไม่เหลือ assertCan ไร้สาขา)", /posCanSetTenantPrice\(/.test(priceFn) && /posUnits\(/.test(priceFn) && !/assertCan\(/.test(priceFn), "ครบ", "ไม่ครบ");
 
   // ── 4) หน้าขาย /pos/register ──
   console.log("\n── /pos/register ──");

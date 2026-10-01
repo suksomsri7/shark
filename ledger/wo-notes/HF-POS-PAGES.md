@@ -78,3 +78,11 @@ OWNER and `unitAccess ["*"]` users: no change (oracle S-1/S-2, C-1/C-2, P-1..P-3
 2. "All-branch" = OWNER or `unitAccess` containing `"*"`; a manager listing every unit explicitly is treated as branch-limited.
 3. Bill list / close-day use `pos.sale.create` as the read permission until `pos.sale.read` (P1.15).
 4. Overview page `PosContent` leak (above) — schedule after CRM merge.
+
+## Round 2 (controller ruling 1 Oct) — "all branches" ≠ only `"*"`
+- Rule: all-branch = OWNER · `unitAccess` has `"*"` · or `pos.product.setPrice` passes at EVERY non-archived unit linked to this POS (`posUnits`, archived excluded). Empty linked list ⇒ OWNER/`*` only.
+- `posCanSetTenantPrice(m, linkedUnitIds)`; `/pos/products` and `setItemSalePriceAction` pass `posUnits(tenantId, systemId)` ids.
+- `posSalesScope` unchanged (filtered list kept): a manager covering every linked unit already sees every bill of those units through `unitId in unitAccess`. `allUnits` would also expose bills of archived/unlinked units or other-module sales the actor has no unit access to ⇒ not a no-op security-wise.
+- Oracle +7 cases (P-9a..P-14; P-7/P-8 now require `posUnits(` in the call): RED on 976c0625 `ผ่าน 43/48 · CRITICAL 5` (`HF-POS-PAGES-r2-red.txt`) → GREEN `ผ่าน 48/48 · CRITICAL 0` (`HF-POS-PAGES-r2-green.txt`). Note: the first RED run of P-7 used a wrong static slice (fixed); the corrected P-7 is still RED on 976c0625 (call has no `posUnits(`).
+- Regressions after round 2 identical (42/16/24/8/22/25/11) · fitness 33/33 both modes · typecheck exit 0 (`HF-POS-PAGES-runs/r2-*`).
+- Access change vs round 1: single-branch shop managers and managers/STAFF+setPrice listing every linked branch regain `/pos/products` + price setting (same as origin/main for them).

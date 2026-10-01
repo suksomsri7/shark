@@ -38,12 +38,15 @@ export function posScopeUnitIds(scope: PosUnitScope): string[] | undefined {
 }
 
 /**
- * ตั้งราคาขาย: ราคาเก็บที่ AccountProduct = ใช้ทั้งร้านทุกสาขา ⇒ ต้องเข้าได้ทุกสาขา + มีสิทธิ์ pos.product.setPrice
- * (คนสาขาเดียวตั้งราคาที่สาขาอื่นใช้ด้วยไม่ได้)
+ * ตั้งราคาขาย: ราคาเก็บที่ AccountProduct = ใช้ทั้งร้านทุกสาขา ⇒ ต้องมีสิทธิ์ pos.product.setPrice "ทุกสาขา"
+ * ทุกสาขา = OWNER · unitAccess "*" · หรือเข้าได้ครบทุกสาขาที่ผูก POS นี้ (linkedUnitIds = posUnits — ไม่นับสาขา archived)
+ * (ร้านสาขาเดียว / ผู้จัดการที่ระบุครบทุกสาขาตั้งได้ · คนที่ขาดแม้สาขาเดียวตั้งราคาที่สาขาอื่นใช้ด้วยไม่ได้)
+ * POS ยังไม่ผูกสาขา (linkedUnitIds ว่าง) → เฉพาะ OWNER / "*"
  */
-export function posCanSetTenantPrice(m: MembershipCtx | null): boolean {
-  if (!m || !allBranches(m)) return false;
-  return evaluate(m, { module: "pos", action: "pos.product.setPrice" });
+export function posCanSetTenantPrice(m: MembershipCtx | null, linkedUnitIds: string[]): boolean {
+  if (!m || !evaluate(m, { module: "pos", action: "pos.product.setPrice" })) return false;
+  if (allBranches(m)) return true;
+  return linkedUnitIds.length > 0 && linkedUnitIds.every((u) => evaluate(m, { module: "pos", action: "pos.product.setPrice", unitId: u }));
 }
 
 /**

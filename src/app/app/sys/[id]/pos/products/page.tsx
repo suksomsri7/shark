@@ -31,7 +31,7 @@ export default async function PosProductsPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   // HF-POS-PAGES: ราคาขายใช้ทั้งร้าน ⇒ ต้องเข้าได้ทุกสาขา (เดิม assertCan ไม่ส่ง unit ⇒ คนสาขาเดียวก็เข้าได้)
-  if (!posCanSetTenantPrice(posMembership(auth.active))) notFound();
+  if (!posCanSetTenantPrice(posMembership(auth.active), (await posUnits(tenantId, id)).map((u) => u.id))) notFound();
   const def = systemDef(sys.type);
 
   const tabs = posTabs(id);
