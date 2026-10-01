@@ -92,3 +92,27 @@ qc-kanban-k1.6 (S1 sanitize fixture — byte-identical in oracle C) · qc-kanban
 - Sanitize at write in `service.createCard`/`updateCard`/`updateCardTemplate`/AI proposals (REST op docs claim it); REST card/thread reads return stored HTML raw.
 - Portal requests → use `renderDescription` (text) instead of `sanitizeDescription` (2a-9).
 - `htmlToText`/`renderDescription`/`descriptionToText` use chained global regex replaces (linear, but V8 memory-tier step); fine at current caps.
+
+## Item 2 — automation page authz (separate commit on top of the sanitizer commit)
+Hole (verified on 04d2ade9): `/app/settings/automation` actions `toggleRuleAction`/`deleteRuleAction` (`src/lib/automation/actions.ts`) only `requireTenant()` → `service.setRuleEnabled`/`deleteRule` did `automationRule.update/delete({ where: { id } })` (tenant-injected, no scope) ⇒ any staff member of a shop (no permission keys) could switch off/on or delete ANY rule of the tenant by posting an id: member journeys (MEMBER_JOURNEY), tier rules (MEMBER_TIER), CRM rules, board rules. `createRuleAction` also had no permission check.
+
+Fix:
+- service: `setRuleEnabled`/`deleteRule` → `updateMany`/`deleteMany` with `where: { id, scope: "KANBAN" }` (same set `listRules` shows); other-scope / other-tenant / unknown id = 0 rows, no throw (no existence oracle). Return type now `Promise<number>` (only caller = the actions, which ignore it).
+- gate: new pure `canManageShopAutomation(m)` = `evaluate(m, { module: "automation", action: "automation.rule.create" })`. All three page actions check it before writing (create → Thai error state; toggle/delete → silent no-op).
+- Gate chosen: the page itself has NO gate (only `requireTenant`; nav link shown to everyone). The house key for this exact service is `automation.rule.create` (registry `core/permissions.ts` module "automation"; already enforced by the AI proposal `automation_create_rule` → `proposals.ts:179`, which calls the same `createRule`). OWNER/MANAGER pass as before (rbac `evaluate`); STAFF need the key or `automation.*` ⇒ owners/managers and keyed staff keep everything they could do; un-keyed staff lose write access (the hole). Page view/list unchanged.
+
+Callers of the service writers:
+| caller | function | before | after |
+|---|---|---|---|
+| actions.ts createRuleAction | createRule | requireTenant only | + automation.rule.create (creates scope KANBAN, boardId null by default — no scope hole) |
+| actions.ts toggleRuleAction | setRuleEnabled | any id of the tenant | + gate · scope KANBAN only |
+| actions.ts deleteRuleAction | deleteRule | any id of the tenant | + gate · scope KANBAN only |
+| lib/ai/proposals.ts:1354 (automation_create_rule) | createRule | gated by proposal permission map (automation.rule.create) | unchanged |
+| app/app/settings/automation/page.tsx | listRules | scope KANBAN | unchanged |
+Module doors (not this service, unchanged): kanban `modules/kanban/automation.ts` (requireRule needs boardId ≠ null + assertRuleAdmin; no scope filter — journey/tier/CRM rows have boardId null ⇒ NotFound), member `journeys.ts` loadRule (scope + memberSystemId), `tiers.ts` (scope MEMBER_TIER), crm `modules/crm/automation.ts` (scope CRM + crmSystemId).
+
+Test: `scripts/qc-automation-authz-hotfix.mts` (QC DB, own tenants `qc-hsan-authz-*`, cleans to 0) — NOT run here (no DB). Typecheck + fitness run.
+
+Ruling needed: scope KANBAN still includes BOARD rules (boardId ≠ null), which `listRules` shows on this page ⇒ a holder of `automation.rule.create` (or any MANAGER) can toggle/delete a board's rules here without being board ADMIN (`kanban.automation.manage`). Kept as-is ("don't change what legitimate users can do"); stricter option = also require `boardId: null` in list + writers.
+
+Forward-port (CRM branch): `src/lib/automation/service.ts` and `actions.ts` are identical on session/crm ⇒ the commit applies cleanly. CRM's own doors (`modules/crm/automation.ts` toggleRule/deleteRule/updateRule via findFirst `scope: "CRM", crmSystemId` + crm.automation.manage) are already scoped — nothing to port there; run this suite + qc-crm automation suites on the CRM branch after the merge.
