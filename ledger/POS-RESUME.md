@@ -310,3 +310,17 @@
 - ข้อสอบบังคับรัน: 91/104 · S3.18 เขียวแล้ว (ตัวนับ atomic) · แดง 14 = งานหน้าจอ B2 13 ข้อ (S5.1–S5.9 · S5.11 · S5.13 · S5.16 · S5.17) + S6.1 (ของ P1.6)
 - ถดถอย: qc-pos-p1.1 113/113 · qc-hf-inventory-atomic 143/143 · qc-pos-register 42/42 · qc-pos-inventory 25/25 · qc-hf-pos-page-authz 56/56
 - typecheck: ไฟล์ที่ track ไม่มี error (exit 2 จาก 1 error ในไฟล์ probe ชั่วคราวของผู้ตรวจ `scripts/_probe-p13-db.mts`) → รันซ้ำหลังรอบแก้ B1
+
+### ✅ HF-HR-0 ปิด — ไมโครรอบ 5d ผ่าน · `hotfix/hr-privacy` = afcb9bc3 พร้อมให้เจ้าของตัดสิน deploy (1 ต.ค. 21:09 UTC)
+- 5d: `approval/service.ts` +9/−4 (อ่านนโยบาย + ค้นคำขอเดิมผ่าน `opts.tx`) — ผู้คุมงานอ่าน diff เอง + รันซ้ำ: `qc-hf-hr-privacy` 194/194 (F2-2 ขอลา 12 ใบพร้อมกัน 12/12 · F2-3 pool เหลือ 1 เส้นยังเสร็จ) · `qc-approval` 16/16 · `qc-procurement` 12/12 · typecheck ตัวแก้ exit 0
+- ตัวแก้ 4 ตัวพร้อมแล้วทั้งหมด: `hotfix/apiv1-scope` 201d371a · `hotfix/pos-page-authz` b5a50b98 · `hotfix/hr-privacy` afcb9bc3 · `hotfix/inventory-atomic` 0237e3e5 (รวม inventory-authz)
+- ถัดไป (เลน 1): RC รวม 4 branch บน `shark-hf4` → `rc/hotfixes-2026-10-01` + รันซ้ำทั้งชุด + production build พอร์ต 3225 + ดูด้วยเบราว์เซอร์ 7 ข้อ (`pos-brief-RC-HOTFIXES.md`) → แล้วจึงขอเจ้าของ deploy
+
+### P1.3 B1 — ผู้ตรวจ+ล่าเงิน: ACCEPT-WITH-NOTES (1 ต.ค. 21:09 UTC)
+- แกนเงินผ่านทุกการทดสอบ: ราคา server เสมอ · ยอดที่คาดผูกการเก็บเงิน · 15 submit พร้อมกัน = 1 บิล · ชิ้นสุดท้าย 10 บิล × 3 รอบ สต็อกตรง · 4,000 ตะกร้าสุ่ม client = server ทุกครั้ง · ขอบเขตสาขา/ร้านถูก
+- **ต้องแก้ก่อน B2**: (1) MAJOR ตัวจับคู่ idempotency ขึ้นกับลำดับบรรทัด ⇒ retry ที่สลับบรรทัดได้ `IDEMPOTENCY_CONFLICT` ทั้งที่บิลมีแล้ว · ถ้า UI ออกคีย์ใหม่ = เก็บเงินซ้ำ (2) MAJOR สมาชิกที่ระดับมีส่วนลดอัตโนมัติ: quote ผ่าน แต่ submit `PAYMENT_MISMATCH` วนไม่จบ
+- แก้พร้อมกัน: (3) MAJOR เพดานส่วนลด 10% ของ STAFF ถูกปฏิเสธเพราะปัดเศษ (7,144 จาก 14,286 ราคา) · retry บิลที่ VOID ได้ ok:true · คีย์ช่องว่างล้วนผ่าน · รายการจ่าย 0 บาทถูกเก็บ · ไม่มี `registerScanAction`
+- มติผู้คุมงาน: (1) จับคู่ไม่ขึ้นลำดับ + `IDEMPOTENCY_CONFLICT` = "มีบิลของคีย์นี้แล้ว" (ส่ง saleId กลับ) (2) รหัสใหม่ `MEMBER_RIGHTS_UNSUPPORTED` ปฏิเสธตั้งแต่ quote จนถึง P1.12 (3) PERCENT ≤ เพดาน ห้ามถูกปฏิเสธเพราะปัดเศษ · จ่าย 0 ⇒ VALIDATION · บิลยอด 0 ใช้รายการจ่ายว่าง · คีย์ต้องไม่ว่าง ≤100 · `pos.*` wildcard ปรับราคาได้ (ตาม rbac) · D2 คงสำเนากติกา + ด่านจับเพี้ยน S1.27 (ย้ายเข้า catalog หลัง P1.1b)
+- จดไว้ (P1.16): บรรทัดบริการ (R5) ลงรายได้คนละบัญชีกับจอเดิม (4030 กับ 4000) · สินค้า AUTO ที่ไม่เคยมีสต็อก จอเดิมตัดสต็อก จอใหม่ไม่ตัด (มติ C2) · กฎสแตมป์/คูปองเทียบ serviceId กับ BookingService ⇒ บรรทัดบริการของแคตตาล็อกไม่เข้ากฎ
+- ลำดับ: ข้อสอบรอบ 3.2 (เพิ่ม ~14 ข้อ · กำลังทำ) → builder B1.1 แก้ → B2 (UI)
+- เลนเดิน: 1 = RC ตัวแก้ 4 branch + visual · 2 = P1.3 ข้อสอบรอบ 3.2
