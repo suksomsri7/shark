@@ -5,6 +5,14 @@
 
 ## Ratified names (controller 1 Oct) — contract for the P1.1a/P1.1b builders
 > **Round 2 (brief `pos-brief-P1.1a-R2.md`) changed the items marked 🔁 below — R2 wins where they differ.**
+> **Round 3 (brief `pos-brief-P1.1a-R3.md`) changed the items marked 🔂 — R3 wins over R2.**
+- 🔂 **D1 (replaces the C4 bullet)** an all-branch row (`unitId null`) has a SCOPE = the non-archived branches of this POS where it is sellable (row with `invItemId`: only branches whose warehouse holds the item — C3; row without: every non-archived branch linked to the POS). The actor needs the permission at EVERY branch of the scope (`evaluate(action, unitId)` per branch); empty scope ⇒ OWNER/`*` only. So a single-branch-shop manager and a manager listing all branches may write all-branch rows; an A-only manager in a two-branch shop may not (except an all-branch row sellable only at A). Moving between branches needs both. Refusal codes unchanged (`PERMISSION_DENIED`; target branch not accessible ⇒ `NOT_FOUND`). Exported helper `catalogWriteScope(…)` (name is the builder's; must agree with `posCanSetTenantPrice` of hotfix/pos-page-authz at merge).
+- 🔂 **D2** effective trackStock on the read path: per item `EXISTS … LIMIT 1` filtered by the warehouse `systemId` (or `onHand ≠ 0` first) — no tenant-wide movement `groupBy`.
+- 🔂 **D3** extra counts with ≤20 samples per tenant: `apIgnoredButTillPriced`, `priceNotSetOther`, `servicePriceDiffersFromAccountProduct` (counts top-level or under `counts`; samples anywhere in the summary, matched by product name).
+- 🔂 **D4** migration: last statement `RESET lock_timeout;`; every statement re-runnable (`IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` / enum + FKs in `DO $$ … EXCEPTION WHEN duplicate_object …$$`).
+- 🔂 **D5** the facade must not export `backfillCatalog`; marker = `Symbol(` (never `Symbol.for(`); `?? CATALOG_SYSTEM_ACTOR` forbidden in `src/`; fitness F15.5 (builder).
+- 🔂 **D6** `createProduct` with an InvItem whose warehouse does not serve the given `unitId` ⇒ `VALIDATION`; `trackStock: true` on a SERVICE ⇒ `VALIDATION`; plain `createProduct`/`createCategory` (no invItemId, no barcode) take no tenant-wide advisory lock; memberships with `acceptedAt = null` are treated as non-members (`NOT_FOUND`) — house rule verified in `src/lib/core/context.ts:23,50` and `src/lib/core/push.ts:313-315`; `zeroPriceWeb` counts only rows whose final price is the web price 0; `byBarcode` as UNION (same result).
+- 🔂 **D6 note** `systemForUnit` (`src/lib/modules/system/service.ts:58-68`) does NOT filter inactive inventory systems ⇒ `unitInventory` keeps that behaviour (no filter); recorded, not tested. Builder note: P2002 inside a caller-supplied transaction surfaces as `CONFLICT` but the caller's transaction is already aborted (P1.1b callers must not continue in that tx).
 - 🔁 **C1** system caller = `catalog.CATALOG_SYSTEM_ACTOR` (module-level `unique symbol`); `actorUserId: string | typeof CATALOG_SYSTEM_ACTOR`; `null`/`undefined`/`""` ⇒ `PERMISSION_DENIED` (fail closed). Replaces the `null` convention below.
 - 🔁 **C2** `trackStock Boolean?` tri-state: `null` = AUTO (effective = has invItemId AND kind PRODUCT AND (≥1 movement OR onHand ≠ 0), computed at read time) · `updateProduct({trackStock: true|false|null})` · read model `trackStock: boolean` + `trackStockMode: "auto"|"on"|"off"` · `true` without invItemId ⇒ VALIDATION · backfill/ensure/createProduct leave null. Replaces the "explicit column frozen at backfill" rule below.
 - 🔁 **C3** an invItem-linked product is visible at unit U only if its InvItem belongs to U's own inventory system (list, search, byBarcode, stock).
@@ -139,7 +147,7 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 | P1.1-X2.3 | ข้ามสาขา: แคชเชียร์ (unitAccess=สีลม) listForUnit/byBarcode สาขาอารีย์ → NOT_FOUND · สีลมได้ | X2 |
 | P1.1-X3.1 | setPrice โดย STAFF ที่ไม่มี pos.product.setPrice → PERMISSION_DENIED ราคาไม่เปลี่ยน | X3 |
 | P1.1-X3.2 | setPrice โดย STAFF ที่ Membership.permissions มี pos.product.setPrice=true → ได้ · OWNER ได้ | X3 |
-| P1.1-X3.3 | createProduct/updateProduct/archive/createCategory โดย STAFF ที่ไม่มี pos.product.manage → PERMISSION_DENIED ไม่เขียน | X3 |
+| P1.1-X3.3 | STAFF สาขาเดียวที่ไม่มีคีย์ pos.product.manage: createProduct/createCategory ของสาขาตัวเอง · updateProduct/archive สินค้าสาขาตัวเอง → PERMISSION_DENIED ไม่เขียน (ทดสอบคีย์ ไม่ใช่กติกาสาขา) [D7] | X3 |
 | P1.1-X6.2 | ensureForInvItem 10 เลนพร้อมกัน (connection แยก) × 3 รอบ → PosProduct 1 แถวต่อ InvItem · ทุกเลนได้ id เดียวกัน | X6 |
 | P1.1-X6.3 | setPrice 10 เลนพร้อมกัน → ไม่ error · ราคาสุดท้ายเป็นหนึ่งในค่าที่ส่ง · แถวเดียว | X6 |
 | P1.1-X6.4 | setPrice 5 เลน + updateProduct(nameEn) 5 เลนพร้อมกัน → ไม่มี lost update (ราคาและ nameEn เปลี่ยนทั้งคู่) | X6 |
@@ -178,7 +186,7 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 | P1.1-S3.3 | C2 AUTO คิดตอนอ่าน: สินค้าสร้างวันนี้ยังไม่มีของ = false → รับของเข้าทีหลัง = true เอง · ตั้ง off/on/null ได้ · true บนแถวไม่ผูกคลัง = VALIDATION | - |
 | P1.1-S3.4 | C3 POS เดียวสองคลัง: สาขา A เห็นเฉพาะของคลัง X (list + ค้น SKU/บาร์โค้ด) · สาขา B เฉพาะคลัง Y · stock[A] = onHand ของ X | X2 |
 | P1.1-S3.5 | C3 byBarcode ตามคลังของสาขา: บาร์โค้ดของคลัง Y ที่สาขา A = ว่าง · ที่สาขา B = เจอ | X2 |
-| P1.1-S3.6 | C4 ผู้จัดการเฉพาะสาขา: เขียนสินค้าทุกสาขา (setPrice · updateProduct · archive · trackStock) · createProduct unitId null · ensureForInvItem · createCategory unitId null = PERMISSION_DENIED | X3 |
+| P1.1-S3.6 | C4/D1 ผู้จัดการสาขาสีลมใน POS สองสาขา: เขียนสินค้าทุกสาขาที่ขายที่อารีย์ด้วย (setPrice · updateProduct · archive · trackStock) · createProduct ทุกสาขา · ensureForInvItem (คลังร่วม) · createCategory ทุกสาขา = PERMISSION_DENIED | X3 |
 | P1.1-S3.7 | C4 ย้ายสาขา: ผู้จัดการย้ายของสาขาตัวเองเป็นทุกสาขา = PERMISSION_DENIED · ไปสาขาที่ไม่มีสิทธิ์ = NOT_FOUND · แก้/ตั้งราคาของสาขาตัวเองได้ · เจ้าของย้ายทุกสาขา→สาขาเดียวได้ | X3 |
 | P1.1-S3.8 | C4 หมวด: สินค้าสาขาสีลม + หมวดของสาขาอารีย์ = VALIDATION · หมวดทุกสาขาใช้ได้ | - |
 | P1.1-S3.9 | C5 byBarcode คืน {items} 0..n · บาร์โค้ดซ้ำใน legacy = 2 รายการ ลำดับคงที่ (เรียกสองครั้งได้ลำดับเดิม) | - |
@@ -195,10 +203,23 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 | P1.1-S3.20 | C12 สาขาเก็บถาวร: เมนูไม่ถูกผูก · listForUnit = NOT_FOUND · POS ที่ปิดใช้งาน (เก่ากว่า) ไม่ถูกเลือกเป็น POS แรก | X2 |
 | P1.1-S3.21 | C13 backfill: prod ไม่มี --tenant/--all = ปฏิเสธ (static) · movement ใช้ groupBy/DISTINCT ไม่โหลดทั้งหมด · ตัวเลือกเมนูจัดกลุ่มด้วย Map · JSON_SUMMARY มีตัวนับครบทุกชื่อ | - |
 | P1.1-S3.22 | M1 ไม่มี index บนคอลัมน์เชื่อมของ 5 ตารางเดิม (SQL · schema · DB) | - |
-| P1.1-S3.23 | M2 คำสั่งแรก SET LOCAL lock_timeout · ALTER TABLE … ADD COLUMN ของตารางเดิมอยู่ท้ายสุด | - |
+| P1.1-S3.23 | M2 คำสั่งแรก SET LOCAL lock_timeout · ALTER TABLE … ADD COLUMN ของตารางเดิม 5 ตัวอยู่ท้าย (ก่อน RESET lock_timeout ตัวสุดท้าย · DO-block นับเป็นคำสั่งเดียว) | - |
 | P1.1-S3.24 | M3 SQL: "trackStock" BOOLEAN nullable ไม่มี DEFAULT | - |
 | P1.1-S3.25 | M4 index PosProduct(systemId, archivedAt, name, id) | - |
 | P1.1-S3.26 | M5 partial unique PosCategory(systemId, name) WHERE unitId IS NULL | - |
+| P1.1-S3.27 | D1 ผู้จัดการร้านสาขาเดียว (unitAccess=[สาขานั้น]) และผู้จัดการที่ระบุทุกสาขาเอง ([สีลม, อารีย์]) เขียนสินค้า/หมวดทุกสาขาได้ (createProduct · setPrice · updateProduct · archive · createCategory) | X3 |
+| P1.1-S3.28 | D1+C3 ผู้จัดการสาขา A ใน POS สองคลัง: สินค้าทุกสาขาที่ขายได้เฉพาะ A (คลัง X) แก้ได้ · ของคลัง Y และไม่ผูกคลัง = PERMISSION_DENIED | X3 |
+| P1.1-S3.29 | D2 (static) ทางอ่านไม่สแกนประวัติ movement ทั้งร้าน: toViews ไม่มี invMovement.groupBy/findMany · มี EXISTS/LIMIT 1 ที่กรอง systemId ของคลัง | - |
+| P1.1-S3.30 | D3 ตัวนับ + ตัวอย่าง: apIgnoredButTillPriced (AP เก็บถาวร/สมุดอื่นที่ลิ้นชักคิด salePrice) · priceNotSetOther · servicePriceDiffersFromAccountProduct | - |
+| P1.1-S3.31 | D4 คำสั่งสุดท้ายของ migration = RESET lock_timeout | - |
+| P1.1-S3.32 | D4 ทุกคำสั่งรันซ้ำได้: CREATE TABLE/INDEX IF NOT EXISTS · ADD COLUMN IF NOT EXISTS · enum/FK อยู่ใน DO $$ … EXCEPTION WHEN duplicate_object | - |
+| P1.1-S3.33 | D5 facade (pos/index.ts) ไม่ส่งต่อ backfillCatalog · marker สร้างด้วย Symbol( ไม่ใช่ Symbol.for( · ไม่มี `?? CATALOG_SYSTEM_ACTOR` ใน src | X12 |
+| P1.1-S3.34 | D6 createProduct ผูก InvItem ของคลังที่ไม่ได้เสิร์ฟสาขา unitId ที่ส่ง = VALIDATION (ไม่จองช่อง unique ด้วยแถวที่มองไม่เห็น) | X2 |
+| P1.1-S3.35 | D6 trackStock true บนบริการ (SERVICE) = VALIDATION ทั้ง createProduct และ updateProduct | - |
+| P1.1-S3.36 | D6 createProduct/createCategory ธรรมดาไม่รอล็อกร้านที่อีก connection ถืออยู่ (เสร็จ < 3 วิ) · คู่บวก: createProduct ผูก InvItem ยังรอล็อก | X6 |
+| P1.1-S3.37 | D6 byBarcode (UNION) ยังคืนทั้งสองแหล่ง: บาร์โค้ดของแถวเอง + บาร์โค้ดของ InvItem ที่ผูก | - |
+| P1.1-S3.38 | D6 สมาชิกที่ยังไม่รับคำเชิญ (acceptedAt null — กติกาบ้าน core/context.ts) = ไม่ใช่สมาชิก → NOT_FOUND | X3 |
+| P1.1-S3.39 | D6 zeroPriceWeb นับเฉพาะแถวที่ราคาสุดท้ายคือราคาเว็บ 0 (เว็บร้านราคา 0 ที่ผูก InvItem มีราคาบัญชี ไม่นับ) = 1 ตรง | - |
 | P1.1-S1.36 | rollback ปลายทาง: ลบแถวตารางใหม่ที่รันนี้สร้าง + คืนคอลัมน์เชื่อม + ลบ fixtures → ตารางเดิม (จำนวน + checksum) และตารางใหม่ เท่าก่อนรัน · ร้าน QC กลับสภาพเดิม | X5 |
 
 Groups: S1.1–S1.38 + X1/X2/X3/X6/X8/X9 = P1.1a (guard: model+table PosProduct, catalog.ts, backfill script). S2.1–S2.27 + X6.5 = P1.1b (own guard: one of the 8 legacy writer files imports `pos/catalog`; until then the group is skipped and listed in `skippedGroups`).
@@ -345,3 +366,27 @@ Unchanged checks stay green (schema basics, S1.7/S1.8 counts, S1.13/S1.16–S1.1
 
 ### Debts (brief §C) — not oracle work
 Cross-module raw reads (N5) → P1.1b · editable web-only rows / channel price → P2.8 · trigram search → P5.3 · backfill vs writer lock contention → P6.1 runbook · `pos.product.manage` visible before enforced → P1.1b (or `planned` flag).
+
+## Round 3 (brief P1.1a-R3 · run on `wip/pos-p1.1a` a0e248eb code, QC4)
+`--list` → `รวม 121 ข้อ · P1.1a 93 · P1.1b 28` (round 2: 108 · 80). Controller's ORACLE-EDIT on X3.2 (target = Silom product) kept as written.
+
+### Check ↔ D item
+| item | checks |
+|---|---|
+| D1 scope rule | S3.27 (new: single-branch-shop manager via a temp one-branch POS · manager with `unitAccess [Silom, Ari]`) · S3.28 (new: A-only manager in the temp two-warehouse POS — all-branch row of warehouse X allowed, of Y / without InvItem refused) · S3.6/S3.7/S3.8 kept: the Silom-only manager in the two-branch seed shop is still refused under D1 (titles clarified) |
+| D2 | S3.29 (static: no movement `groupBy`/`findMany` outside `planTenant`; an `EXISTS … "InvMovement" … "systemId"` or `invMovement.findFirst(… systemId …)` present). Dynamic version not meaningful: a movement row's `systemId` always equals its item's warehouse in this data model, so a tenant-wide vs warehouse-filtered lookup returns the same answer on any fixture. |
+| D3 | S3.30 (≥ fixture counts + sample names; new fixture `d3-svc-diff`) |
+| D4 | S3.31 (RESET last), S3.32 (every statement guarded) · S3.23 now treats a `DO $$…$$` block as one statement and expects the 5 ADD COLUMNs right before the final RESET |
+| D5 | S3.33 (facade, `Symbol(` + `Symbol.keyFor(marker) === undefined`, no `?? CATALOG_SYSTEM_ACTOR` in `src/`) — F15.5 itself and its negative proof are the builder's |
+| D6 | S3.34 (wrong warehouse ⇒ VALIDATION, positive control at the right branch) · S3.35 (SERVICE trackStock true, create + update) · S3.36 (tenant lock held on a separate connection: plain createProduct/createCategory must finish < 3 s; positive control: an invItem create still waits) · S3.37 (byBarcode returns own-barcode row + InvItem-barcode row) · S3.38 (seed cashier `acceptedAt` set to null for the call, restored) · S3.39 (`zeroPriceWeb` = 1 exactly; new fixture: web row price 0 linked to the water InvItem must not count) |
+| D7 / X3.3 | X3.3 now: Silom STAFF without `pos.product.manage` creates a SILOM product / SILOM category, updates/archives a Silom product ⇒ PERMISSION_DENIED (tests the key, not the branch rule) |
+
+### Result on current code (a0e248eb) — `ผ่าน 82/93` (P1.1b skipped by guard), exit 1, no crash, ROWCOUNTS before = after, S1.36 green
+RED (11, all new, each for its D item): S3.27 (single-branch / explicit-all managers refused — createProduct PERMISSION_DENIED; the later setPrice/update/archive NOT_FOUND are a cascade of the missing id) · S3.28 (all three PERMISSION_DENIED — row sellable only at A refused) · S3.29 (`invMovement.groupBy` by tenant in `toViews`) · S3.30 (no `apIgnoredButTillPriced` / `priceNotSetOther` / `servicePriceDiffersFromAccountProduct`) · S3.31 (last statement is an ADD COLUMN) · S3.32 (28/29 statements unguarded) · S3.33 (`export * as catalog` exposes `backfillCatalog`) · S3.34 (wrong-warehouse create accepted; the positive control then CONFLICTs on the occupied slot — cascade) · S3.35 (SERVICE trackStock true accepted twice) · S3.36 (plain createProduct waits behind the held lock; createCategory already fine; control waits as it should) · S3.38 (unaccepted membership accepted).
+GREEN already (guards for the builder's rewrites): S3.37 (both barcode sources), S3.39 (zeroPriceWeb = 1), S3.6–S3.8, X3.3, all round-1/2 checks.
+
+### QC4 incident during this round (fixed)
+The first round-3 run touched a seed product (the gift service) to test S3.35 and restored the value but not its `updatedAt`, leaving 2 AuditLog rows — S1.36 caught it (`PosProduct ~1`). Repaired by hand on QC4 (`updatedAt = createdAt`, as on its 12 siblings from the same backfill; the 2 audit rows deleted) and S3.35 now uses its own temp service. Second run: S1.36 green, ROWCOUNTS equal, 13 products / 3 categories / 4 menu links intact.
+
+### Lines in `scripts/qc-pos-p1.3.mts` (not edited) affected by round 3
+Nothing new beyond round 2's list, except: any fixture that relies on an all-branch product being writable by a branch-limited manager now follows D1 (scope = branches where sellable).

@@ -97,7 +97,7 @@ const CHECKS: readonly Def[] = [
   D("X2.3", "X2", "ข้ามสาขา: แคชเชียร์ (unitAccess=สีลม) listForUnit/byBarcode สาขาอารีย์ → NOT_FOUND · สีลมได้"),
   D("X3.1", "X3", "setPrice โดย STAFF ที่ไม่มี pos.product.setPrice → PERMISSION_DENIED ราคาไม่เปลี่ยน"),
   D("X3.2", "X3", "setPrice โดย STAFF ที่ Membership.permissions มี pos.product.setPrice=true → ได้ · OWNER ได้"),
-  D("X3.3", "X3", "createProduct/updateProduct/archive/createCategory โดย STAFF ที่ไม่มี pos.product.manage → PERMISSION_DENIED ไม่เขียน"),
+  D("X3.3", "X3", "STAFF สาขาเดียวที่ไม่มีคีย์ pos.product.manage: createProduct/createCategory ของสาขาตัวเอง · updateProduct/archive สินค้าสาขาตัวเอง → PERMISSION_DENIED ไม่เขียน (ทดสอบคีย์ ไม่ใช่กติกาสาขา) [D7]"),
   D("X6.2", "X6", "ensureForInvItem 10 เลนพร้อมกัน (connection แยก) × 3 รอบ → PosProduct 1 แถวต่อ InvItem · ทุกเลนได้ id เดียวกัน"),
   D("X6.3", "X6", "setPrice 10 เลนพร้อมกัน → ไม่ error · ราคาสุดท้ายเป็นหนึ่งในค่าที่ส่ง · แถวเดียว"),
   D("X6.4", "X6", "setPrice 5 เลน + updateProduct(nameEn) 5 เลนพร้อมกัน → ไม่มี lost update (ราคาและ nameEn เปลี่ยนทั้งคู่)"),
@@ -138,7 +138,7 @@ const CHECKS: readonly Def[] = [
   D("S3.3", "-", "C2 AUTO คิดตอนอ่าน: สินค้าสร้างวันนี้ยังไม่มีของ = false → รับของเข้าทีหลัง = true เอง · ตั้ง off/on/null ได้ · true บนแถวไม่ผูกคลัง = VALIDATION"),
   D("S3.4", "X2", "C3 POS เดียวสองคลัง: สาขา A เห็นเฉพาะของคลัง X (list + ค้น SKU/บาร์โค้ด) · สาขา B เฉพาะคลัง Y · stock[A] = onHand ของ X"),
   D("S3.5", "X2", "C3 byBarcode ตามคลังของสาขา: บาร์โค้ดของคลัง Y ที่สาขา A = ว่าง · ที่สาขา B = เจอ"),
-  D("S3.6", "X3", "C4 ผู้จัดการเฉพาะสาขา: เขียนสินค้าทุกสาขา (setPrice · updateProduct · archive · trackStock) · createProduct unitId null · ensureForInvItem · createCategory unitId null = PERMISSION_DENIED"),
+  D("S3.6", "X3", "C4/D1 ผู้จัดการสาขาสีลมใน POS สองสาขา: เขียนสินค้าทุกสาขาที่ขายที่อารีย์ด้วย (setPrice · updateProduct · archive · trackStock) · createProduct ทุกสาขา · ensureForInvItem (คลังร่วม) · createCategory ทุกสาขา = PERMISSION_DENIED"),
   D("S3.7", "X3", "C4 ย้ายสาขา: ผู้จัดการย้ายของสาขาตัวเองเป็นทุกสาขา = PERMISSION_DENIED · ไปสาขาที่ไม่มีสิทธิ์ = NOT_FOUND · แก้/ตั้งราคาของสาขาตัวเองได้ · เจ้าของย้ายทุกสาขา→สาขาเดียวได้"),
   D("S3.8", "-", "C4 หมวด: สินค้าสาขาสีลม + หมวดของสาขาอารีย์ = VALIDATION · หมวดทุกสาขาใช้ได้"),
   D("S3.9", "-", "C5 byBarcode คืน {items} 0..n · บาร์โค้ดซ้ำใน legacy = 2 รายการ ลำดับคงที่ (เรียกสองครั้งได้ลำดับเดิม)"),
@@ -155,10 +155,24 @@ const CHECKS: readonly Def[] = [
   D("S3.20", "X2", "C12 สาขาเก็บถาวร: เมนูไม่ถูกผูก · listForUnit = NOT_FOUND · POS ที่ปิดใช้งาน (เก่ากว่า) ไม่ถูกเลือกเป็น POS แรก"),
   D("S3.21", "-", "C13 backfill: prod ไม่มี --tenant/--all = ปฏิเสธ (static) · movement ใช้ groupBy/DISTINCT ไม่โหลดทั้งหมด · ตัวเลือกเมนูจัดกลุ่มด้วย Map · JSON_SUMMARY มีตัวนับครบทุกชื่อ"),
   D("S3.22", "-", "M1 ไม่มี index บนคอลัมน์เชื่อมของ 5 ตารางเดิม (SQL · schema · DB)"),
-  D("S3.23", "-", "M2 คำสั่งแรก SET LOCAL lock_timeout · ALTER TABLE … ADD COLUMN ของตารางเดิมอยู่ท้ายสุด"),
+  D("S3.23", "-", "M2 คำสั่งแรก SET LOCAL lock_timeout · ALTER TABLE … ADD COLUMN ของตารางเดิม 5 ตัวอยู่ท้าย (ก่อน RESET lock_timeout ตัวสุดท้าย · DO-block นับเป็นคำสั่งเดียว)"),
   D("S3.24", "-", "M3 SQL: \"trackStock\" BOOLEAN nullable ไม่มี DEFAULT"),
   D("S3.25", "-", "M4 index PosProduct(systemId, archivedAt, name, id)"),
   D("S3.26", "-", "M5 partial unique PosCategory(systemId, name) WHERE unitId IS NULL"),
+  // ── S3.27+ · ROUND 3 (brief P1.1a-R3 · D1–D7) ──
+  D("S3.27", "X3", "D1 ผู้จัดการร้านสาขาเดียว (unitAccess=[สาขานั้น]) และผู้จัดการที่ระบุทุกสาขาเอง ([สีลม, อารีย์]) เขียนสินค้า/หมวดทุกสาขาได้ (createProduct · setPrice · updateProduct · archive · createCategory)"),
+  D("S3.28", "X3", "D1+C3 ผู้จัดการสาขา A ใน POS สองคลัง: สินค้าทุกสาขาที่ขายได้เฉพาะ A (คลัง X) แก้ได้ · ของคลัง Y และไม่ผูกคลัง = PERMISSION_DENIED"),
+  D("S3.29", "-", "D2 (static) ทางอ่านไม่สแกนประวัติ movement ทั้งร้าน: toViews ไม่มี invMovement.groupBy/findMany · มี EXISTS/LIMIT 1 ที่กรอง systemId ของคลัง"),
+  D("S3.30", "-", "D3 ตัวนับ + ตัวอย่าง: apIgnoredButTillPriced (AP เก็บถาวร/สมุดอื่นที่ลิ้นชักคิด salePrice) · priceNotSetOther · servicePriceDiffersFromAccountProduct"),
+  D("S3.31", "-", "D4 คำสั่งสุดท้ายของ migration = RESET lock_timeout"),
+  D("S3.32", "-", "D4 ทุกคำสั่งรันซ้ำได้: CREATE TABLE/INDEX IF NOT EXISTS · ADD COLUMN IF NOT EXISTS · enum/FK อยู่ใน DO $$ … EXCEPTION WHEN duplicate_object"),
+  D("S3.33", "X12", "D5 facade (pos/index.ts) ไม่ส่งต่อ backfillCatalog · marker สร้างด้วย Symbol( ไม่ใช่ Symbol.for( · ไม่มี `?? CATALOG_SYSTEM_ACTOR` ใน src"),
+  D("S3.34", "X2", "D6 createProduct ผูก InvItem ของคลังที่ไม่ได้เสิร์ฟสาขา unitId ที่ส่ง = VALIDATION (ไม่จองช่อง unique ด้วยแถวที่มองไม่เห็น)"),
+  D("S3.35", "-", "D6 trackStock true บนบริการ (SERVICE) = VALIDATION ทั้ง createProduct และ updateProduct"),
+  D("S3.36", "X6", "D6 createProduct/createCategory ธรรมดาไม่รอล็อกร้านที่อีก connection ถืออยู่ (เสร็จ < 3 วิ) · คู่บวก: createProduct ผูก InvItem ยังรอล็อก"),
+  D("S3.37", "-", "D6 byBarcode (UNION) ยังคืนทั้งสองแหล่ง: บาร์โค้ดของแถวเอง + บาร์โค้ดของ InvItem ที่ผูก"),
+  D("S3.38", "X3", "D6 สมาชิกที่ยังไม่รับคำเชิญ (acceptedAt null — กติกาบ้าน core/context.ts) = ไม่ใช่สมาชิก → NOT_FOUND"),
+  D("S3.39", "-", "D6 zeroPriceWeb นับเฉพาะแถวที่ราคาสุดท้ายคือราคาเว็บ 0 (เว็บร้านราคา 0 ที่ผูก InvItem มีราคาบัญชี ไม่นับ) = 1 ตรง"),
   // ── ท้ายรัน ──
   D("S1.36", "X5", "rollback ปลายทาง: ลบแถวตารางใหม่ที่รันนี้สร้าง + คืนคอลัมน์เชื่อม + ลบ fixtures → ตารางเดิม (จำนวน + checksum) และตารางใหม่ เท่าก่อนรัน · ร้าน QC กลับสภาพเดิม"),
 ];
@@ -448,10 +462,15 @@ const ctxSys = (tenantId: string, systemId: string) => ({ tenantId, systemId, ac
 const cashierMb = CF.users.cashier.membershipId as string;
 const cashierPerm0 = (await P.membership.findFirst({ where: { id: cashierMb } }))?.permissions ?? {};
 const cashierRole0 = (await P.membership.findFirst({ where: { id: cashierMb } }))?.role ?? "STAFF";
-async function withCashierPerm<T>(extra: Record<string, unknown>, fn: () => Promise<T>, role?: string): Promise<T> {
-  await P.membership.update({ where: { id: cashierMb }, data: { permissions: { ...(cashierPerm0 as object), ...extra }, ...(role ? { role } : {}) } });
-  try { return await fn(); } finally { await P.membership.update({ where: { id: cashierMb }, data: { permissions: cashierPerm0, role: cashierRole0 } }); }
+const cashierRow0 = (await P.membership.findFirst({ where: { id: cashierMb } })) as Any;
+async function withCashierPerm<T>(extra: Record<string, unknown>, fn: () => Promise<T>, role?: string, unitAccess?: string[], acceptedAt?: Date | null): Promise<T> {
+  await P.membership.update({ where: { id: cashierMb }, data: { permissions: { ...(cashierPerm0 as object), ...extra }, ...(role ? { role } : {}), ...(unitAccess ? { unitAccess } : {}), ...(acceptedAt !== undefined ? { acceptedAt } : {}) } });
+  try { return await fn(); } finally {
+    await P.membership.update({ where: { id: cashierMb }, data: { permissions: cashierPerm0, role: cashierRole0, unitAccess: cashierRow0?.unitAccess ?? [], acceptedAt: cashierRow0?.acceptedAt ?? null } });
+  }
 }
+/** D1: แคชเชียร์ชั่วคราวเป็น MANAGER ของสาขาที่ระบุ (คืน role/สาขา/สิทธิ์เดิมทุกครั้ง) */
+const asManagerOf = <T,>(units: string[], fn: () => Promise<T>) => withCashierPerm({}, fn, "MANAGER", units);
 /** C4: แคชเชียร์ชั่วคราวเป็น MANAGER เฉพาะสาขาสีลม (unitAccess เดิม = [สีลม]) — คืน role/สิทธิ์เดิมเสมอ */
 const asBranchManager = <T,>(fn: () => Promise<T>) => withCashierPerm({}, fn, "MANAGER");
 const itemBySku = (t: Any, sku: string) => (t.items as Any[]).find((i) => i.sku === sku);
@@ -571,10 +590,13 @@ try {
   });
 
   // ═══ S3.22–S3.26 · M1–M5 (static: migration.sql + schema · และ DB) ═══
-  await section("migration-r2", ["S3.22", "S3.23", "S3.24", "S3.25", "S3.26"], async () => {
+  await section("migration-r2", ["S3.22", "S3.23", "S3.24", "S3.25", "S3.26", "S3.31", "S3.32"], async () => {
     const migDir = existsSync("prisma/migrations") ? readdirSync("prisma/migrations").find((d) => /_pos_v2_a$/.test(d)) : undefined;
     const sql = migDir ? read(`prisma/migrations/${migDir}/migration.sql`) : "";
-    const stmts = sql.replace(/--.*$/gm, "").split(";").map((x) => x.trim()).filter(Boolean);
+    // DO $$ … $$ นับเป็นคำสั่งเดียว (ข้างในมี ; ของตัวเอง) — แทนด้วยตัวยึดก่อนตัดด้วย ;
+    const doBlocks: string[] = [];
+    const sqlNoDo = sql.replace(/--.*$/gm, "").replace(/DO\s+\$(\w*)\$[\s\S]*?\$\1\$/gi, (b) => `__DO_${doBlocks.push(b) - 1}__`);
+    const stmts = sqlNoDo.split(";").map((x) => x.trim()).filter(Boolean);
     const OLD5: [string, string][] = [["ShopProduct", "posProductId"], ["ShopOrderLine", "posProductId"], ["PosSaleLine", "productId"], ["MenuItem", "posProductId"], ["RestaurantOrderItem", "productId"]];
     const sqlIdx = OLD5.filter(([t, c]) => new RegExp(`CREATE\\s+(UNIQUE\\s+)?INDEX[^;]*ON\\s+"${t}"\\s*\\(\\s*"${c}"`, "i").test(sql)).map(([t, c]) => `${t}.${c}`);
     const schemaAll = existsSync("prisma/schema") ? readdirSync("prisma/schema").filter((f) => f.endsWith(".prisma")).map((f) => read(`prisma/schema/${f}`)).join("\n") : "";
@@ -586,7 +608,8 @@ try {
     const first = stmts[0] ?? "";
     const isAddOld = (x: string) => OLD5.some(([t]) => new RegExp(`^ALTER\\s+TABLE\\s+"${t}"\\s+ADD\\s+COLUMN`, "i").test(x));
     const addIdx = stmts.map((x, i) => (isAddOld(x) ? i : -1)).filter((i) => i >= 0);
-    const lastFive = addIdx.length === 5 && addIdx.every((i, k) => i === stmts.length - 5 + k);
+    const tailEnd = /^RESET\s+lock_timeout$/i.test(stmts[stmts.length - 1] ?? "") ? stmts.length - 1 : stmts.length;
+    const lastFive = addIdx.length === 5 && addIdx.every((i, k) => i === tailEnd - 5 + k);
     chk("S3.23", /^SET\s+(LOCAL\s+)?lock_timeout/i.test(first) && lastFive, "คำสั่งแรก SET LOCAL lock_timeout · ADD COLUMN 5 ตัวเดิมอยู่ท้าย", `คำสั่งแรก: ${first.slice(0, 60) || "-"} · ADD COLUMN ที่ตำแหน่ง ${addIdx.join(",") || "-"} / ${stmts.length}`);
     const tsDef = /"trackStock"\s+BOOLEAN([^,\n]*)/i.exec(sql)?.[1] ?? null;
     chk("S3.24", tsDef !== null && !/NOT\s+NULL|DEFAULT/i.test(tsDef), "\"trackStock\" BOOLEAN (nullable · ไม่มี DEFAULT)", tsDef === null ? "ไม่พบใน SQL" : `"trackStock" BOOLEAN${tsDef}`);
@@ -596,6 +619,19 @@ try {
     chk("S3.25", m4, "index (systemId, archivedAt, name, id)", ppIdx.map((r) => cols(r.indexdef).join("+")).join(" · ") || "ไม่มี index");
     const pcIdx = await q<{ indexdef: string }>(`select indexdef from pg_indexes where schemaname='public' and tablename='PosCategory'`);
     const m5 = pcIdx.some((r) => /UNIQUE/i.test(r.indexdef) && cols(r.indexdef).join(",") === "systemId,name" && /WHERE[\s\S]*"?unitId"?\s+IS\s+NULL/i.test(r.indexdef));
+    // S3.31 / S3.32 (D4)
+    const last = stmts[stmts.length - 1] ?? "";
+    chk("S3.31", /^RESET\s+lock_timeout$/i.test(last), "RESET lock_timeout", last.slice(0, 80) || "-");
+    const unguarded: string[] = [];
+    for (const st of stmts) {
+      const one = st.replace(/\s+/g, " ");
+      if (/^__DO_\d+__$/.test(one)) { const b = doBlocks[Number(one.slice(5, -2))] ?? ""; if (!/EXCEPTION\s+WHEN\s+duplicate_object|IF\s+NOT\s+EXISTS/i.test(b)) unguarded.push(`DO: ${b.slice(0, 50)}`); continue; }
+      if (/^(SET|RESET)\b/i.test(one)) continue;
+      if (/^CREATE TABLE\s+IF NOT EXISTS\b/i.test(one) || /^CREATE (UNIQUE )?INDEX\s+IF NOT EXISTS\b/i.test(one)) continue;
+      if (/^ALTER TABLE\s+"\w+"\s+ADD COLUMN\s+IF NOT EXISTS\b/i.test(one)) continue;
+      unguarded.push(one.slice(0, 70));
+    }
+    chk("S3.32", stmts.length > 0 && unguarded.length === 0, "ทุกคำสั่งมีตัวกันรันซ้ำ", `ไม่มีตัวกัน ${unguarded.length}/${stmts.length}: ${unguarded.slice(0, 3).join(" | ") || "-"}`);
     chk("S3.26", m5, "UNIQUE (systemId, name) WHERE unitId IS NULL", pcIdx.map((r) => r.indexdef.replace(/^CREATE /, "").slice(0, 110)).join(" · ") || "ไม่มี");
   });
 
@@ -669,6 +705,15 @@ try {
     fx.archCat = await P.menuCategory.create({ data: { tenantId: cfT, unitId: fx.archUnit.id, name: `${TAG} cat-arch` } });
     fx.archSt = await P.kdsStation.create({ data: { tenantId: cfT, unitId: fx.archUnit.id, name: `${TAG} st-arch` } });
     fx.archMenu = await mkMenu("menu-in-archived-branch", { basePrice: 1234 }, fx.archUnit.id, cfT, fx.archCat.id, fx.archSt.id);
+    // ── round 3 fixtures ──
+    // D1 ร้าน "สาขาเดียว" = POS ชั่วคราวที่มีสาขาเดียว (ไม่มีคลัง)
+    fx.tPos1 = await P.appSystem.create({ data: { tenantId: cfT, type: "POS", name: `${TAG} POS สาขาเดียว` } });
+    fx.uS = await P.businessUnit.create({ data: { tenantId: cfT, type: "SHOP", name: `${TAG} สาขาเดียว`, slug: `${TAG}-single` } });
+    await P.appSystemUnit.create({ data: { tenantId: cfT, systemId: fx.tPos1.id, unitId: fx.uS.id, type: "POS" } });
+    // D3 บริการที่ราคาคลัง ≠ ราคาบัญชี (ราคาลิ้นชัก = salePrice 12000) · D6 เว็บร้านราคา 0 ที่ผูกน้ำดื่ม (ราคาสุดท้าย = ราคาบัญชี ⇒ ไม่นับ zeroPriceWeb)
+    fx.svcDiff = await mkInv(cfT, sysC.INVENTORY, "d3-svc-diff", { kind: "SERVICE", priceSatang: 15000 });
+    await mkAp(cfT, sysC.ACCOUNT, fx.svcDiff, 12000);
+    fx.shZeroLinked = await mkShop("d6-shop-zero-linked", 0, fx.water.id);
     fx.oldPos = await P.appSystem.create({ data: { tenantId: cfT, type: "POS", name: `${TAG} POS ปิดใช้งาน`, active: false, createdAt: new Date("2000-01-01T00:00:00Z") } });
   });
 
@@ -746,7 +791,7 @@ try {
   });
 
   // ═══ S1.9–S1.18 ค่าหลัง backfill ═══
-  await section("invariants", ["S3.12", "S3.13", "S3.15", "S3.16", "S3.17", "S1.9", "S1.10", "S1.11", "S1.12", "S1.13", "S1.14", "S1.15", "S1.16", "S1.17", "S1.18"], async () => {
+  await section("invariants", ["S3.30", "S3.39", "S3.12", "S3.13", "S3.15", "S3.16", "S3.17", "S1.9", "S1.10", "S1.11", "S1.12", "S1.13", "S1.14", "S1.15", "S1.16", "S1.17", "S1.18"], async () => {
     const invs = await rowsOf("InvItem", QC_TIDS);
     const prods = await rowsOf("PosProduct", QC_TIDS);
     const menus = await rowsOf("MenuItem", QC_TIDS); const shops = await rowsOf("ShopProduct", QC_TIDS);
@@ -884,6 +929,11 @@ try {
     const dP = pOf(shops, fx.shDangling.id); const npP = pOf(shops, fx.noPosShop.id);
     chk("S3.17", !!dP && dP.invItemId === null && dP.systemId === tPos.get(cfT) && atLeast("shopDanglingInvItem", 1) && !!npP && npP.unitId === fx.noPosUnit.id && atLeast("shopBranchNotInFirstPos", 1),
       "dangling = แถวตัวเอง inv null + นับ · สาขานอก POS แรก unitId สาขาร้าน + นับ", `dangling ${dP ? `inv ${dP.invItemId}` : "ไม่ผูก"} · ${cnt("shopDanglingInvItem") ?? "ไม่มี"} · นอก POS ${npP ? `unit ${npP.unitId === fx.noPosUnit.id}` : "ไม่ผูก"} · ${cnt("shopBranchNotInFirstPos") ?? "ไม่มี"}`);
+    // S3.30 (D3) ตัวนับใหม่ + ตัวอย่าง · S3.39 zeroPriceWeb ตรงเป๊ะ
+    const s330 = { apIgnoredButTillPriced: atLeast("apIgnoredButTillPriced", 2), priceNotSetOther: atLeast("priceNotSetOther", 3), servicePriceDiffersFromAccountProduct: atLeast("servicePriceDiffersFromAccountProduct", 1),
+      sampleApIgnored: dryText.includes(fx.p4.name) && dryText.includes(fx.p5.name), samplePriceNotSet: dryText.includes(fx.p3.name) && dryText.includes(fx.p6.name), svcDiffPrice: pInv(fx.svcDiff) === 12000 };
+    chk("S3.30", Object.values(s330).every(Boolean), "นับ ≥ fixture (2 · 3 · 1) + ตัวอย่างชื่อ · บริการคิด salePrice 12000", Object.entries(s330).map(([k, v]) => `${k}${v ? "✓" : `✗(${cnt(k) ?? "-"})`}`).join(" "));
+    chk("S3.39", cnt("zeroPriceWeb") === 1 && pOf(shops, fx.shZeroLinked.id)?.id === waterP[0]?.id, "zeroPriceWeb = 1 (เฉพาะเว็บล้วนราคา 0) · ราคา 0 ที่ผูกน้ำดื่มชี้แถวน้ำดื่ม", `zeroPriceWeb ${cnt("zeroPriceWeb") ?? "ไม่มี"} · ลิงก์ ${pOf(shops, fx.shZeroLinked.id)?.id === waterP[0]?.id}`);
     // S3.20 (C12) ส่วน backfill: เมนูในสาขาเก็บถาวรไม่ถูกผูก · POS ปิดใช้งานที่เก่ากว่าไม่ถูกเลือก (เว็บร้านผูก POS ของ seed)
     fx.s320 = { archMenuUnlinked: !menus.find((x) => x.id === fx.archMenu.id)?.posProductId, shopsOnSeedPos: pOf(shops, fx.shOnly.id)?.systemId === sysC.POS, noProdOnOldPos: !prods.some((x) => x.systemId === fx.oldPos.id) };
     // S1.16 หมวด
@@ -961,7 +1011,7 @@ try {
   });
 
   // ═══ S1.19–S1.35 + X2/X3/X6/X8 catalog.ts ═══
-  const catIds = ["S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6", "S3.7", "S3.8", "S3.9", "S3.10", "S3.11", "S3.14", "S3.18", "S3.19", "S3.20", "S3.21", "S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
+  const catIds = ["S3.27", "S3.28", "S3.29", "S3.33", "S3.34", "S3.35", "S3.36", "S3.37", "S3.38", "S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6", "S3.7", "S3.8", "S3.9", "S3.10", "S3.11", "S3.14", "S3.18", "S3.19", "S3.20", "S3.21", "S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
   await section("catalog", catIds, async () => {
     catalog = await load("@/lib/modules/pos/catalog");
     const FN = ["createProduct", "updateProduct", "setPrice", "archive", "listForUnit", "byBarcode", "ensureForInvItem", "createCategory"];
@@ -1155,11 +1205,11 @@ try {
     const c3 = await attempt(() => C.setPrice(ctxOwner, tPid, 2200));
     chk("X3.2", c2.ok && pStaff === 2100 && c3.ok && (await prodById(tPid))?.basePriceSatang === 2200, "staff+สิทธิ์ 2100 · owner 2200", `${c2.ok ? pStaff : c2.err} · ${c3.ok ? (await prodById(tPid))?.basePriceSatang : c3.err}`);
     const pc3 = await countProducts(cfT); const snapT = hashOf(await prodById(tPid));
-    const m1 = await attempt(() => C.createProduct(ctxCashier, { name: `${TAG} cashier-new`, basePriceSatang: 100 }));
+    const m1 = await attempt(() => C.createProduct(ctxCashier, { name: `${TAG} cashier-new`, basePriceSatang: 100, unitId: SILOM }));
     const m2 = await attempt(() => C.updateProduct(ctxCashier, tPid, { name: "HACK" }));
     const m3 = await attempt(() => C.archive(ctxCashier, tPid));
     const catN0 = (await rowsOf("PosCategory", [cfT])).length;
-    const m4 = await attempt(() => C.createCategory(ctxCashier, { name: `${TAG} cashier-cat` }));
+    const m4 = await attempt(() => C.createCategory(ctxCashier, { name: `${TAG} cashier-cat`, unitId: SILOM }));
     chk("X3.3", [m1, m2, m3, m4].every((r) => refused(r, "PERMISSION_DENIED")) && (await countProducts(cfT)) === pc3 && hashOf(await prodById(tPid)) === snapT && (await rowsOf("PosCategory", [cfT])).length === catN0,
       "PERMISSION_DENIED 4/4 · ไม่เขียน", `${[m1, m2, m3, m4].map(codeOf).join("/")}`);
 
@@ -1352,6 +1402,91 @@ try {
     const missNames = NAMES.filter((k) => typeof (drySummary?.counts?.[k] ?? drySummary?.[k]) !== "number");
     const s321 = { prodNeedsTenantOrAll: /--all\b/.test(bfSrc) && /isProd[\s\S]{0,400}(tenantArgs\.length|--all|all\b)/.test(bfSrc), movementsGrouped: !/invMovement\.findMany/.test(bfb) && /groupBy|SELECT\s+DISTINCT/i.test(bfb), optionGroupsMap: !/menuOgs\.filter\(/.test(bfb), countNames: missNames.length === 0 };
     chk("S3.21", Object.values(s321).every(Boolean), "prod ต้อง --tenant/--all · movement groupBy/DISTINCT · ตัวเลือกใช้ Map · ตัวนับครบ 11 ชื่อ", `${Object.entries(s321).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")} · ขาด: ${missNames.join(",") || "-"}`);
+
+    // ═════════ ROUND 3 (S3.27+) ═════════
+    // S3.27 D1 positives
+    const sP = { tenantId: cfT, systemId: fx.tPos1.id, actorUserId: cfCashier.userId as string };
+    const d1Run = async (cx: Any, label: string) => {
+      const cp = await attempt(() => C.createProduct(cx, { name: `${TAG} d1-${label}`, basePriceSatang: 900 }));
+      const id = idOf(cp.value) as string;
+      return { cp, sp: await attempt(() => C.setPrice(cx, id, 950)), up: await attempt(() => C.updateProduct(cx, id, { nameEn: `${TAG} d1-${label}` })),
+        cc: await attempt(() => C.createCategory(cx, { name: `${TAG} d1-cat-${label}` })), ar: await attempt(() => C.archive(cx, id)), unitNull: (await prodById(id))?.unitId === null };
+    };
+    const single = await asManagerOf([fx.uS.id], () => d1Run(sP, "single"));
+    const explicitAll = await asManagerOf([SILOM, ARI], () => d1Run(ctxCashier, "explicit-all"));
+    const d1s = (o: Any) => ["cp", "sp", "up", "cc", "ar"].map((k) => `${k}:${o[k].ok ? "✓" : codeOf(o[k])}`).join(" ");
+    const d1ok = (o: Any) => ["cp", "sp", "up", "cc", "ar"].every((k) => o[k].ok) && o.unitNull;
+    chk("S3.27", d1ok(single) && d1ok(explicitAll), "สาขาเดียว ✓×5 · ระบุทุกสาขา ✓×5 (แถว unitId null)", `สาขาเดียว ${d1s(single)} · ระบุทุกสาขา ${d1s(explicitAll)}`);
+    // S3.28 D1+C3 ผู้จัดการสาขา A ใน POS สองคลัง
+    const tCx = { tenantId: cfT, systemId: fx.tPos.id, actorUserId: cfCashier.userId as string };
+    const prodX = (await prodByInv(fx.itX.id)).find((x) => x.systemId === fx.tPos.id);
+    const prodY = (await prodByInv(fx.itY.id)).find((x) => x.systemId === fx.tPos.id);
+    const noInvT = await attempt(() => C.createProduct(ctxT, { name: `${TAG} d1-tpos-noinv`, basePriceSatang: 500 }));
+    const aOnly = await asManagerOf([fx.uA.id], async () => ({
+      x: await attempt(() => C.setPrice(tCx, prodX?.id, 777)),
+      y: await attempt(() => C.setPrice(tCx, prodY?.id, 778)),
+      n: await attempt(() => C.setPrice(tCx, idOf(noInvT.value), 779)),
+    }));
+    chk("S3.28", !!prodX && prodX.unitId === null && aOnly.x.ok && refused(aOnly.y, "PERMISSION_DENIED") && refused(aOnly.n, "PERMISSION_DENIED"),
+      "ขายเฉพาะ A ✓ · คลัง Y PERMISSION_DENIED · ไม่ผูกคลัง PERMISSION_DENIED", `X ${aOnly.x.ok ? "✓" : codeOf(aOnly.x)} · Y ${codeOf(aOnly.y)} · ไม่ผูก ${codeOf(aOnly.n)}${prodX ? "" : " · ไม่มีแถวของ X"}`);
+    // S3.29 D2 static
+    const restSrc = catSrc.replace(fnBody("planTenant"), "");
+    const s329 = { noTenantScan: !/invMovement\s*\.\s*(groupBy|findMany)\s*\(/.test(restSrc), perItemExists: /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+"InvMovement"[\s\S]{0,400}"systemId"/i.test(restSrc) || /invMovement\s*\.\s*findFirst\s*\([\s\S]{0,300}systemId/.test(restSrc) };
+    chk("S3.29", Object.values(s329).every(Boolean), "ไม่มี groupBy/findMany movement บนทางอ่าน · มี EXISTS/findFirst กรอง systemId", Object.entries(s329).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" "));
+    // S3.33 D5
+    const facade5 = await load("@/lib/modules/pos");
+    const bfExposed = typeof facade5?.backfillCatalog === "function" || typeof facade5?.catalog?.backfillCatalog === "function";
+    const symOk = /CATALOG_SYSTEM_ACTOR[^=\n]*=\s*Symbol\(/.test(catSrc) && !/Symbol\.for\(/.test(catSrc) && typeof marker === "symbol" && Symbol.keyFor(marker) === undefined;
+    const srcFiles = (readdirSync("src", { recursive: true }) as string[]).filter((f) => /\.(ts|tsx|mts)$/.test(f)).map((f) => `src/${f}`);
+    const fallback = srcFiles.filter((f) => /\?\?\s*CATALOG_SYSTEM_ACTOR/.test(read(f)));
+    chk("S3.33", !bfExposed && symOk && fallback.length === 0, "facade ไม่มี backfillCatalog · Symbol( ไม่ลงทะเบียน · ไม่มี ?? CATALOG_SYSTEM_ACTOR", `facade ${bfExposed ? "ส่ง backfillCatalog ✗" : "✓"} · marker ${symOk ? "✓" : "✗"} · fallback ${fallback.join(",") || "-"}`);
+    // S3.34 D6 InvItem ของคลังที่ไม่เสิร์ฟสาขา
+    const yFresh = await mkInv(cfT, fx.tInvY.id, "d6-y-fresh");
+    const wrongWh = await attempt(() => C.createProduct(ctxT, { name: `${TAG} d6-wrong-wh`, unitId: fx.uA.id, invItemId: yFresh.id, basePriceSatang: 100 }));
+    const rightWh = await attempt(() => C.createProduct(ctxT, { name: `${TAG} d6-right-wh`, unitId: fx.uB.id, invItemId: yFresh.id, basePriceSatang: 100 }));
+    chk("S3.34", refused(wrongWh, "VALIDATION") && rightWh.ok, "สาขา A + ของคลัง Y = VALIDATION · สาขา B + ของคลัง Y ได้ (คู่บวก)", `A ${codeOf(wrongWh)} · B ${rightWh.ok ? "✓" : rightWh.err}`);
+    // S3.35 D6 trackStock true บนบริการ
+    const svcFresh = await mkInv(cfT, sysC.INVENTORY, "d6-svc", { kind: "SERVICE", priceSatang: 2000 });
+    const svcCreate = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} d6-svc`, kind: "SERVICE", invItemId: svcFresh.id, trackStock: true, basePriceSatang: 2000 }));
+    // ห้ามแตะแถวของ seed (updatedAt/audit จะค้าง) — ใช้บริการชั่วคราวที่ ensure ขึ้นมาเอง
+    const svc2 = await mkInv(cfT, sysC.INVENTORY, "d6-svc2", { kind: "SERVICE", priceSatang: 2100 });
+    const svc2P = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), svc2.id));
+    const giftBefore = (await prodById(idOf(svc2P.value)))?.trackStock;
+    const svcUpd = await attempt(() => C.updateProduct(ctxOwner, idOf(svc2P.value), { trackStock: true }));
+    const giftAfter = (await prodById(idOf(svc2P.value)))?.trackStock;
+    chk("S3.35", svc2P.ok && refused(svcCreate, "VALIDATION") && refused(svcUpd, "VALIDATION") && giftAfter === giftBefore, "create/update บริการ trackStock true = VALIDATION ×2", `create ${codeOf(svcCreate)} · update ${codeOf(svcUpd)}`);
+    // S3.36 D6 ล็อกร้าน: ถือไว้บน connection หนึ่ง สร้างธรรมดาบนอีก connection ต้องไม่รอ
+    const lockKey = `pos-catalog:${cfT}`;
+    let held = false; let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const holder = lane(6).$transaction(async (tx: Any) => { await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, lockKey); held = true; await gate; }, { timeout: 60_000, maxWait: 30_000 }).catch((e: unknown) => firstLine(e));
+    for (let i = 0; i < 200 && !held; i++) await new Promise((r) => setTimeout(r, 50));
+    const timed = async (ms: number, fn: () => Promise<Any>) => {
+      const t = Date.now(); const pr = attempt(fn);
+      const r = await Promise.race([pr, new Promise<"TIMEOUT">((res) => setTimeout(() => res("TIMEOUT"), ms))]);
+      return { r, ms: Date.now() - t, pr };
+    };
+    const lockInv = await mkInv(cfT, sysC.INVENTORY, "d6-lock-inv");
+    const plainP = await timed(3000, () => C.createProduct(ctxOwner, { name: `${TAG} d6-plain`, basePriceSatang: 100, unitId: SILOM }));
+    const plainC = await timed(3000, () => C.createCategory(ctxOwner, { name: `${TAG} d6-plain-cat`, unitId: SILOM }));
+    const ctrl = await timed(1500, () => C.createProduct(ctxOwner, { name: `${TAG} d6-lock-ctrl`, unitId: SILOM, invItemId: lockInv.id, basePriceSatang: 100 }));
+    release(); await holder;
+    await Promise.all([plainP.pr, plainC.pr, ctrl.pr]);
+    const okT = (x: Any) => x.r !== "TIMEOUT" && (x.r as Try).ok;
+    chk("S3.36", held && okT(plainP) && okT(plainC) && ctrl.r === "TIMEOUT", "ธรรมดาเสร็จ < 3 วิ ×2 · ผูก InvItem ยังรอ (คู่บวก)",
+      `ถือล็อก ${held} · product ${plainP.r === "TIMEOUT" ? "รอเกิน 3 วิ" : `${plainP.ms}ms ${(plainP.r as Try).ok ? "✓" : (plainP.r as Try).err}`} · category ${plainC.r === "TIMEOUT" ? "รอเกิน 3 วิ" : `${plainC.ms}ms ${(plainC.r as Try).ok ? "✓" : (plainC.r as Try).err}`} · ctrl ${ctrl.r === "TIMEOUT" ? "รอ ✓" : "ไม่รอ ✗"}`);
+    // S3.37 D6 byBarcode ทั้งสองแหล่ง
+    const bc37 = `95${RAND}37`;
+    const own37 = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} d6-own-bc`, barcode: bc37, unitId: SILOM, basePriceSatang: 100 }));
+    const inv37 = await mkInv(cfT, sysC.INVENTORY, "d6-inv-bc", { barcode: bc37 });
+    const ens37 = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), inv37.id));
+    const b37 = await attempt(() => C.byBarcode(ctxOwner, SILOM, bc37));
+    const ids37 = new Set(bcItems(b37.value).map(idOf));
+    chk("S3.37", own37.ok && ens37.ok && ids37.has(idOf(own37.value)) && ids37.has(idOf(ens37.value)) && ids37.size === 2, "2 รายการ (แถวเอง + InvItem)", `${b37.ok ? `${ids37.size} รายการ · own ${ids37.has(idOf(own37.value))} · inv ${ids37.has(idOf(ens37.value))}` : b37.err}${own37.ok ? "" : ` · own ${own37.err}`}${ens37.ok ? "" : ` · ensure ${ens37.err}`}`);
+    // S3.38 D6 คำเชิญที่ยังไม่รับ
+    const acc0 = cashierRow0?.acceptedAt ?? null;
+    const unaccepted = await withCashierPerm({}, () => attempt(() => C.listForUnit(ctxCashier, SILOM, { limit: 5 })), undefined, undefined, null);
+    chk("S3.38", acc0 !== null && refused(unaccepted, "NOT_FOUND"), "acceptedAt null → NOT_FOUND (ก่อนหน้าเป็นสมาชิกที่รับแล้ว)", `acceptedAt เดิม ${acc0 ? "มี" : "null (ทดสอบไม่ได้)"} · ${codeOf(unaccepted)}`);
     }
     // X8 ไม่เชื่อมบัญชี
     const naP = (await prodByInv(fx.costOnly.id))[0];
