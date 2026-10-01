@@ -13,7 +13,7 @@
 //   PROD : ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
 //          ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id>             ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
 //          ทุกร้านบน prod ต้องพิมพ์ `--all` เอง (C13: prod ไม่มี --tenant และไม่มี --all = ปฏิเสธ)
-// บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9 + `samples.soldAtCostToday`) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
+// บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9/D3 + `samples` ตัวอย่าง ≤20 ต่อร้าน) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
 // 🔴 ฐาน QC: ไม่ระบุ --tenant = ทุกร้านในฐานนั้น · รัน backfill นอกเวลาขาย (ล็อกระดับร้านชนกับผู้เขียนแคตตาล็อก — หนี้ P6.1 runbook)
 
 import { createHash } from "node:crypto";
@@ -120,7 +120,14 @@ console.log(`ร้าน ${s.tenants} · แหล่ง InvItem ${s.sources.in
 for (const [sys, v] of Object.entries(s.perSystem)) console.log(`  ระบบ POS ${sys}: InvItem ${v.invItem} · MenuItem ${v.menuItem} · ShopProduct ${v.shopProduct}`);
 console.log(`ข้าม (หา POS ไม่เจอ): InvItem ${s.skippedNoPosSystem.invItem} · MenuItem ${s.skippedNoPosSystem.menuItem} · ShopProduct ${s.skippedNoPosSystem.shopProduct} · เหตุ ${JSON.stringify(s.skipped)}`);
 console.log(`ตัวนับ (เจ้าของควรดูก่อนเปิดใช้): ${JSON.stringify(s.counts)}`);
-for (const [t, rows] of Object.entries(s.samples.soldAtCostToday)) if (rows.length) console.log(`  ร้าน ${t} ลิ้นชักวันนี้คิดราคาทุน → แคตตาล็อกใหม่ "ยังไม่ตั้งราคา" (ตัวอย่าง ≤20): ${rows.map((r) => r.name).join(" · ")}`);
+const SAMPLE_LABEL: Record<string, string> = {
+  soldAtCostToday: "ลิ้นชักวันนี้คิดราคาทุน → แคตตาล็อกใหม่ \"ยังไม่ตั้งราคา\"",
+  apIgnoredButTillPriced: "ลิ้นชักวันนี้คิดราคาจากสินค้าบัญชีที่เก็บถาวร/สมุดอื่น → \"ยังไม่ตั้งราคา\"",
+  priceNotSetOther: "ไม่มีราคาขายจากแหล่งใดเลย → \"ยังไม่ตั้งราคา\"",
+  servicePriceDiffersFromAccountProduct: "บริการ: ราคาในคลัง ≠ ราคาขายในบัญชี (ใช้ราคาบัญชี)",
+};
+for (const [k, byTenant] of Object.entries(s.samples))
+  for (const [t, rows] of Object.entries(byTenant)) if (rows.length) console.log(`  ร้าน ${t} ${SAMPLE_LABEL[k] ?? k} (ตัวอย่าง ≤20): ${rows.map((r) => r.name).join(" · ")}`);
 console.log(`${verb}สร้าง ${JSON.stringify(s.created)} · ${verb}ผูกคอลัมน์เชื่อม ${JSON.stringify(s.updated)} · มีอยู่แล้ว ${JSON.stringify(s.alreadyDone)} · ${Date.now() - t0} ms`);
 for (const f of s.failedTenants) console.error(`🔴 ร้าน ${f.tenantId} ล้ม (ไม่มีอะไรค้างครึ่งทาง): ${f.error}`);
 if (isProd && dryRun && !s.failedTenants.length) {

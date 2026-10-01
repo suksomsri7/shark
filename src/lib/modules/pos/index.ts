@@ -29,6 +29,30 @@ export {
 } from "./service";
 
 // POS P1.1a ▸ แคตตาล็อกเดียว (PosProduct) — ผู้เขียน/ผู้อ่านเดียวของแคตตาล็อกขาย · ผู้เรียกนอกโมดูลใช้ `catalog.<fn>` ◂
-export * as catalog from "./catalog";
-export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, PosProductView, PosOptionGroupView, TrackStockMode, BackfillSummary, BackfillCounts } from "./catalog";
+// 🔴 D5 (round 3): รายการชัดเจน ไม่ใช่ `export *` — ตัวบ่งชี้ผู้เรียกระดับระบบและ backfill ห้ามหลุดถึงโค้ดที่รับคำขอ
+//    (สคริปต์ backfill import จาก ./catalog ตรง · fitness F15.5 คุม)
+import {
+  createProduct as catalogCreateProduct,
+  updateProduct as catalogUpdateProduct,
+  setPrice as catalogSetPrice,
+  archive as catalogArchive,
+  listForUnit as catalogListForUnit,
+  byBarcode as catalogByBarcode,
+  ensureForInvItem as catalogEnsureForInvItem,
+  createCategory as catalogCreateCategory,
+  checkCatalogWrite,
+} from "./catalog";
+export const catalog = {
+  createProduct: catalogCreateProduct,
+  updateProduct: catalogUpdateProduct,
+  setPrice: catalogSetPrice,
+  archive: catalogArchive,
+  listForUnit: catalogListForUnit,
+  byBarcode: catalogByBarcode,
+  ensureForInvItem: catalogEnsureForInvItem,
+  createCategory: catalogCreateCategory,
+  /** D1 — ตัวตัดสินสิทธิ์เขียนตามขอบเขตสาขาของแถว (หน้า POS ใช้ร่วม) */
+  checkCatalogWrite,
+} as const;
+export type { CatalogCtx, CatalogActor, CatalogClient, CatalogErrorCode, CatalogRowScope, CatalogWriteVerdict, PosProductView, PosOptionGroupView, TrackStockMode } from "./catalog";
 export { CatalogError } from "./catalog";

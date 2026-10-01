@@ -916,6 +916,66 @@ export function runPosFitness(chk: PosChk, ROOT: string): void {
       problems.length ? problems.join(" · ") : th.keys.size === 0 && en.keys.size === 0 ? "0 คีย์ (namespace ยังไม่ถูกสร้าง)" : `ครบ ${th.keys.size} คีย์ (${[...th.files, ...en.files].join(", ")})`,
     );
   });
+
+  // ── F15.5 ── POS P1.1a R3 ▸ D5
+  const n155 = "ตัวบ่งชี้ผู้เรียกระดับระบบของแคตตาล็อก + backfill ไม่หลุดถึงโค้ดที่รับคำขอ (catalog.ts · สคริปต์ backfill · qc-* · allowlist เท่านั้น)";
+  guarded(chk, "F15.5", n155, () => {
+    const v = scanSystemMarker(ROOT);
+    chk("F15.5", n155, v.length === 0, v.length ? v.slice(0, 6).join(" · ") : "สะอาด", "CRITICAL");
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// F15.5 — ตัวบ่งชี้ผู้เรียกระดับระบบ (POS P1.1a round 3 · D5)
+// ═══════════════════════════════════════════════════════════════
+// ชื่อสร้างจากชิ้นส่วน — ไฟล์นี้เองจะได้ไม่ "ใช้" ตัวระบุทั้งสอง (และข้ามตัวเองชัด ๆ อีกชั้น)
+const MARKER_ID = ["CATALOG", "SYSTEM", "ACTOR"].join("_");
+const BACKFILL_ID = ["backfill", "Catalog"].join("");
+const MARKER_USE_RE = new RegExp(`\\b(${MARKER_ID}|${BACKFILL_ID})\\b`);
+/** `x ?? <ตัวบ่งชี้>` ในโค้ดจริง (AST — ข้อความ/คอมเมนต์ที่อธิบายกติกาไม่นับ) */
+function markerFallbacks(abs: string, text: string): number[] {
+  const sf = parse(abs, text);
+  const lines: number[] = [];
+  const visit = (n: ts.Node) => {
+    if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      const r = unwrap(n.right);
+      const name = ts.isIdentifier(r) ? r.text : ts.isPropertyAccessExpression(r) ? r.name.text : "";
+      if (name === MARKER_ID) lines.push(lineAt(sf, n));
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return lines;
+}
+const MARKER_HOME = "src/lib/modules/pos/catalog.ts";
+/** ไฟล์ที่ได้รับอนุญาตเพิ่ม (ว่างวันนี้ — P1.1b เติมไฟล์ legacy-sync ของตัวเอง พร้อมเหตุผล) */
+export const SYSTEM_MARKER_ALLOWLIST: ReadonlyMap<string, string> = new Map<string, string>([]);
+const isMarkerAllowedPath = (f: string) =>
+  f === MARKER_HOME || f === "scripts/pos-backfill-catalog.mts" || /^scripts\/qc-[^/]+\.mts$/.test(f) || SYSTEM_MARKER_ALLOWLIST.has(f);
+const isRequestPath = (f: string, text: string) =>
+  f.startsWith("src/app/") || f.startsWith("src/lib/actions/") || /^\s*["']use server["']/m.test(text);
+
+/** คืนรายการละเมิด (ว่าง = สะอาด) — export ไว้ให้ข้อสอบ/หลักฐานลบ (negative proof) เรียกตรง */
+export function scanSystemMarker(ROOT: string): string[] {
+  const out: string[] = [];
+  const self = "scripts/fitness-pos.mts";
+  const files = [
+    ...walk(join(ROOT, "src"), (p) => /\.(ts|tsx|mts|js|mjs)$/.test(p)),
+    ...walk(join(ROOT, "scripts"), (p) => /\.(ts|mts|js|mjs)$/.test(p)),
+  ];
+  for (const abs of files) {
+    const f = relative(ROOT, abs).replace(/\\/g, "/");
+    if (f === self) continue;
+    const text = readFileSync(abs, "utf8");
+    if (!MARKER_USE_RE.test(text)) continue;
+    for (const ln of markerFallbacks(abs, text)) out.push(`${f}:${ln}: \`?? ${MARKER_ID}\` (ห้ามใช้ตัวบ่งชี้เป็นค่าสำรอง)`);
+    if (!isMarkerAllowedPath(f)) out.push(`${f}: ใช้ ${MARKER_ID}/${BACKFILL_ID} นอกไฟล์ที่อนุญาต`);
+    else if (isRequestPath(f, text)) out.push(`${f}: ไฟล์รับคำขอ ("use server" / src/app / src/lib/actions) ห้ามมีตัวบ่งชี้`);
+  }
+  const home = existsSync(join(ROOT, MARKER_HOME)) ? readFileSync(join(ROOT, MARKER_HOME), "utf8") : "";
+  if (home && !new RegExp(`${MARKER_ID}[^=\\n]*=\\s*Symbol\\(`).test(home)) out.push(`${MARKER_HOME}: ${MARKER_ID} ต้องสร้างด้วย Symbol(…)`);
+  if (/Symbol\.for\(/.test(home)) out.push(`${MARKER_HOME}: ห้าม Symbol.for( (ลงทะเบียนกลาง = ปลอมได้)`);
+  return out;
 }
 
 // ─────────────────── รันเดี่ยว ───────────────────

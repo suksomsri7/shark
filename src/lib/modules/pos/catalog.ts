@@ -155,28 +155,61 @@ async function actorOf(ctx: CatalogCtx, db: CatalogClient): Promise<MembershipCt
   if (typeof a !== "string" || !a) throw denied();
   const m = await db.membership.findUnique({
     where: { userId_tenantId: { userId: a, tenantId: ctx.tenantId } },
-    select: { role: true, unitAccess: true, permissions: true },
+    select: { role: true, unitAccess: true, permissions: true, acceptedAt: true },
   });
-  if (!m) throw notFound();
+  // กติกาบ้าน (core/context.ts:23,50 · push.ts:313-315): คำเชิญที่ยังไม่รับ / ถูกถอน (acceptedAt null) = ไม่ใช่สมาชิก
+  if (!m || !m.acceptedAt) throw notFound();
   return { role: m.role, unitAccess: toStrings(m.unitAccess), permissions: isRecord(m.permissions) ? m.permissions : {} };
 }
 
-/** C4: ผู้กระทำ "ทุกสาขา" = OWNER หรือ unitAccess ["*"] — ตัวตัดสินกลางเดียวกับหน้าตั้งสิทธิ์พนักงาน (rbac.canGrantUnitAccess) */
+/** ผู้กระทำ "ทุกสาขา" = OWNER หรือ unitAccess ["*"] (rbac.canGrantUnitAccess) — ใช้เฉพาะเมื่อขอบเขตว่าง (D1) */
 const isAllBranchActor = (m: MembershipCtx): boolean => canGrantUnitAccess(m, ["*"]);
 
+/** แถวที่จะเขียน (หรือจะเป็นหลังเขียน) — สาขา + InvItem ที่ผูก */
+export type CatalogRowScope = { unitId: string | null; invItemId: string | null };
+export type CatalogWriteVerdict = "OK" | "NOT_FOUND" | "PERMISSION_DENIED";
+
 /**
- * AUDIT-CLASS X3 + C4: สิทธิ์ตามขอบเขตของแถว — unitId null (ทุกสาขา) ต้องเป็นผู้กระทำทุกสาขา · มีสาขา = ต้องเข้าถึงสาขานั้น (ไม่ได้ = NOT_FOUND)
- * แล้วจึงตรวจคีย์สิทธิ์ (OWNER/MANAGER ผ่าน · STAFF ต้องมีคีย์) · ระบบ (null) ผ่าน
+ * D1 — ตัวตัดสินเดียว "ผู้กระทำนี้เขียนแถวนี้ได้ไหม" (หน้า POS ใช้ร่วมได้ · คู่กับ `posCanSetTenantPrice` ของ hotfix/pos-page-authz — ต้องตรงกันตอน merge)
+ *   • แถวของสาขา (unitId มีค่า): เข้าสาขาไม่ได้ = NOT_FOUND · ไม่มีคีย์ที่สาขานั้น = PERMISSION_DENIED
+ *   • แถวทุกสาขา (unitId null): ขอบเขต = สาขา (ไม่เก็บถาวร) ของ POS นี้ที่ขายแถวนี้ได้จริง — แถวผูก InvItem นับเฉพาะสาขาที่คลังของสาขา
+ *     คือคลังของ InvItem (C3) · ต้องมีคีย์ (`evaluate(action, unitId)`) ที่ **ทุก** สาขาในขอบเขต · ขอบเขตว่าง = OWNER หรือ unitAccess `*` เท่านั้น
+ *   • ผู้กระทำระดับระบบ (null) = OK เสมอ
+ * ผลที่ต้องเป็น: ผู้จัดการร้านสาขาเดียว (unitAccess=[สาขานั้น]) เขียนสินค้าทุกสาขาของร้านตัวเองได้ · ผู้จัดการที่ระบุครบทุกสาขาได้ ·
+ *   ผู้จัดการสาขา A ในร้านสองสาขาเขียนแถวทุกสาขาที่ขายที่ B ไม่ได้ แต่เขียนแถวทุกสาขาที่ (ตาม C3) ขายได้แค่ที่ A ได้
  */
-function requireScope(actor: MembershipCtx | null, unitId: string | null, action: string): void {
-  if (!actor) return;
-  if (unitId === null) {
-    if (!isAllBranchActor(actor)) throw denied();
-    if (!evaluate(actor, { module: "pos", action })) throw denied();
-    return;
+export async function checkCatalogWrite(
+  actor: MembershipCtx | null,
+  where: { tenantId: string; systemId: string },
+  row: CatalogRowScope,
+  action: string,
+  client: CatalogClient = prisma,
+): Promise<CatalogWriteVerdict> {
+  if (!actor) return "OK";
+  if (row.unitId !== null) {
+    if (!canAccessUnit(actor, row.unitId)) return "NOT_FOUND";
+    return evaluate(actor, { module: "pos", action, unitId: row.unitId }) ? "OK" : "PERMISSION_DENIED";
   }
-  if (!canAccessUnit(actor, unitId)) throw notFound();
-  if (!evaluate(actor, { module: "pos", action, unitId })) throw denied();
+  const links = await client.appSystemUnit.findMany({ where: { tenantId: where.tenantId, systemId: where.systemId, type: "POS" }, select: { unitId: true } });
+  const live = links.length
+    ? await client.businessUnit.findMany({ where: { tenantId: where.tenantId, id: { in: links.map((l) => l.unitId) }, status: { not: "ARCHIVED" } }, select: { id: true } })
+    : [];
+  let scope = live.map((u) => u.id);
+  if (row.invItemId && scope.length) {
+    const inv = await client.invItem.findFirst({ where: { id: row.invItemId, tenantId: where.tenantId }, select: { systemId: true } });
+    const wh = await client.appSystemUnit.findMany({ where: { tenantId: where.tenantId, type: "INVENTORY", unitId: { in: scope } }, select: { unitId: true, systemId: true } });
+    const serves = new Set(wh.filter((w) => !!inv && w.systemId === inv.systemId).map((w) => w.unitId));
+    scope = scope.filter((u) => serves.has(u));
+  }
+  if (!scope.length) return isAllBranchActor(actor) && evaluate(actor, { module: "pos", action }) ? "OK" : "PERMISSION_DENIED";
+  return scope.every((u) => evaluate(actor, { module: "pos", action, unitId: u })) ? "OK" : "PERMISSION_DENIED";
+}
+
+/** AUDIT-CLASS X3 + D1: บังคับผลของ checkCatalogWrite (โยน CatalogError) */
+async function requireRowWrite(ctx: CatalogCtx, actor: MembershipCtx | null, row: CatalogRowScope, action: string, db: CatalogClient): Promise<void> {
+  const v = await checkCatalogWrite(actor, ctx, row, action, db);
+  if (v === "NOT_FOUND") throw notFound();
+  if (v === "PERMISSION_DENIED") throw denied();
 }
 
 /**
@@ -195,7 +228,10 @@ async function assertUnit(ctx: CatalogCtx, actor: MembershipCtx | null, unitId: 
   return unitId;
 }
 
-/** C3: คลังที่สาขานี้ใช้ (ทางเดียวกับหน้าขาย resolvePosLinks → systemForUnit INVENTORY) · null = สาขาไม่มีคลัง */
+/**
+ * C3: คลังที่สาขานี้ใช้ (ทางเดียวกับหน้าขาย resolvePosLinks → systemForUnit INVENTORY) · null = สาขาไม่มีคลัง
+ * มติ R3 (a): ไม่กรองคลังที่ปิดใช้งาน — `systemForUnit` (system/service.ts:58-68) ไม่กรอง ⇒ ทางอ่านและทางเขียนใช้กติกาเดียวกับหน้าขายวันนี้
+ */
 async function unitInventory(tenantId: string, unitId: string, db: CatalogClient): Promise<string | null> {
   const l = await db.appSystemUnit.findUnique({ where: { tenantId_unitId_type: { tenantId, unitId, type: "INVENTORY" } }, select: { systemId: true } });
   return l?.systemId ?? null;
@@ -215,7 +251,7 @@ async function loadProduct(ctx: CatalogCtx, actor: MembershipCtx | null, id: unk
   return p;
 }
 
-/** ระบบคลังที่ "ขายผ่าน" ระบบ POS นี้ = คลังที่ผูกสาขา (ไม่เก็บถาวร) เดียวกับ POS นี้ · คลังปิดใช้งานไม่นับ (C12) */
+/** ระบบคลังที่ "ขายผ่าน" ระบบ POS นี้ = คลังที่ผูกสาขา (ไม่เก็บถาวร) เดียวกับ POS นี้ — ชุดเดียวกับที่ unitInventory ของสาขาเหล่านั้นเห็น (มติ R3 a) */
 async function inventorySystemsOfPos(tenantId: string, posSystemId: string, db: CatalogClient): Promise<string[]> {
   const posLinks = await db.appSystemUnit.findMany({ where: { tenantId, systemId: posSystemId, type: "POS" }, select: { unitId: true } });
   if (!posLinks.length) return [];
@@ -225,7 +261,7 @@ async function inventorySystemsOfPos(tenantId: string, posSystemId: string, db: 
   });
   if (!live.length) return [];
   const inv = await db.appSystemUnit.findMany({
-    where: { tenantId, type: "INVENTORY", unitId: { in: live.map((u) => u.id) }, system: { active: true } },
+    where: { tenantId, type: "INVENTORY", unitId: { in: live.map((u) => u.id) } },
     select: { systemId: true },
   });
   return [...new Set(inv.map((l) => l.systemId))];
@@ -271,7 +307,7 @@ export type PosResolution = {
   tenantId: string;
   /** สาขา (ไม่เก็บถาวร) → ระบบ POS ที่เปิดใช้งาน (AppSystemUnit type POS · 1 สาขา/1 POS) */
   unitPos: Map<string, string>;
-  /** ระบบคลัง (เปิดใช้งาน) → ระบบ POS ที่ขายของคลังนั้น (ผ่านสาขาไม่เก็บถาวรที่ผูกทั้งคู่) */
+  /** ระบบคลัง → ระบบ POS ที่ขายของคลังนั้น (ผ่านสาขาไม่เก็บถาวรที่ผูกทั้งคู่ · คลังปิดใช้งานยังนับ — มติ R3 a) */
   inventoryPos: Map<string, string[]>;
   /** POS ตัวแรกของร้าน: เปิดใช้งาน · createdAt เก่าสุด · เสมอกันใช้ id */
   firstPos: string | null;
@@ -283,25 +319,21 @@ export async function loadPosResolution(tenantId: string, client: CatalogClient 
   const [links, archived, systems] = await Promise.all([
     client.appSystemUnit.findMany({ where: { tenantId, type: { in: ["POS", "INVENTORY"] } }, select: { unitId: true, systemId: true, type: true } }),
     client.businessUnit.findMany({ where: { tenantId, status: "ARCHIVED" }, select: { id: true } }),
-    client.appSystem.findMany({
-      where: { tenantId, type: { in: ["POS", "INVENTORY"] }, active: true },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      select: { id: true, type: true },
-    }),
+    client.appSystem.findMany({ where: { tenantId, type: "POS", active: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, type: true } }),
   ]);
   const archivedIds = new Set(archived.map((u) => u.id));
-  const activeIds = new Set(systems.map((s) => s.id));
+  const activePos = new Set(systems.map((s) => s.id));
   const unitPos = new Map<string, string>();
-  for (const l of links) if (l.type === "POS" && !archivedIds.has(l.unitId) && activeIds.has(l.systemId)) unitPos.set(l.unitId, l.systemId);
+  for (const l of links) if (l.type === "POS" && !archivedIds.has(l.unitId) && activePos.has(l.systemId)) unitPos.set(l.unitId, l.systemId);
   const inventoryPos = new Map<string, string[]>();
   for (const l of links) {
-    if (l.type !== "INVENTORY" || archivedIds.has(l.unitId) || !activeIds.has(l.systemId)) continue;
+    if (l.type !== "INVENTORY" || archivedIds.has(l.unitId)) continue;
     const pos = unitPos.get(l.unitId);
     if (!pos) continue;
     const cur = inventoryPos.get(l.systemId) ?? [];
     if (!cur.includes(pos)) inventoryPos.set(l.systemId, [...cur, pos]);
   }
-  return { tenantId, unitPos, inventoryPos, firstPos: systems.find((s) => s.type === "POS")?.id ?? null };
+  return { tenantId, unitPos, inventoryPos, firstPos: systems[0]?.id ?? null };
 }
 
 /**
@@ -312,7 +344,7 @@ export async function loadPosResolution(tenantId: string, client: CatalogClient 
  *   • MenuItem   → เช็คบิลร้านอาหารใช้ `systemForUnit(tenant, unitId, "POS")` (`restaurant/order.ts:421`) ⇒ POS ของสาขาเมนู · ไม่มี = NO_POS
  *   • ShopProduct→ ยืนยันรับเงินเว็บร้านใช้ `listSystems(tenant,"POS")[0]` (`shop/service.ts:217`) = POS ตัวแรกของร้าน ไม่ดูสาขา
  *                  (โค้ดชนะ · แก้ "POS ตัวแรก" เป็นงาน P2.1) ⇒ ร้านไม่มี POS เลย = NO_POS
- *   C12: สาขาเก็บถาวร + ระบบปิดใช้งาน ไม่นับทุกทาง · "POS ตัวแรก" = เปิดใช้งาน เรียง createdAt แล้ว id
+ *   C12: สาขาเก็บถาวร + ระบบ POS ปิดใช้งาน ไม่นับทุกทาง (คลังปิดใช้งานยังนับ — มติ R3 a ตาม systemForUnit) · "POS ตัวแรก" = เปิดใช้งาน เรียง createdAt แล้ว id
  *        (`listSystems` เรียง type,createdAt เท่านั้น ไม่กรอง active ไม่มีตัวตัดสินเสมอ — ต่างกันโดยตั้งใจ · แก้ฝั่งนั้นใน P2.1)
  */
 export function resolvePosSystem(res: PosResolution, source: CatalogSource): PosResolveResult {
@@ -425,13 +457,12 @@ function warehouseCond(tenantId: string, unitInv: string | null): Prisma.Sql {
 }
 
 /** แปลงแถว → หน้าตา POS-API §1 (ของประกอบโหลดเป็นชุดต่อหน้า · จับคู่ด้วย Map ไม่ไล่ filter ต่อแถว) */
-async function toViews(tenantId: string, unitId: string, rows: PosProduct[], db: CatalogClient): Promise<PosProductView[]> {
+async function toViews(tenantId: string, unitId: string, unitInv: string | null, rows: PosProduct[], db: CatalogClient): Promise<PosProductView[]> {
   if (!rows.length) return [];
   const ids = rows.map((r) => r.id);
   const invIds = [...new Set(rows.map((r) => r.invItemId).filter((x): x is string => !!x))];
-  const [items, moved, links, recipes] = await Promise.all([
+  const [items, links, recipes] = await Promise.all([
     invIds.length ? db.invItem.findMany({ where: { tenantId, id: { in: invIds } }, select: { id: true, onHand: true, barcode: true, sku: true } }) : Promise.resolve([]),
-    invIds.length ? db.invMovement.groupBy({ by: ["itemId"], where: { tenantId, itemId: { in: invIds } } }) : Promise.resolve([]),
     db.posProductOptionGroup.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.recipeLine.findMany({ where: { tenantId, productId: { in: ids } }, orderBy: [{ createdAt: "asc" }] }),
   ]);
@@ -443,7 +474,16 @@ async function toViews(tenantId: string, unitId: string, rows: PosProduct[], db:
       })
     : [];
   const itemById = new Map(items.map((i) => [i.id, i]));
-  const movedSet = new Set(moved.map((m) => m.itemId));
+  // D2: AUTO ต้องรู้ว่า "เคยเคลื่อนไหว" ไหม — ถามเฉพาะแถว AUTO ที่ onHand = 0 (≠ 0 ตอบได้เลย) · ทีละ InvItem ด้วย EXISTS … LIMIT 1
+  //     กรองด้วยคลังของสาขานี้ — ไม่สแกนประวัติ movement ทั้งร้าน
+  const needMove = rows
+    .filter((r) => r.trackStock === null && r.kind === "PRODUCT" && !!r.invItemId && itemById.get(r.invItemId)?.onHand === 0)
+    .map((r) => r.invItemId as string);
+  const moved = needMove.length && unitInv
+    ? await db.$queryRaw<{ id: string }[]>`SELECT i.id FROM "InvItem" i WHERE i.id = ANY(${needMove}::text[]) AND i."tenantId" = ${tenantId}
+        AND EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."tenantId" = ${tenantId} AND m."systemId" = ${unitInv} LIMIT 1)`
+    : [];
+  const movedSet = new Set(moved.map((m) => m.id));
   const groupById = new Map(groups.map((g) => [g.id, g]));
   const linksBy = new Map<string, typeof links>();
   for (const l of links) linksBy.set(l.productId, [...(linksBy.get(l.productId) ?? []), l]);
@@ -536,7 +576,7 @@ export async function listForUnit(
     LIMIT ${limit + 1}`;
   const page = await rowsInOrder(ids.slice(0, limit).map((r) => r.id), ctx.tenantId, client);
   const nextCursor = ids.length > limit && page.length ? encodeCursor(page[page.length - 1]!) : null;
-  return { items: await toViews(ctx.tenantId, unit, page, client), nextCursor };
+  return { items: await toViews(ctx.tenantId, unit, unitInv, page, client), nextCursor };
 }
 
 /**
@@ -550,16 +590,20 @@ export async function byBarcode(ctx: CatalogCtx, unitId: string, barcode: string
   const code = typeof barcode === "string" ? barcode.trim() : "";
   if (!code) return { items: [] };
   const unitInv = await unitInventory(ctx.tenantId, unit, client);
-  const ids = await client.$queryRaw<{ id: string }[]>`
-    SELECT p.id FROM "PosProduct" p
-    WHERE p."tenantId" = ${ctx.tenantId} AND p."systemId" = ${ctx.systemId} AND p."archivedAt" IS NULL
-      AND (p."unitId" IS NULL OR p."unitId" = ${unit})
-      AND ${warehouseCond(ctx.tenantId, unitInv)}
-      AND (p.barcode = ${code} OR EXISTS (SELECT 1 FROM "InvItem" b WHERE b.id = p."invItemId" AND b."tenantId" = ${ctx.tenantId} AND b.barcode = ${code}))
-    ORDER BY p.name, p.id
+  // D6: UNION สองทาง — บาร์โค้ดของแถวเอง (ใช้ index PosProduct(systemId, barcode)) ∪ บาร์โค้ดของ InvItem ที่ผูก
+  //     (index บาร์โค้ดของ InvItem = หนี้ P6.1)
+  const ids = await client.$queryRaw<{ id: string; name: string }[]>`
+    SELECT p.id, p.name FROM "PosProduct" p
+    WHERE p."systemId" = ${ctx.systemId} AND p.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
+      AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
+    UNION
+    SELECT p.id, p.name FROM "InvItem" b JOIN "PosProduct" p ON p."invItemId" = b.id AND p."systemId" = ${ctx.systemId}
+    WHERE b."tenantId" = ${ctx.tenantId} AND b.barcode = ${code} AND p."tenantId" = ${ctx.tenantId} AND p."archivedAt" IS NULL
+      AND (p."unitId" IS NULL OR p."unitId" = ${unit}) AND ${warehouseCond(ctx.tenantId, unitInv)}
+    ORDER BY name, id
     LIMIT ${PAGE_MAX}`;
   const rows = await rowsInOrder(ids.map((r) => r.id), ctx.tenantId, client);
-  return { items: await toViews(ctx.tenantId, unit, rows, client) };
+  return { items: await toViews(ctx.tenantId, unit, unitInv, rows, client) };
 }
 
 // ═══════════════════ ตัวเขียน ═══════════════════
@@ -635,7 +679,10 @@ async function loadSellableItem(ctx: CatalogCtx, invItemId: unknown, db: Catalog
   return inv;
 }
 
-/** เพิ่มสินค้าในแคตตาล็อก (สิทธิ์ pos.product.manage · ทุกสาขา = ผู้กระทำทุกสาขา C4) — kind ปริยาย PRODUCT */
+/**
+ * เพิ่มสินค้าในแคตตาล็อก (สิทธิ์ pos.product.manage ตามขอบเขต D1) — kind ปริยาย PRODUCT (ผูก InvItem แล้วไม่ส่ง = ชนิดของ InvItem)
+ * D6: สินค้าธรรมดา (ไม่ผูก InvItem · ไม่มีบาร์โค้ด) ไม่จับล็อกร้าน — ไม่ต้องรอ backfill ที่ถือล็อกอยู่
+ */
 export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, client: CatalogClient = prisma): Promise<PosProduct> {
   return writeGuard(() =>
     inTx(client, async (tx) => {
@@ -643,7 +690,8 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       const actor = await actorOf(ctx, tx);
       const i: Record<string, unknown> = isRecord(input) ? input : {};
       const unitId = i.unitId === undefined || i.unitId === null ? null : await assertUnit(ctx, actor, i.unitId, tx);
-      requireScope(actor, unitId, PERM_MANAGE);
+      const wantInv = typeof i.invItemId === "string" && i.invItemId ? i.invItemId : null;
+      await requireRowWrite(ctx, actor, { unitId, invItemId: wantInv }, PERM_MANAGE, tx);
       const name = cleanName(i.name, "ชื่อสินค้า");
       const nameEn = cleanOptional(i.nameEn, "ชื่อภาษาอังกฤษ");
       if (i.kind !== undefined && !PRODUCT_KINDS.includes(i.kind as PosProductKind)) throw invalid("ชนิดสินค้าไม่ถูกต้อง");
@@ -653,10 +701,10 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       const barcode = cleanOptional(i.barcode, "บาร์โค้ด");
       const trackStock = i.trackStock === undefined ? null : cleanTrackStock(i.trackStock);
       const categoryId = await assertCategory(ctx, i.categoryId, unitId, tx);
-      // AUDIT-CLASS X6: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
-      await lockTenant(tx, `pos-catalog:${ctx.tenantId}`);
       let kind: PosProductKind = (i.kind as PosProductKind | undefined) ?? "PRODUCT";
       let invItemId: string | null = null;
+      // AUDIT-CLASS X6: แถวผูกคลัง/บาร์โค้ด ตรวจซ้ำ + เขียน ภายใต้ล็อกร้าน (unique ของ DB เป็นตาข่ายชั้นสุดท้าย → CONFLICT)
+      if ((i.invItemId !== undefined && i.invItemId !== null) || barcode) await lockTenant(tx, `pos-catalog:${ctx.tenantId}`);
       if (i.invItemId !== undefined && i.invItemId !== null) {
         // C10: เมนู/ชุดไม่ผูก InvItem ตรง (ใช้ RecipeLine) · InvItem ต้องยังใช้งาน · ชนิดต้องตรง
         if (i.kind === "MENU" || i.kind === "BUNDLE") throw invalid("เมนู/ชุดสินค้าผูกสินค้าคลังตรงไม่ได้ — ใช้สูตร (ส่วนประกอบ) แทน");
@@ -664,11 +712,14 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
         if (inv.archivedAt) throw invalid("สินค้าคลังรายการนี้ถูกเก็บถาวรแล้ว");
         kind = (i.kind as PosProductKind | undefined) ?? (inv.kind === "SERVICE" ? "SERVICE" : "PRODUCT");
         if ((inv.kind === "SERVICE") !== (kind === "SERVICE")) throw invalid("ชนิดสินค้าไม่ตรงกับสินค้าคลัง (สินค้า ↔ บริการ)");
+        // D6: แถวของสาขาต้องผูก InvItem ของคลังที่เสิร์ฟสาขานั้น — ไม่งั้นจะเป็นแถวที่มองไม่เห็นแต่ยึดช่อง unique (systemId, invItemId)
+        if (unitId && (await unitInventory(ctx.tenantId, unitId, tx)) !== inv.systemId) throw invalid("สินค้าคลังรายการนี้ไม่ได้อยู่ในคลังของสาขาที่เลือก");
         if (await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true } }))
           throw conflict("สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว");
         invItemId = inv.id;
       }
       if (trackStock === true && !invItemId) throw invalid("ตัดสต็อกได้เฉพาะสินค้าที่ผูกสินค้าคลัง");
+      if (trackStock === true && kind === "SERVICE") throw invalid("บริการไม่ตัดสต็อก");
       if (barcode) await assertBarcodeFree(ctx, barcode, invItemId, null, tx);
       const row = await tx.posProduct.create({
         data: { tenantId: ctx.tenantId, systemId: ctx.systemId, unitId, invItemId, kind, name, nameEn, categoryId, basePriceSatang: price as number | null, vatRateBp, barcode, trackStock },
@@ -695,8 +746,7 @@ const PATCH_KEYS = new Set(["name", "nameEn", "categoryId", "unitId", "trackStoc
 
 /**
  * แก้ชื่อ/หมวด/สาขา/การตัดสต็อก/ความพร้อมขาย (สิทธิ์ pos.product.manage) — ราคาไปทาง setPrice
- * C4: แถวทุกสาขา = ผู้กระทำทุกสาขา · ย้ายสาขา = ต้องมีสิทธิ์ทั้งที่เดิมและที่ใหม่ (ย้ายเป็นทุกสาขา = ผู้กระทำทุกสาขา ·
- *     ไปสาขาที่เข้าไม่ได้ = NOT_FOUND) · หมวดต้องเข้ากับสาขาปลายทาง
+ * D1: สิทธิ์ตามขอบเขตของแถว (checkCatalogWrite) · ย้ายสาขา = ต้องมีสิทธิ์ทั้งขอบเขตเดิมและใหม่ (ไปสาขาที่เข้าไม่ได้ = NOT_FOUND) · หมวดต้องเข้ากับสาขาปลายทาง
  */
 export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdateProductPatch, client: CatalogClient = prisma): Promise<PosProduct> {
   return writeGuard(() =>
@@ -704,7 +754,7 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, id, tx, true);
-      requireScope(actor, before.unitId, PERM_MANAGE);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
       const p: Record<string, unknown> = isRecord(patch) ? patch : {};
       if (Object.keys(p).some((k) => !PATCH_KEYS.has(k))) throw invalid("มีช่องที่แก้ผ่านทางนี้ไม่ได้ (ราคาใช้การตั้งราคา)");
       const data: Prisma.PosProductUncheckedUpdateManyInput = {};
@@ -712,7 +762,13 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       let unitId = before.unitId;
       if ("unitId" in p) {
         unitId = p.unitId === null ? null : await assertUnit(ctx, actor, p.unitId, tx);
-        requireScope(actor, unitId, PERM_MANAGE);
+        // D1: ย้ายสาขาต้องมีสิทธิ์ทั้งที่เดิม (ตรวจแล้วข้างบน) และที่ใหม่ (ขอบเขตของแถวหลังย้าย)
+        await requireRowWrite(ctx, actor, { unitId, invItemId: before.invItemId }, PERM_MANAGE, tx);
+        // D6: แถวผูก InvItem ย้ายไปสาขาที่คลังไม่ใช่คลังของ InvItem = แถวที่มองไม่เห็น ⇒ ปฏิเสธ
+        if (unitId && before.invItemId) {
+          const inv = await tx.invItem.findFirst({ where: { id: before.invItemId, tenantId: ctx.tenantId }, select: { systemId: true } });
+          if (!inv || (await unitInventory(ctx.tenantId, unitId, tx)) !== inv.systemId) throw invalid("สินค้าคลังรายการนี้ไม่ได้อยู่ในคลังของสาขาที่เลือก");
+        }
         data.unitId = changed.unitId = unitId;
       }
       if ("name" in p) data.name = changed.name = cleanName(p.name, "ชื่อสินค้า");
@@ -720,6 +776,7 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
       if ("trackStock" in p) {
         const ts = cleanTrackStock(p.trackStock);
         if (ts === true && !before.invItemId) throw invalid("ตัดสต็อกได้เฉพาะสินค้าที่ผูกสินค้าคลัง");
+        if (ts === true && before.kind === "SERVICE") throw invalid("บริการไม่ตัดสต็อก");
         data.trackStock = changed.trackStock = ts;
       }
       if ("categoryId" in p) data.categoryId = changed.categoryId = await assertCategory(ctx, p.categoryId, unitId, tx);
@@ -769,7 +826,7 @@ export async function setPrice(
       const actor = await actorOf(ctx, tx);
       // AUDIT-CLASS X6 + C11: ล็อกแถวก่อนอ่านราคาเดิม ⇒ 2 เลนพร้อมกันได้ audit 100→200, 200→300 (ไม่ใช่ 100→200, 100→300)
       const before = await loadProduct(ctx, actor, id, tx, true);
-      requireScope(actor, before.unitId, PERM_SET_PRICE);
+      await requireRowWrite(ctx, actor, before, PERM_SET_PRICE, tx);
       // AUDIT-CLASS X4: จำนวนเต็มสตางค์เท่านั้น — ติดลบ/เศษสตางค์/NaN/สตริง = VALIDATION (ราคาเดิมไม่เปลี่ยน)
       if (!isSatang(priceSatang)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
       await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { basePriceSatang: priceSatang } });
@@ -786,7 +843,7 @@ export async function archive(ctx: CatalogCtx, id: string, client: CatalogClient
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
       const before = await loadProduct(ctx, actor, id, tx, true);
-      requireScope(actor, before.unitId, PERM_MANAGE);
+      await requireRowWrite(ctx, actor, before, PERM_MANAGE, tx);
       if (before.archivedAt) return { id: before.id, archivedAt: before.archivedAt };
       const r = await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId, archivedAt: null }, data: { archivedAt: new Date() } });
       const stored = await tx.posProduct.findFirst({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { archivedAt: true } });
@@ -799,7 +856,7 @@ export async function archive(ctx: CatalogCtx, id: string, client: CatalogClient
 
 /**
  * ให้แน่ใจว่า InvItem นี้มีแถว (ทุกสาขา) ในแคตตาล็อกของระบบ POS ใน ctx — สร้างครั้งเดียว · เรียกซ้ำได้ id เดิม
- * ราคา C7 · VAT C8 · trackStock = null (AUTO · C2) · ชื่อ/ชนิด/เก็บถาวร ตาม InvItem · C4: ผู้กระทำทุกสาขาเท่านั้น
+ * ราคา C7 · VAT C8 · trackStock = null (AUTO · C2) · ชื่อ/ชนิด/เก็บถาวร ตาม InvItem · สิทธิ์ตามขอบเขต D1 (สาขาที่คลังถือ InvItem นี้)
  * AUDIT-CLASS X1 + X6: ล็อกร้าน + INSERT … ON CONFLICT DO NOTHING บน unique(systemId, invItemId) ⇒ 10 เลนพร้อมกันได้แถวเดียว id เดียว
  */
 export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, client: CatalogClient = prisma): Promise<{ id: string; created: boolean }> {
@@ -807,7 +864,7 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
     inTx(client, async (tx) => {
       await assertPosSystem(ctx, tx);
       const actor = await actorOf(ctx, tx);
-      requireScope(actor, null, PERM_MANAGE);
+      await requireRowWrite(ctx, actor, { unitId: null, invItemId: typeof invItemId === "string" ? invItemId : null }, PERM_MANAGE, tx);
       const inv = await loadSellableItem(ctx, invItemId, tx);
       const existing = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true } });
       if (existing) return { id: existing.id, created: false };
@@ -848,7 +905,7 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
 }
 
 /**
- * เพิ่มหมวด (ทุกสาขา หรือเฉพาะสาขา) — สิทธิ์ pos.product.manage · หมวดทุกสาขา = ผู้กระทำทุกสาขา (C4)
+ * เพิ่มหมวด (ทุกสาขา หรือเฉพาะสาขา) — สิทธิ์ pos.product.manage ตามขอบเขต D1 (หมวดทุกสาขา = ทุกสาขาของ POS) · ไม่จับล็อกร้าน (D6)
  * ชื่อซ้ำในระบบ+สาขาเดียวกัน = CONFLICT (unique ของสาขา + M5 partial unique ของหมวดทุกสาขา — แข่งกันก็ได้ CONFLICT)
  */
 export async function createCategory(
@@ -862,7 +919,7 @@ export async function createCategory(
       const actor = await actorOf(ctx, tx);
       const i: Record<string, unknown> = isRecord(input) ? input : {};
       const unitId = i.unitId === undefined || i.unitId === null ? null : await assertUnit(ctx, actor, i.unitId, tx);
-      requireScope(actor, unitId, PERM_MANAGE);
+      await requireRowWrite(ctx, actor, { unitId, invItemId: null }, PERM_MANAGE, tx);
       const name = cleanName(i.name, "ชื่อหมวด");
       const nameEn = cleanOptional(i.nameEn, "ชื่อหมวดภาษาอังกฤษ");
       const sortOrder = i.sortOrder === undefined || i.sortOrder === null ? 0 : i.sortOrder;
@@ -893,7 +950,14 @@ export type BackfillCounts = {
   shopBranchNotInFirstPos: number;
   /** แถวจาก InvItem ที่ AUTO จะตัดสต็อกจริงตอนนี้ (มี movement หรือ onHand ≠ 0) — ให้เจ้าของเห็นก่อนเปิดใช้ (C2) */
   trackStockAutoOn: number;
+  /** D3: AccountProduct ที่ลิ้นชักใช้คิด salePrice > 0 วันนี้ แต่ C7 ไม่นับ (เก็บถาวร/สมุดอื่น) ⇒ แคตตาล็อก "ยังไม่ตั้งราคา" */
+  apIgnoredButTillPriced: number;
+  /** D3: แถวอื่นทั้งหมดที่จบที่ราคา null และไม่ถูกนับในตัวนับอื่น (ขายราคาทุน · AP ถูกข้าม · ราคาเดิมผิดรูป) */
+  priceNotSetOther: number;
+  /** D3: บริการที่ราคาในคลัง (InvItem.priceSatang) ≠ salePrice ของ AccountProduct (C7 ใช้ salePrice) */
+  servicePriceDiffersFromAccountProduct: number;
 };
+type SampleRow = { id: string; name: string };
 export type BackfillSummary = {
   dryRun: boolean;
   tenants: number;
@@ -904,8 +968,13 @@ export type BackfillSummary = {
   skipped: { invItemNoPos: number; invItemAmbiguousPos: number; menuItemNoPos: number; shopProductNoPos: number; recipeInvItemMissing: number };
   skippedAmbiguousPos: number;
   counts: BackfillCounts;
-  /** C7: ตัวอย่างสินค้าที่ลิ้นชักวันนี้คิดราคาทุน (≤20 ต่อร้าน) — เจ้าของตั้งราคาจริงก่อนเปิดใช้ */
-  samples: { soldAtCostToday: Record<string, { invItemId: string; name: string }[]> };
+  /** ตัวอย่างต่อร้าน (≤20) — เจ้าของตั้งราคาจริงก่อนเปิดใช้ · priceNotSetOther: แถวที่มีร่องรอยราคาเดิม (AP/ราคาบริการ) ขึ้นก่อน */
+  samples: {
+    soldAtCostToday: Record<string, SampleRow[]>;
+    apIgnoredButTillPriced: Record<string, SampleRow[]>;
+    priceNotSetOther: Record<string, SampleRow[]>;
+    servicePriceDiffersFromAccountProduct: Record<string, SampleRow[]>;
+  };
   created: { posProduct: number; posCategory: number; posProductOptionGroup: number; recipeLine: number; invItem: number };
   updated: { posProduct: number; menuItem: number; shopProduct: number };
   alreadyDone: { invItem: number; menuItem: number; shopProduct: number };
@@ -925,6 +994,7 @@ function emptyCounts(): BackfillCounts {
   return {
     soldAtCostToday: 0, zeroPriceProduct: 0, zeroPriceMenu: 0, zeroPriceWeb: 0, invalidLegacyPrice: 0, posPriceDiffersFromSalePrice: 0,
     shopPriceDiffersFromCatalog: 0, shopInactiveLinked: 0, shopOwnRowInvItemOutsideFirstPos: 0, shopDanglingInvItem: 0, shopBranchNotInFirstPos: 0, trackStockAutoOn: 0,
+    apIgnoredButTillPriced: 0, priceNotSetOther: 0, servicePriceDiffersFromAccountProduct: 0,
   };
 }
 function emptySummary(dryRun: boolean): BackfillSummary {
@@ -937,7 +1007,7 @@ function emptySummary(dryRun: boolean): BackfillSummary {
     skipped: { invItemNoPos: 0, invItemAmbiguousPos: 0, menuItemNoPos: 0, shopProductNoPos: 0, recipeInvItemMissing: 0 },
     skippedAmbiguousPos: 0,
     counts: emptyCounts(),
-    samples: { soldAtCostToday: {} },
+    samples: { soldAtCostToday: {}, apIgnoredButTillPriced: {}, priceNotSetOther: {}, servicePriceDiffersFromAccountProduct: {} },
     created: { posProduct: 0, posCategory: 0, posProductOptionGroup: 0, recipeLine: 0, invItem: 0 },
     updated: { posProduct: 0, menuItem: 0, shopProduct: 0 },
     alreadyDone: { invItem: 0, menuItem: 0, shopProduct: 0 },
@@ -957,7 +1027,7 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
       select: { id: true, systemId: true, name: true, kind: true, priceSatang: true, costSatang: true, archivedAt: true, onHand: true, accountProductId: true, sortOrder: true },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
-    db.accountProduct.findMany({ where: { tenantId }, select: { id: true, systemId: true, salePrice: true, posPrice: true, posEnabled: true, vatRateBp: true, archivedAt: true } }),
+    db.accountProduct.findMany({ where: { tenantId }, select: { id: true, systemId: true, invItemId: true, salePrice: true, posPrice: true, posEnabled: true, vatRateBp: true, archivedAt: true } }),
     db.invMovement.groupBy({ by: ["itemId"], where: { tenantId } }),
     db.menuCategory.findMany({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     db.menuItem.findMany({ where: { tenantId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
@@ -982,7 +1052,13 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
   const bookOf = new Map<string, BookInfo>();
   for (const l of bookLinks) if (!bookOf.has(l.linkedId)) bookOf.set(l.linkedId, { accountSystemId: l.systemId, vatRegistered: vatRegOf.get(l.systemId) ?? true });
   const book = (posSys: string): BookInfo => bookOf.get(posSys) ?? { accountSystemId: null, vatRegistered: false };
-  const samples = (s.samples.soldAtCostToday[tenantId] ??= []);
+  // ตัวอย่าง ≤20 ต่อร้าน — priceNotSetOther เก็บผู้สมัครทั้งหมดก่อนแล้วจัดลำดับท้ายร้าน (มีร่องรอยราคาเดิมก่อน)
+  const sample = (k: Exclude<keyof BackfillSummary["samples"], "priceNotSetOther">, row: SampleRow) => {
+    const arr = (s.samples[k][tenantId] ??= []);
+    if (arr.length < 20) arr.push(row);
+  };
+  const notSet: { row: SampleRow; signal: boolean }[] = [];
+  const apHalfLinked = new Set(aps.map((a) => a.invItemId).filter((x): x is string => !!x));
 
   // 1) InvItem → PosProduct ของระบบ POS ที่ขายมัน (แถวเดียวต่อ InvItem ต่อระบบ)
   s.sources.invItem += items.length;
@@ -1001,10 +1077,23 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     // ตัวนับ C7 (จากแหล่งทุกแถว): ลิ้นชักวันนี้หา AP แบบ InvItem.accountProductId (ไม่กรองสมุด/เก็บถาวร) แล้ว salePrice > 0 ? ราคานั้น : ต้นทุน
     const tillAp = inv.accountProductId ? apById.get(inv.accountProductId) : undefined;
     const tillSale = tillAp?.salePrice ?? null;
+    const row = { id: inv.id, name: inv.name };
     if (pr.invalidLegacy) s.counts.invalidLegacyPrice++;
-    if (inv.kind !== "SERVICE" && pr.price === null && !(typeof tillSale === "number" && tillSale > 0) && inv.costSatang > 0) {
+    const tillPriced = legalPrice(tillSale) && tillSale > 0;
+    if (inv.kind !== "SERVICE" && pr.price === null && !tillPriced && inv.costSatang > 0) {
       s.counts.soldAtCostToday++;
-      if (samples.length < 20) samples.push({ invItemId: inv.id, name: inv.name });
+      sample("soldAtCostToday", row);
+    } else if (pr.price === null && tillPriced && !ap) {
+      // D3: ลิ้นชักวันนี้คิด salePrice > 0 จาก AP ที่ C7 ไม่นับ (เก็บถาวร / สมุดบัญชีอื่น)
+      s.counts.apIgnoredButTillPriced++;
+      sample("apIgnoredButTillPriced", row);
+    } else if (pr.price === null && !pr.invalidLegacy) {
+      s.counts.priceNotSetOther++;
+      notSet.push({ row, signal: !!tillAp || apHalfLinked.has(inv.id) || (inv.kind === "SERVICE" && inv.priceSatang !== 0) });
+    }
+    if (inv.kind === "SERVICE" && legalPrice(inv.priceSatang) && inv.priceSatang > 0 && ap && legalPrice(ap.salePrice) && ap.salePrice > 0 && ap.salePrice !== inv.priceSatang) {
+      s.counts.servicePriceDiffersFromAccountProduct++;
+      sample("servicePriceDiffersFromAccountProduct", row);
     }
     if (pr.rung === "free") s.counts.zeroPriceProduct++;
     if (effectiveTrackStock({ trackStock: null, invItemId: inv.id, kind: inv.kind === "SERVICE" ? "SERVICE" : "PRODUCT" }, { hasMovement: movedSet.has(inv.id), onHand: inv.onHand }).trackStock)
@@ -1059,6 +1148,7 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     per(r.systemId).menuItem++;
     const pr = initialPrice({ own: m.basePrice });
     if (pr.invalidLegacy) s.counts.invalidLegacyPrice++;
+    else if (pr.price === null) (s.counts.priceNotSetOther++, notSet.push({ row: { id: m.id, name: m.name }, signal: false }));
     if (pr.price === 0) s.counts.zeroPriceMenu++;
     if (m.posProductId && productIds.has(m.posProductId)) {
       s.alreadyDone.menuItem++;
@@ -1103,10 +1193,12 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
       if (!sp.active) s.counts.shopInactiveLinked++;
     } else if (inv) s.counts.shopOwnRowInvItemOutsideFirstPos++;
     else if (sp.invItemId) s.counts.shopDanglingInvItem++;
-    const own = initialPrice({ own: sp.priceSatang });
     if (!(inv && shared && sharedIsInvRow)) {
-      if (own.invalidLegacy) s.counts.invalidLegacyPrice++;
-      if (own.price === 0) s.counts.zeroPriceWeb++;
+      // แถวของเว็บร้านเอง (C9b/c/d): นับจากราคาสุดท้ายจริง — zeroPriceWeb เฉพาะเมื่อราคาสุดท้ายคือราคาเว็บ 0 (D6)
+      const fin = initialPrice({ ap: inv ? strictAp(inv, apById, book(r.systemId)) : null, inv, own: sp.priceSatang });
+      if (fin.invalidLegacy) s.counts.invalidLegacyPrice++;
+      else if (fin.price === null) (s.counts.priceNotSetOther++, notSet.push({ row: { id: sp.id, name: sp.name }, signal: false }));
+      if (fin.rung === "own" && fin.price === 0) s.counts.zeroPriceWeb++;
     }
     if (sp.posProductId && productIds.has(sp.posProductId)) {
       s.alreadyDone.shopProduct++;
@@ -1135,6 +1227,8 @@ async function planTenant(tenantId: string, db: CatalogClient, s: BackfillSummar
     if (inv) byInvKey.set(`${r.systemId}|${inv.id}`, id);
     plan.shopLinks.push({ id: sp.id, productId: id });
   }
+  // ตัวอย่าง priceNotSetOther: แถวที่มีร่องรอยราคาเดิม (AP ไม่ว่าทางไหน / ราคาบริการ) ก่อน — ตัดสินใจได้ก่อน · ที่เหลือเรียงเดิม
+  s.samples.priceNotSetOther[tenantId] = [...notSet.filter((x) => x.signal), ...notSet.filter((x) => !x.signal)].slice(0, 20).map((x) => x.row);
   return plan;
 }
 
@@ -1201,7 +1295,7 @@ function mergeSummary(into: BackfillSummary, from: BackfillSummary): void {
   }
   for (const k of Object.keys(from.skipped) as (keyof BackfillSummary["skipped"])[]) into.skipped[k] += from.skipped[k];
   for (const k of Object.keys(from.counts) as (keyof BackfillCounts)[]) into.counts[k] += from.counts[k];
-  Object.assign(into.samples.soldAtCostToday, from.samples.soldAtCostToday);
+  for (const k of Object.keys(from.samples) as (keyof BackfillSummary["samples"])[]) Object.assign(into.samples[k], from.samples[k]);
   into.skippedAmbiguousPos += from.skippedAmbiguousPos;
   for (const [sys, v] of Object.entries(from.perSystem)) {
     const cur = (into.perSystem[sys] ??= { invItem: 0, menuItem: 0, shopProduct: 0 });

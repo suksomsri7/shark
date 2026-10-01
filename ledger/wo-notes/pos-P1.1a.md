@@ -274,3 +274,12 @@ fingerprint หลังทุกขั้น (after-rollback · r2-after-backfi
 | `listSystems` (shop checkout) ยังไม่กรอง active/ไม่มี id tie-break — resolver ของแคตตาล็อกกรองแล้ว ⇒ ร้านที่มี POS ปิดใช้งานเก่ากว่า: เช็คเอาท์เว็บกับแคตตาล็อกเลือก POS ต่างกัน | P2.1 |
 | migration ของ prisma ไม่ atomic (ทีละคำสั่ง — วัดแล้ว) ถ้าล้มกลางไฟล์บน prod ต้องเก็บกวาดมือ (rollback SQL ข้างบนใช้ได้แบบ IF EXISTS) | P6.1 runbook |
 | รูปของแถวที่ผูก InvItem (InvItemImage) ไม่อยู่ใน read model | P1.2/P1.3 |
+
+# Round 3 (brief `pos-brief-P1.1a-R3.md`) — checkpoint
+| # | ขั้น | สถานะ |
+|---|---|---|
+| R3-0 | fingerprint ก่อน (r3-before) + schema snapshot | ✅ |
+| R3-1 | probe การรันไฟล์ของ prisma 7.8 (schema แยก p11probe · ลบแล้ว) | ✅ ไม่มี DO = แยกทีละคำสั่งคนละ tx · มี DO $$ = ทั้งไฟล์ tx เดียว (atomic) · P3018→P3009→ลบแถว→deploy ผ่าน |
+| R3-2 | migration ใส่ตัวกันรันซ้ำ + RESET · rollback → deploy → รันไฟล์ซ้ำด้วยมือ | ✅ ไม่มี error · โครงสร้างไม่เปลี่ยน (hash ตรงก่อน/หลังรันซ้ำ และตรงกับโครงสร้าง round 2) |
+| R3-3 | โค้ด D1 D2 D3 D5 D6 + มติ a/b/c · F15.5 + หลักฐานลบ | ✅ |
+| R3-4 | backfill ร้าน QC (dry/real/again/overlap) | ⏳ |
