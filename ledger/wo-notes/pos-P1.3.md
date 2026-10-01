@@ -158,3 +158,124 @@ Green now: S2.15, S3.40, S3.41, S3.42, S3.43, S3.48, S3.49, S5.18 (+ all 97 prev
 
 ### Outside the B1 file list (flagged)
 - `src/lib/modules/member/wallet.ts` (+10 lines, new export) and `src/lib/modules/member/index.ts` (+2 lines) — required by ruling 2 ("reuse the function `createSale` uses"; the tier step was private). Read-only, no behaviour change for existing callers.
+
+## B2 — UI (builder stage 2)
+> Base `eb30aa5f` (B1.1) · tree `/root/projects/shark-pos-p11` · brief `ledger/pos-briefs/pos-brief-P1.3-B2.md` · spec `pos-spec-P1.3-register-ui.md` (+ rulings Q1–Q29, Addendum, Addendum 2) · 1 Oct 2026
+> Logs (git-ignored): `.qc-shots/pos/p1.3/b2-*.log` (`b2-unforced-1`, `b2-forced-1`, `b2-after-<suite>`, `b2-fitness-{env,noenv}`, `b2-typecheck-{1,2}`).
+
+### B2.1 Result in one line
+Forced oracle **118/119** — only **S6.1** red (P1.6 group, forced past its own guard) · unforced **118/118 + S6.1 SKIP** · `a5.drift []`, S9.1/S9.2 green (no QC4 residue) · 9 regression suites identical (0 differing check lines) · fitness 40/40 with and without env · typecheck #1 exit 0 · #2 exit 2 on one type-only error in `scripts/visual-pos.mts`, fixed and verified by a scoped tsc with positive control (B2.12) — full re-run owed to the controller build. Visual shots = CONTROLLER-RUN (needs build + server + the seed run, B2.8).
+
+### B2.2 Files
+| file | kind | what |
+|---|---|---|
+| `src/components/pos/register/RegisterScreen.tsx` | client | owns all state (spec §3.3), the single `keydown` listener (F2/F4/F8/Escape · G2), search ref + `.focus()` (G5), layout switch D/T/M/C via `matchMedia` after mount, toast, offline banner, dialog layer stack, idempotency lifecycle |
+| `RegisterTopContext.tsx` | client | unit switch (menu of accessible units → `?unit=`), online dot + last sync, shift chip (`status.noShift`), user + role (client-translated from `user.role`) · portal into `#app-topbar-slot` (Q1=A) with 48 px inline fallback (B) · mobile header (05ก) with camera (soon) + ☰ (in-app only) |
+| `RegisterModeTabs.tsx` | client | 8 tabs · D long labels / T icon-over-short-label · tables / online orders / reports = house "soon" (dimmed + chip, `<span aria-disabled>`) |
+| `SearchRow.tsx` | client | search (`type=search`, Enter → `addFromSearchEnter`, IME-safe), F2 kbd (D), custom item (aria-disabled + reason toast without `pos.sale.priceOverride`), camera (soon) |
+| `CategoryChips.tsx` | client | `tablist` of chips, horizontal scroll |
+| `ProductGrid.tsx` · `ProductCard.tsx` | client | grid 4/3/2/3 columns · empty catalogue (19ก) · no result · category empty · load more (IntersectionObserver + button) · card states of spec §5 |
+| `CartPanel.tsx` · `CartLine.tsx` | client | cart header (bill type / hold / held = soon) · member slot (`memberSlot` seam; P1.3 = "+ เพิ่มสมาชิก" soon row; attached-member row with `pos-reg-member-remove` coded, unreachable in P1.3) · lines · totals · action row · pay · stock warning box (19ฉ) |
+| `LineEditor.tsx` | client | qty −/+ (48×48), line discount ฿/% (percent → basis points ×100), remove (no 2nd confirm · Q27); validated with `priceCart` before applying |
+| `BillDiscountDialog.tsx` · `CouponDialog.tsx` | client | bill discount ฿/% (+ none) · coupon entry = soon (Q12 DEFER) → CouponDialog explains, nothing is sent |
+| `CustomItemDialog.tsx` · `OpenPriceDialog.tsx` · `ClearBillDialog.tsx` | client | custom line (name + price) · open price for unpriced products (> 0 only, R2) · clear bill confirm (focus starts on Cancel — a scanner's trailing Enter must not clear a bill) |
+| `InterimPayDialog.tsx` · `SaleDone.tsx` | client | interim payment (Q5): cash (received, quick exact/100/500/1000, change) + PromptPay QR locked to the quote total (`promptpayPayload`, pure) with manual confirm · zero bill = `payMethods: []` · error card (19ค) · unknown-result card (retry only) · conflict card (existing receipt + status, "start a new bill", link to today's bills) · done view |
+| `MobileCartBar.tsx` · `MobileCartSheet.tsx` | client | C only: sticky bar (peek, count, total, pay) · bottom sheet holding the same `CartPanel` |
+| `RegisterStatusBar.tsx` | client | D only: shortcuts + pending stock / sync + printer placeholder |
+| `RegisterDialog.tsx` · `RegisterIcon.tsx` | client helpers | **2 files not named in spec §3.1** (same folder): the shared scrim/positioning shell (centred ≥md / bottom sheet <md) and the icon set (paths copied from the mockup sprite `_base.part`). Kept separate so every dialog file stays small and no icon/dialog code is duplicated 10× |
+| `src/app/app/sys/[id]/pos/register/page.tsx` | server | HF-POS-PAGES guard verbatim (requireTenant → POS system → `posRegisterView` → `notFound()`); flag reader `registerV2On(settings)` = `settings.pos.registerV2 === true` strict; new screen gets `registerCatalog` · `registerStatus` · `registerVatConfig` · `registerSellerLimits` (session actor) + PromptPay ID (validated); otherwise the legacy branch renders `<PosRegister>` with the identical props |
+| `src/lib/modules/pos/register-legacy-page.tsx` (new, **outside the brief's file list — flagged**) | server | the legacy page chrome moved out of `page.tsx` byte-for-byte (PageHeader · ModuleTabs · unit chips · PromptPay hint · Section; "unlinked" empty state) so `page.tsx` debt = 0 while the legacy 5 untestid controls keep their ratchet row ("move into a legacy component under the same debt rules", spec §4.7). `<PosRegister>` itself is still rendered in `page.tsx` (S5.11 `bothScreens`) |
+| `src/messages/{th,en}/pos.json` + `src/i18n/request.ts` (one hunk) | i18n | `{ "register": … }` 167 keys, identical trees, no Thai in en; request.ts merges `pos` namespace |
+| `scripts/pos-ui-inventory.json` | registry | +76 rows (page `/app/sys/[id]/pos/register`, wo P1.3; the 23 oracle ids carry `oracle: "qc-pos-p1.3"`); `page.tsx` debt → 0 (`byTag {}`), new debt row `register-legacy-page.tsx` = 5 (ModuleTabs 2 · EmptyState 1 · Link 2) |
+| `src/components/app-shell/Topbar.tsx` (+2) · `NavRail.tsx` (1 changed) | shell | `<div id="app-topbar-slot" className="flex min-w-0 flex-[3] items-center gap-3 empty:hidden" />` (empty = hidden ⇒ every other page unchanged) · `isRailPath` also matches `/app/sys/<id>/pos/register` |
+| `scripts/seed-pos-qc.mts` (one hunk in `ensureSystem`) | seed | POS systems of the QC tenants get `settings.pos.registerV2: true` (merged, idempotent; new systems created with it) — **not run by B2** (see B2.9) |
+| `scripts/visual-pos.mts` | harness | p1.3 state shots (B2.8) + `LOCALE=en` + temporary fixtures, cleanup in `finally` and on signals |
+
+### B2.3 Deliberate parity deltas vs mockups (with reason)
+1. Topbar 56 (real shell) vs 66/54 drawn; brand + 2 shell buttons stay; context portals between them (Q1=A). Brand name truncates to ¼ of the free width on this page only (slot `flex-[3]`).
+2. Rail at 1024 (Q2) → left column 588 instead of 644 at T.
+3. Chips, hold/held buttons, mobile camera = 44 px (drawn 38/36/36) — S5.9/Q14.
+4. Option popover + selected-card ring hidden (P1.2); "3 ขนาด" label hidden (Q6); member card → "+ เพิ่มสมาชิก" soon row with a small "เร็ว ๆ นี้" chip (P1.12); count pills (held bills, online orders) hidden; shift chip reads "ยังไม่เปิดกะ" (P1.9); printer text = "ยังไม่เชื่อมเครื่องพิมพ์" (P1.10); coupon line never shows (Q12 DEFER).
+5. Soon tabs (โต๊ะ · ออเดอร์ออนไลน์ · รายงาน) dimmed 60 % + chip at D (Q13).
+6. Line editor, bill discount, custom item, open price, clear bill, payment, done: no mockup in 01/05/19/20 → centred 420 px dialogs (radius 22, padding 28) ≥ md and bottom sheets < md (spec §4.6). Spec §3.1 suggested an anchored popover for the line editor on D/T; a dialog was used (one dialog system, keyboard/Esc layering identical) — reviewer's call.
+7. Mobile: a 48×48 "+" (custom item) sits right of the search field (05ก draws none — custom items must stay reachable on phones). Chip row aligned with the search field and bleeding to the screen edge (Q20).
+8. Mobile cart sheet: no drag-to-close (✕ 44 px + scrim tap + Esc instead).
+9. In-cart card highlight + qty badge only < md (05ก draws it; 01 does not).
+10. Empty catalogue: CSV / sample set / "+ หมวด" hidden (Q15); `empty.body` = ruled copy.
+11. Fonts IBM Plex vs Noto (Q17); colours `#a3a3a3`→muted, `#d4d4d4`→line, `--color-stage` for image placeholders (Q18); scrim/shadows via tokens (`color-mix` of ink) / `shadow-xl`.
+12. Bill-type chip stays 28 px tall as drawn (soon control, not in the S5.9 list); "แก้" link 12 px as drawn; action-row buttons 40/36 as drawn (`.btn-sm` minimum).
+13. Legacy register (flag off): **the page is now in rail mode for everybody** because `isRailPath` is path-based and cannot see the flag. The legacy chrome restores the old padding itself (`px-4 pb-10 pt-4 sm:px-6` ⇒ identical to the collapsed-rail layout), so users who already use the collapsed rail see no change; users who prefer the full 288 px drawer now see the 56 px rail on the register page. Making the rail flag-aware needs an AppShell/AppMain hunk (outside the two allowed shell hunks) — **controller decision**.
+
+### B2.4 Hidden / soon in P1.3
+Soon (visible, toast `pos.register.soon`, `aria-disabled`): bill type, hold (+F8), held bills, member pick, note, tax invoice, camera (both placements), coupon (dialog explains). Soon tabs: tables, online orders, reports. Hidden: option popover, sizes label, member card/points, count pills, 19ก extra buttons, 19จ shift dialog, 86 timestamp, fullscreen/lock.
+
+### B2.5 Seams for later work orders
+- **P1.2**: `ProductCard.onPick` → `RegisterScreen.pick` (blocks `requiredOptionGroupCount > 0` with `errors.optionsRequired`; P1.2 opens the popover there).
+- **P1.4**: `addFromSearchEnter` (single/exact match from the shown result set, else `registerScanAction` one-match) · camera buttons call `soon`.
+- **P1.5**: `onHold` (F8 + button) / held-bills button; cart = one serialisable `RegisterCart` object.
+- **P1.6**: delete `InterimPayDialog.tsx` + `SaleDone.tsx`, mount the mockup-02 modal with the same props; idempotency lifecycle stays in `RegisterScreen.send/confirmPay/retryPay`.
+- **P1.12**: `CartPanel.memberSlot`; `memberAttached`/`onRemoveMember` + `pos-reg-member-remove`; `MEMBER_RIGHTS_UNSUPPORTED` → "ขายโดยไม่ใส่สมาชิก" button in the pay dialog; coupon dialog becomes the code entry.
+- **P1.15**: `onNeedsApproval(key)` (custom item without the permission; discount-ceiling refusals are shown inline by the dialogs) → PIN modal.
+
+### B2.6 Money / idempotency behaviour (brief "not negotiable" list)
+1. Screen totals: `priceCart(cartToPriceInput(…))` instantly, server quote (`quoteRegisterCartAction`, 250 ms debounce, request counter drops stale answers) replaces them; the cart line prices come from the quote lines (Q22). Pay enabled only with a fresh quote for the current cart version, online, `canSell`, idle submit; after 400 ms pending the amount reads `common.loading`.
+2. One `idemKey` per bill attempt (created on mount and after every finished/cleared bill). `send()` keeps the submit object in `pendingSubmit`; `retryPay()` re-sends that object unchanged. `UNKNOWN`/`INTERNAL`/`BUSY`/thrown ⇒ phase `unknown` (cart frozen, only "ลองอีกครั้ง", Esc/scrim blocked). `IDEMPOTENCY_CONFLICT` ⇒ phase `conflict` showing receipt no + status, only "เริ่มบิลใหม่" (explicit) or the link to today's bills. Other refusals ⇒ new key, error card, form stays. `sendingRef` guarantees one submit in flight (double click / double Enter / form submit).
+3. `PRICE_CHANGED` ⇒ fresh totals from the response become the quote, user must confirm again; `PAYMENT_MISMATCH` ⇒ re-quote; `MEMBER_RIGHTS_UNSUPPORTED` ⇒ message + remove-member button.
+4. Payments: CASH or PROMPTPAY, one entry = whole quote total (≥ 1 satang); zero total ⇒ `payMethods: []`; cash confirm disabled while received < due; `cashReceivedSatang` only with a cash portion.
+5. No server `message` is ever rendered: every error goes through `refusalMessageKey(code)` → `pos.register.errors.*`; the code is only in `data-code`.
+
+### B2.7 G1–G10 self-check
+G1 every testid is a literal / template literal on the element (scanner: 0 unreadable) · G2 keydown + "F2" "F4" "F8" "Escape" in `RegisterScreen.tsx` (carries `pos-reg-root`/`pos-reg-toast`) · G3 no Thai outside comments in any file with a `pos-reg-` testid (money only via `moneyText`/`formatBaht`, never a literal baht sign) · G4 first occurrence of each touch id sits on its own tag with an unprefixed ≥44 class, `data-testid` written before `className` and no `<`/`>` in between (CartLine → `size-11`, CartPanel → `h-11`/`min-h-12`/`h-14|h-[70px]`, CategoryChips → `h-11`, ProductCard → `min-h-[120px]`, RegisterTopContext (mobile camera) → `size-11`, SearchRow → `h-12`) · G5 search focused through `searchRef.current.focus()` on mount (pointer-fine), after every add, after dialogs, after "next sale"; F2 focuses always · G6 `pos.json` = `{ "register": … }` · G7 identical ICU variable sets, en without Thai, th never empty/key/enum (S5.2 green) · G8 every clickable `pos-reg-*` has a row (F15.3a green) · G9 client files import only `register-shared`, `pricing-shared`, `register-actions` from the POS module (+ `@/lib/ui/*`, `@/lib/payment/promptpay` (pure), `@/components/PromptPayQr`) · G10 no `"use server"` file touched.
+
+### B2.8 visual-pos shot list (CONTROLLER-RUN)
+`bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1.3 --user owner|cashier --base http://127.0.0.1:<port> --page register` (+ `LOCALE=en` in front of `pnpm` for 20B, 1440 only). Files `.qc-shots/pos/p1.3/register-<state>-<user>-<w>x<h>[-en].png`:
+default (3 sizes) · cart3 (3) · line-editor (3) · bill-discount (3) · custom-item (3; cashier = reason toast) · paydlg-cash (3) · sale-done (1440 only — **creates one real PAID cash sale in the QC coffee tenant per user run**: Americano ×2 + Latte, untracked items) · search-empty (3) · stock-warn (3; fixture "เหลือ 2" ×3) · mobile-sheet (390). Fixtures: 3 temporary PosProducts (low = 2 left, out = tracked 0, off = unavailable at the unit) + 2 InvItems, ids `posqc-vis-<pid>-*`, deleted in `finally`/on SIGINT-TERM-HUP; leftovers older than 1 h swept at start. `--dry` prints the plan (35 owner shots incl. the other 3 pages).
+**Pre-condition**: run `scripts/seed-pos-qc.mts` on QC4 first (it turns `registerV2` on for the QC tenants; B2 did not run it because the seed rewrites the tracked `scripts/pos-expected.json` counts). Without it every state step fails with "หน้าขายใหม่ไม่ขึ้น (pos-reg-root)".
+
+### B2.9 Not verifiable without a browser (look here first)
+1. **Every pixel number of spec §7** — written from the effective mockup CSS (`_base` → `_pos` → page → `_airy` → `_airy2`) as Tailwind arbitrary values, base classes = T sizes, `xl:` = D sizes, but nothing has been rendered. Highest-risk spots: Topbar slot fit at 768–1279 (unit chip `max-w` 200/260/360 + truncation; shift chip hidden < lg; user name hidden < lg, role < xl); mode-tab row height (58 D / ≈57 T) and the `-mb-px` underline overlap; grid card 194×≥170 at 1440; cart line height ≈84; pay button 432×72 at x 984; status bar fitting at exactly 1280.
+2. **Portal into `#app-topbar-slot`** (React portal into a node the Topbar renders with no children) and `empty:hidden` keeping the slot invisible on every other page; whether the brand name truncation (¼ of free width, register page only) is acceptable.
+3. **Rail mode on `/pos/register`** — new screen full-bleed (`h-[calc(100dvh-3.5rem)]`, inner scroll regions); **legacy register with the flag off**: padding restored by `register-legacy-page.tsx`, but drawer users now see the rail (B2.3 #13).
+4. **Mobile (390/360)**: sticky cart bar at the page bottom with safe-area padding, last card not covered, chip row bleeding to the screen edge without horizontal page scroll, toast (bottom 150 px) above the bar, sheet max 85dvh with lines scrolling and pay visible, sheet → line editor stacking.
+5. **Tailwind v4 compilation of the arbitrary utilities used** (`bg-[color:var(--color-ink)]/30`, `shadow-[…color-mix(…)…]`, `empty:hidden`, `max-md:*`, `opacity-45`, `flex-[3]`, `[overflow-wrap:anywhere]`, `[&::-webkit-scrollbar]:hidden`, `[scrollbar-width:none]`, `line-clamp-2`).
+6. **Keyboard/focus**: single `keydown` listener (F2 focus+select while typing elsewhere, F4 only with no dialog + pay enabled, F8 soon toast, Esc layering incl. locked pay phases), autofocus only on `(pointer: fine)`, Thai IME `isComposing` on Enter, clear-bill dialog focusing Cancel.
+7. **Runtime i18n**: next-intl rich text `<b>` in `errors.stockInsufficient`, ICU plural in en `cart.itemCount`, the `common` namespace (`loading`, `cancel`) resolution, `LOCALE=en` cookie switching to `pos.json` en.
+8. **Server-action timing**: Next dispatches actions one at a time per client — quote (250 ms debounce), catalog search (200 ms) and status refresh queue behind each other; the 400 ms "กำลังโหลด..." swap and the stale-response counters are reasoned, not observed.
+9. **Payment paths in a real browser**: double click / double Enter producing one submit, unknown-result (network drop) → retry with the identical object, conflict card, PRICE_CHANGED re-confirm, PromptPay QR (170 px, amount-locked) rendering.
+10. **visual-pos p1.3 steps** were only dry-run (`--dry` plan OK, tsx compiles); selectors/timings, the fixture inserts (PosProduct + InvItem rows written directly) and their cleanup have not touched QC4 yet. The seed hunk has not been executed either.
+
+### B2.10 Oracle runs (QC4)
+| run | UTC | result |
+|---|---|---|
+| unforced #1 | 22:28:34Z → 22:30:14Z | 118/118 · S6.1 SKIP · `a5.drift []` |
+| forced #1 (`QC_FORCE=1`) | 22:43:37Z → ~22:45Z | 118/119 · red = S6.1 only · `a5.drift []` |
+| forced #2 (final tree) | 22:51:02Z → 22:52:33Z | **118/119** · red = S6.1 only · S9.1/S9.2 ✅ |
+| unforced #2 (final tree) | 22:52:33Z → 22:54:01Z | **118/118** · S6.1 SKIP |
+Green now vs B1.1 (105/119 forced): S5.1–S5.9, S5.11, S5.13, S5.16, S5.17.
+
+### B2.11 Regression (before = B1.1 final-tree logs `b11-after-*` · after = B2) — check lines compared
+| suite | before (`b11-after-*`, tree = eb30aa5f) | after (B2, flag off in QC4) |
+|---|---|---|
+| qc-pos-p1.1 | 113/113 | 113/113 |
+| qc-pos-register | 42/42 | 42/42 |
+| qc-hf-pos-page-authz | 56/56 | 56/56 |
+| qc-pos-p0.2 | 55/55 (+1 SKIP) | 55/55 (+1 SKIP) |
+| qc-pos-inventory | 25/25 | 25/25 |
+| qc-pos-account | 16/16 | 16/16 |
+| qc-pos-closeday | 22/22 | 22/22 |
+| qc-pos-coupon | 8/8 | 8/8 |
+| qc-pos-products | 24/24 | 24/24 |
+0 differing check lines in every suite (sorted ✅/❌/⏭️ + id). "Before" reuses the B1.1 after-logs (`.qc-shots/pos/p1.3/b11-after-*.log`, 21:45–21:50Z, recorded by B1.1 as its final tree; commit `eb30aa5f` 21:55Z) — no separate before-run was made in this tree (it would have needed parking all B2 files).
+
+### B2.12 Gates
+- fitness `bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness` → exit 0 `{"total":40,"passed":40}` · `bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm fitness` → exit 0 `{"total":40,"passed":40}` (F15.3a/b incl. the moved debt row; F15.4 167 keys th/en).
+- typecheck `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`: #1 22:30:20Z → 22:40:27Z exit 0 · #2 22:54:20Z → 23:05:37Z **exit 2 — one error**, `scripts/visual-pos.mts(103,3) TS2322` (the new state-plan `flatMap` inferred `page: "register"` from the first branch; typecheck #1 ran before visual-pos was extended). Fixed with explicit `Job[]`/`Job` return annotations (types only, no behaviour change). The 2-run limit was respected, so the fix was verified with a **scoped** `tsc -p` (temp tsconfig extending the project one, `files: [scripts/visual-pos.mts]` + everything it imports) through `iso.sh` + `with-gate-lock.sh`: exit 0 (23:24:21Z → 23:27:57Z); **positive control** in the same scoped setup with an unfixed copy (`scripts/_b2-pc.mts`, deleted afterwards) reported exactly that TS2322 at line 103 while the fixed file stayed clean (23:28:27Z → 23:35:22Z). No other file changed after typecheck #2. **Controller: a full `pnpm typecheck` / `next build` on this head is still owed** (the build at CONTROLLER-RUN covers it).
+- commit: one commit on `wip/pos-p1.3` with `--no-verify` (hook path points into an off-limits tree; fitness run through `iso.sh` instead) + push of that branch only.
+
+### B2.13 Proposed ORACLE-EDITs
+None required — every S5 check is green with the final tree. Observation only (no edit asked): S5.4 requires `pos-reg-member-remove` in code although P1.3 can never attach a member; it is implemented as an unreachable attached-member row (seam for P1.12) rather than a dead literal.
+
+### B2.14 Outside the brief's scope list (flagged)
+- `src/lib/modules/pos/register-legacy-page.tsx` (new) — legacy chrome moved out of `page.tsx` (debt 0 for page.tsx, see B2.2).
+- `src/components/pos/register/RegisterDialog.tsx` + `RegisterIcon.tsx` — helper files in the register folder not named in spec §3.1.
+- Nothing under `prisma/`, no server file of B1 changed, `register-ui.tsx` / `actions/pos.ts` untouched (S5.12 green).

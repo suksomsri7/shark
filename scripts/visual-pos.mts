@@ -13,6 +13,16 @@
 //   <wo> รับเฉพาะ ^[A-Za-z0-9._-]+$ ไม่มี '..' · SIGINT/SIGTERM/SIGHUP = ทำความสะอาดแบบเดียวกับ finally ก่อนออก
 //   ท้ายสุด `JSON_SUMMARY {...}` + `.qc-shots/pos/<wo>/summary-<user>.json`
 //
+// POS P1.3 ▸ ถ่าย "สถานะ" ของหน้าขายใหม่ (wo ขึ้นต้น p1.3 หรือ --states) — หน้า register แทนที่ภาพเดียวด้วยชุดสถานะ:
+//   default · cart3 (3 บรรทัด + ส่วนลดรายการ) · line-editor · bill-discount · custom-item (owner = กล่อง · cashier = ข้อความเหตุผล)
+//   paydlg-cash · sale-done (1440 เท่านั้น — ⚠️ สร้างบิลขายจริง PAID เงินสด 1 ใบต่อผู้ใช้ในร้าน QC: อเมริกาโน่×2 + ลาเต้ ไม่ผูกสต็อก)
+//   search-empty · stock-warn (การ์ดเหลือน้อย/หมด/ปิดขาย + กล่องเตือนในบรรทัด) · mobile-sheet (390 เท่านั้น)
+//   ไฟล์: `<wo>/register-<state>-<user>-<w>x<h>[-en].png` · LOCALE=en (env) = ถ่ายเฉพาะ 1440 + คุกกี้ LOCALE=en (ภาพ 20B)
+//   การ์ดเหลือน้อย/หมด/ปิดขาย: สร้างสินค้าชั่วคราว 3 ตัว (+ InvItem 2 ตัว) ที่สาขาของรอบนี้ ลบทิ้งใน finally/signal เสมอ
+//     (id `posqc-vis-<pid>-*` · ซากที่ค้างเกิน 1 ชม. ถูกกวาดตอนเริ่ม) — ร้าน QC POS เท่านั้น (`--tenant coffee`)
+//   ต้องเปิดธง settings.pos.registerV2 ของร้าน QC ก่อน (scripts/seed-pos-qc.mts) — ไม่งั้นได้หน้าขายเดิม = ขั้นตอนสถานะตก
+//   ขั้นตอนพัง = ภาพนั้นตก (บันทึก stepError) แต่ยังถ่ายหน้าจอ ณ จุดที่พังไว้ดู ◂
+//
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
 //    (พอร์ต 3215 เป็นของเซิร์ฟเวอร์ CRM RUN — LANE-RULES ข้อ 4 · ตั้ง POS_VISUAL_ALLOW_3215=1 เมื่อ CRM ปิดแล้วเท่านั้น)
 // 🔴 ชื่อไฟล์จงใจไม่ขึ้นต้น qc- (ต้องมีเซิร์ฟเวอร์ + chromium — ไม่เข้า qc:all)
@@ -70,14 +80,51 @@ const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" ? `?u
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
 
+// ── POS P1.3 ▸ แผนสถานะของหน้าขายใหม่ ──
+const STATES_ON = /^p1\.3/i.test(WO) || argv.includes("--states");
+const LOCALE_EN = process.env.LOCALE === "en";
+type Device = (typeof POS_VIEWPORTS)[number]["name"];
+type StateKey = "default" | "cart3" | "line-editor" | "bill-discount" | "custom-item" | "paydlg-cash" | "sale-done" | "search-empty" | "stock-warn" | "mobile-sheet";
+const STATE_PLAN: { key: StateKey; devices: readonly Device[]; note: string }[] = [
+  { key: "default", devices: ["desktop", "ipad", "mobile"], note: "เปิดหน้า (ตะกร้าว่าง) — การ์ดเหลือน้อย/หมด/ปิดขายของ fixture อยู่ในกริด" },
+  { key: "cart3", devices: ["desktop", "ipad", "mobile"], note: "อเมริกาโน่×2 · ลาเต้ (ลด ฿10) · ครัวซองต์ (สต็อก N → N−1)" },
+  { key: "line-editor", devices: ["desktop", "ipad", "mobile"], note: "cart3 + เปิดตัวแก้บรรทัดแรก" },
+  { key: "bill-discount", devices: ["desktop", "ipad", "mobile"], note: "cart3 + กล่องส่วนลดท้ายบิล" },
+  { key: "custom-item", devices: ["desktop", "ipad", "mobile"], note: "owner = กล่องรายการกำหนดเอง · cashier = ข้อความเหตุผล (ไม่มีสิทธิ์ตั้งราคา)" },
+  { key: "paydlg-cash", devices: ["desktop", "ipad", "mobile"], note: "cart3 + กล่องชำระ เงินสด รับพอดี" },
+  { key: "sale-done", devices: ["desktop"], note: "⚠️ ขายจริง 1 บิล (อเมริกาโน่×2 + ลาเต้ · เงินสด) → ขายสำเร็จ" },
+  { key: "search-empty", devices: ["desktop", "ipad", "mobile"], note: "ค้นคำที่ไม่มี → กล่องไม่พบ" },
+  { key: "stock-warn", devices: ["desktop", "ipad", "mobile"], note: "สินค้าเหลือ 2 ×3 → กล่องเตือนสต็อกในบรรทัด (19ฉ)" },
+  { key: "mobile-sheet", devices: ["mobile"], note: "cart3 + แผ่นตะกร้าเปิด" },
+];
+type Job = { page: PosPage; v: (typeof POS_VIEWPORTS)[number]; state: StateKey | null; file: string };
+const viewports = LOCALE_EN ? POS_VIEWPORTS.filter((v) => v.name === "desktop") : [...POS_VIEWPORTS];
+const jobs: Job[] = pages.flatMap((p: PosPage): Job[] =>
+  STATES_ON && p === "register"
+    ? STATE_PLAN.flatMap((st): Job[] =>
+        viewports
+          .filter((v) => st.devices.includes(v.name))
+          .map((v): Job => ({ page: p, v, state: st.key, file: `${OUT}/${p}-${st.key}-${userKey}-${v.w}x${v.h}${LOCALE_EN ? "-en" : ""}.png` })),
+      )
+    : viewports.map((v): Job => ({ page: p, v, state: null, file: LOCALE_EN ? fileOf(p, v.w, v.h).replace(/\.png$/, "-en.png") : fileOf(p, v.w, v.h) })),
+);
+const needFixtures = STATES_ON && tenantKey === "coffee" && jobs.some((j) => j.state);
+if (STATES_ON && tenantKey !== "coffee" && pages.includes("register")) die("สถานะหน้าขาย P1.3 ถ่ายได้เฉพาะ --tenant coffee (มี PromptPay + สินค้าตายตัวที่ขั้นตอนใช้)");
+// ◂
+
 // ═══════════════════ 2. --dry: แผนการถ่าย (ไม่แตะอะไรเลย) ═══════════════════
 const BASE_RAW = flag("--base") ?? process.env.QC_BASE ?? "";
 if (DRY) {
-  const plan = pages.flatMap((p) => POS_VIEWPORTS.map((v) => ({ page: p, viewport: `${v.w}x${v.h}`, device: v.name, path: pathOf(p), file: fileOf(p, v.w, v.h), expect: PAGE_EXPECT[p][userKey] })));
+  const plan = jobs.map((j) => ({ page: j.page, state: j.state, viewport: `${j.v.w}x${j.v.h}`, device: j.v.name, path: pathOf(j.page), file: j.file, expect: PAGE_EXPECT[j.page][userKey] }));
   console.log(`แผนการถ่าย POS · wo ${WO} · ผู้ใช้ ${userKey} (${U.email}) · ร้าน ${T.slug} · สาขา ${unitKey} · base ${BASE_RAW || "(ยังไม่ระบุ — รันจริงต้องมี --base)"}`);
-  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} คาด ${String(s.expect).padEnd(6)} ${s.path} → ${s.file}`);
-  console.log(`รวม ${pages.length} หน้า × ${POS_VIEWPORTS.length} ขนาด × 1 ผู้ใช้ = ${plan.length} ภาพ`);
-  console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, dry: true, pages: pages.length, viewports: POS_VIEWPORTS.length, shots: plan.length, plan })}`);
+  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${(s.state ?? "-").padEnd(13)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} คาด ${String(s.expect).padEnd(6)} ${s.path} → ${s.file}`);
+  if (STATES_ON) {
+    console.log(`สถานะหน้าขาย P1.3${LOCALE_EN ? " (LOCALE=en · 1440 เท่านั้น)" : ""}:`);
+    for (const st of STATE_PLAN) console.log(`  · ${st.key.padEnd(13)} ${st.devices.join("/").padEnd(20)} ${st.note}`);
+    if (needFixtures) console.log(`  fixture: สินค้าชั่วคราว 3 ตัว (เหลือ 2 · หมดสต็อก · ปิดขาย) ที่สาขา ${unitKey} — ลบใน finally`);
+  }
+  console.log(`รวม ${plan.length} ภาพ (${pages.length} หน้า × ${viewports.length} ขนาด${STATES_ON ? " · หน้าขายแยกตามสถานะ" : ""} × 1 ผู้ใช้)`);
+  console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, dry: true, locale: LOCALE_EN ? "en" : "th", states: STATES_ON, pages: pages.length, viewports: viewports.length, shots: plan.length, plan })}`);
   process.exit(0);
 }
 
@@ -127,6 +174,42 @@ async function cleanSessions(): Promise<{ removed: number; stale: number }> {
   const stale = (await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } })).count;
   return { removed, stale };
 }
+// POS P1.3 ▸ สินค้าชั่วคราวของภาพสถานะ (การ์ดเหลือน้อย/หมด/ปิดขาย) — เขียนตรงด้วย prisma ได้เพราะเป็นสคริปต์ (F15.1 สแกนเฉพาะ src/)
+//   id ของรอบนี้เท่านั้น · ลบซ้ำได้ · ซากของรอบที่ถูก kill -9 (เกิน 1 ชม.) ถูกกวาดก่อนสร้างใหม่ ◂
+const FIX = { prefix: "posqc-vis-", products: [] as string[], items: [] as string[] };
+let fixturesCleaned = false;
+async function cleanFixtures(): Promise<{ products: number; items: number }> {
+  if (fixturesCleaned) return { products: 0, items: 0 };
+  fixturesCleaned = true;
+  const products = FIX.products.length ? (await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: { in: FIX.products } } })).count : 0;
+  const items = FIX.items.length ? (await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: { in: FIX.items } } })).count : 0;
+  return { products, items };
+}
+async function makeFixtures(): Promise<void> {
+  const old = new Date(Date.now() - 60 * 60 * 1000);
+  await prisma.posProduct.deleteMany({ where: { tenantId: T.tenantId, id: { startsWith: FIX.prefix }, createdAt: { lt: old } } });
+  await prisma.invItem.deleteMany({ where: { tenantId: T.tenantId, id: { startsWith: FIX.prefix }, createdAt: { lt: old } } });
+  const inv = (T.systems as Record<string, { id: string }>).INVENTORY!.id;
+  const tag = `${FIX.prefix}${process.pid}`;
+  const mk = async (key: string, name: string, nameEn: string, price: number, onHand: number | null, off: boolean) => {
+    let invItemId: string | null = null;
+    if (onHand !== null) {
+      invItemId = `${tag}-${key}-inv`;
+      FIX.items.push(invItemId);
+      await prisma.invItem.create({ data: { id: invItemId, tenantId: T.tenantId, systemId: inv, sku: `PQC-VIS-${process.pid}-${key}`.toUpperCase(), name, onHand, kind: "PRODUCT" } });
+    }
+    const id = `${tag}-${key}`;
+    FIX.products.push(id);
+    await prisma.posProduct.create({
+      data: { id, tenantId: T.tenantId, systemId: SYS, unitId, invItemId, kind: "PRODUCT", name, nameEn, basePriceSatang: price, trackStock: onHand !== null ? true : null, unavailableUnitIds: off ? [unitId] : [] },
+    });
+    return id;
+  };
+  FIXTURE_IDS.low = await mk("low", "บราวนี่ (ภาพ QC)", "Brownie (QC shot)", 6500, 2, false);
+  FIXTURE_IDS.out = await mk("out", "ครัวซองต์อัลมอนด์ (ภาพ QC)", "Almond croissant (QC shot)", 9500, 0, false);
+  FIXTURE_IDS.off = await mk("off", "มัทฉะลาเต้ (ภาพ QC)", "Matcha latte (QC shot)", 9000, null, true);
+}
+const FIXTURE_IDS = { low: "", out: "", off: "" };
 // ถูก Ctrl-C/kill/ปิดเทอร์มินัล: ทำความสะอาดแบบเดียวกับ finally (ปิด chromium · ลบ session ของรอบนี้ · ลบโปรไฟล์) แล้วค่อยออก
 process.on("exit", cleanProfiles);
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
@@ -144,12 +227,139 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
       } catch (e) {
         console.error(`❌ ลบ session ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
       }
+      try {
+        const f = await cleanFixtures();
+        if (f.products || f.items) console.error(`🧹 ลบสินค้าชั่วคราว ${f.products} (+InvItem ${f.items})`);
+      } catch (e) {
+        console.error(`❌ ลบสินค้าชั่วคราวไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
       cleanProfiles();
     })();
     void done.finally(() => process.exit(130));
   });
 }
-type Shot = { page: string; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
+// ═══════════════════ POS P1.3 ▸ ขั้นตอนของแต่ละสถานะ (ปุ่มหาโดย data-testid ที่มองเห็นเท่านั้น) ═══════════════════
+const QC_IDS = { amer: "", latte: "", crois: "" };
+class StepError extends Error {}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const tid = (id: string) => `[data-testid="${id}"]`;
+const tidPrefix = (p: string) => `[data-testid^="${p}"]`;
+async function visibleEl(page: Any, sel: string, nth = 0, timeout = 10_000): Promise<Any> {
+  const until = Date.now() + timeout;
+  for (;;) {
+    const hs: Any[] = await page.$$(sel);
+    const vis: Any[] = [];
+    for (const h of hs) if (await h.isVisible().catch(() => false)) vis.push(h);
+    if (vis[nth]) return vis[nth];
+    if (Date.now() > until) throw new StepError(`ไม่พบ ${sel}${nth ? ` ตัวที่ ${nth + 1}` : ""} ที่มองเห็น`);
+    await sleep(200);
+  }
+}
+async function clickEl(page: Any, sel: string, nth = 0) {
+  const h = await visibleEl(page, sel, nth);
+  await h.click();
+  await sleep(200);
+}
+async function typeInto(page: Any, sel: string, text: string) {
+  const h = await visibleEl(page, sel);
+  await h.click({ count: 3 });
+  await h.type(text);
+  await sleep(200);
+}
+/** ปุ่มชำระ (ตะกร้าข้าง หรือแถบล่างมือถือ) เปิด = quote ของเซิร์ฟเวอร์มาแล้วและตรงตะกร้า */
+async function waitPayReady(page: Any) {
+  await page
+    .waitForFunction(
+      () =>
+        Array.from(document.querySelectorAll('[data-testid="pos-reg-pay"],[data-testid="pos-reg-cart-bar-pay"]')).some(
+          (e) => e.getClientRects().length > 0 && !(e as HTMLButtonElement).disabled,
+        ),
+      { timeout: 15_000 },
+    )
+    .catch(() => {
+      throw new StepError("ปุ่มชำระไม่เปิดภายใน 15 วิ (quote ไม่มา/ถูกปฏิเสธ)");
+    });
+}
+async function addCart3(page: Any, device: Device) {
+  if (!QC_IDS.amer || !QC_IDS.latte || !QC_IDS.crois) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC (อเมริกาโน่เย็น/ลาเต้ร้อน/ครัวซองต์เนยสด) — รัน seed-pos-qc + backfill ก่อน");
+  for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte, QC_IDS.crois]) await clickEl(page, tid(`pos-reg-product-${id}`));
+  await waitPayReady(page);
+  // ส่วนลดรายการ ฿10 ที่บรรทัดที่ 2 (ลาเต้)
+  if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
+  await clickEl(page, tidPrefix("pos-reg-cart-line-"), 1);
+  await typeInto(page, tidPrefix("pos-reg-line-discount-"), "10");
+  await clickEl(page, tid("pos-reg-editor-apply"));
+  if (device === "mobile") {
+    await page.keyboard.press("Escape"); // ปิดแผ่นตะกร้า
+    await sleep(250);
+  }
+  await waitPayReady(page);
+}
+const openCartOnMobile = async (page: Any, device: Device) => {
+  if (device === "mobile") await clickEl(page, tid("pos-reg-cart-view"));
+};
+const clickPay = (page: Any, device: Device) => clickEl(page, tid(device === "mobile" ? "pos-reg-cart-bar-pay" : "pos-reg-pay"));
+async function runState(page: Any, state: StateKey, device: Device): Promise<void> {
+  await visibleEl(page, tid("pos-reg-root"), 0, 15_000).catch(() => {
+    throw new StepError("หน้าขายใหม่ไม่ขึ้น (pos-reg-root) — ธง settings.pos.registerV2 ของร้าน QC เปิดหรือยัง? (seed-pos-qc)");
+  });
+  switch (state) {
+    case "default":
+      return;
+    case "cart3":
+      return addCart3(page, device);
+    case "line-editor":
+      await addCart3(page, device);
+      await openCartOnMobile(page, device);
+      await clickEl(page, tidPrefix("pos-reg-line-qty-"));
+      await visibleEl(page, tid("pos-reg-line-editor"));
+      return;
+    case "bill-discount":
+      await addCart3(page, device);
+      await openCartOnMobile(page, device);
+      await clickEl(page, tid("pos-reg-bill-discount"));
+      await visibleEl(page, tid("pos-reg-bill-discount-dialog"));
+      return;
+    case "custom-item":
+      await clickEl(page, tid("pos-reg-custom-item"));
+      await visibleEl(page, tid(userKey === "owner" ? "pos-reg-custom-dialog" : "pos-reg-toast"));
+      return;
+    case "paydlg-cash":
+      await addCart3(page, device);
+      await clickPay(page, device);
+      await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
+      await visibleEl(page, tid("pos-reg-paydlg-change"));
+      return;
+    case "sale-done":
+      if (!QC_IDS.amer || !QC_IDS.latte) throw new StepError("ไม่พบสินค้าตายตัวของร้าน QC");
+      for (const id of [QC_IDS.amer, QC_IDS.amer, QC_IDS.latte]) await clickEl(page, tid(`pos-reg-product-${id}`));
+      await waitPayReady(page);
+      await clickPay(page, device);
+      await clickEl(page, tid("pos-reg-paydlg-quick-exact"));
+      await clickEl(page, tid("pos-reg-paydlg-confirm"));
+      await visibleEl(page, tid("pos-reg-done"), 0, 20_000);
+      return;
+    case "search-empty":
+      await typeInto(page, tid("pos-reg-search"), "zz-no-such-item-qc");
+      await visibleEl(page, tid("pos-reg-search-empty"), 0, 10_000);
+      return;
+    case "stock-warn":
+      if (!FIXTURE_IDS.low) throw new StepError("ไม่มีสินค้าชั่วคราว (fixture) — ถ่ายสถานะนี้ได้เฉพาะ --tenant coffee");
+      for (let i = 0; i < 3; i++) await clickEl(page, tid(`pos-reg-product-${FIXTURE_IDS.low}`));
+      await waitPayReady(page);
+      await openCartOnMobile(page, device);
+      await visibleEl(page, tidPrefix("pos-reg-line-warn-"));
+      return;
+    case "mobile-sheet":
+      await addCart3(page, device);
+      await clickEl(page, tid("pos-reg-cart-view"));
+      await visibleEl(page, tid("pos-reg-cart-sheet"));
+      return;
+  }
+}
+// ◂
+
+type Shot = { page: string; state: string | null; stepError: string | null; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
 let fatal = "";
@@ -169,6 +379,17 @@ try {
   const cookies: Any[] = https
     ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: T.tenantId, url: BASE, path: "/", secure: true }]
     : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: T.tenantId, domain: host, path: "/" }];
+  // POS P1.3 ▸ ภาษาอังกฤษ (ภาพ 20B) — next-intl อ่าน locale จากคุกกี้ LOCALE ◂
+  if (LOCALE_EN) cookies.push(https ? { name: "LOCALE", value: "en", url: BASE, path: "/", secure: true } : { name: "LOCALE", value: "en", domain: host, path: "/" });
+  if (needFixtures) await makeFixtures();
+  // ข้อมูลตายตัวของร้าน QC ที่ขั้นตอนสถานะใช้ (หาจากชื่อ — seed-pos-qc · ไม่ผูกสต็อก ยกเว้นครัวซองต์)
+  if (STATES_ON) {
+    const rows = await prisma.posProduct.findMany({ where: { tenantId: T.tenantId, systemId: SYS, archivedAt: null }, select: { id: true, name: true } });
+    const byName = (n: string) => rows.find((r) => r.name === n)?.id ?? "";
+    QC_IDS.amer = byName("อเมริกาโน่เย็น");
+    QC_IDS.latte = byName("ลาเต้ร้อน");
+    QC_IDS.crois = byName("ครัวซองต์เนยสด");
+  }
 
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);
@@ -178,8 +399,10 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
   }));
   try {
-    for (const p of pages) {
-      for (const v of POS_VIEWPORTS) {
+    for (const job of jobs) {
+      {
+        const p = job.page;
+        const v = job.v;
         const page = await browser.newPage();
         await page.setViewport({ width: v.w, height: v.h, deviceScaleFactor: 2, isMobile: v.mobile, hasTouch: v.name !== "desktop" });
         await page.setCookie(...cookies);
@@ -201,6 +424,16 @@ try {
         });
         const resp = await page.goto(`${BASE}${pathOf(p)}`, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
         await new Promise((r) => setTimeout(r, 800));
+        // POS P1.3 ▸ ขั้นตอนของสถานะ (พัง = บันทึก stepError แล้วถ่าย ณ จุดนั้น) ◂
+        let stepError: string | null = null;
+        if (job.state) {
+          try {
+            await runState(page, job.state, v.name);
+            await new Promise((r) => setTimeout(r, 500));
+          } catch (e) {
+            stepError = e instanceof Error ? e.message.slice(0, 200) : String(e);
+          }
+        }
         const finalUrl = String(page.url()).replace(BASE, "");
         // ล้นแนวนอน = เนื้อหากว้างกว่ากรอบที่มองเห็น (เกณฑ์ X10 — ไม่มี overflow ทั้ง 3 ขนาด)
         const ov = (await page
@@ -226,18 +459,18 @@ try {
             return { over, el: `${boxName}: ${best?.d ?? "?"}` };
           })
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
-        const file = fileOf(p, v.w, v.h);
+        const file = job.file;
         await page.screenshot({ path: file, fullPage: true });
         const status = resp?.status() ?? 0;
         const redirectedToLogin = /\/login\b/.test(finalUrl);
         const exp = PAGE_EXPECT[p][userKey];
         const statusOk = exp === "record" ? true : status === exp && !redirectedToLogin;
         const judged = exp === "record" ? status > 0 && status < 400 : true; // record-only: หน้าที่ถูกปฏิเสธ ไม่ตัดสินเลย์เอาต์/console
-        const ok = statusOk && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
+        const ok = statusOk && !stepError && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
         if (!ok) failures++;
-        shots.push({ page: p, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
+        shots.push({ page: p, state: job.state, stepError, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p} ${v.w}x${v.h} HTTP ${status} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}`,
+          `  ${ok ? "✅" : "❌"} ${p}${job.state ? `/${job.state}` : ""} ${v.w}x${v.h} HTTP ${status}${stepError ? ` · ขั้นตอนพัง: ${stepError}` : ""} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}`,
         );
         await page.close();
       }
@@ -249,10 +482,18 @@ try {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
   const { removed, stale } = await cleanSessions();
+  let fixOut = "";
+  try {
+    const f = await cleanFixtures();
+    if (f.products || f.items) fixOut = ` · ลบสินค้าชั่วคราว ${f.products} (+InvItem ${f.items})`;
+  } catch (e) {
+    fixOut = ` · ❌ ลบสินค้าชั่วคราวไม่สำเร็จ: ${e instanceof Error ? e.message : e}`;
+    failures++;
+  }
   await prisma.$disconnect();
   cleanProfiles();
   writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), shots }, null, 2));
-  console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
+  console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""}${fixOut} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
 console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);

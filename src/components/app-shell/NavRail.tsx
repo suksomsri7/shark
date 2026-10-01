@@ -16,7 +16,7 @@ import type { NavItem } from "./NavDrawer";
 //
 // 🔴 ตัวราง **ไม่รู้จักโมดูลไหนเลย** — รับ items ชุดเดียวกับ NavDrawer จาก layout (DB-driven)
 export function isRailPath(pathname: string): boolean {
-  return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname);
+  return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname) || /^\/app\/sys\/[^/]+\/pos\/register\/?$/.test(pathname); // POS P1.3 ▸ หน้าขายเต็มจอ ◂
 }
 
 export function NavRail({
