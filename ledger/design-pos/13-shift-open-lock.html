@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>SHARK · POS · เปิดกะ + ล็อกหน้าจอ</title>
+<style>
+/* ══ โทเคนสี — จานเดียวทั้งไฟล์ (WO §1) ═══════════════════════════════════
+   ขาว #fff · พื้นรอง #fafafa · พื้นเวที #f4f5f7
+   ตัวอักษร #0a0a0a / #404040 / #737373 / #a3a3a3
+   เส้น #e5e5e5 · เส้นอ่อน/แท่งกราฟจาง #d4d4d4
+   accent #1d4ed8 (+พื้นจาง #e9eefc) · danger #b91c1c
+   ห้ามเพิ่มสีอื่น                                                        */
+:root{
+  --ink:#0a0a0a; --ink2:#404040; --mut:#737373; --mut2:#a3a3a3;
+  --line:#e5e5e5; --line2:#d4d4d4; --sf:#fff; --sf2:#fafafa; --stage:#f4f5f7;
+  --acc:#1d4ed8; --acc-bg:#e9eefc; --dg:#b91c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{font-family:'Noto Sans Thai','Sarabun',system-ui,sans-serif;color:var(--ink);
+  background:var(--stage);font-size:14px;line-height:1.45}
+.wrap{padding:26px;display:flex;flex-direction:column;gap:30px;align-items:flex-start}
+.cap{font-size:12.5px;font-weight:700;color:var(--ink2);margin:0 0 9px 3px}
+.cap span{font-weight:400;color:var(--mut)}
+
+/* ── กรอบจอ ───────────────────────────────────────────────────────────── */
+.frame{width:1440px;background:var(--sf);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;display:flex;flex-direction:column;position:relative}
+.frame.m{width:390px}
+
+/* ── ไอคอน ────────────────────────────────────────────────────────────── */
+svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.sm{width:14px;height:14px;stroke-width:1.9}
+svg.i.xs{width:12px;height:12px;stroke-width:2}
+svg.i.lg{width:22px;height:22px}
+
+/* ── โครงแอปเดิม (topbar + drawer) — จงใจให้จาง ────────────────────────── */
+.top{height:56px;display:flex;align-items:center;gap:11px;padding:0 18px;
+  border-bottom:1px solid var(--line);color:var(--mut);flex:none}
+.top .brand{font-size:14.5px;font-weight:700;color:var(--ink2)}
+.top .sp{flex:1}
+.appbody{display:flex;align-items:stretch;min-height:0}
+.drawer{width:288px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:14px 12px;color:var(--mut2);font-size:13px}
+.dsec{font-size:11px;font-weight:700;color:var(--mut2);padding:10px 8px 5px;letter-spacing:.02em}
+.ditem{display:flex;align-items:center;gap:9px;height:34px;padding:0 9px;border-radius:8px;color:var(--mut2)}
+.ditem.on{background:var(--sf);color:var(--ink);font-weight:700;border:1px solid var(--line)}
+.mod{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--sf)}
+
+/* ── แถบเมนูบัญชี 9 หมวด ──────────────────────────────────────────────── */
+.amenu{display:flex;gap:0;padding:0 18px;border-bottom:1px solid var(--line);position:relative;flex:none}
+.am{position:relative;display:flex;align-items:center;gap:7px;padding:13px 13px 11px;font-size:13.5px;
+  color:var(--ink2);border-bottom:2px solid transparent;white-space:nowrap}
+.am.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.am.opened{background:var(--sf2);border-radius:8px 8px 0 0}
+.am .cv{width:11px;height:11px;stroke-width:2.2;opacity:.55}
+
+/* ── dropdown เมนูย่อย ────────────────────────────────────────────────── */
+.dd{position:absolute;top:calc(100% - 1px);left:0;width:264px;background:var(--sf);
+  border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 34px rgba(10,10,10,.12);
+  padding:6px;z-index:30}
+.dd.w2{width:520px;display:flex;gap:6px}
+.dd.w2 .col{flex:1;min-width:0}
+.ddh{font-size:11px;font-weight:700;color:var(--mut);padding:7px 10px 4px}
+.ddi{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:8px;
+  font-size:13.5px;color:var(--ink)}
+.ddi .i{color:var(--mut)}
+.ddi.on{background:var(--sf2);font-weight:700}
+.ddi.soon{color:var(--mut2)}
+.ddi.soon .i{color:var(--mut2)}
+.ddi .ar{margin-left:auto;color:var(--mut2)}
+.tagsoon{margin-left:auto;font-size:10.5px;color:var(--mut2);border:1px solid var(--line);
+  border-radius:5px;padding:1px 6px}
+.ddsep{height:1px;background:var(--line);margin:5px 9px}
+
+/* ── หัวหน้า ──────────────────────────────────────────────────────────── */
+.crumb{padding:13px 24px 0;font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.ph{display:flex;align-items:center;gap:10px;padding:9px 24px 15px}
+.ph h1{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.ph .sp{flex:1}
+.pg{padding:0 24px 24px;display:flex;flex-direction:column;gap:15px}
+
+/* ── ปุ่ม ─────────────────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;
+  padding:0 14px;border-radius:8px;font-size:13.5px;font-weight:500;border:1px solid transparent;
+  white-space:nowrap;background:var(--sf);color:var(--ink)}
+.btn.pri{background:var(--ink);color:var(--sf)}
+.btn.gh{border-color:var(--line)}
+.btn.sm{height:31px;padding:0 10px;font-size:12.5px;border-radius:7px}
+.btn.blk{width:100%}
+.btn[disabled],.btn.off{color:var(--mut2);border-color:var(--line)}
+
+/* ── การ์ด ────────────────────────────────────────────────────────────── */
+.card{border:1px solid var(--line);border-radius:12px;background:var(--sf);padding:16px;min-width:0}
+.card.p0{padding:0}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ch h2{font-size:13.5px;font-weight:700}
+.ch .sp{flex:1}
+.sub{font-size:11.5px;color:var(--mut)}
+.row{display:flex;gap:15px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:15px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.kpi .lbl{font-size:12px;color:var(--mut);display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:23px;font-weight:700;letter-spacing:-.025em;margin-top:7px;
+  font-variant-numeric:tabular-nums}
+.kpi .val.dg{color:var(--dg)}
+.kpi .fo{font-size:11.5px;color:var(--mut);margin-top:5px}
+
+/* ── chip สถานะ (3 โทนตาม StatusChip) ─────────────────────────────────── */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;
+  border-radius:6px;border:1px solid var(--line);font-size:11.5px;color:var(--mut);
+  background:var(--sf);white-space:nowrap}
+.chip.ink{border-color:var(--ink);color:var(--ink);font-weight:700}
+.chip.dg{border-color:var(--dg);color:var(--dg);font-weight:700}
+.chip.acc{border-color:var(--acc);color:var(--acc);font-weight:700;background:var(--acc-bg)}
+
+/* ── แท็บ ─────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow:hidden}
+.tab{display:flex;align-items:center;gap:6px;padding:9px 12px;font-size:13px;color:var(--mut);
+  border-bottom:2px solid transparent;white-space:nowrap}
+.tab.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.tab .n{font-size:12px;color:var(--mut2);font-variant-numeric:tabular-nums}
+.tab.on .n{color:var(--ink2)}
+.tab.dg,.tab.dg .n{color:var(--dg)}
+.tab .bdg{min-width:18px;height:18px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:10.5px;font-weight:700;display:grid;place-items:center;padding:0 5px}
+
+/* ── ตาราง ────────────────────────────────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11.5px;font-weight:700;color:var(--mut);padding:9px 10px;
+  border-bottom:1px solid var(--line);white-space:nowrap;background:var(--sf2)}
+.tbl td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl td.nw{white-space:nowrap}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.hov td{background:var(--sf2)}
+.tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tbl .rt{text-align:right}
+.lnk{color:var(--acc);font-weight:700}
+.dgt{color:var(--dg);font-weight:700}
+.mu{color:var(--mut)}
+.cbx{width:14px;height:14px;border:1.5px solid var(--line2);border-radius:4px;display:inline-block;
+  vertical-align:-2px}
+.cbx.on{background:var(--ink);border-color:var(--ink);position:relative}
+.cbx.on::after{content:"";position:absolute;left:3.5px;top:.5px;width:4px;height:8px;
+  border:solid var(--sf);border-width:0 1.7px 1.7px 0;transform:rotate(42deg)}
+
+/* ── ช่องกรอก / ตัวกรอง ───────────────────────────────────────────────── */
+.inp{height:34px;border:1px solid var(--line);border-radius:8px;display:inline-flex;
+  align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--mut);background:var(--sf)}
+.inp b{color:var(--ink);font-weight:600}
+.inp .cv{margin-left:auto;color:var(--mut2)}
+.inp.gro{flex:1}
+.sw{width:34px;height:19px;border-radius:10px;background:var(--ink);position:relative;flex:none}
+.sw::after{content:"";position:absolute;right:2.5px;top:2.5px;width:14px;height:14px;
+  border-radius:50%;background:var(--sf)}
+.sw.off{background:var(--line2)}
+.sw.off::after{left:2.5px;right:auto}
+
+/* ── แถบ bulk ─────────────────────────────────────────────────────────── */
+.bulk{display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--acc-bg);
+  border:1px solid var(--acc);border-radius:9px;font-size:12.5px;color:var(--acc);font-weight:600}
+.bulk .sp{flex:1}
+
+/* ── เมนู "ทำรายการ" ในแถว ────────────────────────────────────────────── */
+.rowmenu{position:absolute;right:0;top:calc(100% + 4px);width:210px;background:var(--sf);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(10,10,10,.13);
+  padding:5px;z-index:25;text-align:left}
+.rowmenu .ddi{height:34px;font-size:13px}
+.anch{position:relative;display:inline-block}
+
+/* ── กราฟ ─────────────────────────────────────────────────────────────── */
+.lgd{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--ink2)}
+.lgd i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px;
+  vertical-align:0px}
+.lgd .ln{width:14px;height:2px;border-radius:2px;vertical-align:3px}
+.sw-acc{background:var(--acc)} .sw-ink{background:var(--ink)}
+.sw-m2{background:var(--mut2)} .sw-l2{background:var(--line2)} .sw-dg{background:var(--dg)}
+.sw-mu{background:var(--mut)}
+.stat{display:flex;gap:26px;flex-wrap:wrap}
+.stat .b .k{font-size:11.5px;color:var(--mut)}
+.stat .b .v{font-size:19px;font-weight:700;letter-spacing:-.02em;margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.stat .b .v.dg{color:var(--dg)}
+.stat .b .d{font-size:11px;color:var(--mut);margin-top:2px}
+
+/* ── แถบสัดส่วน / อายุหนี้ ────────────────────────────────────────────── */
+.mtr{height:8px;border-radius:4px;background:var(--sf2);overflow:hidden;display:flex;gap:2px}
+.mtr i{display:block;height:100%}
+.agerow{display:flex;align-items:center;gap:10px;font-size:12px}
+.agerow .nm{width:98px;color:var(--mut);flex:none}
+.agerow .bar{flex:1;height:9px;background:var(--sf2);border-radius:5px;overflow:hidden}
+.agerow .bar i{display:block;height:100%;border-radius:3px;min-width:5px}
+.agerow .amt{width:88px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.agerow.dgv .amt{color:var(--dg)}
+
+/* ── รายการงาน / ลิสต์ ────────────────────────────────────────────────── */
+.lst .li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);
+  font-size:13px}
+.lst .li:first-child{border-top:0}
+.lst .li .sp{flex:1;min-width:0}
+.lst .li .n{font-variant-numeric:tabular-nums;font-weight:700}
+.pill{min-width:20px;height:20px;border-radius:6px;background:var(--ink);color:var(--sf);
+  font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+.pill.dg{background:var(--dg)}
+.pill.gh{background:var(--sf2);color:var(--ink2);border:1px solid var(--line)}
+
+/* ── footer ตาราง ─────────────────────────────────────────────────────── */
+.tfoot{display:flex;align-items:center;gap:12px;padding:11px 12px;font-size:12.5px;color:var(--mut);
+  border-top:1px solid var(--line)}
+.tfoot .sp{flex:1}
+.pgr{display:flex;align-items:center;gap:4px}
+.pgr .pb{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;display:grid;
+  place-items:center;color:var(--ink2)}
+
+/* ── โหมดถ่ายรูป "ไม่มีเมนู" — render.mjs เติม/ถอดคลาสนี้ที่ .frame ก่อน screenshot
+   เพื่อให้ได้ 2 ใบต่อเฟรม: ใบเปล่าไว้ดูเนื้อหา + ใบมีเมนูไว้ดูโครงเมนู
+   🔴 ห้ามก๊อป markup เฟรมซ้ำ — เฟรมเดียวถ่าย 2 สถานะ */
+.frame.no-menu .dd,
+.frame.no-menu .rowmenu,
+.frame.no-menu .bulk,
+.frame.no-menu .scrim,
+.frame.no-menu .over,
+.frame.no-menu .menu-space{display:none}
+.frame.no-menu .am.opened{background:transparent}
+.frame.no-menu .cbx.on{background:var(--sf);border-color:var(--line2)}
+.frame.no-menu .cbx.on::after{display:none}
+
+/* ── slide-over ───────────────────────────────────────────────────────── */
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,.28);z-index:40}
+.over{position:absolute;top:0;right:0;bottom:0;width:400px;background:var(--sf);z-index:41;
+  border-left:1px solid var(--line);box-shadow:-10px 0 34px rgba(10,10,10,.13);
+  display:flex;flex-direction:column}
+
+/* ── มือถือ ───────────────────────────────────────────────────────────── */
+.frame.m .top{height:52px;padding:0 14px}
+.mnav{display:flex;gap:2px;padding:0 12px;border-bottom:1px solid var(--line);overflow:hidden;flex:none}
+.mn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 9px 7px;
+  font-size:11px;color:var(--mut);border-bottom:2px solid transparent;white-space:nowrap}
+.mn.on{color:var(--ink);font-weight:700;border-bottom-color:var(--acc)}
+.mpg{padding:13px 14px 22px;display:flex;flex-direction:column;gap:13px}
+.mcard{border:1px solid var(--line);border-radius:12px;padding:13px}
+.mrow{display:flex;align-items:center;gap:9px;padding:11px 0;border-top:1px solid var(--line)}
+.mrow:first-child{border-top:0}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sf);border-radius:16px 16px 0 0;
+  box-shadow:0 -8px 30px rgba(10,10,10,.2);z-index:41;padding:8px 0 14px}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--line2);margin:2px auto 10px}
+.sh-i{display:flex;align-items:center;gap:12px;height:48px;padding:0 16px;font-size:14px}
+.sh-i .ar{margin-left:auto;color:var(--mut2)}
+.fab{position:absolute;right:14px;width:52px;height:52px;border-radius:50%;background:var(--ink);
+  color:var(--sf);display:grid;place-items:center;box-shadow:0 6px 18px rgba(10,10,10,.24);z-index:20}
+.orb{position:absolute;right:14px;bottom:14px;width:52px;height:52px;border-radius:50%;
+  border:2px solid var(--acc);background:var(--sf);color:var(--acc);display:grid;place-items:center;z-index:20}
+.mtabs{display:flex;gap:6px;overflow:hidden;padding:1px}
+.mtab{display:flex;align-items:center;gap:5px;height:30px;padding:0 11px;border-radius:8px;
+  border:1px solid var(--line);font-size:12.5px;color:var(--mut);white-space:nowrap;background:var(--sf)}
+.mtab.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.mtab.dg{border-color:var(--dg);color:var(--dg)}
+
+/* ── เบ็ดเตล็ด ────────────────────────────────────────────────────────── */
+.hr{height:1px;background:var(--line)}
+.av{width:24px;height:24px;border-radius:7px;background:var(--sf2);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--ink2);flex:none}
+.thumb{width:44px;height:44px;border-radius:8px;border:1px solid var(--line);background:var(--sf2);
+  display:grid;place-items:center;color:var(--mut);flex:none;overflow:hidden}
+.aitag{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--acc);
+  background:var(--acc-bg);border-radius:6px;padding:2px 7px;margin-top:3px}
+.dashed{border:1.5px dashed var(--line2);border-radius:11px;padding:14px;display:flex;
+  align-items:center;gap:11px;color:var(--mut);font-size:12.5px;background:var(--sf2)}
+.tree{font-size:13px}
+.tr-i{display:flex;align-items:center;gap:7px;height:31px;padding:0 8px;border-radius:7px;color:var(--ink2)}
+.tr-i.on{background:var(--sf2);color:var(--ink);font-weight:700}
+.tr-i .tg{width:13px;height:13px;border:1px solid var(--line2);border-radius:3px;display:grid;
+  place-items:center;font-size:11px;line-height:1;color:var(--mut);flex:none;background:var(--sf)}
+.kv{display:flex;gap:12px;padding:7px 0;font-size:13px;border-top:1px solid var(--line)}
+.kv:first-child{border-top:0}
+.kv .k{width:180px;color:var(--mut);flex:none}
+.kv .v{flex:1;min-width:0}
+.acc-i{display:flex;align-items:center;gap:8px;height:38px;padding:0 11px;font-size:13px;color:var(--ink2)}
+.acc-i.on{background:var(--sf2);font-weight:700;color:var(--ink);border-left:2px solid var(--acc)}
+.acc-h{display:flex;align-items:center;gap:8px;height:42px;padding:0 11px;font-size:13.5px;
+  font-weight:700;border-top:1px solid var(--line)}
+.cal{width:100%;border-collapse:collapse;font-size:11px}
+.cal th{font-size:11px;color:var(--mut);font-weight:600;padding:5px 0;text-align:center;
+  border-bottom:1px solid var(--line);background:var(--sf)}
+.cal td{border:1px solid var(--line);height:60px;vertical-align:top;padding:4px 5px;width:14.28%}
+.cal .d{font-size:11px;color:var(--mut)}
+.cal .d.now{background:var(--acc);color:var(--sf);border-radius:50%;width:18px;height:18px;
+  display:grid;place-items:center;font-weight:700}
+.cal .in{font-size:10.5px;color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.cal .out{font-size:10.5px;color:var(--mut);font-variant-numeric:tabular-nums}
+.cal td.off{background:var(--sf2)}
+.tl{display:flex;align-items:center;gap:0;font-size:11.5px}
+.tl .n{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;text-align:center}
+.tl .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;
+  place-items:center;color:var(--mut2);background:var(--sf)}
+.tl .n.done .dot{border-color:var(--ink);color:var(--ink)}
+.tl .n.cur .dot{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.tl .n.cur{font-weight:700;color:var(--acc)}
+.tl .bar{height:1.5px;background:var(--line);flex:0 0 26px;margin-bottom:16px}
+</style></head>
+<body>
+<svg style="display:none" aria-hidden="true">
+ <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+ <symbol id="i-cv" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></symbol>
+ <symbol id="i-ar" viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></symbol>
+ <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+ <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9.5 21v-6h5v6"/></symbol>
+ <symbol id="i-in" viewBox="0 0 24 24"><path d="M12 4v13"/><path d="m6.5 11.5 5.5 5.5 5.5-5.5"/><path d="M4 21h16"/></symbol>
+ <symbol id="i-out" viewBox="0 0 24 24"><path d="M12 20V7"/><path d="m6.5 12.5 5.5-5.5 5.5 5.5"/><path d="M4 3h16"/></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 5.4a3.4 3.4 0 0 1 0 6.4M18 14.8c2.2.6 3.5 2.3 3.5 5.2"/></symbol>
+ <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 4 7v10l8 4 8-4V7Z"/><path d="m4 7 8 4 8-4M12 11v10"/></symbol>
+ <symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.2" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h13a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5Z"/><path d="M8.5 4v17M11.5 9h4M11.5 13h4"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 6.5A1 1 0 0 1 4.5 5.5h4.2l1.8 2.2h9a1 1 0 0 1 1 1v9.8a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z"/></symbol>
+ <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V20a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H4a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H10a1.6 1.6 0 0 0 1-1.5V4a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V10a1.6 1.6 0 0 0 1.5 1H20a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></symbol>
+ <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></symbol>
+ <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"/><path d="M14 3v4h4"/></symbol>
+ <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 3v11"/><path d="m7.5 9.5 4.5 4.5 4.5-4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3h10v6"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v7H7Z"/></symbol>
+ <symbol id="i-qr" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h3v3h-3ZM20.5 14v3M14 20.5h6.5"/></symbol>
+ <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+ <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3.5 13.7 9 19 10.5 13.7 12 12 17.5 10.3 12 5 10.5 10.3 9 12 3.5ZM18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></symbol>
+ <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4h11l-1.5 3.5L16 11H5"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+ <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+ <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></symbol>
+ <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3.5 9.5 12 4l8.5 5.5"/><path d="M5.5 9.5v9M10 9.5v9M14 9.5v9M18.5 9.5v9M3 20h18"/></symbol>
+ <symbol id="i-cash" viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6.5 12h.01M17.5 12h.01"/></symbol>
+ <symbol id="i-pig" viewBox="0 0 24 24"><path d="M3.5 12.5A6.5 6.5 0 0 1 10 8h4a6 6 0 0 1 5.4 3.4l1.6.6v3l-1.8.4A6.2 6.2 0 0 1 16 18.5V20h-3v-1.2h-2V20H8v-1.9a6.4 6.4 0 0 1-4.5-5.6Z"/><path d="M8.5 5.5 10 8M15.5 11.5h.01"/></symbol>
+ <symbol id="i-cheque" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10.5h6M6 14h3.5M15 13.5l1.6 1.6L20 11.5"/></symbol>
+ <symbol id="i-pct" viewBox="0 0 24 24"><circle cx="7.5" cy="7.5" r="2.6"/><circle cx="16.5" cy="16.5" r="2.6"/><path d="m5 19 14-14"/></symbol>
+ <symbol id="i-tree" viewBox="0 0 24 24"><path d="M5 4v15h5M5 11h5"/><rect x="10" y="2.5" width="9" height="4" rx="1.2"/><rect x="10" y="9" width="9" height="4" rx="1.2"/><rect x="10" y="16" width="9" height="4" rx="1.2"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M4.5 6.5h.01M9 6.5h10.5M4.5 12h.01M9 12h10.5M4.5 17.5h.01M9 17.5h10.5"/></symbol>
+ <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+ <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+ <symbol id="i-report" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+ <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+ <symbol id="i-asset" viewBox="0 0 24 24"><path d="M3.5 20V9l8.5-5 8.5 5v11"/><rect x="8" y="12" width="8" height="8" rx="1"/></symbol>
+ <symbol id="i-shop" viewBox="0 0 24 24"><path d="M4 9V4h16v5"/><path d="M3 9h18l-1.4 11a1 1 0 0 1-1 .9H5.4a1 1 0 0 1-1-.9Z"/><path d="M9.5 13h5"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13.5a3.6 3.6 0 0 0 5.2.3l2.6-2.6a3.6 3.6 0 0 0-5.1-5.1l-1.5 1.5"/><path d="M14 10.5a3.6 3.6 0 0 0-5.2-.3l-2.6 2.6a3.6 3.6 0 0 0 5.1 5.1l1.5-1.5"/></symbol>
+ <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2.2"/><path d="m3.6 7 8.4 6 8.4-6"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5v-3a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
+ <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17Z"/><path d="m14.5 7.5 2 2"/></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3.2"/></symbol>
+ <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+ <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16l-6 7v6l-4-2v-4L4 6Z"/></symbol>
+ <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 17V5"/><path d="m7.5 9.5 4.5-4.5 4.5 4.5"/><path d="M4 17v3h16v-3"/></symbol>
+ <symbol id="i-truck" viewBox="0 0 24 24"><rect x="2.5" y="7" width="11" height="9" rx="1.4"/><path d="M13.5 10h4l3 3.2V16h-7Z"/><circle cx="7" cy="18.5" r="1.8"/><circle cx="17" cy="18.5" r="1.8"/></symbol>
+ <symbol id="i-tag" viewBox="0 0 24 24"><path d="M4 11V5a1 1 0 0 1 1-1h6l9 9-7 7-9-9Z"/><circle cx="8" cy="8" r="1.3"/></symbol>
+ <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4 2.5 20h19Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+ <symbol id="i-drag" viewBox="0 0 24 24"><path d="M12 16V6"/><path d="m7.5 10.5 4.5-4.5 4.5 4.5"/><rect x="3.5" y="16" width="17" height="4.5" rx="1.5"/></symbol>
+</svg>
+<style>
+/* ══ CSS เพิ่มเฉพาะ POS (ใช้ร่วมทุกจอ) — ห้ามเพิ่มสีนอกโทเคน ══ */
+.pos{display:flex;min-height:0;flex:1}
+.pos .left{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.pos .cart{width:420px;flex:none;display:flex;flex-direction:column;background:var(--sf)}
+.pgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;padding:14px 18px;overflow:hidden}
+.pitem{border:1px solid var(--line);border-radius:12px;padding:10px;min-height:96px;display:flex;flex-direction:column;justify-content:space-between;background:var(--sf)}
+.pitem .img{height:44px;border-radius:8px;background:var(--stage);margin-bottom:8px}
+.pitem .nm{font-size:13px;font-weight:600;line-height:1.3}
+.pitem .pr{font-size:13px;color:var(--ink2);margin-top:4px;font-variant-numeric:tabular-nums;display:flex;justify-content:space-between}
+.pitem .pr small{color:var(--mut2);font-size:11px}
+.pitem.oos{opacity:.45}
+.pitem.oos .nm::after{content:" · หมด";color:var(--dg)}
+.cats{display:flex;gap:10px;padding:12px 18px 0;overflow:hidden}
+.cats .c{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);display:inline-flex;align-items:center;font-size:13px;color:var(--ink2);white-space:nowrap}
+.cats .c.on{background:var(--ink);color:var(--sf);border-color:var(--ink);font-weight:700}
+.cline{display:flex;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+.cline .q{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;font-size:13px;font-weight:700;flex:none}
+.cline .t{flex:1;min-width:0}
+.cline .t b{font-size:13.5px;font-weight:600;display:block}
+.cline .t span{font-size:12px;color:var(--mut);display:block;margin-top:2px}
+.cline .a{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cline .a small{display:block;font-size:11px;color:var(--mut);font-weight:400;text-align:right}
+.tot{padding:10px 16px;border-top:1px solid var(--line);font-size:13px}
+.tot .r{display:flex;justify-content:space-between;padding:3px 0;color:var(--ink2)}
+.tot .r.g{font-size:20px;font-weight:700;color:var(--ink);padding-top:8px}
+.tot .r .dg{color:var(--dg)}
+.paybtn{margin:10px 16px 14px;height:56px;border-radius:12px;background:var(--ink);color:var(--sf);display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:16px;font-weight:700}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+.numpad div{height:52px;border:1px solid var(--line);border-radius:10px;display:grid;place-items:center;font-size:18px;font-weight:600}
+.numpad div.k{background:var(--sf2);font-size:14px}
+.paym{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}
+.paym div{height:60px;border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:13px;font-weight:600}
+.paym div.on{border-color:var(--ink);background:var(--sf2);box-shadow:inset 0 0 0 1px var(--ink)}
+.paym div.off{color:var(--mut2)}
+.paym div small{font-size:11px;color:var(--mut);font-weight:400}
+.qr{width:150px;height:150px;border:1px solid var(--line);border-radius:10px;background:
+ repeating-linear-gradient(90deg,var(--ink) 0 6px,transparent 6px 12px),repeating-linear-gradient(0deg,var(--ink) 0 6px,var(--sf) 6px 12px);
+ background-blend-mode:multiply;position:relative}
+.qr::after{content:"PromptPay";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--sf);padding:3px 8px;font-size:11px;font-weight:700;border:1px solid var(--line);border-radius:6px}
+.tbl-card{border:1px solid var(--line);border-radius:12px;padding:10px;min-height:92px;display:flex;flex-direction:column;justify-content:space-between;background:var(--sf)}
+.tbl-card.busy{background:var(--sf2);border-color:var(--ink)}
+.tbl-card.bill{border-color:var(--acc);background:var(--acc-bg)}
+.tbl-card.dirty{border-style:dashed}
+.tbl-card .n{font-size:15px;font-weight:700}
+.tbl-card .m{font-size:11.5px;color:var(--mut);display:flex;justify-content:space-between}
+.ticket{border:1px solid var(--line);border-radius:12px;background:var(--sf);overflow:hidden}
+.ticket .h{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700}
+.ticket .h .tm{font-variant-numeric:tabular-nums;color:var(--mut)}
+.ticket.late .h{background:var(--ink);color:var(--sf)}.ticket.late .h .tm{color:var(--sf)}
+.ticket.warn .h{background:var(--sf2)}
+.ticket .l{display:flex;gap:13px;padding:7px 12px;font-size:13px;border-bottom:1px solid var(--line)}
+.ticket .l:last-child{border-bottom:0}
+.ticket .l b{width:24px;flex:none}
+.ticket .l small{display:block;color:var(--mut);font-size:11.5px}
+.ticket .l.done{color:var(--mut2);text-decoration:line-through}
+.rcpt{width:300px;border:1px solid var(--line);background:var(--sf);padding:16px 18px;font-family:'Sarabun',monospace;font-size:12px;line-height:1.5}
+.rcpt .c{text-align:center}.rcpt .b{font-weight:700}
+.rcpt .r{display:flex;justify-content:space-between}
+.rcpt hr{border:0;border-top:1px dashed var(--line2);margin:8px 0}
+.mob{width:390px;height:844px;background:var(--sf);border:1px solid var(--line);border-radius:28px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.mob .sb{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:700;flex:none}
+.mob .mh{display:flex;align-items:center;gap:16px;padding:6px 16px 10px;flex:none}
+.mob .mh h1{font-size:18px;font-weight:700}
+.mob .mb{flex:1;min-height:0;overflow:hidden;padding:0 16px}
+.mob .bb{flex:none;border-top:1px solid var(--line);padding:10px 16px 22px}
+.mob .pgrid{grid-template-columns:repeat(3,1fr);padding:10px 0;gap:13px}
+.mob .pitem{min-height:84px;padding:8px}
+.big{font-size:44px;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.sysc{border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:13px;background:var(--sf)}
+.sysc .h{display:flex;align-items:center;gap:13px;font-weight:700;font-size:13.5px}
+.sysc .h .sw{margin-left:auto}
+.sysc p{font-size:12px;color:var(--mut);line-height:1.45}
+.sysc ul{padding-left:16px;font-size:12px;color:var(--ink2);line-height:1.6}
+.bar{display:flex;align-items:flex-end;gap:4px;height:120px}
+.bar i{flex:1;background:var(--line2);border-radius:3px 3px 0 0;display:block}
+.bar i.on{background:var(--ink)}
+.bar i.acc{background:var(--acc)}
+.note{font-size:11.5px;color:var(--mut);border:1px dashed var(--line2);border-radius:8px;padding:6px 9px;display:inline-block}
+</style>
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+.cart .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mut)}
+/* โมดัลเปิดกะ */
+.mdl{position:absolute;left:50%;top:92px;transform:translateX(-50%);width:760px;background:var(--sf);border-radius:20px;
+  box-shadow:0 24px 60px rgba(10,10,10,.28);z-index:45;display:flex;flex-direction:column;overflow:hidden}
+.mdl .mh2{display:flex;align-items:center;gap:14px;padding:20px 28px;border-bottom:1px solid var(--line)}
+.mdl .mh2 h2{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.mdl .mh2 .sp{flex:1}
+.mdl .mb2{padding:24px 28px;display:flex;flex-direction:column;gap:26px}
+.mdl .mf2{display:flex;align-items:center;gap:14px;padding:18px 28px;border-top:1px solid var(--line);background:var(--sf2)}
+.mdl .mf2 .sp{flex:1}
+.sl{font-size:14px;font-weight:700;color:var(--ink2);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.sl span{font-weight:400;color:var(--mut);font-size:13px}
+.g2c{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3c{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pick{border:1px solid var(--line);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:14px;background:var(--sf);min-height:74px}
+.pick .tx{flex:1;min-width:0}
+.pick .tx b{display:block;font-size:15.5px}
+.pick .tx span{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.pick.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--sf2)}
+.pick.off{background:var(--sf2);color:var(--mut2)}
+.pick.off .tx b,.pick.off .tx span{color:var(--mut2)}
+.pick .ok{width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.pick .ok svg{width:14px;height:14px;stroke-width:2.6}
+.pick .av{width:38px;height:38px;border-radius:11px;font-size:15px}
+.pick.off .av{color:var(--mut2)}
+.cashrow{display:flex;gap:18px;align-items:stretch}
+.bigin{width:250px;flex:none;height:72px;border:1px solid var(--ink);box-shadow:inset 0 0 0 1px var(--ink);border-radius:16px;
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px}
+.bigin span{font-size:13px;color:var(--mut)}
+.bigin b{font-size:32px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.dens{flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.dn{border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--sf)}
+.dn b{font-size:15px;font-variant-numeric:tabular-nums}
+.dn span{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
+.dnote{font-size:13px;color:var(--mut);margin-top:10px}
+.prev{display:flex;align-items:center;gap:12px;border:1px solid var(--line);border-radius:14px;padding:13px 16px;background:var(--sf2);font-size:14px;color:var(--ink2)}
+.prev .sp{flex:1}
+.prev b{font-variant-numeric:tabular-nums}
+.ck2{display:inline-flex;align-items:center;gap:10px;font-size:14.5px;color:var(--ink2)}
+.ck2 .cbx{width:20px;height:20px;border-radius:6px}
+.ck2 .cbx.on::after{left:6px;top:2px;width:5px;height:10px;border-width:0 2px 2px 0}
+
+/* ล็อกหน้าจอ */
+.lk{flex:1;display:flex;min-height:0}
+.lk .pad{width:60%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:40px 0}
+.lk .side2{flex:1;border-left:1px solid var(--line);background:var(--sf2);padding:40px 44px;display:flex;flex-direction:column;gap:22px}
+.lkic{width:68px;height:68px;border-radius:22px;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink)}
+.lkic svg{width:30px;height:30px;stroke-width:1.8}
+.lk h1{font-size:30px;font-weight:700;letter-spacing:-.02em;text-align:center}
+.lk .who2{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--ink2)}
+.lk .who2 .av{width:30px;height:30px;font-size:13px;border-radius:9px}
+.dots{display:flex;gap:18px;margin:6px 0 4px}
+.dots i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);display:block}
+.dots i.on{background:var(--ink);border-color:var(--ink)}
+.lk .numpad{width:390px}
+.lk .numpad div{height:72px!important;font-size:24px!important}
+.lk .numpad div.k{font-size:16px!important;color:var(--ink2)}
+.lk .hint{font-size:13.5px;color:var(--mut)}
+.lk .side2 h2{font-size:18px;font-weight:700}
+.ppl{display:flex;flex-direction:column;gap:12px}
+.pp{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:16px;padding:14px 16px;background:var(--sf)}
+.pp .av{width:44px;height:44px;border-radius:13px;font-size:17px}
+.pp .tx{flex:1;min-width:0}
+.pp .tx b{display:block;font-size:16px}
+.pp .tx span{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.pp.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.pp.on .av{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+.pp.off{background:transparent;color:var(--mut2)}
+.pp.off .tx b,.pp.off .tx span,.pp.off .av{color:var(--mut2)}
+.hold{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--sf);display:flex;align-items:center;gap:14px}
+.hold .tx{flex:1;min-width:0}
+.hold .tx b{display:block;font-size:16px}
+.hold .tx span{display:block;font-size:13px;color:var(--mut);margin-top:3px}
+.hold .amt{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.lkfoot{margin-top:auto;font-size:13.5px;color:var(--mut);line-height:1.7;border-top:1px solid var(--line);padding-top:18px;display:flex;gap:10px}
+.lkfoot svg{margin-top:4px}
+.ltop{height:66px;display:flex;align-items:center;gap:14px;padding:0 28px;border-bottom:1px solid var(--line);flex:none;color:var(--ink2)}
+.ltop .brand{font-size:16px;font-weight:700}
+.ltop .sp{flex:1}
+.ltop .clk{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+.ltop .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">13A · เปิดกะ (1440×900) <span>— ก่อนขายบิลแรกของวัน · เลือกเครื่อง · พนักงานจากตารางงาน HR วันนี้ · เงินตั้งต้นในลิ้นชัก (นับแยกแบงก์ได้) · อ้างอิงกะก่อนหน้า</span></p>
+<div class="frame" style="height:900px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พ. 30 ก.ย. 2569 · 09:01</span>
+  <span class="chip"><svg class="i xs"><use href="#i-clock"/></svg>ยังไม่เปิดกะ · เคาน์เตอร์ 1</span>
+  <span class="who"><span class="av">น</span>น้ำฝน · แคชเชียร์</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+  <div class="mod">
+   <div class="amenu">
+    <div class="am on"><svg class="i sm"><use href="#i-cash"/></svg>หน้าขาย</div>
+    <div class="am"><svg class="i sm"><use href="#i-grid"/></svg>โต๊ะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-truck"/></svg>ออเดอร์ออนไลน์</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>บิลวันนี้</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>กะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-tag"/></svg>สินค้า</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+   <div class="pos">
+    <div class="left">
+     <div class="cats"><span class="c">ทั้งหมด</span><span class="c on">กาแฟ</span><span class="c">ชาและนม</span><span class="c">ขนม</span><span class="c">อาหาร</span><span class="c">เมล็ดกาแฟและของฝาก</span></div>
+     <div class="pgrid">
+      <div class="pitem"><div class="img"></div><div class="nm">ลาเต้</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">อเมริกาโน่</div><div class="pr">฿65<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">คาปูชิโน่</div><div class="pr">฿75<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มอคค่า</div><div class="pr">฿85<small>3 ขนาด</small></div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">เอสเพรสโซ</div><div class="pr">฿55</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">ชาไทย</div><div class="pr">฿60</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">มัทฉะลาเต้</div><div class="pr">฿90</div></div>
+      <div class="pitem"><div class="img"></div><div class="nm">โกโก้</div><div class="pr">฿70</div></div>
+     </div>
+    </div>
+    <div class="cart">
+     <div class="empty"><svg class="i lg"><use href="#i-lock"/></svg><span>เปิดกะก่อนเริ่มขาย</span></div>
+     <div class="paybtn" style="opacity:.35"><span>ชำระเงิน</span><span>฿0</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+
+ <div class="scrim"></div>
+
+ <div class="mdl">
+  <div class="mh2">
+   <svg class="i lg"><use href="#i-clock"/></svg><h2>เปิดกะ</h2>
+   <span class="chip ink">กะ #12</span><span class="chip">พ. 30 ก.ย. 2569 · 09:01</span>
+   <span class="sp"></span><svg class="i mu"><use href="#i-x"/></svg>
+  </div>
+  <div class="mb2">
+   <div>
+    <div class="sl">เครื่องที่ใช้ขาย <span>· 1 กะต่อ 1 เครื่อง</span></div>
+    <div class="g2c">
+     <div class="pick on"><svg class="i lg"><use href="#i-cash"/></svg><div class="tx"><b>เคาน์เตอร์ 1</b><span>เครื่องนี้ · ลิ้นชักเงิน · เครื่องพิมพ์ 80 มม.</span></div><span class="ok"><svg class="i"><use href="#i-check"/></svg></span></div>
+     <div class="pick off"><svg class="i lg"><use href="#i-cash"/></svg><div class="tx"><b>เคาน์เตอร์ 2</b><span>กะ #13 · แพร เปิดอยู่</span></div><svg class="i sm"><use href="#i-lock"/></svg></div>
+    </div>
+   </div>
+   <div>
+    <div class="sl">พนักงานที่เปิดกะ <span>· จากตารางงาน HR วันนี้</span></div>
+    <div class="g3c">
+     <div class="pick on"><span class="av">น</span><div class="tx"><b>น้ำฝน</b><span>09:00–17:00</span></div><span class="ok"><svg class="i"><use href="#i-check"/></svg></span></div>
+     <div class="pick"><span class="av">พ</span><div class="tx"><b>แพร</b><span>12:00–20:00</span></div></div>
+     <div class="pick off"><span class="av">ต</span><div class="tx"><b>ต้น</b><span>ลาวันนี้</span></div></div>
+    </div>
+   </div>
+   <div>
+    <div class="sl">เงินตั้งต้นในลิ้นชัก <span>· นับแยกแบงก์ (ไม่บังคับ)</span></div>
+    <div class="cashrow">
+     <div class="bigin"><span>รวม</span><b>฿2,000</b></div>
+     <div class="dens">
+      <div class="dn"><b>฿1,000</b><span>× 1</span></div>
+      <div class="dn"><b>฿500</b><span>× 1</span></div>
+      <div class="dn"><b>฿100</b><span>× 4</span></div>
+      <div class="dn"><b>฿20</b><span>× 5</span></div>
+     </div>
+    </div>
+    <div class="dnote">ค่าตั้งต้นของเครื่องนี้ ฿2,000 · ถ้านับได้ไม่ตรง ระบบจะบันทึกผลต่างไว้ในกะนี้</div>
+   </div>
+   <div class="prev"><svg class="i"><use href="#i-doc"/></svg><span>กะก่อนหน้า <b>Z#11</b> · ปิด 29 ก.ย. 21:05 · ผลต่าง <b>฿0</b></span><span class="sp"></span><span class="lnk">ดูรายงาน Z#11</span></div>
+  </div>
+  <div class="mf2">
+   <span class="ck2"><span class="cbx on"></span>พิมพ์ใบเปิดกะ</span>
+   <span class="sp"></span>
+   <span class="btn gh">ย้อนกลับ</span>
+   <span class="btn pri" style="min-width:220px">เปิดกะและเริ่มขาย</span>
+  </div>
+ </div>
+</div>
+</div>
+
+<div>
+<p class="cap">13B · ล็อกหน้าจอด้วย PIN (1440×900) <span>— ล็อกเองเมื่อไม่ได้ใช้ 2 นาที หรือกดล็อกตอนลุกจากเคาน์เตอร์ · สลับพนักงานได้โดยไม่ต้องปิดกะ · บิลที่พักยังอยู่</span></p>
+<div class="frame" style="height:900px">
+ <div class="ltop">
+  <span class="brand">SHARK</span><span class="mu">บ้านกาแฟสวนผึ้ง · สาขาหัวหิน · เคาน์เตอร์ 1</span>
+  <span class="sp"></span>
+  <span class="chip ink"><svg class="i xs"><use href="#i-clock"/></svg>กะ #12 · เปิด 09:02</span>
+  <span class="chip"><i class="dot"></i>ออนไลน์</span>
+  <span class="clk">14:32</span><span class="mu">พ. 30 ก.ย. 2569</span>
+ </div>
+ <div class="lk">
+  <div class="pad">
+   <div class="lkic"><svg class="i"><use href="#i-lock"/></svg></div>
+   <h1>ใส่ PIN เพื่อปลดล็อก</h1>
+   <div class="who2"><span class="av">น</span>น้ำฝน · แคชเชียร์ · ล็อกเมื่อ 14:30</div>
+   <div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div>
+   <div class="numpad">
+    <div>1</div><div>2</div><div>3</div>
+    <div>4</div><div>5</div><div>6</div>
+    <div>7</div><div>8</div><div>9</div>
+    <div class="k">ลืม PIN</div><div>0</div><div class="k">⌫</div>
+   </div>
+   <div class="hint">PIN 6 หลัก · ใส่ผิด 5 ครั้ง ต้องให้ผู้จัดการปลดล็อก</div>
+  </div>
+  <div class="side2">
+   <h2>ใครกำลังใช้เครื่องนี้</h2>
+   <div class="ppl">
+    <div class="pp on"><span class="av">น</span><div class="tx"><b>น้ำฝน</b><span>เจ้าของกะ #12 · 09:00–17:00</span></div><span class="chip ink">ใช้งานอยู่</span></div>
+    <div class="pp"><span class="av">พ</span><div class="tx"><b>แพร</b><span>เข้างาน 12:00–20:00 · ขายในกะนี้ได้</span></div></div>
+    <div class="pp off"><span class="av">ต</span><div class="tx"><b>ต้น</b><span>ลาวันนี้</span></div></div>
+   </div>
+   <span class="btn gh blk"><svg class="i sm"><use href="#i-swap"/></svg>สลับพนักงาน</span>
+   <div class="hold">
+    <svg class="i lg"><use href="#i-clock"/></svg>
+    <div class="tx"><b>บิลที่พักไว้ 1 ใบ</b><span>พี่แว่น · 3 รายการ · พัก 10:12 โดยน้ำฝน</span></div>
+    <span class="amt">฿285</span>
+   </div>
+   <div class="lkfoot"><svg class="i sm"><use href="#i-lock"/></svg><span>ล็อกอัตโนมัติหลังไม่ใช้งาน 2 นาที · ผู้จัดการปลดล็อกด้วย PIN ผู้จัดการได้</span></div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
+<style>
+/* ══ Airy pass (30 ก.ย. เย็น) — เจ้าของสั่ง "โปร่งขึ้น เพิ่มระยะห่างคอลัมน์/แถว" · ทับทุกจอ · ต่อท้ายไฟล์ ══ */
+.frame{height:auto!important}
+.frame[style*="height:900px"]{min-height:900px}
+.mob{height:auto!important;min-height:844px}
+.wrap{gap:44px!important;padding:32px!important}
+.pg{gap:26px!important;padding:0 32px 34px!important}
+.ph{padding:14px 32px 20px!important}
+.crumb{padding:16px 32px 0!important}
+.amenu{padding:0 26px!important}
+.amenu .am{padding:15px 18px 13px!important}
+.top{padding:0 24px!important;height:60px!important}
+.card{padding:22px!important}
+.card.p0{padding:0!important}
+.row{gap:26px!important}
+.tbl th{padding:12px 14px!important}
+.tbl td{padding:15px 14px!important}
+.stat{gap:36px!important}
+.tabs{gap:6px!important}
+.tab{padding:11px 16px!important}
+.ddi{height:44px!important}
+.cats{padding:18px 26px 0!important;gap:10px!important}
+.cats .c{height:36px!important;padding:0 16px!important}
+.pgrid{gap:18px!important;padding:20px 26px!important}
+.pitem{padding:14px!important}
+.cart{width:460px!important}
+.cline{padding:16px 22px!important;gap:14px!important}
+.tot{padding:16px 22px!important}
+.tot .r{padding:5px 0!important}
+.paybtn{margin:14px 22px 20px!important;height:60px!important}
+.numpad{gap:12px!important}
+.numpad div{height:56px!important}
+.paym{gap:14px!important}
+.paym div{height:66px!important}
+.tbl-card{padding:14px!important;min-height:112px!important}
+.ticket .l{padding:11px 14px!important}
+.ticket .h{padding:12px 14px!important}
+.sysc{padding:20px!important;gap:12px!important}
+.sysc ul{line-height:1.9!important}
+.mob .mb{padding:0 20px!important}
+.mob .mh{padding:8px 20px 14px!important}
+.mob .bb{padding:14px 20px 26px!important}
+.mob .pgrid{gap:12px!important;padding:14px 0!important}
+.rcpt{padding:22px 24px!important;line-height:1.7!important}
+.kpi .val{margin-top:10px!important}
+.kpi .fo{margin-top:8px!important}
+</style>
+<style>
+/* แก้คำตัดบรรทัดหลังเพิ่มระยะห่าง */
+.qc b,.qc span,.oc .cd,.oc .r1{white-space:nowrap!important}
+.qc{gap:8px!important}
+.oc .r1{gap:6px!important}
+</style>
+<style>
+/* ══ รอบ 3 — "โปร่งขึ้นอีก + user friendly" (เจ้าของสั่ง 30 ก.ย. ค่ำ) ══
+   หลัก: ตัวอักษรใหญ่ขึ้น 1 ขั้น · ปุ่ม/ช่องกด ≥44px · มุมมน 16px · ตัวเลขเงินเด่น · ช่องว่างเพิ่มอีก 20% · ไม่มีตัวอักษร < 12.5px */
+body{font-size:15px!important}
+.frame{border-radius:22px!important}
+.wrap{gap:60px!important;padding:36px!important}
+.pg{gap:34px!important;padding:0 36px 40px!important}
+.ph{padding:18px 36px 24px!important}.ph h1{font-size:26px!important}
+.row{gap:32px!important}
+.card{padding:28px!important;border-radius:18px!important}
+.card.p0{padding:0!important}
+.pitem,.tbl-card,.ticket,.sysc,.oc,.mem,.pop{border-radius:18px!important}
+.btn{height:46px!important;padding:0 20px!important;font-size:15px!important;border-radius:13px!important;gap:9px!important}
+.btn.sm{height:40px!important;padding:0 14px!important;font-size:14px!important;border-radius:11px!important}
+.inp{height:48px!important;font-size:15px!important;border-radius:13px!important;padding:0 16px!important}
+.chip{height:28px!important;font-size:13px!important;padding:0 11px!important;border-radius:8px!important}
+.top{height:66px!important}.top .brand{font-size:16px!important}
+.amenu .am{font-size:15px!important;padding:18px 22px 16px!important;gap:9px!important}
+.tabs{gap:8px!important}.tab{font-size:14.5px!important;padding:12px 18px!important}
+.ddi{font-size:15px!important;height:48px!important}
+.drawer{width:300px!important}
+.crumb{font-size:13px!important}
+.frame small,.frame .mu,.frame .fo,.frame .st,.frame .m,.frame .lbl{font-size:12.5px!important}
+/* หน้าขาย */
+.cats{gap:12px!important;padding:22px 30px 0!important}
+.cats .c{height:44px!important;padding:0 20px!important;font-size:15px!important;border-radius:13px!important}
+.pgrid{gap:22px!important;padding:24px 30px!important}
+.pitem{padding:16px!important;min-height:170px!important}
+.pitem .nm{font-size:16px!important}.pitem .pr{font-size:16px!important;margin-top:6px!important}
+.cart{width:480px!important}
+.cline{padding:18px 24px!important;gap:16px!important}
+.cline .q{width:34px!important;height:34px!important;font-size:15px!important;border-radius:10px!important}
+.cline .t b{font-size:16px!important}.cline .t span{font-size:13.5px!important;margin-top:4px!important}
+.cline .a{font-size:16px!important}
+.tot{padding:20px 24px!important;font-size:15px!important}.tot .r{padding:6px 0!important}.tot .r.g{font-size:26px!important;padding-top:12px!important}
+.paybtn{height:72px!important;font-size:19px!important;border-radius:18px!important;margin:16px 24px 24px!important;padding:0 24px!important}
+.mem{padding:14px 16px!important}
+/* ชำระเงิน */
+.big{font-size:56px!important}
+.numpad{gap:14px!important}.numpad div{height:64px!important;font-size:21px!important;border-radius:14px!important}
+.paym{gap:16px!important}.paym div{height:78px!important;font-size:15px!important;border-radius:16px!important;gap:6px!important}
+.paym div small{font-size:12.5px!important}
+.qr{width:170px!important;height:170px!important}
+/* โต๊ะ / ครัว */
+.tbl-card{padding:16px!important;min-height:132px!important}
+.tbl-card .n{font-size:18px!important}.tbl-card .m{font-size:13px!important}
+.ticket .h{font-size:14px!important;padding:14px 16px!important}
+.ticket .l{font-size:15px!important;padding:14px 16px!important;gap:10px!important}
+.ticket .l small{font-size:12.5px!important}
+/* ตาราง / รายงาน / ตั้งค่า */
+.tbl{font-size:14.5px!important}.tbl th{font-size:12.5px!important;padding:14px 16px!important}.tbl td{padding:18px 16px!important}
+.kpi .lbl{font-size:13.5px!important}.kpi .val{font-size:30px!important;margin-top:12px!important}.kpi .fo{margin-top:10px!important}
+.stat{gap:40px!important}.stat .b .k{font-size:13px!important}.stat .b .v{font-size:23px!important}
+.sysc{padding:24px!important;gap:14px!important}
+.sysc .h{font-size:16px!important}.sysc p,.sysc ul{font-size:13.5px!important;line-height:2!important}
+.sw{width:42px!important;height:24px!important}.sw::after{width:18px!important;height:18px!important;top:3px!important;right:3px!important}.sw.off::after{left:3px!important}
+.note{font-size:12.5px!important;padding:8px 12px!important;border-radius:10px!important}
+.bar{height:150px!important;gap:8px!important}
+/* มือถือ */
+.mob{border-radius:34px!important}
+.mob .sb{height:50px!important;font-size:14px!important}
+.mob .mh h1{font-size:20px!important}
+.mob .mb{padding:0 22px!important}
+.mob .pgrid{gap:14px!important;padding:16px 0!important}
+.mob .pitem{min-height:120px!important;padding:12px!important}
+.mob .bb{padding:18px 22px 32px!important}
+/* ใบเสร็จ */
+.rcpt{font-size:13px!important;line-height:1.8!important;padding:26px 28px!important}
+</style>
+<style>
+/* แก้จุดเฉพาะจอหลังขยาย (รอบ 3) */
+.modal{height:auto!important;min-height:0!important;bottom:auto!important;top:56px!important}
+.qrow{grid-template-columns:repeat(2,1fr)!important;gap:14px!important}
+.pdr{width:430px!important}
+.pdr .tabs{flex-wrap:wrap!important}.pdr .tab{padding:11px 12px!important;font-size:14px!important}
+.chn{font-size:12.5px!important;height:24px!important;padding:0 8px!important;border-radius:7px!important;margin:2px 3px 2px 0!important}
+.tbl td{padding:16px 12px!important}
+.tbl td b{white-space:nowrap}
+.pgrid{grid-template-columns:repeat(4,1fr)!important}
+.pitem .nm{font-size:16px!important;line-height:1.35!important}
+</style>
+<style>
+.frame:has(.modal){min-height:1040px!important}
+.modal{top:40px!important}
+.tbl td:has(.chn){min-width:150px!important;white-space:normal!important}
+.tbl td:has(.chn) .chn{display:inline-flex!important}
+.pdr .tabs{padding:0 6px!important;flex-wrap:nowrap!important}
+.pdr .tab{padding:11px 8px!important;font-size:13.5px!important}
+.pdr .tab .n{display:none}
+</style>
+<style>
+.tbl td:has(.chn){min-width:118px!important}
+.card.p0 .tbl td{padding:16px 9px!important}
+.card.p0 .tbl{font-size:14px!important}
+</style>
+
+</body></html>
