@@ -44,8 +44,8 @@ try {
     chk("CL-2.1", "เปิด visit + symptom ว่าง throw", !!v.id && thSym, "id+throw", "?");
     await cl.dispense(ctx, v.id, [{ invItemId: med.id, qty: 10 }]);
     await cl.dispense(ctx, v.id, [{ invItemId: med.id, qty: 10 }]); // ซ้ำ key เดิม → สต็อกไม่ตัดซ้ำ
-    chk("CL-2.2", "จ่ายยา 10 เม็ด → สต็อก 90 (ซ้ำไม่ตัดเพิ่ม — idempotencyKey)", (await prisma.invItem.findUnique({ where: { id: med.id as string } }))?.onHand === 90, "90", String((await prisma.invItem.findUnique({ where: { id: med.id as string } }))?.onHand));
-    chk("CL-2.3", "movement sourceModule CLINIC + dispenseJson บันทึก", (await prisma.invMovement.findFirst({ where: { tenantId: tid, idempotencyKey: `clinic-${v.id}-${med.id}` } }))?.sourceModule === "CLINIC" && JSON.stringify((await prisma.clinicVisit.findUnique({ where: { id: v.id as string } }))?.dispenseJson).includes("พาราเซตามอล"), "CLINIC+json", "?");
+    chk("CL-2.2", "จ่ายยา 10 เม็ด 2 ครั้ง → สต็อก 80 (ครั้งที่สองคือการจ่ายจริงครั้งที่สอง — ตัดสต็อกและบันทึกลง dispenseJson · HF-INV-1 R3.5(b))", (await prisma.invItem.findUnique({ where: { id: med.id as string } }))?.onHand === 80, "80", String((await prisma.invItem.findUnique({ where: { id: med.id as string } }))?.onHand));
+    chk("CL-2.3", "movement sourceModule CLINIC + dispenseJson บันทึก", (await prisma.invMovement.findFirst({ where: { tenantId: tid, idempotencyKey: { startsWith: `clinic-${v.id}-` } } }))?.sourceModule === "CLINIC" && JSON.stringify((await prisma.clinicVisit.findUnique({ where: { id: v.id as string } }))?.dispenseJson).includes("พาราเซตามอล"), "CLINIC+json", "?");
 
     const bill = await cl.billVisit(ctx, v.id);
     const sale = await prisma.posSale.findFirst({ where: { tenantId: tid, idempotencyKey: `clinic-${v.id}` } });

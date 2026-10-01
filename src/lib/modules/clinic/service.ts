@@ -199,27 +199,40 @@ export async function dispense(
   const stockItems = await inventory.listItems(invCtx, 500);
   const nameOf = new Map(stockItems.map((s) => [s.id, s.name]));
 
+  // append ลง dispenseJson (สะสม)
+  const prev = Array.isArray(visit.dispenseJson) ? (visit.dispenseJson as unknown as DispenseRecord[]) : [];
   const added: DispenseRecord[] = [];
+  // HF-INV-1 ▸ R3b (B2): คีย์ต่อ "ครั้งที่ของยาตัวนั้นใน visit" — `clinic-<visit>-<item>-<n>`
+  //   n = จำนวนครั้งที่ยานี้ถูกบันทึกใน dispenseJson แล้ว + จำนวนบรรทัดก่อนหน้าของยาเดียวกันในคำขอนี้
+  //   (รอบ 3 ใช้ตำแหน่งบรรทัด ⇒ retry ที่สลับลำดับ/แทรกยาอื่นข้างหน้า ได้คีย์ใหม่ = ยาที่ตัดไปแล้วถูกตัดซ้ำ)
+  //   retry ของครั้งเดิม (ล้มกลางทาง ยังไม่ append) ลำดับใดก็ได้ ⇒ คีย์เดิม = ไม่ตัดซ้ำ · จ่ายใหม่หลังบันทึกแล้ว ⇒ n ถัดไป
+  //   ไม่มีโค้ดอื่นแยกคีย์นี้ (คืนเงินอ้าง movement id · account-bridge ดูแค่คำว่า "refund") ◂
+  const seen = new Map<string, number>();
+  for (const r of prev) if (r && typeof r.invItemId === "string") seen.set(r.invItemId, (seen.get(r.invItemId) ?? 0) + 1);
   for (const line of lines) {
     const qty = Math.round(line.qty);
-    // ตัดสต็อกจริง — idempotencyKey ต่อ (visit, item) → จ่ายยาตัวเดิมใน visit เดิมซ้ำ = ไม่ตัดสต็อกซ้ำ
+    const n = seen.get(line.invItemId) ?? 0;
+    seen.set(line.invItemId, n + 1);
+    // ตัดสต็อกจริง (idempotent ต่อครั้งที่ของยา — ดูหมายเหตุด้านบน)
     await inventory.consume(invCtx, {
       itemId: line.invItemId,
       qty,
       sourceModule: "CLINIC",
       refType: "clinicVisit",
       refId: visitId,
-      idempotencyKey: `clinic-${visitId}-${line.invItemId}`,
+      idempotencyKey: `clinic-${visitId}-${line.invItemId}-${n}`,
     });
     added.push({ invItemId: line.invItemId, name: nameOf.get(line.invItemId) ?? line.invItemId, qty });
   }
 
-  // append ลง dispenseJson (สะสม)
-  const prev = Array.isArray(visit.dispenseJson) ? (visit.dispenseJson as unknown as DispenseRecord[]) : [];
-  await db.clinicVisit.updateMany({
-    where: { id: visitId },
-    data: { dispenseJson: [...prev, ...added] as unknown as object },
-  });
+  // HF-INV-1 ▸ R3c (C1): ต่อท้ายใน SQL คำสั่งเดียว (เดิมเขียนทับด้วย [...prev, ...added] ที่อ่านไว้ตอนต้น ⇒ จ่ายพร้อมกันใน visit เดียว
+  //   รายการหนึ่งหาย แล้วการจ่ายจริงครั้งถัดไปได้คีย์ซ้ำกับครั้งที่หาย = ตอบ ok แต่ไม่ตัดสต็อก)
+  //   raw ไม่ผ่านตัวกรองของ tenantDb ⇒ ใส่ tenantId + unitId เองตรงตัว · ค่าเดิมที่ไม่ใช่ array = เริ่มใหม่ (ตามที่โค้ดเดิมอ่าน prev)
+  //   ยอมรับ (บันทึกใน wo-notes): จ่ายยาตัวเดียวกันจำนวนเท่ากันพร้อมกันเป๊ะ 2 คำขอ = คีย์เดียวกัน ⇒ ตัดครั้งเดียว (แยกจากดับเบิลคลิกไม่ได้) ◂
+  await db.$executeRaw`
+    UPDATE "ClinicVisit"
+    SET "dispenseJson" = (CASE WHEN jsonb_typeof("dispenseJson") = 'array' THEN "dispenseJson" ELSE '[]'::jsonb END) || ${JSON.stringify(added)}::jsonb
+    WHERE "id" = ${visitId} AND "tenantId" = ${ctx.tenantId} AND "unitId" = ${ctx.unitId}`;
 
   return { ok: true };
 }
@@ -293,7 +306,7 @@ export async function billVisit(
 //   2) กลับเส้นเงิน pos.voidSale (คืนบัญชี+แต้ม) "นอก tx" — voidSale เปิด tx เอง (ไม่ nested) · เฉพาะบิลที่ยัง PAID
 //      (fee 0 → BILLED โดยไม่มีบิล → ข้าม void)
 //   3) คืนยาเข้าคลัง — mirror ของตอน dispense (consume) · อ้างจาก InvMovement ที่ตัดจริง (type OUT ผูก visit)
-//      → รับเข้าที่ต้นทุนปัจจุบัน (ต้นทุนถัวเฉลี่ยไม่เพี้ยน) · idempotencyKey `clinic-refund-<visitId>-<itemId>`
+//      → รับเข้าที่ต้นทุนปัจจุบัน (ต้นทุนถัวเฉลี่ยไม่เพี้ยน) · idempotencyKey `clinic-refund-<visitId>-<movementId>` (HF-INV-1 ▸ R3.5(b) ◂)
 //      หมายเหตุ: อ้าง movement จริง (ไม่ใช่ dispenseJson) → คืนตรงกับที่ตัด แม้ dispenseJson นับซ้ำ (idempotent)
 // cross-tenant: tenantDb(ctx) กรอง tenantId → claim ไม่ match → ok:false (record ร้านอื่นไม่ถูกแตะ)
 export async function refundVisit(
@@ -344,7 +357,8 @@ export async function refundVisit(
         itemId: mv.itemId,
         qty: returnQty,
         costSatang: item.costSatang, // คืนที่ต้นทุนปัจจุบัน → ไม่กระทบต้นทุนถัวเฉลี่ย
-        idempotencyKey: `clinic-refund-${visitId}-${mv.itemId}`,
+        // HF-INV-1 ▸ R3.5(b): คีย์ต่อ movement ที่ตัดจริง (เดิมต่อยา — ยาตัวเดิมถูกจ่าย 2 ครั้งแล้ว คืนได้ครั้งเดียว) ◂
+        idempotencyKey: `clinic-refund-${visitId}-${mv.id}`,
         sourceModule: "CLINIC",
         refType: "clinicVisit",
         refId: visitId,

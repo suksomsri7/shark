@@ -25,8 +25,8 @@ import {
   receive,
   transfer,
   updateItem,
-  type Ctx,
 } from "./service";
+import { findInventoryCtx, inventoryActor, inventoryCanRead, requireInventoryCtx } from "./guard";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "inventory.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -41,7 +41,16 @@ function assertInventoryCan(auth: Awaited<ReturnType<typeof requireTenant>>, act
   );
 }
 
+// HF-INV-0 N4: action "อ่าน" ใช้กฎเดียวกับหน้าคลัง (คีย์คลังใดก็ได้ ⇒ อ่านได้) — ไม่งั้นคนที่หน้าให้เข้า
+//   กดค้นบาร์โค้ด/ดู lot แล้วโดนปฏิเสธ · ไม่ผ่าน → ForbiddenError รูปแบบเดิมผ่าน assertCan
+function assertInventoryRead(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  if (!inventoryCanRead(inventoryActor(auth))) assertInventoryCan(auth, "inventory.item.read");
+}
+
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
+
+// HF-INV-0: systemId ไม่ใช่ระบบคลังของร้านนี้ (ฟอร์มเก่าค้าง/ลิงก์ผิด) — ไม่โทษผู้ใช้
+const NO_SYSTEM = "ไม่พบระบบสินค้า/บริการนี้ในกิจการ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง";
 
 // จำนวนเต็มบวก (ปฏิเสธค่าติดลบ/ไม่ใช่ตัวเลข → 0)
 const toQty = (v: FormDataEntryValue | null): number => {
@@ -63,7 +72,7 @@ export async function createItemAction(formData: FormData) {
   const sku = String(formData.get("sku") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !sku || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await createItem(ctx, {
     sku,
     name,
@@ -84,7 +93,7 @@ export async function updateItemAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !itemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await updateItem(ctx, itemId, {
     name,
     sku: String(formData.get("sku") ?? "").trim(),
@@ -103,7 +112,7 @@ export async function archiveItemAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const itemId = String(formData.get("itemId") ?? "");
   if (!systemId || !itemId) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await archiveItem(ctx, itemId);
   revalidate(systemId);
 }
@@ -116,7 +125,7 @@ export async function receiveAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   const qty = toQty(formData.get("qty"));
   if (!systemId || !itemId || qty <= 0) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   // lot + วันหมดอายุ (ไม่บังคับ) — ปล่อยว่าง = พฤติกรรมเดิม ไม่แตะ InvLot
   const lotCode = String(formData.get("lotCode") ?? "").trim() || null;
   const expiryStr = String(formData.get("expiryDate") ?? "").trim();
@@ -146,7 +155,7 @@ export async function consumeAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   const qty = toQty(formData.get("qty"));
   if (!systemId || !itemId || qty <= 0) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await consume(ctx, {
     itemId,
     qty,
@@ -186,7 +195,8 @@ export async function bulkCountAction(
   if (counts.length === 0) {
     return { status: "error", message: "กรุณากรอกจำนวนที่นับได้อย่างน้อย 1 รายการ" };
   }
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  if (!ctx) return { status: "error", message: NO_SYSTEM };
   const res = await bulkCount(ctx, counts);
   revalidate(systemId);
   return { status: "done", done: res.done, failed: res.failed };
@@ -206,7 +216,8 @@ export async function importItemsAction(
   if (table.rows.length === 0) {
     return { created: 0, skipped: 0, errors: [{ row: 0, reason: "ไม่พบข้อมูล — ต้องมีบรรทัดหัวคอลัมน์ + อย่างน้อย 1 แถว" }] };
   }
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  if (!ctx) return { created: 0, skipped: 0, errors: [{ row: 0, reason: NO_SYSTEM }] };
   const summary = await importItems(ctx, table);
   revalidate(systemId);
   return summary;
@@ -219,7 +230,7 @@ export async function createLocationAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await createLocation(ctx, { name });
   revalidate(systemId);
 }
@@ -234,7 +245,7 @@ export async function transferAction(formData: FormData) {
   const toLocationId = String(formData.get("toLocationId") ?? "").trim();
   const qty = toQty(formData.get("qty"));
   if (!systemId || !itemId || !fromLocationId || !toLocationId || fromLocationId === toLocationId || qty <= 0) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await transfer(ctx, {
     itemId,
     fromLocationId,
@@ -249,9 +260,10 @@ export async function transferAction(formData: FormData) {
 // ── ดู lot คงเหลือของสินค้า (WO-0038) — read action ──
 export async function itemLotsAction(systemId: string, itemId: string) {
   const auth = await requireTenant();
-  assertInventoryCan(auth, "inventory.item.read");
+  assertInventoryRead(auth);
   if (!systemId || !itemId) return [];
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  if (!ctx) return [];
   return itemLots(ctx, itemId);
 }
 
@@ -266,10 +278,11 @@ export async function findItemByBarcodeAction(
   formData: FormData,
 ): Promise<BarcodeSearchResult | null> {
   const auth = await requireTenant();
-  assertInventoryCan(auth, "inventory.item.read");
+  assertInventoryRead(auth);
   const barcode = String(formData.get("barcode") ?? "").trim();
   if (!systemId || !barcode) return null;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
+  if (!ctx) return null;
   const item = await findItemByBarcode(ctx, barcode);
   if (!item) return { ok: false, barcode };
   return {
@@ -294,7 +307,7 @@ export async function createServiceAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   const categoryId = String(formData.get("categoryId") ?? "").trim() || null;
   const sku = String(formData.get("sku") ?? "").trim() || (await nextSku(ctx, categoryId));
   const price = toBaht(formData.get("priceBaht"));
@@ -323,7 +336,7 @@ export async function updateServiceAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !itemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   const price = toBaht(formData.get("priceBaht"));
   const deposit = toBaht(formData.get("depositBaht"));
   await updateItem(ctx, itemId, {
@@ -346,7 +359,7 @@ export async function saveCategoryAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   await saveCategory(ctx, {
     id: String(formData.get("id") ?? "").trim() || null,
     name,
@@ -366,7 +379,7 @@ export async function removeCategoryAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   if (!systemId || !id) return;
-  await removeCategory({ tenantId: auth.active.tenantId, systemId }, id);
+  await removeCategory(await requireInventoryCtx(auth.active.tenantId, systemId), id);
   revalidate(systemId);
 }
 
@@ -376,7 +389,7 @@ export async function saveSettingsAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   if (!systemId) return;
   await saveSettings(
-    { tenantId: auth.active.tenantId, systemId },
+    await requireInventoryCtx(auth.active.tenantId, systemId),
     {
       skuAuto: formData.get("skuAuto") != null,
       skuPrefix: String(formData.get("skuPrefix") ?? "").trim() || undefined,
@@ -399,6 +412,9 @@ export async function uploadItemImageAction(
 ): Promise<ImageState> {
   const auth = await requireTenant();
   assertInventoryCan(auth, "inventory.item.update");
+  // HF-INV-0: ตรวจระบบคลังก่อนอัปโหลดไฟล์ (เดิมอัปไฟล์ก่อนแล้วค่อยรู้ว่าระบบ/รายการไม่ใช่ของเรา)
+  const ctx = await findInventoryCtx(auth.active.tenantId, systemId);
+  if (!ctx) return { status: "error", message: NO_SYSTEM };
   const dataUrl = String(formData.get("dataUrl") ?? "");
   const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl);
   if (!m) return { status: "error", message: "รูปไม่ถูกต้อง — ลองเลือกไฟล์ใหม่" };
@@ -409,7 +425,7 @@ export async function uploadItemImageAction(
     { kind: "ATTACHMENT", filename: `item-${itemId}.png`, contentType: m[1]!, data: new Uint8Array(bytes) },
   );
   if (!up.ok) return { status: "error", message: up.error };
-  const res = await addItemImage({ tenantId: auth.active.tenantId, systemId }, itemId, {
+  const res = await addItemImage(ctx, itemId, {
     url: up.cdnUrl,
     alt: String(formData.get("alt") ?? "") || null,
   });
@@ -426,7 +442,7 @@ export async function removeItemImageAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const imageId = String(formData.get("imageId") ?? "");
   if (!systemId || !imageId) return;
-  await removeItemImage({ tenantId: auth.active.tenantId, systemId }, imageId);
+  await removeItemImage(await requireInventoryCtx(auth.active.tenantId, systemId), imageId);
   revalidate(systemId);
   revalidatePath(`/app/sys/${systemId}/inventory/services`);
   revalidatePath(`/app/sys/${systemId}/inventory/items`);
@@ -439,7 +455,7 @@ export async function setPrimaryImageAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   const imageId = String(formData.get("imageId") ?? "");
   if (!systemId || !itemId || !imageId) return;
-  await setPrimaryImage({ tenantId: auth.active.tenantId, systemId }, itemId, imageId);
+  await setPrimaryImage(await requireInventoryCtx(auth.active.tenantId, systemId), itemId, imageId);
   revalidate(systemId);
   revalidatePath(`/app/sys/${systemId}/inventory/services`);
   revalidatePath(`/app/sys/${systemId}/inventory/items`);

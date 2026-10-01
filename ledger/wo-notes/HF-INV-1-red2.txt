@@ -1,0 +1,65 @@
+===== RED2 · HF-INV-1 round 2 · FINAL oracle scripts/qc-hf-inventory-atomic.mts (94 checks = 63 round-1 + 31 R2: AT-12..AT-18) on the PRE-FIX code =====
+tree: HEAD f3254ca2 = c4ca074b + merge origin/hotfix/inventory-authz 55b4a678 (the merge touches none of inventory/service.ts, account/product.ts, account/bundle.ts — git diff src = 0 lines during this run) · QC4 · 2026-10-01
+result: 67/94 — the 63 round-1 checks stay green; the 4 other passes are the R2 controls (AT-18.2 no-leak, AT-18.2c detector control, AT-18.6 same key once, AT-18.8 retry after release)
+why each R2 check is red (right reason):
+  AT-12/13/15/16  unlinked AccountProduct.qtyOnHand read-compute-write: lost updates (19/19 instead of 10/10 · 51/48 instead of 45 · 29 instead of 28 · 5 of 5 issues of 3 succeed from 10 → 7 left, never refused); AT-12 also deadlocks on [A,B]/[B,A] (8–9 docs 'บันทึกเอกสารเบิกไม่สำเร็จ' = masked 40P01)
+  AT-14           unlinked bundle components: lost updates + 'deadlock detected' on recipe order AB/BA
+  AT-17.0         a full return (2 of 2) is refused 'เหลือคืนได้ 0' — the return being created (status ISSUED in the same tx) is counted as already returned
+  AT-17.1–17.6    on this code both concurrent returns are refused (0 of 2) because of the AT-17.0 defect, which masks the race; the race itself (2 of 2 succeed) is shown in CONTROL 4 (exclude-own kept, lock reverted)
+  AT-18.1/3/4/5/7 no lock_timeout: SHOW lock_timeout = 0 inside the stock tx; wrapper waits the holder out (11.8 s, succeeds, no warn, no cause); account goods issue waits 9.0 s and succeeds
+(an earlier RED run of the first oracle draft, before AT-10 receives were moved to InTx and before AT-15 got its deterministic holder, gave the same 67/94 with the same 27 findings)
+
+AT-12 ใบเบิกสินค้าไม่ผูกคลัง 10 ใบพร้อมกัน (2 สินค้า สลับลำดับบรรทัด · คนละงวด) × 3 รอบ — จาก 20 เหลือ 10 พอดี
+  ❌ [AT-12.1] รอบ 1: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.2] รอบ 2: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+  ❌ [AT-12.3] รอบ 3: เบิก 10 ใบสำเร็จครบ ไม่มี deadlock · คงเหลือ 10/10 พอดี — qtyOnHand 19/19 ≠ 10/10 · 9 failed: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ
+
+AT-13 ใบเบิก ×5 (−2) + ใบคืน ×5 (+1) สินค้าไม่ผูกคลังพร้อมกัน × 3 รอบ — จาก 50 เหลือ 45 พอดี
+  ❌ [AT-13.1] รอบ 1: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 51 ≠ 45
+  ❌ [AT-13.2] รอบ 2: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 51 ≠ 45
+  ❌ [AT-13.3] รอบ 3: เบิก+คืนปนกัน สำเร็จครบ · คงเหลือ 45 พอดี — qtyOnHand 48 ≠ 45
+
+AT-14 ตัดส่วนประกอบชุดที่ไม่ผูกคลัง [A,B]/[B,A] 10 ใบพร้อมกัน (คนละ client) × 3 รอบ — ส่วนประกอบละ −10 พอดี
+  ❌ [AT-14.1] รอบ 1: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 9 failed: DriverAdapterError::deadlock detected | PrismaClientKnownRequestError:P2028:Transaction API error: A commit cannot be executed on an expired transaction. The timeout for this transaction was 5000 ms, however 5170 ms passed since the sta
+  ❌ [AT-14.2] รอบ 2: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 6 failed: DriverAdapterError::deadlock detected
+  ❌ [AT-14.3] รอบ 3: ตัดชุด 10 ใบสำเร็จครบ ไม่มี deadlock · ส่วนประกอบเหลือ 90/90 พอดี — qtyOnHand 99/99 ≠ 90/90 · 9 failed: DriverAdapterError::deadlock detected | PrismaClientKnownRequestError:P2028: Invalid `tx.accountProduct.update()` invocation in /root/projects/shark-hf5/src/lib/modules/account/bundle.ts:125:33 122 continue; 123 } 124 } else { → 125 awa
+
+AT-15 ยอดยกมา (+7) แข่งกับใบเบิก ×8 (−1) + ผู้ถือแถวที่ลด 1 ค้างไว้ 1 วิ · สินค้าไม่ผูกคลัง × 3 รอบ — จาก 30 เป็น 28 พอดี
+  ❌ [AT-15.1] รอบ 1: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+  ❌ [AT-15.2] รอบ 2: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+  ❌ [AT-15.3] รอบ 3: ยอดยกมา + เบิก สำเร็จครบ · คงเหลือ 28 พอดี — qtyOnHand 29 ≠ 28
+
+AT-16 กติกา 'สต็อกไม่พอ' ใต้การแข่ง: เบิก 3 × 5 ใบพร้อมกันจาก 10 (ไม่อนุญาตติดลบ) × 3 รอบ — สำเร็จ 3 ใบพอดี ไม่ติดลบ
+  ❌ [AT-16.1] รอบ 1: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+  ❌ [AT-16.2] รอบ 2: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+  ❌ [AT-16.3] รอบ 3: สำเร็จ 3 ใบ · ถูกปฏิเสธ 2 ใบด้วยข้อความเดิม (คงเหลือ 1, เบิก 3) · คงเหลือ 1 ไม่ติดลบ — 5 succeeded (want 3) · qtyOnHand 7 ≠ 1
+
+AT-17 เพดานคืนเบิก: คืนครบจำนวนผ่าน · คืน 2 ใบพร้อมกัน (คนละงวด) เกินที่เบิก ⇒ สำเร็จใบเดียว
+  ❌ [AT-17.0] คืนครบจำนวนที่ยังคืนได้ (เบิก 2 คืน 2 · ผูกคลัง+ไม่ผูก) ผ่าน — ใบที่กำลังคืนไม่ถูกนับเป็น 'คืนไปแล้ว' — คืน "QC AT7A" เกินจำนวนที่เบิกไว้ (เบิก-คืนไปแล้วเหลือคืนได้ 0)
+  ❌ [AT-17.1] ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+0 · returnable left [5]
+  ❌ [AT-17.2] ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+0 · returnable left [5]
+  ❌ [AT-17.3] ไม่ผูกคลัง รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +0/+5 · returnable left [5]
+  ❌ [AT-17.4] ไม่ผูกคลัง รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +0/+5 · returnable left [5]
+  ❌ [AT-17.5] ปน รอบ 1: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+5 · returnable left [5,5]
+  ❌ [AT-17.6] ปน รอบ 2: คืน 5+5 พร้อมกันจากเบิก 5 ⇒ สำเร็จ 1 · อีกใบ "เกินจำนวนที่เบิกไว้" · สต็อกเพิ่ม 5 ครั้งเดียว — 0 returns succeeded (want 1) · stock +0/+0 ≠ +5/+5 · returnable left [5,5]
+
+AT-18 lock_timeout 5 วิ ใน tx สต็อก · ไม่รั่ว · ตัวห่อรอเกิน → ลองใหม่ 1 ครั้ง → ข้อความไทยใน ≈5–11 วิ
+  ❌ [AT-18.1] ใน tx สต็อก lock_timeout = 5s (consumeInTx: 0 · lockItemsInTx: 0) — got 0/0
+  ✅ [AT-18.2] หลัง commit/rollback บน backend เดิม (pid 10029) lock_timeout กลับเป็นค่าเดิม (0)
+  ✅ [AT-18.2c] ตัวควบคุม: ตัวตรวจเห็นค่าที่รั่วจริง (SET ระดับ session = 7s) แล้ว RESET คืน
+     · ตัวห่อจบใน 11.8 วิ — (succeeded)
+  ❌ [AT-18.3] ผู้ถือล็อก 12 วิ ⇒ ตัวห่อได้ข้อความไทย "ลองใหม่อีกครั้ง" ใน 4.5–11.5 วิ (ได้ 11.8 วิ) — (succeeded) after 11790 ms
+  ❌ [AT-18.4] error สุดท้ายเก็บ cause (ข้อผิดพลาดจริงของฐานข้อมูล: lock timeout / 55P03) — cause 
+  ❌ [AT-18.5] console.warn ตอนลองใหม่ 1 ครั้ง: ข้อความคงที่ + { code, op, itemId } เท่านั้น (ได้ 0 ครั้ง) — []
+  ✅ [AT-18.6] ผู้ถือปล่อยแล้ว คีย์เดิมสำเร็จ · movement ของคีย์ = 1 · ตัดครั้งเดียว
+     · ใบเบิกจบใน 9.3 วิ — สำเร็จ
+  ❌ [AT-18.7] ใบเบิกบัญชีที่รอล็อกสินค้า (ผู้ถือ 9 วิ) ล้มใน < 8 วิ ทั้งใบ — ไม่มีเอกสาร ไม่แตะสต็อก (ได้ 9.3 วิ) — ok true after 9330 ms · docs +1 · onHand 4905→4904
+  ✅ [AT-18.8] ตัวควบคุม: ผู้ถือปล่อยแล้ว ใบเบิกเดิมสำเร็จ
+  ✅ [AT-Z] ปิดท้าย: 13 สินค้าทั้งหมด invariant ครบ
+
+TIMING per round (wall, 10 parallel): AT-1 1.2/0.8/0.8/0.8/0.8s · AT-2 0.8/0.8/0.8/0.9/0.8s · AT-3 0.9/0.9/2.3/0.9/0.9s · AT-4 1.2/1.2/1.2/1.2/1.2s · AT-5 0.8/0.8/0.8/0.8/0.8s · AT-6 0.3/0.3/0.3/0.3/0.3s · AT-8 1.1/0.9/0.9/0.9/0.9s · AT-9 0.9/0.9/0.8/0.8/0.9s · AT-7 2.9/3.0/3.0/3.0/2.9s · AT-10 0.9/0.9/0.9/0.9/0.9s · AT-12 9.3/9.3/9.3s · AT-13 1.9/1.8/1.9s · AT-14 5.2/4.1/5.1s · AT-15 2.5/2.6/2.5s · AT-16 0.9/0.9/0.9s · AT-17 0.1/0.1/0.1/0.1/0.1/0.1s
+
+===== QC HF-INV-1 inventory atomic =====
+ผ่าน 67/94
+FINDINGS: CRITICAL 24 · MAJOR 3 · MINOR 0
+JSON_SUMMARY {"total":94,"passed":67,"findings":["AT-12.1","AT-12.2","AT-12.3","AT-13.1","AT-13.2","AT-13.3","AT-14.1","AT-14.2","AT-14.3","AT-15.1","AT-15.2","AT-15.3","AT-16.1","AT-16.2","AT-16.3","AT-17.0","AT-17.1","AT-17.2","AT-17.3","AT-17.4","AT-17.5","AT-17.6","AT-18.1","AT-18.3","AT-18.4","AT-18.5","AT-18.7"]}
