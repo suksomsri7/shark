@@ -26,11 +26,11 @@ const P = prisma as any;
 const { crmCan } = (await import("@/lib/modules/crm/access" as string)) as { crmCan: (a: unknown, k: string) => boolean };
 const { toMemberActor } = (await import("@/lib/modules/member/access" as string)) as { toMemberActor: (u: string, m: unknown) => any };
 const APPLY = process.argv.includes("--apply");
-const REG = "scripts/crm-ui-inventory.json";
+const REG = process.env.SWEEP_REG || "scripts/crm-ui-inventory.json"; // c42b it4-A: staged registry check
 const E = JSON.parse(readFileSync(process.env.CRM_EXPECTED_PATH ?? "scripts/crm-expected.json", "utf8"));
 const PERSONAS = ["manager", "nok", "thana"] as const;
 type Can = (k: string) => boolean;
-type Gate = { test: (can: Can, role: string) => boolean; why: string };
+type Gate = { test: (can: Can, role: string, unitAccess: string[]) => boolean; why: string };
 const key = (k: string, cite: string): Gate => ({ test: (c) => c(k), why: `${k} · ${cite}` });
 const any = (ks: string[], cite: string): Gate => ({ test: (c) => ks.some((k) => c(k)), why: `${ks.join("|")} · ${cite}` });
 const OK: Gate = { test: () => true, why: "no key gate" };
@@ -93,6 +93,11 @@ const CONTROL_GATES: { m: string; page?: string; gate: Gate }[] = [
   { m: "crm-object-tab-*", gate: key("crm.record.read", "src/components/crm/objects/ObjectTabs.tsx:98 (no record.read ⇒ no object tabs)") },
   { m: "contact-edit-move-deals", page: "/contacts/[contactId]", gate: key("crm.company.read", `${A}/contacts/_components/Contact360Actions.tsx:510 (needs a picked company) · companies.ts:1959 ${CO_READ}`) },
   { m: "crm-ai-proposal-*", page: "/app/sys/[id]", gate: key("crm.report.view", "src/lib/modules/crm/home.tsx:214-216 (home aside / at-risk proposals only with crm.report.view) · CrmAiProposalCard.tsx:100") },
+  // it4-A (run2 manager): the "unmatched" inbox tab renders only when listThreads({unmatched}) does not throw — OWNER, or a
+  //   whole-shop account (unitAccess * / empty) whose CONTACT visibility is ALL (emails.ts:2359-2370 assertUnmatchedGate ·
+  //   emails/page.tsx:48-49). QC1 manager unitAccess = [patong] ⇒ hidden. (Visibility level not evaluated here: every
+  //   non-OWNER persona already fails the whole-shop test.)
+  { m: "crm-emails-tab-unmatched", page: "/emails", gate: { test: (_c, role, ua) => role === "OWNER" || ua.length === 0 || ua.includes("*"), why: "OWNER or whole-shop + CONTACT ALL · emails.ts:2359-2370 assertUnmatchedGate · emails/page.tsx:48-49" } },
   { m: "crm-seq-enroll*", page: "/contacts/[contactId]", gate: key("crm.sequence.enroll", "sequences.ts:589 sequenceOptions() = [] ⇒ SequenceEnrollButton renders nothing · [contactId]/page.tsx:88,461") },
 ];
 // rows the audit found VISIBLE for a STAFF with the seeded keys (no key gate) — explicit, so a stale hiddenFor is surfaced
@@ -105,13 +110,13 @@ const glob = (p: string) => new RegExp(`^${p.split("*").map((s) => s.replace(/[.
 const hit = (m: string, t: string) => m === t || (m.includes("*") && glob(m).test(t)) || (t.includes("*") && m.includes("*") && glob(m).test(t.replace(/\*/g, "x")));
 
 // ── persona keys from QC1 ──
-const cans: Record<string, { can: Can; role: string; keys: string[] }> = {};
+const cans: Record<string, { can: Can; role: string; keys: string[]; unitAccess: string[] }> = {};
 for (const u of PERSONAS) {
   const uid = E.users?.[u]?.userId;
   const m = uid ? await P.membership.findFirst({ where: { userId: uid, tenantId: E.tenantId }, select: { role: true, unitAccess: true, permissions: true } }) : null;
   if (!m) { console.error(`❌ ไม่พบ membership ของ ${u}`); process.exit(2); }
   const actor = toMemberActor(uid, m);
-  cans[u] = { can: (k) => crmCan(actor, k), role: m.role, keys: Object.entries(m.permissions ?? {}).filter(([k, v]) => k.startsWith("crm.") && v === true).map(([k]) => k) };
+  cans[u] = { can: (k) => crmCan(actor, k), role: m.role, unitAccess: Array.isArray(m.unitAccess) ? m.unitAccess : [], keys: Object.entries(m.permissions ?? {}).filter(([k, v]) => k.startsWith("crm.") && v === true).map(([k]) => k) };
   console.log(`persona ${u}: ${m.role} · explicit crm keys ${cans[u].keys.length ? cans[u].keys.join(",") : "(none — role defaults)"}`);
 }
 await prisma.$disconnect();
@@ -128,10 +133,10 @@ for (const r of reg.rows as any[]) {
   const cg = CONTROL_GATES.find((g) => (!g.page || g.page === r.page) && hit(g.m, r.testid));
   const vis = VISIBLE_FOR_STAFF.find((v) => (!v.page || v.page === r.page) && hit(v.m, r.testid));
   for (const u of PERSONAS) {
-    const { can, role } = cans[u]!;
+    const { can, role, unitAccess } = cans[u]!;
     let verdict: boolean | null = null; let why = "";
-    if (!pg.test(can, role)) { verdict = false; why = `page 404s without ${pg.why}`; }
-    else if (cg) { verdict = cg.gate.test(can, role); why = cg.gate.why; gateUse.set(cg.m, (gateUse.get(cg.m) ?? 0) + 1); }
+    if (!pg.test(can, role, unitAccess)) { verdict = false; why = `page 404s without ${pg.why}`; }
+    else if (cg) { verdict = cg.gate.test(can, role, unitAccess); why = cg.gate.why; gateUse.set(cg.m, (gateUse.get(cg.m) ?? 0) + 1); }
     else if (vis && role === "STAFF") { verdict = true; why = vis.why; }
     if (verdict === null) continue;
     const inR = r.roles.includes(u), inH = r.hiddenFor.includes(u);

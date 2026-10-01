@@ -321,3 +321,47 @@
 3. Promote staged fixes: `cp scripts/pending/c42b/next/qc-crm-buttons.mts scripts/ && cp scripts/pending/c42b/next/crm-ui-inventory.json scripts/` (the staged registry = current registry + S2/S7/S9 rows; re-check with `pnpm exec tsx scripts/pending/c42b/registry-sweep.mts` → must print 0 changes) → `pnpm exec tsx scripts/qc-crm-buttons.mts --dry` (exit 0) → typecheck `env NODE_OPTIONS=--max-old-space-size=5120 ISO_MEM=6G bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`.
 4. Add the run2 manager/nok/thana/customer fixes the same way, then run3 = final full pass: `sed 's/run2/run3/g' /tmp/c42b-logs/run2.sh > /tmp/c42b-logs/run3.sh && bash -n /tmp/c42b-logs/run3.sh && systemd-run --unit=crm-c42b-run3 --collect -p MemoryMax=6G --setenv=PATH="$PATH" --setenv=HOME=/root bash /tmp/c42b-logs/run3.sh` (needs `/tmp/c42b-logs/run-chunks.sh` — copy is in `.qc-shots/c42b/logs-snapshot/`).
 5. Classify every non-pass per §15 → append final tallies/findings under "## it4 (1 Oct)" → one commit `WIP C4.2 it4 (ported runner · registry sweep · persona fixtures · real run) — NOT for main as-is`. No push.
+
+## it4 (1 Oct) — PHASE A (lane resumed after machine move · worktree `shark-crm-c42b` @ 1cc85e31)
+### Checkpoint A1 (1 Oct ~05:05 UTC)
+- run2 still running (owner done 04:52 · manager running · unit stops itself before nok — md5 changed by controller). **manager chunk 1 `/companies` FATAL at 04:53** (`ConnectionClosedError` in `newPage` after 1 of 16 groups — browser died; summary-1 = 17 rows only) ⇒ manager `/companies` must be re-covered (debug run / run3).
+- Promotion of S1–S9 into `scripts/` is DEFERRED until `crm-c42b-run2` is inactive: every chunk is a fresh `tsx scripts/qc-crm-buttons.mts`, so copying now would change what the remaining manager chunks run (run2 must stay one frozen version).
+- owner run2 complete: 13/13 chunks, 1764 pressed · 1690 passed · 74 non-pass (46 dead + 28 wrongExpect) + 2 console · 0 leak/vacuous/overflow/restoreFail/fatal. All 74 classified (table in "Owner triage" below) — 0 PRODUCT.
+- New fixes N1–N10 written into the STAGED copies (`scripts/pending/c42b/next/`) on top of S1–S9; registry edits are a script (`scripts/pending/c42b/it4a-registry-edits.py`, idempotent, 12 field changes). Staged `--dry` exit 0 (8,259 presses · opener problems 0). Not yet typechecked / not yet debug-run.
+
+### Owner triage — run2 (complete, 13 chunks) · 74 non-pass + 2 console · every one classified
+| chunk | rows (d=1440 · m=390) | n | class | cause (evidence) | fix |
+|---|---|---|---|---|---|
+| 3 `/contacts/[` | contact-convert-company-role/-taxid/-done d+m | 6 dead | REGISTRY | fields exist only after `contact-convert-btn` opens the dialog | S2 (dbg1 pass) |
+| 3 | contact-consent-grant/-revoke · contact-optout-toggle · contact-tracking-optout-toggle m | 4 wE | RUNNER | convert repair kept the new Customer (keepNew) + async `member.created` consumer linked the seed contact to it 2 s after the repair (AuditLog 04:08:47) | S1 + S5 |
+| 5 `/deals` | deal-card-* m · deal-stage-tab-* m | 2 wE | RUNNER | 390 drop landed off-screen · first tab = active one (no aria, F2) | S9 |
+| 6 `/deals/[` | deal-title-save m | 1 dead | RUNNER | pointer click hit the sticky header | S3 |
+| 8 `/activities` | activity-log-form/-submit d+m | 4 wE | RUNNER | `activity-log-target-option` skipped (submit always visible) ⇒ "เลือกผู้ติดต่อ…ก่อน" | S4 |
+| 9 `/emails/[threadKey]` | 10 rows d+m + 2 console 404 | 20 dead | FIXTURE | only QC1 thread belongs to a deleted contact ⇒ 404 is correct | S6 |
+| 9 `/objects/[key]/[recordId]` | object-record-archive-btn d+m | 2 wE | REGISTRY | two-step arm button (RecordForm.tsx:264-275) | S7 |
+| 10 `/settings/commissions` | crm-commission-rule-save d+m | 2 wE | RUNNER | text typed into `inputmode=decimal` min field | S8 |
+| 12 `/settings` | crm-retention-save d+m | 2 dead | RUNNER | export days typed 100→101, product allows 1–90 (PrivacySettings.tsx client check) — no request | N1 `export-days` → 30 |
+| 12 `/settings/sequences/[id]` | crm-seq-save d+m | 2 dead | REGISTRY | button is inside `{editSteps && …}` (SequenceEditor.tsx:224-262) — opener `crm-seq-steps-toggle` missing | N2 |
+| 12 | crm-seq-stats-version d+m | 2 dead | FIXTURE | options = versions 1..seq.version (sequences.ts:1011); QC1 has NO seed sequence — the page ran on a journey leftover `qc-jrn-us5…` (v1) | N3 runner-owned 2-version sequence |
+| 12 `/settings/quotas` | crm-quota-deals-* m | 1 dead | REGISTRY | column `hidden … sm:table-cell` (QuotaManager.tsx:149) — desktop-only by design | N4 viewport desktop |
+| 12 `/settings/pipelines` | pl-archive-submit d+m | 2 wE | FIXTURE | both QC1 pipelines hold open deals (40/15) ⇒ product refuses by design (pipelines.ts:309) | N5 empty pipeline + PREFER |
+| 12 `/settings/sequences` | crm-seq-new-form/-submit d+m | 4 wE | RUNNER+REGISTRY | first-step fields (StepFields on the list page, SequenceListView.tsx:84) are registry rows of `[sequenceId]` only ⇒ never prefilled ⇒ client refusal | N6 `alsoOn` + prefill uses alsoOn rows |
+| 12 `/settings/stages` | st-delete-* d+m | 2 wE | FIXTURE | every default-pipeline stage holds deals ⇒ refused by design (pipelines.ts:406); refusal text is not role=alert/*-error | N5 empty stage + PREFER |
+| 13 `/app/settings/teams` | team-member-remove-cancel d+m | 2 dead | RUNNER | teams made by `teams-create-*` survive the group (keepNew) and become the SELECTED team (no members) | N7 full repair after teams-create |
+| 13 | team-member-add-form/-submit d+m | 4 wE | REGISTRY | `team-member-add-select` is a `ui` row ⇒ never prefilled ⇒ "เลือกพนักงาน" | N7 opener `team-member-add-select=*` |
+| 13 `/app/sys/[id]` (CRM home) | crm-home-source-row-* d+m | 2 dead | FIXTURE (time-rot) | box counts contacts created in the CURRENT month (home-data.ts:335); seed is from Sept, today 1 Oct | N8 lead created now |
+| 13 | crm-home-saved-view d+m | 2 wE | FIXTURE | 0 deal saved views ⇒ chip opens "ยังไม่มีมุมมอง" (HomeFilters.tsx:98) | N10 view per owner/manager |
+| 13 `/app/sys/[id]?c=` (CHAT) | crm-panel-log-activity + -activity-type/-title/-submit d+m | 8 dead | RUNNER+FIXTURE | resolver matched room by phone; product links by PARTY (crm-panel-actions.ts:81-98, `logActivity: !!brief.contact`); QC1 has 0 linked rooms | N9 linked room per persona + `[unlinkedConversationId]` for create-lead |
+
+### N-fixes (it4-A, staged in `scripts/pending/c42b/next/`, registry via `it4a-registry-edits.py`)
+N1 fillValueFor `*-export-days` = 30 · N2 crm-seq-save opener · N3/N5/N8/N9/N10 `createExtraFixtures` (runner-owned rows created BEFORE the snapshot only when a selected row needs them; deleted in CLEAN + safety net; `PREFER_IDS` makes `*` rows press the fixture, never a seed row) · N4 viewport · N6 alsoOn + prefill · N7 `FULL_REPAIR_RE` += `^teams-create-(form|submit)` (`repairsAfter`) + opener · N9 `crm-panel-create-lead` query `c=[unlinkedConversationId]` (new placeholder, a room whose party has no CRM contact) · `run-chunks.sh` (copy in `scripts/pending/c42b/`): browser crash mid-chunk ⇒ redo the chunk once (`-crash.json` kept, not tallied) · `merge-main-rows.py <commit>` = 3-way merge of main's new registry rows (C5.4-E) — dry against session/crm 516d9b0c: 0 rows/0 conflicts; positive control vs 18feaa84: 135 field changes detected.
+
+### Checkpoint A2 (1 Oct ~05:45 UTC)
+- staged runner typechecked: `typecheck-3.log` exit 0 (tsconfig includes `**/*.mts` ⇒ `scripts/pending/c42b/next/*.mts` covered) · staged registry sweep (`SWEEP_REG=…next/…`) = 0 changes · staged `--dry` exit 0.
+- manager chunks 1–7 triaged: #1 FATAL (browser died after group 1; `companies-import-backdrop` dead in that group, no shot — ENV/RUNNER, re-cover in dbg2) · #3 convert ×6 = S2 · #5 board ×2 = S9 · #6 **33 dead = RUNNER (new N11)**: `deal-owner-select` (select → first other owner) handed the open deal to a user outside the manager's teams ⇒ `dealWhere` hides it ⇒ every later row 404 (rows after it: forecast/next-step/menu/delete/call/AI) — product correct. Fix N11 `OWNERSHIP_RE` (`deal-owner-select`, `company-owner-submit`) ⇒ keepNew repair right after the row. deal-title-save m = S3.
+- prepared (not launched): `scripts/pending/c42b/run3.sh` (+ `run-chunks.sh` copy with crash-redo) · `scripts/pending/c42b/dbg2.sh` (13 targeted steps on the PROMOTED runner, counts before/after).
+
+### Checkpoint A3 (resumed · 1 Oct ~06:55 UTC · previous lane agent killed by a container restart ~06:40)
+- Found on disk: run2 ENDED (`run2.status`: owner rc=0 04:52 · manager rc=0 06:21 · stopped before nok because the controller altered `run2.md5`) · manager summaries 1–13 present · `counts-after-run2.json` NOT written (unit stopped before its last line) · dbg2 NOT launched (no `/tmp/c42b-logs/dbg2*`) · staged fixes NOT promoted (`scripts/` still = run2 frozen md5 48dce828/c1807837; staged next/ = 85b7d7b2/76ac3a40) · staged registry already carries the it4a sweep change (`registry-sweep.it4a.txt`: `crm-emails-tab-unmatched` manager roles→hiddenFor, emails.ts:2359-2370) · `run3.sh` / `run-chunks.sh` (crash-redo) / `dbg2.sh` / `merge-main-rows.py` / `it4a-registry-edits.py` / facts5–7 exist, untracked.
+- Unrelated dirty files in the worktree (`scripts/*-expected.json`, `scripts/fixtures/acc-v2/*`) are NOT this lane's and are never committed.
+- Next: counts-after-run2 + restore proof · manager triage chunks 8–13 · promote · dbg2 · merge-main-rows 288cca97.

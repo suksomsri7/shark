@@ -8421,7 +8421,8 @@
       },
       "wo": "C1.7",
       "oracle": "",
-      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)"
+      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)",
+      "opener": "team-member-add-select=*"
     },
     {
       "page": "/app/settings/teams",
@@ -8462,7 +8463,8 @@
       },
       "wo": "C1.7",
       "oracle": "",
-      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)"
+      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)",
+      "opener": "team-member-add-select=*"
     },
     {
       "page": "/app/settings/teams",
@@ -11440,7 +11442,7 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]",
+      "query": "c=[unlinkedConversationId]",
       "needs": "ห้องแชท [conversationId] ที่ยังไม่ผูกผู้ติดต่อ CRM (ผูกแล้ว = ไม่มีปุ่มนี้)"
     },
     {
@@ -13073,7 +13075,8 @@
         "db": "CrmSequenceStep แถวใหม่ของ version+1 เมื่อมีผู้ลงทะเบียน (แถวเวอร์ชันเก่าไม่ถูกแก้/ลบ) + AuditLog crm.sequence.update"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13094,7 +13097,10 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "opener": "crm-seq-steps-toggle"
+      "opener": "crm-seq-steps-toggle",
+      "alsoOn": [
+        "/settings/sequences"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13118,6 +13124,9 @@
       "opener": [
         "crm-seq-steps-toggle",
         "crm-seq-step-kind-*=EMAIL"
+      ],
+      "alsoOn": [
+        "/settings/sequences"
       ]
     },
     {
@@ -13139,7 +13148,10 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "opener": "crm-seq-steps-toggle"
+      "opener": "crm-seq-steps-toggle",
+      "alsoOn": [
+        "/settings/sequences"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13163,6 +13175,9 @@
       "opener": [
         "crm-seq-steps-toggle",
         "crm-seq-step-kind-*=WAIT"
+      ],
+      "alsoOn": [
+        "/settings/sequences"
       ]
     },
     {
@@ -13187,6 +13202,9 @@
       "opener": [
         "crm-seq-steps-toggle",
         "crm-seq-step-kind-*=WAIT"
+      ],
+      "alsoOn": [
+        "/settings/sequences"
       ]
     },
     {
@@ -13211,6 +13229,9 @@
       "opener": [
         "crm-seq-steps-toggle",
         "crm-seq-step-kind-*=TASK"
+      ],
+      "alsoOn": [
+        "/settings/sequences"
       ]
     },
     {
@@ -13235,6 +13256,9 @@
       "opener": [
         "crm-seq-steps-toggle",
         "crm-seq-step-kind-*=TASK"
+      ],
+      "alsoOn": [
+        "/settings/sequences"
       ]
     },
     {
@@ -15351,10 +15375,10 @@
       "testid": "crm-emails-tab-unmatched",
       "kind": "tab",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
+        "manager",
         "nok",
         "thana"
       ],
@@ -19081,7 +19105,8 @@
         "db": "ไม่มีการเขียน (เป้าจำนวนดีล)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "viewport": "desktop"
     },
     {
       "page": "/settings/quotas",

@@ -1,0 +1,1 @@
+/emails#crm-emails-tab-unmatched manager: roles → hiddenFor (OWNER or whole-shop + CONTACT ALL · emails.ts:2359-2370 assertUnmatchedGate · emails/page.tsx:48-49)

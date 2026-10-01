@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""c42b it4-A registry edits (run2 owner triage, 1 Oct) — idempotent; applies to the registry given as argv[1] in place.
+Every edit cites the product line that proves it (no expectation is weakened)."""
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+rows = d['rows']
+def row(page, tid):
+    hits = [r for r in rows if r['testid'] == tid and r['page'] == page]
+    assert len(hits) == 1, (page, tid, len(hits))
+    return hits[0]
+n = 0
+def setf(r, k, v):
+    global n
+    if r.get(k) != v:
+        r[k] = v; n += 1
+# N2 save button lives inside the "แก้ไขขั้น" block (SequenceEditor.tsx `{editSteps && (<>` … crm-seq-save)
+setf(row('/settings/sequences/[sequenceId]', 'crm-seq-save'), 'opener', 'crm-seq-steps-toggle')
+# N4 deal-count target column is `hidden … sm:table-cell` (QuotaManager.tsx th/td "เป้าดีล") — desktop layout only
+setf(row('/settings/quotas', 'crm-quota-deals-*'), 'viewport', 'desktop')
+# N6 StepFields renders the first step of a NEW sequence on /settings/sequences (SequenceListView.tsx <StepFields … />)
+for t in ['crm-seq-step-kind-*', 'crm-seq-step-subject-*', 'crm-seq-step-body-*', 'crm-seq-step-wait-days-*', 'crm-seq-step-wait-hours-*', 'crm-seq-step-task-title-*', 'crm-seq-step-task-type-*']:
+    r = row('/settings/sequences/[sequenceId]', t)
+    also = list(r.get('alsoOn') or [])
+    if '/settings/sequences' not in also:
+        setf(r, 'alsoOn', also + ['/settings/sequences'])
+# N7 the add form submits the chosen employee; the select is a `ui` row (never prefilled) — choose one first
+for t in ['team-member-add-form', 'team-member-add-submit']:
+    setf(row('/app/settings/teams', t), 'opener', 'team-member-add-select=*')
+# N9 create-lead exists only for a room whose party has NO CRM contact (crm-panel-actions.ts createLead: contactState === "none")
+setf(row('/app/sys/[id]', 'crm-panel-create-lead'), 'query', 'c=[unlinkedConversationId]')
+open(p, 'w').write(json.dumps(d, indent=2, ensure_ascii=False) + '\n')
+print(f'it4-A registry edits: {n} field changes')

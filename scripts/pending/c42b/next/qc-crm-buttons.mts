@@ -244,7 +244,15 @@ const DESTRUCTIVE_RE = /(archive|delete|merge|erase|remove|revoke|convert|lost-c
 // c42b FULL_REPAIR — destructive rows whose NEW rows change what the seed entity IS for every later row (convert creates a
 // Customer/Party link ⇒ the seed contact reads as member-linked: run2 owner 390 consent/opt-out rows wrote to the member
 // side) ⇒ the repair after them is a FULL restore (new rows deleted too), not keepNew
-const FULL_REPAIR_RE = /convert-(submit|done)$/;
+//   it4-A: + teams-create-form/-submit — the new team becomes the SELECTED team of /app/settings/teams (newest first) and
+//   has no members ⇒ run2 owner team-member-remove-cancel "opener missing" · team-member-add-* refused (TeamsManager.tsx)
+const FULL_REPAIR_RE = /(convert-(submit|done)|^teams-create-(form|submit))$/;
+// it4-A OWNERSHIP rows — hand the OPEN entity to someone else; a persona whose visibility is TEAM-scoped loses the page
+//   (run2 manager /deals/[dealId]: deal-owner-select picked the first other owner ⇒ every later row on that page 404,
+//   33 "dead"; dealWhere is correct to hide it) ⇒ repaired right after (keepNew: the entity's own row is written back)
+const OWNERSHIP_RE = /^(deal-owner-select|company-owner-submit)$/;
+/** rows after which the seed is repaired: DESTRUCTIVE ones + FULL_REPAIR / OWNERSHIP ones that are not destructive by name */
+const repairsAfter = (tid: string): boolean => DESTRUCTIVE_RE.test(tid) || FULL_REPAIR_RE.test(tid) || OWNERSHIP_RE.test(tid);
 // CSV fixture for the four import file inputs (CSV parsed server-side, no storage upload) — one qc-btn- tagged row
 const IMPORT_FILE_INPUTS = new Set(["companies-import-file", "contacts-import-file", "crm-import-file", "object-import-file"]);
 // never auto-ticked by PREFILL (safety — see crm-portal-invite-email special case)
@@ -257,9 +265,10 @@ const PREFILL_NEVER = new Set(["crm-portal-invite-email"]);
 type Ctx = {
   dealId: string | null; contactId: string | null; companyId: string | null; recordId: string | null; objectKey: string | null;
   partyId: string | null; slug: string | null; pageSlug: string | null; conversationId: string | null; unitId: string | null;
-  perUser: Record<string, { dealId: string | null; contactId: string | null; companyId: string | null; partyId: string | null; recordId?: string | null; linesDealId?: string | null; threadKey?: string | null }>;
+  perUser: Record<string, { dealId: string | null; contactId: string | null; companyId: string | null; partyId: string | null; recordId?: string | null; linesDealId?: string | null; threadKey?: string | null; conversationId?: string | null }>;
   linesDealId: string | null; // c42b: oracle-owned OPEN deal WITH lines (rows whose query has tab=lines open it)
   sequenceId: string | null; threadKey: string | null; token: string | null; docType: string | null; docId: string | null;
+  unlinkedConversationId: string | null; // it4-A: a chat room whose ChatContact party has NO CRM contact (crm-panel-create-lead)
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
 };
 const UNRESOLVED: { placeholder: string; reason: string }[] = [];
@@ -283,7 +292,7 @@ async function buildCtx(): Promise<Ctx> {
     dealId: E.dealIds?.[0] ?? null, contactId: E.contactIds?.[0] ?? null, companyId: E.companyIds?.[0] ?? null,
     recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, pageSlug: null, perUser: {}, conversationId: null, linesDealId: null,
     unitId: E.units?.patong ?? E.units?.kata ?? null,
-    sequenceId: null, threadKey: null, token: null, docType: null, docId: null,
+    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null,
     posSysId: E.systems?.POS ?? null, memberSysId: E.systems?.MEMBER ?? null, hrSysId: E.systems?.HR ?? null,
     accountSysId: E.systems?.ACCOUNT ?? null, chatSysId: E.systems?.CHAT ?? null,
   };
@@ -385,6 +394,15 @@ async function buildCtx(): Promise<Ctx> {
         : null;
       ctx.conversationId = conv?.id ?? (await P.chatConversation.findFirst({ where: { systemId: ctx.chatSysId }, select: { id: true } }))?.id ?? null;
       if (!ctx.conversationId) note("conversationId", "ไม่มีห้องแชทในระบบ CHAT ของซีดนี้เลย");
+      // it4-A: the CRM panel links a room to a CRM contact by PARTY (crm-panel-actions.ts getChatCrmPanelAction: briefFor
+      //   {partyId: ChatContact.partyId}) — not by phone. QC1 has 0 linked rooms ⇒ the "linked" rows open a runner-owned room
+      //   per persona (createExtraFixtures); crm-panel-create-lead needs a room whose party has NO CRM contact:
+      for (const cv of await P.chatConversation.findMany({ where: { systemId: ctx.chatSysId }, select: { id: true, contact: { select: { partyId: true } } }, orderBy: { createdAt: "asc" }, take: 50 })) {
+        const pid = cv.contact?.partyId ?? null;
+        if (pid && await P.crmContact.count({ where: { systemId: SYS, partyId: pid } })) continue;
+        ctx.unlinkedConversationId = cv.id; break;
+      }
+      if (!ctx.unlinkedConversationId) note("unlinkedConversationId", "ไม่มีห้องแชทที่ยังไม่ผูกผู้ติดต่อ CRM");
     } else note("chatId/conversationId", "ไม่มีระบบ CHAT ในซีด หรือไม่มีผู้ติดต่อตัวแทน");
   } catch (e) { note("chatId/conversationId", `query ล้ม — ${e instanceof Error ? e.message : e}`); }
 
@@ -451,7 +469,7 @@ function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | nu
     id: sysR.id, dealId: /(^|&)tab=lines(&|$)/.test(row.query ?? "") ? (ctx.linesDealId ?? (DRY ? "dry-lines-deal" : null)) : ctx.dealId, contactId: ctx.contactId, companyId: ctx.companyId,
     recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: row.page.startsWith("/p/") ? ctx.pageSlug : ctx.slug,
     token: ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
-    unitId: ctx.unitId, sequenceId: ctx.sequenceId, threadKey: ctx.threadKey,
+    unitId: ctx.unitId, sequenceId: ctx.sequenceId, threadKey: ctx.threadKey, unlinkedConversationId: ctx.unlinkedConversationId,
   };
   // any page already rooted outside the CRM module (/app/… /b/… /p/… /u/…) is absolute as-is; everything else is
   // the shortened CRM-relative form ("/deals", "/objects/[key]", …) and needs the CRM_BASE prefix.
@@ -577,10 +595,101 @@ async function deleteThreadFixtures(): Promise<void> {
   catch (e) { console.log(`  ⚠️ ลบเธรดอีเมลของตัวกดไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
 }
 /** the entities a given user can open (chosen through the product's visibility filter — see buildCtx PER-USER) */
+// it4-A EXTRA FIXTURES (run2 owner triage, 1 Oct) — runner-owned rows the seed lacks, created BEFORE the snapshot and only
+// when a selected row needs them (so other chunks see the seed unchanged), deleted in CLEAN + the safety net. `*` rows
+// whose matches include a fixture id press the fixture (PREFER_IDS in findVisible) — never a seed entity.
+//   · empty pipeline + an empty OPEN stage in the default pipeline: QC1's 2 pipelines hold 40/15 open deals and every
+//     default-pipeline stage holds deals ⇒ archivePipeline/deleteStage refuse BY DESIGN (pipelines.ts archivePipeline
+//     "ยังมีดีลที่เปิดอยู่" · deleteStage "ขั้นนี้มีดีลอยู่") — pl-archive-submit / st-delete-* need an empty one.
+//   · sequence with 2 versions: QC1 has NO seed sequence (the only one is a journey leftover "qc-jrn-us5…", 28 Sep) and
+//     the stats-version select lists versions 1..seq.version (sequences.ts stats()) ⇒ one option = nothing to choose.
+//   · a lead created NOW: the home "lead sources" box counts contacts created in the CURRENT period (home-data.ts
+//     leadSourcesOf, default period = this month) — the seed's contacts are from September ⇒ empty from 1 Oct (time-rot).
+//   · one deal saved view per owner/manager persona (MemberSavedView objectKey=deal, PRIVATE): seed has 0 ⇒ the home chip
+//     opens "ยังไม่มีมุมมอง" and crm-home-saved-view-item-* can never appear.
+//   · one chat room per persona LINKED to the persona's CRM contact by party (ChatContact.partyId = CrmContact.partyId):
+//     the panel's contact/log-activity controls exist only for a linked room (crm-panel-actions.ts logActivity: !!brief.contact).
+const XFIX: { model: string; id: string }[] = [];
+const PREFER_IDS: string[] = [];
+const selRow = (re: RegExp) => ROWS.some((r) => re.test(r.testid) && pageSelected(r.page));
+async function createExtraFixtures(ctx: Ctx): Promise<void> {
+  const ownerUid = (E.users?.owner?.userId as string | undefined) ?? null;
+  if (selRow(/^(pl-archive-submit|st-delete-\*)$/)) {
+    const pipe = await P.crmPipeline.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-empty-${rand}`, isDefault: false, sortOrder: 90,
+      stages: { create: [{ tenantId: TENANT, systemId: SYS, name: `qc-btn-empty-${rand}`, kind: "OPEN", sortOrder: 0, probability: 10 }] } }, select: { id: true } });
+    XFIX.push({ model: "crmPipeline", id: pipe.id }); PREFER_IDS.push(pipe.id);
+    const def = await P.crmPipeline.findFirst({ where: { systemId: SYS, isDefault: true, archivedAt: null }, select: { id: true, stages: { select: { sortOrder: true } } } });
+    if (def) {
+      const st = await P.crmStage.create({ data: { tenantId: TENANT, systemId: SYS, pipelineId: def.id, name: `qc-btn-empty-stage-${rand}`, kind: "OPEN", probability: 10,
+        sortOrder: def.stages.reduce((m: number, x: Any) => Math.max(m, x.sortOrder), -1) + 1 }, select: { id: true } });
+      XFIX.push({ model: "crmStage", id: st.id }); PREFER_IDS.push(st.id);
+    }
+    PICKS.push({ user: "*", entity: "emptyPipeline/Stage", id: pipe.id, why: "pipeline ว่าง + ขั้นว่างใน pipeline หลักของตัวกด (qc-btn-empty-) — แถว pl-archive-* / st-* กดตัวนี้" });
+  }
+  if (ROWS.some((r) => r.page.includes("[sequenceId]") && pageSelected(r.page))) {
+    const seq = await P.crmSequence.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-seq-${rand}`, version: 2, createdById: ownerUid,
+      steps: { create: [
+        { tenantId: TENANT, version: 1, index: 0, kind: "EMAIL", subject: "qc-btn v1 {{contact.firstName}}", body: "qc-btn v1" },
+        { tenantId: TENANT, version: 2, index: 0, kind: "EMAIL", subject: "qc-btn v2 {{contact.firstName}}", body: "qc-btn v2" },
+        { tenantId: TENANT, version: 2, index: 1, kind: "WAIT", waitDays: 3 },
+      ] } }, select: { id: true } });
+    XFIX.push({ model: "crmSequence", id: seq.id });
+    ctx.sequenceId = seq.id;
+    PICKS.push({ user: "*", entity: "sequence", id: seq.id, why: "ลำดับของตัวกด 2 เวอร์ชัน (qc-btn-seq-) — ซีดไม่มีลำดับ · ตัวเลือกเวอร์ชันมี 2 ค่า" });
+  }
+  if (selRow(/^crm-home-source-row-/)) {
+    const c = await P.crmContact.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-lead-${rand}`, ownerUserId: ownerUid }, select: { id: true } });
+    XFIX.push({ model: "crmContact", id: c.id });
+    PICKS.push({ user: "*", entity: "leadNow", id: c.id, why: "ผู้ติดต่อที่สร้างตอนนี้ (qc-btn-lead-) — กล่องที่มา lead นับเฉพาะงวดปัจจุบัน" });
+  }
+  if (selRow(/^crm-home-saved-view$/)) {
+    for (const u of userKeys) {
+      if (!["owner", "manager"].includes(u)) continue;
+      const uid = (E.users?.[u]?.userId as string | undefined) ?? null;
+      if (!uid) continue;
+      const v = await P.memberSavedView.create({ data: { tenantId: TENANT, systemId: SYS, ownerUserId: uid, scope: "PRIVATE", objectKey: "deal", name: `qc-btn-view-${rand}-${u}`, filters: {} }, select: { id: true } });
+      XFIX.push({ model: "memberSavedView", id: v.id });
+      PICKS.push({ user: u, entity: "dealView", id: v.id, why: "มุมมองดีลส่วนตัวของบทบาทนี้ (qc-btn-view-) — ซีดมี 0" });
+    }
+  }
+  if (ctx.chatSysId && ROWS.some((r) => /\[conversationId\]/.test(r.query ?? "") && pageSelected(r.page))) {
+    const byParty = new Map<string, string>();
+    for (const u of userKeys) {
+      if (u.startsWith("customer")) continue;
+      const cid = ctxForUser(ctx, u).contactId;
+      const c = cid ? await P.crmContact.findUnique({ where: { id: cid }, select: { partyId: true, name: true } }) : null;
+      if (!c?.partyId) { note(`${u} conversationId`, `ผู้ติดต่อ ${cid ?? "-"} ไม่มี partyId — ใช้ห้องที่ไม่ผูก CRM`); continue; }
+      if (!byParty.has(c.partyId)) {
+        const cc = await P.chatContact.create({ data: { tenantId: TENANT, systemId: ctx.chatSysId, channel: "WEBCHAT", externalUserId: `qc-btn-${rand}-${byParty.size}`, displayName: `qc-btn-chat-${c.name ?? rand}`, partyId: c.partyId }, select: { id: true } });
+        const cv = await P.chatConversation.create({ data: { tenantId: TENANT, systemId: ctx.chatSysId, channel: "WEBCHAT", contactId: cc.id }, select: { id: true } });
+        XFIX.push({ model: "chatConversation", id: cv.id }, { model: "chatContact", id: cc.id });
+        byParty.set(c.partyId, cv.id);
+      }
+      const conv = byParty.get(c.partyId)!;
+      ctx.perUser[u] = { ...(ctx.perUser[u] ?? { dealId: null, contactId: null, companyId: null, partyId: null }), conversationId: conv };
+      PICKS.push({ user: u, entity: "chatRoom", id: conv, why: `ห้องแชทของตัวกด ผูกปาร์ตี้ของผู้ติดต่อ ${cid} (briefFor ของ product เห็นผู้ติดต่อตามสิทธิ์ของบทบาท)` });
+    }
+  }
+  if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
+}
+async function deleteExtraFixtures(): Promise<void> {
+  if (!XFIX.length) return;
+  let n = 0;
+  for (const x of XFIX) { // creation order: conversation before its chat contact · stage/pipeline independent (stage FK cascades from pipeline)
+    try { n += (await P[x.model].deleteMany({ where: { id: x.id } })).count; }
+    catch (e) { console.log(`  ⚠️ ลบ fixture ${x.model} ${x.id} ไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
+  }
+  console.log(`🧩 ลบ extra fixtures ${n}/${XFIX.length}`);
+}
+async function extraFixturesLeft(): Promise<number> {
+  let n = 0;
+  for (const x of XFIX) n += await P[x.model].count({ where: { id: x.id } }).catch(() => 0);
+  return n;
+}
 function ctxForUser(ctx: Ctx, user: UserKey): Ctx {
   const o = ctx.perUser?.[user];
   if (!o) return ctx;
-  return { ...ctx, dealId: o.dealId ?? ctx.dealId, contactId: o.contactId ?? ctx.contactId, companyId: o.companyId ?? ctx.companyId, partyId: o.partyId ?? ctx.partyId, recordId: o.recordId ?? ctx.recordId, linesDealId: o.linesDealId ?? ctx.linesDealId, threadKey: o.threadKey ?? ctx.threadKey };
+  return { ...ctx, dealId: o.dealId ?? ctx.dealId, contactId: o.contactId ?? ctx.contactId, companyId: o.companyId ?? ctx.companyId, partyId: o.partyId ?? ctx.partyId, recordId: o.recordId ?? ctx.recordId, linesDealId: o.linesDealId ?? ctx.linesDealId, threadKey: o.threadKey ?? ctx.threadKey, conversationId: o.conversationId ?? ctx.conversationId };
 }
 function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
   const items: PlanItem[] = [];
@@ -635,7 +744,7 @@ function validateOpeners(): string[] {
       namesOnPage.set(pg, arr);
     }
   }
-  const KNOWN_PH = new Set(["id", "dealId", "contactId", "companyId", "recordId", "key", "partyId", "slug", "token", "docType", "docId", "conversationId", "unitId", "sequenceId", "threadKey"]);
+  const KNOWN_PH = new Set(["id", "dealId", "contactId", "companyId", "recordId", "key", "partyId", "slug", "token", "docType", "docId", "conversationId", "unitId", "sequenceId", "threadKey", "unlinkedConversationId"]);
   for (const r of ROWS) {
     if (r.needs !== undefined && (typeof r.needs !== "string" || !r.needs.trim())) problems.push(`${r.page}#${r.testid}: needs ต้องเป็นข้อความ`);
     // c42b: query = "k=v&k2=[placeholder]" — no leading ?, every pair k=v, every placeholder resolvable by pageUrl()
@@ -975,7 +1084,7 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
   const isPattern = testid.includes("*");
   const deadline = Date.now() + waitMs;
   for (;;) {
-    const h = await page.evaluateHandle((pSel: string, nots: string[], pattern: boolean, pSelGlob: string) => {
+    const h = await page.evaluateHandle((pSel: string, nots: string[], pattern: boolean, pSelGlob: string, prefer: string[]) => {
       const TAGS = ["button", "input", "select", "textarea"];
       const ROLES = ["button", "link", "menuitem", "tab", "switch", "checkbox", "option", "radio"];
       const vis = (el: Element) => {
@@ -993,7 +1102,10 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
         const off = (e: Element) => (e as HTMLButtonElement).disabled === true || e.getAttribute("aria-disabled") === "true";
         if (vis0.length > 1 && (active(vis0[0]!) || off(vis0[0]!))) return vis0.find((e) => !active(e) && !off(e)) ?? vis0[0]!;
       }
-      for (const el of Array.from(document.querySelectorAll(pSel))) {
+      // it4-A: a pattern whose visible matches include a runner-owned fixture id presses the fixture (PREFER_IDS)
+      const all = Array.from(document.querySelectorAll(pSel));
+      if (pattern && prefer.length) all.sort((a, b) => Number(prefer.some((id) => (b.getAttribute("data-testid") ?? "").endsWith(id))) - Number(prefer.some((id) => (a.getAttribute("data-testid") ?? "").endsWith(id))));
+      for (const el of all) {
         const t = el.getAttribute("data-testid") ?? "";
         if (pattern && !new RegExp(`^${pSelGlob.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(t)) continue;
         if (nots.some((n) => (n.includes("*") ? new RegExp(`^${n.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`).test(t) : n === t))) continue;
@@ -1012,7 +1124,7 @@ async function findVisible(page: Any, testid: string, notList: string[] = [], wa
         fallback ??= el;
       }
       return idleFirst ?? fallback;
-    }, sel, notList, isPattern, testid).catch(() => null);
+    }, sel, notList, isPattern, testid, PREFER_IDS).catch(() => null);
     const el = h?.asElement?.() ?? null;
     if (el) return el;
     await h?.dispose?.().catch(() => {});
@@ -1101,6 +1213,8 @@ function fillValueFor(testid: string, inputType: string): string {
   if (inputType === "url" || /(url|website|domain)$/.test(t) || /domain-input$/.test(t)) return /domain/.test(t) ? `qc-btn-${u}.example.com` : `https://qc-btn-${u}.example.com`;
   if (/digest-hour$/.test(t)) return "8";
   if (/lower-text$/.test(t)) return "ลดอายุเก็บ"; // the retention "type this word to confirm lowering" box
+  // it4-A: export file lifetime is 1–90 days (PrivacySettings.tsx client check) — "days" → 100 was refused client-side
+  if (/export-days$/.test(t)) return "30";
   if (/archive-confirm-key$/.test(t)) return RUN_OBJECT_KEY; // "type the object's key to confirm"
   if (/(^|-)key$/.test(t)) return `qc_btn_${u}`.slice(0, 31); // object keys: a–z 0–9 _ , 2–31 chars (objectKeyProblem) // an hour number 0–23, not a clock time
   if (inputType === "time" || (/(from|to|hour)$/.test(t) && /(window|quiet|digest)/.test(t))) return "09:00";
@@ -1364,7 +1478,12 @@ async function prefill(page: Any, it: PlanItem, group: PlanItem[], el: Any, base
   // the form/dialog — or, for div-based panels (SavedViewControls · automation builder), the nearest testid'd container
   const container = await el.evaluateHandle((e: Element) => (e.tagName === "FORM" ? e : e.closest('form, [role="dialog"], dialog, [aria-modal="true"], [data-testid$="-form"], [data-testid$="-modal"], [data-testid$="-panel"], [data-testid$="-editor"], [data-testid$="-builder"], [data-testid$="-sheet"], [data-testid$="-box"], [data-testid$="-bar"]') ?? e.closest("section, fieldset, .card"))).catch(() => null);
   if (!container?.asElement?.()) return done;
-  const sibs = group.filter((s) => ["input", "textarea", "select", "toggle"].includes(s.kind) && s.expect.type !== "navigate" && s.expect.type !== "ui"
+  // it4-A: + fill rows of OTHER pages whose component also renders here (`alsoOn` ∋ this page) — e.g. StepFields (the first
+  //   step of a new sequence on /settings/sequences, rows on /settings/sequences/[sequenceId]): run2 crm-seq-new-submit
+  //   was refused client-side ("crm-seq-step-subject-new: aria-invalid") because nothing filled the step
+  const also = ROWS.filter((r) => (r.alsoOn ?? []).includes(it.page) && r.page !== it.page)
+    .map((r) => ({ testid: r.testid, kind: r.kind, expect: r.expect, hiddenFor: r.hiddenFor ?? [], guard: null as string | null, notList: r.not ?? [] }));
+  const sibs = [...group, ...also].filter((s) => ["input", "textarea", "select", "toggle"].includes(s.kind) && s.expect.type !== "navigate" && s.expect.type !== "ui"
     && !PREFILL_NEVER.has(s.testid) && !s.guard && !s.hiddenFor.includes(base) && s.testid !== it.testid);
   const seen = new Set<string>();
   for (const s of sibs) {
@@ -1470,7 +1589,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       if (pendingChainRepair) { const full = pendingChainRepair === "full"; pendingChainRepair = false; await restoreSnapshot(`${it.page} (ซ่อมหลังตัวเปิดที่เขียน${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; await load(); }
       const ngReveal = nonGetCount;
       const rv = await reveal(page, path, it, state, shouldBeHidden);
-      if (nonGetCount > ngReveal && it.opener.some((o) => DESTRUCTIVE_RE.test(splitOpener(o).tid))) pendingChainRepair = it.opener.some((o) => FULL_REPAIR_RE.test(splitOpener(o).tid)) ? "full" : true;
+      if (nonGetCount > ngReveal && it.opener.some((o) => repairsAfter(splitOpener(o).tid))) pendingChainRepair = it.opener.some((o) => FULL_REPAIR_RE.test(splitOpener(o).tid)) ? "full" : true;
       if (shouldBeHidden) {
         if (rv.el) { hiddenLeak.push({ page: it.page, testid: it.testid, user, device, detail: "อยู่ใน hiddenFor แต่มองเห็นได้" }); rec("hiddenLeak", false); }
         else { passedN.n++; rec("passed", true, "absent (hiddenFor)", { hiddenPass: true }); }
@@ -1770,7 +1889,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         try { cookies = await mintSession(user, ctx); await page.setCookie(...cookies); state.dirty = true; }
         catch (e) { console.log(`  ⚠️ ออก session ใหม่หลัง ${it.testid} ไม่ได้ — ${e instanceof Error ? e.message : e}`); }
       }
-      if (DESTRUCTIVE_RE.test(it.testid) && nonGetCount > nonGetBefore) { const full = FULL_REPAIR_RE.test(it.testid); await restoreSnapshot(`${it.page}#${it.testid} ${device} (ซ่อมข้อมูลซีด${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; }
+      if (repairsAfter(it.testid) && nonGetCount > nonGetBefore) { const full = FULL_REPAIR_RE.test(it.testid); await restoreSnapshot(`${it.page}#${it.testid} ${device} (ซ่อมข้อมูลซีด${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; }
     }
 
     // c42b VACUITY GUARD: a "hidden" row passes only on a page that actually rendered for this persona — when the page
@@ -1889,6 +2008,7 @@ async function main() {
   if (!DRY && !DISCOVER && [...ROWS].some((r) => AUDIT_STATE_ROWS.has(r.testid) && pageSelected(r.page))) await createThrowaways();
   if (!DRY && !DISCOVER && [...ROWS].some((r) => /(^|&)tab=lines(&|$)/.test(r.query ?? "") && pageSelected(r.page))) await createLinesDeals(ctx);
   if (!DRY && !DISCOVER && [...ROWS].some((r) => r.page.includes("[threadKey]") && pageSelected(r.page))) await createThreadFixtures(ctx);
+  if (!DRY && !DISCOVER) await createExtraFixtures(ctx);
   else if (DRY) for (const u of userKeys) if (!u.startsWith("customer")) ctx.perUser[u] = { ...(ctx.perUser[u] ?? { dealId: null, contactId: null, companyId: null, partyId: null }), threadKey: ctx.threadKey ?? "dry-thread" };
   if (PICKS.length) {
     console.log(`── บันทึกที่แต่ละบทบาทเปิด (เลือกผ่านตัวกรองการมองเห็นของ product) ──`);
@@ -1937,6 +2057,7 @@ async function main() {
     if (THROWAWAY.size) await P.crmContact.deleteMany({ where: { id: { in: [...THROWAWAY.values()] }, tenantId: TENANT } }).catch(() => {});
     await deleteLinesDeals();
     await deleteThreadFixtures();
+    await deleteExtraFixtures();
     throw new Fatal(`snapshot ล้ม — ${e instanceof Error ? e.message : e}`);
   }
   const udd = `/tmp/chr-crm-btn-${process.pid}`;
@@ -1967,6 +2088,7 @@ async function main() {
     const fin = await restoreSnapshot("CLEAN (จบรอบ)");
     await deleteLinesDeals(); // before the tag sweep (which would also catch the qc-btn- titles) — reported by count
     await deleteThreadFixtures();
+    await deleteExtraFixtures();
     let cleaned = 0;
     for (const s of SWEEP) {
       try {
@@ -1994,12 +2116,13 @@ try {
 }
 // c42b safety net: fixtures created before main's try/finally (throwaway contacts · deal-with-lines clones) must not outlive a
 // run that threw earlier (server ping · puppeteer import) — idempotent (already-deleted ids = 0 rows)
-if (!DRY && (THROWAWAY.size || LINES_DEALS.size || THREADS.size)) {
+if (!DRY && (THROWAWAY.size || LINES_DEALS.size || THREADS.size || XFIX.length)) {
   const left = await P.crmDeal.count({ where: { id: { in: [...LINES_DEALS.values()] } } }).catch(() => 0) + await P.crmContact.count({ where: { id: { in: [...THROWAWAY.values()] } } }).catch(() => 0)
-    + await P.crmEmailMessage.count({ where: { id: { in: [...THREADS.values()].map((t) => t.id) } } }).catch(() => 0);
+    + await P.crmEmailMessage.count({ where: { id: { in: [...THREADS.values()].map((t) => t.id) } } }).catch(() => 0) + await extraFixturesLeft();
   if (left) {
     await deleteLinesDeals();
     await deleteThreadFixtures();
+    await deleteExtraFixtures();
     await P.crmContact.deleteMany({ where: { id: { in: [...THROWAWAY.values()] }, tenantId: TENANT } }).catch(() => {});
     console.log(`🧩 safety net: ลบ fixture ที่ค้าง ${left}`);
   }

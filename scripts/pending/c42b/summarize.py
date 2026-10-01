@@ -13,7 +13,7 @@ files = []
 for a in args:
     if a.startswith('--') or a in (lst, only):
         continue
-    files += sorted(glob.glob(a))
+    files += sorted(f for f in glob.glob(a) if not f.endswith('-crash.json'))  # it4-A: crashed-then-redone chunks are not counted
 T = collections.defaultdict(collections.Counter)
 items = []
 for f in files:
