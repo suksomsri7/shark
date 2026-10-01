@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # dbg2 (c42b it4 phase A): PROMOTED runner+registry (scripts/) — short targeted runs that verify S3/S5/S6/S7/S8/S9 + N1–N10
-# and re-cover manager /companies (run2 manager chunk 1 died at 04:53). One step at a time, each under the gate lock;
+# and re-cover manager /companies (run2 manager chunk 1 died at 04:53) + (A4) C5.4-E lifecycle rows · N11 manager deal page · manager e-mail tab. One step at a time, each under the gate lock;
 # separate shots dir (/tmp/c42b-logs/dbg2) so nothing of run2/run3 is touched. Counts before/after = restore proof.
 # usage: systemd-run --unit=crm-c42b-dbg2 --collect -p MemoryMax=6G --setenv=PATH="$PATH" --setenv=HOME=/root bash scripts/pending/c42b/dbg2.sh [step…]
 set -uo pipefail
 cd /root/projects/shark-crm-c42b
 LD=/tmp/c42b-logs; L=$LD/dbg2.log; S=$LD/dbg2.status; mkdir -p "$LD/dbg2"; : > "$S"
 grep -qE '^DATABASE_URL=.*ep-plain-art' .env.qc && grep -qE '^DIRECT_URL=.*ep-plain-art' .env.qc || { echo "not QC1" | tee -a "$L"; exit 1; }
+grep -q "^READY .*061cf35f" /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE || { echo "3215 build not READY 061cf35f — $(cat /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE)" | tee -a "$L" "$S"; exit 1; }
 export QC_BTN_SHOTS=$LD/dbg2 QC_FAIL_DIR=/root/projects/shark-crm-c42b/.qc-shots/c42b/dbg2-fail QC_ENV_FILE=.env.qc CRM_V2_SWITCH=all CRM_EXPECTED_PATH=/root/projects/shark-crm-c42b/scripts/crm-expected.json
 md5sum scripts/qc-crm-buttons.mts scripts/crm-ui-inventory.json > $LD/dbg2.md5
 pnpm exec tsx scripts/pending/c42b/counts.mts $LD/counts-before-dbg2.json >/dev/null 2>&1
@@ -25,6 +26,9 @@ STEPS=(
   "n-home-chat-owner|re:^/app/sys/\[id\]\$|owner|"
   "n-home-chat-nok|re:^/app/sys/\[id\]\$|nok|desktop"
   "mgr-companies|re:^/companies|manager|"
+  "e-lifecycle-owner|re:^/companies/\[|owner|"
+  "n11-mgr-deal|re:^/deals/\[|manager|"
+  "mgr-emails|re:^/emails|manager|desktop"
 )
 ONLY=" $* "
 for st in "${STEPS[@]}"; do

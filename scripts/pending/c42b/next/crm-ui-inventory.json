@@ -22235,6 +22235,71 @@
       ]
     },
     {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "company-lifecycle-correct-sheet",
+        "state": "appears",
+        "note": "แสดงเฉพาะบริษัทที่เป็น \"ลูกค้า\" และยังใช้งาน · ผู้จัดการ/เจ้าของร้านเท่านั้น"
+      },
+      "wo": "C5.4-E",
+      "oracle": ""
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:setCompanyLifecycleAction",
+        "db": "CrmCompany.lifecycleStage=PROSPECT · audit crm.company.lifecycle correction=true",
+        "note": "ลูกค้า → มีโอกาส เท่านั้น"
+      },
+      "wo": "C5.4-E",
+      "oracle": "",
+      "opener": "company-lifecycle-correct"
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "company-lifecycle-correct-sheet",
+        "state": "disappears",
+        "note": "ปิดโดยไม่บันทึก"
+      },
+      "wo": "C5.4-E",
+      "oracle": "",
+      "opener": "company-lifecycle-correct"
+    },
+    {
       "page": "/companies",
       "testid": "companies-import-backdrop",
       "kind": "button",

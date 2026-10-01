@@ -252,7 +252,10 @@ const FULL_REPAIR_RE = /(convert-(submit|done)|^teams-create-(form|submit))$/;
 //   33 "dead"; dealWhere is correct to hide it) ⇒ repaired right after (keepNew: the entity's own row is written back)
 const OWNERSHIP_RE = /^(deal-owner-select|company-owner-submit)$/;
 /** rows after which the seed is repaired: DESTRUCTIVE ones + FULL_REPAIR / OWNERSHIP ones that are not destructive by name */
-const repairsAfter = (tid: string): boolean => DESTRUCTIVE_RE.test(tid) || FULL_REPAIR_RE.test(tid) || OWNERSHIP_RE.test(tid);
+// it4-A (C5.4-E): a confirmed lifecycle correction turns the fixture company CUSTOMER → PROSPECT, which removes the button
+// the next row (`company-lifecycle-correct-cancel`) opens with (page.tsx:175) ⇒ repair right after it like an ownership change
+const STATE_FLIP_RE = /^company-lifecycle-correct-confirm$/;
+const repairsAfter = (tid: string): boolean => DESTRUCTIVE_RE.test(tid) || FULL_REPAIR_RE.test(tid) || OWNERSHIP_RE.test(tid) || STATE_FLIP_RE.test(tid);
 // CSV fixture for the four import file inputs (CSV parsed server-side, no storage upload) — one qc-btn- tagged row
 const IMPORT_FILE_INPUTS = new Set(["companies-import-file", "contacts-import-file", "crm-import-file", "object-import-file"]);
 // never auto-ticked by PREFILL (safety — see crm-portal-invite-email special case)
@@ -269,6 +272,7 @@ type Ctx = {
   linesDealId: string | null; // c42b: oracle-owned OPEN deal WITH lines (rows whose query has tab=lines open it)
   sequenceId: string | null; threadKey: string | null; token: string | null; docType: string | null; docId: string | null;
   unlinkedConversationId: string | null; // it4-A: a chat room whose ChatContact party has NO CRM contact (crm-panel-create-lead)
+  lifecycleCompanyId: string | null; // it4-A (C5.4-E rows): runner-owned live CUSTOMER company with NO won deal (LIFECYCLE_ROW_RE rows open it)
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
 };
 const UNRESOLVED: { placeholder: string; reason: string }[] = [];
@@ -292,7 +296,7 @@ async function buildCtx(): Promise<Ctx> {
     dealId: E.dealIds?.[0] ?? null, contactId: E.contactIds?.[0] ?? null, companyId: E.companyIds?.[0] ?? null,
     recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, pageSlug: null, perUser: {}, conversationId: null, linesDealId: null,
     unitId: E.units?.patong ?? E.units?.kata ?? null,
-    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null,
+    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null, lifecycleCompanyId: null,
     posSysId: E.systems?.POS ?? null, memberSysId: E.systems?.MEMBER ?? null, hrSysId: E.systems?.HR ?? null,
     accountSysId: E.systems?.ACCOUNT ?? null, chatSysId: E.systems?.CHAT ?? null,
   };
@@ -466,7 +470,9 @@ function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | nu
   if (!sysR.id) return { path: null, reason: sysR.reason };
   const map: Record<string, string | null> = {
     // c42b: the lines tab opens the persona's oracle-owned deal WITH lines (QC1 seeds none — see LINES_DEALS)
-    id: sysR.id, dealId: /(^|&)tab=lines(&|$)/.test(row.query ?? "") ? (ctx.linesDealId ?? (DRY ? "dry-lines-deal" : null)) : ctx.dealId, contactId: ctx.contactId, companyId: ctx.companyId,
+    id: sysR.id, dealId: /(^|&)tab=lines(&|$)/.test(row.query ?? "") ? (ctx.linesDealId ?? (DRY ? "dry-lines-deal" : null)) : ctx.dealId, contactId: ctx.contactId,
+    // it4-A (C5.4-E): the lifecycle-correction rows open the runner-owned CUSTOMER company without a won deal (see createExtraFixtures)
+    companyId: LIFECYCLE_ROW_RE.test(row.testid) ? (ctx.lifecycleCompanyId ?? (DRY ? "dry-lifecycle-company" : null)) : ctx.companyId,
     recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: row.page.startsWith("/p/") ? ctx.pageSlug : ctx.slug,
     token: ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
     unitId: ctx.unitId, sequenceId: ctx.sequenceId, threadKey: ctx.threadKey, unlinkedConversationId: ctx.unlinkedConversationId,
@@ -609,6 +615,11 @@ async function deleteThreadFixtures(): Promise<void> {
 //     opens "ยังไม่มีมุมมอง" and crm-home-saved-view-item-* can never appear.
 //   · one chat room per persona LINKED to the persona's CRM contact by party (ChatContact.partyId = CrmContact.partyId):
 //     the panel's contact/log-activity controls exist only for a linked room (crm-panel-actions.ts logActivity: !!brief.contact).
+//   · (C5.4-E) a live CUSTOMER company with NO won deal: `company-lifecycle-correct*` render only for a live CUSTOMER company
+//     to OWNER/MANAGER (companies/[companyId]/page.tsx:175 `live && canUpdate && … && c.lifecycleStage === "CUSTOMER"`) and
+//     setCompanyLifecycle refuses while the company holds a WON deal (companies.ts COMPANY_HAS_WON_DEAL_MSG) — every QC1
+//     CUSTOMER company holds exactly one WON deal (facts8.mts) ⇒ the confirm row could only ever see the refusal.
+const LIFECYCLE_ROW_RE = /^company-lifecycle-correct(-|$)/;
 const XFIX: { model: string; id: string }[] = [];
 const PREFER_IDS: string[] = [];
 const selRow = (re: RegExp) => ROWS.some((r) => re.test(r.testid) && pageSelected(r.page));
@@ -670,6 +681,23 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
       PICKS.push({ user: u, entity: "chatRoom", id: conv, why: `ห้องแชทของตัวกด ผูกปาร์ตี้ของผู้ติดต่อ ${cid} (briefFor ของ product เห็นผู้ติดต่อตามสิทธิ์ของบทบาท)` });
     }
   }
+  if (selRow(LIFECYCLE_ROW_RE)) {
+    // same owner/team as the shared company pick ⇒ same visibility for owner/manager (proved below through companyWhere)
+    const srcId = ctxForUser(ctx, "owner").companyId ?? ctx.companyId;
+    const src = srcId ? await P.crmCompany.findUnique({ where: { id: srcId }, select: { ownerUserId: true, teamId: true } }) : null;
+    const name = `qc-btn-lifecycle-${rand}`;
+    const party = await P.party.create({ data: { tenantId: TENANT, kind: "COMPANY", name }, select: { id: true } });
+    const co = await P.crmCompany.create({ data: { tenantId: TENANT, systemId: SYS, partyId: party.id, name, lifecycleStage: "CUSTOMER",
+      ownerUserId: src?.ownerUserId ?? ownerUid, teamId: src?.teamId ?? null }, select: { id: true } });
+    XFIX.push({ model: "crmCompany", id: co.id }, { model: "party", id: party.id });
+    ctx.lifecycleCompanyId = co.id;
+    for (const u of ["owner", "manager"]) {
+      if (!userKeys.includes(u)) continue;
+      let ok = false;
+      try { const who = await actorOf(u); if (who) { const W = (await import("@/lib/modules/crm/where" as string)) as Any; ok = !!(await P.crmCompany.findFirst({ where: { AND: [await W.companyWhere({ tenantId: TENANT, systemId: SYS, actorUserId: who.uid }, who.actor), { id: co.id }] }, select: { id: true } })); } } catch { ok = false; }
+      PICKS.push({ user: u, entity: "lifecycleCompany", id: co.id, why: `บริษัท CUSTOMER ไม่มีดีลชนะของตัวกด (qc-btn-lifecycle-) owner/team = ${srcId} · companyWhere ของ product ${ok ? "ยอมรับ" : "❌ ไม่ยอมรับ"}` });
+    }
+  }
   if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
 }
 async function deleteExtraFixtures(): Promise<void> {
@@ -704,7 +732,7 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
     for (const testid of testids) {
       for (const user of userKeys) {
         const ctxU = ctxForUser(ctx, user);
-        const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}|${user}`;
+        const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}|${user}|${LIFECYCLE_ROW_RE.test(row.testid) ? "lc" : ""}`;
         if (!pageCache.has(cacheKey)) pageCache.set(cacheKey, pageUrl(row, ctxU));
         const { path, reason } = pageCache.get(cacheKey)!;
         if (!applicableUser(row, user)) continue; // silent on this role — registry makes no claim
@@ -1363,7 +1391,8 @@ function coerceEq(actual: unknown, expect: string): boolean {
   return String(actual) === expect;
 }
 /** entity id of a DETAIL page (literal `Model.col=value` checks only make sense there) */
-function primaryIdOf(page: string, ctx: Ctx, query?: string): string | null {
+function primaryIdOf(page: string, ctx: Ctx, query?: string, testid?: string): string | null {
+  if (page === "/companies/[companyId]" && LIFECYCLE_ROW_RE.test(testid ?? "")) return ctx.lifecycleCompanyId;
   if (page === "/deals/[dealId]") return /(^|&)tab=lines(&|$)/.test(query ?? "") ? ctx.linesDealId : ctx.dealId;
   if (page === "/contacts/[contactId]") return ctx.contactId;
   if (page === "/companies/[companyId]") return ctx.companyId;
@@ -1830,7 +1859,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
               for (let i = 0; i < 10 && after !== want; i++) { await sleep(400); after = await countScoped(c.model); }
               if (after !== null && after !== want) { ok = false; detail += ` · ${c.model} ${before}→${after} (คาด ${want})`; }
             } else if (c.op === "eq" && c.column) {
-              const id = primaryIdOf(it.page, ctxForUser(ctx, it.user), it.path.split("?")[1]);
+              const id = primaryIdOf(it.page, ctxForUser(ctx, it.user), it.path.split("?")[1], it.testid);
               if (!id || !c.model.startsWith(it.page.includes("deals") ? "CrmDeal" : it.page.includes("contacts") ? "CrmContact" : it.page.includes("companies") ? "CrmCompany" : "CustomRecord")) continue;
               const actual = await readColumn(c.model, id, c.column);
               if (actual === undefined) continue;

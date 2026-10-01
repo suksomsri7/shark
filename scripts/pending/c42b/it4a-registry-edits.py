@@ -29,5 +29,10 @@ for t in ['team-member-add-form', 'team-member-add-submit']:
     setf(row('/app/settings/teams', t), 'opener', 'team-member-add-select=*')
 # N9 create-lead exists only for a room whose party has NO CRM contact (crm-panel-actions.ts createLead: contactState === "none")
 setf(row('/app/sys/[id]', 'crm-panel-create-lead'), 'query', 'c=[unlinkedConversationId]')
+# E1 (C5.4-E rows from main 288cca97): confirm/cancel live inside the sheet that `company-lifecycle-correct` opens
+#    (Company360Actions.tsx CompanyLifecycleCorrect: `if (!open) return <button …company-lifecycle-correct>` · sheet holds -confirm/-cancel)
+for t in ['company-lifecycle-correct-confirm', 'company-lifecycle-correct-cancel']:
+    if any(r['testid'] == t for r in rows):
+        setf(row('/companies/[companyId]', t), 'opener', 'company-lifecycle-correct')
 open(p, 'w').write(json.dumps(d, indent=2, ensure_ascii=False) + '\n')
 print(f'it4-A registry edits: {n} field changes')

@@ -39,7 +39,8 @@ for t in theirs['rows']:
     k = key(t)
     if k not in B:
         if k in O:
-            if O[k] != t: conflicts.append(f'{k}: new on main AND in lane with different content')
+            # lane only ADDED fields main's row lacks (e.g. it4a opener for the E rows) = already merged, not a conflict
+            if O[k] != t and not all(O[k].get(f) == v for f, v in t.items()): conflicts.append(f'{k}: new on main AND in lane with different content')
             continue
         added.append(t); continue
     if k not in O and k in MOVED and MOVED[k] in O: k_o = MOVED[k]  # it4 moved 8 rows /deals → /deals/[dealId]
