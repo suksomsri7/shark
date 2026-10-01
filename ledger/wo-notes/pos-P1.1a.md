@@ -111,7 +111,7 @@ qc-pos-register 42/42 · qc-pos-account 16/16 · qc-pos-products 24/24 · qc-pos
 - ไม่มี env (`bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL pnpm fitness`): exit 0 · เหมือนกัน 38/38
 - F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" เท่าเดิม · F15.2 เขียว (ไม่แตะ createSale) · F5.1 baseline 45 (ผ่าน `pos/db.ts`) · F1.1 316 model ลงทะเบียนครบ
 
-## A7 — rollback (ซ้อมบนกระดาษ · ไม่รันแบบทำลาย)
+## A7 — rollback (round 1 · ⚠️ ถูกแทนด้วย SQL ฉบับเต็มใน Round 2 §M6 — ฉบับนี้ไม่ drop FK แยก และยังอ้าง index ที่ round 2 ไม่มีแล้ว)
 ลำดับ: revert โค้ด (client ที่ generate ใหม่อ้างคอลัมน์ใหม่) → deploy → แล้วค่อยรัน SQL:
 ```sql
 BEGIN;
@@ -159,7 +159,7 @@ COMMIT;
 ## ORACLE-EDIT requests
 ไม่มี (54/54 เขียว · ข้อสังเกตเรื่องสาขา ARCHIVED ดู §R2)
 
-## ข้อที่ผู้คุมงานต้องตัดสิน
+## ข้อที่ผู้คุมงานต้องตัดสิน (round 1 — ข้อ 3/4/7 ถูกแทนด้วยมติ round 2)
 1. `qc-prisma.sh` ไม่รู้จัก QC4 → ใช้ `qc4.sh` + `pnpm exec prisma` แทน (ดูบนสุด) — ควรเติม `ep-frosty-lab` ใน qc-prisma.sh หรือรับรองทางนี้
 2. QC4 มี `20261103000000_crm_perf_indexes` ใน `_prisma_migrations` ที่ไม่อยู่ใน tree นี้ (สืบทอดจาก parent) — `migrate status` ไม่รายงาน · พบหลัง deploy
 3. ShopProduct ที่มี invItemId แต่ InvItem นั้นไม่ได้ขายใน "POS ตัวแรก" → ข้าม (`shopProductInvItemNotInFirstPos`) แทนการสร้างแถวที่สอง (ไม่เกิดใน QC)
@@ -180,4 +180,97 @@ COMMIT;
 | R2-3 | migration ใหม่ deploy + generate | ✅ `Applying migration 20261120000000_pos_v2_a … successfully applied` · generate · drift diff เหลือแค่ 3 index ของ crm_perf_indexes ที่สืบทอดมา (partial unique ใหม่ไม่ถูกนับเป็น drift — เหมือน AccountProduct) |
 | R2-4 | โค้ด C1–C13 (catalog.ts เขียนใหม่ · backfill script C13) | ✅ |
 | R2-5 | backfill ร้าน QC: dry → จริง → จริงซ้ำ → ถอย → 2 โปรเซสซ้อน | ✅ 13/3/4 → 13/3/4 → 0 ทั้งหมด → A 13/3/4 · B 0 (รอล็อก) · INVARIANTS ไม่ซ้ำ/ไม่กำพร้า · ตารางเดิม = ก่อน P1.1a ทุก byte |
-| R2-6 | oracle | ⏳ |
+| R2-6 | oracle | ✅ 79/80 · แดงข้อเดียว X3.2 (ขัดกับ C4 — ORACLE-EDIT ข้างล่าง) · สำเนาที่ใส่ hunk ที่ขอ = 80/80 |
+| R2-7 | regression 17 ชุด · fitness 2 โหมด | ✅ 17/17 เหมือน round 1 · fitness 38/38 ทั้งคู่ |
+| R2-8 | typecheck | ✅ exit 0 (`tsc --noEmit` ไม่มี output · รอบเดียว) |
+| R2-9 | notes · commit · push | ✅ |
+
+
+## Round 2 — รายงานต่อข้อ (ก่อน → หลัง)
+oracle: `scripts/qc-pos-p1.1.mts` (round-2 · 108 ข้อ · P1.1a 80 · P1.1b 28) · โค้ด: `src/lib/modules/pos/catalog.ts` (เขียนใหม่ทั้งไฟล์) · `scripts/pos-backfill-catalog.mts`
+
+| ข้อ | round 1 | round 2 (file:line) | check |
+|---|---|---|---|
+| C1 | `actorUserId: null` = ระบบ | `CATALOG_SYSTEM_ACTOR` unique symbol `catalog.ts:24` · `actorOf :152` null/undefined/""/อื่น = PERMISSION_DENIED · ไม่ใช่สมาชิก = NOT_FOUND | S3.1 ✅ |
+| C2 | `trackStock Boolean @default(false)` ตัดสินตอน backfill | `Boolean?` · `effectiveTrackStock :373` (AUTO คิดตอนอ่าน: invItemId + PRODUCT + (movement ∨ onHand≠0)) · view มี `trackStock` + `trackStockMode` · `updateProduct({trackStock:true|false|null})` · true ไม่ผูกคลัง = VALIDATION · backfill/ensure/createProduct = null | S3.2 S3.3 S1.41 S1.3 ✅ |
+| C3 | list เห็นของทุกคลังที่ผูก POS | `unitInventory :199` + `warehouseCond :421` ใน list/search/byBarcode (EXISTS InvItem.systemId = คลังของสาขา) · stock[unit] = onHand ของแถวที่มองเห็น | S3.4 S3.5 S1.33 ✅ |
+| C4 | ตรวจแค่คีย์สิทธิ์ | `requireScope :171`: unitId null ⇒ ผู้กระทำทุกสาขา (`rbac.canGrantUnitAccess(m,["*"])` = OWNER ∨ unitAccess `*`) ไม่งั้น PERMISSION_DENIED · มีสาขา ⇒ เข้าไม่ได้ = NOT_FOUND · ย้ายสาขาตรวจทั้งต้นทางและปลายทาง · ensure/createCategory ทุกสาขา = ผู้กระทำทุกสาขา · `assertCategory :592` หมวดสาขาอื่น = VALIDATION (ย้ายสาขาแล้วหมวดเดิมไม่เข้า = VALIDATION) | S3.6 S3.7 S3.8 ✅ · X3.2 ❌ (ขัดกัน — ORACLE-EDIT) |
+| C5 | `byBarcode → view|null` (ตัวเก่าสุด) | `byBarcode :546 → {items}` ทุกตัว เรียง name,id | S3.9 S1.19 S1.34 X2.2 ✅ |
+| C6 | ไม่ส่ง limit = ทั้งหมด · ค้นด้วย pre-query take 2000 | ปริยาย 100 · >500 ตัดเหลือ 500 · `nextCursor` เมื่อเหลือ · ค้นใน SQL คำสั่งเดียว (`listForUnit :508` ชื่อ/ชื่อ EN/บาร์โค้ด + EXISTS SKU/บาร์โค้ด InvItem · keyset name,id · ใช้ index M4) · `toViews :428` จับคู่ด้วย Map ทั้งหมด (S6/S7) | S3.10 S3.11 S1.37 ✅ |
+| C7 | posPrice → salePrice → SERVICE → own → null · AP สำรองผ่าน AP.invItemId | `initialPrice :354`: salePrice>0 → posPrice>0 เมื่อ posEnabled → SERVICE>0 → own (0 คงไว้) → sale 0 & ทุน 0 = 0 → null · AP แบบลิ้นชักเท่านั้น `strictAp :397` (InvItem.accountProductId · ไม่เก็บถาวร · สมุดที่ผูก POS ตาม findAccountLinkForPos) · ราคาเดิมผิดรูป = null + นับ · ตัวนับ+ตัวอย่างใน JSON_SUMMARY `counts`/`samples` | S3.12 S3.13 S1.13 S1.14 ✅ |
+| C8 | คัดลอก vatRateBp เสมอ | `vatOf` + `bookOfPos :384` คัดลอกเมื่อสมุดที่ผูก POS จด VAT (AccountSettings.vatRegistered ?? true แบบ vatConfigOf) ไม่งั้น null | S3.14 S1.15 ✅ |
+| C9 | shop ชี้ InvItem นอก POS แรก = ข้าม | a) ชี้แถวร่วม + นับ diff/inactive (ไม่แก้แถวร่วม) · b) แถวของตัวเองใน POS แรก invItemId ตั้ง unitId สาขาร้าน · c) dangling = แถวของตัวเอง inv null · d) ไม่ผูกคลัง · ทุกแถวถูกผูก · นับ shopBranchNotInFirstPos (`planTenant :949` ขั้น 4) | S3.15 S3.16 S3.17 S1.11 ✅ |
+| C10 | ไม่ตรวจชนิด · P2002 หลุดดิบ | MENU/BUNDLE + invItemId · InvItem เก็บถาวร · ชนิดไม่ตรง = VALIDATION · บาร์โค้ดของ InvItem ตัวเองไม่ชน · `writeGuard :106` P2002 → CONFLICT ครอบผู้เขียนทุกตัว | S3.18 ✅ |
+| C11 | อ่านค่าเดิมไม่ล็อก · archive คืนเวลาของตัวเอง | `loadProduct(…, forUpdate) :208` SELECT … FOR UPDATE ใน setPrice/updateProduct/archive · audit createdAt = เวลาหลังได้ล็อก · archive คืนค่าที่เก็บจริง | S3.19 ✅ (5/5 สาย · 3/3 archive) |
+| C12 | สาขาเก็บถาวรนับ · POS แรกไม่กรอง active ไม่มี tie-break | `loadPosResolution :282`: สาขาเก็บถาวร + ระบบปิดใช้งาน ไม่นับ · POS แรก = active เรียง createdAt,id (`listSystems` ไม่มี id tie-break/ไม่กรอง active — ต่างโดยตั้งใจ แก้ฝั่งนั้นใน P2.1) · `assertPosSystem` ต้อง active · `assertUnit` สาขาเก็บถาวร = NOT_FOUND | S3.20 S1.6 S1.10 ✅ |
+| C13 | ไม่ระบุร้าน = ทุกร้านแม้ prod · โหลด movement ทั้งหมด | prod ต้อง `--tenant` หรือ `--all` (script :67) · movement = `groupBy itemId` · ตัวเลือกเมนูจัดกลุ่มด้วย Map · ตัวนับครบ 11 ชื่อ (+ `trackStockAutoOn`) · exit 0 พร้อมตัวนับ | S3.21 ✅ |
+| M1 | index บนคอลัมน์เชื่อม 5 ตัว | ไม่มีทั้ง SQL/schema/DB · คอมเมนต์ใน schema "index added in P6.1 …" | S3.22 ✅ |
+| M2 | ไม่มี lock_timeout · ADD COLUMN ก่อน | คำสั่งแรก `SET lock_timeout = '3s'` (ระดับ session — ดูผลวัด) · ADD COLUMN 5 ตัวท้ายสุด | S3.23 ✅ |
+| M3 | NOT NULL DEFAULT false | `"trackStock" BOOLEAN,` | S3.24 ✅ (รอบแรกแดงเพราะคอมเมนต์หัวไฟล์ของผมมีคำว่า default — แก้คอมเมนต์แล้ว rollback+deploy ใหม่) |
+| M4 | (systemId, unitId, archivedAt) | `PosProduct_systemId_archivedAt_name_id_idx` | S3.25 ✅ |
+| M5 | ตรวจในโค้ด + advisory lock | raw partial unique `PosCategory_systemId_name_all_branches_key … WHERE "unitId" IS NULL` (แบบ AccountProduct) · `pnpm drift` (migrate diff datasource→schema) ไม่เห็นมันเป็น drift (วัดบน QC4: diff เหลือแค่ 3 index ของ crm_perf_indexes ที่สืบทอดมา) ⇒ ไม่ต้องใช้ทางสำรอง · ล็อก advisory ของ createCategory เอาออก (DB กันแข่งเอง → P2002 → CONFLICT) | S3.26 ✅ |
+| M6 | ซ้อม rollback บนกระดาษ | รันจริง 2 ครั้งบน QC4 (ครั้งที่ 2 หลังแก้คอมเมนต์ M3) — ดูด้านล่าง | — |
+
+### M2 — prisma migrate รันไฟล์อย่างไร (วัดจริง)
+probe ใน schema Postgres แยก `p11probe` บน QC4 (config ชั่วคราวใน `.qc-shots` · ลบ schema แล้ว): `migrate deploy` ของไฟล์ 3 คำสั่ง → txid 4386091 แล้ว 4386092 = **ทีละคำสั่ง คนละ transaction (autocommit)** · `SET LOCAL lock_timeout='3s'` แล้วอ่าน `current_setting('lock_timeout')` ได้ `0` (ไม่มีผล) · `SET lock_timeout='3s'` (session) อ่านได้ `3s` ในทั้งสอง tx ⇒ ใช้รูป session (มีผลถึงจบการเชื่อมต่อของ schema engine เท่านั้น) · ผลพลอยได้: ไฟล์ migration ไม่ atomic — ถ้าล้มกลางไฟล์ต้องเก็บกวาดด้วยมือ (เหมือนทุก migration ของรีโปนี้)
+
+### M6 — rollback ฉบับเต็ม (รันจริงบน QC4 ด้วย `bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec prisma db execute --file …` หลังตรวจ host ep-frosty-lab)
+```sql
+SET lock_timeout = '3s';
+BEGIN;
+ALTER TABLE IF EXISTS "PosProductOptionGroup" DROP CONSTRAINT IF EXISTS "PosProductOptionGroup_productId_fkey";
+ALTER TABLE IF EXISTS "RecipeLine" DROP CONSTRAINT IF EXISTS "RecipeLine_productId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_categoryId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_parentId_fkey";
+DROP TABLE IF EXISTS "PosProductOptionGroup";
+DROP TABLE IF EXISTS "RecipeLine";
+DROP TABLE IF EXISTS "PosProduct";
+DROP TABLE IF EXISTS "PosCategory";          -- partial unique M5 หายพร้อมตาราง
+DROP TYPE IF EXISTS "PosProductKind";
+ALTER TABLE "MenuItem" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopProduct" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopOrderLine" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "PosSaleLine" DROP COLUMN IF EXISTS "productId";
+ALTER TABLE "RestaurantOrderItem" DROP COLUMN IF EXISTS "productId";
+DELETE FROM "_prisma_migrations" WHERE migration_name = '20261120000000_pos_v2_a';
+COMMIT;
+```
+ลำดับบน prod: revert โค้ด + deploy ก่อน (client ใหม่อ้างคอลัมน์ใหม่) → แล้วค่อยรัน SQL นี้
+ผล (ทั้ง 2 ครั้ง): `Script executed successfully.` · ตารางใหม่/enum/คอลัมน์เชื่อม 5 ตัว/แถว migration หายหมด (`LINKCOLS [] ENUM []` · `LOCALONLY ["20261120000000_pos_v2_a"]`) · fingerprint ตารางเดิม (count + md5 รวม updatedAt · ร้าน QC POS และร้านอื่นแยกกัน) = `fp-before` ของ round 1 ทุกตาราง → `migrate deploy` ไฟล์ใหม่ → `Database schema is up to date!`
+
+### A2 (round 2) — ร้าน QC ของ POS
+| ขั้น | exit | created | updated |
+|---|---|---|---|
+| dry-run | 0 | posProduct 13 · posCategory 3 · og 0 · recipe 0 · invItem 0 | menuItem 4 |
+| จริง | 0 | 13 · 3 | menuItem 4 |
+| จริงซ้ำ | 0 | 0 ทั้งหมด | 0 ทั้งหมด |
+| ถอย (unbackfill) → 2 โปรเซสซ้อน | 0/0 | A 13/3 · B 0 (รอล็อกร้าน) | A menuItem 4 · B 0 |
+counts ของร้าน QC (dry-run): `{"soldAtCostToday":0,"zeroPriceProduct":2,…,"trackStockAutoOn":3}` (น้ำฟรี + น้ำแข็ง · ครัวซองต์/น้ำดื่ม/โค้ก) · INVARIANTS ไม่ซ้ำ/ไม่กำพร้า · ทั้ง QC4 (dry-run ทุกร้าน): `ร้าน 19 · InvItem 17 · MenuItem 4 · ShopProduct 0` · ข้าม 0 · `soldAtCostToday 6` (ร้านอื่นใน QC4 — ลิ้นชักวันนี้คิดราคาทุน 6 รายการ) · `zeroPriceProduct 2` · `trackStockAutoOn 11` · จะสร้าง 8 (ร้านอื่น — ไม่ได้รันจริง)
+
+### A3 (round 2)
+fingerprint หลังทุกขั้น (after-rollback · r2-after-backfill · after-rollback2 · r2-final หลัง 17 ชุด) = `fp-before` (ก่อน P1.1a) ทุกตารางเดิม · PosProduct ของร้านอื่น = 0
+
+### A1 / A4 / A5 (round 2)
+- oracle (หลัง backfill ร้าน QC): exit 1 · `===== qc-pos-p1.1 ===== ผ่าน 79/80` · `JSON_SUMMARY {"suite":"qc-pos-p1.1","total":80,"passed":79,"failed":["P1.1-X3.2"],…,"skippedGroups":{"S2":"P1.1b ยังไม่เริ่ม …ข้าม 28 ข้อ"}}` · ROWCOUNTS เท่าเดิม
+- สำเนา oracle ที่ใส่ hunk ORACLE-EDIT (`.qc-shots/pos/p1.1a/r2/qc-pos-p1.1-x32edit.mts` — ไม่แตะไฟล์จริง): exit 0 · `ผ่าน 80/80`
+- 17 ชุด regression: สรุปตรงกับ round 1 ทุกชุด (17 SAME) · logs `.qc-shots/pos/p1.1a/r2/after/`
+- fitness มี env / ไม่มี env: exit 0 · `JSON_SUMMARY {"total":38,"passed":38,"findings":[]}` ทั้งคู่ · F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" เท่าเดิม · F15.2 ✅ · F5.1 baseline 45 ✅
+
+### ORACLE-EDIT (round 2)
+- **P1.1-X3.2** · hunk (`scripts/qc-pos-p1.1.mts:1150`):
+  `- const tgt = await attempt(() => C.createProduct(ctxOwner, { name: \`${TAG} perm\`, basePriceSatang: 2000 }));`
+  `+ const tgt = await attempt(() => C.createProduct(ctxOwner, { name: \`${TAG} perm\`, basePriceSatang: 2000, unitId: SILOM }));`
+  · เหตุ: แคชเชียร์ seed = STAFF `unitAccess ["posqc-coffee-unit-silom"]` · เป้าเดิมเป็นสินค้าทุกสาขา (unitId null) ⇒ ตาม C4 การตั้งราคาสินค้าทุกสาขาต้องเป็นผู้กระทำทุกสาขา = PERMISSION_DENIED — ข้อเดียวกับที่ S3.6 (`setAll`) บังคับให้ปฏิเสธสำหรับผู้กระทำคนเดียวกัน (role MANAGER) · สองข้อนี้ขัดกันบนตัวแสดงเดียวกัน · hunk ทำให้ X3.2 ทดสอบสิ่งที่ตั้งใจ (STAFF + คีย์ `pos.product.setPrice` ตั้งราคาสินค้าของสาขาตัวเองได้) · X3.1/X3.3/X6.3/X6.4 ใช้เป้าเดียวกันและยังเขียวกับ hunk (สำเนาวัดแล้ว 80/80)
+
+### หนี้ (round 2 · brief §C + ที่พบเพิ่ม)
+| หนี้ | ใบเจ้าของ |
+|---|---|
+| catalog.ts อ่านตารางโมดูลอื่นตรง (AppSystemUnit · InvItem · InvMovement · AccountProduct · AccountSystemLink · AccountSettings · Menu*) — facade หรือข้อยกเว้นที่บันทึก (N5) | P1.1b |
+| แถวเว็บล้วน/สาขาไม่อยู่ใน POS แรก แก้ไขได้ + ราคาต่อช่องทาง (N2 · M4 hunter · shopBranchNotInFirstPos) | P2.8 |
+| ค้นแบบ trigram/index ค้น (N10) · ค้นตอนนี้ ILIKE + EXISTS | P5.3 |
+| backfill ถือล็อกร้านชนกับผู้เขียนแคตตาล็อก — รันนอกเวลาขาย + ข้อความลองใหม่ (hunter LOW) | P6.1 runbook |
+| index ของคอลัมน์เชื่อม 5 ตัว (CREATE INDEX CONCURRENTLY นอก prisma migrate) — ก่อนใบแรกที่กรองด้วยคอลัมน์เหล่านี้ | P6.1 (หรือ P1.1b/P2.x ใบแรกที่ query) |
+| `pos.product.manage` โชว์ในหน้าสิทธิ์ก่อนมีหน้าจอใช้ — ธง `planned` มีอยู่ (`permissions.ts` `planned?: string[]` ต่อโมดูล) แต่ต้องเพิ่มบรรทัด `planned: [...]` ในก้อนโมดูล pos ของไฟล์ร้อน (ไม่ใช่ 1 คำ) | P1.1b |
+| `listSystems` (shop checkout) ยังไม่กรอง active/ไม่มี id tie-break — resolver ของแคตตาล็อกกรองแล้ว ⇒ ร้านที่มี POS ปิดใช้งานเก่ากว่า: เช็คเอาท์เว็บกับแคตตาล็อกเลือก POS ต่างกัน | P2.1 |
+| migration ของ prisma ไม่ atomic (ทีละคำสั่ง — วัดแล้ว) ถ้าล้มกลางไฟล์บน prod ต้องเก็บกวาดมือ (rollback SQL ข้างบนใช้ได้แบบ IF EXISTS) | P6.1 runbook |
+| รูปของแถวที่ผูก InvItem (InvItemImage) ไม่อยู่ใน read model | P1.2/P1.3 |
