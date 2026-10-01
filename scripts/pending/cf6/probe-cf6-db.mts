@@ -177,8 +177,11 @@ try {
     const wellFormed = !!html && lastLt < html.lastIndexOf(">") && (html.match(/<a\b/g) ?? []).length === (html.match(/<\/a>/g) ?? []).length;
     chk("RV4.form", `signature of ${before} chars whose sanitized form exceeds 4 000: stored HTML is well-formed (no tag cut in half · every <a> closed)`, wellFormed, `err=${err} len=${html.length} tail=${j(html.slice(-120))}`);
     let tooLong = "";
-    try { await CRM.emails.setUserSetting(ctx, owner, { signatureHtml: "x".repeat(4001) }); } catch (e) { tooLong = e instanceof Error ? `${(e as Any).code ?? ""} ${e.message}` : String(e); }
-    chk("RV4.cap", "signature input over 4 000 characters is refused with a validation message (the REST op already refuses > 4 000)", /VALIDATION/.test(tooLong), tooLong || "accepted");
+    // r2 (review RV5-1): the input bound is CRM_EMAIL_SIGNATURE_INPUT_MAX (16 000 · the stored cap 8 000 applies after sanitising) — 4 000 on round 1
+    const SH = (await import("@/lib/modules/crm/emails-shared" as string)) as Any;
+    const inMax = Number(SH.CRM_EMAIL_SIGNATURE_INPUT_MAX ?? 4000);
+    try { await CRM.emails.setUserSetting(ctx, owner, { signatureHtml: "x".repeat(inMax + 1) }); } catch (e) { tooLong = e instanceof Error ? `${(e as Any).code ?? ""} ${e.message}` : String(e); }
+    chk("RV4.cap", `signature input over the input bound (${inMax}) is refused with a validation message (same bound as the REST op)`, /VALIDATION/.test(tooLong), tooLong || "accepted");
     const small = await CRM.emails.setUserSetting(ctx, owner, { signatureHtml: "<p>สมชาย · ฝ่ายขาย</p><p><a href=\"https://ex.com/?a=1&amp;b=2\">เว็บ</a></p>" });
     snap.signatureSmall = small?.signatureHtml ?? null;
   });

@@ -31,8 +31,17 @@ export const CRM_EMAIL_ATTACH_MAX_COUNT = 20;
 export const CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES = 8 * 1024 * 1024;
 /** หัวข้อจดหมาย */
 export const CRM_EMAIL_SUBJECT_MAX = 300;
-/** ลายเซ็นของพนักงาน (ข้อความที่ส่งเข้ามา ก่อน sanitize) — เท่ากับเพดานของ REST `emails.userSettings.update` · CRM C5.5-fix5 (RV-4) */
-export const CRM_EMAIL_SIGNATURE_MAX = 4000;
+/**
+ * ลายเซ็นของพนักงาน — เพดานของ **ค่าที่เก็บ** (HTML หลัง sanitize) · CRM C5.5-fix5 r2 (รีวิว RV5-1)
+ * 🔴 นับหลัง sanitize ไม่ใช่ที่ข้อความเข้า: sanitize ทำให้ยาวขึ้นได้ (`&` → `&amp;` · ลิงก์ได้ rel/target เพิ่ม ≈ +50%) แต่ sanitize ซ้ำ
+ *    กับค่าที่เก็บแล้วได้ค่าเดิม (idempotent) ⇒ ค่าใดที่ระบบเคยเก็บ ส่งกลับมาบันทึกซ้ำ (การ์ด "การส่งของฉัน" ส่งกลับทุกครั้ง · REST อ่านแล้วเขียน)
+ *    ผ่านเสมอ · เดิม (รอบแรก) นับที่ข้อความเข้า 4,000 ⇒ ลายเซ็นที่เก็บ 5,975 ตัวถูกปฏิเสธตอนบันทึกการ์ดครั้งถัดไป ช่องอื่นหายไปด้วย
+ */
+export const CRM_EMAIL_SIGNATURE_MAX = 8000;
+/** เพดานข้อความเข้า (ก่อน sanitize — กันงานเกินจำเป็น) = 2 เท่าของเพดานที่เก็บ · หน้าจอ (maxLength) และ REST (`optText`) ใช้ค่านี้ตัวเดียว */
+export const CRM_EMAIL_SIGNATURE_INPUT_MAX = 2 * CRM_EMAIL_SIGNATURE_MAX;
+/** ข้อความเดียวทุกทาง (บริการ · REST · การ์ด) */
+export const CRM_EMAIL_SIGNATURE_TOO_LONG_MSG = `ลายเซ็นยาวเกิน ${CRM_EMAIL_SIGNATURE_MAX.toLocaleString("en-US")} ตัวอักษร (นับรวมรูปแบบ/ลิงก์ที่ระบบจัดให้) — ย่อให้สั้นลงแล้วบันทึกอีกครั้ง`;
 
 /**
  * ชนิดไฟล์แนบของอีเมล = ชุดเดียวกับไฟล์แนบ CRM (ชุดย่อยของ `ALLOWED_UPLOAD_TYPES` ลบ SVG)

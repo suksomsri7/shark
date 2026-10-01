@@ -875,7 +875,7 @@ console.log("\n── F16: ห้าม regex ตัดแท็ก/แกะว
   ];
   const selfMiss = Object.entries(F16_SELF_TEST.mustHit).filter(([, src]) => findTagStripRegex(src).length !== 1).map(([k]) => k);
   const selfFalse = Object.entries(F16_SELF_TEST.mustNotHit).filter(([, src]) => findTagStripRegex(src).length !== 0).map(([k]) => k);
-  chk("F16.0", "ตัวสแกนจับครบทุกรูป (`[^>]*` · `[^>]+` · `<ชื่อ[^>]*>` · `<img[^>]+` · กลุ่ม `<([^>]*)>` · `<.*?>` · `<[\\s\\S]*?>` · `new RegExp` · `<a\\s+[^>]*`) และไม่จับคอมเมนต์/สตริง/เทมเพลต/`[^<>]*`/แท็กตายตัว",
+  chk("F16.0", "ตัวสแกนจับครบทุกรูป (`[^>]*` · `[^>]+` · `<ชื่อ[^>]*>` · `<img[^>]+` · กลุ่ม `<([^>]*)>` · `<.*?>` · `<[\\s\\S]*?>` · `new RegExp`/`RegExp()` · `<a\\s+[^>]*` · `</…` · `<!…` · `<[a-z]…` · `<\\w+…` · `<(?:p|div)…` · `<\\S+`) และไม่จับคอมเมนต์/สตริง/เทมเพลต/`[^<>]*`/แท็กตายตัว/lookbehind",
     selfMiss.length === 0 && selfFalse.length === 0, `ไม่จับ: ${selfMiss.join(", ") || "-"} · จับผิด: ${selfFalse.join(", ") || "-"}`);
   const bad: string[] = [];
   const seen = new Map<string, number>();

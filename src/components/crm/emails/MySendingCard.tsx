@@ -89,7 +89,7 @@ export function MySendingCard({ data }: { data: CrmEmailMySendingData }) {
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-sm">
               <span className="text-xs text-[color:var(--color-muted)]">ลายเซ็นท้ายจดหมาย</span>
-              <textarea className="input min-h-20" value={signature} onChange={(e) => setSignature(e.target.value)} placeholder="ชื่อ · ตำแหน่ง · เบอร์ติดต่อ" data-testid="crm-email-my-signature" />
+              <textarea className="input min-h-20" value={signature} maxLength={data.signatureInputMax} onChange={(e) => setSignature(e.target.value)} placeholder="ชื่อ · ตำแหน่ง · เบอร์ติดต่อ" data-testid="crm-email-my-signature" />
             </label>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
