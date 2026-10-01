@@ -272,6 +272,7 @@ type Ctx = {
   linesDealId: string | null; // c42b: oracle-owned OPEN deal WITH lines (rows whose query has tab=lines open it)
   sequenceId: string | null; threadKey: string | null; token: string | null; docType: string | null; docId: string | null;
   unlinkedConversationId: string | null; // it4-A: a chat room whose ChatContact party has NO CRM contact (crm-panel-create-lead)
+  attachThreadKey: string | null; // it4-A (dbg2): runner-owned thread with NO contact (company-linked) — `crm-email-attach-contact-*` rows open it
   lifecycleCompanyId: string | null; // it4-A (C5.4-E rows): runner-owned live CUSTOMER company with NO won deal (LIFECYCLE_ROW_RE rows open it)
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
 };
@@ -296,7 +297,7 @@ async function buildCtx(): Promise<Ctx> {
     dealId: E.dealIds?.[0] ?? null, contactId: E.contactIds?.[0] ?? null, companyId: E.companyIds?.[0] ?? null,
     recordId: null, objectKey: null, partyId: null, slug: CQC.tenantSlug ?? null, pageSlug: null, perUser: {}, conversationId: null, linesDealId: null,
     unitId: E.units?.patong ?? E.units?.kata ?? null,
-    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null, lifecycleCompanyId: null,
+    sequenceId: null, threadKey: null, token: null, docType: null, docId: null, unlinkedConversationId: null, lifecycleCompanyId: null, attachThreadKey: null,
     posSysId: E.systems?.POS ?? null, memberSysId: E.systems?.MEMBER ?? null, hrSysId: E.systems?.HR ?? null,
     accountSysId: E.systems?.ACCOUNT ?? null, chatSysId: E.systems?.CHAT ?? null,
   };
@@ -475,7 +476,9 @@ function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | nu
     companyId: LIFECYCLE_ROW_RE.test(row.testid) ? (ctx.lifecycleCompanyId ?? (DRY ? "dry-lifecycle-company" : null)) : ctx.companyId,
     recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: row.page.startsWith("/p/") ? ctx.pageSlug : ctx.slug,
     token: ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
-    unitId: ctx.unitId, sequenceId: ctx.sequenceId, threadKey: ctx.threadKey, unlinkedConversationId: ctx.unlinkedConversationId,
+    unitId: ctx.unitId, sequenceId: ctx.sequenceId, unlinkedConversationId: ctx.unlinkedConversationId,
+    // it4-A (dbg2): the attach-to-contact search exists only on a thread without a contact (emails/[threadKey]/page.tsx `canAttach: !contactId`)
+    threadKey: ATTACH_ROW_RE.test(row.testid) ? (ctx.attachThreadKey ?? (DRY ? "dry-attach-thread" : null)) : ctx.threadKey,
   };
   // any page already rooted outside the CRM module (/app/… /b/… /p/… /u/…) is absolute as-is; everything else is
   // the shortened CRM-relative form ("/deals", "/objects/[key]", …) and needs the CRM_BASE prefix.
@@ -593,6 +596,22 @@ async function createThreadFixtures(ctx: Ctx): Promise<void> {
     ctx.perUser[u] = { ...(ctx.perUser[u] ?? { dealId: null, contactId: null, companyId: null, partyId: null }), threadKey: t.threadKey };
     PICKS.push({ user: u, entity: "emailThread", id: t.threadKey, why: `ข้อความเข้า 1 ฉบับของตัวกด (qc-btn-) ผูกผู้ติดต่อ ${cid} ที่ ${u} มองเห็น — ไม่มีคีย์ crm.email.read ⇒ หน้าต้อง 404 ตามคีย์` });
   }
+  if (ROWS.some((r) => ATTACH_ROW_RE.test(r.testid) && pageSelected(r.page))) {
+    const coId = ctxForUser(ctx, "owner").companyId ?? ctx.companyId;
+    if (coId) {
+      const threadKey = randomBytes(16).toString("hex");
+      const tag = `${rand}a`;
+      const m = await P.crmEmailMessage.create({ data: {
+        tenantId: TENANT, systemId: SYS, contactId: null, companyId: coId, direction: "IN", messageId: `<qc-btn-${tag}@example.com>`, threadKey,
+        fromAddr: `qc-btn-${tag}@example.com`, fromName: "qc-btn unknown sender", toAddrs: ["sales@example.com"], subject: `qc-btn-thread ${tag}`,
+        bodyText: "qc-btn fixture thread without contact (C4.2 runner)", snippet: "qc-btn fixture thread", status: "RECEIVED", receivedAt: new Date(),
+        trackTokenHash: randomBytes(32).toString("hex"),
+      }, select: { id: true } });
+      THREADS.set(`attach:${coId}`, { threadKey, id: m.id });
+      ctx.attachThreadKey = threadKey;
+      PICKS.push({ user: "*", entity: "emailThreadNoContact", id: threadKey, why: `ข้อความเข้าของตัวกด ไม่ผูกผู้ติดต่อ ผูกบริษัท ${coId} (qc-btn-) — แถว crm-email-attach-contact-* เปิดเธรดนี้` });
+    } else note("attachThreadKey", "ไม่มีบริษัทที่เลือกไว้ — แถว crm-email-attach-contact-* ข้าม");
+  }
   console.log(`🧩 e-mail thread fixtures: ${THREADS.size}`);
 }
 async function deleteThreadFixtures(): Promise<void> {
@@ -620,6 +639,12 @@ async function deleteThreadFixtures(): Promise<void> {
 //     setCompanyLifecycle refuses while the company holds a WON deal (companies.ts COMPANY_HAS_WON_DEAL_MSG) — every QC1
 //     CUSTOMER company holds exactly one WON deal (facts8.mts) ⇒ the confirm row could only ever see the refusal.
 const LIFECYCLE_ROW_RE = /^company-lifecycle-correct(-|$)/;
+//   · (dbg2) one ACTIVE e-mail template: QC1 has 0 CrmEmailTemplate ⇒ `crm-email-template` lists only "— ไม่ใช้แม่แบบ —"
+//     (EmailComposer.tsx select · emails/[threadKey]/page.tsx `templates.filter((t) => t.active)`) — nothing to pick.
+//   · (dbg2) a thread with NO contact, linked to the shared company pick: the "ยังไม่รู้ว่าเป็นของใคร" search block renders only
+//     when no message of the thread has a contact (page.tsx `canAttach: !contactId`); company-linked rows are visible to
+//     whoever sees the company (emails.ts rowVisibleFilter) — a fully unlinked row would need the unmatched gate instead.
+const ATTACH_ROW_RE = /^crm-email-attach-contact-/;
 const XFIX: { model: string; id: string }[] = [];
 const PREFER_IDS: string[] = [];
 const selRow = (re: RegExp) => ROWS.some((r) => re.test(r.testid) && pageSelected(r.page));
@@ -681,6 +706,20 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
       PICKS.push({ user: u, entity: "chatRoom", id: conv, why: `ห้องแชทของตัวกด ผูกปาร์ตี้ของผู้ติดต่อ ${cid} (briefFor ของ product เห็นผู้ติดต่อตามสิทธิ์ของบทบาท)` });
     }
   }
+  // (dbg2) one ARCHIVED team: TeamsManager.tsx lists `teams.filter((t) => showArchived || !t.archived)` — QC1 has no archived
+  //   team (registry `needs`), so `teams-show-archived` cannot change the cards (run2 only passed on a leftover of teams-create
+  //   rows, which N7 now repairs away)
+  if (selRow(/^teams-show-archived$/)) {
+    const t = await P.team.create({ data: { tenantId: TENANT, name: `qc-btn-archived-${rand}`, archivedAt: new Date() }, select: { id: true } });
+    XFIX.push({ model: "team", id: t.id });
+    PICKS.push({ user: "*", entity: "archivedTeam", id: t.id, why: "ทีมเก็บถาวรของตัวกด (qc-btn-archived-) — ซีดไม่มีทีมเก็บถาวร" });
+  }
+  if (selRow(/^crm-email-template$/)) {
+    const t = await P.crmEmailTemplate.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-tpl-${rand}`, subject: "qc-btn template {{contact.firstName}}",
+      bodyHtml: "<p>qc-btn template body (C4.2 runner)</p>", active: true }, select: { id: true } });
+    XFIX.push({ model: "crmEmailTemplate", id: t.id });
+    PICKS.push({ user: "*", entity: "emailTemplate", id: t.id, why: "แม่แบบจดหมายของตัวกด (qc-btn-tpl-) — ซีดมี 0 ⇒ ตัวเลือกแม่แบบไม่มีอะไรให้เลือก" });
+  }
   if (selRow(LIFECYCLE_ROW_RE)) {
     // same owner/team as the shared company pick ⇒ same visibility for owner/manager (proved below through companyWhere)
     const srcId = ctxForUser(ctx, "owner").companyId ?? ctx.companyId;
@@ -732,7 +771,7 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
     for (const testid of testids) {
       for (const user of userKeys) {
         const ctxU = ctxForUser(ctx, user);
-        const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}|${user}|${LIFECYCLE_ROW_RE.test(row.testid) ? "lc" : ""}`;
+        const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}|${user}|${LIFECYCLE_ROW_RE.test(row.testid) ? "lc" : ATTACH_ROW_RE.test(row.testid) ? "at" : ""}`;
         if (!pageCache.has(cacheKey)) pageCache.set(cacheKey, pageUrl(row, ctxU));
         const { path, reason } = pageCache.get(cacheKey)!;
         if (!applicableUser(row, user)) continue; // silent on this role — registry makes no claim
@@ -1694,7 +1733,19 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           // rect (usePointerBoardDrag targetAt) — drop on the VISIBLE part of the target (run2: owner 390 deal-card-* no write)
           const vw = w;
           const visL = Math.max(b.x, 0), visR = Math.min(b.x + b.width, vw - 1);
-          const sx = a.x + a.width / 2, sy = a.y + a.height / 2, tx = visR > visL + 8 ? (visL + visR) / 2 : b.x + b.width / 2, ty = b.y + 12;
+          // it4-A (dbg2 s9 · 390): the board ignores a pointerdown that starts on a link/button of the card
+          // (usePointerBoardDrag.ts onCardPointerDown `el.closest("button, a, input, textarea, select")` → return) — on 390 the
+          // card centre is the title LINK ⇒ the "drag" became a click that opened the deal. Grab a non-interactive point.
+          const grab: { x: number; y: number } | null = await el.evaluate((card: Element) => {
+            const r = card.getBoundingClientRect();
+            for (const fy of [0.5, 0.85, 0.15, 0.7, 0.3, 0.95]) for (const fx of [0.5, 0.85, 0.15, 0.7, 0.3, 0.95]) {
+              const x = r.left + r.width * fx, y = r.top + r.height * fy;
+              const hit = document.elementFromPoint(x, y);
+              if (hit && card.contains(hit) && !hit.closest("button, a, input, textarea, select")) return { x, y };
+            }
+            return null;
+          }).catch(() => null);
+          const sx = grab?.x ?? a.x + a.width / 2, sy = grab?.y ?? a.y + a.height / 2, tx = visR > visL + 8 ? (visL + visR) / 2 : b.x + b.width / 2, ty = b.y + 12;
           await page.mouse.move(sx, sy); await page.mouse.down(); await sleep(300);
           for (let i = 1; i <= 14; i++) { await page.mouse.move(sx + ((tx - sx) * i) / 14, sy + ((ty - sy) * i) / 14); await sleep(30); }
           await page.mouse.up();

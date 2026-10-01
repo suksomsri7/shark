@@ -11276,11 +11276,12 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/contacts/[contactId]",
@@ -11290,7 +11291,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)"
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11298,11 +11300,12 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/deals/[dealId]",
@@ -11312,7 +11315,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด"
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11320,11 +11324,12 @@
       "kind": "link",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/deals/new?contactId=*",
@@ -11334,7 +11339,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)"
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11342,32 +11348,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "inline-error",
-        "target": "crm-panel-activity-form",
-        "db": ""
-      },
-      "wo": "C1.11",
-      "oracle": "",
-      "system": "CHAT",
-      "query": "c=[conversationId]"
-    },
-    {
-      "page": "/app/sys/[id]",
-      "testid": "crm-panel-activity-type",
-      "kind": "select",
-      "roles": [
-        "owner",
-        "manager",
-        "nok",
-        "thana"
-      ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "crm-panel-activity-form",
@@ -11377,7 +11363,31 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "opener": "crm-panel-log-activity"
+      "viewport": "desktop"
+    },
+    {
+      "page": "/app/sys/[id]",
+      "testid": "crm-panel-activity-type",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "inline-error",
+        "target": "crm-panel-activity-form",
+        "db": ""
+      },
+      "wo": "C1.11",
+      "oracle": "",
+      "system": "CHAT",
+      "query": "c=[conversationId]",
+      "opener": "crm-panel-log-activity",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11385,11 +11395,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "crm-panel-error",
@@ -11399,7 +11410,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "opener": "crm-panel-log-activity"
+      "opener": "crm-panel-log-activity",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11407,11 +11419,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:logActivityFromChatAction",
@@ -11421,7 +11434,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "opener": "crm-panel-log-activity"
+      "opener": "crm-panel-log-activity",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11429,11 +11443,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "mutation",
         "target": "action:createLeadFromChatAction",
@@ -11443,7 +11458,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[unlinkedConversationId]",
-      "needs": "ห้องแชท [conversationId] ที่ยังไม่ผูกผู้ติดต่อ CRM (ผูกแล้ว = ไม่มีปุ่มนี้)"
+      "needs": "ห้องแชท [conversationId] ที่ยังไม่ผูกผู้ติดต่อ CRM (ผูกแล้ว = ไม่มีปุ่มนี้)",
+      "viewport": "desktop"
     },
     {
       "page": "/app/sys/[id]",
@@ -11451,11 +11467,12 @@
       "kind": "button",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "crm-chat-panel",
@@ -11465,7 +11482,8 @@
       "oracle": "",
       "system": "CHAT",
       "query": "c=[conversationId]",
-      "needs": "แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้"
+      "needs": "แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้",
+      "viewport": "desktop"
     },
     {
       "page": "/app/party/[partyId]",

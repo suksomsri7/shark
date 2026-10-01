@@ -34,5 +34,20 @@ setf(row('/app/sys/[id]', 'crm-panel-create-lead'), 'query', 'c=[unlinkedConvers
 for t in ['company-lifecycle-correct-confirm', 'company-lifecycle-correct-cancel']:
     if any(r['testid'] == t for r in rows):
         setf(row('/companies/[companyId]', t), 'opener', 'company-lifecycle-correct')
+# D1 (dbg2 owner 390): the chat context column (member + CRM panel) is `hidden … lg:flex` — "ซ่อนต่ำกว่า lg ตามแบบร่าง"
+#    (inbox-client.tsx ~:2118-2120 aside around <ContextPanel crmPanel>) ⇒ every crm-panel-* control is desktop-only by design
+for r in rows:
+    if r['page'] == '/app/sys/[id]' and r['testid'].startswith('crm-panel-'):
+        setf(r, 'viewport', 'desktop')
+# D2 (dbg2 nok 1440): the room page shows the inbox only when canReadChat (src/app/app/sys/[id]/page.tsx:63 · chat/guard.ts:39-42
+#    rbac `chat.conversation.read`) — QC1 nok/thana (STAFF, no chat key) evaluate FALSE (facts9.mts) ⇒ page shows the refusal card,
+#    no CRM panel. §15 (b): the persona lacks the key that gates the control ⇒ hiddenFor (crm keys alone do not decide this page)
+for r in rows:
+    if r['page'] == '/app/sys/[id]' and r['testid'].startswith('crm-panel-'):
+        for u in ('nok', 'thana'):
+            if u in (r.get('roles') or []):
+                setf(r, 'roles', [x for x in r['roles'] if x != u])
+            if u not in (r.get('hiddenFor') or []):
+                setf(r, 'hiddenFor', list(r.get('hiddenFor') or []) + [u])
 open(p, 'w').write(json.dumps(d, indent=2, ensure_ascii=False) + '\n')
 print(f'it4-A registry edits: {n} field changes')

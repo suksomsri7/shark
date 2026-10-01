@@ -393,3 +393,58 @@ N1 fillValueFor `*-export-days` = 30 · N2 crm-seq-save opener · N3/N5/N8/N9/N1
 | 13 | crm-home-saved-view d+m | 2 wE | FIXTURE | 0 saved views | N10 |
 Manager tally (run2): pressed 1617 · passed 1526 · dead 38/39 · wrongExpect 6/8 · hiddenLeak 0 · vacuous 0 · overflow 0 · console 2 (= the S6 404) · restoreFail 0 · fatal 1 (chunk 1). **0 PRODUCT** in manager. nok/thana/customer NOT run in run2 (unit stopped by the controller before nok).
 - **Commit layout (fitness F14.2):** the lane base (46f952cc) has no E source ⇒ the 3 E rows are "ghost rows" for the pre-commit fitness here. Committed `scripts/crm-ui-inventory.json` = registry WITHOUT the E rows (md5 76ac3a40 = staged it4-A registry); the E-merged registry (what dbg2/run3 run against the 061cf35f build) is committed as `scripts/pending/c42b/next/crm-ui-inventory.json` and is the WORKING copy of `scripts/crm-ui-inventory.json` (uncommitted delta = exactly 3 rows + 2 openers). On main (E present) copy next → scripts; fitness then sees real testids.
+
+### Checkpoint A5 (1 Oct ~07:05 UTC)
+- typecheck of the promoted runner (c79ee4c4, incl. E fixture) **exit 0** (`typecheck-4.log` 06:59, ran after the last runner edit 06:51) · :3215 READY `be48ab61` (controller: src = 288cca97 · C + E · label differs only by ledger commits; E is an ancestor, 0 src/registry diff 288cca97..be48ab61).
+- **dbg2 launched** `crm-c42b-dbg2` (16 steps, md5 runner c79ee4c4 / registry 5a8aa973 = with E rows) — status `/tmp/c42b-logs/dbg2.status`, log `dbg2.log`, per-step `dbg2-summary-<step>.json`.
+- run3.sh: logs BUILD-STATE at start (run-chunks already waits per chunk for READY + server up) — NOT launched.
+
+### dbg2 findings so far (staged in `scripts/pending/c42b/next/` + `it4a-registry-edits.py` — NOT promoted while dbg2 runs: dbg2 md5-freezes scripts/)
+| step | result | non-pass | class | cause (evidence) | fix (staged) |
+|---|---|---|---|---|---|
+| s3-title · s5-consent · s4-activities · s7-objects · s8-commissions · s6-email-nok | 49/49 · 65/65 · 80/80 · 27/27 · 44/44 · 14/14 | — | — | S3 · S1+S5 (outbox settle seen working) · S4 · S7 · S8 · S6 verified | — |
+| s9-board (owner 390) | 34/35 | deal-card-* wE | RUNNER | drag grabbed the card centre = title LINK on 390; board ignores pointerdown on `a/button/input` (usePointerBoardDrag.ts onCardPointerDown `el.closest("button, a, input, textarea, select")`) ⇒ click opened the deal (fail shot = Deal 360) | D3 grab a non-interactive point of the card (elementFromPoint scan) |
+| s6-email-owner | 12/18 | crm-email-attach-contact-q/-go d+m dead · crm-email-template d+m dead | FIXTURE | attach block renders only for a thread with no contact (`emails/[threadKey]/page.tsx:83 canAttach: !contactId`) — S6 thread is contact-linked · QC1 has 0 CrmEmailTemplate ⇒ select has only "— ไม่ใช้แม่แบบ —" (page.tsx:85, EmailComposer.tsx:160) | D4 company-linked no-contact thread (`attachThreadKey`, visible via company — emails.ts rowVisibleFilter) for `crm-email-attach-contact-*` · D5 runner-owned active template |
+| n-settings | not run | — | RUNNER (dbg script) | dbg2 splits steps on `|`, the page regex contains `|` ⇒ `--user /(pipelines` refused | dbg3.sh uses `;` |
+| n-teams | 40/42 | teams-show-archived d+m wE | FIXTURE | QC1 has no archived team (row `needs` says so); TeamsManager.tsx:46 `teams.filter((t) => showArchived || !t.archived)` — run2 passed only on a teams-create leftover that N7 now repairs | D6 runner-owned archived Team |
+| n-home-chat-owner | 81/85 | crm-panel-log-activity + 3 m dead | REGISTRY | the chat context column is `hidden … lg:flex` "ซ่อนต่ำกว่า lg ตามแบบร่าง" (inbox-client.tsx:2118-2120) — other crm-panel rows were masked as skippedNeeds on 390 | D1 all `crm-panel-*` viewport desktop |
+| n-home-chat-nok | 48/52 | crm-panel-log-activity + 3 d dead | REGISTRY | room page shows the inbox only when canReadChat (sys/[id]/page.tsx:63 · chat/guard.ts:39-42 `chat.conversation.read`); QC1 nok/thana evaluate FALSE (facts9.mts) ⇒ refusal card | D2 §15(b): crm-panel-* nok/thana roles→hiddenFor |
+| mgr-companies (re-cover of run2 manager chunk 1 FATAL) | 196/196 | — | — | incl. the 3 C5.4-E lifecycle rows on the live E build (fixture admitted by companyWhere · confirm wrote + STATE_FLIP repair) | — |
+| e-lifecycle-owner (`/companies/[`) | 118/118 | — | — | E rows owner d+m pass on the live build | — |
+| n11-mgr-deal (`/deals/[` manager) | 98/98 | — | — | N11 verified (run2: 33 dead) | — |
+| mgr-emails (manager 1440) | 18/21 | attach-contact-q/-go · template dead | FIXTURE | same as s6-email-owner | D4 · D5 |
+**dbg2 restore proof:** restoreFail 0 in every step · `counts-before-dbg2` = `counts-after-dbg2` = `counts-after-run2` (all tables, tags, sessions, portal, taxId).
+
+### Checkpoint A6 (1 Oct ~09:45 UTC)
+- dbg2 DONE (07:00–09:32). Promoted D1–D6 into `scripts/` (runner 2f83a576 · registry b35c337c with E rows): it4a edits 45 field changes (re-run 0) · sweep 0 changes · merge-main-rows 288cca97 0/0 · `--dry` exit 0 (8,247 presses: −36 = crm-panel-* no longer claimed on 390 and nok/thana now hidden-checks) · typecheck exit 0 (`typecheck-5.log`).
+- **dbg3 launched** `crm-c42b-dbg3` (7 steps: s9-board · s6-email-owner · n-settings · n-teams · n-home-chat-owner · n-home-chat-nok · mgr-emails) on :3215 READY be48ab61.
+
+### dbg3 (1 Oct 09:38–11:12 UTC · promoted runner 2f83a576 · registry b35c337c · :3215 be48ab61 = src 288cca97)
+| step | result |
+|---|---|
+| s9-board owner 390 (D3) | 35/35 |
+| s6-email-owner d+m (D4 no-contact thread · D5 template) | 20/20 (picks: emailThreadNoContact · emailTemplate) |
+| n-settings owner d+m (N1–N6 — never ran in dbg2) | 169/169 |
+| n-teams owner d+m (N7 · D6 archived team) | 42/42 |
+| n-home-chat-owner 1440 (N8–N10 · D1) | 44/44 |
+| n-home-chat-nok 1440 (D2 hidden by chat gate) | 57/57 |
+| mgr-emails manager 1440 (D4 · D5 · it4a unmatched tab) | 22/22 |
+**Restore proof dbg3:** restoreFail 0 every step · `counts-before-dbg3` = `counts-after-dbg3` = `counts-before-run2` baseline (0 diffs). dbg2+dbg3 cover every run2 owner/manager non-pass class; all classified non-passes now pass or are covered by a verified fix.
+
+## it4 PHASE A — FINAL (1 Oct ~11:20 UTC)
+**Tallies run2 (frozen pre-fix runner 48dce828 / registry c1807837 · build 46f952cc):**
+| role | pressed | passed | dead d/m | wrongExpect d/m | hiddenLeak | vacuous | console | overflow | restoreFail | fatal |
+|---|---|---|---|---|---|---|---|---|---|---|
+| owner | 1764 | 1690 | 22/24 | 11/17 | 0 | 0 | 2 | 0 | 0 | 0 |
+| manager | 1617 | 1526 | 38/39 | 6/8 | 0 | 0 | 2 | 0 | 0 | 1 (chunk 1 browser crash) |
+| nok · thana · customer | not run in run2 (controller stopped the unit before nok) | | | | | | | | | |
+**Classification of the 165 owner+manager non-passes:** RUNNER 65 (owner 21 · manager 44 incl. N11 32 + FATAL 1; S1/S3/S4/S5/S8/S9/N1/N6/N7/N11 — N6 is runner+registry) · REGISTRY 28 (owner 15 · manager 13; S2/S7/N2/N4/N7-opener/unmatched-tab) · FIXTURE 72 (owner 38 · manager 34; S6/N3/N5/N8/N9/N10 — N9 is runner+fixture) · **PRODUCT 0**. Targeted re-runs on the E build: dbg2 944 presses (owner 550/563 · manager 312/315 · nok 62/66 — the 20 non-passes became D1–D6) · dbg3 389/389 (owner 310 · manager 22 · nok 57) · restoreFail 0 throughout.
+**Promoted fixes (in `scripts/`):** S1–S9 · N1–N11 · E-rows wiring (lifecycle fixture + opener + STATE_FLIP repair) · D1 crm-panel desktop-only (inbox-client.tsx:2118-2120) · D2 crm-panel hiddenFor nok/thana (chat.conversation.read gate, sys/[id]/page.tsx:63) · D3 drag grab point (usePointerBoardDrag onCardPointerDown) · D4 no-contact thread for attach-contact rows (emails/[threadKey]/page.tsx:83) · D5 e-mail template fixture (page.tsx:85) · D6 archived-team fixture (TeamsManager.tsx:46). Sweep 0 · it4a edits idempotent (0) · `--dry` exit 0 (8,247 presses · opener problems 0) · typecheck exit 0 (`typecheck-5.log`).
+**Main rows:** C5.4-E 288cca97 → +3 rows (company-lifecycle-correct · -confirm · -cancel) merged, verified on the live E build (owner 118/118 `/companies/[` · manager 196/196 `/companies`). session/crm head now 83c500f5 (C5.4-D2 8cf86985: emails.ts/sequences.ts/b actions — backend only) → `merge-main-rows.py 83c500f5` = 0 rows/0 changes/0 conflicts; :3215 (be48ab61) does not contain D2 — no registry impact, controller decides whether run3 needs a rebuild.
+**Commit layout:** committed `scripts/crm-ui-inventory.json` = registry WITHOUT the 3 E rows (lane src 46f952cc lacks E ⇒ pre-commit F14.2 "ghost rows"); the full registry run by dbg3/run3 = `scripts/pending/c42b/next/crm-ui-inventory.json` (= working copy, md5 b35c337c). On main: `cp scripts/pending/c42b/next/{qc-crm-buttons.mts,crm-ui-inventory.json} scripts/`.
+**PRODUCT findings (for C4.2-fix · none fixed here):**
+- F1 `/companies` list + nav tab not gated by `crm.company.read` — companies/page.tsx:48-56 · nav.ts:30 (repro above). Will show as hiddenLeak in nok/thana chunk 1 of run3.
+- F2 (a11y) `deal-stage-tab-*` active stage only by inline style, no aria-current/aria-pressed — DealBoard.tsx:184-191.
+- No new product finding in owner/manager. Observation (not a bug, design question): on < lg the chat room has no CRM panel at all (context column hidden "ตามแบบร่าง", inbox-client.tsx:2118) while the member card still shows on 390 — staff on phones cannot log a CRM activity from chat.
+- Data note: 3 orphan `CrmEmailMessage` (thread bcbc2add…) from a 28 Sep journey remain in QC1.
+**Ready for run3: YES** — `scripts/pending/c42b/run3.sh` (owner → manager → nok → thana → customer, md5 freeze, counts before/after, run-chunks waits for READY + crash-redo once). NOT launched.

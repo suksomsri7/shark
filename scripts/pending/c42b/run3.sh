@@ -4,6 +4,7 @@
 set -uo pipefail
 S=/tmp/c42b-logs/run3.status; : > "$S"
 R=/root/projects/shark-crm-c42b
+echo "build at start: $(cat /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE) (run-chunks waits per chunk for READY + server up)" >> "$S"
 mkdir -p /tmp/c42b-logs; cp $R/scripts/pending/c42b/run-chunks.sh /tmp/c42b-logs/run-chunks.run3.sh
 md5sum $R/scripts/qc-crm-buttons.mts $R/scripts/crm-ui-inventory.json > /tmp/c42b-logs/run3.md5
 cd $R && pnpm exec tsx scripts/pending/c42b/counts.mts /tmp/c42b-logs/counts-before-run3.json >/dev/null 2>&1

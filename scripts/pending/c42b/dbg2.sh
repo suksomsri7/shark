@@ -7,7 +7,7 @@ set -uo pipefail
 cd /root/projects/shark-crm-c42b
 LD=/tmp/c42b-logs; L=$LD/dbg2.log; S=$LD/dbg2.status; mkdir -p "$LD/dbg2"; : > "$S"
 grep -qE '^DATABASE_URL=.*ep-plain-art' .env.qc && grep -qE '^DIRECT_URL=.*ep-plain-art' .env.qc || { echo "not QC1" | tee -a "$L"; exit 1; }
-grep -q "^READY .*061cf35f" /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE || { echo "3215 build not READY 061cf35f — $(cat /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE)" | tee -a "$L" "$S"; exit 1; }
+grep -q "^READY" /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE || { echo "3215 build not READY — $(cat /root/projects/shark-crm/.qc-shots/crm/BUILD-STATE)" | tee -a "$L" "$S"; exit 1; }
 export QC_BTN_SHOTS=$LD/dbg2 QC_FAIL_DIR=/root/projects/shark-crm-c42b/.qc-shots/c42b/dbg2-fail QC_ENV_FILE=.env.qc CRM_V2_SWITCH=all CRM_EXPECTED_PATH=/root/projects/shark-crm-c42b/scripts/crm-expected.json
 md5sum scripts/qc-crm-buttons.mts scripts/crm-ui-inventory.json > $LD/dbg2.md5
 pnpm exec tsx scripts/pending/c42b/counts.mts $LD/counts-before-dbg2.json >/dev/null 2>&1
