@@ -6,6 +6,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import type { CrmActivityType } from "@prisma/client";
 import {
+  activityTargetsInSystem,
   addActivity,
   completeActivity,
   createContact,
@@ -148,9 +149,13 @@ export async function addActivityAction(formData: FormData) {
   if (!systemId || !title) return;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await refuseOnV2(ctx.tenantId, systemId);
+  const contactId = String(formData.get("contactId") ?? "").trim() || null;
+  const dealId = String(formData.get("dealId") ?? "").trim() || null;
+  // C5.5-authz-sweep ▸ ผู้ติดต่อ/ดีลต้องเป็นของร้าน + ระบบนี้ (ของร้านอื่น/ระบบอื่น = ไม่เขียน ไม่บอกว่ามีอยู่) ◂
+  if (!(await activityTargetsInSystem(ctx, { contactId, dealId }))) return;
   await addActivity(ctx, {
-    contactId: String(formData.get("contactId") ?? "").trim() || null,
-    dealId: String(formData.get("dealId") ?? "").trim() || null,
+    contactId,
+    dealId,
     type,
     title,
     dueAt: dateOrNull(formData.get("dueAt")),

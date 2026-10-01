@@ -4,6 +4,7 @@ import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { tenantDb } from "@/lib/core/db";
 import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
 import { dnaFactsSummary } from "@/lib/ai/service";
+import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
 
 const WELCOME_TITLE = "เริ่มต้นกับผู้ช่วย AI";
 
@@ -18,6 +19,8 @@ const CHOICE_MAP: Record<string, string> = {
 export async function POST(req: Request) {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
+  const denied = mobileDenied(g, AI_CHAT); // C5.5-authz-sweep: same key as the web door (creates an AI room like POST conversations; web opens it via loadAiChatAction)
+  if (denied) return denied;
 
   const ctx = g.ctx;
   const db = tenantDb(ctx);
