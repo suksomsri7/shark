@@ -244,3 +244,11 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - RV-5: installed skill files under `/root/.claude/skills` still say "reuse the same key" — sentence in `crm-C5.5-fix1.md`; controller/owner.
 - Deprecated author-less `createEndpoint` overload stays until `qc-acc-v2-permissions.mts:768` and the seed script pass an author.
 - Vercel function max duration vs the 6-min stale-claim window: dashboard setting not verified → C6.1.
+
+## fix3a review debt (2026-10-01)
+
+- **F4** webhook guard fails closed only when the guard registry is EMPTY (`src/lib/webhooks/service.ts:422`); if another module registers a guard and the CRM registration is lost, CRM endpoints are unguarded again. The CRM event-prefix list at `:414` is a copy kept in sync only by a pending probe. → later card: fail closed per event family.
+- **F5** `src/lib/modules/crm/ai-bridges.ts:218` `PIPELINE_LATE_MONTH` compares instants (flips at 07:00 Thai) — same class as H2b-3.
+- Journal-number allocator residual (migration 20261104000003): a backwards `setval` needs > 1000 lock-free allocations on one book between two adjacent healer statements; reproduced only with 1200 raw `nextval`s in a 600 ms injected window. Accepted, not closed.
+- Reviewer probes `scripts/pending/cf3/review/rv3-jno.mts` / `rv4-review.mts` assert "deployed == 000002" → red by design after 000003; use `rv5-r2.mts`.
+- `migrate deploy` with an earlier-named pending folder after the POS `20261120*` folders: argued in the N runbook, never run on a throwaway DB.
