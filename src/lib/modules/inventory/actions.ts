@@ -26,7 +26,7 @@ import {
   transfer,
   updateItem,
 } from "./service";
-import { findInventoryCtx, requireInventoryCtx } from "./guard";
+import { findInventoryCtx, inventoryActor, inventoryCanRead, requireInventoryCtx } from "./guard";
 
 // ตรวจสิทธิ์โมดูล Inventory (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "inventory.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -39,6 +39,12 @@ function assertInventoryCan(auth: Awaited<ReturnType<typeof requireTenant>>, act
     },
     { module: "inventory", action },
   );
+}
+
+// HF-INV-0 N4: action "อ่าน" ใช้กฎเดียวกับหน้าคลัง (คีย์คลังใดก็ได้ ⇒ อ่านได้) — ไม่งั้นคนที่หน้าให้เข้า
+//   กดค้นบาร์โค้ด/ดู lot แล้วโดนปฏิเสธ · ไม่ผ่าน → ForbiddenError รูปแบบเดิมผ่าน assertCan
+function assertInventoryRead(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  if (!inventoryCanRead(inventoryActor(auth))) assertInventoryCan(auth, "inventory.item.read");
 }
 
 const revalidate = (systemId: string) => revalidatePath(`/app/sys/${systemId}`);
@@ -254,7 +260,7 @@ export async function transferAction(formData: FormData) {
 // ── ดู lot คงเหลือของสินค้า (WO-0038) — read action ──
 export async function itemLotsAction(systemId: string, itemId: string) {
   const auth = await requireTenant();
-  assertInventoryCan(auth, "inventory.item.read");
+  assertInventoryRead(auth);
   if (!systemId || !itemId) return [];
   const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   if (!ctx) return [];
@@ -272,7 +278,7 @@ export async function findItemByBarcodeAction(
   formData: FormData,
 ): Promise<BarcodeSearchResult | null> {
   const auth = await requireTenant();
-  assertInventoryCan(auth, "inventory.item.read");
+  assertInventoryRead(auth);
   const barcode = String(formData.get("barcode") ?? "").trim();
   if (!systemId || !barcode) return null;
   const ctx = await findInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้

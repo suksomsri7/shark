@@ -163,23 +163,60 @@ try {
     chk("HF-2.6", "id ระบบคลังของร้านอื่น → 404", ot.notFound, "notFound", ot.msg);
   }
 
-  // ═════════ 3) static: ทุกหน้าคลัง + InvHub เรียกด่าน · action ไม่สร้าง ctx จาก systemId ดิบ ═════════
+  // ═════════ 3) static (round 2 · N9): ทีละหน้า/ทีละ action + พิสูจน์ด้วยการกลายพันธุ์ ═════════
   const PAGES_DIR = resolve(ROOT, "src/app/app/sys/[id]/inventory");
   const pages: string[] = [];
   const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/^(page|route)\.tsx?$/.test(f)) pages.push(p); } };
   walk(PAGES_DIR);
-  const unguarded = pages.filter((p) => !/requireInventoryPage\(/.test(strip(read(p))));
-  chk("HF-3.1", `[static] ทุกหน้าใต้ /inventory (${pages.length}) เรียก requireInventoryPage`, pages.length >= 7 && unguarded.length === 0, "0 หน้าหลุด", unguarded.map((p) => p.slice(PAGES_DIR.length)).join(",") || `${pages.length} หน้า`);
-  const ui = strip(read(resolve(ROOT, "src/lib/modules/inventory/ui.tsx")));
-  const hubBody = ui.slice(ui.indexOf("export async function InvHub"), ui.indexOf("export async function InvHub") + 600);
-  chk("HF-3.2", "[static] InvHub (หน้าภาพรวมใน /app/sys/[id]) เรียก requireInventoryPage ก่อนอ่าน/เขียน", /requireInventoryPage\(/.test(hubBody) && hubBody.indexOf("requireInventoryPage(") < hubBody.indexOf("ensureDefaultLocation("), "เรียกก่อน ensureDefaultLocation", hubBody.slice(0, 160).replace(/\s+/g, " "));
-  for (const [id, f] of [["HF-3.3", "actions.ts"], ["HF-3.4", "procurement-actions.ts"]] as const) {
-    const src = strip(read(resolve(ROOT, "src/lib/modules/inventory", f)));
-    const raw = (src.match(/\{\s*tenantId:\s*auth\.active\.tenantId,\s*systemId\s*\}/g) ?? []).length;
-    const exported = (src.match(/^export async function \w+Action\(/gm) ?? []).length;
-    const resolved = (src.match(/(requireInventoryCtx|findInventoryCtx)\(/g) ?? []).length;
-    chk(id, `[static] ${f}: ไม่มี ctx จาก systemId ดิบ · ทุก action resolve ระบบ INVENTORY (${exported} action)`, raw === 0 && resolved >= exported, `raw 0 · resolve ≥ ${exported}`, `raw ${raw} · resolve ${resolved}`);
+  // หน้า "ผ่านด่าน" = await ตัวแรกหลัง `await params` คือ requireInventoryPage(
+  const pageGuardedFirst = (src: string) => {
+    const body = strip(src);
+    const calls = [...body.matchAll(/await\s+([\w.]+)\s*\(/g)].map((m) => m[1]);
+    return calls.length > 0 && calls[0] === "requireInventoryPage";
+  };
+  const badPages = pages.filter((p) => !pageGuardedFirst(read(p)));
+  chk("HF-3.1", `[static] ทุกหน้าใต้ /inventory (${pages.length}) — await แรก (หลัง params) คือ requireInventoryPage(`, pages.length >= 7 && badPages.length === 0, "0 หน้าหลุด", badPages.map((p) => p.slice(PAGES_DIR.length)).join(",") || `${pages.length} หน้า`);
+  // ผู้ import Inv*Section/InvHub ทุกไฟล์ต้องอยู่ในชุดที่ผ่านด่าน (7 หน้า + หน้า /app/sys/[id] ที่ import InvHub ซึ่งกั้นตัวเอง)
+  const SRC_ROOT = resolve(ROOT, "src");
+  const allSrc: string[] = [];
+  const walkSrc = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walkSrc(p); else if (/\.(tsx?|mts)$/.test(f)) allSrc.push(p); } };
+  walkSrc(SRC_ROOT);
+  const UI_FILE = resolve(ROOT, "src/lib/modules/inventory/ui.tsx");
+  const importers = allSrc.filter((f) => f !== UI_FILE && /import\s*\{[^}]*\bInv\w*Section\b[^}]*\}\s*from\s*["']@\/lib\/modules\/inventory\/ui["']/.test(read(f)));
+  const strayImporters = importers.filter((f) => !pages.includes(f));
+  chk("HF-3.1b", `[static] ผู้ import Inv*Section (${importers.length} ไฟล์) อยู่ในชุดหน้าที่ผ่านด่านทั้งหมด`, importers.length >= 7 && strayImporters.length === 0, "0 ไฟล์นอกชุด", strayImporters.map((f) => f.slice(ROOT.length)).join(",") || `${importers.length}`);
+  const ui = strip(read(UI_FILE));
+  const fnBody = (src: string, name: string) => { const i = src.search(new RegExp(`export async function ${name}\\b`)); if (i < 0) return ""; const j = src.slice(i + 10).search(/\nexport /); return j < 0 ? src.slice(i) : src.slice(i, i + 10 + j); };
+  const sectionGuardedFirst = (body: string) => { const calls = [...body.matchAll(/await\s+([\w.]+)\s*\(/g)].map((m) => m[1]); return calls[0] === "requireInventoryPage"; };
+  const SECTIONS = ["InvHub", "InvItemsSection", "InvCountSection", "InvMovementsSection", "InvLocationsSection", "InvProcurementSection", "InvServicesSection", "InvSettingsSection"];
+  const exportedSections = [...ui.matchAll(/^export async function (Inv\w*)\(/gm)].map((m) => m[1]);
+  const badSections = SECTIONS.filter((n) => !sectionGuardedFirst(fnBody(ui, n)));
+  chk("HF-3.2", "[static] Inv*Section + InvHub ทุกตัว await requireInventoryPage( เป็นตัวแรก (N7 · กันผู้ import ในอนาคต)", badSections.length === 0 && exportedSections.every((n) => SECTIONS.includes(n)), "8/8 · ไม่มี section ใหม่ที่ไม่อยู่ในรายการ", `หลุด ${badSections.join(",") || "-"} · exported ${exportedSections.join(",")}`);
+  // ทีละ action (26 ชื่อ) — resolve ระบบ INVENTORY ในตัวเอง · ไม่มี ctx จาก systemId ดิบ
+  const ACTIONS_EXPECTED: Record<string, string[]> = {
+    "actions.ts": ["createItemAction", "updateItemAction", "archiveItemAction", "receiveAction", "consumeAction", "bulkCountAction", "importItemsAction", "createLocationAction", "transferAction", "itemLotsAction", "findItemByBarcodeAction", "createServiceAction", "updateServiceAction", "saveCategoryAction", "removeCategoryAction", "saveSettingsAction", "uploadItemImageAction", "removeItemImageAction", "setPrimaryImageAction"],
+    "procurement-actions.ts": ["createSupplierAction", "enableVendorPortalAction", "disableVendorPortalAction", "createPoAction", "markOrderedAction", "receivePoAction", "cancelPoAction"],
+  };
+  const actionResolves = (body: string) =>
+    /(requireInventoryCtx|findInventoryCtx)\(/.test(body) && !/\{\s*tenantId:\s*auth\.active\.tenantId,\s*systemId\s*\}/.test(body) &&
+    (!/uploadFile\(/.test(body) || body.search(/(requireInventoryCtx|findInventoryCtx)\(/) < body.indexOf("uploadFile("));
+  const actionSrc: Record<string, string> = {};
+  for (const [f, names] of Object.entries(ACTIONS_EXPECTED)) {
+    const src = strip(read(resolve(ROOT, "src/lib/modules/inventory", f))); actionSrc[f] = src;
+    const exported = [...src.matchAll(/^export async function (\w+)\(/gm)].map((m) => m[1]);
+    chk(`HF-3.3.${f}`, `[static] ${f}: ชุด action ที่ export = รายการที่ตรวจ (${names.length}) — มี action ใหม่ต้องเพิ่มเข้าข้อสอบ`, exported.length === names.length && names.every((n) => exported.includes(n)), names.join(","), exported.join(","));
+    for (const n of names) chk(`HF-3.4.${n}`, `[static] ${n} resolve ระบบ INVENTORY ของร้านก่อนแตะข้อมูล (ไม่มี ctx จาก systemId ดิบ)`, actionResolves(fnBody(src, n)), "resolve", fnBody(src, n).slice(0, 80).replace(/\s+/g, " "));
   }
+  // พิสูจน์ด้วยการกลายพันธุ์ (ในหน่วยความจำ ไม่แตะไฟล์): ถอดด่านแล้วตัวตรวจต้องแดง
+  const pageSample = read(pages.find((p) => p.includes("/procurement/")) ?? pages[0]);
+  const mutPage = pageSample.replace(/await\s+requireInventoryPage\(/, "await Promise.resolve(");
+  chk("HF-3.9a", "[mutation] ถอด requireInventoryPage ออกจากหน้า procurement → ตัวตรวจหน้า (HF-3.1) แดง", pageGuardedFirst(pageSample) && mutPage !== pageSample && !pageGuardedFirst(mutPage), "true→false", `${pageGuardedFirst(pageSample)}→${pageGuardedFirst(mutPage)}`);
+  const tfBody = fnBody(actionSrc["actions.ts"], "transferAction");
+  const mutTf = tfBody.replace(/await\s+requireInventoryCtx\(auth\.active\.tenantId,\s*systemId\)/, "{ tenantId: auth.active.tenantId, systemId }");
+  chk("HF-3.9b", "[mutation] เปลี่ยน transferAction กลับเป็น ctx ดิบ → ตัวตรวจ action (HF-3.4) แดง", actionResolves(tfBody) && mutTf !== tfBody && !actionResolves(mutTf), "true→false", `${actionResolves(tfBody)}→${actionResolves(mutTf)}`);
+  const upBody = fnBody(actionSrc["actions.ts"], "uploadItemImageAction");
+  const mutUp = upBody.replace(/const ctx = await findInventoryCtx\([^;]*;\s*if \(!ctx\)[^;]*;/, "").replace(/addItemImage\(ctx/, "addItemImage(await findInventoryCtx(auth.active.tenantId, systemId)");
+  chk("HF-3.9c", "[mutation] ย้ายการตรวจระบบไปหลัง uploadFile → ตัวตรวจ action แดง", actionResolves(upBody) && mutUp !== upBody && !actionResolves(mutUp), "true→false", `${actionResolves(upBody)}→${actionResolves(mutUp)}`);
 
   // ═════════ 4) action ที่ส่ง systemId ระบบอื่น/ร้านอื่น → ไม่มีแถวเกิด ═════════
   if (!actions || !pactions) chk("HF-4.0", "import actions ได้", false, "ได้", "ไม่ได้");
@@ -286,13 +323,165 @@ try {
     const st2 = (await prisma.purchaseOrder.findUnique({ where: { id: poId } }))?.status;
     chk("HF-6.9", "คู่บวก: receivePo คลังจริง → RECEIVED + สาขา 2 ได้ 2 · รวม 12", st2 === "RECEIVED" && (await stockAt(brA.id)) === 2 && (await totalOnHand()) === 12, "RECEIVED/2/12", `${st2} · ${await stockAt(brA.id)} · ${await totalOnHand()} · ${good.msg}`);
   }
+
+  // ═════════════════════ ROUND 2 ═════════════════════
+  const asSess = (s: Partial<Sess>) => { SESSION = { tenantId: tA.id, role: OWNER, unitAccess: ["*"], permissions: {}, ...s }; };
+  const STAFF = (permissions: Record<string, unknown>): Partial<Sess> => ({ role: "STAFF", permissions });
+
+  // ═════════ 7) S1: หน้าจัดซื้อต้องมีสิทธิ์จัดซื้อ/อ่านสินค้า · ลิงก์ผู้ขายเฉพาะคนที่หมุนลิงก์ได้ ═════════
+  const PROC = (guard as { INVENTORY_PROCUREMENT_KEYS?: unknown } | null)?.INVENTORY_PROCUREMENT_KEYS;
+  const perms = (await import("@/lib/core/permissions" as string)) as { PERMISSIONS: { key: string }[] };
+  const expectProc = perms.PERMISSIONS.map((p) => p.key).filter((k) => k === "inventory.item.read" || k.startsWith("inventory.supplier.") || k.startsWith("inventory.po."));
+  chk("HF-7.1", "guard export INVENTORY_PROCUREMENT_KEYS = item.read + supplier.* + po.* (ชื่อจริงจาก permissions.ts)", Array.isArray(PROC) && PROC.length === expectProc.length && expectProc.every((k) => (PROC as string[]).includes(k)), expectProc.join(","), JSON.stringify(PROC ?? null));
+  const reqPage2 = typeof guard?.requireInventoryPage === "function" ? (guard.requireInventoryPage as AnyFn) : null;
+  if (reqPage2 && Array.isArray(PROC)) {
+    const procCase = async (s: Partial<Sess>) => { asSess(s); return run(() => reqPage2(invA.id, { anyOf: PROC })); };
+    const c1 = await procCase(STAFF({ "inventory.movement.consume": true }));
+    chk("HF-7.2", "หน้าจัดซื้อ: STAFF มีแค่ inventory.movement.consume → 404 (ไม่เห็นเบอร์/อีเมลผู้ขาย ยอด PO ลิงก์ผู้ขาย)", c1.notFound, "notFound", c1.msg);
+    for (const [id, k] of [["HF-7.3", "inventory.po.create"], ["HF-7.4", "inventory.supplier.update"], ["HF-7.5", "inventory.item.read"], ["HF-7.6", "inventory.*"]] as const) {
+      const c = await procCase(STAFF({ [k]: true }));
+      chk(id, `หน้าจัดซื้อ: STAFF + ${k} → เปิดได้`, !c.threw, "ผ่าน", c.msg);
+    }
+    const cm = await procCase({ role: "MANAGER" });
+    chk("HF-7.7", "หน้าจัดซื้อ: MANAGER เปิดได้", !cm.threw, "ผ่าน", cm.msg);
+    asSess(STAFF({ "inventory.movement.consume": true }));
+    const other = await run(() => reqPage2(invA.id));
+    chk("HF-7.8", "หน้าอื่น (ไม่ส่ง anyOf): STAFF consume อย่างเดียว → ยังเปิดได้ (กฎคีย์ใดก็ได้เดิม)", !other.threw, "ผ่าน", other.msg);
+  } else chk("HF-7.2", "requireInventoryPage(id, { anyOf }) + INVENTORY_PROCUREMENT_KEYS", false, "มี", "ยังไม่มี");
+  const procPageSrc = strip(read(resolve(ROOT, "src/app/app/sys/[id]/inventory/procurement/page.tsx")));
+  chk("HF-7.9", "[static] หน้า procurement ส่ง anyOf: INVENTORY_PROCUREMENT_KEYS ให้ด่าน", /requireInventoryPage\(\s*id\s*,\s*\{\s*anyOf:\s*INVENTORY_PROCUREMENT_KEYS\s*\}\s*\)/.test(procPageSrc), "มี", procPageSrc.match(/requireInventoryPage\([^)]*\)/)?.[0] ?? "ไม่มี");
+  // render จริง: ลิงก์ผู้ขาย (bearer URL) โผล่เฉพาะคนที่มี inventory.supplier.update
+  const uiMod = (await import("@/lib/modules/inventory/ui" as string).catch((e) => { console.error("import ui:", e instanceof Error ? e.message : e); return null; })) as { [k: string]: AnyFn } | null;
+  const { token } = await proc.enableVendorPortal(ctxA, supA.id);
+  const treeHas = (node: unknown, needle: string, seen = new Set<unknown>()): boolean => {
+    if (node == null) return false;
+    if (typeof node === "string") return node.includes(needle);
+    if (typeof node !== "object" || seen.has(node)) return false;
+    seen.add(node);
+    if (Array.isArray(node)) return node.some((n) => treeHas(n, needle, seen));
+    const el = node as { props?: unknown };
+    if ("props" in el) return treeHas(el.props, needle, seen);
+    return Object.values(node as Record<string, unknown>).some((v) => treeHas(v, needle, seen));
+  };
+  if (!uiMod) chk("HF-7.10", "import inventory/ui ได้ (render section ในข้อสอบ)", false, "ได้", "ไม่ได้");
+  else {
+    const renderProc = async (s: Partial<Sess>) => { asSess(s); return run(() => uiMod.InvProcurementSection({ systemId: invA.id })); };
+    const rOwner = await renderProc({});
+    chk("HF-7.10", "คู่บวก: OWNER เห็นลิงก์ผู้ขาย (/vendor/<token>) ในหน้าจัดซื้อ", !rOwner.threw && treeHas(rOwner.value, `/vendor/${token}`), "มีลิงก์", rOwner.msg);
+    const rPo = await renderProc(STAFF({ "inventory.po.create": true }));
+    chk("HF-7.11", "STAFF inventory.po.create (ไม่มี supplier.update) → ไม่มีลิงก์ผู้ขายใน output", !rPo.threw && !treeHas(rPo.value, `/vendor/${token}`) && !treeHas(rPo.value, token), "ไม่มีลิงก์", `${rPo.msg} · มีลิงก์=${treeHas(rPo.value, token)}`);
+    const rSu = await renderProc(STAFF({ "inventory.supplier.update": true }));
+    chk("HF-7.12", "STAFF inventory.supplier.update → เห็นลิงก์ผู้ขาย", !rSu.threw && treeHas(rSu.value, `/vendor/${token}`), "มีลิงก์", rSu.msg);
+
+    // ═════════ 8) N7: ทุก section กั้นตัวเอง (เรียกตรงด้วย systemId ดิบ) ═════════
+    const SECTION_NAMES = ["InvHub", "InvItemsSection", "InvCountSection", "InvMovementsSection", "InvLocationsSection", "InvProcurementSection", "InvServicesSection", "InvSettingsSection"];
+    const posRowsBefore = await rowsUnder(posA.id);
+    const leaked: string[] = [];
+    for (const n of SECTION_NAMES) {
+      asSess(STAFF({ "pos.sale.create": true }));
+      const a = await run(() => uiMod[n]({ systemId: invA.id }));
+      asSess({});
+      const b = await run(() => uiMod[n]({ systemId: posA.id }));
+      if (!a.notFound || !b.notFound) leaked.push(`${n}(${a.notFound ? "" : "staff-render"}${b.notFound ? "" : " pos-render"})`);
+    }
+    chk("HF-8.1", "เรียก Inv*Section/InvHub ตรง ๆ: STAFF ไม่มีสิทธิ์คลัง / id ระบบ POS → 404 ทุกตัว (8)", leaked.length === 0, "0", leaked.join(", "));
+    chk("HF-8.2", "เรียก section ด้วย id ระบบ POS ไม่สร้างแถวคลังใต้ POS (ensureDefaultLocation ไม่วิ่ง)", (await rowsUnder(posA.id)) === posRowsBefore, String(posRowsBefore), String(await rowsUnder(posA.id)));
+  }
+
+  // ═════════ 9) N4: action อ่าน (lot/บาร์โค้ด) ใช้กฎอ่านเดียวกับหน้า ═════════
+  if (actions) {
+    await prisma.invItem.update({ where: { id: item.id }, data: { barcode: `HF-BC-${stamp}` } });
+    asSess(STAFF({ "inventory.movement.consume": true }));
+    const l = await run(() => actions.itemLotsAction(invA.id, item.id));
+    chk("HF-9.1", "itemLotsAction: STAFF consume อย่างเดียว (เปิดหน้าได้) → ไม่โดนปฏิเสธ", !l.threw && Array.isArray(l.value), "array", l.msg);
+    const bc = await run(() => actions.findItemByBarcodeAction(invA.id, null, fd({ barcode: `HF-BC-${stamp}` })));
+    chk("HF-9.2", "findItemByBarcodeAction: STAFF consume อย่างเดียว → เจอสินค้า", !bc.threw && (bc.value as { ok?: boolean })?.ok === true, "ok:true", `${bc.msg} ${JSON.stringify(bc.value ?? null).slice(0, 60)}`);
+    asSess(STAFF({ "pos.sale.create": true }));
+    const l2 = await run(() => actions.itemLotsAction(invA.id, item.id));
+    const bc2 = await run(() => actions.findItemByBarcodeAction(invA.id, null, fd({ barcode: `HF-BC-${stamp}` })));
+    chk("HF-9.3", "STAFF ไม่มีคีย์คลังเลย → ทั้งสอง action ถูกปฏิเสธ (กันถอยหลัง)", l2.threw && bc2.threw, "throw/throw", `${l2.msg} | ${bc2.msg}`);
+  }
+
+  // ═════════ 10) S3 + N9: receivePoAction แจ้งผล · id ระบบอื่นใน action ที่เหลือ ═════════
+  if (pactions && actions) {
+    asSess({});
+    const po2 = await proc.createPo(ctxA, { supplierId: supA.id, lines: [{ itemId: item.id, qty: 1, costSatang: 100 }] });
+    await prisma.purchaseOrder.update({ where: { id: po2.id }, data: { status: "ORDERED" } });
+    const onHandBefore = await totalOnHand();
+    const r = await run(() => pactions.receivePoAction(fd({ systemId: invA.id, poId: po2.id, locationId: locB.id })));
+    const st = (await prisma.purchaseOrder.findUnique({ where: { id: po2.id } }))?.status;
+    chk("HF-10.1", "S3: receivePoAction คลังผิด → แจ้งเป็นข้อความไทย (ไม่เงียบ) · PO ยัง ORDERED · สต็อกไม่ขยับ", r.threw && /[ก-๙]/.test(r.msg) && st === "ORDERED" && (await totalOnHand()) === onHandBefore, "throw ไทย/ORDERED", `${r.msg} · ${st}`);
+    // id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ + ไม่มีอะไรเปลี่ยน
+    const img = await svc.addItemImage(ctxA, item.id, { url: "https://example.com/hf.png" });
+    const po3 = await proc.createPo(ctxA, { supplierId: supA.id, lines: [{ itemId: item.id, qty: 1, costSatang: 100 }] });
+    const snap = async () => JSON.stringify({
+      it: await prisma.invItem.findUnique({ where: { id: item.id }, select: { name: true, archivedAt: true } }),
+      imgs: await prisma.invItemImage.count({ where: { itemId: item.id } }),
+      tok: (await prisma.supplier.findUnique({ where: { id: supA.id } }))?.portalToken,
+      po2: (await prisma.purchaseOrder.findUnique({ where: { id: po2.id } }))?.status,
+      po3: (await prisma.purchaseOrder.findUnique({ where: { id: po3.id } }))?.status,
+    });
+    const before = await snap();
+    const P = posA.id;
+    const foreign: [string, () => Promise<unknown>][] = [
+      ["updateItemAction", () => actions.updateItemAction(fd({ systemId: P, itemId: item.id, name: "ถูกแก้" }))],
+      ["archiveItemAction", () => actions.archiveItemAction(fd({ systemId: P, itemId: item.id }))],
+      ["uploadItemImageAction", () => actions.uploadItemImageAction(P, item.id, { status: "idle" }, fd({ dataUrl: "data:image/png;base64,iVBORw0KGgo=" }))],
+      ["removeItemImageAction", () => actions.removeItemImageAction(fd({ systemId: P, imageId: img.id }))],
+      ["setPrimaryImageAction", () => actions.setPrimaryImageAction(fd({ systemId: P, itemId: item.id, imageId: img.id }))],
+      ["enableVendorPortalAction", () => pactions.enableVendorPortalAction(fd({ systemId: P, supplierId: supA.id }))],
+      ["disableVendorPortalAction", () => pactions.disableVendorPortalAction(fd({ systemId: P, supplierId: supA.id }))],
+      ["markOrderedAction", () => pactions.markOrderedAction(fd({ systemId: P, poId: po3.id }))],
+      ["receivePoAction", () => pactions.receivePoAction(fd({ systemId: P, poId: po2.id }))],
+      ["cancelPoAction", () => pactions.cancelPoAction(fd({ systemId: P, poId: po3.id }))],
+    ];
+    for (const [n, call] of foreign) {
+      const x = await run(call);
+      const refused = x.threw || (x.value as { status?: string } | undefined)?.status === "error";
+      const after = await snap();
+      chk(`HF-10.${n}`, `${n} ด้วย id ระบบ POS ของร้านเดียวกัน → ปฏิเสธ · ไม่มีอะไรเปลี่ยน`, refused && after === before, "ปฏิเสธ/คงเดิม", `${x.msg} · ${after === before ? "คงเดิม" : after}`);
+    }
+  }
+
+  // ═════════ 11) S2: รายงาน — inventory ต้องมีสิทธิ์คลัง · ไม่ส่ง field นอก columns · take มีเพดาน ═════════
+  const rAct = (await import("@/lib/modules/reports/actions" as string).catch(() => null)) as { [k: string]: AnyFn } | null;
+  const rSvc = (await import("@/lib/modules/reports/service" as string)) as { [k: string]: unknown } & { DATASETS: Record<string, { columns: { key: string }[] }> };
+  const memA = await sysSvc.createSystem(tA.id, "MEMBER", "สมาชิก A");
+  const unitA = await prisma.businessUnit.create({ data: { tenantId: tA.id, type: "SHOP", name: "สาขา HF", slug: `hfinv-u-${stamp}` } });
+  await prisma.customer.create({ data: { tenantId: tA.id, memberSystemId: memA.id, name: "ลูกค้า HF", email: "secret-hf@example.com", note: "โน้ตลับ" } });
+  await prisma.posSale.create({ data: { tenantId: tA.id, unitId: unitA.id, systemId: posA.id, idempotencyKey: `hfinv-sale-${stamp}`, status: "PAID", subtotalSatang: 100, grandTotalSatang: 100 } });
+  if (!rAct) chk("HF-11.0", "import reports/actions ได้", false, "ได้", "ไม่ได้");
+  else {
+    asSess(STAFF({ "reports.report.run": true }));
+    const inv1 = await run(() => rAct.runReportAction({ dataset: "inventory" }));
+    const inv2 = await run(() => rAct.exportReportCsvAction({ dataset: "inventory" }));
+    chk("HF-11.1", "STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย", inv1.threw && inv2.threw && /[ก-๙]/.test(inv1.msg), "throw/throw ไทย", `${inv1.msg} | ${inv2.msg} | ${String(inv2.value ?? "").slice(0, 60)}`);
+    const salesOk = await run(() => rAct.runReportAction({ dataset: "sales" }));
+    chk("HF-11.2", "คู่บวก: STAFF reports.report.run ยังรัน dataset sales ได้", !salesOk.threw, "ผ่าน", salesOk.msg);
+    asSess(STAFF({ "reports.report.run": true, "inventory.item.read": true }));
+    const inv3 = await run(() => rAct.runReportAction({ dataset: "inventory" }));
+    chk("HF-11.3", "คู่บวก: STAFF reports.report.run + inventory.item.read → รัน inventory ได้", !inv3.threw && ((inv3.value as { rows?: unknown[] })?.rows?.length ?? 0) > 0, "มีแถว", inv3.msg);
+    asSess({});
+    for (const [id, dsName] of [["HF-11.4", "customers"], ["HF-11.5", "sales"], ["HF-11.6", "inventory"]] as const) {
+      const x = await run(() => rAct.runReportAction({ dataset: dsName }));
+      const cols = rSvc.DATASETS[dsName].columns.map((c) => c.key);
+      const rows = ((x.value as { rows?: Record<string, unknown>[] })?.rows ?? []);
+      const extra = [...new Set(rows.flatMap((r) => Object.keys(r).filter((k) => !cols.includes(k))))];
+      chk(id, `รายงาน ${dsName}: แถวที่ส่งกลับมีเฉพาะคีย์ใน columns (ไม่มี id/email/โน้ต/คีย์ภายใน)`, !x.threw && rows.length > 0 && extra.length === 0, "0 คีย์เกิน", `${rows.length} แถว · เกิน: ${extra.slice(0, 12).join(",")}`);
+    }
+    const clamp = rSvc.clampReportTake as ((t: unknown, fb: number) => number) | undefined;
+    const cap = rSvc.EXPORT_CAP as number;
+    chk("HF-11.7", "clampReportTake: 1e9 → EXPORT_CAP · -5 → 1 · NaN/ไม่ส่ง → ค่าเริ่มต้น · 2.7 → 2", typeof clamp === "function" && clamp(1e9, 500) === cap && clamp(-5, 500) === 1 && clamp(Number.NaN, 500) === 500 && clamp(undefined, 500) === 500 && clamp(2.7, 500) === 2, `${cap}/1/500/500/2`, typeof clamp === "function" ? `${clamp(1e9, 500)}/${clamp(-5, 500)}/${clamp(Number.NaN, 500)}/${clamp(undefined, 500)}/${clamp(2.7, 500)}` : "ไม่มี");
+    const rsrc = strip(read(resolve(ROOT, "src/lib/modules/reports/service.ts")));
+    chk("HF-11.8", "[static] runReport ใช้ clampReportTake กับ take ที่มาจาก client", /clampReportTake\(\s*input\.take/.test(rsrc) && !/input\.take\s*\?\?\s*RAW_CAP/.test(rsrc), "ใช้", "ยังใช้ input.take ดิบ");
+  }
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 200)}` : String(e));
 } finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ลบต่อ */ } };
   const P = prisma as never as Record<string, { deleteMany: (a: unknown) => Promise<unknown> }>;
   for (const tid of tenants) {
-    for (const m of ["invMovement", "invLot", "invLocationStock", "invLocation", "poLine", "purchaseOrder", "supplier", "invItemImage", "invCategory", "invSettings", "invItem", "approvalRequest", "outboxEvent", "auditLog", "party", "appSystemUnit", "appSystem", "businessUnit"]) {
+    for (const m of ["invMovement", "invLot", "invLocationStock", "invLocation", "poLine", "purchaseOrder", "supplier", "invItemImage", "invCategory", "invSettings", "invItem", "approvalRequest", "outboxEvent", "auditLog", "posSale", "customer", "reportDef", "party", "appSystemUnit", "appSystem", "businessUnit"]) {
       await d(() => P[m].deleteMany({ where: { tenantId: tid } }));
     }
     await d(() => prisma.tenant.delete({ where: { id: tid } }));

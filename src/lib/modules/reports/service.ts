@@ -41,6 +41,23 @@ type DatasetDef = {
 const RAW_CAP = 500; // เพดานแถวดิบพรีวิวบนจอ (ไม่จัดกลุ่ม)
 export const EXPORT_CAP = 50_000; // เพดานตอน export CSV — สูงกว่าจอมาก กัน "ตัด 500 แถวเงียบ ๆ"
 
+/**
+ * HF-INV-0 (S2c) — `take` มาจาก client (จอ/CSV) · เดิมไม่มีเพดานฝั่ง server (ส่ง 1e9 ได้ · ค่าลบ = Prisma อ่านจากท้าย)
+ * ⇒ ปัดเป็นจำนวนเต็ม 1…EXPORT_CAP · ไม่ส่ง/อ่านไม่ได้ = ค่าเริ่มต้นของผู้เรียก
+ */
+export function clampReportTake(take: unknown, fallback: number): number {
+  const n = typeof take === "number" ? take : Number.NaN;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(1, Math.floor(n)), EXPORT_CAP);
+}
+
+/** HF-INV-0 (S2a) — แถวที่ออกจาก server มีเฉพาะคีย์ใน columns ของ dataset (ไม่มี id/อีเมล/โน้ต/คีย์ภายในหลุด) */
+function project(columns: Column[], row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const c of columns) out[c.key] = row[c.key];
+  return out;
+}
+
 export const DATASETS: Record<string, DatasetDef> = {
   sales: {
     label: "ยอดขาย (บิลที่ชำระแล้ว)",
@@ -171,7 +188,8 @@ export async function runReport(
   };
 
   const grouped = !!input.groupBy;
-  const perSystemTake = grouped ? undefined : input.take ?? RAW_CAP;
+  const cap = clampReportTake(input.take, RAW_CAP); // HF-INV-0 S2c: เพดานฝั่ง server
+  const perSystemTake = grouped ? undefined : cap;
 
   // ── enumerate ทุกระบบตามประเภท แล้วรวมผล ──
   const ids = await systemIds(tenantId, ds.systemType);
@@ -210,10 +228,9 @@ export async function runReport(
     return { columns, rows: outRows };
   }
 
-  // ── แถวดิบ (cap take ?? 500) — บอกชัดถ้าถูกตัด (เลิก "หายเงียบ") ──
-  const cap = input.take ?? RAW_CAP;
+  // ── แถวดิบ (cap take ?? 500 · เพดาน EXPORT_CAP) — บอกชัดถ้าถูกตัด (เลิก "หายเงียบ") ──
   const truncated = rows.length > cap;
-  return { columns: ds.columns, rows: rows.slice(0, cap), truncated };
+  return { columns: ds.columns, rows: rows.slice(0, cap).map((r) => project(ds.columns, r)), truncated };
 }
 
 // ── CSV ──

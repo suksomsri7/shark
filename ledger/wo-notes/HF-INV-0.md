@@ -145,3 +145,40 @@ right after the idempotency check in `receiveInTx`, `consumeInTx`, `adjust`, `tr
 4. AI `low_stock` + AI tool route still bypass the inventory read permission (left — hot files).
 5. Merge order: this branch touches only `src/lib/modules/inventory/**` + `src/app/app/sys/[id]/inventory/**` + one new script; no CRM hot file, no schema. `scripts/qc-hf-inventory-authz.mts` joins `qc:all` via the glob.
 6. D1 needs its own WO (row lock, §8) — HIGH, reproduced.
+
+---
+# Round 2 (reviewer on 93573210 — no blocker) · `service.ts` NOT touched (hotfix/inventory-atomic owns it)
+
+## Status
+- [x] oracle extended first → RED on 93573210 saved `HF-INV-0-r2-red.txt` (`ผ่าน 90/106` · 16 ❌ = every new behaviour)
+- [x] fix → GREEN `HF-INV-0-r2-green.txt` (`ผ่าน 112/112 · CRITICAL 0`; total grows because the S1 per-key cases only expand once `INVENTORY_PROCUREMENT_KEYS` exists)
+- [x] regressions before (93573210) = after, per-check lines identical (16 suites, list below) · fitness 33/33 = 33/33 both modes · typecheck (5632 MB heap command) `tsc --noEmit` exit 0
+
+## Changes
+| item | file | change |
+|---|---|---|
+| S1 | `inventory/guard.ts` | `requireInventoryPage(id, { anyOf? })`: with `anyOf` the actor must pass ≥1 listed key via `evaluate` (OWNER/MANAGER/`inventory.*` pass) instead of the any-key rule · `INVENTORY_PROCUREMENT_KEYS` = `inventory.item.read` + every `inventory.supplier.*` + `inventory.po.*` key, **derived from `PERMISSIONS`** (today: item.read, supplier.create, supplier.update, po.create, po.order, po.receive, po.cancel) |
+| S1 | `procurement/page.tsx`, `ui.tsx InvProcurementSection` | both pass `{ anyOf: INVENTORY_PROCUREMENT_KEYS }` · `vendorUrl` built only when actor passes `inventory.supplier.update` (link status chip still shown; URL/token never reaches the page otherwise). Other pages + hub keep the any-key rule |
+| S2a | `reports/service.ts` | raw rows projected to the dataset's declared column keys (every dataset) |
+| S2b | `reports/actions.ts` | `runReportAction` + `exportReportCsvAction`: dataset with `systemType` INVENTORY also needs `canReadInventory(m)`; refusal "บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลคลังสินค้า — ขอสิทธิ์ “ดูรายการสินค้าในคลัง” จากเจ้าของร้านก่อนรันรายงานนี้" |
+| S2b | `core/rbac.ts` | new pure `canReadInventory(m)` next to `canViewPayroll` (reports→inventory import would be a new F2 cross-module edge = editing `fitness.mts`, a hot file) · `guard.inventoryCanRead` now aliases it |
+| S2c | `reports/service.ts` | `clampReportTake(take, fallback)`: integer 1…`EXPORT_CAP` (50,000), non-number → fallback. **Before: no server-side cap** — screen default 500 / CSV default 50,000 only when `take` omitted; any client `take` (1e9, negative = Prisma reads from the end) was used as-is, per system |
+| S3 | `procurement-actions.ts receivePoAction` | `if (!r.ok) throw new Error(r.note)` — same surfacing as every other void form action in the file. Note: a double-click on "รับของ" now shows "รับของได้เฉพาะใบสั่งซื้อที่สถานะ “สั่งซื้อแล้ว” เท่านั้น" on the 2nd submit instead of nothing |
+| N4 | `actions.ts` | `itemLotsAction`, `findItemByBarcodeAction` → `assertInventoryRead` (page read rule; failure still ForbiddenError via assertCan) |
+| N7 | `ui.tsx` | all 8 exported `Inv*Section`/`InvHub` start with `await requireInventoryPage(systemId…)`; `requireTenant`/raw `Ctx` removed from ui.tsx |
+| N9 | oracle | HF-3.1 first-await-is-guard per page · HF-3.1b every importer of `Inv*Section` is one of the guarded pages · HF-3.2 per section · HF-3.3/3.4 per action (26 names + exported set must equal the list) · HF-3.9a/b/c in-memory mutation proofs (page guard removed / transferAction raw ctx / upload check moved after `uploadFile` → checker goes red) · HF-8 sections called directly · HF-10 foreign POS system id for update/archive/upload/removeImage/setPrimary/enable+disableVendor/markOrdered/receivePo/cancelPo (green on 93573210 too — round 1 already closed them; these are rigor, not new behaviour) |
+
+## Regressions (QC4, gate lock) — before = 93573210, after = round 2 — identical per-check lines
+qc-inventory 12/12 · qc-inventory-item 11/11 · qc-inventory-account 23/23 · qc-warehouse 15/15 · qc-lot 13/13 · qc-procurement 12/12 · qc-vendor-portal 6/6 · qc-approval-wiring 7/7 · qc-pos-inventory 25/25 · qc-pos-register 42/42 · qc-clinic 8/8 · qc-clinic-refund 13/13 · qc-shop-refund 12/12 · qc-nav-functions 11/11 · **qc-report-builder 9/9** (only `qc-report*` suite; no `qc-reports*`) · qc-acc-v2-invitem 77/88 both (same 11 environment ❌ as round 1).
+
+## Reports dataset audit (`reports/service.ts` DATASETS — 3 datasets exist)
+Whole Prisma rows were returned by `runReportAction` (the CSV already used only declared columns; the JSON to the browser did not). Measured on QC4 (red run HF-11.4–11.6):
+| dataset | systemType | declared columns | extra fields that left the server before S2a (all fixed by projection) | module gate beyond `reports.report.run` |
+|---|---|---|---|---|
+| `inventory` | INVENTORY | sku, name, category, onHand, reorderPoint, **costSatang**, createdAt | id, tenantId, systemId, barcode, unitLabel, categoryId, kind, **priceSatang**, durationMin, bufferMin, **depositSatang**, bookable, description, accountProductId, archivedAt… | **fixed (S2b)**: `canReadInventory` — cost is a declared column, so projection alone does not hide it |
+| `customers` | MEMBER | memberCode, name, **phone**, tier, totalSpentSatang, visitCount, createdAt | id, tenantId, memberSystemId, **email, note, tags, birthDate, gender, nationality, lineUserId, facebook, firstName/lastName/nickname**, marketingConsent/consentAt, partyId, referralCode, **cardTokenHash/cardTokenExpiresAt**, ownerUserId, homeUnitId… | **REPORT ONLY** — any `reports.report.run` holder still exports name+phone+spend of every member (PII). Suggest requiring the member module's read key (`member.*` registry) — controller decision |
+| `sales` | POS | receiptNo, unitId, subtotal/discount/grandTotal, status, createdAt | id, tenantId, systemId, memberId, sourceModule/sourceId, idempotencyKey, vatSatang, pointEarned, paidAt, voucherUseIds, giftCardTxnId, tierDiscountSatang, stampEventIds, attributionId, giftCardId… | **REPORT ONLY** — no unit filter: a unit-limited user with reports permission sees every branch's sales |
+No payroll/HR dataset exists in this file today.
+
+## Debts recorded (skip list, no code)
+N3 archived-location consistency in `resolveLocationId` (service.ts) · `AppSystem.active` not checked by the guard · nav entry still visible to cashiers (`layout.tsx` CRM-shared) · AI `low_stock` · orphan image upload on a made-up itemId · dangling `categoryId`. Plus: reports page still lists the `inventory` dataset to people who will be refused (UI only, refusal message is clear).

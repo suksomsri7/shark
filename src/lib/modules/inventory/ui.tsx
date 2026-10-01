@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { publicOrigin } from "@/lib/core/origin";
-import { requireTenant } from "@/lib/core/context";
 import { ModuleTabs } from "@/components/module-tabs";
 import { env } from "@/lib/env";
 import { CopyLink } from "@/app/app/forms/CopyLink";
@@ -18,7 +17,12 @@ import ImageEditor from "./ImageEditor";
 import { formatBaht } from "@/lib/ui/money";
 import BarcodeSearch from "./BarcodeSearch";
 import StockCount from "./StockCount";
-import { requireInventoryPage } from "./guard";
+import {
+  INVENTORY_PROCUREMENT_KEYS,
+  INVENTORY_VENDOR_LINK_ACTION,
+  inventoryCanAny,
+  requireInventoryPage,
+} from "./guard";
 import {
   ensureDefaultLocation,
   getSettings,
@@ -31,7 +35,6 @@ import {
   lowStock,
   recentMovements,
   stockByLocationMap,
-  type Ctx,
 } from "./service";
 import {
   archiveItemAction,
@@ -104,8 +107,7 @@ export function invTabs(systemId: string): { href: string; label: string }[] {
 
 // ───────────── สินค้า (items) — ค้นบาร์โค้ด + ใกล้หมด + รายการสินค้า + เพิ่ม + นำเข้า CSV ─────────────
 export async function InvItemsSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
 
   await ensureDefaultLocation(ctx);
   const [items, low, locations, stockMap, lotMap] = await Promise.all([
@@ -320,8 +322,7 @@ export async function InvItemsSection({ systemId }: { systemId: string }) {
 
 // ───────────── นับสต็อก (count) ─────────────
 export async function InvCountSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
 
   const items = await listItems(ctx);
 
@@ -352,8 +353,7 @@ export async function InvCountSection({ systemId }: { systemId: string }) {
 
 // ───────────── รับเข้า/เคลื่อนไหว (movements) — รับเข้า + ตัดออก + ประวัติ ─────────────
 export async function InvMovementsSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
 
   await ensureDefaultLocation(ctx);
   const [items, locations, movements] = await Promise.all([
@@ -496,8 +496,7 @@ export async function InvMovementsSection({ systemId }: { systemId: string }) {
 
 // ───────────── คลังสินค้า (locations) — จัดการคลัง + โอนย้าย ─────────────
 export async function InvLocationsSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
 
   await ensureDefaultLocation(ctx);
   const [items, locations] = await Promise.all([listItems(ctx), listLocations(ctx)]);
@@ -578,9 +577,10 @@ export async function InvLocationsSection({ systemId }: { systemId: string }) {
 
 // ───────────── จัดซื้อ (procurement) — ซัพพลายเออร์ + ใบสั่งซื้อ (PO) ─────────────
 export async function InvProcurementSection({ systemId }: { systemId: string }) {
+  // HF-INV-0 S1/N7: กั้นตัวเองด้วยกฎหน้าจัดซื้อ · ลิงก์ผู้ขาย (bearer URL) เฉพาะคนที่หมุน/ปิดลิงก์ได้
+  const { ctx, actor } = await requireInventoryPage(systemId, { anyOf: INVENTORY_PROCUREMENT_KEYS });
+  const canSeeVendorLink = inventoryCanAny(actor, [INVENTORY_VENDOR_LINK_ACTION]);
   const origin = await publicOrigin(); // โดเมนจากคำขอจริง (env.APP_URL เคยค้างเป็นโดเมนที่ปิดแล้ว)
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
   await ensureDefaultLocation(ctx);
   const [items, suppliers, pos, locations, pendingPoIds] = await Promise.all([
@@ -603,7 +603,9 @@ export async function InvProcurementSection({ systemId }: { systemId: string }) 
         ) : (
           <div className="flex flex-col gap-2">
             {suppliers.map((s) => {
-              const vendorUrl = s.portalToken
+              // ลิงก์ = กุญแจเปิดดู PO ของผู้ขายโดยไม่ต้องล็อกอิน ⇒ ไม่ส่งลงหน้าให้คนที่ไม่มีสิทธิ์จัดการลิงก์
+              const linkOn = !!s.portalToken;
+              const vendorUrl = linkOn && canSeeVendorLink
                 ? `${origin}/vendor/${s.portalToken}`
                 : null;
               return (
@@ -616,7 +618,7 @@ export async function InvProcurementSection({ systemId }: { systemId: string }) 
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {vendorUrl ? (
+                      {linkOn ? (
                         <>
                           <StatusChip value="ON" map={{ ON: "ลิงก์เปิดอยู่" }} tone="strong" />
                           <form action={enableVendorPortalAction}>
@@ -871,8 +873,7 @@ export async function InvHub({ systemId }: { systemId: string }) {
 // ═════════════ บริการ (services) — ต้นฉบับเดียวของทั้งระบบ (เจ้าของสั่งข้อ 12-15) ═════════════
 // จองคิว = ติ๊กว่าสาขาไหนเปิดรับจองบริการนี้ · POS = อ่านไปขายหน้าร้าน · แก้ที่นี่ที่เดียว
 export async function InvServicesSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
   const [services, categories] = await Promise.all([listServices(ctx), listCategories(ctx)]);
   const serviceCats = categories.filter((c) => c.kind === "SERVICE");
   const imagesByItem = new Map<string, { id: string; url: string }[]>();
@@ -1049,8 +1050,7 @@ const BARCODE_LABEL: Record<string, string> = {
 };
 
 export async function InvSettingsSection({ systemId }: { systemId: string }) {
-  const auth = await requireTenant();
-  const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  const { ctx } = await requireInventoryPage(systemId); // HF-INV-0 N7: section กั้นตัวเอง (ผู้ import ในอนาคตเรียกเปล่า ๆ ไม่ได้)
   const [settings, categories] = await Promise.all([getSettings(ctx), listCategories(ctx)]);
 
   return (

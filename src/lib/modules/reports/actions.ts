@@ -1,14 +1,14 @@
 "use server";
 
 import { requireTenant } from "@/lib/core/context";
-import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
+import { assertCan, canReadInventory, type MembershipCtx } from "@/lib/core/rbac";
 import * as reports from "./service";
 import type { ReportInput, ReportResult } from "./service";
 
 // Report builder v1 (WO-0055) — server actions ผูก session ctx เอง ไม่รับ tenantId จากผู้เรียก
 // สิทธิ์: reports.report.run (ดู/รันรายงาน) · reports.report.save (บันทึก/ลบนิยามรายงาน)
 
-async function ctxWithCan(action: "run" | "save"): Promise<{ tenantId: string }> {
+async function ctxWithCan(action: "run" | "save"): Promise<{ tenantId: string; m: MembershipCtx }> {
   const auth = await requireTenant();
   const m: MembershipCtx = {
     role: auth.active.role,
@@ -16,19 +16,29 @@ async function ctxWithCan(action: "run" | "save"): Promise<{ tenantId: string }>
     permissions: auth.active.permissions as Record<string, unknown>,
   };
   assertCan(m, { module: "reports", action: `reports.report.${action}` });
-  return { tenantId: auth.active.tenantId };
+  return { tenantId: auth.active.tenantId, m };
+}
+
+// HF-INV-0 (S2b): ชุดข้อมูลของโมดูลที่มีด่านอ่านของตัวเอง ต้องผ่านด่านนั้นด้วย (ไม่ใช่แค่สิทธิ์รันรายงาน)
+//   INVENTORY มีต้นทุนสินค้า ⇒ ต้องดูคลังได้ (กฎเดียวกับหน้าคลัง) · ประเภทอื่นยังไม่มีด่านเพิ่ม (ดู ledger/wo-notes/HF-INV-0.md)
+function assertDatasetReadable(m: MembershipCtx, dataset: string): void {
+  if (reports.DATASETS[dataset]?.systemType === "INVENTORY" && !canReadInventory(m)) {
+    throw new Error("บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลคลังสินค้า — ขอสิทธิ์ “ดูรายการสินค้าในคลัง” จากเจ้าของร้านก่อนรันรายงานนี้");
+  }
 }
 
 export async function runReportAction(input: ReportInput): Promise<ReportResult> {
-  const ctx = await ctxWithCan("run");
-  return reports.runReport(ctx, input);
+  const { tenantId, m } = await ctxWithCan("run");
+  assertDatasetReadable(m, input.dataset);
+  return reports.runReport({ tenantId }, input);
 }
 
 export async function exportReportCsvAction(input: ReportInput): Promise<string> {
-  const ctx = await ctxWithCan("run");
-  // export ใช้เพดานสูง (EXPORT_CAP) แทน 500 ของจอ — CSV ได้ครบไม่ถูกตัดเงียบ
+  const { tenantId, m } = await ctxWithCan("run");
+  assertDatasetReadable(m, input.dataset);
+  // export ใช้เพดานสูง (EXPORT_CAP) แทน 500 ของจอ — CSV ได้ครบไม่ถูกตัดเงียบ (runReport ปัดเพดานซ้ำฝั่ง server)
   const take = input.take ?? reports.EXPORT_CAP;
-  return reports.toCsv(await reports.runReport(ctx, { ...input, take }));
+  return reports.toCsv(await reports.runReport({ tenantId }, { ...input, take }));
 }
 
 export async function listReportsAction(): Promise<

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
-import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
+import { PERMISSIONS } from "@/lib/core/permissions";
+import { canReadInventory, evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import type { Ctx } from "./service";
 
 // HF-INV-0 (D14) — ด่านเดียวของโมดูลคลัง: "ระบบนี้เป็นระบบคลังของร้านนี้จริงไหม" + "คนนี้ดูข้อมูลคลังได้ไหม"
@@ -15,15 +16,35 @@ export const INVENTORY_READ_ACTION = "inventory.item.read";
 /**
  * ดูข้อมูลคลังได้ไหม — OWNER/MANAGER ผ่าน (ตาม evaluate เดิม) · STAFF ต้องมี `inventory.item.read` หรือ `inventory.*`
  * หรือ **คีย์ inventory.<x> ตัวใดก็ได้** (สิทธิ์เขียน ⇒ อ่านได้ แบบเดียวกับ IMPLIES ของบัญชี)
- *   เหตุผล: พนักงานที่เจ้าของให้ "รับของเข้าคลัง" อย่างเดียว ต้องยังเปิดหน้าที่มีฟอร์มรับของได้ —
- *   ถ้าบังคับ item.read ตัวเดียว สิทธิ์ที่เขาใช้ทำงานอยู่จะหายเงียบ ๆ ทันทีที่ deploy
- * ⚠️ ระบบยังไม่มีคีย์แยก "ดูต้นทุน/ผู้ขาย" ⇒ กั้นทั้งหน้า (ไม่ซ่อนรายช่อง)
+ *   เหตุผล: พนักงานที่เจ้าของให้ "รับของเข้าคลัง" อย่างเดียว ต้องยังเปิดหน้าที่มีฟอร์มรับของได้
+ * ตัวจริงอยู่ที่ `core/rbac.canReadInventory` (โมดูลรายงานใช้ร่วม) — ที่นี่เป็นชื่อเดิมของโมดูลคลัง
  */
-export function inventoryCanRead(m: MembershipCtx | null): boolean {
-  if (!m) return false;
-  if (evaluate(m, { module: "inventory", action: INVENTORY_READ_ACTION })) return true;
-  if (m.role !== "STAFF") return false;
-  return Object.entries(m.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("inventory."));
+export const inventoryCanRead: (m: MembershipCtx | null) => boolean = canReadInventory;
+
+/**
+ * Round 2 (S1) — หน้าจัดซื้อมีเบอร์/อีเมล/โน้ตผู้ขาย ยอด PO และลิงก์พอร์ทัลผู้ขาย ⇒ แคบกว่า "คีย์คลังใดก็ได้"
+ * ต้องมี `inventory.item.read` หรือคีย์ตระกูล `inventory.supplier.*` / `inventory.po.*` ตัวใดตัวหนึ่ง
+ * (ดึงชื่อจริงจากทะเบียน permissions.ts — ไม่พิมพ์ซ้ำ · ตรวจทีละคีย์ผ่าน evaluate ⇒ `inventory.*`/OWNER/MANAGER ผ่านตามเดิม)
+ */
+export const INVENTORY_PROCUREMENT_KEYS: readonly string[] = PERMISSIONS.map((p) => p.key).filter(
+  (k) => k === INVENTORY_READ_ACTION || k.startsWith("inventory.supplier.") || k.startsWith("inventory.po."),
+);
+
+/** สิทธิ์ที่หมุน/ปิดลิงก์ผู้ขายได้ = เห็นลิงก์ (bearer URL) ได้ */
+export const INVENTORY_VENDOR_LINK_ACTION = "inventory.supplier.update";
+
+/** MembershipCtx จาก auth ของ requireTenant() */
+export function inventoryActor(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
+  return {
+    role: auth.active.role,
+    unitAccess: auth.active.unitAccess as string[],
+    permissions: auth.active.permissions as Record<string, unknown>,
+  };
+}
+
+/** ผ่านอย่างน้อยหนึ่งคีย์ในรายการ (ตรวจด้วย evaluate ของบ้าน) */
+export function inventoryCanAny(m: MembershipCtx | null, keys: readonly string[]): boolean {
+  return keys.some((action) => evaluate(m, { module: "inventory", action }));
 }
 
 /** ระบบ INVENTORY ของร้านนี้ → Ctx · ไม่ใช่ (ระบบอื่น/ร้านอื่น/ไม่มี) → null */
@@ -45,20 +66,18 @@ export async function requireInventoryCtx(tenantId: string, systemId: string): P
 }
 
 /**
- * ด่านหน้าเพจคลัง (ทุกหน้าใต้ /app/sys/[id]/inventory + InvHub) — 404 ไม่ใช่ 403 (ไม่บอกว่ามีระบบนี้อยู่)
+ * ด่านหน้าเพจคลัง (ทุกหน้าใต้ /app/sys/[id]/inventory + ทุก Inv*Section/InvHub) — 404 ไม่ใช่ 403
  * requireTenant → ระบบ {id, tenantId, type INVENTORY} → สิทธิ์อ่าน → ผ่านแล้วค่อยแตะข้อมูล
+ * opts.anyOf = ต้องผ่านอย่างน้อยหนึ่งคีย์ในรายการ "แทน" กฎคีย์คลังใดก็ได้ (หน้าจัดซื้อ — S1)
  */
-export async function requireInventoryPage(systemId: string) {
+export async function requireInventoryPage(systemId: string, opts?: { anyOf?: readonly string[] }) {
   const auth = await requireTenant();
   const tenantId = auth.active.tenantId;
   const sys = await tenantDb({ tenantId }).appSystem.findFirst({ where: { id: systemId, tenantId, type: "INVENTORY" } });
   if (!sys) notFound();
-  const m: MembershipCtx = {
-    role: auth.active.role,
-    unitAccess: auth.active.unitAccess as string[],
-    permissions: auth.active.permissions as Record<string, unknown>,
-  };
-  if (!inventoryCanRead(m)) notFound();
+  const m = inventoryActor(auth);
+  const allowed = opts?.anyOf ? inventoryCanAny(m, opts.anyOf) : inventoryCanRead(m);
+  if (!allowed) notFound();
   const ctx: Ctx = { tenantId, systemId: sys.id };
-  return { auth, sys, ctx };
+  return { auth, sys, ctx, actor: m };
 }
