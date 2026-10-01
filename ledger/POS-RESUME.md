@@ -290,3 +290,11 @@
 - มติ: G1 คง · G2 คง · G3 คง · G4 รับชั่วคราว (ผู้ตรวจยืนยันผู้เรียกอื่นของ `submitForApproval` ไม่เปลี่ยน) · G5 คง (audit เก็บจำนวนเงิน — หน้า audit ต้องซ่อนถ้าเปิดให้ผู้ไม่มีสิทธิ์เงินเดือน)
 - ค้างผู้คุมงาน (ต้องมี build): หน้าเงินเดือน — เหตุผลในแถว (อนุมัติ/ปฏิเสธ/ลบ ของแถวตัวเอง) · หน้าอนุมัติ · ฟอร์ม OT
 - เลนเดิน: 1 = HF-HR-0 ผู้ตรวจรอบ 5c (ปิด) · 2 = P1.3 builder B1
+
+### P1.3 ขั้น B1 (server) ส่งแล้ว → ผู้ตรวจ+ล่าเงิน (1 ต.ค. 20:31 UTC)
+- B1 = b30e0358 (7 ไฟล์ · `pricing-shared.ts` · `register-shared.ts` · `register-actions.ts` · ส่วนต่อท้าย `register.ts` · `service.ts` +productId (เสริม) · permissions 1 บรรทัด) · ตัวสร้างรายงาน: บังคับรัน 89/104 · S1/S2/S4 เขียว · S3 เหลือ S3.18 (ตัวนับสต็อกเดิมไม่ atomic) · ถดถอย 9 ชุดเท่าเดิม · fitness 40/40 · typecheck 0
+- ผู้คุมงาน merge `hotfix/inventory-atomic` (รวม main 929c39ce) เข้า `wip/pos-p1.3` = 2eccebf4 (อัตโนมัติ ไม่ชน) เพื่อปิด S3.18 · กำลังรันซ้ำ: ข้อสอบบังคับ + qc-pos-p1.1 + qc-hf-inventory-atomic + qc-pos-register + qc-pos-inventory + qc-hf-pos-page-authz + typecheck (ผลยังไม่ออก)
+- ⚠️ ผลของ merge: P1.3 ต้องขึ้น main **หลังหรือพร้อม** ตัวแก้คลัง
+- ข้อที่ต้องตัดสินหลังผู้ตรวจ: D2 (กติกามองเห็นสินค้าซ้ำกับ `catalog.listForUnit`) · D6 (สมาชิกที่มีส่วนลดระดับอัตโนมัติ ⇒ ขายไม่ได้ จนกว่า P1.12) · D4 เพดานส่วนลด · D1 `productId` ใน `createSale` (ต้อง --update-pos-contract ตอน merge)
+- คำสั่งผู้ตรวจ `pos-brief-P1.3-B1-REVIEW.md` · B2 (UI) รอผลผู้ตรวจ + แก้ B1 ก่อน (tree เดียวกัน ทำซ้อนไม่ได้)
+- เลนเดิน: 1 = HF-HR-0 ผู้ตรวจรอบ 5c · 2 = P1.3 B1 ผู้ตรวจ+ล่าเงิน
