@@ -278,3 +278,10 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - **R2F-3 INFO:** import company-step notes share the `errors` list (cap 500, UI shows 50) with real failures → could crowd them out; add a kind field / separate list.
 - **R2F-4 INFO (pre-existing):** an import row naming a company the importer cannot see creates a second company with that name.
 - F6-5 (echo exception only for users without company read; harmless audit race), F6-6 (`/deals/new` defaults the deal's company from the contact without a visibility check, `deals.ts:722`).
+
+## G1 review (2026-10-01/02) — open items
+
+- **F1 HIGH (prod too) — shared AI conversations:** conversations are shop-wide with no user column; web sheet opens the shop's latest conversation, mobile lists/reads all, `sendMessage` accepts any conversation id and replays the last 40 turns. After G1 a cashier with only `ai.chat.send` is refused the tools but still reads/continues the OWNER's conversation (member phones, leads, finances). → own card "G2": minimum without schema change = record each conversation's creator as an AuditLog row; filter list/read/continue/proposals by it; no-creator conversations OWNER-only; web sheet opens the caller's own latest; REST conversationId only for conversations that key created. (A nullable creator column is cleaner but adding a column has taken prod chat down before.)
+- **Owner decisions:** (1) scheduled AI tasks: run as creator (record creator at confirm via AuditLog; notify only them; legacy tasks → OWNER rights, notify OWNERs) vs current least-privileged; (2) proposals need the proposer's own confirm key — reviewer: keep (matches design; "staff drafts, owner confirms" belongs in the approval module); (4) mask phones in legacy member tools — reviewer: yes, low priority.
+- LOW: F3 `pending_leaves` open to all vs `upcoming_schedule` needing hr.leave.read (matches the open HR page); form-submission names in recent_leads may be a phone/email, unmasked.
+- After the apiv1 hotfix lands: `isGeneralKeyActor` should call its `isGeneralApiKey`; OWNER recent_leads phone masking ships together with C5.4-B.
