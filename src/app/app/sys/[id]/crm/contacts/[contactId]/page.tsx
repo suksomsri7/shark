@@ -189,6 +189,8 @@ export default async function Contact360Page({
             // CRM C5.5-fix6 ▸ F3: id ของบริษัทใช้แค่ช่อง "ย้ายดีลตาม" ของคนที่ย้ายบริษัทได้ · ชื่อ = บริษัทที่ผู้ดูมองเห็น (companyWhere) เท่านั้น ◂
             companyId: crmCanLinkCompany(actor) ? c.companyId : null,
             companyName: data.company?.name ?? null,
+            // CRM C5.5-fix6 r2 ▸ F6-4: ป้าย "บริษัทหลัก" เฉพาะเมื่อบริษัทที่แสดงคือบริษัทหลักของผู้ติดต่อจริง (ไม่ใช่ลิงก์อื่นที่มองเห็นแทน) ◂
+            companyIsPrimary: !!data.company && data.company.id === c.companyId,
           }}
         />
       </div>

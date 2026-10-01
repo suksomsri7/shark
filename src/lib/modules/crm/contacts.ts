@@ -40,7 +40,7 @@ import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orSql, orderBySql, 
 import { normalizeThaiText, thaiSearchVariants } from "./thai-text"; // CRM C5.4-E ▸ L6-m3 ◂
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
-import { crmCan, crmForbiddenMessage } from "./access";
+import { crmCan, crmCanLinkCompany, crmForbiddenMessage } from "./access";
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานผู้ติดต่อ ◂
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" ◂
@@ -827,6 +827,9 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
   //   (เดิม "ไม่พบบริษัทที่เลือก" ซึ่งชวนให้เลือกใหม่ทั้งที่ไม่มีทางเลือกได้) ◂
   if (clean.companyId) {
     need(a, "crm.company.read");
+    // CRM C5.5-fix6 r2 ▸ F6-1: ผูกบริษัทต้องแก้บริษัทได้ด้วย (addContact ตรวจ crm.company.update) — เดิมสร้างผู้ติดต่อแล้วผูกไม่สำเร็จ + คำเตือน ·
+    //   ตอนนี้ปฏิเสธก่อนเขียนอะไร (เหมือนทางแก้ไข · ช่องในฟอร์มซ่อนด้วยคีย์ชุดเดียวกัน crmCanLinkCompany) ◂
+    need(a, "crm.company.update");
     await assertCompany(ctx, a, clean.companyId);
   }
   await seedContactFields(ctx, a);
@@ -995,6 +998,14 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
   if (wantCompany !== undefined && wantCompany !== current.companyId) {
     need(a, "crm.company.read");
     need(a, "crm.company.update");
+    // CRM C5.5-fix6 r2 ▸ F6-2/F6-3: ถอด/ย้ายออกจากบริษัทปัจจุบัน = ต้องมองเห็นบริษัทปัจจุบัน — ตรวจก่อน tx (เดิม: ช่องอื่น commit แล้ว
+    //   removeContact ล้ม NOT_FOUND · หรือย้ายผู้ติดต่อ+ดีลที่เปิดออกจากบริษัทที่มองไม่เห็นได้) · ข้อความ NOT_FOUND เดียวกับที่บริการบริษัทตอบอยู่แล้ว
+    //   (ไม่บอกอะไรเพิ่มจากเดิม) · บริษัทปลายทางตรวจด้วย assertCompany ด้านล่างเหมือนเดิม ◂
+    if (current.companyId) {
+      await companies.assertCompanyVisible(coCtx(ctx), a, current.companyId).catch((e: unknown) => {
+        throw mapError(e);
+      });
+    }
   }
   if (wantCompany) await assertCompany(ctx, a, wantCompany);
   await seedContactFields(ctx, a);
@@ -2345,6 +2356,28 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   const result: ImportContactsResult = { created: 0, updated: 0, skipped: 0, candidates: 0, failed: 0, errors: [] };
   let status: ImportJobStatus = "RUNNING";
   const companyIds = new Map<string, string>();
+  // CRM C5.5-fix6 r2 ▸ F6-1 (นำเข้า): ขั้นผูกบริษัทของแถวที่เพิ่ม/อัปเดตผู้ติดต่อสำเร็จแล้ว ล้มได้โดยไม่ทำให้แถวนั้นนับเป็น "มีปัญหา" ซ้ำ
+  //   (เดิม: createCompany โยน ⇒ แถวเดียวนับทั้ง created และ failed · linkCompany ล้ม ⇒ เงียบ) — บอกเป็นหมายเหตุของแถว (ไม่นับ failed) ·
+  //   ผูกบริษัทไม่ได้ (crmCanLinkCompany ไม่ผ่าน) = ไม่ค้น/ไม่สร้างบริษัทเลย (ไม่มีบริษัทกำพร้า) + บอกครั้งเดียว ◂
+  const canLink = crmCanLinkCompany(a);
+  let linkDeniedNoted = false;
+  const addNote = (row: number, message: string) => {
+    if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
+  };
+  const linkRow = async (companyName: string, contactId: string, rowNo: number, done: string): Promise<void> => {
+    if (!canLink) {
+      if (!linkDeniedNoted) addNote(rowNo, `${done}แล้ว แต่ไม่ได้ผูกบริษัทให้แถวที่มีชื่อบริษัท — ${crmForbiddenMessage(crmCan(a, "crm.company.read") ? "crm.company.update" : "crm.company.read")}`);
+      linkDeniedNoted = true;
+      return;
+    }
+    try {
+      const coId = await companyFor(companyName);
+      const w = coId ? await linkCompany(ctx, a, coId, contactId, false) : null;
+      if (w) addNote(rowNo, `${done}แล้ว แต่${w}`);
+    } catch (e) {
+      addNote(rowNo, `${done}แล้ว แต่ผูกบริษัทไม่สำเร็จ — ${importMessage(e)}`);
+    }
+  };
   const addError = (row: number, message: string) => {
     result.failed += 1;
     if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
@@ -2403,11 +2436,8 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
             const merged = cleanTags([...target.tags, ...clean.tags]);
             if (!merged.problem) await setTags(ctx, a, target.id, merged.tags);
           }
-          if (companyName) {
-            const coId = await companyFor(companyName);
-            if (coId) await linkCompany(ctx, a, coId, target.id, false);
-          }
           result.updated += 1;
+          if (companyName) await linkRow(companyName, target.id, rowNo, "อัปเดตผู้ติดต่อ");
           return;
         }
       }
@@ -2419,10 +2449,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
       result.created += 1;
       if (res.row.ownerUserId) importedOwners.set(res.row.ownerUserId, (importedOwners.get(res.row.ownerUserId) ?? 0) + 1); // CRM C5.4-E r2 ▸ SF-3 ◂
       if (res.duplicates.length > 0) result.candidates += 1;
-      if (companyName) {
-        const coId = await companyFor(companyName);
-        if (coId) await linkCompany(ctx, a, coId, res.row.id, false);
-      }
+      if (companyName) await linkRow(companyName, res.row.id, rowNo, "เพิ่มผู้ติดต่อ");
     } catch (e) {
       addError(rowNo, importMessage(e));
     }

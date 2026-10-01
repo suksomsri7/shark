@@ -376,6 +376,8 @@ type MenuContact = {
   companyId: string | null;
   /** CRM C5.5-fix6 ▸ F3: ชื่อบริษัทหลักที่ผู้ดูมองเห็น (getContact360().company — ผ่าน companyWhere) · มองไม่เห็น = null (ไม่แสดงชื่อ) ◂ */
   companyName?: string | null;
+  /** CRM C5.5-fix6 r2 ▸ F6-4: บริษัทที่แสดงคือบริษัทหลักจริงไหม (getContact360 ใช้ลิงก์อื่นที่มองเห็นแทนเมื่อบริษัทหลักมองไม่เห็น) ◂ */
+  companyIsPrimary?: boolean;
 };
 
 // CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
@@ -519,7 +521,7 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
             <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
           ) : contact.companyName ? (
             <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
-              บริษัทหลัก: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
+              {contact.companyIsPrimary ? "บริษัทหลัก" : "บริษัท"}: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
             </p>
           ) : null}
           {can.company && companyId && contact.companyId && (
