@@ -185,6 +185,10 @@ export * as notifications from "./notifications";
 // CRM C5.4 ▸ (batch E · L6-M4) ตัวส่งของเทมเพลตแจ้งเตือนที่เดิมไม่มีใครส่ง (ตัวรับ outbox · สะพานเงิน · งานรายชั่วโมง เรียกผ่านที่นี่)
 export * as notifySenders from "./notify-senders";
 // ◂ CRM C5.4
+// CRM C5.4 ▸ (batch D2 · F6 = รีวิว C5.4-D รอบ 1 N5) ปลุกคิว outbox หลังงานเขียนของพอร์ทัลลูกค้า (`src/app/b/[slug]/actions.ts`) — ตัวเดียวกับ
+//   action หน้า v2 (`outbox-wake.ts` · เรียกหลังงานเขียน commit แล้วเท่านั้น · รวมการตั้งซ้อนที่ `core/after-drain.ts`)
+export { wakeOutbox } from "./outbox-wake";
+// ◂ CRM C5.4
 // CRM C3.3 ▸ export * as commissions from "./commissions" ◂
 //   คอมมิชชัน → เงินเดือน (`commissions.ts`) — namespace เดียว `commissions`:
 //   ทางเข้าของสะพาน (ไม่มี actor คน): onPaid · onWon · reverse · syncPayroll · afterPaymentCounted/afterPaymentsReversed (ทางเดินเงิน

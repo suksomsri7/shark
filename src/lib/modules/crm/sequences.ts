@@ -86,7 +86,8 @@ export type SequenceSendFn = (req: SequenceSendRequest) => Promise<SequenceSendV
  * r3 R2-S3 `outage` (ระบบส่งของร้าน/ผู้ให้บริการล่ม ⇒ ลองต่อไม่นับเพดาน จนครบ 72 ชม.) ·
  * r3 R2-N1b/N3 `waitUntil` (เพดานต่อวันเต็ม / ฉบับเดิมยังส่งค้างอยู่ ⇒ "รอ" ไม่ใช่ความล้มเหลว — ไม่นับครั้ง ไม่เขียนบันทึก) ◂
  */
-export type SequenceSendVerdict = { ok: boolean; skipped?: boolean; error?: string; permanent?: boolean; outage?: boolean; waitUntil?: Date };
+// CRM C5.4-D2 ▸ F4: `waitKind` = ชนิดของการรอ (`cap` เพดานอีเมลต่อวันเต็ม · `in_flight` ฉบับเดิมของขั้นยังค้างสถานะกำลังส่ง) — เพดานเวลาต่างกัน ◂
+export type SequenceSendVerdict = { ok: boolean; skipped?: boolean; error?: string; permanent?: boolean; outage?: boolean; waitUntil?: Date; waitKind?: "cap" | "in_flight" };
 export type SequenceDeps = { email?: SequenceSendFn; line?: SequenceSendFn; sms?: SequenceSendFn };
 export type RunDueOptions = { deps?: SequenceDeps; tenantIds?: string[]; batchSize?: number; deadline?: number; signal?: AbortSignal };
 export type RunDueSummary = { claimed: number; executed: number; deferred: number; finished: number; failed: number; batches: number; cutOff: boolean };
@@ -1149,7 +1150,7 @@ export async function importThaiHolidays(ctx: SequencesCtx, actor: MemberActor, 
 //   `CrmEmailMessage.sequenceStepId` เพื่อให้สถิติต่อขั้นและไทม์ไลน์ชี้กลับมาที่ขั้นนี้ได้ ◂
 type SeqSubject = { tenantId: string; systemId: string; contact: CrmContact; dealId: string | null; enrollmentId: string; sequenceId: string; version: number; stepId: string | null; stepIndex: number };
 // CRM C5.4-D r2 ▸ N1a: `sendPermanent` = ตัวส่งของขั้นนี้ตอบว่า "ปฏิเสธถาวร" (ตัวรันกลางส่งต่อแค่ ok/skipped/note — เก็บคำตัดสินไว้ที่ env ของขั้น) ◂
-type SeqEnv = RunnerEnv<SeqSubject> & { deps: SequenceDeps | null; sendPermanent?: boolean; sendOutage?: boolean; sendWaitUntil?: Date };
+type SeqEnv = RunnerEnv<SeqSubject> & { deps: SequenceDeps | null; sendPermanent?: boolean; sendOutage?: boolean; sendWaitUntil?: Date; sendWaitKind?: "cap" | "in_flight" };
 
 const CHANNEL_LABEL: Record<RunnerChannel, string> = { LINE: "LINE", EMAIL: "อีเมล", SMS: "SMS", PUSH: "แจ้งเตือน" };
 const NO_ADDRESS: Record<RunnerChannel, string> = {
@@ -1210,7 +1211,11 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
       //   FAILED) แล้วค่อยส่งซ้ำแถวเดิม · ไม่เลื่อนขั้น ไม่นับครั้ง ◂
       if (r.status === "QUEUED" && r.reused) {
         const lease = r.inFlightUntil ? new Date(r.inFlightUntil).getTime() + 2 * 60_000 : 0;
-        return { ok: false, waitUntil: new Date(Math.max(env.now.getTime() + 60_000, lease)), error: "จดหมายของขั้นนี้กำลังถูกส่งอยู่ — ระบบจะตรวจอีกครั้งเมื่อการส่งครั้งก่อนจบ" };
+        return { ok: false, waitUntil: new Date(Math.max(env.now.getTime() + 60_000, lease)), waitKind: "in_flight", error: "จดหมายของขั้นนี้กำลังถูกส่งอยู่ — ระบบจะตรวจอีกครั้งเมื่อการส่งครั้งก่อนจบ" };
+      }
+      // CRM C5.4-D2 ▸ F6 (R2-N1a): อีเมลของผู้ติดต่อเปลี่ยนหลังการส่งครั้งก่อนที่ไม่สำเร็จ ⇒ ไม่ส่งซ้ำไปที่อยู่เดิม — ข้ามขั้นพร้อมเหตุผล ◂
+      if (r.status === "FAILED" && r.failCode === emails.CRM_EMAIL_RECIPIENT_CHANGED) {
+        return { ok: false, skipped: true, error: "ไม่ได้ส่งซ้ำ — อีเมลของผู้ติดต่อเปลี่ยนไปหลังการส่งครั้งก่อนที่ไม่สำเร็จ ระบบจึงไม่ส่งไปที่อยู่เดิมและไปขั้นถัดไป" };
       }
       if (r.status === "FAILED") {
         // CRM C5.4-D r2 ▸ N1a · r3 ▸ R2-S3 (มติผู้คุมงานฉบับแก้): ผิดที่จดหมายฉบับนี้ (400/404/405/422 · หัวจดหมาย/ผู้รับใช้ไม่ได้) = ไม่ลองซ้ำ —
@@ -1227,7 +1232,7 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
       return { ok: true };
     } catch (e) {
       // CRM C5.4-D r3 ▸ R2-N1b (มติผู้คุมงาน): เพดานอีเมลต่อวันเต็ม = รอถึงวันไทยถัดไป — ไม่ใช่ความล้มเหลว (ไม่นับครั้ง · ไม่ส่ง/ไม่ส่งซ้ำ) ◂
-      if (e instanceof CrmLimitError) return { ok: false, waitUntil: nextThaiDayStart(env.now), error: e.message };
+      if (e instanceof CrmLimitError) return { ok: false, waitUntil: nextThaiDayStart(env.now), waitKind: "cap", error: e.message };
       const code = (e as { code?: unknown })?.code;
       const msg = errText(e, "ส่งอีเมลไม่สำเร็จ");
       // ถูกกติกาความยินยอม/ข้อมูลปฏิเสธ = ข้ามขั้น (ไม่ใช่ความล้มเหลวที่ต้องลองใหม่)
@@ -1254,6 +1259,7 @@ function noteVerdict(env: SeqEnv, r: SequenceSendVerdict): void {
   env.sendPermanent = failed && r.permanent === true;
   env.sendOutage = failed && r.outage === true;
   env.sendWaitUntil = failed && r.waitUntil instanceof Date && !Number.isNaN(r.waitUntil.getTime()) ? r.waitUntil : undefined;
+  env.sendWaitKind = env.sendWaitUntil ? (r.waitKind === "in_flight" ? "in_flight" : "cap") : undefined;
 }
 
 // AUDIT-CLASS X8: adapter "sequence" ของตัวรันกลาง — ที่อยู่/ความยินยอมอ่านจากฐาน **ตอนขั้นทำงาน** · ตัวส่ง = deps ที่ฉีดมา (ถ้ามี) เท่านั้น
@@ -1386,6 +1392,11 @@ const STEP_RETRY_BASE_MS = 15 * 60_000;
 const STEP_RETRY_MAX_MS = 2 * 60 * 60_000;
 // CRM C5.4-D r3 ▸ R2-S3 (มติผู้คุมงาน): เพดานเวลาของ "ระบบส่งล่ม" (401/403/429) — 72 ชม. นับจากที่ขั้นล้มครั้งแรก แล้วหยุด (FAILED + สมุดตรวจ) ◂
 const STEP_OUTAGE_CEILING_MS = 72 * 60 * 60_000;
+// CRM C5.4-D2 ▸ F4 (รีวิว C5.4-D รอบ 3 · มติผู้คุมงาน): ทุกเส้น "รอ" มีเพดานเวลา + บันทึกหนึ่งบรรทัดต่อช่วงรอ (สมุดตรวจ `crm.sequence.step_wait`)
+//   · เพดานอีเมลต่อวันเต็ม (`cap`) — 72 ชม. (เท่าเพดานของ "ระบบส่งล่ม") นับจากที่ขั้นนี้เริ่มรอ ⇒ หยุดการลงทะเบียน FAILED (+ บันทึกขั้น · finished · สมุดตรวจ)
+//   · ฉบับเดิมค้างสถานะกำลังส่ง (`in_flight` — ตัวเก็บซากไม่ทำงาน) — 24 ชม. ⇒ เข้าเส้นล้มปกติ (บันทึก FAILED · นับครั้ง · ครบ 5 ⇒ หยุด FAILED) ◂
+const STEP_CAP_WAIT_CEILING_MS = STEP_OUTAGE_CEILING_MS;
+const STEP_IN_FLIGHT_CEILING_MS = 24 * 60 * 60_000;
 
 async function failAttempt(enrollmentId: string, stepIndex: number, now: Date): Promise<boolean> {
   const e = await prisma.crmSequenceEnrollment.findUnique({
@@ -1574,12 +1585,58 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
     const key = `v${e.sequenceVersion}:${c.stepIndex}`;
     // CRM C5.4-D r3 ▸ R2-N1b / R2-N3 (มติผู้คุมงาน): "รอ" (เพดานต่อวันเต็ม · ฉบับเดิมกำลังส่ง) ไม่ใช่ความล้มเหลว — คงขั้นเดิม ปล่อย lease
     //   เลื่อน nextAt ไปเวลาที่ตัวส่งบอก · ไม่เขียนบันทึกขั้น ไม่นับครั้ง (แบบเดียวกับช่วงเวลาส่งปิด) ◂
-    if (env.sendWaitUntil) {
-      const waitAt = env.sendWaitUntil.getTime() > now.getTime() ? env.sendWaitUntil : new Date(now.getTime() + 60_000);
-      const n = await prisma.crmSequenceEnrollment.updateMany({ where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } }, data: { nextAt: waitAt, leaseUntil: null } });
-      return n.count === 1 ? "deferred" : "failed";
-    }
     const statsObj = e.stats && typeof e.stats === "object" && !Array.isArray(e.stats) ? (e.stats as Record<string, unknown>) : {};
+    if (env.sendWaitUntil) {
+      // CRM C5.4-D2 ▸ F4: ช่วงรอหนึ่งช่วง = (เวอร์ชัน, ขั้น, ชนิดการรอ) · เวลาเริ่มรอเก็บที่ `stats.waits` (คำสั่งเดียว · COALESCE) ◂
+      const kindW = env.sendWaitKind ?? "cap";
+      const wkey = `${key}:${kindW}`;
+      const waitsObj = statsObj.waits && typeof statsObj.waits === "object" ? (statsObj.waits as Record<string, unknown>) : {};
+      const sinceIso = typeof waitsObj[wkey] === "string" ? (waitsObj[wkey] as string) : null;
+      const sinceMs = sinceIso && !Number.isNaN(Date.parse(sinceIso)) ? Date.parse(sinceIso) : now.getTime();
+      const waited = now.getTime() - sinceMs;
+      if (kindW === "cap" && waited >= STEP_CAP_WAIT_CEILING_MS) {
+        const ok = await prisma.$transaction(async (tx) => {
+          const n = await tx.crmSequenceEnrollment.updateMany({
+            where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } },
+            data: { status: "STOPPED", stoppedReason: "FAILED", stoppedAt: now, nextAt: null, leaseUntil: null },
+          });
+          if (n.count !== 1) return false;
+          await appendLog(tx, e.id, { ...base, outcome: "FAILED", reason: "ส่งไม่ได้ — เพดานอีเมลต่อวันของร้านเต็มติดต่อกันเกิน 3 วัน ระบบจึงหยุดลำดับนี้ไว้ (ลงทะเบียนใหม่ได้เมื่อเพดานว่าง)" });
+          await emitFinished(tx, seq!.systemId, e, "STOPPED", "FAILED");
+          await auditTx(tx, { tenantId: e.tenantId }, null, "crm.sequence.auto_stop", "CrmSequenceEnrollment", e.id, {
+            before: { status: "ACTIVE", stepIndex: c.stepIndex },
+            after: { status: "STOPPED", reason: "FAILED", wait: "cap", waitSince: new Date(sinceMs).toISOString(), by: "engine" },
+          });
+          return true;
+        });
+        return ok ? "finished" : "failed";
+      }
+      if (kindW === "in_flight" && waited >= STEP_IN_FLIGHT_CEILING_MS) {
+        // เพดาน 24 ชม. ของ "กำลังส่ง" (ตัวเก็บซากของ runScheduled ไม่ปิดแถวนั้น) ⇒ เข้าเส้นล้มปกติข้างล่าง (บันทึก · นับครั้ง · รอบพัก) ◂
+        o = { ...o, note: "ส่งอีเมลของขั้นนี้ไม่สำเร็จ — จดหมายฉบับก่อนค้างสถานะกำลังส่งนานเกิน 24 ชม. ระบบจะลองขั้นนี้อีกครั้งภายหลัง" };
+        await logOps("WARN", "crm.sequences", "จดหมายของขั้นค้างสถานะกำลังส่งเกิน 24 ชม. — ตัวเก็บซาก (crm.email.scheduled) อาจไม่ทำงาน", { tenantId: e.tenantId, detail: `enrollment=${e.id} step=${c.stepIndex}` }).catch(() => {});
+      } else {
+        const waitAt = env.sendWaitUntil.getTime() > now.getTime() ? env.sendWaitUntil : new Date(now.getTime() + 60_000);
+        const ok = await prisma.$transaction(async (tx) => {
+          const n = await tx.crmSequenceEnrollment.updateMany({ where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } }, data: { nextAt: waitAt, leaseUntil: null } });
+          if (n.count !== 1) return false;
+          await tx.$executeRaw`
+            UPDATE "CrmSequenceEnrollment"
+               SET "stats" = jsonb_set(CASE WHEN jsonb_typeof("stats") = 'object' THEN "stats" ELSE '{}'::jsonb END, '{waits}',
+                     (CASE WHEN jsonb_typeof("stats"->'waits') = 'object' THEN "stats"->'waits' ELSE '{}'::jsonb END)
+                       || jsonb_build_object(${wkey}::text, COALESCE("stats"->'waits'->>${wkey}, ${new Date(sinceMs).toISOString()}::text)), true)
+             WHERE "id" = ${e.id}`;
+          // หนึ่งบรรทัดต่อช่วงรอ (ครั้งแรกของช่วง) — "ทำไมขั้นนี้ยังไม่ส่ง" ตอบได้จากสมุดตรวจ ◂
+          if (!sinceIso) {
+            await auditTx(tx, { tenantId: e.tenantId }, null, "crm.sequence.step_wait", "CrmSequenceEnrollment", e.id, {
+              after: { stepIndex: c.stepIndex, version: e.sequenceVersion, wait: kindW, until: waitAt.toISOString(), ceilingHours: (kindW === "cap" ? STEP_CAP_WAIT_CEILING_MS : STEP_IN_FLIGHT_CEILING_MS) / 3_600_000, by: "engine" },
+            });
+          }
+          return true;
+        });
+        return ok ? "deferred" : "failed";
+      }
+    }
     const countOf = (bucket: string) => (statsObj[bucket] && typeof statsObj[bucket] === "object" ? Number((statsObj[bucket] as Record<string, unknown>)[key] ?? 0) || 0 : 0);
     // CRM C5.4-D r3 ▸ R2-S3: ระบบส่งของร้าน/ผู้ให้บริการล่ม (401/403/429) ใช้ตัวนับของตัวเองสำหรับรอบพัก (ไม่นับเพดาน 5 ครั้งของ failAttempt) ◂
     const tries = env.sendOutage ? countOf("outages") : countOf("attempts");
