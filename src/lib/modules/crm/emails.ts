@@ -1103,6 +1103,15 @@ export function isRedeliveryRefusal(code: string | null | undefined): boolean {
 }
 /** CRM C5.4-D2 r2 ▸ N1: Resend เก็บกุญแจกันซ้ำไว้ 24 ชม. — ส่งซ้ำด้วยกุญแจเดิมได้ภายในช่วงนี้เท่านั้น (นับจากแถวถูกสร้าง = ครั้งแรก) ◂ */
 const CRM_EMAIL_REDELIVERY_WINDOW_MS = 24 * 60 * 60_000;
+/**
+ * CRM C5.4-D2 r2 ▸ N1: ผู้ให้บริการ "ปฏิเสธแน่นอน" (ตอบก่อนรับจดหมาย — สิทธิ์/โดเมน/ถี่เกิน/รูปแบบผิด) ⇒ ครั้งนั้นไม่มีทางถูกรับ ·
+ *   รหัสอื่น (เน็ตหลุด · 5xx · 409 · ค้างกลางทาง) = "อาจถูกรับแล้ว" ⇒ แถวถูกติดธง `routing.amb` (ไม่ล้างอีก) — เพดาน 24 ชม. ของการส่งซ้ำ
+ *   ใช้กับแถวที่มีธงนี้ (หรือรหัสล่าสุดไม่ใช่การปฏิเสธแน่นอน) เท่านั้น: ร้านที่ระบบส่งล่มทั้งร้าน (401/403/429) ยังลองต่อได้จนเพดาน 72 ชม. เดิม ◂
+ */
+const DEFINITE_REJECTION = /^PROVIDER_(400|401|403|404|405|422|429)$/;
+function isDefiniteRejection(code: string | null | undefined): boolean {
+  return DEFINITE_REJECTION.test(str(code).toUpperCase());
+}
 
 /**
  * CRM C5.4-D2 r2 ▸ S1(b): คำขอที่ส่งถึงผู้ให้บริการ — ประกอบที่เดียว ทั้งตอนส่งจริง (`deliver`) และตอนคำนวณลายนิ้วมือ (สร้างแถว · ก่อนส่งซ้ำ)
@@ -1485,10 +1494,11 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
           }
         }
         // CRM C5.4-D2 r2 ▸ N1: ผู้ให้บริการจำกุญแจกันซ้ำไว้ 24 ชม. — เกินนั้นการส่งซ้ำของจดหมายที่อาจถูกรับไปแล้ว = ลูกค้าได้สองฉบับ ⇒ ไม่ส่ง (ปลายทาง) ◂
-        if (now.getTime() - prior.createdAt.getTime() >= CRM_EMAIL_REDELIVERY_WINDOW_MS) {
+        const prevRouting = isObj(prior.routing) ? (prior.routing as RoutingJson & Record<string, unknown>) : null;
+        const maybeAccepted = prevRouting?.amb === true || !isDefiniteRejection(prior.providerError);
+        if (maybeAccepted && now.getTime() - prior.createdAt.getTime() >= CRM_EMAIL_REDELIVERY_WINDOW_MS) {
           return refuse(CRM_EMAIL_REDELIVERY_EXPIRED, { firstAttemptAt: prior.createdAt.toISOString() });
         }
-        const prevRouting = isObj(prior.routing) ? (prior.routing as RoutingJson & Record<string, unknown>) : null;
         // CRM C5.4-D2 r2 ▸ N3 (รีวิว D2 N3): ผู้ส่งของครั้งแรกเป็นโดเมนของร้านที่ไม่ผ่านการยืนยันแล้ว ⇒ ผู้ให้บริการจะตอบ 403 (= ถูกจัดเป็น "ระบบส่งของร้าน
         //   ล่ม" แจ้งเตือนทั้งร้าน + ลองซ้ำ 72 ชม.) — ตัดสินที่นี่แทน: แถวนี้ล้มด้วยเหตุของมันเอง ไม่เรียกผู้ให้บริการ ◂
         const firstFrom = bareEmail(prevRouting?.fromAddr ?? prior.fromAddr);
@@ -1647,7 +1657,10 @@ async function deliver(
   if (!res.ok) {
     // AUDIT-CLASS X8: เก็บเฉพาะรหัสความล้มเหลว — ไม่มีที่อยู่ผู้รับในคอลัมน์ที่ใครก็อ่านได้
     // CRM C5.4-D2 r2 ▸ S1(a): เส้นล้มไม่แตะค่าแฮช token (ของจดหมายที่ลูกค้าอาจถืออยู่) ◂
-    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: str(res.error).slice(0, 200) || "SEND_FAILED", leaseUntil: null } });
+    // CRM C5.4-D2 r2 ▸ N1: ความล้มที่ "อาจถูกรับแล้ว" ติดธง `routing.amb` ในคำสั่งเดียวกัน (ค่าแฮช/ลิงก์ในก้อน routing คงค่าเดิมของแถว) ◂
+    const failCode = str(res.error).slice(0, 200) || "SEND_FAILED";
+    const ambRouting = isDefiniteRejection(failCode) ? {} : { routing: { ...(isObj(row.routing) ? row.routing : {}), amb: true } as unknown as Prisma.InputJsonValue };
+    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: failCode, leaseUntil: null, ...ambRouting } });
     // CRM C5.4-E ▸ E3: ล้มแบบทั้งร้าน (401/403/429) ⇒ บอกเจ้าของร้าน/ผู้จัดการในแอป วันละครั้งต่อร้าน · ล้ม = ไม่กระทบผลของการส่ง ◂
     if (isOutageSendFailure(res.error)) await (await import("./notify-senders")).noticeEmailOutage({ tenantId: ctx.tenantId, systemId: ctx.systemId }, str(res.error), args.now).catch(() => false);
     return "FAILED";
@@ -1888,6 +1901,11 @@ export async function runScheduled(now: Date, opts: RunScheduledOptions = {}): P
   // = แถวนั้นค้าง QUEUED **ตลอดไป** (หน้าจอขึ้น "รอส่งตามเวลา" ทั้งที่ไม่มีใครจะส่ง และไม่มีใครรู้ว่าล้ม)
   // ⇒ หมด lease แล้วยังไม่มีสถานะปลายทาง = ปิดเป็น "ส่งไม่สำเร็จ" ให้คนเห็นและกดส่งใหม่ได้
   if (!stopNow()) {
+    // CRM C5.4-D2 r2 ▸ N1: จดหมายที่ค้างกลางทาง "อาจถูกรับแล้ว" — ติดธง `routing.amb` ก่อนปิดเป็น FAILED (เงื่อนไขชุดเดียวกัน · `at` เดียวกัน) ◂
+    await prisma.$executeRaw`
+      UPDATE "CrmEmailMessage" SET "routing" = "routing" || '{"amb":true}'::jsonb
+       WHERE "systemId" = ANY(${systems}::text[]) AND "direction" = 'OUT' AND "status" = 'QUEUED' AND "scheduledAt" IS NULL AND "leaseUntil" < ${at}
+         AND jsonb_typeof("routing") = 'object'`;
     const stale = await prisma.crmEmailMessage.updateMany({
       where: { systemId: { in: systems }, direction: "OUT", status: "QUEUED", scheduledAt: null, leaseUntil: { lt: at } },
       data: { status: "FAILED", providerError: "ค้างกลางการส่ง (ตัวส่งหยุดทำงานก่อนได้คำตอบจากผู้ให้บริการ) — กดส่งจดหมายฉบับนี้ใหม่ได้เลย", leaseUntil: null },

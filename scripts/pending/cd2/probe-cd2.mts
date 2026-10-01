@@ -565,6 +565,28 @@ try {
       j(callsFor(m.messageId)) === j(["503"]) && row?.status === "FAILED" && row?.providerError === "REDELIVERY_EXPIRED" && logOf(r2).join(",") === "0:FAILED,0:SKIPPED,1:SENT" && r2?.status === "DONE" && Number(r2?.stats?.attempts?.["v1:0"] ?? 0) === 1 && again?.status === "SENT",
       `calls=${j(callsFor(m.messageId))} row=${row?.status}/${row?.providerError} log=${j(logOf(r2))} final=${r2?.status} attempts=${j(r2?.stats?.attempts)} control=${again?.status}`);
   });
+  await sub("R2-N1c", async () => {
+    // N1 refinement: the 24 h refusal guards against a SECOND copy — it applies only when an earlier attempt may have been accepted.
+    //   (i) every attempt was a definite rejection (401 = never accepted) ⇒ after 24 h the redelivery still goes out (outage path keeps its 72 h ceiling)
+    //   (ii) attempt 1 lost (possibly accepted) then a definite 401 ⇒ after 24 h still refused (the 401 does not erase the ambiguity)
+    const k = await mkContact(c, "ปฏิเสธแน่นอน");
+    const key1 = `probe:${TAG}:r2n1c-1`;
+    SCRIPT = [401];
+    const a1 = await sysSend(c, k, key1);
+    await P.crmEmailMessage.update({ where: { id: a1.emailId }, data: { createdAt: new Date(Date.now() - 25 * HOUR) } });
+    const a2 = await sysSend(c, k, key1);
+    const key2 = `probe:${TAG}:r2n1c-2`;
+    SCRIPT = ["lost"];
+    const b1 = await sysSend(c, k, key2);
+    PRE = [401];
+    const b2 = await sysSend(c, k, key2);
+    const mid = await fullRow(b1.emailId);
+    await P.crmEmailMessage.update({ where: { id: b1.emailId }, data: { createdAt: new Date(Date.now() - 25 * HOUR) } });
+    const b3 = await sysSend(c, k, key2);
+    chk("R2-N1c", "(i) only definite 401 rejections ⇒ redelivered after 24 h (SENT) · (ii) lost (maybe accepted) then 401 ⇒ after 24 h REDELIVERY_EXPIRED, no further call",
+      a1.status === "FAILED" && a2.status === "SENT" && j(callsFor(a1.messageId)) === j(["401", "200"]) && b2.status === "FAILED" && mid?.providerError === "PROVIDER_401" && mid?.routing?.amb === true && b3.failCode === "REDELIVERY_EXPIRED" && j(callsFor(b1.messageId)) === j(["lost", "pre-401"]),
+      `i=${a1.status}/${a2.status} calls=${j(callsFor(a1.messageId))} · ii=${b1.status}/${b2.status}/${b3.status}:${b3.failCode} mid=${mid?.providerError}/amb=${mid?.routing?.amb} calls=${j(callsFor(b1.messageId))}`);
+  });
   await sub("R2-N3", async () => {
     // N3: the stored from-domain lost verification before the redelivery ⇒ that row fails with its own reason · no call · no shop-wide outage notice
     //   (tenant B: never notified today ⇒ the notice count is a live signal · the stub would answer 403 = what Resend says for an unverified domain)
