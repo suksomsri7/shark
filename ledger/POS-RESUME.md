@@ -126,3 +126,7 @@
   4. HF-INV-0 ผู้ตรวจสั้นรอบ 2 (เน้น projection ของ reports)
   5. brief P1.1b + P1.3 (ผู้คุมงานเขียนเองระหว่างรอเลน) → oracle writer → builder
 - ⛔ เหมือนเดิม: ห้าม push main · hotfix ทุกตัวรอเจ้าของอนุมัติ deploy · QC4 เท่านั้น
+- **~01:35 UTC (2 ต.ค.) · P1.1a builder รอบ 3 ส่ง** (`wip/pos-p1.1a` ceb979e4 + notes 14d86845) · **ผู้คุมงานรันซ้ำ: `qc-pos-p1.1` 93/93 · fitness 39/39** (builder: typecheck 0 · 17 ชุดถดถอยเท่าเดิม · migration รันซ้ำได้) → **ผู้ตรวจรอบ 3 กำลังเดิน (เลน 1)** → ถัดไป hunter → รับ
+  - 🔁 แก้ข้อเท็จจริงรอบ 2: Prisma 7.8 แยก statement คนละ tx **เฉพาะไฟล์ที่ไม่มี `DO $$`** · ไฟล์รอบ 3 มี DO ⇒ ส่งทั้งไฟล์เป็น tx เดียว (atomic · แต่ lock บนตารางเดิมถือจนจบไฟล์ — ให้ผู้ตรวจประเมิน → runbook P6.1)
+  - รายการตอน merge: `checkCatalogWrite` (catalog.ts) ↔ `posCanSetTenantPrice` (hotfix/pos-page-authz) ต้องกติกาเดียวกัน · P1.1b ต้องเพิ่มไฟล์ legacy-sync ใน `SYSTEM_MARKER_ALLOWLIST` · index บาร์โค้ด InvItem → P6.1
+- brief ที่เตรียมไว้: `pos-brief-HF-HR-0-R4.md` · `pos-brief-P1.3.md` (ร่าง · มติ Q1–Q29: Q1=A ชั่วคราวรอเจ้าของ O10 · Q12 คูปองเลื่อนไป P1.12)
