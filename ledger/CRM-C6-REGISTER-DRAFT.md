@@ -270,3 +270,11 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - LOW: F2 account page mints a scope-less legacy key from a crafted form; F3 key rotation copies old scopes (pre-S1 CRM/member-scoped keys renewable forever); F4 kanban key page accepts any bundle incl. crm.admin/member-admin; F5 REST `webhooks.test` still sends crm.* test events.
 - Owner decisions ranked: D11 (platform/account webhook pages need only webhook.endpoint.create, can disable/delete CRM- and member-owned endpoints; add a member family guard) > D3 (DNA interview spends AI credit with no key) > D5 (branch MANAGER can change shop PromptPay ID) > D2 > D9 > D8, D6, D1, D10, D7, D4. Plus RV-3 (CRM AI features vs ai.chat.send). Details: `wo-notes/crm-C5.5-authz-sweep.md` + `-review.md`.
 - Owner question: one read-only prod query for API keys bound to an account system carrying non-account scopes.
+
+## fix6 review debt (2026-10-01)
+
+- **R2F-1 LOW (consequence of fix6 r2):** a user who can link companies, on a contact whose PRIMARY company is outside their visibility, still sees the edit-sheet picker but every pick is refused NOT_FOUND (even promoting their own visible secondary); message says "refresh". Fix: hide/explain the picker when the current company is not visible, or a dedicated refusal text.
+- **R2F-2 LOW (pre-existing, API only):** clearing an ARCHIVED but visible company half-writes (contact row + audit + outbox, then VALIDATION from `removeContact`).
+- **R2F-3 INFO:** import company-step notes share the `errors` list (cap 500, UI shows 50) with real failures → could crowd them out; add a kind field / separate list.
+- **R2F-4 INFO (pre-existing):** an import row naming a company the importer cannot see creates a second company with that name.
+- F6-5 (echo exception only for users without company read; harmless audit race), F6-6 (`/deals/new` defaults the deal's company from the contact without a visibility check, `deals.ts:722`).
