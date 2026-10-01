@@ -6,7 +6,7 @@ Worktree `/root/projects/shark-crm-cf2` · base 8cf86985 (session/crm) · DB QC3
 - [x] probe RED on untouched tree: 3/28 (only A0.1 premise, D1.3 control, CLEAN pass) — `scripts/pending/cf2/probe-cf2.red.log`
 - [x] A · B · C · D · E implemented → probe GREEN 28/28 (`/tmp/cf2-logs/probe-g2.log`)
 - [x] typecheck exit 0 (`/tmp/cf2-logs/typecheck-2.log`)
-- [ ] fitness · regression · final commit + push wip/crm-cf2
+- [x] regression reg1 done (summary `scripts/pending/cf2/reg1.summary`, logs `/tmp/cf2-logs/reg1-*.log`) · final commit + push wip/crm-cf2
 
 ## A — wildcard-safe case-insensitive equality (2a-5 · 2a-6)
 Helper `src/lib/core/ci-equals.ts`: `likeEscape()` (`\` `%` `_` → `\`-escaped; Postgres default LIKE escape is `\`, value is a bound parameter) + `ciEquals(v)` = `{ equals: likeEscape(v), mode: "insensitive" }`. Proven on QC3 (probe A0): raw form matches `vic_tim-` → `vic.tim-` and `%@qc.invalid` → ≥3 rows (premise); `ciEquals` gives 0 for `_`/`%`/`\`-variant, the exact address in other case → the row, a stored literal `50%_off\x-…` in other case → itself, Thai local part → itself, Thai `_` look-alike → 0.
@@ -66,3 +66,19 @@ OWED by the account lane (not touched — `account/**` belongs to another lane),
   3. Module tab "บริษัท" (no testid, ModuleTabs) is now shown only on `/companies` itself (the only page passing `can`), like อีเมล/รายงาน; hidden on every other CRM page for every role. No registry rows exist for ModuleTabs links.
   4. Drawer: นก/ธนา lose บริษัท (and เพิ่มบริษัท where no crm.company.create; manager/owner keep both).
   5. `deal-stage-tab-*` rows can now assert the selected state via `aria-current="true"` (S9's "first tab = active" workaround can read the attribute).
+
+## Regression reg1 (QC3 · CRM_V2_SWITCH=all · `scripts/pending/cf2/run-regress.sh`)
+- probe-cf2 28/28 · probe-cd2 28/28 · probe-cd2-review 8/8 · probe-c54e 20/20 · probe-c54e-r2 23/23
+- qc-crm c1.3 89/89 · c1.4 110/110 · c1.5 103/103 · c1.7 57/57 · c1.11 66/66 · c2.2 73/73 · c2.6 87/87 · c3.5 (portal) 67/67 · c3.9 49/49 · c0.2 27/27
+- **c2.5 104/105** — only C2.5-U.5 (sha pin of kanban-email-in.ts, `boardSha=14058708…`; pixel route, board answer shape, no CrmEmailMessage all still pass) ⇒ ORACLE-EDIT: `SHA_BOARD_IN = "1405870825b2e9f1ab0d35321650861584fc384ca91ab96b6fdf21aa3d1bf496"`. S4.1 / S10.10 (reply effects) GREEN under the thread-proof ruling.
+- kanban k3.3 14/15 · k3.9 12/13 — the reds are K3.3-S9.2 / K3.9-S4.2 "≥N screenshots in .qc-shots/kanban/…" (fresh worktree has no .qc-shots; ENV, not code). k3.9 mail-to-board behaviour checks all green.
+- qc-acc-v2-contact-modal 96/96 (suggestLinks → member/crm findXForLink) · qc-forms-notify 9/9
+- docs: gen-crm --check exit 0 · gen-member/kanban/account --check exit 1 = "`.claude/skills/shark-*-api/references/endpoints.md` 0 bytes on disk" — `.claude/skills/` does not exist in this worktree (not tracked); no registry touched by this card ⇒ ENV.
+- typecheck exit 0 · fitness 35/35 (with env) · fitness 35/35 (`env -u DATABASE_URL -u DIRECT_URL`) incl. new F15.1/F15.2. F15 regex positive control: matches `email: { equals: keys.email.trim(), mode: "insensitive" }`, ignores the type `{ equals: string; mode: "insensitive" }`, `ciEquals(x)` and `contains`.
+
+## Follow-ups
+- account lane: 4 sites (above) + drop OWED in F15.
+- ORACLE-EDIT C2.5-U.5 sha.
+- Controller decision on C reply-effects (thread proof vs literal A-R only) — and whether "customer replied" notification should also be suppressed for unverified From (C5.3-L6-M4 currently requires it for a header-less mail).
+- P14 (`CRM_INBOUND_AUTHSERV_ID`) — until set, every customer mail is `unverifiedFrom` ⇒ no inbound-mail scoring and anonymous `crm.email.received` for all customers.
+- Contacts/companies list `contains` search still passes `%`/`_` as wildcards (search widening, tenant-scoped, out of scope).
