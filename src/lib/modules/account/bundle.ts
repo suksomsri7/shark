@@ -82,6 +82,11 @@ export async function consumeBundleComponentsInTx(
   const needsInv = components.some((c) => c.invItemId);
   const invSystemId = needsInv ? await inventorySystemId(ctx.tenantId) : null;
   const invCtx = invSystemId ? { tenantId: ctx.tenantId, systemId: invSystemId } : null;
+  // 🔴 HF-INV-1: ล็อกส่วนประกอบที่ผูกคลังทุกตัวตามลำดับ id "ก่อน" ตัดตัวแรก — ชุดที่สูตรเรียงต่างกัน (A,B กับ B,A)
+  //    หรือใบเบิกที่แตะสินค้าเดียวกันพร้อมกัน จะไม่วงล็อกกัน (ล็อกตัวที่ไม่ได้ตัดจริงในใบนี้ = ไม่มีผลเสีย แค่รอคิว)
+  if (invCtx) {
+    await inventory.lockItemsInTx(tx, invCtx, components.filter((c) => c.invItemId && c.type !== "SERVICE").map((c) => c.invItemId as string));
+  }
 
   let consumed = 0;
   for (const line of lines) {

@@ -14,6 +14,7 @@ import { bridgeInventoryMovement, bridgeItemToAccountProduct, type MovementForGl
 //    (defense-in-depth · InvItem/InvMovement เป็น system-scoped ใน scope.ts)
 // source of truth = ledger (InvMovement) · InvItem.onHand เป็น cache ที่ sync ในทุก movement
 //    (อยู่ใน tx เดียวกับการ append ledger เสมอ → balanceAfter = onHand หลังรายการ)
+//    🔴 HF-INV-1: ทุกการเขียนสต็อกล็อกแถว InvItem ก่อนอ่านยอด (lockItemForStock/lockItemsInTx) — ห้ามเพิ่มจุดเขียนใหม่ที่ไม่ล็อก
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -106,6 +107,75 @@ async function applyLotDelta(
     },
   });
   return delta;
+}
+
+// ═══════════ HF-INV-1 (D1) — ล็อกแถวสินค้าก่อนแตะสต็อก (กันยอดหายเมื่อมีหลายรายการพร้อมกัน) ═══════════
+// เดิม: อ่าน onHand/ต้นทุน → คำนวณใน JS → เขียนค่าสัมบูรณ์ทับ โดยไม่มีล็อก ⇒ 2 รายการพร้อมกันอ่านค่าเดียวกัน
+//   แล้วเขียนทับกัน = ยอดหาย · รับเข้าทั้งก้อนหายพร้อมต้นทุน · balanceAfter ซ้ำ · Σคลัง ≠ ยอดรวม (วัดจริงบน QC4)
+// ตอนนี้: ทุกจุดที่เขียนสต็อกของสินค้า 1 ตัว (onHand · ต้นทุนถัวเฉลี่ย · แถวคลัง · lot · movement) ล็อกแถว InvItem
+//   ด้วย `SELECT … FOR UPDATE` ใน tx เดียวกับที่เขียน **ก่อน** อ่านยอด ⇒ รายการที่สองรอจนรายการแรก commit
+//   แล้วจึงอ่านค่าใหม่ (READ COMMITTED อ่านใหม่ทุกคำสั่ง) — ตรรกะอ่าน-คำนวณ-เขียนเดิมจึงถูกต้องโดยไม่ต้องรื้อ
+//   (ค่าเฉลี่ยเคลื่อนที่ต้องใช้ยอดก่อนรับ ⇒ `increment` อย่างเดียวไม่พอ ต้องล็อก)
+// ล็อกหลายตัวใน tx เดียว: `lockItemsInTx` เรียง id (COLLATE "C") แล้วล็อกในคำสั่งเดียว — ผู้เรียกที่แตะหลายสินค้า
+//   ใน tx เดียว (ใบเบิกบัญชี · ตัดส่วนประกอบชุด) ต้องเรียกตัวนี้ **ก่อน** แตะสินค้าตัวใด ⇒ ทุก tx ล็อกตามลำดับเดียวกัน
+//   = ไม่มีวงล็อก (deadlock) · ล็อกซ้ำตัวที่ถือไว้แล้วใน tx เดียวกันไม่มีผล
+type LockedItem = { id: string; name: string; kind: string; onHand: number; costSatang: number };
+
+// ล็อก + อ่านสินค้า 1 ตัวในคำสั่งเดียว (แทน findFirst เดิม — ไม่เพิ่มรอบเดินทาง) · ไม่พบ/ข้ามร้าน/ข้ามระบบ → null
+async function lockItemForStock(db: Db, ctx: Ctx, itemId: string): Promise<LockedItem | null> {
+  const rows = await db.$queryRaw<LockedItem[]>`
+    SELECT "id", "name", "kind"::text AS "kind", "onHand", "costSatang"
+    FROM "InvItem"
+    WHERE "id" = ${itemId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId}
+    FOR UPDATE`;
+  return rows[0] ?? null;
+}
+
+/**
+ * HF-INV-1 — ล็อกสินค้าหลายตัวตามลำดับ id ที่ตายตัว ภายใน tx ของผู้เรียก (กัน deadlock ของ tx ที่แตะหลายสินค้า)
+ * เรียกก่อน `consumeInTx`/`receiveInTx` ตัวแรกของ tx นั้น · id ซ้ำ/ว่างตัดทิ้ง · id ที่ไม่มีในระบบนี้ข้ามเงียบ
+ */
+export async function lockItemsInTx(tx: Db, ctx: Ctx, itemIds: readonly string[]): Promise<void> {
+  const ids = [...new Set(itemIds.filter((x) => typeof x === "string" && x))].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw`
+    SELECT "id" FROM "InvItem"
+    WHERE "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} AND "id" IN (${Prisma.join(ids)})
+    ORDER BY "id" COLLATE "C"
+    FOR UPDATE`;
+}
+
+// รอล็อกนานเกิน/ชนกันจนฐานข้อมูลยกเลิก tx — tx ที่โมดูลคลังเปิดเองลองใหม่ได้ 1 ครั้ง (idempotencyKey กันซ้ำอยู่แล้ว)
+// ครั้งที่สองยังไม่ผ่าน → ข้อความไทยให้ลองใหม่ (ไม่ใช่ 500 · ไม่โทษผู้ใช้)
+const STOCK_BUSY_MESSAGE = "สินค้านี้กำลังถูกบันทึกสต็อกจากหลายรายการพร้อมกัน — รายการนี้ยังไม่ถูกบันทึก กรุณาลองใหม่อีกครั้ง";
+const CONTENTION_CODES = new Set(["40P01", "55P03", "40001", "P2034", "P2028"]);
+const CONTENTION_RE = /deadlock detected|lock timeout|could not obtain lock|expired transaction|transaction already closed|unable to start a transaction/i;
+
+function isStockContention(e: unknown): boolean {
+  let cur: unknown = e;
+  for (let depth = 0; depth < 5 && cur && typeof cur === "object"; depth++) {
+    const o = cur as { code?: unknown; originalCode?: unknown; kind?: unknown; message?: unknown; cause?: unknown; meta?: unknown };
+    if ([o.code, o.originalCode].some((c) => typeof c === "string" && CONTENTION_CODES.has(c))) return true;
+    if (o.kind === "TransactionWriteConflict") return true;
+    if (typeof o.message === "string" && CONTENTION_RE.test(o.message)) return true;
+    const meta = o.meta && typeof o.meta === "object" ? (o.meta as { driverAdapterError?: unknown }) : null;
+    cur = o.cause ?? meta?.driverAdapterError;
+  }
+  return false;
+}
+
+async function withStockRetry<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (!isStockContention(e)) throw e;
+  }
+  try {
+    return await run();
+  } catch (e) {
+    if (isStockContention(e)) throw new Error(STOCK_BUSY_MESSAGE);
+    throw e;
+  }
 }
 
 // resolve locationId ที่จะใช้จริง: ส่งมา = ใช้ตามนั้น (ต้องเป็นคลังของระบบนี้) · ไม่ส่ง = คลัง default
@@ -434,7 +504,7 @@ export type ReceiveInput = {
 
 export async function receive(ctx: Ctx, input: ReceiveInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
-  const mv = await db.$transaction((tx) => receiveInTx(tx as unknown as Db, ctx, input));
+  const mv = await withStockRetry(() => db.$transaction((tx) => receiveInTx(tx as unknown as Db, ctx, input)));
   // perpetual: โพสต์ต้นทุนเข้าบัญชี (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
   await postMovementGl(ctx, mv);
   // WO 4.1: ต้นทุนถัวเฉลี่ยเปลี่ยนหลังรับเข้า → ดันไปที่ "ราคาซื้อ/หน่วย" ของสินค้าบัญชีที่ผูกกันไว้
@@ -457,8 +527,12 @@ export async function receiveInTx(tx: Db, ctx: Ctx, input: ReceiveInput): Promis
     const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
     if (dup) return dup;
 
-    const item = await tx.invItem.findFirst({ where: { ...scope(ctx), id: input.itemId } });
+    // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด/ต้นทุน (ดูหัวข้อ HF-INV-1 ด้านบน)
+    const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // key เดียวกันที่อีก tx เพิ่ง commit ระหว่างที่เรารอล็อก → คืนรายการเดิม (ไม่รับซ้ำ · ไม่ชน unique)
+    const dupAfterLock = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
+    if (dupAfterLock) return dupAfterLock;
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -515,7 +589,7 @@ export type ConsumeInput = {
 
 export async function consume(ctx: Ctx, input: ConsumeInput): Promise<{ id: string }> {
   const db = tenantDb(ctx);
-  const mv = await db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input));
+  const mv = await withStockRetry(() => db.$transaction((tx) => consumeInTx(tx as unknown as Db, ctx, input)));
   // perpetual: รับรู้ต้นทุนขาย (นอก tx · idempotent ต่อ movement) — ไม่มีระบบ ACCOUNT = ข้าม
   await postMovementGl(ctx, mv);
   // WO 4.2: ตัดสต็อกจาก POS/ฝั่งขาย → กระจก `AccountProduct.qtyOnHand` ต้องตามทัน
@@ -536,8 +610,12 @@ export async function consumeInTx(tx: Db, ctx: Ctx, input: ConsumeInput): Promis
     const dup = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
     if (dup) return dup;
 
-    const item = await tx.invItem.findFirst({ where: { ...scope(ctx), id: input.itemId } });
+    // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด (ดูหัวข้อ HF-INV-1 ด้านบน)
+    const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    // key เดียวกันที่อีก tx เพิ่ง commit ระหว่างที่เรารอล็อก → คืนรายการเดิม (ไม่ตัดซ้ำ · ไม่ชน unique)
+    const dupAfterLock = await tx.invMovement.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey: input.idempotencyKey } });
+    if (dupAfterLock) return dupAfterLock;
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -593,14 +671,17 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
   const newQty = Math.round(input.newQty);
   const db = tenantDb(ctx);
 
-  return db.$transaction(async (tx) => {
+  return withStockRetry(() => db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent guard — key เดิมเคยบันทึกแล้ว → คืนรายการเดิม ไม่แตะสต็อก
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
     if (dup) return { id: dup.id };
 
-    const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
+    // 🔴 HF-INV-1: ล็อกแถวสินค้าก่อนอ่านยอด — qtyDelta ต้องคิดจากยอดล่าสุดจริง ไม่ใช่ยอดที่อ่านก่อนรายการอื่น commit
+    const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    const dupAfterLock = await tx.invMovement.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+    if (dupAfterLock) return { id: dupAfterLock.id };
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -632,7 +713,7 @@ export async function adjust(ctx: Ctx, input: AdjustInput): Promise<{ id: string
       },
     });
     return { id: mv.id };
-  }).then(async (r) => {
+  })).then(async (r) => {
     // WO 4.2: นับสต็อก/ปรับยอด ก็ทำให้กระจกฝั่งบัญชีล้าสมัยเหมือนกัน → sync หลัง commit (เงียบถ้าไม่ผูก)
     await syncLinkedAccountProduct(ctx, input.itemId);
     return r;
@@ -685,14 +766,18 @@ export async function transfer(ctx: Ctx, input: TransferInput): Promise<{ ok: bo
   const note = input.note?.trim() || null;
   const db = tenantDb(ctx);
 
-  return db.$transaction(async (tx) => {
+  return withStockRetry(() => db.$transaction(async (tx) => {
     const txc = tx as unknown as Db;
     // idempotent — เคยโอน key นี้แล้ว → ไม่ทำซ้ำ
     const dup = await tx.invMovement.findFirst({ where: { idempotencyKey: outKey } });
     if (dup) return { ok: false };
 
-    const item = await tx.invItem.findFirst({ where: { id: input.itemId } });
+    // 🔴 HF-INV-1: ล็อกแถวสินค้า (ล็อกต่อสินค้า ไม่ใช่ต่อคลัง) ⇒ โอน A→B กับ B→A ของสินค้าเดียวกันเรียงคิวกัน
+    //    ยอดต่อคลังที่อ่านด้านล่างจึงเป็นยอดล่าสุดจริง · ไม่มีวงล็อกระหว่างแถวคลังสองแถว
+    const item = await lockItemForStock(txc, ctx, input.itemId);
     if (!item) throw new Error("ไม่พบสินค้าในคลัง");
+    const dupAfterLock = await tx.invMovement.findFirst({ where: { idempotencyKey: outKey } });
+    if (dupAfterLock) return { ok: false };
     // 🔴 บริการไม่มีสต็อก (13 ส.ค. 2026) — กันเผลอรับเข้า/ตัด/นับ "ค่าตัดผม" เป็นชิ้น
     if (item.kind === "SERVICE") throw new Error(`"${item.name}" เป็นบริการ — ไม่มีสต็อกให้รับเข้า/ตัด/นับ`);
 
@@ -754,7 +839,7 @@ export async function transfer(ctx: Ctx, input: TransferInput): Promise<{ ok: bo
       },
     });
     return { ok: true };
-  });
+  }));
 }
 
 // ── อ่านยอดคงเหลือ (cache) ตามรายการสินค้า ──

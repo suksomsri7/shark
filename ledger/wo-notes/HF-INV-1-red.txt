@@ -1,0 +1,147 @@
+[env] qc-hf-inventory-atomic · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1197526) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+AT-1 ตัดสต็อกสินค้าตัวเดียว 10 รายการพร้อมกัน × 5 รอบ (5 ตัวห่อ + 5 InTx คนละ client)
+  ❌ [AT-1.1] รอบ 1: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 480 — cache 498 ≠ ledger 480 · cache 498 ≠ Σlocation 480 · balanceAfter/avg-cost chain broken (n=11 cache onHand=498 cost=1000 · last balances 497,499,497,498,499,498,498,498) · onHand 498 ≠ expected 480
+  ❌ [AT-1.2] รอบ 2: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 462 — cache 497 ≠ ledger 462 · cache 497 ≠ Σlocation 462 · balanceAfter/avg-cost chain broken (n=21 cache onHand=497 cost=1000 · last balances 497,496,496,495,496,497,495,497) · onHand 497 ≠ expected 462
+  ❌ [AT-1.3] รอบ 3: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 443 — cache 496 ≠ ledger 443 · cache 496 ≠ Σlocation 443 · balanceAfter/avg-cost chain broken (n=31 cache onHand=496 cost=1000 · last balances 496,495,496,495,494,494,494,496) · onHand 496 ≠ expected 443
+  ❌ [AT-1.4] รอบ 4: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 422 — cache 495 ≠ ledger 422 · cache 495 ≠ Σlocation 422 · balanceAfter/avg-cost chain broken (n=41 cache onHand=495 cost=1000 · last balances 494,494,494,493,493,495,495,495) · onHand 495 ≠ expected 422
+  ❌ [AT-1.5] รอบ 5: cache = ledger = Σคลัง · สาย balanceAfter ต่อกัน · onHand = 401 — cache 492 ≠ ledger 401 · cache 492 ≠ Σlocation 401 · balanceAfter/avg-cost chain broken (n=51 cache onHand=492 cost=1000 · last balances 493,492,493,492,494,492,493,492) · onHand 492 ≠ expected 401
+
+AT-2 รับเข้าพร้อมกัน 10 รายการ คนละต้นทุน × 5 รอบ (ค่าเฉลี่ยตรงตามกติกาถึงสตางค์)
+  ❌ [AT-2.1] รอบ 1: ไม่มีรับเข้าหาย (onHand = 58) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง — 9 call(s) threw: PrismaClientKnownRequestError:P2002: Invalid `db.invLocationStock.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:58:29 55 const count = await db.invLocationS · onHand 5 ≠ expected 58
+  ❌ [AT-2.2] รอบ 2: ไม่มีรับเข้าหาย (onHand = 108) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง — cache 14 ≠ ledger 55 · cache 14 ≠ Σlocation 55 · balanceAfter/avg-cost chain broken (n=11 cache onHand=14 cost=4393 · last balances 10,6,14,6,14,10,6,14) · onHand 14 ≠ expected 108
+  ❌ [AT-2.3] รอบ 3: ไม่มีรับเข้าหาย (onHand = 174) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง — cache 23 ≠ ledger 121 · cache 23 ≠ Σlocation 121 · balanceAfter/avg-cost chain broken (n=21 cache onHand=23 cost=2822 · last balances 23,23,19,23,15,19,23,23) · onHand 23 ≠ expected 174
+  ❌ [AT-2.4] รอบ 4: ไม่มีรับเข้าหาย (onHand = 228) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง — cache 32 ≠ ledger 175 · cache 32 ≠ Σlocation 175 · balanceAfter/avg-cost chain broken (n=31 cache onHand=32 cost=4614 · last balances 32,24,24,28,28,24,32,32) · onHand 32 ≠ expected 228
+  ❌ [AT-2.5] รอบ 5: ไม่มีรับเข้าหาย (onHand = 258) · ค่าเฉลี่ยถัว = replay ตามลำดับจริง — cache 33 ≠ ledger 205 · cache 33 ≠ Σlocation 205 · balanceAfter/avg-cost chain broken (n=41 cache onHand=33 cost=4690 · last balances 41,33,37,33,33,33,37,33) · onHand 33 ≠ expected 258
+
+AT-3 รับเข้า + ตัด ปนกัน 10 รายการ × 5 รอบ (ครึ่งหนึ่งระบุ lot)
+  ❌ [AT-3.1] รอบ 1: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96 — cache 99 ≠ ledger 96 · cache 99 ≠ Σlocation 96 · balanceAfter/avg-cost chain broken (n=11 cache onHand=99 cost=498 · last balances 95,101,103,99,97,95,103,99) · onHand 99 ≠ expected 96
+  ❌ [AT-3.2] รอบ 2: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 98 — cache 96 ≠ ledger 98 · cache 96 ≠ Σlocation 98 · balanceAfter/avg-cost chain broken (n=21 cache onHand=96 cost=497 · last balances 98,94,104,96,102,94,102,96) · onHand 96 ≠ expected 98
+  ❌ [AT-3.3] รอบ 3: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 96 — cache 91 ≠ ledger 96 · cache 91 ≠ Σlocation 96 · balanceAfter/avg-cost chain broken (n=31 cache onHand=91 cost=499 · last balances 91,101,95,101,91,97,97,91) · onHand 91 ≠ expected 96
+  ❌ [AT-3.4] รอบ 4: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 106 — cache 90 ≠ ledger 106 · cache 90 ≠ Σlocation 106 · balanceAfter/avg-cost chain broken (n=41 cache onHand=90 cost=498 · last balances 94,90,90,94,94,92,96,90) · onHand 90 ≠ expected 106
+  ❌ [AT-3.5] รอบ 5: cache = ledger = Σคลัง · lot = Σ movement ของ lot · ค่าเฉลี่ยตรง · onHand = 104 — cache 85 ≠ ledger 104 · cache 85 ≠ Σlocation 104 · balanceAfter/avg-cost chain broken (n=51 cache onHand=85 cost=498 · last balances 91,95,95,91,85,91,89,85) · onHand 85 ≠ expected 104
+
+AT-4 โอนคลังหลัก→สาขา 2 และกลับ พร้อมกัน 10 รายการ × 5 รอบ
+  ❌ [AT-4.1] รอบ 1: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน — cache 200 ≠ Σlocation 211 · location row 92 ≠ Σ its movements 81 · per-location balanceAfter chain broken at a location (n=5) · per-location balanceAfter chain broken at a location (n=4) · 7 call(s) threw: DriverAdapterError::deadlock detected
+  ❌ [AT-4.2] รอบ 2: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน — cache 200 ≠ Σlocation 211 · location row 86 ≠ Σ its movements 75 · per-location balanceAfter chain broken at a location (n=6) · per-location balanceAfter chain broken at a location (n=5) · 9 call(s) threw: DriverAdapterError::deadlock detected
+  ❌ [AT-4.3] รอบ 3: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน — cache 200 ≠ Σlocation 211 · location row 87 ≠ Σ its movements 76 · per-location balanceAfter chain broken at a location (n=7) · per-location balanceAfter chain broken at a location (n=6) · 9 call(s) threw: DriverAdapterError::deadlock detected
+  ❌ [AT-4.4] รอบ 4: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน — cache 200 ≠ Σlocation 211 · location row 89 ≠ Σ its movements 78 · per-location balanceAfter chain broken at a location (n=8) · per-location balanceAfter chain broken at a location (n=7) · 9 call(s) threw: DriverAdapterError::deadlock detected
+  ❌ [AT-4.5] รอบ 5: Σคลัง = 200 = onHand · แถวคลัง = Σ movement ของคลัง · สายยอดต่อคลังต่อกัน — cache 200 ≠ Σlocation 211 · location row 98 ≠ Σ its movements 87 · per-location balanceAfter chain broken at a location (n=9) · per-location balanceAfter chain broken at a location (n=8) · 9 call(s) threw: DriverAdapterError::deadlock detected
+
+AT-5 ปรับยอดนับ (adjust) ×2 แข่งกับตัด ×8 × 5 รอบ
+  ❌ [AT-5.1] รอบ 1: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน — cache 299 ≠ ledger 122 · cache 299 ≠ Σlocation 122 · balanceAfter/avg-cost chain broken (n=11 cache onHand=299 cost=250 · last balances 217,298,299,299,299,213,298,299)
+  ❌ [AT-5.2] รอบ 2: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน — cache 298 ≠ ledger -34 · cache 298 ≠ Σlocation -34 · balanceAfter/avg-cost chain broken (n=21 cache onHand=298 cost=250 · last balances 298,298,298,298,227,298,298,298)
+  ❌ [AT-5.3] รอบ 3: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน — cache 297 ≠ ledger -168 · cache 297 ≠ Σlocation -168 · balanceAfter/avg-cost chain broken (n=31 cache onHand=297 cost=250 · last balances 297,297,237,297,297,297,233,297)
+  ❌ [AT-5.4] รอบ 4: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน — cache 296 ≠ ledger -280 · cache 296 ≠ Σlocation -280 · balanceAfter/avg-cost chain broken (n=41 cache onHand=296 cost=250 · last balances 247,243,296,296,296,296,296,296)
+  ❌ [AT-5.5] รอบ 5: ปรับยอดกับตัดเรียงกัน — qtyDelta ของ ADJUST = ยอดนับ − ยอดก่อนหน้าจริง · สายต่อกัน — cache 295 ≠ ledger -370 · cache 295 ≠ Σlocation -370 · balanceAfter/avg-cost chain broken (n=51 cache onHand=295 cost=250 · last balances 295,295,295,295,257,295,253,295)
+
+AT-6 คีย์เดียวกันยิงพร้อมกัน 10 ครั้ง × 5 รอบ → movement เดียว · ตัดครั้งเดียว
+  ✅ [AT-6.1a] รอบ 1: movement ของคีย์นี้ = 1 · onHand = 98 (ตัดครั้งเดียว)
+  ❌ [AT-6.1b] รอบ 1: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก — errors 9 (PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:558:27 555 let lotNegative = false; 556 if (lotCo) · distinct ids 1
+  ✅ [AT-6.2a] รอบ 2: movement ของคีย์นี้ = 1 · onHand = 96 (ตัดครั้งเดียว)
+  ❌ [AT-6.2b] รอบ 2: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก — errors 9 (PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:558:27 555 let lotNegative = false; 556 if (lotCo) · distinct ids 1
+  ✅ [AT-6.3a] รอบ 3: movement ของคีย์นี้ = 1 · onHand = 94 (ตัดครั้งเดียว)
+  ❌ [AT-6.3b] รอบ 3: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก — errors 9 (PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:558:27 555 let lotNegative = false; 556 if (lotCo) · distinct ids 1
+  ✅ [AT-6.4a] รอบ 4: movement ของคีย์นี้ = 1 · onHand = 92 (ตัดครั้งเดียว)
+  ❌ [AT-6.4b] รอบ 4: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก — errors 9 (PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:558:27 555 let lotNegative = false; 556 if (lotCo) · distinct ids 1
+  ✅ [AT-6.5a] รอบ 5: movement ของคีย์นี้ = 1 · onHand = 90 (ตัดครั้งเดียว)
+  ❌ [AT-6.5b] รอบ 5: ทั้ง 10 ครั้งคืนรายการเดิม ไม่มี error ถึงผู้เรียก — errors 9 (PrismaClientKnownRequestError:P2002: Invalid `tx.invMovement.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:558:27 555 let lotNegative = false; 556 if (lotCo) · distinct ids 1
+  ✅ [AT-6.z] หลัง 5 รอบ: invariant ครบ
+
+AT-8 POS ขายสินค้าตัวเดียว 10 บิลพร้อมกัน × 5 รอบ (ตัดสต็อกหลังบิล commit)
+  ❌ [AT-8.1] รอบ 1: 10 บิล → OUT 10 แถว · onHand = 382 · invariant ครบ — cache 389 ≠ ledger 382 · cache 389 ≠ Σlocation 382 · balanceAfter/avg-cost chain broken (n=12 cache onHand=389 cost=2000 · last balances 395,395,394,393,392,392,390,389) · OUT rows 10 onHand 389 (expected 382)
+  ❌ [AT-8.2] รอบ 2: 10 บิล → OUT 10 แถว · onHand = 363 · invariant ครบ — cache 379 ≠ ledger 363 · cache 379 ≠ Σlocation 363 · balanceAfter/avg-cost chain broken (n=22 cache onHand=379 cost=2000 · last balances 385,386,382,384,381,382,381,379) · OUT rows 10 onHand 379 (expected 363)
+  ❌ [AT-8.3] รอบ 3: 10 บิล → OUT 10 แถว · onHand = 335 · invariant ครบ — cache 365 ≠ ledger 335 · cache 365 ≠ Σlocation 335 · balanceAfter/avg-cost chain broken (n=32 cache onHand=365 cost=2000 · last balances 373,374,370,371,367,368,365,365) · OUT rows 10 onHand 365 (expected 335)
+  ❌ [AT-8.4] รอบ 4: 10 บิล → OUT 10 แถว · onHand = 320 · invariant ครบ — cache 358 ≠ ledger 320 · cache 358 ≠ Σlocation 320 · balanceAfter/avg-cost chain broken (n=42 cache onHand=358 cost=2000 · last balances 363,363,361,361,359,360,358,358) · OUT rows 10 onHand 358 (expected 320)
+  ❌ [AT-8.5] รอบ 5: 10 บิล → OUT 10 แถว · onHand = 298 · invariant ครบ — cache 345 ≠ ledger 298 · cache 345 ≠ Σlocation 298 · balanceAfter/avg-cost chain broken (n=52 cache onHand=345 cost=2000 · last balances 352,352,351,349,350,346,348,345) · OUT rows 10 onHand 345 (expected 298)
+
+AT-9 รับของตาม PO 10 ใบพร้อมกัน แต่ละใบกด 2 ครั้ง × 5 รอบ (คนละต้นทุน)
+  ❌ [AT-9.1] รอบ 1: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 40 · ค่าเฉลี่ยตรง — 9 call(s) threw: PrismaClientKnownRequestError:P2002: Invalid `db.invLocationStock.create()` invocation in /root/projects/shark-hf5/src/lib/modules/inventory/service.ts:58:29 55 const count = await db.invLocationS · ok 1 onHand 3 (expected 40)
+  ❌ [AT-9.2] รอบ 2: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 84 · ค่าเฉลี่ยตรง — cache 4 ≠ ledger 47 · cache 4 ≠ Σlocation 47 · balanceAfter/avg-cost chain broken (n=11 cache onHand=4 cost=3963 · last balances 8,8,6,6,4,6,12,4) · ok 10 onHand 4 (expected 84)
+  ❌ [AT-9.3] รอบ 3: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 132 · ค่าเฉลี่ยตรง — cache 11 ≠ ledger 95 · cache 11 ≠ Σlocation 95 · balanceAfter/avg-cost chain broken (n=21 cache onHand=11 cost=3751 · last balances 11,5,5,11,11,9,11,11) · ok 10 onHand 11 (expected 132)
+  ❌ [AT-9.4] รอบ 4: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 196 · ค่าเฉลี่ยตรง — cache 18 ≠ ledger 159 · cache 18 ≠ Σlocation 159 · balanceAfter/avg-cost chain broken (n=31 cache onHand=18 cost=2624 · last balances 14,16,16,20,14,20,16,18) · ok 10 onHand 18 (expected 196)
+  ❌ [AT-9.5] รอบ 5: รับสำเร็จ 10/20 ครั้ง (ใบละครั้ง) · onHand = 235 · ค่าเฉลี่ยตรง — cache 23 ≠ ledger 198 · cache 23 ≠ Σlocation 198 · balanceAfter/avg-cost chain broken (n=41 cache onHand=23 cost=2641 · last balances 25,25,19,19,23,24,19,23) · ok 10 onHand 23 (expected 235)
+
+AT-11 deadlock ที่ฐานข้อมูลเลือกตัวห่อเป็นเหยื่อ × 3 รอบ → ลองใหม่ 1 ครั้งแล้วสำเร็จ
+     · รอบ 1: lane สำเร็จ · ตัวห่อ DriverAdapterError::deadlock detected · deadlock ที่ PG นับได้ +1
+  ❌ [AT-11.1a] รอบ 1: ตัวห่อไม่ปล่อย error ดิบของฐานข้อมูล (สำเร็จ หรือข้อความไทยให้ลองใหม่) · movement 0 แถว — wrapper rejected DriverAdapterError::deadlock detected · movements 0
+  ✅ [AT-11.1b] รอบ 1: invariant ครบหลัง deadlock
+     · รอบ 2: lane สำเร็จ · ตัวห่อ DriverAdapterError::deadlock detected · deadlock ที่ PG นับได้ +1
+  ❌ [AT-11.2a] รอบ 2: ตัวห่อไม่ปล่อย error ดิบของฐานข้อมูล (สำเร็จ หรือข้อความไทยให้ลองใหม่) · movement 0 แถว — wrapper rejected DriverAdapterError::deadlock detected · movements 0
+  ✅ [AT-11.2b] รอบ 2: invariant ครบหลัง deadlock
+     · รอบ 3: lane สำเร็จ · ตัวห่อ DriverAdapterError::deadlock detected · deadlock ที่ PG นับได้ +1
+  ❌ [AT-11.3a] รอบ 3: ตัวห่อไม่ปล่อย error ดิบของฐานข้อมูล (สำเร็จ หรือข้อความไทยให้ลองใหม่) · movement 0 แถว — wrapper rejected DriverAdapterError::deadlock detected · movements 0
+  ✅ [AT-11.3b] รอบ 3: invariant ครบหลัง deadlock
+
+AT-7 ผู้เรียกหลายสินค้าใน tx เดียว สลับลำดับ (ใบเบิก [A,B]/[B,A] + ตัดส่วนประกอบชุด [A,B]/[B,A]) × 5 รอบ
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+  ❌ [AT-7.1] รอบ 1: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — cache 4992 ≠ ledger 4991 · cache 4992 ≠ Σlocation 4991 · balanceAfter/avg-cost chain broken (n=6 cache onHand=4992 cost=3000 · last balances 5000,4999,4998,4997,4995,4992) · 6 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 1/2 ()
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+  ❌ [AT-7.2] รอบ 2: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — cache 4987 ≠ ledger 4986 · cache 4987 ≠ Σlocation 4986 · balanceAfter/avg-cost chain broken (n=9 cache onHand=4987 cost=3000 · last balances 4999,4998,4997,4995,4992,4991,4990,4987) · 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+  ❌ [AT-7.3] รอบ 3: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — cache 4981 ≠ ledger 4980 · cache 4981 ≠ Σlocation 4980 · balanceAfter/avg-cost chain broken (n=13 cache onHand=4981 cost=3000 · last balances 4992,4991,4990,4987,4986,4985,4984,4981) · cache 4979 ≠ ledger 4978 · cache 4979 ≠ Σlocation 4978 · balanceAfter/avg-cost chain broken (n=12 cache onHand=4979 cost=4500 · last balances 4994,4991,4988,4985,4984,4982,4980,4979) · 6 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+  ❌ [AT-7.4] รอบ 4: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — cache 4972 ≠ ledger 4971 · cache 4972 ≠ Σlocation 4971 · balanceAfter/avg-cost chain broken (n=17 cache onHand=4972 cost=3000 · last balances 4986,4985,4984,4981,4980,4978,4975,4972) · cache 4972 ≠ ledger 4970 · cache 4972 ≠ Σlocation 4970 · balanceAfter/avg-cost chain broken (n=16 cache onHand=4972 cost=4500 · last balances 4984,4982,4980,4979,4978,4976,4973,4972) · 6 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: current transaction is aborted, commands ignored until end of transaction block
+[account/bundle] consume component failed: deadlock detected
+[account/bundle] consume component failed: deadlock detected
+  ❌ [AT-7.5] รอบ 5: 10 tx หลายสินค้าสลับลำดับ สำเร็จครบ ไม่มี deadlock · invariant A,B ครบ — cache 4965 ≠ ledger 4964 · cache 4965 ≠ Σlocation 4964 · balanceAfter/avg-cost chain broken (n=20 cache onHand=4965 cost=3000 · last balances 4981,4980,4978,4975,4972,4969,4968,4965) · cache 4964 ≠ ledger 4962 · cache 4964 ≠ Σlocation 4962 · balanceAfter/avg-cost chain broken (n=19 cache onHand=4964 cost=4500 · last balances 4979,4978,4976,4973,4972,4969,4966,4964) · 7 call(s) threw: Error::goods issue: บันทึกเอกสารเบิกไม่สำเร็จ | Error::bundle consumed 0/2 ()
+
+AT-10 ใบปรับต้นทุนสินค้า ×1 แข่งกับรับเข้า ×9 × 5 รอบ (ต้นทุน/ยอดที่ใบใช้ = ค่า ณ จุดหนึ่งในสายจริง)
+  ❌ [AT-10.1] รอบ 1: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — cache 5002 ≠ ledger 5045 · cache 5002 ≠ Σlocation 5045 · balanceAfter/avg-cost chain broken (n=11 cache onHand=5002 cost=1287 · last balances 5004,5008,5007,5001,5008,5008,5002,5000)
+  ❌ [AT-10.2] รอบ 2: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — cache 5009 ≠ ledger 5087 · cache 5009 ≠ Σlocation 5087 · balanceAfter/avg-cost chain broken (n=21 cache onHand=5009 cost=1286 · last balances 5007,5005,5005,5006,5005,5009,5000,5002)
+  ❌ [AT-10.3] รอบ 3: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — cache 5016 ≠ ledger 5128 · cache 5016 ≠ Σlocation 5128 · balanceAfter/avg-cost chain broken (n=31 cache onHand=5016 cost=1287 · last balances 5018,5010,5012,5015,5016,5000,5002,5009)
+  ❌ [AT-10.4] รอบ 4: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — cache 5022 ≠ ledger 5178 · cache 5022 ≠ Σlocation 5178 · balanceAfter/avg-cost chain broken (n=41 cache onHand=5022 cost=1296 · last balances 5022,5025,5025,5022,5000,5002,5009,5016)
+  ❌ [AT-10.5] รอบ 5: ใบปรับต้นทุน + รับเข้าเรียงคิวกัน — ยอด/ต้นทุนเดิมบนใบตรงกับจุดหนึ่งในสาย · ค่าเฉลี่ยสุดท้ายตรง — cache 5028 ≠ ledger 5217 · cache 5028 ≠ Σlocation 5217 · balanceAfter/avg-cost chain broken (n=51 cache onHand=5028 cost=1298 · last balances 5027,5026,5028,5000,5002,5009,5016,5022)
+  ❌ [AT-Z] ปิดท้าย: 12 สินค้าทั้งหมด invariant ครบ — cache 5028 ≠ ledger 5217 · cache 5028 ≠ Σlocation 5217 · balanceAfter/avg-cost chain broken (n=51 cache onHand=5028 cost=1298 · last balances 5027,5026,5028,5000,5002,5009,5016,5022) · cache 492 ≠ ledger 401
+
+TIMING per round (wall, 10 parallel): AT-1 0.7/0.5/0.5/0.5/0.4s · AT-2 0.2/0.5/0.5/0.5/0.5s · AT-3 0.6/0.6/0.6/0.6/0.6s · AT-4 2.2/2.1/2.1/3.1/2.1s · AT-5 0.5/0.4/0.4/0.4/0.4s · AT-6 0.4/0.4/0.4/0.4/0.4s · AT-8 0.8/0.7/0.7/0.7/1.0s · AT-9 0.2/0.5/0.5/0.5/0.5s · AT-7 3.5/4.3/3.5/3.4/4.3s · AT-10 0.6/0.8/0.6/0.8/0.8s
+
+===== QC HF-INV-1 inventory atomic =====
+ผ่าน 9/63
+FINDINGS: CRITICAL 49 · MAJOR 5 · MINOR 0
+JSON_SUMMARY {"total":63,"passed":9,"findings":["AT-1.1","AT-1.2","AT-1.3","AT-1.4","AT-1.5","AT-2.1","AT-2.2","AT-2.3","AT-2.4","AT-2.5","AT-3.1","AT-3.2","AT-3.3","AT-3.4","AT-3.5","AT-4.1","AT-4.2","AT-4.3","AT-4.4","AT-4.5","AT-5.1","AT-5.2","AT-5.3","AT-5.4","AT-5.5","AT-6.1b","AT-6.2b","AT-6.3b","AT-6.4b","AT-6.5b","AT-8.1","AT-8.2","AT-8.3","AT-8.4","AT-8.5","AT-9.1","AT-9.2","AT-9.3","AT-9.4","AT-9.5","AT-11.1a","AT-11.2a","AT-11.3a","AT-7.1","AT-7.2","AT-7.3","AT-7.4","AT-7.5","AT-10.1","AT-10.2","AT-10.3","AT-10.4","AT-10.5","AT-Z"]}

@@ -849,6 +849,9 @@ async function applyGoodsDocInTx(
     const invSystemId = await inventorySystemId(tenantId);
     if (!invSystemId) throw new Error("สินค้าในใบนี้ผูกกับคลังสินค้าไว้ แต่ยังไม่พบระบบคลังสินค้าของกิจการ");
     invCtx = { tenantId, systemId: invSystemId };
+    // 🔴 HF-INV-1: ล็อกสินค้าทุกตัวของใบนี้ตามลำดับ id "ก่อน" อ่านยอด/แตะสต็อกตัวใด — ใบที่บรรทัดสลับกัน
+    //    (A,B กับ B,A) จะไม่วงล็อกกัน · ยอดที่ใช้ตรวจ "สต็อกไม่พอ" และต้นทุนตอนคืนเป็นยอดล่าสุดจริง
+    await inventory.lockItemsInTx(tx, invCtx, linked.map((p) => p.invItemId as string));
     const items = await tx.invItem.findMany({
       where: { tenantId, systemId: invSystemId, id: { in: linked.map((p) => p.invItemId as string) } },
       select: { id: true, onHand: true, costSatang: true, kind: true, name: true },
@@ -1221,6 +1224,8 @@ export async function createCostAdjustment(input: {
         const invSystemId = await inventorySystemId(input.tenantId);
         if (!invSystemId) throw new Error("สินค้านี้ผูกกับคลังสินค้าไว้ แต่ยังไม่พบระบบคลังสินค้าของกิจการ");
         invCtx = { tenantId: input.tenantId, systemId: invSystemId };
+        // 🔴 HF-INV-1: ล็อกสินค้าก่อนอ่านยอด/ต้นทุน — ไม่งั้นรับเข้าที่ commit ระหว่างนี้ถูกต้นทุนใหม่เขียนทับ และส่วนต่าง GL คิดจากยอดเก่า
+        await inventory.lockItemsInTx(tx, invCtx, [p.invItemId]);
         const it = await tx.invItem.findFirst({
           where: { tenantId: input.tenantId, systemId: invSystemId, id: p.invItemId },
           select: { id: true, onHand: true, costSatang: true },
