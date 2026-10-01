@@ -36,6 +36,7 @@ import * as companiesSvc from "./companies"; // CRM C3.4 ▸ อ่านบร�
 import { parseCrmSettings } from "./settings";
 import { redactContactInfo } from "./calls-shared";
 import { DAY_MS, TH_OFFSET_MS, thaiDateLabel, thaiDayKey } from "./activities-shared";
+import { dayKey as dealDayKey, thaiToday } from "./deals-shared"; // CRM C5.5 ▸ fix3a H2b-3: วันไทยแบบเดียวกับกระดานดีล ◂
 import { kbGrounding } from "./kb-tokens";
 import { crmKindAccess, crmDestructiveKinds, dispatchCrmKind, isCrmKind } from "./api/tools";
 import {
@@ -175,7 +176,7 @@ export type AtRiskResult = { month: string; items: AtRiskItemView[] };
 /**
  * ดีลเสี่ยงของเดือนไทย (addendum ข้อ 7) — ชุดเดียวของ tool / ตารางหน้าแรก / ข้อเสนอสร้างงาน
  *   OPEN · ไม่เก็บถาวร · มองเห็นได้โดยคนที่ถาม · expectedCloseAt < ขณะแรกของเดือนไทยถัดไป (เลยกำหนดแล้วก็นับ) ·
- *   มีเหตุผลอย่างน้อย 1: STALE (stalledAt) · CLOSE_OVERDUE (expectedCloseAt < now) · NO_NEXT_ACTIVITY (ไม่มี/เลยแล้ว) ·
+ *   มีเหตุผลอย่างน้อย 1: STALE (stalledAt) · CLOSE_OVERDUE (วันไทยของ expectedCloseAt < วันนี้ตามปฏิทินไทย) · NO_NEXT_ACTIVITY (ไม่มี/เลยแล้ว) ·
  *   PIPELINE_LATE_MONTH (forecast PIPELINE และปิดภายใน 7 วัน)
  * AUDIT-CLASS X1/X2: ขอบเขต = `dealWhere` ของ actor (คนที่ถาม — ผู้ช่วยได้ actor ของคนนั้นจาก crmActorOf) · ตัวกรองทีม/ผู้ดูแลแค่ "แคบลง"
  */
@@ -204,11 +205,15 @@ export async function atRiskDeals(ctx: AiBridgeCtx, actor: Actor, input: AtRiskI
     take: 500,
   });
   const lateCut = now.getTime() + AT_RISK_LATE_DAYS * DAY_MS;
+  const todayKey = thaiToday(now); // CRM C5.5 ▸ fix3a H2b-3 ◂
   const risky = rows
     .map((d) => {
       const reasons: AtRiskReason[] = [];
       if (d.stalledAt) reasons.push("STALE");
-      if (d.expectedCloseAt && d.expectedCloseAt.getTime() < now.getTime()) reasons.push("CLOSE_OVERDUE");
+      // CRM C5.5 ▸ (fix3a · H2b-3) วันคาดว่าจะปิดเก็บเป็นเที่ยงคืน UTC ของ "วันไทย" (= 07:00 น.) ⇒ เทียบ "วันไทย" กับวันนี้ตามปฏิทินไทย
+      //   กติกาเดียวกับกระดานดีล (`DealBoard` `expectedCloseAt < nowKey` · nowKey = `thaiToday()`) — เลยกำหนด = วันปิดอยู่ก่อนวันนี้เท่านั้น
+      //   (เดิมเทียบขณะ ⇒ ดีลที่ปิด "วันนี้" ถูกติด "เลยวันคาดว่าจะปิด" ตั้งแต่ 07:00 น.) ◂
+      if (d.expectedCloseAt && (dealDayKey(d.expectedCloseAt) ?? "") < todayKey) reasons.push("CLOSE_OVERDUE");
       if (!d.nextActivityAt || d.nextActivityAt.getTime() < now.getTime()) reasons.push("NO_NEXT_ACTIVITY");
       if (d.forecastCategory === "PIPELINE" && d.expectedCloseAt && d.expectedCloseAt.getTime() <= lateCut) reasons.push("PIPELINE_LATE_MONTH");
       return { d, reasons };

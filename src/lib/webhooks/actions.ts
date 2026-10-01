@@ -8,6 +8,7 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import { createEndpoint, setEndpointActive, setEndpointEvents, deleteEndpoint, type WebhookAuthor } from "./service";
 import { WEBHOOK_EVENTS } from "./labels";
+import { safeReason } from "@/lib/core/errors"; // CRM C5.5 ▸ fix3a R2-3 ◂
 
 const SETTINGS_PATH = "/app/settings/webhooks";
 
@@ -24,6 +25,12 @@ function authorOf(auth: Awaited<ReturnType<typeof requireTenant>>): WebhookAutho
   };
 }
 // ◂ CRM C5.5
+
+// CRM C5.5 ▸ (fix3a · R2-1) ฟอร์มส่งเหตุการณ์มา ≥1 แต่ไม่มีตัวไหนรู้จักเลย ⇒ ปฏิเสธ (เดิมกรองจนเหลือ [] = "ทุกเหตุการณ์" ตรงข้ามกับที่ขอ)
+//   ส่งมาว่างจริง ๆ = ทุกเหตุการณ์ ตามที่หน้าบอก ("ไม่ติ๊กเลย = รับทุกเหตุการณ์") — ตัวกันเหตุการณ์กลางตรวจต่อ ◂
+function unknownOnlyProblem(selected: string[], known: string[]): string | null {
+  return selected.some((e) => e.trim() !== "") && known.length === 0 ? "ไม่รู้จักเหตุการณ์ที่เลือก — เลือกจากรายการในหน้านี้" : null;
+}
 
 function assertWebhookCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
   assertCan(
@@ -60,6 +67,8 @@ export async function createEndpointAction(
   // เก็บเฉพาะ event ที่รู้จัก · ไม่เลือกเลย = รับทุกเหตุการณ์ (events ว่าง)
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
+  const unknownOnly = unknownOnlyProblem(selected, events); // CRM C5.5 ▸ fix3a R2-1 ◂
+  if (unknownOnly) return { status: "error", message: unknownOnly };
 
   try {
     const ep = await createEndpoint({ tenantId: auth.active.tenantId }, { url, events, by: authorOf(auth) }); // CRM C5.5 ▸ by ◂
@@ -71,14 +80,23 @@ export async function createEndpointAction(
 }
 
 // เปิด/ปิด endpoint
-export async function toggleEndpointAction(formData: FormData): Promise<void> {
+// CRM C5.5 ▸ (fix3a · R2-3) คืนผลแทน void — ตัวกันเหตุการณ์ปฏิเสธการเปิด (เช่น ปลายทาง "ทุกเหตุการณ์" บนร้านที่มี CRM v2 โดยผู้ที่ไม่เห็น CRM
+//   ทั้งร้าน) เดิมโยนออกจาก action ⇒ ผู้ใช้เห็นหน้า error (prod ซ่อนข้อความ) · ตอนนี้คืน `{ok:false, reason}` ไทย แบบเดียวกับปุ่มเปิด/ปิด
+//   ของหน้าสมาชิก/CRM/บัญชี · ปุ่มบนหน้าเป็น `WebhookToggleButton` (client) ที่แสดงเหตุผลใต้ปุ่ม ◂
+export type ToggleEndpointResult = { ok: true } | { ok: false; reason: string };
+export async function toggleEndpointAction(formData: FormData): Promise<ToggleEndpointResult> {
   const auth = await requireTenant();
   assertWebhookCan(auth, "webhook.endpoint.update");
   const id = String(formData.get("id") ?? "");
   const active = String(formData.get("active") ?? "") === "true";
-  if (!id) return;
-  await setEndpointActive({ tenantId: auth.active.tenantId }, id, active, authorOf(auth)); // CRM C5.5 ▸ เปิด = ตัวกันเหตุการณ์ตรวจ ◂
+  if (!id) return { ok: false, reason: "ไม่พบปลายทางนี้" };
+  try {
+    await setEndpointActive({ tenantId: auth.active.tenantId }, id, active, authorOf(auth)); // CRM C5.5 ▸ เปิด = ตัวกันเหตุการณ์ตรวจ ◂
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, active ? "เปิดปลายทางไม่สำเร็จ" : "ปิดปลายทางไม่สำเร็จ") };
+  }
   revalidatePath(SETTINGS_PATH);
+  return { ok: true };
 }
 
 export type UpdateEventsState =
@@ -98,6 +116,8 @@ export async function updateEndpointEventsAction(
   if (!id) return { status: "error", message: "ไม่พบปลายทางนี้" };
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
+  const unknownOnly = unknownOnlyProblem(selected, events); // CRM C5.5 ▸ fix3a R2-1 ◂
+  if (unknownOnly) return { status: "error", message: unknownOnly };
   try {
     const saved = await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events, authorOf(auth)); // CRM C5.5 ▸ by ◂
     revalidatePath(SETTINGS_PATH);
