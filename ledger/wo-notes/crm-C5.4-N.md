@@ -538,3 +538,30 @@ Still needed: pre-checks 1–6, smoke (d), watch (f), and the rollback rule (M1 
 - Patch `c54c 63ea9f45..544d4cf6` (builder r1+r2, review r1+r2) applied clean on session/crm 8cf86985+; every changed `src/` file byte-identical to c54c ⇒ QC2 regression of record = builder r2 (run-main-c2 QC2 list 36/36, oracle 12/12, probe-m1 10/10, r2-money 11/11, race, deadlock ×40) + reviewer r2 reruns.
 - On MAIN (`scripts/pending/run-main-n.sh` → `.qc-shots/crm/main-n.log`): typecheck 0 · API docs gen `--check` ×4 exit 0 · fitness 33/33 ×2 · **QC1 `migrate deploy` of `20261104000001_account_journal_no_sequence`: applied, status "up to date"** · QC1 wht-cheque 69/69 · ai-skill 32/33 (E1-K2.3 = 1 Oct date roll, env, same before the card) · cheque-audit 60 checks / 7 legacy audit findings (same 7 as every round, exit 0) · acc-v2-payments exit 0.
 - QC3 still lacks the migration (owed before any tree at/after this commit runs account code there). Production: owner step — runbook in this note; owner Q1 (no monthly reset) open; CI `pnpm drift` on the merge commit unproven.
+
+### Runbook addendum (C5.5-fix3a · hunt 2b H2b-2) — migration `20261104000002_account_journal_no_alloc_lock`
+Appended 1 Oct by the fix3a builder (the runbook above is unchanged; this migration rides in the same or a later deploy).
+- **What it does:** `CREATE OR REPLACE FUNCTION public.account_alloc_journal_no(text, text, text, int)` only — same signature/result, same
+  `SET search_path = pg_catalog, public`. Fast path (free number) and the ≤ 1000 step path are unchanged and lock-free. The slow path (taken
+  number with the floor > 1000 above it) now takes `pg_advisory_xact_lock(hashtextextended('account_jno:' || account_jno_seq_name(system, book), 0))`,
+  re-reads the floor and the sequence (`last_value`, `is_called`) under the lock, and moves the sequence only forward: nextval steps when the
+  remaining gap is < 1000, `setval(floor)` only when the next value is still ≤ the floor. Closes the check-then-setval race (H2b-2: two healers,
+  the second setval moved the sequence back ⇒ the same number twice ⇒ P2002 on a money transaction).
+- **Order:** needs `20261104000001` first (same deploy is fine — folder order). No table, sequence or row is touched; nothing to pre-check
+  beyond pre-check 3/3b above (the function is called by the app role exactly as before; `OR REPLACE` keeps owner + grants).
+- **Locks while migrating:** the function's catalog row only (sub-second). In-flight calls finish on the old body; new calls get the new one.
+- **Behaviour change to know:** a second healer of the SAME book waits until the first healer's transaction commits (the lock is
+  transaction-level by design, so the first healer's numbers are in the floor when the second re-reads). Only reachable after a restore/import
+  left > 1000 foreign numbers above a sequence. Two transactions that both heal two books in OPPOSITE order can deadlock — Postgres detects it
+  (40P01) and one of them fails with the generic allocation message; needs both books in the slow path at the same moment (not observed).
+- **Residual (documented, not reachable in practice):** lock-free fast-path `nextval` calls by other sessions between the re-read and the
+  `setval` are not blocked; a backwards move would need > 1000 such calls inside one plpgsql statement gap.
+- **Smoke after deploy (read-only):** `SELECT prosrc LIKE '%pg_advisory_xact_lock%' AS locked, proconfig FROM pg_proc WHERE proname = 'account_alloc_journal_no';`
+  → `true`, `{"search_path=pg_catalog, public"}`. Watch (f) above is unchanged.
+- **Rollback:** not needed for correctness; if ever wanted, re-run the `account_alloc_journal_no` statement of `20261104000001` (OR REPLACE, no
+  data effect). The Instant-Rollback rule (M2) above still applies to the C5.4-N code itself.
+- **QC:** applied on QC2 (`/tmp/cf3-logs/migrate-deploy.log`, status up to date). QC1 and QC3 do not have it yet. `scripts/pending/c54n/check-jno-fns-r2.mts`
+  compares QC2's functions with the 000001 file, so it now reports this one function as different — expected.
+- **Proof:** `scripts/pending/cf3/probe-cf3.mts` JNO-* (forced window: instrumented copy of the OLD body ⇒ P2002; copy of the NEW body under the same
+  400 ms window ⇒ 0 failures/duplicates; deployed function 16 parallel × 6 rounds in the slow path ⇒ 96/96 distinct; fast path holds 0 advisory
+  locks, slow path 1) — note `ledger/wo-notes/crm-C5.5-fix3a.md`.
