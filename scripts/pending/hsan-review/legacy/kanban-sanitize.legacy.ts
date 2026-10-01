@@ -1,9 +1,9 @@
+// @ts-nocheck
+// VERBATIM copy of src/lib/modules/kanban/sanitize.ts @ 04d2ade9 (pre-hotfix prod) — reviewer differential baseline only
 // sanitize.ts — รายละเอียดการ์ด: HTML allowlist + markdown-lite (K1.6 · D12 · พิมพ์เขียว §11.6)
 //
-// 🔴 D12: P1 ใช้ textarea + markdown-lite ธรรมดา "ไม่เพิ่ม dependency" — ไม่มี DOM parser/cheerio · ตัวสแกนคือ
-//    `@/lib/core/html-allowlist` (ตัวเดียวกับ `core/sanitize`) — นโยบาย (allowlist/ลิงก์) ของบอร์ดงานอยู่ที่นี่
-// 🔴 HOTFIX 2026-10-01: เดิมเป็น regex `replace` ⇒ `<svg/onload=…>`/`<details/open/ontoggle=…>` (ตัวคั่น `/`) หลุดเข้าการ์ด
-//    (อีเมลเข้าบอร์ด · คำขอจากพอร์ทัล = คนนอกร้าน) + ReDoS ~n³ — ตอนนี้ default-deny (ledger/wo-notes/hotfix-sanitize-2026-10-01.md)
+// 🔴 D12: P1 ใช้ textarea + markdown-lite ธรรมดา "ไม่เพิ่ม dependency" — ไฟล์นี้จึงเขียน sanitizer
+//    เองด้วย regex ล้วน (ไม่มี DOM parser/cheerio) แทนที่จะใช้ไลบรารีสำเร็จรูป
 // 🔴 ไฟล์นี้ **บริสุทธิ์**: ไม่แตะ prisma/DB — เรียกซ้ำได้ทั้งฝั่ง server (ก่อนบันทึก) และข้อสอบ (ตรง ๆ)
 //
 // กติกา allowlist (§11.6): p br h1 h2 ul ol li strong b em i s code a(href http/https เท่านั้น · rel=noopener)
@@ -11,20 +11,23 @@
 //   ถูก "ปลด" ออกแต่ **คงข้อความข้างในไว้** (ไม่ใช่ตัดทั้งก้อน) — ต่างจาก script/iframe/style ที่ตัดทั้งเนื้อหา
 //   เพราะเนื้อหาข้างในนั้นไม่ใช่สิ่งที่ผู้ใช้ตั้งใจให้อ่าน (โค้ด/มาร์กอัปอันตราย)
 
-import { attrOf, escapeAttr, parseAttrs, sanitizeWithPolicy } from "@/lib/core/html-allowlist";
-
 /** แท็กที่ต้องตัดทิ้งทั้งก้อน (รวมเนื้อหาข้างใน) — เป็นโค้ด/มาร์กอัปอันตราย ไม่ใช่ข้อความที่ผู้ใช้ตั้งใจพิมพ์ */
 const STRIP_WITH_CONTENT = ["script", "style", "iframe", "object", "embed", "noscript"] as const;
+
+/** แท็กเดี่ยว (void) ที่อันตราย/ไม่รองรับ — ตัดทั้งแท็กได้เลยโดยไม่ต้องหาคู่ปิด */
+const VOID_DANGEROUS = /<(img|input|hr|source|track|embed|object|iframe|script|style|noscript)\b[^>]*\/?>/gi;
 
 /** แท็กที่อนุญาต (§11.6) — ค่า = attribute ที่อนุญาตเก็บไว้ (ว่าง = ไม่มี attribute ไหนรอดเลย) */
 const ALLOWLIST = new Set([
   "p", "br", "h1", "h2", "ul", "ol", "li", "strong", "b", "em", "i", "s", "code", "a",
 ]);
 
-const STRIP = new Set<string>(STRIP_WITH_CONTENT);
-/** แท็กเปิด/ปิดรูปมาตรฐาน (สร้างครั้งเดียว — ข้อความที่มีแท็กเป็นแสนตัวไม่ต้องสร้างสตริงใหม่ทุกตัว) */
-const OPEN = new Map([...ALLOWLIST].map((t) => [t, `<${t}>`] as const));
-const CLOSE = new Map([...ALLOWLIST].map((t) => [t, `</${t}>`] as const));
+const TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9]*)(\s+[^>]*)?\s*\/?>/g;
+const HREF_RE = /href\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+
+function escapeAttr(v: string): string {
+  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
 
 /**
  * ตัด HTML ให้เหลือเฉพาะ allowlist — ไม่มี Date/DOM parser ตาม D12
@@ -32,22 +35,30 @@ const CLOSE = new Map([...ALLOWLIST].map((t) => [t, `</${t}>`] as const));
  */
 export function sanitizeDescription(dirty: string | null | undefined): string {
   if (!dirty) return "";
-  // script/style/iframe/object/embed/noscript ตัดทั้งก้อน (เปิดไม่ปิด = ตัดเฉพาะแท็กเปิด — เหมือนของเดิม) · แท็กอื่นที่ไม่อยู่ใน
-  // allowlist (img/hr/h3/svg/…) "ปลด" ออกแต่คงข้อความ · comment ทิ้ง · `<` ที่ไม่ใช่แท็ก → `&lt;`
-  const out = sanitizeWithPolicy(dirty, {
-    stripWithContent: STRIP,
-    unclosedStripDropsRest: false,
-    rewrite: (tag, isClosing, rawAttrs) => {
-      if (!ALLOWLIST.has(tag)) return "";
-      if (isClosing) return CLOSE.get(tag) ?? "";
-      if (tag === "br") return "<br>";
-      if (tag === "a") {
-        const href = attrOf(parseAttrs(rawAttrs), "href")?.value ?? "";
-        if (!/^https?:\/\//i.test(href)) return ""; // ไม่ใช่ http(s) — เช่น javascript: — ปลดแท็กทิ้ง
-        return `<a href="${escapeAttr(href)}" rel="noopener">`;
-      }
-      return OPEN.get(tag) ?? "";
-    },
+  let out = dirty;
+
+  // 1) ตัดทั้งก้อน (แท็ก + เนื้อหา) ของแท็กอันตรายที่มีคู่เปิด-ปิด
+  for (const tag of STRIP_WITH_CONTENT) {
+    out = out.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`, "gi"), "");
+  }
+  // 2) แท็กเดี่ยวอันตราย/ไม่รองรับ (img ฯลฯ) — ตัดทั้งแท็ก (ไม่มีเนื้อหาให้เก็บอยู่แล้ว)
+  out = out.replace(VOID_DANGEROUS, "");
+
+  // 3) ไล่ทุกแท็กที่เหลือ: อยู่ใน allowlist → เขียนใหม่ให้เหลือ attribute ที่อนุญาตเท่านั้น
+  //    ไม่อยู่ใน allowlist → "ปลด" แท็กออก (คืนสตริงว่าง) แต่ข้อความรอบ ๆ ยังอยู่
+  out = out.replace(TAG_RE, (match, tagNameRaw: string, attrsRaw: string | undefined) => {
+    const tag = tagNameRaw.toLowerCase();
+    const isClosing = match.startsWith("</");
+    if (!ALLOWLIST.has(tag)) return "";
+    if (isClosing) return `</${tag}>`;
+    if (tag === "br") return "<br>";
+    if (tag === "a") {
+      const m = attrsRaw ? attrsRaw.match(HREF_RE) : null;
+      const href = m ? (m[2] ?? m[3] ?? m[4] ?? "") : "";
+      if (!/^https?:\/\//i.test(href)) return ""; // ไม่ใช่ http(s) — เช่น javascript: — ปลดแท็กทิ้ง
+      return `<a href="${escapeAttr(href)}" rel="noopener">`;
+    }
+    return `<${tag}>`;
   });
 
   return out.trim();
