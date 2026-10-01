@@ -12,6 +12,7 @@ import { prisma } from "@/lib/core/db";
 import { apiJson, authenticateApiRequest } from "@/lib/api-keys/route-auth";
 import { CORE_TOOLS, skillToolsForApiKey, skillsForTenant } from "@/lib/ai/skills";
 import { crmApi } from "@/lib/modules/crm";
+import { generalToolGate } from "../general-key-gate";
 
 export async function GET(req: Request): Promise<Response> {
   const auth = await authenticateApiRequest(req);
@@ -25,19 +26,20 @@ export async function GET(req: Request): Promise<Response> {
   // (คีย์ที่ถูกจำกัด scope ไว้ ไม่ควรเห็นสกิลที่ตัวเองเรียกไม่ได้เลยแม้แต่ตัวเดียว)
   // CRM C1.10 ▸ ร้าน CRM รุ่นเดิม: `crm_create_lead` ยังอยู่ในสารบัญของทุกคีย์เหมือนก่อน C1.10 ◂
   const opts = { crmLegacyLead: await crmApi.crmLegacyLeadOpen(auth.tenantId, auth.systemId ?? req.headers.get("x-shark-system")?.trim() ?? null) };
-  const skills = skillsForTenant(systems.map((s) => s.type)).filter(
-    (s) => skillToolsForApiKey(s, auth.scopes, opts).length > 0,
-  );
+  // HF-APIV1 ▸ เครื่องมือนอก 4 โมดูล = คีย์กลางเท่านั้น (กรองทิ้งจากสารบัญเหมือน "ไม่มีสิทธิ์") ◂
+  const skillsList = skillsForTenant(systems.map((s) => s.type));
+  const allowedOf = (s: (typeof skillsList)[number]) => skillToolsForApiKey(s, auth.scopes, opts).filter((n) => generalToolGate(n, auth));
+  const skills = skillsList.filter((s) => allowedOf(s).length > 0);
 
   return apiJson(
     {
       // เครื่องมือแกนกลาง: ใช้ได้เสมอ ไม่ต้องโหลดสกิล
-      core: { tools: [...CORE_TOOLS] },
+      core: { tools: CORE_TOOLS.filter((n) => generalToolGate(n, auth)) }, // HF-APIV1
       skills: skills.map((s) => ({
         id: s.id,
         label: s.label,
         summary: s.summary,
-        toolCount: skillToolsForApiKey(s, auth.scopes, opts).length,
+        toolCount: allowedOf(s).length,
         href: `/api/v1/ai/skills/${s.id}`,
       })),
     },

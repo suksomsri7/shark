@@ -1,0 +1,135 @@
+[env] qc-hf-apiv1-scope · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:907248) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HF-1.sales] /api/v1/sales คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.sales.1] /api/v1/sales scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.sales.2] /api/v1/sales ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.sales.3] /api/v1/sales scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.sales.4] /api/v1/sales scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.sales] /api/v1/sales หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.sales] /api/v1/sales คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.sales] /api/v1/sales คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.sales] /api/v1/sales คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.customers] /api/v1/customers คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.customers.1] /api/v1/customers scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.customers.2] /api/v1/customers ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.customers.3] /api/v1/customers scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.customers.4] /api/v1/customers scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.customers] /api/v1/customers หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.customers] /api/v1/customers คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.customers] /api/v1/customers คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.customers] /api/v1/customers คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.inventory] /api/v1/inventory/items คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.inventory.1] /api/v1/inventory/items scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.inventory.2] /api/v1/inventory/items ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.inventory.3] /api/v1/inventory/items scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.inventory.4] /api/v1/inventory/items scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.inventory] /api/v1/inventory/items หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.inventory] /api/v1/inventory/items คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.inventory] /api/v1/inventory/items คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.inventory] /api/v1/inventory/items คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.appointments] /api/v1/appointments คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.appointments.1] /api/v1/appointments scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.appointments.2] /api/v1/appointments ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.appointments.3] /api/v1/appointments scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.appointments.4] /api/v1/appointments scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.appointments] /api/v1/appointments หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.appointments] /api/v1/appointments คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.appointments] /api/v1/appointments คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.appointments] /api/v1/appointments คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.queue] /api/v1/queue/tickets คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.queue.1] /api/v1/queue/tickets scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.queue.2] /api/v1/queue/tickets ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.queue.3] /api/v1/queue/tickets scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.queue.4] /api/v1/queue/tickets scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.queue] /api/v1/queue/tickets หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.queue] /api/v1/queue/tickets คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.queue] /api/v1/queue/tickets คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.queue] /api/v1/queue/tickets คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.reservations] /api/v1/reservations คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.reservations.1] /api/v1/reservations scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.reservations.2] /api/v1/reservations ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.reservations.3] /api/v1/reservations scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.reservations.4] /api/v1/reservations scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.reservations] /api/v1/reservations หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.reservations] /api/v1/reservations คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.reservations] /api/v1/reservations คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.reservations] /api/v1/reservations คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.shop] /api/v1/shop/orders คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.shop.1] /api/v1/shop/orders scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.shop.2] /api/v1/shop/orders ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.shop.3] /api/v1/shop/orders scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.shop.4] /api/v1/shop/orders scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.shop] /api/v1/shop/orders หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.shop] /api/v1/shop/orders คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.shop] /api/v1/shop/orders คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.shop] /api/v1/shop/orders คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-1.tickets] /api/v1/tickets/orders คีย์รุ่นเดิม → 200 data มีแถวของร้าน A
+  ❌ [HF-2.tickets.1] /api/v1/tickets/orders scope อย่างเดียว (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.tickets.2] /api/v1/tickets/orders ผูกสมุดบัญชี scopes [] → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.tickets.3] /api/v1/tickets/orders scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ❌ [HF-2.tickets.4] /api/v1/tickets/orders scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ไม่มีข้อมูล — exp 403 no data | act 403 {"error":"คีย์นี้ออกให้ใช้กับ API ของระบบที่กำหนดไว้ตอนสร้างคีย์เท่านั้น จึงเรียกดูข้อมูลส่วนนี้ไม่ไ
+  ✅ [HF-3.tickets] /api/v1/tickets/orders หมดอายุ/เพิกถอน/ตัวก่อนหมุน → 401 (เดิม)
+  ✅ [HF-4.tickets] /api/v1/tickets/orders คีย์รุ่นเดิมร้าน B → 200 เห็นแถวร้าน B ไม่เห็นร้าน A
+  ✅ [HF-5.tickets] /api/v1/tickets/orders คีย์ scope ร้าน B → 403 เหมือนร้าน A
+  ✅ [HF-7.tickets] /api/v1/tickets/orders คีย์รุ่นเดิมที่หมุนแล้ว → 200 มีแถวของร้าน A
+  ✅ [HF-5.0] body 403 เหมือนกันทุก route ทุกคีย์ทุกร้าน (ไม่บอกใบ้ว่ามีข้อมูลหรือไม่)
+  ✅ [HF-6.1] /me คีย์ที่ใช้ได้ทุกแบบ → 200 { tenant: {id,name,slug} } ของร้าน A เท่านั้น
+  ✅ [HF-6.2] /me หมดอายุ/เพิกถอน → 401
+  ❌ [HF-8.object] scopesJson เสีย (object) → /sales 403 ไม่มีข้อมูล — exp 403 | act 200 {"data":[{"id":"cmupaf83q00091ckz9tfioaca","receiptNo":"qc-hf-apiv1-84a69f-R-A",
+  ❌ [HF-8.string] scopesJson เสีย (string) → /sales 403 ไม่มีข้อมูล — exp 403 | act 200 {"data":[{"id":"cmupaf83q00091ckz9tfioaca","receiptNo":"qc-hf-apiv1-84a69f-R-A",
+  ❌ [HF-8.array-of-number] scopesJson เสีย (array-of-number) → /sales 403 ไม่มีข้อมูล — exp 403 | act 200 {"data":[{"id":"cmupaf83q00091ckz9tfioaca","receiptNo":"qc-hf-apiv1-84a69f-R-A",
+  ✅ [HF-9.1] แชท /identities คีย์รุ่นเดิม → 200 { contactId }
+  ✅ [HF-9.2] แชท /messages คีย์รุ่นเดิม → 200 { ok, conversationId, messageId, createdAt }
+  ✅ [HF-9.3] แชท /thread คีย์รุ่นเดิม → 200 มีข้อความที่เพิ่งส่ง
+  ✅ [HF-9.4] แชท /unread คีย์รุ่นเดิม → 200 { unread: number }
+  ✅ [HF-9.5] แชท /unread คีย์รุ่นเดิมที่หมุนแล้ว → 200
+  ✅ [HF-9.6] แชท คีย์รุ่นเดิมไม่ส่งหัวระบบ → ใช้ระบบแชทตัวแรกของร้าน (เดิม)
+  ✅ [HF-9.7] แชท คีย์รุ่นเดิม + X-Shark-System ระบบแชทที่ 2 → 200 ใช้ระบบนั้น (เดิม)
+  ❌ [HF-10.scope อย่างเดียว (kanban-read)] แชท scope อย่างเดียว (kanban-read) → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.ผูกสมุดบัญชี scopes []] แชท ผูกสมุดบัญชี scopes [] → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.scope + ผูกสมุดบัญชี (read-only)] แชท scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.scope + ผูกบอร์ดงาน (kanban-read)] แชท scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.scopesJson เสีย object] แชท scopesJson เสีย object → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.scopesJson เสีย string] แชท scopesJson เสีย string → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.scopesJson เสีย array-of-number] แชท scopesJson เสีย array-of-number → 403 key_not_general ทั้ง 7 เส้น — exp 403×7 | act identities=200 messages=200 thread=200 unread=200 replies=200 read=200 attachments=400
+  ❌ [HF-10.0] แชท คีย์ที่ถูกปฏิเสธ → ไม่มีแถวใหม่ในตารางใดของร้าน (ข้อความ/ผู้ติดต่อ/ไฟล์แนบ/ห้อง …) — exp ไม่เปลี่ยน | act chatContact:2→3 chatConversation:1→2 chatMessage:1→15 chatReadState:0→1 chatConversationEvent:1→2 outboxEvent:1→15
+  ❌ [HF-11.1] แชท คีย์ผูกระบบแชทที่ 2 ไม่ส่งหัว → 200 ใช้ระบบที่ผูก (ไม่ใช่ระบบแรก) — exp 200 chat2 | act 200 cmupaf82s00071ckzf1sqxcsn
+  ✅ [HF-11.2] แชท คีย์ผูกระบบแชท + หัวระบบเดียวกัน → 200
+  ❌ [HF-11.3] แชท คีย์ผูกระบบแชท + หัวระบบแชทอื่น → 403 — exp 403 | act 200 {"unread":0}
+  ❌ [HF-11.4] คีย์ผูกระบบแชท → route ข้อมูลรุ่นเดิม 403 (ผูกระบบ = ไม่ใช่คีย์กลาง) — exp 403 | act 403
+  ✅ [HF-12.1.รุ่นเดิม] AI /skills คีย์รุ่นเดิม → มีสกิล sales/knowledge/memory + core 8 ตัว (เดิม)
+  ✅ [HF-12.2.รุ่นเดิม] AI /skills/sales คีย์รุ่นเดิม → 200 มี sales_summary + financial_summary
+  ✅ [HF-12.3.รุ่นเดิม] AI tools/sales_summary คีย์รุ่นเดิม → 200 ทำงาน
+  ✅ [HF-12.1.รุ่นเดิมที่หมุนแล้ว] AI /skills คีย์รุ่นเดิมที่หมุนแล้ว → มีสกิล sales/knowledge/memory + core 8 ตัว (เดิม)
+  ✅ [HF-12.2.รุ่นเดิมที่หมุนแล้ว] AI /skills/sales คีย์รุ่นเดิมที่หมุนแล้ว → 200 มี sales_summary + financial_summary
+  ✅ [HF-12.3.รุ่นเดิมที่หมุนแล้ว] AI tools/sales_summary คีย์รุ่นเดิมที่หมุนแล้ว → 200 ทำงาน
+  ❌ [HF-12.4.1] AI /skills scope อย่างเดียว (kanban-read) → ไม่มีสกิลนอกโมดูล (sales/knowledge/memory/chat/inventory) · core ว่าง — exp กรองทิ้ง | act 200 skills=sales,inventory,tasks,approvals,chat,knowledge,automation,memory core=8
+  ❌ [HF-12.5.1] AI /skills/{sales,knowledge,memory,chat} scope อย่างเดียว (kanban-read) → 404 ทุกตัว — exp 404×4 | act 200,200,200,200
+  ❌ [HF-12.6.1] AI tools/sales_summary|financial_summary|remember_fact|kb_auto_save|chat_unread_conversations scope อย่างเดียว (kanban-read) → 403 key_not_general ทุกตัว — exp 403×5 | act sales_summary=200 financial_summary=200 remember_fact=200 kb_auto_save=200 chat_unread_conversations=200
+  ❌ [HF-12.4.2] AI /skills ผูกสมุดบัญชี scopes [] → ไม่มีสกิลนอกโมดูล (sales/knowledge/memory/chat/inventory) · core ว่าง — exp กรองทิ้ง | act 200 skills=sales,inventory,approvals,chat,knowledge,automation,memory core=8
+  ❌ [HF-12.5.2] AI /skills/{sales,knowledge,memory,chat} ผูกสมุดบัญชี scopes [] → 404 ทุกตัว — exp 404×4 | act 200,200,200,200
+  ❌ [HF-12.6.2] AI tools/sales_summary|financial_summary|remember_fact|kb_auto_save|chat_unread_conversations ผูกสมุดบัญชี scopes [] → 403 key_not_general ทุกตัว — exp 403×5 | act sales_summary=200 financial_summary=200 remember_fact=200 kb_auto_save=200 chat_unread_conversations=200
+  ❌ [HF-12.4.3] AI /skills scope + ผูกสมุดบัญชี (read-only) → ไม่มีสกิลนอกโมดูล (sales/knowledge/memory/chat/inventory) · core ว่าง — exp กรองทิ้ง | act 200 skills=sales,account,inventory,approvals,chat,knowledge,automation,memory core=8
+  ❌ [HF-12.5.3] AI /skills/{sales,knowledge,memory,chat} scope + ผูกสมุดบัญชี (read-only) → 404 ทุกตัว — exp 404×4 | act 200,200,200,200
+  ❌ [HF-12.6.3] AI tools/sales_summary|financial_summary|remember_fact|kb_auto_save|chat_unread_conversations scope + ผูกสมุดบัญชี (read-only) → 403 key_not_general ทุกตัว — exp 403×5 | act sales_summary=200 financial_summary=200 remember_fact=200 kb_auto_save=200 chat_unread_conversations=200
+  ❌ [HF-12.4.4] AI /skills scope + ผูกบอร์ดงาน (kanban-read) → ไม่มีสกิลนอกโมดูล (sales/knowledge/memory/chat/inventory) · core ว่าง — exp กรองทิ้ง | act 200 skills=sales,inventory,tasks,approvals,chat,knowledge,automation,memory core=8
+  ❌ [HF-12.5.4] AI /skills/{sales,knowledge,memory,chat} scope + ผูกบอร์ดงาน (kanban-read) → 404 ทุกตัว — exp 404×4 | act 200,200,200,200
+  ❌ [HF-12.6.4] AI tools/sales_summary|financial_summary|remember_fact|kb_auto_save|chat_unread_conversations scope + ผูกบอร์ดงาน (kanban-read) → 403 key_not_general ทุกตัว — exp 403×5 | act sales_summary=200 financial_summary=200 remember_fact=200 kb_auto_save=200 chat_unread_conversations=200
+  ❌ [HF-12.7] AI คีย์ที่ถูกปฏิเสธ → ไม่มีแถวใหม่ในตารางใดของร้าน (ความจำ/คลังความรู้/ห้องแชท AI/ข้อเสนอ …) — exp ไม่เปลี่ยน | act aiMemory:0→1
+  ✅ [HF-12.8] AI /skills คีย์บอร์ดงาน → ยังเห็นสกิล tasks
+  ✅ [HF-12.9] AI /skills/tasks คีย์บอร์ดงาน → 200 มี kanban_list_boards
+  ✅ [HF-12.10] AI tools/kanban_list_boards คีย์บอร์ดงาน (scope ถึง) → 200 ทำงาน
+  ✅ [HF-12.11] AI tools/kanban_create_card คีย์ kanban-read (scope ไม่ถึง) → 403 เดิม (ไม่ใช่ key_not_general)
+
+===== QC HF-APIV1 scope =====
+ผ่าน 61/120
+FINDINGS: CRITICAL 59 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":120,"passed":61,"findings":["HF-2.sales.1","HF-2.sales.2","HF-2.sales.3","HF-2.sales.4","HF-2.customers.1","HF-2.customers.2","HF-2.customers.3","HF-2.customers.4","HF-2.inventory.1","HF-2.inventory.2","HF-2.inventory.3","HF-2.inventory.4","HF-2.appointments.1","HF-2.appointments.2","HF-2.appointments.3","HF-2.appointments.4","HF-2.queue.1","HF-2.queue.2","HF-2.queue.3","HF-2.queue.4","HF-2.reservations.1","HF-2.reservations.2","HF-2.reservations.3","HF-2.reservations.4","HF-2.shop.1","HF-2.shop.2","HF-2.shop.3","HF-2.shop.4","HF-2.tickets.1","HF-2.tickets.2","HF-2.tickets.3","HF-2.tickets.4","HF-8.object","HF-8.string","HF-8.array-of-number","HF-10.scope อย่างเดียว (kanban-read)","HF-10.ผูกสมุดบัญชี scopes []","HF-10.scope + ผูกสมุดบัญชี (read-only)","HF-10.scope + ผูกบอร์ดงาน (kanban-read)","HF-10.scopesJson เสีย object","HF-10.scopesJson เสีย string","HF-10.scopesJson เสีย array-of-number","HF-10.0","HF-11.1","HF-11.3","HF-11.4","HF-12.4.1","HF-12.5.1","HF-12.6.1","HF-12.4.2","HF-12.5.2","HF-12.6.2","HF-12.4.3","HF-12.5.3","HF-12.6.3","HF-12.4.4","HF-12.5.4","HF-12.6.4","HF-12.7"]}

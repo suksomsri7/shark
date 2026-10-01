@@ -91,6 +91,10 @@ export async function revokeKanbanApiKeyAction(fd: FormData): Promise<KanbanActi
   const { tenantId, userId } = await gate(systemId, "api.key.revoke");
   const keyId = s(fd, "keyId");
   if (!keyId) return { ok: false, reason: "ไม่พบคีย์ที่จะเพิกถอน" };
+  // HF-APIV1 ▸ (แบบเดียวกับ AUDIT L9 ของระบบสมาชิก) เพิกถอนได้เฉพาะคีย์ที่ผูก **ระบบบอร์ดงานนี้** —
+  //   เดิมส่ง keyId ตรง ๆ ⇒ หน้านี้เพิกถอนคีย์กลางของร้าน/คีย์ของระบบอื่นในร้านเดียวกันได้ ◂
+  const owned = await prisma.apiKey.findFirst({ where: { id: keyId, tenantId, systemId }, select: { id: true } });
+  if (!owned) return { ok: false, reason: "ไม่พบคีย์นี้ในระบบบอร์ดงานนี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" };
   try {
     await revokeApiKey({ tenantId }, keyId);
     await writeAudit({
