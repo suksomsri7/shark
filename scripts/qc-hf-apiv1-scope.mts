@@ -18,6 +18,9 @@ loadLegacyQcEnv("qc-hf-apiv1-scope"); // 🔴 กัน prod
 const { prisma } = await import("@/lib/core/db");
 const sys = await import("@/lib/modules/system/service");
 const { readFileSync, readdirSync } = await import("node:fs");
+const { Prisma } = await import("@prisma/client");
+const { createRequire } = await import("node:module");
+const { resolve } = await import("node:path");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];
 const chk = (id: string, n: string, ok: boolean, e: string, a: string, s: Sev = "CRITICAL") => { cks.push({ id, ok, exp: e, act: a, sev: s }); console.log(`  ${ok ? "✅" : "❌"} [${id}] ${n}${ok ? "" : ` — exp ${e} | act ${a}`}`); };
@@ -44,15 +47,18 @@ const TENANT_MODELS: string[] = (() => {
 })();
 // ตัวนับเพดานอัตรา/เวลาใช้คีย์ไม่ใช่ "ข้อมูลร้าน" — คำขอที่ถูกปฏิเสธยังนับโควตาได้
 const COUNT_SKIP = new Set(["apiKey", "rateLimitBucket", "chatRateBucket"]);
+// 🔴 นับไม่ได้ = ตัดสินไม่ได้ ⇒ ถือว่า "เปลี่ยน" (ข้อสอบแดง) ไม่ใช่ข้ามเงียบ ๆ
 async function snapshot(tid: string): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   for (const m of TENANT_MODELS) {
-    if (COUNT_SKIP.has(m) || !P[m]) continue;
-    try { out[m] = await P[m].count({ where: { tenantId: tid } }); } catch { /* ตารางที่นับแบบนี้ไม่ได้ */ }
+    if (COUNT_SKIP.has(m)) continue;
+    if (!P[m]) { out[m] = Number.NaN; continue; }
+    try { out[m] = await P[m].count({ where: { tenantId: tid } }); } catch { out[m] = Number.NaN; }
   }
   return out;
 }
-const diffSnap = (a: Record<string, number>, b: Record<string, number>) => Object.keys(b).filter((k) => a[k] !== b[k]).map((k) => `${k}:${a[k]}→${b[k]}`);
+const diffSnap = (a: Record<string, number>, b: Record<string, number>) =>
+  [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => !Number.isFinite(a[k]!) || !Number.isFinite(b[k]!) || a[k] !== b[k]).map((k) => `${k}:${a[k]}→${b[k]}`);
 
 const ROUTES: { id: string; path: string; mod: string; seeded: string }[] = [
   { id: "sales", path: "/api/v1/sales", mod: "@/app/api/v1/sales/route", seeded: "receiptNo" },
@@ -134,11 +140,11 @@ try {
   const revoked = await mk(A.ctx, "revoked");
   await ak.revokeApiKey(A.ctx, revoked.id);
   // N2: scopesJson เสีย 3 แบบ (เขียนตรงลง DB — UI/serviceออกแบบนี้ไม่ได้ แต่แถวเก่า/แก้มือทำได้)
-  const malformed: { label: string; key: string }[] = [];
-  for (const [label, val] of [["object", { a: 1 }], ["string", "account.doc.view"], ["array-of-number", [1]]] as const) {
+  const malformed: { label: string; key: string; id: string }[] = [];
+  for (const [label, val] of [["object", { a: 1 }], ["string", "account.doc.view"], ["array-of-number", [1]], ["array-mixed", ["x", 1]], ["json-null", Prisma.JsonNull]] as const) {
     const k = await mk(A.ctx, `malformed-${label}`);
     await prisma.apiKey.update({ where: { id: k.id }, data: { scopesJson: val as never } });
-    malformed.push({ label, key: k.rawKey });
+    malformed.push({ label, key: k.rawKey, id: k.id });
   }
   const legacyB = await mk(B.ctx, "legacy B");
   const scopedB = await mk(B.ctx, "kanban-read B", { scopes: scopesMod.expandBundles(["kanban-read"]) });
@@ -245,7 +251,7 @@ try {
   const cbSame = await cget(C.unread, `/api/v1/chat/unread?externalUserId=${encodeURIComponent(`${uid}-b`)}`, chatBound.rawKey, { "x-shark-system": A.chat2.id });
   chk("HF-11.2", "แชท คีย์ผูกระบบแชท + หัวระบบเดียวกัน → 200", cbSame.status === 200, "200", `${cbSame.status}`);
   const cbOther = await cget(C.unread, `/api/v1/chat/unread?externalUserId=${encodeURIComponent(uid)}`, chatBound.rawKey, { "x-shark-system": A.chat1.id });
-  chk("HF-11.3", "แชท คีย์ผูกระบบแชท + หัวระบบแชทอื่น → 403", cbOther.status === 403 && /[ก-๙]/.test(String(cbOther.body.error ?? "")) && typeof cbOther.body.error_en === "string", "403", `${cbOther.status} ${cbOther.text.slice(0, 80)}`);
+  chk("HF-11.3", "แชท คีย์ผูกระบบแชท + หัวระบบแชทอื่น → 403", cbOther.status === 403 && cbOther.body.code === "system_mismatch" && /[ก-๙]/.test(String(cbOther.body.error ?? "")) && typeof cbOther.body.error_en === "string", "403", `${cbOther.status} ${cbOther.text.slice(0, 80)}`);
   const cbData = await get(salesH, "/api/v1/sales", chatBound.rawKey);
   chk("HF-11.4", "คีย์ผูกระบบแชท → route ข้อมูลรุ่นเดิม 403 (ผูกระบบ = ไม่ใช่คีย์กลาง)", notGeneral(cbData), "403", `${cbData.status}`);
 
@@ -293,6 +299,65 @@ try {
   chk("HF-12.10", "AI tools/kanban_list_boards คีย์บอร์ดงาน (scope ถึง) → 200 ทำงาน", kbRun.status === 200 && kbRun.body.tool === "kanban_list_boards", "200", `${kbRun.status} ${kbRun.text.slice(0, 80)}`);
   const kbWrite = await runTool(kbBound.rawKey, "kanban_create_card", { boardId: "x", title: "x" });
   chk("HF-12.11", "AI tools/kanban_create_card คีย์ kanban-read (scope ไม่ถึง) → 403 เดิม (ไม่ใช่ key_not_general)", kbWrite.status === 403 && kbWrite.body.code !== "key_not_general", "403 เดิม", `${kbWrite.status} ${kbWrite.text.slice(0, 80)}`);
+
+  // ═══ HF-13 (รอบ 3) แชท: ขอบของคีย์ผูกระบบแชท + เส้น config/guest ═══
+  const chatBoundScoped = await mk(A.ctx, "chat2-bound+scopes", { systemId: A.chat2.id, scopes: scopesMod.expandBundles(["kanban-read"]) });
+  const r131 = await cget(C.unread, `/api/v1/chat/unread?externalUserId=${encodeURIComponent(uid)}`, chatBoundScoped.rawKey);
+  chk("HF-13.1", "แชท คีย์ผูกระบบแชท + มี scope → 403 key_not_general (ยังไม่มีคำศัพท์ scope ของแชท)", notGeneral(r131), "403", `${r131.status} ${r131.text.slice(0, 80)}`);
+  const chat3 = await sys.createSystem(A.tid, "CHAT", "แชท 3 (ปิด)");
+  const inactiveBound = await mk(A.ctx, "chat3-inactive-bound", { systemId: chat3.id, scopes: [] });
+  await prisma.appSystem.update({ where: { id: chat3.id }, data: { active: false } });
+  const r132 = await cget(C.unread, `/api/v1/chat/unread?externalUserId=${encodeURIComponent(uid)}`, inactiveBound.rawKey);
+  chk("HF-13.2", "แชท คีย์ผูกระบบแชทที่ปิดใช้งาน → 403", notGeneral(r132), "403", `${r132.status} ${r132.text.slice(0, 80)}`);
+  const foreignBound = await mk(A.ctx, "bound-to-B-chat");
+  await prisma.apiKey.update({ where: { id: foreignBound.id }, data: { systemId: B.chat1.id } }); // service ไม่ยอมออกแบบนี้ — เขียนตรงจำลองแถวเพี้ยน
+  const r133 = await cget(C.unread, `/api/v1/chat/unread?externalUserId=${encodeURIComponent(uid)}`, foreignBound.rawKey);
+  chk("HF-13.3", "แชท คีย์ร้าน A ที่ผูกระบบแชทของร้าน B → 403", notGeneral(r133), "403", `${r133.status} ${r133.text.slice(0, 80)}`);
+  const cfg = await chatMod("config");
+  const guest = await chatMod("guest");
+  const cfgSnap = await snapshot(A.tid);
+  for (const d of denied) {
+    const rc = await cget(cfg, "/api/v1/chat/config", d.key);
+    const g = await toRes(await guest.POST!(new Request("http://x/api/v1/chat/guest", { method: "POST", headers: hdr(d.key) })));
+    chk(`HF-13.4.${denied.indexOf(d) + 1}`, `แชท /config + /guest ${d.label} (Bearer) → 403 key_not_general`, notGeneral(rc) && notGeneral(g), "403/403", `${rc.status}/${g.status} ${rc.text.slice(0, 60)}`);
+  }
+  const cfgSnap2 = await snapshot(A.tid);
+  chk("HF-13.6", "แชท /config + /guest คีย์ของโมดูล → ไม่มีแถวใหม่ (นับไม่ได้ = แดง)", diffSnap(cfgSnap, cfgSnap2).length === 0, "ไม่เปลี่ยน", diffSnap(cfgSnap, cfgSnap2).join(" ") || "ok");
+  const rcL = await cget(cfg, "/api/v1/chat/config", legacy.rawKey);
+  chk("HF-13.5", "แชท /config คีย์กลาง → 200 (เดิม)", rcL.status === 200, "200", `${rcL.status}`);
+
+  // ═══ HF-14 (รอบ 3) หมุนคีย์ที่ scopesJson เสีย = ปฏิเสธ แถวเดิมไม่เปลี่ยน ═══
+  for (const m of malformed) {
+    const rowBefore = await prisma.apiKey.findUnique({ where: { id: m.id } });
+    let err = "";
+    try { await ak.rotateApiKey(A.ctx, m.id); } catch (e) { err = e instanceof Error ? e.message : String(e); }
+    const rowAfter = await prisma.apiKey.findUnique({ where: { id: m.id } });
+    const child = await prisma.apiKey.count({ where: { rotatedFromId: m.id } as never });
+    chk(`HF-14.${m.label}`, `หมุนคีย์ scopesJson เสีย (${m.label}) → ปฏิเสธเป็นภาษาไทย · แถวเดิมไม่ถูกเพิกถอน · ไม่มีคีย์ใหม่`,
+      /[ก-๙]/.test(err) && rowAfter?.revokedAt === null && JSON.stringify(rowAfter?.scopesJson) === JSON.stringify(rowBefore?.scopesJson) && child === 0,
+      "throw ไทย + ไม่เปลี่ยน", `err=${err.slice(0, 60)} revoked=${String(rowAfter?.revokedAt)} child=${child}`);
+  }
+
+  // ═══ HF-15 (รอบ 3) หน้าตั้งค่าบอร์ดงาน: เพิกถอนได้เฉพาะคีย์ที่ผูกระบบบอร์ดงานนี้ ═══
+  {
+    const req0 = createRequire(import.meta.url);
+    const ctxFile = resolve(import.meta.dirname, "../src/lib/core/context.ts");
+    const realCtx = req0(ctxFile) as Record<string, unknown>;
+    const stubAuth = { user: { id: `${TAG}-owner` }, active: { tenantId: A.tid, role: "OWNER", unitAccess: [], permissions: {}, tenant: { id: A.tid, status: "ACTIVE" } } };
+    req0.cache[ctxFile]!.exports = { ...realCtx, requireTenant: async () => stubAuth };
+    const nextCacheFile = req0.resolve("next/cache");
+    const realNext = req0(nextCacheFile) as Record<string, unknown>;
+    req0.cache[nextCacheFile]!.exports = { ...realNext, revalidatePath: () => undefined, revalidateTag: () => undefined };
+    const actions = (await import("@/lib/modules/kanban/settings-actions" as string)) as { revokeKanbanApiKeyAction: (fd: FormData) => Promise<{ ok: boolean; reason?: string }> };
+    const revoke = async (keyId: string) => { const fd = new FormData(); fd.set("systemId", A.kb.id); fd.set("keyId", keyId); return actions.revokeKanbanApiKeyAction(fd); };
+    const alive = async (id: string) => (await prisma.apiKey.findUnique({ where: { id } }))?.revokedAt === null;
+    const g1 = await revoke(legacy.id);
+    chk("HF-15.1", "บอร์ดงาน › เพิกถอนคีย์กลางของร้าน → ปฏิเสธ (ไม่พบในระบบนี้) คีย์ยังใช้ได้", g1.ok === false && /[ก-๙]/.test(g1.reason ?? "") && (await alive(legacy.id)), "ปฏิเสธ", JSON.stringify(g1));
+    const g2 = await revoke(scopedBound.id);
+    chk("HF-15.2", "บอร์ดงาน › เพิกถอนคีย์ของสมุดบัญชี → ปฏิเสธ คีย์ยังใช้ได้", g2.ok === false && (await alive(scopedBound.id)), "ปฏิเสธ", JSON.stringify(g2));
+    const g3 = await revoke(kbBound.id);
+    chk("HF-15.3", "บอร์ดงาน › เพิกถอนคีย์ที่ผูกระบบบอร์ดงานนี้ → สำเร็จ (ตัวคุมฝั่งบวก)", g3.ok === true && !(await alive(kbBound.id)), "ok", JSON.stringify(g3));
+  }
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? (e.stack ?? e.message).slice(0, 300) : String(e)); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch { /* ลบต่อ */ } };

@@ -202,6 +202,10 @@ export async function rotateApiKey(
     });
     if (claimed.count !== 1) throw new Error("ไม่พบคีย์หรือถูกเพิกถอนแล้ว");
     const old = await tx.apiKey.findUniqueOrThrow({ where: { id: keyId } });
+    // HF-APIV1 ▸ scopesJson เสีย ⇒ ไม่หมุน (ไม่งั้น parseScopes ล้างให้เป็น [] = ได้ "คีย์กลาง" สะอาดใบใหม่) · throw ใน tx = คืนการเพิกถอนข้างบน ◂
+    if (!Array.isArray(old.scopesJson) || old.scopesJson.some((v) => typeof v !== "string")) {
+      throw new Error("ข้อมูลสิทธิ์ของคีย์นี้ในระบบไม่สมบูรณ์ จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน");
+    }
     // วันหมดอายุเดิมยังไม่ถึง → ใช้ต่อ (หมุนคีย์ไม่ใช่การต่ออายุ) · ไม่มี/เลยแล้ว → ตั้งใหม่ตามค่าปริยาย
     const expiresAt =
       old.expiresAt && old.expiresAt.getTime() > now.getTime()

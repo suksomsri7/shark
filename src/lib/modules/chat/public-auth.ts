@@ -305,7 +305,9 @@ async function authenticateSecret(req: Request, rawKey: string): Promise<ChatAut
   if (isGeneralApiKey(key)) {
     systemId = await resolveChatSystemId(key.tenantId, req.headers.get(SYSTEM_HEADER));
   } else {
-    const bound = key.systemId && key.scopesMalformed !== true ? await resolveChatSystemId(key.tenantId, key.systemId) : null;
+    // ยังไม่มีคำศัพท์ scope ของแชท ⇒ คีย์ผูกระบบแชทต้องไม่มี scope ใด ๆ (มี scope = คีย์ของโมดูลอื่นที่ผูกผิดที่ → 403)
+    const bound =
+      key.systemId && key.scopes.length === 0 && key.scopesMalformed !== true ? await resolveChatSystemId(key.tenantId, key.systemId) : null;
     if (!bound) return { ok: false, response: keyNotGeneralResponse() };
     const asked = req.headers.get(SYSTEM_HEADER)?.trim();
     if (asked && asked !== bound) {

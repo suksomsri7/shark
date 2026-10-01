@@ -130,3 +130,15 @@ Called right after auth in each of the 8 data routes (+1 import, +2 lines each).
 
 ### Follow-ups (NOT in this hotfix)
 - N1 account/kanban settings can rotate/revoke another system's key · N3 label of bound `[]` keys ("อ่าน API กลาง (คีย์รุ่นเดิม)" shown for a bound key) · N5 · `shop/orders` missing `take`.
+
+# Round 3 (final)
+- `rotateApiKey` (service.ts): stored scopesJson malformed ⇒ throw Thai ("ข้อมูลสิทธิ์ของคีย์นี้ในระบบไม่สมบูรณ์ จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน") inside the tx ⇒ the claim/revoke rolls back, row unchanged, no child key.
+- Chat rule (b) tightened: bound to an active CHAT system of the same tenant **and** `scopes.length === 0` (no chat scope vocabulary yet); bound + any scope ⇒ 403 `key_not_general`.
+- `revokeKanbanApiKeyAction` (kanban/settings-actions.ts): mirrors member AUDIT L9 — `prisma.apiKey.findFirst({ id, tenantId, systemId })` first; not owned ⇒ `{ ok:false, "ไม่พบคีย์นี้ในระบบบอร์ดงานนี้ — รีเฟรชหน้าแล้วลองใหม่อีกครั้ง" }`.
+- Comment-only fix `chat/service.ts` resolveChatSystemId (caller answers 404 for general key / 403 for bound key).
+- Oracle: HF-11.3 asserts `code === "system_mismatch"`; HF-13 bound+scopes, inactive chat system, other tenant's chat system ⇒ 403; `/chat/config` + `/chat/guest` with module Bearer ⇒ 403 and no rows; malformed shapes now 5 (object, string, [1], ["x",1], JSON null) on data routes + chat + rotation (HF-14); "nothing written" snapshots fail when a table cannot be counted; HF-15 kanban settings action (requireTenant/next-cache stubbed in-process): cannot revoke the shop's general key nor an account-bound key, can revoke its own.
+- RED3 on 3285b19f `ผ่าน 133/141` (`ledger/wo-notes/HF-APIV1-red3.txt`, the 8 new behaviours) → GREEN `ผ่าน 141/141`.
+- Regressions before = 3285b19f: 75 suites identical (72 + qc-kanban-k1.15 28/30 · qc-kanban-k2.7 30/31 · qc-member-fix-s1 S1-ERR fixture crash — all pre-existing, same before/after). Fitness 33/33 both modes.
+- D4 ruling applied: module keys on `/api/v1/ai/*` lose `core.tools` (returned empty: list_systems, ask_clarify, propose_plan, open_system, kb_search, remember_fact, list_memories, support_open_case), every non-module skill (sales, inventory, booking, shop, restaurant, hotel, rental, ticket, school, clinic, hr, approvals, chat, knowledge, automation, memory — hidden/404), and inside the `crm` skill the three legacy non-registry tools `recent_leads`, `marketing_create_campaign`, `growth_recommendations` (registry CRM tools incl. `crm_create_lead` keep their scope rule).
+- Note for the CRM session (account/connections-actions.ts not touched here — CRM C5.4-B changes it): after CRM merges, `accountManagedKey` still lets the accounting settings page rotate an UNBOUND general key; this hotfix makes general keys more valuable (chat impersonation, all shop data). Recommendation: general keys are managed only from /app/settings/api (account page may rotate/revoke only keys bound to its own ACCOUNT system).
+- Typecheck (5632 MB heap, once) → `tsc --noEmit` exit 0.
