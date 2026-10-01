@@ -13,14 +13,19 @@ import { safeReason } from "./errors";
 //     5. payment rows ...................... CAS updateMany({ id, voidedAt: null })
 //     6. postings (gl.ts commitEntry / reverseFor) + any pre-existing row a posting path touches (inventory, deposits, statement
 //        lines, finance/asset rows, coupons, the original entry in reverseFor) + syncGroupHeadInTx (re-locks a step-4 head).
-//        Journal numbers come from a Postgres sequence (gl.ts allocateJournalNo → account_alloc_journal_no, allocate-until-free): no lock, never waits.
+//        Journal numbers come from a Postgres sequence (gl.ts allocateJournalNo → account_alloc_journal_no, allocate-until-free). Normal
+//        case (the next number is free): no lock, never waits. HEALING case (the number is taken and the book's highest number is above
+//        it — only after a restore/import or old count+1 code wrote numbers ahead of the sequence; migrations 20261104000002/000003): it
+//        takes a transaction-level advisory lock per (system, book) and WAITS for another healer of that book to commit. A transaction
+//        holding step 1–6 rows that waits there, while the healer waits for one of those rows, is a cycle: Postgres detects it (40P01),
+//        one transaction fails with the generic allocation message and can be retried. Not seen in an app flow (C5.5-fix3a review F3).
 //     7. LEGAL COUNTERS — AccountDocSequence rows, ↑(AccountDocType enum order, periodKey), one UPSERT per group, taken by
 //        doc-numbering.ts finalizeDocNos as the LAST statement of the wrapper (recordPayment · recordPaymentBatchInOneTx ·
 //        cheque.recordPaymentWithChequeInOneTx · expense.recordVendorPayment / issueExpenseDoc · wht.issueWhtCreditCertStandalone /
 //        issueWhtCert). After it the transaction only UPDATEs rows it created itself (the docNo stamp) and commits.
 //   Why no cycle passes through step 7: a holder of counter c only ever waits on a counter > c, and never on its own uncommitted
 //   rows ⇒ every wait chain through a counter is strictly increasing and ends (proof: ledger/wo-notes/crm-C5.4-N.md §2).
-//   Why step 4 still sits before any posting: harmless now that postings take no number lock (it was the R10-2 cycle with
+//   Why step 4 still sits before any posting: harmless now that postings take no number lock outside healing (it was the R10-2 cycle with
 //   count+1 journal numbers — trace: scripts/pending/c54c/trace-r10-2-deadlock.mts).
 //   Rows created inside the transaction (a new cheque, tax invoice, WHT certificate) need no lock; legal documents created inside
 //   a money transaction are inserted with docNo = null and numbered by step 7 (doc-numbering.ts deferDocNo).

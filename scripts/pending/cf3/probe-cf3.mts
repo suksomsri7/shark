@@ -265,7 +265,9 @@ try {
       return { name, why: "" };
     };
     const OLD = "prisma/migrations/20261104000001_account_journal_no_sequence/migration.sql";
-    const NEW = "prisma/migrations/20261104000002_account_journal_no_alloc_lock/migration.sql";
+    // round 2 (review F1): the allocator in force is the 000003 body (lock before the ≤ 1000 / > 1000 split); 000002 stays as applied.
+    //   "new" = the latest file, so JNO-new-forced-window copies it and JNO-deployed-is-new compares QC2 with it.
+    const NEW = "prisma/migrations/20261104000003_account_journal_no_alloc_lock_v2/migration.sql";
     const oldCopy = await mkCopy("old", OLD, "EXECUTE format('SELECT last_value FROM %s', r) INTO v;");
     const newCopy = await mkCopy("new", NEW, "EXECUTE format('SELECT last_value, is_called FROM %s', r) INTO v, c;");
     // one "cashier" = a money transaction: allocate · insert its journal row · hold the transaction (row uncommitted) · commit
@@ -296,7 +298,7 @@ try {
       const r = await round(oldCopy.name, 2, 150, 900);
       chk("JNO-old-race-reproduced", r.errs.length + r.dup > 0, `INFO positive control · old slow path with a 400 ms window, 2 cashiers 150 ms apart: values ${j(r.ns)} · failures ${j(r.errs)} · duplicates ${r.dup} (want ≥ 1 failure/duplicate = the backwards setval)`);
     } else chk("JNO-old-race-reproduced", false, oldCopy.why);
-    // the NEW slow path (copy of the 20261104000002 file, same injected delay): serialised, re-read under the lock
+    // the NEW slow path (copy of the latest allocator file (000003 since round 2), same injected delay): serialised, re-read under the lock
     if (newCopy.name) {
       const r = await round(newCopy.name, 2, 150, 900);
       const r8 = await round(newCopy.name, 8, 100, 300);

@@ -161,3 +161,110 @@ the 000001 file only. If the controller wants it green, point its file list at 0
 - The platform's copy of the CRM prefixes is held in sync by the probe only. A permanent fitness check would need F15 (out of scope).
 - R2-4 (stored endpoints without an author), R2-5, R2-6 (KANBAN/MEMBER doc text): out of scope. Installed `~/.claude/skills` were not touched.
 - The other unflagged 409/503 replays named in review item 3 (b)/(c): not in this card.
+
+---
+
+## Round 2 (after review `crm-C5.5-fix3a-review.md`, 288223d8 · NOT MERGEABLE) — builder
+Started 15:20 UTC, finished 15:45 UTC (1 Oct). QC2 only. Logs: `/tmp/cf3-logs/r2/` (migrate-status-before/after, migrate-deploy, probe-cf3-r2 standalone run)
+and `/tmp/cf3-logs/r2/regress/` (runner `scripts/pending/cf3/run-cf3-r2.sh`, SUMMARY).
+
+### F1 · MED: the walk path ran lock-free, so a walker could overtake the healer. Fixed by a NEW migration (000002 not edited)
+- **`prisma/migrations/20261104000003_account_journal_no_alloc_lock_v2/migration.sql`**: one `CREATE OR REPLACE` of
+  `public.account_alloc_journal_no(text, text, text, int)`, with the same signature, result, `LANGUAGE plpgsql` and `SET search_path = pg_catalog, public`.
+  - Change vs 000002: when the number is taken and the floor is above it (`f > n`), the advisory lock is taken FIRST. Then floor + `last_value/is_called`
+    are re-read under it, and only then does it choose between the walk and `setval`. So the ≤ 1000 walk now also runs under the lock. This is the
+    reviewer's RV4-C body, with one difference: the lock is taken only when `f > n`, not for every taken number. A taken number at or above the floor
+    only loops to the next nextval and never moves the sequence, so it does not need the lock.
+  - The comparison is `<= 1000` everywhere, which fixes the off-by-one. The header says what the code does, including the remaining residual and the 40P01 wait.
+  - The free-number fast path is unchanged and lock-free.
+  - 000002 is byte-unchanged. QC2's stored checksum still equals sha256 of the file (probe R2-DEPLOYED).
+- **Applied on QC2 only.** Same mechanism as round 1: `bash scripts/iso.sh bash scripts/qc2.sh bash scripts/with-gate-lock.sh bash scripts/qc-prisma.sh migrate deploy`
+  at 15:23 UTC.
+  - Before it, `migrate status` listed only 000003 as pending (plus the known orphan 000000 row).
+  - After it, status says "Database schema is up to date!" (151 migrations).
+  - Owner and ACL are unchanged and the same as the sibling `account_peek_journal_no` (`neondb_owner`, `{=X/…,neondb_owner=X/…,authenticated=X/…}`).
+- **New probe `scripts/pending/cf3/probe-cf3-r2.mts` — 13/13** (standalone 15:23 and in the batch 15:28, both 13/13):
+  - `R2-DEPLOYED`: the QC2 body equals the 000003 file byte-for-byte, and the metadata matches the sibling. Both migration rows are finished, and each checksum equals sha256 of its file.
+  - `R2-WAITS-deployed` (deterministic): another transaction holds the (system, book) advisory lock. Then the **deployed** function, with its first number
+    taken at gap 1 · 500 · 1000 · 1001 · 1599 below the floor, waits in every case: `lock_timeout` 300 ms ⇒ 55P03. Each time the sequence moved by its
+    single nextval only. Under 000002, gaps 500 and 1000 walked lock-free.
+  - `R2-WAITS-fast-path-free`: a free number returns 1602 in 39 ms while the lock is held.
+  - `R2-WAITS-positive-control-000002`: a copy of the 000002 body under the same held lock returns at once for gap 500 and gap 1000. So the check discriminates.
+  - `R2-RV3A-ctrl-000002` (positive control): REPRODUCED. P2002, and 1 backwards move sampled.
+  - `R2-RV3A-v2` ×3: the healer is a copy of the **installed** body with the 600 ms window, and the cashier is the **deployed** function. Every run had 0 failures,
+    distinct numbers above the floor and 0 backwards moves (92–108 samples each).
+  - `R2-RV3A-mixed` ×3: the 000002 healer copy against the deployed cashier, which is the reviewer's exact set-up. Clean, 0 backwards.
+  - `R2-RV4B-ctrl-000002` (positive control): REPRODUCED. P2002, 1 backwards move.
+  - `R2-RV4B-v2` ×3 and `R2-RV4B-mixed` ×3: every run had 0 failures, 3 distinct numbers above the floor and 0 backwards moves (124–130 samples each).
+  - `R2-REAPPLY`: the 000003 file applied twice inside BEGIN…ROLLBACK, as `neondb_owner`, gives ok. Afterwards the body, owner and ACL are unchanged.
+  - `R2-CLEAN` + tenant CLEAN: 0 copies, 0 sequences, 0 tenant rows.
+  - How "backwards" is measured: another session samples the sequence every ~15 ms. The healer copies also sleep 200 ms after a `setval`, so a backwards
+    `setval` stays visible to the sampler. That only adds time; it does not change the logic.
+- **Builder probe edit.** `probe-cf3.mts` now points its "new" file at 000003, so `JNO-new-forced-window` copies the body in force and `JNO-deployed-is-new`
+  compares QC2 with it. This is my own probe, not an oracle. Still **27/27**.
+- **ORACLE-EDIT C5.5-fix3a r2: `scripts/pending/c54n/check-jno-fns-r2.mts`.** The expected function bodies are now read from 000001, then 000002, then 000003,
+  with the later file winning. Before this edit it compared only with 000001 and reported 9/10 "by design". That hid real drift, and the check is part
+  of this lane's regression list. Now: 10/10 functions equal, nothing extra, `CHECK OK`.
+- **Residual (stated in the migration header and the runbook).** Free-number allocations by other sessions stay lock-free. A backwards `setval` would now
+  need them to consume the whole remaining gap (> 1000 free numbers) between two adjacent statements of the healer. Not reproduced, and not proven impossible.
+
+### F2 · LOW: runbook addendum rewritten (`ledger/wo-notes/crm-C5.4-N.md`, "Runbook addendum (C5.5-fix3a … corrected in fix3a round 2)")
+- Removed the wrong "> 1000 calls … not reachable" claim and replaced it with the true residual (above).
+- States that production has none of 000001 / 000002 / 000003. Evidence: `origin/main` has no `20261104*` folder (its newest is `20261102000000`). Production itself was not queried.
+- Apply list in order: 000001 → 000002 → 000003. 000002 is kept as applied, and 000003 is the body in force.
+- New pre-checks: 7 (the migrate role owns the function) and 8 (server version ≥ 11). The smoke SQL now also checks for the 000003 body (`IF f - nv <= 1000 THEN`).
+  Rollback warns never to re-run 000002 alone.
+- Ordering vs POS:
+  - POS folders `20261120000000_pos_v2_a` and `…01_pos_v2_a_links` (on `session/pos` and `wip/pos-p1.1a/b`) sort after ours.
+  - If they deploy first, `migrate deploy` still applies these earlier-named pending folders.
+  - Neither POS migration touches `AccountJournalEntry` or any `account_jno_*` / `account_*_journal_no` function (grep), so the order does not matter for correctness.
+  - Not tested with a real out-of-order apply.
+- Rewrote the F3 deadlock text (below).
+
+### F3 · LOW: lock-order text corrected (comments and docs only)
+- `src/lib/modules/account/service.ts:16-21`: step 6 now says "normal case no lock, never waits". It adds that the HEALING case takes the advisory lock and can
+  wait, and that a cycle with step 1–6 rows is possible: Postgres detects it as 40P01, and one transaction fails and can be retried.
+  The step-4 sentence now reads "no number lock outside healing".
+- `ledger/wo-notes/crm-C5.4-N.md` §2:
+  - The step-6 line is annotated.
+  - A new "Healing exception" paragraph covers the wait, the cycle (row locks or two books), and 40P01 detection.
+  - It explains why the step-7 counter proof still holds, and that phase-2 counters held across a posting (`issueDocNo`, goods-doc numbers) are NOT
+    covered by it. The review found no concrete pair.
+- The reviewer's RV4-E still shows `DEADLOCK DETECTED (40P01)` on the new function. That is expected: hardening does not remove this wait.
+
+### INFO: registered as debt for a later card (no code change in this card)
+- **F4.** `src/lib/webhooks/service.ts:422` fails closed only when the guard registry is EMPTY. If the root later registers another module's guard and loses
+  the CRM one, CRM and all-events endpoints pass unguarded. The prefix list `WEBHOOK_GUARDED_EVENT_PREFIXES` (`:414`) is a copy of `CRM_EVENT_PREFIXES`, kept
+  in sync only by a pending probe (`probe-cf3` R22-prefixes-in-sync).
+  - Suggestion: guards register the prefixes they own, and the service fails closed when a guarded prefix has no owner. Or the platform owns the constant and CRM imports it.
+- **F5.** `src/lib/modules/crm/ai-bridges.ts:218` `PIPELINE_LATE_MONTH` still compares instants (`expectedCloseAt <= now + 7 d`), so it flips at 07:00 Thai.
+  This is the same class as H2b-3 and should use the Thai day key like CLOSE_OVERDUE.
+
+### Verification (QC2, `CRM_V2_SWITCH=all`, each job via `scripts/iso.sh` + gate lock, one at a time) — `/tmp/cf3-logs/r2/regress/SUMMARY`
+| run | result |
+|---|---|
+| probe-cf3 | **27/27** (JNO-deployed-is-new now = 000003; JNO-deployed-parallel 96/96 distinct, 0 failures) |
+| probe-cf3-r2 (new) | **13/13** |
+| reviewer `review/rv3-jno.mts` (not edited) | 5/7. **RV3-A "not reproduced"**: healer copy of 000002 → 1602, the deployed cashier now waits (770 ms) → 1603. Before: P2002, 1602 in 105 ms. RV3-B and RV3-C ✅. The 2 reds are RV3-D and RV3-CLEAN, both only "deployed == 000002 file" = false, because 000003 replaced it. Their other parts hold: metadata same as the sibling, 0 copies, 0 sequences, tenant clean. |
+| reviewer `review/rv4-review.mts` (not edited) | 5/7. **RV4-B "not reproduced"**: healer 1602 · X 1603 · Y (gap 1000) 1604 after 996 ms. Before: healer P2002, Y 1602 in 89 ms. RV4-A, RV4-C and RV4-E (40P01 mechanism, expected) ✅. The 2 reds are RV4-D and RV4-CLEAN, again only "deployed == 000002 file". RV4-D's other parts hold: re-apply ok, PG 180006, two slow-path calls in one transaction 1608, 1609, one lock row in the 1-bigint form. |
+| N probe-m1 | 10/10 (the 42501 line in the log is its intended SEAM-42501 case) |
+| N qc-numbering (oracle) | 12/12 |
+| N review/r2-money | 11/11 |
+| N review/r3-m1-adversarial | 7/7 (H1 16×50 green on 000003; the P0001 line is the intended R3-H4) |
+| N check-jno-fns-r2 (ORACLE-EDIT) | CHECK OK: 10/10 functions equal 000001+2+3, nothing extra. Rows 000000 (orphan) · 000001 · 000002 · 000003 all finished. |
+| qc-acc-v2-payments | 162 ✅ / 0 ❌ (same as round 1) |
+| qc-acc-v2-wht-cheque | 47/69. The same 22 "= เฉลย seed" findings as round 1, identical list (diffed). This suite is seed-pinned to QC1. |
+| `gen-account-api-docs.mts --check` | exit 0 (199 ops) |
+| `pnpm typecheck` | exit 0 |
+| `scripts/fitness.mts` (QC2 env) | 33/33 (CRITICAL 0 · MAJOR 0 · MINOR 0) |
+
+QC2 left clean: every probe's CLEAN check is green (0 function copies `cf3_alloc_*`/`cf3r2_alloc_*`/`rv3_alloc_*`/`rv4_alloc_*`, 0 probe sequences, 0 tenant
+rows). The deployed `account_alloc_journal_no` is the 000003 body.
+
+### Not verified / open
+- No real out-of-order `migrate deploy` (POS folders first) on a throwaway database. No production role inspection (pre-check 7 is for the owner).
+- QC1 and QC3 do not get 000002/000003 from this card. No `next build`, and no QC1/QC3 runs.
+- The other round-1 regression suites (webhook, CRM c0.2/c1.10/c5.3, account-api) were not re-run. The only `src/` change this round is a comment in
+  `account/service.ts`, and typecheck and fitness are green.
+- The residual (> 1000 free-number allocations inside one statement gap of a healer) is argued, not tested.
+- The reviewer's rv3/rv4 "deployed == 000002" assertions are now stale by design. Their files were not edited; if they are reused as a gate, repoint them at 000003.
