@@ -1,11 +1,14 @@
 // POST แชท AI → SSE (text/event-stream) · แต่ละ event = data: {type,...}\n\n จบด้วย done/error
 // (ledger/MOBILE_PLAN.md M-11) — ครอบ sendMobileChat (wrap sendMessage เดิม)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
+import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
 import { sendMobileChat } from "@/lib/mobile/chat";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
+  const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+  if (denied) return denied;
 
   let body: { conversationId?: string; text?: string; imageUrls?: string[] };
   try {

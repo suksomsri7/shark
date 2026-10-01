@@ -145,3 +145,56 @@ The SQL in "Stored data" now points to `scripts/pending/hsan-review/finder.sql` 
 
 ### Forward-port (CRM branch)
 `payment/actions.ts` + `payment/service.ts` are untouched on session/crm (check with `git diff origin/main session/crm -- src/lib/payment`) ⇒ cherry-pick. Run `qc-payment-authz-hotfix.mts` there too.
+
+## Item 4 — mobile AI routes + DNA apply (review Item 3: M1, M2, DNA MED)
+Fix = the same permission key as the web door, decided by the same `evaluate()` (OWNER/MANAGER pass · STAFF needs the key or `<module>.*`):
+- New `src/lib/mobile/guard.ts`: `mobileDenied(g, query)` → `null` or 403 `{ error: "forbidden" }` (same shape as `mobileError` from `requireMobile`); constants `AI_CHAT` = `ai.chat.send` (web `lib/ai/actions.ts assertAiCan`, every AI door) and `SYSTEM_CREATE` = `systems.system.create` (web `lib/actions/systems.ts addSystemAction`).
+- 4a `api/mobile/chat/send` POST → `ai.chat.send` (web `sendAiMessageAction`).
+- 4b `api/mobile/conversations` GET/POST, `[id]` PATCH/DELETE, `[id]/messages` GET, `[id]/read` POST → `ai.chat.send`. Web model: conversations are shop-shared (`latestConversation(tenant)`), every web AI read (loadAiChat, loadPlans, listPendingProposals) needs `ai.chat.send`; web has NO list/rename/delete/markRead door ⇒ `ai.chat.send` applied as the floor there (no per-user ownership invented). `[id]/read` added although not in the review list (same family, writes lastReadAt).
+- 4c `api/mobile/dna/apply` POST and web `dna/actions.ts applyStepAction` / `applyAction` → `systems.system.create` (web throws ForbiddenError like addSystemAction; mobile 403).
+- Test `scripts/qc-mobile-authz-hotfix.mts` through the REAL route handlers (Bearer token from `issueMobileToken`, X-Tenant-Id), matrix OWNER/MANAGER/STAFF no key/STAFF+ai.chat.send/STAFF+systems.system.create, denied = 403 + no side effect, positive controls, own tenant, cleans to 0: **RED 3/12 before the fix → GREEN 12/12** (QC3). Re-runs after the fix: payment 8/8, automation 12/12 (QC3), sanitize oracle 29/29 · typecheck 0 · fitness 33/33.
+
+Who loses access: STAFF members WITHOUT `ai.chat.send` (or `ai.*`) lose the AI chat + AI conversation screens in the mobile app (they never had them on the web); STAFF without `systems.system.create` lose DNA "apply blueprint" on web and app. OWNER/MANAGER unaffected. No role default grants either key: STAFF permissions are `{}` unless the owner ticks them in /app/settings/staff (no presets in `core/permissions.ts`). Count for the owner (read-only; do NOT run on prod without the owner's go):
+```sql
+BEGIN READ ONLY;
+SET LOCAL statement_timeout = '30s';
+SELECT 'ai.chat.send' AS key, count(*) AS staff_without_key, count(DISTINCT m."tenantId") AS shops,
+       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "Session" s WHERE s."userId" = m."userId" AND s."revokedAt" IS NULL
+                                       AND s."expiresAt" > now() AND s."idleExpiresAt" > now())) AS with_live_session
+  FROM "Membership" m
+ WHERE m.role = 'STAFF' AND m."acceptedAt" IS NOT NULL
+   AND NOT (coalesce(m.permissions -> 'ai.chat.send', 'false'::jsonb) = 'true'::jsonb OR coalesce(m.permissions -> 'ai.*', 'false'::jsonb) = 'true'::jsonb)
+UNION ALL
+SELECT 'systems.system.create', count(*), count(DISTINCT m."tenantId"), NULL
+  FROM "Membership" m
+ WHERE m.role = 'STAFF' AND m."acceptedAt" IS NOT NULL
+   AND NOT (coalesce(m.permissions -> 'systems.system.create', 'false'::jsonb) = 'true'::jsonb OR coalesce(m.permissions -> 'systems.*', 'false'::jsonb) = 'true'::jsonb);
+ROLLBACK;
+```
+(`with_live_session` counts web+app sessions together — Session has no reliable app marker.)
+
+### Sweep — every route under `src/app/api/mobile/**` (list only)
+| route | does | check | risk |
+|---|---|---|---|
+| auth/otp · verify · google · apple · exchange · logout | login / token issue / revoke | pre-auth by design (OTP, id_token, one-time code) | — |
+| webview-exchange | one-time code → web session | code (60 s, single use) | — |
+| webview-session · me · tenants GET | issue webview code / own profile / own shops | token (own data) | — |
+| tenants POST | create a new shop for the caller | token (by design: self-signup) | — |
+| chat/send · conversations/** | AI chat + shared AI history | **ai.chat.send (this item)** | fixed |
+| dna/apply | build systems from blueprint | **systems.system.create (this item)** | fixed |
+| dna/answers | save DNA facts + propose blueprint | token only | LOW (follow-up) |
+| dna/questions | static question list | token | — |
+| chat/welcome | creates the welcome AI room/message; shows onboarding checklist + DNA summary | token only | LOW (follow-up) |
+| proposals GET | pending AI proposals of a room | token only (web needs ai.chat.send) | LOW (follow-up) |
+| proposals/confirm · plans/confirm | execute AI proposal/plan | inside service (per-kind check with caller membership) | OK |
+| proposals/reject · plans/reject | reject any pending proposal/plan of the shop | token only | LOW (follow-up) |
+| usage | AI wallet balance | token only | LOW (follow-up) |
+| push/register | upsert Expo push token for the caller | token only; token can be re-bound (review) | LOW (follow-up) |
+| crm/* (call-log, deals, deals/[id], scan-card + accept/reject, tasks, tasks/[id]/complete) | CRM mobile | actor → CRM service checks (`crm.*` keys; scan-card `canBusinessCard`) — not deep-verified | inside service |
+| member/scan · search · stamp · summary | loyalty at the counter | `assertCan` + `canReadMember` in route | OK |
+
+### Follow-ups (NOT in this hotfix)
+- M3: `remember_fact` AI tool writes shop AI memory without a proposal/confirmation step (review M3).
+- The LOW mobile routes above (dna/answers, chat/welcome, proposals GET, proposals/plans reject, usage, push/register re-bind) and the LOW web actions of Item 3b.
+- Payment profile: MANAGER-scope ruling (MANAGER currently allowed) and a registry key (e.g. `payment.profile.update`) if owners want to delegate to STAFF.
+- Pass the caller's membership into `runTool` so AI read tools apply per-key checks (review M1 note).

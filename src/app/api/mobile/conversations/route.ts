@@ -1,10 +1,13 @@
 // GET รายการห้อง · POST เปิดห้องใหม่ (ledger/MOBILE_PLAN.md M-11)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
+import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
 import { listConversations, createConversation } from "@/lib/mobile/conversations";
 
 export async function GET(req: Request) {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
+  const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+  if (denied) return denied;
   const conversations = await listConversations(g.ctx);
   return Response.json({ conversations });
 }
@@ -12,6 +15,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const g = await requireMobile(req);
   if (!g.ok) return mobileError(g);
+  const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
+  if (denied) return denied;
   let body: { title?: string };
   try {
     body = (await req.json()) as { title?: string };
