@@ -1,0 +1,13 @@
+start 2026-10-01T21:16:12Z
+probe-cf7-review-r2 exit=0 148s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
+probe-cf7-review exit=0 119s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
+probe-cf7-r2 exit=0 22s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+probe-cf7 exit=0 34s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
+qc-crm-c1.11 exit=0 70s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c2.4 exit=0 69s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+qc-crm-c1.10 exit=0 254s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
+qc-crm-c3.4 exit=0 51s · 🟢 C3.4: 53/53 JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+qc-crm-c1.4 exit=0 213s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+typecheck exit=0 290s · 
+fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-01T21:37:27Z

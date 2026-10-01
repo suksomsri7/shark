@@ -182,3 +182,142 @@ Linking already needed `crm.company.update` before this card. `companies.addCont
   - F6-2 is a cheap fix that also closes F6-3.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 (builder tip `901a94d2`, parent `46b57f3f`)
+
+Reviewed `git diff 46b57f3f 901a94d2` and "Round 2" in `crm-C5.5-fix6.md`. Window: 2026-10-01 21:12–21:38 UTC (`date -u`). I did not edit any product source.
+
+## What I ran (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
+
+Runner: `scripts/pending/cf7/review/run-review-r2.sh`. Logs are in `/tmp/cf7-review-logs/r2/`. Chain ran 21:16:12–21:37:27 UTC.
+
+| Job | Result |
+|---|---|
+| `probe-cf7-review-r2` (new) | **21/21** (also an earlier standalone run: 21/21) |
+| `probe-cf7-review` (round 1) | **27/27** |
+| `probe-cf7-r2` (builder) | **14/14** |
+| `probe-cf7` (builder) | **30/30** |
+| `qc-crm-c1.11` (import/merge) | **66/66** |
+| `qc-crm-c2.4` (card scan) | **91/91** |
+| `qc-crm-c1.10` (REST) | **66/66** |
+| `qc-crm-c3.4` | **53/53** |
+| `qc-crm-c1.4` | **110/110** |
+| typecheck (5 GB heap) | exit 0 |
+| fitness | **36/36** (F14.1/F14.2: 1066 / 1066) |
+
+QC2 leftover check: `qc-cf7-*` tenants = 0, users = 0.
+
+## Attack results
+
+### (a) Import (`contacts.ts:2362-2380` `linkRow`)
+The probe imports seven rows per importer:
+1. a company the importer can see;
+2. a new company name;
+3. the same new name again;
+4. the name of a company the importer cannot see;
+5. a 400-character name (`createCompany` throws);
+6. no company;
+7. an empty row.
+
+| Importer | created | failed | companies | links | notes |
+|---|---|---|---|---|---|
+| read + update + create | 6 | 1 (the empty row) | +2 | +4 | row 5 noted. Every row left without a link has a note (`IMP-full-accounting`). |
+| Same file again, `onDuplicate=update` | 0 (updated=6) | 1 | +0 | +0 | Idempotent (`IMP-reimport-idempotent`). |
+| read + create, no update | 6 | 1 | +0 | +0 | Exactly one note naming the missing key. No company search and **no orphan companies**: in round 1 this importer could create companies and then fail to link them. |
+| No company keys | 6 | 1 | +0 | +0 | One note naming the missing key (`ดูบริษัท`). |
+| read + update, no create | 6 | 1 | +0 | +1 | Rows 2–5 noted. |
+
+- `getImportJob` returns exactly the inline result (`IMP-job-parity`).
+- **No real failure is hidden.** `failed` still counts every row whose contact was not written (the empty row). A contact that was written but not linked is in `errors` as a note with the row number, and the UI lists it under "แถว N: …".
+- Per row, there are no extra queries compared with before. `crmCanLinkCompany` is pure, and the no-link path makes fewer queries.
+
+### (b) F6-1 as a tightening
+- **Who now hard-fails:** only REST clients, AI tools (same ops) and the hidden-picker form calling `createContact` WITH a company under a read-without-update actor. They get FORBIDDEN with no writes (`F61-api-atomic`). In round 1 they got "created + warning".
+- **Who is unaffected:**
+  - Public forms: system actor, `createCore` + `linkContactInTx` (`forms.ts:163`).
+  - Automation: writes fields only.
+  - Lead convert: does not use `createContact`.
+  - v1 AI proposals: they call the v1 service, which has no company.
+- **Card scan (`calls.ts:701`):**
+  - linker and owner: linked;
+  - read-only and no-read confirmers: the contact is created without the company and the proposal is EXECUTED (`F61-card-*`).
+  - For no-read confirmers this is an **improvement**: in round 1 and at base the card was refused (VALIDATION or FORBIDDEN) and went back to PENDING.
+
+### (c) `assertCompanyVisible` (`companies.ts:2352`, called at `contacts.ts:1005`)
+- **Existence oracle:** none new. A hidden live company and a hidden archived company give the same `NOT_FOUND` text (`VIS-oracle-same-text`). The target company is still judged by `assertCompany` (VALIDATION), as before. Visibility of the current company was already observable (360 `company=null`).
+- **Archived current company:** a legitimate user can still move off it (`VIS-archived-move`), because the check is not "live". Owner moving off a merged company: OK (`VIS-merged-move-owner`).
+- **Race:** the check reads `current` before the transaction, as the round-1 key checks do. A concurrent company change between the read and the transaction is not re-checked. This is the pre-existing structure, a narrow window, INFO.
+
+### (d) F6-4 wiring (`page.tsx:192`, `Contact360Actions.tsx:524`)
+Rendered with the page's own wiring (`F64-*`):
+
+| Persona | Result |
+|---|---|
+| read-only, primary company visible | "บริษัทหลัก: <name>" |
+| read-only, primary hidden + visible secondary | "บริษัท: <secondary>", no hidden name |
+| no-read (nok/thana) | no line |
+| linker (owner/manager) | the picker, no line |
+
+### (e) c3.7 red-at-base claim: spot-checked, holds
+`/tmp/cf7-logs/r2/qc-crm-c3.7.log` (21:01 UTC) and `qc-crm-c3.7-at-4b5ca1cb.log` (21:10 UTC) on the same QC3 host show the **same 7** findings, both 23/30:
+- `X1.3`: identical shape, `got=33 want=40 leak=0`;
+- `S1.1`, `S1.2`, `S1.6`, `S2.2`, `S2.4`, `S2.6`: missing visual shots and fixtures.
+
+None touches contacts, companies or AI briefs. I did not re-run c3.7 (it is pinned to QC3).
+
+## Findings (round 2)
+
+### R2F-1 · LOW · a linker sees a picker that always refuses when the contact's primary company is outside their visibility
+- **Repro:** `VIS-primary-hidden`. A read + update STAFF; the contact's primary company is another team's (hidden) and the contact also has the STAFF's own visible company as a secondary link.
+  - `can.company = true`, so the edit sheet shows the picker.
+  - Any pick, including promoting the visible secondary, gives `NOT_FOUND` "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ … รีเฟรชหน้าแล้ว…". Nothing is written.
+- **Assessment:**
+  - The refusal is the intended F6-2/F6-3 rule, and it writes nothing.
+  - But the control is dead for that contact (the §15(b) pattern again), and the message tells the user to refresh, which will not help.
+  - Before r2 the promotion succeeded, so this is a small, deliberate narrowing.
+- **Fix:** hide the picker or replace it with an explanation when `c.companyId && !visible(c.companyId)`. Judge by visibility, not liveness: `data.company` drops archived companies, which can still be moved off. Alternatively, give the refusal its own text, e.g. "บริษัทหลักปัจจุบันอยู่นอกสิทธิ์การมองเห็นของบัญชีนี้ — ให้หัวหน้าทีม/เจ้าของย้ายให้".
+
+### R2F-2 · LOW (pre-existing) · clearing an ARCHIVED current company still half-writes
+- **Repro:** `VIS-archived-clear`. `{firstName, companyId:null}` on a contact whose (visible) company is archived returns `VALIDATION` "บริษัทนี้ถูกเก็บถาวรแล้ว…" from `removeContact` → `linkMutation` (`loadCompany … live`). By then the contact row, an audit row and an outbox event are already committed.
+- **Assessment:** the same class as F6-2, but on the liveness branch, which the new non-live check deliberately lets through so that "move off" keeps working. Pre-existing and reachable only through the API (the sheet has no "clear").
+- **Fix:** for the clear case only (`wantCompany === null`), check liveness before the transaction as well, or let `removeContact` end links of archived companies.
+
+### R2F-3 · INFO · import notes share `errors` with real failures
+- `failed` (the count shown as "มีปัญหา N แถว") is now exact. `errors` mixes notes and failures in the same `{row, message}` shape, so `errors.length` can exceed `failed`.
+- Notes count toward the 500-entry cap, and the UI shows the first 50.
+- A large file where every row's company step fails (e.g. a linker without `company.create`) can push real failure messages out of the visible list. The count stays right.
+- Optional: a separate `notes` array, or a `kind` on each entry. No REST contract pins `errors.length === failed`: c1.10 and c1.11 are green.
+
+### R2F-4 · INFO (pre-existing) · an import row naming a company the importer cannot see creates a second company with that name
+- `IMP-full`: row 4 adds a company. `companyOptions` only searches visible companies, and `createCompany` does not deduplicate by name.
+- Unchanged by this card. Merge tools exist for it.
+
+### Round-1 items
+| Item | Status |
+|---|---|
+| F6-1 | Closed (`F61-*`) |
+| F6-2 | Closed for the visibility branch (round-1 rows `KNOWN-invisible-clear`: NOT_FOUND, no writes). The liveness branch remains (R2F-2). |
+| F6-3 | Closed (`KNOWN-invisible-move`: refused, the owner's deal stays) |
+| F6-4 | Closed (`F64-*`) |
+| F6-7 | Done. One prompt line; c3.4 still 53/53. |
+| F6-5, F6-6 | Unchanged INFO |
+
+## Not verified (round 2)
+- No live :3215 build: the edit sheet and the import panel were not rendered as pages. Components were rendered via SSR with the page wiring copied into the probe.
+- No query-count instrumentation for the import: "no extra query per row" comes from reading the code.
+- I did not re-run c3.7 on QC3: I spot-checked the builder's two logs only.
+- `qc-crm-forms` and the button runner were not run.
+- No 500-row import to demonstrate R2F-3 crowding: reasoned from the code (`CONTACT_IMPORT_ERRORS_MAX = 500`, UI `slice(0, 50)`).
+
+## Verdict (round 2)
+- No BLOCKER, HIGH or MED.
+- The r2 changes do what they claim:
+  - every refusal I tried writes nothing;
+  - import accounting is exact and visible, with no orphan companies, and is idempotent;
+  - card scan improved for no-read confirmers;
+  - no new existence oracle.
+- Two LOWs (R2F-1 dead picker for a hidden primary company; R2F-2 pre-existing archived-clear half-write) and two INFO go to the debt register.
+
+VERDICT: MERGEABLE
