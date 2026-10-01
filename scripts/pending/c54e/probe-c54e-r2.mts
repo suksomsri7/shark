@@ -7,6 +7,8 @@
 //   R4   SF-4 sanitizeHtml: the reviewer's 12 vectors × 3 passes (± allowImages) ⇒ pass1 = pass2 = pass3, no javascript:/data:/vbscript:
 //        href/src, no on* attribute in any tag · C2.5-S9.10 fixtures byte-identical
 //   R6   ruling (1) company lifecycle correction: OWNER CUSTOMER → PROSPECT ok (audit correction:true) · STAFF refused · CUSTOMER → LEAD refused
+//   R2-1a/b/c (round 3) portal rank usable > pending > revoked on company merge · R2-2 correction refused while a WON deal remains ·
+//   R2-2s STAFF who can see the company ⇒ FORBIDDEN
 //   R7   ruling (4) company import with a free-mail domain ⇒ row imported WITHOUT the domain + one row warning (no error)
 // Run (QC3): bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/c54e/probe-c54e-r2.mts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +66,36 @@ try {
     chk("R2a", a.mc.ok && a.live.length === 1 && a.live[0].role === "ADMIN" && !a.warnings.some((w) => /ถูกปิด|ยังอยู่/.test(w)), `merge=${a.mc.ok ? "ok" : String(a.mc.err)} rows=${j(a.rows)} warnings=${j(a.warnings)}`);
     const b = await portalCase("r2b", "live");
     chk("R2b", b.mc.ok && b.live.length === 1 && b.rows.some((r) => r.startsWith("DROP:revoked")) && b.warnings.some((w) => /บริษัทที่เก็บไว้/.test(w) && /1/.test(w)), `merge=${b.mc.ok ? "ok" : String(b.mc.err)} rows=${j(b.rows)} warnings=${j(b.warnings)}`);
+  }
+
+  // ═══════════ R2-1 (round 3) · rank usable > pending > revoked — never replace KEEP's row with a worse DROP row ═══════════
+  type St = "usable" | "pending" | "revoked";
+  const rowData = (st: St, now: Date) =>
+    st === "usable" ? { acceptedAt: new Date(now.getTime() - 86_400_000) }
+      : st === "pending" ? { acceptedAt: null, inviteTokenHash: `${TAG}-${Math.random().toString(36).slice(2)}`, inviteExpiresAt: new Date(now.getTime() + 3 * 86_400_000) }
+        : { acceptedAt: new Date(now.getTime() - 5 * 86_400_000), revokedAt: new Date(now.getTime() - 86_400_000) };
+  const rankCase = async (label: string, keepSt: St, dropSt: St) => {
+    const shop = await mkShop(label, { portal: true });
+    const ck = (await CRM.companies.createCompany(shop.ctx, shop.owner, { name: `บริษัทเก็บ ${TAG} ${label}` })).company.id as string;
+    const cm = (await CRM.companies.createCompany(shop.ctx, shop.owner, { name: `บริษัทรวม ${TAG} ${label}` })).company.id as string;
+    const x = await mkContact(shop, `อันดับ ${label}`, { email: `${TAG}-${label}@qc.invalid` });
+    await CRM.companies.addContact(shop.ctx, shop.owner, ck, { contactId: x.id });
+    await CRM.companies.addContact(shop.ctx, shop.owner, cm, { contactId: x.id });
+    const now = new Date();
+    const kr = await P.crmPortalAccess.create({ data: { tenantId: shop.tid, systemId: shop.S, companyId: ck, contactId: x.id, role: "VIEW", ...rowData(keepSt, now) } });
+    const dr = await P.crmPortalAccess.create({ data: { tenantId: shop.tid, systemId: shop.S, companyId: cm, contactId: x.id, role: "ADMIN", ...rowData(dropSt, now) } });
+    const mc = await call(() => CRM.companies.mergeCompanies(shop.ctx, shop.owner, { keepId: ck, mergeId: cm, confirm: true, reason: `รวมบริษัท ${TAG}` }));
+    const onKeep = (await P.crmPortalAccess.findMany({ where: { tenantId: shop.tid, contactId: x.id, companyId: ck }, select: { id: true, revokedAt: true, acceptedAt: true } })) as Any[];
+    const audits = (await P.auditLog.findMany({ where: { tenantId: shop.tid, targetType: "CrmPortalAccess", targetId: { in: [kr.id, dr.id] } }, select: { action: true, targetId: true } })) as Any[];
+    return { mc, keptId: onKeep[0]?.id ?? null, kr: kr.id, dr: dr.id, onKeep: onKeep.length, audits, warnings: (mc.ok ? mc.v.warnings : []) as string[] };
+  };
+  {
+    const a = await rankCase("k1", "pending", "revoked");
+    chk("R2-1a", a.mc.ok && a.onKeep === 1 && a.keptId === a.kr, `KEEP pending + DROP revoked ⇒ KEEP's invite survives — merge=${a.mc.ok ? "ok" : String(a.mc.err)} keptOnKeep=${a.keptId === a.kr ? "KEEP" : a.keptId === a.dr ? "DROP" : a.keptId} audits=${j(a.audits)}`);
+    const b = await rankCase("k2", "revoked", "usable");
+    chk("R2-1b", b.mc.ok && b.onKeep === 1 && b.keptId === b.dr && b.audits.some((x: Any) => x.targetId === b.kr), `KEEP revoked + DROP usable ⇒ DROP's moved + an audit row for the deleted KEEP row — merge=${b.mc.ok ? "ok" : String(b.mc.err)} keptOnKeep=${b.keptId === b.dr ? "DROP" : b.keptId === b.kr ? "KEEP" : b.keptId} audits=${j(b.audits)}`);
+    const c = await rankCase("k3", "pending", "pending");
+    chk("R2-1c", c.mc.ok && c.onKeep === 1 && c.keptId === c.kr, `both pending ⇒ KEEP's kept — merge=${c.mc.ok ? "ok" : String(c.mc.err)} keptOnKeep=${c.keptId === c.kr ? "KEEP" : c.keptId === c.dr ? "DROP" : c.keptId} audits=${j(c.audits)}`);
   }
 
   // ═══════════ R3 · SF-3 import / bulk reassign notices ═══════════
@@ -157,6 +189,31 @@ try {
     const aud = await P.auditLog.findFirst({ where: { tenantId: shop.tid, targetId: co, action: "crm.company.lifecycle" }, select: { after: true } });
     chk("R6", !st.ok && !toLead.ok && own.ok && row?.lifecycleStage === "PROSPECT" && aud?.after?.correction === true,
       `staff=${st.ok ? "accepted" : String(st.err?.code ?? st.err)} toLead=${toLead.ok ? "accepted" : String(toLead.err?.code ?? toLead.err)} owner=${own.ok ? "ok" : String(own.err)} stage=${row?.lifecycleStage} audit=${j(aud?.after)}`);
+  }
+
+  // ═══════════ R2-2 (round 3) · correction refused while a WON deal remains · STAFF who CAN see the company ⇒ FORBIDDEN ═══════════
+  {
+    const shop = await mkShop("r6b");
+    const co = (await CRM.companies.createCompany(shop.ctx, shop.owner, { name: `บริษัทยังชนะ ${TAG}` })).company.id as string;
+    const k = (await CRM.contacts.createContact(shop.ctx, shop.owner, { firstName: `ผู้ซื้อ ${TAG}`, phone: "0861112233" })).contact.id as string;
+    await CRM.companies.addContact(shop.ctx, shop.owner, co, { contactId: k, isPrimary: true });
+    const won = shop.stages.find((x: Any) => x.kind === "WON");
+    const d = await CRM.deals.createDeal(shop.ctx, shop.owner, { pipelineId: shop.pipe.id, title: `ดีลชนะ ${TAG}`, contactId: k, companyId: co, valueSatang: 100_000 });
+    await CRM.deals.moveDeal(shop.ctx, shop.owner, d.id, { stageId: won.id });
+    const r = await call(() => CRM.companies.setCompanyLifecycle(shop.ctx, shop.owner, co, "PROSPECT"));
+    const row = await P.crmCompany.findUnique({ where: { id: co }, select: { lifecycleStage: true } });
+    chk("R2-2", !r.ok && /VALIDATION/.test(String(r.err?.code ?? r.err)) && String(r.err?.message ?? "").includes("ยังมีดีลที่ชนะอยู่") && row?.lifecycleStage === "CUSTOMER",
+      `withWonDeal=${r.ok ? "accepted" : `${r.err?.code} ${r.err?.message}`} stage=${row?.lifecycleStage}`);
+    // N-R2-1: a STAFF who can see the company (its owner) ⇒ the role gate answers FORBIDDEN (not NOT_FOUND)
+    const stf = await mkUser("-r6v");
+    const sp = { "crm.company.read": true, "crm.company.update": true };
+    await P.membership.create({ data: { userId: stf, tenantId: shop.tid, role: "STAFF", unitAccess: ["*"], permissions: sp, acceptedAt: new Date() } });
+    const co2 = (await CRM.companies.createCompany(shop.ctx, shop.owner, { name: `บริษัทของพนักงาน ${TAG}` })).company.id as string;
+    await P.crmCompany.update({ where: { id: co2 }, data: { lifecycleStage: "CUSTOMER", ownerUserId: stf } });
+    const sa = { userId: stf, role: "STAFF", unitAccess: ["*"], permissions: sp };
+    const seen = await call(() => CRM.companies.getCompany360({ ...shop.ctx, actorUserId: stf }, sa, co2));
+    const st = await call(() => CRM.companies.setCompanyLifecycle({ ...shop.ctx, actorUserId: stf }, sa, co2, "PROSPECT"));
+    chk("R2-2s", seen.ok && !st.ok && /FORBIDDEN/.test(String(st.err?.code ?? st.err)), `staffSeesCompany=${seen.ok ? "yes" : String(seen.err?.code ?? seen.err)} staffCorrect=${st.ok ? "accepted" : `${st.err?.code} ${st.err?.message}`}`);
   }
 
   // ═══════════ R7 · ruling (4) company import with a free-mail domain ═══════════

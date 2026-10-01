@@ -198,3 +198,46 @@ Method:
 4. Free-mail company domain on import: refuse the row (current), or import without the domain plus a warning?
 5. Merge stop code: keep reusing `REPLACED`, or add `MERGED` (enum + label)? And should the more advanced enrolment win instead of KEEP's?
 6. E3 recipients: all tenant OWNER/MANAGER, or only those holding CRM e-mail settings rights?
+
+---
+
+## Round 2 — re-review of `git diff 279519c4 610534f7` (1 Oct 2026 · read-only)
+
+### VERDICT: MERGEABLE AFTER SHOULD-FIX (R2-1 · R2-2)
+
+Both fixes are small and local to `companies.ts`. Everything else was done as ruled and is correct.
+
+### Round-1 items and rulings
+| Item | Status | Evidence |
+|---|---|---|
+| SF-1 score on merge | ✅ | `scoring.ts` `transferScoreInTx` moves the logs, then calls `reconcile()` (one statement under the lock already held). Events still keyed `#merge-<drop>`, emitted only when score/band change. Probe R1 is green. |
+| SF-2 portal access on company merge | ✅ with R2-1 | Branch logic: KEEP's row usable (not revoked + accepted) ⇒ DROP's duplicate is revoked and staff are told the truth. Otherwise KEEP's dead row is deleted and DROP's row moves. **FK integrity:** `PortalSession_portalAccessId_fkey` is `ON DELETE CASCADE` (migration `20261102000000_crm_v2_c:208`), so the explicit session close is redundant but harmless. Unique `(companyId, contactId)` is freed before the move in the same tx. tenant/system are unchanged (same-system merge). `inviteTokenHash` uniqueness is untouched. |
+| SF-3 import / bulk notices | ✅ | `batchId` is additive on the `crm.contact.assigned` payload. No payload schema or doc pins the key set (grep). Timeline, automation and webhook consumers ignore extra keys. `onContactAssigned` skips batch events. `leadsAssignedBatch` sends one notice per owner per batch with `count`, actor excluded. `CrmContactBatch` → `/contacts`, read key `crm.contact.read`. `visTargetOf` → null, so there is no record lookup by batch id and recipients are not dropped. Dedupe key = (recipient, lead.assigned, CrmContactBatch, batchId, Thai day), so one per batch. Single and rule assignments are unchanged. Probes R3a/R3b go 20/15 → 0/1. |
+| SF-4 sanitize | ✅ | `escapeAttr` now escapes `& " < > '`. **I re-ran my /tmp proofs on 610534f7:** 21 single-pass vectors (hex/dec/no-semicolon/nested/`&colon;`/control/space/`%`/`data:`/`vbscript:`/quote-break, etc.) are all still dropped or safe, and all idempotent. 12 crafted vectors × 3 passes × {default, allowImages} = 24/24 clean (no js/data href or src, no `on*` handler, no script), with **pass1 = pass2** for every vector (round 1: not). C2.5-S9.10 is green in run15, and probe R4 confirms S9.10 is byte-identical. Decoding is unchanged, so no new decoding bypass. |
+| SF-5 overdue label | ✅ | `ActivityItems` uses `isActivityOverdue(dueAt ?? startAt, nowMs)` and excludes NOTE. `nowMs` comes from the server on the activities page and `CrmActivityBlock` (→ `ActivityPanel`), so there is no hydration drift. The `Date.now()` fallback is only reached if a future caller omits it. Kanban's `ActivityRow` is a different component. v2 pages only. The doc comment now states that `overdueSweep`/trigger stay event-time. |
+| SF-6 collation | ✅ | Controller ran the query on QC1 (a branch of prod, PG 18.6): provider `i`, collversion 153.121.44.8. |
+| SF-7 equivalence | ✅ | Base capture run13 vs new run14: 448 same + 6 DIFF, exactly `contacts.sortName(+p2)` × 3 actors. After the ORACLE-EDIT: 454/454 same, 44/44 checks. The copy differs only in its host guard. |
+| ORACLE-EDIT C1.6-S4.4 (+ header :61) | ✅ minimal | Only the expectation for `todayEarly` flips (overdue tab ⇒ "−2 days only"). S4.2 is unchanged. Marked with the ruling. |
+| ORACLE-EDIT equiv `--compare` | ✅ honest | Relaxed only for the `contacts.sortName[.p2].<actor>` family: same id set + same errors across page 1 + 2. Every other scene stays byte-for-byte. Order is pinned by C5.3-L6-m3. Weakness (NOTE): a dataset that spans more than 2 pages under one order would correctly show as DIFF-SET, not slip through. Field contents of those two scenes are no longer byte-compared, but the same rows are covered by other scenes. |
+| Ruling 1 company lifecycle correction | ✅ with R2-2 | `setCompanyLifecycle`: `crm.company.update` key + OWNER/MANAGER (else FORBIDDEN) + CUSTOMER→PROSPECT only (else VALIDATION). Runs under `simpleUpdate` (row lock, `crm.company.updated` event, audit `crm.company.lifecycle` with `after.correction: true`). The button is shown only to OWNER/MANAGER on a live CUSTOMER company. Inline confirm. 3 inventory rows. |
+| Ruling 4 import warnings | ✅ | `ImportCompaniesResult.warnings?` is optional and present only when non-empty, so it is additive. A free-mail domain row is imported without the domain plus a per-row Thai warning. Single create/update still refuses. Warnings are listed in `CompanyListTools` (max 50, scrollable). |
+| Logs | ✅ | run15 `srcHash=2208fba5d468` = `git diff 279519c4 610534f7 -- src | sha1sum` (recomputed), so the tested src equals the commit. RED run11/run12 (src = 279519c4, `srcDiffVsHEAD=0`) probe-r2 7/14 + UI 5/7. GREEN run15: UI 7/7 · probe-r2 14/14 · probe 20/20 · C5.3 L6 16/16 · c1.4 110 · c1.3 89 · c1.5 103 · c1.6 79 · c1.9 45 · c2.5 105 · c2.6 87 · c2.10 41 · c3.6 29 · c2.1 84 · c2.2 73 · c1.11 66 · equiv 454/454 · docs 0 · typecheck 0 · fitness 33/33 ×2. Everything matches the handback. |
+
+### SHOULD-FIX
+- **R2-1 · SF-2 replaces a better KEEP row with a worse DROP row (VERIFIED by code)**
+  - **Where:** `companies.ts` ~:1666–1678.
+  - **What happens:** the "KEEP not usable ⇒ delete KEEP, move DROP" branch never checks DROP's row.
+  - **Scenario:** DROP's row for X is revoked (old access). Staff then re-invited X on the duplicate company KEEP (pending invite: not revoked, not accepted). The merge deletes KEEP's pending invite, so X's invite link dies, and moves DROP's revoked row in. X ends with only a revoked row. No warning is pushed: `portalAccessReplaced` is only counted in the audit.
+  - **Wanted:** rank rows as usable > pending (not revoked, not accepted, invite not expired) > revoked. Replace KEEP's row only when DROP's ranks higher. Otherwise keep KEEP's row and revoke or leave DROP's.
+  - Also add one `crm.portal.revoke`/`replace` audit row per deleted access. The deleted row's id and its sessions' login history vanish through the cascade, and the merge audit keeps only a count.
+- **R2-2 · the company lifecycle correction silently flips back (VERIFIED by code)**
+  - **Where:** `companies.ts` `setCompanyLifecycle` (~:990).
+  - **What happens:** it accepts CUSTOMER→PROSPECT while the company still has a WON deal. The next `recomputeCachesInTx` (any deal move, payment, contact link or merge) sets CUSTOMER again (`companies.ts` ~:287 CASE).
+  - **Why it surprises:** the flip-back happens at an arbitrary later moment, without an audit row, and the trigger is unrelated to the correction. The sheet text does warn ("ถ้ายังมีดีลที่ชนะอยู่ …"), but the result is still non-deterministic for the user.
+  - **Wanted:** inside the same `simpleUpdate` body, refuse with VALIDATION when `EXISTS (WON deal of this company)`. Use calm Thai and point to the fix: "ย้ายดีลที่ชนะ N รายการออกจากขั้นชนะก่อน แล้วค่อยแก้ขั้นบริษัท". The correction then always sticks. Drop the warning sentence from the sheet once that holds.
+
+### NOTE
+- **N-R2-1** Probe R6 "staff refused" returned NOT_FOUND (visibility: the STAFF fixture cannot see the company), so the role FORBIDDEN branch of `setCompanyLifecycle` is unexercised. It is verified only by reading. A STAFF who can see the company (team visibility) would make the probe honest.
+- **N-R2-2** `transferScoreInTx` → `reconcile` emits `crm.score.threshold` when KEEP's band goes from `null` (never scored) to COLD. A "เย็น" automation rule can then fire on a merge. This predates r2 (round 1 had the same comparison). Edge case.
+- **N-R2-3** `leadsAssignedBatch` is best-effort after commit (no outbox), so a crash between commit and send loses the summary. Acceptable for a notification. Per-row automation rules on `crm.contact.assigned` (e.g. the optional NOTIFY_STAFF starter rule) still fire per row; that is user-configured.
+- **N-R2-4** Round-1 follow-ups still open, by ruling: split sara-am backfill + company picker collation (N-13) · seed change never executed on a reseed (N-11) · uncommitted QC3 `scripts/crm-expected.json` / `member-expected.json` in the worktree (N-22, still present, do not commit) · rulings 2/5/6 unchanged.

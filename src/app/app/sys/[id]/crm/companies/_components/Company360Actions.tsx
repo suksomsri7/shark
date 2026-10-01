@@ -91,7 +91,8 @@ export function CompanyLifecycleCorrect({ systemId, companyId }: { systemId: str
   }
   return (
     <span className="flex flex-col gap-1 rounded-lg border p-2 text-xs" data-testid="company-lifecycle-correct-sheet">
-      <span>ใช้เมื่อปิดดีลเป็น &quot;ชนะ&quot; โดยไม่ตั้งใจ — ถ้ายังมีดีลที่ชนะอยู่ ระบบจะกลับเป็น &quot;ลูกค้า&quot; เองตามดีล</span>
+      {/* CRM C5.4-E r3 ▸ R2-2: บริษัทที่ยังมีดีลที่ชนะ บริการปฏิเสธพร้อมข้อความ "แก้สถานะดีลก่อน" (แสดงใต้ปุ่มด้านล่าง) ◂ */}
+      <span>ใช้เมื่อปิดดีลเป็น &quot;ชนะ&quot; โดยไม่ตั้งใจ — แก้สถานะดีลนั้นก่อน แล้วจึงปรับสถานะบริษัทที่นี่</span>
       <span className="flex flex-wrap gap-2">
         <button
           type="button"
