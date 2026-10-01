@@ -179,10 +179,9 @@ export type SendInput = {
   idempotencyKey?: string | null;
 };
 /** `failCode` (C4.3-fix) = รหัสใน providerError เมื่อ status เป็น FAILED — ให้หน้าจอบอกเหตุจริง (แปลไทยด้วย `crmEmailFailText`) */
-// CRM C5.4-D r3 ▸ `inFlightUntil` (R2-N3): แถวเดิมของกุญแจนี้ยัง QUEUED — lease หมดเมื่อไร · `unconfirmed` (R2-S2): SENT จาก 409 ของการส่งซ้ำ ◂
-export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean; failCode?: string | null; inFlightUntil?: Date | null; unconfirmed?: boolean };
-/** CRM C5.4-D r3 ▸ R2-S2: สถานะของการส่งซ้ำหนึ่งครั้ง — ค่าแฮช token ของครั้งก่อน (คืนให้แถวเมื่อผู้ให้บริการตอบ 409) ◂ */
-type Redelivery = { prevTrackTokenHash: string; prevRouting: Record<string, unknown>; unconfirmed: boolean };
+// CRM C5.4-D r3 ▸ `inFlightUntil` (R2-N3): แถวเดิมของกุญแจนี้ยัง QUEUED — lease หมดเมื่อไร ◂
+// CRM C5.4-D2 ▸ F1: `unconfirmed` (SENT จาก 409 ของการส่งซ้ำ) ถูกถอดออก — การส่งซ้ำเหมือนครั้งแรกทุกไบต์ ผู้ให้บริการคืนคำตอบเดิมพร้อม id ◂
+export type SendResult = { emailId: string; messageId: string; threadKey: string; status: "SENT" | "QUEUED" | "FAILED"; reused?: boolean; failCode?: string | null; inFlightUntil?: Date | null };
 
 export type EmailDomainRecord = { type: "TXT" | "MX" | "CNAME"; name: string; value: string; priority?: number; status?: string };
 export type EmailDomainDto = { id: string; domain: string; status: "PENDING" | "VERIFIED" | "FAILED"; records: EmailDomainRecord[]; verifiedAt: string | null };
@@ -288,6 +287,19 @@ type RoutingJson = {
   links?: { h: string; url: string }[];
   /** AUDIT-CLASS X7: ค่าย่อยของ token เลิกรับของจดหมายฉบับนี้ */
   unsub?: string;
+  /**
+   * CRM C5.4-D2 ▸ F1: ค่าติดตาม (เปิดอ่าน `o` · คลิก `c`) ที่ใช้ประกอบจดหมายครั้งแรก — การส่งซ้ำของแถวเดียวกันประกอบด้วยค่าเดิม
+   *   ⇒ คำขอถึงผู้ให้บริการเหมือนเดิมทุกไบต์ (ลูกค้าที่ปิดการติดตามระหว่างนั้น: ตัวนับเปิดอ่าน/คลิกตรวจธงของผู้ติดต่อตอนบันทึกอยู่แล้ว) ◂
+   */
+  trk?: { o: boolean; c: boolean };
+  /**
+   * CRM C5.4-D2 r2 ▸ S1(b) (รีวิว D2-S1): ค่าที่จดหมายครั้งแรก "ส่งออกไปจริง" ซึ่งไม่ได้มาจากแถวโดยตรง — `rt` หัว Reply-To ที่ส่ง (กุญแจกล่องเข้า
+   *   อาจถูกหมุนภายหลัง) · `base` ที่อยู่เว็บที่ใช้ประกอบลิงก์ติดตาม/ยกเลิกรับ (APP_URL อาจเปลี่ยน) · `fp` ลายนิ้วมือ sha256 ของคำขอทั้งฉบับที่ส่ง
+   *   ถึงผู้ให้บริการ (ผู้ส่ง · ผู้รับ · หัวเรื่อง · html · text · หัวจดหมาย · กุญแจกันซ้ำ) — การส่งซ้ำใช้ `rt`/`base` เดิม และเทียบ `fp` ก่อนเรียก ◂
+   */
+  rt?: string;
+  base?: string;
+  fp?: string;
 };
 
 // ───────────────────────── ข้อความ · คีย์ · ค่าคงที่ ─────────────────────────
@@ -342,9 +354,25 @@ function appUrl(): string {
 
 const SYSTEM_ACTOR: MemberActor = { userId: "system", role: "OWNER", unitAccess: ["*"], permissions: {} };
 
-/** AUDIT-CLASS X7: token = `<emailId>~<สุ่ม 192 บิต>` (≥ 128 บิตตามสัญญา) — ฐานเก็บแต่ `tokenHash` */
-function newToken(emailId: string): string {
-  return `${emailId}~${randomBytes(24).toString("base64url")}`;
+/**
+ * AUDIT-CLASS X7: token = `<emailId>~<ลายเซ็น 192 บิต>` (≥ 128 บิตตามสัญญา) — ฐานเก็บแต่ `tokenHash`
+ * CRM C5.4-D2 ▸ F1 (รีวิว C5.4-D รอบ 3 · มติผู้คุมงาน): ลายเซ็น = HMAC-SHA256 ด้วยกุญแจที่ติดป้าย `crm-email-token:v1:` + `SESSION_SECRET`
+ *   (แบบเดียวกับ `private-file:v1:` / `member-card:`) ของข้อความ `<emailId>|<หน้าที่ o/c/u>|<ลำดับลิงก์>` — เดิมสุ่มใหม่ทุกครั้งที่ประกอบ
+ *   ⇒ การส่งซ้ำของจดหมายฉบับเดียวกัน (กุญแจกันซ้ำของผู้ให้บริการเดิม) มีเนื้อความไม่เหมือนเดิม ผู้ให้บริการตอบ 409 และลิงก์ในฉบับที่
+ *   ลูกค้าได้จริงอาจใช้ไม่ได้ · ตอนนี้ทุกครั้งที่ประกอบจดหมายแถวเดียวกันได้ token ชุดเดิมทุกไบต์ (ไม่ต้องเก็บ token ดิบ ไม่ต้องสลับค่าแฮช)
+ *   🔴 เดาไม่ได้: ไม่มีกุญแจ = คำนวณไม่ได้ · `emailId` อยู่ในข้อความที่เซ็น ⇒ ย้ายลายเซ็นไปใช้กับจดหมายฉบับอื่น/ร้านอื่นไม่ได้ ·
+ *      ชุดอักขระของสามช่องไม่มี `|` (emailId = hex · หน้าที่ = อักษรเดียว · ลำดับ = ตัวเลข) ⇒ ข้อความไม่กำกวม
+ *   🔴 ไม่มีกุญแจสำรอง: ไม่ได้ตั้ง `SESSION_SECRET` (≥ 32 ตัว) = ส่งไม่ได้ (ไม่ใช่ส่งลิงก์ที่ปลอมได้) · อ่านตอนเรียก (ด่าน fitness ไร้ env)
+ *   token ที่ออกด้วยสูตรเดิม (สุ่ม) ยังใช้ได้ตามเดิม — ด่านตรวจเทียบค่าแฮชที่เก็บไว้ ไม่ได้คำนวณสูตรซ้ำ ◂
+ */
+const TOKEN_KEY_LABEL = "crm-email-token:v1:";
+function tokenKey(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (typeof secret !== "string" || secret.length < 32) throw new Error("ไม่ได้ตั้งค่า SESSION_SECRET — ระบบสร้างลิงก์ติดตาม/ยกเลิกรับอีเมลไม่ได้ จึงยังส่งอีเมลไม่ได้ (แจ้งผู้ดูแลระบบ)");
+  return `${TOKEN_KEY_LABEL}${secret}`;
+}
+function newToken(emailId: string, purpose: "o" | "c" | "u", index: number): string {
+  return `${emailId}~${createHmac("sha256", tokenKey()).update(`${emailId}|${purpose}|${index}`).digest("base64url").slice(0, 32)}`;
 }
 /** ค่าย่อยของ token แยกตาม "หน้าที่" — ลายเซ็นของงานหนึ่งใช้กับอีกงานหนึ่งไม่ได้ */
 function tokenHash(purpose: "o" | "c" | "u", token: string): string {
@@ -936,20 +964,21 @@ function decodeAttr(v: string): string {
  *    เปล่าที่ไม่มี token อยู่เลย (ใครอ่านฐานได้ก็นับ "เปิดอ่าน" ปลอมหรือกดเลิกรับแทนลูกค้าไม่ได้)
  * 🔴 ลิงก์เลิกรับ **ไม่เคยถูกห่อ**ด้วยการนับคลิก และไม่เคยหายไปเพราะลูกค้าปิดการติดตาม
  */
-function composeOutgoing(args: { emailId: string; storedHtml: string; trackOpens: boolean; trackClicks: boolean }): ComposeOut {
-  const base = appUrl();
+// CRM C5.4-D2 r2 ▸ S1(b): `base` = ที่อยู่เว็บของครั้งแรก (เก็บไว้ที่ `routing.base`) เมื่อเป็นการส่งซ้ำ — ไม่ระบุ = APP_URL ปัจจุบัน (เดิม) ◂
+function composeOutgoing(args: { emailId: string; storedHtml: string; trackOpens: boolean; trackClicks: boolean; base?: string }): ComposeOut {
+  const base = args.base ?? appUrl();
   const links: { h: string; url: string }[] = [];
   let html = args.storedHtml;
   if (args.trackClicks) {
     html = html.replace(/href="(https?:\/\/[^"]*)"/gi, (_m, raw: string) => {
-      const token = newToken(args.emailId);
+      const token = newToken(args.emailId, "c", links.length);
       links.push({ h: tokenHash("c", token), url: decodeAttr(raw) });
       return `href="${base}/t/c/${token}"`;
     });
   }
-  const unsubToken = newToken(args.emailId);
+  const unsubToken = newToken(args.emailId, "u", 0);
   html += `<hr><p style="font-size:12px;color:#6b7280">ไม่ต้องการรับอีเมลจากเราแล้ว — <a href="${base}/u/${unsubToken}">กดที่นี่เพื่อยกเลิกรับอีเมล</a></p>`;
-  const openToken = newToken(args.emailId);
+  const openToken = newToken(args.emailId, "o", 0);
   if (args.trackOpens) {
     html += `<img src="${base}/t/o/${openToken}.gif" width="1" height="1" alt="">`;
   }
@@ -1049,8 +1078,94 @@ export function isOutageSendFailure(code: string | null | undefined): boolean {
   const c = String(code ?? "").trim().toUpperCase();
   return c === "PROVIDER_401" || c === "PROVIDER_403" || c === "PROVIDER_429";
 }
-/** CRM C5.4-D r3 ▸ R2-S2: เครื่องหมายบนแถวที่ถือว่าส่งแล้วจาก 409 ของการส่งซ้ำ (ผู้ให้บริการรับฉบับก่อนไปแล้ว — ไม่รู้รหัสอ้างอิง) ◂ */
+/**
+ * CRM C5.4-D r3 ▸ R2-S2: เครื่องหมายบนแถวที่ถือว่าส่งแล้วจาก 409 ของการส่งซ้ำ (ผู้ให้บริการรับฉบับก่อนไปแล้ว — ไม่รู้รหัสอ้างอิง) ◂
+ * CRM C5.4-D2 ▸ F1: ไม่มีตัวเขียนค่านี้แล้ว (เหลือเฉพาะแถวที่บิลด์ก่อนหน้าเขียนไว้ — webhook หาแถวเหล่านี้เจอด้วย Message-ID · F2) ◂
+ */
 export const CRM_EMAIL_DELIVERY_UNCONFIRMED = "DELIVERY_UNCONFIRMED";
+/** CRM C5.4-D2 ▸ F6 (R2-N1a): การส่งซ้ำถูกข้ามเพราะผู้รับของแถวเดิมไม่ใช่ผู้รับปัจจุบัน (อีเมลของผู้ติดต่อเปลี่ยน) — ไม่มีการเรียกผู้ให้บริการ ◂ */
+export const CRM_EMAIL_RECIPIENT_CHANGED = "RECIPIENT_CHANGED";
+/**
+ * CRM C5.4-D2 r2 ▸ การส่งซ้ำที่ "ไม่ทำ" (ไม่เรียกผู้ให้บริการ · แถวคง FAILED พร้อมรหัสนี้ · สมุดตรวจหนึ่งบรรทัด) — จดหมายครั้งแรกอาจถึงลูกค้าแล้ว
+ *   จึงไม่ส่งซ้ำแบบเสี่ยงซ้ำสองฉบับ และลำดับการติดตาม "ข้ามขั้นพร้อมเหตุผล" (ไม่นับเป็นครั้งที่ล้ม · ไม่หยุดการลงทะเบียนเป็น FAILED):
+ *   · `NOT_REPRODUCIBLE` (S1c) — token/คำขอที่ประกอบซ้ำไม่ตรงของครั้งแรก (SESSION_SECRET/APP_URL ต่างกันระหว่างเครื่อง · หมุนกุญแจ · deploy เปลี่ยนเนื้อ)
+ *   · `REDELIVERY_EXPIRED` (N1) — ครั้งแรกเกิน 24 ชม. แล้ว (ผู้ให้บริการจำกุญแจกันซ้ำไว้ 24 ชม. — เกินนั้นส่งซ้ำ = ลูกค้าได้สองฉบับ)
+ *   · `FROM_DOMAIN_UNVERIFIED` (N3) — โดเมนผู้ส่งของครั้งแรกไม่ผ่านการยืนยันแล้ว (ไม่ใช่ "ระบบส่งของร้านล่ม" — ไม่แจ้งเตือนทั้งร้าน) ◂
+ */
+export const CRM_EMAIL_NOT_REPRODUCIBLE = "NOT_REPRODUCIBLE";
+export const CRM_EMAIL_REDELIVERY_EXPIRED = "REDELIVERY_EXPIRED";
+export const CRM_EMAIL_FROM_DOMAIN_UNVERIFIED = "FROM_DOMAIN_UNVERIFIED";
+const REDELIVERY_REFUSALS = new Set<string>([CRM_EMAIL_NOT_REPRODUCIBLE, CRM_EMAIL_REDELIVERY_EXPIRED, CRM_EMAIL_FROM_DOMAIN_UNVERIFIED]);
+/** รหัสที่ทำให้ลำดับการติดตาม "ข้ามขั้น" แทนการลองซ้ำ (รวม RECIPIENT_CHANGED ของ F6) */
+export function isRedeliveryRefusal(code: string | null | undefined): boolean {
+  const c = str(code);
+  return c === CRM_EMAIL_RECIPIENT_CHANGED || REDELIVERY_REFUSALS.has(c);
+}
+/** CRM C5.4-D2 r2 ▸ N1: Resend เก็บกุญแจกันซ้ำไว้ 24 ชม. — ส่งซ้ำด้วยกุญแจเดิมได้ภายในช่วงนี้เท่านั้น (นับจากแถวถูกสร้าง = ครั้งแรก) ◂ */
+const CRM_EMAIL_REDELIVERY_WINDOW_MS = 24 * 60 * 60_000;
+/**
+ * CRM C5.4-D2 r2 ▸ N1: ผู้ให้บริการ "ปฏิเสธแน่นอน" (ตอบก่อนรับจดหมาย — สิทธิ์/โดเมน/ถี่เกิน/รูปแบบผิด) ⇒ ครั้งนั้นไม่มีทางถูกรับ ·
+ *   รหัสอื่น (เน็ตหลุด · 5xx · 409 · ค้างกลางทาง) = "อาจถูกรับแล้ว" ⇒ แถวถูกติดธง `routing.amb` (ไม่ล้างอีก) — เพดาน 24 ชม. ของการส่งซ้ำ
+ *   ใช้กับแถวที่มีธงนี้ (หรือรหัสล่าสุดไม่ใช่การปฏิเสธแน่นอน) เท่านั้น: ร้านที่ระบบส่งล่มทั้งร้าน (401/403/429) ยังลองต่อได้จนเพดาน 72 ชม. เดิม ◂
+ */
+const DEFINITE_REJECTION = /^PROVIDER_(400|401|403|404|405|422|429)$/;
+function isDefiniteRejection(code: string | null | undefined): boolean {
+  return DEFINITE_REJECTION.test(str(code).toUpperCase());
+}
+
+/**
+ * CRM C5.4-D2 r2 ▸ S1(b): คำขอที่ส่งถึงผู้ให้บริการ — ประกอบที่เดียว ทั้งตอนส่งจริง (`deliver`) และตอนคำนวณลายนิ้วมือ (สร้างแถว · ก่อนส่งซ้ำ)
+ *   ลำดับช่อง/หัวจดหมายคงเดิมทุกไบต์ (เท่ากับที่ `deliver` ประกอบก่อนใบนี้) ◂
+ */
+type OutRequestArgs = {
+  row: Pick<CrmEmailMessage, "toAddrs" | "ccAddrs" | "bccAddrs" | "subject" | "messageId">;
+  fromAddr: string;
+  fromName: string | null;
+  replyTo: string;
+  base: string;
+  composed: ComposeOut;
+  rfcId: string;
+  references: string[];
+  parentRfc: string | null;
+  attachments: SendAttachmentInput[];
+};
+function outgoingRequest(a: OutRequestArgs): RichEmail {
+  const headers: Record<string, string> = {
+    "Message-ID": `<${a.rfcId}>`,
+    "List-Unsubscribe": `<${a.base}/u/${a.composed.unsubToken}/one-click>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+  if (a.parentRfc) headers["In-Reply-To"] = `<${a.parentRfc}>`;
+  if (a.references.length) headers.References = a.references.map((r) => `<${r}>`).join(" ");
+  return {
+    from: a.fromAddr,
+    ...(a.fromName ? { fromName: a.fromName } : {}),
+    replyTo: a.replyTo,
+    to: a.row.toAddrs,
+    ...(a.row.ccAddrs.length ? { cc: a.row.ccAddrs } : {}),
+    ...(a.row.bccAddrs.length ? { bcc: a.row.bccAddrs } : {}),
+    subject: a.row.subject,
+    html: a.composed.html,
+    text: a.composed.text,
+    headers,
+    // AUDIT-CLASS X4/X5: กุญแจกันซ้ำ **ที่ฝั่งผู้ให้บริการ** (Resend `Idempotency-Key`) = `messageId` ของแถวนี้
+    //   ⇒ เครื่องดับหลังผู้ให้บริการรับจดหมายไว้แล้วแต่ก่อนที่เราจะเขียน SENT · รอบ lease ถัดไปยิงซ้ำด้วยกุญแจเดิม
+    //   ผู้ให้บริการคืนใบเดิม ไม่ส่งซ้ำถึงลูกค้า (ไม่มีกุญแจ = ลูกค้าได้จดหมายฉบับเดียวกันสองครั้ง)
+    idempotencyKey: a.row.messageId,
+    ...(a.attachments.length
+      ? { attachments: a.attachments.map((x) => ({ filename: x.filename, content: x.data, contentType: x.contentType })) }
+      : {}),
+  };
+}
+/** ลายนิ้วมือของคำขอ (ไฟล์แนบ = ชื่อ · ชนิด · sha256 ของไบต์) — ไม่มีค่าลับในผล (token อยู่ใน html แต่ออกมาเป็นแฮช) */
+function requestFingerprint(msg: RichEmail): string {
+  const atts = (msg.attachments ?? []).map((x) => ({
+    filename: x.filename,
+    contentType: (x as { contentType?: string }).contentType ?? null,
+    sha: createHash("sha256").update(typeof x.content === "string" ? x.content : Buffer.from(x.content)).digest("hex"),
+  }));
+  return sha256(JSON.stringify({ ...msg, attachments: atts }));
+}
 
 function cleanSubject(raw: unknown): string {
   const s = str(raw);
@@ -1251,7 +1366,25 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   const trackOpens = settings.trackOpens === true && !contact.trackingOptOut && !contact.emailOptOut;
   const trackClicks = settings.trackClicks === true && !contact.trackingOptOut && !contact.emailOptOut;
-  const composed = queued ? null : composeOutgoing({ emailId, storedHtml, trackOpens, trackClicks });
+  const sendBase = appUrl(); // CRM C5.4-D2 r2 ▸ S1(b) ◂
+  const composed = queued ? null : composeOutgoing({ emailId, storedHtml, trackOpens, trackClicks, base: sendBase });
+  // CRM C5.4-D2 r2 ▸ S1(b): ค่าที่ส่งจริงของครั้งแรก (หัว Reply-To · ที่อยู่เว็บ · ลายนิ้วมือของคำขอทั้งฉบับ) เก็บพร้อมแถว ⇒ การส่งซ้ำใช้ของเดิม
+  //   และรู้ได้ก่อนเรียกผู้ให้บริการว่าประกอบซ้ำได้เหมือนเดิมหรือไม่ (จดหมายตั้งเวลา = ยังไม่มี — ประกอบตอนส่ง และไม่เข้าเส้นส่งซ้ำ) ◂
+  const firstReplyTo = replyToHeader(routing, inboundKey, threadKey);
+  const firstFp = composed
+    ? requestFingerprint(outgoingRequest({
+        row: { toAddrs: toList, ccAddrs: ccList, bccAddrs: uniq([...bccList, ...routing.copyTo]), subject, messageId },
+        fromAddr: routing.fromAddr,
+        fromName: routing.fromName,
+        replyTo: firstReplyTo,
+        base: sendBase,
+        composed,
+        rfcId,
+        references,
+        parentRfc: parent ? rfcIdOf(parent.messageId) : null,
+        attachments: atts,
+      }))
+    : null;
 
   const routingJson: RoutingJson = {
     via: routing.via,
@@ -1260,6 +1393,8 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     replyTo: routing.replyTo,
     copyTo: routing.copyTo,
     ...(composed ? { links: composed.links, unsub: composed.unsubHash } : {}),
+    trk: { o: trackOpens, c: trackClicks }, // CRM C5.4-D2 ▸ F1 ◂
+    ...(composed && firstFp ? { rt: firstReplyTo, base: sendBase, fp: firstFp } : {}), // CRM C5.4-D2 r2 ▸ S1(b) ◂
   };
 
   let row: CrmEmailMessage;
@@ -1324,40 +1459,113 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
       //   ⇒ จองแถวเดิมกลับเป็น QUEUED แบบมีเงื่อนไข (FAILED → QUEUED + lease · สองตัวลองพร้อมกันได้คนเดียว) แล้วส่งแถวเดิมอีกครั้ง
       //   Message-ID เดิม = Resend Idempotency-Key เดิม ⇒ ถ้าครั้งก่อนผู้ให้บริการรับไปแล้วจริง (เน็ตหลุดหลังรับ) ลูกค้าไม่ได้ฉบับที่สอง
       //   ความยินยอม/ผู้รับถูกตรวจใหม่แล้วด้านบน (ตอนส่งซ้ำ) · เนื้อความ/ผู้รับ/หัวเรื่องใช้ของแถวเดิม (ฉบับเดียวกัน) ◂
-      // CRM C5.4-D r3 ▸ R2-S2 (มติผู้คุมงาน): เนื้อความของการส่งซ้ำมี token ติดตาม/ยกเลิกรับชุดใหม่ ⇒ ผู้ให้บริการที่รับฉบับก่อนไปแล้วตอบ 409
-      //   (กุญแจเดิม เนื้อความต่าง) · ค่าแฮชของ token **ของแต่ละครั้ง** ถูกเขียนลงแถวก่อนเรียกผู้ให้บริการ (ในคำสั่งจองเดียวกัน) และเก็บค่าของ
-      //   ครั้งก่อนไว้ (`prev`) — 409 ของการส่งซ้ำ = ครั้งก่อนถูกรับแล้ว ⇒ `deliver` คืนค่าแฮชของครั้งก่อน (ฉบับที่ลูกค้าได้จริง) และปิดแถวเป็น SENT
-      //   พร้อมเครื่องหมาย "ยืนยันการส่งไม่ได้" · ลิงก์เปิด/คลิก/ยกเลิกรับในจดหมายที่ลูกค้าได้จริงจึงยังใช้ได้ ◂
-      if (prior && input?.redeliverFailed === true && isUniqueViolation(e) && !queued && prior.status === "FAILED" && prior.direction === "OUT" && prior.contactId === contact.id && !prior.attachments) {
-        const again = composeOutgoing({ emailId: prior.id, storedHtml: prior.bodyHtml ?? "", trackOpens, trackClicks });
-        const prevRouting = isObj(prior.routing) ? (prior.routing as Record<string, unknown>) : {};
+      // CRM C5.4-D2 ▸ F1/F3 (รีวิว C5.4-D รอบ 3 · แทนทาง R2-S2 เดิม): token ของแถวคำนวณซ้ำได้ (HMAC — ดู `newToken`) และการส่งซ้ำประกอบจดหมาย
+      //   ด้วยค่าของครั้งแรก (ผู้ส่ง · ที่อยู่รับคำตอบ · ค่าติดตาม `routing.trk`) ⇒ คำขอถึงผู้ให้บริการเหมือนครั้งแรกทุกไบต์ ⇒ Resend คืนคำตอบเดิม
+      //   ของกุญแจนี้ (ครั้งก่อนถูกรับ = 200 พร้อม id เดิม · ครั้งก่อนล้มแล้วผู้ให้บริการเก็บคำตอบผิดไว้ = ได้คำตอบผิดนั้น) · ไม่มีการตีความ 409
+      //   ว่า "ส่งแล้ว" อีกต่อไป (409 = ล้มชั่วคราวธรรมดา) และไม่มีการสลับค่าแฮชของครั้งก่อน — ทุกครั้งเขียนค่าเดียวกัน ◂
+      // CRM C5.4-D2 ▸ F6 (R2-N1a): ผู้รับของแถวเดิมไม่ใช่ผู้รับของคำขอนี้ (พนักงานแก้อีเมลของผู้ติดต่อระหว่างรอ) ⇒ ไม่ส่งซ้ำไปที่อยู่เดิม ·
+      //   คืน FAILED รหัส `RECIPIENT_CHANGED` โดยไม่เรียกผู้ให้บริการ (แถวเดิมคง FAILED) — ลำดับการติดตามข้ามขั้นนี้พร้อมเหตุผล ◂
+      if (prior && input?.redeliverFailed === true && isUniqueViolation(e) && !queued && prior.status === "FAILED" && prior.direction === "OUT" && prior.contactId === contact.id && !prior.attachments && !!prior.bodyHtml) {
+        const priorTo = uniq(prior.toAddrs.map((a) => bareEmail(a)));
+        if (priorTo.length !== toList.length || priorTo.some((a) => !toList.includes(a))) {
+          await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: "FAILED", skipped: CRM_EMAIL_RECIPIENT_CHANGED } });
+          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: "FAILED", reused: true, failCode: CRM_EMAIL_RECIPIENT_CHANGED };
+        }
+        // CRM C5.4-D2 r2 ▸ การส่งซ้ำที่ "ไม่ทำ" — ไม่เรียกผู้ให้บริการ · แถวคง FAILED พร้อมรหัส (ครั้งต่อไปของกุญแจนี้ได้รหัสเดิมทันที) · สมุดตรวจหนึ่งบรรทัด ◂
+        const refuse = async (code: string, detail: Record<string, unknown> = {}): Promise<SendResult> => {
+          const n = await prisma.crmEmailMessage.updateMany({ where: { id: prior.id, status: "FAILED" }, data: { providerError: code } });
+          if (n.count === 1) await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: "FAILED", refused: code, ...detail } });
+          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: "FAILED", reused: true, failCode: code };
+        };
+        if (REDELIVERY_REFUSALS.has(str(prior.providerError))) {
+          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: "FAILED", reused: true, failCode: str(prior.providerError) };
+        }
+        // CRM C5.4-D2 r2 ▸ N1 (รีวิว D2 N1): ผู้ให้บริการยืนยันครั้งก่อนแล้ว (webhook `email.sent`/`delivered` เติม providerId ให้แถวที่ล้มผ่าน Message-ID ·
+        //   F2) ⇒ ครั้งก่อนถึงผู้ให้บริการจริง — ปิดแถวเป็น SENT ด้วยรหัสนั้น **ไม่เรียกผู้ให้บริการอีก** · ค่าแฮช token ของแถวไม่ถูกแตะ ◂
+        if (prior.providerId) {
+          const claimedSent = await prisma.crmEmailMessage.updateMany({
+            where: { id: prior.id, status: "FAILED", providerId: prior.providerId },
+            data: { status: "QUEUED", leaseUntil: new Date(now.getTime() + CRM_EMAIL_LEASE_MS) },
+          });
+          if (claimedSent.count === 1) {
+            const ok = await finalizeSent(ctx, { ...prior, status: "QUEUED" }, prior.providerId, now, null);
+            await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: ok ? "SENT" : "FAILED", confirmedBy: "provider_webhook" } });
+            return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: ok ? "SENT" : "FAILED", reused: true };
+          }
+        }
+        // CRM C5.4-D2 r2 ▸ N1: ผู้ให้บริการจำกุญแจกันซ้ำไว้ 24 ชม. — เกินนั้นการส่งซ้ำของจดหมายที่อาจถูกรับไปแล้ว = ลูกค้าได้สองฉบับ ⇒ ไม่ส่ง (ปลายทาง) ◂
+        const prevRouting = isObj(prior.routing) ? (prior.routing as RoutingJson & Record<string, unknown>) : null;
+        const maybeAccepted = prevRouting?.amb === true || !isDefiniteRejection(prior.providerError);
+        if (maybeAccepted && now.getTime() - prior.createdAt.getTime() >= CRM_EMAIL_REDELIVERY_WINDOW_MS) {
+          return refuse(CRM_EMAIL_REDELIVERY_EXPIRED, { firstAttemptAt: prior.createdAt.toISOString() });
+        }
+        // CRM C5.4-D2 r2 ▸ N3 (รีวิว D2 N3): ผู้ส่งของครั้งแรกเป็นโดเมนของร้านที่ไม่ผ่านการยืนยันแล้ว ⇒ ผู้ให้บริการจะตอบ 403 (= ถูกจัดเป็น "ระบบส่งของร้าน
+        //   ล่ม" แจ้งเตือนทั้งร้าน + ลองซ้ำ 72 ชม.) — ตัดสินที่นี่แทน: แถวนี้ล้มด้วยเหตุของมันเอง ไม่เรียกผู้ให้บริการ ◂
+        const firstFrom = bareEmail(prevRouting?.fromAddr ?? prior.fromAddr);
+        const firstDomain = emailDomainOf(firstFrom);
+        if (firstDomain && firstDomain !== CRM_EMAIL_SHARK_DOMAIN.toLowerCase() && !(await verifiedDomains(ctx.tenantId)).has(firstDomain)) {
+          return refuse(CRM_EMAIL_FROM_DOMAIN_UNVERIFIED, { fromDomain: firstDomain });
+        }
+        const trk = prevRouting && isObj(prevRouting.trk) ? { o: prevRouting.trk.o === true, c: prevRouting.trk.c === true } : { o: trackOpens, c: trackClicks };
+        const firstRouting: CrmEmailRoutingView = prevRouting && str(prevRouting.fromAddr) && str(prevRouting.replyTo)
+          ? { ...routing, fromAddr: str(prevRouting.fromAddr), fromName: strOrNull(prevRouting.fromName), replyTo: str(prevRouting.replyTo) }
+          : routing;
+        // CRM C5.4-D2 r2 ▸ S1(b): ที่อยู่เว็บ + หัว Reply-To ของครั้งแรก (ไม่ใช่ค่าปัจจุบัน — APP_URL/กุญแจกล่องเข้าอาจเปลี่ยน) ◂
+        const firstBase = str(prevRouting?.base) || appUrl();
+        const firstReplyTo = str(prevRouting?.rt) || replyToHeader(firstRouting, inboundKey, prior.threadKey);
+        const again = composeOutgoing({ emailId: prior.id, storedHtml: prior.bodyHtml ?? "", trackOpens: trk.o, trackClicks: trk.c, base: firstBase });
+        const priorRfc = rfcIdOf(prior.messageId);
+        const reqArgs: OutRequestArgs = {
+          row: prior,
+          fromAddr: firstRouting.fromAddr,
+          fromName: firstRouting.fromName,
+          replyTo: firstReplyTo,
+          base: firstBase,
+          composed: again,
+          rfcId: priorRfc,
+          references: prior.references ?? [],
+          parentRfc: prior.inReplyTo ?? null,
+          attachments: [],
+        };
+        // CRM C5.4-D2 r2 ▸ S1(c) (รีวิว D2-S1): ประกอบซ้ำได้ไม่ตรงของครั้งแรก (token ⇒ SESSION_SECRET/APP_URL ต่างกันระหว่างเครื่องหรือถูกหมุน ·
+        //   ลายนิ้วมือคำขอ ⇒ deploy เปลี่ยนเนื้อ/หัวจดหมาย) ⇒ ส่งซ้ำใต้กุญแจเดิมไม่ได้ (ผู้ให้บริการตอบ 409 · หรือรับไปเป็นฉบับที่สองหลัง 24 ชม.)
+        //   และห้ามแตะค่าแฮชของจดหมายที่ลูกค้าอาจถืออยู่ ⇒ ไม่ส่ง · รหัส NOT_REPRODUCIBLE · เตือนฝั่งปฏิบัติการ (ค่าตั้งของเครื่องไม่ตรงกัน) ◂
+        const storedLinks = prevRouting && Array.isArray(prevRouting.links) ? prevRouting.links : null;
+        const sameTokens = again.openHash === prior.trackTokenHash
+          && (!prevRouting || typeof prevRouting.unsub !== "string" || prevRouting.unsub === again.unsubHash)
+          && (!storedLinks || JSON.stringify(storedLinks) === JSON.stringify(again.links));
+        const storedFp = str(prevRouting?.fp);
+        const sameRequest = !storedFp || storedFp === requestFingerprint(outgoingRequest(reqArgs));
+        if (!sameTokens || !sameRequest) {
+          await logOps("WARN", "crm.email.send", "ส่งอีเมลซ้ำไม่ได้ — ประกอบจดหมายเดิมซ้ำไม่ตรงของครั้งแรก (ตรวจ SESSION_SECRET / APP_URL ให้ตรงกันทุกเครื่องที่รันงาน CRM)", {
+            tenantId: ctx.tenantId,
+            detail: `email=${prior.id} tokens=${sameTokens ? "same" : "differ"} request=${sameRequest ? "same" : "differ"}`,
+          }).catch(() => {});
+          return refuse(CRM_EMAIL_NOT_REPRODUCIBLE, { tokens: sameTokens ? "same" : "differ", request: sameRequest ? "same" : "differ" });
+        }
+        // CRM C5.4-D2 r2 ▸ S1(a): การจองเขียนแค่สถานะ + lease — ค่าแฮช token เขียนเฉพาะในธุรกรรม SENT (`deliver`) ⇒ การส่งซ้ำที่ล้มไม่แตะลิงก์ของ
+        //   จดหมายที่ลูกค้าถืออยู่ (ยกเลิกรับคลิกเดียวรวมอยู่ด้วย) ◂
         const claimed = await prisma.crmEmailMessage.updateMany({
-          where: { id: prior.id, status: "FAILED" },
-          data: {
-            status: "QUEUED",
-            providerError: null,
-            leaseUntil: new Date(now.getTime() + CRM_EMAIL_LEASE_MS),
-            trackTokenHash: again.openHash,
-            routing: { ...prevRouting, links: again.links, unsub: again.unsubHash } as unknown as Prisma.InputJsonValue,
-          },
+          where: { id: prior.id, status: "FAILED", providerId: null },
+          data: { status: "QUEUED", providerError: null, leaseUntil: new Date(now.getTime() + CRM_EMAIL_LEASE_MS) },
         });
         if (claimed.count === 1) {
-          const redo: Redelivery = { prevTrackTokenHash: prior.trackTokenHash, prevRouting, unconfirmed: false };
           const result = await deliver(ctx, { ...prior, status: "QUEUED" }, {
             composed: again,
-            routing,
+            routing: firstRouting,
             inboundKey,
-            rfcId, // = rfcIdOf(prior.messageId): same key ⇒ same deterministic id
+            replyTo: firstReplyTo,
+            base: firstBase,
+            rfcId: priorRfc, // = rfcId: same key ⇒ same deterministic id
             references: prior.references ?? [],
             parentRfc: prior.inReplyTo ?? null,
             attachments: [],
             deps,
             now,
-            redelivery: redo,
           });
-          await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: result, ...(redo.unconfirmed ? { providerConflict: true } : {}) } });
+          await auditEmail(ctx, "crm.email.send", prior.id, { after: { contactId: contact.id, redelivery: true, status: result } });
           const f = result === "FAILED" ? await prisma.crmEmailMessage.findUnique({ where: { id: prior.id }, select: { providerError: true } }) : null;
-          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: result, reused: true, ...(f ? { failCode: f.providerError } : {}), ...(redo.unconfirmed ? { unconfirmed: true } : {}) };
+          return { emailId: prior.id, messageId: prior.messageId, threadKey: prior.threadKey, status: result, reused: true, ...(f ? { failCode: f.providerError } : {}) };
         }
       }
       if (prior) {
@@ -1381,6 +1589,8 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
     composed: composed as ComposeOut,
     routing,
     inboundKey,
+    replyTo: firstReplyTo,
+    base: sendBase,
     rfcId,
     references,
     parentRfc: parent ? rfcIdOf(parent.messageId) : null,
@@ -1412,89 +1622,85 @@ async function deliver(
     composed: ComposeOut;
     routing: CrmEmailRoutingView;
     inboundKey: string;
+    /** CRM C5.4-D2 r2 ▸ S1(b): หัว Reply-To / ที่อยู่เว็บที่ใช้ (ครั้งแรก = ค่าที่เพิ่งเก็บลงแถว · ส่งซ้ำ = ของครั้งแรก) — ไม่ระบุ = คำนวณจากค่าปัจจุบัน (เดิม) ◂ */
+    replyTo?: string;
+    base?: string;
     rfcId: string;
     references: string[];
     parentRfc: string | null;
     attachments: SendAttachmentInput[];
     deps?: EmailDeps;
     now: Date;
-    /** CRM C5.4-D r3 ▸ R2-S2: การส่งซ้ำของแถวที่เคยล้ม — 409 ของผู้ให้บริการ = ครั้งก่อนถูกรับแล้ว ◂ */
-    redelivery?: Redelivery;
   },
 ): Promise<"SENT" | "FAILED"> {
   const transport = await transportOf(args.deps);
-  const headers: Record<string, string> = {
-    "Message-ID": `<${args.rfcId}>`,
-    "List-Unsubscribe": `<${appUrl()}/u/${args.composed.unsubToken}/one-click>`,
-    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-  };
-  if (args.parentRfc) headers["In-Reply-To"] = `<${args.parentRfc}>`;
-  if (args.references.length) headers.References = args.references.map((r) => `<${r}>`).join(" ");
-
   let res: RichEmailResult;
   try {
-    res = await transport({
-      from: args.routing.fromAddr,
-      ...(args.routing.fromName ? { fromName: args.routing.fromName } : {}),
-      replyTo: replyToHeader(args.routing, args.inboundKey, row.threadKey),
-      to: row.toAddrs,
-      ...(row.ccAddrs.length ? { cc: row.ccAddrs } : {}),
-      ...(row.bccAddrs.length ? { bcc: row.bccAddrs } : {}),
-      subject: row.subject,
-      html: args.composed.html,
-      text: args.composed.text,
-      headers,
-      // AUDIT-CLASS X4/X5: กุญแจกันซ้ำ **ที่ฝั่งผู้ให้บริการ** (Resend `Idempotency-Key`) = `messageId` ของแถวนี้
-      //   ⇒ เครื่องดับหลังผู้ให้บริการรับจดหมายไว้แล้วแต่ก่อนที่เราจะเขียน SENT · รอบ lease ถัดไปยิงซ้ำด้วยกุญแจเดิม
-      //   ผู้ให้บริการคืนใบเดิม ไม่ส่งซ้ำถึงลูกค้า (ไม่มีกุญแจ = ลูกค้าได้จดหมายฉบับเดียวกันสองครั้ง)
-      idempotencyKey: row.messageId,
-      ...(args.attachments.length
-        ? { attachments: args.attachments.map((a) => ({ filename: a.filename, content: a.data, contentType: a.contentType })) }
-        : {}),
-    });
+    res = await transport(outgoingRequest({
+      row,
+      fromAddr: args.routing.fromAddr,
+      fromName: args.routing.fromName,
+      replyTo: args.replyTo ?? replyToHeader(args.routing, args.inboundKey, row.threadKey),
+      base: args.base ?? appUrl(),
+      composed: args.composed,
+      rfcId: args.rfcId,
+      references: args.references,
+      parentRfc: args.parentRfc,
+      attachments: args.attachments,
+    }));
   } catch {
     res = { ok: false, error: "TRANSPORT_ERROR" };
   }
 
-  // CRM C5.4-D r3 ▸ R2-S2 (มติผู้คุมงาน): การส่งซ้ำ (กุญแจเดิม · เนื้อความใหม่) ที่ผู้ให้บริการตอบ 409 = ผู้ให้บริการถือจดหมายของกุญแจนี้อยู่แล้ว
-  //   (ครั้งก่อนถูกรับ แต่คำตอบหายระหว่างทาง) ⇒ ปิดแถวเป็น SENT ด้วยค่าแฮช token **ของครั้งก่อน** (ฉบับที่ลูกค้าได้จริง — ไม่ใช่ของครั้งนี้
-  //   ที่ถูกปฏิเสธ) + เครื่องหมาย `DELIVERY_UNCONFIRMED` (ไม่รู้รหัสอ้างอิงของผู้ให้บริการ) · ขั้นในลำดับเดินต่อ ไม่นับเป็นครั้งที่ล้ม ◂
-  const conflictSent = !res.ok && !!args.redelivery && str(res.error).toUpperCase() === "PROVIDER_409";
-  if (!res.ok && !conflictSent) {
+  // CRM C5.4-D2 ▸ F1/F3: ไม่มีการตีความ 409 ว่า "ส่งแล้ว" (ทาง R2-S2 เดิมถูกถอด) — การส่งซ้ำของแถวเดียวกันเป็นคำขอเดิมทุกไบต์ ผู้ให้บริการ
+  //   คืนคำตอบของกุญแจนี้เอง (200 + id เดิม เมื่อครั้งก่อนถูกรับ) · 409 (ส่งพร้อมกัน/เนื้อความเพี้ยน) = ล้มชั่วคราวธรรมดา ลองใหม่ตามรอบพัก ◂
+  if (!res.ok) {
     // AUDIT-CLASS X8: เก็บเฉพาะรหัสความล้มเหลว — ไม่มีที่อยู่ผู้รับในคอลัมน์ที่ใครก็อ่านได้
-    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: str(res.error).slice(0, 200) || "SEND_FAILED", leaseUntil: null } });
+    // CRM C5.4-D2 r2 ▸ S1(a): เส้นล้มไม่แตะค่าแฮช token (ของจดหมายที่ลูกค้าอาจถืออยู่) ◂
+    // CRM C5.4-D2 r2 ▸ N1: ความล้มที่ "อาจถูกรับแล้ว" ติดธง `routing.amb` ในคำสั่งเดียวกัน (ค่าแฮช/ลิงก์ในก้อน routing คงค่าเดิมของแถว) ◂
+    const failCode = str(res.error).slice(0, 200) || "SEND_FAILED";
+    const ambRouting = isDefiniteRejection(failCode) ? {} : { routing: { ...(isObj(row.routing) ? row.routing : {}), amb: true } as unknown as Prisma.InputJsonValue };
+    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: "QUEUED" }, data: { status: "FAILED", providerError: failCode, leaseUntil: null, ...ambRouting } });
     // CRM C5.4-E ▸ E3: ล้มแบบทั้งร้าน (401/403/429) ⇒ บอกเจ้าของร้าน/ผู้จัดการในแอป วันละครั้งต่อร้าน · ล้ม = ไม่กระทบผลของการส่ง ◂
     if (isOutageSendFailure(res.error)) await (await import("./notify-senders")).noticeEmailOutage({ tenantId: ctx.tenantId, systemId: ctx.systemId }, str(res.error), args.now).catch(() => false);
     return "FAILED";
   }
-  if (conflictSent && args.redelivery) args.redelivery.unconfirmed = true;
-  const sentHashes = conflictSent && args.redelivery
-    ? {
-        trackTokenHash: args.redelivery.prevTrackTokenHash,
-        routing: { ...args.redelivery.prevRouting, deliveryUnconfirmed: true } as unknown as Prisma.InputJsonValue,
-      }
-    : {
-        trackTokenHash: args.composed.openHash,
-        routing: {
-          ...(isObj(row.routing) ? row.routing : {}),
-          links: args.composed.links,
-          unsub: args.composed.unsubHash,
-        } as unknown as Prisma.InputJsonValue,
-      };
+  await finalizeSent(ctx, row, strOrNull(res.providerId), args.now, {
+    trackTokenHash: args.composed.openHash,
+    routing: {
+      ...(isObj(row.routing) ? row.routing : {}),
+      links: args.composed.links,
+      unsub: args.composed.unsubHash,
+    } as unknown as Prisma.InputJsonValue,
+  });
+  return "SENT";
+}
 
-  await prisma.$transaction(async (tx) => {
+/**
+ * ปิดแถวเป็น SENT + กิจกรรม + event ในธุรกรรมเดียว (เงื่อนไข QUEUED — แพ้การแข่ง = ไม่เขียนอะไร)
+ * CRM C5.4-D2 r2 ▸ แยกออกจาก `deliver` — `hashes` = ค่าแฮช token ของจดหมายที่ผู้ให้บริการเพิ่งรับ (S1a: เขียนที่นี่ที่เดียว) ·
+ *   `null` = ไม่แตะ (N1: ผู้ให้บริการยืนยันครั้งก่อนผ่าน webhook — ค่าที่เก็บไว้คือของจดหมายฉบับนั้นอยู่แล้ว) ◂
+ */
+async function finalizeSent(
+  ctx: EmailsCtx,
+  row: CrmEmailMessage,
+  providerId: string | null,
+  now: Date,
+  hashes: { trackTokenHash: string; routing: Prisma.InputJsonValue } | null,
+): Promise<boolean> {
+  return prisma.$transaction(async (tx) => {
     const n = await tx.crmEmailMessage.updateMany({
       where: { id: row.id, status: "QUEUED" },
       data: {
         status: "SENT",
-        providerId: conflictSent ? null : strOrNull(res.providerId),
-        providerError: conflictSent ? CRM_EMAIL_DELIVERY_UNCONFIRMED : null,
-        sentAt: args.now,
+        providerId,
+        providerError: null,
+        sentAt: now,
         leaseUntil: null,
-        ...sentHashes,
+        ...(hashes ?? {}),
       },
     });
-    if (n.count !== 1) return;
+    if (n.count !== 1) return false;
     await activities.recordSystemActivityInTx(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId }, {
       type: "EMAIL",
       source: "EMAIL",
@@ -1504,11 +1710,11 @@ async function deliver(
       contactId: row.contactId,
       companyId: row.companyId,
       dealId: row.dealId,
-      at: args.now,
+      at: now,
     });
     await emitEmailEvent(tx, ctx, EVT.sent, row, `${row.id}`);
+    return true;
   });
-  return "SENT";
 }
 
 /** AUDIT-CLASS X8: payload id ล้วน · key `crm.email.<type>#<emailId>#<seq>` (R-C.8) */
@@ -1695,6 +1901,11 @@ export async function runScheduled(now: Date, opts: RunScheduledOptions = {}): P
   // = แถวนั้นค้าง QUEUED **ตลอดไป** (หน้าจอขึ้น "รอส่งตามเวลา" ทั้งที่ไม่มีใครจะส่ง และไม่มีใครรู้ว่าล้ม)
   // ⇒ หมด lease แล้วยังไม่มีสถานะปลายทาง = ปิดเป็น "ส่งไม่สำเร็จ" ให้คนเห็นและกดส่งใหม่ได้
   if (!stopNow()) {
+    // CRM C5.4-D2 r2 ▸ N1: จดหมายที่ค้างกลางทาง "อาจถูกรับแล้ว" — ติดธง `routing.amb` ก่อนปิดเป็น FAILED (เงื่อนไขชุดเดียวกัน · `at` เดียวกัน) ◂
+    await prisma.$executeRaw`
+      UPDATE "CrmEmailMessage" SET "routing" = "routing" || '{"amb":true}'::jsonb
+       WHERE "systemId" = ANY(${systems}::text[]) AND "direction" = 'OUT' AND "status" = 'QUEUED' AND "scheduledAt" IS NULL AND "leaseUntil" < ${at}
+         AND jsonb_typeof("routing") = 'object'`;
     const stale = await prisma.crmEmailMessage.updateMany({
       where: { systemId: { in: systems }, direction: "OUT", status: "QUEUED", scheduledAt: null, leaseUntil: { lt: at } },
       data: { status: "FAILED", providerError: "ค้างกลางการส่ง (ตัวส่งหยุดทำงานก่อนได้คำตอบจากผู้ให้บริการ) — กดส่งจดหมายฉบับนี้ใหม่ได้เลย", leaseUntil: null },
@@ -2989,6 +3200,36 @@ async function afterStepsFailed(tenantId: string, what: string, e: unknown): Pro
 }
 // ◂ CRM C5.4-D
 
+/**
+ * CRM C5.4-D2 ▸ F2: แถวขาออกที่ยังไม่มี providerId จาก Message-ID ของ webhook (`<rfcId>` ที่เราตั้งเองตอนส่ง) — `null` เมื่อ:
+ *   ไม่ใช่ id ของโดเมนเรา (จดหมายของระบบอื่นในบัญชีผู้ให้บริการเดียวกัน) · ไม่พบ · พบมากกว่าหนึ่ง (ไม่เดา)
+ *   เทียบท้ายคอลัมน์ `messageId` (= `<systemId>:<rfcId>`) แบบไม่สนตัวพิมพ์ · ⚠️ ไม่มีดัชนีรองรับ (เช่นเดียวกับการหาด้วย providerId เดิม)
+ *   แต่ทางนี้ทำงานเฉพาะเมื่อหาด้วย providerId ไม่เจอ และ id เป็นของโดเมนเรา ◂
+ */
+async function outRowWithoutProviderId(raw: unknown, fromRaw: unknown): Promise<CrmEmailMessage | null> {
+  const rfc = bareId(raw).toLowerCase();
+  if (!rfc || hasLineBreak(rfc) || rfc.length > 300 || !rfc.endsWith(`@${CRM_EMAIL_SHARK_DOMAIN}`)) return null;
+  const tail = `:${rfc}`;
+  // CRM C5.4-D2 r2 ▸ S3(b) (รีวิว D2-S3): เฉพาะแถวที่ทางส่งของเรา (`sendCore`) เขียน — มี `routing.fromAddr` · แถว "สำเนาเก็บ" (BCC-capture ของ
+  //   ingestInbound: OUT · providerId NULL · routing NULL · messageId `<ระบบอื่น>:<rfc ของเรา>`) ไม่มีทางถูกจับคู่ ⇒ แจ้งสแปมของจดหมายร้าน A
+  //   ไม่มีทางแตะแถว/ผู้ติดต่อของร้าน B (และไม่ทำให้เจอสองแถวจนทางนี้ใช้ไม่ได้) ◂
+  const hits = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "CrmEmailMessage"
+     WHERE "direction" = 'OUT' AND "providerId" IS NULL AND lower(right("messageId", ${tail.length}::int)) = ${tail}
+       AND jsonb_typeof("routing") = 'object' AND jsonb_exists("routing", 'fromAddr')
+     LIMIT 2`;
+  if (hits.length !== 1) return null;
+  const row = await prisma.crmEmailMessage.findUnique({ where: { id: hits[0]!.id } });
+  if (!row) return null;
+  // CRM C5.4-D2 r2 ▸ S3(b): ผู้ส่งในเหตุการณ์ (ถ้ามี) ต้องเป็นผู้ส่งของแถว — Message-ID ตรงแต่ผู้ส่งต่าง = ไม่ใช่จดหมายฉบับนี้ ◂
+  const evFrom = bareEmail(fromRaw);
+  if (evFrom && evFrom !== bareEmail(row.fromAddr)) return null;
+  return row;
+}
+
+/** CRM C5.4-D2 r2 ▸ S3(a): ชนิดเหตุการณ์ที่ใช้ทางหาด้วย Message-ID (และเติม providerId) ได้ — ชนิดอื่น (เช่น `email.received`) ไม่แตะแถว ◂ */
+const MESSAGE_ID_FALLBACK_TYPES = new Set(["email.sent", "email.delivered", "email.bounced", "email.complained"]);
+
 export async function providerWebhook(input: ProviderWebhookInput): Promise<ProviderWebhookResult> {
   const rawBody = typeof input?.rawBody === "string" ? input.rawBody : "";
   if (Buffer.byteLength(rawBody, "utf8") > WEBHOOK_MAX_BYTES) return { status: 413, handled: false, reason: "too_large" };
@@ -3011,13 +3252,28 @@ export async function providerWebhook(input: ProviderWebhookInput): Promise<Prov
   const data = isObj(body.data) ? body.data : {};
   const providerId = str(data.email_id) || str(data.emailId);
   if (!providerId) return { status: 200, handled: false, reason: "no_email_id" };
-  const row = await prisma.crmEmailMessage.findFirst({ where: { providerId } });
+  let row = await prisma.crmEmailMessage.findFirst({ where: { providerId } });
+  // CRM C5.4-D2 ▸ F2 (รีวิว C5.4-D รอบ 3): แถวที่ยังไม่รู้รหัสของผู้ให้บริการ (คำตอบของการส่งหายระหว่างทาง ⇒ FAILED รอส่งซ้ำ · หรือ SENT
+  //   "ยืนยันไม่ได้" ของบิลด์ก่อน) เดิมหา webhook ไม่เจอ ⇒ แจ้งสแปม/เด้งถาวรของจดหมายฉบับนั้นหายเงียบ (ลูกค้าไม่ถูกตัดสิทธิ์ ลำดับไม่หยุด)
+  //   ⇒ หาด้วย Message-ID ของจดหมาย (`data.message_id` = หัว Message-ID ที่เราตั้งเอง) · ด่าน: ลายเซ็น Svix ผ่านแล้ว · id ต้องเป็นของ
+  //   โดเมนเรา · แถวขาออกที่ **ยังไม่มี** providerId เท่านั้น (แถวที่มี id อื่นอยู่แล้ว = ไม่ใช่ฉบับนี้) · เติม providerId แบบมีเงื่อนไข
+  //   (`providerId IS NULL`) ⇒ webhook ถัดไปหาเจอตรง ๆ · การยิงซ้ำกันด้วย svix-id (unique) ตามเดิม — ไม่เขียนซ้ำ ◂
+  let byMessageId = false;
+  if (!row && MESSAGE_ID_FALLBACK_TYPES.has(type)) {
+    row = await outRowWithoutProviderId(data.message_id ?? data.messageId, data.from);
+    if (row) {
+      byMessageId = true;
+      await prisma.crmEmailMessage.updateMany({ where: { id: row.id, providerId: null }, data: { providerId } }).catch(() => null);
+    }
+  }
   if (!row) return { status: 200, handled: false, reason: "unknown_email" };
   const eventId = str(headers["svix-id"]) || `${type}:${providerId}`;
   const ctx = { tenantId: row.tenantId, systemId: row.systemId };
 
   if (type === "email.delivered") {
-    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: { in: ["QUEUED", "SENT"] } }, data: { status: "DELIVERED" } });
+    // CRM C5.4-D2 ▸ F2: แถวที่หาเจอด้วย Message-ID เปลี่ยนได้เฉพาะ SENT — แถว FAILED/QUEUED (รอ/กำลังส่งซ้ำ) ปล่อยให้การส่งซ้ำปิดงานเอง
+    //   (ถ้าเปลี่ยนเป็น DELIVERED ระหว่างส่งซ้ำ เงื่อนไข QUEUED→SENT ของการส่งซ้ำจะไม่ผ่าน = ไม่มีกิจกรรม/event "ส่งแล้ว") ◂
+    await prisma.crmEmailMessage.updateMany({ where: { id: row.id, status: { in: byMessageId ? ["SENT"] : ["QUEUED", "SENT"] } }, data: { status: "DELIVERED" } });
     return { status: 200, handled: true };
   }
 
