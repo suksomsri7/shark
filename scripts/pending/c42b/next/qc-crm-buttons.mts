@@ -95,9 +95,9 @@ type Any = any;
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
-const accEnv = (await import("./acc-v2-env.mts" as string)) as { loadQcEnv: () => { host: string } };
+const accEnv = (await import(`${process.cwd()}/scripts/acc-v2-env.mts` as string)) as { loadQcEnv: () => { host: string } };
 accEnv.loadQcEnv();
-const cq = (await import("./crm-qc-env.mts" as string)) as { CQC: Any };
+const cq = (await import(`${process.cwd()}/scripts/crm-qc-env.mts` as string)) as { CQC: Any };
 const { CQC } = cq;
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
@@ -137,7 +137,7 @@ const VIEWPORTS: readonly (readonly [string, number, number])[] = ([
 ] as const).filter((v) => !DEVICE_FILTER || v[0] === DEVICE_FILTER);
 
 const BASE = process.env.QC_BASE ?? "http://127.0.0.1:3215";
-const SHOTS = `${CQC.shotsDir}/buttons`;
+const SHOTS = process.env.QC_BTN_SHOTS || `${CQC.shotsDir}/buttons`; // c42b: debug runs beside a frozen pass write elsewhere
 mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const DL_DIR = resolvePath(".qc-shots/c42/dl");
@@ -145,7 +145,7 @@ let RUN_OBJECT_KEY = ""; // ctx.objectKey — set in main (fillValueFor has no c
 const DOWNLOADS: { name: string; bytes: number; state: string }[] = [];
 
 // ───────────────────────────── registry + answer key ─────────────────────────────
-const INVENTORY_PATH = "scripts/crm-ui-inventory.json";
+const INVENTORY_PATH = process.env.QC_BTN_REGISTRY || "scripts/crm-ui-inventory.json"; // c42b: staged registry for debug runs
 type Row = {
   page: string;
   testid: string;
@@ -241,6 +241,10 @@ if (!AI_MOCK) for (const [k, v] of AI_GUARD) CROSS_MODULE_GUARD.set(k, `${v} จ
 // DESTRUCTIVE — rows after which the snapshot is restored IMMEDIATELY (the next row must not see an archived/merged/
 // deleted/erased/converted entity or a switched UI version). Everything else is restored at the end of its page group.
 const DESTRUCTIVE_RE = /(archive|delete|merge|erase|remove|revoke|convert|lost-confirm|reopen-submit|uiversion|template-apply|template-none|bulk|unowned-submit|restore|deal-card-|recompute|rotate|approve|reject|change-pipeline|stage-step)/;
+// c42b FULL_REPAIR — destructive rows whose NEW rows change what the seed entity IS for every later row (convert creates a
+// Customer/Party link ⇒ the seed contact reads as member-linked: run2 owner 390 consent/opt-out rows wrote to the member
+// side) ⇒ the repair after them is a FULL restore (new rows deleted too), not keepNew
+const FULL_REPAIR_RE = /convert-(submit|done)$/;
 // CSV fixture for the four import file inputs (CSV parsed server-side, no storage upload) — one qc-btn- tagged row
 const IMPORT_FILE_INPUTS = new Set(["companies-import-file", "contacts-import-file", "crm-import-file", "object-import-file"]);
 // never auto-ticked by PREFILL (safety — see crm-portal-invite-email special case)
@@ -253,7 +257,7 @@ const PREFILL_NEVER = new Set(["crm-portal-invite-email"]);
 type Ctx = {
   dealId: string | null; contactId: string | null; companyId: string | null; recordId: string | null; objectKey: string | null;
   partyId: string | null; slug: string | null; pageSlug: string | null; conversationId: string | null; unitId: string | null;
-  perUser: Record<string, { dealId: string | null; contactId: string | null; companyId: string | null; partyId: string | null; recordId?: string | null; linesDealId?: string | null }>;
+  perUser: Record<string, { dealId: string | null; contactId: string | null; companyId: string | null; partyId: string | null; recordId?: string | null; linesDealId?: string | null; threadKey?: string | null }>;
   linesDealId: string | null; // c42b: oracle-owned OPEN deal WITH lines (rows whose query has tab=lines open it)
   sequenceId: string | null; threadKey: string | null; token: string | null; docType: string | null; docId: string | null;
   posSysId: string | null; memberSysId: string | null; hrSysId: string | null; accountSysId: string | null; chatSysId: string | null;
@@ -386,9 +390,9 @@ async function buildCtx(): Promise<Ctx> {
 
   // email thread (C2.5) — read-only lookup; NOT created here (needs the real send-transport chain to be authentic)
   try {
-    // c42b: the picked OPEN deal has no e-mail on QC1 ⇒ fall back to any thread of the system (it3/it4: 14 rows skipped)
-    const msg = (ctx.dealId ? await P.crmEmailMessage.findFirst({ where: { systemId: SYS, dealId: ctx.dealId }, select: { threadKey: true } }) : null)
-      ?? await P.crmEmailMessage.findFirst({ where: { systemId: SYS }, select: { threadKey: true }, orderBy: { createdAt: "asc" } });
+    // c42b: QC1's only thread (3 messages, 28 Sep) belongs to a contact that no longer exists ⇒ 404 for everyone (correct).
+    //   The runner seeds its OWN thread per persona contact (THREADS fixture, below) — this lookup is only the fallback.
+    const msg = ctx.dealId ? await P.crmEmailMessage.findFirst({ where: { systemId: SYS, dealId: ctx.dealId }, select: { threadKey: true } }) : null;
     ctx.threadKey = msg?.threadKey ?? null;
     if (!ctx.threadKey) note("threadKey", "ไม่มี CrmEmailMessage ในซีดนี้ (/emails/[threadKey] ข้ามทั้งหน้า)");
   } catch (e) { note("threadKey", `query ล้ม — ${e instanceof Error ? e.message : e}`); }
@@ -539,11 +543,44 @@ async function deleteLinesDeals(): Promise<void> {
   try { const d = await P.crmDeal.deleteMany({ where: { id: { in: [...LINES_DEALS.values()] }, tenantId: TENANT } }); console.log(`🧩 ลบดีลมีบรรทัด ${d.count}`); }
   catch (e) { console.log(`  ⚠️ ลบดีลมีบรรทัดไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
 }
+// c42b E-MAIL THREAD fixture: one inbound message (RECEIVED, qc-btn- subject, @example.com sender) per persona's picked
+// contact ⇒ /emails/[threadKey] renders for crm.email.read holders (owner/manager) and must 404 BY THE KEY for nok/thana on
+// a thread of a contact they CAN see. Created before the snapshot, deleted in CLEAN. Sending stays DIRECT_SEND_GUARDed.
+const THREADS = new Map<string, { threadKey: string; id: string }>(); // contactId → fixture message
+async function createThreadFixtures(ctx: Ctx): Promise<void> {
+  const { randomBytes } = await import("node:crypto");
+  for (const u of userKeys) {
+    if (u.startsWith("customer")) continue;
+    const cid = ctxForUser(ctx, u).contactId;
+    if (!cid) continue;
+    if (!THREADS.has(cid)) {
+      const c = await P.crmContact.findUnique({ where: { id: cid }, select: { email: true, name: true } });
+      const threadKey = randomBytes(16).toString("hex");
+      const tag = `${rand}${THREADS.size}`;
+      const m = await P.crmEmailMessage.create({ data: {
+        tenantId: TENANT, systemId: SYS, contactId: cid, direction: "IN", messageId: `<qc-btn-${tag}@example.com>`, threadKey,
+        fromAddr: `qc-btn-${tag}@example.com`, fromName: c?.name ?? "qc-btn", toAddrs: ["sales@example.com"], subject: `qc-btn-thread ${tag}`,
+        bodyText: "qc-btn fixture thread (C4.2 runner)", snippet: "qc-btn fixture thread", status: "RECEIVED", receivedAt: new Date(),
+        trackTokenHash: randomBytes(32).toString("hex"),
+      }, select: { id: true } });
+      THREADS.set(cid, { threadKey, id: m.id });
+    }
+    const t = THREADS.get(cid)!;
+    ctx.perUser[u] = { ...(ctx.perUser[u] ?? { dealId: null, contactId: null, companyId: null, partyId: null }), threadKey: t.threadKey };
+    PICKS.push({ user: u, entity: "emailThread", id: t.threadKey, why: `ข้อความเข้า 1 ฉบับของตัวกด (qc-btn-) ผูกผู้ติดต่อ ${cid} ที่ ${u} มองเห็น — ไม่มีคีย์ crm.email.read ⇒ หน้าต้อง 404 ตามคีย์` });
+  }
+  console.log(`🧩 e-mail thread fixtures: ${THREADS.size}`);
+}
+async function deleteThreadFixtures(): Promise<void> {
+  if (!THREADS.size) return;
+  try { const d = await P.crmEmailMessage.deleteMany({ where: { id: { in: [...THREADS.values()].map((t) => t.id) }, tenantId: TENANT } }); console.log(`🧩 ลบเธรดอีเมลของตัวกด ${d.count}`); }
+  catch (e) { console.log(`  ⚠️ ลบเธรดอีเมลของตัวกดไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
+}
 /** the entities a given user can open (chosen through the product's visibility filter — see buildCtx PER-USER) */
 function ctxForUser(ctx: Ctx, user: UserKey): Ctx {
   const o = ctx.perUser?.[user];
   if (!o) return ctx;
-  return { ...ctx, dealId: o.dealId ?? ctx.dealId, contactId: o.contactId ?? ctx.contactId, companyId: o.companyId ?? ctx.companyId, partyId: o.partyId ?? ctx.partyId, recordId: o.recordId ?? ctx.recordId, linesDealId: o.linesDealId ?? ctx.linesDealId };
+  return { ...ctx, dealId: o.dealId ?? ctx.dealId, contactId: o.contactId ?? ctx.contactId, companyId: o.companyId ?? ctx.companyId, partyId: o.partyId ?? ctx.partyId, recordId: o.recordId ?? ctx.recordId, linesDealId: o.linesDealId ?? ctx.linesDealId, threadKey: o.threadKey ?? ctx.threadKey };
 }
 function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
   const items: PlanItem[] = [];
@@ -615,7 +652,9 @@ function validateOpeners(): string[] {
     for (const o0 of openerOf(r)) {
       if (typeof o0 !== "string" || !o0.trim()) { problems.push(`${r.page}#${r.testid}: opener ว่าง/ไม่ใช่สตริง`); continue; }
       const o = o0.includes("=") ? o0.slice(0, o0.indexOf("=")) : o0;
-      if (o === r.testid) { problems.push(`${r.page}#${r.testid}: opener ชี้ตัวเอง`); continue; }
+      // c42b: "<self>=click" = arm a two-step button first (object-record-archive-btn: 1st press arms, 2nd press writes)
+      if (o === r.testid && o0 !== `${r.testid}=click`) { problems.push(`${r.page}#${r.testid}: opener ชี้ตัวเอง`); continue; }
+      if (o === r.testid) continue;
       const names = namesOnPage.get(r.page) ?? [];
       // exact name · an exact opener covered by a pattern row · a pattern opener equal to a pattern row or matching
       // ≥1 exact registry name on the page (e.g. "contacts-*-select" = the row checkbox on 1440 / the card checkbox on 390)
@@ -721,11 +760,25 @@ function toData(model: string, row: Any): Any {
   }
   return data;
 }
+/** c42b OUTBOX SETTLE: asynchronous consumers (outbox drained by the server process) write AFTER the action returned —
+ *  dbg1 (1 Oct 04:08): contact-convert-submit → repair deleted the new Customer → 2 s later the member.created consumer
+ *  linked the seed contact to that deleted Customer (crm.contact.member.link) ⇒ every later consent row: "ผูกกับสมาชิกที่ไม่พบ".
+ *  Before any restore: wait ≤ 15 s until no PENDING OutboxEvent of this tenant created since the snapshot is due. */
+async function outboxSettle(label: string): Promise<void> {
+  const since = new Date(SNAP_AT - 5_000);
+  for (let i = 0; i < 30; i++) {
+    const n = await P.outboxEvent.count({ where: { tenantId: TENANT, status: "PENDING", createdAt: { gte: since }, availableAt: { lte: new Date(Date.now() + 1_000) } } }).catch(() => 0);
+    if (!n) { if (i) console.log(`  ⏳ outbox ว่างแล้ว ก่อนคืนฐาน (${label}) · รอ ${(i * 0.5).toFixed(1)} วิ`); return; }
+    await sleep(500);
+  }
+  console.log(`  ⚠️ outbox ยังมีงานค้างหลังรอ 15 วิ ก่อนคืนฐาน (${label}) — คืนฐานต่อ (อาจมีผลข้างเคียงมาทีหลัง)`);
+}
 /** put every SNAP_MODELS row of this tenant back to the snapshot — returns what it had to do (logged in summary) */
 async function restoreSnapshot(label: string, opts: { keepNew?: boolean } = {}): Promise<{ deleted: number; updated: number; recreated: number; failed: string[] }> {
   const st = { deleted: 0, updated: 0, recreated: 0, failed: [] as string[] };
   if (!SNAP) return st;
   assertGateLockHeld(`คืนฐาน (${label})`);
+  await outboxSettle(label);
   const errs = new Map<string, string>();
   for (let pass = 0; pass < 4; pass++) {
     const cur = await readAllModels();
@@ -1016,6 +1069,15 @@ async function clickEl(page: Any, el: Any, testid: string): Promise<void> {
     const a = e.closest("a");
     if (a && /^(tel|mailto|sms):/i.test(a.getAttribute("href") ?? "")) a.addEventListener("click", (ev) => ev.preventDefault(), { once: true });
   }).catch(() => {});
+  // c42b: centre the control first and hit-test it — on 390 a control scrolled to the top edge sits under the sticky
+  // app header, and a pointer click lands on the header (run2/dbg1: owner 390 deal-title-save "dead", enabled, no request)
+  const covered: boolean = await el.evaluate((e: HTMLElement) => {
+    e.scrollIntoView({ block: "center", inline: "center" });
+    const r = e.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && hit !== e && !e.contains(hit) && !(hit as HTMLElement).contains?.(e);
+  }).catch(() => false);
+  if (covered) { await el.evaluate((e: HTMLElement) => e.click()); return; }
   try { await el.click({ delay: 20 }); }
   catch { await el.evaluate((e: HTMLElement) => e.click()); }
 }
@@ -1068,8 +1130,8 @@ function differ(v: string, current: string, type: string): string {
 }
 /** set a field the way a user would; returns the before/after value so "dead" can be judged by the value itself */
 async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: string; after: string; skipped?: string }> {
-  const meta: { tag: string; type: string; value: string; checked: boolean; role: string; ariaChecked: string | null; ro: boolean; rdonly: boolean; tid: string } = await el.evaluate((e: Any) => ({
-    tid: e.getAttribute("data-testid") ?? "", tag: e.tagName.toLowerCase(), type: (e.getAttribute("type") ?? "").toLowerCase(), value: String(e.value ?? ""), checked: !!e.checked,
+  const meta: { tag: string; type: string; value: string; checked: boolean; role: string; ariaChecked: string | null; ro: boolean; rdonly: boolean; tid: string; inputmode: string } = await el.evaluate((e: Any) => ({
+    tid: e.getAttribute("data-testid") ?? "", tag: e.tagName.toLowerCase(), type: (e.getAttribute("type") ?? "").toLowerCase(), value: String(e.value ?? ""), checked: !!e.checked, inputmode: (e.getAttribute("inputmode") ?? "").toLowerCase(),
     role: e.getAttribute("role") ?? "", ariaChecked: e.getAttribute("aria-checked") ?? e.getAttribute("aria-pressed"), ro: !!(e.disabled || e.readOnly), rdonly: !!e.readOnly && !e.disabled,
   }));
   if (meta.rdonly && meta.tag !== "select" && meta.value.trim() !== "" && !["checkbox", "radio"].includes(meta.type)) {
@@ -1123,7 +1185,10 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
   } else if (meta.tag === "input" || meta.tag === "textarea") {
     await el.click({ clickCount: 3 }).catch(async () => { await el.evaluate((e: HTMLElement) => e.focus()); });
     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
-    await page.keyboard.type(differ(fillValueFor(meta.tid || testid, meta.type), meta.value, meta.type), { delay: 5 });
+    // c42b: a text box with inputmode decimal/numeric wants a number (run2 owner crm-commission-rule-min: typed "qc-btn-…"
+    //   ⇒ "มูลค่าดีลขั้นต่ำต้องเป็น 0 บาทขึ้นไป") — the testid-based table still wins (price/discount/qty/…)
+    const effType = meta.type || (/^(decimal|numeric)$/.test(meta.inputmode) ? "number" : "");
+    await page.keyboard.type(differ(fillValueFor(meta.tid || testid, effType), meta.value, effType), { delay: 5 });
     await page.keyboard.press("Tab");
   } else {
     await clickEl(page, el, testid); // toggle rendered as a button/switch
@@ -1244,20 +1309,25 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
   const pendingValueStep = chain.slice(state.openChain.length).some((o) => splitOpener(o).val !== null);
   let el = await findVisible(page, it.testid, it.notList, 0);
   if (el && !pendingValueStep) return { el, reason: "" };
+  // c42b: once a "=value" step ran in this reveal, the plain steps after it ACT on that value (pick the search hit · save
+  // the typed view · submit the typed form) — they are pressed even when the row is already visible (run2 owner
+  // /activities: activity-log-target-option was skipped because the submit button is always visible ⇒ "เลือกผู้ติดต่อ…ก่อน")
+  let valueRan = false;
   for (let i = state.openChain.length; i < chain.length; i++) {
     const { tid, val } = splitOpener(chain[i]!);
     let laterVisible = false;
-    if (val === null) { // a "select this value" step is always applied — the fields it reveals depend on the value
+    if (val === null && !valueRan) { // a "select this value" step is always applied — the fields it reveals depend on the value
       for (const t of chain.slice(i + 1)) if (await findVisible(page, splitOpener(t).tid, [], 0)) { laterVisible = true; break; }
       if (!laterVisible && (await findVisible(page, it.testid, it.notList, 0))) laterVisible = true;
     }
     if (laterVisible) { state.openChain.push(chain[i]!); continue; }
     // row already visible (only here for its "=value" steps): a value step whose control is not on screen is skipped —
     // the row itself is reachable, the chain was only needed to CREATE it (object-view-link after an earlier save)
-    const op = await findVisible(page, tid, [], el ? 600 : hidden ? 1500 : 3500);
-    if (!op && el && !(val === "on" || val === "off" || val === "click" || val === "*")) { state.openChain.push(chain[i]!); continue; }
+    const op = await findVisible(page, tid, [], valueRan && val === null ? 4000 : el ? 600 : hidden ? 1500 : 3500);
+    if (!op && el && !(valueRan && val === null) && !(val === "on" || val === "off" || val === "click" || val === "*")) { state.openChain.push(chain[i]!); continue; }
     if (!op) return { el: null, reason: `ตัวเปิด ${chain[i]} หาไม่พบ/มองไม่เห็น (ลำดับ ${chain.join(" → ")})` };
     if (val !== null) {
+      valueRan = true;
       const opTag: string = await op.evaluate((e: Element) => (e.tagName === "INPUT" ? `input:${(e.getAttribute("type") ?? "").toLowerCase()}` : e.tagName.toLowerCase())).catch(() => "");
       const isSelect = opTag === "select";
       if (opTag === "input:file") { // "<file-input>=<fixture>" — upload a repo fixture (CSV import rows reveal the mapping/submit)
@@ -1386,7 +1456,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
     const ovfSeen = new Set<string>();
     let wroteInGroup = false;
 
-    let pendingChainRepair = false;
+    let pendingChainRepair: boolean | "full" = false;
     for (const it of rowsOfPage) {
       total.n++;
       const shouldBeHidden = it.hiddenFor.includes(base);
@@ -1397,10 +1467,10 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       // R1 (it3): an opener chain that WROTE through a destructive control (MAKE_LOST: deal-lost-confirm as an opener for the
       // reopen rows) left the deal LOST for every later row of the group (deal-lost-btn/lines/value "dead") — repair the
       // seed right after such a row, like after a destructive row
-      if (pendingChainRepair) { pendingChainRepair = false; await restoreSnapshot(`${it.page} (ซ่อมหลังตัวเปิดที่เขียน)`, { keepNew: true }); state.dirty = true; await load(); }
+      if (pendingChainRepair) { const full = pendingChainRepair === "full"; pendingChainRepair = false; await restoreSnapshot(`${it.page} (ซ่อมหลังตัวเปิดที่เขียน${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; await load(); }
       const ngReveal = nonGetCount;
       const rv = await reveal(page, path, it, state, shouldBeHidden);
-      if (nonGetCount > ngReveal && it.opener.some((o) => DESTRUCTIVE_RE.test(splitOpener(o).tid))) pendingChainRepair = true;
+      if (nonGetCount > ngReveal && it.opener.some((o) => DESTRUCTIVE_RE.test(splitOpener(o).tid))) pendingChainRepair = it.opener.some((o) => FULL_REPAIR_RE.test(splitOpener(o).tid)) ? "full" : true;
       if (shouldBeHidden) {
         if (rv.el) { hiddenLeak.push({ page: it.page, testid: it.testid, user, device, detail: "อยู่ใน hiddenFor แต่มองเห็นได้" }); rec("hiddenLeak", false); }
         else { passedN.n++; rec("passed", true, "absent (hiddenFor)", { hiddenPass: true }); }
@@ -1472,7 +1542,11 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           const to = drops[0] ?? null;
           if (!to) throw new Error(`ไม่พบปลายทางลาก ${it.expect.dropTarget}`);
           const a = (await el.boundingBox())!, b = (await to.boundingBox())!;
-          const sx = a.x + a.width / 2, sy = a.y + a.height / 2, tx = b.x + b.width / 2, ty = b.y + 12;
+          // c42b: on 390 the next column of the snap scroller is mostly off-screen and the board hit-tests columns by their
+          // rect (usePointerBoardDrag targetAt) — drop on the VISIBLE part of the target (run2: owner 390 deal-card-* no write)
+          const vw = w;
+          const visL = Math.max(b.x, 0), visR = Math.min(b.x + b.width, vw - 1);
+          const sx = a.x + a.width / 2, sy = a.y + a.height / 2, tx = visR > visL + 8 ? (visL + visR) / 2 : b.x + b.width / 2, ty = b.y + 12;
           await page.mouse.move(sx, sy); await page.mouse.down(); await sleep(300);
           for (let i = 1; i <= 14; i++) { await page.mouse.move(sx + ((tx - sx) * i) / 14, sy + ((ty - sy) * i) / 14); await sleep(30); }
           await page.mouse.up();
@@ -1539,7 +1613,8 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         if (blocked) { total.n--; skippedNeeds.push({ page: it.page, testid: it.testid, user, device, needs: it.needs, detail: `คอนโทรลมีแต่ใช้ไม่ได้ (${blocked})` }); rec("skippedNeeds", true, blocked); state.dirty = true; continue; }
       }
       if (deadFlag) {
-        const d = actErr || (isField ? "ค่าในช่องไม่เปลี่ยน (ถูกปิด/อ่านอย่างเดียว?) และไม่มี request" : "ไม่มี DOM mutation/navigation/network ภายใน 3 วิ");
+        const wasDisabled: boolean = await el.evaluate((e: Any) => !!e.disabled || e.getAttribute("aria-disabled") === "true").catch(() => false);
+        const d = actErr || (isField ? "ค่าในช่องไม่เปลี่ยน (ถูกปิด/อ่านอย่างเดียว?) และไม่มี request" : `ไม่มี DOM mutation/navigation/network ภายใน 3 วิ${wasDisabled ? " · คอนโทรล disabled ตอนกด" : ""}${prefilled.length ? ` · prefill ${prefilled.join(",")}` : ""}`);
         dead.push({ page: it.page, testid: it.testid, user, device, detail: d, shot: await failShot(page, it, user, device) }); rec("dead", false, d, { prefilled });
         state.dirty = true; continue;
       }
@@ -1651,6 +1726,25 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       } else if (type === "inline-error") {
         ok = true; // soft — C4.3 owns deliberate bad-input assertions (see CONTRACT)
       }
+      // c42b: a `*` row whose FIRST match is the already-active item of a group (the current stage tab on 390 — active by
+      // inline style only, no aria) presses a no-op that still mutates the DOM ⇒ "changes" fails. Same rule as the dead
+      // fallback above: try the second visible match once before reporting.
+      if (!ok && type === "ui" && it.expect.state === "changes" && it.testid.includes("*") && !actErr) {
+        const second = await page.evaluateHandle((pSel: string, nots: string[]) => {
+          const vis = (e: Element) => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden"; };
+          const re = (n: string) => new RegExp(`^${n.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+          const all = Array.from(document.querySelectorAll(pSel)).filter((e) => vis(e) && !nots.some((n) => (n.includes("*") ? re(n).test(e.getAttribute("data-testid") ?? "") : n === e.getAttribute("data-testid"))));
+          return all.filter((e) => ["BUTTON", "A", "INPUT", "SELECT", "SUMMARY"].includes(e.tagName) || /^(button|link|tab|menuitem)$/.test(e.getAttribute("role") ?? ""))[1] ?? null;
+        }, selOf(it.testid), it.notList).catch(() => null);
+        const el2 = second?.asElement?.() ?? null;
+        if (el2) {
+          const before2 = await uiSnapshot(page, uiTarget);
+          await clickEl(page, el2, it.testid).catch(() => {});
+          let after2: string | null = null;
+          for (let i = 0; i < 20; i++) { after2 = await uiSnapshot(page, uiTarget); if (after2 !== null && after2 !== before2) break; await sleep(200); }
+          if (after2 !== null && after2 !== before2) { ok = true; detail = ""; }
+        }
+      }
       if (!ok) { wrongExpect.push({ page: it.page, testid: it.testid, user, device, detail: detail.replace(/^ · /, ""), shot: await failShot(page, it, user, device) }); rec("wrongExpect", false, detail.replace(/^ · /, ""), { prefilled }); }
       else { passedN.n++; rec("passed", true, "", prefilled.length ? { prefilled } : {}); }
 
@@ -1676,7 +1770,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         try { cookies = await mintSession(user, ctx); await page.setCookie(...cookies); state.dirty = true; }
         catch (e) { console.log(`  ⚠️ ออก session ใหม่หลัง ${it.testid} ไม่ได้ — ${e instanceof Error ? e.message : e}`); }
       }
-      if (DESTRUCTIVE_RE.test(it.testid) && nonGetCount > nonGetBefore) { await restoreSnapshot(`${it.page}#${it.testid} ${device} (ซ่อมข้อมูลซีด)`, { keepNew: true }); state.dirty = true; }
+      if (DESTRUCTIVE_RE.test(it.testid) && nonGetCount > nonGetBefore) { const full = FULL_REPAIR_RE.test(it.testid); await restoreSnapshot(`${it.page}#${it.testid} ${device} (ซ่อมข้อมูลซีด${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; }
     }
 
     // c42b VACUITY GUARD: a "hidden" row passes only on a page that actually rendered for this persona — when the page
@@ -1794,6 +1888,8 @@ async function main() {
   if (!DRY) assertGateLockHeld("รอบที่เขียนฐาน"); // before ANY write (throwaways · fixtures · snapshot/restore)
   if (!DRY && !DISCOVER && [...ROWS].some((r) => AUDIT_STATE_ROWS.has(r.testid) && pageSelected(r.page))) await createThrowaways();
   if (!DRY && !DISCOVER && [...ROWS].some((r) => /(^|&)tab=lines(&|$)/.test(r.query ?? "") && pageSelected(r.page))) await createLinesDeals(ctx);
+  if (!DRY && !DISCOVER && [...ROWS].some((r) => r.page.includes("[threadKey]") && pageSelected(r.page))) await createThreadFixtures(ctx);
+  else if (DRY) for (const u of userKeys) if (!u.startsWith("customer")) ctx.perUser[u] = { ...(ctx.perUser[u] ?? { dealId: null, contactId: null, companyId: null, partyId: null }), threadKey: ctx.threadKey ?? "dry-thread" };
   if (PICKS.length) {
     console.log(`── บันทึกที่แต่ละบทบาทเปิด (เลือกผ่านตัวกรองการมองเห็นของ product) ──`);
     for (const p of PICKS) console.log(`  · ${p.user} ${p.entity} ${p.id ?? "-"} — ${p.why}`);
@@ -1840,6 +1936,7 @@ async function main() {
     await healFixtures();
     if (THROWAWAY.size) await P.crmContact.deleteMany({ where: { id: { in: [...THROWAWAY.values()] }, tenantId: TENANT } }).catch(() => {});
     await deleteLinesDeals();
+    await deleteThreadFixtures();
     throw new Fatal(`snapshot ล้ม — ${e instanceof Error ? e.message : e}`);
   }
   const udd = `/tmp/chr-crm-btn-${process.pid}`;
@@ -1869,6 +1966,7 @@ async function main() {
     PROTECT.clear();
     const fin = await restoreSnapshot("CLEAN (จบรอบ)");
     await deleteLinesDeals(); // before the tag sweep (which would also catch the qc-btn- titles) — reported by count
+    await deleteThreadFixtures();
     let cleaned = 0;
     for (const s of SWEEP) {
       try {
@@ -1896,10 +1994,12 @@ try {
 }
 // c42b safety net: fixtures created before main's try/finally (throwaway contacts · deal-with-lines clones) must not outlive a
 // run that threw earlier (server ping · puppeteer import) — idempotent (already-deleted ids = 0 rows)
-if (!DRY && (THROWAWAY.size || LINES_DEALS.size)) {
-  const left = await P.crmDeal.count({ where: { id: { in: [...LINES_DEALS.values()] } } }).catch(() => 0) + await P.crmContact.count({ where: { id: { in: [...THROWAWAY.values()] } } }).catch(() => 0);
+if (!DRY && (THROWAWAY.size || LINES_DEALS.size || THREADS.size)) {
+  const left = await P.crmDeal.count({ where: { id: { in: [...LINES_DEALS.values()] } } }).catch(() => 0) + await P.crmContact.count({ where: { id: { in: [...THROWAWAY.values()] } } }).catch(() => 0)
+    + await P.crmEmailMessage.count({ where: { id: { in: [...THREADS.values()].map((t) => t.id) } } }).catch(() => 0);
   if (left) {
     await deleteLinesDeals();
+    await deleteThreadFixtures();
     await P.crmContact.deleteMany({ where: { id: { in: [...THROWAWAY.values()] }, tenantId: TENANT } }).catch(() => {});
     console.log(`🧩 safety net: ลบ fixture ที่ค้าง ${left}`);
   }
