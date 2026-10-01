@@ -52,7 +52,7 @@ async function daySummaries(ctx: { tenantId: string; systemId: string }, days: n
 const salesSummary = definePosOp({
   id: "sales.summary",
   method: "GET",
-  path: "/reports/sales-summary",
+  path: "/reports/summary", // ไม่มีใน POS-API §3 — ตัดสินที่ P2.13
   kind: "read",
   rate: "report",
   action: POS_SCOPES.saleCreate,
@@ -78,7 +78,7 @@ const salesSummary = definePosOp({
 const salesByDay = definePosOp({
   id: "sales.byDay",
   method: "GET",
-  path: "/reports/sales-by-day",
+  path: "/reports/daily", // POS-API §3 `reports/daily`
   kind: "read",
   rate: "report",
   action: POS_SCOPES.saleCreate,
