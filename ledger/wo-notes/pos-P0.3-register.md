@@ -4,6 +4,16 @@
 > Brief: `ledger/pos-briefs/pos-brief-P0.3.md` "Lane 4" + LANE-RULES + COMMON. No edits to `src/`, `prisma/`, or any existing script.
 > Logs (not committed): `.qc-shots/pos/p0.3/force.log`, `force2.log`
 
+## Ratified names (controller 1 Oct)
+- `src/lib/modules/pos/pricing-shared.ts` → `priceCart` (pure, percents in bp, shape §6.1) · VAT config is the caller's INPUT (from accounting settings per system); VAT storage on the sale = P1.6.
+- `register.ts`: `registerCatalog`, `quoteRegisterCart`, `submitRegisterSale(ctx, actor, input, client?)`, `registerStatus`.
+- **Refusal split**: register functions RETURN `{ok:false, code, message}` (server-action friendly); `catalog.ts` THROWS typed errors with a stable `.code`. One shared vocabulary: `NOT_FOUND`, `PERMISSION_DENIED`, `VALIDATION`/`INVALID_LINE`, `PRODUCT_NOT_FOUND`, `PRODUCT_UNAVAILABLE`, `MEMBER_NOT_FOUND`, `PRICE_NOT_SET`, `PRICE_CHANGED`, `IDEMPOTENCY_CONFLICT`, `LINE_DISCOUNT_EXCEEDS_LINE`, `BILL_DISCOUNT_EXCEEDS_TOTAL`, `TOO_MANY_LINES` (+ spec `DISCOUNT_EXCEEDS_LIMIT`, `PAYMENT_MISMATCH`, `STOCK_INSUFFICIENT`). S2.11/S2.12 accept `INVALID_LINE` or `VALIDATION`.
+- `openPrice: true` lines need `pos.sale.priceOverride` · discount cap `pos._maxDiscountBp` (default 1000 bp for STAFF) · testid prefix `pos-reg-` · i18n `pos.register.*` in `src/messages/{th,en}/pos.json`.
+- Catalog API (lane 3, ratified) used by the fixtures: ctx `{tenantId, systemId, actorUserId|null}` + optional trailing `client`; `createProduct`, `updateProduct` (also availability / branch scope — there is NO `setAvailability`), `setPrice`, `archive`, `listForUnit → {items, nextCursor}`, `byBarcode`, `ensureForInvItem → {id, created}`, `createCategory(ctx, {name, unitId?, sortOrder?})`. PosProduct: MenuItem → own MENU product (`invItemId` null, menu→stock via `RecipeLine`); columns `vatRateBp`, `stationId`, `dailyStockQty`, `images`, `parentId`.
+- S3.15 (same key ×10 parallel) STAYS in P1.3 — `submitRegisterSale` must catch the duplicate (P2002) and return the first result. Old S3.19 ("block" oversell race) MOVED to **S6.1**, own SKIP guard owned by P1.6 (skips while no code in `src/` reads `oversellPolicy`); S3.18 (allow-negative ends at exactly −9) stays.
+- Subtotal = Σ line totals after line discounts (code meaning) — ratified as a spec correction to 14-pos §7.1.
+- Fixture rewrite this round: untracked products via `createProduct` (no InvItem); tracked via InvItem + `ensureForInvItem` + `setPrice`; out-of-stock via receive 1 + consume 1; 86 via `updateProduct(id, {availability: {[unitId]: false}})`; branch-scoped product via `createProduct({unitId: <2nd sandbox branch linked to the sandbox POS>})`; `createCategory` without nameEn; S1.17 counts PosProduct of the sandbox POS (>200) and fills with `createProduct`; cleanup also deletes every PosProduct of the sandbox POS system.
+
 ## 0. Controller rulings 1 Oct (survey) — override the documents
 Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIGN-2026-10-01.md` §3/§4/§6 (read-only; rows re-checked against code where the oracle depends on them).
 | # | ruling | how the oracle follows it | changed vs first draft |
@@ -101,7 +111,7 @@ Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIG
 | S3.16 | same key different cart → original or IDEMPOTENCY_CONFLICT, never 2nd sale | X1 |
 | S3.17 | receipt numbers unique under 10-way parallel ×2 | X6 |
 | S3.18 | last item ALLOW_NEGATIVE: 10 tills ×3 → onHand exactly −9, 10 OUT | X6 |
-| S3.19 | last item BLOCK: 10 tills ×3 → 1 PAID, 9 STOCK_INSUFFICIENT, onHand 0 | X6 |
+| S6.1 | [P1.6 group, own SKIP] last item BLOCK: 10 tills ×3 → 1 PAID, 9 STOCK_INSUFFICIENT, onHand 0 | X6 |
 | S3.20 | integrations off: sells, event DONE, no journal/points | X8 |
 | S3.21 | 200-line server sale | - |
 | S3.22 | legacy createSale shape (other modules) unchanged | X4 |
@@ -145,8 +155,8 @@ i18n keys (namespace `pos.register.`): search.placeholder · search.customItem �
 6. Status result `{ok, unit:{id,name}, user:{name, roleLabel}, shift: null|{…}, pendingStockCount, pendingSyncCount}`; pendingStock = PAID sales of the unit in the current Thai business day with an `itemId` line lacking an OUT movement.
 7. Permission keys: `pos.sale.priceOverride` (spec §9) for custom lines and `openPrice`; numeric param **`pos._maxDiscountBp`** (house pattern `crm._maxDealDiscountBp`; spec says `maxDiscountBp`, rbac comment says `_maxDiscountBp`, nothing reads either today) with **default 1000 for STAFF when absent**, OWNER/MANAGER unlimited.
 8. Oversell policy in `BusinessUnit.settings.pos.stock.oversellPolicy` = `ALLOW_NEGATIVE` (default) | `BLOCK` (spec §4.1 name, kept).
-9. Catalog (P1.1a) signatures assumed for fixtures — must be reconciled with lane 3's `qc-pos-p1.1.mts`: `ensureForInvItem(ctx, invItemId) → {id}`, `setPrice(ctx, productId, satang)`, `updateProduct(ctx, id, {trackStock?, nameEn?, categoryId?, unitId?})`, `archive(ctx, id)`, with `ctx = {tenantId, systemId (POS), actorUserId}`; invented beyond the P1.1a list: `createCategory(ctx, {name, nameEn?}) → {id}`, `setAvailability(ctx, productId, {unitId, available})` (POS-API `/products/:id/availability`), `PosProduct.trackStock`.
-10. Backfill rule implied by S1.4: seeded AMER/LATTE (no stock ever received, seed note "ไม่นับสต็อก") must have `trackStock=false`; CROIS/WATER `true`.
+9. ~~Catalog signatures~~ — now RATIFIED (see top). Still invented here: the `updateProduct` patch key `availability: {[unitId]: boolean}` (named after the POS-API §1 read model) and `kind: "PRODUCT"` default on `createProduct`. Previously assumed — must be reconciled with lane 3's `qc-pos-p1.1.mts`: `ensureForInvItem(ctx, invItemId) → {id}`, `setPrice(ctx, productId, satang)`, `updateProduct(ctx, id, {trackStock?, nameEn?, categoryId?, unitId?})`, `archive(ctx, id)`, with `ctx = {tenantId, systemId (POS), actorUserId}`; invented beyond the P1.1a list: `createCategory(ctx, {name, nameEn?}) → {id}`, `setAvailability(ctx, productId, {unitId, available})` (POS-API `/products/:id/availability`), `PosProduct.trackStock`.
+10. "Tracks stock" (no `trackStock` column in the ratified PosProduct): a product tracks stock iff `invItemId` is set AND that InvItem has ≥1 InvMovement. Seeded AMER/LATTE (never received) ⇒ not tracked (stockLeft null, never "หมด"); CROIS/WATER tracked.
 11. Testid prefix `pos-reg-` (new) and all ids in §5; i18n namespace `pos.register.*` and the 51 keys in §5.
 
 ## 7. Contradictions found (documents vs real code — code wins unless a ruling says otherwise)
@@ -159,9 +169,9 @@ i18n keys (namespace `pos.register.`): search.placeholder · search.customItem �
 - `inventory.listItems` caps at 200 (`inventory/service.ts:793-799`) (→ R4).
 - Service lines keep `serviceId` only for BookingService ids (`actions/pos.ts:411-422`) (→ R5).
 - Messages are `src/messages/<locale>/<ns>.json`, only `common.json` (→ R6).
-- §11.5 BLOCK oversell must be atomic in the sale tx; today stock is cut after commit, outside the tx, errors swallowed (`service.ts:306-347`) — S3.19 requires the builder to add an in-tx check when policy = BLOCK (controller may defer S3.19 to P1.6/P1.14).
+- §11.5 BLOCK oversell must be atomic in the sale tx; today stock is cut after commit, outside the tx, errors swallowed (`service.ts:306-347`) — now S6.1, owned by P1.6 (own SKIP guard).
 - `inventory.receive/consume` post GL to the tenant's first ACCOUNT system regardless of unit links (`inventory/service.ts:390-397`) — not a P1.3 issue, but "integration off" (X8) is only true for POS-sale postings, not stock GL.
-- Same-key concurrency today returns a P2002 error instead of the first result (REVIEW §3.5) — S3.15 requires all 10 parallel answers to be the original sale; the builder needs a P2002 catch-and-re-read in the register path (or in createSale, which REVIEW assigns to P1.6 — controller to decide; else S3.15 waits for P1.6).
+- Same-key concurrency today returns a P2002 error instead of the first result (REVIEW §3.5) — S3.15 stays in P1.3 (ratified): `submitRegisterSale` catches the duplicate and returns the first result.
 
 ## 8. Needs running app (controller / visual lane) — not faked here
 - Pixel parity vs mockups 01 / 05ก / 19 / 20A / 20B at 1440×900, 1024×768, 390×844 (X10) — `scripts/visual-pos.mts`.

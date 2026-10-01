@@ -19,9 +19,16 @@
 //     submitRegisterSale(ctx, actor, input, client?)                → { ok, saleId, receiptNo, grandTotalSatang, changeSatang, duplicated }
 //     registerStatus(ctx, actor)                                    → { ok, unit, user{name, roleLabel}, shift|null, pendingStockCount, pendingSyncCount }
 //     ctx = { tenantId, systemId (ระบบ POS), unitId } · actor = { userId, role, unitAccess, permissions } (ทรงเดียวกับ MemberActor)
-//     ปฏิเสธ = คืน { ok:false, code, message } (ข้อสอบรับ throw ที่มี .code เท่ากันด้วย) — ห้าม clamp เงียบ
-//   ใช้ของใบ P1.1a: ตาราง PosProduct/PosCategory + src/lib/modules/pos/catalog.ts (createProduct/updateProduct/setPrice/archive/
-//     listForUnit/byBarcode/ensureForInvItem) + PosSaleLine.productId
+//     ปฏิเสธของ register = **คืน** { ok:false, code, message } (เป็นมิตรกับ server action) — ห้าม clamp เงียบ
+//     ปฏิเสธของ catalog.ts = **throw** typed error ที่มี .code คงที่ (ข้อสอบแปลงเป็น {ok:false, code} ด้วย call())
+//     คำศัพท์ code ชุดเดียวกับ catalog: NOT_FOUND PERMISSION_DENIED VALIDATION|INVALID_LINE PRODUCT_NOT_FOUND PRODUCT_UNAVAILABLE
+//       MEMBER_NOT_FOUND PRICE_NOT_SET PRICE_CHANGED IDEMPOTENCY_CONFLICT LINE_DISCOUNT_EXCEEDS_LINE BILL_DISCOUNT_EXCEEDS_TOTAL
+//       TOO_MANY_LINES (+ DISCOUNT_EXCEEDS_LIMIT PAYMENT_MISMATCH STOCK_INSUFFICIENT จากสเปก)
+//   ใช้ของใบ P1.1a (รับรองแล้ว · เลน 3): PosProduct/PosCategory + catalog.ts ctx {tenantId, systemId, actorUserId|null} + client ท้าย:
+//     createProduct · updateProduct (รวม availability/unitId) · setPrice · archive · listForUnit→{items,nextCursor} · byBarcode ·
+//     ensureForInvItem→{id,created} · createCategory(ctx,{name,unitId?,sortOrder?}) · ไม่มี setAvailability · PosSaleLine.productId
+//   subtotalSatang = Σ ยอดบรรทัดหลังส่วนลดบรรทัด (ความหมายของโค้ด · รับรองแล้ว = แก้สเปก) · VAT: ผู้เรียกส่ง config บัญชีเข้า priceCart
+//   (priceCart บริสุทธิ์) · เก็บ VAT ลงบิล = P1.6 · S6.1 (BLOCK oversell) = กลุ่มของ P1.6 มีด่าน SKIP ของตัวเอง
 //
 // ขอบเขต (ไม่ซ้ำ scripts/qc-pos-register.mts 42 ข้อเดิม — ชุดนั้นยังเป็น regression ทั้งชุด ดูโน้ต):
 //   S1 ข้อมูลกริด/หมวด/ค้นหา · S2 เครื่องคิดเงินตะกร้า (บริสุทธิ์) · S3 ส่งบิลฝั่งเซิร์ฟเวอร์ (X1 X2 X3 X4 X6 X8)
@@ -98,7 +105,6 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.16", "X1", "key เดิมแต่ตะกร้าเปลี่ยน → ได้บิลเดิม (หรือ IDEMPOTENCY_CONFLICT) ไม่มีบิลที่ 2 ยอดเดิมไม่เปลี่ยน"],
   ["P1.3-S3.17", "X6", "10 เครื่องขายพร้อมกัน (key ต่างกัน) × 2 รอบ → receiptNo ไม่ชน ไม่ว่าง ครบ 20"],
   ["P1.3-S3.18", "X6", "ชิ้นสุดท้าย นโยบายปริยาย ALLOW_NEGATIVE: 10 เครื่องขายพร้อมกัน × 3 รอบ → PAID ครบ · onHand = 1−10 เป๊ะ (ไม่มี lost update) · OUT 10 แถว"],
-  ["P1.3-S3.19", "X6", "ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล"],
   ["P1.3-S3.20", "X8", "ไม่เชื่อมบัญชี/แต้ม/สมาชิก (sandbox) → ยังขายได้ · event pos.sale.paid ประมวลผลไม่ FAILED · ไม่มี AccountJournalEntry/PointLedger ของบิล"],
   ["P1.3-S3.21", "-", "ตะกร้า 200 บรรทัดส่งได้ → PAID · บันทึก 200 บรรทัด · Σ lineTotal = subtotalSatang"],
   ["P1.3-S3.22", "X4", "createSale แบบเดิม (โมดูลอื่น: itemId + unitPrice จากผู้เรียก ไม่มี productId) ยังทำงาน · ยอด = qty×price − ส่วนลด เหมือนเดิม"],
@@ -120,6 +126,8 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S5.8", "X11", "ช่องค้นหา/สแกน (pos-reg-search) autofocus และโฟกัสกลับหลังเพิ่มสินค้า [static]"],
   ["P1.3-S5.9", "X11", "ปุ่มหลัก (ชำระ · หมวด · การ์ดสินค้า · +/− จำนวน · พักบิล · บิลที่พัก · สมาชิก · รายการเอง · สแกนกล้อง) มีคลาสสูง ≥44px [static heuristic · ยืนยันจริงที่ visual]"],
   ["P1.3-S5.10", "X4", "สัญญา createSale/voidSale เข้ากันได้ย้อนหลัง (F15.2 ของ scripts/fitness-pos.mts เขียว) — 6 โมดูลที่เรียกไม่พัง"],
+  // ── S6 กลุ่มแยกของ P1.6 (SKIP เองจนกว่าโค้ดจะอ่าน settings.pos.stock.oversellPolicy · มติผู้คุมงาน 1 ต.ค. ข้อ 4) ──
+  ["P1.3-S6.1", "X6", "[P1.6] ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล"],
   // ── S9 คืนสภาพ ──
   ["P1.3-S9.1", "-", "QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ตัวนับใบเสร็จสาขาจริงไม่ขยับ"],
 ] as const;
@@ -142,6 +150,11 @@ function chk(id: string, ok: unknown, expected: unknown, actual: unknown): boole
   results.set(id, r);
   console.log(`  ${r.ok ? "✅" : "❌"} [${id}] ${TITLE.get(id)}${r.ok ? "" : ` — expected ${r.expected} | actual ${r.actual}`}`);
   return r.ok;
+}
+const skippedChecks = new Map<string, string>();
+function skipCheck(id: string, reason: string) {
+  skippedChecks.set(id, reason);
+  console.log(`  ⏭️  [${id}] ${TITLE.get(id)} — SKIPPED: ${reason}`);
 }
 const rd = (p: string) => (existsSync(join(ROOT, p)) ? readFileSync(join(ROOT, p), "utf8") : "");
 const short = (v: unknown, n = 220) => {
@@ -351,14 +364,14 @@ function runPricing() {
   const r11a = price({ lines: many(200), vat: VAT0 });
   const r11b = price({ lines: many(201), vat: VAT0 });
   const r11c = price({ lines: [{ qty: 10000, unitPriceSatang: 1 }], vat: VAT0 });
-  chk("P1.3-S2.11", r11a?.ok === true && r11a.grandTotalSatang === exp200 && r11a.lines?.length === 200 && refused(r11b, ["TOO_MANY_LINES"]) && refused(r11c, ["INVALID_LINE"]),
+  chk("P1.3-S2.11", r11a?.ok === true && r11a.grandTotalSatang === exp200 && r11a.lines?.length === 200 && refused(r11b, ["TOO_MANY_LINES"]) && refused(r11c, ["INVALID_LINE", "VALIDATION"]),
     `200 → ${exp200} · 201 TOO_MANY_LINES · qty 10000 INVALID_LINE`, `${codeOf(r11a)}/${r11a?.grandTotalSatang} · ${codeOf(r11b)} · ${codeOf(r11c)}`);
   const r12 = [
     price({ lines: [{ qty: 1, unitPriceSatang: 10.5 }], vat: VAT0 }),
     price({ lines: [{ qty: 1, unitPriceSatang: -1 }], vat: VAT0 }),
     price({ lines: [{ qty: 0, unitPriceSatang: 100 }], vat: VAT0 }),
   ];
-  chk("P1.3-S2.12", r12.every((r) => refused(r, ["INVALID_LINE"])), "INVALID_LINE ×3", r12.map(codeOf).join(","));
+  chk("P1.3-S2.12", r12.every((r) => refused(r, ["INVALID_LINE", "VALIDATION"])), "INVALID_LINE ×3", r12.map(codeOf).join(","));
   // S2.13 บริสุทธิ์ + client-safe
   const input = JSON.parse(JSON.stringify(mock)) as Cart;
   const frozen = JSON.stringify(input);
@@ -557,9 +570,11 @@ async function runStatic() {
 }
 
 // ═════════════════════════ 5. S1 S3 S4 (ต้องมี seed + sandbox) ═════════════════════════
-const DB_IDS = CHECKS.map(([id]) => id).filter((id) => /-S[134]\./.test(id));
+const DB_IDS = CHECKS.map(([id]) => id).filter((id) => /-S[1346]\./.test(id));
+/** ด่าน SKIP ของกลุ่ม S6 (เจ้าของ P1.6): โค้ดใน src/ ยังไม่มีใครอ่าน `oversellPolicy` ⇒ ข้าม (QC_FORCE=1 = รันให้แดงตามเหตุผล) */
+const OVERSELL_READY = walk("src").some((f) => /oversellPolicy/.test(stripComments(rd(f))));
 const sb = {
-  unitId: "", unlinkedUnitId: "", posSysId: "", invSysId: "",
+  unitId: "", unlinkedUnitId: "", unit2Id: "", posSysId: "", invSysId: "",
   productIds: [] as string[], categoryIds: [] as string[], invItemIds: [] as string[],
 };
 const lanes: Any[] = [];
@@ -658,13 +673,18 @@ async function runDb() {
   sb.unitId = unit.id;
   const unl = await P.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: `${TAG} unlinked`, slug: `${TAG}-unl` } });
   sb.unlinkedUnitId = unl.id;
+  const unit2 = await P.businessUnit.create({ data: { tenantId: tid, type: "SHOP", name: `${TAG} branch2`, slug: `${TAG}-b2` } });
+  sb.unit2Id = unit2.id;
   const sPos = await P.appSystem.create({ data: { tenantId: tid, type: "POS", name: `${TAG} POS` } });
   sb.posSysId = sPos.id;
   const sInv = await P.appSystem.create({ data: { tenantId: tid, type: "INVENTORY", name: `${TAG} INV` } });
   sb.invSysId = sInv.id;
   await sysSvc.linkUnit(tid, sPos.id, unit.id);
   await sysSvc.linkUnit(tid, sInv.id, unit.id);
+  await sysSvc.linkUnit(tid, sPos.id, unit2.id); // สาขาที่ 2 ของระบบ POS sandbox (ปลายทางของ PosProduct.unitId ≠ สาขานี้ · S1.18)
   const ctx = { tenantId: tid, systemId: sPos.id, unitId: unit.id };
+  // ctx ของ catalog (ratified · lane 3): {tenantId, systemId, actorUserId|null} — refusal ของ catalog = THROW typed error ที่มี .code
+  //   (call() แปลงเป็น {ok:false, code} ให้) · ส่วน register คืน {ok:false, code} เอง (server-action friendly)
   const cctx = { tenantId: tid, systemId: sPos.id, actorUserId: owner.userId };
   const invCtx = { tenantId: tid, systemId: sInv.id };
   const cashier = actor(mCash, E.coffee.users.cashier.userId, { role: "STAFF", unitAccess: [unit.id], permissions: { ...(PQC.cashierPermissions as Record<string, unknown>) } });
@@ -676,49 +696,59 @@ async function runDb() {
   const u1 = await call(register, "registerCatalog", { tenantId: tid, systemId: sPos.id, unitId: unl.id }, owner, {});
   chk("P1.3-S1.15", refused(u1, ["NOT_FOUND"]), "NOT_FOUND", codeOf(u1));
 
-  // สินค้า sandbox: ผ่าน inventory + catalog (ผู้เขียนเดียว F15.1)
-  const mkItem = async (sku: string, name: string, cost: number, stock: number | null, more: Any = {}) => {
-    const it = await inventory.createItem(invCtx, { sku: `${TAG}-${sku}`, name, costSatang: cost, ...more });
-    sb.invItemIds.push(it.id);
-    if (stock && stock > 0) await inventory.receive(invCtx, { itemId: it.id, qty: stock, costSatang: cost, idempotencyKey: `${TAG}-recv-${sku}` });
-    return it.id as string;
+  // ── สินค้า sandbox ผ่าน catalog.ts เท่านั้น (ผู้เขียนเดียว F15.1 · ชื่อ/ทรงตามที่ผู้คุมงานรับรองจากเลน 3) ──
+  //   ไม่นับสต็อก = createProduct (ไม่มี InvItem) · นับสต็อก = InvItem (inventory facade) + ensureForInvItem → {id, created} + setPrice
+  //   กติกา "นับสต็อก" ที่ข้อสอบคาด (ชื่อที่ตั้งเอง · โน้ต §6): มี invItemId และ InvItem นั้นเคยมี InvMovement อย่างน้อย 1 แถว
+  const idOf = (r: Any): string | null => (typeof r === "string" ? r : r?.ok === false ? null : (r?.id ?? r?.product?.id ?? null));
+  const must = (label: string, r: Any): Any => {
+    if (r?.ok === false) throw Object.assign(new Error(`${label} ล้ม: ${short(r)}`), { code: r.code });
+    return r;
   };
-  /** priceSatang null = ไม่ตั้งราคา (ต้นทุน 1,234 ถูกตั้งไว้เพื่อจับการเอาต้นทุนมาเป็นราคา) · itemMore = ฟิลด์ของ InvItem (kind/barcode/priceSatang) */
-  const mkProduct = async (sku: string, name: string, priceSatang: number | null, stock: number | null, extra: Any = {}, itemMore: Any = {}) => {
-    const invItemId = await mkItem(sku, name, priceSatang === null ? 1234 : Math.floor(priceSatang / 3), stock, itemMore);
-    const pr = await call(catalog, "ensureForInvItem", cctx, invItemId);
-    const id = pr?.id ?? (pr?.ok === false ? null : pr?.product?.id);
-    if (!id) throw Object.assign(new Error(`ensureForInvItem ล้ม: ${short(pr)}`), { code: pr?.code ?? "CATALOG" });
+  const mkFree = async (name: string, priceSatang: number, patch: Any = {}) => {
+    const r = must("createProduct", await call(catalog, "createProduct", cctx, { name, kind: "PRODUCT", basePriceSatang: priceSatang, ...patch }));
+    const id = idOf(r);
+    if (!id) throw new Error(`createProduct ไม่คืน id: ${short(r)}`);
     sb.productIds.push(id);
-    if (priceSatang !== null && itemMore.kind !== "SERVICE") {
-      const sp = await call(catalog, "setPrice", cctx, id, priceSatang);
-      if (sp?.ok === false) throw Object.assign(new Error(`setPrice ล้ม: ${short(sp)}`), { code: sp.code });
-    }
-    const up = await call(catalog, "updateProduct", cctx, id, { trackStock: stock !== null, ...extra });
-    if (up?.ok === false) throw Object.assign(new Error(`updateProduct ล้ม: ${short(up)}`), { code: up.code });
-    return { id, invItemId };
+    return { id, invItemId: null as string | null };
+  };
+  /** stock: null = ไม่รับเข้า · n = รับเข้า n · "consumed" = รับเข้า 1 แล้วตัดออก 1 (นับสต็อกแต่เหลือ 0) */
+  const mkTracked = async (sku: string, name: string, priceSatang: number | null, stock: number | null | "consumed", patch: Any = {}, itemMore: Any = {}) => {
+    const cost = priceSatang === null ? 1234 : Math.floor(priceSatang / 3); // ต้นทุน 1,234 = กับดัก "เอาต้นทุนมาเป็นราคา"
+    const it = await inventory.createItem(invCtx, { sku: `${TAG}-${sku}`, name, costSatang: cost, ...itemMore });
+    sb.invItemIds.push(it.id);
+    const qty = stock === "consumed" ? 1 : stock;
+    if (qty && qty > 0) await inventory.receive(invCtx, { itemId: it.id, qty, costSatang: cost, idempotencyKey: `${TAG}-recv-${sku}` });
+    if (stock === "consumed") await inventory.consume(invCtx, { itemId: it.id, qty: 1, sourceModule: "QC", idempotencyKey: `${TAG}-use-${sku}` });
+    const r = must("ensureForInvItem", await call(catalog, "ensureForInvItem", cctx, it.id));
+    const id = idOf(r);
+    if (!id) throw new Error(`ensureForInvItem ไม่คืน id: ${short(r)}`);
+    sb.productIds.push(id);
+    if (priceSatang !== null && itemMore.kind !== "SERVICE") must("setPrice", await call(catalog, "setPrice", cctx, id, priceSatang));
+    if (Object.keys(patch).length) must("updateProduct", await call(catalog, "updateProduct", cctx, id, patch));
+    return { id, invItemId: it.id as string };
   };
   let built = false;
   let A: Any = null, B: Any = null, C: Any = null, D: Any = null, LOW: Any = null, ZERO: Any = null, ARCH: Any = null, OFF: Any = null;
   let NOPRICE: Any = null, SVC: Any = null, OTHER: Any = null;
   let catId = "";
   try {
-    const cat = await call(catalog, "createCategory", cctx, { name: `${TAG} ขนม`, nameEn: "Bakery" });
-    catId = cat?.id ?? cat?.category?.id ?? "";
+    const cat = must("createCategory", await call(catalog, "createCategory", cctx, { name: `${TAG} ขนม`, sortOrder: 1 }));
+    catId = idOf(cat) ?? cat?.category?.id ?? "";
     if (catId) sb.categoryIds.push(catId);
-    A = await mkProduct("A", "กาแฟทดสอบ", 6500, null);
-    B = await mkProduct("B", "ครัวซองต์อัลมอนด์ทดสอบ", 9500, 50, { nameEn: "Almond croissant", categoryId: catId || undefined });
-    C = await mkProduct("C", "บราวนี่ทดสอบ", 6500, 50, { categoryId: catId || undefined });
-    D = await mkProduct("D", "น้ำเปล่าแจกทดสอบ", 0, null);
-    LOW = await mkProduct("LOW", "ขนมเหลือน้อย", 3000, 2);
-    ZERO = await mkProduct("ZERO", "ขนมหมดสต็อก", 3000, 0);
-    ARCH = await mkProduct("ARCH", "สินค้าเลิกขาย", 1000, null);
-    OFF = await mkProduct("OFF", "เมนูปิดขายวันนี้", 4000, null);
-    NOPRICE = await mkProduct("NOPRICE", "สินค้ายังไม่ตั้งราคา", null, null);
-    SVC = await mkProduct("SVC", "บริการจัดกระเช้าทดสอบ", 30000, null, {}, { kind: "SERVICE", priceSatang: 30000 });
-    OTHER = await mkProduct("OTHER", "สินค้าเฉพาะสาขาอื่น", 1500, null, { unitId: unl.id });
-    await call(catalog, "archive", cctx, ARCH.id);
-    await call(catalog, "setAvailability", cctx, OFF.id, { unitId: unit.id, available: false });
+    A = await mkFree("กาแฟทดสอบ", 6500);
+    B = await mkTracked("B", "ครัวซองต์อัลมอนด์ทดสอบ", 9500, 50, { nameEn: "Almond croissant", categoryId: catId || undefined });
+    C = await mkTracked("C", "บราวนี่ทดสอบ", 6500, 50, { categoryId: catId || undefined });
+    D = await mkFree("น้ำเปล่าแจกทดสอบ", 0);
+    LOW = await mkTracked("LOW", "ขนมเหลือน้อย", 3000, 2);
+    ZERO = await mkTracked("ZERO", "ขนมหมดสต็อก", 3000, "consumed");
+    ARCH = await mkFree("สินค้าเลิกขาย", 1000);
+    OFF = await mkFree("เมนูปิดขายวันนี้", 4000);
+    NOPRICE = await mkTracked("NOPRICE", "สินค้ายังไม่ตั้งราคา", null, null);
+    SVC = await mkTracked("SVC", "บริการจัดกระเช้าทดสอบ", 30000, null, {}, { kind: "SERVICE", priceSatang: 30000 });
+    OTHER = await mkFree("สินค้าเฉพาะสาขาอื่น", 1500, { unitId: unit2.id });
+    must("archive", await call(catalog, "archive", cctx, ARCH.id));
+    // ไม่มี setAvailability (ratified) — ปิดขายเฉพาะสาขาผ่าน updateProduct · ชื่อคีย์ patch `availability` = ตาม read model POS-API §1 (โน้ต §6)
+    must("updateProduct(availability)", await call(catalog, "updateProduct", cctx, OFF.id, { availability: { [unit.id]: false } }));
     built = true;
   } catch (e) {
     console.log(`  ⚠️  สร้างสินค้า sandbox ไม่สำเร็จ: ${(e as Error).message.slice(0, 200)}`);
@@ -745,8 +775,8 @@ async function runDb() {
   let needle: Any = null;
   if (built) {
     try {
-      for (let i = 0; i < 196; i++) await mkProduct(`F${i}`, `สินค้าเติม ${i}`, 1000 + i, null);
-      needle = await mkProduct("NEEDLE", "ขนมเปี๊ยะไส้ทุเรียนเข็ม", 4500, null, {}, { barcode: "8850999888881" });
+      for (let i = 0; i < 196; i++) await mkFree(`สินค้าเติม ${i}`, 1000 + i);
+      needle = await mkTracked("NEEDLE", "ขนมเปี๊ยะไส้ทุเรียนเข็ม", 4500, null, {}, { barcode: "8850999888881" });
     } catch (e) {
       console.log(`  ⚠️  เติมสินค้า 200+ ไม่สำเร็จ: ${(e as Error).message.slice(0, 120)}`);
     }
@@ -755,7 +785,7 @@ async function runDb() {
   const nBySku = await call(register, "registerCatalog", ctx, owner, { q: `${TAG}-NEEDLE` });
   const nByBc = await call(register, "registerCatalog", ctx, owner, { q: "8850999888881" });
   const hit = (r: Any) => r?.ok === true && (r.products as Any[]).some((p) => p.id === needle?.id);
-  const total17 = await P.invItem.count({ where: { tenantId: tid, systemId: sInv.id } });
+  const total17 = hasPosProduct ? await P.posProduct.count({ where: { tenantId: tid, systemId: sPos.id } }) : 0;
   chk("P1.3-S1.17", !!needle && total17 > 200 && hit(nByName) && hit(nBySku) && hit(nByBc), "เจอทั้ง 3 ทาง (ในระบบคลังที่มี >200 ตัว)", `items ${total17} · name ${hit(nByName)} sku ${hit(nBySku)} barcode ${hit(nByBc)} (${codeOf(nByName)})`);
 
   // ─── S3 quote + submit ───
@@ -909,7 +939,7 @@ async function runDb() {
   for (let r = 0; r < 3; r++) {
     let L: Any = null;
     try {
-      L = await mkProduct(`LAST${r}`, `ชิ้นสุดท้าย ${r}`, 2500, 1);
+      L = await mkTracked(`LAST${r}`, `ชิ้นสุดท้าย ${r}`, 2500, 1);
     } catch (e) {
       r18.push(`r${r}: สร้างไม่ได้ ${(e as Error).message.slice(0, 60)}`);
       ok18 = false;
@@ -924,14 +954,16 @@ async function runDb() {
     if (!(paid === 10 && oh === -9 && outs === 10)) ok18 = false;
   }
   chk("P1.3-S3.18", ok18, "ทุกรอบ PAID 10 · onHand −9 · OUT 10", r18.join(" ; "));
-  // S3.19 ชิ้นสุดท้าย BLOCK
+  // S6.1 ชิ้นสุดท้าย BLOCK (กลุ่มแยก · P1.6)
+  if (!OVERSELL_READY && !FORCE) skipCheck("P1.3-S6.1", "P1.6 — ยังไม่มีโค้ดใน src/ อ่าน settings.pos.stock.oversellPolicy (นโยบาย BLOCK ตรวจใน tx ของบิล)");
+  else {
   await P.businessUnit.update({ where: { id: unit.id }, data: { settings: { pos: { stock: { oversellPolicy: "BLOCK" } } } } });
   const r19: string[] = [];
   let ok19 = true;
   for (let r = 0; r < 3; r++) {
     let L: Any = null;
     try {
-      L = await mkProduct(`BLK${r}`, `ชิ้นสุดท้าย BLOCK ${r}`, 2500, 1);
+      L = await mkTracked(`BLK${r}`, `ชิ้นสุดท้าย BLOCK ${r}`, 2500, 1);
     } catch (e) {
       r19.push(`r${r}: สร้างไม่ได้ ${(e as Error).message.slice(0, 60)}`);
       ok19 = false;
@@ -948,7 +980,8 @@ async function runDb() {
     if (!(paid === 1 && lost === 9 && oh === 0 && sales === 1)) ok19 = false;
   }
   await P.businessUnit.update({ where: { id: unit.id }, data: { settings: {} } });
-  chk("P1.3-S3.19", ok19, "ทุกรอบ PAID 1 · 9 STOCK_INSUFFICIENT · onHand 0 · บิล 1", r19.join(" ; "));
+  chk("P1.3-S6.1", ok19, "ทุกรอบ PAID 1 · 9 STOCK_INSUFFICIENT · onHand 0 · บิล 1", (OVERSELL_READY ? "" : "[ยังไม่มีโค้ด oversellPolicy] ") + r19.join(" ; "));
+  }
   // S3.20 ไม่เชื่อมระบบอื่น
   let ok20 = false;
   let act20 = "ไม่มีบิล S3.2";
@@ -1052,6 +1085,15 @@ async function cleanup() {
   const orUnits = sb.unitId ? [{ unitId: sb.unitId }] : [];
   const sales = (await P.posSale.findMany({ where: { tenantId: { in: tids }, OR: [{ idempotencyKey: { startsWith: TAG } }, ...orUnits] }, select: { id: true } })) as Any[];
   const saleIds = sales.map((s) => s.id);
+  // สินค้า/หมวดที่ catalog สร้างในระบบ POS sandbox (รวมที่ข้อสอบไม่รู้ id) — รวบไว้ก่อนลบ audit/ตารางลูก
+  if (sb.posSysId && typeof P.posProduct?.findMany === "function") {
+    try {
+      const extra = ((await P.posProduct.findMany({ where: { tenantId: { in: tids }, systemId: sb.posSysId }, select: { id: true } })) as Any[]).map((r) => r.id);
+      sb.productIds = [...new Set([...sb.productIds, ...extra])];
+    } catch {
+      /* ไม่มีคอลัมน์ systemId = ใช้รายการที่จำไว้ */
+    }
+  }
   // รอคิวของบิลเราให้จบก่อนลบ (กันตัวระบายในโปรเซสนี้เขียนตามหลังการลบ)
   for (let i = 0; i < 20 && saleIds.length; i++) {
     const pend = await P.outboxEvent.count({ where: { tenantId: { in: tids }, status: "PENDING", OR: [{ unitId: sb.unitId || "-" }, { idempotencyKey: { in: saleIds.flatMap((id) => [`PosSale#${id}#PAID`, `PosSale#${id}#VOIDED`]) } }] } });
@@ -1072,6 +1114,7 @@ async function cleanup() {
     if (sb.productIds.length) await del(m, { productId: { in: sb.productIds } });
   }
   counts.product = sb.productIds.length ? await del("posProduct", { id: { in: sb.productIds } }) : 0;
+  if (sb.posSysId) counts.productBySystem = await del("posProduct", { tenantId: { in: tids }, systemId: sb.posSysId }); // ที่ catalog สร้างเองโดยข้อสอบไม่รู้ id
   counts.category = sb.categoryIds.length ? await del("posCategory", { id: { in: sb.categoryIds } }) : 0;
   if (sb.invSysId) {
     // 🔴 inventory.receive/consume โพสต์ GL เข้าระบบบัญชี "ตัวแรกของร้าน" (inventory/service.ts postMovementGl) แม้ระบบคลัง
@@ -1093,7 +1136,7 @@ async function cleanup() {
     }
   }
   if (realCounters.length) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
-  const units = [sb.unitId, sb.unlinkedUnitId].filter(Boolean);
+  const units = [sb.unitId, sb.unlinkedUnitId, sb.unit2Id].filter(Boolean);
   if (units.length) await del("appSystemUnit", { unitId: { in: units } });
   const systems = [sb.posSysId, sb.invSysId].filter(Boolean);
   if (systems.length) {
@@ -1124,11 +1167,11 @@ const countsAfter = await snapshotCounts();
 const drift = Object.keys(countsBefore).filter((k) => countsBefore[k] !== countsAfter[k]).map((k) => `${k}:${countsBefore[k]}→${countsAfter[k]}`);
 chk("P1.3-S9.1", drift.length === 0, "ก่อน = หลัง", drift.length ? drift.join(", ") : "เท่ากันทุกตาราง");
 // ข้อที่ไม่ถึง (harness ล้มกลางทาง) = แดง ไม่ใช่หายเงียบ
-for (const [id] of CHECKS) if (!results.has(id)) chk(id, false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 80)})` : "ไม่ถึง");
+for (const [id] of CHECKS) if (!results.has(id) && !skippedChecks.has(id)) chk(id, false, "ถูกตรวจ", crashed ? `ไม่ถึง (harness ล้ม: ${crashed.slice(0, 80)})` : "ไม่ถึง");
 for (const c of lanes) await c.$disconnect?.().catch?.(() => {});
 const failed = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
-console.log(`\n===== ${SUITE} ===== ผ่าน ${results.size - failed.length}/${results.size}${FORCE ? " (QC_FORCE)" : ""}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: results.size, passed: results.size - failed.length, failed, skipped: false, forced: FORCE, missing: skipReasons, a5: { drift } })}`);
+console.log(`\n===== ${SUITE} ===== ผ่าน ${results.size - failed.length}/${results.size}${FORCE ? " (QC_FORCE)" : ""}${skippedChecks.size ? ` · ข้าม ${skippedChecks.size} (กลุ่มของใบอื่น)` : ""}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, total: results.size, passed: results.size - failed.length, failed, skipped: false, forced: FORCE, skippedChecks: Object.fromEntries(skippedChecks), missing: skipReasons, a5: { drift } })}`);
 await P.$disconnect?.().catch?.(() => {});
 process.exit(failed.length ? 1 : 0);
 
