@@ -243,7 +243,13 @@ export type CompanyListResult = { items: CompanyDto[]; total: number; page: numb
 
 export type DuplicatePairDto = { aId: string; aName: string; bId: string; bName: string; reason: DuplicateReason; score?: number };
 
-export type ImportCompaniesResult = { created: number; skipped: number; errors: { row: number; reason: string }[] };
+export type ImportCompaniesResult = {
+  created: number;
+  skipped: number;
+  errors: { row: number; reason: string }[];
+  /** CRM C5.4-E r2 ▸ มติผู้คุมงาน (คำถามเจ้าของข้อ 4): แถวที่นำเข้าได้แต่มีบางช่องถูกเว้นไว้ (เช่น โดเมนอีเมลสาธารณะ) · มีเฉพาะเมื่อไม่ว่าง ◂ */
+  warnings?: { row: number; reason: string }[];
+};
 
 // ───────────────────────── ตัวตรวจค่า (บริสุทธิ์ — ใช้ได้ทั้งฟอร์มและ service) ─────────────────────────
 

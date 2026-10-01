@@ -675,6 +675,8 @@ type CreateCoreOpts = {
   // CRM C2.6 ▸ กฎมอบหมายที่ "ต้นทาง" ระบุมาเจาะจง (ฟอร์มที่ตั้ง `FormDef.assignRuleId`) — ส่งต่อให้ `assignment.pick`
   //   ทางเดียวกับที่ผู้ใช้เลือกกฎเอง · ไม่ส่ง/ไม่ตรงระบบ = ใช้กฎตามลำดับเหมือนเดิม (C2.3 `pick` เป็นคนตัดสิน) ◂
   ruleId?: string | null;
+  /** CRM C5.4-E r2 ▸ SF-3: งานเป็นชุด (นำเข้า) — event `assigned` ติดรหัสชุด ⇒ ตัวส่งแจ้งเตือนไม่แจ้งทีละแถว (ผู้เรียกส่งสรุปเอง 1 ใบ) ◂ */
+  batchId?: string | null;
 };
 type CreateCoreResult = { row: CrmContact; created: boolean; duplicates: DuplicateHit[] };
 
@@ -771,7 +773,7 @@ async function insertContactInTx(tx: Tx, ctx: ContactsCtx, actor: MemberActor | 
     await (await engine()).setFieldValues(fctx(ctx, actor), row.id, custom, { via: opts.via === "IMPORT" ? "IMPORT" : opts.via === "API" ? "API" : "STAFF", byUserId: actorId(ctx) }, tx);
   }
   await emitContactEvent(tx, ctx, "created", row.id, "1", { contactId: row.id, partyId: row.partyId });
-  if (row.ownerUserId) await emitContactEvent(tx, ctx, "assigned", row.id, "1", { contactId: row.id, ownerUserId: row.ownerUserId, previousOwnerUserId: null });
+  if (row.ownerUserId) await emitContactEvent(tx, ctx, "assigned", row.id, "1", { contactId: row.id, ownerUserId: row.ownerUserId, previousOwnerUserId: null, ...(opts.batchId ? { batchId: opts.batchId } : {}) });
   // CRM C2.3 ▸ ไม่มีใครรับได้บนทางอัตโนมัติ (v2 เท่านั้น) ⇒ แจ้ง OWNER/MANAGER ใน tx นี้ (ผู้ติดต่อเกิดครั้งเดียว = แจ้งครั้งเดียว · id ล้วน) ◂
   if (pick.reason === "NOBODY") await assignment.notifyUnassigned(tx, ctx, row.id);
   return row;
@@ -1324,6 +1326,7 @@ export async function bulkAssign(
   const visible = await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: ids }, mergedIntoId: null }] }, select: { id: true } });
   if (visible.length !== ids.length) throw fail("NOT_FOUND", "มีผู้ติดต่อบางคนในรายการที่ไม่พบในระบบ CRM นี้ (อาจถูกลบหรือรวมไปแล้ว) — รีเฟรชหน้าแล้วเลือกใหม่");
   const changed: string[] = [];
+  const batchId = randomUUID(); // CRM C5.4-E r2 ▸ SF-3: โอนเป็นกลุ่ม = แจ้งผู้ดูแลใหม่ 1 ใบต่อชุด (ไม่ใช่ทีละคน) ◂
   await prisma.$transaction(async (tx) => {
     await lockContactRows(tx, ctx, ids);
     const rows = await tx.crmContact.findMany({ where: { ...identityScope(ctx), id: { in: ids } }, select: { id: true, ownerUserId: true, mergedIntoId: true } });
@@ -1331,11 +1334,14 @@ export async function bulkAssign(
     for (const r of rows) {
       if (r.mergedIntoId || r.ownerUserId === userId) continue;
       await tx.crmContact.update({ where: { id: r.id }, data: { ownerUserId: userId, assignedAt: userId ? now : null, assignedBy: userId ? `USER:${actorId(ctx) ?? a.userId}` : null } });
-      await emitContactEvent(tx, ctx, "assigned", r.id, newSeq(), { contactId: r.id, ownerUserId: userId, previousOwnerUserId: r.ownerUserId });
+      await emitContactEvent(tx, ctx, "assigned", r.id, newSeq(), { contactId: r.id, ownerUserId: userId, previousOwnerUserId: r.ownerUserId, batchId });
       changed.push(r.id);
     }
   }, { maxWait: 15_000, timeout: 120_000 });
   await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action: "crm.contact.bulk_assign", targetType: "CrmContact", targetId: ctx.systemId, after: { reason, ownerUserId: userId, requested: ids.length, updated: changed.length, ids: changed } });
+  if (userId && changed.length > 0) {
+    await (await import("./notify-senders")).leadsAssignedBatch(ctx, { batchId, actorUserId: actorId(ctx) ?? a.userId, owners: new Map([[userId, changed.length]]) }).catch(() => undefined);
+  }
   return { updated: changed.length, ids: changed };
 }
 
@@ -2308,6 +2314,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   await seedContactFields(ctx, a);
 
   const jobId = randomUUID();
+  const importedOwners = new Map<string, number>(); // CRM C5.4-E r2 ▸ SF-3: ผู้ดูแล → จำนวน lead ที่ได้จากงานนี้ ◂
   const result: ImportContactsResult = { created: 0, updated: 0, skipped: 0, candidates: 0, failed: 0, errors: [] };
   let status: ImportJobStatus = "RUNNING";
   const companyIds = new Map<string, string>();
@@ -2377,12 +2384,13 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
           return;
         }
       }
-      const res = await createCore(ctx, a, clean, { force: mode === "candidate", via: "IMPORT", custom });
+      const res = await createCore(ctx, a, clean, { force: mode === "candidate", via: "IMPORT", custom, batchId: jobId });
       if (!res.created) {
         result.skipped += 1;
         return;
       }
       result.created += 1;
+      if (res.row.ownerUserId) importedOwners.set(res.row.ownerUserId, (importedOwners.get(res.row.ownerUserId) ?? 0) + 1); // CRM C5.4-E r2 ▸ SF-3 ◂
       if (res.duplicates.length > 0) result.candidates += 1;
       if (companyName) {
         const coId = await companyFor(companyName);
@@ -2412,6 +2420,8 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
       after: { jobId, status, rows: rows.length, onDuplicate: mode, source: sourceKind, created: result.created, updated: result.updated, skipped: result.skipped, candidates: result.candidates, failed: result.failed, aborted: status === "FAILED", errors: result.errors.slice(0, 50) },
     });
   }
+  // CRM C5.4-E r2 ▸ SF-3 (มติผู้คุมงาน): lead จากการนำเข้า = สรุป 1 ใบต่อผู้ดูแลต่องาน (ไม่แจ้งคนที่นำเข้าเองถึงตัวเอง) — ล้ม = ไม่กระทบผลนำเข้า ◂
+  await (await import("./notify-senders")).leadsAssignedBatch(ctx, { batchId: jobId, actorUserId: actorId(ctx) ?? a.userId, owners: importedOwners }).catch(() => undefined);
   return { jobId, status, result };
 }
 

@@ -6,6 +6,8 @@
 //         (computed opacity < 1 · cursor not-allowed) · control: the owner's buttons are not dimmed
 //   U-m11 contacts list with a TEAM saved view whose filter field was archived: rows still listed + the "skipped" note names the field
 //   U-M5  company 360 after a WON deal: header badge "ลูกค้า" and no "คะแนน 0" badge
+//   U-CO  (round 2 ruling 1) OWNER corrects a CUSTOMER company → มีโอกาส from the 360 header
+//   U-R5  (round 2 SF-5) a task due earlier today: listed in the today tab and its row is not labelled "เลยกำหนด"
 // Run: QC_BASE=http://127.0.0.1:3219 bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/c54e/probe-ui-c54e.mts --shots <name>
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
@@ -163,6 +165,36 @@ try {
     const head = await own.$eval('[data-testid="company-360"]', (e: Any) => e.innerText.slice(0, 400));
     await shot(own, "m5-company-won", false);
     chk("U-M5", mv.ok && s === 200 && head.includes("ลูกค้า") && !/คะแนน\s*0/.test(head), `move=${mv.ok} status=${s} header=${JSON.stringify(head.split("\n").slice(0, 6))}`);
+  }
+
+  // ═══════════ U-CO · round 2 ruling (1): OWNER corrects a CUSTOMER company back to "มีโอกาส" ═══════════
+  {
+    const co = (await CRM.companies.createCompany(shop.ctx, shop.owner, { name: `บริษัทแก้ขั้น ${TAG}` })).company.id as string;
+    await P.crmCompany.update({ where: { id: co }, data: { lifecycleStage: "CUSTOMER" } });
+    const s = await go(own, `${CRMB}/companies/${co}`);
+    const btn = await own.$('[data-testid="company-lifecycle-correct"]');
+    if (btn) {
+      await btn.click();
+      await own.waitForSelector('[data-testid="company-lifecycle-correct-confirm"]', { timeout: 10_000 }).catch(() => null);
+      await shot(own, "co-correct-sheet", false);
+      await own.click('[data-testid="company-lifecycle-correct-confirm"]').catch(() => undefined);
+      await sleep(2500);
+    }
+    const row = await P.crmCompany.findUnique({ where: { id: co }, select: { lifecycleStage: true } });
+    chk("U-CO", s === 200 && !!btn && row?.lifecycleStage === "PROSPECT", `status=${s} button=${!!btn} stage=${row?.lifecycleStage}`);
+  }
+
+  // ═══════════ U-R5 · review SF-5: a task due earlier TODAY is in the "today" tab and its row is not labelled "เลยกำหนด" ═══════════
+  {
+    const nowMs = Date.now();
+    const dayStart = Math.floor((nowMs + 7 * 3_600_000) / 86_400_000) * 86_400_000 - 7 * 3_600_000;
+    const k = (await CRM.contacts.createContact(shop.ctx, shop.owner, { firstName: `งานเช้า ${TAG}`, phone: "0878889900" })).contact.id as string;
+    const title = `โทรเช้านี้ ${TAG}`;
+    await P.crmActivity.create({ data: { tenantId: shop.tid, systemId: shop.S, type: "TASK", title, ownerUserId: shop.uid, contactId: k, dueAt: new Date(dayStart + 60_000) } });
+    const s = await go(own, `${CRMB}/activities?status=today`);
+    const rowText = await own.$$eval('[data-testid="activity-row"]', (els: Any[], t: string) => els.map((e) => e.innerText).find((x: string) => x.includes(t)) ?? null, title);
+    await shot(own, "r5-activities-today", false);
+    chk("U-R5", s === 200 && nowMs - dayStart > 120_000 && !!rowText && !rowText.includes("เลยกำหนด"), `status=${s} row=${JSON.stringify(rowText)}`);
   }
   await own.close();
 } catch (e) {

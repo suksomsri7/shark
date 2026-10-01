@@ -26,7 +26,32 @@ if (ARGV[0] === "--compare") {
   let diff = 0;
   let oldErrNewOk = 0;
   const bad: string[] = [];
+  // ORACLE-EDIT (controller ruling C5.4-E SF-7, 1 Oct): since C5.4-E (L6-m3) contacts sorted by name use the Thai ICU collation
+  //   (`COLLATE "th-TH-x-icu"`) — the order differs from the old C-collation run BY DESIGN. For the `contacts.sortName[.p2].<actor>`
+  //   family only: page 1 + page 2 must hold the SAME rows (same ids, same count) in both runs; the order itself is pinned by C5.3-L6-m3.
+  //   Every other scene is still compared byte for byte.
+  const SORT_NAME = /^contacts\.sortName\.(?:p2\.)?(.+)$/;
+  const sortNameIds = (sc: Record<string, Any>, actor: string) =>
+    [sc[`contacts.sortName.${actor}`], sc[`contacts.sortName.p2.${actor}`]].flatMap((v) => ((v?.value?.items ?? []) as Any[]).map((it) => String(it.id))).sort();
+  const sortNameDone = new Set<string>();
   for (const k of Object.keys(a.scenes)) {
+    const sn = SORT_NAME.exec(k);
+    if (sn) {
+      const actor = sn[1]!;
+      if (sortNameDone.has(actor)) continue;
+      sortNameDone.add(actor);
+      const n = [`contacts.sortName.${actor}`, `contacts.sortName.p2.${actor}`].filter((x) => x in a.scenes).length;
+      const ia = sortNameIds(a.scenes, actor);
+      const ib = sortNameIds(b.scenes, actor);
+      const errA = [a.scenes[`contacts.sortName.${actor}`]?.error, a.scenes[`contacts.sortName.p2.${actor}`]?.error].filter(Boolean).join("|");
+      const errB = [b.scenes[`contacts.sortName.${actor}`]?.error, b.scenes[`contacts.sortName.p2.${actor}`]?.error].filter(Boolean).join("|");
+      if (errA === errB && JSON.stringify(ia) === JSON.stringify(ib)) same += n;
+      else {
+        diff += n;
+        bad.push(`DIFF-SET contacts.sortName(+p2).${actor} old=${ia.length} new=${ib.length} errOld=${errA || "-"} errNew=${errB || "-"}`);
+      }
+      continue;
+    }
     const x = a.scenes[k];
     const y = b.scenes[k];
     if (y === undefined) {

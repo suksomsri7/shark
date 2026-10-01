@@ -45,6 +45,7 @@ export default async function CrmActivitiesPage({
   const ctx = { tenantId, systemId: id, actorUserId: auth.user.id };
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : "");
   const status: ActivityStatus = (ACTIVITY_STATUSES as readonly string[]).includes(one("status")) ? (one("status") as ActivityStatus) : "pending";
+  const nowMs = Date.now(); // CRM C5.4-E r2 ▸ SF-5: ป้าย "เลยกำหนด" ของแถวตัดสินด้วยเวลาเดียวกับแท็บ ◂
   const target = { contactId: one("contactId") || null, companyId: one("companyId") || null, dealId: one("dealId") || null };
   const hasTarget = !!(target.contactId || target.companyId || target.dealId);
   // กรองเฉพาะระเบียนเดียว (มาจาก "ดูทั้งหมด") = ค่าตั้งต้นเป็นของทั้งทีม
@@ -158,7 +159,7 @@ export default async function CrmActivitiesPage({
         ) : (
           <ul className="flex flex-col divide-y">
             {list.items.map((i) => (
-              <ActivityRow key={i.id} systemId={id} item={i} currentUserId={auth.user.id} canManage={canManage} boards={canLog ? boards : []} canComplete={canComplete} canLog={canLog} canDelete={canDelete} showTarget />
+              <ActivityRow key={i.id} systemId={id} item={i} currentUserId={auth.user.id} canManage={canManage} boards={canLog ? boards : []} canComplete={canComplete} canLog={canLog} canDelete={canDelete} showTarget nowMs={nowMs} />
             ))}
           </ul>
         )}

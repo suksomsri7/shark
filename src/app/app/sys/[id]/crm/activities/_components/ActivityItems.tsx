@@ -11,6 +11,7 @@ import {
   ACTIVITY_REASON_MIN,
   ACTIVITY_TYPE_LABEL,
   durationLabel,
+  isActivityOverdue,
   isoToThaiLocalInput,
   thaiDateLabel,
   thaiLocalInputToIso,
@@ -37,6 +38,7 @@ export function ActivityRow({
   canComplete = true,
   canLog = false,
   canDelete = false,
+  nowMs,
 }: {
   systemId: string;
   item: ActivityListItem;
@@ -50,6 +52,8 @@ export function ActivityRow({
   canLog?: boolean;
   /** CRM C4.2-fix ▸ B2: crm.activity.delete (+ create ที่ action ตรวจ) — เดิมปุ่มลบอิงบทบาท/เจ้าของอย่างเดียว ⇒ พนักงานที่ไม่มีคีย์เห็นปุ่มแล้วโดนปฏิเสธ ◂ */
   canDelete?: boolean;
+  /** CRM C5.4-E r2 ▸ SF-5: เวลาตอนเรนเดอร์จากเซิร์ฟเวอร์ (ตัดสิน "เลยกำหนด") ◂ */
+  nowMs?: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -61,7 +65,9 @@ export function ActivityRow({
   const [boardId, setBoardId] = useState(boards[0]?.id ?? "");
   const mine = item.ownerUserId === currentUserId;
   const canEdit = canManage || mine;
-  const overdue = !item.doneAt && item.dueAt && Date.parse(item.dueAt) < Date.now();
+  // CRM C5.4-E r2 ▸ รีวิว SF-5: ป้าย "เลยกำหนด" = นิยามเดียวกับแท็บ (`isActivityOverdue` — ก่อน 00:00 ไทยของวันนี้ · กำหนดส่ง ?? เวลาเริ่ม ·
+  //   ไม่นับโน้ต) · `nowMs` มาจากเซิร์ฟเวอร์ (ไม่ต่างกันตอน hydrate) ◂
+  const overdue = !item.doneAt && item.type !== "NOTE" && isActivityOverdue(Date.parse(item.dueAt ?? item.startAt ?? ""), nowMs ?? Date.now());
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) =>
     start(async () => {
       setError(null);

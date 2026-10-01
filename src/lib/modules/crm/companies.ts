@@ -982,6 +982,27 @@ export async function setOwner(ctx: CompaniesCtx, actor: MemberActor, id: string
   });
 }
 
+/**
+ * CRM C5.4-E r2 ▸ มติผู้คุมงาน (คำถามเจ้าของข้อ 1): ขั้นของบริษัทคำนวณจากดีลแบบเดินหน้าอย่างเดียว (L6-M5) ⇒ ปิดดีลเป็นชนะผิดแล้ว
+ * บริษัทเป็น "ลูกค้า" ค้าง · ผู้จัดการ/เจ้าของร้าน **แก้ย้อน** ลูกค้า → มีโอกาส ได้ (เหมือนผู้ติดต่อ — audit `correction: true`) ·
+ * ทางเดียวที่เปิด (ขั้นอื่นมาจากดีลเอง) · ถ้ายังมีดีลที่ชนะอยู่ รอบคำนวณแคชครั้งถัดไปจะกลับเป็นลูกค้า (ความจริงจากดีล) ◂
+ */
+export async function setCompanyLifecycle(ctx: CompaniesCtx, actor: MemberActor, id: string, stage: string): Promise<CompanyDto> {
+  const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, id, prisma, { live: true });
+  need(a, "crm.company.update");
+  if (a.role !== "OWNER" && a.role !== "MANAGER") throw fail("FORBIDDEN", "การแก้ขั้นของบริษัททำได้เฉพาะผู้จัดการหรือเจ้าของร้าน — ขอให้ผู้จัดการช่วยดำเนินการ");
+  const s = String(stage ?? "").trim().toUpperCase();
+  return simpleUpdate(ctx, a, id, "crm.company.lifecycle", ["lifecycleStage"], async (tx, row) => {
+    if (row.lifecycleStage === s) return { changed: false };
+    if (row.lifecycleStage !== "CUSTOMER" || s !== "PROSPECT") {
+      throw fail("VALIDATION", "ขั้นของบริษัทคำนวณจากดีลให้อัตโนมัติ — แก้เองได้ทางเดียวคือ \"ลูกค้า\" → \"มีโอกาส\" (กรณีปิดดีลเป็นชนะโดยไม่ตั้งใจ)");
+    }
+    await tx.crmCompany.update({ where: { id: row.id }, data: { lifecycleStage: "PROSPECT" } });
+    return { changed: true, before: { lifecycleStage: row.lifecycleStage }, after: { lifecycleStage: "PROSPECT", correction: true } };
+  });
+}
+
 /** บริษัทแม่ (บริษัทในเครือ) — ระบบเดียวกัน · ตัวเอง/วงวน = VALIDATION · advisory lock ของต้นไม้ต่อระบบ กันสองคำสั่งสร้างวงพร้อมกัน */
 export async function setParent(ctx: CompaniesCtx, actor: MemberActor, id: string, parentId: string | null): Promise<CompanyDto> {
   const a = await enter(ctx, actor);
@@ -1577,7 +1598,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
   const moved = { contacts: 0, contactsDeduped: 0, deals: 0, activities: 0, subsidiaries: 0, records: 0 };
   let customValuesMoved = 0; // CRM C1.10 ▸ ค่าฟิลด์กำหนดเองที่ย้ายมา (ลง audit) ◂
   // CRM C5.4-E ▸ L6-M3: ของที่ย้ายเพิ่ม (ลง audit — รูปผลลัพธ์ `moved` ของ REST คงเดิม) ◂
-  const movedMore = { files: 0, emails: 0, portalRequests: 0, portalAccessMoved: 0, portalAccessRevoked: 0 };
+  const movedMore = { files: 0, emails: 0, portalRequests: 0, portalAccessMoved: 0, portalAccessRevoked: 0, portalAccessReplaced: 0 };
   let keptAc: string | null = keep.accountContactId;
   await prisma.$transaction(async (tx) => {
     await treeLock(tx, ctx);
@@ -1629,21 +1650,32 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
         AND NOT EXISTS (SELECT 1 FROM "CustomRecordValue" kv WHERE kv."recordId" = ${k.id} AND kv."fieldId" = v."fieldId")`;
     // ◂ CRM C1.10
     // CRM C5.4-E ▸ L6-M3 (พิมพ์เขียว §11.1 "บริษัท: วัตถุ · portal access" · §5.2): ไฟล์ · อีเมล · คำขอจากพอร์ทัล ย้ายมาที่บริษัทที่เก็บไว้ ·
-    //   สิทธิ์พอร์ทัลของคนในบริษัทที่ถูกรวม **ย้ายตาม** (session เดิมใช้ต่อได้ — เป็นบริษัทเดียวกัน) · คนเดียวกันมีสิทธิ์ที่บริษัทที่เก็บไว้อยู่แล้ว
-    //   (unique บริษัท+คน) ⇒ ถอนแถวของบริษัทที่ถูกรวม + ปิด session แล้วเตือนพนักงานให้เชิญใหม่ถ้าจำเป็น · ทั้งหมดใน tx ของการรวม ◂
+    //   สิทธิ์พอร์ทัลของคนในบริษัทที่ถูกรวม **ย้ายตาม** (session เดิมใช้ต่อได้ — เป็นบริษัทเดียวกัน) · ทั้งหมดใน tx ของการรวม
+    //   r2 รีวิว SF-2: คนเดียวกันมีแถวที่บริษัทที่เก็บไว้ด้วย (unique บริษัท+คน) — แถวของบริษัทที่เก็บไว้ "ใช้ได้" (ยังไม่ถอน + รับคำเชิญแล้ว)
+    //   ⇒ ใช้แถวนั้นต่อ แล้วถอนแถวซ้ำของบริษัทที่ถูกรวม (คนนั้นยังเข้าได้) · แถวของบริษัทที่เก็บไว้ใช้ไม่ได้ (ถอนแล้ว/ยังไม่รับเชิญ) ⇒ ลบแถวที่ตายนั้น
+    //   แล้วย้ายแถวของบริษัทที่ถูกรวมมาแทน (เดิมถอนแถวที่ยังใช้ได้ทิ้ง ⇒ คนนั้นหลุดพอร์ทัลทั้งที่ข้อความบอกว่า "ยังอยู่") ◂
     movedMore.files = (await tx.crmFileLink.updateMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, entityType: "COMPANY", entityId: m.id }, data: { entityId: k.id } })).count;
     movedMore.emails = (await tx.crmEmailMessage.updateMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, data: { companyId: k.id } })).count;
     movedMore.portalRequests = (await tx.crmPortalRequest.updateMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, data: { companyId: k.id } })).count;
     const mAccess = await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, companyId: m.id }, select: { id: true, contactId: true, revokedAt: true } });
     if (mAccess.length > 0) {
-      const kAccess = new Set((await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, companyId: k.id, contactId: { in: mAccess.map((x) => x.contactId) } }, select: { contactId: true } })).map((x) => x.contactId));
+      const kRows = await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, companyId: k.id, contactId: { in: mAccess.map((x) => x.contactId) } }, select: { id: true, contactId: true, revokedAt: true, acceptedAt: true } });
+      const kByContact = new Map(kRows.map((x) => [x.contactId, x]));
       for (const acc of mAccess) {
-        if (!kAccess.has(acc.contactId)) {
-          await tx.crmPortalAccess.update({ where: { id: acc.id }, data: { companyId: k.id } });
-          movedMore.portalAccessMoved += 1;
-        } else if (!acc.revokedAt) {
-          movedMore.portalAccessRevoked += await revokePortalOfLinkInTx(tx, ctx.tenantId, m.id, acc.contactId, ctx.actorUserId, MERGED_AWAY, now);
+        const kRow = kByContact.get(acc.contactId);
+        if (kRow && !kRow.revokedAt && kRow.acceptedAt) {
+          // แถวของบริษัทที่เก็บไว้ใช้ได้อยู่แล้ว — แถวซ้ำของบริษัทที่ถูกรวมถูกถอน (คนนั้นยังเข้าพอร์ทัลได้ด้วยแถวของบริษัทที่เก็บไว้)
+          if (!acc.revokedAt) movedMore.portalAccessRevoked += await revokePortalOfLinkInTx(tx, ctx.tenantId, m.id, acc.contactId, ctx.actorUserId, MERGED_AWAY, now);
+          continue;
         }
+        if (kRow) {
+          // แถวของบริษัทที่เก็บไว้ใช้ไม่ได้ (ถอนแล้ว/ยังไม่รับคำเชิญ) — ลบทิ้ง (session ของมันถูกปิดไปพร้อมการถอนแล้ว) แล้วย้ายแถวที่ใช้ได้มาแทน
+          await tx.portalSession.updateMany({ where: { portalAccessId: kRow.id, revokedAt: null }, data: { revokedAt: now } });
+          await tx.crmPortalAccess.delete({ where: { id: kRow.id } });
+          movedMore.portalAccessReplaced += 1;
+        }
+        await tx.crmPortalAccess.update({ where: { id: acc.id }, data: { companyId: k.id } });
+        movedMore.portalAccessMoved += 1;
       }
     }
     if (children.length) {
@@ -1740,8 +1772,8 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
     warnings.push("ยังไม่ได้ย้ายรายการที่ผูกกับบริษัทที่ถูกรวม — ลองรวมผู้ติดต่อ/รายการเองภายหลัง");
   }
   if (movedMore.portalAccessRevoked > 0) {
-    // CRM C5.4-E ▸ L6-M3: คนที่มีสิทธิ์พอร์ทัลทั้งสองบริษัท — สิทธิ์ของบริษัทที่เก็บไว้ยังอยู่ · ของบริษัทที่ถูกรวมถูกปิด (บอกพนักงาน) ◂
-    warnings.push(`สิทธิ์เข้าพอร์ทัลของบริษัทที่ถูกรวม ${movedMore.portalAccessRevoked.toLocaleString("th-TH")} รายการซ้ำกับสิทธิ์ที่บริษัทที่เก็บไว้ จึงถูกปิด — ตรวจที่แท็บพอร์ทัลของบริษัทที่เก็บไว้ ถ้าใครยังเข้าไม่ได้ให้เชิญใหม่`);
+    // CRM C5.4-E r2 ▸ SF-2: บอกสิ่งที่เกิดขึ้นจริง — คนเหล่านี้ยังเข้าพอร์ทัลได้ด้วยสิทธิ์ที่บริษัทที่เก็บไว้ (ไม่มีใครหลุด) ◂
+    warnings.push(`มี ${movedMore.portalAccessRevoked.toLocaleString("th-TH")} คนที่มีสิทธิ์เข้าพอร์ทัลทั้งสองบริษัท — ยังเข้าได้ตามปกติด้วยสิทธิ์ของบริษัทที่เก็บไว้ (สิทธิ์ซ้ำของบริษัทที่ถูกรวมถูกปิดแล้ว ไม่ต้องเชิญใหม่)`);
   }
   await recomputeCaches(ctx, keep.id).catch(() => undefined);
   const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, movedMore /* CRM C5.4-E */, customValuesMoved /* CRM C1.10 */, accountMerge, accountMergeSkipped, warnings: warnings.length };
@@ -1829,6 +1861,12 @@ export async function importCompanies(ctx: CompaniesCtx, actor: MemberActor, inp
         if (v !== "") (raw as Record<string, unknown>)[k] = v;
       }
       try {
+        // CRM C5.4-E r2 ▸ มติผู้คุมงาน (ข้อ 4): โดเมนอีเมลสาธารณะในไฟล์นำเข้า = นำเข้าแถวนั้น **โดยไม่ใส่โดเมน** + คำเตือนรายแถว
+        //   (สร้าง/แก้ไขทีละบริษัทยังปฏิเสธพร้อมข้อความ) — บริษัทไม่หายจากไฟล์เพราะช่องเสริมช่องเดียว ◂
+        if (typeof raw.emailDomain === "string" && isFreeMailDomain(raw.emailDomain)) {
+          (result.warnings ??= []).push({ row: rowNo, reason: `ไม่ได้ใส่โดเมนอีเมล "${normalizeEmailDomain(raw.emailDomain)}" เพราะเป็นอีเมลสาธารณะ (ใช้จับคู่อีเมลกับบริษัทไม่ได้) — บริษัทนำเข้าแล้วตามปกติ` });
+          delete raw.emailDomain;
+        }
         const clean = cleanPatch({ ...raw, name: raw.name ?? "" }, "create");
         if (clean.taxId) {
           const key = `${clean.taxId}#${clean.branchCode ?? "00000"}`;

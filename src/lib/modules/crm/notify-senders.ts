@@ -39,7 +39,8 @@ export async function onContactAssigned(evt: Evt): Promise<void> {
   const p = obj(evt.payload);
   const contactId = str(p.contactId);
   const owner = str(p.ownerUserId);
-  if (!evt.systemId || !contactId || !owner) return;
+  // CRM C5.4-E r2 ▸ SF-3: event ของงานเป็นชุด (นำเข้า · โอนเป็นกลุ่ม) ไม่แจ้งทีละแถว — ผู้เรียกส่งสรุป 1 ใบ/ผู้ดูแล/ชุด (`leadsAssignedBatch`) ◂
+  if (!evt.systemId || !contactId || !owner || str(p.batchId)) return;
   const ctx: Ctx = { tenantId: evt.tenantId, systemId: evt.systemId };
   const c = await prisma.crmContact.findFirst({
     where: { id: contactId, tenantId: ctx.tenantId, systemId: ctx.systemId },
@@ -50,6 +51,21 @@ export async function onContactAssigned(evt: Evt): Promise<void> {
     await notifyStaff({ ...ctx, actorUserId: null }, { key: "lead.assigned", userIds: [owner], refType: "CrmContact", refId: contactId, vars: { count: 1 } });
   } catch (e) {
     await warn(ctx, "lead.assigned", e);
+  }
+}
+
+/**
+ * CRM C5.4-E r2 ▸ SF-3 (มติผู้คุมงาน): lead.assigned ของงานเป็นชุด — 1 ใบต่อผู้ดูแลต่อชุด พร้อมจำนวน (`{{count}}` ของเทมเพลต) ·
+ * คนที่ทำงานชุดนั้นเองไม่ได้รับ (นำเข้าเอง = ผู้ดูแลคือตัวเอง) · มอบทีละคน/ตามกฎ ยังแจ้งทีละ lead ตามเดิม (`onContactAssigned`) ◂
+ */
+export async function leadsAssignedBatch(ctx: Ctx, input: { batchId: string; actorUserId: string | null; owners: ReadonlyMap<string, number> }): Promise<void> {
+  for (const [owner, count] of input.owners) {
+    if (!owner || owner === input.actorUserId || count <= 0) continue;
+    try {
+      await notifyStaff({ ...ctx, actorUserId: null }, { key: "lead.assigned", userIds: [owner], refType: "CrmContactBatch", refId: input.batchId, vars: { count } });
+    } catch (e) {
+      await warn(ctx, "lead.assigned", e);
+    }
   }
 }
 

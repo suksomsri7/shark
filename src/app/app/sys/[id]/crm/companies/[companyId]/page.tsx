@@ -17,7 +17,7 @@ import {
   type CompanyDealRow,
   type CompanyDocRow,
 } from "@/lib/modules/crm/companies-shared";
-import { AddContactButton, CompanyContactsTable, CompanyMenu } from "../_components/Company360Actions";
+import { AddContactButton, CompanyContactsTable, CompanyLifecycleCorrect, CompanyMenu } from "../_components/Company360Actions";
 // CRM C1.6 ▸ บล็อกกิจกรรม/โน้ต + ไฟล์แนบ (คอมโพเนนต์ฝั่งเซิร์ฟเวอร์ · ใบ C1.6 เป็นเจ้าของ) ◂
 import { CrmActivityBlock } from "@/components/crm/activity/CrmActivityBlock";
 import { CrmFilesBlock } from "@/components/crm/files/CrmFilesBlock";
@@ -171,6 +171,8 @@ export default async function Company360Page({
                     <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ color: "var(--color-accent)", borderColor: "var(--color-accent)" }}>
                       {COMPANY_LIFECYCLE_LABEL[c.lifecycleStage]}
                     </span>
+                    {/* CRM C5.4-E r2 ▸ มติผู้คุมงาน: ผู้จัดการ/เจ้าของร้านแก้ "ลูกค้า" → "มีโอกาส" ได้ (ปิดดีลชนะผิด) ◂ */}
+                    {live && canUpdate && (actor.role === "OWNER" || actor.role === "MANAGER") && c.lifecycleStage === "CUSTOMER" && <CompanyLifecycleCorrect systemId={id} companyId={c.id} />}
                     {/* CRM C5.4-E ▸ L6-M5: "คะแนนบริษัท" ยังไม่มีนิยาม/ตัวเขียน (ทุกบริษัท = 0 ตลอด) ⇒ ซ่อนไว้จนกว่าเจ้าของจะกำหนด (ขั้นของบริษัทคำนวณจากดีลแล้ว) ◂ */}
                   </div>
                   <span className="text-xs text-[color:var(--color-muted)]">{subline.join(" · ")}</span>
