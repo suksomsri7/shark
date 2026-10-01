@@ -70,11 +70,15 @@ export async function eraseContactAction(
 }
 
 /** ชุดข้อมูลของผู้ติดต่อหนึ่งคน (คำขอเข้าถึงข้อมูล) — คืนเป็นข้อความ JSON ให้หน้าจอดาวน์โหลด */
-export async function exportContactAction(systemId: string, contactId: string): Promise<{ ok: true; filename: string; json: string } | Fail> {
+export async function exportContactAction(
+  systemId: string,
+  contactId: string,
+): Promise<{ ok: true; filename: string; json: string; complete: boolean; truncated: Record<string, { exported: number; total: number }> } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.contact.export");
     const bundle = await exportContact(ctx, actor, contactId);
-    return { ok: true, filename: `crm-contact-${contactId}.json`, json: JSON.stringify(bundle, null, 2) };
+    // CRM C5.5-fix9: ไฟล์ไม่ครบ (ตารางเกินเพดานขนาดไฟล์) = บอกผู้กดด้วย — หน้าจอแสดงคำเตือนแทนข้อความ "ดาวน์โหลดแล้ว" เฉย ๆ
+    return { ok: true, filename: `crm-contact-${contactId}.json`, json: JSON.stringify(bundle, null, 2), complete: bundle.complete, truncated: bundle.truncated ?? {} };
   } catch (e) {
     return failOf(e);
   }

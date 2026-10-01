@@ -537,7 +537,13 @@ export async function linkSubmissionCrmContact(db: FormsDb, tenantId: string, su
 // CRM C3.9-fix ▸ H1 (ล่าความปลอดภัย B1): คำตอบฟอร์มของผู้ติดต่อ CRM ที่ถูกลบ/ขอสำเนาตาม PDPA — ตัวอ่าน/ตัวล้างอยู่ในโมดูลฟอร์ม
 //   (ผู้เรียก = `crm/privacy.ts` ผ่าน facade `forms/index.ts`) · ลบ = แถวคงอยู่ (ตัวนับ/สถิติฟอร์ม) แต่คำตอบ = {} และ ip/pageUrl/referrer/utm = null
 //   AUDIT-CLASS X1: ทุกคำสั่งผูก tenantId + crmContactId ของผู้เรียก
+// CRM C5.5-fix9 ▸ hunt-3 H3-2/H3-3: ไม่ตัดเงียบที่ 5,000 อีกแล้ว — ตัวอ่าน = ทีละหน้า (keyset id ใหม่→เก่า · ผู้เรียกวนจนหน้าสั้น + นับทั้งหมดได้) ·
+//   ตัวล้าง = วนทุกหน้าในตัวเอง (หน้าละ ≤ 5,000 · ผู้เรียกกำหนดขนาดหน้าได้) ◂
 const SUBMISSION_ERASE_MAX = 5_000;
+const pageSizeOf = (n: unknown): number => {
+  const v = Math.floor(Number(n ?? SUBMISSION_ERASE_MAX));
+  return Number.isFinite(v) && v >= 1 ? Math.min(v, SUBMISSION_ERASE_MAX) : SUBMISSION_ERASE_MAX;
+};
 export type CrmContactSubmission = {
   id: string;
   formId: string;
@@ -559,17 +565,29 @@ function fieldsOf(fieldsJson: unknown): FormFieldLite[] {
 }
 const answersOf = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
-/** คำตอบฟอร์มทุกฉบับที่ผูกผู้ติดต่อ CRM ชุดนี้ (ส่งออกตามคำขอเข้าถึงข้อมูล) */
-export async function submissionsOfCrmContacts(db: FormsDb, tenantId: string, contactIds: readonly string[], take = SUBMISSION_ERASE_MAX): Promise<CrmContactSubmission[]> {
+/** คำตอบฟอร์มที่ผูกผู้ติดต่อ CRM ชุดนี้ (ส่งออกตามคำขอเข้าถึงข้อมูล) — หนึ่งหน้า เรียง id ใหม่→เก่า · `beforeId` = id สุดท้ายของหน้าก่อน */
+export async function submissionsOfCrmContacts(
+  db: FormsDb,
+  tenantId: string,
+  contactIds: readonly string[],
+  page?: { take?: number | null; beforeId?: string | null } | null,
+): Promise<CrmContactSubmission[]> {
   const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && !!x))];
   if (!tenantId || ids.length === 0) return [];
   const rows = await db.formSubmission.findMany({
-    where: { tenantId, crmContactId: { in: ids } },
+    where: { tenantId, crmContactId: { in: ids }, ...(page?.beforeId ? { id: { lt: page.beforeId } } : {}) },
     select: { id: true, formId: true, answersJson: true, createdAt: true, pageUrl: true, referrer: true, utm: true, form: { select: { name: true } } },
-    orderBy: { createdAt: "asc" },
-    take: Math.max(1, Math.min(take, SUBMISSION_ERASE_MAX)),
+    orderBy: { id: "desc" },
+    take: pageSizeOf(page?.take),
   });
   return rows.map((r) => ({ id: r.id, formId: r.formId, formName: r.form.name, answers: answersOf(r.answersJson), createdAt: r.createdAt, pageUrl: r.pageUrl, referrer: r.referrer, utm: r.utm ?? null }));
+}
+
+/** จำนวนคำตอบฟอร์มทั้งหมดของผู้ติดต่อชุดนี้ (ไฟล์ส่งออกที่ถูกตัดบอกยอดจริง) */
+export async function countSubmissionsOfCrmContacts(db: FormsDb, tenantId: string, contactIds: readonly string[]): Promise<number> {
+  const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && !!x))];
+  if (!tenantId || ids.length === 0) return 0;
+  return db.formSubmission.count({ where: { tenantId, crmContactId: { in: ids } } });
 }
 
 /**
@@ -578,30 +596,44 @@ export async function submissionsOfCrmContacts(db: FormsDb, tenantId: string, co
  * 🔴 รีวิว C3.9-fix B1: เฉพาะช่องหลักที่สะพานฟอร์ม → CRM ใช้เป็นตัวตนของผู้ติดต่อ — ช่องชื่อ (key "name" หรือช่องข้อความช่องแรก) ·
  *    `phone` · `email` — ไม่ใช่ทุกช่องชนิดอีเมล/เบอร์ (ช่อง "อีเมลผู้แนะนำ"/"เบอร์ฉุกเฉิน" เป็นของคนอื่น) · ผู้เรียกกรองที่อยู่ของร้าน/คนอื่นออกอีกชั้น
  */
-export async function eraseCrmContactSubmissions(db: FormsDb, tenantId: string, contactIds: readonly string[]): Promise<{ count: number; identity: SubmissionIdentity }> {
+export async function eraseCrmContactSubmissions(
+  db: FormsDb,
+  tenantId: string,
+  contactIds: readonly string[],
+  opts?: { batch?: number | null } | null,
+): Promise<{ count: number; identity: SubmissionIdentity }> {
   const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && !!x))];
   const identity: SubmissionIdentity = { names: [], phones: [], emails: [] };
   if (!tenantId || ids.length === 0) return { count: 0, identity };
-  const rows = await db.formSubmission.findMany({
-    where: { tenantId, crmContactId: { in: ids } },
-    select: { id: true, answersJson: true, form: { select: { fieldsJson: true } } },
-    take: SUBMISSION_ERASE_MAX,
-  });
+  const batch = pageSizeOf(opts?.batch);
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "");
-  for (const r of rows) {
-    const a = answersOf(r.answersJson);
-    const fields = fieldsOf(r.form.fieldsJson);
-    const nameKey = fields.find((f) => f.key === "name")?.key ?? fields.find((f) => f.type === "text")?.key ?? "name";
-    if (str(a[nameKey])) identity.names.push(str(a[nameKey]));
-    if (str(a.phone)) identity.phones.push(str(a.phone));
-    if (str(a.email)) identity.emails.push(str(a.email));
+  let count = 0;
+  for (let cursor: string | null = null; ; ) {
+    const rows: { id: string; answersJson: Prisma.JsonValue; form: { fieldsJson: Prisma.JsonValue } }[] = await db.formSubmission.findMany({
+      where: { tenantId, crmContactId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, answersJson: true, form: { select: { fieldsJson: true } } },
+      orderBy: { id: "asc" },
+      take: batch,
+    });
+    for (const r of rows) {
+      const a = answersOf(r.answersJson);
+      const fields = fieldsOf(r.form.fieldsJson);
+      const nameKey = fields.find((f) => f.key === "name")?.key ?? fields.find((f) => f.type === "text")?.key ?? "name";
+      if (str(a[nameKey])) identity.names.push(str(a[nameKey]));
+      if (str(a.phone)) identity.phones.push(str(a.phone));
+      if (str(a.email)) identity.emails.push(str(a.email));
+    }
+    if (rows.length) {
+      count += (
+        await db.formSubmission.updateMany({
+          where: { tenantId, id: { in: rows.map((r) => r.id) } },
+          data: { answersJson: {}, ip: null, pageUrl: null, referrer: null, utm: Prisma.DbNull, webSessionId: null },
+        })
+      ).count;
+    }
+    if (rows.length < batch) break;
+    cursor = rows[rows.length - 1]!.id;
   }
-  const n = rows.length
-    ? await db.formSubmission.updateMany({
-        where: { tenantId, id: { in: rows.map((r) => r.id) } },
-        data: { answersJson: {}, ip: null, pageUrl: null, referrer: null, utm: Prisma.DbNull, webSessionId: null },
-      })
-    : { count: 0 };
-  return { count: n.count, identity: { names: [...new Set(identity.names)], phones: [...new Set(identity.phones)], emails: [...new Set(identity.emails)] } };
+  return { count, identity: { names: [...new Set(identity.names)], phones: [...new Set(identity.phones)], emails: [...new Set(identity.emails)] } };
 }
 // ◂ CRM C3.9-fix

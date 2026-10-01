@@ -48,6 +48,14 @@ export function ContactPrivacyBlock({
     a.download = r.filename;
     a.click();
     URL.revokeObjectURL(url);
+    if (!r.complete) {
+      // CRM C5.5-fix9: ไฟล์ถูกตัดที่เพดานขนาด — บอกตรง ๆ ว่าไม่ครบตารางไหน (ในไฟล์มี `complete: false` + `truncated` ด้วย)
+      const cut = Object.entries(r.truncated)
+        .map(([t, n]) => `${t} ${n.exported.toLocaleString("th-TH")} จาก ${n.total.toLocaleString("th-TH")} แถว`)
+        .join(" · ");
+      setMsg({ ok: false, text: `ดาวน์โหลดไฟล์แล้ว แต่ข้อมูลยังไม่ครบ — บางตารางมีข้อมูลมากเกินกว่าจะใส่ในไฟล์เดียว (${cut}) · ไฟล์มีแถวใหม่สุดก่อน ติดต่อทีม SHARK เพื่อขอส่วนที่เหลือ` });
+      return;
+    }
     setMsg({ ok: true, text: "ดาวน์โหลดไฟล์ข้อมูลของผู้ติดต่อนี้แล้ว — ส่งให้เจ้าของข้อมูลผ่านช่องทางที่ปลอดภัย" });
   }
 

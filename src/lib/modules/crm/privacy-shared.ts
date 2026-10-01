@@ -69,7 +69,12 @@ export const CRM_ERASE_AUDIT_ACTION = "crm.contact.erase";
 
 export type ContactExportBundle = {
   exportedAt: string;
+  /** CRM C5.5-fix9 (hunt-3 H3-2): true = ทุกแถวของทุกตารางอยู่ในไฟล์ · false = มีตารางถูกตัดที่เพดานขนาดไฟล์ (ดู `truncated`) */
+  complete: boolean;
+  /** เฉพาะเมื่อไม่ครบ: ตารางที่ถูกตัด → จำนวนที่อยู่ในไฟล์ (แถวใหม่สุด) และยอดจริงของเขาในระบบ */
+  truncated?: Record<string, { exported: number; total: number }>;
   contact: Record<string, unknown>;
+  /** แต่ละตารางเรียงคงที่ (ส่วนใหญ่ id ใหม่→เก่า · ความยินยอมเรียงตามเวลา) — ส่งออกซ้ำได้ไฟล์เดียวกัน */
   tables: Record<string, Record<string, unknown>[]>;
 };
 
