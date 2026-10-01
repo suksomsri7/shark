@@ -348,6 +348,23 @@ console.log("\n── E: pinned outputs ──");
   chk("HS-E.12", "comment dropped: `a<!-- x -->b` → `ab`", K("a<!-- x -->b") === "ab" && C("a<!-- x -->b") === "ab", "ab", `${cut(K("a<!-- x -->b"))} ${cut(C("a<!-- x -->b"))}`, "MAJOR");
 }
 
+// ═════════════════════════════ G · CRM inbound HTML cap (review S2) ═════════════════════════════
+console.log("\n── G: CRM inbound HTML capped before sanitising ──");
+{
+  const { existsSync, readFileSync } = await import("node:fs");
+  const src = existsSync("src/lib/modules/crm/emails.ts") ? readFileSync("src/lib/modules/crm/emails.ts", "utf8") : "";
+  const cap = /const (\w+) = str\(payload\?\.html\)\.slice\(0, (1_000_000|1000000|512_000|524_288)\);/.exec(src);
+  const v = cap?.[1] ?? "\u0000";
+  const ok = !!cap && src.includes(`sanitizeHtml(${v}, { allowImages: true`) && src.includes(`htmlToText(${v})`) && !/sanitizeHtml\(str\(payload\?\.html\)/.test(src) && !/htmlToText\(str\(payload\?\.html\)\)/.test(src);
+  const big = "<a ".repeat(Math.ceil(1_000_000 / 3)).slice(0, 1_000_000);
+  const t0 = performance.now();
+  core.sanitizeHtml(big, { allowImages: true, allowLinkSchemes: MAILTO });
+  core.htmlToText(big);
+  const ms = performance.now() - t0;
+  chk("HS-G.1", `crm/emails.ts ingestInbound slices payload.html to ≤ 1 MB once and feeds that to BOTH sanitizeHtml and htmlToText · worst shape at the cap = ${ms.toFixed(0)} ms (< 1 500)`,
+    (src === "" || ok) && ms < 1500, "capped + < 1 500 ms", `cap=${!!cap} ms=${ms.toFixed(0)}`, "MAJOR");
+}
+
 // ═════════════════════════════ F · engine decodeAttr ≡ the C5.4-E regex decoder (differential fuzz) ═════════════════════════════
 console.log("\n── F: decodeAttr differential fuzz ──");
 {
