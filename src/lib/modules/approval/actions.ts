@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan, type MembershipCtx } from "@/lib/core/rbac";
-import { createPolicy, updatePolicy, setPolicyActive, decide, bulkDecide, cancelRequest } from "./service";
+import { createPolicy, updatePolicy, setPolicyActive, bulkDecide, cancelRequest } from "./service";
 
 const SETTINGS_PATH = "/app/settings/approval";
 const APPROVALS_PATH = "/app/approvals";
@@ -151,15 +151,18 @@ export async function togglePolicyAction(formData: FormData): Promise<void> {
 }
 
 // อนุมัติ/ไม่อนุมัติคำขอ (ปุ่มในหน้า "รออนุมัติของฉัน")
-export async function decideAction(formData: FormData): Promise<void> {
+// HF-HR-0 ▸ รอบ 5b (H3 · มติ D2): คืนผลเป็นข้อมูล { ok, reason } — เหตุผลที่ปฏิเสธ (เช่น คำขอของตัวเอง) ต้องถึงจอ
+//   (error ที่ throw ถูก production แทนด้วยข้อความกลาง) · ใช้ทางเดียวกับหลายใบ (bulkDecide 1 ใบ = เหตุผลชุดเดียวกัน) ◂
+export async function decideAction(formData: FormData): Promise<{ ok: boolean; reason?: string }> {
   const auth = await requireTenant();
   assertCan(membershipOf(auth), { module: "approval", action: "approval.request.decide" });
   const requestId = String(formData.get("requestId") ?? "");
   const rawDecision = String(formData.get("decision") ?? "");
   const note = String(formData.get("note") ?? "").trim() || null;
-  if (!requestId || (rawDecision !== "APPROVED" && rawDecision !== "REJECTED")) return;
-  await decide(membershipOf(auth), ctxOf(auth), requestId, { decision: rawDecision, note });
+  if (!requestId || (rawDecision !== "APPROVED" && rawDecision !== "REJECTED")) return { ok: false, reason: "การตัดสินไม่ถูกต้อง" };
+  const res = await bulkDecide(membershipOf(auth), ctxOf(auth), [requestId], rawDecision, note);
   revalidatePath(APPROVALS_PATH);
+  return res.done === 1 ? { ok: true } : { ok: false, reason: res.failed[0]?.reason ?? "ตัดสินคำขอไม่สำเร็จ" };
 }
 
 // อนุมัติ/ปฏิเสธหลายคำขอพร้อมกัน (checkbox หลายรายการ) — สิทธิ์เดียวกับตัดสินรายใบ

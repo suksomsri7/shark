@@ -1,0 +1,54 @@
+# HF-HR-0 round 5c — control runs: each fix reverted ALONE (F1 = hr/payroll.ts at 29201662 · F5 = payroll-actions.ts + payroll-ui.tsx at 29201662 and PayAdjustRowActions.tsx removed · F3 = only the bulkDecide catch hunk of approval/service.ts removed · F2 = hr/service.ts at 29201662), oracle run, fix restored (cmp-verified)
+
+## control F1
+## start 19:31:37 UTC
+  ❌ [F1-1] 🔴 ผู้อนุมัติเงินเดือน (ผูกแถวตัวเอง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงิน (DEDUCTION) และเบิกล่วงหน้า (ADVANCE) ของแถวตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน — expected ปฏิเสธ ×2 · PENDING | actual [{"ok":true},{"ok":true}] REJECTED/REJECTED
+  ❌ [F1-1b] เหตุผล = 'ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน' — expected ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน | actual undefined | undefined
+  ❌ [F1-2] ไม่รู้ตัวผู้ตัดสิน (userId ว่าง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงินไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน เหมือน E1) · คง PENDING — expected ปฏิเสธ · PENDING | actual {"ok":true} REJECTED
+  ❌ [F1-3] 🔴 ลบรายการหักเงิน 22,000 บาทที่เจ้าของร้านอนุมัติแล้ว (แถวตัวเอง) ไม่ได้ · ลบรายการหัก/เบิกล่วงหน้าที่ยังรอของแถวตัวเองไม่ได้ — แถวอยู่ครบ สถานะเดิม — expected ปฏิเสธ ×3 · แถวคงเดิม | actual [{"ok":true},{"ok":true},{"ok":true}] undefined/undefined/undefined
+  ❌ [F1-3b] เหตุผล = 'ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ' · ไม่มีประวัติการลบของแถวเหล่านี้ — expected ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ | actual undefined | undefined | undefined
+  ❌ [F1-4] ผู้อนุมัติลบโบนัสที่อนุมัติแล้วของเพื่อนร่วมงานได้ (สิทธิ์เดียวกับอนุมัติ) · แถวหาย · มีประวัติ 1 แถว: ใคร · แถวไหน · ชนิด · ยอด · สถานะตอนลบ · พนักงาน — expected ok · ประวัติครบ | actual {"ok":true} audit=null
+  ❌ [F1-5] ผู้อนุมัติอีกคน (ไม่ผูกแถวนี้) ปฏิเสธเบิกล่วงหน้า และลบรายการหักที่อนุมัติแล้วของแถวผู้อนุมัติคนแรกได้ — มีประวัติการลบ (สถานะตอนลบ APPROVED) — expected REJECTED · ลบได้ · ประวัติ | actual [{"ok":true},{"ok":true}] audit=false
+  ❌ [F1-6] ผู้ยื่นยกเลิกคำขอเพิ่มเงิน (โบนัส) ที่ยังรออนุมัติของตัวเองได้ตามเดิม (แถวตัวเอง · ชนิดเพิ่มเงิน · PENDING · ตัวเองเป็นผู้ยื่น) — มีประวัติ — expected ok · ประวัติ | actual {"ok":true} audit=false
+  ❌ [F1-7] เจ้าของร้าน (ผูกแถวตัวเอง): ปฏิเสธรายการหักเงินของแถวตัวเอง + ลบเบิกล่วงหน้าที่อนุมัติแล้วของแถวตัวเองได้ — มีประวัติ — expected ok ×2 | actual [{"ok":true},{"ok":true}] audit=false
+  ❌ [F1-8] ทางระบบ (hr facade / CRM — ไม่ส่งผู้ใช้) ลบรายการที่ยังรอได้เหมือนเดิม · มีประวัติ actorType SYSTEM — expected ok · SYSTEM | actual {"ok":true} audit=undefined
+  ❌ [F1-9] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติยังถูกหัก 22,000 บาท (deduct 2,200,000 สตางค์ · รายการเดิมเข้ารอบ) — ไม่หายเพราะเจ้าตัวลบ/ปฏิเสธ — expected deduct 2200000 | actual run=true deduct=0 dAppRun=null
+ผ่าน 181/192
+FINDINGS: CRITICAL 2 · MAJOR 8 · MINOR 1
+JSON_SUMMARY {"total":192,"passed":181,"findings":[{"id":"F1-1","sev":"MAJOR"},{"id":"F1-1b","sev":"MAJOR"},{"id":"F1-2","sev":"MINOR"},{"id":"F1-3","sev":"CRITICAL"},{"id":"F1-3b","sev":"MAJOR"},{"id":"F1-4","sev":"MAJOR"},{"id":"F1-5","sev":"MAJOR"},{"id":"F1-6","sev":"MAJOR"},{"id":"F1-7","sev":"MAJOR"},{"id":"F1-8","sev":"MAJOR"},{"id":"F1-9","sev":"CRITICAL"}]}
+## end 19:33:58 UTC rc=1
+
+restored+cmp ok
+## control F5
+## start 19:33:58 UTC
+  ❌ [F5-1] decideAdjustmentAction + cancelAdjustmentAction คืนผลเป็นข้อมูล { ok, reason } (ไม่ใช่ void) และส่งเหตุผลของ service ต่อ (res.reason) — expected คืนข้อมูล | actual export async function decideAdjustmentAction(formData: FormData) {
+  ❌ [F5-2] หน้าเงินเดือน: ปุ่มอนุมัติ/ไม่อนุมัติ/ลบ ของแต่ละรายการอยู่ใน client component ที่แสดงเหตุผลที่ถูกปฏิเสธในแถวนั้น (role=alert) · ไม่มีฟอร์มที่ทิ้งผลแบบเดิม — expected มี | actual {"client":false,"alert":false,"used":false,"oldForms":true}
+  ❌ [F5-3] PayAdjustRowActions ("use client") import แค่ react + server actions ของเงินเดือน + ปุ่มกลาง — ไม่ถึง prisma — expected 3 import | actual []
+  ❌ [F3-3] ปุ่มรายการเงิน: ข้อผิดพลาดที่ไม่คาดคิด → console.error + ข้อความกลาง (ไม่คืน e.message) — expected ใช่ | actual ไม่ใช่
+  ❌ [F1-10] ลบรายการเงินมีทางเดียวใน src: cancelAdjustmentAction (สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ) ส่ง userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER — expected 1 จุด · ผู้ใช้จริง | actual ["src/lib/modules/hr/payroll-actions.ts: cancelAdjustment({ tenantId: auth.active.tenantId, systemId }, id);"]
+ผ่าน 187/192
+FINDINGS: CRITICAL 0 · MAJOR 5 · MINOR 0
+JSON_SUMMARY {"total":192,"passed":187,"findings":[{"id":"F5-1","sev":"MAJOR"},{"id":"F5-2","sev":"MAJOR"},{"id":"F5-3","sev":"MAJOR"},{"id":"F3-3","sev":"MAJOR"},{"id":"F1-10","sev":"MAJOR"}]}
+## end 19:36:20 UTC rc=0
+
+restored+cmp ok
+## control F3
+## start 19:36:21 UTC
+  ❌ [F3-1] bulkDecide (ทาง decideAction/bulkDecideAction): ข้อผิดพลาดที่ไม่คาดคิด → เหตุผล = 'ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง' · ไม่มี '/' · 'prisma' · รหัส — expected ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง | actual 
+  ❌ [F3-2] ข้อผิดพลาดตัวจริงถูกบันทึกด้วย console.error ฝั่ง server — expected ≥ 1 | actual 0 
+ผ่าน 190/192
+FINDINGS: CRITICAL 0 · MAJOR 1 · MINOR 1
+JSON_SUMMARY {"total":192,"passed":190,"findings":[{"id":"F3-1","sev":"MAJOR"},{"id":"F3-2","sev":"MINOR"}]}
+## end 19:39:16 UTC rc=0
+
+restored+cmp ok
+## control F2
+## start 19:39:16 UTC
+  ❌ [F2-1] ทางตรงตัดสินใบลาทันทีที่เห็นแถว ระหว่าง requestLeave (6 รอบ) → ทุกรอบเห็นคำขอในสายแล้ว ⇒ ปฏิเสธ · ใบลา PENDING · คำขอ PENDING (ไม่มีรอบไหนได้ 'สาย PENDING + ใบลา APPROVED') — expected 6/6 no:PENDING:PENDING | actual ok:APPROVED:PENDING ok:APPROVED:PENDING ok:APPROVED:PENDING ok:APPROVED:PENDING ok:APPROVED:PENDING ok:APPROVED:PENDING
+ผ่าน 191/192
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 1
+JSON_SUMMARY {"total":192,"passed":191,"findings":[{"id":"F2-1","sev":"MINOR"}]}
+## end 19:41:36 UTC rc=0
+
+restored+cmp ok
+## ALL DONE 19:41:36 UTC

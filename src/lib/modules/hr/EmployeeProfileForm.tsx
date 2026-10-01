@@ -2,40 +2,12 @@
 
 import { useActionState } from "react";
 import { saveEmployeeProfileAction, type ProfileState } from "./actions";
+import type { EmployeeProfileDto } from "./privacy-shared";
 
 // ฟอร์มโปรไฟล์พนักงาน — บันทึกทีเดียวทั้งหน้า + ผลลัพธ์ inline (ไม่ใช้ alert)
 // ช่องอ่อนไหวจะถูก render เฉพาะผู้มีสิทธิ์ (ตัดสินฝั่ง server แล้วส่ง canSeeSensitive มา)
-type Emp = {
-  id: string;
-  name: string;
-  nickname: string | null;
-  code: string | null;
-  phone: string | null;
-  email: string | null;
-  gender: string | null;
-  birthDate: Date | null;
-  maritalStatus: string | null;
-  position: string | null;
-  department: string | null;
-  employmentType: string | null;
-  startDate: Date | null;
-  endDate: Date | null;
-  addressLine: string | null;
-  subdistrict: string | null;
-  district: string | null;
-  province: string | null;
-  postcode: string | null;
-  emergencyName: string | null;
-  emergencyPhone: string | null;
-  emergencyRelation: string | null;
-  note: string | null;
-  nationalId: string | null;
-  ssoNumber: string | null;
-  houseRegAddress: string | null;
-  bankName: string | null;
-  bankAccountNo: string | null;
-  bankAccountName: string | null;
-};
+// HF-HR-0 (D4): รับเฉพาะ DTO ที่ server กรองแล้ว (privacy-shared) — ช่องอ่อนไหวมีคีย์เฉพาะผู้ดูเงินเดือน · ไม่มี PIN
+type Emp = EmployeeProfileDto;
 
 const muted = "text-[color:var(--color-muted)]";
 const d = (v: Date | null) => (v ? v.toISOString().slice(0, 10) : "");

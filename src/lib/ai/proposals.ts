@@ -548,10 +548,13 @@ async function dispatch(
 
   if (kind === "hr_decide_leave") {
     const p = payload as DecideLeavePayload;
+    // HF-HR-0 ▸ รอบ 4 (R4.1a): ไม่รู้ตัวคนกดยืนยัน (เช่นแผนงานหลายขั้น — MembershipCtx ไม่มี user id) = ไม่มีผู้ตัดสินจริง
+    //   ⇒ ห้ามอนุมัติ/ไม่อนุมัติ/ถอน (กติกาห้ามตัดสินใบของตัวเอง + การถอนต้องมีผู้ตัดสิน จะถูกข้ามเงียบ ๆ) ◂
+    if (!userId) throw new Error("ทำรายการนี้ผ่านแผนงานอัตโนมัติไม่ได้ กรุณาอนุมัติใบลาในหน้าระบบพนักงาน");
     const system = await resolveSystem(tenantId, "HR");
     if (!system) throw new Error("ยังไม่ได้เปิดระบบพนักงาน");
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
-    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, null);
+    await hrSvc.decideLeave({ tenantId, systemId: system.id }, String(p.leaveId ?? ""), decision, userId ?? null); // HF-HR-0 ▸ ผู้กดยืนยัน = ผู้ตัดสิน (กันอนุมัติใบลาของตัวเอง) ◂
     return decision === "APPROVED" ? "อนุมัติใบลาเรียบร้อยแล้ว" : "ไม่อนุมัติใบลาเรียบร้อยแล้ว";
   }
 
@@ -1118,6 +1121,12 @@ async function dispatch(
 
   if (kind === "approval_decide") {
     if (!m) throw new Error("ต้องมีสิทธิ์ผู้ใช้เพื่ออนุมัติคำขอ");
+    // HF-HR-0 ▸ รอบ 5 (R5.5): ผู้ตัดสิน = ผู้กดยืนยันที่ระบบรู้ตัว (userId จากทางยืนยัน · ผู้เรียกบางรายใส่ไว้ใน m) — ไม่รู้ตัว (เช่นแผนงานอัตโนมัติ)
+    //   ⇒ ปฏิเสธไทยก่อนค้น/เขียน (เดิม cast m ทั้งที่ MembershipCtx ไม่มี userId ⇒ Prisma error ดิบพร้อม path/รหัสร้าน/รหัสคำขอหลุดถึงผู้ใช้)
+    const mUser = (m as { userId?: unknown }).userId;
+    const uid = userId || (typeof mUser === "string" && mUser.trim() ? mUser : null);
+    if (!uid) throw new Error("ทำรายการนี้ไม่ได้ เพราะระบบไม่ทราบว่าใครเป็นผู้กดยืนยัน — กรุณาตัดสินคำขอในหน้า “อนุมัติ”");
+    // ◂ HF-HR-0
     const p = payload as ApprovalDecidePayload;
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
     let requestId = String(p.requestId ?? "").trim();
@@ -1141,12 +1150,12 @@ async function dispatch(
     }
     // decide ตรวจสิทธิ์ตาม step ด้วย (m ต้องมี userId ตอน runtime — คนกดยืนยันจริง)
     const res = await approvalSvc.decide(
-      m as MembershipCtx & { userId: string },
+      { ...m, userId: uid },
       { tenantId },
       requestId,
       { decision, note: p.note ? String(p.note).trim() : null },
     );
-    if (!res.ok) throw new Error("ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้");
+    if (!res.ok) throw new Error(res.reason ?? "ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้"); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะก่อน ◂
     if (res.status === "APPROVED") return "อนุมัติคำขอเรียบร้อยแล้ว";
     if (res.status === "REJECTED") return "ปฏิเสธคำขอเรียบร้อยแล้ว";
     return "บันทึกการพิจารณาแล้ว — รอผู้อนุมัติขั้นถัดไป";
