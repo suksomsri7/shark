@@ -500,7 +500,8 @@ try {
     const added = SC.findRawInsensitive(`${svc}\nexport const __probe = { name: { equals: "x", mode: "insensitive" } };`);
     const newHit = added.filter((h: Any) => !owedSnippets.includes(h.snippet));
     chk("R2-6", "F15: scanner catches all 12 must-hit spellings (incl. shorthand · swapped · single quote · comma in value · quoted key · QueryMode · variable object · spread · // in string · multi-line · mode variable) and none of the 8 negatives · a NEW `name: {equals, mode}` in account/service.ts is outside the line-anchored debt",
-      miss.length === 0 && fp.length === 0 && added.length === 3 && newHit.length === 1, `miss=${miss.join(",") || "-"} falsePos=${fp.join(",") || "-"} sites=${added.length} newOutsideDebt=${newHit.length}`);
+      // ORACLE-EDIT C5.5-fix4: the 2 OWED sites in account/service.ts are fixed (ciEquals) ⇒ only the injected probe site remains (was 3)
+      miss.length === 0 && fp.length === 0 && added.length === 1 && newHit.length === 1, `miss=${miss.join(",") || "-"} falsePos=${fp.join(",") || "-"} sites=${added.length} newOutsideDebt=${newHit.length}`);
   });
 
   // RV2-7 · nav: บริษัท tab visible on every CRM page for anyone with crm.company.read
