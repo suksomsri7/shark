@@ -169,3 +169,83 @@ posting of each book then pays a CREATE).
 - suites (mine vs controller base `main-c2.log`): qc-acc-v2-payments **162/162** (base 162) · qc-acc-v2-groups **174/174** (base 174) ·
   qc-account-api-write-payments **32/32** (base 32) — all rc 0, ❌ 0.
 - probes: `r1-db-facts` (facts above) · `r2-money` 10/11 → 11/11 after re-judging D (probe error), CLEAN 0 rows / 0 tenants / 0 sequences.
+
+---
+
+## Round 2 (builder 0f382526 · diff 342a16d3..0f382526)
+
+VERDICT r2: **MERGEABLE** — M1 and M3 closed and proved, M2 reduced to a runbook rule that is written down. No new BLOCKER/MAJOR.
+Open: NOTE r2-n1 (theoretical check-then-setval race on the >1000 heal path, never a stored duplicate) · NOTE r2-n2 (error mapping is
+slightly broad on the fallback path) · two runbook additions (§4, doc only) · n4 drift = read CI of the merge commit · owner Q1.
+
+### 1 · M1 allocator `account_alloc_journal_no` — CLOSED
+- Logic (`20261104000001…/migration.sql`): nextval → `NOT EXISTS (systemId, prefix||pad(n))` on the unique index → if taken, floor of the
+  book; gap ≤ 1000 ⇒ step with `nextval` (forward-only, race-free); gap > 1000 ⇒ `SELECT last_value` then `setval(f)` only if below. ≤ 8
+  attempts, then P0001. Cannot loop; cannot store a duplicate (unique index stays the last word).
+- **R3-H1** (`r3-m1-adversarial.mts`): sequence reset below a dense block of 1 600 foreign numbers, 16 concurrent allocations × 50 rounds →
+  800 values, **0 rounds with a repeated value**, 0 inside the block, 0 errors. **R3-H2**: 999 taken numbers above → one payment lands on
+  `…-1001` (whole payment 328 ms). **R2-C1** (contract flipped to M1): old code writes `…-0003` → p3/p4 ok, numbers unique.
+- NOTE r2-n1 (theoretical, not observed): the >1000 path is check-then-act (`last_value` read, then `setval(f)`); if another healer's
+  `setval(f)` and a later `nextval` land between the two statements, this `setval(f)` moves the sequence back by the values taken in
+  between. Effect is the same as H3 (a committed duplicate is skipped on the next attempt; an uncommitted one costs that payment a P2002) —
+  never a stored duplicate. Forward-only alternative: `PERFORM nextval(r) FROM generate_series(1, f - n)` instead of setval (≈1 s per
+  million, once). Not a merge condition.
+- Residual (H3, INFO): an OLD-code row still uncommitted at check time — the new payment waits for it (2.6 s) and then fails once with the
+  generic `บันทึกชำระไม่สำเร็จ`; the next payment is fine. Only while old and new code overlap (deploy switchover) or via r2-n1.
+- Bound (H4, INFO): taken numbers the book's floor cannot see (another book's rows carrying this book's prefix — 0 on QC2) → 8 attempts →
+  `ออกเลขที่ใบสำคัญไม่ได้ … กรุณาแจ้งผู้ดูแลระบบ` (nothing written), next attempts advance 8 at a time and get through. Add the cross-book
+  prefix count to pre-check 2 (r1 query) — then this cannot happen on prod.
+- Error mapping (`gl.ts allocateJournalNo`): 42501 → privilege message · 42809 / P0001 / 2200H / 42883 / any message naming our functions →
+  "counter unusable"; everything else re-thrown untouched ✅. NOTE r2-n2: the message regex also maps e.g. a statement/lock timeout or 40P01
+  raised INSIDE `account_jno_ensure` (CONTEXT names the function) to "แจ้งผู้ดูแลระบบ" instead of the retryable generic text — only on
+  the in-tx fallback create path; harmless. `…-null`: NULL/≤0 → throws (n1 closed); the SQL loop also re-ensures a NULL regclass.
+- ORACLE-EDITs in my files: R2-C1 (M1 contract) and R2-D (exclude the rolled-back creator's value) are exactly what I would have written;
+  `r1-db-facts.mts:44` `1n`→`BigInt(1)` is type-only ✅. Oracle N7 ×2 matches my m4 text (open → InTx → finalize → throw; stamped === next) ✅.
+
+### 2 · Setup-time sequences — OK
+- Hooks: `loadAccountSystem` (every account page/action), `requireAccountApi` (REST/AI tools), `saveSettings`, `ensureAccounting` without
+  tx. Paths that reach a first posting WITHOUT them: POS bridge (`applyExternalSale`), inventory bridge, payroll, public payment-request
+  webhook (`payment-request.ts` → `recordPayment`), recurring cron / period sweep, gift cards, CRM bridges — they use the in-tx fallback =
+  the round-1 behaviour (accepted, R2-D proves the concurrent case). Only systems outside the migration's 500/90-day set that nobody opens
+  in the UI/REST before such a posting take that path.
+- Cost (R3-H5): `account_jno_ensure_system` on an existing system = **10 ms median = one `SELECT 1` round trip**; once per system per
+  process. Acceptable.
+- Failure only logs → fallback; privilege path proven with a seam only. Acceptable: probe-m1 S3 proved the same code-extraction path with a
+  REAL Postgres error (42809 from a squatted name, P2010 envelope), and the message regex is a second net.
+
+### 3 · M3 migration — CLOSED
+- Pre-create = ≤ 500 most recently active systems (90 days), `account_jno_create` has no exception block. **R3-E2**: 500 systems in one
+  transaction → **2 513 locks (5.03/system), 0 subtransactions (pg_stat_get_backend_subxact)**, 5.6 s ⇒ 35 % of the smallest Neon compute's
+  lock table (64 × 112). Idempotent (to_regclass first, IF NOT EXISTS). Note: `account_jno_create` would raise 23505 if a concurrent app
+  `ensure` created the same name — impossible on the first prod run (old code creates nothing); a re-run is never triggered by Prisma.
+- All 10 functions `SET search_path = pg_catalog, public`, not SECURITY DEFINER, every object `public.`-qualified (r4 on QC2) ✅. Identifiers
+  `[a-z0-9_]`/md5 via `%I`/quote_ident/regclass — no injection ✅. Tails > 18 digits ignored by the floor (`(^|\D)\d{1,18}$`) — no abort ✅.
+- `_prisma_migrations` on QC2 (r4, read-only): `…000000` (05:06, finished) + `…000001` (07:54, finished), none rolled back (the two old
+  unfinished rows are 2026-09 account migrations, unrelated). Builder's `migrate status` log: "Database schema is up to date". `…000000`
+  existed only in this worktree (commits 6587df55..342a16d3, branch wip/crm-c54c-r8 only; no other worktree has either folder);
+  `qc-prisma.sh` deploys were QC2 only (notes CP-2, R2-CP-3) ⇒ QC1/QC3/prod never applied it. The register draft already says "do NOT
+  carry QC2's orphan row".
+
+### 4 · Runbook — correct and complete, two additions
+- Add to pre-check 2: `SELECT count(*) FROM "AccountJournalEntry" WHERE substring("docNo" from '^[A-Z]+') <> CASE "book" WHEN 'SALES' THEN 'SV'
+  WHEN 'PURCHASES' THEN 'PV' WHEN 'RECEIPTS' THEN 'RV' WHEN 'PAYMENTS' THEN 'PY' ELSE 'JV' END` → 0 (H4).
+- Pre-check 3 consequence should read "systems outside the pre-created set cannot post at all" (not just "new systems").
+- M2 still required, but softer: old code never calls the allocator, so the function left in the DB does NOT make old code safer
+  (R2-C2 still true on 0f382526). What remains dangerous on rollback: books whose current-month count+1 hits an existing number freeze
+  (every posting P2002) until roll-forward. With M1, rolling FORWARD again heals them instantly (the allocator skips what old code
+  wrote), so an Instant Rollback is now recoverable within minutes instead of "until month end" — keep the rule (prefer the prepared
+  rollback build), but if Instant Rollback is used in an emergency, roll forward as soon as possible.
+
+### 6 · n4 drift — still unproven, but CI WILL exercise it
+- `pnpm drift` = `prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code` (package.json:22); CI runs it right
+  after `migrate deploy` (ci.yml:123-129) on a branch created from the prod default branch (`neon-branch.mts`, no parent ⇒ default) — so
+  the DO block pre-creates up to 500×5 sequences there and drift sees them. Prisma 7.8's engine introspects `pg_sequences`; on PostgreSQL
+  its differ only emits sequence steps for column defaults/CockroachDB (my reading — not provable read-only). Prediction: clean. A
+  false drift only turns CI red (drift is a check; Vercel's prod build runs `migrate deploy` + `migrate status`, never `diff`) — a merge
+  gate to read on the merge commit's CI, not a prod risk.
+
+### 5 · Reruns (reviewer, QC2, src 0f382526, logs `/tmp/c54n-review/r2/` + `.qc-shots/c54n-review/r2/`)
+- oracle **12/12** (N6 extra wait goods 140 / service 133 ms; N7 literal) · probe-m1 **10/10** · r2-money **11/11** (R2-C1 under the M1
+  contract ✅, C2 rollback hazard still shown) · r3-m1-adversarial **7/7** (H1–H5, E2, CLEAN) · r11 Q3 rounds 1/2 singles **20/20 · 20/20**,
+  5-child 6/6 · 6/6, 40-child **1/1 · 1/1**, raw {} · deadlock ×40 ok|ok 40/40, cycles 0 · qc-acc-v2-payments **162/162** (base 162) ·
+  qc-account-cpa **107/107** (base 107) · r1 facts: 0 sequences behind the table, 0 odd shapes, 0 cross-book prefixes · r4 rows/functions as §3.
