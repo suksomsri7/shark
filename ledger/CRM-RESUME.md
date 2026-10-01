@@ -40,7 +40,34 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
-### 0.19 ▶️ 30 Sep 2026 ~10:00 UTC — RESUMED (new Claude account) · owner: **1 lane first** · 44/53 = 83%
+### 0.20 🔴 HANDOFF 1 Oct 2026 ~04:30 UTC — owner moves to another machine + account (new session starts HERE)
+**Accepted 45/53 (85%)** · branch `session/crm` (pushed) · prod = main 3677d983 (nothing pushed to prod since 27 Sep — ⛔ ask the owner before `git push origin HEAD:main`; batches C/D/E/UI/J3 are on session/crm only).
+
+### What is where (all on this VPS; all WIP branches pushed to origin)
+| item | state | location |
+|---|---|---|
+| D (FB-QUEUE) | ✅ committed 5fb440fd | session/crm |
+| UI fix (C4.2-fix + C4.4-fix2) | ✅ committed 03848b5b | session/crm |
+| J3 (C4.4-fix3) | ✅ committed 46f952cc | session/crm · C4.4 ACCEPTED on it |
+| **C (FB-MONEY r5–r14)** | patch APPLIED to the MAIN working tree, **UNCOMMITTED** (32 files: src/lib/modules/account/*, docs/api/ACCOUNT-API.md, scripts/pending/c54c + hunt-54c-r6..r12, scripts/qc-crm-c2.7.mts, ledger/wo-notes/crm-C5.4-C*.md) · gate unit `crm-main-c2` → `.qc-shots/crm/main-c2.log` — **all steps green except QC1 ai-skill 32/33 = E1-K2.3 (date roll, env)**; if ALLDONE is present and nothing else is red ⇒ **COMMIT** (`git add -A -- src docs scripts/pending/c54c scripts/pending/hunt-54c-r* scripts/qc-crm-c2.7.mts ledger/wo-notes/crm-C5.4-C*.md` — NEVER `scripts/*-expected.json` or `scripts/fixtures`) with message 'crm(C5.4-C FB-MONEY): …' (summary in wo-notes C5.4-C rounds 5–14) · source of truth = worktree c54c @ 63ea9f45 (origin wip/crm-c54c-r8) |
+| **E (FB-UX)** | ✅ mergeable (review r2 + r3 applied) · c54e @ 314a4175 (origin wip/crm-c54e) · NOT yet on main | patch `git -C /root/projects/shark-crm-c54e diff 03848b5b 314a4175 -- . ':!scripts/crm-expected.json' ':!scripts/member-expected.json'` → apply on main AFTER the C commit (check `git apply --check`; expect small conflicts in `scripts/crm-ui-inventory.json` (3 new rows) / docs — read hunks) → gate on QC1: typecheck · probes `scripts/pending/c54e/*` · c1.3 c1.4 c1.5 c1.6 (S4.4 ORACLE-EDIT is inside the patch) c1.9 c2.1 c2.2 c2.5 c2.6 c2.10 c3.6 c1.11 · qc-crm-c51fix-equiv · c5.3 `--only=L6` via `scripts/qc2.sh` (host-pinned) · fitness ×2 → commit 'crm(C5.4-E FB-UX) …' |
+| C4.2 it4 | in progress · worktree c42b (base 46f952cc) · agent told to checkpoint-commit `WIP C4.2 it4 checkpoint (1 Oct)` → push to origin `wip/crm-c42b` (if the commit exists) · earlier it4 WIP = c42 @ 14cfb52f (origin wip/crm-c42-it4) | resume: new agent, brief = the "C4.2 it4 button oracle lane" prompt in CRM-RUN §4 (1 Oct) + the HANDOFF CHECKPOINT in c42b `ledger/wo-notes/crm-C4.2.md` |
+| C5.4-N (JV numbering) | oracle+design author in progress · c54c `scripts/pending/c54n/` + `ledger/wo-notes/crm-C5.4-N.md` (checkpoint commit requested) · owner **P20** default (a) | resume: builder after reading the design note; needs an additive migration (sequence) |
+| D2 follow-up (D reviewer F1–F6) | not started | after C+E merged (emails.ts) — see §0.19 entry '~16:25 UTC' |
+| C5.5 | not started | round-two hunters on the whole C5.4 diff + 2 random lenses after all batches are on main |
+| C3.10 / C6 | not started | qc:all full (QC1 reseed first — fixes the env reds c3.1/m1.9/c3.7), CP3 owner, HANDOVER, crontab (owner), backfill dry-run (owner), pilot (owner) |
+
+### Machine state
+- Server 3215 = build of 46f952cc on QC1 (started by unit `crm-c44-accept2`, KillMode=process) — stop with `bash scripts/acc-v2-serve.sh stop` before the next build. No 3218/3219/3220 servers.
+- QC1 has residue from 28 Sep journeys (orphan REVERSED commissions · 3 extra members · missing seed e-mail thread) ⇒ env reds c3.1 54/56 · m1.9 25/26 · c3.7 X1.2/S1.1 — gone after a QC1 reseed (do it at C3.10; controller's delete was blocked by the permission classifier).
+- Worktrees (node_modules bind-mounted — `umount` before removing): c54c c54d c54e cj3 cui c42 c42b (+ old ones). Heartbeat/one-shot crons were session-only (gone).
+- Owner pending: P18 (STT), P19 (Resend Message-ID real send), **P20 (JV numbering, default a)**, P21 (company score). Lane cap at handoff: 2.
+
+### First steps for the new session
+1. `git -C /root/projects/shark-crm status` — expect ONLY the C patch files + expected jsons dirty. Read `.qc-shots/crm/main-c2.log` tail; if ALLDONE and only E1-K2.3 red ⇒ commit C as above; push session/crm.
+2. Apply + gate + commit E. 3. Resume C4.2 it4 and C5.4-N (builder) with 2 lanes. 4. Then D2 → C5.5 → C3.10 → C6.
+
+## 0.19 ▶️ 30 Sep 2026 ~10:00 UTC — RESUMED (new Claude account) · owner: **1 lane first** · 44/53 = 83%
 - Lane (the only agent): **C5.4-C round 8b builder** (Opus · id ad432d1fb4fb1977d · worktree c54c at 61985bba · QC2 only) — ruling R8-1 option (a): batch from `GRP#…#<child>` key in restoreDocForCheque / voidPaymentInTx / voidVendorPaymentInTx / group void · drops createCheque `paymentIds` + backfill script · one authorised ORACLE-EDIT (probe-r8 G0) · checkpoints in c54c `ledger/wo-notes/crm-C5.4-C.md` "Round 8b" · logs `/tmp/c54c-logs/r9/` · ends with one local WIP commit (no push). If it dies: new agent "continue from the files" with the same ruling.
 - Controller machine work (no quota): unit **crm-c44-accept** (`scripts/pending/run-c44-accept-v1.sh`) = restore QC1 expected → build HEAD + server 3215 → --clean → `--journey all` → --clean · results `.qc-shots/crm/c44-accept/_summary.txt` + `journeys.log` · passed===total ⇒ accept C4.4 (45/53); reds ⇒ classify (known infra: US5 RESEND key · US9 tracker origin).
 - After builder hands back: controller reads the diff → QC1 cheque suites (wht-cheque / cheque-audit / ai-skill · pattern `scripts/pending/run-c54c-r7c-cheque.sh`) → money hunter r9 (read-only, the single lane) → patch incremental onto main → gate (`run-main-c.sh` list) → commit. ⛔ prod push = ask owner.
