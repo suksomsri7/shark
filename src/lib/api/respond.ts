@@ -45,6 +45,9 @@ export const API_ERROR_CODES = [
   "forbidden",
   "unprocessable",
   "upstream_unavailable",
+  // C5.5-fix1 (H55-1) — งานเขียนเริ่มไปแล้วแต่ฐานข้อมูล/เครือข่ายสะดุดกลางทาง ⇒ ไม่รู้ว่าบันทึกสำเร็จหรือไม่ · คีย์เดิมตอบรหัสนี้ซ้ำ
+  //   (ไม่รันซ้ำ) จนหมดอายุ — ผู้เรียกต้องตรวจว่ารายการมีแล้วหรือยัง แล้วส่งใหม่ด้วยคีย์ใหม่
+  "idempotency_outcome_unknown",
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -262,7 +265,7 @@ function isZodError(e: unknown): boolean {
 /** C5.4 (hunter H3): รหัส Prisma ที่แปลว่า "ลองใหม่แล้วอาจผ่าน" ไม่ใช่ "ข้อมูลผิด" */
 const TRANSIENT_PRISMA_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024", "P2028", "P2034"]);
 const TRANSIENT_NET_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EPIPE", "EAI_AGAIN", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"]);
-function isTransientInfraError(e: unknown, depth = 0): boolean {
+export function isTransientInfraError(e: unknown, depth = 0): boolean {
   if (typeof e !== "object" || e === null || depth > 3) return false;
   const o = e as { code?: unknown; name?: unknown; cause?: unknown; errorCode?: unknown };
   const code = typeof o.code === "string" ? o.code : typeof o.errorCode === "string" ? o.errorCode : "";
@@ -309,8 +312,10 @@ export function mapError(e: unknown): MappedError {
     return {
       status: 503,
       code: "upstream_unavailable", // รหัสเดิมของ 503 (ไม่เพิ่มรหัสใหม่ในสัญญา)
-      message_th: "ระบบไม่ว่างชั่วคราว ยังไม่ได้บันทึกรายการนี้ — กรุณาลองใหม่อีกครั้งด้วยค่า Idempotency-Key เดิม",
-      message_en: "Temporarily unavailable; nothing was saved. Retry with the same Idempotency-Key.",
+      // C5.5-fix1 (H55-1): ตัวแปลงกลางไม่รู้ว่า error เกิด "ก่อน" หรือ "หลัง" งานเขียน commit ⇒ ห้ามบอกว่า "ยังไม่ได้บันทึก" ·
+      //   คำขอเขียนที่มีคีย์กันซ้ำได้คำตอบเฉพาะทางจาก `withIdempotency` (ยังไม่เริ่ม = 503 ลองคีย์เดิม · เริ่มแล้ว = 409 outcome_unknown)
+      message_th: "ระบบไม่ว่างชั่วคราว — กรุณาลองใหม่อีกครั้งในอีกสักครู่",
+      message_en: "Temporarily unavailable. Please try again shortly.",
     };
   }
   const raw = e instanceof Error ? e.message : "";

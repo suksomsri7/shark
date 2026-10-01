@@ -73,6 +73,7 @@ const ERROR_DOCS: [code: string, status: string, meaning: string][] = [
   ["idempotency_required", "400", "A write was sent without the `Idempotency-Key` header."],
   ["idempotency_conflict", "409", "The same `Idempotency-Key` was reused with a different body."],
   ["idempotency_in_progress", "409", "A request with this key is still running; retry with the same key."],
+  ["idempotency_outcome_unknown", "409", "A temporary database or network failure hit the write after it had started, so it is unknown whether it took effect. Retries with the same key return this answer (24 h) and never run the write again: check whether the record exists, and if not send it again with a NEW `Idempotency-Key`."],
   ["confirm_required", "409", "A danger operation was called without `confirm: true` (a real boolean)."],
   ["not_found", "404", "No such operation, or the record does not exist inside what this key can see (other shop, other CRM system, other team, outside the key filter)."],
   ["method_not_allowed", "405", "The path exists but not with this method (`Allow` header lists the methods)."],

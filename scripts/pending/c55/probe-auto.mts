@@ -3,7 +3,7 @@
 // Run: bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/c55/probe-auto.mts
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
-import { fixture } from "./_fx.mts";
+const { fixture } = (await import("./_fx.mts" as string)) as { fixture: (label: string) => Promise<Any> };
 
 const fx = await fixture("auto");
 const { P, chk, call, mkShop, mkUser, done } = fx;

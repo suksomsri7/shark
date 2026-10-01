@@ -26,6 +26,8 @@ import { executeActions, WAIT_LEASE_MS, type RunnerChannel, type RunnerEnv, type
 import { prisma } from "./db";
 import { assertCrmLimit, perParentCap } from "./limits"; // CRM C3.9 ▸ เพดานลำดับการติดตาม + ขั้นต่อลำดับ + ผู้อยู่ในลำดับ ◂
 import { assertCanCrm, crmCan, CrmForbiddenError } from "./access";
+import { permissionLabel } from "@/lib/core/permissions"; // CRM C5.5 ▸ H55-2 (ลำดับการติดตาม) ◂
+import { evaluate as rbacEvaluate } from "@/lib/core/rbac"; // CRM C5.5 ▸ H55-2 (ลำดับการติดตาม) ◂
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
 import { contactWhere, dealWhere } from "./where";
@@ -46,6 +48,7 @@ import {
   SEQ_REASON_MAX,
   SEQ_REASON_MIN,
   SEQ_SEND_KINDS,
+  SEQ_STEP_KIND_LABEL, // CRM C5.5 ▸ H55-2 ◂
   thaiHolidayYear,
   THAI_HOLIDAY_YEARS,
   thaiPublicHolidays,
@@ -438,6 +441,27 @@ const stepRows = (tenantId: string, sequenceId: string, version: number, steps: 
 
 // ───────────────────────── จัดการลำดับ ─────────────────────────
 
+// CRM C5.5 ▸ H55-2 (มติผู้คุมงาน — หลัก "ทำอัตโนมัติได้เฉพาะที่ทำเองด้วยมือได้" ใช้กับลำดับการติดตามด้วย): ผู้เขียนขั้น (สร้าง · แก้ขั้น ·
+//   เปิดรับคนใหม่) ต้องทำขั้นนั้นเองด้วยมือได้ — EMAIL = crm.email.send (emails.sendEmail) · LINE = chat.message.send (ตอบลูกค้าทางแชท) ·
+//   TASK = crm.activity.create (activities.logActivity) · WAIT/SMS = ไม่มีประตูมือที่ต้องใช้คีย์เพิ่ม (SMS ยังไม่มีผู้ให้บริการ)
+//   ผู้ลงทะเบียน (crm.sequence.enroll) ยังไม่ถูกตรวจคีย์ของขั้น — รายงานไว้ใน wo-notes C5.5-fix1 (คำถามผู้คุมงาน) ◂
+function assertEditorCanSendByHand(a: MemberActor, kinds: readonly string[]): void {
+  if (a.role === "OWNER") return;
+  const mc = { role: a.role === "CUSTOMER" ? ("STAFF" as const) : a.role, unitAccess: a.unitAccess, permissions: a.permissions };
+  for (const k of new Set(kinds)) {
+    const missing =
+      k === "EMAIL" && !crmCan(a, "crm.email.send") ? "crm.email.send"
+      : k === "TASK" && !crmCan(a, "crm.activity.create") ? "crm.activity.create"
+      : k === "LINE" && (a.role === "CUSTOMER" || !rbacEvaluate(mc, { module: "chat", action: "chat.message.send" })) ? "chat.message.send"
+      : null;
+    if (missing) {
+      const label = SEQ_STEP_KIND_LABEL[k as SeqStepKind] ?? k;
+      throw fail("FORBIDDEN", `ขั้น "${label}" ต้องใช้สิทธิ์ "${permissionLabel(missing)}" ซึ่งบัญชีนี้ยังไม่ได้รับ (ลำดับการติดตามทำได้เฉพาะสิ่งที่ผู้เขียนลำดับทำเองด้วยมือได้) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้เขียนขั้นนี้`);
+    }
+  }
+}
+// ◂ CRM C5.5
+
 // CRM C3.9 ▸ เพดานขั้นต่อลำดับของร้าน (§11.9 ค่าเริ่มต้น 20 = SEQ_MAX_STEPS · `Tenant.limits.crm.stepsPerSequence`) ◂
 async function assertStepCap(ctx: SequencesCtx, n: number): Promise<void> {
   const cap = await perParentCap(ctx.tenantId, "stepsPerSequence");
@@ -450,6 +474,7 @@ export async function createSequence(ctx: SequencesCtx, actor: MemberActor, inpu
   const st = cleanSteps(input?.steps);
   if (!st.ok) throw fail("VALIDATION", st.error);
   await assertStepCap(ctx, st.value.length); // CRM C3.9 ▸ ขั้นต่อลำดับ (เพดานของร้าน) ◂
+  assertEditorCanSendByHand(a, st.value.map((x) => x.kind)); // CRM C5.5 ▸ H55-2 ◂
   const out = await prisma.$transaction(async (tx) => {
     // CRM C3.9 ▸ AUDIT-CLASS X3: เพดานลำดับการติดตามของระบบ — ล็อก + นับ + insert ใน tx เดียว ◂
     await assertCrmLimit(ctx, "sequences", 1, tx);
@@ -490,6 +515,13 @@ export async function updateSequence(ctx: SequencesCtx, actor: MemberActor, id: 
   const st = patch?.steps !== undefined ? cleanSteps(patch.steps) : null;
   if (st && !st.ok) throw fail("VALIDATION", st.error);
   if (st && st.ok) await assertStepCap(ctx, st.value.length); // CRM C3.9 ▸ ขั้นต่อลำดับ (เพดานของร้าน) ◂
+  // CRM C5.5 ▸ H55-2: ขั้นใหม่ = ตรวจขั้นใหม่ · เปิดรับคนใหม่ (ไม่ส่งขั้นมา) = ตรวจขั้นของเวอร์ชันปัจจุบัน ◂
+  if (st && st.ok) assertEditorCanSendByHand(a, st.value.map((x) => x.kind));
+  else if (head.active === true) {
+    const cur0 = await loadSequence(ctx, id);
+    const kinds = await prisma.crmSequenceStep.findMany({ where: { sequenceId: cur0.id, version: cur0.version }, select: { kind: true } });
+    assertEditorCanSendByHand(a, kinds.map((x) => String(x.kind)));
+  }
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "CrmSequence" WHERE "id" = ${str(id)} FOR UPDATE`;
     const cur = await loadSequence(ctx, id, tx);

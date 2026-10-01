@@ -751,7 +751,9 @@ function assertEditor(a: MemberActor, row: CrmActivity, what: string): void {
 export async function rescheduleActivity(ctx: ActivitiesCtx, actor: MemberActor, id: string, input: RescheduleInput): Promise<ActivityDto> {
   const { a } = await enter(ctx, actor);
   const row = await loadActivity(ctx, a, id);
-  need(a, "crm.activity.create");
+  // CRM C5.5 ▸ L55-3: คีย์เดียวทุกประตู (หน้าจอ · REST · บริการ) = `crm.activity.complete` ตามพิมพ์เขียว §5.5
+  //   (แถว completeActivity · rescheduleActivity → crm.activity.complete) — เดิมบริการ/REST ใช้ create แต่หน้าจอใช้ complete ◂
+  need(a, "crm.activity.complete");
   assertEditor(a, row, "เลื่อนนัด/กำหนดส่ง");
   const data: Prisma.CrmActivityUpdateManyMutationInput = {};
   if (input && "dueAt" in input) data.dueAt = toDate(input.dueAt, "วันครบกำหนด");

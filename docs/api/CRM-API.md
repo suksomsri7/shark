@@ -15,7 +15,7 @@ Conventions that apply to every operation:
 4. **Read-only keys see phone numbers and e-mail addresses masked**, and read-only and operate keys never see values of fields the shop marked as sensitive.
 5. A record the key cannot see - another shop, another CRM system, another team - answers 404 `not_found`, never 403.
 6. **CRM v2 must be switched on.** While the shop still runs the previous CRM screens (`uiVersion` 1) every operation except `GET /ping` answers 409 `crm_v2_disabled` before anything is read or written.
-7. Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header. The same key with the same body replays the stored answer with `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`; a parallel duplicate gets 409 `idempotency_in_progress`.
+7. Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header. The same key with the same body replays the stored answer with `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`; a parallel duplicate gets 409 `idempotency_in_progress`; a write cut by a temporary database or network failure after it started gets 409 `idempotency_outcome_unknown` on every try with that key (check whether it took effect, then use a new key).
 8. Operations marked `x-shark-kind: danger` (archive, merge, delete, export) also require `confirm: true` (a real boolean) and a `reason` of at least 5 characters; the reason is stored in the audit log.
 9. Moving a deal into a stage whose requirements are missing answers 409 `stage_requirements` with the missing items in `hint` (for example `missing: LINES`). Deal lines above the shop's discount cap answer 409 `approval_required` with `approvalRequestId=<id>` in `hint`; nothing is applied until the request is approved.
 10. Lists answer `{ items, nextCursor }`; send `take` (at most 100) and pass `nextCursor` back as `cursor` for the next page. Money is in satang (`*Satang`, 100 satang = 1 baht), discounts in basis points (`*Bp`), timestamps are ISO-8601.
@@ -64,6 +64,7 @@ Failure body: `{ "error": { "code", "message_th", "message_en", "hint"?, "detail
 | `idempotency_required` | 400 | A write was sent without the `Idempotency-Key` header. |
 | `idempotency_conflict` | 409 | The same `Idempotency-Key` was reused with a different body. |
 | `idempotency_in_progress` | 409 | A request with this key is still running; retry with the same key. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the write after it had started, so it is unknown whether it took effect. Retries with the same key return this answer (24 h) and never run the write again: check whether the record exists, and if not send it again with a NEW `Idempotency-Key`. |
 | `confirm_required` | 409 | A danger operation was called without `confirm: true` (a real boolean). |
 | `not_found` | 404 | No such operation, or the record does not exist inside what this key can see (other shop, other CRM system, other team, outside the key filter). |
 | `method_not_allowed` | 405 | The path exists but not with this method (`Allow` header lists the methods). |
@@ -729,7 +730,7 @@ Query:
 | `activities.get` | `GET /activities/{id}` | read | `crm.activity.read` | One activity. |
 | `activities.log` | `POST /activities` | write | `crm.activity.create` | Log an activity on a contact, company, deal or custom record (call, meeting, task, note, ...), optionally with a follow-up task. |
 | `activities.complete` | `POST /activities/{id}/complete` | write | `crm.activity.complete` | Mark an activity or task done, optionally with its outcome. |
-| `activities.reschedule` | `PUT /activities/{id}/schedule` | write | `crm.activity.create` | Move an activity to another start/end or due time. |
+| `activities.reschedule` | `PUT /activities/{id}/schedule` | write | `crm.activity.complete` | Move an activity to another start/end or due time. |
 | `activities.delete` | `DELETE /activities/{id}` | **danger** | `crm.activity.delete` | Delete an activity. Needs confirm: true and a reason. |
 | `activities.due.list` | `GET /activities/due` | read | `crm.activity.read` | Tasks and appointments that are waiting: status pending (default), today, week or overdue. Same list and same visibility as GET /activities?status=... - this door only fixes the filter so one call answers 'what is due'. |
 | `activities.taskCard.open` | `POST /activities/{id}/task-card` | write | `crm.activity.create` | Open (or reuse) a task-board card for one CRM activity on a board the caller can see; the card links back to the deal, contact and company of the activity. |

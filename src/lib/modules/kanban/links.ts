@@ -23,7 +23,7 @@ import { LINK_TYPES, targetExists } from "./link-resolvers";
 import type { KanbanCardSourceType, Prisma } from "@prisma/client";
 import type { KanbanActor, KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
 // CRM C1.6 ▸ ด่านการมองเห็นบอร์ดของโมดูลนี้เอง (visibleBoardOptions ท้ายไฟล์) · +KanbanActor ในบรรทัดบน ◂
-import { visibleBoardsWhere } from "./access";
+import { visibleBoardsWhere, KanbanForbiddenError, KanbanNotFoundError } from "./access";
 
 // ── ทางเข้าเดียว: ผู้เรียกทุกคน import จาก `@/lib/modules/kanban/links` ──
 export {
@@ -447,6 +447,22 @@ export async function visibleBoardOptions(
   });
 }
 // ◂ CRM C1.6
+
+// CRM C5.5 ▸ H55-2 (กฎอัตโนมัติ CRM "ทำอัตโนมัติได้เฉพาะที่ทำเองด้วยมือได้"): ผู้ใช้คนนี้ "เปิดการ์ดในบอร์ดนี้ด้วยมือ" ได้ไหม —
+//   ด่านเดียวกับประตูมือ (`crm/activities.openTaskCard`): บอร์ดต้องอยู่ใน `visibleBoardOptions` ของเขา **และ** บทบาทบนบอร์ด ≥ EDITOR
+//   (`assertBoardRole` ที่ `createCardFromExternal` ใช้เมื่อมี actor) · อ่านอย่างเดียว · ไม่เห็น/ไม่มี/ดูได้อย่างเดียว = false
+export async function canOpenCardOnBoard(tenantId: string, actor: KanbanActor, boardId: string): Promise<boolean> {
+  const [board] = await visibleBoardOptions(tenantId, actor, { boardId });
+  if (!board) return false;
+  try {
+    await assertBoardRole({ tenantId, systemId: board.systemId, actorUserId: actor.userId, actor }, board.id, "EDITOR");
+    return true;
+  } catch (e) {
+    if (e instanceof KanbanNotFoundError || e instanceof KanbanForbiddenError) return false;
+    throw e;
+  }
+}
+// ◂ CRM C5.5
 
 // CRM C3.9-fix ▸ H4 (ล่าความปลอดภัย B4): ลบข้อมูลส่วนบุคคลตาม PDPA — การ์ดที่ผูกกับของที่ถูกลบ (เช่น ผู้ติดต่อ CRM) ถูกปิดคำระบุตัว
 //   ทั้งหัวการ์ด · รายละเอียด · ความเห็น (KanbanComment.body) · ประวัติการ์ด (KanbanActivity.data — เช่น CARD_CREATED เก็บหัวการ์ดตอนสร้าง)

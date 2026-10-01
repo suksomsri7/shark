@@ -91,3 +91,44 @@ async function entitled(input: { tenantId: string; systemId: string; scopes: rea
   };
   return (await crmKeyWiderThanCreator({ tenantId: input.tenantId, systemId: input.systemId }, creator, input.scopes)) === null;
 }
+
+// CRM C5.5 ▸ L55-4 + H55-2 (มติผู้คุมงาน) — กติกาเดียวกับคีย์ API ที่ไม่มีตัวกรอง ใช้กับทางออกอีกสองทาง
+//   (1) ปลายทาง webhook ของ CRM (สร้าง/เปิดใช้): ได้ event ของทุกระเบียนทุกทีมในร้าน ⇒ คนเพิ่ม/เปิดต้องเห็น ALL ทั้งร้านเหมือนคนออกคีย์ไม่กรอง
+//   (2) กฎอัตโนมัติ (`automation.ts`): กฎทำงานกับระเบียนใดก็ได้ของระบบ ⇒ ผู้ตั้งกฎต้องเห็นเอนทิตีที่การกระทำแตะ "ทั้งหมด" ทั้งร้าน
+export const CRM_WEBHOOK_WIDER_TH =
+  "ปลายทาง webhook ของ CRM ได้รับเหตุการณ์ของทุกรายการในทุกทีมของร้าน แต่บัญชีนี้ยังมองเห็นข้อมูล CRM ไม่ครบทั้งร้าน — ให้เจ้าของร้าน (หรือผู้ที่เห็นข้อมูล CRM ทั้งร้าน) เป็นผู้เพิ่มหรือเปิดใช้ปลายทางนี้";
+
+/** เหตุผล (ไทย) ที่ `creator` เพิ่ม/เปิดปลายทาง webhook ของ CRM ไม่ได้ — `null` = ได้ (ด่านเดียวกับคีย์ไม่มีตัวกรอง: `crmKeyWiderThanCreator(…, [])`) */
+export async function crmWebhookWiderThanCreator(ctx: { tenantId: string; systemId: string }, creator: MemberActor): Promise<string | null> {
+  return (await crmKeyWiderThanCreator(ctx, creator, [])) === null ? null : CRM_WEBHOOK_WIDER_TH;
+}
+
+/**
+ * `actor` เห็น "ทุกรายการ" ของเอนทิตีเหล่านี้ทั้งร้านไหม (ระดับ ALL + ไม่ถูกจำกัดสาขา) — ตรรกะเดียวกับ `crmKeyWiderThanCreator`
+ * DEAL: ระบุ `pipelineId` = ตรวจระดับของไปป์ไลน์นั้น · ไม่ระบุ = ระดับฐาน + ทุกไปป์ไลน์ที่มี policy ของตัวเอง
+ */
+export async function crmSeesAllOf(
+  ctx: { tenantId: string; systemId: string },
+  actor: MemberActor,
+  entities: readonly CrmVisEntity[],
+  opts: { pipelineId?: string | null } = {},
+): Promise<boolean> {
+  if (actor.role === "OWNER") return true;
+  if (!wholeShop(actor)) return false;
+  if (entities.length === 0) return true;
+  return crmScope(async () => {
+    const vctx = { tenantId: ctx.tenantId, systemId: ctx.systemId, actorUserId: actor.userId };
+    const pipelineId = opts.pipelineId ?? null;
+    let extra: string[] = [];
+    if (entities.includes("DEAL") && !pipelineId) {
+      const access = await crmAccess(ctx, actor.userId);
+      extra = [...new Set(access.policies.filter((p) => p.entity === "DEAL" && !!p.pipelineId).map((p) => p.pipelineId as string))];
+    }
+    const levels = await Promise.all([
+      ...entities.map((e) => resolve(vctx, actor, e, e === "DEAL" && pipelineId ? { pipelineId } : {})),
+      ...extra.map((p) => resolve(vctx, actor, "DEAL", { pipelineId: p })),
+    ]);
+    return levels.every((l) => l === "ALL");
+  });
+}
+// ◂ CRM C5.5

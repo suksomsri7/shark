@@ -47,6 +47,10 @@ import { crmLimitOf } from "./limits"; // CRM C3.9 ▸ เพดานรอบ�
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import { resolveCrmTargets } from "./integrations"; // CRM C3.6 ▸ ปลายทางแชทของ SEND_LINE (ชนิดเดียว) ◂
 import { crmCan, CrmForbiddenError } from "./access";
+import { permissionLabel } from "@/lib/core/permissions"; // CRM C5.5 ▸ H55-2 ◂
+import { evaluate as rbacEvaluate } from "@/lib/core/rbac"; // CRM C5.5 ▸ H55-2: คีย์แพลตฟอร์ม (แชท · webhook) ◂
+import { CRM_WEBHOOK_WIDER_TH, crmSeesAllOf, crmWebhookWiderThanCreator } from "./api/key-guard"; // CRM C5.5 ▸ H55-2 ◂
+import type { CrmVisEntity } from "./visibility-shared"; // CRM C5.5 ▸ H55-2 ◂
 import { assertCrmV2, crmUiVersion } from "./ui-version";
 import { canContact, memberSystemOf } from "./consents";
 import { contactWhere } from "./where";
@@ -400,6 +404,104 @@ async function cleanInput(ctx: CrmAutomationCtx, raw: unknown): Promise<CleanRul
   return { name, trigger, conditions, actions, pipelineId, enabled: input.enabled !== false };
 }
 
+// ───────────────────────── CRM C5.5 ▸ H55-2: ทำอัตโนมัติได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้ ─────────────────────────
+// มติผู้คุมงาน C5.5-fix1: ตัวรันยังทำงานในนาม "ระบบ" (OWNER) เหมือนเดิม — ด่านอยู่ที่ "ประตูที่เขียนกฎ" ทุกบาน (สร้าง · แก้ · เปิดใช้)
+//   ผู้ตั้งกฎต้องผ่าน **ด่านเดียวกับประตูมือ** ของการกระทำแต่ละขั้น: คีย์ของบริการนั้น + การมองเห็น (กฎทำงานกับรายการใดก็ได้ในระบบ
+//   ⇒ ต้องเห็นเอนทิตีที่ขั้นนั้นแตะ "ทั้งร้าน" — กติกาเดียวกับคีย์ API ไม่กรอง C5.4-B) + เป้าหมายคงที่ (บอร์ด) · ตาราง ledger/wo-notes/crm-C5.5-fix1.md
+//   🔴 ขั้นใหม่ใน CRM_ACTION_TYPES ต้องมีแถวที่นี่ (ไม่มี = ปฏิเสธ — ปลอดภัยไว้ก่อน)
+type HandNeed = { keys: string[]; vis: CrmVisEntity[]; pipelineId?: string | null; platform?: { module: string; action: string }; member?: string; boardId?: string; webhook?: true };
+
+async function handNeedOf(ctx: CrmAutomationCtx, a: CrmRuleAction, rulePipelineId: string | null): Promise<HandNeed | null> {
+  const p = isObj(a.params) ? a.params : {};
+  switch (a.type as CrmActionType) {
+    case "MOVE_STAGE": {
+      // deals.moveDeal: crm.deal.move + เห็นดีล (ไปป์ไลน์ของขั้นปลายทาง)
+      const st = await prisma.crmStage.findFirst({ where: { id: str(p.stageId), tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { pipelineId: true } });
+      return { keys: ["crm.deal.move"], vis: ["DEAL"], pipelineId: st?.pipelineId ?? rulePipelineId };
+    }
+    case "ASSIGN":
+      // contacts.assignContact (crm.contact.update) · deals.reassignDeal (crm.deal.update + crm.deal.reassign เมื่อข้ามทีม — กฎไม่รู้ทีมของดีลล่วงหน้า)
+      return { keys: ["crm.contact.update", "crm.deal.update", "crm.deal.reassign"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId };
+    case "CREATE_ACTIVITY":
+      return { keys: ["crm.activity.create"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId }; // activities.logActivity
+    case "CREATE_DEAL":
+      return { keys: ["crm.deal.create"], vis: ["CONTACT", "DEAL"], pipelineId: str(p.pipelineId) || rulePipelineId }; // deals.createDeal
+    case "OPEN_KANBAN_CARD":
+      // activities.openTaskCard: crm.activity.create + บอร์ดใน visibleBoardOptions + บทบาทบอร์ด ≥ EDITOR
+      return { keys: ["crm.activity.create"], vis: ["CONTACT", "DEAL"], pipelineId: rulePipelineId, boardId: str(p.boardId) };
+    case "SEND_EMAIL":
+      return { keys: ["crm.email.send"], vis: ["CONTACT"] }; // emails.sendEmail
+    case "SEND_LINE":
+      return { keys: [], vis: ["CONTACT"], platform: { module: "chat", action: "chat.message.send" } }; // ตอบลูกค้าทางแชท (chat/actions.ts)
+    case "ENROLL_SEQUENCE":
+    case "STOP_SEQUENCE":
+      return { keys: ["crm.sequence.enroll"], vis: ["CONTACT"] }; // sequences.enroll / stop
+    case "SET_FIELD":
+      return str(p.objectKey) === "deal"
+        ? { keys: ["crm.deal.update"], vis: ["DEAL"], pipelineId: rulePipelineId } // deals.updateDeal
+        : { keys: ["crm.contact.update"], vis: ["CONTACT"] }; // contacts.updateContact
+    case "ADD_TAG":
+    case "REMOVE_TAG":
+      return { keys: ["crm.contact.update"], vis: ["CONTACT"] }; // contacts.setTags
+    case "ADJUST_SCORE":
+      return { keys: ["crm.score.manage"], vis: ["CONTACT"] }; // scoring.adjust
+    case "NOTIFY_STAFF":
+    case "SEND_PUSH":
+      return { keys: [], vis: [] }; // แจ้งพนักงานภายในร้าน · ผู้รับถูกกรองตามการมองเห็นตอนส่ง (C5.4-B) — ไม่มีประตูมือที่ต้องใช้คีย์เพิ่ม
+    case "WEBHOOK":
+      // ประตูมือ = เพิ่มปลายทาง webhook ของ CRM: crm.api.manage + webhook.endpoint.create + เห็นทั้งร้าน (L55-4)
+      return { keys: ["crm.api.manage"], vis: [], platform: { module: "webhook", action: "webhook.endpoint.create" }, webhook: true };
+    case "ISSUE_VOUCHER":
+      return { keys: [], vis: ["CONTACT"], member: "member.promo.issue" }; // voucher/service.ts (ออกใบ)
+    case "GIVE_POINTS":
+      return { keys: [], vis: ["CONTACT"], member: "member.point.adjust" }; // member REST points.credit
+    case "WAIT_THEN":
+      return { keys: [], vis: [] }; // ขั้นที่ซ้อนถูกตรวจทีละขั้น
+  }
+  return null;
+}
+
+const VIS_WHAT: Record<CrmVisEntity, string> = { CONTACT: "ผู้ติดต่อ", COMPANY: "บริษัท", DEAL: "ดีล", ACTIVITY: "กิจกรรม", REPORT: "รายงาน" };
+const BY_HAND = "กฎอัตโนมัติทำได้เฉพาะสิ่งที่ผู้ตั้งกฎทำเองด้วยมือได้";
+
+async function assertAuthorCanDoByHand(ctx: CrmAutomationCtx, actor: MemberActor, actions: readonly CrmRuleAction[], rulePipelineId: string | null, prefix = ""): Promise<void> {
+  if (actor.role === "OWNER") return;
+  if (actor.role === "CUSTOMER") throw fail("NOT_FOUND", SYSTEM_NOT_FOUND);
+  const sys = { tenantId: ctx.tenantId, systemId: ctx.systemId };
+  const mc = { role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions };
+  for (const a of actions) {
+    const label = `${prefix}${CRM_ACTION_LABELS[a.type as CrmActionType] ?? a.type}`;
+    if (a.type === "WAIT_THEN") {
+      const inner = isObj(a.params) && Array.isArray(a.params.thenActions) ? (a.params.thenActions as CrmRuleAction[]) : [];
+      await assertAuthorCanDoByHand(ctx, actor, inner, rulePipelineId, `${label} › `);
+      continue;
+    }
+    const need = await handNeedOf(ctx, a, rulePipelineId);
+    if (!need) throw fail("FORBIDDEN", `${label}: ยังตรวจสิทธิ์ของขั้นนี้ไม่ได้ — ให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+    const missingKey = need.keys.find((k) => !crmCan(actor, k));
+    const missing = missingKey ?? (need.platform && !rbacEvaluate(mc, need.platform) ? need.platform.action : undefined);
+    if (missing) {
+      throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(missing)}" ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+    }
+    if (need.member) {
+      const { hasMemberPerm } = await import("@/lib/modules/member");
+      if (!hasMemberPerm(actor, need.member)) {
+        throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(need.member)}" ของระบบสมาชิก ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+      }
+    }
+    if (need.webhook && (await crmWebhookWiderThanCreator(sys, actor))) throw fail("FORBIDDEN", `${label}: ${CRM_WEBHOOK_WIDER_TH}`);
+    if (need.vis.length && !(await crmSeesAllOf(sys, actor, need.vis, { pipelineId: need.pipelineId ?? null }))) {
+      throw fail("FORBIDDEN", `${label}: กฎนี้ทำงานกับ${need.vis.map((e) => VIS_WHAT[e]).join("และ")}ทุกรายการของระบบ แต่บัญชีนี้มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา) — ${BY_HAND} ให้เจ้าของร้านหรือผู้ที่เห็นข้อมูลทั้งร้านเป็นผู้ตั้งกฎนี้`);
+    }
+    if (need.boardId) {
+      const L = await import("@/lib/modules/kanban/links");
+      const ok = (await L.canOpenCardOnBoard(ctx.tenantId, { userId: actor.userId, role: actor.role, unitAccess: actor.unitAccess, permissions: actor.permissions }, need.boardId));
+      if (!ok) throw fail("FORBIDDEN", `${label}: บัญชีนี้ยังเปิดการ์ดในบอร์ดที่เลือกด้วยมือไม่ได้ (มองไม่เห็นบอร์ด หรือดูได้อย่างเดียว) — ${BY_HAND} ขอให้ผู้ดูแลบอร์ดเพิ่มสิทธิ์แก้ไข หรือเลือกบอร์ดอื่น`);
+    }
+  }
+}
+// ◂ CRM C5.5
+
 // ───────────────────────── จัดการกฎ ─────────────────────────
 
 export type CrmRuleDto = {
@@ -446,6 +548,7 @@ function ruleData(ctx: CrmAutomationCtx, v: CleanRule, starter: string | null = 
 export async function createRule(ctx: CrmAutomationCtx, actor: MemberActor, input: CrmRuleInput): Promise<{ id: string }> {
   await enter(ctx, actor);
   const v = await cleanInput(ctx, input);
+  await assertAuthorCanDoByHand(ctx, actor, v.actions, v.pipelineId); // CRM C5.5 ▸ H55-2 ◂
   const row = await prisma.automationRule.create({
     // actionType/actionConfig = placeholder (เอนจิน v1 กรอง scope KANBAN จึงไม่เคยเห็นแถวนี้)
     data: { tenantId: ctx.tenantId, scope: SCOPE, kind: "RULE", actionType: "NOTIFY", actionConfig: {}, ...ruleData(ctx, v) },
@@ -459,6 +562,7 @@ export async function updateRule(ctx: CrmAutomationCtx, actor: MemberActor, id: 
   await enter(ctx, actor);
   const row = await loadRule(ctx, id);
   const v = await cleanInput(ctx, input);
+  await assertAuthorCanDoByHand(ctx, actor, v.actions, v.pipelineId); // CRM C5.5 ▸ H55-2 ◂
   await prisma.automationRule.update({ where: { id: row.id }, data: ruleData(ctx, v, starterKeyOf(row)) });
   if (!v.enabled && row.enabled) await cancelWaiting(row.id, "ยกเลิก — กฎถูกปิดก่อนถึงเวลา");
   await audit(ctx, "update", row.id, { before: { name: row.name, event: row.event, enabled: row.enabled }, after: { name: v.name, event: v.trigger.event, enabled: v.enabled, actions: v.actions.map((a) => a.type) } });
@@ -469,6 +573,8 @@ export async function updateRule(ctx: CrmAutomationCtx, actor: MemberActor, id: 
 export async function toggleRule(ctx: CrmAutomationCtx, actor: MemberActor, id: string, enabled: boolean): Promise<{ enabled: boolean; cancelled: number }> {
   await enter(ctx, actor);
   const row = await loadRule(ctx, id);
+  // CRM C5.5 ▸ H55-2: เปิดใช้ = ผู้กดต้องทำทุกขั้นของกฎเองได้ (ปิดได้เสมอ) — กฎเก่าที่บันทึกไว้แล้วยังทำงานจนกว่าจะถูกแก้/เปิดใหม่ ◂
+  if (enabled) await assertAuthorCanDoByHand(ctx, actor, actionsOf(row), row.pipelineId);
   await prisma.automationRule.update({ where: { id: row.id }, data: { enabled: !!enabled } });
   const cancelled = enabled ? 0 : await cancelWaiting(row.id, "ยกเลิก — กฎถูกปิดก่อนถึงเวลา");
   await audit(ctx, enabled ? "enable" : "disable", row.id, { before: { enabled: row.enabled }, after: { enabled: !!enabled, cancelledWaits: cancelled } });

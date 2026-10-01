@@ -70,7 +70,8 @@ export default async function CrmActivitiesPage({
   const canLog = crmCan(m, "crm.activity.create");
   const canComplete = crmCan(m, "crm.activity.complete");
   // CRM C4.2-fix ▸ B2: ปุ่มลบ = คีย์ของ action (crm.activity.create) + ของบริการ (crm.activity.delete) · เดิมอิงบทบาท/เจ้าของอย่างเดียว ◂
-  const canDelete = canLog && crmCan(m, "crm.activity.delete");
+  // CRM C5.5 ▸ L55-3: action ลบตรวจคีย์เดียวกับบริการแล้ว (crm.activity.delete) ⇒ ปุ่มอิงคีย์นั้นคีย์เดียว ◂
+  const canDelete = crmCan(m, "crm.activity.delete");
   const canManage = actor.role === "OWNER" || actor.role === "MANAGER";
   const base = `/app/sys/${id}/crm/activities`;
   const href = (patch: Record<string, string | null>) => {
