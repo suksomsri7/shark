@@ -522,6 +522,32 @@ try {
       /NavPermsProvider perms=\{perms\}/.test(lay) && /CRM_NAV_PERMS\.filter\(\(k\) => crmCan\(actor, k\)\)/.test(lay) && /visibleTabs\(items, perms\)/.test(tabs) && pagesOk.length === PAGES.length && ownerSees && managerSees && staffKey && !staffNoKey && !noProvider,
       `pages=${pagesOk.length}/${PAGES.length} owner=${ownerSees} manager=${managerSees} staffKey=${staffKey} staffNoKey=${staffNoKey} noProvider=${noProvider}`);
   });
+  // ════════════════════════ ROUND 3 (re-review R2b-1) ════════════════════════
+  // switchCompany(B→A) racing a re-invite of A: the session minted by the switch must never survive the contact-wide revoke
+  await sub("R3-1", async () => {
+    const TRIALS = 24;
+    const coB = await mkCompany(`บริษัทแข่ง ${TAG}`);
+    let survivors = 0;
+    let switchesWon = 0;
+    const detail: string[] = [];
+    for (let t = 0; t < TRIALS; t += 1) {
+      const k = await mkContact(`แข่ง${t}`, `race${t}-${rand}@qc.invalid`);
+      for (const co of [company, coB]) await P.crmCompanyContact.create({ data: { tenantId: T, companyId: co.id, contactId: k.id, isPrimary: co.id === company.id, startedAt: new Date(Date.now() - 600_000) } });
+      await P.crmPortalAccess.create({ data: { tenantId: T, systemId: S, companyId: company.id, contactId: k.id, role: "APPROVE", loginMethods: [], invitedAt: new Date(Date.now() - 300_000), acceptedAt: new Date(Date.now() - 300_000), invitedById: u.id } });
+      const accB = await P.crmPortalAccess.create({ data: { tenantId: T, systemId: S, companyId: coB.id, contactId: k.id, role: "VIEW", loginMethods: [], invitedAt: new Date(Date.now() - 300_000), acceptedAt: new Date(Date.now() - 300_000), invitedById: u.id } });
+      const sB = await CS.mintPortalSession(accB.id, { ip: "203.0.113.230", userAgent: "probe-race" });
+      const lag = (t % 4) * 4; // 0 · 4 · 8 · 12 ms — switch first on even trials, invite first on odd
+      const sw = async () => { if (t % 2 === 1) await new Promise((r) => setTimeout(r, lag)); return settle(CRM.portal.switchCompany(sB.token, company.id, { ip: "203.0.113.230" }, { revokeCurrent: true })); };
+      const inv = async () => { if (t % 2 === 0) await new Promise((r) => setTimeout(r, lag)); return settle(CRM.portal.invite(ctx, owner, { companyId: company.id, contactId: k.id, role: "APPROVE" })); };
+      const [r1, r2] = await Promise.all([sw(), inv()]);
+      if (r1.ok) switchesWon += 1;
+      const live = await P.portalSession.count({ where: { tenantId: T, crmContactId: k.id, revokedAt: null } });
+      if (live > 0) { survivors += 1; detail.push(`t${t}:live=${live}/sw=${r1.ok}`); }
+      if (!r2.ok) detail.push(`t${t}:invite=${(r2 as Any).err}`);
+    }
+    chk("R3-1", `R2b-1: ${TRIALS} trials of switchCompany(B→A) concurrent with re-invite(A) (0–12 ms staggers, both orders) ⇒ 0 live portal sessions of the contact afterwards · every re-invite succeeds`,
+      survivors === 0 && !detail.some((d) => d.includes("invite=")), `survivors=${survivors} switchesThatMinted=${switchesWon}/${TRIALS} ${detail.slice(0, 6).join(" ")}`);
+  });
 } finally {
   if (OLD_AUTHSERV === undefined) delete process.env.CRM_INBOUND_AUTHSERV_ID; else process.env.CRM_INBOUND_AUTHSERV_ID = OLD_AUTHSERV;
   await new Promise((r) => setTimeout(r, 1_500));

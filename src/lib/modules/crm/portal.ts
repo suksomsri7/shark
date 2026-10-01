@@ -376,7 +376,16 @@ export async function switchCompany(token: string, companyId: string, meta: Meta
   if (!target) throw nf();
   let next: PortalSessionToken;
   try {
-    next = await mintPortalSession(target.id, meta);
+    // รีวิว R2b-1 (TOCTOU): `session(token)` ข้างบนตรวจก่อน mint — การเชิญซ้ำที่ฆ่า session ทุกใบของผู้ติดต่อ (READ COMMITTED) ไม่เห็น
+    //   แถวที่ mint ทีหลัง ⇒ เครื่องที่หายสลับบริษัทหนีการเชิญซ้ำได้ · แก้: ในธุรกรรมของการ mint ล็อกผู้ติดต่อ (กุญแจเดียวกับ `invite`)
+    //   แล้วตรวจ session ต้นทางซ้ำ — ลำดับล็อก: advisory ของผู้ติดต่อ → แถว session/สิทธิ์ (เหมือน `invite`) ⇒ ไม่มีวงล็อกตาย ◂
+    next = await mintPortalSession(target.id, meta, {
+      inTx: async (tx) => {
+        await lockPortalContactInTx(tx, s.tenantId, s.crmContactId);
+        const live = await tx.portalSession.findFirst({ where: { tokenHash: sha(str(token)), revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } });
+        if (!live) throw nf();
+      },
+    });
   } catch {
     throw nf();
   }
@@ -1067,6 +1076,15 @@ async function visibleCompany(ctx: PortalStaffCtx, actor: MemberActor, companyId
   return { id: co.id, name: co.name, live };
 }
 
+/**
+ * CRM C5.5-fix2 ▸ รีวิว R2b-1 — ล็อกระดับธุรกรรมต่อ (ร้าน, ผู้ติดต่อ) ของพอร์ทัล: `invite` (เชิญซ้ำ → ฆ่า session ทุกใบ) กับ `switchCompany`
+ * (ตรวจ session ต้นทาง → mint) วิ่งทีละตัว · ต้องเป็นสิ่งแรกที่ธุรกรรมทำ (ก่อนล็อกแถวใด) ทั้งสองฝั่ง · namespace `crm.portal.contact:`
+ * ไม่ชนกับล็อกของ event พอร์ทัล (`<tenant>:<sourceRef>` ใน onPortalEvent) ซึ่งไม่เคยถูกถือพร้อมกับล็อกนี้
+ */
+async function lockPortalContactInTx(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`crm.portal.contact:${tenantId}:${contactId}`}))`;
+}
+
 function appBase(): string {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
@@ -1104,6 +1122,9 @@ export async function invite(
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true, name: true } });
   if (!tenant) throw new PortalError("NOT_FOUND", "ไม่พบร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   const access = await prisma.$transaction(async (tx) => {
+    // รีวิว R2b-1: ล็อกผู้ติดต่อก่อนอย่างอื่นในธุรกรรม (กุญแจ/ลำดับเดียวกับ `switchCompany`) ⇒ การสลับบริษัทที่วิ่งชนกัน
+    //   จบก่อน (session ใหม่ถูก commit แล้วโดนฆ่าข้างล่าง) หรือหลัง (เห็น session ต้นทางถูกฆ่าแล้ว ⇒ ปฏิเสธ) — ไม่มีทางรอด ◂
+    await lockPortalContactInTx(tx, ctx.tenantId, contactId);
     // รีวิว RV2-5: "เชิญซ้ำ" = มีสิทธิ์ของ (บริษัท, ผู้ติดต่อ) นี้อยู่แล้ว — เชิญครั้งแรกเข้าบริษัทใหม่ไม่ใช่เหตุให้ออกจากบริษัทอื่น ◂
     const reinvite = !!(await tx.crmPortalAccess.findUnique({ where: { companyId_contactId: { companyId: co.id, contactId } }, select: { id: true } }));
     const row = await tx.crmPortalAccess.upsert({

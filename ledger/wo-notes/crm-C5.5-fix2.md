@@ -109,3 +109,15 @@ Every finding re-checked against the code first: all 7 confirmed as described (n
 | c2.5 | 104/105 — only C2.5-U.5 sha pin (unchanged ORACLE-EDIT, file not touched this round) | `/tmp/cf2-logs/reg2-qc-crm-c2.5.log` |
 | c3.5 portal | 67/67 (after the re-invite refinement; 34/67 with the literal contact-wide revoke) | `/tmp/cf2-logs/reg3-c3.5.log` |
 | c1.7 · c1.11 · c2.6 · c3.9 · c0.2 · forms-notify | 57/57 · 66/66 · 87/87 · 49/49 · 27/27 · 9/9 | `/tmp/cf2-logs/reg2-*.log` |
+
+## ROUND 3 (re-review R2b-1 · tip 519ec451)
+- **R2b-1 verified, then fixed**: `switchCompany` checked the source session (`session(token)`) before `mintPortalSession` inserted the new one; the re-invite's contact-wide `updateMany` (READ COMMITTED) could miss a session inserted after its snapshot. Reproduced here: probe R3-1 RED on 519ec451 code **1/24 survivors** (the 0 ms trial · `scripts/pending/cf2/probe-cf2.r3-red.log`).
+- Fix: `lockPortalContactInTx(tx, tenantId, contactId)` = `pg_advisory_xact_lock(hashtext('crm.portal.contact:<tenant>:<contact>'))` (portal.ts), taken FIRST in both transactions:
+  - `invite()`: lock → read "re-invite?" → upsert access → contact-wide revoke (re-invite only) → audit.
+  - `switchCompany()`: new optional `mintPortalSession(id, meta, { inTx })` hook (member/customer-session.ts; omitted = byte-identical behaviour) runs inside the mint transaction: lock → re-read the source session live (tokenHash, not revoked, not expired) else NOT_FOUND → insert session → update access.lastLoginAt.
+  - Lock order (comment in code): contact advisory lock → row locks, identical in both. The only other portal advisory lock (`onPortalEvent`, key `<tenant>:<sourceRef>`) is never held together with this one; `revoke()` / portal-identity revocations take no advisory lock and wait on no lock held by these transactions ⇒ no cycle.
+  - Outcome: either the switch commits first and its new session is killed by the re-invite, or the re-invite commits first and the switch sees its source revoked and is refused.
+- Probe R3-1 (24 trials, plain concurrency, 0–12 ms staggers both orders): GREEN **0 survivors**, 22/24 switches minted (2 correctly refused), every re-invite ok. probe-cf2 **36/36**.
+- **R2b-3 (timeline badge) — skipped**: the EMAIL activity is written by `activities.recordSystemActivityInTx` and rendered by the contact/company 360 timeline components — files outside this card (not touched in rounds 1–3). Carrying the flag needs activities.ts + timeline UI ⇒ follow-up.
+- Not chased (controller registers as debt): 6 extra F15 spellings, sub-domain attribution, stale tab keys, flood cost.
+- Checks (`/tmp/cf2-logs/reg4-*.log`, summary `scripts/pending/cf2/reg4.summary`): probe-cf2 36/36 · reviewer probe-cf2-review-r2 10/10 · c3.5 67/67 · c2.5 104/105 (C2.5-U.5 sha pin only; kanban-email-in.ts untouched) · typecheck exit 0 · fitness 36/36 env + 36/36 no-env · gen-crm-api-docs --check exit 0.
