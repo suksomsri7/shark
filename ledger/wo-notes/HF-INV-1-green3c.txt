@@ -1,0 +1,68 @@
+# HF-INV-1 round 3c — GREEN on the final tree (7e9d70fc + R3c) · QC4 · 1 Oct 2026
+# run 1 17:55Z–18:07Z · run 2 18:07Z–18:15Z · run 3 (reports only, after a typing-only oracle edit) 18:38Z
+
+===== green1 · qc-hf-inventory-atomic =====
+ผ่าน 143/143
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+
+===== green1 · qc-hf-inventory-authz =====
+ผ่าน 118/118
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":118,"passed":118,"findings":[]}
+
+===== green1 · qc-hf-reports-authz =====
+ผ่าน 79/79
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":79,"passed":79,"findings":[]}
+
+===== green2 · qc-hf-inventory-atomic =====
+ผ่าน 143/143
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":143,"passed":143,"findings":[]}
+
+===== green2 · qc-hf-inventory-authz =====
+ผ่าน 118/118
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":118,"passed":118,"findings":[]}
+
+===== green2 · qc-hf-reports-authz =====
+ผ่าน 79/79
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":79,"passed":79,"findings":[]}
+
+===== green3 · qc-hf-reports-authz =====
+ผ่าน 79/79
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":79,"passed":79,"findings":[]}
+
+===== round-3c checks (run 1) =====
+  ✅ [RP-5.9.1] STAFF unitAccess [] + member.customer.read · จอ: แถว = 9 คน (ทั้งร้าน · ไม่มี MERGED) = แถวของ listMembers ของ actor เดียวกัน
+  ✅ [RP-5.9.2] STAFF unitAccess [] + member.customer.read · จอ: เบอร์ปิดบัง = phoneMasked ของ listMembers (ไม่ผ่านด่านส่งออก)
+  ✅ [RP-5.9.3] STAFF unitAccess [] + member.customer.read · CSV: 9 แถว · เบอร์ปิดบังเหมือนจอ (ไม่มีเลขเต็มของใครเลย)
+  ✅ [RP-5.9.4] STAFF unitAccess [] + member.customer.read · groupBy: tier นับได้ 9 · groupBy phone ถูกปฏิเสธ (ไทย)
+  ✅ [RP-5.9.5] STAFF unitAccess [] + member.customer.read · ทางอ้อม: กรองด้วยเบอร์ (contains/eq/gte/lte) · รวมค่า sum:phone · CSV + ตัวกรองเบอร์ ⇒ ปฏิเสธเป็นไทยทุกทาง (นับแถวอ่านเลขกลับไม่ได้)
+  ✅ [RP-7.1] CSV รายงาน (OWNER): ชื่อ/เบอร์ที่ขึ้นต้นด้วย = + - @ tab CR ถูกกันสูตรตรงกับ exportMembers ทุกตัวอักษร · ไม่มีช่องไหนเป็นสูตร
+  ✅ [RP-7.2] คอลัมน์ตัวเลขยังเป็นตัวเลข: ยอดสะสม -500 ออกเป็น -500 (ไม่เติม ') · จำนวนครั้ง 3 · ชื่อที่เป็นตัวเลขล้วน "-12.5" ตามกติกาตัวช่วยกลาง (ไม่เติม)
+  ✅ [RP-7.3] หัวตาราง CSV เขียนผ่านตัวช่วยกลาง (csvRow ของป้ายคอลัมน์)
+  ✅ [RP-7.4] CSV แบบจัดกลุ่มตามชื่อ: ค่ากลุ่มถูกกันสูตรเหมือนกัน
+  ✅ [RP-8.1] OWNER → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S1,S2,S3,S4,S5]
+  ✅ [RP-8.2] STAFF ทุกสาขา + member.customer.read (เบอร์ปิดบัง) → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S2] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น
+  ✅ [RP-8.3] STAFF สาขา B1 + member.customer.export + pos.sale.create → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [S1,S2,S4,S5]
+  ✅ [RP-8.4] STAFF มีแค่ reports.report.run → รายการรายงานที่บันทึกไว้ = เฉพาะที่รันได้ตอนนี้ [] · ไม่เห็นค่าตัวกรองเบอร์ของคนอื่น
+  ✅ [RP-8.5] ลบรายงาน: สิทธิ์เดิม (reports.report.save) ยังลบได้ · ผลไม่มีนิยามรายงาน (config/filters)
+  ✅ [RP-9.1] จอ/groupBy: การปฏิเสธที่คาดไว้ 7 แบบ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีแถว
+  ✅ [RP-9.2] CSV: การปฏิเสธ (สิทธิ์ · คอลัมน์ปิดบัง · ตรวจค่า) → คืน { error } ไทย ไม่ throw · ไม่มีข้อความ CSV
+  ✅ [RP-9.3] runReport: metric ไม่ใช่ข้อความ (5 · {} · ["count"]) และตัวกรองไม่มี op → ข้อความไทย (ไม่ใช่ TypeError · ไม่มี undefined) · metric null = count
+  ✅ [RP-9.4] action: metric 5 · ตัวกรองไม่มี op → คืน { error } ไทยเป็นข้อมูล
+  ✅ [RP-9.5] บันทึก/ลบรายงาน: ไม่มีสิทธิ์ reports.report.save · ชื่อว่าง → คืน { error } ไทย ไม่ throw · ไม่มีอะไรถูกบันทึก
+  ✅ [RP-9.6] error ที่ไม่คาดไว้ (หา session ไม่ได้ / ฐานข้อมูลล่ม) ยัง throw ตามเดิม — ไม่ถูกแปลงเป็นข้อมูล (จอ · CSV · บันทึก)
+  ✅ [RP-9.7] คู่บวก: OWNER รันได้ → มีแถว ไม่มี error · CSV ได้ข้อความ CSV
+  ✅ [RP-9.8] [static] หน้าจอ ReportBuilder อ่าน .error จากผลของ action (จอ · CSV · บันทึก · ลบ) แทนการรอ throw · ไม่ setResult ผลดิบตรง ๆ
+  ✅ [AT-22.10] [X5] ∥ [Y3] ใน visit เดียว (X รอล็อกอยู่ขณะ Y จบ) ⇒ ทั้งคู่สำเร็จ · dispenseJson บันทึกครบ 2 รายการ (X และ Y) · ตัด X 95 / Y 97
+  ✅ [AT-22.11] หลังจากนั้นจ่าย [Y3] จริงอีกครั้ง ⇒ ตัดจริง: Y 94 · OUT ของ Y 2 แถว · dispenseJson 3 (เดิม: รายการ Y หาย ⇒ ใช้คีย์ซ้ำ ⇒ ตอบ ok แต่ไม่ตัด)
+  ✅ [AT-22.12] จ่ายยา 5 ตัว (คนละตัว ตัวละคำขอ) พร้อมกันใน visit เดียว ⇒ สำเร็จ 5 · dispenseJson 5 รายการ (ครบทุกตัว) · ตัด 5 ครั้ง (ทุกตัว 95)
+  ✅ [AT-22.13] คืนเงินทั้งสอง visit ⇒ คืนยาทุกครั้งที่ตัด (IN = OUT ต่อ visit) · ทุกตัวกลับเป็น 100
+  ✅ [HF-11.1] STAFF มีแค่ reports.report.run → dataset inventory (มีต้นทุน) ถูกปฏิเสธทั้งจอและ CSV · ข้อความไทย
+  ✅ [HF-12.5] R3c: STAFF ไม่มีสิทธิ์รับของ (inventory.po.receive) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ
+  ✅ [HF-12.6] R3c: systemId เป็นระบบ POS (ไม่ใช่คลังของร้าน) → คืน { status:"error", message ไทย } ไม่ throw · ไม่รับของ

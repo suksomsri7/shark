@@ -4,6 +4,7 @@
 
 import type { AppNotification, AutomationActionType, AutomationRule, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
+import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 
 export type Ctx = { tenantId: string };
 
@@ -37,18 +38,27 @@ export async function listRules(ctx: Ctx): Promise<AutomationRule[]> {
   return tenantDb(ctx).automationRule.findMany({ where: { scope: "KANBAN" }, orderBy: { createdAt: "desc" } });
 }
 
-// เปิด/ปิดกติกา (ปิดแล้ว engine ข้าม)
-export async function setRuleEnabled(
-  ctx: Ctx,
-  id: string,
-  enabled: boolean,
-): Promise<AutomationRule> {
-  return tenantDb(ctx).automationRule.update({ where: { id }, data: { enabled } });
+/**
+ * 🔴 HOTFIX 2026-10-01 (ledger/wo-notes/hotfix-sanitize-2026-10-01.md · Item 2) — ด่านของหน้า `/app/settings/automation`
+ *    เดิม action เช็กแค่ "อยู่ในร้าน" ⇒ พนักงานทุกคนเปิด/ปิด/ลบกฎได้ · ใช้คีย์เดียวกับที่ข้อเสนอ AI `automation_create_rule`
+ *    (ซึ่งเรียก `createRule` ตัวเดียวกันนี้) บังคับอยู่แล้ว: OWNER/MANAGER ผ่าน · STAFF ต้องมี `automation.rule.create`
+ */
+export function canManageShopAutomation(m: MembershipCtx | null): boolean {
+  return evaluate(m, { module: "automation", action: "automation.rule.create" });
 }
 
-// ลบกติกา (ประวัติ AutomationRun เก่ายังอยู่ — เก็บไว้ตรวจสอบ)
-export async function deleteRule(ctx: Ctx, id: string): Promise<void> {
-  await tenantDb(ctx).automationRule.delete({ where: { id } });
+// เปิด/ปิดกติกา (ปิดแล้ว engine ข้าม)
+// 🔴 HOTFIX 2026-10-01: แตะได้เฉพาะ scope KANBAN (ชุดเดียวกับที่ `listRules` โชว์) — id ของกฎสมาชิก/journey/CRM หรือของร้านอื่น
+//    = 0 แถว ไม่โยน (ไม่บอกว่ามี id นั้นอยู่) · คืนจำนวนแถวที่เปลี่ยน
+export async function setRuleEnabled(ctx: Ctx, id: string, enabled: boolean): Promise<number> {
+  const res = await tenantDb(ctx).automationRule.updateMany({ where: { id, scope: "KANBAN" }, data: { enabled } });
+  return res.count;
+}
+
+// ลบกติกา (ประวัติ AutomationRun เก่ายังอยู่ — เก็บไว้ตรวจสอบ) · 🔴 HOTFIX 2026-10-01: scope KANBAN เท่านั้น (เหมือนข้างบน)
+export async function deleteRule(ctx: Ctx, id: string): Promise<number> {
+  const res = await tenantDb(ctx).automationRule.deleteMany({ where: { id, scope: "KANBAN" } });
+  return res.count;
 }
 
 // ── ศูนย์แจ้งเตือน (ปลายทางของ action NOTIFY) ──
