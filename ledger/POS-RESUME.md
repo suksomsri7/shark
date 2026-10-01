@@ -171,3 +171,13 @@
 - **01 Oct 2026 14:44 UTC** · brief พร้อม: `pos-brief-P1.1b.md` (ส่วน A · tree `shark-pos-b` branch `wip/pos-p1.1b` · node_modules = bind mount จาก p11 · catalog-legacy.ts · ผู้เขียนเดียว · sync สองทางใน tx เดียว · ส่วน B = account/service.ts 2 จุด รอ CRM) · `pos-brief-P1.3.md` = ฉบับจริง (tree `shark-pos-p11` branch `wip/pos-p1.3`) → เลนถัดไปที่ว่าง: ข้อสอบ P1.3 รอบ 3 · ข้อสอบ P1.1b (refresh S2)
 - **01 Oct 14:45 UTC** · เตรียม tree P1.1b แล้ว: `shark-pos-b` = branch `wip/pos-p1.1b` (จาก session/pos 0aa8a619) · `node_modules` = bind mount **อ่านอย่างเดียว** จาก `shark-pos-p11` (หลัง reboot: `mount --bind -o ro /root/projects/shark-pos-p11/node_modules /root/projects/shark-pos-b/node_modules`) · fitness 40/40 ใน tree นี้
 - เลนเดิน: 1 = HF-HR-0 รอบ 4 (builder) · 2 = HF-INV-1 รอบ 3 (builder)
+
+### HF-INV-1 รอบ 3 — ตัวแก้ส่งงาน · ผู้คุมงานรันซ้ำแล้ว (1 ต.ค. 15:32 UTC)
+- head `hotfix/inventory-atomic` = 6799f65b (merge origin/main 929c39ce แล้ว → 2a759a8e → แก้)
+- ผู้คุมงานรันซ้ำบน QC4: `qc-hf-inventory-atomic` 133/133 · `qc-hf-inventory-authz` 116/116 · `qc-hf-reports-authz` (ใหม่) 23/23
+- ครบ R3.1–R3.9: ล็อก `FOR NO KEY UPDATE` (deadlock ชุด∥ใบเบิก = 0) · เพดานรอเฉพาะตอนขอล็อก (คลัง 5 วิ+ลองซ้ำ · เอกสารบัญชี 15 วิ) · POS ตัดสต็อกล้มมี log · คีย์ซ้ำข้อมูลต่าง = `StockKeyConflictError` · คลินิกคีย์ต่อการจ่าย · คืนเบิกไม่งอก · รายงานต้องมีสิทธิ์อ่านโมดูลเจ้าของ + กรองสาขา · รับของ PO คืนผล · สคริปต์ audit เพิ่ม E/F
+- คำตัดสินผู้คุมงาน (ข้อ 1–8 ในรายงานตัวแก้): รับทั้งหมด · ข้อ 1 = ORACLE-EDIT อนุมัติ `qc-clinic` CL-2.2 (คาด 80) / CL-2.3 (startsWith) — ตัวแก้กำลังใส่ + รัน qc-clinic/qc-clinic-refund + push
+- หนี้ใหม่: คลินิกจ่ายยาไม่มี request id จากฟอร์ม ⇒ กดซ้ำสองครั้งติดกัน = ตัด+บันทึกสองครั้ง (เดิม: บันทึกสอง ตัดหนึ่ง) → ใบงานภายหลัง
+- ผู้เสียพฤติกรรมเดิม (ต้องบอกเจ้าของตอนขอ deploy): STAFF ไม่มีสิทธิ์สมาชิก/POS เสียชุดข้อมูลลูกค้า/ยอดขายในรายงาน · ผู้จำกัดสาขาเห็นยอดขายเฉพาะสาขาตน · คืนเบิกกับใบร่าง/ยกเลิกถูกปฏิเสธ · ยกเลิกใบคืนแล้วคีย์ใหม่ไม่ได้จนกว่า O15 · จ่ายยาตัวเดิมครั้งที่สองตัดสต็อกจริง
+- ถัดไป: ตัวแก้ใส่ oracle edit → ผู้ตรวจอิสระรอบ 3 (อ่าน diff 2a759a8e..head + รัน storm ซ้ำ) → ถ้าผ่าน = พร้อมขอเจ้าของ deploy
+- เลนเดิน: 1 = HF-HR-0 รอบ 4 (builder) · 2 = HF-INV-1 รอบ 3 (oracle edit สั้น ๆ แล้วผู้ตรวจ)
