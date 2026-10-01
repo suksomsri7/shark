@@ -4,7 +4,7 @@
 --     ⇒ `SET LOCAL` ไม่มีผล — ใช้ `SET lock_timeout` ระดับ session (มีผลกับทุกคำสั่งถัดไปในการเชื่อมต่อของ migrate · วัดแล้ว = 3s)
 --     ลำดับ: enum → ตารางใหม่ → index/partial unique/FK ของตารางใหม่ (ว่างเปล่า ฟรี) → ADD COLUMN ตารางเดิม 5 ตัวท้ายสุด
 -- M1: ไม่มี index บนคอลัมน์เชื่อมของตารางเดิม — เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate
--- M3: "trackStock" BOOLEAN nullable ไม่มี default (null = AUTO · C2) · M4: index (systemId, archivedAt, name, id) · M5: partial unique หมวดทุกสาขา
+-- M3: คอลัมน์ trackStock ของ PosProduct เป็นค่าจริง/เท็จที่ว่างได้ ไม่มีค่าตั้งต้น (ว่าง = AUTO · C2) · M4: index (systemId, archivedAt, name, id) · M5: partial unique หมวดทุกสาขา
 -- unique (systemId, invItemId): Postgres ถือ NULL ไม่เท่ากัน ⇒ แถว invItemId null (เมนู/เว็บล้วน) หลายแถวได้ = ตรงเจตนา R1
 -- ชื่อเวลา 20261120… = หลัง migration ล่าสุดบน origin ทุกสาขา (สูงสุด 20261104 wip/crm-c54c-r8) + เผื่อ · ผู้คุมงานเปลี่ยนชื่อได้ตอน merge
 -- rollback ฉบับเต็ม (ซ้อมจริงบน QC4 แล้ว): ledger/wo-notes/pos-P1.1a.md §Round 2 · M6
