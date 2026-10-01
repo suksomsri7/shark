@@ -457,8 +457,8 @@ try {
     const ACT = (await import("@/app/b/[slug]/actions" as string)) as Any;
     const cookieName = CS.portalCookieName();
     const tBad: Any[] = []; const tGood: Any[] = [];
-    const bad = await inScope(`${cookieName}=cp_${"z".repeat(40)}`, "/b/x", tBad, () => ACT.portalCreateRequestAction({ kind: "ISSUE", title: `ผิด ${TAG}` }));
-    const good = await inScope(`${cookieName}=${minted.token}`, "/b/x", tGood, () => ACT.portalCreateRequestAction({ kind: "ISSUE", title: `แจ้งเรื่อง ${TAG}` }));
+    const bad: Any = await inScope(`${cookieName}=cp_${"z".repeat(40)}`, "/b/x", tBad, () => ACT.portalCreateRequestAction({ kind: "ISSUE", title: `ผิด ${TAG}` }));
+    const good: Any = await inScope(`${cookieName}=${minted.token}`, "/b/x", tGood, () => ACT.portalCreateRequestAction({ kind: "ISSUE", title: `แจ้งเรื่อง ${TAG}` }));
     const tasks = tGood.length;
     await runTasks(tBad); await runTasks(tGood);
     chk("F6b", "portal customer write (create request) ⇒ the outbox is woken after the write (1 after() drain) · a refused write (bad session) wakes nothing (control)",
