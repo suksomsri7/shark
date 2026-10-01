@@ -129,7 +129,8 @@ export function ActivityRow({
           {/* CRM C4.2-fix r2 ▸ (รีวิว N-11) เลื่อนนัด: action ตรวจ crm.activity.complete (activities/_components/actions.ts:97
               rescheduleActivityAction) + บริการตรวจ crm.activity.create (activities.ts:754) ⇒ ต้องผ่านทั้งคู่ — ถอด canComplete
               = ปุ่มที่ action ปฏิเสธ (สำหรับคนที่มี create แต่ไม่มี complete) ◂ */}
-          {!item.doneAt && item.type !== "NOTE" && canEdit && canLog && canComplete && (
+          {/* CRM C5.5 ▸ L55-3: action + บริการ + REST ตรวจคีย์เดียว crm.activity.complete แล้ว ⇒ ปุ่มอิง canComplete อย่างเดียว ◂ */}
+          {!item.doneAt && item.type !== "NOTE" && canEdit && canComplete && (
             <button type="button" className="btn btn-ghost text-xs" disabled={pending} onClick={() => setMode(mode === "reschedule" ? "" : "reschedule")} data-testid="activity-row-reschedule">
               เลื่อน
             </button>

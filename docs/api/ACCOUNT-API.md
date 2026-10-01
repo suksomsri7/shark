@@ -29,7 +29,7 @@ A key is normally bound to one accounting book. If it is not, every call must ca
 
 - **Money is satang.** Every amount is an integer number of satang (1 baht = 100 satang) and the field name ends with `Satang`. 1,250.50 baht is `125050`. Decimals are rejected, never rounded.
 - **Dates are `YYYY-MM-DD`.** A date field means a Thai calendar day (UTC+7), not an instant. Fields that really are instants are ISO-8601 UTC strings and are named `*At`.
-- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours.
+- **Idempotency.** Every write (POST, PATCH, PUT, DELETE) requires an `Idempotency-Key` header, unique per logical attempt. Retrying with the same key and the same body replays the stored response and adds `Idempotent-Replayed: true`; the same key with a different body fails with 409 `idempotency_conflict`. Records are kept 24 hours. Error answers raised by the operation are stored and replayed too (only `idempotency_*` answers and the per-key `rate_limited` are not), so after fixing the cause send a new key. If a write is cut by a temporary database or network failure after it started, every try with that key answers 409 `idempotency_outcome_unknown`: check whether the record exists, then use a NEW key.
 - **`X-Shark-System`.** Selects the accounting book when the key is not bound to one. When the key is bound, the header may be sent only if it matches.
 - **Danger operations.** `confirm: true` plus a `reason` of at least 5 characters. The reason is stored in the audit log next to the key name.
 - **Envelope.** Success is `{ data, page?, requestId }`. Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }`. `requestId` is also the `X-Request-Id` header; quote it in support tickets.
@@ -65,6 +65,7 @@ Branch on `error.code`, never on the message text.
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check. | Read `message_en`; this usually needs a settings change by the shop owner. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service this operation depends on (for example the DBD company registry lookup) is not configured or not reachable right now. | Retry later, or ask the shop owner to finish configuring the integration; this is not caused by the request itself. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
 
 ## Operations
 

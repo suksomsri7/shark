@@ -6,10 +6,24 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
-import { createEndpoint, setEndpointActive, setEndpointEvents, deleteEndpoint } from "./service";
+import { createEndpoint, setEndpointActive, setEndpointEvents, deleteEndpoint, type WebhookAuthor } from "./service";
 import { WEBHOOK_EVENTS } from "./labels";
 
 const SETTINGS_PATH = "/app/settings/webhooks";
+
+// CRM C5.5 ▸ (fix1 r2) ผู้ทำของทุกการเขียนปลายทาง = ผู้ใช้ที่ล็อกอิน · กติกาเหตุการณ์ CRM ตรวจที่ `webhooks/service.ts` (ตัวกันที่ลงทะเบียน)
+//   แทนการ import โมดูล CRM จากที่นี่ (r1b · RV-8) — ร้านที่ไม่มี CRM v2 เหมือนเดิมทุกอย่าง
+function authorOf(auth: Awaited<ReturnType<typeof requireTenant>>): WebhookAuthor {
+  return {
+    actor: {
+      userId: auth.user.id,
+      role: auth.active.role,
+      unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+      permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+    },
+  };
+}
+// ◂ CRM C5.5
 
 function assertWebhookCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
   assertCan(
@@ -48,7 +62,7 @@ export async function createEndpointAction(
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
 
   try {
-    const ep = await createEndpoint({ tenantId: auth.active.tenantId }, { url, events });
+    const ep = await createEndpoint({ tenantId: auth.active.tenantId }, { url, events, by: authorOf(auth) }); // CRM C5.5 ▸ by ◂
     revalidatePath(SETTINGS_PATH);
     return { status: "ok", secret: ep.secret, url };
   } catch (e) {
@@ -63,7 +77,7 @@ export async function toggleEndpointAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const active = String(formData.get("active") ?? "") === "true";
   if (!id) return;
-  await setEndpointActive({ tenantId: auth.active.tenantId }, id, active);
+  await setEndpointActive({ tenantId: auth.active.tenantId }, id, active, authorOf(auth)); // CRM C5.5 ▸ เปิด = ตัวกันเหตุการณ์ตรวจ ◂
   revalidatePath(SETTINGS_PATH);
 }
 
@@ -85,7 +99,7 @@ export async function updateEndpointEventsAction(
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
   try {
-    const saved = await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events);
+    const saved = await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events, authorOf(auth)); // CRM C5.5 ▸ by ◂
     revalidatePath(SETTINGS_PATH);
     const stored = Array.isArray(saved.eventsJson)
       ? (saved.eventsJson as unknown[]).filter((x): x is string => typeof x === "string")

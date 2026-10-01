@@ -49,6 +49,7 @@ const ERROR_CODE_TH: Record<ApiErrorCode, string> = {
   idempotency_required: "คำสั่งเขียนที่ไม่ได้แนบส่วนหัว Idempotency-Key",
   idempotency_conflict: "ใช้ Idempotency-Key เดิมกับเนื้อคำขอที่ต่างออกไป",
   idempotency_in_progress: "คำขอที่ใช้คีย์กันซ้ำใบนี้ยังทำงานค้างอยู่",
+  idempotency_outcome_unknown: "คำขอเขียนที่ใช้คีย์นี้สะดุดกลางทาง ไม่รู้ว่าบันทึกแล้วหรือยัง — ตรวจรายการก่อน แล้วส่งใหม่ด้วยคีย์ใหม่",
   confirm_required: "คำสั่งอันตรายที่ไม่ได้ส่ง confirm: true มาด้วย",
   customer_session_required: "เส้นทางของลูกค้าเอง (มีเฉพาะระบบสมาชิก) — คีย์ของร้านใช้ไม่ได้ · บอร์ดงานไม่คืนรหัสนี้",
   customer_scope: "ลูกค้าที่ล็อกอินเองเรียก operation ของร้าน (มีเฉพาะระบบสมาชิก) — บอร์ดงานไม่คืนรหัสนี้",

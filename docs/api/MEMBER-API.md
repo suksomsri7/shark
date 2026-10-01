@@ -121,6 +121,7 @@ Branch on `error.code`, never on the message text. The list is shared by every S
 | `forbidden` | 403 | The operation is refused by a business rule, not by the scope check: merging and unlinking need a key of the admin bundle, and exporting needs `member.customer.export`. | Read `message_en`. A wider bundle (`member-admin`) usually fixes it. |
 | `unprocessable` | 422 | The request was understood but cannot be completed as asked, for example importing more rows than the limit, or moving a member to a tier they already hold. | Read `message_en` and `message_th`; the Thai message is safe to show to the shop owner. |
 | `upstream_unavailable` | 503 | An external service an operation depends on is not configured or not reachable right now. | Retry later; this is not caused by the request itself. |
+| `idempotency_outcome_unknown` | 409 | A temporary database or network failure hit the request after it had started, so it is unknown whether it took effect. The key is kept in this state until it expires (24 h); retries with the same key return this answer and never run the request again. | Check whether the record exists (read or list it). If it does not, send the request again with a NEW `Idempotency-Key`; never reuse this key for a retry. |
 
 ## Operations
 

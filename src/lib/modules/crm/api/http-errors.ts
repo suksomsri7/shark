@@ -10,7 +10,7 @@
 // 🔴 รหัส 3 ตัวของ CRM (`stage_requirements` · `approval_required` · `crm_v2_disabled`) ยังไม่อยู่ใน `API_ERROR_CODES` ของแกน
 //    (ไฟล์นั้นไม่ใช่ของใบนี้) ⇒ ประกาศเป็นรายการของโมดูลที่นี่ · คู่มือ/OpenAPI ของ CRM อ่านจาก `CRM_ERROR_CODES`
 
-import { ApiError, type ApiErrorCode, type ApiErrorDetail } from "@/lib/api/respond";
+import { ApiError, nothingWritten, type ApiErrorCode, type ApiErrorDetail } from "@/lib/api/respond"; // CRM C5.5 ▸ RV-2 +nothingWritten ◂
 
 /** รหัสเพิ่มเติมที่ REST ของ CRM ตอบได้ (นอกเหนือจากรหัสกลางของแกน) */
 export const CRM_ERROR_CODES = ["stage_requirements", "approval_required", "crm_v2_disabled", "payload_too_large"] as const;
@@ -78,8 +78,10 @@ export function toCrmApiError(e: unknown): unknown {
     case "CONFLICT":
     case "PARTIAL":
       return crmApiError(409, "state_conflict", th, EN[code]!);
+    // CRM C5.5 ▸ RV-2: รหัสที่ผู้โยนในบริการ CRM ใช้ "ก่อนเขียนอะไร" เสมอ (ด่านยืนยัน · ด่าน uiVersion ต้นบริการ · ด่านเงื่อนไขขั้น
+    //   "ไม่เขียนอะไรเลย" deals.ts moveCore) ⇒ ติดธง nothingWritten ให้การจอง idempotency ถูกปล่อย · รหัสอื่น = เก็บ + ตอบซ้ำ ◂
     case "CONFIRM_REQUIRED":
-      return crmApiError(409, "confirm_required", th, EN.CONFIRM_REQUIRED!);
+      return nothingWritten(crmApiError(409, "confirm_required", th, EN.CONFIRM_REQUIRED!));
     // CRM C2.11 ▸ บริการอีเมล (`EmailError`) มีรหัสของตัวเองอีก 2 ตัว · มอบหมาย/คะแนนมี `CRM_V2_DISABLED`
     //   🔴 ไม่แปลที่นี่ = `mapError` ของแกนเดาไม่ออก ⇒ ผู้เรียกได้ 500 ทั้งที่เป็นสถานะปกติของร้าน
     //      (ยังไม่ตั้งค่าผู้ส่ง / ลูกค้าขอไม่รับอีเมล) — 500 ทำให้ผู้เชื่อมต่อ retry ทั้งที่ retry ไม่ช่วย ◂
@@ -88,14 +90,14 @@ export function toCrmApiError(e: unknown): unknown {
     case "NOT_CONFIGURED":
       return crmApiError(409, "state_conflict", th, EN.NOT_CONFIGURED!);
     case "CRM_V2_DISABLED":
-      return crmApiError(409, "crm_v2_disabled", th, EN.CRM_V2_DISABLED!);
+      return nothingWritten(crmApiError(409, "crm_v2_disabled", th, EN.CRM_V2_DISABLED!));
     // CRM C3.9 ▸ เกินเพดาน = สถานะของร้าน (409 · retry ไม่ช่วย) — ไม่ใช่ 500 ◂
     case "LIMIT":
       return crmApiError(409, "state_conflict", th, EN.LIMIT!);
     case "STAGE_REQUIREMENTS": {
       const missing = Array.isArray((e as { missing?: unknown }).missing) ? ((e as { missing: unknown[] }).missing.filter((x): x is string => typeof x === "string")) : [];
-      return crmApiError(409, "stage_requirements", th, EN.STAGE_REQUIREMENTS!, missing.length ? `missing: ${missing.join(", ")}` : undefined,
-        missing.map((m) => ({ path: m, message: "ต้องกรอกก่อนย้ายเข้าขั้นนี้" })));
+      return nothingWritten(crmApiError(409, "stage_requirements", th, EN.STAGE_REQUIREMENTS!, missing.length ? `missing: ${missing.join(", ")}` : undefined,
+        missing.map((m) => ({ path: m, message: "ต้องกรอกก่อนย้ายเข้าขั้นนี้" }))));
     }
     case "APPROVAL_REQUIRED": {
       const id = (e as { approvalRequestId?: unknown }).approvalRequestId;

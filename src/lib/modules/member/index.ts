@@ -34,6 +34,9 @@ export { MemberNotFoundError, MemberForbiddenError, MemberInputError, MemberConf
 // M2.4 — โมดูลที่บังคับเพดานของตัวเอง (รางวัล/voucher ฯลฯ) อ่านค่า/สร้าง error เพดานผ่านทะเบียนกลางนี้
 // (ทะเบียนเดียว = ข้อความ "ถึงเพดานแพ็กเกจ" คำเดียวกันทั้งระบบ — ห้าม copy ไปประกาศเองที่โมดูลอื่น)
 export { MEMBER_LIMITS, memberLimitError } from "./limits";
+// CRM C5.5 ▸ H55-2 r1b: กฎอัตโนมัติ CRM ถาม "ผู้ตั้งกฎให้แต้ม/voucher นี้ได้ทันทีด้วยมือไหม" (ตัวตัดสินของแต้ม/voucher เอง) ◂
+export { manualGrantVerdict } from "./grant-verdict";
+export type { ManualGrant, ManualGrantVerdict } from "./grant-verdict";
 
 // ── ระบบสมาชิก v2 (M1.4) ──
 export {

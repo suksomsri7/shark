@@ -290,3 +290,6 @@ export * as aiBridges from "./ai-bridges";
 export * as privacy from "./privacy";
 export * as limits from "./limits";
 // ◂ CRM C3.9
+// CRM C5.5 ▸ (fix1 r1b · L55-4 ต่อ) หน้าตั้งค่า webhook กลางของร้านตรวจ "สมัคร event ของ CRM ได้ไหม" ผ่านที่นี่
+export { crmPlatformWebhookProblem } from "./api/key-guard";
+// ◂ CRM C5.5
