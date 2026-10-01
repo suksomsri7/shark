@@ -41,6 +41,8 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
 ### 0.22 🔴 HANDOFF 1 Oct 2026 ~11:45 UTC — owner moves the working session again (new session starts HERE)
+
+> **UPDATE 11:46 UTC — owner cancelled the move: same session continues, cap = 3 lanes.** The "no new lanes" rule below is void. 4 agents were still running at this time (it4, fix1 r2, fix2, hotfix reviewer); a new lane opens only when the running count drops below 3. Next lanes in order: independent reviewer for fix1 r2, reviewer for fix2, then merge gates. The state table below stays the source of truth.
 **OWNER ORDER (11:45 UTC): as each running lane finishes, do NOT open another; record everything; leave things clean.** Accepted **46/53 (87%)** · branch `session/crm` (pushed) · prod = main (NOT touched today; origin/main has 12 design commits session/crm lacks — merge needed before any prod push) · ⛔ every prod push = ask the owner.
 
 #### State table (updated by the controller as lanes end — the LAST edit time is at the bottom of this section)
