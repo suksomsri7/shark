@@ -1,0 +1,221 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .biz{display:inline-flex;align-items:center;gap:12px;height:32px;padding:0 10px;border:1px solid var(--line);
+  border-radius:8px;font-size:13px;color:var(--ink2)}
+.top .dot{width:8px;height:8px;border-radius:50%;background:var(--ink);display:inline-block}
+.top .st{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--mut)}
+.top .who{display:inline-flex;align-items:center;gap:13px;font-size:12.5px;color:var(--ink2)}
+.amenu .am .pill{height:18px;min-width:18px;font-size:10.5px}
+</style>
+<style>
+.split{display:flex;flex:1;min-height:0}
+.emain{flex:1;min-width:0;display:flex;flex-direction:column}
+.emain .ph{align-items:flex-start;padding-top:22px}
+.emain .ph .d{font-size:13px;color:var(--mut);margin-top:4px}
+.flt{display:flex;gap:12px;align-items:center}
+.flt .tg{display:inline-flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink2);margin-left:auto;white-space:nowrap}
+.card.p0 .tbl.etb{font-size:13.5px!important}
+.card.p0 .tbl.etb th{padding:13px 8px!important;font-size:12.5px!important}
+.card.p0 .tbl.etb td{padding:13px 8px!important}
+.card.p0 .tbl.etb th:first-child,.card.p0 .tbl.etb td:first-child{padding-left:18px!important}
+.etb .nmc{display:flex;align-items:center;gap:10px}
+.etb .nmc .av{width:34px;height:34px;border-radius:10px;font-size:13px}
+.etb .nmc b{display:block;font-weight:600;white-space:nowrap}
+.etb small{display:block;color:var(--mut);white-space:nowrap}
+.etb td{white-space:nowrap}
+.etb tr.sel td{background:var(--acc-bg)}
+.etb tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.etb tr.end td{color:var(--mut2)}
+.etb tr.end td b,.etb tr.end td small{color:var(--mut2)}
+.ok{display:inline-flex;align-items:center;gap:4px;color:var(--ink);font-weight:600}
+.no{color:var(--mut2)}
+/* ── drawer โปรไฟล์ ── */
+.edr{width:460px;flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--sf);box-shadow:-8px 0 24px rgba(10,10,10,.06)}
+.edr .hd{display:flex;align-items:center;gap:14px;padding:20px 22px 14px}
+.edr .hd .ph2{width:52px;height:52px;border-radius:14px;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center;font-size:20px;font-weight:700;color:var(--ink2);flex:none}
+.edr .hd h2{font-size:18px;font-weight:700;letter-spacing:-.01em;line-height:1.3}
+.edr .hd small{display:block;color:var(--mut)}
+.edr .tabs{padding:0 10px}
+.edr .tab{padding:12px 9px!important;font-size:14px!important}
+.edr .bd{flex:1;padding:20px 22px;display:flex;flex-direction:column;gap:24px}
+.edr h3{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.edr h3 .sp{flex:1}
+.edr h3 .lnk{font-size:13px}
+.prb{border:1.5px solid var(--acc);background:var(--acc-bg);border-radius:16px;padding:16px 18px;display:flex;align-items:center;gap:14px}
+.prb .tx{flex:1;min-width:0}
+.prb .tx b{display:block;font-size:15.5px;color:var(--acc);white-space:nowrap}
+.prb .tx small{display:block;color:var(--ink2);margin-top:3px}
+.edr .kv{font-size:14px;padding:10px 0}
+.edr .kv .k{width:120px}
+.edr .kv .v{display:flex;align-items:center;gap:8px}
+.edr .kv .v .sp{flex:1}
+.edr .kv .v .i{color:var(--mut)}
+.mtr2{height:8px;border-radius:4px;background:var(--sf2);border:1px solid var(--line);overflow:hidden;margin-bottom:12px}
+.mtr2 i{display:block;height:100%;background:var(--ink)}
+.chk{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.chk div{display:flex;align-items:center;gap:9px;font-size:14px}
+.chk div .cbx{width:18px;height:18px;flex:none}
+.chk div .cbx.on::after{left:5px;top:1.5px;width:5px;height:9px}
+.chk div.todo{color:var(--ink);font-weight:600}
+.chk div.todo .cbx{border-color:var(--ink)}
+.lnr{border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.lnr .r{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);font-size:14px}
+.lnr .r:first-child{border-top:0}
+.lnr .r .nm{width:118px;flex:none;color:var(--mut)}
+.lnr .r .sp{flex:1}
+.edr .ft{display:flex;gap:12px;padding:16px 22px;border-top:1px solid var(--line);align-items:center}
+.edr .ft .sp{flex:1}
+.todo4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.todo4 div{border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.todo4 .k{display:block;font-size:13px;color:var(--mut)}
+.todo4 b{display:block;font-size:22px;margin-top:4px}
+.todo4 small{display:block;color:var(--mut);margin-top:2px;line-height:1.4}
+.btn.dgx{border-color:var(--line);color:var(--dg)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">02 · ทะเบียนพนักงาน + โปรไฟล์ <span>— สาขาประจำ/ยืมตัว · สถานะจ้าง 5 แบบ · PIN + บัญชี SHARK · โปรไฟล์: ทดลองงานครบกำหนด · onboarding checklist · เชื่อมระบบ</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">SHARK</span>
+  <span class="biz"><svg class="i sm"><use href="#i-shop"/></svg>บ้านกาแฟสวนผึ้ง · สาขาหัวหิน<svg class="i xs"><use href="#i-cv"/></svg></span>
+  <span class="sp"></span>
+  <span class="st"><i class="dot"></i>ออนไลน์ · พฤ. 1 ต.ค. 2569 · 12:20</span>
+  <span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span>
+ </div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am on"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-doc"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-report"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="split">
+    <div class="emain">
+     <div class="ph">
+      <div><h1>พนักงาน</h1><div class="d">2 สาขา · หัวหิน 9 คน · สวนผึ้ง 5 คน — ทะเบียนลูกจ้างตามกฎหมายแรงงานออกจากหน้านี้</div></div>
+      <span class="sp"></span>
+      <div class="btn gh sm"><svg class="i sm"><use href="#i-import"/></svg>นำเข้า CSV</div>
+      <div class="btn pri sm"><svg class="i sm"><use href="#i-plus"/></svg>พนักงาน</div>
+     </div>
+
+     <div class="pg" style="gap:22px!important">
+      <div class="tabs">
+       <div class="tab on">ทั้งหมด <span class="n">14</span></div>
+       <div class="tab">ประจำ <span class="n">9</span></div>
+       <div class="tab">พาร์ทไทม์/รายวัน <span class="n">4</span></div>
+       <div class="tab">ทดลองงาน <span class="n">1</span></div>
+       <div class="tab">สิ้นสุด <span class="n">3</span></div>
+      </div>
+      <div class="flt">
+       <div class="inp gro"><svg class="i sm"><use href="#i-search"/></svg>ค้นชื่อ · รหัส · เบอร์</div>
+       <div class="inp"><svg class="i sm"><use href="#i-shop"/></svg>สาขา: <b>หัวหิน + ยืมตัวมา</b><svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <div class="inp">แผนก<svg class="i xs cv"><use href="#i-cv"/></svg></div>
+       <span class="tg"><span class="sw"></span>แสดงที่สิ้นสุด</span>
+      </div>
+
+      <div class="card p0">
+       <table class="tbl etb">
+        <thead><tr><th>ชื่อ / รหัส</th><th>ตำแหน่ง / แผนก</th><th>สาขา</th><th>ประเภทจ้าง</th><th>เริ่มงาน</th><th>สถานะ</th><th>PIN</th><th>บัญชี SHARK</th><th></th></tr></thead>
+        <tbody>
+         <tr><td><div class="nmc"><span class="av">น</span><div><b>น้ำฝน</b><small>EMP-002</small></div></div></td><td>แคชเชียร์<small>หน้าร้าน</small></td><td>หัวหิน</td><td>ประจำ<small>รายเดือน</small></td><td>3 ก.พ. 66</td><td><span class="chip ink">ทำงาน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="ok">STAFF</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">พ</span><div><b>แพร</b><small>EMP-003</small></div></div></td><td>แคชเชียร์<small>หน้าร้าน</small></td><td>หัวหิน</td><td>ประจำ<small>รายเดือน</small></td><td>15 มิ.ย. 67</td><td><span class="chip ink">ทำงาน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="ok">STAFF</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">ต</span><div><b>ต้น</b><small>EMP-004</small></div></div></td><td>พ่อครัว<small>ครัว</small></td><td>หัวหิน</td><td>ประจำ<small>รายเดือน</small></td><td>1 พ.ย. 65</td><td><span class="chip">ลาป่วยวันนี้</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="no">— ใช้ kiosk</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">ป</span><div><b>ปอ</b><small>EMP-005</small></div></div></td><td>ผู้ช่วยครัว<small>ครัว</small></td><td>หัวหิน</td><td>ประจำ<small>รายเดือน</small></td><td>8 ม.ค. 68</td><td><span class="chip ink">ทำงาน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="no">— ใช้ kiosk</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">น</span><div><b>นัท</b><small>EMP-006</small></div></div></td><td>บาริสต้า<small>บาร์</small></td><td>หัวหิน</td><td>ประจำ<small>รายเดือน</small></td><td>2 เม.ย. 67</td><td><span class="chip ink">ทำงาน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="ok">STAFF</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr class="sel"><td><div class="nmc"><span class="av">บ</span><div><b>โบว์</b><small>EMP-009</small></div></div></td><td>บาริสต้า<small>บาร์</small></td><td>หัวหิน</td><td>ทดลองงาน<small>รายเดือน</small></td><td>17 ก.ค. 69</td><td><span class="chip acc">ทดลองงาน · 14 วัน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="ok">STAFF</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">ม</span><div><b>มิ้นท์</b><small>EMP-007</small></div></div></td><td>พนักงานเสิร์ฟ<small>หน้าร้าน</small></td><td>หัวหิน</td><td>รายวัน<small>฿400/วัน</small></td><td>10 ม.ค. 69</td><td><span class="chip ink">ทำงาน</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="no">—</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr><td><div class="nmc"><span class="av">จ</span><div><b>เจ</b><small>EMP-012</small></div></div></td><td>บาริสต้า<small>บาร์</small></td><td>สวนผึ้ง<small>ยืมตัว → หัวหิน</small></td><td>พาร์ทไทม์<small>฿65/ชม.</small></td><td>1 พ.ค. 69</td><td><span class="chip">สัญญาถึง 31 ต.ค.</span></td><td><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span></td><td><span class="ok">STAFF</span></td><td><svg class="i sm mu"><use href="#i-more"/></svg></td></tr>
+         <tr class="end"><td><div class="nmc"><span class="av">ฝ</span><div><b>ฝ้าย</b><small>EMP-010</small></div></div></td><td>พนักงานเสิร์ฟ<small>หน้าร้าน</small></td><td>หัวหิน</td><td>รายวัน<small>฿400/วัน</small></td><td>5 มี.ค. 69</td><td><span class="chip">สิ้นสุด 31 ส.ค.</span></td><td>ปิดแล้ว</td><td>ปิดแล้ว</td><td><svg class="i sm"><use href="#i-more"/></svg></td></tr>
+        </tbody>
+       </table>
+       <div class="tfoot"><span>แสดง 9 คน · หัวหิน 8 + ยืมตัวมา 1 · สิ้นสุด 1</span><span class="sp"></span>
+        <div class="pgr"><span class="pb"><svg class="i xs"><use href="#i-back"/></svg></span><span class="pb" style="border-color:var(--ink);color:var(--ink);font-weight:700">1</span><span class="pb">2</span><span class="pb"><svg class="i xs"><use href="#i-ar"/></svg></span></div></div>
+      </div>
+
+      <div class="card">
+       <div class="ch"><svg class="i sm"><use href="#i-flag"/></svg><h2>ต้องจัดการ</h2><span class="sub">สร้างการ์ดในบอร์ดงานให้อัตโนมัติ</span></div>
+       <div class="todo4">
+        <div><span class="k">ทดลองงานใกล้ครบ</span><b>1</b><small>โบว์ · 15 ต.ค.</small></div>
+        <div><span class="k">สัญญาใกล้หมด</span><b>1</b><small>เจ · 31 ต.ค.</small></div>
+        <div><span class="k">Onboarding ค้าง</span><b>2 ข้อ</b><small>โบว์ · สัญญา · อบรม POS</small></div>
+        <div><span class="k">Offboarding</span><b>ครบ</b><small>ฝ้าย · ปิด PIN + จ่ายงวดสุดท้ายแล้ว</small></div>
+       </div>
+      </div>
+     </div>
+    </div>
+
+    <!-- โปรไฟล์ -->
+    <div class="edr">
+     <div class="hd"><div class="ph2">บ</div><div style="flex:1;min-width:0"><h2>โบว์ · EMP-009 · บาริสต้า</h2><small>พิมพ์ชนก ใจดี · สาขาหัวหิน · แผนกบาร์</small></div><svg class="i mu"><use href="#i-x"/></svg></div>
+     <div class="tabs">
+      <div class="tab on">ทั่วไป</div><div class="tab">เอกสาร</div><div class="tab">ตารางงาน</div><div class="tab">ลา</div><div class="tab">เงินเดือน</div><div class="tab">ประวัติ</div>
+     </div>
+     <div class="bd">
+      <div class="prb"><div class="tx"><b><svg class="i sm" style="vertical-align:-3px;margin-right:6px"><use href="#i-flag"/></svg>ทดลองงาน · ครบ 15 ต.ค. (อีก 14 วัน)</b><small>เริ่ม 17 ก.ค. 2569 · 90 วัน · สาย 0 · ขาด 0 · OT 6 ชม.</small></div><div class="btn sm pri">ประเมิน <svg class="i xs"><use href="#i-ar"/></svg></div></div>
+
+      <div>
+       <h3>ข้อมูลส่วนตัว<span class="sp"></span><span class="lnk">แก้ไข</span></h3>
+       <div class="kv"><span class="k">เบอร์</span><span class="v">089-214-4417</span></div>
+       <div class="kv"><span class="k">อีเมล</span><span class="v">bow.pimchanok@mail.com</span></div>
+       <div class="kv"><span class="k">บัตร ปชช.</span><span class="v">x-xxxx-xxxxx-62-1<span class="sp"></span><svg class="i sm"><use href="#i-eye"/></svg></span></div>
+       <div class="kv"><span class="k">ปสส.</span><span class="v">xxx-xxx-xx21 · รพ.หัวหิน<span class="sp"></span><svg class="i sm"><use href="#i-eye"/></svg></span></div>
+       <div class="kv"><span class="k">ธนาคาร</span><span class="v">KBank xxx-x-x4321</span></div>
+       <div class="kv"><span class="k">วันเกิด</span><span class="v">12 มี.ค. 2546 (23 ปี)</span></div>
+       <div class="kv"><span class="k">ที่อยู่</span><span class="v" style="line-height:1.5">88/12 ถ.เพชรเกษม ต.หัวหิน<br>อ.หัวหิน จ.ประจวบคีรีขันธ์ 77110</span></div>
+      </div>
+
+      <div>
+       <h3>Onboarding checklist<span class="sp"></span><b style="font-size:14px">5/7</b></h3>
+       <div class="mtr2"><i style="width:71%"></i></div>
+       <div class="chk">
+        <div><i class="cbx on"></i>บัตร ปชช.</div>
+        <div><i class="cbx on"></i>ปสส.</div>
+        <div><i class="cbx on"></i>บัญชีธนาคาร</div>
+        <div><i class="cbx on"></i>PIN</div>
+        <div><i class="cbx on"></i>ตารางงาน</div>
+        <div class="todo"><i class="cbx"></i>สัญญาจ้างลงนาม</div>
+        <div class="todo"><i class="cbx"></i>อบรม POS</div>
+       </div>
+       <div class="sub" style="margin-top:10px;font-size:12.5px">2 ข้อที่เหลือเป็นการ์ดในบอร์ดงาน “รับพนักงานใหม่” · ผู้รับผิดชอบ พี่เก่ง</div>
+      </div>
+
+      <div>
+       <h3>เชื่อมระบบ</h3>
+       <div class="lnr">
+        <div class="r"><span class="nm">บัญชี SHARK</span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>STAFF</span><span class="sp"></span><span class="sub">เห็นหน้า “ของฉัน”</span></div>
+        <div class="r"><span class="nm">PIN POS</span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg>ตั้งแล้ว</span><span class="sp"></span><span class="lnk" style="font-size:13px">เปลี่ยน PIN</span></div>
+        <div class="r"><span class="nm">ระบบจอง</span><span class="mu">ไม่ใช่ช่าง</span><span class="sp"></span><span class="lnk" style="font-size:13px">ตั้งเป็นช่าง</span></div>
+        <div class="r"><span class="nm">CRM</span><span class="mu">—</span><span class="sp"></span><span class="sub">ไม่มีค่าคอมฯ ดีล</span></div>
+       </div>
+      </div>
+     </div>
+     <div class="ft"><div class="btn pri">บันทึก</div><div class="btn gh">ยกเลิก</div><span class="sp"></span><div class="btn gh dgx">สิ้นสุดการจ้าง</div></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

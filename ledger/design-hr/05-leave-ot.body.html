@@ -1,0 +1,218 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink2)}
+.am .pill{height:20px;min-width:20px;font-size:11.5px}
+/* จอ 05 */
+.lv{display:flex;gap:32px;padding:0 36px 40px;align-items:flex-start}
+.lv .lc{flex:2;min-width:0;display:flex;flex-direction:column;gap:20px}
+.lv .rc{flex:1;min-width:0;display:flex;flex-direction:column;gap:24px}
+.rq{border:1px solid var(--line);border-radius:18px;padding:22px 24px;display:flex;gap:18px;background:var(--sf)}
+.rq.sel{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.rq .cb{padding-top:3px}
+.rq .cb .cbx{width:18px;height:18px}
+.rq .cb .cbx.on::after{left:5px;top:1.5px;width:5px;height:9px}
+.rq .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
+.rq .r1{display:flex;align-items:center;gap:12px}
+.rq .r1 .nm{font-size:17px;font-weight:700}
+.rq .r1 .ro{font-size:13px;color:var(--mut)}
+.rq .r1 .sp{flex:1}
+.rq .r1 .ts{font-size:13px;color:var(--mut)}
+.rq .dt{font-size:15px;color:var(--ink);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rq .dt b{font-variant-numeric:tabular-nums}
+.rq .imp{display:flex;align-items:flex-start;gap:10px;font-size:13.5px;color:var(--ink2);background:var(--sf2);border-radius:12px;padding:11px 14px;line-height:1.55}
+.rq .imp.acc{background:var(--acc-bg);color:var(--acc)}
+.rq .imp svg{margin-top:2px}
+.rq .ft{display:flex;align-items:center;gap:10px;margin-top:4px}
+.rq .ft .sp{flex:1}
+.rq .ft .ev{font-size:13px;color:var(--mut);display:inline-flex;align-items:center;gap:6px}
+.math{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums}
+.amt{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.qt{width:100%;border-collapse:collapse;font-size:14px}
+.qt th{text-align:right;font-size:12.5px;color:var(--mut);font-weight:700;padding:0 6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.qt th:first-child{text-align:left}
+.qt td{padding:11px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qt td:first-child{text-align:left}
+.qt tr:last-child td{border-bottom:0}
+.qt td small{color:var(--acc);font-weight:700}
+.qt td.na{color:var(--mut2)}
+.hol{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line)}
+.hol:first-of-type{border-top:0}
+.hol .d{width:52px;height:52px;border-radius:13px;border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none;background:var(--sf2)}
+.hol .d b{font-size:18px;line-height:1.1}
+.hol .d span{font-size:12px;color:var(--mut)}
+.hol .t{flex:1;min-width:0}
+.hol .t b{display:block;font-size:14.5px}
+.hol .t span{font-size:13px;color:var(--mut)}
+.rl{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.5}
+.rl:first-of-type{border-top:0}
+.rl .k{flex:1;min-width:0}
+.rl .k span{display:block;font-size:13px;color:var(--mut)}
+.rl .v{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.law{font-size:12.5px;color:var(--mut);display:inline-flex;align-items:center;gap:6px}
+.tglrow{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;margin-top:6px;background:var(--sf2)}
+.tglrow .t{flex:1;font-size:14px}
+.tglrow .t span{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">05 · ลา · OT · คำขอ <span>— ผู้จัดการอนุมัติทุกคำขอในหน้าเดียว · เห็นผลกระทบกะ/เงินก่อนกด · อนุมัติเป็นชุด · โควตาลา + วันหยุดไทย + กฎ OT/หักสายอยู่ข้างกัน</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน · 9 คน</span>
+  <span class="sp"></span><span class="mu" style="font-size:13.5px">พฤ. 1 ต.ค. 2569</span><svg class="i"><use href="#i-search"/></svg><span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am on"><svg class="i sm"><use href="#i-flag"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="ph"><h1>ลา · OT · คำขอ</h1><span class="chip">สาขาหัวหิน</span><span class="sp"></span>
+    <span class="btn gh"><svg class="i sm"><use href="#i-cal"/></svg>ปฏิทินลาทั้งทีม</span>
+    <span class="btn gh"><svg class="i sm"><use href="#i-plus"/></svg>บันทึกแทนพนักงาน</span></div>
+
+   <div style="padding:0 36px 24px">
+    <div class="tabs">
+     <div class="tab on">คำขอรออนุมัติ<span class="bdg">5</span></div>
+     <div class="tab">ลา<span class="n">2</span></div>
+     <div class="tab">OT<span class="n">1</span></div>
+     <div class="tab">เปลี่ยนกะ<span class="n">1</span></div>
+     <div class="tab">แก้เวลา<span class="n">1</span></div>
+     <div class="tab">ปรับเงิน<span class="n">0</span></div>
+     <div class="tab" style="margin-left:auto">ประวัติที่ตัดสินแล้ว</div>
+    </div>
+   </div>
+
+   <div class="lv">
+    <!-- ════ ซ้าย: คำขอ ════ -->
+    <div class="lc">
+     <div class="bulk" style="padding:14px 18px;border-radius:14px;font-size:14.5px"><span class="cbx on"></span>เลือก 2 · ลาป่วย ต้น · แก้เวลา น้ำฝน<span class="sp"></span>
+      <span class="btn gh sm" style="color:var(--ink)">ปฏิเสธที่เลือก</span><span class="btn pri sm">อนุมัติทั้งหมด (2)</span></div>
+
+     <!-- 1 ลาพักร้อน -->
+     <div class="rq">
+      <div class="cb"><span class="cbx"></span></div>
+      <div class="bd">
+       <div class="r1"><span class="chip ink">ลาพักร้อน</span><span class="av">พ</span><span class="nm">แพร</span><span class="ro">แคชเชียร์ · ประจำ</span><span class="sp"></span><span class="ts">ยื่น 28 ก.ย. 14:20 · ทางมือถือ</span></div>
+       <div class="dt"><svg class="i sm mu"><use href="#i-cal"/></svg><b>ส. 10 – อา. 11 ต.ค. 2569</b><span class="mu">· 2 วัน · เต็มวัน</span><span class="mu">· "ไปงานแต่งพี่สาวที่เชียงใหม่"</span></div>
+       <div class="dt" style="font-size:14px"><span class="mu">พักร้อนปีนี้</span><b>ใช้ 0 → 2 จาก 6</b><span class="chip">เหลือหลังอนุมัติ 4/6</span></div>
+       <div class="imp acc"><svg class="i sm"><use href="#i-warn"/></svg><span><b>กระทบ:</b> กะบ่าย ส.–อา. (13:00–21:00) ขาด 1 คน → ระบบเสนอ <b>โบว์</b> (ว่างทั้ง 2 วัน · ชั่วโมงสัปดาห์นั้น 40 → 48 ชม. ไม่เกินกฎ)</span></div>
+       <div class="ft"><span class="ev"><svg class="i xs"><use href="#i-check"/></svg>ไม่ซ้อนกับคนอื่นในทีม</span><span class="sp"></span>
+        <span class="btn gh sm">ปฏิเสธ</span><span class="btn gh sm">อนุมัติอย่างเดียว</span><span class="btn pri sm">อนุมัติ + ใส่โบว์แทน</span></div>
+      </div>
+     </div>
+
+     <!-- 2 OT -->
+     <div class="rq">
+      <div class="cb"><span class="cbx"></span></div>
+      <div class="bd">
+       <div class="r1"><span class="chip ink">OT</span><span class="av">บ</span><span class="nm">โบว์</span><span class="ro">บาริสต้า · ทดลองงาน</span><span class="sp"></span><span class="ts">ยื่นหลังทำ 30 ก.ย. 22:10 · ภายใน 24 ชม. ✓</span></div>
+       <div class="dt"><svg class="i sm mu"><use href="#i-clock"/></svg><b>พ. 30 ก.ย. 20:00–22:00</b><span class="mu">· 2 ชม. · วันทำงาน ×1.5 · "ปิดร้านช้า มีงานเลี้ยงจองโต๊ะ"</span></div>
+       <div style="display:flex;align-items:baseline;gap:14px"><span class="amt">฿175</span><span class="math">฿14,000 ÷ 30 ÷ 8 = ฿58.33/ชม. × 1.5 × 2 ชม. = ฿175</span></div>
+       <div class="imp"><svg class="i sm"><use href="#i-check"/></svg><span>ลงเวลาออกจริง 22:04 · ปิดกะ POS 21:58 · ตรงกับที่ขอ · เข้ารอบเงินเดือน ก.ย. (ยังไม่ปิดรอบ)</span></div>
+       <div class="ft"><span class="law"><svg class="i xs"><use href="#i-book"/></svg>อัตรา OT ตามตารางกฎหมาย มีผล 1 ม.ค. 2569</span><span class="sp"></span>
+        <span class="btn gh sm">ปฏิเสธ</span><span class="btn pri sm">อนุมัติ</span></div>
+      </div>
+     </div>
+
+     <!-- 3 ลาป่วย -->
+     <div class="rq sel">
+      <div class="cb"><span class="cbx on"></span></div>
+      <div class="bd">
+       <div class="r1"><span class="chip ink">ลาป่วย</span><span class="av">ต</span><span class="nm">ต้น</span><span class="ro">ครัว · ประจำ</span><span class="chip dg">วันนี้</span><span class="sp"></span><span class="ts">ยื่น 1 ต.ค. 07:12</span></div>
+       <div class="dt"><svg class="i sm mu"><use href="#i-cal"/></svg><b>พฤ. 1 ต.ค. 2569</b><span class="mu">· 1 วัน · "ไข้หวัด ไปคลินิกแล้ว"</span></div>
+       <div class="dt" style="font-size:14px"><span class="chip"><svg class="i xs"><use href="#i-file"/></svg>ใบรับรองแพทย์ ✓</span><span class="mu">ลาป่วยปีนี้</span><b>ใช้ 2 → 3 จาก 30 · เหลือ 27</b></div>
+       <div class="imp"><svg class="i sm"><use href="#i-check"/></svg><span>กะเช้าครัววันนี้ยังมี ก้อง · ไม่ต้องหาคนแทน · ได้รับค่าจ้างตามปกติ (ลาป่วยไม่เกิน 30 วัน/ปี)</span></div>
+       <div class="ft"><span class="sp"></span><span class="btn gh sm">ปฏิเสธ</span><span class="btn pri sm">อนุมัติ</span></div>
+      </div>
+     </div>
+
+     <!-- 4 สลับกะ -->
+     <div class="rq">
+      <div class="cb"><span class="cbx"></span></div>
+      <div class="bd">
+       <div class="r1"><span class="chip ink">สลับกะ</span><span class="av">ม</span><span class="nm">มิ้นท์</span><svg class="i sm mu"><use href="#i-swap"/></svg><span class="av">จ</span><span class="nm">เจ</span><span class="ro">รายวัน ↔ พาร์ทไทม์</span><span class="sp"></span><span class="ts">ยื่น 30 ก.ย. 18:40</span></div>
+       <div class="dt"><b>มิ้นท์</b><span class="mu">ส. 3 ต.ค. กะเช้า 09:00–17:00</span><svg class="i xs mu"><use href="#i-ar"/></svg><span>ให้ <b>เจ</b></span></div>
+       <div class="dt"><b>เจ</b><span class="mu">อา. 4 ต.ค. กะเช้า 09:00–17:00</span><svg class="i xs mu"><use href="#i-ar"/></svg><span>ให้ <b>มิ้นท์</b></span></div>
+       <div class="imp"><svg class="i sm"><use href="#i-check"/></svg><span>ทั้งคู่กดยืนยันแล้ว · ชั่วโมงเท่าเดิม (8 + 8) · ค่าแรงต่างกัน: เจ ฿65 × 8 = ฿520 แทน มิ้นท์ ฿400 → ส. ค่าแรง +฿120 · อา. −฿120 · รวมเท่าเดิม</span></div>
+       <div class="ft"><span class="sp"></span><span class="btn gh sm">ปฏิเสธ</span><span class="btn pri sm">อนุมัติ</span></div>
+      </div>
+     </div>
+
+     <!-- 5 แก้เวลา -->
+     <div class="rq sel">
+      <div class="cb"><span class="cbx on"></span></div>
+      <div class="bd">
+       <div class="r1"><span class="chip ink">แก้เวลา</span><span class="av">น</span><span class="nm">น้ำฝน</span><span class="ro">แคชเชียร์ · ประจำ</span><span class="sp"></span><span class="ts">ยื่น 1 ต.ค. 08:55</span></div>
+       <div class="dt"><b>ลืมลงเวลาออก พ. 30 ก.ย.</b><span class="mu">· ระบบปิดให้อัตโนมัติ 23:59 (ขาดเวลาออก)</span></div>
+       <div class="dt"><span class="mu">ขอบันทึกเวลาออก</span><b>17:00</b><span class="mu">· "รีบไปรับลูก ลืมกดออก"</span></div>
+       <div class="imp"><svg class="i sm"><use href="#i-check"/></svg><span>หลักฐาน: ปิดกะ POS 17:03 ✓ · เครื่องเคาน์เตอร์ล็อกเอาต์ 17:02 ✓ · ตรงกับเวลาที่ขอ · ไม่มี OT</span></div>
+       <div class="ft"><span class="sp"></span><span class="btn gh sm">ปฏิเสธ</span><span class="btn pri sm">อนุมัติ</span></div>
+      </div>
+     </div>
+     <div class="note">ทุกการอนุมัติ/ปฏิเสธส่งผลให้พนักงานทาง LINE + แอป · ลาที่อนุมัติ → ตารางกะอัปเดต + ปิดช่องจองอัตโนมัติ · บันทึกผู้ตัดสินและเวลาในประวัติ</div>
+    </div>
+
+    <!-- ════ ขวา ════ -->
+    <div class="rc">
+     <div class="card">
+      <div class="ch"><h2 style="font-size:16px">โควตาลา ทีมหัวหิน (ปี 2569)</h2><span class="sp"></span><span class="lnk" style="font-size:13px">ทั้งหมด</span></div>
+      <table class="qt">
+       <tr><th>คน</th><th>ป่วย ใช้/30</th><th>กิจ /3</th><th>พักร้อน /6</th></tr>
+       <tr><td>พี่เก่ง</td><td>1</td><td>0</td><td>4</td></tr>
+       <tr><td>น้ำฝน</td><td>4</td><td>1</td><td>3</td></tr>
+       <tr><td>แพร</td><td>2</td><td>1</td><td>0 <small>+2</small></td></tr>
+       <tr><td>ต้น</td><td>2 <small>+1</small></td><td>2</td><td>5</td></tr>
+       <tr><td>ปุ้ย</td><td>0</td><td>1</td><td>2</td></tr>
+       <tr><td>ก้อง</td><td>5</td><td>0</td><td>3</td></tr>
+       <tr><td>โบว์</td><td>1</td><td>0</td><td class="na">ยังไม่ครบปี</td></tr>
+       <tr><td>เจ</td><td>0</td><td>0</td><td class="na">—</td></tr>
+       <tr><td>มิ้นท์</td><td>1</td><td>0</td><td class="na">—</td></tr>
+      </table>
+      <div class="sub" style="margin-top:12px;line-height:1.6"><small style="color:var(--acc);font-weight:700">+n</small> = รออนุมัติ · พักร้อน 6 วันเมื่อทำงานครบ 1 ปี · ตามตารางกฎหมาย มีผล 1 ม.ค. 2569</div>
+     </div>
+
+     <div class="card">
+      <div class="ch"><h2 style="font-size:16px">วันหยุดร้าน/ราชการ ต.ค.</h2><span class="sp"></span><span class="lnk" style="font-size:13px">ปฏิทินปี 2569</span></div>
+      <div class="hol"><div class="d"><b>13</b><span>อ.</span></div><div class="t"><b>วันนวมินทรมหาราช</b><span>วันหยุดราชการ · ร้านเปิด · เข้ากะ 6 คน</span></div></div>
+      <div class="hol"><div class="d"><b>23</b><span>ศ.</span></div><div class="t"><b>วันปิยมหาราช</b><span>วันหยุดราชการ · ร้านเปิด · เข้ากะ 7 คน</span></div></div>
+      <div class="tglrow"><div class="t"><b>ร้านเปิดวันหยุดนักขัตฤกษ์</b><span>คนที่เข้ากะ: ค่าจ้างวันหยุด ×2 · OT ×3</span></div><span class="sw"></span></div>
+      <div class="law" style="margin-top:10px"><svg class="i xs"><use href="#i-book"/></svg>ตามตารางกฎหมาย มีผล 1 ม.ค. 2569 · แก้ได้ในตั้งค่า</div>
+     </div>
+
+     <div class="card">
+      <div class="ch"><h2 style="font-size:16px">กฎ OT และหักสาย</h2><span class="sp"></span><span class="lnk" style="font-size:13px">แก้ไข</span></div>
+      <div class="rl"><div class="k">สายเกิน 15 นาที<span>ไม่เกิน 15 นาทีไม่หัก · นับจากเวลาเริ่มกะ</span></div><div class="v">หัก ฿50/ครั้ง</div></div>
+      <div class="rl"><div class="k">ขาดงาน (ไม่ลา)<span>ประจำ: เงินเดือน ÷ 30 · รายวัน: ไม่จ่ายวันนั้น</span></div><div class="v">หักรายวัน</div></div>
+      <div class="rl"><div class="k">ขอ OT<span>ขอล่วงหน้า หรือขอภายใน 24 ชม. หลังทำ · เกินกำหนด = ไม่นับ</span></div><div class="v">ต้องอนุมัติ</div></div>
+      <div class="rl"><div class="k">อัตรา OT<span>วันทำงาน · วันหยุดในเวลา · วันหยุดนอกเวลา</span></div><div class="v">×1.5 · ×2 · ×3</div></div>
+      <div class="law" style="margin-top:8px"><svg class="i xs"><use href="#i-book"/></svg>อัตรา OT ตามตารางกฎหมาย มีผล 1 ม.ค. 2569</div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

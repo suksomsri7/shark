@@ -1,0 +1,192 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink2)}
+.am .pill{height:20px;min-width:20px;font-size:11.5px}
+/* จอ 08 */
+.s8{display:flex;flex:1;min-height:0}
+.snav{width:250px;flex:none;border-right:1px solid var(--line);padding:22px 14px;background:var(--sf2)}
+.snav .acc-i{border-radius:0 10px 10px 0;height:46px;font-size:14.5px;gap:10px}
+.smain{flex:1;min-width:0;padding:26px 28px 36px 32px;display:flex;flex-direction:column;gap:24px}
+.sright{width:410px;flex:none;padding:26px 32px 36px 0;display:flex;flex-direction:column;gap:24px}
+.shd h1{font-size:26px;font-weight:700;letter-spacing:-.02em;line-height:1.3}
+.shd h1 span{font-size:16px;font-weight:400;color:var(--mut);letter-spacing:0}
+.shd .d{font-size:13.5px;color:var(--mut);margin-top:6px}
+.lt{border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.lt .lh{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.lt .lh h2{font-size:16px;font-weight:700}
+.lt .lh .sp{flex:1}
+.lt table{width:100%;border-collapse:collapse;font-size:14px}
+.lt th{font-size:12.5px;color:var(--mut);font-weight:700;text-align:left;padding:11px 14px;background:var(--sf2);border-bottom:1px solid var(--line);white-space:nowrap}
+.lt td{padding:12px 14px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lt tr:last-child td{border-bottom:0}
+.lt th.r,.lt td.r{text-align:right}
+.lt tr.fut td{color:var(--mut2)}
+.lt .lf{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--line);font-size:13px;color:var(--mut);background:var(--sf2)}
+.lt .lf .sp{flex:1}
+.g28{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.kvl{padding:6px 20px 10px}
+.kvl .r{display:flex;align-items:baseline;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.kvl .r:first-child{border-top:0}
+.kvl .r .sp{flex:1}
+.kvl .r b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.kvl .r small{display:block;font-size:12.5px;color:var(--mut)}
+.law{font-size:12.5px;color:var(--mut);display:inline-flex;align-items:center;gap:6px}
+.warnb{display:flex;align-items:center;gap:10px;font-size:14px!important;color:var(--dg)!important;border-color:var(--dg)!important;border-style:solid!important;background:var(--sf);padding:12px 16px!important}
+/* AI */
+.aic{border:1px solid var(--acc);border-radius:20px;overflow:hidden;background:var(--sf)}
+.aic .ah{display:flex;align-items:center;gap:10px;padding:16px 20px;background:var(--acc-bg);color:var(--acc)}
+.aic .ah h2{font-size:16px;font-weight:700}
+.aic .ah .sp{flex:1}
+.ins{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:12px}
+.ins:first-of-type{border-top:0}
+.ins .n{width:26px;height:26px;border-radius:8px;background:var(--sf2);border:1px solid var(--line);display:grid;place-items:center;font-size:12.5px;font-weight:700;flex:none;color:var(--ink2)}
+.ins .t{font-size:14px;line-height:1.55}
+.ins .t small{display:block;font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.5}
+.aic .af{padding:14px 20px 18px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.aic .af .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cn .r{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+.cn .r:first-child{border-top:0}
+.cn .r .ic{width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--sf2);display:grid;place-items:center;color:var(--ink2);flex:none}
+.cn .r .t{flex:1;min-width:0}
+.cn .r .t b{display:block;font-weight:700}
+.cn .r .t span{font-size:12.5px;color:var(--mut)}
+.cn .r .ok{width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.cn .r .no{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--line2);flex:none}
+.cn .r.off .t b{color:var(--mut)}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">08 · ตั้งค่ากฎหมาย + ผู้ช่วย AI <span>— ตัวเลขกฎหมายเป็นตารางมีวันที่มีผล (ปสส. · ภาษี · ลดหย่อน · OT · ค่าแรงขั้นต่ำ) แก้ได้ทันทีไม่ต้องรออัปเดตโปรแกรม · AI อ่านข้อมูลจริงแล้วเสนอ คนยืนยัน</span></p>
+<div class="frame" style="height:1150px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">ทุกสาขา · 14 คน</span>
+  <span class="sp"></span><span class="mu" style="font-size:13.5px">พฤ. 1 ต.ค. 2569</span><svg class="i"><use href="#i-search"/></svg><span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-flag"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am on"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="s8">
+    <div class="snav">
+     <div class="dsec" style="color:var(--mut);font-size:12.5px">ตั้งค่าพนักงาน</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-cal"/></svg>กะและตารางงาน</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-flag"/></svg>ประเภทลาและโควตา</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-cal"/></svg>วันหยุด</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-clock"/></svg>กฎสาย/OT</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-wallet"/></svg>รอบจ่าย</div>
+     <div class="acc-i on"><svg class="i sm"><use href="#i-book"/></svg>ตารางกฎหมาย</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-lock"/></svg>สิทธิ์ผู้จัดการ</div>
+     <div class="acc-i"><svg class="i sm"><use href="#i-link"/></svg>การเชื่อมต่อระบบ</div>
+     <div class="ddsep" style="margin:14px 9px"></div>
+     <div class="sub" style="padding:0 11px;line-height:1.6;font-size:13px">ตารางกฎหมายใช้ร่วมทุกสาขา · กะ/วันหยุด/กฎสาย ตั้งแยกรายสาขาได้</div>
+    </div>
+
+    <div class="smain">
+     <div class="shd"><h1>ตารางกฎหมาย <span>(มีวันที่มีผล · แก้ได้โดยไม่ต้องอัปเดตโปรแกรม)</span></h1>
+      <div class="d">ระบบเลือกแถวที่มีผล ณ วันจ่ายเงินเดือนให้อัตโนมัติ · ทุกการแก้ไขเก็บประวัติ ผู้แก้ และเหตุผล</div></div>
+     <div class="note warnb">⚠ ตัวเลขทุกตารางต้องให้นักบัญชี/ที่ปรึกษาตรวจก่อนใช้จริง</div>
+
+     <div class="lt">
+      <div class="lh"><svg class="i sm"><use href="#i-users"/></svg><h2>ประกันสังคม</h2><span class="sp"></span><span class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>เพิ่มช่วงมีผลใหม่</span></div>
+      <table>
+       <tr><th>มีผลตั้งแต่</th><th class="r">ลูกจ้าง</th><th class="r">นายจ้าง</th><th class="r">ฐานต่ำสุด</th><th class="r">ฐานสูงสุด</th><th class="r">สมทบสูงสุด/เดือน</th><th>สถานะ</th></tr>
+       <tr><td><b>1 ม.ค. 2569</b></td><td class="r">5%</td><td class="r">5%</td><td class="r">฿1,650</td><td class="r">฿15,000</td><td class="r">฿750</td><td><span class="chip ink">ใช้อยู่</span></td></tr>
+       <tr class="fut"><td>รอประกาศ</td><td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r">รอประกาศ</td><td class="r">—</td><td><span class="chip">ร่าง · ยังไม่มีผล</span></td></tr>
+      </table>
+      <div class="lf"><svg class="i xs"><use href="#i-clock"/></svg>ชุดตั้งต้นจาก SHARK 2 ม.ค. 2569 · ร้านยืนยัน 5 ม.ค. โดยพี่เก่ง<span class="sp"></span><span class="lnk">ประวัติ</span></div>
+     </div>
+
+     <div class="lt">
+      <div class="lh"><svg class="i sm"><use href="#i-pct"/></svg><h2>ภาษีเงินได้บุคคล (ขั้นบันได)</h2><span class="chip">มีผล 1 ม.ค. 2569</span><span class="sp"></span><span class="law"><svg class="i xs"><use href="#i-book"/></svg>ตามตารางกฎหมาย</span></div>
+      <table>
+       <tr><th>เงินได้สุทธิทั้งปี (บาท)</th><th class="r">อัตรา</th><th class="r">ภาษีสะสมเมื่อเต็มขั้น</th><th style="width:40%">ในร้านตอนนี้ (ก.ย.)</th></tr>
+       <tr><td>0 – 150,000</td><td class="r">ยกเว้น</td><td class="r">0</td><td class="mu">13 คน · ภงด.1 ฿0</td></tr>
+       <tr><td>150,001 – 300,000</td><td class="r">5%</td><td class="r">7,500</td><td class="mu">พี่เก่ง ≈ 215,000 → ฿3,250/ปี = ฿271/เดือน</td></tr>
+       <tr><td>300,001 – 500,000</td><td class="r">10%</td><td class="r">27,500</td><td></td></tr>
+       <tr><td>500,001 – 750,000</td><td class="r">15%</td><td class="r">65,000</td><td></td></tr>
+       <tr><td>750,001 – 1,000,000</td><td class="r">20%</td><td class="r">115,000</td><td></td></tr>
+       <tr><td>1,000,001 – 2,000,000</td><td class="r">25%</td><td class="r">365,000</td><td></td></tr>
+       <tr><td>2,000,001 – 5,000,000</td><td class="r">30%</td><td class="r">1,265,000</td><td></td></tr>
+       <tr><td>5,000,001 ขึ้นไป</td><td class="r">35%</td><td class="r">—</td><td></td></tr>
+      </table>
+      <div class="lf">ภงด.1 รายเดือน = ภาษีทั้งปีจากประมาณการเงินได้ ÷ 12 · ปรับทุกเดือนตามเงินได้จริง</div>
+     </div>
+
+     <div class="g28">
+      <div class="lt">
+       <div class="lh"><h2>ค่าลดหย่อนพื้นฐาน</h2><span class="sp"></span><span class="chip">มีผล 1 ม.ค. 2569</span></div>
+       <div class="kvl">
+        <div class="r"><span>ค่าใช้จ่าย (เงินเดือน)<small>50% ของเงินได้</small></span><span class="sp"></span><b>ไม่เกิน 100,000</b></div>
+        <div class="r"><span>ส่วนตัว</span><span class="sp"></span><b>60,000</b></div>
+        <div class="r"><span>คู่สมรส<small>ไม่มีเงินได้</small></span><span class="sp"></span><b>60,000</b></div>
+        <div class="r"><span>บุตร</span><span class="sp"></span><b>30,000/คน</b></div>
+        <div class="r"><span>ประกันสังคม<small>ตามจ่ายจริง</small></span><span class="sp"></span><b>ไม่เกิน 9,000</b></div>
+       </div>
+      </div>
+      <div class="lt">
+       <div class="lh"><h2>OT และค่าแรงขั้นต่ำ</h2><span class="sp"></span><span class="chip">มีผล 1 ม.ค. 2569</span></div>
+       <div class="kvl">
+        <div class="r"><span>OT วันทำงาน</span><span class="sp"></span><b>×1.5</b></div>
+        <div class="r"><span>ทำงานวันหยุด (ในเวลา)</span><span class="sp"></span><b>×2</b></div>
+        <div class="r"><span>OT วันหยุด (นอกเวลา)</span><span class="sp"></span><b>×3</b></div>
+        <div class="r" style="flex-direction:column;align-items:flex-start;gap:6px"><span>ค่าแรงขั้นต่ำ ประจวบฯ<small>ใช้เตือนเมื่อค่าจ้างรายวัน/ชม. ต่ำกว่า</small></span><span class="chip dg">ตามประกาศ · ตรวจสอบ</span></div>
+       </div>
+      </div>
+     </div>
+    </div>
+
+    <!-- ════ ขวา ════ -->
+    <div class="sright">
+     <div class="aic">
+      <div class="ah"><svg class="i"><use href="#i-spark"/></svg><h2>ผู้ช่วย AI ของ SHARK (HR)</h2><span class="sp"></span><span style="font-size:12.5px">อ่านข้อมูล ก.ย.</span></div>
+      <div class="ins"><span class="n">1</span><div class="t"><b>น้ำฝน สาย 6 ครั้งใน ก.ย.</b> (เฉลี่ยทีม 1.5) → เสนอคุย + บันทึกเตือนด้วยวาจา<small>สายเกิน 15 นาที 3 ครั้ง · ส่วนใหญ่วันจันทร์ · ไม่เคยถูกเตือนมาก่อน</small></div></div>
+      <div class="ins"><span class="n">2</span><div class="t"><b>เสาร์ 12–14 น. ยอดขายสูง คนขาด 1</b> ติดกัน 4 สัปดาห์ → เสนอเพิ่มกะบ่าย 1 คน (โบว์ ว่าง)<small>ยอดขาย POS ช่วงนี้เฉลี่ย ฿6,800/ชม. · คิวรอเฉลี่ย 11 นาที · โบว์ชั่วโมงสัปดาห์ 40 → 45</small></div></div>
+      <div class="ins"><span class="n">3</span><div class="t"><b>labor % ก.ย. 26.1%</b> ใกล้เป้า 28%<small>ค่าแรง ฿158,338 ÷ ยอดขาย POS ฿606,700 (สาขาหัวหิน)</small></div></div>
+      <div class="af">
+       <span class="btn pri blk"><svg class="i sm"><use href="#i-cal"/></svg>ใช้ข้อเสนอจัดกะ (ร่าง)</span>
+       <div class="r2"><span class="btn gh"><svg class="i sm"><use href="#i-grid"/></svg>สร้างงานในบอร์ด</span><span class="btn gh"><svg class="i sm"><use href="#i-spark"/></svg>ถามต่อ</span></div>
+       <div class="note" style="text-align:center">AI เสนอเท่านั้น — ทุกการเขียนต้องมีคนยืนยัน</div>
+      </div>
+     </div>
+
+     <div class="card">
+      <div class="ch"><h2 style="font-size:16px">การเชื่อมต่อ (ย่อ)</h2><span class="sp"></span><span class="lnk" style="font-size:13px">ทั้งหมด</span></div>
+      <div class="cn">
+       <div class="r"><span class="ic"><svg class="i sm"><use href="#i-shop"/></svg></span><span class="t"><b>POS</b><span>PIN เดียว · กะ · ค่าคอมฯ</span></span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="r"><span class="ic"><svg class="i sm"><use href="#i-book"/></svg></span><span class="t"><b>บัญชี</b><span>ลงบัญชีเงินเดือน</span></span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="r"><span class="ic"><svg class="i sm"><use href="#i-cal"/></svg></span><span class="t"><b>จอง</b><span>ลา = ปิดช่อง</span></span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="r"><span class="ic"><svg class="i sm"><use href="#i-check"/></svg></span><span class="t"><b>อนุมัติ</b><span>ลา · OT · กะ · เงินเดือน</span></span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="r"><span class="ic"><svg class="i sm"><use href="#i-mail"/></svg></span><span class="t"><b>แชท LINE พนักงาน</b><span>แจ้งกะ · ผลอนุมัติ · สลิป</span></span><span class="ok"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+       <div class="r off"><span class="ic"><svg class="i sm"><use href="#i-box"/></svg></span><span class="t"><b>คลัง</b><span>เบิกของ · ยังไม่เปิด</span></span><span class="lnk" style="font-size:13px">เปิดใช้</span><span class="no"></span></div>
+      </div>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>

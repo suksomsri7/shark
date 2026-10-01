@@ -1,0 +1,195 @@
+<style>
+.mrowx{display:flex;gap:42px;align-items:flex-start}
+.mob .sb .ic{display:flex;gap:12px;align-items:center;font-size:12px}
+.mob .sb .bat{width:22px;height:11px;border:1.5px solid var(--ink);border-radius:3px;position:relative}
+.mob .sb .bat::after{content:"";position:absolute;inset:1.5px;right:5px;background:var(--ink);border-radius:1px}
+.mob .mh .sp{flex:1}
+.mob .mh .tt{min-width:0}
+.mob .mh .tt h1{line-height:1.25}
+.mob .mh .tt small{display:block;font-size:13px;color:var(--mut);margin-top:2px}
+.mob .mh .ib{width:40px;height:40px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;color:var(--ink2);flex:none}
+.mob .mb{display:flex;flex-direction:column;gap:14px}
+.mob .inp{width:100%}
+/* (ก) กล้อง */
+.camv{height:178px;border-radius:20px;background:var(--ink);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--sf);overflow:hidden}
+.camv .vf{width:210px;height:92px;position:relative}
+.camv .vf i{position:absolute;width:26px;height:26px;border-color:var(--sf);border-style:solid;border-width:0}
+.camv .vf i:nth-child(1){left:0;top:0;border-left-width:3px;border-top-width:3px;border-radius:8px 0 0 0}
+.camv .vf i:nth-child(2){right:0;top:0;border-right-width:3px;border-top-width:3px;border-radius:0 8px 0 0}
+.camv .vf i:nth-child(3){left:0;bottom:0;border-left-width:3px;border-bottom-width:3px;border-radius:0 0 0 8px}
+.camv .vf i:nth-child(4){right:0;bottom:0;border-right-width:3px;border-bottom-width:3px;border-radius:0 0 8px 0}
+.camv .vf .ln{position:absolute;left:12px;right:12px;top:50%;height:2px;background:var(--acc);box-shadow:0 0 0 3px rgba(29,78,216,.35)}
+.camv .vf .bc{position:absolute;left:44px;right:44px;top:22px;bottom:22px;background:repeating-linear-gradient(90deg,var(--sf) 0 2px,transparent 2px 5px,var(--sf) 5px 6px,transparent 6px 10px);opacity:.55}
+.camv .cp{font-size:13px;opacity:.85}
+.camv .ok{position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;background:var(--sf);color:var(--ink);border-radius:9px;padding:5px 10px}
+.rl{display:flex;flex-direction:column}
+.rr{display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+.rr:first-child{border-top:0}
+.rr .t{flex:1;min-width:0}
+.rr .t b{display:block;font-size:15px;font-weight:600}
+.rr .t span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px}
+.rr .t span.dg{color:var(--dg);font-weight:700}
+.stp{display:flex;align-items:center;border:1px solid var(--line2);border-radius:12px;height:42px;overflow:hidden;flex:none}
+.stp .b{width:34px;height:100%;display:grid;place-items:center;color:var(--ink2);font-size:18px;background:var(--sf2)}
+.stp .v{min-width:54px;padding:0 6px;white-space:nowrap;text-align:center;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+.stp.dg{border-color:var(--dg);box-shadow:inset 0 0 0 1px var(--dg)}
+.stp.dg .v{color:var(--dg)}
+.stp .of{font-size:12.5px;color:var(--mut);font-weight:400}
+.ck{width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--sf);display:grid;place-items:center;flex:none}
+.ck.dg{background:var(--dg)}
+.ck.e{background:var(--sf);border:1.5px solid var(--line2)}
+.lotf{display:flex;gap:10px;margin:-4px 0 4px}
+.lotf .f{flex:1;min-width:0;border:1px solid var(--acc);border-radius:12px;padding:7px 11px;background:var(--acc-bg)}
+.lotf .f small{display:block;font-size:12px;color:var(--acc)}
+.lotf .f b{display:block;font-size:14px;color:var(--ink)}
+.lotf .f.n{border-color:var(--line);background:var(--sf)}
+.lotf .f.n small{color:var(--mut)}
+.bbr{display:flex;align-items:center;gap:16px}
+.bbr .t{flex:1;min-width:0}
+.bbr .t .k{font-size:13px;color:var(--mut)}
+.bbr .t .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.25}
+.bbr .btn{height:52px!important;font-size:15.5px!important}
+/* (ข) นับ */
+.prg{display:flex;align-items:center;gap:12px;font-size:13.5px;color:var(--ink2)}
+.prg .mt{flex:1;height:8px;border-radius:4px;background:var(--sf2);border:1px solid var(--line);overflow:hidden}
+.prg .mt i{display:block;height:100%;background:var(--ink)}
+.prg b{font-variant-numeric:tabular-nums}
+.bld{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--line);border-radius:14px;font-size:13.5px}
+.bld .t{flex:1;min-width:0}
+.bld .t b{display:block;font-size:14px}
+.bld .t small{display:block;color:var(--mut);font-size:12px}
+.cr{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--line)}
+.cr:first-child{border-top:0}
+.cr .t{flex:1;min-width:0}
+.cr .t b{display:block;font-size:14.5px;font-weight:600}
+.cr .t span{display:block;font-size:12px;color:var(--mut);margin-top:1px}
+.cr .t span.dg{color:var(--dg);font-weight:700}
+.cr .sy{width:42px;text-align:center;font-size:12.5px;color:var(--mut2);letter-spacing:1px}
+.cr .ci{width:66px;height:42px;border:1px solid var(--line2);border-radius:12px;display:grid;place-items:center;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;flex:none}
+.cr .ci.act{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);color:var(--acc)}
+.cr .ci.em{color:var(--mut2);font-weight:400;font-size:13px}
+.cr .ci.dg{border-color:var(--dg);color:var(--dg)}
+.cr .cm{width:36px;height:36px;border-radius:11px;border:1.5px dashed var(--dg);display:grid;place-items:center;color:var(--dg);flex:none}
+.cr.todo .t b{color:var(--ink2)}
+.colh{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--mut);font-weight:700;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.colh .t{flex:1}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kp div{height:44px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;font-size:17px;font-weight:600;background:var(--sf)}
+.kp div.k{background:var(--sf2);font-size:14px}
+/* (ค) รับโอน */
+.arv{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--acc-bg);border:1px solid var(--acc);color:var(--acc);font-size:13.5px;line-height:1.45}
+.arv b{display:block;font-size:14.5px}
+.rte{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2)}
+.rte b{color:var(--ink)}
+.rte .sp{flex:1}
+.tl3{display:flex;flex-direction:column}
+.tl3 .r{display:flex;align-items:center;gap:12px;padding:13px 0;border-top:1px solid var(--line)}
+.tl3 .r:first-child{border-top:0}
+.tl3 .r .t{flex:1;min-width:0}
+.tl3 .r .t b{display:block;font-size:15px;font-weight:600}
+.tl3 .r .t span{display:block;font-size:12.5px;color:var(--mut);margin-top:2px}
+.tl3 .r .q{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tl3 .r .q small{font-weight:400;color:var(--mut);font-size:12.5px}
+.tl3 .r.dg .q{color:var(--dg)}
+.rsh{border:1px solid var(--line);border-radius:20px;box-shadow:0 10px 28px rgba(10,10,10,.14);padding:8px 16px 16px;background:var(--sf);margin-top:-4px}
+.rsh .grab{margin:2px auto 10px}
+.rsh h3{font-size:15px;font-weight:700}
+.rsh .sb3{font-size:12.5px;color:var(--mut);margin-top:2px}
+.ops{display:flex;gap:8px;margin-top:12px}
+.ops div{flex:1;height:44px;border:1px solid var(--line);border-radius:12px;display:grid;place-items:center;font-size:14.5px;font-weight:600;color:var(--ink2)}
+.ops div.on{border-color:var(--ink);background:var(--ink);color:var(--sf)}
+.pht{display:flex;align-items:center;gap:10px;margin-top:12px}
+.pht .ph4{width:52px;height:52px;border-radius:12px;border:1px solid var(--line);background:repeating-linear-gradient(45deg,var(--line) 0 2px,var(--sf2) 2px 8px);flex:none}
+.pht .add{width:52px;height:52px;border-radius:12px;border:1.5px dashed var(--line2);display:grid;place-items:center;color:var(--mut);flex:none}
+.pht .t{font-size:12.5px;color:var(--mut);line-height:1.45}
+.pht .t b{display:block;color:var(--ink);font-size:13.5px}
+</style>
+<div class="wrap">
+<p class="cap" style="margin:0">07 · มือถือ 390×844 สำหรับงานเดินคลัง <span>— (ก) รับของด้วยการสแกน · (ข) นับรอบแบบไม่เห็นยอดระบบ · (ค) รับโอนพร้อมเหตุผลผลต่าง</span></p>
+<div class="mrowx">
+
+<!-- ═══ (ก) รับของ ═══ -->
+<div>
+<p class="cap">ก · รับของ · สแกน</p>
+<div class="mob">
+ <div class="sb"><span>09:40</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><div class="tt"><h1>รับของ PO-0012 · รอบ 2</h1><small>บริษัท กาแฟดอยช้าง จำกัด → หัวหิน</small></div><span class="sp"></span></div>
+ <div class="mb">
+  <div class="camv">
+   <span class="ok"><svg class="i xs"><use href="#i-check"/></svg>สแกนแล้ว 3/3</span>
+   <div class="vf"><i></i><i></i><i></i><i></i><span class="bc"></span><span class="ln"></span></div>
+   <span class="cp">เล็งบาร์โค้ดบนถุง/ลัง · สแกนต่อได้เรื่อย ๆ</span>
+  </div>
+  <div class="rl">
+   <div class="rr"><div class="t"><b>เมล็ดคั่วกลาง</b><span>สั่ง 10 · รอบแรกรับแล้ว 5 · กก.</span></div><div class="stp"><span class="b">−</span><span class="v">5</span><span class="b">+</span></div><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+   <div class="lotf"><div class="f"><small>ล็อต</small><b>DC-2610</b></div><div class="f n"><small>หมดอายุ</small><b style="color:var(--mut2);font-weight:400">ไม่บังคับ · แตะเพื่อใส่</b></div></div>
+   <div class="rr"><div class="t"><b>เมล็ดคั่วเข้ม</b><span>สั่ง 5 · กก.</span></div><div class="stp"><span class="b">−</span><span class="v">5</span><span class="b">+</span></div><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+   <div class="rr"><div class="t"><b>ถุงกระดาษใส่เมล็ด</b><span class="dg">ขาด 20 · ค้างรับ แจ้งซัพแล้ว</span></div><div class="stp dg"><span class="b">−</span><span class="v">480<span class="of">/500</span></span><span class="b">+</span></div><span class="ck dg"><svg class="i xs"><use href="#i-warn"/></svg></span></div>
+  </div>
+  <div class="lotf"><div class="f n"><small>รูปใบส่งของ</small><b>แนบแล้ว 1 รูป</b></div><div class="f n"><small>ผู้รับ</small><b>ต้น · หัวหิน</b></div></div>
+ </div>
+ <div class="bb">
+  <div class="bbr"><div class="t"><div class="k">มูลค่ารอบนี้</div><div class="v">฿4,976</div></div><span class="btn pri"><svg class="i sm"><use href="#i-in"/></svg>รับเข้าคลัง 3 รายการ</span></div>
+ </div>
+</div>
+</div>
+
+<!-- ═══ (ข) นับรอบ ═══ -->
+<div>
+<p class="cap">ข · ตรวจนับ · โซน A</p>
+<div class="mob">
+ <div class="sb"><span>14:05</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><div class="tt"><h1>นับรอบ #8 · โซน A</h1><small>สาขาหัวหิน · หลังเคาน์เตอร์ · ต้น</small></div><span class="sp"></span><span class="ib"><svg class="i sm"><use href="#i-more"/></svg></span></div>
+ <div class="mb">
+  <div class="prg"><span>นับแล้ว</span><span class="mt"><i style="width:91%"></i></span><b>20/22</b></div>
+  <div class="bld"><svg class="i sm"><use href="#i-eye"/></svg><div class="t"><b>ซ่อนยอดระบบ</b><small>นับจากของจริง ไม่เห็นตัวเลขก่อน</small></div><span class="sw"></span></div>
+  <div style="display:flex;gap:10px"><span class="inp"><svg class="i sm"><use href="#i-search"/></svg>ค้นชื่อ หรือสแกน</span><span class="ib" style="width:48px;height:48px;border:1px solid var(--line);border-radius:13px;display:grid;place-items:center;flex:none"><svg class="i sm"><use href="#i-qr"/></svg></span></div>
+  <div>
+   <div class="colh"><span class="t">สินค้า</span><span style="width:42px;text-align:center">ระบบ</span><span style="width:66px;text-align:center">นับได้</span><span style="width:26px"></span></div>
+   <div class="cr"><div class="t"><b>นมสด 1 ล.</b><span>กล่อง</span></div><span class="sy">•••</span><span class="ci">12</span><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+   <div class="cr"><div class="t"><b>ฝาแก้ว 12 oz</b><span class="dg">ไม่ตรงระบบ · นับซ้ำ + ถ่ายรูป</span></div><span class="sy">•••</span><span class="ci dg">616</span><span class="cm"><svg class="i sm"><use href="#i-cam"/></svg></span></div>
+   <div class="cr"><div class="t"><b>แก้ว 12 oz</b><span>ใบ</span></div><span class="sy">•••</span><span class="ci">1,240</span><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+   <div class="cr"><div class="t"><b>ไซรัปวานิลลา</b><span>ขวด 500 มล.</span></div><span class="sy">•••</span><span class="ci">3</span><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span></div>
+   <div class="cr todo"><div class="t"><b>บราวนี่</b><span>ชิ้น · กำลังนับ</span></div><span class="sy">•••</span><span class="ci act">18|</span><span class="ck e"></span></div>
+   <div class="cr todo"><div class="t"><b>ครัวซองต์</b><span>ชิ้น</span></div><span class="sy">•••</span><span class="ci em">ยังไม่นับ</span><span class="ck e"></span></div>
+  </div>
+ </div>
+ <div class="bb">
+  <div class="bbr"><div class="t"><div class="k">เหลือ 2 รายการ</div><div class="v">ไม่ตรง 1</div></div><span class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>ส่งผลโซน A</span></div>
+ </div>
+</div>
+</div>
+
+<!-- ═══ (ค) รับโอน ═══ -->
+<div>
+<p class="cap">ค · โอน / รับโอน</p>
+<div class="mob">
+ <div class="sb"><span>10:30</span><span class="ic">5G<span class="bat"></span></span></div>
+ <div class="mh"><svg class="i"><use href="#i-back"/></svg><div class="tt"><h1>รับโอน TR-0010</h1><small>สาขาสวนผึ้ง · แพร</small></div><span class="sp"></span><span class="ib"><svg class="i sm"><use href="#i-print"/></svg></span></div>
+ <div class="mb">
+  <div class="arv"><svg class="i"><use href="#i-truck"/></svg><span><b>ของมาถึงแล้ว · สแกน QR ลังแล้ว</b>ส่งจากหัวหิน 30 ก.ย. 16:40 · รถร้าน · ต้น</span></div>
+  <div class="rte"><b>หัวหิน</b><svg class="i xs"><use href="#i-ar"/></svg><b>สวนผึ้ง</b><span class="sp"></span><span>4 รายการ · ฿3,860</span></div>
+  <div class="tl3">
+   <div class="r"><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span><div class="t"><b>เมล็ดคั่วกลาง</b><span>ส่งมา 5 กก.</span></div><span class="q">5</span></div>
+   <div class="r dg"><span class="ck dg"><svg class="i xs"><use href="#i-warn"/></svg></span><div class="t"><b>บราวนี่</b><span>ส่งมา 12 ชิ้น</span></div><span class="q">11 <small>(−1)</small></span></div>
+  </div>
+  <div class="rsh">
+   <div class="grab"></div>
+   <h3>เหตุผลผลต่าง · บราวนี่ −1</h3>
+   <div class="sb3">ต้องเลือกก่อนยืนยัน — ระบบปรับยอดให้พร้อมที่มา</div>
+   <div class="ops"><div class="on">ชำรุด</div><div>หาย</div><div>นับผิด</div></div>
+   <div class="pht"><span class="ph4"></span><span class="add"><svg class="i sm"><use href="#i-cam"/></svg></span><span class="t"><b>รูปหลักฐาน 1 รูป</b>กล่องบุบ ขนมแตก</span></div>
+  </div>
+  <div class="tl3">
+   <div class="r"><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span><div class="t"><b>แก้ว 12 oz</b><span>ส่งมา 200 ใบ</span></div><span class="q">200</span></div>
+   <div class="r"><span class="ck"><svg class="i xs"><use href="#i-check"/></svg></span><div class="t"><b>ไซรัปคาราเมล 750 มล.</b><span>ส่งมา 2 ขวด</span></div><span class="q">2</span></div>
+  </div>
+ </div>
+ <div class="bb">
+  <div class="bbr"><div class="t"><div class="k">ผลต่าง −1 · ชำรุด</div><div class="v">฿3,825</div></div><span class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>ยืนยันรับ 4 รายการ</span></div>
+ </div>
+</div>
+</div>
+
+</div>
+</div>

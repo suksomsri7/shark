@@ -1,0 +1,208 @@
+<style>
+.rail{width:56px;flex:none;border-right:1px solid var(--line);background:var(--sf2);
+  padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--mut2)}
+.rail .ri{width:36px;height:36px;border-radius:9px;display:grid;place-items:center}
+.rail .ri.on{background:var(--sf);border:1px solid var(--line);color:var(--ink)}
+.top .who{display:inline-flex;align-items:center;gap:10px;font-size:13.5px;color:var(--ink2)}
+.am .pill{height:20px;min-width:20px;font-size:11.5px}
+/* จอ 06 */
+.pr6{display:flex;flex:1;min-height:0}
+.pl{flex:1;min-width:0;display:flex;flex-direction:column;gap:26px;padding:6px 28px 30px 32px}
+.hd6{display:flex;align-items:flex-start;gap:16px}
+.hd6 h1{font-size:26px;font-weight:700;letter-spacing:-.02em}
+.hd6 .d{font-size:14px;color:var(--mut);margin-top:4px}
+.hd6 .sp{flex:1}
+.steps{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:var(--sf2)}
+.steps .s{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--mut);white-space:nowrap}
+.steps .s .dot{width:28px;height:28px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:13px;font-weight:700;background:var(--sf);flex:none}
+.steps .s.done{color:var(--ink)}
+.steps .s.done .dot{border-color:var(--ink);color:var(--ink)}
+.steps .s.cur{color:var(--acc);font-weight:700}
+.steps .s.cur .dot{background:var(--acc);border-color:var(--acc);color:var(--sf)}
+.steps .s small{display:block;font-size:12.5px;color:var(--mut);font-weight:400}
+.steps .ln{flex:1;height:1.5px;background:var(--line2);margin:0 12px;min-width:16px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.tl6{border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.tl6 .k{font-size:13.5px;color:var(--mut)}
+.tl6 .v{font-size:24px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin-top:6px}
+.tl6 .v.dg{color:var(--dg)}
+.tl6 .f{font-size:12.5px;color:var(--mut);margin-top:4px;font-variant-numeric:tabular-nums}
+.tl6.hero{background:var(--ink);color:var(--sf);border-color:var(--ink)}
+.tl6.hero .k,.tl6.hero .f{color:var(--line2)}
+.tl6.hero .v{font-size:30px}
+.eqn{font-size:13px;color:var(--mut);font-variant-numeric:tabular-nums;margin-top:-12px}
+.pt{width:100%;border-collapse:collapse;font-size:14px}
+.pt th{font-size:12.5px;font-weight:700;color:var(--mut);text-align:right;padding:13px 8px;background:var(--sf2);border-bottom:1px solid var(--line);white-space:nowrap}
+.pt th:first-child,.pt td:first-child{text-align:left;padding-left:16px}
+.pt th:last-child,.pt td:last-child{padding-right:14px}
+.pt td{padding:13px 8px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;vertical-align:top}
+.pt td b{font-weight:700}
+.pt td small{display:block;font-size:12.5px;color:var(--mut);font-weight:400;margin-top:2px}
+.pt td.st{text-align:left}
+.pt td.st small{white-space:normal;max-width:132px;line-height:1.35}
+.pt td.dgt small{color:var(--mut)}
+.pt .ng{color:var(--ink2)}
+.pt .z{color:var(--mut2)}
+.pt tr.sel td{background:var(--acc-bg)}
+.pt tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--acc)}
+.pt tr.sum td{background:var(--sf2);font-weight:700;border-bottom:0;border-top:1.5px solid var(--ink)}
+.pt .nm{font-weight:700;font-size:15px}
+.pt td.net{font-weight:700;font-size:15px}
+.fbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.fbar .sp{flex:1}
+.acct{display:flex;align-items:flex-start;gap:10px;font-size:13.5px;color:var(--ink2);background:var(--sf2);border:1px dashed var(--line2);border-radius:14px;padding:13px 16px;line-height:1.6}
+/* แผงขวา */
+.dr6{width:430px;flex:none;border-left:1px solid var(--line);display:flex;flex-direction:column;background:var(--sf)}
+.dr6 .dh{padding:22px 24px 16px;border-bottom:1px solid var(--line)}
+.dr6 .dh .t{display:flex;align-items:center;gap:10px}
+.dr6 .dh h2{font-size:19px;font-weight:700}
+.dr6 .dh .sp{flex:1}
+.dr6 .dh .m{font-size:13px;color:var(--mut);margin-top:6px;line-height:1.5}
+.dr6 .sc{padding:16px 24px;border-bottom:1px solid var(--line)}
+.dr6 .sc h3{font-size:12.5px;font-weight:700;color:var(--mut);margin-bottom:8px;letter-spacing:.02em}
+.ln6{padding:9px 0;border-top:1px solid var(--line)}
+.ln6:first-of-type{border-top:0}
+.ln6 .r{display:flex;align-items:baseline;gap:10px;font-size:15px}
+.ln6 .r .sp{flex:1}
+.ln6 .r .a{font-weight:700;font-variant-numeric:tabular-nums}
+.ln6 .r .a.dg{color:var(--dg)}
+.ln6 .w{font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.5;font-variant-numeric:tabular-nums}
+.ln6 .w .law{color:var(--acc)}
+.tot6{display:flex;justify-content:space-between;font-size:15px;font-weight:700;padding-top:10px;margin-top:4px;border-top:1.5px solid var(--ink);font-variant-numeric:tabular-nums}
+.net6{padding:18px 24px;display:flex;align-items:baseline;gap:10px;background:var(--sf2);border-bottom:1px solid var(--line)}
+.net6 .k{font-size:15px;font-weight:700}
+.net6 .sp{flex:1}
+.net6 .v{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.dr6 .ft{margin-top:auto;padding:18px 24px 22px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.dr6 .ft .r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+</style>
+<div class="wrap">
+<div>
+<p class="cap">06 · เงินเดือน: รอบจ่าย ก.ย. 2569 <span>— ดึงชั่วโมงจริง/OT/ลา/รายการเพิ่ม-หักอัตโนมัติ · ปสส./ภงด.1 คิดจากตารางกฎหมาย · กดดูที่มาทุกบรรทัดต่อคน · ไฟล์ส่งธนาคาร/สรรพากร/ประกันสังคม · ลงบัญชีอัตโนมัติ</span></p>
+<div class="frame" style="height:1300px">
+
+ <div class="top"><svg class="i lg"><use href="#i-menu"/></svg><span class="brand">บ้านกาแฟสวนผึ้ง</span><span class="chip">สาขาหัวหิน · 9 คน</span>
+  <span class="sp"></span><span class="mu" style="font-size:13.5px">พฤ. 1 ต.ค. 2569</span><svg class="i"><use href="#i-search"/></svg><span class="who"><span class="av">ก</span>พี่เก่ง · ผู้จัดการ</span></div>
+
+ <div class="appbody" style="flex:1;min-height:0">
+  <div class="rail">
+   <div class="ri"><svg class="i sm"><use href="#i-home"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-shop"/></svg></div>
+   <div class="ri on"><svg class="i sm"><use href="#i-users"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-box"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-book"/></svg></div>
+   <div class="ri"><svg class="i sm"><use href="#i-grid"/></svg></div>
+   <span style="flex:1"></span>
+   <div class="ri"><svg class="i sm"><use href="#i-gear"/></svg></div>
+  </div>
+
+  <div class="mod">
+   <div class="amenu">
+    <div class="am"><svg class="i sm"><use href="#i-home"/></svg>ภาพรวมทีม</div>
+    <div class="am"><svg class="i sm"><use href="#i-users"/></svg>พนักงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-cal"/></svg>ตารางกะ</div>
+    <div class="am"><svg class="i sm"><use href="#i-clock"/></svg>ลงเวลา</div>
+    <div class="am"><svg class="i sm"><use href="#i-flag"/></svg>ลา/OT/คำขอ<span class="pill">5</span></div>
+    <div class="am on"><svg class="i sm"><use href="#i-wallet"/></svg>เงินเดือน</div>
+    <div class="am"><svg class="i sm"><use href="#i-chart"/></svg>รายงาน</div>
+    <div class="am"><svg class="i sm"><use href="#i-gear"/></svg>ตั้งค่า</div>
+   </div>
+
+   <div class="pr6">
+    <div class="pl">
+     <div class="crumb" style="padding:16px 0 0!important">เงินเดือน<svg class="i xs"><use href="#i-ar"/></svg>รอบจ่าย</div>
+     <div class="hd6" style="margin-top:-14px">
+      <div><h1>รอบจ่าย ก.ย. 2569</h1><div class="d">งวด 1–30 ก.ย. · กำหนดจ่าย 2 ต.ค. · สาขาหัวหิน 9 คน · ดึงข้อมูลล่าสุด 1 ต.ค. 09:12</div></div>
+      <span class="sp"></span>
+      <span class="btn gh sm"><svg class="i sm"><use href="#i-swap"/></svg>ดึงข้อมูลใหม่</span>
+      <span class="btn gh sm"><svg class="i sm"><use href="#i-plus"/></svg>รายการเพิ่ม/หัก</span>
+     </div>
+
+     <div class="steps">
+      <div class="s done"><span class="dot"><svg class="i xs"><use href="#i-check"/></svg></span><span>ร่าง<small>30 ก.ย. 18:00</small></span></div><span class="ln"></span>
+      <div class="s cur"><span class="dot">2</span><span>ตรวจ<small>ปัจจุบัน · ต้องตรวจ 2</small></span></div><span class="ln"></span>
+      <div class="s"><span class="dot">3</span><span>อนุมัติ<small>พี่เก่ง · ระบบอนุมัติ</small></span></div><span class="ln"></span>
+      <div class="s"><span class="dot">4</span><span>จ่าย<small>ไฟล์ KBank</small></span></div><span class="ln"></span>
+      <div class="s"><span class="dot">5</span><span>ลงบัญชี<small>อัตโนมัติ</small></span></div>
+     </div>
+
+     <div class="tiles">
+      <div class="tl6 hero"><div class="k">รวมจ่ายสุทธิ</div><div class="v">฿144,301</div><div class="f">โอน 9 คน · KBank</div></div>
+      <div class="tl6"><div class="k">ค่าจ้างรวม</div><div class="v">฿147,980</div><div class="f">รายเดือน 7 · พาร์ทไทม์ 1 · รายวัน 1</div></div>
+      <div class="tl6"><div class="k">OT</div><div class="v">฿3,275</div><div class="f">5 คน · 30 ชม.</div></div>
+      <div class="tl6"><div class="k">ค่าคอมฯ (จาก POS)</div><div class="v">฿2,000</div><div class="f">น้ำฝน ฿1,200 · ปุ้ย ฿800</div></div>
+      <div class="tl6"><div class="k">หักสาย/ขาด/เบิก</div><div class="v dg">−฿2,800</div><div class="f">สาย ฿200 · ขาด ฿600 · เบิก ฿2,000</div></div>
+      <div class="tl6"><div class="k">ปสส. ลูกจ้าง</div><div class="v dg">−฿5,883</div><div class="f">5% · ฐาน ฿1,650–15,000</div></div>
+      <div class="tl6"><div class="k">นายจ้างสมทบ</div><div class="v">฿5,883</div><div class="f">ต้นทุนร้าน · ไม่หักจากพนักงาน</div></div>
+      <div class="tl6"><div class="k">ภงด.1 หัก ณ ที่จ่าย</div><div class="v dg">−฿271</div><div class="f">1 คน · นำส่งภายใน 7 ต.ค.</div></div>
+     </div>
+     <div class="eqn">147,980 + OT 3,275 + คอมฯ 2,000 − 2,800 − ปสส. 5,883 − ภงด.1 271 = <b style="color:var(--ink)">฿144,301</b> · ต้นทุนค่าแรงร้านเดือนนี้ (รวมนายจ้างสมทบ) ฿158,338 · ปสส./ภาษี ตามตารางกฎหมาย มีผล 1 ม.ค. 2569</div>
+
+     <div class="card p0" style="overflow:hidden">
+      <table class="pt">
+       <tr><th>พนักงาน</th><th>ค่าจ้างฐาน</th><th>ทำงาน</th><th>OT</th><th>เพิ่ม</th><th>หัก</th><th>ปสส.</th><th>ภงด.1</th><th>สุทธิ</th><th style="text-align:left">สถานะ</th></tr>
+       <tr><td><span class="nm">พี่เก่ง</span><small>ผู้จัดการ · ประจำ</small></td><td>32,000</td><td>26 วัน</td><td class="z">—</td><td class="z">—</td><td class="z">—</td><td class="ng">−750</td><td class="ng">−271</td><td class="net">30,979</td><td class="st"><span class="chip dg">ต้องตรวจ</span><small>ลดหย่อนยังไม่กรอก</small></td></tr>
+       <tr class="sel"><td><span class="nm">น้ำฝน</span><small>แคชเชียร์ · ประจำ</small></td><td>16,000</td><td>24 วัน<small>ลาป่วย 1</small></td><td>600<small>6 ชม.</small></td><td>1,200<small>คอมฯ</small></td><td class="ng">−150<small>สาย 3</small></td><td class="ng">−750</td><td class="z">0</td><td class="net">16,900</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">แพร</span><small>แคชเชียร์ · ประจำ</small></td><td>15,500</td><td>26 วัน</td><td class="z">—</td><td class="z">—</td><td class="ng">−50<small>สาย 1</small></td><td class="ng">−750</td><td class="z">0</td><td class="net">14,700</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">ต้น</span><small>ครัว · ประจำ</small></td><td>17,000</td><td>25 วัน</td><td>1,275<small>12 ชม.</small></td><td class="z">—</td><td class="ng">−2,000<small>เบิกล่วงหน้า</small></td><td class="ng">−750</td><td class="z">0</td><td class="net">15,525</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">ก้อง</span><small>ครัว · ประจำ</small></td><td>18,000</td><td>25 วัน<small>ขาด 1</small></td><td>675<small>6 ชม.</small></td><td class="z">—</td><td class="ng">−600<small>ขาด 1 วัน</small></td><td class="ng">−750</td><td class="z">0</td><td class="net">17,325</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">ปุ้ย</span><small>หัวหน้าบาริสต้า · ประจำ</small></td><td>22,000</td><td>26 วัน</td><td>550<small>4 ชม.</small></td><td>800<small>คอมฯ</small></td><td class="z">—</td><td class="ng">−750</td><td class="z">0</td><td class="net">22,600</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">โบว์</span><small>บาริสต้า · ทดลองงาน</small></td><td>14,000</td><td>26 วัน</td><td>175<small>2 ชม.</small></td><td class="z">—</td><td class="z">—</td><td class="ng">−709</td><td class="z">0</td><td class="net">13,466</td><td class="st"><span class="chip dg">ต้องตรวจ</span><small>OT 30 ก.ย. รออนุมัติ</small></td></tr>
+       <tr><td><span class="nm">เจ</span><small>พาร์ทไทม์ · ฿65/ชม.</small></td><td>4,680</td><td>72 ชม.<small>× ฿65</small></td><td class="z">—</td><td class="z">—</td><td class="z">—</td><td class="ng">−234</td><td class="z">0</td><td class="net">4,446</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr><td><span class="nm">มิ้นท์</span><small>รายวัน · ฿400/วัน</small></td><td>8,800</td><td>22 วัน<small>× ฿400 · ขาด 1</small></td><td class="z">—</td><td class="z">—</td><td class="z">0<small>ขาด = ไม่จ่าย</small></td><td class="ng">−440</td><td class="z">0</td><td class="net">8,360</td><td class="st"><span class="chip ink">พร้อม</span></td></tr>
+       <tr class="sum"><td>รวม 9 คน</td><td>147,980</td><td></td><td>3,275</td><td>2,000</td><td>−2,800</td><td>−5,883</td><td>−271</td><td>144,301</td><td class="st" style="font-weight:400;font-size:13px">พร้อม 7 · ตรวจ 2</td></tr>
+      </table>
+     </div>
+
+     <div class="fbar">
+      <span class="btn pri"><svg class="i sm"><use href="#i-check"/></svg>ส่งอนุมัติ</span>
+      <span class="btn gh"><svg class="i sm"><use href="#i-doc"/></svg>สลิปทั้งหมด (PDF)</span>
+      <span class="btn gh"><svg class="i sm"><use href="#i-bank"/></svg>ไฟล์โอน KBank</span>
+      <span class="btn gh"><svg class="i sm"><use href="#i-file"/></svg>ภงด.1 (e-Filing)</span>
+      <span class="btn gh"><svg class="i sm"><use href="#i-file"/></svg>สปส.1-10</span>
+     </div>
+     <div class="acct"><svg class="i sm" style="margin-top:3px"><use href="#i-book"/></svg><span><b>ลงบัญชีอัตโนมัติเมื่อจ่าย:</b> เงินเดือน (ค่าใช้จ่าย) ฿152,455 + ปสส. นายจ้าง ฿5,883 · เจ้าหนี้ ปสส. ฿11,766 (ลูกจ้าง + นายจ้าง) · ภาษีหัก ณ ที่จ่ายค้างนำส่ง ฿271 · ล้างลูกหนี้เบิกล่วงหน้า ฿2,000 · เงินฝาก KBank ฿144,301</span></div>
+    </div>
+
+    <!-- ════ แผงขวา: น้ำฝน ════ -->
+    <div class="dr6">
+     <div class="dh">
+      <div class="t"><span class="av" style="width:36px;height:36px;font-size:14px">น</span><h2>น้ำฝน · ที่มาทุกบรรทัด</h2><span class="sp"></span><svg class="i"><use href="#i-x"/></svg></div>
+      <div class="m">แคชเชียร์ · ประจำ · เงินเดือน ฿16,000 · โอน KBank •••4321<br>ก.ย.: ทำงาน 24 วัน · หยุดประจำ 5 · ลาป่วย 1 (ได้ค่าจ้าง) = 30 วัน</div>
+     </div>
+     <div class="sc">
+      <h3>รายได้</h3>
+      <div class="ln6"><div class="r"><span>เงินเดือน</span><span class="sp"></span><span class="a">฿16,000</span></div><div class="w">ประจำเต็มเดือน · ลาป่วย 1 วันไม่หัก (ใช้ 4/30)</div></div>
+      <div class="ln6"><div class="r"><span>OT วันทำงาน ×1.5</span><span class="sp"></span><span class="a">฿600</span></div><div class="w">6 ชม. (15 · 22 · 29 ก.ย. วันละ 2 ชม. อนุมัติแล้ว)<br>฿16,000 ÷ 30 ÷ 8 = ฿66.67/ชม. × 1.5 × 6 ชม. = ฿600</div></div>
+      <div class="ln6"><div class="r"><span>ค่าคอมฯ จาก POS</span><span class="sp"></span><span class="a">฿1,200</span></div><div class="w">ขายเวิร์กช็อปดริปกาแฟ 2 ครั้ง × ฿600<br>บิล R2609-000214 · R2609-000287</div></div>
+      <div class="tot6"><span>รวมรับ</span><span>฿17,800</span></div>
+     </div>
+     <div class="sc">
+      <h3>รายการหัก</h3>
+      <div class="ln6"><div class="r"><span>หักสาย</span><span class="sp"></span><span class="a dg">−฿150</span></div><div class="w">สาย 6 ครั้ง: ไม่เกิน 15 นาที 3 ครั้ง ไม่หัก<br>เกิน 15 นาที 3 ครั้ง × ฿50 = ฿150</div></div>
+      <div class="ln6"><div class="r"><span>ประกันสังคม 5%</span><span class="sp"></span><span class="a dg">−฿750</span></div><div class="w">ค่าจ้าง ฿17,650 เกินเพดาน → 5% × ฿15,000 = ฿750<br><span class="law">ตามตารางกฎหมาย มีผล 1 ม.ค. 2569</span></div></div>
+      <div class="ln6"><div class="r"><span>ภงด.1</span><span class="sp"></span><span class="a">฿0</span></div><div class="w">ประมาณการทั้งปี ฿211,800 − ค่าใช้จ่าย 100,000 − ส่วนตัว 60,000 − ปสส. 9,000 = ฿42,800 → ขั้นยกเว้น (ไม่เกิน ฿150,000)</div></div>
+      <div class="tot6"><span>รวมหัก</span><span>−฿900</span></div>
+     </div>
+     <div class="net6"><span class="k">สุทธิ</span><span class="mu" style="font-size:13px">17,800 − 900</span><span class="sp"></span><span class="v">฿16,900</span></div>
+     <div class="sc" style="border-bottom:0">
+      <div class="ln6"><div class="r" style="font-size:14px"><span class="mu">นายจ้างสมทบ ปสส.</span><span class="sp"></span><span class="a">฿750</span></div><div class="w">ต้นทุนร้าน · ไม่หักจากน้ำฝน</div></div>
+     </div>
+     <div class="sc" style="border-top:1px solid var(--line);border-bottom:0">
+      <h3>ประวัติการคำนวณ</h3>
+      <div class="ln6"><div class="w" style="margin:0"><b style="color:var(--ink2)">30 ก.ย. 18:00</b> ร่างอัตโนมัติจากลงเวลา 24 วัน + ค่าคอมฯ POS</div></div>
+      <div class="ln6"><div class="w" style="margin:0"><b style="color:var(--ink2)">30 ก.ย. 19:05</b> เพิ่ม OT 29 ก.ย. 2 ชม. (พี่เก่งอนุมัติ) · +฿200</div></div>
+      <div class="ln6"><div class="w" style="margin:0"><b style="color:var(--ink2)">1 ต.ค. 09:12</b> ดึงใหม่ · ไม่มีเปลี่ยนแปลง</div></div>
+      <div class="ln6"><div class="w" style="margin:0">เทียบ ส.ค. ฿16,420 → ก.ย. ฿16,900 (+฿480)</div></div>
+     </div>
+     <div class="ft">
+      <div class="r2"><span class="btn gh"><svg class="i sm"><use href="#i-clock"/></svg>ดูลงเวลา ก.ย.</span><span class="btn gh"><svg class="i sm"><use href="#i-eye"/></svg>ดูสลิป</span></div>
+      <span class="btn gh blk"><svg class="i sm"><use href="#i-edit"/></svg>แก้รายการ (ต้องใส่เหตุผล)</span>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+</div>
+</div>
