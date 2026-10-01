@@ -1,0 +1,9 @@
+  ✅ [RV4-A-thai-midnight-boundary] 30Sep deal @ 23:59:59.999 TH 30 Sep: - (board -) | 30Sep deal @ 00:00:00.000 TH 1 Oct: OVERDUE (board OVERDUE) | 1Oct deal @ 00:00:00.000 TH 1 Oct: - (board -) | 1Oct deal @ 06:59:59 TH (old rule flipped at 07:00): - (board -) | 1Oct deal @ 07:00:00 TH: - (board -) | 1Oct deal @ 23:59:59.999 TH 1 Oct: - (board -) | 1Oct deal @ 00:00:00.000 TH 2 Oct (positive control): OVERDUE (board OVERDUE)
+  ✅ [RV4-B-nonboundary-residual] INFO REPRODUCED · floor 1601 · healer(copy of 000002, 600 ms after its read, reads gap 1001 ⇒ setval branch) → FAILED P2002 · X(deployed, +150 ms, gap 1001 ⇒ waits on the lock) → 1603 (1787 ms) · Y(deployed, +300 ms, gap 1000 ⇒ walks lock-free) → 1602 (89 ms) · last_value after 1603
+  ✅ [RV4-C-hardened-counterfactual] floor 1603 · healer(hardened copy, 600 ms window) → 1604 (629 ms) · X(hardened, +150 ms) → 1605 (809 ms) · Y(hardened, +300 ms, gap 1000 — now waits instead of walking) → 1606 (989 ms) (want 3 distinct > floor, 0 failures)
+  ✅ [RV4-D-reapply-version-sametx] server_version_num 180006 · role neondb_owner · file applied twice inside BEGIN…ROLLBACK → ok · deployed body still == file true · two slow-path allocations in one transaction (floor 1606) → 1607,1608 · advisory lock rows 1 (objsubid 1 = 1-bigint form)
+  ✅ [RV4-E-step6-wait-cycle] INFO DEADLOCK DETECTED (40P01) · healer (advisory lock, then the row) → ok 1609 · holder (the row, then a slow-path allocation) → FAILED 40P01
+  ✅ [RV4-CLEAN] copies left 0 · journal sequences left 0 · deployed account_alloc_journal_no still == 000002 file: true
+  ✅ [CLEAN-6wygyv] tenant rows left=0
+🟢 rv4-review: 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}
