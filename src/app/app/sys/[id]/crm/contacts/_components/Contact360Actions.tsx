@@ -91,6 +91,7 @@ export function ConvertButton({
   companyName,
   jobTitle,
   converted,
+  canPickCompany,
 }: {
   systemId: string;
   contactId: string;
@@ -100,6 +101,8 @@ export function ConvertButton({
   companyName: string | null;
   jobTitle: string | null;
   converted: boolean;
+  /** CRM C5.5-fix6 ▸ F3: crm.company.read — ไม่มี = ไม่มีตัวเลือก "ผูกบริษัทที่มีอยู่" (ตัวค้นหาว่างเสมอ) · "สร้างบริษัทใหม่" คงเดิม ◂ */
+  canPickCompany: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -219,10 +222,12 @@ export function ConvertButton({
                     <input type="radio" name="convert-company-mode" checked={companyMode === "new"} onChange={() => setCompanyMode("new")} data-testid="contact-convert-company-mode-new" />
                     สร้างบริษัทใหม่
                   </label>
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
-                    ผูกบริษัทที่มีอยู่
-                  </label>
+                  {canPickCompany && (
+                    <label className="flex items-center gap-1.5">
+                      <input type="radio" name="convert-company-mode" checked={companyMode === "pick"} onChange={() => setCompanyMode("pick")} data-testid="contact-convert-company-mode-pick" />
+                      ผูกบริษัทที่มีอยู่
+                    </label>
+                  )}
                 </div>
                 {companyMode === "new" ? (
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -369,11 +374,15 @@ type MenuContact = {
   tags: string[];
   archived: boolean;
   companyId: string | null;
+  /** CRM C5.5-fix6 ▸ F3: ชื่อบริษัทหลักที่ผู้ดูมองเห็น (getContact360().company — ผ่าน companyWhere) · มองไม่เห็น = null (ไม่แสดงชื่อ) ◂ */
+  companyName?: string | null;
 };
 
 // CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
 //   ไม่มีเมนูที่ทำได้เลย = ไม่มีปุ่ม "…" (ไม่เปิดเมนูว่าง) ◂
-export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean };
+// CRM C5.5-fix6 ▸ F3: `company` = crmCanLinkCompany (อ่าน + แก้บริษัท) — ไม่ผ่าน = แผ่นแก้ไขไม่มีช่องย้ายบริษัท (แสดงชื่อเดิมแบบอ่านอย่างเดียว
+//   เฉพาะเมื่อผู้ดูมองเห็นบริษัทนั้น) · บันทึกไม่ส่ง companyId ⇒ บริษัทเดิมคงอยู่ ◂
+export type ContactMenuCan = { update: boolean; assign: boolean; merge: boolean; archive: boolean; company: boolean };
 
 export function ContactMenu({ systemId, contact, owners, can }: { systemId: string; contact: MenuContact; owners: Opt[]; can: ContactMenuCan }) {
   const router = useRouter();
@@ -506,8 +515,14 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
               </label>
             ))}
           </div>
-          <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
-          {companyId && contact.companyId && (
+          {can.company ? (
+            <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
+          ) : contact.companyName ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
+              บริษัทหลัก: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)
+            </p>
+          ) : null}
+          {can.company && companyId && contact.companyId && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={moveDeals} onChange={(e) => setMoveDeals(e.target.checked)} data-testid="contact-edit-move-deals" />
               ย้ายดีลที่ยังเปิดของบริษัทเดิมไปบริษัทใหม่ด้วย
@@ -524,7 +539,7 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
                 phone: edit.phone || null,
                 email: edit.email || null,
                 jobTitle: edit.jobTitle || null,
-                ...(companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
+                ...(can.company && companyId ? { companyId, moveOpenDeals: moveDeals } : {}),
               }),
             );
           })}

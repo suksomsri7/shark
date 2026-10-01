@@ -38,6 +38,7 @@ import { redactContactInfo } from "./calls-shared";
 import { DAY_MS, TH_OFFSET_MS, thaiDateLabel, thaiDayKey } from "./activities-shared";
 import { dayKey as dealDayKey, thaiToday } from "./deals-shared"; // CRM C5.5 ▸ fix3a H2b-3: วันไทยแบบเดียวกับกระดานดีล ◂
 import { kbGrounding } from "./kb-tokens";
+import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix6 ▸ R2-2 ◂
 import { crmKindAccess, crmDestructiveKinds, dispatchCrmKind, isCrmKind } from "./api/tools";
 import {
   ASSIST_KIND_LABEL,
@@ -265,6 +266,11 @@ const FORMAT: Record<AssistKind, string> = {
 
 type Built = { facts: string; kbIds: string[]; targetType: string; targetId: string };
 
+// CRM C5.5-fix6 ▸ R2-2 (รีวิว fix3b r2): บรรทัดกิจกรรมของอีเมลขาเข้าที่ระบบยืนยันผู้ส่งไม่ได้ ต้องบอกโมเดลด้วย (หน้าจอทุกจุดมีป้ายแล้ว ·
+//   หัวเรื่องของจดหมายปลอมเป็นข้อความของคนนอก) — ตัวอ่านเดียว `unverifiedEmailRefs` (คิวรีเดียวต่อบทสรุป · ร้าน+ระบบเดียวกัน) ◂
+const FLAG_SELECT = { id: true, type: true, source: true, direction: true, sourceRef: true } as const;
+const unverifiedNote = (flagged: Set<string>, x: { id: string }): string => (flagged.has(x.id) ? " (sender not verified)" : "");
+
 async function dealFacts(scope: { tenantId: string; systemId: string }, a: Actor, dealId: string, kind: AssistKind): Promise<Built> {
   const d = await prisma.crmDeal.findFirst({
     where: { AND: [await dealWhere(scope, a), { id: dealId }] },
@@ -281,11 +287,12 @@ async function dealFacts(scope: { tenantId: string; systemId: string }, a: Actor
     prisma.crmContact.findFirst({ where: { AND: [await contactWhere(scope, a), { id: d.contactId }] }, select: { name: true, jobTitle: true } }),
     prisma.crmActivity.findMany({
       where: { AND: [await activityWhere(scope, a), { dealId: d.id }] },
-      select: { type: true, title: true, startAt: true, doneAt: true, dueAt: true, outcome: true },
+      select: { ...FLAG_SELECT, title: true, startAt: true, doneAt: true, dueAt: true, outcome: true },
       orderBy: [{ createdAt: "desc" }],
       take: 8,
     }),
   ]);
+  const unverified = await unverifiedEmailRefs(scope, acts);
   const lines = [
     `Deal: ${safe(d.title)}`,
     `Stage: ${safe(d.stage?.name ?? "-")} (${d.stage?.probability ?? 0}%) · pipeline ${safe(d.pipeline?.name ?? "-")} · status ${d.kind}`,
@@ -297,7 +304,7 @@ async function dealFacts(scope: { tenantId: string; systemId: string }, a: Actor
     d.tags.length ? `Tags: ${d.tags.slice(0, 10).map((t) => safe(t, 40)).join(", ")}` : "",
     d.lines.length ? `Lines: ${d.lines.map((l) => `${safe(l.name, 80)} × ${Number(l.qty)} @ ${baht(l.unitPriceSatang)}`).join(" · ")}` : "Lines: none",
     acts.length
-      ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}${x.outcome ? ` → ${safe(x.outcome, 40)}` : ""}${x.doneAt ? "" : " (open)"}`).join("\n")}`
+      ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}${unverifiedNote(unverified, x)}${x.outcome ? ` → ${safe(x.outcome, 40)}` : ""}${x.doneAt ? "" : " (open)"}`).join("\n")}`
       : "Recent activities: none",
   ];
   let kbIds: string[] = [];
@@ -321,8 +328,9 @@ async function contactFacts(scope: { tenantId: string; systemId: string }, a: Ac
     c.companyId ? companiesSvc.briefForAssist(scope, a, c.companyId) : null,
     prisma.crmScoreLog.findMany({ where: { tenantId: scope.tenantId, contactId: c.id }, select: { points: true, reason: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 6 }).catch(() => [] as { points: number; reason: string; createdAt: Date }[]),
     prisma.crmDeal.findMany({ where: { AND: [await dealWhere(scope, a), { contactId: c.id, archivedAt: null }] }, select: { title: true, valueSatang: true, kind: true, stage: { select: { name: true } } }, orderBy: { updatedAt: "desc" }, take: 5 }),
-    prisma.crmActivity.findMany({ where: { AND: [await activityWhere(scope, a), { contactId: c.id }] }, select: { type: true, title: true, startAt: true, dueAt: true, doneAt: true }, orderBy: { createdAt: "desc" }, take: 6 }),
+    prisma.crmActivity.findMany({ where: { AND: [await activityWhere(scope, a), { contactId: c.id }] }, select: { ...FLAG_SELECT, title: true, startAt: true, dueAt: true, doneAt: true }, orderBy: { createdAt: "desc" }, take: 6 }),
   ]);
+  const unverified = await unverifiedEmailRefs(scope, acts);
   const lines = [
     `Contact: ${safe(c.name, 80)}${c.jobTitle ? ` (${safe(c.jobTitle, 60)})` : ""} · company ${co ? safe(co.name) : "-"}`,
     `Lifecycle ${c.lifecycleStage} · lead status ${c.leadStatus} · source ${c.sourceKind ?? "-"} · created ${dayLabel(c.createdAt)}`,
@@ -331,7 +339,7 @@ async function contactFacts(scope: { tenantId: string; systemId: string }, a: Ac
     logs.length ? `Score changes:\n${logs.map((l) => `- ${l.points > 0 ? "+" : ""}${l.points} ${safe(l.reason, 80)} (${dayLabel(l.createdAt)})`).join("\n")}` : "",
     `Last activity ${dayLabel(c.lastActivityAt)} · next activity ${dayLabel(c.nextActivityAt)}`,
     deals.length ? `Deals: ${deals.map((d) => `${safe(d.title, 80)} ${baht(d.valueSatang)} ${d.kind} (${safe(d.stage?.name ?? "-", 40)})`).join(" · ")}` : "Deals: none",
-    acts.length ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}${x.doneAt ? "" : " (open)"}`).join("\n")}` : "",
+    acts.length ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}${unverifiedNote(unverified, x)}${x.doneAt ? "" : " (open)"}`).join("\n")}` : "",
   ];
   return { facts: lines.filter(Boolean).join("\n"), kbIds: [], targetType: "CrmContact", targetId: c.id };
 }
@@ -349,8 +357,9 @@ async function companyFacts(scope: { tenantId: string; systemId: string }, a: Ac
       orderBy: { closedAt: "desc" },
       take: kind === "company.upsell" ? 10 : 5,
     }),
-    prisma.crmActivity.findMany({ where: { AND: [await activityWhere(scope, a), { companyId: c.id }] }, select: { type: true, title: true, startAt: true, dueAt: true }, orderBy: { createdAt: "desc" }, take: 5 }),
+    prisma.crmActivity.findMany({ where: { AND: [await activityWhere(scope, a), { companyId: c.id }] }, select: { ...FLAG_SELECT, title: true, startAt: true, dueAt: true }, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
+  const unverified = await unverifiedEmailRefs(scope, acts);
   const lines = [
     `Company: ${safe(c.name)}${c.industry ? ` · industry ${safe(c.industry, 60)}` : ""}${c.size ? ` · size ${c.size}` : ""}${c.employeeCount ? ` · ${c.employeeCount} staff` : ""}`,
     `Lifecycle ${c.lifecycleStage} · open deals ${c.openDealCount} · won value ${baht(c.wonValueSatang)} · outstanding ${baht(c.outstandingSatang)} · last activity ${dayLabel(c.lastActivityAt)}`,
@@ -359,7 +368,7 @@ async function companyFacts(scope: { tenantId: string; systemId: string }, a: Ac
     won.length
       ? `Purchase history (won deals):\n${won.map((d) => `- ${dayLabel(d.closedAt)} ${safe(d.title, 100)} ${baht(d.valueSatang)}${d.lines.length ? `: ${d.lines.map((l) => `${safe(l.name, 80)} × ${Number(l.qty)}`).join(", ")}` : ""}`).join("\n")}`
       : "Purchase history: none",
-    acts.length ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}`).join("\n")}` : "",
+    acts.length ? `Recent activities:\n${acts.map((x) => `- ${x.type} ${dayLabel(x.startAt ?? x.dueAt)} ${safe(x.title, 120)}${unverifiedNote(unverified, x)}`).join("\n")}` : "",
   ];
   return { facts: lines.filter(Boolean).join("\n"), kbIds: [], targetType: "CrmCompany", targetId: c.id };
 }

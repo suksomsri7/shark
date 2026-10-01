@@ -33,7 +33,21 @@ const CHECK: Partial<Record<Key, (v: string) => string | null>> = {
   tags: (v) => cleanTags(v.split(/[;,]/)).problem,
 };
 
-export function NewContactForm({ systemId, owners, defaultOwner, customFields }: { systemId: string; owners: Opt[]; defaultOwner: string; customFields: CustomField[] }) {
+// CRM C5.5-fix6 ▸ F3: `canPickCompany` = crmCanLinkCompany ของหน้า — ไม่มีสิทธิ์อ่าน/แก้บริษัท = ไม่มีช่องเลือกบริษัท (§15(b) ช่องที่ใช้ไม่ได้ต้องซ่อน ·
+//   เดิมค้นทุกครั้งได้ "ไม่พบรายการ…") · ไม่มีช่อง ⇒ ไม่ส่ง companyId (บริการปฏิเสธถ้ามีคนส่งตรง) ◂
+export function NewContactForm({
+  systemId,
+  owners,
+  defaultOwner,
+  customFields,
+  canPickCompany,
+}: {
+  systemId: string;
+  owners: Opt[];
+  defaultOwner: string;
+  customFields: CustomField[];
+  canPickCompany: boolean;
+}) {
   const router = useRouter();
   const base = `/app/sys/${systemId}/crm/contacts`;
   const [values, setValues] = useState<Record<Key, string>>(() => ({ ...(Object.fromEntries(FIELDS.map((k) => [k, ""])) as Record<Key, string>), ownerUserId: defaultOwner, sourceKind: "CRM" }));
@@ -86,7 +100,7 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
         sourceKind: values.sourceKind || null,
         ownerUserId: values.ownerUserId || null,
         tags: values.tags ? values.tags.split(/[;,]/) : [],
-        companyId: companyId || null,
+        companyId: canPickCompany ? companyId || null : null,
         fields,
         force,
       });
@@ -159,15 +173,17 @@ export function NewContactForm({ systemId, owners, defaultOwner, customFields }:
         </label>
         {field("tags", "แท็ก (คั่นด้วย , หรือ ;)", { placeholder: "เช่น vip, งานแฟร์" })}
       </div>
-      <ContactPicker
-        kind="company"
-        label="บริษัท (พิมพ์ชื่อเพื่อค้นหา — ไม่บังคับ)"
-        placeholder="พิมพ์ชื่อบริษัท"
-        emptyLabel="— ยังไม่ผูกบริษัท —"
-        value={companyId}
-        onChange={setCompanyId}
-        search={(q) => searchCompaniesAction(systemId, q)}
-      />
+      {canPickCompany && (
+        <ContactPicker
+          kind="company"
+          label="บริษัท (พิมพ์ชื่อเพื่อค้นหา — ไม่บังคับ)"
+          placeholder="พิมพ์ชื่อบริษัท"
+          emptyLabel="— ยังไม่ผูกบริษัท —"
+          value={companyId}
+          onChange={setCompanyId}
+          search={(q) => searchCompaniesAction(systemId, q)}
+        />
+      )}
       {customFields.length > 0 && (
         <div className="grid gap-3 border-t pt-3 sm:grid-cols-2">
           {customFields.map((f) => (

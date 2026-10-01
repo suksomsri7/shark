@@ -1,0 +1,50 @@
+(node:1821118) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [P-premise] keys: noCo read=false · roCo read=true link=false · fullCo link=true · owner link=true (want false · true/false · true · true)
+
+── UI ──
+  ✅ [UI-new-control] owner /contacts/new: form=true picker q/select=true/true (positive control — want true)
+  ❌ [UI-new-hidden] no crm.company.read /contacts/new: picker q=true select=true (want false/false · form still there true)
+  ✅ [UI-360-visibility] getContact360().company: no-read user → null (want null — the name must not reach that page) · read-only user → บริษัท A qc-cf7-p-tudbbbbb (want the company)
+  ✅ [UI-edit-control] owner edit sheet: modal=true edit-company picker=true (positive control — want true/true)
+  ❌ [UI-edit-hidden-noread] no crm.company.read edit sheet: modal=true picker=true company name shown=false (want true · false · false)
+  ❌ [UI-edit-hidden-readonly] read-but-no-update edit sheet: picker=true read-only line=false name shown=false (want false · true · true)
+  ✅ [UI-convert-control] owner convert modal: modal=true pick=true new=true (positive control)
+  ❌ [UI-convert-hidden] no crm.company.read convert modal: pick-existing=true (want false) · new-company name field=true (want true)
+  ✅ [UI-deal-control] owner /deals/new: company select=true (positive control)
+  ❌ [UI-deal-hidden] no crm.company.read /deals/new: company select=true (want false · form true)
+
+── SRV ──
+  ❌ [SRV-create-refused] createContact({companyId}) by a no-read user → VALIDATION "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรายการ" · contacts +0 (want FORBIDDEN · +0)
+  ✅ [SRV-create-plain] createContact without companyId by the same user → OK (want OK — only the company part is gated)
+  ❌ [SRV-clear-refused] updateContact({firstName, companyId:null}) by a no-read user → NOT_FOUND · firstName "ชื่อใหม่ tudbbbbb" companyId kept=true links=A new audits=1 (want FORBIDDEN · unchanged · nothing half-written)
+  ❌ [SRV-change-refused] updateContact({companyId: other}) by a no-read user → VALIDATION "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรา…" · kept=true (want FORBIDDEN · kept)
+  ❌ [SRV-echo-kept] updateContact({jobTitle, companyId: <current>}) by a no-read user → VALIDATION "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรา…" · jobTitle saved=false · company kept=true (want OK · true · true)
+  ✅ [SRV-edit-keeps] edit sheet save (no companyId) by a no-read user → OK · firstName saved=true · company kept=true (want OK · kept)
+  ❌ [SRV-noupdate-atomic] updateContact({firstName, companyId: other}) by read-without-update → FORBIDDEN · firstName "ชื่ออ่านได้ tudbbbbb" · company kept=true · new audits=1 (want FORBIDDEN · unchanged · 0)
+  ✅ [SRV-control-move] updateContact({companyId: B}) by a user with company read+update → OK "" · now B=true (positive control)
+  ❌ [SRV-convert-pick-refused] convertContact({company:{id}}) by a no-read user → NOT_FOUND "ไม่พบบริษัทที่เลือกในระบบ CRM นี้ (อาจถูกเก็บถาวรหรือรวมไปแล้ว) — เลือกใหม่จากรา…" · companyId=null (want FORBIDDEN · null)
+
+── AI ──
+  ✅ [AI-premise] forged flag=true · authenticated flag=undefined · activities 3 on company+deal=true
+  ❌ [AI-contact.whyHot] contact.whyHot: ok=true · forged line "- EMAIL 2 ต.ค. 2569 ปลอม tudbbbbb"}]" · authenticated line "- EMAIL 2 ต.ค. 2569 จริง tudbbbbb" · NOTE line "- NOTE - โน้ต tudbbbbb" (want forged flagged · authenticated + NOTE not)
+  ❌ [AI-company.summary] company.summary: ok=true · forged line "- EMAIL 2 ต.ค. 2569 ปลอม tudbbbbb"}]" · authenticated line "- EMAIL 2 ต.ค. 2569 จริง tudbbbbb" · NOTE line "- NOTE - โน้ต tudbbbbb" (want forged flagged · authenticated + NOTE not)
+  ❌ [AI-deal.summary] deal.summary: ok=true · forged line "- EMAIL 2 ต.ค. 2569 ปลอม tudbbbbb"}]" · authenticated line "- EMAIL 2 ต.ค. 2569 จริง tudbbbbb" · NOTE line "- NOTE - โน้ต tudbbbbb" (want forged flagged · authenticated + NOTE not)
+
+── W ──
+  ❌ [W-new] contacts/new/page.tsx passes canPickCompany={crmCanLinkCompany(actor)}
+  ❌ [W-360-menu] contacts/[contactId]/page.tsx: ContactMenu can.company = crmCanLinkCompany(actor) · contact.companyName = data.company?.name ?? null (visibility-filtered)
+  ❌ [W-360-convert] ConvertButton canPickCompany={crmCan(actor, "crm.company.read")}
+  ❌ [W-deal-new] deals/new/page.tsx NewDealForm canPickCompany={crmCan(actor, "crm.company.read")}
+  ✅ [CLEAN-y6gm8t] tenant rows left=0
+  ✅ [CLEAN-eyre8e] tenant rows left=0
+
+🔴 probe-cf7: 12/30
+JSON_SUMMARY {"total":30,"passed":12,"findings":["UI-new-hidden","UI-edit-hidden-noread","UI-edit-hidden-readonly","UI-convert-hidden","UI-deal-hidden","SRV-create-refused","SRV-clear-refused","SRV-change-refused","SRV-echo-kept","SRV-noupdate-atomic","SRV-convert-pick-refused","AI-contact.whyHot","AI-company.summary","AI-deal.summary","W-new","W-360-menu","W-360-convert","W-deal-new"]}
