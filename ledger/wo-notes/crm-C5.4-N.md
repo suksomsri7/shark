@@ -508,3 +508,20 @@ Still needed: pre-checks 1–6, smoke (d), watch (f), and the rollback rule (M1 
 - GREEN: `r2/GREEN-probe-m1.log` **10/10** (RED 3/10) · `r2/GREEN-r2-money.log` **11/11** (A ×2, B ×2, C1 M1 contract, C2 hazard of old-code
   rollback still shown, C3, D ×2, E, CLEAN).
 - Next: full oracle + N6 ×5, r11 Q3, deadlock ×40, run-main-c2 QC2 list, fitness ×2, docs.
+- R2-CP-4 (08:17): comment/doc refs updated to `…000001` / `account_alloc_journal_no`. Unit `c54n-r2full-*` running `/tmp/c54n-logs/r2/full.sh`
+  (typecheck → docs → oracle full → N6 ×4 more → r11 Q3 → deadlock ×40 → run-main-c2 QC2 list → fitness ×2) → `/tmp/c54n-logs/r2/SUMMARY.txt`.
+- R2-CP-5 (08:53): typecheck-final rc 0 · docs-check rc 0 (no-op, see CP-3) · **oracle 12/12** (`r2/GREEN-oracle.log`; N7 literal: stamped in the
+  failed tx TX/WTI-…0152 + WHT-…0062 === next real) · **N6 ×5** (n7, limit 2 s) max extra wait goods / service: 93/50 · 598/744 · 876/1026 ·
+  67/72 · 119/84 ms (spread goods 67–876, service 50–1026; batch 19.5–22.2 s; every single 21/21) — no run near 2 s, no code change.
+- R2-CP-6 (08:59): r11 race Q3 (`r2/after-q3-r2.log`) rounds 1/2: singles **20/20 · 20/20**, 5-child 6/6 · 6/6, 40-child **1/1 · 1/1**, raw {} (BEFORE
+  base 7/20 · 4/20, 40-child 0/1 ×2, P2002 ×13/×16) · deadlock ×40 (`r2/after-deadlock-r2.log`) ok|ok 40/40, raw {}, cycles 0. QC2 list running.
+- R2-CP-7 (10:08): QC2 list so far all rc 0 — 13 probes · c5.3 9/9 · c3.3 90/90 · c2.7 79/79 · c3.1 56/56 · c3.2 47/47 (machine shared with
+  other lanes: suites ~2× slower than round 1). Remaining: c3.5 + account/HR suites + fitness ×2.
+- R2-CP-8 · FINAL (10:21, `r2/SUMMARY.txt` ALLDONE, src unchanged since 08:16): run-main-c2 QC2 list **36/36 rc 0**; `r2/cmp2.py` vs the controller's
+  base `main-c2.log`: every suite ❌0 and the same ✅ count (c3.3 90 · c2.7 79 · c3.1 56 · c3.2 47 · c3.5 67 · qc7 46 · cpa 107 · adjust 96 ·
+  payments 162 · write-payments 32 · write-docs 52 · webhooks 22 · groups 174 · detail 85 · deep 10 · cheap-routes 96 · simplicity 112 · c1.4 110 ·
+  c2.11 47 · payadjust 27 · payroll 19 · payroll-reverse 15 · c5.3 9 · probe-cn 49); probe text diffs = race-winner tallies only (r8, r9a, r9c,
+  hunt, probe-cn). fitness env / no-env 33/33 ×2. typecheck rc 0. Logs copied to `.qc-shots/c54n-logs/r2/`.
+- ORACLE-EDITs this round (all marked): `qc-numbering.mts` N7 ×2 (controller, review m4) · `review/r2-money.mts` R2-C1 contract → M1
+  (controller M1) · R2-D distinct check excludes the rolled-back creator (review re-judged) · `review/r1-db-facts.mts:44` `1n` → `BigInt(1)`
+  (TS2737, typecheck). Round 1: `probe-legal-counters.mts` ×2 (type annotation).

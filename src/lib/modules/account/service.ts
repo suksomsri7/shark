@@ -13,7 +13,7 @@ import { safeReason } from "./errors";
 //     5. payment rows ...................... CAS updateMany({ id, voidedAt: null })
 //     6. postings (gl.ts commitEntry / reverseFor) + any pre-existing row a posting path touches (inventory, deposits, statement
 //        lines, finance/asset rows, coupons, the original entry in reverseFor) + syncGroupHeadInTx (re-locks a step-4 head).
-//        Journal numbers come from a Postgres sequence (gl.ts allocateJournalNo → account_next_journal_no): no lock, never waits.
+//        Journal numbers come from a Postgres sequence (gl.ts allocateJournalNo → account_alloc_journal_no, allocate-until-free): no lock, never waits.
 //     7. LEGAL COUNTERS — AccountDocSequence rows, ↑(AccountDocType enum order, periodKey), one UPSERT per group, taken by
 //        doc-numbering.ts finalizeDocNos as the LAST statement of the wrapper (recordPayment · recordPaymentBatchInOneTx ·
 //        cheque.recordPaymentWithChequeInOneTx · expense.recordVendorPayment / issueExpenseDoc · wht.issueWhtCreditCertStandalone /

@@ -1,4 +1,4 @@
-// QC tooling — CRM C5.4-N: drop journal-number sequences (acc_jno_<systemId>_<book>, migration 20261104000000) whose system no
+// QC tooling — CRM C5.4-N: drop journal-number sequences (acc_jno_<systemId>_<book>, migration 20261104000001) whose system no
 //   longer exists. QC teardowns delete tenants/systems with raw SQL and never call account_jno_drop(), so every throwaway ACCOUNT
 //   system that posted leaves up to 5 empty sequences behind. Harmless (no rows, no locks) but they pile up on shared QC branches.
 // QC databases ONLY (acc-v2-env refuses the production host) · read-only unless `--apply` · prints what it would drop.
