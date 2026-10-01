@@ -15,6 +15,9 @@
 //   🔴 find-or-create ล้วน — **ไม่มีคำสั่งลบเลย** · id หลักตายตัว ⇒ รันซ้ำ = จำนวนเดิม ไม่ซ้ำ สรุปเหมือนเดิมทุกตัวอักษร
 //   🔴 ไม่แตะแถวของร้านอื่น — พิสูจน์ด้วย "ลายนิ้วมือ" ของร้านอื่น (จำนวนแถว + updatedAt ล่าสุด) ก่อน/หลัง ต่างกัน = exit 1
 //   🔴 ไม่เรียก drainAll (คิว outbox ไม่แยกร้าน — ระบายแล้วไปแตะ event ของร้านอื่น) · service ที่เรียกไม่มีตัวไหน scheduleDrain
+//   🔴 รันพร้อมกัน 2 ตัวไม่ได้ (find-or-create ไม่มีล็อกแถว — สองรอบพร้อมกันอาจชน unique/สร้างซ้ำ) ⇒ ต้องรันผ่าน
+//      `scripts/with-gate-lock.sh` เสมอ (qc4.sh ตั้ง GATE_LOCK_FILE=/tmp/shark-gate-qc4.lock = คิวเดียวของ QC4)
+//   🔴 รันซ้ำ = ปรับ role/unitAccess/permissions ของ membership QC ให้ตรง PQC (แก้สิทธิ์แคชเชียร์ใน pos-qc-env แล้วรันซ้ำ = มีผล)
 //   🔴 วางหลัง seed สมาชิกได้ (`seed-member-qc` / `qc-member-m1.1`) — ไม่พึ่งแถวของร้านนั้นเลย
 //   ผลท้ายไฟล์: `scripts/pos-expected.json` (id + จำนวนที่คาด) · บรรทัด `SEED_SUMMARY {...}` · `JSON_SUMMARY {...}`
 
@@ -33,11 +36,8 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 
-const env = loadPosQcEnv("seed-pos-qc");
-if (!env.isQc4 && process.env.POS_QC_ALLOW_NON_QC4 !== "1") {
-  console.error("🔴 seed-pos-qc: ฐานนี้ไม่ใช่ QC4 — ระหว่าง CRM RUN ให้รันผ่าน scripts/qc4.sh (ตั้ง POS_QC_ALLOW_NON_QC4=1 ถ้าจงใจ)");
-  process.exit(4);
-}
+// ด่าน host อยู่ในตัวโหลด: ไม่ใช่ QC4 = exit 4 (เว้น POS_QC_ALLOW_HOST) · prod/QC1–3 = exit 4 เสมอ
+loadPosQcEnv("seed-pos-qc");
 
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
@@ -134,6 +134,14 @@ async function ensureUser(tenantId: string, u: { userId: string; membershipId: s
     await P.membership.create({
       data: { id: u.membershipId, userId: u.userId, tenantId, role: u.role, unitAccess, permissions, acceptedAt: new Date("2026-10-01T00:00:00+07:00") },
     });
+  } else {
+    // ปรับให้ตรงสัญญา (เฉพาะแถว membership ของผู้ใช้ QC ในร้าน QC เอง) — เทียบแบบเรียงคีย์ ไม่เขียนถ้าเท่าเดิม
+    const canon = (v: unknown) => JSON.stringify(v, Object.keys((v ?? {}) as object).sort());
+    const same = m.role === u.role && JSON.stringify(m.unitAccess) === JSON.stringify(unitAccess) && canon(m.permissions) === canon(permissions);
+    if (!same) {
+      bump("membershipReconciled");
+      await P.membership.update({ where: { id: m.id }, data: { role: u.role, unitAccess, permissions } });
+    }
   }
   return user;
 }

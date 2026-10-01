@@ -27,7 +27,7 @@
 | D7 | ภาพ owner · cashier ทั้ง 3 ขนาด (§7) · ผู้คุมงานเปิดดูคู่ mockup เอง · ไม่มี overflow | ☐ | path ภาพ + `PARITY: ผ่าน/ตีกลับ + เหตุผล` |
 | D8 | ทุก element ที่กดได้มี `data-testid` + แถวใน `scripts/pos-ui-inventory.json` · หนี้ baseline ลดลงเท่านั้น | ☐ | diff ของทะเบียน + ผล F15.3 |
 | D9 | ผู้ตรวจ (ตัวแทนแยก) อ่าน diff แล้วไม่มี BLOCKER | ☐ | สรุปรายงานผู้ตรวจ |
-| D10 | เอกสาร: op ใหม่มี `test:` id · docs API ไม่ stale · สิทธิ์ใหม่มีป้ายไทย · event ใหม่ครบทะเบียน · สัญญา `createSale` (F15.2) เปลี่ยนแค่เพิ่ม | ☐ | ผล F13.x · F15.2 |
+| D10 | เอกสาร: op ใหม่มี `test:` id · docs API ไม่ stale · สิทธิ์ใหม่มีป้ายไทย · event ใหม่ครบทะเบียน · สัญญา `createSale` (F15.2) เปลี่ยนแค่เพิ่ม — 🔴 ถ้า `scripts/pos-sale-contract.json` เปลี่ยน **ผู้ตรวจต้อง** `git diff <base> -- scripts/pos-sale-contract.json` (หรือเทียบ `git show <base>:scripts/pos-sale-contract.json`) ว่ามีแต่บรรทัดเพิ่ม (กัน snapshot ถูกแก้เพื่อฟอกให้เขียว) | ☐ | ผล F13.x · F15.2 · diff ของ snapshot |
 | D11 | wo-notes ครบตามแม่แบบนี้ + ตารางหนี้ + ข้อมูล QC4 คืนสภาพ (seed-pos-qc รันซ้ำแล้วสรุปเท่าเดิม) | ☐ | ไฟล์นี้ + `SEED_SUMMARY` |
 | D12 | commit บน `session/pos` (ห้าม push จนผู้คุมงานตรวจ) → ผู้คุมงาน push/deploy · (ถ้ามี migration) `_prisma_migrations` บน prod มีแถวใหม่ | ☐ | hash · สถานะ deploy |
 | D13 | **เส้นเงิน regression** ชุด §6 (POS-MASTER-PLAN §1) เขียวทั้งหมดบน QC4 | ☐ | JSON_SUMMARY ทุกชุด + exit code |
@@ -57,12 +57,15 @@
 |---|---|---|---|
 | `qc-pos-account` (16) | | | |
 | `qc-account-cpa` (107) | | | |
-| `qc-restaurant-money` | | | |
+| `qc-pos-register` · `qc-pos-products` · `qc-pos-coupon` · `qc-pos-closeday` · `qc-pos-inventory` | | | |
+| `qc-restaurant-money` · `qc-restaurant-void` | | | |
 | `qc-shop-refund` | | | |
-| `qc-hotel-money` | | | |
-| `qc-ticket-money` | | | |
+| `qc-hotel-money` · `qc-hotel-refund` | | | |
+| `qc-ticket-money` · `qc-ticket-cancel` | | | |
 | `qc-subscription-money` | | | |
-| `qc-pos-*` อื่นทั้งหมด (register · products · inventory · coupon · closeday) | | | |
+| `qc-member-m2.6` (บัตรของขวัญ = ผู้เรียก createSale ใน tx) · `qc-member-m2.8` (สิทธิ์สมาชิกที่หน้าขาย) | | | |
+| `qc-booking-deposit` · `qc-clinic-refund` · `qc-school-refund` · `qc-rental-refund` | | | |
+(รายการตาม REVIEW-POS-DESIGN-2026-10-01 §6 แถว 18 — ทุกไฟล์มีจริงใน `scripts/` (ตรวจ 1 ต.ค.) · ผู้เรียก createSale/voidSale ทุกรายต้องมีชุดในตารางนี้)
 - ตรวจเงินระดับสตางค์: Σ payMethods = grandTotal · VAT round-half-up ระดับบิล · บัญชี Dr = Cr — check ids: …
 
 ## 6. ผลข้อสอบ (วาง JSON_SUMMARY จริง — ห้ามสรุปเป็นคำพูด)

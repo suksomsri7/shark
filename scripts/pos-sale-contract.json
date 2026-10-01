@@ -1,42 +1,46 @@
 {
-  "$note": "สัญญาสาธารณะของ createSale/voidSale/refundSale (F15.2 ใน scripts/fitness-pos.mts) — สร้าง/เติมด้วย `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` เท่านั้น · ห้ามแก้มือเพื่อให้ด่านเขียว",
+  "$note": "สัญญาสาธารณะของ createSale/voidSale/refundSale (F15.2 ใน scripts/fitness-pos.mts) — สร้าง/เติมด้วย `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` เท่านั้น · ผู้ตรวจต้อง diff กับ `git show <base>:scripts/pos-sale-contract.json` ทุกครั้งที่ไฟล์นี้เปลี่ยน",
   "source": "src/lib/modules/pos/service.ts",
   "functions": {
-    "createSale": {
-      "params": [
-        {
-          "name": "input",
-          "optional": false,
-          "type": "CreateSaleInput"
-        },
-        {
-          "name": "client",
-          "optional": true,
-          "type": "Client"
-        }
-      ],
-      "returns": "Promise<SaleResult>"
-    },
-    "voidSale": {
-      "params": [
-        {
-          "name": "tenantId",
-          "optional": false,
-          "type": "string"
-        },
-        {
-          "name": "unitId",
-          "optional": false,
-          "type": "string"
-        },
-        {
-          "name": "saleId",
-          "optional": false,
-          "type": "string"
-        }
-      ],
-      "returns": "Promise<void>"
-    }
+    "createSale": [
+      {
+        "params": [
+          {
+            "name": "input",
+            "optional": false,
+            "type": "CreateSaleInput"
+          },
+          {
+            "name": "client",
+            "optional": true,
+            "type": "Client"
+          }
+        ],
+        "returns": "Promise<SaleResult>"
+      }
+    ],
+    "voidSale": [
+      {
+        "params": [
+          {
+            "name": "tenantId",
+            "optional": false,
+            "type": "string"
+          },
+          {
+            "name": "unitId",
+            "optional": false,
+            "type": "string"
+          },
+          {
+            "name": "saleId",
+            "optional": false,
+            "type": "string"
+          }
+        ],
+        "returns": "Promise<void>"
+      }
+    ]
   },
   "types": {
     "CreateSaleInput": {
@@ -137,24 +141,6 @@
         "type": "string"
       }
     },
-    "SaleResult": {
-      "saleId": {
-        "optional": false,
-        "type": "string"
-      },
-      "receiptNo": {
-        "optional": false,
-        "type": "string | null"
-      },
-      "grandTotalSatang": {
-        "optional": false,
-        "type": "number"
-      },
-      "pointEarned": {
-        "optional": false,
-        "type": "number"
-      }
-    },
     "MemberSaleChoices": {
       "voucherIds": {
         "optional": true,
@@ -180,6 +166,24 @@
         "optional": false,
         "type": "number"
       }
+    },
+    "SaleResult": {
+      "saleId": {
+        "optional": false,
+        "type": "string"
+      },
+      "receiptNo": {
+        "optional": false,
+        "type": "string | null"
+      },
+      "grandTotalSatang": {
+        "optional": false,
+        "type": "number"
+      },
+      "pointEarned": {
+        "optional": false,
+        "type": "number"
+      }
     }
   },
   "callers": {
@@ -187,12 +191,12 @@
       "src/lib/actions/booking.ts",
       "src/lib/actions/pos.ts",
       "src/lib/ai/proposals.ts",
-      "src/lib/contracts.ts",
       "src/lib/modules/booking/service.ts",
       "src/lib/modules/clinic/service.ts",
       "src/lib/modules/giftcard/service.ts",
       "src/lib/modules/hotel/service.ts",
       "src/lib/modules/member/subscription.ts",
+      "src/lib/modules/pos/api/ops/sales.ts",
       "src/lib/modules/rental/service.ts",
       "src/lib/modules/restaurant/order.ts",
       "src/lib/modules/school/service.ts",
@@ -204,6 +208,7 @@
       "src/lib/modules/booking/service.ts",
       "src/lib/modules/clinic/service.ts",
       "src/lib/modules/hotel/service.ts",
+      "src/lib/modules/pos/api/ops/sales.ts",
       "src/lib/modules/rental/service.ts",
       "src/lib/modules/restaurant/order.ts",
       "src/lib/modules/school/service.ts",

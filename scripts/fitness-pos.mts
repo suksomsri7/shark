@@ -1,24 +1,28 @@
-// fitness-pos.mts — ด่าน fitness ของ RUN POS (F15.1–F15.4 · ใบ P0.1)
+// fitness-pos.mts — ด่าน fitness ของ RUN POS (F15.1–F15.4 · ใบ P0.1 รอบ 2)
 //
 // เรียกจาก `scripts/fitness.mts` (บล็อก `// POS P0.1 ▸ … ◂` หลัง F14) ผ่าน `runPosFitness(chk, ROOT)`
-// หรือรันเดี่ยว: `pnpm exec tsx scripts/fitness-pos.mts [--update-pos-contract]`
+// หรือรันเดี่ยว: `pnpm exec tsx scripts/fitness-pos.mts [--update-pos-contract] [--print-catalog-writers]`
 //
-//   F15.1 แคตตาล็อกมีผู้เขียนที่เดียว (ratchet) — ห้าม Prisma write ของ menuItem/shopProduct และห้ามเขียน
-//         AccountProduct ที่ตั้ง salePrice นอก «src/lib/modules/pos/catalog.ts» ∪ BASELINE (ผู้เขียนเดิมวันนี้)
-//         · baseline ที่ไม่เขียนแล้ว = แดง (ให้ถอดออก) · P1.1b เป็นคนทำ baseline ให้ว่าง
-//   F15.2 สัญญา createSale/voidSale/(refundSale) เข้ากันได้ย้อนหลัง — เทียบกับ snapshot `scripts/pos-sale-contract.json`
-//         ด้วย TypeScript parser (ไม่ใช่ regex) · ลบ/เปลี่ยนชื่อ/เปลี่ยนชนิด/ฟิลด์ใหม่ที่บังคับ = แดง · หาไม่เจอ = แดง
-//         ฟิลด์ใหม่แบบ optional = เขียว + บอกให้ `--update-pos-contract` (เติมอย่างเดียว ไม่ลบไม่แก้ของเดิม)
-//   F15.3 ทะเบียนปุ่ม POS ซื่อสัตย์ (F14.1/F14.2 ฉบับ POS) — ใช้ตัวสแกนเดียวกับ F14 (`scripts/lib/crm-testid-scan.mts`
-//         import อย่างเดียว ไม่แตะโค้ดของ F14) + หนี้ "ปุ่มไม่มี testid" ต่อไฟล์แบบ ratchet
-//   F15.4 ข้อความ POS สองภาษา — คีย์ใต้ `pos.*` ใน src/messages/{th,en}/*.json ต้องมีครบทั้งสองฝั่ง ไม่ว่าง
-//         และค่าภาษาไทยต้องไม่ใช่ชื่อคีย์/ตัวพิมพ์ใหญ่แบบ enum (`^[A-Z_]+$`) · ยังไม่มี namespace = เขียว "0 คีย์"
+//   F15.1 แคตตาล็อก/ราคามีผู้เขียนที่เดียว — นับ "จุดเขียน" (call site) ต่อไฟล์ต่อชนิด ด้วย TypeScript AST:
+//         ทุก write ของ MenuItem · MenuCategory · MenuOptionGroup · MenuOptionChoice · MenuItemOptionGroup · ShopProduct
+//         + write ที่ตั้งราคา: AccountProduct.salePrice/posPrice · InvItem.priceSatang · BookingService.priceSatang
+//         (data ที่ไม่ใช่ object literal / มี spread = นับเป็นผู้ตั้งราคา — fail-closed)
+//         + nested relation write ที่ไปถึงโมเดลเหล่านั้น + SQL ดิบ + delegate ไดนามิก
+//         นอก «src/lib/modules/pos/catalog.ts» ต้องอยู่ใน CATALOG_WRITER_BASELINE ด้วย "จำนวนเท่ากันเป๊ะ"
+//         (เพิ่ม = ผู้เขียนใหม่ แดง · ลด = ปิดหนี้แล้วต้องลดตัวเลข แดง) · P1.1b ทำ baseline ให้ว่าง · สแกนเฉพาะ src/
+//   F15.2 สัญญา createSale/voidSale/(refundSale) เข้ากันได้ย้อนหลัง — เทียบ snapshot `scripts/pos-sale-contract.json`
+//         ด้วย TypeScript parser · แยกทิศ: ขาเข้า (พารามิเตอร์ · CreateSaleInput · MemberSaleChoices) / ขาออก (SaleResult · return)
+//         · ทุก overload · snapshot หาย = แดง
+//   F15.3 ทะเบียนปุ่ม POS ซื่อสัตย์ (F15.3a ครบ · F15.3b ตรงโค้ด) — ตัวสแกน testid ของ F14 (import อย่างเดียว) +
+//         หนี้ "ปุ่มไร้ testid" นับด้วย JSX AST ต่อไฟล์ต่อชื่อแท็ก (ratchet สองทาง)
+//   F15.4 ข้อความ pos.* สองภาษา — ครบสองฝั่ง ไม่ว่าง · ค่าภาษาไทยต้องมีอักษรไทย (ยกเว้นคำสากลใน UNIVERSAL_TOKENS)
 //
 // 🔴 static ล้วน: อ่านไฟล์อย่างเดียว · ไม่แตะ DB/เน็ต · ไม่ import `@/…` หรือ `src/lib/env` (pre-commit ไม่มี env — X12)
-// 🔴 ไฟล์เดียวที่เขียนได้ = `scripts/pos-sale-contract.json` และเฉพาะเมื่อสั่ง `--update-pos-contract` เท่านั้น
+// 🔴 ทุกด่านห่อ try/catch — ไฟล์พัง/JSON เสีย = ด่านนั้นแดงพร้อมข้อความ ไม่ล้มทั้ง fitness
+// 🔴 ไฟล์เดียวที่เขียนได้ = `scripts/pos-sale-contract.json` และเฉพาะเมื่อสั่ง `--update-pos-contract`
 
 import { readFileSync, existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, relative, resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 import { TESTID_RE, ANY_TESTID_RE, normId, globRe, tagAround, isInteractive, lineOf } from "./lib/crm-testid-scan.mjs";
@@ -32,95 +36,288 @@ function walk(dir: string, filter: (p: string) => boolean, out: string[] = []): 
   for (const e of readdirSync(dir)) {
     if (e === "node_modules" || e === ".next" || e === ".git") continue;
     const p = join(dir, e);
-    if (statSync(p).isDirectory()) walk(p, filter, out);
+    let st;
+    try {
+      st = statSync(p);
+    } catch {
+      continue; // symlink เสีย — ข้าม (ไม่ใช่ไฟล์ที่ใครเขียนโค้ดอยู่)
+    }
+    if (st.isDirectory()) walk(p, filter, out);
     else if (filter(p)) out.push(p);
   }
   return out;
 }
-/** ลบคอมเมนต์แบบคงตำแหน่งตัวอักษร (บล็อก /* *\/ ทุกที่ + บรรทัดที่เป็นคอมเมนต์ทั้งบรรทัด) — โค้ดที่ถูกคอมเมนต์ไว้ไม่นับ */
-function stripComments(src: string): string {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
-    .replace(/^[ \t]*\/\/.*$/gm, (m) => " ".repeat(m.length));
+/** parse ไฟล์ด้วย TypeScript (ไม่มี type checker · เร็ว) — คอมเมนต์/สตริงไม่ใช่โค้ดโดยธรรมชาติของ AST */
+function parse(abs: string, text?: string): ts.SourceFile {
+  const kind = abs.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile(abs, text ?? readFileSync(abs, "utf8"), ts.ScriptTarget.Latest, true, kind);
 }
-/** ข้อความในวงเล็บที่เปิดที่ตำแหน่ง `open` (นับวงเล็บ ข้ามสตริง) */
-function balancedArgs(src: string, open: number): string {
-  let depth = 0;
-  let quote = "";
-  for (let i = open; i < src.length; i++) {
-    const c = src[i]!;
-    if (quote) {
-      if (c === quote && src[i - 1] !== "\\") quote = "";
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") quote = c;
-    else if (c === "(" || c === "{" || c === "[") depth++;
-    else if (c === ")" || c === "}" || c === "]") {
-      depth--;
-      if (depth === 0) return src.slice(open, i + 1);
-    }
+const lineAt = (sf: ts.SourceFile, n: ts.Node) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+function unwrap(e: ts.Expression): ts.Expression {
+  let x = e;
+  while (ts.isParenthesizedExpression(x) || ts.isAsExpression(x) || ts.isNonNullExpression(x) || ts.isSatisfiesExpression(x) || ts.isTypeAssertionExpression(x)) x = x.expression;
+  return x;
+}
+const propName = (n: ts.PropertyName | ts.BindingName | undefined): string | null =>
+  !n ? null : ts.isIdentifier(n) || ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isNumericLiteral(n) ? n.text : null;
+
+/** ห่อด่าน: ข้อผิดพลาดใด ๆ = ด่านนั้นแดงพร้อมข้อความ (ไม่ทำให้ fitness ทั้งไฟล์ล้ม) */
+function guarded(chk: PosChk, id: string, name: string, fn: () => void) {
+  try {
+    fn();
+  } catch (e) {
+    chk(id, name, false, `ด่านนี้พังระหว่างตรวจ — ${e instanceof Error ? e.message.slice(0, 240) : String(e)}`, "CRITICAL");
   }
-  return src.slice(open);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// F15.1 — ผู้เขียนแคตตาล็อก
+// F15.1 — ผู้เขียนแคตตาล็อก/ราคา
 // ═══════════════════════════════════════════════════════════════
 /** ที่เดียวที่ได้เขียนแคตตาล็อกหลัง P1.1 (ยังไม่มีไฟล์ ณ P0.1) */
 export const CATALOG_WRITER = "src/lib/modules/pos/catalog.ts";
-/**
- * ผู้เขียนเดิม (ตรวจจากโค้ดจริง 1 ต.ค. 2569 ด้วยตัวสแกนข้างล่าง) — ratchet: ลดได้อย่างเดียว · P1.1b ทำให้ว่าง
- * key = ไฟล์ · value = เขียนอะไร (เหตุผลที่ยังอยู่)
- */
-export const CATALOG_WRITER_BASELINE = new Map<string, string>([
-  ["src/lib/modules/restaurant/menu.ts", "menuItem create/update (สร้าง/แก้/ทำซ้ำ/เก็บเมนู · สต็อกเมนู · reset รายวัน) — P1.1b ย้ายเข้า catalog.ts"],
-  ["src/lib/modules/restaurant/order.ts", "menuItem update/updateMany (หักสต็อกเมนู + 86 อัตโนมัติตอนยืนยันออเดอร์) — P1.1b/P2.4"],
-  ["src/lib/modules/shop/service.ts", "shopProduct create/update (สินค้าเว็บร้าน) — P1.1b/P2.8"],
-  ["src/lib/modules/account/service.ts", "accountProduct updateMany/create ตั้ง salePrice (updateAccountProductSalePrice · createAccountProductWithSalePrice ที่หน้า POS 'สินค้า/ราคา' เรียก) — P1.1b"],
-  ["src/lib/modules/account/product.ts", "accountProduct create/updateMany ที่มี salePrice (หน้าสินค้าของระบบบัญชี · API products-write) — P1.1b"],
-]);
-const CAT_WRITE_RE = /\b(menuItem|shopProduct)\s*\??\.\s*(createManyAndReturn|createMany|create|updateManyAndReturn|updateMany|update|upsert|deleteMany|delete)\s*\(/g;
-const CAT_RAW_RE = /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"(MenuItem|ShopProduct)"/g;
-const AP_WRITE_RE = /\baccountProduct\s*\??\.\s*(createManyAndReturn|createMany|create|updateManyAndReturn|updateMany|update|upsert)\s*\(/g;
-const AP_RAW_RE = /\b(INSERT\s+INTO|UPDATE)\s+"AccountProduct"[\s\S]{0,400}?"salePrice"/g;
-/** มีการกำหนด salePrice ในไฟล์ (ไม่นับ `salePrice: true` ของ select · ไม่นับการอ่าน `x.salePrice`) */
-const SALEPRICE_ASSIGN_RE = /(?<![.\w])salePrice\s*(?::(?!\s*true\b)|=(?!=)|,|\s*\})/;
+/** โมเดลที่ "ทุก write" นับ (ต้นฉบับแคตตาล็อกเมนู/เว็บร้าน) */
+const ALL_WRITE_MODELS = ["MenuItem", "MenuCategory", "MenuOptionGroup", "MenuOptionChoice", "MenuItemOptionGroup", "ShopProduct"] as const;
+/** โมเดลที่นับเฉพาะ write ที่ตั้ง "ราคา" (ฟิลด์ที่ระบุ) — data ไม่ใช่ literal = นับ (fail-closed) */
+const PRICE_MODELS: Record<string, readonly string[]> = {
+  AccountProduct: ["salePrice", "posPrice"],
+  InvItem: ["priceSatang"],
+  BookingService: ["priceSatang"],
+};
+const WRITE_METHODS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
+const NESTED_OPS = new Set(["create", "createMany", "update", "updateMany", "upsert", "connectOrCreate", "delete", "deleteMany", "set"]);
+/** ชื่อตัวแปรที่ถือว่าเป็น client ของ Prisma เมื่อเจอ `x[ไม่ใช่ literal].<write>(` (delegate ไดนามิก) */
+const CLIENT_NAMES = /^(prisma|tx|db|client|P|p|trx|tenantDb)$/;
 
-export type CatalogWriter = { file: string; hits: string[] };
+/**
+ * ผู้เขียนเดิม — ต่อไฟล์ต่อชนิด = จำนวน call site (ตรวจจากโค้ดจริงด้วยตัวสแกนนี้ 1 ต.ค. 2569 · พิมพ์ซ้ำได้ด้วย --print-catalog-writers)
+ * ratchet: จำนวนจริงต้อง = ตัวเลขที่นี่ · P1.1b ย้ายเข้า catalog.ts แล้วลบแถวออก (เป้า = ว่าง)
+ */
+export const CATALOG_WRITER_BASELINE: Record<string, Record<string, number>> = {
+  // เมนูร้านอาหาร: สร้าง/แก้/ทำซ้ำ/เก็บ เมนู · หมวด · กลุ่มตัวเลือก/ตัวเลือก(priceDelta) · ผูกเมนู↔กลุ่ม · สต็อกเมนู · reset รายวัน
+  "src/lib/modules/restaurant/menu.ts": { "MenuItem.write": 6, "MenuCategory.write": 2, "MenuOptionGroup.write": 2, "MenuOptionChoice.write": 2, "MenuItemOptionGroup.write": 5 },
+  // หักสต็อกเมนู + 86 อัตโนมัติตอนยืนยัน/ยกเลิกออเดอร์ (availability — P1.1b ตัดสินว่าไป catalog.ts หรือบริการ availability)
+  "src/lib/modules/restaurant/order.ts": { "MenuItem.write": 3 },
+  // สินค้าเว็บร้าน createProduct/updateProduct
+  "src/lib/modules/shop/service.ts": { "ShopProduct.write": 2 },
+  // ราคาขาย POS หน้า "สินค้า/ราคา": updateAccountProductSalePrice · createAccountProductWithSalePrice
+  "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 },
+  // หน้าสินค้าระบบบัญชี / import / REST+AI products-write: createProduct · updateProduct (data ทางอ้อม — fail-closed · มี salePrice/posPrice จริง)
+  "src/lib/modules/account/product.ts": { "AccountProduct.price": 2 },
+  // ซิงก์ลิงก์คลัง↔บัญชี (data ทางอ้อม — fail-closed · วันนี้ไม่ได้ตั้งราคา แต่ตรวจพิสูจน์ไม่ได้แบบ static)
+  "src/lib/modules/account/inventory-link.ts": { "AccountProduct.price": 2, "InvItem.price": 2 },
+  // InvItem.priceSatang: createItem (ผู้เรียก: inventory/actions · ai/proposals inventory_create_item · booking importServicesToCatalog · inventory-link) · updateItem
+  "src/lib/modules/inventory/service.ts": { "InvItem.price": 2 },
+  // BookingService.priceSatang: ซิงก์ราคาจาก InvItem ตอนอ่าน serviceRoster (:254) · ตั้งค่าบริการ (:301-302)
+  "src/lib/modules/booking/service.ts": { "BookingService.price": 3 },
+  // ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดล รวมแคตตาล็อก) — ถูกต้อง แต่มองไม่เห็นแบบ static ⇒ fail-closed
+  "src/lib/platform/pdpa.ts": { dynamic: 1 },
+};
+
+/** แผนที่ความสัมพันธ์จาก prisma/schema: Model → { field → Model ปลายทาง } + รายชื่อ delegate ทั้งหมด */
+function readSchema(ROOT: string): { delegates: Map<string, string>; rel: Map<string, Map<string, string>> } {
+  const delegates = new Map<string, string>(); // delegate (camel) → Model
+  const rel = new Map<string, Map<string, string>>();
+  const files = walk(join(ROOT, "prisma", "schema"), (p) => p.endsWith(".prisma"));
+  const blocks: [string, string][] = [];
+  for (const f of files) {
+    const src = readFileSync(f, "utf8");
+    for (const m of src.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gm)) blocks.push([m[1]!, m[2]!]);
+  }
+  for (const [name] of blocks) delegates.set(name[0]!.toLowerCase() + name.slice(1), name);
+  const models = new Set(blocks.map(([n]) => n));
+  for (const [name, body] of blocks) {
+    const map = new Map<string, string>();
+    for (const line of body.split("\n")) {
+      const m = /^\s*(\w+)\s+(\w+)(\[\]|\?)?(\s|$)/.exec(line);
+      if (m && models.has(m[2]!)) map.set(m[1]!, m[2]!);
+    }
+    rel.set(name, map);
+  }
+  return { delegates, rel };
+}
+
+export type WriteHit = { kind: string; line: number; why: string };
+export type CatalogWriter = { file: string; hits: WriteHit[] };
+
+/** วิเคราะห์ไฟล์เดียว (ใช้กับ fixture ของข้อพิสูจน์ด้านลบได้) */
+export function scanFileWrites(sf: ts.SourceFile, schema: ReturnType<typeof readSchema>): WriteHit[] {
+  const hits: WriteHit[] = [];
+  const { delegates, rel } = schema;
+  const tracked = (model: string) => (ALL_WRITE_MODELS as readonly string[]).includes(model) || model in PRICE_MODELS;
+  // ── ตัวแปร/พารามิเตอร์ที่ถือ delegate (`const d = tx.menuItem` · `const { menuItem } = prisma` · `d: Prisma.MenuItemDelegate`)
+  const varDelegate = new Map<string, string>();
+  const visitDecl = (n: ts.Node) => {
+    if (ts.isVariableDeclaration(n) && n.initializer) {
+      const init = unwrap(n.initializer);
+      if (ts.isIdentifier(n.name)) {
+        const d = delegateOf(init);
+        if (d) varDelegate.set(n.name.text, d);
+      } else if (ts.isObjectBindingPattern(n.name)) {
+        for (const el of n.name.elements) {
+          const key = propName(el.propertyName) ?? propName(el.name);
+          if (key && delegates.has(key) && ts.isIdentifier(el.name)) varDelegate.set(el.name.text, delegates.get(key)!);
+        }
+      }
+    }
+    if (ts.isParameter(n) && ts.isIdentifier(n.name) && n.type) {
+      const m = /(\w+)Delegate\b/.exec(n.type.getText(sf));
+      if (m && delegates.has(m[1]![0]!.toLowerCase() + m[1]!.slice(1))) varDelegate.set(n.name.text, delegates.get(m[1]![0]!.toLowerCase() + m[1]!.slice(1))!);
+    }
+    ts.forEachChild(n, visitDecl);
+  };
+  function delegateOf(e: ts.Expression): string | null {
+    const x = unwrap(e);
+    if (ts.isPropertyAccessExpression(x) && delegates.has(x.name.text)) return delegates.get(x.name.text)!;
+    if (ts.isElementAccessExpression(x) && ts.isStringLiteralLike(x.argumentExpression) && delegates.has(x.argumentExpression.text)) return delegates.get(x.argumentExpression.text)!;
+    if (ts.isIdentifier(x) && varDelegate.has(x.text)) return varDelegate.get(x.text)!;
+    return null;
+  }
+  visitDecl(sf);
+
+  const objProps = (o: ts.ObjectLiteralExpression) => {
+    const map = new Map<string, ts.Expression>();
+    let opaque = false;
+    for (const p of o.properties) {
+      if (ts.isPropertyAssignment(p)) {
+        const k = propName(p.name);
+        if (k === null) opaque = true;
+        else map.set(k, p.initializer);
+      } else if (ts.isShorthandPropertyAssignment(p)) map.set(p.name.text, p.name);
+      else if (ts.isSpreadAssignment(p)) opaque = true;
+    }
+    return { map, opaque };
+  };
+  /** payload ของ write (ค่าของ data) ต่อโมเดล — คืนเหตุผลถ้าเป็นการตั้งราคา (หรือ null) และไล่ nested ต่อ */
+  function payload(model: string, node: ts.Expression | undefined, where: string, line: number): string | null {
+    if (!node) return null;
+    const x = unwrap(node);
+    const priceFields = PRICE_MODELS[model];
+    if (ts.isArrayLiteralExpression(x)) {
+      let why: string | null = null;
+      for (const el of x.elements) why = payload(model, ts.isSpreadElement(el) ? el.expression : el, where, line) ?? why;
+      return why;
+    }
+    if (!ts.isObjectLiteralExpression(x)) return priceFields ? `data ไม่ใช่ object literal (${ts.SyntaxKind[x.kind]}) — fail-closed` : null;
+    const { map, opaque } = objProps(x);
+    nested(model, map, line);
+    if (!priceFields) return null;
+    const hit = priceFields.find((f) => map.has(f));
+    if (hit) return `ตั้ง ${hit}`;
+    if (opaque) return "data มี spread/คีย์คำนวณ — fail-closed";
+    return null;
+  }
+  /** nested relation write: field ของ model ที่ชี้ไปโมเดลที่ติดตาม (หรือไล่ลึกต่อผ่านโมเดลอื่น) */
+  function nested(model: string, props: Map<string, ts.Expression>, line: number) {
+    const rmap = rel.get(model);
+    if (!rmap) return;
+    for (const [field, val] of props) {
+      const target = rmap.get(field);
+      if (!target) continue;
+      const v = unwrap(val);
+      if (!ts.isObjectLiteralExpression(v)) continue;
+      const { map: ops } = objProps(v);
+      for (const [op, opVal] of ops) {
+        if (!NESTED_OPS.has(op)) continue;
+        if ((ALL_WRITE_MODELS as readonly string[]).includes(target)) {
+          hits.push({ kind: `nested:${model}.${field}→${target}`, line, why: `nested ${op}` });
+          continue;
+        }
+        // ปลายทางที่ติดตามราคา / หรือโมเดลอื่น (ไล่ลึก): ค่าของ op = payload หรือ { data } / { create, update } / { where, create }
+        const ov = unwrap(opVal);
+        const subs: ts.Expression[] = [];
+        if (ts.isObjectLiteralExpression(ov)) {
+          const { map: inner } = objProps(ov);
+          if (inner.has("data")) subs.push(inner.get("data")!);
+          else if (inner.has("create") || inner.has("update")) {
+            if (inner.has("create")) subs.push(inner.get("create")!);
+            if (inner.has("update")) subs.push(inner.get("update")!);
+          } else subs.push(ov);
+        } else subs.push(ov);
+        for (const s of subs) {
+          if (op.startsWith("delete") || op === "set") continue;
+          const why = payload(target, s, `nested ${model}.${field}`, line);
+          if (why && target in PRICE_MODELS) hits.push({ kind: `nested:${model}.${field}→${target}.price`, line, why: `nested ${op}: ${why}` });
+        }
+      }
+    }
+  }
+
+  const visit = (n: ts.Node) => {
+    // ── call `<recv>.<method>(…)` ──
+    if (ts.isCallExpression(n)) {
+      const callee = unwrap(n.expression);
+      if (ts.isPropertyAccessExpression(callee) && WRITE_METHODS.has(callee.name.text)) {
+        const method = callee.name.text;
+        const recv = unwrap(callee.expression);
+        const model = delegateOf(recv);
+        const line = lineAt(sf, n);
+        if (model) {
+          const arg = n.arguments[0] ? unwrap(n.arguments[0]) : undefined;
+          const argObj = arg && ts.isObjectLiteralExpression(arg) ? objProps(arg).map : null;
+          const payloads: (ts.Expression | undefined)[] =
+            method === "upsert" ? [argObj?.get("create"), argObj?.get("update")] : method.startsWith("delete") ? [] : [argObj?.get("data")];
+          if ((ALL_WRITE_MODELS as readonly string[]).includes(model)) {
+            hits.push({ kind: `${model}.write`, line, why: method });
+            for (const p of payloads) payload(model, p, model, line); // nested ต่อ
+          } else if (model in PRICE_MODELS) {
+            if (!method.startsWith("delete")) {
+              let why: string | null = arg && !ts.isObjectLiteralExpression(arg) ? `อาร์กิวเมนต์ไม่ใช่ object literal — fail-closed` : null;
+              for (const p of payloads) why = payload(model, p, model, line) ?? why;
+              if (why) hits.push({ kind: `${model}.price`, line, why: `${method}: ${why}` });
+            }
+          } else {
+            for (const p of payloads) payload(model, p, model, line); // โมเดลอื่น: ไล่ nested อย่างเดียว
+          }
+        } else if (ts.isElementAccessExpression(recv) && !ts.isStringLiteralLike(recv.argumentExpression)) {
+          const base = unwrap(recv.expression);
+          const baseName = ts.isIdentifier(base) ? base.text : ts.isCallExpression(base) ? base.expression.getText(sf) : "";
+          if (CLIENT_NAMES.test(baseName)) hits.push({ kind: "dynamic", line, why: `${recv.getText(sf).slice(0, 40)}.${method} — delegate ไดนามิก (fail-closed)` });
+        }
+      }
+    }
+    // ── SQL ดิบใน string/template ──
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) || ts.isTemplateExpression(n)) {
+      const t = n.getText(sf);
+      for (const m of t.matchAll(/\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"(\w+)"/g)) {
+        const model = m[2]!;
+        if ((ALL_WRITE_MODELS as readonly string[]).includes(model)) hits.push({ kind: `raw:${model}`, line: lineAt(sf, n), why: m[1]! });
+        else if (model in PRICE_MODELS && PRICE_MODELS[model]!.some((f) => t.includes(`"${f}"`)) && !/DELETE/.test(m[1]!)) hits.push({ kind: `raw:${model}.price`, line: lineAt(sf, n), why: m[1]! });
+      }
+      if (ts.isTemplateExpression(n)) return; // ไม่ต้องลงไปใน span ซ้ำ
+    }
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return hits;
+}
+
+const PREFILTER = /menuItem|menuCategory|menuOption|shopProduct|accountProduct|invItem|bookingService|MenuItem|MenuCategory|MenuOption|ShopProduct|AccountProduct|InvItem|BookingService|Delegate/;
 export function scanCatalogWriters(ROOT: string): CatalogWriter[] {
+  const schema = readSchema(ROOT);
   const out: CatalogWriter[] = [];
   for (const abs of walk(join(ROOT, "src"), (p) => /\.(ts|tsx|mts)$/.test(p))) {
-    const raw = readFileSync(abs, "utf8");
-    if (!/menuItem|shopProduct|MenuItem|ShopProduct|accountProduct|AccountProduct/.test(raw)) continue;
-    const src = stripComments(raw);
-    const hits: string[] = [];
-    for (const m of src.matchAll(CAT_WRITE_RE)) hits.push(`${m[1]}.${m[2]}@${lineOf(src, m.index ?? 0)}`);
-    for (const m of src.matchAll(CAT_RAW_RE)) hits.push(`raw ${m[1]} "${m[2]}"@${lineOf(src, m.index ?? 0)}`);
-    const fileAssignsSalePrice = SALEPRICE_ASSIGN_RE.test(src);
-    for (const m of src.matchAll(AP_WRITE_RE)) {
-      const at = m.index ?? 0;
-      const args = balancedArgs(src, at + m[0].length - 1);
-      const direct = /\bsalePrice\b/.test(args);
-      // data ที่สร้างไว้ก่อน (`data: d` · `data,` · `...x`) — ตามไปดูไม่ได้ ⇒ ถือว่าตั้ง salePrice ถ้าไฟล์นี้มีการกำหนด salePrice
-      const indirect = !direct && /\bdata\s*(?::\s*[A-Za-z_$][\w$]*\s*[,}]|[,}])|\.\.\.[A-Za-z_$]/.test(args) && fileAssignsSalePrice;
-      if (direct || indirect) hits.push(`accountProduct.${m[1]}${direct ? "" : " (data ทางอ้อม)"} salePrice@${lineOf(src, at)}`);
-    }
-    for (const m of src.matchAll(AP_RAW_RE)) hits.push(`raw ${m[1]} "AccountProduct" salePrice@${lineOf(src, m.index ?? 0)}`);
+    const text = readFileSync(abs, "utf8");
+    if (!PREFILTER.test(text)) continue;
+    const hits = scanFileWrites(parse(abs, text), schema);
     if (hits.length) out.push({ file: relative(ROOT, abs), hits });
   }
   return out;
 }
+const countKinds = (hits: WriteHit[]) => {
+  const c: Record<string, number> = {};
+  for (const h of hits) c[h.kind] = (c[h.kind] ?? 0) + 1;
+  return c;
+};
 
 // ═══════════════════════════════════════════════════════════════
 // F15.2 — สัญญา createSale / voidSale / refundSale
 // ═══════════════════════════════════════════════════════════════
 export const SALE_SERVICE = "src/lib/modules/pos/service.ts";
 export const SALE_CONTRACT = "scripts/pos-sale-contract.json";
-/** ฟังก์ชันที่ต้องมี (หาไม่เจอ = แดง) · refundSale = ติดตามเมื่อเกิด (P1.8) */
 const REQUIRED_FNS = ["createSale", "voidSale"] as const;
 const OPTIONAL_FNS = ["refundSale"] as const;
-/** ชนิดที่เป็นสัญญาสาธารณะ (re-export ใน pos/index.ts) */
-const CONTRACT_TYPES = ["CreateSaleInput", "SaleResult", "MemberSaleChoices"] as const;
+/** ทิศของชนิด: ขาเข้า = ผู้เรียกส่งมา (เพิ่มแบบไม่บังคับได้) · ขาออก = ผู้เรียกอ่าน (ห้ามหด/ห้ามกว้างขึ้น) */
+const CONTRACT_TYPES: Record<string, "input" | "output"> = { CreateSaleInput: "input", MemberSaleChoices: "input", SaleResult: "output" };
 
 type Field = { optional: boolean; type: string };
 type Param = { name: string; optional: boolean; type: string };
@@ -128,7 +325,8 @@ type FnSig = { params: Param[]; returns: string };
 export type SaleContract = {
   $note?: string;
   source: string;
-  functions: Record<string, FnSig>;
+  /** ชื่อฟังก์ชัน → ลายเซ็นทุก overload ตามลำดับ (ไม่มี overload = 1 ตัว = ตัว implementation) */
+  functions: Record<string, FnSig[]>;
   types: Record<string, Record<string, Field>>;
   callers: Record<string, string[]>;
 };
@@ -153,27 +351,33 @@ function flattenMembers(members: ts.NodeArray<ts.TypeElement>, sf: ts.SourceFile
   }
 }
 
-/** อ่านสัญญาจากโค้ดจริงด้วย TypeScript parser — คืน null ในช่องที่หาไม่เจอ (ผู้เรียกตัดสินว่าแดง) */
-export function readSaleContract(ROOT: string): { fns: Record<string, FnSig | null>; types: Record<string, Record<string, Field> | null>; error?: string } {
+/** อ่านสัญญาจากโค้ดจริงด้วย TypeScript parser — ช่องที่หาไม่เจอ = null (ผู้เรียกตัดสินว่าแดง) */
+export function readSaleContract(ROOT: string): { fns: Record<string, FnSig[] | null>; types: Record<string, Record<string, Field> | null>; error?: string } {
   const abs = join(ROOT, SALE_SERVICE);
-  const fns: Record<string, FnSig | null> = {};
+  const fns: Record<string, FnSig[] | null> = {};
   const types: Record<string, Record<string, Field> | null> = {};
   for (const n of [...REQUIRED_FNS, ...OPTIONAL_FNS]) fns[n] = null;
-  for (const n of CONTRACT_TYPES) types[n] = null;
+  for (const n of Object.keys(CONTRACT_TYPES)) types[n] = null;
   if (!existsSync(abs)) return { fns, types, error: `ไม่พบ ${SALE_SERVICE}` };
-  const sf = ts.createSourceFile(abs, readFileSync(abs, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sf = parse(abs);
   const isExported = (n: ts.Node) => !!ts.getModifiers(n as ts.HasModifiers)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
   const sigOf = (params: ts.NodeArray<ts.ParameterDeclaration>, ret: ts.TypeNode | undefined): FnSig => ({
     params: params.map((p) => ({ name: p.name.getText(sf), optional: !!p.questionToken || !!p.initializer, type: p.type ? norm(p.type.getText(sf)) : "any" })),
     returns: ret ? norm(ret.getText(sf)) : "(ไม่ระบุ)",
   });
+  const overloads: Record<string, FnSig[]> = {};
+  const impls: Record<string, FnSig> = {};
   for (const st of sf.statements) {
-    if (ts.isFunctionDeclaration(st) && st.name && isExported(st) && st.name.text in fns) fns[st.name.text] = sigOf(st.parameters, st.type);
+    if (ts.isFunctionDeclaration(st) && st.name && isExported(st) && st.name.text in fns) {
+      if (st.body) impls[st.name.text] = sigOf(st.parameters, st.type);
+      else (overloads[st.name.text] ??= []).push(sigOf(st.parameters, st.type));
+    }
     if (ts.isVariableStatement(st) && isExported(st)) {
       for (const d of st.declarationList.declarations) {
         const nm = d.name.getText(sf);
         if (!(nm in fns) || !d.initializer) continue;
-        if (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer)) fns[nm] = sigOf(d.initializer.parameters, d.initializer.type);
+        const init = unwrap(d.initializer);
+        if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) impls[nm] = sigOf(init.parameters, init.type);
       }
     }
     if (ts.isTypeAliasDeclaration(st) && isExported(st) && st.name.text in types) {
@@ -188,56 +392,75 @@ export function readSaleContract(ROOT: string): { fns: Record<string, FnSig | nu
       types[st.name.text] = f;
     }
   }
+  // มี overload = ผู้เรียกเห็นเฉพาะลายเซ็น overload (ตัว implementation มองไม่เห็นจากข้างนอก)
+  for (const n of Object.keys(fns)) fns[n] = overloads[n]?.length ? overloads[n]! : impls[n] ? [impls[n]!] : null;
   return { fns, types };
 }
 
-/** ใครเรียก createSale/voidSale/refundSale (ไฟล์ใน src นอก service.ts) — ข้อมูลให้ผู้ตรวจเห็นว่าใครพึ่งสัญญานี้ */
+/** ใครเรียก createSale/voidSale/refundSale (src นอก service.ts) — ข้อมูลให้ผู้ตรวจเห็น ไม่ตัดสิน */
 export function scanSaleCallers(ROOT: string): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  const names = [...REQUIRED_FNS, ...OPTIONAL_FNS];
-  for (const n of names) out[n] = [];
+  const names = [...REQUIRED_FNS, ...OPTIONAL_FNS] as string[];
+  const out: Record<string, string[]> = Object.fromEntries(names.map((n) => [n, [] as string[]]));
   for (const abs of walk(join(ROOT, "src"), (p) => /\.(ts|tsx)$/.test(p))) {
     const r = relative(ROOT, abs);
     if (r === SALE_SERVICE) continue;
-    const raw = readFileSync(abs, "utf8");
-    if (!/createSale|voidSale|refundSale/.test(raw)) continue;
-    const src = stripComments(raw);
-    for (const n of names) if (new RegExp(`(?<!function\\s)\\b${n}\\s*\\(`).test(src)) out[n]!.push(r);
+    const text = readFileSync(abs, "utf8");
+    if (!/createSale|voidSale|refundSale/.test(text)) continue;
+    const found = new Set<string>();
+    const v = (n: ts.Node) => {
+      if (ts.isCallExpression(n)) {
+        const c = unwrap(n.expression);
+        const nm = ts.isIdentifier(c) ? c.text : ts.isPropertyAccessExpression(c) ? c.name.text : "";
+        if (names.includes(nm)) found.add(nm);
+      }
+      ts.forEachChild(n, v);
+    };
+    v(parse(abs, text));
+    for (const n of found) out[n]!.push(r);
   }
   for (const n of names) out[n]!.sort();
   return out;
 }
 
 export type ContractDiff = { red: string[]; additions: string[]; info: string[] };
+function diffParams(fn: string, idx: string, s: FnSig, c: FnSig, red: string[], additions: string[]) {
+  // พารามิเตอร์ = ขาเข้า
+  s.params.forEach((p, i) => {
+    const q = c.params[i];
+    if (!q) return red.push(`${fn}${idx}: พารามิเตอร์ที่ ${i + 1} "${p.name}" ถูกลบ`);
+    if (q.name !== p.name) red.push(`${fn}${idx}: พารามิเตอร์ที่ ${i + 1} เปลี่ยนชื่อ "${p.name}" → "${q.name}"`);
+    if (q.type !== p.type) red.push(`${fn}${idx}: พารามิเตอร์ "${p.name}" เปลี่ยนชนิด "${p.type}" → "${q.type}"`);
+    if (p.optional && !q.optional) red.push(`${fn}${idx}: พารามิเตอร์ "${p.name}" เปลี่ยนจากไม่บังคับเป็นบังคับ`);
+  });
+  c.params.slice(s.params.length).forEach((q) => {
+    if (!q.optional) red.push(`${fn}${idx}: เพิ่มพารามิเตอร์บังคับใหม่ "${q.name}" (ผู้เรียกเดิมพัง)`);
+    else additions.push(`${fn}${idx}(…, ${q.name}?)`);
+  });
+  // ผลลัพธ์ = ขาออก: เปลี่ยนข้อความชนิด = แดง (รวมการเติม `| undefined`/`| null`)
+  if (c.returns !== s.returns) red.push(`${fn}${idx}: ชนิดผลลัพธ์ (ขาออก) เปลี่ยน "${s.returns}" → "${c.returns}"`);
+}
 export function diffSaleContract(snap: SaleContract, cur: ReturnType<typeof readSaleContract>, callers: Record<string, string[]>): ContractDiff {
   const red: string[] = [];
   const additions: string[] = [];
   const info: string[] = [];
   if (cur.error) red.push(cur.error);
-  // ── ฟังก์ชัน ──
-  for (const n of REQUIRED_FNS) if (!cur.fns[n]) red.push(`หา export function ${n} ใน ${SALE_SERVICE} ไม่เจอ (ตัวแยกโค้ดพัง หรือฟังก์ชันหาย/ย้าย)`);
-  for (const [n, s] of Object.entries(snap.functions)) {
+  for (const n of REQUIRED_FNS) if (!cur.fns[n]) red.push(`หา export function ${n} ใน ${SALE_SERVICE} ไม่เจอ (ฟังก์ชันหาย/ย้าย/ตัวแยกโค้ดพัง)`);
+  for (const [n, sigs0] of Object.entries(snap.functions)) {
+    const sigs = Array.isArray(sigs0) ? sigs0 : [sigs0 as unknown as FnSig];
     const c = cur.fns[n];
     if (!c) {
       if (!(REQUIRED_FNS as readonly string[]).includes(n)) red.push(`${n} อยู่ใน snapshot แต่หายจากโค้ด`);
       continue;
     }
-    s.params.forEach((p, i) => {
-      const q = c.params[i];
-      if (!q) return red.push(`${n}: พารามิเตอร์ที่ ${i + 1} "${p.name}" ถูกลบ`);
-      if (q.name !== p.name) red.push(`${n}: พารามิเตอร์ที่ ${i + 1} เปลี่ยนชื่อ "${p.name}" → "${q.name}"`);
-      if (q.type !== p.type) red.push(`${n}: พารามิเตอร์ "${p.name}" เปลี่ยนชนิด "${p.type}" → "${q.type}"`);
-      if (p.optional && !q.optional) red.push(`${n}: พารามิเตอร์ "${p.name}" เปลี่ยนจากไม่บังคับเป็นบังคับ`);
+    sigs.forEach((s, i) => {
+      const tag = sigs.length > 1 || c.length > 1 ? `#${i + 1}` : "";
+      if (!c[i]) red.push(`${n}: overload ที่ ${i + 1} ถูกลบ`);
+      else diffParams(n, tag, s, c[i]!, red, additions);
     });
-    c.params.slice(s.params.length).forEach((q) => {
-      if (!q.optional) red.push(`${n}: เพิ่มพารามิเตอร์บังคับใหม่ "${q.name}" (ผู้เรียกเดิมพัง — ต้องเป็นแบบไม่บังคับ)`);
-      else additions.push(`${n}(…, ${q.name}?)`);
-    });
-    if (c.returns !== s.returns) red.push(`${n}: ชนิดผลลัพธ์เปลี่ยน "${s.returns}" → "${c.returns}"`);
+    if (c.length > sigs.length) additions.push(`${n}: overload ใหม่ ${c.length - sigs.length} ตัว`);
   }
   for (const n of OPTIONAL_FNS) if (cur.fns[n] && !snap.functions[n]) additions.push(`ฟังก์ชันใหม่ ${n}()`);
-  // ── ชนิด ──
-  for (const tn of CONTRACT_TYPES) {
+  for (const [tn, dir] of Object.entries(CONTRACT_TYPES)) {
     const s = snap.types[tn];
     const c = cur.types[tn];
     if (!c) {
@@ -250,22 +473,25 @@ export function diffSaleContract(snap: SaleContract, cur: ReturnType<typeof read
     }
     for (const [f, sf] of Object.entries(s)) {
       const cf = c[f];
-      if (!cf) red.push(`${tn}.${f} ถูกลบ/เปลี่ยนชื่อ`);
+      if (!cf) red.push(`${tn}.${f} ถูกลบ/เปลี่ยนชื่อ (${dir === "input" ? "ขาเข้า" : "ขาออก"})`);
       else {
-        if (cf.type !== sf.type) red.push(`${tn}.${f} เปลี่ยนชนิด "${sf.type}" → "${cf.type}"`);
-        if (sf.optional && !cf.optional) red.push(`${tn}.${f} เปลี่ยนจากไม่บังคับเป็นบังคับ`);
+        if (cf.type !== sf.type) red.push(`${tn}.${f} เปลี่ยนชนิด "${sf.type}" → "${cf.type}"${dir === "output" && /\|\s*(undefined|null)\b/.test(cf.type) && !/\|\s*(undefined|null)\b/.test(sf.type) ? " (ขาออกกว้างขึ้นเป็น nullable)" : ""}`);
+        if (dir === "input" && sf.optional && !cf.optional) red.push(`${tn}.${f} (ขาเข้า) เปลี่ยนจากไม่บังคับเป็นบังคับ`);
+        if (dir === "output" && !sf.optional && cf.optional) red.push(`${tn}.${f} (ขาออก) เปลี่ยนจากมีเสมอเป็นไม่บังคับ — ผู้อ่านเดิมพัง`);
       }
     }
     for (const [f, cf] of Object.entries(c)) {
       if (s[f]) continue;
-      // ฟิลด์ลูกของ object ที่เพิ่มใหม่ทั้งก้อนแบบไม่บังคับ ไม่ถือเป็นฟิลด์บังคับของผู้เรียกเดิม
-      const parent = f.includes(".") ? f.replace(/(\[\])?\.[^.]+$/, "") : ""; // "lines[].qty" → "lines" · "giftCard.pin" → "giftCard"
+      if (dir === "output") {
+        additions.push(`${tn}.${f}${cf.optional ? "?" : ""} (ขาออก · เพิ่มได้)`);
+        continue;
+      }
+      const parent = f.includes(".") ? f.replace(/(\[\])?\.[^.]+$/, "") : ""; // "lines[].qty" → "lines"
       const parentIsNew = !!parent && !s[parent] && !!c[parent];
-      if (!cf.optional && !parentIsNew) red.push(`${tn}.${f} เป็นฟิลด์ใหม่ที่ "บังคับ" — ผู้เรียกเดิมพัง (ต้องเป็น ${f}?)`);
+      if (!cf.optional && !parentIsNew) red.push(`${tn}.${f} (ขาเข้า) เป็นฟิลด์ใหม่ที่ "บังคับ" — ผู้เรียกเดิมพัง (ต้องเป็น ${f}?)`);
       else additions.push(`${tn}.${f}${cf.optional ? "?" : ""}`);
     }
   }
-  // ── ผู้เรียก (ข้อมูล ไม่ตัดสิน) ──
   for (const [n, list] of Object.entries(callers)) {
     const before = new Set(snap.callers?.[n] ?? []);
     const added = list.filter((f) => !before.has(f));
@@ -275,19 +501,19 @@ export function diffSaleContract(snap: SaleContract, cur: ReturnType<typeof read
   return { red, additions, info };
 }
 
-/** --update-pos-contract: เติมของใหม่แบบไม่บังคับ + ผู้เรียก · ไม่ลบไม่แก้ของเดิม · ปฏิเสธเมื่อยังแดง (ยกเว้นยังไม่มี snapshot) */
+/** --update-pos-contract: สร้างครั้งแรก หรือเติมของใหม่ที่เข้ากันได้ + ผู้เรียก · ไม่ลบไม่แก้ของเดิม · ปฏิเสธเมื่อยังแดง */
 export function updateSaleContract(ROOT: string): { ok: boolean; message: string } {
   const path = join(ROOT, SALE_CONTRACT);
   const cur = readSaleContract(ROOT);
   const callers = scanSaleCallers(ROOT);
-  if (cur.error || REQUIRED_FNS.some((n) => !cur.fns[n]) || CONTRACT_TYPES.some((t) => !cur.types[t])) {
+  if (cur.error || REQUIRED_FNS.some((n) => !cur.fns[n]) || Object.keys(CONTRACT_TYPES).some((t) => !cur.types[t])) {
     return { ok: false, message: `อ่านสัญญาจากโค้ดไม่ครบ — ไม่เขียน snapshot (${cur.error ?? "ฟังก์ชัน/ชนิดหาย"})` };
   }
   if (!existsSync(path)) {
     const snap: SaleContract = {
-      $note: "สัญญาสาธารณะของ createSale/voidSale/refundSale (F15.2 ใน scripts/fitness-pos.mts) — สร้าง/เติมด้วย `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` เท่านั้น · ห้ามแก้มือเพื่อให้ด่านเขียว",
+      $note: "สัญญาสาธารณะของ createSale/voidSale/refundSale (F15.2 ใน scripts/fitness-pos.mts) — สร้าง/เติมด้วย `pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract` เท่านั้น · ผู้ตรวจต้อง diff กับ `git show <base>:scripts/pos-sale-contract.json` ทุกครั้งที่ไฟล์นี้เปลี่ยน",
       source: SALE_SERVICE,
-      functions: Object.fromEntries(Object.entries(cur.fns).filter(([, v]) => v)) as Record<string, FnSig>,
+      functions: Object.fromEntries(Object.entries(cur.fns).filter(([, v]) => v)) as Record<string, FnSig[]>,
       types: cur.types as Record<string, Record<string, Field>>,
       callers,
     };
@@ -297,11 +523,16 @@ export function updateSaleContract(ROOT: string): { ok: boolean; message: string
   const snap = JSON.parse(readFileSync(path, "utf8")) as SaleContract;
   const d = diffSaleContract(snap, cur, callers);
   if (d.red.length) return { ok: false, message: `ยังแดง ${d.red.length} ข้อ — --update-pos-contract เติมได้อย่างเดียว ไม่ลบ/ไม่แก้ของเดิม: ${d.red.join(" · ")}` };
-  for (const [n, sig] of Object.entries(cur.fns)) {
-    if (!sig) continue;
+  for (const [n, sigs] of Object.entries(cur.fns)) {
+    if (!sigs) continue;
     const s = snap.functions[n];
-    if (!s) snap.functions[n] = sig;
-    else s.params.push(...sig.params.slice(s.params.length)); // ต่อท้ายเฉพาะพารามิเตอร์ใหม่แบบไม่บังคับ (ที่ผ่าน diff แล้ว)
+    if (!s) snap.functions[n] = sigs;
+    else {
+      sigs.forEach((sig, i) => {
+        if (!s[i]) s.push(sig);
+        else s[i]!.params.push(...sig.params.slice(s[i]!.params.length));
+      });
+    }
   }
   for (const [tn, fields] of Object.entries(cur.types)) {
     if (!fields) continue;
@@ -318,296 +549,376 @@ export function updateSaleContract(ROOT: string): { ok: boolean; message: string
 // ═══════════════════════════════════════════════════════════════
 export const POS_INVENTORY = "scripts/pos-ui-inventory.json";
 const CRM_INVENTORY = "scripts/crm-ui-inventory.json";
-const POS_SEARCH_ROOTS = ["src/app", "src/components", "src/lib/modules"];
-/** โฟลเดอร์ยึด (มีจริงวันนี้ — ตัวค้นหาต้องเจอเสมอ ไม่งั้นตัวค้นหาพัง) */
-const POS_ANCHOR_DIRS = ["src/lib/modules/pos", "src/app/app/sys/[id]/pos"];
+/** ไฟล์ยึด (มีจริงวันนี้ — ต้องถูกค้นเจอเสมอ ไม่งั้นตัวค้นหาพัง) */
+const POS_ANCHOR_FILES = ["src/lib/modules/pos/register-ui.tsx", "src/app/app/sys/[id]/pos/register/page.tsx"];
 const MIN_PATTERN_CHARS = 4;
+const ROW_KINDS = new Set(["button", "link", "menu", "tab", "toggle", "drag", "form", "filter", "input", "textarea", "select"]);
+const ROW_ROLES = new Set(["owner", "manager", "cashier"]);
+const EXPECT_TYPES = new Set(["modal", "navigate", "mutation", "download", "toast", "inline-error", "ui"]);
 
-/** ทุกโฟลเดอร์ที่ชื่อ segment = "pos" เป๊ะ ๆ ใต้ src/app · src/components · src/lib/modules (P1.x สร้างหน้าใหม่ = ถูกกวาดเอง) */
-function discoverPosDirs(ROOT: string): string[] {
-  const out = new Set<string>();
-  for (const root of POS_SEARCH_ROOTS) {
-    const abs = join(ROOT, root);
-    if (!existsSync(abs)) continue;
-    const stack = [abs];
-    while (stack.length) {
-      const d = stack.pop()!;
-      for (const e of readdirSync(d)) {
-        if (e === "node_modules" || e === ".next" || e === ".git") continue;
-        const child = join(d, e);
-        if (!statSync(child).isDirectory()) continue;
-        if (e === "pos") {
-          out.add(relative(ROOT, child));
-          continue;
-        }
-        stack.push(child);
+/**
+ * ไฟล์ UI ของ POS (ตามแบบแผน path ไม่ใช่แค่โฟลเดอร์ชื่อ pos):
+ *  (ก) `src/app/**` ที่มี segment `pos` · (ข) `src/lib/modules/pos/**` · (ค) `src/components/**` ที่อยู่ใต้โฟลเดอร์ขึ้นต้น `pos`
+ *  (ง) ไฟล์ที่ไฟล์ใน (ก)–(ค) import มา ถ้าอยู่ในโฟลเดอร์ขึ้นต้น `register`/`pos` (ไล่จนนิ่ง)
+ */
+export function discoverPosFiles(ROOT: string): string[] {
+  const isUi = (p: string) => /\.(tsx|ts)$/.test(p);
+  const set = new Set<string>();
+  for (const abs of walk(join(ROOT, "src", "app"), isUi)) if (relative(ROOT, abs).split("/").includes("pos")) set.add(relative(ROOT, abs));
+  for (const abs of walk(join(ROOT, "src", "lib", "modules", "pos"), isUi)) set.add(relative(ROOT, abs));
+  for (const abs of walk(join(ROOT, "src", "components"), isUi)) if (relative(ROOT, abs).split("/").slice(0, -1).some((s) => /^pos/i.test(s))) set.add(relative(ROOT, abs));
+  const resolveImport = (from: string, spec: string): string | null => {
+    let base: string;
+    if (spec.startsWith("@/")) base = join(ROOT, "src", spec.slice(2));
+    else if (spec.startsWith(".")) base = resolve(dirname(join(ROOT, from)), spec);
+    else return null;
+    for (const c of [base, `${base}.tsx`, `${base}.ts`, join(base, "index.tsx"), join(base, "index.ts")]) {
+      try {
+        if (existsSync(c) && statSync(c).isFile()) return relative(ROOT, c);
+      } catch {
+        /* ข้าม */
+      }
+    }
+    return null;
+  };
+  const queue = [...set];
+  while (queue.length) {
+    const f = queue.pop()!;
+    let sf: ts.SourceFile;
+    try {
+      sf = parse(join(ROOT, f));
+    } catch {
+      continue;
+    }
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+      const r = resolveImport(f, st.moduleSpecifier.text);
+      if (!r || set.has(r) || !r.startsWith("src/")) continue;
+      if (r.split("/").slice(0, -1).some((s) => /^(register|pos)/i.test(s))) {
+        set.add(r);
+        queue.push(r);
       }
     }
   }
-  return [...out].sort();
+  return [...set].sort();
 }
 
-/** element ที่กดได้แต่ไม่มี data-testid (นิยาม "กดได้" เดียวกับ F14 · ไม่นับ <option> · ไม่นับ generic ของ TS) */
-export function untestidControls(src0: string): string[] {
-  const src = stripComments(src0);
+/** element ที่กดได้แต่ไม่มี data-testid — JSX AST (นิยาม "กดได้" เดียวกับ F14 · ไม่นับ <option>) → ชื่อแท็ก@บรรทัด */
+export function untestidControls(src: string, file = "x.tsx"): string[] {
+  const sf = parse(file.endsWith(".tsx") ? file : `${file}.tsx`, src);
   const hits: string[] = [];
-  for (const m of src.matchAll(/<([A-Za-z][\w.]*)(?=[\s>/])/g)) {
-    const at = m.index ?? 0;
-    if (/[\w$)\]]/.test(src[at - 1] ?? "")) continue; // `useState<T>` · `Record<K,V>` = generic ไม่ใช่ JSX
-    const tag = m[1]!;
-    if (tag === "option") continue;
-    const { attrs } = tagAround(src, at + 1);
-    if (!isInteractive(tag, attrs) || /data-testid\s*=/.test(attrs)) continue;
-    hits.push(`<${tag}>@${lineOf(src, at)}`);
-  }
+  const v = (n: ts.Node) => {
+    if (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n)) {
+      const tag = n.tagName.getText(sf);
+      if (tag !== "option") {
+        const attrs = n.attributes.getText(sf);
+        const hasTestid = n.attributes.properties.some((p) => ts.isJsxAttribute(p) && p.name.getText(sf) === "data-testid");
+        if (!hasTestid && isInteractive(tag, `<${tag} ${attrs}`)) hits.push(`${tag}@${lineAt(sf, n)}`);
+      }
+    }
+    ts.forEachChild(n, v);
+  };
+  v(sf);
   return hits;
 }
-
-type Inv = { rows: unknown[]; foreign: { testid: string; owner: string }[]; debt: { file: string; untestid: number }[] };
-function readInventory(ROOT: string): { inv: Inv | null; err: string } {
-  try {
-    const p = join(ROOT, POS_INVENTORY);
-    if (!existsSync(p)) throw new Error(`ไม่พบ ${POS_INVENTORY}`);
-    const j = JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
-    if (!Array.isArray(j.rows)) throw new Error(`${POS_INVENTORY} ต้องมีคีย์ "rows" เป็น array`);
-    const fItems = (j.$foreign as { items?: unknown } | undefined)?.items;
-    const dItems = (j.baselineDebt as { items?: unknown } | undefined)?.items;
-    if (!Array.isArray(fItems) || !Array.isArray(dItems)) throw new Error(`${POS_INVENTORY} ต้องมี $foreign.items และ baselineDebt.items เป็น array`);
-    return { inv: { rows: j.rows, foreign: fItems as Inv["foreign"], debt: dItems as Inv["debt"] }, err: "" };
-  } catch (e) {
-    return { inv: null, err: e instanceof Error ? e.message.slice(0, 200) : String(e) };
+const byTag = (list: string[]) => {
+  const c: Record<string, number> = {};
+  for (const h of list) {
+    const t = h.slice(0, h.lastIndexOf("@"));
+    c[t] = (c[t] ?? 0) + 1;
   }
+  return c;
+};
+
+type Inv = { rows: unknown[]; foreign: { testid: string; owner: string }[]; debt: { file: string; untestid: number; byTag?: Record<string, number> }[] };
+function readInventory(ROOT: string): Inv {
+  const p = join(ROOT, POS_INVENTORY);
+  if (!existsSync(p)) throw new Error(`ไม่พบ ${POS_INVENTORY}`);
+  const j = JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
+  if (!Array.isArray(j.rows)) throw new Error(`${POS_INVENTORY} ต้องมีคีย์ "rows" เป็น array`);
+  const fItems = (j.$foreign as { items?: unknown } | undefined)?.items;
+  const dItems = (j.baselineDebt as { items?: unknown } | undefined)?.items;
+  if (!Array.isArray(fItems) || !Array.isArray(dItems)) throw new Error(`${POS_INVENTORY} ต้องมี $foreign.items และ baselineDebt.items เป็น array`);
+  return { rows: j.rows, foreign: fItems as Inv["foreign"], debt: dItems as Inv["debt"] };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // F15.4 — ข้อความ pos.* สองภาษา
 // ═══════════════════════════════════════════════════════════════
-function posMessages(ROOT: string, locale: string): { keys: Map<string, unknown>; files: string[]; err: string } {
+/** คำสากลที่ใช้ทับศัพท์ได้โดยไม่ต้องมีอักษรไทย (สั้นไว้ — เพิ่มต้องมีเหตุผล) */
+export const UNIVERSAL_TOKENS = ["VAT", "QR", "PIN", "OK", "SKU", "POS", "PromptPay", "ID", "CSV", "PDF", "LINE", "KDS", "EAN", "Wi-Fi", "Bluetooth", "USB", "x", "X", "Z", "%"];
+const THAI_RE = /[฀-๿]/;
+function thaiValueProblem(v: string): string | null {
+  if (THAI_RE.test(v)) return null;
+  let rest = v.replace(/\{[^}]*\}/g, " "); // placeholder {count}
+  for (const t of [...UNIVERSAL_TOKENS].sort((a, b) => b.length - a.length)) rest = rest.split(t).join(" ");
+  return /[A-Za-z]/.test(rest) ? "ไม่มีอักษรไทย" : null;
+}
+function posMessages(ROOT: string, locale: string): { keys: Map<string, unknown>; files: string[] } {
   const keys = new Map<string, unknown>();
   const files: string[] = [];
-  const dir = join(ROOT, "src", "messages", locale);
   const flat = (o: unknown, prefix: string) => {
     if (o && typeof o === "object" && !Array.isArray(o)) for (const [k, v] of Object.entries(o)) flat(v, `${prefix}.${k}`);
     else keys.set(prefix, o);
   };
-  try {
-    for (const f of existsSync(dir) ? readdirSync(dir).filter((x) => x.endsWith(".json")).sort() : []) {
-      const j = JSON.parse(readFileSync(join(dir, f), "utf8")) as Record<string, unknown>;
-      if (f === "pos.json") {
-        files.push(`${locale}/${f}`);
-        flat(j, "pos");
-      } else if (j && typeof j === "object" && "pos" in j) {
-        files.push(`${locale}/${f}#pos`);
-        flat(j.pos, "pos");
+  const take = (j: Record<string, unknown>, label: string, wholeNs: string | null) => {
+    if (wholeNs) {
+      files.push(label);
+      flat(j, wholeNs);
+      return;
+    }
+    if ("pos" in j) {
+      files.push(`${label}#pos`);
+      flat(j.pos, "pos");
+    }
+    for (const [k, v] of Object.entries(j)) {
+      if (k.startsWith("pos.")) {
+        files.push(`${label}#${k}`);
+        flat(v, k); // คีย์แบน "pos.x" = pos.x
       }
     }
-    // รูปแบบไฟล์เดียว src/messages/<locale>.json (เผื่ออนาคต)
-    const single = join(ROOT, "src", "messages", `${locale}.json`);
-    if (existsSync(single)) {
-      const j = JSON.parse(readFileSync(single, "utf8")) as Record<string, unknown>;
-      if (j && typeof j === "object" && "pos" in j) {
-        files.push(`${locale}.json#pos`);
-        flat(j.pos, "pos");
+  };
+  const read = (p: string) => JSON.parse(readFileSync(p, "utf8")) as Record<string, unknown>;
+  const dir = join(ROOT, "src", "messages", locale);
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir).sort()) {
+      const p = join(dir, f);
+      if (f.endsWith(".json")) take(read(p), `${locale}/${f}`, f === "pos.json" ? "pos" : null);
+      else if (f === "pos" && statSync(p).isDirectory()) {
+        for (const g of readdirSync(p).filter((x) => x.endsWith(".json")).sort()) take(read(join(p, g)), `${locale}/pos/${g}`, `pos.${g.replace(/\.json$/, "")}`);
       }
     }
-    return { keys, files, err: "" };
-  } catch (e) {
-    return { keys, files, err: e instanceof Error ? e.message.slice(0, 160) : String(e) };
   }
+  const single = join(ROOT, "src", "messages", `${locale}.json`);
+  if (existsSync(single)) take(read(single), `${locale}.json`, null);
+  return { keys, files };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // ตัวรวม
 // ═══════════════════════════════════════════════════════════════
 export function runPosFitness(chk: PosChk, ROOT: string): void {
-  console.log("\n── F15: POS (แคตตาล็อกผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.* สองภาษา) ──");
+  console.log("\n── F15: POS (แคตตาล็อก/ราคาผู้เขียนเดียว · สัญญา createSale · ทะเบียนปุ่ม POS · ข้อความ pos.* สองภาษา) ──");
 
   // ── F15.1 ──
-  {
+  const n151 = `แคตตาล็อก/ราคามีผู้เขียนที่เดียว (catalog.ts ∪ baseline ต่อจุดเขียน · หนี้เดิม ${Object.keys(CATALOG_WRITER_BASELINE).length} ไฟล์ ${Object.values(CATALOG_WRITER_BASELINE).reduce((a, r) => a + Object.values(r).reduce((x, y) => x + y, 0), 0)} จุด)`;
+  guarded(chk, "F15.1", n151, () => {
     const writers = scanCatalogWriters(ROOT);
-    const files = new Set(writers.map((w) => w.file));
-    const fresh = writers.filter((w) => w.file !== CATALOG_WRITER && !CATALOG_WRITER_BASELINE.has(w.file));
-    const healed = [...CATALOG_WRITER_BASELINE.keys()].filter((f) => !files.has(f));
+    const up: string[] = [];
+    const down: string[] = [];
+    const now = new Map(writers.map((w) => [w.file, w]));
+    for (const w of writers) {
+      if (w.file === CATALOG_WRITER) continue;
+      const base = CATALOG_WRITER_BASELINE[w.file] ?? {};
+      const c = countKinds(w.hits);
+      for (const [k, n] of Object.entries(c)) {
+        if (n > (base[k] ?? 0)) {
+          const ex = w.hits.filter((h) => h.kind === k).map((h) => `@${h.line} ${h.why}`).slice(0, 4);
+          up.push(`${w.file} ${k} ${base[k] ?? 0}→${n} [${ex.join(" · ")}]`);
+        }
+      }
+    }
+    for (const [file, base] of Object.entries(CATALOG_WRITER_BASELINE)) {
+      const c = countKinds(now.get(file)?.hits ?? []);
+      for (const [k, n] of Object.entries(base)) if ((c[k] ?? 0) < n) down.push(`${file} ${k} ${n}→${c[k] ?? 0}`);
+    }
     const problems = [
-      fresh.length ? `ผู้เขียนแคตตาล็อกใหม่นอก ${CATALOG_WRITER} ${fresh.length} ไฟล์: ${fresh.map((w) => `${w.file} [${w.hits.slice(0, 3).join(", ")}]`).join(" · ")} → ย้ายไปเรียก catalog.ts (POS-brief-COMMON ข้อ 3)` : "",
-      healed.length ? `CATALOG_WRITER_BASELINE มีไฟล์ที่ไม่เขียนแล้ว ถอดออก (ratchet): ${healed.join(", ")}` : "",
+      up.length ? `จุดเขียนแคตตาล็อก/ราคาใหม่นอก ${CATALOG_WRITER} ${up.length}: ${up.join(" · ")} → เขียนผ่าน catalog.ts (pos-brief-COMMON ข้อ 3)` : "",
+      down.length ? `CATALOG_WRITER_BASELINE มีจุดที่ไม่เขียนแล้ว ลดตัวเลข (ratchet): ${down.join(" · ")}` : "",
     ].filter(Boolean);
-    chk(
-      "F15.1",
-      `แคตตาล็อกมีผู้เขียนที่เดียว: menuItem/shopProduct write + AccountProduct.salePrice นอก catalog.ts ∪ baseline (หนี้เดิม ${CATALOG_WRITER_BASELINE.size} ไฟล์)`,
-      problems.length === 0,
-      problems.length ? problems.join(" · ") : `ตรง (ผู้เขียน ${writers.length} ไฟล์: ${writers.map((w) => `${w.file}×${w.hits.length}`).join(", ")})`,
-      "CRITICAL",
-    );
-  }
+    const total = writers.reduce((a, w) => a + w.hits.length, 0);
+    chk("F15.1", n151, problems.length === 0, problems.length ? problems.join(" · ") : `ตรง (${writers.length} ไฟล์ ${total} จุด)`, "CRITICAL");
+  });
 
   // ── F15.2 ──
-  {
-    const cur = readSaleContract(ROOT);
-    const callers = scanSaleCallers(ROOT);
+  const n152 = `สัญญา createSale/voidSale/refundSale ใน ${SALE_SERVICE} เข้ากันได้ย้อนหลังกับ ${SALE_CONTRACT} (ขาเข้า/ขาออก · ทุก overload)`;
+  guarded(chk, "F15.2", n152, () => {
     const path = join(ROOT, SALE_CONTRACT);
-    let ok = false;
-    let detail = "";
     if (!existsSync(path)) {
-      detail = `ไม่พบ snapshot ${SALE_CONTRACT} — สร้างด้วย \`pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract\``;
-    } else {
-      let snap: SaleContract | null = null;
-      try {
-        snap = JSON.parse(readFileSync(path, "utf8")) as SaleContract;
-        if (!snap.functions || !snap.types) throw new Error("ไม่มีคีย์ functions/types");
-      } catch (e) {
-        detail = `อ่าน ${SALE_CONTRACT} ไม่ได้ — ${e instanceof Error ? e.message : e}`;
-      }
-      if (snap) {
-        const d = diffSaleContract(snap, cur, callers);
-        ok = d.red.length === 0;
-        const nFields = Object.values(snap.types).reduce((a, t) => a + Object.keys(t).length, 0);
-        detail = ok
-          ? `ตรง (${Object.keys(snap.functions).join("/")} · ${nFields} ฟิลด์ · ผู้เรียก createSale ${callers.createSale?.length ?? 0} ไฟล์)${d.additions.length ? ` · ของใหม่แบบไม่บังคับ ${d.additions.length}: ${d.additions.join(", ")} → รัน --update-pos-contract` : ""}${d.info.length ? ` · ${d.info.join(" · ")}` : ""}`
-          : d.red.join(" · ");
-      }
+      chk("F15.2", n152, false, `ไม่พบ snapshot ${SALE_CONTRACT} — ห้ามลบเพื่อให้ผ่าน · สร้างใหม่ด้วย \`pnpm exec tsx scripts/fitness-pos.mts --update-pos-contract\` แล้วผู้ตรวจ diff กับ git show <base>:${SALE_CONTRACT}`, "CRITICAL");
+      return;
     }
-    chk("F15.2", `สัญญา createSale/voidSale/refundSale ใน ${SALE_SERVICE} เข้ากันได้ย้อนหลังกับ ${SALE_CONTRACT}`, ok, detail, "CRITICAL");
-  }
+    const snap = JSON.parse(readFileSync(path, "utf8")) as SaleContract;
+    if (!snap.functions || !snap.types) throw new Error(`${SALE_CONTRACT} ไม่มีคีย์ functions/types`);
+    const callers = scanSaleCallers(ROOT);
+    const d = diffSaleContract(snap, readSaleContract(ROOT), callers);
+    const nFields = Object.values(snap.types).reduce((a, t) => a + Object.keys(t).length, 0);
+    chk(
+      "F15.2",
+      n152,
+      d.red.length === 0,
+      d.red.length
+        ? d.red.join(" · ")
+        : `ตรง (${Object.keys(snap.functions).join("/")} · ${nFields} ฟิลด์ · ผู้เรียก createSale ${callers.createSale?.length ?? 0} ไฟล์)${d.additions.length ? ` · ของใหม่ที่เข้ากันได้ ${d.additions.length}: ${d.additions.join(", ")} → รัน --update-pos-contract` : ""}${d.info.length ? ` · ${d.info.join(" · ")}` : ""}`,
+      "CRITICAL",
+    );
+  });
 
   // ── F15.3 ──
-  {
-    const { inv, err } = readInventory(ROOT);
-    const dirs = discoverPosDirs(ROOT);
+  const n153a = `ปุ่ม POS ที่มี data-testid มีแถวใน ${POS_INVENTORY} ครบ + ไม่มีปุ่มใหม่ที่ไร้ testid`;
+  const n153b = `ทุกแถวใน ${POS_INVENTORY} ชี้ testid ที่มีจริง · ไม่ซ้ำ · ฟิลด์ถูกต้อง · baselineDebt ไม่เหลือหนี้ที่ปิดแล้ว`;
+  let inv: Inv | null = null;
+  let invErr = "";
+  try {
+    inv = readInventory(ROOT);
+  } catch (e) {
+    invErr = e instanceof Error ? e.message.slice(0, 200) : String(e);
+  }
+  type Found = { id: string; file: string; interactive: boolean };
+  const found: Found[] = [];
+  let files: string[] = [];
+  const debtNow = new Map<string, string[]>();
+  let scanOk = false;
+  guarded(chk, "F15.3a", n153a, () => {
+    files = discoverPosFiles(ROOT);
     const foreignIds = new Set((inv?.foreign ?? []).map((f) => f.testid));
-    type Found = { id: string; file: string; interactive: boolean };
-    const found: Found[] = [];
     const unreadable: { file: string; line: number; snippet: string; interactive: boolean }[] = [];
-    const debtNow = new Map<string, string[]>();
-    let scanned = 0;
-    for (const d of dirs) {
-      for (const abs of walk(join(ROOT, d), (p) => p.endsWith(".tsx") || p.endsWith(".ts"))) {
-        scanned++;
-        const file = relative(ROOT, abs);
-        const src = readFileSync(abs, "utf8");
-        const readAt = new Set<number>();
-        for (const m of src.matchAll(TESTID_RE)) {
-          readAt.add(m.index ?? -1);
-          const { tag, attrs } = tagAround(src, m.index ?? 0);
-          found.push({ id: normId(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? ""), file, interactive: isInteractive(tag, attrs) });
-        }
-        for (const m of src.matchAll(ANY_TESTID_RE)) {
-          const at = m.index ?? -1;
-          if (readAt.has(at)) continue;
-          const { tag, attrs } = tagAround(src, at);
-          unreadable.push({ file, line: lineOf(src, at), snippet: src.slice(at, at + 50).split("\n")[0]!, interactive: isInteractive(tag, attrs) });
-        }
-        if (abs.endsWith(".tsx")) {
-          const u = untestidControls(src);
-          if (u.length) debtNow.set(file, u);
-        }
+    for (const file of files) {
+      const src = readFileSync(join(ROOT, file), "utf8");
+      const readAt = new Set<number>();
+      for (const m of src.matchAll(TESTID_RE)) {
+        readAt.add(m.index ?? -1);
+        const { tag, attrs } = tagAround(src, m.index ?? 0);
+        found.push({ id: normId(m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? ""), file, interactive: isInteractive(tag, attrs) });
+      }
+      for (const m of src.matchAll(ANY_TESTID_RE)) {
+        const at = m.index ?? -1;
+        if (readAt.has(at)) continue;
+        const { tag, attrs } = tagAround(src, at);
+        unreadable.push({ file, line: lineOf(src, at), snippet: src.slice(at, at + 50).split("\n")[0]!, interactive: isInteractive(tag, attrs) });
+      }
+      if (file.endsWith(".tsx")) {
+        const u = untestidControls(src, file);
+        if (u.length) debtNow.set(file, u);
       }
     }
-    const rows = inv?.rows ?? [];
-    const rowObj = (r: unknown) => (typeof r === "object" && r !== null ? (r as Record<string, unknown>) : null);
-    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
-    const malformed = rows.map((r, i) => ({ i, r })).filter(({ r }) => !rowObj(r) || !str(rowObj(r)!.testid) || !str(rowObj(r)!.page) || !str(rowObj(r)!.kind));
-    const rowIdsAll = rows.map((r) => str(rowObj(r)?.testid)).filter((x): x is string => !!x);
-    const degenerate = rowIdsAll.filter((id) => id.includes("*") && id.replace(/\*/g, "").length < MIN_PATTERN_CHARS);
-    const rowIds = rowIdsAll.filter((id) => !degenerate.includes(id));
+    scanOk = true;
+    const own = found.filter((f) => !foreignIds.has(f.id));
+    const rowIds = (inv?.rows ?? []).map((r) => (r && typeof r === "object" ? (r as Record<string, unknown>).testid : null)).filter((x): x is string => typeof x === "string" && !!x.trim() && !(x.includes("*") && x.replace(/\*/g, "").length < MIN_PATTERN_CHARS));
     const rowExact = new Set(rowIds.filter((id) => !id.includes("*")));
     const rowPatterns = rowIds.filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
-    const own = found.filter((f) => !foreignIds.has(f.id));
-    const codeExact = new Set(own.map((f) => f.id).filter((id) => !id.includes("*")));
-    const codePatterns = own.map((f) => f.id).filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
     const registered = (id: string) => rowExact.has(id) || (id.includes("*") && rowPatterns.some((r) => r.re.test(id) || globRe(id).test(r.id)));
-    const inCode = (id: string) => (id.includes("*") ? codePatterns.some((c) => c.re.test(id) || globRe(id).test(c.id)) : codeExact.has(id) || codePatterns.some((c) => c.re.test(id)));
     const interactive = [...new Map(own.filter((f) => f.interactive).map((f) => [`${f.id}@${f.file}`, f])).values()];
     const unregistered = interactive.filter((f) => !registered(f.id));
-    const unreadableInteractive = unreadable.filter((u) => u.interactive);
-    const ghosts = rowIds.filter((id) => !inCode(id));
-    const dupes = [...new Set(rowIds.filter((id, i) => rowIds.indexOf(id) !== i))];
-    const foreignDup = rowIds.filter((id) => foreignIds.has(id));
-    // ของทะเบียนอื่น: ต้องมีจริงในไฟล์ POS · ถ้ากดได้ต้องมีแถวในทะเบียนเจ้าของ
-    const foreignProblems: string[] = [];
-    let crmRowIds = new Set<string>();
-    try {
-      const cj = JSON.parse(readFileSync(join(ROOT, CRM_INVENTORY), "utf8")) as { rows?: { testid?: string }[] };
-      crmRowIds = new Set((cj.rows ?? []).map((r) => r.testid ?? ""));
-    } catch {
-      /* ไม่มีทะเบียน CRM = รายงานด้านล่างถ้ามี foreign ที่กดได้ */
-    }
-    for (const f of inv?.foreign ?? []) {
-      const hits = found.filter((x) => x.id === f.testid);
-      if (!hits.length) foreignProblems.push(`${f.testid} (ประกาศเป็นของ ${f.owner} แต่ไม่มีในโค้ด POS)`);
-      else if (hits.some((h) => h.interactive) && f.owner === CRM_INVENTORY && !crmRowIds.has(f.testid)) foreignProblems.push(`${f.testid} (กดได้ แต่ไม่มีแถวใน ${f.owner})`);
-    }
-    // หนี้ปุ่มไม่มี testid (ratchet ต่อไฟล์)
-    const debtBase = new Map((inv?.debt ?? []).map((d) => [d.file, d.untestid]));
+    // หนี้ต่อไฟล์ต่อแท็ก: เพิ่มขึ้น = แดง
+    const debtBase = new Map((inv?.debt ?? []).map((d) => [d.file, d]));
     const debtUp: string[] = [];
-    const debtDown: string[] = [];
     for (const [file, list] of debtNow) {
-      const base = debtBase.get(file) ?? 0;
-      if (list.length > base) debtUp.push(`${file} ${base}→${list.length} (${list.slice(0, 6).join(" ")}${list.length > 6 ? " …" : ""})`);
+      const base = debtBase.get(file);
+      const now = byTag(list);
+      for (const [tag, n] of Object.entries(now)) {
+        const b = base?.byTag?.[tag] ?? (base?.byTag ? 0 : null);
+        if (b === null ? list.length > (base?.untestid ?? 0) : n > b) debtUp.push(`${file} <${tag}> ${b ?? base?.untestid ?? 0}→${n} (${list.filter((h) => h.startsWith(`${tag}@`)).slice(0, 4).join(" ")})`);
+      }
     }
-    for (const [file, base] of debtBase) {
-      const now = debtNow.get(file)?.length ?? 0;
-      if (now < base) debtDown.push(`${file} ${base}→${now}`);
-    }
-    const anchorMissed = POS_ANCHOR_DIRS.filter((d) => existsSync(join(ROOT, d)) && !dirs.includes(d));
+    const anchorMissed = POS_ANCHOR_FILES.filter((f) => existsSync(join(ROOT, f)) && !files.includes(f));
     const p1 = [
-      err ? `อ่านทะเบียนไม่ได้ — ${err}` : "",
-      anchorMissed.length ? `ตัวค้นหาโฟลเดอร์ POS พัง — หาโฟลเดอร์ที่มีจริงไม่เจอ: ${anchorMissed.join(", ")}` : "",
-      dirs.length > 0 && scanned === 0 ? `พบโฟลเดอร์ ${dirs.join(", ")} แต่สแกนไม่ได้สักไฟล์` : "",
+      invErr ? `อ่านทะเบียนไม่ได้ — ${invErr}` : "",
+      anchorMissed.length ? `ตัวค้นหาไฟล์ POS พัง — หาไฟล์ที่มีจริงไม่เจอ: ${anchorMissed.join(", ")}` : "",
       unregistered.length ? `${unregistered.length} ตัวไม่มีแถว: ${unregistered.slice(0, 10).map((f) => `${f.id} (${f.file})`).join(" · ")} → เพิ่มแถวใน ${POS_INVENTORY}` : "",
-      unreadableInteractive.length ? `${unreadableInteractive.length} จุดเขียน data-testid ด้วยค่าที่อ่านไม่ออก: ${unreadableInteractive.slice(0, 6).map((u) => `${u.file}:${u.line} ${u.snippet}`).join(" · ")}` : "",
+      unreadable.filter((u) => u.interactive).length ? `จุดเขียน data-testid ด้วยค่าที่อ่านไม่ออก: ${unreadable.filter((u) => u.interactive).slice(0, 6).map((u) => `${u.file}:${u.line} ${u.snippet}`).join(" · ")}` : "",
       debtUp.length ? `ปุ่ม/ช่องที่กดได้แต่ไม่มี data-testid เพิ่มขึ้น (ใส่ testid + แถวทะเบียน): ${debtUp.join(" · ")}` : "",
     ].filter(Boolean);
     const totalDebt = [...debtNow.values()].reduce((a, l) => a + l.length, 0);
     chk(
       "F15.3a",
-      `ปุ่ม POS ที่มี data-testid มีแถวใน ${POS_INVENTORY} ครบ + ไม่มีปุ่มใหม่ที่ไร้ testid (สแกน ${scanned} ไฟล์ใน ${dirs.length} โฟลเดอร์: ${dirs.join(", ") || "-"} · หนี้ไร้ testid ${totalDebt})`,
+      `${n153a} (สแกน ${files.length} ไฟล์ · หนี้ไร้ testid ${totalDebt})`,
       p1.length === 0,
       p1.length ? p1.join(" · ") : `ครบ (testid กดได้ ${interactive.length} · แถว ${rowIds.length} · ของทะเบียนอื่น ${foreignIds.size})`,
       "CRITICAL",
     );
-    const p2 = [
-      err ? `อ่านทะเบียนไม่ได้ — ${err}` : "",
-      ghosts.length ? `แถวผี ${ghosts.length} (ไม่มี testid นี้ในโค้ด POS): ${ghosts.slice(0, 10).join(", ")}` : "",
-      dupes.length ? `แถวซ้ำ: ${dupes.join(", ")}` : "",
-      foreignDup.length ? `แถวของทะเบียนอื่นถูกลงซ้ำที่นี่: ${foreignDup.join(", ")}` : "",
-      degenerate.length ? `แถวแพตเทิร์นกว้างเกิน (ตัวอักษรที่ไม่ใช่ * ต้อง ≥ ${MIN_PATTERN_CHARS}): ${degenerate.join(", ")}` : "",
-      malformed.length ? `แถวพิการ (ไม่มี testid/page/kind) ${malformed.length}: ${malformed.slice(0, 5).map((m) => `#${m.i} ${JSON.stringify(m.r).slice(0, 70)}`).join(" · ")}` : "",
-      foreignProblems.length ? `$foreign ไม่ตรง: ${foreignProblems.join(" · ")}` : "",
-      debtDown.length ? `baselineDebt มีไฟล์ที่ปิดหนี้ไปแล้ว ลดตัวเลขใน ${POS_INVENTORY} (ratchet): ${debtDown.join(" · ")}` : "",
-    ].filter(Boolean);
-    chk(
-      "F15.3b",
-      `ทุกแถวใน ${POS_INVENTORY} (${rowIds.length}) ชี้ testid ที่มีจริง · ไม่ซ้ำ · ไม่พิการ · baselineDebt ไม่เหลือหนี้ที่ปิดแล้ว`,
-      p2.length === 0,
-      p2.length ? p2.join(" · ") : "ตรง",
-    );
-  }
+  });
+  // ── F15.3b ใช้ผลสแกนเดียวกับ F15.3a ──
+  guarded(chk, "F15.3b", n153b, () => {
+      if (!inv) throw new Error(`อ่านทะเบียนไม่ได้ — ${invErr}`);
+      if (!scanOk) throw new Error("สแกนไฟล์ POS ไม่สำเร็จ (ดู F15.3a)");
+      const rows = inv.rows;
+      const obj = (r: unknown) => (typeof r === "object" && r !== null ? (r as Record<string, unknown>) : null);
+      const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+      const bad: string[] = [];
+      rows.forEach((r, i) => {
+        const o = obj(r);
+        const why: string[] = [];
+        if (!o) why.push("ไม่ใช่ออบเจ็กต์");
+        else {
+          if (!str(o.testid)) why.push("ไม่มี testid");
+          if (!str(o.page) || !String(o.page).startsWith("/")) why.push("page ต้องเป็น path ขึ้นต้น /");
+          if (!ROW_KINDS.has(String(o.kind))) why.push(`kind "${o.kind}" ไม่อยู่ในชุดที่อนุญาต`);
+          if (!Array.isArray(o.roles) || o.roles.length === 0 || o.roles.some((x) => !ROW_ROLES.has(String(x)))) why.push(`roles ต้องไม่ว่างและอยู่ใน ${[...ROW_ROLES].join("/")}`);
+          if (o.hiddenFor !== undefined && (!Array.isArray(o.hiddenFor) || o.hiddenFor.some((x) => !ROW_ROLES.has(String(x))))) why.push("hiddenFor นอกชุดบทบาท");
+          const ex = obj(o.expect);
+          if (o.expect !== undefined && (!ex || !EXPECT_TYPES.has(String(ex.type)))) why.push(`expect.type ต้องอยู่ใน ${[...EXPECT_TYPES].join("/")}`);
+        }
+        if (why.length) bad.push(`#${i} ${str(o?.testid) ?? "?"}: ${why.join(", ")}`);
+      });
+      const ids = rows.map((r) => str(obj(r)?.testid)).filter((x): x is string => !!x);
+      const degenerate = ids.filter((id) => id.includes("*") && id.replace(/\*/g, "").length < MIN_PATTERN_CHARS);
+      const foreignIds2 = new Set(inv.foreign.map((f) => f.testid));
+      const own2 = found.filter((f) => !foreignIds2.has(f.id));
+      const codeExact = new Set(own2.map((f) => f.id).filter((id) => !id.includes("*")));
+      const codePatterns = own2.map((f) => f.id).filter((id) => id.includes("*")).map((id) => ({ id, re: globRe(id) }));
+      const inCode = (id: string) => (id.includes("*") ? codePatterns.some((c) => c.re.test(id) || globRe(id).test(c.id)) : codeExact.has(id) || codePatterns.some((c) => c.re.test(id)));
+      const ghosts = ids.filter((id) => !degenerate.includes(id) && !foreignIds2.has(id) && !inCode(id));
+      const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
+      const foreignDup = ids.filter((id) => foreignIds2.has(id));
+      const foreignProblems: string[] = [];
+      let crmRowIds = new Set<string>();
+      if (existsSync(join(ROOT, CRM_INVENTORY))) {
+        const cj = JSON.parse(readFileSync(join(ROOT, CRM_INVENTORY), "utf8")) as { rows?: { testid?: string }[] };
+        crmRowIds = new Set((cj.rows ?? []).map((r) => r.testid ?? ""));
+      }
+      for (const f of inv.foreign) {
+        const hits = found.filter((x) => x.id === f.testid);
+        if (!hits.length) foreignProblems.push(`${f.testid} (ประกาศเป็นของ ${f.owner} แต่ไม่มีในโค้ด POS)`);
+        else if (hits.some((h) => h.interactive) && f.owner === CRM_INVENTORY && !crmRowIds.has(f.testid)) foreignProblems.push(`${f.testid} (กดได้ แต่ไม่มีแถวใน ${f.owner})`);
+      }
+      // หนี้ลดลงแต่ baseline ไม่ลด = แดง (ต่อไฟล์ต่อแท็ก) · baseline ต้องตรงกับผลรวมของ byTag
+      const debtDown: string[] = [];
+      for (const d of inv.debt) {
+        const list = debtNow.get(d.file) ?? [];
+        const now = byTag(list);
+        if (d.byTag) {
+          const sum = Object.values(d.byTag).reduce((a, b) => a + b, 0);
+          if (sum !== d.untestid) debtDown.push(`${d.file} untestid ${d.untestid} ≠ ผลรวม byTag ${sum}`);
+          for (const [tag, n] of Object.entries(d.byTag)) if ((now[tag] ?? 0) < n) debtDown.push(`${d.file} <${tag}> ${n}→${now[tag] ?? 0}`);
+        } else if (list.length < d.untestid) debtDown.push(`${d.file} ${d.untestid}→${list.length}`);
+      }
+      const p2 = [
+        ghosts.length ? `แถวผี ${ghosts.length} (ไม่มี testid นี้ในโค้ด POS): ${ghosts.slice(0, 10).join(", ")}` : "",
+        dupes.length ? `แถวซ้ำ: ${dupes.join(", ")}` : "",
+        foreignDup.length ? `แถวของทะเบียนอื่นถูกลงซ้ำที่นี่: ${foreignDup.join(", ")}` : "",
+        degenerate.length ? `แถวแพตเทิร์นกว้างเกิน (ตัวอักษรที่ไม่ใช่ * ต้อง ≥ ${MIN_PATTERN_CHARS}): ${degenerate.join(", ")}` : "",
+        bad.length ? `แถวพิการ ${bad.length}: ${bad.slice(0, 5).join(" · ")}` : "",
+        foreignProblems.length ? `$foreign ไม่ตรง: ${foreignProblems.join(" · ")}` : "",
+        debtDown.length ? `baselineDebt ไม่ตรง/ปิดหนี้แล้ว ลดตัวเลขใน ${POS_INVENTORY} (ratchet): ${debtDown.join(" · ")}` : "",
+      ].filter(Boolean);
+      chk("F15.3b", `${n153b} (${ids.length} แถว)`, p2.length === 0, p2.length ? p2.join(" · ") : "ตรง");
+  });
 
   // ── F15.4 ──
-  {
+  const n154 = "ข้อความ pos.* มีครบทั้ง th/en · ไม่ว่าง · ค่าภาษาไทยมีอักษรไทย (ยกเว้นคำสากลใน UNIVERSAL_TOKENS)";
+  guarded(chk, "F15.4", n154, () => {
     const th = posMessages(ROOT, "th");
     const en = posMessages(ROOT, "en");
     const problems: string[] = [];
-    if (th.err || en.err) problems.push(`อ่านไฟล์ข้อความไม่ได้ — ${th.err || en.err}`);
     const onlyTh = [...th.keys.keys()].filter((k) => !en.keys.has(k));
     const onlyEn = [...en.keys.keys()].filter((k) => !th.keys.has(k));
     if (onlyTh.length) problems.push(`มีแต่ภาษาไทย ${onlyTh.length}: ${onlyTh.slice(0, 8).join(", ")}`);
     if (onlyEn.length) problems.push(`มีแต่ภาษาอังกฤษ ${onlyEn.length}: ${onlyEn.slice(0, 8).join(", ")}`);
     const empty = [...th.keys, ...en.keys].filter(([, v]) => typeof v !== "string" || !v.trim()).map(([k]) => k);
     if (empty.length) problems.push(`ค่าว่าง/ไม่ใช่ข้อความ ${empty.length}: ${[...new Set(empty)].slice(0, 8).join(", ")}`);
-    const raw = [...th.keys].filter(([k, v]) => typeof v === "string" && (v.trim() === k || v.trim() === k.split(".").pop() || /^[A-Z_]+$/.test(v.trim()))).map(([k, v]) => `${k}="${v}"`);
-    if (raw.length) problems.push(`ค่าภาษาไทยเป็นชื่อคีย์/enum ดิบ ${raw.length}: ${raw.slice(0, 8).join(", ")}`);
+    const notThai = [...th.keys].filter(([, v]) => typeof v === "string" && v.trim() && thaiValueProblem(v)).map(([k, v]) => `${k}="${String(v).slice(0, 30)}"`);
+    if (notThai.length) problems.push(`ค่าภาษาไทยไม่มีอักษรไทย ${notThai.length}: ${notThai.slice(0, 8).join(", ")}`);
     chk(
       "F15.4",
-      "ข้อความ pos.* มีครบทั้ง th/en · ไม่ว่าง · ภาษาไทยไม่ใช่ชื่อคีย์หรือ enum",
+      n154,
       problems.length === 0,
       problems.length ? problems.join(" · ") : th.keys.size === 0 && en.keys.size === 0 ? "0 คีย์ (namespace ยังไม่ถูกสร้าง)" : `ครบ ${th.keys.size} คีย์ (${[...th.files, ...en.files].join(", ")})`,
     );
-  }
+  });
 }
 
-// ─────────────────── รันเดี่ยว (ด่าน F15 อย่างเดียว · หรือ --update-pos-contract) ───────────────────
+// ─────────────────── รันเดี่ยว ───────────────────
 const isMain = (() => {
   try {
     return import.meta.url === pathToFileURL(resolve(process.argv[1] ?? "")).href;
@@ -617,6 +928,20 @@ const isMain = (() => {
 })();
 if (isMain) {
   const ROOT = resolve(import.meta.dirname, "..");
+  if (process.argv.includes("--print-catalog-writers")) {
+    const ws = scanCatalogWriters(ROOT);
+    const table = Object.fromEntries(ws.map((w) => [w.file, countKinds(w.hits)]));
+    for (const w of ws) for (const h of w.hits) console.log(`  ${w.file}:${h.line} ${h.kind} — ${h.why}`);
+    console.log(`CATALOG_WRITERS ${JSON.stringify(table)}`);
+    process.exit(0);
+  }
+  if (process.argv.includes("--print-pos-files")) {
+    for (const f of discoverPosFiles(ROOT)) {
+      const u = f.endsWith(".tsx") ? untestidControls(readFileSync(join(ROOT, f), "utf8"), f) : [];
+      console.log(`  ${f} ${u.length} ${JSON.stringify(byTag(u))}`);
+    }
+    process.exit(0);
+  }
   if (process.argv.includes("--update-pos-contract")) {
     const r = updateSaleContract(ROOT);
     console.log(`${r.ok ? "✅" : "❌"} --update-pos-contract: ${r.message}`);

@@ -9,7 +9,8 @@
 //
 // 🔴 ไฟล์นี้ไม่ import prisma และไม่ import `@/…` — ผู้เรียกส่ง PrismaClient เข้ามาเอง (import ได้จาก fitness/ที่ไม่มี env)
 // 🔴 ฐานข้อมูล: ระหว่างที่ CRM RUN ยังวิ่ง POS ใช้ **QC4 เท่านั้น** (`scripts/qc4.sh` · host ep-frosty-lab)
-//    `loadPosQcEnv()` ปฏิเสธ production เสมอ และปฏิเสธ QC1–QC3 ของ CRM (เว้นแต่ตั้ง POS_QC_ALLOW_CRM_DB=1 เองโดยตั้งใจ)
+//    `loadPosQcEnv()` ปฏิเสธ production + QC1–QC3 ของ CRM เสมอ (ไม่มีทางปลด) และปฏิเสธ host อื่นที่ไม่ใช่ QC4
+//    เว้นแต่ตั้ง POS_QC_ALLOW_HOST=<ส่วนของ host> โดยตั้งใจ (exit 4 ทุกกรณีที่ปฏิเสธ)
 // 🔴 เงิน = สตางค์ (Int) ทุกตัวในไฟล์นี้
 
 import { isProdDbUrl, PROD_HOST_MARK } from "./qc-env-guard.mjs";
@@ -32,7 +33,7 @@ function safeHost(url: string): string {
 /**
  * โหลด env ของชุด QC POS แล้วตรวจว่า "ไม่ใช่ฐานที่ห้ามแตะ" ก่อนคืนค่า — เรียกบรรทัดแรกของทุกสคริปต์ที่แตะ DB
  *  - `QC_ENV_FILE` (ปริยาย `.env.qc` — ใน worktree ของ POS ชี้ QC4) · env ที่ export มาก่อนชนะไฟล์เสมอ (qc4.sh export ให้แล้ว)
- *  - production → ตายเสมอ (ไม่มีทางปลด) · QC1–QC3 ของ CRM → ตาย เว้นแต่ POS_QC_ALLOW_CRM_DB=1
+ *  - production / QC1–QC3 ของ CRM → exit 4 เสมอ · host อื่นที่ไม่ใช่ QC4 → exit 4 เว้นแต่ POS_QC_ALLOW_HOST
  *  - APP_ENV=production → ตาย · ไม่ตั้ง → development
  * @returns host ที่ใช้จริง (พิมพ์ออกจอแล้ว)
  */
@@ -58,16 +59,28 @@ export function loadPosQcEnv(label: string): { host: string; envFile: string; is
     console.error(`❌ ${label}: ไม่มี DATABASE_URL (ไฟล์ ${envFile} ไม่มี และไม่ได้ export มา) — รันผ่าน: bash scripts/iso.sh bash scripts/qc4.sh …`);
     process.exit(4);
   }
+  // ด่าน host (ทั้ง DATABASE_URL และ DIRECT_URL):
+  //  1) production → ตายเสมอ (ไม่มีทางปลด) · 2) QC1–QC3 ของ CRM → ตายเสมอ (ไม่มีทางปลด — มติผู้คุมงาน รอบ 2)
+  //  3) ไม่ใช่ QC4 → ตาย เว้นแต่ตั้ง POS_QC_ALLOW_HOST=<ส่วนหนึ่งของ host ≥6 ตัว> ที่ตรงกับ host นั้นจริง (ตั้งใจเปลี่ยนฐานเท่านั้น)
+  const allowHost = (process.env.POS_QC_ALLOW_HOST ?? "").trim();
   for (const [name, url] of [["DATABASE_URL", db], ["DIRECT_URL", direct]] as const) {
+    if (!url) continue;
     if (isProdDbUrl(url)) {
-      console.error(`🔴 หยุด! ${label}: ${name} ชี้ production (${PROD_HOST_MARK}…) — ชุด QC ของ POS ห้ามแตะ prod`);
+      console.error(`🔴 หยุด! ${label}: ${name} ชี้ production (${PROD_HOST_MARK}…) — ชุด QC ของ POS ห้ามแตะ prod (ปลดไม่ได้)`);
       process.exit(4);
     }
     const crm = CRM_QC_HOST_MARKS.find((m) => url.includes(m));
-    if (crm && process.env.POS_QC_ALLOW_CRM_DB !== "1") {
+    if (crm) {
       console.error(
-        `🔴 หยุด! ${label}: ${name} ชี้ฐาน QC ของ CRM RUN (${crm}) — ระหว่างที่ CRM ยังวิ่ง POS ใช้ QC4 เท่านั้น\n` +
+        `🔴 หยุด! ${label}: ${name} ชี้ฐาน QC ของ CRM RUN (${crm}) — POS ใช้ QC4 เท่านั้น (ปลดไม่ได้)\n` +
           `   รัน: bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/<file>.mts`,
+      );
+      process.exit(4);
+    }
+    if (!url.includes(POS_QC_HOST_MARK) && !(allowHost.length >= 6 && safeHost(url).includes(allowHost))) {
+      console.error(
+        `🔴 หยุด! ${label}: ${name} host ${safeHost(url)} ไม่ใช่ QC4 (${POS_QC_HOST_MARK}) — รันผ่าน scripts/qc4.sh\n` +
+          `   ถ้าตั้งใจใช้ฐานอื่นจริง: POS_QC_ALLOW_HOST=<ส่วนของ host ≥6 ตัวอักษร> (prod/QC1–3 ถูกปฏิเสธก่อนถึงตรงนี้)`,
       );
       process.exit(4);
     }
@@ -79,7 +92,7 @@ export function loadPosQcEnv(label: string): { host: string; envFile: string; is
   process.env.APP_ENV ??= "development";
   const host = safeHost(db);
   const isQc4 = db.includes(POS_QC_HOST_MARK);
-  console.log(`[env] ${label} · ไฟล์ ${envFile} · DB ${host}${isQc4 ? " (QC4)" : " ⚠️ ไม่ใช่ QC4"}`);
+  console.log(`[env] ${label} · ไฟล์ ${envFile} · DB ${host}${isQc4 ? " (QC4)" : ` (อนุญาตด้วย POS_QC_ALLOW_HOST=${allowHost})`}`);
   return { host, envFile, isQc4 };
 }
 

@@ -16,19 +16,88 @@
   "$foreign": {
     "$doc": "testid ที่อยู่ในไฟล์ POS แต่เป็นของทะเบียนอื่น (ปุ่มของ CRM ที่อาศัยหน้าขาย POS · CRM_HOSTED_CONTROLS ใน fitness.mts) — F15.3 ไม่นับเป็นของ POS · ถ้ากดได้ต้องมีแถวในทะเบียนเจ้าของ · ห้ามมีแถวซ้ำในทะเบียนนี้",
     "items": [
-      { "testid": "pos-deal-select", "owner": "scripts/crm-ui-inventory.json", "wo": "C2.7" },
-      { "testid": "pos-deal-hint", "owner": "scripts/crm-ui-inventory.json", "wo": "C2.7" }
+      {
+        "testid": "pos-deal-select",
+        "owner": "scripts/crm-ui-inventory.json",
+        "wo": "C2.7"
+      },
+      {
+        "testid": "pos-deal-hint",
+        "owner": "scripts/crm-ui-inventory.json",
+        "wo": "C2.7"
+      }
     ]
   },
   "baselineDebt": {
-    "$doc": "หนี้ที่มีอยู่ก่อนมีทะเบียน (P0.1 · 1 ต.ค. 2569): จำนวน element ที่กดได้แต่ยังไม่มี data-testid ต่อไฟล์ (นับด้วยกติกาเดียวกับ F14: แท็ก/คอมโพเนนต์/attribute ที่กดได้ · ไม่นับ <option> ภายใน select). Ratchet: จำนวนจริงต้อง = ตัวเลขที่นี่ — มากกว่า = ปุ่มใหม่ไม่มี testid (แดง) · น้อยกว่า = ปิดหนี้แล้วต้องลดตัวเลขที่นี่ (แดงจนกว่าจะลด) · ไฟล์ใหม่ใต้โฟลเดอร์ POS = หนี้ 0 เสมอ",
+    "$doc": "หนี้ที่มีอยู่ก่อนมีทะเบียน (P0.1 · 1 ต.ค. 2569): จำนวน element ที่กดได้แต่ยังไม่มี data-testid ต่อไฟล์ (นับด้วยกติกาเดียวกับ F14: แท็ก/คอมโพเนนต์/attribute ที่กดได้ · ไม่นับ <option> ภายใน select). นับด้วย JSX AST (TypeScript) ต่อไฟล์ต่อชื่อแท็ก (byTag · ผลรวม = untestid) — ไม่ใช่ลายเซ็นราย element เพราะตำแหน่ง/ข้อความเปลี่ยนบ่อย. Ratchet: จำนวนจริงต่อแท็กต้อง = ตัวเลขที่นี่ — มากกว่า = ปุ่มใหม่ไม่มี testid (แดง) · น้อยกว่า = ปิดหนี้แล้วต้องลดตัวเลขที่นี่ (แดงจนกว่าจะลด) · ไฟล์ใหม่ใต้โฟลเดอร์ POS = หนี้ 0 เสมอ",
     "items": [
-      { "file": "src/lib/modules/pos/register-ui.tsx", "untestid": 22, "closes": "P1.3 (หน้าขายใหม่แทนไฟล์นี้) / P4.1", "note": "ปุ่ม +/−/ลบในตะกร้า · ช่องค้นหา · รายการเอง · ส่วนลดท้ายบิล · คูปอง · สวิตช์สิทธิ์สมาชิก · จอชำระ" },
-      { "file": "src/app/app/sys/[id]/pos/register/page.tsx", "untestid": 5, "closes": "P1.3 / P4.1", "note": "แท็บโมดูล · EmptyState action · ลิงก์เลือกสาขา · ลิงก์ตั้ง PromptPay" },
-      { "file": "src/app/app/sys/[id]/pos/sales/page.tsx", "untestid": 1, "closes": "P1.16 / P4.1", "note": "แท็บโมดูล" },
-      { "file": "src/app/app/sys/[id]/pos/products/page.tsx", "untestid": 12, "closes": "P1.1b–P1.2 / P4.1", "note": "แท็บโมดูล · EmptyState action ×4 · ลิงก์ · ฟอร์มตั้งราคา (input ×3 · SubmitButton)" },
-      { "file": "src/app/app/sys/[id]/pos/close/page.tsx", "untestid": 4, "closes": "P1.9 / P4.1", "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · input · button)" },
-      { "file": "src/app/app/sys/[id]/pos/close/CloseDayTools.tsx", "untestid": 2, "closes": "P1.9 / P4.1", "note": "ช่องกรอกเงินนับจริง · ปุ่มดาวน์โหลด CSV" }
+      {
+        "file": "src/lib/modules/pos/register-ui.tsx",
+        "untestid": 22,
+        "closes": "P1.3 (หน้าขายใหม่แทนไฟล์นี้) / P4.1",
+        "note": "ปุ่ม +/−/ลบในตะกร้า · ช่องค้นหา · รายการเอง · ส่วนลดท้ายบิล · คูปอง · สวิตช์สิทธิ์สมาชิก · จอชำระ",
+        "byTag": {
+          "button": 11,
+          "input": 10,
+          "Toggle": 1
+        }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/register/page.tsx",
+        "untestid": 5,
+        "closes": "P1.3 / P4.1",
+        "note": "แท็บโมดูล · EmptyState action · ลิงก์เลือกสาขา · ลิงก์ตั้ง PromptPay",
+        "byTag": {
+          "ModuleTabs": 2,
+          "EmptyState": 1,
+          "Link": 2
+        }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/sales/page.tsx",
+        "untestid": 1,
+        "closes": "P1.16 / P4.1",
+        "note": "แท็บโมดูล",
+        "byTag": {
+          "ModuleTabs": 1
+        }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/products/page.tsx",
+        "untestid": 12,
+        "closes": "P1.1b–P1.2 / P4.1",
+        "note": "แท็บโมดูล · EmptyState action ×4 · ลิงก์ · ฟอร์มตั้งราคา (input ×3 · SubmitButton)",
+        "byTag": {
+          "ModuleTabs": 1,
+          "EmptyState": 4,
+          "Link": 2,
+          "form": 1,
+          "input": 3,
+          "SubmitButton": 1
+        }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/close/page.tsx",
+        "untestid": 4,
+        "closes": "P1.9 / P4.1",
+        "note": "แท็บโมดูล · ฟอร์มเลือกวัน (form · input · button)",
+        "byTag": {
+          "ModuleTabs": 1,
+          "form": 1,
+          "input": 1,
+          "button": 1
+        }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/close/CloseDayTools.tsx",
+        "untestid": 2,
+        "closes": "P1.9 / P4.1",
+        "note": "ช่องกรอกเงินนับจริง · ปุ่มดาวน์โหลด CSV",
+        "byTag": {
+          "input": 1,
+          "button": 1
+        }
+      }
     ]
   },
   "rows": [
@@ -36,9 +105,17 @@
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-pay-button",
       "kind": "button",
-      "roles": ["owner", "cashier"],
+      "roles": [
+        "owner",
+        "cashier"
+      ],
       "hiddenFor": [],
-      "expect": { "type": "ui", "target": "pos-register", "state": "changes", "note": "คิดยอดผ่าน posQuoteAction แล้วสลับไปจอชำระเงิน (เงินสด/PromptPay) · ปิดใช้เมื่อตะกร้าว่าง" },
+      "expect": {
+        "type": "ui",
+        "target": "pos-register",
+        "state": "changes",
+        "note": "คิดยอดผ่าน posQuoteAction แล้วสลับไปจอชำระเงิน (เงินสด/PromptPay) · ปิดใช้เมื่อตะกร้าว่าง"
+      },
       "wo": "Wave1-B",
       "oracle": "",
       "system": "POS",
@@ -48,9 +125,17 @@
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-member-select",
       "kind": "select",
-      "roles": ["owner", "cashier"],
+      "roles": [
+        "owner",
+        "cashier"
+      ],
       "hiddenFor": [],
-      "expect": { "type": "ui", "target": "pos-member-panel", "state": "appears", "note": "เลือกสมาชิก → โหลดสิทธิ์ (posMemberRightsAction) แล้วแผงสิทธิ์ขึ้นด้านขวา · แสดงเฉพาะสาขาที่ผูกระบบสมาชิกและมีสมาชิก" },
+      "expect": {
+        "type": "ui",
+        "target": "pos-member-panel",
+        "state": "appears",
+        "note": "เลือกสมาชิก → โหลดสิทธิ์ (posMemberRightsAction) แล้วแผงสิทธิ์ขึ้นด้านขวา · แสดงเฉพาะสาขาที่ผูกระบบสมาชิกและมีสมาชิก"
+      },
       "wo": "M2.8",
       "oracle": "",
       "system": "POS",
@@ -60,13 +145,22 @@
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-catalog-item",
       "kind": "button",
-      "roles": ["owner", "cashier"],
+      "roles": [
+        "owner",
+        "cashier"
+      ],
       "hiddenFor": [],
-      "expect": { "type": "ui", "target": "pos-register", "state": "changes", "note": "เพิ่มสินค้า/บริการลงตะกร้า (กดซ้ำ = +1) · ใช้ testid เดียวกันทั้งปุ่มบริการและปุ่มสินค้า" },
+      "expect": {
+        "type": "ui",
+        "target": "pos-register",
+        "state": "changes",
+        "note": "เพิ่มสินค้า/บริการลงตะกร้า (กดซ้ำ = +1) · ใช้ testid เดียวกันทั้งปุ่มบริการและปุ่มสินค้า"
+      },
       "wo": "Wave1-B",
       "oracle": "",
       "system": "POS",
       "query": "unit=[unitId]"
     }
-  ]
+  ],
+  "$roles": "roles/hiddenFor ที่อนุญาต: owner · manager · cashier · kind/expect.type ชุดเดียวกับทะเบียน CRM (F15.3b ตรวจ)"
 }

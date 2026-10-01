@@ -8,7 +8,9 @@
 //
 // ถ่ายอะไร: หน้าที่มีจริงวันนี้ `/app/sys/[id]/pos/{register,sales,products,close}` (POS_PAGES) ×
 //   1440×900 · 1024×768 (iPad แนวนอน) · 390×844 → `.qc-shots/pos/<wo>/<page>-<user>-<w>x<h>.png`
-//   บันทึกต่อภาพ: HTTP status · URL ปลายทาง (เด้งไป /login = mint ไม่ติด) · console error · ล้นแนวนอน (scrollWidth > clientWidth)
+//   บันทึกต่อภาพ: HTTP status เทียบ PAGE_EXPECT (owner 200 · cashier บันทึกอย่างเดียว) · URL ปลายทาง (เด้งไป /login = mint ไม่ติด) ·
+//   console error · ล้นแนวนอนที่ html/body/main (scrollWidth > clientWidth) · คำขอย่อย 5xx = ตก (4xx บันทึกอย่างเดียว)
+//   <wo> รับเฉพาะ ^[A-Za-z0-9._-]+$ ไม่มี '..' · SIGINT/SIGTERM/SIGHUP = ทำความสะอาดแบบเดียวกับ finally ก่อนออก
 //   ท้ายสุด `JSON_SUMMARY {...}` + `.qc-shots/pos/<wo>/summary-<user>.json`
 //
 // 🔴 ไม่มีค่าปริยายของ base — ไม่ส่ง `--base`/`QC_BASE` = exit 2 · ต่อไม่ได้ = exit 2 · `:3215` = exit 2
@@ -41,6 +43,8 @@ function die(msg: string): never {
   process.exit(2);
 }
 if (!WO) die("ต้องระบุ <wo|all> เป็นอาร์กิวเมนต์แรก เช่น `visual-pos.mts p1.3 --user owner --base http://127.0.0.1:3300`");
+// wo กลายเป็นชื่อโฟลเดอร์ใต้ .qc-shots/pos — รับเฉพาะตัวอักษรปลอดภัย ห้าม `..` (กันเขียนไฟล์ออกนอกโฟลเดอร์)
+if (!/^[A-Za-z0-9._-]+$/.test(WO) || WO.includes("..")) die(`<wo> "${WO}" ไม่ถูกต้อง — ใช้ได้เฉพาะ A-Z a-z 0-9 . _ - และห้ามมี ".."`);
 if (!(USERS as readonly string[]).includes(userKey)) die(`--user ${userKey} ไม่รู้จัก — ใช้ได้: ${USERS.join(" · ")}`);
 if (tenantKey !== "coffee" && tenantKey !== "resto") die(`--tenant ${tenantKey} ไม่รู้จัก — ใช้ได้: coffee · resto`);
 if (onlyPage && !(POS_PAGES as readonly string[]).includes(onlyPage)) die(`--page ${onlyPage} ไม่รู้จัก — ใช้ได้: ${POS_PAGES.join(" · ")}`);
@@ -52,6 +56,16 @@ const unitKey = U.units[0] === "*" ? Object.keys(T.units)[0]! : U.units[0]!;
 const unitId = (T.units as Record<string, { id: string }>)[unitKey]!.id;
 const SYS = T.systems.POS.id;
 const pages: PosPage[] = onlyPage ? [onlyPage as PosPage] : [...POS_PAGES];
+/**
+ * สิ่งที่คาดต่อหน้า ต่อบทบาท (HTTP) — owner ต้องได้ 200 · cashier = "record" (บันทึกอย่างเดียว ไม่ตัดสิน)
+ * จนกว่าผู้คุมงานรันจริงครั้งแรกแล้วกำหนด 200|404 ตามพฤติกรรมจริง (มติรอบ 2 · ใบ P1.15/P4.2 เป็นเจ้าของตาราง)
+ */
+const PAGE_EXPECT: Record<PosPage, Record<UserKey, number | "record">> = {
+  register: { owner: 200, cashier: "record" },
+  sales: { owner: 200, cashier: "record" },
+  products: { owner: 200, cashier: "record" },
+  close: { owner: 200, cashier: "record" },
+};
 const pathOf = (p: PosPage) => `/app/sys/${SYS}/pos/${p}${p === "register" ? `?unit=${unitId}` : ""}`;
 const OUT = `${PQC.shotsDir}/${WO}`;
 const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w}x${h}.png`;
@@ -59,9 +73,9 @@ const fileOf = (p: PosPage, w: number, h: number) => `${OUT}/${p}-${userKey}-${w
 // ═══════════════════ 2. --dry: แผนการถ่าย (ไม่แตะอะไรเลย) ═══════════════════
 const BASE_RAW = flag("--base") ?? process.env.QC_BASE ?? "";
 if (DRY) {
-  const plan = pages.flatMap((p) => POS_VIEWPORTS.map((v) => ({ page: p, viewport: `${v.w}x${v.h}`, device: v.name, path: pathOf(p), file: fileOf(p, v.w, v.h) })));
+  const plan = pages.flatMap((p) => POS_VIEWPORTS.map((v) => ({ page: p, viewport: `${v.w}x${v.h}`, device: v.name, path: pathOf(p), file: fileOf(p, v.w, v.h), expect: PAGE_EXPECT[p][userKey] })));
   console.log(`แผนการถ่าย POS · wo ${WO} · ผู้ใช้ ${userKey} (${U.email}) · ร้าน ${T.slug} · สาขา ${unitKey} · base ${BASE_RAW || "(ยังไม่ระบุ — รันจริงต้องมี --base)"}`);
-  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} ${s.path} → ${s.file}`);
+  for (const s of plan) console.log(`  ${s.page.padEnd(9)} ${s.viewport.padEnd(9)} ${s.device.padEnd(8)} คาด ${String(s.expect).padEnd(6)} ${s.path} → ${s.file}`);
   console.log(`รวม ${pages.length} หน้า × ${POS_VIEWPORTS.length} ขนาด × 1 ผู้ใช้ = ${plan.length} ภาพ`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, dry: true, pages: pages.length, viewports: POS_VIEWPORTS.length, shots: plan.length, plan })}`);
   process.exit(0);
@@ -99,13 +113,43 @@ const cleanProfiles = () => {
     }
   }
 };
-// ถูก kill/Ctrl-C ก็ต้องลบโปรไฟล์ (rmSync ทำงานได้ใน handler 'exit')
-process.on("exit", cleanProfiles);
-for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(130));
-
 class Fatal extends Error {}
 const MINE: string[] = [];
-type Shot = { page: string; viewport: string; file: string; status: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
+let BROWSER: Any = null;
+/** ลบ session ที่รอบนี้ mint (เฉพาะ id ของตัวเอง) + ซากที่หมดอายุแล้ว — เรียกได้ซ้ำ (finally และ signal) */
+let sessionsCleaned = false;
+async function cleanSessions(): Promise<{ removed: number; stale: number }> {
+  if (sessionsCleaned) return { removed: 0, stale: 0 };
+  sessionsCleaned = true;
+  let removed = 0;
+  if (MINE.length) removed = (await prisma.session.deleteMany({ where: { id: { in: MINE } } })).count;
+  // ซากของรอบที่ถูก kill -9: แท็กเดียวกัน + หมดอายุแล้ว (รอบที่ยังวิ่งมีอายุอีก 1 ชม. จึงไม่โดน)
+  const stale = (await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } })).count;
+  return { removed, stale };
+}
+// ถูก Ctrl-C/kill/ปิดเทอร์มินัล: ทำความสะอาดแบบเดียวกับ finally (ปิด chromium · ลบ session ของรอบนี้ · ลบโปรไฟล์) แล้วค่อยออก
+process.on("exit", cleanProfiles);
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(sig, () => {
+    console.error(`\n⚠️ ได้รับ ${sig} — ทำความสะอาดก่อนออก`);
+    const done = (async () => {
+      try {
+        await BROWSER?.close();
+      } catch {
+        /* ปิดไม่ได้ก็ลบโปรไฟล์ต่อ */
+      }
+      try {
+        const r = await cleanSessions();
+        console.error(`🧹 ลบ session ${r.removed} (+ซาก ${r.stale})`);
+      } catch (e) {
+        console.error(`❌ ลบ session ไม่สำเร็จ: ${e instanceof Error ? e.message : e}`);
+      }
+      cleanProfiles();
+    })();
+    void done.finally(() => process.exit(130));
+  });
+}
+type Shot = { page: string; viewport: string; file: string; status: number; expect: number | "record"; http5xx: number; finalUrl: string; redirectedToLogin: boolean; overflow: boolean; overflowEl: string | null; consoleErrors: string[]; httpErrors: string[]; ok: boolean };
 const shots: Shot[] = [];
 let failures = 0;
 let fatal = "";
@@ -129,10 +173,10 @@ try {
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);
   })) as Any;
-  const browser = await pptr.default.launch({
+  const browser = (BROWSER = await pptr.default.launch({
     executablePath: "/usr/bin/chromium-browser",
     args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${PROFILE_DIRS[0]}`],
-  });
+  }));
   try {
     for (const p of pages) {
       for (const v of POS_VIEWPORTS) {
@@ -141,13 +185,16 @@ try {
         await page.setCookie(...cookies);
         const consoleErrors: string[] = [];
         const httpErrors: string[] = [];
+        const http5xx: string[] = [];
         page.on("pageerror", (e: Error) => consoleErrors.push(e.message.slice(0, 160)));
         page.on("console", (m: Any) => {
           if (m.type() === "error") consoleErrors.push(String(m.text()).slice(0, 160));
         });
         page.on("response", (r: Any) => {
           try {
-            if (r.status() >= 400) httpErrors.push(`HTTP ${r.status()} ${String(r.url()).replace(BASE, "").slice(0, 160)}`);
+            const line = `HTTP ${r.status()} ${String(r.url()).replace(BASE, "").slice(0, 160)}`;
+            if (r.status() >= 500) http5xx.push(line); // คำขอย่อย 5xx = ภาพตก
+            else if (r.status() >= 400) httpErrors.push(line); // 4xx = บันทึกอย่างเดียว
           } catch {
             /* ignore */
           }
@@ -159,8 +206,12 @@ try {
         const ov = (await page
           .evaluate(() => {
             const d = document.documentElement;
-            const over = d.scrollWidth > d.clientWidth + 1;
+            // ตรวจ html · body · กรอบเลื่อนหลัก (main / [role=main]) — เลย์เอาต์ที่ล็อก html แล้วให้ main เลื่อนเองจะไม่ล้นที่ html
+            const boxes = [d, document.body, ...Array.from(document.querySelectorAll("main, [role=main]"))].filter(Boolean) as Element[];
+            const overBox = boxes.find((b) => b.scrollWidth > b.clientWidth + 1);
+            const over = !!overBox;
             if (!over) return { over, el: null as string | null };
+            const boxName = overBox === d ? "html" : overBox === document.body ? "body" : overBox!.tagName.toLowerCase();
             let best: { r: number; d: string } | null = null;
             for (const el of Array.from(document.querySelectorAll("body *"))) {
               const cs = getComputedStyle(el);
@@ -172,18 +223,21 @@ try {
                 best = { r: b.right, d: `${el.tagName.toLowerCase()}${tid ? `[data-testid=${tid}]` : ""} right=${Math.round(b.right)}` };
               }
             }
-            return { over, el: best?.d ?? null };
+            return { over, el: `${boxName}: ${best?.d ?? "?"}` };
           })
           .catch(() => ({ over: false, el: null }))) as { over: boolean; el: string | null };
         const file = fileOf(p, v.w, v.h);
         await page.screenshot({ path: file, fullPage: true });
         const status = resp?.status() ?? 0;
         const redirectedToLogin = /\/login\b/.test(finalUrl);
-        const ok = status > 0 && status < 400 && !redirectedToLogin && consoleErrors.length === 0 && !ov.over;
+        const exp = PAGE_EXPECT[p][userKey];
+        const statusOk = exp === "record" ? true : status === exp && !redirectedToLogin;
+        const judged = exp === "record" ? status > 0 && status < 400 : true; // record-only: หน้าที่ถูกปฏิเสธ ไม่ตัดสินเลย์เอาต์/console
+        const ok = statusOk && (!judged || (consoleErrors.length === 0 && !ov.over && http5xx.length === 0));
         if (!ok) failures++;
-        shots.push({ page: p, viewport: `${v.w}x${v.h}`, file, status, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors, ok });
+        shots.push({ page: p, viewport: `${v.w}x${v.h}`, file, status, expect: exp, finalUrl, redirectedToLogin, overflow: ov.over, overflowEl: ov.el, consoleErrors, httpErrors: [...http5xx, ...httpErrors], http5xx: http5xx.length, ok });
         console.log(
-          `  ${ok ? "✅" : "❌"} ${p} ${v.w}x${v.h} HTTP ${status}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}`,
+          `  ${ok ? "✅" : "❌"} ${p} ${v.w}x${v.h} HTTP ${status} (คาด ${exp})${http5xx.length ? ` · คำขอย่อย 5xx ${http5xx.length}: ${http5xx[0]}` : ""}${redirectedToLogin ? " · เด้งไป /login" : ""}${ov.over ? ` · ล้นแนวนอน ${ov.el ?? "?"}` : ""}${consoleErrors.length ? ` · console error ${consoleErrors.length}: ${consoleErrors[0]}` : ""} → ${file}`,
         );
         await page.close();
       }
@@ -194,14 +248,11 @@ try {
 } catch (e) {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
-  let removed = 0;
-  if (MINE.length) removed = (await prisma.session.deleteMany({ where: { id: { in: MINE } } })).count;
-  // ซากของรอบที่ถูก kill: แท็กเดียวกัน + หมดอายุแล้ว (รอบที่ยังวิ่งมีอายุอีก 1 ชม. จึงไม่โดน)
-  const stale = await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } });
+  const { removed, stale } = await cleanSessions();
   await prisma.$disconnect();
   cleanProfiles();
   writeFileSync(`${OUT}/summary-${userKey}.json`, JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, at: new Date().toISOString(), shots }, null, 2));
-  console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale.count ? ` (+ซากหมดอายุ ${stale.count})` : ""} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
+  console.log(`\n🧹 ลบ session ของรอบนี้ ${removed}${stale ? ` (+ซากหมดอายุ ${stale})` : ""} · ลบโปรไฟล์ chromium ${PROFILE_DIRS[0]} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
 console.log(`JSON_SUMMARY ${JSON.stringify({ wo: WO, user: userKey, tenant: tenantKey, base: BASE, shots: shots.map(({ consoleErrors, httpErrors, ...s }) => ({ ...s, consoleErrors: consoleErrors.length, httpErrors: httpErrors.length })), failures, fatal: fatal || null })}`);
