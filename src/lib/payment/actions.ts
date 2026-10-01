@@ -6,7 +6,7 @@
 import type { PlatformInvoiceStatus } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import { tenantDb } from "@/lib/core/db";
-import { savePaymentProfile } from "./service";
+import { canManagePaymentProfile, savePaymentProfile } from "./service";
 
 export type SavePaymentState =
   | { status: "idle" }
@@ -19,12 +19,16 @@ export async function savePaymentProfileAction(
   formData: FormData,
 ): Promise<SavePaymentState> {
   const auth = await requireTenant();
+  // 🔴 HOTFIX 2026-10-01: ปลายทางเงินของร้าน — OWNER/MANAGER เท่านั้น (ดู service.canManagePaymentProfile)
+  if (!canManagePaymentProfile(auth.active)) {
+    return { status: "error", message: "เฉพาะเจ้าของร้านหรือผู้จัดการเท่านั้นที่เปลี่ยนช่องรับเงินได้" };
+  }
   const promptpayId = String(formData.get("promptpayId") ?? "").trim();
   const displayName = String(formData.get("displayName") ?? "").trim();
   if (!promptpayId) return { status: "error", message: "กรุณากรอก PromptPay ID (เบอร์มือถือหรือเลขบัตรประชาชน)" };
   try {
     const p = await savePaymentProfile(
-      { tenantId: auth.active.tenantId },
+      { tenantId: auth.active.tenantId, actorUserId: auth.user.id },
       { promptpayId, displayName },
     );
     return { status: "ok", promptpayId: p.promptpayId ?? promptpayId, displayName: p.displayName };
