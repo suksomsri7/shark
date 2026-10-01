@@ -393,7 +393,9 @@ export function contactLabel(c: { name?: string | null; firstName?: string | nul
  */
 export function maskPii(text: string | null | undefined): string {
   return String(text ?? "")
-    .replace(/[^\s@"'<>]+@([^\s@"'<>]+)/g, (_m, d: string) => `x…@${d}`)
+    // CRM C5.5-fix5 ▸ `(?<![^\s@"'<>])` = เริ่มที่ต้นกลุ่มอักขระเท่านั้น (เดิมลองทุกตัวกลางกลุ่มที่ไม่มี `@` = n²) — ผลเท่าเดิมทุกกรณี:
+    //   ส่วนโดเมนกินถึงขอบกลุ่มเสมอ จึงไม่มีการจับที่จบกลางกลุ่ม (probe-cf6-linear SW.maskPii) ◂
+    .replace(/(?<![^\s@"'<>])[^\s@"'<>]+@([^\s@"'<>]+)/g, (_m, d: string) => `x…@${d}`)
     .replace(/\+?\d[\d\s-]{3,}\d/g, (m) => {
       const digits = m.replace(/\D/g, "");
       return digits.length >= 5 ? `${"x".repeat(Math.max(0, digits.length - 2))}${digits.slice(-2)}` : m;

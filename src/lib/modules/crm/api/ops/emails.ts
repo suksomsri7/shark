@@ -15,7 +15,7 @@
 
 import { z } from "zod";
 import * as emails from "../../emails";
-import { CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_COPY_MODES, CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SUBJECT_MAX } from "../../emails-shared";
+import { CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_SIGNATURE_INPUT_MAX, CRM_EMAIL_COPY_MODES, CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SUBJECT_MAX } from "../../emails-shared";
 import { renderKbTokens } from "../../kb-tokens"; // CRM C3.4 ◂
 import type { ApiActor } from "@/lib/api/actor";
 import { crmActorOf, crmCtxOf } from "../actor";
@@ -297,8 +297,9 @@ const userSettingsSet = defineCrmOp({
       replyToAddr: optText(200),
       copyMode: z.enum(CRM_EMAIL_COPY_MODES).optional(),
       copyToAddr: optText(200),
-      signature: optText(4000),
-      signatureHtml: optText(4000),
+      // CRM C5.5-fix5 r2 ▸ RV5-1: เพดานข้อความเข้าเดียวกับบริการ/การ์ด — ค่าที่ get คืน (≤ CRM_EMAIL_SIGNATURE_MAX หลัง sanitize) ส่งกลับได้เสมอ ◂
+      signature: optText(CRM_EMAIL_SIGNATURE_INPUT_MAX),
+      signatureHtml: optText(CRM_EMAIL_SIGNATURE_INPUT_MAX),
     })
     .strict(),
   test: "C2.11-S2.3",

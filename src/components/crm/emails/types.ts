@@ -41,6 +41,8 @@ export type CrmEmailMySendingData = {
   replyToMode: string;
   replyToAddr: string | null;
   signatureHtml: string | null;
+  /** CRM C5.5-fix5 r2 ▸ เพดานข้อความเข้าของลายเซ็น (`CRM_EMAIL_SIGNATURE_INPUT_MAX` — การ์ด import โมดูล CRM ไม่ได้ จึงมาทาง props) ◂ */
+  signatureInputMax?: number;
   replyModes: CrmEmailOption[];
 };
 

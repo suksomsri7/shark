@@ -14,6 +14,7 @@ import { dispatchWebhooks } from "@/lib/webhooks/service";
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { applyApprovalEffect, applyCrmApprovalEffect } from "@/lib/approval-effects";
 import { logOps as logOpsRaw } from "@/lib/core/ops";
+import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 import { invalidateBrandingCache } from "@/lib/branding/service";
 import { formatThaiDate } from "@/lib/ui/date";
 import { runForEvent as runJourneysForEvent } from "@/lib/modules/member";
@@ -44,7 +45,7 @@ const saleIdOf = (payload: unknown): string | null => {
 //   • เลขติดกัน ≥ 7 หลัก = เบอร์ / เลขบัตรประชาชน / เลขบัญชี (เลขสั้นอย่างจำนวนเงิน/บรรทัดของ stack ไม่โดน)
 //   • อีเมล = ปิดทั้งใบ (ส่วนหน้า @ คือตัวระบุตัวบุคคล)
 const redactPii = (text: string): string =>
-  text.replace(/\d{7,}/g, "[ตัวเลขถูกปิดบัง]").replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[อีเมลถูกปิดบัง]");
+  replaceEmailsInText(text.replace(/\d{7,}/g, "[ตัวเลขถูกปิดบัง]"), () => "[อีเมลถูกปิดบัง]"); // CRM C5.5-fix5 ▸ ≡ regex อีเมลเดิม แบบเชิงเส้น ◂
 
 /**
  * `logOps` ของไฟล์นี้ — **ปิดบัง PII ให้ก่อนเสมอ** แล้วค่อยส่งต่อให้ตัวจริง (`logOpsRaw`)

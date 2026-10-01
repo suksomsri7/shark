@@ -1141,8 +1141,8 @@ Body:
 | `replyToAddr` | string \| null |  | max 200 chars |
 | `copyMode` | `NONE` \| `IN` \| `OUT` \| `BOTH` |  |  |
 | `copyToAddr` | string \| null |  | max 200 chars |
-| `signature` | string \| null |  | max 4000 chars |
-| `signatureHtml` | string \| null |  | max 4000 chars |
+| `signature` | string \| null |  | max 16000 chars |
+| `signatureHtml` | string \| null |  | max 16000 chars |
 
 #### `GET /emails/routing` — emails.routing.get
 

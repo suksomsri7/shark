@@ -8,7 +8,8 @@
 // AUDIT-CLASS X6: เพดานเนื้อความ/ไฟล์แนบ + บัญชีขาวชนิดไฟล์ (ชุดย่อยของ storage ลบ SVG/HTML/JS) ประกาศที่นี่ที่เดียว
 
 import { sanitizeHtml } from "@/lib/core/sanitize";
-import { bareEmail } from "@/lib/core/inbound-address";
+import { bareEmail, trailingAngleAddr } from "@/lib/core/inbound-address";
+import { stripTags, trimEndBlanks } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ▸ ตัวตัดแท็ก/ช่องว่างแบบเชิงเส้น (รีวิว RV-1/RV-2) ◂
 import { CRM_FILE_MIME_ALLOWLIST } from "./activities-shared";
 
 // ───────────────────────── เพดาน (AUDIT-CLASS X6) ─────────────────────────
@@ -30,6 +31,17 @@ export const CRM_EMAIL_ATTACH_MAX_COUNT = 20;
 export const CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES = 8 * 1024 * 1024;
 /** หัวข้อจดหมาย */
 export const CRM_EMAIL_SUBJECT_MAX = 300;
+/**
+ * ลายเซ็นของพนักงาน — เพดานของ **ค่าที่เก็บ** (HTML หลัง sanitize) · CRM C5.5-fix5 r2 (รีวิว RV5-1)
+ * 🔴 นับหลัง sanitize ไม่ใช่ที่ข้อความเข้า: sanitize ทำให้ยาวขึ้นได้ (`&` → `&amp;` · ลิงก์ได้ rel/target เพิ่ม ≈ +50%) แต่ sanitize ซ้ำ
+ *    กับค่าที่เก็บแล้วได้ค่าเดิม (idempotent) ⇒ ค่าใดที่ระบบเคยเก็บ ส่งกลับมาบันทึกซ้ำ (การ์ด "การส่งของฉัน" ส่งกลับทุกครั้ง · REST อ่านแล้วเขียน)
+ *    ผ่านเสมอ · เดิม (รอบแรก) นับที่ข้อความเข้า 4,000 ⇒ ลายเซ็นที่เก็บ 5,975 ตัวถูกปฏิเสธตอนบันทึกการ์ดครั้งถัดไป ช่องอื่นหายไปด้วย
+ */
+export const CRM_EMAIL_SIGNATURE_MAX = 8000;
+/** เพดานข้อความเข้า (ก่อน sanitize — กันงานเกินจำเป็น) = 2 เท่าของเพดานที่เก็บ · หน้าจอ (maxLength) และ REST (`optText`) ใช้ค่านี้ตัวเดียว */
+export const CRM_EMAIL_SIGNATURE_INPUT_MAX = 2 * CRM_EMAIL_SIGNATURE_MAX;
+/** ข้อความเดียวทุกทาง (บริการ · REST · การ์ด) */
+export const CRM_EMAIL_SIGNATURE_TOO_LONG_MSG = `ลายเซ็นยาวเกิน ${CRM_EMAIL_SIGNATURE_MAX.toLocaleString("en-US")} ตัวอักษร (นับรวมรูปแบบ/ลิงก์ที่ระบบจัดให้) — ย่อให้สั้นลงแล้วบันทึกอีกครั้ง`;
 
 /**
  * ชนิดไฟล์แนบของอีเมล = ชุดเดียวกับไฟล์แนบ CRM (ชุดย่อยของ `ALLOWED_UPLOAD_TYPES` ลบ SVG)
@@ -142,11 +154,24 @@ export function hasLineBreak(v: unknown): boolean {
 }
 
 
-/** ชื่อที่แสดงจาก `"สมชาย ใจดี" <addr>` (ไม่มี = ว่าง) */
+const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/;
+
+/**
+ * ชื่อที่แสดงจาก `"สมชาย ใจดี" <addr>` (ไม่มี = ว่าง)
+ * CRM C5.5-fix5 ▸ รีวิว RV-2: เดิม `/^\s*(.*?)\s*<[^>]*>\s*$/` = n² (หัว From `<` ล้วน 40,000 ตัว ≈ 1.3 วินาที × 3 ครั้งต่อจดหมาย) ·
+ *   ตอนนี้: ชื่อ = ข้อความก่อน `<` ตัวที่เปิดคู่วงเล็บมุมท้ายสตริง (ตัวเดียวกับ `bareEmail`) ตัดช่องว่างหน้า `<` ออก ·
+ *   ชื่อที่มีตัวขึ้นบรรทัด = ไม่มีชื่อ (เหมือน `.` ของ regex เดิม) — ผลตรงกับ regex เดิมทุกไบต์ (probe-cf6-linear RV2.displayName) ◂
+ */
 export function displayNameOf(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
-  const m = s.match(/^\s*(.*?)\s*<[^>]*>\s*$/);
-  const name = m ? (m[1] ?? "") : "";
+  let name = "";
+  const inner = trailingAngleAddr(s);
+  if (inner !== null) {
+    let k = s.length - inner.length - 2; // ตำแหน่ง `<` (s ถูก trim แล้ว ⇒ `>` คือตัวสุดท้าย)
+    while (k > 0 && /\s/.test(s[k - 1] as string)) k--;
+    const cand = s.slice(0, k);
+    if (!LINE_TERMINATOR_RE.test(cand)) name = cand;
+  }
   return name.replace(/^["']|["']$/g, "").trim();
 }
 
@@ -227,9 +252,28 @@ export function renderInboundHtml(html: string | null | undefined, opts: { showI
   return sanitizeHtml(html, { allowImages: opts?.showImages === true });
 }
 
+/**
+ * จดหมายนี้มีรูปจากภายนอก (`<img … src="http(s):…`) ไหม — หน้าเธรดใช้ตัดสินว่าจะโชว์ปุ่ม "แสดงรูป"
+ * CRM C5.5-fix5 ▸ ≡ `/<img[^>]+src="https?:/i.test(html)` เดิมของหน้าเธรด (ผลตรงทุกกรณี) แต่เชิงเส้น: `<img` ที่อยู่ในช่วงของ
+ *   `<img` ตัวก่อน (ยังไม่เจอ `>`) ไม่ต้องสแกนซ้ำ — ช่วงของมันเป็นส่วนหนึ่งของช่วงที่ตรวจแล้ว (เดิม `<img` ×n ไม่มี `>` = n²) ◂
+ */
+export function hasRemoteImages(html: string | null | undefined): boolean {
+  const lower = String(html ?? "").replace(/[A-Z]+/g, (m) => m.toLowerCase()); // ASCII เท่านั้น = flag `i` ของ regex เดิม (ความยาวเท่าเดิม)
+  let from = 0;
+  for (;;) {
+    const at = lower.indexOf("<img", from);
+    if (at < 0) return false;
+    const gt = lower.indexOf(">", at + 4);
+    const end = gt < 0 ? lower.length : gt; // `[^>]+` วิ่งได้ถึงก่อน `>` ตัวแรกเท่านั้น
+    if (at + 5 < end && /src="https?:/.test(lower.slice(at + 5, end))) return true;
+    if (gt < 0) return false;
+    from = gt + 1; // `<img` ที่อยู่ในช่วงนี้มีช่วงย่อยของช่วงที่เพิ่งตรวจ ⇒ ข้าม
+  }
+}
+
 /** ข้อความย่อของจดหมาย (ใช้ในรายการเธรด) — ตัดแท็กทิ้ง เหลือข้อความล้วน */
 export function emailSnippet(text: string | null | undefined, html: string | null | undefined, max = 200): string {
-  const base = (text ?? "").trim() || sanitizeHtml(html).replace(/<[^>]*>/g, " ");
+  const base = (text ?? "").trim() || stripTags(sanitizeHtml(html), " "); // CRM C5.5-fix5 ▸ ตัวตัดเชิงเส้น (ผลเท่าเดิม) ◂
   return base.replace(/\s+/g, " ").trim().slice(0, max);
 }
 
@@ -460,7 +504,7 @@ export function crmEmailHtmlToComposerText(html: string | null | undefined): str
   closeLink();
   return out
     .split("\n")
-    .map((l) => decodeEntities(l).replace(/[ \t]+$/g, ""))
+    .map((l) => trimEndBlanks(decodeEntities(l))) // CRM C5.5-fix5 ▸ เดิม `/[ \t]+$/g` = n² บนบรรทัดช่องว่างยาว (ผลเท่าเดิม) ◂
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

@@ -16,6 +16,7 @@ import { prisma } from "./db";
 import { getCardFieldValues } from "./fields";
 import { setCardLabels } from "./labels";
 import { KANBAN_LIMITS } from "./limits";
+import { replaceOpenTagCi, stripTags, trimBlanksBeforeNewlines } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ▸ RV-9 ◂
 // K3.1 — "เชื่อมข้อมูล SHARK" ของหลังการ์ด · อ่านจาก `link-resolvers.ts` โดยตรง (ไม่ผ่าน `links.ts`
 // ที่เป็นฝั่งเขียนและ import `service.ts` → `cards.ts` อยู่แล้ว = import วนกลับ)
 import { listCardLinks } from "./link-resolvers";
@@ -324,18 +325,22 @@ export async function getCardDetail(ctx: KanbanCtx, cardId: string): Promise<Car
  */
 export function descriptionToText(html: string | null | undefined): string {
   if (!html) return "";
-  return html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<li[^>]*>/gi, "- ")
-    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+  // CRM C5.5-fix5 ▸ รีวิว RV-9: สามขั้นที่เคยเป็น regex n² (`<li[^>]*>` · `<[^>]+>` · `[ \t]+\n` — รายละเอียดที่ REST/AI/แม่แบบเขียน
+  //   เก็บแบบดิบ ⇒ `<` ล้วนยาว ๆ แช่เครื่องตอนอ่าน `cards.detail`) ใช้ตัวเชิงเส้นของ core ที่ให้ผลตรงทุกไบต์ ·
+  //   ขั้นอื่นเป็นรูปตายตัว (ไม่มีการย้อน) คงเดิม · ลำดับขั้นเหมือนเดิมทุกขั้น ◂
+  const tags = stripTags(
+    replaceOpenTagCi(html.replace(/<br\s*\/?>/gi, "\n"), "li", "- ").replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n"),
+    "",
+    { nonEmpty: true },
+  );
+  const text = tags
     .replace(/&nbsp;/g, " ")
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/[ \t]+\n/g, "\n")
+    .replace(/&amp;/g, "&");
+  return trimBlanksBeforeNewlines(text)
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

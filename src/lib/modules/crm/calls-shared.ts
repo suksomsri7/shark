@@ -5,6 +5,8 @@
 // 🔴 ทะเบียนชนิดไฟล์เสียงเขียนไว้ตรง ๆ (ไม่ import `@/lib/storage/service`) เพราะไฟล์นั้นลากกราฟ prisma เข้าหน้าไคลเอนต์
 //    ⇒ ข้อสอบ `C2.4-S0.2` เทียบรายการนี้กับ `ALLOWED_UPLOAD_TYPES` ของ storage ให้เป็นชุดย่อยเสมอ (ใครเพิ่มฝั่งใดต้องเพิ่มอีกฝั่ง)
 
+import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ▸ ตัวปิดอีเมลเชิงเส้น (core บริสุทธิ์ ไม่มี import) ◂
+
 // ───────────────────────── เพดาน + ทะเบียนชนิดไฟล์ (AUDIT-CLASS X6) ─────────────────────────
 
 /**
@@ -164,7 +166,8 @@ export const mbOf = (bytes: number): number => Math.round(bytes / (1024 * 1024))
  * ลำดับสำคัญ: อีเมลก่อน (มีตัวเลขปนได้) แล้วจึงชุดตัวเลขที่ยาวพอจะเป็นเบอร์ (≥ 7 ตำแหน่ง รวมตัวคั่น - ( ) . และช่องว่าง)
  */
 export function redactContactInfo(text: string): string {
-  return String(text ?? "")
-    .replace(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "(อีเมลถูกปิดไว้)")
+  // CRM C5.5-fix5 ▸ อีเมล: ตัวเชิงเส้นของ core ≡ `/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g` เดิมทุกไบต์ (เดิม n² บนกลุ่มอักษรยาวที่ไม่มี `@` ·
+  //   ถอดเสียงสาย ≤ 100,000 ตัว · ช่องของ ai-bridges ถูกปิดก่อนตัดเหลือ 200) ◂
+  return replaceEmailsInText(String(text ?? ""), () => "(อีเมลถูกปิดไว้)", { apostrophe: true })
     .replace(/\+?\d[\d\s\-().]{5,}\d/g, "(เบอร์ถูกปิดไว้)");
 }

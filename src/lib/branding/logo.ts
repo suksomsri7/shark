@@ -40,7 +40,9 @@ function isWebp(bytes: Uint8Array): boolean {
 }
 
 // ห้ามมีสคริปต์/เหตุการณ์/โปรโตคอลอันตรายฝังใน SVG (SVG เป็น XML ที่รันจาวาสคริปต์ได้ถ้าเปิดตรง ๆ)
-const SVG_UNSAFE_PATTERNS = [/<script/i, /on[a-z]+\s*=/i, /javascript:/i];
+// CRM C5.5-fix5 ▸ เดิม `/on[a-z]+\s*=/i` = n² บน `onon…` (ไฟล์ 2 MB = แช่เครื่องเป็นชั่วโมง) · รูปใหม่เริ่มที่ต้นกลุ่มตัวอักษรเท่านั้นแล้ว
+//   มองหน้า (lookahead) หา `on` + ตัวอักษรในกลุ่มเดียวกัน — เป็นจริง/เท็จตรงกับรูปเดิมทุกกรณี (probe-cf6-linear SW.logo) ◂
+const SVG_UNSAFE_PATTERNS = [/<script/i, /(?<![a-z])(?=[a-z]*on[a-z])[a-z]+\s*=/i, /javascript:/i];
 
 /** SVG เป็นข้อความล้วน — สนิฟจากเนื้อหาที่ decode แล้วขึ้นต้นด้วย `<?xml` หรือ `<svg` เท่านั้น */
 function sniffSvgText(bytes: Uint8Array): string | null {

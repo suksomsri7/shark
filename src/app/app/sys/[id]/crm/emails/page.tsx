@@ -7,7 +7,7 @@ import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { getUserSetting, listThreads } from "@/lib/modules/crm/emails";
 import { crmEmailSettingsOf } from "@/lib/modules/crm/settings";
-import { CRM_EMAIL_REPLY_MODES } from "@/lib/modules/crm/emails-shared";
+import { CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SIGNATURE_INPUT_MAX } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -86,6 +86,7 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
       replyToMode: own?.replyToMode ?? shop.replyToMode,
       replyToAddr: own?.replyToAddr ?? null,
       signatureHtml: own?.signatureHtml ?? null,
+      signatureInputMax: CRM_EMAIL_SIGNATURE_INPUT_MAX, // CRM C5.5-fix5 r2 ◂
       replyModes: CRM_EMAIL_REPLY_MODES.map((m) => ({ value: m, label: REPLY_MODE_TH[m] ?? m })),
     };
   }

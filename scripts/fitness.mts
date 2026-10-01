@@ -860,6 +860,42 @@ console.log("\n── F15: equals แบบ insensitive ต้องผ่าน
   chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", fixed.length === 0, `แก้แล้วแต่ยังอยู่ในรายการ: ${fixed.join(" · ")}`);
 }
 
+// ─────────────────── F16: ห้าม regex ตัดแท็ก/แกะวงเล็บมุม (CRM C5.5-fix5 · รีวิว C5.5-fix4 RV-1/RV-2/RV-9) ───────────────────
+// `/<[^>]*>/g` · `<li[^>]*>` · `<([^>]+)>` · `<.*?>` … ย้อนรอยกำลังสองใน V8 บน `<` ที่ไม่ปิด (`<` 40,000 ตัว = 1.5 วินาที · 1 MB ≈ 16 นาที
+//   ต่อการเรียกครั้งเดียว — server action รับ body 12 MB · route อีเมลขาเข้ารับ 10 MB) ⇒ ใช้ตัวเชิงเส้นของ core/linear-text.ts /
+//   core/inbound-address.ts หรือ htmlToText ของ engine กลาง · ตัวสแกน `scripts/lib/tag-strip-scan.mjs` (TS AST — คอมเมนต์/สตริงไม่นับ)
+// ALLOW: จุดที่พิสูจน์แล้วว่าข้อความเข้า "ถูกจำกัดรูป" — ผูกด้วย ไฟล์ + literal + จำนวน (เพิ่มในไฟล์เดิม = แดง · แก้แล้วต้องลบ = F16.2)
+console.log("\n── F16: ห้าม regex ตัดแท็ก/แกะวงเล็บมุม (n² บน `<` ที่ไม่ปิด) ──");
+{
+  const { findTagStripRegex, F16_SELF_TEST } = await import("./lib/tag-strip-scan.mjs");
+  const ALLOW: { file: string; text: string; count: number; why: string }[] = [
+    // htmlToText: regex นี้เห็นแต่ผลของ sanitizeHtml — `<` ทุกตัวในผลเป็นแท็กที่ engine สร้างใหม่และปิดเอง (`<` ดิบถูก escape เป็น &lt;)
+    //   ⇒ แต่ละจุดเริ่มวิ่งแค่ถึง `>` ของแท็กตัวเอง (probe-cf6-linear CTL.htmlToText: `<`×80 000 ราว 6 ms เชิงเส้น)
+    { file: "src/lib/core/sanitize.ts", text: "/<[^>]*>/g", count: 1, why: "engine output only" },
+  ];
+  const selfMiss = Object.entries(F16_SELF_TEST.mustHit).filter(([, src]) => findTagStripRegex(src).length !== 1).map(([k]) => k);
+  const selfFalse = Object.entries(F16_SELF_TEST.mustNotHit).filter(([, src]) => findTagStripRegex(src).length !== 0).map(([k]) => k);
+  chk("F16.0", "ตัวสแกนจับครบทุกรูป (`[^>]*` · `[^>]+` · `<ชื่อ[^>]*>` · `<img[^>]+` · กลุ่ม `<([^>]*)>` · `<.*?>` · `<[\\s\\S]*?>` · `new RegExp`/`RegExp()` · `<a\\s+[^>]*` · `</…` · `<!…` · `<[a-z]…` · `<\\w+…` · `<(?:p|div)…` · `<\\S+`) และไม่จับคอมเมนต์/สตริง/เทมเพลต/`[^<>]*`/แท็กตายตัว/lookbehind",
+    selfMiss.length === 0 && selfFalse.length === 0, `ไม่จับ: ${selfMiss.join(", ") || "-"} · จับผิด: ${selfFalse.join(", ") || "-"}`);
+  const bad: string[] = [];
+  const seen = new Map<string, number>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.(tsx?|mts)$/.test(f) && !f.endsWith(".d.ts"))) {
+    const r = rel(p);
+    for (const h of findTagStripRegex(readFileSync(p, "utf8"), r)) {
+      const a = ALLOW.find((x) => x.file === r && x.text === h.text);
+      if (a) {
+        const k = `${a.file}::${a.text}`;
+        seen.set(k, (seen.get(k) ?? 0) + 1);
+        if ((seen.get(k) ?? 0) > a.count) bad.push(`${r}:${h.line} ${h.text} (เกินจำนวนที่อนุญาต)`);
+      } else bad.push(`${r}:${h.line} ${h.text}`);
+    }
+  }
+  chk("F16.1", "ไม่มี regex ตัดแท็ก/แกะวงเล็บมุมใน src/ (ยกเว้นจุดที่พิสูจน์ว่าข้อความเข้าถูกจำกัดรูป — ผูก ไฟล์ + literal + จำนวน)", bad.length === 0,
+    bad.length ? `ใช้ core/linear-text.ts · core/inbound-address.ts หรือ htmlToText แทน: ${bad.join(" · ")}` : "ครบ");
+  const healed = ALLOW.filter((a) => (seen.get(`${a.file}::${a.text}`) ?? 0) < a.count).map((a) => `${a.file} «${a.text}»`);
+  chk("F16.2", "รายการอนุญาต (ALLOW) ไม่มีของที่หายไปแล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", healed.length === 0, `ไม่พบแล้วแต่ยังอยู่ในรายการ: ${healed.join(" · ")}`);
+}
+
 // ─────────────────── F13: ทะเบียน API (บัญชี + บอร์ดงาน) ───────────────────
 // A4 ทำให้ "ทะเบียน op" เป็นแหล่งความจริงเดียวของ REST + OpenAPI + คู่มือ + สกิล AI
 // ด่านนี้กันของ 3 อย่างที่พังเงียบเป็นประจำเวลาเพิ่ม endpoint ใหม่:
