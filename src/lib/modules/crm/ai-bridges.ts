@@ -204,7 +204,9 @@ export async function atRiskDeals(ctx: AiBridgeCtx, actor: Actor, input: AtRiskI
     orderBy: [{ expectedCloseAt: "asc" }, { id: "asc" }],
     take: 500,
   });
-  const lateCut = now.getTime() + AT_RISK_LATE_DAYS * DAY_MS;
+  // CRM C5.5 ▸ (fix3b · F5) "ปิดภายใน 7 วัน" = วันไทยของวันปิด ≤ วันไทยของวันนี้ + 7 (เดิมเทียบขณะ `expectedCloseAt <= now + 7 วัน` ⇒ ดีลที่ปิดวันที่
+  //   วันนี้+7 เข้า/ออกเหตุผลนี้ตอน 07:00 น.) — วันปิดเก็บเป็นเที่ยงคืน UTC ของวันไทย จึงอ่านด้วย `dealDayKey` แบบเดียวกับ CLOSE_OVERDUE ◂
+  const lateKey = thaiDayKey(now.getTime() + AT_RISK_LATE_DAYS * DAY_MS);
   const todayKey = thaiToday(now); // CRM C5.5 ▸ fix3a H2b-3 ◂
   const risky = rows
     .map((d) => {
@@ -215,7 +217,7 @@ export async function atRiskDeals(ctx: AiBridgeCtx, actor: Actor, input: AtRiskI
       //   (เดิมเทียบขณะ ⇒ ดีลที่ปิด "วันนี้" ถูกติด "เลยวันคาดว่าจะปิด" ตั้งแต่ 07:00 น.) ◂
       if (d.expectedCloseAt && (dealDayKey(d.expectedCloseAt) ?? "") < todayKey) reasons.push("CLOSE_OVERDUE");
       if (!d.nextActivityAt || d.nextActivityAt.getTime() < now.getTime()) reasons.push("NO_NEXT_ACTIVITY");
-      if (d.forecastCategory === "PIPELINE" && d.expectedCloseAt && d.expectedCloseAt.getTime() <= lateCut) reasons.push("PIPELINE_LATE_MONTH");
+      if (d.forecastCategory === "PIPELINE" && d.expectedCloseAt && (dealDayKey(d.expectedCloseAt) ?? "") <= lateKey) reasons.push("PIPELINE_LATE_MONTH");
       return { d, reasons };
     })
     .filter((x) => x.reasons.length > 0);

@@ -111,6 +111,7 @@ import {
   CRM_EMAIL_BODY_TOO_LONG_MSG, // CRM C4.4-fix2 r2 ▸ SF-1 ◂
   crmEmailBodyTooLong,
   type CrmTextPlaceholders,
+  emailRoutingUnverified, // CRM C5.5-fix3b ◂
 } from "./emails-shared";
 import { renderKbTokens } from "./kb-tokens"; // CRM C3.4 ◂
 import "./emails-job";
@@ -2868,7 +2869,7 @@ export async function getThread(ctx: EmailsCtx, actor: MemberActor, threadKey: s
       repliedAt: r.repliedAt ? r.repliedAt.toISOString() : null,
       matchedBy: r.matchedBy,
       purged: !!r.purgedAt,
-      unverifiedFrom: isObj(r.routing) && (r.routing.unverifiedFrom === true || r.routing.unverifiedShopFrom === true), // CRM C5.5-fix2 ◂
+      unverifiedFrom: emailRoutingUnverified(r.routing), // CRM C5.5-fix2 (ตัวอ่านร่วม fix3b R2b-3) ◂
     })),
   };
 }

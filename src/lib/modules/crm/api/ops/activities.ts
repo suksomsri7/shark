@@ -18,7 +18,7 @@ const list = defineCrmOp({
   path: "/activities",
   kind: "read",
   action: "crm.activity.read",
-  summary: "List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range.",
+  summary: "List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. An EMAIL item with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged).",
   label: "รายการกิจกรรม",
   input: z
     .object({

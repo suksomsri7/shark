@@ -88,6 +88,12 @@ export function ActivityRow({
             <span className="rounded-md border px-1.5 text-[11px]">{ACTIVITY_TYPE_LABEL[item.type]}</span>
             {item.pinned && <span className="text-[11px]" style={{ color: "var(--color-accent)" }}>ปักหมุด</span>}
             <span className="min-w-0 break-words font-medium">{item.title}</span>
+            {/* CRM C5.5-fix3b ▸ รีวิว R2b-3: ป้ายเดียวกับหน้าเธรด/กล่องจดหมาย — จดหมายขาเข้าฉบับนี้ระบบยืนยันไม่ได้ว่ามาจากที่อยู่ที่แสดงจริง ◂ */}
+            {item.unverifiedFrom && (
+              <span className="shrink-0 rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                ไม่ยืนยันผู้ส่ง
+              </span>
+            )}
           </span>
           <span className="text-xs text-[color:var(--color-muted)]">
             {when(item)}

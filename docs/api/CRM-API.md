@@ -111,7 +111,7 @@ Query:
 | `contacts.import.start` | `POST /contacts/import` | write | `crm.contact.import` | Import up to 5,000 contact rows: rows are objects of column -> text, mapping says which column feeds which field. |
 | `contacts.export` | `POST /contacts/export` | **danger** | `crm.contact.export` | Export the contacts this key can see as CSV text (formula cells neutralised). Needs confirm: true and a reason. |
 | `contacts.byParty` | `GET /contacts/by-party/{partyId}` | read | `crm.contact.read` | The contact card linked to a shared customer identity (Party id), or null when this key cannot see one. |
-| `contacts.get` | `GET /contacts/{id}` | read | `crm.contact.read` | One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. |
+| `contacts.get` | `GET /contacts/{id}` | read | `crm.contact.read` | One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). |
 | `contacts.create` | `POST /contacts` | write | `crm.contact.create` | Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. |
 | `contacts.update` | `PATCH /contacts/{id}` | write | `crm.contact.update` | Change a contact's details or custom fields. moveOpenDeals also moves the open deals when the main company changes. |
 | `contacts.setLeadStatus` | `PUT /contacts/{id}/lead-status` | write | `crm.contact.update` | Set the lead status (NEW, CONTACTED, QUALIFIED, UNQUALIFIED, NURTURE). |
@@ -210,7 +210,7 @@ The contact card linked to a shared customer identity (Party id), or null when t
 
 #### `GET /contacts/{id}` — contacts.get
 
-One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. (ผู้ติดต่อ 360) AI tool: `crm_contact_360`.
+One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). (ผู้ติดต่อ 360) AI tool: `crm_contact_360`.
 
 #### `POST /contacts` — contacts.create
 
@@ -362,7 +362,7 @@ Query:
 | --- | --- | --- | --- | --- |
 | `companies.list` | `GET /companies` | read | `crm.company.read` | List the companies this key can see, with filters and cursor paging. |
 | `companies.duplicates.list` | `GET /companies/duplicates` | read | `crm.company.merge` | Pairs of companies that look like the same business (tax id, e-mail domain or name). |
-| `companies.get` | `GET /companies/{id}` | read | `crm.company.read` | One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. |
+| `companies.get` | `GET /companies/{id}` | read | `crm.company.read` | One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). |
 | `companies.create` | `POST /companies` | write | `crm.company.create` | Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. |
 | `companies.update` | `PATCH /companies/{id}` | write | `crm.company.update` | Change a company's details or custom fields. A tax id that belongs to another company fails with 409. |
 | `companies.setOwner` | `PUT /companies/{id}/owner` | write | `crm.company.update` | Give the company to another owner (a user of this shop), or null for no owner. |
@@ -402,7 +402,7 @@ Query:
 
 #### `GET /companies/{id}` — companies.get
 
-One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. (บริษัท 360) AI tool: `crm_company_360`.
+One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). (บริษัท 360) AI tool: `crm_company_360`.
 
 #### `POST /companies` — companies.create
 
@@ -725,7 +725,7 @@ Query:
 
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
-| `activities.list` | `GET /activities` | read | `crm.activity.read` | List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. |
+| `activities.list` | `GET /activities` | read | `crm.activity.read` | List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. An EMAIL item with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). |
 | `calendar.list` | `GET /calendar` | read | `crm.activity.read` | Activities whose start (or due) time falls in [from, to), for a calendar view. mine=true limits to the key holder's own. The answer also carries `appointments` (read-only bookings, clinic visits and school classes of the same Party) and `appointmentsTruncated`; for API keys `appointments` is always empty - those rows belong to the booking, clinic and school modules, so ask those modules with their own key. |
 | `activities.get` | `GET /activities/{id}` | read | `crm.activity.read` | One activity. |
 | `activities.log` | `POST /activities` | write | `crm.activity.create` | Log an activity on a contact, company, deal or custom record (call, meeting, task, note, ...), optionally with a follow-up task. |
@@ -737,7 +737,7 @@ Query:
 
 #### `GET /activities` — activities.list
 
-List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. (รายการกิจกรรม)
+List activities (calls, meetings, tasks, notes, ...) this key can see, filtered by status, type, record or date range. An EMAIL item with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). (รายการกิจกรรม)
 
 Query:
 
