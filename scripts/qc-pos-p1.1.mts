@@ -14,6 +14,9 @@
 //        · ShopProduct: POS ตัวแรกของร้านแบบ shop/service.ts:217) · ไม่มี POS = ข้าม + นับ skippedNoPosSystem · backfill พิมพ์ JSON_SUMMARY
 // 🔃 รอบ 4 (ledger/pos-briefs/pos-brief-P1.1a-R4.md E1–E5): S3.40–S3.45 ใหม่ · S3.28 ขยาย · S3.29 behavioural (ดัก SQL) · S3.30 ตรงเป๊ะ
 //    (ส่วนเพิ่มเทียบ dry-run ฐานก่อนสร้าง fixture) · S3.22/23/31/32 อ่านชุด migration _pos_v2_a + _pos_v2_a_links (ORACLE-EDIT รอรับรอง)
+// 🔄 รอบ 5 (ledger/pos-briefs/pos-brief-P1.1a-R5.md F1–F8): S3.46–S3.59 ใหม่ (เรียกผ่าน facade `@/lib/modules/pos`.catalog · restore ตรวจแบบ
+//    typeof ก่อนเรียก) · S1.21–S1.25 ต้องมีการเขียนจริงก่อน (created/updated > 0) · S1.38 ตรวจค่า before/after · S3.11 + behavioural (ดัก SQL)
+//    ชื่อรับรองรอบ 5: restore · archived (ผลของ ensureForInvItem) · code BUSY · INTERNAL · audit pos.product.restore · fitness F15.6
 // ชื่อที่เอกสารไม่ได้กำหนด (ผู้คุมงานต้องรับรองก่อน builder เริ่ม) → ledger/wo-notes/pos-P0.3-catalog.md "Names I had to invent"
 // requires: pos-seed
 //
@@ -34,7 +37,8 @@
 //   7) 🔴 รันคนเดียว: ระหว่างรัน ข้อสอบนี้ต้องเป็นผู้เขียนรายเดียวของร้าน QC ของ POS (ผู้คุมงานจัดคิวผ่าน gate lock ของ QC4)
 //      — snapshot/checksum ก่อน-หลัง จะแดงหลอกถ้ามีคนอื่นเขียนร้านเดียวกันพร้อมกัน
 // สัญญาที่ผู้คุมงานรับรอง 1 ต.ค. (รอบ ratification): ปฏิเสธ = throw error ที่มี .code คงที่ (NOT_FOUND · PERMISSION_DENIED ·
-//   VALIDATION · CONFLICT — ข้ามร้าน/ข้ามสาขา/ระบบผิด = NOT_FOUND แบบ 404 ตรงกับข้อสอบหน้าขาย P1.3) · listForUnit คืน {items, nextCursor}
+//   VALIDATION · CONFLICT · [R5] BUSY (ล็อกร้านไม่ว่าง ลองใหม่ได้) · INTERNAL (error ไม่คาดคิด · ต้นฉบับใน cause) — ข้ามร้าน/ข้ามสาขา/ระบบผิด
+//   = NOT_FOUND แบบ 404 ตรงกับข้อสอบหน้าขาย P1.3) · listForUnit คืน {items, nextCursor}
 //   เสมอ · createCategory(ctx, {name, nameEn?, unitId?, sortOrder?}) · ความพร้อมขายเปลี่ยนผ่าน updateProduct(…, {availability:{[unitId]: bool}})
 //   · เมนูทุกตัว = PosProduct MENU ของตัวเอง invItemId null ราคา basePrice · MenuItem.invItemId → RecipeLine(productId เมนู, invItemId, qty 1)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,11 +76,11 @@ const CHECKS: readonly Def[] = [
   D("S1.20", "-", "InvItem ที่เก็บถาวร → PosProduct archivedAt ไม่ว่าง และไม่โผล่ใน listForUnit"),
   D("X1.1", "X1", "backfill รอบสอง: created ทุกตัว = 0 · updated ทุกตัว = 0 · ตารางใหม่ checksum เท่าเดิม"),
   D("X6.1", "X6", "backfill 2 โปรเซสพร้อมกัน (connection แยก) × 3 รอบ บนแหล่งใหม่ทุกรอบ → ต่อแหล่ง 1 แถว ไม่ซ้ำ · ทั้งคู่ exit 0"),
-  D("S1.21", "-", "จอเดิม: เมนูร้านอาหาร (menu.listItems · orderingMenu · storefront.publicMenu) เหมือนก่อน backfill"),
-  D("S1.22", "-", "จอเดิม: หน้าร้านเว็บ (shop.listProducts activeOnly) เหมือนก่อน backfill"),
-  D("S1.23", "-", "จอเดิม: register.posCatalog เหมือนก่อน backfill ทุกรายการ (ราคา/ชื่อ/บาร์โค้ด · ไม่มีรายการเพิ่ม)"),
-  D("S1.24", "X4", "createSale ด้วย id เดิม (itemId=InvItem) ยังขายได้ และ subtotal/discount/vat/grand + บรรทัด เท่าก่อน backfill เป๊ะ"),
-  D("S1.25", "-", "rollback ระหว่างทาง: แถวเดิมของตารางเก่า checksum เท่าก่อน backfill (ยกเว้น updatedAt/คอลัมน์เชื่อมใหม่) · ไม่มีแถวเพิ่ม/หายในตารางเก่า"),
+  D("S1.21", "-", "จอเดิม: เมนูร้านอาหาร (menu.listItems · orderingMenu · storefront.publicMenu) เหมือนก่อน backfill [R5: backfill ต้องเขียนจริงก่อน — created.posProduct + ผูกเมนู/เว็บร้าน > 0]"),
+  D("S1.22", "-", "จอเดิม: หน้าร้านเว็บ (shop.listProducts activeOnly) เหมือนก่อน backfill [R5: backfill ต้องเขียนจริงก่อน]"),
+  D("S1.23", "-", "จอเดิม: register.posCatalog เหมือนก่อน backfill ทุกรายการ (ราคา/ชื่อ/บาร์โค้ด · ไม่มีรายการเพิ่ม) [R5: backfill ต้องเขียนจริงก่อน]"),
+  D("S1.24", "X4", "createSale ด้วย id เดิม (itemId=InvItem) ยังขายได้ และ subtotal/discount/vat/grand + บรรทัด เท่าก่อน backfill เป๊ะ [R5: backfill ต้องเขียนจริงก่อน]"),
+  D("S1.25", "-", "rollback ระหว่างทาง: แถวเดิมของตารางเก่า checksum เท่าก่อน backfill (ยกเว้น updatedAt/คอลัมน์เชื่อมใหม่) · ไม่มีแถวเพิ่ม/หายในตารางเก่า [R5: backfill ต้องเขียนจริงก่อน]"),
   // ── S1 · catalog.ts API ──
   D("S1.26", "-", "catalog.ts export ครบ 7 ฟังก์ชัน (createProduct · updateProduct · setPrice · archive · listForUnit · byBarcode · ensureForInvItem) และ facade pos/index.ts ส่งต่อครบ"),
   D("S1.27", "X4", "createProduct ถูกต้อง → PosProduct systemId = POS ใน ctx · ราคา/VAT ตรงสตางค์ · invItemId null หรือ InvItem ในคลังที่ผูก POS ของร้านเดียวกัน"),
@@ -92,7 +96,7 @@ const CHECKS: readonly Def[] = [
   D("S1.39", "-", "createCategory(ctx, {name, nameEn?, unitId?, sortOrder?}) → PosCategory ระบบ POS นี้ · ชื่อว่าง = VALIDATION · ชื่อซ้ำ (ระบบ+สาขาเดียวกัน) = CONFLICT"),
   D("S1.40", "-", "createProduct ไม่ส่ง kind → PRODUCT · updateProduct availability {[unitId]: false} → ยังอยู่ใน listForUnit สาขานั้นแต่ availability[unit]=false · สาขาอื่นไม่กระทบ · เปิดคืนได้"),
   D("S1.41", "-", "trackStock tri-state [C2]: updateProduct({trackStock}) true/false/null วนได้ · คอลัมน์เก็บค่าที่ตั้ง (null = AUTO)"),
-  D("S1.38", "-", "ทุกการเขียน (createProduct · setPrice · archive) มีแถว AuditLog targetType PosProduct · targetId · actorId = ผู้กด"),
+  D("S1.38", "-", "ทุกการเขียน (createProduct · setPrice · archive) มีแถว AuditLog targetType PosProduct · targetId · actorId = ผู้กด · [R5] ค่า before/after: create ∅→ชื่อ/4250 · update ชื่อเดิม→ใหม่ · ราคา 4250→3999→0→3999 · archive null→เวลาที่เก็บจริง (แถวเดียว)"),
   // ── X · P1.1a ──
   D("X2.1", "X2", "ข้ามร้าน: updateProduct/setPrice/archive ด้วย productId ของอีกร้าน · ctx ที่ systemId เป็น POS ของอีกร้าน → throw NOT_FOUND และแถวไม่เปลี่ยน"),
   D("X2.2", "X2", "ข้ามร้าน: ensureForInvItem(InvItem ร้านอื่น) = NOT_FOUND · byBarcode บาร์โค้ดร้านอื่น = null · listForUnit(สาขาร้านอื่น) = NOT_FOUND · createCategory unitId ร้านอื่น = NOT_FOUND · ไม่มี id ร้านอื่นรั่ว"),
@@ -145,7 +149,7 @@ const CHECKS: readonly Def[] = [
   D("S3.8", "-", "C4 หมวด: สินค้าสาขาสีลม + หมวดของสาขาอารีย์ = VALIDATION · หมวดทุกสาขาใช้ได้"),
   D("S3.9", "-", "C5 byBarcode คืน {items} 0..n · บาร์โค้ดซ้ำใน legacy = 2 รายการ ลำดับคงที่ (เรียกสองครั้งได้ลำดับเดิม)"),
   D("S3.10", "-", "C6 listForUnit ไม่ส่ง limit = 100 + nextCursor · limit 1000 = ตัดเหลือ 500 ไม่ error · เดินหน้า 100 ครบทุกแถวไม่ซ้ำ"),
-  D("S3.11", "-", "C6 (static) ค้นด้วยคำสั่งเดียว: listForUnit ไม่มี take: 2000 / invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว (ใช้ Map)"),
+  D("S3.11", "-", "C6 (static) ค้นด้วยคำสั่งเดียว: listForUnit ไม่มี take: 2000 / invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว (ใช้ Map) · [R5 behavioural] client ดัก SQL: หน้า 500 แถว ≤ 20 คำสั่ง และ ≤ หน้า 5 แถว + 2"),
   D("S3.12", "X4", "C7 ทีละขั้นด้วย fixture: salePrice>0 ชนะ posPrice · posPrice ใช้เมื่อ posEnabled · posEnabled=false ไม่นับ · AccountProduct เก็บถาวร/สมุดบัญชีอื่น/ผูกครึ่งทาง (AP.invItemId) ไม่นับ · salePrice 0 + ต้นทุน>0 = null · 0 + ต้นทุน 0 = 0 · ราคาติดลบ = null"),
   D("S3.13", "-", "C7 ตัวนับใน dry-run: soldAtCostToday (+ ตัวอย่างชื่อ) · zeroPriceProduct · zeroPriceMenu · zeroPriceWeb · invalidLegacyPrice · posPriceDiffersFromSalePrice"),
   D("S3.14", "X8", "C8 VAT: สมุดบัญชีที่ผูก POS ไม่จด VAT → vatRateBp null · จด VAT → ค่าจาก AccountProduct"),
@@ -182,6 +186,21 @@ const CHECKS: readonly Def[] = [
   D("S3.43", "-", "E2 ไฟล์แรก (_pos_v2_a) ไม่มี ALTER TABLE บนตารางเดิม 5 ตัว (MenuItem · ShopProduct · ShopOrderLine · PosSaleLine · RestaurantOrderItem) และไม่เพิ่มคอลัมน์เชื่อม"),
   D("S3.44", "-", "E3 ตัวนับ catalogPriceDiffersFromTill (ราคาแคตตาล็อกไม่ว่าง ≠ ราคาลิ้นชักวันนี้) ส่วนเพิ่ม = fixture 4 ตัวพอดี · ตัวอย่างมีทั้งสองราคา: posPrice 3000 vs ต้นทุน 2000 · บริการ AP 12000 vs 0 · posPrice 4400 vs 0 · บริการ AP 12000 vs คลัง 15000 · ราคาเท่ากันไม่ถูกนับ"),
   D("S3.45", "X12", "D5/E5 (behavioural) ค่าทุกตัวของ facade pos/index.ts และ facade.catalog ไม่มี symbol (ตัวบ่งชี้) และไม่มีฟังก์ชัน backfillCatalog · facade มี checkCatalogWrite"),
+  // ── S3.46+ · ROUND 5 (brief P1.1a-R5 · F1–F8) — ผ่าน facade `@/lib/modules/pos`.catalog ──
+  D("S3.46", "-", "F1 restore: archive → หายจาก list → facade.catalog.restore(ctx, id) → กลับมาใน list · กดซ้ำ OK ไม่มี audit แถวที่สอง · แถวไม่เคยเก็บถาวร restore = OK ไม่มี audit · audit pos.product.restore before.archivedAt ไม่ว่าง → after.archivedAt null · actorId = ผู้กด"),
+  D("S3.47", "X3", "F1 restore ขอบเขตเดียวกับ archive: ผู้จัดการสาขา A กับแถวทุกสาขาที่ขายที่ B = PERMISSION_DENIED (แถวยังเก็บถาวร) · แถวที่ขายเฉพาะ A ได้ (คู่บวก) · ร้านอื่น = NOT_FOUND · id ไม่มีจริง = NOT_FOUND"),
+  D("S3.48", "-", "F1 ensureForInvItem คืน {id, created, archived} — แถวปกติ archived=false · แถวที่เก็บถาวร archived=true id เดิม created=false และไม่ปลดเก็บถาวรเอง"),
+  D("S3.49", "-", "F1 createProduct({invItemId}) ทับแถวแคตตาล็อกที่เก็บถาวร = CONFLICT · ข้อความบอกว่าเก็บถาวร/คืนได้ (มีคำว่า เก็บถาวร) · ไม่มี id ของแถวในข้อความ · ไม่มีแถวเพิ่ม"),
+  D("S3.50", "-", "F1 แถวเก็บถาวร: setPrice + updateProduct ยังทำได้ (ไม่ปฏิเสธ) · restore แล้วแถวมีราคา/ชื่ออังกฤษใหม่ และ list เห็นราคานั้น"),
+  D("S3.51", "-", "F1 restore ที่บาร์โค้ดชนแถวที่ยังขายอยู่ = CONFLICT (throw CatalogError ไม่ใช่ P2002 ดิบ) · แถวยังเก็บถาวร"),
+  D("S3.52", "X4", "F2 ตัวเขียน: NUL (\\u0000) / surrogate เดี่ยว ใน name · nameEn · sku · barcode (createProduct) · name/nameEn (updateProduct) · ชื่อหมวด (createCategory) = VALIDATION ทุกตัว · ไม่มีแถวเพิ่ม · แถวเดิมไม่เปลี่ยน"),
+  D("S3.53", "-", "F2 ตัวอ่าน: listForUnit q / cursor ที่มี NUL หรือ surrogate เดี่ยว = VALIDATION · byBarcode รหัสที่มี NUL / surrogate เดี่ยว = {items: []} (ไม่ throw)"),
+  D("S3.54", "X12", "F2 ทุกการเรียกของ S3.52/S3.53 + id/สาขา/ctx ที่มี NUL: error ที่ throw เป็น CatalogError ที่ code ∈ ชุดรับรอง (NOT_FOUND · PERMISSION_DENIED · VALIDATION · CONFLICT · BUSY · INTERNAL) ไม่มี path (/root/ · src/lib/) · error ไม่คาดคิดจาก client = INTERNAL ข้อความไทยคงที่ เก็บต้นฉบับใน cause"),
+  D("S3.55", "X6", "F3 อีก connection ถือ pg_advisory_xact_lock(hashtext('pos-catalog:'||tenant)) 8 วิ: createProduct(บาร์โค้ด) · createProduct(invItemId) · ensureForInvItem = BUSY ภายใน < 7 วิ (ข้อความไทย) ไม่เขียนอะไร · ปล่อยล็อกแล้วเรียกเดิมสำเร็จ"),
+  D("S3.56", "-", "F4 เว็บร้าน 2 แถวแชร์ InvItem เดียวนอกคลังของ POS แรก (ราคา 0 และราคาผิดรูป→null): นับแถวแคตตาล็อกครั้งเดียว — zeroPriceWeb +1 · shopOwnRowInvItemOutsideFirstPos +2 · Σ ตัวนับราคา null ส่วนเพิ่ม = แถวราคา null ที่สร้าง (3)"),
+  D("S3.57", "X2", "F6 checkCatalogWrite เจ้าของ + invItemId ของร้านอื่น / คลังที่ไม่ขายผ่าน POS นี้ / ไม่มีจริง = \"NOT_FOUND\" (แถวทุกสาขา + แถวสาขา) · InvItem ของคลัง POS นี้ = \"OK\" (คู่บวก)"),
+  D("S3.58", "X4", "F6 อ่านเฉพาะคีย์ของตัวเอง (Object.hasOwn): patch ที่ unitId มาจาก prototype ไม่ย้ายแถว · create ที่ unitId มาจาก prototype ไม่ลงสาขานั้น · คีย์แปลกของตัวเอง = VALIDATION (create + update) · patch/input null หรือ array = VALIDATION"),
+  D("S3.59", "X12", "F5 scripts/fitness-pos.mts ลงทะเบียนกฎ F15.6 (src/** ห้าม import จาก scripts/**) — static (หลักฐานลบเป็นของ builder)"),
   // ── ท้ายรัน ──
   D("S1.36", "X5", "rollback ปลายทาง: ลบแถวตารางใหม่ที่รันนี้สร้าง + คืนคอลัมน์เชื่อม + ลบ fixtures → ตารางเดิม (จำนวน + checksum) และตารางใหม่ เท่าก่อนรัน · ร้าน QC กลับสภาพเดิม"),
 ];
@@ -347,6 +366,17 @@ async function attempt(fn: () => Promise<Any>): Promise<Try> {
 }
 /** ปฏิเสธถูกสัญญา = throw + code ตรง */
 const refused = (r: Try, code: string) => !r.ok && r.threw === true && r.code === code;
+/** R5: เหมือน attempt แต่เก็บ error ดิบ (ตรวจข้อความ/คลาส/cause) + เวลา */
+type TryX = Try & { e?: unknown; ms: number };
+async function attemptX(fn: () => Promise<Any>): Promise<TryX> {
+  const t = Date.now();
+  let raw: unknown;
+  const r = await attempt(async () => { try { return await fn(); } catch (e) { raw = e; throw e; } });
+  return { ...r, e: raw, ms: Date.now() - t };
+}
+/** R5 (F2/F3): ชุด code ที่รับรองแล้ว — error ที่หลุดจาก facade ต้องอยู่ในชุดนี้ */
+const RATIFIED_CODES = new Set(["NOT_FOUND", "PERMISSION_DENIED", "VALIDATION", "CONFLICT", "BUSY", "INTERNAL"]);
+const PATH_RE = /\/root\/|src\/lib\//;
 const codeOf = (r: Try) => (r.ok ? "รับ" : r.threw ? (r.code ?? "throw ไม่มี code") : "ok:false");
 const idOf = (v: Any): string | undefined => (typeof v === "string" ? v : v?.id ?? v?.productId ?? v?.product?.id ?? undefined);
 const listOf = (v: Any): Any[] => (Array.isArray(v) ? v : Array.isArray(v?.items) ? v.items : Array.isArray(v?.products) ? v.products : []);
@@ -1090,13 +1120,17 @@ try {
     if (!before) throw new Error("ไม่มีภาพก่อน backfill");
     const after: Any = await screens();
     const eq = (k: string) => hashOf(before[k]) === hashOf(after[k]);
-    chk("S1.21", eq("menuList") && eq("ordering") && eq("publicMenu"), "เหมือนเดิม", `listItems ${eq("menuList")} · orderingMenu ${eq("ordering")} · publicMenu ${eq("publicMenu")}`);
-    chk("S1.22", eq("shopList"), "เหมือนเดิม", eq("shopList") ? "เหมือน" : "ต่าง");
-    chk("S1.23", eq("regCf") && eq("regRs"), "เหมือนเดิมทุกรายการ", `ร้านกาแฟ ${eq("regCf")} (${before.regCf.length}→${after.regCf.length}) · ร้านอาหาร ${eq("regRs")} (${before.regRs.length}→${after.regRs.length})`);
+    // R5 (F8): "เหมือนเดิม" มีความหมายเฉพาะเมื่อ backfill เขียนจริง — created.posProduct + ผูกคอลัมน์เชื่อมเมนู/เว็บร้าน > 0 ก่อน (fixture ของรันนี้รับประกัน)
+    const rc = createdOf(realSummary); const ru = updatedOf(realSummary);
+    const wrote = (rc.posProduct ?? 0) > 0 && (ru.menuItem ?? 0) > 0 && (ru.shopProduct ?? 0) > 0;
+    const wroteTxt = `backfill เขียน posProduct ${rc.posProduct ?? "?"} · menuItem ${ru.menuItem ?? "?"} · shopProduct ${ru.shopProduct ?? "?"}${wrote ? "" : " ✗ (ไม่ได้เขียน — ข้อนี้พิสูจน์อะไรไม่ได้)"}`;
+    chk("S1.21", wrote && eq("menuList") && eq("ordering") && eq("publicMenu"), "backfill เขียนจริง · เหมือนเดิม", `${wroteTxt} · listItems ${eq("menuList")} · orderingMenu ${eq("ordering")} · publicMenu ${eq("publicMenu")}`);
+    chk("S1.22", wrote && eq("shopList"), "backfill เขียนจริง · เหมือนเดิม", `${wroteTxt} · ${eq("shopList") ? "เหมือน" : "ต่าง"}`);
+    chk("S1.23", wrote && eq("regCf") && eq("regRs"), "backfill เขียนจริง · เหมือนเดิมทุกรายการ", `${wroteTxt} · ร้านกาแฟ ${eq("regCf")} (${before.regCf.length}→${after.regCf.length}) · ร้านอาหาร ${eq("regRs")} (${before.regRs.length}→${after.regRs.length})`);
     const saleAfter = await saleProbe();
-    chk("S1.24", !!saleBefore && hashOf(saleBefore) === hashOf(saleAfter), JSON.stringify(saleBefore), JSON.stringify(saleAfter));
+    chk("S1.24", wrote && !!saleBefore && hashOf(saleBefore) === hashOf(saleAfter), `backfill เขียนจริง · ${JSON.stringify(saleBefore)}`, `${wroteTxt} · ${JSON.stringify(saleAfter)}`);
     const d = diffSnap(legacyPre, await snapLegacy());
-    chk("S1.25", Object.keys(d).length === 0, "ตารางเดิมไม่ต่าง", diffText(d));
+    chk("S1.25", wrote && Object.keys(d).length === 0, "backfill เขียนจริง · ตารางเดิมไม่ต่าง", `${wroteTxt} · ${diffText(d)}`);
   });
 
   // ═══ X6.1 backfill 2 โปรเซสพร้อมกัน × 3 รอบ ═══
@@ -1119,8 +1153,37 @@ try {
     chk("X6.1", ok, "ทุกรอบ exit 0/0 · ต่อแหล่ง 1 แถว · +4 ต่อรอบ", notes.join(" · "));
   });
 
+  // ═══ S3.56 · R5 F4 ตัวนับของแถวแคตตาล็อกที่เว็บร้านหลายแถวใช้ร่วม (สถานะหลัง X6.1 = ทุกแหล่งผูกแล้ว ⇒ ส่วนเพิ่ม = fixture ของข้อนี้พอดี) ═══
+  await section("r5-counters", ["S3.56"], async () => {
+    const base = await runBackfill(["--dry-run"]);
+    if (base.code !== 0 || !base.summary) throw new Error(`dry-run ฐานล้ม: exit ${base.code} · ${tail(base.out)}`);
+    // InvItem 2 ตัวในคลัง X (ขายผ่าน POS สองคลังของ fixture เท่านั้น — นอกคลังของ POS แรก) · เว็บร้านสีลม 2 แถวต่อ InvItem
+    //   zero: ราคาเว็บ 0 ทั้งคู่ ⇒ แถวของเว็บร้านเองราคา 0 (zeroPriceWeb) · neg: ราคาเว็บ −100 ทั้งคู่ ⇒ ราคาผิดรูป → null (ตัวนับราคา null)
+    const zInv = await mkInv(cfT, fx.tInvX.id, "r5-shared-zero"); const nInv = await mkInv(cfT, fx.tInvX.id, "r5-shared-neg");
+    const sh = [await mkShop("r5-shared-zero-1", 0, zInv.id), await mkShop("r5-shared-zero-2", 0, zInv.id), await mkShop("r5-shared-neg-1", -100, nInv.id), await mkShop("r5-shared-neg-2", -100, nInv.id)];
+    const pre = new Set((await rowsOf("PosProduct", QC_TIDS)).map((p) => p.id));
+    const real = await runBackfill([]);
+    if (real.code !== 0 || !real.summary) throw new Error(`backfill ล้ม: exit ${real.code} · ${tail(real.out)}`);
+    const made = (await rowsOf("PosProduct", QC_TIDS)).filter((p) => !pre.has(p.id));
+    const madeNull = made.filter((p) => p.basePriceSatang === null).length;
+    const c = (s: Any, k: string): number => { const v = s?.counts?.[k] ?? s?.[k]; return typeof v === "number" ? v : Number.NaN; };
+    const dl = (k: string) => c(real.summary, k) - c(base.summary, k);
+    const PNK = ["soldAtCostToday", "apIgnoredButTillPriced", "invalidLegacyPrice", "priceNotSetOther"];
+    const sumNull = PNK.reduce((s, k) => s + dl(k), 0);
+    const links = await Promise.all(sh.map((x) => linkOf("ShopProduct", x.id)));
+    const r356 = {
+      created4: made.length === 4,
+      linksShared: !!links[0] && links[0] === links[1] && !!links[2] && links[2] === links[3] && links[0] !== links[2],
+      zeroPriceWeb1: dl("zeroPriceWeb") === 1,
+      shopOwnRow2: dl("shopOwnRowInvItemOutsideFirstPos") === 2,
+      priceNullSum: sumNull === madeNull && madeNull === 3,
+    };
+    chk("S3.56", Object.values(r356).every(Boolean), "สร้าง 4 แถว (InvItem ×2 ใน POS สองคลัง + แถวเว็บร้าน ×2) · เว็บร้านคู่ละแถวเดียว · zeroPriceWeb +1 · shopOwnRowInvItemOutsideFirstPos +2 · Σ ตัวนับราคา null +3 = แถวราคา null ที่สร้าง 3",
+      `${Object.entries(r356).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")} · สร้าง ${made.length} (null ${madeNull}) · zeroPriceWeb +${dl("zeroPriceWeb")} · shopOwnRow +${dl("shopOwnRowInvItemOutsideFirstPos")} · ราคา null ${PNK.map((k) => `${k}+${dl(k)}`).join(" ")} (รวม ${sumNull})`);
+  });
+
   // ═══ S1.19–S1.35 + X2/X3/X6/X8 catalog.ts ═══
-  const catIds = ["S3.27", "S3.28", "S3.29", "S3.40", "S3.41", "S3.45", "S3.33", "S3.34", "S3.35", "S3.36", "S3.37", "S3.38", "S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6", "S3.7", "S3.8", "S3.9", "S3.10", "S3.11", "S3.14", "S3.18", "S3.19", "S3.20", "S3.21", "S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
+  const catIds = ["S3.46", "S3.47", "S3.48", "S3.49", "S3.50", "S3.51", "S3.52", "S3.53", "S3.54", "S3.55", "S3.57", "S3.58", "S3.59", "S3.27", "S3.28", "S3.29", "S3.40", "S3.41", "S3.45", "S3.33", "S3.34", "S3.35", "S3.36", "S3.37", "S3.38", "S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6", "S3.7", "S3.8", "S3.9", "S3.10", "S3.11", "S3.14", "S3.18", "S3.19", "S3.20", "S3.21", "S1.19", "S1.20", "S1.26", "S1.37", "S1.38", "S1.39", "S1.40", "S1.41", "S1.27", "S1.28", "S1.29", "S1.30", "S1.31", "S1.32", "S1.33", "S1.34", "S1.35", "X2.1", "X2.2", "X2.3", "X3.1", "X3.2", "X3.3", "X6.2", "X6.3", "X6.4", "X8.1"];
   await section("catalog", catIds, async () => {
     catalog = await load("@/lib/modules/pos/catalog");
     const FN = ["createProduct", "updateProduct", "setPrice", "archive", "listForUnit", "byBarcode", "ensureForInvItem", "createCategory"];
@@ -1248,8 +1311,22 @@ try {
     chk("S1.31", ar1.ok && ar2.ok && !!pa?.archivedAt && !afterList.has(pid), "soft · ไม่อยู่ใน list · กดซ้ำได้", `${ar1.ok ? "✓" : ar1.err} ${ar2.ok ? "✓" : ar2.err} · archivedAt ${pa?.archivedAt ? "✓" : "null"} · list ${afterList.has(pid)}`);
     const au = await auditOf(pid);
     const auActs = au.map((a) => a.action);
-    chk("S1.38", au.length >= 4 && au.every((a) => a.actorId === cfOwner.userId && /^pos\.product\./.test(a.action)) && auActs.some((a) => /creat/.test(a)) && auActs.some((a) => /price/i.test(a)) && auActs.some((a) => /archiv/.test(a)),
-      "≥4 แถว (create · update · price · archive) · actorId = เจ้าของ · action pos.product.*", `${au.length} แถว: ${[...new Set(auActs)].join(",") || "-"} · actor ${[...new Set(au.map((a) => a.actorId))].join(",") || "-"}`);
+    // R5 (F8): ค่า before/after ของทุกแถว — create (before ว่าง · after ชื่อ/ราคา 4250) · update (ชื่อเดิม → ชื่อใหม่) · price สาย 4250→3999→0→3999
+    //   (ค่าที่ถูกปฏิเสธไม่มีแถว) · archive แถวเดียว (archivedAt null → เวลาที่เก็บจริง)
+    const auv = await q<{ action: string; before: Any; after: Any }>(`select action, before, after from "AuditLog" where "tenantId" = $1 and "targetType" = 'PosProduct' and "targetId" = $2 and "createdAt" >= $3 order by "createdAt", id`, cfT, pid, t0);
+    const isoS = (v: unknown) => (v ? new Date(v as string).toISOString() : String(v));
+    const aCreate = auv.filter((a) => /creat/.test(a.action)); const aUpd = auv.filter((a) => /updat/.test(a.action));
+    const aPrice = auv.filter((a) => /price/i.test(a.action)); const aArch = auv.filter((a) => /archiv/.test(a.action));
+    const chain = aPrice.map((a) => `${a.before?.basePriceSatang}→${a.after?.basePriceSatang}`).join(",");
+    const s138v = {
+      create: aCreate.length === 1 && aCreate[0].before == null && aCreate[0].after?.name === `${TAG} สินค้าใหม่` && aCreate[0].after?.basePriceSatang === 4250,
+      update: aUpd.length >= 1 && aUpd[0].before?.name === `${TAG} สินค้าใหม่` && aUpd[0].after?.name === `${TAG} ชื่อใหม่` && aUpd[0].before?.nameEn === `${TAG} new` && aUpd[0].after?.nameEn === `${TAG} renamed`,
+      priceChain: chain === "4250→3999,3999→0,0→3999",
+      archive: aArch.length === 1 && aArch[0].before?.archivedAt === null && !!pa?.archivedAt && isoS(aArch[0].after?.archivedAt) === isoS(pa.archivedAt),
+    };
+    chk("S1.38", au.length >= 4 && au.every((a) => a.actorId === cfOwner.userId && /^pos\.product\./.test(a.action)) && auActs.some((a) => /creat/.test(a)) && auActs.some((a) => /price/i.test(a)) && auActs.some((a) => /archiv/.test(a)) && Object.values(s138v).every(Boolean),
+      "≥4 แถว (create · update · price · archive) · actorId = เจ้าของ · action pos.product.* · [R5] before/after: create ∅→4250 · update ชื่อเดิม→ใหม่ · ราคา 4250→3999,3999→0,0→3999 · archive null→เวลาจริง ×1",
+      `${au.length} แถว: ${[...new Set(auActs)].join(",") || "-"} · actor ${[...new Set(au.map((a) => a.actorId))].join(",") || "-"} · ${Object.entries(s138v).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")} · ราคา ${chain || "-"}`);
 
     // S1.39 createCategory
     const cat1 = await attempt(() => C.createCategory(ctxOwner, { name: `${TAG} หมวดทดสอบ`, nameEn: `${TAG} cat`, unitId: SILOM, sortOrder: 3 }));
@@ -1448,7 +1525,18 @@ try {
     const fnBody = (name: string) => { const i0 = catSrc.search(new RegExp(`(export\\s+)?(async\\s+)?function\\s+${name}\\b`)); if (i0 < 0) return ""; const i1 = catSrc.slice(i0 + 10).search(/\n(export\s+)?(async\s+)?function\s+/); return catSrc.slice(i0, i1 < 0 ? undefined : i0 + 10 + i1); };
     const lfb = fnBody("listForUnit"); const tvb = fnBody("toViews");
     const s311 = { noTake2000: !/take:\s*2000/.test(lfb), noPreQuery: !/invItem\.findMany/.test(lfb), viewsMap: !!tvb && !/\.filter\(\s*\(?\s*\w+\s*\)?\s*=>\s*\w+\.productId\s*===\s*p\.id/.test(tvb) };
-    chk("S3.11", !!lfb && Object.values(s311).every(Boolean), "ไม่มี take:2000 · ไม่มี invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว", Object.entries(s311).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" "));
+    // R5 (F8 · behavioural): นับคำสั่ง SQL ที่ถึง DB จริง (client ดัก $on("query") แบบ S3.29) — หน้า 500 แถว ≤ 20 คำสั่ง และไม่เกินหน้า 5 แถว + 2
+    //   (เผื่อคำสั่งมีเงื่อนไข: กลุ่มตัวเลือก · movement ของแถว AUTO) ⇒ ไม่มี N+1 ต่อแถว
+    const spy11 = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 2 }), log: [{ emit: "event", level: "query" }] });
+    clients.push(spy11);
+    const sql11: string[] = [];
+    spy11.$on("query", (e: Any) => sql11.push(String(e?.query ?? "")));
+    const count11 = async (limit: number) => { const i0 = sql11.length; const r = await attempt(() => C.listForUnit(ctxOwner, SILOM, { limit }, spy11)); await new Promise((res) => setTimeout(res, 50)); return { r, n: sql11.length - i0, rows: listOf(r.value).length }; };
+    const big11 = await count11(500); const small11 = await count11(5);
+    const s311b = { probe: big11.r.ok && small11.r.ok && big11.n > 0 && big11.rows === 500 && small11.rows === 5, max20: big11.n <= 20, flat: big11.n <= small11.n + 2 };
+    console.log(`  ℹ️  S3.11 คำสั่ง SQL: หน้า ${big11.rows} แถว = ${big11.n} · หน้า ${small11.rows} แถว = ${small11.n}`);
+    chk("S3.11", !!lfb && Object.values(s311).every(Boolean) && Object.values(s311b).every(Boolean), "ไม่มี take:2000 · ไม่มี invItem.findMany ก่อน · toViews ไม่ filter ต่อแถว · [R5] หน้า 500 แถว ≤ 20 คำสั่ง SQL และ ≤ หน้า 5 แถว + 2",
+      `${Object.entries({ ...s311, ...s311b }).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ")} · หน้า ${big11.rows} แถว = ${big11.n} คำสั่ง · หน้า ${small11.rows} แถว = ${small11.n} คำสั่ง${big11.r.ok ? "" : ` · ${big11.r.err}`}`);
     // S3.14 C8 VAT ตามการจด VAT ของสมุดบัญชีที่ผูก POS (ร้านอาหาร: ปิดจด VAT ชั่วคราวแล้วคืน)
     const vRegInv = await mkInv(cfT, sysC.INVENTORY, "c8-reg"); await mkAp(cfT, sysC.ACCOUNT, vRegInv, 1500, 700);
     const vNoInv = await mkInv(rsT, sysR.INVENTORY, "c8-novat"); await mkAp(rsT, sysR.ACCOUNT, vNoInv, 1500, 700);
@@ -1687,6 +1775,277 @@ try {
     const naInv = (await q(`select "accountProductId" from "InvItem" where id = $1`, fx.costOnly.id))[0];
     chk("X8.1", na.ok && (await prodById(naP?.id))?.basePriceSatang === 5150 && (await countWhere("AccountProduct", cfT)) === apC0 && naInv?.accountProductId === null,
       "5150 · AccountProduct ไม่เพิ่ม · ยังไม่ผูก", `${na.ok ? (await prodById(naP?.id))?.basePriceSatang : na.err} · AP +${(await countWhere("AccountProduct", cfT)) - apC0} · ${naInv?.accountProductId ?? "null"}`);
+
+    // ═════════ ROUND 5 (S3.46+) — brief P1.1a-R5 F1–F6 · เรียกผ่าน facade `@/lib/modules/pos`.catalog (ทางที่ผู้เรียกนอกโมดูลใช้) ═════════
+    {
+    const F: Any = facade?.catalog ?? {};
+    const CE: Any = facade?.CatalogError;
+    const ctxT5 = { tenantId: cfT, systemId: fx.tPos.id, actorUserId: cfOwner.userId as string };
+    const tCx5 = { tenantId: cfT, systemId: fx.tPos.id, actorUserId: cfCashier.userId as string };
+    // F1: restore ยังไม่มีบน b9d192ec — ตรวจ typeof ก่อนเรียก (ไม่มี = ปฏิเสธด้วย code NO_RESTORE ⇒ ข้อที่ใช้แดงพร้อมเหตุ ไม่ล้มทั้งชุด)
+    //   ลายเซ็นที่ใช้ = restore(ctx, id, client?) แบบเดียวกับ archive (ผู้กระทำอยู่ใน ctx.actorUserId) — ดู "ที่กำกวม" ใน notes รอบ 5
+    const hasRestore = typeof F.restore === "function";
+    const restore = (ctx: Any, id: unknown): Promise<Any> =>
+      hasRestore ? F.restore(ctx, id) : Promise.reject(Object.assign(new Error("facade.catalog.restore ยังไม่มี (typeof ≠ function)"), { code: "NO_RESTORE" }));
+    const restoreAudits = async (id: string) =>
+      q<{ before: Any; after: Any; actorId: string | null }>(`select before, after, "actorId" from "AuditLog" where "tenantId" = $1 and "targetType" = 'PosProduct' and "targetId" = $2 and action = 'pos.product.restore' and "createdAt" >= $3 order by "createdAt", id`, cfT, id, t0);
+    const inListAt = async (ctx: Any, unit: string, id: string, qq: string) => (await listAll(F, ctx, unit, { q: qq })).items.find((x) => idOf(x) === id);
+    const flags = (o: Record<string, boolean>) => Object.entries(o).map(([k, v]) => `${k}${v ? "✓" : "✗"}`).join(" ");
+
+    // S3.46 F1 archive → restore → กลับมาใน list · กดซ้ำ OK ไม่มี audit ซ้ำ · แถวไม่เคยเก็บถาวร restore = OK ไม่มี audit · audit before/after
+    const n46 = `${TAG} r5-restore`;
+    const p46 = await attempt(() => F.createProduct(ctxOwner, { name: n46, unitId: SILOM, basePriceSatang: 4600 }));
+    const id46 = idOf(p46.value) as string;
+    const a46 = await attempt(() => F.archive(ctxOwner, id46));
+    const gone46 = !(await inListAt(ctxOwner, SILOM, id46, n46));
+    const r46a = await attempt(() => restore(ctxOwner, id46));
+    const back46 = await inListAt(ctxOwner, SILOM, id46, n46);
+    const r46b = await attempt(() => restore(ctxOwner, id46));
+    const au46 = id46 ? await restoreAudits(id46) : [];
+    const live46 = await attempt(() => F.createProduct(ctxOwner, { name: `${TAG} r5-never-archived`, unitId: SILOM, basePriceSatang: 100 }));
+    const r46c = await attempt(() => restore(ctxOwner, idOf(live46.value)));
+    const au46c = idOf(live46.value) ? await restoreAudits(idOf(live46.value) as string) : [];
+    const row46 = await prodById(id46);
+    const s346 = {
+      setup: p46.ok && a46.ok && gone46 && live46.ok,
+      restored: r46a.ok && !!back46 && row46?.archivedAt === null,
+      idempotent: r46b.ok && au46.length === 1,
+      liveNoAudit: r46c.ok && au46c.length === 0 && (await prodById(idOf(live46.value)))?.archivedAt === null,
+      audit: au46.length >= 1 && !!au46[0].before?.archivedAt && !!au46[0].after && typeof au46[0].after === "object" && "archivedAt" in au46[0].after && au46[0].after.archivedAt === null && au46[0].actorId === cfOwner.userId,
+    };
+    chk("S3.46", Object.values(s346).every(Boolean), "เก็บแล้วหาย → restore กลับมาใน list · ซ้ำ OK (audit 1 แถว) · แถวปกติ restore OK ไม่มี audit · audit pos.product.restore archivedAt เวลา → null โดยเจ้าของ",
+      `${flags(s346)} · restore ${codeOf(r46a)}/${codeOf(r46b)} · แถวปกติ ${codeOf(r46c)} · audit ${au46.length}/${au46c.length}${au46[0] ? ` (${JSON.stringify(au46[0].before)}→${JSON.stringify(au46[0].after)})` : ""}`);
+
+    // S3.47 F1 ขอบเขตเดียวกับ archive (D1 requireRowWrite) · ร้านอื่น/ไม่มีจริง = NOT_FOUND
+    const yInv5 = await mkInv(cfT, fx.tInvY.id, "r5-restore-y"); const xInv5 = await mkInv(cfT, fx.tInvX.id, "r5-restore-x");
+    const ey5 = await attempt(() => F.ensureForInvItem(ctxSys(cfT, fx.tPos.id), yInv5.id));
+    const ex5 = await attempt(() => F.ensureForInvItem(ctxSys(cfT, fx.tPos.id), xInv5.id));
+    const yId = idOf(ey5.value) as string; const xId = idOf(ex5.value) as string;
+    const ay5 = await attempt(() => F.archive(ctxT5, yId)); const ax5 = await attempt(() => F.archive(ctxT5, xId));
+    const other47 = await attempt(() => restore(ctxRsOwner, yId));
+    const ghost47 = await attempt(() => restore(ctxOwner, `${TAG}-ghost-product`));
+    const mgr47 = await asManagerOf([fx.uA.id], async () => ({ y: await attempt(() => restore(tCx5, yId)), x: await attempt(() => restore(tCx5, xId)) }));
+    const yRow5 = await prodById(yId); const xRow5 = await prodById(xId);
+    const s347 = {
+      setup: ey5.ok && ex5.ok && ay5.ok && ax5.ok && yRow5?.unitId === null && xRow5?.unitId === null,
+      managerA_rowSoldAtB_denied: refused(mgr47.y, "PERMISSION_DENIED") && !!yRow5?.archivedAt,
+      managerA_rowSoldAtA_ok: mgr47.x.ok && xRow5?.archivedAt === null,
+      otherTenantNotFound: refused(other47, "NOT_FOUND"),
+      ghostNotFound: refused(ghost47, "NOT_FOUND"),
+    };
+    chk("S3.47", Object.values(s347).every(Boolean), "ผู้จัดการ A: แถวขายที่ B = PERMISSION_DENIED (ยังเก็บถาวร) · แถวขายที่ A ได้ · ร้านอื่น NOT_FOUND · ไม่มีจริง NOT_FOUND",
+      `${flags(s347)} · B ${codeOf(mgr47.y)} · A ${codeOf(mgr47.x)} · ร้านอื่น ${codeOf(other47)} · ไม่มีจริง ${codeOf(ghost47)}${ey5.ok && ex5.ok ? "" : ` · ensure ${ey5.err ?? ""} ${ex5.err ?? ""}`}`);
+
+    // S3.48 F1 ensureForInvItem {id, created, archived} · ไม่ปลดเก็บถาวรเอง
+    const inv48 = await mkInv(cfT, sysC.INVENTORY, "r5-ensure-arch");
+    const e48a = await attempt(() => F.ensureForInvItem(ctxSys(cfT, sysC.POS), inv48.id));
+    const id48 = idOf(e48a.value) as string;
+    const a48 = await attempt(() => F.archive(ctxOwner, id48));
+    const at48 = (await prodById(id48))?.archivedAt;
+    const e48b = await attempt(() => F.ensureForInvItem(ctxSys(cfT, sysC.POS), inv48.id));
+    const row48 = await prodById(id48);
+    const s348 = {
+      liveFlag: e48a.ok && e48a.value?.created === true && e48a.value?.archived === false,
+      archivedFlag: a48.ok && e48b.ok && idOf(e48b.value) === id48 && e48b.value?.created === false && e48b.value?.archived === true,
+      notUnarchived: !!at48 && !!row48?.archivedAt && isoS(row48.archivedAt) === isoS(at48),
+    };
+    chk("S3.48", Object.values(s348).every(Boolean), "แถวปกติ {created:true, archived:false} · แถวเก็บถาวร {id เดิม, created:false, archived:true} · ยังเก็บถาวร",
+      `${flags(s348)} · ครั้งแรก ${e48a.ok ? JSON.stringify(e48a.value) : e48a.err} · หลังเก็บ ${e48b.ok ? JSON.stringify(e48b.value) : e48b.err}`);
+
+    // S3.49 F1 createProduct({invItemId}) ทับแถวเก็บถาวร = CONFLICT ที่บอกว่าเก็บถาวร (ไม่รั่ว id)
+    const pc49 = await countProducts(cfT);
+    const c49 = await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-over-archived`, invItemId: inv48.id, basePriceSatang: 100 }));
+    const msg49 = String((c49.e as Any)?.message ?? "");
+    const s349 = { conflict: refused(c49, "CONFLICT"), saysArchived: /เก็บถาวร/.test(msg49), noIdLeak: !!id48 && !msg49.includes(id48), noRow: (await countProducts(cfT)) === pc49 };
+    chk("S3.49", Object.values(s349).every(Boolean), "CONFLICT · ข้อความมี \"เก็บถาวร\" (คืนได้) · ไม่มี id · ไม่มีแถวเพิ่ม", `${flags(s349)} · ${codeOf(c49)}: ${msg49.slice(0, 120) || "-"}`);
+
+    // S3.50 F1 setPrice/updateProduct บนแถวเก็บถาวรได้ → restore แล้วแถวพกค่าล่าสุด
+    const sp50 = await attempt(() => F.setPrice(ctxOwner, id48, 7777));
+    const up50 = await attempt(() => F.updateProduct(ctxOwner, id48, { nameEn: `${TAG} r5-arch-en` }));
+    const mid50 = await prodById(id48);
+    const rs50 = await attempt(() => restore(ctxOwner, id48));
+    const row50 = await prodById(id48);
+    const view50 = await inListAt(ctxOwner, SILOM, id48, inv48.sku);
+    const s350 = {
+      setPriceArchived: sp50.ok && mid50?.basePriceSatang === 7777 && !!mid50?.archivedAt,
+      updateArchived: up50.ok && mid50?.nameEn === `${TAG} r5-arch-en`,
+      restoredCarries: rs50.ok && row50?.archivedAt === null && row50?.basePriceSatang === 7777 && row50?.nameEn === `${TAG} r5-arch-en`,
+      listed: view50?.basePriceSatang === 7777,
+    };
+    chk("S3.50", Object.values(s350).every(Boolean), "setPrice 7777 + updateProduct บนแถวเก็บถาวรได้ · restore แล้ว 7777 + nameEn ใหม่ · list เห็น 7777",
+      `${flags(s350)} · setPrice ${codeOf(sp50)} · update ${codeOf(up50)} · restore ${codeOf(rs50)} · list ${view50 ? view50.basePriceSatang : "ไม่พบ"}`);
+
+    // S3.51 F1 restore ที่บาร์โค้ดชนแถวที่ขายอยู่ = CONFLICT (ไม่ใช่ P2002 ดิบ) · แถวยังเก็บถาวร
+    const bc51 = `94${RAND}51`;
+    const a51 = await attempt(() => F.createProduct(ctxOwner, { name: `${TAG} r5-bc-a`, barcode: bc51, unitId: SILOM, basePriceSatang: 100 }));
+    const id51 = idOf(a51.value) as string;
+    const ar51 = await attempt(() => F.archive(ctxOwner, id51));
+    const b51 = await attempt(() => F.createProduct(ctxOwner, { name: `${TAG} r5-bc-b`, barcode: bc51, unitId: SILOM, basePriceSatang: 100 }));
+    const rs51 = await attemptX(() => restore(ctxOwner, id51));
+    const row51 = await prodById(id51);
+    const s351 = { setup: a51.ok && ar51.ok && b51.ok, conflict: refused(rs51, "CONFLICT") && (!CE || rs51.e instanceof CE), stillArchived: !!row51?.archivedAt };
+    chk("S3.51", Object.values(s351).every(Boolean), "แถว A เก็บ → แถว B ใช้บาร์โค้ดเดียวกัน → restore A = CONFLICT (CatalogError) · A ยังเก็บถาวร",
+      `${flags(s351)} · restore ${codeOf(rs51)}${b51.ok ? "" : ` · สร้าง B ${b51.err}`}`);
+
+    // S3.52 F2 ตัวเขียน: NUL / surrogate เดี่ยว = VALIDATION ไม่มีแถว
+    const NUL = "\u0000"; const LONE = "\uD800";
+    const BAD: [string, string][] = [["NUL", NUL], ["surrogate", LONE]];
+    const tgt52 = await attempt(() => F.createProduct(ctxOwner, { name: `${TAG} r5-f2-target`, unitId: SILOM, basePriceSatang: 100 }));
+    const id52 = idOf(tgt52.value) as string;
+    const h52 = hashOf(await prodById(id52));
+    const pc52 = await countProducts(cfT); const cat52 = (await rowsOf("PosCategory", [cfT])).length;
+    const w52: [string, TryX][] = [];
+    for (const [lb, ch] of BAD) {
+      w52.push([`create.name ${lb}`, await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5 a${ch}b`, basePriceSatang: 100 }))]);
+      w52.push([`create.nameEn ${lb}`, await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-en-${lb}`, nameEn: `x${ch}y`, basePriceSatang: 100 }))]);
+      w52.push([`create.sku ${lb}`, await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-sku-${lb}`, sku: `s${ch}k`, basePriceSatang: 100 }))]);
+      w52.push([`create.barcode ${lb}`, await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-bc-${lb}`, barcode: `88${ch}01`, unitId: SILOM, basePriceSatang: 100 }))]);
+      w52.push([`update.name ${lb}`, await attemptX(() => F.updateProduct(ctxOwner, id52, { name: `n${ch}m` }))]);
+      w52.push([`update.nameEn ${lb}`, await attemptX(() => F.updateProduct(ctxOwner, id52, { nameEn: `n${ch}m` }))]);
+      w52.push([`category.name ${lb}`, await attemptX(() => F.createCategory(ctxOwner, { name: `${TAG} c${ch}t`, unitId: SILOM }))]);
+      w52.push([`category.nameEn ${lb}`, await attemptX(() => F.createCategory(ctxOwner, { name: `${TAG} r5-cat-${lb}`, nameEn: `c${ch}t`, unitId: SILOM }))]);
+    }
+    const w52bad = w52.filter(([, r]) => !refused(r, "VALIDATION")).map(([l, r]) => `${l}→${codeOf(r)}`);
+    const pc52b = await countProducts(cfT); const cat52b = (await rowsOf("PosCategory", [cfT])).length; const same52 = hashOf(await prodById(id52)) === h52;
+    chk("S3.52", tgt52.ok && w52bad.length === 0 && pc52b === pc52 && cat52b === cat52 && same52, `VALIDATION ×${w52.length} · PosProduct/PosCategory +0 · แถวเป้าไม่เปลี่ยน`,
+      `ผิด ${w52bad.length}/${w52.length}: ${w52bad.slice(0, 6).join(" · ") || "-"} · PosProduct +${pc52b - pc52} · PosCategory +${cat52b - cat52} · แถวเป้า ${same52 ? "เดิม" : "เปลี่ยน!"}`);
+
+    // S3.53 F2 ตัวอ่าน: q/cursor = VALIDATION · byBarcode = {items: []}
+    const cur53 = (n: string) => Buffer.from(JSON.stringify({ n, i: "x" })).toString("base64url");
+    const r53: [string, TryX, "V" | "E"][] = [];
+    for (const [lb, ch] of BAD) {
+      r53.push([`q ${lb}`, await attemptX(() => F.listForUnit(ctxOwner, SILOM, { q: `a${ch}b` })), "V"]);
+      r53.push([`cursor ${lb}`, await attemptX(() => F.listForUnit(ctxOwner, SILOM, { cursor: cur53(`a${ch}b`) })), "V"]);
+      r53.push([`byBarcode ${lb}`, await attemptX(() => F.byBarcode(ctxOwner, SILOM, `88${ch}50`)), "E"]);
+    }
+    r53.push(["cursor ดิบมี NUL", await attemptX(() => F.listForUnit(ctxOwner, SILOM, { cursor: `eyJu${NUL}` })), "V"]);
+    const r53bad = r53.filter(([, r, k]) => (k === "V" ? !refused(r, "VALIDATION") : !(r.ok && Array.isArray(r.value?.items) && r.value.items.length === 0)))
+      .map(([l, r]) => `${l}→${r.ok ? `รับ ${JSON.stringify(r.value?.items?.length ?? r.value).slice(0, 20)}` : codeOf(r)}`);
+    chk("S3.53", r53bad.length === 0, "q/cursor (NUL · surrogate · cursor ดิบ) = VALIDATION ×5 · byBarcode NUL/surrogate = {items: []} ×2", `ผิด ${r53bad.length}/${r53.length}: ${r53bad.join(" · ") || "-"}`);
+
+    // S3.54 F2 ไม่มี error ดิบหลุด facade: code ∈ ชุดรับรอง · ไม่มี path · CatalogError · error ไม่คาดคิด = INTERNAL (ต้นฉบับใน cause)
+    const ext54: [string, TryX][] = [
+      ["setPrice id NUL", await attemptX(() => F.setPrice(ctxOwner, `x${NUL}`, 100))],
+      ["archive id NUL", await attemptX(() => F.archive(ctxOwner, `x${NUL}`))],
+      ["updateProduct id NUL", await attemptX(() => F.updateProduct(ctxOwner, `x${NUL}`, { nameEn: "a" }))],
+      ["restore id NUL", await attemptX(() => restore(ctxOwner, `x${NUL}`))],
+      ["ensureForInvItem id NUL", await attemptX(() => F.ensureForInvItem(ctxSys(cfT, sysC.POS), `x${NUL}`))],
+      ["createProduct unitId NUL", await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-u-nul`, unitId: `u${NUL}`, basePriceSatang: 100 }))],
+      ["createProduct categoryId NUL", await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-c-nul`, categoryId: `c${NUL}`, basePriceSatang: 100 }))],
+      ["createProduct invItemId NUL", await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-i-nul`, invItemId: `i${NUL}`, basePriceSatang: 100 }))],
+      ["listForUnit unitId NUL", await attemptX(() => F.listForUnit(ctxOwner, `u${NUL}`))],
+      ["byBarcode unitId NUL", await attemptX(() => F.byBarcode(ctxOwner, `u${NUL}`, "8850999000015"))],
+      ["ctx.systemId NUL", await attemptX(() => F.listForUnit({ ...ctxOwner, systemId: `s${NUL}` }, SILOM))],
+      ["ctx.actorUserId NUL", await attemptX(() => F.listForUnit({ ...ctxOwner, actorUserId: `a${NUL}` }, SILOM))],
+      ["ctx.tenantId NUL", await attemptX(() => F.setPrice({ ...ctxOwner, tenantId: `t${NUL}` }, id52, 1))],
+      ["setPrice id surrogate", await attemptX(() => F.setPrice(ctxOwner, `x${LONE}`, 100))],
+    ];
+    const hyg = (r: TryX): string | null => {
+      if (r.ok || !r.threw) return null;
+      const e: Any = r.e; const msg = String(e?.message ?? e ?? ""); const out: string[] = [];
+      if (typeof e?.code !== "string" || !RATIFIED_CODES.has(e.code)) out.push(`code ${String(e?.code ?? "ไม่มี")}`);
+      if (PATH_RE.test(msg)) out.push("มี path");
+      if (CE && !(e instanceof CE)) out.push(`ไม่ใช่ CatalogError (${e?.constructor?.name ?? typeof e})`);
+      return out.length ? out.join("+") : null;
+    };
+    const all54: [string, TryX][] = [...w52, ...r53.map(([l, r]) => [l, r] as [string, TryX]), ...ext54];
+    const thrown54 = all54.filter(([, r]) => !r.ok && r.threw).length;
+    const dirty54 = all54.map(([l, r]) => [l, hyg(r)] as const).filter(([, h]) => h !== null).map(([l, h]) => `${l}: ${h}`);
+    const boom = new Error("boom P2010 at /root/projects/x/src/lib/modules/pos/catalog.ts:1:1");
+    const fake: Any = { appSystem: { findFirst: async () => { throw boom; } } };
+    const i1 = await attemptX(() => F.listForUnit(ctxOwner, SILOM, {}, fake));
+    const i2 = await attemptX(() => F.setPrice(ctxOwner, id52, 100, fake));
+    const internalOk = (r: TryX) => {
+      const e: Any = r.e; const msg = String(e?.message ?? "");
+      return refused(r, "INTERNAL") && !PATH_RE.test(msg) && !/boom|P2010/.test(msg) && /[฀-๿]/.test(msg) && (e?.cause === boom || String(e?.cause?.message ?? "").includes("boom"));
+    };
+    const fixedMsg = String((i1.e as Any)?.message ?? "1") === String((i2.e as Any)?.message ?? "2");
+    chk("S3.54", thrown54 >= 10 && dirty54.length === 0 && internalOk(i1) && internalOk(i2) && fixedMsg,
+      "ทุก error ที่ throw = CatalogError · code ∈ {NOT_FOUND, PERMISSION_DENIED, VALIDATION, CONFLICT, BUSY, INTERNAL} · ไม่มี path · client พัง = INTERNAL ข้อความไทยเดียวกัน (cause = ต้นฉบับ)",
+      `throw ${thrown54}/${all54.length} · ไม่สะอาด ${dirty54.length}: ${dirty54.slice(0, 5).join(" · ") || "-"} · client พัง: list ${codeOf(i1)} ${internalOk(i1) ? "✓" : "✗"} · setPrice ${codeOf(i2)} ${internalOk(i2) ? "✓" : "✗"} · ข้อความคงที่ ${fixedMsg}`);
+
+    // S3.55 F3 ล็อกร้านถูกถืออีก connection 8 วิ ⇒ ผู้เขียนที่ต้องใช้ล็อก = BUSY < 7 วิ ไม่เขียน · ปล่อยแล้วสำเร็จ
+    //   คีย์ = ที่ catalog.ts ใช้วันนี้: lockTenant(tx, `pos-catalog:${tenantId}`) → `SELECT pg_advisory_xact_lock(hashtext(${key}))` (catalog.ts:323-325)
+    const key55 = `pos-catalog:${cfT}`;
+    const bc55 = `93${RAND}55`;
+    const invE55 = await mkInv(cfT, sysC.INVENTORY, "r5-busy-ensure"); const invC55 = await mkInv(cfT, sysC.INVENTORY, "r5-busy-create");
+    const calls55: [string, () => Promise<Any>][] = [
+      ["createProduct(บาร์โค้ด)", () => F.createProduct(ctxOwner, { name: `${TAG} r5-busy-bc`, barcode: bc55, unitId: SILOM, basePriceSatang: 100 })],
+      ["createProduct(invItemId)", () => F.createProduct(ctxOwner, { name: `${TAG} r5-busy-inv`, invItemId: invC55.id, basePriceSatang: 100 })],
+      ["ensureForInvItem", () => F.ensureForInvItem(ctxSys(cfT, sysC.POS), invE55.id)],
+    ];
+    let held55 = false; let heldAt55 = 0;
+    const holder55 = lane(7).$transaction(async (tx: Any) => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, key55);
+      held55 = true; heldAt55 = Date.now();
+      await new Promise((r) => setTimeout(r, 8000));
+    }, { timeout: 60_000, maxWait: 30_000 }).then(() => "ok").catch((e: unknown) => firstLine(e));
+    for (let i = 0; i < 400 && !held55; i++) await new Promise((r) => setTimeout(r, 25));
+    const during55 = await Promise.all(calls55.map(([, f]) => attemptX(f)));
+    const sinceHeld55 = Date.now() - heldAt55;
+    const wrote55 = (await q(`select id from "PosProduct" where "tenantId" = $1 and barcode = $2`, cfT, bc55)).length + (await prodByInv(invC55.id)).length + (await prodByInv(invE55.id)).length;
+    const holderRes55 = await holder55;
+    const after55: TryX[] = [];
+    for (const [, f] of calls55) after55.push(await attemptX(f));
+    const s355 = {
+      held: held55 && holderRes55 === "ok",
+      busy: during55.every((r) => refused(r, "BUSY")),
+      under7s: during55.every((r) => r.ms < 7000),
+      thaiMessage: during55.every((r) => /[฀-๿]/.test(String((r.e as Any)?.message ?? ""))),
+      nothingWritten: wrote55 === 0,
+      okAfterRelease: after55.every((r) => r.ok),
+    };
+    chk("S3.55", Object.values(s355).every(Boolean), "ถือล็อก 8 วิ: BUSY ×3 ภายใน < 7 วิ (ข้อความไทย) · ไม่มีแถว · ปล่อยแล้วสำเร็จ ×3",
+      `${flags(s355)} · ระหว่างถือ: ${calls55.map(([l], k) => `${l} ${codeOf(during55[k])} ${(during55[k].ms / 1000).toFixed(1)}s`).join(" · ")} (กลับมาหลังได้ล็อก ${(sinceHeld55 / 1000).toFixed(1)}s) · แถวที่เขียน ${wrote55} · หลังปล่อย ${after55.map(codeOf).join("/")}${holderRes55 === "ok" ? "" : ` · holder ${holderRes55}`}`);
+
+    // S3.57 F6 checkCatalogWrite ตรวจ invItemId ทุกผู้กระทำ (รวมเจ้าของ)
+    const ccw5 = F.checkCatalogWrite;
+    const ownerM5 = { role: cfOwner.role, unitAccess: cfOwner.unitAccess, permissions: cfOwner.permissions };
+    const v57 = async (unitId: string | null, invItemId: string) => {
+      if (typeof ccw5 !== "function") return "ไม่มี facade.catalog.checkCatalogWrite";
+      try { return String(await ccw5(ownerM5, { tenantId: cfT, systemId: sysC.POS }, { unitId, invItemId }, (C.PERM_MANAGE as string | undefined) ?? "pos.product.manage")); } catch (e) { return `throw ${firstLine(e).slice(0, 60)}`; }
+    };
+    const nf57: [string, string][] = [
+      ["ร้านอื่น@ทุกสาขา", await v57(null, xInv.id)], ["คลังของ POS อื่น@ทุกสาขา", await v57(null, fx.itX.id)], ["ไม่มีจริง@ทุกสาขา", await v57(null, `${TAG}-ghost-inv`)],
+      ["ร้านอื่น@สีลม", await v57(SILOM, xInv.id)], ["คลังของ POS อื่น@สีลม", await v57(SILOM, fx.itX.id)], ["ไม่มีจริง@สีลม", await v57(SILOM, `${TAG}-ghost-inv`)],
+    ];
+    const ok57: [string, string][] = [["น้ำดื่ม@ทุกสาขา", await v57(null, fx.water.id)], ["น้ำดื่ม@สีลม", await v57(SILOM, fx.water.id)]];
+    chk("S3.57", nf57.every(([, v]) => v === "NOT_FOUND") && ok57.every(([, v]) => v === "OK"), "NOT_FOUND ×6 (เจ้าของ) · InvItem คลัง POS นี้ OK ×2",
+      `${nf57.map(([k, v]) => `${k}:${v}`).join(" ")} · ${ok57.map(([k, v]) => `${k}:${v}`).join(" ")}`);
+
+    // S3.58 F6 Object.hasOwn · คีย์แปลกของตัวเอง · null/array
+    const p58 = await attempt(() => F.createProduct(ctxOwner, { name: `${TAG} r5-own-keys`, unitId: SILOM, basePriceSatang: 100 }));
+    const id58 = idOf(p58.value) as string;
+    const inh58 = await attemptX(() => F.updateProduct(ctxOwner, id58, Object.create({ unitId: null })));
+    const unit58 = (await prodById(id58))?.unitId;
+    const pc58 = await countProducts(cfT);
+    const inhC58 = await attemptX(() => F.createProduct(ctxOwner, Object.assign(Object.create({ unitId: ARI }), { name: `${TAG} r5-inh-create`, basePriceSatang: 100 })));
+    const inhRow58 = idOf(inhC58.value) ? await prodById(idOf(inhC58.value)) : null;
+    const pc58b = await countProducts(cfT);
+    const unkC58 = await attemptX(() => F.createProduct(ctxOwner, { name: `${TAG} r5-unknown-key`, basePriceSatang: 100, bogus: 1 }));
+    const unkU58 = await attemptX(() => F.updateProduct(ctxOwner, id58, { bogus: 1 }));
+    const np58: [string, TryX][] = [
+      ["update null", await attemptX(() => F.updateProduct(ctxOwner, id58, null))], ["update []", await attemptX(() => F.updateProduct(ctxOwner, id58, []))],
+      ["create null", await attemptX(() => F.createProduct(ctxOwner, null))], ["create []", await attemptX(() => F.createProduct(ctxOwner, []))],
+    ];
+    const pc58c = await countProducts(cfT);
+    const s358 = {
+      setup: p58.ok,
+      inheritedPatchNoMove: (inh58.ok || refused(inh58, "VALIDATION")) && unit58 === SILOM,
+      inheritedCreateNotAtBranch: (inhC58.ok && inhRow58?.unitId === null) || (refused(inhC58, "VALIDATION") && pc58b === pc58),
+      unknownKeyCreate: refused(unkC58, "VALIDATION"),
+      unknownKeyUpdate: refused(unkU58, "VALIDATION"),
+      nullOrArray: np58.every(([, r]) => refused(r, "VALIDATION")),
+      noStrayRows: pc58c === pc58b,
+    };
+    chk("S3.58", Object.values(s358).every(Boolean), "unitId จาก prototype ไม่ย้าย/ไม่ลงสาขา · คีย์แปลก VALIDATION (create + update) · null/[] VALIDATION ×4 · ไม่มีแถวเกิน",
+      `${flags(s358)} · patch prototype ${codeOf(inh58)} → unit ${unit58 === SILOM ? "สีลม" : String(unit58)} · create prototype ${codeOf(inhC58)} → unit ${inhRow58 ? String(inhRow58.unitId) : "-"} · คีย์แปลก ${codeOf(unkC58)}/${codeOf(unkU58)} · ${np58.map(([l, r]) => `${l}:${codeOf(r)}`).join(" ")}`);
+
+    // S3.59 F5 fitness F15.6 ลงทะเบียน (static)
+    const fitSrc = read("scripts/fitness-pos.mts");
+    const f156 = /(guarded\(\s*chk\s*,|\bchk\()\s*["']F15\.6["']/.test(fitSrc);
+    chk("S3.59", f156, "scripts/fitness-pos.mts มี chk/guarded(\"F15.6\")", f156 ? "ลงทะเบียนแล้ว" : "ไม่พบ F15.6");
+    }
   });
 
   // ═══ S2 · P1.1b dual-write (guard แยก) ═══

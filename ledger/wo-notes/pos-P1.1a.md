@@ -538,3 +538,47 @@ fingerprint ตารางเดิม (count + md5 รวม updatedAt · ร�
 - fitness: มี env / ไม่มี env exit 0 `{"total":39,"passed":39,"findings":[]}` · F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" เท่าเดิม · F15.5 ✅ + หลักฐานลบ
 - typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 0 · 0 error (รอบเดียว)
 - หมายเหตุ: ระหว่างรัน มีเลน HF ของ POS (`shark-hf5`) ใช้ QC4 ผ่าน gate lock เดียวกัน — ไม่มีชุดไหนซ้อนกัน · fingerprint ร้านอื่นไม่เปลี่ยน
+
+# Round 5 oracle (oracle writer · brief `pos-brief-P1.1a-R5.md` F8 · base b9d192ec + merge ledger ของ session/pos)
+oracle `scripts/qc-pos-p1.1.mts` → **141 ข้อ · P1.1a 113 · P1.1b 28** (เดิม 127/99) · id เดิมคงที่ · ข้อใหม่ต่อท้าย S3.46–S3.59 · หลักฐานแดง `ledger/wo-notes/pos-P1.1a-red5.txt`
+ข้อใหม่รอบ 5 เรียกผ่าน facade `@/lib/modules/pos`.catalog (ทางของผู้เรียกนอกโมดูล — F2 บอกให้ห่อที่ facade) · `restore` ตรวจ `typeof facade.catalog.restore === "function"` ก่อน (ไม่มี = code `NO_RESTORE` แดงพร้อมเหตุ ไม่ล้มทั้งชุด) · ชื่อรับรองรอบ 5 ใส่ใน `pos-P0.3-catalog.md` "Ratified names" (🔄)
+
+| ข้อ | ใหม่/แก้ | ตรวจอะไร | บน b9d192ec |
+|---|---|---|---|
+| S3.46 | ใหม่ (F1) | archive → หายจาก list → `restore(ctx,id)` → กลับมา · ซ้ำ OK + audit `pos.product.restore` แถวเดียว (before.archivedAt เวลา → after.archivedAt null · actorId เจ้าของ) · แถวไม่เคยเก็บ restore OK ไม่มี audit | ❌ ถูกเหตุ: ไม่มี restore |
+| S3.47 | ใหม่ (F1) | ผู้จัดการสาขา A: แถวทุกสาขาขายที่ B = PERMISSION_DENIED (ยังเก็บ) · แถวขายที่ A ได้ (คู่บวก) · ร้านอื่น / id ไม่มีจริง = NOT_FOUND | ❌ ไม่มี restore |
+| S3.48 | ใหม่ (F1) | `ensureForInvItem` = `{id, created, archived}` · หลัง archive = `{id เดิม, created:false, archived:true}` และยังเก็บถาวร | ❌ ไม่มีช่อง `archived` |
+| S3.49 | ใหม่ (F1) | `createProduct({invItemId})` ทับแถวเก็บถาวร = CONFLICT · ข้อความมี "เก็บถาวร" · ไม่มี id · ไม่มีแถวเพิ่ม | ❌ CONFLICT แต่ข้อความ "…อยู่ในแคตตาล็อกขายแล้ว" |
+| S3.50 | ใหม่ (F1 · ตรึง setPrice/update บนแถวเก็บถาวร) | setPrice 7777 + updateProduct(nameEn) บนแถวเก็บถาวรได้ → restore → แถว + list มี 7777 | ❌ ส่วน restore (setPrice/update ✓ อยู่แล้ว) |
+| S3.51 | ใหม่ (F1) | A (บาร์โค้ด X) เก็บ → B ใช้ X → restore A = CONFLICT (CatalogError) · A ยังเก็บ | ❌ ไม่มี restore |
+| S3.52 | ใหม่ (F2) | NUL / `\uD800` ใน create name·nameEn·sku·barcode · update name·nameEn · createCategory name·nameEn = VALIDATION ×16 · ไม่มีแถว · แถวเป้าไม่เปลี่ยน | ❌ NUL = DriverAdapterError ไม่มี code · surrogate = รับ (+3 แถว) |
+| S3.53 | ใหม่ (F2) | listForUnit q / cursor (NUL · surrogate · cursor ดิบ) = VALIDATION · byBarcode NUL/surrogate = `{items: []}` | ❌ NUL = P2010 ×3 · q/cursor surrogate = รับ |
+| S3.54 | ใหม่ (F2) | ทุก error ของ S3.52/53 + id/unitId/categoryId/invItemId/ctx ที่มี NUL: CatalogError · code ∈ {NOT_FOUND, PERMISSION_DENIED, VALIDATION, CONFLICT, BUSY, INTERNAL} · ไม่มี `/root/`/`src/lib/` · client ปลอมที่ `appSystem.findFirst` throw ⇒ INTERNAL ข้อความไทยเดียวกัน 2 ฟังก์ชัน, `cause` = ต้นฉบับ | ❌ 29 ตัวไม่สะอาด (DriverAdapterError / P2010 / path) · client พัง = Error ดิบ |
+| S3.55 | ใหม่ (F3) | lane(7) ถือ `pg_advisory_xact_lock(hashtext('pos-catalog:'||cfT))` (คีย์เดียวกับ `lockTenant` catalog.ts:323-325) 8 วิ: createProduct(บาร์โค้ด) · createProduct(invItemId) · ensureForInvItem พร้อมกัน = BUSY < 7 วิ ข้อความไทย ไม่มีแถว · ปล่อยแล้วเรียกซ้ำสำเร็จ ×3 | ❌ รอ 8.1 วิแล้วสำเร็จ (เขียน 3 แถว) |
+| S3.56 | ใหม่ (F4 · ส่วนแยกหลัง X6.1) | dry-run ฐาน → InvItem 2 ตัวในคลัง X + เว็บร้านสีลม 2 แถวต่อตัว (ราคา 0 / −100) → backfill จริง: สร้าง 4 · คู่ละแถว · zeroPriceWeb +1 · shopOwnRowInvItemOutsideFirstPos +2 · Σ ตัวนับราคา null +3 = แถวราคา null ที่สร้าง 3 | ❌ zeroPriceWeb +2 · shopOwnRow +4 · Σ 4 ≠ 3 |
+| S3.57 | ใหม่ (F6) | checkCatalogWrite เจ้าของ + invItemId ร้านอื่น / คลัง X (ไม่ขายผ่าน POS seed) / ไม่มีจริง × (ทุกสาขา, สีลม) = NOT_FOUND ×6 · น้ำดื่ม OK ×2 | ❌ ทุกตัว OK |
+| S3.58 | ใหม่ (F6) | `Object.create({unitId:null})` patch ไม่ย้าย · create ที่ unitId (อารีย์) มาจาก prototype ไม่ลงอารีย์ · คีย์แปลก create/update = VALIDATION · update null/[] + create null/[] = VALIDATION · ไม่มีแถวเกิน | ❌ patch ย้ายเป็น null · create ลงอารีย์ · คีย์แปลก create รับ · update null/[] รับ (คีย์แปลก update + create null/[] = ✓ อยู่แล้ว) |
+| S3.59 | ใหม่ (F5) | `scripts/fitness-pos.mts` มี `chk("F15.6"` / `guarded(chk, "F15.6"` (static — หลักฐานลบเป็นของ builder) | ❌ ไม่มี |
+| S1.21–S1.25 | แก้ (F8) | ต้อง `created.posProduct > 0` + `updated.menuItem > 0` + `updated.shopProduct > 0` ของ backfill จริงก่อน (เขียน 0 = แดง) | ✅ ตรึง |
+| S1.38 | แก้ (F8) | + ค่า before/after: create ∅ → ชื่อ/4250 · update ชื่อ/nameEn เดิม → ใหม่ · ราคาเป็นสาย `4250→3999,3999→0,0→3999` · archive แถวเดียว null → เวลาที่เก็บจริง | ✅ ตรึง |
+| S3.11 | แก้ (F8) | static เดิม + behavioural: client ดัก `$on("query")` (แบบ S3.29) · หน้า 500 แถว ≤ 20 คำสั่ง และ ≤ หน้า 5 แถว + 2 | ✅ วัดได้ 10 / 10 คำสั่ง |
+
+ผลบน b9d192ec (QC4 · 2 รันเหมือนกัน · tag `qc-p1.1-4a40c6`, `qc-p1.1-e1742b`): `ผ่าน 99/113` · แดง 14 = S3.46–S3.59 ตามเหตุข้างบน · S1.36 ✅ · `ROWCOUNTS_AFTER … เท่าเดิม` ทั้งสองรัน · เวลารันเพิ่ม ≈ 8 วิ (S3.55) + backfill 2 รอบ (S3.56)
+
+typecheck (รอบเดียว · `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`): exit 0
+
+X9.1 / X6.3 คงเดิม (ตาม F8): X9.1 ตรวจ consumer ของ event `pos.*` ที่เกิดระหว่างรัน — P1.1a ไม่ยิง event (ไม่มี dual-write) ข้อนี้จึงว่างโดยธรรมชาติ จะมีเนื้อเมื่อ P1.1b ยิง event · X6.3 (setPrice 10 เลน) ตั้งใจตรวจแค่ "ไม่ error · ค่าสุดท้ายเป็นหนึ่งในค่าที่ส่ง · แถวเดียว" — ลำดับ/สาย audit อยู่ที่ S3.19 แล้ว ไม่ต้องซ้ำ
+
+### ORACLE-EDIT requests (round 5 · oracle writer)
+ไม่มี — ไม่มีข้อเดิมที่ขัด brief · ข้อเดิมที่แก้ (S1.21–S1.25 · S1.38 · S3.11) เป็นการเสริมตามที่ F8 สั่ง และเขียวบน b9d192ec
+
+### ที่กำกวม (ข้อเสนอ ruling ของ oracle writer)
+1. **ลายเซ็น restore** — brief F1 เขียน `restore(ctx, actor, id)` แต่ตัวเขียนอื่นทุกตัวเป็น `(ctx, id, client?)` และ ctx มี `actorUserId` อยู่แล้ว · oracle เรียก `restore(ctx, id)` แบบเดียวกับ `archive` · ถ้าผู้คุมงานต้องการ `(ctx, actor, id)` จริง ต้องแก้ helper `restore` ที่เดียวใน oracle (บล็อก ROUND 5)
+2. **sku** — ไม่มีตัวเขียนใดรับ `sku` (sku อยู่ที่ InvItem) · oracle ส่ง `sku` ที่มี NUL/surrogate ให้ createProduct แล้วคาด VALIDATION (= คีย์แปลกของ F6) · ค้นด้วย sku ครอบคลุมโดย `q` ใน S3.53
+3. **id ที่มี NUL** — brief ว่า writers = VALIDATION แต่ id ผิดรูปอ่านเป็น "ไม่พบ" ก็ได้ · oracle ไม่บังคับ code ของ id/unitId/ctx (S3.54 รับ code ใดก็ได้ในชุดรับรอง) — บังคับแค่ไม่มี error ดิบ
+4. **ข้อความ CONFLICT ของแถวเก็บถาวร** — ตรวจแค่มีคำว่า "เก็บถาวร" และไม่มี id ของแถว (ไม่ผูกถ้อยคำอื่น)
+5. **คีย์จาก prototype** — brief ว่า "ignored" ⇒ oracle คาดว่าสำเร็จโดยไม่ย้าย/ไม่ลงสาขา แต่รับ VALIDATION ด้วย (ถ้า builder ถือว่าออบเจกต์ที่ prototype ไม่ใช่ Object = ไม่ใช่ plain object) ตราบที่ไม่มีอะไรเปลี่ยน
+6. **BUSY ใต้ธุรกรรม Prisma** — `inTx` ใช้ `$transaction(fn)` ค่าปริยาย (timeout 5 วิ) · งบรอล็อก ≈5 วิของ F3 จึงต้องอยู่ใต้ timeout นั้น (หรือส่ง options) ไม่งั้นจะได้ P2028 → INTERNAL แทน BUSY · บน b9d192ec ผู้เขียนที่ติดล็อกรอได้เกิน 5 วิโดยไม่ล้ม (วัด: 8.1 วิแล้วสำเร็จ)
+7. **INTERNAL** — พิสูจน์ด้วย `client` ปลอม (`{appSystem:{findFirst: throw}}`) ส่งเป็นอาร์กิวเมนต์ท้ายของ listForUnit/setPrice ⇒ ตัวห่อต้องอยู่รอบฟังก์ชัน ไม่ขึ้นกับว่าเป็น Prisma error · ข้อความ INTERNAL ต้องเป็นข้อความเดียวกันทุกฟังก์ชัน
+8. F5 (`??=`/default/alias/F15.6 negative proof) ไม่อยู่ในข้อสอบนี้ นอกจากการลงทะเบียน F15.6 (S3.59)
+9. **กติกาสำหรับ P1.1b (จาก F1)**: legacy sync เรียก `restore` เมื่อร้านปลดเก็บถาวร InvItem — `ensureForInvItem` ไม่ปลดเอง (S3.48 ตรึง)
