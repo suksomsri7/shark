@@ -14,6 +14,8 @@
 - Subtotal = Σ line totals after line discounts (code meaning) — ratified as a spec correction to 14-pos §7.1.
 - Fixture rewrite this round: untracked products via `createProduct` (no InvItem); tracked via InvItem + `ensureForInvItem` + `setPrice`; out-of-stock via receive 1 + consume 1; 86 via `updateProduct(id, {availability: {[unitId]: false}})`; branch-scoped product via `createProduct({unitId: <2nd sandbox branch linked to the sandbox POS>})`; `createCategory` without nameEn; S1.17 counts PosProduct of the sandbox POS (>200) and fills with `createProduct`; cleanup also deletes every PosProduct of the sandbox POS system.
 
+- Ratification-round runs (no typecheck this round, per controller): skipped → exit 0 `⏭️ SKIPPED` registered 72 · `--list` 72 ids · `QC_FORCE=1` (passed inside the lock: `… with-gate-lock.sh env QC_FORCE=1 pnpm …`) → exit 1, `ผ่าน 3/72`, S6.1 red with "[ยังไม่มีโค้ด oversellPolicy]", cleanup `{…"invJournal":6,"invItem":6} · สาขา 3 · ระบบ 2`, `"a5":{"drift":[]}` · QC4 coffee counts = first snapshot (journal 2 · invItem 7 · businessUnit 2).
+
 ## 0. Controller rulings 1 Oct (survey) — override the documents
 Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIGN-2026-10-01.md` §3/§4/§6 (read-only; rows re-checked against code where the oracle depends on them).
 | # | ruling | how the oracle follows it | changed vs first draft |
