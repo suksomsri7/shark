@@ -104,6 +104,18 @@ export type AddActivityInput = {
   dueAt?: Date | null;
 };
 
+/**
+ * C5.5-authz-sweep ▸ (v1) `contactId`/`dealId` มาจากฟอร์มของ client ⇒ ต้องเป็นของร้าน + ระบบ CRM นี้ก่อนเขียน
+ *   (เดิมเขียน FK ดิบ ⇒ ร้าน A ผูกงานกับผู้ติดต่อ/ดีลของร้าน B ได้ถ้ารู้ id แล้วหน้ารายการงานของ A `include: { contact, deal }` ดึงแถวของ B มาโชว์)
+ *   ประตู v2 ทำแบบเดียวกัน (`activities.logActivity` → เป้าหมายต้องมองเห็นได้ในระบบนี้) · ไม่ผ่าน = false (ผู้เรียกไม่เขียนอะไร) ◂
+ */
+export async function activityTargetsInSystem(ctx: Ctx, input: Pick<AddActivityInput, "contactId" | "dealId">): Promise<boolean> {
+  const db = tenantDb(ctx);
+  if (input.contactId && !(await db.crmContact.findFirst({ where: { id: input.contactId }, select: { id: true } }))) return false;
+  if (input.dealId && !(await db.crmDeal.findFirst({ where: { id: input.dealId }, select: { id: true } }))) return false;
+  return true;
+}
+
 export async function addActivity(ctx: Ctx, input: AddActivityInput): Promise<{ id: string }> {
   const a = await tenantDb(ctx).crmActivity.create({
     data: {

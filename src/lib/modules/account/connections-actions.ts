@@ -11,7 +11,7 @@ import { safeReason } from "./errors";
 import type { AccountLinkedKind } from "@prisma/client";
 import { assertCan } from "@/lib/core/rbac";
 import { createApiKey, revokeApiKey, rotateApiKey } from "@/lib/api-keys/service";
-import { DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
+import { ACCOUNT_SCOPE_KEYS, DEFAULT_KEY_TTL_DAYS, expandBundles, isApiScope } from "@/lib/api-keys/scopes";
 import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } from "@/lib/webhooks/service";
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels"; // CRM C5.5 ▸ กรองเหตุการณ์ ◂
 import { loadAccountSystem } from "./guard";
@@ -115,6 +115,12 @@ export async function createApiKeyAction(
   }
   for (const sc of scopes) {
     if (!isApiScope(sc)) return { ok: false, reason: `สิทธิ์ "${sc}" ใช้เป็นขอบเขตของคีย์ไม่ได้` };
+    // C5.5-authz-sweep ▸ หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี (ที่หน้าจอมีให้ติ๊ก = ACCOUNT_SCOPE_KEYS / ชุด account) — เดิมรับ `crm.*`/`member.*`
+    //   ที่ส่งมาเอง ⇒ ผู้จัดการบัญชีออกคีย์ที่ REST บัญชีแปลงเป็นผู้ดู CRM/สมาชิก (`crmViewerOfApi`) โดยไม่ผ่านด่านออกคีย์ของ CRM
+    //   (`crm.api.manage` + `crmKeyWiderThanCreator`) หรือของสมาชิก (`member.api.manage`) · สิทธิ์ของระบบอื่นออกที่หน้า API ของระบบนั้น ◂
+    if (!ACCOUNT_SCOPE_KEYS.includes(sc)) {
+      return { ok: false, reason: `หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี — สิทธิ์ "${sc}" ต้องออกที่หน้าตั้งค่า API ของระบบนั้น` };
+    }
   }
   const ttlRaw = s(fd, "ttlDays");
   const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
@@ -233,7 +239,13 @@ export async function testWebhookAction(fd: FormData): Promise<ConnResult> {
   const systemId = s(fd, "systemId");
   const { auth, tenantId, userId } = await gate(systemId);
   assertCan(mc(auth), { module: "webhook", action: "webhook.endpoint.update" });
-  const type = s(fd, "type") || "account.document.approved";
+  // C5.5-authz-sweep ▸ ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชีที่มีในทะเบียน (เดิมส่ง `type` ดิบของ client ไปทุกปลายทางของร้าน ⇒ ปลอม
+  //   `crm.deal.won`/`member.*` ใส่ระบบเชื่อมต่อของ CRM/สมาชิกได้) — REST บัญชี `webhooks.test` ก็รับเฉพาะเหตุการณ์ที่รู้จัก ·
+  //   ปุ่มในหน้าส่ง "ป้ายไทย" ของเหตุการณ์มา ⇒ แปลงป้ายกลับเป็นค่าก่อน ◂
+  const asked = s(fd, "type") || "account.document.approved";
+  const ev = WEBHOOK_EVENTS.find((w) => w.value.startsWith("account.") && (w.value === asked || w.label === asked));
+  if (!ev) return { ok: false, reason: "ยิงทดสอบได้เฉพาะเหตุการณ์ของระบบบัญชี" };
+  const type = ev.value;
   const n = await dispatchWebhooks({ tenantId, type, payload: { test: true, at: new Date().toISOString() } });
   await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "WebhookEndpoint", after: { test: type, sent: n } });
   revalidatePath(PATH(systemId));
