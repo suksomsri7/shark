@@ -275,3 +275,11 @@
 - **มติ (ผูกพัน builder — แก้ถ้อยคำใน brief)**: (1) ตัวเลือกบังคับ = `OPTIONS_REQUIRED` (2) submit ต้องส่ง `expectedGrandTotalSatang` · ยอด server ≠ ที่คาด ⇒ `PRICE_CHANGED` (ตรวจก่อน) · Σ จ่าย ≠ ยอด ⇒ `PAYMENT_MISMATCH` (3) สินค้าขายไม่ได้ที่สาขานี้/ข้ามร้าน/ถูกเก็บ ⇒ `PRODUCT_NOT_FOUND` (`NOT_FOUND` = ตัว context) (4) P1.3 รับเฉพาะ CASH + PROMPTPAY · อื่น ⇒ `VALIDATION` · เงินรับ < ส่วนเงินสด ⇒ `PAYMENT_MISMATCH` (5) คีย์ `errors.conflict` / `errors.optionsRequired` (6) ตัด testid `pos-reg-coupon-line` (7) hash ไฟล์เดิม = ลวดสะดุด แก้ด้วย ORACLE-EDIT (8) S5.16 เว้น `register.ts` (9) limit ไม่ใช่จำนวนเต็ม ≥1 / cursor ผิดรูป ⇒ `VALIDATION` · >500 ปัดเป็น 500 (10) กิ่งเดิมของ page.tsx มีไทยได้ (11) fixture รับ (12) `soldOutReason`: ปิดขายมือชนะสต็อกหมด
 - ผู้เขียนข้อสอบกำลังทำรอบ 3.1 (บีบข้อที่รับหลายคำตอบ + เพิ่มข้อ)
 - เลนเดิน: 1 = HF-HR-0 รอบ 5c (builder) · 2 = P1.3 ข้อสอบรอบ 3.1
+
+### P1.3 ข้อสอบรอบ 3.1 รับแล้ว → builder B1 (server) เริ่ม (1 ต.ค. 19:42 UTC)
+- `wip/pos-p1.3` = 0002997e · 104 ข้อ · ผู้คุมงานรันบังคับเอง: 5/104 เขียว (S3.22 · S5.10 · S5.12 · S9.1 · S9.2) · 99 แดงเพราะยังไม่มีโค้ด · ไม่มี crash
+- 🔴 บทเรียน: `QC_FORCE=1` ต้องใส่ **ข้างใน** wrapper (`… with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx …`) — ใส่หน้า `bash scripts/iso.sh` ไม่ถึงตัวรัน (ได้ SKIP หลอก)
+- มติเพิ่ม: `UNKNOWN` → `errors.unknown` รับ · ค้นคีย์ idempotency ก่อนคิดราคาใหม่ (retry หลังราคาเปลี่ยน = คืนบิลเดิม) รับ
+- brief เพิ่ม Addendum 2 (รหัสปฏิเสธสุดท้าย · สัญญา submit · แบ่ง B1 server / B2 UI)
+- B1 เป้า: S1–S4 เขียว + ข้อ S5 ฝั่ง server · ไม่แตะ React/page/i18n/shell
+- เลนเดิน: 1 = HF-HR-0 รอบ 5c (builder) · 2 = P1.3 builder B1
