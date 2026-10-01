@@ -1074,6 +1074,11 @@ async function cleanup() {
   counts.product = sb.productIds.length ? await del("posProduct", { id: { in: sb.productIds } }) : 0;
   counts.category = sb.categoryIds.length ? await del("posCategory", { id: { in: sb.categoryIds } }) : 0;
   if (sb.invSysId) {
+    // 🔴 inventory.receive/consume โพสต์ GL เข้าระบบบัญชี "ตัวแรกของร้าน" (inventory/service.ts postMovementGl) แม้ระบบคลัง
+    //    sandbox ไม่ได้ผูกบัญชี ⇒ ต้องลบ AccountJournalEntry refType InvMovement ของ movement ชั่วคราวก่อน (บรรทัดลบตาม cascade)
+    //    พบจากการรัน QC_FORCE ครั้งแรก: accountJournalEntry 2→8 (S9.1 จับได้)
+    const mvIds = ((await P.invMovement.findMany({ where: { tenantId: { in: tids }, systemId: sb.invSysId }, select: { id: true } })) as Any[]).map((m) => m.id);
+    if (mvIds.length) counts.invJournal = await del("accountJournalEntry", { tenantId: { in: tids }, refType: "InvMovement", refId: { in: mvIds } });
     for (const m of ["invMovement", "invLot", "invLocationStock", "invItemImage"]) await del(m, { tenantId: { in: tids }, OR: [{ systemId: sb.invSysId }, { itemId: { in: sb.invItemIds } }] });
     counts.invItem = await del("invItem", { tenantId: { in: tids }, systemId: sb.invSysId });
     for (const m of ["invLocation", "invCategory", "invSettings"]) await del(m, { tenantId: { in: tids }, systemId: sb.invSysId });
