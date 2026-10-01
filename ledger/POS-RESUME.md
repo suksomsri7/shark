@@ -269,3 +269,9 @@
 - มติ: เปิดรอบ 5c สั้น (`pos-brief-HF-HR-0-R5c.md`) — F1 กติกาแถวตัวเองครอบ ปฏิเสธรายการหัก + ลบ · ลบต้องมี audit · F5 แสดงเหตุผล · F3 ข้อความคงที่ · F2 ทำถ้าเล็ก (≤30 บรรทัด) ไม่งั้นจด
 - O17 ขยาย: แถวพนักงาน "ผี" ที่ไม่ผูกบัญชี
 - เลนเดิน: 1 = HF-HR-0 รอบ 5c (builder · รอบสุดท้าย) · 2 = P1.3 ข้อสอบรอบ 3
+
+### P1.3 ข้อสอบรอบ 3 ส่งแล้ว (ee3d3666 · 76 → 101 ข้อ) · มติผู้คุมงาน 12 ข้อ → รอบ 3.1 (1 ต.ค. 19:29 UTC)
+- รอบ 3: --list 101 · รันปกติ SKIP exit 0 · QC_FORCE=1 = 5 เขียว (ด่านกันของเดิม) / 96 แดงเพราะยังไม่มีโค้ด · fitness 40/40 · typecheck 0
+- **มติ (ผูกพัน builder — แก้ถ้อยคำใน brief)**: (1) ตัวเลือกบังคับ = `OPTIONS_REQUIRED` (2) submit ต้องส่ง `expectedGrandTotalSatang` · ยอด server ≠ ที่คาด ⇒ `PRICE_CHANGED` (ตรวจก่อน) · Σ จ่าย ≠ ยอด ⇒ `PAYMENT_MISMATCH` (3) สินค้าขายไม่ได้ที่สาขานี้/ข้ามร้าน/ถูกเก็บ ⇒ `PRODUCT_NOT_FOUND` (`NOT_FOUND` = ตัว context) (4) P1.3 รับเฉพาะ CASH + PROMPTPAY · อื่น ⇒ `VALIDATION` · เงินรับ < ส่วนเงินสด ⇒ `PAYMENT_MISMATCH` (5) คีย์ `errors.conflict` / `errors.optionsRequired` (6) ตัด testid `pos-reg-coupon-line` (7) hash ไฟล์เดิม = ลวดสะดุด แก้ด้วย ORACLE-EDIT (8) S5.16 เว้น `register.ts` (9) limit ไม่ใช่จำนวนเต็ม ≥1 / cursor ผิดรูป ⇒ `VALIDATION` · >500 ปัดเป็น 500 (10) กิ่งเดิมของ page.tsx มีไทยได้ (11) fixture รับ (12) `soldOutReason`: ปิดขายมือชนะสต็อกหมด
+- ผู้เขียนข้อสอบกำลังทำรอบ 3.1 (บีบข้อที่รับหลายคำตอบ + เพิ่มข้อ)
+- เลนเดิน: 1 = HF-HR-0 รอบ 5c (builder) · 2 = P1.3 ข้อสอบรอบ 3.1
