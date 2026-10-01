@@ -282,4 +282,91 @@ fingerprint หลังทุกขั้น (after-rollback · r2-after-backfi
 | R3-1 | probe การรันไฟล์ของ prisma 7.8 (schema แยก p11probe · ลบแล้ว) | ✅ ไม่มี DO = แยกทีละคำสั่งคนละ tx · มี DO $$ = ทั้งไฟล์ tx เดียว (atomic) · P3018→P3009→ลบแถว→deploy ผ่าน |
 | R3-2 | migration ใส่ตัวกันรันซ้ำ + RESET · rollback → deploy → รันไฟล์ซ้ำด้วยมือ | ✅ ไม่มี error · โครงสร้างไม่เปลี่ยน (hash ตรงก่อน/หลังรันซ้ำ และตรงกับโครงสร้าง round 2) |
 | R3-3 | โค้ด D1 D2 D3 D5 D6 + มติ a/b/c · F15.5 + หลักฐานลบ | ✅ |
-| R3-4 | backfill ร้าน QC (dry/real/again/overlap) | ⏳ |
+| R3-4 | backfill ร้าน QC (dry/real/again/overlap) | ✅ 13/3/4 → 13/3/4 → 0 → ถอย → A 0 (รอล็อก) · B 13/3/4 · INVARIANTS สะอาด · ตารางเดิม = ก่อน P1.1a |
+| R3-5 | oracle | ✅ exit 0 · `ผ่าน 93/93` |
+| R3-6 | regression 17 ชุด · fitness 2 โหมด (+F15.5) | ✅ 17 SAME · 39/39 ทั้งคู่ |
+| R3-7 | typecheck | ✅ exit 0 (`tsc --noEmit` · รอบเดียว · รวม scripts/qc-pos-p1.3.mts round 2) |
+| R3-8 | notes · commit · push | ✅ |
+
+
+## Round 3 — รายงานต่อข้อ
+oracle `scripts/qc-pos-p1.1.mts` (round 3 · 121 ข้อ · P1.1a 93 · P1.1b 28) · โค้ด `src/lib/modules/pos/catalog.ts` · `src/lib/modules/pos/index.ts` · `scripts/pos-backfill-catalog.mts` · `scripts/fitness-pos.mts` · migration `20261120000000_pos_v2_a`
+
+| ข้อ | ก่อน (round 2) | หลัง (round 3 · file:line) | check |
+|---|---|---|---|
+| D1 | แถวทุกสาขา = OWNER/`*` เท่านั้น | `checkCatalogWrite` `catalog.ts:181` (export · facade `catalog.checkCatalogWrite`): แถวของสาขา = เข้าสาขาไม่ได้ NOT_FOUND / ไม่มีคีย์ PERMISSION_DENIED · แถวทุกสาขา = ขอบเขต = สาขาไม่เก็บถาวรของ POS นี้ (แถวผูก InvItem: เฉพาะสาขาที่คลังคือคลังของ InvItem — C3) · ต้อง `evaluate(action, unitId)` ผ่าน **ทุก** สาขาในขอบเขต · ขอบเขตว่าง = OWNER/`*` · ย้ายสาขาตรวจขอบเขตเดิมและใหม่ · ใช้กับ create/update/setPrice/archive/ensure/createCategory (`requireRowWrite :209`) · 🔀 merge item: ต้องตรงกับ `posCanSetTenantPrice` ของ hotfix/pos-page-authz | S3.27 S3.28 S3.6–S3.8 X3.1–X3.3 ✅ |
+| D2 | `invMovement.groupBy` ทั้งร้านใน toViews | `toViews :460`: ถามเฉพาะแถว AUTO + PRODUCT + onHand = 0 · `EXISTS (SELECT 1 FROM "InvMovement" m WHERE m."itemId" = i.id AND m."systemId" = <คลังของสาขา> LIMIT 1)` ทีละ InvItem · onHand ≠ 0 ตอบเลย · groupBy เหลือใน backfill (planTenant) เท่านั้น | S3.29 ✅ |
+| D3 | — | `apIgnoredButTillPriced` (AP เก็บถาวร/สมุดอื่นที่ลิ้นชักคิด salePrice>0 วันนี้ ⇒ null) · `priceNotSetOther` (null ที่ไม่ถูกนับที่อื่น — InvItem/เมนู/แถวเว็บเอง) · `servicePriceDiffersFromAccountProduct` · ตัวอย่าง ≤20 ต่อร้านต่อชนิดใน `samples` (priceNotSetOther: แถวที่มีร่องรอยราคาเดิม — AP ทางใดก็ได้/ราคาบริการ ≠ 0 — ขึ้นก่อน) · สคริปต์พิมพ์ตัวอย่างทุกชนิด | S3.30 ✅ |
+| D4 | ไม่มีตัวกัน · ไม่ RESET | ทุกคำสั่งรันซ้ำได้ (`CREATE TABLE/INDEX IF NOT EXISTS` · `ADD COLUMN IF NOT EXISTS` · enum/FK ใน `DO $$ … EXCEPTION WHEN duplicate_object THEN NULL; END $$`) · `RESET lock_timeout` ท้ายไฟล์ (+ ท้าย rollback) · พิสูจน์บน QC4 ข้างล่าง | S3.31 S3.32 S3.23 ✅ |
+| D5 | `export * as catalog` (backfillCatalog + ตัวบ่งชี้หลุดผ่าน facade) | facade เป็นรายการชัด (`index.ts` — 8 ฟังก์ชัน + checkCatalogWrite · ไม่มี backfillCatalog/ตัวบ่งชี้) · สคริปต์ backfill import `@/lib/modules/pos/catalog` ตรง · **F15.5** `fitness-pos.mts:922` + `scanSystemMarker :959` (allowlist ว่าง `SYSTEM_MARKER_ALLOWLIST`) · กติกา: ตัวระบุสองตัวอยู่ได้แค่ catalog.ts · สคริปต์ backfill · `scripts/qc-*.mts` · allowlist และห้ามในไฟล์ `"use server"` / `src/app/**` / `src/lib/actions/**` · `x ?? <ตัวบ่งชี้>` ห้ามทุกที่ (ตรวจด้วย AST — ข้อความ/คอมเมนต์ที่อธิบายกติกา เช่นชื่อข้อสอบ S3.33 ไม่นับ) · ตัวบ่งชี้ต้อง `Symbol(` ไม่ใช่ `Symbol.for(` | S3.33 ✅ · F15.5 ✅ + หลักฐานลบ |
+| D6 | — | createProduct: InvItem ที่คลังไม่ได้เสิร์ฟ `unitId` = VALIDATION (`:716` · updateProduct ย้ายสาขาก็ตรวจ `:770`) · trackStock true บนบริการ = VALIDATION (`:722` · `:779`) · ล็อกร้านเฉพาะเมื่อมี invItemId หรือบาร์โค้ด (`:707` · createCategory ไม่ล็อก) · `actorOf :152` acceptedAt null = NOT_FOUND (กติกาบ้าน context.ts:23,50 · push.ts:313-315) · `unitInventory` ไม่กรองคลังปิดใช้งาน (`systemForUnit` ไม่กรอง — system/service.ts:58-68) และ `inventorySystemsOfPos`/resolver ใช้กติกาเดียวกัน (มติ a) · `zeroPriceWeb` นับจากราคาสุดท้ายจริงของแถวเว็บเอง · `byBarcode :586` = UNION (บาร์โค้ดของแถวผ่าน index (systemId, barcode) ∪ บาร์โค้ด InvItem) | S3.34–S3.39 ✅ |
+
+### D4 — การรันไฟล์ของ prisma 7.8 (วัดใหม่ round 3 · แก้ข้อสรุป round 2)
+วัดใน schema Postgres แยก `p11probe` บน QC4 (config ชั่วคราวใน `.qc-shots` · ลบ schema ทุกครั้ง) ด้วย `txid_current()` เก็บลงตารางทีละคำสั่ง:
+| ไฟล์ทดสอบ | txid ของคำสั่ง 2 และ 3 | `SET LOCAL lock_timeout` | ความหมาย |
+|---|---|---|---|
+| A: SET LOCAL + CREATE ×2 (ไม่มี DO) | 4404999 · 4405000 | ไม่มีผล (`0`) | prisma แยกไฟล์ทีละคำสั่ง · คนละ transaction |
+| B: แบบ A + `DO $$ … $$` ตรงกลาง | 4405007 · 4405007 | มีผล (`3s`) | ทั้งไฟล์ส่งเป็นสคริปต์เดียว = transaction เดียว (implicit) |
+| C: แบบ A + `IF NOT EXISTS` (ไม่มี DO) | 4405014 · 4405015 | ไม่มีผล | แยกทีละคำสั่ง (ตัวตัดสินคือ dollar-quote ไม่ใช่ IF NOT EXISTS) |
+| ไฟล์มี DO + `SELECT 1/0` กลางไฟล์ | — | — | deploy: `P3018 division by zero` · ไม่มีตารางใดค้าง (ทั้งไฟล์ rollback) · deploy ซ้ำ: `P3009` · ลบแถว `_prisma_migrations` ที่ล้ม + แก้ไฟล์ → deploy ผ่าน (`applied_steps_count 1`) |
+⇒ round 2 สรุปว่า "ทีละคำสั่ง" ถูกสำหรับไฟล์ round 2 (ไม่มี DO) · ไฟล์ round 3 มี DO ⇒ **ทั้งไฟล์ atomic** บน prisma 7.8 · `SET lock_timeout` ระดับ session ต้นไฟล์มีผลทั้งสองแบบ · `RESET` ท้ายไฟล์
+
+### D4 — พิสูจน์รันซ้ำบน QC4
+1. `rollback-pos_v2_a.sql` (ฉบับเต็ม + RESET) → `Script executed successfully.` · fingerprint ตารางเดิม = ก่อน P1.1a ทุก byte
+2. `migrate deploy` → `Applying migration 20261120000000_pos_v2_a` · `All migrations have been successfully applied.`
+3. schema snapshot หลัง deploy = `cols 133:fe6c18c9… idx 37:d3adfa30… con 106:b5c79e95… enum [PRODUCT,SERVICE,MENU,BUNDLE]` (= ค่าเดียวกับโครงสร้าง round 2 ก่อน rollback)
+4. `prisma db execute --file prisma/migrations/20261120000000_pos_v2_a/migration.sql` ด้วยมือ (รอบสอง) → `Script executed successfully.` (ไม่มี error) · snapshot หลังรันซ้ำ = ค่าเดิมทุกตัว (ไม่เปลี่ยนอะไร) · `migrate status` → `Database schema is up to date!`
+
+### Runbook กู้ P3009 (prod)
+1. `prisma migrate deploy` ล้ม (P3018 = SQL error · ไฟล์นี้ atomic ⇒ ไม่มีของค้างครึ่งไฟล์) → deploy ครั้งต่อไปจะได้ `P3009 failed migrations in the target database`
+2. รัน rollback SQL ข้างล่าง (IF EXISTS ทุกคำสั่ง — ใช้ได้ทั้งตอนมีของค้างและไม่มี) ⇒ ลบแถว `_prisma_migrations` ที่ล้มด้วย
+3. แก้เหตุ (เช่น lock_timeout หมดเพราะตารางเดิมถูกล็อก → รันนอกเวลาขาย) → `prisma migrate deploy` ใหม่
+4. (ห้าม `migrate resolve` บนฐานร่วม — ตามกติกา qc-prisma.sh · บน prod ผู้คุมงานตัดสิน)
+
+### rollback ฉบับสุดท้าย (ใช้แทนฉบับ round 1/2)
+```sql
+SET lock_timeout = '3s';
+BEGIN;
+ALTER TABLE IF EXISTS "PosProductOptionGroup" DROP CONSTRAINT IF EXISTS "PosProductOptionGroup_productId_fkey";
+ALTER TABLE IF EXISTS "RecipeLine" DROP CONSTRAINT IF EXISTS "RecipeLine_productId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_categoryId_fkey";
+ALTER TABLE IF EXISTS "PosProduct" DROP CONSTRAINT IF EXISTS "PosProduct_parentId_fkey";
+DROP TABLE IF EXISTS "PosProductOptionGroup";
+DROP TABLE IF EXISTS "RecipeLine";
+DROP TABLE IF EXISTS "PosProduct";
+DROP TABLE IF EXISTS "PosCategory";
+DROP TYPE IF EXISTS "PosProductKind";
+ALTER TABLE "MenuItem" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopProduct" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "ShopOrderLine" DROP COLUMN IF EXISTS "posProductId";
+ALTER TABLE "PosSaleLine" DROP COLUMN IF EXISTS "productId";
+ALTER TABLE "RestaurantOrderItem" DROP COLUMN IF EXISTS "productId";
+DELETE FROM "_prisma_migrations" WHERE migration_name = '20261120000000_pos_v2_a';
+COMMIT;
+RESET lock_timeout;
+```
+
+### F15.5 — หลักฐานลบ (negative proof)
+ฝังไฟล์ชั่วคราว 3 ไฟล์ในต้นไม้จริง (ลบทันทีหลังรัน · `git status` สะอาด): `src/app/__f155_probe.ts` (import ตัวบ่งชี้) · `src/lib/actions/__f155_probe.ts` (`"use server"` + backfillCatalog) · `scripts/qc-__f155-probe.mts` (`u ?? C.<ตัวบ่งชี้>` ในไฟล์ที่อนุญาต) → `pnpm fitness` (ไม่มี env) exit 1 · F15.5 ❌ ระบุครบ 3 ไฟล์ (F6.1 ก็จับไฟล์ action ที่ไม่มีการตรวจสิทธิ์ด้วย) · `scanSystemMarker(<root ชั่วคราว>)` ที่ catalog.ts ใช้ `Symbol.for(` → 2 ข้อ ("ต้องสร้างด้วย Symbol(…)" · "ห้าม Symbol.for(") · ลบแล้ว: `JSON_SUMMARY {"total":39,"passed":39,"findings":[]}`
+
+### กติกาสำหรับผู้เรียกใน P1.1b (D6)
+P2002 ภายใน **transaction ที่ผู้เรียกส่งมา** (`client` = tx): catalog คืน `CatalogError("CONFLICT")` ได้ แต่ transaction ของผู้เรียก **ถูก Postgres ยกเลิกแล้ว** (คำสั่งถัดไปใน tx นั้นจะ error "current transaction is aborted") ⇒ ผู้เรียกต้องจบ tx นั้น (throw/rollback) ไม่ใช่จับ CONFLICT แล้วเขียนต่อ · ถ้าต้องการ "ลองแล้วไปต่อ" ให้เรียกนอก tx หรือห่อด้วย savepoint ของตัวเอง
+
+### Acceptance (round 3)
+- oracle: exit 0 · `===== qc-pos-p1.1 ===== ผ่าน 93/93` · `JSON_SUMMARY {"suite":"qc-pos-p1.1","total":93,"passed":93,"failed":[],…,"skippedGroups":{"S2":"P1.1b ยังไม่เริ่ม … ข้าม 28 ข้อ"}}` · ROWCOUNTS เท่าเดิม
+- backfill ร้าน QC: dry 13/3/4 · จริง 13/3/4 · จริงซ้ำ 0/0 · ถอยแล้วซ้อน A 0 · B 13/3/4 · counts ร้าน QC `{"zeroPriceProduct":2,"trackStockAutoOn":3, อื่น ๆ 0}` · INVARIANTS ไม่ซ้ำ/ไม่กำพร้า
+- A3: fingerprint ตารางเดิม = ก่อน P1.1a หลัง rollback · หลัง backfill · หลัง 17 ชุด
+- regression 17 ชุด: 17 SAME กับ round 1 (logs `.qc-shots/pos/p1.1a/r3/after/`)
+- fitness มี env / ไม่มี env: exit 0 · `{"total":39,"passed":39,"findings":[]}` ทั้งคู่ · F15.1 "หนี้เดิม 9 ไฟล์ 36 จุด" · F15.2 ✅ · F15.5 ✅
+- typecheck: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 0 · 0 error (รอบเดียว)
+
+### ORACLE-EDIT (round 3)
+ไม่มี
+
+### หนี้เพิ่ม (round 3)
+| หนี้ | ใบเจ้าของ |
+|---|---|
+| index บาร์โค้ดของ InvItem (ขา UNION ที่สองของ byBarcode สแกนตาม tenantId) | P6.1 |
+| `checkCatalogWrite` ↔ `posCanSetTenantPrice` (hotfix/pos-page-authz) ต้องเป็นกติกาเดียวตอน merge | ผู้คุมงาน (merge) |
+| P1.1b ไฟล์ legacy-sync ต้องเพิ่มตัวเองใน `SYSTEM_MARKER_ALLOWLIST` พร้อมเหตุผล | P1.1b |
+| resolver/คลัง: คลังปิดใช้งานยังนับ (มติ a — ตามหน้าขายวันนี้) · ถ้าจะกรองต้องแก้ systemForUnit ด้วยพร้อมกัน | P2.1 |
