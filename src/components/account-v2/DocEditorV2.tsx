@@ -26,6 +26,7 @@ import { Modal } from "./Modal";
 import { RowActions } from "./RowActions";
 import { SectionCard } from "./SectionCard";
 import { formatDateTh } from "@/lib/ui/date";
+import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
 import { Stepper, type StepDef } from "./Stepper";
 import { StickyBar } from "./StickyBar";
 import { ToastProvider, useToast } from "./Toast";
@@ -182,6 +183,9 @@ function EditorBody(props: DocEditorV2Props) {
   const [payAdvanced, setPayAdvanced] = useState(false);
   const [payBoxes, setPayBoxes] = useState<PayBox[]>([]);
   const [payError, setPayError] = useState("");
+  // CRM C5.4-C ▸ round 13 · R12-1/R12-2: รายการรับที่ผูกกับร่างไว้แล้ว (อ่านอย่างเดียว) · ธงยืนยัน "ออกเป็นรับเงินสด" เมื่อรายการเดิมถูกยกเลิกหมด ◂
+  const attachedPays = props.attachedPayments ?? [];
+  const [cashConfirmed, setCashConfirmed] = useState(false);
   const payKeyRef = useRef(`pay-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const approveFormRef = useRef<HTMLFormElement>(null);
   const approveNextRef = useRef<HTMLInputElement>(null);
@@ -361,13 +365,13 @@ function EditorBody(props: DocEditorV2Props) {
 
   // ── WO 1.4 ส่วน F: กล่อง "ครั้งที่ 1" ตั้งต้นของใบเสร็จ = ยอดเต็มใบ (แก้ได้) ──
   useEffect(() => {
-    if (!props.paymentEnabled) return;
+    if (!props.paymentEnabled || attachedPays.length > 0) return;
     setPayBoxes((prev) =>
       prev.length > 0
         ? prev
         : [newPayBox(value.issueDate, totals.grandTotal, props.paymentChannels[0]?.id ?? null)],
     );
-  }, [props.paymentEnabled, props.paymentChannels, value.issueDate, totals.grandTotal]);
+  }, [props.paymentEnabled, props.paymentChannels, value.issueDate, totals.grandTotal, attachedPays.length]);
 
   const approve = (next: "" | "pay" | "print" | "email") =>
     startTransition(async () => {
@@ -381,10 +385,18 @@ function EditorBody(props: DocEditorV2Props) {
       // ── ใบเสร็จรับเงิน (g2): อนุมัติ = ออกเอกสาร + บันทึกการรับชำระที่กรอกไว้ในคำสั่งเดียว ──
       if (props.paymentEnabled) {
         setPayError("");
+        // round 13 · R12-2: รายการรับเดิมถูกยกเลิก/เช็คเด้งหมด และไม่ได้กรอกการรับเงินใหม่ ⇒ ต้องยืนยันก่อน (ระบบจะบันทึกเป็นรับเงินสด)
+        if (props.attachedAllVoided && attachedPays.length === 0 && !payBoxes.some((b) => boxTieOff(b) > 0) && !cashConfirmed) {
+          const msg = "รายการรับชำระเดิมถูกยกเลิก/เช็คเด้ง — ถ้าออกใบเสร็จตอนนี้จะบันทึกเป็นรับเงินสด ติ๊กยืนยันก่อน หรือกรอกการรับเงินใหม่";
+          setPayError(msg);
+          toast.error(msg);
+          return;
+        }
         const res = await approveReceiptWithPaymentsAction(
           props.systemId,
           id,
-          payBoxes.filter((b) => boxTieOff(b) > 0).map((b) => ({
+          // round 13 · R12-1: ร่างที่ผูกรายการรับไว้แล้ว ⇒ ไม่ส่งรายการใหม่ (server ออกเอกสารด้วยรายการเดิม)
+          (attachedPays.length > 0 ? [] : payBoxes).filter((b) => boxTieOff(b) > 0).map((b) => ({
             paidAt: b.paidAt,
             financeAccountId: b.financeAccountId,
             amountSatang: b.amountSatang,
@@ -1241,6 +1253,31 @@ function EditorBody(props: DocEditorV2Props) {
       {props.paymentEnabled && (
         <>
           {payError && <p className="text-sm text-[color:var(--color-danger)]" data-testid="pay-error">{payError}</p>}
+          {props.attachedAllVoided && attachedPays.length === 0 && (
+            <div className="rounded-lg border border-[color:var(--color-warning,#d97706)] p-3 text-sm" data-testid="pay-voided-warning">
+              <p>รายการรับชำระเดิมถูกยกเลิก/เช็คเด้ง — ถ้าออกใบเสร็จตอนนี้จะบันทึกเป็นรับเงินสด</p>
+              <label className="mt-2 flex items-center gap-2">
+                <input type="checkbox" checked={cashConfirmed} onChange={(e) => setCashConfirmed(e.target.checked)} data-testid="pay-voided-confirm" />
+                <span>ยืนยันออกใบเสร็จเป็นรับเงินสด (ถ้าไม่ได้กรอกการรับเงินใหม่ด้านล่าง)</span>
+              </label>
+            </div>
+          )}
+          {attachedPays.length > 0 ? (
+            <SectionCard title="รับชำระเงิน" complete testId="sec-attached-payments">
+              <p className="text-sm text-[color:var(--color-muted)]">รายการรับชำระผูกกับใบเสร็จนี้แล้ว — กดอนุมัติเพื่อออกใบเสร็จได้เลย ไม่ต้องกรอกซ้ำ</p>
+              <table className="mt-2 w-full text-sm" data-testid="attached-payments">
+                <tbody>
+                  {attachedPays.map((p, i) => (
+                    <tr key={p.id} className="border-b last:border-0" data-testid={`attached-pay-row-${i + 1}`}>
+                      <td className="py-1">{formatDateTh(p.paidAt)}</td>
+                      <td className="py-1">{p.chequeNo ? `เช็ค ${p.chequeNo}` : (p.financeName ?? payChannelLabel(p.channel))}</td>
+                      <td className="py-1 text-right tabular-nums"><MoneyText satang={p.amountSatang + p.whtAmountSatang} decimals /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </SectionCard>
+          ) : (
           <PaymentSection
             value={payBoxes}
             onChange={setPayBoxes}
@@ -1253,6 +1290,7 @@ function EditorBody(props: DocEditorV2Props) {
             whtBaseSatang={totals.afterDiscount}
             docTotalLabel={`ยอด${props.docLabel}`}
           />
+          )}
         </>
       )}
 

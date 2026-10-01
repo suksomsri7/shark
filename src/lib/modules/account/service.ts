@@ -3721,6 +3721,9 @@ export async function attachDraftReceiptPayments(
   }
 }
 
+/** round 13 · R12-1 */
+export const DRAFT_RECEIPT_ALREADY_ATTACHED_MSG = "ใบเสร็จนี้มีรายการรับชำระอยู่แล้ว — ออกใบเสร็จต่อได้เลย หรือยกเลิกรายการเดิมก่อน";
+
 /** CRM C5.4-C ▸ round 11 · R10-6: ผูกรายการรับเงินกับร่างใบเสร็จ **ในธุรกรรมของผู้เรียก** (แยกแบบกลไก) — cheque.ts ผูกเช็คในธุรกรรมเดียวกัน ◂ */
 export async function attachDraftReceiptPaymentsInTx(
   tx: Prisma.TransactionClient,
@@ -3735,6 +3738,9 @@ export async function attachDraftReceiptPaymentsInTx(
         select: { id: true },
       });
       if (!doc) throw new Error("ไม่พบร่างใบเสร็จรับเงิน");
+      // CRM C5.4-C ▸ round 13 · R12-1: ร่างที่ผูกรายการรับไว้แล้ว (ขั้นออกเอกสารล้มหลังผูก) ห้ามผูกชุดที่สอง — เดิมได้ 2 ชุด/เช็ค 2 ใบ/recorded ×2 ◂
+      if ((await tx.accountDocumentPayment.count({ where: { documentId, tenantId, systemId, voidedAt: null } })) > 0)
+        throw new Error(DRAFT_RECEIPT_ALREADY_ATTACHED_MSG);
       const ids: string[] = [];
       let tieOff = 0;
       for (const r of rows) {

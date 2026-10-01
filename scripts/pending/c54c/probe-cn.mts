@@ -949,6 +949,62 @@ try {
           chk("R12-EVT", ok, `cash-sale receipts are not deal money (CRM counts INVOICE/DEPOSIT_RECEIPT) — symmetric events, nothing counted, nothing reversed: ${res.join(" ‖ ")}`);
         });
       }
+      { // R13 (round 13 · hunter r12 R12-1) — draft receipt that already holds live payments (attach committed, issue failed), user comes back:
+        //   second attach refused · approve with a NEW key and EQUAL rows ⇒ issued once · DIFFERENT rows ⇒ refused, nothing written · EMPTY rows ⇒ issued with the attached ones
+        const fin = (await import("@/lib/modules/account/finance" as string)) as Any;
+        const pay = (await import("@/lib/modules/account/payment" as string)) as Any;
+        const bk = await fin.createFinanceAccount({ tenantId: T, systemId: A, type: "BANK", name: `บัญชี R13 ${TAG}`, bankName: "ออมสิน" });
+        if (!bk?.ok) throw new Error(`bank: ${bk?.reason}`);
+        const today = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+        const day = new Date(`${today}T00:00:00Z`);
+        let ks = 0; const kb = () => `r13k${++ks}_${randomBytes(3).toString("hex")}`;
+        const mkRe = async () => (await accSvc.createDocument({ tenantId: T, systemId: A, docType: "RECEIPT", contactId: cust.id, vatMode: "EXCLUDE", lines: [{ description: "ขายสด", qty: 1, unitPrice: 1_000_000 }] })).id as string;
+        const J = (v: Any) => JSON.stringify(v?.ok ? { ok: true } : v);
+        const counts = async (re: string) => ({
+          live: await P.accountDocumentPayment.count({ where: { documentId: re, voidedAt: null } }),
+          cheques: await P.accountDocumentPayment.count({ where: { documentId: re, chequeId: { not: null } } }),
+          rec: await P.outboxEvent.count({ where: { tenantId: T, type: "account.payment.recorded", payload: { path: ["documentId"], equals: re } } }),
+          je: await P.accountJournalEntry.count({ where: { systemId: A } }),
+          doc: await P.accountDocument.findUnique({ where: { id: re }, select: { status: true, docNo: true, paidTotal: true } }),
+        });
+        // attach committed, issue never ran (= the state a failed issue leaves)
+        const worst = async (how: "cheque" | "transfer") => {
+          const re = await mkRe(); const key = kb(); const chequeNo = `R13-${ks}`;
+          const r = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, re, [{ paidAt: day, channel: how === "cheque" ? "CHEQUE" : "TRANSFER", financeAccountId: how === "cheque" ? null : bk.id, amount: 1_070_000, whtAmountSatang: 0, whtRateBp: null, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${key}:0`, cheque: how === "cheque" ? { chequeNo, bankName: "KBank", chequeDate: day } : null, chequeFinanceAccountId: bk.id }]);
+          if (!r.ok) throw new Error(`attach: ${r.reason}`);
+          return { re, chequeNo };
+        };
+        const row = (amt: number, chequeNo: string | null) => ({ paidAt: today, financeAccountId: bk.id, amountSatang: amt, whtAmountSatang: 0, whtRateBp: null, whtIncomeType: null, feeSatang: 0, note: "", cheque: chequeNo ? { chequeNo, bankName: "KBank", chequeDate: today } : null });
+        const sub = async (id: string, f: () => Promise<void>) => { try { await f(); } catch (e) { chk(id, false, `FATAL ${e instanceof Error ? e.message : String(e)}`); } };
+        await sub("R13-RETRY", async () => {
+          const out: string[] = []; let ok = true;
+          for (const how of ["cheque", "transfer"] as const) {
+            // second attach refused (service guard)
+            const w0 = await worst(how);
+            const again = await cheque.attachReceiptPaymentsWithChequesInOneTx(T, A, w0.re, [{ paidAt: day, channel: "TRANSFER", financeAccountId: bk.id, amount: 1_070_000, whtAmountSatang: 0, whtRateBp: null, feeAmount: 0, note: null, createdById: null, idempotencyKey: `${kb()}:0`, cheque: null, chequeFinanceAccountId: bk.id }]);
+            // EQUAL rows, new key ⇒ issued once
+            const w1 = await worst(how);
+            const eq = await pay.approveReceiptWithPayments(T, A, w1.re, [row(1_070_000, how === "cheque" ? w1.chequeNo : null)], { keyBase: kb() });
+            const c1 = await counts(w1.re);
+            // DIFFERENT rows, new key ⇒ refused, nothing written
+            const w2 = await worst(how); const b2 = await counts(w2.re);
+            const diffRow = how === "cheque" ? row(1_070_000, `${w2.chequeNo}-X`) : row(1_070_000, "NEW-CHQ"); // other cheque no. / other channel
+            const diff = await pay.approveReceiptWithPayments(T, A, w2.re, [diffRow], { keyBase: kb() });
+            const a2 = await counts(w2.re);
+            // EMPTY rows, new key ⇒ issued with the attached payments
+            const w3 = await worst(how);
+            const empty = await pay.approveReceiptWithPayments(T, A, w3.re, [], { keyBase: kb() });
+            const c3 = await counts(w3.re);
+            const good = c1.cheques === (how === "cheque" ? 1 : 0) && again?.ok === false && /มีรายการรับชำระอยู่แล้ว/.test(String(again?.reason))
+              && eq?.ok === true && c1.live === 1 && c1.rec === 1 && c1.doc.status === "PAID" && !!c1.doc.docNo && c1.doc.paidTotal === 1_070_000
+              && diff?.ok === false && /มีรายการรับชำระอยู่แล้ว/.test(String(diff?.reason)) && JSON.stringify(a2) === JSON.stringify(b2) && a2.doc.status === "DRAFT"
+              && empty?.ok === true && c3.live === 1 && c3.rec === 1 && c3.doc.status === "PAID" && c3.doc.paidTotal === 1_070_000;
+            ok &&= good;
+            out.push(`${how}: 2nd attach ${J(again)} · equal rows ${J(eq)} → live ${c1.live} rec ${c1.rec} ${c1.doc.status} ${c1.doc.docNo} paid ${c1.doc.paidTotal} · different rows ${J(diff)} → nothing written ${JSON.stringify(a2) === JSON.stringify(b2)} (${a2.doc.status}) · empty rows ${J(empty)} → live ${c3.live} rec ${c3.rec} ${c3.doc.status} paid ${c3.doc.paidTotal}`);
+          }
+          chk("R13-RETRY", ok, out.join(" ‖ "));
+        });
+      }
       chk("F1", bad === 0, `cheque races (bounce∥bounce · clear∥bounce · voidPayment∥bounce · voidCheque∥voidCheque/voidVendorPayment) × 5: paidTotal = Σ live payments, one bounce entry, no double decrement — bad=${bad}/${n} · ${out.join(" · ")}`);
     }
     // D3 · Q2: dashboard "paid" bucket (revenue) = grand − live CN of each PAID invoice ⇒ inv 107,000 + inv2 (107,000 − 10,700) = 203,300

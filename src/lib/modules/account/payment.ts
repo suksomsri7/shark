@@ -7,6 +7,7 @@ import {
   paymentOutstandingOf,
   listDocPayments,
   findPaymentsByKeys,
+  DRAFT_RECEIPT_ALREADY_ATTACHED_MSG,
   DOC_LABEL,
 
 } from "./service";
@@ -386,10 +387,30 @@ export async function approveReceiptWithPayments(
   // round 12 · R11-1: รายการชุดเดิมถูกยกเลิกไปแล้ว (เช่น เช็คเด้งขณะใบเสร็จยังเป็นร่าง) ⇒ ห้ามข้ามไปออกเอกสารโดยไม่มีเงิน — ให้กรอกการรับเงินใหม่
   if (keys.length > 0 && already.length === keys.length && already.some((p) => p.voidedAt))
     return { ok: false, reason: "รายการรับเงินของร่างใบเสร็จนี้ถูกยกเลิกไปแล้ว (เช่น เช็คเด้ง) — กรอกการรับเงินใหม่แล้วกดอนุมัติอีกครั้ง" };
+  // round 13 · R12-1: ร่างมีรายการรับที่ยังมีผลอยู่แล้ว (ผูกสำเร็จแต่ออกเอกสารล้ม แล้วกลับมากดใหม่ด้วยคีย์ใหม่) —
+  //   รายการที่ส่งมาตรงกับที่ผูกไว้ (ยอด · WHT · ช่องทาง/บัญชีเงิน · เลขเช็ค) ⇒ ข้ามการผูก ไปออกเอกสาร · ไม่ตรง ⇒ ปฏิเสธ (ไม่ผูกชุดที่สอง)
+  //   (รายการว่าง ⇒ ออกเอกสารตรง ๆ ด้านบนแล้ว — ใช้รายการที่ผูกไว้)
+  const sameKeyRetry = keys.length > 0 && already.length === keys.length && already.every((p) => p.documentId === docId);
+  let matchedIds: string[] | null = null;
+  if (!sameKeyRetry) {
+    const live = (await listDocPayments(tenantId, systemId, docId)).filter((p) => !p.voidedAt);
+    if (live.length > 0) {
+      const sig = (x: { amount: number; wht: number; cheque: string | null; fin: string | null }) => `${x.amount}|${x.wht}|${x.cheque ?? `fin:${x.fin ?? ""}`}`;
+      const want = rows.map((r) => sig({ amount: r.amountSatang, wht: r.whtAmountSatang, cheque: r.cheque ? r.cheque.chequeNo : null, fin: r.financeAccountId }));
+      const have = live.map((p) => ({ id: p.id, s: sig({ amount: p.amount, wht: p.whtAmount, cheque: p.chequeNo, fin: p.financeAccountId }) }));
+      const pool = [...have];
+      const ids: string[] = [];
+      for (const w of want) { const i = pool.findIndex((h) => h.s === w); if (i < 0) break; ids.push(pool[i].id); pool.splice(i, 1); }
+      if (ids.length !== want.length || pool.length > 0) return { ok: false, reason: DRAFT_RECEIPT_ALREADY_ATTACHED_MSG };
+      matchedIds = ids;
+    }
+  }
   const attached =
-    keys.length > 0 && already.length === keys.length && already.every((p) => p.documentId === docId)
+    sameKeyRetry
       ? { ok: true as const, paymentIds: keys.map((k) => already.find((p) => p.idempotencyKey === k)!.id) }
-      : await attachReceiptPaymentsWithChequesInOneTx(
+      : matchedIds
+        ? { ok: true as const, paymentIds: matchedIds }
+        : await attachReceiptPaymentsWithChequesInOneTx(
           tenantId,
           systemId,
           docId,
