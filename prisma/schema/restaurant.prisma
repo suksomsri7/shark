@@ -173,7 +173,7 @@ model MenuItem {
   @@index([unitId, categoryId, sortOrder])
   @@index([unitId, status, isOutOfStock])
   @@index([unitId, invItemId]) // V2 (WO 4.1)
-  @@index([posProductId]) // P1.1a
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
 model MenuOptionGroup {
@@ -421,7 +421,7 @@ model RestaurantOrderItem {
   @@index([orderId])
   @@index([unitId, menuItemId])
   @@index([saleId])
-  @@index([productId]) // P1.1a
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
 model RestaurantOrderItemOption {

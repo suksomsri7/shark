@@ -75,7 +75,7 @@ model PosSaleLine {
   productId       String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว) · id หลวมแบบ itemId/serviceId · null = บิลเดิม
 
   @@index([saleId])
-  @@index([productId])
+  // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
 }
 
 model PosPayment {
@@ -135,6 +135,10 @@ model PosCategory {
   products PosProduct[]
 
   @@unique([systemId, unitId, name])
+  /// 🔴 M5: หมวด "ทุกสาขา" (unitId null) ห้ามชื่อซ้ำในระบบเดียว — unique ข้างบนกันไม่ได้ (NULL ไม่เท่ากัน)
+  ///    บังคับด้วย **partial unique index** ใน migration 20261120000000_pos_v2_a:
+  ///      CREATE UNIQUE INDEX "PosCategory_systemId_name_all_branches_key" ON "PosCategory"("systemId","name") WHERE "unitId" IS NULL;
+  ///    (แบบเดียวกับ AccountProduct_systemId_code_active_key) · `prisma migrate diff` มองไม่เห็น → ห้ามลบออกจาก migration
   @@index([tenantId])
 }
 
@@ -157,7 +161,7 @@ model PosProduct {
   barcode            String? // บาร์โค้ดของแถวนี้เอง (แถวที่ผูกคลังใช้ InvItem.barcode — ไม่คัดลอก)
   images             Json           @default("[]") // ["url", …] index 0 = ปก
   sortOrder          Int            @default(0)
-  trackStock         Boolean        @default(false) // ตัดสต็อกไหม — หลัง backfill คอลัมน์นี้คือความจริง (ไม่ derive ซ้ำ)
+  trackStock         Boolean? // C2 tri-state: null = AUTO (คิดตอนอ่าน: ผูก InvItem + PRODUCT + มี movement หรือ onHand ≠ 0) · true/false = ร้านตั้งเอง
   unavailableUnitIds String[]       @default([]) // สาขาที่ปิดขายชั่วคราว (availability[unit] = false)
   // ── สำเนาจาก MenuItem (copy-only ถึง P1.1b/P2.4) ──
   stationId          String? // KdsStation.id
@@ -173,7 +177,7 @@ model PosProduct {
 
   @@unique([systemId, invItemId])
   @@index([tenantId])
-  @@index([systemId, unitId, archivedAt])
+  @@index([systemId, archivedAt, name, id]) // M4: ลำดับของ listForUnit (keyset ชื่อ+id)
   @@index([systemId, barcode])
   @@index([parentId])
 }

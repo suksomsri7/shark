@@ -170,3 +170,14 @@ COMMIT;
 
 ## ของค้าง
 ไม่มีแถวชั่วคราว · helper ใน `.qc-shots/pos/p1.1a/*.mts` (gitignored ไม่ commit)
+
+# Round 2 (brief `pos-brief-P1.1a-R2.md`) — checkpoint
+| # | ขั้น | สถานะ |
+|---|---|---|
+| R2-0 | fingerprint ก่อน (r2-before) | ✅ ตารางเดิม = fp-before ของ round 1 ทุกตาราง · PosProduct 13 / PosCategory 3 (ร้าน QC) |
+| R2-1 | M2 probe (schema Postgres แยก `p11probe` บน QC4 · ลบแล้ว) | ✅ `migrate deploy` รันทีละคำสั่งคนละ tx (txid 4386091 → 4386092) ⇒ `SET LOCAL lock_timeout` ไม่มีผล (อ่านได้ `0`) · `SET lock_timeout = '3s'` (ระดับ session) มีผลทุกคำสั่งถัดไป (อ่านได้ `3s` ทั้งสอง tx) |
+| R2-2 | M6 rollback จริงบน QC4 | ✅ `prisma db execute --file rollback-pos_v2_a.sql` → `Script executed successfully.` · ตารางใหม่/enum/คอลัมน์เชื่อม 5 ตัว/แถว `_prisma_migrations` หายหมด · fingerprint ตารางเดิม = ก่อน P1.1a ทุก byte |
+| R2-3 | migration ใหม่ deploy + generate | ✅ `Applying migration 20261120000000_pos_v2_a … successfully applied` · generate · drift diff เหลือแค่ 3 index ของ crm_perf_indexes ที่สืบทอดมา (partial unique ใหม่ไม่ถูกนับเป็น drift — เหมือน AccountProduct) |
+| R2-4 | โค้ด C1–C13 (catalog.ts เขียนใหม่ · backfill script C13) | ✅ |
+| R2-5 | backfill ร้าน QC: dry → จริง → จริงซ้ำ → ถอย → 2 โปรเซสซ้อน | ✅ 13/3/4 → 13/3/4 → 0 ทั้งหมด → A 13/3/4 · B 0 (รอล็อก) · INVARIANTS ไม่ซ้ำ/ไม่กำพร้า · ตารางเดิม = ก่อน P1.1a ทุก byte |
+| R2-6 | oracle | ⏳ |

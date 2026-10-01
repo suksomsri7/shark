@@ -12,8 +12,9 @@
 //   QC4  : bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pos-backfill-catalog.mts [--tenant=<id|slug>]… [--dry-run]
 //   PROD : ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id> --dry-run   ← ต้องรัน dry-run ก่อนเสมอ
 //          ALLOW_PROD_BACKFILL=1 pnpm exec tsx scripts/pos-backfill-catalog.mts --tenant=<id>             ← จริง (ต้องมี dry-run ภายใน 24 ชม. ชุดร้านเดียวกัน)
-// บรรทัดท้าย = `JSON_SUMMARY {...}` · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
-// 🔴 ไม่ระบุ --tenant = ทุกร้านในฐานนั้น
+//          ทุกร้านบน prod ต้องพิมพ์ `--all` เอง (C13: prod ไม่มี --tenant และไม่มี --all = ปฏิเสธ)
+// บรรทัดท้าย = `JSON_SUMMARY {...}` (มี `counts` ตัวนับ C7/C9 + `samples.soldAtCostToday`) · ร้านใดล้ม = exit 1 (ร้านอื่นยังเดินต่อ)
+// 🔴 ฐาน QC: ไม่ระบุ --tenant = ทุกร้านในฐานนั้น · รัน backfill นอกเวลาขาย (ล็อกระดับร้านชนกับผู้เขียนแคตตาล็อก — หนี้ P6.1 runbook)
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -24,6 +25,7 @@ const SCRIPT = "pos-backfill-catalog";
 // ── argv ──
 const argv = process.argv.slice(2);
 const dryRun = argv.includes("--dry-run") || argv.includes("--dryrun");
+const allTenants = argv.includes("--all");
 const tenantArgs: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i] ?? "";
@@ -61,9 +63,18 @@ if (isProd && !allowProd) {
   console.error(`🔴 หยุด! ${SCRIPT}: DATABASE_URL ชี้ production — ต้องตั้ง ALLOW_PROD_BACKFILL=1 เอง และรัน --dry-run ก่อน`);
   process.exit(4);
 }
+// C13: บน prod ต้องเลือกร้านชัด ๆ — --tenant=<id> (ซ้ำได้) หรือ --all ที่พิมพ์เอง (ไม่ระบุอะไรเลย = ปฏิเสธ)
+if (isProd && !tenantArgs.length && !allTenants) {
+  console.error(`🔴 หยุด! ${SCRIPT}: production ต้องระบุ --tenant=<id> หรือ --all เอง`);
+  process.exit(4);
+}
+if (allTenants && tenantArgs.length) {
+  console.error(`🔴 ${SCRIPT}: ใช้ --tenant กับ --all พร้อมกันไม่ได้`);
+  process.exit(2);
+}
 // ด่าน "dry-run ก่อนเสมอ" บน prod: dry-run เขียนบันทึก (ไฟล์ในเครื่อง ไม่ลง git) · รันจริงต้องเจอบันทึกของ host+ชุดร้านเดียวกัน ภายใน 24 ชม.
 const markerDir = ".qc-shots/pos";
-const markerKey = createHash("sha256").update(`${host}|${[...tenantArgs].sort().join(",")}`).digest("hex").slice(0, 16);
+const markerKey = createHash("sha256").update(`${host}|${allTenants ? "--all" : [...tenantArgs].sort().join(",")}`).digest("hex").slice(0, 16);
 const markerPath = `${markerDir}/backfill-dryrun-${markerKey}.json`;
 if (isProd && !dryRun) {
   const ok = existsSync(markerPath) && (() => {
@@ -108,6 +119,8 @@ const verb = dryRun ? "จะ" : "";
 console.log(`ร้าน ${s.tenants} · แหล่ง InvItem ${s.sources.invItem} · MenuItem ${s.sources.menuItem} · ShopProduct ${s.sources.shopProduct}`);
 for (const [sys, v] of Object.entries(s.perSystem)) console.log(`  ระบบ POS ${sys}: InvItem ${v.invItem} · MenuItem ${v.menuItem} · ShopProduct ${v.shopProduct}`);
 console.log(`ข้าม (หา POS ไม่เจอ): InvItem ${s.skippedNoPosSystem.invItem} · MenuItem ${s.skippedNoPosSystem.menuItem} · ShopProduct ${s.skippedNoPosSystem.shopProduct} · เหตุ ${JSON.stringify(s.skipped)}`);
+console.log(`ตัวนับ (เจ้าของควรดูก่อนเปิดใช้): ${JSON.stringify(s.counts)}`);
+for (const [t, rows] of Object.entries(s.samples.soldAtCostToday)) if (rows.length) console.log(`  ร้าน ${t} ลิ้นชักวันนี้คิดราคาทุน → แคตตาล็อกใหม่ "ยังไม่ตั้งราคา" (ตัวอย่าง ≤20): ${rows.map((r) => r.name).join(" · ")}`);
 console.log(`${verb}สร้าง ${JSON.stringify(s.created)} · ${verb}ผูกคอลัมน์เชื่อม ${JSON.stringify(s.updated)} · มีอยู่แล้ว ${JSON.stringify(s.alreadyDone)} · ${Date.now() - t0} ms`);
 for (const f of s.failedTenants) console.error(`🔴 ร้าน ${f.tenantId} ล้ม (ไม่มีอะไรค้างครึ่งทาง): ${f.error}`);
 if (isProd && dryRun && !s.failedTenants.length) {
