@@ -126,3 +126,68 @@ Add above it: `// ORACLE-EDIT C5.4-D2 (review · R2-S2 409 path removed by F1): 
 - [ckpt 1] notes, diff, code read · reruns started.
 - [ckpt 2] review probe 2/7 (5 RED proven) · r2 13/13 · r3 18/19 (R2S2a by design) · cd2 19/19.
 - [ckpt 3 · done] suites c2.2 73/73 · c2.5 105/105. Review probe logs are copied next to the other run logs in /tmp/cd2-review-logs/ (not committed).
+
+---
+
+## Round 2 — re-review of `git diff ac51650d 1d9229fc` (read-only · 1 Oct 2026)
+
+VERDICT: MERGEABLE. D2-S1, D2-S2 and D2-S3 are closed, and N1 and N3 are addressed. R2-N1 through R2-N4 below are NOTES; none blocks.
+
+### Reruns (QC3 · logs `/tmp/cd2-review-logs/r2/`)
+- Review probe: **8/8**. That is the 7 original checks, all green (RED 2/7 in round 1), plus new **RV-W3**.
+- probe-cd2: **28/28**
+- probe-c54d-r3: **19/19**. The ORACLE-EDIT in the commit matches my round-1 text byte for byte: description, assertion and the `// ORACLE-EDIT C5.4-D2 …` comment.
+- qc-crm-c2.2: **73/73** · qc-crm-c2.5: **105/105**
+
+### Checks
+**S1 (a) — claim race with the webhook: no lost providerId.**
+- The claim does **not** write `providerId: null`. It *requires* it: `where {id, status: FAILED, providerId: null}`, and the data is status, providerError and lease only.
+- Webhook back-fills between the `prior` read and the claim: the claim CAS fails, sendCore returns the old FAILED/reused result, and that is counted once. The next run takes the N1 branch (`prior.providerId` is set), which goes to `finalizeSent` with no call.
+- Webhook back-fills after the claim (row QUEUED): it sets `providerId IS NULL → id1`. The redelivery within 24 h replays id1 and finalizes with the same id. If the redelivery fails, the row is FAILED with id1, and the next run takes the N1 path.
+- Hashes are written only by `finalizeSent` with `hashes` from a provider 200. The N1 path passes `null`, so hashes are untouched.
+- RV-T1 green: the held mail's unsubscribe link works.
+
+**S1 (b)/(c) — fingerprint stability.**
+- `requestFingerprint` is sha256 of `JSON.stringify` over the `outgoingRequest` literal. It has a fixed key order and no dates, random values or MIME boundary; those are built by Resend.
+- The first send and the redelivery build it from identical stored values: to/cc/bcc/subject/messageId from the row, plus `rt`, `base`, `trk`, `fromAddr`/`fromName` and `bodyHtml`. F1a, R2S2a and RV-T2 replay 200, which proves equality within one build.
+- Across deploys, the fp changes only if the code changes `composeOutgoing`, `htmlToText`, `outgoingRequest` or the `RichEmail` fields. In that case the provider body really would differ (409), so the refusal is correct and not a false positive.
+- Residual gap (R2-N1): the fp covers the *inputs* of `sendEmailRich`, not its serialized JSON body.
+
+**S2 — closed.** `clearWaits` runs in the advance tx, in the failure tx (except the in-flight ceiling, which is still the same stuck mail) and in `resume`. RV-F4 green.
+
+**S3 — closed.**
+- The fallback runs only for sent/delivered/bounced/complained events (RV-W1 green), requires `jsonb_exists(routing,'fromAddr')`, matches exactly one row, and requires event `from` to equal the row sender.
+- **RV-W3 (new, green):** both shops use the same sender and the event `from` is equal. B's BCC-capture row is still never matched (`unknown_email`).
+  - The tenant separation comes from the routing filter, not from `from`.
+  - Only `sendCore` (`emails.ts:1405`) and `ingestInbound` (`:2448`) create CrmEmailMessage rows, and ingest never writes `routing.fromAddr`.
+- **Can shop B create a row whose Message-ID equals A's? No.**
+  - Send-path rfcIds are either `ik-`/`sk-` + sha256(`<own systemId>:<key>`)[:40] (bound to B's systemId) or random 96-bit hex.
+  - The `messageId` column is `<systemId>:<rfc>`, and capture rows are excluded.
+  - Shops without a verified domain also do not share one sender: the platform sender is `<tenant slug>@shark.in.th`.
+
+**N1 — the 24 h refusal applies only to `amb` rows. Classification is sound and conservative.**
+- `amb` covers TRANSPORT_ERROR (any fetch throw, including client abort or timeout after acceptance), 5xx, 409 (both `invalid_idempotent_request` and `concurrent_idempotent_requests`), and sweeper-closed QUEUED rows. The last case covers a function killed mid-request.
+- The flag is sticky and never cleared. The window is measured from `prior.createdAt` (first attempt), which is ≤ the real key age, so it is conservative.
+- 400/401/403/404/405/422/429 are rejections. For 429, Resend's rate/quota errors are answered before sending; I found no doc saying a 429 request may be sent, but "never accepted" is the standard reading and not explicitly documented.
+- Pre-network codes (NO_RECIPIENT, INVALID_HEADER) are marked `amb` although they never reached Resend. This is harmless: the sequence treats them as permanent and advances.
+- **Clock gap (R2-N2).** `sendCore` uses wall-clock time, and probes simulate time through `runDue(at)`.
+  - The builder's R2-N1b/N1c backdate `createdAt`, so they test the real rule.
+  - c54d-r3 R2S3a/b use definite codes only, so they now pass for the right reason.
+  - **Not covered anywhere:** the mixed real-clock path, where an outage contains one 5xx. Once a 5xx makes the row `amb`, an outage running past 24 h ends in REDELIVERY_EXPIRED (step SKIPPED) instead of the 72 h STOP. That is the intended trade (the mail may have been accepted), but no probe exercises it.
+  - F5, the outage notice once per Thai day, keys on wall-clock time and passes because everything runs within one real day. This was already so before the card.
+
+**N3** — `FROM_DOMAIN_UNVERIFIED`: no call and no outage notice (R2-N3 green). It is checked after the N1 and expiry branches, so a webhook-confirmed mail still finalizes SENT.
+
+### NOTES (round 2)
+- **R2-N1 · new · low.** Fingerprint the serialized provider body, or the `sendEmailRich` output, instead of its input object. A deploy that changes `sendEmailRich` serialization alone would otherwise pass the fp check and get a 409. That 409 is marked `amb`, so it ends counted and STOPPED, never duplicated.
+- **R2-N2 · new.** The mixed outage + 5xx real-clock path is unprobed (see N1 above).
+- **R2-N3 · new · owner-visible.** `crmEmailFailText` has no text for NOT_REPRODUCIBLE / REDELIVERY_EXPIRED / FROM_DOMAIN_UNVERIFIED. The email thread shows the generic "send failed — press send again" for mails that *may already have reached the customer*, which invites the manual duplicate N1 avoids.
+  - The shop is told only through the enrollment step log (SKIPPED with a Thai reason) and the audit line. The ops WARN (NOT_REPRODUCIBLE only) is visible to platform admins only.
+  - Add three texts, e.g. "อาจถึงลูกค้าแล้ว — ตรวจกับลูกค้าก่อนส่งใหม่". This can go to the C6.1 UX batch.
+- **R2-N4 · C6.1 list unchanged and confirmed.**
+  - SESSION_SECRET parity across Vercel and the VPS. A mismatch now degrades safely: NOT_REPRODUCIBLE, step skipped, no duplicate, no dead links.
+  - APP_URL is now stored per row (`routing.base`).
+  - The `providerId` index and a stored, indexed rfc column (needs a migration).
+  - Verify the Resend `data.message_id`/`data.from` assumption with one real send.
+
+- [r2 ckpt] reviewed, reruns green, RV-W3 added (`scripts/pending/cd2/review/probe-cd2-review.mts`).

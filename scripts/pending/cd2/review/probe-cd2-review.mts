@@ -203,6 +203,27 @@ try {
       `hook=${j(r)} tenantB contact optOut=${kb?.emailOptOut}`);
   });
 
+  await sub("RV-W3", async () => {
+    // round 2: same as RV-W2 but the capture row and the event carry the SAME sender as A's mail (shared sender address across shops) ⇒
+    // the `from` equality cannot separate tenants — only the `routing.fromAddr` filter can
+    const cA = await mkCrm();
+    const cB = await mkCrm({}, T2);
+    const addr = `${TAG}-shared3@qc.invalid`;
+    const kA = await mkContact(cA, "ร้านเอสาม", addr);
+    const kB = await mkContact(cB, "ร้านบีสาม", addr);
+    const a = await sysSend(cA, kA, `probe:${TAG}:w3`);
+    const accA = ACCEPTED.find((x) => x.key === a.messageId);
+    const rowA = await P.crmEmailMessage.findUnique({ where: { id: a.emailId }, select: { fromAddr: true } });
+    const rfcA = rfcOf(a.messageId);
+    await P.crmEmailMessage.create({ data: { tenantId: T2, systemId: cB.S, contactId: kB.id, direction: "OUT", messageId: `${cB.S}:${rfcA}`, references: [], threadKey: randomBytes(16).toString("hex"), fromAddr: rowA.fromAddr, toAddrs: [addr], ccAddrs: [], subject: `capture ${TAG}`, sentById: u.id, sentAt: new Date(), status: "SENT", matchedBy: "EMAIL", trackTokenHash: createHash("sha256").update(`crm.email.in:${cB.S}:${rfcA}`).digest("hex") } });
+    await P.crmEmailEvent.deleteMany({ where: { emailId: a.emailId } });
+    await P.crmEmailMessage.delete({ where: { id: a.emailId } });
+    const r = await hook("email.complained", { email_id: accA?.id, message_id: `<${rfcA}>`, from: `Shop <${rowA.fromAddr}>` }, `msg_${TAG}_w3`);
+    const kb = await P.crmContact.findUnique({ where: { id: kB.id }, select: { emailOptOut: true } });
+    chk("RV-W3", "same sender address in both shops + event `from` equal ⇒ tenant B's capture row is still never matched (routing.fromAddr filter) · B's contact untouched",
+      kb?.emailOptOut === false && r?.reason === "unknown_email", `hook=${j(r)} tenantB optOut=${kb?.emailOptOut}`);
+  });
+
   // ══════ RV-X · cost of the unindexed fallback scan on QC3 (informational, always green) ══════
   await sub("RV-X", async () => {
     const counts = (await P.$queryRawUnsafe(`SELECT count(*)::int AS total, count(*) FILTER (WHERE "direction"='OUT')::int AS out, count(*) FILTER (WHERE "direction"='OUT' AND "providerId" IS NULL)::int AS out_null FROM "CrmEmailMessage"`)) as Any[];
