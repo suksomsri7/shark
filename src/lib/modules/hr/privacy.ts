@@ -208,3 +208,21 @@ export function adjustmentReplyForViewer(
   }
   return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
 }
+
+// HF-HR-0 ▸ รอบ 5 (R5.2): ชั่วโมง OT ที่ผู้ยื่น "ที่ไม่ใช่ผู้ดูเงินเดือน" กรอกได้ = ทีละ 0.25 ชม. ตั้งแต่ 0.25 ถึง 744 (31 วัน × 24 ชม.)
+//   นอกนั้น (เศษ · 0/ติดลบ · เกิน · ไม่ใช่ตัวเลข) ⇒ คำปฏิเสธกลางเดียวกับ R4.6 ทุกไบต์ — ผู้เรียกตรวจที่นี่ **ก่อน** อ่านอะไรที่ขึ้นกับเงินเดือน
+//   ทำไม: ไล่ชั่วโมงเล็กลงเรื่อย ๆ (สำเร็จ vs "ยอดปัดเป็น 0") หรือใหญ่ขึ้นเรื่อย ๆ (สำเร็จ vs ยอดล้นช่อง Int) = หาอัตราค่าจ้างต่อชั่วโมงได้แม่น
+//   บนตารางนี้: อัตรา ≥ 2 สตางค์/ชม. ทุกค่าสำเร็จ (0.25 × 2 = 0.5 → ปัดเป็น 1) · ล้นช่อง Int ต้องอัตรา > 2,886,402 สตางค์/ชม. (เงินเดือน ~4.6 ล้านบาท)
+//   ผู้ดูเงินเดือน / รายการที่ไม่ใช่ OT / OT ที่ไม่กรอกชั่วโมง = ไม่ผ่านด่านนี้ (พฤติกรรมเดิม)
+export const OT_HOURS_STEP = 0.25;
+export const OT_HOURS_MAX = 744;
+export function screenOtHoursForViewer(
+  payrollViewer: boolean,
+  req: { kind: string; hours?: number },
+): { status: "error"; message: string } | null {
+  if (payrollViewer || req.kind !== "OT" || req.hours === undefined) return null;
+  const h = req.hours;
+  const onGrid = Number.isFinite(h) && h >= OT_HOURS_STEP && h <= OT_HOURS_MAX && Number.isInteger(h / OT_HOURS_STEP);
+  return onGrid ? null : { status: "error", message: ADJUST_REFUSED_GENERIC };
+}
+// ◂ HF-HR-0

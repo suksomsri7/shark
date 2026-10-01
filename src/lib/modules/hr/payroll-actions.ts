@@ -18,7 +18,7 @@ import {
   type AdjustKind,
   type Ctx,
 } from "./payroll";
-import { adjustmentReplyForViewer } from "./privacy";
+import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -170,6 +170,9 @@ export async function requestAdjustmentAction(
   const amountRaw = String(formData.get("amountBaht") ?? "").replace(/,/g, "").trim();
   if (!employeeId || !periodKey) return { status: "error", message: "เลือกพนักงานและงวดก่อน" };
   const hours = hoursRaw ? Number(hoursRaw) : undefined;
+  // HF-HR-0 ▸ รอบ 5 (R5.2): ผู้ไม่ดูเงินเดือน — ชั่วโมง OT นอกตาราง 0.25 (0.25–744) ⇒ คำปฏิเสธกลาง ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน ◂
+  const offGrid = screenOtHoursForViewer(canViewPayroll(membershipOf(auth)), { kind, hours });
+  if (offGrid) return offGrid;
   const amountBaht = amountRaw ? Number(amountRaw) : undefined;
   if (hours !== undefined && !Number.isFinite(hours)) return { status: "error", message: "ชั่วโมงไม่ถูกต้อง" };
   if (amountBaht !== undefined && !Number.isFinite(amountBaht)) return { status: "error", message: "จำนวนเงินไม่ถูกต้อง" };

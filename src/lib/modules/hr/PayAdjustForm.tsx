@@ -65,7 +65,7 @@ export default function PayAdjustForm({
       {isOt ? (
         <label className={`flex flex-col gap-1 text-xs ${muted}`}>
           ชั่วโมง OT
-          <input name="hours" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
+          <input name="hours" type="number" step="0.25" min="0.25" inputMode="decimal" placeholder="เช่น 6" className="input w-24" />
         </label>
       ) : (
         <label className={`flex flex-col gap-1 text-xs ${muted}`}>

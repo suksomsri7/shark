@@ -1121,6 +1121,12 @@ async function dispatch(
 
   if (kind === "approval_decide") {
     if (!m) throw new Error("ต้องมีสิทธิ์ผู้ใช้เพื่ออนุมัติคำขอ");
+    // HF-HR-0 ▸ รอบ 5 (R5.5): ผู้ตัดสิน = ผู้กดยืนยันที่ระบบรู้ตัว (userId จากทางยืนยัน · ผู้เรียกบางรายใส่ไว้ใน m) — ไม่รู้ตัว (เช่นแผนงานอัตโนมัติ)
+    //   ⇒ ปฏิเสธไทยก่อนค้น/เขียน (เดิม cast m ทั้งที่ MembershipCtx ไม่มี userId ⇒ Prisma error ดิบพร้อม path/รหัสร้าน/รหัสคำขอหลุดถึงผู้ใช้)
+    const mUser = (m as { userId?: unknown }).userId;
+    const uid = userId || (typeof mUser === "string" && mUser.trim() ? mUser : null);
+    if (!uid) throw new Error("ทำรายการนี้ไม่ได้ เพราะระบบไม่ทราบว่าใครเป็นผู้กดยืนยัน — กรุณาตัดสินคำขอในหน้า “อนุมัติ”");
+    // ◂ HF-HR-0
     const p = payload as ApprovalDecidePayload;
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
     let requestId = String(p.requestId ?? "").trim();
@@ -1144,12 +1150,12 @@ async function dispatch(
     }
     // decide ตรวจสิทธิ์ตาม step ด้วย (m ต้องมี userId ตอน runtime — คนกดยืนยันจริง)
     const res = await approvalSvc.decide(
-      m as MembershipCtx & { userId: string },
+      { ...m, userId: uid },
       { tenantId },
       requestId,
       { decision, note: p.note ? String(p.note).trim() : null },
     );
-    if (!res.ok) throw new Error("ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้");
+    if (!res.ok) throw new Error(res.reason ?? "ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้"); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะก่อน ◂
     if (res.status === "APPROVED") return "อนุมัติคำขอเรียบร้อยแล้ว";
     if (res.status === "REJECTED") return "ปฏิเสธคำขอเรียบร้อยแล้ว";
     return "บันทึกการพิจารณาแล้ว — รอผู้อนุมัติขั้นถัดไป";

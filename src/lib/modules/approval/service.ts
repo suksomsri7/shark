@@ -54,7 +54,7 @@ export type SubmitInput = {
 };
 
 export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null };
-export type DecideResult = { ok: boolean; status: string; note: string | null };
+export type DecideResult = { ok: boolean; status: string; note: string | null; reason?: string }; // HF-HR-0 ▸ รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ ◂
 
 // ── กติกา (policy) ──────────────────────────────────────────────
 
@@ -229,6 +229,24 @@ function canDecideStep(m: MembershipCtx & { userId: string }, step: { approverRo
   return false;
 }
 
+// HF-HR-0 ▸ รอบ 5 (R5.1): ห้ามตัดสิน (อนุมัติ/ปฏิเสธ · ทุกขั้น · รายใบ/หลายใบ/ผู้ช่วย AI) คำขอที่เป็นเรื่อง HR ของ "แถวพนักงานที่ผูกกับบัญชีผู้ตัดสินเอง"
+//   ตรวจก่อนเปิดธุรกรรมเขียนการตัดสิน (ไม่ใช่ใน effect — คำขอต้องไม่จบ APPROVED ขณะใบลายังรอ) · ApprovalRequest.requestedById ของใบลา
+//   = id พนักงาน (ไม่ใช่ user) ⇒ หาเจ้าของจาก entity เอง · ชนิด HR ที่เข้าสายอนุมัติวันนี้มีชนิดเดียว = HrLeave (hr/service.ts requestLeave)
+//   อ่านด้วย prisma + tenantId เอง: HrLeave เป็นตาราง system-scoped แต่คำขอไม่บังคับ systemId · พนักงานที่ไม่ผูกบัญชี = ตรวจไม่ได้ (ข้อจำกัดเดิม)
+export const SELF_DECIDE_REFUSED = "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน";
+async function isOwnHrSubject(ctx: Ctx, req: Pick<ApprovalRequest, "entityType" | "entityId">, userId: string): Promise<boolean> {
+  if (!userId) return false;
+  if (req.entityType === "HrLeave") {
+    const leave = await prisma.hrLeave.findFirst({
+      where: { id: req.entityId, tenantId: ctx.tenantId },
+      select: { employee: { select: { linkedUserId: true } } },
+    });
+    return !!leave && leave.employee.linkedUserId === userId;
+  }
+  return false;
+}
+// ◂ HF-HR-0
+
 // ตัดสินคำขอที่ step ปัจจุบัน — บันทึก Decision (append-only) + เลื่อน/ปิดสถานะ
 // APPROVED ขั้นสุดท้าย → APPROVED + emit approved · REJECT ขั้นใด → REJECTED ทันที + emit rejected
 export async function decide(
@@ -251,6 +269,7 @@ export async function decide(
 
   // สิทธิ์ไม่ผ่าน → คง PENDING (คนมีสิทธิ์มากดทีหลังได้)
   if (!canDecideStep(m, step)) return { ok: false, status: req.status, note: null };
+  if (await isOwnHrSubject(ctx, req, m.userId)) return { ok: false, status: req.status, note: null, reason: SELF_DECIDE_REFUSED }; // HF-HR-0 ▸ R5.1 ◂
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
   const note = input.note?.trim() ? input.note.trim() : null;
@@ -342,7 +361,7 @@ export async function bulkDecide(
     try {
       const r = await decide(m, ctx, id, { decision, note: note ?? null });
       if (r.ok) result.done += 1;
-      else result.failed.push({ id, reason: bulkFailReason(r.status) });
+      else result.failed.push({ id, reason: r.reason ?? bulkFailReason(r.status) }); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะ (คำขอของตัวเอง) ก่อนเหตุผลตามสถานะ ◂
     } catch (e) {
       result.failed.push({ id, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
     }

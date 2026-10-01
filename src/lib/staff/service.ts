@@ -354,7 +354,7 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
   if (!input.employeeId) return fail("กรุณาเลือกพนักงานจากทะเบียนก่อน");
 
   try {
-    const out = await prisma.$transaction(async (tx) => {
+    const attempt = () => prisma.$transaction(async (tx) => {
       // 1) พนักงานต้องอยู่ในร้านนี้จริง (กันส่ง employeeId ของร้านอื่นมาจากฟอร์ม)
       const employee = await tx.hrEmployee.findFirst({
         where: { id: input.employeeId, tenantId: input.tenantId },
@@ -373,6 +373,10 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
         update: {},
         create: { email, name: employee.name },
       });
+      // HF-HR-0 ▸ รอบ 5 (R5.3): ให้สิทธิ์ "บัญชีเดียวกัน" หลายรายการพร้อมกัน ต่อคิวกันต่อ (ร้าน, บัญชี) ด้วยล็อกระดับธุรกรรม — ก่อนตรวจ
+      //   "บัญชีนี้ผูกกับพนักงานอื่นแล้ว" ⇒ รายการที่สองเห็นผลของรายการแรกเสมอ (ไม่มี schema ใหม่ · ด่านแถวของ R4.3 ยังอยู่ข้างล่าง)
+      //   ลำดับล็อก: แถว User (upsert ข้างบน) → advisory คีย์นี้ → แถว HrEmployee/Membership · คีย์ `staff-link:*` ไม่มีที่อื่นถือ ⇒ ไม่มีวงล็อกกลับด้าน ◂
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`staff-link:${input.tenantId}:${user.id}`}, 0))`;
 
       if (employee.linkedUserId && employee.linkedUserId !== user.id) {
         throw new StaffRuleError(`“${employee.name}” ผูกกับบัญชีผู้ใช้อื่นไปแล้ว — ถ้าต้องการเปลี่ยนอีเมล ให้แก้ที่หน้าผู้ใช้งานคนนั้นแทน`);
@@ -440,6 +444,12 @@ export async function grantStaffAccess(input: GrantStaffAccessInput): Promise<St
       }
 
       return { userId: user.id, membershipId, createdNew, employeeName: employee.name };
+    });
+    // HF-HR-0 ▸ รอบ 5 (R5.3): ชน unique (อีเมลบัญชี / สมาชิกภาพ) เพราะอีกรายการเพิ่งสร้างแถวเดียวกัน ⇒ ลองใหม่ 1 ครั้ง
+    //   ให้ด่านปกติใต้ล็อกตอบเหตุผลที่ชัด (เช่น "1 บัญชีผูกได้กับพนักงาน 1 คน") แทน "ระบบขัดข้องชั่วคราว" ◂
+    const out = await attempt().catch((e: unknown) => {
+      if ((e as { code?: unknown } | null)?.code === "P2002") return attempt();
+      throw e;
     });
 
     await writeStaffAudit({
