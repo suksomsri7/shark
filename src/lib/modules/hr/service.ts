@@ -1,7 +1,7 @@
 import { tenantDb } from "@/lib/core/db";
-import { emitOutboxOutsideTx } from "@/lib/core/outbox";
+import { emitOutbox } from "@/lib/core/outbox";
 import { writeAudit } from "@/lib/core/audit"; // HF-HR-0 ▸ ประวัติการตัดสินใบลา ◂
-import type { HrAttendanceKind, HrLeaveType } from "@prisma/client";
+import type { HrAttendanceKind, HrLeaveType, Prisma } from "@prisma/client";
 import * as approval from "@/lib/modules/approval/service";
 import { thaiDateKey } from "@/lib/ui/date";
 import { isAvailable as rulesIsAvailable, workedMinutes } from "./rules";
@@ -389,7 +389,13 @@ export type RequestLeaveInput = {
 };
 
 export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<{ id: string }> {
-  const l = await tenantDb(ctx).hrLeave.create({
+  // HF-HR-0 ▸ รอบ 5c (F2): ใบลา + event + คำขอในสายอนุมัติ (ถ้ามีสาย) เกิดใน **ธุรกรรมเดียว** — เดิมเป็นคนละคำสั่ง ⇒ ทางตรง (decideLeave)
+  //   ที่ตัดสินในช่วงระหว่างนั้นไม่เห็นคำขอ จึงตัดสินได้ แล้วคำขอก็ยังถูกสร้าง (สาย PENDING/REJECTED + ใบลา APPROVED) · ลำดับ event เดิม
+  //   (hr.leave.submitted ก่อน approval.request.submitted) · ใช้ tx จาก tenantDb (ไม่ลาก prisma ดิบเข้ามา — fitness F5.1) ◂
+  const policy = await approval.resolvePolicy({ tenantId: ctx.tenantId }, { entityType: "HrLeave", systemId: ctx.systemId });
+  return tenantDb(ctx).$transaction(async (t) => {
+  const tx = t as unknown as Prisma.TransactionClient;
+  const l = await tx.hrLeave.create({
     data: {
       tenantId: ctx.tenantId,
       systemId: ctx.systemId,
@@ -408,11 +414,8 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   //      `AUTOMATION_EVENTS` · `WEBHOOK_EVENTS` — ขาดที่ใดที่หนึ่ง = event ค้าง PENDING แล้ว
   //      คิวทั้งระบบตันเงียบ ๆ (`reference_outbox_new_event_needs_consumer`)
   //   idempotencyKey ผูก leaveId ⇒ ใบลา 1 ใบ = event 1 ใบตลอดกาล (ยิงซ้ำไม่เพิ่มแถว)
-  //   🔴 ใช้ `emitOutboxOutsideTx` (เคอร์เนล) ไม่ใช่ `emitOutbox(tx, …)`: ไฟล์นี้เขียน DB ผ่าน
-  //      `tenantDb(ctx)` ทั้งไฟล์ และห้ามลาก prisma ดิบเข้ามา (chokepoint · fitness F5.1)
-  //      ⇒ event นี้ไม่ atomic กับแถวใบลา — ยอมรับได้เพราะพลาดแล้วแค่ "การ์ดหาคนแทนไม่เกิด"
-  //      (ใบลายังอยู่ในระบบ HR ให้หัวหน้าเห็นตามปกติ) ไม่ใช่เงินหาย
-  await emitOutboxOutsideTx({
+  //   HF-HR-0 รอบ 5c: ยิงใน tx ของ tenantDb เดียวกับแถวใบลาแล้ว (เดิม emitOutboxOutsideTx — ไม่ atomic)
+  await emitOutbox(tx, {
     tenantId: ctx.tenantId,
     type: "hr.leave.submitted",
     idempotencyKey: `hr.leave.submitted#${l.id}`,
@@ -427,17 +430,15 @@ export async function requestLeave(ctx: Ctx, input: RequestLeaveInput): Promise<
   });
   // WO-0049b: มีสายอนุมัติใบลา → ยื่นเข้าสาย (ใบลาคง PENDING จน effect ตัดสินหลังอนุมัติ/ปฏิเสธ)
   //   ไม่มีสายอนุมัติ → พฤติกรรมเดิม (ใบลารอ decideLeave ด้วยมือตามเดิม)
-  const policy = await approval.resolvePolicy(
-    { tenantId: ctx.tenantId },
-    { entityType: "HrLeave", systemId: ctx.systemId },
-  );
   if (policy) {
     await approval.submitForApproval(
       { tenantId: ctx.tenantId },
       { entityType: "HrLeave", entityId: l.id, systemId: ctx.systemId, requestedById: input.employeeId },
+      { tx },
     );
   }
   return { id: l.id };
+  });
 }
 
 // อนุมัติ/ปฏิเสธการลา — availability เปลี่ยนเฉพาะเมื่อ APPROVED (C-2)

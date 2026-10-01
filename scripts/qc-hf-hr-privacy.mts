@@ -22,6 +22,8 @@
 // [PA] รอบ 5b (H1): รายการเพิ่ม/หักเงินของแถวพนักงานที่ผูกกับบัญชีผู้อนุมัติเอง = อนุมัติไม่ได้ (ยกเว้นเจ้าของร้าน) · ปฏิเสธได้ ·
 //      [CH] (H2) ใบลาที่มีคำขอในสายอนุมัติ (รอ/อนุมัติ/ปฏิเสธ) ทางตรงตัดสินไม่ได้ · [UI] (H3) ปุ่มตัดสินคืนเหตุผลเป็นข้อมูล + แสดงที่แถว ·
 //      OT-7 (H4) ฟอร์มไม่บล็อกค่าที่ server รับ · OT-8…OT-11 (H5) ชั่วโมง OT สูงสุด 744 สำหรับทุกคน
+// [F1] รอบ 5c: แถวของตัวเอง (ไม่ใช่เจ้าของร้าน) — ปฏิเสธรายการหักเงิน/เบิกล่วงหน้าไม่ได้ · ลบรายการใด ๆ ไม่ได้ · ลบทุกครั้งมีประวัติ ·
+//      [F5] ปุ่มรายการเงินคืนเหตุผลเป็นข้อมูล + แสดงในแถว · [F3] ข้อผิดพลาดที่ไม่คาดคิด = ข้อความกลาง · [F2] ใบลา + คำขอในสายเกิดพร้อมกัน
 //
 // รัน (POS lane): bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-hf-hr-privacy.mts
 import { existsSync, readFileSync } from "node:fs";
@@ -847,6 +849,83 @@ try {
     !!itPA && itPA.addSatang === 0 && (await adjRow(aOwn))?.runId === null && !!itCol && itCol.addSatang >= 500_000,
     "ผู้อนุมัติ add 0 · เพื่อน add ≥ 5,000 บาท", `run=${!!runPA} own.add=${itPA?.addSatang} col.add=${itCol?.addSatang} ownRun=${(await adjRow(aOwn))?.runId}`);
 
+  // ═══ [F1] รอบ 5c (F1): แถวพนักงานที่ผูกกับบัญชีผู้ตัดสินเอง (ไม่ใช่เจ้าของร้าน) — ห้ามปฏิเสธรายการที่หักเงิน (DEDUCTION/ADVANCE) ·
+  //      ห้ามลบรายการใด ๆ ของแถวนั้น (ยกเว้นผู้ยื่นยกเลิกคำขอเพิ่มเงินที่ยังรอของตัวเอง) · การลบทุกครั้งมีประวัติ ═══
+  console.log("── [F1] ปฏิเสธ/ลบรายการเงินของตัวเอง (F1) ──");
+  const SELF_REJ_TH = "ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน";
+  const SELF_DEL_TH = "ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ";
+  const F1_P = "2027-04";
+  type Actor = { userId?: string | null; isOwner: boolean };
+  const ownerAct: Actor = { userId: U.owner, isOwner: true };
+  const collApprover: Actor = { userId: `u-coll-${ts}`, isOwner: false }; // ผู้อนุมัติอีกคน — ไม่ผูกกับแถวพนักงานใด
+  const fileK = async (employeeId: string, kind: "BONUS" | "DEDUCTION" | "ADVANCE" | "COMMISSION", amountSatang: number, by: string) =>
+    (await pay.requestAdjustment(ctx, { employeeId, periodKey: F1_P, kind, amountSatang, requestedById: by })).id ?? "-";
+  const canAdj = async (id: string, actor?: Actor): Promise<ReqRes> =>
+    pay.cancelAdjustment(ctx, id, actor).catch((e: unknown) => ({ ok: false, reason: `THROW ${e instanceof Error ? e.message.slice(0, 120) : String(e)}` }));
+  const delAudit = (id: string) => prisma.auditLog.findFirst({ where: { tenantId: tid, action: "hr.payadjust.delete", targetId: id } });
+  const dApp = await fileK(ePA.id, "DEDUCTION", 2_200_000, U.owner);
+  await decAdj(dApp, "APPROVED", ownerAct);
+  const dPend = await fileK(ePA.id, "DEDUCTION", 300_000, U.manager);
+  const adv = await fileK(ePA.id, "ADVANCE", 150_000, U.manager);
+  const rRejD = await decAdj(dPend, "REJECTED", payApprover);
+  const rRejA = await decAdj(adv, "REJECTED", payApprover);
+  chk("F1-1", "🔴 ผู้อนุมัติเงินเดือน (ผูกแถวตัวเอง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงิน (DEDUCTION) และเบิกล่วงหน้า (ADVANCE) ของแถวตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน",
+    rRejD.ok === false && rRejA.ok === false && (await adjRow(dPend))?.status === "PENDING" && (await adjRow(adv))?.status === "PENDING" && (await adjRow(dPend))?.decidedById === null && (await adjRow(adv))?.decidedById === null,
+    "ปฏิเสธ ×2 · PENDING", `${JSON.stringify([rRejD, rRejA]).slice(0, 200)} ${(await adjRow(dPend))?.status}/${(await adjRow(adv))?.status}`, "MAJOR");
+  chk("F1-1b", `เหตุผล = '${SELF_REJ_TH}'`, rRejD.reason === SELF_REJ_TH && rRejA.reason === SELF_REJ_TH, SELF_REJ_TH, `${rRejD.reason} | ${rRejA.reason}`, "MAJOR");
+  const dNoId = await fileK(e2.id, "DEDUCTION", 10_000, U.manager);
+  const rNoId = await decAdj(dNoId, "REJECTED", { userId: null, isOwner: false });
+  chk("F1-2", "ไม่รู้ตัวผู้ตัดสิน (userId ว่าง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงินไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน เหมือน E1) · คง PENDING",
+    rNoId.ok === false && THAI.test(rNoId.reason ?? "") && (await adjRow(dNoId))?.status === "PENDING", "ปฏิเสธ · PENDING", `${JSON.stringify(rNoId)} ${(await adjRow(dNoId))?.status}`, "MINOR");
+  const cApp = await canAdj(dApp, payApprover);
+  const cPend = await canAdj(dPend, payApprover);
+  const cAdv = await canAdj(adv, payApprover);
+  chk("F1-3", "🔴 ลบรายการหักเงิน 22,000 บาทที่เจ้าของร้านอนุมัติแล้ว (แถวตัวเอง) ไม่ได้ · ลบรายการหัก/เบิกล่วงหน้าที่ยังรอของแถวตัวเองไม่ได้ — แถวอยู่ครบ สถานะเดิม",
+    [cApp, cPend, cAdv].every((r) => r.ok === false) && (await adjRow(dApp))?.status === "APPROVED" && (await adjRow(dPend))?.status === "PENDING" && (await adjRow(adv))?.status === "PENDING",
+    "ปฏิเสธ ×3 · แถวคงเดิม", `${JSON.stringify([cApp, cPend, cAdv]).slice(0, 220)} ${(await adjRow(dApp))?.status}/${(await adjRow(dPend))?.status}/${(await adjRow(adv))?.status}`);
+  chk("F1-3b", `เหตุผล = '${SELF_DEL_TH}' · ไม่มีประวัติการลบของแถวเหล่านี้`,
+    [cApp, cPend, cAdv].every((r) => r.reason === SELF_DEL_TH) && !(await delAudit(dApp)) && !(await delAudit(dPend)) && !(await delAudit(adv)),
+    SELF_DEL_TH, `${cApp.reason} | ${cPend.reason} | ${cAdv.reason}`, "MAJOR");
+  const colB = await fileK(e2.id, "BONUS", 90_000, U.manager);
+  await decAdj(colB, "APPROVED", ownerAct);
+  const cCol = await canAdj(colB, payApprover);
+  const aColB = await delAudit(colB);
+  const bColB = (aColB?.before ?? {}) as Record<string, unknown>;
+  chk("F1-4", "ผู้อนุมัติลบโบนัสที่อนุมัติแล้วของเพื่อนร่วมงานได้ (สิทธิ์เดียวกับอนุมัติ) · แถวหาย · มีประวัติ 1 แถว: ใคร · แถวไหน · ชนิด · ยอด · สถานะตอนลบ · พนักงาน",
+    cCol.ok === true && !(await adjRow(colB)) && !!aColB && aColB.actorId === U.hrMgr && aColB.targetType === "HrPayAdjustment" && bColB.kind === "BONUS" && bColB.amountSatang === 90_000 && bColB.status === "APPROVED" && bColB.employeeId === e2.id,
+    "ok · ประวัติครบ", `${JSON.stringify(cCol)} audit=${JSON.stringify(aColB && { a: aColB.actorId, t: aColB.targetType, b: aColB.before })}`.slice(0, 300), "MAJOR");
+  const adv2 = await fileK(ePA.id, "ADVANCE", 40_000, U.manager);
+  const rCollRej = await decAdj(adv2, "REJECTED", collApprover);
+  const dApp2 = await fileK(ePA.id, "DEDUCTION", 10_000, U.manager);
+  await decAdj(dApp2, "APPROVED", ownerAct);
+  const cColl = await canAdj(dApp2, collApprover);
+  const aColl = await delAudit(dApp2);
+  chk("F1-5", "ผู้อนุมัติอีกคน (ไม่ผูกแถวนี้) ปฏิเสธเบิกล่วงหน้า และลบรายการหักที่อนุมัติแล้วของแถวผู้อนุมัติคนแรกได้ — มีประวัติการลบ (สถานะตอนลบ APPROVED)",
+    rCollRej.ok === true && (await adjRow(adv2))?.status === "REJECTED" && cColl.ok === true && !(await adjRow(dApp2)) && aColl?.actorId === collApprover.userId && (aColl?.before as Record<string, unknown> | null)?.status === "APPROVED",
+    "REJECTED · ลบได้ · ประวัติ", `${JSON.stringify([rCollRej, cColl])} audit=${!!aColl}`, "MAJOR");
+  const ownBon = await fileK(ePA.id, "BONUS", 70_000, U.hrMgr);
+  const cOwnBon = await canAdj(ownBon, payApprover);
+  chk("F1-6", "ผู้ยื่นยกเลิกคำขอเพิ่มเงิน (โบนัส) ที่ยังรออนุมัติของตัวเองได้ตามเดิม (แถวตัวเอง · ชนิดเพิ่มเงิน · PENDING · ตัวเองเป็นผู้ยื่น) — มีประวัติ",
+    cOwnBon.ok === true && !(await adjRow(ownBon)) && !!(await delAudit(ownBon)), "ok · ประวัติ", `${JSON.stringify(cOwnBon)} audit=${!!(await delAudit(ownBon))}`, "MAJOR");
+  const owD1 = await fileK(eOw.id, "DEDUCTION", 20_000, U.manager);
+  const owD2 = await fileK(eOw.id, "ADVANCE", 30_000, U.manager);
+  await decAdj(owD2, "APPROVED", ownerAct);
+  const rOwRej = await decAdj(owD1, "REJECTED", ownerAct);
+  const cOwDel = await canAdj(owD2, ownerAct);
+  chk("F1-7", "เจ้าของร้าน (ผูกแถวตัวเอง): ปฏิเสธรายการหักเงินของแถวตัวเอง + ลบเบิกล่วงหน้าที่อนุมัติแล้วของแถวตัวเองได้ — มีประวัติ",
+    rOwRej.ok === true && (await adjRow(owD1))?.status === "REJECTED" && cOwDel.ok === true && !(await adjRow(owD2)) && !!(await delAudit(owD2)),
+    "ok ×2", `${JSON.stringify([rOwRej, cOwDel])} audit=${!!(await delAudit(owD2))}`, "MAJOR");
+  const sysC = await fileK(e2.id, "COMMISSION", 25_000, U.manager);
+  const cSys = await canAdj(sysC);
+  const aSys = await delAudit(sysC);
+  chk("F1-8", "ทางระบบ (hr facade / CRM — ไม่ส่งผู้ใช้) ลบรายการที่ยังรอได้เหมือนเดิม · มีประวัติ actorType SYSTEM",
+    cSys.ok === true && !(await adjRow(sysC)) && aSys?.actorType === "SYSTEM", "ok · SYSTEM", `${JSON.stringify(cSys)} audit=${aSys?.actorType}`, "MAJOR");
+  const runF1 = await pay.createPayrollRun(ctx, { periodKey: F1_P, payDate: new Date("2027-04-30") }).catch(() => null);
+  const itF1 = runF1 ? await prisma.hrPayrollItem.findFirst({ where: { runId: runF1.id, employeeId: ePA.id } }) : null;
+  chk("F1-9", "🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติยังถูกหัก 22,000 บาท (deduct 2,200,000 สตางค์ · รายการเดิมเข้ารอบ) — ไม่หายเพราะเจ้าตัวลบ/ปฏิเสธ",
+    !!itF1 && itF1.deductSatang === 2_200_000 && !!runF1 && (await adjRow(dApp))?.runId === runF1.id,
+    "deduct 2200000", `run=${!!runF1} deduct=${itF1?.deductSatang} dAppRun=${(await adjRow(dApp))?.runId ?? null}`);
+
   // ═══ [CH] รอบ 5b (H2): ใบลาที่มีคำขอในสายอนุมัติ (รอ/อนุมัติ/ปฏิเสธ) — สายเป็นเจ้าของการตัดสิน ทางตรงตัดสินไม่ได้ ═══
   console.log("── [CH] ทางตรง vs สายอนุมัติ (H2) ──");
   const polCH = await ap.createPolicy(apCtx, { name: "ใบลา 5b", entityType: "HrLeave", steps: [{ order: 1, approverRole: "OWNER" }] });
@@ -878,6 +957,53 @@ try {
   const ch5 = await mkLeave(e2.id, "2027-02-05");
   const eCh5 = await errMsg(() => hr.decideLeave(ctx, ch5, "APPROVED", U.owner, { from: "PENDING" }));
   chk("CH-5", "ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม", eCh5 === null && (await statusOf(ch5)) === "APPROVED" && (await reqOf(ch5)) === "-", "APPROVED", `${await statusOf(ch5)} req=${await reqOf(ch5)} err=${eCh5}`, "MAJOR");
+
+  // ═══ [F2] รอบ 5c: ใบลา + คำขอในสายอนุมัติเกิดพร้อมกัน (ธุรกรรมเดียว) — ทางตรงที่ตัดสินแทรกกลาง requestLeave ไม่เคยเห็นใบลาที่ยังไม่มีคำขอ ═══
+  console.log("── [F2] ใบลา + คำขอในสายเกิดพร้อมกัน ──");
+  const polF2 = await ap.createPolicy(apCtx, { name: "ใบลา 5c", entityType: "HrLeave", steps: [{ order: 1, approverRole: "OWNER" }] });
+  const eF2 = await hr.createEmployee(ctx, { name: `ลาแข่ง ${ts}` });
+  const f2Seen: string[] = [];
+  const f2Log: string[] = [];
+  let f2Ok = 0;
+  for (let i = 0; i < 6; i++) {
+    const day = `2027-05-${String(i + 1).padStart(2, "0")}`;
+    const reqP = hr.requestLeave(ctx, { employeeId: eF2.id, type: "PERSONAL", fromDate: day, toDate: day });
+    let dec = "none";
+    const t0 = Date.now();
+    while (Date.now() - t0 < 15_000) {
+      const seen = await prisma.hrLeave.findFirst({ where: { tenantId: tid, employeeId: eF2.id, id: { notIn: f2Seen } }, select: { id: true } });
+      if (seen) {
+        f2Seen.push(seen.id);
+        dec = (await errMsg(() => hr.decideLeave(ctx, seen.id, "APPROVED", U.owner, { from: "PENDING" }))) === null ? "ok" : "no";
+        break;
+      }
+    }
+    const lv = await reqP.catch(() => ({ id: f2Seen[f2Seen.length - 1] ?? "-" }));
+    const st = await statusOf(lv.id);
+    const rq = await reqOf(lv.id);
+    const rqSt = rq === "-" ? "-" : await reqSt(rq);
+    f2Log.push(`${dec}:${st}:${rqSt}`);
+    if (dec === "no" && st === "PENDING" && rqSt === "PENDING") f2Ok++;
+  }
+  await ap.setPolicyActive(apCtx, polF2.id, false);
+  chk("F2-1", "ทางตรงตัดสินใบลาทันทีที่เห็นแถว ระหว่าง requestLeave (6 รอบ) → ทุกรอบเห็นคำขอในสายแล้ว ⇒ ปฏิเสธ · ใบลา PENDING · คำขอ PENDING (ไม่มีรอบไหนได้ 'สาย PENDING + ใบลา APPROVED')",
+    f2Ok === 6, "6/6 no:PENDING:PENDING", f2Log.join(" "), "MINOR");
+
+  // ═══ [F3] รอบ 5c: ข้อผิดพลาดที่ไม่คาดคิด ไม่ถึงจอเป็นข้อความดิบ (เหตุผลที่คืนเป็นข้อมูล production ไม่ปิดให้) ═══
+  console.log("── [F3] ข้อผิดพลาดที่ไม่คาดคิด → ข้อความกลาง ──");
+  const F3_TH = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง";
+  const errSeen: string[] = [];
+  const origConsoleError = console.error;
+  console.error = (...a: unknown[]) => {
+    errSeen.push(a.map((x) => (x instanceof Error ? x.message : String(x))).join(" ").slice(0, 200));
+  };
+  const badRid = 12345 as unknown as string; // รหัสคำขอผิดชนิด ⇒ Prisma validation error (ข้อความดิบมี path ไฟล์)
+  const bad = await ap.bulkDecide(V.owner!, apCtx, [badRid], "APPROVED", null).catch((e: unknown) => ({ done: -1, failed: [{ id: "THROW", reason: e instanceof Error ? e.message : String(e) }] }));
+  console.error = origConsoleError;
+  const badR = bad.failed[0]?.reason ?? "";
+  chk("F3-1", `bulkDecide (ทาง decideAction/bulkDecideAction): ข้อผิดพลาดที่ไม่คาดคิด → เหตุผล = '${F3_TH}' · ไม่มี '/' · 'prisma' · รหัส`,
+    bad.done === 0 && badR === F3_TH && !/\/|prisma|invocation|12345/i.test(badR) && !badR.includes(tid), F3_TH, badR.slice(0, 200), "MAJOR");
+  chk("F3-2", "ข้อผิดพลาดตัวจริงถูกบันทึกด้วย console.error ฝั่ง server", errSeen.length >= 1, "≥ 1", `${errSeen.length} ${errSeen[0] ?? ""}`.slice(0, 160), "MINOR");
 
   // ═══ [V] ผู้ดูชนิดอื่น: wildcard hr.* · MANAGER ที่จำกัดสาขา ═══
   console.log("── [V] wildcard / MANAGER จำกัดสาขา ──");
@@ -1086,6 +1212,31 @@ const bulkImports = [...bulkUi.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sor
 chk("UI-3", "approval/actions.ts + hr/payroll-actions.ts (\"use server\") export แค่ async function/type · BulkApprovals (\"use client\") import แค่ react + server actions",
   /^"use server";/.test(apActSrc) && useServerExports(apActSrc).length === 0 && useServerExports(payActSrc).length === 0 && /^"use client";/.test(bulkUi) && JSON.stringify(bulkImports) === JSON.stringify(["@/lib/modules/approval/actions", "react"]),
   "สะอาด", JSON.stringify({ ap: useServerExports(apActSrc), pay: useServerExports(payActSrc), bulkImports }), "MAJOR");
+// ── รอบ 5c ──
+// F5: ปุ่มรายการเงินในหน้าเงินเดือนคืนผลเป็นข้อมูล + แสดงเหตุผลที่ถูกปฏิเสธในแถว · F3: ข้อผิดพลาดที่ไม่คาดคิด = console.error + ข้อความกลาง
+const decAdjActBody = payActSrc.slice(payActSrc.indexOf("export async function decideAdjustmentAction"), payActSrc.indexOf("export async function cancelAdjustmentAction"));
+const canAdjActBody = payActSrc.slice(payActSrc.indexOf("export async function cancelAdjustmentAction"));
+chk("F5-1", "decideAdjustmentAction + cancelAdjustmentAction คืนผลเป็นข้อมูล { ok, reason } (ไม่ใช่ void) และส่งเหตุผลของ service ต่อ (res.reason)",
+  decAdjActBody.length > 0 && canAdjActBody.length > 0 && [decAdjActBody, canAdjActBody].every((b) => /Promise<\{ ok: boolean; reason\?: string \}>/.test(b) && !/Promise<void>/.test(b) && /res\.reason/.test(b)),
+  "คืนข้อมูล", `${decAdjActBody.slice(0, 80)} | ${canAdjActBody.slice(0, 80)}`, "MAJOR");
+const payUi = rd("src/lib/modules/hr/payroll-ui.tsx");
+const rowUi = rd("src/lib/modules/hr/PayAdjustRowActions.tsx");
+const rowUiImports = [...rowUi.matchAll(/from "([^"]+)"/g)].map((m) => m[1]).sort();
+chk("F5-2", "หน้าเงินเดือน: ปุ่มอนุมัติ/ไม่อนุมัติ/ลบ ของแต่ละรายการอยู่ใน client component ที่แสดงเหตุผลที่ถูกปฏิเสธในแถวนั้น (role=alert) · ไม่มีฟอร์มที่ทิ้งผลแบบเดิม",
+  /^"use client";/.test(rowUi) && /role="alert"/.test(rowUi) && /\.reason\b/.test(rowUi) && /<PayAdjustRowActions\b/.test(payUi) && !/action=\{(decideAdjustmentAction|cancelAdjustmentAction)\}/.test(payUi),
+  "มี", JSON.stringify({ client: /^"use client";/.test(rowUi), alert: /role="alert"/.test(rowUi), used: /<PayAdjustRowActions\b/.test(payUi), oldForms: /action=\{(decideAdjustmentAction|cancelAdjustmentAction)\}/.test(payUi) }), "MAJOR");
+chk("F5-3", "PayAdjustRowActions (\"use client\") import แค่ react + server actions ของเงินเดือน + ปุ่มกลาง — ไม่ถึง prisma",
+  JSON.stringify(rowUiImports) === JSON.stringify(["./payroll-actions", "@/components/ui/SubmitButton", "react"]), "3 import", JSON.stringify(rowUiImports), "MAJOR");
+chk("F3-3", "ปุ่มรายการเงิน: ข้อผิดพลาดที่ไม่คาดคิด → console.error + ข้อความกลาง (ไม่คืน e.message)",
+  [decAdjActBody, canAdjActBody].every((b) => /catch \(e\)/.test(b) && /console\.error\(/.test(b) && /UNEXPECTED_TH/.test(b) && !/e\.message/.test(b)) && payActSrc.includes('const UNEXPECTED_TH = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง"'),
+  "ใช่", "ไม่ใช่", "MAJOR");
+// F1: ทางลบในหน้าเงินเดือนส่งผู้ใช้จริง + สิทธิ์เดียวกับอนุมัติ · ไม่มีจุดอื่นใน src เรียก cancelAdjustment (facade = ทางระบบ ไม่มีผู้เรียกใน src)
+const canCalls: string[] = [];
+for (const f of srcFiles) for (const m of rd(f).matchAll(/(?<!function )\bcancelAdjustment\(([^;]*?)\);/g)) canCalls.push(`${f}: ${m[0].replace(/\s+/g, " ").slice(0, 160)}`);
+chk("F1-10", "ลบรายการเงินมีทางเดียวใน src: cancelAdjustmentAction (สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ) ส่ง userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER",
+  canCalls.length === 1 && canCalls[0]!.startsWith("src/lib/modules/hr/payroll-actions.ts") && /userId: auth\.active\.userId/.test(canCalls[0]!) && /isOwner: auth\.active\.role === "OWNER"/.test(canCalls[0]!) &&
+    /assertHrCan\(auth, "hr\.payadjust\.approve"\)/.test(canAdjActBody) && /assertHrCan\(auth, "hr\.payadjust\.approve"\)/.test(decAdjActBody),
+  "1 จุด · ผู้ใช้จริง", JSON.stringify(canCalls), "MAJOR");
 chk("S-7", "รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service",
   JSON.stringify([...(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? [])]) === JSON.stringify([...hr.SENSITIVE_EMPLOYEE_FIELDS]), "ตรง",
   JSON.stringify(shared?.EMPLOYEE_SENSITIVE_FIELDS ?? null), "MAJOR");

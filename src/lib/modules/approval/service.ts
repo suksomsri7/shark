@@ -168,6 +168,8 @@ const specificity = (p: ApprovalPolicy): number => (p.unitId != null ? 2 : 0) + 
 export async function submitForApproval(
   ctx: Ctx,
   input: SubmitInput,
+  // HF-HR-0 ▸ รอบ 5c (F2): `tx` = ผู้เรียกเขียน entity ในธุรกรรมนี้ (hr requestLeave) ⇒ คำขอ + outbox เกิดพร้อม entity (ไม่ส่ง = เหมือนเดิม) ◂
+  opts: { tx?: Prisma.TransactionClient } = {},
 ): Promise<{ autoApproved: true } | { requestId: string }> {
   const policy = await resolvePolicy(ctx, {
     entityType: input.entityType,
@@ -182,7 +184,7 @@ export async function submitForApproval(
   if (existing) return { requestId: existing.id };
 
   try {
-    const requestId = await prisma.$transaction(async (tx) => {
+    const write = async (tx: Prisma.TransactionClient) => {
       const req = await tx.approvalRequest.create({
         data: {
           tenantId: ctx.tenantId,
@@ -206,11 +208,12 @@ export async function submitForApproval(
         systemId: input.systemId ?? null,
       });
       return req.id;
-    });
+    };
+    const requestId = opts.tx ? await write(opts.tx) : await prisma.$transaction(write);
     return { requestId };
   } catch (e) {
-    // แข่งกันยื่นพร้อมกัน → ชน @@unique(tenantId, idempotencyKey) → คืนของที่มีอยู่
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    // แข่งกันยื่นพร้อมกัน → ชน @@unique(tenantId, idempotencyKey) → คืนของที่มีอยู่ (ใน tx ของผู้เรียก ธุรกรรมพังแล้ว ⇒ โยนต่อ)
+    if (!opts.tx && e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       const row = await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
       if (row) return { requestId: row.id };
     }
@@ -336,6 +339,7 @@ export async function decide(
 // ── ตัดสินหลายใบพร้อมกัน (bulk) ──────────────────────────────────
 
 export type BulkDecideResult = { done: number; failed: { id: string; reason: string }[] };
+export const UNEXPECTED_REFUSAL = "ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง"; // HF-HR-0 ▸ รอบ 5c (F3) ◂
 
 // เหตุผลไทยที่ decide คืน ok:false — status ไม่ใช่ PENDING หรือสิทธิ์/สถานะเปลี่ยนระหว่างกด
 function bulkFailReason(status: string): string {
@@ -363,7 +367,10 @@ export async function bulkDecide(
       if (r.ok) result.done += 1;
       else result.failed.push({ id, reason: r.reason ?? bulkFailReason(r.status) }); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะ (คำขอของตัวเอง) ก่อนเหตุผลตามสถานะ ◂
     } catch (e) {
-      result.failed.push({ id, reason: e instanceof Error ? e.message.slice(0, 120) : "เกิดข้อผิดพลาด" });
+      // HF-HR-0 ▸ รอบ 5c (F3): decide ไม่โยนเหตุผลที่คาดไว้ (คืนเป็น reason) ⇒ ที่หลุดมาถึงนี่ = ข้อผิดพลาดที่ไม่คาดคิด (เช่น Prisma — มี path ไฟล์/รหัส)
+      //   ผลนี้คืนเป็นข้อมูล production ไม่ปิดให้ ⇒ log ฝั่ง server + ข้อความกลาง ◂
+      console.error("[approval.bulkDecide]", e);
+      result.failed.push({ id, reason: UNEXPECTED_REFUSAL });
     }
   }
   return result;

@@ -1,8 +1,8 @@
-# HF-HR-0 round 5b — GREEN ×2 on the round-5b tree (base dc9e04c9 + H1–H5) · QC4 · gate lock
+# HF-HR-0 round 5c — GREEN ×2 on the round-5c tree (base 29201662 + F1/F5/F3/F2) · QC4 · gate lock
 ## run 1
-## start 18:16:21 UTC
+## start 19:18:42 UTC
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1709939) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1791283) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -159,6 +159,18 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [PA-5] ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก
   ✅ [PA-6] 🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING
   ✅ [PA-7] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ
+── [F1] ปฏิเสธ/ลบรายการเงินของตัวเอง (F1) ──
+  ✅ [F1-1] 🔴 ผู้อนุมัติเงินเดือน (ผูกแถวตัวเอง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงิน (DEDUCTION) และเบิกล่วงหน้า (ADVANCE) ของแถวตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน
+  ✅ [F1-1b] เหตุผล = 'ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน'
+  ✅ [F1-2] ไม่รู้ตัวผู้ตัดสิน (userId ว่าง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงินไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน เหมือน E1) · คง PENDING
+  ✅ [F1-3] 🔴 ลบรายการหักเงิน 22,000 บาทที่เจ้าของร้านอนุมัติแล้ว (แถวตัวเอง) ไม่ได้ · ลบรายการหัก/เบิกล่วงหน้าที่ยังรอของแถวตัวเองไม่ได้ — แถวอยู่ครบ สถานะเดิม
+  ✅ [F1-3b] เหตุผล = 'ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ' · ไม่มีประวัติการลบของแถวเหล่านี้
+  ✅ [F1-4] ผู้อนุมัติลบโบนัสที่อนุมัติแล้วของเพื่อนร่วมงานได้ (สิทธิ์เดียวกับอนุมัติ) · แถวหาย · มีประวัติ 1 แถว: ใคร · แถวไหน · ชนิด · ยอด · สถานะตอนลบ · พนักงาน
+  ✅ [F1-5] ผู้อนุมัติอีกคน (ไม่ผูกแถวนี้) ปฏิเสธเบิกล่วงหน้า และลบรายการหักที่อนุมัติแล้วของแถวผู้อนุมัติคนแรกได้ — มีประวัติการลบ (สถานะตอนลบ APPROVED)
+  ✅ [F1-6] ผู้ยื่นยกเลิกคำขอเพิ่มเงิน (โบนัส) ที่ยังรออนุมัติของตัวเองได้ตามเดิม (แถวตัวเอง · ชนิดเพิ่มเงิน · PENDING · ตัวเองเป็นผู้ยื่น) — มีประวัติ
+  ✅ [F1-7] เจ้าของร้าน (ผูกแถวตัวเอง): ปฏิเสธรายการหักเงินของแถวตัวเอง + ลบเบิกล่วงหน้าที่อนุมัติแล้วของแถวตัวเองได้ — มีประวัติ
+  ✅ [F1-8] ทางระบบ (hr facade / CRM — ไม่ส่งผู้ใช้) ลบรายการที่ยังรอได้เหมือนเดิม · มีประวัติ actorType SYSTEM
+  ✅ [F1-9] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติยังถูกหัก 22,000 บาท (deduct 2,200,000 สตางค์ · รายการเดิมเข้ารอบ) — ไม่หายเพราะเจ้าตัวลบ/ปฏิเสธ
 ── [CH] ทางตรง vs สายอนุมัติ (H2) ──
   ✅ [CH-1] 🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING
   ✅ [CH-1b] ข้อความไทยชี้ไปหน้า “อนุมัติ”
@@ -167,6 +179,11 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [CH-3] 🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING)
   ✅ [CH-4] คำขอที่ถูกยกเลิก (CANCELLED — สายจะไม่ตัดสิน/ไม่เขียนใบลาอีก) → ปล่อยให้ทางตรงตัดสินได้ (ไม่ค้างถาวร)
   ✅ [CH-5] ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม
+── [F2] ใบลา + คำขอในสายเกิดพร้อมกัน ──
+  ✅ [F2-1] ทางตรงตัดสินใบลาทันทีที่เห็นแถว ระหว่าง requestLeave (6 รอบ) → ทุกรอบเห็นคำขอในสายแล้ว ⇒ ปฏิเสธ · ใบลา PENDING · คำขอ PENDING (ไม่มีรอบไหนได้ 'สาย PENDING + ใบลา APPROVED')
+── [F3] ข้อผิดพลาดที่ไม่คาดคิด → ข้อความกลาง ──
+  ✅ [F3-1] bulkDecide (ทาง decideAction/bulkDecideAction): ข้อผิดพลาดที่ไม่คาดคิด → เหตุผล = 'ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง' · ไม่มี '/' · 'prisma' · รหัส
+  ✅ [F3-2] ข้อผิดพลาดตัวจริงถูกบันทึกด้วย console.error ฝั่ง server
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
   ✅ [V-2] 🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
@@ -204,19 +221,25 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [UI-1] decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ
   ✅ [UI-2] หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ
   ✅ [UI-3] approval/actions.ts + hr/payroll-actions.ts ("use server") export แค่ async function/type · BulkApprovals ("use client") import แค่ react + server actions
+  ✅ [F5-1] decideAdjustmentAction + cancelAdjustmentAction คืนผลเป็นข้อมูล { ok, reason } (ไม่ใช่ void) และส่งเหตุผลของ service ต่อ (res.reason)
+  ✅ [F5-2] หน้าเงินเดือน: ปุ่มอนุมัติ/ไม่อนุมัติ/ลบ ของแต่ละรายการอยู่ใน client component ที่แสดงเหตุผลที่ถูกปฏิเสธในแถวนั้น (role=alert) · ไม่มีฟอร์มที่ทิ้งผลแบบเดิม
+  ✅ [F5-3] PayAdjustRowActions ("use client") import แค่ react + server actions ของเงินเดือน + ปุ่มกลาง — ไม่ถึง prisma
+  ✅ [F3-3] ปุ่มรายการเงิน: ข้อผิดพลาดที่ไม่คาดคิด → console.error + ข้อความกลาง (ไม่คืน e.message)
+  ✅ [F1-10] ลบรายการเงินมีทางเดียวใน src: cancelAdjustmentAction (สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ) ส่ง userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 173/173
+ผ่าน 192/192
 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 
-JSON_SUMMARY {"total":173,"passed":173,"findings":[]}
-## end 18:18:40 UTC rc=0
+JSON_SUMMARY {"total":192,"passed":192,"findings":[]}
+EXIT 0
+## end 19:21:02 UTC
 
 ## run 2
-## start 18:18:44 UTC
+## start 19:21:11 UTC
 [env] qc-hf-hr-privacy · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
-(node:1713696) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+(node:1798799) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
 In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
 
 To prepare for this change:
@@ -373,6 +396,18 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [PA-5] ปฏิเสธรายการของตัวเองได้ (ไม่มีใครเสียประโยชน์) → REJECTED · ผู้ตัดสินถูกบันทึก
   ✅ [PA-6] 🔴 ไม่รู้ตัวผู้อนุมัติ (userId ว่าง) และไม่ใช่เจ้าของร้าน → อนุมัติไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน) · คง PENDING
   ✅ [PA-7] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติไม่มีโบนัสที่ตัวเองอนุมัติ (add 0 · โบนัส 50,000 บาทไม่ไหลเข้า) · ของเพื่อนร่วมงานไหลเข้าตามที่อนุมัติ
+── [F1] ปฏิเสธ/ลบรายการเงินของตัวเอง (F1) ──
+  ✅ [F1-1] 🔴 ผู้อนุมัติเงินเดือน (ผูกแถวตัวเอง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงิน (DEDUCTION) และเบิกล่วงหน้า (ADVANCE) ของแถวตัวเองไม่ได้ — คง PENDING · ไม่มีผู้ตัดสิน
+  ✅ [F1-1b] เหตุผล = 'ปฏิเสธรายการหักเงินของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านตัดสิน'
+  ✅ [F1-2] ไม่รู้ตัวผู้ตัดสิน (userId ว่าง · ไม่ใช่เจ้าของร้าน) ปฏิเสธรายการหักเงินไม่ได้ (ตรวจ 'ของตัวเอง' ไม่ได้ = ปิดไว้ก่อน เหมือน E1) · คง PENDING
+  ✅ [F1-3] 🔴 ลบรายการหักเงิน 22,000 บาทที่เจ้าของร้านอนุมัติแล้ว (แถวตัวเอง) ไม่ได้ · ลบรายการหัก/เบิกล่วงหน้าที่ยังรอของแถวตัวเองไม่ได้ — แถวอยู่ครบ สถานะเดิม
+  ✅ [F1-3b] เหตุผล = 'ลบรายการของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นหรือเจ้าของร้านดำเนินการ' · ไม่มีประวัติการลบของแถวเหล่านี้
+  ✅ [F1-4] ผู้อนุมัติลบโบนัสที่อนุมัติแล้วของเพื่อนร่วมงานได้ (สิทธิ์เดียวกับอนุมัติ) · แถวหาย · มีประวัติ 1 แถว: ใคร · แถวไหน · ชนิด · ยอด · สถานะตอนลบ · พนักงาน
+  ✅ [F1-5] ผู้อนุมัติอีกคน (ไม่ผูกแถวนี้) ปฏิเสธเบิกล่วงหน้า และลบรายการหักที่อนุมัติแล้วของแถวผู้อนุมัติคนแรกได้ — มีประวัติการลบ (สถานะตอนลบ APPROVED)
+  ✅ [F1-6] ผู้ยื่นยกเลิกคำขอเพิ่มเงิน (โบนัส) ที่ยังรออนุมัติของตัวเองได้ตามเดิม (แถวตัวเอง · ชนิดเพิ่มเงิน · PENDING · ตัวเองเป็นผู้ยื่น) — มีประวัติ
+  ✅ [F1-7] เจ้าของร้าน (ผูกแถวตัวเอง): ปฏิเสธรายการหักเงินของแถวตัวเอง + ลบเบิกล่วงหน้าที่อนุมัติแล้วของแถวตัวเองได้ — มีประวัติ
+  ✅ [F1-8] ทางระบบ (hr facade / CRM — ไม่ส่งผู้ใช้) ลบรายการที่ยังรอได้เหมือนเดิม · มีประวัติ actorType SYSTEM
+  ✅ [F1-9] 🔴 รอบจ่ายของงวด: แถวเงินเดือนของผู้อนุมัติยังถูกหัก 22,000 บาท (deduct 2,200,000 สตางค์ · รายการเดิมเข้ารอบ) — ไม่หายเพราะเจ้าตัวลบ/ปฏิเสธ
 ── [CH] ทางตรง vs สายอนุมัติ (H2) ──
   ✅ [CH-1] 🔴 สายปฏิเสธแล้ว (effect ยังไม่เขียน) + ทางตรงอนุมัติ → ปฏิเสธ · ใบลาคง PENDING
   ✅ [CH-1b] ข้อความไทยชี้ไปหน้า “อนุมัติ”
@@ -381,6 +416,11 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [CH-3] 🔴 ทางหลายใบ (bulk) ก็ตัดสินใบที่สายตัดสินแล้วไม่ได้ (failed + เหตุผลไทย · คง PENDING)
   ✅ [CH-4] คำขอที่ถูกยกเลิก (CANCELLED — สายจะไม่ตัดสิน/ไม่เขียนใบลาอีก) → ปล่อยให้ทางตรงตัดสินได้ (ไม่ค้างถาวร)
   ✅ [CH-5] ใบลาที่ไม่มีคำขอในสายอนุมัติ → ทางตรงทำงานเหมือนเดิม
+── [F2] ใบลา + คำขอในสายเกิดพร้อมกัน ──
+  ✅ [F2-1] ทางตรงตัดสินใบลาทันทีที่เห็นแถว ระหว่าง requestLeave (6 รอบ) → ทุกรอบเห็นคำขอในสายแล้ว ⇒ ปฏิเสธ · ใบลา PENDING · คำขอ PENDING (ไม่มีรอบไหนได้ 'สาย PENDING + ใบลา APPROVED')
+── [F3] ข้อผิดพลาดที่ไม่คาดคิด → ข้อความกลาง ──
+  ✅ [F3-1] bulkDecide (ทาง decideAction/bulkDecideAction): ข้อผิดพลาดที่ไม่คาดคิด → เหตุผล = 'ระบบขัดข้องชั่วคราว ลองใหม่อีกครั้ง' · ไม่มี '/' · 'prisma' · รหัส
+  ✅ [F3-2] ข้อผิดพลาดตัวจริงถูกบันทึกด้วย console.error ฝั่ง server
 ── [V] wildcard / MANAGER จำกัดสาขา ──
   ✅ [V-1] 🔴 hr.* (wildcard) ไม่ได้สิทธิ์ดูเงินเดือน: สลิป → ไม่พบ
   ✅ [V-2] 🔴 hr.* เปิดโปรไฟล์ได้ แต่ไม่มีช่องอ่อนไหว/เอกสาร
@@ -418,11 +458,17 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   ✅ [UI-1] decideAction (ตัดสินรายใบ) คืนผลเป็นข้อมูล { ok, reason } — ไม่ใช่ void · ไม่ throw เหตุผลที่ปฏิเสธ
   ✅ [UI-2] หน้า “อนุมัติ”: เหตุผลที่ถูกปฏิเสธแสดงในแถวของคำขอนั้น (อ่าน reason จากผลตามรหัสแถว) — รายใบ (เลือก 1) และหลายใบ
   ✅ [UI-3] approval/actions.ts + hr/payroll-actions.ts ("use server") export แค่ async function/type · BulkApprovals ("use client") import แค่ react + server actions
+  ✅ [F5-1] decideAdjustmentAction + cancelAdjustmentAction คืนผลเป็นข้อมูล { ok, reason } (ไม่ใช่ void) และส่งเหตุผลของ service ต่อ (res.reason)
+  ✅ [F5-2] หน้าเงินเดือน: ปุ่มอนุมัติ/ไม่อนุมัติ/ลบ ของแต่ละรายการอยู่ใน client component ที่แสดงเหตุผลที่ถูกปฏิเสธในแถวนั้น (role=alert) · ไม่มีฟอร์มที่ทิ้งผลแบบเดิม
+  ✅ [F5-3] PayAdjustRowActions ("use client") import แค่ react + server actions ของเงินเดือน + ปุ่มกลาง — ไม่ถึง prisma
+  ✅ [F3-3] ปุ่มรายการเงิน: ข้อผิดพลาดที่ไม่คาดคิด → console.error + ข้อความกลาง (ไม่คืน e.message)
+  ✅ [F1-10] ลบรายการเงินมีทางเดียวใน src: cancelAdjustmentAction (สิทธิ์ hr.payadjust.approve เดียวกับอนุมัติ) ส่ง userId = ผู้ใช้ใน session · isOwner = บทบาท OWNER
   ✅ [S-7] รายการช่องอ่อนไหวของ DTO ตรงกับ SENSITIVE_EMPLOYEE_FIELDS ของ service
 
 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
-ผ่าน 173/173
+ผ่าน 192/192
 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
 
-JSON_SUMMARY {"total":173,"passed":173,"findings":[]}
-## end 18:21:06 UTC rc=0
+JSON_SUMMARY {"total":192,"passed":192,"findings":[]}
+EXIT 0
+## end 19:23:59 UTC
