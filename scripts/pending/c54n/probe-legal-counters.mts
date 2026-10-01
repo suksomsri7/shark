@@ -124,7 +124,7 @@ try {
     // P3 — WTI certificates (customer withholds 3 %) on ON_ISSUE invoices (no auto TI)
     { const ids: string[] = []; for (let i = 0; i < 60; i += 1) ids.push(await inv("ON_ISSUE"));
       rawErrors.length = 0; const t = await three(ids, (id) => accSvc.recordPayment(T, A, id, { channel: "TRANSFER", financeAccountId: bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }));
-      const wti = (await docsOf("WHT_CERT")).filter((n: string | null) => !n || /^WTI/.test(n));
+      const wti = (await docsOf("WHT_CERT")).filter((n: string | null) => !n || /^WTI/.test(n)); // ORACLE-EDIT C5.4-N: type annotation only (TS7006 broke pnpm typecheck; present on 96a4c28f) — probe logic unchanged
       log(`P3 WTI cert via recordPayment(WHT) ×3×20: ${tl(t)} · raw ${JSON.stringify(cls(rawErrors))} · numbers ${audit(wti).text} · counter ${await counters("WHT_CERT")}`); }
     // P4 — auto tax invoice per payment on ON_PAYMENT service invoices
     { const ids: string[] = []; for (let i = 0; i < 60; i += 1) ids.push(await inv("ON_PAYMENT"));
@@ -134,7 +134,7 @@ try {
     { const ids: string[] = [];
       for (let i = 0; i < 60; i += 1) { const d = await exp.createExpenseDoc({ tenantId: T, systemId: A, docType: "EXPENSE", contactId: vend.id, vatMode: "EXCLUDE", vatPurchaseMode: "CLAIM", lines: [{ description: "ค่าบริการ", qty: 1, unitPrice: 1_000_000 }] }); const r = await exp.issueExpenseDoc(T, A, d.id); if (!r.ok) throw new Error(`issue expense: ${r.reason}`); ids.push(d.id); }
       rawErrors.length = 0; const t = await three(ids, (id) => exp.recordVendorPayment(T, A, id, { channel: "TRANSFER", financeAccountId: bank.id, amount: 1_040_000, whtAmountSatang: 30_000, whtRateBp: 300, whtIncomeType: "M40_2" }));
-      const whts = (await docsOf("WHT_CERT")).filter((n: string | null) => !n || !/^WTI/.test(n));
+      const whts = (await docsOf("WHT_CERT")).filter((n: string | null) => !n || !/^WTI/.test(n)); // ORACLE-EDIT C5.4-N: type annotation only (TS7006 broke pnpm typecheck; present on 96a4c28f) — probe logic unchanged
       log(`P5 50 ทวิ via recordVendorPayment(WHT) ×3×20: ${tl(t)} · raw ${JSON.stringify(cls(rawErrors))} · numbers ${audit(whts).text} · counter ${await counters("WHT_CERT")}`); }
     // P6 — purchase tax invoices opened when an AWAITING-VAT expense is issued
     { const ids: string[] = []; for (let i = 0; i < 60; i += 1) ids.push((await exp.createExpenseDoc({ tenantId: T, systemId: A, docType: "EXPENSE", contactId: vend.id, vatMode: "EXCLUDE", vatPurchaseMode: "AWAITING", lines: [{ description: "ค่าบริการ รอใบกำกับ", qty: 1, unitPrice: 500_000 }] })).id);

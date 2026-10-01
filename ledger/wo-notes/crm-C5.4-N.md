@@ -374,3 +374,28 @@ Q2 phase 1 + N-1 only (phase 2 = follow-up entry below) · Q3/Q4 note only · Q5
 - Remaining: (1) line-level compare of the suites without JSON_SUMMARY vs the controller's base log (`cmp.py`/`tdiff.py`) · (2) typecheck re-run
   (typecheck-1 predates the probe fix) · (3) AFTER race (probe-r11a ONLY=Q3) + deadlock (trace-r10-2 ROUNDS=40) · (4) migration timestamp check ·
   (5) final commit + push to wip/crm-c54c-r8.
+
+### CP-4 (resumed) · regression on the current src = no change vs the controller's MAIN base log
+- `reg/SUMMARY.txt` (05:26–06:23, after the last src edit 05:05): 36/36 rc=0. `cmp.py` vs `/root/projects/shark-crm/.qc-shots/crm/main-c2.log`:
+  every suite ❌0 and the same ✅ count as base — c3.3 90 · c2.7 79 · c3.1 56 · c3.2 47 · c3.5 67 · qc7 46 · cpa 107 · adjust 96 · payments 162 ·
+  api write-payments 32 · write-docs 52 · webhooks 22 · groups 174 · detail 85 · deep 10 · cheap-routes 96 · simplicity 112 · c1.4 110 · c2.11 47 ·
+  hr-payadjust 27 · payroll 19 · payroll-reverse 15 · c5.3 (L2,X) 9 · probe-cn 49.
+- `tdiff.py` (text diff of the probes, ids/times/JV numbers normalised): family/race/r9e/r10b/r10c/r11b/r11c/r12a/payroll-reverse 0 lines;
+  hunt/probe-cn/r8/r9a/r9c differ only in race-winner order tallies (e.g. r8 `clear ∥ bounce` ok|ok 2/10 — bouncing a CLEARED cheque is allowed,
+  the same tally appears in earlier base logs 1–8/10). No new failure.
+- Migration timestamp `20261104000000`: KEPT. The repo's convention is +1 day after the last folder (…20261103000000_crm_perf_indexes); a "today"
+  name (20261001…) would sort BEFORE 20261025…20261103 and break ordering. No other branch/worktree has a 20261104+ folder. Renaming would also
+  leave QC2's `_prisma_migrations` row for the old name orphaned (migrate status warning; the SQL is idempotent so a re-apply would succeed).
+- Running: unit c54n-after-* (`after.sh`: typecheck-2 → AFTER race probe-r11a ONLY=Q3 → AFTER deadlock ×40), then c54n-after2-* (`after2.sh`:
+  qc-acc-v2-recurring + qc-account-api-docs, mine vs base snapshot worktree).
+
+### CP-5 (resumed) · final measurements — all on the src of commit 6587df55 (unchanged since 05:05)
+- typecheck-2 (`iso.sh` 6G, NODE_OPTIONS 5120): **rc 0** (`typecheck-2.log`) · oracle `GREEN1.log` 12/12 stands (same src) · fitness env/no-env 33/33.
+- AFTER race (`after-q3.log`, probe-r11a ONLY=Q3 — 3 cashiers ×20 singles + six 5-child + one 40-child batch): round 1 singles **20/20**, 5-child 6/6,
+  40-child **1/1**, raw {} · round 2 singles **20/20**, 6/6, **1/1**, raw {} (BEFORE on 96a4c28f: 7/20 · 5/6 · 0/1 raw P2002 ×13 · 4/20 · 6/6 · 0/1 raw ×16).
+- AFTER deadlock (`after-deadlock.log`, trace-r10-2 ROUNDS=40): ok|ok 40/40 · raw {} · cycles 0 (BEFORE identical 40/40).
+- Known not-mine reds, mine vs base snapshot worktree on QC2 (`kr-*.log`): qc-acc-v2-recurring 161/163 both (P4.13b/c PP30 reminder dedupe) ·
+  qc-account-api-docs mine 11/17 · base worktree 10/17 (F2.4 = an ignored generated `.claude/skills/.../endpoints.md` that only this worktree has;
+  F2.1–3,5–7 identical). ai-skill E1-K2.3 is a QC1 suite — not run (QC2-only lane).
+- ORACLE-EDITs: none of OE-1..5 was needed (OE-1 kept: search is exact-first · OE-2/3/4 no change · OE-5 → sweeper script). One marked edit in the
+  test author's probe `probe-legal-counters.mts` (2 lines, type annotation only, `// ORACLE-EDIT C5.4-N:`), required for `pnpm typecheck`.
