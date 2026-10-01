@@ -409,7 +409,17 @@ async function cleanInput(ctx: CrmAutomationCtx, raw: unknown): Promise<CleanRul
 //   ผู้ตั้งกฎต้องผ่าน **ด่านเดียวกับประตูมือ** ของการกระทำแต่ละขั้น: คีย์ของบริการนั้น + การมองเห็น (กฎทำงานกับรายการใดก็ได้ในระบบ
 //   ⇒ ต้องเห็นเอนทิตีที่ขั้นนั้นแตะ "ทั้งร้าน" — กติกาเดียวกับคีย์ API ไม่กรอง C5.4-B) + เป้าหมายคงที่ (บอร์ด) · ตาราง ledger/wo-notes/crm-C5.5-fix1.md
 //   🔴 ขั้นใหม่ใน CRM_ACTION_TYPES ต้องมีแถวที่นี่ (ไม่มี = ปฏิเสธ — ปลอดภัยไว้ก่อน)
-type HandNeed = { keys: string[]; vis: CrmVisEntity[]; pipelineId?: string | null; platform?: { module: string; action: string }; member?: string; boardId?: string; webhook?: true };
+type HandNeed = {
+  keys: string[];
+  vis: CrmVisEntity[];
+  pipelineId?: string | null;
+  platform?: { module: string; action: string };
+  member?: string;
+  /** r1b: ของมีมูลค่า — ต้องให้ได้ "ทันทีโดยไม่ต้องอนุมัติ" ตามประตูมือของแต้ม/voucher (ผ่าน facade สมาชิก) */
+  grant?: { kind: "GIVE_POINTS"; points: number } | { kind: "ISSUE_VOUCHER"; templateId: string };
+  boardId?: string;
+  webhook?: true;
+};
 
 async function handNeedOf(ctx: CrmAutomationCtx, a: CrmRuleAction, rulePipelineId: string | null): Promise<HandNeed | null> {
   const p = isObj(a.params) ? a.params : {};
@@ -452,9 +462,9 @@ async function handNeedOf(ctx: CrmAutomationCtx, a: CrmRuleAction, rulePipelineI
       // ประตูมือ = เพิ่มปลายทาง webhook ของ CRM: crm.api.manage + webhook.endpoint.create + เห็นทั้งร้าน (L55-4)
       return { keys: ["crm.api.manage"], vis: [], platform: { module: "webhook", action: "webhook.endpoint.create" }, webhook: true };
     case "ISSUE_VOUCHER":
-      return { keys: [], vis: ["CONTACT"], member: "member.promo.issue" }; // voucher/service.ts (ออกใบ)
+      return { keys: [], vis: ["CONTACT"], member: "member.promo.issue", grant: { kind: "ISSUE_VOUCHER", templateId: str(p.templateId) } }; // voucher/service.ts issue (เพดานต่อใบ STAFF · เพดานรวม → อนุมัติ)
     case "GIVE_POINTS":
-      return { keys: [], vis: ["CONTACT"], member: "member.point.adjust" }; // member REST points.credit
+      return { keys: [], vis: ["CONTACT"], member: "member.point.adjust", grant: { kind: "GIVE_POINTS", points: Math.trunc(numOr(p.points, 0)) } }; // member REST points.credit · point/adjust.ts (adjustApprovalOver)
     case "WAIT_THEN":
       return { keys: [], vis: [] }; // ขั้นที่ซ้อนถูกตรวจทีละขั้น
   }
@@ -484,9 +494,17 @@ async function assertAuthorCanDoByHand(ctx: CrmAutomationCtx, actor: MemberActor
       throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(missing)}" ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
     }
     if (need.member) {
-      const { hasMemberPerm } = await import("@/lib/modules/member");
+      const { hasMemberPerm, manualGrantVerdict } = await import("@/lib/modules/member");
       if (!hasMemberPerm(actor, need.member)) {
         throw fail("FORBIDDEN", `${label}: ต้องใช้สิทธิ์ "${permissionLabel(need.member)}" ของระบบสมาชิก ซึ่งบัญชีนี้ยังไม่ได้รับ (${BY_HAND}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+      }
+      // CRM C5.5 ▸ H55-2 r1b (มติผู้คุมงาน): ของมีมูลค่า — ได้เฉพาะจำนวนที่ผู้ตั้งกฎให้เองได้ "ทันทีโดยไม่ต้องอนุมัติ" (คนที่อนุมัติเองได้เท่านั้นจึงตั้งเกินได้) ◂
+      if (need.grant) {
+        const verdict = await manualGrantVerdict(ctx.tenantId, actor, need.grant);
+        if (verdict === "NOT_FOUND") throw fail("VALIDATION", `${label}: ไม่พบแบบ voucher ที่เลือก หรือแบบนี้ถูกปิดใช้อยู่ — เลือกแบบใหม่จากรายการ`);
+        if (verdict !== "DIRECT") {
+          throw fail("FORBIDDEN", `${label}: ${need.grant.kind === "GIVE_POINTS" ? "จำนวนแต้มนี้" : "มูลค่า voucher นี้"}เกินกว่าที่บัญชีนี้ให้ได้ทันทีด้วยมือ (ต้องขออนุมัติ หรือเกินเพดานของพนักงาน) — กฎอัตโนมัติให้ของมีมูลค่าได้ไม่เกินที่ผู้ตั้งกฎให้เองได้โดยไม่ต้องอนุมัติ ลดจำนวนลง หรือให้เจ้าของร้านเป็นผู้ตั้งกฎนี้`);
+        }
       }
     }
     if (need.webhook && (await crmWebhookWiderThanCreator(sys, actor))) throw fail("FORBIDDEN", `${label}: ${CRM_WEBHOOK_WIDER_TH}`);

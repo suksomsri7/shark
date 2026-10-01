@@ -173,6 +173,12 @@ try {
     const board = await P.kanbanBoard.create({ data: { tenantId: tid, systemId: K, name: "ลับ", visibility: "PRIVATE", createdById: shop.uid } });
     await P.kanbanColumn.create({ data: { tenantId: tid, systemId: K, boardId: board.id, name: "รอทำ", sortOrder: 0, position: "a0" } });
     const stage = shop.stages.find((s: Any) => s.kind === "OPEN");
+    // r1b: a member system + voucher templates (small ≤ staff cap · mid > staff cap ≤ approval ceiling · big > approval ceiling)
+    const MSYS = (await sysSvc.createSystem(tid, "MEMBER", `สมาชิก ${TAG}`)).id as string;
+    const mkTpl = async (name: string, value: number) => (await P.voucherTemplate.create({ data: { tenantId: tid, systemId: MSYS, name, kind: "FIXED", value, config: {}, validDays: 30, origin: "COMPENSATION" } })).id as string;
+    const tplSmall = await mkTpl("เล็ก", 10_000);
+    const tplMid = await mkTpl("กลาง", 200_000);
+    const tplBig = await mkTpl("ใหญ่", 2_000_000);
     const auto = (await import("@/lib/modules/crm/automation" as string)) as Any;
     const ACT = (await import("@/app/app/sys/[id]/crm/settings/automation/actions" as string)) as Any;
 
@@ -213,7 +219,7 @@ try {
       { type: "ADJUST_SCORE", params: { points: 5 }, keys: ["crm.score.manage"], label: /ปรับคะแนน/ },
       { type: "WEBHOOK", params: { url: "https://example.com/qc-c55-hook" }, keys: ["webhook.endpoint.create"], label: /ส่ง webhook/ },
       { type: "WEBHOOK", params: { url: "https://example.com/qc-c55-hook" }, keys: ["crm.api.manage"], label: /ส่ง webhook/ },
-      { type: "ISSUE_VOUCHER", params: { templateId: "tpl" }, keys: ["member.promo.issue"], label: /ออก voucher/ },
+      { type: "ISSUE_VOUCHER", params: { templateId: tplSmall }, keys: ["member.promo.issue"], label: /ออก voucher/ },
       { type: "GIVE_POINTS", params: { points: 100 }, keys: ["member.point.adjust"], label: /ให้แต้ม/ },
       { type: "WAIT_THEN", params: { days: 2, thenActions: [{ type: "GIVE_POINTS", params: { points: 100 } }] }, keys: ["member.point.adjust"], label: /ให้แต้ม/ },
     ];
@@ -270,6 +276,37 @@ try {
     chk("H2-enable-edit", tOn?.ok === false && ed?.ok === false && stillOff?.enabled === false && stillOff?.name === pointsRule.name && tOff?.ok === true && tOn2?.ok === true,
       `author without member.point.adjust: enable → ${tOn?.ok ? "ACCEPTED" : "refused"} · edit → ${ed?.ok ? "ACCEPTED" : "refused"} · row ${j(stillOff)} · disable → ${tOff?.ok ? "allowed" : "refused"} · with the key enable → ${tOn2?.ok ? "accepted" : "refused"}`);
 
+    // ── r1b · approval ceilings of money-like grants (at save / enable) ──
+    await P.pointSettings.upsert({ where: { tenantId: tid }, create: { tenantId: tid, adjustApprovalOver: 500 }, update: { adjustApprovalOver: 500 } });
+    const staffA = { userId: uid, role: "STAFF", unitAccess: ["*"], permissions: FULL };
+    const muid = await mkUser("-mgr");
+    await P.membership.create({ data: { userId: muid, tenantId: tid, role: "MANAGER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+    const mgrA = { userId: muid, role: "MANAGER", unitAccess: ["*"], permissions: {} };
+    const mctx = { tenantId: tid, systemId: S, actorUserId: muid };
+    await setPerms(FULL);
+    const ruleG = (type: string, params: Record<string, unknown>, enabled = true) => ({ name: `${TAG} grant ${++n}`, trigger: { event: "crm.contact.updated" }, conditions: { mode: "AND", items: [] }, actions: [{ type, params }], enabled });
+    const ok = (r: Any) => (r.ok ? "ok" : `${r.err?.code}`);
+    const g1 = await call(() => auto.createRule(sctx, staffA, ruleG("GIVE_POINTS", { points: 400 })));
+    const g2 = await call(() => auto.createRule(sctx, staffA, ruleG("GIVE_POINTS", { points: 600 })));
+    const g3 = await call(() => auto.createRule(mctx, mgrA, ruleG("GIVE_POINTS", { points: 600 })));
+    const g4 = await call(() => auto.createRule(shop.ctx, shop.owner, ruleG("GIVE_POINTS", { points: 600 })));
+    const g5 = await call(() => auto.createRule(mctx, mgrA, ruleG("WAIT_THEN", { days: 1, thenActions: [{ type: "GIVE_POINTS", params: { points: 600 } }] })));
+    chk("H2-ceiling-points", g1.ok && !g2.ok && !g3.ok && g4.ok && !g5.ok && g2.err?.code === "FORBIDDEN" && g3.err?.code === "FORBIDDEN",
+      `adjustApprovalOver=500: STAFF 400 → ${ok(g1)} · STAFF 600 → ${ok(g2)} (manual: refused) · MANAGER 600 → ${ok(g3)} (manual: approval) · OWNER 600 → ${ok(g4)} · MANAGER WAIT_THEN›600 → ${ok(g5)}`);
+    const v1 = await call(() => auto.createRule(sctx, staffA, ruleG("ISSUE_VOUCHER", { templateId: tplSmall })));
+    const v2 = await call(() => auto.createRule(sctx, staffA, ruleG("ISSUE_VOUCHER", { templateId: tplMid })));
+    const v3 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: tplMid })));
+    const v4 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: tplBig })));
+    const v5 = await call(() => auto.createRule(shop.ctx, shop.owner, ruleG("ISSUE_VOUCHER", { templateId: tplBig })));
+    const v6 = await call(() => auto.createRule(mctx, mgrA, ruleG("ISSUE_VOUCHER", { templateId: `${TAG}-none` })));
+    chk("H2-ceiling-voucher", v1.ok && !v2.ok && v3.ok && !v4.ok && v5.ok && !v6.ok && v4.err?.code === "FORBIDDEN",
+      `STAFF ฿100 → ${ok(v1)} · STAFF ฿2,000 (> staff cap) → ${ok(v2)} · MANAGER ฿2,000 → ${ok(v3)} · MANAGER ฿20,000 (> approval ceiling) → ${ok(v4)} · OWNER ฿20,000 → ${ok(v5)} · MANAGER unknown template → ${ok(v6)}`);
+    const offBig = await auto.createRule(shop.ctx, shop.owner, ruleG("GIVE_POINTS", { points: 600 }, false));
+    const en1 = await call(() => auto.toggleRule(mctx, mgrA, offBig.id, true));
+    await P.pointSettings.update({ where: { tenantId: tid }, data: { adjustApprovalOver: null } });
+    const en2 = await call(() => auto.toggleRule(mctx, mgrA, offBig.id, true));
+    chk("H2-ceiling-enable", !en1.ok && en2.ok, `MANAGER enables the owner's 600-point rule: ceiling 500 → ${ok(en1)} · no ceiling → ${ok(en2)}`);
+
     // REST + AI tool doors: no op / tool writes an automation rule (list + dry-run only) ⇒ nothing to bypass
     const key = await AK.createApiKey({ tenantId: tid }, `${TAG} admin`, { scopes: ["crm.automation.manage", "crm.contact.read"], systemId: S, createdById: shop.uid });
     const post = await rest("POST", "/automation/rules", key.rawKey, ruleOf(CASES[18]!, `${TAG} rest`));
@@ -319,6 +356,66 @@ try {
     const r1 = await rest("POST", "/sequences", k1, { name: `${TAG} rest1`, steps: [STEPS.EMAIL] });
     const r2 = await rest("POST", "/sequences", k2, { name: `${TAG} rest2`, steps: [STEPS.EMAIL] });
     chk("H2S-rest", r1.status === 403 && r2.status === 200, `REST POST /sequences (EMAIL step): key{manage} → ${r1.status} ${j(r1.body?.error?.code)} (want 403) · key{manage+email.send} → ${r2.status} ${r2.status === 200 ? "" : j(r2.body?.error)}`);
+  });
+
+  // ═══════════════════════ r1b · platform webhooks page: CRM events need the CRM "sees all" rule ═══════════════════════
+  await sub("PW", async () => {
+    const WH = (await import("@/lib/webhooks/actions" as string)) as Any;
+    const LBL = (await import("@/lib/webhooks/labels" as string)) as Any;
+    const nonCrm = (LBL.WEBHOOK_EVENTS as Any[]).map((e) => String(e.value)).find((v) => !/^(crm\.|custom\.record\.|team\.)/.test(v))!;
+    const fd = (o: Record<string, string | string[]>) => {
+      const f = new FormData();
+      for (const [k, v] of Object.entries(o)) for (const x of Array.isArray(v) ? v : [v]) f.append(k, x);
+      return f;
+    };
+    const create = (cookie: string, events: string[]) => inScope(cookie, "/app/settings/webhooks", () => WH.createEndpointAction({ status: "idle" }, fd({ url: "https://example.com/qc-c55-pw", events }))) as Promise<Any>;
+    const update = (cookie: string, id: string, events: string[]) => inScope(cookie, "/app/settings/webhooks", () => WH.updateEndpointEventsAction({ status: "idle" }, fd({ id, events }))) as Promise<Any>;
+    const st = (r: Any) => `${r?.status}${r?.status === "error" ? ` "${String(r?.message).slice(0, 70)}"` : ""}`;
+    // shop with CRM v2 · a MANAGER without crm.api.manage (platform webhook keys pass for MANAGER)
+    const shop = await mkShop("pw");
+    const mid = await mkUser("-pwmgr");
+    await P.membership.create({ data: { userId: mid, tenantId: shop.tid, role: "MANAGER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+    const mc = await sessionCookie(mid, shop.tid);
+    const oc = await sessionCookie(shop.uid, shop.tid);
+    const all = await create(mc, []);
+    const crmOnly = await create(mc, ["crm.deal.won"]);
+    const plain = await create(mc, [nonCrm]);
+    const ownerAll = await create(oc, []);
+    const plainEp = await P.webhookEndpoint.findFirst({ where: { tenantId: shop.tid, eventsJson: { equals: [nonCrm] } }, select: { id: true } });
+    const upAll = plainEp ? await update(mc, plainEp.id, []) : null;
+    const upCrm = plainEp ? await update(mc, plainEp.id, [nonCrm, "crm.contact.created"]) : null;
+    const upPlain = plainEp ? await update(mc, plainEp.id, [nonCrm]) : null;
+    await P.membership.updateMany({ where: { userId: mid, tenantId: shop.tid }, data: { permissions: { "crm.api.manage": true } } });
+    const wideAll = await create(mc, []);
+    const n = await P.webhookEndpoint.count({ where: { tenantId: shop.tid } });
+    chk("PW-crm-v2", all?.status === "error" && crmOnly?.status === "error" && plain?.status === "ok" && ownerAll?.status === "ok" && upAll?.status === "error" && upCrm?.status === "error" && upPlain?.status === "ok" && wideAll?.status === "ok" && n === 3,
+      `tenant with CRM v2 · MANAGER w/o crm.api.manage: all-events → ${st(all)} · crm.deal.won → ${st(crmOnly)} · ${nonCrm} → ${st(plain)} · update→all ${st(upAll)} · update+crm ${st(upCrm)} · update non-CRM ${st(upPlain)} · OWNER all → ${st(ownerAll)} · MANAGER +crm.api.manage all → ${st(wideAll)} · endpoints=${n}`);
+    // control: tenants WITHOUT a CRM v2 system (none · v1 only) behave exactly as before
+    const t1 = await P.tenant.create({ data: { name: `${TAG}-pw-nocrm`, slug: `${TAG}-pw-nocrm` } });
+    const v1shop = await mkShop("pwv1");
+    await setCrm(v1shop.S, { uiVersion: 1 });
+    const t2 = { id: v1shop.tid, slug: v1shop.slug };
+    const out: string[] = [];
+    let good = true;
+    for (const t of [t1, t2]) {
+      const u = await mkUser(`-pw-${t.id.slice(-4)}`);
+      await P.membership.create({ data: { userId: u, tenantId: t.id, role: "MANAGER", unitAccess: ["*"], permissions: {}, acceptedAt: new Date() } });
+      const c = await sessionCookie(u, t.id);
+      const a = await create(c, []);
+      const b = await create(c, ["crm.deal.won"]);
+      out.push(`${t.slug.slice(-6)}: all → ${st(a)} · crm.deal.won → ${st(b)}`);
+      good = good && a?.status === "ok" && b?.status === "ok";
+      if (t.id === t1.id) {
+        // sweep the CRM-less tenant ourselves (mkShop tenants are swept by done())
+        const tbs = ((await P.$queryRawUnsafe(`select table_name from information_schema.columns where table_schema='public' and column_name='tenantId'`)) as Any[]).map((r) => String(r.table_name)).filter((x) => /^[A-Za-z_]+$/.test(x));
+        for (let pass = 0; pass < 3; pass += 1) for (const tb of tbs) await P.$executeRawUnsafe(`DELETE FROM "${tb}" WHERE "tenantId" = $1`, t1.id).catch(() => undefined);
+        await P.tenant.delete({ where: { id: t1.id } }).catch(() => undefined);
+      }
+    }
+    const left = await P.tenant.count({ where: { id: t1.id } });
+    out.push(`crm-less tenant left=${left}`);
+    good = good && left === 0;
+    chk("PW-control-no-v2", good, out.join(" | "));
   });
 
   // ═══════════════════════ L55-3 · activity reschedule / delete: one key per operation ═══════════════════════

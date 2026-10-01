@@ -16,6 +16,7 @@ export type {
   IssueResult,
   IssueDone,
   IssuePending,
+  ManualIssueVerdict,
   IssuedVoucherDto,
   CartLine,
   CartInput,
@@ -37,6 +38,8 @@ export {
   listTemplates,
   /** ออกใบให้ลูกค้าหลายคน — มูลค่ารวมเกินเพดาน = เข้าสายอนุมัติแทนการออกทันที */
   issue,
+  // CRM C5.5 ▸ H55-2 r1b: คำตัดสินของประตูมือ "ออก voucher" (ใช้ร่วมกับกฎอัตโนมัติ CRM ผ่าน facade สมาชิก) ◂
+  manualIssueVerdict,
   /** ผลของการอนุมัติ "ออก voucher เกินเพดาน" — เรียกจาก approval-effects เท่านั้น */
   issueApprovedBatch,
   /** ใบนี้ใช้กับตะกร้านี้ได้ไหม + ลดเท่าไหร่ (อ่านอย่างเดียว) */

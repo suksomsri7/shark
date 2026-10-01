@@ -11,6 +11,24 @@ import { WEBHOOK_EVENTS } from "./labels";
 
 const SETTINGS_PATH = "/app/settings/webhooks";
 
+// CRM C5.5 ▸ (fix1 r1b · มติผู้คุมงาน ข้อ 1) ปลายทางที่รับ event ของ CRM (เลือกตรง ๆ หรือ "ทุกเหตุการณ์" = รายการว่าง) ตั้งได้เฉพาะคนที่ผ่าน
+//   กติกา "เห็นข้อมูล CRM ทั้งร้าน" ของทุกระบบ CRM v2 ของร้าน — ตัดสินที่ facade ของ CRM (ร้านที่ไม่มี CRM v2 = เหมือนเดิมทุกอย่าง) ·
+//   ปลายทางที่บันทึกไว้แล้วไม่ถูกแตะ (ตรวจเฉพาะตอนสร้าง/แก้รายการเหตุการณ์)
+async function crmEventsProblem(auth: Awaited<ReturnType<typeof requireTenant>>, events: string[]): Promise<string | null> {
+  const { crmPlatformWebhookProblem } = await import("@/lib/modules/crm");
+  return crmPlatformWebhookProblem(
+    auth.active.tenantId,
+    {
+      userId: auth.user.id,
+      role: auth.active.role,
+      unitAccess: Array.isArray(auth.active.unitAccess) ? (auth.active.unitAccess as string[]) : [],
+      permissions: (auth.active.permissions ?? {}) as Record<string, unknown>,
+    },
+    events,
+  );
+}
+// ◂ CRM C5.5
+
 function assertWebhookCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
   assertCan(
     {
@@ -46,6 +64,10 @@ export async function createEndpointAction(
   // เก็บเฉพาะ event ที่รู้จัก · ไม่เลือกเลย = รับทุกเหตุการณ์ (events ว่าง)
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
+
+  // CRM C5.5 ▸ r1b ◂
+  const crmProblem = await crmEventsProblem(auth, events);
+  if (crmProblem) return { status: "error", message: crmProblem };
 
   try {
     const ep = await createEndpoint({ tenantId: auth.active.tenantId }, { url, events });
@@ -84,6 +106,9 @@ export async function updateEndpointEventsAction(
   if (!id) return { status: "error", message: "ไม่พบปลายทางนี้" };
   const selected = formData.getAll("events").map((v) => String(v));
   const events = selected.filter((e) => WEBHOOK_EVENTS.some((w) => w.value === e));
+  // CRM C5.5 ▸ r1b ◂
+  const crmProblem = await crmEventsProblem(auth, events);
+  if (crmProblem) return { status: "error", message: crmProblem };
   try {
     const saved = await setEndpointEvents({ tenantId: auth.active.tenantId }, id, events);
     revalidatePath(SETTINGS_PATH);
