@@ -32,8 +32,17 @@ type DatasetDef = {
   label: string;
   columns: Column[];
   systemType: SystemType;
-  /** HF-INV-1 R3.7: คอลัมน์สาขาที่ใช้กรองตามสิทธิ์สาขาของผู้รัน (มีเฉพาะชุดที่ผูกสาขา เช่น sales) */
-  unitField?: "unitId";
+  /**
+   * HF-INV-1 R3.7 / R3b: เงื่อนไขฐานจาก "สาขาที่ผู้รันเข้าถึง" (มีเฉพาะชุดที่ผูกสาขา) — ไม่มี = ชุดนี้กรองตามสาขาไม่ได้
+   * sales = unitId ของบิล · customers = ขอบเขตของหน้าสมาชิก (สาขาหลัก หรือเคยมาใช้บริการที่สาขานั้น)
+   */
+  unitScope?: (unitIds: readonly string[]) => Record<string, unknown>;
+  /**
+   * HF-INV-1 R3b: คอลัมน์ที่โมดูลเจ้าของ "ปิดบัง" สำหรับบางคน → ตัวปิดบัง (ค่าเดียวกับที่โมดูลเจ้าของแสดง)
+   * ผู้เรียกบอกใน ctx.masked ว่าปิดคอลัมน์ไหน — คอลัมน์ที่ปิดอยู่ใช้กรอง/จัดกลุ่ม/รวมค่าไม่ได้ (กันอ่านค่ากลับทางอ้อม)
+   * ไม่ใส่ใน `Column` เพราะ columns ถูกส่งกลับไปหน้าจอ (ฟังก์ชันส่งข้าม server action ไม่ได้)
+   */
+  masks?: Record<string, (v: unknown) => unknown>;
   /** เงื่อนไขฐาน (เช่น เฉพาะบิลที่ชำระแล้ว) — merge เข้ากับ filter ผู้ใช้ */
   baseWhere?: Record<string, unknown>;
   /** query โมเดลจริงต่อระบบ — คืนแถวดิบ (แยกไว้เพื่อคงชนิด Prisma ต่อโมเดล) */
@@ -60,11 +69,29 @@ function project(columns: Column[], row: Record<string, unknown>): Record<string
   return out;
 }
 
+// ── HF-INV-1 R3b (B1): customers ต้องไม่เห็นเกินที่โมดูลสมาชิกให้ actor คนเดียวกันเห็น ──
+// 🔴 โมดูลนี้ import โมดูลสมาชิกไม่ได้ (fitness F2.1: ไม่มีเส้น reports→member ใน allowlist · fitness.mts เป็นไฟล์ร่วมของ CRM)
+//    ⇒ ก๊อป 3 อย่างมาให้ตรงตัวอักษร และ oracle `qc-hf-reports-authz` RP-5 เทียบผลกับ listMembers/exportMembers ตรง ๆ ทุกบทบาท
+//    (สองที่ลอยห่างกันเมื่อไหร่ ข้อสอบแดง) — แก้ต้นฉบับที่ member/** ต้องแก้ที่นี่ด้วย
+/** = member/profile.ts `maskPhone` */
+function maskPhoneLikeMember(phone: unknown): string {
+  const digits = (typeof phone === "string" ? phone : "").replace(/\D/g, "");
+  if (digits.length < 7) return "xxx-xxx-xxxx";
+  return `${digits.slice(0, 3)}-xxx-${digits.slice(-4)}`;
+}
+/** = member/access.ts `VISIT_SCOPE_MODULES` (กิจกรรมที่แปลว่า "มาใช้บริการที่สาขานั้นจริง") */
+const MEMBER_VISIT_SCOPE_MODULES: readonly string[] = ["pos", "booking", "restaurant"];
+/** = member/list.ts `actorScopeWhere` (ผู้เรียกตัดสิน isUnitScoped แล้วส่ง unitAccess มา) */
+function memberUnitScope(unitIds: readonly string[]): Record<string, unknown> {
+  const u = [...unitIds];
+  return { OR: [{ homeUnitId: { in: u } }, { activities: { some: { unitId: { in: u }, module: { in: [...MEMBER_VISIT_SCOPE_MODULES] } } } }] };
+}
+
 export const DATASETS: Record<string, DatasetDef> = {
   sales: {
     label: "ยอดขาย (บิลที่ชำระแล้ว)",
     systemType: "POS",
-    unitField: "unitId",
+    unitScope: (unitIds) => ({ unitId: { in: [...unitIds] } }),
     baseWhere: { status: "PAID" },
     columns: [
       { key: "receiptNo", label: "เลขที่ใบเสร็จ", type: "string" },
@@ -85,6 +112,12 @@ export const DATASETS: Record<string, DatasetDef> = {
   customers: {
     label: "ลูกค้า (สมาชิก)",
     systemType: "MEMBER",
+    // R3b: = buildWhere ของหน้ารวมสมาชิกเมื่อไม่ได้เลือกสถานะ (ไม่นับคนที่ถูกรวมเข้าคนอื่นแล้ว)
+    baseWhere: { status: { not: "MERGED" } },
+    unitScope: memberUnitScope,
+    // R3b: หน้ารวมสมาชิกแสดงเบอร์แบบ maskPhone เสมอ · เบอร์เต็มออกได้ทาง exportMembers เท่านั้น (ผู้เรียกตัดสินด่านนั้น)
+    //   คอลัมน์อื่นของชุดนี้หน้าสมาชิกแสดงให้ผู้อ่านคนเดียวกันอยู่แล้ว (รายการ หรือหน้า 360) — ดู wo-notes HF-INV-1 Round 3b
+    masks: { phone: maskPhoneLikeMember },
     columns: [
       { key: "memberCode", label: "รหัสสมาชิก", type: "string" },
       { key: "name", label: "ชื่อ", type: "string" },
@@ -169,35 +202,66 @@ async function systemIds(tenantId: string, type: SystemType): Promise<string[]> 
 }
 
 export async function runReport(
-  ctx: { tenantId: string; /** HF-INV-1 R3.7: จำกัดสาขา (ผู้รันเข้าได้เฉพาะสาขาเหล่านี้) · ไม่ส่ง = ทุกสาขา */ unitIds?: readonly string[] },
+  ctx: {
+    tenantId: string;
+    /** HF-INV-1 R3.7: จำกัดสาขา (ผู้รันเข้าได้เฉพาะสาขาเหล่านี้) · ไม่ส่ง = ทุกสาขา */
+    unitIds?: readonly string[];
+    /** HF-INV-1 R3b: คอลัมน์ที่ต้องปิดบังสำหรับผู้รันคนนี้ (ต้องมีตัวปิดบังใน `masks` ของชุดข้อมูล) */
+    masked?: readonly string[];
+  },
   input: ReportInput,
 ): Promise<ReportResult> {
   const { tenantId } = ctx;
   const ds = getDataset(input.dataset);
-  const filters = input.filters ?? [];
+  // HF-INV-1 R3b (B4): filters มาจาก client — ไม่ใช่รายการ / สมาชิกไม่ใช่ object ⇒ ข้อความไทย (เดิม TypeError ดิบ หรือ `ฟิลด์ "undefined"`)
+  const rawFilters: unknown = input.filters ?? [];
+  if (!Array.isArray(rawFilters)) throw new Error("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองต้องเป็นรายการเงื่อนไข (ฟิลด์ · เงื่อนไข · ค่า)");
+  for (const f of rawFilters) {
+    if (f === null || typeof f !== "object" || Array.isArray(f) || typeof (f as { field?: unknown }).field !== "string") {
+      throw new Error("รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองแต่ละข้อต้องระบุฟิลด์ เงื่อนไข และค่า");
+    }
+  }
+  const filters = rawFilters as Filter[];
+
+  // HF-INV-1 R3b (B1): คอลัมน์ที่ปิดบังต้องมีตัวปิดบังจริง (ขอปิดคอลัมน์ที่ปิดไม่ได้ = ปฏิเสธ ไม่ใช่ส่งค่าเต็มออกไป)
+  const masked = new Set(ctx.masked ?? []);
+  for (const k of masked) {
+    if (!ds.masks || !Object.hasOwn(ds.masks, k)) throw new Error(`ชุดข้อมูลนี้ปิดบังคอลัมน์ "${String(k).slice(0, 40)}" ไม่ได้`);
+  }
+  // คอลัมน์ที่ถูกปิดบังใช้กรอง/จัดกลุ่ม/รวมค่าไม่ได้ — ไม่งั้น `contains "0811"` + นับแถว = อ่านเลขกลับได้ทีละหลัก
+  const assertVisible = (field: string, where: string) => {
+    if (!masked.has(field)) return;
+    const label = ds.columns.find((c) => c.key === field)?.label ?? field;
+    throw new Error(`บัญชีนี้เห็น "${label}" แบบปิดบังบางส่วน — ใช้ใน${where}ไม่ได้ (ต้องมีสิทธิ์ส่งออกรายชื่อสมาชิกจากเจ้าของร้าน)`);
+  };
 
   // ── validate ทุก field ที่ผู้ใช้อ้าง ก่อนแตะ DB ──
-  for (const f of filters) assertField(ds, f.field, "ตัวกรอง");
-  if (input.groupBy) assertField(ds, input.groupBy, "การจัดกลุ่ม");
+  for (const f of filters) {
+    assertField(ds, f.field, "ตัวกรอง");
+    assertVisible(f.field, "ตัวกรอง");
+  }
+  if (input.groupBy) {
+    assertField(ds, input.groupBy, "การจัดกลุ่ม");
+    assertVisible(input.groupBy, "การจัดกลุ่ม");
+  }
 
   const metric = input.metric ?? "count";
   let sumField: string | null = null;
   if (metric.startsWith("sum:")) {
     sumField = metric.slice(4);
     assertField(ds, sumField, "การรวมค่า");
+    assertVisible(sumField, "การรวมค่า");
   } else if (metric !== "count") {
     throw new Error(`ตัวชี้วัด "${metric}" ไม่รองรับ`);
   }
 
-  // ── สร้าง where จาก baseWhere + filter (field ผ่าน whitelist แล้ว) ──
+  // ── สร้าง where จาก baseWhere + ขอบเขตสาขา + filter (field ผ่าน whitelist แล้ว) ──
   const conds = filters.map((f) => ({ [f.field]: opClause(f.op, f.value) }));
   // HF-INV-1 R3.7: ขอบเขตสาขาของผู้รันเป็นเงื่อนไขฐาน (ตัวกรองของผู้ใช้อยู่ใน AND — หลุดขอบเขตไม่ได้)
-  if (ctx.unitIds && !ds.unitField) throw new Error("ชุดข้อมูลนี้กรองตามสาขาไม่ได้");
-  const where: Record<string, unknown> = {
-    ...(ds.baseWhere ?? {}),
-    ...(ctx.unitIds && ds.unitField ? { [ds.unitField]: { in: [...ctx.unitIds] } } : {}),
-    ...(conds.length ? { AND: conds } : {}),
-  };
+  if (ctx.unitIds && !ds.unitScope) throw new Error("ชุดข้อมูลนี้กรองตามสาขาไม่ได้");
+  const scope = ctx.unitIds && ds.unitScope ? ds.unitScope(ctx.unitIds) : null;
+  const parts = [ds.baseWhere, scope, ...conds].filter((p): p is Record<string, unknown> => !!p && Object.keys(p).length > 0);
+  const where: Record<string, unknown> = parts.length ? { AND: parts } : {};
 
   const grouped = !!input.groupBy;
   // HF-INV-0 S2c: เพดานฝั่ง server · HF-INV-1 R3.7: ทางจัดกลุ่มมีเพดานด้วย (เดิมอ่านทุกแถวทุกระบบไม่จำกัด)
@@ -245,7 +309,16 @@ export async function runReport(
 
   // ── แถวดิบ (cap take ?? 500 · เพดาน EXPORT_CAP) — บอกชัดถ้าถูกตัด (เลิก "หายเงียบ") ──
   const truncated = rows.length > cap;
-  return { columns: ds.columns, rows: rows.slice(0, cap).map((r) => project(ds.columns, r)), truncated };
+  const out = rows.slice(0, cap).map((r) => {
+    const p = project(ds.columns, r);
+    // R3b: ปิดบังก่อนออกจาก server (จอและ CSV ใช้ผลเดียวกันนี้)
+    for (const k of masked) {
+      const mask = ds.masks?.[k];
+      if (mask) p[k] = mask(p[k]);
+    }
+    return p;
+  });
+  return { columns: ds.columns, rows: out, truncated };
 }
 
 // ── CSV ──

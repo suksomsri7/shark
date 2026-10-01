@@ -27,7 +27,8 @@ const DATASET_READ: Record<string, { rule: "pos-sales" | "member" | "inventory";
   // กติกาหน้าประวัติบิล POS (hotfix/pos-page-authz · pos/access.ts posSalesScope): pos.sale.create + เห็นเฉพาะสาขาที่เข้าถึง
   sales: { rule: "pos-sales", key: "pos.sale.create" },
   // กติกาหน้าสมาชิก (member/access.ts canReadMember): OWNER/MANAGER · STAFF ที่มีคีย์ member.* ตัวใดก็ได้
-  customers: { rule: "member", key: "member.customer.read" },
+  //   R3b: + ขอบเขตสาขาของหน้ารวมสมาชิก + เบอร์ปิดบัง เว้นแต่ผ่านด่าน exportMembers (คีย์ด้านล่าง)
+  customers: { rule: "member", key: "member.customer.export" },
   // กติกาหน้าคลัง (rbac.canReadInventory) — มีต้นทุนสินค้า
   inventory: { rule: "inventory", key: "inventory.item.read" },
 };
@@ -36,14 +37,37 @@ const DATASET_READ: Record<string, { rule: "pos-sales" | "member" | "inventory";
 function allBranches(m: MembershipCtx): boolean {
   return m.role === "OWNER" || m.unitAccess.includes("*");
 }
-function canReadMemberData(m: MembershipCtx, key: string): boolean {
-  if (evaluate(m, { module: "member", action: key })) return true;
-  if (m.role !== "STAFF") return false;
-  return Object.entries(m.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("member."));
+
+// ── HF-INV-1 R3b (B1): กติกาของโมดูลสมาชิก ก๊อปตรงตัว (fitness F2.1 ห้าม reports→member · ไม่แก้ fitness.mts ที่ CRM ถือ) ──
+//    oracle qc-hf-reports-authz RP-5 เทียบผลรายงานกับ listMembers/exportMembers ของ actor เดียวกันทุกบทบาท ⇒ ลอยห่างเมื่อไหร่แดง
+//    (คนจริงที่ล็อกอินเท่านั้น — รายงานไม่มีทางเข้าด้วยคีย์ API/ลูกค้า)
+const memberPerms = (m: MembershipCtx) => (m.permissions ?? {}) as Record<string, unknown>;
+/** = member/access.ts `canReadMember` (OWNER/MANAGER · STAFF มีคีย์ `member.*` ตัวใดก็ได้ รวม wildcard) */
+function canReadMemberData(m: MembershipCtx): boolean {
+  if (m.role === "OWNER" || m.role === "MANAGER") return true;
+  const p = memberPerms(m);
+  if (p["member.*"] === true) return true;
+  return Object.entries(p).some(([k, v]) => v === true && k.startsWith("member.") && k !== "member.*");
+}
+/** = member/access.ts `MANAGER_EXCLUDED_KEYS` (4 คีย์ที่ MANAGER ไม่ได้โดยปริยาย) */
+const MEMBER_MANAGER_EXCLUDED = new Set(["member.settings.manage", "member.privacy.manage", "member.api.manage", "member.giftcard.manage"]);
+/** = member/access.ts `hasMemberPerm` — ด่านที่ `exportMembers` ใช้กับคีย์ member.customer.export */
+function hasMemberPermLike(m: MembershipCtx, key: string): boolean {
+  if (m.role === "OWNER") return true;
+  if (m.role === "MANAGER" && !MEMBER_MANAGER_EXCLUDED.has(key)) return true;
+  const p = memberPerms(m);
+  return p[key] === true || p["member.*"] === true;
+}
+/** = member/access.ts `isUnitScoped` (OWNER / unitAccess ว่าง / "*" = ทั้งร้าน) */
+function memberUnitScoped(m: MembershipCtx): boolean {
+  if (m.role === "OWNER") return false;
+  return m.unitAccess.length > 0 && !m.unitAccess.includes("*");
 }
 
-/** ตรวจสิทธิ์อ่านชุดข้อมูล → ขอบเขตสาขาที่ต้องกรอง (ว่าง = ทุกสาขา) · ไม่ผ่าน = โยนไทย ก่อนแตะฐานข้อมูล */
-function readScope(m: MembershipCtx, dataset: unknown): { unitIds?: string[] } {
+/**
+ * ตรวจสิทธิ์อ่านชุดข้อมูล → ขอบเขตสาขาที่ต้องกรอง (ว่าง = ทุกสาขา) + คอลัมน์ที่ต้องปิดบัง · ไม่ผ่าน = โยนไทย ก่อนแตะฐานข้อมูล
+ */
+function readScope(m: MembershipCtx, dataset: unknown): { unitIds?: string[]; masked?: string[] } {
   const name = typeof dataset === "string" ? dataset : "";
   if (!name || !Object.hasOwn(DATASET_READ, name) || !Object.hasOwn(reports.DATASETS, name)) {
     throw new Error(`ไม่รู้จักชุดข้อมูล "${String(dataset).slice(0, 40)}"`);
@@ -54,8 +78,10 @@ function readScope(m: MembershipCtx, dataset: unknown): { unitIds?: string[] } {
     return {};
   }
   if (rule.rule === "member") {
-    if (!canReadMemberData(m, rule.key)) throw new Error("บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลสมาชิก — ขอสิทธิ์ “ดูข้อมูลสมาชิก” จากเจ้าของร้านก่อนรันรายงานนี้");
-    return {};
+    if (!canReadMemberData(m)) throw new Error("บัญชีนี้ยังไม่มีสิทธิ์ดูข้อมูลสมาชิก — ขอสิทธิ์ “ดูข้อมูลสมาชิก” จากเจ้าของร้านก่อนรันรายงานนี้");
+    // R3b: แถว = แถวของหน้ารวมสมาชิก (ขอบเขตสาขา) · คอลัมน์ที่หน้ารวมปิดบัง (เบอร์) เปิดเต็มเฉพาะคนที่ผ่านด่านส่งออกรายชื่อ
+    const masked = hasMemberPermLike(m, rule.key) ? [] : Object.keys(reports.DATASETS[name].masks ?? {});
+    return { ...(memberUnitScoped(m) ? { unitIds: [...m.unitAccess] } : {}), ...(masked.length ? { masked } : {}) };
   }
   const refuse = "บัญชีนี้ยังไม่มีสิทธิ์ดูยอดขายหน้าร้าน — ขอสิทธิ์ขายหน้าร้าน (POS) ของสาขาที่ต้องการจากเจ้าของร้านก่อนรันรายงานนี้";
   if (!evaluate(m, { module: "pos", action: rule.key })) throw new Error(refuse);

@@ -31,6 +31,10 @@
 //   R3.6 คืนเบิก: ใบเบิกต้นทางไม่อยู่สถานะออกแล้ว ⇒ ปฏิเสธ · ใบคืนที่ถูกยกเลิกแต่สต็อกไม่ถูกกลับ ยังกินเพดาน
 //   R3.9 inv-cache-audit: ด่าน prod ทำให้ URL เป็นมาตรฐานก่อนเทียบ · ตรวจ lot ไม่มีแถว (E) · ต้นทุนถัวเฉลี่ยไล่ซ้ำไม่ได้ (F)
 //
+// รอบ 3b (B2 · แดงบน 13ac174c · เขียวหลังแก้): คีย์จ่ายยาคลินิก = `clinic-<visit>-<item>-<n>` (n = ครั้งที่ของยานั้นใน visit)
+//   retry สลับลำดับ / แทรกยาอื่นข้างหน้า ⇒ ยาที่ตัดไปแล้วไม่ตัดซ้ำ · ยาตัวเดิม 2 บรรทัด = ตัด 2 ครั้ง · จ่ายใหม่หลังบันทึก = ตัดจริง
+//   retry เปลี่ยนจำนวน ⇒ error ชนิดเฉพาะ (เหมือนเดิม)
+//
 // การแข่ง: ≥10 รายการพร้อมกัน × 5 รอบ ต่อสถานการณ์ · ครึ่งหนึ่งผ่านตัวห่อ (pool ของแอป = คนละ connection)
 //   อีกครึ่งผ่าน `*InTx` บน PrismaClient แยกต่อเลน (คนละ client · คนละ connection แน่นอน)
 // DB: ฐาน QC ผ่าน qc-env-guard (กัน prod) · ร้านชั่วคราว slug qc-hfatom-* · ลบใน finally
@@ -963,6 +967,68 @@ try {
     const rf = await cl.refundVisit(cctx, visit.id);
     const ins = await prisma.invMovement.count({ where: { tenantId: tid, type: "IN", refType: "clinicVisit", refId: visit.id } });
     chk("AT-22.3", "คืนเงิน visit ⇒ คืนยาทุกครั้งที่ตัด: ยา 100/100 · IN = OUT (4)", b.ok && rf.ok && (await ohOf(med)) === 100 && (await ohOf(med2)) === 100 && ins === (await outsOf()) && ins === 4, `bill ${b.ok} refund ${JSON.stringify(rf)} · ${await ohOf(med)}/${await ohOf(med2)} · IN ${ins} OUT ${await outsOf()}`);
+  }
+  // ═══════════ รอบ 3b · B2 · AT-22.4–22.9: คีย์จ่ายยา = ยา + "ครั้งที่" ของยานั้นใน visit — ไม่ขึ้นกับลำดับบรรทัด ═══════════
+  //   ล้มกลางทาง = ยาตัวหลังเป็น "บริการ" ชั่วคราว (consume โยนทันทีหลังตัดตัวก่อนหน้าแล้ว · dispenseJson ยังไม่บันทึก) → แก้กลับ → retry
+  console.log("\nAT-22 (3b) คลินิก: retry สลับลำดับ · แทรกยาอื่นข้างหน้า · ยาตัวเดิม 2 บรรทัด · จ่ายใหม่หลังบันทึก · retry เปลี่ยนจำนวน");
+  {
+    const setKind = (id: string, kind: "SERVICE" | "PRODUCT") => prisma.invItem.update({ where: { id }, data: { kind } });
+    const mkMed = async (tag: string) => {
+      const id = await mkItem(tag, 100);
+      await inv.receive(ctx, { itemId: id, qty: 100, costSatang: 100, idempotencyKey: `${tag}-seed-${stamp}` });
+      return id;
+    };
+    const newVisit = async () => (await cl.createVisit(cctx, { patientId: pt.id, symptom: "QC 3b", feeSatang: 0 })).id;
+    const outs = (vid: string) => prisma.invMovement.count({ where: { tenantId: tid, type: "OUT", refType: "clinicVisit", refId: vid } });
+    const jsonLen = async (vid: string) => {
+      const j = (await prisma.clinicVisit.findUniqueOrThrow({ where: { id: vid } })).dispenseJson as unknown;
+      return Array.isArray(j) ? j.length : 0;
+    };
+    const failMidway = async (vid: string, lines: { invItemId: string; qty: number }[], svc: string) => {
+      await setKind(svc, "SERVICE");
+      const r = await attempt(cl.dispense(cctx, vid, lines));
+      await setKind(svc, "PRODUCT");
+      return r;
+    };
+    const st = async (...ids: string[]) => (await Promise.all(ids.map((i) => ohOf(i)))).join("/");
+    {
+      const A = await mkMed("AT224A"), B = await mkMed("AT224B"), v = await newVisit();
+      const f1 = await failMidway(v, [{ invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }], B);
+      const r = await attempt(cl.dispense(cctx, v, [{ invItemId: B, qty: 5 }, { invItemId: A, qty: 5 }]));
+      chk("AT-22.4", "[A5,B5] ล้มกลางทาง (ตัด A แล้ว) → retry สลับลำดับ [B5,A5] ⇒ A ไม่ตัดซ้ำ: A/B 95/95 · OUT 2 · dispenseJson 2", !f1.ok && r.ok && (await st(A, B)) === "95/95" && (await outs(v)) === 2 && (await jsonLen(v)) === 2, `first ${f1.ok ? "ok?!" : short(f1.e).slice(0, 50)} · retry ${r.ok ? "ok" : short(r.e).slice(0, 80)} · A/B ${await st(A, B)} · OUT ${await outs(v)} · json ${await jsonLen(v)}`);
+    }
+    {
+      const A = await mkMed("AT225A"), B = await mkMed("AT225B"), C = await mkMed("AT225C"), v = await newVisit();
+      const f1 = await failMidway(v, [{ invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }], B);
+      const r = await attempt(cl.dispense(cctx, v, [{ invItemId: C, qty: 5 }, { invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }]));
+      chk("AT-22.5", "[A5,B5] ล้มกลางทาง → retry แทรกยาอื่นไว้ข้างหน้า [C5,A5,B5] ⇒ A ไม่ตัดซ้ำ: A/B/C 95/95/95 · OUT 3 · dispenseJson 3", !f1.ok && r.ok && (await st(A, B, C)) === "95/95/95" && (await outs(v)) === 3 && (await jsonLen(v)) === 3, `first ${f1.ok ? "ok?!" : "failed"} · retry ${r.ok ? "ok" : short(r.e).slice(0, 80)} · A/B/C ${await st(A, B, C)} · OUT ${await outs(v)} · json ${await jsonLen(v)}`);
+    }
+    {
+      const A = await mkMed("AT226A"), v = await newVisit();
+      const r = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 5 }, { invItemId: A, qty: 3 }]));
+      chk("AT-22.6", "ยาตัวเดิม 2 บรรทัดในการจ่ายครั้งเดียว [A5,A3] ⇒ ตัด 2 ครั้ง: A 92 · OUT 2 · dispenseJson 2", r.ok && (await st(A)) === "92" && (await outs(v)) === 2 && (await jsonLen(v)) === 2, `${r.ok ? "ok" : short(r.e).slice(0, 80)} · A ${await st(A)} · OUT ${await outs(v)} · json ${await jsonLen(v)}`, "MAJOR");
+    }
+    {
+      const A = await mkMed("AT227A"), B = await mkMed("AT227B"), v = await newVisit();
+      const f1 = await failMidway(v, [{ invItemId: A, qty: 5 }, { invItemId: A, qty: 3 }, { invItemId: B, qty: 5 }], B);
+      const r = await attempt(cl.dispense(cctx, v, [{ invItemId: B, qty: 5 }, { invItemId: A, qty: 5 }, { invItemId: A, qty: 3 }]));
+      chk("AT-22.7", "[A5,A3,B5] ล้มที่ B (ตัด A สองครั้งแล้ว) → retry [B5,A5,A3] ⇒ A ไม่ตัดซ้ำ: A/B 92/95 · OUT 3 · dispenseJson 3", !f1.ok && r.ok && (await st(A, B)) === "92/95" && (await outs(v)) === 3 && (await jsonLen(v)) === 3, `first ${f1.ok ? "ok?!" : "failed"} · retry ${r.ok ? "ok" : short(r.e).slice(0, 80)} · A/B ${await st(A, B)} · OUT ${await outs(v)} · json ${await jsonLen(v)}`);
+    }
+    {
+      const A = await mkMed("AT228A"), B = await mkMed("AT228B"), v = await newVisit();
+      const r1 = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 5 }]));
+      const r2 = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 5 }]));
+      const r3 = await attempt(cl.dispense(cctx, v, [{ invItemId: B, qty: 5 }, { invItemId: A, qty: 5 }]));
+      chk("AT-22.8", "จ่ายครั้งใหม่หลังบันทึกแล้ว: [A5] → [A5] → [B5,A5] ⇒ ตัดจริงทุกครั้ง: A/B 85/95 · OUT 4 · dispenseJson 4", r1.ok && r2.ok && r3.ok && (await st(A, B)) === "85/95" && (await outs(v)) === 4 && (await jsonLen(v)) === 4, `${[r1, r2, r3].map((x) => (x.ok ? "ok" : short(x.e).slice(0, 40))).join(" · ")} · A/B ${await st(A, B)} · OUT ${await outs(v)} · json ${await jsonLen(v)}`, "MAJOR");
+    }
+    {
+      const A = await mkMed("AT229A"), B = await mkMed("AT229B"), v = await newVisit();
+      const f1 = await failMidway(v, [{ invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }], B);
+      const r = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 7 }, { invItemId: B, qty: 5 }]));
+      const after = await st(A, B);
+      const ok2 = await attempt(cl.dispense(cctx, v, [{ invItemId: A, qty: 5 }, { invItemId: B, qty: 5 }]));
+      chk("AT-22.9", "[A5,B5] ล้มกลางทาง → retry เปลี่ยนจำนวน [A7,B5] ⇒ error ชนิดเฉพาะ (ไทย) · ไม่ตัดเพิ่ม (A/B 95/100) · retry รายการเดิม [A5,B5] ผ่าน (95/95 · json 2)", !f1.ok && !r.ok && isKeyConflict(r.e) && after === "95/100" && ok2.ok && (await st(A, B)) === "95/95" && (await jsonLen(v)) === 2, `retry7 ${r.ok ? "ok?!" : short(r.e).slice(0, 70)} · after ${after} · retry5 ${ok2.ok ? "ok" : short(ok2.e).slice(0, 50)} · ${await st(A, B)} · json ${await jsonLen(v)}`, "MAJOR");
+    }
   }
 
   // ═══════════ R3.6 · AT-23: เพดานคืนเบิกต้องไม่ทำให้สต็อกงอก ═══════════

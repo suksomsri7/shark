@@ -202,18 +202,25 @@ export async function dispense(
   // append ลง dispenseJson (สะสม)
   const prev = Array.isArray(visit.dispenseJson) ? (visit.dispenseJson as unknown as DispenseRecord[]) : [];
   const added: DispenseRecord[] = [];
-  for (const [i, line] of lines.entries()) {
+  // HF-INV-1 ▸ R3b (B2): คีย์ต่อ "ครั้งที่ของยาตัวนั้นใน visit" — `clinic-<visit>-<item>-<n>`
+  //   n = จำนวนครั้งที่ยานี้ถูกบันทึกใน dispenseJson แล้ว + จำนวนบรรทัดก่อนหน้าของยาเดียวกันในคำขอนี้
+  //   (รอบ 3 ใช้ตำแหน่งบรรทัด ⇒ retry ที่สลับลำดับ/แทรกยาอื่นข้างหน้า ได้คีย์ใหม่ = ยาที่ตัดไปแล้วถูกตัดซ้ำ)
+  //   retry ของครั้งเดิม (ล้มกลางทาง ยังไม่ append) ลำดับใดก็ได้ ⇒ คีย์เดิม = ไม่ตัดซ้ำ · จ่ายใหม่หลังบันทึกแล้ว ⇒ n ถัดไป
+  //   ไม่มีโค้ดอื่นแยกคีย์นี้ (คืนเงินอ้าง movement id · account-bridge ดูแค่คำว่า "refund") ◂
+  const seen = new Map<string, number>();
+  for (const r of prev) if (r && typeof r.invItemId === "string") seen.set(r.invItemId, (seen.get(r.invItemId) ?? 0) + 1);
+  for (const line of lines) {
     const qty = Math.round(line.qty);
-    // ตัดสต็อกจริง — HF-INV-1 ▸ R3.5(b): idempotencyKey ต่อ "การจ่ายครั้งนี้" = ตำแหน่งที่บรรทัดนี้จะอยู่ใน dispenseJson + ยา
-    //   (เดิม `clinic-<visit>-<item>` ⇒ จ่ายยาตัวเดิมครั้งที่สองใน visit เดียวไม่ตัดสต็อกเงียบ ๆ)
-    //   retry ของครั้งเดิม (ล้มกลางทาง ยังไม่ append) ⇒ ตำแหน่งเดิม = คีย์เดิม = ไม่ตัดซ้ำ · จ่ายครั้งใหม่หลังบันทึกแล้ว ⇒ ตำแหน่งใหม่ ◂
+    const n = seen.get(line.invItemId) ?? 0;
+    seen.set(line.invItemId, n + 1);
+    // ตัดสต็อกจริง (idempotent ต่อครั้งที่ของยา — ดูหมายเหตุด้านบน)
     await inventory.consume(invCtx, {
       itemId: line.invItemId,
       qty,
       sourceModule: "CLINIC",
       refType: "clinicVisit",
       refId: visitId,
-      idempotencyKey: `clinic-${visitId}-${prev.length + i}-${line.invItemId}`,
+      idempotencyKey: `clinic-${visitId}-${line.invItemId}-${n}`,
     });
     added.push({ invItemId: line.invItemId, name: nameOf.get(line.invItemId) ?? line.invItemId, qty });
   }

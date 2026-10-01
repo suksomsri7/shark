@@ -382,3 +382,86 @@ Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash script
 - Results on QC4 after the edit: qc-clinic **8/8** · qc-clinic-refund **13/13**.
 - Typecheck not re-run by the builder: CL-2.3's `idempotencyKey` filter changed from a string to a `{ startsWith }` object (an expression-type change) ⇒ left to the controller as instructed.
 - NOT covered (added): clinic dispense has no client request key ⇒ two sequential identical submits (double click) now cut and record twice (consistent record==stock; before: recorded twice, cut once). Real double-submit protection = request id from the form — later work order.
+
+## Round 3b — status (checkpoint)
+- [x] 0. BEFORE regression on 13ac174c (QC4) — table below
+- [x] 1. oracles: atomic 133 → **139** (AT-22.4–22.9) · reports 23 → **57** (RP-5.*, RP-6.*; RP-2.3 re-pointed) · RED on 13ac174c → `HF-INV-1-red3b.txt` (136/139 · 24/57; inventory-authz has no new checks)
+- [x] 2. fix B1–B4 (below) · [x] 3. GREEN ×2 (+ AFTER run = 3rd) · [x] 4. controls B1/B2/B4 → `HF-INV-1-control3b.txt`
+- [x] 5. AFTER regression · [x] 6. fitness 33/33 ×2 modes · [x] 7. typecheck (result below) · [x] 8. commit + push
+
+## R3b.B1 [MAJOR] — report "customers" ≤ what the member module shows the same actor
+Files: `reports/actions.ts:26-31` (table: customers → unmask key `member.customer.export`), `:41-65` (mirrors), `:80-85` (readScope member branch → `{ unitIds?, masked? }`) · `reports/service.ts:33-46` (DatasetDef `unitScope` replaces `unitField`, new `masks`), `:72-88` (mirrors), `:113-120` (customers: baseWhere / unitScope / masks), `:206-264` (ctx.masked validation, masked field refused in filters/groupBy/sum, where = AND[base, scope, …filters]), `:311-320` (mask applied to raw rows before they leave the server — screen and CSV use the same result).
+Mirrored from `member/**` (read only) — the import is forbidden: fitness F2.1 has no `reports→member` edge and `scripts/fitness.mts` is a CRM hot file not named in the brief. Each mirror is marked with its source:
+| report | member source | rule |
+|---|---|---|
+| `canReadMemberData` | `access.ts canReadMember` | OWNER/MANAGER · STAFF with any `member.*` key true (incl. wildcard) — replaces round-3's `evaluate`-based version (same answers, now literal) |
+| `memberUnitScoped` | `access.ts isUnitScoped` | OWNER / unitAccess `[]` / `"*"` ⇒ whole shop |
+| `memberUnitScope` | `list.ts actorScopeWhere` + `VISIT_SCOPE_MODULES` | `homeUnitId IN unitAccess` OR activity at those units with module pos/booking/restaurant |
+| `baseWhere status ≠ MERGED` | `list.ts buildWhere` (no status option) | MERGED rows never appear |
+| `hasMemberPermLike(m, "member.customer.export")` | `access.ts hasMemberPerm` (the test `exportMembers` uses) | OWNER yes · MANAGER yes (export is not one of the 4 excluded keys; set mirrored) · STAFF needs the key or `member.*` |
+| `maskPhoneLikeMember` | `profile.ts maskPhone` | `081-xxx-1111`, `<7 digits / null → xxx-xxx-xxxx` |
+Drift guard (brief item 4): RP-5.n.1/.2 compare the report with `listMembers` (memberCode set + `phoneMasked`) and `exportMembers` (full phone, or its refusal) of the same actor over both member systems of the fixture shop, for all six readable roles.
+Projection of the customers dataset vs the member module:
+| column | member list row | exportMembers | 360 | report |
+|---|---|---|---|---|
+| memberCode | shown | yes | yes | shown |
+| name | display name (`name ?? first+last ?? code`) | yes | yes | shown (raw `name`; can be empty where the list composes first+last — never more) |
+| **phone** | `maskPhone` always | full (export key) | full (`core.phone`) | **masked unless export test** |
+| tier (legacy enum) | tier-def name (enum is the v1 bridge written from `tierDefId`) | tier name | yes | shown |
+| totalSpentSatang | — (spent12m) | — | `stats.totalSpentSatang` | shown (360 shows it to the same in-scope reader) |
+| visitCount | — (visits12m) | — | `stats.visitCount` | shown (same) |
+| createdAt | sort key only | yes | yes | shown |
+Side channel: a masked column cannot be used in `filters` (any op), `groupBy` or `sum:` — Thai refusal naming the column; masked columns must have a mask (`ctx.masked` naming an unmaskable column is refused, fail-closed). **Sort**: `ReportInput` has no sort input (order fixed `createdAt desc`); RP-5.8 proves extra `sort/orderBy/sortBy` keys change nothing.
+Intentional differences that remain: the dataset is the union of every MEMBER system of the shop (the list is one system per page, and every reader may open every member system — RP-5 uses two systems); no `q/tier/tag/source/f/view` options (the builder's own column filters apply inside the scope); default order and caps differ (createdAt desc · 500 screen / 50 000 grouped+CSV vs list 100 per page / `MEMBER_LIMITS.exportRows`); the report has no status column, so MERGED (which the list can show on explicit request) never appears; no custom fields (so no D8 sensitive-field policy is needed); the report CSV writes no `member.export` AuditLog/access log (pre-existing — see NOT covered).
+
+## R3b.B2 [MINOR] — clinic dispense key per drug occurrence
+`clinic/service.ts:205-222`: `clinic-<visit>-<item>-<n>`, n = entries of that item already in `dispenseJson` + earlier lines of the same item in this call. A retry in any order / with another drug inserted reuses the cut keys; a later dispense (recorded) gets the next n; the same drug twice in one call = two cuts; a changed qty for an already-cut occurrence = `StockKeyConflictError` (unchanged). Key parsers: none — refund keys use the OUT movement id (`clinic-refund-<visit>-<movementId>`), `account-bridge.ts:39` only looks for the substring `refund`, `qc-clinic` CL-2.3 (`startsWith clinic-<visit>-`) stays green (8/8, file not edited). Limit: two lines of the same drug with **different** qty retried in swapped order exchange their occurrence numbers ⇒ typed conflict (refused, nothing cut twice).
+
+## R3b.B3 [MINOR] — PO receive result visible
+`inventory/PoReceiveForm.tsx:11-14, 31-35, 53, 63-72`: the action state carries `seq` (+1 per result); `seq` is the `key` of the shared `ConfirmDialog` ⇒ every result remounts it closed (shared component untouched — it has no open/close prop or message slot). Failure: dialog closes, Thai message under the button (`role=alert`). Success: dialog closes, message under the button (`role=status`) until revalidation re-renders the row as RECEIVED (the form unmounts; the status chip is then the visible result). Double click: the confirm button is disabled while pending (`useFormStatus`), a second request still answers ok (R3.8). **CONTROLLER-RUN owed: visual check of PO receive (success, failure, double click).**
+
+## R3b.B4 [NOTE] — malformed `filters`
+`reports/service.ts:216-224`: not an array ⇒ `รูปแบบตัวกรองไม่ถูกต้อง — ตัวกรองต้องเป็นรายการเงื่อนไข…`; an element that is not an object with a string `field` ⇒ `…ตัวกรองแต่ละข้อต้องระบุฟิลด์ เงื่อนไข และค่า` (was `TypeError: filters is not iterable` / `Cannot read properties of null` / `ฟิลด์ "undefined"` for a string). RP-6.1 (service, 6 shapes) · RP-6.2 (screen + CSV actions).
+
+## Oracle changes (round 3b)
+- `qc-hf-reports-authz` 23 → 57: RP-5.1–5.6 (OWNER · MANAGER all · MANAGER b1 · STAFF b1 read · STAFF b1 stamp-only · STAFF b1 export) × screen rows / phone / CSV / groupBy, + side channels (masked) and every-operator reach probes (limited); RP-5.7 STAFF without member key refused (unchanged behaviour); RP-5.8 sort keys; RP-6.1/6.2. Second fixture shop `qc-hfrpt-b-*` (own units, 2 member systems, 7 members incl. MERGED, a pos visit and a non-visit point row), deleted in finally. **RP-2.3 changed** MANAGER `[u1]` → MANAGER `["*"]`: its two fixture members have no home branch, so under B1 a branch-limited manager no longer sees them (the limited case is RP-5.3).
+- `qc-hf-inventory-atomic` 133 → 139: AT-22.4 reordered retry · 22.5 drug inserted before · 22.6 same drug twice in one call · 22.7 same drug twice + reordered retry · 22.8 second/third dispense after record · 22.9 changed-qty retry (typed conflict) then original retry. Mid-way failure = second drug flipped to SERVICE kind for the first attempt (fast, deterministic), restored before the retry.
+
+## Runs (round 3b · QC4)
+| run | atomic | authz | reports |
+|---|---|---|---|
+| BEFORE (13ac174c, round-3 oracles) | 133/133 | 116/116 | 23/23 |
+| RED (13ac174c, round-3b oracles) | 136/139 — AT-22.4/22.5/22.7 | (no new checks) | 24/57 — RP-5.* except 5.7, RP-6.* |
+| GREEN ×3 (`HF-INV-1-green3b.txt`) | 139/139 ×3 | 116/116 ×3 | 57/57 ×3 |
+| CONTROL B1 (actions.ts = 13ac174c + customers baseWhere/unitScope/masks removed) | | | 26/57 — RP-5.* except 5.7 |
+| CONTROL B4 (shape validation removed) | | | 55/57 — RP-6.1/6.2 |
+| CONTROL B2 (clinic/service.ts = 13ac174c) | 136/139 — AT-22.4/22.5/22.7 | | |
+AT-22.6/22.8/22.9 and RP-5.7 are green on 13ac174c by design (coverage the brief asked for: two cuts in one call, later dispense cuts, changed qty stays a typed conflict, no-member-key STAFF still refused). B3 has no oracle.
+
+## Regressions on QC4 — BEFORE (13ac174c) vs AFTER (final tree), per-check lines (sorted; ids, pids, long numbers stripped)
+identical (42): qc-hf-inventory-authz 116/116 · qc-clinic 8/8 · qc-clinic-refund 13/13 · qc-clinic-public 15/15 · qc-report-builder 9/9 · qc-procurement 12/12 · qc-member-public 19/19 · qc-member-tier 7/7 · and 35 qc-member-* suites with identical pre-existing reds (fix-s1 0/1 · fix-s2 1/2 · fix-s3 0/1 · fix-s4 0/1 · m1.10 9/12 · m1.11 7/10 · m1.12 0/1 · m1.2 6/7 · m1.3 11/14 · m1.4–m1.9 0/1 · m2.2–m2.8 0/1 · m2.9 1/4 · m2.10 0/1 · m3.1–m3.9 0/1 · m3.10 5/21 · m3.11 0/1) — on QC4 these crash at setup (`Cannot read properties of null (reading 'role')` / `ไม่พบ Membership` — the member seed's memberships are not on QC4) or need a server for screenshots, so they guard little here; no `member/**` file was touched.
+changed by design (2): qc-hf-inventory-atomic 133/133 → 139/139 (AT-22.4–22.9 added; only other line difference = a backend pid in AT-18.2's label) · qc-hf-reports-authz 23/23 → 57/57 (RP-5/RP-6 added; RP-2.3 relabelled MANAGER → MANAGER ทุกสาขา).
+Skipped (they re-seed / rewrite shared data): **qc-member-m1.1** (runs `seed-member-qc.mts`) · **qc-member-m2.1** (runs `member-backfill-points-lots.mts --tenant <shared seed shop>`). Included suites that run `prisma migrate diff` (read-only, no schema/client change): m2.3, m2.4, m2.5, m2.6, m2.9.
+Fitness: 33/33 with QC4 env and 33/33 without DB env, check lines identical (F2.1 100 edges / 104 allowed — no new edge).
+
+## Who loses a previously working behaviour (round 3b)
+- B1: branch-limited STAFF and MANAGER lose members outside their branches in the customers dataset (were: the whole shop, all member systems); STAFF without `member.customer.export` (incl. all-branch STAFF with read/stamp keys) now see `081-xxx-1111` on screen/CSV and cannot filter, group or `sum:` by phone (Thai refusal); saved reports that filter/group by phone fail for those users; **everyone incl. OWNER** loses MERGED members from the dataset (counts drop by merged rows).
+- B2: a clinic dispense retried with two lines of the same drug and different quantities in swapped order is refused (typed conflict) until the original list is resent (was: under round 3, cut again). Deploy-window edge: a dispense that failed mid-way under round-3 keys and is retried after deploy gets new keys ⇒ its already-cut lines are cut again (same class as round 3's edge).
+- B3, B4: none.
+
+## NOT covered (round 3b)
+- Recorded only (brief): an account document can hold the period's document-number counter row while waiting up to 15 s for an item; a second document can then reach the 30 s transaction timeout (generic failure, no corruption) · voided return + later re-link of the product to another inventory item ⇒ counts 0 against the cap (real fix = O15) · `account/service.ts:2480` `FOR UPDATE` in `recordPayment` (CRM-owned file) · stale comment at `scripts/qc-clinic.mts` ~:46.
+- Customers report CSV writes no `member.export` AuditLog / access log (exportMembers does) — pre-existing.
+- The report builder UI still offers phone in its filter/groupBy pickers to masked users (server refuses; thrown server-action messages are hidden by Next in production — the pattern of every report refusal since R3.7).
+- The member 360 page returns the full phone (`core.phone`) to any in-scope reader; the report follows the stricter list/export rule as briefed.
+- B3 visual behaviour — CONTROLLER-RUN.
+- Member regression is weak on QC4 (seed memberships missing) — before/after identical only.
+
+## Decisions for the controller (round 3b)
+1. **Mirror, not import** (fitness F2.1 has no `reports→member` edge; `scripts/fitness.mts` is a CRM hot file not named here). The facade already exports `canReadMember`, `hasMemberPerm`, `maskPhone`; `isUnitScoped`, `VISIT_SCOPE_MODULES` and `actorScopeWhere` are not on it. If you prefer the import: add the edge + export those three from `member/index.ts`, then delete the mirrors (RP-5 drift checks stay).
+2. **Masked set = phone only**; totalSpentSatang / visitCount stay visible because the 360 page shows them to the same in-scope reader (table above).
+3. **MERGED excluded for all actors** (incl. OWNER), as the list does by default.
+4. **Sort**: there is no sort input to refuse; RP-5.8 proves extra sort keys have no effect.
+5. **B3**: dialog closes on every result (remount via `key`) and the message shows in place, because `ConfirmDialog` has no open/close prop or message slot.
+6. **Pre-commit hook**: `core.hooksPath` = `/root/projects/shark-in-th/.githooks` (a tree this lane may not touch) ⇒ fitness run by hand (both modes) and commit with `--no-verify`.
+Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, run once): **exit 0** after 395 s (incl. lock wait).
