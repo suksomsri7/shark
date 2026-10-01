@@ -221,3 +221,13 @@ Distinct `pnpm` verbs used by `scripts/*.sh`, `scripts/pending/**/*.sh`, `.githu
 
 ---
 Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open question 1 (CI secrets) unverified. Not read in full: c42b `crm-C4.2.md` (100 KB; grepped), c54d `crm-C5.4-D-review.md` (grepped N5–N7/F-list), N-review (headings + RESUME summary), §0.11–§0.18 of RESUME.
+
+## Added 1 Oct — hunt 2b (`ledger/wo-notes/crm-C5.5-hunt-2b.md`): 0 BLOCKER · 0 HIGH · 1 MED · 4 LOW · 3 INFO
+
+- **H2b-1 MED (controller-verified in text, runbook FIXED in `crm-C5.4-N.md` pre-check 3b):** prod pre-check for N must also cover USAGE/UPDATE on the pre-created `acc_jno_%` sequences when migrate role ≠ app role; smoke an EXISTING active system, not only a new one. Supersedes the wording of 1.12 / New-2 above.
+- **Card C5.5-fix3 (to open after fix1/fix2 merge — shares portal.ts/automation.ts with them):**
+  - H2b-2 LOW plausible — `account_alloc_journal_no` slow path (gap > 1 000) reads then setval without a lock; add an advisory xact lock + re-read (new additive migration, CREATE OR REPLACE).
+  - H2b-3 LOW confirmed — `ai-bridges.ts:211` at-risk uses `expectedCloseAt < now`; compare Thai day keys (deal flagged overdue from 07:00 Thai on its due day).
+  - H2b-4 LOW confirmed — `automation.ts:1588-1593` `field_due` window wrong for DATETIME fields (00:00–06:59 Thai fires a day early).
+  - H2b-5 LOW confirmed — `portal.ts:803` DATETIME custom values rendered as bare UTC date.
+- H2b-3..5 exist on origin/main but only on CRM v2 screens (hidden on prod). C5.4-D2 diff: no new defect.

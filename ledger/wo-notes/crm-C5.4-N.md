@@ -447,6 +447,14 @@ SELECT count(*) FROM "AccountJournalEntry" WHERE "docNo" ~ '\d{7,}$';
 SELECT current_user, has_schema_privilege(current_user, 'public', 'CREATE') AS can_create_in_public;
 --   app user without CREATE on public ⇒ new systems cannot get their sequences (pages still work; their FIRST posting is refused with
 --   "ออกเลขที่ใบสำคัญไม่ได้ — ฐานข้อมูลไม่อนุญาต…" and logged) — grant CREATE or run the migration role as the app role.
+-- 3b (restored 1 Oct, hunt 2b H2b-1 — the reviewer's wording had been dropped) if the two roles DIFFER, the ≤2 500 sequences the
+--   migration pre-creates are OWNED BY THE MIGRATE ROLE: the app role also needs USAGE, UPDATE on every acc_jno_% sequence, or every
+--   posting of the ~500 most active systems fails with 42501 (shown as the misleading "cannot create counter" message, gl.ts).
+--   The post-deploy smoke on a brand-new system does NOT catch this — smoke on an EXISTING active system too. After migrate, as app role:
+--   SELECT count(*) FROM pg_class c WHERE c.relkind='S' AND c.relname LIKE 'acc_jno_%'
+--     AND NOT has_sequence_privilege(current_user, c.oid, 'USAGE, UPDATE');      -- must be 0
+--   If not 0 (run as migrate role): GRANT USAGE, UPDATE ON ALL SEQUENCES IN SCHEMA public TO <app_role>;
+--     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, UPDATE ON SEQUENCES TO <app_role>;
 -- 4 nothing of ours exists yet (the migration has never run on prod)
 SELECT count(*) FROM pg_class WHERE relname LIKE 'acc_jno_%';               -- 0
 SELECT count(*) FROM "_prisma_migrations" WHERE migration_name LIKE '2026110400000%';   -- 0
