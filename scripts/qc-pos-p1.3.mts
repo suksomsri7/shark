@@ -698,14 +698,14 @@ async function runDb() {
 
   // ── สินค้า sandbox ผ่าน catalog.ts เท่านั้น (ผู้เขียนเดียว F15.1 · ชื่อ/ทรงตามที่ผู้คุมงานรับรองจากเลน 3) ──
   //   ไม่นับสต็อก = createProduct (ไม่มี InvItem) · นับสต็อก = InvItem (inventory facade) + ensureForInvItem → {id, created} + setPrice
-  //   กติกา "นับสต็อก" ที่ข้อสอบคาด (ชื่อที่ตั้งเอง · โน้ต §6): มี invItemId และ InvItem นั้นเคยมี InvMovement อย่างน้อย 1 แถว
+  //   "นับสต็อก" = คอลัมน์ PosProduct.trackStock (รับรอง 1 ต.ค. · ไม่คำนวณตอนอ่าน) — fixture ตั้งผ่าน updateProduct({trackStock})
   const idOf = (r: Any): string | null => (typeof r === "string" ? r : r?.ok === false ? null : (r?.id ?? r?.product?.id ?? null));
   const must = (label: string, r: Any): Any => {
     if (r?.ok === false) throw Object.assign(new Error(`${label} ล้ม: ${short(r)}`), { code: r.code });
     return r;
   };
   const mkFree = async (name: string, priceSatang: number, patch: Any = {}) => {
-    const r = must("createProduct", await call(catalog, "createProduct", cctx, { name, kind: "PRODUCT", basePriceSatang: priceSatang, ...patch }));
+    const r = must("createProduct", await call(catalog, "createProduct", cctx, { name, kind: "PRODUCT", basePriceSatang: priceSatang, trackStock: false, ...patch }));
     const id = idOf(r);
     if (!id) throw new Error(`createProduct ไม่คืน id: ${short(r)}`);
     sb.productIds.push(id);
@@ -724,7 +724,8 @@ async function runDb() {
     if (!id) throw new Error(`ensureForInvItem ไม่คืน id: ${short(r)}`);
     sb.productIds.push(id);
     if (priceSatang !== null && itemMore.kind !== "SERVICE") must("setPrice", await call(catalog, "setPrice", cctx, id, priceSatang));
-    if (Object.keys(patch).length) must("updateProduct", await call(catalog, "updateProduct", cctx, id, patch));
+    const full = { trackStock: stock !== null, ...patch };
+    must("updateProduct", await call(catalog, "updateProduct", cctx, id, full));
     return { id, invItemId: it.id as string };
   };
   let built = false;
@@ -740,7 +741,7 @@ async function runDb() {
     C = await mkTracked("C", "บราวนี่ทดสอบ", 6500, 50, { categoryId: catId || undefined });
     D = await mkFree("น้ำเปล่าแจกทดสอบ", 0);
     LOW = await mkTracked("LOW", "ขนมเหลือน้อย", 3000, 2);
-    ZERO = await mkTracked("ZERO", "ขนมหมดสต็อก", 3000, "consumed");
+    ZERO = await mkTracked("ZERO", "ขนมหมดสต็อก", 3000, 0);
     ARCH = await mkFree("สินค้าเลิกขาย", 1000);
     OFF = await mkFree("เมนูปิดขายวันนี้", 4000);
     NOPRICE = await mkTracked("NOPRICE", "สินค้ายังไม่ตั้งราคา", null, null);
