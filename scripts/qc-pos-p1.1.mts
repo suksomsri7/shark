@@ -733,7 +733,7 @@ try {
   // ═══ S1.21–S1.25 จอเดิม + createSale + rollback ระหว่างทาง ═══
   await section("after-screens", ["S1.21", "S1.22", "S1.23", "S1.24", "S1.25"], async () => {
     if (!before) throw new Error("ไม่มีภาพก่อน backfill");
-    const after = await screens();
+    const after: Any = await screens();
     const eq = (k: string) => hashOf(before[k]) === hashOf(after[k]);
     chk("S1.21", eq("menuList") && eq("ordering") && eq("publicMenu"), "เหมือนเดิม", `listItems ${eq("menuList")} · orderingMenu ${eq("ordering")} · publicMenu ${eq("publicMenu")}`);
     chk("S1.22", eq("shopList"), "เหมือนเดิม", eq("shopList") ? "เหมือน" : "ต่าง");

@@ -220,3 +220,10 @@ POS QC seed **is present** on QC4 (`seeded:true` — `resolvePosScope` coffee + 
 **A6** this file.
 
 **A4** typecheck — see below.
+
+### A4 typecheck (lane rule 5 command)
+- run 1: `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` → exit 2 · 1 error, in this oracle only: `scripts/qc-pos-p1.1.mts(737,60): error TS7053` (`after[k]` on a typed object) → fixed by typing `after: Any` (no behaviour change; A1 re-run exit 0 SKIPPED).
+- run 2 (allowed because run 1 found errors): same command → **exit 0** (`tsc --noEmit`, no output).
+
+## Temp data left
+None. Every run printed identical `ROWCOUNTS_BEFORE`/`ROWCOUNTS_AFTER` for the POS QC tenants; the forced run's S1.36 confirms legacy + new tables are checksum-identical to the pre-run snapshot. Scratch logs only in the session scratchpad (not in the repo).
