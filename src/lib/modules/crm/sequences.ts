@@ -821,6 +821,7 @@ export async function resume(ctx: SequencesCtx, actor: MemberActor, enrollmentId
       // CRM C3.9 ▸ NOTE รีวิว: เดินต่อ = กลับมานับในเพดานผู้อยู่ในลำดับ (activeEnrollments) — ล็อก + นับ + เขียนใน tx เดียว ◂
       if (row.status === "PAUSED") await assertCrmLimit(ctx, "activeEnrollments", 1, tx);
       const r = await tx.crmSequenceEnrollment.updateMany({ where: { id: row.id, status: "PAUSED" }, data: { status: "ACTIVE", ...(row.nextAt ? {} : { nextAt: new Date() }) } });
+      if (r.count === 1) await clearWaits(tx, row.id); // CRM C5.4-D2 r2 ▸ S2: เดินต่อ = ช่วงรอใหม่ ◂
       if (r.count === 1) await auditTx(tx, ctx, a.userId, "crm.sequence.resume", "CrmSequenceEnrollment", row.id, { before: { status: "PAUSED" }, after: { status: "ACTIVE" } });
       return r.count;
     });
@@ -1152,6 +1153,12 @@ type SeqSubject = { tenantId: string; systemId: string; contact: CrmContact; dea
 // CRM C5.4-D r2 ▸ N1a: `sendPermanent` = ตัวส่งของขั้นนี้ตอบว่า "ปฏิเสธถาวร" (ตัวรันกลางส่งต่อแค่ ok/skipped/note — เก็บคำตัดสินไว้ที่ env ของขั้น) ◂
 type SeqEnv = RunnerEnv<SeqSubject> & { deps: SequenceDeps | null; sendPermanent?: boolean; sendOutage?: boolean; sendWaitUntil?: Date; sendWaitKind?: "cap" | "in_flight" };
 
+// CRM C5.4-D2 r2 ▸ เหตุผลในบันทึกขั้นเมื่อระบบไม่ส่งซ้ำ (S1c · N1 · N3) ◂
+const REDELIVERY_REFUSED_TEXT: Record<string, string> = {
+  NOT_REPRODUCIBLE: "ไม่ได้ส่งซ้ำ — จดหมายฉบับก่อนอาจถึงลูกค้าแล้ว แต่ระบบประกอบฉบับเดิมซ้ำให้เหมือนเดิมไม่ได้ (การตั้งค่าระบบเปลี่ยนไป) จึงไม่ส่งซ้ำและไปขั้นถัดไป",
+  REDELIVERY_EXPIRED: "ไม่ได้ส่งซ้ำ — การส่งครั้งแรกผ่านมาเกิน 24 ชม. แล้ว จดหมายอาจถึงลูกค้าแล้ว ระบบจึงไม่ส่งซ้ำ (กันลูกค้าได้สองฉบับ) และไปขั้นถัดไป",
+  FROM_DOMAIN_UNVERIFIED: "ไม่ได้ส่งซ้ำ — โดเมนผู้ส่งของจดหมายฉบับนี้ไม่ผ่านการยืนยันแล้ว ระบบจึงไม่ส่งซ้ำและไปขั้นถัดไป (ตรวจโดเมนที่หน้าตั้งค่าอีเมล)",
+};
 const CHANNEL_LABEL: Record<RunnerChannel, string> = { LINE: "LINE", EMAIL: "อีเมล", SMS: "SMS", PUSH: "แจ้งเตือน" };
 const NO_ADDRESS: Record<RunnerChannel, string> = {
   EMAIL: "ไม่ได้ส่ง — ผู้ติดต่อนี้ยังไม่มีอีเมล จึงข้ามไปขั้นถัดไป",
@@ -1216,6 +1223,11 @@ async function defaultSender(channel: RunnerChannel, env: SeqEnv, core: RunnerSe
       // CRM C5.4-D2 ▸ F6 (R2-N1a): อีเมลของผู้ติดต่อเปลี่ยนหลังการส่งครั้งก่อนที่ไม่สำเร็จ ⇒ ไม่ส่งซ้ำไปที่อยู่เดิม — ข้ามขั้นพร้อมเหตุผล ◂
       if (r.status === "FAILED" && r.failCode === emails.CRM_EMAIL_RECIPIENT_CHANGED) {
         return { ok: false, skipped: true, error: "ไม่ได้ส่งซ้ำ — อีเมลของผู้ติดต่อเปลี่ยนไปหลังการส่งครั้งก่อนที่ไม่สำเร็จ ระบบจึงไม่ส่งไปที่อยู่เดิมและไปขั้นถัดไป" };
+      }
+      // CRM C5.4-D2 r2 ▸ S1(c) · N1 · N3: การส่งซ้ำที่ระบบไม่ทำ (จดหมายครั้งก่อนอาจถึงลูกค้าแล้ว) = ข้ามขั้นพร้อมเหตุผล — ไม่นับเป็นครั้งที่ล้ม
+      //   ไม่หยุดการลงทะเบียนเป็น FAILED เพราะจดหมายที่อาจส่งถึงแล้ว ◂
+      if (r.status === "FAILED" && emails.isRedeliveryRefusal(r.failCode)) {
+        return { ok: false, skipped: true, error: REDELIVERY_REFUSED_TEXT[String(r.failCode)] ?? "ไม่ได้ส่งซ้ำ — ระบบไปขั้นถัดไป" };
       }
       if (r.status === "FAILED") {
         // CRM C5.4-D r2 ▸ N1a · r3 ▸ R2-S3 (มติผู้คุมงานฉบับแก้): ผิดที่จดหมายฉบับนี้ (400/404/405/422 · หัวจดหมาย/ผู้รับใช้ไม่ได้) = ไม่ลองซ้ำ —
@@ -1348,6 +1360,16 @@ type Claimed = { id: string; stepIndex: number; lease: Date };
 type StepResult = "executed" | "deferred" | "finished" | "failed";
 
 /** บันทึกผลของขั้นลงในแถวลงทะเบียน (คำสั่งเดียว · แถวนี้มีตัวรันถือ lease ได้ทีละตัว — ไม่ชนกับใคร) */
+/**
+ * CRM C5.4-D2 r2 ▸ S2 (รีวิว D2-S2): ล้างช่วงรอ (`stats.waits`) — ช่วงรอหนึ่งช่วงจบเมื่อขั้นได้ผลที่ไม่ใช่ "รอ" (ส่งแล้ว · ล้ม · ข้าม · เลื่อนขั้น)
+ *   หรือเมื่อพนักงานกดเดินต่อ ⇒ การรอครั้งถัดไปของขั้นเดียวกันเริ่มนับใหม่ (เพดานเวลา + บันทึก step_wait ใหม่หนึ่งบรรทัด) · ไม่มีช่อง = ไม่เขียน ◂
+ */
+async function clearWaits(tx: Tx, id: string): Promise<void> {
+  await tx.$executeRaw`
+    UPDATE "CrmSequenceEnrollment" SET "stats" = "stats" - 'waits'
+     WHERE "id" = ${id} AND jsonb_typeof("stats") = 'object' AND jsonb_exists("stats", 'waits')`;
+}
+
 async function appendLog(tx: Tx, id: string, entry: LogEntry): Promise<void> {
   const add = JSON.stringify([entry]);
   await tx.$executeRaw`
@@ -1374,6 +1396,7 @@ async function advance(
       where: { id: e.id, leaseUntil: c.lease, stepIndex: c.stepIndex, status: { in: ACTIVE_OR_PAUSED } },
       data: isLast ? { stepIndex: c.stepIndex + 1, status: "DONE", nextAt: null, leaseUntil: null } : { stepIndex: c.stepIndex + 1, nextAt, leaseUntil: null },
     });
+    if (n.count === 1) await clearWaits(tx, e.id); // CRM C5.4-D2 r2 ▸ S2 ◂
     if (entry) await appendLog(tx, e.id, entry);
     if (n.count === 1 && isLast) await emitFinished(tx, systemId, e, "DONE");
     return n.count === 1;
@@ -1586,6 +1609,7 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
     // CRM C5.4-D r3 ▸ R2-N1b / R2-N3 (มติผู้คุมงาน): "รอ" (เพดานต่อวันเต็ม · ฉบับเดิมกำลังส่ง) ไม่ใช่ความล้มเหลว — คงขั้นเดิม ปล่อย lease
     //   เลื่อน nextAt ไปเวลาที่ตัวส่งบอก · ไม่เขียนบันทึกขั้น ไม่นับครั้ง (แบบเดียวกับช่วงเวลาส่งปิด) ◂
     const statsObj = e.stats && typeof e.stats === "object" && !Array.isArray(e.stats) ? (e.stats as Record<string, unknown>) : {};
+    let inFlightCeiling = false;
     if (env.sendWaitUntil) {
       // CRM C5.4-D2 ▸ F4: ช่วงรอหนึ่งช่วง = (เวอร์ชัน, ขั้น, ชนิดการรอ) · เวลาเริ่มรอเก็บที่ `stats.waits` (คำสั่งเดียว · COALESCE) ◂
       const kindW = env.sendWaitKind ?? "cap";
@@ -1612,6 +1636,7 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
         return ok ? "finished" : "failed";
       }
       if (kindW === "in_flight" && waited >= STEP_IN_FLIGHT_CEILING_MS) {
+        inFlightCeiling = true; // CRM C5.4-D2 r2 ▸ S2: ยังเป็นช่วงรอเดิม (จดหมายฉบับเดิมค้างอยู่) — เส้นล้มข้างล่างไม่ล้างช่วงรอนี้ ◂
         // เพดาน 24 ชม. ของ "กำลังส่ง" (ตัวเก็บซากของ runScheduled ไม่ปิดแถวนั้น) ⇒ เข้าเส้นล้มปกติข้างล่าง (บันทึก · นับครั้ง · รอบพัก) ◂
         o = { ...o, note: "ส่งอีเมลของขั้นนี้ไม่สำเร็จ — จดหมายฉบับก่อนค้างสถานะกำลังส่งนานเกิน 24 ชม. ระบบจะลองขั้นนี้อีกครั้งภายหลัง" };
         await logOps("WARN", "crm.sequences", "จดหมายของขั้นค้างสถานะกำลังส่งเกิน 24 ชม. — ตัวเก็บซาก (crm.email.scheduled) อาจไม่ทำงาน", { tenantId: e.tenantId, detail: `enrollment=${e.id} step=${c.stepIndex}` }).catch(() => {});
@@ -1662,6 +1687,7 @@ async function runClaimed(c: Claimed, now: Date, deps: SequenceDeps | null, cach
                    || jsonb_build_object(${key}::text, COALESCE(("stats"->'outages'->>${key})::int, 0) + ${inc}::int), true)
          WHERE "id" = ${e.id}
          RETURNING ("stats"->'firstFail'->>${key}) AS "first"`;
+      if (!inFlightCeiling) await clearWaits(tx, e.id); // CRM C5.4-D2 r2 ▸ S2: ผลที่ไม่ใช่ "รอ" จบช่วงรอของขั้นนี้ ◂
       const first = rows[0]?.first ? new Date(rows[0].first).getTime() : now.getTime();
       // CRM C5.4-D r3 ▸ R2-S3 (มติผู้คุมงาน): ล่มต่อเนื่องครบ 72 ชม. นับจากที่ขั้นนี้ล้มครั้งแรก ⇒ หยุดการลงทะเบียน (FAILED) ใน tx เดียวกับ
       //   บันทึกขั้น + finished + สมุดตรวจ (ธุรกรรมหยุดเป็นการเขียนสุดท้ายของแถว — C2.2-X9.5) ◂

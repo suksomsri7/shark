@@ -195,8 +195,9 @@ try {
     const row = await P.crmEmailMessage.findUnique({ where: { id: a2.emailId }, select: { status: true, providerError: true, providerId: true, routing: true } });
     const accepted = ACCEPTED.filter((x) => x.key === a1.messageId); // Idempotency-Key = the row's Message-ID
     const res = accepted[0] ? await trackResolves(a2.emailId, k.id, accepted[0].html) : null;
-    chk("R2S2a", "attempt 1 accepted but its answer lost, redelivery answered 409 ⇒ exactly ONE mail accepted, row SENT with the 'delivery unconfirmed' marker, and the open/click/unsubscribe links of THAT mail resolve",
-      a1.status === "FAILED" && a2.status === "SENT" && row?.status === "SENT" && /UNCONFIRMED/i.test(String(row?.providerError ?? "")) && accepted.length === 1 && res?.opens === 1 && res?.clickUrl === "https://example.com/r3" && res?.optOut === true,
+    // ORACLE-EDIT C5.4-D2 (review · R2-S2 409 path removed by F1): SENT with the replayed provider id replaces the DELIVERY_UNCONFIRMED marker
+    chk("R2S2a", "attempt 1 accepted but its answer lost, byte-identical redelivery ⇒ provider replays its first answer ⇒ exactly ONE mail accepted, row SENT with THAT mail's provider id (no 'unconfirmed' marker), and the open/click/unsubscribe links of THAT mail resolve",
+      a1.status === "FAILED" && a2.status === "SENT" && row?.status === "SENT" && !row?.providerError && row?.providerId === accepted[0]?.id && accepted.length === 1 && res?.opens === 1 && res?.clickUrl === "https://example.com/r3" && res?.optOut === true,
       `a1=${a1.status} a2=${a2.status}${a2.reused ? "(reused)" : ""} row=${row?.status}/${row?.providerError}/${row?.providerId} accepted=${accepted.length} calls=${j(CALLS.filter((x) => x.key === a1.messageId).map((x) => x.answer))} resolve=${j(res)}`);
   });
   await sub("R2S2b", async () => {

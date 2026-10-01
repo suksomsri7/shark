@@ -93,6 +93,8 @@ const chk = (id: string, n: string, ok: unknown, actual: string) => {
 const j = (v: Any) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? x.toString() : x instanceof Date ? x.toISOString() : x));
 const sub = async (id: string, fn: () => Promise<void>) => { try { await fn(); } catch (e) { chk(id, "block ran", false, e instanceof Error ? `${e.name}: ${e.message} ${e.stack?.split("\n").slice(1, 3).join(" ") ?? ""}` : String(e)); } };
 const HOUR = 3_600_000;
+const R2_OLD = { secret: process.env.SESSION_SECRET, app: process.env.APP_URL };
+const fpOk = (r: Any) => typeof r?.routing?.fp === "string" && r.routing.fp.length === 64;
 let T = "";
 let T2 = "";
 const USERS: string[] = [];
@@ -464,9 +466,174 @@ try {
     chk("F6b", "portal customer write (create request) ⇒ the outbox is woken after the write (1 after() drain) · a refused write (bad session) wakes nothing (control)",
       bad?.ok === false && tBad.length === 0 && good?.ok === true && tasks === 1, `bad=${j(bad)} badTasks=${tBad.length} good=${j(good)} goodTasks=${tasks}`);
   });
+
+  // ══════ ROUND 2 (controller rulings after the D2 security review) ══════
+  const OLD_SECRET = process.env.SESSION_SECRET;
+  const OLD_APP_URL = process.env.APP_URL;
+  const callsFor = (key: string) => CALLS.filter((x) => x.key === key).map((x) => x.answer);
+  const auditsMentioning = async (emailId: string, needle: string) => ((await P.auditLog.findMany({ where: { tenantId: T, targetId: emailId }, select: { after: true } })) as Any[]).filter((a) => j(a.after).includes(needle)).length;
+  const fullRow = (id: string) => P.crmEmailMessage.findUnique({ where: { id }, select: { id: true, status: true, providerId: true, providerError: true, trackTokenHash: true, routing: true, sentAt: true } });
+  await sub("R2-S1a", async () => {
+    // D2-S1(c): SESSION_SECRET differs at the redelivery (rotation / host parity) inside a SEQUENCE ⇒ refused, not counted, step skipped, enrollment goes on
+    const k = await mkContact(c, "กุญแจเปลี่ยนในลำดับ");
+    const e = await enroll(c, k.id);
+    SCRIPT = ["lost"];
+    let at = Date.now() + 1_000;
+    await runDue(new Date(at));
+    const [m] = await stepMails(e);
+    const before = await fullRow(m.id);
+    const r1 = await enr(e);
+    process.env.SESSION_SECRET = `${OLD_SECRET}-rotated-r2`;
+    try {
+      at = Math.max(at + 1_000, new Date(r1.nextAt).getTime() + 1_000);
+      await runDue(new Date(at));
+    } finally { process.env.SESSION_SECRET = OLD_SECRET; }
+    const after = await fullRow(m.id);
+    const r2 = await enr(e);
+    const acc = ACCEPTED.filter((x) => x.key === m.messageId);
+    const t = acc[0] ? tokensOf(acc[0]) : null;
+    await new Promise((r) => setTimeout(r, 2_600));
+    if (t?.open) await CRM.emails.trackOpen(t.open, { ip: "203.0.113.175", ua: "Mozilla/5.0 (Windows NT 10.0) probe" });
+    const opens = await P.crmEmailEvent.count({ where: { emailId: m.id, kind: "OPEN" } });
+    chk("R2-S1a", "sequence: secret changed between the accepted-but-lost attempt and the redelivery ⇒ NO provider call under the old key · row keeps the held mail's hashes (its pixel still counts) · failCode NOT_REPRODUCIBLE + 1 audit · step 0 SKIPPED (not counted: attempts stay 1) · enrollment continues to DONE",
+      j(callsFor(m.messageId)) === j(["lost"]) && after?.trackTokenHash === before?.trackTokenHash && j(after?.routing?.unsub) === j(before?.routing?.unsub) && opens === 1 && after?.status === "FAILED" && after?.providerError === "NOT_REPRODUCIBLE" && (await auditsMentioning(m.id, "NOT_REPRODUCIBLE")) === 1 && logOf(r2).join(",") === "0:FAILED,0:SKIPPED,1:SENT" && r2?.status === "DONE" && Number(r2?.stats?.attempts?.["v1:0"] ?? 0) === 1,
+      `calls=${j(callsFor(m.messageId))} hashKept=${after?.trackTokenHash === before?.trackTokenHash}/${j(after?.routing?.unsub) === j(before?.routing?.unsub)} opens=${opens} row=${after?.status}/${after?.providerError} audits=${await auditsMentioning(m.id, "NOT_REPRODUCIBLE")} log=${j(logOf(r2))} final=${r2?.status} attempts=${j(r2?.stats?.attempts)}`);
+  });
+  await sub("R2-S1b", async () => {
+    // D2-S1 control for a deploy that changes the composed request between attempts (modelled by a different stored request fingerprint)
+    const k = await mkContact(c, "ดีพลอยเปลี่ยนเนื้อ");
+    const key = `probe:${TAG}:r2s1b`;
+    SCRIPT = ["lost"];
+    const a1 = await sysSend(c, k, key);
+    const before = await fullRow(a1.emailId);
+    await P.$executeRawUnsafe(`UPDATE "CrmEmailMessage" SET "routing" = jsonb_set("routing", '{fp}', to_jsonb($1::text), true) WHERE "id" = $2`, "0".repeat(64), a1.emailId);
+    const a2 = await sysSend(c, k, key);
+    const a3 = await sysSend(c, k, key);
+    const after = await fullRow(a1.emailId);
+    chk("R2-S1b", "deploy-changed request (stored fingerprint ≠ recomputed) ⇒ redelivery refused twice with NOT_REPRODUCIBLE · no provider call · row hashes untouched · 1 audit line",
+      fpOk(before) && a2.status === "FAILED" && a2.failCode === "NOT_REPRODUCIBLE" && a3.failCode === "NOT_REPRODUCIBLE" && j(callsFor(a1.messageId)) === j(["lost"]) && after?.trackTokenHash === before?.trackTokenHash && (await auditsMentioning(a1.emailId, "NOT_REPRODUCIBLE")) === 1,
+      `storedFp=${fpOk(before)} a=${a2.status}/${a2.failCode}/${a3.failCode} calls=${j(callsFor(a1.messageId))} hashKept=${after?.trackTokenHash === before?.trackTokenHash} audits=${await auditsMentioning(a1.emailId, "NOT_REPRODUCIBLE")}`);
+  });
+  await sub("R2-S1c", async () => {
+    // D2-S1(b) positive control: APP_URL changes between attempts ⇒ the stored base + Reply-To are reused ⇒ byte-identical ⇒ replayed 200
+    const k = await mkContact(c, "เปลี่ยนโฮสต์");
+    const key = `probe:${TAG}:r2s1c`;
+    SCRIPT = ["lost"];
+    const a1 = await sysSend(c, k, key);
+    process.env.APP_URL = "https://moved.example.invalid";
+    let a2: Any;
+    try { a2 = await sysSend(c, k, key); } finally { if (OLD_APP_URL === undefined) delete process.env.APP_URL; else process.env.APP_URL = OLD_APP_URL; }
+    const bodies = BODIES.get(a1.messageId) ?? [];
+    const row = await fullRow(a1.emailId);
+    const acc = ACCEPTED.filter((x) => x.key === a1.messageId);
+    chk("R2-S1c", "APP_URL changed between the accepted-but-lost attempt and the redelivery ⇒ stored base/Reply-To reused ⇒ identical request ⇒ row SENT with the accepted id (one mail)",
+      a2?.status === "SENT" && bodies.length === 2 && bodies[0] === bodies[1] && row?.providerId === acc[0]?.id && acc.length === 1,
+      `a=${a1.status}/${a2?.status}/${a2?.failCode} bodies=${bodies.length} identical=${bodies.length === 2 && bodies[0] === bodies[1]} calls=${j(callsFor(a1.messageId))}`);
+  });
+  await sub("R2-N1a", async () => {
+    // N1: the provider confirmed the lost attempt (email.sent webhook back-fills providerId through the Message-ID fallback) ⇒ redelivery = SENT, no call
+    const k = await mkContact(c, "ยืนยันจากเว็บฮุก");
+    const key = `probe:${TAG}:r2n1a`;
+    SCRIPT = ["lost"];
+    const a1 = await sysSend(c, k, key);
+    const acc = ACCEPTED.find((x) => x.key === a1.messageId);
+    const h = await hook("email.sent", { email_id: acc?.id, message_id: `<${rfcOf(a1.messageId)}>` }, `msg_${TAG}_r2n1a`);
+    const mid = await fullRow(a1.emailId);
+    const a2 = await sysSend(c, k, key);
+    const row = await fullRow(a1.emailId);
+    const acts = await P.crmActivity.count({ where: { tenantId: T, sourceRef: a1.emailId } }).catch(() => -1);
+    chk("R2-N1a", "email.sent back-fills the provider id on the FAILED row · the redelivery then marks it SENT with that id WITHOUT calling the provider (one 'sent' activity)",
+      mid?.status === "FAILED" && mid?.providerId === acc?.id && a2.status === "SENT" && row?.status === "SENT" && row?.providerId === acc?.id && !!row?.sentAt && j(callsFor(a1.messageId)) === j(["lost"]) && acts === 1,
+      `hook=${j(h)} mid=${mid?.status}/${mid?.providerId === acc?.id ? "accepted-id" : mid?.providerId} a2=${a2.status} row=${row?.status}/${row?.providerId === acc?.id ? "accepted-id" : row?.providerId} calls=${j(callsFor(a1.messageId))} activities=${acts}`);
+  });
+  await sub("R2-N1b", async () => {
+    // N1: never redeliver under a key older than the provider's 24 h idempotency retention ⇒ no call, terminal reason, step skipped (not FAILED)
+    const k = await mkContact(c, "เกินยี่สิบสี่ชั่วโมง");
+    const e = await enroll(c, k.id);
+    SCRIPT = [503];
+    let at = Date.now() + 1_000;
+    await runDue(new Date(at));
+    const [m] = await stepMails(e);
+    await P.crmEmailMessage.update({ where: { id: m.id }, data: { createdAt: new Date(Date.now() - 25 * HOUR) } });
+    const r1 = await enr(e);
+    at = Math.max(at + 1_000, new Date(r1.nextAt).getTime() + 1_000);
+    await runDue(new Date(at));
+    const r2 = await enr(e);
+    const row = await fullRow(m.id);
+    const again = await sysSend(c, k, "unused").catch(() => null); // unrelated key: fresh mail goes out normally (control that sending still works)
+    chk("R2-N1b", "first attempt older than 24 h ⇒ redelivery makes NO provider call · row FAILED REDELIVERY_EXPIRED · step 0 SKIPPED (attempts stay 1) · next step sent ⇒ DONE",
+      j(callsFor(m.messageId)) === j(["503"]) && row?.status === "FAILED" && row?.providerError === "REDELIVERY_EXPIRED" && logOf(r2).join(",") === "0:FAILED,0:SKIPPED,1:SENT" && r2?.status === "DONE" && Number(r2?.stats?.attempts?.["v1:0"] ?? 0) === 1 && again?.status === "SENT",
+      `calls=${j(callsFor(m.messageId))} row=${row?.status}/${row?.providerError} log=${j(logOf(r2))} final=${r2?.status} attempts=${j(r2?.stats?.attempts)} control=${again?.status}`);
+  });
+  await sub("R2-N3", async () => {
+    // N3: the stored from-domain lost verification before the redelivery ⇒ that row fails with its own reason · no call · no shop-wide outage notice
+    //   (tenant B: never notified today ⇒ the notice count is a live signal · the stub would answer 403 = what Resend says for an unverified domain)
+    const dom = `${TAG}.example`;
+    await P.emailDomain.create({ data: { tenantId: T2, domain: dom, status: "VERIFIED", verifiedAt: new Date() } });
+    const cD = await mkCrm({ email: { trackOpens: true, trackClicks: true, fromMode: "DOMAIN", fromAddr: `news@${dom}` } }, T2);
+    const k = await mkContact(cD, "โดเมนหลุด");
+    const key = `probe:${TAG}:r2n3`;
+    SCRIPT = [503, 403];
+    const a1 = await sysSend(cD, k, key);
+    const first = await P.crmEmailMessage.findUnique({ where: { id: a1.emailId }, select: { fromAddr: true } });
+    await P.emailDomain.updateMany({ where: { tenantId: T2, domain: dom }, data: { status: "FAILED" } });
+    const notes = () => P.appNotification.count({ where: { tenantId: T2, recipientUserId: u.id, title: "ระบบส่งอีเมลของร้านใช้งานไม่ได้ชั่วคราว" } });
+    const n0 = await notes();
+    const a2 = await sysSend(cD, k, key);
+    SCRIPT = [];
+    const row = await fullRow(a1.emailId);
+    chk("R2-N3", "redelivery whose stored from-domain is no longer verified ⇒ FROM_DOMAIN_UNVERIFIED · no provider call · no outage notice (tenant never notified before: live signal)",
+      first?.fromAddr === `news@${dom}` && a2.status === "FAILED" && a2.failCode === "FROM_DOMAIN_UNVERIFIED" && row?.providerError === "FROM_DOMAIN_UNVERIFIED" && j(callsFor(a1.messageId)) === j(["503"]) && n0 === 0 && (await notes()) === 0,
+      `from=${first?.fromAddr} a2=${a2.status}/${a2.failCode} row=${row?.providerError} calls=${j(callsFor(a1.messageId))} notices=${n0}->${await notes()}`);
+  });
+  await sub("R2-S3", async () => {
+    // D2-S3: the Message-ID fallback also requires the event's sender (when present) to be the row's from address
+    const k = await mkContact(c, "ผู้ส่งไม่ตรง");
+    SCRIPT = ["lost"];
+    const a1 = await sysSend(c, k, `probe:${TAG}:r2s3`);
+    const acc = ACCEPTED.find((x) => x.key === a1.messageId);
+    const row0 = await P.crmEmailMessage.findUnique({ where: { id: a1.emailId }, select: { fromAddr: true } });
+    const bad = await hook("email.complained", { email_id: acc?.id, message_id: `<${rfcOf(a1.messageId)}>`, from: "Other <someone@elsewhere.invalid>" }, `msg_${TAG}_r2s3a`);
+    const k1 = await P.crmContact.findUnique({ where: { id: k.id }, select: { emailOptOut: true } });
+    const mid = await fullRow(a1.emailId);
+    const good = await hook("email.complained", { email_id: acc?.id, message_id: `<${rfcOf(a1.messageId)}>`, from: `Shop <${String(row0?.fromAddr).toUpperCase()}>` }, `msg_${TAG}_r2s3b`);
+    const k2 = await P.crmContact.findUnique({ where: { id: k.id }, select: { emailOptOut: true } });
+    chk("R2-S3", "fallback with a different sender ⇒ unknown_email, nothing written (no back-fill, no opt-out) · same sender (any case, display name) ⇒ handled, opted out (positive control)",
+      bad?.reason === "unknown_email" && k1?.emailOptOut === false && mid?.providerId === null && good?.handled === true && k2?.emailOptOut === true,
+      `bad=${j(bad)} optOut1=${k1?.emailOptOut} backfill=${mid?.providerId} good=${j(good)} optOut2=${k2?.emailOptOut}`);
+  });
+  await sub("R2-S2", async () => {
+    // D2-S2: a non-wait outcome of the step clears its wait episode ⇒ the next cap-full day is a NEW episode (second step_wait line)
+    const cW = await mkCrm();
+    const k = await mkContact(cW, "รอสองช่วง");
+    const e = await enroll(cW, k.id);
+    let at = Date.now() + 1_000;
+    await P.tenant.update({ where: { id: T }, data: { limits: { crm: { emailsPerDay: 0 } } } });
+    let w1: Any; let afterFail: Any; let fin: Any;
+    try {
+      await runDue(new Date(at)); // cap ⇒ wait episode 1
+      w1 = await enr(e);
+      await P.tenant.update({ where: { id: T }, data: { limits: {} } });
+      SCRIPT = [503];
+      at = new Date(w1.nextAt).getTime() + 1_000;
+      await runDue(new Date(at)); // cap free · provider 503 ⇒ ordinary failure (non-wait outcome)
+      afterFail = await enr(e);
+      await P.tenant.update({ where: { id: T }, data: { limits: { crm: { emailsPerDay: 0 } } } });
+      at = new Date(afterFail.nextAt).getTime() + 1_000;
+      await runDue(new Date(at)); // cap full again ⇒ wait episode 2
+    } finally { await P.tenant.update({ where: { id: T }, data: { limits: {} } }); }
+    fin = await enr(e);
+    const wa = await P.auditLog.count({ where: { tenantId: T, action: "crm.sequence.step_wait", targetId: e } });
+    chk("R2-S2", "cap wait → ordinary failure (non-wait outcome) clears stats.waits → cap again = a NEW episode (2 step_wait lines, still ACTIVE)",
+      !!w1?.stats?.waits?.["v1:0:cap"] && !afterFail?.stats?.waits?.["v1:0:cap"] && fin?.status === "ACTIVE" && !!fin?.stats?.waits?.["v1:0:cap"] && wa === 2,
+      `w1=${j(w1?.stats?.waits)} afterFail=${j(afterFail?.stats?.waits)} fin=${fin?.status}/${j(fin?.stats?.waits)} stepWaitAudits=${wa}`);
+    await P.crmSequenceEnrollment.update({ where: { id: e }, data: { status: "STOPPED", stoppedReason: "MANUAL", nextAt: null } });
+  });
 } catch (e) {
   chk("FATAL", "probe ran to the end", false, e instanceof Error ? `${e.message}\n${e.stack}` : String(e));
 } finally {
+  if (R2_OLD.secret !== undefined) process.env.SESSION_SECRET = R2_OLD.secret;
+  if (R2_OLD.app === undefined) delete process.env.APP_URL; else process.env.APP_URL = R2_OLD.app;
   if (OLD_SVIX === undefined) delete process.env.RESEND_WEBHOOK_SECRET; else process.env.RESEND_WEBHOOK_SECRET = OLD_SVIX;
   await new Promise((r) => setTimeout(r, 2_000));
   const left: string[] = [];
