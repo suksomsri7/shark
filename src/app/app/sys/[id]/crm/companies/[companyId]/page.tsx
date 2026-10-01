@@ -171,7 +171,7 @@ export default async function Company360Page({
                     <span className="rounded-md border px-1.5 py-0.5 text-xs font-semibold" style={{ color: "var(--color-accent)", borderColor: "var(--color-accent)" }}>
                       {COMPANY_LIFECYCLE_LABEL[c.lifecycleStage]}
                     </span>
-                    <span className="rounded-md border px-1.5 py-0.5 text-xs text-[color:var(--color-muted)]">คะแนน {c.score.toLocaleString("th-TH")}</span>
+                    {/* CRM C5.4-E ▸ L6-M5: "คะแนนบริษัท" ยังไม่มีนิยาม/ตัวเขียน (ทุกบริษัท = 0 ตลอด) ⇒ ซ่อนไว้จนกว่าเจ้าของจะกำหนด (ขั้นของบริษัทคำนวณจากดีลแล้ว) ◂ */}
                   </div>
                   <span className="text-xs text-[color:var(--color-muted)]">{subline.join(" · ")}</span>
                 </div>

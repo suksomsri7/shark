@@ -179,14 +179,18 @@ export function thaiDayRange(now: Date): { from: Date; to: Date } {
 export async function todayTasks(ctx: MobileCrmCtx, a: MemberActor, now = new Date()): Promise<MobileTasksDto> {
   const { from, to } = thaiDayRange(now);
   const scope: Prisma.CrmActivityWhereInput[] = [await activityWhere(ctx, a), { tenantId: ctx.tenantId, systemId: ctx.systemId, ownerUserId: a.userId }];
+  // CRM C5.4-E ▸ L6-m1: วันนี้/เลยกำหนด = นิยามเดียวกับแท็บงานบนเว็บ (`activities.activityStatusWhere` — เวลาอ้างอิง dueAt ?? startAt ·
+  //   ไม่นับโน้ต · เลยกำหนด = ก่อน 00:00 ไทยของวันนี้) ◂
+  const wToday = activities.activityStatusWhere("today", now.getTime());
+  const wOverdue = activities.activityStatusWhere("overdue", now.getTime());
   const rows: CrmActivity[] = await prisma.crmActivity.findMany({
-    where: { AND: [...scope, { OR: [{ doneAt: null, dueAt: { lt: to } }, { doneAt: { gte: from, lt: to } }] }] },
+    where: { AND: [...scope, { OR: [wOverdue, wToday, { doneAt: { gte: from, lt: to } }] }] },
     orderBy: [{ dueAt: "asc" }, { id: "asc" }],
     take: TASKS_CAP,
   });
   const [today, overdue, done] = await Promise.all([
-    prisma.crmActivity.count({ where: { AND: [...scope, { doneAt: null, dueAt: { gte: from, lt: to } }] } }),
-    prisma.crmActivity.count({ where: { AND: [...scope, { doneAt: null, dueAt: { lt: from } }] } }),
+    prisma.crmActivity.count({ where: { AND: [...scope, wToday] } }),
+    prisma.crmActivity.count({ where: { AND: [...scope, wOverdue] } }),
     prisma.crmActivity.count({ where: { AND: [...scope, { doneAt: { gte: from, lt: to } }] } }),
   ]);
   const dealIds = [...new Set(rows.map((r) => r.dealId).filter((x): x is string => !!x))];

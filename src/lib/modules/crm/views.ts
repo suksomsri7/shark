@@ -349,7 +349,42 @@ export async function deleteView(ctx: CrmViewCtx, actor: Actor, id: string): Pro
  */
 export async function resolveViewFilters(ctx: CrmViewCtx, actor: Actor, objectKey: CrmViewObjectKey, viewId: string): Promise<Record<string, unknown> | null> {
   const row = await prisma.memberSavedView.findFirst({ where: { AND: [await viewVisibleWhere(ctx, actor, objectKey), { id: viewId }] }, select: { filters: true } });
-  return row ? whitelistViewFilters(objectKey, row.filters) : null;
+  if (!row) return null;
+  return (await dropDeadFieldFilters(ctx, objectKey, whitelistViewFilters(objectKey, row.filters))).filters;
+}
+
+/**
+ * CRM C5.4-E ▸ L6-m11: ตัวกรองฟิลด์ (`f.<key>`) ของมุมมองที่บันทึกไว้ ซึ่งฟิลด์ถูกเก็บเข้าคลัง/ลบ/ปิด "ใช้กรองได้" ไปแล้ว **ถูกข้าม**
+ * (เดิมทั้งรายการตอบ VALIDATION ให้ทุกคนที่ใช้มุมมองนั้น และ STAFF แก้มุมมองของทีมไม่ได้) · คืนป้ายของตัวที่ข้ามให้หน้ารายการบอกผู้ใช้
+ * ตัวกรองที่ผู้ใช้กดเองในหน้า (ไม่ได้มาจากมุมมอง) ยังตรวจตามเดิม ◂
+ */
+async function dropDeadFieldFilters(ctx: CrmViewCtx, objectKey: CrmViewObjectKey, filters: Record<string, unknown>): Promise<{ filters: Record<string, unknown>; skipped: string[] }> {
+  const f = isObj(filters.f) ? filters.f : null;
+  const keys = f ? Object.keys(f) : [];
+  if (!f || keys.length === 0) return { filters, skipped: [] };
+  const defs = await prisma.memberField.findMany({
+    where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey, key: { in: keys } },
+    select: { key: true, label: true, archivedAt: true, filterable: true },
+  });
+  const byKey = new Map(defs.map((d) => [d.key, d]));
+  const live: Record<string, unknown> = {};
+  const skipped: string[] = [];
+  for (const k of keys) {
+    const d = byKey.get(k);
+    if (d && !d.archivedAt && d.filterable) live[k] = f[k];
+    else skipped.push(d?.label ?? k);
+  }
+  if (skipped.length === 0) return { filters, skipped };
+  const out: Record<string, unknown> = { ...filters };
+  if (Object.keys(live).length > 0) out.f = live;
+  else delete out.f;
+  return { filters: out, skipped };
+}
+
+/** CRM C5.4-E ▸ L6-m11: ป้ายของตัวกรองในมุมมองที่ถูกข้าม (ฟิลด์เก็บเข้าคลังแล้ว) — หน้ารายการแสดงเป็นหมายเหตุ · มองไม่เห็นมุมมอง = [] ◂ */
+export async function viewSkippedFilters(ctx: CrmViewCtx, actor: Actor, objectKey: CrmViewObjectKey, viewId: string): Promise<string[]> {
+  const row = await prisma.memberSavedView.findFirst({ where: { AND: [await viewVisibleWhere(ctx, actor, objectKey), { id: viewId }] }, select: { filters: true } });
+  return row ? (await dropDeadFieldFilters(ctx, objectKey, whitelistViewFilters(objectKey, row.filters))).skipped : [];
 }
 
 /** ตัวเลือกมุมมองของหน้ารายการ (id · ชื่อ · แก้ได้ไหม) — กติกาการมองเห็นเดียวกับ listViews · ไม่มีด่าน uiVersion (หน้ารายการตัดสินแล้ว) */

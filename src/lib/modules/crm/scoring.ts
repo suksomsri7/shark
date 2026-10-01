@@ -869,6 +869,42 @@ async function reconcile(tx: Tx, ctx: ScoringCtx, contactId: string, at: Date, s
   return { from, to, fromBand, toBand: (rows[0]?.scoreBand ?? bandOf(to, s)) as ScoreBand };
 }
 
+/**
+ * CRM C5.4-E ▸ L6-M3: รวมผู้ติดต่อ (ใน tx ของ `contacts.mergeContacts` · ถือล็อกแถวผู้ติดต่อทั้งสองแล้ว) — แถวแต้มของคนที่ถูกรวมย้ายมาที่
+ * คนที่เก็บไว้ + คะแนนของคนที่เก็บไว้ = ของตัวเอง + ของคนที่ถูกรวม (คำสั่งเดียวใน SQL · ระดับคิดใหม่ตามเกณฑ์ของระบบ) ·
+ * เดิมแถวแต้มค้างที่แถวที่ถูกรวม ⇒ lead ที่รวมแล้วคะแนนหาย · คะแนนเปลี่ยน = `crm.score.changed`/`threshold` กุญแจต่อการรวม (id ล้วน) ◂
+ */
+export async function transferScoreInTx(tx: Prisma.TransactionClient, ctx: ScoringCtx, fromContactId: string, toContactId: string, at: Date): Promise<{ logs: number; from: number; to: number }> {
+  const logs = (await tx.crmScoreLog.updateMany({ where: { tenantId: ctx.tenantId, contactId: fromContactId }, data: { contactId: toContactId } })).count;
+  const sys = await tx.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { settings: true } });
+  const s = crmScoringSettingsOf(sys?.settings ?? {});
+  const [drop, keep] = await Promise.all([
+    tx.crmContact.findFirst({ where: { id: fromContactId, tenantId: ctx.tenantId }, select: { score: true } }),
+    tx.crmContact.findFirst({ where: { id: toContactId, tenantId: ctx.tenantId }, select: { score: true, scoreBand: true } }),
+  ]);
+  const add = Math.max(0, Number(drop?.score ?? 0));
+  const from = Number(keep?.score ?? 0);
+  if (!keep || add === 0) return { logs, from, to: from };
+  const rows = await tx.$queryRaw<{ score: number; scoreBand: string }[]>`
+    UPDATE "CrmContact"
+       SET "score" = GREATEST(0, "score" + ${add}::int),
+           "scoreUpdatedAt" = (${at.toISOString()}::timestamptz AT TIME ZONE 'UTC'),
+           "scoreBand" = (CASE WHEN GREATEST(0, "score" + ${add}::int) >= ${s.hot}::int THEN 'HOT'
+                               WHEN GREATEST(0, "score" + ${add}::int) >= ${s.warm}::int THEN 'WARM'
+                               ELSE 'COLD' END)::"CrmScoreBand"
+     WHERE "id" = ${toContactId} AND "tenantId" = ${ctx.tenantId}
+    RETURNING "score", "scoreBand"`;
+  const to = Number(rows[0]?.score ?? from);
+  const toBand = (rows[0]?.scoreBand ?? bandOf(to, s)) as ScoreBand;
+  if (to !== from) {
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "crm.score.changed", idempotencyKey: `crm.score.changed#${toContactId}#merge-${fromContactId}`, payload: { contactId: toContactId, from, to, band: toBand, ruleId: null } });
+  }
+  if ((keep.scoreBand ?? null) !== toBand) {
+    await emitOutbox(tx, { tenantId: ctx.tenantId, systemId: ctx.systemId, type: "crm.score.threshold", idempotencyKey: `crm.score.threshold#${toContactId}#${toBand}#merge-${fromContactId}`, payload: { contactId: toContactId, band: toBand } });
+  }
+  return { logs, from, to };
+}
+
 const liveSumSql = (contactId: string) => Prisma.sql`
   GREATEST(0, COALESCE((SELECT SUM(l."points") FROM "CrmScoreLog" l WHERE l."contactId" = ${contactId} AND l."expired" = false), 0))::int`;
 

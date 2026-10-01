@@ -29,7 +29,7 @@ import {
   type DealKind,
   type ForecastCategory,
 } from "@/lib/modules/crm/deals-shared";
-import { useDealMover } from "./DealMoveDialogs";
+import { useDealMover, type DealFieldInput } from "./DealMoveDialogs";
 
 type Opt = { id: string; name: string };
 
@@ -51,6 +51,7 @@ export function DealStageStepper({
   stages,
   lostReasons,
   fieldLabels,
+  fieldInputs,
   canReopen,
   daysInStage,
   canMove,
@@ -62,13 +63,15 @@ export function DealStageStepper({
   stages: { id: string; name: string; kind: DealKind; probability: number }[];
   lostReasons: { id: string; label: string }[];
   fieldLabels: Record<string, string>;
+  /** CRM C5.4-E ▸ L6-M1 ◂ */
+  fieldInputs?: Record<string, DealFieldInput>;
   canReopen: boolean;
   daysInStage: number;
   /** CRM C4.2-fix ▸ crm.deal.move (คีย์ของ moveDealAction/reopenDealAction) — ไม่มี = เห็นขั้นแต่กดย้าย/แพ้/เปิดใหม่ไม่ได้ ◂ */
   canMove: boolean;
 }) {
   const router = useRouter();
-  const mover = useDealMover({ systemId, lostReasons, fieldLabels, canReopen, onMoved: () => router.refresh() });
+  const mover = useDealMover({ systemId, lostReasons, fieldLabels, fieldInputs, canReopen, onMoved: () => router.refresh() });
   const lostStage = stages.find((s) => s.kind === "LOST");
   const firstOpen = stages.find((s) => s.kind === "OPEN");
   const go = (s: { id: string; name: string; kind: DealKind }) => {

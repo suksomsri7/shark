@@ -299,11 +299,32 @@ export function websiteProblem(raw: string | null | undefined): string | null {
 export function normalizeEmailDomain(raw: string | null | undefined): string {
   return String(raw ?? "").trim().toLowerCase().replace(/^@+/, "");
 }
-export function emailDomainProblem(raw: string | null | undefined): string | null {
+/**
+ * CRM C5.4-E ▸ L6-m8: โดเมนอีเมลสาธารณะ (ใครก็สมัครได้) — ไม่ใช่ "โดเมนของบริษัท" · ถ้ายอมให้บริษัทใช้ จดหมายขาเข้าจากคนแปลกหน้า
+ * ทุกคนบนโดเมนนั้นจะถูกเก็บเข้าบริษัทนั้น (ไม่กลายเป็น lead) และบริษัท gmail ทุกแห่งกลายเป็น "ซ้ำกัน" · รายการเดียวของทั้ง CRM
+ * (emails.ts ใช้ชุดเดียวกันตัดสิน "โดเมนของพนักงาน") ◂
+ */
+export const FREE_MAIL_DOMAINS: ReadonlySet<string> = new Set([
+  "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "hotmail.co.th", "live.com", "msn.com",
+  "yahoo.com", "yahoo.co.th", "icloud.com", "me.com", "mac.com", "proton.me", "protonmail.com", "aol.com", "gmx.com",
+]);
+export function isFreeMailDomain(raw: string | null | undefined): boolean {
+  return FREE_MAIL_DOMAINS.has(normalizeEmailDomain(raw));
+}
+/** รูปแบบอย่างเดียว (ไม่ตรวจโดเมนสาธารณะ) — ใช้กับค่าเดิมที่ไม่ได้เปลี่ยนตอนแก้ไข */
+export function emailDomainFormatProblem(raw: string | null | undefined): string | null {
   const d = normalizeEmailDomain(raw);
   if (!d) return null;
   if (d.length > 190 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(d)) {
     return "โดเมนอีเมลควรอยู่ในรูป example.co.th (ไม่ต้องใส่ชื่อหน้า @)";
+  }
+  return null;
+}
+export function emailDomainProblem(raw: string | null | undefined): string | null {
+  const f = emailDomainFormatProblem(raw);
+  if (f) return f;
+  if (isFreeMailDomain(raw)) {
+    return `${normalizeEmailDomain(raw)} เป็นอีเมลสาธารณะที่ใครก็ใช้ได้ จึงใช้จับคู่อีเมลเข้ากับบริษัทไม่ได้ — เว้นช่องนี้ว่างไว้ หรือใส่โดเมนของบริษัทเอง เช่น example.co.th`;
   }
   return null;
 }

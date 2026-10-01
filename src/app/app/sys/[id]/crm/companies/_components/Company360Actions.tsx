@@ -15,8 +15,10 @@ import {
   MERGE_CHOICE_LABEL,
   COMPANY_SIZES,
   COMPANY_SIZE_LABEL,
+  emailDomainFormatProblem,
   emailDomainProblem,
   emailProblem,
+  normalizeEmailDomain,
   phoneProblem,
   taxIdProblem,
   websiteProblem,
@@ -330,7 +332,8 @@ export function CompanyMenu({ systemId, company, owners, parent: currentParent, 
     const checks: [string, string | null][] = [
       ["taxId", taxIdProblem(edit.taxId)],
       ["website", websiteProblem(edit.website)],
-      ["emailDomain", emailDomainProblem(edit.emailDomain)],
+      // CRM C5.4-E ▸ L6-m8: ค่าเดิมที่ไม่ได้เปลี่ยนตรวจแค่รูปแบบ (บริษัทที่เก็บ gmail.com ไว้ก่อนยังแก้ช่องอื่นได้) ◂
+      ["emailDomain", normalizeEmailDomain(edit.emailDomain) === normalizeEmailDomain(company.emailDomain) ? emailDomainFormatProblem(edit.emailDomain) : emailDomainProblem(edit.emailDomain)],
       ["phone", phoneProblem(edit.phone)],
       ["email", emailProblem(edit.email)],
     ];

@@ -558,6 +558,75 @@ function splitRequireValues(values: Record<string, unknown>): { columns: Prisma.
   return { columns, custom };
 }
 
+const THAI_DIGITS = "๐๑๒๓๔๕๖๗๘๙";
+const TRUE_WORDS = new Set(["ใช่", "true", "1", "yes", "y", "on", "มี"]);
+const FALSE_WORDS = new Set(["ไม่", "ไม่ใช่", "false", "0", "no", "n", "off", "ไม่มี"]);
+type ChoiceOpt = { value: string; label: string };
+
+/**
+ * CRM C5.4-E ▸ L6-M1: ค่าจากหน้าต่างเงื่อนไขก่อนเข้าขั้นเป็น "ข้อความที่คนพิมพ์" (ตัวเลขมีจุลภาค · ป้ายของตัวเลือก · ใช่/ไม่ใช่)
+ * ⇒ แปลงตามชนิดของฟิลด์ก่อนส่งให้ engine (ตัวตรวจชนิดจริงยังเป็นของ engine ตัวเดียว — ที่นี่แค่แปลงรูปที่เห็นได้ชัด) ·
+ * ค่าที่แปลงไม่ได้ส่งต่อตามเดิม ⇒ engine ตอบข้อความไทยเดิม · ค่าที่เป็นชนิดถูกอยู่แล้ว (REST ส่ง number/boolean) ไม่แตะ
+ * ใช้กับทางย้ายขั้นเท่านั้น (API สร้าง/แก้ดีลยังรับค่าชนิดตรงตามสัญญา) ◂
+ */
+function coerceRequireValue(type: string, choices: ChoiceOpt[], v: unknown): unknown {
+  const text = (x: string) => x.trim().replace(/[๐-๙]/g, (d) => String(THAI_DIGITS.indexOf(d)));
+  const pick = (x: string): string => {
+    const t = x.trim();
+    if (choices.some((c) => c.value === t)) return t;
+    const low = t.toLowerCase();
+    return choices.find((c) => c.label.trim().toLowerCase() === low)?.value ?? t;
+  };
+  switch (type) {
+    case "NUMBER":
+    case "MONEY": {
+      if (typeof v !== "string") return v;
+      const t = text(v).replace(/[,\s฿]/g, "");
+      if (t === "") return null;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : v;
+    }
+    case "BOOLEAN": {
+      if (typeof v !== "string") return v;
+      const t = text(v).toLowerCase();
+      if (t === "") return null;
+      return TRUE_WORDS.has(t) ? true : FALSE_WORDS.has(t) ? false : v;
+    }
+    case "SELECT":
+      return typeof v === "string" ? pick(v) : v;
+    case "MULTI_SELECT": {
+      const list = typeof v === "string" ? v.split(",") : Array.isArray(v) ? v : null;
+      if (!list) return v;
+      return list.filter((x): x is string => typeof x === "string" && x.trim() !== "").map(pick);
+    }
+    case "DATE": {
+      // วว/ดด/ปปปป (ค.ศ.) → ปปปป-ดด-วว · ปี พ.ศ. ส่งต่อให้ engine ตอบข้อความ "ใส่ปีเป็น พ.ศ." ของมันเอง (ไม่แปลงเงียบ ๆ)
+      if (typeof v !== "string") return v;
+      const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(text(v));
+      return m ? `${m[3]}-${m[2]!.padStart(2, "0")}-${m[1]!.padStart(2, "0")}` : text(v);
+    }
+    default:
+      return v;
+  }
+}
+
+async function coerceRequireValues(tx: Tx, ctx: DealsCtx, custom: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const keys = Object.keys(custom);
+  if (keys.length === 0) return custom;
+  const defs = await tx.memberField.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", key: { in: keys } }, select: { key: true, type: true, options: true } });
+  const byKey = new Map(defs.map((d) => [d.key, d]));
+  const out: Record<string, unknown> = {};
+  for (const k of keys) {
+    const d = byKey.get(k);
+    const opts = isObj(d?.options) ? (d.options as Record<string, unknown>) : {};
+    const choices = Array.isArray(opts.choices)
+      ? opts.choices.filter((c): c is ChoiceOpt => isObj(c) && typeof c.value === "string" && typeof c.label === "string")
+      : [];
+    out[k] = d ? coerceRequireValue(String(d.type), choices, custom[k]) : custom[k];
+  }
+  return out;
+}
+
 /** key ที่ยังขาดของขั้นปลายทาง (ฟิลด์ระบบ/ฟิลด์กำหนดเอง + "LINES" + "QUOTATION") — อ่านใน tx เดียวกับการย้าย */
 async function missingFor(tx: Tx, ctx: DealsCtx, who: Who, deal: CrmDeal, stage: CrmStage): Promise<string[]> {
   const missing: string[] = [];
@@ -573,10 +642,16 @@ async function missingFor(tx: Tx, ctx: DealsCtx, who: Who, deal: CrmDeal, stage:
           : (deal as unknown as Record<string, unknown>)[key];
     if (blank(v)) missing.push(key);
   }
-  if (customKeys.length > 0) {
+  // CRM C5.4-E ▸ L6-M2: ฟิลด์ที่ถูกเก็บเข้าคลัง/ลบไปแล้ว **ไม่บังคับ** (engine อ่านค่าของมันไม่ได้และเขียนไม่ได้ ⇒ เดิมขั้นนั้นล็อกทุกดีล
+  //   แม้ดีลที่มีค่าอยู่แล้ว) · key ยังอยู่ในขั้น ⇒ กู้คืนฟิลด์เมื่อไร เงื่อนไขกลับมาเอง ◂
+  const liveKeys = customKeys.length > 0
+    ? new Set((await tx.memberField.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, objectKey: "deal", key: { in: customKeys }, archivedAt: null }, select: { key: true } })).map((f) => f.key))
+    : new Set<string>();
+  const enforced = customKeys.filter((k) => liveKeys.has(k));
+  if (enforced.length > 0) {
     const vals = await (await engine()).getFieldValues(fctx(ctx, who), [deal.id], tx);
     const bag = vals[deal.id] ?? {};
-    for (const key of customKeys) if (blank(bag[key])) missing.push(key);
+    for (const key of enforced) if (blank(bag[key])) missing.push(key);
   }
   if (stage.requireLines && (await tx.crmDealLine.count({ where: { dealId: deal.id } })) === 0) missing.push("LINES");
   if (stage.requireQuotation && !deal.quotationDocId) missing.push("QUOTATION");
@@ -832,7 +907,7 @@ async function moveCore(ctx: DealsCtx, who: Who, id: string, input: MoveDealInpu
     const intoLost = target.kind === "LOST" && deal.kind !== "LOST";
     let working = deal;
     if (Object.keys(split.columns).length > 0) working = await tx.crmDeal.update({ where: { id: deal.id }, data: split.columns });
-    if (hasCustom) await (await engine()).setFieldValues(fctx(ctx, who), deal.id, split.custom, { via: "STAFF", byUserId: actorIdOf(ctx) }, tx);
+    if (hasCustom) await (await engine()).setFieldValues(fctx(ctx, who), deal.id, await coerceRequireValues(tx, ctx, split.custom), { via: "STAFF", byUserId: actorIdOf(ctx) }, tx);
     const missing = await missingFor(tx, ctx, who, working, target);
     if (missing.length > 0) throw fail("STAGE_REQUIREMENTS", await missingMessage(ctx, who, target, missing), { missing });
 
@@ -2208,11 +2283,21 @@ export async function savedViewOptions(ctx: DealsCtx, actor: MemberActor): Promi
 }
 
 /** ฟิลด์กำหนดเองของดีล (โมดัลเงื่อนไขก่อนเข้าขั้น · ตัวกรอง f.<key>) */
-export async function dealFieldLayout(ctx: DealsCtx, actor: MemberActor): Promise<{ key: string; label: string; type: string; filterable: boolean; isSystem: boolean }[]> {
+export async function dealFieldLayout(ctx: DealsCtx, actor: MemberActor): Promise<{ key: string; label: string; type: string; filterable: boolean; isSystem: boolean; choices: { value: string; label: string }[] }[]> {
   const a = await enter(ctx, actor);
   try {
     const layout = await (await engine()).listLayout(fctx(ctx, a));
-    return layout.sections.flatMap((s) => s.fields.map((f) => ({ key: f.key, label: f.label, type: String(f.type), filterable: !!f.filterable, isSystem: !!f.isSystem })));
+    // CRM C5.4-E ▸ L6-M1: + ตัวเลือก (value/label) — หน้าต่างเงื่อนไขก่อนเข้าขั้นแสดงช่องตามชนิดฟิลด์ ◂
+    return layout.sections.flatMap((s) =>
+      s.fields.map((f) => ({
+        key: f.key,
+        label: f.label,
+        type: String(f.type),
+        filterable: !!f.filterable,
+        isSystem: !!f.isSystem,
+        choices: (f.options?.choices ?? []).map((c) => ({ value: c.value, label: c.label })),
+      })),
+    );
   } catch {
     return [];
   }
@@ -2273,14 +2358,19 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
   await resolveSystem(c);
   const rows = await prisma.crmDeal.findMany({
     where: { ...identityScope(c), quotationDocId: docId, kind: "OPEN" },
-    select: { id: true, pipeline: { select: { stageOnQuoteAcceptedId: true, stageOnQuoteRejectedId: true } } },
+    select: { id: true, ownerUserId: true, collaboratorUserIds: true, pipeline: { select: { stageOnQuoteAcceptedId: true, stageOnQuoteRejectedId: true } } },
     orderBy: { id: "asc" },
   });
   let moved = 0;
   let firstError: unknown = null;
   for (const d of rows) {
     const stageId = input.accepted ? d.pipeline.stageOnQuoteAcceptedId : d.pipeline.stageOnQuoteRejectedId;
-    if (!stageId) continue;
+    // CRM C5.4-E ▸ L6-M4: ลูกค้าตอบใบเสนอราคาแต่ไม่มีการย้ายอัตโนมัติ (ไม่ได้ตั้งขั้นปลายทาง) ⇒ ยังต้องบอกผู้ดูแล "ลูกค้าตอบกลับ"
+    //   (เดิมเงียบ — แจ้งเฉพาะตอนดีลถูกย้าย) · ย้ายได้ = ข้อความเดิมของ C2.7 ด้านล่าง ◂
+    if (!stageId) {
+      await (await import("./notify-senders")).customerRepliedOnDeal(c, d);
+      continue;
+    }
     const flag: BridgeMoveFlag = {
       ref: `account.quotation.responded#${docId}#${input.accepted ? "A" : "R"}`,
       title: input.accepted ? "ลูกค้าตอบรับใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้" : "ลูกค้าปฏิเสธใบเสนอราคา — ย้ายดีลตามขั้นที่ตั้งไว้",
@@ -2298,6 +2388,7 @@ export async function applyQuotationResponse(ctx: { tenantId: string; systemId: 
       // เงื่อนไขของขั้นปลายทางไม่ครบ = ส่งซ้ำก็ไม่ผ่าน ⇒ บันทึก WARN (id ล้วน · AUDIT-CLASS X8) แล้วไปดีลถัดไป — ไม่ใช่ความล้มชั่วคราว
       if (e instanceof DealsError && (e.code === "STAGE_REQUIREMENTS" || e.code === "VALIDATION" || e.code === "NOT_FOUND")) {
         await logOps("WARN", "crm", `ย้ายดีลตามคำตอบใบเสนอราคาไม่ได้ (${e.code}) — ดีล ${d.id} · เอกสาร ${docId} · ขั้น ${stageId}`, { tenantId: c.tenantId });
+        await (await import("./notify-senders")).customerRepliedOnDeal(c, d); // CRM C5.4-E ▸ ย้ายไม่ได้ก็ต้องบอกผู้ดูแลว่าลูกค้าตอบแล้ว ◂
         continue;
       }
       firstError ??= e;

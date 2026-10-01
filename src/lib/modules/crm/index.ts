@@ -182,6 +182,8 @@ export * as scoring from "./scoring";
 //   ผู้เรียกอื่นในใบนี้: `deals.markStale` (สรุปดีลนิ่งรายวัน) · ทะเบียนงานของ C0.5 (`platform/minute-jobs.ts`)
 export * as notifications from "./notifications";
 // ◂ CRM C2.10
+// CRM C5.4-E ▸ L6-M4: ตัวส่งของเทมเพลตแจ้งเตือนที่เดิมไม่มีใครส่ง (ตัวรับ outbox · สะพานเงิน · งานรายชั่วโมง เรียกผ่านที่นี่) ◂
+export * as notifySenders from "./notify-senders";
 // CRM C3.3 ▸ export * as commissions from "./commissions" ◂
 //   คอมมิชชัน → เงินเดือน (`commissions.ts`) — namespace เดียว `commissions`:
 //   ทางเข้าของสะพาน (ไม่มี actor คน): onPaid · onWon · reverse · syncPayroll · afterPaymentCounted/afterPaymentsReversed (ทางเดินเงิน

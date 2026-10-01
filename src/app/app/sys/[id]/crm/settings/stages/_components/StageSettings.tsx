@@ -120,6 +120,12 @@ export function StageSettings({
                     ออกใบเสนอราคาแล้ว
                   </label>
                 </div>
+                {/* CRM C5.4-E ▸ L6-M2: key ที่ยังอยู่ในขั้นแต่ฟิลด์ถูกเก็บเข้าคลังแล้ว — ไม่บังคับจนกว่าจะกู้คืนฟิลด์ (บอกให้รู้ ไม่ใช่เงียบ) ◂ */}
+                {d.requireFields.some((k) => !requirable.some((f) => f.key === k)) && (
+                  <p className="text-xs text-[color:var(--color-muted)]" data-testid={`st-req-archived-${s.id}`}>
+                    ฟิลด์ที่ถูกเก็บเข้าคลังแล้ว ({d.requireFields.filter((k) => !requirable.some((f) => f.key === k)).join(", ")}) ยังไม่บังคับตอนนี้ — กู้คืนฟิลด์ที่หน้าตั้งค่าฟิลด์ของดีลเมื่อไร ขั้นนี้จะกลับมาบังคับเอง
+                  </p>
+                )}
               </fieldset>
               <div className="flex flex-wrap items-center gap-2">
                 <button

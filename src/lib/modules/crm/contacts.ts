@@ -35,7 +35,8 @@ import * as party from "@/lib/modules/party";
 import type { MemberActor } from "@/lib/modules/member";
 import { prisma } from "./db";
 import { activityWhere, visibleContactSql, contactWhere, dealWhere } from "./where";
-import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orSql, orderBySql, sqlSortOf } from "./list-sql"; // CRM C5.1-fix ◂
+import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orSql, orderBySql, sqlSortOf, withThaiCollation } from "./list-sql"; // CRM C5.1-fix ◂
+import { normalizeThaiText, thaiSearchVariants } from "./thai-text"; // CRM C5.4-E ▸ L6-m3 ◂
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
 import { crmCan, crmForbiddenMessage } from "./access";
@@ -394,7 +395,8 @@ const textOrNull = (v: unknown, label: string, max = CONTACT_TEXT_MAX): string |
 function cleanName(v: unknown, label: string, required: boolean): string | null {
   const p = nameProblem(v, label, required);
   if (p) throw fail("VALIDATION", p);
-  return str(typeof v === "number" ? String(v) : v);
+  const out = str(typeof v === "number" ? String(v) : v);
+  return out ? normalizeThaiText(out) : out; // CRM C5.4-E ▸ L6-m3: สระอำแบบแยก (ํ + า) เก็บเป็น "ำ" ตัวเดียว ◂
 }
 
 /** เบอร์ที่เก็บ: เบอร์ไทยเก็บรูป 0XXXXXXXXX (ตัวเดียวกับ Party) · เบอร์ต่างประเทศเก็บตามที่พิมพ์ */
@@ -1193,12 +1195,18 @@ export async function setLifecycle(ctx: ContactsCtx, actor: MemberActor, id: str
   const a = await enter(ctx, actor);
   const s = String(stage ?? "").trim().toUpperCase();
   if (!(LIFECYCLE_STAGES as readonly string[]).includes(s)) throw fail("VALIDATION", `ขั้นของผู้ติดต่อต้องเป็นหนึ่งใน ${Object.values(LIFECYCLE_LABEL).join(" · ")}`);
+  // CRM C5.4-E ▸ L6-m5: ปิดดีลเป็น "ชนะ" ผิด ⇒ ผู้ติดต่อเป็น "ลูกค้า" ถาวร (ย้ายดีลกลับไม่ถอยให้ เพราะ "ลูกค้า" มีได้หลายที่มา: จ่ายเงิน ·
+  //   ซื้อหน้าร้าน · แปลง lead) ⇒ ผู้จัดการ/เจ้าของร้าน **แก้ย้อน** ลูกค้า → มีโอกาส ได้ขั้นเดียว (audit บอกว่าเป็นการแก้ย้อน) ·
+  //   ลูกค้า → ผู้สนใจ ยังไม่รับ (C1.4-S3.1) · พนักงานยังเดินหน้าทางเดียวตามเดิม ◂
+  const manager = a.role === "OWNER" || a.role === "MANAGER";
   return mutate(ctx, a, id, "crm.contact.lifecycle", (pre) => {
     if (pre.lifecycleStage === s) return null;
-    if (!canAdvanceLifecycle(pre.lifecycleStage, s as CrmLifecycleStage)) {
-      throw fail("VALIDATION", `เปลี่ยนจาก "${LIFECYCLE_LABEL[pre.lifecycleStage as ContactLifecycle]}" เป็น "${LIFECYCLE_LABEL[s as ContactLifecycle]}" ไม่ได้ — ขั้นของผู้ติดต่อเดินหน้าได้ทางเดียว (เลิกเป็นลูกค้าได้เฉพาะคนที่เป็นลูกค้าแล้ว)`);
+    const correction = manager && pre.lifecycleStage === "CUSTOMER" && s === "PROSPECT";
+    if (!correction && !canAdvanceLifecycle(pre.lifecycleStage, s as CrmLifecycleStage)) {
+      const back = pre.lifecycleStage === "CUSTOMER" && (s === "PROSPECT" || s === "LEAD") ? " — ถ้าปิดดีลเป็นชนะโดยไม่ตั้งใจ ผู้จัดการหรือเจ้าของร้านแก้ย้อนเป็น \"มีโอกาส\" ได้" : "";
+      throw fail("VALIDATION", `เปลี่ยนจาก "${LIFECYCLE_LABEL[pre.lifecycleStage as ContactLifecycle]}" เป็น "${LIFECYCLE_LABEL[s as ContactLifecycle]}" ไม่ได้ — ขั้นของผู้ติดต่อเดินหน้าได้ทางเดียว (เลิกเป็นลูกค้าได้เฉพาะคนที่เป็นลูกค้าแล้ว)${back}`);
     }
-    return { data: { lifecycleStage: s as CrmLifecycleStage }, kind: "updated", payload: { contactId: pre.id, changedKeys: ["lifecycleStage"] }, before: { lifecycleStage: pre.lifecycleStage }, after: { lifecycleStage: s } };
+    return { data: { lifecycleStage: s as CrmLifecycleStage }, kind: "updated", payload: { contactId: pre.id, changedKeys: ["lifecycleStage"] }, before: { lifecycleStage: pre.lifecycleStage }, after: { lifecycleStage: s, ...(correction ? { correction: true } : {}) } };
   });
 }
 
@@ -1513,10 +1521,13 @@ async function listWhereFrom(ctx: ContactsCtx, actor: MemberActor, flt: ContactL
   const q = str(flt.q)?.slice(0, 100);
   if (q) {
     const digits = q.replace(/\D/g, "");
+    // CRM C5.4-E ▸ L6-m3: ชื่อค้นทุกรูปของสระอำ (ชื่อเก่าที่เก็บ ํ + า ก็เจอ) ◂
     const OR: Prisma.CrmContactWhereInput[] = [
-      { name: { contains: q, mode: "insensitive" } },
-      { firstName: { contains: q, mode: "insensitive" } },
-      { lastName: { contains: q, mode: "insensitive" } },
+      ...thaiSearchVariants(q).flatMap((v): Prisma.CrmContactWhereInput[] => [
+        { name: { contains: v, mode: "insensitive" } },
+        { firstName: { contains: v, mode: "insensitive" } },
+        { lastName: { contains: v, mode: "insensitive" } },
+      ]),
       { email: { contains: q.toLowerCase(), mode: "insensitive" } },
     ];
     if (digits.length >= 3) {
@@ -1568,7 +1579,10 @@ async function listSqlWhere(ctx: ContactsCtx, actor: MemberActor, flt: ContactLi
   const q = str(flt.q)?.slice(0, 100);
   if (q) {
     const digits = q.replace(/\D/g, "");
-    const OR: Prisma.Sql[] = [containsSql(c, "name", q, true), containsSql(c, "firstName", q, true), containsSql(c, "lastName", q, true), containsSql(c, "email", q.toLowerCase(), true)];
+    const OR: Prisma.Sql[] = [
+      ...thaiSearchVariants(q).flatMap((v) => [containsSql(c, "name", v, true), containsSql(c, "firstName", v, true), containsSql(c, "lastName", v, true)]), // CRM C5.4-E ▸ L6-m3 ◂
+      containsSql(c, "email", q.toLowerCase(), true),
+    ];
     if (digits.length >= 3) {
       OR.push(containsSql(c, "phone", digits, false));
       const norm = party.normalizePartyPhone(digits);
@@ -1611,7 +1625,7 @@ async function listSqlWhere(ctx: ContactsCtx, actor: MemberActor, flt: ContactLi
 
 /** id ของหน้า (ทาง SQL) — ลำดับ/cursor แบบ Prisma (list-sql.ts) */
 async function pageIdsSql(where: Prisma.Sql, orderBy: readonly Record<string, unknown>[], take: number, cursor: string | null): Promise<string[]> {
-  const sort = sqlSortOf(orderBy);
+  const sort = withThaiCollation(sqlSortOf(orderBy), ["name"]); // CRM C5.4-E ▸ L6-m3: ชื่อเรียงแบบพจนานุกรมไทย ◂
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT c."id" FROM "CrmContact" c
      WHERE ${where} ${cursor ? Prisma.sql`AND ${cursorSql("c", "CrmContact", sort, cursor)}` : Prisma.empty}
@@ -1651,10 +1665,11 @@ async function listContactsIn(ctx: ContactsCtx, actor: MemberActor, input: Conta
   // CRM C5.1-fix ▸ F1: มีตัวกรองฟิลด์ = เลือก id ของหน้าด้วย SQL (EXISTS · ไม่มีรายการ id) แล้วอ่านแถวเต็มด้วย Prisma ·
   //   ไม่มีตัวกรองฟิลด์ = ทาง Prisma เดิม ◂
   const flt = await effectiveListInput(ctx, a, input ?? {});
-  const sqlPath = Object.keys(listFieldFilters(flt)).length > 0 ? await listSqlWhere(ctx, a, flt) : null;
+  const sortKey = input?.sort;
+  // CRM C5.4-E ▸ L6-m3: เรียงตามชื่อ = ทาง SQL ด้วย (collation ภาษาไทย — Prisma ตั้ง collation ใน orderBy ไม่ได้) ◂
+  const sqlPath = Object.keys(listFieldFilters(flt)).length > 0 || sortKey === "name" ? await listSqlWhere(ctx, a, flt) : null;
   const where = sqlPath ? null : await listWhereFrom(ctx, a, flt);
   const pageSize = Math.min(CONTACT_PAGE_MAX, Math.max(1, Math.floor(Number(input?.pageSize) || 50)));
-  const sortKey = input?.sort;
   const orderBy = typeof sortKey === "string" && (CONTACT_SORTS as readonly string[]).includes(sortKey) ? SORTS[sortKey as ContactSort] : SORTS["-createdAt"];
   const cursor = str(input?.cursor);
   if (cursor) {
@@ -2045,6 +2060,10 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
   const choices = (isObj(input?.fieldChoices) ? input.fieldChoices : {}) as Partial<Record<MergeChoiceField, "keep" | "merge">>;
   const moved = { deals: 0, activities: 0, companies: 0, dealContacts: 0, files: 0, records: 0 };
   let customValuesMoved = 0; // CRM C1.10 ▸ ค่าฟิลด์กำหนดเองที่ย้ายมา (ลง audit) ◂
+  // CRM C5.4-E ▸ L6-M3: ของที่ย้ายเพิ่ม (ลง audit — รูปผลลัพธ์ `moved` ของ REST คงเดิม) ◂
+  const movedMore = { emails: 0, enrollments: 0, enrollmentsStopped: 0, scoreLogs: 0, scoreAdded: 0, webSessions: 0, clicks: 0, portalRequests: 0 };
+  const seqSvc = await import("./sequences");
+  const scoreSvc = await import("./scoring");
   let keepPartyAfter: string | null = keep.partyId;
   let memberRevoked: string[] = [];
   // ผลลัพธ์ที่จะผูกสมาชิก: หาระบบสมาชิกไว้ก่อนเปิด tx (ถอนความยินยอมใน tx ต้องไม่เปิด connection ที่สองระหว่างถือล็อก)
@@ -2100,6 +2119,19 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
         WHERE v."tenantId" = ${ctx.tenantId} AND v."recordType" = 'CONTACT' AND v."recordId" = ${m.id}
           AND NOT EXISTS (SELECT 1 FROM "CustomRecordValue" kv WHERE kv."recordId" = ${k.id} AND kv."fieldId" = v."fieldId")`;
       // ◂ CRM C1.10
+      // CRM C5.4-E ▸ L6-M3 (พิมพ์เขียว §11.1/§5.2): ของที่ผูกกับคนที่ถูกรวมย้ายมาที่คนที่เก็บไว้ครบ — อีเมล (ไทม์ไลน์/เธรดไม่แยกสองแถว) ·
+      //   ลำดับการติดตาม (คง ACTIVE เดียวต่อลำดับ — ตัวรันไม่หยุดเป็น CONTACT_GONE) · แต้มคะแนน (+ คะแนนรวม) · การเข้าชมเว็บ/คลิกลิงก์ ·
+      //   คำขอจากพอร์ทัล · ใน tx เดียวกับการรวม (ล้ม = ย้อนทั้งก้อน) ◂
+      movedMore.emails = (await tx.crmEmailMessage.updateMany({ where: { tenantId: ctx.tenantId, contactId: m.id }, data: { contactId: k.id } })).count;
+      const enr = await seqSvc.transferEnrollmentsInTx(tx, ctx, m.id, k.id, now);
+      movedMore.enrollments = enr.moved;
+      movedMore.enrollmentsStopped = enr.stopped;
+      const sc = await scoreSvc.transferScoreInTx(tx, ctx, m.id, k.id, now);
+      movedMore.scoreLogs = sc.logs;
+      movedMore.scoreAdded = sc.to - sc.from;
+      movedMore.webSessions = (await tx.crmWebSession.updateMany({ where: { tenantId: ctx.tenantId, contactId: m.id }, data: { contactId: k.id } })).count;
+      movedMore.clicks = (await tx.crmTrackedClick.updateMany({ where: { tenantId: ctx.tenantId, contactId: m.id }, data: { contactId: k.id } })).count;
+      movedMore.portalRequests = (await tx.crmPortalRequest.updateMany({ where: { tenantId: ctx.tenantId, contactId: m.id }, data: { contactId: k.id } })).count;
 
       // ค่าของคนที่เก็บไว้: ผู้ใช้เลือก "merge" = ใช้ค่าของคนที่ถูกรวม · ค่าว่างของคนที่เก็บไว้ = เติมจากอีกฝั่ง
       const data: Prisma.CrmContactUpdateInput = {};
@@ -2214,7 +2246,7 @@ export async function mergeContacts(ctx: ContactsCtx, actor: MemberActor, input:
   } catch {
     warnings.push("ยังไม่ได้ย้ายรายการที่ผูกกับผู้ติดต่อที่ถูกรวม — ย้ายเองได้จากหน้ารายการนั้น");
   }
-  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, customValuesMoved /* CRM C1.10 */, keepPartyId: keepPartyAfter, memberConsentRevoked: memberRevoked, warnings: warnings.length };
+  const auditBody = { keptId: keep.id, mergedId: drop.id, reason, moved, movedMore /* CRM C5.4-E */, customValuesMoved /* CRM C1.10 */, keepPartyId: keepPartyAfter, memberConsentRevoked: memberRevoked, warnings: warnings.length };
   if (memberPlanned && memberRevoked.length > 0) {
     await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action: "member.privacy.consent", targetType: "Customer", targetId: memberPlanned, after: { revoked: memberRevoked, granted: false, source: "STAFF", via: "crm.contact.merge" } });
   }

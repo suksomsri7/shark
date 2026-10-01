@@ -24,7 +24,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
 import { CompanyExportButton, CompanyImportButton } from "./_components/CompanyListTools";
 // CRM C3.2 ▸ มุมมองที่บันทึกของรายชื่อบริษัท (objectKey "company" · ทีมจริง) — เลือก · บันทึก · ลบ ◂
-import { viewTeamOptions } from "@/lib/modules/crm/views";
+import { viewSkippedFilters, viewTeamOptions } from "@/lib/modules/crm/views";
 import { createCrmViewAction, deleteCrmViewAction } from "@/lib/modules/crm/views-actions";
 import { SavedViewControls } from "@/components/crm/views/SavedViewControls";
 
@@ -85,6 +85,7 @@ export default async function CompaniesPage({
     viewTeamOptions(ctx, actor).catch(() => []),
   ]);
   const ownerName = new Map(owners.map((o) => [o.id, o.name]));
+  const viewSkipped = view ? await viewSkippedFilters(ctx, actor, "company", view).catch(() => [] as string[]) : []; // CRM C5.4-E ▸ L6-m11 ◂
   const def = systemDef(sys.type);
   const base = `/app/sys/${id}/crm/companies`;
   const filters = { q: q || null, industry: industry || null, size: size || null, owner: owner || null, hasOpenDeals: open ? true : null, includeArchived: archived };
@@ -213,6 +214,12 @@ export default async function CompaniesPage({
         <div className="card p-3 text-sm" style={{ borderColor: "var(--color-danger)" }} data-testid="companies-view-error" role="alert">
           {viewFail.message}
         </div>
+      )}
+      {/* CRM C5.4-E ▸ L6-m11: ตัวกรองของมุมมองที่ฟิลด์ถูกเก็บเข้าคลัง/ปิดการกรอง = ข้าม (รายการยังขึ้น) + บอกให้รู้ ◂ */}
+      {viewSkipped.length > 0 && (
+        <p className="card p-3 text-sm text-[color:var(--color-muted)]" data-testid="companies-view-skipped">
+          ตัวกรองบางตัวของมุมมองนี้ถูกข้าม เพราะฟิลด์ถูกเก็บเข้าคลังหรือปิดการกรองไปแล้ว: {viewSkipped.join(" · ")} — รายการด้านล่างกรองด้วยตัวกรองที่เหลือ
+        </p>
       )}
 
       <div className="text-xs text-[color:var(--color-muted)]" data-testid="companies-count">

@@ -665,6 +665,11 @@ export function ConsentBlock({
       if (!r.ok) return setError(r.error);
       router.refresh();
     });
+  // CRM C5.4-E ▸ E4: ปุ่มยินยอม/ไม่ยินยอมที่ล็อก (ผูกสมาชิก + ไม่มีสิทธิ์ · ไม่มีสิทธิ์แก้) เดิม disabled แต่หน้าตาเหมือนกดได้ (`.btn-ghost`
+  //   ไม่มีสไตล์ตอน disabled) ⇒ จางลง + เคอร์เซอร์ห้าม + คำอธิบายเมื่อชี้ · สถานะที่เลือกอยู่ยังเห็นสีเดิม (แค่จางลง) · เฉพาะบล็อกนี้ (ไม่แตะ CSS กลาง — หน้า v1 เท่าเดิม) ◂
+  const channelLocked = disabled || memberConsentLocked;
+  const lockedLook = channelLocked ? " cursor-not-allowed opacity-50" : "";
+  const lockedTitle = memberConsentLocked ? "ความยินยอมของผู้ติดต่อนี้เก็บที่ระบบสมาชิก — ต้องมีสิทธิ์แก้ไขข้อมูลสมาชิก" : undefined;
   return (
     <section className="card flex flex-col gap-3 p-4" data-testid="contact-consent">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -708,8 +713,10 @@ export function ConsentBlock({
             <span className="flex gap-1">
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === true ? { borderColor: "var(--color-accent)", color: "var(--color-accent)", fontWeight: 600 } : undefined}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
                 disabled={disabled || memberConsentLocked || pending || c.granted === true}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, true))}
                 data-testid="contact-consent-grant"
@@ -718,8 +725,10 @@ export function ConsentBlock({
               </button>
               <button
                 type="button"
-                className="btn btn-ghost px-2 py-1 text-xs"
+                className={`btn btn-ghost px-2 py-1 text-xs${lockedLook}`}
                 style={c.granted === false ? { borderColor: "var(--color-danger)", color: "var(--color-danger)", fontWeight: 600 } : undefined}
+                title={lockedTitle}
+                aria-disabled={channelLocked || undefined}
                 disabled={disabled || memberConsentLocked || pending || c.granted === false}
                 onClick={() => run(() => setConsentAction(systemId, contactId, c.channel, false))}
                 data-testid="contact-consent-revoke"
