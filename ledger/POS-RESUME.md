@@ -25,3 +25,6 @@
 - ยังเดินอยู่: เลน 1 P0.1 builder (ส่งมอบครบแล้วตาม commit d0e6e514 · น่าจะรอ typecheck) · ผู้ตรวจ P0.2
 - brief: `pos-briefs/pos-brief-P0.3.md` · `pos-brief-SURVEY-P1.md`
 - ถ้าเครื่องอืด (swap >30% หรือ load >6 ค้าง) ⇒ ไม่เปิดเลนใหม่แทนเลนที่จบ จนกว่าจะลด
+- **~08:25 UTC · ผู้ตรวจ P0.2 ส่งรายงาน**: 1 BLOCKER (คีย์กันซ้ำของ `sales.create` ผูกต่อระบบ ไม่ใช่ต่อคีย์ API ⇒ 2 integration ชนกัน บิลหาย) + SHOULD-FIX 4 (เช็กสาขา · เพดานเงิน Int32 + Σจ่าย=ยอด ใน schema · void เฉพาะบิลของ POS · ข้อสอบที่แดงไม่ได้) → **ส่งกลับ builder รอบ 2 แล้ว** (เลน 2) · มติ D1–D5 เคาะแล้ว (อยู่ในข้อความรอบ 2 / wo-notes §4)
+- 🔴 **ข้อค้นพบโค้ด prod เดิม (ผู้คุมงานเปิดโค้ดยืนยันเองแล้ว · ยังไม่แก้ · รอเจ้าของเคาะ)**: route เก่า `/api/v1/{sales,customers,inventory/items,appointments,queue/tickets,reservations,shop/orders,tickets/orders}` ใช้ `authenticateApiRequest` แล้ว **ไม่ตรวจ scope และไม่ตรวจระบบที่คีย์ผูก** ⇒ คีย์ API ใดก็ได้ของร้าน (เช่นคีย์บอร์ดงานอย่างเดียว) อ่านยอดขาย/ลูกค้าของร้านตัวเองได้ทั้งหมด (ไม่ข้ามร้าน) · อาจซ้ำกับงานนักล่า CRM C5.5 เลนส์ "authorization across surfaces" ⇒ ต้องถามเจ้าของว่าให้ session ไหนแก้ + ต้อง deploy prod
+- ข้อค้นพบ AI tool เดิม (ผู้ตรวจยืนยัน): `pos_create_sale` ลงบิลผิดระบบ/สาขาที่ไม่ผูก POS (MED-HIGH) · `void_sale` ผ่าน AI ไม่ตรวจสาขา+ไม่มีเหตุผล (MED) ⇒ เข้า brief P1 (ใบที่แตะ createSale/void) หรือ hotfix ตามเจ้าของสั่ง
