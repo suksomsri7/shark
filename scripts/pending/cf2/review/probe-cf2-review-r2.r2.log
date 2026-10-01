@@ -1,0 +1,32 @@
+  ✅ [Q6.1] F15 scanner vs 8 more spellings — which are still missed
+        — ACTUAL hits={"computedKey":0,"ternary":0,"parenthesized":0,"enumAlias":0,"importedConst":0,"equalsPlusEmptyContains":0,"satisfiesCast":1,"helperReturn":1} missed=[computedKey, ternary, parenthesized, enumAlias, importedConst, equalsPlusEmptyContains]
+  ✅ [Q6.2] F15 on the current tree: no false positive (0 bad, all 4 OWED present) · a NEW `name:` site in account/service.ts is flagged · a copy of an OWED line (same text) is flagged as over-count
+        — ACTUAL owed=4 clean=[] newSite=["src/lib/modules/account/service.ts:6872"] dupLine=["src/lib/modules/account/service.ts:6873(over)"]
+  ✅ [Q7.1] other modules' tab builders carry no `perm` ⇒ visibleTabs(items, []) returns every tab (shared ModuleTabs unchanged for them)
+        — ACTUAL {"member":"6 tabs · perm-tagged 0 · unchanged true","inventory":"8 tabs · perm-tagged 0 · unchanged true","hr":"6 tabs · perm-tagged 0 · unchanged true","pos":"5 tabs · perm-tagged 0 · unchanged true","point":"4 tabs · perm-tagged 0 · unchanged true","reward":"4 tabs · perm-tagged 0 · unchanged true","coupon":"2 tabs · perm-tagged 0 · unchanged true","chat":"2 tabs · perm-tagged 0 · unchanged true","marketing":"2 tabs · perm-tagged 0 · unchanged true","meeting":"2 tabs · perm-tagged 0 · unchanged true"}
+  ✅ [Q7.2] CRM: perm-tagged tabs hidden with no keys / no provider (fail closed), shown only for the key held
+        — ACTUAL tagged=["บริษัท:crm.company.read","อีเมล:crm.email.read","รายงาน:crm.report.view"] visibleNoKeys=5/8 emailKeyShows=true
+(node:1333134) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [Q1] RV2-1 CLOSED? copy target `Sales+CRM@Shop…` (mixed case, plus-address) · forwards back as Fwd:/ส่งต่อ:/RE: FW: Fwd:/[EXTERNAL] FW: from the box itself (upper-case), a second-hop mailbox, or a relay ⇒ stored but NO further copy · positive control: an ordinary customer mail is copied once
+        — ACTUAL control copies=1 variants={"fwdSameBoxUpper":"stored/copies+0","thaiForwardSecondHop":"stored/copies+0","stackedReFwFwd":"stored/copies+0","externalTag":"stored/copies+0","displayNameFrom":"stored/copies+0"}
+  ✅ [Q2] RV2-2 CLOSED? mixed-case company domain forged ⇒ filed on company + unverifiedFrom + event without companyId · sub-domain ⇒ not attributed to anyone (no company, no contact ⇒ nothing to badge) · positive: A-R pass on the domain ⇒ companyId kept, no flag
+        — ACTUAL mixed={"co":true,"routing":{"unverifiedFrom":true},"evt":{"emailId":"cmupkh402000inikzazn0art0","threadKey":"81af5b7915248d85ee971497e80c2344","unverifiedFrom":true}} sub={"co":null,"k":null,"routing":null} ar={"co":true,"routing":null,"evtCo":true}
+  ✅ [Q3] RV2-3 CLOSED? with the system bucket full: random From, guessed Message-ID, valid Message-ID from a non-recipient, citing the attacker's OWN inbound Message-ID, From = our inbox ⇒ all dropped · the genuine recipient's reply is stored and does NOT consume the bucket · exempt path still dies at the per-sender cap · owner told ONCE per window (no address/PII in the notice) · one audit line
+        — ACTUAL {"random1":"rate_limited","random2":"rate_limited","guessedId":"rate_limited","validIdWrongFrom":"rate_limited","ownInboundId":"rate_limited","ccAsToForge":"rate_limited","genuineReply":"stored","genuineOverSender":"rate_limited"} sysBucket 1006→1006 afterFirstDrop=1001 notices+2 (cap=1 replied=1) audits=1 notice={"title":"กล่องอีเมล CRM รับจดหมายเกินเพดานชั่วโมงนี้","body":"มีจดหมายที่ยืนยันผู้ส่งไม่ได้เข้ามาเกิน 1000 ฉบับในชั่วโมงเดียว (อาจถูกส่งถล่ม) — ฉบับที่เกินถูกพักทิ้งจนครบชั่วโมง ลูกค้าที่ตอบเธรดเดิมหรือยืนยันผู้ส่งได้ยังเข้ามาตามปกติ ดูที่ /app/sys/cmupkh37x0003nikz6z0qyydk/crm/emails"}
+  ✅ [Q4] RV2-4 CLOSED? listThreads item (inbox · REST GET /emails/threads · AI tool crm_email_thread — the op returns listThreads items as-is, assistant masking keeps other keys) carries unverifiedFrom = true · residual: the contact timeline activity row has only the subject (no flag)
+        — ACTUAL item={"unverifiedFrom":true} opPassThrough=true activity={"title":"ปลอม Q4 qc-cf2s-aczcsarf"}
+  ✅ [Q5] RV2-5: (a) re-invite A kills B and switch B→A is refused · (b) re-invite B kills A · (c) switched-first then re-invite B kills both · (d) race switch-vs-re-invite: report survivors · (e) first invite into new C: lost device on A stays and can switch into C (accepted deviation) · (f) revoke A: B stays, switch into A refused
+        — ACTUAL {"a":"B=false switch=refused live=0","b":"A=false live=0","c":"oldB=false newA=false live=0","d":"0ms:sw/live1 5ms:sw/live0 15ms:sw/live0 30ms:sw/live0 60ms:sw/live0 120ms:sw/live0 survived=1","e":"A=false switchIntoNewC=OK","f":"B=true switchIntoRevokedA=refused"}
+  ✅ [CLEAN] throwaway tenant, users, systems and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+🟢 probe-cf2-review-r2: 10/10
+JSON_SUMMARY {"total":10,"passed":10,"findings":[]}

@@ -90,6 +90,12 @@ export function EmailInbox({ data }: { data: CrmEmailInboxData }) {
                 <span className="flex min-w-0 items-center gap-2 sm:w-52">
                   {t.unread && <span aria-label="ยังไม่ได้อ่าน" className="size-2 shrink-0 rounded-full bg-sky-500" />}
                   <span className="truncate text-sm font-medium">{t.contactName ?? "ยังไม่รู้ว่าเป็นของใคร"}</span>
+                  {/* CRM C5.5-fix2 ▸ รีวิว RV2-4: ป้ายเดียวกับหน้าเธรด — From ของจดหมายในเธรดนี้ยังไม่ได้พิสูจน์ ◂ */}
+                  {t.unverifiedFrom && (
+                    <span className="shrink-0 rounded-full border border-amber-500 px-2 py-0.5 text-[11px] font-medium text-amber-700" title="ระบบยืนยันไม่ได้ว่าจดหมายในเธรดนี้มาจากที่อยู่ที่แสดงจริง — ตรวจกับลูกค้าทางช่องทางอื่นก่อนทำตามคำขอเรื่องเงินหรือบัญชี">
+                      ไม่ยืนยันผู้ส่ง
+                    </span>
+                  )}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{t.subject}</span>

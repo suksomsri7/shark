@@ -191,6 +191,7 @@ export function DealBoard({
             onClick={() => scrollToStage(c.stageId)}
             className="whitespace-nowrap rounded-full border px-3 py-1 text-xs"
             style={active === c.stageId ? { background: "var(--color-ink, #111)", color: "#fff" } : undefined}
+            aria-current={active === c.stageId ? "true" : undefined} // CRM C5.5-fix2 ▸ it4 F2: ขั้นที่เลือกอยู่บอกได้ด้วยโปรแกรมอ่านจอ ◂
             data-testid={`deal-stage-tab-${c.stageId}`}
           >
             {c.name} · {c.count.toLocaleString("th-TH")}

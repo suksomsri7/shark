@@ -26,6 +26,7 @@ import { portalIdentityChangedInTx } from "./portal-identity";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import type { CrmContact, CrmLeadStatus, CrmLifecycleStage, CrmScoreBand, MemberSource } from "@prisma/client";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { writeAudit } from "@/lib/core/audit";
 import { consentChannels, isChannelKey } from "@/lib/core/channels";
 import { csvRow } from "@/lib/core/csv";
@@ -645,7 +646,7 @@ async function partyAfterChange(
 async function duplicateHits(db: Db, ctx: ContactsCtx, keys: { phone: string | null; email: string | null }, excludeId?: string | null): Promise<{ hits: DuplicateHit[]; rows: CrmContact[] }> {
   const OR: Prisma.CrmContactWhereInput[] = [];
   if (keys.phone) OR.push({ phone: { in: phoneVariants(keys.phone) } });
-  if (keys.email) OR.push({ email: { equals: keys.email, mode: "insensitive" } });
+  if (keys.email) OR.push({ email: ciEquals(keys.email) }); // CRM C5.5-fix2 ▸ `a_b@` เคยเป็น "คนเดียวกับ" `a.b@` (lead จากฟอร์ม/อีเมลถูกรวมเข้าคนอื่น) ◂
   if (OR.length === 0) return { hits: [], rows: [] };
   const rows = await db.crmContact.findMany({
     where: { ...identityScope(ctx), mergedIntoId: null, archivedAt: null, OR, ...(excludeId ? { id: { not: excludeId } } : {}) },

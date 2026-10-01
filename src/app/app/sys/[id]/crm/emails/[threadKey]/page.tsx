@@ -65,6 +65,7 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
       clickCount: m.clickCount,
       repliedAtLabel: m.repliedAt ? thaiDateLabel(new Date(m.repliedAt).getTime()) : null,
       purged: m.purged,
+      unverifiedFrom: m.unverifiedFrom, // CRM C5.5-fix2 ▸ 2a-2 ◂
     };
   });
 

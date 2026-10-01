@@ -117,6 +117,20 @@ export const CRM_TRACK_RATE_LIMITS: Readonly<{
   perToken: { limit: 12, windowMs: 60 * 60_000 },
 });
 
+// CRM C5.5-fix2 ▸ hunter 2a-7: เพดานจดหมายขาเข้าต่อระบบ + ต่อผู้ส่ง (ต่อชั่วโมง · ถังเดียวของระบบ `checkRateLimitDb`)
+//   เกินเพดาน = รับแล้วทิ้ง (route ตอบ 200 เหมือนเดิม · ไม่เด้งกลับ) + audit 1 บรรทัดต่อหน้าต่าง ◂
+export const CRM_INBOUND_RATE_LIMITS: Readonly<{
+  perSender: { limit: number; windowMs: number };
+  perSystem: { limit: number; windowMs: number };
+}> = Object.freeze({
+  perSender: { limit: 100, windowMs: 60 * 60_000 },
+  perSystem: { limit: 1_000, windowMs: 60 * 60_000 },
+});
+
+// CRM C5.5-fix2 ▸ hunter 2a-1: หัวกันวนของสำเนาที่ระบบส่งออกเอง — จดหมายขาเข้าที่มีหัวนี้ = ของเราเองวนกลับ ⇒ ทิ้ง ◂
+export const CRM_LOOP_HEADER = "X-SHARK-Loop";
+export const CRM_COPY_IN_SUBJECT_PREFIX = "[สำเนาจดหมายเข้า]";
+
 // ───────────────────────── ตัวช่วยบริสุทธิ์ ─────────────────────────
 
 /** ที่อยู่อีเมลรูปเดียว (ไม่รับชื่อนำหน้า ไม่รับ CR/LF) — ตัวตรวจตัวเดียวของทั้งใบ */

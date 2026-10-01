@@ -23,6 +23,8 @@ export type CrmEmailThreadRow = {
   direction: "IN" | "OUT";
   snippet: string | null;
   unread: boolean;
+  /** CRM C5.5-fix2 ▸ รีวิว RV2-4: เธรดมีจดหมายที่ผู้ส่งยังไม่ได้พิสูจน์ — แถวขึ้นป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom: boolean;
 };
 
 /**
@@ -83,6 +85,8 @@ export type CrmEmailMessageView = {
   openCount: number;
   clickCount: number;
   repliedAtLabel: string | null;
+  /** CRM C5.5-fix2 ▸ hunter 2a-2: ผู้ส่งยังไม่ได้พิสูจน์ตัวตน (From ปลอมได้) — ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" ◂ */
+  unverifiedFrom: boolean;
   purged: boolean;
 };
 

@@ -48,6 +48,7 @@ import * as companies from "./companies";
 import { bindPortalLineUserIdInTx } from "./contacts";
 import { thaiDayStartMs } from "./activities-shared";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
+import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { logOps } from "@/lib/core/ops";
 import {
   PORTAL_APPROVAL_ENTITY,
@@ -233,8 +234,10 @@ async function accessesOfContacts(tenantId: string, systemId: string, contactIds
 async function contactsByTarget(tenantId: string, systemId: string, channel: "PHONE" | "EMAIL", target: string): Promise<string[]> {
   if (!target) return [];
   if (channel === "EMAIL") {
-    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: { equals: target, mode: "insensitive" } }, select: { id: true }, take: 20 });
-    return rows.map((r) => r.id);
+    // CRM C5.5-fix2 ▸ hunter 2a-6: `equals … insensitive` = ILIKE ⇒ `somchai_k@` เคย "เท่ากับ" `somchai.k@` (OTP ของกล่องที่หน้าตาคล้าย
+    //   ออก session ของเหยื่อ) — ciEquals (escape wildcard) + ตรวจซ้ำว่าอีเมลของแถว = ปลายทางทุกตัวอักษร (ไม่พึ่ง SQL ที่ Prisma ปล่อย) ◂
+    const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, email: ciEquals(target) }, select: { id: true, email: true }, take: 20 });
+    return rows.filter((r) => normEmail(r.email) === normEmail(target)).map((r) => r.id);
   }
   const rows = await prisma.crmContact.findMany({ where: { tenantId, systemId, archivedAt: null, mergedIntoId: null, phone: { contains: target.slice(-9) } }, select: { id: true, phone: true }, take: 50 });
   return rows.filter((r) => normPhone(r.phone) === target).map((r) => r.id);
@@ -337,9 +340,12 @@ export async function loginWithLine(
   }
 
   // ไม่มีคำเชิญ: ผู้ติดต่อที่ตรงกับตัวตน LINE และมีสิทธิ์ที่ยอมรับ LINE
-  const or: { lineUserId?: string; email?: { equals: string; mode: "insensitive" } }[] = [{ lineUserId }];
-  if (email) or.push({ email: { equals: email, mode: "insensitive" } });
-  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true }, take: 20 })).map((r) => r.id);
+  // CRM C5.5-fix2 ▸ hunter 2a-6 (ทาง LINE): อีเมล LINE ที่หน้าตาคล้าย (`_`/`%`) ห้ามจับคู่ผู้ติดต่อคนอื่น — ciEquals + ตรวจซ้ำทุกแถว ◂
+  const or: { lineUserId?: string; email?: ReturnType<typeof ciEquals> }[] = [{ lineUserId }];
+  if (email) or.push({ email: ciEquals(email) });
+  let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true, email: true, lineUserId: true }, take: 20 }))
+    .filter((r) => r.lineUserId === lineUserId || (!!email && normEmail(r.email) === email))
+    .map((r) => r.id);
   if (phone) ids = [...new Set([...ids, ...(await contactsByTarget(shop.tenantId, shop.systemId, "PHONE", phone))])];
   const accessId = (await accessesOfContacts(shop.tenantId, shop.systemId, ids, "LINE"))[0];
   if (!accessId) throw new CustomerAuthError("ยังไม่พบสิทธิ์พอร์ทัลที่ตรงกับบัญชี LINE นี้ — เปิดลิงก์เชิญจากร้าน หรือเข้าด้วยอีเมลแทน");
@@ -370,7 +376,16 @@ export async function switchCompany(token: string, companyId: string, meta: Meta
   if (!target) throw nf();
   let next: PortalSessionToken;
   try {
-    next = await mintPortalSession(target.id, meta);
+    // รีวิว R2b-1 (TOCTOU): `session(token)` ข้างบนตรวจก่อน mint — การเชิญซ้ำที่ฆ่า session ทุกใบของผู้ติดต่อ (READ COMMITTED) ไม่เห็น
+    //   แถวที่ mint ทีหลัง ⇒ เครื่องที่หายสลับบริษัทหนีการเชิญซ้ำได้ · แก้: ในธุรกรรมของการ mint ล็อกผู้ติดต่อ (กุญแจเดียวกับ `invite`)
+    //   แล้วตรวจ session ต้นทางซ้ำ — ลำดับล็อก: advisory ของผู้ติดต่อ → แถว session/สิทธิ์ (เหมือน `invite`) ⇒ ไม่มีวงล็อกตาย ◂
+    next = await mintPortalSession(target.id, meta, {
+      inTx: async (tx) => {
+        await lockPortalContactInTx(tx, s.tenantId, s.crmContactId);
+        const live = await tx.portalSession.findFirst({ where: { tokenHash: sha(str(token)), revokedAt: null, expiresAt: { gt: new Date() } }, select: { id: true } });
+        if (!live) throw nf();
+      },
+    });
   } catch {
     throw nf();
   }
@@ -1061,6 +1076,15 @@ async function visibleCompany(ctx: PortalStaffCtx, actor: MemberActor, companyId
   return { id: co.id, name: co.name, live };
 }
 
+/**
+ * CRM C5.5-fix2 ▸ รีวิว R2b-1 — ล็อกระดับธุรกรรมต่อ (ร้าน, ผู้ติดต่อ) ของพอร์ทัล: `invite` (เชิญซ้ำ → ฆ่า session ทุกใบ) กับ `switchCompany`
+ * (ตรวจ session ต้นทาง → mint) วิ่งทีละตัว · ต้องเป็นสิ่งแรกที่ธุรกรรมทำ (ก่อนล็อกแถวใด) ทั้งสองฝั่ง · namespace `crm.portal.contact:`
+ * ไม่ชนกับล็อกของ event พอร์ทัล (`<tenant>:<sourceRef>` ใน onPortalEvent) ซึ่งไม่เคยถูกถือพร้อมกับล็อกนี้
+ */
+async function lockPortalContactInTx(tx: Prisma.TransactionClient, tenantId: string, contactId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`crm.portal.contact:${tenantId}:${contactId}`}))`;
+}
+
 function appBase(): string {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
@@ -1098,6 +1122,11 @@ export async function invite(
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true, name: true } });
   if (!tenant) throw new PortalError("NOT_FOUND", "ไม่พบร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   const access = await prisma.$transaction(async (tx) => {
+    // รีวิว R2b-1: ล็อกผู้ติดต่อก่อนอย่างอื่นในธุรกรรม (กุญแจ/ลำดับเดียวกับ `switchCompany`) ⇒ การสลับบริษัทที่วิ่งชนกัน
+    //   จบก่อน (session ใหม่ถูก commit แล้วโดนฆ่าข้างล่าง) หรือหลัง (เห็น session ต้นทางถูกฆ่าแล้ว ⇒ ปฏิเสธ) — ไม่มีทางรอด ◂
+    await lockPortalContactInTx(tx, ctx.tenantId, contactId);
+    // รีวิว RV2-5: "เชิญซ้ำ" = มีสิทธิ์ของ (บริษัท, ผู้ติดต่อ) นี้อยู่แล้ว — เชิญครั้งแรกเข้าบริษัทใหม่ไม่ใช่เหตุให้ออกจากบริษัทอื่น ◂
+    const reinvite = !!(await tx.crmPortalAccess.findUnique({ where: { companyId_contactId: { companyId: co.id, contactId } }, select: { id: true } }));
     const row = await tx.crmPortalAccess.upsert({
       where: { companyId_contactId: { companyId: co.id, contactId } },
       create: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: co.id, contactId, role, loginMethods: methods, invitedById: a.userId || null, invitedAt: now, inviteTokenHash: sha(token), inviteExpiresAt: expiresAt },
@@ -1105,7 +1134,15 @@ export async function invite(
       select: { id: true, tenantId: true, systemId: true },
     });
     if (row.tenantId !== ctx.tenantId || row.systemId !== ctx.systemId) throw new PortalError("NOT_FOUND", "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
-    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString() } } });
+    // CRM C5.5-fix2 ▸ hunter 2a-8: เชิญซ้ำ = เริ่มสิทธิ์ใหม่ ⇒ session ที่ยังเปิดอยู่ของสิทธิ์นี้ตายทันที (พนักงาน "ส่งคำเชิญใหม่" หลังลูกค้า
+    //   แจ้งมือถือหาย/กล่องจดหมายถูกเจาะ ⇒ เครื่องเก่าต้องหลุด — เดิมอยู่ต่อจนหมดอายุ session) · ในธุรกรรมเดียวกับการหมุน hash ◂
+    // รีวิว RV2-5: ผู้ติดต่อที่มีสิทธิ์หลายบริษัท — เครื่องที่หายถือ session ของบริษัทอื่นแล้ว `switchCompany` กลับมาบริษัทนี้ได้
+    //   ⇒ ฆ่า session ที่ยังเปิดอยู่ **ทุกใบของผู้ติดต่อคนนี้** (ทุกบริษัทในร้านนี้) แบบเดียวกับ portal-identity เมื่อตัวตนเปลี่ยน ◂
+    //   (เฉพาะการเชิญซ้ำ — เชิญครั้งแรกของบริษัทใหม่ไม่ฆ่า session ที่ผู้ติดต่อใช้อยู่กับบริษัทอื่น)
+    const killed = reinvite
+      ? await tx.portalSession.updateMany({ where: { tenantId: ctx.tenantId, crmContactId: contactId, revokedAt: null }, data: { revokedAt: now } })
+      : { count: 0 };
+    await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString(), sessionsRevoked: killed.count } } });
     return row;
   });
   const inviteUrl = `${appBase()}${portalPath(tenant.slug, "invite", token)}`;

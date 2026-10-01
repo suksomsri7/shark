@@ -68,6 +68,7 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
     direction: t.direction,
     snippet: t.snippet,
     unread: t.unread,
+    unverifiedFrom: t.unverifiedFrom, // CRM C5.5-fix2 ▸ RV2-4 ◂
   }));
 
   // "การส่งของฉัน" — คนที่มีคีย์ส่งจดหมายแก้แถวทับค่าของตัวเองได้ (หน้า /settings/email เปิดได้เฉพาะคีย์ตั้งค่า)

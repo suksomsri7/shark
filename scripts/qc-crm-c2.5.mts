@@ -279,7 +279,7 @@ const MEMBER_PIXEL = "src/app/api/m/track/o/[token]/route.ts";
 const BOARD_IN = "src/lib/platform/kanban-email-in.ts";
 // baselines pinned 19 Sep 2569 on 02ba30bc (identical on shark-crm / shark-crm-c20) — v1 surfaces that C2.5 must NOT change
 const SHA_MEMBER_PIXEL = "e9ea7b94fe067a828d9d0c84d8e840baf54cf88b6a145651c2ec9326e89f97aa";
-const SHA_BOARD_IN = "e0402e8ff249d94f7eece4d4a2f16d37b925a221160f74c30a7d53967ff71051";
+const SHA_BOARD_IN = "1405870825b2e9f1ab0d35321650861584fc384ca91ab96b6fdf21aa3d1bf496"; // ORACLE-EDIT (C5.5-fix2 A9, reviewer-verified): the only change to kanban-email-in.ts is the wildcard-safe staff lookup (ciEquals), +4/−1
 const SHA_CORE_SENDEMAIL_FN = "66316328743f8dd4ad3802be6cd111181f9ff35f8a1dda57d05cc0eea4e5b714";
 const SAN_FIXTURES = [
   `<p onclick="x()">สวัสดี <b>ครับ</b><img src="https://t.example/p.gif" onerror="alert(1)"><script>alert(2)</script><a href="javascript:alert(3)">x</a><a href="https://ok.example/a?b=1">ok</a></p>`,
