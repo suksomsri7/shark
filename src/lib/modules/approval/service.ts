@@ -136,8 +136,11 @@ export async function listPolicies(ctx: Ctx) {
 }
 
 // เลือกกติกาที่ตรงกับคำขอ — เจาะจงสุดชนะ · null = ไม่ต้องอนุมัติ
-export async function resolvePolicy(ctx: Ctx, input: ResolveInput): Promise<ApprovalPolicy | null> {
-  const policies = await tenantDb(ctx).approvalPolicy.findMany({
+// HF-HR-0 ▸ รอบ 5d (N1): `tx` = อ่านผ่านธุรกรรมของผู้เรียก (ห้ามยืม connection ที่สองจาก pool ระหว่างธุรกรรมเปิด) · ไม่ส่ง = เหมือนเดิม ◂
+export async function resolvePolicy(ctx: Ctx, input: ResolveInput, tx?: Prisma.TransactionClient): Promise<ApprovalPolicy | null> {
+  const policies = tx
+    ? await tx.approvalPolicy.findMany({ where: { tenantId: ctx.tenantId, entityType: input.entityType, active: true } })
+    : await tenantDb(ctx).approvalPolicy.findMany({
     where: { entityType: input.entityType, active: true },
   });
   const amount = input.amountSatang ?? null;
@@ -176,11 +179,13 @@ export async function submitForApproval(
     unitId: input.unitId ?? null,
     systemId: input.systemId ?? null,
     amountSatang: input.amountSatang ?? null,
-  });
+  }, opts.tx); // HF-HR-0 ▸ รอบ 5d (N1): มี tx ⇒ ทุกคำสั่งของฟังก์ชันนี้ผ่าน tx ◂
   if (!policy) return { autoApproved: true };
 
   const idempotencyKey = `approval-${input.entityType}-${input.entityId}`;
-  const existing = await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
+  const existing = opts.tx
+    ? await opts.tx.approvalRequest.findFirst({ where: { tenantId: ctx.tenantId, idempotencyKey } })
+    : await tenantDb(ctx).approvalRequest.findFirst({ where: { idempotencyKey } });
   if (existing) return { requestId: existing.id };
 
   try {

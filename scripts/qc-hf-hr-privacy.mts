@@ -24,6 +24,7 @@
 //      OT-7 (H4) ฟอร์มไม่บล็อกค่าที่ server รับ · OT-8…OT-11 (H5) ชั่วโมง OT สูงสุด 744 สำหรับทุกคน
 // [F1] รอบ 5c: แถวของตัวเอง (ไม่ใช่เจ้าของร้าน) — ปฏิเสธรายการหักเงิน/เบิกล่วงหน้าไม่ได้ · ลบรายการใด ๆ ไม่ได้ · ลบทุกครั้งมีประวัติ ·
 //      [F5] ปุ่มรายการเงินคืนเหตุผลเป็นข้อมูล + แสดงในแถว · [F3] ข้อผิดพลาดที่ไม่คาดคิด = ข้อความกลาง · [F2] ใบลา + คำขอในสายเกิดพร้อมกัน
+//      F2-2/F2-3 รอบ 5d (N1): ธุรกรรมใบลาใช้ connection เดียว — ยื่นพร้อมกัน 12 ใบครบ · pool เหลือ 1 เส้นยังยื่นได้
 //
 // รัน (POS lane): bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-hf-hr-privacy.mts
 import { existsSync, readFileSync } from "node:fs";
@@ -985,6 +986,56 @@ try {
     f2Log.push(`${dec}:${st}:${rqSt}`);
     if (dec === "no" && st === "PENDING" && rqSt === "PENDING") f2Ok++;
   }
+  // ── รอบ 5d (N1): ธุรกรรมใบลา (มีสายอนุมัติ) ต้องไม่ยืม connection ที่สองจาก pool ระหว่างเปิดธุรกรรม ──
+  //   (a) ยื่นพร้อมกัน 12 ใบ (pool ของ Prisma ≈ 10) ⇒ ครบ 12 · ใบละ 1 คำขอ + 1 event แต่ละชนิด · < 10 วินาที
+  const days12 = Array.from({ length: 12 }, (_, i) => `2027-06-${String(i + 1).padStart(2, "0")}`);
+  const t12 = Date.now();
+  const r12 = await Promise.allSettled(days12.map((d) => hr.requestLeave(ctx, { employeeId: eF2.id, type: "PERSONAL", fromDate: d, toDate: d })));
+  const ms12 = Date.now() - t12;
+  const ok12 = r12.flatMap((r) => (r.status === "fulfilled" ? [r.value.id] : []));
+  const err12 = r12.flatMap((r) => (r.status === "rejected" ? [r.reason instanceof Error ? r.reason.message.replace(/\s+/g, " ").slice(0, 90) : String(r.reason)] : []));
+  let whole12 = 0;
+  for (const id of ok12) {
+    const reqs = await prisma.approvalRequest.findMany({ where: { tenantId: tid, entityType: "HrLeave", entityId: id }, select: { id: true } });
+    const evLeave = await prisma.outboxEvent.count({ where: { tenantId: tid, idempotencyKey: `hr.leave.submitted#${id}` } });
+    const evReq = reqs.length === 1 ? await prisma.outboxEvent.count({ where: { tenantId: tid, idempotencyKey: `approval.request.submitted#${reqs[0]!.id}` } }) : 0;
+    if (reqs.length === 1 && evLeave === 1 && evReq === 1) whole12++;
+  }
+  const leaves12 = await prisma.hrLeave.count({ where: { tenantId: tid, employeeId: eF2.id, fromDate: { gte: new Date("2027-05-20T00:00:00Z"), lt: new Date("2027-07-01T00:00:00Z") } } });
+  chk("F2-2", "🔴 ยื่นใบลาพร้อมกัน 12 ใบ (มีสายอนุมัติ) → สำเร็จ 12/12 · ใบละ 1 คำขอในสาย + 1 event hr.leave.submitted + 1 event approval.request.submitted · ไม่มีใบลาเกิน · < 10 วินาที",
+    ok12.length === 12 && whole12 === 12 && leaves12 === 12 && ms12 < 10_000, "12/12 · < 10000 ms",
+    `ok=${ok12.length}/12 whole=${whole12} leaves=${leaves12} ms=${ms12} err=${JSON.stringify(err12.slice(0, 2))}`, "MAJOR");
+  console.log(`  · N1 (a) 12 concurrent: ok=${ok12.length}/12 whole=${whole12} leaves=${leaves12} ms=${ms12}`);
+  //   (b) จับ connection ของ pool ไว้ N−1 เส้น (หา N ด้วยการเปิดธุรกรรมค้างจนเปิดไม่ได้) ⇒ ใบลา 1 ใบยังเสร็จใน 3 วินาที
+  //       (ถ้าธุรกรรมใบลาอ่าน/เขียนนอก tx client ระหว่างเปิดอยู่ จะรอ connection ที่ไม่มีวันว่าง = ค้าง)
+  const holders: { done: Promise<unknown>; release: () => void }[] = [];
+  for (let k = 0; k < 40; k++) {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let started!: (v: boolean) => void;
+    const s = new Promise<boolean>((r) => (started = r));
+    const done = prisma
+      .$transaction(async (t) => { await t.$queryRaw`SELECT 1`; started(true); await gate; }, { maxWait: 1_500, timeout: 40_000 })
+      .catch(() => started(false));
+    if (!(await s)) break;
+    holders.push({ done, release });
+  }
+  const poolN = holders.length;
+  holders.pop()?.release(); // ปล่อย 1 เส้น ⇒ ว่างพอดี 1 connection
+  await new Promise((r) => setTimeout(r, 300));
+  const tOne = Date.now();
+  const onePromise = hr.requestLeave(ctx, { employeeId: eF2.id, type: "PERSONAL", fromDate: "2027-06-20", toDate: "2027-06-20" }).then(
+    () => "ok",
+    (e: unknown) => `THROW ${e instanceof Error ? e.message.replace(/\s+/g, " ").slice(0, 90) : String(e)}`,
+  );
+  const one = await Promise.race([onePromise, new Promise<string>((r) => setTimeout(() => r("TIMEOUT 3s"), 3_000))]);
+  const msOne = Date.now() - tOne;
+  for (const h of holders) h.release();
+  await Promise.allSettled(holders.map((h) => h.done));
+  const oneFinal = await onePromise; // รอให้จบจริงก่อนข้อถัดไป (โค้ดเก่าจะจบหลังปล่อย connection หรือหมดเวลา)
+  chk("F2-3", "🔴 pool ถูกจับไว้ N−1 เส้น → ยื่นใบลา (มีสายอนุมัติ) 1 ใบยังเสร็จภายใน 3 วินาที (ธุรกรรมใบลาใช้ connection เดียวทุกคำสั่ง)",
+    poolN >= 2 && poolN < 40 && one === "ok" && msOne < 3_000, "ok < 3000 ms", `pool N=${poolN} held=${Math.max(0, poolN - 1)} result=${one} ms=${msOne} final=${oneFinal}`, "MAJOR");
+  console.log(`  · N1 (b) pool N=${poolN} held=${Math.max(0, poolN - 1)} result=${one} ms=${msOne} final=${oneFinal}`);
   await ap.setPolicyActive(apCtx, polF2.id, false);
   chk("F2-1", "ทางตรงตัดสินใบลาทันทีที่เห็นแถว ระหว่าง requestLeave (6 รอบ) → ทุกรอบเห็นคำขอในสายแล้ว ⇒ ปฏิเสธ · ใบลา PENDING · คำขอ PENDING (ไม่มีรอบไหนได้ 'สาย PENDING + ใบลา APPROVED')",
     f2Ok === 6, "6/6 no:PENDING:PENDING", f2Log.join(" "), "MINOR");

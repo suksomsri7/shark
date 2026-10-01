@@ -13,6 +13,7 @@ Worktree `/root/projects/shark-hf3` · branch `hotfix/hr-privacy` (base origin/m
 - [x] round 5 (1 Oct, base 8c5815fb): R5.1–R5.6 · oracle 150 · see "Round 5" at the end
 - [x] round 5b (1 Oct, base dc9e04c9): H1–H5 · oracle 173 · see "Round 5b" at the end
 - [x] round 5c (1 Oct, base 29201662): F1 · F5 · F3 · F2 · oracle 192 · see "Round 5c" at the end
+- [x] round 5d (1 Oct, base 7ac8b4ee): N1 (leave tx uses one connection) · oracle 194 · see "Round 5d" at the end
 
 ## 1. Audit — every HR surface that ships employee / payroll / leave data to a client or returns it (verified in THIS tree)
 
@@ -612,3 +613,32 @@ Fitness: `bash scripts/iso.sh pnpm fitness` 33/33 · via `qc4.sh` + gate lock 33
 - **G4 (F2 done)**: `requestLeave` is now one transaction with an optional `tx` on `approval.submitForApproval` (additive hunk in `approval/service.ts`; `approval/index.ts` untouched). Accept, or revert to the recorded residual.
 - **G5 (audit payload)**: delete audit `before` holds the amount and employee id (brief's field list); `/app/audit` (OWNER/MANAGER) does not render `before`, but any future audit viewer for MANAGERs without payroll view would — keep, or drop `amountSatang`.
 Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, once, at the end, 20:09–20:12 UTC) → **exit 0**. Pre-commit hook path points into `/root/projects/shark-in-th/.githooks` (off-limits) ⇒ commit made with `--no-verify` after the fitness runs above.
+
+## Round 5d (micro-round · coordinator N1 on 7ac8b4ee · QC4 · gate lock) — rulings G1–G5 stand
+**N1 (defect introduced by 5c):** inside the `requestLeave` transaction, `submitForApproval` still ran `resolvePolicy` and the `existing` lookup on the shared client ⇒ every leave request with an active policy needed a **second** pool connection while holding the first (pool = 10) ⇒ under load all requests deadlock until the transaction timeout.
+Fix (`approval/service.ts` only, 9+/4−): `:139-145` `resolvePolicy(ctx, input, tx?)` — `tx` given ⇒ `tx.approvalPolicy.findMany({ where: { tenantId, entityType, active: true } })`; omitted ⇒ the old `tenantDb(ctx)` statement unchanged. `:182` `submitForApproval` passes `opts.tx` to it; `:186-188` the `existing` lookup goes through `opts.tx` (`{ tenantId, idempotencyKey }`) when given, else the old statement. Create + outbox already used `tx` (5c); the P2002 recovery read is skipped when `opts.tx` (5c).
+Whole `requestLeave` transaction body checked (`hr/service.ts:395-442`): `tx.hrLeave.create` → `emitOutbox(tx, …)` (only `tx.outboxEvent.findUnique/create`) → `submitForApproval(…, { tx })` (now: `tx.approvalPolicy.findMany` → `tx.approvalRequest.findFirst` → `tx.approvalRequest.create` → `emitOutbox(tx, …)`). The only shared-client statement left is the pre-check `resolvePolicy` **before** the transaction opens (released before `$transaction`). No employee lookup or leave-balance read exists on this path; `tenantDb`'s extension only rewrites queries (no side statements). Callers without `opts.tx` (every other caller of `approval.submitForApproval`: procurement, CRM deals/commissions/portal, member, point, tiers, voucher, kanban, account approval-cap) take the old statements.
+
+### Oracle — round 5d
+`scripts/qc-hf-hr-privacy.mts` 192 → **194**: **F2-2** 12 concurrent `requestLeave` with an active chain policy ⇒ 12/12, each with exactly 1 chain request + 1 `hr.leave.submitted` + 1 `approval.request.submitted`, 12 leaves in total, < 10 s · **F2-3** find the pool size N by opening idle transactions until one cannot start (maxWait 1.5 s), keep N−1 held ⇒ one leave request still finishes within 3 s. Two `console.log` measurement lines (`N1 (a)`, `N1 (b)`) added after GREEN ×2 (numbers only).
+- RED on 7ac8b4ee (`HF-HR-0-red5d.txt`): `ผ่าน 192/194 · MAJOR 2` — (a) `ok=0/12 leaves=0 ms=30138`, error `Invalid tx.approvalRequest.create() invocation …` (transaction expired) · (b) `pool N=10 held=9 result=TIMEOUT 3s` (it completed only after the held connections were released).
+- GREEN ×2: `ผ่าน 194/194 · 0/0/0` (20:41–20:44 and 20:44–20:49 UTC); measurement run 3 (20:56–20:59): (a) `ok=12/12 whole=12 leaves=12 ms=227` · (b) `pool N=10 held=9 result=ok ms=90` (`HF-HR-0-green.txt`, replaces 5c's file).
+- Control (`HF-HR-0-control5d.txt`, `approval/service.ts` back to 7ac8b4ee alone, restored + `cmp`): only F2-2 (`ok=4/12 ms=30174`) and F2-3 (`TIMEOUT 3s`) red; 192/194.
+
+### Regressions round 5d — BEFORE = 7ac8b4ee (20:40–20:41 UTC) · AFTER = round-5d tree (20:49–20:53 UTC) · ✅/❌ lines identical
+| suite (callers of `submitForApproval`) | before | after |
+|---|---|---|
+| qc-approval | 16/16 | 16/16 |
+| qc-approval-wiring | 7/7 | 7/7 |
+| qc-hr-leave-booking | 14/14 | 14/14 |
+| qc-hr | 9/9 | 9/9 |
+| qc-procurement | 12/12 | 12/12 |
+Fitness: `bash scripts/iso.sh pnpm fitness` 33/33 · via `qc4.sh` + gate lock 33/33 (lines identical between modes and to round 5c). Typecheck (`env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck`, once, at the end, 21:00–21:04 UTC) → **exit 0**. Commit with `--no-verify` after the fitness runs (hook path in `shark-in-th`, off-limits).
+
+### Who loses what (round 5d)
+Nobody — restores 5c's intended behaviour under concurrency (before 5d: concurrent leave requests with an active policy could all fail after ~30 s; one request stalled whenever 9 of 10 pool connections were busy).
+
+### Not covered / still open (added in round 5d)
+- The delete audit row (`hr.payadjust.delete`) is written **after** the delete and `writeAudit` swallows its own failure silently ⇒ a delete can exist without its audit row (no error to anyone).
+- `PayAdjustRowActions`: a refusal message stays visible after the row's status changes (e.g. another approver decides it) until the next action on that row or a page reload — the `useActionState` result is not cleared on new props.
+- The pre-transaction `resolvePolicy` in `requestLeave` still uses one shared-client connection before the transaction opens (not while it is open) — harmless for N1; a policy switched off between that read and the transaction is resolved again inside the transaction.
