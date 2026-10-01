@@ -16,7 +16,7 @@ body{height:1620px}
 # ---------- E1 รายการห้องแผนก ----------
 def rm(orbs,n,s,r,cls=''): return f'<div class="row">{stk(*[AO(o) for o in orbs])}<div class="t"><b>{n}</b><span class="{cls}">{s}</span></div><div class="r">{r}</div></div>'
 rooms=f'''<div class="pg">{bar(r=PLUS+stk(HP('h1','ส'),HP('h2','น'),AO('o1'),AO('o2'),MORE(4)))}
- <div class="lt">The Bean Café {CH}</div><div class="st">คน 3 · พนักงาน AI 5 · แพ็ก Pro</div>
+ <div class="lt">The Bean Café {CH}</div><div class="st">คน 3 · พนักงาน AI 5 · แพ็กฟรี</div>
  <div style="margin-top:22px">{seg(['พนักงาน 5','ห้องแผนก 3'],1)}</div>
  <div class="st" style="margin-top:18px;color:#6e6e73">สั่งครั้งเดียว พนักงานหลายคนส่งงานต่อกันเอง</div>
  <div style="margin-top:6px">

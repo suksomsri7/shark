@@ -48,6 +48,8 @@ svg{stroke:#f2f2f7}.row svg{stroke:#6a6a7a}.lt svg{stroke:#8e8e93}.srch svg{stro
 .who em{color:#8e8e9c}.stp.q{color:#6f6f7d}.stp.q b{color:#5a5a68}
 .okt{color:#5fd39a}
 .fld{color:#f2f2f7}
+.tagp.s{background:rgba(255,255,255,.16) !important;color:#d0d0dc !important;box-shadow:none}
+.btn1.off{background:rgba(255,255,255,.12) !important;color:#8e8e9c !important;box-shadow:none}
 .lg{filter:saturate(.9) brightness(.92)}
 '''
 INLINE=[  # (สีสว่าง → สีมืด) เฉพาะใน style="" ของเนื้อหา

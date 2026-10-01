@@ -40,6 +40,9 @@ CSS+=r'''
 .pg>.fld{flex:none}
 .card .tagp{display:inline-block;margin-top:0;color:#fff;font-size:11.5px}
 .note{font-size:13.5px;color:#8e8e93;text-align:center;line-height:1.6;margin-top:16px}
+.soon{opacity:.5}
+.tagp.s{background:rgba(150,150,185,.28);color:#55556a}
+.btn1.off{background:rgba(150,150,185,.25);color:#8e8e93;box-shadow:none}
 '''
 
 PILL=lambda t: f'<div class="pillb">{t}</div>'
@@ -157,7 +160,7 @@ perm=f'''<div class="pg">{bar(BACK,'ขั้น 4 จาก 4',CLOSE)}
   <div class="card"><span style="margin:0">เวลาทำงาน</span><b style="font-size:19px;margin-top:6px">ตลอด 24 ชม.</b></div>
   <div class="card"><span style="margin:0">ใช้โควตาได้สูงสุด</span><b style="font-size:19px;margin-top:6px">25% <small style="font-size:13px;font-weight:400;color:#8e8e93">ต่อเดือน</small></b></div>
  </div>
- <div class="note">ไม่มีค่าจ้างเพิ่ม · จ้างได้ไม่จำกัด · ใช้โควตาแพ็ก Pro</div>
+ <div class="note">ไม่มีค่าจ้างเพิ่ม · จ้างได้ไม่จำกัด · ใช้โควตาแพ็กของร้าน</div>
  </div><div class="foot"><div class="btn1">จ้างคุณเอก</div></div>'''
 
 done=f'''<div class="pg">{bar(r=CLOSE)}
@@ -185,24 +188,25 @@ hist=f'''<div class="pg">{bar(BACK)}
  </div></div>'''
 
 # ---------- ค. ตั้งค่า ----------
-def pl3(n,pr,items,cur=False,hi=False):
+def pl3(n,pr,items,cur=False,hi=False,soon=False):
     st=' style="margin-top:12px;'+('border:2px solid #16161c' if cur else ('border:2px solid rgba(143,155,255,.6)' if hi else ''))+'"'
-    return f'<div class="card pl3"{st}><div class="ph"><b>{n}{"<span class=tagp>ใช้อยู่</span>" if cur else ""}</b><span class="pr" style="margin:0;color:#16161c">{pr}<small> /เดือน</small></span></div><ul>{"".join(f"<li>{x}</li>" for x in items)}</ul></div>'
+    tag='<span class=tagp>ใช้อยู่</span>' if cur else ('<span class="tagp s">เร็ว ๆ นี้</span>' if soon else '')
+    return f'<div class="card pl3{" soon" if soon else ""}"{st}><div class="ph"><b>{n}{tag}</b><span class="pr" style="margin:0;color:#16161c">{pr}<small> /เดือน</small></span></div><ul>{"".join(f"<li>{x}</li>" for x in items)}</ul></div>'
 choose=f'''<div class="pg">{bar(BACK)}
- <div class="lt">เลือกแพ็ก</div><div class="st">The Bean Café ⌄ · ทุกแพ็กจ้าง AI ได้ไม่จำกัด</div>
- <div style="margin-top:18px">{seg(['รายเดือน','รายปี · ลด 2 เดือน'],0)}</div>
- <div style="margin-top:4px">
- {pl3('ฟรี','฿0',['ประมาณ 50 งานต่อเดือน · ไม่ต้องใส่บัตร','งานประจำ 1 งาน · ผู้อนุมัติ 1 คน'])}
- {pl3('Starter','฿490',['ประมาณ 800 งานต่อเดือน','งานประจำ 5 งาน · ผู้อนุมัติ 1 คน'])}
- {pl3('Pro','฿1,490',['ประมาณ 3,000 งานต่อเดือน','งานประจำ 30 งาน · ผู้อนุมัติ 3 คน','บันทึกย้อนหลัง 90 วัน'],cur=True)}
- {pl3('Business','฿3,990',['ประมาณ 10,000 งานต่อเดือน','งานประจำ · ผู้อนุมัติ ไม่จำกัด','บันทึกย้อนหลัง 1 ปี · รายงานทีม'],hi=True)}
+ <div class="lt">แพ็ก</div><div class="st">ทุกแพ็กจ้าง AI ได้ไม่จำกัด · ตอนนี้เปิดให้ใช้แพ็กฟรี</div>
+ <div style="margin-top:14px">
+ {pl3('ฟรี','฿0',['ประมาณ 50 งานต่อเดือน · ไม่ต้องใส่บัตร','งานประจำ 1 งาน · ผู้อนุมัติ 1 คน'],cur=True)}
+ {pl3('Starter','฿490',['ประมาณ 800 งานต่อเดือน','งานประจำ 5 งาน · ผู้อนุมัติ 1 คน'],soon=True)}
+ {pl3('Pro','฿1,490',['ประมาณ 3,000 งานต่อเดือน','งานประจำ 30 งาน · ผู้อนุมัติ 3 คน','บันทึกย้อนหลัง 90 วัน'],soon=True)}
+ {pl3('Business','฿3,990',['ประมาณ 10,000 งานต่อเดือน','งานประจำ · ผู้อนุมัติ ไม่จำกัด','บันทึกย้อนหลัง 1 ปี · รายงานทีม'],soon=True)}
  </div>
- <div class="note">ใบกำกับภาษีออกในนามกิจการ</div>
- </div><div class="foot"><div class="btn1">อัปเกรดเป็น Business · ฿3,990</div></div>'''
+ <div class="note">แพ็กเสียเงินยังไม่เปิดขายในรุ่นนี้</div>
+ </div><div class="foot"><div class="btn2">แจ้งฉันเมื่อเปิดขาย</div></div>'''
 
 topup=f'''<div class="pg">{bar(BACK)}
- <div class="lt">เติมโควตา</div><div class="st">The Bean Café · แพ็ก Pro</div>
- <div class="qt gl" style="margin-top:20px">ใช้ต่อเมื่อโควตาแพ็กหมด และ<b>ไม่หมดอายุ</b></div>
+ <div class="lt">เติมโควตา</div><div class="st">เติมเองเมื่อโควตาแพ็กหมดแล้วอยากใช้ต่อ</div>
+ <div class="qt gl" style="margin-top:20px"><b>ยังไม่เปิดให้เติมในรุ่นนี้</b> · จะเปิดพร้อมแพ็กเสียเงิน</div>
+ <div class="soon">
  <div class="g3">
   <div class="card pk3"><b>+10%</b><span>฿190</span></div>
   <div class="card pk3 sel"><b>+25%</b><span>฿450</span></div>
@@ -214,12 +218,13 @@ topup=f'''<div class="pg">{bar(BACK)}
  {it('📱','พร้อมเพย์ QR','',arrow=False)}
  <div class="sec" style="margin-top:22px">ใบกำกับภาษี</div>
  {it('🧾','ออกในนาม The Bean Café','0105•••••321 · ส่งอีเมลบัญชี',arrow=False,right=tgl(True))}
- </div><div class="foot"><div class="btn1">ชำระ ฿450</div></div>'''
+ </div>
+ </div><div class="foot"><div class="btn1 off">ยังไม่เปิดให้เติม</div></div>'''
 
 menu=f'''<div class="pg">{bar(BACK)}
  <div class="row" style="margin-top:14px"><div class="hp h1" style="width:56px;height:56px;font-size:20px">ส</div><div class="t"><b style="font-size:19px">คุณสุข</b><span>เจ้าของ · 3 กิจการ</span></div>{AR}</div>
  <div class="sec" style="margin-top:26px">กิจการนี้ · The Bean Café</div>
- {it('📦','แพ็กและการใช้งาน','','Pro · 62%')}
+ {it('📦','แพ็กและการใช้งาน','','ฟรี · 62%')}
  {it('📚','ความรู้ของร้าน','','18 รายการ')}
  {it('👥','ผู้อนุมัติ &amp; คนในทีม','','3 คน')}
  {it('🗂','บันทึกการกระทำ')}
@@ -276,7 +281,7 @@ notif=f'''<div class="pg">{bar(BACK)}
 def ppl(h,l,n,role,rule,you=False,arrow=True):
     return f'<div class="row cp"><div class="hp {h}" style="width:48px;height:48px;font-size:17px">{l}</div><div class="t"><b>{n}{" <em>(คุณ)</em>" if you else ""}</b><span style="white-space:normal">{role} · {rule}</span></div>{AR if arrow else ""}</div>'
 people=f'''<div class="pg">{bar(BACK,'',PLUS)}
- <div class="lt">ผู้อนุมัติ &amp; คนในทีม</div><div class="st">คนจริงที่ตรวจและอนุมัติงานของพนักงาน AI · Pro ใช้ได้ 3 คน</div>
+ <div class="lt">ผู้อนุมัติ &amp; คนในทีม</div><div class="st">คนจริงที่ตรวจและอนุมัติงานของพนักงาน AI</div>
  <div style="margin-top:12px">
  {ppl('h1','ส','คุณสุข','เจ้าของ','อนุมัติได้ทุกอย่าง',True,False)}
  {ppl('h2','น','คุณนิด','ผู้จัดการร้าน','ใบเสนอราคา · โพสต์ · สั่งของ ≤ ฿20,000')}
@@ -291,7 +296,7 @@ people=f'''<div class="pg">{bar(BACK,'',PLUS)}
 PAGES={
  'a':('ก. ใช้งานประจำวัน',[(team,'A1 · ทีม'),(switch,'A2 · สลับกิจการ'),(jobs,'A3 · งานของพนักงาน'),(newjob,'A4 · เริ่มงานใหม่'),(room,'A5 · ห้องสั่งงาน'),(recur,'A6 · ตั้งงานประจำ'),(appr,'A7 · รออนุมัติรวม'),(empty,'A8 · ยังไม่มีทีม')]),
  'b':('ข. จ้างพนักงาน',[(pos,'B1 · จ้าง ขั้น 1 ตำแหน่ง'),(ident,'B2 · จ้าง ขั้น 2 ตัวตน'),(manual,'B3 · จ้าง ขั้น 3 คู่มือ'),(forbid,'B4 · แก้หัวข้อ สิ่งที่ห้ามทำ'),(perm,'B5 · จ้าง ขั้น 4 สิทธิ์ & โควตา'),(done,'B6 · จ้างสำเร็จ'),(profile,'B7 · โปรไฟล์พนักงาน'),(hist,'B8 · ประวัติคู่มือ')]),
- 'c':('ค. แพ็กและตั้งค่า',[(plan,'C1 · แพ็กและการใช้งาน'),(choose,'C2 · เลือกแพ็ก'),(topup,'C3 · เติมโควตา'),(menu,'C4 · เมนู'),(know,'C5 · ความรู้ของร้าน'),(log,'C6 · บันทึกการกระทำ'),(notif,'C7 · การแจ้งเตือน'),(people,'C8 · ผู้อนุมัติ & คนในทีม')]),
+ 'c':('ค. แพ็กและตั้งค่า',[(plan,'C1 · แพ็กและการใช้งาน'),(choose,'C2 · แพ็ก (เสียเงินปิดไว้)'),(topup,'C3 · เติมโควตา (ปิดในรุ่นนี้)'),(menu,'C4 · เมนู'),(know,'C5 · ความรู้ของร้าน'),(log,'C6 · บันทึกการกระทำ'),(notif,'C7 · การแจ้งเตือน'),(people,'C8 · ผู้อนุมัติ & คนในทีม')]),
 }
 for k,(t,P) in PAGES.items():
     html=f'''<!doctype html><html><head><meta charset="utf-8"><style>{CSS}</style></head><body>

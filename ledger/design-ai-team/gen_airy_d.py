@@ -63,9 +63,9 @@ out=f'''<div class="pg">{bar(r=PLUS+stk(HP('h1','ส'),AO('o2')))}
   <div class="ub" style="margin-top:16px"><i style="width:100%"></i></div>
   <div class="nums"><div><b>50</b><span>งานที่ทำให้</span></div><div><b>9 ชม.</b><span>เวลาที่ประหยัด</span></div><div><b class="amb">3</b><span>งานค้างอยู่</span></div></div>
   <div class="qt" style="margin-top:14px">น้องมะลิพักงานอยู่ · แชทลูกค้า 3 ห้องยังไม่ได้ตอบ<br>งานที่ค้างจะทำต่อทันทีเมื่อมีโควตา</div>
-  {pl3('Starter','฿490',['ประมาณ 800 งานต่อเดือน','งานประจำ 5 งาน · ยกเลิกได้ทุกเมื่อ'],hi=True)}
-  <div class="btn1" style="margin-top:18px">อัปเกรดเป็น Starter · ฿490</div>
-  <div style="text-align:center;font-size:15px;font-weight:500;color:#6e6e73;margin-top:18px">รอรอบใหม่ 1 พ.ย. &nbsp;·&nbsp; ดูแพ็กทั้งหมด</div>
+  {pl3('Starter','฿490',['ประมาณ 800 งานต่อเดือน','งานประจำ 5 งาน · ยกเลิกได้ทุกเมื่อ'],soon=True)}
+  <div class="btn1" style="margin-top:18px">ตกลง · รอรอบใหม่ 1 พ.ย.</div>
+  <div style="text-align:center;font-size:15px;font-weight:500;color:#6e6e73;margin-top:18px">แจ้งฉันเมื่อเปิดขายแพ็กเสียเงิน</div>
  </div>'''
 
 # ---------- ตีกลับ + สอนงาน ----------
@@ -97,10 +97,10 @@ promo=f'''<div class="pg">{bar(r=CLOSE)}
 def rp(o,n,role,s,h,cls=''): return f'<div class="row cp">{AO(o)}<div class="t"><b>{n}<em>{role}</em></b><span class="{cls}">{s}</span></div><span class="v" style="color:#16161c;font-weight:600">{h}</span></div>'
 report=f'''<div class="pg">{bar(BACK,'',SHARE)}
  <div class="lt">ผลงานทีม</div><div class="st">The Bean Café · ก.ย. 69 ⌄</div>
- <div class="big" style="margin-top:26px">฿38,520</div>
- <div class="st" style="margin-top:12px;color:#6e6e73">มูลค่างานที่ทีม AI ทำแทน · 214 ชม. × ฿180</div>
- <div class="st grn" style="margin-top:4px">✓ ประมาณ 25 เท่าของค่าแพ็ก ฿1,490</div>
- <div class="grid"><div><b>1,284</b><span>งานเสร็จ</span></div><div><b>214 ชม.</b><span>เวลาที่ประหยัด</span></div><div><b>93%</b><span>ผ่านโดยไม่ต้องแก้</span></div><div><b>11 นาที</b><span>รออนุมัติเฉลี่ย</span></div></div>
+ <div class="big" style="margin-top:26px">214 ชม.</div>
+ <div class="st" style="margin-top:12px;color:#6e6e73">เวลาที่ทีม AI ทำงานแทนในเดือนนี้</div>
+ <div class="st grn" style="margin-top:4px">↑ มากกว่าเดือนก่อน 18%</div>
+ <div class="grid"><div><b>1,284</b><span>งานเสร็จ</span></div><div><b>93%</b><span>ผ่านโดยไม่ต้องแก้</span></div><div><b>11 นาที</b><span>รออนุมัติเฉลี่ย</span></div><div><b>62%</b><span>โควตาที่ใช้</span></div></div>
  <div class="sec" style="margin-top:22px">รายคน</div>
  {rp('o2','น้องมะลิ','แอดมินแชท','612 งาน · ผ่าน 97%','88 ชม.')}
  {rp('o1','คุณเอก','เซลส์','318 งาน · ผ่าน 94%','52 ชม.')}

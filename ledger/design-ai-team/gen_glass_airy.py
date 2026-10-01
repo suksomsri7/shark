@@ -169,7 +169,7 @@ MORE=lambda n: f'<div class="more">+{n}</div>'
 SRCH='<div class="srch gl"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>ค้นหาพนักงาน งาน หรือลูกค้า</div>'
 
 team=f'''<div class="pg">{bar(r=PLUS+stk(HP('h1','ส'),HP('h2','น'),AO('o1'),AO('o2'),MORE(4)))}
- <div class="lt">The Bean Café {CH}</div><div class="st">คน 3 · พนักงาน AI 5 · แพ็ก Pro</div>
+ <div class="lt">The Bean Café {CH}</div><div class="st">คน 3 · พนักงาน AI 5 · แพ็กฟรี</div>
  {SRCH}
  <div class="nums"><div><b>42</b><span>งานเสร็จวันนี้</span></div><div><b>6.5 ชม.</b><span>เวลาที่ประหยัด</span></div><div><b class="amb">3 ›</b><span>รออนุมัติ</span></div></div>
  <div class="ul"><span>โควตาเดือนนี้ 62%</span><span>รอบใหม่ 1 ต.ค.</span></div><div class="ub"><i style="width:62%"></i></div>
@@ -234,15 +234,15 @@ ident=f'''<div class="pg">{bar(BACK,'ขั้น 2 จาก 4',CLOSE)}
 
 def ur(n,p): return f'<div class="urow"><span class="n">{n}</span><div class="ub"><i style="width:{p*100/24:.0f}%"></i></div><b>{p}%</b></div>'
 plan=f'''<div class="pg">{bar(BACK)}
- <div class="lt">แพ็ก Pro</div><div class="st">The Bean Café ⌄ · ฿1,490 / เดือน</div>
+ <div class="lt">แพ็กฟรี</div><div class="st">คุณสุข · โควตาใช้ร่วมกัน 3 กิจการ</div>
  <div class="big">62%</div>
  <div class="st" style="margin-top:12px;color:#6e6e73">ใช้ไปแล้ว · รอบใหม่ 1 ต.ค. (อีก 4 วัน)</div>
  <div class="ub" style="height:6px;border-radius:3px;margin-top:16px"><i style="width:62%"></i></div>
  <div class="st grn" style="margin-top:12px">✓ พอใช้ถึงรอบใหม่</div>
- <div style="display:flex;gap:12px;margin-top:28px"><div class="btn2">เติมโควตา</div><div class="btn1">อัปเกรดแพ็ก</div></div>
- <div class="sec" style="margin-top:36px">ใช้ไปกับใคร</div>
+ <div style="display:flex;gap:12px;margin-top:28px"><div class="btn2">ดูแพ็กทั้งหมด</div></div>
+ <div class="sec" style="margin-top:36px">ใช้ไปกับใคร · The Bean Café</div>
  <div class="gl" style="margin-top:12px;border-radius:26px;padding:6px 20px">{ur('น้องมะลิ',24)}{ur('คุณเอก',21)}{ur('พลอยใส',9)}{ur('ไอดิน',6)}{ur('ฟ้า',2)}</div>
- <div class="row" style="margin-top:14px;margin-top:14px"><div class="t"><b style="font-size:16px;font-weight:500">ถ้าโควตาหมดก่อนรอบใหม่</b></div><span style="font-size:15px;color:#8e8e93">ใช้เครดิตเติม</span>{AR}</div>
+ <div class="row" style="margin-top:14px;margin-top:14px"><div class="t"><b style="font-size:16px;font-weight:500">ถ้าโควตาหมดก่อนรอบใหม่</b></div><span style="font-size:15px;color:#8e8e93">พักทีมจนรอบใหม่</span></div>
  </div>'''
 
 def pr(t,s): return f'<div class="row"><div class="t"><b style="font-size:16px;font-weight:500">{t}</b></div><span style="font-size:14.5px;color:#8e8e93">{s}</span>{AR}</div>'
@@ -257,17 +257,18 @@ profile=f'''<div class="pg">{bar(BACK,'',DOTS)}
 
 def bz(c,l,n,s,r): return f'<div class="row"><div class="lg {c}">{l}</div><div class="t"><b>{n}</b><span>{s}</span></div>{r}</div>'
 switch=f'''<div class="pg">{bar(r=PLUS+stk(HP('h1','ส'),HP('h2','น'),AO('o1'),AO('o2'),MORE(4)))}
- <div class="lt">The Bean Café {CH}</div><div class="st">พนักงาน AI 5 คน · แพ็ก Pro</div></div>
+ <div class="lt">The Bean Café {CH}</div><div class="st">พนักงาน AI 5 คน · แพ็กฟรี</div></div>
  <div class="dim"></div>
  <div class="sheet"><div class="grab"></div>
-  <div style="font-size:26px;font-weight:700;letter-spacing:-.5px">กิจการ</div><div class="st">แต่ละกิจการมีทีม AI แพ็ก และโควตาแยกกัน</div>
+  <div style="font-size:26px;font-weight:700;letter-spacing:-.5px">กิจการ</div><div class="st">แต่ละกิจการมีทีม AI และข้อมูลแยกกัน</div>
   <div style="margin-top:18px">
-  {bz('l1','B','The Bean Café','Pro · AI 5 คน · ใช้ไป 62%','<svg width="22" height="22" viewBox="0 0 24 24" style="stroke:#111;stroke-width:2.4"><path d="M5 12l5 5L20 7"/></svg>')}
-  {bz('l2','BH','บลูเฮาส์ รีสอร์ท','Business · AI 9 คน · ใช้ไป 41%','<span class="bd">2</span>')}
-  {bz('l3','S','Sweet Studio','Starter · AI 2 คน · ใช้ไป 88%','<span style="font-size:13.5px;font-weight:600;color:#c47a12">ใกล้หมด</span>')}
+  {bz('l1','B','The Bean Café','AI 5 คน · วันนี้ 42 งาน','<svg width="22" height="22" viewBox="0 0 24 24" style="stroke:#111;stroke-width:2.4"><path d="M5 12l5 5L20 7"/></svg>')}
+  {bz('l2','BH','บลูเฮาส์ รีสอร์ท','AI 9 คน · วันนี้ 67 งาน','<span class="bd">2</span>')}
+  {bz('l3','S','Sweet Studio','AI 2 คน · วันนี้ 5 งาน','')}
   <div class="row"><div class="lg" style="border:1.5px dashed #c5c7d6;color:#8e8e93">+</div><div class="t"><b style="font-weight:500">เพิ่มกิจการใหม่</b></div></div>
   </div>
-  <div class="st" style="margin-top:22px;line-height:1.5">พนักงาน AI เห็นข้อมูลเฉพาะกิจการของตัวเอง ข้อมูลลูกค้า บัญชี และแชทไม่ข้ามไปกิจการอื่น</div>
+  <div class="ul" style="margin-top:22px !important"><span>แพ็กฟรี · โควตาใช้ร่วมกันทุกกิจการ 62%</span><span>รอบใหม่ 1 ต.ค.</span></div><div class="ub"><i style="width:62%"></i></div>
+  <div class="st" style="margin-top:18px;line-height:1.5">พนักงาน AI เห็นข้อมูลเฉพาะกิจการของตัวเอง ข้อมูลลูกค้า บัญชี และแชทไม่ข้ามไปกิจการอื่น</div>
  </div>'''
 
 def phone(b,l): return f'<div class="phone"><div class="screen">{STATUS}{b}</div><div class="label">{l}</div></div>'
