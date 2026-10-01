@@ -823,30 +823,45 @@ console.log("\n── F12: cookie ทุกตัวตั้ง secure (ห้�
     bad.length ? `ขาด secure ที่: ${bad.join(" · ")}` : "ครบทุกจุด");
 }
 
-// ─────────────────── F15: เท่ากันแบบไม่สนตัวพิมพ์ต้องผ่าน ciEquals (CRM C5.5-fix2 · hunter 2a-5/2a-6) ───────────────────
+// ─────────────────── F15: เท่ากันแบบไม่สนตัวพิมพ์ต้องผ่าน ciEquals (CRM C5.5-fix2 · hunter 2a-5/2a-6 · รีวิว RV2-6) ───────────────────
 // Prisma `{ equals: x, mode: "insensitive" }` = `ILIKE $1` ไม่ escape ⇒ `_`/`%`/`\` ของผู้ใช้เป็น wildcard
 // (`somchai_k@` "เท่ากับ" `somchai.k@` → OTP พอร์ทัลออก session ของเหยื่อ) ⇒ ทุกจุดต้องใช้ `ciEquals()` ของ core/ci-equals.ts
-// OWED: 4 จุดใน account/** เป็นของเลนบัญชี (ห้ามแตะจากเลน CRM) — ลบออกจากรายการเมื่อเลนนั้นแก้แล้ว (ห้ามเพิ่มรายการ)
+// ตัวสแกน `scripts/lib/ci-equals-scan.mjs` จับทุกรูปที่เขียนได้ (shorthand · สลับลำดับ · '…' · QueryMode · หลายบรรทัด · ตัวแปร · spread …)
+// OWED: จุดใน account/** เป็นของเลนบัญชี — ผูกด้วย ไฟล์ + ข้อความบรรทัดเป๊ะ + จำนวน (จุดใหม่ในไฟล์เดียวกัน/บรรทัดซ้ำ = แดง)
+//   แก้แล้วต้องลบออกจากรายการ (F15.2 · ratchet) · ห้ามเพิ่มรายการ
 console.log("\n── F15: equals แบบ insensitive ต้องผ่าน ciEquals (ไม่มี wildcard รั่ว) ──");
 {
-  const OWED = new Set(["src/lib/modules/account/product.ts:name", "src/lib/modules/account/product.ts:sku", "src/lib/modules/account/service.ts:name"]);
-  const RAW_RE = /(\w+)\s*:\s*\{\s*equals\s*:\s*[^,{};]+,\s*mode\s*:\s*"insensitive"/g;
-  const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  const { findRawInsensitive, F15_SELF_TEST } = await import("./lib/ci-equals-scan.mjs");
+  const OWED: { file: string; snippet: string; count: number }[] = [
+    { file: "src/lib/modules/account/product.ts", snippet: `if (name) or.push({ name: { equals: name, mode: "insensitive" } });`, count: 1 },
+    { file: "src/lib/modules/account/product.ts", snippet: `if (sku) or.push({ sku: { equals: sku, mode: "insensitive" } });`, count: 1 },
+    { file: "src/lib/modules/account/service.ts", snippet: `if (name) or.push({ name: { equals: name, mode: "insensitive" } });`, count: 1 },
+    { file: "src/lib/modules/account/service.ts", snippet: `where: { tenantId, systemId, archivedAt: null, name: { equals: name, mode: "insensitive" } },`, count: 1 },
+  ];
+  const selfMiss = Object.entries(F15_SELF_TEST.mustHit).filter(([, src]) => findRawInsensitive(src).length !== 1).map(([k]) => k);
+  const selfFalse = Object.entries(F15_SELF_TEST.mustNotHit).filter(([, src]) => findRawInsensitive(src).length !== 0).map(([k]) => k);
+  chk("F15.0", "ตัวสแกนจับครบทุกรูป (shorthand · สลับลำดับ · '…' · comma ในค่า · key ในเครื่องหมายคำพูด · QueryMode · วัตถุในตัวแปร · spread · // ในสตริง · หลายบรรทัด · ตัวแปร mode) และไม่จับการค้นหา/คอมเมนต์/สตริง/ชนิดข้อมูล",
+    selfMiss.length === 0 && selfFalse.length === 0, `ไม่จับ: ${selfMiss.join(", ") || "-"} · จับผิด: ${selfFalse.join(", ") || "-"}`);
   const bad: string[] = [];
-  const owedSeen = new Set<string>();
+  const seen = new Map<string, number>();
   for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
-    if (rel(p) === "src/lib/core/ci-equals.ts") continue;
-    const src = strip(readFileSync(p, "utf8"));
-    for (const m of src.matchAll(RAW_RE)) {
-      const k = `${rel(p)}:${m[1]}`;
-      if (OWED.has(k)) owedSeen.add(k);
-      else bad.push(`${k}@${src.slice(0, m.index!).split("\n").length}`);
+    const r = rel(p);
+    if (r === "src/lib/core/ci-equals.ts") continue;
+    const src = readFileSync(p, "utf8");
+    if (!/insensitive/.test(src)) continue;
+    for (const h of findRawInsensitive(src)) {
+      const owed = OWED.find((o) => o.file === r && o.snippet === h.snippet);
+      if (owed) {
+        const k = `${owed.file}::${owed.snippet}`;
+        seen.set(k, (seen.get(k) ?? 0) + 1);
+        if ((seen.get(k) ?? 0) > owed.count) bad.push(`${r}:${h.line} (${h.field} · เกินจำนวนหนี้)`);
+      } else bad.push(`${r}:${h.line} (${h.field})`);
     }
   }
-  chk("F15.1", "ไม่มี `{ equals: …, mode: \"insensitive\" }` ดิบนอก core/ci-equals.ts (ยกเว้นหนี้ของเลนบัญชีที่ระบุชื่อ)", bad.length === 0,
+  chk("F15.1", "ไม่มี equals แบบ insensitive ดิบนอก core/ci-equals.ts (ยกเว้นหนี้ของเลนบัญชีที่ระบุ ไฟล์ + บรรทัด + จำนวน)", bad.length === 0,
     bad.length ? `ใช้ ciEquals() แทน: ${bad.join(" · ")}` : "ครบ");
-  chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", [...OWED].every((k) => owedSeen.has(k)),
-    `แก้แล้วแต่ยังอยู่ในรายการ: ${[...OWED].filter((k) => !owedSeen.has(k)).join(" · ")}`);
+  const fixed = OWED.filter((o) => (seen.get(`${o.file}::${o.snippet}`) ?? 0) < o.count).map((o) => `${o.file} «${o.snippet}»`);
+  chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", fixed.length === 0, `แก้แล้วแต่ยังอยู่ในรายการ: ${fixed.join(" · ")}`);
 }
 
 // ─────────────────── F13: ทะเบียน API (บัญชี + บอร์ดงาน) ───────────────────

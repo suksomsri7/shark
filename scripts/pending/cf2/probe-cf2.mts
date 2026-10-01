@@ -391,6 +391,137 @@ try {
     const board = read("src/app/app/sys/[id]/crm/deals/_components/DealBoard.tsx");
     chk("E3", "deal stage tabs expose the selected stage: aria-current on the active `deal-stage-tab-*`", /aria-current=\{active === c\.stageId \? "true" : undefined\}/.test(board), /aria-current/.test(board) ? "present" : "absent");
   });
+  // ════════════════════════ ROUND 2 (independent review RV2-1 … RV2-7) ════════════════════════
+  // RV2-1 · copy loop through an outside forwarder that rewrites the mail ("FW: …", no X- header, From = the copy mailbox)
+  await sub("R2-1", async () => {
+    const box = `copybox-${rand}@qc-copy.test`;
+    await setCrm({ uiVersion: 2, bridgesEnabled: true, email: { ...EMAIL_SETTINGS, copyMode: "IN", copyToAddr: box }, portal: { enabled: true, loginMethods: ["EMAIL_OTP", "LINE"] } });
+    COPIES.length = 0;
+    const first = await ingest(mail({ from: `fwd-cust-${rand}@qc-cust.test`, subject: `สอบถามราคา ${TAG}` }));
+    let subj = String(COPIES[0]?.subject ?? "");
+    for (let hop = 0; hop < 4; hop += 1) {
+      await ingest(mail({ from: box, subject: `FW: ${subj}`, headers: {} }));
+      subj = `FW: ${subj}`;
+    }
+    const afterHops = COPIES.length;
+    await ingest(mail({ from: `auto-${rand}@qc-cust.test`, subject: `Out of office ${TAG}`, headers: { "Auto-Submitted": "auto-replied" } }));
+    await ingest(mail({ from: `other-${rand}@qc-cust.test`, subject: `Re: FW: [สำเนาจดหมายเข้า] เรื่องเดิม ${TAG}` }));
+    const afterAll = COPIES.length;
+    chk("R2-1", "4-hop outside-forwarder loop (FW: subject, no loop header, From = the copy mailbox) ⇒ exactly ONE copy (the original) · an Auto-Submitted mail and a subject carrying the copy prefix mid-way get no copy · positive control: the customer's mail was copied",
+      first.handled === true && afterHops === 1 && afterAll === 1, `firstCopied=${first.handled}/${COPIES.length >= 1} afterHops=${afterHops} afterAll=${afterAll}`);
+    await setCrm({ uiVersion: 2, bridgesEnabled: true, email: EMAIL_SETTINGS, portal: { enabled: true, loginMethods: ["EMAIL_OTP", "LINE"] } });
+  });
+
+  // RV2-2 + RV2-4 · forged From on a company's e-mail domain (no contact) is flagged; list/REST/AI carry the flag
+  await sub("R2-2", async () => {
+    const dom = `dom2-${rand}.test`;
+    const co = await mkCompany(`บริษัทโดเมน ${TAG}`, { emailDomain: dom });
+    const f = await ingest(mail({ from: `ceo@${dom}`, subject: `แจ้งเปลี่ยนบัญชีรับเงิน ${TAG}` }));
+    const fr = await rowOf(f.emailId);
+    const fe = (await P.outboxEvent.findMany({ where: { type: "crm.email.received" } })).find((e: Any) => e.payload?.emailId === f.emailId);
+    process.env.CRM_INBOUND_AUTHSERV_ID = AUTHSERV;
+    let ar: Any = null; let ae: Any = null;
+    try {
+      const a = await ingest(mail({ from: `cfo@${dom}`, subject: `ใบแจ้งหนี้ ${TAG}`, headers: AR(dom) }));
+      ar = await rowOf(a.emailId);
+      ae = (await P.outboxEvent.findMany({ where: { type: "crm.email.received" } })).find((e: Any) => e.payload?.emailId === a.emailId);
+    } finally {
+      if (OLD_AUTHSERV === undefined) delete process.env.CRM_INBOUND_AUTHSERV_ID; else process.env.CRM_INBOUND_AUTHSERV_ID = OLD_AUTHSERV;
+    }
+    chk("R2-2", "RV2-2: forged `ceo@<company emailDomain>` (no contact, no A-R) filed by DOMAIN ⇒ routing.unverifiedFrom · event has NO companyId (unverifiedFrom: true) · positive control: the same domain WITH A-R ⇒ no flag, event carries companyId",
+      fr?.matchedBy === "DOMAIN" && fr?.companyId === co.id && (fr?.routing as Any)?.unverifiedFrom === true && !!fe && !fe.payload?.companyId && fe.payload?.unverifiedFrom === true && ar?.companyId === co.id && !(ar?.routing as Any)?.unverifiedFrom && ae?.payload?.companyId === co.id,
+      `forged=${j({ by: fr?.matchedBy, routing: fr?.routing, evt: fe?.payload })} proven=${j({ routing: ar?.routing, evtCo: ae?.payload?.companyId === co.id })}`);
+    const list = await CRM.emails.listThreads(ctx, owner, { companyId: co.id });
+    const forgedT = list.items.find((t: Any) => t.threadKey === fr?.threadKey);
+    const provenT = list.items.find((t: Any) => t.threadKey === ar?.threadKey);
+    const inbox = read("src/components/crm/emails/EmailInbox.tsx");
+    const ops = read("src/lib/modules/crm/api/ops/emails.ts");
+    const threadsOp = ops.slice(ops.indexOf('id: "emails.threads.list"'), ops.indexOf('id: "emails.thread.get"'));
+    chk("R2-4", "RV2-4: listThreads (inbox · contact/company lists · REST GET /emails/threads · AI tool crm_email_thread) carries unverifiedFrom per thread (forged thread true · proven thread false) · inbox rows render the badge · the REST/AI op passes items through and its summary + tool hint explain the flag",
+      forgedT?.unverifiedFrom === true && provenT?.unverifiedFrom === false && /t\.unverifiedFrom && \(/.test(inbox) && /ไม่ยืนยันผู้ส่ง/.test(inbox) && /unverifiedFrom/.test(threadsOp) && /tool:[^\n]*unverifiedFrom/.test(threadsOp) && /maskFreeText\(\{ \.\.\.it \}/.test(threadsOp),
+      `forged=${forgedT?.unverifiedFrom} proven=${provenT?.unverifiedFrom} inboxBadge=${/t\.unverifiedFrom && \(/.test(inbox)} opText=${/unverifiedFrom/.test(threadsOp)}`);
+  });
+
+  // RV2-3 · system cap: proven mail (A-R or thread proof) is exempt; owner notified once per window
+  await sub("R2-3", async () => {
+    const L = ES.CRM_INBOUND_RATE_LIMITS;
+    const sysKey = `crm.email.in.sys.${S}`;
+    const kP = await mkContact("ลูกค้ายืนยันได้", `proven-${rand}@cust3-${rand}.test`);
+    const kT = await mkContact("ลูกค้าตอบเธรด", `thread-${rand}@qc-cust.test`);
+    const rfc = `${TAG}-r23@probe.test`;
+    await P.crmEmailMessage.create({ data: { tenantId: T, systemId: S, contactId: kT.id, direction: "OUT", messageId: `${S}:${rfc}`, threadKey: `r23${rand}`, fromAddr: `${TAG}@shark.in.th`, toAddrs: [kT.email], subject: `ใบเสนอราคา r23 ${TAG}`, status: "SENT", sentAt: new Date(Date.now() - 60_000), trackTokenHash: sha(`${TAG}-r23`) } });
+    await P.$executeRawUnsafe(`INSERT INTO "ChatRateBucket" ("id","key","count","windowStart","createdAt","updatedAt") VALUES (gen_random_uuid()::text,$1,$2,NOW(),NOW(),NOW()) ON CONFLICT ("key") DO UPDATE SET "count"=$2,"windowStart"=NOW()`, sysKey, L.perSystem.limit);
+    const notes0 = await P.appNotification.count({ where: { tenantId: T, recipientUserId: u.id, title: { contains: "เกินเพดาน" } } });
+    const t0 = new Date(Date.now() - 1_000);
+    const u1 = await ingest(mail({ from: `rand1-${rand}@qc-flood.test` }));
+    const u2 = await ingest(mail({ from: `rand2-${rand}@qc-flood.test` }));
+    const bucketAfterFlood = Number(((await P.$queryRawUnsafe(`SELECT "count" FROM "ChatRateBucket" WHERE "key" = $1`, sysKey)) as Any[])[0]?.count ?? 0);
+    process.env.CRM_INBOUND_AUTHSERV_ID = AUTHSERV;
+    let pv: Any;
+    try { pv = await ingest(mail({ from: kP.email, headers: AR(`cust3-${rand}.test`) })); } finally {
+      if (OLD_AUTHSERV === undefined) delete process.env.CRM_INBOUND_AUTHSERV_ID; else process.env.CRM_INBOUND_AUTHSERV_ID = OLD_AUTHSERV;
+    }
+    const th = await ingest(mail({ from: kT.email, subject: `Re: ใบเสนอราคา r23 ${TAG}`, headers: { "in-reply-to": `<${rfc}>` } }));
+    const bucketAfterProven = Number(((await P.$queryRawUnsafe(`SELECT "count" FROM "ChatRateBucket" WHERE "key" = $1`, sysKey)) as Any[])[0]?.count ?? 0);
+    const notes = (await P.appNotification.count({ where: { tenantId: T, recipientUserId: u.id, title: { contains: "เกินเพดาน" } } })) - notes0;
+    const audits = (await P.auditLog.findMany({ where: { tenantId: T, action: "crm.email.inbound.rate_limited", createdAt: { gte: t0 } }, select: { after: true } })).filter((a: Any) => a.after?.bucket === "system").length;
+    chk("R2-3", "RV2-3 ruling: system bucket full ⇒ unproven random senders dropped (rate_limited) · an A-R-proven contact mail AND a thread-proven reply (our Message-ID, from that mail's recipient) are STORED and do not touch the system bucket · the owner gets ONE notification for the window (with ONE audit line)",
+      u1.reason === "rate_limited" && u2.reason === "rate_limited" && pv?.handled === true && th.handled === true && bucketAfterProven === bucketAfterFlood && notes === 1 && audits === 1,
+      `flood=${u1.reason}/${u2.reason} proven=${j({ h: pv?.handled, r: pv?.reason })} thread=${j({ h: th.handled, r: th.reason })} bucket=${bucketAfterFlood}→${bucketAfterProven} ownerNotes=${notes} audits=${audits}`);
+    await P.chatRateBucket.deleteMany({ where: { key: sysKey } });
+  });
+
+  // RV2-5 · re-invite signs the contact out of EVERY company (B→A switchCompany scenario)
+  await sub("R2-5", async () => {
+    const km = await mkContact("ผู้ติดต่อสองบริษัท", `two.co-${rand}@qc.invalid`);
+    const coB = await mkCompany(`บริษัทบี ${TAG}`);
+    for (const co of [company, coB]) await P.crmCompanyContact.create({ data: { tenantId: T, companyId: co.id, contactId: km.id, isPrimary: co.id === company.id, startedAt: new Date(Date.now() - 600_000) } });
+    const accA = await P.crmPortalAccess.create({ data: { tenantId: T, systemId: S, companyId: company.id, contactId: km.id, role: "APPROVE", loginMethods: [], invitedAt: new Date(Date.now() - 300_000), acceptedAt: new Date(Date.now() - 300_000), invitedById: u.id } });
+    const accB = await P.crmPortalAccess.create({ data: { tenantId: T, systemId: S, companyId: coB.id, contactId: km.id, role: "VIEW", loginMethods: [], invitedAt: new Date(Date.now() - 300_000), acceptedAt: new Date(Date.now() - 300_000), invitedById: u.id } });
+    const sB = await CS.mintPortalSession(accB.id, { ip: "203.0.113.220", userAgent: "probe" });
+    const sw1 = await settle(CRM.portal.switchCompany(sB.token, company.id, { ip: "203.0.113.220" }, { revokeCurrent: false }));
+    const switchedA = sw1.ok ? (sw1 as Any).v : null;
+    await CRM.portal.invite(ctx, owner, { companyId: company.id, contactId: km.id, role: "APPROVE" });
+    const bAlive = !!(await CS.getPortalSession(sB.token));
+    const aAlive = switchedA ? !!(await CS.getPortalSession(switchedA.token)) : null;
+    const sw2 = await settle(CRM.portal.switchCompany(sB.token, company.id, { ip: "203.0.113.221" }, { revokeCurrent: false }));
+    chk("R2-5", "RV2-5: re-inviting the contact at company A kills its live session at company B too (no B→A switchCompany afterwards) and the A session obtained by switching · positive control: before the re-invite B→A switch minted a live A session",
+      !!switchedA && switchedA.portalAccessId === accA.id && !bAlive && aAlive === false && !sw2.ok, `beforeSwitch=${switchedA?.portalAccessId === accA.id} B=${bAlive} A=${aAlive} switchAfter=${sw2.ok ? "SESSION" : (sw2 as Any).err}`);
+  });
+
+  // RV2-6 · F15 scanner (the spellings the reviewer lists + negatives) and line-anchored debt
+  await sub("R2-6", async () => {
+    const SC = (await import("../../lib/ci-equals-scan.mjs" as string)) as Any;
+    const miss = Object.entries(SC.F15_SELF_TEST.mustHit as Record<string, string>).filter(([, s]) => SC.findRawInsensitive(s).length !== 1).map(([k]) => k);
+    const fp = Object.entries(SC.F15_SELF_TEST.mustNotHit as Record<string, string>).filter(([, s]) => SC.findRawInsensitive(s).length !== 0).map(([k]) => k);
+    const svc = read("src/lib/modules/account/service.ts");
+    const fit = read("scripts/fitness.mts");
+    const owedSnippets = [...fit.matchAll(/file: "src\/lib\/modules\/account\/service\.ts", snippet: `([^`]+)`/g)].map((m) => m[1]);
+    const added = SC.findRawInsensitive(`${svc}\nexport const __probe = { name: { equals: "x", mode: "insensitive" } };`);
+    const newHit = added.filter((h: Any) => !owedSnippets.includes(h.snippet));
+    chk("R2-6", "F15: scanner catches all 12 must-hit spellings (incl. shorthand · swapped · single quote · comma in value · quoted key · QueryMode · variable object · spread · // in string · multi-line · mode variable) and none of the 8 negatives · a NEW `name: {equals, mode}` in account/service.ts is outside the line-anchored debt",
+      miss.length === 0 && fp.length === 0 && added.length === 3 && newHit.length === 1, `miss=${miss.join(",") || "-"} falsePos=${fp.join(",") || "-"} sites=${added.length} newOutsideDebt=${newHit.length}`);
+  });
+
+  // RV2-7 · nav: บริษัท tab visible on every CRM page for anyone with crm.company.read
+  await sub("R2-7", async () => {
+    const NAV = (await import("@/lib/modules/crm/nav" as string)) as Any;
+    const NP = (await import("@/components/nav-perms" as string)) as Any;
+    const ACC = (await import("@/lib/modules/crm/access" as string)) as Any;
+    const lay = read("src/app/app/sys/[id]/crm/layout.tsx");
+    const tabs = read("src/components/module-tabs.tsx");
+    const PAGES = ["deals/page.tsx", "contacts/page.tsx", "activities/page.tsx", "calendar/page.tsx", "settings/page.tsx", "emails/page.tsx", "companies/new/page.tsx"];
+    const pagesOk = PAGES.filter((p) => /crmNavItems\(id[,)]/.test(read(`src/app/app/sys/[id]/crm/${p}`)));
+    const asOf = (actor: Any) => NP.visibleTabs(NAV.crmNavItems(S), (NAV.CRM_NAV_PERMS as string[]).filter((k) => ACC.crmCan(actor, k))).some((x: Any) => x.href.endsWith("/crm/companies"));
+    const ownerSees = asOf({ userId: u.id, role: "OWNER", unitAccess: ["*"], permissions: {} });
+    const managerSees = asOf({ userId: u.id, role: "MANAGER", unitAccess: ["*"], permissions: {} });
+    const staffNoKey = asOf({ userId: staffU.id, role: "STAFF", unitAccess: ["*"], permissions: { "crm.deal.read": true, "crm.contact.read": true } });
+    const staffKey = asOf({ userId: staffU.id, role: "STAFF", unitAccess: ["*"], permissions: { "crm.company.read": true } });
+    const noProvider = NP.visibleTabs(NAV.crmNavItems(S), []).some((x: Any) => x.href.endsWith("/crm/companies"));
+    chk("R2-7", "RV2-7: the CRM layout computes the nav keys once (NavPermsProvider + CRM_NAV_PERMS) and ModuleTabs filters with them ⇒ on every page that calls crmNavItems(id) (7 pages checked) บริษัท shows for OWNER/MANAGER/STAFF-with-key and is hidden for a STAFF without crm.company.read · no provider ⇒ hidden (fail closed)",
+      /NavPermsProvider perms=\{perms\}/.test(lay) && /CRM_NAV_PERMS\.filter\(\(k\) => crmCan\(actor, k\)\)/.test(lay) && /visibleTabs\(items, perms\)/.test(tabs) && pagesOk.length === PAGES.length && ownerSees && managerSees && staffKey && !staffNoKey && !noProvider,
+      `pages=${pagesOk.length}/${PAGES.length} owner=${ownerSees} manager=${managerSees} staffKey=${staffKey} staffNoKey=${staffNoKey} noProvider=${noProvider}`);
+  });
 } finally {
   if (OLD_AUTHSERV === undefined) delete process.env.CRM_INBOUND_AUTHSERV_ID; else process.env.CRM_INBOUND_AUTHSERV_ID = OLD_AUTHSERV;
   await new Promise((r) => setTimeout(r, 1_500));

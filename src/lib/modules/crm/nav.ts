@@ -127,10 +127,19 @@ export function crmNavChildren(base: string): { href: string; label: string }[] 
  * CRM C3.1 ▸ หมวดที่มี `perm` ขึ้นเฉพาะเมื่อผู้เรียกส่งตัวตัดสินคีย์ของ actor มา (`(k) => crmCan(actor, k)`) และผ่าน —
  *   ไม่ส่งมา = ซ่อน (fail closed: ไม่มีลิงก์ที่กดแล้ว 404) · ไฟล์นี้บริสุทธิ์จึงรับเป็นฟังก์ชัน ไม่ import access.ts เอง ◂
  */
-export function crmNavItems(systemId: string, can?: (perm: string) => boolean): { href: string; label: string }[] {
+export function crmNavItems(systemId: string, can?: (perm: string) => boolean): { href: string; label: string; perm?: string }[] {
   const base = `/app/sys/${systemId}`;
   return [
     { href: base, label: "ภาพรวม" },
-    ...CRM_NAV.filter((e) => e.status === "ready" && (!e.perm || (can ? can(e.perm) : false))).map((e) => ({ href: `${base}${e.path}`, label: e.label })),
+    // CRM C5.5-fix2 ▸ รีวิว RV2-7: ไม่ส่ง `can` มา (หน้าส่วนใหญ่) = แท็บที่มีคีย์ติด `perm` ไปด้วย แล้ว `ModuleTabs` กรองด้วยคีย์ที่
+    //   layout ของ CRM (`app/sys/[id]/crm/layout.tsx`) คิดให้ — เดิมถูกซ่อนจากทุกคนบนทุกหน้าที่ไม่ส่ง `can` (เจ้าของร้านก็ไม่เห็น "บริษัท") ◂
+    ...CRM_NAV.filter((e) => e.status === "ready" && (!e.perm || !can || can(e.perm))).map((e) => ({
+      href: `${base}${e.path}`,
+      label: e.label,
+      ...(e.perm && !can ? { perm: e.perm } : {}),
+    })),
   ];
 }
+
+/** CRM C5.5-fix2 ▸ RV2-7: คีย์ทั้งหมดที่แท็บของ CRM อ้าง (layout คิดเฉพาะชุดนี้ส่งให้ client — ไม่ส่งสิทธิ์อื่นของผู้ใช้ออกไป) ◂ */
+export const CRM_NAV_PERMS: readonly string[] = Object.freeze([...new Set(CRM_NAV.map((e) => e.perm).filter((p): p is string => !!p))]);

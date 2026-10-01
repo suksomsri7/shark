@@ -341,7 +341,7 @@ export async function loginWithLine(
 
   // ไม่มีคำเชิญ: ผู้ติดต่อที่ตรงกับตัวตน LINE และมีสิทธิ์ที่ยอมรับ LINE
   // CRM C5.5-fix2 ▸ hunter 2a-6 (ทาง LINE): อีเมล LINE ที่หน้าตาคล้าย (`_`/`%`) ห้ามจับคู่ผู้ติดต่อคนอื่น — ciEquals + ตรวจซ้ำทุกแถว ◂
-  const or: { lineUserId?: string; email?: { equals: string; mode: "insensitive" } }[] = [{ lineUserId }];
+  const or: { lineUserId?: string; email?: ReturnType<typeof ciEquals> }[] = [{ lineUserId }];
   if (email) or.push({ email: ciEquals(email) });
   let ids = (await prisma.crmContact.findMany({ where: { tenantId: shop.tenantId, systemId: shop.systemId, archivedAt: null, mergedIntoId: null, OR: or }, select: { id: true, email: true, lineUserId: true }, take: 20 }))
     .filter((r) => r.lineUserId === lineUserId || (!!email && normEmail(r.email) === email))
@@ -1104,6 +1104,8 @@ export async function invite(
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true, name: true } });
   if (!tenant) throw new PortalError("NOT_FOUND", "ไม่พบร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   const access = await prisma.$transaction(async (tx) => {
+    // รีวิว RV2-5: "เชิญซ้ำ" = มีสิทธิ์ของ (บริษัท, ผู้ติดต่อ) นี้อยู่แล้ว — เชิญครั้งแรกเข้าบริษัทใหม่ไม่ใช่เหตุให้ออกจากบริษัทอื่น ◂
+    const reinvite = !!(await tx.crmPortalAccess.findUnique({ where: { companyId_contactId: { companyId: co.id, contactId } }, select: { id: true } }));
     const row = await tx.crmPortalAccess.upsert({
       where: { companyId_contactId: { companyId: co.id, contactId } },
       create: { tenantId: ctx.tenantId, systemId: ctx.systemId, companyId: co.id, contactId, role, loginMethods: methods, invitedById: a.userId || null, invitedAt: now, inviteTokenHash: sha(token), inviteExpiresAt: expiresAt },
@@ -1113,7 +1115,12 @@ export async function invite(
     if (row.tenantId !== ctx.tenantId || row.systemId !== ctx.systemId) throw new PortalError("NOT_FOUND", "ไม่พบบริษัทนี้ในระบบ CRM ที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
     // CRM C5.5-fix2 ▸ hunter 2a-8: เชิญซ้ำ = เริ่มสิทธิ์ใหม่ ⇒ session ที่ยังเปิดอยู่ของสิทธิ์นี้ตายทันที (พนักงาน "ส่งคำเชิญใหม่" หลังลูกค้า
     //   แจ้งมือถือหาย/กล่องจดหมายถูกเจาะ ⇒ เครื่องเก่าต้องหลุด — เดิมอยู่ต่อจนหมดอายุ session) · ในธุรกรรมเดียวกับการหมุน hash ◂
-    const killed = await tx.portalSession.updateMany({ where: { portalAccessId: row.id, revokedAt: null }, data: { revokedAt: now } });
+    // รีวิว RV2-5: ผู้ติดต่อที่มีสิทธิ์หลายบริษัท — เครื่องที่หายถือ session ของบริษัทอื่นแล้ว `switchCompany` กลับมาบริษัทนี้ได้
+    //   ⇒ ฆ่า session ที่ยังเปิดอยู่ **ทุกใบของผู้ติดต่อคนนี้** (ทุกบริษัทในร้านนี้) แบบเดียวกับ portal-identity เมื่อตัวตนเปลี่ยน ◂
+    //   (เฉพาะการเชิญซ้ำ — เชิญครั้งแรกของบริษัทใหม่ไม่ฆ่า session ที่ผู้ติดต่อใช้อยู่กับบริษัทอื่น)
+    const killed = reinvite
+      ? await tx.portalSession.updateMany({ where: { tenantId: ctx.tenantId, crmContactId: contactId, revokedAt: null }, data: { revokedAt: now } })
+      : { count: 0 };
     await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: a.userId || null, action: "crm.portal.invite", targetType: "CrmPortalAccess", targetId: row.id, after: { companyId: co.id, contactId, role, loginMethods: methods, expiresAt: expiresAt.toISOString(), sessionsRevoked: killed.count } } });
     return row;
   });

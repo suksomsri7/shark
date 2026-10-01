@@ -1,0 +1,82 @@
+(node:1277471) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [A0.1] premise (positive control): raw `{ equals, mode: insensitive }` is ILIKE with live wildcards — `_` look-alike and `%@domain` match the victim
+        — ACTUAL rawUnderscore=true rawPercent=3
+  ✅ [A0.2] ciEquals(): `_` look-alike ⇒ 0 · `%@domain` ⇒ 0 · `\` treated literally (a\y ≠ a\x) · exact address in other case ⇒ the victim · literal `%_\` address in other case ⇒ itself · Thai local part (case-folded domain) ⇒ itself, Thai `_` look-alike ⇒ 0
+        — ACTUAL helper=true u=0 p=0 bs=0 exact=true literal=true thai=true thaiLook=0
+  ✅ [A1] portal OTP: a look-alike mailbox (`vic_tim-…` for contact `vic.tim-…`, or `%`) gets NO portal session (the takeover of 2a-6) · positive control: the contact's own address in other case ⇒ a session of the victim's access
+        — ACTUAL lookalike={"stage":"verify","err":"CustomerAuthError:รหัสยืนยันไม่ถูกต้องหรือหมดอายุแล้ว — กดขอรหัสใหม่แล้วลองอีกครั้ง","hadCode":true} percent={"stage":"verify","err":"CustomerAuthError:รหัสยืนยันไม่ถูกต้องหรือหมดอายุแล้ว — กดขอรหัสใหม่แล้วลองอีกครั้ง","hadCode":true} legit={"stage":"session","accessId":"cmupiyg0a000ipbkznp9qo2df"}
+  ✅ [A2] portal LINE (no invite): verified LINE e-mail `vic_tim-…` ⇒ no session · positive control: the contact's own address (other case) ⇒ session of the victim's access
+        — ACTUAL lookalike=CustomerAuthError:ยังไม่พบสิทธิ์พอร์ทัลที่ตรงกับบัญชี LINE นี้ — เปิดลิงก์เชิญจากร้าน หรือเข้าด้วยอีเมลแทน legit=true
+  ✅ [A3] inbound From `sta_ff-…` (attacker's real, DMARC-passing mailbox) is NOT the staff `sta.ff-…`: stored IN, sentById null — never a forged 'sent by our salesperson' OUT · positive control: the staff's own address (other case) with A-R ⇒ OUT, sentById = staff
+        — ACTUAL look={"h":true,"dir":"IN","by":null} legit={"dir":"OUT","by":true}
+  ✅ [A4] setUserSetting fromAddr `sa_les@<verified>` is NOT refused as 'a contact's address' because of contact `sa.les@` (false refusal) · positive control: the contact's exact address (other case) is refused
+        — ACTUAL look=saved legit=refused
+  ✅ [A5.1] inbound From domain `dom_…` (forgeable, no auth for customers) does NOT file the mail on company `dom-…` (matchedBy NONE) · positive control: same domain other case ⇒ DOMAIN, that company
+        — ACTUAL look=NONE/false legit=DOMAIN/true
+  ✅ [A5.2] industry filter `ab_…` does not list industry `ab-…` (harmless widening) · positive control: other case lists it
+        — ACTUAL look=0 legit=true
+  ✅ [A5.3] matchByExactName('%') ⇒ null (was: the oldest company) · Thai+Latin name other case ⇒ that company · a name holding literal `%_\` ⇒ itself · `_` look-alike of it ⇒ null
+        — ACTUAL pct=null thai=true literal=true look=null
+  ✅ [A6] bridge lead `vic_tim-…` is a NEW contact (was: silently merged into the victim `vic.tim-…`) · positive control: the victim's address in other case ⇒ the victim (repeated)
+        — ACTUAL look={"c":true,"victim":false} legit={"c":false,"victim":true}
+  ✅ [A7] findContactsForLink (account 'same person?' block) `vic_tim-…` ⇒ not the victim · positive control: exact other case ⇒ the victim
+        — ACTUAL look=1 legit=true
+  ✅ [A8] [PROD-LIVE] member findCustomersForLink `me_mber-…` / `%@domain` ⇒ not the member · positive control: exact other case ⇒ the member
+        — ACTUAL look=0 pct=0 legit=true
+  ✅ [A9] [PROD-LIVE] mail-to-board From `sta_ff-…` is an OUTSIDER: not assigned to staff `sta.ff-…` and the card shows 'จาก: <sender>' · positive control: the staff's own address (other case) ⇒ assigned to that staff
+        — ACTUAL look={"ok":true,"asg":0,"from":true} legit={"ok":true,"staff":true}
+  ✅ [B1] copy target inside SHARK inbound (own/other `crm+…`, board `งาน+`/`tasks+`, shop `<slug>@shark.in.th`, any case) is refused for the shop setting AND the per-user setting · positive control: an outside address is accepted
+        — ACTUAL acceptedShop=- acceptedUser=- outside=true/true
+  ✅ [B2] the inbound copy (copyMode IN) carries `Auto-Submitted: auto-forwarded` and our loop marker `X-SHARK-Loop`
+        — ACTUAL handled=true copies=1 headers={"Auto-Submitted":"auto-forwarded","X-SHARK-Loop":"crm-copy"}
+  ✅ [B3] a mail that carries our loop marker comes back ⇒ dropped (handled false, no row, no copy sent again) · positive control: an ordinary mail is stored and copied
+        — ACTUAL back={"h":false,"r":"loop"} rows+0 normal=true copies=1
+  ✅ [B4] legacy setting copyToAddr = our own `crm+…` (saved before the guard) ⇒ the mail is stored but NO copy is sent
+        — ACTUAL handled=true copies=[]
+  ✅ [C1] forged customer From (no authentication proof) ⇒ stored on the contact (staff still sees it) WITH routing.unverifiedFrom = true · thread DTO says unverifiedFrom · crm.email.received carries no contactId/companyId (unverifiedFrom: true) ⇒ the score rule awards 0
+        — ACTUAL row={"c":true,"routing":{"unverifiedFrom":true}} dto=true evt={"emailId":"cmupiyk3p002ypbkzvpe9jval","threadKey":"threeceruyd","unverifiedFrom":true} score=0
+  ✅ [C2] unverified From that is NOT the thread's recipient but cites its Message-ID ⇒ OUT not marked replied · no crm.email.replied · that contact's sequence NOT stopped
+        — ACTUAL replied=false evts+0 enrK2=ACTIVE
+  ✅ [C3] authenticated customer reply (CRM_INBOUND_AUTHSERV_ID set · dmarc=pass header.from=<its domain>) ⇒ no flag · event carries contactId · score +10 · OUT repliedAt · ONE crm.email.replied · K1's sequence STOPPED
+        — ACTUAL routing=null evt={"emailId":"cmupiykrc0036pbkzhhjuniu9","contactId":"cmupiyjmf002jpbkzadh2bu2p","threadKey":"threeceruyd"} score=1 replied=true evts+1 enrK1=STOPPED
+  ✅ [D1.1] per-sender cap: a sender over its hourly bucket ⇒ accepted-and-dropped (ok true · handled false · reason rate_limited · no row) · exactly ONE audit line for the window however many mails · positive control: another sender is stored
+        — ACTUAL o1={"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0} o2=rate_limited other=true rows+1 audits=1
+  ✅ [D1.2] per-system cap: system bucket full ⇒ any new sender dropped (reason rate_limited, no row) · ONE audit line for the window
+        — ACTUAL s1={"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0} s2=rate_limited rows+0 audits=1
+  ✅ [D1.3] window over (bucket reset) ⇒ the same sender is stored again
+        — ACTUAL {"ok":true,"handled":true,"emailId":"cmupiylmd003ipbkz4n3oydcg","attachmentsDropped":0}
+  ✅ [D2] re-sending the invite of an access kills its live portal sessions (old device signed out) · invite audit records sessionsRevoked · positive control: a session minted after the re-invite works
+        — ACTUAL before=true afterReinvite=false fresh=true audit={"role":"APPROVE","companyId":"cmupiyfz1000gpbkzx0x46gh5","contactId":"cmupiylnx003lpbkz15k5uayl","expiresAt":"2026-10-08T12:43:02.472Z","loginMethods":["EMAIL_OTP","LINE"],"sessionsRevoked":1}
+  ✅ [E1] nav: tab บริษัท carries perm crm.company.read (shown with the key, hidden without it)
+        — ACTUAL perm=crm.company.read with=true without=false
+  ✅ [E2] /companies list + /companies/[companyId]: `if (!crmCan(actor, "crm.company.read")) notFound()` before any company read · drawer link บริษัท gated by crm.company.read (เพิ่มบริษัท by crm.company.create)
+        — ACTUAL list=true record=true drawer=true
+  ✅ [E3] deal stage tabs expose the selected stage: aria-current on the active `deal-stage-tab-*`
+        — ACTUAL present
+  ❌ [R2-1] 4-hop outside-forwarder loop (FW: subject, no loop header, From = the copy mailbox) ⇒ exactly ONE copy (the original) · an Auto-Submitted mail and a subject carrying the copy prefix mid-way get no copy · positive control: the customer's mail was copied
+        — ACTUAL firstCopied=true/true afterHops=5 afterAll=7
+  ❌ [R2-2] RV2-2: forged `ceo@<company emailDomain>` (no contact, no A-R) filed by DOMAIN ⇒ routing.unverifiedFrom · event has NO companyId (unverifiedFrom: true) · positive control: the same domain WITH A-R ⇒ no flag, event carries companyId
+        — ACTUAL forged={"by":"DOMAIN","routing":null,"evt":{"emailId":"cmupiymxf004apbkzf99kbiuj","companyId":"cmupiymus0049pbkzfowqnhiy","threadKey":"6570e6067ddd988131d6ae759c89e732"}} proven={"routing":null,"evtCo":true}
+  ❌ [R2-4] RV2-4: listThreads (inbox · contact/company lists · REST GET /emails/threads · AI tool crm_email_thread) carries unverifiedFrom per thread (forged thread true · proven thread false) · inbox rows render the badge · the REST/AI op passes items through and its summary + tool hint explain the flag
+        — ACTUAL forged=undefined proven=undefined inboxBadge=false opText=false
+  ❌ [R2-3] RV2-3 ruling: system bucket full ⇒ unproven random senders dropped (rate_limited) · an A-R-proven contact mail AND a thread-proven reply (our Message-ID, from that mail's recipient) are STORED and do not touch the system bucket · the owner gets ONE notification for the window (with ONE audit line)
+        — ACTUAL flood=rate_limited/rate_limited proven={"h":false,"r":"rate_limited"} thread={"h":false,"r":"rate_limited"} bucket=1002→1004 ownerNotes=0 audits=1
+  ❌ [R2-5] RV2-5: re-inviting the contact at company A kills its live session at company B too (no B→A switchCompany afterwards) and the A session obtained by switching · positive control: before the re-invite B→A switch minted a live A session
+        — ACTUAL beforeSwitch=true B=true A=false switchAfter=SESSION
+  ❌ [R2-6] block ran
+        — ACTUAL Error: Cannot find module '/root/projects/shark-crm-cf2/scripts/lib/ci-equals-scan.mjs' imported from /root/projects/shark-crm-cf2/scripts/pending/cf2/probe-cf2.mts     at finalizeResolution (node:internal/modules/esm/resolve:283:11)     at moduleResolve (node:internal/modules/esm/resolve:952:10)
+  ❌ [R2-7] block ran
+        — ACTUAL Error: Cannot find package '@/components' imported from /root/projects/shark-crm-cf2/scripts/pending/cf2/probe-cf2.mts     at packageResolve (node:internal/modules/esm/resolve:873:9)     at moduleResolve (node:internal/modules/esm/resolve:946:18)
+  ✅ [CLEAN] throwaway tenant, users, systems and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+🔴 probe-cf2: 28/35
+JSON_SUMMARY {"total":35,"passed":28,"findings":[{"id":"R2-1"},{"id":"R2-2"},{"id":"R2-4"},{"id":"R2-3"},{"id":"R2-5"},{"id":"R2-6"},{"id":"R2-7"}]}
