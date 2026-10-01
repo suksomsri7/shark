@@ -66,3 +66,112 @@ D2 hunks in `sequences.ts`: 86-93, 820+, 1149+, 1210-1271, 1342-1420, 1574-1690 
 - qc-webhook **15/15**
 - typecheck (`ISO_MEM=6G … pnpm typecheck`): **exit 0**
 - probe-review (run 2): RV-I1 ❌ · RV-I2 ❌ · RV-I3 ✅ (real route: lock held > 30 s tx timeout → tx rolled back after 35.7 s → first 409 `idempotency_outcome_unknown`, same-key retry 409 replayed, contact unchanged, claim 409 TTL 24 h) · RV-I4 ❌ · RV-A1 ❌ · RV-A2 info · RV-W1 ✅ · CLEAN ×3 ✅ (6/10; the 4 reds are the holes RV-1/2/3/4, asserting the safe behaviour)
+
+---
+
+# ROUND 2 REVIEW (independent · 1 Oct 2026 · read-only on src/)
+**VERDICT: MERGEABLE.** No BLOCKER / HIGH / MED is open. Every round-2 claim checked from the code holds, and my probes reproduce the ones that can be measured. 4 LOW + 2 NOTE, all debt. The controller must still apply the C5.3-L3-m1 oracle edit (item 6b) before the C5.3 suite goes green.
+
+Tree `/root/projects/shark-crm-c54e` @ d2b45318 · round-2 diff `git diff 2e8eafd4 d2b45318`, read against the whole card `git diff 288cca97 d2b45318 -- src` · QC3 only · probe `scripts/pending/c55/review-r2/probe-review-r2.mts` · reruns `scripts/pending/c55/review-r2/run-review-r2.sh` · leftover check `check-leftovers.mts` · logs `/tmp/c55-logs/review-r2/`.
+
+## Round-1 findings: status
+| id | status | evidence |
+|---|---|---|
+| RV-1 stale takeover re-runs | **CLOSED** | `idempotency.ts:214-233` CAS `updateMany where {id, status:null, createdAt}` ⇒ status 409 + outcome_unknown body, TTL now+24 h. A lost CAS re-reads and replays. The handler is never called. **R2-I1 ✅**: claim aged 10 min, 2 concurrent same-key retries ⇒ both 409 `idempotency_outcome_unknown`, exactly 1 CAS winner (the other is `Idempotent-Replayed`), runs=0. The owner's late result write with its own `ownWhere` predicate ⇒ count 0. Row 409 with TTL ≈24.0 h, the 3rd retry is replayed, rows=1. Control: a 5-min claim still answers `idempotency_in_progress` and its owner can still write (count 1). |
+| RV-2 thrown 409 after write released | **CLOSED** (residual = debt, see item 3) | `idempotency.ts:293-313` releases only flagged or beforeHandler errors. I audited every flagged site below. Builder probe H1-flag-* + H1-reassign-replay. |
+| RV-3 beforeHandler dead code | **CLOSED** | `run.ts` wraps `assertScope` in `args.beforeHandler`, and core `dispatch.ts` passes `ctl.beforeHandler`. Note: that zone holds only the synchronous `actorCan` (no DB), so in real traffic the "not started ⇒ 503 + release" branch cannot fire. It is safe and only reachable by injection (H1-B-dispatch). No path releases the claim after the handler starts: `notStarted` is true only for errors raised inside `ctl.beforeHandler`, `ctl` is never handed to op handlers, and `withIdempotency` has exactly one caller (`dispatch.ts:236`). |
+| RV-4 platform automation toggle/delete | **OPEN, outside this card** (other agent) | builder rerun of probe-review: HOLE-RV-A1 still ❌. Prod-exposed. Still urgent. |
+| RV-5 skill docs | **in-repo CLOSED · installed skills OPEN (controller)** | Account Conventions + CRM rule 7 updated. `/root/.claude/skills/*/SKILL.md` still say "reuse the same key". |
+| RV-6 approval reading | **CLOSED** | Verified against the doors' own argument mapping: points = `member.point.adjust`, systemId = `resolvePointSystemIds(member)[0]` (the same value the UI door `points-actions.ts:54-58` and the runtime `journeys.ts:906` use), unit null, amount null. Vouchers = `member.voucher.issue`, systemId = template system (the door requires `tpl.systemId === ctx.systemId`, `service.ts:572`), amount = face × count, unit null. The role / cap / sign test is the shared `adjustVerdictOf` / `issueVerdictOf` (`Math.abs(delta)`). **R2-I2 ✅ differential, 14 policy shapes**: verdict vs the REAL manual door by the same MANAGER (adjustWithApproval / voucher issue). Shapes: none, global, system=POINT, system=MEMBER, unit, threshold, inactive, threshold=total±1. APPROVAL ⇔ door pending in every case, mismatches=0. Two edges are stricter than the door, never laxer: (a) shops with several member systems, where a policy on any of their point systems ⇒ APPROVAL; (b) the member REST door resolves the point system per unit hint, which can differ from `[0]` on multi-POINT shops (runtime uses `[0]`, so the verdict matches what the rule will actually do). |
+| RV-7 inventory rows | handed to it4 lane (note in builder file) | n/a |
+| RV-8 platform→CRM import | **CLOSED** | `webhooks/actions.ts` no longer imports CRM. Composition root `src/lib/webhook-guards.ts`. |
+
+## Item-by-item
+**1 (RV-6).** See table: identical mapping, amount sign `Math.abs`, units satang × count, role from the same actor object, system as described. Automation cannot get DIRECT where the door would go pending (R2-I2). The opposite case (blocked where a human is not) happens only in the two stricter edges above.
+
+**2 (RV-1).**
+- The CAS is a single `UPDATE … WHERE status IS NULL AND createdAt = $old`. Atomic, and R2-I1 shows one winner.
+- Window: the only `maxDuration` in the repo is `api/cron/outbox` = 60 s. `vercel.json` sets none, so the platform default is 300 s, below 360 s. I could not check the Vercel dashboard project setting. If someone raises it above 6 min, RV-1 would convert a still-running claim. That outcome is still safe (409, never a re-run): the live owner's later write is a no-op, so the client of the live request gets its real answer while retries get outcome_unknown.
+- What the client is told: "check whether the record exists; if not, send with a NEW key". **Residual, stated plainly:** server-side idempotency ends there. A new-key retry of a money op (payments, points credit, gift-card sell, account payment record, CRM payment) whose first attempt did commit is a duplicate charge or grant, unless that op has its own natural key. The client is responsible for the existence check. This is inherent to "unknown outcome" and identical to H55-1.
+- The response for a failed outcome-write is a 503 "try again shortly" from `dispatch.ts` catch (`mapError` transient). A same-key retry then gets `in_progress` for up to 6 min and `outcome_unknown` after that. Safe, slightly misleading text. Pre-existing.
+
+**3 (RV-2) flagged throwers: all provably pre-write.**
+- `confirm_required`: 16 real throw sites (34 grep hits incl. types). All are `reasonOf` first statements, entry gates (`emails.ts:1589`, `:546`, `objects.ts:1172`, `pipelines.ts:299`, `tracking.ts:494`, `calls.ts:335`, `privacy.ts:266/1153`), or inside a tx that rolls back (`objects.ts:698/700`, `deals.ts:903` under `withDealLocks`).
+- `stage_requirements`: one site, `deals.ts:912`, inside the move tx. The writes before it (`crmDeal.update`, `setFieldValues(…, tx)`) roll back. The only REST caller is `ops/deals.ts:219`. bulkMove catches it per deal.
+- `crm_v2_disabled`: entry gates.
+- Portal `rate_limited`: `portalWriteGate` comes before writes at all 7 sites. Only a rate counter is incremented, which is harmless.
+- Member `as400` 429: only `CustomerRateLimitError` declares 429, and `hit()` / `hitOtpAskBuckets` run first in every OTP flow.
+- `campaignPort()` 503: the first statement of all 9 campaign handlers.
+- Flags go on fresh error objects created by the op-level mappers (`crm/api/op.ts:70`, `portal-lane.ts:121`), so no singleton gets flagged permanently.
+
+**Unflagged residual: none must be flagged before merge.** Storing is the safe direction (never a duplicate), and it is **exactly prod behaviour today**: `origin/main:src/lib/api/idempotency.ts` stores every result (only C5.4, unmerged, released 409/429/503). Worst user-visible cases, all debt:
+- (a) account `import.run` 429 (`import.ts:34-35`, 20 imports/h). A same-key retry after the hour replays 429 for 24 h, and `ACCOUNT-API.md:61` says "wait Retry-After and retry". This should be flagged next: `accountRateGuard` is the first statement, so it is provably pre-write. Account lane.
+- (b) CRM 409s that say "รีเฟรชแล้วลองอีกครั้ง" (refresh and try again): `deals.ts:893`, `:1032`, `pipelines.ts:419`. A same-key retry replays. CRM rule 7 now says "send a new key", but the Thai text and the installed skill (RV-5) do not.
+- (c) account `files-write.ts:252` 503 "AI not configured" is replayed after the owner configures it, while the ACCOUNT error table row (`:67`) says "Retry later".
+- (d) kanban WIP 409: the fix needs `force:true`, which is a new body and therefore a new key anyway. No impact.
+- (e) KANBAN-/MEMBER-API docs do not say error answers are stored (prod-identical behaviour). Docs debt.
+
+**4 (RV-3).** See table. No path releases a claim after the handler started.
+
+**5 Webhook choke point.**
+- The service itself lazy-imports the composition root inside `runEventGuards` (`service.ts:407-417`) on every call that carries `by`. So every entry path gets the guard without needing a per-door import: route handlers, server actions, REST dispatch, AI-proposal execution through the same op handlers, and member/account pages.
+- No mobile, cron, or edge path writes endpoints (the service uses prisma, so node only).
+- Callers in `src/`: **15**, and all pass `by`. I grepped this myself, and builder WB-static agrees.
+- The `@deprecated` author-less `createEndpoint` overload has **0 callers in src/**. It skips the guard. The callers are scripts only: `qc-acc-v2-permissions.mts:768` and `seed-acc-v2-qc.mts:2058` (typed), plus several any-typed oracles and probes, which also call `setEndpointActive/Events` without `by` at runtime.
+- Fail-closed? If the import throws, it fails closed (the write is refused). If the registry is empty after the import, it fails **open** (R2-2, LOW, theoretical).
+- Event-name bypass: none. `dispatchWebhooks` matches by exact `includes(evt.type)`, and only `[]` means all. So case or whitespace variants and `*` / `crm.*` deliver nothing, and `[]` is caught by the guard.
+- Already-stored endpoints: R2-4.
+- Account connections filtering: R2-1.
+- `qc-account-api-webhooks` 22/22 and `qc-webhook-ui` 11/11 re-run green on QC3.
+
+**6 Oracle edits.**
+- (a) c1.10 S7.2: a single line, `before = HOOKS.length` moved above the two REST calls, with the ORACLE-EDIT marker. It is exactly what round 1 authorised and nothing more.
+- (b) C5.3-L3-m1 (a): **yes, `409 idempotency_outcome_unknown, ran 0` is the correct consequence of RV-1.** The proposed assertion is necessary but not tight. Recommended for (a): `aged.count===1 && resA.status===409 && (await resA.json()).error.code==="idempotency_outcome_unknown" && ranA===0`, plus a **second same-key call ⇒ 409 + `Idempotent-Replayed: true` and ranA still 0** (sticky, not re-run on the 2nd try), plus the row's `status===409`. Keep (b) unchanged: a returned 503 is still released. Reword the title, which says "taken over (the retry runs)" and "older than ~2 min"; the threshold is 6 min. The builder's QC2 act `aged=1 · retryA=409 ran=0 · b1=503 b2=200 ranB=2` would satisfy it.
+
+**7 Regression honesty.** I read each non-green log and every claim holds:
+- m2.2 S5.1 act `///` and m2.5 S7.2 act `mobile=undefined…`: screenshot/HTTP artefacts, the same as round 1.
+- account-api-docs F2.1–2.3, 2.5–2.7: no `.claude/skills` in the worktree (F2.1 act empty).
+- acc-v2-security: the same 6 reds as `/tmp/c55-logs/base-acc-security.log` (lines 142-145 S5 Beam payment, 337-338 S17 hex debt), byte-identical texts.
+- acc-v2-permissions: 23 reds, all R1–R4 seed comparisons. W1–W2 webhook checks are green.
+- C5.3 18/19: L3-m1 by ruling.
+- c1.10 H.1: :3215 environment.
+- Note: the builder ran C5.3 on QC2.
+
+**8 New-surface check.**
+- Tenant isolation: OK. `markStaleUnknown` uses `tenantDb` plus row id. `membershipActor` and the API-key creator lookup are scoped by tenantId. `setEndpointActive` reads through `tenantDb`.
+- Error text: guard messages are fixed Thai strings, and `WebhookGuardError` maps to 403 via declared status.
+- Stored-409 growth: the conversion reuses the existing row. The table has **no sweeper at all** (expired rows are deleted only when the same key is reused). That is pre-existing (R2-5).
+- Typing: `actor as MemberActor` in `crmPlatformWebhookProblem` (role is a string from Membership). Acceptable.
+
+## New findings
+| id | sev | file:line | finding | proof |
+|---|---|---|---|---|
+| R2-1 | LOW | `src/lib/modules/account/connections-actions.ts:187-191` | Filtering to `account.*` turns a request that names only non-account events into `[]`, which means **ALL events of the shop** (CRM, member, chat…). An OWNER asking for `["crm.deal.won"]` or `["member.created"]` gets an all-events endpoint. On a v1 shop any user with `webhook.endpoint.create` does too. On v2 the CRM guard still refuses non-whole-shop authors, so there is no CRM confidentiality loss, and the same user can create an all-events endpoint on `/app/settings/webhooks` anyway. The UI only offers account checkboxes, so this path needs a crafted form. Fix: if the form named ≥1 event and the filtered list is empty, refuse ("เลือกได้เฉพาะเหตุการณ์ของบัญชี"). Related pre-existing UX: the legend "ไม่เลือก = ทุกเหตุการณ์" means every event of the shop, not every account event. | **R2-I3 ❌ REPRODUCED** (both runs): v1/v2 `["crm.deal.won"]` and `["member.created"]` ⇒ stored `[]` (4/4) · control `["account.document.issued"]` stored as-is |
+| R2-2 | LOW | `src/lib/webhooks/service.ts:410` | `if (EVENT_GUARDS.size === 0) return;` fails open. It is unreachable today because the root is imported by the service itself (same module instance). It would bite if the root stopped registering, for example after a refactor that moves the import. Suggest throwing (fail closed) when the root is loaded but registers nothing. | reasoned |
+| R2-3 | LOW (UX, safe direction) | `src/lib/webhooks/actions.ts:80` · `src/lib/modules/account/connections-actions.ts:213` | A refused toggle-on throws `WebhookGuardError` out of a server action with no try/catch. The user gets the error boundary (prod redacts the message) instead of the Thai reason. Member/CRM toggles return `{ok:false, reason}`. Builder WB probe shows `platform toggle → threw`. | reasoned + builder log |
+| R2-4 | LOW (residual, owner decision) | `webhooks/service.ts` (no author column) | Endpoints stored before this card, or by an author who later loses whole-shop rights, keep receiving CRM events, including `[]` all-events endpoints made on member/account/platform pages before CRM v2 was switched on. They cannot be re-checked: `WebhookEndpoint` has no creator. Payloads are id-only (R-C.8), so the exposure is event metadata. Option: when a shop switches CRM to v2, list or pause `[]` / `crm.*` endpoints for owner review. | reasoned |
+| R2-5 | NOTE (pre-existing) | `src/lib/api/idempotency.ts` | No sweeper for `ApiIdempotency`: rows (success, error, and now outcome-unknown) live until the same key is reused. RV-1 adds no rows. | grep: only other mention is the tenant-scope model list in `core/scope.ts` |
+| R2-6 | NOTE (docs debt) | `docs/api/ACCOUNT-API.md:61,67` · KANBAN/MEMBER generators | The error table's "wait and retry" / "retry later" advice contradicts "error answers are stored and replayed" for import 429 and files 503. KANBAN/MEMBER docs do not mention stored errors at all (prod-identical behaviour). | code-read |
+
+## Must-fix before merge
+None in `src/`. Controller actions: (1) apply the C5.3-L3-m1 ORACLE-EDIT as tightened in 6(b). (2) RV-4 remains urgent in its own card. (3) Skill docs (RV-5).
+Debt list for later cards:
+- R2-1 (3-line refuse in connections-actions)
+- R2-3 (catch and return reason)
+- R2-2
+- item-3 (a): flag `import.run` 429, account lane
+- R2-4, R2-6
+
+## Rerun numbers (mine · QC3 · `/tmp/c55-logs/review-r2/`)
+- `probe-review-r2` run 1 6/8: R2-I1 used a fixture artefact. I aged a live owner's claim by editing `createdAt`, which also changed the owner's CAS key, so the young-control's "owner stores 200" was unprovable. Rewritten for run 2.
+- run 2 **7/8**: R2-I1 ✅ · R2-I1 control ✅ · R2-I2 ✅ · R2-I3 ❌ (= R2-1) · CLEAN ×4 ✅.
+- `qc-webhook-ui` **11/11** · `qc-account-api-webhooks` **22/22**.
+- Leftovers after both runs: tenants=0 · users=0 · sessions=0 (8 throwaway tenants / 10 users / 4 sessions created and deleted in total).
+
+## Not checked
+- The Vercel dashboard function-duration setting.
+- `next build` and bundler module-instance identity for the lazy root, which I reasoned about but did not build.
+- Full-suite reruns (forbidden).
+- The kanban/member doc generators' text.
+- The prod data question for R2-4: how many existing `[]` / `crm.*` endpoints exist. Needs read access to prod.
+- RV-4 / RV-7 (other lanes).
