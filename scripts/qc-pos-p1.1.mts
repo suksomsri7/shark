@@ -1147,7 +1147,7 @@ try {
     chk("X2.3", refused(u1, "NOT_FOUND") && refused(u2, "NOT_FOUND") && u3.ok && listOf(u3.value).length > 0, "อารีย์ NOT_FOUND ×2 · สีลม ได้", `อารีย์ list ${codeOf(u1)} · barcode ${codeOf(u2)} · สีลม ${u3.ok ? listOf(u3.value).length : u3.err}`);
 
     // X3 สิทธิ์ — เป้าหมาย = สินค้าชั่วคราวใหม่ของร้านกาแฟ
-    const tgt = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} perm`, basePriceSatang: 2000 }));
+    const tgt = await attempt(() => C.createProduct(ctxOwner, { name: `${TAG} perm`, basePriceSatang: 2000, unitId: SILOM }) /* ORACLE-EDIT P1.1-X3.2 (ผู้คุมงาน 1 ต.ค.): เป้าหมายเป็นสินค้าของสาขาสีลม — แคชเชียร์สาขาเดียวแก้สินค้าทุกสาขาไม่ได้ตาม C4/S3.6 */);
     const tPid = idOf(tgt.value) as string; const tP = await prodById(tPid);
     const c1 = await attempt(() => C.setPrice(ctxCashier, tPid, 1));
     chk("X3.1", !!tP && refused(c1, "PERMISSION_DENIED") && (await prodById(tPid))?.basePriceSatang === 2000, "PERMISSION_DENIED · ราคา 2000", `${codeOf(c1)} · ${(await prodById(tPid))?.basePriceSatang}`);
