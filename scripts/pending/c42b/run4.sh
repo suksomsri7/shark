@@ -23,8 +23,9 @@ cd $R && pnpm exec tsx scripts/pending/c42b/counts.mts /tmp/c42b-logs/counts-bef
 #  5 /settings/sequences* · /settings/portal   H55-2 sequence editor step keys · fix2 portal invite lock
 #  6 /contacts (list) ....... it4-B registry B1 (export dialog rows hidden for nok/thana)
 #  7 /contacts/new .......... it4-B registry B2 (company picker hidden for nok/thana ⇒ hiddenLeak = PRODUCT F3 until fixed)
+#  9 /deals/new · 10 /contacts/[contactId]*  C5.5-fix6: company picker / move-deals hidden without crm.company read+update (controller, after triage)
 #  8 CRM home ............... fix3a/3b at-risk Thai-day (crm-ai-home-at-risk · crm-ai-at-risk-deal-*)
-STAFF_CHUNKS='re:^/companies;re:^/activities$;re:^/emails;re:^/settings/(api|automation|email)$;re:^/settings/(sequences|portal);re:^/contacts$;re:^/contacts/new$;re:^/app/sys/\[id\]$'
+STAFF_CHUNKS='re:^/companies;re:^/activities$;re:^/emails;re:^/settings/(api|automation|email)$;re:^/settings/(sequences|portal);re:^/contacts$;re:^/contacts/new$;re:^/app/sys/\[id\]$;re:^/deals/new$;re:^/contacts/\['
 for r in owner manager nok thana customer; do
   md5sum -c /tmp/c42b-logs/run4.md5 >/dev/null 2>&1 || { echo "runner/registry changed before $r — stop" >> "$S"; exit 1; }
   if [ "$r" = customer ]; then

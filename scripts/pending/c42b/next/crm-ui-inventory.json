@@ -5609,11 +5609,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-new-error"
