@@ -16,3 +16,12 @@
 - รายงาน tg = % อย่างเดียว (`📊 POS · N% (x/55)`)
 - **~07:55 UTC · เลน 2 P0.2 builder ส่งงาน** (`wip/pos-p0.2` 02867f1b · 4 op จริง: sales.summary/byDay/create/void · `record_expense`/`financial_summary` ไม่ใช่ของ POS · qc-pos-p0.2 44/44 · fitness 33/33 สองโหมด · typecheck exit 0 · POS oracle 6 ชุดเท่าเดิม) → **ผู้ตรวจอ่านอย่างเดียว (Opus) กำลังเดิน** · ยังไม่รับ · มติค้าง D1–D5 ใน `shark-pos-b/ledger/wo-notes/pos-P0.2.md` §4 · ข้อค้นพบโค้ดเดิม 7 ข้อ (AI tool `pos_create_sale`/`void_sale` ไม่ตรวจ unit↔ระบบ POS) รอผู้ตรวจยืนยัน → เข้าคิว P1/P5
 - 🔴 typecheck ต้อง `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` (ค่าเริ่มต้น 3584 MB = OOM exit 134 บน main ปัจจุบัน)
+
+## 0.2 ▶️ 1 ต.ค. ~08:10 UTC — เจ้าของสั่ง "เปิดเพิ่ม 3 เลน" ⇒ POS เดิน 5 เลน (CRM อีก 4 เลนบนเครื่องเดียวกัน)
+- worktree ใหม่ `shark-pos-c` / `-d` / `-e` (ฐาน session/pos d0e6e514 · bind mount node_modules ของ shark-crm · `.env.qc`=QC4) — รีบูตแล้วต้อง mount ใหม่ทุกตัว
+- **เลน 3 = P0.3 ผู้เขียนข้อสอบ catalog** `qc-pos-p1.1.mts` (Opus · shark-pos-c · `wip/pos-p0.3-catalog`)
+- **เลน 4 = P0.3 ผู้เขียนข้อสอบ register** `qc-pos-p1.3.mts` (Opus · shark-pos-d · `wip/pos-p0.3-register`)
+- **เลน 5 = SURVEY-P1 ผู้สำรวจอ่านอย่างเดียว** → `ledger/REVIEW-POS-DESIGN-2026-10-01.md` (`wip/pos-survey-p1`) — ชื่อจริงในโค้ด · call graph createSale · ยืนยันข้อค้นพบ 7 ข้อของ P0.2 · ใช้เขียน brief P1
+- ยังเดินอยู่: เลน 1 P0.1 builder (ส่งมอบครบแล้วตาม commit d0e6e514 · น่าจะรอ typecheck) · ผู้ตรวจ P0.2
+- brief: `pos-briefs/pos-brief-P0.3.md` · `pos-brief-SURVEY-P1.md`
+- ถ้าเครื่องอืด (swap >30% หรือ load >6 ค้าง) ⇒ ไม่เปิดเลนใหม่แทนเลนที่จบ จนกว่าจะลด
