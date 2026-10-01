@@ -14,7 +14,10 @@
     "query": "(ไม่บังคับ) query ที่ต้องต่อท้าย URL ของหน้าจึงจะเห็นคอนโทรลนี้ เช่น \"view=table\" · \"c=[conversationId]\" · \"unit=[unitId]\"",
     "alsoOn": "(ไม่บังคับ) หน้าอื่นที่คอมโพเนนต์เดียวกันแสดง testid เดียวกัน (1 testid = 1 แถว ตาม F14.2 — ตัวกดทดสอบบน `page` · หน้าใน alsoOn เป็นข้อมูลให้คนอ่าน/ตัวไล่ C4.1)",
     "only": "(ไม่บังคับ · แถวแพตเทิร์น) testid ตรงตัวที่แพตเทิร์นนี้หมายถึงจริง — ตัวกดกดเฉพาะชื่อในรายการนี้",
-    "not": "(ไม่บังคับ · แถวแพตเทิร์น) testid ที่ขึ้นต้นเหมือนกันแต่ไม่ใช่คอนโทรลของแถวนี้ (กล่องหุ้ม/แถวอื่น) — ตัวเลือก [data-testid^=] ต้องข้าม"
+    "not": "(ไม่บังคับ · แถวแพตเทิร์น) testid ที่ขึ้นต้นเหมือนกันแต่ไม่ใช่คอนโทรลของแถวนี้ (กล่องหุ้ม/แถวอื่น) — ตัวเลือก [data-testid^=] ต้องข้าม",
+    "opener": "(ไม่บังคับ · C4.2) ตัวที่ต้องกดก่อนจึงจะเห็นคอนโทรลนี้ — string หรือ string[] ตามลำดับ · ต้องเป็นชื่อแถวในทะเบียนบนหน้าเดียวกัน (รวมแถวที่มีหน้านี้ใน alsoOn · แพตเทิร์น * ได้) · \"<testid>=<ค่า>\" = เลือก option/พิมพ์ค่านั้น (ตัวสร้างที่เปิดช่องตามค่าที่เลือก) · \"=*\" = ตัวเลือกจริงตัวใดก็ได้ (id ต่างกันต่อซีด) · \"=on\"/\"=off\" = ให้ checkbox/radio/tab อยู่ในสถานะนั้น (การเลือกที่ทำให้ปุ่มที่เห็นอยู่แล้วใช้ได้ เช่น แถบทำรายการกลุ่ม) · \"=click\" = กดแม้มองเห็นอยู่แล้ว (เพิ่มเงื่อนไข 2 ครั้ง) · ช่องอัปโหลด CSV นำเข้า \"<testid>=<ไฟล์ fixture>\" · ตัวกดกดแต่ละตัวเฉพาะเมื่อตัวถัดไปในลำดับ/ตัวแถวยังมองไม่เห็น",
+    "needs": "(ไม่บังคับ · C4.2) เงื่อนไขข้อมูลที่ซีดมาตรฐานอาจไม่มี (ต้องระบุข้อมูลที่ขาดให้ชัด เช่น \"ลำดับติดตาม (CrmSequence) ≥1 — ซีดมี 0\") · มีคอนโทรล = กดและตรวจตามปกติ · ไม่มี = skippedNeeds (ไม่นับ total ไม่ใช่ dead) · แถวที่มี needs ถูกกดท้ายกลุ่มหน้า (แถวก่อนหน้าอาจสร้างข้อมูลที่ต้องใช้) — ห้ามใช้ปิดปุ่มที่ควรมีอยู่แล้ว",
+    "viewport": "(ไม่บังคับ · C4.2) \"desktop\" | \"mobile\" — คอนโทรลที่มีในเลย์เอาต์เดียว (md:hidden / hidden md:block / sm:hidden / lg:hidden) ⇒ ตัวกดไม่วางแผนกดอีกจอ"
   },
   "$example": {
     "page": "/deals/[dealId]",
@@ -72,7 +75,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "companies-import-modal"
@@ -94,7 +100,8 @@
         "target": "companies-import-error"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "companies-import-btn"
     },
     {
       "page": "/companies",
@@ -112,7 +119,8 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "companies-import-btn"
     },
     {
       "page": "/companies",
@@ -129,7 +137,11 @@
         "db": "CrmCompany (+ แถวต่อบรรทัดที่ผ่าน · สรุปใน companies-import-result)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "companies-import-btn",
+        "companies-import-file=qc-btn-import.csv"
+      ]
     },
     {
       "page": "/companies",
@@ -139,7 +151,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "download",
         "target": "file:csv"
@@ -325,7 +340,8 @@
         "target": "/app/sys/[id]/crm/companies"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/companies",
@@ -343,7 +359,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "desktop"
     },
     {
       "page": "/companies",
@@ -361,7 +378,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "mobile"
     },
     {
       "page": "/companies",
@@ -379,7 +397,8 @@
         "target": "/app/sys/[id]/crm/companies/new"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/companies",
@@ -397,7 +416,9 @@
         "target": "/app/sys/[id]/crm/companies?page="
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "companies-page-next",
+      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง"
     },
     {
       "page": "/companies",
@@ -415,7 +436,8 @@
         "target": "/app/sys/[id]/crm/companies?page="
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง"
     },
     {
       "page": "/companies/new",
@@ -531,7 +553,8 @@
         "target": "company-new-form"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
     },
     {
       "page": "/companies/new",
@@ -547,7 +570,8 @@
         "target": "company-new-form"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
     },
     {
       "page": "/companies/new",
@@ -563,7 +587,8 @@
         "target": "company-new-form"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
     },
     {
       "page": "/companies/new",
@@ -579,7 +604,8 @@
         "target": "company-new-form"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
     },
     {
       "page": "/companies/new",
@@ -632,7 +658,13 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-new-name=qc-btn-dup",
+        "company-new-taxId=0105599000001",
+        "company-new-submit"
+      ],
+      "needs": "บริษัทตัวแทนที่มีเลขภาษีถูกหลักตรวจสอบ 0105599000001 — ตัวกดตั้งให้เป็น fixture (ruling §9) · ไม่มี = fixture ไม่ถูกตั้ง"
     },
     {
       "page": "/companies/new",
@@ -650,7 +682,12 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-new-name=บริษัท คิวซี 01 จำกัด",
+        "company-new-submit"
+      ],
+      "needs": "บริษัทในซีดชื่อ 'บริษัท คิวซี 01 จำกัด' — ตัวเปิดสร้างบริษัทชื่อซ้ำ (ไม่มีเลขภาษี) ให้ระบบเสนอรายที่อาจซ้ำ"
     },
     {
       "page": "/companies/new",
@@ -668,7 +705,12 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-new-name=บริษัท คิวซี 01 จำกัด",
+        "company-new-submit"
+      ],
+      "needs": "บริษัทในซีดชื่อ 'บริษัท คิวซี 01 จำกัด' — ตัวเปิดสร้างบริษัทชื่อซ้ำ (ไม่มีเลขภาษี) ให้ระบบเสนอรายที่อาจซ้ำ"
     },
     {
       "page": "/companies/[companyId]",
@@ -704,7 +746,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของซีดไม่ถูกรวม"
     },
     {
       "page": "/companies/[companyId]",
@@ -740,7 +783,10 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]?tab="
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "company-360-tab-overview"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -758,7 +804,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ"
     },
     {
       "page": "/companies/[companyId]",
@@ -776,7 +823,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0"
     },
     {
       "page": "/companies/[companyId]",
@@ -794,7 +842,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]?tab=documents"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/companies/[companyId]",
@@ -812,7 +861,9 @@
         "target": "/app/sys/[accountId]/account/docs/[type]/[docId]"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "query": "tab=documents",
+      "needs": "เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/companies/[companyId]",
@@ -844,7 +895,11 @@
         "target": "company-add-contact-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-add-contact-btn",
+        "company-pick-contact-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -860,7 +915,11 @@
         "target": "company-add-contact-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-add-contact-btn",
+        "company-pick-contact-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -876,7 +935,11 @@
         "target": "company-add-contact-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-add-contact-btn",
+        "company-pick-contact-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -894,7 +957,8 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-add-contact-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -911,7 +975,11 @@
         "db": "CrmCompanyContact (+1 · endedAt null) · CrmContact.companyId"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-add-contact-btn",
+        "company-pick-contact-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -978,7 +1046,8 @@
         "db": "CrmCompanyContact.endedAt=now · CrmContact.companyId คำนวณใหม่"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-contact-remove-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -994,7 +1063,8 @@
         "target": "company-contact-remove-btn"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-contact-remove-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1026,7 +1096,8 @@
         "target": "company-edit-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-menu-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1042,7 +1113,8 @@
         "target": "company-owner-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-menu-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1058,7 +1130,8 @@
         "target": "company-parent-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-menu-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1074,7 +1147,8 @@
         "target": "company-merge-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-menu-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1090,7 +1164,8 @@
         "target": "company-archive-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-menu-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1106,7 +1181,11 @@
         "target": "company-edit-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1122,7 +1201,11 @@
         "target": "company-edit-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1138,7 +1221,11 @@
         "target": "company-edit-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1156,7 +1243,11 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1173,7 +1264,11 @@
         "db": "CrmCompany + Party (name/taxId) · OutboxEvent crm.company.updated"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1189,7 +1284,11 @@
         "target": "company-owner-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-owner"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1207,7 +1306,11 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-owner"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1224,7 +1327,11 @@
         "db": "CrmCompany.ownerUserId"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-owner"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1242,7 +1349,11 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-parent"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1259,7 +1370,12 @@
         "db": "CrmCompany.parentCompanyId (วงวน = inline-error)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-parent",
+        "company-pick-parent-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1275,7 +1391,14 @@
         "target": "company-merge-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*",
+        "company-merge-keep-other=on"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1291,7 +1414,13 @@
         "target": "company-merge-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1307,7 +1436,13 @@
         "target": "company-merge-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1323,7 +1458,13 @@
         "target": "company-merge-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1341,7 +1482,13 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1358,7 +1505,13 @@
         "db": "CrmCompany.mergedIntoId=keep + archivedAt · AuditLog crm.company.merge (reason)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-merge",
+        "company-pick-merge-q=คิวซี 16",
+        "company-pick-merge-select=*"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1374,7 +1527,11 @@
         "target": "company-archive-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-archive"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1390,7 +1547,11 @@
         "target": "company-archive-modal"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-archive"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1408,7 +1569,11 @@
         "note": "ปิดโดยไม่บันทึก"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-archive"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1425,7 +1590,11 @@
         "db": "CrmCompany.archivedAt · AuditLog crm.company.archive (reason)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-archive"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -1443,7 +1612,8 @@
         "note": "ค้นฝั่งเซิร์ฟเวอร์ (op:crm.company.options · หน่วง 250 ms) → รายการตัวเลือกเปลี่ยน"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-add-contact-btn"
     },
     {
       "page": "/companies/[companyId]",
@@ -1461,7 +1631,8 @@
         "note": "เลือกผลค้นหา (ใช้ใน company-add-contact-modal · company-parent-modal · company-merge-modal · company-new-form)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "company-add-contact-btn"
     },
     {
       "page": "/companies/new",
@@ -1477,7 +1648,8 @@
         "target": "company-new-restore"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
     },
     {
       "page": "/companies/new",
@@ -1493,7 +1665,8 @@
         "target": "company-new-restore"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
     },
     {
       "page": "/companies/new",
@@ -1510,7 +1683,8 @@
         "db": "CrmCompany.archivedAt=null · AuditLog crm.company.restore (reason)"
       },
       "wo": "C1.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
     },
     {
       "page": "/contacts",
@@ -1546,7 +1720,8 @@
         "target": "/app/sys/[id]/crm/contacts/new"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/contacts",
@@ -1556,7 +1731,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "contacts-import-modal"
@@ -1578,7 +1756,8 @@
         "target": "contacts-import-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-import-btn"
     },
     {
       "page": "/contacts",
@@ -1594,7 +1773,11 @@
         "target": "contacts-import-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-import-btn",
+        "contacts-import-file=qc-btn-import.csv"
+      ]
     },
     {
       "page": "/contacts",
@@ -1610,7 +1793,11 @@
         "target": "contacts-import-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-import-btn",
+        "contacts-import-file=qc-btn-import.csv"
+      ]
     },
     {
       "page": "/contacts",
@@ -1627,7 +1814,11 @@
         "db": "CrmContact +N (onDuplicate update|skip|candidate)"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-import-btn",
+        "contacts-import-file=qc-btn-import.csv"
+      ]
     },
     {
       "page": "/contacts",
@@ -1644,7 +1835,8 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-import-btn"
     },
     {
       "page": "/contacts",
@@ -1654,7 +1846,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "modal",
         "target": "contacts-export-modal"
@@ -1676,7 +1871,8 @@
         "target": "contacts-*-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-export-btn"
     },
     {
       "page": "/contacts",
@@ -1692,7 +1888,8 @@
         "target": "contacts-*-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-export-btn"
     },
     {
       "page": "/contacts",
@@ -1708,7 +1905,8 @@
         "target": "file:csv"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-export-btn"
     },
     {
       "page": "/contacts",
@@ -1725,7 +1923,8 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-export-btn"
     },
     {
       "page": "/contacts",
@@ -1869,7 +2068,13 @@
         "target": "/app/sys/[id]/crm/contacts?view="
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-name=qc-btn-view",
+        "crm-view-save"
+      ]
     },
     {
       "page": "/contacts",
@@ -1941,7 +2146,8 @@
         "target": "/app/sys/[id]/crm/contacts"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/contacts",
@@ -1959,7 +2165,8 @@
         "target": "/app/sys/[id]/crm/contacts?cursor="
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่มองเห็นได้ > 50 คน (ขนาดหน้า 50) — ซีดมี 80 คน: owner/manager ถึง · nok/thana เห็นเฉพาะของตัวเอง/ทีมอาจไม่ถึง"
     },
     {
       "page": "/contacts",
@@ -1977,7 +2184,9 @@
         "target": "/app/sys/[id]/crm/contacts"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-page-next",
+      "needs": "ผู้ติดต่อที่มองเห็นได้ > 50 คน (ขนาดหน้า 50) — ซีดมี 80 คน: owner/manager ถึง · nok/thana เห็นเฉพาะของตัวเอง/ทีมอาจไม่ถึง"
     },
     {
       "page": "/contacts",
@@ -1995,7 +2204,8 @@
         "target": "/app/sys/[id]/crm/contacts/[contactId]"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "desktop"
     },
     {
       "page": "/contacts",
@@ -2013,7 +2223,8 @@
         "target": "/app/sys/[id]/crm/contacts/[contactId]"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "mobile"
     },
     {
       "page": "/contacts",
@@ -2029,7 +2240,8 @@
         "target": "contacts-bulk-bar"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "desktop"
     },
     {
       "page": "/contacts",
@@ -2045,7 +2257,8 @@
         "target": "contacts-bulk-bar"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "desktop"
     },
     {
       "page": "/contacts",
@@ -2061,7 +2274,8 @@
         "target": "contacts-bulk-bar"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "mobile"
     },
     {
       "page": "/contacts",
@@ -2077,7 +2291,8 @@
         "target": "contacts-bulk-assign-modal"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-*-select"
     },
     {
       "page": "/contacts",
@@ -2094,7 +2309,8 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-*-select"
     },
     {
       "page": "/contacts",
@@ -2110,7 +2326,11 @@
         "target": "contacts-bulk-assign-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-*-select",
+        "contacts-bulk-assign-btn"
+      ]
     },
     {
       "page": "/contacts",
@@ -2127,7 +2347,11 @@
         "db": "CrmContact.ownerUserId = ผู้รับ (≤ 500) + AuditLog reason"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-*-select",
+        "contacts-bulk-assign-btn"
+      ]
     },
     {
       "page": "/contacts",
@@ -2144,7 +2368,11 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contacts-*-select",
+        "contacts-bulk-assign-btn"
+      ]
     },
     {
       "page": "/contacts/new",
@@ -2249,7 +2477,8 @@
         "target": "contact-new-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField ที่ใช้กับ CRM) — ขึ้นกับซีด"
     },
     {
       "page": "/contacts/new",
@@ -2269,7 +2498,10 @@
         "note": "ค้นฝั่งเซิร์ฟเวอร์ → รายการตัวเลือกเปลี่ยน"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "alsoOn": [
+        "/contacts/[contactId]"
+      ]
     },
     {
       "page": "/contacts/new",
@@ -2288,7 +2520,10 @@
         "state": "changes"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "alsoOn": [
+        "/contacts/[contactId]"
+      ]
     },
     {
       "page": "/contacts/new",
@@ -2326,7 +2561,13 @@
         "db": "CrmContact +1 (คู่สงสัยซ้ำ)"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-new-firstName=qc-btn-dup",
+        "contact-new-phone=0820000001",
+        "contact-new-submit"
+      ],
+      "needs": "ผู้ติดต่อในซีดที่มีเบอร์ 0820000001 (ผู้ติดต่อตัวแทน crm-contact-01) — ตัวเปิดส่งฟอร์มด้วยเบอร์นี้ให้ระบบแสดงรายที่อาจซ้ำ"
     },
     {
       "page": "/contacts/new",
@@ -2344,7 +2585,13 @@
         "target": "/app/sys/[id]/crm/contacts/[contactId]"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-new-firstName=qc-btn-dup",
+        "contact-new-phone=0820000001",
+        "contact-new-submit"
+      ],
+      "needs": "ผู้ติดต่อในซีดที่มีเบอร์ 0820000001 (ผู้ติดต่อตัวแทน crm-contact-01) — ตัวเปิดส่งฟอร์มด้วยเบอร์นี้ให้ระบบแสดงรายที่อาจซ้ำ"
     },
     {
       "page": "/contacts/new",
@@ -2398,7 +2645,8 @@
         "target": "/app/sys/[id]/crm/contacts/[contactId]"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อ [contactId] ที่ถูกรวมเข้าคนอื่นแล้ว (CrmContact.mergedIntoId) — ผู้ติดต่อตัวแทนของซีดไม่ถูกรวม"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2435,7 +2683,8 @@
         "note": "หน้าสมาชิกของระบบ MEMBER (คนละ [id] กับ CRM)"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อ [contactId] ผูกสมาชิกในระบบสมาชิก (Customer ของ party เดียวกัน) — ขึ้นกับซีด"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2453,7 +2702,8 @@
         "target": "/app/sys/[id]/crm/companies/[companyId]"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อ [contactId] ผูกบริษัทที่ผู้ใช้มองเห็นได้ (สิทธิ์ crm.company.read) — ขึ้นกับสิทธิ์ของบทบาทในซีด"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2489,7 +2739,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2507,7 +2758,9 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn",
+      "needs": "ผู้ติดต่อ [contactId] ยังไม่ผูกสมาชิก + ร้านมีระบบสมาชิก (ผูกแล้ว = ไม่มีช่องเลือกระบบ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2525,7 +2778,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2543,7 +2797,11 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-convert-btn",
+        "contact-convert-company-mode-pick=on"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2561,7 +2819,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2579,7 +2838,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2597,7 +2857,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2615,7 +2876,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2633,7 +2895,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2651,7 +2914,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2669,7 +2933,8 @@
         "target": "contact-convert-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2688,7 +2953,8 @@
         "db": "Customer(source CRM) + CrmCompany + CrmDeal ชุดเดียว (idempotencyKey) · CrmContact.convertedAt"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2707,7 +2973,8 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-convert-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2744,7 +3011,8 @@
         "note": "contact-edit-modal · contact-owner-modal · contact-status-modal · contact-tags-modal · contact-merge-modal · contact-archive-modal"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contact-menu-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2762,7 +3030,11 @@
         "target": "contact-edit-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-edit"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2780,7 +3052,13 @@
         "target": "contact-edit-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-edit",
+        "contact-pick-edit-company-select=*"
+      ],
+      "needs": "ผู้ติดต่อ [contactId] ผูกบริษัทอยู่แล้ว + มีบริษัทอื่นให้เลือกในตัวค้นหา (ช่องนี้โผล่เมื่อเลือกบริษัทใหม่)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2798,7 +3076,11 @@
         "target": "contact-owner-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-owner"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2816,7 +3098,11 @@
         "target": "contact-status-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-status"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2834,7 +3120,11 @@
         "target": "contact-status-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-status"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2852,7 +3142,11 @@
         "target": "contact-tags-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-tags"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2868,7 +3162,11 @@
         "target": "contact-*-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-archive"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2884,7 +3182,11 @@
         "target": "contact-*-error"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-archive"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2910,7 +3212,11 @@
         ]
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-edit"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -2929,7 +3235,11 @@
         "state": "disappears"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-edit"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -3043,7 +3353,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline"
     },
     {
       "page": "/deals",
@@ -3062,7 +3373,10 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "deals-view-board"
+      ]
     },
     {
       "page": "/deals",
@@ -3242,7 +3556,8 @@
         "note": "ตัวกรองในฟอร์ม GET deals-filter-form — มีผลเมื่อส่งฟอร์ม"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด"
     },
     {
       "page": "/deals",
@@ -3262,7 +3577,13 @@
         "note": "ตัวกรองในฟอร์ม GET deals-filter-form — มีผลเมื่อส่งฟอร์ม"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-name=qc-btn-view",
+        "crm-view-save"
+      ]
     },
     {
       "page": "/deals",
@@ -3341,7 +3662,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/deals",
@@ -3360,7 +3682,9 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deals-next-page",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง"
     },
     {
       "page": "/deals",
@@ -3379,7 +3703,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง"
     },
     {
       "page": "/deals",
@@ -3499,7 +3824,8 @@
         "note": "มือถือ: เลื่อนกระดานไปคอลัมน์ของขั้นนั้น"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "viewport": "mobile"
     },
     {
       "page": "/deals",
@@ -3557,7 +3883,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด"
     },
     {
       "page": "/deals",
@@ -3596,7 +3923,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3615,7 +3943,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3634,7 +3963,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3653,7 +3983,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3674,7 +4005,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3695,7 +4027,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3714,7 +4047,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3734,7 +4068,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "opener": "deal-row-check-*=on"
     },
     {
       "page": "/deals",
@@ -3750,11 +4085,13 @@
       "expect": {
         "type": "ui",
         "target": "deal-bulk-bar",
-        "state": "appears"
+        "state": "changes",
+        "note": "แถบทำรายการกลุ่มแสดงตลอด — สิ่งที่เห็นได้คือข้อความ 'เลือกแล้ว N ดีล' และจำนวนที่ติ๊กเปลี่ยน · ruling §7.1"
       },
       "wo": "C1.5",
       "oracle": "",
-      "query": "view=table"
+      "query": "view=table",
+      "viewport": "desktop"
     },
     {
       "page": "/deals",
@@ -3770,7 +4107,8 @@
       "expect": {
         "type": "ui",
         "target": "deal-bulk-bar",
-        "state": "appears"
+        "state": "changes",
+        "note": "แถบทำรายการกลุ่มแสดงตลอด — สิ่งที่เห็นได้คือข้อความ 'เลือกแล้ว N ดีล' เปลี่ยน · ruling §7.1"
       },
       "wo": "C1.5",
       "oracle": "",
@@ -3796,7 +4134,7 @@
       "query": "view=table"
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-lost-reason",
       "kind": "select",
       "roles": [
@@ -3813,11 +4151,12 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
-      ]
+        "/deals"
+      ],
+      "opener": "deal-lost-btn"
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-lost-note",
       "kind": "input",
       "roles": [
@@ -3834,11 +4173,12 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
-      ]
+        "/deals"
+      ],
+      "opener": "deal-lost-btn"
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-lost-cancel",
       "kind": "button",
       "roles": [
@@ -3857,11 +4197,12 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
-      ]
+        "/deals"
+      ],
+      "opener": "deal-lost-btn"
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-lost-confirm",
       "kind": "button",
       "roles": [
@@ -3880,11 +4221,12 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
-      ]
+        "/deals"
+      ],
+      "opener": "deal-lost-btn"
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-reopen-reason",
       "kind": "input",
       "roles": [
@@ -3901,11 +4243,17 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
+        "/deals"
+      ],
+      "opener": [
+        "deal-lost-btn",
+        "deal-lost-reason=*",
+        "deal-lost-confirm",
+        "deal-reopen-btn"
       ]
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-reopen-confirm",
       "kind": "toggle",
       "roles": [
@@ -3922,11 +4270,17 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
+        "/deals"
+      ],
+      "opener": [
+        "deal-lost-btn",
+        "deal-lost-reason=*",
+        "deal-lost-confirm",
+        "deal-reopen-btn"
       ]
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-reopen-cancel",
       "kind": "button",
       "roles": [
@@ -3944,11 +4298,17 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
+        "/deals"
+      ],
+      "opener": [
+        "deal-lost-btn",
+        "deal-lost-reason=*",
+        "deal-lost-confirm",
+        "deal-reopen-btn"
       ]
     },
     {
-      "page": "/deals",
+      "page": "/deals/[dealId]",
       "testid": "deal-reopen-submit",
       "kind": "button",
       "roles": [
@@ -3967,7 +4327,13 @@
       "wo": "C1.5",
       "oracle": "",
       "alsoOn": [
-        "/deals/[dealId]"
+        "/deals"
+      ],
+      "opener": [
+        "deal-lost-btn",
+        "deal-lost-reason=*",
+        "deal-lost-confirm",
+        "deal-reopen-btn"
       ]
     },
     {
@@ -3989,7 +4355,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
     },
     {
       "page": "/deals",
@@ -4011,7 +4378,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
     },
     {
       "page": "/deals",
@@ -4034,7 +4402,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
     },
     {
       "page": "/deals",
@@ -4056,7 +4425,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)"
     },
     {
       "page": "/deals/[dealId]",
@@ -4132,7 +4502,10 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "deal-tab-overview"
+      ]
     },
     {
       "page": "/deals/[dealId]",
@@ -4190,7 +4563,12 @@
         "db": "CrmDeal.kind=OPEN (หลังยืนยัน)"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "deal-lost-btn",
+        "deal-lost-reason=*",
+        "deal-lost-confirm"
+      ]
     },
     {
       "page": "/deals/[dealId]",
@@ -4433,7 +4811,8 @@
         "target": "deal-lines-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -4451,7 +4830,8 @@
         "target": "deal-lines-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -4469,7 +4849,8 @@
         "target": "deal-lines-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -4487,7 +4868,8 @@
         "target": "deal-lines-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -4507,7 +4889,8 @@
         "note": "ลบบรรทัดในร่าง — ยังไม่บันทึก"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -4602,7 +4985,8 @@
         "target": "deal-menu-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-menu"
     },
     {
       "page": "/deals/[dealId]",
@@ -4622,7 +5006,8 @@
         "note": "MANAGER+"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-menu"
     },
     {
       "page": "/deals/[dealId]",
@@ -4641,7 +5026,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-menu"
     },
     {
       "page": "/deals/[dealId]",
@@ -4659,7 +5045,11 @@
         "target": "deal-delete-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "deal-menu",
+        "deal-delete-btn"
+      ]
     },
     {
       "page": "/deals/[dealId]",
@@ -4677,7 +5067,11 @@
         "target": "deal-delete-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "deal-menu",
+        "deal-delete-btn"
+      ]
     },
     {
       "page": "/deals/[dealId]",
@@ -4696,7 +5090,11 @@
         "state": "disappears"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "deal-menu",
+        "deal-delete-btn"
+      ]
     },
     {
       "page": "/deals/[dealId]",
@@ -4716,7 +5114,11 @@
         "note": "ยืนยัน + เหตุผล"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "deal-menu",
+        "deal-delete-btn"
+      ]
     },
     {
       "page": "/deals/new",
@@ -4735,7 +5137,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipeline"
     },
     {
       "page": "/deals/new",
@@ -4826,7 +5229,9 @@
         "target": "deal-new-error"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-new-contact=*",
+      "needs": "ผู้ติดต่อที่ผูก ≥2 บริษัท (ตัวเลือกบริษัทมาจากบริษัทของผู้ติดต่อที่เลือก — 1 บริษัท = เลือกให้แล้ว ไม่มีทางเลือกอื่น)"
     },
     {
       "page": "/deals/new",
@@ -5181,7 +5586,8 @@
         "db": "CrmPipeline.archivedAt=null"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0"
     },
     {
       "page": "/settings/pipelines",
@@ -5273,7 +5679,8 @@
         "target": "pl-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "pl-archive-*"
     },
     {
       "page": "/settings/pipelines",
@@ -5291,7 +5698,8 @@
         "target": "pl-msg"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "pl-archive-*"
     },
     {
       "page": "/settings/pipelines",
@@ -5310,7 +5718,8 @@
         "state": "disappears"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "pl-archive-*"
     },
     {
       "page": "/settings/pipelines",
@@ -5330,7 +5739,8 @@
         "note": "ยืนยัน + เหตุผล · ไม่มีดีลเปิด"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "pl-archive-*"
     },
     {
       "page": "/settings/stages",
@@ -5349,7 +5759,8 @@
         "db": ""
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2"
     },
     {
       "page": "/settings/stages",
@@ -5513,7 +5924,8 @@
         "db": "CrmStage.(name|kind|probability|staleDays|requireFields|requireLines|requireQuotation)"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "st-name-*=*"
     },
     {
       "page": "/settings/stages",
@@ -5795,7 +6207,8 @@
         "note": "ร่างบรรทัด — บันทึกด้วย deal-lines-save"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/deals/[dealId]",
@@ -5815,7 +6228,8 @@
         "note": "ร่างบรรทัด — บันทึกด้วย deal-lines-save"
       },
       "wo": "C1.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "deal-line-add"
     },
     {
       "page": "/activities",
@@ -5872,7 +6286,8 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กิจกรรมค้าง (สถานะ pending) ที่มองเห็นได้เกินขนาดหน้า — ซีดมี 200 กิจกรรม: owner/manager ถึง · nok/thana อาจไม่ถึง"
     },
     {
       "page": "/activities",
@@ -5929,7 +6344,10 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "activities-status-pending"
+      ]
     },
     {
       "page": "/activities",
@@ -6006,7 +6424,12 @@
         "db": "CrmActivity +1"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-target-q=QC",
+        "activity-log-target-option"
+      ]
     },
     {
       "page": "/activities",
@@ -6025,7 +6448,12 @@
         "db": "CrmActivity +1 (+1 เมื่อมีงานถัดไป)"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-target-q=QC",
+        "activity-log-target-option"
+      ]
     },
     {
       "page": "/activities",
@@ -6044,7 +6472,8 @@
         "state": "disappears"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6064,7 +6493,11 @@
         "note": "ช่องที่แสดงเปลี่ยนตามชนิด"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new",
+      "not": [
+        "activity-log-type-CALL"
+      ]
     },
     {
       "page": "/activities",
@@ -6082,7 +6515,8 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6102,7 +6536,8 @@
         "note": "ชิปผลลัพธ์จาก settings.crm.activityOutcomes"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6120,7 +6555,8 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6138,7 +6574,8 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6156,7 +6593,8 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6174,7 +6612,11 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-MEETING"
+      ]
     },
     {
       "page": "/activities",
@@ -6192,7 +6634,11 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-MEETING"
+      ]
     },
     {
       "page": "/activities",
@@ -6210,7 +6656,11 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-TASK"
+      ]
     },
     {
       "page": "/activities",
@@ -6228,7 +6678,8 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6248,7 +6699,11 @@
         "note": "โน้ตเท่านั้น"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-NOTE"
+      ]
     },
     {
       "page": "/activities",
@@ -6266,7 +6721,12 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-NOTE"
+      ],
+      "needs": "พนักงานที่แท็กได้ในโน้ต (mentionOptions ≥1) — ขึ้นกับทีม/สิทธิ์ของผู้ใช้"
     },
     {
       "page": "/activities",
@@ -6285,7 +6745,8 @@
         "state": "appears"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6303,7 +6764,11 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-next-toggle=on"
+      ]
     },
     {
       "page": "/activities",
@@ -6321,7 +6786,11 @@
         "target": "activity-log-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-next-toggle=on"
+      ]
     },
     {
       "page": "/activities",
@@ -6341,7 +6810,8 @@
         "note": "ค้นผู้ติดต่อ/ดีล/บริษัท ฝั่งเซิร์ฟเวอร์"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activities-new"
     },
     {
       "page": "/activities",
@@ -6360,7 +6830,12 @@
         "state": "appears"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-target-q=QC"
+      ],
+      "needs": "ดีล/ผู้ติดต่อ/บริษัทที่ค้นด้วยคำว่า 'QC' เจอ (ชื่อดีลในซีด 'ดีล QC NN — …')"
     },
     {
       "page": "/activities",
@@ -6379,7 +6854,13 @@
         "state": "appears"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-target-q=QC",
+        "activity-log-target-option"
+      ],
+      "needs": "ดีล/ผู้ติดต่อ/บริษัทที่ค้นด้วยคำว่า 'QC' เจอ (ชื่อดีลในซีด 'ดีล QC NN — …')"
     },
     {
       "page": "/activities",
@@ -6398,7 +6879,8 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6417,7 +6899,8 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6436,7 +6919,9 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "query": "scope=team",
+      "needs": "กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด"
     },
     {
       "page": "/activities",
@@ -6455,7 +6940,9 @@
         "db": "CrmActivity.pinned"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "โน้ต (NOTE) ในรายการกิจกรรมที่แสดง — แท็บค้าง (pending) แสดงเฉพาะงานที่ยังไม่เสร็จ",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6477,7 +6964,8 @@
       "oracle": "",
       "alsoOn": [
         "/contacts/[contactId]"
-      ]
+      ],
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6499,7 +6987,8 @@
       "oracle": "",
       "alsoOn": [
         "/contacts/[contactId]"
-      ]
+      ],
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6517,7 +7006,9 @@
         "target": "activity-row-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-reschedule",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6536,7 +7027,9 @@
         "db": "CrmActivity.dueAt"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-reschedule",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6555,7 +7048,9 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6573,7 +7068,10 @@
         "target": "activity-row-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-card",
+      "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6592,7 +7090,10 @@
         "db": "KanbanCard +1 · CrmActivity.kanbanCardId"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-card",
+      "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6614,7 +7115,8 @@
       "oracle": "",
       "alsoOn": [
         "/contacts/[contactId]"
-      ]
+      ],
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6632,7 +7134,9 @@
         "target": "activity-row-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-delete",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6650,7 +7154,9 @@
         "target": "activity-row-error"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-delete",
+      "query": "scope=team"
     },
     {
       "page": "/activities",
@@ -6669,7 +7175,9 @@
         "db": "CrmActivity -1 · AuditLog +1"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "activity-row-delete",
+      "query": "scope=team"
     },
     {
       "page": "/calendar",
@@ -6745,7 +7253,10 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "calendar-view-week"
+      ]
     },
     {
       "page": "/calendar",
@@ -6825,7 +7336,8 @@
         ]
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กิจกรรมที่มีกำหนดเวลาอยู่ในสัปดาห์ที่แสดง (สัปดาห์นี้) — ขึ้นกับวันที่ของซีดเทียบกับวันที่รัน"
     },
     {
       "page": "/contacts/[contactId]",
@@ -6891,7 +7403,10 @@
         "note": "สลับแท็บกิจกรรม/โน้ตในบล็อก"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "not": [
+        "crm-activity-tab-activities"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -6935,7 +7450,8 @@
         "note": "ลิงก์ส่วนตัว"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ไฟล์แนบ (CrmFileLink) ≥1 บนหน้านี้ — ซีดมี 0 และช่องแนบไฟล์ถูกกันด้วย CROSS_MODULE_GUARD (ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -6954,7 +7470,8 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ไฟล์แนบ (CrmFileLink) ≥1 บนหน้านี้ — ซีดมี 0 และช่องแนบไฟล์ถูกกันด้วย CROSS_MODULE_GUARD (ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -6973,7 +7490,9 @@
         "db": "CrmFileLink -1 · FileAsset -1 · AuditLog +1"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-files-remove",
+      "needs": "ไฟล์แนบ (CrmFileLink) ≥1 บนหน้านี้ — ซีดมี 0 และช่องแนบไฟล์ถูกกันด้วย CROSS_MODULE_GUARD (ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/activities",
@@ -6992,7 +7511,12 @@
         "state": "disappears"
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "activities-new",
+        "activity-log-type-NOTE"
+      ],
+      "needs": "โน้ตที่แท็กคนแล้วบางคนไม่ได้รับแจ้งเตือน (ข้อความ 'บันทึกแล้ว — … ไม่ได้รับแจ้งเตือน') — ขึ้นกับการตั้งค่าแจ้งเตือนของพนักงาน"
     },
     {
       "page": "/contacts/[contactId]",
@@ -7034,7 +7558,8 @@
         "db": ""
       },
       "wo": "C1.6",
-      "oracle": ""
+      "oracle": "",
+      "query": "contactId=[contactId]"
     },
     {
       "page": "/app/settings/teams",
@@ -7055,7 +7580,8 @@
         "note": "แสดง/ซ่อนการ์ดทีมที่เก็บถาวร"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ทีมที่เก็บถาวร (Team.archivedAt) — ซีดไม่มี (สวิตช์ไม่เปลี่ยนรายการ)"
     },
     {
       "page": "/app/settings/teams",
@@ -7095,7 +7621,8 @@
         "db": "Team.name=<ชื่อ>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-create-open"
     },
     {
       "page": "/app/settings/teams",
@@ -7115,7 +7642,8 @@
         "db": ""
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-create-open"
     },
     {
       "page": "/app/settings/teams",
@@ -7135,7 +7663,8 @@
         "state": "changes"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-create-open"
     },
     {
       "page": "/app/settings/teams",
@@ -7155,7 +7684,8 @@
         "db": "Team.name=<ชื่อ>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-create-open"
     },
     {
       "page": "/app/settings/teams",
@@ -7175,7 +7705,8 @@
         "state": "disappears"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-create-open"
     },
     {
       "page": "/app/settings/teams",
@@ -7190,9 +7721,11 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "team-detail",
-        "db": ""
+        "db": "",
+        "state": "changes",
+        "note": "กดการ์ดทีมที่ยังไม่ถูกเลือก (ตัวกดเลือกการ์ดแรกที่ไม่ใช่ aria-pressed=true) ⇒ แผงรายละเอียดสลับเป็นทีมนั้น · ruling §7.1"
       },
       "wo": "C1.7",
       "oracle": ""
@@ -7295,7 +7828,8 @@
         "db": "Team.unitIds=<สาขา>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "team-unit-toggle=click"
     },
     {
       "page": "/app/settings/teams",
@@ -7355,7 +7889,8 @@
         "db": "TeamMember (แถวถูกลบ)"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "team-member-remove"
     },
     {
       "page": "/app/settings/teams",
@@ -7375,7 +7910,8 @@
         "state": "disappears"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "team-member-remove"
     },
     {
       "page": "/app/settings/teams",
@@ -7395,7 +7931,8 @@
         "db": "TeamMember.userId=<userId>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)"
     },
     {
       "page": "/app/settings/teams",
@@ -7435,7 +7972,8 @@
         "db": "TeamMember.userId=<userId>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "needs": "พนักงานที่ยังไม่อยู่ในทีมที่เลือก (ตัวเลือกว่าง = ปุ่มเพิ่มไม่ทำงาน)"
     },
     {
       "page": "/app/settings/teams",
@@ -7475,7 +8013,9 @@
         "db": "Team.archivedAt=null"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "teams-show-archived=on",
+      "needs": "ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแถวทำลายล้าง)"
     },
     {
       "page": "/settings/visibility",
@@ -7515,7 +8055,8 @@
         "db": "CrmVisibilityPolicy (แถวถูกลบ)"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ค่าที่ตั้งทับในตารางบทบาท (CrmVisibilityPolicy ต่อบทบาท) — ซีดไม่มี · แถว visibility-cell ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/visibility",
@@ -7535,7 +8076,8 @@
         "db": "CrmVisibilityPolicy (แถวถูกลบ)"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "needs": "การตั้งทับต่อทีม/pipeline (CrmVisibilityPolicy ที่มี teamId|pipelineId) — ซีดไม่มี · แถว visibility-override-add สร้างให้ก่อน"
     },
     {
       "page": "/settings/visibility",
@@ -7675,7 +8217,8 @@
         "db": "CrmVisibilityPolicy.teamId|pipelineId=<ค่า>"
       },
       "wo": "C1.7",
-      "oracle": ""
+      "oracle": "",
+      "opener": "visibility-override-entity=DEAL"
     },
     {
       "page": "/settings/objects",
@@ -7715,7 +8258,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]"
     },
     {
       "page": "/settings/objects",
@@ -7735,7 +8279,9 @@
         "db": "CustomObject.label=<ค่า>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7755,7 +8301,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7775,7 +8323,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7795,7 +8345,10 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn",
+      "needs": "วัตถุ [key] ที่ยังไม่มีระเบียน (ชื่ออ้างอิงแก้ได้เฉพาะตอนไม่มีข้อมูล — disabled เมื่อ recordCount > 0) — วัตถุ 'สัญญา' ของซีดมี 12 ระเบียน"
     },
     {
       "page": "/settings/objects",
@@ -7815,7 +8368,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7835,7 +8390,9 @@
         "db": "CustomObject.showAsTab=<ค่า>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7855,7 +8412,9 @@
         "db": "CustomObject.portalVisible=<ค่า>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7870,12 +8429,15 @@
         "thana"
       ],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "object-edit-form",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7895,7 +8457,9 @@
         "db": "CustomObject.label=<ค่า>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-edit-btn"
     },
     {
       "page": "/settings/objects",
@@ -7915,7 +8479,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]"
     },
     {
       "page": "/settings/objects",
@@ -7935,7 +8500,9 @@
         "db": "CustomObject.archivedAt=<ไม่ว่าง>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-archive-btn"
     },
     {
       "page": "/settings/objects",
@@ -7955,7 +8522,10 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-archive-btn",
+      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน"
     },
     {
       "page": "/settings/objects",
@@ -7975,7 +8545,10 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-archive-btn",
+      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน"
     },
     {
       "page": "/settings/objects",
@@ -7990,12 +8563,15 @@
         "thana"
       ],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "object-archive-form",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-archive-btn"
     },
     {
       "page": "/settings/objects",
@@ -8015,7 +8591,9 @@
         "db": "CustomObject.archivedAt=<ไม่ว่าง>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]",
+      "opener": "object-archive-btn"
     },
     {
       "page": "/settings/objects",
@@ -8035,7 +8613,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี"
     },
     {
       "page": "/settings/objects",
@@ -8055,7 +8634,9 @@
         "db": "CustomObject.archivedAt=null"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "objects-archived-toggle",
+      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี"
     },
     {
       "page": "/settings/objects",
@@ -8235,7 +8816,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-add-singular=qc-btn-cancel"
     },
     {
       "page": "/settings/objects",
@@ -8295,7 +8877,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "object=[key]"
     },
     {
       "page": "/objects/[key]",
@@ -8390,7 +8973,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/objects/[key]",
@@ -8409,7 +8993,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-none"
     },
     {
       "page": "/objects/[key]",
@@ -8428,7 +9013,14 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "object-view-save-btn",
+        "object-view-name=qc-btn-view",
+        "object-view-save-submit"
+      ],
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
     },
     {
       "page": "/objects/[key]",
@@ -8447,7 +9039,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view"
     },
     {
       "page": "/objects/[key]",
@@ -8466,7 +9059,9 @@
         "db": "MemberSavedView.objectKey=<key>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": "object-view-save-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8485,7 +9080,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": "object-view-save-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8505,7 +9102,9 @@
         "db": "MemberSavedView.scope=TEAM"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": "object-view-save-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8524,7 +9123,9 @@
         "db": "MemberSavedView.objectKey=<key>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": "object-view-save-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8538,12 +9139,15 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "object-view-save-form",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": "object-view-save-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8581,7 +9185,8 @@
         "db": "CustomRecord.objectId=<id>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-import-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8600,7 +9205,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-import-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8619,7 +9225,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-import-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8633,12 +9240,14 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "object-import-form",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-import-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8657,7 +9266,8 @@
         "db": "CustomRecord.objectId=<id>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-import-btn"
     },
     {
       "page": "/objects/[key]",
@@ -8698,7 +9308,8 @@
       "oracle": "",
       "alsoOn": [
         "/objects/[key]/[recordId]"
-      ]
+      ],
+      "needs": "วัตถุ [key] ที่มีแม่ (parentType ≠ NONE) + ระเบียนที่ผูกแม่แล้ว — ขึ้นกับซีดวัตถุ"
     },
     {
       "page": "/objects/[key]",
@@ -8717,7 +9328,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-page-next",
+      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน"
     },
     {
       "page": "/objects/[key]",
@@ -8736,7 +9349,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน"
     },
     {
       "page": "/objects/[key]",
@@ -8755,7 +9369,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
     },
     {
       "page": "/objects/[key]",
@@ -8777,7 +9392,9 @@
       "oracle": "",
       "alsoOn": [
         "/objects/[key]/[recordId]"
-      ]
+      ],
+      "opener": "object-record-new-btn",
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
     },
     {
       "page": "/objects/[key]",
@@ -8796,7 +9413,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "opener": "object-record-new-btn",
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
     },
     {
       "page": "/objects/[key]",
@@ -8810,15 +9429,18 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "object-record-form",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C1.9",
       "oracle": "",
       "alsoOn": [
         "/objects/[key]/[recordId]"
-      ]
+      ],
+      "opener": "object-record-new-btn",
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
     },
     {
       "page": "/objects/[key]",
@@ -8840,7 +9462,9 @@
       "oracle": "",
       "alsoOn": [
         "/objects/[key]/[recordId]"
-      ]
+      ],
+      "opener": "object-record-new-btn",
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
     },
     {
       "page": "/objects/[key]/[recordId]",
@@ -8916,7 +9540,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "needs": "Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซีด"
     },
     {
       "page": "/companies/[companyId]",
@@ -8935,7 +9560,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "tab=obj-[key]",
+      "needs": "ระเบียนของวัตถุกำหนดเอง [key] ที่ผูกกับบริษัท [companyId] (แท็บ obj-<key> ของบริษัท) — ขึ้นกับซีดวัตถุ 'สัญญา'"
     },
     {
       "page": "/companies/[companyId]",
@@ -8954,7 +9581,9 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "tab=obj-[key]",
+      "needs": "ระเบียนของวัตถุกำหนดเอง [key] ที่ผูกกับบริษัท [companyId] (แท็บ obj-<key> ของบริษัท) — ขึ้นกับซีดวัตถุ 'สัญญา'"
     },
     {
       "page": "/objects/[key]",
@@ -8973,7 +9602,14 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "object-view-save-btn",
+        "object-view-name=qc-btn-view",
+        "object-view-save-submit"
+      ],
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
     },
     {
       "page": "/objects/[key]",
@@ -8992,7 +9628,15 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "object-view-save-btn",
+        "object-view-name=qc-btn-view",
+        "object-view-save-submit",
+        "object-view-manage-btn"
+      ],
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
     },
     {
       "page": "/objects/[key]",
@@ -9011,7 +9655,15 @@
         "db": "MemberSavedView.name=<ค่า>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "object-view-save-btn",
+        "object-view-name=qc-btn-view",
+        "object-view-save-submit",
+        "object-view-manage-btn"
+      ],
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
     },
     {
       "page": "/objects/[key]",
@@ -9030,7 +9682,15 @@
         "db": "MemberSavedView.id=<ไม่มีแล้ว>"
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "object-view-save-btn",
+        "object-view-name=qc-btn-view",
+        "object-view-save-submit",
+        "object-view-manage-btn"
+      ],
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
     },
     {
       "page": "/objects",
@@ -9070,7 +9730,8 @@
         "db": ""
       },
       "wo": "C1.9",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'"
     },
     {
       "page": "/settings/api",
@@ -9110,7 +9771,8 @@
         "db": "ApiKey.systemId=<ระบบนี้>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-new"
     },
     {
       "page": "/settings/api",
@@ -9130,7 +9792,8 @@
         "db": ""
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-new"
     },
     {
       "page": "/settings/api",
@@ -9150,7 +9813,8 @@
         "db": ""
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-new"
     },
     {
       "page": "/settings/api",
@@ -9170,7 +9834,8 @@
         "db": ""
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-new"
     },
     {
       "page": "/settings/api",
@@ -9190,7 +9855,8 @@
         "db": "ApiKey.scopesJson=<ชุด crm.* (+ crm.filter.team:<id>)>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-new"
     },
     {
       "page": "/settings/api",
@@ -9210,7 +9876,8 @@
         "db": "ApiKey.revokedAt=<ไม่ว่าง>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "needs": "API key ของระบบนี้ (ApiKey) — ซีดมี 0 · แถว crm-api-key-submit ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/api",
@@ -9250,7 +9917,8 @@
         "db": "WebhookEndpoint.eventsJson=<เหตุการณ์ crm.*>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-hook-new"
     },
     {
       "page": "/settings/api",
@@ -9270,7 +9938,8 @@
         "db": ""
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-hook-new"
     },
     {
       "page": "/settings/api",
@@ -9290,7 +9959,8 @@
         "db": ""
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-hook-new"
     },
     {
       "page": "/settings/api",
@@ -9310,7 +9980,8 @@
         "db": "WebhookEndpoint.url=<ที่กรอก>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-api-hook-new"
     },
     {
       "page": "/settings/api",
@@ -9330,7 +10001,8 @@
         "db": "WebhookEndpoint.active=<สลับ>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ปลายทาง webhook ของระบบนี้ (WebhookEndpoint) — ซีดมี 0 · แถว crm-api-hook-submit ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/api",
@@ -9350,7 +10022,8 @@
         "db": "WebhookEndpoint=<ลบแล้ว>"
       },
       "wo": "C1.10",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ปลายทาง webhook ของระบบนี้ (WebhookEndpoint) — ซีดมี 0 · แถว crm-api-hook-submit ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings",
@@ -9397,7 +10070,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่เลือก/ข้ามเทมเพลตธุรกิจ (settings.crm.businessTemplate ว่าง) — การ์ดเลือกเทมเพลตแสดงเฉพาะตอนนั้น"
     },
     {
       "page": "/app/sys/[id]",
@@ -9417,7 +10091,9 @@
         "db": "CrmPipeline/CrmStage/CrmLostReason/MemberField/CustomObject ตามเทมเพลต (วัตถุต้องมี crm.object.manage) · AppSystem.settings.crm.businessTemplate.key · AuditLog crm.template.apply"
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-template-option=on",
+      "needs": "ระบบ CRM ที่ยังไม่เลือก/ข้ามเทมเพลตธุรกิจ (settings.crm.businessTemplate ว่าง) — การ์ดเลือกเทมเพลตแสดงเฉพาะตอนนั้น"
     },
     {
       "page": "/app/sys/[id]",
@@ -9437,7 +10113,8 @@
         "db": "AppSystem.settings.crm.businessTemplate=\"none\" · AuditLog crm.template.skip"
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังไม่เลือก/ข้ามเทมเพลตธุรกิจ (settings.crm.businessTemplate ว่าง) — การ์ดเลือกเทมเพลตแสดงเฉพาะตอนนั้น"
     },
     {
       "page": "/app/sys/[id]",
@@ -9456,7 +10133,9 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-home-stage-chip=on",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -9475,7 +10154,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -9494,7 +10174,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -9552,7 +10233,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2"
     },
     {
       "page": "/settings",
@@ -9612,7 +10294,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-import-file=qc-btn-import.csv"
     },
     {
       "page": "/contacts/import",
@@ -9632,7 +10315,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-import-file=qc-btn-import.csv"
     },
     {
       "page": "/contacts/import",
@@ -9652,7 +10336,8 @@
         "db": "CrmContact +N · CrmCompany (คอลัมน์บริษัท) · CrmCompanyContact · AuditLog crm.contact.import"
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-import-file=qc-btn-import.csv"
     },
     {
       "page": "/contacts/import",
@@ -9692,7 +10377,12 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-import-file=qc-btn-import.csv",
+        "crm-import-submit"
+      ],
+      "needs": "ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ ไม่มีลิงก์นี้)"
     },
     {
       "page": "/contacts/duplicates",
@@ -9775,7 +10465,11 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-dup-merge-open",
+        "crm-merge-keep-b=on"
+      ]
     },
     {
       "page": "/contacts/duplicates",
@@ -9795,7 +10489,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open"
     },
     {
       "page": "/contacts/duplicates",
@@ -9815,7 +10510,12 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-dup-merge-open",
+        "crm-merge-field-other=on"
+      ],
+      "needs": "คู่สงสัยซ้ำคู่แรกที่มีฟิลด์ค่าต่างกัน (ไม่ต่าง = ไม่มีตารางเลือกค่า)"
     },
     {
       "page": "/contacts/duplicates",
@@ -9835,7 +10535,9 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open",
+      "needs": "คู่สงสัยซ้ำคู่แรกที่มีฟิลด์ค่าต่างกัน (ไม่ต่าง = ไม่มีตารางเลือกค่า)"
     },
     {
       "page": "/contacts/duplicates",
@@ -9855,7 +10557,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open"
     },
     {
       "page": "/contacts/duplicates",
@@ -9875,7 +10578,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open"
     },
     {
       "page": "/contacts/duplicates",
@@ -9895,7 +10599,8 @@
         "state": "disappears"
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open"
     },
     {
       "page": "/contacts/duplicates",
@@ -9918,7 +10623,8 @@
         ]
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-dup-merge-open"
     },
     {
       "page": "/companies/duplicates",
@@ -9979,7 +10685,13 @@
         "note": "ใช้ใน contact-merge-modal · company-merge-modal"
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-merge",
+        "contact-pick-merge-select=*"
+      ],
+      "needs": "ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก (ตารางเลือกค่าโผล่หลังเลือกคน)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -9999,7 +10711,11 @@
         "db": ""
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-merge"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -10019,7 +10735,11 @@
         "db": ""
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-merge"
+      ]
     },
     {
       "page": "/app/sys/[id]",
@@ -10040,7 +10760,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)"
     },
     {
       "page": "/app/sys/[id]",
@@ -10061,7 +10782,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด"
     },
     {
       "page": "/app/sys/[id]",
@@ -10082,7 +10804,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน)"
     },
     {
       "page": "/app/sys/[id]",
@@ -10124,7 +10847,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "opener": "crm-panel-log-activity"
     },
     {
       "page": "/app/sys/[id]",
@@ -10145,7 +10869,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "opener": "crm-panel-log-activity"
     },
     {
       "page": "/app/sys/[id]",
@@ -10166,7 +10891,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "opener": "crm-panel-log-activity"
     },
     {
       "page": "/app/sys/[id]",
@@ -10187,7 +10913,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "needs": "ห้องแชท [conversationId] ที่ยังไม่ผูกผู้ติดต่อ CRM (ผูกแล้ว = ไม่มีปุ่มนี้)"
     },
     {
       "page": "/app/sys/[id]",
@@ -10208,7 +10935,8 @@
       "wo": "C1.11",
       "oracle": "",
       "system": "CHAT",
-      "query": "c=[conversationId]"
+      "query": "c=[conversationId]",
+      "needs": "แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้"
     },
     {
       "page": "/app/party/[partyId]",
@@ -10246,7 +10974,8 @@
         "db": ""
       },
       "wo": "C1.11",
-      "oracle": ""
+      "oracle": "",
+      "needs": "party [partyId] (ของผู้ติดต่อตัวแทน) ที่มีดีล — ขึ้นกับซีด"
     },
     {
       "page": "/settings/automation",
@@ -10306,7 +11035,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10326,7 +11056,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-trigger=crm.deal.stale"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10346,7 +11080,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-trigger=crm.deal.close_due"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10366,7 +11104,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-trigger=crm.score.threshold"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10386,7 +11128,12 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-trigger=custom.record.field_due"
+      ],
+      "needs": "วัตถุกำหนดเองที่มีฟิลด์วันที่ (ตัวเลือกของเหตุการณ์ custom.record.field_due)"
     },
     {
       "page": "/settings/automation",
@@ -10406,7 +11153,13 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-trigger=custom.record.field_due",
+        "crm-auto-param-object=*"
+      ],
+      "needs": "วัตถุกำหนดเองที่มีฟิลด์วันที่ (ตัวเลือกของเหตุการณ์ custom.record.field_due)"
     },
     {
       "page": "/settings/automation",
@@ -10426,7 +11179,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10446,7 +11200,12 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-add-condition=click",
+        "crm-auto-add-condition=click"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10466,7 +11225,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-add-condition"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10486,7 +11249,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-add-condition"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10506,7 +11273,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-add-condition"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10526,7 +11297,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-add-condition"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10546,7 +11321,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10566,7 +11342,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10586,7 +11363,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=MOVE_STAGE"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10606,7 +11387,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=ASSIGN"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10626,7 +11411,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10646,7 +11432,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10666,7 +11453,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -10686,7 +11474,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=CREATE_DEAL"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10706,7 +11498,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=CREATE_DEAL"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10726,7 +11522,12 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=OPEN_KANBAN_CARD"
+      ],
+      "needs": "บอร์ดงาน (KanbanBoard) ≥1 ให้เลือกในการกระทำ 'เปิดการ์ดงาน' — ซีด QC1 มี 0"
     },
     {
       "page": "/settings/automation",
@@ -10746,7 +11547,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=OPEN_KANBAN_CARD"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10766,7 +11571,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=SEND_EMAIL"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10786,7 +11595,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=SEND_EMAIL"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10806,7 +11619,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=SET_FIELD"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10826,7 +11643,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=SET_FIELD"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10846,7 +11667,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=ADD_TAG"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10866,7 +11691,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=ADJUST_SCORE"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10886,7 +11715,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=ISSUE_VOUCHER"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10906,7 +11739,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=NOTIFY_STAFF"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10926,7 +11763,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=NOTIFY_STAFF"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10946,7 +11787,11 @@
         "db": "WEBHOOK ที่ชี้ 127.0.0.1/169.254.169.254/localhost ถูกปฏิเสธตอนบันทึก (webhookTargetProblem) — ไม่มีแถวใหม่"
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=WEBHOOK"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10966,7 +11811,11 @@
         "db": "WAIT_THEN > 90 วัน ถูกปฏิเสธ"
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=WAIT_THEN"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -10986,7 +11835,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11006,7 +11856,11 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=WAIT_THEN"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -11026,7 +11880,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11046,7 +11901,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11066,7 +11922,8 @@
         "db": "ไม่เขียนอะไรเลย (AutomationRun/OutboxEvent/AuditLog/AppNotification ไม่เปลี่ยน)"
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11086,7 +11943,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11109,7 +11967,8 @@
         ]
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-new"
     },
     {
       "page": "/settings/automation",
@@ -11129,7 +11988,8 @@
         "db": "AutomationRule.enabled สลับ · ปิด = AutomationRun WAITING ของกฎ → CANCELLED · AuditLog crm.automation.enable|disable"
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/automation",
@@ -11149,7 +12009,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/automation",
@@ -11169,7 +12030,8 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/automation",
@@ -11189,7 +12051,9 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-rule-delete",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/automation",
@@ -11209,7 +12073,9 @@
         "db": "AutomationRule ถูกลบ (เหตุผล ≥ 5 ตัวอักษร · AuditLog crm.automation.delete) · เหตุผลสั้น = ข้อความไทยในหน้า ไม่ลบ"
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-rule-delete",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/automation",
@@ -11229,7 +12095,9 @@
         "db": ""
       },
       "wo": "C2.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-auto-rule-delete",
+      "needs": "กฎอัตโนมัติของ CRM ระบบนี้ (AutomationRule scope=CRM) — ขึ้นกับซีด · แถว crm-auto-starters/crm-auto-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/sequences",
@@ -11289,7 +12157,8 @@
         "db": "CrmSequence 1 แถว (version 1) + CrmSequenceStep ขั้นแรก + AuditLog crm.sequence.create"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-new"
     },
     {
       "page": "/settings/sequences",
@@ -11309,7 +12178,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-new"
     },
     {
       "page": "/settings/sequences",
@@ -11329,7 +12199,8 @@
         "db": "CrmSequence.name = ชื่อที่กรอก · ชื่อว่าง = ข้อความไทยในหน้า ไม่เขียนอะไร"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-new"
     },
     {
       "page": "/settings/sequences",
@@ -11349,7 +12220,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-new"
     },
     {
       "page": "/settings/sequences",
@@ -11369,7 +12241,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลำดับติดตาม (CrmSequence) — ซีดมี 0 · แถว crm-seq-new-submit ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11576,7 +12449,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11593,7 +12467,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11610,7 +12485,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11627,7 +12503,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11663,7 +12540,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11682,7 +12560,11 @@
         "db": "หัวเรื่องที่มีการขึ้นบรรทัด = ข้อความไทยในหน้า ไม่บันทึก (X6)"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-seq-steps-toggle",
+        "crm-seq-step-kind-*=EMAIL"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11701,7 +12583,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-steps-toggle"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11720,7 +12603,11 @@
         "db": "ค่าติดลบ = ข้อความไทยในหน้า ไม่บันทึก"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-seq-steps-toggle",
+        "crm-seq-step-kind-*=WAIT"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11739,7 +12626,11 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-seq-steps-toggle",
+        "crm-seq-step-kind-*=WAIT"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11758,7 +12649,11 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-seq-steps-toggle",
+        "crm-seq-step-kind-*=TASK"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11777,7 +12672,11 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-seq-steps-toggle",
+        "crm-seq-step-kind-*=TASK"
+      ]
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11796,7 +12695,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11815,7 +12715,8 @@
         "db": "CrmSequenceEnrollment.status=PAUSED (runDue ข้ามแถวนี้)"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ ACTIVE)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11834,7 +12735,8 @@
         "db": "CrmSequenceEnrollment.status=ACTIVE"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ PAUSED)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -11853,7 +12755,8 @@
         "db": "CrmSequenceEnrollment.status=STOPPED · stoppedReason=MANUAL + OutboxEvent crm.sequence.finished 1 แถว"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ ACTIVE/PAUSED)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -12093,7 +12996,8 @@
         "db": "วันที่นั้นหายจาก settings.crm.holidays"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "วันหยุดที่บันทึกไว้ (settings.crm.holidays) — ซีดไม่มี · แถว crm-seq-holiday-add/import ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12112,7 +13016,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12131,7 +13036,9 @@
         "db": "CrmSequenceEnrollment 1 แถว ACTIVE (stepIndex 0 · nextAt = ตอนนี้) + OutboxEvent crm.sequence.enrolled"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-enroll",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12150,7 +13057,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-enroll",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12169,7 +13078,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-enroll",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12188,7 +13099,9 @@
         "db": "อยู่ในลำดับแล้ว = ข้อความไทยในหน้า (CONFLICT) · ขอไม่รับข่าวสาร = ไม่มีแถว"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-enroll",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -12207,7 +13120,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-enroll",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12226,7 +13141,8 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12245,7 +13161,9 @@
         "db": "CrmSequenceEnrollment ของผู้ติดต่อที่มองเห็นและไม่ได้ขอไม่รับข่าวสาร + AuditLog crm.sequence.bulk_enroll พร้อมเหตุผล"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12264,7 +13182,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12283,7 +13203,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12302,7 +13224,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12321,7 +13245,9 @@
         "db": "ไม่ยืนยัน/เหตุผลสั้นกว่า 5 ตัวอักษร = ข้อความไทยในหน้า ไม่เขียนอะไรเลย (X9)"
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/contacts",
@@ -12340,7 +13266,9 @@
         "db": ""
       },
       "wo": "C2.2",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-seq-bulk",
+      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -12418,7 +13346,8 @@
         "db": "CrmAssignmentRule.sortOrder สลับกับกฎก่อนหน้า · AuditLog crm.assignment.rule.reorder"
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎแจกงาน ≥2 กฎ (CrmAssignmentRule) — ซีดมี 0 · แถว save สร้างได้ 1 กฎต่อกลุ่ม"
     },
     {
       "page": "/settings/assignment",
@@ -12438,7 +13367,8 @@
         "db": "CrmAssignmentRule.sortOrder สลับกับกฎถัดไป · AuditLog crm.assignment.rule.reorder"
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎแจกงาน ≥2 กฎ (CrmAssignmentRule) — ซีดมี 0 · แถว save สร้างได้ 1 กฎต่อกลุ่ม"
     },
     {
       "page": "/settings/assignment",
@@ -12458,7 +13388,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12478,7 +13409,8 @@
         "db": "CrmAssignmentRule.active=สลับ (แถวยังอยู่) · AuditLog crm.assignment.rule.toggle"
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12498,7 +13430,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12518,7 +13451,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12538,7 +13472,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12558,7 +13493,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12578,7 +13514,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12598,7 +13535,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12618,7 +13556,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12638,7 +13577,11 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-assign-rule-new",
+        "crm-assign-cond-add"
+      ]
     },
     {
       "page": "/settings/assignment",
@@ -12658,7 +13601,11 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-assign-rule-new",
+        "crm-assign-cond-add"
+      ]
     },
     {
       "page": "/settings/assignment",
@@ -12678,7 +13625,11 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-assign-rule-new",
+        "crm-assign-cond-add"
+      ]
     },
     {
       "page": "/settings/assignment",
@@ -12698,7 +13649,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12718,7 +13670,11 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-assign-rule-new",
+        "crm-assign-cond-add"
+      ]
     },
     {
       "page": "/settings/assignment",
@@ -12738,7 +13694,8 @@
         "db": "CrmAssignmentRule แถวใหม่/แก้ไข (tenantId+systemId ของหน้า · sortOrder ต่อท้าย) · AuditLog crm.assignment.rule.create|rule.update"
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12758,7 +13715,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-new"
     },
     {
       "page": "/settings/assignment",
@@ -12778,7 +13736,9 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-delete-*",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12798,7 +13758,9 @@
         "db": "CrmAssignmentRule แถวหาย (ต้องมีเหตุผล ≥ 5 ตัวอักษร) · AuditLog crm.assignment.rule.delete"
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-delete-*",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12818,7 +13780,9 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-assign-rule-delete-*",
+      "needs": "กฎแจกงาน (CrmAssignmentRule) — ซีดมี 0 · แถว crm-assign-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/assignment",
@@ -12958,7 +13922,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด"
     },
     {
       "page": "/settings/assignment",
@@ -12978,7 +13943,8 @@
         "db": ""
       },
       "wo": "C2.3",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด"
     },
     {
       "page": "/settings/assignment",
@@ -13078,7 +14044,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13100,7 +14067,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13122,7 +14090,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13144,7 +14113,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13166,7 +14136,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13188,7 +14159,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13210,7 +14182,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13232,7 +14205,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13254,7 +14228,8 @@
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13268,15 +14243,17 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "crm-call-log-modal",
-        "db": "ไม่เขียนอะไรเลย"
+        "db": "ไม่เขียนอะไรเลย",
+        "state": "disappears"
       },
       "wo": "C2.4",
       "oracle": "",
       "alsoOn": [
         "/deals/[dealId]"
-      ]
+      ],
+      "opener": "crm-call-tel"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13295,7 +14272,12 @@
         "db": "AiProposal(kind=crm.activity.ai_fill, status=PENDING) 1 ใบ + AiCreditTxn(source=CRM_ASSIST) 1 แถว"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-call-tel",
+        "crm-call-save"
+      ],
+      "needs": "ตั้งค่า CRM เปิดถอดเสียงสาย (settings.crm.ai.callTranscribe) + มีผู้ให้บริการถอดเสียง + เครดิต AI (ไม่ครบ = ข้อความ crm-call-ai-unavailable แทนปุ่ม)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13314,7 +14296,9 @@
         "db": "CrmActivity.transcript (เมื่อกดรับ)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-tel",
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13333,7 +14317,9 @@
         "db": "CrmActivity.aiSummary (เมื่อกดรับ)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-tel",
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13352,7 +14338,9 @@
         "db": "CrmActivity.aiNextStep (เมื่อกดรับ)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-tel",
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13371,7 +14359,9 @@
         "db": "AiProposal.status = EXECUTED · CrmActivity.transcript/aiSummary/aiNextStep · AuditLog crm.activity.ai_accept"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-tel",
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13390,7 +14380,9 @@
         "db": "AiProposal.status = REJECTED · CrmActivity ไม่เปลี่ยน · AuditLog crm.activity.ai_reject"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-tel",
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
     },
     {
       "page": "/contacts",
@@ -13428,7 +14420,8 @@
         "db": "CrmContact 1 แถวในระบบนี้ + AiProposal.status = EXECUTED"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13447,7 +14440,8 @@
         "db": "ไม่เขียนอะไรเลย (ไม่มีชื่อ/เบอร์/อีเมลใน URL)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ระบบจองคิวที่ผู้ใช้เปิดได้ + ผู้ติดต่อมี party (bookingLinkFor คืนลิงก์) — ขึ้นกับสิทธิ์/ซีด"
     },
     {
       "page": "/calendar",
@@ -13466,7 +14460,8 @@
         "db": "ไม่เขียนอะไรเลย (อ่านอย่างเดียว — แก้ที่โมดูลต้นทาง)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "นัดหมายจากระบบจองคิว (Appointment) ที่ผูกผู้ติดต่อ CRM ในช่วงที่แสดง — ซีดไม่สร้าง"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13485,7 +14480,8 @@
         "db": "ไม่เขียนอะไร (เลือกสายที่จะฟัง/ลบ)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13504,7 +14500,8 @@
         "db": "ไม่เขียนอะไร (ออกใบผ่าน 15 นาทีของผู้ดูผ่าน getRecording)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13523,7 +14520,8 @@
         "db": "ไม่เขียนอะไร (เปิดกล่องยืนยัน + เหตุผล)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13542,7 +14540,9 @@
         "db": ""
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-recording-delete",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13561,7 +14561,9 @@
         "db": "AuditLog crm.activity.recording_remove (เหตุผล ≥ 5 ตัวอักษร)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-recording-delete",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13580,7 +14582,9 @@
         "db": "FileAsset ถูกลบ · CrmActivity.recordingFileId = null · AuditLog crm.activity.recording_remove"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-recording-delete",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13599,7 +14603,9 @@
         "db": "ไม่เขียนอะไรเลย"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-call-recording-delete",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/deals/[dealId]",
@@ -13618,7 +14624,8 @@
         "db": "ไม่เขียนอะไร (ออกใบผ่าน 15 นาทีของผู้ดูผ่าน getRecording)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/deals/[dealId]",
@@ -13637,7 +14644,8 @@
         "db": "ไม่เขียนอะไร (เปิดกล่องยืนยัน + เหตุผล)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13656,7 +14664,8 @@
         "db": "ไม่เขียนอะไร (ผู้ติดต่อไม่มีเบอร์ ⇒ บันทึกสายย้อนหลัง)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ติดต่อที่ไม่มีเบอร์โทร (ปุ่มบันทึกสายย้อนหลังแสดงแทน tel:) — ผู้ติดต่อ [contactId] ในซีดมีเบอร์"
     },
     {
       "page": "/contacts",
@@ -13675,7 +14684,8 @@
         "db": "AiProposal.status = REJECTED · payload เหลือแค่ systemId (ล้างชื่อ/เบอร์/อีเมล)"
       },
       "wo": "C2.4",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง"
     },
     {
       "page": "/u/[token]",
@@ -13715,7 +14725,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "query": "box=unmatched"
     },
     {
       "page": "/emails",
@@ -13775,7 +14786,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "อีเมลในกล่อง CRM (CrmEmailMessage) — ซีดมี 0"
     },
     {
       "page": "/emails/[threadKey]",
@@ -13794,7 +14806,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)"
     },
     {
       "page": "/emails/[threadKey]",
@@ -13813,7 +14826,8 @@
         "db": "ไม่เขียนอะไร (ออกลิงก์ชั่วคราว 15 นาที ผูกผู้ดู)"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "อีเมลในเธรดที่มีไฟล์แนบ"
     },
     {
       "page": "/emails/[threadKey]",
@@ -13853,7 +14867,12 @@
         "db": "CrmEmailMessage.matchedBy=MANUAL · CrmActivity EMAIL 1 แถว · AuditLog crm.email.attach"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-email-attach-contact-q=QC",
+        "crm-email-attach-contact-go"
+      ],
+      "needs": "เธรดที่ยังไม่ผูกผู้ติดต่อ + ผู้ติดต่อที่ค้นด้วย 'QC' เจอ"
     },
     {
       "page": "/emails/[threadKey]",
@@ -14085,7 +15104,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-rotate-key"
     },
     {
       "page": "/settings/email",
@@ -14105,7 +15125,8 @@
         "db": "AppSystem.settings.crm.email.inboundKey = กุญแจใหม่ 8 ตัว · AuditLog crm.email.rotate_key (ต้องมีเหตุผล ≥ 5 ตัวอักษร)"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-rotate-key"
     },
     {
       "page": "/settings/email",
@@ -14425,7 +15446,8 @@
         "db": "EmailDomain.status (VERIFIED ⇒ verifiedAt) · AuditLog crm.email.domain.refresh"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODULE_GUARD (Resend จริง)"
     },
     {
       "page": "/settings/email",
@@ -14485,7 +15507,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14505,7 +15528,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14525,7 +15549,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14545,7 +15570,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14565,7 +15591,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14585,7 +15612,8 @@
         "db": "CrmEmailUserSetting upsert (systemId,userId) · AuditLog crm.email.user_setting"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14625,7 +15653,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "แม่แบบอีเมล (CrmEmailTemplate) — ซีดมี 0 · แถว crm-email-template-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/email",
@@ -14645,7 +15674,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-template-new"
     },
     {
       "page": "/settings/email",
@@ -14665,7 +15695,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-template-new"
     },
     {
       "page": "/settings/email",
@@ -14685,7 +15716,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-template-new"
     },
     {
       "page": "/settings/email",
@@ -14705,7 +15737,8 @@
         "db": "CrmEmailTemplate แถวใหม่/แก้ไข (ชื่อซ้ำในระบบ = CONFLICT) · AuditLog crm.email.template.*"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-template-new"
     },
     {
       "page": "/settings/email",
@@ -14725,7 +15758,8 @@
         "db": "CrmEmailTemplate แถวหาย · AuditLog crm.email.template.delete"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "แม่แบบอีเมล (CrmEmailTemplate) — ซีดมี 0 · แถว crm-email-template-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/emails",
@@ -14804,7 +15838,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "needs": "เธรดที่ผูกผู้ติดต่อแล้ว"
     },
     {
       "page": "/settings/email",
@@ -14824,7 +15859,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-rotate-key"
     },
     {
       "page": "/settings/email",
@@ -14844,7 +15880,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-user-edit"
     },
     {
       "page": "/settings/email",
@@ -14864,7 +15901,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-template-new"
     },
     {
       "page": "/emails",
@@ -14904,7 +15942,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-my-toggle"
     },
     {
       "page": "/emails",
@@ -14924,7 +15963,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-my-toggle"
     },
     {
       "page": "/emails",
@@ -14944,7 +15984,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-my-toggle"
     },
     {
       "page": "/emails",
@@ -14964,7 +16005,8 @@
         "db": ""
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-my-toggle"
     },
     {
       "page": "/emails",
@@ -14984,7 +16026,8 @@
         "db": "CrmEmailUserSetting upsert (systemId,userId = ตัวเองเท่านั้น) · AuditLog crm.email.user_setting"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-my-toggle"
     },
     {
       "page": "/settings/tracking",
@@ -15063,7 +16106,8 @@
         "db": "settings.crm.tracking.web.domains -= โดเมน"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "โดเมนที่อนุญาตให้ติดตาม (settings.crm.tracking.web.domains) — ซีดไม่มี · แถว crm-track-domain-add ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15275,7 +16319,8 @@
         "target": "crm-link-qr-box"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15290,11 +16335,14 @@
         "thana"
       ],
       "expect": {
-        "type": "modal",
-        "target": "crm-link-qr-box"
+        "type": "ui",
+        "target": "crm-link-qr-box",
+        "state": "disappears"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-link-qr-*",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15314,7 +16362,8 @@
         "db": "CrmTrackedLink.active พลิก (ปิดแล้ว /l/<code> ตอบเหมือนรหัสที่ไม่มีอยู่) · AuditLog crm.tracking.link.update"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15333,7 +16382,8 @@
         "target": "crm-link-delete-confirm-*"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15352,7 +16402,9 @@
         "target": "crm-link-error"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-link-delete-*",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/tracking",
@@ -15372,7 +16424,9 @@
         "db": "CrmTrackedLink ถูกลบ (X9: ต้องยืนยัน + เหตุผล ≥ 5 ตัวอักษร) · AuditLog crm.tracking.link.delete"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-link-delete-*",
+      "needs": "ลิงก์ติดตาม (CrmTrackedLink) — ซีดมี 0 · แถว crm-link-create ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/forms",
@@ -15392,7 +16446,8 @@
         "db": "FormDef.crmSystemId (ต้องเป็นระบบ CRM ของร้านนี้) · AuditLog crm.tracking.form.target"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15412,7 +16467,8 @@
         "db": "FormDef.assignRuleId (ต้องเป็นกฎของระบบปลายทาง)"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15432,7 +16488,8 @@
         "db": "FormDef.scoreOnSubmit (0–1000)"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15452,7 +16509,8 @@
         "db": "FormDef.createCompanyFromField"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15472,7 +16530,8 @@
         "db": "FormDef.spamGuard.honeypot"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15492,7 +16551,8 @@
         "db": "FormDef.utmCapture"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15511,7 +16571,8 @@
         "target": "crm-forms-row-*"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/settings/forms",
@@ -15531,7 +16592,8 @@
         "db": "ไม่เปลี่ยนค่า (อ่านค่าปัจจุบันกลับมาแสดง)"
       },
       "wo": "C2.6",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ฟอร์มรับ lead (FormDef) ของร้าน — ซีดมี 0 (ตารางผูกฟอร์มว่าง)"
     },
     {
       "page": "/app/sys/[id]/account/docs/[docType]/[docId]",
@@ -15573,7 +16635,8 @@
       "wo": "C2.7",
       "oracle": "qc-crm-c2.7 C2.7-S5.4",
       "system": "POS",
-      "query": "unit=[unitId]"
+      "query": "unit=[unitId]",
+      "needs": "บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่มองเห็น)"
     },
     {
       "page": "/settings/scoring",
@@ -15689,7 +16752,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-recompute-btn"
     },
     {
       "page": "/settings/scoring",
@@ -15709,7 +16773,8 @@
         "db": "CrmContact.score = GREATEST(0, Σ CrmScoreLog ที่ยังไม่หมดอายุ) ทุกคนในระบบ · AuditLog crm.score.recompute"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-recompute-btn"
     },
     {
       "page": "/settings/scoring",
@@ -15768,7 +16833,8 @@
         "db": "CrmScoreRule.active · AuditLog crm.score.rule.enable|disable"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/scoring",
@@ -15787,7 +16853,8 @@
         "target": "crm-score-rule-save"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/scoring",
@@ -15806,7 +16873,8 @@
         "target": "crm-score-delete-panel"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/scoring",
@@ -15825,7 +16893,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15844,7 +16913,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15863,7 +16933,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15882,7 +16953,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15901,7 +16973,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15920,7 +16993,8 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15940,7 +17014,8 @@
         "db": "CrmScoreRule 1 แถว (หรือแก้แถวเดิม) · AuditLog crm.score.rule.create|update"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15959,7 +17034,8 @@
         "target": "crm-score-rule-list"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-new"
     },
     {
       "page": "/settings/scoring",
@@ -15978,7 +17054,9 @@
         "target": "crm-score-msg"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-delete-*",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/scoring",
@@ -15998,7 +17076,9 @@
         "db": "ลบ CrmScoreRule (แถว CrmScoreLog คงไว้เป็นประวัติ) · AuditLog crm.score.rule.delete"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-delete-*",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/scoring",
@@ -16017,7 +17097,9 @@
         "target": "crm-score-rule-list"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-score-rule-delete-*",
+      "needs": "กฎคะแนน (CrmScoreRule) — ซีดมี 0 · แถว crm-score-seed-btn / crm-score-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/contacts/[contactId]",
@@ -16036,7 +17118,8 @@
         "db": "ไม่มีการเขียน (เปิดรายการที่มาของคะแนน)"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ประวัติคะแนนของผู้ติดต่อ [contactId] (CrmScoreLog) — ซีดไม่มีกฎคะแนน (CrmScoreRule 0) จึงไม่มีรายการ"
     },
     {
       "page": "/settings/notifications",
@@ -16056,7 +17139,8 @@
         "db": "ไม่มีการเขียน (สลับแท็บค่าของร้าน)"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": "crm-notify-tab-mine=click"
     },
     {
       "page": "/settings/notifications",
@@ -16070,9 +17154,11 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-notify-msg",
-        "db": "ไม่มีการเขียน (สลับแท็บค่าของฉัน)"
+        "type": "ui",
+        "target": "crm-notify-tab-mine",
+        "db": "ไม่มีการเขียน (สลับแท็บค่าของฉัน)",
+        "state": "selected",
+        "note": "ตัวเลือกแท็บ: ต้องประกาศว่าเลือกอยู่ (aria-selected/aria-pressed/aria-current) ทั้งตอนสลับมา (owner/manager) และตอนเป็นแท็บเดียวที่เลือกอยู่แล้ว (nok/thana — กดซ้ำไม่เปลี่ยนอะไร = ถูก ไม่ใช่ปุ่มตาย) · ruling §7.1"
       },
       "wo": "C2.10",
       "oracle": "qc-crm-c2.10"
@@ -16114,7 +17200,8 @@
         "db": "CrmUserPref.notifications ของผู้ใช้ที่กดเท่านั้น · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": "crm-notify-tab-mine"
     },
     {
       "page": "/settings/notifications",
@@ -16233,7 +17320,8 @@
         "db": "CrmUserPref.quietHours (null = กลับไปใช้ของร้าน) · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": "crm-notify-tab-mine"
     },
     {
       "page": "/settings/notifications",
@@ -16252,7 +17340,11 @@
         "db": "CrmUserPref.quietHours.enabled · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": [
+        "crm-notify-tab-mine",
+        "crm-notify-my-quiet-own=on"
+      ]
     },
     {
       "page": "/settings/notifications",
@@ -16271,7 +17363,11 @@
         "db": "CrmUserPref.quietHours.from · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": [
+        "crm-notify-tab-mine",
+        "crm-notify-my-quiet-own=on"
+      ]
     },
     {
       "page": "/settings/notifications",
@@ -16290,7 +17386,11 @@
         "db": "CrmUserPref.quietHours.to · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": [
+        "crm-notify-tab-mine",
+        "crm-notify-my-quiet-own=on"
+      ]
     },
     {
       "page": "/settings/notifications",
@@ -16309,7 +17409,8 @@
         "db": "CrmUserPref.quietHours · AuditLog crm.notify.prefs"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "opener": "crm-notify-tab-mine"
     },
     {
       "page": "/app/sys/[id]",
@@ -16328,7 +17429,8 @@
         "db": "ไม่มีการเขียน (เปิดดีล 360 ของดีลที่นิ่ง)"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -16347,7 +17449,8 @@
         "db": "ไม่มีการเขียน (ปุ่ม \"ดู\" ท้ายแถวของภาพ 01 — ทางเข้าเดียวกับชื่อดีล)"
       },
       "wo": "C2.10",
-      "oracle": "qc-crm-c2.10"
+      "oracle": "qc-crm-c2.10",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -16409,7 +17512,10 @@
         "db": "ไม่มีการเขียน (8 แท็บ overview·forecast·funnel·reps·activities·lost·sources·scores — ภาพรวมคือ /crm/reports · พาตัวกรองไปด้วย)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "not": [
+        "crm-report-tab-overview"
+      ]
     },
     {
       "page": "/reports",
@@ -16426,7 +17532,10 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/reports/[tab]?from=&to=",
-        "db": "ไม่มีการเขียน (ช่วงวันไทย · ค่าปริยาย = ไตรมาสนี้ · ทุกช่วงเวลา = ?range=all)"
+        "db": "ไม่มีการเขียน (ช่วงวันไทย · ค่าปริยาย = ไตรมาสนี้ · ทุกช่วงเวลา = ?range=all)",
+        "anyOf": [
+          "/app/sys/[id]/crm/reports"
+        ]
       },
       "wo": "C3.1",
       "oracle": "qc-crm-c3.1",
@@ -16449,7 +17558,10 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/reports/[tab]?team=",
-        "db": "ไม่มีการเขียน (ทีมของร้าน · ไม่ขยายขอบเขตของผู้ดู)"
+        "db": "ไม่มีการเขียน (ทีมของร้าน · ไม่ขยายขอบเขตของผู้ดู)",
+        "anyOf": [
+          "/app/sys/[id]/crm/reports"
+        ]
       },
       "wo": "C3.1",
       "oracle": "qc-crm-c3.1",
@@ -16472,7 +17584,10 @@
       "expect": {
         "type": "navigate",
         "target": "/app/sys/[id]/crm/reports/[tab]?pipeline=",
-        "db": "ไม่มีการเขียน (pipeline ของระบบนี้ · ผูกเฉพาะตัวเลขที่มาจากดีล)"
+        "db": "ไม่มีการเขียน (pipeline ของระบบนี้ · ผูกเฉพาะตัวเลขที่มาจากดีล)",
+        "anyOf": [
+          "/app/sys/[id]/crm/reports"
+        ]
       },
       "wo": "C3.1",
       "oracle": "qc-crm-c3.1",
@@ -16539,12 +17654,14 @@
         "thana"
       ],
       "expect": {
-        "type": "modal",
+        "type": "ui",
         "target": "crm-report-schedule-modal",
-        "db": "ไม่มีการเขียน (ปิดหน้าต่าง)"
+        "db": "ไม่มีการเขียน (ปิดหน้าต่าง)",
+        "state": "disappears"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule"
     },
     {
       "page": "/reports",
@@ -16564,7 +17681,8 @@
         "db": "ไม่มีการเขียน (เลือกแท็บของตาราง)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule"
     },
     {
       "page": "/reports",
@@ -16584,7 +17702,8 @@
         "db": "ไม่มีการเขียน (ทุกวัน/ทุกสัปดาห์/ทุกเดือน)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule"
     },
     {
       "page": "/reports",
@@ -16604,7 +17723,11 @@
         "db": "ไม่มีการเขียน (วันในสัปดาห์ 1–7 เมื่อเลือกทุกสัปดาห์)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": [
+        "crm-report-schedule",
+        "crm-report-schedule-frequency=WEEKLY"
+      ]
     },
     {
       "page": "/reports",
@@ -16624,7 +17747,11 @@
         "db": "ไม่มีการเขียน (วันที่ 1–28 เมื่อเลือกทุกเดือน)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": [
+        "crm-report-schedule",
+        "crm-report-schedule-frequency=MONTHLY"
+      ]
     },
     {
       "page": "/reports",
@@ -16644,7 +17771,8 @@
         "db": "ไม่มีการเขียน (เลือกผู้รับจากพนักงานของร้าน · ไม่มีช่องอีเมลภายนอก)"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule"
     },
     {
       "page": "/reports",
@@ -16665,7 +17793,8 @@
         "resultTarget": "crm-report-schedule-modal"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule"
     },
     {
       "page": "/reports",
@@ -16686,7 +17815,9 @@
         "resultTarget": "crm-report-schedule-modal"
       },
       "wo": "C3.1",
-      "oracle": "qc-crm-c3.1"
+      "oracle": "qc-crm-c3.1",
+      "opener": "crm-report-schedule",
+      "needs": "ตารางส่งรายงานที่บันทึกไว้ (AppSystem.settings.crm.reportSchedules) — ซีดไม่มี · แถว crm-report-schedule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/app/sys/[id]",
@@ -16821,9 +17952,11 @@
         "thana"
       ],
       "expect": {
-        "type": "navigate",
-        "target": "/app/sys/[id]/crm/deals?view=table&q=",
-        "db": "ไม่มีการเขียน (ค้นดีล — ฟอร์ม GET)"
+        "type": "ui",
+        "target": "crm-home-search",
+        "db": "ไม่มีการเขียน (ค้นดีล — ฟอร์ม GET)",
+        "state": "changes",
+        "note": "ช่องค้นหาของฟอร์ม GET — พิมพ์ไม่นำทาง (ฟอร์ม crm-home-search-form เป็นตัวนำทาง)"
       },
       "wo": "C3.2",
       "oracle": "qc-crm-c3.2"
@@ -16926,7 +18059,11 @@
         "db": "ไม่มีการเขียน (ล้างตัวกรอง — แสดงเมื่อมีตัวกรอง)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "opener": [
+        "crm-home-filter-range=*",
+        "crm-home-filter-apply"
+      ]
     },
     {
       "page": "/app/sys/[id]",
@@ -16946,7 +18083,8 @@
         "db": "ไม่มีการเขียน (ชิปมุมมองที่บันทึกของดีล)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "มุมมองที่บันทึกของดีล (MemberSavedView objectKey=deal) ≥1 — ซีดไม่มี และหน้าแรกไม่มีตัวสร้างมุมมอง (บันทึกได้ที่หน้ารายการดีลเท่านั้น) · ruling §7.1"
     },
     {
       "page": "/app/sys/[id]",
@@ -16966,7 +18104,9 @@
         "db": "ไม่มีการเขียน (เปิดรายการดีลตามมุมมอง · TEAM = ทีมจริง)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "opener": "crm-home-saved-view",
+      "needs": "มุมมองที่บันทึกของดีล (MemberSavedView objectKey=deal) — ซีดไม่มี (บันทึกได้ที่หน้ารายการดีล)"
     },
     {
       "page": "/app/sys/[id]",
@@ -17066,7 +18206,8 @@
         "db": "ไม่มีการเขียน (ป้ายเตือนดีลนิ่ง — แสดงเมื่อมีดีลนิ่ง)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
     },
     {
       "page": "/app/sys/[id]",
@@ -17125,7 +18266,8 @@
         "db": "ไม่มีการเขียน"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/app/sys/[id]",
@@ -17145,7 +18287,8 @@
         "db": "ไม่มีการเขียน"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/app/sys/[id]",
@@ -17165,7 +18308,8 @@
         "db": "ไม่มีการเขียน (เลือกผู้ดูแลคนใหม่)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/app/sys/[id]",
@@ -17185,7 +18329,8 @@
         "db": "ไม่มีการเขียน (เหตุผล ≥ 5 ตัวอักษร)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/app/sys/[id]",
@@ -17205,7 +18350,8 @@
         "db": "ไม่มีการเขียน (ยืนยันการโอนเป็นกลุ่ม · X9)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/app/sys/[id]",
@@ -17225,7 +18371,8 @@
         "db": "CrmDeal.ownerUserId=ผู้ดูแลใหม่ (ทุกดีลในรายการ · deals.bulkReassign เดิม) · AuditLog crm.deal.bulk_reassign (reason)"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "needs": "ดีลเปิด/ผู้ติดต่อที่ไม่มีผู้ดูแล (ownerUserId ว่างหรือผู้ดูแลออกจากร้านแล้ว) — ขึ้นกับซีด"
     },
     {
       "page": "/settings/quotas",
@@ -17348,7 +18495,8 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view"
     },
     {
       "page": "/contacts",
@@ -17371,7 +18519,9 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view",
+      "opener": "crm-view-save-open"
     },
     {
       "page": "/contacts",
@@ -17394,6 +18544,11 @@
       "alsoOn": [
         "/companies",
         "/deals"
+      ],
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-scope-team=on"
       ]
     },
     {
@@ -17417,7 +18572,9 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view",
+      "opener": "crm-view-save-open"
     },
     {
       "page": "/contacts",
@@ -17440,7 +18597,13 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-scope-team"
+      ],
+      "needs": "ผู้ใช้ที่เลือกแชร์ได้ ≥2 ทีม (พนักงานเห็นเฉพาะทีมตัวเอง — ทีมเดียว = ไม่มีตัวเลือกอื่น)"
     },
     {
       "page": "/contacts",
@@ -17463,7 +18626,9 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view",
+      "opener": "crm-view-save-open"
     },
     {
       "page": "/contacts",
@@ -17487,7 +18652,9 @@
       "alsoOn": [
         "/companies",
         "/deals"
-      ]
+      ],
+      "query": "q=qc-btn-view",
+      "opener": "crm-view-save-open"
     },
     {
       "page": "/contacts",
@@ -17510,6 +18677,12 @@
       "alsoOn": [
         "/companies",
         "/deals"
+      ],
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-name=qc-btn-view",
+        "crm-view-save"
       ]
     },
     {
@@ -17529,7 +18702,13 @@
         "db": "ไม่มีการเขียน (มุมมองที่บันทึกของบริษัท — listCompanies({savedViewId}))"
       },
       "wo": "C3.2",
-      "oracle": "qc-crm-c3.2"
+      "oracle": "qc-crm-c3.2",
+      "query": "q=qc-btn-view",
+      "opener": [
+        "crm-view-save-open",
+        "crm-view-name=qc-btn-view",
+        "crm-view-save"
+      ]
     },
     {
       "page": "/app/sys/[id]",
@@ -17627,7 +18806,8 @@
         "target": "crm-portal-invite-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-invite"
     },
     {
       "page": "/companies/[companyId]",
@@ -17646,7 +18826,8 @@
         "target": "crm-portal-invite-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-invite"
     },
     {
       "page": "/companies/[companyId]",
@@ -17665,7 +18846,8 @@
         "target": "crm-portal-invite-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-invite"
     },
     {
       "page": "/companies/[companyId]",
@@ -17684,7 +18866,8 @@
         "target": "crm-portal-invite-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-invite"
     },
     {
       "page": "/companies/[companyId]",
@@ -17704,7 +18887,8 @@
         "db": "CrmPortalAccess.inviteTokenHash=sha256(token) · inviteExpiresAt=+7d · AuditLog crm.portal.invite"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-invite"
     },
     {
       "page": "/companies/[companyId]",
@@ -17723,7 +18907,11 @@
         "target": "crm-portal-invite-link"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": [
+        "crm-portal-invite",
+        "crm-portal-invite-submit"
+      ]
     },
     {
       "page": "/companies/[companyId]",
@@ -17742,7 +18930,8 @@
         "target": "crm-portal-revoke-confirm-*"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "สิทธิ์พอร์ทัลที่ยังใช้งาน (CrmPortalAccess) ของบริษัท [companyId] — ซีดมี 0 · แถว crm-portal-invite-submit ในกลุ่มเดียวกันสร้างให้ก่อน (พอร์ทัลเปิดด้วย fixture ของตัวกด · ruling §9)"
     },
     {
       "page": "/companies/[companyId]",
@@ -17762,7 +18951,9 @@
         "db": "CrmPortalAccess.revokedAt≠null · PortalSession.revokedAt≠null · AuditLog crm.portal.revoke"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "crm-portal-revoke-*",
+      "needs": "สิทธิ์พอร์ทัลที่ยังใช้งาน (CrmPortalAccess) ของบริษัท [companyId] — ซีดมี 0 · แถว crm-portal-invite-submit ในกลุ่มเดียวกันสร้างให้ก่อน (พอร์ทัลเปิดด้วย fixture ของตัวกด · ruling §9)"
     },
     {
       "page": "/companies/[companyId]",
@@ -17782,7 +18973,8 @@
         "db": "CrmPortalRequest.status=APPROVED · AuditLog crm.portal.request.decide"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "คำขอจากพอร์ทัลลูกค้า (CrmPortalRequest) ของบริษัท [companyId] ที่รออนุมัติ — ซีดมี 0"
     },
     {
       "page": "/companies/[companyId]",
@@ -17802,7 +18994,8 @@
         "db": "CrmPortalRequest.status=REJECTED · AuditLog crm.portal.request.decide"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "คำขอจากพอร์ทัลลูกค้า (CrmPortalRequest) ของบริษัท [companyId] ที่รออนุมัติ — ซีดมี 0"
     },
     {
       "page": "/settings/portal",
@@ -17897,7 +19090,8 @@
         "target": "crm-portal-settings-save"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "บอร์ดงาน (Kanban) ≥1 ให้เลือกเป็นบอร์ดรับเรื่องจากพอร์ทัล — ซีด QC1 มี 0"
     },
     {
       "page": "/settings/portal",
@@ -17951,7 +19145,9 @@
         "target": "portal-login-email"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ตั้งค่าพอร์ทัลเปิดทั้งอีเมล OTP และ LINE (แท็บแสดงเฉพาะเมื่อเปิดทั้งสองวิธี)",
+      "opener": "portal-login-tab-line=click"
     },
     {
       "page": "/b/[slug]/login",
@@ -17966,7 +19162,8 @@
         "target": "portal-line-login"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ตั้งค่าพอร์ทัลเปิดทั้งอีเมล OTP และ LINE (แท็บแสดงเฉพาะเมื่อเปิดทั้งสองวิธี)"
     },
     {
       "page": "/b/[slug]/login",
@@ -18012,7 +19209,8 @@
         "target": "portal-login-error"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)"
     },
     {
       "page": "/b/[slug]/login",
@@ -18028,7 +19226,8 @@
         "db": "PortalSession (tokenHash) · CrmPortalAccess.lastLoginAt"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)"
     },
     {
       "page": "/b/[slug]/login",
@@ -18075,7 +19274,8 @@
         "target": "portal-menu-*"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "viewport": "mobile"
     },
     {
       "page": "/b/[slug]",
@@ -18090,7 +19290,12 @@
         "target": "/b/[slug]/*"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "viewport": "mobile",
+      "opener": "portal-menu",
+      "not": [
+        "portal-menu-home"
+      ]
     },
     {
       "page": "/b/[slug]",
@@ -18105,7 +19310,11 @@
         "target": "/b/[slug]/*"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "viewport": "desktop",
+      "not": [
+        "portal-nav-home"
+      ]
     },
     {
       "page": "/b/[slug]",
@@ -18121,7 +19330,8 @@
         "db": "PortalSession ใหม่ของบริษัทที่เลือก"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ผู้ติดต่อพอร์ทัลที่เข้าได้ ≥2 บริษัท — fixture ของตัวกดผูก 1 บริษัท"
     },
     {
       "page": "/b/[slug]",
@@ -18152,7 +19362,8 @@
         "target": "/b/[slug]/invoices"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบแจ้งหนี้ค้างชำระของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]",
@@ -18167,7 +19378,8 @@
         "target": "/b/[slug]/quotations/[id]"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]",
@@ -18182,7 +19394,8 @@
         "target": "portal-quote-confirm"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
     },
     {
       "page": "/b/[slug]",
@@ -18197,7 +19410,8 @@
         "target": "portal-quote-confirm"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
     },
     {
       "page": "/b/[slug]",
@@ -18212,7 +19426,9 @@
         "target": "portal-quote-confirm-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-quote-accept",
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
     },
     {
       "page": "/b/[slug]",
@@ -18227,7 +19443,9 @@
         "target": "portal-quote-confirm-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-quote-reject",
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
     },
     {
       "page": "/b/[slug]",
@@ -18243,7 +19461,9 @@
         "db": "AccountDocument.status=ACCEPTED|REJECTED · AuditLog account.quotation.accept|reject (signer) · OutboxEvent crm.portal.quote.responded"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-quote-accept",
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
     },
     {
       "page": "/b/[slug]/quotations",
@@ -18258,7 +19478,8 @@
         "target": "/b/[slug]/quotations/[id]"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -18273,7 +19494,8 @@
         "target": "/b/[slug]/invoices/[id]"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบแจ้งหนี้ของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -18289,7 +19511,8 @@
         "db": "AccountPaymentRequest (ใบเดิมถ้ายังใช้ได้)"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -18320,7 +19543,8 @@
         "target": "/b/[slug]/documents/[id]"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ระเบียนวัตถุกำหนดเองที่เปิดให้พอร์ทัลเห็น (portalVisible) ของบริษัท [companyId]"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -18411,7 +19635,8 @@
         "target": "portal-request-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-request-new"
     },
     {
       "page": "/b/[slug]/requests",
@@ -18426,7 +19651,8 @@
         "target": "portal-request-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-request-new"
     },
     {
       "page": "/b/[slug]/requests",
@@ -18441,7 +19667,8 @@
         "target": "portal-request-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-request-new"
     },
     {
       "page": "/b/[slug]/requests",
@@ -18457,7 +19684,8 @@
         "db": "CrmPortalRequest PENDING · KanbanCard (issueBoardId) หรือ ApprovalRequest crm.portal_request · OutboxEvent crm.portal.request.created"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "opener": "portal-request-new"
     },
     {
       "page": "/settings/integrations",
@@ -18561,7 +19789,8 @@
         "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ ACCOUNT ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
       },
       "wo": "C3.6",
-      "oracle": "qc-crm-c3.6"
+      "oracle": "qc-crm-c3.6",
+      "needs": "ระบบบัญชี (ACCOUNT) ≥2 ระบบให้เลือก — ซีดมี 1 (ตัวเลือกเดียว = เปลี่ยนค่าไม่ได้)"
     },
     {
       "page": "/settings/integrations",
@@ -18581,7 +19810,8 @@
         "db": "ไม่มีการเขียนจนกดบันทึก (ตัวเลือก = ระบบ KANBAN ของร้าน · \"อัตโนมัติ\" = ไม่เลือก)"
       },
       "wo": "C3.6",
-      "oracle": "qc-crm-c3.6"
+      "oracle": "qc-crm-c3.6",
+      "needs": "ระบบบอร์ดงาน (KANBAN) ≥1 ให้เลือก — ซีด QC1 ไม่มี"
     },
     {
       "page": "/settings/integrations",
@@ -18680,7 +19910,8 @@
         "db": "ไม่มีการเขียน (เฉพาะดีลเปิดที่ผู้เปิดเป็นเจ้าของ · dealWhere)"
       },
       "wo": "C3.6",
-      "oracle": "qc-crm-c3.6"
+      "oracle": "qc-crm-c3.6",
+      "needs": "ดีลของผู้ใช้ที่ widget 'ดีลของฉัน' แสดง — ขึ้นกับหน้า /p/[slug] ที่มี widget CRM"
     },
     {
       "page": "/p/[slug]",
@@ -18721,7 +19952,8 @@
         ]
       },
       "wo": "C3.6",
-      "oracle": "qc-crm-c3.6"
+      "oracle": "qc-crm-c3.6",
+      "needs": "งานวันนี้ของผู้ใช้ที่ widget แสดง — ขึ้นกับวันที่ซีดเทียบวันที่รัน"
     },
     {
       "page": "/p/[slug]",
@@ -18761,7 +19993,8 @@
       },
       "wo": "C3.6",
       "oracle": "qc-crm-c3.6",
-      "system": "MEMBER"
+      "system": "MEMBER",
+      "needs": "เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูลสมาชิก (ไม่อยู่ในทะเบียน CRM) และชิปขอบเขตไม่มี data-testid"
     },
     {
       "page": "/app/sys/[id]",
@@ -18821,7 +20054,8 @@
         "db": "ไม่มีการเขียน (เปิดฟอร์มแก้กฎ · MANAGER เห็นแต่กดไม่ได้)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "กฎค่าคอม (CrmCommissionRule) — ซีดมี 0 · แถว crm-commission-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
     },
     {
       "page": "/settings/commissions",
@@ -18841,7 +20075,8 @@
         "db": "ไม่มีการเขียนจนกด บันทึกกฎ"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -18861,7 +20096,8 @@
         "db": "CrmCommissionRule.basis=PAID|WON (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -18881,7 +20117,8 @@
         "db": "CrmCommissionRule.kind=PCT|FIXED|TIERED (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -18901,7 +20138,8 @@
         "db": "CrmCommissionRule.config.pctBp (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -18921,7 +20159,11 @@
         "db": "CrmCommissionRule.config.fixedSatang (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": [
+        "crm-commission-rule-add",
+        "crm-commission-rule-kind=FIXED"
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -18941,7 +20183,11 @@
         "db": "CrmCommissionRule.config.tiers[i].uptoSatang (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": [
+        "crm-commission-rule-add",
+        "crm-commission-rule-kind=TIERED"
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -18961,7 +20207,11 @@
         "db": "CrmCommissionRule.config.tiers[i].pctBp (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": [
+        "crm-commission-rule-add",
+        "crm-commission-rule-kind=TIERED"
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -18981,7 +20231,11 @@
         "db": "ไม่มีการเขียนจนกด บันทึกกฎ (ลบขั้นออกจากฟอร์ม)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": [
+        "crm-commission-rule-add",
+        "crm-commission-rule-kind=TIERED"
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -19001,7 +20255,11 @@
         "db": "ไม่มีการเขียนจนกด บันทึกกฎ (เพิ่มขั้นก่อนขั้นส่วนที่เกิน)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": [
+        "crm-commission-rule-add",
+        "crm-commission-rule-kind=TIERED"
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -19021,7 +20279,8 @@
         "db": "CrmCommissionRule.pipelineId (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19041,7 +20300,8 @@
         "db": "CrmCommissionRule.minDealSatang (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19061,7 +20321,8 @@
         "db": "CrmCommissionRule.splitCollaboratorsBp (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19081,7 +20342,8 @@
         "db": "CrmCommissionRule.payoutDelayDays (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19101,7 +20363,8 @@
         "db": "CrmCommissionRule.active (หลังกด บันทึกกฎ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19121,7 +20384,8 @@
         "db": "CrmCommissionRule แถวใหม่/แก้ + AuditLog crm.commission.rule.create|update (before/after)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19141,7 +20405,8 @@
         "db": "ไม่มีการเขียน (ปิดฟอร์ม)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-rule-add"
     },
     {
       "page": "/settings/commissions",
@@ -19161,7 +20426,8 @@
         "db": "ไม่มีการเขียน (เลือกทุกแถวที่รออนุมัติ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19181,7 +20447,8 @@
         "db": "ไม่มีการเขียน (เลือกแถว)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19201,7 +20468,9 @@
         "db": "CrmCommission.status=APPROVED ของแถวที่เลือก (เกินเพดานของผู้กด = คง PENDING + ข้อความ) + HrPayAdjustment(crmCommissionId) เมื่อผูกพนักงาน + AuditLog crm.commission.approve"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)",
+      "opener": "crm-commission-select-*=on"
     },
     {
       "page": "/settings/commissions",
@@ -19221,7 +20490,8 @@
         "db": "ไม่มีการเขียนจนยืนยัน (เปิดช่องเหตุผล)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19241,7 +20511,9 @@
         "db": "ไม่มีการเขียนจนยืนยัน (เหตุผล ≥ 5 ตัวอักษร)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-reject-*",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19261,7 +20533,9 @@
         "db": "CrmCommission.status=REJECTED + AuditLog crm.commission.reject (เหตุผล)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-reject-*",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19281,7 +20555,9 @@
         "db": "ไม่มีการเขียน (ปิดช่องเหตุผล)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-reject-*",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19301,7 +20577,8 @@
         "db": "HrPayAdjustment(kind COMMISSION|DEDUCTION, crmCommissionId) ของแถว APPROVED/REVERSED ที่ผูกพนักงานแล้ว · CrmCommission.hrPayAdjustmentId"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)"
     },
     {
       "page": "/commissions",
@@ -19358,7 +20635,8 @@
         "db": "ไม่มีการเขียน (เปิดดีล 360 ของรายการ)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "needs": "ค่าคอมของผู้ใช้ในงวดที่เลือก (CrmCommission) — ซีดมี 0 (ไม่มีกฎค่าคอม)"
     },
     {
       "page": "/settings/commissions",
@@ -19498,7 +20776,8 @@
         "db": "เหตุผล < 5 ตัวอักษร = ปุ่มลบถาวรกดไม่ได้"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "contact-privacy-erase"
     },
     {
       "page": "/contacts/[contactId]",
@@ -19518,7 +20797,8 @@
         "db": "ไม่ติ๊ก = ปุ่มลบถาวรกดไม่ได้"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "contact-privacy-erase"
     },
     {
       "page": "/contacts/[contactId]",
@@ -19538,7 +20818,8 @@
         "db": "CrmContact.name=ลบตามคำขอ PDPA · AuditLog crm.contact.erase · OutboxEvent crm.contact.erased"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "contact-privacy-erase"
     },
     {
       "page": "/contacts/[contactId]",
@@ -19558,7 +20839,8 @@
         "db": "ปิดแผง ไม่มีการเขียน"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "contact-privacy-erase"
     },
     {
       "page": "/settings",
@@ -19618,7 +20900,8 @@
         "db": "AppSystem.settings.crm.retention.{exportDays,leadMonths} · AuditLog crm.settings.retention"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "crm-retention-export-days=*"
     },
     {
       "page": "/settings",
@@ -19698,7 +20981,8 @@
         "db": "ไม่มีการเขียน · ลิงก์ /api/files/<id> อายุ ≤ 15 นาทีของผู้ขอ"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "needs": "งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานที่แถว crm-export-start-* สร้างต้องรอตัวทำงานเบื้องหลัง"
     },
     {
       "page": "/settings",
@@ -19718,7 +21002,8 @@
         "db": "ไม่ติ๊ก = ปุ่มบันทึกกดไม่ได้เมื่อลดอายุเก็บ lead"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "crm-retention-lead-months=1"
     },
     {
       "page": "/settings",
@@ -19738,7 +21023,8 @@
         "db": "ต้องพิมพ์คำว่า ลดอายุเก็บ · ไม่ตรง = ปุ่มบันทึกกดไม่ได้ (action ตอบ CONFIRM_REQUIRED)"
       },
       "wo": "C3.9",
-      "oracle": "qc-crm-c3.9"
+      "oracle": "qc-crm-c3.9",
+      "opener": "crm-retention-lead-months=1"
     },
     {
       "page": "/app/sys/[id]",
@@ -19854,7 +21140,9 @@
         "db": "ไม่มีการเขียน (คัดลอกร่างอีเมลเข้าคลิปบอร์ด)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "opener": "crm-ai-deal-draft-email",
+      "needs": "ร่างอีเมลจาก AI ในแผงผู้ช่วย (หลัง crm-ai-deal-draft-email — กดได้เฉพาะเมื่อเซิร์ฟเวอร์ QC รัน SHARK_AI_MOCK=1 · ไม่งั้นถูกกันด้วย AI_GUARD)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -19971,7 +21259,9 @@
         "db": "ไม่มีการเขียน"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "opener": "crm-ai-home-at-risk",
+      "needs": "ผลวิเคราะห์ดีลเสี่ยงจาก AI ที่มีดีลเสี่ยง ≥1 (หลัง crm-ai-home-at-risk — กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1 · ไม่งั้นถูกกันด้วย AI_GUARD)"
     },
     {
       "page": "/app/sys/[id]",
@@ -19991,7 +21281,9 @@
         "resultTarget": "crm-ai-proposal-status"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4 C3.4-S3.4"
+      "oracle": "qc-crm-c3.4 C3.4-S3.4",
+      "opener": "crm-ai-home-at-risk",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
     },
     {
       "page": "/app/sys/[id]",
@@ -20010,7 +21302,9 @@
         "db": "ไม่มีการเขียน (เปิดโหมดแก้ขั้นถัดไป/ติ๊กดีลออก ก่อนอนุมัติ)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4 C3.4-S8.2"
+      "oracle": "qc-crm-c3.4 C3.4-S8.2",
+      "opener": "crm-ai-home-at-risk",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
     },
     {
       "page": "/app/sys/[id]",
@@ -20030,7 +21324,9 @@
         "resultTarget": "crm-ai-proposal-status"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4 C3.4-X9.1"
+      "oracle": "qc-crm-c3.4 C3.4-X9.1",
+      "opener": "crm-ai-home-at-risk",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
     },
     {
       "page": "/app/sys/[id]",
@@ -20049,7 +21345,12 @@
         "db": "ไม่มีการเขียนจนกดอนุมัติ (ข้อความใหม่ ≤ 300 ตัวแทนของ AI)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "opener": [
+        "crm-ai-home-at-risk",
+        "crm-ai-proposal-edit"
+      ],
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
     },
     {
       "page": "/app/sys/[id]",
@@ -20068,7 +21369,9 @@
         "db": "ไม่มีการเขียนจนกดอนุมัติ (ดีลที่ไม่ติ๊ก = ไม่สร้างงาน)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "opener": "crm-ai-home-at-risk",
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
     },
     {
       "page": "/settings",
@@ -20088,7 +21391,8 @@
         "db": "AppSystem.settings.crm.teamRooms[teamId] = { meetingSystemId, channelId } (jsonb_set คำสั่งเดียว) · AuditLog crm.settings.team_room"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4 C3.4-S8.3"
+      "oracle": "qc-crm-c3.4 C3.4-S8.3",
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
     },
     {
       "page": "/settings",
@@ -20108,7 +21412,8 @@
         "db": "ไม่มีการเขียน (เลือกทีม)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
     },
     {
       "page": "/settings",
@@ -20128,7 +21433,8 @@
         "db": "ไม่มีการเขียน (เลือกห้องแชทของทีม · ว่าง = เลิกผูก)"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
     },
     {
       "page": "/settings",
@@ -20148,7 +21454,8 @@
         "db": "AppSystem.settings.crm.teamRooms[teamId] เปลี่ยน · ห้องร้านอื่น/ถูกเก็บ = ข้อความไทย inline ไม่เขียน"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
     },
     {
       "page": "/settings",
@@ -20168,7 +21475,8 @@
         "db": "AppSystem.settings.crm.teamRooms ลบคีย์ teamId"
       },
       "wo": "C3.4",
-      "oracle": "qc-crm-c3.4"
+      "oracle": "qc-crm-c3.4",
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง) + การผูกห้องที่บันทึกแล้ว"
     },
     {
       "page": "/app/sys/[id]/meeting",
@@ -20209,7 +21517,11 @@
         "note": "แตะพื้นหลังนอกหน้าต่าง = ปิด (ไม่บันทึก) · Company360Actions Sheet"
       },
       "wo": "C4.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "company-menu-btn",
+        "company-menu-edit"
+      ]
     },
     {
       "page": "/companies",
@@ -20230,7 +21542,8 @@
         "note": "แตะพื้นหลังนอกหน้าต่าง = ปิด (ไม่บันทึก) · CompanyListTools"
       },
       "wo": "C4.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "companies-import-btn"
     },
     {
       "page": "/contacts/[contactId]",
@@ -20250,7 +21563,11 @@
         "note": "แตะพื้นหลังนอกหน้าต่าง = ปิด (ไม่บันทึก) · Contact360Actions Sheet"
       },
       "wo": "C4.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "contact-menu-btn",
+        "contact-menu-edit"
+      ]
     },
     {
       "page": "/contacts",
@@ -20271,7 +21588,8 @@
         "note": "แตะพื้นหลังนอกหน้าต่าง = ปิด (ไม่บันทึก) · ContactListTools Sheet"
       },
       "wo": "C4.1",
-      "oracle": ""
+      "oracle": "",
+      "opener": "contacts-export-btn"
     },
     {
       "page": "/contacts/duplicates",
@@ -20295,7 +21613,8 @@
       "oracle": "",
       "alsoOn": [
         "/companies/duplicates"
-      ]
+      ],
+      "opener": "crm-dup-merge-open"
     }
   ]
 }
