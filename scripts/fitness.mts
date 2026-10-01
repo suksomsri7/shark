@@ -858,6 +858,47 @@ console.log("\n── F15: equals แบบ insensitive ต้องผ่าน
     bad.length ? `ใช้ ciEquals() แทน: ${bad.join(" · ")}` : "ครบ");
   const fixed = OWED.filter((o) => (seen.get(`${o.file}::${o.snippet}`) ?? 0) < o.count).map((o) => `${o.file} «${o.snippet}»`);
   chk("F15.2", "รายการหนี้ (OWED) ไม่มีของที่แก้แล้ว — แก้แล้วต้องลบออกจากรายการ (ratchet)", fixed.length === 0, `แก้แล้วแต่ยังอยู่ในรายการ: ${fixed.join(" · ")}`);
+
+  // CRM C5.5-fix8 ▸ การค้นหา `contains`/`startsWith`/`endsWith` ของ account/** ต้องผ่าน `ciContains()`/`likeContains()` (escape `%` `_` `\`)
+  //   ขอบเขต = ไฟล์ใต้ src/lib/modules/account/ และหน้า src/app/**/account/** เท่านั้น — โมดูลอื่นยังมีคำค้นดิบอีกมาก (รายการใน
+  //   ledger/wo-notes/crm-C5.5-fix8.md) ⇒ ขยายขอบเขตทีละโมดูลเมื่อแก้แล้ว · ALLOW = คีย์ที่ประกอบในเซิร์ฟเวอร์ (ไม่ใช่คำค้นของผู้ใช้)
+  //   ผูกด้วย ไฟล์ + ข้อความบรรทัดเป๊ะ + จำนวน (เพิ่มในไฟล์เดิม = แดง · แก้แล้วต้องลบ = F15.5) ◂
+  const { findRawSearch, F15_SEARCH_SELF_TEST } = await import("./lib/ci-equals-scan.mjs");
+  const ALLOW_SEARCH: { file: string; snippet: string; count: number }[] = [
+    // คำนำหน้าคงที่จากตาราง/ตัวอักษรในโค้ด (ผู้ใช้ส่งค่าเข้ามาไม่ได้)
+    { file: "src/lib/modules/account/doc-settings.ts", snippet: 'where: { key: { startsWith: "DOC:" } },', count: 1 },
+    { file: "src/lib/modules/account/expense.ts", snippet: 'where: { systemId, archivedAt: null, type: "ASSET", code: { startsWith: "16" } },', count: 1 },
+    { file: "src/lib/modules/account/finance.ts", snippet: "where: { systemId, code: { startsWith: prefix } },", count: 1 }, // CODE_PREFIX[...]
+    { file: "src/lib/modules/account/finance.ts", snippet: "const siblings = await prisma.accountLedger.count({ where: { systemId, code: { startsWith: `${parentCode}-` } } });", count: 1 }, // PARENT_CODE[...]
+    { file: "src/lib/modules/account/finance.ts", snippet: "where: { systemId: ctx.systemId, code: { startsWith: `${parentCode}-` } },", count: 1 },
+    // เครื่องหมายกันซ้ำที่ระบบประกอบเอง (id ของระบบ + งวด/ชนิดรายงาน)
+    { file: "src/lib/modules/account/period-sweep.ts", snippet: "body: { contains: `[${sys.id}] ${periodKey}` },", count: 1 },
+    { file: "src/lib/modules/account/service.ts", snippet: "where: { tenantId: row.tenantId, title: REPORT_MARKER_TITLE, body: { contains: key } },", count: 1 },
+  ];
+  const sMiss = Object.entries(F15_SEARCH_SELF_TEST.mustHit).filter(([, src]) => findRawSearch(src).length !== 1).map(([k]) => k);
+  const sFalse = Object.entries(F15_SEARCH_SELF_TEST.mustNotHit).filter(([, src]) => findRawSearch(src).length !== 0).map(([k]) => k);
+  chk("F15.3", "ตัวสแกนคำค้นจับทุกรูป (insensitive · as const · case-sensitive · startsWith · endsWith · key ในเครื่องหมายคำพูด · หลายบรรทัด · shorthand · วัตถุในตัวแปร) และไม่จับ helper/คอมเมนต์/สตริง/เมธอด/ternary/ชนิดข้อมูล",
+    sMiss.length === 0 && sFalse.length === 0, `ไม่จับ: ${sMiss.join(", ") || "-"} · จับผิด: ${sFalse.join(", ") || "-"}`);
+  const sBad: string[] = [];
+  const sSeen = new Map<string, number>();
+  for (const p of walk(join(ROOT, "src"), (f) => /\.tsx?$/.test(f))) {
+    const r = rel(p);
+    if (!r.startsWith("src/lib/modules/account/") && !/^src\/app\/.*\/account\//.test(r)) continue;
+    const src = readFileSync(p, "utf8");
+    if (!/contains|startsWith|endsWith/.test(src)) continue;
+    for (const h of findRawSearch(src)) {
+      const ok = ALLOW_SEARCH.find((o) => o.file === r && o.snippet === h.snippet);
+      if (ok) {
+        const k = `${ok.file}::${ok.snippet}`;
+        sSeen.set(k, (sSeen.get(k) ?? 0) + 1);
+        if ((sSeen.get(k) ?? 0) > ok.count) sBad.push(`${r}:${h.line} (${h.key} · เกินจำนวนที่อนุญาต)`);
+      } else sBad.push(`${r}:${h.line} (${h.key})`);
+    }
+  }
+  chk("F15.4", "account/**: คำค้น contains/startsWith/endsWith ผ่าน ciContains()/likeContains() (ไม่มี wildcard รั่ว) — ยกเว้นคีย์ที่ประกอบในเซิร์ฟเวอร์ที่ระบุ",
+    sBad.length === 0, sBad.length ? `ใช้ ciContains()/likeContains() แทน: ${sBad.join(" · ")}` : "ครบ");
+  const sGone = ALLOW_SEARCH.filter((o) => (sSeen.get(`${o.file}::${o.snippet}`) ?? 0) < o.count).map((o) => `${o.file} «${o.snippet}»`);
+  chk("F15.5", "รายการยกเว้นคำค้น (ALLOW_SEARCH) ไม่มีของที่หายไปแล้ว — ต้องลบออกจากรายการ (ratchet)", sGone.length === 0, `ไม่พบแล้วแต่ยังอยู่ในรายการ: ${sGone.join(" · ")}`);
 }
 
 // ─────────────────── F16: ห้าม regex ตัดแท็ก/แกะวงเล็บมุม (CRM C5.5-fix5 · รีวิว C5.5-fix4 RV-1/RV-2/RV-9) ───────────────────

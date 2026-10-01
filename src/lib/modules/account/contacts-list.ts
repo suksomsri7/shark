@@ -17,6 +17,7 @@ import * as party from "@/lib/modules/party";
 import * as memberSvc from "@/lib/modules/member/service";
 import * as crmSvc from "@/lib/modules/crm";
 import { clampSearch } from "./search-input";
+import { ciContains, likeContains } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -342,11 +343,11 @@ export async function listContactsPage(
     where = {
       ...where,
       OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { taxId: { contains: normalizeTaxId(q) || q } },
-        ...(normPhone.length >= 3 ? [{ phoneNorm: { contains: normPhone } }] : []),
-        { phone: { contains: q } },
-        { email: { contains: q, mode: "insensitive" as const } },
+        { name: ciContains(q) },
+        { taxId: likeContains(normalizeTaxId(q) || q) },
+        ...(normPhone.length >= 3 ? [{ phoneNorm: likeContains(normPhone) }] : []),
+        { phone: likeContains(q) },
+        { email: ciContains(q) },
       ],
     };
   }

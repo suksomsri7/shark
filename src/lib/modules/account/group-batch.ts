@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { likeStartsWith } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 
 // ─────────────────────────────────────────────────────────────
 // group-batch.ts — "ชุด" ของการชำระที่กระจายจากเอกสารกลุ่ม (ใบวางบิล / ใบรวมจ่าย)
@@ -49,7 +50,7 @@ export type GroupBatchPayment = { id: string; documentId: string; chequeId: stri
 /** ทุกงวดของการชำระครั้งเดียว (รวมที่ยกเลิกแล้ว) — เรียง documentId, id (ลำดับล็อกคงที่) */
 export async function groupBatchPayments(db: Db, tenantId: string, systemId: string, batchKey: string): Promise<GroupBatchPayment[]> {
   const rows = await db.accountDocumentPayment.findMany({
-    where: { tenantId, systemId, idempotencyKey: { startsWith: `${batchKey}${GROUP_KEY_SEP}` } },
+    where: { tenantId, systemId, idempotencyKey: likeStartsWith(`${batchKey}${GROUP_KEY_SEP}`) }, // CRM C5.5-fix8 ▸ `%`/`_` ใน batchKey เป็นตัวอักษร ◂
     orderBy: [{ documentId: "asc" }, { id: "asc" }],
     select: { id: true, documentId: true, chequeId: true, voidedAt: true, idempotencyKey: true },
   });

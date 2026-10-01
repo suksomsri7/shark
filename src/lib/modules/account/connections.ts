@@ -11,6 +11,7 @@
 import type { AccountLinkedKind, Prisma, SystemType } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { formatDateTh } from "@/lib/ui/date";
+import { ACCOUNT_SCOPE_KEYS } from "@/lib/api-keys/scopes"; // CRM C5.5-fix8 ▸ กติกาหมุนคีย์ = กติกาออกคีย์ ◂
 
 export type Ctx = { tenantId: string; systemId: string };
 
@@ -396,4 +397,25 @@ export async function accountManagedKey(tenantId: string, keyId: string): Promis
   if (k.systemId) return !!(await db.appSystem.findFirst({ where: { id: k.systemId, type: "ACCOUNT" }, select: { id: true } }));
   const scopes: string[] = Array.isArray(k.scopesJson) ? (k.scopesJson as unknown[]).filter((x): x is string => typeof x === "string") : [];
   return !scopes.some((sc: string) => FOREIGN_SCOPE.test(sc));
+}
+
+// CRM C5.5-fix8 ▸ (รีวิว authz-sweep F3) หมุนคีย์ = ออกคีย์ใหม่ที่คัดลอกสิทธิ์ของคีย์เดิม ⇒ ต้องผ่านกติกาเดียวกับตอนออก (S1 + F2):
+//   ทุกสิทธิ์อยู่ใน ACCOUNT_SCOPE_KEYS และคีย์ที่ผูกระบบบัญชีต้องมีสิทธิ์ ≥ 1 รายการ · เดิมคัดลอกทุกอย่าง ⇒ คีย์ผูกบัญชีที่ถือ `crm.*`/`member.*`
+//   (ออกก่อน S1) หรือไม่มีสิทธิ์เลย ("คีย์รุ่นเดิม" จากฟอร์มที่ยิงเอง) ต่ออายุได้ไม่รู้จบ · ไม่ผ่าน = ปฏิเสธพร้อมบอกให้สร้างคีย์ใหม่
+//   (ไม่ตัดสิทธิ์ทิ้งเงียบ ๆ — ระบบปลายทางจะพังโดยไม่รู้ตัว) · คีย์ไม่ผูกระบบที่ไม่มีสิทธิ์เลย = คีย์กลางของร้าน (หน้าตั้งค่า API ของร้าน
+//   ออกแบบนั้นตามแบบ) ⇒ หมุนได้ตามเดิม (คำถามเจ้าของ — ledger/wo-notes/crm-C5.5-fix8.md)
+//   scopesJson เสีย = ข้อความเดียวกับ hotfix/apiv1-scope (`rotateApiKey` ตรวจเงื่อนไขเดียวกันใน tx) ◂
+export const ROTATE_MALFORMED = "ข้อมูลสิทธิ์ของคีย์นี้ในระบบไม่สมบูรณ์ จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน";
+export async function accountKeyRotationProblem(tenantId: string, keyId: string): Promise<string | null> {
+  const k = await tenantDb({ tenantId }).apiKey.findFirst({ where: { id: keyId }, select: { systemId: true, scopesJson: true } });
+  if (!k) return null; // "ไม่พบ" เป็นหน้าที่ของ accountManagedKey / rotateApiKey
+  const raw = k.scopesJson;
+  if (!Array.isArray(raw) || raw.some((v) => typeof v !== "string")) return ROTATE_MALFORMED;
+  const scopes = raw as string[];
+  const foreign = scopes.find((sc) => !ACCOUNT_SCOPE_KEYS.includes(sc));
+  if (foreign !== undefined) {
+    return `คีย์นี้มีสิทธิ์ "${foreign}" ซึ่งไม่ใช่สิทธิ์ของระบบบัญชี จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน (สิทธิ์ของระบบอื่นออกที่หน้าตั้งค่า API ของระบบนั้น)`;
+  }
+  if (scopes.length === 0 && k.systemId) return "คีย์นี้ไม่มีสิทธิ์ของระบบบัญชีเลย จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน (เลือกสิทธิ์อย่างน้อย 1 รายการ)";
+  return null;
 }

@@ -16,6 +16,7 @@ import { safeReason } from "./errors";
 
 export type JournalCtx = { tenantId: string; systemId: string };
 import { clampSearch } from "./search-input";
+import { ciContains } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 
 // ─────────────────── ป้ายไทย (แหล่งเดียว — UI + ข้อสอบใช้ตัวนี้) ───────────────────
 
@@ -226,8 +227,8 @@ function whereOf(ctx: JournalCtx, input: JournalListInput, withBook: boolean, ex
       : q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { memo: { contains: q, mode: "insensitive" as const } },
+            { docNo: ciContains(q) },
+            { memo: ciContains(q) },
           ],
         }
       : {}),

@@ -46,6 +46,7 @@ import { EXPENSE_DOC_PREFIX, fallbackPrefixOf } from "./settings-schema";
 import { clampSearch } from "./search-input";
 // CRM C5.4-C ▸ (round 8b · R8-1 option a) เช็คจ่ายใบเดียวของใบรวมจ่ายผูกไว้ที่งวดแรก — งวดอื่นหาเช็คจากคีย์ชุด ◂
 import { chequeIdsHoldingPayments } from "./group-batch";
+import { ciContains } from "@/lib/core/ci-equals"; // CRM C5.5-fix8 ▸ คำค้นไม่มี wildcard รั่ว ◂
 
 // ─────────────────────────────────────────────────────────────
 // expense.ts — ฝั่งรายจ่าย (P2) direction=IN
@@ -367,8 +368,8 @@ export async function listExpenseDocsPaged(
     ...(q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { docNo: ciContains(q) },
+            { contact: { is: { name: ciContains(q) } } },
           ],
         }
       : {}),
