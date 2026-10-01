@@ -8,13 +8,15 @@
 //    จอต้องลองซ้ำด้วยคีย์+payload เดิม (สเปก §3.4 ข้อ 6) ไม่ใช่ออกคีย์ใหม่
 // 🔴 ร้าน (tenantId) และผู้ขาย (role · unitAccess · permissions) มาจาก membership ของ SESSION (requireTenant) เท่านั้น —
 //    ไม่เชื่อค่าจากคำขอ · systemId/unitId จากคำขอถูกตรวจซ้ำใน register.ts (ระบบ POS ของร้านนี้ · สาขาผูกระบบ · เข้าสาขาได้)
-// 🔴 requireTenant อยู่นอก try โดยตั้งใจ — redirect ไปหน้า login/onboarding ของ Next ต้องผ่านออกไปได้ (ไม่ถูกกลืนเป็น UNKNOWN)
+// 🔴 requireTenant: redirect ไปหน้า login/onboarding ของ Next ต้องผ่านออกไปได้ (unstable_rethrow) · ล้มแบบอื่น
+//    (เช่น DB ขัดข้องตอนโหลด session) = {ok:false, code:"UNKNOWN"} ไม่ใช่ promise ที่ reject ดิบ (B1.1)
 
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
-import { registerCatalog, quoteRegisterCart, submitRegisterSale, registerStatus } from "./register";
+import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus } from "./register";
 import type {
   RegisterActor,
   RegisterCatalogInput,
@@ -23,6 +25,7 @@ import type {
   RegisterQuoteInput,
   RegisterQuoteResult,
   RegisterRefusal,
+  RegisterScanResult,
   RegisterStatusResult,
   RegisterSubmitInput,
   RegisterSubmitResult,
@@ -59,9 +62,20 @@ function unexpected(where: string, e: unknown): RegisterRefusal {
   return refusal("UNKNOWN", "เกิดข้อผิดพลาด — ลองอีกครั้ง");
 }
 
+/** session ของคำขอ — redirect/notFound ของ Next ส่งต่อ (unstable_rethrow) · ล้มแบบอื่น = UNKNOWN (คืน ไม่ reject) */
+async function session(where: string): Promise<Session | RegisterRefusal> {
+  try {
+    return await requireTenant();
+  } catch (e) {
+    unstable_rethrow(e);
+    return unexpected(`${where} requireTenant`, e);
+  }
+}
+
 /** กริด/หมวด/ค้นหา (แบ่งหน้า) */
 export async function registerCatalogAction(args: Target & RegisterCatalogInput): Promise<RegisterCatalogResult> {
-  const auth = await requireTenant();
+  const auth = await session("registerCatalogAction");
+  if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;
@@ -78,7 +92,8 @@ export async function registerCatalogAction(args: Target & RegisterCatalogInput)
 
 /** ยอดบนจอจากราคาฝั่งเซิร์ฟเวอร์ — `cart` = ผลของ cartToQuoteInput (register-shared) */
 export async function quoteRegisterCartAction(args: Target & { cart: RegisterQuoteInput }): Promise<RegisterQuoteResult> {
-  const auth = await requireTenant();
+  const auth = await session("quoteRegisterCartAction");
+  if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;
@@ -90,7 +105,8 @@ export async function quoteRegisterCartAction(args: Target & { cart: RegisterQuo
 
 /** ส่งบิล — `sale` = ผลของ cartToSubmitInput (เก็บไว้ส่งตัวเดิมทุกครั้งที่ลองซ้ำ) */
 export async function submitRegisterSaleAction(args: Target & { sale: RegisterSubmitInput }): Promise<RegisterSubmitResult> {
-  const auth = await requireTenant();
+  const auth = await session("submitRegisterSaleAction");
+  if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;
@@ -111,9 +127,23 @@ export async function submitRegisterSaleAction(args: Target & { sale: RegisterSu
   }
 }
 
+/** สแกนบาร์โค้ด / Enter บนรหัสตรงตัว (Q24 · P1.4 ต่อยอด) → one · choose · none */
+export async function registerScanAction(args: Target & { barcode: string }): Promise<RegisterScanResult> {
+  const auth = await session("registerScanAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await registerScan(s.ctx, s.actor, { barcode: typeof args?.barcode === "string" ? args.barcode : "" });
+  } catch (e) {
+    return unexpected("registerScanAction", e);
+  }
+}
+
 /** แถบสถานะ (สาขา · ผู้ขาย · รอตัดสต็อก) */
 export async function registerStatusAction(args: Target): Promise<RegisterStatusResult> {
-  const auth = await requireTenant();
+  const auth = await session("registerStatusAction");
+  if ("ok" in auth) return auth;
   try {
     const s = sessionScope(auth, args);
     if ("ok" in s) return s;

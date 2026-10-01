@@ -39,6 +39,7 @@ export type RegisterRefusalCode =
   | "PRODUCT_UNAVAILABLE"
   | "OPTIONS_REQUIRED"
   | "MEMBER_NOT_FOUND"
+  | "MEMBER_RIGHTS_UNSUPPORTED"
   | "PRICE_NOT_SET"
   | "PRICE_CHANGED"
   | "PAYMENT_MISMATCH"
@@ -130,7 +131,20 @@ export type RegisterSubmitInput = RegisterQuoteInput & {
 export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | null; grandTotalSatang: number; changeSatang: number; duplicated: boolean };
 /** PRICE_CHANGED พกยอดสดของเซิร์ฟเวอร์มาด้วย (จอแสดงใหม่ได้ทันทีไม่ต้อง quote ซ้ำ) */
 export type RegisterPriceChanged = { ok: false; code: "PRICE_CHANGED"; message: string } & RegisterQuoteTotals;
-export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterRefusal;
+/**
+ * B1.1 (มติ 3.2 ข้อ 1–2): IDEMPOTENCY_CONFLICT = "มีบิลของคีย์นี้อยู่แล้ว" — ไม่ใช่ "ไม่มีบิล"
+ * พก saleId/receiptNo/สถานะของบิลนั้นเสมอ (รวมบิลที่ VOIDED แล้ว) ⇒ จอแสดงบิลเดิม ห้ามขายซ้ำด้วยคีย์ใหม่เงียบ ๆ
+ */
+export type RegisterSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
+export type RegisterIdempotencyConflict = {
+  ok: false;
+  code: "IDEMPOTENCY_CONFLICT";
+  message: string;
+  saleId: string;
+  receiptNo: string | null;
+  saleStatus: RegisterSaleStatus;
+};
+export type RegisterSubmitResult = RegisterSubmitOk | RegisterPriceChanged | RegisterIdempotencyConflict | RegisterRefusal;
 
 export type RegisterStatus = {
   ok: true;
@@ -232,6 +246,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   PRODUCT_UNAVAILABLE: "errors.productUnavailable",
   OPTIONS_REQUIRED: "errors.optionsRequired",
   MEMBER_NOT_FOUND: "errors.memberNotFound",
+  MEMBER_RIGHTS_UNSUPPORTED: "errors.memberRightsUnsupported",
   PRICE_NOT_SET: "errors.priceNotSet",
   PRICE_CHANGED: "errors.priceChanged",
   PAYMENT_MISMATCH: "errors.paymentMismatch",

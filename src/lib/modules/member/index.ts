@@ -119,6 +119,8 @@ export {
   quoteApply,
   /** ตัดสิทธิ์จริงใน transaction ของบิล (POS เรียกตอนปิดบิล) */
   applyOnSale,
+  /** POS P1.3 ▸ ส่วนลดอัตโนมัติ (ระดับ) ที่ applyOnSale จะหักให้บิลนี้ — อ่านอย่างเดียว ◂ */
+  automaticDiscountForSale,
   /** บิลถูกยกเลิก → คืนสิทธิ์ทุกชนิด (idempotent) */
   releaseOnVoid,
   /** ลำดับการใช้สิทธิ์ที่หน้าจอเอาไปโชว์เป็นชิปได้ตรง ๆ */

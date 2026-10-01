@@ -104,6 +104,12 @@ function discountOf(d: PriceDiscount | null, base: number): number {
   return roundHalfUp(base * d.value, BP_FULL);
 }
 
+/** การใช้เพดานของส่วนลดหนึ่งรายการ (หน่วย 1/10000 สตางค์): PERCENT = bp × ฐาน (ตรงตัว ไม่ปัด) · AMOUNT = สตางค์ × 10000 */
+function ceilingUseOf(d: PriceDiscount | null, base: number): number {
+  if (!d) return 0;
+  return d.type === "PERCENT" ? d.value * base : d.value * BP_FULL;
+}
+
 /**
  * คิดยอดตะกร้า — บริสุทธิ์ (ผลเท่ากันทุกครั้ง · ไม่แก้ออบเจกต์ที่ส่งเข้า · ไม่อ่านเวลา/สุ่ม)
  * ปฏิเสธ: VALIDATION (โครงผิด) · INVALID_LINE (จำนวน/ราคาไม่ใช่จำนวนเต็มในช่วง) · TOO_MANY_LINES (> 200 บรรทัด)
@@ -135,6 +141,11 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
   const lines: PriceCartLine[] = [];
   let subtotal = 0;
   let lineDiscount = 0;
+  // B1.1 (มติ 3.2 ข้อ 4): การใช้เพดานคิดในหน่วย 1/10000 สตางค์ — PERCENT ใช้ "bp × ฐาน" ตรงตัว (ไม่ใช่ยอดที่ปัดแล้ว)
+  //   ⇒ ส่วนลด % ที่ไม่เกินเพดานไม่มีวันถูกปฏิเสธเพราะการปัดสตางค์ · AMOUNT ใช้ "สตางค์ × 10000" และได้ผ่อนครึ่งสตางค์ต่อรายการ
+  //   (= เทียบกับเพดานที่ปัดครึ่งขึ้นแล้ว) · จำนวนเต็มล้วน (ค่าสูงสุด ≈ 2.2e13 < 2^53)
+  let ceilingUse = 0;
+  let amountDiscounts = 0;
   for (let i = 0; i < rawLines.length; i++) {
     const l: unknown = rawLines[i];
     if (!isRecord(l)) return refuse("INVALID_LINE", "รายการในตะกร้าไม่ถูกต้อง", i);
@@ -159,6 +170,8 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
     if (!disc.ok) return refuse("INVALID_LINE", "ส่วนลดของรายการไม่ถูกต้อง", i);
     const discountSatang = discountOf(disc.d, gross);
     if (discountSatang > gross) return refuse("LINE_DISCOUNT_EXCEEDS_LINE", "ส่วนลดมากกว่าราคาของรายการ", i);
+    ceilingUse += ceilingUseOf(disc.d, gross);
+    if (disc.d?.type === "AMOUNT" && disc.d.value > 0) amountDiscounts++;
     subtotal += gross;
     lineDiscount += discountSatang;
     if (subtotal > PRICE_MAX_SATANG) return refuse("INVALID_LINE", "ยอดรวมของบิลสูงเกินที่ระบบรับได้", i);
@@ -171,8 +184,14 @@ export function priceCart(input: PriceCartInput): PriceCartResult {
   if (billDiscountSatang > afterLines) return refuse("BILL_DISCOUNT_EXCEEDS_TOTAL", "ส่วนลดท้ายบิลมากกว่ายอดบิล");
 
   // เพดานส่วนลด (บรรทัด + ท้ายบิล) เทียบ subtotal — ปฏิเสธ ไม่บีบ · คูปองไม่นับ
-  if (maxDiscountBp !== null && (lineDiscount + billDiscountSatang) * BP_FULL > maxDiscountBp * subtotal) {
-    return refuse("DISCOUNT_EXCEEDS_LIMIT", "ส่วนลดเกินสิทธิ์ของบัญชีนี้");
+  //   B1.1: Σ การใช้ (PERCENT ตรงตัว · AMOUNT ×10000) ≤ เพดาน × subtotal + ½ สตางค์ต่อส่วนลด AMOUNT แต่ละรายการ
+  //   ตัวอย่าง (STAFF 1000 bp): 10% ของ ฿33.35 = ฿3.34 ผ่าน · ฿3.34 บน ฿33.35 ผ่าน (เพดานปัดครึ่งขึ้น = 334) · ฿3.35 / 10.01% ปฏิเสธ
+  if (maxDiscountBp !== null) {
+    ceilingUse += ceilingUseOf(bill.d, afterLines);
+    if (bill.d?.type === "AMOUNT" && bill.d.value > 0) amountDiscounts++;
+    if (ceilingUse > maxDiscountBp * subtotal + (BP_FULL / 2) * amountDiscounts) {
+      return refuse("DISCOUNT_EXCEEDS_LIMIT", "ส่วนลดเกินสิทธิ์ของบัญชีนี้");
+    }
   }
 
   // คูปอง: หักได้ไม่เกินยอดที่เหลือ (ยอดไม่ติดลบ)

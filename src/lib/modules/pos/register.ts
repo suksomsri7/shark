@@ -450,10 +450,11 @@ const REG_MESSAGE: Record<RegisterRefusalCode, string> = {
   PRODUCT_UNAVAILABLE: "สินค้านี้ปิดขายที่สาขานี้อยู่",
   OPTIONS_REQUIRED: "สินค้านี้ต้องเลือกตัวเลือก — ยังขายจากหน้านี้ไม่ได้",
   MEMBER_NOT_FOUND: "ไม่พบสมาชิกนี้ในร้าน",
+  MEMBER_RIGHTS_UNSUPPORTED: "สมาชิกคนนี้มีส่วนลดอัตโนมัติ — หน้าขายนี้ยังคิดสิทธิ์สมาชิกไม่ได้ ขายแบบไม่แนบสมาชิก หรือใช้หน้าขายเดิม",
   PRICE_NOT_SET: "สินค้านี้ยังไม่ตั้งราคา — ตั้งราคาที่หน้าสินค้าก่อน",
   PRICE_CHANGED: "ราคาบางรายการเปลี่ยน — ตรวจยอดใหม่แล้วชำระอีกครั้ง",
   PAYMENT_MISMATCH: "ยอดเงินไม่ตรงกับยอดบิลล่าสุด — ตรวจยอดใหม่แล้วชำระอีกครั้ง",
-  IDEMPOTENCY_CONFLICT: "บิลนี้ถูกส่งไปแล้วด้วยรายการอื่น — เริ่มบิลใหม่",
+  IDEMPOTENCY_CONFLICT: "มีบิลของรายการนี้อยู่แล้ว — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ",
   LINE_DISCOUNT_EXCEEDS_LINE: "ส่วนลดมากกว่าราคาของรายการ",
   BILL_DISCOUNT_EXCEEDS_TOTAL: "ส่วนลดท้ายบิลมากกว่ายอดบิล",
   DISCOUNT_EXCEEDS_LIMIT: "ส่วนลดเกินสิทธิ์ของบัญชีนี้ — ให้ผู้จัดการทำรายการนี้",
@@ -488,6 +489,8 @@ function regCleanText(s: string): boolean {
 }
 /** id/คีย์: สตริงไม่ว่าง สะอาด ยาว ≤ 200 */
 const regIsId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && regCleanText(v);
+/** B1.1 (มติ 3.2 ข้อ 7): idempotencyKey = สตริงที่ trim แล้วไม่ว่าง · ยาว ≤ 100 · สะอาด (เก็บตามที่ส่งมา ไม่แปลง) */
+const regIsIdemKey = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 100 && regCleanText(v);
 /** คีย์ของออบเจกต์อยู่ในรายการที่รู้จักทั้งหมดไหม (คีย์แปลกปลอม = VALIDATION ไม่เงียบทิ้ง) */
 const regOnlyKeys = (o: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(o).every((k) => allowed.has(k));
 
@@ -820,6 +823,29 @@ async function regVat(db: RegDb, tenantId: string, systemId: string): Promise<{ 
   return registered && Number.isInteger(rate) && rate > 0 && rate <= 10_000 ? { mode: "INCLUDED", rateBp: rate } : { mode: "NONE", rateBp: 0 };
 }
 
+/**
+ * สมาชิกคนนี้จะได้ส่วนลดอัตโนมัติจาก createSale ไหม — ใช้ตัวตัดสินเดียวกับ createSale: ระบบสมาชิกของสาขา (systemForUnit MEMBER)
+ * → `member.automaticDiscountForSale` (ขั้นส่วนลดระดับของ computeQuote ที่ applyOnSale ใช้ · อ่านอย่างเดียว ไม่เรียก computeEarn
+ * จึงไม่สร้างแถวตั้งค่าใด ๆ) · สาขาไม่มีระบบสมาชิก / ลูกค้าไม่อยู่ในระบบนั้น = createSale ไม่ใช้สิทธิ์ (แนบชื่อเฉย ๆ) = false
+ */
+async function regMemberAutoDiscount(
+  s: RegScope,
+  memberId: string,
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; serviceId: string | null }[],
+): Promise<boolean> {
+  const memberSystemId = await systemForUnit(s.tenantId, s.unitId, "MEMBER");
+  if (!memberSystemId) return false;
+  // dynamic import แบบเดียวกับ service.ts (member/index → wallet → giftcard → pos/index = วงกลมของโมดูล)
+  const member = await import("@/lib/modules/member");
+  try {
+    const d = await member.automaticDiscountForSale({ tenantId: s.tenantId, systemId: memberSystemId, actorUserId: null }, memberId, { unitId: s.unitId, lines });
+    return d > 0;
+  } catch (e) {
+    if (e instanceof member.MemberNotFoundError) return false;
+    throw e;
+  }
+}
+
 /** บรรทัดที่คิดแล้ว พร้อมส่งเข้า createSale */
 type RegResolvedLine = {
   name: string;
@@ -876,6 +902,11 @@ async function regPrice(db: RegDb, s: RegScope, cart: RegParsedCart): Promise<{ 
   const vat = await regVat(db, s.tenantId, s.systemId);
   const r = priceCart({ lines: priceLines, billDiscount: cart.billDiscount, vat, maxDiscountBp: regMaxDiscountBp(s.actor) });
   if (!r.ok) return regRefuse(r.code, r.code === "DISCOUNT_EXCEEDS_LIMIT" || r.code === "TOO_MANY_LINES" ? undefined : r.message, r.lineIndex);
+  // B1.1 (มติ 3.2 ข้อ 3 · D6 ใหม่): สมาชิกที่ createSale จะหักส่วนลดอัตโนมัติให้ = ปฏิเสธตั้งแต่ quote ก่อนเขียนอะไร (P1.12 รองรับ)
+  if (cart.memberId) {
+    const wallet = r.lines.map((x, i) => ({ name: meta[i]!.name, qty: x.qty, unitPriceSatang: x.unitPriceSatang, discountSatang: x.discountSatang, itemId: meta[i]!.itemId, serviceId: meta[i]!.serviceId }));
+    if (await regMemberAutoDiscount(s, cart.memberId, wallet)) return regRefuse("MEMBER_RIGHTS_UNSUPPORTED");
+  }
   const lines: RegisterQuoteLine[] = r.lines.map((x, i) => ({
     productId: meta[i]!.productId,
     unitPriceSatang: x.unitPriceSatang,
@@ -928,15 +959,17 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   const cart = regParseCart(raw, REG_SUBMIT_KEYS);
   if (isRegRefusal(cart)) return cart;
   if (cart.lines.length === 0) return regRefuse("VALIDATION", "ยังไม่มีสินค้าในตะกร้า");
-  if (!regIsId(raw.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
+  if (!regIsIdemKey(raw.idempotencyKey)) return regRefuse("VALIDATION", "ข้อมูลบิลไม่ครบ — ลองใหม่อีกครั้ง");
   if (!regIsMoney(raw.expectedGrandTotalSatang)) return regRefuse("VALIDATION", "ยอดที่ต้องชำระไม่ถูกต้อง — ตรวจยอดใหม่อีกครั้ง");
   const pmRaw: unknown = raw.payMethods;
-  if (!Array.isArray(pmRaw) || pmRaw.length === 0 || pmRaw.length > REGISTER_PAY_TYPES.length) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
+  // B1.1 (มติ 3.2 ข้อ 5): รายการว่างได้ (บิลยอด 0) — ว่างกับยอด ≠ 0 = PAYMENT_MISMATCH ที่ขั้น ④
+  if (!Array.isArray(pmRaw) || pmRaw.length > REGISTER_PAY_TYPES.length) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
   const payMethods: RegParsedSubmit["payMethods"] = [];
   for (const p of pmRaw as unknown[]) {
     if (!regIsRecord(p) || !regOnlyKeys(p, new Set(["type", "amountSatang"]))) return regRefuse("VALIDATION", "วิธีชำระเงินไม่ถูกต้อง");
     if (!(REGISTER_PAY_TYPES as readonly unknown[]).includes(p.type)) return regRefuse("VALIDATION", "หน้าขายนี้รับเงินสดและพร้อมเพย์เท่านั้น");
-    if (!regIsMoney(p.amountSatang)) return regRefuse("VALIDATION", "จำนวนเงินต้องเป็นจำนวนเต็มสตางค์ที่ไม่ติดลบ");
+    // B1.1: แต่ละรายการต้อง ≥ 1 สตางค์ (รายการยอด 0 = VALIDATION — บิลยอด 0 ส่งรายการว่าง)
+    if (!regIsMoney(p.amountSatang) || p.amountSatang < 1) return regRefuse("VALIDATION", "จำนวนเงินของแต่ละวิธีต้องเป็นจำนวนเต็มสตางค์ตั้งแต่ 1");
     if (payMethods.some((x) => x.type === p.type)) return regRefuse("VALIDATION", "วิธีชำระเงินซ้ำกัน");
     payMethods.push({ type: p.type as RegisterPayType, amountSatang: p.amountSatang });
   }
@@ -952,42 +985,80 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
 
 type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: true; payments: true } }>;
 async function regLoadSale(db: RegDb, tenantId: string, idempotencyKey: string): Promise<RegSaleRow | null> {
-  return db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, include: { lines: true, payments: true } });
+  // B1.1: ลำดับคงที่ (การเทียบเป็น multiset อยู่แล้ว — ลำดับนี้ให้ผลอ่านซ้ำได้เหมือนเดิมทุกครั้ง)
+  return db.posSale.findUnique({
+    where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } },
+    include: { lines: { orderBy: { id: "asc" } }, payments: { orderBy: { id: "asc" } } },
+  });
+}
+
+/** กุญแจของบรรทัดแบบมาตรฐาน (ราคาต่อหน่วย · จำนวน · ส่วนลดเป็นสตางค์) */
+const regTup = (unitPriceSatang: number, qty: number, discountSatang: number) => `${unitPriceSatang}|${qty}|${discountSatang}`;
+/** multiset → สตริงเดียว (เรียงแล้ว) */
+const regBag = (xs: string[]) => xs.slice().sort().join("\n");
+
+/**
+ * B1.1 (มติ 3.2 ข้อ 1) — บรรทัดของคำขอ = บรรทัดของบิลที่บันทึกไหม แบบไม่ขึ้นกับลำดับและตรงตัว (ไม่ใช่จับคู่แบบตะกละ):
+ *   • รายการกำหนดเอง: multiset ของ (ชื่อ · ราคา · จำนวน · ส่วนลดสตางค์) ต้องเท่ากันทุกตัว
+ *   • สินค้า: แยกตาม productId — บรรทัดราคาเปิด (ราคารู้จากคำขอ) + บรรทัดปกติ (ราคา = ราคาแคตตาล็อกตอนขาย ไม่ได้เก็บแยก
+ *     แต่ทุกบรรทัดปกติของสินค้าเดียวในบิลเดียวใช้ราคาเดียวกันเสมอ เพราะ regPrice อ่านราคาครั้งเดียว) ⇒ ต้องมีราคา c หนึ่งค่า
+ *     จากราคาที่บันทึกของสินค้านั้น ที่ทำให้ multiset (ราคาเปิด ∪ ปกติ@c) เท่ากับ multiset ที่บันทึกพอดี
+ *   ส่วนลดของคำขอคิดด้วยสูตรเดียวกับ priceCart บนฐานราคาที่ใช้เทียบ · ราคาแคตตาล็อกที่เปลี่ยนหลังขายไม่ทำให้ "ต่าง"
+ */
+function regLinesEqual(req: RegParsedLine[], stored: RegSaleRow["lines"]): boolean {
+  if (stored.length !== req.length) return false;
+  const sCustom = stored.filter((x) => x.productId === null).map((x) => `${x.name}|${regTup(x.unitPriceSatang, x.qty, x.discountSatang)}`);
+  const rCustom = req.flatMap((l) => (l.kind === "custom" ? [`${l.name}|${regTup(l.unitPriceSatang, l.qty, regDiscountSatang(l.discount, l.unitPriceSatang * l.qty))}`] : []));
+  if (regBag(sCustom) !== regBag(rCustom)) return false;
+  const pids = new Set<string>([
+    ...stored.flatMap((x) => (x.productId ? [x.productId] : [])),
+    ...req.flatMap((l) => (l.kind === "product" ? [l.productId] : [])),
+  ]);
+  for (const pid of pids) {
+    const sLines = stored.filter((x) => x.productId === pid);
+    const target = regBag(sLines.map((x) => regTup(x.unitPriceSatang, x.qty, x.discountSatang)));
+    const mine = req.filter((l): l is Extract<RegParsedLine, { kind: "product" }> => l.kind === "product" && l.productId === pid);
+    const open = mine.filter((l) => l.openPrice !== null).map((l) => regTup(l.openPrice!, l.qty, regDiscountSatang(l.discount, l.openPrice! * l.qty)));
+    const plain = mine.filter((l) => l.openPrice === null);
+    if (sLines.length !== mine.length) return false;
+    if (plain.length === 0) {
+      if (regBag(open) !== target) return false;
+      continue;
+    }
+    const candidates = [...new Set(sLines.map((x) => x.unitPriceSatang))];
+    const fits = candidates.some((c) => regBag([...open, ...plain.map((l) => regTup(c, l.qty, regDiscountSatang(l.discount, c * l.qty)))]) === target);
+    if (!fits) return false;
+  }
+  return true;
 }
 
 /**
  * บิลที่มีคีย์นี้อยู่แล้ว = คำขอเดียวกันไหม (ไม่มีคอลัมน์เก็บลายนิ้วมือคำขอ ⇒ เทียบคำขอกับบิลที่บันทึกจริง ด้วยราคาที่บันทึกไว้):
- * สาขา/ระบบ/ที่มา POS · สมาชิก · ยอดที่คาด = ยอดบิล · วิธีจ่าย+จำนวน (multiset) · ส่วนลดท้ายบิล · ทุกบรรทัด (สินค้า/ชื่อ · จำนวน ·
- * ราคาเปิด/ราคาเอง · ส่วนลดที่คิดจากราคาที่บันทึก) จับคู่ครบหนึ่งต่อหนึ่ง — ราคาแคตตาล็อกที่เปลี่ยนหลังขายไม่ทำให้ "ต่าง" (Addendum 2)
- * (cashReceivedSatang ไม่ได้บันทึก ⇒ ไม่อยู่ในการเทียบ · เงินทอนของคำตอบซ้ำคิดจากคำขอ)
+ * สาขา/ระบบ/ที่มา POS · สมาชิก · ยอดที่คาด = ยอดบิล · วิธีจ่าย+จำนวน (multiset) · ส่วนลดท้ายบิล · บรรทัด (regLinesEqual)
+ * (cashReceivedSatang ไม่ได้บันทึก ⇒ ไม่อยู่ในการเทียบ · เงินทอนของคำตอบซ้ำคิดจากคำขอ — D12)
  */
 function regSameSubmission(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow): boolean {
   if (sale.unitId !== s.unitId || sale.systemId !== s.systemId || sale.sourceModule !== "POS") return false;
   if ((sale.memberId ?? null) !== req.cart.memberId) return false;
   if (sale.grandTotalSatang !== req.expected) return false;
-  const payKey = (xs: { type: string; amountSatang: number }[]) => xs.map((p) => `${p.type}:${p.amountSatang}`).sort().join("|");
+  const payKey = (xs: { type: string; amountSatang: number }[]) => regBag(xs.map((p) => `${p.type}:${p.amountSatang}`));
   if (payKey(sale.payments) !== payKey(req.payMethods)) return false;
   if (sale.discountSatang !== regDiscountSatang(req.cart.billDiscount, sale.subtotalSatang)) return false;
-  if (sale.lines.length !== req.cart.lines.length) return false;
-  const used = new Set<number>();
-  for (const l of req.cart.lines) {
-    const idx = sale.lines.findIndex((x, i) => {
-      if (used.has(i) || x.qty !== l.qty || x.discountSatang !== regDiscountSatang(l.discount, x.unitPriceSatang * x.qty)) return false;
-      if (l.kind === "custom") return x.productId === null && x.name === l.name && x.unitPriceSatang === l.unitPriceSatang;
-      return x.productId === l.productId && (l.openPrice === null || x.unitPriceSatang === l.openPrice);
-    });
-    if (idx < 0) return false;
-    used.add(idx);
-  }
-  return true;
+  return regLinesEqual(req.cart.lines, sale.lines);
 }
 
 const regChange = (req: RegParsedSubmit): number => {
   const cash = req.payMethods.find((p) => p.type === "CASH")?.amountSatang ?? 0;
   return cash > 0 && req.cashReceivedSatang !== null ? req.cashReceivedSatang - cash : 0;
 };
+/**
+ * คีย์นี้มีบิลแล้ว: payload เดิม + บิลยัง PAID = บิลเดิม (ok) · อย่างอื่นทั้งหมด (payload ต่าง หรือบิลถูก VOIDED/คืนแล้ว) =
+ * IDEMPOTENCY_CONFLICT ที่พก saleId · receiptNo · saleStatus ของบิลนั้นเสมอ (มติ 3.2 ข้อ 1–2 — ห้ามตอบ ok ให้บิลที่ยกเลิกแล้ว)
+ */
 function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): RegisterSubmitResult {
-  if (!regSameSubmission(s, req, sale)) return regRefuse("IDEMPOTENCY_CONFLICT");
+  if (sale.status !== "PAID" || !regSameSubmission(s, req, sale)) {
+    return { ok: false, code: "IDEMPOTENCY_CONFLICT", message: REG_MESSAGE.IDEMPOTENCY_CONFLICT, saleId: sale.id, receiptNo: sale.receiptNo, saleStatus: sale.status };
+  }
   return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang, changeSatang: regChange(req), duplicated };
 }
 
@@ -1098,7 +1169,8 @@ export async function registerVatConfig(ctx: { tenantId: string; systemId: strin
   return regGuard("registerVatConfig", async (): Promise<RegisterVatConfigResult> => {
     const db: RegDb = client ?? prisma;
     if (!regIsRecord(ctx) || !regIsId(ctx.tenantId) || !regIsId(ctx.systemId)) return regRefuse("NOT_FOUND");
-    const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS" }, select: { id: true } });
+    // B1.1: ระบบ POS ที่ปิดใช้งาน = NOT_FOUND แบบเดียวกับฟังก์ชันอื่นของหน้าขาย (regScope)
+    const sys = await db.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "POS", active: true }, select: { id: true } });
     if (!sys) return regRefuse("NOT_FOUND");
     const v = await regVat(db, ctx.tenantId, ctx.systemId);
     return { ok: true, mode: v.mode, rateBp: v.rateBp };

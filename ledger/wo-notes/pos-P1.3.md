@@ -68,8 +68,11 @@ Quote = steps 1, 2 (quote keys), 4. Catalogue/scan/status = step 1 + their own r
 - Import types/consts/helpers **only** from `@/lib/modules/pos/register-shared` (and `pricing-shared`) in `"use client"` files; call the server through `@/lib/modules/pos/register-actions` (S5.17 allows `-actions`). Never import `register.ts` client-side.
 - Build requests with `cartToQuoteInput(cart)` and `cartToSubmitInput(cart, {idempotencyKey, payMethods, cashReceivedSatang?, expectedGrandTotalSatang: quote.grandTotalSatang})`; **keep the submit object and resend it unchanged on retry** (payload identity = idempotency). `cartToPriceInput(cart, productsById, vat, maxDiscountBp)` feeds `priceCart` for optimistic totals.
 - `page.tsx` (server) can call `registerCatalog`, `registerStatus`, `registerVatConfig` and `registerSellerLimits(actor, unitId)` (gives `canOverridePrice` + `maxDiscountBp` for the UI) directly from `@/lib/modules/pos/register` with the session actor `{userId: auth.user.id, ...posMembership(auth.active)}`.
-- Submit outcome handling: `ok:true` (incl. `duplicated`) = done; **`UNKNOWN` / `INTERNAL` / `BUSY` are NOT definite** — keep the key and offer "ลองอีกครั้ง" (spec §3.4 step 6); every other code is definite (no sale) ⇒ new key. `PRICE_CHANGED` carries fresh totals/lines to display without a re-quote.
-- i18n keys `refusalMessageKey` returns (S5.13 needs every one in th **and** en `pos.json`): `errors.notFound, permissionDenied, invalidLine, productNotFound, productUnavailable, optionsRequired, memberNotFound, priceNotSet, priceChanged, paymentMismatch, idempotencyConflict, lineDiscountExceedsLine, billDiscountExceedsTotal, discountExceedsLimit, tooManyLines, stockInsufficient, conflict, busy, unknown`.
+- Submit outcome handling (**updated in B1.1**): `ok:true` (incl. `duplicated`) = done · **`IDEMPOTENCY_CONFLICT` is NOT "no sale, issue a new key"** — it means "a bill with this key already exists": it always carries `saleId`, `receiptNo`, `saleStatus` (`PAID`/`VOIDED`/`REFUNDED`) → show that existing bill and do not resell it under a new key · **`UNKNOWN` / `INTERNAL` / `BUSY` are not definite** — keep the key and offer "ลองอีกครั้ง" with the identical payload (spec §3.4 step 6) · every other code is definite with no sale ⇒ new key. `PRICE_CHANGED` carries fresh totals/lines to display without a re-quote. `MEMBER_RIGHTS_UNSUPPORTED` (B1.1) ⇒ sell without the member (P1.12).
+- `duplicated` is **not** a "print the receipt only once" signal: concurrent callers of one key may all receive `duplicated:false` for the same `saleId` (it is "created before this call started"). Dedupe printing by `saleId`.
+- Spec §3.1's flat submit arguments (`{systemId, unitId, cart, payMethods, cashReceivedSatang?, idempotencyKey}`) are stale — the contract is the code: `submitRegisterSaleAction({systemId, unitId, sale: RegisterSubmitInput})`, `quoteRegisterCartAction({systemId, unitId, cart: RegisterQuoteInput})`, plus `registerScanAction({systemId, unitId, barcode})` (B1.1).
+- Payments (B1.1): every entry ≥ 1 satang (an entry of 0 ⇒ `VALIDATION`); a zero-total bill submits `payMethods: []`; `idempotencyKey` ≤ 100 chars, not whitespace-only.
+- i18n keys `refusalMessageKey` returns (S5.13 needs every one in th **and** en `pos.json`): `errors.notFound, permissionDenied, invalidLine, productNotFound, productUnavailable, optionsRequired, memberNotFound, memberRightsUnsupported, priceNotSet, priceChanged, paymentMismatch, idempotencyConflict, lineDiscountExceedsLine, billDiscountExceedsTotal, discountExceedsLimit, tooManyLines, stockInsufficient, conflict, busy, unknown`.
 - `RegisterProduct.soldOutReason`: `UNAVAILABLE` = block (server refuses), `NO_STOCK` = still sellable; `requiredOptionGroupCount > 0` = block with `errors.optionsRequired`; `priceSatang === null` = needs open price (`pos.sale.priceOverride`).
 - Seed hunk `registerV2: true` in `scripts/seed-pos-qc.mts` was **left to B2** (only S5.11 — static, together with `page.tsx` — needs it; no server check reads the flag). The flag reader (`settings.pos.registerV2 === true`) belongs with the page gate.
 
@@ -106,3 +109,52 @@ All create/delete their own temp tenants (p1.1 uses the POS QC seed read-mostly)
 
 ## 10. Proposed ORACLE-EDITs
 None. (S3.18 is correct; it is red because the base lacks HF-INV-1.)
+
+## B1.1 — review fixes (controller rulings on the B1 review, oracle round 3.2 · base `fe89ccd7` = B1 + merge of `hotfix/inventory-atomic` 2eccebf4 + oracle 119 checks)
+D1–D13 stand except **D4** and **D6** (changed below) and **D10** (payments, changed by ruling 4). D2, D7, D12 and the R5 service lines are unchanged.
+
+### What changed (file:line at the B1.1 commit)
+| # | ruling | change |
+|---|---|---|
+| 1 | idempotency order-independent + exact; conflict = "bill exists" | `register.ts:987` `regLoadSale` loads lines/payments `orderBy: {id: "asc"}` · `register.ts:1008` new `regLinesEqual` (canonical, below) replaces the greedy matcher · `register.ts:1040` `regSameSubmission` (payments as a sorted multiset) · `register.ts:1058` `regDuplicate`: any stored bill with this key that is not `PAID`, or whose payload differs ⇒ `IDEMPOTENCY_CONFLICT` carrying `saleId`, `receiptNo`, `saleStatus` (never `ok:true` for a VOIDED bill) · `register-shared.ts:139` type `RegisterIdempotencyConflict` added to `RegisterSubmitResult` · message now "มีบิลของรายการนี้อยู่แล้ว — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ" |
+| 2 | D6 → member rights refused | `register.ts:831` `regMemberAutoDiscount` + call at `register.ts:908` (inside `regPrice`, i.e. quote and submit, after pricing, before any write): member system of the unit via `systemForUnit(…,"MEMBER")` (same as `createSale`) → `member.automaticDiscountForSale` > 0 ⇒ `MEMBER_RIGHTS_UNSUPPORTED`; no member system / customer not in it ⇒ attaches as today (same as `createSale`'s `applyMemberRights`). Source of truth: new read-only export `member/wallet.ts:685` `automaticDiscountForSale` = step 1 of `computeQuote` with the same private helpers (`loadCustomer` → `benefitsFor` → `tierDiscountOf(subtotalOf(cart))`); with no choices (the register never sends any) that step is the whole automatic discount `applyOnSale` returns. It does **not** call `computeEarn` (which creates a `PointSettings` row lazily through `point/internal.ts getSettings`), so the refused path writes nothing. Facade: one line `member/index.ts:123`. Code + key: `register-shared.ts:42`, `:249` (`errors.memberRightsUnsupported`) |
+| 3 | D4 → ceiling vs rounding | `pricing-shared.ts:108` `ceilingUseOf`, `:147`, `:173–174`, `:190–192`: ceiling usage in 1/10000 satang — PERCENT uses `bp × base` exactly (never the rounded satang), AMOUNT uses `satang × 10000`; refuse when `Σ usage > maxBp × subtotal + 5000 × (number of AMOUNT discounts > 0)` (each AMOUNT compared with its ceiling rounded half-up). Integer only (max ≈ 4.3e13 < 2^53). Same function client/server (S3.45 green) |
+| 4 | payments | `register.ts:966`, `:972`: empty list allowed at parse; any entry < 1 satang ⇒ `VALIDATION`; `[]` on a non-zero total ⇒ `PAYMENT_MISMATCH` at step ④ (unchanged code path) |
+| 5 | key format | `register.ts:493` `regIsIdemKey` (string, `trim()` non-empty, ≤ 100, clean) used at `:962`; the key is stored verbatim |
+| 6 | scan action | `register-actions.ts:131` `registerScanAction({systemId, unitId, barcode})` — same shape as the other four |
+| 7 | review extras (no oracle check) | `register.ts:1173` `registerVatConfig` requires `active: true` (inactive POS ⇒ `NOT_FOUND`, as in `regScope`) · `register-actions.ts:66` `session()` wraps `requireTenant`: `unstable_rethrow(e)` passes Next redirects/notFound through, any other failure ⇒ `{ok:false, code:"UNKNOWN", message}` instead of a raw rejected promise; every action calls it first · notes §6 updated (`IDEMPOTENCY_CONFLICT` meaning, `duplicated` ≠ print-once, stale spec §3.1 arguments) |
+
+### Canonical idempotency comparison (`regLinesEqual` + `regSameSubmission`)
+1. Same unit, POS system, `sourceModule` POS, memberId, `expected === sale.grandTotalSatang`, payments as a sorted multiset of `type:amount`, bill discount recomputed on the stored subtotal (after line discounts) equals `sale.discountSatang`, and the same number of lines.
+2. Custom lines: sorted multiset of `name|unitPrice|qty|discountSatang` on both sides must be identical (request discount recomputed with the `priceCart` formula on `price × qty`).
+3. Product lines, per `productId` (union of both sides): stored multiset `S` of `unitPrice|qty|discountSatang`; request = open-price lines `E` (price known) + plain lines `U` (price = the catalogue price at sale time, not stored). Because `regPrice` reads each product's price once per submit, every plain line of one product in one sale has the same price `c`. The product matches iff counts are equal and **some single** `c` taken from the stored prices of that product makes `sorted(E ∪ U@c) == sorted(S)`. Order of lines never matters; there is no greedy pairing; a plain line cannot "take" an open-price line unless the resulting whole multiset is identical.
+4. Residual indistinguishable case (documented): stored data cannot tell `[P open 60, P plain @45]` from `[P open 45, P plain]` when the catalogue price at the original sale was 60 — both describe byte-identical stored lines and totals, so the "duplicate" answer refers to a sale with exactly the lines/money the retry describes.
+
+### Forced oracle (QC4, `… with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-pos-p1.3.mts`)
+| run | UTC | result |
+|---|---|---|
+| controller at `fe89ccd7` | — | 97/119 |
+| b11-run1 | 21:43:02Z → ~21:45Z | **105/119** · `a5.drift []` · S9.1/S9.2 ✅ |
+Green now: S2.15, S3.40, S3.41, S3.42, S3.43, S3.48, S3.49, S5.18 (+ all 97 previously green). Red (14, none mine): UI/i18n/page for B2 — S5.1–S5.9, S5.11, S5.13 (0 mapping mismatches; red only because th/en `pos.json` do not exist; `MEMBER_RIGHTS_UNSUPPORTED → errors.memberRightsUnsupported` mapped), S5.16 (only "no `src/components/pos/register/*`"), S5.17 — and S6.1 (P1.6, forced past its own guard).
+
+### Regression (before = `fe89ccd7` clean tree · after = B1.1) — check lines compared, 0 differences
+| suite | before | after |
+|---|---|---|
+| qc-pos-p1.1 | 113/113 | 113/113 |
+| qc-pos-register | 42/42 | 42/42 |
+| qc-hf-pos-page-authz | 56/56 | 56/56 |
+| qc-pos-inventory | 25/25 | 25/25 |
+| qc-pos-account | 16/16 | 16/16 |
+| qc-pos-closeday | 22/22 | 22/22 |
+| qc-pos-coupon | 8/8 | 8/8 |
+| qc-pos-products | 24/24 | 24/24 |
+| qc-pos-p0.2 | 55/55 (+1 SKIP) | 55/55 (+1 SKIP) |
+| qc-hf-inventory-atomic | 143/143 | 143/143 |
+
+### Gates
+- fitness with QC4 env and without env → exit 0, `{"total":40,"passed":40}` both.
+- typecheck (once, at the end): `env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck` (21:51:40Z → 21:55:08Z incl. lock) → **exit 0**.
+- commit: one commit on `wip/pos-p1.3` (`--no-verify`: `core.hooksPath` points into `/root/projects/shark-in-th`, off-limits; fitness run through `iso.sh` instead) + push of that branch only.
+
+### Outside the B1 file list (flagged)
+- `src/lib/modules/member/wallet.ts` (+10 lines, new export) and `src/lib/modules/member/index.ts` (+2 lines) — required by ruling 2 ("reuse the function `createSale` uses"; the tier step was private). Read-only, no behaviour change for existing callers.
