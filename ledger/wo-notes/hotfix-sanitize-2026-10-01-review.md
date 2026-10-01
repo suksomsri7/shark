@@ -1,6 +1,6 @@
 # REVIEW — hotfix sanitize 2026-10-01 (independent security review of 6513a9f7)
 
-VERDICT (branch `hotfix/sanitize-2026-10-01` at ca5a28be + review commits): **SHIP all three items**.
+VERDICT (branch `hotfix/sanitize-2026-10-01` at 7089364c + review commits): **SHIP items 1–4** (see "Release verdict" at the end).
 - Item 1, sanitizer: SHIP. Use the reviewer's `finder.sql` instead of the note's query.
 - Item 2, automation authz: SHIP.
 - Item 3: SHIP.
@@ -333,3 +333,157 @@ VERDICT: **SHIP**.
 - Rollback: unchanged. There is no migration, and the new audit rows are harmless.
 
 - R8 Item 3 reviewed: SHIP; M1/M2 mobile AI found (HIGH, separate).
+
+## Item 4 — mobile AI routes + DNA apply (7089364c)
+
+VERDICT: **SHIP**.
+- Suites on 7089364c:
+  - sanitize oracle 29/29
+  - automation 12/12 (QC3)
+  - payment 8/8 (QC3)
+  - mobile 12/12 (QC3; real route handlers, positive controls, cleanup to 0)
+- No typecheck run (not requested).
+
+**(1) Same decision as web — no drift**
+- `mobileDenied` calls `rbac.evaluate`, the same function the web's `assertCan` uses. It builds the membership context the same way as `assertAiCan` and `chat/guard membershipOf`.
+- The permission names match:
+  - `{ai, ai.chat.send}` = `ai/actions.ts assertAiCan(auth, "ai.chat.send")`
+  - `{systems, systems.system.create}` = `actions/systems.ts:49`
+- Branch scope: no unitId is passed, so OWNER and MANAGER pass and STAFF need the key or `<module>.*`. Same as web.
+- **Mobile routes with the guard (8 handlers):** chat/send, conversations GET/POST, `[id]` PATCH/DELETE, `[id]/messages`, `[id]/read`, dna/apply.
+- **Mobile routes without the guard, and why that is right:**
+  - Logged-out by design: auth/* (otp, verify, google, apple, exchange, logout), webview-exchange.
+  - Caller's own data: webview-session, me, tenants GET.
+  - tenants POST: self-signup creates the caller's own new shop.
+  - dna/questions: static list.
+  - proposals/confirm, plans/confirm: per-kind `assertCan` with the confirming member (verified in Item 3).
+  - member/*: `assertCan` / `canReadMember` in the route.
+  - crm/*: I opened 5 routes:
+    - `call-log` → `calls.logCall`, which runs the module's `enter(ctx, actor)` access check.
+    - `deals` → `myDeals`: only the caller's own deals, inside `dealWhere` (= `visibleWhere`, STAFF default own).
+    - `deals/[id]` → `dealDetail`: inside `dealWhere`.
+    - `scan-card` → `scanBusinessCard` requires `crm.contact.create`.
+    - `tasks/[id]/complete` → `activities.completeActivity`, which runs `enter(ctx, actor)` (activities.ts:198).
+    - Shared wrapper: `runMobileCrm` builds the actor from the member and applies rate limits. All OK.
+  - **Remaining LOW follow-ups** (still only "member of the shop"):
+    - dna/answers
+    - chat/welcome
+    - proposals GET (lists a room's pending proposals; web needs `ai.chat.send`)
+    - proposals/reject, plans/reject
+    - usage
+    - push/register (the Expo token can be re-bound to another user)
+
+**(2) Does the released mobile app break? No.**
+- It shows an error message; it does not crash or go blank.
+  - All calls go through `apps/mobile/src/api/client.ts`. On any non-2xx it throws `ApiError(status, body.error)`.
+  - **Sessions list** (`app/(app)/sessions.tsx:52-137`): list, create, rename and delete each catch the error and `setError(apiErrorText(e))`, which shows "ไม่มีสิทธิ์เข้าถึงกิจการนี้" ("no access to this business"). The wording is misleading (it suggests losing the whole shop), but the screen keeps working. `[id]/read` failures are ignored with `.catch(() => {})`.
+  - **Chat screen** (`chat/[id].tsx`): message loading shows the same error. `sendChat` turns any non-ok response into `ApiError(…, "chat_failed")`, shown as a red bubble with a retry button (lines 139-160). Loading proposals fails silently.
+- 403 never triggers sign-out; the app signs out only on the web-session-ended message (`index.tsx:124`).
+- The app's home screen is the web app in a WebView, so everything else keeps working.
+- ⇒ **Safe to ship the server fix before an app update.** Follow-up: in the app, map 403 on AI screens to "ask the owner for the AI-assistant permission".
+
+**(3) DNA apply**
+- OWNER passes `evaluate` immediately, and MANAGER passes too (no unitId). The brand-new-shop web flow (`/app/dna/blueprint` → `DnaApplyButton` → `applyStepAction`) runs as the shop's creator, who is OWNER.
+- Only an un-keyed STAFF member is denied. On web the thrown ForbiddenError lands in the button's generic catch and shows the misleading "connection dropped, press continue". Mobile `dna.tsx` shows `apiErrorText`. NOTE: UX for STAFF only.
+- **No automated or seed caller** of the actions or the route.
+- **NOTE `marketplace/service.ts:156`.** Template install calls `applyBlueprint` directly. It is gated by `marketplace.template.install` (`assertMarketplaceCan`), not `systems.system.create`. A STAFF member with only the marketplace key can still create systems through a template. Follow-up: align the two.
+
+**(4) "The web has no door to list/rename/delete AI conversations" — verified.**
+- Outside `api/mobile` and `lib/mobile/conversations.ts`, the only writes to `aiConversation` are internal:
+  - `ai/service.ts:303` bumps `updatedAt` while sending.
+  - `platform/support.ts:98` is a support hand-off.
+- `listConversations` in `modules/chat` is the customer chat inbox, a different model. So `ai.chat.send` as the minimum check is the right choice.
+
+## Release verdict (items 1–4)
+
+**SHIP `hotfix/sanitize-2026-10-01` at 7089364c (+ review commits).**
+- No blocker. Every item was fuzzed or tested.
+- All four hotfix suites are green on the final tip: sanitize 29/29, automation 12/12, payment 8/8, mobile 12/12 (QC3; real route handlers, positive controls, cleanup to 0).
+- No migration, no data rewrite.
+
+### Pre-deploy
+1. On the QC DB, run the suites already re-run above, plus the QC list in the hotfix note (kanban k1.6/k3.x, member m1.7/m3.10/m3.11/public, crm c2.5, visual-kanban).
+2. Run the pure checks: `pnpm exec tsx scripts/pending/hsan-review/judge-selftest.mts` (OK) and `attack.mts vectors fuzz` (0 violations).
+3. Run `pnpm typecheck` (builder) and fitness (pre-commit).
+4. Deploy from this branch only, never from a dirty main folder (lesson from siamdive2). Use the Vercel deploy path the owner approves.
+
+### Post-deploy smoke (in the first 30 minutes)
+- **Item 1:**
+  - Open 2–3 real public `/m/<slug>/join` pages that have a policy; check it renders.
+  - Open kanban cards with bold/list/link descriptions (including `?a=1&b=2`).
+  - Send a QC mail-to-board containing `<svg/onload=alert(1)>` and `<details/open/ontoggle=alert(1)>x`: expect plain text and no alert.
+  - Open a CRM inbound thread and toggle "show images". Send a normal inbound mail and check it is stored and rendered.
+- **Item 2:**
+  - OWNER: create, toggle and delete a shop rule on `/app/settings/automation`.
+  - Un-keyed STAFF (QC tenant): create shows the Thai error; toggle and delete do nothing; member journeys and tiers are untouched.
+- **Item 3:**
+  - OWNER: save the PromptPay ID, check the POS register QR, and check the AuditLog `payment.profile.update` row shows `******1234`.
+  - STAFF: saving shows the Thai error.
+- **Item 4:**
+  - Mobile app as OWNER: AI chat send, the sessions list, rename, delete.
+  - As STAFF without `ai.chat.send`: an error message, no crash.
+  - Web `/app/dna/blueprint` "apply" as OWNER.
+- Watch Vercel errors and durations for `/api/email/inbound`, `/m/*/join`, `/api/mobile/chat/send`, `/api/mobile/conversations*`, and the kanban card server actions.
+
+### Stored-data / forensic queries (read-only, run at business hours with the built-in timeouts)
+- **Item 1:** `scripts/pending/hsan-review/finder.sql`.
+  - Triage the `hit` column by tenant and author.
+  - These rows are now neutralised at render, but REST still returns them raw.
+  - Any cleanup is a separate write that needs owner approval.
+- **Item 2:** two queries in the Item 2 section:
+  - non-KANBAN rules with `enabled = false`, newest first
+  - run history (`AutomationRun`) pointing at rules that no longer exist
+- **Item 3:** recently changed payment profiles (no history existed before the fix). Ask each shop owner to confirm their current ID:
+```sql
+BEGIN READ ONLY; SET LOCAL statement_timeout='30s';
+SELECT "tenantId", "updatedAt", right("promptpayId", 4) AS last4 FROM "PaymentProfile" WHERE "updatedAt" > "createdAt" ORDER BY "updatedAt" DESC LIMIT 200;
+ROLLBACK;
+```
+- **Item 4:** no historical trace of mobile AI use by STAFF beyond `AiMessage` rows. Those have no per-user author.
+
+### Who loses access (count queries)
+- **Item 1:** nobody. Cards created through REST/AI with `<img>`/`<table>`/`<h3>` lose that markup at render.
+- **Item 2:** STAFF without `automation.rule.create` / `automation.*` lose create/toggle/delete on `/app/settings/automation`. Query in the Item 2 section.
+- **Item 3:** every STAFF member loses saving the payment profile; no permission key exists to delegate it.
+```sql
+SELECT count(*), count(DISTINCT "tenantId") FROM "Membership" WHERE role = 'STAFF' AND "acceptedAt" IS NOT NULL;
+```
+- **Item 4:**
+  - STAFF without `ai.chat.send` / `ai.*` lose mobile AI chat and conversations (they never had them on web).
+  - STAFF without `systems.system.create` / `systems.*` lose DNA apply on web and app.
+  - Count query: the builder's, in the hotfix note under Item 4. It is read-only with a timeout; I reviewed it and it is correct.
+- OWNER and MANAGER lose nothing in any item.
+
+### Rollback
+- Vercel instant rollback to the previous production deployment (04d2ade9). No migration; the new AuditLog rows are harmless.
+- Rolling back re-opens the following, so prefer fixing forward:
+  - stored XSS payloads become live again
+  - the cubic ReDoS returns
+  - all three authz holes reopen
+
+### Follow-ups for the next card
+1. **S3:** sanitise the JSON reads:
+   - kanban `cardRow` (serialize.ts:86)
+   - card/board template DTOs
+   - member `listPolicyVersions` / `publishPolicyVersion`
+   - stop the entity decode in `descriptionToText`
+2. Sanitise kanban descriptions when they are written (`service.createCard`/`updateCard`/`updateCardTemplate`/AI proposals/inbox note/chat-to-card). Portal requests should go through `renderDescription`.
+3. **M3:** the AI `remember_fact` tool writes shop AI memory without confirmation. Pass the caller's membership into `runTool` so the AI's read tools apply per-permission and visibility checks (`customer_search`, `recent_leads`, `financial_summary`).
+4. Remaining LOW mobile routes: dna/answers, chat/welcome, proposals GET, proposals/plans reject, usage, push/register re-bind.
+5. Remaining LOW web actions from Item 3b (support cases, AI plan reject, announcements, DNA answers/propose, `listMyInvoices`).
+6. Payment profile:
+   - owner ruling on branch-scoped MANAGER (OWNER-only like domain, or MANAGER with `unitAccess` `["*"]`)
+   - a delegable registry permission (`payment.profile.update`)
+   - hide the form for users who cannot save
+7. Automation:
+   - `boardId: null` filter so board rules need board ADMIN
+   - hide the buttons when the user lacks `mayManage`
+   - private-address (SSRF) guard on WEBHOOK URLs
+   - don't show webhook URLs to every member
+8. Marketplace template install should also require `systems.system.create`.
+9. Mobile app: show "ask the owner for permission" on 403 from AI and DNA screens (it currently says "no access to this business"). Web `DnaApplyButton` should show Forbidden instead of "connection dropped".
+10. Links: `rel="noopener noreferrer nofollow ugc"`; consider `target` for kanban links. `linkSchemeOk` should not strip inner spaces (N1).
+11. CSP (nonce-based) as defence in depth. Needs its own audit.
+12. Forward-port to `session/crm`: sanitize files wholesale, plus the two render hunks, the 1 MB cap (make HS-G.1 fail when the file is missing), and Items 2–4 by cherry-pick. Run all four suites there.
+
+- R9 Item 4 reviewed: SHIP; release verdict written.
