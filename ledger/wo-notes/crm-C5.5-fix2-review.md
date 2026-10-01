@@ -162,3 +162,86 @@ Should-fix (LOW, can be a follow-up card): RV2-6 (F15 regex and OWED counts), RV
 - The it4 UI inventory.
 - The 4 OWED `account/**` sites beyond reading them.
 - Prisma behaviour on databases other than QC3. QC3 is `C.UTF-8`; prod collation was not checked, and Unicode folding (RV2-9) depends on it.
+
+---
+
+# ROUND 2 REVIEW (d326e6fe on be3a6495)
+
+Probe: `scripts/pending/cf2/review/probe-cf2-review-r2.mts`, run on QC3 under the gate lock.
+- Final log: `probe-cf2-review-r2.r2.log`, 10/10, CLEAN 0.
+- First log: `.r1.log`, 9/10. The only red was my own Q3 assertion: it counted the "customer replied" notification as a cap notice. I fixed the count by title and re-ran.
+
+I did not repair the round-1 probe; its R9 is superseded by Q6.
+
+## Verdict: MERGEABLE AFTER R2b-1
+
+- RV2-1 to RV2-5 are closed and I could not re-break them.
+- RV2-6 and RV2-7 are closed; the remaining F15 misses are LOW.
+- One new MED: a race that still lets the lost device keep a portal session (R2b-1, reproduced).
+- If the controller accepts R2b-1 as a tracked follow-up instead, the card is MERGEABLE.
+
+## RV2 status
+
+| id | status | evidence |
+|---|---|---|
+| RV2-1 copy loop | **CLOSED** | `emails.ts` copy guard. Probe Q1: copy target `Sales+CRM@Shop-….Test` (mixed case, plus-address). Every forward-back variant was stored with **0** further copies: `Fwd:` from the box in upper case, `ส่งต่อ:` from a second-hop mailbox, `RE: FW: Fwd:` stacking, `[EXTERNAL] FW:` from a relay, and a display-name From. Positive control: an ordinary customer mail gives 1 copy. `bareEmail` lowercases both sides; the guard's `includes` survives any added prefix, and the prefix sits at the start of the copy subject so 300-char truncation cannot remove it. |
+| RV2-2 domain forged From | **CLOSED** | `emails.ts:2499`. Q2: a mixed-case `CEO@Corp-….TEST` is filed on the company with `unverifiedFrom` set, and the event has no companyId. Positive control: A-R pass keeps companyId and sets no flag. A sub-domain (`ceo@mail.<domain>`) matches no company and no contact. It is stored unattributed, so there is nothing to badge (see R2b-4). |
+| RV2-3 system-cap DoS | **CLOSED** | Q3, with the system bucket at 1000: random From, a guessed Message-ID (same format as `newRfcId`), a valid Message-ID from a non-recipient, the attacker's **own** inbound Message-ID (parent is IN, so no proof), and From = our inbox are all dropped. The genuine recipient's reply is stored and leaves the bucket unchanged (1006→1006). The exempt path is still killed at the per-sender cap (100/h). There is exactly **one** owner notice (title/body contain no address, only the `/app/sys/<id>/crm/emails` path) and one audit line, because `count === limit+1` is atomic. The exemption uses the **same** `threadProof` variable as the reply effects (`emails.ts:2437`: parent is OUT and From ∈ its To/Cc). Message-IDs stay unguessable (96-bit random). Thread proof cannot be bought cheaply: a real recipient can bypass the system bucket, but only from its own address, which the per-sender cap still bounds. |
+| RV2-4 badge in lists/AI | **CLOSED** | Q4: the `listThreads` item has `unverifiedFrom: true`. The REST list and the AI tool `crm_email_thread` return those items as-is (assistant masking copies `{...it}` and only masks subject/snippet). The inbox renders the badge. Residual LOW, R2b-3: the contact timeline activity row shows the subject only. |
+| RV2-5 re-invite scope | **CLOSED for every deterministic ordering**, race open (R2b-1) | Q5 (a): device on B, re-invite A kills B and the B→A switch is refused. (b): re-invite B kills A. (c): device switched B→A first, then re-invite B kills both, so there are 0 live sessions. (f): staff *revoke* of A leaves B alive but the switch into A is refused. |
+| RV2-6 F15 | **CLOSED** (residual LOW, R2b-2) | Q6.2: no false positive on the current tree (0 bad, all 4 OWED present). A NEW `name:` site in `account/service.ts` fails. A duplicated copy of an OWED line fails as over-count. Fitness is 36/36 with and without env (`/tmp/cf2-logs/fitness*-r2.log`). |
+| RV2-7 nav | **CLOSED** | See point 4 below. |
+
+## Answers to the round-2 questions
+
+1. **Re-break attempts.** See the table. None of RV2-1 to RV2-4 broke. The owner notice is not a spam vector: it fires once per system per hour window, and only OWNERs receive it (≤20).
+
+2. **The RV2-5 deviation (first invite does not sign out).** I **ACCEPT** it. A first invite is not a lost-device signal. Q5 (e) confirms the consequence: a device holding A can `switchCompany` into a newly invited company C. That follows from the multi-company model and is not a regression, because before this card nothing was revoked at all. The correct staff response to a lost device is a re-invite, which now kills every session of that contact.
+
+   **The race ordering is NOT closed (R2b-1).** I ran `switchCompany(B→A, revokeCurrent)` concurrently with `invite(A)` (re-invite): **1 of 6** trials left a live session, the 0 ms start in both runs. The cause is a time-of-check/time-of-use gap. `switchCompany` checks the source session (`session(token)`), and `mintPortalSession` inserts the new session afterwards. The re-invite's `updateMany` runs at READ COMMITTED and does not see a session inserted after its snapshot. A thief looping switches at the 30/min limit would be inside that window a noticeable fraction of the time.
+
+3. **F15.**
+   - My 8 extra spellings: `satisfies` casts and helper-return objects are caught.
+   - Still missed: `["mode"]:` computed key, ternary `cond ? "default" : "insensitive"`, parenthesised `("insensitive")`, an enum alias (`const QM = Prisma.QueryMode; QM.insensitive`), an imported constant, and `equals` combined with `contains: ""` in the same object (R2b-2, LOW; all are rare or contrived).
+   - A new `account/service.ts` site fails, and the tree has no false positives.
+
+4. **Nav.**
+   - **Other modules are unchanged.** Q7.1: tab builders for member, inventory, hr, pos, point, reward, coupon, chat, marketing and meeting carry no `perm`, and `visibleTabs(items, [])` returns every tab. The unit pages under `u/[unitSlug]` pass literal items without `perm`. `crmNavItems` is used only under `/crm`.
+   - **No query storm.** The layout uses `requireTenant` → `getAuth`, which is wrapped in React `cache()`, so it adds no DB query per request beyond what the page already does. `crmCan` is a pure in-memory check.
+   - **Next.js rules.** I checked this version's `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/layout.md`. An async server layout with a `params` Promise is allowed. Passing data down through a client context provider is the documented way around "layouts cannot pass data to children". Its caveat applies: layouts do not re-render on navigation, so the tab keys are as stale as the last full load (R2b-5, LOW). Page gates still decide access.
+   - **อีเมล/รายงาน.** These are not newly hidden. Before, they were hidden on every page that did not pass `can` (most pages) and shown by key on the 2 pages that did. Now they are shown by key everywhere. The tab perms equal the pages' own `notFound()` gates: `/emails` uses `crm.email.read` (`emails/page.tsx:42`) and `/reports` uses `crm.report.view` (`reports/page.tsx:20`). Q7.2: with no keys or no provider those tabs are hidden (fail closed); with the key they are shown.
+
+5. **Regressions** (`/tmp/cf2-logs/`).
+   - `reg2-qc-crm-c2.5.log`: 104/105. The only ❌ is C2.5-U.5, the `boardSha=14…` pin, as before.
+   - `reg3-c3.5.log`: 67/67.
+   - `reg2-qc-crm-c3.5.log` (34/67) is the documented run with the literal contact-wide revoke and is superseded.
+   - File times: `emails.ts` 12:43 < c2.5 run 12:46; `portal.ts` 12:59 < reg3 c3.5 13:05. So the green runs are on the final code. Typecheck r2b passes (exit 0).
+   - Not re-run this round: c1.3, c1.4, c1.5, c2.2, the cd2/c54e probes, k3.9, contact-modal. Their code paths are untouched except the inbound reordering, which c2.5 covers. The it4 UI inventory was not re-run after the nav change.
+
+6. **Other changes in the round-2 diff.**
+   - **Tenant isolation:** OK. Owners are selected by `tenantId` and buckets are keyed by systemId.
+   - **PII:** none in the owner notice; the audit line is unchanged (RV2-10 still open, LOW).
+   - **Performance:** the earlier parent lookup is one query on unique `messageId` (`in` 2×refs), scoped by systemId. The system bucket now comes after the staff, override and verified-domain lookups and the parent lookup, so flood mail over the cap costs about 5 indexed queries each instead of 1 (R2b-6, LOW). Sanitising now runs after the cap, which is good.
+
+## New findings
+
+| id | sev | where | finding | reproduced |
+|---|---|---|---|---|
+| R2b-1 | MED | `portal.ts` `switchCompany` (session check, then `mintPortalSession`) vs `invite()` re-invite revoke | **A race lets the lost device keep a session.** If a switch is in flight when staff re-invite, the session minted on the target access survives the contact-wide revoke (TOCTOU, explained under answer 2). | YES, Q5(d): 1 of 6 trials, 0 ms, in both runs |
+| R2b-2 | LOW | `scripts/lib/ci-equals-scan.mjs` | **F15 still misses 6 spellings:** computed `["mode"]`, ternary, parenthesised value, enum alias, imported constant, and `equals` together with `contains: ""`. | YES, Q6.1 |
+| R2b-3 | LOW | `activities.recordSystemActivityInTx` (EMAIL activity, title = subject) | The contact or company timeline shows forged mail as a plain EMAIL activity with no flag. Opening the thread shows the badge. | YES, Q4 |
+| R2b-4 | LOW (info) | `companyByEmailDomain` exact domain | Mail from a sub-domain or look-alike domain is stored unattributed (no contact, no company), so it gets no badge. Staff see "ยังไม่รู้ว่าเป็นของใคร". Not a regression. | YES, Q2 |
+| R2b-5 | LOW (info) | `crm/layout.tsx` | Layouts do not re-render on client navigation, so a permission change shows in the tabs only after a full reload. Page gates are unaffected. | doc + code read |
+| R2b-6 | LOW | `emails.ts` `ingestInbound` | Over-cap flood mail now pays about 5 indexed lookups before being dropped (staff, override, verified domains ×2, parent). This is bounded by the per-sender bucket per From, but From rotates freely. | code read |
+
+## Must-fix
+
+1. **R2b-1.** Serialise switch and re-invite per contact.
+   - Inside `switchCompany`, take `pg_advisory_xact_lock(<hash of tenantId:contactId>)` in one transaction that re-reads the source session as live and inserts the new session.
+   - Take the same lock in `invite()` before the contact-wide `updateMany`.
+   - The two then serialise: either the new session exists before the revoke and is killed by it, or the source is already revoked and the switch is refused.
+   - A cheaper alternative: after minting, re-check the source with `getPortalSession(token)` and revoke the new session if the source is dead. That narrows the window but does not close it.
+   - Add a probe in the shape of Q5(d) with ≥10 trials and 0 survivors.
+   - Alternatively, the controller records an explicit acceptance as a tracked LOW follow-up.
+
+Should-fix (follow-up): R2b-2 (extend the scanner or accept as documented), R2b-3 (flag EMAIL activities from unverified mail), R2b-6 (optional). Carried over: RV2-10, RV2-11 (P14 launch prerequisite), and the wrong comment at `kanban/archive.ts:8`.
