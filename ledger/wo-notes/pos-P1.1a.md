@@ -370,3 +370,39 @@ P2002 ภายใน **transaction ที่ผู้เรียกส่ง�
 | `checkCatalogWrite` ↔ `posCanSetTenantPrice` (hotfix/pos-page-authz) ต้องเป็นกติกาเดียวตอน merge | ผู้คุมงาน (merge) |
 | P1.1b ไฟล์ legacy-sync ต้องเพิ่มตัวเองใน `SYSTEM_MARKER_ALLOWLIST` พร้อมเหตุผล | P1.1b |
 | resolver/คลัง: คลังปิดใช้งานยังนับ (มติ a — ตามหน้าขายวันนี้) · ถ้าจะกรองต้องแก้ systemForUnit ด้วยพร้อมกัน | P2.1 |
+
+# Round 4 oracle (oracle writer · brief `pos-brief-P1.1a-R4.md` E5 · base 14d86845 + merge ledger ของ session/pos)
+oracle `scripts/qc-pos-p1.1.mts` → **127 ข้อ · P1.1a 99 · P1.1b 28** (เดิม 121/93) · id เดิมคงที่ · ข้อใหม่ต่อท้าย S3.40–S3.45 · หลักฐานแดง `ledger/wo-notes/pos-P1.1a-red4.txt`
+
+ราคาลิ้นชักวันนี้ (อ้างให้ builder · E3): PRODUCT `register.ts:137-151` `posCatalog` — AP หาแบบ `InvItem.accountProductId` (`:139-146`, **ไม่กรอง archivedAt/สมุดบัญชี**) แล้ว `priceSatang = sale && sale > 0 ? sale : Math.max(0, i.costSatang)` (`:149`) · ไม่อ่าน posPrice เลย · รายการ = `inventory.listItems` (PRODUCT · ไม่เก็บถาวร · 200 ตัว `inventory/service.ts:793-799`) · SERVICE `register.ts:159-176` `posServices` → `inventory.listServices` (`inventory/service.ts:802-806`) ราคา = `InvItem.priceSatang` ล้วน (`:174`) ไม่อ่าน AccountProduct
+
+| ข้อ | ใหม่/แก้ | ตรวจอะไร | บน 14d86845 |
+|---|---|---|---|
+| S3.28 | ขยาย (E5) | + ผู้จัดการ A `createProduct({unitId:null, invItemId: X2})` ได้ · `Y2` = PERMISSION_DENIED (ไม่มีแถว) · เจ้าของ `updateProduct` ย้ายแถวผูกคลัง X ไปสาขา B = VALIDATION แถวไม่เปลี่ยน · ไป A ได้ | ✅ (ตรึงพฤติกรรมเดิม) |
+| S3.29 | แทนทั้งข้อ (E5 behavioural) | client ที่ดัก SQL ด้วย `log:[{emit:"event",level:"query"}]` + `$on("query")` (พิสูจน์แล้วว่าใช้ได้กับ PrismaPg บน 7.8 — probe อ่านล้วน) ส่งเป็นพารามิเตอร์ `client` ของ listForUnit: คำสั่งที่แตะ InvMovement ≤1 ต่อหน้า · ทุก `FROM "InvMovement"` อยู่ใน `EXISTS (SELECT 1 …)` · มี `"itemId"`+`"systemId"` · ไม่มี GROUP BY/JOIN · movement คลังอื่น ⇒ AUTO false · movement คลังสาขา ⇒ AUTO true · คู่บวกตัวดัก (เห็น SQL ของ PosProduct) | ✅ (ตรึงพฤติกรรม D2 · รอบแรกแดงเพราะหน้าที่เลือกไม่มีแถว AUTO onHand 0 = ความผิดของ fixture → แก้เป็นค้น `${TAG} c7-` แล้วรันใหม่) |
+| S3.30 | แก้ (E5 · ตรงเป๊ะ) | ส่วนเพิ่มของตัวนับเทียบ dry-run ฐานก่อนสร้าง fixture (ไม่ผูกสภาพ seed): soldAtCost 2(+1) · apIgnored 2 · invalidLegacy 2(+1) · priceNotSetOther 8 · ผลรวม 15 = แถวราคา null ที่ backfill สร้าง · fixture ราคา null 15 ตัวอยู่ในตัวอย่างของตัวนับเดียวพอดี (r4NegCost เข้า soldAtCost หรือ invalidLegacy ก็ได้ — ลำดับตัดสินเป็นของ builder) · fixture มีราคา 6 ตัวไม่อยู่ในตัวอย่างราคา null · ต้องมี `samples.invalidLegacyPrice` | ❌ ถูกเหตุ: r4SvcArchAp ไปอยู่ apIgnored (ลิ้นชักบริการไม่อ่าน AP) · r4NegCost นับสองตัว (รวม 16 ≠ 15) · ไม่มี samples.invalidLegacyPrice |
+| S3.40 | ใหม่ (E1) | `pos.catalog.checkCatalogWrite(null|undefined|ตัวบ่งชี้, …)` = `"PERMISSION_DENIED"` ×6 (แถวสาขา + แถวทุกสาขา) · เจ้าของ `"OK"` ×2 | ❌ ถูกเหตุ: null/undefined = OK · ตัวบ่งชี้ = throw TypeError |
+| S3.41 | ใหม่ (E1) | เจ้าของ + unitId ร้านอื่น / POS อื่นของร้าน / สาขาเก็บถาวร / สาขาไม่มี POS / ไม่มีจริง = `"NOT_FOUND"` · สีลม/อารีย์ = `"OK"` | ❌ ถูกเหตุ: ทุกตัว OK |
+| S3.42 | ใหม่ (E2) | โฟลเดอร์ `20261120000001_pos_v2_a_links`: `SET lock_timeout` (ไม่ใช่ LOCAL) → ADD COLUMN IF NOT EXISTS ×5 (คู่ตาราง.คอลัมน์ครบ · TEXT) → `RESET lock_timeout` · ไม่มีคำสั่งอื่น · ไม่มี DO / `$$` | ❌ ถูกเหตุ: ไม่มีโฟลเดอร์ |
+| S3.43 | ใหม่ (E2) | ไฟล์ `_pos_v2_a` ไม่มี ALTER TABLE บนตารางเดิม 5 ตัว · ไม่มี ADD COLUMN คอลัมน์เชื่อม | ❌ ถูกเหตุ: มีครบ 5 |
+| S3.44 | ใหม่ (E3) | `catalogPriceDiffersFromTill` ส่วนเพิ่ม = 4 (r4PosOverCost 3000/2000 · r4SvcLiveAp 12000/0 · p2 4400/0 · svcDiff 12000/15000) · ตัวอย่างมีทั้งสองราคา (`catalogPriceSatang`/`tillPriceSatang` หรือค่าเลขสองตัว) · posPrice/posZero/p8/arch/svcZero/costOnly ไม่อยู่ | ❌ ถูกเหตุ: ไม่มีตัวนับ |
+| S3.45 | ใหม่ (E5) | `Object.entries` ของ module `@/lib/modules/pos` + `catalog` ไม่มี symbol/ตัวบ่งชี้ · ไม่มี backfillCatalog (ชื่อหรือฟังก์ชันเดียวกัน) · มี checkCatalogWrite | ✅ (ตรึงพฤติกรรม D5) |
+| S3.22/S3.23/S3.31/S3.32 | ORACLE-EDIT (รอรับรอง) | อ่านชุด `_pos_v2_a` + `_pos_v2_a_links` ต่อกันตามลำดับโฟลเดอร์ (ไฟล์เดียว = เหมือนเดิมทุกตัวอักษร) | ✅ |
+
+typecheck (รอบเดียว · 5632 MB): exit 0
+
+ผลบน 14d86845 (QC4 · รันที่สอง tag qc-p1.1-4708f2): `ผ่าน 93/99` · แดง 6 ตามเหตุ S3.30 S3.40 S3.41 S3.42 S3.43 S3.44 · S1.36 ✅ · `ROWCOUNTS_AFTER … เท่าเดิม` (รันแรก qc-p1.1-416abe ก็คืนสภาพครบ — แดง 7 รวม S3.29 จาก fixture ผิดหน้า แก้แล้ว)
+
+fixture รอบ 4: `r4-svc0-arch-ap` (SERVICE 0 + AP เก็บถาวร 2500) · `r4-pos-over-cost` (AP sale 0 · posEnabled posPrice 3000 · ต้นทุน 2000) · `r4-svc0-live-ap` (SERVICE 0 + AP 12000) · `r4-neg-with-cost` (AP −100 · ต้นทุน 800) · `r4-wh-x2`/`r4-wh-y2` · `r4-d2-probe` + InvMovement 2 แถว · **bulk 520 แถวของ S1.37 เปลี่ยนเป็น SERVICE ราคา 100** (เดิม PRODUCT ราคา null → ล้นตัวอย่าง priceNotSetOther ≤20 จน fixture ที่มีชื่อหลุด) · dry-run เพิ่ม 1 ครั้ง (ฐานตัวนับ ก่อน fixture · อ่านล้วน)
+
+### ORACLE-EDIT requests (round 4 · oracle writer)
+1. **S3.23 (+ S3.22/S3.31/S3.32)** — E2 ย้าย ADD COLUMN 5 ตัวออกจาก `_pos_v2_a` ⇒ S3.23 อ่านไฟล์เดียวจะแดงเสมอหลัง builder ทำ E2 (`addIdx` ว่าง) ทั้งที่เจตนา M2 (SET ต้น · คอลัมน์เชื่อมท้าย · RESET สุดท้าย) ยังเป็นจริงบนชุดสองไฟล์ · **ใส่แล้ว** แบบชั่วคราวในโค้ด (คอมเมนต์ `ORACLE-EDIT P1.1-S3.22/S3.23/S3.31/S3.32`) — บน 14d86845 ผลเหมือนเดิมทุกตัว · ถ้าไม่รับรอง: ย้อนบรรทัด `const sql = …migSet…` กลับเป็นไฟล์เดียว แล้ว S3.23 ต้องเขียนใหม่ให้ตรวจไฟล์ links แทน
+2. ไม่มีข้ออื่น
+
+### ที่กำกวม (ข้อเสนอ ruling ของ oracle writer)
+- E1 ตัวบ่งชี้ระบบส่งเข้า checkCatalogWrite: brief บอกแค่ null/undefined — oracle ถือว่า "ไม่ใช่ MembershipCtx" ⇒ `"PERMISSION_DENIED"` (ไม่ throw)
+- E1 ผลเป็นค่าที่ **คืน** (`"NOT_FOUND"`/`"PERMISSION_DENIED"`) ไม่ใช่ throw — ตามชนิด `CatalogWriteVerdict` เดิม
+- E3 `catalogPriceDiffersFromTill` นับเฉพาะแถวที่มาจาก InvItem (ลิ้นชักมีราคาให้เทียบ) — แถวของเว็บร้าน/เมนูเองไม่นับ (เช่น shop-outside-first-pos ราคา 3333 ผูก itX ซึ่งลิ้นชักของ POS แรกไม่ขาย) ⇒ ส่วนเพิ่ม 4 พอดี
+- E3/E5 "ทุก fixture อยู่ในตัวอย่างของตัวนับเดียว" ต้องมี `samples.invalidLegacyPrice` (วันนี้ไม่มี) — oracle บังคับ
+- E2 per-statement บน prisma ที่ pin = พิสูจน์ของ builder (txid) — oracle ตรวจได้แค่รูปไฟล์ (ไม่รัน migrate บน QC4 ตามกติกาเลน)
+- E4 (F15.5 `||` · ternary · alias) ไม่อยู่ในขอบเขต E5 — ไม่ได้เพิ่มข้อสอบ (builder พิสูจน์ลบเอง)
