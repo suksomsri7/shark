@@ -247,7 +247,7 @@ export async function loadPosResolution(tenantId: string, client: CatalogClient 
 /**
  * R2 — แถวเดิมนี้ "ขายอยู่ในระบบ POS ไหน" วันนี้ (ทางเดียวกับทางขายจริง ⇒ บรรทัดขายพรุ่งนี้ลงระบบที่ขายมันจริง)
  *   • InvItem    → หน้าขายแสดง InvItem ของ **ระบบคลังที่ผูกสาขาเดียวกับ POS** (`register/page.tsx:53-55` resolvePosLinks
- *                  → `register.ts:121-129` systemForUnit(INVENTORY) → `posCatalog`) · สาขาเก็บถาวรไม่นับ (`posUnits` register.ts:105)
+ *                  → `register.ts:125-133` systemForUnit(INVENTORY) → `posCatalog` :137) · สาขาเก็บถาวรไม่นับ (`posUnits` register.ts:101-112 กรอง ARCHIVED :108)
  *                  ⇒ คลังนั้นผูก POS ได้ 1 ตัวพอดี = ระบบนั้น · 0 ตัว = NO_POS · >1 ตัว = AMBIGUOUS_POS (ไม่เดา)
  *   • MenuItem   → เช็คบิลร้านอาหารใช้ `systemForUnit(tenant, unitId, "POS")` (`restaurant/order.ts:421`) ⇒ POS ของสาขาเมนู · ไม่มี = NO_POS
  *   • ShopProduct→ ยืนยันรับเงินเว็บร้านใช้ `listSystems(tenant,"POS")[0]` (`shop/service.ts:217`) = POS ตัวแรกของร้าน
