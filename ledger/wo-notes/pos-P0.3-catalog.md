@@ -3,6 +3,21 @@
 > RUN "POS ใหม่" · worktree `/root/projects/shark-pos-c` · branch `wip/pos-p0.3-catalog` · 1 ต.ค. 2569 · oracle writer: Claude Opus 5.5
 > brief: `/root/projects/shark-pos/ledger/pos-briefs/pos-brief-P0.3.md` (Lane 3) + LANE-RULES + COMMON · ไม่แตะ `src/` `prisma/` หรือสคริปต์เดิม
 
+## Ratified names (controller 1 Oct) — contract for the P1.1a/P1.1b builders
+- **ctx** `{tenantId, systemId (POS), actorUserId: string | null}` — `null` = system caller (backfill / legacy writers): permission checks skipped, tenant/system checks still apply. Every catalog function takes an optional **trailing `client`** (PrismaClient or tx).
+- **Refusals**: catalog functions **throw** a typed error carrying a stable `.code`; the oracle asserts on `code`, never on message text, and counts a returned `{ok:false}` as a contract breach. Codes (aligned with the register oracle, lane 4): `NOT_FOUND` (other tenant/branch/system/product/InvItem — 404 semantics, also cross-branch for a cashier), `PERMISSION_DENIED`, `VALIDATION` (bad name/price), `CONFLICT` (duplicate barcode / category name).
+- **API**: `createProduct(ctx, {name, nameEn?, kind? (default "PRODUCT"), categoryId?, basePriceSatang, vatRateBp?, barcode?, unitId?, invItemId?})` · `updateProduct(ctx, id, {name?, nameEn?, categoryId?, unitId?, trackStock?, availability?: {[unitId]: boolean}})` — **no `setAvailability`** · `setPrice(ctx, id, priceSatang)` · `archive(ctx, id)` · `listForUnit(ctx, unitId, {q?, limit?, cursor?}) → {items, nextCursor}` (never a bare array) · `byBarcode(ctx, unitId, barcode) → view | null` · `ensureForInvItem(ctx, invItemId) → {id, created}` · **`createCategory(ctx, {name, nameEn?, unitId?, sortOrder?}) → {id}`** · all exported via `src/lib/modules/pos/index.ts`.
+- **Permissions**: price changes `pos.product.setPrice`; create/update/archive/createCategory **`pos.product.manage`** (P1.1a adds it to `permissions.ts` as one marked hunk + Thai label); listForUnit/byBarcode need branch access only.
+- **AuditLog**: `targetType "PosProduct"`, `targetId`, `actorId = actorUserId`, `action` `pos.product.*`.
+- **PosProduct columns**: `systemId, unitId?, invItemId?, kind, name, nameEn, categoryId, basePriceSatang?, vatRateBp?, stationId, dailyStockQty, images, archivedAt, parentId?`, **`trackStock Boolean @default(false)`** — backfill: true iff `invItemId` set AND that InvItem has ≥1 InvMovement or `onHand ≠ 0`; MENU false in P1.1a; afterwards the column is the truth (`updateProduct({trackStock})`, register reads it, never re-derives).
+- **Read model**: optionGroups[].choices[].`priceDelta` · `stock[unitId] = InvItem.onHand` · `availability{unitId→bool}`.
+- **Backfill**: `--tenant=<id>` (repeatable) · `--dry-run` · last line `JSON_SUMMARY {dryRun, sources:{invItem,menuItem,shopProduct}, perSystem, skippedNoPosSystem:{invItem,menuItem,shopProduct}, created:{…}, updated:{…}}`; every skip counted under a named reason (InvItem with >1 POS is counted under `skippedNoPosSystem.invItem` today — a separate `skippedAmbiguousPos` key is welcome but not asserted).
+- **Menus (changed ruling b)**: every MenuItem → its own PosProduct `kind MENU`, `invItemId null`, price `MenuItem.basePrice`; a set `MenuItem.invItemId` becomes ONE `RecipeLine(productId = menu product, invItemId, qty 1)`. "Two sources → one product" applies only to InvItem ↔ ShopProduct(invItemId). Coke fixture ⇒ PRODUCT (Coke, 2000) + MENU (null, 2500, RecipeLine→Coke).
+- **Shop rows** in a branch with no POS link ⇒ linked to the POS that shop checkout uses (tenant's first POS, `shop/service.ts:217`). MenuItem per-unit skip and InvItem 0/>1-POS skip stay.
+- **Zero prices**: `salePrice 0` kept (deliberate); `posPrice 0` ignored; SERVICE `priceSatang 0` without AccountProduct ⇒ null.
+- **Price write-back** by row kind: InvItem+AccountProduct → `AccountProduct.salePrice`; SERVICE → `InvItem.priceSatang`; MENU → `MenuItem.basePrice`; shop-only → `ShopProduct.priceSatang`.
+- **Run alone**: this oracle must be the only writer on the POS QC tenants while it runs (controller serialises it through the QC4 gate lock).
+
 ## Controller rulings 1 Oct (survey) — override pos-brief-P1.1a (old) / POS-MIGRATION-PLAN where they differ
 Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIGN-2026-10-01.md` §2, §6 rows 1/2/3/14 (verified against code by me) + **pos-brief-P1.1a.md rewritten by the controller the same day** (its R1–R8 are now the builder's contract; the oracle follows it).
 - **R1 scope**: `PosProduct` = `tenantId` + `systemId` (POS AppSystem) + nullable `unitId` (null = every branch) + nullable `invItemId` (unique per `(systemId, invItemId)` when set). `kind` on PosProduct (PRODUCT/SERVICE/MENU/BUNDLE). No MENU in `InvItemKind`; **no InvItems created for menus**. 1:1 assertions = every InvItem sellable in a POS system → exactly one PosProduct; every MenuItem → exactly one own PosProduct (kind MENU, `posProductId` set, `invItemId` only if `MenuItem.invItemId` already set); every ShopProduct → the PosProduct of its `invItemId`, else its own.
@@ -28,7 +43,7 @@ Source: controller message + `/root/projects/shark-pos-e/ledger/REVIEW-POS-DESIG
 | # | step | state |
 |---|---|---|
 | 1 | read brief/contracts/code | ✅ |
-| 2 | write `scripts/qc-pos-p1.1.mts` | ✅ 79 checks (P1.1a 51 · P1.1b 28) |
+| 2 | write `scripts/qc-pos-p1.1.mts` | ✅ 82 checks (P1.1a 54 · P1.1b 28) — ratification round applied |
 | 3 | A1 run via qc4 → SKIPPED exit 0 | ✅ |
 | 4 | A2 `--list` | ✅ |
 | 5 | A3 `QC_FORCE=1` → red for the right reason, no crash | ✅ |
@@ -66,18 +81,18 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 |---|---|---|
 | P1.1-S1.1 | ตารางใหม่มีจริง: PosProduct (+parentId ว่างไว้ให้ P1.2) · PosCategory · PosProductOptionGroup · RecipeLine · ไม่มีตาราง PosVariant | - |
 | P1.1-S1.2 | คอลัมน์เชื่อมใหม่ nullable ครบ (R3): MenuItem/ShopProduct/ShopOrderLine.posProductId · PosSaleLine/RestaurantOrderItem.productId | - |
-| P1.1-S1.3 | PosProduct มีคอลัมน์สัญญา (tenantId · systemId · unitId? · invItemId? · name · nameEn · kind · categoryId · basePriceSatang? · vatRateBp · stationId · dailyStockQty · images · archivedAt) · unique(systemId, invItemId) · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index บนคอลัมน์เชื่อมทุกตัว (ไม่ตรวจโหมดสร้าง) | - |
+| P1.1-S1.3 | PosProduct มีคอลัมน์สัญญา (tenantId · systemId · unitId? · invItemId? · name · nameEn · kind · categoryId · basePriceSatang? · vatRateBp · stationId · dailyStockQty · images · archivedAt · trackStock NOT NULL default false) · unique(systemId, invItemId) · kind ∋ PRODUCT/SERVICE/MENU/BUNDLE · index บนคอลัมน์เชื่อมทุกตัว (ไม่ตรวจโหมดสร้าง) | - |
 | P1.1-S1.4 | migration <ts>_pos_v2_a additive ล้วน: ไม่มี DROP/RENAME/SET NOT NULL/ADD COLUMN NOT NULL ไร้ DEFAULT บนตารางเดิม · ALTER TYPE ADD VALUE ไม่ปนไฟล์ DDL อื่น · ไม่แตะ enum InvItemKind | - |
 | P1.1-S1.5 | src/lib/core/scope.ts ลงทะเบียนตารางใหม่ทุกตัว (F1 fail-closed) | - |
 | P1.1-S1.6 | backfill --dry-run: exit 0 + JSON_SUMMARY นับต่อแหล่ง (invItem · menuItem · shopProduct) ตรง DB + skippedNoPosSystem ตรงกับแหล่งที่หา POS ไม่เจอตามทางขายจริง | - |
 | P1.1-S1.7 | backfill --dry-run ไม่เขียนอะไรเลย (ตารางใหม่ · คอลัมน์เชื่อม · ตารางเดิม เท่าเดิมทุก byte) | - |
 | P1.1-S1.8 | backfill จริง: exit 0 · created.posProduct = ที่ dry-run ทำนาย = แถวที่เพิ่มจริง · ไม่สร้าง InvItem เลย (R1) | - |
 | P1.1-S1.9 | InvItem ที่ขายได้ใน POS (คลังผูกสาขาที่มี POS) → PosProduct เดียว systemId = POS ของสาขานั้น · ไม่มีกำพร้า/ชี้ข้ามร้าน · systemId เป็นระบบ POS ของร้านเดียวกัน | - |
-| P1.1-S1.10 | ทุก MenuItem (สาขามี POS) → PosProduct ของตัวเอง 1 แถว: kind MENU · unitId = สาขาเมนู · invItemId = MenuItem.invItemId (null ถ้าไม่เคยผูก) · สาขาไม่มี POS = ไม่ผูก | - |
+| P1.1-S1.10 | ทุก MenuItem (สาขามี POS) → PosProduct ของตัวเอง 1 แถว: kind MENU · unitId = สาขาเมนู · invItemId null · MenuItem.invItemId ที่มีอยู่ → RecipeLine(productId เมนู, invItemId, qty 1) แถวเดียว · สาขาไม่มี POS = ไม่ผูก | - |
 | P1.1-S1.11 | ทุก ShopProduct → POS ตัวแรกของร้าน (ทางเดียวกับ shop checkout): มี invItemId → ชี้ PosProduct ของ InvItem นั้น · ไม่มี → PosProduct ของตัวเอง (PRODUCT · unitId สาขา · invItemId null) — แม้สาขาไม่ผูก POS | - |
-| P1.1-S1.12 | สองแหล่งชี้ InvItem เดียวกัน = PosProduct เดียว: เว็บร้าน→น้ำดื่ม ชี้ตัวของน้ำดื่ม · เมนู→โค้ก ถือ invItemId โค้ก (ไม่มีแถว PRODUCT ซ้ำของโค้ก) | - |
+| P1.1-S1.12 | InvItem ↔ ShopProduct(invItemId) = PosProduct เดียว (เว็บร้าน→น้ำดื่ม) · เมนู→โค้ก = 2 แถว: PRODUCT โค้ก (invItemId · 2000) + MENU (invItemId null · 2500 · RecipeLine→โค้ก) | - |
 | P1.1-S1.13 | ราคาขั้น 2 (salePrice) ตรงสตางค์ทุกสินค้าใน seed รวมราคา 0 บาท (น้ำฟรี · น้ำแข็ง) | X4 |
-| P1.1-S1.14 | ลำดับราคาทีละขั้นด้วย fixture ของตัวเอง: posPrice 4500 ชนะ salePrice 5000 · posPrice 0 ไม่นับ (→ salePrice) · SERVICE 15000 · SERVICE ราคา 0 ไม่มีบัญชี = null · เมนู 9900 · เว็บล้วน 12345 · มีแต่ต้นทุน = null · ทุกแถวตรงสูตร | X4 |
+| P1.1-S1.14 | ลำดับราคาทีละขั้นด้วย fixture ของตัวเอง: posPrice 4500 ชนะ salePrice 5000 · posPrice 0 ไม่นับ (→ salePrice) · SERVICE 15000 · SERVICE ราคา 0 ไม่มีบัญชี = null · เมนู 9900 · เว็บล้วน 12345 · มีแต่ต้นทุน = null · เมนู→โค้ก ใช้ basePrice 2500 · ทุกแถวตรงสูตร | X4 |
 | P1.1-S1.15 | VAT ต่อสินค้า: vatRateBp = AccountProduct.vatRateBp (ไข่ 0 · อื่น 700) · ไม่มีบัญชี = null | X8 |
 | P1.1-S1.16 | หมวด: เมนู → PosCategory ชื่อ/ชื่ออังกฤษเดียวกับ MenuCategory · 1 PosCategory ต่อ MenuCategory (สาขามี POS · ไม่ซ้ำ) | - |
 | P1.1-S1.17 | ฟิลด์เมนูย้ายครบ: stationId · dailyStockQty · images (ลำดับเดิม) | - |
@@ -93,22 +108,25 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 | P1.1-S1.25 | rollback ระหว่างทาง: แถวเดิมของตารางเก่า checksum เท่าก่อน backfill (ยกเว้น updatedAt/คอลัมน์เชื่อมใหม่) · ไม่มีแถวเพิ่ม/หายในตารางเก่า | - |
 | P1.1-S1.26 | catalog.ts export ครบ 7 ฟังก์ชัน (createProduct · updateProduct · setPrice · archive · listForUnit · byBarcode · ensureForInvItem) และ facade pos/index.ts ส่งต่อครบ | - |
 | P1.1-S1.27 | createProduct ถูกต้อง → PosProduct systemId = POS ใน ctx · ราคา/VAT ตรงสตางค์ · invItemId null หรือ InvItem ในคลังที่ผูก POS ของร้านเดียวกัน | X4 |
-| P1.1-S1.28 | createProduct ปฏิเสธ: ชื่อว่าง · ราคาติดลบ · ราคาเศษสตางค์ · บาร์โค้ดซ้ำในระบบ POS — และไม่เขียนอะไรเลย | X4 |
+| P1.1-S1.28 | createProduct throw: ชื่อว่าง/ราคาติดลบ/เศษสตางค์ = VALIDATION · บาร์โค้ดซ้ำในระบบ POS = CONFLICT — และไม่เขียนอะไรเลย | X4 |
 | P1.1-S1.29 | updateProduct: ชื่อ/ชื่ออังกฤษ/หมวด เปลี่ยนจริง · listForUnit เห็นค่าใหม่ · จำนวนแถวไม่เพิ่ม | - |
-| P1.1-S1.30 | setPrice: ตั้งได้ตรงสตางค์ (รวม 0) · ปฏิเสธติดลบ/เศษสตางค์/NaN/สตริง โดยราคาเดิมไม่เปลี่ยน | X4 |
+| P1.1-S1.30 | setPrice: ตั้งได้ตรงสตางค์ (รวม 0) · ติดลบ/เศษสตางค์/NaN/สตริง = throw VALIDATION โดยราคาเดิมไม่เปลี่ยน | X4 |
 | P1.1-S1.31 | archive: หายจาก listForUnit · กดซ้ำไม่ error · แถวยังอยู่ (soft) | - |
-| P1.1-S1.32 | listForUnit คืนทรง POS-API §1: {id, invItemId, name, nameEn, kind, categoryId, basePriceSatang, images[], optionGroups[], variants[], recipe[], channelPrices[], availability{unitId→bool}, stock{unitId→qty}} · เงินเป็น Int | - |
+| P1.1-S1.32 | listForUnit คืน {items, nextCursor} (ไม่ใช่ array เปล่า) · item ทรง POS-API §1: {id, invItemId, name, nameEn, kind, categoryId, basePriceSatang, images[], optionGroups[], variants[], recipe[], channelPrices[], availability{unitId→bool}, stock{unitId→qty}} · เงินเป็น Int | - |
 | P1.1-S1.33 | listForUnit: active ของระบบครบ (unitId null + unitId สาขานี้ · ไม่มีของสาขาอื่น) · stock[unit] = InvItem.onHand · availability[unit] = true · ตัวเลือกเมนูมี choices.priceDelta Int | - |
 | P1.1-S1.34 | byBarcode: ตรงตัวในระบบ · บาร์โค้ดไม่มี = null | - |
 | P1.1-S1.35 | ensureForInvItem: เรียกซ้ำได้ id เดิม (created=false) · InvItem ใหม่ได้ราคาตามลำดับ R2 | X1 |
-| P1.1-S1.37 | listForUnit ค้นฝั่ง server ด้วยชื่อไทย/SKU/บาร์โค้ด + แบ่งหน้า · ไม่มีเพดาน 200 (สินค้า >200 ตัวเดินครบทุกหน้า ไม่ซ้ำ) | - |
+| P1.1-S1.37 | listForUnit ค้นฝั่ง server ด้วยชื่อไทย/SKU/บาร์โค้ด + แบ่งหน้าด้วย {limit, cursor} → nextCursor · ไม่มีเพดาน 200 (สินค้า >200 ตัวเดินครบทุกหน้า ไม่ซ้ำ) | - |
+| P1.1-S1.39 | createCategory(ctx, {name, nameEn?, unitId?, sortOrder?}) → PosCategory ระบบ POS นี้ · ชื่อว่าง = VALIDATION · ชื่อซ้ำ (ระบบ+สาขาเดียวกัน) = CONFLICT | - |
+| P1.1-S1.40 | createProduct ไม่ส่ง kind → PRODUCT · updateProduct availability {[unitId]: false} → ยังอยู่ใน listForUnit สาขานั้นแต่ availability[unit]=false · สาขาอื่นไม่กระทบ · เปิดคืนได้ | - |
+| P1.1-S1.41 | trackStock (คอลัมน์จริง default false): backfill = true เฉพาะแถวที่มี invItemId และ InvItem นั้นมี movement หรือ onHand ≠ 0 (ครัวซองต์/น้ำดื่ม/โค้ก true · อเมริกาโน่/ลาเต้ false · MENU/เว็บล้วน false) · updateProduct({trackStock}) สลับได้ | - |
 | P1.1-S1.38 | ทุกการเขียน (createProduct · setPrice · archive) มีแถว AuditLog targetType PosProduct · targetId · actorId = ผู้กด | - |
-| P1.1-X2.1 | ข้ามร้าน: updateProduct/setPrice/archive ด้วย productId ของอีกร้าน · ctx ที่ systemId เป็น POS ของอีกร้าน → ปฏิเสธ และแถวไม่เปลี่ยน | X2 |
-| P1.1-X2.2 | ข้ามร้าน: ensureForInvItem(InvItem ร้านอื่น) ปฏิเสธ · byBarcode บาร์โค้ดร้านอื่น = null · listForUnit(สาขาร้านอื่น) ปฏิเสธ/ว่าง · ไม่มี id ร้านอื่นรั่ว | X2 |
-| P1.1-X2.3 | ข้ามสาขา: แคชเชียร์ (unitAccess=สีลม) listForUnit/byBarcode สาขาอารีย์ → ปฏิเสธ · สีลมได้ | X2 |
-| P1.1-X3.1 | setPrice โดย STAFF ที่ไม่มี pos.product.setPrice → ปฏิเสธ ราคาไม่เปลี่ยน | X3 |
+| P1.1-X2.1 | ข้ามร้าน: updateProduct/setPrice/archive ด้วย productId ของอีกร้าน · ctx ที่ systemId เป็น POS ของอีกร้าน → throw NOT_FOUND และแถวไม่เปลี่ยน | X2 |
+| P1.1-X2.2 | ข้ามร้าน: ensureForInvItem(InvItem ร้านอื่น) = NOT_FOUND · byBarcode บาร์โค้ดร้านอื่น = null · listForUnit(สาขาร้านอื่น) = NOT_FOUND · createCategory unitId ร้านอื่น = NOT_FOUND · ไม่มี id ร้านอื่นรั่ว | X2 |
+| P1.1-X2.3 | ข้ามสาขา: แคชเชียร์ (unitAccess=สีลม) listForUnit/byBarcode สาขาอารีย์ → NOT_FOUND · สีลมได้ | X2 |
+| P1.1-X3.1 | setPrice โดย STAFF ที่ไม่มี pos.product.setPrice → PERMISSION_DENIED ราคาไม่เปลี่ยน | X3 |
 | P1.1-X3.2 | setPrice โดย STAFF ที่ Membership.permissions มี pos.product.setPrice=true → ได้ · OWNER ได้ | X3 |
-| P1.1-X3.3 | createProduct/updateProduct/archive โดย STAFF ที่ไม่มี pos.product.manage → ปฏิเสธ ไม่เขียน | X3 |
+| P1.1-X3.3 | createProduct/updateProduct/archive/createCategory โดย STAFF ที่ไม่มี pos.product.manage → PERMISSION_DENIED ไม่เขียน | X3 |
 | P1.1-X6.2 | ensureForInvItem 10 เลนพร้อมกัน (connection แยก) × 3 รอบ → PosProduct 1 แถวต่อ InvItem · ทุกเลนได้ id เดียวกัน | X6 |
 | P1.1-X6.3 | setPrice 10 เลนพร้อมกัน → ไม่ error · ราคาสุดท้ายเป็นหนึ่งในค่าที่ส่ง · แถวเดียว | X6 |
 | P1.1-X6.4 | setPrice 5 เลน + updateProduct(nameEn) 5 เลนพร้อมกัน → ไม่มี lost update (ราคาและ nameEn เปลี่ยนทั้งคู่) | X6 |
@@ -131,7 +149,7 @@ Not covered (stock/availability writers, not catalogue): `restaurant/order.ts` m
 | P1.1-S2.15 | ย้อนทาง: catalog.setPrice/updateProduct สินค้าเว็บล้วน → ShopProduct.priceSatang/name ตาม → หน้าร้านเว็บเห็น | - |
 | P1.1-S2.16 | ย้อนทาง: catalog.archive เมนู → MenuItem ARCHIVED + หายจาก orderingMenu | - |
 | P1.1-S2.17 | ไม่เขียนซ้อน: แก้ผ่านผู้เขียนเดิมด้วยค่าเดิมซ้ำ → จำนวน PosProduct/AccountProduct/InvItem ไม่เพิ่ม | - |
-| P1.1-S2.18 | เมนูที่ชี้ InvItem มีราคาบัญชี (เมนู→โค้ก) แก้ basePrice → ราคา POS ไม่ถูกเขียนทับ (ลำดับ R2) | - |
+| P1.1-S2.18 | เมนูที่ผูก InvItem (เมนู→โค้ก) แก้ basePrice → แถว MENU ตาม (2600) · แถว PRODUCT ของโค้กคง 2000 · RecipeLine ไม่เบิ้ล | - |
 | P1.1-S2.19 | F15.1: CATALOG_WRITER_BASELINE ว่าง และตัวสแกนพบผู้เขียนแคตตาล็อกที่ catalog.ts ที่เดียว | X12 |
 | P1.1-S2.20 | inventory.updateItem ราคา SERVICE (InvItem.priceSatang) → PosProduct ตาม | - |
 | P1.1-S2.21 | account/inventory-link.linkProductToItem (สร้าง InvItem จากสินค้าบัญชี) → PosProduct ของ InvItem ใหม่ ราคาตาม R2 | - |
@@ -153,7 +171,7 @@ Groups: S1.1–S1.38 + X1/X2/X3/X6/X8/X9 = P1.1a (guard: model+table PosProduct,
 - **X12 no env**: F15.1 is a static fitness rule; S2.19 imports `scripts/fitness-pos.mts` and checks the baseline is empty (ratchet) — the no-env run of `pnpm fitness` itself is the builder's A5, not this oracle.
 - **X4** applied as integer-satang + exact equality (S1.13/14/24/27/28/30); there is no Σpay/VAT math in a catalogue.
 
-## Names I had to invent (controller must ratify before the builder starts)
+## Names I had to invent — first draft (SUPERSEDED where it differs from "Ratified names" above; kept for history)
 | name / shape | where used | why |
 |---|---|---|
 | `CatalogCtx = {tenantId, systemId, actorUserId: string \| null}`; `null` = system caller (backfill / legacy writers) — permission checks skipped, tenant/system checks still apply | every catalog call | brief gives the ctx keys but not the system-caller convention |
@@ -227,3 +245,11 @@ POS QC seed **is present** on QC4 (`seeded:true` — `resolvePosScope` coffee + 
 
 ## Temp data left
 None. Every run printed identical `ROWCOUNTS_BEFORE`/`ROWCOUNTS_AFTER` for the POS QC tenants; the forced run's S1.36 confirms legacy + new tables are checksum-identical to the pre-run snapshot. Scratch logs only in the session scratchpad (not in the repo).
+
+## Ratification round (controller 1 Oct) — what changed
+- Refusal checks now require a thrown error with the exact `code` (S1.28 VALIDATION×3 + CONFLICT, S1.30 VALIDATION, X2.1–X2.3 NOT_FOUND, X3.1/X3.3 PERMISSION_DENIED); `{ok:false}` = fail.
+- S1.32 requires `{items, nextCursor}`; S1.37 pages only via `nextCursor`.
+- New: S1.39 createCategory (+ X2.2 other-tenant unit NOT_FOUND, X3.3 cashier PERMISSION_DENIED), S1.40 `kind` defaults to PRODUCT + availability via `updateProduct`, S1.41 trackStock backfill rule + flip; S1.3 asserts `trackStock NOT NULL DEFAULT false`.
+- Menu ruling b: S1.10 (MENU, invItemId null, RecipeLine qty 1 when MenuItem.invItemId set), S1.12 (Coke PRODUCT 2000 + MENU 2500 + RecipeLine), S1.14 (menu→Coke uses basePrice 2500), S2.18 (menu basePrice edit moves the MENU row to 2600, Coke PRODUCT stays 2000, still 1 RecipeLine).
+- Header: "run alone" rule.
+- Final runs (no typecheck this round, per controller): `--list` exit 0 `รวม 82 ข้อ · P1.1a 54 · P1.1b 28` · A1 exit 0 SKIPPED `ผ่าน 0/0 (SKIPPED)` · `QC_FORCE=1` exit 1 `ผ่าน 7/82` (same 7 trivially-green guards; every red names missing table/script/catalog), ROWCOUNTS before = after.
