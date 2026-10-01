@@ -265,3 +265,9 @@ Fitness: no env 33/33 → 33/33 · QC4 env 33/33 → 33/33 (check lines identica
 - **C6**: `qc-ai-proposals` PZ-6.1 confirms an `hr_decide_leave` proposal with no user id and expects APPROVED — exactly the "no real decider" case the brief forbids. Oracle is Auditor-owned ⇒ not edited; fix = pass `{ userId }` in that call (proven 16/16).
 - **C7**: R4.6 as written (refusals byte-identical) is done; the success/refusal threshold residual needs an input-granularity rule for OT hours (product decision, affects every user's form).
 - **C8**: R4.1(b) not done — plan confirm has no user id in scope; adding `opts.userId` to `executePlan` + its 2 callers would restore AI-plan leave decisions with self-check (3 files, `ai/actions.ts` + mobile route) — CRM does not touch `plans.ts`, so it is safe to do later if wanted.
+
+### Controller rulings on round 4 (after f711f3eb; controller re-run 119/119 confirmed)
+- **C5 ACCEPTED** as built (explicitly empty decider refused; omitted argument = legacy, guarded by S-14).
+- **C6 ORACLE-EDIT APPROVED** (PZ-6.1 only): `scripts/qc-ai-proposals.mts` — the one `executeProposal(OWNER, ctx, p4.id)` call now passes `{ userId: "qc-r4-confirmer" }` (OWNER confirmer, not the leave's employee); nothing else in the file, no product code. Result on QC4: `qc-ai-proposals` **16/16** (`JSON_SUMMARY {"total":16,"passed":16,"findings":[]}`). Fitness (no env, via iso.sh) 33/33.
+- **C7** (OT hour-granularity rule) and **C8** (plan user-id chain) — deferred to HR V2 / a later work order.
+- **R4.5** (audit not in the decision tx) — accepted as recorded debt.
