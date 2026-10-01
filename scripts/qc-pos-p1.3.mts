@@ -54,8 +54,8 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   // ── S1 ข้อมูลกริด/หมวด/ค้นหา (registerCatalog อ่าน PosProduct ผ่าน catalog) ──
   ["P1.3-S1.1", "-", "สาขาสีลมของร้าน QC: สินค้าที่ seed ไว้ 7 ตัว (PosProduct ของ InvItem ทั้ง 7) ขึ้นกริดครบ ตัวละ 1 แถว ไม่ซ้ำ"],
   ["P1.3-S1.2", "X4", "ราคาบนกริด = PosProduct.basePriceSatang ทุกตัว (สตางค์ Int) · อเมริกาโน่ = 6500 · สินค้า 0 บาทขึ้นกริดด้วยราคา 0 (ไม่ซ่อน ไม่เป็น null)"],
-  ["P1.3-S1.3", "-", "ทรงข้อมูลสินค้าบนกริด: id invItemId name nameEn kind categoryId priceSatang sku barcode imageUrl optionGroupCount soldOut stockLeft"],
-  ["P1.3-S1.4", "-", "สต็อกบนการ์ด: สินค้านับสต็อก (ครัวซองต์/น้ำดื่ม) stockLeft = InvItem.onHand · สินค้าไม่นับสต็อก (อเมริกาโน่/ลาเต้) stockLeft = null และไม่ขึ้น 'หมด'"],
+  ["P1.3-S1.3", "-", "ทรงข้อมูลสินค้าบนกริด: id invItemId name nameEn kind categoryId priceSatang sku barcode imageUrl optionGroupCount soldOut stockLeft trackStock trackStockMode · ผลมี nextCursor (แบ่งหน้า · C6)"],
+  ["P1.3-S1.4", "-", "สต็อกบนการ์ด (trackStock โหมด auto · C2): ครัวซองต์/น้ำดื่ม trackStock=true stockLeft = InvItem.onHand · อเมริกาโน่/ลาเต้ (ไม่เคยรับเข้า) trackStock=false stockLeft = null ไม่ขึ้น 'หมด' · ทุกตัว trackStockMode 'auto'"],
   ["P1.3-S1.5", "-", "สาขาที่ยังไม่มีสินค้า → products [] categories [] (ข้อมูล empty state ภาพ 19ก) ไม่ throw"],
   ["P1.3-S1.6", "-", "สินค้าที่ archive แล้วไม่ขึ้นกริด (ตัวพี่น้องที่ไม่ archive ยังขึ้น)"],
   ["P1.3-S1.7", "-", "ปิดขายเฉพาะสาขา (availability=false · 86) → ยังขึ้นกริดแต่ soldOut=true (ภาพ 01 'หมด' สีจาง)"],
@@ -68,8 +68,11 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S1.14", "X2", "ข้ามร้าน: ctx ร้านกาแฟ + unitId ของร้านอาหาร → ปฏิเสธ (NOT_FOUND) และไม่มี id ของร้านอื่นหลุดในผลใด ๆ"],
   ["P1.3-S1.15", "X2", "ข้ามระบบ: สาขาร้านเดียวกันที่ไม่ได้ผูกกับระบบ POS นี้ → ปฏิเสธ (NOT_FOUND)"],
   ["P1.3-S1.16", "X3", "ข้ามสาขา: แคชเชียร์ (unitAccess = สีลม) อ่านกริดสาขาอารีย์ → NOT_FOUND (404 ไม่ใช่ 403 · มติ R8) · สาขาสีลมของตัวเอง → ได้ (คู่บวก)"],
-  ["P1.3-S1.17", "-", "แคตตาล็อกเกิน 200 ตัว (มติ R4 · วันนี้ตัดที่ 200 ใน inventory.listItems): สินค้าตัวที่ 208 ค้นเจอทั้งชื่อ · SKU · บาร์โค้ด (ค้นฝั่งเซิร์ฟเวอร์)"],
+  ["P1.3-S1.17", "-", "แคตตาล็อกเกิน 200 ตัว (R4 + C6): หน้าแรกปริยาย ≤100 + nextCursor · limit 1000 ถูกบีบ ≤500 · เดินทุกหน้าได้ครบไม่ซ้ำ (>200) · ตัวท้าย ๆ ค้นเจอทั้งชื่อ · SKU · บาร์โค้ด"],
   ["P1.3-S1.18", "X2", "PosProduct ผูกสาขาอื่น (unitId ≠ สาขานี้ · มติ R3) ไม่ขึ้นกริด · unitId = null (ทุกสาขา) ขึ้น"],
+  ["P1.3-S1.20", "-", "trackStock auto (C2): สินค้าผูก InvItem ที่ยังไม่เคยมีสต็อก → trackStock=false (mode auto) ไม่ขึ้น 'หมด' · รับเข้า 3 → trackStock=true stockLeft 3 · ตัดออกครบ → soldOut=true"],
+  ["P1.3-S1.21", "X2", "POS สองคลัง (C3): สาขา sandbox (คลัง X) ไม่เห็นสินค้าของคลังสาขา 2 (Y) ทั้งกริด · ค้นชื่อ/SKU/บาร์โค้ด · สแกน · สาขา 2 เห็นของตัวเองแต่ไม่เห็นของคลัง X"],
+  ["P1.3-S1.22", "-", "สแกนบาร์โค้ด (C5): registerScan บาร์โค้ดซ้ำ 2 ตัว → match 'choose' + products 2 ตัว ลำดับคงที่ (ไม่ใช่ตัวเก่าสุดเงียบ ๆ) · ตัวเดียว → 'one' · ไม่มี → 'none'"],
   ["P1.3-S1.19", "X4", "สินค้าที่ยังไม่ตั้งราคา (ไม่มี posPrice/salePrice) → priceSatang = null บนกริด — ห้ามเอาต้นทุนมาเป็นราคา (มติ R2)"],
   // ── S2 เครื่องคิดเงินตะกร้า priceCart (บริสุทธิ์ · pricing-shared.ts) ──
   ["P1.3-S2.1", "X4", "ตะกร้าภาพ 01: รวม 68,500 · ส่วนลดรายการ 1,000 · คูปอง 5,000 → ยอดสุทธิ 62,500 · VAT 7% รวมในราคา 4,089 (฿40.89 ตามภาพ)"],
@@ -111,6 +114,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.23", "X3", "สินค้ายังไม่ตั้งราคา: ขายปกติ → PRICE_NOT_SET (ไม่ขายที่ต้นทุน) · ราคาเปิด (openPrice) แคชเชียร์ไม่มี pos.sale.priceOverride → PERMISSION_DENIED · เจ้าของ → PAID ที่ราคาที่กรอก"],
   ["P1.3-S3.24", "X2", "สาขาร้านเดียวกันที่ไม่ได้ผูกกับระบบ POS นี้ → submit/quote NOT_FOUND ไม่มีบิล (มติ R8 · createSale เองไม่ตรวจคู่นี้) · คู่บวก: ตะกร้าเดียวกันที่สาขาผูกแล้ว → PAID"],
   // ── S4 แถบสถานะ (เฉพาะส่วนที่ P1.3 เป็นเจ้าของ) ──
+  ["P1.3-S3.25", "X4", "trackStock ตั้งเป็น false (mode 'off') ชัดแจ้ง: ขายแล้วไม่ตัดสต็อก (OUT 0 · onHand เดิม) · กริดแสดง trackStock=false stockLeft null"],
   ["P1.3-S4.1", "-", "registerStatus: unit.name · user.name · roleLabel เป็นภาษาคน (ไม่ใช่ OWNER/STAFF ดิบ) · pendingSyncCount = 0 (ออฟไลน์ P3)"],
   ["P1.3-S4.2", "-", "ยังไม่มีกะ (PosShift ของ P1.9 ยังไม่มี/ไม่เปิด) → shift = null ไม่ throw"],
   ["P1.3-S4.3", "X7", "pendingStockCount ('รอตัดสต็อก'): บิลวันนี้ (ตัดวันเวลาไทย +07:00) ที่ตัดสต็อกครบ → 0 · บิลที่ยังไม่ตัด (createSale ใน tx ผู้อื่น) → นับ 1"],
@@ -202,7 +206,7 @@ const PQC = envMod.PQC as Any;
 // ═════════════════════════ 2. ด่าน SKIP (ของใบ P1.1a / P1.3 ยังไม่มี) ═════════════════════════
 const regSrc = rd("src/lib/modules/pos/register.ts");
 const NEED_FILES = ["src/lib/modules/pos/catalog.ts", "src/lib/modules/pos/pricing-shared.ts"];
-const NEED_EXPORTS = ["registerCatalog", "quoteRegisterCart", "submitRegisterSale", "registerStatus"];
+const NEED_EXPORTS = ["registerCatalog", "registerScan", "quoteRegisterCart", "submitRegisterSale", "registerStatus"];
 const missingFiles = NEED_FILES.filter((f) => !existsSync(join(ROOT, f)));
 const missingExports = NEED_EXPORTS.filter((n) => !new RegExp(`export\\s+(async\\s+)?function\\s+${n}\\b|export\\s+const\\s+${n}\\b`).test(regSrc));
 const { prisma } = (await import("@/lib/core/db")) as Any;
@@ -574,7 +578,7 @@ const DB_IDS = CHECKS.map(([id]) => id).filter((id) => /-S[1346]\./.test(id));
 /** ด่าน SKIP ของกลุ่ม S6 (เจ้าของ P1.6): โค้ดใน src/ ยังไม่มีใครอ่าน `oversellPolicy` ⇒ ข้าม (QC_FORCE=1 = รันให้แดงตามเหตุผล) */
 const OVERSELL_READY = walk("src").some((f) => /oversellPolicy/.test(stripComments(rd(f))));
 const sb = {
-  unitId: "", unlinkedUnitId: "", unit2Id: "", posSysId: "", invSysId: "",
+  unitId: "", unlinkedUnitId: "", unit2Id: "", posSysId: "", invSysId: "", invSys2Id: "",
   productIds: [] as string[], categoryIds: [] as string[], invItemIds: [] as string[],
 };
 const lanes: Any[] = [];
@@ -630,17 +634,18 @@ async function runDb() {
   const amer = prods.find((p) => p.sku === "PQC-CF-AMER");
   const free = prods.find((p) => p.sku === "PQC-CF-FREE");
   chk("P1.3-S1.2", g?.ok === true && prods.length > 0 && !priceBad && amer?.priceSatang === 6500 && free?.priceSatang === 0, "= basePriceSatang · AMER 6500 · FREE 0", `${priceBad || "ตรง"} · AMER ${amer?.priceSatang} · FREE ${free?.priceSatang}`);
-  const SHAPE = ["id", "invItemId", "name", "nameEn", "kind", "categoryId", "priceSatang", "sku", "barcode", "imageUrl", "optionGroupCount", "soldOut", "stockLeft"];
+  const SHAPE = ["id", "invItemId", "name", "nameEn", "kind", "categoryId", "priceSatang", "sku", "barcode", "imageUrl", "optionGroupCount", "soldOut", "stockLeft", "trackStock", "trackStockMode"];
   const shapeMiss = prods.length ? SHAPE.filter((k) => !(k in prods[0])) : SHAPE;
   const typesOk = prods.every((p) => typeof p.id === "string" && typeof p.name === "string" && (p.priceSatang === null || Number.isInteger(p.priceSatang)) && typeof p.soldOut === "boolean" && Number.isInteger(p.optionGroupCount) && (p.stockLeft === null || Number.isInteger(p.stockLeft)));
-  chk("P1.3-S1.3", g?.ok === true && prods.length > 0 && shapeMiss.length === 0 && typesOk && Array.isArray(g.categories), "ครบทุกคีย์ ชนิดถูก", `ขาด: ${shapeMiss.join(",") || "-"} · ชนิด ${typesOk}`);
+  chk("P1.3-S1.3", g?.ok === true && prods.length > 0 && shapeMiss.length === 0 && typesOk && Array.isArray(g.categories) && "nextCursor" in g && prods.every((p) => typeof p.trackStock === "boolean" && ["auto", "on", "off"].includes(p.trackStockMode)), "ครบทุกคีย์ ชนิดถูก", `ขาด: ${shapeMiss.join(",") || "-"} · ชนิด ${typesOk}`);
   const onHandOf = async (id: string) => Number((await P.invItem.findUnique({ where: { id }, select: { onHand: true } }))?.onHand ?? NaN);
   const crois = prods.find((p) => p.sku === "PQC-CF-CROIS");
   const water = prods.find((p) => p.sku === "PQC-CF-WATER");
   const latte = prods.find((p) => p.sku === "PQC-CF-LATTE");
   const ohC = crois ? await onHandOf(crois.invItemId) : NaN;
   const ohW = water ? await onHandOf(water.invItemId) : NaN;
-  chk("P1.3-S1.4", crois?.stockLeft === ohC && water?.stockLeft === ohW && amer?.stockLeft === null && latte?.stockLeft === null && amer?.soldOut === false && latte?.soldOut === false,
+  chk("P1.3-S1.4", crois?.stockLeft === ohC && water?.stockLeft === ohW && amer?.stockLeft === null && latte?.stockLeft === null && amer?.soldOut === false && latte?.soldOut === false
+    && crois?.trackStock === true && water?.trackStock === true && amer?.trackStock === false && latte?.trackStock === false && [crois, water, amer, latte].every((p) => p?.trackStockMode === "auto"),
     `CROIS ${ohC} · WATER ${ohW} · AMER/LATTE null ไม่หมด`, `CROIS ${crois?.stockLeft} · WATER ${water?.stockLeft} · AMER ${amer?.stockLeft}/${amer?.soldOut} · LATTE ${latte?.stockLeft}/${latte?.soldOut}`);
 
   // search บนสาขาจริง (อ่านอย่างเดียว)
@@ -685,7 +690,10 @@ async function runDb() {
   const ctx = { tenantId: tid, systemId: sPos.id, unitId: unit.id };
   // ctx ของ catalog (ratified · lane 3): {tenantId, systemId, actorUserId|null} — refusal ของ catalog = THROW typed error ที่มี .code
   //   (call() แปลงเป็น {ok:false, code} ให้) · ส่วน register คืน {ok:false, code} เอง (server-action friendly)
-  const cctx = { tenantId: tid, systemId: sPos.id, actorUserId: owner.userId };
+  // C1 (round 2): ผู้เรียกระบบ = CATALOG_SYSTEM_ACTOR (unique symbol ที่ catalog.ts export) · actorUserId null ถูกปฏิเสธแล้ว
+  //   fixture สร้างสินค้าทุกสาขา (unitId null) ⇒ ต้องเป็นผู้มีสิทธิ์ทุกสาขาหรือ marker (C4/C10) — ใช้ marker · ไม่มี marker (ยังไม่สร้าง) = owner (แดงตามเหตุผลอยู่แล้ว)
+  const SYSTEM_ACTOR: unknown = catalog?.CATALOG_SYSTEM_ACTOR ?? owner.userId;
+  const cctx = { tenantId: tid, systemId: sPos.id, actorUserId: SYSTEM_ACTOR };
   const invCtx = { tenantId: tid, systemId: sInv.id };
   const cashier = actor(mCash, E.coffee.users.cashier.userId, { role: "STAFF", unitAccess: [unit.id], permissions: { ...(PQC.cashierPermissions as Record<string, unknown>) } });
 
@@ -698,14 +706,15 @@ async function runDb() {
 
   // ── สินค้า sandbox ผ่าน catalog.ts เท่านั้น (ผู้เขียนเดียว F15.1 · ชื่อ/ทรงตามที่ผู้คุมงานรับรองจากเลน 3) ──
   //   ไม่นับสต็อก = createProduct (ไม่มี InvItem) · นับสต็อก = InvItem (inventory facade) + ensureForInvItem → {id, created} + setPrice
-  //   "นับสต็อก" = คอลัมน์ PosProduct.trackStock (รับรอง 1 ต.ค. · ไม่คำนวณตอนอ่าน) — fixture ตั้งผ่าน updateProduct({trackStock})
+  //   trackStock (round 2 · C2) = tri-state: ไม่ส่ง = null = AUTO (มี invItemId + kind PRODUCT + (เคยมี movement หรือ onHand ≠ 0))
+  //   fixture ไม่ตั้งค่า เว้นข้อที่ทดสอบการตั้งชัดแจ้ง (S3.25 ตั้ง false)
   const idOf = (r: Any): string | null => (typeof r === "string" ? r : r?.ok === false ? null : (r?.id ?? r?.product?.id ?? null));
   const must = (label: string, r: Any): Any => {
     if (r?.ok === false) throw Object.assign(new Error(`${label} ล้ม: ${short(r)}`), { code: r.code });
     return r;
   };
   const mkFree = async (name: string, priceSatang: number, patch: Any = {}) => {
-    const r = must("createProduct", await call(catalog, "createProduct", cctx, { name, kind: "PRODUCT", basePriceSatang: priceSatang, trackStock: false, ...patch }));
+    const r = must("createProduct", await call(catalog, "createProduct", cctx, { name, kind: "PRODUCT", basePriceSatang: priceSatang, ...patch }));
     const id = idOf(r);
     if (!id) throw new Error(`createProduct ไม่คืน id: ${short(r)}`);
     sb.productIds.push(id);
@@ -724,13 +733,12 @@ async function runDb() {
     if (!id) throw new Error(`ensureForInvItem ไม่คืน id: ${short(r)}`);
     sb.productIds.push(id);
     if (priceSatang !== null && itemMore.kind !== "SERVICE") must("setPrice", await call(catalog, "setPrice", cctx, id, priceSatang));
-    const full = { trackStock: stock !== null, ...patch };
-    must("updateProduct", await call(catalog, "updateProduct", cctx, id, full));
+    if (Object.keys(patch).length) must("updateProduct", await call(catalog, "updateProduct", cctx, id, patch));
     return { id, invItemId: it.id as string };
   };
   let built = false;
   let A: Any = null, B: Any = null, C: Any = null, D: Any = null, LOW: Any = null, ZERO: Any = null, ARCH: Any = null, OFF: Any = null;
-  let NOPRICE: Any = null, SVC: Any = null, OTHER: Any = null;
+  let NOPRICE: Any = null, SVC: Any = null, OTHER: Any = null, AUTO: Any = null, OFFSTK: Any = null, DUP1: Any = null, DUP2: Any = null, W2: Any = null;
   let catId = "";
   try {
     const cat = must("createCategory", await call(catalog, "createCategory", cctx, { name: `${TAG} ขนม`, sortOrder: 1 }));
@@ -741,12 +749,26 @@ async function runDb() {
     C = await mkTracked("C", "บราวนี่ทดสอบ", 6500, 50, { categoryId: catId || undefined });
     D = await mkFree("น้ำเปล่าแจกทดสอบ", 0);
     LOW = await mkTracked("LOW", "ขนมเหลือน้อย", 3000, 2);
-    ZERO = await mkTracked("ZERO", "ขนมหมดสต็อก", 3000, 0);
+    ZERO = await mkTracked("ZERO", "ขนมหมดสต็อก", 3000, "consumed"); // auto ⇒ ต้องเคยมี movement จึงนับสต็อก
     ARCH = await mkFree("สินค้าเลิกขาย", 1000);
     OFF = await mkFree("เมนูปิดขายวันนี้", 4000);
     NOPRICE = await mkTracked("NOPRICE", "สินค้ายังไม่ตั้งราคา", null, null);
     SVC = await mkTracked("SVC", "บริการจัดกระเช้าทดสอบ", 30000, null, {}, { kind: "SERVICE", priceSatang: 30000 });
     OTHER = await mkFree("สินค้าเฉพาะสาขาอื่น", 1500, { unitId: unit2.id });
+    AUTO = await mkTracked("AUTO", "ขนมรอรับของ", 2000, null);
+    OFFSTK = await mkTracked("OFFSTK", "ของแถมไม่ตัดสต็อก", 5000, 5, { trackStock: false });
+    DUP1 = await mkTracked("DUP1", "สบู่ก้อนซ้ำหนึ่ง", 2500, null, {}, { barcode: "8850999666663" });
+    DUP2 = await mkTracked("DUP2", "สบู่ก้อนซ้ำสอง", 2600, null, {}, { barcode: "8850999666663" });
+    // C3: คลังที่ 2 ผูกสาขา 2 ของ POS sandbox เดียวกัน
+    const sInv2 = await P.appSystem.create({ data: { tenantId: tid, type: "INVENTORY", name: `${TAG} INV2` } });
+    sb.invSys2Id = sInv2.id;
+    await sysSvc.linkUnit(tid, sInv2.id, unit2.id);
+    const it2 = await inventory.createItem({ tenantId: tid, systemId: sInv2.id }, { sku: `${TAG}-WH2`, name: "สินค้าคลังสาขาสอง", costSatang: 500, barcode: "8850999777772" });
+    sb.invItemIds.push(it2.id);
+    const w2 = must("ensureForInvItem(WH2)", await call(catalog, "ensureForInvItem", cctx, it2.id));
+    W2 = { id: idOf(w2), invItemId: it2.id };
+    if (W2.id) sb.productIds.push(W2.id);
+    must("setPrice(WH2)", await call(catalog, "setPrice", cctx, W2.id, 1800));
     must("archive", await call(catalog, "archive", cctx, ARCH.id));
     // ไม่มี setAvailability (ratified) — ปิดขายเฉพาะสาขาผ่าน updateProduct · ชื่อคีย์ patch `availability` = ตาม read model POS-API §1 (โน้ต §6)
     must("updateProduct(availability)", await call(catalog, "updateProduct", cctx, OFF.id, { availability: { [unit.id]: false } }));
@@ -772,7 +794,42 @@ async function runDb() {
 
   chk("P1.3-S1.18", built && !find(OTHER.id) && !!find(A.id), "OTHER ไม่ขึ้น · A (unitId null) ขึ้น", built ? `OTHER:${!!find(OTHER.id)} A:${!!find(A.id)}` : "สร้าง sandbox ไม่ได้");
   chk("P1.3-S1.19", built && !!find(NOPRICE.id) && find(NOPRICE.id)?.priceSatang === null, "priceSatang null (ไม่ใช่ต้นทุน 1234)", built ? `${short(find(NOPRICE.id)?.priceSatang)}` : "สร้าง sandbox ไม่ได้");
-  // S1.17 เกิน 200 ตัว: เติมให้ครบ 205 ตัวในระบบคลัง sandbox แล้วค้นตัวสุดท้าย (เข็ม)
+  // S1.20 trackStock auto พลิกเมื่อรับเข้า (C2)
+  const bySku = async (sku: string, c: Any = ctx, a2: Any = owner) => {
+    const r = await call(register, "registerCatalog", c, a2, { q: sku });
+    return ((r?.ok ? r.products : []) as Any[])[0] ?? null;
+  };
+  const a0 = built ? await bySku(`${TAG}-AUTO`) : null;
+  let a1: Any = null;
+  let a2: Any = null;
+  if (built) {
+    try {
+      await inventory.receive(invCtx, { itemId: AUTO.invItemId, qty: 3, costSatang: 600, idempotencyKey: `${TAG}-recv-AUTO2` });
+      a1 = await bySku(`${TAG}-AUTO`);
+      await inventory.consume(invCtx, { itemId: AUTO.invItemId, qty: 3, sourceModule: "QC", idempotencyKey: `${TAG}-use-AUTO2` });
+      a2 = await bySku(`${TAG}-AUTO`);
+    } catch (e) {
+      console.log(`  (S1.20 รับ/ตัดสต็อกไม่ได้: ${(e as Error).message.slice(0, 80)})`);
+    }
+  }
+  chk("P1.3-S1.20", a0?.trackStock === false && a0?.trackStockMode === "auto" && a0?.stockLeft === null && a0?.soldOut === false && a1?.trackStock === true && a1?.trackStockMode === "auto" && a1?.stockLeft === 3 && a1?.soldOut === false && a2?.soldOut === true,
+    "ก่อน false/auto/null · รับ 3 → true/auto/3 · ตัดหมด → soldOut", short({ a0: a0 && [a0.trackStock, a0.trackStockMode, a0.stockLeft, a0.soldOut], a1: a1 && [a1.trackStock, a1.trackStockMode, a1.stockLeft], a2: a2?.soldOut }));
+  // S1.21 POS สองคลัง (C3)
+  const c2 = { tenantId: tid, systemId: sPos.id, unitId: unit2.id };
+  const idsOf = (r: Any) => ((r?.ok ? r.products : []) as Any[]).map((p) => p.id);
+  const atA = [
+    ...idsOf(await call(register, "registerCatalog", ctx, owner, {})),
+    ...idsOf(await call(register, "registerCatalog", ctx, owner, { q: "สินค้าคลังสาขาสอง" })),
+    ...idsOf(await call(register, "registerCatalog", ctx, owner, { q: `${TAG}-WH2` })),
+    ...idsOf(await call(register, "registerCatalog", ctx, owner, { q: "8850999777772" })),
+  ];
+  const scanA = await call(register, "registerScan", ctx, owner, { barcode: "8850999777772" });
+  const atB = idsOf(await call(register, "registerCatalog", c2, owner, { q: "8850999777772" }));
+  const bAtB = idsOf(await call(register, "registerCatalog", c2, owner, { q: "ครัวซองต์อัลมอนด์ทดสอบ" }));
+  chk("P1.3-S1.21", built && !!W2?.id && !atA.includes(W2.id) && scanA?.ok === true && scanA.match === "none" && atB.includes(W2.id) && !bAtB.includes(B?.id),
+    "สาขา X ไม่เห็น WH2 (4 ทาง + สแกน none) · สาขา 2 เห็น WH2 · ไม่เห็น B", `X:${atA.includes(W2?.id)} scan:${codeOf(scanA)}/${scanA?.match} · Y:${atB.includes(W2?.id)} B@Y:${bAtB.includes(B?.id)}`);
+
+  // S1.17 เกิน 200 ตัว + แบ่งหน้า (R4 + C6): เติม 196 ตัว แล้วเดินทุกหน้า + ค้นตัวท้าย (เข็ม)
   let needle: Any = null;
   if (built) {
     try {
@@ -782,12 +839,34 @@ async function runDb() {
       console.log(`  ⚠️  เติมสินค้า 200+ ไม่สำเร็จ: ${(e as Error).message.slice(0, 120)}`);
     }
   }
+  const p0 = await call(register, "registerCatalog", ctx, owner, {});
+  const pBig = await call(register, "registerCatalog", ctx, owner, { limit: 1000 });
+  const walked = new Set<string>();
+  let dupW = 0;
+  let pagesW = 0;
+  let cur: Any = null;
+  do {
+    const r = await call(register, "registerCatalog", ctx, owner, { limit: 100, cursor: cur ?? undefined });
+    if (r?.ok !== true) break;
+    for (const p of r.products as Any[]) walked.has(p.id) ? dupW++ : walked.add(p.id);
+    cur = r.nextCursor ?? null;
+    pagesW++;
+  } while (cur && pagesW < 30);
   const nByName = await call(register, "registerCatalog", ctx, owner, { q: "เปี๊ยะไส้ทุเรียนเข็ม" });
   const nBySku = await call(register, "registerCatalog", ctx, owner, { q: `${TAG}-NEEDLE` });
   const nByBc = await call(register, "registerCatalog", ctx, owner, { q: "8850999888881" });
   const hit = (r: Any) => r?.ok === true && (r.products as Any[]).some((p) => p.id === needle?.id);
-  const total17 = hasPosProduct ? await P.posProduct.count({ where: { tenantId: tid, systemId: sPos.id } }) : 0;
-  chk("P1.3-S1.17", !!needle && total17 > 200 && hit(nByName) && hit(nBySku) && hit(nByBc), "เจอทั้ง 3 ทาง (ในระบบคลังที่มี >200 ตัว)", `items ${total17} · name ${hit(nByName)} sku ${hit(nBySku)} barcode ${hit(nByBc)} (${codeOf(nByName)})`);
+  chk("P1.3-S1.17", !!needle && p0?.ok === true && p0.products.length <= 100 && !!p0.nextCursor && pBig?.ok === true && pBig.products.length <= 500 && walked.size > 200 && dupW === 0 && walked.has(needle.id) && hit(nByName) && hit(nBySku) && hit(nByBc),
+    "หน้าแรก ≤100+cursor · 1000→≤500 · เดินครบ >200 ไม่ซ้ำ · เข็มเจอ 3 ทาง", `p0 ${p0?.products?.length}/${!!p0?.nextCursor} · big ${pBig?.products?.length} · walked ${walked.size} in ${pagesW} pages dup ${dupW} · name ${hit(nByName)} sku ${hit(nBySku)} bc ${hit(nByBc)} (${codeOf(p0)})`);
+  // S1.22 สแกนบาร์โค้ดซ้ำ (C5)
+  const sc1 = await call(register, "registerScan", ctx, owner, { barcode: "8850999666663" });
+  const sc1b = await call(register, "registerScan", ctx, owner, { barcode: "8850999666663" });
+  const sc2 = await call(register, "registerScan", ctx, owner, { barcode: "8850999888881" });
+  const sc3 = await call(register, "registerScan", ctx, owner, { barcode: "0000000000000" });
+  const chooseIds = ((sc1?.products ?? []) as Any[]).map((p) => p.id);
+  chk("P1.3-S1.22", built && sc1?.ok === true && sc1.match === "choose" && chooseIds.length === 2 && chooseIds.slice().sort().join() === [DUP1?.id, DUP2?.id].sort().join()
+    && chooseIds.join() === ((sc1b?.products ?? []) as Any[]).map((p) => p.id).join() && sc2?.ok === true && sc2.match === "one" && sc2.product?.id === needle?.id && sc3?.ok === true && sc3.match === "none",
+    "choose ×2 ลำดับคงที่ · one · none", `${codeOf(sc1)}/${sc1?.match}/${chooseIds.length} · ${sc2?.match} · ${sc3?.match}`);
 
   // ─── S3 quote + submit ───
   console.log("\n── S3 ส่งบิลฝั่งเซิร์ฟเวอร์ ──");
@@ -1046,6 +1125,18 @@ async function runDb() {
   const unlSales = await P.posSale.count({ where: { tenantId: tid, unitId: unl.id } });
   chk("P1.3-S3.24", refused(q24, ["NOT_FOUND"]) && refused(s24, ["NOT_FOUND"]) && unlSales === 0 && s24p?.ok === true, "NOT_FOUND ×2 · 0 บิล · คู่บวก PAID", `${codeOf(q24)} · ${codeOf(s24)} · บิล ${unlSales} · ${codeOf(s24p)}`);
 
+  // S3.25 trackStock false ชัดแจ้ง → ขายไม่ตัดสต็อก
+  const ohOff0 = OFFSTK ? await onHandOf(OFFSTK.invItemId) : NaN;
+  const k25 = key("track-off");
+  const q25 = await quote(owner, { lines: [{ productId: OFFSTK?.id, qty: 1 }] });
+  const s25 = q25?.ok ? await sub(owner, { idempotencyKey: k25, lines: [{ productId: OFFSTK?.id, qty: 1 }], payMethods: pay(q25.grandTotalSatang) }) : q25;
+  const sale25 = await saleByKey(k25);
+  const mv25 = sale25 ? await outMoves(sale25.id) : -1;
+  const ohOff1 = OFFSTK ? await onHandOf(OFFSTK.invItemId) : NaN;
+  const v25 = OFFSTK ? await bySku(`${TAG}-OFFSTK`) : null;
+  chk("P1.3-S3.25", s25?.ok === true && mv25 === 0 && ohOff1 === ohOff0 && ohOff0 === 5 && v25?.trackStock === false && v25?.trackStockMode === "off" && v25?.stockLeft === null,
+    "PAID · OUT 0 · onHand 5 คงเดิม · off/null", `${codeOf(s25)} OUT ${mv25} onHand ${ohOff0}→${ohOff1} · ${short(v25 && [v25.trackStock, v25.trackStockMode, v25.stockLeft])}`);
+
   // ─── S4 แถบสถานะ ───
   console.log("\n── S4 แถบสถานะ ──");
   const st = await call(register, "registerStatus", ctx, owner);
@@ -1117,15 +1208,15 @@ async function cleanup() {
   counts.product = sb.productIds.length ? await del("posProduct", { id: { in: sb.productIds } }) : 0;
   if (sb.posSysId) counts.productBySystem = await del("posProduct", { tenantId: { in: tids }, systemId: sb.posSysId }); // ที่ catalog สร้างเองโดยข้อสอบไม่รู้ id
   counts.category = sb.categoryIds.length ? await del("posCategory", { id: { in: sb.categoryIds } }) : 0;
-  if (sb.invSysId) {
+  for (const sbInv of [sb.invSysId, sb.invSys2Id].filter(Boolean)) {
     // 🔴 inventory.receive/consume โพสต์ GL เข้าระบบบัญชี "ตัวแรกของร้าน" (inventory/service.ts postMovementGl) แม้ระบบคลัง
     //    sandbox ไม่ได้ผูกบัญชี ⇒ ต้องลบ AccountJournalEntry refType InvMovement ของ movement ชั่วคราวก่อน (บรรทัดลบตาม cascade)
     //    พบจากการรัน QC_FORCE ครั้งแรก: accountJournalEntry 2→8 (S9.1 จับได้)
-    const mvIds = ((await P.invMovement.findMany({ where: { tenantId: { in: tids }, systemId: sb.invSysId }, select: { id: true } })) as Any[]).map((m) => m.id);
-    if (mvIds.length) counts.invJournal = await del("accountJournalEntry", { tenantId: { in: tids }, refType: "InvMovement", refId: { in: mvIds } });
-    for (const m of ["invMovement", "invLot", "invLocationStock", "invItemImage"]) await del(m, { tenantId: { in: tids }, OR: [{ systemId: sb.invSysId }, { itemId: { in: sb.invItemIds } }] });
-    counts.invItem = await del("invItem", { tenantId: { in: tids }, systemId: sb.invSysId });
-    for (const m of ["invLocation", "invCategory", "invSettings"]) await del(m, { tenantId: { in: tids }, systemId: sb.invSysId });
+    const mvIds = ((await P.invMovement.findMany({ where: { tenantId: { in: tids }, systemId: sbInv }, select: { id: true } })) as Any[]).map((m) => m.id);
+    if (mvIds.length) counts.invJournal = (counts.invJournal ?? 0) + await del("accountJournalEntry", { tenantId: { in: tids }, refType: "InvMovement", refId: { in: mvIds } });
+    for (const m of ["invMovement", "invLot", "invLocationStock", "invItemImage"]) await del(m, { tenantId: { in: tids }, OR: [{ systemId: sbInv }, { itemId: { in: sb.invItemIds } }] });
+    counts.invItem = (counts.invItem ?? 0) + (await del("invItem", { tenantId: { in: tids }, systemId: sbInv }));
+    for (const m of ["invLocation", "invCategory", "invSettings"]) await del(m, { tenantId: { in: tids }, systemId: sbInv });
   }
   if (sb.unitId) await del("posReceiptCounter", { unitId: sb.unitId });
   // ตัวนับใบเสร็จของสาขาจริง: คืนค่าเดิม (บิลหลุดเข้าสาขาจริง = บั๊กของผู้สร้าง แต่ข้อมูลต้องคืน)
@@ -1139,7 +1230,7 @@ async function cleanup() {
   if (realCounters.length) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
   const units = [sb.unitId, sb.unlinkedUnitId, sb.unit2Id].filter(Boolean);
   if (units.length) await del("appSystemUnit", { unitId: { in: units } });
-  const systems = [sb.posSysId, sb.invSysId].filter(Boolean);
+  const systems = [sb.posSysId, sb.invSysId, sb.invSys2Id].filter(Boolean);
   if (systems.length) {
     await del("appSystemUnit", { systemId: { in: systems } });
     await del("appSystem", { id: { in: systems } });
