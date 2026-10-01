@@ -1,9 +1,9 @@
-# P1.3 — new register screen (desktop · iPad · mobile) — controller brief (DRAFT 2 Oct 2026 · becomes final when P1.1a is accepted; names below follow P1.1a round 3)
+# P1.3 — new register screen (desktop · iPad · mobile) — controller brief (FINAL 1 Oct 2026 — P1.1a accepted at d2c84a6b / session/pos 38125490; catalogue names follow P1.1a round 5)
 
 Spec = `ledger/pos-briefs/pos-spec-P1.3-register-ui.md` (632 lines — binding for layout, testids, copy, states, parity checklist §7, ground rules G1–G10). This brief ratifies its §8 questions and fixes order, tree and acceptance. Common rules: `pos-brief-COMMON.md` + `pos-brief-LANE-RULES.md`. Mockups `ledger/design-pos/01-register.png`, `05-mobile.png` (panel ก), `19-states.png`, `20-en-ipad.png`.
 
 ## Tree / base
-- Worktree `/root/projects/shark-pos-p11` (own node_modules; Prisma client has `PosProduct`). Branch `wip/pos-p1.3` cut from the ACCEPTED head of `wip/pos-p1.1a`, then `git merge origin/hotfix/pos-page-authz` (Q28 — the new page keeps that guard verbatim; resolve `posCanSetTenantPrice` vs the catalog write-scope helper per the P1.1a-R3 D1 merge note: one helper, both callers). No schema change, no migration, no `prisma generate` needed in this WO. If a schema need appears ⇒ stop and report.
+- Worktree `/root/projects/shark-pos-p11` (own node_modules; Prisma client has `PosProduct`). Branch `wip/pos-p1.3` cut from `origin/session/pos` (contains accepted P1.1a), then `git merge origin/hotfix/pos-page-authz` (Q28 — the new page keeps that guard verbatim; resolve `posCanSetTenantPrice` vs the catalog write-scope helper per the P1.1a-R3 D1 merge note: one helper, both callers). No schema change, no migration, no `prisma generate` needed in this WO. If a schema need appears ⇒ stop and report.
 - Never touch: `src/lib/modules/pos/register-ui.tsx` (byte-identical — CRM `qc-crm-c2.7` + fitness `CRM_HOSTED_CONTROLS` read it), `src/lib/actions/pos.ts`, `createSale/voidSale/refundSale` signatures (F15.2).
 
 ## Rulings on spec §8 (Q#)
@@ -26,3 +26,11 @@ Spec = `ledger/pos-briefs/pos-spec-P1.3-register-ui.md` (632 lines — binding f
 
 ## Acceptance
 A1 `qc-pos-p1.3` all green (state total) on QC4, twice in a row, no residue. A2 `qc-pos-p1.1` (P1.1a part), `qc-pos-p0.2`, `qc-pos-register` (legacy), `qc-crm-c2.7` if runnable on QC4 (else static proof that `register-ui.tsx` and `actions/pos.ts` are byte-identical to base) and the money set of COMMON §7 + `qc-hf-pos-page-authz`: identical before/after. A3 `pnpm fitness` with and without env, incl. F15.1–F15.5; UI debt baseline: `register/page.tsx` 0. A4 typecheck exit 0 (5632 MB heap command, in this tree). A5 notes `ledger/wo-notes/pos-P1.3.md`: contract table (final names), every accepted parity delta, seams for P1.2/P1.4/P1.5/P1.6/P1.12/P1.15 (spec §1.3), what was hidden/soon, G1–G10 self-check. A6 no Thai literal in register files, th/en key parity. Commit + `git push -u origin wip/pos-p1.3`. Never push `main` / `session/pos` (the controller merges).
+
+## Addendum (after P1.1a round 5 — binding)
+- Catalogue errors now include `BUSY` (retryable) and `INTERNAL`; map both to i18n keys (`errors.busy`, `errors.unknown`); the client never shows the server's Thai `message`.
+- Server actions NEVER rethrow a CatalogError or any refusal: they return `{ ok:false, code, message }` (Next masks thrown messages in production). `"use server"` files export async functions only.
+- Anything that calls `catalog.checkCatalogWrite` passes the SESSION membership (from `requireTenant`), never an object built from request data.
+- F15.6: nothing under `src/**` may import from `scripts/**`. F15.5: the system marker must not appear in register code at all.
+- P1.1b runs in parallel in `/root/projects/shark-pos-b` (`wip/pos-p1.1b`) and edits `pos/register.ts` `setItemSalePrice` only — keep your `register.ts` additions as new exports in their own region; do not reformat the file.
+- `origin/session/crm` touches `src/lib/core/permissions.ts` (+7/−1): add `pos.sale.priceOverride` as ONE line next to the existing POS keys.
