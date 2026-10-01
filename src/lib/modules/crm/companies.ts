@@ -2346,6 +2346,14 @@ export async function visibleCompanyInTx(tx: Tx, visible: Prisma.CrmCompanyWhere
 }
 
 /** ชื่อบริษัทที่ยังใช้งาน (ไม่ถูกรวม/เก็บถาวร) ที่ actor มองเห็น — อ่านอย่างเดียว (companyWhere) · id ที่ไม่อยู่ในผลลัพธ์ = ไม่พบ/ไม่ใช้งานแล้ว */
+// CRM C5.5-fix6 r2 ▸ F6-2/F6-3: บริการผู้ติดต่อถามก่อนเปิด tx ว่า actor มองเห็นบริษัทปัจจุบันของผู้ติดต่อไหม — ตัวเดียวกับที่ removeContact
+//   ใช้ (loadCompany · ไม่บังคับ live) ⇒ มองไม่เห็น = CompaniesError NOT_FOUND ข้อความเดิม (ไม่บอกว่าบริษัทมีอยู่ที่อื่นไหม) ◂
+/** AUDIT-CLASS X1: actor มองเห็นบริษัทนี้ (ระบบเดียวกัน) — ไม่เห็น = NOT_FOUND */
+export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string): Promise<void> {
+  const a = await enter(ctx, actor);
+  await loadCompany(ctx, a, companyId);
+}
+
 export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids: string[]): Promise<{ id: string; name: string }[]> {
   const a = await enter(ctx, actor);
   const list = [...new Set((ids ?? []).filter((x) => typeof x === "string" && x))].slice(0, 5_000);

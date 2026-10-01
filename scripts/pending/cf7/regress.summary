@@ -1,0 +1,19 @@
+start 2026-10-01T19:40:22Z
+probe-cf7 exit=0 35s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
+probe-cf5 exit=0 76s · 🟢 probe-cf5: 22/22 JSON_SUMMARY {"total":22,"passed":22,"findings":[]} 
+probe-cf5-r2 exit=0 33s · 🟢 probe-cf5-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+qc-crm-c1.4 exit=0 182s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.3 exit=0 308s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
+qc-crm-c1.5 exit=0 199s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
+qc-crm-c1.6 exit=0 158s · 🟢 C1.6: 79/79 JSON_SUMMARY {"total":79,"passed":79,"findings":[],"skippedChecks":[]} 
+qc-crm-c1.7 exit=0 118s · 🟢 C1.7: 57/57 JSON_SUMMARY {"total":57,"passed":57,"findings":[]} 
+qc-crm-c1.11 exit=0 73s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c3.4 exit=0 115s · 🟢 C3.4: 53/53 JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
+docs-member exit=1 3s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
+docs-kanban exit=1 3s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
+docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
+typecheck exit=0 145s · 
+fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+fitness-noenv exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-01T20:04:44Z

@@ -45,7 +45,7 @@ import { CrmWebTimeline } from "@/components/crm/tracking/CrmWebTimeline";
 import type { CrmWebTimelineSession } from "@/components/crm/tracking/types";
 // CRM C3.9 ▸ PDPA: ส่งออกข้อมูลของผู้ติดต่อนี้ · ลบข้อมูลส่วนบุคคล (ปุ่มขึ้นตามคีย์ของผู้ดู — ไม่มีคีย์ = ไม่เห็นปุ่ม) ◂
 import { ContactPrivacyBlock } from "../_components/ContactPrivacyBlock";
-import { crmCan } from "@/lib/modules/crm/access";
+import { crmCan, crmCanLinkCompany } from "@/lib/modules/crm/access";
 import { isContactErased } from "@/lib/modules/crm/privacy";
 
 // ผู้ติดต่อ 360 + แปลง lead (CRM v2 · ใบ C1.4 · พิมพ์เขียว §3.5 · ภาพ 05) — `/app/sys/{id}/crm/contacts/{contactId}`
@@ -171,6 +171,8 @@ export default async function Contact360Page({
             assign: crmCan(actor, "crm.contact.update"),
             merge: crmCan(actor, "crm.contact.merge"),
             archive: crmCan(actor, "crm.contact.delete"),
+            // CRM C5.5-fix6 ▸ F3: ช่องย้ายบริษัทในแผ่นแก้ไข = ผูกบริษัทได้ (อ่าน + แก้บริษัท) — ไม่ได้ = ซ่อน (§15(b)) ◂
+            company: crmCanLinkCompany(actor),
           }}
           contact={{
             id: c.id,
@@ -184,7 +186,11 @@ export default async function Contact360Page({
             leadStatus: c.leadStatus,
             tags: c.tags,
             archived: !!c.archivedAt,
-            companyId: c.companyId,
+            // CRM C5.5-fix6 ▸ F3: id ของบริษัทใช้แค่ช่อง "ย้ายดีลตาม" ของคนที่ย้ายบริษัทได้ · ชื่อ = บริษัทที่ผู้ดูมองเห็น (companyWhere) เท่านั้น ◂
+            companyId: crmCanLinkCompany(actor) ? c.companyId : null,
+            companyName: data.company?.name ?? null,
+            // CRM C5.5-fix6 r2 ▸ F6-4: ป้าย "บริษัทหลัก" เฉพาะเมื่อบริษัทที่แสดงคือบริษัทหลักของผู้ติดต่อจริง (ไม่ใช่ลิงก์อื่นที่มองเห็นแทน) ◂
+            companyIsPrimary: !!data.company && data.company.id === c.companyId,
           }}
         />
       </div>
@@ -292,6 +298,7 @@ export default async function Contact360Page({
                     companyName={data.company?.name ?? c.companyText}
                     jobTitle={c.jobTitle}
                     converted={!!c.convertedAt}
+                    canPickCompany={crmCan(actor, "crm.company.read")}
                   />
                 )}
               </div>

@@ -2367,11 +2367,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-pick-*-select",
@@ -2379,7 +2380,10 @@
         "note": "ค้นฝั่งเซิร์ฟเวอร์ → รายการตัวเลือกเปลี่ยน"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "alsoOn": [
+        "/contacts/[contactId]"
+      ]
     },
     {
       "page": "/contacts/new",
@@ -2387,18 +2391,22 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-pick-*-select",
         "state": "changes"
       },
       "wo": "C1.4",
-      "oracle": ""
+      "oracle": "",
+      "alsoOn": [
+        "/contacts/[contactId]"
+      ]
     },
     {
       "page": "/contacts/new",
@@ -2955,11 +2963,12 @@
       "kind": "toggle",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "contact-edit-error"
@@ -5053,11 +5062,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-new-error"
