@@ -35,11 +35,109 @@ export const CRM_RECIPIENT_RE = new RegExp(`^${CRM_INBOUND_PREFIX}\\+([a-z2-7]{8
 /** แท็กเธรดที่ "นับ" — `t` + รหัสย่อยาวเป๊ะ `CRM_THREAD_SHORT_LEN` ตัว (อย่างอื่น = ไม่มีแท็ก) */
 export const CRM_THREAD_TAG_RE = new RegExp(`^t([a-z0-9]{${CRM_THREAD_SHORT_LEN}})$`, "i");
 
+// ───────────────────────── ตัวแกะวงเล็บมุมแบบเชิงเส้น (CRM C5.5-fix5 · รีวิว RV-2) ─────────────────────────
+// 🔴 เดิมใช้ regex `<([^>]*)>\s*$` / `<([^>]+)>` ซึ่งเป็น n² เมื่อมี `<` เยอะแต่ไม่มี `>` (หัว From 40,000 ตัว ≈ 1.3 วินาที
+//    ต่อการเรียกหนึ่งครั้ง และ ingestInbound เรียกก่อนถังจำกัดอัตรา) ⇒ ตัวข้างล่าง "ผลตรงทุกไบต์กับ regex เดิม" แต่เดินรอบเดียว
+//    (ข้อสอบ `scripts/pending/cf6/probe-cf6-linear.mts` เทียบกับ regex เดิมบนที่อยู่จริง/แปลก/สุ่มหลายพันแบบ) · fitness F16 ห้าม regex แบบเดิม
+
+/** ≡ `s.match(/<([^>]*)>\s*$/)?.[1] ?? null` — ส่วนในวงเล็บมุมคู่ **สุดท้าย** ที่ปิดท้ายสตริง (หลัง `>` มีได้แต่ช่องว่าง) */
+export function trailingAngleAddr(s: string): string | null {
+  const t = s.trimEnd(); // ชุดอักขระที่ trimEnd ตัด = `\s` ของ regex (WhiteSpace + LineTerminator)
+  const e = t.length - 1;
+  if (e < 1 || t.charCodeAt(e) !== 62 /* > */) return null;
+  const q = t.lastIndexOf(">", e - 1);
+  const lt = t.indexOf("<", q + 1); // `<` ซ้ายสุดที่ระหว่างมันกับ `>` ตัวท้ายไม่มี `>` คั่น
+  return lt < 0 || lt >= e ? null : t.slice(lt + 1, e);
+}
+
+/** ≡ `s.match(/<([^>]+)>/)?.[1] ?? null` — ส่วนในวงเล็บมุมคู่ **แรก** ที่ข้างในไม่ว่าง */
+export function firstAngleAddr(s: string): string | null {
+  let from = 0;
+  for (;;) {
+    const lt = s.indexOf("<", from);
+    if (lt < 0) return null;
+    const gt = s.indexOf(">", lt + 1);
+    if (gt < 0) return null;
+    if (gt > lt + 1) return s.slice(lt + 1, gt);
+    from = lt + 1;
+  }
+}
+
+/** ≡ `[...s.matchAll(/<([^>]+)>/g)].map((m) => m[1])` — ทุกคู่วงเล็บมุมที่ข้างในไม่ว่าง (Message-ID ใน In-Reply-To/References) */
+export function angleIds(s: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  for (;;) {
+    const lt = s.indexOf("<", from);
+    if (lt < 0) return out;
+    const gt = s.indexOf(">", lt + 1);
+    if (gt < 0) return out;
+    if (gt > lt + 1) {
+      out.push(s.slice(lt + 1, gt));
+      from = gt + 1;
+    } else from = lt + 1;
+  }
+}
+
 /** ที่อยู่ล้วนจาก `"ชื่อ" <addr>` / `<addr>` / `addr` (ตัวเล็กทั้งหมด) — ตัวเดียวของทั้งระบบอีเมล CRM */
 export function bareEmail(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
-  const m = s.match(/<([^>]*)>\s*$/);
-  return (m ? (m[1] ?? "") : s).trim().toLowerCase();
+  return (trailingAngleAddr(s) ?? s).trim().toLowerCase();
+}
+
+// ───────────────────────── เพดานหัวจดหมายขาเข้า (CRM C5.5-fix5 · รีวิว RV-2) ─────────────────────────
+// route `/api/email/inbound` ยอม body ได้ 10 MB และเดิมไม่จำกัดความยาวหัวใด ๆ ⇒ หัว From/To/References ยาวเป็นเมกะไบต์วิ่งเข้าตัวแกะทุกตัว
+// ใช้ที่ route (ทั้งทางบอร์ดงานและทาง CRM) และซ้ำที่ต้น `ingestInbound` / `ingestInboundEmail` (ผู้เรียกทางอื่น) — ทำซ้ำได้ ผลเท่าเดิม
+// 🔴 ที่อยู่ / Message-ID / หัวทั่วไปที่ยาวเกิน = **ทิ้ง** (ถือว่าไม่มี) ไม่ใช่ตัด: ตัดที่อยู่อาจได้ที่อยู่อื่นที่ใช้ได้จริง
+//    (`crm+key@shark.in.th.x…` → `crm+key@shark.in.th`) และตัดหัว Authentication-Results อาจตัดหัวจริงของ MTA ทิ้งเหลือหัวปลอมของผู้ส่ง
+//    · หัวข้อ = ตัด (ปลายทางตัดเหลือ 120/300 ตัวอักษรอยู่แล้ว)
+
+/** ที่อยู่ 1 รายการ (From / แต่ละตัวใน To·Cc) และ Message-ID — RFC 5322 §2.1.1 บรรทัดหัวจดหมาย ≤ 998 อักขระ */
+export const INBOUND_ADDR_MAX = 998;
+/** หัวอื่น ๆ ต่อ 1 ชื่อหัว (References · Authentication-Results · Reply-To …) และหัวข้อ — 16 KiB */
+export const INBOUND_HEADER_MAX = 16 * 1024;
+
+/** ที่อยู่/Message-ID: ไม่ใช่สตริง หรือยาวเกิน `INBOUND_ADDR_MAX` = `""` */
+export function capInboundAddr(v: unknown): string {
+  return typeof v === "string" && v.length <= INBOUND_ADDR_MAX ? v : "";
+}
+
+/** รายการที่อยู่: ทิ้งตัวที่ไม่ใช่สตริงหรือยาวเกิน (ตัวอื่นคงลำดับเดิม) */
+export function capInboundAddrList(list: unknown): string[] {
+  return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string" && x.length <= INBOUND_ADDR_MAX) : [];
+}
+
+/** หัวจดหมาย (คีย์ → ค่า): ทิ้งหัวที่ค่ายาวเกิน `INBOUND_HEADER_MAX` ทั้งหัว */
+export function capInboundHeaders(h: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!h || typeof h !== "object" || Array.isArray(h)) return out;
+  for (const [k, v] of Object.entries(h as Record<string, unknown>)) {
+    if (typeof v === "string" && v.length <= INBOUND_HEADER_MAX && k.length <= INBOUND_ADDR_MAX) out[k] = v;
+  }
+  return out;
+}
+
+/** หัวข้อ: ตัดที่ `INBOUND_HEADER_MAX` (ไม่ใช่สตริง = คงค่าเดิม — ผู้เรียกจัดการ null/undefined เอง) */
+export function capInboundSubject<T>(v: T): T | string {
+  return typeof v === "string" && v.length > INBOUND_HEADER_MAX ? v.slice(0, INBOUND_HEADER_MAX) : v;
+}
+
+/**
+ * ซองจดหมายขาเข้าที่ผ่านเพดานแล้ว (สำเนาตื้น · ช่องอื่น เช่น เนื้อความ/ไฟล์แนบ คงเดิม — มีเพดานของตัวเองที่ปลายทาง)
+ * จดหมายปกติ (หัวทุกตัวสั้นกว่าเพดาน) ได้ค่ากลับมาเท่าเดิมทุกช่อง
+ */
+export function capInboundEnvelope<
+  P extends { messageId?: unknown; from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; headers?: unknown },
+>(p: P): P {
+  if (!p || typeof p !== "object") return p;
+  const out: Record<string, unknown> = { ...p };
+  if ("messageId" in p) out.messageId = capInboundAddr(p.messageId);
+  if ("from" in p) out.from = capInboundAddr(p.from);
+  if ("to" in p) out.to = capInboundAddrList(p.to);
+  if ("cc" in p && p.cc !== undefined) out.cc = capInboundAddrList(p.cc);
+  if ("subject" in p) out.subject = capInboundSubject(p.subject);
+  if ("headers" in p && p.headers !== undefined) out.headers = capInboundHeaders(p.headers);
+  return out as P;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { env, emailEnabled } from "@/lib/env";
+import { trailingAngleAddr } from "./inbound-address"; // CRM C5.5-fix5 ◂
 
 // ส่งอีเมล — dev fallback: log ออก console (ยังไม่มี Resend key)
 // เมื่อเสียบ RESEND_API_KEY จะส่งจริงผ่าน Resend (verify domain shark.in.th)
@@ -87,8 +88,8 @@ const RICH_ADDR_RE = /^[^\s<>@,;"]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 /** `"ชื่อ" <addr>` หรือ `addr` — คืนส่วนที่เป็นที่อยู่ล้วน (ใช้ตรวจรูปแบบอย่างเดียว) */
 function bareAddr(v: string): string {
-  const m = v.match(/<([^>]*)>\s*$/);
-  return (m ? (m[1] ?? "") : v).trim();
+  // CRM C5.5-fix5 ▸ เดิม `v.match(/<([^>]*)>\s*$/)` = n² บน `<` ยาว ๆ ไม่มี `>` · ตัวแกะเชิงเส้นตัวเดียวของระบบ (ผลเท่าเดิมทุกไบต์) ◂
+  return (trailingAngleAddr(v) ?? v).trim();
 }
 
 function richAddrOk(v: unknown): boolean {

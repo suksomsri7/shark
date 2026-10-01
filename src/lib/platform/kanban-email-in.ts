@@ -17,6 +17,7 @@
 
 import { prisma } from "@/lib/core/db";
 import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
+import { capInboundEnvelope, firstAngleAddr } from "@/lib/core/inbound-address"; // CRM C5.5-fix5 ▸ RV-2 ◂
 import { findBoardByEmailKey, boardEmailKeyFromRecipients } from "@/lib/modules/kanban/boards-email";
 import { getIntegrations } from "@/lib/modules/kanban/integrations";
 import { createCardFromExternal } from "@/lib/modules/kanban/links";
@@ -78,10 +79,12 @@ function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** ดึงอีเมลล้วนออกจาก `"ชื่อ คนส่ง" <a@b.com>` — ไม่มีวงเล็บก็คืนของเดิมที่ตัดช่องว่างแล้ว */
+/**
+ * ดึงอีเมลล้วนออกจาก `"ชื่อ คนส่ง" <a@b.com>` — ไม่มีวงเล็บก็คืนของเดิมที่ตัดช่องว่างแล้ว
+ * CRM C5.5-fix5 ▸ รีวิว RV-2: เดิม `raw.match(/<([^>]+)>/)` = n² บน From ที่มี `<` ยาว ๆ ไม่มี `>` · ตัวแกะเชิงเส้นของ core ให้ผลเดิมทุกไบต์ ◂
+ */
 function bareEmail(raw: string): string {
-  const m = raw.match(/<([^>]+)>/);
-  return (m?.[1] ?? raw).trim().toLowerCase();
+  return (firstAngleAddr(raw) ?? raw).trim().toLowerCase();
 }
 
 /** ชื่อไฟล์ที่ปลอดภัยพอจะเก็บ/แสดง (ตัด path traversal + อักขระควบคุม · ว่าง = ตั้งชื่อกลาง ๆ ให้) */
@@ -192,6 +195,8 @@ export async function ingestInboundEmail(
   deps?: IngestEmailDeps,
 ): Promise<IngestEmailResult> {
   try {
+    // CRM C5.5-fix5 ▸ RV-2: เพดานหัวจดหมายชุดเดียวกับ route (ผู้เรียกทางอื่นก็ได้เพดานเดียวกัน · จดหมายปกติค่าเดิมทุกช่อง) ◂
+    payload = capInboundEnvelope(payload);
     const messageId = (payload?.messageId ?? "").trim();
     const recipients = Array.isArray(payload?.to) ? payload.to : [];
     if (!messageId || messageId.length > 300 || recipients.length === 0) return { ok: false, reason: "invalid" };

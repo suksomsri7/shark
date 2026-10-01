@@ -46,6 +46,7 @@ import { emitOutbox } from "@/lib/core/outbox";
 import { logOps } from "@/lib/core/ops";
 import { checkRateLimitDb, checkRateLimitDbMany } from "@/lib/core/rate-limit-db";
 import { htmlToText, sanitizeHtml } from "@/lib/core/sanitize";
+import { angleIds, capInboundEnvelope } from "@/lib/core/inbound-address"; // CRM C5.5-fix5 ▸ RV-2 ◂
 import {
   ALLOWED_UPLOAD_TYPES,
   deleteFileAsset,
@@ -78,6 +79,7 @@ import {
   CRM_EMAIL_ATTACH_MAX_COUNT,
   CRM_EMAIL_ATTACH_MIME_ALLOWLIST,
   CRM_EMAIL_BODY_MAX_BYTES,
+  CRM_EMAIL_SIGNATURE_MAX,
   CRM_EMAIL_COPY_MODES,
   CRM_EMAIL_FROM_MODES,
   CRM_EMAIL_REPLY_MODES,
@@ -639,7 +641,12 @@ export async function setUserSetting(ctx: EmailsCtx, actor: MemberActor, patch: 
   if (!member) throw fail("NOT_FOUND", "ไม่พบพนักงานคนนี้ในร้านที่เปิดอยู่ — รีเฟรชหน้าแล้วลองใหม่");
   const data: Record<string, unknown> = {};
   if ("fromName" in patch) data.fromName = cleanTextPatch(patch.fromName, "ชื่อผู้ส่ง");
-  if ("signatureHtml" in patch) data.signatureHtml = patch.signatureHtml === null ? null : sanitizeHtml(str(patch.signatureHtml)).slice(0, 4000) || null;
+  // CRM C5.5-fix5 ▸ รีวิว RV-4: เดิมตัด `.slice(0, 4000)` **หลัง** sanitize ⇒ ตัดกลางแท็กที่สร้างใหม่ได้ (`<a href="https://…` ไม่ปิด)
+  //   ตอนนี้: เพดานที่ข้อความเข้า (เท่ากับ REST `optText(4000)`) — เกิน = ปฏิเสธ · ผลของ sanitize เก็บทั้งก้อน (ครบรูปเสมอ) ◂
+  if ("signatureHtml" in patch && patch.signatureHtml !== null && str(patch.signatureHtml).length > CRM_EMAIL_SIGNATURE_MAX) {
+    throw fail("VALIDATION", `ลายเซ็นยาวเกิน ${CRM_EMAIL_SIGNATURE_MAX.toLocaleString("en-US")} ตัวอักษร — ย่อให้สั้นลงแล้วบันทึกอีกครั้ง`);
+  }
+  if ("signatureHtml" in patch) data.signatureHtml = patch.signatureHtml === null ? null : sanitizeHtml(str(patch.signatureHtml)) || null;
   if ("fromAddr" in patch) data.fromAddr = cleanAddrPatch(patch.fromAddr, "ที่อยู่ผู้ส่ง");
   // CRM C5.4-B ▸ L1-m3: ที่อยู่ผู้ส่งส่วนตัว = "ตัวตนของพนักงาน" ที่เส้นขาเข้าใช้ตัดสินว่าจดหมายเป็นขาออกของร้าน ⇒ ต้องอยู่บนโดเมนผู้ส่ง
   //   ที่ร้านยืนยันแล้ว (ที่อื่นส่งจริงไม่ได้อยู่แล้ว — routingFor ใช้เฉพาะโดเมนยืนยัน) และต้องไม่ใช่อีเมลของผู้ติดต่อในระบบนี้
@@ -2170,7 +2177,9 @@ function authResultPass(headers: Record<string, string>, fromDomain: string): bo
   let pass = false;
   for (const part of (ours[0] as { clauses: string[] }).clauses) {
     // ข้อหนึ่ง = คู่ `key=value` เรียงกัน (value ในเครื่องหมายคำพูดถูกกินทั้งก้อน ⇒ ข้อความใน `reason="…"` ไม่ถูกอ่านเป็น key)
-    const pairs = [...part.trim().toLowerCase().matchAll(/([a-z0-9._-]+)\s*=\s*("(?:[^"\\]|\\.)*"|[^\s";]+)/g)].map((m) => ({
+    // CRM C5.5-fix5 ▸ `(?<![a-z0-9._-])` = เริ่มจับได้เฉพาะต้นกลุ่มอักขระของ key (เดิมลองทุกตัวกลางกลุ่ม = n² บน key ยาวที่ไม่มี `=`) ·
+    //   ผลเท่าเดิมทุกกรณี: ตัวกลางกลุ่มจับได้ก็ต่อเมื่อต้นกลุ่มจับได้ และค่าที่จับจบที่ขอบกลุ่มเสมอ (probe-cf6-linear RV2.authPairs) ◂
+    const pairs = [...part.trim().toLowerCase().matchAll(/(?<![a-z0-9._-])([a-z0-9._-]+)\s*=\s*("(?:[^"\\]|\\.)*"|[^\s";]+)/g)].map((m) => ({
       k: m[1] ?? "",
       v: (m[2] ?? "").replace(/^"|"$/g, ""),
     }));
@@ -2333,7 +2342,8 @@ async function auditInboundCap(tenantId: string, systemId: string, after: Record
 
 function refIdsOf(headers: Record<string, string>): string[] {
   const raw = `${headers["in-reply-to"] ?? ""} ${headers.references ?? ""}`;
-  return uniq([...raw.matchAll(/<([^>]+)>/g)].map((m) => (m[1] ?? "").trim()));
+  // CRM C5.5-fix5 ▸ RV-2: เดิม `matchAll(/<([^>]+)>/g)` = n² บน `<` ไม่มี `>` · ตัวแกะเชิงเส้นของ core (ผลเท่าเดิมทุกไบต์) ◂
+  return uniq(angleIds(raw).map((x) => x.trim()));
 }
 
 /**
@@ -2345,6 +2355,9 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
   // นับไว้นอก try เพื่อให้คำตอบของฟังก์ชันถือค่านี้ได้เสมอ (มติผู้คุมงาน (a) · ข้อสอบ S10.9)
   let dropped = 0;
   try {
+    // CRM C5.5-fix5 ▸ รีวิว RV-2: เพดานหัวจดหมายก่อนตัวแกะ/ถังจำกัดอัตราใด ๆ (route ทำแล้ว — ทำซ้ำที่นี่ให้ผู้เรียกทางอื่น) ·
+    //   ที่อยู่/Message-ID > 998 · หัว > 16 KiB = ทิ้ง (ไม่ตัด) · หัวข้อตัดที่ 16 KiB · จดหมายปกติค่าเดิมทุกช่อง ◂
+    payload = capInboundEnvelope(payload);
     const rfcId = bareId(payload?.messageId);
     const toAll = uniq([...(Array.isArray(payload?.to) ? payload.to : []), ...(Array.isArray(payload?.cc) ? payload.cc : [])].map((x) => bareEmail(x)));
     if (!rfcId || toAll.length === 0) return { ok: false, handled: false, reason: "invalid", attachmentsDropped: 0 };

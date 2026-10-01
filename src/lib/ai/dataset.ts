@@ -2,6 +2,7 @@
 // ⚠️ PDPA: anonymize ก่อนเก็บเสมอ (เบอร์/อีเมล → placeholder) · เก็บเมื่อ SHARK_AI_COLLECT=1 เท่านั้น
 // ของมีค่า = โครง tool-calling (คำสั่ง → เครื่องมือที่เลือก + args) ไม่ใช่ข้อมูลลูกค้า
 import { tenantDb } from "@/lib/core/db";
+import { replaceEmailsInText } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ◂
 
 export type DatasetCtx = { tenantId: string };
 export type SampleToolCall = { name: string; args?: unknown };
@@ -18,9 +19,8 @@ export type SampleInput = {
  * - เบอร์ 0 ตามด้วย 8–9 หลัก (รวม 9–10 หลัก) → <PHONE>
  */
 export function anonymize(text: string): string {
-  return String(text ?? "")
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<EMAIL>")
-    .replace(/0\d{8,9}/g, "<PHONE>");
+  // CRM C5.5-fix5 ▸ อีเมล: ตัวเชิงเส้นของ core ≡ `/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g` เดิมทุกไบต์ (เดิม n²) ◂
+  return replaceEmailsInText(String(text ?? ""), () => "<EMAIL>").replace(/0\d{8,9}/g, "<PHONE>");
 }
 
 // anonymize ลึกในทุก string ของ args (object/array ซ้อนได้) — คงชนิด/โครงเดิม

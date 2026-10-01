@@ -21,6 +21,7 @@ import { assertCrmV2, CrmV2DisabledError } from "./ui-version";
 import { EmailError } from "./emails";
 import { CRM_EMAIL_SUBJECT_MAX, CRM_EMAIL_BODY_TOO_LONG_MSG, crmEmailBodyTooLong, crmEmailFailText, crmEmailHtmlToComposerText } from "./emails-shared";
 import { withFieldError } from "./field-errors-shared";
+import { htmlToText } from "@/lib/core/sanitize"; // CRM C5.5-fix5 ▸ RV-1 ◂
 import * as emails from "./emails";
 import * as activities from "./activities";
 import type { CrmEmailActionResult } from "@/components/crm/emails/types";
@@ -74,7 +75,10 @@ export async function sendCrmEmailAction(
   },
 ): Promise<CrmEmailActionResult<{ emailId: string; threadKey: string; status: string; failReason?: string }>> {
   // CRM C4.4-fix2 r2 ▸ SF-1: เพดานเนื้อความตรวจก่อนทุกอย่าง (ก่อนเปิด session/แปลง) — ข้อความเดียวกับบริการ ใต้ช่องเนื้อความ ◂
-  if (typeof input?.bodyText === "string" && crmEmailBodyTooLong(input.bodyText)) {
+  // CRM C5.5-fix5 ▸ รีวิว RV-1: `bodyHtml` ใช้เพดานเดียวกัน (เดิมตรวจแค่ bodyText ⇒ HTML ดิบขนาดเท่าที่ server action รับได้ (12 MB)
+  //   วิ่งเข้า regex ตัดแท็กแบบ n² ใน catch ข้างล่างทุกครั้งที่ action ล้ม = คำขอเดียวแช่ event loop เป็นชั่วโมง) — ตรวจก่อน session
+  //   ⇒ ไม่มีทางไหน (สำเร็จหรือล้ม) ที่แตะเนื้อความยาวเกินเพดาน · ขนาดถึงเพดานพอดียังไปต่อเหมือนเดิม ◂
+  if ((typeof input?.bodyText === "string" && crmEmailBodyTooLong(input.bodyText)) || (typeof input?.bodyHtml === "string" && crmEmailBodyTooLong(input.bodyHtml))) {
     return { ok: false, error: CRM_EMAIL_BODY_TOO_LONG_MSG, code: "VALIDATION", fieldErrors: { body: CRM_EMAIL_BODY_TOO_LONG_MSG } };
   }
   try {
@@ -103,7 +107,9 @@ export async function sendCrmEmailAction(
     const subject = String(input?.subject ?? "").trim();
     return withFieldError(failOf(e), {
       subject: !subject || subject.length > CRM_EMAIL_SUBJECT_MAX || /[\r\n]/.test(subject),
-      body: !(String(input?.bodyText ?? "").trim() || String(input?.bodyHtml ?? "").replace(/<[^>]*>/g, "").trim()),
+      // CRM C5.5-fix5 ▸ RV-1: ตัวแปลงเชิงเส้นของ engine กลาง (เนื้อความถูกจำกัด ≤ 500 KiB แล้วด้านบน) แทน regex ตัดแท็ก n² ·
+      //   "ว่าง" = ว่างหลังตัดแบบเดียวกับที่บริการตัดสิน (สคริปต์/สไตล์/คอมเมนต์ล้วน = ว่าง) ◂
+      body: !(String(input?.bodyText ?? "").trim() || htmlToText(typeof input?.bodyHtml === "string" ? input.bodyHtml : "")),
     });
   }
 }
