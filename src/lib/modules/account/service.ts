@@ -2,20 +2,30 @@ import { randomBytes } from "node:crypto";
 import { safeReason } from "./errors";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// CRM C5.4-C ▸ LOCK ORDER of the account money transactions (round 11 · R10-2) — THE one order; a step may be
-//   skipped, never reordered. Every function that pays / un-pays a document follows it (voidPaymentInTx,
-//   voidVendorPaymentInTx, voidPaymentBatchInOneTx, recordPaymentInTx, recordVendorPaymentInTx, recordPaymentBatchInOneTx,
-//   cheque.ts restoreDocForCheque, credit-note issue/void):
+// CRM C5.4-C/C5.4-N ▸ LOCK ORDER of the account money transactions (round 11 · R10-2 · C5.4-N tail numbering) — THE one
+//   order, kept ONLY here (docs/sds/modules/account.md points at it); a step may be skipped, never reordered. Every function that
+//   pays / un-pays a document follows it (voidPaymentInTx, voidVendorPaymentInTx, voidPaymentBatchInOneTx, recordPaymentInTx,
+//   recordVendorPaymentInTx, recordPaymentBatchInOneTx, cheque.ts restoreDocForCheque, credit-note issue/void):
 //     1. AccountCheque rows ↑id ............ chequeIdsHoldingPayments / cheque.ts lockChequeRow
 //     2. auto tax invoices ↑id ............. TAX_INVOICE rows whose sourcePaymentId is one of the payments
 //     3. documents ↑id ..................... lockDocumentRow (the invoices / bills being paid or un-paid)
 //     4. group heads ↑id ................... lockGroupHeadsOfDocsInTx (BILLING_NOTE / COMBINED_PAYMENT of those documents)
 //     5. payment rows ...................... CAS updateMany({ id, voidedAt: null })
-//   and ONLY THEN journal postings (gl.ts commitEntry / reverseFor) and syncGroupHeadInTx (which re-locks the head).
-//   Why step 4 sits before any posting: gl.nextJournalNo inserts a unique journal number, so a transaction that already
-//   posted can make another wait on it; if that other one holds the group head we get the R10-2 cycle
-//   (group payment ∥ bounce of another batch of the same group — trace: scripts/pending/c54c/trace-r10-2-deadlock.mts).
-//   Rows created inside the transaction (a new cheque, tax invoice, WHT certificate) need no lock.
+//     6. postings (gl.ts commitEntry / reverseFor) + any pre-existing row a posting path touches (inventory, deposits, statement
+//        lines, finance/asset rows, coupons, the original entry in reverseFor) + syncGroupHeadInTx (re-locks a step-4 head).
+//        Journal numbers come from a Postgres sequence (gl.ts allocateJournalNo → account_next_journal_no): no lock, never waits.
+//     7. LEGAL COUNTERS — AccountDocSequence rows, ↑(AccountDocType enum order, periodKey), one UPSERT per group, taken by
+//        doc-numbering.ts finalizeDocNos as the LAST statement of the wrapper (recordPayment · recordPaymentBatchInOneTx ·
+//        cheque.recordPaymentWithChequeInOneTx · expense.recordVendorPayment / issueExpenseDoc · wht.issueWhtCreditCertStandalone /
+//        issueWhtCert). After it the transaction only UPDATEs rows it created itself (the docNo stamp) and commits.
+//   Why no cycle passes through step 7: a holder of counter c only ever waits on a counter > c, and never on its own uncommitted
+//   rows ⇒ every wait chain through a counter is strictly increasing and ends (proof: ledger/wo-notes/crm-C5.4-N.md §2).
+//   Why step 4 still sits before any posting: harmless now that postings take no number lock (it was the R10-2 cycle with
+//   count+1 journal numbers — trace: scripts/pending/c54c/trace-r10-2-deadlock.mts).
+//   Rows created inside the transaction (a new cheque, tax invoice, WHT certificate) need no lock; legal documents created inside
+//   a money transaction are inserted with docNo = null and numbered by step 7 (doc-numbering.ts deferDocNo).
+//   NOT yet at step 7 (C5.4-N phase 2, follow-up): the document's OWN number in issueDocument / issueExpenseDoc (issueDocNo,
+//   taken before postDocument) and inventory goods-doc numbers (product.ts) — they still hold their counter for the whole transaction.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { prisma } from "@/lib/core/db";
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
@@ -104,6 +114,9 @@ import {
   peekDocNo,
   setNextNo,
   findSeqGaps,
+  openDocNumbering,
+  deferDocNo,
+  finalizeDocNos,
 } from "./doc-numbering";
 import {
   REVENUE_DOC_PREFIX,
@@ -2756,9 +2769,11 @@ export async function recordPayment(
   try {
     const settings = await getSettings(tenantId, systemId);
     const r = await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx); // CRM C5.4-N ▸ เลขใบกำกับภาษี/WTI จองท้ายธุรกรรม (LOCK ORDER ขั้น 7) ◂
       const r = await recordPaymentInTx(tx, tenantId, systemId, id, input, settings);
       await syncGroupHeadsOfDocsInTx(tx, tenantId, systemId, [id]); // CRM C5.4-C ▸ round 10 · มติ C: หัวกลุ่มตามใบลูก ◂
-      return r;
+      const nos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย — ล็อกสุดท้ายของธุรกรรม ◂
+      return { ...r, whtCertNo: r.whtCertDocId ? nos.get(r.whtCertDocId) : undefined };
     });
     return { ok: true, status: r.status, paymentId: r.paymentId, whtCertNo: r.whtCertNo };
   } catch (e) {
@@ -2778,7 +2793,7 @@ export async function recordPaymentInTx(
   id: string,
   input: RecordPaymentInput,
   settings: Awaited<ReturnType<typeof getSettings>>,
-): Promise<{ status: AccountDocStatus; paymentId: string; whtCertNo?: string; duplicate: boolean }> {
+): Promise<{ status: AccountDocStatus; paymentId: string; whtCertDocId?: string; duplicate: boolean }> {
   if (!input.amount || input.amount <= 0) throw new Error("ยอดชำระต้องมากกว่า 0");
   const wht = Math.max(0, input.whtAmountSatang ?? 0);
   if (input.idempotencyKey) {
@@ -2793,7 +2808,8 @@ export async function recordPaymentInTx(
   }
   let status: AccountDocStatus = "PARTIAL";
   let paymentId = "";
-  let whtCertNo: string | undefined;
+  // CRM C5.4-N ▸ เลข WTI ออกตอนท้ายธุรกรรม (finalizeDocNos ของตัวห่อ) — ที่นี่รู้แค่ id ของใบ ◂
+  let whtCertDocId: string | undefined;
       // 🔴 WO 9.2 ข้อ 12 — ล็อกแถวเอกสารก่อนอ่านยอด (SELECT … FOR UPDATE)
       //    ก่อนหน้านี้ 2 คำขอที่มาพร้อมกันอ่าน `paidTotal` ค่าเดียวกัน (READ COMMITTED) แล้ว
       //    **ผ่านด่าน "ยอดชำระเกินยอดคงเหลือ" ทั้งคู่** → ได้ payment 2 ใบเต็มยอด + JV 2 ชุด
@@ -2880,7 +2896,7 @@ export async function recordPaymentInTx(
           base,
           issueDate: payment.paidAt,
         });
-        whtCertNo = cert.docNo;
+        whtCertDocId = cert.id;
       }
       // ── WO 8.3 (§9.5 "แอปภายนอก/API"): เหตุการณ์บัญชีออกทาง webhook ของแพลตฟอร์ม ──
       //    emit ใน tx เดียวกับการชำระ (transactional outbox) ⇒ เงินรอด = event รอด · idempotent ต่อ paymentId
@@ -2908,7 +2924,7 @@ export async function recordPaymentInTx(
             ]
           : []),
       ]);
-  return { status, paymentId, whtCertNo, duplicate: false };
+  return { status, paymentId, whtCertDocId, duplicate: false };
 }
 
 // ─────────────────── WO 8.3 (§9.5) — เหตุการณ์บัญชีสำหรับ webhook ขาออก ───────────────────
@@ -2948,7 +2964,7 @@ async function issueServiceTaxInvoice(
   const vatPortion = Math.round(invoice.vatAmount * portion);
   const base = Math.max(0, tieOff - vatPortion);
   const issueDate = new Date();
-  const docNo = await nextDocNo(tx, tenantId, systemId, "TAX_INVOICE", issueDate);
+  // CRM C5.4-N ▸ เลขใบกำกับภาษีจองท้ายธุรกรรม (finalizeDocNos · LOCK ORDER ขั้น 7) — ไม่ถือแถวตัวนับระหว่างลงบัญชี ◂
   const taxInv = await tx.accountDocument.create({
     data: {
       tenantId,
@@ -2956,7 +2972,7 @@ async function issueServiceTaxInvoice(
       docType: "TAX_INVOICE",
       status: "ISSUED",
       direction: "OUT",
-      docNo,
+      docNo: null,
       issueDate,
       contactId: invoice.contactId,
       contactSnapshot: (invoice.contactSnapshot ?? undefined) as Prisma.InputJsonValue | undefined,
@@ -2984,6 +3000,13 @@ async function issueServiceTaxInvoice(
         ],
       },
     },
+  });
+  deferDocNo(tx, {
+    docId: taxInv.id,
+    tenantId,
+    systemId,
+    date: issueDate,
+    series: { kind: "configured", docType: "TAX_INVOICE", fallbackPrefix: docNoFallbackPrefix("TAX_INVOICE") },
   });
   await tx.accountDocumentRelation.create({
     data: {
@@ -3034,18 +3057,27 @@ export async function recordPaymentBatchInOneTx<T>(
   work: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<
   | { ok: true; duplicate: true }
-  | { ok: true; duplicate: false; result: T; head: { status: AccountDocStatus; paidTotal: number; outstanding: number } | null }
+  | {
+      ok: true;
+      duplicate: false;
+      result: T;
+      head: { status: AccountDocStatus; paidTotal: number; outstanding: number } | null;
+      /** CRM C5.4-N ▸ เลขที่ออกท้ายธุรกรรม (ใบกำกับภาษีอัตโนมัติ · WTI · 50 ทวิ) docId → docNo ◂ */
+      docNos: Map<string, string>;
+    }
   | { ok: false; reason: string }
 > {
   try {
     return await prisma.$transaction(async (tx) => {
+      openDocNumbering(tx); // CRM C5.4-N ▸ LOCK ORDER ขั้น 7 — ตัวนับเอกสารภาษีจองที่ท้ายธุรกรรม ◂
       for (const id of [...new Set(input.childIds)].sort()) await lockDocumentRow(tx, tenantId, systemId, id);
       await lockGroupHeadsOfDocsInTx(tx, tenantId, systemId, input.childIds); // round 11 · LOCK ORDER ขั้น 4 — ก่อนลงบัญชีใด ๆ (R10-2)
       // คีย์ตรงตัว (group-batch) — ไม่พึ่ง LIKE ของ startsWith
       if ((await groupBatchPayments(tx, tenantId, systemId, input.batchKey)).length > 0) return { ok: true as const, duplicate: true as const };
       const result = await work(tx);
       const head = await syncGroupHeadInTx(tx, tenantId, systemId, input.groupId);
-      return { ok: true as const, duplicate: false as const, result, head };
+      const docNos = await finalizeDocNos(tx); // CRM C5.4-N ▸ คำสั่งสุดท้าย (ถือแถวตัวนับแค่ช่วงท้าย ไม่ใช่ทั้งชุด 40 ใบ) ◂
+      return { ok: true as const, duplicate: false as const, result, head, docNos };
     }, { maxWait: 20_000, timeout: 40_000 });
   } catch (e) {
     return { ok: false, reason: safeReason(e, input.failMsg) };

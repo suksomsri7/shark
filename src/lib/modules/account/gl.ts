@@ -240,7 +240,7 @@ async function commitEntry(ctx: GlCtx, o: CommitOpts, book: Book, db: Db): Promi
   await assertPeriodOpen(ctx, periodKey, db);
   await assertNotLockedGl(ctx, o.date, db);
 
-  const docNo = await nextJournalNo(ctx, o.book, o.date, db as Tx);
+  const docNo = await allocateJournalNo(ctx, o.book, o.date, db as Tx);
   const idempotencyKey = `${o.refType}#${o.refId}#${o.event}`;
 
   const entry = await db.accountJournalEntry.create({
@@ -287,20 +287,46 @@ async function alreadyPosted(ctx: GlCtx, idempotencyKey: string, db: Db): Promis
 
 // ─────────────────── เลขที่ใบสำคัญ ───────────────────
 
-export async function nextJournalNo(
+// CRM C5.4-N ▸ (owner decision P20 (a)) เลขที่ใบสำคัญ = SEQUENCE ของ Postgres ต่อ (ระบบ, เล่ม) — migration
+//   20261104000000_account_journal_no_sequence (ฟังก์ชัน account_next_journal_no / account_peek_journal_no)
+//   · nextval ไม่รอใคร ไม่ชนกัน ไม่ถือล็อก ⇒ ธุรกรรมเงินที่ลงบัญชีพร้อมกันไม่ล้มด้วย P2002 อีก (เดิม count+1: hunter R11-2 80 % ล้ม)
+//   · ธุรกรรมที่ย้อนกลับ = เลขหาย 1 ตัว (ยอมรับตาม P20 — เลขเอกสารภาษี/ใบเสร็จ ยังต่อเนื่องไม่มีหายที่ doc-numbering.ts)
+//   · เลข n วิ่งต่อเนื่องต่อเล่ม **ไม่รีเซ็ตรายเดือน** (owner Q1 pending, default taken) — ตัดสินที่ journalNoDisplay ที่เดียว ◂
+
+/** รูปแบบที่แสดง `<SV|PV|RV|PY|JV>-<yyyy>-<mm>-<n เติม 0 ให้ครบ 4 หลัก>` · yyyy-mm = งวดไทยของรายการ (= periodKey)
+ *  🔴 ถ้าเจ้าของตอบ Q1 ว่า "ต้องรีเซ็ตรายเดือน" แก้ที่นี่ + ตัวจัดสรร (ลำดับต่อเดือน) — ผู้อ่านทุกตัวถือเลขเป็นข้อความทึบ */
+function journalNoDisplay(book: AccountJournalBook, date: Date, n: bigint | number): string {
+  const { year, month } = bkkPeriod(date);
+  return `${BOOK_PREFIX[book] ?? "JV"}-${year}-${month}-${String(n).padStart(4, "0")}`;
+}
+
+/** จัดสรรเลขที่ใบสำคัญ (กินเลข) — เรียกได้เฉพาะตอนจะ insert รายการจริง (commitEntry / reverseFor / reverseEntry) */
+export async function allocateJournalNo(
   ctx: GlCtx,
   book: string,
   date: Date,
   tx?: Tx,
 ): Promise<string> {
   const db: Db = tx ?? prisma;
-  const { periodKey, year, month } = bkkPeriod(date);
   const b = book as AccountJournalBook;
-  const prefix = BOOK_PREFIX[b] ?? "JV";
-  const count = await db.accountJournalEntry.count({
-    where: { systemId: ctx.systemId, book: b, periodKey },
-  });
-  return `${prefix}-${year}-${month}-${String(count + 1).padStart(4, "0")}`;
+  const rows = (await db.$queryRawUnsafe(
+    `SELECT account_next_journal_no($1, $2) AS n`,
+    ctx.systemId,
+    b,
+  )) as { n: bigint | number }[];
+  return journalNoDisplay(b, date, rows[0].n);
+}
+
+/** เลขที่ใบสำคัญ "ถัดไป" แบบดูอย่างเดียว (หน้าบัญชีรายวัน · กล่องสร้าง JV) — ไม่กินเลข ไม่สร้างอะไร
+ *  ค่าที่ได้เป็น "คาดว่าจะได้": มีคนลงบัญชีเล่มเดียวกันก่อน เลขจริงจะขยับ (จงใจ · เหมือน peekDocNo ของเอกสาร) */
+export async function peekJournalNo(ctx: GlCtx, book: string, date: Date): Promise<string> {
+  const b = book as AccountJournalBook;
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT account_peek_journal_no($1, $2) AS n`,
+    ctx.systemId,
+    b,
+  )) as { n: bigint | number }[];
+  return journalNoDisplay(b, date, rows[0].n);
 }
 
 // ─────────────────── setup ───────────────────
@@ -902,7 +928,7 @@ export async function reverseFor(
 
       const { periodKey } = bkkPeriod(date);
       await assertPeriodOpen(ctx, periodKey, db);
-      const docNo = await nextJournalNo(ctx, e.book, date, db as Tx);
+      const docNo = await allocateJournalNo(ctx, e.book, date, db as Tx);
 
       const rev = await db.accountJournalEntry.create({
         data: {
@@ -980,7 +1006,7 @@ export async function reverseEntry(
     const date = await resolveOpenDate(ctx, new Date(), db);
     const { periodKey } = bkkPeriod(date);
     await assertPeriodOpen(ctx, periodKey, db);
-    const docNo = await nextJournalNo(ctx, e.book, date, db as Tx);
+    const docNo = await allocateJournalNo(ctx, e.book, date, db as Tx);
 
     const created = await db.accountJournalEntry.create({
       data: {

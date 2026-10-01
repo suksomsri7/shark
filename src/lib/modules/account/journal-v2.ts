@@ -202,7 +202,11 @@ export function journalRangeKeyOf(from: string, to: string, now: Date): JournalR
   return "custom";
 }
 
-function whereOf(ctx: JournalCtx, input: JournalListInput, withBook: boolean): Prisma.AccountJournalEntryWhereInput {
+/** CRM C5.4-N ▸ คำค้นที่หน้าตาเป็นเลขที่ใบสำคัญเต็ม (เช่น `SV-2026-10-1234`) — ถ้ามีรายการเลขนี้จริง ค้นแบบตรงตัว
+ *  (เลขไม่รีเซ็ตรายเดือนแล้ว ⇒ พอเลยหลัก 9999 การค้นแบบ "มีคำนี้อยู่" จะเจอ `…-12345` ปนมาด้วย) ◂ */
+const FULL_JOURNAL_NO = /^(SV|PV|RV|PY|JV)-\d{4}-\d{2}-\d{4,}$/i;
+
+function whereOf(ctx: JournalCtx, input: JournalListInput, withBook: boolean, exactDocNo = false): Prisma.AccountJournalEntryWhereInput {
   const book = withBook ? bookOfTab(input.book) : null;
   const q = clampSearch(input.q);
   return {
@@ -217,7 +221,9 @@ function whereOf(ctx: JournalCtx, input: JournalListInput, withBook: boolean): P
           },
         }
       : {}),
-    ...(q
+    ...(q && exactDocNo
+      ? { docNo: q }
+      : q
       ? {
           OR: [
             { docNo: { contains: q, mode: "insensitive" as const } },
@@ -236,8 +242,12 @@ export async function listJournalPaged(ctx: JournalCtx, input: JournalListInput 
   const db = tenantDb(ctx);
   const pageSize = Math.min(Math.max(1, input.pageSize ?? JOURNAL_PAGE_SIZE), 200);
   const page = Math.max(1, input.page ?? 1);
-  const where = whereOf(ctx, input, true);
-  const whereNoBook = whereOf(ctx, input, false);
+  const q = clampSearch(input.q);
+  const exact =
+    FULL_JOURNAL_NO.test(q) &&
+    !!(await db.accountJournalEntry.findFirst({ where: { systemId: ctx.systemId, docNo: q }, select: { id: true } }));
+  const where = whereOf(ctx, input, true, exact);
+  const whereNoBook = whereOf(ctx, input, false, exact);
 
   // 🔴 WO 9.3 (งบ query): เดิมมี `count({ where })` อีก 1 คำสั่ง — แต่ groupBy ด้านล่างนับ "ต่อเล่ม"
   //    ภายใต้ตัวกรองชุดเดียวกัน (ต่างแค่ไม่ใส่ book) และ `book` เป็นคอลัมน์บังคับ (ไม่มี null)

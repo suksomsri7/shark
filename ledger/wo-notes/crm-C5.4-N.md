@@ -290,3 +290,87 @@ The session ended on the controller's order: the owner is moving machine/account
      - `world("b")` creating legacy entries before `saveSettings`
   4. Update the §4 "today" column with the measured tallies. Add the RED tally to the handback.
 - **Git:** one local commit of `scripts/pending/c54n/**` and this note, with no push. The modified `scripts/*-expected.json` (QC2 seed ids) are not committed.
+
+---
+
+## Builder (1 Oct 2026) — checkpoints
+
+Tree: `/root/projects/shark-crm-c54c` detached on 96a4c28f · QC2 only · logs `/tmp/c54n-logs/` (copy kept in `.qc-shots/c54n-logs/`).
+Controller rulings taken: P20 (a) · Q1 no monthly reset (**owner Q1 pending, default taken** — the decision lives in ONE function, `gl.ts journalNoDisplay`) ·
+Q2 phase 1 + N-1 only (phase 2 = follow-up entry below) · Q3/Q4 note only · Q5 margin 100 accepted.
+
+### CP-1 · RED on base (96a4c28f) — `RED.log` · 6/12 · no oracle setup fix needed (no "check ran … threw")
+- ❌ N1a: single 11/20 · 5-child 1/6 · 40-child 0/1 · raw P2002 journal no. ×9 (+6 Thai-wrapped) · payments +16
+- ❌ N1b: single 7/20 · 5-child 0/6 · 40-child 1/1 · raw P2002 journal no. ×13 · payments +47
+- ❌ N3-ops: TI 60/60 · receipt 60/60 · WTI 20/60 · 50 ทวิ 20/60 · purchase TI 60/60 · raw P2002 journal no. ×80
+- ✅ N7 · ✅ N5 · ✅ N5-preview · ✅ N2 (831 entries) · ✅ N4a · ✅ N8
+- ❌ N6: batch ok 20.8 s · both singles 0/1 · extra wait goods 18.9 s / service 18.5 s · raw P2002 ×2 · bare FOR UPDATE on the TI counter waited 17.8 s
+- ❌ N4b: results ok/FAIL, FAIL/FAIL ×3 · raw P2002 journal no. ×4
+- ❌ N3-numbers: `WHT_CERT:WHT-2026-10- gaps [1]` (N-1)
+- BEFORE measurements (base, separate snapshot worktree `/root/projects/shark-crm-c54n-base` so src edits cannot leak in): `before-q3.log` (probe-r11a ONLY=Q3) · `before-deadlock.log` (trace-r10-2 ROUNDS=40) — running.
+
+### CP-2 · BEFORE numbers (base 96a4c28f, snapshot worktree) + migration on QC2 + code written
+- BEFORE race (`before-q3.log`, probe-r11a ONLY=Q3): sequential 5/5 · 2/2 · 1/1 → round 1: singles **7/20**, 5-child 5/6, 40-child **0/1**, raw P2002 journal no. ×13 · round 2: singles **4/20**, 5-child 6/6, 40-child **0/1**, raw P2002 ×16.
+- BEFORE deadlock (`before-deadlock.log`, trace-r10-2 ROUNDS=40): ok|ok 40/40 · raw {} · cycles 0.
+- Migration `prisma/migrations/20261104000000_account_journal_no_sequence` applied to **QC2 only** (`iso.sh qc2.sh qc-prisma.sh migrate deploy`; qc-prisma.sh allows ep-cool-shadow, refuses ep-royal-night) → `migrate-deploy-qc2.log`.
+  Sanity (`scripts/pending/c54n/check-jno-fns.mts`): 5310 `acc_jno_*` sequences for 1061 systems with a chart (+1 system that posted lazily meanwhile) · fake system: peek 1 → next 1, 2 → peek 3/3 · drop leaves 0 · 428 ms.
+- Code (phase 1 + N-1): gl.ts `allocateJournalNo`/`peekJournalNo`/`journalNoDisplay` · journal/page.tsx → peek · finance.ts statement sort `date, createdAt, id` ·
+  journal-v2.ts exact-first search for a full journal number · doc-numbering.ts `seriesMatcher` + series-aware `legacyMaxSeq` (N-1) + tail registry
+  `openDocNumbering`/`deferDocNo`/`finalizeDocNos` · deferred: service auto TI, wht WTI (+Bangkok month), wht 50 ทวิ register (now the
+  configured WHT_CERT series = same generator as expense.ts, Bangkok month), expense 50 ทวิ + pending purchase TI · wrappers finalize last:
+  recordPayment, recordPaymentBatchInOneTx (+`docNos`), cheque.recordPaymentWithChequeInOneTx, expense.recordVendorPayment/issueExpenseDoc,
+  wht.issueWhtCreditCertStandalone/issueWhtCert · `recordPaymentInTx` now returns `whtCertDocId` (no number inside the tx) · pdpa tenant purge
+  drops the system's sequences · QC sweeper `scripts/sweep-jno-orphans-qc.mts` (dry run by default) · service.ts LOCK ORDER header = §2 · docs/sds/modules/account.md.
+- Next: typecheck → GREEN oracle run.
+
+### CP-3 · GREEN 12/12 (`GREEN1.log`) · fitness 33/33 ×2 · typecheck: src clean
+- N1a 20/20 · 6/6 · 1/1 · raw {} · +90 (15 s) · N1b same (23 s) · N3-ops 300/300 raw {} · N6 batch 19.6 s, singles 21+21 ok, extra wait goods 13 ms / service 181 ms,
+  bare FOR UPDATE on the TI counter 28 ms (was 17.8 s) · N4b 4×ok/ok + manual, SV continues at 0042 above legacy 0041 · N2 1141 entries, 2 skipped (allowed) ·
+  N3-numbers 616 docs, every series 1..max gapless (WHT 1..62 — N-1 gone) · N5/N5-preview (page → `peekJournalNo`) · N7 · N4a · N8 (0 sequences left).
+- N7 note: the oracle's bare `$transaction` around `recordPaymentInTx` now fails at the `deferDocNo` guard (no `openDocNumbering`) before its own
+  QC-INDUCED throw — rolls back, consumes nothing (as the design anticipated). If the controller wants N7 to exercise "failure after the numbered
+  documents were written" literally, an ORACLE-EDIT would call `openDocNumbering(tx)` first; not applied (test author's file).
+- typecheck-1: only 2 errors, both in the test author's probe `scripts/pending/c54n/probe-legal-counters.mts` (implicit any, present on 96a4c28f) —
+  fixed with `(n: string | null)` (probe, not the oracle).
+- `pnpm docs --check`: package.json has no `docs` script — pnpm runs its built-in `docs` (prints the npm URL, rc 0). Nothing is checked by it.
+- Next: regression list (`/tmp/c54n-logs/reg.sh` → `reg/SUMMARY.txt`), typecheck re-run, AFTER race + deadlock.
+
+### Migration for production — what each statement does (`20261104000000_account_journal_no_sequence/migration.sql`)
+1. `account_jno_seq_name(system, book)` — IMMUTABLE SQL: the identifier `acc_jno_<systemId>_<book>` (md5 of the id if it is not `[a-z0-9]{1,40}`). Catalog only.
+2. `account_jno_floor(system, book)` — STABLE SQL: `MAX` of the trailing digits of `docNo` over that (system, book), all periods. Read-only (AccessShareLock).
+3. `account_jno_ensure(system, book, margin)` — plpgsql: returns the sequence if it exists; otherwise `CREATE SEQUENCE IF NOT EXISTS … AS bigint
+   MINVALUE 1 START 1 CACHE 1 NO CYCLE` and `setval(floor + margin)`. A concurrent creator's `unique_violation`/`duplicate_table` is caught in a
+   sub-block and the now-visible sequence is returned (builder hardening over the §3 draft; the draft would have failed the 2nd first-posting once).
+4. `account_next_journal_no(system, book)` — `nextval(ensure(...))`. Used by gl.ts `allocateJournalNo`.
+5. `account_peek_journal_no(system, book)` — STABLE plpgsql: `last_value/is_called` of the sequence (or floor + 1 if none). Writes/creates nothing.
+6. `account_jno_drop(system)` — drops the 5 sequences of a system (pdpa tenant purge · QC teardown).
+7. `DO` block — for every `systemId` in "AccountLedger": `ensure` the 5 books with margin 100 if the system has a journal entry from the last
+   24 h, else 0. Measured on QC2: 1061 systems → 5305 sequences, seconds.
+- Risk: no ALTER/rewrite; only AccessShareLock reads + new objects. Old code (count+1) keeps working between migration and deploy; the margin 100
+  keeps the sequence above whatever count+1 hands out meanwhile (unless a book posts > 100 entries in that window — deploy right after migrating).
+  Rollback = old code: count+1 restarts at row count; it can collide with sequence-era numbers of the same month (P2002 → the old race, no data harm).
+- Prisma: no schema change; standalone sequences/functions are outside Prisma's model (migrate diff ignores them — verify once on CI's diff gate).
+
+### Follow-up card (phase 2 — NOT built, controller ruling Q2)
+- **C5.4-N2 · own document numbers at the tail.** `service.ts issueDocument` (`docNo = await nextDocNo(...)` before `postDocument`) and
+  `expense.ts issueExpenseDoc` (same, before `postDocument`), plus `product.ts` goods docs (PRR/RPR/CA `accountDocSequence.upsert`) and
+  `expense.ts submitForApproval` still hold their AccountDocSequence row for the whole transaction, i.e. across `postDocument` (inventory,
+  deposit, credit-chain row locks). Move each to `openDocNumbering` + `deferDocNo` + `finalizeDocNos` (docNo stays null until the tail; the
+  `emitDocumentIssued` payload and the function's `docNo` result must read the finalize map — emit AFTER finalize or move the emit into the
+  stamping step). Oracle to add: N6-style wait of a concurrent `issueDocument(TAX_INVOICE)` during a long goods invoice issue that consumes
+  inventory, and a cycle probe issueDocument ∥ recordPayment on the same TI series. Not needed for C5.4-N's oracle (12/12 without it).
+### Notes only (rulings Q3/Q4)
+- Q3: `gl.ts ensureAccounting` still inserts the month's `AccountPeriod` inside money transactions (first posting of a month waits on a
+  concurrent first posting's commit, once per month per system). Fix proposal stands (autocommit create before opening the transaction).
+- Q4: POS `TAX_INVOICE_ABB` numbers come from POS, not AccountDocSequence — not reviewed here.
+
+### Builder checkpoint (resumed ~06:50 UTC, after the container restart)
+- On disk (uncommitted at the restart, src mtimes 04:59–05:05, untouched since): gl/doc-numbering/service/cheque/expense/finance/group/
+  journal-v2/wht.ts · pdpa.ts · journal/page.tsx · docs/sds/modules/account.md · migration `20261104000000_account_journal_no_sequence` (on QC2) ·
+  `scripts/sweep-jno-orphans-qc.mts` · `scripts/pending/c54n/check-jno-fns.mts` · probe type fix.
+- Proven on the CURRENT src by logs (all runs started after the last src edit): oracle `GREEN1.log` 12/12 (05:25) · fitness env + no-env 33/33 ·
+  `reg/SUMMARY.txt` — the full QC2 list of run-main-c2.sh (13 probes + c5.3 L2,X + 22 suites) all rc=0, ALLDONE 06:23 (finished on its own, no
+  unit left running). Logs copied to `.qc-shots/c54n-logs/`.
+- Remaining: (1) line-level compare of the suites without JSON_SUMMARY vs the controller's base log (`cmp.py`/`tdiff.py`) · (2) typecheck re-run
+  (typecheck-1 predates the probe fix) · (3) AFTER race (probe-r11a ONLY=Q3) + deadlock (trace-r10-2 ROUNDS=40) · (4) migration timestamp check ·
+  (5) final commit + push to wip/crm-c54c-r8.
