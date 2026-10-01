@@ -3,6 +3,7 @@ import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { posTabs } from "@/lib/modules/pos/tabs";
+import { posMembership, posSalesScope, posScopeUnitIds } from "@/lib/modules/pos/access";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Section } from "@/components/ui/Section";
 import { DataList } from "@/components/ui/DataList";
@@ -21,10 +22,14 @@ export default async function PosSalesPage({ params }: { params: Promise<{ id: s
   const tenantId = auth.active.tenantId;
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
+  // HF-POS-PAGES: เดิมไม่ตรวจสิทธิ์เลย — ต้องขายได้ที่สาขาใดสาขาหนึ่ง · คนจำกัดสาขาเห็นเฉพาะบิลสาขาของตัวเอง
+  const scope = posSalesScope(posMembership(auth.active));
+  if (!scope) notFound();
+  const unitIds = posScopeUnitIds(scope);
   const def = systemDef(sys.type);
 
   const sales = await prisma.posSale.findMany({
-    where: { tenantId, systemId: id },
+    where: { tenantId, systemId: id, ...(unitIds ? { unitId: { in: unitIds } } : {}) },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
