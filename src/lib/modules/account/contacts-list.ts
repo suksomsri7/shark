@@ -170,6 +170,8 @@ export type ContactsSidebar = {
 /**
  * C5.4 (L1-M3): `crmViewer` = ผู้ดูในสายตาของ CRM — ป้าย/ตัวนับ "CRM" นับเฉพาะผู้ติดต่อ CRM ที่เขามีสิทธิ์อ่าน + มองเห็น ·
  * ไม่ส่ง = ไม่นับ CRM เลย (fail-closed — ผู้เรียกที่ใช้แค่รหัส/กลุ่ม เช่น getContactDetail ไม่ต้องส่ง)
+ * CRM C5.5-fix14: ตัวเดียวกันตัดสินฝั่ง "สมาชิก" ด้วย (ตัวนับ · ตัวกรอง `source:member` · ป้ายต่อแถว · REST `badges.member`) —
+ *   ไม่มีสิทธิ์อ่านสมาชิก/นอกขอบเขตสาขา = เหมือนไม่มีใครเป็นสมาชิก
  */
 export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter, crmViewer?: import("@/lib/modules/member").MemberActor | null): Promise<ContactsSidebar> {
   const db = dbOf(ctx, meter);
@@ -211,7 +213,7 @@ export async function loadContactsSidebar(ctx: Ctx, meter?: QueryMeter, crmViewe
   const { memberSystemId, crmSystemId } = await findLinkedSystemIds(ctx.tenantId);
   bump(meter);
   const [memberPartySet, crmPartySet] = await Promise.all([
-    memberSystemId ? memberSvc.listPartyIdsWithCustomer(ctx.tenantId, memberSystemId, partyIds) : Promise.resolve(new Set<string>()),
+    memberSystemId ? memberSvc.listPartyIdsWithCustomer(ctx.tenantId, memberSystemId, partyIds, crmViewer) : Promise.resolve(new Set<string>()),
     crmSystemId ? crmSvc.listPartyIdsWithContact({ tenantId: ctx.tenantId, systemId: crmSystemId }, partyIds, crmViewer) : Promise.resolve(new Set<string>()),
   ]);
   if (memberSystemId) bump(meter);

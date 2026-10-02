@@ -292,11 +292,24 @@ function viewerDto(row: CrmContact, states: CompanyStates): ContactDto {
   return { ...toDto(row), companyText: companyTextFor(row, states) };
 }
 /**
+ * CRM C5.5-fix14 r4 (รีวิว RV14-12) ▸ ลิงก์ไปสมาชิก (`memberCustomerId`) ที่ผู้ดูเห็นได้ — ตัวตัดสินของโมดูลสมาชิก (`memberIdsVisibleTo`:
+ *   อ่านสมาชิกไม่ได้ = ไม่ยิง query · ทุกสาขา = ไม่ยิง query · จำกัดสาขา = query เดียวต่อหน้า) · ใช้กับทุกทางอ่านที่ส่งค่านี้ถึงผู้ใช้
+ *   (รายการ/ค้นหา · ผลของทางเขียน · การ์ดย่อ briefFor · CSV) — ทางเขียน/การตัดสินภายใน (แปลง · รวม · ความยินยอม) ยังอ่านแถวดิบ ◂
+ */
+async function memberSeen(ctx: ContactsCtx, viewer: MemberActor, memberIds: readonly (string | null)[]): Promise<Set<string>> {
+  return (await memberFacade()).memberIdsVisibleTo(ctx.tenantId, viewer, memberIds);
+}
+/** ไม่เห็นสมาชิกคนนั้น = แถวเหมือน "ไม่ได้ผูกสมาชิก" (memberCustomerId null) */
+function maskMemberLink<T extends { memberCustomerId: string | null }>(row: T, seen: Set<string>): T {
+  return row.memberCustomerId && !seen.has(row.memberCustomerId) ? { ...row, memberCustomerId: null } : row;
+}
+/**
  * CRM C5.5-fix12 ▸ RV10-2: DTO ที่ "ทางเขียน" ส่งคืนผู้เขียน = กติกาเดียวกับหน้า 360/รายการ (viewerDto) — เดิมคืน toDto ดิบ ⇒ ข้อความบริษัทเดิม
  *   ของบริษัทที่ผู้เขียนมองไม่เห็นหลุดกลับมาในผลของ updateContact/setTags/… (REST · AI tool · server action ใช้ผลนี้) · อ่านการมองเห็น 1 ครั้ง ◂
  */
 async function viewerDtoOf(ctx: ContactsCtx, viewer: MemberActor, row: CrmContact): Promise<ContactDto> {
-  return viewerDto(row, await companies.visibleCompanyStates(coCtx(ctx), viewer, [row.companyId]));
+  const [states, seen] = await Promise.all([companies.visibleCompanyStates(coCtx(ctx), viewer, [row.companyId]), memberSeen(ctx, viewer, [row.memberCustomerId])]);
+  return viewerDto(maskMemberLink(row, seen), states); // C5.5-fix14 r4 (RV14-12)
 }
 
 /**
@@ -1592,14 +1605,24 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
     }),
   }));
 
+  // CRM C5.5-fix14 r3 (รีวิว RV14-1 · กระจกของ S4) ▸ บล็อก "สมาชิก" ตามสิทธิ์สมาชิกของผู้ดู — ตัวตัดสินของโมดูลสมาชิก (`briefFor`:
+  //   `canReadMember` + ขอบเขตสาขา) · ไม่เห็น = `member: null` และ `contact.memberCustomerId: null` (เหมือน "ไม่ได้ผูกสมาชิก" ทุกไบต์) ·
+  //   ผู้ดูที่มีสิทธิ์ได้บล็อกเดิม (สมาชิกถูกลบไปแล้ว = บล็อก "ผูกแล้ว (ไม่พบ…)" แบบเดิม เฉพาะผู้ที่อ่านโมดูลสมาชิกได้) ◂
   let member: Contact360["member"] = null;
+  let memberSeen = false;
   if (row.memberCustomerId) {
+    const mf = await memberFacade();
     const sys = await consents.memberSystemOf(ctx.tenantId, row.memberCustomerId);
-    member = { customerId: row.memberCustomerId, systemId: sys?.systemId ?? null, memberCode: sys?.memberCode ?? null, name: sys?.name ?? null, tierName: null, phoneMasked: null };
     if (sys) {
-      const briefs = await (await memberFacade()).briefFor({ tenantId: ctx.tenantId, systemId: sys.systemId, actorUserId: actorId(ctx) }, a, [row.memberCustomerId]).catch(() => []);
+      const briefs = await mf.briefFor({ tenantId: ctx.tenantId, systemId: sys.systemId, actorUserId: actorId(ctx) }, a, [row.memberCustomerId]).catch(() => []);
       const b = briefs[0];
-      if (b) member = { ...member, tierName: b.tier?.name ?? null, phoneMasked: b.phoneMasked };
+      if (b) {
+        memberSeen = true;
+        member = { customerId: row.memberCustomerId, systemId: sys.systemId, memberCode: sys.memberCode ?? null, name: sys.name ?? null, tierName: b.tier?.name ?? null, phoneMasked: b.phoneMasked };
+      }
+    } else if (mf.canReadMember(a)) {
+      memberSeen = true;
+      member = { customerId: row.memberCustomerId, systemId: null, memberCode: null, name: null, tierName: null, phoneMasked: null };
     }
   }
   // ชื่อบริษัทผ่านบริการบริษัท (companyWhere · ยังใช้งาน) — ลิงก์ไปบริษัทที่ถูกรวม/เก็บถาวร/มองไม่เห็น ไม่แสดง
@@ -1623,7 +1646,7 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
   }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   return {
-    contact: viewerDto(row, coStates),
+    contact: viewerDto(memberSeen ? row : { ...row, memberCustomerId: null }, coStates),
     owner: owner?.user ? { id: owner.user.id, name: owner.user.name ?? "ผู้ใช้" } : null,
     member,
     company: primary,
@@ -1852,11 +1875,12 @@ async function listContactsIn(ctx: ContactsCtx, actor: MemberActor, input: Conta
   const more = rows.length > pageSize;
   const page = more ? rows.slice(0, pageSize) : rows;
   const coIds = [...new Set(page.map((r) => r.companyId).filter((x): x is string => !!x))];
-  const [states, owners] = await Promise.all([
+  const [states, owners, seen] = await Promise.all([
     companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
     ownerNames(ctx, page.map((r) => r.ownerUserId)),
+    memberSeen(ctx, a, page.map((r) => r.memberCustomerId)), // CRM C5.5-fix14 r4 (RV14-12) ▸ ป้าย "สมาชิก" ตามสิทธิ์สมาชิกของผู้ดู ◂
   ]);
-  const items: ContactListItem[] = page.map((r) => ({ ...viewerDto(r, states), companyName: companyNameFor(r, states), ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
+  const items: ContactListItem[] = page.map((r) => ({ ...viewerDto(maskMemberLink(r, seen), states), companyName: companyNameFor(r, states), ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
   return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
 }
 
@@ -2690,6 +2714,10 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
     companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
     ownerNames(ctx, rows.map((r) => r.ownerUserId)),
   ]);
+  // CRM C5.5-fix14 r4 (RV14-12) ▸ คอลัมน์ "รหัสสมาชิกที่ผูก" ตามสิทธิ์สมาชิกของผู้ส่งออก (มองไม่เห็น = ช่องว่าง เหมือนไม่ได้ผูก) · ชุดละ 1,000 id ◂
+  const seenMembers = new Set<string>();
+  const linkIds = [...new Set(rows.map((r) => r.memberCustomerId).filter((x): x is string => !!x))];
+  for (let i = 0; i < linkIds.length; i += 1000) for (const id of await memberSeen(ctx, a, linkIds.slice(i, i + 1000))) seenMembers.add(id);
   const header = ["ชื่อจริง", "นามสกุล", "เบอร์โทร", "อีเมล", "ตำแหน่ง", "บริษัท", "ขั้น", "สถานะ lead", "ผู้ดูแล", "แท็ก", "ที่มา", "ไม่รับข่าวสาร", "รหัสสมาชิกที่ผูก", "เพิ่มเมื่อ", ...customFields.map((f) => f.label)];
   const lines = [csvRow(header)];
   for (const r of rows) {
@@ -2708,7 +2736,7 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
         r.tags.join("; "),
         r.sourceKind ? CONTACT_SOURCE_LABEL[r.sourceKind as ContactSource] : "",
         r.marketingOptOut ? "ใช่" : "",
-        r.memberCustomerId ? "ผูกแล้ว" : "",
+        r.memberCustomerId && seenMembers.has(r.memberCustomerId) ? "ผูกแล้ว" : "",
         r.createdAt.toISOString().slice(0, 10),
         ...customFields.map((f) => displayOf(f.type, bag[f.key] ?? null, f.choices, "export")),
       ]),
@@ -2751,9 +2779,10 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
     orderBy: [{ createdAt: "asc" }],
   });
   if (!row) return null;
-  const [open, coStates] = await Promise.all([
+  const [open, coStates, seen] = await Promise.all([
     prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } }),
     companies.visibleCompanyStates(coCtx(ctx), actor, [row.companyId]), // CRM C5.5-fix10 ▸ ข้อความบริษัทเดิมตามการมองเห็นของผู้ดู ◂
+    memberSeen(ctx, actor, [row.memberCustomerId]), // CRM C5.5-fix14 r4 (RV14-12) ▸ การ์ดย่อ (REST brief/byParty · แผง CRM ในแชท) ◂
   ]);
   return {
     contactId: row.id,
@@ -2764,7 +2793,7 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
     ownerUserId: row.ownerUserId,
     companyId: row.companyId,
     companyName: companyTextFor(row, coStates),
-    memberCustomerId: row.memberCustomerId,
+    memberCustomerId: row.memberCustomerId && seen.has(row.memberCustomerId) ? row.memberCustomerId : null,
     openDealCount: open,
   };
 }

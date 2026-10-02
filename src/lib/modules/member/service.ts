@@ -438,18 +438,61 @@ export async function importCustomers(
 }
 
 /**
+ * CRM C5.5-fix14 ▸ ขอบเขตแถว Customer ที่ผู้ถาม (`MemberLinkViewer`) อ่านได้ — ตัวตัดสินเดียวของการอ่าน "ตาม Party" จากโมดูลอื่น
+ *   (การ์ดสมาชิก/POS ในโปรไฟล์ · ป้าย/ตัวนับ/ตัวกรอง "สมาชิก" ในรายการผู้ติดต่อ · รหัสสมาชิกในหน้ารวมผู้ติดต่อซ้ำ):
+ *   - ไม่ส่ง/null/อ่านโมดูลสมาชิกไม่ได้ (`canReadMember`) ⇒ `null` = ไม่มีแถวเลย (ผู้เรียกตอบเหมือน "ไม่ใช่สมาชิก" ไม่ยิง query)
+ *   - `"system"` / ผู้ดูที่ไม่ถูกจำกัดสาขา ⇒ `{}` (ทั้งระบบ)
+ *   - ผู้ดูที่ถูกจำกัดสาขา ⇒ `actorScopeWhere` ของหน้ารายชื่อสมาชิก (`list.ts` — homeUnitId ในสิทธิ์ หรือเคยซื้อ/จอง/ใช้บริการที่สาขาตน
+ *     = ด่านเดียวกับ `profile.assertVisible`/`briefFor` ในรูป where) ⇒ 1 query ไม่โหลดแต้ม/ระดับ (งบ query ของหน้า WO 3.4 ≤ 12)
+ *   - ลูกค้าเอง (CUSTOMER) ⇒ แถวของตัวเองเท่านั้น (ข้อแรกของ `assertVisible`)
+ */
+async function memberLinkScope(viewer: MemberLinkViewer | undefined): Promise<Prisma.CustomerWhereInput | null> {
+  if (viewer === undefined || viewer === null) return null;
+  if (viewer === "system") return {};
+  const { canReadMember } = await import("./access");
+  if (!canReadMember(viewer)) return null;
+  if (viewer.role === "CUSTOMER") return viewer.customerId ? { id: viewer.customerId } : null;
+  const { actorScopeWhere } = await import("./list"); // dynamic: list → profile → service = วง import (เหตุผลเดียวกับ visibleCustomerIds)
+  return actorScopeWhere(viewer) ?? {};
+}
+
+/**
+ * CRM C5.5-fix14 r4 (รีวิว RV14-12) ▸ id สมาชิก (Customer.id ของทุกระบบสมาชิกในร้าน) ชุดนี้ ตัวไหนที่ผู้ดูเห็นได้ — สำหรับโมดูลอื่นที่ถือ
+ *   "ลิงก์ไปสมาชิก" ไว้ในแถวของตัวเอง (CRM `memberCustomerId`: รายการ · การ์ดย่อ · CSV · ผลของทางเขียน) · กติกาเดียวกับ `memberLinkScope`:
+ *   อ่านโมดูลสมาชิกไม่ได้ ⇒ ชุดว่าง **ไม่ยิง query** · ผู้ดูทุกสาขา/`"system"` ⇒ ทุก id ที่ส่งมา **ไม่ยิง query** (เหมือนเดิมทุกไบต์) ·
+ *   ผู้ดูที่ถูกจำกัดสาขา/ลูกค้าเอง ⇒ query เดียว (ขอบเขตสาขา = `actorScopeWhere`) — ผู้เรียกเรียกครั้งเดียวต่อหน้า
+ */
+export async function memberIdsVisibleTo(
+  tenantId: string,
+  viewer: MemberLinkViewer | undefined,
+  ids: readonly (string | null | undefined)[],
+): Promise<Set<string>> {
+  const uniq = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
+  if (uniq.length === 0) return new Set();
+  const scope = await memberLinkScope(viewer);
+  if (!scope) return new Set();
+  if (Object.keys(scope).length === 0) return new Set(uniq);
+  const rows = await prisma.customer.findMany({ where: { AND: [{ tenantId, id: { in: uniq } }, scope] }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * WO 3.2 — หน้าผู้ติดต่อบัญชี: ป้าย "สมาชิก" (badge) มาจากแถว Customer ที่ partyId เดียวกับ AccountContact
  * (Party = ตัวตนกลางระดับ tenant จาก WO 3.1) · 1 query ไม่ N+1 (account/contacts-list.ts เรียกครั้งเดียวต่อหน้า)
  * เส้น import account→member ได้รับอนุมัติล่วงหน้าตามใบสั่งงาน WO 3.2 (อ่านอย่างเดียว)
+ * CRM C5.5-fix14 ▸ ตามสิทธิ์ผู้ถาม (`memberLinkScope` · fail-closed): ไม่มีสิทธิ์ = ชุดว่าง ⇒ ป้าย/ตัวนับ/ตัวกรอง "สมาชิก" เหมือนไม่มีใครเป็นสมาชิก ◂
  */
 export async function listPartyIdsWithCustomer(
   tenantId: string,
   memberSystemId: string,
   partyIds: string[],
+  viewer?: MemberLinkViewer,
 ): Promise<Set<string>> {
   if (partyIds.length === 0) return new Set();
+  const scope = await memberLinkScope(viewer);
+  if (!scope) return new Set();
   const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
-    where: { partyId: { in: partyIds } },
+    where: { AND: [{ partyId: { in: partyIds } }, scope] },
     select: { partyId: true },
   });
   return new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x));
@@ -458,15 +501,19 @@ export async function listPartyIdsWithCustomer(
 /**
  * WO 3.4 — หน้า "รวมผู้ติดต่อซ้ำ" (g7 แถว "เชื่อมกับสมาชิก" แสดง "#M-00087")
  * คืน map partyId → รหัสสมาชิก · 1 query · อ่านอย่างเดียว
+ * CRM C5.5-fix14 ▸ ตามสิทธิ์ผู้ถาม (`memberLinkScope` · fail-closed): ไม่มีสิทธิ์ = map ว่าง (ไม่มีป้ายรหัสสมาชิก) ◂
  */
 export async function findMemberCodesByPartyIds(
   tenantId: string,
   memberSystemId: string,
   partyIds: string[],
+  viewer?: MemberLinkViewer,
 ): Promise<Map<string, string>> {
   if (partyIds.length === 0) return new Map();
+  const scope = await memberLinkScope(viewer);
+  if (!scope) return new Map();
   const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
-    where: { partyId: { in: partyIds } },
+    where: { AND: [{ partyId: { in: partyIds } }, scope] },
     select: { partyId: true, memberCode: true, id: true },
   });
   const out = new Map<string, string>();
@@ -478,11 +525,15 @@ export async function findMemberCodesByPartyIds(
  * WO 3.4 — การ์ด "สมาชิก"/"POS" ในแท็บ **การเชื่อมต่อ** ของโปรไฟล์ผู้ติดต่อ 360° (SPEC §7.1 · ภาพ g6)
  * อ่านอย่างเดียว · 1 query · คืนสมาชิกที่ผูก Party เดียวกับผู้ติดต่อบัญชี (ไม่มี = null)
  * `visitCount`/`totalSpentSatang` = ยอดสะสมหน้าร้าน (POS เรียก `recordSpend`/`recordVisit` ตอนปิดบิล)
+ * CRM C5.5-fix14 (S4) ▸ ตามสิทธิ์ของผู้ถาม (`memberLinkScope` · กติกาเดียวกับ `findCustomersForLink`) · **fail-closed**:
+ *   ไม่ส่ง/null/อ่านโมดูลสมาชิกไม่ได้/มองไม่เห็นตามขอบเขตสาขา = null (ตอบเหมือน "ไม่มีสมาชิกผูก" — ไม่บอกว่ามีอยู่) ·
+ *   ผู้ถามที่มีสิทธิ์ได้แถวเดิมทุกไบต์ (แถวเก่าสุดที่เขามองเห็น) · `"system"` = งานระบบ ◂
  */
 export async function findCustomerByPartyId(
   tenantId: string,
   memberSystemId: string,
   partyId: string,
+  viewer?: MemberLinkViewer,
 ): Promise<{
   id: string;
   memberCode: string | null;
@@ -491,11 +542,39 @@ export async function findCustomerByPartyId(
   totalSpentSatang: number;
   visitCount: number;
 } | null> {
+  const scope = await memberLinkScope(viewer);
+  if (!scope) return null; // ไม่ต้องยิง query เลย
   return tenantDb({ tenantId, systemId: memberSystemId }).customer.findFirst({
-    where: { partyId },
+    where: { AND: [{ partyId }, scope] },
     select: { id: true, memberCode: true, name: true, tier: true, totalSpentSatang: true, visitCount: true },
     orderBy: { createdAt: "asc" },
   });
+}
+
+/**
+ * CRM C5.5-fix14 r3 (รีวิว RV14-3) — โมดูลอื่นรวมตัวตน (Party `fromPartyId` → `toPartyId`, เช่นรวมผู้ติดต่อบัญชี):
+ * แถวสมาชิกของ Party ที่ถูกรวมทิ้ง **ย้ายตามไป** Party ที่เหลือ ในธุรกรรมของผู้เรียก (กติกา party.mergeParties: "ผู้เรียกย้ายข้อมูลของโมดูลตัวเอง")
+ *   - r4 (RV14-14): นับ/ย้ายเฉพาะสมาชิกที่ยังใช้อยู่ (ไม่ใช่ MERGED/CLOSED) — แถวที่ถูกรวมไปแล้ว/ปิด(ลบข้อมูล)แล้วอยู่กับ Party เดิม
+ *     (ไม่ใช่ "สมาชิกของคนนี้" อีกต่อไป: MERGED ชี้ไปตัวที่รวมแล้ว · CLOSED = ลบ/ปิดตาม PDPA — ไม่ควรโผล่บนการ์ดของผู้ติดต่อที่เหลือ)
+ *     และไม่นับเป็น "มีสมาชิกอยู่แล้ว" บน Party ปลายทาง (สมาชิกที่ปิดแล้วต้องไม่บังสมาชิกตัวจริงของอีกฝั่ง)
+ *   - ต่อระบบสมาชิก: Party ปลายทาง**ยังไม่มี**สมาชิกในระบบนั้น ⇒ ย้าย · **มีอยู่แล้ว** ⇒ ไม่แตะทั้งสองแถว (ไม่รวมสมาชิกให้เงียบ ๆ —
+ *     สมาชิกของตัวรองยังอยู่กับ Party เดิม เปิดได้จากหน้าสมาชิก; รวมสมาชิกซ้ำเป็นงานของหน้ารวมสมาชิก)
+ *   - งานระบบ (ไม่ขึ้นกับผู้กด — ผู้ที่มองไม่เห็นสมาชิกก็ต้องไม่ทำให้ลิงก์หาย) · SQL คำสั่งเดียว (อะตอมมิก · ไม่ผ่าน tenantDb ของผู้เรียก
+ *     ที่ผูกระบบของโมดูลอื่นไว้) · คืนจำนวนที่ย้าย — ผู้เรียก**ห้าม**แสดงต่อผู้ใช้ (บอกว่ามีสมาชิกอยู่)
+ */
+export async function followPartyMerge(
+  tx: Pick<Prisma.TransactionClient, "$executeRaw">,
+  tenantId: string,
+  fromPartyId: string,
+  toPartyId: string,
+): Promise<number> {
+  if (!tenantId || !fromPartyId || !toPartyId || fromPartyId === toPartyId) return 0;
+  return tx.$executeRaw`
+    UPDATE "Customer" c SET "partyId" = ${toPartyId}, "updatedAt" = now()
+     WHERE c."tenantId" = ${tenantId} AND c."partyId" = ${fromPartyId}
+       AND c."status" NOT IN ('MERGED', 'CLOSED')
+       AND NOT EXISTS (SELECT 1 FROM "Customer" k WHERE k."tenantId" = ${tenantId} AND k."memberSystemId" = c."memberSystemId" AND k."partyId" = ${toPartyId}
+                         AND k."status" NOT IN ('MERGED', 'CLOSED'))`;
 }
 
 /**

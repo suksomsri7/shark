@@ -140,8 +140,10 @@ const CONTACT_LITE_SELECT = {
  *   (2) คู่ซ้ำที่เห็นได้ในระบบบัญชีนี้เอง (taxId+สาขาตรง · phoneNorm ตรง · ชื่อคล้าย ≥ 0.9)
  *       ใช้ `nameSimilarity` ตัวเดียวกับ party (ไม่ก๊อปสูตร)
  * ตัดคู่ที่เคย DISMISSED/MERGED ไปแล้วออก · ไม่รวมรายที่ปิดใช้งาน/ถูกรวมไปแล้ว
+ * CRM C5.5-fix14: `viewer` = ผู้ดูในสายตาของโมดูลสมาชิก — ป้าย "#รหัสสมาชิก" (`memberLinkLabel`) ตามสิทธิ์อ่านสมาชิก + ขอบเขตสาขา ·
+ *   ไม่ส่ง/null = ไม่มีป้าย (fail-closed เหมือน `findCustomersForLink`) · หน้าจอส่งสมาชิกภาพของคนเปิดหน้าเสมอ
  */
-export async function listMergeCandidates(ctx: Ctx): Promise<MergeCandidate[]> {
+export async function listMergeCandidates(ctx: Ctx, viewer?: import("@/lib/modules/member").MemberActor | null): Promise<MergeCandidate[]> {
   const db = tenantDb(ctx);
   const contacts = (await db.accountContact.findMany({
     where: { archivedAt: null, mergedIntoId: null },
@@ -220,7 +222,7 @@ export async function listMergeCandidates(ctx: Ctx): Promise<MergeCandidate[]> {
   const closedPartyPairs = new Set(closed.map((r) => pairKeyOf(r.partyAId, r.partyBId)));
 
   const ids = [...new Set([...found.values()].flatMap((p) => [p.a, p.b]))];
-  const enriched = await enrichContacts(ctx, ids);
+  const enriched = await enrichContacts(ctx, ids, viewer);
 
   const out: MergeCandidate[] = [];
   for (const p of found.values()) {
@@ -248,7 +250,7 @@ export async function listMergeCandidates(ctx: Ctx): Promise<MergeCandidate[]> {
 const REASON_ORDER: Record<MergeReason, number> = { TAX_ID: 0, PHONE: 1, NAME_SIMILAR: 2 };
 
 /** เติมข้อมูลที่ตารางเทียบของ g7 ต้องใช้ (กลุ่ม · จำนวนเอกสาร/JV/กฎประจำ · ป้ายสมาชิก) — 4 query รวมทุกราย */
-async function enrichContacts(ctx: Ctx, ids: string[]): Promise<Map<string, MergeCandidateContact>> {
+async function enrichContacts(ctx: Ctx, ids: string[], viewer?: import("@/lib/modules/member").MemberActor | null): Promise<Map<string, MergeCandidateContact>> {
   const db = tenantDb(ctx);
   if (ids.length === 0) return new Map();
   const [rows, groupMembers, docGroups, jvGroups, recurringGroups, linked] = await Promise.all([
@@ -265,7 +267,7 @@ async function enrichContacts(ctx: Ctx, ids: string[]): Promise<Map<string, Merg
   // ป้าย "เชื่อมกับสมาชิก" ของ g7 = รหัสสมาชิกจริง (#M-000xx) ไม่ใช่ id ภายใน
   const partyIds = [...new Set(rows.map((r) => r.partyId).filter((x): x is string => !!x))];
   const memberCodeOf = linked.memberSystemId
-    ? await memberSvc.findMemberCodesByPartyIds(ctx.tenantId, linked.memberSystemId, partyIds)
+    ? await memberSvc.findMemberCodesByPartyIds(ctx.tenantId, linked.memberSystemId, partyIds, viewer) // C5.5-fix14: ตามสิทธิ์สมาชิกของผู้ดู
     : new Map<string, string>();
 
   const groupsOf = new Map<string, string[]>();
@@ -310,9 +312,10 @@ export async function getMergePair(
   ctx: Ctx,
   primaryId: string,
   secondaryId: string,
+  viewer?: import("@/lib/modules/member").MemberActor | null, // C5.5-fix14: ป้ายรหัสสมาชิกตามสิทธิ์ผู้ดู (ไม่ส่ง = ไม่มีป้าย)
 ): Promise<{ primary: MergeCandidateContact; secondary: MergeCandidateContact } | null> {
   if (primaryId === secondaryId) return null;
-  const map = await enrichContacts(ctx, [primaryId, secondaryId]);
+  const map = await enrichContacts(ctx, [primaryId, secondaryId], viewer);
   const primary = map.get(primaryId);
   const secondary = map.get(secondaryId);
   if (!primary || !secondary) return null;
@@ -430,11 +433,22 @@ export async function mergeContacts(ctx: Ctx, input: MergeContactsInput): Promis
       // 7) Party (ตัวตนกลางระดับ tenant) — ตัวรองชี้ไปตัวหลัก + ปิดคู่ใน PartyMergeCandidate
       // cast: `tx` เป็น client ที่ผ่าน $extends ของ tenantDb แล้ว (ตัวกรอง tenant/system ยังทำงานตอนรัน)
       // TypeScript มองเป็นชนิดเฉพาะของ extended client — ประกาศพารามิเตอร์เป็น TransactionClient เพื่ออ่านง่าย
-      await mergeParties(tx as unknown as Prisma.TransactionClient, ctx, {
+      const partyMove = {
         primaryPartyId: (patch as { partyId?: string | null }).partyId ?? primary.partyId,
         secondaryPartyId: secondary.partyId,
         keepSecondaryParty: choices.partyId === "secondary",
-      });
+      };
+      await mergeParties(tx as unknown as Prisma.TransactionClient, ctx, partyMove);
+
+      // 7b) CRM C5.5-fix14 r3 (รีวิว RV14-3): สมาชิกของ Party ที่ถูกรวมทิ้ง ย้ายตามไป Party ที่เหลือ (ผ่าน member service · งานระบบ ไม่ขึ้นกับผู้กด) —
+      //   ไม่งั้นผู้รวมที่มองไม่เห็นสมาชิก (ป้าย "— ยังไม่เชื่อม" ทั้งสองฝั่ง) เลือกตัวหลักผิดฝั่งแล้วลิงก์สมาชิกหายเงียบ ๆ ·
+      //   ไม่คืนจำนวนใน MergeResult/audit (จะบอกผู้ที่มองไม่เห็นว่ามีสมาชิก) · สองฝั่งมีสมาชิกทั้งคู่ = ไม่แตะ (ดู followPartyMerge)
+      //   ใช้ Party "เดิม" ของสองฝั่ง (ไม่ใช่ partyMove ที่ถูก patch ทับแล้วเมื่อเลือก Party ของตัวรอง): Party ที่ผู้ติดต่อตัวหลักถือหลังรวม = keep · อีกฝั่ง = drop
+      const keepParty = partyMove.keepSecondaryParty ? secondary.partyId : primary.partyId;
+      const dropParty = partyMove.keepSecondaryParty ? primary.partyId : secondary.partyId;
+      if (keepParty && dropParty && keepParty !== dropParty) {
+        await memberSvc.followPartyMerge(tx as unknown as Prisma.TransactionClient, ctx.tenantId, dropParty, keepParty);
+      }
 
       // WO C4 — ยิง webhook ใน tx เดียวกับการย้าย (ล้มกลางทาง = ไม่มีทั้งการย้ายและ event)
       //   cast เหตุผลเดียวกับ mergeParties ข้างบน (tx ผ่าน $extends ของ tenantDb แล้ว)
