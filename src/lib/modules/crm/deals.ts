@@ -47,6 +47,7 @@ import { crmStaleDaysDefaultOf } from "./settings";
 // CRM C1.6 ▸ การ์ดบอร์ดงานของดีลใน getDeal360 ◂
 import { auditSystemActivity, dealKanbanCards, recordSystemActivityInTx, type DealKanbanCard } from "./activities";
 import {
+  HIDDEN_CONTACT_NAME, // CRM C5.5-fix10 ◂
   DEAL_BOARD_CARDS_MAX,
   DEAL_BULK_MAX,
   DEAL_COLLABORATORS_MAX,
@@ -1864,28 +1865,44 @@ async function userNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Pro
   return new Map(rows.map((r) => [r.id, r.name ?? r.email ?? "ผู้ใช้"]));
 }
 
-async function companyNames(ctx: DealsCtx, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
+// CRM C5.5-fix10 ▸ FX7-1: ชื่อบริษัท/ผู้ติดต่อบนพื้นผิวของดีล = ตามการมองเห็นของ **ผู้ดู** (กติกาเดียวกับดีล 360 · getDeal360):
+//   บริษัทผ่าน `companies.companyRefsInTx(…, ผู้ดู, …)` (companyWhere) · ผู้ติดต่อผ่าน contactWhere · มองไม่เห็น = ไม่มีชื่อ
+//   (บริษัท → null/"" = แสดงแบบ "ไม่ผูกบริษัท" · ผู้ติดต่อ → HIDDEN_CONTACT_NAME แบบดีล 360 · คะแนน 0) — ไม่มีข้อความที่ได้จาก id ·
+//   เดิมอ่านชื่อในขอบเขตระบบ ⇒ การ์ด/กระดาน/CSV บอกชื่อบริษัทที่ผู้ดูมองไม่เห็น (ตั้งแต่ C1.5) · ดีลยังถือ companyId เดิม
+//   (ยอดรวมของบริษัทไม่เปลี่ยน — เปลี่ยนเฉพาะสิ่งที่ "แสดง" ให้ผู้ดูคนนี้) · ต่อหน้า: การมองเห็น 1 ชุดต่อเอนทิตี (ไม่มี N+1) ◂
+async function companyNames(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const uniq = [...new Set(ids.filter((x): x is string => !!x))];
   if (uniq.length === 0) return new Map();
-  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), null, uniq);
+  const rows = await companies.companyRefsInTx(prisma, coCtx(ctx), viewer, uniq);
   return new Map(rows.map((r) => [r.id, r.name]));
 }
+/** id ผู้ติดต่อ (ของดีลในหน้านี้) ที่ผู้ดูมองเห็น — คิวรีเดียว */
+async function visibleContactIds(ctx: DealsCtx, viewer: MemberActor, ids: (string | null | undefined)[]): Promise<Set<string>> {
+  const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+  if (uniq.length === 0) return new Set();
+  const rows = await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, viewer), { id: { in: uniq } }] }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
 
-async function toCards(ctx: DealsCtx, rows: CardRow[]): Promise<DealCardDto[]> {
-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
+async function toCards(ctx: DealsCtx, viewer: MemberActor, rows: CardRow[]): Promise<DealCardDto[]> {
+  const [owners, cos, seen] = await Promise.all([
+    userNames(ctx, rows.map((r) => r.ownerUserId)),
+    companyNames(ctx, viewer, rows.map((r) => r.companyId)),
+    visibleContactIds(ctx, viewer, rows.map((r) => r.contactId)),
+  ]);
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
     companyId: r.companyId,
     companyName: r.companyId ? (cos.get(r.companyId) ?? null) : null,
-    contactName: r.contact?.name ?? "",
+    contactName: seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
     valueSatang: r.valueSatang,
     ownerUserId: r.ownerUserId,
     ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null,
     expectedCloseAt: dayKey(r.expectedCloseAt),
     stale: !!r.stalledAt,
     stalledAt: iso(r.stalledAt),
-    score: r.contact?.score ?? 0,
+    score: seen.has(r.contactId) ? (r.contact?.score ?? 0) : 0,
     nextActivityAt: iso(r.nextActivityAt),
     nextStep: r.nextStep,
     kind: r.kind as DealKind,
@@ -1936,14 +1953,14 @@ export async function listDeals(ctx: DealsCtx, actor: MemberActor, input: DealLi
     }
     const more = rows.length > pageSize;
     const page = more ? rows.slice(0, pageSize) : rows;
-    const cards = await toCards(ctx, page);
+    const cards = await toCards(ctx, a, page);
     const items: DealListRow[] = cards.map((c, i) => ({ ...c, pipelineId: page[i]!.pipelineId, stageName: page[i]!.stage?.name ?? "", forecastCategory: page[i]!.forecastCategory as ForecastCategory }));
     return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
   });
 }
 
 type BoardCardSqlRow = {
-  id: string; title: string; companyId: string | null; contactName: string | null; contactScore: number | null; valueSatang: number;
+  id: string; title: string; companyId: string | null; contactId: string; contactName: string | null; contactScore: number | null; valueSatang: number;
   ownerUserId: string | null; expectedCloseAt: Date | null; stalledAt: Date | null; nextActivityAt: Date | null; nextStep: string | null;
   kind: string; stageId: string; probabilityOverride: number | null; stageName: string | null; stageProbability: number | null; tags: string[];
 };
@@ -1984,7 +2001,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
                 FROM "CrmDeal" d
                WHERE ${where} AND d."stageId" = ANY(${stageIds}::text[])
             )
-            SELECT d."id", d."title", d."companyId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
+            SELECT d."id", d."title", d."companyId", d."contactId", c."name" AS "contactName", c."score" AS "contactScore", d."valueSatang",
                    d."ownerUserId", d."expectedCloseAt", d."stalledAt", d."nextActivityAt", d."nextStep", d."kind"::text AS "kind",
                    d."stageId", d."probabilityOverride", st."name" AS "stageName", st."probability" AS "stageProbability", d."tags"
               FROM ranked r
@@ -2003,7 +2020,7 @@ export async function getBoard(ctx: DealsCtx, actor: MemberActor, input: DealLis
         contact: r.contactName === null ? null : { name: r.contactName, score: r.contactScore ?? 0 },
         stage: r.stageName === null ? null : { name: r.stageName, probability: r.stageProbability ?? 0 },
       }) as unknown as CardRow;
-    const cards = await toCards(ctx, cardRows.map(asCard));
+    const cards = await toCards(ctx, a, cardRows.map(asCard));
     const byId = new Map(cards.map((c) => [c.id, c]));
     const byStage = new Map<string, DealCardDto[]>();
     for (const r of cardRows) {
@@ -2165,7 +2182,7 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
       discountSatang: totals.discountSatang,
       history,
       company: company ? { id: company.id, name: company.name } : null,
-      contact: { id: deal.contactId, name: contact?.name ?? "ผู้ติดต่อที่มองไม่เห็น" },
+      contact: { id: deal.contactId, name: contact?.name ?? HIDDEN_CONTACT_NAME },
       owner: deal.ownerUserId ? { id: deal.ownerUserId, name: people.get(deal.ownerUserId) ?? "ผู้ใช้" } : null,
       collaborators: deal.collaboratorUserIds.map((u) => ({ id: u, name: people.get(u) ?? "ผู้ใช้" })),
       lostReason: lostReason ? { id: lostReason.id, label: lostReason.label } : null,
@@ -2199,7 +2216,12 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
         return ids.length ? inOrder(ids, await prisma.crmDeal.findMany({ where: { id: { in: ids } }, include })) : [];
       })()
     : await prisma.crmDeal.findMany({ where, include, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: DEAL_EXPORT_MAX_ROWS });
-  const [owners, cos] = await Promise.all([userNames(ctx, rows.map((r) => r.ownerUserId)), companyNames(ctx, rows.map((r) => r.companyId))]);
+  // CRM C5.5-fix10 ▸ FX7-1: ชื่อตามการมองเห็นของผู้ส่งออก (เหมือนการ์ด/ดีล 360) · บริษัทที่มองไม่เห็น = ช่องว่าง (เหมือนไม่ผูกบริษัท) ◂
+  const [owners, cos, seen] = await Promise.all([
+    userNames(ctx, rows.map((r) => r.ownerUserId)),
+    companyNames(ctx, a, rows.map((r) => r.companyId)),
+    visibleContactIds(ctx, a, rows.map((r) => r.contactId)),
+  ]);
   const header = ["ชื่อดีล", "บริษัท", "ผู้ติดต่อ", "pipeline", "ขั้น", "สถานะ", "มูลค่า (บาท)", "หมวดพยากรณ์", "โอกาสปิด (%)", "วันที่คาดว่าจะปิด", "ผู้ดูแล", "แท็ก", "เพิ่มเมื่อ"];
   const out = [csvRow(header)];
   for (const r of rows) {
@@ -2207,7 +2229,7 @@ export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: De
       csvRow([
         r.title,
         r.companyId ? (cos.get(r.companyId) ?? "") : "",
-        r.contact?.name ?? "",
+        seen.has(r.contactId) ? (r.contact?.name ?? "") : HIDDEN_CONTACT_NAME,
         r.pipeline?.name ?? "",
         r.stage?.name ?? "",
         DEAL_KIND_LABEL[r.kind as DealKind],

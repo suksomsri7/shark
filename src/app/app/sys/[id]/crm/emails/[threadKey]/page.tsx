@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { getThread, listTemplates } from "@/lib/modules/crm/emails";
+import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
 import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
 import { thaiDateLabel, thaiTimeLabel } from "@/lib/modules/crm/activities-shared";
@@ -43,7 +44,9 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
   const first = thread.messages[0];
   const last = thread.messages[thread.messages.length - 1];
   const contactId = thread.messages.map((m) => m.contactId ?? null).find((x): x is string => !!x) ?? null;
-  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { name: true, email: true, company: true } }) : null;
+  const contact = contactId ? await prisma.crmContact.findFirst({ where: { id: contactId, tenantId, systemId: id }, select: { id: true, name: true, email: true, company: true, companyId: true } }) : null;
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทตามการมองเห็นบริษัทของผู้ดู ◂
+  const contactCompany = contact ? ((await companyTextsForViewer(ctx, actor, [contact])).get(contact.id) ?? null) : null;
 
   const messages: CrmEmailMessageView[] = thread.messages.map((m) => {
     const at = m.sentAt ?? m.receivedAt;
@@ -78,7 +81,7 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
     contactId,
     contactName: contact?.name ?? null,
     contactEmail: contact?.email ?? null,
-    companyName: contact?.company ?? null,
+    companyName: contactCompany,
     messages,
     canSend,
     canAttach: !contactId,

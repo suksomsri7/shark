@@ -1292,6 +1292,12 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
     .map((d) => ({ id: d.id, docNo: d.docNo, docType: d.docType, docLabel: d.docLabel, status: d.status, statusLabel: d.statusLabel, totalSatang: d.totalSatang, issuedAt: d.issuedAt, href: d.href }));
   // CRM C5.5 ▸ (fix3b r2 · รีวิว RV-1) การ์ด "ไทม์ไลน์รวม" ขึ้นป้าย "ไม่ยืนยันผู้ส่ง" แบบเดียวกับบล็อกกิจกรรม (คิวรีเดียวต่อหน้า · ร้าน+ระบบเดียวกัน) ◂
   const unverified = await unverifiedEmailRefs(ctx, activities);
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ชื่อผู้ติดต่อบนไทม์ไลน์ = ตามการมองเห็นของผู้ดู (contactWhere · คิวรีเดียว) — กิจกรรมที่ผู้ดูเห็น
+  //   ผูกผู้ติดต่อที่เขามองไม่เห็นได้ (การมองเห็นกิจกรรมตามผู้ดูแลกิจกรรม) · มองไม่เห็น = ไม่มีชื่อ (แบบรายการกิจกรรม `activities.enrich`) ◂
+  const tlContactIds = [...new Set(activities.map((t) => t.contactId).filter((x): x is string => !!x))];
+  const tlSeen = new Set(
+    tlContactIds.length ? (await prisma.crmContact.findMany({ where: { AND: [await contactWhere(ctx, a), { id: { in: tlContactIds } }] }, select: { id: true } })).map((r) => r.id) : [],
+  );
   const timeline: CompanyTimelineItem[] = activities.map((t) => ({
     id: t.id,
     at: t.startAt ?? t.doneAt ?? t.createdAt,
@@ -1299,7 +1305,7 @@ async function getCompany360In(ctx: CompaniesCtx, actor: MemberActor, id: string
     title: t.title,
     source: t.source,
     contactId: t.contactId,
-    contactName: t.contact?.name ?? null,
+    contactName: t.contactId && tlSeen.has(t.contactId) ? (t.contact?.name ?? null) : null,
     dealId: t.dealId,
     ...(unverified.has(t.id) ? { unverifiedFrom: true as const } : {}),
   }));
@@ -2362,6 +2368,16 @@ export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids
   return prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, a), { id: { in: list }, mergedIntoId: null, archivedAt: null }] }, select: { id: true, name: true } });
 }
 // ◂ CRM C1.4
+
+// CRM C5.5-fix10 ▸ (sweep FX7-1) บริษัทตาม id ที่ผู้ดูมองเห็น พร้อมสถานะยังใช้งาน — คิวรีเดียว (companyWhere) · ผู้ใช้: รายการ/ไฟล์ส่งออก/
+//   360/การ์ดย่อของผู้ติดต่อ และรายการลำดับติดตาม ตัดสินว่า "ข้อความบริษัทเดิม" (`CrmContact.company`) ของผู้ติดต่อแสดงได้ไหม:
+//   ไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น = แสดงได้ · ผูกบริษัทที่ผู้ดูมองไม่เห็น = ไม่แสดง (ข้อความนั้นมักเป็นชื่อบริษัทเดียวกัน) ◂
+export async function visibleCompanyStates(ctx: CrmScopeCtx, actor: MemberActor, ids: readonly (string | null | undefined)[]): Promise<Map<string, { name: string; live: boolean }>> {
+  const list = [...new Set(ids.filter((x): x is string => typeof x === "string" && !!x))].slice(0, 5_000);
+  if (list.length === 0) return new Map();
+  const rows = await prisma.crmCompany.findMany({ where: { AND: [await companyWhere(ctx, actor), { id: { in: list } }] }, select: { id: true, name: true, archivedAt: true, mergedIntoId: true } });
+  return new Map(rows.map((r) => [r.id, { name: r.name, live: !r.archivedAt && !r.mergedIntoId }]));
+}
 
 // CRM C1.5 ▸ ทางเข้าแคชดีลของบริษัทที่ "เข้าร่วม tx ของผู้เรียก" (บริการดีล `deals.ts`) — SQL ของแคชยังเป็นของไฟล์นี้ที่เดียว
 //   ลำดับล็อก (หัวไฟล์): … → แถว CrmCompany (เรียง id) → แถว CrmContact → แถว CrmDeal ⇒ ดีลล็อกบริษัทก่อนเสมอด้วยตัวนี้

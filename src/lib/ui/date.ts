@@ -56,11 +56,25 @@ export function formatThaiDateTimeFull(d: Date | string): string {
 /**
  * ISO วันเวลาตามโซนไทยที่บอกเขตเวลาเอง "2026-10-09T00:30:00+07:00" — สำหรับ CSV/ไฟล์ส่งออก (อ่านด้วยเครื่องได้ ไม่กำกวม ·
  * ตัวตรวจ DATETIME ของ engine ฟิลด์รับค่านี้ตรงตัว ⇒ นำเข้ากลับได้ขณะเดิมแม้เครื่องตั้งเวลาไทย) · ไทยไม่มีเวลาออมแสง ⇒ +07:00 คงที่
+ * CRM C5.5-fix10 ▸ FX7-3: engine เก็บมิลลิวินาทีที่มากับ API/ไฟล์นำเข้า (ISO_RE รับ .sss) ⇒ ค่าที่มีมิลลิวินาที = ใส่ ".sss" ด้วย
+ *   (ส่งออก → นำเข้า ได้ขณะเดิมตรงตัว) · ค่าที่ลงตัววินาที (ทุกค่าที่กรอกจากหน้าจอ) = รูปเดิมไบต์ต่อไบต์ ◂
  */
 export function thaiIsoDateTime(d: Date | string): string {
   const t = new Date(d).getTime();
   if (Number.isNaN(t)) return String(d);
-  return `${new Date(t + 7 * 60 * 60 * 1000).toISOString().slice(0, 19)}+07:00`;
+  const iso = new Date(t + 7 * 60 * 60 * 1000).toISOString();
+  return `${iso.slice(0, 19)}${t % 1000 === 0 ? "" : iso.slice(19, 23)}+07:00`;
+}
+/**
+ * CRM C5.5-fix10 ▸ (คำถามเจ้าของข้อ 5) ค่าฟิลด์ DATE ของ CRM ("YYYY-MM-DD" = วันในปฏิทิน ไม่มีเวลา) → "9 ต.ค. 2569" ·
+ *   ตัวเดียวที่หน้าระเบียนของพนักงาน (components/crm/objects/types.ts) และหน้าผู้ติดต่อ 360 ใช้ · ตีความเป็นวัน UTC (ไม่เลื่อนวันตามเขตเวลา) ·
+ *   รูปแบบอื่น = คืนค่าเดิม · ใช้แสดงผลเท่านั้น (ไฟล์ส่งออกยังเป็น "YYYY-MM-DD") ◂
+ */
+export function formatThaiDateFull(ymd: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(ymd)) return ymd;
+  const t = Date.parse(`${ymd.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(t)) return ymd;
+  return new Date(t).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
 // ─────────────────── ปี ค.ศ. (โมดูลบัญชี V2) ───────────────────

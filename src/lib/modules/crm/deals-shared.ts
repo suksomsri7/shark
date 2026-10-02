@@ -31,6 +31,8 @@ export const DEAL_PAGE_MAX = 200;
 export const DEAL_EXPORT_MAX_ROWS = 5000;
 /** การ์ดต่อคอลัมน์บนกระดาน (ตัวเลขรวมของคอลัมน์นับจากทุกดีลเสมอ) */
 export const DEAL_BOARD_CARDS_MAX = 60;
+/** CRM C5.5-fix10 ▸ FX7-1: ชื่อแทนผู้ติดต่อที่ผู้ดูมองไม่เห็น บนพื้นผิวของดีล (ดีล 360 · การ์ด · กระดาน · CSV · ค้นหา · AI) — ข้อความเดียวทุกที่ ◂ */
+export const HIDDEN_CONTACT_NAME = "ผู้ติดต่อที่มองไม่เห็น";
 export const PIPELINE_NAME_MAX = 100;
 export const PIPELINE_STAGES_MAX = 20;
 export const LOST_REASON_LABEL_MAX = 100;

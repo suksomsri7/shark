@@ -31,7 +31,7 @@ import { evaluate as rbacEvaluate } from "@/lib/core/rbac"; // CRM C5.5 ▸ H55-
 import { assertCrmV2 } from "./ui-version";
 import { canContact } from "./consents";
 import { contactWhere, dealWhere } from "./where";
-import { visibleLiveCompanyNames } from "./companies";
+import { visibleCompanyStates } from "./companies"; // CRM C5.5-fix10 ▸ เดิม visibleLiveCompanyNames ◂
 import { mergeCrmHolidays, removeCrmHoliday, setCrmBusinessDays } from "./settings";
 import { CRM_DEFAULT_DEPS, crmLineAddressOf } from "./automation";
 import * as activities from "./activities";
@@ -1017,11 +1017,10 @@ export async function listEnrollments(ctx: SequencesCtx, actor: MemberActor, opt
     keys.length
       ? prisma.crmSequenceStep.findMany({ where: { OR: keys.map((k) => ({ sequenceId: k.split(":")[0]!, version: Number(k.split(":")[1]) })) }, orderBy: { index: "asc" } })
       : Promise.resolve([]),
-    coIds.length
-      ? visibleLiveCompanyNames(ctx, a, coIds)
-      : Promise.resolve([] as { id: string; name: string }[]),
+    visibleCompanyStates(ctx, a, coIds),
   ]);
-  const coName = new Map(cos.map((c) => [c.id, c.name]));
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ชื่อที่พิมพ์เอง (ข้อความเดิม) ใช้ได้เฉพาะเมื่อไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น — เดิมตกไปที่ข้อความเสมอ
+  //   ⇒ บริษัทที่มองไม่เห็นยังบอกชื่อผ่านข้อความเดิม (ขัดกับหมายเหตุ X1 ด้านบน) · ผู้ดูที่เห็นบริษัท = เท่าเดิม ◂
   return {
     items: rows.map((r) => {
       const mine = steps.filter((s) => s.sequenceId === r.sequenceId && s.version === r.sequenceVersion);
@@ -1030,7 +1029,9 @@ export async function listEnrollments(ctx: SequencesCtx, actor: MemberActor, opt
         ...enrollmentHead(r, r.sequence.name, contactNameOf(r.contact)),
         stepCount: mine.length,
         currentStep: cur ? stepDto(cur).label : null,
-        companyName: (r.contact?.companyId ? (coName.get(r.contact.companyId) ?? null) : null) ?? (str(r.contact?.company) || null),
+        companyName:
+          (r.contact?.companyId ? (cos.get(r.contact.companyId)?.live ? cos.get(r.contact.companyId)!.name : null) : null) ??
+          (r.contact?.companyId && !cos.has(r.contact.companyId) ? null : str(r.contact?.company) || null),
       };
     }),
   };
