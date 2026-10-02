@@ -1,9 +1,8 @@
 // POST แชท AI → SSE (text/event-stream) · แต่ละ event = data: {type,...}\n\n จบด้วย done/error
 // (ledger/MOBILE_PLAN.md M-11) — ครอบ sendMobileChat (wrap sendMessage เดิม)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
 import { sendMobileChat } from "@/lib/mobile/chat";
-import { aiMemberActor } from "@/lib/ai/actor";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
@@ -25,7 +24,8 @@ export async function POST(req: Request) {
   };
 
   // CRM C5.5-G1 ▸ ผู้กระทำ = เจ้าของโทเค็น + Membership ของร้านที่ X-Tenant-Id (requireMobile ตรวจแล้ว) ◂
-  const ctx = { ...g.ctx, actor: aiMemberActor(g.ctx.tenantId, g.user.id, g.membership) };
+  //   CRM C5.5-G2: the same actor is the viewer — sendMessage continues only rooms this user can see ◂
+  const ctx = mobileAiCtx(g);
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

@@ -165,7 +165,20 @@ try {
   await P.shopOrder.create({ data: { tenantId: tA, unitId: u2, code: "SO-QC2", customerName: "ผู้ซื้อสาขาสอง", customerPhone: "0822000002", totalSatang: 20_000 } });
   await P.aiCreditWallet.create({ data: { tenantId: tA, balanceMicro: 50_000_000, grantedAt: new Date() } });
   const conv = await P.aiConversation.create({ data: { tenantId: tA, title: "QC G1" } });
-  const rt = (actor: Any, name: string, args: Any = {}) => tools.runTool({ tenantId: tA, actor, conversationId: conv.id }, name, args) as Promise<string>;
+  // ORACLE-EDIT C5.5-G2: an AI conversation belongs to its creator and a room written without one is the OWNER's only — a proposal
+  //   is made in the proposer's own room (as through the real doors). Each valid actor gets its own room; anything the owner module
+  //   refuses (forged / other-shop actors) — and the base tree, which has no such module — keeps the shared room
+  const CO = (await import("@/lib/ai/conversation-owner" as string).catch(() => null)) as Any;
+  const ownRooms = new Map<string, string>();
+  const roomOf = async (actor: Any): Promise<string> => {
+    let id: string;
+    try { id = CO?.newConversationId ? CO.newConversationId({ tenantId: tA, actor }) : ""; } catch { id = ""; }
+    if (!id) return conv.id as string;
+    const k = `${actor.kind}:${actor.userId ?? actor.keyId ?? actor.job}`;
+    if (!ownRooms.has(k)) { await P.aiConversation.create({ data: { id, tenantId: tA, title: "QC G1" } }); ownRooms.set(k, id); }
+    return ownRooms.get(k)!;
+  };
+  const rt = async (actor: Any, name: string, args: Any = {}) => tools.runTool({ tenantId: tA, actor, conversationId: await roomOf(actor) }, name, args) as Promise<string>;
 
   // ═══ G0 registry: every registered tool is mapped by the access table (unknown = denied) ═══
   console.log("\n── G0 access table covers the registry ──");

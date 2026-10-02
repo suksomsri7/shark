@@ -8,6 +8,8 @@
 
 import { listMessages } from "@/lib/ai/service";
 import { listPendingProposals } from "@/lib/ai/proposals";
+import type { AiActor } from "@/lib/ai/actor";
+import { findVisibleConversation } from "@/lib/ai/conversations";
 import { toolRegistry } from "@/lib/ai/tools";
 import { tenantDb } from "@/lib/core/db";
 import type { MemberActor } from "./access";
@@ -36,13 +38,17 @@ async function namesFor(tenantId: string, viewer: AssistantViewer, contents: str
   return out;
 }
 
-/** สถานะหน้าจอของบทสนทนาหนึ่ง (ไม่มี/ไม่ใช่ของร้านนี้ = บทสนทนาว่าง) */
-export async function assistantState(tenantId: string, conversationId: string | null, viewer?: AssistantViewer): Promise<AssistantStateDto> {
+/**
+ * สถานะหน้าจอของบทสนทนาหนึ่ง (ไม่มี/ไม่ใช่ของร้านนี้ = บทสนทนาว่าง)
+ * CRM C5.5-G2 ▸ `aiActor` = คนที่เปิดหน้า (บังคับ) — บทสนทนาของคนอื่น (`?conversation=` ของใครก็ได้ในร้าน) = บทสนทนาว่างเหมือนไม่มีอยู่ ◂
+ */
+export async function assistantState(tenantId: string, conversationId: string | null, aiActor: AiActor, viewer?: AssistantViewer): Promise<AssistantStateDto> {
   const id = String(conversationId ?? "").trim();
   if (!id) return { conversationId: null, messages: [], proposals: [], memberNames: {} };
-  const conv = await tenantDb({ tenantId }).aiConversation.findFirst({ where: { id }, select: { id: true } });
+  const ctx = { tenantId, actor: aiActor };
+  const conv = await findVisibleConversation(ctx, id);
   if (!conv) return { conversationId: null, messages: [], proposals: [], memberNames: {} };
-  const [messages, proposals] = await Promise.all([listMessages({ tenantId }, conv.id, 60), listPendingProposals({ tenantId }, conv.id)]);
+  const [messages, proposals] = await Promise.all([listMessages(ctx, conv.id, 60), listPendingProposals(ctx, conv.id)]);
   const memberNames = viewer
     ? await namesFor(tenantId, viewer, messages.filter((m) => m.role !== "USER").map((m) => m.content)).catch(() => ({}))
     : {};

@@ -97,7 +97,9 @@ try {
   const prop = await prisma.aiProposal.findUnique({ where: { id: created.proposalId } });
   chk("E1-K3.3", "AiProposal kind=account.documents.create · risk NORMAL · summary มีชื่อลูกค้า+ยอดบาท", prop?.kind === "account.documents.create" && prop?.risk === "NORMAL" && /ณัฐพล/.test(prop?.summary ?? "") && /1,070,000|10,700/.test(prop?.summary ?? ""), "NORMAL + สรุป", `${prop?.kind} ${prop?.risk} ${prop?.summary}`);
   const denied = await proposals.executeProposal(staffNoPerm, { tenantId: tid }, created.proposalId);
-  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
+  // ORACLE-EDIT C5.5-G2: the proposal sits in a conversation of somebody else (a room written without a creator = the OWNER's), so a
+  //   STAFF confirmer is now answered "not found" before the key check — still refused, row still PENDING
+  chk("E1-K3.4", "STAFF ไม่มีสิทธิ์กดยืนยัน → ok:false note ไทย 'ไม่มีสิทธิ์' (หรือ 'ไม่พบข้อเสนอ' — ห้องของคนอื่น) · proposal ยัง PENDING", denied?.ok === false && /สิทธิ์|ไม่พบข้อเสนอ/.test(denied?.note ?? "") && (await prisma.aiProposal.findUnique({ where: { id: created.proposalId } }))?.status === "PENDING", "PENDING", JSON.stringify(denied));
   const exec = await proposals.executeProposal(owner, { tenantId: tid }, created.proposalId);
   const doc = await prisma.accountDocument.findFirst({ where: { systemId: SYS }, select: { id: true, status: true, grandTotal: true, source: true } });
   chk("E1-K3.5", "OWNER ยืนยัน → ok:true · เอกสาร DRAFT 1,070,000 source AI · note ไทยบอกผล", exec?.ok === true && doc?.status === "DRAFT" && doc?.grandTotal === 1_070_000 && doc?.source === "AI" && /[ก-๙]/.test(exec?.note ?? ""), "DRAFT", `${JSON.stringify(exec)} ${JSON.stringify(doc)}`);

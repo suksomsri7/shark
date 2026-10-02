@@ -92,7 +92,9 @@ try {
     const b = r.status === 200 ? JSON.stringify(await r.json()) : (await drain(r), "");
     w1Ok[w] = `${r.status}:${b.includes(prop.id) && b.includes("QC รับของลับ")}`;
   }
-  chk("CF8-W1.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200 with the pending proposal", Object.values(w1Ok).every((s) => s === "200:true"), "200:true ×3", JSON.stringify(w1Ok));
+  // ORACLE-EDIT C5.5-G2: the fixture room is written without a creator (legacy) ⇒ only the OWNER sees its proposal; MANAGER and
+  //   STAFF+ai.chat.send still pass the key gate (200) and get an empty list (= the room does not exist for them)
+  chk("CF8-W1.2", "positive control: OWNER / MANAGER / STAFF+ai.chat.send → 200 · the legacy room's pending proposal shown to the OWNER only", w1Ok.owner === "200:true" && w1Ok.manager === "200:false" && w1Ok.staffAi === "200:false", "owner 200:true · manager/staffAi 200:false", JSON.stringify(w1Ok));
 
   // ═══ W2 usage GET ═══
   const w2No = await is403(R.usage.GET(req("staff", "GET")));
@@ -117,13 +119,19 @@ try {
   const w3OkBody = w3OkRes.status === 200 ? ((await w3OkRes.json()) as Any) : (await drain(w3OkRes), {});
   const r2 = await rooms();
   const w3Again: Record<string, string> = {};
+  // ORACLE-EDIT C5.5-G2: a room is its creator's — the STAFF's welcome room is not "existing" for the OWNER/MANAGER: each gets
+  //   their own welcome room on the first tap (existing:false) and existing:true on the second
   for (const w of ["owner", "manager"] as Who[]) {
-    const r = await R.welcome.POST(req(w, "POST", { body: {}, tenant: tidWelcome }));
-    const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
-    w3Again[w] = `${r.status}:${b.existing}`;
+    const seen: string[] = [];
+    for (let tap = 0; tap < 2; tap += 1) {
+      const r = await R.welcome.POST(req(w, "POST", { body: {}, tenant: tidWelcome }));
+      const b = r.status === 200 ? ((await r.json()) as Any) : (await drain(r), {});
+      seen.push(`${r.status}:${b.existing}`);
+    }
+    w3Again[w] = seen.join(",");
   }
-  chk("CF8-W3.2", "positive control: STAFF+ai.chat.send → 200 creates the welcome room once · OWNER/MANAGER → 200 existing:true",
-    w3OkRes.status === 200 && w3OkBody.existing === false && !!w3OkBody.conversationId && r2 === 1 && Object.values(w3Again).every((s) => s === "200:true"),
+  chk("CF8-W3.2", "positive control: STAFF+ai.chat.send → 200 creates the welcome room once · OWNER/MANAGER → own welcome room, then 200 existing:true",
+    w3OkRes.status === 200 && w3OkBody.existing === false && !!w3OkBody.conversationId && r2 === 1 && Object.values(w3Again).every((s) => s === "200:false,200:true"),
     "200 created + existing ×2", `staffAi=${w3OkRes.status}/${w3OkBody.existing} rooms=${r2} again=${JSON.stringify(w3Again)}`, "MAJOR");
 
   // ═══ cross-tenant control: a valid token with a tenant the user is not a member of ═══

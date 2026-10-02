@@ -11,6 +11,8 @@ import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
 import type { AiActor } from "./actor";
+import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere, type ConvCtx } from "./conversation-owner";
+import { findVisibleConversation, latestVisibleConversation } from "./conversations";
 import { toolsOfferedTo } from "./tool-access";
 import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
@@ -61,15 +63,23 @@ function parseClarify(rawArgs: unknown): Clarify | null {
   return { question, options };
 }
 
-/** บทสนทนาล่าสุดของ tenant (ไม่มี = null) */
-export async function latestConversation(ctx: Ctx) {
-  return tenantDb(ctx).aiConversation.findFirst({ orderBy: { updatedAt: "desc" } });
+/**
+ * บทสนทนาล่าสุด **ที่ผู้ดูเห็น** (ไม่มี = null)
+ * CRM C5.5-G2 ▸ เดิม = ห้องล่าสุดของทั้งร้าน (ของใครก็ได้) · ตอนนี้ = ของผู้ดูเอง (+ เจ้าของร้าน: ห้องที่ไม่ได้สร้างโดยคนในร้าน) ◂
+ */
+export async function latestConversation(ctx: ConvCtx) {
+  return latestVisibleConversation(ctx);
 }
 
-/** ข้อความในบทสนทนา (เรียงเก่า→ใหม่) */
-export async function listMessages(ctx: Ctx, conversationId: string, take = 100) {
-  return tenantDb(ctx).aiMessage.findMany({
-    where: { conversationId },
+/**
+ * ข้อความในบทสนทนา (เรียงเก่า→ใหม่) — CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น = ว่าง เหมือนไม่มีอยู่) ·
+ *   ตรวจสองชั้น: รหัสก่อน query + เงื่อนไขของห้องใน query เดียวกัน ◂
+ */
+export async function listMessages(ctx: ConvCtx, conversationId: string, take = 100) {
+  const s = sightOf(ctx);
+  if (!canSeeConversationId(s, conversationId)) return [];
+  return tenantDb({ tenantId: ctx.tenantId }).aiMessage.findMany({
+    where: { conversationId, conversation: visibleConversationWhere(s) },
     orderBy: { createdAt: "asc" },
     take,
   });
@@ -177,17 +187,19 @@ export async function sendMessage(
   };
 
   // บทสนทนา: ต่อของเดิมถ้าระบุ ไม่งั้นเปิดใหม่
-  const conv = input.conversationId
-    ? await db.aiConversation.findFirst({ where: { id: input.conversationId } })
-    : null;
+  // CRM C5.5-G2 ▸ ต่อได้เฉพาะห้องที่ผู้กระทำเห็น (ของตัวเอง · เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน) — ห้องของคนอื่น
+  //   = เหมือนไม่มีอยู่ ⇒ เปิดห้องใหม่ของผู้กระทำ (รหัสฝังผู้สร้าง) · ประวัติที่ป้อนโมเดลกรองด้วยกติกาเดียวกันอีกชั้นใน query ◂
+  const conv = input.conversationId ? await findVisibleConversation(ctx, input.conversationId) : null;
   const conversation =
     conv ??
     (await prisma.aiConversation.create({
-      data: { tenantId: ctx.tenantId, title: titleFrom(text) },
+      data: { id: newConversationId(ctx), tenantId: ctx.tenantId, title: titleFrom(text) },
     }));
+  const sight = sightOf(ctx);
+  if (!canSeeConversationId(sight, conversation.id)) throw new Error("AI conversation is not visible to this actor");
 
   const history = await db.aiMessage.findMany({
-    where: { conversationId: conversation.id },
+    where: { conversationId: conversation.id, conversation: visibleConversationWhere(sight) },
     orderBy: { createdAt: "desc" },
     take: HISTORY_TAKE,
   });

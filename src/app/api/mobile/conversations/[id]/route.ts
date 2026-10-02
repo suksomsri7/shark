@@ -1,7 +1,7 @@
 // PATCH เปลี่ยนชื่อ · DELETE ลบ soft (ledger/MOBILE_PLAN.md M-11)
 // Next 16: params เป็น Promise ต้อง await
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
 import { renameConversation, deleteConversation } from "@/lib/mobile/conversations";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -18,7 +18,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (!title) return Response.json({ error: "title_required" }, { status: 400 });
-  const ok = await renameConversation(g.ctx, id, title);
+  const ok = await renameConversation(mobileAiCtx(g), id, title); // CRM C5.5-G2: own rooms only
   return Response.json({ ok });
 }
 
@@ -28,6 +28,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const denied = mobileDenied(g, AI_CHAT); // HOTFIX 2026-10-01: same key as the web door
   if (denied) return denied;
   const { id } = await params;
-  const ok = await deleteConversation(g.ctx, id);
+  const ok = await deleteConversation(mobileAiCtx(g), id); // CRM C5.5-G2: own rooms only
   return Response.json({ ok });
 }

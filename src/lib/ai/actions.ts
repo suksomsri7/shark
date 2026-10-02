@@ -89,6 +89,14 @@ export async function loadAiQuotaAction(): Promise<AiQuotaView | null> {
   }
 }
 
+/**
+ * CRM C5.5-G2 ▸ ctx ของประตูแชท = ร้าน + คนที่ล็อกอิน (ผู้ดู) — บทสนทนา/ข้อเสนอ/แผนที่อ่านหรือแตะได้ = ของเขาเท่านั้น
+ *   (เจ้าของร้าน + ห้องที่ไม่ได้สร้างโดยคนในร้าน · ดู ./conversation-owner.ts) ◂
+ */
+function convCtxOf(auth: Awaited<ReturnType<typeof requireTenant>>) {
+  return { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) };
+}
+
 /** MembershipCtx ของคนกด — ใช้ตรวจสิทธิ์จริง ณ ตอน execute proposal */
 function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): MembershipCtx {
   return {
@@ -102,7 +110,7 @@ function membershipOf(auth: Awaited<ReturnType<typeof requireTenant>>): Membersh
 export async function loadAiChatAction(): Promise<AiChatState> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const ctx = { tenantId: auth.active.tenantId };
+  const ctx = convCtxOf(auth);
   const conv = await latestConversation(ctx);
   // โหลด messages + proposals + plans พร้อมกัน (ลด round-trip)
   const [messages, pending, plans] = conv
@@ -123,7 +131,7 @@ export async function loadAiChatAction(): Promise<AiChatState> {
 export async function loadPlansAction(conversationId: string): Promise<PendingPlan[]> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const plans = await listPendingPlans({ tenantId: auth.active.tenantId }, conversationId);
+  const plans = await listPendingPlans(convCtxOf(auth), conversationId);
   return plans.map((p) => ({ id: p.id, title: p.title, hasDestructive: p.hasDestructive, steps: toPlanSteps(p.stepsJson) }));
 }
 
@@ -131,7 +139,7 @@ export async function loadPlansAction(conversationId: string): Promise<PendingPl
 export async function listPendingProposalsAction(conversationId: string): Promise<PendingProposal[]> {
   const auth = await requireTenant();
   assertAiCan(auth, "ai.chat.send");
-  const pending = await listPendingProposals({ tenantId: auth.active.tenantId }, conversationId);
+  const pending = await listPendingProposals(convCtxOf(auth), conversationId);
   return pending.map((p) => ({ id: p.id, summary: p.summary, risk: toRisk(p.risk) }));
 }
 
@@ -166,7 +174,7 @@ export async function rejectProposalAction(proposalId: string): Promise<Proposal
     proposalId,
   );
   if (crm.handled) return { ok: crm.ok, note: crm.ok ? "ยกเลิกข้อเสนอแล้ว" : crm.note };
-  const ok = await rejectProposal(ctx, proposalId);
+  const ok = await rejectProposal(convCtxOf(auth), proposalId);
   return { ok, note: ok ? "ยกเลิกข้อเสนอแล้ว" : "ข้อเสนอนี้ถูกดำเนินการไปแล้ว" };
 }
 
@@ -183,7 +191,7 @@ export async function confirmPlanAction(
   const auth = await requireTenant();
   const ctx = { tenantId: auth.active.tenantId };
   try {
-    const res = await executePlan(membershipOf(auth), ctx, planId, opts);
+    const res = await executePlan(membershipOf(auth), ctx, planId, { ...opts, userId: auth.user.id });
     if (res.needsSecondConfirm) {
       return { ok: false, needsSecondConfirm: true, note: "แผนนี้มีรายการลบ/ยกเลิกถาวร ต้องยืนยันอีกครั้งก่อนทำจริง" };
     }
@@ -207,8 +215,7 @@ export async function confirmPlanAction(
 /** ยกเลิกแผน (PENDING → REJECTED) */
 export async function rejectPlanAction(planId: string): Promise<PlanResult> {
   const auth = await requireTenant();
-  const ctx = { tenantId: auth.active.tenantId };
-  const ok = await rejectPlan(ctx, planId);
+  const ok = await rejectPlan(convCtxOf(auth), planId);
   return { ok, note: ok ? "ยกเลิกแผนแล้ว" : "แผนนี้ถูกดำเนินการไปแล้ว" };
 }
 
@@ -226,10 +233,7 @@ export async function sendAiMessageAction(input: {
   assertAiCan(auth, "ai.chat.send");
   try {
     // CRM C5.5-G1 ▸ ผู้กระทำ = คนที่ล็อกอิน (Membership จาก session ของคำขอนี้) — เครื่องมือทุกตัวรันด้วยสิทธิ์ของเขา ◂
-    const res = await sendMessage(
-      { tenantId: auth.active.tenantId, actor: aiMemberActor(auth.active.tenantId, auth.user.id, auth.active) },
-      input,
-    );
+    const res = await sendMessage(convCtxOf(auth), input);
     if (res.ok) return res;
     const msg: Record<typeof res.error, string> = {
       ai_disabled: "ผู้ช่วย AI ยังไม่เปิดใช้งานในระบบ — เร็ว ๆ นี้",
