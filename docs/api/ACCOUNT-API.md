@@ -3125,13 +3125,13 @@ curl -sS -X POST "https://shark.in.th/api/v1/account/units" \
 
 #### `webhooks.test`
 
-**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given event type, regardless of its subscription list. · scope: `account.settings.manage` · write
+**POST /webhooks/{id}/test** - Send one test delivery to this endpoint with a fake payload of the given account event type (account.* only), regardless of its subscription list. · scope: `account.settings.manage` · write
 
 Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `event` | string | yes | Event type to simulate. Must be a known event type. |
+| `event` | string | yes | Account event type to simulate (account.*). Must be a known event type. |
 
 ```bash
 curl -sS -X POST "https://shark.in.th/api/v1/account/webhooks/123/test" \

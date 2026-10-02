@@ -16,7 +16,7 @@ import { createEndpoint, deleteEndpoint, dispatchWebhooks, setEndpointActive } f
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels"; // CRM C5.5 ▸ กรองเหตุการณ์ ◂
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, mc, writeAudit } from "./access";
-import { accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections";
+import { accountKeyRotationProblem, accountManagedKey, connect, disconnect, setLinkOptions, type LinkConfig, type ToggleKey } from "./connections"; // CRM C5.5-fix8 ▸ +accountKeyRotationProblem ◂
 
 const PATH = (systemId: string) => `/app/sys/${systemId}/account/settings/connections`;
 
@@ -122,6 +122,12 @@ export async function createApiKeyAction(
       return { ok: false, reason: `หน้านี้ออกคีย์ได้เฉพาะสิทธิ์ของระบบบัญชี — สิทธิ์ "${sc}" ต้องออกที่หน้าตั้งค่า API ของระบบนั้น` };
     }
   }
+  // CRM C5.5-fix8 ▸ (รีวิว authz-sweep F2) ฟอร์มที่ยิงเองโดยไม่ติ๊กสิทธิ์และไม่เลือกชุดเคยได้คีย์ `[]` ("คีย์รุ่นเดิม" — ป้ายในหน้า
+  //   "อ่าน API กลาง") ที่ REST บัญชีปฏิเสธทุก op แต่ทางเดิน `/api/v1/*` รุ่นเดิมรับทุกคีย์ของร้าน (F1) · หน้าจอไม่เคยส่งแบบนี้
+  //   (มีชุดสิทธิ์ติดมาเสมอ) ⇒ คีย์จากหน้านี้ต้องมีสิทธิ์ของระบบบัญชี ≥ 1 รายการ · คีย์กลางของร้านออกที่ ตั้งค่า › API สำหรับนักพัฒนา ◂
+  if (scopes.length === 0) {
+    return { ok: false, reason: "เลือกสิทธิ์ของคีย์อย่างน้อย 1 รายการ (หรือเลือกชุดสิทธิ์) — คีย์จากหน้านี้ต้องมีสิทธิ์ของระบบบัญชี" };
+  }
   const ttlRaw = s(fd, "ttlDays");
   const ttlDays = ttlRaw === "" ? DEFAULT_KEY_TTL_DAYS : Number(ttlRaw);
   if (!Number.isFinite(ttlDays) || ttlDays < 0) return { ok: false, reason: "จำนวนวันหมดอายุไม่ถูกต้อง" };
@@ -145,7 +151,8 @@ export async function createApiKeyAction(
 // CRM C5.4-B ▸ hunter H2: หน้านี้จัดการได้เฉพาะคีย์ "ของบัญชี" — คีย์ที่ผูกระบบบัญชี (สมุดใดก็ได้ของร้าน — หน้านี้แสดงคีย์ทุกเล่ม · WO A2)
 //   หรือคีย์ไม่ผูกระบบที่ไม่มี scope ของโมดูลอื่น · คีย์ของ CRM/สมาชิก/บอร์ดงาน = "ไม่พบ" (จัดการจากหน้าตั้งค่า API ของโมดูลนั้นเท่านั้น —
 //   เดิมพนักงานบัญชีหมุนคีย์ crm.admin ของเจ้าของได้: คีย์เดิมถูกเพิกถอน + ได้คีย์ใหม่ที่ข้ามด่านออกคีย์ของ CRM)
-const KEY_NOT_HERE = "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น";
+// CRM C5.5-fix8 r2 ▸ (RV-5 · Q2) + คีย์ไม่ผูกระบบ (คีย์กลางของร้าน) และคีย์ที่ถือสิทธิ์นอกระบบบัญชี = "ไม่พบ" เช่นกัน (กติกาใน accountManagedKey) ◂
+const KEY_NOT_HERE = "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์กลางของร้านจัดการได้ที่ ตั้งค่า › API สำหรับนักพัฒนา และคีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น";
 
 /** เพิกถอนคีย์ API */
 export async function revokeApiKeyAction(fd: FormData): Promise<ConnResult> {
@@ -171,6 +178,9 @@ export async function rotateApiKeyAction(
   const id = s(fd, "id");
   if (!id) return { ok: false, reason: "ไม่รู้ว่าจะหมุนคีย์ไหน" };
   if (!(await accountManagedKey(tenantId, id))) return { ok: false, reason: KEY_NOT_HERE };
+  // CRM C5.5-fix8 ▸ (รีวิว authz-sweep F3) สิทธิ์ของคีย์เดิมต้องผ่านกติกาเดียวกับตอนออกคีย์ — ไม่ผ่าน = ไม่หมุน (คีย์เดิมไม่ถูกแตะ) ◂
+  const problem = await accountKeyRotationProblem(tenantId, id);
+  if (problem) return { ok: false, reason: problem };
   try {
     const { rawKey } = await rotateApiKey({ tenantId }, id, { createdById: userId });
     await writeAudit({ tenantId, actorId: userId, action: "account.settings.manage", targetType: "ApiKey", targetId: id, after: { rotated: true } });

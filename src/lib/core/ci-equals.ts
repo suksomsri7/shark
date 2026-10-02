@@ -20,3 +20,24 @@ export function likeEscape(value: string): string {
 export function ciEquals(value: string): { equals: string; mode: "insensitive" } {
   return { equals: likeEscape(value), mode: "insensitive" };
 }
+
+// CRM C5.5-fix8 ▸ การค้นหา "มีคำนี้อยู่" ก็รั่วแบบเดียวกัน: Prisma แปล `{ contains: q }` เป็น `LIKE $1` (และ `mode: "insensitive"` เป็น
+//   `ILIKE $1`) โดยส่งพารามิเตอร์ `%<q>%` **ไม่ escape** ⇒ คำค้น `%` คืนทุกแถว · `a_b` เจอ `a.b` · `\` กินตัวถัดไป (พิสูจน์บน QC3:
+//   scripts/pending/cf4/probe-cf4-contains.mts · scripts/pending/cf11/probe-cf11-contains.mts C0) — escape ด้วยตัวเดียวกับ ciEquals
+//   แล้ว Prisma ห่อ `%…%` ให้เอง ⇒ "มีข้อความนี้อยู่ทุกตัวอักษร" · ตัวพิมพ์ใหญ่/เล็กตามเดิมของแต่ละจุด (ci = ไม่สน · like = สน)
+// 🔴 คำค้นของผู้ใช้ใน account/** ห้ามเขียน `contains:` / `startsWith:` / `endsWith:` เอง — fitness F15.4 จับ ◂
+
+/** ตัวกรอง Prisma: ค่าในคอลัมน์ "มี" `value` อยู่ (ไม่สนตัวพิมพ์) — `%` `_` `\` เป็นตัวอักษรธรรมดา */
+export function ciContains(value: string): { contains: string; mode: "insensitive" } {
+  return { contains: likeEscape(value), mode: "insensitive" };
+}
+
+/** ตัวกรอง Prisma: ค่าในคอลัมน์ "มี" `value` อยู่ (สนตัวพิมพ์ — เหมือน `{ contains }` เดิม) — `%` `_` `\` เป็นตัวอักษรธรรมดา */
+export function likeContains(value: string): { contains: string } {
+  return { contains: likeEscape(value) };
+}
+
+/** ตัวกรอง Prisma: ค่าในคอลัมน์ "ขึ้นต้นด้วย" `value` (สนตัวพิมพ์) — `%` `_` `\` เป็นตัวอักษรธรรมดา */
+export function likeStartsWith(value: string): { startsWith: string } {
+  return { startsWith: likeEscape(value) };
+}

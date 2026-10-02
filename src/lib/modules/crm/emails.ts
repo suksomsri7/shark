@@ -94,6 +94,9 @@ import {
   CRM_THREAD_SHORT_LEN,
   CRM_TRACK_RATE_LIMITS,
   CRM_INBOUND_RATE_LIMITS, // CRM C5.5-fix2 ▸ 2a-7 ◂
+  CRM_INBOUND_FREE_MAIL_DOMAINS, // CRM C5.5-fix8 r3 ◂
+  CRM_INBOUND_LIGHT_SENDER_PER_HOUR, // CRM C5.5-fix8 r4 ◂
+  inboundSenderBucketAddr, // CRM C5.5-fix8 r3 ◂
   CRM_LOOP_HEADER, // CRM C5.5-fix2 ▸ 2a-1 ◂
   CRM_COPY_IN_SUBJECT_PREFIX, // CRM C5.5-fix2 ▸ 2a-1 ◂
   displayNameOf,
@@ -2304,47 +2307,116 @@ async function mimicsStaff(tenantId: string, fromAddr: string, displayName: stri
 
 /**
  * CRM C5.5-fix2 ▸ hunter 2a-7 (+ รีวิว RV2-3) — เพดานจดหมายขาเข้าสองถัง (`checkRateLimitDb` ตัวเดียวของระบบ · fail-open เมื่อฐานล่ม):
- *   • ถังต่อผู้ส่ง (`inboundSenderLimited`) — นับทุกฉบับก่อนงานหนัก · กันวงสำเนา/ผู้ส่งรายเดียวที่ถล่ม
- *   • ถังของทั้งระบบ (`inboundSystemLimited`) — นับ **เฉพาะจดหมายที่พิสูจน์ผู้ส่งไม่ได้** (มติผู้คุมงาน RV2-3): จดหมายที่ผ่าน A-R
- *     หรือมีหลักฐานของเธรด (อ้าง Message-ID ของจดหมายขาออกของเรา + มาจากผู้รับของฉบับนั้น) ไม่ถูกนับและไม่ถูกทิ้ง ⇒ คนที่สุ่ม From
- *     ถล่มกล่องเต็มถังได้ แต่ลูกค้าที่ตอบเธรดจริงยังเข้ามาได้เสมอ
+ *   • ถังต่อผู้ส่ง — กันผู้ส่งรายเดียวที่ถล่ม · ถังของทั้งระบบ — นับ **เฉพาะจดหมายที่พิสูจน์ผู้ส่งไม่ได้** (มติผู้คุมงาน RV2-3)
+ *   • CRM C5.5-fix8 (H3-1 → r2 RV-2 → r3 RV-6): ทุกฉบับอยู่ในชั้นเดียวตามหลักฐาน (V ยืนยันทั้งสองทาง · D DMARC · T เธรด · U ไม่มี) และถูกนับ/ทิ้ง
+ *     เฉพาะโดยถังของชั้นตัวเอง — ดู `inboundLimited` · ชั้น U = ถังสองใบเดิมของ fix2 ◂
  * เกิน ⇒ `true` (ผู้เรียกตอบ "รับแล้ว" แต่ไม่เก็บ · ไม่เด้งกลับ) · ครั้งแรกที่เกินของหน้าต่าง (count = limit + 1 — คำสั่งเดียวแบบ atomic
- * ⇒ มีคำขอเดียวที่เห็นค่านี้): audit `crm.email.inbound.rate_limited` 1 บรรทัด · ถังของระบบแจ้งเจ้าของร้านด้วย (AppNotification รายคน
- * ทางเดิมของระบบ — ไม่มีช่องทางใหม่) · ไม่มีที่อยู่อีเมลดิบใน audit/กุญแจถัง (แฮช)
+ * ⇒ มีคำขอเดียวที่เห็นค่านี้): audit `crm.email.inbound.rate_limited` 1 บรรทัด · แจ้งเจ้าของร้านทุกถัง (CRM C5.5-fix8 ▸ เดิมเฉพาะถังของระบบ ·
+ * r2: ถังต่อผู้ส่งแจ้งได้ ≤ 1 ครั้งต่อระบบต่อชั่วโมงต่อชนิด — `ownerNoticeDue`)
+ * (AppNotification รายคน ทางเดิมของระบบ — ไม่มีช่องทางใหม่) · ไม่มีที่อยู่อีเมลดิบใน audit/กุญแจถัง/ข้อความแจ้ง (แฮช · กติกา RV2-3)
+ *
+ * CRM C5.5-fix8 r3 ▸ ชั้นของหลักฐานผู้ส่ง (ดู CRM_INBOUND_RATE_LIMITS ใน emails-shared.ts) ◂ */
+type InboundClass = "V" | "D" | "T" | "U";
+
+const NOTICE_TEXT: Record<Exclude<InboundClass, "U">, (limit: number, systemId: string) => string> = {
+  V: (_l, sys) =>
+    `คำตอบของลูกค้าที่ยืนยันได้ทั้งผู้ส่ง (ผ่านการตรวจโดเมน) และเธรดของร้าน เข้ามาเกินเพดานชั่วโมงนี้ — ฉบับที่เกินถูกพักทิ้งจนครบชั่วโมง (คำตอบจริงของลูกค้ากำลังถูกทิ้ง — ตรวจด่วนว่ามีระบบใดส่งวนหรือถูกถล่ม) ดูที่ /app/sys/${sys}/crm/emails`,
+  D: (_l, sys) =>
+    `จดหมายจากโดเมนที่ผ่านการตรวจผู้ส่ง (แต่ไม่ได้ตอบเธรดของร้าน) เข้ามาเกินเพดานชั่วโมงนี้ — ฉบับที่เกินจากผู้ส่ง/โดเมนนั้นถูกพักทิ้งจนครบชั่วโมง (อาจเป็นการส่งถล่มจากโดเมนของคนนอก) คำตอบของลูกค้าที่ยืนยันได้ยังเข้ามาตามปกติ ดูที่ /app/sys/${sys}/crm/emails`,
+  T: (_l, sys) =>
+    `จดหมายที่อ้างเธรดของร้านแต่ยืนยันผู้ส่งไม่ได้เข้ามาเกินเพดานชั่วโมงนี้ — ฉบับที่เกินถูกพักทิ้งจนครบชั่วโมง (อาจมีคนที่เห็นที่อยู่ผู้รับในจดหมายของร้านส่งถล่ม) คำตอบของลูกค้าที่ยืนยันได้ยังเข้ามาตามปกติ ดูที่ /app/sys/${sys}/crm/emails`,
+};
+
+/**
+ * CRM C5.5-fix8 r3 ▸ (รีวิว RV-6 · มติผู้คุมงาน) ถังเพดานของจดหมาย 1 ฉบับตามชั้น — ต่อผู้ส่ง → (ต่อโดเมน D / ต่อ Message-ID ของเรา T) → ทั้งระบบ
+ *   ทุกถังของชั้น V/D/T มีกุญแจของชั้นตัวเอง (`crm.email.in.<ส่วน>.<v|d|t>.<sys>.<แฮช>`) — ไม่มีชั้นไหนแตะถังของอีกชั้น
+ *   ชั้น U = ถังเดิมของ fix2 ทุกไบต์ (กุญแจ · audit · ข้อความแจ้ง) ยกเว้นกุญแจผู้ส่งที่ตัด `+tag` (ที่อยู่ปกติได้แฮชเดิม)
+ *   เต็มครั้งแรกของหน้าต่าง (count = limit + 1): audit 1 บรรทัด + แจ้งเจ้าของร้าน ≤ 1 ครั้ง/ชม./ระบบ/ชั้น (`ownerNoticeDue`) —
+ *   ถังทั้งระบบของ U แจ้งแบบเดิม (ครั้งเดียวต่อหน้าต่างของถังนั้น) ◂
  */
-async function inboundSenderLimited(tenantId: string, systemId: string, fromAddr: string): Promise<boolean> {
-  const senderHash = sha256(`from:${fromAddr}`).slice(0, 32);
-  const L = CRM_INBOUND_RATE_LIMITS.perSender;
-  const v = await checkRateLimitDb(`crm.email.in.from.${systemId}.${senderHash}`, L);
-  if (v.ok) return false;
-  if (v.count === L.limit + 1) await auditInboundCap(tenantId, systemId, { bucket: "sender", limit: L.limit, windowMs: L.windowMs, senderHash: senderHash.slice(0, 12) });
-  return true;
+async function inboundLimited(
+  tenantId: string,
+  systemId: string,
+  cls: InboundClass,
+  m: { fromAddr: string; fromDomain: string; proofMessageId: string | null },
+): Promise<boolean> {
+  const senderHash = sha256(`from:${inboundSenderBucketAddr(m.fromAddr)}`).slice(0, 32);
+  const c = cls.toLowerCase();
+  // r4: `light` = ขั้นถังทั้งระบบของ V/T — ผู้ส่งเบา (≤ CRM_INBOUND_LIGHT_SENDER_PER_HOUR ฉบับ/ชม. ตามถังผู้ส่งของชั้นนั้น) ถูกนับแต่ไม่ถูกทิ้ง
+  const steps: { bucket: string; key: string; L: { limit: number; windowMs: number }; extra?: Record<string, unknown>; light?: boolean }[] = [];
+  if (cls === "U") {
+    steps.push({ bucket: "sender", key: `crm.email.in.from.${systemId}.${senderHash}`, L: CRM_INBOUND_RATE_LIMITS.perSender, extra: { senderHash: senderHash.slice(0, 12) } });
+    steps.push({ bucket: "system", key: `crm.email.in.sys.${systemId}`, L: CRM_INBOUND_RATE_LIMITS.perSystem });
+  } else {
+    const R = cls === "V" ? CRM_INBOUND_RATE_LIMITS.verified : cls === "D" ? CRM_INBOUND_RATE_LIMITS.dmarc : CRM_INBOUND_RATE_LIMITS.thread;
+    steps.push({ bucket: `sender-${c}`, key: `crm.email.in.from.${c}.${systemId}.${senderHash}`, L: R.perSender, extra: { senderHash: senderHash.slice(0, 12) } });
+    // D และ (r4 · RV-8) V: ถังต่อโดเมนของ From 300/ชม. — ยกเว้นโดเมนอีเมลสาธารณะ (รายการเดียวของ CRM — RV-9)
+    if ((cls === "D" || cls === "V") && m.fromDomain && !CRM_INBOUND_FREE_MAIL_DOMAINS.has(m.fromDomain)) {
+      const domHash = sha256(`dom:${m.fromDomain}`).slice(0, 32);
+      const DL = cls === "V" ? CRM_INBOUND_RATE_LIMITS.verified.perDomain : CRM_INBOUND_RATE_LIMITS.dmarc.perDomain;
+      steps.push({ bucket: `domain-${c}`, key: `crm.email.in.dom.${c}.${systemId}.${domHash}`, L: DL, extra: { domainHash: domHash.slice(0, 12) } });
+    }
+    if (cls === "T" && m.proofMessageId) {
+      const msgHash = sha256(`msg:${m.proofMessageId}`).slice(0, 32);
+      steps.push({ bucket: "message-t", key: `crm.email.in.msg.t.${systemId}.${msgHash}`, L: CRM_INBOUND_RATE_LIMITS.thread.perMessage, extra: { messageHash: msgHash.slice(0, 12) } });
+    }
+    steps.push({ bucket: `system-${c}`, key: `crm.email.in.sys.${c}.${systemId}`, L: R.perSystem, light: cls === "V" || cls === "T" });
+  }
+  // CRM C5.5-fix8 r4 ▸ (รีวิว RV-8 · มติผู้คุมงาน) ช่องทางผู้ส่งเบาของ V/T: ใช้ค่านับที่ถังผู้ส่งคืนมาอยู่แล้ว (ไม่มีคิวรีเพิ่ม) ·
+  //   ถังผู้ส่ง/โดเมน/ต่อฉบับยังใช้กับทุกคน · ถังทั้งระบบนับทุกฉบับ แต่ทิ้งได้เฉพาะผู้ส่งที่เกิน N ฉบับในชั่วโมงนี้แล้ว ⇒ คนร้ายที่ถือ k คู่
+  //   (กล่องจดหมาย, จดหมายของร้าน) ได้ไม่เกิน เพดานระบบ + N·k ฉบับ/ชม. และลูกค้าที่ตอบ ≤ N ฉบับ/ชม. ไม่มีวันถูกถังรวมทิ้ง ◂
+  let senderCount: number | undefined;
+  for (const st of steps) {
+    const v = await checkRateLimitDb(st.key, st.L);
+    if (st === steps[0]) senderCount = v.count;
+    if (v.ok) continue;
+    const lightSender = st.light === true && (senderCount === undefined || senderCount <= CRM_INBOUND_LIGHT_SENDER_PER_HOUR);
+    if (lightSender) continue; // นับแล้ว ไม่ทิ้ง (ตัวนับล่ม = undefined ⇒ ปล่อยผ่านเหมือน fail-open ของตัวจำกัด)
+    // ถังที่มีช่องทางเบา: ครั้งแรกที่ "ทิ้งจริง" ของหน้าต่าง (count = limit + 1 อาจเป็นฉบับของผู้ส่งเบาที่ไม่ถูกทิ้ง) ⇒ ใช้ถังกันซ้ำแทน
+    const firstTrip = st.light === true ? await ownerNoticeDue(systemId, `audit-${st.bucket}`) : v.count === st.L.limit + 1;
+    if (firstTrip) {
+      await auditInboundCap(tenantId, systemId, { bucket: st.bucket, limit: st.L.limit, windowMs: st.L.windowMs, ...(st.extra ?? {}) });
+      if (cls === "U" && st.bucket === "system") {
+        // RV2-3: ร้านต้องรู้ว่ากล่องจดหมายถูกถล่ม (จดหมายที่พิสูจน์ผู้ส่งไม่ได้ถูกทิ้งไปจนจบชั่วโมง) — แจ้งเจ้าของร้านทุกคน ครั้งเดียวต่อหน้าต่าง
+        await notifyOwnersInboundCap(
+          tenantId,
+          `มีจดหมายที่ยืนยันผู้ส่งไม่ได้เข้ามาเกิน ${st.L.limit} ฉบับในชั่วโมงเดียว (อาจถูกส่งถล่ม) — ฉบับที่เกินถูกพักทิ้งจนครบชั่วโมง ลูกค้าที่ตอบเธรดเดิมหรือยืนยันผู้ส่งได้ยังเข้ามาตามปกติ ดูที่ /app/sys/${systemId}/crm/emails`,
+        );
+      } else if (cls === "U") {
+        // CRM C5.5-fix8 ▸ (H3-1) เจ้าของร้านต้องรู้ — r2 (RV-3): ≤ 1 ข้อความ/ชม./ระบบ ◂
+        if (await ownerNoticeDue(systemId, "sender")) {
+          await notifyOwnersInboundCap(
+            tenantId,
+            `มีจดหมายที่ยืนยันผู้ส่งไม่ได้ในนามผู้ส่งรายเดียวเข้ามาเกิน ${st.L.limit} ฉบับในชั่วโมงเดียว (อาจมีคนแอบอ้างที่อยู่ของลูกค้าหรือพนักงาน — ดูจดหมายล่าสุดที่มีป้าย "ไม่ยืนยันผู้ส่ง") — ฉบับที่เกินจากผู้ส่งนี้ถูกพักทิ้งจนครบชั่วโมง ลูกค้าที่ตอบเธรดเดิมหรือยืนยันผู้ส่งได้ยังเข้ามาตามปกติ ดูที่ /app/sys/${systemId}/crm/emails`,
+          );
+        }
+      } else if (await ownerNoticeDue(systemId, `class-${c}`)) {
+        await notifyOwnersInboundCap(tenantId, NOTICE_TEXT[cls](st.L.limit, systemId));
+      }
+    }
+    return true;
+  }
+  return false;
 }
 
-async function inboundSystemLimited(tenantId: string, systemId: string): Promise<boolean> {
-  const L = CRM_INBOUND_RATE_LIMITS.perSystem;
-  const v = await checkRateLimitDb(`crm.email.in.sys.${systemId}`, L);
-  if (v.ok) return false;
-  if (v.count === L.limit + 1) {
-    await auditInboundCap(tenantId, systemId, { bucket: "system", limit: L.limit, windowMs: L.windowMs });
-    // RV2-3: ร้านต้องรู้ว่ากล่องจดหมายถูกถล่ม (จดหมายที่พิสูจน์ผู้ส่งไม่ได้ถูกทิ้งไปจนจบชั่วโมง) — แจ้งเจ้าของร้านทุกคน ครั้งเดียวต่อหน้าต่าง
-    try {
-      const owners = await prisma.membership.findMany({ where: { tenantId, role: "OWNER", acceptedAt: { not: null } }, select: { userId: true }, take: 20 });
-      if (owners.length) {
-        await prisma.appNotification.createMany({
-          data: owners.map((o) => ({
-            tenantId,
-            recipientUserId: o.userId,
-            title: "กล่องอีเมล CRM รับจดหมายเกินเพดานชั่วโมงนี้",
-            body: `มีจดหมายที่ยืนยันผู้ส่งไม่ได้เข้ามาเกิน ${L.limit} ฉบับในชั่วโมงเดียว (อาจถูกส่งถล่ม) — ฉบับที่เกินถูกพักทิ้งจนครบชั่วโมง ลูกค้าที่ตอบเธรดเดิมหรือยืนยันผู้ส่งได้ยังเข้ามาตามปกติ ดูที่ /app/sys/${systemId}/crm/emails`,
-          })),
-        });
-      }
-    } catch (e) {
-      await logOps("WARN", "crm.email.inbound", "แจ้งเจ้าของร้านเรื่องกล่องอีเมลเกินเพดานไม่สำเร็จ", { tenantId, detail: (e instanceof Error ? e.name : "Error").slice(0, 80) }).catch(() => {});
+/** CRM C5.5-fix8 r2 ▸ (รีวิว RV-3) ข้อความแจ้งเจ้าของร้าน ≤ 1 ครั้งต่อระบบต่อชั่วโมงต่อชนิด (ถังเดียวของระบบ · คำสั่งเดียว) ◂ */
+async function ownerNoticeDue(systemId: string, kind: string): Promise<boolean> {
+  const v = await checkRateLimitDb(`crm.email.in.notice.${kind}.${systemId}`, { limit: 1, windowMs: 60 * 60_000 });
+  return v.ok;
+}
+
+/** แจ้งเจ้าของร้านทุกคน (AppNotification ทางเดิม · ≤ 20 คน) ว่ากล่องอีเมล CRM เกินเพดาน — ล้ม = WARN ไม่กระทบการตอบของเส้นขาเข้า */
+async function notifyOwnersInboundCap(tenantId: string, body: string): Promise<void> {
+  try {
+    const owners = await prisma.membership.findMany({ where: { tenantId, role: "OWNER", acceptedAt: { not: null } }, select: { userId: true }, take: 20 });
+    if (owners.length) {
+      await prisma.appNotification.createMany({
+        data: owners.map((o) => ({ tenantId, recipientUserId: o.userId, title: "กล่องอีเมล CRM รับจดหมายเกินเพดานชั่วโมงนี้", body })),
+      });
     }
+  } catch (e) {
+    await logOps("WARN", "crm.email.inbound", "แจ้งเจ้าของร้านเรื่องกล่องอีเมลเกินเพดานไม่สำเร็จ", { tenantId, detail: (e instanceof Error ? e.name : "Error").slice(0, 80) }).catch(() => {});
   }
-  return true;
 }
 
 async function auditInboundCap(tenantId: string, systemId: string, after: Record<string, unknown>): Promise<void> {
@@ -2404,8 +2476,52 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
 
     const headers = lowerHeaders(payload?.headers);
     const fromAddr = bareEmail(payload?.from);
-    // CRM C5.5-fix2 ▸ hunter 2a-7: เพดานต่อผู้ส่งก่อนงานหนัก (ถังของทั้งระบบอยู่หลังรู้ผลพิสูจน์ผู้ส่ง — RV2-3) — เกิน = รับแล้วทิ้ง ◂
-    if (await inboundSenderLimited(system.tenantId, system.id, fromAddr)) return { ok: true, handled: false, reason: "rate_limited", attachmentsDropped: 0 };
+    // CRM C5.5-fix8 ▸ (ล่าปิดงาน H3-1) ลำดับใหม่: หลักฐานของผู้ส่งก่อน → ถังเพดาน → งานอื่น · r2 (รีวิว RV-1/RV-2):
+    //   • ถังของจดหมายที่ **ไม่มีหลักฐาน** (ต่อผู้ส่ง 100 · ทั้งระบบ 1,000 / ชม. — กุญแจ/ข้อความเดิม) นับ/ทิ้งเฉพาะจดหมายกลุ่มนี้
+    //   • จดหมายที่ **พิสูจน์ได้** มีถังของตัวเอง แยกตามความแข็งของหลักฐาน (r3 RV-6: V / D / T — ดู `inboundLimited`) ⇒ จดหมายปลอมในนามลูกค้า
+    //     ทำให้คำตอบจริงของลูกค้าตกถังไม่ได้ (H3-1) · ไม่มีผู้ส่งกลุ่มไหนไม่มีเพดาน (RV-2) · หลักฐานอ่อนทิ้งหลักฐานแข็งไม่ได้ (RV-6)
+    //   • ก่อนถัง: `fromProof` = แกะ A-R ของ MTA เรา (ไม่แตะฐาน · หัวถูกเพดานแล้วข้างบน — fix5) · หลักฐานของเธรด = 1 คิวรีแคบ (ขาออกของเรา ·
+    //     ร้าน+ระบบนี้ · Message-ID ที่อ้าง ≤ 100 ตัวล่าสุด · อ่านแค่ `messageId/toAddrs/ccAddrs` ≤ 50 แถว) — **ไม่มีเนื้อจดหมายถูกโหลดก่อนถัง** (RV-1)
+    //   • `parent` (แถวเต็มของฉบับที่ถูกอ้างล่าสุด — ต่อเธรด/ผลของการตอบกลับ) อ่านหลังผ่านถังแล้ว แบบ findFirst เดิม ◂
+    // CRM C5.5-fix2 ▸ hunter 2a-2: หลักฐานของ From คิดกับ **ทุก** ผู้ส่ง (เดิมเฉพาะที่อ้างเป็นพนักงาน) — ลูกค้าที่ไม่มีหลักฐาน = ธง unverifiedFrom ◂
+    const fromProof = !!fromAddr && authResultPass(headers, emailDomainOf(fromAddr));
+    const refs = refIdsOf(headers);
+    // ไคลเอนต์อีเมลส่งคืนค่าที่อยู่ในหัว `Message-ID` ของเรา ซึ่งอาจเป็นรูป RFC ล้วนหรือรูปที่ผูกระบบแล้ว
+    // ⇒ รับทั้งสองรูป แต่ยังกรอง `systemId` เสมอ (AUDIT-CLASS X1: เธรดของระบบอื่นไม่มีทางถูกต่อ)
+    const candidatesOf = (ids: string[]) => uniq([...ids, ...ids.map((r) => scopedMessageId(system.id, r))]);
+    // CRM C5.5-fix8 ▸ (H3-1 INFO) หลักฐานของเธรด = ฉบับใดก็ได้ที่ถูกอ้างเป็นจดหมายขาออกของเรา (ร้าน+ระบบนี้) ที่ส่งถึง From นี้ตรงตัว (to/cc)
+    //   — ไม่ใช่แค่ฉบับที่ถูกอ้างล่าสุด (คำตอบที่อ้างจดหมายของลูกค้าเองที่ใหม่กว่าด้วยเคยไม่มีหลักฐาน) · ใช้ตัดสินว่าเข้าถังไหนเท่านั้น ◂
+    let threadProofAny = false;
+    let proofMessageId: string | null = null;
+    if (refs.length && fromAddr) {
+      const proofRefs = refs.length > 100 ? [refs[0] as string, ...refs.slice(-99)] : refs; // In-Reply-To + References ล่าสุด
+      const outs = await prisma.crmEmailMessage.findMany({
+        where: { tenantId: system.tenantId, systemId: system.id, direction: "OUT", messageId: { in: candidatesOf(proofRefs) } },
+        select: { messageId: true, toAddrs: true, ccAddrs: true },
+        take: 50,
+      });
+      // r3: ฉบับที่พิสูจน์ (ของเรา ส่งถึง From นี้ตรงตัว) — Message-ID ที่น้อยที่สุดเป็นกุญแจถังต่อฉบับของชั้น T (ทุกคนที่อ้างฉบับนี้ใช้ถังเดียวกัน)
+      const proving = outs.filter((m) => [...(m.toAddrs ?? []), ...(m.ccAddrs ?? [])].some((x) => bareEmail(x) === fromAddr)).map((m) => m.messageId).sort();
+      threadProofAny = proving.length > 0;
+      proofMessageId = proving[0] ?? null;
+    }
+    // CRM C5.5-fix8 r3 ▸ (รีวิว RV-6 · มติผู้คุมงาน) ชั้นตามความแข็งของหลักฐาน — ฉบับละชั้นเดียว · ถูกทิ้งได้เฉพาะโดยถังของชั้นตัวเอง ·
+    //   ไม่ตั้ง CRM_INBOUND_AUTHSERV_ID ⇒ `fromProof` = false เสมอ ⇒ มีแค่ T กับ U ◂
+    const inboundClass: InboundClass = fromProof && threadProofAny ? "V" : fromProof ? "D" : threadProofAny ? "T" : "U";
+    // CRM C5.5-fix2 ▸ รีวิว RV2-3 + C5.5-fix8 ▸ H3-1 / r2 RV-2 / r3 RV-6: ผู้ส่ง → (โดเมน | ฉบับของเรา) → ระบบ ของชั้นนั้น ◂
+    if (await inboundLimited(system.tenantId, system.id, inboundClass, { fromAddr, fromDomain: emailDomainOf(fromAddr), proofMessageId })) {
+      return { ok: true, handled: false, reason: "rate_limited", attachmentsDropped: 0 };
+    }
+    // ── ต่อเธรดชั้นที่ 1 (In-Reply-To/References) — หลังถังเพดาน (แถวเต็ม 1 แถว เหมือนเดิม) · เธรดและผลของการตอบกลับใช้ ──
+    let parent: CrmEmailMessage | null = null;
+    if (refs.length) {
+      parent = await prisma.crmEmailMessage.findFirst({
+        where: { systemId: system.id, messageId: { in: candidatesOf(refs) } },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+    // CRM C5.5-fix2 ▸ hunter 2a-2: "หลักฐานของเธรด" (ของผลการตอบกลับ) = ฉบับที่ถูกอ้างล่าสุดเป็นจดหมายขาออกของเรา **และ** From คือผู้รับของฉบับนั้น ◂
+    const threadProof = !!parent && parent.direction === "OUT" && [...(parent.toAddrs ?? []), ...(parent.ccAddrs ?? [])].some((x) => bareEmail(x) === fromAddr);
     const replyToAddr = bareEmail(headers["reply-to"]);
     const auto = isAutoSubmitted(headers, str(payload?.from));
     const subject = str(payload?.subject).slice(0, CRM_EMAIL_SUBJECT_MAX) || "(ไม่มีหัวข้อ)";
@@ -2437,8 +2553,7 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     //   จดหมายที่อ้างที่อยู่ของพนักงาน/โดเมนของร้านโดยไม่มีหลักฐาน ⇒ IN + ธง `routing.unverifiedShopFrom` (ให้หน้าจอเตือนได้)
     //   และไม่ถูกทำเป็น lead ใหม่ (ที่อยู่ของพนักงานเองไม่ใช่ลูกค้า) ◂
     const staffClaim = staff?.userId ?? (overrideTrusted ? staffByOverride?.userId : null) ?? null;
-    // CRM C5.5-fix2 ▸ hunter 2a-2: หลักฐานของ From คิดกับ **ทุก** ผู้ส่ง (เดิมเฉพาะที่อ้างเป็นพนักงาน) — ลูกค้าที่ไม่มีหลักฐาน = ธง unverifiedFrom ◂
-    const fromProof = !!fromAddr && authResultPass(headers, emailDomainOf(fromAddr));
+    // (CRM C5.5-fix8 ▸ `fromProof` คิดไว้ข้างบนแล้ว — ก่อนถังเพดาน) ◂
     const fromAuthenticated = staffClaim ? fromProof : false;
     const sentById = fromAuthenticated ? staffClaim : null;
     const fromOnShopDomain = !!fromAddr && (await verifiedDomains(system.tenantId)).has(emailDomainOf(fromAddr));
@@ -2446,22 +2561,6 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     const direction: "IN" | "OUT" = sentById ? "OUT" : "IN";
     if (direction === "OUT" && settings.bccCaptureEnabled !== true) return { ok: true, handled: false, reason: "bcc_capture_off", attachmentsDropped: 0 };
 
-    // ── ต่อเธรดชั้นที่ 1 (In-Reply-To/References) — ย้ายขึ้นมาก่อน เพราะเป็น "หลักฐานของเธรด" ที่ถังของระบบ (RV2-3) และผลของการตอบกลับใช้ ──
-    const refs = refIdsOf(headers);
-    let parent: CrmEmailMessage | null = null;
-    if (refs.length) {
-      // ไคลเอนต์อีเมลส่งคืนค่าที่อยู่ในหัว `Message-ID` ของเรา ซึ่งอาจเป็นรูป RFC ล้วนหรือรูปที่ผูกระบบแล้ว
-      // ⇒ รับทั้งสองรูป แต่ยังกรอง `systemId` เสมอ (AUDIT-CLASS X1: เธรดของระบบอื่นไม่มีทางถูกต่อ)
-      const candidates = uniq([...refs, ...refs.map((r) => scopedMessageId(system.id, r))]);
-      parent = await prisma.crmEmailMessage.findFirst({
-        where: { systemId: system.id, messageId: { in: candidates } },
-        orderBy: { createdAt: "desc" },
-      });
-    }
-    // CRM C5.5-fix2 ▸ hunter 2a-2: "หลักฐานของเธรด" = อ้าง Message-ID ของจดหมายขาออกของเรา **และ** From คือผู้รับของฉบับนั้น ◂
-    const threadProof = !!parent && parent.direction === "OUT" && [...(parent.toAddrs ?? []), ...(parent.ccAddrs ?? [])].some((x) => bareEmail(x) === fromAddr);
-    // CRM C5.5-fix2 ▸ รีวิว RV2-3 (มติผู้คุมงาน): ถังของทั้งระบบนับ/ทิ้งเฉพาะจดหมายที่พิสูจน์ผู้ส่งไม่ได้ ◂
-    if (!fromProof && !threadProof && (await inboundSystemLimited(system.tenantId, system.id))) return { ok: true, handled: false, reason: "rate_limited", attachmentsDropped: 0 };
     // AUDIT-CLASS X6: HTML ของคนนอกร้านผ่านตัวตัดกลางก่อน "เก็บ" (รูปเก็บไว้ให้กด "แสดงรูป" เองทีหลัง) — หลังด่านเพดาน (จดหมายที่ถูกทิ้งไม่กินเครื่อง)
     // HOTFIX 2026-10-01 (review S2): HTML ของคนนอกร้านตัดที่ 1,000,000 ตัวก่อนเข้าตัวตัด/แปลงข้อความ — ทั้งสองเป็นเชิงเส้นแล้ว
     //   แต่ route รับได้ถึง 10 MB ⇒ ไม่ตัด = ~3 วินาที CPU ต่อฉบับที่ใครก็ส่งมาได้ · จดหมายจริงไม่ถึง 1 MB ของ HTML
@@ -2530,7 +2629,14 @@ export async function ingestInbound(payload: CrmInboundPayload, deps?: EmailDeps
     //   "ไม่ยืนยันผู้ส่ง") แต่ **ไม่** ให้คะแนน / ไม่ระบุตัวลูกค้าใน event / ผลของ "การตอบกลับ" ต้องมีหลักฐานของเธรด (ล่าง) ◂
     // รีวิว RV2-2: จดหมายที่ถูกแปะบริษัทด้วยโดเมน (ไม่มีผู้ติดต่อ) ก็ต้องติดธงเช่นกัน — `ceo@<โดเมนลูกค้า>` ปลอมได้ ◂
     const unverifiedFrom = direction === "IN" && !fromProof && (!!contact || !!companyId);
-    const routingFlags: Record<string, boolean> = { ...(unverifiedShopFrom ? { unverifiedShopFrom: true } : {}), ...(unverifiedFrom ? { unverifiedFrom: true } : {}) };
+    // CRM C5.5-fix8 ▸ (รีวิว fix3b รอบ 2 · R2-1) ธงใน `routing` บันทึก "ผู้ส่งยังไม่ได้พิสูจน์" ให้ **ทุก** จดหมายขาเข้าที่ไม่มีหลักฐาน From
+    //   (A-R ของ MTA เรา — `fromProof`) ไม่ว่าจะจับคู่ใครได้ตอนรับหรือไม่ — เดิมเฉพาะที่ผูกผู้ติดต่อ/บริษัทได้ ⇒ จดหมายปลอมจากที่อยู่ที่ยังไม่รู้จัก
+    //   ถูก "ผูกกับผู้ติดต่อ" ทีหลัง (attachToContact) แล้วกลายเป็นกิจกรรม EMAIL ขาเข้าที่ไม่มีป้ายที่ไหนเลย · ตัวอ่านเดียว `emailRoutingUnverified`
+    //   (เธรด · กล่องจดหมาย · บล็อกกิจกรรม · 360 · บทสรุป AI) จึงเห็นป้ายเองโดยไม่ต้องแก้ฝั่งอ่าน · จดหมายที่จับคู่ได้ = ค่าเดิมทุกไบต์
+    //   (`unverifiedFrom` ข้างบน = ชุดย่อยของเงื่อนไขนี้) · event `crm.email.received` ยังใช้ `unverifiedFrom` เดิม (ไม่เปลี่ยน payload) ·
+    //   แถวที่เก็บก่อนการแก้นี้ไม่ถูกย้อนเติม ◂
+    const senderNotProven = direction === "IN" && !fromProof;
+    const routingFlags: Record<string, boolean> = { ...(unverifiedShopFrom ? { unverifiedShopFrom: true } : {}), ...(senderNotProven ? { unverifiedFrom: true } : {}) };
 
     // ── ต่อเธรด 3 ชั้น (AUDIT-CLASS X1: เธรดของร้าน/ระบบอื่นไม่มีทางถูกต่อ) — ชั้นที่ 1 (`parent`) คิดไว้ข้างบนแล้ว ──
     let threadKey = parent?.threadKey ?? null;

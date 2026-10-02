@@ -1,0 +1,44 @@
+(node:2041624) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── M1/M2 unmatched mail — flag at ingest, survives attach ──
+  ✅ [M1.0] premise: both stored unmatched IN (forged {"handled":true,"contactId":null,"companyId":null} · proven {"handled":true,"contactId":null})
+  ❌ [M1.1] forged unmatched mail stored routing=null (want unverifiedFrom: true)
+  ✅ [M2.1] positive: proven unmatched mail routing=null (want no flag)
+  ❌ [M1.2] forged: unmatched inbox item flag=false · thread view flag=false (want true, true)
+  ✅ [M2.2] positive: proven inbox flag=false · thread flag=false (want false, false)
+  ❌ [M1.3] forged after attach: activity=true · contact 360=undefined · company 360=undefined · activity block=undefined · thread=false · contact inbox=false (want all true)
+  ✅ [M2.3] positive: proven after attach: contact 360=undefined · company 360=undefined · activity block=undefined (want undefined ×3)
+  ✅ [M3.4] unmatched crm.email.received payloads byte-identical to fix2: forged={"emailId":"cmuq3psy5000dbskzeikbgqmn","threadKey":"35568aa06349d3af4d43cd6825ed2076"} · proven={"emailId":"cmuq3pt1k000fbskzomyaq2sn","threadKey":"c02fa9147a2f25c5ef339ba9ee0761ff"}
+
+── M3 matched mail — routing + event byte-identical to fix2 ──
+  ✅ [M3.1] contact-matched: no proof routing={"unverifiedFrom":true} (want {"unverifiedFrom":true}) · proven routing=null (want null)
+  ✅ [M3.2] domain-matched: no proof routing={"unverifiedFrom":true} (want {"unverifiedFrom":true}) · proven routing=null (want null)
+  ✅ [M3.3] crm.email.received payloads: contact/no proof={"emailId":"cmuq3puj7000lbskzr4be2mwj","threadKey":"247adf7753f8eb3e4439dd2e83fa0eb5","unverifiedFrom":true} · contact/proof={"emailId":"cmuq3purl000pbskz4b7wyg71","companyId":"cmuq3psis0009bskz1kfahyx4","contactId":"cmuq3psjq000bbskzrj54fibt","threadKey":"8168aa5b75452a1c96431d5493c2e5f5"} · domain/no proof={"emailId":"cmuq3puzi000sbskz2m5hry79","threadKey":"5f9c7988e7958ea6c8245f5a3d1ee179","unverifiedFrom":true} · domain/proof={"emailId":"cmuq3pv2y000ubskznh1nuywb","companyId":"cmuq3psis0009bskz1kfahyx4","threadKey":"c6e1d899271b21f56e3bba4a8fa391d7"}
+
+── H per-sender bucket vs proven mail (H3-1) ──
+  ✅ [H.0] control: victim's thread-proven reply before any flood → {"ok":true,"handled":true,"emailId":"cmuq3pv9y0010bskzg2v96imj","attachmentsDropped":0}
+  ✅ [H.1] control: 99 forged mails in the victim's name stored (flagged) → 99
+  ❌ [S1.2] after 99 forged mails, the victim's thread-proven reply is stored → {"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0}
+  ❌ [S1.3] after the flood, a DMARC-proven mail from the victim is stored → {"ok":true,"handled":false,"reason":"rate_limited","attachmentsDropped":0}
+  ❌ [S1.6] both genuine victim replies stored as rows → 1
+  ❌ [H.2] control: forged #100 → rate_limited · #101 → rate_limited · #102 → rate_limited · audits=["sender"] · owner notices=0 (no address: true)
+  ❌ [H.3] sender bucket full: reply citing our older OUT mail + the customer's own newer mail → rate_limited (anyThreadProof) · reply effects still tied to the newest reference (OUT repliedAt untouched: true)
+  ❌ [H.4] control: system bucket full → unproven new sender rate_limited · thread-proven reply rate_limited (bucket 1001→1001) · audits=["sender","system"] notices=1
+  ❌ [H.5] the 100 stored forged mails are flagged unverifiedFrom → 99
+
+── INFO staff-claim mail (unverifiedShopFrom) ──
+  ✅ [INFO-shop] From = a staff address, no proof → direction IN routing={"unverifiedShopFrom":true} (fix2: {"unverifiedShopFrom":true}; this card adds unverifiedFrom on unmatched mail — the reader ORs both, badge unchanged)
+  ✅ [CLEAN-buckets] rate buckets of the throwaway system removed
+  ✅ [CLEAN-vtggr4] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-mail: 14/24
+JSON_SUMMARY {"total":24,"passed":14,"findings":["M1.1","M1.2","M1.3","S1.2","S1.3","S1.6","H.2","H.3","H.4","H.5"]}

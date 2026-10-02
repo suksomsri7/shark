@@ -11,6 +11,7 @@ import { sanitizeHtml } from "@/lib/core/sanitize";
 import { bareEmail, trailingAngleAddr } from "@/lib/core/inbound-address";
 import { stripTags, trimEndBlanks } from "@/lib/core/linear-text"; // CRM C5.5-fix5 ▸ ตัวตัดแท็ก/ช่องว่างแบบเชิงเส้น (รีวิว RV-1/RV-2) ◂
 import { CRM_FILE_MIME_ALLOWLIST } from "./activities-shared";
+import { FREE_MAIL_DOMAINS } from "./companies-shared"; // CRM C5.5-fix8 r4 ▸ (รีวิว RV-9) รายการโดเมนสาธารณะรายการเดียวของ CRM ◂
 
 // ───────────────────────── เพดาน (AUDIT-CLASS X6) ─────────────────────────
 
@@ -131,13 +132,51 @@ export const CRM_TRACK_RATE_LIMITS: Readonly<{
 
 // CRM C5.5-fix2 ▸ hunter 2a-7: เพดานจดหมายขาเข้าต่อระบบ + ต่อผู้ส่ง (ต่อชั่วโมง · ถังเดียวของระบบ `checkRateLimitDb`)
 //   เกินเพดาน = รับแล้วทิ้ง (route ตอบ 200 เหมือนเดิม · ไม่เด้งกลับ) + audit 1 บรรทัดต่อหน้าต่าง ◂
+// CRM C5.5-fix8 r3 ▸ (รีวิว RV-2 → RV-6 · มติผู้คุมงาน) ถังแยกตาม "ความแข็งของหลักฐาน" — จดหมายแต่ละฉบับอยู่ในชั้นเดียวและถูกทิ้งได้
+//   เฉพาะโดยถังของชั้นตัวเอง ⇒ การถล่มในชั้นที่หลักฐานอ่อนกว่า (D/T/U) ไม่มีทางทิ้งคำตอบที่ยืนยันได้ทั้งสองทาง (V)
+//   V = DMARC (A-R ของ MTA เรา) **และ** หลักฐานของเธรด · D = DMARC อย่างเดียว · T = หลักฐานของเธรดอย่างเดียว (ปลอมได้ถ้าเห็นผู้รับ) ·
+//   U = ไม่มีหลักฐาน (กุญแจ/เพดานเดิมของ fix2) · กุญแจผู้ส่งทุกชั้น = กล่องจดหมายตัวพิมพ์เล็กที่ตัด `+tag` ออก (เฉพาะกุญแจถัง)
+//   ตัวเลขและเหตุผล: ledger/wo-notes/crm-C5.5-fix8.md รอบ 3 ◂
+const INBOUND_HOUR_MS = 60 * 60_000;
 export const CRM_INBOUND_RATE_LIMITS: Readonly<{
   perSender: { limit: number; windowMs: number };
   perSystem: { limit: number; windowMs: number };
+  verified: { perSender: { limit: number; windowMs: number }; perDomain: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  dmarc: { perSender: { limit: number; windowMs: number }; perDomain: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  thread: { perSender: { limit: number; windowMs: number }; perMessage: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
 }> = Object.freeze({
-  perSender: { limit: 100, windowMs: 60 * 60_000 },
-  perSystem: { limit: 1_000, windowMs: 60 * 60_000 },
+  // U — ไม่มีหลักฐาน (fix2 · ไม่เปลี่ยน)
+  perSender: { limit: 100, windowMs: INBOUND_HOUR_MS },
+  perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS },
+  verified: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perDomain: { limit: 300, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 2_000, windowMs: INBOUND_HOUR_MS } }, // r4: +perDomain (RV-8)
+  dmarc: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perDomain: { limit: 300, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
+  thread: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perMessage: { limit: 100, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
 });
+
+/** โดเมนอีเมลสาธารณะ — ไม่มีถังต่อโดเมนของชั้น V/D (ผู้ใช้ร่วมโดเมนเป็นล้านคน ถังต่อกล่องจดหมายพอ)
+ *  CRM C5.5-fix8 r4 ▸ (รีวิว RV-9) = `FREE_MAIL_DOMAINS` ของ companies-shared (รายการเดียวของทั้ง CRM — เดิมรายการแยกขาด hotmail.co.th ฯลฯ) ◂ */
+export const CRM_INBOUND_FREE_MAIL_DOMAINS: ReadonlySet<string> = FREE_MAIL_DOMAINS;
+
+/** CRM C5.5-fix8 r4 ▸ ช่องทางผู้ส่งเบา (รีวิว RV-8 · มติผู้คุมงาน) — ชั้น V/T: ฉบับที่ 1–N ของผู้ส่งในชั่วโมงนั้นถูกนับในถังทั้งระบบของชั้น
+ *  แต่ถังทั้งระบบทิ้งไม่ได้ (ลูกค้าจริงที่ตอบ ≤ N ฉบับ/ชม. ไม่มีวันถูกถังรวมทิ้ง) ◂ */
+export const CRM_INBOUND_LIGHT_SENDER_PER_HOUR = 10;
+
+/** โดเมนที่ไม่สนจุดใน local part (Gmail: `j.o.h.n@` = `john@`) — ใช้กับกุญแจถังเท่านั้น */
+const DOTLESS_LOCAL_DOMAINS: ReadonlySet<string> = new Set(["gmail.com", "googlemail.com"]);
+
+/** กุญแจผู้ส่งของถังเพดาน: ตัวพิมพ์เล็ก · ตัด `+tag` ของ local part (`a+x@d` = `a@d`) · r4: ตัดจุดใน local part ของ gmail.com/googlemail.com
+ *  — ใช้กับกุญแจถังเท่านั้น ไม่ใช้กับการจับคู่/การผูกผู้ติดต่อ/ที่อยู่ที่เก็บ */
+export function inboundSenderBucketAddr(addr: string): string {
+  const a = String(addr ?? "").trim().toLowerCase();
+  const at = a.lastIndexOf("@");
+  if (at <= 0) return a;
+  const domain = a.slice(at + 1);
+  let local = a.slice(0, at);
+  const plus = local.indexOf("+");
+  if (plus > 0) local = local.slice(0, plus);
+  if (DOTLESS_LOCAL_DOMAINS.has(domain)) local = local.replace(/\./g, "") || local;
+  return `${local}@${domain}`;
+}
 
 // CRM C5.5-fix2 ▸ hunter 2a-1: หัวกันวนของสำเนาที่ระบบส่งออกเอง — จดหมายขาเข้าที่มีหัวนี้ = ของเราเองวนกลับ ⇒ ทิ้ง ◂
 export const CRM_LOOP_HEADER = "X-SHARK-Loop";

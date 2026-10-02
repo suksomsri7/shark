@@ -1,0 +1,621 @@
+(node:2032355) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+
+── K1 account page — scope-less key (F2) ──
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ❌ [K1.1] crafted form, no scope + no bundle: MANAGER → {"ok":true,"rawKey":"shark_<redacted>"} · blank scopes → {"ok":true,"rawKey":"shark_<redacted>"} · OWNER → {"ok":true,"rawKey":"shark_<redacted>"} · keys minted=3 [[],[],[]] (want refused, 0)
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ✅ [K1.2] positive: MANAGER bundle issue-and-collect → ok · MANAGER ticked [account.doc.view] → ok · OWNER whole ACCOUNT_SCOPE_KEYS (35) → ok · every account bundle by OWNER: read-only:ok issue-and-collect:ok accountant:ok danger:ok settings:ok
+
+── K2 account page — rotation re-validates scopes (F3) ──
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ❌ [K2.1] OWNER rotates account-page keys whose scopes the create door would refuse → crm:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [["account.doc.view","crm.contact.read"]] · member:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [["member.customer.read"]] · empty:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [[]] · filter:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [["account.doc.view","crm.filter.team:abcdefgh12"]] · malformed:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [[]] · unbound-crm:{"ok":true,"rawKey":"shark_<redacted>"} old.revoked=true new=1 [["account.doc.view","pos.sale.create"]] (want refused, old key untouched, no new key)
+  ❌ [K2.2] malformed scopesJson → the same Thai sentence as hotfix/apiv1-scope's rotateApiKey (merge-compatible)
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ✅ [K2.3] positive: acc:rotated · general:rotated · unbound-acc:rotated · control: CRM-bound key → {"ok":false,"reason":"ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์ของระบบอื่นจัดการได้จากหน้าตั้งค่า API ของระบบนั้น"}
+
+── K3 kanban page — bundles limited to kanban (F4) ──
+  ❌ [K3.1] OWNER on the kanban key page with foreign bundles → crm.admin:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["crm.contact.read","crm.company.read","crm.deal.read","crm.activity.read","crm.record.read","crm.report.view","crm.contact.create","crm.contact.update","crm.company.create","crm.company.update","crm.deal.create","crm.deal.update","crm.deal.move","crm.deal.lines","crm.deal.quote","crm.activity.create","crm.activity.complete","crm.activity.delete","crm.email.read","crm.email.send","crm.sequence.enroll","crm.record.create","crm.record.update","crm.contact.delete","crm.contact.convert","crm.contact.import","crm.contact.export","crm.contact.merge","crm.company.delete","crm.company.merge","crm.company.import","crm.company.export","crm.deal.delete","crm.deal.reassign","crm.deal.forecast","crm.deal.export","crm.email.settings","crm.sequence.manage","crm.automation.manage","crm.score.manage","crm.assignment.manage","crm.object.manage","crm.record.delete","crm.team.manage","crm.visibility.manage","crm.quota.manage","crm.commission.view","crm.commission.approve","crm.report.team","crm.report.all","crm.tracking.manage","crm.portal.manage","crm.settings.manage","crm.api.manage"]] · crm.readonly:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["crm.contact.read","crm.company.read","crm.deal.read","crm.activity.read","crm.record.read","crm.report.view"]] · member-admin:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["member.customer.read","member.tier.read","member.point.read","member.loyalty.read","member.promo.read","member.review.read","member.report.view","member.customer.create","member.customer.update","member.customer.import","member.loyalty.stamp","member.loyalty.fulfil","member.promo.issue","member.point.adjust","member.review.reply","member.giftcard.sell","member.customer.merge","member.customer.export","member.customer.delete","member.sensitive.read","member.tier.manage","member.tier.setManual","member.point.transfer","member.loyalty.manage","member.promo.manage","member.giftcard.manage","member.referral.manage","member.settings.manage","member.privacy.manage","member.api.manage","member.tier.update","member.plan.create","member.plan.update","member.subscription.create","member.subscription.cancel"]] · member-read:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["member.customer.read","member.tier.read","member.point.read","member.loyalty.read","member.promo.read","member.review.read","member.report.view"]] · accountant:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["account.doc.view","account.report.view","account.journal.view","account.tax.view","account.doc.create","account.doc.issue","account.doc.public_link","account.payment.record","account.contact.manage","account.product.manage","account.document.manage","account.journal.adjust","account.period.close","account.chart.manage","account.mapping.manage","account.wht.manage","account.asset.manage","account.asset.register","account.asset.dispose","account.cheque.manage","account.cheque.deposit","account.cheque.clear","account.cheque.bounce","account.finance.manage","account.reconcile"]] · read-only:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["account.doc.view","account.report.view","account.journal.view","account.tax.view"]] · settings:{"ok":true,"rawKey":"shark_<redacted>"} rows=1 [["account.settings.manage","account.import"]] · qc-nope:refused (want refused, no key)
+  ✅ [K3.2] positive: kanban-read:ok(1) · kanban-edit:ok(11) · kanban-admin:ok(17) · (none→kanban-read):ok(1)
+
+── K4 mirror — CRM / member key pages refuse foreign bundles (control) ──
+  ✅ [K4.1] crm:kanban-admin:refused · crm:member-admin:refused · crm:accountant:refused · crm:settings:refused · member:crm.admin:refused · member:kanban-admin:refused · member:accountant:refused · member:settings:refused · positive crm.readonly → ok · member-read → ok
+
+── W account REST webhooks.test (F5) + every account event's test (page + REST) ──
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ❌ [W1.1] REST webhooks.test with non-account registered events → crm.deal.won@crmEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_41b39dc944873… · crm.deal.won@allEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_458ca0fa8006c… · member.created@crmEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_bd6f884c7df53… · member.created@allEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_2ed63b51e4921… · chat.message.received@crmEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_4fa35197c14e7… · chat.message.received@allEp:200 rows=1 {"data":{"delivered":0,"error":"network blocked"},"requestId":"req_d6410a242aeec… (want 422 + Thai, 0 rows)
+  ✅ [W1.2] unknown event → 422 {"error":{"code":"validation","message_th":"ไม่รู้จักเหตุการณ์ \"account.qc.fake\"","messa… (unchanged: 422)
+  ✅ [W2.1] positive: REST test of every account event (21) on one endpoint → 200 + 1 delivery row each · failures: none
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+[account/gl] journal sequences not created at setup — the first posting will try inside its transaction {
+  systemId: 'cmuq3h8xs00056bkzz494bgvx',
+  code: '42883',
+  message: '\n' +
+    'Invalid `prisma.$queryRawUnsafe()` invocation:\n' +
+    '\n' +
+    '\n' +
+    'Raw query failed. Code: `42883`. Message: `function account_jno_ensure_system(unknown) does not exist`'
+}
+  ✅ [W2.2] positive: page test button of every account event (Thai label as the panel sends, and the raw value) dispatches · failures: none
+  ✅ [CLEAN-rscj8m] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🔴 probe-cf11-keys: 9/14
+JSON_SUMMARY {"total":14,"passed":9,"findings":["K1.1","K2.1","K2.2","K3.1","W1.1"]}

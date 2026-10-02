@@ -33,7 +33,7 @@ import { safeReason } from "./errors";
 //   taken before postDocument) and inventory goods-doc numbers (product.ts) — they still hold their counter for the whole transaction.
 // ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 import { prisma } from "@/lib/core/db";
-import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂
+import { ciContains, ciEquals, likeContains, likeStartsWith } from "@/lib/core/ci-equals"; // CRM C5.5-fix4 ◂ · C5.5-fix8 คำค้น ◂
 import { emitOutbox, emitOutboxMany } from "@/lib/core/outbox";
 // WO C4 — ตัวประกอบ payload + คีย์กันซ้ำของเหตุการณ์บัญชีที่ออกทาง webhook (ที่เดียวทั้งโมดูล)
 import {
@@ -1469,8 +1469,8 @@ export async function listDocumentsPaged(
     ...(q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { docNo: ciContains(q) },
+            { contact: { is: { name: ciContains(q) } } },
           ],
         }
       : {}),
@@ -1554,8 +1554,8 @@ export async function computeListTabCounts(
     ...(q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { docNo: ciContains(q) },
+            { contact: { is: { name: ciContains(q) } } },
           ],
         }
       : {}),
@@ -1615,8 +1615,8 @@ export async function sumOutstandingForFilter(
     ...(q
       ? {
           OR: [
-            { docNo: { contains: q, mode: "insensitive" as const } },
-            { contact: { is: { name: { contains: q, mode: "insensitive" as const } } } },
+            { docNo: ciContains(q) },
+            { contact: { is: { name: ciContains(q) } } },
           ],
         }
       : {}),
@@ -5133,10 +5133,10 @@ export async function searchContactPickerRows(
       ...(term
         ? {
             OR: [
-              { name: { contains: term, mode: "insensitive" as const } },
-              { taxId: { contains: term } },
-              { phone: { contains: term } },
-              { email: { contains: term, mode: "insensitive" as const } },
+              { name: ciContains(term) },
+              { taxId: likeContains(term) },
+              { phone: likeContains(term) },
+              { email: ciContains(term) },
             ],
           }
         : {}),
@@ -5671,7 +5671,7 @@ export async function findGroupChildPayments(
   }[]
 > {
   const rows = await prisma.accountDocumentPayment.findMany({
-    where: { tenantId, systemId, idempotencyKey: { startsWith: keyPrefix } },
+    where: { tenantId, systemId, idempotencyKey: likeStartsWith(keyPrefix) }, // CRM C5.5-fix8 ▸ คีย์มาจาก path REST/ฟอร์ม (`%`/`_` เคยกวาดทุกครั้งของกลุ่ม) ◂
     orderBy: { paidAt: "asc" },
     select: {
       id: true,
