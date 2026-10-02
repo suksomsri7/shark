@@ -160,7 +160,7 @@ export async function sendMessage(
   const [tenant, systems, memories, promptTweaks] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId } }),
     db.appSystem.findMany({ select: { type: true, name: true }, orderBy: { createdAt: "asc" } }),
-    memoryBlock({ tenantId: ctx.tenantId }),
+    memoryBlock({ tenantId: ctx.tenantId, actor: ctx.actor }), // CRM C5.5-G3: the viewer's memories only (own + shop facts)
     approvedPromptTweaksText().catch(() => ""),
   ]);
   // สรุป DNA facts (ข้อมูลตอนสร้างกิจการ) — ฉีดเข้า persona ให้ AI เข้าใจธุรกิจตั้งแต่แรก (best-effort)

@@ -25,6 +25,7 @@ import { randomBytes } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import { actorProblem, type AiActor } from "./actor";
+import { findContactData } from "./contact-data";
 
 const SEP = "~";
 const MEMBER_TAG = `u${SEP}`;
@@ -78,8 +79,95 @@ export function canSeeConversationId(s: ConvSight, conversationId: string | null
  * 🔴 เป็นตัวกรองชั้นแรกเท่านั้น (LIKE) — แถวที่ได้ต้องผ่าน `canSeeConversationId` ซ้ำเสมอ
  */
 export function visibleConversationWhere(s: ConvSight): Prisma.AiConversationWhereInput {
-  if (s.own && s.ownerExtras) return { OR: [{ id: { startsWith: s.own } }, { NOT: { id: { startsWith: MEMBER_TAG } } }] };
-  if (s.own) return { id: { startsWith: s.own } };
+  if (s.own && s.ownerExtras) return { OR: [{ id: { startsWith: likePrefix(s.own) } }, { NOT: { id: { startsWith: MEMBER_TAG } } }] };
+  if (s.own) return { id: { startsWith: likePrefix(s.own) } };
   if (s.ownerExtras) return { NOT: { id: { startsWith: MEMBER_TAG } } };
   return { id: { in: [] } };
+}
+
+/**
+ * CRM C5.5-G3 (รีวิว G2-6) ▸ Prisma `startsWith` ส่งค่าเข้า `LIKE '<ค่า>%'` โดย **ไม่ escape** `_` `%` (วัดแล้ว: `u~a_c~` จับ `u~aXc~…`)
+ *   ⇒ escape ด้วย `\` (ตัว escape ปริยายของ LIKE ใน Postgres) ให้ prefix ตรงตัวอักษร — จำนวนแถวที่ `take` ได้จะไม่ถูกแถวเกินกิน
+ *   (ผลยังถูกตรวจซ้ำแบบตรงตัวใน JS เสมอ) · 🔴 ตัวช่วยท้องถิ่น: ใบอื่นมี `likeStartsWith` กลาง — รวมเป็นตัวเดียวเมื่อเข้ามาในสายนี้ ◂
+ */
+export function likePrefix(prefix: string): string {
+  let out = "";
+  for (const ch of prefix) out += ch === "\\" || ch === "%" || ch === "_" ? `\\${ch}` : ch;
+  return out;
+}
+
+// ─────────────────────────────── ความจำของผู้ช่วย (AiMemory · CRM C5.5-G3 · รีวิว G2-1) ───────────────────────────────
+// รหัสความจำออกโดย server ตอนจด (`ai/memory.ts`) ด้วยกติกาผู้สร้างชุดเดียวกับบทสนทนา + แท็กเพิ่มหนึ่งตัว:
+//   `o~<userId>~…` = **ข้อเท็จจริงของร้าน** ที่เจ้าของร้าน (role OWNER ตอนจด) เขียน — ทุกคนในร้านเห็น (เจ้าของร้านดูแลความรู้ของร้าน)
+//   `u~<userId>~…` = ความจำ **ส่วนตัว** ของคนในร้านที่ไม่ใช่ OWNER — เข้า prompt/รายการของเขาคนเดียว
+//   `k~…` / `s~…` = เขียนโดยคีย์ API / งานภายใน — เจ้าของร้านเท่านั้น (+ ผู้สร้างเอง)
+//   รหัสเดิม (cuid ล้วน) = ความจำร้านรุ่นเดิม — ทุกคนเห็นเหมือนเดิม **ยกเว้น** ข้อที่มีข้อมูลติดต่อ (เบอร์/อีเมล/เลขบัตร) = เจ้าของร้านเท่านั้น
+// ลบ (`forget_fact`): ผู้สร้าง · หรือ OWNER สำหรับข้อเท็จจริงของร้าน/รุ่นเดิม/ของคีย์/งานภายใน (ห้ามลบความจำส่วนตัวของคนอื่น)
+const SHOP_FACT_TAG = `o${SEP}`;
+
+export type MemorySight = { own: string | null; ownFact: string | null; owner: boolean };
+
+/** ผู้ดูความจำจาก actor (ไม่มี / ผิดร้าน / ปลอม = ไม่เห็นอะไร) */
+export function memorySightOf(ctx: { tenantId: string; actor?: unknown }): MemorySight {
+  const s = sightOf(ctx);
+  if (!s.own) return { own: null, ownFact: null, owner: false };
+  const a = ctx.actor as AiActor;
+  return { own: s.own, ownFact: a.kind === "member" ? `${SHOP_FACT_TAG}${s.own.slice(MEMBER_TAG.length)}` : null, owner: s.ownerExtras };
+}
+
+/** รหัสความจำใหม่ + ความจำนี้จะเป็นของร้าน (ทุกคนเห็น) ไหม — ผู้สร้างไม่ชัด = throw */
+export function newMemoryId(ctx: ConvCtx): { id: string; shared: boolean } {
+  const m = memorySightOf(ctx);
+  if (!m.own) throw new Error("AI memory needs a known creator");
+  const rand = randomBytes(12).toString("hex");
+  return m.owner && m.ownFact ? { id: `${m.ownFact}${rand}`, shared: true } : { id: `${m.own}${rand}`, shared: false };
+}
+
+const isLegacyId = (id: string) => !id.includes(SEP);
+
+/** ผู้ดูนี้เห็นความจำนี้ไหม (เข้า prompt / อยู่ในรายการ) — ตรวจตรงตัวอักษรทุกแถว */
+export function canSeeMemory(m: MemorySight, row: { id: string; content: string }): boolean {
+  const id = String(row?.id ?? "");
+  if (!id) return false;
+  if (m.own && id.startsWith(m.own)) return true;
+  if (m.ownFact && id.startsWith(m.ownFact)) return true;
+  if (id.startsWith(SHOP_FACT_TAG)) return m.own !== null; // ข้อเท็จจริงของร้าน (จดผ่านด่านข้อมูลติดต่อแล้ว) — ทุกผู้ดูที่ถูกต้อง
+  if (isLegacyId(id)) return m.owner || (m.own !== null && findContactData(row.content).length === 0);
+  return m.owner && !id.startsWith(MEMBER_TAG); // k~ / s~ = เจ้าของร้านเท่านั้น · u~ ของคนอื่น = ไม่มีใคร
+}
+
+/** ผู้ดูนี้ลบความจำนี้ได้ไหม */
+export function canForgetMemory(m: MemorySight, id: string): boolean {
+  if (!id || !m.own) return false;
+  if (id.startsWith(m.own) || (m.ownFact !== null && id.startsWith(m.ownFact))) return true;
+  return m.owner && !id.startsWith(MEMBER_TAG);
+}
+
+/** ตัวกรองชั้นแรก (LIKE) ของความจำที่ผู้ดูอาจเห็น — แถวที่ได้ต้องผ่าน `canSeeMemory` ซ้ำเสมอ (ข้อมูลติดต่อของรุ่นเดิมตรวจใน JS) */
+export function visibleMemoryWhere(m: MemorySight): Prisma.AiMemoryWhereInput {
+  if (!m.own) return { id: { in: [] } };
+  if (m.owner) return { OR: [{ id: { startsWith: likePrefix(m.own) } }, { NOT: { id: { startsWith: MEMBER_TAG } } }] };
+  return { OR: [{ id: { startsWith: likePrefix(m.own) } }, ...(m.ownFact ? [{ id: { startsWith: likePrefix(m.ownFact) } }] : []), { id: { startsWith: SHOP_FACT_TAG } }, { NOT: { id: { contains: SEP } } }] };
+}
+
+/** ตัวกรองของความจำที่ผู้เขียน "ดูแล" (เพดานจำนวน + กันจดซ้ำ): ส่วนตัวของตัวเอง หรือ (OWNER) ข้อเท็จจริงของร้านทั้งหมด */
+export function managedMemoryWhere(m: MemorySight, shared: boolean): Prisma.AiMemoryWhereInput {
+  if (!m.own) return { id: { in: [] } };
+  if (shared) return { OR: [{ id: { startsWith: SHOP_FACT_TAG } }, { NOT: { id: { contains: SEP } } }] };
+  return { id: { startsWith: likePrefix(m.own) } };
+}
+
+/** ผู้สร้างบทสนทนาจากรหัส — ห้องรุ่นเดิม/รหัสแปลก = null (ใช้เลือกผู้รับ push ของห้อง) */
+export function conversationCreatorOf(id: string | null | undefined): { kind: "member" | "apiKey" | "system"; id: string } | null {
+  const v = typeof id === "string" ? id : "";
+  const parts = v.split(SEP);
+  if (parts.length !== 3 || !parts[1] || !parts[2]) return null;
+  const kind = parts[0] === TAG.member ? "member" : parts[0] === TAG.apiKey ? "apiKey" : parts[0] === TAG.system ? "system" : null;
+  return kind ? { kind, id: parts[1] } : null;
+}
+
+/** ป้ายขอบเขตของความจำ (รายการ list_memories) — ร้าน = ทุกคนเห็น · ส่วนตัว = คนจดคนเดียว · ระบบ = คีย์/งานภายใน (เจ้าของร้านเห็น) */
+export function memoryScopeOf(id: string): "shop" | "private" | "system" {
+  if (isLegacyId(id) || id.startsWith(SHOP_FACT_TAG)) return "shop";
+  return id.startsWith(MEMBER_TAG) ? "private" : "system";
 }
