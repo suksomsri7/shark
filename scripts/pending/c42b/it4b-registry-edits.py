@@ -54,5 +54,11 @@ NEED_EDIT = 'ฟิลด์ของวัตถุที่ portalVisible + po
 setf(row('/b/[slug]/documents/[id]', 'portal-record-file'), 'needs', NEED_FILE)
 for t in ['portal-record-change-field', 'portal-record-change-value', 'portal-record-change-submit']:
     setf(row('/b/[slug]/documents/[id]', t), 'needs', NEED_EDIT)
+# B5 (run4 manager `crm-auto-save` d+m refused): since C5.5-fix1 H55-2 the rule author must pass the manual door of every action
+#    (automation.ts handNeedOf — CREATE_ACTIVITY needs crm.activity.create + CONTACT/DEAL visibility of the WHOLE shop); the QC1 manager
+#    is unit-scoped ⇒ the builder's default action (สร้างงานติดตาม) is refused BY DESIGN ("…บัญชีนี้มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา)").
+#    NOTIFY_STAFF needs no key and no visibility (handNeedOf `case "NOTIFY_STAFF": return { keys: [], vis: [] }`) ⇒ save that rule:
+#    a real createCrmRuleAction write for owner AND manager (the refusal for the default action is product-correct, not a pass we drop).
+setf(row('/settings/automation', 'crm-auto-save'), 'opener', ['crm-auto-new', 'crm-auto-action-type=NOTIFY_STAFF'])
 open(p, 'w').write(json.dumps(d, indent=2, ensure_ascii=False) + '\n')
 print(f'it4-B registry edits: {n} field changes')

@@ -1338,6 +1338,16 @@ function differ(v: string, current: string, type: string): string {
 }
 /** set a field the way a user would; returns the before/after value so "dead" can be judged by the value itself */
 async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: string; after: string; skipped?: string }> {
+  // it4-B (run3 + run4 manager 390 `contact-optout-toggle` "no request"): the consent block disables BOTH checkboxes while its
+  //   previous transition is pending (Contact360Actions.tsx `disabled={disabled || pending}`; fail shot run4-manager-fail: both
+  //   boxes greyed) ⇒ a press in that window is a no-op. Wait ≤5 s for a TRANSIENT disabled to clear; still disabled ⇒ press
+  //   anyway and let the dead/fail check report it (a permanently disabled control is still caught).
+  for (let t0 = Date.now(), waited = false; ; ) {
+    const off: boolean = await el.evaluate((e: Any) => !!e.disabled || e.getAttribute("aria-disabled") === "true").catch(() => false);
+    if (!off) { if (waited) console.log(`  ⏳ ${testid}: รอคอนโทรลหาย disabled ${Date.now() - t0} ms ก่อนกด`); break; }
+    if (Date.now() - t0 > 5000) break;
+    waited = true; await sleep(250);
+  }
   const meta: { tag: string; type: string; value: string; checked: boolean; role: string; ariaChecked: string | null; ro: boolean; rdonly: boolean; tid: string; inputmode: string } = await el.evaluate((e: Any) => ({
     tid: e.getAttribute("data-testid") ?? "", tag: e.tagName.toLowerCase(), type: (e.getAttribute("type") ?? "").toLowerCase(), value: String(e.value ?? ""), checked: !!e.checked, inputmode: (e.getAttribute("inputmode") ?? "").toLowerCase(),
     role: e.getAttribute("role") ?? "", ariaChecked: e.getAttribute("aria-checked") ?? e.getAttribute("aria-pressed"), ro: !!(e.disabled || e.readOnly), rdonly: !!e.readOnly && !e.disabled,

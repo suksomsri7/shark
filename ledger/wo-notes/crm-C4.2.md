@@ -499,3 +499,84 @@ Correction to the plan list (companies · activities · automation · settings �
 
 **Changed in this lane (scripts/ = next/ copies, identical):** runner 2f83a576 → **12c2e79d** (activity fixture · portal record [id] resolver) · registry b35c337c → **f67848ab** via `it4b-registry-edits.py` (B1 opener · B2 hiddenFor · B3/B4 needs; idempotent, re-run 0; it4a re-run 0; sweep 0 changes; `merge-main-rows.py 4b5ca1cb` +0/0/0) · `run-chunks.sh` separator `;` · new `dbg4.sh` (DBG label) · `run4.sh` · `facts10.mts` (read-only) · `run3-triage.csv`. `--dry` exit 0 (8,247 presses · opener problems 0 · customer 63) · typecheck exit 0 (`typecheck-6.log`, `typecheck-7.log`).
 **Not verified:** F1/F2 fixes on a live tip build · run4 not run · B1 for manager (owner verified dbg7) · the optout miss cause · portal record file/change-request rows (needs = gap).
+
+## it4 PHASE B — run4 triage (triage lane · 2 Oct 03:40–04:30 UTC · read-only on product · runner/registry fixed after the unit ended)
+**run4** (unit `crm-c42b-run4`, 22:17–03:24 UTC · :3215 = **ca78a54d** = session/crm 1d23347e: fix1 · fix2 · fix3a · fix3b · fix4 · fix5 · authz-sweep · fix6 · runner 12c2e79d · registry 503dd1cb incl. the controller's fix6 row `deal-new-company` · 10 staff chunks + customer). No `-crash.json`, no crash-redo, **every summary has `fatal: null`** (41/41) — the "fatal mentioning device" in the quick aggregate is not in any run4 summary file (nothing to explain beyond that; most likely a grep hit on a field such as `skippedNeeds[].device`).
+| role | pressed | passed | wrongExpect d/m | dead · leak · vacuous · console · overflow | needs d/m | safety | restoreFail |
+|---|---|---|---|---|---|---|---|
+| owner | 962 | **962** | 0/0 | 0 | 76/74 | 20 | 0 |
+| manager | 960 | **957** | 1/2 | 0 | 77/75 | 20 | 0 |
+| nok | 1052 | **1052** | 0/0 | 0 | 35/35 | 6 | 0 |
+| thana | 1058 | **1058** | 0/0 | 0 | 32/32 | 6 | 0 |
+| customer | 25 | **25** | 0/0 | 0 | 18/18 | 2 | 0 |
+Per chunk (owner · manager · nok · thana): companies 196 · 196 · 228 · 228 · activities 80 · 80 · 82 · 84 · emails 44 · 44 · 52 · 52 · settings api/automation/email 194 · **192/194** · 204 · 204 · sequences/portal 80 · 80 · 90 · 90 · contacts 99 · 99 · 95 · 99 · contacts/new 30 ×4 · home 81 · 77 · 105 · 105 · deals/new 28 · 30 · 30 · 30 · contacts/[ 130 · **129/130** · 136 · 136 — all others 100 %.
+**Restore proof:** counts before/after run4 differ in 3 tables only — Customer +1 · Party +1 · MemberConsent +1 (and before-run4 vs the run2 baseline: +2 each). All six rows (facts11.mts): Customer "สมัครผ่าน REST" · source LIFF · phone 0844… · created 21:48:51 / 21:55:39 (before run4) and **03:06:52** (during run4, thana chunk 8) · AuditLog `member.created` → `member.api.join.complete` by actor `pub:3e48ef9d22e096da` (public member-join REST key) · no CRM contact linked. The runner has no public-join path ⇒ **another lane's member-API suite on QC1, not this runner**. Every CRM table, qc-btn tag, qc-btn session, portal setting and taxId: 0 diff. Not deleted (not ours).
+
+**Every non-pass → `scripts/pending/c42b/run4-triage.csv`.** Buckets: **PRODUCT 0** · **REGISTRY 2** · **RUNNER 1**.
+| rows | n | class | cause (evidence) | fix / verified |
+|---|---|---|---|---|
+| manager `/settings/automation` crm-auto-save d+m | 2 wE | REGISTRY | refusal "สร้างงานติดตาม: กฎนี้ทำงานกับผู้ติดต่อและดีลทุกรายการของระบบ แต่บัญชีนี้มองเห็นเฉพาะบางส่วน (ตามทีมหรือสาขา) — กฎอัตโนมัติทำได้เฉพาะสิ่งที่ผ…" = C5.5-fix1 H55-2 by design: the builder's default action CREATE_ACTIVITY needs whole-shop CONTACT/DEAL visibility (automation.ts `handNeedOf`), the QC1 manager is unit-scoped | **B5** opener `[crm-auto-new, crm-auto-action-type=NOTIFY_STAFF]` (`handNeedOf` NOTIFY_STAFF = no key, no visibility) ⇒ a real createCrmRuleAction for owner and manager · dbg8 manager d+m **94/94** · owner **47/47** |
+| manager mobile `/contacts/[contactId]` contact-optout-toggle | 1 wE | RUNNER (timing) | 2nd occurrence (run3 too), only inside the full chunk: the consent block disables both boxes while its previous transition is pending (Contact360Actions.tsx `disabled={disabled \|\| pending}` · run4 fail shot: both boxes greyed) | runner `fillEl` waits ≤5 s for a TRANSIENT disabled (a permanently disabled control is still pressed and reported) · dbg8 manager d+m **130/130** with log "⏳ contact-optout-toggle: รอคอนโทรลหาย disabled 252 ms ก่อนกด" = the cause, measured |
+
+**Acceptance conditions set after run3:**
+- **F1** green — nok/thana `/companies*` 228/228 each · 0 hiddenLeak · 0 vacuous (page 404 by key since fix2).
+- **F3** green on `/contacts/new` — nok/thana 30/30 each · 0 hiddenLeak (fix6 `canPickCompany`, NewContactForm.tsx@1d23347e:176). Contact 360 edit sheet: fix6 gates the `edit-company` picker on `can.company` (Contact360Actions.tsx@1d23347e:520) — **source-verified only**: the registry has no row that presses that picker on `/contacts/[contactId]` (`alsoOn` is informational), so no run can turn it red.
+- manager `crm-webhook-*` / settings api · automation · sequences: **no new red** apart from crm-auto-save (REGISTRY, above). Manager settings api/automation/email 192/194 · sequences/portal 80/80; the L55-4 webhook gate did not refuse the manager's webhook rows.
+- Customer portal (first real pass, on ca78a54d): **25 pressed / 25 passed** · skipped 18 rows ×2 devices = needs 17 + safety 1. Pressed: login page shell, portal home, quotations/invoices/documents/requests lists, document page, requests form. **Coverage gap (never pressed):** `portal-otp-request` (safety: real e-mail) → `portal-otp-code`/`-submit` (need an OTP) · `portal-company-switcher` (fixture binds 1 company) · `portal-home-outstanding`/`portal-invoice-row`/`portal-pay-promptpay`/`portal-slip-upload` (no account invoice for the portal company) · `portal-home-quote-link`/`portal-quote-row`/`portal-quote-accept`/`-reject`/`-confirm-submit`/`portal-reject-reason`/`portal-signer-name` (no quotation; fixture role VIEW, not APPROVE) · `portal-record-file` (no file on the record) · `portal-record-change-field`/`-value`/`-submit` (no portalVisible+portalEditable field). Pages never opened: `/b/[slug]/invite/[token]` · `/u/[token]` (no token resolver) · `/p/[slug]` (5 rows; no active Page with a CRM widget).
+- Restore proof: CRM side 0 diffs; +1 member signup from another lane (above).
+
+**Coverage of C4.1 + C4.2 as a whole**
+| scope | run | build | roles |
+|---|---|---|---|
+| every registry page (13 chunks) | run3 | 09de6435 (src 264c5440) | owner · manager · nok · thana (customer chunk FATAL) |
+| companies* · activities · emails* · settings api/automation/email · sequences*/portal · contacts · contacts/new · CRM home · deals/new · contacts/[contactId] | run4 | ca78a54d (src 1d23347e) | owner · manager · nok · thana |
+| portal `re:^/(app\|p\|b\|u)/` | run4 (+ dbg4–6 on 09de6435) | ca78a54d | customer |
+| deals · deals/[dealId] · calendar · commissions · pipelines · reports · objects* · settings (assignment, commissions, forms, holidays, integrations, lost-reasons, notifications, objects, pipelines, quotas, scoring, stages, tracking, visibility, /settings) · app/settings/teams · app/party · cross-module /app pages | run3 only | 09de6435 | 4 staff roles |
+Wholesale page skips (no resolver/seed, both runs): `/p/[slug]` 5 rows · `/u/[token]` + `/b/[slug]/invite/[token]` · `/app/sys/[id]/account/docs/[docType]/[docId]` 1 · `/app/sys/[id]/meeting` 1 (no MEETING system).
+**Rows never pressed in either run** (skippedNeeds/skippedSafety in every run that opened the page for that role): **166 distinct rows of 1066** (760 row×role×device) → `scripts/pending/c42b/coverage-never-pressed.csv` (page · testid · who · reason), generated by `coverage.py`.
+| page | rows | row×role×device | why |
+|---|---|---|---|
+| /activities | 7 | 50 | needs 7 · safety 0 |
+| /app/party/[partyId] | 1 | 6 | needs 1 · safety 0 |
+| /app/settings/teams | 1 | 2 | needs 1 · safety 0 |
+| /app/sys/[id] | 18 | 68 | needs 16 · safety 2 |
+| /app/sys/[id]/member/members | 1 | 4 | needs 1 · safety 0 |
+| /app/sys/[id]/pos/register | 1 | 4 | needs 1 · safety 0 |
+| /b/[slug] | 8 | 16 | needs 8 · safety 0 |
+| /b/[slug]/documents/[id] | 4 | 8 | needs 4 · safety 0 |
+| /b/[slug]/invoices | 3 | 6 | needs 3 · safety 0 |
+| /b/[slug]/login | 3 | 6 | needs 2 · safety 1 |
+| /b/[slug]/quotations | 1 | 2 | needs 1 · safety 0 |
+| /calendar | 1 | 4 | needs 1 · safety 0 |
+| /commissions | 1 | 6 | needs 1 · safety 0 |
+| /companies | 2 | 8 | needs 2 · safety 0 |
+| /companies/[companyId] | 7 | 28 | needs 7 · safety 0 |
+| /companies/new | 7 | 28 | needs 7 · safety 0 |
+| /contacts | 7 | 36 | needs 6 · safety 1 |
+| /contacts/[contactId] | 28 | 204 | needs 25 · safety 3 |
+| /contacts/import | 1 | 4 | needs 1 · safety 0 |
+| /contacts/new | 1 | 8 | needs 1 · safety 0 |
+| /deals | 9 | 66 | needs 9 · safety 0 |
+| /deals/[dealId] | 4 | 24 | needs 2 · safety 2 |
+| /deals/new | 1 | 2 | needs 1 · safety 0 |
+| /emails/[threadKey] | 4 | 16 | needs 2 · safety 2 |
+| /objects | 1 | 2 | needs 1 · safety 0 |
+| /objects/[key] | 8 | 32 | needs 8 · safety 0 |
+| /settings | 6 | 12 | needs 6 · safety 0 |
+| /settings/assignment | 5 | 20 | needs 5 · safety 0 |
+| /settings/automation | 2 | 8 | needs 2 · safety 0 |
+| /settings/commissions | 8 | 32 | needs 7 · safety 1 |
+| /settings/email | 3 | 12 | needs 1 · safety 2 |
+| /settings/forms | 1 | 4 | needs 1 · safety 0 |
+| /settings/integrations | 1 | 2 | needs 1 · safety 0 |
+| /settings/objects | 3 | 6 | needs 3 · safety 0 |
+| /settings/pipelines | 1 | 2 | needs 1 · safety 0 |
+| /settings/portal | 1 | 4 | needs 1 · safety 0 |
+| /settings/sequences/[sequenceId] | 4 | 16 | needs 4 · safety 0 |
+| /settings/stages | 1 | 2 | needs 1 · safety 0 |
+Dominant reasons (see the CSV for exact text): data the seed lacks — call recordings and AI call proposals · pending commissions · deals owned by the persona / unowned records · account quotations and invoices · parentless custom object · MEETING system · kanban board · required-field stages · lists longer than one page (50) · sequences/enrolments · archived objects/teams — and the safety guards (real e-mail / OTP / uploads / AI home buttons disabled by design).
+
+**C4.2 caveat — session/crm moved on after the run4 build.** Merged after 1d23347e: fix7 (e963af82), G1 (05dc5f74), fix9 (c99ef119), fix11 (d1f62aa8); pending: fix10, fix8, G2, fix12, G3. `git diff --stat 1d23347e HEAD -- src/app src/components` (HEAD 61f7f5bc): contacts/[contactId]/page.tsx · Contact360Actions.tsx (`contact-edit-company-locked` text, not a control) · ContactImportPanel.tsx · ContactListTools.tsx · ContactPrivacyBlock.tsx · NewDealForm.tsx · components/crm/objects/types.ts · api/v1/ai/* · mobile chat; backend: privacy.ts (+624), portal.ts, contacts.ts, deals.ts, companies.ts, forms/service.ts, kanban/links.ts, lib/ai/* (tool-access +278, tools +179). ⇒ **run5** (release gate, ONCE after the last card merges; `scripts/pending/c42b/run5.sh`, not launched, refuses on 09de6435/ca78a54d; re-derive with the final diff first): staff `/contacts/[contactId]` · `/contacts` · `/contacts/(new|duplicates|import)` · `/deals` (fix10) · `/deals/[dealId]` (fix7 deals.ts · G1 AI · fix10) · `/deals/new` · `/settings` (PDPA export, fix9/11) · `/objects*` (date format) · CRM home (G1 AI) · `/settings/automation` (B5 on the final build) + customer portal (portal.ts fix7/fix9).
+
+**Changed in this lane (scripts/ = next/ working copies identical):** runner 12c2e79d → **a41b7fc8** (`fillEl` transient-disabled wait) · registry 503dd1cb → **3f43b42f** (it4b B5; `it4b-registry-edits.py` re-run 0 · it4a 0 · sweep 0) · committed `scripts/crm-ui-inventory.json` = next minus the 3 E rows (it also lacked B1–B4 and the fix6 row before; now aligned) · `run5.sh` · `coverage.py` + `coverage-never-pressed.csv` · `facts11.mts` (read-only) · `dbg4.sh` steps auto-mgr/auto-owner/contact360-mgr · `run4-triage.csv`. `--dry` exit 0 (8,247 · opener problems 0) · typecheck exit 0 (`typecheck-8.log`). dbg8 restore proof 0 diffs (vs before dbg8 and vs after run4).
+**Not verified:** the Contact 360 edit-company picker hiding (code only) · run5 surfaces on a final build · the portal gap rows · the other lane's member signups (attributed by audit trail, not by its log).

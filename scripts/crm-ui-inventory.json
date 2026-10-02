@@ -2082,7 +2082,10 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "opener": "contacts-export-btn"
+      "opener": [
+        "contacts-*-select",
+        "contacts-bulk-assign-btn"
+      ]
     },
     {
       "page": "/contacts",
@@ -2101,7 +2104,10 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "opener": "contacts-export-btn"
+      "opener": [
+        "contacts-*-select",
+        "contacts-bulk-assign-btn"
+      ]
     },
     {
       "page": "/contacts",
@@ -2720,11 +2726,12 @@
       "kind": "input",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-pick-*-select",
@@ -2743,11 +2750,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "ui",
         "target": "contact-pick-*-select",
@@ -5601,11 +5609,12 @@
       "kind": "select",
       "roles": [
         "owner",
-        "manager",
+        "manager"
+      ],
+      "hiddenFor": [
         "nok",
         "thana"
       ],
-      "hiddenFor": [],
       "expect": {
         "type": "inline-error",
         "target": "deal-new-error"
@@ -12515,7 +12524,10 @@
       },
       "wo": "C2.1",
       "oracle": "",
-      "opener": "crm-auto-new"
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=NOTIFY_STAFF"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -20201,7 +20213,8 @@
         "db": "FileAsset t/<tenant>/private/… · AccountAttachment(documentId, fileUrl private://)"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี"
     },
     {
       "page": "/b/[slug]/documents",
@@ -20232,7 +20245,8 @@
         "target": "/api/files/[id]?exp&sig"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ไฟล์แนบ (CrmFileLink RECORD) บนระเบียนวัตถุที่เปิดพอร์ทัลของบริษัท [companyId] — ซีดไม่มี"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20247,7 +20261,8 @@
         "target": "portal-record-change-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20262,7 +20277,8 @@
         "target": "portal-record-change-submit"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20278,7 +20294,8 @@
         "db": "CrmPortalRequest PROFILE_CHANGE PENDING (ค่าจริงไม่เปลี่ยน)"
       },
       "wo": "C3.5",
-      "oracle": "qc-crm-c3.5"
+      "oracle": "qc-crm-c3.5",
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
     },
     {
       "page": "/b/[slug]/requests",

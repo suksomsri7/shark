@@ -22,6 +22,9 @@ STEPS=(
   "contacts-new-nok;re:^/contacts/new\$;nok;desktop"
   "optout-mgr;re:^/contacts/\[;manager;mobile"
   "portal-customer;re:^/(b|u|p)/;customer;"
+  "auto-mgr;re:^/settings/automation\$;manager;"
+  "auto-owner;re:^/settings/automation\$;owner;desktop"
+  "contact360-mgr;re:^/contacts/\[;manager;"
 )
 ONLY=" $* "
 for st in "${STEPS[@]}"; do
