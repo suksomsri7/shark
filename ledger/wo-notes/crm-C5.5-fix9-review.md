@@ -137,3 +137,111 @@ same row SETS as the old queries for 6 paged tables.
   STAFF/OWN); qc-kanban-k3.1 / qc-form / docs checks (builder ran them; not re-run).
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 — re-review of da6dbc6f (`git diff 268c7716 da6dbc6f`, builder note "Round 2")
+
+2026-10-02 00:45 – 01:25 UTC · QC3 only · product source not edited.
+
+## What was run (QC3 · iso.sh + gate lock · one at a time · logs `/tmp/cf12-review-logs/r3*`, `r4*`)
+| run | result |
+|---|---|
+| builder `probe-cf12-r2.mts` | controls 5/5 · findings 10/10 GREEN · CLEAN |
+| builder `probe-cf12.mts` (round 1) | controls 7/7 · findings 12/12 GREEN · CLEAN · E erase 49.8 s (was 171 s) |
+| review `probe-cf12-review.mts` | controls 17/17 · **T2 and U1 now NOT-REPRODUCED** · T: real 60 s limit under a 75 s lock ⇒ `PrivacyError TOO_LARGE` after 73.6 s · W2 owner export keys unchanged (`exportedAt, complete, contact, tables`) |
+| review `probe-cf12-review-chain.mts` | **C1 NOT-REPRODUCED** (forms 4/4 · scores 4/4 · A included) · CLEAN |
+| review `probe-cf12-review-scale.mts 500` | 1,500 rows changed in 15.2 s = 10.2 ms/row ⇒ ≈ 5,900 rows / 60 s · CLEAN |
+| **new** review `probe-cf12-review-r2.mts` | controls 10/10 (P0 H1 H2 L1 T1 T2 A1 A2 A3 CLEAN) |
+| `pnpm typecheck` (5120 MB) | exit 0, 0 errors |
+| fitness | 39/39 |
+
+New probe blocks: **P** the round-1 E fixture erased through an instrumented Prisma client (query events) · **H** chain direction
+D ← B ← A plus unrelated X → Y, and a STAFF requester owning the survivor but not the absorbed contact · **L** L2 at exactly the
+ceiling and ceiling + 1 · **T** `txTimeoutMs: 1` on two contacts · **A** `cancelRequests` across tenants/statuses with 1,205 ids,
+and erases with 101 vs 100 follow-up files.
+
+## Claims check (round 2)
+- **M1** fixed: export reads `[id, ...mergedChain]` (H1: export(B) = A+B, not D/X/Y; export(D) = A+B+D; `scope.mergedContactIds`
+  right; the chain only follows `mergedIntoId` INTO the exported contact, tenant+system scoped). Requester visibility now gives
+  `complete:false` + `scope.limitedByRequesterVisibility` + `withheldTables` (U1: staff 2/5, `complete:false`). Owner export without a
+  chain is unchanged (W2).
+- **M2** fixed: TOO_LARGE, full rollback, `crm.contact.erase.failed` audit written after the rollback with exactly
+  `{systemId, source, failure, elapsedMs, timeoutMs}` and the clicker as actor, OpsEvent ERROR per failure (T1: 2 failures ⇒ 2 rows;
+  `logOps` throttles only the e-mail), no name/phone/reason text in either, no erase flag (`erased.ts` and every flag query match the
+  action exactly), a later erase succeeds (T2). **Can TOO_LARGE be reported for an erase that committed?** No: in Prisma 7's
+  transaction manager (`@prisma/client/runtime/client.js`) the commit and the timeout handler run through the same per-transaction
+  operation queue; if the commit goes first the status is `committed` and the timer is cleared; if the timeout goes first it rolls back
+  and the commit throws "cannot be executed on an expired transaction" (P2028). A COMMIT that fails at the driver (connection lost) is a
+  driver error, not P2028 ⇒ the generic message, and a re-click gets the resweep answer.
+- **M3** fixed: `approval.cancelRequests` = `tenantDb(ctx)` (tenant-scoped) `updateMany where id IN chunk(1,000) AND status PENDING`,
+  same semantics as `cancelRequest` (neither emits events/notifications — read). A1: 1,205 ids (1,200 unknown, a duplicate, one
+  APPROVED, one PENDING of another tenant) ⇒ 2 cancelled, APPROVED and the other tenant's PENDING untouched, re-run 0. A concurrent
+  approve vs cancel is decided row by row by the `status = PENDING` predicate, exactly as before. A2: 101 files ⇒ `erased:true,
+  followUp:"PENDING"`, 0 storage calls, outbox event queued, the consumer step deletes all 101, a second run is a no-op (missing
+  FileAsset row = success). A3: 100 files ⇒ inline, DONE, 100 calls.
+- **L2** fixed: L1 — exactly 5 rows at ceiling 5 ⇒ not cut, `complete:true`; 6 ⇒ `{exported:5,total:6}`, `complete:false`.
+- **I2** fixed: the support promise is gone.
+
+## (e) What dominates the ~45 s of the E fixture — and the cheap fix
+- Instrumented erase (P): wall 53.4 s, 5,168 statements, sum of statement time 49.4 s, of which **46.5 s = 5,005 single-row
+  `UPDATE "AuditLog" … WHERE id = $3`** (≈ 9.3 ms each from this host). Everything else is < 0.2 s per statement family (per-token
+  `replace()` updates on AppNotification/AiMessage/AiConversation/MeetingMessage/AiProposal ≈ 0.1 s each ×11; the bulk FormSubmission
+  update 0.18 s; the bulk approval cancel 0.06 s). Not a missing index, not N+1 reads.
+- The builder's "only ~25 rows changing" is not right: the fixture's audit fillers carry `note`, which is in `AUDIT_IDENTITY_KEYS`
+  (`contacts.ts:3046`), so the scrub rewrites all 5,005 rows. Real rows written since C3.9-fix H8 hold `(เปลี่ยน)` and are not
+  rewritten; legacy rows and other actions' `note`/identity keys are.
+- So the erase budget is simply "≈ 9–10 ms × every row that changes" (scale probe agrees: 10.2 ms/row). **Cheap fix:** write each page
+  with ONE set-based statement instead of one per row — `UPDATE "AuditLog" a SET "before" = v.b, "after" = v.a FROM unnest($ids::text[],
+  $befores::jsonb[], $afters::jsonb[]) v(id, b, a) WHERE a."id" = v.id AND a."tenantId" = $t` (privacy.ts:925), and the same shape for
+  the kanban card/comment/history writers (`links.ts:629/640/653`) and the per-row CrmActivity / CrmEmailMessage / CrmDeal / timeline
+  updates in `eraseInTx`. At ≤ 1,000 rows per statement that turns 46.5 s into well under a second here and moves the TOO_LARGE limit
+  from ≈ 6,000 changed rows to the read volume. Recommended as the next card (it decides the real-world erase size limit).
+
+## Findings (round 2)
+
+### R2-1 · MED (capacity, not a regression of this round) · erase cost is one round trip per changed row
+- See (e). Until batched, a person with ≈ 6,000 rows that actually change (legacy audit rows, cards/comments/history that mention him,
+  his activities/mails/deals) gets TOO_LARGE from this host; prod threshold not measured. Now loud (ERROR + failed audit + clear
+  message), so not blocking.
+
+### R2-2 · LOW · the chain export gives a requester rows of an absorbed contact he cannot open (owner question)
+- `privacy.ts:1159` reads the chain with no visibility filter. H2: a STAFF who owns the survivor S1 but not the absorbed A1 cannot
+  export A1 directly (NOT_FOUND) yet S1's export contains A1's form answers with `complete:true` and no withheld marker. Consistent with
+  "merged = same person" (the erase treats it so, and merge already moved A1's activities/deals/mails to S1), but the non-moved tables
+  (form answers, score logs, consents, records/values, portal access, enrollments) become readable. Either accept (document) or filter
+  the chain by `contactWhere` and add `withheldTables`.
+
+### R2-3 · LOW · `isTxTimeout` treats every P2028 as a timeout
+- `privacy.ts:371-376`: P2028 is Prisma's umbrella "Transaction API error" — also "Transaction not found" (disconnect/old id) and
+  "Internal Consistency Error". Those would be reported as TOO_LARGE + ERROR "too large" + "การกดลบซ้ำจะไม่ช่วย", which is wrong advice
+  for a transient fault (the rollback / "nothing was erased" part stays true). Fix: classify only the expired case (message "expired
+  transaction" or `meta.timeout` present); keep the pool-wait exclusion.
+
+### R2-4 · LOW (pre-existing, relied on more now) · no staff-side retry for leftover storage files after the consumer dies
+- Repeated consumer failure: backoff 2–32 min, 5 attempts ⇒ `FAILED`; surfaced by completeErasure's WARN per attempt and the daily
+  `outbox-health` ERROR (count only). After that nothing retries; the resweep branch (`privacy.ts:314-316`) deletes only files still
+  linked, not the audit `followUp.fileIds`, so storage objects of an "erased" person stay. Cheap fix: call `completeErasure` (idempotent)
+  in the resweep branch too, so "กดลบซ้ำ" also finishes an unfinished follow-up. The event itself cannot be lost (same tx as the flag).
+
+### R2-5 · INFO
+- Withheld counts go to the audit row only; `/app/audit` is OWNER/MANAGER (`app/audit/page.tsx:21`) ⇒ a TEAM-scoped MANAGER can read how
+  many activities/deals of a person sit outside his team (numbers only); the file tells a STAFF only which tables have hidden rows.
+  Acceptable for honesty; note for the owner.
+- Deferred follow-up (> 100 files): portal approvals of the erased person stay PENDING until the outbox drain (`revalidateAndWake`
+  wakes it after the action) — seconds to minutes; the request rows are already gone.
+- TOO_LARGE on the retention / member.erased paths repeats per run/retry (one ERROR + one failed-audit row each time) — noisy but correct.
+- The inline path (≤ 100 files, bulk approvals) can still outlive a short function limit only through slow storage deletes; errors there
+  already answer `erased:true, followUp:"PENDING"`.
+
+## Owner / legal questions (round 2)
+1. Visibility-limited PDPA export (now stated in the file) — or a full-scope export by the owner/explicit key? (open from round 1)
+2. Absorbed contacts' rows in a requester's export (R2-2): accept as "same person" or filter by visibility?
+3. Erase size: approve the batched-write card (R2-1) — the all-or-nothing transaction is then practical for far larger persons.
+
+## Not verified (round 2)
+- Prod latency (all ms figures are from this host to QC3); the outbox `FAILED` path end-to-end (code-read only); UI warning rendering;
+  MANAGER/TEAM visibility; prod-size `EXPLAIN` for the audit pass (not dominant here); qc suites (builder ran c3.9/c3.5/form/approval
+  this round — not re-run by me).
+
+VERDICT: MERGEABLE
