@@ -20,6 +20,8 @@ export {
 // CRM C1.5 ▸ ต้นทางยกเลิก entity → คำขอ PENDING เป็น CANCELLED (สถานะอื่น/ไม่พบ = false) — ผู้เรียก: `crm/deals.ts#deleteDeal`
 //   (ดีลที่ถูกลบขณะมีคำขออนุมัติส่วนลด `crm.discount` ค้างอยู่) · ห่อบาง ๆ ของ service เดิม ไม่มีตรรกะใหม่ ◂ CRM C1.5
 export { cancelRequest } from "./service";
+// CRM C5.5-fix9 r2 ▸ ยกเลิกเป็นชุด (คำสั่งละ ≤ 1,000 · เฉพาะที่ยัง PENDING) — ผู้เรียก: crm/portal.ts#cancelErasedApprovals (ขั้นหลังการลบ PDPA) ◂
+export { cancelRequests } from "./service";
 
 // CRM C3.3 ▸ ผู้ตัดสินขั้นสุดท้ายของคำขอ (อ่านล้วน) — ผู้เรียก: crm/commissions.ts (ห้ามอนุมัติคอมมิชชันของตัวเองผ่านสายอนุมัติ) ◂ CRM C3.3
 export { lastDecisionOf, requestStatuses } from "./service";

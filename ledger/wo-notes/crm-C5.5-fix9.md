@@ -101,3 +101,90 @@ Same caps exist on main (`take: 5_000` in privacy.ts, `MASK_CARDS_MAX`, `SUBMISS
 - `notThePerson` and `onMemberErased` changes: code-read + typecheck + suites only (no probe at 200+/5,000+ scale).
 - A real person over the 50,000-row export ceiling (ceiling path proven with an injected 100); erase above ~60 s of work (would roll back, by design).
 - qc-crm-c5.3 (QC2-only suite).
+
+---
+
+# Round 2 — review M1 · M2 · M3 · L2 · I2 (review note `crm-C5.5-fix9-review.md`, tip 268c7716)
+
+Probe `scripts/pending/cf12/probe-cf12-r2.mts` (own tenant `qc-cf12r2-*`, CLEAN) · verify `scripts/pending/cf12/run-verify-r2.sh` (run as a
+/tmp copy, summary `/tmp/cf12-logs/r2v1.summary`). Not in this round: L1 (byte ceiling / file lane), L3/L4 (other lane's files).
+
+## RED → GREEN
+| run | controls | finding checks |
+|---|---|---|
+| probe-cf12-r2 on 268c7716 (unfixed) | 4/5 (T4 red on old code by construction: the old erase ignores the injected timeout and succeeds at once, so the "retry" was a resweep — T4 was then changed to "contact erased after the retry", which holds on both) | **10/10 RED** |
+| probe-cf12-r2 on the fix | 5/5 | **10/10 GREEN** |
+| reviewer `probe-cf12-review.mts` | 17/17 | **T2 NOT-REPRODUCED · U1 NOT-REPRODUCED** (were REPRODUCED) |
+| reviewer `probe-cf12-review-chain.mts` | CLEAN | **C1 NOT-REPRODUCED** (was REPRODUCED) |
+| reviewer `probe-cf12-review-scale.mts 500` | CLEAN | 1,500 kanban rows changed in 15.7 s = 10.5 ms/row ⇒ ≈ 5,700 rows / 60 s |
+| round-1 probe-cf12 | 7/7 | 12/12 (E erase now 46.5 s for the whole call, was 169 s — approvals bulk) |
+| hunt probe | 6/6 | X1.1 stays "not reproduced" · S1.* REPRODUCED (H3-1, other lane) |
+
+## M1 — export honesty (privacy.ts `exportContact`, `withheldByVisibility`, `fileLinksOf`)
+- (b) merged chain = BUG, fixed: the export resolves the chain with the erase's own `mergedChain` and reads every table for
+  `[id, ...chain]` (score logs, forms, consents, activities, mails, web sessions/events, clicks, portal, enrollments, records + values,
+  file links). `scope.mergedContactIds` lists the absorbed ids; a chain over the merge caps sets `scope.mergedChainIncomplete` and
+  `complete:false`. Probe C1: forms 4/4 · scores 4/4 · consents 2/2 · `complete:true`.
+- (a) requester visibility = NOT widened. After reading, numbers only: activities/deals of the chain in this system minus what the
+  requester's `activityWhere`/`dealWhere` returns, file links of hidden activities, sensitive custom values for non-owners. Any > 0 ⇒
+  file `complete:false` + `scope: { limitedByRequesterVisibility: true, withheldTables: [...] }` (table names only — no withheld counts
+  or rows in the file); audit row gets `withheld: { table: n }` + `scope`. OWNER (sees all) ⇒ unaffected (probe V1). Note: a non-owner
+  always gets `complete:false` once the person has any sensitive custom value (by-design omission, now stated). Probe V2/V3.
+- UI (`ContactPrivacyBlock.tsx`): the warning lists the reason(s): rows cut at the file size ceiling (newest kept), rows outside the
+  requester's visibility "ให้เจ้าของร้านเป็นผู้ส่งออก" if a full file is needed, merged chain over the cap; ends "แจ้งเจ้าของข้อมูลด้วยว่าไฟล์ไม่ครบ".
+- Owner/legal question (open): should a PDPA access export ignore the requester's visibility (owner/explicit PDPA key with full scope)?
+
+## M2 — erase over the transaction limit (privacy.ts `eraseContact`, `isTxTimeout`)
+- The single transaction stays (all-or-nothing). Its failure by time (`P2028` / "Transaction already closed" / "expired transaction";
+  not "Unable to start a transaction" = pool wait) now: (1) `logOps("ERROR", "crm.privacy", …)` — ERROR level = the ops alert path
+  of `logOps` (throttled mail to the team), detail = `{contactId, systemId, source, elapsedMs, timeoutMs}` only; (2) audit row
+  `crm.contact.erase.failed` (actor = clicker or SYSTEM, `after = {systemId, source, failure:"TIMEOUT", elapsedMs, timeoutMs}` — no
+  reason text/name/phone; not the "erased" flag action); (3) `PrivacyError("TOO_LARGE")` — new code in `PrivacyErrorCode` — Thai
+  message "ข้อมูลของผู้ติดต่อนี้มีมากเกินกว่าจะลบให้เสร็จในครั้งเดียว — ระบบยกเลิกการลบทั้งหมด (ยังไม่มีข้อมูลใดถูกลบ) และแจ้งทีมงานแล้ว ·
+  การกดลบซ้ำจะไม่ช่วย", shown as-is by the action's `failOf`. Test seam `PrivacyDeps.txTimeoutMs` (≤ 60 s; the action never passes it).
+  Probe T1–T4; reviewer T (real 60 s limit, lock held 75 s): now `PrivacyError TOO_LARGE` after 73.6 s, OpsEvent written (T2 flipped).
+- **Regression window (for the owner):** before this card the caps bounded the work, so a person whose data exceeded the caps but whose
+  CAPPED work fit in 60 s WAS erased — with leftovers beyond the caps (+ WARN for the audit part only). Now the erase covers everything,
+  so the same person may exceed 60 s and NOTHING is erased (rollback) until someone acts. Budget measured from this host: ≈ 10.5–10.6 ms
+  per changed row ⇒ ≈ 5,600–5,700 identity-bearing rows per erase (reviewer scale probe 500 cards → 1,500 rows in 15.7 s). Also
+  measured: the round-1 E fixture (2,005 links + 5,005 requests + 5,005 audit + 5,005 form rows, only ~25 rows changing) spends ≈ 45 s
+  of the 60 s even unfixed (the same 45 s on 8cc1778a) — fixed per-erase cost on large tenants/sets is not only "changed rows". Prod
+  latency per statement is lower (not measured). Decision needed: is a resumable multi-step erase card wanted? (not built here).
+
+## M3 — approval cancels (approval `cancelRequests`, portal `cancelErasedApprovals`, privacy `eraseContact`)
+- `approval/service.ts#cancelRequests(ctx, ids)` + facade export: `updateMany where id IN chunk(1,000) AND status = PENDING` →
+  `CANCELLED` + `decidedAt` — the exact semantics of `cancelRequest` (it has no events/notifications; checked), idempotent and
+  resumable (only still-pending rows). `cancelErasedApprovals` uses it (1,500 ids: 69 ms, was 35.8 s).
+- `eraseContact`: commit = erased. The inline post-commit step runs only when the follow-up has ≤ 100 files
+  (`INLINE_FOLLOWUP_FILES_MAX`; files are deleted one storage call each); above that the answer is `followUp:"PENDING"` at once and
+  the existing `crm.contact.erased` outbox consumer (`onContactErased` → `completeErasure`, retried until it succeeds, every step
+  idempotent) finishes. Errors in the inline step still answer `erased:true, followUp:"PENDING"` (unchanged). No new queue.
+  Probe A1–A4 (erase with 1,203 approval ids: 0.96 s, was 28.2 s).
+- Remaining (not in this card): `completeErasure` still deletes files one call each — a person with thousands of files can still
+  exceed one outbox delivery (60 s) and re-start from the first file on redelivery (each delete is idempotent, so it converges only if
+  a delivery finishes); noted for C6.
+
+## L2 — truncation decided by paging (privacy.ts `readAllPages`)
+- `cut` = a row beyond the ceiling was actually read; `total = max(count(), rowsRead)`. Seam `ContactExportOpts.beforeCount` (tests only)
+  deletes 5 rows between paging and the count: marker kept `{exported:10,total:11}`, `complete:false` (probe L1). A pure race cannot be
+  reproduced on the old code (L1 is RED there only because the seam does not exist).
+
+## I2 — UI text
+- Removed "ติดต่อทีม SHARK เพื่อขอส่วนที่เหลือ" (no such procedure). Now: "ดาวน์โหลดไฟล์แล้ว แต่ไฟล์นี้ยังไม่ใช่ข้อมูลทั้งหมดของผู้ติดต่อนี้ — <reasons> ·
+  แจ้งเจ้าของข้อมูลด้วยว่าไฟล์ไม่ครบ" where <reasons> ∈ { "บางตารางมีข้อมูลมากเกินกว่าจะใส่ในไฟล์เดียว ไฟล์จึงมีเฉพาะแถวใหม่สุด (<table> n จาก N แถว …)",
+  "บางรายการอยู่นอกสิทธิ์การมองเห็นของบัญชีคุณจึงไม่อยู่ในไฟล์ (<tables>) — ถ้าต้องการไฟล์ที่ครบ ให้เจ้าของร้านเป็นผู้ส่งออก",
+  "ผู้ติดต่อที่ถูกรวมเข้ามามีจำนวนมากเกินเพดาน ไฟล์จึงยังไม่รวมทุกคน" }.
+
+## Verification (QC3 · iso.sh + gate lock)
+- `pnpm typecheck` (5120 MB) exit 0 · fitness 39/39 with env and 39/39 without env ·
+  `gen-crm-api-docs --check` green (no REST op changed).
+- qc-crm-c3.9 49/49 · qc-crm-c3.5 67/67 · qc-form 10/10 · qc-approval (incl. AP-4.2 cancel) 16/16.
+
+## Owner / legal questions (open)
+1. PDPA access export limited by the requester's visibility (now stated in the file) or full scope regardless of requester?
+2. Erase contract: all-or-nothing in one 60 s transaction (now loud: ERROR + failed audit + TOO_LARGE) or a resumable multi-step erase card?
+3. (L1, not this round) big person exports through the private-file export lane instead of one JSON string.
+
+## Not verified (round 2)
+- UI warning rendering (no browser); the real 60 s timeout path was exercised only by the reviewer's lock probe (mine uses the 3 s seam);
+  the `> 100 files` inline-skip branch (code path only, A3 had 0 files); MANAGER/TEAM visibility variants (STAFF/OWN only); prod latency.

@@ -1498,10 +1498,9 @@ const erasePageOf = (b?: number | null): number => {
 /** ยกเลิกคำขออนุมัติของคำขอพอร์ทัลที่ถูกลบ (ขั้นหลัง commit ของการลบ PDPA) — คำขอที่ปิดไปแล้ว = ข้าม (idempotent) */
 export async function cancelErasedApprovals(tenantId: string, approvalRequestIds: readonly string[]): Promise<number> {
   if (!approvalRequestIds.length) return 0;
-  const ap = await approvalFacade();
-  let n = 0;
-  for (const id of approvalRequestIds) if (await ap.cancelRequest({ tenantId }, id)) n += 1; // ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่
-  return n;
+  // CRM C5.5-fix9 r2 (review M3): เป็นชุด (คำสั่งละ ≤ 1,000 · เฉพาะที่ยัง PENDING) แทนทีละ id — ส่งใหม่ = ทำต่อได้ ไม่เริ่มจ่ายใหม่ทั้งหมด ·
+  //   ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่ ◂
+  return (await approvalFacade()).cancelRequests({ tenantId }, approvalRequestIds);
 }
 // ◂ CRM C3.9
 
