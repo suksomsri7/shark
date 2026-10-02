@@ -4,7 +4,7 @@ import { requireCrmV2Page } from "@/lib/modules/crm/ui-version";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { hasMemberPerm, toMemberActor } from "@/lib/modules/member";
-import { convertOptions, getContact360, ownerOptions } from "@/lib/modules/crm/contacts";
+import { convertOptions, getContact360, isCurrentCompanyHidden, ownerOptions } from "@/lib/modules/crm/contacts";
 import {
   CONTACT_SOURCE_LABEL,
   ContactsError,
@@ -83,6 +83,9 @@ export default async function Contact360Page({
   const live = !c.archivedAt && !c.mergedIntoId;
   const noOptions: ConvertOptions = { memberSystems: [], pipelines: [] };
   const [owners, options]: [{ id: string; name: string }[], ConvertOptions] = live ? await Promise.all([ownerOptions(ctx, actor), convertOptions(ctx, actor)]) : [[], noOptions];
+  // CRM C5.5-fix7 ▸ R2F-1: คนที่ผูกบริษัทได้ แต่บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็น — ทุกการเลือกถูกบริการปฏิเสธ ⇒ ไม่แสดงช่องเลือก
+  //   (แสดงบรรทัดอธิบายแทน · ไม่บอกชื่อ/รหัสบริษัท) · ด่านเดียวกับบริการ (contacts.isCurrentCompanyHidden) ◂
+  const primaryCompanyHidden = crmCanLinkCompany(actor) && live ? await isCurrentCompanyHidden(ctx, actor, c.companyId) : false;
   // CRM C2.2 ▸ ลำดับการติดตามของผู้ติดต่อคนนี้ (อ่านล้ม/ไม่มีคีย์ = ไม่แสดงบล็อก · หน้าไม่ล้ม)
   const [seqOptions, seqEnrollments] = await Promise.all([
     sequenceOptions(ctx, actor).catch(() => []),
@@ -172,7 +175,8 @@ export default async function Contact360Page({
             merge: crmCan(actor, "crm.contact.merge"),
             archive: crmCan(actor, "crm.contact.delete"),
             // CRM C5.5-fix6 ▸ F3: ช่องย้ายบริษัทในแผ่นแก้ไข = ผูกบริษัทได้ (อ่าน + แก้บริษัท) — ไม่ได้ = ซ่อน (§15(b)) ◂
-            company: crmCanLinkCompany(actor),
+            // CRM C5.5-fix7 ▸ R2F-1: + บริษัทหลักปัจจุบันต้องอยู่ในการมองเห็น (ไม่งั้นทุกการเลือกถูกปฏิเสธ) ◂
+            company: crmCanLinkCompany(actor) && !primaryCompanyHidden,
           }}
           contact={{
             id: c.id,
@@ -187,10 +191,12 @@ export default async function Contact360Page({
             tags: c.tags,
             archived: !!c.archivedAt,
             // CRM C5.5-fix6 ▸ F3: id ของบริษัทใช้แค่ช่อง "ย้ายดีลตาม" ของคนที่ย้ายบริษัทได้ · ชื่อ = บริษัทที่ผู้ดูมองเห็น (companyWhere) เท่านั้น ◂
-            companyId: crmCanLinkCompany(actor) ? c.companyId : null,
+            companyId: crmCanLinkCompany(actor) && !primaryCompanyHidden ? c.companyId : null,
             companyName: data.company?.name ?? null,
             // CRM C5.5-fix6 r2 ▸ F6-4: ป้าย "บริษัทหลัก" เฉพาะเมื่อบริษัทที่แสดงคือบริษัทหลักของผู้ติดต่อจริง (ไม่ใช่ลิงก์อื่นที่มองเห็นแทน) ◂
             companyIsPrimary: !!data.company && data.company.id === c.companyId,
+            // CRM C5.5-fix7 ▸ R2F-1: บรรทัดอธิบายแทนช่องเลือก (เฉพาะคนที่ผูกบริษัทได้ — คนอื่นเห็นบรรทัดอ่านอย่างเดียวของ fix6 เหมือนเดิม) ◂
+            companyLocked: primaryCompanyHidden,
           }}
         />
       </div>

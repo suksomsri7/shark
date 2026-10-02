@@ -24,6 +24,13 @@ export const CONTACT_IMPORT_INLINE_MAX_ROWS = 5_000;
 export const CONTACT_IMPORT_BATCH = 200;
 /** แถวผิดที่รายงานกลับได้สูงสุด (ที่เหลือนับใน failed) */
 export const CONTACT_IMPORT_ERRORS_MAX = 500;
+/**
+ * CRM C5.5-fix7 ▸ R2F-1: บริษัทหลักปัจจุบันของผู้ติดต่ออยู่นอกการมองเห็นของผู้แก้ — ข้อความเดียวทั้งบรรทัดอธิบายในแผ่นแก้ไข (แทนช่องเลือกที่
+ *   กดอะไรก็ถูกปฏิเสธ) และคำปฏิเสธของบริการ (เดิม "ไม่พบบริษัทนี้ … รีเฟรชหน้า" ซึ่งรีเฟรชแล้วก็ไม่หาย) · ไม่บอกชื่อ/รหัสบริษัท ·
+ *   "มีบริษัทหลักที่มองไม่เห็น" ผู้ใช้รู้อยู่แล้วจาก companyId ใน DTO ของผู้ติดต่อ ◂
+ */
+export const CONTACT_PRIMARY_COMPANY_HIDDEN_MSG =
+  "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้";
 export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const CONTACT_REASON_MIN = 5;
 export const CONTACT_TAGS_MAX = 50;
@@ -278,8 +285,13 @@ export type ImportContactsResult = {
   skipped: number;
   candidates: number;
   failed: number;
-  errors: { row: number; message: string }[];
+  /**
+   * CRM C5.5-fix7 ▸ R2F-3: `kind` แยกแถวที่ล้มจริง ("error" · นับใน failed) ออกจากหมายเหตุของแถวที่บันทึกแล้ว ("note" · เช่น ผูกบริษัทไม่ได้)
+   *   แถวที่ล้มจริงเรียงก่อนเสมอ (เพดาน CONTACT_IMPORT_ERRORS_MAX และหน้าจอที่แสดง 50 แถวแรกจึงไม่ดันมันหาย) · เพิ่มช่องอย่างเดียว (row/message เดิม) ◂
+   */
+  errors: ImportResultEntry[];
 };
+export type ImportResultEntry = { row: number; message: string; kind: "error" | "note" };
 export type ImportJobStatus = "PENDING" | "RUNNING" | "DONE" | "FAILED";
 export type ImportJob = { jobId: string; status: ImportJobStatus; result: ImportContactsResult };
 

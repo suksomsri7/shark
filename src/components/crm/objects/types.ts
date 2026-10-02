@@ -1,6 +1,8 @@
 // types.ts — ชนิดข้อมูลกลางของหน้าวัตถุกำหนดเอง (CRM v2 · ใบ C1.9) — **บริสุทธิ์** (ไม่แตะ prisma/next)
 // 🔴 คอมโพเนนต์ 'use client' ของโฟลเดอร์นี้ import ได้ตรง ๆ (บทเรียน reference_next_client_component_imports_server_module)
 
+import { formatThaiDateTimeFull } from "@/lib/ui/date";
+
 export type ObjectValueView = string | number | boolean | string[] | null;
 
 /** ฟิลด์ 1 ตัวที่ฟอร์มรายการต้องรู้ (ย่อจาก FieldDef ของ engine — ไม่มีค่าอ่อนไหวติดมา) */
@@ -34,11 +36,10 @@ export function thaiInputToIso(value: string): string {
   const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value.trim());
   return m ? `${m[1]}T${m[2]}:${m[3]}:${m[4] ?? "00"}+07:00` : value;
 }
-/** ISO → ข้อความวันเวลาไทยสำหรับแสดงผล */
+/** ISO → ข้อความวันเวลาไทยสำหรับแสดงผล — CRM C5.5-fix7 ▸ RV-3: ตัวจัดรูปอยู่ที่ `lib/ui/date` (formatThaiDateTimeFull) ที่เดียว ·
+ *  หน้าผู้ติดต่อ 360 + ไฟล์ส่งออก + พอร์ทัลใช้ตัวเดียวกัน (เดิมพอร์ทัลคัดลอกตัวเลือกรูปแบบ · หน้า 360 ตัดสตริง UTC) ◂ */
 export function thaiDateTimeText(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  return new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  return formatThaiDateTimeFull(iso);
 }
 // ◂ CRM C1.9
 

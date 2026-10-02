@@ -47,6 +47,7 @@ import { crmCan, crmForbiddenMessage } from "./access";
 import * as companies from "./companies";
 import { bindPortalLineUserIdInTx } from "./contacts";
 import { thaiDayStartMs } from "./activities-shared";
+import { formatThaiDateTimeFull } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { ciEquals } from "@/lib/core/ci-equals"; // CRM C5.5-fix2 ◂
 import { logOps } from "@/lib/core/ops";
@@ -812,14 +813,14 @@ export async function listDocuments(token: string): Promise<{ items: PortalDocum
 }
 
 // CRM C5.5 ▸ (fix3b · H2b-5) ฟิลด์ DATETIME เก็บเป็นขณะจริง ⇒ แสดงเป็นวันเวลาไทย รูปแบบเดียวกับหน้าระเบียนของพนักงาน
-//   (`thaiDateTimeText` ใน components/crm/objects/types.ts — "9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
+//   ("9 ต.ค. 2569 00:30") · เดิมตัดเป็นวันที่ UTC (00:00–06:59 น. = วันก่อนหน้า · ไม่มีเวลา)
 //   DATE เก็บเป็นเที่ยงคืน UTC ของวันในปฏิทิน ⇒ ตัดสตริงแบบเดิม (ค่าที่ลูกค้าเห็นและใช้ตั้งต้นช่อง "ขอแก้ข้อมูล" ไม่เปลี่ยน) ◂
-const PORTAL_DATETIME_FMT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" };
+// CRM C5.5-fix7 ▸ RV-3: ตัวจัดรูปตัวเดียวกับหน้าระเบียนของพนักงานและหน้าผู้ติดต่อ 360 (`formatThaiDateTimeFull` · lib/ui/date) — เลิกคัดลอกตัวเลือกรูปแบบ ◂
 function valueText(v: { valueText: string | null; valueNumber: { toString(): string } | null; valueDate: Date | null; valueBool: boolean | null; valueOptions: string[] } | undefined, type?: string): string {
   if (!v) return "";
   if (v.valueText !== null && v.valueText !== undefined) return v.valueText;
   if (v.valueNumber !== null && v.valueNumber !== undefined) return v.valueNumber.toString();
-  if (v.valueDate && type === "DATETIME") return v.valueDate.toLocaleString("th-TH", PORTAL_DATETIME_FMT);
+  if (v.valueDate && type === "DATETIME") return formatThaiDateTimeFull(v.valueDate);
   if (v.valueDate) return v.valueDate.toISOString().slice(0, 10);
   if (v.valueBool !== null && v.valueBool !== undefined) return v.valueBool ? "ใช่" : "ไม่ใช่";
   return v.valueOptions.join(", ");
