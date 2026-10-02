@@ -93,6 +93,34 @@ try {
   const msSmall = Date.now() - t1;
   chk("G1.3", ms < 3000, `2.2M-char adversarial input scanned in ${ms} ms (220k chars: ${msSmall} ms — ratio ${(ms / Math.max(1, msSmall)).toFixed(1)}×) · kinds=${j(kinds)}`);
 
+  // ── round 2 (dece4b11): ordinary Thai business text must NOT be flagged · cheap bypasses (evidence) ──
+  const benign: [string, string][] = [
+    ["opening hours one line", "เปิด จ-ศ 08.30-17.30 ส-อา 09.00-18.00"],
+    ["hours two shifts space", "เปิด 08.30-17.30 09.00-18.00"],
+    ["hours two shifts slash", "เปิด 08.30-17.30/09.00-18.00"],
+    ["date range slash+dash", "โปรโมชัน 09/10/2026-08/11/2026"],
+    ["date range 2-digit year", "โปรโมชัน 09/10/26-08/11/26"],
+    ["date range spaced", "โปรโมชัน 09/10/2026 - 08/11/2026"],
+    ["thai date", "๐๙/๑๐/๒๕๖๙"],
+    ["price list slash", "ราคา 100/150/200 บาท"],
+    ["zero-padded codes slash", "รหัส 050/060/070"],
+    ["product code slash", "รหัสสินค้า 12/345/6789"],
+    ["juristic tax id", "เลขผู้เสียภาษี 0105561000003"],
+    ["juristic tax id dashed", "0-1055-61000-00-3"],
+    ["order number", "PO/2026/0042"],
+    ["time range dot", "09.00-18.00 น."],
+    ["room numbers", "ห้อง 0905/0906/0907"],
+  ];
+  const fp = benign.filter(([, s]) => (CD.findContactData(s) as string[]).length > 0).map(([k, s]) => `${k}: ${s}`);
+  chk("G2.1", fp.length === 0, `ordinary Thai business text (hours, date ranges, prices, codes, juristic tax id) not flagged · false positives=${j(fp)}`);
+  const cheap: [string, string][] = [
+    ["mixed scripts", "08๙9000１02"], ["thai digits dashed", "๐๘๙-๙๐๐-๐๑๐๒"], ["ZWSP", "089​900​0102"], ["ZWJ", "089‍9000102"],
+    ["word joiner", "089⁠9000102"], ["BOM", "089﻿9000102"], ["underscore", "089_900_0102"], ["comma", "089,900,0102"],
+    ["middle dot", "089·900·0102"], ["three spaces", "089   900   0102"], ["spelled sep", "089 ขีด 900 ขีด 0102"], ["colon", "089:900:0102"],
+  ];
+  const caught = cheap.map(([k, s]) => `${k}=${(CD.findContactData(s) as string[]).length > 0 ? "caught" : "MISSED"}`);
+  info("G2.2", `cheap user-made variants: ${caught.join(" · ")}`);
+
   // ═══ world ═══
   const tA = (await P.tenant.create({ data: { name: `${TAG}-a`, slug: `${TAG}-a` } })).id as string;
   const tB = (await P.tenant.create({ data: { name: `${TAG}-b`, slug: `${TAG}-b` } })).id as string;

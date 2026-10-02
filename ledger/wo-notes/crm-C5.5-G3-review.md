@@ -106,3 +106,43 @@ Nothing at BLOCKER, HIGH or MED. G2-1 (MED) is closed for its stated channel: X7
   - a tree merged with `shark-hf` / `likeStartsWith`.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 re-check — builder tip `dece4b11` (one commit on `e6006691`)
+
+Scope: `git diff e6006691 dece4b11`. That is `src/lib/ai/contact-data.ts` (RV-1: more separators, more digit scripts, full-width `+`) and
+`src/lib/ai/tools.ts` (RV-2: `kb_auto_save` now scans `category`). Checked 2026-10-02 06:06 UTC (`date -u`). QC3 only; each job through
+`iso.sh` + `with-gate-lock.sh`, one at a time.
+
+## Runs
+
+| run | result |
+|---|---|
+| builder `probe-cf17-g3` | **26/26** |
+| own `probe-cf17-g3-review.mts`, original checks unchanged | **G1.1 ✅** (no plausible format missed) · **G1.4 ✅** (phone in `category` refused) · G1.3 ✅ · F1.1–F1.4 ✅ · P1.1 ✅ · E1.1 ✅ · CLEAN ✅ |
+| own probe, new round-2 cases (G2.1 / G2.2, added before this run; the original checks were not touched) | 12/13 — **G2.1 ❌** (false positives, RV-8) · G2.2 evidence (RV-9) |
+| old vs new scanner on the same strings (`git show 954a69d5:` copy of the scanner, run once via `iso.sh`, temporary files deleted) | see RV-8 |
+
+Typecheck was not re-run: no `src` change on my side. The probe edit only adds typed string arrays and calls through an untyped import.
+
+## Linearity
+
+Still one pass over the string. The new code is a `switch` / range test per character and a constant-cost `isPlus`; there is no regex.
+Measured: 2.2 M adversarial characters in 230 ms vs 220 k in 21 ms (≈ 11× for 10× input).
+
+## Findings (round 2)
+
+| # | sev | finding | evidence | fix suggestion |
+|---|---|---|---|---|
+| RV-8 | LOW (usability, fail-safe) | **New false positives from `/` as a separator.** Groups joined into a 10-digit span starting `08`/`09`, or a 9-digit span starting `05`, read as a phone, so these shop facts / KB articles are refused: a date range `09/10/2026-08/11/2026`, `09/10/26-08/11/26`, opening hours `08.30-17.30/09.00-18.00`, and zero-padded codes `050/060/070`. Already a false positive before this commit (missed in my round 1): opening hours written with one space between shifts, `08.30-17.30 09.00-18.00`. Not flagged: `12/345/6789`, `100/150/200`, `0905/0906/0907`, the juristic tax id `0105561000003` / `0-1055-61000-00-3`, and plain dates. | G2.1 ❌. Old/new comparison: the four `/` cases were `[]` at `954a69d5` and `["phone"]` at `dece4b11`; the space-separated hours were `["phone"]` on both trees. | A shape rule for phone spans: groups after the first must have ≥ 3 digits (`089-900-0102`, `(02) 123 4567`, `089/900/0102` still match). Dates and hours made of 2-digit groups then never join into a phone. Re-run M1.3 + G2.1. The refusal text tells the user what to change, so this does not block. |
+| RV-9 | LOW (deliberate bypass; no new capability) | **Cheap user-made variants still pass:** zero-width space / joiner / word joiner / BOM between digits, `_`, `,`, `·`, `:`, three or more spaces, spelled-out separators ("ขีด"). Caught as intended: **Thai digits ๐–๙** (also dashed), mixed digit scripts in one number, full-width, Arabic-Indic. | G2.2 evidence. | Only an OWNER (shop facts) or someone holding `kb.article.create` (KB) reaches these writes, and both can type the same text in the web UI. So this is not an escalation. Cheap hardening: drop Unicode format characters (U+200B–U+200F, U+2060, U+FEFF) before scanning, and treat `_` / `·` as separators. Commas and colons would hit prices and times — leave them. |
+
+RV-1 and RV-2 from round 1 are **fixed** (G1.1 and G1.4 green). RV-3 to RV-7 are unchanged and out of this round's scope.
+
+## Verified vs only read (round 2)
+
+- **Verified:** both probes on QC3; the old vs new scanner on the same strings; linear timing.
+- **Only read:** the builder's new note section and its probe additions (M1.5 etc.; its 26/26 run is mine).
+
+VERDICT: MERGEABLE
