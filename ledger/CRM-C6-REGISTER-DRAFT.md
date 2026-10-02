@@ -312,3 +312,11 @@ Source: `wo-notes/crm-C5.5-G3.md` (Q1–Q6) and `wo-notes/crm-C5.5-G3-review.md`
 - RV-4 (LOW, pre-existing): `support_open_case` writes subject/detail unguarded into the support case list/thread readable by every member — the push fix (G2-2) is partial. Candidate follow-up card.
 - RV-7 behaviour changes to announce: STAFF can no longer forget legacy shop memories; the 100 shop-fact cap includes legacy rows.
 - Legacy memories containing contact data are hidden from non-OWNERs at read time, not deleted; prod count not taken.
+
+## fix12 (duplicate checks vs. hidden records) — owner questions (2 Oct)
+Source: `wo-notes/crm-C5.5-fix12.md` on `wip/crm-cf16`.
+- Q1: `force` cannot override a duplicate the creator cannot see (neutral refusal). Keep? Who resolves it for the user?
+- Q2: card-scan accept refuses a card matching a hidden contact (proposal returns to PENDING) instead of creating a duplicate. Keep?
+- Q3: new per-person limit 120 phone/e-mail entries per 10 min on contact create/update server actions. Right number?
+- Residual, unavoidable: creating a contact still reveals whether a phone/e-mail exists somewhere in the shop.
+- Reported-only sweep rows (existence-only signals; `getImportJob` readable by job UUID; member `createMember`) — severity pending the independent review.
