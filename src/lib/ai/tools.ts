@@ -33,6 +33,7 @@ import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
 import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
+import { canSeeConversationId, sightOf } from "./conversation-owner";
 import { actorCanConfirmKind, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
@@ -2395,7 +2396,13 @@ const guarded = (t: AiTool): AiTool => ({
   ...t,
   async execute(ctx: ToolCtx, args: unknown): Promise<string> {
     const bad = actorProblem(ctx);
-    return bad ? JSON.stringify({ error: bad }) : t.execute(ctx, args);
+    if (bad) return JSON.stringify({ error: bad });
+    // CRM C5.5-G2 ▸ ห้องที่ผู้กระทำมองไม่เห็น (ของคนอื่น / ห้องเดิมสำหรับคนที่ไม่ใช่เจ้าของร้าน) = เหมือนไม่ได้อยู่ในห้อง —
+    //   ข้อเสนอ/แผน/เคสแจ้งทีมงานจึงไม่มีวันถูกผูกเข้าห้องของคนอื่น (เครื่องมือที่ต้องมีห้องตอบ "ต้องอยู่ในบทสนทนาก่อน") ◂
+    if (ctx.conversationId !== undefined && !canSeeConversationId(sightOf(ctx), ctx.conversationId)) {
+      return t.execute({ ...ctx, conversationId: undefined }, args);
+    }
+    return t.execute(ctx, args);
   },
 });
 

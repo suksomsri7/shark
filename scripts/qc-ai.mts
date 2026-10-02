@@ -57,8 +57,9 @@ try {
 
   // kernel guard: tenant อื่นมองไม่เห็นบทสนทนา
   const t2 = await prisma.tenant.create({ data: { name: "QC AI 2", slug: `qc-ai2-${Date.now()}` } }); tid2 = t2.id;
-  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2 })) === null, "null", "?");
-  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2 }, convId)).length === 0, "0", "?");
+  // ORACLE-EDIT C5.5-G2: latestConversation/listMessages take the viewer (ctx.actor) — "another shop" is now that shop's OWNER
+  chk("AI-5.1", "tenant อื่นไม่เห็นบทสนทนา (kernel guard)", (await svc.latestConversation({ tenantId: tid2, actor: qcOwner(tid2) })) === null, "null", "?");
+  chk("AI-5.2", "tenant อื่นอ่านข้อความ conv นี้ไม่ได้", (await svc.listMessages({ tenantId: tid2, actor: qcOwner(tid2) }, convId)).length === 0, "0", "?");
 } catch (e) { chk("CRASH", "จบ", false, "จบ", e instanceof Error ? e.message.slice(0, 160) : String(e)); }
 finally {
   const d = async (f: () => Promise<unknown>) => { try { await f(); } catch {} };

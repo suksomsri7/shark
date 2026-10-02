@@ -1,7 +1,7 @@
 // GET ข้อเสนอที่รอยืนยัน (PENDING) ของบทสนทนา — การ์ดยืนยันใต้แชท (ledger/MOBILE_PLAN.md M-11)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { listPendingProposals } from "@/lib/ai/proposals";
-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
 
 export async function GET(req: Request) {
   const g = await requireMobile(req);
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const conversationId = new URL(req.url).searchParams.get("conversationId") ?? "";
   if (!conversationId) return Response.json({ proposals: [] });
-  const rows = await listPendingProposals(g.ctx, conversationId);
+  const rows = await listPendingProposals(mobileAiCtx(g), conversationId); // CRM C5.5-G2: own rooms only
   const proposals = rows.map((p) => ({
     id: p.id,
     kind: p.kind,

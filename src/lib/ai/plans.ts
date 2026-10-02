@@ -11,6 +11,8 @@ import { tenantDb } from "@/lib/core/db";
 import { type MembershipCtx } from "@/lib/core/rbac";
 import type { Prisma } from "@prisma/client";
 import { DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
+import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
+import { findVisibleConversation } from "./conversations";
 
 type Ctx = { tenantId: string };
 
@@ -69,14 +71,16 @@ export type PlanExecResult = {
 };
 
 // ── ลงมือทำแผนจริง — อ่าน step จาก DB, ตรวจสิทธิ์คนกดต่อ step, รันต่อเนื่องผ่าน runKind ──
+// CRM C5.5-G2 ▸ `opts.userId` = คนกด — แผนเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ไม่เห็น = เหมือนไม่มีแผนนี้) ◂
 export async function executePlan(
   m: MembershipCtx,
   ctx: Ctx,
   planId: string,
-  opts?: { confirm2x?: boolean },
+  opts?: { confirm2x?: boolean; userId?: string | null },
 ): Promise<PlanExecResult> {
   const row = await tenantDb(ctx).aiPlan.findFirst({ where: { id: planId } });
   if (!row) return { ok: false, results: [], doneCount: 0 };
+  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) return { ok: false, results: [], doneCount: 0 };
 
   // ไม่ใช่ PENDING (ทำไปแล้ว/ถูกปิด) → ไม่ทำซ้ำ
   if (row.status !== "PENDING") return { ok: false, results: [], doneCount: 0 };
@@ -137,18 +141,23 @@ export async function executePlan(
 }
 
 // ── ยกเลิกแผน — PENDING→REJECTED เท่านั้น (สถานะอื่น/ไม่พบ → false) ──
-export async function rejectPlan(ctx: Ctx, id: string): Promise<boolean> {
-  const res = await tenantDb(ctx).aiPlan.updateMany({
+// CRM C5.5-G2 ▸ เฉพาะแผนในบทสนทนาที่ผู้กดเห็น ◂
+export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true } });
+  if (!row || !canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  const res = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
   });
   return res.count > 0;
 }
 
-// ── แผนที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
-export async function listPendingPlans(ctx: Ctx, conversationId: string) {
-  return tenantDb(ctx).aiPlan.findMany({
-    where: { conversationId, status: "PENDING", expiresAt: { gt: new Date() } },
+// ── แผนที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ — CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น ◂ ──
+export async function listPendingPlans(ctx: ConvCtx, conversationId: string) {
+  const conv = await findVisibleConversation(ctx, conversationId);
+  if (!conv) return [];
+  return tenantDb({ tenantId: ctx.tenantId }).aiPlan.findMany({
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "asc" },
   });
 }

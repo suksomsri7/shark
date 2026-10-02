@@ -4,7 +4,8 @@ import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { tenantDb } from "@/lib/core/db";
 import { onboardingChecklist } from "@/lib/platform/onboarding-drip";
 import { dnaFactsSummary } from "@/lib/ai/service";
-import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
+import { mobileDenied, mobileAiCtx, AI_CHAT } from "@/lib/mobile/guard";
+import { canSeeConversationId, newConversationId, sightOf, visibleConversationWhere } from "@/lib/ai/conversation-owner";
 
 const WELCOME_TITLE = "เริ่มต้นกับผู้ช่วย AI";
 
@@ -26,11 +27,15 @@ export async function POST(req: Request) {
   const db = tenantDb(ctx);
 
   // มีห้องอยู่แล้ว (ยังไม่ลบ) → ไม่สร้างเพิ่ม
-  const existingRoom = await db.aiConversation.findFirst({
-    where: { deletedAt: null },
+  // CRM C5.5-G2 ▸ "มีห้อง" = ห้องที่ผู้ใช้คนนี้เห็น (ของตัวเอง · เจ้าของร้าน + ห้องเดิม) — ห้องของคนอื่นไม่นับ และไม่บอกว่ามีอยู่ ◂
+  const aiCtx = mobileAiCtx(g);
+  const sight = sightOf(aiCtx);
+  const existingRooms = await db.aiConversation.findMany({
+    where: { deletedAt: null, ...visibleConversationWhere(sight) },
     select: { id: true },
+    take: 5,
   });
-  if (existingRoom) return Response.json({ existing: true });
+  if (existingRooms.some((r) => canSeeConversationId(sight, r.id))) return Response.json({ existing: true });
 
   // เช็กลิสต์ก่อนสร้างห้อง (ให้ triedAi/จำนวนที่เหลือสะท้อนสภาพก่อนกดครั้งแรก)
   const checklist = await onboardingChecklist({ tenantId: ctx.tenantId });
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
 
   // สร้างห้อง + ข้อความทัก (tenantId ใส่ตรง ๆ ตาม convention repo)
   const conv = await db.aiConversation.create({
-    data: { tenantId: ctx.tenantId, title: WELCOME_TITLE },
+    data: { id: newConversationId(aiCtx), tenantId: ctx.tenantId, title: WELCOME_TITLE },
   });
   await db.aiMessage.create({
     data: { tenantId: ctx.tenantId, conversationId: conv.id, role: "ASSISTANT", content },

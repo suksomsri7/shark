@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     unitAccess: g.membership.unitAccess as string[],
     permissions: g.membership.permissions as Record<string, unknown>,
   };
-  const res = await executePlan(m, g.ctx, id, { confirm2x: body.confirm2x === true });
+  // CRM C5.5-G2 ▸ userId ของคนกด — แผนในห้องที่เขามองไม่เห็น = เหมือนไม่มีแผนนี้ ◂
+  const res = await executePlan(m, g.ctx, id, { confirm2x: body.confirm2x === true, userId: g.user.id });
   return Response.json(res);
 }

@@ -36,6 +36,8 @@ import * as accountFacade from "@/lib/modules/account";
 import * as automationSvc from "@/lib/automation/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 import { createSystemAutoLink } from "@/lib/modules/system/service";
+import { canSeeConversationId, sightOf, sightOfConfirmer, type ConvCtx } from "./conversation-owner";
+import { findVisibleConversation } from "./conversations";
 import {
   accountDestructiveKinds,
   accountKindAccess,
@@ -329,9 +331,12 @@ export async function createProposal(
 }
 
 // ── ข้อเสนอที่ยังรออยู่ของบทสนทนา (PENDING + ยังไม่หมดอายุ) เรียงเก่า→ใหม่ ──
-export async function listPendingProposals(ctx: Ctx, conversationId: string) {
-  return tenantDb(ctx).aiProposal.findMany({
-    where: { conversationId, status: "PENDING", expiresAt: { gt: new Date() } },
+// CRM C5.5-G2 ▸ เฉพาะบทสนทนาที่ผู้ดูเห็น (ไม่เห็น / ไม่มีห้องจริง = ว่าง) ◂
+export async function listPendingProposals(ctx: ConvCtx, conversationId: string) {
+  const conv = await findVisibleConversation(ctx, conversationId);
+  if (!conv) return [];
+  return tenantDb({ tenantId: ctx.tenantId }).aiProposal.findMany({
+    where: { conversationId: conv.id, status: "PENDING", expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -341,11 +346,13 @@ export async function listPendingProposals(ctx: Ctx, conversationId: string) {
 //   `crm_create_lead` ที่มี systemId — นามบัตร): ข้อเสนอเหล่านั้นยกเลิกได้เฉพาะคนที่ยืนยันได้ ผ่าน `crm.aiBridges.cancelProposal`
 //   (ผู้เรียกสองราย — `ai/actions.ts#rejectProposalAction` · `/api/mobile/proposals/reject` — ส่งข้อเสนอ CRM ไปทางนั้นพร้อมตัวคนกดแล้ว)
 //   🔴 ช่องโหว่เดียวกันของ kind โมดูลอื่น (ปิดอะไรก็ได้ด้วย id) ยังอยู่ — จดเป็น finding ให้เลน AI/สมาชิก (CRM-RUN §4) ◂
-export async function rejectProposal(ctx: Ctx, id: string): Promise<boolean> {
-  const row = await tenantDb(ctx).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true } });
+// CRM C5.5-G2 ▸ ยกเลิกได้เฉพาะข้อเสนอในบทสนทนาที่ผู้กดเห็น (ของคนอื่น = false เหมือนไม่มีอยู่) ◂
+export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean> {
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
-  const res = await tenantDb(ctx).aiProposal.updateMany({
+  if (!canSeeConversationId(sightOf(ctx), row.conversationId)) return false;
+  const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },
     data: { status: "REJECTED" },
   });
@@ -378,6 +385,13 @@ export async function executeProposal(
     if (!opts?.userId) return { ok: false, note: "ต้องรู้ตัวผู้กดยืนยันก่อนจึงจะทำรายการของ CRM ได้ — เปิดจากหน้าแอปแล้วลองอีกครั้ง" };
     const r = await crmSvc.aiBridges.confirmProposalById(ctx.tenantId, { userId: opts.userId, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions }, id, { confirm2x: opts?.confirm2x === true });
     return { ok: r.ok, note: r.note };
+  }
+
+  // CRM C5.5-G2 ▸ ข้อเสนอเป็นของบทสนทนาที่มันเกิด: คนกดต้องเห็นบทสนทนานั้น (ผู้สร้าง · เจ้าของร้านสำหรับห้องที่ไม่ได้สร้างโดยคนในร้าน
+  //   เช่นห้องของคีย์ API ที่ route เขียนไว้ว่า "เจ้าของต้องกดยืนยันในแอป/เว็บ") — ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้
+  //   (ประตู CRM ข้างบนมีด่านการมองเห็นของตัวเองแล้ว — ข้อเสนอเหล่านั้นไม่ได้อยู่ในห้องแชท) ◂
+  if (!canSeeConversationId(sightOfConfirmer(m, opts?.userId ?? null), row.conversationId)) {
+    return { ok: false, note: "ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)" };
   }
 
   // CRM C3.4 ▸ รีวิว S2: ใบที่ยังถูก "จองไว้ทำงาน" (`resultNote` = WORKING#<ms> — เนื้อยังไม่มา) ยืนยันไม่ได้ทุก kind ◂
