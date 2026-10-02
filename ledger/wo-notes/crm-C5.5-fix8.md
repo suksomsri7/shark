@@ -176,3 +176,75 @@ Every mail is counted in exactly one class (sender bucket first, then system buc
 - Attachment storage / link-fetch cost under a proven flood (bounded now by the proven buckets; path not exercised).
 - Real serverless memory; browser render of the account connections page with the narrowed key list (no account UI suite run in a browser).
 - The hunt probe was run from a copy in this tree (the hunt worktree was not touched); RED for my r2 probe was run with the five round-2 src files swapped back to 3ffb9026.
+
+
+## Round 3 (review round 2 `crm-C5.5-fix8-review.md` "Round 2" — NOT MERGEABLE on RV-6; RV-1/RV-3/RV-5 closed)
+
+### RV-6 HIGH — shared proven system bucket · FIXED (controller ruling, implemented exactly)
+Every inbound mail belongs to exactly one class, chosen from the evidence before any bucket, and is counted in and can be dropped only by its own class's buckets (order inside a class: sender → domain/message → system). So floods in D, T or U can never drop V.
+
+| class | evidence | per sender (key = lower-cased mailbox, `+tag` stripped) | extra bucket | per system | keys (`<h>` = sha256 prefix) |
+|---|---|---|---|---|---|
+| V verified reply | DMARC proof AND thread proof | 100/h | — | 2,000/h | `crm.email.in.from.v.<sys>.<h>` · `crm.email.in.sys.v.<sys>` |
+| D DMARC only | DMARC proof, no thread proof | 100/h | 300/h per From domain, except `CRM_INBOUND_FREE_MAIL_DOMAINS` (gmail.com, googlemail.com, outlook.com, hotmail.com, live.com, yahoo.com, yahoo.co.th, icloud.com, me.com, proton.me, protonmail.com) | 1,000/h | `from.d.` · `dom.d.<sys>.<h(domain)>` · `sys.d.` |
+| T thread only (forgeable) | thread proof, no DMARC proof | 100/h | 100/h per referenced OUT Message-ID (shared by every From citing it; the lowest proving stored Message-ID) | 1,000/h | `from.t.` · `msg.t.<sys>.<h(messageId)>` · `sys.t.` |
+| U unproven | neither | 100/h (unchanged key `crm.email.in.from.<sys>.<h>`) | — | 1,000/h (unchanged key `crm.email.in.sys.<sys>`) | fix2 keys, audits and texts |
+
+- DMARC proof = `authResultPass` (our MTA's single A-R instance, `dmarc=pass header.from=<From domain>`). Thread proof = some referenced Message-ID (In-Reply-To + newest 99 References) is an OUT mail of this tenant + system whose to/cc contains this exact From (`bareEmail` equality).
+- Sender key normalisation applies to EVERY class (U too): `inboundSenderBucketAddr` = lower-case, local part cut at the first `+`. It is used only for the bucket hash; attribution, matching and stored addresses are unchanged. For an address without `+tag` the U hash is identical to before (`sha256("from:" + address)`).
+- Pre-bucket cost unchanged: one narrow query (`messageId, toAddrs, ccAddrs` of ≤ 50 OUT rows) + 2–3 bucket upserts; nothing body-sized.
+- Owner notice: at most one per hour per system per class when any bucket of V/D/T trips (sender, domain, message or system level; notice bucket `crm.email.in.notice.class-<v|d|t>.<sys>`). V's text says genuine replies are being dropped. U keeps the round-2 behaviour (sender notice deduped per hour; system notice once per window, text unchanged since fix2). An audit line is written for each bucket's first trip of the window (`sender-v`, `system-v`, `sender-d`, `domain-d`, `system-d`, `sender-t`, `message-t`, `system-t`, `sender`, `system`). No address appears in keys, audits or notices.
+- Why these hold (ruling's constraints):
+  - Filling V needs ≥ 20 real DMARC-passing mailboxes that were visible recipients of our mails (100/h each, after normalisation); a D/T/U flood cannot touch it (F.2).
+  - One attacker DMARC domain: 100/h per mailbox, 300/h per domain, 1,000/h for all of D; its plus-variants share one sender bucket (A.1: 100 of 2,000 stored; B.1).
+  - Thread-only (forgeable by anyone who saw the recipients): 100/h per sender, 100/h per OUT mail across all senders, 1,000/h total (E.1: 30 recipients × 4 → 100 stored).
+  - Before this card: proven mail had no system bucket and the per-address sender bucket counted all mail. Now no class is unlimited, and every class is at least as tight per address (100/h).
+
+### P14 (updated)
+- `CRM_INBOUND_AUTHSERV_ID` unset ⇒ `authResultPass` is always false ⇒ no DMARC proof ⇒ only classes T and U exist (I.1: a perfect-looking A-R header + our Message-ID counts as T; without the reference, U). V and D buckets are never touched. The flag `unverifiedFrom` is set on every inbound mail (no mail is "proven").
+- Before setting the variable, the deployment must guarantee (reviewer's line): the inbound MTA/provider adds its OWN `Authentication-Results` header with exactly that authserv-id to every message after its own SPF/DKIM/DMARC check, AND strips or renames any incoming header that already carries that id (RFC 8601 §5), AND `/api/email/inbound` accepts only that provider (inbound secret). Otherwise a single attacker-supplied header with our id would be trusted: such mail becomes class D, or class V if it also cites one of our mails to that address. Those classes are bounded per mailbox, domain and system, but class V could then be filled by forgery. Do not set the variable until all three are confirmed for the provider in use.
+
+### RV-7 LOW — recorded as C6 debt (no code)
+Per system per hour at the caps: V 2,000 + D 1,000 + T 1,000 + U 1,000 = **5,000 accepted mails/h**. Each stores up to 1,000,000 chars of HTML + 1,000,000 chars of text: ≈ 2 MB ASCII, up to ≈ 6 MB for Thai (3 bytes/char). Worst case ≈ **10 GB/h** (ASCII) to **30 GB/h** (Thai) of stored bodies, plus attachments. Also up to 5,000 `crm.email.received` events, 5,000 EMAIL activities (matched mail) and 5,000 copy-in sends per hour (copyMode IN/BOTH). C6 debt: a per-system daily byte budget for inbound bodies and attachments, and counting copy-in sends against the shop's outbound quota.
+
+### Final `ingestInbound` step order (round 3)
+1. Cap envelope (fix5) → CRM recipient key → loop header → system/settings → v1 / disabled → duplicate Message-ID (id only).
+2. `fromAddr` → `fromProof` (pure parse of the capped A-R; false when the env is unset) → refs (capped) → one narrow query (OUT, this tenant + system, ≤ 100 ids, ≤ 50 rows, `messageId/toAddrs/ccAddrs`) → `threadProofAny` + `proofMessageId` → class V/D/T/U.
+3. Buckets of that class only: sender (normalised) → domain (D, non-free) / message (T) → system; first trip: audit + deduped owner notice → drop `rate_limited` (200, no row).
+4. Full `parent` row (`findFirst`, newest referenced) → fix2 `threadProof` (reply effects only).
+5. Reply-To, auto, subject → staff / override / verified-domain lookups → `unverifiedShopFrom` → direction → `bcc_capture_off`.
+6. HTML/text caps + sanitise.
+7. Attribution (contact / company / stranger lead) → `routing` flags (`unverifiedFrom` for every IN mail without `fromProof`).
+8. Tx: row + activity + `crm.email.received` → attachments → reply effects (`parent` OUT + (`fromProof` ∨ `threadProof`)) → replied notice → copy-in.
+
+### Round 3 RED → GREEN
+| probe | 1d118384 (round 2) | round 3 |
+|---|---|---|
+| `probe-cf11-r3` (new: A reviewer R2A.1 · B R2B.1 · C domain + free-mail · E per-Message-ID · F class exclusivity · G H3-1 + unproven flood · H notices · I P14 unset) | 5/14 — A.1 B.1 C.1 E.1 F.1 F.2 G.2 H.1 I.1 | 14/14 |
+| `probe-cf11-r2` | — | run with `--skip=R2` (its R2 block asserted the round-2 `.proven.` keys, superseded by r3); R1/R3/R4/R5 green (11/11) |
+| reviewer `probe-cf11-review-r2` | 6/8 (reviewer, at 1d118384) | 7/8 — **R2A.1 ✅** (100/2,000 attacker mails stored; the customer's DMARC+thread reply and a thread-only reply stored). **R2B.1 ✅ but vacuous**: it presets the retired `.proven.` key, so both plus-variants land in a fresh class-D bucket; the real check is my B.1. **R2C.1 ❌ instrumentation only**: it classifies a mail by whether `crm.email.in.sys.proven.<sys>` or the U system key moved; the `.proven.` key no longer exists, so proven mail shows as "none". The narrow query and its `bareEmail` comparison are unchanged since round 2, where R2C.1 was green (the query only adds `messageId` to the select). |
+| reviewer `probe-cf11-review-mail` | 11/12 | 12/12 — RA.2 now ✅ (0/30 stored): RA.1 already sent 150 thread-only replies citing the same OUT mail, so that mail's T message bucket (100/h) is full and the CC participant's replies citing it are dropped by design |
+| reviewer `probe-cf11-review-keys` | 8/9 | 8/9 — RK.6 = RV-4 (unchanged) |
+| hunt `probe-hunt3` (uncommitted copy) | — | S1.2/S1.3/S1.6 green · S1.5 by design (as round 2) · X1.1 = H3-2 |
+
+### Round 3 verification (`run-verify.sh` label v4; finished 2026-10-02 03:06 UTC)
+| check | result |
+|---|---|
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+| probe-cf11 keys · contains · mail · r2 (`--skip=R2`) · r3 | 14/14 · 12/12 · 24/24 · 11/11 · 14/14 |
+| reviewer probes review-r2 · review-mail · review-keys | 7/8 (R2C.1 instrumentation) · 12/12 · 8/9 (RK.6 = RV-4) |
+| probe-hunt3 | S1.2/S1.3/S1.6 green · S1.5 by design |
+| probe-cf2 · probe-cf2-review-r2 | 36/36 · 8/10 (Q3 `genuineOverSender: stored` by design · Q6.2 stale, red at base) |
+| probe-cf8-mobile · actions · review | 8/8 · 9/9 · 17/19 (X1.1, X2 no longer reproduce, by design) |
+| probe-cf4-ci · probe-cf4-contains | 12/12 · evidence (exit 0) |
+| QC2: probe-cf5 · probe-cf5-r2 · rv-cf5 · rv-cf5-r2 | 22/22 · 14/14 · 32/32 · 16/16 |
+| qc-crm-c2.5 · c2.6 · c1.6 · qc-webhook | 105/105 · 87/87 · 79/79 · 15/15 |
+| qc-acc-v2-contact-modal · import | 96/96 · 114/114 |
+| QC2: qc-account-api-webhooks · write-settings | 22/22 · 39/39 |
+| docs --check ×4 | exit 0 |
+| fitness (QC3 env) · (no env) | 42/42 · 42/42 |
+
+### Round 3 not verified
+- Attachment and link-fetch cost under a flood at the new caps (bounded by count only — RV-7).
+- The display-name / upper-case recipient form proving thread proof was not re-run with new instrumentation (R2C.1 cannot see the new keys). The comparison code is unchanged from round 2, where it passed.
+- Real serverless memory; browser render.

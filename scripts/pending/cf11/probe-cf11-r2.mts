@@ -105,7 +105,8 @@ await sub("R1 (RV-1) no body-sized load before the buckets", async () => {
     `control: an accepted mail citing one big row still loads that one parent row after the buckets (threading) → ${acc.handled ? "stored" : acc.reason}, ≈ ${accLoaded} chars`);
 });
 
-await sub("R2 (RV-2) proven mail: own bounded buckets · exact-address thread proof", async () => {
+// round 3 replaced the round-2 `.proven.` buckets (RV-6 class split) ⇒ R2 is superseded by probe-cf11-r3; run with --skip=R2 from round 3 on
+if (!process.argv.includes("--skip=R2")) await sub("R2 (RV-2) proven mail: own bounded buckets · exact-address thread proof", async () => {
   await clearBuckets();
   // unproven buckets full (an unproven flood ran this hour) — forged mail cannot block proven mail (H3-1) …
   await setBucket(senderKey(V.email), 100);

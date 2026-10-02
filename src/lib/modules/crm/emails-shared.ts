@@ -131,20 +131,51 @@ export const CRM_TRACK_RATE_LIMITS: Readonly<{
 
 // CRM C5.5-fix2 ▸ hunter 2a-7: เพดานจดหมายขาเข้าต่อระบบ + ต่อผู้ส่ง (ต่อชั่วโมง · ถังเดียวของระบบ `checkRateLimitDb`)
 //   เกินเพดาน = รับแล้วทิ้ง (route ตอบ 200 เหมือนเดิม · ไม่เด้งกลับ) + audit 1 บรรทัดต่อหน้าต่าง ◂
-// CRM C5.5-fix8 r2 ▸ (รีวิว RV-2) จดหมายที่ "พิสูจน์ผู้ส่งได้" (A-R ของ MTA เรา หรือหลักฐานของเธรด) มีถังของตัวเองแยกกุญแจ — จดหมายปลอม
-//   ที่ไม่มีหลักฐานเติมถังนี้ไม่ได้ (H3-1) แต่ไม่มีผู้ส่งกลุ่มไหนไม่มีเพดาน: ต่อที่อยู่ 100/ชม. (= เพดานต่อที่อยู่ก่อนการ์ดนี้ ซึ่งนับทุกฉบับ) ·
-//   ทั้งระบบ 2,000/ชม. (ก่อนการ์ดนี้จดหมายที่พิสูจน์ได้ไม่มีเพดานรวมเลย) — ตัวเลขและเหตุผลใน ledger/wo-notes/crm-C5.5-fix8.md รอบ 2 ◂
+// CRM C5.5-fix8 r3 ▸ (รีวิว RV-2 → RV-6 · มติผู้คุมงาน) ถังแยกตาม "ความแข็งของหลักฐาน" — จดหมายแต่ละฉบับอยู่ในชั้นเดียวและถูกทิ้งได้
+//   เฉพาะโดยถังของชั้นตัวเอง ⇒ การถล่มในชั้นที่หลักฐานอ่อนกว่า (D/T/U) ไม่มีทางทิ้งคำตอบที่ยืนยันได้ทั้งสองทาง (V)
+//   V = DMARC (A-R ของ MTA เรา) **และ** หลักฐานของเธรด · D = DMARC อย่างเดียว · T = หลักฐานของเธรดอย่างเดียว (ปลอมได้ถ้าเห็นผู้รับ) ·
+//   U = ไม่มีหลักฐาน (กุญแจ/เพดานเดิมของ fix2) · กุญแจผู้ส่งทุกชั้น = กล่องจดหมายตัวพิมพ์เล็กที่ตัด `+tag` ออก (เฉพาะกุญแจถัง)
+//   ตัวเลขและเหตุผล: ledger/wo-notes/crm-C5.5-fix8.md รอบ 3 ◂
+const INBOUND_HOUR_MS = 60 * 60_000;
 export const CRM_INBOUND_RATE_LIMITS: Readonly<{
   perSender: { limit: number; windowMs: number };
   perSystem: { limit: number; windowMs: number };
-  perSenderProven: { limit: number; windowMs: number };
-  perSystemProven: { limit: number; windowMs: number };
+  verified: { perSender: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  dmarc: { perSender: { limit: number; windowMs: number }; perDomain: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
+  thread: { perSender: { limit: number; windowMs: number }; perMessage: { limit: number; windowMs: number }; perSystem: { limit: number; windowMs: number } };
 }> = Object.freeze({
-  perSender: { limit: 100, windowMs: 60 * 60_000 },
-  perSystem: { limit: 1_000, windowMs: 60 * 60_000 },
-  perSenderProven: { limit: 100, windowMs: 60 * 60_000 },
-  perSystemProven: { limit: 2_000, windowMs: 60 * 60_000 },
+  // U — ไม่มีหลักฐาน (fix2 · ไม่เปลี่ยน)
+  perSender: { limit: 100, windowMs: INBOUND_HOUR_MS },
+  perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS },
+  verified: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 2_000, windowMs: INBOUND_HOUR_MS } },
+  dmarc: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perDomain: { limit: 300, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
+  thread: { perSender: { limit: 100, windowMs: INBOUND_HOUR_MS }, perMessage: { limit: 100, windowMs: INBOUND_HOUR_MS }, perSystem: { limit: 1_000, windowMs: INBOUND_HOUR_MS } },
 });
+
+/** โดเมนอีเมลสาธารณะ — ไม่มีถังต่อโดเมนของชั้น D (ผู้ใช้ร่วมโดเมนเป็นล้านคน ถังต่อกล่องจดหมายพอ) · รายการเดียวของเส้นขาเข้า */
+export const CRM_INBOUND_FREE_MAIL_DOMAINS: readonly string[] = Object.freeze([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "yahoo.com",
+  "yahoo.co.th",
+  "icloud.com",
+  "me.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+/** กุญแจผู้ส่งของถังเพดาน: ตัวพิมพ์เล็ก · ตัด `+tag` ของ local part (`a+x@d` = `a@d`) — ไม่ใช้กับการจับคู่/ที่อยู่ที่เก็บ */
+export function inboundSenderBucketAddr(addr: string): string {
+  const a = String(addr ?? "").trim().toLowerCase();
+  const at = a.lastIndexOf("@");
+  if (at <= 0) return a;
+  const local = a.slice(0, at);
+  const plus = local.indexOf("+");
+  return `${plus > 0 ? local.slice(0, plus) : local}${a.slice(at)}`;
+}
 
 // CRM C5.5-fix2 ▸ hunter 2a-1: หัวกันวนของสำเนาที่ระบบส่งออกเอง — จดหมายขาเข้าที่มีหัวนี้ = ของเราเองวนกลับ ⇒ ทิ้ง ◂
 export const CRM_LOOP_HEADER = "X-SHARK-Loop";
