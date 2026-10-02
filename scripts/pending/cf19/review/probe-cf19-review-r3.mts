@@ -133,7 +133,12 @@ try {
   await P.crmContact.update({ where: { id: ccId }, data: { memberCustomerId: target } });
   const linked = await snapCrm();
   chk("Q-360-fixed", linked.member360 === null && linked.contact360MemberId === null, `360 member block ${j(linked.member360)} · contact.memberCustomerId ${j(linked.contact360MemberId)} (round-3 fix)`);
-  chk("Q4-consent", j(linked.consent) === j(unlinked.consent), `consent block linked ${j(linked.consent)} vs unlinked ${j(unlinked.consent)}  [red = Q4 still leaks]`);
+  // R4-UPDATE (reviewer, after the round-4 ruling on RV14-13): the ruled rule = member provenance (`source`/`at`) null for a refused viewer,
+  //   `granted` (decides sends) + `memberLinked` (edit lock) kept. The residual boolean is owner question Q4 (reported as INFO, not asserted equal).
+  const c0 = linked.consent.ch0 as Any;
+  chk("Q4-consent", linked.consent.memberLinked === true && c0?.granted === true && c0?.source === null && c0?.at === null,
+    `consent block (ruled rule: source/at null · granted+memberLinked kept) linked ${j(linked.consent)} · unlinked ${j(unlinked.consent)}`);
+  info(`Q4 residual (owner question): memberLinked linked=${j(linked.consent.memberLinked)} vs unlinked=${j(unlinked.consent.memberLinked)}`);
   chk("Q5-list-dto", linked.listMemberId === unlinked.listMemberId, `CRM list DTO memberCustomerId linked ${j(linked.listMemberId)} vs unlinked ${j(unlinked.listMemberId)} (web list renders badge "สมาชิก" from it)  [red = Q5]`);
   chk("Q5-csv", linked.csvRow === unlinked.csvRow, `CSV row linked ${j(linked.csvRow)} · unlinked ${j(unlinked.csvRow)}  [red = Q5]`);
   info(`Q · member-module verdict for this viewer: visibleCustomerIds ${(await MS.visibleCustomerIds(T, M, blind, [target])).size}`);
@@ -184,8 +189,8 @@ try {
   const drop = await mkParty("drop");
   const keep = await mkParty("keep");
   const dActive = await mkCust({ party: drop });                       // system M, survivor has none in M → moves
-  const dMerged = await mkCust({ party: drop, status: "MERGED" });     // system M, MERGED → moves too (same statement)
-  const d2 = await mkCust({ sys: M2, party: drop });                   // system M2, survivor HAS one in M2 → stays
+  const dMerged = await mkCust({ party: drop, status: "MERGED" });     // system M, MERGED → R4: stays on the dropped Party (RV14-14 ruling)
+  const d2 = await mkCust({ sys: M2, party: drop });                   // system M2, survivor's only M2 member is CLOSED → R4: moves
   const k2 = await mkCust({ sys: M2, party: keep, status: "CLOSED" }); // survivor's only M2 member is CLOSED
   let foreign: string | null = null;
   try { foreign = await mkCust({ tid: T2, sys: M2t, party: drop }); } catch (e) { info(`cross-tenant fixture refused by DB: ${(e as Error).message.slice(0, 80)}`); }
@@ -198,8 +203,9 @@ try {
   const n = await prisma.$transaction(async (tx: Any) => MS.followPartyMerge(tx, T, drop, keep));
   const rows = await P.customer.findMany({ where: { id: { in: [dActive, dMerged, d2, k2, ...(foreign ? [foreign] : [])] } }, select: { id: true, partyId: true, tenantId: true } });
   const pid = (id: string) => rows.find((r: Any) => r.id === id)?.partyId;
-  chk("F-moves", n === 2 && pid(dActive) === keep && pid(dMerged) === keep, `moved ${n}: active→keep ${pid(dActive) === keep} · MERGED row→keep ${pid(dMerged) === keep}`);
-  chk("F-per-system", pid(d2) === drop && pid(k2) === keep, `system M2: drop member stays (survivor has one — even though it is CLOSED) ${pid(d2) === drop}`);
+  // R4-UPDATE (reviewer, after the round-4 RV14-14 ruling, which I agree with): MERGED/CLOSED rows neither move nor block a move.
+  chk("F-moves", n === 2 && pid(dActive) === keep && pid(dMerged) === drop, `moved ${n}: active→keep ${pid(dActive) === keep} · MERGED row stays on the dropped Party ${pid(dMerged) === drop}`);
+  chk("F-per-system", pid(d2) === keep && pid(k2) === keep, `system M2: the survivor's only member is CLOSED ⇒ the dropped ACTIVE member moves ${pid(d2) === keep}`);
   chk("F-tenant-isolation", !foreign || pid(foreign) === drop, `other tenant's row with the same partyId untouched ${!foreign || pid(foreign) === drop}`);
   const crmAfter = await P.crmContact.findFirst({ where: { id: crmRef.id }, select: { memberCustomerId: true } });
   chk("F-crm-ref", crmAfter?.memberCustomerId === dActive, `CRM contact.memberCustomerId still → same member row`);

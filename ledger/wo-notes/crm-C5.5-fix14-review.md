@@ -123,3 +123,62 @@ it also contradicts the CRM 360: the page now says "not linked", while the list 
 - `qc-member-m3.7` reds not compared against a base tree.
 - Concurrency of `followPartyMerge` is reasoned, not raced.
 - Prod not checked.
+
+---
+
+## Round 4 re-check (builder tip 7d139755 · one commit on 5fb1cf8a · diff `5fb1cf8a..7d139755 -- src scripts`)
+
+### VERDICT (round 4): **MERGEABLE**. Nothing is left in the "must fix before merge" bucket.
+
+RV14-12 (Q5), RV14-13 (Q4, as ruled) and RV14-14 are fixed and verified. The carriers that remain are pre-existing. Each needs a CRM permission
+beyond plain read (convert / merge / automation-manage) or is an owner-configured or system path, so they are follow-ups or owner questions, not
+blockers for this card.
+
+### Must fix before merge
+- **None.**
+
+### Follow-up / owner questions (ratings for the builder's list (a)–(e), measured by `review/probe-cf19-review-r4.mts`)
+| id | item | sev | evidence | follow-up suggestion |
+|---|---|---|---|---|
+| RV14-16 (a) | `convertContact` with a member target, by a member-blind STAFF holding `crm.contact.convert` | LOW | Already-linked contact ⇒ the convert **succeeds** and returns the raw member id (`customerId`). Unlinked ⇒ refused ("ไม่ได้รับสิทธิ์เพิ่มสมาชิกใหม่"). So it is a one-shot existence oracle, but it is coupled to a write (lifecycle → CUSTOMER, `convertedAt`, events, audit). `convertOptions` offers member targets without a member check. | Mask `customerId` in `ConvertResult` with `memberSeen`, and/or require `canReadMember` when `input.member` is set. |
+| RV14-17 (b) | CRM merge guard `DIFF_MEMBER` | LOW | A blind merger (`crm.contact.merge`) of two contacts linked to different members gets "สองคนนี้เป็นสมาชิกคนละคน…". The error tells them both are members. It is a write guard and needs the merge key. | Neutral message for viewers the member module refuses ("รวมคู่นี้ที่นี่ไม่ได้ — ให้ผู้ดูแลระบบสมาชิกตรวจ"). |
+| RV14-18 (c) | Webhook payloads (`crm.contact.updated` changedKeys `memberCustomerId`, `crm.contact.erased` `customerId`) | INFO | Endpoints are configured by owners or holders of the webhook key (CRM family guard). The integration receives what the shop configured. | Owner call. |
+| RV14-19 (d) | Automation condition `c.memberCustomerId` ("เป็นสมาชิก") | LOW | A member-blind STAFF holding `crm.automation.manage` runs `dryRun` with "เป็นสมาชิก exists". Result: `total 2`, every linked contact they can see listed, the unlinked one not, so they can enumerate which of their visible contacts are members. Run logs also carry "ผู้ติดต่อนี้ยังไม่ได้เป็นสมาชิก — ข้าม…" for GIVE_POINTS/ISSUE_VOUCHER skips. MANAGER always has member read (member-module rule), so only a STAFF given the automation key is affected. That key already lets them aim points/vouchers at members. | Owner decision: either reject member conditions/actions in `cleanInput`/`dryRun` without `canReadMember`, or accept it as part of the automation key's authority. |
+| RV14-20 (e) | System paths: bridges, outbox, audit, `objects.memberOfParent`, erase result `memberSkipped:true` | INFO | Audit and outbox rows are not shown to member-blind staff. The erase result's `memberSkipped` flag tells a `crm.contact.delete` holder that the member side was skipped (PDPA correctness, by design). Legacy CRM v1 `crm/service.ts` returns full contact rows (`include: { contact: true }`); this is pre-existing v1, out of v2 scope. | — |
+| Q4 residual | `memberLinked:true` in the consent block for a refused viewer | LOW · owner | Kept by ruling (drives the edit lock). | Owner. |
+
+### Round-4 claims verified
+- **`memberIdsVisibleTo`:** equals `visibleCustomerIds` for 7 personas (r4 `W1-*`). The whole-shop shortcut is right:
+  - OWNER with `[UB]`, MANAGER `*`, STAFF `[]`+read ⇒ all ids, **0** member statements.
+  - Blind STAFF ⇒ ∅, 0 statements.
+  - MANAGER `[UB]`, STAFF `[UB]`, CUSTOMER ⇒ correct subset, **1** statement.
+  - null/undefined ⇒ ∅; `"system"` ⇒ all.
+  - MANAGER is never member-blind (member-module rule), so "MANAGER `*` with member read off" can't happen.
+- **CRM doors** (each viewer-facing `ContactDto` producer now goes through the mask; I grepped them):
+  - `viewerDtoOf` (all write results), list/search, CRM `briefFor`, CSV, and the 360 page (round 3). Duplicates DTO, merge result and import job carry no member field.
+  - Builder K1–K6 pass. My r3 `Q5-list-dto` / `Q5-csv` are now green.
+- **CSV over >1,000 linked members, branch-limited exporter** (r4 `W2-csv`): 1,005 rows; "ผูกแล้ว" on exactly the 503 visible to the exporter; **2** member statements (1,000-id batches).
+- **List statement counts** (builder INFO, re-run): OWNER 3 · blind 3 · branch-limited 4.
+- **Entitled output:** byte-identical (builder E5 green in my re-run).
+- **RV14-13:** a branch-A STAFF looking at a member at home B gets `source:null, at:null`, with `granted` and `memberLinked` kept; OWNER is unchanged (r4 `W3-consent-*`).
+- **RV14-14 (I agree with the ruling):** MERGED/CLOSED rows neither move nor block a move. I updated **my own** r3 probe and marked the edits `R4-UPDATE`:
+  - `F-moves`: the active row moves, the MERGED row stays.
+  - `F-per-system`: a survivor whose only member is CLOSED no longer blocks the move.
+  - `Q4-consent` now asserts the ruled rule (source/at null, granted + memberLinked kept); the residual boolean is printed as INFO.
+- **No QC1 run needed:** the diff touches no `src/lib/modules/account/**` file (count 0). The only account-reachable change is `followPartyMerge`, which account `mergeContacts` calls. QC1's acc-v2 contact-profile/contacts oracles don't merge, and the one that does re-seeds, so it is forbidden. That path is covered on QC2 (builder G1–G5, my `F-*`). No oracle file and none of my review files changed in round 4.
+
+### Runs (round 4; each through `iso.sh` + `with-gate-lock.sh`, one at a time)
+| run | DB | result |
+|---|---|---|
+| `review/probe-cf19-review.mts` (r1, unedited) | QC2 | **41/41** |
+| `review/probe-cf19-review-r3.mts` (after my R4-UPDATE edits) | QC2 | **35/35** |
+| new `review/probe-cf19-review-r4.mts` (own tenant, swept to 0) | QC2 | **15/15**; the (a)/(b)/(d) carriers are reported as INFO lines |
+| builder `probe-cf19.mts` | QC2 | **56/56** (links tab 12/11/12 · list 3/3/4) |
+| `qc-crm-c1.10` | QC2 | 66/67. The one red, H.1, is the suite's own HTTP check against the **:3215** server (openapi 200, `ping` with this run's QC2 key → 401, because :3215 runs another tree/DB). It is environmental and unrelated. Note: the suite itself sends GETs to :3215, so running it did touch :3215 (read-only GETs) |
+| `qc-crm-c1.3` · `qc-crm-c1.4` | QC3 | 89/89 · 110/110 |
+| typecheck (5 GB) · fitness no env · fitness QC2 | — / QC2 | exit 0 · 42/42 · 42/42 |
+
+### Not verified (round 4)
+- No built app or browser. The web list badge is derived from `listContacts` items (`page.tsx:150`).
+- No mobile CRM contact route exists (`api/mobile/crm/` has call-log, deals, scan-card, tasks only); the kanban CRM link resolver and global search were checked by grep only (no member fields selected).
+- `followPartyMerge` concurrency is reasoned only. Prod not checked.
