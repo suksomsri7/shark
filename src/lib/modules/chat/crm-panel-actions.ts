@@ -124,6 +124,7 @@ export async function createLeadFromChatAction(conversationId: string): Promise<
     // SF-6: คนกดเอง ⇒ audit เป็น USER (ผู้กด) · via chat-panel
     const r = await crm.contacts.leadFromBridge(ctx, { kind: "CHAT", name: cc.displayName, phone: cc.phone, email: cc.email, partyId, sourceDetail: { chatContactId: cc.id, via: "chat-panel" }, actorUserId: g.userId, via: "chat-panel" });
     // AUDIT-CLASS X1: ผู้ติดต่อที่ได้ต้องอยู่ในขอบเขตที่ผู้กดมองเห็น — ไม่เห็น = ไม่คืน id/ชื่อ (ไม่สร้างซ้ำอยู่แล้ว)
+    crm.wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) ◂
     const seen = await crm.briefFor(ctx, g.actor, { contactId: r.contactId });
     if (!seen.contact) {
       return r.created
@@ -158,6 +159,7 @@ export async function logActivityFromChatAction(
     if (dealId && !brief.openDeals.some((d) => d.id === dealId)) return { ok: false, error: "ดีลที่เลือกไม่ใช่ดีลที่เปิดอยู่ของลูกค้ารายนี้ — เลือกใหม่", code: "VALIDATION" };
     const outcome = input?.outcome ? String(input.outcome).trim() || null : null;
     const r = await crm.activities.logActivity(ctx, g.actor, { type, title, outcome, contactId: brief.contact.id, dealId });
+    crm.wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) ◂
     return { ok: true, activityId: r.id };
   } catch (e) {
     return failOf(e, "บันทึกกิจกรรมไม่สำเร็จ ข้อมูลไม่เปลี่ยน — ลองอีกครั้ง");

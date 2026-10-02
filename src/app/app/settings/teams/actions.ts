@@ -11,7 +11,7 @@ import type { TeamRole } from "@prisma/client";
 import { requireTenant } from "@/lib/core/context";
 import { addMember, archiveTeam, createTeam, removeMember, restoreTeam, setAcceptingLeads, setLead, updateTeam, TeamError } from "@/lib/core/teams";
 import { toMemberActor } from "@/lib/modules/member";
-import { crmCan } from "@/lib/modules/crm";
+import { crmCan, wakeOutbox } from "@/lib/modules/crm";
 
 // C4.3-fix part 2 ▸ code + fieldErrors = ช่องที่ข้อความปฏิเสธเป็นของ (หน้าจอแสดงใต้ช่อง + โฟกัส) · `error` ยังอยู่เสมอ
 //   (รูปเดียวกับ crm/field-errors-shared แต่เขียนตรงนี้ — ไฟล์นี้อยู่นอกโมดูล CRM แตะได้แค่ facade · fitness F2.3) ◂
@@ -44,6 +44,7 @@ async function run(fn: (ctx: { tenantId: string; actorUserId: string }) => Promi
     const ctx = await session();
     await fn(ctx);
     touch();
+    wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ — event team.updated (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) ◂
     return { ok: true };
   } catch (e) {
     return failOf(e);

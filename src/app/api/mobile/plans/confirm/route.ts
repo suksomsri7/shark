@@ -2,6 +2,7 @@
 // hasDestructive ไม่ส่ง confirm2x → คืน needsSecondConfirm (ledger/MOBILE_PLAN.md M-11)
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { executePlan } from "@/lib/ai/plans";
+import { wakeOutbox } from "@/lib/modules/crm";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
@@ -21,5 +22,6 @@ export async function POST(req: Request) {
   };
   // CRM C5.5-G2 ▸ userId ของคนกด — แผนในห้องที่เขามองไม่เห็น = เหมือนไม่มีแผนนี้ ◂
   const res = await executePlan(m, g.ctx, id, { confirm2x: body.confirm2x === true, userId: g.user.id });
+  if (res.doneCount > 0) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
   return Response.json(res);
 }

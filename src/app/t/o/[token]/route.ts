@@ -1,4 +1,4 @@
-import { emails } from "@/lib/modules/crm";
+import { emails, wakeOutbox } from "@/lib/modules/crm";
 
 // GET /t/o/<token>.gif — รูปจุดเดียว 1×1 ที่ฝังท้ายอีเมลของ CRM (ใบ C2.5 · R-C.7)
 //
@@ -36,6 +36,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const ip = ipOf(req);
     const allowed = await emails.trackGate("o", { ip, token: clean });
     await emails.trackOpen(clean, { ip, ua: req.headers.get("user-agent") }, { count: allowed });
+    if (allowed) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event crm.email.opened (หลังตอบรูปแล้ว · รวมการปลุกซ้อน) ◂
   } catch {
     // นับไม่ได้ = ตัวเลขรายงานขาดไป 1 ครั้ง — ห้ามทำให้รูปในจดหมายของลูกค้าแตก
   }

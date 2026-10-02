@@ -1,4 +1,4 @@
-import { emails } from "@/lib/modules/crm";
+import { emails, wakeOutbox } from "@/lib/modules/crm";
 
 // POST /u/<token>/one-click — ยกเลิกรับอีเมลแบบคลิกเดียวตาม RFC 8058 (ใบ C2.5 · R-C.7)
 //   หัวจดหมายที่ชี้มาที่นี่: `List-Unsubscribe: <…/u/<token>/one-click>` + `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 const ipOf = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip")?.trim() || "unknown";
 
 const DONE_HTML =
-  '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>ยกเลิกรับอีเมลแล้ว</title></head>' +
+  '<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>ยกเลิกรับอีเมลแล้ว</title></head>' +
   "<body><h1>ยกเลิกรับอีเมลแล้ว</h1><p>เราจะไม่ส่งอีเมลข่าวสารถึงคุณอีก ขอบคุณที่แจ้งให้ทราบ</p></body></html>";
 
 function done(): Response {
@@ -32,6 +32,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     //   `unsubscribe` อ่าน 1 แถวแล้วจบ ไม่เขียนอะไร เว้นแต่ token จริงและธงยังไม่พลิก ◂
     const allowed = await emails.trackGate("u", { ip, token: clean });
     if (clean) await emails.unsubscribe(clean, { ip, ua: req.headers.get("user-agent"), rateLimited: !allowed });
+    if (clean) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) · ระบายหลังตอบแล้ว (after) = หน้านี้ไม่ช้าลง ◂
   } catch {
     // ล้มแล้วยังตอบ 2xx: ผู้ให้บริการอีเมลเห็น 5xx = ซ่อนปุ่ม "ยกเลิกรับ" ของเราทิ้ง
   }
