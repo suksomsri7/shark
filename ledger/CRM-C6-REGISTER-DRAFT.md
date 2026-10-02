@@ -314,6 +314,7 @@ Source: `wo-notes/crm-C5.5-G3.md` (Q1–Q6) and `wo-notes/crm-C5.5-G3-review.md`
 - RV-7 behaviour changes to announce: STAFF can no longer forget legacy shop memories; the 100 shop-fact cap includes legacy rows.
 - Legacy memories containing contact data are hidden from non-OWNERs at read time, not deleted; prod count not taken.
 - **G3 round-2 re-check (RV-8, RV-9 LOW)** — queued as G3 round 3 before merge: RV-8 `/` separator false positives (date ranges, shift hours, zero-padded codes refused as phone); RV-9 cheap bypasses (zero-width chars, `_`, `·`; spelled-out separators stay open).
+- **G3 round-3 re-check (MERGEABLE, review commit 76952d70):** RV-10 LOW accepted trade-off — pair-style / odd groupings (`081 234 56 78`, `02 123 45 67`, `081-23-45678`, `038-12-3456`, bare `66 89 …`) are no longer caught (allowing 2-digit groups brings back every date/hours false positive). **RV-11 LOW — OWNER DECISION:** the guard also refuses the shop's OWN phone, PromptPay number and undashed bank account as a shop fact / KB article (typical shop facts); option: allow-list numbers registered in the shop's own settings, or accept the refusal (the text explains itself; the owner can still type it on the web).
 
 ## fix12 (duplicate checks vs. hidden records) — owner questions (2 Oct)
 Source: `wo-notes/crm-C5.5-fix12.md` on `wip/crm-cf16`.
