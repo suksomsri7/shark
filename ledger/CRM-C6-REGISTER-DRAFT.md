@@ -285,3 +285,12 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - **Owner decisions:** (1) scheduled AI tasks: run as creator (record creator at confirm via AuditLog; notify only them; legacy tasks → OWNER rights, notify OWNERs) vs current least-privileged; (2) proposals need the proposer's own confirm key — reviewer: keep (matches design; "staff drafts, owner confirms" belongs in the approval module); (4) mask phones in legacy member tools — reviewer: yes, low priority.
 - LOW: F3 `pending_leaves` open to all vs `upcoming_schedule` needing hr.leave.read (matches the open HR page); form-submission names in recent_leads may be a phone/email, unmasked.
 - After the apiv1 hotfix lands: `isGeneralKeyActor` should call its `isGeneralApiKey`; OWNER recent_leads phone masking ships together with C5.4-B.
+
+## fix8 / fix9 review — owner & legal questions (2026-10-02)
+
+- **PDPA export scope (legal):** should the single-person export be limited by what the requesting staff member can see? (today it is; fix9 r2 makes the file say so). Should large exports go through the private-file export lane instead of one in-request JSON string (≈100 MB at the 50,000-row ceiling)?
+- **PDPA erase size:** all-or-nothing in one 60 s transaction (~5,600 changed rows on the QC host). Heavy persons now fail loudly instead of being partially erased → need a resumable multi-step erase card?
+- **API keys:** who may mint the shop's general `[]` key (today any holder of api.key.create incl. a branch MANAGER; recommendation OWNER-only). Existing prod keys bound to the account system with non-account scopes: one read-only prod query needed.
+- **RV-4:** kanban key page revokes any key of the shop — fixed only in `hotfix/apiv1-scope` (shark-hf 201d371a) → ship with/before session/crm.
+- **P14 (launch gate):** `CRM_INBOUND_AUTHSERV_ID` set AND the inbound provider adds its own Authentication-Results header; otherwise an attacker-supplied header carrying our authserv-id is trusted.
+- Debt: non-account `contains` wildcard sites in CRM/member/kanban (list in `wo-notes/crm-C5.5-fix8.md`); `emails.ts:450/456` shopMailAddressesInTx caps (over-erasure of shop addresses past 50 systems / 2,000 settings); forged inbound mail updates lastActivityAt (`emails.ts:2592`) → postpones lead retention erase.
