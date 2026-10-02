@@ -17,6 +17,8 @@ r fitness-noenv bash scripts/iso.sh env -u DATABASE_URL -u DIRECT_URL GATE_LOCK_
 r docs-crm bash scripts/iso.sh env GATE_LOCK_FILE=/tmp/shark-gate-qc3.lock bash scripts/with-gate-lock.sh pnpm exec tsx scripts/gen-crm-api-docs.mts --check
 q3 probe-cf20-drain scripts/pending/cf20/probe-cf20-drain.mts
 q3 probe-cf20 scripts/pending/cf20/probe-cf20.mts
+q3 probe-cf20-rv-drain scripts/pending/cf20/review/probe-cf20-rv-drain.mts
+q3 probe-cf20-rv scripts/pending/cf20/review/probe-cf20-rv.mts
 q3 probe-c54d-r2 scripts/pending/c54d/probe-c54d-r2.mts
 q3 probe-c54d-r3 scripts/pending/c54d/probe-c54d-r3.mts
 q3 probe-cf18-outbox scripts/pending/cf18/probe-cf18-outbox.mts

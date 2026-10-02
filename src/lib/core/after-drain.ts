@@ -37,8 +37,16 @@
 //   I3 (N9) the `after()` task returns the promise of the drain that covers its wakes (waitUntil keeps the function alive for it) (U1, U8).
 //   I4 out of a request scope (scripts · cron · tests) `after()` throws ⇒ the drain is requested immediately (not awaited) (U6, U7).
 //   I5 never fails the user's request: nothing here throws or rejects, even if `run` throws synchronously (U5).
-//   I6 the fallback timer is cleared when the task starts, so a normal request leaves nothing behind; a fallback that fires logs one
-//      throttled warning — that line in the server log is the evidence that an `after()` task did not start in time.
+//   I6 a fallback timer exists only while its registration is registered-but-not-started: it is armed only if the registration did not
+//      already start inside `after()` (Next runs the callback synchronously when its after-queue is running — r2 RV15-5) and cleared when
+//      the task starts ⇒ a normal request leaves nothing behind. A fallback that fires logs one throttled warning (the evidence that an
+//      `after()` task did not start in time) and hands its drain promise to the platform with the promise form of `after()` (straight to
+//      waitUntil — r2 RV15-1); if that throws (no usable scope) the drain still runs, unawaited.
+//   ⚠️ r2 RV15-3: a fallback drain for a merely SLOW response runs inside the still-open request (work-unit phase `action`/`render`, not
+//      `after`) ⇒ outbox consumers must not call request-scoped APIs (revalidatePath · cookies · headers). None does today (revalidatePath
+//      lives only in `*actions.ts`); a new consumer must keep it that way.
+//   Not covered (r2 RV15-2, pre-existing, same in bd435157): a drain whose `run` never settles (hung DB) keeps the instance's drain slot
+//      busy — every later drain of the instance waits behind it. Follow-up: a wall-clock cap per drain.
 //
 // 🔴 Caller rule (unchanged since C5.4-D r3): every caller wakes AFTER its write has committed — a drain that starts after the wake then
 //    sees the row. Every `run` passed in must be equivalent ("drain this instance's whole outbox"): a queued re-run uses the run of the
@@ -152,8 +160,21 @@ export function scheduleCoalescedDrain(run: Run): void {
       void startRegistration(reg, false); // no request scope (script · cron · test) or no waitUntil ⇒ drain now
       return;
     }
-    reg.timer = setTimeout(() => void startRegistration(reg, true), FALLBACK_MS);
-    reg.timer.unref?.();
+    // r2 RV15-5: Next runs the callback synchronously when the after-queue is already running (a wake from inside an after() task) ⇒
+    //   the registration may have started inside `after()` above — then no timer (nothing left behind, I6)
+    if (!reg.started) {
+      reg.timer = setTimeout(() => {
+        const p = startRegistration(reg, true);
+        // r2 RV15-1: hand the fallback drain to the platform — the promise form of `after()` goes straight to waitUntil (no 'close' wait);
+        //   the timer runs in the registering request's async context. Throws when there is no usable scope ⇒ the drain still runs (as before)
+        try {
+          after(p);
+        } catch {
+          // no request scope / no waitUntil — the drain is already running; nothing else to do
+        }
+      }, FALLBACK_MS);
+      reg.timer.unref?.();
+    }
   } catch {
     // I5: waking the queue must never fail the user's request
   }

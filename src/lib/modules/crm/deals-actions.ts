@@ -221,12 +221,14 @@ export async function deleteDealAction(systemId: string, dealId: string, confirm
   }
 }
 
-export async function bulkMoveAction(systemId: string, input: { ids: string[]; stageId: string; confirm: boolean; reason: string }): Promise<{ ok: true; done: number; failed: number; unchanged: number } | Fail> {
+export async function bulkMoveAction(systemId: string, input: { ids: string[]; stageId: string; confirm: boolean; reason: string }): Promise<{ ok: true; done: number; failed: number; unchanged: number; reason: string | null } | Fail> {
   try {
     const { ctx, actor } = await session(systemId, "crm.deal.move");
     const r = await bulkMove(ctx, actor, input);
     touch(systemId);
-    return { ok: true, done: r.ok, failed: r.failed.length, unchanged: r.unchanged ?? 0 }; // CRM C5.5-fix15 ▸ O-it6-a ◂
+    // CRM C5.5-fix15 ▸ O-it6-a · r2 RV15-6: `reason` = ข้อความของบริการเมื่อทุกดีลที่ย้ายไม่ได้ล้มด้วยเหตุเดียวกัน (ไม่มีข้อมูลลูกค้าในข้อความ) ◂
+    const reasons = [...new Set(r.failed.map((f) => f.error))];
+    return { ok: true, done: r.ok, failed: r.failed.length, unchanged: r.unchanged ?? 0, reason: reasons.length === 1 ? reasons[0]! : null };
   } catch (e) {
     return failOf(e, true);
   }

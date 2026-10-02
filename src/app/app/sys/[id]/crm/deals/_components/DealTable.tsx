@@ -15,6 +15,25 @@ import { DEAL_BULK_MAX, DEAL_REASON_MIN, FORECAST_CATEGORY_LABEL, formatBaht, fo
 //   ส่งออก = crm.deal.export — ไม่มีคำสั่งกลุ่มที่ทำได้เลย ⇒ ไม่มีช่องติ๊ก/แถบคำสั่ง (ไม่ทิ้งแถบว่าง) ◂
 export type DealTableCan = { move: boolean; reassign: boolean; tag: boolean; exportCsv: boolean };
 
+type BulkOutcome = { ok: true; done: number; failed: number; unchanged?: number; reason?: string | null };
+const n = (x: number) => x.toLocaleString("th-TH");
+/**
+ * ข้อความผลของคำสั่งกลุ่ม — CRM C5.5-fix15 ▸ O-it6-a + r2 RV15-6: ย้ายขั้น (มี `unchanged`) แยก 3 กรณีที่ไม่ขัดกันเอง
+ *   ย้ายได้ ≥ 1 ⇒ "ย้ายขั้นสำเร็จ X ดีล" (+ อยู่ในขั้นนี้อยู่แล้ว N · ย้ายไม่ได้ M) — ขึ้นต้นแบบนี้เสมอ (ทะเบียนปุ่มตรวจ "ย้ายขั้นสำเร็จ [1-9]")
+ *   ไม่ได้ย้าย · ไม่มีที่ล้ม ⇒ "ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว N ดีล"
+ *   ไม่ได้ย้าย · มีที่ล้ม ⇒ "ยังไม่ได้ย้ายดีลใด — ย้ายไม่ได้ M ดีล (เหตุผล)" (+ อยู่ในขั้นนี้อยู่แล้ว N)
+ *   เหตุผล = ข้อความของบริการเมื่อทุกดีลที่ล้มล้มด้วยเหตุเดียวกัน · ไม่เช่นนั้นชี้ไปหน้าดีลนั้น ◂
+ */
+export function bulkResultText(what: string, r: BulkOutcome): string {
+  const why = r.reason ? ` (${r.reason})` : " (ดูเหตุผลที่หน้าดีลนั้น)";
+  if (r.unchanged === undefined) return `${what}สำเร็จ ${n(r.done)} ดีล${r.failed ? ` · ไม่สำเร็จ ${n(r.failed)} ดีล${why}` : ""}`;
+  const same = r.unchanged ? `อยู่ในขั้นนี้อยู่แล้ว ${n(r.unchanged)} ดีล` : "";
+  const fails = r.failed ? `ย้ายไม่ได้ ${n(r.failed)} ดีล${why}` : "";
+  if (r.done > 0) return [`${what}สำเร็จ ${n(r.done)} ดีล`, same, fails].filter(Boolean).join(" · ");
+  if (!r.failed) return same ? `ไม่มีดีลที่ต้องย้าย — ${same}` : `${what}สำเร็จ 0 ดีล`;
+  return `ยังไม่ได้ย้ายดีลใด — ${[fails, same].filter(Boolean).join(" · ")}`;
+}
+
 export function DealTable({
   systemId,
   rows,
@@ -53,16 +72,10 @@ export function DealTable({
     return null;
   };
 
-  const done = (r: { ok: true; done: number; failed: number; unchanged?: number } | { ok: false; error: string }, what: string) => {
+  const done = (r: BulkOutcome | { ok: false; error: string }, what: string) => {
     setBusy(false);
     if (!r.ok) return setMsg({ ok: false, text: r.error });
-    // CRM C5.5-fix15 ▸ O-it6-a: ดีลที่อยู่ขั้นปลายทางอยู่แล้วไม่นับว่า "ย้ายสำเร็จ" ◂
-    const fails = r.failed ? ` · ไม่สำเร็จ ${r.failed.toLocaleString("th-TH")} ดีล (ดูเหตุผลที่หน้าดีลนั้น)` : "";
-    const same = r.unchanged ? `อยู่ในขั้นนี้อยู่แล้ว ${r.unchanged.toLocaleString("th-TH")} ดีล` : "";
-    setMsg({
-      ok: r.failed === 0,
-      text: r.done === 0 && same ? `ไม่มีดีลที่ต้องย้าย — ${same}${fails}` : `${what}สำเร็จ ${r.done.toLocaleString("th-TH")} ดีล${same ? ` · ${same}` : ""}${fails}`,
-    });
+    setMsg({ ok: r.failed === 0, text: bulkResultText(what, r) });
     setPicked([]);
     setConfirm(false);
     setReason("");

@@ -341,7 +341,70 @@ await sub("U8", async () => {
   await advance(10_000);
 });
 
+// ── R2-5 (RV15-5): no stray fallback timer when Next runs the after() callback synchronously (wake from inside an after task) ──
+console.log("\n── R2-5 synchronous after() callback ⇒ no fallback timer armed ──");
+await sub("R2-5", async () => {
+  reset();
+  const w = world();
+  w.pending.add(900);
+  const realST = globalThis.setTimeout;
+  let armed = 0;
+  (globalThis as Any).setTimeout = ((fn: Any, ms?: number, ...rest: Any[]) => {
+    if (ms === 3_000) armed += 1;
+    return (realST as Any)(fn, ms, ...rest);
+  }) as typeof setTimeout;
+  const results: unknown[] = [];
+  const store = { route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: { after: (t: Any) => { results.push(typeof t === "function" ? t() : t); } } };
+  try {
+    nextWork.workAsyncStorage.run(store, () => AD.scheduleCoalescedDrain(w.run));
+  } finally {
+    (globalThis as Any).setTimeout = realST;
+  }
+  await advance(500);
+  chk("R2-5", "FINDING (RV15-5): when after() runs the callback synchronously the registration has already started ⇒ no 3 s fallback timer is armed (I6 exact); the row is drained once",
+    armed === 0 && w.runs === 1 && w.pending.size === 0, `timers armed=${armed} drains=${w.runs} pending=${w.pending.size}`, true);
+  await advance(5_000);
+  chk("R2-5b", "control: nothing more happens later (no second drain)", w.runs === 1, `drains after 5 s=${w.runs}`);
+});
+
 mock.timers.reset();
+
+// ── R2-1 (RV15-1) — REAL timers: the fallback drain is handed to waitUntil via the promise form of after() ──
+console.log("\n── R2-1 fallback drain handed to the platform (real timers, ~3 s per case) ──");
+const realScope = (afterImpl: (t: Any) => void, fn: () => void) => {
+  const store = { route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: { after: afterImpl } };
+  nextWork.workAsyncStorage.run(store, fn);
+};
+const sleepR = (ms: number) => new Promise((r) => setTimeout(r, ms));
+await sub("R2-1a", async () => {
+  reset();
+  const w = world();
+  w.pending.add(1000);
+  const fns: Any[] = [];
+  const proms: Any[] = [];
+  realScope((t) => { if (typeof t === "function") fns.push(t); else proms.push(t); }, () => AD.scheduleCoalescedDrain(w.run)); // task never run by the "platform"
+  await sleepR(2_500);
+  const before = proms.length;
+  await sleepR(1_200);
+  const isP = proms.length === 1 && typeof proms[0]?.then === "function";
+  let settled = false;
+  if (isP) await Promise.race([proms[0].then(() => { settled = true; }), sleepR(500)]);
+  chk("R2-1a", "FINDING (RV15-1): the after() task never starts ⇒ when the fallback timer fires it hands the drain promise to the platform (promise form of after() ⇒ waitUntil); that promise settles after the drain",
+    before === 0 && isP && settled && w.runs === 1 && w.pending.size === 0, `promise-form calls before 3 s=${before} after=${proms.length} settled=${settled} drains=${w.runs} pending=${w.pending.size}`, true);
+  const late = fns[0] ? fns[0]() : null;
+  await sleepR(100);
+  chk("R2-1b", "control: exactly-once start unchanged — the late task returns the same drain (no second run)", fns.length === 1 && w.runs === 1 && typeof (late as Any)?.then === "function", `tasks=${fns.length} drains=${w.runs} lateTaskReturnsPromise=${typeof (late as Any)?.then === "function"} sameAsFallback=${late === proms[0]}`);
+});
+await sub("R2-1c", async () => {
+  reset();
+  const w = world();
+  w.pending.add(1001);
+  let threwOnPromise = 0;
+  realScope((t) => { if (typeof t !== "function") { threwOnPromise += 1; throw new Error("after() outside a request scope"); } }, () => AD.scheduleCoalescedDrain(w.run));
+  await sleepR(3_700);
+  chk("R2-1c", "FINDING (RV15-1): the timer tries the promise form of after(); when it throws there (no usable scope) the fallback drain still runs, exactly once", threwOnPromise === 1 && w.runs === 1 && w.pending.size === 0, `after(promise) attempted+threw=${threwOnPromise} drains=${w.runs} pending=${w.pending.size}`, true);
+});
+
 const controls = cks.filter((c) => !c.finding);
 const findings = cks.filter((c) => c.finding);
 console.log(`\ncontrols ${controls.filter((c) => c.ok).length}/${controls.length} green · findings GREEN (fixed) ${findings.filter((c) => c.ok).length}/${findings.length}`);

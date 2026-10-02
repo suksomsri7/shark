@@ -296,6 +296,32 @@ try {
     chk("M.4", "FINDING (RVR-5): a pure no-op bulk move writes NO crm.deal.bulk_move audit row; the mixed move (1 moved) writes one", a1 - a0 === 1 && a2 - a1 === 0, `audit rows: mixed +${a1 - a0} · no-op +${a2 - a1}`, true);
     const src = readFileSync("src/app/app/sys/[id]/crm/deals/_components/DealTable.tsx", "utf8");
     const honest = src.includes("ไม่มีดีลที่ต้องย้าย — ") && src.includes("อยู่ในขั้นนี้อยู่แล้ว");
+    // r2 RV15-6: the text for every case, from the component's own function (no contradiction · registry prefix kept)
+    const mixedFail: Any = await inScope(own.cookie, `/app/sys/${S}/crm/deals`, "action", "close", () => DEAL_ACT.bulkMoveAction(S, { ids: [d1.id, `${TAG}-gone`], stageId: S1, confirm: true, reason: "ย้ายดีลทดสอบ" }));
+    let texts: Record<string, string> = {};
+    try {
+      const DT = (await import("../../../src/app/app/sys/[id]/crm/deals/_components/DealTable.tsx" as string)) as Any;
+      const t = (r: Any) => String(DT.bulkResultText("ย้ายขั้น", { ok: true, ...r }));
+      texts = {
+        movedMixed: t({ done: 1, unchanged: 1, failed: 1, reason: "เหตุทดสอบ" }),
+        movedOnly: t({ done: 3, unchanged: 0, failed: 0 }),
+        noop: t({ done: 0, unchanged: 2, failed: 0 }),
+        noneFailed: t({ done: 0, unchanged: 1, failed: 1, reason: mixedFail?.reason ?? null }),
+        allFailed: t({ done: 0, unchanged: 0, failed: 2, reason: null }),
+      };
+    } catch (e) {
+      texts = { error: e instanceof Error ? e.message : String(e) };
+    }
+    const okText =
+      /^ย้ายขั้นสำเร็จ [1-9]/.test(texts.movedMixed ?? "") && texts.movedMixed.includes("อยู่ในขั้นนี้อยู่แล้ว 1 ดีล") && texts.movedMixed.includes("ย้ายไม่ได้ 1 ดีล (เหตุทดสอบ)") &&
+      /^ย้ายขั้นสำเร็จ [1-9]/.test(texts.movedOnly ?? "") &&
+      texts.noop === "ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว 2 ดีล" &&
+      !!texts.noneFailed && !texts.noneFailed.includes("ไม่มีดีลที่ต้องย้าย") && !texts.noneFailed.includes("สำเร็จ") && texts.noneFailed.includes("ย้ายไม่ได้ 1 ดีล") && texts.noneFailed.includes("อยู่ในขั้นนี้อยู่แล้ว 1 ดีล") &&
+      !!texts.allFailed && !texts.allFailed.includes("ไม่มีดีลที่ต้องย้าย") && !texts.allFailed.includes("สำเร็จ") && texts.allFailed.includes("ย้ายไม่ได้ 2 ดีล");
+    chk("M.5", "FINDING (RV15-6): bulk-move text per case — moved>0 keeps the prefix 'ย้ายขั้นสำเร็จ [1-9]' · nothing moved & no failure = 'ไม่มีดีลที่ต้องย้าย —' · nothing moved & failures never says 'ไม่มีดีลที่ต้องย้าย' nor 'สำเร็จ' and names what did not move",
+      okText, j(texts), true);
+    chk("M.6", "FINDING (RV15-6): bulkMoveAction gives the service's reason when every failure has the same one (here: [already there, unknown id])",
+      mixedFail?.ok === true && mixedFail.done === 0 && mixedFail.unchanged === 1 && mixedFail.failed === 1 && typeof mixedFail.reason === "string" && mixedFail.reason.length > 0, j(mixedFail), true);
     chk("M.3", "FINDING: the deals table message is honest — 'ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว N ดีล' when nothing moved, both numbers when mixed", honest, `DealTable.tsx has both texts = ${honest}`, true);
   });
 

@@ -172,3 +172,48 @@ No pinned C5.4-D property changed (S3, N9a/b, R2N6, R2N8c green) ⇒ no STOP. Lo
 - Vercel behaviour of the fallback timer when the instance is frozen right after the response (timer fires on thaw).
 - Button-runner rows for /contacts/new, /emails/[threadKey], /deals bulk move, /settings/scoring, /objects record page — not re-run (QC1).
 - Visual check of the new files card and the bulk-move message (no screenshots).
+
+## Round 2 (controller rulings on review 5b91979b — `crm-C5.5-fix15-review.md`, MERGEABLE; reviewer files not edited)
+RED = all four touched src files checked out from 5b91979b (diff saved, re-applied, md5 verified) — `red-r2-probe-cf20-drain.log`
+(findings 6/9: R2-1a, R2-1c, R2-5 RED) · `red-r2-probe-cf20.log` (findings 12/14: M.5, M.6 RED). GREEN in the table below.
+1. **RV15-1 (MED)** `after-drain.ts`: when the fallback timer fires it calls `after(p)` with the drain promise (Next's promise form →
+   straight to `waitUntil`, no 'close' wait; the timer runs in the registering request's async context), in try/catch — no usable scope ⇒
+   the drain still runs unawaited (today's behaviour). Unit probe (real timers, injected after): R2-1a promise form called once, only after
+   3 s, with a promise that settles after the drain · R2-1b exactly-once start unchanged (the late task returns a promise, 1 drain) ·
+   R2-1c after(promise) throws ⇒ drain runs once.
+   Still not verified: whether Vercel honours `waitUntil` registered from a scope whose response already closed (reviewer's open point).
+2. **RV15-5 (LOW)**: the timer is armed only `if (!reg.started)` — when Next runs the callback synchronously (after-queue already running)
+   no stray timer. Probe R2-5 (0 timers armed, 1 drain) · R2-5b. Header I6 rewritten to be exact.
+3. **RV15-3 (LOW)**: header line — a fallback drain on a slow response runs inside the still-open request; consumers must not call
+   request-scoped APIs (revalidatePath / cookies / headers); none does today.
+4. **RV15-6 (LOW copy)**: `DealTable.tsx` exports `bulkResultText(what, r)` (used by the table; reassign/tag text unchanged):
+   moved > 0 → "ย้ายขั้นสำเร็จ X ดีล · อยู่ในขั้นนี้อยู่แล้ว N ดีล · ย้ายไม่ได้ M ดีล (เหตุผล)" (registry prefix "ย้ายขั้นสำเร็จ [1-9]" kept) ·
+   moved 0, unchanged > 0, failed 0 → "ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว N ดีล" ·
+   moved 0, failed > 0 → "ยังไม่ได้ย้ายดีลใด — ย้ายไม่ได้ M ดีล (เหตุผล) · อยู่ในขั้นนี้อยู่แล้ว N ดีล".
+   (เหตุผล) = the service's own message when every failed deal failed for the same reason (`bulkMoveAction` now returns `reason`), else
+   "(ดูเหตุผลที่หน้าดีลนั้น)". Probe M.5 (all cases from the component's function) · M.6 (action returns the reason).
+5. **RV15-7 (INFO)**: kept throwing on a DB error (no silent fail-closed): the only caller is the thread page, whose other reads throw the
+   same way; hiding the block on a DB error would mask an outage. Comment fixed. Bulk-move no-op wake and the files-card note left as
+   documented by the reviewer.
+6. **RV15-2 — NOT fixed (ruling)**: a drain whose `run` never settles (hung DB) blocks every later drain of the instance — in bd435157
+   (`drainChain`) and fix15 (`drainChain` + `st.running`) alike. **Recommended follow-up card:** wall-clock cap per drain in `drainOutbox`
+   (race the chain link against N × TIME_BUDGET, release `st.running` when it fires). **Owner question 6:** schedule that card before the
+   prod deploy of fix15, or after?
+Also from the review (info, no change): RV15-4 less backlog work per burst (≤ 2 drains once wakes stop) — add `outboxHealth` stale count to
+the prod watch list.
+
+### Round 2 regression (`run-regress.sh` → `.qc-shots/cf20/r3/`)
+21:07–21:18 UTC, final src, one job at a time (iso + gate lock), QC3:
+| run | result |
+|---|---|
+| typecheck (5120 MB) | exit 0 |
+| fitness QC3 env / without env | 42/42 · 42/42 |
+| gen-crm-api-docs --check | exit 0 |
+| probe-cf20-drain (unit) | RED (5b91979b) findings 6/9 → **GREEN controls 13/13 · findings 9/9** (`g-r2-probe-cf20-drain.log`) |
+| probe-cf20 (QC3) | RED (5b91979b) findings 12/14 → **GREEN controls 7/7 · findings 14/14** (`g-r2-probe-cf20.log`) |
+| review probes (unedited) probe-cf20-rv-drain · probe-cf20-rv | 22/22 · 13/13 (K17 "stray fallback timer" now reports **no**) |
+| probe-c54d-r2 · probe-c54d-r3 (S3, N9, R2N6, R2N8c) | 13/13 · 19/19 |
+| probe-cf18-outbox | controls 3/3 · findings 7/7 |
+| qc-crm-c1.5 (deals) · c2.5 | 103/103 · 105/105 |
+| qc-kanban-k1.7 | 21/21 |
+No reds. Owner questions now 1–6 (6 = RV15-2 drain-timeout card timing).

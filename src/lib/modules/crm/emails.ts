@@ -2845,7 +2845,8 @@ async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<
   if (problem) throw fail("FORBIDDEN", problem);
 }
 
-/** ผ่านด่านกล่อง "ยังไม่จับคู่" ไหม (ตัวตัดสินเดียวกับ `assertUnmatchedGate` — ใช้ซ่อนบล็อก "ผูกกับผู้ติดต่อ" ของหน้าเธรด) · ไม่โยน */
+/** ผ่านด่านกล่อง "ยังไม่จับคู่" ไหม (ตัวตัดสินเดียวกับ `assertUnmatchedGate` — ใช้ซ่อนบล็อก "ผูกกับผู้ติดต่อ" ของหน้าเธรด) ·
+ *  ปฏิเสธ = false (ไม่โยน) · ฐานข้อมูลล้มตอนอ่านระดับการมองเห็น = โยนต่อ เหมือนการอ่านอื่นของหน้านั้น (r2 RV15-7: ไม่กลืน error) */
 export async function canUseUnmatchedInbox(ctx: EmailsCtx, actor: MemberActor): Promise<boolean> {
   return (await unmatchedGateProblem(ctx, actor)) === null;
 }
