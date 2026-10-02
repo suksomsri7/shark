@@ -217,3 +217,11 @@ the prod watch list.
 | qc-crm-c1.5 (deals) · c2.5 | 103/103 · 105/105 |
 | qc-kanban-k1.7 | 21/21 |
 No reds. Owner questions now 1–6 (6 = RV15-2 drain-timeout card timing).
+
+## Controller merge gate record (2026-10-02 21:56 UTC)
+
+Patch `scripts/pending/c55merge/fix15.patch` (c54d `bd435157..bb7a5a5f`, rounds 1–2 + round-1 review, minus the ledger RESUME/register) applied to the main tree after fix14 with `patch -p1 --fuzz=3`; all 27 files identical to the tip. The reviewer's round-2 re-check files (c54d `e8d87d1b`, MERGEABLE) were copied in after the gate. Merged as `07ce81c2`. Gate `scripts/pending/run-main-fix15.sh` (unit `crm-main-fix15`, log `.qc-shots/crm/main-fix15.log`): **31/33 steps exit 0**; both reds explained and re-run green by hand:
+
+- `probe-cf19` exit 2 "QC2 only" — the controller put a QC2-pinned probe under QC3 in the gate script. Re-run on QC2: **56/56**.
+- `probe-cf20-rv-drain` K9 (two module instances share one state) red, deterministic ×3 while the patch was uncommitted: the probe builds its second module instance from `git show HEAD:src/lib/core/after-drain.ts`; in the main tree HEAD was still the OLD module, so "copy B" was the old code and could not share the new state. After the commit (HEAD = new module) the same probe (reviewer's round-2 version, 27 checks) exits 0 with **K9 green**.
+- Green in the gate: typecheck, docs ×4, fitness (no env + QC3), probe-cf20-drain, probe-cf20, probe-cf20-rv, c54d-r2, c54d-r3, cf18-outbox / cf18 / cf18-r2 / cf18-review, c2.5, c2.6, c1.4, c1.5, c3.4, c3.9, ai-automation, cf14-g2, cf17-g3, cf9-g1, chat-notify-v2, forms-notify, kanban-k1.7, QC2 c2.2, QC2 c5.3 L1,L3.
