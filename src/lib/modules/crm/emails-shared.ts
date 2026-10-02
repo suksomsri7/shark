@@ -131,12 +131,19 @@ export const CRM_TRACK_RATE_LIMITS: Readonly<{
 
 // CRM C5.5-fix2 ▸ hunter 2a-7: เพดานจดหมายขาเข้าต่อระบบ + ต่อผู้ส่ง (ต่อชั่วโมง · ถังเดียวของระบบ `checkRateLimitDb`)
 //   เกินเพดาน = รับแล้วทิ้ง (route ตอบ 200 เหมือนเดิม · ไม่เด้งกลับ) + audit 1 บรรทัดต่อหน้าต่าง ◂
+// CRM C5.5-fix8 r2 ▸ (รีวิว RV-2) จดหมายที่ "พิสูจน์ผู้ส่งได้" (A-R ของ MTA เรา หรือหลักฐานของเธรด) มีถังของตัวเองแยกกุญแจ — จดหมายปลอม
+//   ที่ไม่มีหลักฐานเติมถังนี้ไม่ได้ (H3-1) แต่ไม่มีผู้ส่งกลุ่มไหนไม่มีเพดาน: ต่อที่อยู่ 100/ชม. (= เพดานต่อที่อยู่ก่อนการ์ดนี้ ซึ่งนับทุกฉบับ) ·
+//   ทั้งระบบ 2,000/ชม. (ก่อนการ์ดนี้จดหมายที่พิสูจน์ได้ไม่มีเพดานรวมเลย) — ตัวเลขและเหตุผลใน ledger/wo-notes/crm-C5.5-fix8.md รอบ 2 ◂
 export const CRM_INBOUND_RATE_LIMITS: Readonly<{
   perSender: { limit: number; windowMs: number };
   perSystem: { limit: number; windowMs: number };
+  perSenderProven: { limit: number; windowMs: number };
+  perSystemProven: { limit: number; windowMs: number };
 }> = Object.freeze({
   perSender: { limit: 100, windowMs: 60 * 60_000 },
   perSystem: { limit: 1_000, windowMs: 60 * 60_000 },
+  perSenderProven: { limit: 100, windowMs: 60 * 60_000 },
+  perSystemProven: { limit: 2_000, windowMs: 60 * 60_000 },
 });
 
 // CRM C5.5-fix2 ▸ hunter 2a-1: หัวกันวนของสำเนาที่ระบบส่งออกเอง — จดหมายขาเข้าที่มีหัวนี้ = ของเราเองวนกลับ ⇒ ทิ้ง ◂

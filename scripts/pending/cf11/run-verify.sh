@@ -16,6 +16,12 @@ r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash 
 q3 pending/cf11/probe-cf11-keys
 q3 pending/cf11/probe-cf11-contains
 q3 pending/cf11/probe-cf11-mail
+q3 pending/cf11/probe-cf11-r2
+q3 pending/cf11/review/probe-cf11-review-mail
+q3 pending/cf11/review/probe-cf11-review-keys
+[ -f scripts/pending/hunt3/probe-hunt3.mts ] && q3 pending/hunt3/probe-hunt3   # copy it from the hunt worktree (shark-crm-c54d) first — not committed here
+q3 pending/cf2/probe-cf2
+q3 pending/cf2/review/probe-cf2-review-r2
 q3 pending/cf8/probe-cf8-mobile
 q3 pending/cf8/probe-cf8-actions
 q3 pending/cf8/review/probe-cf8-review

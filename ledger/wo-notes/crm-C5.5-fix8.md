@@ -95,3 +95,84 @@ None is the identical one-line change inside account/** ⇒ none changed here.
 - `listContactsPage` driven with a hand-built sidebar; journal, goods-issue, attachment-search, audit-log and group-batch sites are covered by the static check + the helper's DB semantics, not end to end (journal/group suites need the acc-v2 seed / N migration missing on QC3).
 - hunt worktree probe `probe-hunt3.mts` itself not run (its S1 checks copied into probe-cf11-mail).
 - Member/kanban suites needing their seeds; `qc-kanban-k1.15` (kanban seed) not run — it mints keys through the service, not the page action.
+
+
+## Round 2 (review `crm-C5.5-fix8-review.md` NOT MERGEABLE — RV-1 · RV-2 · RV-3 · RV-5 · P14 note)
+
+### RV-1 HIGH — body-sized load before the buckets · FIXED
+- The round-1 `findMany(take 50)` without `select` is gone. Before the buckets there is now ONE narrow proof query:
+  `crmEmailMessage.findMany({ where: { tenantId, systemId, direction: "OUT", messageId: { in: candidates(proofRefs) } }, select: { toAddrs, ccAddrs }, take: 50 })`
+  — only our own OUT mails of this tenant + system, only the two address arrays; `proofRefs` = In-Reply-To + the newest 99 References (≤ 100 ids ⇒ ≤ 200 bind params).
+- The full `parent` row is read with the base `findFirst` (newest referenced row, all candidates) **after** both buckets, exactly as before this card — used for threading and reply effects only.
+- R1.1: a dropped mail citing 50 stored mails of 400 k chars each loaded 20.05 M chars at 3ffb9026 → ≈ 2 chars (only the empty OUT-address result; reviewer RB.1: 0.0 M chars, 96 ms) now. R1.2 control: an accepted mail still loads its one parent row after the buckets.
+
+### RV-2 HIGH — proven mail unbounded · FIXED (numbers + reasoning)
+Buckets (`CRM_INBOUND_RATE_LIMITS`, per hour, `checkRateLimitDb`, fail-open on DB error as before):
+| class | per sender (hash of From) | whole system | key |
+|---|---|---|---|
+| unproven (no A-R pass, no thread proof) | 100 | 1,000 | `crm.email.in.from.<sys>.<h>` · `crm.email.in.sys.<sys>` (unchanged keys, limits, texts) |
+| proven (A-R pass of our MTA, or thread proof) | 100 | 2,000 | `crm.email.in.from.proven.<sys>.<h>` · `crm.email.in.sys.proven.<sys>` (new) |
+Every mail is counted in exactly one class (sender bucket first, then system bucket — the old order) and is dropped only by its own class.
+1. **Forged unproven mail can never fill a bucket that drops proven mail** — proven mail never reads an unproven key (R2.1: unproven sender + system buckets full ⇒ the customer's thread-proven replies still get in; hunt S1.2/S1.3/S1.6 green).
+2. **No sender class is unlimited**: unproven 100/1,000, proven 100/2,000 (R2.1–R2.3, R2.5). Before this card proven mail had no system-wide bound at all (RV2-3 exempted it); round 1 also removed the per-address bound.
+3. **An attacker-owned DMARC-passing address is limited at least as tightly as before this card**: before, its mail was bounded per address by the all-mail sender bucket (100/h) and not at all system-wide; now its proven mail is bounded 100/h per address (R2.3: 100/120) and 2,000/h across all its addresses. What it can additionally send *without* proof is exactly what any forger can send under any address (unproven buckets) — sending unproven gains it nothing over a forger.
+- Why 2,000 system-wide for proven mail: twice the unproven cap, far above an SME shop's genuine authenticated inbound per hour, low enough that a rotating-local-part DMARC flood (or a CC/forward chain holding our Message-ID) costs at most 2,000 rows/activities/events/copy-in sends per hour; the owner is told once per window when it trips (text says it should not normally happen).
+- Thread proof (bucket class only) = some referenced Message-ID is an OUT mail **of this tenant + system** whose to/cc contains this exact From (`bareEmail` equality, the fix2 rule). R2.4: a non-recipient citing our valid id, and a recipient of an OUT mail of ANOTHER CRM system of the same shop citing it, are unproven. Reply effects (`repliedAt`, sequence stop) still use only the newest referenced row (`parent` + fix2 `threadProof`), unchanged.
+- Cost before a drop now: 1 dup-check (id only) + at most 1 narrow OUT-address query + 2 bucket upserts; nothing else.
+
+### RV-3 MED — owner-notice spam · FIXED
+- Per-sender trips notify at most once per system per hour per class (`ownerNoticeDue`: bucket `crm.email.in.notice.<sender|sender-proven>.<sys>`, limit 1/h). Audit lines are still written for every tripping sender. The unproven SYSTEM notice is unchanged (title, text, once per window); the new proven-system notice has its own text.
+- R3.1: 12 tripping senders → 1 notice, 12 audit lines (3ffb9026: 12 notices). R3.3: next window notifies again.
+
+### RV-5 LOW + Q2 ruling — account page key doors · FIXED
+- `accountManagedKey` = bound to an ACCOUNT system of the shop **and** every scope ∈ `ACCOUNT_SCOPE_KEYS` (one rule for rotate and revoke). Unbound keys (the shop's general `[]` key, pre-A2 unbound account keys) and keys holding any foreign scope (crm.*, pos.* …) answer "ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี — คีย์กลางของร้านจัดการได้ที่ ตั้งค่า › API สำหรับนักพัฒนา …" and stay untouched (R4.1). The connections page lists only those keys (same rule).
+- Kept: an account-bound key with malformed `scopesJson` is still "of this page" so it can be revoked here; its rotation is refused with the hotfix/apiv1-scope sentence (K2.2). An account-bound legacy `[]` key can be revoked here (R4.2) but not rotated (F2 rule).
+- Platform page and who may mint the general key: unchanged (owner decision pending, Q1).
+- `probe-cf11-keys` K2.3 updated for the ruling (unbound general / unbound account keys now "not here" for rotate and revoke).
+
+### P14 — what the deployment must guarantee (`CRM_INBOUND_AUTHSERV_ID`)
+- Code fails closed: `authResultPass` returns false when `CRM_INBOUND_AUTHSERV_ID` is unset or empty (`emails.ts` `if (!trusted) return false`) ⇒ every inbound mail is unproven: flagged, counted in the unproven buckets only (R5.1, reviewer RD.1).
+- When it is set, the deployment MUST guarantee: (1) the inbound MTA/provider that feeds `/api/email/inbound` adds its **own** `Authentication-Results` header with exactly that authserv-id to **every** message, after its own SPF/DKIM/DMARC check; (2) it removes (or renames) any incoming `Authentication-Results` header that already carries that authserv-id (RFC 8601 §5); (3) the route only accepts requests from that provider (the inbound secret). With (1) alone an attacker-supplied header with our id becomes a second instance ⇒ no proof (fail-safe); without (1) a single attacker-supplied header would be trusted — and since this card it would also move the mail into the proven buckets (bounded 100/2,000 per hour, not unbounded). Do not set the variable until (1)+(2) are confirmed for the provider in use.
+
+### RV-4 (restated) — kanban key page revokes any key of the shop
+- Unchanged here; fixed by hotfix/apiv1-scope round 3 (`/root/projects/shark-hf` 201d371a). It must ship with or before this branch's key work. Reviewer RK.6 stays red until then.
+
+### Final `ingestInbound` step order (round 2)
+1. Cap envelope (fix5) → CRM recipient key → loop header → system/settings → v1 / disabled → duplicate Message-ID (id only).
+2. `fromAddr` → `fromProof` (pure parse of the capped A-R header; false if the env is unset) → refs (capped) → narrow OUT-address query (≤ 100 ids, ≤ 50 rows, `toAddrs/ccAddrs` only) → `threadProofAny` → `proven`.
+3. Per-sender bucket of the class → system bucket of the class (each trip: audit once per window + deduped owner notice) → drop `rate_limited`.
+4. Full `parent` row (`findFirst`, newest referenced) → fix2 `threadProof` (reply effects).
+5. Reply-To, auto, subject → staff / override / verified-domain lookups → `unverifiedShopFrom` → direction → `bcc_capture_off`.
+6. HTML/text caps + sanitise.
+7. Attribution (contact / company / stranger lead) → `routing` flags (`unverifiedFrom` for every IN mail without `fromProof`).
+8. Tx: row + activity + `crm.email.received` → attachments → reply effects (`parent` OUT + (`fromProof` ∨ `threadProof`)) → replied notice → copy-in.
+
+### Round 2 RED → GREEN
+| probe | 3ffb9026 (round 1) | round 2 |
+|---|---|---|
+| `probe-cf11-r2` (new) | 7/16 — R1.1 R2.1 R2.2 R2.3 R2.5 R3.1 R3.2 R3.3 R4.1 | 16/16 |
+| reviewer `probe-cf11-review-mail` | 7/12 (reviewer run) | 11/12 — RA.1 ✅ (100/150 stored), RA.3 ✅ (100/120), RB.1 ✅ (0.0 M chars before the drop), RC.1 ✅ (+1 notice for 12 senders); **RA.2 stays ❌ by design**: it sends 30 mails from one CC participant and wants fewer than 30 stored, but the proven per-address bound is 100/h (my R2.2: 100/105 stored) |
+| reviewer `probe-cf11-review-keys` | 8/9 | 8/9 — RK.6 (kanban revoke = RV-4, other team's hotfix) unchanged; INFO-RK.4 now "not here" for revoke of the unbound pos key, INFO-RK.5 now "not here" for rotating the general key |
+| hunt `probe-hunt3` (copied read-only from c54d into this tree, not committed) | S1.2/S1.3/S1.6 reproduced at 53d88b71 | S1.2 · S1.3 · S1.6 not reproduced (green); controls S1.0/S1.1/S1.4 green; **S1.5 ❌ by design**: it expects exactly one unproven sender-bucket audit, but the victim's proven replies no longer count in that bucket, so it never trips (`audits=[]`, 0 notices); X1.1 = H3-2 (PDPA export truncation, other card) |
+
+### Round 2 verification (`run-verify.sh` label v3, iso.sh + gate lock, one at a time; finished 2026-10-02 01:07 UTC)
+| check | result |
+|---|---|
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+| probe-cf11-keys · contains · mail · r2 | 14/14 · 12/12 · 24/24 · 16/16 |
+| probe-cf11-review-mail · review-keys | 11/12 (RA.2 by design) · 8/9 (RK.6 = RV-4) |
+| probe-hunt3 | S1.2/S1.3/S1.6 green · S1.5 by design · X1.1 other card |
+| probe-cf2 · probe-cf2-review-r2 | 36/36 · 8/10 (Q3 only `genuineOverSender: stored` — same as round 1, by design; Q6.2 stale OWED expectation, red at base) |
+| probe-cf8-mobile · actions · review | 8/8 · 9/9 · 17/19 (X1.1, X2 no longer reproduce — by design) |
+| probe-cf4-ci · probe-cf4-contains | 12/12 · evidence (exit 0) |
+| QC2: probe-cf5 · probe-cf5-r2 · rv-cf5 · rv-cf5-r2 | 22/22 · 14/14 · 32/32 · 16/16 |
+| qc-crm-c2.5 · c2.6 · c1.6 · qc-webhook | 105/105 · 87/87 · 79/79 · 15/15 |
+| qc-acc-v2-contact-modal · import (QC3) | 96/96 · 114/114 |
+| QC2: qc-account-api-webhooks · write-settings | 22/22 · 39/39 |
+| docs --check ×4 | exit 0 (no doc change in round 2) |
+| fitness (QC3 env) · (no env) | 42/42 · 42/42 |
+
+### Round 2 not verified
+- Attachment storage / link-fetch cost under a proven flood (bounded now by the proven buckets; path not exercised).
+- Real serverless memory; browser render of the account connections page with the narrowed key list (no account UI suite run in a browser).
+- The hunt probe was run from a copy in this tree (the hunt worktree was not touched); RED for my r2 probe was run with the five round-2 src files swapped back to 3ffb9026.

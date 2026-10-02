@@ -94,8 +94,6 @@ await sub("K2 account page — rotation re-validates scopes (F3)", async () => {
   chk("K2.2", hfWording, `malformed scopesJson → the same Thai sentence as hotfix/apiv1-scope's rotateApiKey (merge-compatible)`);
   const okCases: [string, string[], string | null][] = [
     ["acc", ["account.doc.view", "account.contact.manage"], A],
-    ["general", [], null],
-    ["unbound-acc", ["account.doc.view"], null],
   ];
   const pos: string[] = [];
   let posBad = 0;
@@ -113,8 +111,21 @@ await sub("K2 account page — rotation re-validates scopes (F3)", async () => {
   const C = (await sysSvc.createSystem(tA, "CRM", `CRM ${TAG}`)).id as string;
   const crmKey = await mk("crmbound", ["crm.contact.read"], C);
   const r = await call(() => inScope(oCookie, cp, () => CONN.rotateApiKeyAction(fdx({ systemId: A, id: crmKey }))));
-  chk("K2.3", posBad === 0 && r.v?.ok === false && String(r.v?.reason).startsWith("ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี"),
-    `positive: ${pos.join(" · ")} · control: CRM-bound key → ${errText(r)}`);
+  // r2 (RV-5 · Q2 ruling): unbound keys — the shop's general key `[]` and an unbound account-scoped key — are managed only on
+  //   /app/settings/api ⇒ the account page answers "not here" for rotate AND revoke, and the keys stay untouched
+  const unb: string[] = [];
+  let unbBad = 0;
+  for (const [suffix, scopes] of [["general", []], ["unbound-acc", ["account.doc.view"]]] as [string, string[]][]) {
+    const id = await mk(suffix, scopes, null);
+    const rr = await call(() => inScope(oCookie, cp, () => CONN.rotateApiKeyAction(fdx({ systemId: A, id }))));
+    const rv = await call(() => inScope(oCookie, cp, () => CONN.revokeApiKeyAction(fdx({ systemId: A, id }))));
+    const rows = await keysOf(`${TAG}-k2-${suffix}`);
+    const good = String(rr.v?.reason).startsWith("ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี") && String(rv.v?.reason).startsWith("ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี") && rows.length === 1 && !rows[0].revokedAt;
+    if (!good) unbBad += 1;
+    unb.push(`${suffix}:${good ? "not here (rotate+revoke)" : `rotate ${errText(rr)} · revoke ${errText(rv)} rows=${rows.length} revoked=${!!rows[0]?.revokedAt}`}`);
+  }
+  chk("K2.3", posBad === 0 && unbBad === 0 && r.v?.ok === false && String(r.v?.reason).startsWith("ไม่พบคีย์นี้ในหน้าการเชื่อมต่อของบัญชี"),
+    `positive: ${pos.join(" · ")} · r2 unbound keys: ${unb.join(" · ")} · control: CRM-bound key → ${errText(r)}`);
 });
 
 await sub("K3 kanban page — bundles limited to kanban (F4)", async () => {

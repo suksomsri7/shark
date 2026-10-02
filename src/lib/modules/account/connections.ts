@@ -388,22 +388,25 @@ function formatPostedAt(d: Date): string {
 }
 
 // CRM C5.4-B ▸ hunter H2 (ใช้โดย connections-actions: หมุน/เพิกถอนคีย์) — ดูคำอธิบายที่ตัวเรียก
-const FOREIGN_SCOPE = /^(crm|member|kanban)\./;
+// CRM C5.5-fix8 r2 ▸ (รีวิว RV-5 + มติผู้คุมงาน Q2) "คีย์ของบัญชี" = ผูกระบบบัญชี **และ** ทุกสิทธิ์อยู่ใน ACCOUNT_SCOPE_KEYS — กติกาเดียวทั้งหมุนและเพิกถอน
+//   (เดิมคีย์ไม่ผูกระบบที่ไม่มี crm|member|kanban ก็นับ ⇒ หน้านี้เพิกถอน/หมุนคีย์กลางของร้าน `[]` และคีย์ที่ถือ `pos.*` ได้) ·
+//   คีย์ไม่ผูกระบบ (คีย์กลาง) และคีย์ที่ถือสิทธิ์ของระบบอื่น จัดการที่ ตั้งค่า › API สำหรับนักพัฒนา เท่านั้น ·
+//   scopesJson เสียของคีย์ที่ผูกบัญชี = ยังนับเป็นของหน้านี้ (เพิกถอนทิ้งได้ · หมุนถูกปฏิเสธด้วยข้อความของ accountKeyRotationProblem) ◂
 export async function accountManagedKey(tenantId: string, keyId: string): Promise<boolean> {
   if (!keyId) return false;
   const db = tenantDb({ tenantId });
   const k = await db.apiKey.findFirst({ where: { id: keyId }, select: { systemId: true, scopesJson: true } });
-  if (!k) return false;
-  if (k.systemId) return !!(await db.appSystem.findFirst({ where: { id: k.systemId, type: "ACCOUNT" }, select: { id: true } }));
-  const scopes: string[] = Array.isArray(k.scopesJson) ? (k.scopesJson as unknown[]).filter((x): x is string => typeof x === "string") : [];
-  return !scopes.some((sc: string) => FOREIGN_SCOPE.test(sc));
+  if (!k || !k.systemId) return false;
+  if (!(await db.appSystem.findFirst({ where: { id: k.systemId, type: "ACCOUNT" }, select: { id: true } }))) return false;
+  const raw = k.scopesJson;
+  if (!Array.isArray(raw) || raw.some((v) => typeof v !== "string")) return true;
+  return (raw as string[]).every((sc) => ACCOUNT_SCOPE_KEYS.includes(sc));
 }
 
 // CRM C5.5-fix8 ▸ (รีวิว authz-sweep F3) หมุนคีย์ = ออกคีย์ใหม่ที่คัดลอกสิทธิ์ของคีย์เดิม ⇒ ต้องผ่านกติกาเดียวกับตอนออก (S1 + F2):
 //   ทุกสิทธิ์อยู่ใน ACCOUNT_SCOPE_KEYS และคีย์ที่ผูกระบบบัญชีต้องมีสิทธิ์ ≥ 1 รายการ · เดิมคัดลอกทุกอย่าง ⇒ คีย์ผูกบัญชีที่ถือ `crm.*`/`member.*`
 //   (ออกก่อน S1) หรือไม่มีสิทธิ์เลย ("คีย์รุ่นเดิม" จากฟอร์มที่ยิงเอง) ต่ออายุได้ไม่รู้จบ · ไม่ผ่าน = ปฏิเสธพร้อมบอกให้สร้างคีย์ใหม่
-//   (ไม่ตัดสิทธิ์ทิ้งเงียบ ๆ — ระบบปลายทางจะพังโดยไม่รู้ตัว) · คีย์ไม่ผูกระบบที่ไม่มีสิทธิ์เลย = คีย์กลางของร้าน (หน้าตั้งค่า API ของร้าน
-//   ออกแบบนั้นตามแบบ) ⇒ หมุนได้ตามเดิม (คำถามเจ้าของ — ledger/wo-notes/crm-C5.5-fix8.md)
+//   (ไม่ตัดสิทธิ์ทิ้งเงียบ ๆ — ระบบปลายทางจะพังโดยไม่รู้ตัว) · r2: คีย์ไม่ผูกระบบ (คีย์กลาง) ไม่ถึงที่นี่แล้ว — accountManagedKey ตอบ "ไม่พบ"
 //   scopesJson เสีย = ข้อความเดียวกับ hotfix/apiv1-scope (`rotateApiKey` ตรวจเงื่อนไขเดียวกันใน tx) ◂
 export const ROTATE_MALFORMED = "ข้อมูลสิทธิ์ของคีย์นี้ในระบบไม่สมบูรณ์ จึงหมุนคีย์ให้ไม่ได้ — เพิกถอนคีย์นี้แล้วสร้างคีย์ใหม่แทน";
 export async function accountKeyRotationProblem(tenantId: string, keyId: string): Promise<string | null> {
