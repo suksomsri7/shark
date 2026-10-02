@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """C4.2 it4 (c42b) — tally + triage list from the runner's per-chunk summaries.
 
-usage: summarize.py <glob of summary json…> [--list dead|wrongExpect|hiddenLeak|vacuous|skippedNeeds|consoleErrors|overflow] [--user u]
+usage: summarize.py <glob of summary json…> [--list dead|wrongExpect|hiddenLeak|vacuous|disabled|skippedNeeds|consoleErrors|overflow] [--user u]
+(it5: the run verdict with absence-pass pairing = verdict.py)
 Tally per user × device: pressed (= total incl. hidden checks) · passed · dead · leak · fail (wrongExpect) · vacuous ·
 skippedNeeds · skippedSafety · console · overflow · restoreFail.
 """
@@ -20,7 +21,7 @@ for f in files:
     s = json.load(open(f))
     users = s.get('users') or ['?']
     # total/passed are not split per device in the summary — derive per (user, device) from the bucket lists + perPage
-    for b in ('dead', 'wrongExpect', 'hiddenLeak', 'vacuous', 'consoleErrors', 'overflow', 'skippedNeeds', 'skippedSafety'):
+    for b in ('dead', 'wrongExpect', 'hiddenLeak', 'vacuous', 'disabled', 'consoleErrors', 'overflow', 'skippedNeeds', 'skippedSafety'):  # it5: + disabled (RV-8)
         for x in s.get(b, []) or []:
             T[(x.get('user'), x.get('device'))][b] += 1
             if lst == b and (not only or x.get('user') == only):

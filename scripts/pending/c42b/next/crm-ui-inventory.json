@@ -17,7 +17,11 @@
     "not": "(ไม่บังคับ · แถวแพตเทิร์น) testid ที่ขึ้นต้นเหมือนกันแต่ไม่ใช่คอนโทรลของแถวนี้ (กล่องหุ้ม/แถวอื่น) — ตัวเลือก [data-testid^=] ต้องข้าม",
     "opener": "(ไม่บังคับ · C4.2) ตัวที่ต้องกดก่อนจึงจะเห็นคอนโทรลนี้ — string หรือ string[] ตามลำดับ · ต้องเป็นชื่อแถวในทะเบียนบนหน้าเดียวกัน (รวมแถวที่มีหน้านี้ใน alsoOn · แพตเทิร์น * ได้) · \"<testid>=<ค่า>\" = เลือก option/พิมพ์ค่านั้น (ตัวสร้างที่เปิดช่องตามค่าที่เลือก) · \"=*\" = ตัวเลือกจริงตัวใดก็ได้ (id ต่างกันต่อซีด) · \"=on\"/\"=off\" = ให้ checkbox/radio/tab อยู่ในสถานะนั้น (การเลือกที่ทำให้ปุ่มที่เห็นอยู่แล้วใช้ได้ เช่น แถบทำรายการกลุ่ม) · \"=click\" = กดแม้มองเห็นอยู่แล้ว (เพิ่มเงื่อนไข 2 ครั้ง) · ช่องอัปโหลด CSV นำเข้า \"<testid>=<ไฟล์ fixture>\" · ตัวกดกดแต่ละตัวเฉพาะเมื่อตัวถัดไปในลำดับ/ตัวแถวยังมองไม่เห็น",
     "needs": "(ไม่บังคับ · C4.2) เงื่อนไขข้อมูลที่ซีดมาตรฐานอาจไม่มี (ต้องระบุข้อมูลที่ขาดให้ชัด เช่น \"ลำดับติดตาม (CrmSequence) ≥1 — ซีดมี 0\") · มีคอนโทรล = กดและตรวจตามปกติ · ไม่มี = skippedNeeds (ไม่นับ total ไม่ใช่ dead) · แถวที่มี needs ถูกกดท้ายกลุ่มหน้า (แถวก่อนหน้าอาจสร้างข้อมูลที่ต้องใช้) — ห้ามใช้ปิดปุ่มที่ควรมีอยู่แล้ว",
-    "viewport": "(ไม่บังคับ · C4.2) \"desktop\" | \"mobile\" — คอนโทรลที่มีในเลย์เอาต์เดียว (md:hidden / hidden md:block / sm:hidden / lg:hidden) ⇒ ตัวกดไม่วางแผนกดอีกจอ"
+    "viewport": "(ไม่บังคับ · C4.2) \"desktop\" | \"mobile\" — คอนโทรลที่มีในเลย์เอาต์เดียว (md:hidden / hidden md:block / sm:hidden / lg:hidden) ⇒ ตัวกดไม่วางแผนกดอีกจอ",
+    "variants": "(ไม่บังคับ · C4.2 it5) ตัวกดเดิมกดซ้ำอีกครั้งสำหรับบางบทบาทด้วยตัวเปิด/ผลที่คาดของตัวเอง — [{name, roles[], opener?, expect, note?}] · ใช้เมื่อบทบาทหนึ่งต้องได้ผลต่าง (เช่น ผู้จัดการถูกปฏิเสธเมื่อบันทึกกฎด้วยการกระทำปริยาย) · 1 testid ยังคง 1 แถว (F14.2)",
+    "onlyHiddenFor": "(ไม่บังคับ · C4.2 it5 · คู่กับ only) {testid ตรงตัว: [บทบาท]} — บทบาทที่ต้องไม่เห็นชื่อนั้นเพิ่มจาก hiddenFor ของแถว (เมนูเดียวที่แต่ละรายการมีคีย์ต่างกัน)",
+    "expect.outcome": "(ไม่บังคับ · C4.2 it5) \"refusal\" = ผลที่คาดคือเซิร์ฟเวอร์ปฏิเสธ (request เขียนต้องเกิด + ข้อความปฏิเสธใหม่ใน role=alert/*-error หรือ resultTarget ตรง refusalText) — นอกจากนี้ข้อความปฏิเสธใหม่ = ไม่ผ่านเสมอ (เลิกยกเว้นจากคำใน db)",
+    "expect.state": "ui: appears (ต้องปรากฏ — ถ้ามองเห็นอยู่แล้วก่อนกดต้องเปลี่ยน) · disappears · changes · selected · count (จำนวนที่มองเห็นของ target เปลี่ยน) · disabled (มองเห็นแต่ disabled — ไม่กด)"
   },
   "$example": {
     "page": "/deals/[dealId]",
@@ -1119,8 +1123,9 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "company-contact-remove-confirm"
+        "type": "ui",
+        "target": "company-contact-remove-confirm",
+        "state": "appears"
       },
       "wo": "C1.3",
       "oracle": ""
@@ -1140,7 +1145,7 @@
       "expect": {
         "type": "mutation",
         "target": "op:crm.company.removeContact",
-        "db": "CrmCompanyContact.endedAt=now · CrmContact.companyId คำนวณใหม่"
+        "db": "CrmCompanyContact.endedAt ตั้งค่า (now) · CrmContact.companyId คำนวณใหม่ (อาจไม่เปลี่ยน)"
       },
       "wo": "C1.3",
       "oracle": "",
@@ -1159,8 +1164,9 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "company-contact-remove-btn"
+        "type": "ui",
+        "target": "company-contact-remove-confirm",
+        "state": "disappears"
       },
       "wo": "C1.3",
       "oracle": "",
@@ -1472,7 +1478,8 @@
       "oracle": "",
       "opener": [
         "company-menu-btn",
-        "company-menu-owner"
+        "company-menu-owner",
+        "company-owner-select=*"
       ]
     },
     {
@@ -2582,7 +2589,7 @@
       "expect": {
         "type": "mutation",
         "target": "op:contacts.bulkAssign",
-        "db": "CrmContact.ownerUserId = ผู้รับ (≤ 500) + AuditLog reason"
+        "db": "CrmContact.ownerUserId = ผู้รับ (≤ 500) · AuditLog crm.contact.bulk_assign (เหตุผล)"
       },
       "wo": "C1.4",
       "oracle": "",
@@ -3337,7 +3344,25 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "opener": "contact-menu-btn"
+      "opener": "contact-menu-btn",
+      "only": [
+        "contact-menu-edit",
+        "contact-menu-owner",
+        "contact-menu-status",
+        "contact-menu-tags",
+        "contact-menu-merge",
+        "contact-menu-archive"
+      ],
+      "onlyHiddenFor": {
+        "contact-menu-merge": [
+          "nok",
+          "thana"
+        ],
+        "contact-menu-archive": [
+          "nok",
+          "thana"
+        ]
+      }
     },
     {
       "page": "/contacts/[contactId]",
@@ -3482,7 +3507,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contact-*-error"
@@ -3502,7 +3530,10 @@
         "owner",
         "manager"
       ],
-      "hiddenFor": [],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
       "expect": {
         "type": "inline-error",
         "target": "contact-*-error"
@@ -3541,7 +3572,8 @@
       "oracle": "",
       "opener": [
         "contact-menu-btn",
-        "contact-menu-edit"
+        "contact-menu-edit",
+        "contact-edit-jobTitle=qc-btn-jobtitle-it5"
       ]
     },
     {
@@ -4585,7 +4617,8 @@
         "manager"
       ],
       "hiddenFor": [
-        "thana"
+        "thana",
+        "nok"
       ],
       "expect": {
         "type": "inline-error",
@@ -4612,7 +4645,8 @@
         "manager"
       ],
       "hiddenFor": [
-        "thana"
+        "thana",
+        "nok"
       ],
       "expect": {
         "type": "inline-error",
@@ -4639,7 +4673,8 @@
         "manager"
       ],
       "hiddenFor": [
-        "thana"
+        "thana",
+        "nok"
       ],
       "expect": {
         "type": "ui",
@@ -4667,7 +4702,8 @@
         "manager"
       ],
       "hiddenFor": [
-        "thana"
+        "thana",
+        "nok"
       ],
       "expect": {
         "type": "mutation",
@@ -4907,7 +4943,8 @@
         "manager"
       ],
       "hiddenFor": [
-        "thana"
+        "thana",
+        "nok"
       ],
       "expect": {
         "type": "modal",
@@ -5282,7 +5319,7 @@
       "expect": {
         "type": "ui",
         "target": "deal-line-name-*",
-        "state": "appears",
+        "state": "count",
         "note": "เพิ่มบรรทัดในร่าง — ยังไม่บันทึก"
       },
       "wo": "C1.5",
@@ -7985,7 +8022,7 @@
       "expect": {
         "type": "mutation",
         "target": "op:files.removeFile",
-        "db": "CrmFileLink -1 · FileAsset -1 · AuditLog +1"
+        "db": "CrmFileLink -1 · AuditLog crm.file.remove (ลิงก์ของตัวกดชี้ไฟล์ที่ไม่มีในที่เก็บ ⇒ FileAsset ไม่เปลี่ยน)"
       },
       "wo": "C1.6",
       "oracle": "",
@@ -8094,9 +8131,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "teams-create-form",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C1.7",
       "oracle": ""
@@ -9231,9 +9269,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "object-add-error",
-        "db": ""
+        "type": "ui",
+        "target": "object-add-form",
+        "db": "",
+        "state": "changes"
       },
       "wo": "C1.9",
       "oracle": ""
@@ -9311,9 +9350,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "object-add-form",
-        "db": ""
+        "db": "",
+        "state": "changes"
       },
       "wo": "C1.9",
       "oracle": "",
@@ -9352,9 +9392,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "object-add-form",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C1.9",
       "oracle": ""
@@ -10666,9 +10707,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-home-my-deals",
-        "db": ""
+        "db": "",
+        "state": "changes"
       },
       "wo": "C1.11",
       "oracle": "",
@@ -10687,9 +10729,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-home-my-deals",
-        "db": ""
+        "db": "",
+        "state": "changes"
       },
       "wo": "C1.11",
       "oracle": "",
@@ -11364,9 +11407,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-panel-activity-form",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C1.11",
       "oracle": "",
@@ -11848,9 +11892,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-auto-error",
-        "db": ""
+        "type": "ui",
+        "target": "crm-auto-cond-field",
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -11872,9 +11917,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-cond-field",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12386,9 +12432,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-auto-error",
-        "db": ""
+        "type": "ui",
+        "target": "crm-auto-action-type",
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12407,9 +12454,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-action-type",
-        "db": ""
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12431,9 +12479,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-action-type",
-        "db": ""
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12473,13 +12522,19 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-dry-result",
-        "db": "ไม่เขียนอะไรเลย (AutomationRun/OutboxEvent/AuditLog/AppNotification ไม่เปลี่ยน)"
+        "db": "ไม่เขียนอะไรเลย (AutomationRun/OutboxEvent/AuditLog/AppNotification ไม่เปลี่ยน)",
+        "state": "appears"
       },
       "wo": "C2.1",
       "oracle": "",
-      "opener": "crm-auto-new"
+      "opener": [
+        "crm-auto-new",
+        "crm-auto-action-type=NOTIFY_STAFF",
+        "crm-auto-action-text=qc-btn-dry-it5",
+        "crm-auto-name=qc-btn-dry-it5"
+      ]
     },
     {
       "page": "/settings/automation",
@@ -12494,9 +12549,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-builder",
-        "db": ""
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12527,6 +12583,23 @@
       "opener": [
         "crm-auto-new",
         "crm-auto-action-type=NOTIFY_STAFF"
+      ],
+      "variants": [
+        {
+          "name": "manager-default-action-refusal",
+          "roles": [
+            "manager"
+          ],
+          "opener": "crm-auto-new",
+          "expect": {
+            "type": "mutation",
+            "target": "action:createCrmRuleAction",
+            "outcome": "refusal",
+            "refusalText": "มองเห็นเฉพาะบางส่วน",
+            "db": "AutomationRule ไม่เพิ่ม (C5.5-fix1 H55-2 automation.ts handNeedOf: CREATE_ACTIVITY ต้องเห็นผู้ติดต่อ/ดีลทั้งร้าน — ผู้จัดการ QC1 ถูกจำกัดสาขา/ทีม)"
+          },
+          "note": "C4.2 it5 RV-7 — ผลิตภัณฑ์: finding C6 (ผู้จัดการมีคีย์ automation แต่บันทึกได้เฉพาะ แจ้งพนักงาน/push/รอ)"
+        }
       ]
     },
     {
@@ -12584,9 +12657,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-auto-delete-reason",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -12649,9 +12723,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-auto-rule-delete",
-        "db": ""
+        "type": "ui",
+        "target": "crm-auto-delete-reason",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.1",
       "oracle": "",
@@ -13016,9 +13091,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-seq-editor",
-        "db": ""
+        "db": "",
+        "state": "changes"
       },
       "wo": "C2.2",
       "oracle": "",
@@ -13037,9 +13113,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-seq-editor",
-        "db": ""
+        "db": "",
+        "state": "changes"
       },
       "wo": "C2.2",
       "oracle": "",
@@ -13058,9 +13135,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-seq-editor",
-        "db": ""
+        "type": "ui",
+        "target": "crm-seq-step-kind-*",
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.2",
       "oracle": "",
@@ -13079,9 +13157,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-seq-editor",
-        "db": ""
+        "type": "ui",
+        "target": "crm-seq-step-kind-*",
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.2",
       "oracle": "",
@@ -13102,7 +13181,7 @@
       "expect": {
         "type": "mutation",
         "target": "action:updateSequenceAction",
-        "db": "CrmSequenceStep แถวใหม่ของ version+1 เมื่อมีผู้ลงทะเบียน (แถวเวอร์ชันเก่าไม่ถูกแก้/ลบ) + AuditLog crm.sequence.update"
+        "db": "CrmSequence (บันทึก) · CrmSequenceStep แถวใหม่ของ version+1 เมื่อขั้นเปลี่ยนและมีผู้ลงทะเบียน (แถวเวอร์ชันเก่าไม่ถูกแก้/ลบ) · AuditLog crm.sequence.update"
       },
       "wo": "C2.2",
       "oracle": "",
@@ -13310,7 +13389,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0"
+      "needs": "ผู้อยู่ในลำดับ (CrmSequenceEnrollment ACTIVE/PAUSED) — ตัวกดสร้างให้ 2 คน (ไม่มีอีเมล · nextAt +30 วัน)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13331,7 +13410,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ ACTIVE)"
+      "needs": "ผู้อยู่ในลำดับ (CrmSequenceEnrollment ACTIVE/PAUSED) — ตัวกดสร้างให้ 2 คน (ไม่มีอีเมล · nextAt +30 วัน)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13352,7 +13431,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ PAUSED)"
+      "needs": "ผู้อยู่ในลำดับ (CrmSequenceEnrollment ACTIVE/PAUSED) — ตัวกดสร้างให้ 2 คน (ไม่มีอีเมล · nextAt +30 วัน)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13373,7 +13452,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ผู้ติดต่อที่อยู่ในลำดับนี้ (CrmSequenceEnrollment) — ซีดมี 0 (สถานะ ACTIVE/PAUSED)"
+      "needs": "ผู้อยู่ในลำดับ (CrmSequenceEnrollment ACTIVE/PAUSED) — ตัวกดสร้างให้ 2 คน (ไม่มีอีเมล · nextAt +30 วัน)"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -13550,7 +13629,7 @@
       "expect": {
         "type": "mutation",
         "target": "action:addHolidayAction",
-        "db": "วันที่ว่าง/รูปแบบผิด = ข้อความไทยในหน้า ไม่เขียนอะไร"
+        "db": "AppSystem.settings (วันหยุด +1) · วันที่ว่าง/รูปแบบผิด = ข้อความไทยในหน้า ไม่เขียนอะไร"
       },
       "wo": "C2.2",
       "oracle": ""
@@ -13635,7 +13714,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13657,7 +13736,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-enroll",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13679,7 +13758,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-enroll",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13701,7 +13780,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-enroll",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13718,12 +13797,12 @@
       "expect": {
         "type": "mutation",
         "target": "action:enrollContactAction",
-        "db": "อยู่ในลำดับแล้ว = ข้อความไทยในหน้า (CONFLICT) · ขอไม่รับข่าวสาร = ไม่มีแถว"
+        "db": "CrmSequenceEnrollment +1 · อยู่ในลำดับแล้ว = ข้อความไทยในหน้า (CONFLICT) · ขอไม่รับข่าวสาร = ไม่มีแถว"
       },
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-enroll",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts/[contactId]",
@@ -13745,7 +13824,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-enroll",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13766,7 +13845,7 @@
       },
       "wo": "C2.2",
       "oracle": "",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13788,7 +13867,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13810,7 +13889,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13832,7 +13911,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13854,7 +13933,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13871,12 +13950,12 @@
       "expect": {
         "type": "mutation",
         "target": "action:bulkEnrollContactsAction",
-        "db": "ไม่ยืนยัน/เหตุผลสั้นกว่า 5 ตัวอักษร = ข้อความไทยในหน้า ไม่เขียนอะไรเลย (X9)"
+        "db": "CrmSequenceEnrollment (ผู้ติดต่อที่เลือก) · AuditLog crm.sequence.bulk_enroll · ไม่ยืนยัน/เหตุผลสั้นกว่า 5 ตัวอักษร = ข้อความไทยในหน้า ไม่เขียนอะไรเลย (X9)"
       },
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/contacts",
@@ -13898,7 +13977,7 @@
       "wo": "C2.2",
       "oracle": "",
       "opener": "crm-seq-bulk",
-      "needs": "ลำดับติดตาม (CrmSequence) ≥1 ลำดับในระบบนี้ — ซีดมี 0 (SequenceBulkEnroll ไม่แสดงเลยเมื่อไม่มีลำดับ)"
+      "needs": "ลำดับติดตามที่เปิดใช้ (active) ≥1 — ตัวกดสร้างให้เอง (qc-btn-seq-, ขั้นแรกรอ 30 วัน) · sequences.ts sequenceOptions แสดงเฉพาะ active:true"
     },
     {
       "page": "/settings/sequences/[sequenceId]",
@@ -14276,9 +14355,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-assign-cond-field-*",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.3",
       "oracle": "",
@@ -14297,9 +14377,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-assign-error",
-        "db": ""
+        "type": "ui",
+        "target": "crm-assign-cond-field-*",
+        "db": "",
+        "state": "count"
       },
       "wo": "C2.3",
       "oracle": "",
@@ -14342,9 +14423,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-assign-error",
-        "db": ""
+        "type": "ui",
+        "target": "crm-assign-editor",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.3",
       "oracle": "",
@@ -14407,9 +14489,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-assign-error",
-        "db": ""
+        "type": "ui",
+        "target": "crm-assign-delete-box",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.3",
       "oracle": "",
@@ -14642,19 +14725,15 @@
       "testid": "contact-phone-tel",
       "kind": "link",
       "roles": [],
-      "hiddenFor": [
-        "owner",
-        "manager",
-        "nok",
-        "thana"
-      ],
+      "hiddenFor": [],
       "expect": {
         "type": "navigate",
         "target": "tel:*",
         "note": "ลิงก์ tel: เปล่า (ไม่มีฟอร์มบันทึกสาย) — แสดงเฉพาะผู้ที่ไม่มีคีย์ crm.activity.create (คนที่มีคีย์เห็น crm-call-tel แทน) · ทุกบทบาทในซีดมีคีย์นี้ ⇒ ซ่อนสำหรับทุกคน"
       },
       "wo": "C4.2-fix",
-      "oracle": ""
+      "oracle": "",
+      "needs": "ผู้ใช้พนักงานที่ไม่มีคีย์ crm.activity.create (ลิงก์ tel: แทนฟอร์มบันทึกสาย — contacts/[contactId]/page.tsx) — ซีดไม่มีบุคคลแบบนี้ ⇒ ตรวจไม่ได้ (รอคำวินิจฉัย)"
     },
     {
       "page": "/deals/[dealId]",
@@ -15172,7 +15251,10 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)",
+      "opener": [
+        "crm-call-recording-pick=[recordingDel]"
+      ]
     },
     {
       "page": "/contacts/[contactId]",
@@ -15192,7 +15274,10 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "opener": "crm-call-recording-delete",
+      "opener": [
+        "crm-call-recording-pick=[recordingDel]",
+        "crm-call-recording-delete"
+      ],
       "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
@@ -15213,7 +15298,10 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "opener": "crm-call-recording-delete",
+      "opener": [
+        "crm-call-recording-pick=[recordingDel]",
+        "crm-call-recording-delete"
+      ],
       "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
@@ -15230,11 +15318,14 @@
       "expect": {
         "type": "mutation",
         "target": "op:crm.activity.create",
-        "db": "FileAsset ถูกลบ · CrmActivity.recordingFileId = null · AuditLog crm.activity.recording_remove"
+        "db": "AuditLog crm.activity.recording_remove · CrmActivity.recordingFileId ว่าง (สายของตัวกดชี้ไฟล์ที่ไม่มีในที่เก็บ ⇒ ไม่เรียกที่เก็บจริง)"
       },
       "wo": "C2.4",
       "oracle": "",
-      "opener": "crm-call-recording-delete",
+      "opener": [
+        "crm-call-recording-pick=[recordingDel]",
+        "crm-call-recording-delete"
+      ],
       "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
@@ -15255,7 +15346,10 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "opener": "crm-call-recording-delete",
+      "opener": [
+        "crm-call-recording-pick=[recordingDel]",
+        "crm-call-recording-delete"
+      ],
       "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
     },
     {
@@ -15761,9 +15855,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-email-rotate-reason",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
       "oracle": ""
@@ -16164,9 +16259,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-email-user-save",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
       "oracle": ""
@@ -16310,9 +16406,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-email-template-name",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
       "oracle": ""
@@ -16330,9 +16427,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-email-template-name",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
       "oracle": "",
@@ -16496,12 +16594,14 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-email-thread-msg",
-        "db": ""
+        "type": "ui",
+        "target": "crm-email-attach-contact-pick",
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
-      "oracle": ""
+      "oracle": "",
+      "opener": "crm-email-attach-contact-q=วรรณา"
     },
     {
       "page": "/emails/[threadKey]",
@@ -16537,9 +16637,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-email-rotate-key",
-        "db": ""
+        "type": "ui",
+        "target": "crm-email-rotate-reason",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.5",
       "oracle": "",
@@ -16558,9 +16659,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-email-user-overrides",
-        "db": ""
+        "type": "ui",
+        "target": "crm-email-user-save",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.5",
       "oracle": "",
@@ -16579,9 +16681,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-email-templates",
-        "db": ""
+        "type": "ui",
+        "target": "crm-email-template-name",
+        "db": "",
+        "state": "disappears"
       },
       "wo": "C2.5",
       "oracle": "",
@@ -16600,9 +16703,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-email-my-save",
-        "db": ""
+        "db": "",
+        "state": "appears"
       },
       "wo": "C2.5",
       "oracle": ""
@@ -17817,9 +17921,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-notify-msg",
-        "db": "ไม่มีการเขียน (สลับแท็บค่าของร้าน)"
+        "type": "ui",
+        "target": "crm-notify-tab-shop",
+        "db": "ไม่มีการเขียน (สลับแท็บค่าของร้าน)",
+        "state": "selected"
       },
       "wo": "C2.10",
       "oracle": "qc-crm-c2.10",
@@ -19611,8 +19716,9 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-portal-revoke-confirm-*"
+        "type": "ui",
+        "target": "crm-portal-revoke-confirm-*",
+        "state": "appears"
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
@@ -19826,8 +19932,9 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
-        "target": "portal-login-email"
+        "type": "ui",
+        "target": "portal-login-email",
+        "state": "appears"
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
@@ -19843,12 +19950,14 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
-        "target": "portal-line-login"
+        "type": "ui",
+        "target": "portal-login-email",
+        "state": "disappears"
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ตั้งค่าพอร์ทัลเปิดทั้งอีเมล OTP และ LINE (แท็บแสดงเฉพาะเมื่อเปิดทั้งสองวิธี)"
+      "needs": "ตั้งค่าพอร์ทัลเปิดทั้งอีเมล OTP และ LINE (แท็บแสดงเฉพาะเมื่อเปิดทั้งสองวิธี)",
+      "opener": "portal-login-tab-email=click"
     },
     {
       "page": "/b/[slug]/login",
@@ -20745,7 +20854,21 @@
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
-      "needs": "กฎค่าคอม (CrmCommissionRule) — ซีดมี 0 · แถว crm-commission-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน"
+      "needs": "กฎค่าคอม (CrmCommissionRule) — ซีดมี 0 · แถว crm-commission-rule-save ในกลุ่มเดียวกันสร้างให้ก่อน",
+      "variants": [
+        {
+          "name": "manager-disabled",
+          "roles": [
+            "manager"
+          ],
+          "expect": {
+            "type": "ui",
+            "target": "crm-commission-rule-row-*",
+            "state": "disabled",
+            "db": "ไม่กด — มองเห็นแต่ disabled (canManage = crm.settings.manage · ผู้จัดการไม่มีคีย์ตั้งค่า)"
+          }
+        }
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -20916,9 +21039,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-commission-rule-error",
-        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (ลบขั้นออกจากฟอร์ม)"
+        "type": "ui",
+        "target": "crm-commission-tier-upto-*",
+        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (ลบขั้นออกจากฟอร์ม)",
+        "state": "count"
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
@@ -20940,9 +21064,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-commission-rule-error",
-        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (เพิ่มขั้นก่อนขั้นส่วนที่เกิน)"
+        "type": "ui",
+        "target": "crm-commission-tier-upto-*",
+        "db": "ไม่มีการเขียนจนกด บันทึกกฎ (เพิ่มขั้นก่อนขั้นส่วนที่เกิน)",
+        "state": "count"
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
@@ -21090,9 +21215,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-commission-rules",
-        "db": "ไม่มีการเขียน (ปิดฟอร์ม)"
+        "type": "ui",
+        "target": "crm-commission-rule-save",
+        "db": "ไม่มีการเขียน (ปิดฟอร์ม)",
+        "state": "disappears"
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
@@ -21160,7 +21286,25 @@
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
       "needs": "ค่าคอมที่รออนุมัติ (CrmCommission status PENDING) — ซีดมี 0 (ไม่มีกฎค่าคอม ⇒ ไม่มีดีลที่คิดค่าคอม)",
-      "opener": "crm-commission-select-*=on"
+      "opener": "crm-commission-select-[commissionA]=on",
+      "variants": [
+        {
+          "name": "manager-over-cap",
+          "roles": [
+            "manager"
+          ],
+          "opener": "crm-commission-select-[commissionB]=on",
+          "expect": {
+            "type": "mutation",
+            "target": "op:crm.commission.approve",
+            "outcome": "refusal",
+            "resultTarget": "crm-commission-msg",
+            "refusalText": "เกินวงเงิน",
+            "db": "CrmCommission ไม่เปลี่ยน (ยอดเกินเพดาน crm._maxCommissionApproveSatang ของผู้กด — commissions.ts approve OVER_CAP_MSG)"
+          },
+          "note": "C4.2 it5 RV-4: ผู้จัดการมีเพดาน 1,000 บาท (fixture ของตัวกด) · ค่าคม B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของร้าน"
+        }
+      ]
     },
     {
       "page": "/settings/commissions",
@@ -21175,9 +21319,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-commission-reject-reason",
-        "db": "ไม่มีการเขียนจนยืนยัน (เปิดช่องเหตุผล)"
+        "db": "ไม่มีการเขียนจนยืนยัน (เปิดช่องเหตุผล)",
+        "state": "appears"
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
@@ -21240,9 +21385,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "crm-commission-pending",
-        "db": "ไม่มีการเขียน (ปิดช่องเหตุผล)"
+        "type": "ui",
+        "target": "crm-commission-reject-reason",
+        "db": "ไม่มีการเขียน (ปิดช่องเหตุผล)",
+        "state": "disappears"
       },
       "wo": "C3.3",
       "oracle": "qc-crm-c3.3",
@@ -21406,7 +21552,8 @@
         "db": "AppSystem.settings.crm.commission (jsonb_set คำสั่งเดียว) + AuditLog crm.commission.settings (before/after)"
       },
       "wo": "C3.3",
-      "oracle": "qc-crm-c3.3"
+      "oracle": "qc-crm-c3.3",
+      "opener": "crm-commission-setting-basis=*"
     },
     {
       "page": "/contacts/[contactId]",
@@ -21796,9 +21943,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn USAGE source CRM_ASSIST +1 แถว (note = id ล้วน) · ข้อความสรุปแสดงใน crm-ai-result"
+        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn USAGE source CRM_ASSIST +1 แถว (note = id ล้วน) · ข้อความสรุปแสดงใน crm-ai-result",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.1"
@@ -21815,9 +21963,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 · เหตุผลที่เสี่ยงแสดงใน crm-ai-result"
+        "db": "CrmDeal ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 · เหตุผลที่เสี่ยงแสดงใน crm-ai-result",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.2"
@@ -21855,9 +22004,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "ร่างเท่านั้น: CrmEmailMessage ไม่เพิ่ม · ไม่มีข้อเสนอส่ง · AiCreditTxn CRM_ASSIST +1"
+        "db": "ร่างเท่านั้น: CrmEmailMessage ไม่เพิ่ม · ไม่มีข้อเสนอส่ง · AiCreditTxn CRM_ASSIST +1",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.3"
@@ -21895,9 +22045,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "CrmContact ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1"
+        "db": "CrmContact ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.4"
@@ -21914,9 +22065,10 @@
       ],
       "hiddenFor": [],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "ร่างข้อความเท่านั้น (ไม่ส่ง) · AiCreditTxn CRM_ASSIST +1"
+        "db": "ร่างข้อความเท่านั้น (ไม่ส่ง) · AiCreditTxn CRM_ASSIST +1",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.4"
@@ -21934,9 +22086,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1"
+        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.4"
@@ -21954,9 +22107,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-ai-result",
-        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 (prompt อิงดีลที่ชนะ + รายการสินค้า)"
+        "db": "CrmCompany ไม่เปลี่ยน · AiCreditTxn CRM_ASSIST +1 (prompt อิงดีลที่ชนะ + รายการสินค้า)",
+        "state": "appears"
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S4.4"

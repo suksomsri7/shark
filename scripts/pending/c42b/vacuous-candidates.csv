@@ -1,0 +1,105 @@
+page,testid,device,hiddenFor,visibleRoles,why
+/companies,companies-page-prev,desktop,"nok,thana","owner,manager",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies,companies-page-prev,mobile,"nok,thana","owner,manager",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies,companies-page-next,desktop,"nok,thana","owner,manager",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies,companies-page-next,mobile,"nok,thana","owner,manager",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies/new,company-new-field-select,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-select,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-bool,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-bool,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-textarea,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-textarea,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-input,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-input,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/[companyId],company-merged-link,desktop,"nok,thana","owner,manager",บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของซีดไม่ถูกรวม
+/companies/[companyId],company-merged-link,mobile,"nok,thana","owner,manager",บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของซีดไม่ถูกรวม
+/companies/[companyId],company-parent-link,desktop,"nok,thana","owner,manager",บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ
+/companies/[companyId],company-parent-link,mobile,"nok,thana","owner,manager",บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ
+/companies/[companyId],company-subsidiary-link,desktop,"nok,thana","owner,manager",บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0
+/companies/[companyId],company-subsidiary-link,mobile,"nok,thana","owner,manager",บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0
+/companies/[companyId],company-outstanding-alert,desktop,"nok,thana","owner,manager",บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีดบัญชี
+/companies/[companyId],company-outstanding-alert,mobile,"nok,thana","owner,manager",บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีดบัญชี
+/companies/[companyId],company-doc-link,desktop,"nok,thana","owner,manager",เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี
+/companies/[companyId],company-doc-link,mobile,"nok,thana","owner,manager",เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี
+/companies/new,company-new-restore-reason,desktop,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-reason,mobile,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-confirm,desktop,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-confirm,mobile,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-submit,desktop,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-submit,mobile,"nok,thana","owner,manager",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/deals,deals-empty-create-pipeline,desktop,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline
+/deals,deals-empty-create-pipeline,mobile,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline
+/deals/new,deal-new-create-pipeline,desktop,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipeline
+/deals/new,deal-new-create-pipeline,mobile,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipeline
+/settings/pipelines,pl-restore-*,desktop,"manager,nok,thana",owner,pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0
+/settings/pipelines,pl-restore-*,mobile,"manager,nok,thana",owner,pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0
+/settings/stages,settings-stages-create-link,desktop,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2
+/settings/stages,settings-stages-create-link,mobile,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2
+/activities,activity-row-company-link,desktop,"nok,thana","owner,manager",กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด
+/activities,activity-row-company-link,mobile,"nok,thana","owner,manager",กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด
+/app/settings/teams,team-restore,desktop,"manager,nok,thana",owner,ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแถวทำลายล้าง)
+/app/settings/teams,team-restore,mobile,"manager,nok,thana",owner,ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแถวทำลายล้าง)
+/settings/objects,objects-archived-toggle,desktop,"manager,nok,thana",owner,วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/settings/objects,objects-archived-toggle,mobile,"manager,nok,thana",owner,วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/settings/objects,object-restore-btn,desktop,"manager,nok,thana",owner,วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/settings/objects,object-restore-btn,mobile,"manager,nok,thana",owner,วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/objects/[key],object-page-prev,desktop,"nok,thana","owner,manager",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-page-prev,mobile,"nok,thana","owner,manager",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-page-next,desktop,"nok,thana","owner,manager",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-page-next,mobile,"nok,thana","owner,manager",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-record-new-btn,desktop,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-new-btn,mobile,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-form,desktop,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-form,mobile,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-field-*,desktop,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-field-*,mobile,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-cancel,desktop,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-cancel,mobile,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-save,desktop,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/objects/[key],object-record-save,mobile,"nok,thana","owner,manager",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)
+/contacts/[contactId],crm-object-tab-obj-*,desktop,"nok,thana","owner,manager",Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซีด
+/contacts/[contactId],crm-object-tab-obj-*,mobile,"nok,thana","owner,manager",Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซีด
+/objects/[key],object-view-delete,desktop,"nok,thana","owner,manager",มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน
+/objects/[key],object-view-delete,mobile,"nok,thana","owner,manager",มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน
+/objects,objects-index-settings-link,desktop,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'
+/objects,objects-index-settings-link,mobile,"manager,nok,thana",owner,ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'
+/app/sys/[id],crm-hub-switch-link,desktop,"manager,nok,thana",owner,ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2
+/app/sys/[id],crm-hub-switch-link,mobile,"manager,nok,thana",owner,ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2
+/contacts/import,crm-import-to-duplicates,desktop,"nok,thana","owner,manager",ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ ไม่มีลิงก์นี้)
+/contacts/import,crm-import-to-duplicates,mobile,"nok,thana","owner,manager",ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ ไม่มีลิงก์นี้)
+/contacts/[contactId],crm-merge-choice,desktop,"nok,thana","owner,manager",ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก (ตารางเลือกค่าโผล่หลังเลือกคน)
+/contacts/[contactId],crm-merge-choice,mobile,"nok,thana","owner,manager",ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก (ตารางเลือกค่าโผล่หลังเลือกคน)
+/app/sys/[id],crm-panel-deal,desktop,"nok,thana","owner,manager",ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด
+/app/sys/[id],crm-panel-retry,desktop,"nok,thana","owner,manager",แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้
+/settings/assignment,crm-assign-sim-field,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/settings/assignment,crm-assign-sim-field,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/settings/assignment,crm-assign-sim-field-value,desktop,"nok,thana","owner,manager",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/settings/assignment,crm-assign-sim-field-value,mobile,"nok,thana","owner,manager",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/emails/[threadKey],crm-email-show-images,desktop,"nok,thana","owner,manager",อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)
+/emails/[threadKey],crm-email-show-images,mobile,"nok,thana","owner,manager",อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)
+/emails/[threadKey],crm-email-attachment,desktop,"nok,thana","owner,manager",อีเมลในเธรดที่มีไฟล์แนบ
+/emails/[threadKey],crm-email-attachment,mobile,"nok,thana","owner,manager",อีเมลในเธรดที่มีไฟล์แนบ
+/settings/email,crm-email-domain-refresh,desktop,"nok,thana","owner,manager",โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODULE_GUARD (Resend จริง)
+/settings/email,crm-email-domain-refresh,mobile,"nok,thana","owner,manager",โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODULE_GUARD (Resend จริง)
+/app/sys/[id]/pos/register,pos-deal-select,desktop,"nok,thana","owner,manager",บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่มองเห็น)
+/app/sys/[id]/pos/register,pos-deal-select,mobile,"nok,thana","owner,manager",บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่มองเห็น)
+/app/sys/[id],crm-home-stale-banner,desktop,"nok,thana","owner,manager",ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0
+/app/sys/[id],crm-home-stale-banner,mobile,"nok,thana","owner,manager",ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0
+/app/sys/[id]/member/members,member-view-team,desktop,"nok,thana","owner,manager",เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูลสมาชิก (ไม่อยู่ในทะเบียน CRM) และชิปขอบเขตไม่มี data-testid
+/app/sys/[id]/member/members,member-view-team,mobile,"nok,thana","owner,manager",เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูลสมาชิก (ไม่อยู่ในทะเบียน CRM) และชิปขอบเขตไม่มี data-testid
+/settings,crm-export-download,desktop,"manager,nok,thana",owner,งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานที่แถว crm-export-start-* สร้างต้องรอตัวทำงานเบื้องหลัง
+/settings,crm-export-download,mobile,"manager,nok,thana",owner,งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานที่แถว crm-export-start-* สร้างต้องรอตัวทำงานเบื้องหลัง
+/app/sys/[id],crm-ai-proposal-next-step-input,desktop,"nok,thana","owner,manager",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)
+/app/sys/[id],crm-ai-proposal-next-step-input,mobile,"nok,thana","owner,manager",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)
+/app/sys/[id],crm-ai-proposal-deal-*,desktop,"nok,thana","owner,manager",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)
+/app/sys/[id],crm-ai-proposal-deal-*,mobile,"nok,thana","owner,manager",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)
+/settings,crm-settings-team-room,desktop,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room,mobile,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-team,desktop,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-team,mobile,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-channel,desktop,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-channel,mobile,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-save,desktop,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-save,mobile,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)
+/settings,crm-settings-team-room-remove-*,desktop,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง) + การผูกห้องที่บันทึกแล้ว
+/settings,crm-settings-team-room-remove-*,mobile,"manager,nok,thana",owner,ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง) + การผูกห้องที่บันทึกแล้ว

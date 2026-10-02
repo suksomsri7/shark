@@ -154,8 +154,11 @@ type Row = {
   hiddenFor: string[];
   expect: {
     type: string; target?: string; db?: string;
-    anyOf?: string[]; resultTarget?: string; state?: "appears" | "disappears" | "changes" | "selected"; dropTarget?: string; note?: string;
+    anyOf?: string[]; resultTarget?: string; state?: "appears" | "disappears" | "changes" | "selected" | "count" | "disabled"; dropTarget?: string; note?: string;
+    outcome?: "refusal"; refusalText?: string; // it5 (RV-3/RV-7): the expected result IS a server refusal (new alert matching refusalText)
   };
+  variants?: { name?: string; roles: string[]; opener?: string | string[]; expect: Row["expect"]; note?: string }[]; // it5 (RV-7)
+  onlyHiddenFor?: Record<string, string[]>; // it5 (RV-11c): per-`only`-name extra hiddenFor (one menu, items gated by different keys)
   wo?: string;
   oracle?: string;
   system?: string;
@@ -214,15 +217,17 @@ const CROSS_MODULE_GUARD = new Map<string, string>([
   ["crm-call-ai-transcribe", "ถอดเสียงด้วย AI จริง (เครดิต AI)"],
   ["crm-files-input", "อัปโหลดไฟล์ขึ้นที่เก็บไฟล์จริง (Bunny)"],
   ["portal-slip-upload", "อัปโหลดสลิปขึ้นที่เก็บไฟล์จริง"],
+  // it5 (RV-4 H): the file-link fixture points at an object that does not exist on the storage (no upload allowed) ⇒ opening it can
+  //   only 404 — the private-link signing/serving is covered by the storage suites (see wo-notes it5 waiver table)
+  ["crm-files-open", "เปิดไฟล์ส่วนตัวจากที่เก็บจริง — fixture ไม่มีวัตถุบนที่เก็บ (ห้ามอัปโหลด)"],
   ["crm-home-ai-draft", "ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิดใช้ — ปิดไว้ถาวรใน HomeAside) · ตรวจแค่มองเห็น/hiddenLeak"],
   ["crm-home-ai-summary", "ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิดใช้ — ปิดไว้ถาวรใน HomeAside) · ตรวจแค่มองเห็น/hiddenLeak"],
   // emails.ts addDomain() POSTs the domain to the real Resend account (providerId) — the snapshot removes the EmailDomain
   // row but not the domain registered at the provider
   ["crm-email-domain-add", "ลงทะเบียนโดเมนผู้ส่งกับ Resend จริง (คืนค่าฝั่งผู้ให้บริการไม่ได้)"],
-  // 🔴 it2 incident (27 Sep 19:07): the PDPA erase flag is an AuditLog row (erased.ts — crm.contact.erase), and the runner
-  //    does not (and must not) delete audit history ⇒ the snapshot cannot undo an erase; the seed's representative contact
-  //    stayed "erased" on QC1 (every write to it refused). Never press it again.
-  ["contact-privacy-erase-submit", "ลบข้อมูลส่วนบุคคล PDPA จริง — ธงถูกลบอยู่ใน AuditLog (crm.contact.erase) ซึ่ง snapshot คืนไม่ได้ (เหตุการณ์ it2 27 ก.ย.)"],
+  // it5 (RV-1 · ruling §11(b)): `contact-privacy-erase-submit` is NO LONGER guarded — the it2 incident (27 Sep: the seed contact
+  //    stayed "erased" because the flag is an AuditLog row the snapshot cannot undo) is prevented by the AUDIT-STATE throwaway:
+  //    every erase row opens a runner-owned contact (one per user×viewport, deleted in CLEAN), never a seed contact (buildPlan).
   // portal writes into the ACCOUNT ledger, which SNAP_MODELS does not cover
   ["portal-quote-confirm-submit", "ตอบรับ/ปฏิเสธใบเสนอราคาในระบบบัญชี (AccountDocument.status — snapshot ไม่ครอบตารางบัญชี)"],
   ["portal-pay-promptpay", "ออกคำขอชำระเงิน PromptPay ในระบบบัญชี (AccountPaymentRequest — snapshot ไม่ครอบตารางบัญชี)"],
@@ -246,7 +251,7 @@ const DESTRUCTIVE_RE = /(archive|delete|merge|erase|remove|revoke|convert|lost-c
 // side) ⇒ the repair after them is a FULL restore (new rows deleted too), not keepNew
 //   it4-A: + teams-create-form/-submit — the new team becomes the SELECTED team of /app/settings/teams (newest first) and
 //   has no members ⇒ run2 owner team-member-remove-cancel "opener missing" · team-member-add-* refused (TeamsManager.tsx)
-const FULL_REPAIR_RE = /(convert-(submit|done)|^teams-create-(form|submit))$/;
+const FULL_REPAIR_RE = /(convert-(submit|done)|^teams-create-(form|submit)|^crm-seq-(enroll|bulk)-(form|submit)|^crm-seq-holiday-form)$/; // it5: an enrolment / a holiday made by the form row would make the submit row a duplicate
 // it4-A OWNERSHIP rows — hand the OPEN entity to someone else; a persona whose visibility is TEAM-scoped loses the page
 //   (run2 manager /deals/[dealId]: deal-owner-select picked the first other owner ⇒ every later row on that page 404,
 //   33 "dead"; dealWhere is correct to hide it) ⇒ repaired right after (keepNew: the entity's own row is written back)
@@ -486,7 +491,7 @@ function pageUrl(row: Row, ctx: Ctx): { path: string | null; reason: string | nu
     // it4-A (C5.4-E): the lifecycle-correction rows open the runner-owned CUSTOMER company without a won deal (see createExtraFixtures)
     companyId: LIFECYCLE_ROW_RE.test(row.testid) ? (ctx.lifecycleCompanyId ?? (DRY ? "dry-lifecycle-company" : null)) : ctx.companyId,
     recordId: ctx.recordId, key: ctx.objectKey, partyId: ctx.partyId, slug: row.page.startsWith("/p/") ? ctx.pageSlug : ctx.slug,
-    token: ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
+    token: row.page.startsWith("/u/") ? (XCTX.get("unsubToken") ?? (DRY ? "dry-unsub~token" : null)) : row.page.includes("/invite/[token]") ? (XCTX.get("inviteToken") ?? (DRY ? "dry-invite-token-xxxxxxxxxxxxxxxx" : null)) : ctx.token, docType: ctx.docType, docId: ctx.docId, conversationId: ctx.conversationId,
     unitId: ctx.unitId, sequenceId: ctx.sequenceId, unlinkedConversationId: ctx.unlinkedConversationId,
     // it4-A (dbg2): the attach-to-contact search exists only on a thread without a contact (emails/[threadKey]/page.tsx `canAttach: !contactId`)
     threadKey: ATTACH_ROW_RE.test(row.testid) ? (ctx.attachThreadKey ?? (DRY ? "dry-attach-thread" : null)) : ctx.threadKey,
@@ -511,6 +516,7 @@ type PlanItem = {
   opener: string[]; // C4.2 — chain to press first
   needs: string | null; // C4.2 — data precondition
   idx: number; // registry order (fill rows before their submit — PREFILL relies on it)
+  variant?: string; // it5 (RV-7): set when this item is a row variant
 };
 type SkipEntry = { page: string; testid: string; reason: string };
 
@@ -536,6 +542,7 @@ function ownedElsewhere(pattern: string): string[] {
 // Known residual (not a fixture yet): crm.deal.reassign audit rows count toward a per-actor daily cross-team cap.
 const AUDIT_STATE_ROWS = new Set(["contact-privacy-erase", "contact-privacy-erase-reason", "contact-privacy-erase-confirm", "contact-privacy-erase-submit", "contact-privacy-erase-cancel"]);
 const THROWAWAY = new Map<string, string>(); // `${user}|${device}` → CrmContact id
+const THROWAWAY_IDS = () => new Set(THROWAWAY.values());
 async function createThrowaways(): Promise<void> {
   const owner = (E.users?.owner?.userId as string | undefined) ?? null;
   for (const u of userKeys) for (const [d] of VIEWPORTS) {
@@ -657,6 +664,10 @@ const LIFECYCLE_ROW_RE = /^company-lifecycle-correct(-|$)/;
 //     whoever sees the company (emails.ts rowVisibleFilter) — a fully unlinked row would need the unmatched gate instead.
 const ATTACH_ROW_RE = /^crm-email-attach-contact-/;
 const XFIX: { model: string; id: string }[] = [];
+// it5 (RV-4): runner-fixture ids usable as `[name]` placeholders in openers/variants (`name|user` wins over `name`)
+const XCTX = new Map<string, string>();
+const xctx = (name: string, user: string): string | null => XCTX.get(`${name}|${user}`) ?? XCTX.get(name) ?? null;
+function resolveOpener(o: string, user: string): string { return o.replace(/\[([a-zA-Z]+)\]/g, (m, k: string) => xctx(k, user) ?? (DRY ? `dry-${k}` : m)); }
 const PREFER_IDS: string[] = [];
 const selRow = (re: RegExp) => ROWS.some((r) => re.test(r.testid) && pageSelected(r.page));
 async function createExtraFixtures(ctx: Ctx): Promise<void> {
@@ -673,16 +684,27 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
     }
     PICKS.push({ user: "*", entity: "emptyPipeline/Stage", id: pipe.id, why: "pipeline ว่าง + ขั้นว่างใน pipeline หลักของตัวกด (qc-btn-empty-) — แถว pl-archive-* / st-* กดตัวนี้" });
   }
-  if (ROWS.some((r) => r.page.includes("[sequenceId]") && pageSelected(r.page))) {
-    const seq = await P.crmSequence.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-seq-${rand}`, version: 2, createdById: ownerUid,
+  // it5 (RV-4 F · RV-12): the fixture sequence is ACTIVE (enrol pick/bulk pick list only active sequences — sequences.ts
+  //   sequenceOptions) and its current version STARTS WITH A 30-day WAIT ⇒ an enrolment made by a press is due in 30 days, never
+  //   now (no e-mail can leave before the restore deletes it). Two enrolments on runner contacts WITHOUT an e-mail address
+  //   (ACTIVE + PAUSED, nextAt +30 d — resume keeps nextAt, sequences.ts resume) give the pause/resume/stop rows something to act on.
+  if (ROWS.some((r) => (r.page.includes("[sequenceId]") || /^crm-seq-(enroll|bulk|enr-)/.test(r.testid)) && pageSelected(r.page))) {
+    const seq = await P.crmSequence.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-seq-${rand}`, version: 2, createdById: ownerUid, active: true,
       steps: { create: [
         { tenantId: TENANT, version: 1, index: 0, kind: "EMAIL", subject: "qc-btn v1 {{contact.firstName}}", body: "qc-btn v1" },
-        { tenantId: TENANT, version: 2, index: 0, kind: "EMAIL", subject: "qc-btn v2 {{contact.firstName}}", body: "qc-btn v2" },
-        { tenantId: TENANT, version: 2, index: 1, kind: "WAIT", waitDays: 3 },
+        { tenantId: TENANT, version: 2, index: 0, kind: "WAIT", waitDays: 30 },
+        { tenantId: TENANT, version: 2, index: 1, kind: "EMAIL", subject: "qc-btn v2 {{contact.firstName}}", body: "qc-btn v2" },
       ] } }, select: { id: true } });
     XFIX.push({ model: "crmSequence", id: seq.id });
     ctx.sequenceId = seq.id;
-    PICKS.push({ user: "*", entity: "sequence", id: seq.id, why: "ลำดับของตัวกด 2 เวอร์ชัน (qc-btn-seq-) — ซีดไม่มีลำดับ · ตัวเลือกเวอร์ชันมี 2 ค่า" });
+    const later = new Date(Date.now() + 30 * 86_400_000);
+    for (const st of ["ACTIVE", "PAUSED"] as const) {
+      const c = await P.crmContact.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-enr-${rand}-${st.toLowerCase()}`, ownerUserId: ownerUid }, select: { id: true } });
+      const en = await P.crmSequenceEnrollment.create({ data: { tenantId: TENANT, sequenceId: seq.id, contactId: c.id, enrolledById: ownerUid, enrolledBy: `USER:${ownerUid}`, sequenceVersion: 2, stepIndex: 0, nextAt: later, status: st }, select: { id: true } });
+      XFIX.push({ model: "crmSequenceEnrollment", id: en.id }, { model: "crmContact", id: c.id }); PREFER_IDS.push(en.id);
+      XCTX.set(`enrollment${st === "ACTIVE" ? "Active" : "Paused"}`, en.id);
+    }
+    PICKS.push({ user: "*", entity: "sequence", id: seq.id, why: "ลำดับของตัวกด (qc-btn-seq-) 2 เวอร์ชัน · เปิดใช้ · ขั้นแรกรอ 30 วัน + ผู้อยู่ในลำดับ 2 คน (ACTIVE · PAUSED, ไม่มีอีเมล)" });
   }
   if (selRow(/^crm-home-source-row-/)) {
     const c = await P.crmContact.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-lead-${rand}`, ownerUserId: ownerUid }, select: { id: true } });
@@ -764,14 +786,141 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
       PICKS.push({ user: u, entity: "contactActivity", id: act.id, why: `กิจกรรมค้างผูกผู้ติดต่อ ${cid} ไม่ผูกดีล (qc-btn-act-) เจ้าของ = บทบาทนี้ — ซีดมีเฉพาะของ manager` });
     }
   }
+  // ── it5 (RV-4) money/permission fixtures — every row below is runner-owned, created BEFORE the snapshot, deleted in CLEAN ──
+  const { createHash } = await import("node:crypto");
+  const sha256hex = (x: string) => createHash("sha256").update(x).digest("hex");
+  // A. commissions (/settings/commissions): two PENDING rows on the shared deal pick (visible to owner AND manager), credited to
+  //    nok (NO payroll profile — facts13: thana has one ⇒ an approval would write HR's HrPayAdjustment, which the snapshot does not
+  //    cover) · A = 10 baht (approve/reject rows) · B = 500,000 baht with an approvalRequestId placeholder so an over-cap press never
+  //    escalates (commissions.ts approve: `if (!row.approvalRequestId) await escalateOnce(…)` = notify owners) — the manager's
+  //    over-cap refusal is a row VARIANT (cap fixture below).
+  if (selRow(/^crm-commission-(select|approve|reject)/)) {
+    const rule = await P.crmCommissionRule.findFirst({ where: { systemId: SYS }, orderBy: { createdAt: "asc" }, select: { id: true, basis: true } });
+    const nokUid = (E.users?.nok?.userId as string | undefined) ?? null;
+    const dealId = ctxForUser(ctx, "owner").dealId ?? ctx.dealId;
+    if (rule && nokUid && dealId) {
+      for (const [k, amt] of [["A", 1_000], ["B", 50_000_000]] as const) {
+        const c = await P.crmCommission.create({ data: { tenantId: TENANT, systemId: SYS, dealId, ruleId: rule.id, userId: nokUid, amountSatang: BigInt(amt), basisSatang: BigInt(amt * 10), basis: rule.basis, status: "PENDING", periodKey: today().slice(0, 7), refId: `qc-btn-${rand}-${k}`, note: `qc-btn-commission-${rand}-${k}`, ...(k === "B" ? { approvalRequestId: `qc-btn-noapproval-${rand}` } : {}) }, select: { id: true } });
+        XFIX.push({ model: "crmCommission", id: c.id }); PREFER_IDS.push(c.id); XCTX.set(`commission${k}`, c.id);
+      }
+      PICKS.push({ user: "*", entity: "commissions", id: XCTX.get("commissionA") ?? null, why: `ค่าคอม PENDING ของตัวกด 2 แถว (A 10 บาท · B 500,000 บาท ผูกคำขออนุมัติหลอก ⇒ ไม่แจ้งเจ้าของ) ของ nok บนดีล ${dealId}` });
+    } else note("commissions", `ไม่มีกฎค่าคอม/ผู้ใช้ nok/ดีล — แถวอนุมัติ/ไม่อนุมัติค่าคอมข้าม`);
+    // per-manager cap (Membership.permissions["crm._maxCommissionApproveSatang"], key-caps.ts crmCapFor) — 1,000 baht for the run,
+    //   original written to CAP_FILE first (crash-heal at the next start) and restored in CLEAN
+    if (userKeys.includes("manager")) await applyCapFixture();
+  }
+  // B. portal change request (company 360 · CrmPortalAccessPanel `canDecide: !r.kanbanCardId`): ISSUE (route CARD ⇒ decided
+  //    directly, portal.ts decideRequest — no approval chain) · PENDING · no kanban card, on the shared company pick
+  if (selRow(/^crm-portal-request-(approve|reject)-/) && ctx.companyId && ctx.contactId) {
+    const r = await P.crmPortalRequest.create({ data: { tenantId: TENANT, systemId: SYS, companyId: ctx.companyId, contactId: ctx.contactId, kind: "ISSUE", payload: { title: `qc-btn-req-${rand}`, body: "qc-btn portal request (C4.2 runner)" }, status: "PENDING" }, select: { id: true } });
+    XFIX.push({ model: "crmPortalRequest", id: r.id }); PREFER_IDS.push(r.id); XCTX.set("portalRequest", r.id);
+    PICKS.push({ user: "*", entity: "portalRequest", id: r.id, why: `คำขอพอร์ทัล ISSUE PENDING ของตัวกด (qc-btn-req-) บนบริษัท ${ctx.companyId}` });
+  }
+  // C. unowned OPEN deal on the CRM home (home-data.ts unownedOf: ownerUserId null) — a clone of the shared deal pick, same team
+  //    (so the unit-scoped manager sees it); QC1 has 0 unowned open deals, so the submit (which transfers EVERY listed deal) moves
+  //    only this one. Visibility proved through the product's dealWhere for owner/manager.
+  if (selRow(/^crm-home-unowned-/)) {
+    const src = ctxForUser(ctx, "owner").dealId ?? ctx.dealId;
+    const row = src ? await P.crmDeal.findUnique({ where: { id: src } }) : null;
+    if (row) {
+      const data = toData("CrmDeal", row);
+      for (const k of ["id", "createdAt", "updatedAt", "quotationDocId", "invoiceDocId", "kanbanCardId", "pendingLines", "pendingApprovalRequestId", "lostReasonId", "lostReason", "closedAt", "wonValueSatang"]) delete data[k];
+      const d = await P.crmDeal.create({ data: { ...data, title: `qc-btn-unowned-${rand}`, kind: "OPEN", ownerUserId: null, paidSatang: BigInt(0) }, select: { id: true } });
+      XFIX.push({ model: "crmDeal", id: d.id }); PREFER_IDS.push(d.id); XCTX.set("unownedDeal", d.id);
+      for (const u of ["owner", "manager"]) {
+        if (!userKeys.includes(u)) continue;
+        let ok = false;
+        try { const who = await actorOf(u); if (who) { const W = (await import("@/lib/modules/crm/where" as string)) as Any; ok = !!(await P.crmDeal.findFirst({ where: { AND: [await W.dealWhere({ tenantId: TENANT, systemId: SYS, actorUserId: who.uid }, who.actor), { id: d.id }] }, select: { id: true } })); } } catch { ok = false; }
+        PICKS.push({ user: u, entity: "unownedDeal", id: d.id, why: `ดีลเปิดไม่มีผู้ดูแลของตัวกด (qc-btn-unowned-) ทีมเดียวกับ ${src} · dealWhere ของ product ${ok ? "ยอมรับ" : "❌ ไม่ยอมรับ"}` });
+      }
+    }
+  }
+  // D. /u/[token] (one-click unsubscribe + no-track): token = "<emailId>~<anything>" · stored as routing.unsub = sha256("crm.email.u:"+token)
+  //    on a SENT message (emails.ts messageOfToken compares the stored hash — it never recomputes the HMAC) of a runner contact
+  if (ROWS.some((r) => r.page.startsWith("/u/") && pageSelected(r.page))) {
+    const c = await P.crmContact.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-unsub-${rand}`, email: `qc-btn-unsub-${rand}@example.com`, ownerUserId: ownerUid }, select: { id: true } });
+    XFIX.push({ model: "crmContact", id: c.id });
+    const m = await P.crmEmailMessage.create({ data: { tenantId: TENANT, systemId: SYS, contactId: c.id, direction: "OUT", messageId: `<qc-btn-unsub-${rand}@example.com>`, threadKey: `qcbtnunsub${rand}`,
+      fromAddr: "sales@example.com", fromName: "qc-btn", toAddrs: [`qc-btn-unsub-${rand}@example.com`], subject: `qc-btn-unsub ${rand}`, bodyText: "qc-btn unsubscribe fixture (C4.2 runner)", snippet: "qc-btn", status: "SENT", sentAt: new Date(), trackTokenHash: sha256hex(`qc-btn-unsub-open-${rand}`) }, select: { id: true } });
+    const token = `${m.id}~qcbtn${rand}${"x".repeat(24)}`;
+    await P.crmEmailMessage.update({ where: { id: m.id }, data: { routing: { unsub: sha256hex(`crm.email.u:${token}`) } } });
+    XFIX.unshift({ model: "crmEmailMessage", id: m.id }); // before its contact
+    XCTX.set("unsubToken", token); XCTX.set("unsubContact", c.id);
+    PICKS.push({ user: "*", entity: "unsubToken", id: m.id, why: `จดหมาย SENT ของตัวกด + token ยกเลิกรับ (routing.unsub) ของผู้ติดต่อ ${c.id}` });
+  }
+  // E. /b/[slug]/invite/[token]: CrmPortalAccess.inviteTokenHash = sha256hex(raw 22–200 chars) · inviteExpiresAt +1 day (portal.ts
+  //    acceptInvite) for a runner contact linked to the shared company (CrmCompanyContact) — no mail is sent on accept
+  if (ROWS.some((r) => r.page.includes("/invite/[token]") && pageSelected(r.page)) && ctx.companyId) {
+    const c = await P.crmContact.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-invitee-${rand}`, email: `qc-btn-invitee-${rand}@example.com`, ownerUserId: ownerUid }, select: { id: true } });
+    const link = await P.crmCompanyContact.create({ data: { tenantId: TENANT, companyId: ctx.companyId, contactId: c.id, role: "OTHER" }, select: { id: true } });
+    const raw = `qcbtninvite${rand}${"y".repeat(24)}`;
+    const acc = await P.crmPortalAccess.create({ data: { tenantId: TENANT, systemId: SYS, companyId: ctx.companyId, contactId: c.id, role: "VIEW", invitedById: ownerUid, invitedAt: new Date(), inviteTokenHash: sha256hex(raw), inviteExpiresAt: new Date(Date.now() + 86_400_000) }, select: { id: true } });
+    XFIX.push({ model: "crmPortalAccess", id: acc.id }, { model: "crmCompanyContact", id: link.id }, { model: "crmContact", id: c.id });
+    XCTX.set("inviteToken", raw); XCTX.set("inviteAccess", acc.id);
+    PICKS.push({ user: "customer", entity: "inviteToken", id: acc.id, why: `คำเชิญพอร์ทัลของตัวกด (ผู้ติดต่อ qc-btn-invitee-) บนบริษัท ${ctx.companyId} หมดอายุพรุ่งนี้` });
+  }
+  // G/H. call recording + file link on each persona's contact (owned/uploaded by the persona that opens it — staff may only delete
+  //    their own, calls.ts removeRecording / files.ts removeFile). DELETE targets point at a FileAsset id that does NOT exist
+  //    (storage/service.ts deleteFileAsset: no asset ⇒ ok, no storage call); the "play" call has a FileAsset row (fake path) so the
+  //    player opens — listening then reads the storage (read-only GET, not a write).
+  if (selRow(/^crm-call-recording-|^crm-files-remove/)) {
+    const seen = new Set<string>();
+    for (const u of userKeys) {
+      if (u.startsWith("customer")) continue;
+      const cu = ctxForUser(ctx, u); const cid = cu.contactId; if (!cid) continue;
+      if (!seen.has(cid)) {
+        seen.add(cid);
+        const own = await P.crmContact.findUnique({ where: { id: cid }, select: { ownerUserId: true } });
+        const ownerOf = own?.ownerUserId ?? ownerUid;
+        // file ids that no FileAsset has must still LOOK valid (private-links.ts FILE_ASSET_ID_RE /^[a-z0-9]{16,40}$/i) — dbg9:
+        //   "qc-btn-nofile-…" made privateFileUrl throw ⇒ the whole contact page answered 500
+        const fa = await P.fileAsset.create({ data: { tenantId: TENANT, kind: "ATTACHMENT", path: `t/${TENANT}/private/qc-btn-${rand}-${seen.size}.mp3`, cdnUrl: "", contentType: "audio/mpeg", bytes: 1 }, select: { id: true } });
+        const play = await P.crmActivity.create({ data: { tenantId: TENANT, systemId: SYS, contactId: cid, dealId: cu.dealId, type: "CALL", title: `qc-btn-call-play-${rand}`, ownerUserId: ownerOf, startAt: new Date(), doneAt: new Date(), recordingFileId: fa.id }, select: { id: true } });
+        const del = await P.crmActivity.create({ data: { tenantId: TENANT, systemId: SYS, contactId: cid, dealId: cu.dealId, type: "CALL", title: `qc-btn-call-del-${rand}`, ownerUserId: ownerOf, startAt: new Date(Date.now() - 86_400_000), doneAt: new Date(Date.now() - 86_400_000), recordingFileId: `qcbtnnofile${rand}r${seen.size}` }, select: { id: true } });
+        const fl = await P.crmFileLink.create({ data: { tenantId: TENANT, systemId: SYS, entityType: "CONTACT", entityId: cid, fileId: `qcbtnnofile${rand}f${seen.size}`, name: `qc-btn-file-${rand}.txt`, size: 1, mime: "text/plain", uploadedById: ownerOf }, select: { id: true } });
+        XFIX.push({ model: "crmActivity", id: play.id }, { model: "crmActivity", id: del.id }, { model: "fileAsset", id: fa.id }, { model: "crmFileLink", id: fl.id });
+        PREFER_IDS.push(fl.id);
+        XCTX.set(`recordingDel|${cid}`, del.id);
+      }
+      const d = XCTX.get(`recordingDel|${cid}`); if (d) XCTX.set(`recordingDel|${u}`, d);
+    }
+    PICKS.push({ user: "*", entity: "recordings+files", id: null, why: `สาย 2 รายการ (มีไฟล์เสียงหลอก 1 · ไฟล์ที่ไม่มีในที่เก็บ 1) + ลิงก์ไฟล์ที่ไม่มีในที่เก็บ 1 ต่อผู้ติดต่อของแต่ละบทบาท (${seen.size}) — ลบได้โดยไม่แตะที่เก็บจริง` });
+  }
+  // it5 (RV-8): two INACTIVE assignment rules (inactive = never route a real lead) — move-up/-down are disabled at the list ends
+  //   (CrmAssignmentManager.tsx `disabled={busy || i === 0}`); with ≥2 rules the middle buttons act · edit/toggle/delete get a row
+  if (selRow(/^crm-assign-rule-(move-up|move-down|edit|toggle|delete)-/)) {
+    const ownerU = (E.users?.owner?.userId as string | undefined) ?? null;
+    for (const k of ["a", "b"]) {
+      const r = await P.crmAssignmentRule.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-assign-${rand}-${k}`, conditions: { mode: "all", items: [] }, mode: "FIXED", userIds: ownerU ? [ownerU] : [], active: false, sortOrder: 900 + (k === "a" ? 0 : 1) }, select: { id: true } });
+      XFIX.push({ model: "crmAssignmentRule", id: r.id }); PREFER_IDS.push(r.id);
+    }
+    PICKS.push({ user: "*", entity: "assignmentRules", id: null, why: "กฎแจกงาน 2 กฎของตัวกด (qc-btn-assign-, ปิดใช้งาน) — ซีดมี 0 ⇒ ปุ่มเลื่อนขึ้น/ลงถูก disabled" });
+  }
+  // it5 (RV-8): object-edit-key is `disabled={item.recordCount > 0}` (ObjectsAdmin.tsx) and every seed object has records ⇒ an
+  //   EMPTY runner-owned object listed FIRST (sortOrder below the seed; list = sortOrder asc, createdAt asc · objects.ts listObjects)
+  if (selRow(/^object-edit-key$/)) {
+    const minSort = await P.customObject.aggregate({ where: { systemId: SYS }, _min: { sortOrder: true } }).then((a: Any) => a._min.sortOrder ?? 0).catch(() => 0);
+    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key: `qcbtn${rand}`, label: `qc-btn-obj-${rand}`, labelPlural: `qc-btn-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: minSort - 1, recordCount: 0 }, select: { id: true } });
+    XFIX.push({ model: "customObject", id: o.id }); PREFER_IDS.push(o.id);
+    PICKS.push({ user: "*", entity: "emptyObject", id: o.id, why: "วัตถุว่างของตัวกด (qc-btn-obj-, ไม่มีระเบียน) อยู่บนสุดของรายการ — ชื่ออ้างอิงแก้ได้เฉพาะวัตถุที่ไม่มีระเบียน" });
+  }
   if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
 }
+// it5 (RV-9): rows that reference a fixture through a RESTRICT foreign key (ChatReadState → ChatConversation: opening the room
+//   as owner/manager writes one) are deleted first — before this every run left its chat fixtures in QC1
+const FIXTURE_DEPENDENTS: Record<string, { model: string; field: string }[]> = {
+  chatConversation: [{ model: "chatReadState", field: "conversationId" }, { model: "chatConversationPref", field: "conversationId" }, { model: "chatConversationEvent", field: "conversationId" }, { model: "chatMessage", field: "conversationId" }],
+  crmCommissionRule: [{ model: "crmCommission", field: "ruleId" }],
+  crmSequence: [{ model: "crmSequenceEnrollment", field: "sequenceId" }, { model: "crmSequenceStep", field: "sequenceId" }],
+};
 async function deleteExtraFixtures(): Promise<void> {
   if (!XFIX.length) return;
   let n = 0;
   for (const x of XFIX) { // creation order: conversation before its chat contact · stage/pipeline independent (stage FK cascades from pipeline)
-    try { n += (await P[x.model].deleteMany({ where: { id: x.id } })).count; }
-    catch (e) { console.log(`  ⚠️ ลบ fixture ${x.model} ${x.id} ไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); }
+    try {
+      for (const d of FIXTURE_DEPENDENTS[x.model] ?? []) await P[d.model]?.deleteMany?.({ where: { [d.field]: x.id } });
+      n += (await P[x.model].deleteMany({ where: { id: x.id } })).count;
+    } catch (e) { const m = `${x.model} ${x.id}: ${e instanceof Error ? e.message.split("\n").slice(-1)[0]!.slice(0, 140) : e}`; cleanupFailures.push(m); console.log(`  ❌ ลบ fixture ไม่สำเร็จ — ${m}`); }
   }
   console.log(`🧩 ลบ extra fixtures ${n}/${XFIX.length}`);
 }
@@ -801,7 +950,9 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
         const cacheKey = `${row.page}|${row.system ?? ""}|${row.query ?? ""}|${user}|${LIFECYCLE_ROW_RE.test(row.testid) ? "lc" : ATTACH_ROW_RE.test(row.testid) ? "at" : ""}`;
         if (!pageCache.has(cacheKey)) pageCache.set(cacheKey, pageUrl(row, ctxU));
         const { path, reason } = pageCache.get(cacheKey)!;
-        if (!applicableUser(row, user)) continue; // silent on this role — registry makes no claim
+        const baseU = user.startsWith("customer") ? "customer" : user;
+        const mainApplies = applicableUser(row, user);
+        if (!mainApplies && !(row.variants ?? []).some((v) => v.roles.includes(baseU))) continue; // silent on this role — registry makes no claim
         if (!path) { skipped.push({ page: row.page, testid, reason: `${reason} (${user})` }); continue; }
         for (const [device, w, h] of VIEWPORTS) {
           if (row.viewport && row.viewport !== device) continue; // layout-specific control — no claim for the other layout
@@ -813,11 +964,22 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
             const p2 = pageUrl(row, { ...ctxU, contactId: tid });
             if (p2.path) itemPath = p2.path;
           }
-          items.push({
-            user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: row.roles, hiddenFor: row.hiddenFor,
+          const extraHidden = row.onlyHiddenFor?.[testid] ?? [];
+          if (mainApplies) items.push({
+            user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: row.roles.filter((x) => !extraHidden.includes(x)), hiddenFor: [...new Set([...row.hiddenFor, ...extraHidden])],
             expect: row.expect, wo: row.wo ?? "", guard: DIRECT_SEND_GUARD.get(testid) ?? CROSS_MODULE_GUARD.get(testid) ?? null,
-            notList, opener: openerOf(row), needs: row.needs ?? null, idx,
+            notList, opener: openerOf(row).map((o) => resolveOpener(o, user)), needs: row.needs ?? null, idx,
           });
+          // it5 (RV-7): a row VARIANT = the same control pressed again for some roles with its own opener/expect (the manager's
+          //   refusal on the automation builder's default action, beside the row's own NOTIFY_STAFF save)
+          for (const [vi, v] of (row.variants ?? []).entries()) {
+            if (!v.roles.includes(base0)) continue;
+            items.push({
+              user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: v.roles, hiddenFor: [],
+              expect: v.expect, wo: row.wo ?? "", guard: null, notList, opener: (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]).map((o) => resolveOpener(o, user)),
+              needs: null, idx: idx + 0.5 + vi / 10, variant: v.name ?? `v${vi}`,
+            });
+          }
         }
       }
     }
@@ -852,7 +1014,7 @@ function validateOpeners(): string[] {
     }
     for (const pg of [r.page]) for (const m of pg.matchAll(/\[([a-zA-Z]+)\]/g)) if (!KNOWN_PH.has(m[1]!)) problems.push(`${r.page}#${r.testid}: page ใช้ [${m[1]}] ที่ตัวกดไม่รู้จัก`);
     if (r.viewport !== undefined && r.viewport !== "desktop" && r.viewport !== "mobile") problems.push(`${r.page}#${r.testid}: viewport ต้องเป็น desktop|mobile`);
-    for (const o0 of openerOf(r)) {
+    for (const o0 of [...openerOf(r), ...(r.variants ?? []).flatMap((v) => (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]))]) {
       if (typeof o0 !== "string" || !o0.trim()) { problems.push(`${r.page}#${r.testid}: opener ว่าง/ไม่ใช่สตริง`); continue; }
       const o = o0.includes("=") ? o0.slice(0, o0.indexOf("=")) : o0;
       // c42b: "<self>=click" = arm a two-step button first (object-record-archive-btn: 1st press arms, 2nd press writes)
@@ -885,6 +1047,9 @@ const SNAP_MODELS = [
   "CrmTrackedLink", "CrmTrackedClick", "CrmWebSession", "CrmWebEvent", "CrmUserPref", "CrmImportJob", "CrmQuota",
   "CrmCommissionRule", "CrmCommission", "CrmPortalAccess", "CrmPortalRequest", "PortalSession",
   "MemberSavedView", "ApiKey", "WebhookEndpoint", "AutomationRule", "AutomationRun", "FormDef", "KanbanCard", "AiProposal",
+  // it5 (RV-9): the chat tables the CRM panel / N9 fixture touch — opening a room writes ChatReadState (FK RESTRICT on the
+  //   conversation) and those rows outlived every run (6 qc-btn conversations + contacts + read states left in QC1)
+  "ChatContact", "ChatConversation", "ChatMessage", "ChatAttachment", "ChatReadState", "ChatConversationPref", "ChatConversationEvent",
 ] as const;
 const toCamel = (m: string) => m.charAt(0).toLowerCase() + m.slice(1);
 const DMMF_MODELS = (Prisma?.dmmf?.datamodel?.models ?? []) as { name: string; fields: { name: string; kind: string; type: string }[] }[];
@@ -902,6 +1067,10 @@ type Snap = Map<string, Map<string, Any>>;
 let SNAP: Snap | null = null;
 const PROTECT = new Set<string>(); // rows this run created ON PURPOSE (portal fixture/session) — never deleted by a mid-run restore
 const restoreLog: { label: string; deleted: number; updated: number; recreated: number; failed: string[] }[] = [];
+// it5 (RV-9): hard failures of the pass besides row results — counted in JSON_SUMMARY, run5 requires all three empty
+const cleanupFailures: string[] = []; // a runner fixture/session that could not be deleted at the end
+const outboxUnsettled: string[] = []; // a restore that had to run while this tenant's outbox still had due PENDING events
+const verifyFailures: string[] = [];  // after the final restore: a snapshot row whose content differs / is missing, or an extra row
 
 // 🔴 SAFETY (controller review, 27 Sep): a read that fails must NEVER look like "the table is empty". Before this fix
 //    readAll() caught every error and returned [] ⇒ a failed SNAPSHOT read made every existing row of that table look
@@ -967,14 +1136,41 @@ function toData(model: string, row: Any): Any {
  *  dbg1 (1 Oct 04:08): contact-convert-submit → repair deleted the new Customer → 2 s later the member.created consumer
  *  linked the seed contact to that deleted Customer (crm.contact.member.link) ⇒ every later consent row: "ผูกกับสมาชิกที่ไม่พบ".
  *  Before any restore: wait ≤ 15 s until no PENDING OutboxEvent of this tenant created since the snapshot is due. */
+// it5 (RV-9): ≤ 60 s (was 15 s and only a warning — run4 logged it 10×, twice before a final CLEAN); still pending after that =
+//   a HARD failure of the pass (outboxUnsettled → JSON_SUMMARY), the restore still runs (leaving the writes would be worse)
+const OUTBOX_WAIT_MS = Number(process.env.QC_BTN_OUTBOX_WAIT_MS ?? 60_000);
+const OUTBOX_REPORTED = new Set<string>();
 async function outboxSettle(label: string): Promise<void> {
   const since = new Date(SNAP_AT - 5_000);
-  for (let i = 0; i < 30; i++) {
-    const n = await P.outboxEvent.count({ where: { tenantId: TENANT, status: "PENDING", createdAt: { gte: since }, availableAt: { lte: new Date(Date.now() + 1_000) } } }).catch(() => 0);
-    if (!n) { if (i) console.log(`  ⏳ outbox ว่างแล้ว ก่อนคืนฐาน (${label}) · รอ ${(i * 0.5).toFixed(1)} วิ`); return; }
+  const t0 = Date.now();
+  for (let i = 0; ; i++) {
+    // an event already REPORTED unsettled is not waited for again (dbg11: one undrained event made every later restore of the
+    //   chunk wait the full 60 s) — it stays counted once in outboxUnsettled
+    const n = await P.outboxEvent.count({ where: { tenantId: TENANT, status: "PENDING", createdAt: { gte: since }, availableAt: { lte: new Date(Date.now() + 1_000) }, id: { notIn: [...OUTBOX_REPORTED] } } }).catch(() => 0);
+    if (!n) { if (i) console.log(`  ⏳ outbox ว่างแล้ว ก่อนคืนฐาน (${label}) · รอ ${((Date.now() - t0) / 1000).toFixed(1)} วิ`); return; }
+    if (Date.now() - t0 > OUTBOX_WAIT_MS) {
+      const ev = await P.outboxEvent.findMany({ where: { tenantId: TENANT, status: "PENDING", createdAt: { gte: since }, id: { notIn: [...OUTBOX_REPORTED] } }, select: { id: true, type: true, attempts: true, lastError: true }, take: 50 }).catch(() => []);
+      for (const x of ev) OUTBOX_REPORTED.add(x.id);
+      const msg = `${label}: ${n} PENDING หลังรอ ${(OUTBOX_WAIT_MS / 1000).toFixed(0)} วิ — ${ev.map((x: Any) => `${x.type}${x.attempts ? `×${x.attempts}` : ""}${x.lastError ? ` (${String(x.lastError).slice(0, 60)})` : ""}`).join(", ")}`;
+      outboxUnsettled.push(msg);
+      console.log(`  ❌ outbox ไม่ว่าง — ${msg} · คืนฐานต่อ (นับเป็นความล้มเหลวของรอบ)`);
+      return;
+    }
     await sleep(500);
   }
-  console.log(`  ⚠️ outbox ยังมีงานค้างหลังรอ 15 วิ ก่อนคืนฐาน (${label}) — คืนฐานต่อ (อาจมีผลข้างเคียงมาทีหลัง)`);
+}
+/** it5 (RV-9): after the final restore re-read every snapshotted table and prove it equals the snapshot (content, not counts) */
+async function verifyAgainstSnapshot(label: string, ignoreIds: Set<string>): Promise<void> {
+  if (!SNAP) return;
+  const cur = await readAllModels();
+  for (const [m, snapM] of SNAP) {
+    const now = new Map((cur.get(m) ?? []).map((r) => [r.id as string, r]));
+    let diff = 0, missing = 0, extra = 0; const ex: string[] = [];
+    for (const [id, row] of snapM) { if (ignoreIds.has(id)) continue; const n = now.get(id); if (!n) { missing++; ex.push(`-${id}`); } else if (stable(n) !== stable(row)) { diff++; ex.push(`~${id}`); } }
+    for (const id of now.keys()) if (!snapM.has(id) && !ignoreIds.has(id)) { extra++; ex.push(`+${id}`); }
+    if (diff || missing || extra) verifyFailures.push(`${label} ${m}: เนื้อหาต่าง ${diff} · หาย ${missing} · เกิน ${extra} (${ex.slice(0, 4).join(" ")})`);
+  }
+  console.log(verifyFailures.length ? `  ❌ ตรวจซ้ำหลังคืนฐาน (${label}): ${verifyFailures.length} ตารางไม่ตรง snapshot — ${verifyFailures.slice(0, 3).join(" | ")}` : `  ✅ ตรวจซ้ำหลังคืนฐาน (${label}): ทุกตาราง (${SNAP.size}) ตรง snapshot ทั้งเนื้อหา`);
 }
 /** put every SNAP_MODELS row of this tenant back to the snapshot — returns what it had to do (logged in summary) */
 async function restoreSnapshot(label: string, opts: { keepNew?: boolean } = {}): Promise<{ deleted: number; updated: number; recreated: number; failed: string[] }> {
@@ -1064,10 +1260,12 @@ async function applyFixtures(ctx: Ctx): Promise<void> {
   try {
     const sys = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } });
     const portalOn = !!(sys?.settings as Any)?.crm?.portal?.enabled;
-    const co = ctx.companyId ? await P.crmCompany.findUnique({ where: { id: ctx.companyId }, select: { id: true, taxId: true, partyId: true } }) : null;
-    const party = co?.partyId ? await P.party.findUnique({ where: { id: co.partyId }, select: { taxId: true } }).catch(() => null) : null;
+    const co = ctx.companyId ? await P.crmCompany.findUnique({ where: { id: ctx.companyId }, select: { id: true, taxId: true, partyId: true, updatedAt: true } }) : null;
+    const party = co?.partyId ? await P.party.findUnique({ where: { id: co.partyId }, select: { taxId: true, updatedAt: true } }).catch(() => null) : null;
     const origPortal = (sys?.settings as Any)?.crm?.portal ?? null; // exact original object (null = key absent)
-    const orig = { systemId: SYS, portalEnabled: portalOn, portal: origPortal, companyId: co?.id ?? null, taxId: co?.taxId ?? null, partyId: co?.partyId ?? null, partyTaxId: party?.taxId ?? null };
+    // it5 (RV-9 content checksums, dbg11): the heal must also put updatedAt back — restoring only taxId left company0 and its
+    //   Party with a new updatedAt after every run (counts equal, content not)
+    const orig = { systemId: SYS, portalEnabled: portalOn, portal: origPortal, companyId: co?.id ?? null, taxId: co?.taxId ?? null, partyId: co?.partyId ?? null, partyTaxId: party?.taxId ?? null, companyUpdatedAt: co?.updatedAt ?? null, partyUpdatedAt: party?.updatedAt ?? null };
     writeFileSync(FIXTURE_FILE, JSON.stringify(orig, null, 1));
     // 🔴 it2 (27 Sep): jsonb_set(…, '{crm,portal,enabled}', …, true) is a NO-OP when settings.crm.portal does not exist yet
     //    (create_missing only adds the LAST key) — the portal stayed off. Merge the object level by level instead.
@@ -1084,15 +1282,39 @@ async function applyFixtures(ctx: Ctx): Promise<void> {
 async function healFixtures(): Promise<void> {
   if (!existsSync(FIXTURE_FILE)) return;
   try {
-    const o = JSON.parse(readFileSync(FIXTURE_FILE, "utf8")) as { systemId: string; portalEnabled: boolean; portal?: unknown; companyId: string | null; taxId: string | null; partyId: string | null; partyTaxId: string | null };
+    const o = JSON.parse(readFileSync(FIXTURE_FILE, "utf8")) as { systemId: string; portalEnabled: boolean; portal?: unknown; companyId: string | null; taxId: string | null; partyId: string | null; partyTaxId: string | null; companyUpdatedAt?: string | null; partyUpdatedAt?: string | null };
     if (o.systemId !== SYS) { console.log(`  ⚠️ ${FIXTURE_FILE} เป็นของระบบอื่น (${o.systemId}) — ไม่แตะ`); return; }
     if (o.portal === null || o.portal === undefined) await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = settings #- '{crm,portal}' WHERE id = $1`, SYS);
     else await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm,portal}', $2::jsonb, true) WHERE id = $1`, SYS, JSON.stringify(o.portal));
-    if (o.companyId) await P.crmCompany.update({ where: { id: o.companyId }, data: { taxId: o.taxId } }).catch(() => {});
-    if (o.partyId) await P.party.update({ where: { id: o.partyId }, data: { taxId: o.partyTaxId } }).catch(() => {});
+    if (o.companyId) await P.crmCompany.update({ where: { id: o.companyId }, data: { taxId: o.taxId, ...(o.companyUpdatedAt ? { updatedAt: new Date(o.companyUpdatedAt) } : {}) } }).catch(() => {});
+    if (o.partyId) await P.party.update({ where: { id: o.partyId }, data: { taxId: o.partyTaxId, ...(o.partyUpdatedAt ? { updatedAt: new Date(o.partyUpdatedAt) } : {}) } }).catch(() => {});
     (await import("node:fs")).rmSync(FIXTURE_FILE, { force: true });
     console.log(`🧩 fixtures คืนค่าเดิมแล้ว (portal ${o.portalEnabled} · เลขภาษี ${o.taxId ?? "null"})`);
   } catch (e) { console.log(`  ⚠️ คืน fixture ไม่สำเร็จ — ${e instanceof Error ? e.message : e} (ไฟล์ ${FIXTURE_FILE} ยังอยู่ — รอบหน้าจะลองใหม่)`); }
+}
+// it5 (RV-4 A): the manager's commission approval cap for the run (Membership is not snapshotted ⇒ own original file + heal)
+const CAP_FILE = ".qc-shots/c42/fixture-cap.json";
+const CAP_KEY = "crm._maxCommissionApproveSatang";
+const CAP_SATANG = 100_000; // 1,000 baht — commission A (10 baht) is under it, B (500,000 baht) over it
+async function applyCapFixture(): Promise<void> {
+  await healCapFixture(); // a crashed earlier run's cap first (its file holds the TRUE original)
+  const uid = (E.users?.manager?.userId as string | undefined) ?? null; if (!uid) return;
+  const m = await P.membership.findFirst({ where: { tenantId: TENANT, userId: uid }, select: { id: true, permissions: true } });
+  if (!m) return;
+  if (!existsSync(CAP_FILE)) writeFileSync(CAP_FILE, JSON.stringify({ tenantId: TENANT, membershipId: m.id, permissions: m.permissions ?? null }, null, 1));
+  const p = { ...((m.permissions && typeof m.permissions === "object" && !Array.isArray(m.permissions)) ? m.permissions : {}), [CAP_KEY]: CAP_SATANG };
+  await P.membership.update({ where: { id: m.id }, data: { permissions: p } });
+  console.log(`🧩 เพดานอนุมัติค่าคอมของ manager = ${CAP_SATANG / 100} บาท ชั่วคราว (คืนตอนจบ · ต้นฉบับใน ${CAP_FILE})`);
+}
+async function healCapFixture(): Promise<void> {
+  if (!existsSync(CAP_FILE)) return;
+  try {
+    const o = JSON.parse(readFileSync(CAP_FILE, "utf8")) as { tenantId: string; membershipId: string; permissions: unknown };
+    if (o.tenantId !== TENANT) { console.log(`  ⚠️ ${CAP_FILE} เป็นของร้านอื่น — ไม่แตะ`); return; }
+    await P.membership.update({ where: { id: o.membershipId }, data: { permissions: o.permissions === null ? Prisma.DbNull : o.permissions } });
+    (await import("node:fs")).rmSync(CAP_FILE, { force: true });
+    console.log("🧩 เพดานอนุมัติค่าคอมของ manager คืนค่าเดิมแล้ว");
+  } catch (e) { cleanupFailures.push(`คืนเพดานค่าคอม manager ไม่ได้: ${e instanceof Error ? e.message.slice(0, 120) : e}`); }
 }
 async function ensurePortalFixture(ctx: Ctx): Promise<{ accessId: string } | null> {
   try {
@@ -1450,6 +1672,44 @@ function parseDbClauses(db: string | undefined): { parsed: Clause[]; unparsed: s
   }
   return { parsed, unparsed };
 }
+// it5 (RV-3): "the stated model was written" — for a mutation `db` segment that names a Prisma model but has no countable/literal
+//   clause ("CrmCompany.ownerUserId", "CrmContact + Party (name)", "AutomationRule ถูกลบ …", "AuditLog crm.x.y (…)"): after the
+//   press the tenant must hold a row of that model created/updated since the press (DB clock), or one row fewer for "ถูกลบ";
+//   "AuditLog <action>" = an AuditLog row with that action since the press. Up to 2 models per row (the first named ones).
+const MODEL_TS = new Map<string, { created: boolean; updated: boolean; tenant: boolean }>(DMMF_MODELS.map((m) => [m.name, { created: m.fields.some((f) => f.name === "createdAt"), updated: m.fields.some((f) => f.name === "updatedAt"), tenant: m.fields.some((f) => f.name === "tenantId") }]));
+type ModelWrite = { model: string; kind: "write" | "delete" | "audit"; action?: string; actions?: string[] };
+function modelWritesOf(db: string | undefined, parsed: Clause[]): ModelWrite[] {
+  const out: ModelWrite[] = []; const seen = new Set(parsed.map((c) => c.model));
+  for (const raw of (db ?? "").split(/ · |\s\+\s|, /).map((x) => x.trim()).filter(Boolean)) {
+    const am = /^AuditLog\s+([a-z][a-z0-9_.|]+[a-z0-9])/.exec(raw);
+    if (am) {
+      // "crm.automation.enable|disable" = either action (the toggle writes one of them)
+      const a = am[1]!; const i = a.lastIndexOf(".", a.indexOf("|") < 0 ? a.length : a.indexOf("|"));
+      const actions = a.includes("|") ? a.slice(i + 1).split("|").map((x) => `${a.slice(0, i)}.${x}`) : [a];
+      if (!seen.has(`audit:${a}`)) { out.push({ model: "AuditLog", kind: "audit", action: a, actions }); seen.add(`audit:${a}`); }
+      continue;
+    }
+    const m = /^([A-Z][A-Za-z0-9]+)\b/.exec(raw);
+    if (!m || seen.has(m[1]!) || !MODEL_TS.has(m[1]!)) continue;
+    const ts = MODEL_TS.get(m[1]!)!; if (!ts.tenant) continue;
+    const del = /ถูกลบ|ลบแถว|แถวหาย|\bdeleted\b/.test(raw);
+    if (/ไม่เปลี่ยน|ไม่เพิ่ม|ไม่เขียน|ไม่ลบ/.test(raw)) continue; // the text itself says this model stays/may stay unchanged
+    if (!del && !ts.updated && m[1] !== "AppSystem" && !(ts.created && /\+|แถวใหม่|1 แถว|สร้าง|PENDING(?!\s*→)/.test(raw))) continue; // update of a createdAt-only model is invisible
+    out.push({ model: m[1]!, kind: del ? "delete" : "write" }); seen.add(m[1]!);
+    if (out.filter((x) => x.kind !== "audit").length >= 2) break;
+  }
+  return out;
+}
+const appSettingsNow = async (): Promise<string> => stable((await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }).catch(() => null))?.settings ?? null);
+async function writtenSince(w: ModelWrite, since: Date, countBefore: number | null, appBefore: string | null = null): Promise<boolean> {
+  const d = P[toCamel(w.model)]; if (!d) return true;
+  if (w.model === "AppSystem" && w.kind === "write") return appBefore !== null && (await appSettingsNow()) !== appBefore;
+  if (w.kind === "audit") return !!(await d.findFirst({ where: { tenantId: TENANT, OR: (w.actions ?? [w.action!]).map((x) => ({ action: { startsWith: x } })), createdAt: { gte: since } }, select: { id: true } }).catch(() => null));
+  if (w.kind === "delete") { const n = await d.count({ where: { tenantId: TENANT } }).catch(() => null); return countBefore === null || n === null ? true : n < countBefore; }
+  const ts = MODEL_TS.get(w.model)!;
+  const OR = [...(ts.updated ? [{ updatedAt: { gte: since } }] : []), ...(ts.created ? [{ createdAt: { gte: since } }] : [])];
+  return !!(await d.findFirst({ where: { tenantId: TENANT, OR }, select: { id: true } }).catch(() => ({ id: "?" })));
+}
 async function countScoped(model: string): Promise<number | null> {
   try {
     const where = SCOPE_SYSTEM.has(model) ? { systemId: SYS } : { tenantId: TENANT };
@@ -1477,12 +1737,50 @@ function primaryIdOf(page: string, ctx: Ctx, query?: string, testid?: string): s
 }
 
 // ── result buckets ──
+// it5 (RV-1/RV-3/RV-4): DB-effect checks for mutation rows whose `db` text has no parseable count/column clause — testid →
+//   check after a successful press (null = effect observed · string = what is missing). `pressedAt` = just before the press.
+type PostCheckArg = { it: PlanItem; ctx: Ctx; pressedAt: Date; pathId: (seg: string) => string | null };
+const POST_CHECKS = new Map<string, (a: PostCheckArg) => Promise<string | null>>();
+const poll = async (fn: () => Promise<boolean>, ms = 6000): Promise<boolean> => { const t = Date.now(); do { if (await fn().catch(() => false)) return true; await sleep(300); } while (Date.now() - t < ms); return false; };
+POST_CHECKS.set("contact-privacy-erase-submit", async ({ pressedAt, pathId }) => {
+  const cid = pathId("contacts");
+  if (!cid || !THROWAWAY_IDS().has(cid)) return `ไม่ได้กดบนผู้ติดต่อ throwaway (${cid ?? "-"}) — ห้ามลบผู้ติดต่อซีด`;
+  const ok = await poll(async () => !!(await P.auditLog.findFirst({ where: { tenantId: TENANT, action: "crm.contact.erase", targetId: cid, createdAt: { gte: pressedAt } }, select: { id: true } })));
+  return ok ? null : `ไม่มี AuditLog crm.contact.erase ของ ${cid} หลังกด`;
+});
+const colOf = async (model: string, id: string | null | undefined, col: string): Promise<unknown> => (id ? (await P[model].findFirst({ where: { id }, select: { [col]: true } }).catch(() => null))?.[col] : undefined);
+const want = (label: string, fn: () => Promise<boolean>) => async (): Promise<string | null> => ((await poll(fn)) ? null : label);
+POST_CHECKS.set("crm-commission-approve-selected", ({ it }) => want(`ค่าคอม A ของตัวกดไม่เป็น APPROVED`, async () => (await colOf("crmCommission", xctx("commissionA", it.user), "status")) === "APPROVED")());
+POST_CHECKS.set("crm-commission-reject-confirm", ({ it }) => want(`ค่าคอมของตัวกดไม่มีแถวที่เป็น REJECTED`, async () => (await colOf("crmCommission", xctx("commissionA", it.user), "status")) === "REJECTED" || (await colOf("crmCommission", xctx("commissionB", it.user), "status")) === "REJECTED")());
+POST_CHECKS.set("crm-portal-request-approve-*", ({ it }) => want("คำขอพอร์ทัลของตัวกดไม่เป็น APPROVED", async () => (await colOf("crmPortalRequest", xctx("portalRequest", it.user), "status")) === "APPROVED")());
+POST_CHECKS.set("crm-portal-request-reject-*", ({ it }) => want("คำขอพอร์ทัลของตัวกดไม่เป็น REJECTED", async () => (await colOf("crmPortalRequest", xctx("portalRequest", it.user), "status")) === "REJECTED")());
+POST_CHECKS.set("crm-home-unowned-submit", ({ it }) => want("ดีลไม่มีผู้ดูแลของตัวกดยังไม่มีผู้ดูแล", async () => !!(await colOf("crmDeal", xctx("unownedDeal", it.user), "ownerUserId")))());
+POST_CHECKS.set("crm-unsub-confirm", ({ it }) => want("ผู้ติดต่อของ token ไม่เป็น emailOptOut=true", async () => (await colOf("crmContact", xctx("unsubContact", it.user), "emailOptOut")) === true)());
+POST_CHECKS.set("crm-unsub-notrack", ({ it }) => want("ผู้ติดต่อของ token ไม่เป็น trackingOptOut=true", async () => (await colOf("crmContact", xctx("unsubContact", it.user), "trackingOptOut")) === true)());
+POST_CHECKS.set("portal-invite-accept", ({ it }) => want("คำเชิญของตัวกดยังไม่ถูกรับ (acceptedAt ว่าง)", async () => !!(await colOf("crmPortalAccess", xctx("inviteAccess", it.user), "acceptedAt")))());
+POST_CHECKS.set("crm-seq-enr-pause-*", ({ it }) => want("ผู้อยู่ในลำดับ (ACTIVE) ของตัวกดไม่เป็น PAUSED", async () => (await colOf("crmSequenceEnrollment", xctx("enrollmentActive", it.user), "status")) === "PAUSED")());
+POST_CHECKS.set("crm-seq-enr-resume-*", ({ it }) => want("ผู้อยู่ในลำดับ (PAUSED) ของตัวกดไม่เป็น ACTIVE", async () => (await colOf("crmSequenceEnrollment", xctx("enrollmentPaused", it.user), "status")) === "ACTIVE")());
+POST_CHECKS.set("crm-seq-enr-stop-*", ({ it }) => want("ผู้อยู่ในลำดับของตัวกดไม่มีใครเป็น STOPPED", async () => (await colOf("crmSequenceEnrollment", xctx("enrollmentActive", it.user), "status")) === "STOPPED" || (await colOf("crmSequenceEnrollment", xctx("enrollmentPaused", it.user), "status")) === "STOPPED")());
+POST_CHECKS.set("crm-call-recording-delete-go", ({ it }) => want("สายของตัวกดยังมี recordingFileId", async () => { const id = xctx("recordingDel", it.user); return !!id && (await colOf("crmActivity", id, "recordingFileId")) === null; })());
+POST_CHECKS.set("crm-seq-archive", ({ ctx }) => want("ลำดับของตัวกดไม่ถูกเก็บถาวร (archivedAt ว่าง)", async () => !!(await colOf("crmSequence", ctx.sequenceId, "archivedAt")))());
+POST_CHECKS.set("company-contact-remove-confirm", ({ pressedAt }) => want("ไม่มี CrmCompanyContact ที่ endedAt ถูกตั้งหลังกด", async () => !!(await P.crmCompanyContact.findFirst({ where: { tenantId: TENANT, endedAt: { gte: pressedAt } }, select: { id: true } })))());
+// the proposal is created by the row's own opener (crm-ai-home-at-risk) seconds before the press
+const proposalNow = (status: string) => async ({ pressedAt }: PostCheckArg) => want(`ไม่มี AiProposal ที่เพิ่งสร้างและเป็น ${status}`, async () => !!(await P.aiProposal.findFirst({ where: { tenantId: TENANT, status, createdAt: { gte: new Date(pressedAt.getTime() - 180_000) } }, select: { id: true } })))();
+POST_CHECKS.set("crm-ai-proposal-confirm", proposalNow("EXECUTED"));
+POST_CHECKS.set("crm-ai-proposal-cancel", proposalNow("REJECTED"));
+const postChecked: { page: string; testid: string; user: string; device: string }[] = [];
+const dbVerified: { page: string; testid: string; user: string; device: string; models: string[] }[] = [];
+// it5 (RV-5): every planned row's presence result — {p page, t testid, d device, u user, h expected hidden, f found}. A hidden
+//   "pass" counts only if, in the SAME run, a role that should see the row found it (positive control) — paired across the
+//   per-role processes by scripts/pending/c42b/verdict.py; unpaired ⇒ VACUOUS (not a pass).
+const PRESENCE: { p: string; t: string; d: string; u: string; h: boolean; f: boolean }[] = [];
 type Failure = { page: string; testid: string; user: string; device: string; detail: string; shot?: string };
 const total = { n: 0 };
 const passedN = { n: 0 };
 const dead: Failure[] = [];
 const wrongExpect: Failure[] = [];
 const hiddenLeak: Failure[] = [];
+const disabledCtl: Failure[] = []; // it5 (RV-8): `needs` rows whose control was present but disabled — reported, not skipped
 const vacuous: Failure[] = []; // c42b — hiddenFor checks on a page that did not render for the persona (see VACUITY GUARD)
 const consoleErrors: Failure[] = [];
 const overflow: Failure[] = [];
@@ -1509,10 +1807,13 @@ async function failShot(page: Any, it: PlanItem, user: string, device: string): 
   try { mkdirSync(dir, { recursive: true }); await page.screenshot({ path: f, fullPage: false }); return f; } catch { return ""; }
 }
 /** visible error texts right now (role=alert · data-testid$=-error) — used to see a server action's refusal */
+// it5: informational banners that are role=alert but not a refusal of the press — QC has no cron, so the sequences page warns
+//   "ตัวจับเวลาของระบบยังไม่เดิน…" after any refresh (dbg11 crm-seq-archive counted it as the archive's refusal)
+const ALERT_IGNORE = ["crm-sequences-timer-stale"];
 async function alertsNow(page: Any): Promise<string[]> {
-  return page.evaluate(() => Array.from(document.querySelectorAll('[role="alert"],[data-testid$="-error"]:not([role="status"])'))
-    .filter((e) => (e as HTMLElement).offsetParent !== null && (e.textContent ?? "").trim())
-    .map((e) => `${e.getAttribute("data-testid") ?? "alert"}: ${(e.textContent ?? "").trim().slice(0, 140)}`)).catch(() => []);
+  return page.evaluate((ign: string[]) => Array.from(document.querySelectorAll('[role="alert"],[data-testid$="-error"]:not([role="status"])'))
+    .filter((e) => (e as HTMLElement).offsetParent !== null && (e.textContent ?? "").trim() && !ign.includes(e.getAttribute("data-testid") ?? ""))
+    .map((e) => `${e.getAttribute("data-testid") ?? "alert"}: ${(e.textContent ?? "").trim().slice(0, 140)}`), ALERT_IGNORE).catch(() => []);
 }
 /** diagnostics: visible inline errors / alerts (a submit that "did nothing" usually refused with a Thai message) */
 async function pageSays(page: Any): Promise<string> {
@@ -1613,6 +1914,10 @@ async function prefill(page: Any, it: PlanItem, group: PlanItem[], el: Any, base
   return done;
 }
 
+/** it5 (RV-2): number of VISIBLE matches of a testid/pattern (ui state "count": add/remove a step/tier/condition) */
+async function countVisible(page: Any, testid: string): Promise<number> {
+  return page.evaluate((sel: string) => Array.from(document.querySelectorAll(sel)).filter((e) => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden"; }).length, selOf(testid)).catch(() => -1);
+}
 /** what "changed" means for ui/changes: markup + live form state of the element and its descendants */
 async function uiSnapshot(page: Any, testid: string): Promise<string | null> {
   const el = await findVisible(page, testid, ownedElsewhere(testid), 0) ?? (await page.$(selOf(testid)).catch(() => null));
@@ -1635,7 +1940,10 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
   for (const [key, rowsOfPageRaw] of groups) {
     gi++;
     // registry order, except rows with `needs` go last: an earlier row of the same page may create what they need
-    const rowsOfPage = [...rowsOfPageRaw].sort((a, b) => (a.needs ? 1 : 0) - (b.needs ? 1 : 0) || a.idx - b.idx);
+    // it5 (RV-1): the erase SUBMIT goes last on its throwaway page — after it the contact is erased (AuditLog flag) and the
+    //   erase panel/cancel no longer exist for that contact
+    const lastRank = (t: string) => (t === "contact-privacy-erase-submit" ? 2 : 0);
+    const rowsOfPage = [...rowsOfPageRaw].sort((a, b) => lastRank(a.testid) - lastRank(b.testid) || (a.needs ? 1 : 0) - (b.needs ? 1 : 0) || a.idx - b.idx);
     const [path, device] = key.split("·") as [string, string];
     const [, w, h] = VIEWPORTS.find((v) => v[0] === device)!;
     const t0 = Date.now();
@@ -1694,6 +2002,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       if (pendingChainRepair) { const full = pendingChainRepair === "full"; pendingChainRepair = false; await restoreSnapshot(`${it.page} (ซ่อมหลังตัวเปิดที่เขียน${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; await load(); }
       const ngReveal = nonGetCount;
       const rv = await reveal(page, path, it, state, shouldBeHidden);
+      PRESENCE.push({ p: it.page, t: it.testid, d: device, u: base, h: shouldBeHidden, f: !!rv.el });
       if (nonGetCount > ngReveal && it.opener.some((o) => repairsAfter(splitOpener(o).tid))) pendingChainRepair = it.opener.some((o) => FULL_REPAIR_RE.test(splitOpener(o).tid)) ? "full" : true;
       if (shouldBeHidden) {
         if (rv.el) { hiddenLeak.push({ page: it.page, testid: it.testid, user, device, detail: "อยู่ใน hiddenFor แต่มองเห็นได้" }); rec("hiddenLeak", false); }
@@ -1729,6 +2038,13 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         return (e.tagName === "INPUT" && (t === "checkbox" || t === "radio")) || r === "switch" || r === "checkbox" || r === "radio";
       }).catch(() => false);
 
+      // it5 (RV-11e): "present but disabled" IS the expectation — check, never press
+      if (it.expect.type === "ui" && it.expect.state === "disabled") {
+        const dis: boolean = await el.evaluate((e: Any) => !!e.disabled || e.getAttribute("aria-disabled") === "true").catch(() => false);
+        if (dis) { passedN.n++; rec("passed", true, "disabled (ตามคาด)"); }
+        else { wrongExpect.push({ page: it.page, testid: it.testid, user, device, detail: "คาดว่า disabled แต่กดได้", shot: await failShot(page, it, user, device) }); rec("wrongExpect", false, "not disabled"); }
+        continue;
+      }
       // ── pre-action probes ──
       await page.evaluate(() => { (window as Any).__qcMut = 0; if (!(window as Any).__qcObs) { const o = new MutationObserver(() => { (window as Any).__qcMut++; }); o.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true }); (window as Any).__qcObs = o; } else { (window as Any).__qcMut = 0; } }).catch(() => {});
       const urlBefore = page.url();
@@ -1740,12 +2056,21 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         const own: string = await el.evaluate((e: Element, sel: string) => e.parentElement?.closest(sel)?.getAttribute("data-testid") ?? "", selOf(uiTarget)).catch(() => "");
         if (own) uiTarget = own;
       }
-      const uiBefore = it.expect.type === "ui" && it.expect.state === "changes" && it.expect.target ? await uiSnapshot(page, uiTarget) : null;
+      const uiBefore = it.expect.type === "ui" && (it.expect.state === "changes" || !it.expect.state || it.expect.state === "appears") && it.expect.target ? await uiSnapshot(page, uiTarget) : null;
+      // it5 (RV-2): "appears" must be an APPEARANCE — a target already visible before the press has to change instead
+      const visBefore = it.expect.type === "ui" && (!it.expect.state || it.expect.state === "appears") && it.expect.target ? !!(await findVisible(page, it.expect.target, [], 0)) : false;
+      const countBefore = it.expect.type === "ui" && it.expect.state === "count" && it.expect.target ? await countVisible(page, it.expect.target) : -1;
       const { parsed, unparsed } = it.expect.type === "mutation" ? parseDbClauses(it.expect.db) : { parsed: [], unparsed: [] };
       const countsBefore = new Map<string, number | null>();
       for (const c of parsed) if (c.op !== "eq" && !countsBefore.has(c.model)) countsBefore.set(c.model, await countScoped(c.model));
 
       // ── act ──
+      // DB clock (not this host's): createdAt/updatedAt defaults are the database's now()
+      const mWrites = it.expect.type === "mutation" ? modelWritesOf(it.expect.db, parsed) : [];
+      const delBefore = new Map<string, number | null>();
+      const appBefore = mWrites.some((w) => w.model === "AppSystem") ? await appSettingsNow() : null;
+      for (const w of mWrites) if (w.kind === "delete") delBefore.set(w.model, await P[toCamel(w.model)].count({ where: { tenantId: TENANT } }).catch(() => null));
+      const pressedAt: Date = POST_CHECKS.has(it.testid) || mWrites.length ? await P.$queryRawUnsafe(`SELECT now() AS t`).then((r: Any) => new Date(new Date(r[0].t).getTime() - 500)).catch(() => new Date(Date.now() - 5_000)) : new Date();
       let actErr = ""; let valueChanged = false; let fileSkipped = false;
       try {
         if (it.kind === "drag") {
@@ -1845,7 +2170,10 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       // a `needs` row whose control is present but CANNOT act for lack of that data (disabled · a select with no other
       // option) is the same precondition as "absent" ⇒ skippedNeeds, not dead
       if (deadFlag && it.needs) {
-        const blocked: string = await el.evaluate((e: Any) => (e.disabled ? "disabled" : e.tagName === "SELECT" && !Array.from(e.options as ArrayLike<Any>).some((o: Any) => !o.selected && !o.disabled && o.value !== "") ? "ไม่มีตัวเลือกอื่น" : "")).catch(() => "");
+        const blocked: string = await el.evaluate((e: Any) => (e.disabled || e.getAttribute("aria-disabled") === "true" ? "disabled" : e.tagName === "SELECT" && !Array.from(e.options as ArrayLike<Any>).some((o: Any) => !o.selected && !o.disabled && o.value !== "") ? "ไม่มีตัวเลือกอื่น" : "")).catch(() => "");
+        // it5 (RV-8): a PRESENT but DISABLED control is a result, not a missing precondition — it stays in the denominator as
+        //   `disabled` (not passed). Only a select that is enabled but has no other option is still a seed precondition.
+        if (blocked === "disabled") { disabledCtl.push({ page: it.page, testid: it.testid, user, device, detail: `คอนโทรลมีแต่ disabled (needs: ${it.needs.slice(0, 80)})`, shot: await failShot(page, it, user, device) }); rec("disabled", false, "disabled"); state.dirty = true; continue; }
         if (blocked) { total.n--; skippedNeeds.push({ page: it.page, testid: it.testid, user, device, needs: it.needs, detail: `คอนโทรลมีแต่ใช้ไม่ได้ (${blocked})` }); rec("skippedNeeds", true, blocked); state.dirty = true; continue; }
       }
       if (deadFlag) {
@@ -1894,9 +2222,17 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           for (let i = 0; i < 20; i++) { after = await uiSnapshot(page, uiTarget); if (after !== null && after !== uiBefore) break; await sleep(200); }
           ok = after !== null && after !== uiBefore;
           detail = ok ? "" : `${target} ไม่เปลี่ยนภายใน 4 วิ (ก่อน=${uiBefore === null ? "ไม่มีอยู่" : "มีอยู่"} · หลัง=${after === null ? "ไม่มีอยู่" : "มีอยู่"})`;
+        } else if (it.expect.state === "count") {
+          let after = countBefore;
+          for (let i = 0; i < 20 && after === countBefore; i++) { await sleep(200); after = await countVisible(page, target); }
+          ok = after >= 0 && after !== countBefore; detail = ok ? "" : `จำนวน ${target} ที่มองเห็นไม่เปลี่ยน (${countBefore} → ${after})`;
         } else {
           const found = await findVisible(page, target, [], 5000);
-          ok = !!found; detail = found ? "" : `ไม่เห็น ${target}`;
+          if (found && visBefore) { // was already on screen — the press must at least change it
+            let after: string | null = null;
+            for (let i = 0; i < 20; i++) { after = await uiSnapshot(page, target); if (after !== null && after !== uiBefore) break; await sleep(200); }
+            ok = after !== null && after !== uiBefore; detail = ok ? "" : `${target} มองเห็นอยู่แล้วก่อนกดและไม่เปลี่ยนหลังกด`;
+          } else { ok = !!found; detail = found ? "" : `ไม่เห็น ${target}`; }
         }
       } else if (type === "download") {
         await settle(page, 6000);
@@ -1907,7 +2243,11 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         for (let i = 0; i < 20 && dl.length && !dl.some((d) => d.bytes > 0); i++) { await sleep(200); dl = DOWNLOADS.slice(dlBefore); }
         const want = (it.expect.target ?? "").match(/file:([a-z|]+)/)?.[1]?.split("|") ?? [];
         const goodDl = dl.find((d) => d.bytes > 0 && (want.length === 0 || want.some((x) => d.name.toLowerCase().endsWith(`.${x}`))));
-        ok = !!hit || tabs.length > 0 || !!goodDl;
+        // it5 (RV-12): a download passes only on bytes — a browser download with content (goodDl) or a response that IS an attachment
+        //   (Content-Disposition: attachment) — a new tab or any JSON response alone no longer counts
+        const attach = newResp.find((r) => /attachment/i.test(r.disposition) && r.status < 400);
+        ok = !!goodDl || !!attach;
+        void hit; void tabs;
         detail = ok ? "" : dl.length ? `ดาวน์โหลดเริ่มแต่ไม่ผ่าน: ${dl.map((d) => `${d.name} ${d.bytes}B ${d.state}`).join(",")} (ต้องการ ${want.join("|") || "ไฟล์"} ที่มีเนื้อหา)` : "ไม่พบ response ที่เป็นไฟล์/แท็บดาวน์โหลด/การดาวน์โหลดของเบราว์เซอร์";
       } else if (type === "mutation") {
         await settle(page, 8000);
@@ -1931,13 +2271,24 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           }).catch(() => false);
           if (inForm) { ok = true; fieldDeferred = true; }
         }
-        const refusalExpected = /ปฏิเสธ|ข้อความไทย|inline/i.test(it.expect.db ?? "");
+        // it5 (RV-3): the refusal exemption is EXPLICIT now (`expect.outcome: "refusal"`) — it used to be any row whose `db` text
+        //   mentioned ปฏิเสธ/ข้อความไทย/inline, which let 10 rows count a server refusal ({ok:false} with 200) as a pass
+        const refusalExpected = it.expect.outcome === "refusal";
         const newAlerts = ok && !refusalExpected ? (await alertsNow(page)).filter((x) => !alertsBefore.has(x)) : [];
         detail = !nonGet ? `ไม่มี request เขียน (POST/server action) ระหว่างกด${await pageSays(page).then((x) => (x ? ` · หน้าแสดง: ${x}` : ""))}` : bad.length ? `มี response ≥400: ${bad.map((r) => `${r.status} ${urlKey(r.url).slice(0, 60)}`).join(",")}` : "";
         if (fieldDeferred) detail = "";
         if (newAlerts.length) { ok = false; detail = `server action ตอบปฏิเสธ (มีข้อความผิดพลาดใหม่): ${newAlerts.slice(0, 2).join(" | ")}`; }
+        if (refusalExpected) {
+          let na: string[] = [];
+          const rtText = async () => { if (!it.expect.resultTarget) return [] as string[]; const e = await findVisible(page, it.expect.resultTarget, [], 0); const t = e ? String(await e.evaluate((x: Element) => x.textContent ?? "").catch(() => "")).trim() : ""; return t ? [`${it.expect.resultTarget}: ${t.slice(0, 160)}`] : []; };
+          for (let i = 0; i < 25 && !na.length; i++) { na = [...(await alertsNow(page)).filter((x) => !alertsBefore.has(x)), ...(await rtText())]; if (!na.length) await sleep(200); }
+          const re = it.expect.refusalText ? new RegExp(it.expect.refusalText) : null;
+          const hit = na.some((x) => !re || re.test(x));
+          ok = nonGet && bad.length === 0 && hit;
+          detail = !nonGet ? "ไม่มี request เขียน (ควรถูกปฏิเสธโดยเซิร์ฟเวอร์ ไม่ใช่ฝั่ง client)" : !hit ? `ไม่เห็นข้อความปฏิเสธ${re ? ` /${it.expect.refusalText}/` : ""} (เห็น: ${na.slice(0, 2).join(" | ") || "-"})` : "";
+        }
         if (unparsed.length) { const k = `${it.page}#${it.testid}`; dbCheckUnparsed.set(k, [...new Set([...(dbCheckUnparsed.get(k) ?? []), ...unparsed])]); }
-        if (ok && !fieldDeferred) {
+        if (ok && !fieldDeferred && !refusalExpected) {
           for (const c of parsed) {
             if (c.op === "inc" || c.op === "dec") {
               const before = countsBefore.get(c.model) ?? null;
@@ -1954,6 +2305,18 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
               if (!coerceEq(actual, c.value ?? "")) { ok = false; detail += ` · ${c.model}.${c.column}=${String(actual)} (คาด ${c.value})`; }
             }
           }
+        }
+        if (ok && !fieldDeferred && !refusalExpected && mWrites.length) {
+          // audit rows: each required · other named models: ≥1 written (optional when a parsed clause above already proved the effect)
+          for (const w of mWrites.filter((x) => x.kind === "audit")) {
+            if (!(await poll(() => writtenSince(w, pressedAt, null), 5000))) { ok = false; detail += ` · ไม่พบ AuditLog ${w.action} หลังกด`; }
+          }
+          const others = mWrites.filter((x) => x.kind !== "audit");
+          if (ok && others.length && !parsed.length) {
+            const hit = await poll(async () => { for (const w of others) if (await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null, appBefore)) return true; return false; }, 5000);
+            if (!hit) { ok = false; detail += ` · ไม่พบการเขียนของ ${others.map((w) => `${w.model}${w.kind === "delete" ? " (ลบ)" : ""}`).join(" / ")} หลังกด`; }
+          }
+          if (ok) dbVerified.push({ page: it.page, testid: it.testid, user, device, models: mWrites.map((w) => (w.kind === "audit" ? `AuditLog ${w.action}` : w.model)) });
         }
         if (ok && !fieldDeferred && it.expect.resultTarget) {
           const found = await findVisible(page, it.expect.resultTarget, [], 6000);
@@ -1980,6 +2343,13 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           for (let i = 0; i < 20; i++) { after2 = await uiSnapshot(page, uiTarget); if (after2 !== null && after2 !== before2) break; await sleep(200); }
           if (after2 !== null && after2 !== before2) { ok = true; detail = ""; }
         }
+      }
+      // it5 (RV-1/3/4): DB effect of the row (POST_CHECKS) — any expect type (invite accept is a navigate), never for a refusal
+      if (ok && POST_CHECKS.has(it.testid) && it.expect.outcome !== "refusal") {
+        const segs = it.path.split("?")[0]!.split("/");
+        const pathId = (seg: string) => { const i = segs.lastIndexOf(seg); return i >= 0 && segs[i + 1] ? segs[i + 1]! : null; };
+        const miss = await POST_CHECKS.get(it.testid)!({ it, ctx, pressedAt, pathId }).catch((e: unknown) => `ตรวจผลในฐานไม่ได้: ${e instanceof Error ? e.message.slice(0, 100) : e}`);
+        if (miss) { ok = false; detail += ` · ${miss}`; } else postChecked.push({ page: it.page, testid: it.testid, user, device });
       }
       if (!ok) { wrongExpect.push({ page: it.page, testid: it.testid, user, device, detail: detail.replace(/^ · /, ""), shot: await failShot(page, it, user, device) }); rec("wrongExpect", false, detail.replace(/^ · /, ""), { prefilled }); }
       else { passedN.n++; rec("passed", true, "", prefilled.length ? { prefilled } : {}); }
@@ -2035,6 +2405,48 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
     const passedHere = pageResults.filter((r) => r.ok).length;
     console.log(`  [${gi}/${groups.size}] ${user} ${device} ${rowsOfPage[0]!.page} — ${passedHere}/${pageResults.length} ok · ${((Date.now() - t0) / 1000).toFixed(0)} วิ`);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// it5 (RV-6): customer lock-out — a PORTAL session must not reach any staff CRM page. For every selected staff page (one path per
+// page, the owner's record ids) × viewport: open it with the customer's cookies; PASS = refused (HTTP ≥ 400, or redirected away
+// from the requested path) AND none of that page's registry testids is visible. Paired by verdict.py with a staff role that
+// loaded the same path with 200 in the same run (otherwise VACUOUS).
+// ═══════════════════════════════════════════════════════════════════
+const LOCKOUT: { page: string; path: string; device: string; status: number; finalPath: string; visible: string[]; ok: boolean }[] = [];
+async function customerLockout(browser: Any, user: UserKey, ctx: Ctx): Promise<void> {
+  let cookies: Any[];
+  try { cookies = await mintSession(user, ctx); } catch (e) { console.log(`  ⚠️ ข้ามการตรวจ customer lock-out: ${e instanceof Error ? e.message : e}`); return; }
+  const pages = new Map<string, Row>();
+  for (const r of ROWS) if (!/^\/(b|p|u)\//.test(r.page) && pageSelected(r.page) && !pages.has(r.page)) pages.set(r.page, r);
+  const ids = new Map<string, string[]>();
+  for (const r of ROWS) if (pages.has(r.page)) ids.set(r.page, [...(ids.get(r.page) ?? []), r.testid]);
+  for (const [pg, row] of pages) {
+    const { path } = pageUrl({ ...row, query: undefined } as Row, ctxForUser(ctx, "owner"));
+    if (!path) continue;
+    for (const [device, w, h] of VIEWPORTS) {
+      const page = await browser.newPage();
+      await page.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: device === "mobile", hasTouch: device === "mobile" });
+      await page.setCookie(...cookies);
+      await page.evaluateOnNewDocument(NAME_SHIM);
+      const resp = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 45_000 }).catch(() => null);
+      await sleep(250);
+      const status = resp?.status?.() ?? 0;
+      const finalPath = (() => { try { return new URL(page.url()).pathname; } catch { return page.url(); } })();
+      const vis = new Set(await visibleTestids(page));
+      const leaked = (ids.get(pg) ?? []).filter((t) => (t.includes("*") ? [...vis].some((v) => globRe(t).test(v)) : vis.has(t)));
+      const refused = status >= 400 || finalPath !== path.split("?")[0];
+      const ok = refused && leaked.length === 0 && status !== 0;
+      total.n++;
+      LOCKOUT.push({ page: pg, path, device, status, finalPath, visible: leaked.slice(0, 5), ok });
+      PRESENCE.push({ p: pg, t: "(page)", d: device, u: "customer", h: true, f: !ok });
+      if (ok) passedN.n++;
+      else hiddenLeak.push({ page: pg, testid: "(page)", user, device, detail: `session ลูกค้า (พอร์ทัล) เปิดหน้าพนักงานได้: HTTP ${status} · ${finalPath}${leaked.length ? ` · เห็น ${leaked.slice(0, 3).join(",")}` : ""}` });
+      await page.close().catch(() => {});
+    }
+  }
+  const bad = LOCKOUT.filter((x) => !x.ok).length;
+  console.log(`  🔒 customer lock-out: ${LOCKOUT.length - bad}/${LOCKOUT.length} หน้าพนักงานถูกปฏิเสธ`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2194,7 +2606,7 @@ async function main() {
   } catch (e) { console.log(`  ⚠️ ตั้งตัวดักดาวน์โหลดไม่ได้ (${e instanceof Error ? e.message : e}) — แถว download ตัดสินจาก response อย่างเดียว`); }
   try {
     if (DISCOVER) await discover(browser, ctx, items);
-    else for (const user of userKeys) await runUser(browser, user, ctx, items);
+    else for (const user of userKeys) { await runUser(browser, user, ctx, items); if (user.startsWith("customer")) await customerLockout(browser, user, ctx); }
   } finally {
     await browser.close().catch(() => {});
     // snap chromium sees its own private /tmp ⇒ the profile really lives under /tmp/snap-private-tmp/snap.chromium (4 GB/day leak before)
@@ -2203,6 +2615,7 @@ async function main() {
     // ── CLEAN: exact restore, then the tag sweep, then this run's own fixtures/sessions ──
     PROTECT.clear();
     const fin = await restoreSnapshot("CLEAN (จบรอบ)");
+    await verifyAgainstSnapshot("CLEAN", new Set()).catch((e: unknown) => { verifyFailures.push(`ตรวจซ้ำไม่ได้: ${e instanceof Error ? e.message.slice(0, 160) : e}`); });
     await deleteLinesDeals(); // before the tag sweep (which would also catch the qc-btn- titles) — reported by count
     await deleteThreadFixtures();
     await deleteExtraFixtures();
@@ -2217,7 +2630,18 @@ async function main() {
     if (MINE.tokenHashes.length) { for (const mdl of ["portalSession", "customerSession"]) { try { cleaned += (await P[mdl]?.deleteMany?.({ where: { tokenHash: { in: MINE.tokenHashes } } }))?.count ?? 0; } catch { /* ignore */ } } }
     if (MINE.sessionIds.length) { try { cleaned += (await P.session.deleteMany({ where: { id: { in: MINE.sessionIds } } })).count; } catch { /* ignore */ } }
     await healFixtures();
+    await healCapFixture();
     if (THROWAWAY.size) { try { const d = await P.crmContact.deleteMany({ where: { id: { in: [...THROWAWAY.values()] }, tenantId: TENANT } }); console.log(`🧩 ลบ throwaway ${d.count}`); } catch (e) { console.log(`  ⚠️ ลบ throwaway ไม่สำเร็จ — ${e instanceof Error ? e.message : e}`); } }
+    // it5 (RV-9): every runner-made row must be gone — anything left is a cleanup FAILURE of the pass (not a log line)
+    {
+      const leftLines = await P.crmDeal.count({ where: { id: { in: [...LINES_DEALS.values()] } } }).catch(() => 0);
+      const leftThrow = await P.crmContact.count({ where: { id: { in: [...THROWAWAY.values()] } } }).catch(() => 0);
+      const leftThreads = await P.crmEmailMessage.count({ where: { id: { in: [...THREADS.values()].map((t) => t.id) } } }).catch(() => 0);
+      const leftX = await extraFixturesLeft();
+      const leftChat = await P.chatContact.count({ where: { tenantId: TENANT, externalUserId: { startsWith: `qc-btn-${rand}` } } }).catch(() => 0);
+      for (const [k, v] of [["deal-with-lines", leftLines], ["throwaway contact", leftThrow], ["thread", leftThreads], ["extra fixture", leftX], ["chat contact", leftChat]] as const) if (v) cleanupFailures.push(`${k} ค้าง ${v}`);
+      if (cleanupFailures.length) console.log(`  ❌ fixture ค้างหลังเก็บกวาด: ${cleanupFailures.join(" | ")}`);
+    }
     if (PORTAL_ENABLED_BEFORE === false) { try { await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(coalesce(settings,'{}'::jsonb), '{crm,portal,enabled}', 'false'::jsonb, true) WHERE id = $1`, SYS); } catch { /* ignore */ } }
     const stale = await P.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } }).catch(() => ({ count: 0 }));
     console.log(`\n🧹 คืนฐานครั้งสุดท้าย: ลบ ${fin.deleted} · คืนค่า ${fin.updated} · สร้างคืน ${fin.recreated} · ค้าง ${fin.failed.length} · กวาดแท็ก/session ${cleaned}${stale.count ? ` (+ซากหมดอายุ ${stale.count})` : ""}`);
@@ -2244,21 +2668,24 @@ if (!DRY && (THROWAWAY.size || LINES_DEALS.size || THREADS.size || XFIX.length))
     console.log(`🧩 safety net: ลบ fixture ที่ค้าง ${left}`);
   }
 }
+if (!DRY && existsSync(CAP_FILE)) await healCapFixture(); // it5: never leave the manager's temporary commission cap behind
 
 if (!DRY && !DISCOVER) {
   writeFileSync(`${SHOTS}/summary.json`, JSON.stringify({
     at: new Date().toISOString(), users: userKeys, devices: VIEWPORTS.map((v) => v[0]), pageFilter: PAGE_FILTER,
     total: total.n, passed: passedN.n,
-    dead, wrongExpect, hiddenLeak, vacuous, consoleErrors, overflow, picks: PICKS, pageStatus: PAGE_STATUS,
+    dead, wrongExpect, hiddenLeak, vacuous, disabled: disabledCtl, consoleErrors, overflow, picks: PICKS, pageStatus: PAGE_STATUS,
     skippedNeeds, skippedSafety, restores: restoreLog, dbCheckUnparsed: Object.fromEntries(dbCheckUnparsed), fatal: fatal || null,
+    cleanupFailures, outboxUnsettled, verifyFailures, postChecked, dbVerified, presence: PRESENCE, customerLockout: LOCKOUT,
   }, null, 2));
   for (const [page, entries] of perPage) {
     const fname = `${SHOTS}/${page.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "root"}.json`;
     writeFileSync(fname, JSON.stringify({ page, entries }, null, 2));
   }
-  console.log(`\n${!fatal && passedN.n === total.n ? "🟢" : "🔴"} C4.2: ${passedN.n}/${total.n} · dead ${dead.length} · wrongExpect ${wrongExpect.length} · hiddenLeak ${hiddenLeak.length} · vacuous ${vacuous.length} · overflow ${overflow.length} · skippedNeeds ${skippedNeeds.length} · skippedSafety ${skippedSafety.length}`);
+  const hardFails = cleanupFailures.length + outboxUnsettled.length + verifyFailures.length + restoreLog.reduce((a, r) => a + r.failed.length, 0);
+  console.log(`\n${!fatal && passedN.n === total.n && !hardFails ? "🟢" : "🔴"} C4.2: ${passedN.n}/${total.n} · cleanup ${cleanupFailures.length} · outbox ${outboxUnsettled.length} · verify ${verifyFailures.length} · dead ${dead.length} · wrongExpect ${wrongExpect.length} · hiddenLeak ${hiddenLeak.length} · vacuous ${vacuous.length} · overflow ${overflow.length} · skippedNeeds ${skippedNeeds.length} · skippedSafety ${skippedSafety.length}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ total: total.n, passed: passedN.n, dead: dead.length, wrongExpect: wrongExpect.length, hiddenLeak: hiddenLeak.length, vacuous: vacuous.length, consoleErrors: consoleErrors.length, overflow: overflow.length, skippedNeeds: skippedNeeds.length, skippedSafety: skippedSafety.length, restoreFailures: restoreLog.reduce((a, r) => a + r.failed.length, 0), fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ total: total.n, passed: passedN.n, disabled: disabledCtl.length, dead: dead.length, wrongExpect: wrongExpect.length, hiddenLeak: hiddenLeak.length, vacuous: vacuous.length, consoleErrors: consoleErrors.length, overflow: overflow.length, skippedNeeds: skippedNeeds.length, skippedSafety: skippedSafety.length, restoreFailures: restoreLog.reduce((a, r) => a + r.failed.length, 0), cleanupFailures: cleanupFailures.length, outboxUnsettled: outboxUnsettled.length, verifyFailures: verifyFailures.length, fatal: fatal || null })}`);
 await P.$disconnect().catch(() => {});
 process.exit(fatal ? 2 : 0);

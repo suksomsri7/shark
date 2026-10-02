@@ -1,0 +1,38 @@
+page,testid,kind,roles,parsed,written,postCheck,db
+/companies/[companyId],company-contact-role-select,select,"owner,manager",,,,CrmCompanyContact.role
+/settings/pipelines,pl-rename-*,button,owner,,,,CrmPipeline.name
+/settings/pipelines,pl-quote-save-*,button,owner,,,,CrmPipeline.stageOnQuoteAcceptedId/stageOnQuoteRejectedId
+/settings/pipelines,pl-archive-submit,button,owner,,,,CrmPipeline.archivedAt
+/settings/stages,st-save-*,button,owner,,,,CrmStage.(name|kind|probability|staleDays|requireFields|requireLines|requireQuotation)
+/settings/stages,st-up-*,button,owner,,,,CrmStage.sortOrder
+/settings/stages,st-down-*,button,owner,,,,CrmStage.sortOrder
+/settings/lost-reasons,lr-save-*,button,owner,,,,CrmLostReason.label
+/settings/lost-reasons,lr-toggle-*,button,owner,,,,CrmLostReason.active
+/activities,activity-row-pin,button,"owner,manager,nok,thana",,,,CrmActivity.pinned
+/activities,activity-row-complete,button,"owner,manager,nok,thana",,,,CrmActivity.doneAt
+/activities,activity-row-reschedule-save,button,"owner,manager,nok,thana",,,,CrmActivity.dueAt
+/app/settings/teams,team-member-accepting-leads,toggle,owner,,,,TeamMember.acceptingLeads=true|false
+/app/settings/teams,team-member-add-form,form,owner,,,,TeamMember.userId=<userId>
+/app/settings/teams,team-member-add-submit,button,owner,,,,TeamMember.userId=<userId>
+/settings/api,crm-api-key-form,form,owner,,,,ApiKey.systemId=<ระบบนี้>
+/settings/api,crm-api-key-revoke-*,button,owner,,,,ApiKey.revokedAt=<ไม่ว่าง>
+/settings/holidays,crm-seq-holiday-import,button,"owner,manager",,,,settings.crm.holidays มีวันหยุดวันที่คงที่ของปีนั้นครบ · กดซ้ำไม่เพิ่มซ้ำ
+/settings/holidays,crm-seq-holiday-remove-*,button,"owner,manager",,,,วันที่นั้นหายจาก settings.crm.holidays
+/contacts/[contactId],crm-call-outcome,select,"owner,manager,nok,thana",,,,CrmActivity.outcome = ผลสายที่เลือก (ทะเบียน settings.crm.activityOutcomes.CALL)
+/contacts/[contactId],crm-call-direction,select,"owner,manager,nok,thana",,,,CrmActivity.direction = IN|OUT
+/contacts/[contactId],crm-call-note,textarea,"owner,manager,nok,thana",,,,CrmActivity.body
+/contacts/[contactId],crm-call-next-task,input,"owner,manager,nok,thana",,,,CrmActivity(type=TASK).title ของงานถัดไป
+/contacts/[contactId],crm-call-recording-input,input,"owner,manager,nok,thana",,,,FileAsset.path = t/<tenantId>/private/… · CrmActivity.recordingFileId
+/contacts/[contactId],crm-call-ai-transcript,textarea,"owner,manager,nok,thana",,,,CrmActivity.transcript (เมื่อกดรับ)
+/contacts/[contactId],crm-call-ai-summary,textarea,"owner,manager,nok,thana",,,,CrmActivity.aiSummary (เมื่อกดรับ)
+/contacts/[contactId],crm-call-ai-next-step,input,"owner,manager,nok,thana",,,,CrmActivity.aiNextStep (เมื่อกดรับ)
+/contacts,crm-card-scan,input,"owner,manager,nok,thana",,,,"AiProposal(kind=crm_create_lead, status=PENDING) 1 ใบ + AiCreditTxn(source=CRM_ASSIST) · รูปไม่ถูกเก็บ (ไม่มี FileAsset)"
+/settings/tracking,crm-track-domain-add,button,"owner,manager",,,,settings.crm.tracking.web.domains += โดเมน (ชื่อเว็บล้วน ๆ เท่านั้น)
+/settings/tracking,crm-track-domain-remove-*,button,"owner,manager",,,,settings.crm.tracking.web.domains -= โดเมน
+/settings/tracking,crm-track-consent-version-bump,button,"owner,manager",,,,settings.crm.tracking.web.consentVersion + 1 (ความยินยอมเวอร์ชันเก่าใช้เก็บข้อมูลต่อไม่ได้ทันที)
+/settings/tracking,crm-track-save,button,"owner,manager",,,,"settings.crm.tracking.web.{consentText,retentionDays}"
+/settings/forms,crm-forms-refresh-*,button,"owner,manager",,,,ไม่เปลี่ยนค่า (อ่านค่าปัจจุบันกลับมาแสดง)
+/b/[slug]/login,portal-otp-request,button,customer,,,,CustomerOtp (id po_…) · ChatRateBucket customer-otp:target:*
+/b/[slug]/invoices,portal-slip-upload,input,customer,,,,"FileAsset t/<tenant>/private/… · AccountAttachment(documentId, fileUrl private://)"
+/b/[slug]/documents/[id],portal-record-change-submit,button,customer,,,,CrmPortalRequest PROFILE_CHANGE PENDING (ค่าจริงไม่เปลี่ยน)
+/settings/commissions,crm-commission-send-payroll,button,"owner,manager",,,,"HrPayAdjustment(kind COMMISSION|DEDUCTION, crmCommissionId) ของแถว APPROVED/REVERSED ที่ผูกพนักงานแล้ว · CrmCommission.hrPayAdjustmentId"

@@ -30,7 +30,9 @@ for r in owner manager nok thana customer; do
   md5sum -c /tmp/c42b-logs/run4.md5 >/dev/null 2>&1 || { echo "runner/registry changed before $r — stop" >> "$S"; exit 1; }
   if [ "$r" = customer ]; then
     # run3 never pressed the portal (CHUNKS_OVERRIDE split on '|' ⇒ FATAL bad regex) + portal.ts changed (fix2 lock · fix3b DATETIME)
-    # same page set run3 planned for the customer (portal pages + hidden checks on /app pages)
+    # same page FILTER run3 planned for the customer — it pressed only the /b/[slug]/* portal rows: the registry claimed NO customer
+    #   hiddenFor on staff pages, so no /app page was opened for the customer (comment corrected in it5 — review RV-6; the customer
+    #   lock-out of staff pages exists only from the it5 runner on)
     CHUNKS_OVERRIDE='re:^/(app|p|b|u)/' bash /tmp/c42b-logs/run-chunks.run4.sh "run4-$r" --user "$r"; rc=$?
   else
     CHUNKS_OVERRIDE="$STAFF_CHUNKS" bash /tmp/c42b-logs/run-chunks.run4.sh "run4-$r" --user "$r"; rc=$?
