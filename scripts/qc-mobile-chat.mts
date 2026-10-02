@@ -19,6 +19,8 @@
 process.env.SHARK_AI_MOCK = "1";
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-mobile-chat"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1"; // ย้ำหลัง loadEnvFile — .env ห้าม override ข้อสอบ
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -37,6 +39,7 @@ try {
   const t2 = await prisma.tenant.create({ data: { name: "QC MC อื่น", slug: `qc-mc2-${ts}` } }); tids.push(t2.id);
   const td = await prisma.tenant.create({ data: { name: "ร้านเสริมสวย QC DNA", slug: `qc-mcd-${ts}` } }); tids.push(td.id);
   const ctx = { tenantId: t1.id }; const ctx2 = { tenantId: t2.id };
+  const chatCtx = { ...ctx, actor: qcOwner(t1.id) };
 
   // ── lib conversations ──
   const conv = ((await route("@/lib/mobile/conversations")) ?? {}) as unknown as { [k: string]: (...a: any[]) => Promise<any> };
@@ -66,7 +69,7 @@ try {
   if (typeof chat.sendMobileChat !== "function") chk("MC-2.0", "มี lib mobile/chat.sendMobileChat", false, "มี", "ยังไม่สร้าง");
   else {
     const events: any[] = [];
-    for await (const ev of chat.sendMobileChat(ctx, { text: "สวัสดี ทดสอบระบบ" })) events.push(ev);
+    for await (const ev of chat.sendMobileChat(chatCtx, { text: "สวัสดี ทดสอบระบบ" })) events.push(ev);
     const done = events.find((e) => e.type === "done");
     const cid = done?.result?.conversationId as string | undefined;
     chk("MC-2.1", "sendMobileChat → มี done + conversationId", !!done && !!cid, "done+cid", JSON.stringify(events.map((e) => e.type)));

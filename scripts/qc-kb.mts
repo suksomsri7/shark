@@ -14,6 +14,8 @@
 //     — KB เป็น kind feature ระดับ tenant: เปิดหน้า /app/kb ตรง (ดูว่า SYSTEM_DEFS ตัว available ตัวอื่น wire เข้าเมนูยังไงแล้วตามนั้น)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-kb"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
 const cks: { id: string; ok: boolean; exp: string; act: string; sev: Sev }[] = [];
@@ -44,11 +46,11 @@ try {
     chk("KB-2.3", "query ว่าง → [] · คำไม่มี → []", ((await kb.searchKb(ctx, "")) as unknown[]).length === 0 && ((await kb.searchKb(ctx, "ควอนตัมฟิสิกส์")) as unknown[]).length === 0, "0/0", "?");
 
     // AI tool
-    const tools = (await import("@/lib/ai/tools")) as unknown as { toolRegistry: () => { def: { name: string } }[]; runTool: (c: { tenantId: string }, n: string, a: unknown) => Promise<string> };
+    const tools = (await import("@/lib/ai/tools")) as unknown as { toolRegistry: () => { def: { name: string } }[]; runTool: (c: { tenantId: string; actor: unknown }, n: string, a: unknown) => Promise<string> };
     chk("KB-3.1", "toolRegistry มี kb_search", tools.toolRegistry().some((x) => x.def.name === "kb_search"), "มี", JSON.stringify(tools.toolRegistry().map((x) => x.def.name).slice(-4)));
-    const out = await tools.runTool({ tenantId: tid }, "kb_search", { query: "คืนสินค้า" });
+    const out = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "kb_search", { query: "คืนสินค้า" });
     chk("KB-3.2", "runTool kb_search → ข้อความไทยมีเนื้อหาบทความ", typeof out === "string" && out.includes("7 วัน") && out.includes("วิธีคืนสินค้า"), "มีเนื้อหา", String(out).slice(0, 60));
-    const miss = await tools.runTool({ tenantId: tid }, "kb_search", { query: "ควอนตัมฟิสิกส์" });
+    const miss = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "kb_search", { query: "ควอนตัมฟิสิกส์" });
     chk("KB-3.3", "ไม่เจอ → ข้อความไทย 'ไม่พบ' ไม่ throw", typeof miss === "string" && /ไม่พบ/.test(miss), "ไม่พบ", String(miss).slice(0, 40));
 
     // systems.ts ปลดป้าย

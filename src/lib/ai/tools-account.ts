@@ -9,6 +9,7 @@
 import { accountToolInfos, runAccountTool } from "./account-ops";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
+import { actorProblem, aiActorMembership } from "./actor";
 
 /**
  * เครื่องมือบัญชีทั้งชุด — สร้างจาก `ACCOUNT_OPS.filter(o => o.tool)`
@@ -21,8 +22,13 @@ export function accountTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      // CRM C5.5-G1 r2 (F6) ▸ ไม่มี actor ที่ใช้ได้ = ปฏิเสธ (ไม่ถอยไปชุดอ่านกว้าง/คุกกี้ของคำขอ) ◂
+      const bad = actorProblem(ctx);
+      if (bad) return JSON.stringify({ error: bad });
       const outcome = await runAccountTool(ctx.tenantId, info.name, args, {
         ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
+        // CRM C5.5-G1 ▸ อ่านด้วยสิทธิ์บัญชีของผู้ถาม (คีย์ API = ผ่านด่าน scope มาแล้ว → ชุดอ่านของผู้ช่วยตามเดิม) ◂
+        viewer: aiActorMembership(ctx.actor),
       });
       if (outcome.mode === "error") return JSON.stringify({ error: outcome.error });
       if (outcome.mode === "read") return JSON.stringify(outcome.result);

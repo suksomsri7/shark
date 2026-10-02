@@ -511,7 +511,8 @@ export async function findCustomerByPartyId(
  */
 export type MemberLinkViewer = import("./access").MemberActor | "system" | null;
 
-async function visibleCustomerIds(tenantId: string, memberSystemId: string, viewer: import("./access").MemberActor, ids: string[]): Promise<Set<string>> {
+// CRM C5.5-G1 ▸ export ให้เครื่องมือรุ่นแรกของผู้ช่วย AI (`ai/tools.ts` customer_search · customer_points) กรองด้วยตัวตัดสินเดียวกัน ◂
+export async function visibleCustomerIds(tenantId: string, memberSystemId: string, viewer: import("./access").MemberActor, ids: string[]): Promise<Set<string>> {
   const { canReadMember } = await import("./access");
   if (!canReadMember(viewer) || ids.length === 0) return new Set();
   const { briefFor } = await import("./profile"); // dynamic: profile → service (uniqueMemberCode) = วง import

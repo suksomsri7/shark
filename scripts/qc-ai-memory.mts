@@ -6,6 +6,8 @@
 //   service.ts: buildSystemPrompt ได้รับ memoryBlock ฉีดเข้า system prompt (persona รับ field memories)
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-ai-memory"); // 🔴 กัน prod: .env ดิบ = production · export env ของ .env.qc มาก่อน หรือ QC_ENV_FILE=.env.qc
+// ORACLE-EDIT C5.5-G1: runTool/sendMessage now take a required actor (no actor = refusal) — these checks always meant "the shop OWNER asks"
+const qcOwner = (t: string) => ({ kind: "member" as const, tenantId: t, userId: "qc-owner", membership: { role: "OWNER" as const, unitAccess: ["*"], permissions: {} } });
 process.env.SHARK_AI_MOCK = "1";
 const { prisma } = await import("@/lib/core/db");
 type Sev = "CRITICAL" | "MAJOR" | "MINOR";
@@ -28,7 +30,7 @@ try {
     chk("ME-1.3", "forgetMemory → ลบจริง + block ไม่มีแล้ว", (await mem.forgetMemory(ctx, m1.id)) === true && !(await mem.memoryBlock(ctx)).includes("หยุดทุกวันจันทร์"));
     const reg = tools.toolRegistry().map((x) => x.def.name);
     chk("ME-2.1", "tools remember_fact/forget_fact/list_memories ครบ", ["remember_fact", "forget_fact", "list_memories"].every((n) => reg.includes(n)));
-    const out = await tools.runTool({ tenantId: tid }, "remember_fact", { content: "ลูกค้าประจำชื่อคุณโอ๋" });
+    const out = await tools.runTool({ tenantId: tid, actor: qcOwner(tid) }, "remember_fact", { content: "ลูกค้าประจำชื่อคุณโอ๋" });
     chk("ME-2.2", "tool remember_fact จดทันที (ไม่ผ่าน proposal)", !out.includes('"error"') && (await prisma.aiMemory.count({ where: { tenantId: tid, content: { contains: "คุณโอ๋" } } })) === 1);
     // system prompt ฉีด memory
     const personaSrc = (await import("node:fs")).readFileSync("src/lib/ai/persona.ts", "utf8");

@@ -3,6 +3,7 @@
 import { requireMobile, mobileError } from "@/lib/mobile/auth";
 import { mobileDenied, AI_CHAT } from "@/lib/mobile/guard";
 import { sendMobileChat } from "@/lib/mobile/chat";
+import { aiMemberActor } from "@/lib/ai/actor";
 
 export async function POST(req: Request) {
   const g = await requireMobile(req);
@@ -23,7 +24,8 @@ export async function POST(req: Request) {
     imageUrls: Array.isArray(body.imageUrls) ? body.imageUrls.map(String) : undefined,
   };
 
-  const ctx = g.ctx;
+  // CRM C5.5-G1 ▸ ผู้กระทำ = เจ้าของโทเค็น + Membership ของร้านที่ X-Tenant-Id (requireMobile ตรวจแล้ว) ◂
+  const ctx = { ...g.ctx, actor: aiMemberActor(g.ctx.tenantId, g.user.id, g.membership) };
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

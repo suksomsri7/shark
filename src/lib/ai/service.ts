@@ -10,6 +10,8 @@ import { buildSystemPrompt } from "./persona";
 import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
+import type { AiActor } from "./actor";
+import { toolsOfferedTo } from "./tool-access";
 import {
   CORE_TOOLS, LOAD_SKILL_TOOL, skillById, skillIndexPrompt, skillsForTenant, toolNamesOfSkills,
 } from "./skills";
@@ -18,6 +20,11 @@ import { balanceOf, canSpend, chargeUsageSafe } from "./credit";
 import type { AiCreditSource } from "@prisma/client";
 
 export type Ctx = { tenantId: string };
+/**
+ * CRM C5.5-G1 ▸ ctx ของการส่งข้อความ = ร้าน + **ผู้กระทำ (บังคับ)** — ทุกเครื่องมือในเทิร์นนี้รันด้วยสิทธิ์ของผู้กระทำนี้
+ *   และโมเดลได้รับเฉพาะเครื่องมือ/สกิลที่ผู้กระทำใช้ได้ (ดู ./tool-access.ts) ◂
+ */
+export type SendCtx = Ctx & { actor: AiActor };
 
 const HISTORY_MAX_CHARS = 24_000; // งบบริบทต่อ request (ประมาณ ~6k token)
 const HISTORY_TAKE = 40; // ดึงล่าสุดกี่แถวก่อน trim
@@ -78,7 +85,7 @@ export function aiEnabled(): boolean {
  * ไม่มี provider/เกินเพดาน = คืน error สุภาพ (ไม่ throw — UI ต้องแสดงข้อความได้เสมอ)
  */
 export async function sendMessage(
-  ctx: Ctx,
+  ctx: SendCtx,
   input: { conversationId?: string; text: string; imageUrls?: string[] },
   deps?: {
     provider?: AiProvider;
@@ -92,6 +99,8 @@ export async function sendMessage(
 ): Promise<SendResult> {
   const text = input.text.trim();
   if (!text) return { ok: false, error: "empty" };
+  // CRM C5.5-G1 ▸ ผู้กระทำต้องเป็นของร้านเดียวกับ ctx (กันประตูที่ประกอบ ctx ผิด) ◂
+  if (!ctx.actor || ctx.actor.tenantId !== ctx.tenantId) throw new Error("AI actor does not belong to this tenant");
 
   // routing ชั้น 1: เลือกโมเดลตามเนื้อความ (env SHARK_AI_MODEL ตั้งไว้ = คืนตัวนั้นเสมอ)
   // → ชั้น 2: resolveProvider ตาม tier · provider ฉีดได้ (ข้อสอบ) ไม่งั้นเลือกจาก env
@@ -100,7 +109,7 @@ export async function sendMessage(
   let provider = deps?.provider ?? resolveProvider(routedModel === FAST_MODEL ? "fast" : "smart");
   if (!provider) return { ok: false, error: "ai_disabled" };
 
-  const db = tenantDb(ctx);
+  const db = tenantDb({ tenantId: ctx.tenantId });
   const now = new Date();
 
   // กระเป๋าเครดิต (prepaid) — เช็คก่อนแตะ provider เสมอ (ห้ามจ่ายเงินให้ผู้ให้บริการแล้วค่อยพบว่าเครดิตหมด)
@@ -152,9 +161,12 @@ export async function sendMessage(
   // ตอนนี้: แกนกลาง + load_skill เท่านั้น · AI สั่งโหลดชุดที่ต้องใช้เอง แล้วเครื่องมือจะโผล่ในรอบถัดไป
   const registry = toolRegistry();
   const defOf = (name: string) => registry.find((t) => t.def.name === name)?.def;
-  const visibleSkills = skillsForTenant(systems.map((s) => s.type));
+  // CRM C5.5-G1 ▸ ยื่นเฉพาะสิ่งที่ผู้กระทำใช้ได้: สกิลที่ไม่มีเครื่องมือให้ผู้กระทำนี้เลย = ไม่อยู่ในสารบัญ · แกนกลาง/สกิลที่โหลด
+  //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
+  const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names);
+  const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
   const loadedSkillIds = new Set<string>();
-  const activeToolNames = new Set<string>(CORE_TOOLS);
+  const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
   const currentTools = () => {
     const list = [...activeToolNames].map(defOf).filter((d): d is NonNullable<typeof d> => Boolean(d));
     // ยื่น load_skill ต่อเมื่อยังมีสกิลให้โหลด (โหลดครบแล้วยื่นต่อ = ชวนให้ AI เรียกวนเปล่า ๆ)
@@ -254,7 +266,7 @@ export async function sendMessage(
             loadedSkillIds.add(id);
             ok.push(id);
           }
-          for (const n of toolNamesOfSkills(ok)) activeToolNames.add(n);
+          for (const n of offeredOf(toolNamesOfSkills(ok))) activeToolNames.add(n);
           messages.push({
             role: "tool",
             toolCallId: tc.id,
@@ -270,8 +282,9 @@ export async function sendMessage(
           // ผู้ฟังพัง = ไม่ใช่เรื่องของแชท
         }
         // ส่ง conversation.id เข้าไปด้วย — action tool ต้องใช้ผูก proposal กับบทสนทนา
+        // CRM C5.5-G1 ▸ ผู้กระทำของเทิร์นนี้ไปกับทุกการเรียก (runTool ตรวจสิทธิ์ซ้ำ — ชื่อที่ไม่ได้ยื่นก็โดนปฏิเสธ) ◂
         const result = await runTool(
-          { tenantId: ctx.tenantId, conversationId: conversation.id },
+          { tenantId: ctx.tenantId, actor: ctx.actor, conversationId: conversation.id },
           tc.name,
           tc.args,
         );
@@ -314,7 +327,7 @@ export async function sendMessage(
 
   // หักเงินจากกระเป๋าเครดิต (prepaid) — คนละ write กับ tx ข้างบนเพราะต้องอ่านยอดสดก่อนหัก
   // ล้ม = บันทึก OpsEvent แล้วไปต่อ (ห้ามให้คำตอบที่ผู้ใช้ได้แล้วหายไปเพราะบัญชีเครดิต)
-  await chargeUsageSafe(ctx, {
+  await chargeUsageSafe({ tenantId: ctx.tenantId }, {
     source: deps?.source ?? "CHAT",
     model: routedModel,
     tokensIn,
@@ -324,7 +337,7 @@ export async function sendMessage(
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
   try {
-    await recordSample(ctx, {
+    await recordSample({ tenantId: ctx.tenantId }, {
       userText: text,
       toolCalls: usedTools,
       replyText: finalText,
