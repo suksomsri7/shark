@@ -300,3 +300,15 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - fix11 L1: TOO_LARGE detection depends on Prisma's English "expired transaction" wording (safe direction on mismatch; also accept P2028 with numeric meta.timeout). L2 (pre-existing): the exhausted-outbox ops alert runs only in the daily cron (20:00 UTC), reports an all-time FAILED count that never clears, and does not name the event → improve before relying on it for PDPA cleanup.
 - inbound mail volume (fix8 RV-7): at the caps one CRM system accepts ≤5,000 mails/h (≈10–30 GB/h of bodies worst case) → daily byte budget per system; count copy-in sends against the outbound quota.
 - G2 deploy effects (owner): every existing AI conversation becomes legacy = OWNER-only (STAFF/MANAGER lose past AI history, no backfill); REST integrations reusing a pre-deploy conversationId get 404; shop-wide AiMemory is still injected into every member's prompt (owner decision D1 / next card).
+
+## G3 (AI memory per writer) — owner questions and review leftovers (2 Oct)
+Source: `wo-notes/crm-C5.5-G3.md` (Q1–Q6) and `wo-notes/crm-C5.5-G3-review.md` (RV-3, RV-4, RV-7) on `wip/crm-cf17`.
+- Q1: OWNER on the web no longer lands on API-key confirm cards / legacy / scheduled rooms (app list or by id only). Accept, or add a room list on the web?
+- Q2 + RV-3 (LOW): everything an OWNER asks the AI to remember is a shop fact read into every STAFF prompt; the guard covers only phone/e-mail/ID, so a customer's name, spend or health note can still be shared. Options: OWNER notes private by default; or refuse facts about individual customers.
+- Q3: may the scheduled job call `remember_fact` (its memories are OWNER-only)?
+- Q4: guard false positives (bare 9–10 digit codes starting with 0; ~1 in 10 random 13-digit numbers).
+- Q5: human-confirmed `kb_create_article` is not guarded.
+- Q6: deleted account's `u~` rooms and private memories stay in the DB unreadable; `o~` facts stay shared (PDPA).
+- RV-4 (LOW, pre-existing): `support_open_case` writes subject/detail unguarded into the support case list/thread readable by every member — the push fix (G2-2) is partial. Candidate follow-up card.
+- RV-7 behaviour changes to announce: STAFF can no longer forget legacy shop memories; the 100 shop-fact cap includes legacy rows.
+- Legacy memories containing contact data are hidden from non-OWNERs at read time, not deleted; prod count not taken.
