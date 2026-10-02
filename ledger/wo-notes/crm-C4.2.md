@@ -630,3 +630,110 @@ Runner + registry + fixtures only (no product code). Every verification ran on t
 **run5:** `scripts/pending/c42b/run5.sh` (not launched). Estimated **7.5–8.5 h** of the QC1 lock (run3 = 5 h 54 m for 4 staff roles; + customer portal + lock-out ≈ 20 min, + per-chunk verification read ≈ 5 s × 65 chunks, + DB-effect checks, + 60 s per newly unsettled outbox event ≈ 20–30 min per role while P-it5-2 stands). Pass = passed == pressed · VACUOUS 0 or ruled (candidates CSV) · restore/cleanup/verify 0 · outbox settled (fails on P-it5-2 rows until fixed or ruled) · no fatal.
 **dbg13 (final verification of the round-3 fixes):** dbg13 (8 steps, round-3 runner): c360-owner 160/160 · c360-nok 83/83 · company-owner 61/61 · seq-owner 38/38 · misc-owner 95/95 · home-owner 47/49 + home-mgr 45/47 (AI proposal confirm/cancel → round 5 POST_CHECK) · portal-customer 29/31 (tab-line → registry). dbg14 (final runner 7ecf3092 / registry bc9278bc): commissions-mgr 30/30 (incl. the over-cap refusal variant + the rule-row disabled variant) · home-owner 49/49 · portal-customer 31/31. Earlier rounds (dbg12, steps not re-run after rounds 3–5 — those rounds only removed false checks or added the two verified items): commissions-owner 29/29 · auto-mgr 48/48 · auto-owner 47/47 · assign-owner 30/30 · objects-owner 27/27 · email-owner 47/47 · thread-owner 10/10 · deal-owner 49/49 · deal-nok 51/51 · contacts-nok 48/48 · unsub-owner 2/2 · lockout-customer 4/4. **Restore proof dbg12/13/14:** every table content checksum equal before/after (only the OutboxEvent row count grows — append-only, not restored) · `verifyFailures` 0 · `cleanupFailures` 0 · `outboxUnsettled` = only the P-it5-2 event types.
 **Not verified:** the full pass with the frozen runner (run5) · manager erase (same row/fixture as owner) · thana-specific fixture paths (same code as nok) · pairing on a full run (verdict.py only exercised on a partial dbg set) · whether the QC server would drain P-it5-2 events with a cron.
+
+## it6 — run5 triage (triage lane · 2 Oct 18:55–19:40 UTC · read-only on product · frozen runner/registry untouched)
+run5 = THE full pass on build **e1caec03** (src session/crm c1522f6e, C5.5 fix cards through fix14), frozen runner **7ecf3092** · registry **bc9278bc** · chunk runner 6c10ab96 (md5 re-checked after triage: `scripts/` and `next/` unchanged). Verdict **FAIL**: pressed 7821 · passed 7547 · wrongExpect **24** · VACUOUS **250** · outboxUnsettled **6** · dead 0 · hiddenLeak 0 · disabled 0 · overflow 0 · fatal 0 · restoreFail 0 · cleanupFailures 0 · verifyFailures 0 · console errors 8. Per-item table: `scripts/pending/c42b/run5-triage.csv` (280 items = 24 wrongExpect + 6 outbox + 250 VACUOUS, class + cause + fix per item).
+
+### 1. wrongExpect 24 → PRODUCT 2 · REGISTRY 8 · RUNNER 6 · FIXTURE 8
+| # | row (page) | roles × devices | class | cause (evidence) | it6 correction (copy only) |
+|---|---|---|---|---|---|
+| W1 | `crm-score-bands-save` (/settings/scoring) | owner, manager × d+m = 4 | RUNNER | the runner typed "5" in every band field ⇒ hot == warm ⇒ VALIDATION "คะแนน 'ร้อน' ต้องมากกว่าคะแนน 'อุ่น'" (scoring.ts `setScoringSettings`), shown in a non-alert line so the refusal detector did not name it; no `AuditLog crm.score.settings` ⇒ DB-effect check failed. Not a product change (setScoringSettings audits every successful save) | registry opener `crm-score-band-hot=60`, `crm-score-band-warm=30` |
+| W2 | `deal-bulk-move` (/deals) | owner, manager, nok, thana × d+m = 8 | REGISTRY | the runner's prefill set the empty target `<select>` (starts at "") to its first stage = the ticked deal's CURRENT stage ⇒ `moveCore` no-op (deals.ts `if (done) return { changed: false }`) ⇒ no CrmDeal write (the `crm.deal.bulk_move` audit is written even for a no-op, deals.ts `bulkMove`); the UI still said "ย้ายขั้นสำเร็จ 1 ดีล" (observation O-it6-a below). Not a fix12–14 behaviour change: the no-op guard predates them; run4 predates the it5 DB-effect check on this row | opener `deal-row-check-*=on`, `deal-bulk-stage=#2` + new runner value form `=#N` (N-th non-empty option): dbg15 showed `=*` still picks stage #1 = the deal's own stage (first ticked row is a stage-1 deal for every role in the QC seed) |
+| W3 | `object-import-form`, `object-import-submit` (/objects/[key]) | owner, manager × d+m × 2 rows = 8 | FIXTURE | the runner's paste-box CSV (built from the placeholder header) put `qc-btn-…` in parentId ⇒ "นำเข้าสัญญาแล้ว 0 รายการ · ข้าม 1 แถว — ไม่พบบริษัทที่เลือก" ⇒ no CustomRecord. Product correct (parent + `เลขที่สัญญา` are required by the seed object) | runner: object box = placeholder header with parentId = shared company, start/end dates, numbers, booleans `false`, unique text (dbg16 then showed `เลขที่สัญญา` required — fixed in dbg18); opener `object-import-btn`, `object-import-text=*` |
+| W4 | `crm-email-attach-contact-pick` (/emails/[threadKey]) | manager × d+m = 2 | **PRODUCT P-it6-1** | the thread page offers search + pick to every viewer (`emails/[threadKey]/page.tsx:85` `canAttach: !contactId`) but `attachToContact` (emails.ts:3035) → `assertUnmatchedGate` (emails.ts:2826) refuses the unit-scoped manager ("กล่อง 'ยังไม่จับคู่' เปิดได้เฉพาะ…"). Present since ≤ 1d23347e (not a fix12–14 change); first visible now because RV-3 removed the db-text refusal exemption | §15(b): `crm-email-attach-contact-q/-go/-pick` hiddenFor manager (same gate as `crm-emails-tab-unmatched`) ⇒ will report **hiddenLeak** (PRODUCT) until the page hides the block |
+| W5 | `crm-api-hook-delete-*` (/settings/api) | owner × d+m = 2 | RUNNER | the endpoint IS deleted (count drop + `AuditLog crm.api.manage` present) but the db text said "ลบแล้ว", which was not one of the runner's delete keywords ⇒ the generic "≥1 named model written" check looked for updatedAt on a deleted row | runner delete regex += `ลบแล้ว`; registry db `WebhookEndpoint ถูกลบ · AuditLog crm.api.manage` |
+
+No wrongExpect traces to a behaviour change in fix12 r3 / fix13 / fix14 / G2 / G3 / fix8 / fix10.
+
+### 2. outboxUnsettled 6 → RUNNER 4 · PRODUCT 2
+| role · page · devices | event | why not drained in 60 s | class |
+|---|---|---|---|
+| owner + manager · /emails/[threadKey] · d+m (4) | `crm.email.sent` | produced by the RUNNER submitting the `crm-email-composer` form row — the same server action as the guarded `crm-email-send` (`sendCrmEmailAction`), i.e. a guard bypass: 4 real sends went through the QC dev transport (server.log `[email:dev] … subject: qc-btn template วรรณา`). The action wakes (`emails-actions.ts` revalidateAndWake/touchThread); the events were processed 76–269 s after creation (`facts15.mts`), all DONE, attempts 0, no lastError — the slow drain is the P-it6-2 pattern below | **RUNNER** (safety gap) — it6 runner adds `crm-email-composer` to DIRECT_SEND_GUARD (row then = skippedSafety, covered by C2.5-S2.4/S9.6 like `crm-email-send`) |
+| nok · /contacts/new · d+m (2) | `crm.contact.created` + `crm.contact.assigned` | **reproduced in isolation** (dbg16 `o-newcontact-nok`, nothing else running): nok's 2 creates (19:15:32, 19:15:37) left 4 events PENDING with `availableAt` untouched (never claimed by any drain) for 345–350 s, although a drain had run normally 1 min earlier (manager activity 19:14:33 → DONE in 0 s); they drained only when a later owner create woke the queue (19:21:22). dbg17 owner alone: of 3 creates, the first two waited 40 s / 28 s, the third drained in 1 s. `createContactAction` does call `revalidateAndWake` (`contacts-actions.ts`, `if (r.created)`), so the wake's `after()` drain did not run for most creates, and the coalescing flag (`core/after-drain.ts`, PENDING_STALE_MS 15 s) then swallowed the next wake inside 15 s | **PRODUCT P-it6-2** (no runner change) |
+
+### 3. VACUOUS 250 = 55 rows
+The prediction "104" counted row × viewport over the 53 candidate rows; verdict.py counts each hidden role × device (owner/manager-visible rows hidden for nok+thana ⇒ 4 per row; rows hidden for three roles ⇒ 6). The **53 predicted rows = 238 items, all came true; none of them was covered after all.** **NEW: 2 rows / 12 items** — `object-archive-confirm-key`, `object-archive-reason` (/settings/objects, manager/nok/thana × d+m): side effect of the it5 EMPTY-object fixture (it is listed first, so the owner's archive flow ran on it and the paired controls were never found on the seed object) → it6 runner drops that fixture; `object-edit-key` instead asserts the rule on the seed object (`state: disabled`, ObjectsAdmin.tsx `disabled={item.recordCount > 0}`).
+
+Cheap fixes implemented in the it6 copy (runner fixtures inside the snapshot window, deleted in CLEAN):
+| rows | fixture |
+|---|---|
+| `objects-archived-toggle`, `object-restore-btn` (/settings/objects) | archived CustomObject `qcbtnarch<rand>` (archivedAt now, last sortOrder) |
+| `pl-restore-*` (/settings/pipelines) | archived CrmPipeline with one stage |
+| `activity-row-company-link` (/activities) | company-only OPEN TASK owned by manager on the shared company, due −45 d |
+| `object-archive-confirm-key`, `object-archive-reason` (NEW) | it5 empty-object fixture removed (see above) |
+⇒ 6 rows / 36 items expected to pair after the re-run (verified rows: see §6).
+
+Remaining 49 rows / 202 items — **for ruling (waiver) or a later fixture card**, with the effort I estimate:
+| group | rows | why vacuous | cheapest fix |
+|---|---|---|---|
+| paging > 50 | `companies-page-next/-prev`, `object-page-next/-prev` | seed 20 companies / few records | MEDIUM: 51 throwaway rows per page (CLEAN cost); service check C1.10-X6.2 only |
+| empty-system links | `deals-empty-create-pipeline`, `deal-new-create-pipeline`, `settings-stages-create-link`, `objects-index-settings-link` | only render when the shop has NO pipeline / NO object | MEDIUM–HIGH: needs a second shop/tenant without CRM setup — waiver suggested |
+| v1 / stale / AI on home | `crm-hub-switch-link`, `crm-home-stale-banner`, `crm-ai-proposal-deal-*`, `crm-ai-proposal-next-step-input`, `crm-panel-deal`, `crm-panel-retry` | v1 hub mode off · no stale data · mock AI returns no deal proposal · panel error state | MEDIUM (AI proposal fixture row) / waiver for hub-switch + retry |
+| company relations | `company-parent-link`, `company-subsidiary-link`, `company-merged-link`, `company-doc-link`, `company-outstanding-alert` | shared company has no parent/subsidiary/merge/account docs | parent/subsidiary: CHEAP (set `parentId` on a clone) · merged: MEDIUM · doc/outstanding: account ledger (not snapshotted) — waiver |
+| company custom fields + restore | `company-new-field-bool/-input/-select/-textarea`, `company-new-restore-confirm/-reason/-submit` | no company custom fields in seed · restore needs an archived duplicate name | CHEAP-MEDIUM: 4 CrmFieldDef fixtures + archived company clone |
+| object records | `object-record-new-btn/-form/-field-*/-save/-cancel`, `object-view-delete` | seed object needs a parent ⇒ new-record button not rendered on a parentless list; `object-view-name` opener not found | MEDIUM: parentless fixture object |
+| contact page | `crm-merge-choice`, `crm-object-tab-obj-*` | no merge pair · no object tab for contacts | MEDIUM |
+| e-mail | `crm-email-attachment`, `crm-email-show-images`, `crm-email-domain-refresh` | seed mail has no attachments/remote images · no sending domain | MEDIUM (storage) / waiver for domain refresh (provider) |
+| settings | `crm-export-download`, `crm-assign-sim-field`, `crm-assign-sim-field-value`, `crm-import-to-duplicates` | no finished export job · simulator field needs a field rule · import with duplicates | CHEAP-MEDIUM each |
+| MEETING team rooms | `crm-settings-team-room`, `-channel`, `-remove-*`, `-save`, `-team` | no MEETING system in seed | waiver (RV-4 table: settings save covered nowhere) |
+| other modules | `team-restore` (archived team card — `findVisible` cannot target the archived card by data-id), `pos-deal-select` (real POS sale), `member-view-team` | seed / runner capability | waiver or MEDIUM runner work |
+
+### 4. counts before vs after
+Only `OutboxEvent` differs (7196 → 8857, append-only, not restored). Every table content checksum equal; AuditLog checksum equal (restored). No runner fixture leftovers (cleanupFailures 0, verifyFailures 0 in all 65 summaries).
+
+### 5. restore / fatals / console / server 500s
+restoreFail 0 · cleanupFailures 0 · verifyFailures 0 · fatal 0 · overflow 0 · no page status ≥ 500 in any summary. Console errors 8 = `/api/files/<fake FileAsset id>` 404 on `/contacts/[contactId]` load (the RV-4 G/H recording fixture's fake asset) — FIXTURE noise, not product. server.log (`/root/projects/shark-crm/.qc-shots/acc-v2/server.log`, last write 16:18 UTC, nothing after) in 13:59–18:51: 4 × `ActivitiesError NOT_FOUND "ไม่พบรายการที่จะแนบไฟล์…"` (files.ts NOT_FOUND_MSG, rendered via the CrmFilesBlock RSC, digest 3180155573) during owner/manager chunk 9 (reports|emails|objects) — no page reported ≥ 500, so it was a caught RSC error; most likely a record page rendered just after its record was archived/deleted (O-it6-d, unverified). Plus the 4 `[email:dev]` sends of §2 (runner guard gap, fixed in the copy).
+
+### 6. Proposal (copy only — `scripts/pending/c42b/next-it6/`, NOT applied to `scripts/` or `next/`)
+Files: `qc-crm-buttons.mts` (md5 80756f50; diff vs next/: `runner-it6.diff`) · `crm-ui-inventory.json` (md5 3f2ba5b8 = next/ + `it6-registry-edits.py`, 13 field changes on 9 rows, idempotent) · `dbg-it6.sh` (dbg4 copy pointing at the copy; last STEPS = dbg18). Final dry run of the copy: exit 0, 8325 presses, opener/needs problems 0. `pnpm typecheck` (iso + gate lock, 5120 MB) exit 0.
+Runner: DIRECT_SEND_GUARD += `crm-email-composer` · delete keywords += `ลบแล้ว` · opener value form `=#N` · it5 empty-object fixture removed · fixtures: archived object, archived pipeline, company-only overdue task · object paste-box CSV with real parent + required fields (file fixture `qc-btn-object-import.csv` = title,parentId).
+Registry: W1 opener · W2 opener (`=#2`) · W3 openers (2 rows) · W4 hiddenFor manager (3 rows) · W5 db text · V1 `object-edit-key` → ui disabled, `needs` removed.
+
+**Verification of the copy on :3215 (e1caec03), desktop, one job at a time under the gate lock, labels dbg15–dbg18 (`/tmp/c42b-logs/dbg1[5-8]*`, fail shots `.qc-shots/c42b/dbg1[5-8]-fail/`; dbg15 stopped itself after step 4 when I amended the copy — md5 guard):**
+| step (label) | result | shows |
+|---|---|---|
+| W1 score owner / manager (dbg15) | 23/23 · 23/23 | save writes `crm.score.settings` |
+| W2 bulk owner / nok (dbg15 with `=*`) | 34/35 · 35/36 | `=*` insufficient (same no-op) → `=#2` |
+| W2 bulk owner / nok (dbg16, `=#2`) | 35/35 · 36/36 | CrmDeal written |
+| W3 object import owner (dbg16) · owner/manager (dbg17) | 22/24 each | parent fixed, then `เลขที่สัญญา` required |
+| W3 object import owner / manager (dbg18, final CSV) | 24/24 · 24/24 | CustomRecord written |
+| W4 attach manager (dbg16) | 6/9 — **hiddenLeak ×3** (`-q/-go/-pick`) | expected: the leak IS P-it6-1 until the product hides the block |
+| W5 webhook owner (dbg16) | 14/14 | delete recognised |
+| /settings/objects owner (dbg16) | 31/31 | `objects-archived-toggle`, `object-restore-btn`, `object-archive-confirm-key`, `object-archive-reason`, `object-edit-key` all FOUND (pairing for manager/nok/thana) |
+| /settings/pipelines owner (dbg16) | 17/17 | `pl-restore-*` FOUND |
+| /activities manager (dbg16) | 41/41 | `activity-row-company-link` FOUND |
+| /emails/[threadKey] owner (dbg16) | 9/9, outbox 0 | `crm-email-composer` now skippedSafety (with `crm-email-send`, `crm-email-attach`) — no send |
+| /contacts/new nok (dbg16) | 13/13, **outbox 4 PENDING** | P-it6-2 reproduced in isolation |
+| /contacts/new owner (dbg17) | 15/15, outbox 0 within 60 s | but 2 of 3 creates waited 28–40 s (facts16) |
+Restore proof dbg15–18: every table content checksum equal before/after each run and vs run5's after-counts (only `OutboxEvent` grows); restoreFail / cleanup / verify 0 in every step. Read-only DB helpers: `facts15.mts` (run5 window), `facts16.mts` (window events + queue state), `facts17.mts` (PENDING lease state).
+
+**Targeted re-run to turn the verdict green** (copy promoted to `scripts/`+`next/` by the controller; every page with ALL its staff roles so verdict.py can pair absences; both viewports):
+| page | roles | why |
+|---|---|---|
+| /settings/scoring | owner, manager, nok, thana | W1 |
+| /deals | owner, manager, nok, thana | W2 |
+| /objects/[key] | owner, manager, nok, thana | W3 |
+| /emails/[threadKey] | owner, manager, nok, thana | W4 (manager ⇒ hiddenLeak until P-it6-1 fixed or ruled) + composer guard (outbox) |
+| /settings/api | owner, manager, nok, thana | W5 |
+| /contacts/new | owner, manager, nok, thana | outbox nok (P-it6-2 — will fail until fixed or ruled) |
+| /settings/objects | owner, manager, nok, thana | V1 + archived-object fixture (4 VACUOUS rows) |
+| /settings/pipelines | owner, manager, nok, thana | `pl-restore-*` |
+| /activities | owner, manager, nok, thana | `activity-row-company-link` |
+| customer lock-out | customer | the same 9 staff pages |
+= 9 pages × 4 staff roles × 2 viewports (72 runs) + customer lock-out. Estimate from the dbg15–18 step times (≈ 10 min per staff role per viewport for the 9 pages, hidden roles faster; + 60 s per unsettled outbox wait while P-it6-2 stands; + customer lock-out ≈ 3 min): **≈ 1.25–1.5 h** of the QC1 lock. Verdict: `verdict.py` over the re-run's own summaries (all staff roles in the same run ⇒ pairing works) replaces those 9 pages' items of run5; the other 56 page-groups of run5 stand as they are (only VACUOUS there). **It cannot turn green on its own:** 49 VACUOUS rows (202 items) need a waiver ruling or fixture cards; P-it6-1 (hiddenLeak manager × 3 rows × 2 viewports) needs a product fix or a ruling; P-it6-2 will fail `/contacts/new` (and can hit any later step whose wake is swallowed) until fixed or ruled.
+
+### Product findings it6 (for the C6 register — none fixed here)
+- **P-it6-1 (LOW–MED, §15(b) leak / UX):** `/emails/[threadKey]` shows the "แนบกับผู้ติดต่อ" search + pick to every viewer of an unmatched thread (`src/app/app/sys/[id]/crm/emails/[threadKey]/page.tsx:85` `canAttach: !contactId`), but `attachToContact` (emails.ts:3035) runs `assertUnmatchedGate` (emails.ts:2826) which refuses roles without whole-shop visibility (the unit-scoped manager): the user searches, picks, and only then gets "กล่อง 'ยังไม่จับคู่' เปิดได้เฉพาะ…", in a non-`role=alert` line. Expected: compute the gate on the page (the same predicate as the unmatched tab) and hide the block, or show the reason up front. Repro: manager (QC1) → อีเมล → an unmatched thread → แนบกับผู้ติดต่อ → pick. Present since ≤ 1d23347e.
+- **O-it6-a (LOW, UX/truthfulness):** deal bulk move reports "ย้ายขั้นสำเร็จ N ดีล" counting deals already in the target stage (`moveCore` returns `changed:false`, the bulk action counts it as moved). Expected: count only changed deals ("ย้าย 0 · อยู่ขั้นนี้แล้ว 1").
+- **O-it6-b (LOW, a11y):** scoring VALIDATION ("ร้อน ต้องมากกว่า อุ่น") and the attach refusal render as plain text, not `role="alert"` — screen readers do not announce them.
+- **P-it6-2 (MED, reproducible):** a successful contact create (`createContactAction` → `revalidateAndWake`) often does not drain the outbox: dbg16 (nok alone) 4 events never claimed for 350 s; dbg17 (owner alone) 2 of 3 creates waited 28–40 s, each time until a LATER wake; in run5 nok's waited 274–278 s and the composer's `crm.email.sent` 76–269 s (same pattern). Mechanism (from code, not instrumented): `scheduleCoalescedDrain` sets `pendingSince` and registers `after(task)`; when that task never starts, every wake in the next 15 s is dropped as "already scheduled" and nothing re-wakes the queue — on QC there is no cron, in prod the hourly cron sweeps it ⇒ automations/webhooks/assignment notifications for a new contact can lag up to an hour. Why the `after()` task does not start for this action (the client does `router.push` to the new contact right after the action returns; other actions without a navigation drain at once) is **not verified**. Suggested fix: make the drain independent of the navigating request's `after()` (e.g. clear `pendingSince` when the request ends without starting the task, or keep the flag only while the drain is running), plus a QC check that creates a contact and asserts DONE ≤ 5 s. Introduced with C5.4-D r3 coalescing (not by fix12–14).
+- **O-it6-d (unverified, LOW):** 4 × `ActivitiesError NOT_FOUND` thrown inside the CrmFilesBlock RSC (server.log, digest 3180155573) during reports/emails/objects chunks — a record page whose record vanished should render "not found", not throw inside a block.
+- P-it5-2 (paths without any wake) did not show in run5: no chat-panel/unsub/portal/team event stayed PENDING > 60 s (fix13 added the wakes).
+
+### Not verified
+- nok/thana pairing on the 6 fixture rows in one run (owner/manager FOUND them in dbg16; the hidden roles' absence passes are only paired by the full-role re-run);
+- O-it6-d's triggering page (server.log has no route on those lines);
+- that the composer guard leaves no other path to a real send (only `crm-email-composer` was found by the run5 `[email:dev]` lines; registry rows submitting other mail forms were not re-audited);
+- `deal-bulk-stage=#2` relies on the first ticked row being a stage-1 deal (true for all four roles in this seed, dbg16 desktop owner/nok only; manager/thana and mobile not run);
+- the copy on mobile at all, W5 on manager, W2 on manager/thana (dbg = desktop, the roles named in the table);
+- why the `after()` drain of `createContactAction` does not start (P-it6-2 mechanism is read from code, not instrumented; no server log after 16:18 UTC to look at).

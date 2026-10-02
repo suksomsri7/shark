@@ -1,0 +1,138 @@
+--- scripts/pending/c42b/next/qc-crm-buttons.mts	2026-10-02 10:03:55.135950372 +0000
++++ scripts/pending/c42b/next-it6/qc-crm-buttons.mts	2026-10-02 19:25:38.288801334 +0000
+@@ -142,6 +142,7 @@
+ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+ const DL_DIR = resolvePath(".qc-shots/c42/dl");
+ let RUN_OBJECT_KEY = ""; // ctx.objectKey — set in main (fillValueFor has no ctx)
++let RUN_COMPANY_ID = ""; // it6: the shared company pick (object import parentId)
+ const DOWNLOADS: { name: string; bytes: number; state: string }[] = [];
+ 
+ // ───────────────────────────── registry + answer key ─────────────────────────────
+@@ -203,6 +204,9 @@
+   ["crm-email-send", "ส่งอีเมลจริง (sendCrmEmailAction)"],
+   ["crm-email-test-send", "ส่งอีเมลทดสอบจริงถึงผู้กด"],
+   ["portal-otp-request", "ส่ง OTP ทางอีเมลจริง (requestPortalOtp → sendEmail)"],
++  // it6 (run5): the composer FORM row submitted the composer (requestSubmit ⇒ sendCrmEmailAction) — 4 mails went through the QC
++  //   server's dev transport ("[email:dev] … subject: qc-btn template …"); with a real mail key they would have been sent
++  ["crm-email-composer", "ส่งอีเมลจริงผ่านฟอร์มเขียนจดหมาย (sendCrmEmailAction — ฟอร์มเดียวกับปุ่ม crm-email-send)"],
+ ]);
+ // CROSS_MODULE_GUARD — writes into another module's ledger that the snapshot cannot put back faithfully (running
+ // document numbers, payroll, POS sales) or that call a paid external service (LLM / speech / OCR) or upload to the
+@@ -896,13 +900,33 @@
+     }
+     PICKS.push({ user: "*", entity: "assignmentRules", id: null, why: "กฎแจกงาน 2 กฎของตัวกด (qc-btn-assign-, ปิดใช้งาน) — ซีดมี 0 ⇒ ปุ่มเลื่อนขึ้น/ลงถูก disabled" });
+   }
+-  // it5 (RV-8): object-edit-key is `disabled={item.recordCount > 0}` (ObjectsAdmin.tsx) and every seed object has records ⇒ an
+-  //   EMPTY runner-owned object listed FIRST (sortOrder below the seed; list = sortOrder asc, createdAt asc · objects.ts listObjects)
+-  if (selRow(/^object-edit-key$/)) {
+-    const minSort = await P.customObject.aggregate({ where: { systemId: SYS }, _min: { sortOrder: true } }).then((a: Any) => a._min.sortOrder ?? 0).catch(() => 0);
+-    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key: `qcbtn${rand}`, label: `qc-btn-obj-${rand}`, labelPlural: `qc-btn-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: minSort - 1, recordCount: 0 }, select: { id: true } });
+-    XFIX.push({ model: "customObject", id: o.id }); PREFER_IDS.push(o.id);
+-    PICKS.push({ user: "*", entity: "emptyObject", id: o.id, why: "วัตถุว่างของตัวกด (qc-btn-obj-, ไม่มีระเบียน) อยู่บนสุดของรายการ — ชื่ออ้างอิงแก้ได้เฉพาะวัตถุที่ไม่มีระเบียน" });
++  // it6 (run5): the it5 EMPTY-object fixture (listed first) made the archive rows act on an object with no records ⇒ no confirm-key /
++  //   reason step (object-archive-confirm-key/-reason VACUOUS for manager/nok/thana). Removed — object-edit-key now asserts the
++  //   product rule on the seed object instead (key is disabled while the object has records; registry `state: disabled`).
++  // it6: archived custom object (objects-archived-toggle / object-restore-btn render only when one exists — ObjectsAdmin.tsx)
++  if (selRow(/^(objects-archived-toggle|object-restore-btn)$/)) {
++    const maxSort = await P.customObject.aggregate({ where: { systemId: SYS }, _max: { sortOrder: true } }).then((a: Any) => a._max.sortOrder ?? 0).catch(() => 0);
++    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key: `qcbtnarch${rand}`, label: `qc-btn-archived-obj-${rand}`, labelPlural: `qc-btn-archived-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: maxSort + 1, archivedAt: new Date() }, select: { id: true } });
++    XFIX.push({ model: "customObject", id: o.id });
++    PICKS.push({ user: "*", entity: "archivedObject", id: o.id, why: "วัตถุเก็บถาวรของตัวกด (qc-btn-archived-obj-) — ซีดไม่มี" });
++  }
++  // it6: archived pipeline (pl-restore-* renders for a pipeline with archivedAt — PipelineSettings.tsx)
++  if (selRow(/^pl-restore-/)) {
++    const pipe = await P.crmPipeline.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-archived-pl-${rand}`, isDefault: false, sortOrder: 95, archivedAt: new Date(),
++      stages: { create: [{ tenantId: TENANT, systemId: SYS, name: `qc-btn-archived-st-${rand}`, kind: "OPEN", sortOrder: 0, probability: 10 }] } }, select: { id: true } });
++    XFIX.push({ model: "crmPipeline", id: pipe.id }); PREFER_IDS.push(pipe.id);
++    PICKS.push({ user: "*", entity: "archivedPipeline", id: pipe.id, why: "pipeline เก็บถาวรของตัวกด (qc-btn-archived-pl-) — ซีดมี 0" });
++  }
++  // it6: a company-only OPEN activity (ActivityItems: company link renders only without deal/contact) owned by the MANAGER on the
++  //   shared company pick ⇒ in the owner's (ALL) and the manager's (own) "ค้างอยู่ · ทีม" list, first (due 45 days ago)
++  if (selRow(/^activity-row-company-link$/)) {
++    const mgr = (E.users?.manager?.userId as string | undefined) ?? null;
++    const coId = ctxForUser(ctx, "owner").companyId ?? ctx.companyId;
++    if (mgr && coId) {
++      const act = await P.crmActivity.create({ data: { tenantId: TENANT, systemId: SYS, companyId: coId, contactId: null, dealId: null, type: "TASK", title: `qc-btn-act-co-${rand}`, dueAt: new Date(Date.now() - 45 * 86_400_000), ownerUserId: mgr }, select: { id: true } });
++      XFIX.push({ model: "crmActivity", id: act.id });
++      PICKS.push({ user: "*", entity: "companyActivity", id: act.id, why: `กิจกรรมค้างผูกบริษัท ${coId} อย่างเดียว (qc-btn-act-co-) เจ้าของ manager — ซีดไม่มี` });
++    }
+   }
+   if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
+ }
+@@ -1591,7 +1615,7 @@
+     if (cand) await el.select(cand.value);
+   } else if (meta.tag === "input" && meta.type === "file") {
+     if (!IMPORT_FILE_INPUTS.has(testid)) return { before, after: before, skipped: "file" };
+-    await el.uploadFile(resolvePath(".qc-shots/c42/fixtures/qc-btn-import.csv"));
++    await el.uploadFile(resolvePath(testid === "object-import-file" ? ".qc-shots/c42/fixtures/qc-btn-object-import.csv" : ".qc-shots/c42/fixtures/qc-btn-import.csv"));
+     await el.evaluate((e: Any) => e.dispatchEvent(new Event("change", { bubbles: true })));
+   } else if (meta.tag === "input" && ["checkbox", "radio"].includes(meta.type)) {
+     await clickEl(page, el, testid);
+@@ -1616,12 +1640,26 @@
+   } else if (meta.tag === "textarea" && /import-text$/.test(meta.tid)) {
+     // CSV paste box: the placeholder IS the header the importer expects — header + one qc-btn- row (value set natively:
+     // typing a newline through the keyboard would submit/blur)
+-    await el.evaluate((e: HTMLTextAreaElement, tag: string) => {
++    // it6 (run5 W3 · dbg16/dbg17): the custom-object box needs a REAL parent (the shared company) and every required field —
++    //   the placeholder-derived row put "qc-btn-…" in parentId ("ไม่พบบริษัทที่เลือก"), then (parent fixed, header cut to
++    //   title,parentId) "ฟิลด์ 'เลขที่สัญญา' เป็นข้อมูลที่ต้องกรอก" ⇒ 0 imported. Object box: the placeholder header, parentId =
++    //   shared company, start/end dates, numbers, booleans "false". Other import boxes keep the placeholder row unchanged.
++    const objectBox = meta.tid === "object-import-text";
++    await el.evaluate((e: HTMLTextAreaElement, tag: string, obj: boolean, parent: string) => {
+       const header = (e.getAttribute("placeholder") ?? "name").split("\n")[0]!.trim();
+-      const row = header.split(",").map((h, i) => (i === 0 ? `qc-btn-${tag}` : /date|วัน/i.test(h) ? "2026-12-31" : /value|amount|price|มูลค่า/i.test(h) ? "100" : `qc-btn-${tag}`)).join(",");
++      const cell = (h: string, i: number): string => {
++        if (!obj) return i === 0 ? `qc-btn-${tag}` : /date|วัน/i.test(h) ? "2026-12-31" : /value|amount|price|มูลค่า/i.test(h) ? "100" : `qc-btn-${tag}`;
++        if (/^_?parentId$/.test(h)) return parent;
++        if (/start/i.test(h)) return "2026-01-01";
++        if (/date|วัน|At$/i.test(h)) return "2026-12-31";
++        if (/value|amount|price|satang|มูลค่า|qty|count|number$/i.test(h)) return "100";
++        if (/^(auto|is|has)[A-Z]|renew|enabled|active/i.test(h)) return "false";
++        return `qc-btn-${tag}${i}${Date.now().toString(36)}`; // unique per press (form row + submit row both import)
++      };
++      const row = header.split(",").map((h, i) => cell(h.trim(), i)).join(",");
+       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(e, `${header}\n${row}`);
+       e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true }));
+-    }, rand);
++    }, rand, objectBox, RUN_COMPANY_ID);
+   } else if (meta.tag === "input" || meta.tag === "textarea") {
+     await el.click({ clickCount: 3 }).catch(async () => { await el.evaluate((e: HTMLElement) => e.focus()); });
+     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
+@@ -1692,7 +1730,7 @@
+     const m = /^([A-Z][A-Za-z0-9]+)\b/.exec(raw);
+     if (!m || seen.has(m[1]!) || !MODEL_TS.has(m[1]!)) continue;
+     const ts = MODEL_TS.get(m[1]!)!; if (!ts.tenant) continue;
+-    const del = /ถูกลบ|ลบแถว|แถวหาย|\bdeleted\b/.test(raw);
++    const del = /ถูกลบ|ลบแถว|ลบแล้ว|แถวหาย|\bdeleted\b/.test(raw); // it6: + "ลบแล้ว" (crm-api-hook-delete-* "WebhookEndpoint=<ลบแล้ว>")
+     if (/ไม่เปลี่ยน|ไม่เพิ่ม|ไม่เขียน|ไม่ลบ/.test(raw)) continue; // the text itself says this model stays/may stay unchanged
+     if (!del && !ts.updated && m[1] !== "AppSystem" && !(ts.created && /\+|แถวใหม่|1 แถว|สร้าง|PENDING(?!\s*→)/.test(raw))) continue; // update of a createdAt-only model is invisible
+     out.push({ model: m[1]!, kind: del ? "delete" : "write" }); seen.add(m[1]!);
+@@ -1860,6 +1898,12 @@
+         if (on !== (val !== "off")) await clickEl(page, op, tid).catch(() => {});
+       } else if (val === "click") await clickEl(page, op, tid).catch(() => {}); // "=click" = press even though it is visible (add-condition twice)
+       else if (val === "*") await fillEl(page, op, tid).catch(() => {}); // "=*" = any real choice (ids differ per seed)
++      else if (isSelect && /^#\d+$/.test(val)) { // it6: "=#N" = the N-th non-empty option (ids differ per seed) — dbg15 deal-bulk-move:
++        // "=*" chose stage #1 = the ticked deal's current stage (the select starts at "") ⇒ moveCore no-op again
++        const n = Number(val.slice(1));
++        const v: string = await op.evaluate((s: HTMLSelectElement, k: number) => Array.from(s.options).filter((o) => o.value !== "" && !o.disabled)[k - 1]?.value ?? "", n).catch(() => "");
++        if (v) await op.select(v).catch(() => {});
++      }
+       else if (isSelect) await op.select(val).catch(() => {});
+       else await op.evaluate((e: HTMLInputElement, v: string) => {
+         const setter = Object.getOwnPropertyDescriptor(e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!;
+@@ -2532,6 +2576,7 @@
+     for (const u of UNRESOLVED) console.log(`  · [${u.placeholder}] ${u.reason}`);
+   }
+   RUN_OBJECT_KEY = ctx.objectKey ?? "";
++  RUN_COMPANY_ID = ctx.companyId ?? "";
+   // throwaways must exist before the plan (their ids are in the page paths) and before the snapshot (restores keep them)
+   if (!DRY) assertGateLockHeld("รอบที่เขียนฐาน"); // before ANY write (throwaways · fixtures · snapshot/restore)
+   if (!DRY && !DISCOVER && [...ROWS].some((r) => AUDIT_STATE_ROWS.has(r.testid) && pageSelected(r.page))) await createThrowaways();
+@@ -2573,6 +2618,7 @@
+   });
+   // CSV fixture for the import rows (inside the repo — snap chromium cannot read the host /tmp)
+   mkdirSync(".qc-shots/c42/fixtures", { recursive: true });
++  writeFileSync(".qc-shots/c42/fixtures/qc-btn-object-import.csv", `title,parentId\nqc-btn-rec-${rand}-file,${ctx.companyId ?? ""}\n`); // it6
+   writeFileSync(".qc-shots/c42/fixtures/qc-btn-import.csv", `name,phone,email,company\nqc-btn-${rand}-import,0899999999,qc-btn-${rand}-import@example.com,qc-btn-${rand}-co\n`);
+   // FIXTURES (controller ruling §9, 27 Sep) — applied BEFORE the snapshot so every mid-run restore keeps them, reverted
+   // explicitly in CLEAN; the originals are written to FIXTURE_FILE first so a crashed run is healed by the next start.
