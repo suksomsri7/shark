@@ -57,3 +57,82 @@ Review probes: `scripts/pending/cf11/review/probe-cf11-review-mail.mts`, `probe-
 - Browser rendering. QC2-pinned cf5 probes and suites (I did not rerun them; the builder reports them green).
 
 VERDICT: NOT MERGEABLE (RV-1 reference lookup loads up to 50 full rows before the buckets; RV-2 proven mail has no rate bound at all — fix both, and RV-3 owner-notice dedupe in the same pass)
+
+---
+
+# Round 2 — re-review of 1d118384 (parent 19d13470)
+Scope: `git diff 19d13470 1d118384`, builder note "Round 2". Ran on QC3 with iso.sh + gate lock, one job at a time; finished 2026-10-02 01:45 UTC. New probe: `scripts/pending/cf11/review/probe-cf11-review-r2.mts`. Runner summary: `scripts/pending/cf11/review/review-rv3.summary`.
+
+## What I ran
+| run | result |
+|---|---|
+| builder `probe-cf11-keys` · `contains` · `mail` · `r2` | 14/14 · 12/12 · 24/24 · 16/16 |
+| `probe-cf11-review-mail` | 11/12. RA.1 ✅ (100/150) · RA.3 ✅ (100/120) · RB.1 ✅ (0.0 M chars before the drop; was 21.6 M) · RC.1 ✅ (+1 notice for 12 senders) · RA.2 ❌ **accepted as by design** (30 mails from one CC participant is under the 100/h proven per-address bound) |
+| `probe-cf11-review-keys` | 8/9. RK.6 ❌ = RV-4 (kanban revoke, shark-hf 201d371a) · INFO-RK.4/RK.5 now "not here" (RV-5 / Q2 closed) |
+| `probe-cf11-review-r2` (new) | 6/8. **R2A.1 ❌ · R2B.1 ❌** · R2C.1 ✅ |
+| fitness (QC3 env) · (no env) | 42/42 · 42/42 |
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+
+## Round-1 findings
+- **RV-1: closed.** The pre-bucket query is now `findMany({ tenantId, systemId, direction: "OUT", messageId in candidates(≤100 refs) }, select toAddrs/ccAddrs, take 50)` (`emails.ts:2454-2458`). That is ≤ 200 bind params on the unique `messageId` index, with no body columns. The full `parent` is read with the base `findFirst` after both buckets (`:2467-2471`), so it is 1 row per accepted mail, as at base. RB.1 measured 0.0 M chars.
+- **RV-2: partly closed.** Every class now has a bound (RA.1/RA.3 green). But the shared proven system bucket brings in **RV-6** below.
+- **RV-3: closed.** `ownerNoticeDue` (`emails.ts:2360-2363`) uses a separate 1/h bucket per system per class and is consumed only on a sender's first trip (`count === limit + 1`). It fails open (notifies) on a DB error, which is acceptable. RC.1: 12 senders → 1 notice; audits are still written per sender.
+- **RV-5 / Q2: closed.** `accountManagedKey` (`account/connections.ts:395-405`) is used for rotate, revoke and the list (page filter `connections/page.tsx:82` uses the same rule).
+  - Malformed scopesJson on an account-bound key: still listed (`listApiKeys` parses it to `[]`, and `[].every` = true), revocable, rotation refused with the shark-hf sentence.
+  - Keys that disappear from this page (pre-S1 account-bound keys with mixed scopes, unbound pre-A2 account keys, the general key) are still listed and revocable on `/app/settings/api` (`page.tsx:20` lists every key of the shop). There is no rotate there, so the owner revokes and recreates them (INFO).
+  - Messages: shark-hf has no account-page door (`accountManagedKey` is session/crm only), so there is no conflicting text. The malformed-rotation text is identical.
+- **RV-4: unchanged.** It ships with shark-hf 201d371a.
+
+## New findings
+
+### RV-6 · HIGH (blocker) · H3-1 reborn at system level: the shared proven system bucket (2,000/h) can be filled by attacker-proven mail and then drops every customer's genuine reply
+- `emails.ts:2463-2464` + `inboundSystemLimited(…, proven)` (`:2344`). DMARC-proven mail and thread-proven mail share the key `crm.email.in.sys.proven.<sys>`, and that bucket is the only one any genuine customer reply passes through.
+- The per-sender proven key is the raw From (`:2320-2323`, R2B.1). `x+0@` with a full bucket → dropped, while `x+1@` on the same mailbox → stored. So one mailbox gives unlimited distinct proven senders.
+- **Repro R2A.1, attacker-only steps, P14 set.** One mailbox on the attacker's own DMARC-passing domain sent 20 plus-variants × 100 = 2,000/2,000 stored in 273 s, filling the proven system bucket. Then the customer's reply to our mail from the address we wrote to, with DMARC pass for her own domain (the strongest evidence the system has), was **dropped** (`rate_limited`). A thread-only reply was dropped too. Owner notifications rose by 1 (the proven-system notice text says "should not normally happen"). The customer gets no bounce; the provider got 200.
+  - Meanwhile an unproven stranger's mail was **stored** (INFO-R2A.2): a forger is better off than a verified customer for the rest of the hour.
+  - At base 53d88b71 proven mail had no system bucket at all, so this kill switch is new.
+- **With P14 unset** (today) only thread proof exists. Pairs an outsider can obtain = every visible To/Cc address on each of our mails they received or were forwarded (BCC does not prove, R2C.1). Filling 2,000/h needs ≥ 20 such addresses at 100/h each: rare from one mail (most CRM mails have 1–3 recipients), but a single past recipient of one mail with ≥ 20 visible recipients, or a holder of several group threads, can do it. **With P14 set** the attack is trivial (any own DMARC domain, or `+tag` variants on a DMARC-passing free-mail domain).
+- **Recommendation (concrete).** Split the proven class by strength of evidence, so that a cheaper proof can never drop a stronger one, and normalise the sender key:
+
+  | class | evidence | per sender (key = lower-case mailbox, `+tag` stripped) | extra | per system |
+  |---|---|---|---|---|
+  | V verified reply | `fromProof ∧ threadProofAny` | 100/h | — | 2,000/h (own key) |
+  | D DMARC only | `fromProof ∧ ¬thread` | 100/h | per From-domain 300/h for domains not in `FREE_MAIL_DOMAINS` | 1,000/h |
+  | T thread only (forgeable) | `threadProofAny ∧ ¬fromProof` | 100/h | per referenced OUT Message-ID 100/h (all From citing it share it) | 1,000/h |
+  | U unproven | neither | 100/h (unchanged key) | — | 1,000/h (unchanged) |
+
+  - With this split, a D/T/U flood cannot touch V. Filling V needs ≥ 20 real DMARC-passing mailboxes that were To/Cc on our mails.
+  - With P14 unset (V and D empty), filling T needs ≥ 10 distinct OUT mails held as a visible recipient, because of the per-message bucket. One CC'd mail with 20 addresses gives at most 100/h total.
+  - Owner notice per class as now, with V's text "genuine replies are being dropped". Cost: 1–2 extra bucket upserts per mail; the keys stay hashed.
+  - Minimum acceptable alternative if the controller wants a smaller change: own key for V + normalised (`+tag`-stripped) sender key. Then D/T floods cannot drop verified replies, and the T-only kill switch stays as today (needs ≥ 20 visible pairs).
+- If the controller rules that P14 stays unset until a follow-up card, this can be carried as MED with "do not set `CRM_INBOUND_AUTHSERV_ID` before the split", added to the P14 guarantees in the builder note. As written, the P14 section omits this.
+
+### RV-7 · LOW · cost at the caps is bounded by count, not bytes
+- At the caps a system accepts up to 3,000 mails/h (2,000 proven + 1,000 unproven; was 1,000 + unbounded at round 1 and 1,000 + unbounded-at-system at base). Each accepted mail costs:
+  - a row of ≤ 1 M + 1 M chars (≈ 2 MB ASCII, up to ≈ 6 MB Thai)
+  - one linear sanitise of ≤ 1 MB
+  - an EMAIL activity, if a contact matches
+  - a `crm.email.received` event (→ webhooks/automation)
+  - one copy-in outbound send (when copyMode IN/BOTH)
+  - attachments
+- Sustained that is ≈ 6 GB/h of stored bodies and 3,000 outbound copies/h per system. This is acceptable as a hard ceiling against unbounded, but consider a per-system daily byte budget and counting copy-in sends against the shop's outbound quota. Not blocking (same class as fix2's accepted 1,000/h).
+
+### INFO (round 2)
+- R2C.1 ✅, narrow proof query correctness:
+  - "Addressed to this exact From" uses `bareEmail` on both sides. Outgoing `toAddrs`/`ccAddrs` are stored by `cleanAddrList` → `bareEmail` (lower-case, angle form stripped), and the inbound From goes through the same function. So `"Buyer" <BUYER@DOM>` proves.
+  - Plus-address variants and BCC recipients do not prove (conservative and correct; `bccAddrs` is not read).
+  - `toAddrs`/`ccAddrs` are `String[]`, so there is no JSON-shape issue.
+  - Our id as the newest of 150 junk refs proves. Our id placed 2nd-oldest behind a junk In-Reply-To does not (INFO-R2C.2: window = In-Reply-To + newest 99 refs). Real clients put our id in In-Reply-To.
+  - The query has no `orderBy`; with `take 50` and `some()` that is harmless, because only ≤ 50 matching OUT rows exist among ≤ 200 candidates in practice.
+- Class choice by the attacker:
+  - A proven sender can also send unproven forms of the same address (100 + 100/h), which is bounded and harmless.
+  - An unproven forger cannot enter the proven class, and forged unproven mail cannot touch the proven buckets (H3-1 per-customer stays fixed; builder R2.1 and hunt S1.x green).
+- Probes: probe-hunt3 S1.5 and probe-cf2-review-r2 Q3 are red by design (they assert the pre-H3-1 behaviour). I accept the builder's reasoning; I did not re-run them.
+
+## Round 2 not verified
+- I ran no base-tree run of `probe-cf11-review-r2`; the base comparison for R2A is from code (base had no proven system bucket).
+- QC2-pinned cf5 probes and the account REST suites: not re-run (the builder reports them green in v3).
+- No browser render of the narrowed connections page.
+- Attachment and link-fetch cost under a proven flood.
+
+VERDICT: NOT MERGEABLE (RV-6 shared proven system bucket lets attacker-proven mail drop every customer's verified reply — split the proven class by evidence strength and normalise the sender key; RV-4 must ship with shark-hf 201d371a)
