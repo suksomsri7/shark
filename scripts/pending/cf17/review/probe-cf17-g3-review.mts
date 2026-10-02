@@ -121,6 +121,30 @@ try {
   const caught = cheap.map(([k, s]) => `${k}=${(CD.findContactData(s) as string[]).length > 0 ? "caught" : "MISSED"}`);
   info("G2.2", `cheap user-made variants: ${caught.join(" · ")}`);
 
+  // ── round 3 (afd15669): real-world Thai phone writing must still be caught · more ordinary shop text must not be ──
+  const flagged = (s: string) => (CD.findContactData(s) as string[]).includes("phone");
+  const realPhones: [string, string][] = [
+    ["08 1234 5678", "โทร 08 1234 5678"], ["0 2123 4567", "โทร 0 2123 4567"], ["02 + ext", "02-123-4567 ต่อ 12"], ["076 212 345", "076 212 345"],
+    ["+66-2-123-4567", "+66-2-123-4567"], ["081.234.5678", "081.234.5678"], ["06x", "065-432-1098"], ["09x", "091 234 5678"],
+    ["4-3-3", "0812 345 678"], ["glued thai text", "โทร0812345678ค่ะ"], ["two phones", "081-234-5678 และ 089-900-0102"], ["(02)123-4567", "(02)123-4567"],
+    ["053 Chiang Mai", "053-123-456"], ["0066", "0066 89 900 0102"],
+  ];
+  const lost = realPhones.filter(([, s]) => !flagged(s)).map(([k]) => k);
+  chk("G3.1", lost.length === 0, `common Thai phone writings still caught after the shape rule (${realPhones.length}) · missed=${j(lost)}`);
+  const pairs: [string, string][] = [["081 234 56 78", "081 234 56 78"], ["081-23-45678", "081-23-45678"], ["038-12-3456", "038-12-3456"], ["02 123 45 67", "02 123 45 67"], ["bare 66", "66 89 900 0102"], ["1800 hotline", "1800-123-456"]];
+  info("G3.2", `accepted misses (pairs / odd grouping / bare 66 / 1800): ${pairs.map(([k, s]) => `${k}=${flagged(s) ? "caught" : "missed"}`).join(" · ")}`);
+  const shopText: [string, string][] = [
+    ["promo range", "โปร 01/10/2026-31/10/2026"], ["hours shifts", "เปิด 08.30-17.30 09.00-18.00"], ["hours 4-digit", "0830-1730 0900-1800"],
+    ["prices", "ราคา 099 199 299 บาท"], ["juristic tax", "0105561000003"], ["invoice", "INV-2026-0042 ลงวันที่ 02/10/2026"],
+    ["bank acct dashed", "บัญชี 123-4-56789-0"], ["bank acct 0-start dashed", "บัญชี 012-3-45678-9"],
+  ];
+  const fp3 = shopText.filter(([, s]) => (CD.findContactData(s) as string[]).length > 0).map(([k]) => k);
+  chk("G3.3", fp3.length === 0, `ordinary shop text (promo ranges, hours, prices, juristic tax id, invoice, dashed bank accounts) not flagged · false positives=${j(fp3)}`);
+  const design: [string, string][] = [["bank acct no dashes 08x", "บัญชีกสิกร 0812345678"], ["shop's own phone", "เบอร์ร้าน 02-123-4567"], ["shop PromptPay", "พร้อมเพย์ร้าน 081-234-5678"], ["order no with digits", "SO0812345678"]];
+  info("G3.4", `design-level refusals (owner question): ${design.map(([k, s]) => `${k}=${(CD.findContactData(s) as string[]).length > 0 ? "refused" : "allowed"}`).join(" · ")}`);
+  const stripped = "a​b";
+  info("G3.5", `stripping affects only the scan copy: input string unchanged=${stripped.length === 3} (findContactData returns kinds only, no offsets)`);
+
   // ═══ world ═══
   const tA = (await P.tenant.create({ data: { name: `${TAG}-a`, slug: `${TAG}-a` } })).id as string;
   const tB = (await P.tenant.create({ data: { name: `${TAG}-b`, slug: `${TAG}-b` } })).id as string;

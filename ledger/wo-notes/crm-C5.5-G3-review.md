@@ -146,3 +146,68 @@ RV-1 and RV-2 from round 1 are **fixed** (G1.1 and G1.4 green). RV-3 to RV-7 are
 - **Only read:** the builder's new note section and its probe additions (M1.5 etc.; its 26/26 run is mine).
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 3 re-check — builder tip `afd15669` (one commit on `ec9da046`)
+
+Scope: `git diff ec9da046 afd15669`. The only `src` change is in `src/lib/ai/contact-data.ts`:
+- a shape rule for multi-group phones;
+- a tighter 9-digit landline rule;
+- `_` / `·` as separators;
+- invisible format characters stripped before scanning.
+
+Checked 2026-10-02 07:07 UTC (`date -u`). QC3 only, `iso.sh` + gate lock, one job at a time.
+
+## Runs
+
+| run | result |
+|---|---|
+| own probe, **unedited** (state of `ec9da046`) | **13/13** — G1.1 · G1.3 · G1.4 · G2.1 (no false positives, RV-8 closed) · F1.x · P1.1 · E1.1 · CLEAN all green |
+| builder `probe-cf17-g3` | **28/28** |
+| own probe + round-3 cases (G3.1–G3.5, added after the unedited run) | **15/15** · CLEAN 0 rows (2 tenants) / 0 users |
+
+## What was checked
+
+**1. New misses for real-world Thai phone writing** — G3.1 ✅. All 14 common forms are still caught:
+- `08 1234 5678`, `0 2123 4567`, `02-123-4567 ต่อ 12`, `076 212 345`, `+66-2-123-4567`, `081.234.5678`;
+- `065-432-1098`, `091 234 5678`, `0812 345 678`, `(02)123-4567`, `053-123-456`, `0066 89 900 0102`;
+- `โทร0812345678ค่ะ` (glued to Thai text);
+- two phones on one line.
+
+**New misses compared with round 2** (G3.2 evidence; round 2 had no shape rule and caught these): `081 234 56 78`, `081-23-45678`, `038-12-3456`, `02 123 45 67`, bare `66 89 900 0102`. `1800-123-456` was never caught; it is a business hotline, not personal data. See RV-10.
+
+**Stripping.** The invisible-character removal builds a scan-only copy in one pass. The text that gets stored is unchanged: `rememberFact` stores `text`, `kb_auto_save` stores `title` / `content` / `category`. The e-mail check runs on the same stripped copy, so a zero-width character inside an address no longer hides it. `findContactData` returns kinds only, and no refusal message uses offsets.
+
+**2. False positives on shop text.**
+- The four RV-8 strings and the shift-hours string are no longer flagged (G2.1 ✅).
+- G3.3 ✅ — none of these are flagged either:
+  - the promo range `01/10/2026-31/10/2026`;
+  - `0830-1730 0900-1800`;
+  - prices `099 199 299`;
+  - the juristic tax id `0105561000003`;
+  - `INV-2026-0042 ลงวันที่ 02/10/2026`;
+  - dashed bank accounts `123-4-56789-0` and `012-3-45678-9`.
+- Bank accounts: dashed forms are **not** flagged. A 10-digit account starting `06`/`08`/`09` written without dashes **is** flagged. It cannot be told apart from a mobile number, and this was already so in rounds 1–2. Whether that is desirable: a customer's account number in a shop fact should be refused anyway. The shop's **own** account number written without dashes is a false refusal (see RV-11).
+
+**3. Linearity.**
+- Still one pass for the stripping plus one pass for the scan.
+- The shape rule adds constant work per span (`minLater` / `allSingle` over at most 15 groups).
+- Measured: 2.2 M characters in 181 ms vs 220 k in 27 ms.
+
+## Findings (round 3)
+
+| # | sev | finding | recommendation |
+|---|---|---|---|
+| RV-10 | LOW (accepted trade-off) | The shape rule gives up **pair-style and odd groupings** that round 2 caught: `081 234 56 78`, `02 123 45 67`, `081-23-45678`, `038-12-3456`, bare `66 89 …`. | **Accept.** The standard Thai forms (`0x-xxxx-xxxx`, `0xx-xxx-xxxx`, `0xxx xxx xxx`, `0x-xxx-xxxx`, unseparated, `+66 …`) are all caught. The data the model copies comes from member/CRM records, which are stored unseparated or in standard dashed form. Pair-style writing is rare in Thai usage. The alternative — accepting 2-digit groups — brings back every date-range and shift-hours false positive (RV-8). Revisit only if real shop text shows pair-style phones. |
+| RV-11 | LOW (design, owner question — existed before) | The guard refuses the shop's **own** contact data as a shop fact or KB article: `เบอร์ร้าน 02-123-4567`, `พร้อมเพย์ร้าน 081-234-5678`, its own bank account without dashes. A 10-digit order number glued to letters (`SO0812345678`) is refused too. A shop's own phone and PromptPay are typical shop facts ("โทรสั่งได้ที่…"). | Owner decision (extends builder Q4): allow numbers that match the tenant's own registered phone / PromptPay / bank account (an allow-list from shop settings), or accept the refusal. The refusal text explains it and the owner can still type it on the web. Not a blocker. |
+
+RV-8 and RV-9 from round 2 are **fixed**. For RV-9, comma, colon, three or more spaces and spelled-out separators remain as deliberately accepted misses (G2.2). Thai digits are handled in every round. RV-3 to RV-7 are unchanged and outside this round.
+
+## Verified vs only read (round 3)
+
+- **Verified:** the unedited probe; the probe with round-3 cases; the builder probe; linear timing — all on QC3.
+- **Only read:** the builder's round-3 note.
+- Typecheck was not re-run: no `src` change on my side, and the probe edit only adds typed string arrays.
+
+VERDICT: MERGEABLE
