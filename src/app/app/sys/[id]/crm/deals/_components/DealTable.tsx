@@ -53,10 +53,16 @@ export function DealTable({
     return null;
   };
 
-  const done = (r: { ok: true; done: number; failed: number } | { ok: false; error: string }, what: string) => {
+  const done = (r: { ok: true; done: number; failed: number; unchanged?: number } | { ok: false; error: string }, what: string) => {
     setBusy(false);
     if (!r.ok) return setMsg({ ok: false, text: r.error });
-    setMsg({ ok: r.failed === 0, text: `${what}สำเร็จ ${r.done.toLocaleString("th-TH")} ดีล${r.failed ? ` · ไม่สำเร็จ ${r.failed.toLocaleString("th-TH")} ดีล (ดูเหตุผลที่หน้าดีลนั้น)` : ""}` });
+    // CRM C5.5-fix15 ▸ O-it6-a: ดีลที่อยู่ขั้นปลายทางอยู่แล้วไม่นับว่า "ย้ายสำเร็จ" ◂
+    const fails = r.failed ? ` · ไม่สำเร็จ ${r.failed.toLocaleString("th-TH")} ดีล (ดูเหตุผลที่หน้าดีลนั้น)` : "";
+    const same = r.unchanged ? `อยู่ในขั้นนี้อยู่แล้ว ${r.unchanged.toLocaleString("th-TH")} ดีล` : "";
+    setMsg({
+      ok: r.failed === 0,
+      text: r.done === 0 && same ? `ไม่มีดีลที่ต้องย้าย — ${same}${fails}` : `${what}สำเร็จ ${r.done.toLocaleString("th-TH")} ดีล${same ? ` · ${same}` : ""}${fails}`,
+    });
     setPicked([]);
     setConfirm(false);
     setReason("");

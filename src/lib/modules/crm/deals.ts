@@ -165,7 +165,9 @@ export type SetLinesInput = { lines: DealLineInput[]; discountBp?: number | null
 export type SetLinesResult =
   | { status: "APPLIED"; deal: DealDto }
   | { status: "APPROVAL_REQUIRED"; approvalRequestId: string; deal: DealDto };
-export type BulkResult = { ok: number; failed: { id: string; error: string }[] };
+// CRM C5.5-fix15 ▸ O-it6-a: `unchanged` = ดีลที่อยู่ขั้นปลายทางอยู่แล้ว (moveCore `changed:false` — ไม่มีประวัติ/event) · `ok` นับเฉพาะที่ย้ายจริง
+//   (เดิมนับรวม ⇒ ปุ่มบอก "ย้ายขั้นสำเร็จ N ดีล" ทั้งที่ไม่มีอะไรย้าย) · ใส่เฉพาะ bulkMove ◂
+export type BulkResult = { ok: number; failed: { id: string; error: string }[]; unchanged?: number };
 
 // ───────────────────────── ตัวช่วยพื้นฐาน ─────────────────────────
 
@@ -1636,16 +1638,20 @@ export async function bulkMove(ctx: DealsCtx, actor: MemberActor, input: { ids: 
   const ids = bulkIds(input?.ids);
   const a = await enter(ctx, actor);
   need(a, "crm.deal.move");
-  const res: BulkResult = { ok: 0, failed: [] };
+  const res: BulkResult = { ok: 0, failed: [], unchanged: 0 };
   for (const id of ids) {
     try {
-      await moveCore(ctx, a, id, { stageId: input.stageId, note: reason }, {});
-      res.ok += 1;
+      const o = await moveCore(ctx, a, id, { stageId: input.stageId, note: reason }, {});
+      if (o.changed) res.ok += 1;
+      else res.unchanged = (res.unchanged ?? 0) + 1;
     } catch (e) {
       res.failed.push({ id, error: e instanceof DealsError ? e.message : "ย้ายดีลนี้ไม่สำเร็จ ลองใหม่อีกครั้ง" });
     }
   }
-  await writeAudit({ tenantId: ctx.tenantId, actorId: actorIdOf(ctx), action: "crm.deal.bulk_move", targetType: "CrmDeal", after: { reason, stageId: input.stageId, ids, ok: res.ok, failed: res.failed.length } });
+  // CRM C5.5-fix15 ▸ RVR-5 (มติผู้คุมงาน): ไม่มีอะไรเปลี่ยนเลย (ทุกดีลอยู่ขั้นปลายทางอยู่แล้ว ไม่มีที่ล้ม) = ไม่เขียนแถว "ย้าย" ใน audit ◂
+  if (res.ok > 0 || res.failed.length > 0) {
+    await writeAudit({ tenantId: ctx.tenantId, actorId: actorIdOf(ctx), action: "crm.deal.bulk_move", targetType: "CrmDeal", after: { reason, stageId: input.stageId, ids, ok: res.ok, unchanged: res.unchanged ?? 0, failed: res.failed.length } });
+  }
   return res;
 }
 

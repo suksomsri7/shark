@@ -1,0 +1,64 @@
+(node:3430261) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── C0 control: no background drain ──
+  ✅ [C0.1] (control) control: a row written with no wake stays PENDING (attempts 0) for 6 s — nothing else drains this tenant
+        — ACTUAL {"status":"PENDING","attempts":0}
+  ℹ️  [C0.2] DB clock − app clock ≈ 16 ms (round trip 8 ms) — a drain's candidate query uses the app clock against availableAt = DB now() of the writing tx
+
+── Q P-it6-2: a created contact's outbox rows are DONE within 5 s without any other wake ──
+  ✅ [Q1] (control) control: createContactAction (after() task runs at close, like Next) ⇒ its rows are DONE within 5 s
+        — ACTUAL action={"ok":true,"id":"cmureufk3000pt1kzarlnsrmh","created":true,"duplicates":[],"warnings":[]} rows=["crm.contact.assigned:DONE","crm.contact.created:DONE"] took=270 ms
+  ❌ [Q2] (FINDING) FINDING: createContactAction whose after() task NEVER starts (run5 P-it6-2) ⇒ its rows are still DONE within 5 s, with no other wake
+        — ACTUAL action ok=true rows=["crm.contact.assigned:PENDING","crm.contact.created:PENDING"] took=5213 ms
+  ❌ [Q3] (FINDING) FINDING: owner pattern — create #1's after() task never starts; create #2 (ordinary request) 1 s later ⇒ #2's rows DONE within 5 s
+        — ACTUAL #1 ok=true #2 ok=true rows of #2=["crm.contact.assigned:PENDING","crm.contact.created:PENDING"] took=5208 ms
+
+── A P-it6-1: attach block only for viewers who pass the unmatched gate ──
+  ✅ [A.1] (control) control: the service refuses the unit-scoped manager (assertUnmatchedGate) — the rule the page must mirror
+        — ACTUAL attachToContact(manager)=FORBIDDEN
+  ❌ [A.2] (FINDING) FINDING: the thread page does not offer the attach block (search + pick) to the unit-scoped manager who would be refused
+        — ACTUAL manager page={"canAttach":true}
+  ✅ [A.3] (control) control: the OWNER still gets the attach block on the same thread
+        — ACTUAL owner page={"canAttach":true}
+  ℹ️  [A.4] manager search "quevetfc" ⇒ ["ซ่อนquevetfc","ปกติquevetfc quevetfc","ผูกได้quevetfc","สองquevetfc quevetfc","แรกquevetfc quevetfc","ไม่เริ่มquevetfc quevetfc"] · owner's own contact listed=true · each hit openable by the manager=[true,true,true,true,true,true]
+  ✅ [A.5] (control) control: OWNER attach still works
+        — ACTUAL attached
+
+── F O-it6-d: CrmFilesBlock on an archived custom record ──
+  ✅ [F.1] (control) control: the block renders the files panel for a live record
+        — ACTUAL {"ok":true,"testid":null,"items":0,"text":"null"}
+  ❌ [F.2] (FINDING) FINDING: on an ARCHIVED record (record page renders it with the archived banner) the block renders a state instead of throwing NOT_FOUND inside the RSC
+        — ACTUAL {"ok":false,"err":"ActivitiesError NOT_FOUND: ไม่พบรายการที่จะแนบไฟล์ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่"}
+
+── M O-it6-a: bulk move counts honestly ──
+  ❌ [M.1] (FINDING) FINDING: bulkMove of [already in target, in another stage] ⇒ moved 1 · unchanged 1 (not 'moved 2')
+        — ACTUAL result={"ok":2,"failed":[]} stages=[true,true]
+  ❌ [M.2] (FINDING) FINDING: bulkMoveAction (the button) reports done 0 · unchanged 2 when both deals are already in the target stage
+        — ACTUAL {"ok":true,"done":2,"failed":0}
+  ❌ [M.4] (FINDING) FINDING (RVR-5): a pure no-op bulk move writes NO crm.deal.bulk_move audit row; the mixed move (1 moved) writes one
+        — ACTUAL audit rows: mixed +1 · no-op +1
+  ❌ [M.3] (FINDING) FINDING: the deals table message is honest — 'ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว N ดีล' when nothing moved, both numbers when mixed
+        — ACTUAL DealTable.tsx has both texts = false
+
+── B O-it6-b: error messages are role=alert ──
+  ❌ [B.1] (FINDING) FINDING: scoring message (e.g. VALIDATION 'ร้อน ต้องมากกว่า อุ่น') is role=alert when it is an error
+        — ACTUAL <p data-testid="crm-score-msg" className={`rounded-md border px-3 py-2 text-sm ${msg.ok ? "text-[color:var(--color-accent)]" : "text-[color:var(--color-danger)]"}`}>
+  ❌ [B.2] (FINDING) FINDING: e-mail thread message (attach refusal) is role=alert when it is an error
+        — ACTUAL <p className={`text-sm ${msg.ok ? "text-[color:var(--color-muted)]" : "text-red-600"}`} role="status" data-testid="crm-email-thread-msg">
+  ❌ [B.3] (FINDING) FINDING: CRM webhook message is role=alert when it is an error
+        — ACTUAL <p className={`text-sm ${hookMsg.ok ? "" : "text-[color:var(--color-danger)]"}`} role="status" data-testid="crm-api-hook-msg">
+  ❌ [D.1] (FINDING) FINDING (RVR-6): deleting a webhook endpoint reports a delete wording ('ลบปลายทางแล้ว'), not 'บันทึกแล้ว'
+        — ACTUAL <button type="button" className={btn} disabled={pending} onClick={() => hookAction(p.deleteWebhook, w.id)} data-testid={`crm-api-hook-delete-${w.id}`} aria-label={`ลบปลายทาง ${w.url}`}>
+  ✅ [CLEAN] (control) throwaway tenant and users removed (0 rows left)
+        — ACTUAL -
+
+controls 7/7 green · findings GREEN (fixed) 0/12
+JSON_SUMMARY {"controls":[["C0.1",true],["Q1",true],["A.1",true],["A.3",true],["A.5",true],["F.1",true],["CLEAN",true]],"findings":[["Q2","RED"],["Q3","RED"],["A.2","RED"],["F.2","RED"],["M.1","RED"],["M.2","RED"],["M.4","RED"],["M.3","RED"],["B.1","RED"],["B.2","RED"],["B.3","RED"],["D.1","RED"]]}
