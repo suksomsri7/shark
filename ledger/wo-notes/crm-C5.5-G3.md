@@ -201,3 +201,46 @@ Probe `scripts/pending/cf17/probe-cf17-g3.mts` extended:
 | fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 |
 
 `scripts/pending/cf17/run-verify.sh` now also runs the reviewer's cf17 probe. Not verified in round 2: the other suites of round 1 (no change touches their code paths beyond `contact-data.ts` / `kb_auto_save`), `qc-kb-auto` (loads `.env.local`), prod.
+
+## Round 3 (review "Round 2 re-check" · RV-8, RV-9) — 2026-10-02 06:57 UTC (`date -u`)
+
+Only `src/lib/ai/contact-data.ts` changed (still one linear pass, no regex — the reviewer's 2.2 M-char input: 201 ms vs 18 ms for 220 k ·
+own run with 200 k zero-width characters added: 1.6 M chars 196 ms vs 160 k 17 ms).
+
+**RV-8 — phone shape rule (new).** A phone built from several digit groups must have **every group after the first ≥ 3 digits**, or
+consist of single digits only (`0 8 9 9 …`, typed one by one — reviewer G1.1 "one digit per group"). Exempt: international `+`/`＋`
+and `00…` numbers (`+66 89 900 0102` normally has a 2-digit group). The 13-digit ID is exempt too (standard form `1-2345-67890-12-3`
+has 2- and 1-digit groups; the checksum guards it). Kept caught (probe M1.2/M1.4/M1.7 + reviewer G1.1 + an extra 40-case unit check):
+`089-900-0102` · `08-9900-0102` · `0-2123-4567` · `(02) 123 4567` · `02/123/4568` · `053-123-456` · en dash / slash / full-width /
+Thai digits · `+66 89 900 0102` · `+66 2 123 4567` · `0066 89 900 0102` · digit-by-digit.
+
+**Landline prefix tightened.** 9 digits = `02` + 7, or area codes `03x/04x/05x/07x` whose third digit is 2–9. There is no `030/040/050/070`
+code, and `06` is mobile (10 digits). So `050/060/070` (all groups ≥ 3) is no longer a phone.
+
+**Deliberately not caught (new residuals):** Thai numbers written in pairs, `02 123 45 67` / `089 900 01 02` — not a Thai convention
+and the same shape as dates/times; `66 89 900 0102` without `+` (the bare-`66` rule needs groups ≥ 3 now; `66899000102` still caught).
+
+Now **not** flagged (probe M1.6, reviewer G2.1): `09/10/2026-08/11/2026` · `09/10/26-08/11/26` · `08.30-17.30/09.00-18.00` ·
+`050/060/070` · and the pre-existing one, `08.30-17.30 09.00-18.00` (shifts separated by one space) · plus the reviewer's other controls
+(tax id `0105561000003` / `0-1055-61000-00-3`, `0905/0906/0907`, `12/345/6789`, `PO/2026/0042`, Thai-digit date).
+
+**RV-9 — cheap bypasses.**
+- Invisible format characters are dropped before scanning (phones **and** e-mails see the same cleaned text): U+00AD soft hyphen, U+061C,
+  U+180E, U+200B–U+200F (zero-width space/non-joiner/joiner, LRM/RLM), U+202A–U+202E, U+2060–U+2064 (word joiner …), U+2066–U+2069,
+  U+FEFF (BOM).
+- `_` and `·` (U+00B7) are separators. `,` and `:` are not (prices, times).
+- Residual, out of scope: spelled-out separators (`089 ขีด 900 ขีด 0102`), three or more spaces between groups, `,`/`:` separators,
+  phone numbers written as words, a number split across two sentences.
+
+**Probes (QC3 · iso.sh + gate lock · one at a time · `/tmp/cf17-logs/r3.summary`):**
+
+| run | result |
+|---|---|
+| own probe-cf17-g3 on ec9da046 (RED, new cases M1.6 + M1.7 added first) | **26/28** — M1.6 (5/13 controls refused: the four RV-8 cases + space-separated shifts) · M1.7 (3/11 refused: ZWSP, ZWJ, word joiner, BOM, soft hyphen, `_`, `·`, zero-width inside an e-mail all passed) · `/tmp/cf17-logs/r3-red.log` |
+| own probe-cf17-g3 (round 3) | **28/28** |
+| reviewer probe-cf17-g3-review (unedited) | **13/13** — G2.1 flipped green · G1.1 / G1.3 / G1.4 green · G2.2 evidence: ZWSP/ZWJ/word joiner/BOM/`_`/`·` now caught; comma, three spaces, spelled separator, colon missed (as decided) |
+| probe-cf14-g2 · probe-cf14-g2-review | 34/34 · 14/14 |
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+| fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 |
+
+Not verified in round 3: the round-1 suites (only the scanner changed), `qc-kb-auto` (loads `.env.local`), prod.

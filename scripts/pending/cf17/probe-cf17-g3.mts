@@ -156,6 +156,25 @@ try {
   const pS2b = await prompt(tA, staffA);
   chk("M1.5", stored2.length === benign2.length && benign2.every((b) => pS2b.includes(b)), `positive (round-2 false-positive controls: slash dates, dash ranges, slash price lists, full-width year) remembered ${stored2.length}/${benign2.length} and in the STAFF prompt · refused: ${j(benign2.filter((b) => !stored2.includes(b)))}`);
 
+  // ── round 3 (review RV-8 / RV-9): `/`-joined dates and hours are not phones · zero-width / `_` / `·` bypasses are refused ──
+  const benign3 = [
+    "โปรโมชัน 09/10/2026-08/11/2026", "โปรโมชัน 09/10/26-08/11/26", "เปิด 08.30-17.30/09.00-18.00", "รหัส 050/060/070",
+    "เปิด 08.30-17.30 09.00-18.00", "เปิด จ-ศ 08.30-17.30 ส-อา 09.00-18.00", "โปรโมชัน 09/10/2026 - 08/11/2026", "วันที่ ๐๙/๑๐/๒๕๖๙",
+    "เลขผู้เสียภาษี 0105561000003", "ผู้เสียภาษี 0-1055-61000-00-3", "ห้อง 0905/0906/0907", "รหัสสินค้า 12/345/6789", "ใบสั่งซื้อ PO/2026/0042",
+  ];
+  const stored3: string[] = [];
+  for (const b of benign3) if (!isErr(await rt(tA, owner, "remember_fact", { content: b }))) stored3.push(b);
+  chk("M1.6", stored3.length === benign3.length, `round 3: date ranges, shift hours (slash / one space), zero-padded codes, tax id, room numbers remembered by the OWNER ${stored3.length}/${benign3.length} · refused: ${j(benign3.filter((b) => !stored3.includes(b)))}`);
+  const contact3 = [
+    "โทร 089\u200b900\u200b0301", "โทร 089\u200d9000302", "โทร 089\u20609000303", "โทร 089\ufeff9000304", "โทร 089\u00ad900\u00ad0305",
+    "โทร 089_900_0306", "โทร 089·900·0307", "โทร 02/123/4568", "โทร 053-123-456", "โทร 0 8 9 9 0 0 0 3 0 8", "เมล som\u200bchai@gm\u200bail.com",
+  ];
+  const r3Before = (await memIds(tA)).length;
+  const refused3: string[] = [];
+  for (const c of contact3) if (isErr(await rt(tA, owner, "remember_fact", { content: `ลูกค้า ${c}` }))) refused3.push(c);
+  const r3After = (await memIds(tA)).length;
+  chk("M1.7", refused3.length === contact3.length && r3After === r3Before, `round 3: zero-width space/joiner, word joiner, BOM, soft hyphen, underscore, middle dot (+ slash landline, 3-3-3 landline, digit-by-digit, zero-width inside an e-mail) → refused ${refused3.length}/${contact3.length} · not refused: ${j(contact3.filter((c) => !refused3.includes(c)).map((c) => j(c)))}`);
+
   // ═══ M2 private memories (written by a non-OWNER) ═══
   console.log("\n── M2 private memories ──");
   const PRIV = "ลูกค้าของฉัน คุณหนึ่ง 0811111111";
