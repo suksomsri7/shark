@@ -288,3 +288,51 @@ API keys are exempt; people do not use `withIdempotency`. The mapping is still c
 - RV12r-1 and RV12r-2 (LOW, introduced by fix12 round 1: card-scan hidden-duplicate refusal shown as "try again" on web and as 500 on mobile) do not block the merge. Each is a one-line fix and should land before release, preferably in this card.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 3 re-check (builder tip `713fa29f`, on top of review `5067e1f6`)
+
+- Read `git diff 5067e1f6 713fa29f -- src` (`contacts-shared.ts contactRefusalOf`, `calls-actions.ts failOf`, `mobile.ts mobileErrorOf`) and "Round 3" in `crm-C5.5-fix12.md`.
+- Window: 2026-10-02 08:2x → 08:38 UTC (`date -u`).
+- I did not edit any product source.
+
+## What I ran (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
+
+Runner: `scripts/pending/cf16/review/run-review-r3.sh`. Logs are in `/tmp/cf16-review-logs/r3/`. Chain ran 08:23:05–08:37:31 UTC.
+
+| Job | Result |
+|---|---|
+| `probe-cf16-review-r3` (new, below) | **3/3** |
+| `probe-cf16-review` (unedited since round 2) | **10/10** |
+| `probe-cf16-review-r2` (unedited) | **6/6** |
+| `probe-cf16-r3` (builder) | **8/8** |
+| `qc-crm-c2.4` (card scan) | **91/91** |
+| typecheck (5 GB heap) | exit 0 |
+| fitness | **36/36** |
+
+**QC2:**
+- `qc-cf16/13/10-*` tenants = 0, users = 0.
+- 2 orphan `crm:contact:ident:*` buckets were deleted (`leftover-check.mts --clean`); re-check: 0.
+- One `qc-cf7-rv-*` tenant (5 users) showed up at the final check. It was created at 08:37:34 UTC by **another session's live run** of `probe-cf7-review.mts` under the QC2 gate lock (the main checkout's merge gate; process alive at 08:37:57). It is not a leftover of mine, and that probe sweeps its own tenant in `done()`. I did not touch it.
+
+## Checks
+- **RV12r-1 / RV12r-2 are closed.**
+  - `failOf` now calls `contactRefusalOf` before the generic "บันทึกไม่สำเร็จ … ลองใหม่".
+  - `mobileErrorOf` maps the helper result to 409 `duplicate`, 409 `limit` or 429 `rate_limited` with the service's Thai text.
+  - Builder `R3-WEB-dup-hidden`, `R3-MOB-dup-hidden`, `R3-cap` and `R3-rate-limited` are green, and the proposal stays PENDING. The mobile app shows any Thai `message` for every status (`apps/mobile/src/api/client.ts apiErrorText`) and has no status- or code-specific branch for these errors (`grep`: none), so the 409 shows the text instead of misbehaving.
+- **No hidden data through the helper.**
+  - The helper returns only `{code, status, message}`; `duplicates[]` is never forwarded.
+  - Every `ContactsError` DUPLICATE or LIMIT message is a fixed sentence with no interpolated name, id, phone, e-mail or company:
+    - `contacts.ts:785/1161` neutral hidden text;
+    - `:1163` visible-duplicate text;
+    - `CompaniesError` DUPLICATE messages mapped in by `contacts.ts:396` (`COMPANY_DUPLICATE_HIDDEN_MSG` or fixed tax-id texts);
+    - plan-cap `CrmLimitError` text.
+  - **New case `MX-mixed` (real error):** `updateContact` where the new phone hits a hidden contact and the new e-mail a visible one. The service error is DUPLICATE with `duplicates=["เห็นผสม"]` (visible only). What the helper, the web shape and `mobileErrorOf` pass on is `{code: DUPLICATE, status: 409}` + the fixed text, with keys `[code, status, message]`. Leaks of both ids, both names, the phone and the e-mail: `[]`.
+- **Other callers.** `contactRefusalOf` returns `null` for every other code (builder `R3-scope`: VALIDATION → null, mobile still 500 as before). For the other `failOf` / `mobileErrorOf` paths, the only change is that a `ContactsError` DUPLICATE or plan-cap LIMIT now shows its Thai text with 409 instead of the generic text or 500. That is an improvement, and nothing in the app branches on those statuses.
+- **Client-safe** (`SC-client-safe`): `contacts-shared.ts` still imports only `./companies-shared`, `./limits-shared` and `./privacy-shared`. The helper adds no import, and typecheck and fitness (F2.x) are green.
+
+## Verdict (round 3)
+No new finding. RV12r-1 and RV12r-2 are closed, and every earlier round's status stands: RV12-2/3/4 INFO, RV12r-3/4 INFO.
+
+VERDICT: MERGEABLE
