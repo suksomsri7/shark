@@ -23,6 +23,7 @@ import { activityOutcomesOf, parseCrmSettings } from "./settings";
 import { CRM_V2_DISABLED_MSG, CrmV2DisabledError } from "./ui-version";
 import { ACTIVITY_OUTCOMES_DEFAULT, ActivitiesError, DAY_MS } from "./activities-shared";
 import { CallsError } from "./calls-shared";
+import { ContactsError } from "./contacts-shared"; // CRM C5.5-fix12 r2 ▸ RV12-1 ◂
 import * as activities from "./activities";
 
 export type MobileCrmCtx = { tenantId: string; systemId: string; actorUserId: string };
@@ -291,6 +292,8 @@ const CODE_STATUS: Record<string, { status: number; error: string; fallback: str
 export function mobileErrorOf(e: unknown): { status: number; error: string; message: string } {
   if (e instanceof MobileCrmError) return { status: e.status, error: e.error, message: e.message };
   if (e instanceof CrmV2DisabledError) return { status: 409, error: "CRM_V2_DISABLED", message: CRM_V2_DISABLED_MSG };
+  // CRM C5.5-fix12 r2 ▸ RV12-1: ขอถี่ (กรอกเบอร์/อีเมลผู้ติดต่อ · สแกนนามบัตรแล้วกดรับ) = 429 rate_limited + ข้อความไทยของบริการ — ไม่ใช่ 500 "ระบบขัดข้อง" ◂
+  if (e instanceof ContactsError && e.code === "RATE_LIMITED") return { status: 429, error: "rate_limited", message: e.message };
   if (e instanceof CallsError || e instanceof ActivitiesError) {
     const m = CODE_STATUS[e.code] ?? CODE_STATUS.VALIDATION!;
     return { status: m.status, error: m.error, message: /[ก-๙]/.test(e.message) ? e.message : m.fallback };

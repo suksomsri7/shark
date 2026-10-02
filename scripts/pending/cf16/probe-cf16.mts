@@ -210,7 +210,8 @@ try {
     const r = await call(() => CON.createContact(teamer.ctx, teamer.actor, { firstName: `เกินเพดาน ${rand}`, phone: newPhone() }));
     const rn = await call(() => CON.createContact(teamer.ctx, teamer.actor, { firstName: `ไม่มีเบอร์ ${rand}` }));
     const rk = await call(() => CON.createContact(key.ctx, key.actor, { firstName: `คีย์ไม่นับ ${rand}`, phone: newPhone() }));
-    chk("RT-person-limited", !r.ok && codeOf(r) === "LIMIT" && rn.ok && rn.v.created === true && rk.ok && rk.v.created === true,
+    // round 2 (RV12-1): the refusal has its own code RATE_LIMITED (429 · nothing written), not the plan-cap LIMIT — see probe-cf16-r2.mts
+    chk("RT-person-limited", !r.ok && codeOf(r) === "RATE_LIMITED" && rn.ok && rn.v.created === true && rk.ok && rk.v.created === true,
       `bucket at ${lim}: person create with a phone → ${codeOf(r)} "${String(r.err?.message ?? "").slice(0, 70)}" · without phone/e-mail → ${codeOf(rn)} · API key (REST bucket) → ${codeOf(rk)}`);
   }
 

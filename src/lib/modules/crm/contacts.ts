@@ -217,7 +217,7 @@ const NOT_FOUND_MSG = "ไม่พบผู้ติดต่อนี้ใน
 const MERGED_MSG = "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — เปิดผู้ติดต่อที่เก็บไว้แทน";
 const ARCHIVED_MSG = "ผู้ติดต่อนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ";
 
-const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[]; field?: string } = {}) => new ContactsError(code, message, extra);
+const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[]; field?: string; retryAfterSec?: number } = {}) => new ContactsError(code, message, extra);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : null);
 const newSeq = () => randomUUID().replace(/-/g, "");
 const lockKey = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
@@ -336,7 +336,8 @@ export async function companyTextsForCrossViewer(
 async function assertIdentRate(ctx: ContactsCtx, a: MemberActor): Promise<void> {
   if (isApiActor(a) || !a.userId) return;
   const r = await checkRateLimitDb(`crm:contact:ident:${ctx.tenantId}:${a.userId}`, CONTACT_IDENT_RATE);
-  if (!r.ok) throw fail("LIMIT", CONTACT_IDENT_RATE_MSG(r.retryAfterSec));
+  // CRM C5.5-fix12 r2 ▸ RV12-1: ขอถี่ ≠ เพดานของระบบ (LIMIT · 409 เก็บตอบซ้ำ) — RATE_LIMITED = 429 rate_limited + nothingWritten (http-errors.ts) ◂
+  if (!r.ok) throw fail("RATE_LIMITED", CONTACT_IDENT_RATE_MSG(r.retryAfterSec), { retryAfterSec: r.retryAfterSec });
 }
 
 /** ข้อความบริษัทเดิมของผู้ติดต่อหลายแถว ตามการมองเห็นของผู้ดู (คิวรีเดียว) — สำหรับหน้าที่อ่านแถวผู้ติดต่อเอง (กล่องจดหมาย/เธรด) */
@@ -2615,12 +2616,19 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   return { jobId, status, result };
 }
 
-/** สถานะ/ผลของงานนำเข้า (อ่านจากร่องรอย audit ของงานนั้น — ตาราง job จริงมากับ C2.0) */
+/**
+ * สถานะ/ผลของงานนำเข้า (อ่านจากร่องรอย audit ของงานนั้น — ตาราง job จริงมากับ C2.0)
+ * CRM C5.5-fix12 r2 ▸ (sweep #22) อ่านได้เฉพาะ **คนที่สั่งนำเข้า** (actorId ของแถว audit = คนเบื้องหลังผู้เรียก) และ **เจ้าของร้าน** (OWNER —
+ *   เห็นทุกผู้ติดต่อ + ร่องรอย audit ทั้งร้านอยู่แล้ว) — แบบเดียวกับงานส่งออก (`privacy.getExport` · `reports.getExport` = เฉพาะผู้ขอ) ·
+ *   คนอื่นที่ถือ jobId (STAFF · MANAGER · คีย์ API ของคนอื่น) = "ไม่พบ" คำเดียวกับ id ที่ไม่มีจริง ◂
+ */
 export async function getImportJob(ctx: ContactsCtx, actor: MemberActor, jobId: string): Promise<ImportJob> {
-  await enter(ctx, actor);
+  const a = await enter(ctx, actor);
   const id = str(jobId);
-  const row = id
-    ? await prisma.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: "crm.contact.import", targetId: ctx.systemId, after: { path: ["jobId"], equals: id } }, select: { after: true } })
+  const me = actorId(ctx) ?? (a.userId || null);
+  const mine: Prisma.AuditLogWhereInput | null = a.role === "OWNER" && !isApiActor(a) ? {} : me ? { actorId: me } : null;
+  const row = id && mine
+    ? await prisma.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: "crm.contact.import", targetId: ctx.systemId, after: { path: ["jobId"], equals: id }, ...mine }, select: { after: true } })
     : null;
   if (!row || !isObj(row.after)) throw fail("NOT_FOUND", "ไม่พบงานนำเข้านี้ในระบบ CRM นี้");
   const x = row.after;

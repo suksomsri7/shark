@@ -5,6 +5,7 @@
 //   ObjectsError · VisibilityError · CrmForbiddenError · TeamError) — แปลที่นี่ที่เดียวให้ตรงสัญญา:
 //     NOT_FOUND → 404 not_found · FORBIDDEN → 403 forbidden · VALIDATION → 422 validation (มติผู้คุมงาน C1.10 ข้อ 2) ·
 //     DUPLICATE → 409 duplicate · CONFLICT/PARTIAL → 409 state_conflict · CONFIRM_REQUIRED → 409 confirm_required ·
+//     RATE_LIMITED → 429 rate_limited (nothingWritten · C5.5-fix12 r2) ·
 //     STAGE_REQUIREMENTS → 409 stage_requirements (+ รายการที่ขาดใน hint) · APPROVAL_REQUIRED → 409 approval_required (+ approvalRequestId)
 // 🔴 ไม่แตะแกนกลาง: เปลี่ยนความหมายของ `mapError` = เปลี่ยนคำตอบของบัญชี/บอร์ดงาน/สมาชิกไปด้วย
 // 🔴 รหัส 3 ตัวของ CRM (`stage_requirements` · `approval_required` · `crm_v2_disabled`) ยังไม่อยู่ใน `API_ERROR_CODES` ของแกน
@@ -38,6 +39,8 @@ const EN: Record<string, string> = {
   CRM_V2_DISABLED: "This CRM system still runs the previous version.",
   // CRM C3.9 ▸ เพดานของระบบ (`limits.ts` · CrmLimitError) ◂
   LIMIT: "This CRM system reached one of its limits, so nothing was saved.",
+  // CRM C5.5-fix12 r2 ▸ RV12-1: ขอถี่ของคน (กรอกเบอร์/อีเมลผู้ติดต่อ) — ไม่ใช่เพดานของระบบ ◂
+  RATE_LIMITED: "Too many attempts in a short time, so nothing was saved. Wait a few minutes and try again.",
 };
 
 function thai(m: unknown): string | null {
@@ -94,6 +97,12 @@ export function toCrmApiError(e: unknown): unknown {
     // CRM C3.9 ▸ เกินเพดาน = สถานะของร้าน (409 · retry ไม่ช่วย) — ไม่ใช่ 500 ◂
     case "LIMIT":
       return crmApiError(409, "state_conflict", th, EN.LIMIT!);
+    // CRM C5.5-fix12 r2 ▸ RV12-1: ขอถี่ = ปฏิเสธก่อนเขียนอะไร ⇒ 429 rate_limited + nothingWritten (แบบเดียวกับ portal-lane.ts · member/api/http-errors.ts)
+    //   ⇒ การจอง idempotency ถูกปล่อย · คีย์เดิมลองใหม่ได้เมื่อพ้นเวลา (ไม่ตอบซ้ำคำปฏิเสธ) · hint บอกวินาทีที่ต้องรอ ◂
+    case "RATE_LIMITED": {
+      const sec = (e as { retryAfterSec?: unknown }).retryAfterSec;
+      return nothingWritten(crmApiError(429, "rate_limited", th, EN.RATE_LIMITED!, typeof sec === "number" && Number.isFinite(sec) ? `retryAfterSec=${Math.max(1, Math.ceil(sec))}` : undefined));
+    }
     case "STAGE_REQUIREMENTS": {
       const missing = Array.isArray((e as { missing?: unknown }).missing) ? ((e as { missing: unknown[] }).missing.filter((x): x is string => typeof x === "string")) : [];
       return nothingWritten(crmApiError(409, "stage_requirements", th, EN.STAGE_REQUIREMENTS!, missing.length ? `missing: ${missing.join(", ")}` : undefined,

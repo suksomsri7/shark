@@ -118,3 +118,89 @@ Running `gen-crm-api-docs.mts` in write mode also created the gitignored `.claud
 - REST `companies.update` / restore / merge were exercised as services, not through the REST dispatcher (the dispatcher drops `duplicateOf` anyway: `http-errors.ts`).
 - The rate limit was exercised by pre-filling the bucket, not by 120 real requests; concurrency of `checkRateLimitDb` is that function's own tested property.
 - `recent_leads` (sweep #20) is fixed on another branch, not here.
+
+## Round 2 (after the independent review): RV12-1 · sweep row #22
+
+- Same branch / worktree / QC2. Base `16b4b006` (review commit). Window 2026-10-02 07:10 → 07:55 UTC (`date -u`).
+- Probe: `scripts/pending/cf16/probe-cf16-r2.mts` (fixture `_fx.mts`, label `r2`), runner `run-r2.sh`, chains `run-r2-regress.sh` + `run-r2-tail.sh`. Logs `probe-cf16-r2.{red,green}.log` next to them, chain logs `/tmp/cf16-r2-logs/regress{,2}/`.
+
+### RV12-1 (LOW): the phone/e-mail rate-limit refusal is a rate limit, not a plan cap
+
+The codebase convention for a limiter refusal is the one in `crm/api/portal-lane.ts` (`RATE_LIMITED` → `nothingWritten(crmApiError(429, "rate_limited", …))`) and `member/api/http-errors.ts` (`as400`: status 429 → `nothingWritten(ApiError(429, "rate_limited", …))`). `withIdempotency` already releases the reservation for a transient status (409/429/503) when the error carries `nothingWritten`, and the CRM OpenAPI intro already lists `rate_limited` among the codes that are not stored. Reused as is, no new mechanism:
+
+| Layer | Before (`16b4b006`) | Now |
+|---|---|---|
+| service (`contacts.ts assertIdentRate`) | `ContactsError("LIMIT", …)` (the plan-cap code) | `ContactsError("RATE_LIMITED", CONTACT_IDENT_RATE_MSG(sec), { retryAfterSec })` — new code in `ContactsErrorCode`, optional `retryAfterSec` on `ContactsError` |
+| text (`contacts-shared.ts CONTACT_IDENT_RATE_MSG`) | "เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ N นาทีแล้วลองใหม่ …" | "มีการเพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อหลายครั้งในเวลาสั้น ๆ ระบบจึงพักรายการนี้ไว้ก่อน (ยังไม่ได้บันทึก) — รออีกประมาณ N นาทีแล้วลองใหม่ได้เลย (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")". It says nothing was saved and how long to wait, does not blame the user, and does not share wording with the plan-cap text ("ถึงเพดาน…") |
+| REST (`crm/api/http-errors.ts toCrmApiError`) | `LIMIT` → 409 `state_conflict` "This CRM system reached one of its limits…", stored and replayed | `RATE_LIMITED` → **429 `rate_limited`**, `nothingWritten`, `hint: retryAfterSec=<n>`, EN "Too many attempts in a short time, so nothing was saved. Wait a few minutes and try again." The plan-cap `LIMIT` is unchanged (409, stored) |
+| AI confirmation (`api/tools.ts dispatchCrmKind` → `mapError().message_th`) | the old Thai text | the new Thai text (unchanged code path) |
+| UI contact form actions (`contacts-actions.ts failOf`) | `{ error: <Thai text>, code: "LIMIT" }` | `{ error: <new Thai text>, code: "RATE_LIMITED" }` (unchanged code path: ContactsError message + code pass through) |
+| web card-scan accept action (`calls-actions.ts failOf`) | any ContactsError → the generic "บันทึกไม่สำเร็จ … ลองใหม่อีกครั้ง" | `RATE_LIMITED` → the service text + code (narrow, one line) |
+| mobile (`crm/mobile.ts mobileErrorOf`, scan-card accept) | any ContactsError → 500 "ระบบ CRM ขัดข้องชั่วคราว" | `RATE_LIMITED` → **429 `rate_limited`** + the service text |
+
+- API keys are still not counted (their REST write bucket already returns 429). So `/api/v1/crm` key callers never see this refusal, and the CRM REST docs need no change (`gen-crm-api-docs --check` ✅). Its `rate_limited` row ("Too many calls for this key and class") stays accurate for keys.
+- Bridges (forms · chat · inbound e-mail) still treat any `ContactsError` as permanent (WARN, done). They run without a person, so the limiter does not apply to them (unchanged).
+
+### Sweep row #22 (LOW): `getImportJob` by job id
+
+Rule: an import job is readable by **the person who ran it** (the audit row's `actorId` = the caller's person, `ctx.actorUserId`, which is the same value `importContacts` writes) and by **the shop OWNER**. The OWNER already sees every contact and the shop's whole audit trail, so this rule takes nothing away from them.
+- Everybody else holding the id gets exactly the answer of an id that does not exist: STAFF, a MANAGER (who may be unit-limited and not see the touched contacts), and an API key whose creator did not run the job. That answer is `NOT_FOUND` "ไม่พบงานนำเข้านี้ในระบบ CRM นี้".
+- This is the same "requester only" model as the other CRM job reads: `privacy.getExport` / `listMyExports` (`createdById = caller`) and `reports.getExport`. Those do not even except the OWNER. I kept the OWNER for imports because the reviewer's suggested rule says so and the OWNER can read the same row in the audit log anyway.
+- There is no import-job list in the app, and no REST / AI op reads a job. Callers are the service itself and the QC suites; every suite reads its own job (`qc-crm-c1.4` S9.14, `probe-cf7-review-r2`, `probe-cf10(-review)`: the runner, or the OWNER for the legacy row). All are green.
+- API key: `ctx.actorUserId` of a key is its creator, so a key sees the jobs its creator ran (by UI or by that key). Not reachable today (no op).
+
+### Probe RED → GREEN (`probe-cf16-r2.mts`)
+
+- RED, on the `16b4b006` source (my `src` diff removed, final probe, then the diff re-applied; md5 of `git diff -- src` identical before and after): **2/8**. The green rows are the plan-cap control and CLEAN.
+- GREEN: **8/8**.
+
+| Check | RED | GREEN |
+|---|---|---|
+| `R2-RL-service`: code, text (no "เพดาน"), `retryAfterSec`, 0 rows | `LIMIT`, old text, no retryAfterSec | `RATE_LIMITED`, new text, 600 s, 0 rows |
+| `R2-RL-rest-shape`: `toCrmApiError` | 409 `state_conflict`, stored, plan-cap EN | 429 `rate_limited`, nothingWritten, hint `retryAfterSec=600` |
+| `R2-RL-mobile`: `mobileErrorOf` | 500 "ระบบ CRM ขัดข้องชั่วคราว" | 429 `rate_limited` + the text |
+| `R2-RL-idem-retry`: `withIdempotency` with a person actor; bucket full → retry with the same Idempotency-Key after the bucket is cleared | 409, stored for replay = 1, retry → **replayed 409**, 0 rows | 429, stored = 0, retry → **201 created**, not replayed, 1 row |
+| `R2-RL-ai-message`: `dispatchCrmKind` (AI proposal confirmation) | old text | new text, 0 rows |
+| `R2-RL-plan-cap-control`: plan-cap `LIMIT` | 409 `state_conflict`, stored | same |
+| `R2-JB-scope`: owner→own · s1→own · owner→s1's read; s2→owner's · s2→s1's · s1→owner's · manager→s1's · key(of s2)→s1's = the not-found answer of a non-existent id | every one of the five reads the job | as wanted |
+
+The web card-scan accept action change (`calls-actions.ts`) came after the RED run. It cannot be driven from a probe (the server action needs a request session), so it was read, not executed.
+
+### Regression (QC2, one job at a time, each in its own `iso.sh` unit under the gate lock)
+
+Summary: `scripts/pending/cf16/regress-r2.summary`. Chain 1 `run-r2-regress.sh` 07:16:40 → 07:39:38 (src md5 `d8e8b8dd…` at start and end). Chain 2 `run-r2-tail.sh` 07:40:06 → 07:52:41 (src md5 `2871ac57…` at start and end = the committed src), after the `calls-actions.ts` line: the jobs that the change touches (+ docs-crm --check ✅).
+
+| Job | Result |
+|---|---|
+| typecheck (5 GB heap) | exit 0 (chain 1) · exit 0 (chain 2) |
+| `probe-cf16-r2` | **8/8** (chain 1) · **8/8** (chain 2) |
+| `probe-cf16` vs the round-1 RED dump (`/tmp/cf16-logs/red3.dump.json`) | **22/22** (`RT-person-limited` now expects `RATE_LIMITED`; `DU-control-vs-red` differing: []) |
+| `probe-cf16-review` (reviewer's, **not edited**) | **8/10**. Red: `RL-limit` and `RL-assistant-counted`. Both assert `codeOf(…) === "LIMIT"`, the very code RV12-1 replaces. Everything else in those two checks holds: at the limit → `RATE_LIMITED` with **0 writes** across the tenant; without a phone OK; other user OK; same user in another shop OK; the AI assistant actor is still counted and refused. Its info row `RL-rest-shape` now reads 429 `rate_limited`; `JB-other-user` now reads NOT_FOUND. **ORACLE question for the controller/reviewer**: these two checks pinned the old code |
+| `probe-cf13` · `probe-cf13-review` | **24/24 · 8/8** |
+| `probe-cf10-review` (getImportJob: cap, legacy row as OWNER) | **18/18** |
+| `probe-cf7-review-r2` (getImportJob parity) | **21/21** |
+| `qc-crm-c1.4` (contacts; S9.14 import job read) | **110/110** |
+| `qc-crm-c1.11` (import / merge) | **66/66** |
+| `qc-crm-c1.10` (REST) | **66/66** |
+| `qc-crm-c2.4` (card scan) | **91/91** (chain 1) · **91/91** (chain 2) |
+| docs `--check` | crm ✅ (123 op, no change needed) · account ✅ · member ❌ / kanban ❌ only because the gitignored `.claude/skills/shark-{member,kanban}-api/references/endpoints.md` do not exist in this worktree (as in round 1; not created) |
+| fitness (QC2 env) / without env | **36/36 / 36/36** (chain 1 and chain 2) |
+
+### ORACLE-EDITs
+
+- Mine: `probe-cf16.mts RT-person-limited` `"LIMIT"` → `"RATE_LIMITED"` (builder probe; the change is the finding).
+- Reviewer files: none edited. `probe-cf16-review` RL-limit / RL-assistant-counted pin the old code (above).
+
+### Not verified (round 2)
+
+- No live :3215 build: the contact form, the card-scan sheet (web and mobile) and the AI proposal card were not rendered with the new text.
+- The web card-scan accept action and the contact form actions were read, not executed (they need a request session). Their pass-through of `ContactsError` message + code is a one-line read.
+- Through the HTTP dispatcher only via `withIdempotency` + the op handler (the shape `dispatch.ts` uses), not a real HTTP request. No real `/api/v1/crm` caller can hit this limit anyway (keys are exempt).
+- Round-1 items stand (no real 120-request burst; the bucket is pre-filled).
+- **Seen, not fixed (outside the two findings)**: `calls-actions.ts failOf` (web card-scan accept) still turns a hidden-duplicate `DUPLICATE` (`CONTACT_DUPLICATE_HIDDEN_MSG`) into the generic "บันทึกไม่สำเร็จ … ลองใหม่อีกครั้ง". `mobileErrorOf` still turns `ContactsError` `DUPLICATE` / `LIMIT` into 500 "ระบบ CRM ขัดข้องชั่วคราว". The round-1 neutral DUPLICATE text therefore reaches the service and the REST/AI paths but not those two screens. Retrying does not help there, and the user is not told why.
+
+### QC2 clean (round 2)
+
+- `review/leftover-check.mts` (unedited): `qc-cf16/13/10/7-*` tenants = 0, users = 0.
+- 7 orphan `crm:contact:ident:<dead tenant>:<user>` buckets were left by the suites of the two chains (the review had left 0). I deleted them with that script's `--clean`; re-check: 0.
+- `probe-cf16-r2` deletes its own buckets (tenant prefix) and its `ApiIdempotency` rows (`keyId` prefix = its tag) in `done()`.
