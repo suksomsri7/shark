@@ -214,3 +214,56 @@ Obsolete probes of mine:
 - Browser render.
 
 VERDICT: NOT MERGEABLE (RV-8 — V and T class system buckets can be filled by an attacker's own provable mailboxes (10 pairs for T with P14 unset, reproduced: every customer's reply dropped; 20 pairs for V with P14 set) — add the light-sender lane (first 10 mails/h per sender never dropped by the class system bucket) + V per-domain 300/h; RV-9 reuse FREE_MAIL_DOMAINS (LOW, same pass); RV-4 must ship with shark-hf 201d371a)
+
+---
+
+# Round 4 re-review — 3495091e (parent 59f5a400)
+Scope: `git diff 59f5a400 3495091e` and the builder note "Round 4". Ran on QC3 with iso.sh + gate lock, one job at a time; finished 2026-10-02 06:30 UTC. New probe: `scripts/pending/cf11/review/probe-cf11-review-r4.mts`. Runner summary: `scripts/pending/cf11/review/review-rv5.summary`.
+
+## What I ran
+| run | result |
+|---|---|
+| `probe-cf11-review-r4` (new: R4A minting · R4B concurrency · R4C audit dedupe · R4D reply-all CC pairs · R4E free-mail V) | 9/9 |
+| builder `probe-cf11-r4` | 14/14 |
+| `probe-cf11-review-r3` | 10/10. R3B.1 ✅ (1,000 attacker mails, then the customer's reply stored) · R3A.1 ✅ (300/2,000 via the V domain bucket, customer stored) |
+| `probe-cf11-review-mail` · `review-keys` | 12/12 · 8/9 (RK.6 = RV-4) |
+| fitness (no env) · `pnpm typecheck` (5 GB heap) | 42/42 · exit 0 |
+
+The builder's run of my `review-r2` (7/8; R2C.1 instrumentation only) was not repeated; that probe is superseded by review-r3.
+
+## Probe integrity
+- My probes are **unedited**: `git diff 59f5a400 3495091e -- scripts/pending/cf11/review` is empty.
+- The builder edited its own `probe-cf11-r3` in three places:
+  - F.1 now expects the new `dom.v` key. That is correct.
+  - F.2 and H.1 preset the customer's V sender bucket to 10 before asserting that a full V system bucket drops V. This is **not a weakening**: under the ruled semantics only senders above 10/h can be dropped by the system bucket, so the check now exercises the intended case.
+  - The light-sender positive side is covered separately (builder L.1/B.1, my R3A.1/R3B.1/R4B.1/R4C.1).
+- Cosmetic: my INFO-R3D/R3D.2 labels still say "separate" for Gmail dot variants. The numbers (0 and 2) show they now fold into one key.
+
+## RV-8 — closed
+- **Lane (`emails.ts:2342-2380`).** It reuses the `count` returned by the class's sender bucket, the first step. That count comes from the single-statement `INSERT … ON CONFLICT … RETURNING` in `checkRateLimitDb`, so it is atomic. R4B.1: 30 concurrent thread-only mails from one provable sender with T's system bucket full → exactly 10 stored. If the counter fails (`count` undefined), the mail is let through, which matches the limiter's own fail-open.
+- **Lane only affects the system step.** Sender, V/D domain and T per-Message-ID buckets still drop. R4D.1: 40 visible-CC pairs on one reply-all OUT mail × 4 → 100/160 stored (the per-Message-ID cap).
+- **No minting of light senders without a pair (R4A.1).**
+  - Thread proof is exact `bareEmail` equality, while key normalisation only merges.
+  - A case variant of a proven address is the same pair and the same key.
+  - `+tag` and Gmail-dot variants are not proven (class U), and they share the original's key anyway.
+  - `googlemail.com` for a `gmail.com` pair is unproven.
+  - Subdomain or lookalike addresses need their own shop-sent mail.
+  - So every light sender costs one shop-sent mail to that exact mailbox (or one visible To/Cc slot). The `+10·k` bound holds.
+  - A reply-all that copies many attacker addresses yields many pairs. In T those pairs are capped by the message bucket (R4D). In V they are capped by the domain bucket (300/h) on a non-free domain. On free mail they cost real DMARC-passing accounts (R4E: 5 Gmail accounts → 50 = 10·k).
+- **Audit dedupe (R4C.1).** A light sender at system count limit+1 is stored and produces no audit. The first real drop is audited exactly once in the window; later drops are not re-audited, which is the same one-line-per-window rule as every other bucket. The owner notice is unchanged (≤ 1/h per class). Nothing a reader needs is hidden.
+- **Dot-folding stays in the bucket key.** `inboundSenderBucketAddr` has one caller (`emails.ts:2343`, the bucket hash). Matching, attribution, proof and stored addresses still use `bareEmail`.
+- **RV-9 closed.** One list: `CRM_INBOUND_FREE_MAIL_DOMAINS === FREE_MAIL_DOMAINS` (builder F.1). The builder deferred my extra domains because that list also drives company/staff-domain matching. I agree it is a product call (C6 follow-up).
+
+## Residuals — my rating
+- **R4-1 · LOW (C6, recommend a cheap follow-up).** The per-Message-ID T bucket has no light lane. One holder of a pair on a given OUT mail can send 100 thread-only mails citing it and drop every other recipient's reply to that mail for the hour. The holder can be the customer's CC'd colleague, a co-recipient in a tender, or anyone the mail was forwarded to. INFO-R4D.2: after co-recipients filled it, the main customer's own reply → `rate_limited`.
+  - Why LOW: this needs being a To/Cc of that exact mail (or receiving a forward of it). Base let anyone on the internet block a customer's whole sender bucket with no pair at all (H3-1 MED), so the exposure is strictly smaller. With P14 set, the customer's reply is V, which has no message bucket, and is unaffected.
+  - Fix: apply the same light lane to the message step (first 10/h per sender never dropped by the message bucket). The bound becomes message cap + 10·k.
+- **R4-2 · LOW (stated).** Count-then-drop on a customer's T sender bucket by a pair-holder. Same reasoning; narrower than base.
+- **R4-3 · LOW (stated).** `+10·k` above each V/T class cap. k grows only by one shop-sent mail per mailbox. Volume is in the RV-7 C6 debt.
+- **R4-4 · LOW (stated).** D has no lane, so a D flood (≥ 4 attacker DMARC domains × 300, or ≥ 10 real free-mail accounts) drops new authenticated non-reply mail for the hour. It cannot touch V/T/U, and U has always been starvable by anyone.
+- **RV-7 · LOW.** C6 debt (byte budget, copy-in quota).
+- **RV-4 · MED (out of this card).** The kanban key page revokes any key of the shop. It ships with hotfix/apiv1-scope 201d371a and must not ship after this branch.
+
+None of the residuals of this card's own code is MED+. The P14 launch gate from round 2 stands: do not set `CRM_INBOUND_AUTHSERV_ID` until the provider guarantees in the builder's P14 section are confirmed.
+
+VERDICT: MERGEABLE (conditions: RV-4 ships with or before this branch via shark-hf 201d371a; P14 launch gate as stated; R4-1..R4-4 + RV-7 + free-mail list extension recorded as LOW / C6 debt)
