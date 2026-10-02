@@ -2823,18 +2823,32 @@ async function stopSequencesFor(ctx: { tenantId: string; systemId: string }, con
 // CRM C5.4-B ▸ L1-m2: กล่องนี้คือจดหมายที่ "ไม่ผูกใคร" ของทั้งระบบ ⇒ เปิดได้เฉพาะผู้ที่เห็นทั้งระบบจริง ๆ —
 //   คีย์ API ที่ถูกกรอง (`crm.filter.team:` / `crm.filter.owner:` · R-C.3 "แคบลงเท่านั้น") ไม่ผ่าน · ผู้จัดการ/พนักงานต้องไม่ถูกจำกัดสาขา
 //   และเห็นผู้ติดต่อ ALL (เดิม MANAGER ทุกคน + คีย์ admin ที่แปลงเป็น MANAGER ผ่านหมด)
-async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<void> {
-  if (actor.role === "OWNER" && !isApiActor(actor)) return;
-  const deny = () => fail("FORBIDDEN", "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน");
+// CRM C5.5-fix15 ▸ P-it6-1: ตัวตัดสินเดียว (`unmatchedGateProblem`) — ด่านของบริการ (`assertUnmatchedGate`: แท็บ/รายการ "ยังไม่จับคู่" ·
+//   การมองเห็นแถวที่ไม่ผูกใคร · `attachToContact`) และหน้าเธรด (`canUseUnmatchedInbox` → ซ่อนบล็อก "ผูกกับผู้ติดต่อ") ใช้ตัวเดียวกัน ⇒
+//   หน้าไม่เสนอปุ่มค้น/ผูกให้คนที่บริการจะปฏิเสธหลังกดอีกต่อไป (เดิมผู้จัดการที่ถูกจำกัดสาขาค้น เลือก แล้วค่อยเจอคำปฏิเสธ) ◂
+async function unmatchedGateProblem(ctx: EmailsCtx, actor: MemberActor): Promise<string | null> {
+  if (actor.role === "OWNER" && !isApiActor(actor)) return null;
   if (isApiActor(actor)) {
-    if (Object.entries(actor.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("crm.filter."))) throw deny();
-    return;
+    return Object.entries(actor.permissions ?? {}).some(([k, v]) => v === true && k.startsWith("crm.filter."))
+      ? "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบ — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน"
+      : null;
   }
   const wholeShop = actor.unitAccess.length === 0 || actor.unitAccess.includes("*");
   const level = await resolveVisibility(ctx, actor, "CONTACT");
-  if (level !== "ALL" || !wholeShop) {
-    throw fail("FORBIDDEN", "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบหรือระดับผู้จัดการขึ้นไป — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน");
-  }
+  return level !== "ALL" || !wholeShop
+    ? "กล่อง \"ยังไม่จับคู่\" เปิดได้เฉพาะบัญชีที่เห็นผู้ติดต่อทั้งระบบหรือระดับผู้จัดการขึ้นไป — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน"
+    : null;
+}
+
+async function assertUnmatchedGate(ctx: EmailsCtx, actor: MemberActor): Promise<void> {
+  const problem = await unmatchedGateProblem(ctx, actor);
+  if (problem) throw fail("FORBIDDEN", problem);
+}
+
+/** ผ่านด่านกล่อง "ยังไม่จับคู่" ไหม (ตัวตัดสินเดียวกับ `assertUnmatchedGate` — ใช้ซ่อนบล็อก "ผูกกับผู้ติดต่อ" ของหน้าเธรด) ·
+ *  ปฏิเสธ = false (ไม่โยน) · ฐานข้อมูลล้มตอนอ่านระดับการมองเห็น = โยนต่อ เหมือนการอ่านอื่นของหน้านั้น (r2 RV15-7: ไม่กลืน error) */
+export async function canUseUnmatchedInbox(ctx: EmailsCtx, actor: MemberActor): Promise<boolean> {
+  return (await unmatchedGateProblem(ctx, actor)) === null;
 }
 
 /**

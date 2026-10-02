@@ -72,7 +72,7 @@ export function EmailThread({ data }: { data: CrmEmailThreadData }) {
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="crm-email-thread-page">
       {msg && (
-        <p className={`text-sm ${msg.ok ? "text-[color:var(--color-muted)]" : "text-red-600"}`} role="status" data-testid="crm-email-thread-msg">
+        <p className={`text-sm ${msg.ok ? "text-[color:var(--color-muted)]" : "text-red-600"}`} role={msg.ok ? "status" : "alert"} data-testid="crm-email-thread-msg">
           {msg.text}
         </p>
       )}

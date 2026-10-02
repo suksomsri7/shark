@@ -5,7 +5,7 @@ import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
-import { getThread, listTemplates } from "@/lib/modules/crm/emails";
+import { canUseUnmatchedInbox, getThread, listTemplates } from "@/lib/modules/crm/emails";
 import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
 import { CRM_EMAIL_ATTACH_MAX_BYTES, CRM_EMAIL_ATTACH_MAX_COUNT, CRM_EMAIL_BODY_MAX_BYTES, CRM_EMAIL_BODY_TOO_LONG_MSG, CRM_EMAIL_COMPOSER_ATTACH_MAX_BYTES, CRM_EMAIL_SUBJECT_MAX, hasRemoteImages, renderInboundHtml } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
@@ -82,7 +82,8 @@ export default async function CrmEmailThreadPage({ params }: { params: Promise<{
     companyName: contactCompany,
     messages,
     canSend,
-    canAttach: !contactId,
+    // CRM C5.5-fix15 ▸ P-it6-1: ด่านเดียวกับ `attachToContact` (`canUseUnmatchedInbox` = ตัวตัดสินของ assertUnmatchedGate) ◂
+    canAttach: !contactId && (await canUseUnmatchedInbox(ctx, actor)),
     replyToEmailId: last?.id ?? null,
     templates: templates.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name })),
     attachMaxBytes: CRM_EMAIL_ATTACH_MAX_BYTES,
