@@ -294,6 +294,7 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - **RV-4:** kanban key page revokes any key of the shop — fixed only in `hotfix/apiv1-scope` (shark-hf 201d371a) → ship with/before session/crm.
 - **P14 (launch gate):** `CRM_INBOUND_AUTHSERV_ID` set AND the inbound provider adds its own Authentication-Results header; otherwise an attacker-supplied header carrying our authserv-id is trusted.
 - Debt: non-account `contains` wildcard sites in CRM/member/kanban (list in `wo-notes/crm-C5.5-fix8.md`); `emails.ts:450/456` shopMailAddressesInTx caps (over-erasure of shop addresses past 50 systems / 2,000 settings); forged inbound mail updates lastActivityAt (`emails.ts:2592`) → postpones lead retention erase.
+- **fix8 round-4 residuals (review `wo-notes/crm-C5.5-fix8-review.md` "Round 4 re-review", all LOW):** R4-1 the per-Message-ID T bucket has no light lane — a recipient of one of our mails can send 100 mails citing it and drop everyone else's replies to that mail for the hour (cheap follow-up: same 10/h light lane on the message step; unaffected once P14 is set); R4-2 count-then-drop on a customer's T sender bucket by someone holding her thread; R4-3 `+10·k` above each V/T system cap; R4-4 class D has no light lane. Product call: extending `FREE_MAIL_DOMAINS` (outlook.co.th, qq.com …) also changes company / staff-domain matching.
 
 ## fix11 / G2 notes (2026-10-02)
 
@@ -312,6 +313,7 @@ Source: `wo-notes/crm-C5.5-G3.md` (Q1–Q6) and `wo-notes/crm-C5.5-G3-review.md`
 - RV-4 (LOW, pre-existing): `support_open_case` writes subject/detail unguarded into the support case list/thread readable by every member — the push fix (G2-2) is partial. Candidate follow-up card.
 - RV-7 behaviour changes to announce: STAFF can no longer forget legacy shop memories; the 100 shop-fact cap includes legacy rows.
 - Legacy memories containing contact data are hidden from non-OWNERs at read time, not deleted; prod count not taken.
+- **G3 round-2 re-check (RV-8, RV-9 LOW)** — queued as G3 round 3 before merge: RV-8 `/` separator false positives (date ranges, shift hours, zero-padded codes refused as phone); RV-9 cheap bypasses (zero-width chars, `_`, `·`; spelled-out separators stay open).
 
 ## fix12 (duplicate checks vs. hidden records) — owner questions (2 Oct)
 Source: `wo-notes/crm-C5.5-fix12.md` on `wip/crm-cf16`.
