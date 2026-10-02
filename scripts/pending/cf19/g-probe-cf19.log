@@ -1,0 +1,42 @@
+(node:2860484) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── snapshot 1: member linked to the contact's Party ──
+
+── snapshot 2: the same contact with NO member linked (customer.partyId cleared) ──
+
+── denied viewers: byte-identical to 'no member linked' ──
+  ✅ [CF19-D1] web action · STAFF with account.contact.manage, no member key: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D2] 360 page loader · STAFF with no member key: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D3] web action · STAFF with member.customer.read limited to branch B (member's home = A, no visit in B): DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D4] 360 page loader · STAFF limited to branch B: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D5] loader with no viewer (crmViewer omitted): DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D6] loader with viewer null: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D7] account REST GET /contacts/{id} · key [account.doc.view, account.contact.manage] (no member scope): DTO == no-member DTO true · leaked tokens [] · links={"member":false,"crm":false,"chat":false}
+
+── entitled viewers: identical card ──
+  ✅ [CF19-E1] owner: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E2] staffEntitled: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E3] staffHomeBranch: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E4] REST key holding member.customer.read (service-minted — the account page refuses member scopes since S1) → links.member=true (mechanism: the key's scopes are its member viewer)
+  ✅ [CF19-E5] entitled DTOs byte-identical to the base tree (page:owner, page:staffEntitled, page:staffHomeBranch, rest:accmem) — differing: []
+  ✅ [CF19-E6] OWNER and entitled STAFF see the same DTO (no CRM system in this shop ⇒ nothing else viewer-dependent)
+
+── INFO ──
+  ℹ️  links tab SQL statements (no viewer): 11
+  ℹ️  links tab SQL statements (OWNER): 12
+  ℹ️  links tab SQL statements (STAFF no member): 11
+  ℹ️  links tab SQL statements (STAFF home branch (unit-scoped, entitled)): 14
+  ℹ️  sibling NOT fixed here (listed in the note): REST GET /contacts row badges for the account-only key = {"member":true,"crm":false} (listPartyIdsWithCustomer has no viewer)
+  ✅ [CLEAN-tenant] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🟢 probe cf19: 15/15
+JSON_SUMMARY {"total":15,"passed":15,"findings":[]}

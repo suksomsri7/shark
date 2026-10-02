@@ -476,13 +476,17 @@ export async function findMemberCodesByPartyIds(
 
 /**
  * WO 3.4 — การ์ด "สมาชิก"/"POS" ในแท็บ **การเชื่อมต่อ** ของโปรไฟล์ผู้ติดต่อ 360° (SPEC §7.1 · ภาพ g6)
- * อ่านอย่างเดียว · 1 query · คืนสมาชิกที่ผูก Party เดียวกับผู้ติดต่อบัญชี (ไม่มี = null)
+ * อ่านอย่างเดียว · 1 query (ผู้ดูที่ถูกจำกัดสาขา +ด่าน `visibleCustomerIds`) · คืนสมาชิกที่ผูก Party เดียวกับผู้ติดต่อบัญชี (ไม่มี = null)
  * `visitCount`/`totalSpentSatang` = ยอดสะสมหน้าร้าน (POS เรียก `recordSpend`/`recordVisit` ตอนปิดบิล)
+ * CRM C5.5-fix14 (S4) ▸ ตามสิทธิ์ของผู้ถาม (`MemberLinkViewer` ด้านล่าง — กติกาเดียวกับ `findCustomersForLink`) · **fail-closed**:
+ *   ไม่ส่ง/null/อ่านโมดูลสมาชิกไม่ได้/มองไม่เห็นตามขอบเขตสาขา = null (ตอบเหมือน "ไม่มีสมาชิกผูก" — ไม่บอกว่ามีอยู่) ·
+ *   ผู้ถามที่มีสิทธิ์ได้แถวเดิมทุกไบต์ (แถวเก่าสุดที่เขามองเห็น) · `"system"` = งานระบบ ◂
  */
 export async function findCustomerByPartyId(
   tenantId: string,
   memberSystemId: string,
   partyId: string,
+  viewer?: MemberLinkViewer,
 ): Promise<{
   id: string;
   memberCode: string | null;
@@ -491,11 +495,21 @@ export async function findCustomerByPartyId(
   totalSpentSatang: number;
   visitCount: number;
 } | null> {
-  return tenantDb({ tenantId, systemId: memberSystemId }).customer.findFirst({
+  if (viewer === undefined || viewer === null) return null;
+  const access = await import("./access");
+  if (viewer !== "system" && !access.canReadMember(viewer)) return null; // ไม่ต้องยิง query เลย
+  const rows = await tenantDb({ tenantId, systemId: memberSystemId }).customer.findMany({
     where: { partyId },
     select: { id: true, memberCode: true, name: true, tier: true, totalSpentSatang: true, visitCount: true },
     orderBy: { createdAt: "asc" },
+    take: 20, // ต่อ Party ในระบบเดียวมีแถวเดียวแทบเสมอ — เพดานกันข้อมูลผิดปกติ
   });
+  if (rows.length === 0) return null;
+  // ทางลัด = ข้อแรกของ `assertVisible` (ด่านของ `briefFor`): ผู้ดูที่ไม่ถูกจำกัดสาขาเห็นทุกแถวของระบบนี้ (แถวมาจาก tenantDb ของระบบนี้แล้ว) —
+  //   ไม่ยิง briefFor (โหลดแต้ม/ระดับทิ้ง) ⇒ แท็บการเชื่อมต่อของ OWNER/ผู้ดูทุกสาขายังอยู่ในงบ query เดิม · ผู้ถูกจำกัดสาขาตัดสินด้วย `visibleCustomerIds`
+  if (viewer === "system" || (viewer.role !== "CUSTOMER" && !access.isUnitScoped(viewer))) return rows[0] ?? null;
+  const visible = await visibleCustomerIds(tenantId, memberSystemId, viewer, rows.map((r) => r.id));
+  return rows.find((r) => visible.has(r.id)) ?? null;
 }
 
 /**
