@@ -1592,14 +1592,24 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
     }),
   }));
 
+  // CRM C5.5-fix14 r3 (รีวิว RV14-1 · กระจกของ S4) ▸ บล็อก "สมาชิก" ตามสิทธิ์สมาชิกของผู้ดู — ตัวตัดสินของโมดูลสมาชิก (`briefFor`:
+  //   `canReadMember` + ขอบเขตสาขา) · ไม่เห็น = `member: null` และ `contact.memberCustomerId: null` (เหมือน "ไม่ได้ผูกสมาชิก" ทุกไบต์) ·
+  //   ผู้ดูที่มีสิทธิ์ได้บล็อกเดิม (สมาชิกถูกลบไปแล้ว = บล็อก "ผูกแล้ว (ไม่พบ…)" แบบเดิม เฉพาะผู้ที่อ่านโมดูลสมาชิกได้) ◂
   let member: Contact360["member"] = null;
+  let memberSeen = false;
   if (row.memberCustomerId) {
+    const mf = await memberFacade();
     const sys = await consents.memberSystemOf(ctx.tenantId, row.memberCustomerId);
-    member = { customerId: row.memberCustomerId, systemId: sys?.systemId ?? null, memberCode: sys?.memberCode ?? null, name: sys?.name ?? null, tierName: null, phoneMasked: null };
     if (sys) {
-      const briefs = await (await memberFacade()).briefFor({ tenantId: ctx.tenantId, systemId: sys.systemId, actorUserId: actorId(ctx) }, a, [row.memberCustomerId]).catch(() => []);
+      const briefs = await mf.briefFor({ tenantId: ctx.tenantId, systemId: sys.systemId, actorUserId: actorId(ctx) }, a, [row.memberCustomerId]).catch(() => []);
       const b = briefs[0];
-      if (b) member = { ...member, tierName: b.tier?.name ?? null, phoneMasked: b.phoneMasked };
+      if (b) {
+        memberSeen = true;
+        member = { customerId: row.memberCustomerId, systemId: sys.systemId, memberCode: sys.memberCode ?? null, name: sys.name ?? null, tierName: b.tier?.name ?? null, phoneMasked: b.phoneMasked };
+      }
+    } else if (mf.canReadMember(a)) {
+      memberSeen = true;
+      member = { customerId: row.memberCustomerId, systemId: null, memberCode: null, name: null, tierName: null, phoneMasked: null };
     }
   }
   // ชื่อบริษัทผ่านบริการบริษัท (companyWhere · ยังใช้งาน) — ลิงก์ไปบริษัทที่ถูกรวม/เก็บถาวร/มองไม่เห็น ไม่แสดง
@@ -1623,7 +1633,7 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
   }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   return {
-    contact: viewerDto(row, coStates),
+    contact: viewerDto(memberSeen ? row : { ...row, memberCustomerId: null }, coStates),
     owner: owner?.user ? { id: owner.user.id, name: owner.user.name ?? "ผู้ใช้" } : null,
     member,
     company: primary,

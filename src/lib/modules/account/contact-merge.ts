@@ -433,11 +433,22 @@ export async function mergeContacts(ctx: Ctx, input: MergeContactsInput): Promis
       // 7) Party (ตัวตนกลางระดับ tenant) — ตัวรองชี้ไปตัวหลัก + ปิดคู่ใน PartyMergeCandidate
       // cast: `tx` เป็น client ที่ผ่าน $extends ของ tenantDb แล้ว (ตัวกรอง tenant/system ยังทำงานตอนรัน)
       // TypeScript มองเป็นชนิดเฉพาะของ extended client — ประกาศพารามิเตอร์เป็น TransactionClient เพื่ออ่านง่าย
-      await mergeParties(tx as unknown as Prisma.TransactionClient, ctx, {
+      const partyMove = {
         primaryPartyId: (patch as { partyId?: string | null }).partyId ?? primary.partyId,
         secondaryPartyId: secondary.partyId,
         keepSecondaryParty: choices.partyId === "secondary",
-      });
+      };
+      await mergeParties(tx as unknown as Prisma.TransactionClient, ctx, partyMove);
+
+      // 7b) CRM C5.5-fix14 r3 (รีวิว RV14-3): สมาชิกของ Party ที่ถูกรวมทิ้ง ย้ายตามไป Party ที่เหลือ (ผ่าน member service · งานระบบ ไม่ขึ้นกับผู้กด) —
+      //   ไม่งั้นผู้รวมที่มองไม่เห็นสมาชิก (ป้าย "— ยังไม่เชื่อม" ทั้งสองฝั่ง) เลือกตัวหลักผิดฝั่งแล้วลิงก์สมาชิกหายเงียบ ๆ ·
+      //   ไม่คืนจำนวนใน MergeResult/audit (จะบอกผู้ที่มองไม่เห็นว่ามีสมาชิก) · สองฝั่งมีสมาชิกทั้งคู่ = ไม่แตะ (ดู followPartyMerge)
+      //   ใช้ Party "เดิม" ของสองฝั่ง (ไม่ใช่ partyMove ที่ถูก patch ทับแล้วเมื่อเลือก Party ของตัวรอง): Party ที่ผู้ติดต่อตัวหลักถือหลังรวม = keep · อีกฝั่ง = drop
+      const keepParty = partyMove.keepSecondaryParty ? secondary.partyId : primary.partyId;
+      const dropParty = partyMove.keepSecondaryParty ? primary.partyId : secondary.partyId;
+      if (keepParty && dropParty && keepParty !== dropParty) {
+        await memberSvc.followPartyMerge(tx as unknown as Prisma.TransactionClient, ctx.tenantId, dropParty, keepParty);
+      }
 
       // WO C4 — ยิง webhook ใน tx เดียวกับการย้าย (ล้มกลางทาง = ไม่มีทั้งการย้ายและ event)
       //   cast เหตุผลเดียวกับ mergeParties ข้างบน (tx ผ่าน $extends ของ tenantDb แล้ว)

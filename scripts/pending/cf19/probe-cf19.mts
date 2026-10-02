@@ -42,7 +42,7 @@ const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: proc
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 const WRITE_BASE = process.argv.includes("--write-base");
-const BASE_FILE = "scripts/pending/cf19/base-dto-r2.json"; // round 1 base (f5e6485b) kept as base-dto-r1.json
+const BASE_FILE = "scripts/pending/cf19/base-dto-r3.json"; // round 1 base (f5e6485b) = base-dto-r1.json · round 2 (4aa42ad2) = base-dto-r2.json · round 3 = 80f776a9
 const TAG = `qc-cf19-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
 const res: { id: string; ok: boolean }[] = [];
 const chk = (id: string, ok: boolean, msg: string) => {
@@ -266,19 +266,8 @@ try {
   chk("CF19-E4", rm.status === 200 && rm.body?.data?.links?.member === true,
     `REST key holding member.customer.read (service-minted — the account page refuses member scopes since S1) → links.member=${j(rm.body?.data?.links?.member)} (mechanism: the key's scopes are its member viewer)`);
 
-  // byte-compare against the base tree (RED run writes it)
-  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem", "list:owner", "list:staffEntitled", "list:staffHomeBranch", "restlist:accmem", "mergeP:owner", "mergeP:staffEntitled", "mergeP:staffHomeBranch"];
-  const cur: Record<string, string> = Object.fromEntries(baseKeys.map((k) => [k, linked[k]!]));
-  if (WRITE_BASE) {
-    writeFileSync(BASE_FILE, JSON.stringify(cur, null, 1));
-    console.log(`  ℹ️  base written → ${BASE_FILE}`);
-  }
-  if (existsSync(BASE_FILE)) {
-    const base = JSON.parse(readFileSync(BASE_FILE, "utf8")) as Record<string, string>;
-    const diff = baseKeys.filter((k) => base[k] !== cur[k]);
-    chk("CF19-E5", diff.length === 0, `entitled DTOs byte-identical to the base tree (${baseKeys.join(", ")}) — differing: ${j(diff)}`);
-  } else chk("CF19-E5", false, `no ${BASE_FILE} — run the base tree with --write-base first`);
   chk("CF19-E6", linked["web:owner"] === linked["web:staffEntitled"] && linked["page:owner"] === linked["page:staffEntitled"], "OWNER and entitled STAFF see the same DTO (no CRM system in this shop ⇒ nothing else viewer-dependent)");
+
 
   // ═══ query budget (WO 3.4 ceiling 12) — links tab, real SQL statements ═══
   console.log("\n── query budget: links tab ≤ 12 ──");
@@ -294,6 +283,158 @@ try {
   chk("CF19-Q1", nOwner <= 12, `OWNER: ${nOwner} statements`);
   chk("CF19-Q2", nNoRead <= 12, `STAFF without member read: ${nNoRead} statements`);
   chk("CF19-Q3", nBranch <= 12, `branch-limited entitled STAFF: ${nBranch} statements (was 14 at 4aa42ad2: briefFor loaded points)`);
+
+  // ═══ ROUND 3 (controller rulings on the review) — RED on 80f776a9 ═══
+  const r3: Record<string, string> = {};
+  const loc = (v: unknown, extra: [string, string][]) => { let x = norm(v); for (const [id, tok] of extra) x = x.split(id).join(tok); return x; };
+
+  // ── RV14-1 · CRM contact 360 'member' block (by CrmContact.memberCustomerId) + CRM REST contacts.get (same call) ──
+  console.log("\n── round 3 · RV14-1 CRM contact 360 member block ──");
+  const CRM = (await import("@/lib/modules/crm" as string)) as Any;
+  const S = (await sysSvc.createSystem(T, "CRM", `CRM ${TAG}`)).id as string;
+  await P.appSystem.update({ where: { id: S }, data: { settings: { crm: { uiVersion: 2 } } } });
+  await mk("crmNoMember", "STAFF", ["*"], { "crm.contact.read": true });
+  await mk("crmOtherBranch", "STAFF", [UB], { "crm.contact.read": true, "member.customer.read": true });
+  await mk("crmHomeBranch", "STAFF", [UA], { "crm.contact.read": true, "member.customer.read": true });
+  const crmWho = ["owner", "crmNoMember", "crmOtherBranch", "crmHomeBranch"] as const;
+  const ccOf: Record<string, string> = {};
+  for (const who of crmWho) {
+    // each viewer owns its own CRM contact (CRM STAFF default visibility = own rows) — all linked to the same member
+    ccOf[who] = (await P.crmContact.create({ data: { tenantId: T, systemId: S, name: `ซีอาร์เอ็ม ${who} ${TAG}`, ownerUserId: V[who]!.uid, memberCustomerId: cust.id } })).id as string;
+  }
+  const ccTok: [string, string][] = [[S, "<CRM>"], ...crmWho.map((w) => [ccOf[w]!, `<CC-${w}>`] as [string, string]), ...Object.entries(V).map(([w, v]) => [v.uid, `<U-${w}>`] as [string, string])];
+  const c360 = async (who: string) => {
+    const d = await CRM.contacts.getContact360({ tenantId: T, systemId: S, actorUserId: V[who]!.uid }, viewerOf(who), ccOf[who]);
+    // timestamps dropped: the linked/unlinked switch itself bumps updatedAt, and the fixtures are fresh per run (base compare across runs)
+    const { createdAt: _c, updatedAt: _u, assignedAt: _a, lastActivityAt: _l, ...contactNoTime } = (d.contact ?? {}) as Record<string, unknown>;
+    return { proj: loc({ member: d.member, contact: contactNoTime }, ccTok), consent: loc(d.consent, ccTok) };
+  };
+  const kCrm = await ak.createApiKey({ tenantId: T }, `${TAG} crm`, { scopes: ["crm.contact.read"], systemId: S });
+  const kCrmMem = await ak.createApiKey({ tenantId: T }, `${TAG} crmmem`, { scopes: ["crm.contact.read", "member.customer.read"], systemId: S });
+  const crmRoute = (await import("@/app/api/v1/crm/[...path]/route" as string)) as Any;
+  const crmRest = async (key: string, id: string) => {
+    const req = new Request(`http://x/api/v1/crm/contacts/${id}`, { method: "GET", headers: { authorization: `Bearer ${key}` } });
+    const r = await crmRoute.GET(req, { params: Promise.resolve({ path: ["contacts", id] }) });
+    const text = await r.text();
+    let body: Any = null; try { body = JSON.parse(text); } catch { body = { _raw: text.slice(0, 200) }; }
+    return loc({ status: r.status, member: body?.data?.member, memberCustomerId: body?.data?.contact?.memberCustomerId, error: body?.error?.code }, ccTok);
+  };
+  const snap360 = async () => {
+    const o: Record<string, { proj: string; consent: string }> = {};
+    for (const who of crmWho) o[who] = await c360(who);
+    o["rest:crm"] = { proj: await crmRest(kCrm.rawKey, ccOf.owner!), consent: "" };
+    o["rest:crmmem"] = { proj: await crmRest(kCrmMem.rawKey, ccOf.owner!), consent: "" };
+    return o;
+  };
+  const L3 = await snap360();
+  await P.crmContact.updateMany({ where: { tenantId: T, systemId: S }, data: { memberCustomerId: null } });
+  const U3 = await snap360();
+  for (const who of crmWho) await P.crmContact.update({ where: { id: ccOf[who] }, data: { memberCustomerId: cust.id } });
+  for (const [id, k, label] of [["CF19-C1", "crmNoMember", "STAFF with crm.contact.read, no member key"], ["CF19-C2", "crmOtherBranch", "STAFF crm + member read limited to branch B (member home A)"], ["CF19-C5", "rest:crm", "CRM REST GET /contacts/{id} · key [crm.contact.read]"]] as const) {
+    const l = L3[k]!.proj, u = U3[k]!.proj;
+    chk(id, l === u && leaks(l).length === 0 && !l.includes("<CUSTOMER>"), `${label}: {member, contact} == not-linked ${l === u} · leaked ${j(leaks(l))} · ${cut(l, 200)}`);
+  }
+  for (const [id, k, label] of [["CF19-C3", "owner", "OWNER"], ["CF19-C4", "crmHomeBranch", "STAFF crm + member read of the member's home branch"]] as const) {
+    const o = JSON.parse(L3[k]!.proj);
+    chk(id, o.member?.memberCode === CODE && o.member?.customerId === "<CUSTOMER>" && o.contact?.memberCustomerId === "<CUSTOMER>" && L3[k]!.proj !== U3[k]!.proj, `${label}: member block ${j(o.member)} · contact.memberCustomerId ${j(o.contact?.memberCustomerId)}`);
+  }
+  const rcm = JSON.parse(L3["rest:crmmem"]!.proj);
+  chk("CF19-C6", rcm.status === 200 && rcm.member?.memberCode === CODE, `CRM REST · key [crm.contact.read, member.customer.read] → ${j(rcm)}`);
+  for (const k of ["owner", "crmHomeBranch", "rest:crmmem"]) r3[`crm360:${k}`] = L3[k]!.proj;
+  const nOwnerCrm = await sqlOf(viewerOf("owner"));
+  console.log(`  ℹ️  RV14-4 (known debt, not fixed): with a CRM system in the shop the OWNER's links tab costs ${nOwnerCrm} statements (CRM contact + deal lookups) — Q1–Q3 above are measured before the CRM system exists`);
+  console.log(`  ℹ️  consent block (NOT gated — listed, owner question): STAFF without member key linked==unlinked ${L3.crmNoMember!.consent === U3.crmNoMember!.consent} · linked ${cut(L3.crmNoMember!.consent, 160)}`);
+
+  // ── RV14-2 · account AI tools: the asker's own member viewer (OWNER sees the truth, member-blind = not linked) ──
+  console.log("\n── round 3 · RV14-2 account AI assistant ──");
+  const TA = (await import("@/lib/ai/tools-account" as string)) as Any;
+  const AIA = (await import("@/lib/ai/actor" as string)) as Any;
+  const aiTool = (name: string) => (TA.accountTools() as Any[]).find((t) => t.def.name === name);
+  const aiActorOf = (who: string) => (who === "key" ? AIA.aiApiKeyActor({ tenantId: T, keyId: kAcc.id, scopes: ["account.doc.view", "account.contact.manage"], systemId: A }) : AIA.aiMemberActor(T, V[who]!.uid, V[who]!));
+  const aiRun = async (who: string) => {
+    const ctxAi = { tenantId: T, systemId: A, actor: aiActorOf(who) };
+    let g = await aiTool("account_get_contact").execute(ctxAi, { id: contact.id });
+    if (String(g).includes("error")) g = await aiTool("account_get_contact").execute(ctxAi, { contactId: contact.id });
+    const l = await aiTool("account_search_contacts").execute(ctxAi, { group: "source:member" });
+    return { get: norm(JSON.parse(g)), list: norm(JSON.parse(l)) };
+  };
+  // the account tools need an account read key (account.doc.view) — STAFF viewers of this section hold it; only the member side differs
+  await mk("aiEntitled", "STAFF", ["*"], { "account.doc.view": true, "member.customer.read": true });
+  await mk("aiNoMember", "STAFF", ["*"], { "account.doc.view": true });
+  await mk("aiOtherBranch", "STAFF", [UB], { "account.doc.view": true, "member.customer.read": true });
+  const aiWho = ["owner", "aiEntitled", "aiNoMember", "aiOtherBranch", "key"];
+  const aiL: Record<string, Any> = {}, aiU: Record<string, Any> = {};
+  for (const w of aiWho) aiL[w] = await aiRun(w);
+  await P.customer.update({ where: { id: cust.id }, data: { partyId: null } });
+  for (const w of aiWho) aiU[w] = await aiRun(w);
+  await P.customer.update({ where: { id: cust.id }, data: { partyId: pty.id } });
+  for (const [id, w] of [["CF19-A1", "owner"], ["CF19-A2", "aiEntitled"]] as const) {
+    chk(id, aiL[w].get !== aiU[w].get && aiL[w].list !== aiU[w].list && aiL[w].list.includes("<CONTACT>") && !aiU[w].list.includes("<CONTACT>"),
+      `${w} through AI: get linked≠unlinked ${aiL[w].get !== aiU[w].get} · source:member list has the contact (linked ${aiL[w].list.includes("<CONTACT>")}, unlinked ${aiU[w].list.includes("<CONTACT>")}) · ${cut(aiL[w].get, 120)}`);
+  }
+  for (const [id, w] of [["CF19-A3", "aiNoMember"], ["CF19-A4", "aiOtherBranch"], ["CF19-A5", "key"]] as const) {
+    chk(id, !aiL[w].get.includes("\"error\"") && aiL[w].get === aiU[w].get && aiL[w].list === aiU[w].list && leaks(aiL[w].get + aiL[w].list).length === 0, `${w} through AI: linked == unlinked (get ${aiL[w].get === aiU[w].get} · list ${aiL[w].list === aiU[w].list}) · ${cut(aiL[w].get, 120)}`);
+  }
+  r3["ai:owner:get"] = aiL.owner.get;
+
+  // ── RV14-3 · merge by a member-blind STAFF: the member link of the merged-away Party follows the survivor ──
+  console.log("\n── round 3 · RV14-3 merge keeps the member reachable ──");
+  await mk("staffMerger", "STAFF", ["*"], { ...ACC, "account.contact.merge": true });
+  const mergerCookie = await sessionCookie(V.staffMerger!.uid, T);
+  const mkPair = async (tag: string, phone: string, aMember: string | null, bMember: string | null) => {
+    const pa = await P.party.create({ data: { tenantId: T, name: `คู่${tag}ก ${TAG}`, kind: "PERSON" } });
+    const pb = await P.party.create({ data: { tenantId: T, name: `คู่${tag}ข ${TAG}`, kind: "PERSON" } });
+    const ca = await P.accountContact.create({ data: { tenantId: T, systemId: A, name: `คู่${tag}ก ${TAG}`, kind: "CUSTOMER", partyId: pa.id, phone, phoneNorm: phone } });
+    const cb = await P.accountContact.create({ data: { tenantId: T, systemId: A, name: `คู่${tag}ข ${TAG}`, kind: "CUSTOMER", partyId: pb.id, phone, phoneNorm: phone } });
+    const ma = aMember ? await P.customer.create({ data: { tenantId: T, memberSystemId: M, name: `คู่${tag}ก`, memberCode: aMember, homeUnitId: UA, partyId: pa.id, status: "ACTIVE" } }) : null;
+    const mb = bMember ? await P.customer.create({ data: { tenantId: T, memberSystemId: M, name: `คู่${tag}ข`, memberCode: bMember, homeUnitId: UA, partyId: pb.id, status: "ACTIVE" } }) : null;
+    return { pa: pa.id, pb: pb.id, ca: ca.id, cb: cb.id, ma: ma?.id ?? null, mb: mb?.id ?? null };
+  };
+  const mergeAs = (primaryId: string, secondaryId: string, fieldChoices?: Record<string, string>): Promise<Any> =>
+    inScope<Any>(mergerCookie, `/app/sys/${A}/account/contacts/merge`, () => ACT.mergeContactsAction(A, { primaryId, secondaryId, ...(fieldChoices ? { fieldChoices } : {}) }));
+  const ownerCard = async (cid: string) => {
+    const pr = await CP.contactProfile({ tenantId: T, systemId: A }, cid, { base: "", tab: "links", asOf: ASOF, crmViewer: viewerOf("owner") });
+    return pr?.linksTab?.cards?.find((c: Any) => c.key === "member") ?? null;
+  };
+  // (1) member on the secondary · blind merger keeps the unlinked contact as primary (default choices)
+  const x1 = await mkPair("1", "0811110001", null, "M-CF19M");
+  const blindLabels = ((await CMERGE.listMergeCandidates(ctxA, viewerOf("staffMerger"))) as Any[]).filter((m: Any) => [m.a.id, m.b.id].includes(x1.ca)).flatMap((m: Any) => [m.a.memberLinkLabel, m.b.memberLinkLabel]);
+  const m1 = await mergeAs(x1.ca, x1.cb);
+  const card1 = await ownerCard(x1.ca);
+  const cust1 = await P.customer.findFirst({ where: { id: x1.mb }, select: { partyId: true } });
+  chk("CF19-G1", m1?.ok === true && card1?.linked === true && card1?.detail === "#M-CF19M · ระดับ MEMBER" && cust1?.partyId === x1.pa,
+    `blind STAFF (labels on the merge page ${j(blindLabels)}) merges [no member] ← [member M-CF19M] with default choices → ok ${m1?.ok} · OWNER card on the survivor ${j(card1?.detail)} linked ${card1?.linked} · member now on the survivor's Party ${cust1?.partyId === x1.pa}`);
+  chk("CF19-G2", m1?.ok === true && j(Object.keys(m1).sort()) === j(["moved", "ok", "partyMerged", "primaryId", "secondaryId"]) && j(Object.keys(m1.moved).sort()) === j(["documents", "groupsDeduped", "groupsMoved", "journalLines", "recurringRules"]),
+    `merge result to the blind user carries no member hint: keys ${j(Object.keys(m1 ?? {}).sort())} · moved ${j(m1?.moved)}`);
+  // (2) both sides hold a member → nothing moves (no member merge) · the survivor keeps its own member
+  const x2 = await mkPair("2", "0811110002", "M-CF19Z", "M-CF19W");
+  const m2 = await mergeAs(x2.ca, x2.cb);
+  const [z2, w2] = await Promise.all([P.customer.findFirst({ where: { id: x2.ma }, select: { partyId: true } }), P.customer.findFirst({ where: { id: x2.mb }, select: { partyId: true } })]);
+  const card2 = await ownerCard(x2.ca);
+  chk("CF19-G3", m2?.ok === true && z2?.partyId === x2.pa && w2?.partyId === x2.pb && card2?.detail === "#M-CF19Z · ระดับ MEMBER",
+    `both sides members (M-CF19Z ← M-CF19W): survivor's member stays ${z2?.partyId === x2.pa} · secondary's member stays on its own Party ${w2?.partyId === x2.pb} (no member merge) · OWNER card ${j(card2?.detail)}`);
+  // (3) the user keeps the SECONDARY's Party: the primary's member follows to it
+  const x3 = await mkPair("3", "0811110003", "M-CF19Q", null);
+  const m3 = await mergeAs(x3.ca, x3.cb, { partyId: "secondary" });
+  const card3 = await ownerCard(x3.ca);
+  const surv3 = await P.accountContact.findFirst({ where: { id: x3.ca }, select: { partyId: true } });
+  const cust3 = await P.customer.findFirst({ where: { id: x3.ma }, select: { partyId: true } });
+  chk("CF19-G4", m3?.ok === true && surv3?.partyId === x3.pb && cust3?.partyId === x3.pb && card3?.detail === "#M-CF19Q · ระดับ MEMBER",
+    `keep the secondary's Party: survivor Party = secondary's ${surv3?.partyId === x3.pb} · primary's member followed ${cust3?.partyId === x3.pb} · OWNER card ${j(card3?.detail)}`);
+  console.log("  ℹ️  no un-merge / restore path exists for account contacts (grep: none in account/ or party/) — nothing to keep consistent");
+
+  // ═══ byte-compare against the base tree (RED run on 80f776a9 writes it) ═══
+  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem", "list:owner", "list:staffEntitled", "list:staffHomeBranch", "restlist:accmem", "mergeP:owner", "mergeP:staffEntitled", "mergeP:staffHomeBranch", "crm360:owner", "crm360:crmHomeBranch", "crm360:rest:crmmem"];
+  const cur: Record<string, string> = Object.fromEntries(baseKeys.map((k) => [k, linked[k] ?? r3[k]!]));
+  if (WRITE_BASE) {
+    writeFileSync(BASE_FILE, JSON.stringify(cur, null, 1));
+    console.log(`  ℹ️  base written → ${BASE_FILE}`);
+  }
+  if (existsSync(BASE_FILE)) {
+    const base = JSON.parse(readFileSync(BASE_FILE, "utf8")) as Record<string, string>;
+    const diff = baseKeys.filter((k) => base[k] !== cur[k]);
+    chk("CF19-E5", diff.length === 0, `entitled DTOs byte-identical to the base tree (${baseKeys.join(", ")}) — differing: ${j(diff)}`);
+  } else chk("CF19-E5", false, `no ${BASE_FILE} — run the base tree with --write-base first`);
 
   // ═══ rule equivalence: the branch rule is the member module's own (homeUnit OR a visit-type activity in the branch) ═══
   console.log("\n── branch rule == member module (assertVisible / visibleCustomerIds) ──");

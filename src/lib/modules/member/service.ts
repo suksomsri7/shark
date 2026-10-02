@@ -532,6 +532,27 @@ export async function findCustomerByPartyId(
 }
 
 /**
+ * CRM C5.5-fix14 r3 (รีวิว RV14-3) — โมดูลอื่นรวมตัวตน (Party `fromPartyId` → `toPartyId`, เช่นรวมผู้ติดต่อบัญชี):
+ * แถวสมาชิกของ Party ที่ถูกรวมทิ้ง **ย้ายตามไป** Party ที่เหลือ ในธุรกรรมของผู้เรียก (กติกา party.mergeParties: "ผู้เรียกย้ายข้อมูลของโมดูลตัวเอง")
+ *   - ต่อระบบสมาชิก: Party ปลายทาง**ยังไม่มี**สมาชิกในระบบนั้น ⇒ ย้าย · **มีอยู่แล้ว** ⇒ ไม่แตะทั้งสองแถว (ไม่รวมสมาชิกให้เงียบ ๆ —
+ *     สมาชิกของตัวรองยังอยู่กับ Party เดิม เปิดได้จากหน้าสมาชิก; รวมสมาชิกซ้ำเป็นงานของหน้ารวมสมาชิก)
+ *   - งานระบบ (ไม่ขึ้นกับผู้กด — ผู้ที่มองไม่เห็นสมาชิกก็ต้องไม่ทำให้ลิงก์หาย) · SQL คำสั่งเดียว (อะตอมมิก · ไม่ผ่าน tenantDb ของผู้เรียก
+ *     ที่ผูกระบบของโมดูลอื่นไว้) · คืนจำนวนที่ย้าย — ผู้เรียก**ห้าม**แสดงต่อผู้ใช้ (บอกว่ามีสมาชิกอยู่)
+ */
+export async function followPartyMerge(
+  tx: Pick<Prisma.TransactionClient, "$executeRaw">,
+  tenantId: string,
+  fromPartyId: string,
+  toPartyId: string,
+): Promise<number> {
+  if (!tenantId || !fromPartyId || !toPartyId || fromPartyId === toPartyId) return 0;
+  return tx.$executeRaw`
+    UPDATE "Customer" c SET "partyId" = ${toPartyId}, "updatedAt" = now()
+     WHERE c."tenantId" = ${tenantId} AND c."partyId" = ${fromPartyId}
+       AND NOT EXISTS (SELECT 1 FROM "Customer" k WHERE k."tenantId" = ${tenantId} AND k."memberSystemId" = c."memberSystemId" AND k."partyId" = ${toPartyId})`;
+}
+
+/**
  * WO 3.3 — บล็อก "เชื่อมกับ › สมาชิก" ของ modal ผู้ติดต่อ (SPEC §7.2 · ภาพ g5)
  * หาสมาชิกที่ "น่าจะเป็นคนเดียวกัน" กับผู้ติดต่อบัญชี จากเบอร์ (ทุกรูปแบบที่ผู้เรียกส่งมา) / อีเมล / partyId
  * อ่านอย่างเดียว · 1 query · จำกัด 5 แถว (แค่พอโชว์การ์ดให้คนกดยืนยัน ไม่ใช่หน้ารายชื่อ)

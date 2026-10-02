@@ -193,3 +193,118 @@ the merge label is covered by M1–M3, L5–L7, E5.
   `listMergeCandidates` with `crmViewerOfSession`), not rendered (RSC) in a built app.
 - `qc-acc-v2-contact-merge`, `qc-acc-v2-perf`, member-module suites for `list.ts` (only an `export` keyword added there) not run.
 - Prod: rows 2/3 are identical on 929c39ce (no viewer anywhere) — same "ship with C5.4-A" note as S4.
+
+## Round 3 (controller rulings on the review `crm-C5.5-fix14-review.md`) — base 80f776a9 (src = f268fe2b)
+
+### 1 · RV14-1 (MED) CRM contact 360 member block — FIXED
+- `crm/contacts.ts getContact360`: the "สมาชิก" block is now decided by the member module's own gate. `briefFor` (`canReadMember` + branch
+  visibility, see below) answers for the viewer; no brief ⇒ `member: null` **and** `contact.memberCustomerId: null` in the 360 DTO, the same as
+  "not linked". Entitled viewers get the same block as before (same keys/order; probe E5 byte-compare). Kept for entitled viewers only: a linked id
+  whose member row is gone still shows the old "ผูกแล้ว (ไม่พบ…)" block when the viewer can read members. A thrown `briefFor` now hides the block
+  (before: block without tier/phone).
+- **`briefFor` refuses without `canReadMember` (defence in depth) — DONE** (`member/profile.ts`). Callers checked:
+  member-module entry points (`activity`, `identities`, `tier-history`, `insights`, `staff-app`, `members-actions`, `segments`, `import`,
+  member REST `members` ops, member `assistant.namesFor`) all reach it through member keys (`hasMemberPerm`/`assertCan` on `member.*` ⇒
+  `canReadMember` true, keys need a `member.*` scope = same rule); `chat-bridge.chatPanelFor` throws on `!canReadMember` first; `me.ts`
+  (CUSTOMER actor with customerId ⇒ true); `voucher.issue` (`member.promo.issue` ⇒ true); `service.visibleCustomerIds` (checked already).
+  Only behaviour change: callers that passed an actor **without** member read and still got briefs — i.e. the leak itself (CRM 360; the member
+  assistant's code→name rendering for a member-blind asker now keeps the code). Regression: member fix-s1 28/28, cf9/cf14/cf17 AI probes green.
+- Traced through the other doors:
+  | door | same call? | result |
+  |---|---|---|
+  | CRM REST `GET /contacts/{id}` (op `contacts.get`) | yes — returns `getContact360` | fixed (probe C5/C6) |
+  | CRM AI tool `crm_contact_360` | yes — REST op through the asker's membership (`crmActorOf`, kind assistant = asker) | fixed |
+  | mobile CRM routes (`api/mobile/crm/*`: deals, tasks, call-log, scan-card) | no contact route, no member data | n/a |
+  | chat CRM panel (`chat/crm-panel-actions.ts`) | uses CRM `briefFor` (CRM contact brief, no member fields) | n/a |
+  | kanban link resolver | kanban reads no CRM-member data (its "members" are board members) | n/a |
+  | CRM PDPA person export (`privacy.ts exportContact`) | the `contact` block has no `memberCustomerId`/member fields; fix9 ruled "requester visibility not widened" (withheld tables reported) | no change (report only) |
+  | **CRM 360 consent block** (`consents.current` → `channelsOf`) | different call | **NOT FIXED — owner question Q4**: for a linked contact it returns `memberLinked: true` and the member's consent states (granted/source/at from `MemberConsent`) to any CRM viewer. Making it "identical to not linked" would show the CRM-row consents while sends are decided by the member's — a consent-correctness question, not a one-liner. |
+  | **CRM contact list/get DTO** (`toDto`/`viewerDto` `memberCustomerId`, web list + REST `contacts.list`) | different call | **NOT FIXED — listed (Q5)**: raw member id (no code/name/phone) = existence signal; batch gate would need a per-page visibility query |
+  | **CRM CSV export** (`contacts.ts exportContacts` column "ผูกแล้ว") | different call | **NOT FIXED — report only** (export semantics not changed per ruling) |
+
+### 2 · RV14-2 (LOW) account AI assistant — FIXED
+- `ApiActor.asker` (new optional field, kind `assistant` only): the real asker in the eyes of other modules. `tools-account.ts askerOf(ctx.actor)`
+  derives it like the web/REST doors: member/system actor = `toMemberActor(userId, membership)` (= `crmViewerOfSession`), API-key actor = a STAFF
+  viewer holding the key's scopes (= `crmViewerOfApi` for keys); passed through `runAccountTool(opts.asker)` → `assistantActor` →
+  `crmViewerOfApi` returns `actor.asker` for kind `assistant` (absent = null = fail closed, as before). The account op's own permission check is
+  unchanged (still the filtered assistant scopes).
+- Effect: OWNER / entitled STAFF asking the assistant now get the truth (`links.member`, `badges.member`, `source:member`); member-blind STAFF,
+  branch-B STAFF and account-only keys still get "not linked". The same `asker` also feeds the CRM card of the account tools (one viewer for both,
+  as on the web) — the "CRM AI side" the reviewer mentioned is this same plumbing. The CRM module's own AI tools already run as the asker
+  (`tools-crm.ts` passes the asker's membership) — no change there.
+- Note: the reviewer's probe calls `runAccountTool` directly without `asker` (its INFO "OWNER through AI = false" stays false by construction);
+  the only production caller is `tools-account.ts`, which passes it.
+
+### 3 · RV14-3 (LOW) merge loses the member link — FIXED (service level, viewer-independent)
+- New `member/service.ts followPartyMerge(tx, tenantId, fromPartyId, toPartyId)` (member module writes its own rows — the `party.mergeParties`
+  contract "callers move their module's data in the same transaction"): one atomic `UPDATE "Customer"` re-pointing the dropped Party's members to
+  the surviving Party, **per member system only where the surviving Party has no member yet**. Raw SQL on purpose: the account transaction is a
+  `tenantDb` client bound to the account system (its Customer filter would be `memberSystemId = <account system>`).
+- `account/contact-merge.ts mergeContacts`, step 7b (same transaction, after `mergeParties`): keep = the Party the surviving contact holds after the
+  merge (primary's, or the secondary's when the user picked it), drop = the other side's **original** Party.
+- Both sides hold a member ⇒ nothing moves, no member merge: the secondary's member stays on its own (now merged-away) Party, reachable from the
+  member module and the archived secondary contact; the survivor's card shows its own member (probe G3, same on base).
+- Nothing new is returned or audited (MergeResult keys unchanged — probe G2) ⇒ no membership hint to a blind merger.
+- No un-merge/restore path exists for account contacts (nothing to keep consistent).
+- Found, NOT changed (pre-existing, report): when the user keeps the **secondary's** Party, `mergeContacts` passes the already-patched party as
+  "primary" to `mergeParties` ⇒ no Party-level merge (primary's original Party gets no `mergedIntoId`) and a self-pair `PartyMergeCandidate(x,x)`
+  row is written. CRM contacts on the dropped Party are not re-pointed either (CRM card of the survivor; same pattern — listed). A survivor
+  **without** any Party merging a secondary that has one: no Party merge happens at all (pre-existing; member stays with the archived secondary).
+
+### 4 · RV14-5 QC1 hygiene — DONE
+`scripts/pending/cf19/qc1-party-leftover.mts` (read-only by default; `--delete` deletes exactly one row in a transaction, only if: tenant = seed
+`cmuk7wtu…`, taxId `0091000000001`, createdAt prefix matches, and **0 references** across every `%party%id` column of every table + `Party.mergedIntoId`):
+- `cmuqunmlh0002rpkzymtt7vfz` (created 2026-10-02T10:58:11.621Z): 0 refs → deleted; seed-tenant Party count 64 → 63.
+- My round-3 re-run of qc-acc-v2-contacts created the same leftover again (`cmuqwx1pu0002arkzk6t1l31x`, 12:01:30Z): 0 refs → deleted; 64 → 63.
+  After: 63 contacts, 0 `QC-TMP-*`, no Party with that tax id in the seed tenant. (Long term P7 should delete its Party — oracle change, not done.)
+
+### 5 · RV14-4 known debt (not fixed)
+OWNER's real links tab: QC1 seed **15** SQL statements (reviewer `review/qc1-links-budget.mts`); my own tenant with a CRM system **14**
+(probe INFO). `qc-acc-v2-contact-profile` Q8.links passes only because it loads without a viewer; `qc-acc-v2-perf` likewise measures less work
+than any entitled user causes. The extra statements are the CRM contact + deal lookups (pre-existing for entitled viewers). Needs an oracle edit
+(OWNER viewer) + an optimisation card.
+
+### RED (80f776a9) → GREEN — probe-cf19 extended
+| id | case | 80f776a9 | fix |
+|---|---|---|---|
+| C1 / C2 | CRM 360 `{member, contact}` for STAFF crm-read without member key / STAFF of branch B == not linked | ❌ code, name, masked phone, id | ✅ |
+| C5 | CRM REST `GET /contacts/{id}`, key `[crm.contact.read]` | ❌ | ✅ |
+| C3 / C4 / C6 | OWNER · home-branch STAFF (crm + member read) · key with `member.customer.read` see the block | ✅ | ✅ |
+| A1 / A2 | account AI (`account_get_contact`, `account_search_contacts source:member`): OWNER · STAFF with account read + member read see the truth | ❌ linked == unlinked | ✅ |
+| A3 / A4 / A5 | AI: STAFF account read w/o member key · branch B · account-only API key == not linked | ✅ | ✅ |
+| G1 | blind STAFF merges [no member] ← [member] with default choices (real `mergeContactsAction`, session cookie) → OWNER sees the card on the survivor | ❌ linked false | ✅ |
+| G2 | merge result carries no member hint | ✅ | ✅ |
+| G3 | both sides members → nothing moves | ✅ | ✅ |
+| G4 | keep the secondary's Party → primary's member follows | ❌ | ✅ |
+| E5 | entitled DTOs byte-identical to 80f776a9 (round-2 keys + `crm360:owner`, `crm360:crmHomeBranch`, `crm360:rest:crmmem`) | ✅ (written) | ✅ |
+| Q1–Q3 · V1 · D/L/M/E | earlier rounds | ✅ | ✅ |
+Totals: RED **38/45** (7 red: C1 C2 C5 A1 A2 G1 G4) → GREEN **45/45**. Logs `red-probe-cf19-r3.log`, `g-probe-cf19-r3.log`; base `base-dto-r3.json`.
+(Probe debugging before the counted RED run: the links-tab budget section moved before the CRM system is created; CRM DTO timestamps and user ids
+normalised; AI section viewers given `account.doc.view`.)
+
+### Runs (round 3 code)
+| check | DB | result |
+|---|---|---|
+| typecheck · fitness no env · fitness QC2 | — / QC2 | exit 0 · 42/42 · 42/42 |
+| docs `--check` crm · account | — | exit 0 (123 · 199 op) |
+| probe-cf19 | QC2 | 38/45 → **45/45** |
+| review/probe-cf19-review (unedited) | QC2 | **41/41** (F-STAFF ×2 now green) |
+| qc-crm-c5.3 `--only=L1,L3` | QC2 | 19/19 |
+| probe-cf17-g3 · probe-cf14-g2 · probe-cf9-g1 · probe-cf9-g1-r2 | QC3 | 28/28 · 34/34 · 47/47 · 18/18 |
+| qc-crm-c1.3 · qc-crm-c1.4 (contact 360) | QC3 | 89/89 · 110/110 |
+| qc-member-fix-s1 | QC3 | 28/28 |
+| qc-member-m3.10 | QC3 | 5/21 — **identical ids on 80f776a9** (S2.1–S2.3, S3.1–S3.12, S4.3): needs a live server (`QC_BASE` dead port in the gate form) and the `.claude` skill copy this worktree lacks |
+| qc-account-api-ai-skill | QC3 | 23/33 — **identical failing ids before/after** (E1-K2.1, K2.3, K2.5, K2.6, K2.8, K3.6, K3.7, K3.8, K3.10a, K3.11; QC3 has no acc-v2 seed for its read part) |
+| qc-acc-v2-contact-modal | QC3 | 96/0 |
+| qc-acc-v2-contact-profile · qc-acc-v2-contacts | QC1 | 57/2 (Q8.docs/files, pre-existing) · 49/0 — expected-file handling as before (restored to HEAD); P7 leftover deleted (§4) |
+
+### Owner questions (round 3)
+- **Q4** CRM 360 consent block for a member-blind viewer (`memberLinked:true` + member consent values) — hide behind a neutral state, or accept?
+- **Q5** CRM contact list/get DTO `memberCustomerId` and the CSV export column "ผูกแล้ว" — gate per viewer (batch visibility query per page) or accept the bare existence signal?
+- Q1–Q3 unchanged (Q2 chat `getLinkedMember` · Q3 CRM custom records with a CUSTOMER parent).
+
+### Not verified (round 3)
+- Built app / browser not run; the CRM 360 page, merge page and AI tools exercised through their real service/action/tool entry points.
+- `qc-acc-v2-contact-merge` (re-seeds QC1) not run — the merge change is covered by G1–G4; `qc-acc-v2-perf` not run.
+- Prod: `getContact360` member block identical on 929c39ce (`:1282/:1326` per review, CRM v2 page behind uiVersion=2); the account AI and merge
+  paths likewise — code read only, not verified on prod.
