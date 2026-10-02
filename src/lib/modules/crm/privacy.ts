@@ -927,7 +927,43 @@ async function eraseInTx(
     counts.aiMessages += Number(
       await tx.$executeRaw`UPDATE "AiConversation" SET "title" = replace("title", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("title", ${tk}) > 0`,
     );
+    // CRM C5.5-fix13 ▸ hunt-4 H4-1: ความจำของผู้ช่วย (AiMemory — ส่วนตัวของทุกคน `u~` · ของร้าน `o~` · ของคีย์/งาน `k~`/`s~` · รุ่นเดิม) ถูกฉีดเข้า
+    //   system prompt ทุกเทิร์น ⇒ ปิดคำชุดเดียวกับข้อความแชท (ทั้งร้าน ทุกเจ้าของความจำ) · `updatedAt` ไม่ขยับ (ลำดับความจำ = "จด/ยืนยันล่าสุด"
+    //   ของผู้จด — การลบไม่ใช่การยืนยันเรื่องนั้น) · ความจำที่เหลือแต่คำที่ถูกปิด → ลบทั้งแถว (ด้านล่าง) ◂
+    counts.aiMessages += Number(
+      await tx.$executeRaw`UPDATE "AiMemory" SET "content" = replace("content", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("content", ${tk}) > 0`,
+    );
   }
+  // CRM C5.5-fix13 ▸ H4-1: ความจำที่หลังปิดคำแล้วไม่เหลือเนื้อหาอื่น (มีแต่ "[ข้อมูลถูกลบ]" · ช่องว่าง · เครื่องหมาย) = ทั้งแถวคือข้อมูลของเขา ⇒ ลบ
+  //   (ความจำที่ยังมีเนื้อหาอื่น เช่น "ลูกค้า [ข้อมูลถูกลบ] ชอบโปรวันศุกร์" คงไว้แบบเดียวกับข้อความแชท) · ลบซ้ำ = 0 แถว ◂
+  if (tokensT.length) {
+    counts.aiMessages += Number(
+      await tx.$executeRaw`DELETE FROM "AiMemory" WHERE "tenantId" = ${t} AND strpos("content", ${CRM_ERASED_MASK}) > 0
+                            AND regexp_replace(replace("content", ${CRM_ERASED_MASK}, ''), '[[:space:][:punct:]]', '', 'g') = ''`,
+    );
+  }
+  // CRM C5.5-fix13 ▸ H4-1: แผนของผู้ช่วย (AiPlan — title + stepsJson: summary/payload/note ของทุกขั้น) ทุกสถานะ ทุกห้อง — ปิดคำในค่าข้อความของ JSON
+  //   (เดินโครง JSON ใน JS · ไม่แทนบนข้อความ jsonb ตรง ๆ = ไม่มีทางทำ JSON พัง) · แผนที่ยัง PENDING และเอ่ยถึงเขา → EXPIRED (ทำต่อไม่ได้แล้ว —
+  //   ขั้นของมันกระทำต่อคนที่ถูกลบ: เหตุผลเดียวกับจดหมาย QUEUED → FAILED และข้อเสนอ CRM ที่ถูกลบทิ้ง) · เขียนเป็นชุด (writeRows) · อ่านทีละหน้า ◂
+  if (tokensT.length) {
+    const tokensJ = tokensT.map((tk) => JSON.stringify(tk).slice(1, -1)); // รูปของคำในข้อความ jsonb (escape " \ ตัวควบคุม)
+    const maskJson = (v: unknown): unknown =>
+      typeof v === "string" ? maskText(v, tokensT) : Array.isArray(v) ? v.map(maskJson) : isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, maskJson(x)])) : v;
+    const planPage = pageSize(opts.batch, 1_000);
+    for (let cursor = ""; ; ) {
+      const page = await tx.$queryRaw<{ id: string; title: string; status: string; stepsJson: Prisma.JsonValue }[]>`
+        SELECT p."id", p."title", p."status", p."stepsJson" FROM "AiPlan" p
+         WHERE p."tenantId" = ${t} AND p."id" > ${cursor}
+           AND EXISTS (SELECT 1 FROM unnest(${tokensT}::text[], ${tokensJ}::text[]) AS k(tk, tj) WHERE strpos(p."title", k.tk) > 0 OR strpos(p."stepsJson"::text, k.tj) > 0)
+         ORDER BY p."id" LIMIT ${planPage} FOR UPDATE`;
+      const planRows = page.map((p) => ({ id: p.id, values: [maskText(p.title, tokensT) ?? "", p.stepsJson === null ? [] : maskJson(p.stepsJson), p.status === "PENDING" ? "EXPIRED" : p.status] }));
+      counts.aiMessages += await writeRows(tx, "AiPlan", t, [{ col: "title", kind: "text" }, { col: "stepsJson", kind: "jsonb" }, { col: "status", kind: "text" }], planRows);
+      if (page.length < planPage) break;
+      cursor = page[page.length - 1]!.id;
+    }
+  }
+  // CRM C5.5-fix13 ▸ H4-1 (เคสแจ้งทีมงานที่ผู้ช่วยเปิด `support_open_case` / ที่ร้านเขียนเอง): หัวเคส + ข้อความในเคส — ผ่าน facade ของ support ◂
+  counts.notifications += await (await import("@/lib/support/service")).maskSupportTextInTx(tx, t, tokensT, CRM_ERASED_MASK);
 
   // ── ข้อมูลกำหนดเอง (R-E.10): ค่าทุกช่องของเรคคอร์ดที่มีแม่เป็นคนนี้ + ค่าฟิลด์ของตัวผู้ติดต่อ + ค่า sensitive ที่อ้าง Party ──
   const recs = (await tx.customRecord.findMany({ where: { tenantId: t, parentType: "CONTACT", parentId: { in: ids } }, select: { id: true } })).map((r) => r.id);

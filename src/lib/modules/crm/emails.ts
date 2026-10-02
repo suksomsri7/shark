@@ -1265,12 +1265,14 @@ async function isTransactionalReply(
 }
 
 /** ค่าตัวแปร `{{contact.*}}` ของผู้ติดต่อ — ชุดเดียวกันทั้งแม่แบบ (templateId) และข้อความที่ส่งจากช่องเขียนจดหมาย (C5.4-E ▸ E2) */
-function contactMergeVars(contact: CrmContact): Record<string, string> {
+/**  CRM C5.5-fix13 ▸ hunt-4 H4-3: `companyText` = ข้อความบริษัทที่ **ผู้ส่ง** เห็น (กติกา fix10 `companyTextIf` — ผูกบริษัทที่ผู้ส่งมองไม่เห็น = null ⇒ ""
+ *   เหมือนผู้ติดต่อที่ไม่มีบริษัท) · ไม่ส่งมา (ทางระบบที่ไม่มีคน) = ข้อความเดิมของแถว ◂ */
+function contactMergeVars(contact: CrmContact, companyText?: string | null): Record<string, string> {
   return {
     "contact.firstName": contact.firstName?.trim() || contact.name?.trim() || "ลูกค้า",
     "contact.lastName": contact.lastName?.trim() ?? "",
     "contact.name": contact.name?.trim() || "ลูกค้า",
-    "contact.companyName": contact.company?.trim() ?? "",
+    "contact.companyName": (companyText === undefined ? contact.company : companyText)?.trim() ?? "",
   };
 }
 const HAS_MUSTACHE = /\{\{\s*[\w.]+\s*\}\}/;
@@ -1280,11 +1282,12 @@ async function renderTemplate(
   templateId: string,
   contact: CrmContact,
   vars: Record<string, string> | undefined,
+  companyText?: string | null,
 ): Promise<{ subject: string; bodyHtml: string }> {
   const tpl = await prisma.crmEmailTemplate.findFirst({ where: { id: templateId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   if (!tpl) throw fail("NOT_FOUND", TEMPLATE_NOT_FOUND);
   // AUDIT-CLASS X6: ค่าที่หยอดเข้าไปถูก escape ครั้งเดียว ⇒ `<img onerror=…>` ในค่าตัวแปรกลายเป็นข้อความ
-  const merged: Record<string, string> = contactMergeVars(contact);
+  const merged: Record<string, string> = contactMergeVars(contact, companyText);
   for (const [k, v] of Object.entries(vars ?? {})) merged[k] = String(v ?? "");
   const escaped: Record<string, string> = {};
   for (const [k, v] of Object.entries(merged)) escaped[k] = escapeHtmlText(v);
@@ -1327,11 +1330,15 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   // ── ตรวจก่อนแตะอะไรทั้งนั้น (AUDIT-CLASS X6) ──
   const templateId = strOrNull(input?.templateId);
-  const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars) : null;
+  // CRM C5.5-fix13 ▸ H4-3: คนส่ง (actor) ⇒ `{{contact.companyName}}` ตามที่เขาเห็น (fix10) · ทางระบบ (ไม่มี actor) = ข้อความเดิม ·
+  //   อ่านการมองเห็นเฉพาะเมื่อจะแทนตัวแปรจริงและผู้ติดต่อผูกบริษัท (ไม่ผูก = ข้อความเดิมตามกติกาอยู่แล้ว) ◂
+  const wantsVars = !!templateId || (!str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars);
+  const senderCompanyText = actor && contact.companyId && wantsVars ? ((await contacts.companyTextsForViewer(ctx, actor, [contact])).get(contact.id) ?? null) : undefined;
+  const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars, senderCompanyText) : null;
   // CRM C5.4-E ▸ E2: ช่องเขียนจดหมายส่ง "ข้อความ" ของแม่แบบที่เลือก (ไม่ส่ง templateId) ⇒ เดิม `{{contact.firstName}}` ออกไปถึงลูกค้าตรงตัว ·
   //   ตอนนี้ข้อความล้วนที่ไม่มีค่าตัวแปรมาด้วย (`bodyVars`) ใช้ค่าชุดเดียวกับแม่แบบ — เนื้อความแทน **หลัง** ทำลิงก์ (escape · ไม่มีทางเป็นลิงก์
   //   กติกาเดียวกับลำดับการติดตาม) · หัวข้อแทนเป็นข้อความ · ไม่มี `{{…}}` = ผลเดิมทุกไบต์ ◂
-  const composerVars = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars ? contactMergeVars(contact) : null;
+  const composerVars = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars ? contactMergeVars(contact, senderCompanyText) : null;
   const subjectIn = composerVars && typeof input?.subject === "string" && HAS_MUSTACHE.test(input.subject) ? renderEmailVars(input.subject, composerVars) : input?.subject;
   const subject = cleanSubject(rendered ? rendered.subject : subjectIn);
   // CRM C4.4-fix2 ▸ J1: ข้อความล้วน (ไม่มีแม่แบบ/ไม่มี HTML) → HTML ด้วยตัวแปลงกลางตัวเดียว — ผลเป็น "ข้อความที่ escape แล้ว + ลิงก์ http(s)
