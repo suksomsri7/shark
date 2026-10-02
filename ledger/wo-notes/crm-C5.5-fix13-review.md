@@ -140,3 +140,61 @@ tree worse than 839b348e.
   (the runner selects tasks of every tenant on QC3 — not run; code-read of `scheduled.ts`).
 - Wakes on Vercel (`after()` + waitUntil); load impact of RV13-3 (counted in-process only).
 - UI, mobile app, :3215 (not used); docs generators (`--check` not re-run — no registry/op change in the diff).
+
+## Round 2 re-check — builder tip ff65c37a (+ ledger-only 466db08c) · 2026-10-02 (`date -u`: r2 probe 12:02–12:03, regression 12:04–12:13 UTC)
+
+`git diff 1377bb9a ff65c37a -- src` read in full (11 files). New probe `scripts/pending/cf18/review/probe-cf18-review-r2.mts` (own tenants
+`qc-cf18r2-*` ×2, CLEAN 0 rows, log `probe-cf18-review-r2.log`; after() tasks counted, never run) · runner `run-review-r2.sh` (/tmp copy,
+summary `/tmp/cf18r-logs/rr2.summary`). Round-1 probe `probe-cf18-review.mts` re-run **unedited**.
+
+### VERDICT round 2: MERGEABLE — 0 BLOCKER / 0 HIGH / 0 MED / 0 LOW · 3 INFO (RV13-8..10)
+RV13-1, -2, -3, -5, -7 closed; RV13-4 partly closed (3-7/2-7 phone spellings, JSON keys; JSON-number phones + support attachments remain,
+listed by the builder as residual/owner Q5); RV13-6 left as owner question. Round-1 probe: **findings reproduced 0/5** (R1.9, R1.10, R5.1–R5.3
+NOT-REPRODUCED), info lines now R1.4 key masked · R1.7 `081-2345678` masked · R1.11 non-CRM proposal EXPIRED + masked · R5.6 0 drains.
+
+### Attack list — results
+1. **`identityTokens` role rule (affects every masked table).** `isRoleMailboxLocal` lower-cases, removes **all** digits and `. _ + -`, then
+   requires the **whole remainder** to equal a deny-list word — containment is not enough. Through real erases (A1/A2): `sales.somchai` →
+   "salessomchai", `somchai.sales`, `hr-anan` → "hranan", `ann.hr` → "annhr" are still tokens and masked; `info2024` → "info", `Support_01` →
+   "support" are no longer standalone tokens (full addresses always remain tokens). Under-masking only when a person's whole handle is a role
+   word plus digits (e.g. `jobs1990`) — not personal data in practice. No finding. fix11 end state still byte-identical to `eq-base`
+   (probe-cf15 Q1) and probe-cf12 all FIXED.
+2. **Scheduled-task delete / proposal expiry scope (B1, C1).** Mask-only task deleted; a task with other text kept and masked; an unrelated task
+   that already held a literal mask kept byte-identical; the second tenant's task and PENDING proposal with the same tokens untouched (status +
+   text). Both new statements/pages are `tenantId`-scoped; proposals `kind NOT LIKE 'crm%'` (CRM kinds still deleted earlier).
+3. **executePlan guard.** Normal path: note + status written (D1; key order irrelevant — Prisma Json `equals` is a jsonb comparison).
+   Concurrent confirmers: unchanged atomic PENDING→RUNNING claim. **RV13-8 INFO:** a payload integer > 2^53 (JSON round trip changes it) makes
+   the guard see "changed" with no erase ⇒ status-only write, the step's note is dropped (D2: `note=null`); the number itself was already
+   rounded by every write-back before this card. Improbable payload; no action needed (or compare with `stepsJson::text` snapshot read raw).
+4. **JSON-key ` #2` renaming.** C2: a finished (EXECUTED) proposal keeps status, every value survives the collision (`[mask]`, `[mask] #2`,
+   `[mask] #3`). No code reads the payload of a non-PENDING proposal/plan again (grep `EXECUTED` readers: only the CRM door's own write);
+   PENDING rows are EXPIRED before anyone could execute the renamed payload; a RUNNING plan uses its in-memory copy. **RV13-9 INFO:** the
+   same race the builder lists for plans exists for single proposals — `executeProposal` claims PENDING→EXECUTED before running, so a claim that
+   wins just before the erase runs with the pre-erase payload and may write a `resultNote` built from it afterwards (seconds-wide; same class).
+5. **Routes (E0/E1).** Valid first request: one wake; garbage: none; repeat: none. Status, every header and the body are byte-identical for a
+   valid flipping request and a garbage token on `/u/…/no-track` and `/u/…/one-click` — no new token oracle (timing difference of the flip path
+   is pre-existing). `/t/o` / `/t/c` keep their constant responses; wake now on `events > 0` (builder S3.1–S3.3 green).
+6. **SEQ_TASK chain (F1/F2 + builder S7).** Contact owner who left the shop (no membership) ⇒ title without company text; unassigned contact ⇒
+   shop OWNER ⇒ name shown; assignee without company sight ⇒ "" (S7.1). **RV13-10 INFO:** the title is rendered once for the assignee at
+   creation — a later reassignment to someone who cannot see the company keeps the text (same class as every stored render).
+7. **Oracle integrity.** `git diff 1377bb9a ff65c37a -- scripts/pending/cf18/review scripts/pending/hunt4` empty; `git diff --stat 1377bb9a
+   466db08c -- scripts ':!scripts/pending/cf18'` empty; no prisma / docs / .claude change.
+
+### Round 2 runs (QC3 unless marked · iso.sh + gate lock, one at a time)
+| step | result |
+|---|---|
+| probe-cf18-review-r2 (new) | controls 11/11 green (A1 A2 B1 C1 C2 D1 E0 E1 F1 F2 CLEAN) · info D2 |
+| probe-cf18-review (round 1, unedited) | controls 16/16 · findings reproduced **0/5** |
+| probe-cf18-r2 (builder) | controls 8/8 · findings 12/12 GREEN |
+| probe-cf18 · probe-cf18-outbox (builder) | 20/20 + 17/17 GREEN · 3/3 + 7/7 GREEN |
+| probe-cf15 vs `eq-base` (fix11) | controls 7/7 incl. **Q1 end state byte-identical** · 5/5 FIXED |
+| probe-cf12 (fix9) | controls 7/7 · 12/12 FIXED |
+| qc-crm-c3.9 | 49/49 |
+| QC2 qc-crm-c5.3 `--only=L1,L3` | 19/19 |
+| typecheck · fitness without env / QC3 | exit 0 · 42/42 · 42/42 |
+| tracked diff after the runs | only the pre-existing `scripts/{crm,member}-expected.json` (not committed) |
+
+### Not verified (round 2)
+- RV13-9 race end to end (code-read); SEQ_TASK through the real cron (in-process `runDue` with `tenantIds`); prod-size cost of the non-CRM
+  proposal scan (`payload::text` per row of the tenant, keyset pages of 1 000, inside the 60 s erase transaction); Thai-locale `[[:punct:]]`.
+- probe-hunt4, c3.5, c2.5/2.6, ai-automation, QC2 c2.2 / probe-cf13 not re-run by me this round (builder's round-2 table reports them green).
