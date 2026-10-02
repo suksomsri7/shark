@@ -659,3 +659,247 @@ VERDICT: **ACCEPT AFTER TARGETED RE-RUN.**
   deals paging fix; R5 access-control DB clauses (`crm-api-key-form/-revoke-*`, `team-member-add-*`); RVR-9 `verdict.py` page-level pairing.
 - Rulings: R4 (VACUOUS), R5 (waivers, no-error-only, `contact-phone-tel`, the needs list).
 - A second full pass is required instead if anything outside A–D fails in the sample, or if fix15 touches more than the files listed in R7.
+
+---
+
+# it7 check (before promotion of next-it7 and run6)
+
+Reviewer: same independent reviewer. Written 2026-10-02 20:5x UTC. c42b @ `6c344b86`.
+
+I read all of these (md5 checked, matching the lane's list):
+
+| file | md5 |
+|---|---|
+| `next-it7/qc-crm-buttons.mts` | 71120e8e |
+| `next-it7/crm-ui-inventory.json` | f102f258 |
+| `next-it7/verdict.py` | 845b230d |
+| `next-it7/counts.mts` | 57f32c6d |
+| `next-it7/tripwire.mts` | b2c63d0a |
+| `next-it7/waivers-it7.json` | f09fbbeb |
+| `run6.sh` | 255e1177 |
+| `cleanup-it7-leftovers.mts` | 37320143 |
+
+I also read:
+- `runner-it7.diff`. It is byte-identical to `diff -u next-it6 next-it7`.
+- the fix15 diff: c54d `56b0a278` vs `c1522f6e`, 10 src files.
+
+Frozen state is untouched: `scripts/` and `next/` are still 7ecf3092 / bc9278bc. I wrote nothing to QC1 and ran no runner.
+
+Three new read-only checks:
+- `tripwire.mts` over the run5 window (positive control)
+- `review/cleanup-b-provenance.mts`
+- `review/structural-guard-reach.py` (static scan of the fix15 source)
+
+## 1. The conditions, one by one
+**RVR-1 (send guard): SATISFIED.**
+- **Structural guard is real.**
+  - `structuralGuard(el)` takes `closest("form")` of the element (or the element itself if it is a form) and refuses the press if
+    the form holds any DIRECT_SEND or CROSS_MODULE testid.
+  - It runs for every pressed row: after `reveal`, after the testid guard, and before PREFILL and any act. It also runs for every
+    opener step that clicks (`plain`, `=click`, `=on`, `=off`), returning `SAFETY-OPENER` → skippedSafety.
+  - It fails closed: if the DOM check throws, the press is refused.
+  - **Static scan of the fix15 source: the only `<form>` that holds a guarded control is `EmailComposer.tsx:135`.** None of the other
+    guarded inputs sits in a `<form>`: call-log modal, files panel, card scan, commission settings, Deal 360, e-mail settings, portal login, portal invoices.
+  - Effect: the guard refuses exactly the composer and its 7 field rows (dbg20/21 🛡️ lines). It costs no other coverage.
+- **Same-action guard.** `GUARDED_ACTION_TARGETS` holds the `action:` / `op:` / `/pay/` targets of the action-effect rows. `guardOf`
+  is applied to rows and variants.
+- **Other ways a guarded control could still be reached: none found.**
+  - Keyboard Enter: `fillEl` never sends Enter. The only multi-line value, the CSV box, is set through the native setter.
+  - Value openers (`=*` and literals) only type or select. They cannot submit, and in the composer the fields are refused anyway.
+  - `needsHolds` only does `findVisible` plus a DB count. It never clicks.
+  - Hidden rows are never pressed.
+  - PREFILL only fills fields outside guarded forms, and never ticks `crm-portal-invite-email`.
+  - `crm-portal-invite-submit` re-checks that the e-mail box is OFF before every press.
+- **External rows.** `portal-line-login` and `crm-email-domain-refresh` are the only additional ones I can find among pressable rows.
+  I checked every outbound `fetch` in `src/lib` against the registry: Resend, Expo push, LINE, Bunny, Vercel domains, Beam, DBD,
+  OpenRouter, Turnstile, Ably. Everything else is safe only because of the environment, and the pre-flight or tripwire watches each:
+  - AI rows: mock
+  - commission approve: `payrollLink` checked in pre-flight
+  - sequences and scheduled reports: QC runs no cron
+  - staff and member notifications: no devices / SKIPPED
+- **One latent row: `crm-email-show-images`.** It would make the browser fetch remote images from a mail. It is a needs row, never
+  pressed. If a fixture with remote images is ever added, guard it.
+- **Pre-flight is sensible.**
+  - It refuses on: active webhooks, enabled rules with a LINE/push/SMS/webhook/e-mail action, EmailDomain, CrmMailProvider, persona
+    or member push devices, `payrollLink`, or non-mock AI.
+  - It runs after `createThrowaways`, which writes rows directly with no outbox. CLEAN removed them on the dbg19 refusal (log: "ลบ extra fixtures …", fixtures deleted).
+- **Tripwire truly fails the pass.**
+  - Per invocation, the `tripwire[]` and `pageErrors[]` lists are hard failures in the runner's exit summary and in `verdict.py`.
+  - Pass level, `tripwire.mts`, exit 1. **I reproduced the positive control myself:** over the run5 window with log offset 0 it prints
+    `TRIPWIRE FAIL — OutboxEvent crm.email.sent: 4 · server log lines: 8` (exit 1). dbg21's window is CLEAN.
+- **Recommended, not blocking: assert `emailEnabled === false` in the pre-flight.**
+  - Why: the tripwire's log part sees dev-transport sends only. With a real Resend key, a successful send logs nothing, and only
+    `crm.email.sent`, SENT member notifications and e-mailed AppNotifications would show it.
+  - How: import `@/lib/env` under the QC env and print a boolean only, as my `review/member-notif-orphans.mts` does.
+
+**RVR-2 (restore blind spot): SATISFIED.**
+- The 9 tables are in `SNAP_MODELS`, so they are restored and verified, and they are in `counts.mts` with checksums. AuditLog is counted only.
+- `window-leftovers` runs inside `run6.sh`.
+- Residual risk, same class as RV-9: restoring MemberNotification, AppNotification and the AI tables could delete another lane's
+  rows written during a chunk. The QC1 lock mitigates this, and the tenant is shared with the member suites.
+
+**RVR-3 (`needs`): SATISFIED for what was required.**
+- Deals paging now has `view=table` plus a probe (owner only).
+- `crm-import-to-duplicates` is now reachable.
+- A probe that holds with the control missing now counts as dead, not skippedNeeds.
+- The 104 rulings are carried into `skippedNeeds[].waiver`.
+
+**R5 (access-control DB checks): SATISFIED.**
+- `ApiKey +1` and `TeamMember +1` are parsed as count clauses. The revoke row has a POST_CHECK.
+- The negative control is convincing: with `QC_BTN_FORCE_NOOP` all four rows fail (dbg20 `api-owner-noop` / `teams-owner-noop`).
+
+**RVR-4 (weak DB-effect checks): not addressed, as agreed** (C4.2-fix debt).
+
+**RVR-5 / RVR-6: fixed in product by fix15.**
+- Bulk move counts `unchanged` separately, and on a pure no-op says "ไม่มีดีลที่ต้องย้าย" and writes no audit.
+- The registry asserts `resultText "ย้ายขั้นสำเร็จ [1-9]"` plus a CrmDealStageHistory row since the press. A real move passes; a no-op
+  fails on both builds.
+- Webhook delete now says "ลบปลายทางแล้ว". It still has **no confirmation**, which stays a LOW product item for C6.
+
+**RVR-7 (hidden-row waits): SATISFIED.** Hidden rows on rendered pages use the visible waits.
+
+**RVR-8 (error boundary): SATISFIED.**
+- Error-UI markers are checked on every load, plus a server-log `⨯` scan per page group.
+- The marker check's positive control was a static page only. The real-data control is the log scan, which the run5 replay above proves.
+
+**RVR-9 (`verdict.py` over-counting): SATISFIED.** See §2.
+
+**RVR-10 (it6 copy details): SATISFIED.**
+- `object-edit-key` has a variant on a last-listed empty object.
+- `deal-bulk-stage=!ticked` picks a stage by name.
+- The object-import file fixture now includes `contractNo`.
+- `crm-home-ai-*` are asserted `state: disabled`.
+- The overdue-task interplay is covered by run6 C.
+
+**RVR-11 (notes): corrected in place** (crm-C4.2.md:682).
+
+## 2. `verdict.py` and the waivers
+- **`waivers-it7.json` is exactly my R4 ruling 2, and nothing else:** 4 WAIVE + 9 ACCEPTABLE GAP = 13 testids.
+  `activity-row-company-link` is correctly absent.
+- **I re-derived the run5 re-score with the it7 `verdict.py`, and it matches:**
+
+  | measure | value |
+  |---|---|
+  | pressed | 7821 |
+  | passed | 7793 (incl. 56 WAIVED) |
+  | LOCKOUT-PAIRED | 190 items, 41 rows (exactly my R4 ruling 1 list) |
+  | WAIVED | 56 items, 13 rows |
+  | VACUOUS | 4 items: `activity-row-company-link`, nok/thana × d+m. The script prints "2 rows" because it counts per viewport. |
+  | wrongExpect | 24 |
+  | outboxUnsettled | 6 |
+
+- **Can LOCKOUT-PAIRED, WAIVED or the new needs classes absorb a real failure? No.**
+  - LOCKOUT-PAIRED and WAIVED only reclassify hidden-role **absences** (`h && !f`).
+  - A hidden role that finds the control is still `hiddenLeak`.
+  - A visible role that misses it is still dead, or skippedNeeds, which is outside `pressed`, as before.
+  - `needsWaiver` only annotates. `needsProbe` can only turn a skip into dead.
+- **Two LOW points:**
+  - Waivers are keyed by bare testid, so they would apply on any page. Keying them `page#testid` would be tidier.
+  - `--combine-base` re-counts only the base run's `pageErrors`. Its outbox, restore and tripwire lists for kept pages are dropped.
+    That is harmless here, because run5's only such failures (outbox on `/emails/[threadKey]` and `/contacts/new`) are on run6 A
+    pages, but it should be stated in the notes.
+
+## 3. `needs-ruling-it7.csv` (104 items)
+- **Every class is one I ruled.**
+- **Cosmetic mislabels** (no change in outcome):
+  - `crm-home-stale-row-*` / `-view-*` are visible-role seed gaps (R5-ACC), not R4-2G.
+  - `settings-stages-create-link` belongs to the empty-shop links (an R4-1 page-level gate, plus the same functional gap as `deals-empty-create-pipeline`).
+- **R5-RECOMMEND 14 (fixtures not built) is acceptable for ACCEPT**, as I ruled: not blocking.
+  - Condition: they go into C6 as C4.2-fix test debt with an owner.
+  - Priority order: `deal-req-*` (a core move dialog never pressed in any run), then CRM custom fields, then kanban.
+
+## 4. `run6.sh` and the fix15 surface
+**`run6.sh` implements R7.**
+- It runs A/B/C plus 5 E pages, drawn with a seeded RNG. The draw is written to the status file before anything runs.
+- It refuses:
+  - builds 09de6435, ca78a54d and e1caec03
+  - a non-mock build
+  - `scripts/` that differ from the promoted directory, or a runner that is not it7
+- md5 is frozen per role.
+- It records counts (including the 9 tables) before and after, the server-log offset, the pass-level tripwire, window-leftovers, the
+  run6 verdict with waivers, and the combined run5+run6 verdict.
+
+**The fix15 surface is fully covered:**
+
+| fix15 file | page that exercises it |
+|---|---|
+| DealTable, deals-actions, deals.ts | `/deals` (A) |
+| CrmApiSettings | `/settings/api` (A) |
+| CrmScoringManager | `/settings/scoring` (A) |
+| EmailThread, `emails/[threadKey]/page.tsx`, emails.ts gate | `/emails/[threadKey]` (A) and `/emails` (B) |
+| CrmFilesBlock | the 4 record pages (B) and `/activities` FilesPanel (A) |
+| after-drain | every page group that writes. The runner fails any group whose outbox has not settled within 60 s before its restore, so A+B+C+E is a broad CRM sample. |
+
+- The new `crm-files-unavailable` card is static, so no registry row is needed. The lane's F14 at `56b0a278` gives 0/0.
+
+**Final page list:**
+- **A:** `/settings/scoring` · `/deals` · `/objects/[key]` · `/emails/[threadKey]` · `/settings/api` · `/contacts/new` · `/settings/objects` · `/settings/pipelines` · `/activities`
+- **B:** `/contacts/[contactId]` · `/companies/[companyId]` · `/deals/[dealId]` · `/objects/[key]/[recordId]` · `/emails`
+- **C:** `/app/sys/[id]` · `/app/sys/[id]/pos/register` · `/calendar` · `/app/settings/teams`
+- **E:** 5 pages by seed
+- **D:** customer lock-out of all the above, plus `/b/*` and `/u/*`
+
+`after-drain.ts` is shared by chat, POS, kanban, booking and member. Their wake paths are **not** C4.2's evidence. fix15's review must
+show a cross-module outbox check.
+
+**For ACCEPT, the run6 outputs must show:**
+1. `run6-verdict` PASS:
+   - passed == pressed
+   - 0 for dead, wrongExpect, hiddenLeak and disabled (including the manager on the attach rows)
+   - VACUOUS 0: `activity-row-company-link` paired
+   - every hard list empty, including tripwire and pageErrors
+2. `run6-tripwire.txt` CLEAN, rc 0.
+3. "counts before=after: YES". If not, attribute every difference before blaming the runner, because other lanes write to this tenant.
+4. `window-leftovers` lists only AuditLog and OutboxEvent.
+5. `run6-combined-verdict` PASS.
+6. `deal-bulk-move` postChecked on 4 roles × 2 viewports.
+7. fix15 merged with its own P-it6-2 oracle green.
+
+## 5. The leftover cleanup
+- **[A] AccountContact (82 rows): APPLY AS IS.**
+  - The `qc-btn-` tag is used only by the button runner (no other script or `src` file contains it).
+  - "Party missing" proves the restore removed the source. The 8 rows "outside windows" (1 Oct 02:55–03:14) carry the same tag.
+  - The 53 untagged "บริษัท คิวซี 01 จำกัด" rows with a missing party are probably the runner's too, but they are not provable.
+    Leave them listed only, as the script does.
+- **[B] member rows of gone customers (150 + 110 + 55): DO NOT APPLY AS IS.**
+  - "Customer is gone" is not runner-only. This tenant is the member QC tenant: many `qc-member-*` suites create **and delete**
+    Customers in it, and run4's notes show another lane's public-join writes under the lock.
+  - The provenance check found 55 gone customers. For 48, the first audit row is `member.created` by the owner/manager persona; for 7
+    it is `member.created` by a null actor, at the runner's import steps.
+  - That is strongly suggestive but not proof, because member suites can also act as the owner.
+  - The rows are orphans with no reader. `runDue` marks the QUEUED ones SKIPPED because their customer is missing, and QC has no cron
+    and no mail key. So leaving them is harmless.
+  - If the controller wants them gone, narrow the criterion: keep only customers whose `member.created` audit is within ±2 min of a
+    persona's `crm.contact.convert` / `crm.contact.import` / `crm.contact.create` audit in the same window.
+- **[C] AI credit transactions: do not apply** (wallet ledger; QC only; no money).
+- **[D] AppNotifications: nothing provable.**
+- **Timing: the cleanup is not needed before run6.**
+  - run6's proof is window-scoped (counts at its own start and end, window-leftovers, tripwire) and does not depend on these rows.
+  - Apply [A] under the lock either before or after run6, never during it.
+- **Note:** 20 AppNotifications in earlier runner windows have `emailedAt` set (`shark.local` recipients, run2–dbg14). From now on
+  the tripwire would fail a run on this.
+
+## 6. Does anything in it7 weaken a check compared with the frozen run5 runner?
+**No material weakening.**
+- **One deliberate coverage reduction for safety:** the 7 composer field rows (`crm-email-to/-subject/-body/-template/-attach/-schedule`
+  plus the form) are now skippedSafety. They were soft field rows; C2.5-S2.4/S9.6 cover the composer.
+- **Everything else is equal or stronger:**
+  - longer hidden waits
+  - `needs` can become dead
+  - the AI buttons are asserted disabled
+  - `-pick` lost `needs`
+  - the bulk move has a result text and a history check
+  - the access rows have count checks
+- **One LOW point:** if `crm-portal-invite-email` cannot be unticked, the invite submit is skipped for safety, not failed. And the
+  checkbox row itself does not assert that the untick worked. A stuck-on checkbox would be a product defect reported only as a
+  safety skip. Suggest: `wrongExpect` when the box stays on after the untick click.
+
+**GO / NO-GO: GO.** Promote next-it7 and launch run6 after fix15 merges and :3215 is rebuilt.
+- There is no must-change item.
+- Recommended, all cheap and none blocking:
+  1. Assert `emailEnabled === false` in the pre-flight.
+  2. Key the waivers `page#testid`.
+  3. Have `run6.sh` print one aggregate PASS/FAIL line over the verdict, tripwire, counts and leftovers.
+  4. Fail when the invite e-mail box stays ticked.
+- Cleanup: apply [A] only, outside run6. Do not apply [B] as is; use the narrowed criterion or leave it. Do not apply [C] or [D].
+- Acceptance evidence: §4.
