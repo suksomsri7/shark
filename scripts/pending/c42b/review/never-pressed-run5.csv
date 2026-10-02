@@ -1,0 +1,119 @@
+page,testid,kind,expect,why,visibleRolesPlanned,hiddenFor,needs
+/activities,activity-log-notice-close,button,ui,needs,"manager,nok,owner,thana",,โน้ตที่แท็กคนแล้วบางคนไม่ได้รับแจ้งเตือน (ข้อความ 'บันทึกแล้ว — … ไม่ได้รับแจ้งเตือน') — ข
+/activities,activity-row-card,button,modal,needs,"manager,nok,owner,thana",,บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน
+/activities,activity-row-card-board,select,inline-error,needs,"manager,nok,owner,thana",,บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน
+/activities,activity-row-card-open,button,mutation,needs,"manager,nok,owner,thana",,บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน
+/activities,activity-row-company-link,link,navigate,needs,"manager,owner","nok,thana",กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด
+/activities,activity-row-pin,button,mutation,needs,"manager,nok,owner,thana",,โน้ต (NOTE) ในรายการกิจกรรมที่แสดง — แท็บค้าง (pending) แสดงเฉพาะงานที่ยังไม่เสร็จ
+/app/settings/teams,team-restore,button,mutation,needs,owner,"manager,nok,thana",ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแ
+/app/sys/[id],crm-ai-proposal-deal-*,toggle,inline-error,needs,"manager,owner","nok,thana",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm
+/app/sys/[id],crm-ai-proposal-next-step-input,input,inline-error,needs,"manager,owner","nok,thana",ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm
+/app/sys/[id],crm-home-ai-draft,button,inline-error,safety,"manager,owner","nok,thana",
+/app/sys/[id],crm-home-ai-summary,button,inline-error,safety,"manager,owner","nok,thana",
+/app/sys/[id],crm-home-stale-banner,link,navigate,needs,"manager,owner","nok,thana",ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok
+/app/sys/[id],crm-home-stale-row-*,link,navigate,needs,"manager,nok,owner,thana",,ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok
+/app/sys/[id],crm-home-stale-row-view-*,link,navigate,needs,"manager,nok,owner,thana",,ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok
+/app/sys/[id],crm-hub-switch-link,link,navigate,needs,owner,"manager,nok,thana",ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWIT
+/app/sys/[id],crm-panel-deal,link,navigate,needs,"manager,owner","nok,thana",ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แ
+/app/sys/[id],crm-panel-retry,button,inline-error,needs,"manager,owner","nok,thana",แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้
+/app/sys/[id]/member/members,member-view-team,select,inline-error,needs,"manager,owner","nok,thana",เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูล
+/app/sys/[id]/pos/register,pos-deal-select,select,mutation,needs,"manager,owner","nok,thana",บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่ม
+/b/[slug],portal-company-switcher,select,navigate,needs,customer,,ผู้ติดต่อพอร์ทัลที่เข้าได้ ≥2 บริษัท — fixture ของตัวกดผูก 1 บริษัท
+/b/[slug],portal-home-outstanding,link,navigate,needs,customer,,ใบแจ้งหนี้ค้างชำระของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี
+/b/[slug],portal-home-quote-link,link,navigate,needs,customer,,ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี
+/b/[slug],portal-quote-accept,button,modal,needs,customer,,ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW แ
+/b/[slug],portal-quote-confirm-submit,button,mutation,needs,customer,,ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW แ
+/b/[slug],portal-quote-reject,button,modal,needs,customer,,ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW แ
+/b/[slug],portal-reject-reason,input,inline-error,needs,customer,,ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW แ
+/b/[slug],portal-signer-name,input,inline-error,needs,customer,,ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW แ
+/b/[slug]/documents/[id],portal-record-change-field,select,inline-error,needs,customer,,ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ท
+/b/[slug]/documents/[id],portal-record-change-submit,button,mutation,needs,customer,,ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ท
+/b/[slug]/documents/[id],portal-record-change-value,input,inline-error,needs,customer,,ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ท
+/b/[slug]/documents/[id],portal-record-file,link,download,needs,customer,,ไฟล์แนบ (CrmFileLink RECORD) บนระเบียนวัตถุที่เปิดพอร์ทัลของบริษัท [companyId] — ซีดไม่มี
+/b/[slug]/invoices,portal-invoice-row,link,navigate,needs,customer,,ใบแจ้งหนี้ของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี
+/b/[slug]/invoices,portal-pay-promptpay,button,navigate,needs,customer,,ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี
+/b/[slug]/invoices,portal-slip-upload,input,mutation,needs,customer,,ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี
+/b/[slug]/login,portal-otp-code,input,inline-error,needs,customer,,รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเม
+/b/[slug]/login,portal-otp-request,button,mutation,safety,customer,,
+/b/[slug]/login,portal-otp-submit,button,navigate,needs,customer,,รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเม
+/b/[slug]/quotations,portal-quote-row,link,navigate,needs,customer,,ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี
+/companies,companies-page-next,link,navigate,needs,"manager,owner","nok,thana",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies,companies-page-prev,link,navigate,needs,"manager,owner","nok,thana",บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง
+/companies/[companyId],company-doc-link,link,navigate,needs,"manager,owner","nok,thana",เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี
+/companies/[companyId],company-merged-link,link,navigate,needs,"manager,owner","nok,thana",บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของ
+/companies/[companyId],company-outstanding-alert,link,navigate,needs,"manager,owner","nok,thana",บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีด
+/companies/[companyId],company-parent-link,link,navigate,needs,"manager,owner","nok,thana",บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ
+/companies/[companyId],company-subsidiary-link,link,navigate,needs,"manager,owner","nok,thana",บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0
+/companies/new,company-new-field-bool,select,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-input,input,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-select,select,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-field-textarea,input,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)
+/companies/new,company-new-restore-confirm,toggle,inline-error,needs,"manager,owner","nok,thana",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-reason,input,inline-error,needs,"manager,owner","nok,thana",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/companies/new,company-new-restore-submit,button,mutation,needs,"manager,owner","nok,thana",บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร
+/contacts,crm-card-scan,input,mutation,safety,"manager,nok,owner,thana",,
+/contacts,crm-card-scan-accept,button,mutation,needs,"manager,nok,owner,thana",,ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CR
+/contacts,crm-card-scan-reject,button,mutation,needs,"manager,nok,owner,thana",,ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CR
+/contacts/[contactId],contact-conn-member-link,link,navigate,needs,"manager,nok,owner,thana",,ผู้ติดต่อ [contactId] ผูกสมาชิกในระบบสมาชิก (Customer ของ party เดียวกัน) — ขึ้นกับซีด
+/contacts/[contactId],contact-merged-link,link,navigate,needs,"manager,nok,owner,thana",,ผู้ติดต่อ [contactId] ที่ถูกรวมเข้าคนอื่นแล้ว (CrmContact.mergedIntoId) — ผู้ติดต่อตัวแทนข
+/contacts/[contactId],contact-score-explain-btn,button,modal,needs,"manager,nok,owner,thana",,ประวัติคะแนนของผู้ติดต่อ [contactId] (CrmScoreLog) — ซีดไม่มีกฎคะแนน (CrmScoreRule 0) จึงไ
+/contacts/[contactId],crm-book-via-booking,link,navigate,needs,"manager,nok,owner,thana",,ระบบจองคิวที่ผู้ใช้เปิดได้ + ผู้ติดต่อมี party (bookingLinkFor คืนลิงก์) — ขึ้นกับสิทธิ์/ซ
+/contacts/[contactId],crm-call-ai-accept,button,mutation,needs,"manager,nok,owner,thana",,ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกัน
+/contacts/[contactId],crm-call-ai-next-step,input,mutation,needs,"manager,nok,owner,thana",,ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกัน
+/contacts/[contactId],crm-call-ai-reject,button,mutation,needs,"manager,nok,owner,thana",,ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกัน
+/contacts/[contactId],crm-call-ai-summary,textarea,mutation,needs,"manager,nok,owner,thana",,ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกัน
+/contacts/[contactId],crm-call-ai-transcribe,button,mutation,needs,"manager,nok,owner,thana",,ตั้งค่า CRM เปิดถอดเสียงสาย (settings.crm.ai.callTranscribe) + มีผู้ให้บริการถอดเสียง + เค
+/contacts/[contactId],crm-call-ai-transcript,textarea,mutation,needs,"manager,nok,owner,thana",,ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกัน
+/contacts/[contactId],crm-call-log-open-contact,button,modal,needs,"manager,nok,owner,thana",,ผู้ติดต่อที่ไม่มีเบอร์โทร (ปุ่มบันทึกสายย้อนหลังแสดงแทน tel:) — ผู้ติดต่อ [contactId] ในซี
+/contacts/[contactId],crm-call-recording-input,input,mutation,safety,"manager,nok,owner,thana",,
+/contacts/[contactId],crm-files-input,input,mutation,safety,"manager,nok,owner,thana",,
+/contacts/[contactId],crm-files-open,link,download,safety,"manager,nok,owner,thana",,
+/contacts/[contactId],crm-merge-choice,toggle,ui,needs,"manager,owner","nok,thana",ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก 
+/contacts/[contactId],crm-object-tab-obj-*,tab,navigate,needs,"manager,owner","nok,thana",Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซี
+/contacts/import,crm-import-to-duplicates,link,navigate,needs,"manager,owner","nok,thana",ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ 
+/contacts/new,contact-new-f-*,input,inline-error,needs,"manager,nok,owner,thana",,ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField ที่ใช้กับ CRM) — ขึ้นกับซีด
+/deals,deal-column-more-*,link,navigate,needs,"manager,nok,owner,thana",,ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด
+/deals,deal-move-toast-close,button,ui,needs,"manager,nok,owner,thana",,ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้
+/deals,deal-req-cancel,button,ui,needs,"manager,nok,owner,thana",,ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่
+/deals,deal-req-field-*,input,inline-error,needs,"manager,nok,owner,thana",,ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่
+/deals,deal-req-open-link,link,navigate,needs,"manager,nok,owner,thana",,ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่
+/deals,deals-empty-create-pipeline,link,navigate,needs,owner,"manager,nok,thana",ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline
+/deals,deals-filter-f-*,input,ui,needs,"manager,nok,owner,thana",,ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด
+/deals,deals-first-page,link,navigate,needs,"manager,nok,owner,thana",,ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/t
+/deals,deals-next-page,link,navigate,needs,"manager,nok,owner,thana",,ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/t
+/deals/[dealId],crm-call-recording-listen,button,modal,needs,"manager,nok,owner,thana",,สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายกา
+/deals/[dealId],crm-call-recording-remove,button,modal,needs,"manager,nok,owner,thana",,สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายกา
+/deals/[dealId],deal-invoice-btn,button,mutation,safety,"manager,owner","nok,thana",
+/deals/[dealId],deal-quote-btn,button,mutation,safety,"manager,owner","nok,thana",
+/deals/new,deal-new-create-pipeline,link,navigate,needs,owner,"manager,nok,thana",ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipe
+/emails/[threadKey],crm-email-attach,input,inline-error,safety,"manager,owner","nok,thana",
+/emails/[threadKey],crm-email-attachment,button,download,needs,"manager,owner","nok,thana",อีเมลในเธรดที่มีไฟล์แนบ
+/emails/[threadKey],crm-email-send,button,mutation,safety,"manager,owner","nok,thana",
+/emails/[threadKey],crm-email-show-images,toggle,inline-error,needs,"manager,owner","nok,thana",อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)
+/objects,objects-index-settings-link,link,navigate,needs,owner,"manager,nok,thana",ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'
+/objects/[key],object-page-next,link,navigate,needs,"manager,owner","nok,thana",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-page-prev,link,navigate,needs,"manager,owner","nok,thana",ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน
+/objects/[key],object-record-cancel,button,ui,needs,"manager,owner","nok,thana",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแ
+/objects/[key],object-record-field-*,input,inline-error,needs,"manager,owner","nok,thana",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแ
+/objects/[key],object-record-form,form,mutation,needs,"manager,owner","nok,thana",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแ
+/objects/[key],object-record-new-btn,button,modal,needs,"manager,owner","nok,thana",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแ
+/objects/[key],object-record-save,button,mutation,needs,"manager,owner","nok,thana",วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแ
+/objects/[key],object-view-delete,button,mutation,needs,"manager,owner","nok,thana",มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน
+/settings,crm-export-download,button,download,needs,owner,"manager,nok,thana",งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานท
+/settings,crm-settings-team-room,form,mutation,needs,owner,"manager,nok,thana",ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้อง
+/settings,crm-settings-team-room-channel,select,inline-error,needs,owner,"manager,nok,thana",ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้อง
+/settings,crm-settings-team-room-remove-*,button,mutation,needs,owner,"manager,nok,thana",ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้อง
+/settings,crm-settings-team-room-save,button,mutation,needs,owner,"manager,nok,thana",ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้อง
+/settings,crm-settings-team-room-team,select,inline-error,needs,owner,"manager,nok,thana",ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้อง
+/settings/assignment,crm-assign-sim-field,select,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/settings/assignment,crm-assign-sim-field-value,input,inline-error,needs,"manager,owner","nok,thana",ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด
+/settings/commissions,crm-commission-send-payroll,button,mutation,safety,"manager,owner","nok,thana",
+/settings/email,crm-email-domain-add,button,mutation,safety,"manager,owner","nok,thana",
+/settings/email,crm-email-domain-refresh,button,mutation,needs,"manager,owner","nok,thana",โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODUL
+/settings/email,crm-email-test-send,button,toast,safety,"manager,owner","nok,thana",
+/settings/objects,object-archive-confirm-key,input,inline-error,needs,owner,"manager,nok,thana",วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 
+/settings/objects,object-archive-reason,input,inline-error,needs,owner,"manager,nok,thana",วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 
+/settings/objects,object-restore-btn,button,mutation,needs,owner,"manager,nok,thana",วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/settings/objects,objects-archived-toggle,toggle,modal,needs,owner,"manager,nok,thana",วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี
+/settings/pipelines,pl-restore-*,button,mutation,needs,owner,"manager,nok,thana",pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0
+/settings/stages,settings-stages-create-link,link,navigate,needs,owner,"manager,nok,thana",ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2

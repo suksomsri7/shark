@@ -285,3 +285,377 @@ components imported from outside CRM.
 - whether QC1 field values match the pre-run state (no DB access)
 
 VERDICT: ACCEPT AFTER RUN5 (conditions: (1) RV-1 erase un-guarded per ruling §11(b) and pressed on the throwaway; (2) RV-4 fixtures — or a written controller waiver naming the covering suite — for commission approve/reject, portal-request approve/reject, unowned reassign, unsubscribe and invite-accept tokens, sequence-enrolment controls; (3) RV-6 customer absence checks added; (4) RV-9 chat-fixture leak fixed and QC1 orphans removed; (5) RV-2/RV-3: the 49 checkable inline-error rows converted to ui/modal and the refusal exemption narrowed, or an explicit controller ruling accepting both soft paths; (6) RV-7 recorded as a product finding; (7) run5 = ONE full pass (13 chunks × owner/manager/nok/thana + customer) on the final tip with the final frozen runner/registry, passed === total, 0 restore/cleanup failures, and outbox settled before every restore)
+
+---
+
+# Re-review after run5 (it6)
+
+Reviewer: independent (did not build this; not the it4/it5/it6 lane). Written 2026-10-02 19:5x UTC. Worktree `shark-crm-c42b` @ `b5bd4f3b`.
+Read-only on runner/registry/product: I did not run the button runner, did not touch :3215, did not write to QC1, did not edit
+`scripts/`, `next/` or `next-it6/`, and read no `.env*` file. Product code was read from `/root/projects/shark-crm` (session/crm HEAD
+`1aa0afc0`). Its `src` is byte-identical to `c1522f6e`, the run5 build source (`git diff c1522f6e session/crm -- src` is empty).
+Evidence used:
+- `/tmp/c42b-logs/run5*` (65 summaries, the verdict, counts, logs) and the run5 fail shots
+- the :3215 server log (`/root/projects/shark-crm/.qc-shots/acc-v2/server.log`). It is still the stdout and stderr of the run5
+  process: pid 3062765, started 13:56:59, and `/proc/3062765/fd/1` points at this file.
+- read-only QC1 queries (`bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm exec tsx …`, one at a time)
+
+Helper scripts, all read-only, are in `scripts/pending/c42b/review/`:
+
+| script | what it does |
+|---|---|
+| `safety-window.mts` | external side effects in the run5 window: webhooks, outbox, member notifications, push devices, mail providers |
+| `email-sent-history.mts` | every `crm.email.sent` event, grouped by hour |
+| `member-notif-orphans.mts` | prints `emailEnabled` and the orphan member notifications |
+| `window-leftovers.mts` | every tenant model with rows created in the window that still exist |
+| `leftover-detail.mts` | details of those leftover rows |
+| `needs-probe.mts` | checks whether a few `needs` preconditions really hold |
+| `run5-coverage.py` | which items were never pressed (output: `never-pressed-run5.csv`) |
+| `dbcheck-strength.py` | how strong each DB-effect check is |
+| `f14.py` | copy of the previous reviewer's F14 checker |
+
+## R0. The run5 numbers. CONFIRMED
+I recomputed everything from the 65 summaries:
+- **wrongExpect: 24** = W1 4 + W2 8 + W3 8 + W4 2 + W5 2.
+- **outboxUnsettled: 6 summary lines** (owner/manager `/emails/[threadKey]` d+m, 1 event each; nok `/contacts/new` d+m, 4 events each).
+- **VACUOUS: 250 items in 55 rows.** The 53 predicted rows all occurred. The 2 new rows are `object-archive-confirm-key` and `object-archive-reason`.
+- **dead 0 · hiddenLeak 0 · disabled 0 · fatal 0 · restore/cleanup/verify 0.**
+- There is no presence record with `h && f`.
+- Customer lock-out: 94 of 94 presses were refused (47 pages × 2 viewports, each redirected to `/login`, no registry testid visible).
+
+The triage CSV classes add up (RUNNER 6+4, REGISTRY 8, FIXTURE 8, PRODUCT 2+2).
+
+## R1. Safety: external side effects (question 2). Nothing reached a person or left the machine except DNS lookups
+- **The 4 composer sends used the dev transport, and nothing else was possible.**
+  - The server log has exactly 4 `[email:dev] rich · to 1 ผู้รับ · subject: qc-btn template วรรณา` lines. There are no others, and
+    there are none after 16:18. The nok, thana and customer roles cannot send.
+  - That log line is printed only in the branch `if (!deps?.fetch && !emailEnabled)` (`src/lib/core/email.ts:129`). `emailEnabled`
+    is a module-load constant (`env.RESEND_API_KEY.length > 0`). So the run5 server had no Resend key.
+  - A process that loads the QC env file the runner and oracles use also prints `emailEnabled=false` (`member-notif-orphans.mts`).
+  - The tenant has 0 `CrmMailProvider` rows (no Gmail/Outlook sending) and 0 `EmailDomain` rows.
+- **Was the guard supposed to prevent this?** Yes.
+  - The runner contract says DIRECT_SEND_GUARD rows are "never pressed". But the guard works per testid. The `form` row
+    `crm-email-composer` is `requestSubmit()`-ed with PREFILL (qc-crm-buttons.mts:2028, 2114-2116), and that is the same
+    `sendCrmEmailAction` as the guarded button.
+  - The previous review missed this. RV-4 accepted "real e-mail sends skipped" and never checked sibling form rows. it5 then kept
+    the composer as a "still soft" row.
+  - It also happened before. The append-only `crm.email.sent` history shows 5 events on 1 Oct 11–14 UTC, during run3 (11:42–17:44).
+    run3 most likely submitted the composer too. run4 shows none.
+- **Webhooks.**
+  - The seed has no endpoint, and 0 `WebhookDelivery` rows exist for the tenant.
+  - The runner's own endpoint is `https://qc-btn-<rand>.example.com` (`fillValueFor`, qc-crm-buttons.mts:1529). `getent hosts`
+    says that name is NXDOMAIN, so any delivery attempt ends at DNS.
+  - Deliveries to that endpoint would have been cascade-deleted by the restore, so this point rests on DNS, not on rows.
+- **Push.** 0 `PushDevice` rows for the personas and 0 `MemberPushDevice` rows for the tenant.
+- **LINE.** All 8 run5 member LINE notifications are `SKIPPED`. CRM staff notifications have only IN_APP/PUSH/EMAIL channels
+  (`crm/notifications.ts:245`).
+- **Member e-mail.** 8 `WELCOME` notifications are still `QUEUED`. Their customers were deleted by the restore and e-mail is disabled,
+  so they cannot be delivered. They are leftovers (see RVR-2).
+- **AI.** `ai=mock`, but the mock still writes 72 `AiCreditTxn` USAGE rows (−565,050 µ-credits from the QC tenant wallet; no money).
+- **Storage.**
+  - No upload was possible: file inputs other than the 4 CSV imports go to `skippedSafety` (qc-crm-buttons.mts:2129).
+  - The pressed deletes (`crm-call-recording-delete-go`, `crm-files-remove-confirm`) point at FileAsset ids that do not exist, so
+    `deleteFileAsset` returns before any storage call (storage/service.ts:490).
+  - The only storage contact is a GET for the play fixture's fake asset (the 8 console 404s). This only applies if storage is configured.
+- **Exports.** Report exports are stored in the DB (`reports.ts:1007`). The tenant export is queued for a cron that QC does not run,
+  and the jobs were restored. DBD/Beam/Vercel cannot be reached from any CRM control.
+- **Conclusion: no e-mail, push, LINE, webhook delivery, payment or storage write left the machine.** The only network traffic I can
+  attribute is DNS lookups of `*.example.com` names and possibly a storage GET. The protection was the QC env, not the runner (RVR-1).
+
+## R2. Was the triage honest? (question 1) Yes, with two class upgrades
+- **W1 `crm-score-bands-save`: RUNNER, correct.**
+  - The shot shows hot=warm=decay=5. The page shows a red line at the top: "คะแนน "ร้อน" ต้องมากกว่าคะแนน "อุ่น" — ปรับตัวเลขให้ไล่ระดับกัน".
+  - This is a correct refusal, and the user is told. The only product issue is that the line is not `role=alert` (O-it6-b, a11y LOW).
+- **W2 `deal-bulk-move`: REGISTRY for the test failure, and a real PRODUCT defect.**
+  - Every shot shows "ย้ายขั้นสำเร็จ 1 ดีล" ("moved 1 deal successfully") while the ticked deal was already in "ผู้สนใจใหม่".
+  - `bulkMove` (deals.ts:1640-1648) does `res.ok += 1` after `moveCore` whether or not it changed anything. It then audits `ok: 1`.
+  - The UI therefore tells the user a move happened when none did. That is a truthfulness bug, so I upgrade O-it6-a to a product
+    finding (RVR-5).
+  - It also proves that an audit-only DB check cannot detect a no-op (RVR-4).
+- **W3 object import: FIXTURE, correct.** The UI told the user exactly what happened, in the import panel: "นำเข้าสัญญาแล้ว 0 รายการ ·
+  ข้าม 1 แถว · แถว 2: ไม่พบบริษัทที่เลือกในระบบ CRM นี้ — เลือกใหม่จากรายการ". The product is correct. The wording "เลือกใหม่จากรายการ"
+  ("pick again from the list") is odd for a CSV import (cosmetic).
+- **W4 attach-to-contact: PRODUCT P-it6-1, confirmed in code.**
+  - The page offers the block when `canAttach: !contactId` (emails/[threadKey]/page.tsx:85).
+  - `attachToContact` (emails.ts:3035) calls `assertUnmatchedGate` (:2826), which refuses a unit-scoped manager.
+  - The manager reads the thread legitimately: `getThread` lets company-linked rows through by company visibility (:2975-2985). The
+    defect is only the offer followed by a refusal.
+  - No data leaks: the search lists only `contactWhere` contacts. Severity LOW–MED (UX, §15(b)).
+- **W5 webhook delete: RUNNER, correct.**
+  - The endpoint was deleted. The shot shows 1 endpoint left; the form and submit rows had created 2.
+  - The UI feedback for the delete is the generic `"บันทึกแล้ว"` ("saved", `CrmApiSettings.tsx:162-167`). The delete button (:426)
+    has no confirmation. This is a small product UX finding (RVR-6).
+- **outbox: the split is right.**
+  - The 4 composer events are a RUNNER defect (the composer should never have sent; RVR-1). Their 76–269 s wait is also further
+    evidence for P-it6-2.
+  - nok `/contacts/new` is P-it6-2: the coalescing flag in `core/after-drain.ts:20-37` is as the triage describes. MED, PROD-exposed.
+- **No item classed REGISTRY, RUNNER or FIXTURE hides a permission or data defect.**
+- **Inaccuracies in it6 §4/§5:**
+  - "AuditLog checksum equal (restored)" is wrong. AuditLog is not in `counts.mts`, and 1,218 run5 audit rows remain (that part is by design).
+  - "Only OutboxEvent differs" is true only for the 66 counted tables (RVR-2).
+  - The run3 composer sends are not mentioned.
+
+## R3. Are dead 0 and hiddenLeak 0 real? (question 3)
+- **hiddenLeak 0 is real for what the runner can observe.**
+  - 3,582 hidden-absent items in total. 3,332 are paired with a role that found the same control. 2,754 (77 %) are on pages that
+    answered ≥ 400 for the hidden role (page-level key gate). Only 828 are control-level absences on a rendered page.
+  - I sampled 17 permission-critical rows, for example:
+    - the unmatched tab
+    - deal reopen and delete
+    - contact archive and erase
+    - API hook new
+    - commission approve, unowned reassign, portal invite and request approve
+    - bulk reassign, merge submit, seq-enr stop, visibility, team archive
+  - Every one is hidden-absent for the non-entitled roles and found by the entitled roles on the same page and viewport.
+  - **Weakness (RVR-7):** hidden rows are looked for with shorter waits than visible rows. The opener wait is 1,500 ms and the final
+    check is 800 ms (qc-crm-buttons.mts:1846, 1874); visible rows get 2,500–4,000 ms. So a control that renders late would be found
+    by the owner (paired) and missed by nok, and its leak would score as a pass. I found no instance of this.
+- **dead 0: no regression is masked as `needs`.**
+  - run5 never pressed 118 items: 104 skipped as `needs`, 14 safety-guarded.
+  - Compared with run3∧run4 (166 items), only 2 are new, and the it6 fixture note explains both. 50 items that were never pressed
+    before are now pressed.
+- **But `needs` is still self-declared (RV-8 asked for a checked precondition). I found false preconditions (RVR-3):**
+  - `deals-next-page` / `deals-first-page`: "seed has 60, owner/manager reach it". The B2B pipeline does have 55 deals (`needs-probe.mts`).
+    But the rows have no `query: view=table`, so they are searched for on the board view, where they never render (deals/page.tsx:387-392).
+    They have never been pressed in any run.
+  - `crm-import-to-duplicates`: its opener chain re-imports the same CSV, which creates a duplicate. The shot shows "ข้าม 1". Choosing
+    the "candidate" duplicate mode in the chain would make the control appear.
+- **Preconditions I confirmed are true:** 0 kanban boards (`activity-row-card*`), 0 required-field stages (`deal-req-*`), board column
+  limit 60 > seed column sizes (`deal-column-more-*`), 0 score rules / logs (`contact-score-explain-btn`).
+- **Sampled buckets (15 items):**
+  - wrongExpect ×5: W1–W5, shots read.
+  - needs ×6: `deals-next-page` (false, see above), `crm-import-to-duplicates` (fixable), `crm-home-stage-all` manager (true: the
+    manager owns 0 deals, shot shows the home page), and `deal-column-more-*`, `activity-row-card`, `deal-req-field-*` (true, by DB probe).
+  - safety ×2:
+    - `crm-email-send` is legitimate.
+    - `crm-home-ai-draft` / `-summary` are disabled by design. They should be asserted with `state: disabled`, not skipped.
+  - postChecked ×2: `contact-privacy-erase-submit` (manager and owner, d+m) and `crm-home-unowned-submit`.
+- **DB-effect strength (sample of 10 plus the full table in `dbcheck-strength.py`):**
+  - There are 146 distinct dbVerified rows. Their strongest check:
+
+    | check type | rows | fails on a no-op? |
+    |---|---|---|
+    | COUNT (±1 count before/after) | 8 | yes |
+    | EQ (literal column on the detail entity) | 9 | yes |
+    | DELETE (tenant count dropped) | 7 | yes |
+    | AUDIT (an AuditLog action since the press) | 50 | only if the service audits real changes only. `crm.deal.bulk_move` does not (W2). |
+    | ANYROW, AppSystem settings-JSON compare | 19 | yes |
+    | ANYROW, "some row of the model in the tenant has updatedAt or createdAt ≥ press" | 53 | not reliably. A same-value Prisma update still bumps `updatedAt`, and a concurrent write to another row satisfies it. In this serialised run it caught W2 and W5, so it does fail on true no-ops when nothing else writes that model. |
+
+  - Example: the `crm-import-submit` dbVerified press really wrote. The group's restore log shows "ลบแถวใหม่ 6" (6 new rows deleted).
+
+## R4. VACUOUS: 55 rows (question 4)
+- **Ruling 1: 41 rows are already demonstrated by the page refusal.** Recommend changing `verdict.py` to pair these.
+  - Every hidden role got HTTP ≥ 400 on the page, and the runner's VACUITY GUARD counted 0. So every row of that group is hidden for
+    that role, which is the key gate itself. This is the same rule as the runner's `lockedOut` and the customer lock-out pairing.
+  - **WAIVE (hiding proven at page level).** The functional gap for the visible role is handled under R5.
+  - The 41 rows, with the hidden roles that got ≥ 400:
+    - `team-restore` (m, n, t)
+    - companies: `-page-next/-prev`
+    - company 360: `company-doc/-merged/-outstanding/-parent/-subsidiary-*`
+    - companies/new: `company-new-field-*` ×4 and `company-new-restore-*` ×3
+    - `crm-import-to-duplicates`
+    - e-mail: `crm-email-attachment`, `crm-email-show-images`
+    - objects: `object-page-next/-prev`, `object-record-*` ×5, `object-view-delete`
+    - settings: `crm-export-download`, `crm-settings-team-room*` ×5 (m, n, t), `crm-assign-sim-field*` ×2, `crm-email-domain-refresh`
+    - `/settings/objects` ×4 (m, n, t), `pl-restore-*` (m, n, t), `settings-stages-create-link` (m, n, t)
+  - 5 of these also get an it6 fixture: `objects-archived-toggle`, `object-restore-btn`, `object-archive-confirm-key/-reason`, `pl-restore-*`.
+- **Ruling 2: 14 rows are control-level absences on pages that rendered 200.**
+
+  | row | hidden roles | ruling |
+  |---|---|---|
+  | `activity-row-company-link` | nok, thana | it6 fixture. Must pair in the re-run. |
+  | `crm-ai-proposal-deal-*`, `crm-ai-proposal-next-step-input` | nok, thana | WAIVE. Shown transitively: their openers `crm-ai-home-at-risk` and `crm-ai-proposal-edit` are hidden-absent for nok/thana and paired (found by owner/manager). |
+  | `crm-merge-choice` | nok, thana | WAIVE. Its opener `contact-menu-merge` is paired hidden. |
+  | `pos-deal-select` | nok, thana | WAIVE. `qc-crm-c2.7.mts` S5.4/S9.8 assert that the deal list is empty for an actor without `crm.deal.update` / `crm.deal.read`, and the select renders only when the list is non-empty (register-ui.tsx:713). The guard reason "needs a real POS sale" is inaccurate: choosing a deal writes nothing until the sale is paid. Recommend un-guarding it later with opener `pos-member-select=<member with an open deal>`. |
+  | `crm-panel-deal` | nok, thana | ACCEPTABLE GAP (LOW). The list comes from `briefFor`, which filters by `dealWhere` (brief.ts:56), the same visibility used everywhere. Cheap fixture: an open deal on the N9 chat contact. |
+  | `crm-panel-retry` | nok, thana | ACCEPTABLE GAP. Error-state button, no data. |
+  | `crm-object-tab-obj-*` | nok, thana | ACCEPTABLE GAP (LOW). `tabsFor` returns zero records without `crm.record.read`, so only the object label could show. |
+  | `crm-home-stale-banner` | nok, thana | ACCEPTABLE GAP (LOW, count banner). Cheap fixture: a stale owner deal. |
+  | `crm-hub-switch-link` | m, n, t | ACCEPTABLE GAP. v1 hub surface (ruling D4). |
+  | `deals-empty-create-pipeline`, `deal-new-create-pipeline` | m, n, t | ACCEPTABLE GAP. Shown only to a shop with no pipeline. Their destination `/settings/pipelines` answers ≥ 400 for m, n, t (paired). |
+  | `objects-index-settings-link` | manager | ACCEPTABLE GAP. Same reason: the destination is gated and paired. |
+  | `member-view-team` | thana (nok got 404) | ACCEPTABLE GAP. Member module surface. |
+
+- **None of the 49 non-fixture rows needs a fixture before acceptance.** The permission-relevant ones are shown at page level (36),
+  shown transitively (3) or covered by a service oracle (1). The rest are links or banners whose destination or data is gated elsewhere.
+
+## R5. Rulings on the earlier open lists (question 5)
+- **it5 never-pressed waivers (13 groups): ACCEPT 11 as written.** The 4 groups the it5 notes said had no UI-level check:
+  - **POS sale↔deal: ACCEPT.** The service plus the S5.4 render check cover it. See the guard note in R4.
+  - **deal → quotation/invoice numbering: ACCEPT.** US3-1 and US7-2 press these buttons in the UI. Gapless numbering belongs to the
+    account-module suites, not to C4.2.
+  - **Paging past 50: SPLIT.**
+    - `/deals`: REQUIRE. The precondition is true (55 deals). Add `query: "view=table"` to `deals-next-page` / `deals-first-page` and
+      include them in the re-run.
+    - `/companies` (20) and `/objects/[key]` (12): ACCEPT, with C1.10-X6.2. Residual risk: the UI cursor link is not pressed.
+  - **MEETING team-room settings save: ACCEPTABLE GAP.** It is owner-only, and the page-level gate is demonstrated for m, n, t.
+    No suite saves it successfully. Register it as C6 test debt (a seed with a MEETING system).
+- **The 37 "no-error only" mutation rows:**
+  - **ACCEPT 14:**
+    - the 6 that are never pressed (moot)
+    - the 7 call-form fields, which are deferred to `crm-call-save` (that row checks `AuditLog crm.activity.log`)
+    - `crm-forms-refresh-*`, which writes nothing by design
+  - **REQUIRE before acceptance (4 rows).** These grant or revoke access, so they must have a check that fails on a no-op:
+    - `crm-api-key-form`: `ApiKey +1`
+    - `crm-api-key-revoke-*`: a POST_CHECK that `revokedAt` is set on the pressed key
+    - `team-member-add-form` / `-submit`: `TeamMember +1`
+
+    `/settings/api` is already in the re-run; add `/app/settings/teams`.
+  - **ACCEPT as C4.2-fix debt (19 rows):**
+    - pipelines, stages and lost-reason renames, sort and archive (`pl-*`, `st-*`, `lr-*`)
+    - activity-row pin, complete and reschedule
+    - `team-member-accepting-leads`
+    - `company-contact-role-select`
+    - holidays and tracking (`crm-seq-holiday-import/-remove-*`, `crm-track-*`)
+
+    For holidays and tracking, the cheap fix is to rewrite the db text as `AppSystem.settings.crm.…`, which turns on the existing
+    settings-JSON comparison.
+- **`contact-phone-tel`: ACCEPT** as untestable with the seeded personas. It is a plain `tel:` link with no write, shown only to a
+  viewer without `crm.activity.create`, and the phone number is already visible to that viewer. C6 test debt: add a view-only staff persona.
+- **New list: 104 `needs` items never pressed and not covered by any ruling** (`review/never-pressed-run5.csv`).
+  - REQUIRE `deals-*-page` (above).
+  - RECOMMEND cheap fixtures, but not blocking:
+    - a required-field stage (`deal-req-*`, a core move dialog never pressed in any run)
+    - CRM custom fields (`contact-new-f-*`, `company-new-field-*`, `deals-filter-f-*`, `crm-assign-sim-field*`)
+    - `crm-import-to-duplicates` (opener value)
+    - a kanban board (`activity-row-card*`)
+  - ACCEPT the rest as seed or AI-data gaps, listed in C6.
+
+## R6. The proposed corrections in `next-it6/` (question 6)
+- **Nothing in them weakens a failing check into a soft one.**
+  - `ลบแล้ว` in the delete regex: after the W5 edit, no registry row uses that text. It is inert.
+  - `=#N`: only adds an opener form.
+  - The W1 and W3 openers fix the input data, not the expectation.
+  - W5 now uses DELETE plus AUDIT, which is stronger than before.
+  - The `hiddenFor: manager` edit on `crm-email-attach-contact-q/-go/-pick` turns the refusal into an assertion that the block is
+    hidden. It does not mask anything: run4 and run5 would report it as hiddenLeak.
+- **Minor weakening or fragility (RVR-10):**
+  - `object-edit-key` now only asserts `disabled` on the seed object. The enabled path (renaming the key of an empty object) is no
+    longer pressed. Recommend a variant row on a last-listed empty-object fixture.
+  - `deal-bulk-stage=#2` depends on the first ticked deal being in stage 1. A target ≠ the deal's current stage would be robust.
+  - The new company-only overdue task (−45 d, owner=manager) exists for the whole pass whenever `/activities` is selected. It can
+    change what CRM home, `/calendar` and company 360 show first. Those pages must be in the re-run.
+  - The file fixture `qc-btn-object-import.csv` is still `title,parentId` without the required `เลขที่สัญญา`. The paste box was
+    fixed; the file path would import 0.
+- **The composer guard is right but not enough.** Required, as part of RVR-1:
+  - a structural guard that refuses a press when the element's enclosing `<form>` contains a guarded control, or when the row's
+    `expect.target` equals a guarded row's target
+  - a pass-level tripwire that fails the pass if any `crm.email.sent` OutboxEvent or `[email:dev]` / `[email]` server-log line
+    appears in the window
+- **What the registry should assert after fix15.**
+  - If fix15 **hides** the block from viewers who fail the unmatched gate, the it6 edit is right:
+    - `-q/-go/-pick` hidden for manager, nok and thana
+    - owner keeps the rows and is the positive pairing
+    - the manager's other rows on `/emails/[threadKey]` (thread readable via company visibility) stay visible, which proves the page still renders
+  - If fix15 instead shows the block **disabled, with the reason up front**, use different rows:
+    - `crm-email-attach-contact-q`: a manager variant with `state: disabled`
+    - a new manager row asserting the reason text appears
+    - `-go/-pick`: hidden for manager
+  - Either way, remove `needs` from `-pick` for the owner. Otherwise an owner-side regression would be skipped silently.
+
+## R7. Is a targeted re-run acceptable? (question 7) Yes, with this scope
+Preconditions:
+- The fix15 merge tip is built on :3215 (`BUILD-STATE READY … ai=mock`).
+- `next-it6` plus the required edits (R5, R6, RVR-1, RVR-3) is promoted to `scripts/` and `next/` and md5-frozen.
+- `verdict.py` gets the page-level pairing rule (R4).
+- The orphan cleanup in RVR-2 is done, or a ruling is written for it.
+
+Run all four staff roles on both viewports for these pages:
+- **A. run5 failures and fixtures:**
+  - `/settings/scoring` · `/deals` · `/objects/[key]` · `/emails/[threadKey]`
+  - `/settings/api` · `/contacts/new`
+  - `/settings/objects` · `/settings/pipelines` · `/activities`
+- **B. fix15 surfaces:**
+  - every page that renders `CrmFilesBlock`: `/contacts/[contactId]` · `/companies/[companyId]` · `/deals/[dealId]` · `/objects/[key]/[recordId]`
+  - `/emails` (the gate predicate shared with the unmatched tab)
+- **C. shared `after-drain` (every module's wake path) and the it6 fixture interplay:**
+  - CRM home `/app/sys/[id]`, including the chat CRM panel and POS rows hosted there
+  - `/calendar`
+  - `/app/settings/teams` (`team.updated` wake, plus the team-member rows)
+- **D. customer:** lock-out of every staff page in A–C, the portal pages `/b/[slug]/*`, and `/u/[token]`.
+- **E. regression sample:** 5 more page groups drawn at random from the remaining run5 pages, with the seed and the draw recorded
+  before the run. Same 4 roles × 2 viewports.
+
+That is about 22 of the 65 page groups. **If anything outside A–D fails in E, or if fix15's diff touches files beyond `core/after-drain.ts`,
+`CrmFilesBlock` / `files.ts` and the e-mail thread page, require a second full pass instead.**
+
+Evidence I need to move from "ACCEPT AFTER RUN5" to ACCEPT:
+1. `verdict.py` over the re-run: passed == pressed, and 0 for dead, wrongExpect, hiddenLeak, disabled, outboxUnsettled, restore,
+   cleanup, verify and fatal. VACUOUS may contain only the rows ruled in R4. The 5 fixture rows plus `activity-row-company-link` must pair.
+2. The attach rows are absent for manager (hiddenLeak 0), and owner pairs them.
+3. Composer, `crm-email-send` and the other DIRECT_SEND rows land in `skippedSafety`. In the run window: 0 `crm.email.sent` events,
+   and 0 `[email` lines and 0 `⨯` lines in the :3215 server log. This also covers the error-boundary blind spot in RVR-8.
+4. Restore proof: `counts.mts` content checksums are equal before and after, **and** `review/window-leftovers.mts` over the window
+   shows only OutboxEvent, AuditLog, AiCreditTxn and AppNotification (or whatever the RVR-2 ruling allows).
+5. fix15's own P-it6-2 oracle (create a contact, the events reach DONE within 5 s) is green, and `/contacts/new` settles for all 4 roles.
+6. A combined verdict table: run5 items of the untouched pages plus the re-run items, with W2 `=#2` shown passing on all 4 roles and both viewports.
+
+## R8. Registry completeness on the final tree (question 8). Complete
+- My F14 checker, `f14.py` (a copy of the previous reviewer's, same regexes as `scripts/lib/crm-testid-scan.mts`):
+  - against session/crm HEAD (`src` = `c1522f6e`, the run5 tree): **1066 interactive / 0 unregistered / 0 ghosts**, for both
+    `next/` (bc9278bc) and `next-it6/` (3f2ba5b8)
+  - positive control: the same check at `46f952cc` flags exactly the 3 `company-lifecycle-correct*` rows as ghosts
+  - the committed `scripts/crm-ui-inventory.json` at HEAD shows 3 unregistered rows. The merge must take `next-it6`, as before.
+- **No interactive element was added or removed by fix8 / fix10 / fix12 / fix13 / fix14 / G2 / G3.**
+  - `git diff bbe2072f c1522f6e -- src` (89 files) has no added or removed line with `data-testid`, `<button`, `<a `, `<Link`,
+    `<input`, `<select`, `<form`, `<textarea` or `onClick`.
+  - Those cards changed text and conditions only: the card-scan error text, the member badge, consent-block gating, and the
+    `/u` done page `<meta viewport>` (that last one closes P-it5-3).
+  - run5 ran on that tree, and none of those rows went dead.
+
+## Findings (RVR)
+- **RVR-1 HIGH (safety / process): the send guard was bypassed by a sibling form row.**
+  - The composer `form` row submitted `sendCrmEmailAction`: 4 times in run5, and about 5 times in run3 (`crm.email.sent` history, 1 Oct 11–14 UTC).
+  - All went through the dev transport. `emailEnabled=false` in the server process and in the QC env, which I proved, so nothing was delivered.
+  - The only protection was the env. Close with the it6 guard **plus** a structural form/target guard **plus** a pass tripwire (R6).
+- **RVR-2 MED: the restore proof cannot see writes outside its 66 tables.**
+  - run5 left:
+    - 32 `AccountContact` rows: accounting customers with a dangling `partyId`; 82 `qc-btn` rows exist all-time
+    - 24 `MemberNotification` rows: 8 `QUEUED` welcome e-mails to deleted customers
+    - 16 `MemberAttribution` and 8 `MemberTierHistory` rows: their customers are gone
+    - 72 `AiCreditTxn` rows (wallet debit under mock)
+    - 11 `AppNotification` rows
+    - 1,218 `AuditLog` rows (by design)
+  - Close: list and delete the runner-caused orphans under the lock (or get a ruling). Add `window-leftovers.mts` to the re-run proof.
+    Optionally, CLEAN deletes AccountContact rows by runner `partyId`.
+- **RVR-3 MED: `needs` is still self-declared, and some preconditions are false.**
+  - `deals-next-page` / `-first-page` are mis-specified (missing `view=table`; the precondition holds).
+  - `crm-import-to-duplicates` can be reached with the existing fixture.
+  - 104 never-pressed `needs` items have no ruling.
+  - Close: R5 (deals paging REQUIRED, the rest ruled or recommended).
+- **RVR-4 MED (method): 103 of 146 dbVerified rows rest on AUDIT or tenant-wide ANYROW checks.** W2 proves that an audit can be
+  written on a no-op. Not blocking. C4.2-fix: entity-scoped column checks on detail pages, and an audit clause paired with a row clause.
+- **RVR-5 LOW (product, for C6 as a new P-it6-3): deal bulk move reports and audits no-op moves as "moved"** (deals.ts:1641-1648, UI
+  "ย้ายขั้นสำเร็จ 1 ดีล"). This was O-it6-a; it is a defect, not an observation.
+- **RVR-6 LOW (product UX, for C6): deleting a CRM webhook endpoint is one click with no confirmation**, and the feedback says "บันทึกแล้ว"
+  ("saved") (CrmApiSettings.tsx:162-167, 426).
+- **RVR-7 LOW–MED (runner): hidden rows are checked with shorter waits than visible rows** (800 / 1,500 ms vs 2,500–4,000 ms). A
+  late-rendering leak could pass while still being paired. Use the same wait. Not observed.
+- **RVR-8 LOW (runner): the runner cannot see an error boundary on a 200 page.** A server-component error inside a 200 page
+  (O-it6-d: 4× `ActivitiesError NOT_FOUND` in `CrmFilesBlock`) goes unnoticed. Add a per-row server-log `⨯` tripwire, or use the R7
+  evidence item 3.
+- **RVR-9 LOW: `verdict.py` over-counts VACUOUS.** It counts page-level key gates as unpaired (41 of 55 rows). Pair on page refusal (R4).
+- **RVR-10 LOW: it6 copy details.** object-edit-key enabled path, the `=#2` fragility, the overdue-task fixture interplay, the object
+  import file fixture, and `crm-home-ai-*` should be asserted `state: disabled` rather than safety-skipped (R6).
+- **RVR-11 LOW: notes inaccuracies.** The AuditLog statement, the "only OutboxEvent" scope, and the run3 composer sends not mentioned (R2).
+- **Confirmed as triaged:** P-it6-1 (LOW–MED), P-it6-2 (MED, PROD-exposed), O-it6-b (a11y LOW), O-it6-d (fix15).
+
+## What I did not verify
+- The P-it6-2 mechanism: it is read from code only, like the lane's.
+- Whether the run3 `crm.email.sent` events all came from the runner. They are attributed by time window only, and Sep 30 events
+  belong to other suites or run2.
+- Storage configuration in the server env: no env read. That is why the storage GET is stated as conditional.
+- Whether an oracle asserts `briefFor`'s deal filter for the chat panel: I checked the code only (brief.ts:56).
+- `pos-deal-select` hiding is covered by C2.7 S5.4/S9.8 as described in that file's header; I did not run it.
+- The DOM state behind hidden-pass rows: the runner keeps no DOM dumps for passes. Pairing and the product gates were checked instead.
+- The fix15 diff: not merged yet, so I could not read it.
+- dbg15–18 results beyond their summary JSONs and shots.
+- Whether QC1 field values outside the 66 counted tables and the leftovers listed in RVR-2 match the pre-run state.
+
+VERDICT: **ACCEPT AFTER TARGETED RE-RUN.**
+- Re-run scope and evidence: R7.
+- Required before the re-run: RVR-1 structural guard and tripwire; RVR-2 cleanup or ruling, plus the window-leftovers proof; RVR-3
+  deals paging fix; R5 access-control DB clauses (`crm-api-key-form/-revoke-*`, `team-member-add-*`); RVR-9 `verdict.py` page-level pairing.
+- Rulings: R4 (VACUOUS), R5 (waivers, no-error-only, `contact-phone-tel`, the needs list).
+- A second full pass is required instead if anything outside A–D fails in the sample, or if fix15 touches more than the files listed in R7.
