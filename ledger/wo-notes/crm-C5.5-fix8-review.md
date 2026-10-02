@@ -136,3 +136,81 @@ Scope: `git diff 19d13470 1d118384`, builder note "Round 2". Ran on QC3 with iso
 - Attachment and link-fetch cost under a proven flood.
 
 VERDICT: NOT MERGEABLE (RV-6 shared proven system bucket lets attacker-proven mail drop every customer's verified reply — split the proven class by evidence strength and normalise the sender key; RV-4 must ship with shark-hf 201d371a)
+
+---
+
+# Round 3 — re-review of 3123f37e (parent ffe60684)
+Scope: `git diff ffe60684 3123f37e` and the builder note "Round 3". Ran on QC3 with iso.sh + gate lock, one job at a time; finished 2026-10-02 03:44 UTC. New probe: `scripts/pending/cf11/review/probe-cf11-review-r3.mts`, which corrects the classifier (it reads which per-class system key `crm.email.in.sys.{v,d,t}.<sys>` / U `crm.email.in.sys.<sys>` moved). Runner summary: `scripts/pending/cf11/review/review-rv4.summary`.
+
+## What I ran
+| run | result |
+|---|---|
+| builder `probe-cf11-keys` · `contains` · `mail` · `r2 --skip=R2` · `r3` | 14/14 · 12/12 · 24/24 · 11/11 · 14/14 |
+| `probe-cf11-review-r3` (new) | 8/10. **R3A.1 ❌ · R3B.1 ❌** · R3C.1 ✅ · INFO ×4 |
+| `probe-cf11-review-mail` | 12/12 |
+| `probe-cf11-review-keys` | 8/9 (RK.6 = RV-4, unchanged) |
+| `probe-cf11-review-r2` | 7/8. R2A.1 ✅ |
+| fitness (QC3 env) · (no env) | 42/42 · 42/42 |
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+
+Obsolete probes of mine:
+- `probe-cf11-review-r2` R2C.1 ❌ is **instrumentation only**: it reads the retired `.proven.` key. The same assertions pass in R3C.1 with the corrected classifier.
+- R2B.1 is vacuous: it presets a retired key. Builder B.1 and my INFO-R3D cover it.
+- `probe-cf11-review-mail` RA.2 passes only because RA.1 filled that OUT mail's T message bucket. The pass is valid, but RA.2 no longer isolates the CC path.
+
+## Round-2 finding RV-6 — closed as specified
+- The class is chosen once (`emails.ts:2497`) and each mail touches only its own class's keys (`inboundLimited` `:2336-2390`; R3C.1: T U U V D T, exactly one class each). D/T/U floods cannot touch V (builder F.2; my R2A.1 green: 100/2,000 stored, then the customer's V reply and a T reply were stored).
+- The `+tag`/case-normalised sender key works (INFO-R3D).
+
+## New findings
+
+### RV-8 · HIGH (blocker) · class system buckets for V and T can be filled by an attacker who holds k provable pairs of its OWN mailboxes ⇒ every customer's reply in that class is dropped
+- **Root cause.** Thread proof means "this From was a To/Cc of one of our OUT mails". An attacker obtains that for its **own** mailboxes simply by getting one mail from the shop per mailbox:
+  - a staff reply to an enquiry;
+  - a rule `crm.contact.created` → SEND_EMAIL / ENROLL_SEQUENCE on a lead from a public form where the attacker ticked consent (`sendAsSystem` needs granted consent, `consents.ts:371-383`, which a form ticks);
+  - a sequence step;
+  - being CC'd.
+  
+  That pair never expires. In my round-2 table I wrote "filling T needs ≥ 10 held mails" as if that were a high bar. It is not, because the attacker can be the recipient. The system-level caps then turn k pairs into a kill switch for every customer.
+- **R3B.1 — reachable TODAY, P14 unset.** 10 attacker mailboxes on any domains, no DMARC needed, each holding one OUT mail of ours, sent 100 thread-only replies each: 1,000/1,000 stored, filling T's system bucket (1,000/h). The customer's genuine reply to **our** quote was then dropped (`rate_limited`). With P14 unset every genuine reply is class T, so **all customers' replies are dropped for the rest of the hour**, repeatable hourly with the same 10 pairs. The owner gets one class-T notice per hour; customers get no bounce.
+  - Base 53d88b71 had no system bucket for thread-proven mail, so this is a regression, introduced in round 2 (the shared proven bucket) and kept in round 3 (T system bucket).
+- **R3A.1 — P14 set.** 20 mailboxes on ONE attacker DMARC domain, each holding one OUT mail, sent 100 V mails each: 2,000/2,000 stored (V has no per-domain bucket), filling V's system bucket. The customer's DMARC+thread reply was then dropped. This class is the one the ruling says must never be starved.
+- **Cost to the attacker:**
+  - T: 10 answered enquiries or consented form leads, from 10 mailboxes on any domains (free mail works).
+  - V: 20 mailboxes that pass DMARC, one own domain is enough. The `+tag` normalisation does not help because they are distinct local parts.
+- **Recommended bound (concrete).** A **light-sender lane** for V and T:
+  - **Lane rule:** a sender's first **10 mails per hour** (normalised sender key; the count already exists in the sender bucket) are counted in the class system bucket but **never dropped by it**. The system bucket drops only mail from senders already above 10/h.
+  - **Unchanged buckets:** sender (100/h), T message (100/h) and the domain bucket still apply as now.
+  - **Add** a **V per-domain bucket of 300/h** for non-free-mail domains, mirroring D, as defence in depth.
+  - **Effect:** a genuine customer (≤ 10 replies/h) can no longer be starved by anyone. An attacker with k pairs gets at most `system cap + 10·k` mails per hour; k grows only by one shop-sent mail per mailbox, so volume stays tied to the shop's own outbound effort.
+  - **Cost:** reuse the `count` returned by the sender bucket; no extra query.
+  - Smaller alternative (weaker): do not let OUT mails sent by automation or a sequence (`sequenceStepId`/rule-sent; this needs a marker on rule sends) confer V/T. Staff replies would still be a pair source.
+- **Launch gate.** This is **not** P14-only: R3B reproduces with P14 unset. So it blocks merge, not just the setting of `CRM_INBOUND_AUTHSERV_ID`.
+
+### RV-9 · LOW · inbound free-mail list diverges from the module list
+- `emails-shared.ts:156` `CRM_INBOUND_FREE_MAIL_DOMAINS` lacks `hotmail.co.th`, `msn.com`, `mac.com`, `aol.com` and `gmx.com`, which are in `companies-shared.ts:315` `FREE_MAIL_DOMAINS` (INFO-R3F). In particular `hotmail.co.th` — common in Thailand — gets a shared 300/h D domain bucket, so three such mailboxes can starve all D mail from Thai Hotmail users for the hour.
+- Fix: reuse `FREE_MAIL_DOMAINS` (one list). Consider adding `outlook.co.th`, `live.co.th`, `yahoo.co.uk`, `qq.com`, `163.com`, `naver.com`, `yandex.com` and `mail.ru` there.
+
+### INFO (round 3)
+- **(b) Normalisation** (`emails-shared.ts:171`, INFO-R3D/R3D.2):
+  - `+tag` and case are merged.
+  - **Gmail dot variants are separate buckets** (`j.o.h.n@` vs `john@`, both stored in separate D sender buckets). One Gmail account therefore yields many D senders, and gmail.com has no domain bucket. This can fill D's 1,000/h, which starves only D mail (new authenticated enquiries, not replies); U is already starvable by anyone. Recommend dropping dots in the local part for gmail.com/googlemail.com.
+  - `-` sub-addressing (Yahoo) is not merged (these are distinct mailboxes on Yahoo, so this is acceptable).
+  - A leading `+` is kept.
+  - IDN/punycode: `emailDomainOf` vs A-R `header.from` must match exactly, so a mixed form gives no D proof and no gain.
+  - Stripping `+tag` merges `sales+a@corp` and `sales+b@corp`. This is the same mailbox by convention, so the merge is acceptable.
+- **(c) T message key** = the lowest proving stored Message-ID. Spreading across subsets of cited ids needs several OUT mails addressed to that same From, and is capped first by the sender bucket (100/h). There is no gain beyond the sender cap.
+- **(d) D per-domain 300/h** suits SME corporate customers (new non-reply mail from one company domain above 300/h is implausible). See RV-9 for the list.
+- **(e) Count-then-drop.** Sender/domain/message buckets are incremented before a later step drops the mail (INFO-R3E: the victim's T sender bucket 1 → 2 on a dropped forged mail). A pair-holder (the victim, CC co-recipients, anyone forwarded the mail) can lock one customer's T sender bucket for the hour. Base let **anyone** do this via the all-mail sender bucket, so it is narrower now. With P14 set, the customer's own reply is V and unaffected. Accept as residual.
+- **(f) Notices:** at most one per hour per system per class for V/D/T (`crm.email.in.notice.class-<c>.<sys>`). U is as in round 2. Audit on each bucket's first trip. No address in keys, audits or texts. Correct.
+- The pre-bucket cost is unchanged from round 2: one narrow query plus 2–3 upserts. RB.1 green.
+- RV-7 is recorded as C6 debt by the builder (≈ 5,000 mails/h per system at the caps). Accepted as LOW.
+- P14 section: the deployment guarantees are as I asked. RV-8's T part applies regardless of P14.
+
+## Round 3 not verified
+- Reachability of the automation path end to end: a public form lead with consent → rule SEND_EMAIL → OUT row. I argued it from code (`automation.ts:325`, `emails.ts` `sendAsSystem`, `consents.canContact`). R3A/R3B insert the OUT rows directly, which is the same row shape the proof query reads.
+- QC2-pinned cf5 probes and the account REST suites (the builder reports them green in v4).
+- probe-hunt3.
+- Browser render.
+
+VERDICT: NOT MERGEABLE (RV-8 — V and T class system buckets can be filled by an attacker's own provable mailboxes (10 pairs for T with P14 unset, reproduced: every customer's reply dropped; 20 pairs for V with P14 set) — add the light-sender lane (first 10 mails/h per sender never dropped by the class system bucket) + V per-domain 300/h; RV-9 reuse FREE_MAIL_DOMAINS (LOW, same pass); RV-4 must ship with shark-hf 201d371a)

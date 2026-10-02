@@ -1,0 +1,14 @@
+tree 3123f37e + diff: 
+pending/cf11/review/probe-cf11-review-r3 exit=1 596s JSON_SUMMARY {"total":10,"passed":8,"findings":["R3B.1","R3A.1"]}
+pending/cf11/probe-cf11-keys exit=0 99s JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+pending/cf11/probe-cf11-contains exit=0 65s JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+pending/cf11/probe-cf11-mail exit=0 126s JSON_SUMMARY {"total":24,"passed":24,"findings":[]}
+pending/cf11/probe-cf11-r2 exit=0 193s JSON_SUMMARY {"total":11,"passed":11,"findings":[]}
+pending/cf11/probe-cf11-r3 exit=0 230s JSON_SUMMARY {"total":14,"passed":14,"findings":[]}
+pending/cf11/review/probe-cf11-review-keys exit=1 152s JSON_SUMMARY {"total":9,"passed":8,"findings":["RK.6"]}
+pending/cf11/review/probe-cf11-review-mail exit=0 300s JSON_SUMMARY {"total":12,"passed":12,"findings":[]}
+pending/cf11/review/probe-cf11-review-r2 exit=1 117s JSON_SUMMARY {"total":8,"passed":7,"findings":["R2C.1"]}
+fitness exit=0 16s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+fitness-noenv exit=0 6s JSON_SUMMARY {"total":42,"passed":42,"findings":[]}
+typecheck exit=0 71s 
+ALLDONE
