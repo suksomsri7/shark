@@ -102,6 +102,18 @@ export type PurgeSummary = { emails: number; recordings: number; webSessions: nu
 
 /** TOO_LARGE (C5.5-fix9 r2): การลบไม่เสร็จภายในเวลาของธุรกรรมเดียว — ยกเลิกทั้งหมด (ไม่มีอะไรถูกลบ) · OpsEvent ERROR + audit แถวล้มเหลวแล้ว */
 export type PrivacyErrorCode = "NOT_FOUND" | "FORBIDDEN" | "VALIDATION" | "CONFIRM_REQUIRED" | "TOO_LARGE";
+/**
+ * C5.5-fix11 (review fix9-r2 R2-3): ธุรกรรม interactive ของ Prisma **หมดเวลา** เท่านั้น — P2028 ที่ข้อความเป็น "… cannot be executed on an expired
+ * transaction" (คำสั่งหรือ commit หลังหมดเวลา · ข้อความของ transaction manager ใน @prisma/client runtime) · P2028 แบบอื่น (Transaction not found ·
+ * rolled back · committed · ภายใน · "Unable to start a transaction" = รอ pool) ไม่ใช่ "ข้อมูลใหญ่เกิน" ⇒ false (ผู้เรียกโยนต่อเป็นความขัดข้องทั่วไป)
+ * ตรวจแบบ duck-type (ไฟล์นี้บริสุทธิ์ — ไม่ import Prisma)
+ */
+export function isExpiredTransactionError(e: unknown): boolean {
+  const code = e && typeof e === "object" && "code" in e ? (e as { code?: unknown }).code : null;
+  const msg = e instanceof Error ? e.message : "";
+  return code === "P2028" && /cannot be executed on an expired transaction/i.test(msg);
+}
+
 export class PrivacyError extends Error {
   readonly code: PrivacyErrorCode;
   constructor(code: PrivacyErrorCode, message: string) {

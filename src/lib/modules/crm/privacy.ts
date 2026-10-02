@@ -65,6 +65,7 @@ import {
   CRM_EXPORT_KIND,
   CRM_EXPORT_LEASE_MS,
   ERASE_SOURCES,
+  isExpiredTransactionError,
   EXPORT_TABLE_LABEL,
   LEAD_RETENTION_WARN_DAYS,
   PRIVACY_REASON_MAX,
@@ -314,7 +315,15 @@ export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: 
   if (!out.erased) {
     // C3.9-fix H7: การกวาดซ้ำเจอไฟล์ที่หลุดเข้ามา (ไม่มีแถว audit ใหม่ให้ตัวรับ event) ⇒ ลบวัตถุตรงนี้ · ล้ม = WARN (id ล้วน) ให้กวาดซ้ำได้อีก
     await deleteFilesNow(c.tenantId, pre.id, out.resweepFileIds, deps);
-    return { contactId: pre.id, partyId: out.partyId, erased: false, counts: null, followUp: null, ...none };
+    // C5.5-fix11 (review fix9-r2 R2-4): ลบซ้ำ = ทำขั้นหลัง commit ของการลบครั้งแรกให้จบด้วย (รายการใน audit: ไฟล์ · คำขออนุมัติ · สมาชิก — idempotent)
+    //   เผื่อตัวรับ `crm.contact.erased` ล้มครบ 5 ครั้งไปแล้ว (FAILED — ไม่มีใครลองให้อีก) · ล้ม = WARN ของ completeErasure + followUp PENDING
+    let again: "DONE" | "PENDING" = "DONE";
+    try {
+      await completeErasure(c.tenantId, pre.id, deps);
+    } catch {
+      again = "PENDING";
+    }
+    return { contactId: pre.id, partyId: out.partyId, erased: false, counts: null, followUp: again, ...none };
   }
   if (out.memberSkipped.length) {
     await logOps("WARN", "crm.privacy", "ลบผู้ติดต่อ CRM แล้ว แต่ข้อมูลสมาชิกที่ผูกไว้ยังไม่ถูกลบ — ผู้ลบไม่มีสิทธิ์ลบข้อมูลสมาชิก ให้ผู้มีสิทธิ์ลบในระบบสมาชิก", {
@@ -367,12 +376,112 @@ type EraseTxOut = { erased: boolean; partyId: string | null; counts: EraseCounts
 const INLINE_FOLLOWUP_FILES_MAX = 100;
 /** แถว audit ของการลบที่ล้มเพราะหมดเวลาธุรกรรม (ไม่ใช่ธง "ลบแล้ว") */
 const CRM_ERASE_FAILED_AUDIT_ACTION = "crm.contact.erase.failed";
-/** ธุรกรรม interactive ของ Prisma หมดเวลา (P2028 · "expired"/"already closed") — ไม่นับกรณีเริ่มธุรกรรมไม่ได้ (pool เต็ม) */
-function isTxTimeout(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : "";
-  if (/Unable to start a transaction/i.test(msg)) return false;
-  const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : null;
-  return code === "P2028" || /Transaction already closed|expired transaction|transaction.*timed? ?out/i.test(msg);
+/** C5.5-fix11 (review fix9-r2 R2-3): "ใหญ่เกิน" = ธุรกรรมหมดเวลาเท่านั้น (`isExpiredTransactionError`) — P2028 แบบอื่น (ไม่พบธุรกรรม/ถูก rollback/
+ *  ภายใน/รอเริ่มไม่ได้) = ความขัดข้องชั่วคราว ⇒ โยนต่อ (ข้อความทั่วไป "ลองใหม่อีกครั้ง" ของ action) */
+const isTxTimeout = isExpiredTransactionError;
+
+// ── C5.5-fix11 (review fix9-r2 R2-1): ตัวเขียนแบบชุด — หนึ่งคำสั่งต่อหน้า (≤ 1,000 แถว) แทนหนึ่งคำสั่งต่อแถว (≈ 9–10 ms ต่อรอบไปกลับจากเครื่องนี้) ──
+//   ค่าใหม่ของแต่ละแถวคำนวณใน JS เหมือนเดิมทุกตัวอักษร แล้วส่งเป็นพารามิเตอร์อาร์เรย์ (`unnest`) · ชื่อตาราง/คอลัมน์ = ค่าคงที่ในโค้ด (ตรวจรูปแบบ)
+//   ไม่มี SQL ที่ประกอบจากข้อมูล · คอลัมน์ `@updatedAt` ตั้งเองในคำสั่ง (Prisma `update` ตั้งให้ — ผลปลายทางต้องเหมือนเดิม)
+const WRITE_PAGE = 1_000;
+type WriteCol = { col: string; kind: "text" | "jsonb" | "boolean" | "textarray" };
+const ident = (x: string) => {
+  if (!/^[A-Za-z]+$/.test(x)) throw new Error(`crm.privacy: bad identifier ${x}`);
+  return Prisma.raw(`"${x}"`);
+};
+const tsSql = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+/** ค่า JSON → ข้อความ jsonb (null/undefined = SQL NULL — แบบเดียวกับ Prisma.DbNull ของตัวเขียนเดิม) */
+const jsonText = (v: unknown): string | null => (v === null || v === undefined ? null : JSON.stringify(v));
+/**
+ * UPDATE "<table>" x SET <cols = v.cols>, <extra> FROM unnest(<arrays>) v WHERE x.id = v.id AND x.tenantId = t — ทีละ WRITE_PAGE แถว
+ * `values[i]` เรียงตาม `cols` · textarray ส่งเป็น jsonb (อาร์เรย์ของข้อความ) แล้วแปลงกลับตามลำดับเดิม · `extra(v)` = SET เพิ่มที่เป็นโค้ดล้วน
+ */
+async function writeRows(
+  tx: Tx,
+  table: string,
+  tenantId: string,
+  cols: readonly WriteCol[],
+  rows: readonly { id: string; values: readonly unknown[] }[],
+  extra?: Prisma.Sql,
+): Promise<number> {
+  let n = 0;
+  const x = Prisma.raw("x");
+  for (let i = 0; i < rows.length; i += WRITE_PAGE) {
+    const page = rows.slice(i, i + WRITE_PAGE);
+    const arrays = [
+      Prisma.sql`${page.map((r) => r.id)}::text[]`,
+      ...cols.map((c, k) => {
+        const vals = page.map((r) => {
+          const v = r.values[k];
+          if (c.kind === "jsonb") return jsonText(v);
+          if (c.kind === "textarray") return JSON.stringify(Array.isArray(v) ? v : []);
+          return v ?? null;
+        });
+        const type = c.kind === "boolean" ? "boolean[]" : c.kind === "text" ? "text[]" : "jsonb[]";
+        return Prisma.sql`${vals}::${Prisma.raw(type)}`;
+      }),
+    ];
+    const names = [Prisma.raw(`"id"`), ...cols.map((c) => ident(c.col))];
+    const sets = cols
+      .filter((c) => c.kind !== "boolean")
+      .map((c) =>
+        c.kind === "textarray"
+          ? Prisma.sql`${ident(c.col)} = ARRAY(SELECT e.a FROM jsonb_array_elements_text(v.${ident(c.col)}) WITH ORDINALITY AS e(a, n) ORDER BY e.n)`
+          : Prisma.sql`${ident(c.col)} = v.${ident(c.col)}`,
+      );
+    n += Number(
+      await tx.$executeRaw`UPDATE ${ident(table)} ${x} SET ${Prisma.join([...sets, ...(extra ? [extra] : [])], ", ")}
+        FROM unnest(${Prisma.join(arrays, ", ")}) AS v(${Prisma.join(names, ", ")})
+        WHERE ${x}."id" = v."id" AND ${x}."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+
+/** จดหมายหนึ่งชุด (ชุดที่ 1 = ผูกเขา · ชุดที่ 2 = มีที่อยู่ของเขา) — ค่าใหม่ทุกช่องคำนวณใน JS · QUEUED → FAILED · `clear` = ล้างเนื้อ/ไฟล์แนบ + purgedAt */
+type MailWrite = {
+  id: string;
+  subject: string;
+  fromAddr: string;
+  fromName: string | null;
+  toAddrs: string[];
+  ccAddrs: string[];
+  bccAddrs: string[];
+  bodyHtml: string | null;
+  bodyText: string | null;
+  snippet: string | null;
+  queued: boolean;
+  clear: boolean;
+};
+const MAIL_COLS: readonly WriteCol[] = [
+  { col: "subject", kind: "text" },
+  { col: "fromAddr", kind: "text" },
+  { col: "fromName", kind: "text" },
+  { col: "toAddrs", kind: "textarray" },
+  { col: "ccAddrs", kind: "textarray" },
+  { col: "bccAddrs", kind: "textarray" },
+  { col: "bodyHtml", kind: "text" },
+  { col: "bodyText", kind: "text" },
+  { col: "snippet", kind: "text" },
+  { col: "queued", kind: "boolean" },
+  { col: "clear", kind: "boolean" },
+];
+async function writeMails(tx: Tx, tenantId: string, rows: readonly MailWrite[], now: Date, clearProviderError: boolean): Promise<void> {
+  const at = tsSql(now);
+  await writeRows(
+    tx,
+    "CrmEmailMessage",
+    tenantId,
+    MAIL_COLS,
+    rows.map((m) => ({ id: m.id, values: [m.subject, m.fromAddr, m.fromName, m.toAddrs, m.ccAddrs, m.bccAddrs, m.bodyHtml, m.bodyText, m.snippet, m.queued, m.clear] })),
+    Prisma.sql`"providerError" = CASE WHEN ${clearProviderError}::boolean THEN NULL ELSE x."providerError" END,
+      "status" = CASE WHEN v."queued" THEN 'FAILED'::"CrmEmailStatus" ELSE x."status" END,
+      "scheduledAt" = CASE WHEN v."queued" THEN NULL ELSE x."scheduledAt" END,
+      "leaseUntil" = CASE WHEN v."queued" THEN NULL ELSE x."leaseUntil" END,
+      "attachments" = CASE WHEN v."clear" THEN NULL ELSE x."attachments" END,
+      "purgedAt" = CASE WHEN v."clear" THEN ${at} ELSE x."purgedAt" END,
+      "updatedAt" = ${at}`,
+  );
 }
 
 /** ผู้ติดต่อที่ถูกรวมเข้ามาในคนนี้ทั้งสาย (`mergedIntoId` ซ้อนกันได้) — รีวิว C3.9 B2 */
@@ -645,29 +754,28 @@ async function eraseInTx(
       if (fid) fileIds.push(fid);
     }
   };
-  const QUEUED_FAIL = { status: "FAILED" as const, scheduledAt: null, leaseUntil: null };
-  for (const m of mails) {
-    const inbound = m.direction === "IN";
+  // NOTE รีวิว C3.9: จดหมายที่ตั้งเวลาไว้ถึงคนที่ถูกลบต้องไม่ถูกส่งออกไปอีก (ปลายทางถูกล้างแล้ว) ⇒ FAILED ใน tx เดียวกัน
+  //   C5.5-fix11: ค่าเดิมทุกช่อง เขียนเป็นชุด (writeMails · providerError = null ในชุดนี้)
+  const set1: MailWrite[] = mails.map((m) => {
     const queued = m.status === "QUEUED";
-    const data: Prisma.CrmEmailMessageUpdateInput = {
+    const clear = contentToo || queued;
+    if (clear) attachmentIds(m);
+    return {
+      id: m.id,
       subject: mask(m.subject) ?? "",
       fromAddr: keepAddr(m.fromAddr) ? m.fromAddr : "",
-      fromName: inbound ? null : mask(m.fromName),
+      fromName: m.direction === "IN" ? null : mask(m.fromName),
       toAddrs: m.toAddrs.filter(keepAddr),
       ccAddrs: m.ccAddrs.filter(keepAddr),
       bccAddrs: m.bccAddrs.filter(keepAddr),
-      providerError: null,
-      // NOTE รีวิว C3.9: จดหมายที่ตั้งเวลาไว้ถึงคนที่ถูกลบต้องไม่ถูกส่งออกไปอีก (ปลายทางถูกล้างแล้ว) ⇒ FAILED ใน tx เดียวกัน
-      ...(queued ? QUEUED_FAIL : {}),
+      bodyHtml: clear ? null : mask(m.bodyHtml),
+      bodyText: clear ? null : mask(m.bodyText),
+      snippet: clear ? null : mask(m.snippet),
+      queued,
+      clear,
     };
-    if (contentToo || queued) {
-      attachmentIds(m);
-      Object.assign(data, { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: now });
-    } else {
-      Object.assign(data, { bodyHtml: mask(m.bodyHtml), bodyText: mask(m.bodyText), snippet: mask(m.snippet) });
-    }
-    await tx.crmEmailMessage.update({ where: { id: m.id }, data });
-  }
+  });
+  await writeMails(tx, t, set1, now, true);
   counts.emails = mails.length;
   if (mails.length) await tx.crmEmailEvent.deleteMany({ where: { emailId: { in: mails.map((m) => m.id) } } });
 
@@ -702,43 +810,42 @@ async function eraseInTx(
                 OR EXISTS (SELECT 1 FROM unnest(m."toAddrs" || m."ccAddrs" || m."bccAddrs") x(a) WHERE lower(btrim(x.a)) = ANY(${addrList}::text[])))
          ORDER BY m."id" FOR UPDATE`
     : [];
-  for (const m of matched) {
+  const set2: MailWrite[] = matched.map((m) => {
     const fromPerson = isPersonAddr2(m.fromAddr);
     const clear = fromPerson && !m.contactId && contentToo;
-    const queued = m.status === "QUEUED";
-    const data: Prisma.CrmEmailMessageUpdateInput = {
+    if (clear) attachmentIds(m);
+    return {
+      id: m.id,
       subject: clear ? "" : (mask2(m.subject) ?? ""),
       fromAddr: keepAddr2(m.fromAddr) ? m.fromAddr : "",
       fromName: fromPerson ? null : mask2(m.fromName),
       toAddrs: m.toAddrs.filter(keepAddr2),
       ccAddrs: m.ccAddrs.filter(keepAddr2),
       bccAddrs: m.bccAddrs.filter(keepAddr2),
-      ...(queued ? QUEUED_FAIL : {}),
+      bodyHtml: clear ? null : mask2(m.bodyHtml),
+      bodyText: clear ? null : mask2(m.bodyText),
+      snippet: clear ? null : mask2(m.snippet),
+      queued: m.status === "QUEUED",
+      clear,
     };
-    if (clear) {
-      attachmentIds(m);
-      Object.assign(data, { bodyHtml: null, bodyText: null, snippet: null, attachments: Prisma.DbNull, purgedAt: now });
-    } else {
-      Object.assign(data, { bodyHtml: mask2(m.bodyHtml), bodyText: mask2(m.bodyText), snippet: mask2(m.snippet) });
-    }
-    await tx.crmEmailMessage.update({ where: { id: m.id }, data });
-  }
+  });
+  await writeMails(tx, t, set2, now, false); // ชุดที่ 2: providerError ของจดหมายคนอื่นคงไว้ (เหมือนเดิม)
   counts.emails += matched.length;
 
   // ── กิจกรรม (แถว + ตัวเลขคงอยู่ · เนื้อ/ถอดเสียง/สรุป AI หาย · ไฟล์เสียงลบหลัง commit) ──
   const acts = await tx.$queryRaw<{ id: string; title: string; recordingFileId: string | null }[]>`
     SELECT "id", "title", "recordingFileId" FROM "CrmActivity" WHERE "tenantId" = ${t} AND "contactId" = ANY(${ids}::text[]) ORDER BY "id" FOR UPDATE`;
-  for (const a of acts) {
-    const data: Prisma.CrmActivityUpdateInput = { body: null, transcript: null, aiSummary: null, aiNextStep: null, location: null, meetingUrl: null, attendees: Prisma.DbNull };
-    const title = mask(a.title);
-    if (title !== a.title) data.title = title ?? "";
-    if (contentToo && a.recordingFileId) {
-      fileIds.push(a.recordingFileId);
-      data.recordingFileId = null;
+  //   C5.5-fix11: ทุกแถวเขียนเป็นชุด (เดิมทุกแถวถูก update อยู่แล้ว — เนื้อ/ถอดเสียง/สรุป = NULL · หัวข้อ = ปิดคำ · ไฟล์เสียง = NULL เมื่อ contentToo)
+  const actRows = acts.map((a) => {
+    const dropRec = contentToo && !!a.recordingFileId;
+    if (dropRec) {
+      fileIds.push(a.recordingFileId as string);
       counts.recordings += 1;
     }
-    await tx.crmActivity.update({ where: { id: a.id }, data });
-  }
+    return { id: a.id, values: [mask(a.title) ?? "", dropRec ? null : a.recordingFileId] };
+  });
+  await writeRows(tx, "CrmActivity", t, [{ col: "title", kind: "text" }, { col: "recordingFileId", kind: "text" }], actRows,
+    Prisma.sql`"body" = NULL, "transcript" = NULL, "aiSummary" = NULL, "aiNextStep" = NULL, "location" = NULL, "meetingUrl" = NULL, "attendees" = NULL`);
   counts.activities = acts.length;
 
   // ── CRM C5.4-B ▸ L5-M1: ดีลของเขา (ผูกตรง หรือผ่าน CrmDealContact) — แถว/ตัวเลข/ขั้น/ผู้ดูแลคงอยู่ แต่คำระบุตัวใน title · nextStep ·
@@ -749,30 +856,34 @@ async function eraseInTx(
        AND (d."contactId" = ANY(${ids}::text[])
             OR EXISTS (SELECT 1 FROM "CrmDealContact" dc WHERE dc."tenantId" = ${t} AND dc."dealId" = d."id" AND dc."contactId" = ANY(${ids}::text[])))
      ORDER BY d."id" FOR UPDATE`;
+  const dealRows: { id: string; values: unknown[] }[] = [];
   for (const d of deals) {
     const title = mask(d.title) ?? "";
     const nextStep = mask(d.nextStep);
     const lostReason = mask(d.lostReason);
-    if (title !== d.title || nextStep !== d.nextStep || lostReason !== d.lostReason) {
-      await tx.crmDeal.update({ where: { id: d.id }, data: { title: title || CRM_ERASED_MASK, nextStep, lostReason } });
-    }
+    if (title !== d.title || nextStep !== d.nextStep || lostReason !== d.lostReason) dealRows.push({ id: d.id, values: [title || CRM_ERASED_MASK, nextStep, lostReason] });
   }
+  await writeRows(tx, "CrmDeal", t, [{ col: "title", kind: "text" }, { col: "nextStep", kind: "text" }, { col: "lostReason", kind: "text" }], dealRows, Prisma.sql`"updatedAt" = ${tsSql(now)}`);
   // CRM C5.4-B ▸ hunter H3(a–c): บันทึกการย้ายขั้นของดีลเหล่านั้น · กิจกรรมระดับดีล (ของผู้ติดต่อคนอื่นบนดีลของเขา — เปลือกคงอยู่) ·
   //   การ์ดบอร์ดงานที่ผูก DEAL ของดีลเหล่านั้น — ปิดคำระบุตัวของเขา (ตัวเลข/ขั้น/เจ้าของคงอยู่)
   const dealIds = deals.map((d) => d.id);
   if (dealIds.length) {
+    const notes: { id: string; values: unknown[] }[] = [];
     for (const h of await tx.crmDealStageHistory.findMany({ where: { tenantId: t, dealId: { in: dealIds }, note: { not: null } }, select: { id: true, note: true } })) {
       const note = mask(h.note);
-      if (note !== h.note) await tx.crmDealStageHistory.update({ where: { id: h.id }, data: { note } });
+      if (note !== h.note) notes.push({ id: h.id, values: [note] });
     }
+    await writeRows(tx, "CrmDealStageHistory", t, [{ col: "note", kind: "text" }], notes);
     const dealActs = await tx.$queryRaw<{ id: string; title: string; body: string | null }[]>`
       SELECT "id", "title", "body" FROM "CrmActivity" WHERE "tenantId" = ${t} AND "dealId" = ANY(${dealIds}::text[])
          AND ("contactId" IS NULL OR NOT ("contactId" = ANY(${ids}::text[]))) ORDER BY "id" FOR UPDATE`;
+    const dealActRows: { id: string; values: unknown[] }[] = [];
     for (const a of dealActs) {
       const title = mask(a.title) ?? "";
       const body = mask(a.body);
-      if (title !== a.title || body !== a.body) await tx.crmActivity.update({ where: { id: a.id }, data: { title: title || CRM_ERASED_MASK, body } });
+      if (title !== a.title || body !== a.body) dealActRows.push({ id: a.id, values: [title || CRM_ERASED_MASK, body] });
     }
+    await writeRows(tx, "CrmActivity", t, [{ col: "title", kind: "text" }, { col: "body", kind: "text" }], dealActRows);
     const kd = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "DEAL", dealIds, (x) => maskText(x, tokens) ?? x, { batch: opts.batch ?? null });
     counts.kanban += kd.cards + kd.comments + kd.activities;
   }
@@ -856,7 +967,7 @@ async function eraseInTx(
 
   // ── ไทม์ไลน์สมาชิกที่ผูกคนนี้ · กฎอัตโนมัติ · การ์ดบอร์ดงานที่ผูก · ลำดับการติดตามที่เดินอยู่ ──
   const timeline = await tx.memberActivity.findMany({ where: { tenantId: t, crmContactId: { in: ids } }, select: { id: true, summary: true } });
-  for (const r of timeline) await tx.memberActivity.update({ where: { id: r.id }, data: { summary: mask(r.summary) ?? "", data: Prisma.DbNull } });
+  await writeRows(tx, "MemberActivity", t, [{ col: "summary", kind: "text" }], timeline.map((r) => ({ id: r.id, values: [mask(r.summary) ?? ""] })), Prisma.sql`"data" = NULL`);
   // CRM C5.4-B ▸ L5-M2: การ์ดที่กฎของเขาเปิด (`crm-rule:<runId>:<i>`) ก่อนมีลิงก์ผูกผู้ติดต่อ — เก็บ runId ก่อนล้าง payload ของรอบ แล้วปิดคำในการ์ดเหล่านั้น
   //   รีวิว C5.4-B note (e): ทุกรอบ (แบ่งหน้า ไม่ตัดที่ 5,000) + รอบของกฎที่ subject เป็นดีลของเขาแต่ไม่มี crmContactId (dealRuleRunsOf · คีย์ JSON)
   const ruleRuns: { id: string }[] = [];
@@ -915,16 +1026,17 @@ async function eraseInTx(
     if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, k)]));
     return v;
   };
-  const asJson = (v: unknown) => (v === null || v === undefined ? Prisma.DbNull : (v as Prisma.InputJsonValue));
   for (let i = 0; i < trailIds.length; i += auditPage) {
     const part = trailIds.slice(i, i + auditPage);
+    const changed: { id: string; values: unknown[] }[] = [];
     for (const r of await tx.auditLog.findMany({ where: { tenantId: t, id: { in: part } }, select: { id: true, before: true, after: true } })) {
       const before = scrub(r.before);
       const after = scrub(r.after);
       if (JSON.stringify(before) === JSON.stringify(r.before) && JSON.stringify(after) === JSON.stringify(r.after)) continue;
-      await tx.auditLog.update({ where: { id: r.id }, data: { before: asJson(before), after: asJson(after) } });
-      counts.auditScrubbed += 1;
+      changed.push({ id: r.id, values: [before, after] });
     }
+    // C5.5-fix11: หนึ่งคำสั่งต่อหน้า (เดิมหนึ่งคำสั่งต่อแถว = 46.5 ของ 53.4 วินาทีในชุดทดสอบของรีวิว)
+    counts.auditScrubbed += await writeRows(tx, "AuditLog", t, [{ col: "before", kind: "jsonb" }, { col: "after", kind: "jsonb" }], changed);
   }
 
   if (resweep) return { erased: false, partyId: row.partyId, counts, memberSkipped: [], resweepFileIds: [...new Set(fileIds)], followUpFiles: 0 };

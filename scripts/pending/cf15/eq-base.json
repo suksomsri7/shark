@@ -1,0 +1,447 @@
+{
+ "erased": true,
+ "counts": {
+  "emails": 5,
+  "activities": 2,
+  "recordings": 1,
+  "files": 3,
+  "webSessions": 0,
+  "clicks": 0,
+  "portal": 1,
+  "proposals": 0,
+  "notifications": 0,
+  "customValues": 0,
+  "records": 0,
+  "consents": 0,
+  "fileLinks": 0,
+  "mergedContacts": 0,
+  "partyAnonymised": true,
+  "memberErased": false,
+  "formSubmissions": 0,
+  "aiMessages": 0,
+  "kanban": 4,
+  "auditScrubbed": 2,
+  "exportsWithdrawn": 0
+ },
+ "erasedRetention": true,
+ "countsRetention": {
+  "emails": 2,
+  "activities": 1,
+  "recordings": 0,
+  "files": 0,
+  "webSessions": 0,
+  "clicks": 0,
+  "portal": 0,
+  "proposals": 0,
+  "notifications": 0,
+  "customValues": 0,
+  "records": 0,
+  "consents": 0,
+  "fileLinks": 0,
+  "mergedContacts": 0,
+  "partyAnonymised": true,
+  "memberErased": false,
+  "formSubmissions": 0,
+  "aiMessages": 0,
+  "kanban": 0,
+  "auditScrubbed": 0,
+  "exportsWithdrawn": 0
+ },
+ "mails": [
+  {
+   "id": "<TAG>-m1",
+   "contactId": "<TAG>-c-p",
+   "subject": "ใบเสนอราคาของ [ข้อมูลถูกลบ]",
+   "fromAddr": "",
+   "fromName": null,
+   "toAddrs": [
+    "crm@shark.in.th"
+   ],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": null,
+   "snippet": null,
+   "attachments": null,
+   "status": "RECEIVED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": true,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m2",
+   "contactId": "<TAG>-c-p",
+   "subject": "นัด [ข้อมูลถูกลบ]",
+   "fromAddr": "shop@qc.invalid",
+   "fromName": "ร้าน",
+   "toAddrs": [
+    "other@qc.invalid"
+   ],
+   "ccAddrs": [
+    "somying-<TAG>@qc.invalid"
+   ],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": null,
+   "snippet": null,
+   "attachments": null,
+   "status": "FAILED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": true,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m3",
+   "contactId": "<TAG>-c-p",
+   "subject": "ขอบคุณ",
+   "fromAddr": "shop@qc.invalid",
+   "fromName": "ร้านของ [ข้อมูลถูกลบ]",
+   "toAddrs": [],
+   "ccAddrs": [],
+   "bccAddrs": [
+    "audit@qc.invalid"
+   ],
+   "bodyHtml": null,
+   "bodyText": null,
+   "snippet": null,
+   "attachments": null,
+   "status": "SENT",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": true,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m4",
+   "contactId": "<TAG>-c-q",
+   "subject": "สำเนาถึง [ข้อมูลถูกลบ]",
+   "fromAddr": "shop@qc.invalid",
+   "fromName": null,
+   "toAddrs": [
+    "somying-<TAG>@qc.invalid"
+   ],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": "คุณ [ข้อมูลถูกลบ] เบอร์ [ข้อมูลถูกลบ]",
+   "snippet": null,
+   "attachments": null,
+   "status": "SENT",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": "keep me",
+   "purged": false,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m5",
+   "contactId": null,
+   "subject": "",
+   "fromAddr": "",
+   "fromName": null,
+   "toAddrs": [
+    "crm@shark.in.th"
+   ],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": null,
+   "snippet": null,
+   "attachments": null,
+   "status": "FAILED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": true,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m6",
+   "contactId": "<TAG>-c-q",
+   "subject": "ไม่เกี่ยว",
+   "fromAddr": "somying-<TAG>@qc.invalid",
+   "fromName": null,
+   "toAddrs": [
+    "crm@shark.in.th"
+   ],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": "control",
+   "snippet": null,
+   "attachments": null,
+   "status": "RECEIVED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": false,
+   "updated": false
+  },
+  {
+   "id": "<TAG>-m7",
+   "contactId": "<TAG>-c-r",
+   "subject": "สอบถามจาก [ข้อมูลถูกลบ]",
+   "fromAddr": "",
+   "fromName": null,
+   "toAddrs": [
+    "crm@shark.in.th"
+   ],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": "<b>[ข้อมูลถูกลบ]</b>",
+   "bodyText": "ติดต่อ [ข้อมูลถูกลบ]",
+   "snippet": "[ข้อมูลถูกลบ] ถาม",
+   "attachments": [
+    {
+     "fileId": "<TAG>-f7"
+    }
+   ],
+   "status": "RECEIVED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": false,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-m8",
+   "contactId": "<TAG>-c-r",
+   "subject": "ตอบ [ข้อมูลถูกลบ]",
+   "fromAddr": "shop@qc.invalid",
+   "fromName": null,
+   "toAddrs": [],
+   "ccAddrs": [],
+   "bccAddrs": [],
+   "bodyHtml": null,
+   "bodyText": null,
+   "snippet": null,
+   "attachments": null,
+   "status": "FAILED",
+   "scheduledAt": null,
+   "leaseUntil": null,
+   "providerError": null,
+   "purged": true,
+   "updated": true
+  }
+ ],
+ "activities": [
+  {
+   "id": "<TAG>-a1",
+   "title": "โทรหา [ข้อมูลถูกลบ]",
+   "body": null,
+   "transcript": null,
+   "aiSummary": null,
+   "aiNextStep": null,
+   "location": null,
+   "meetingUrl": null,
+   "attendees": null,
+   "recordingFileId": null
+  },
+  {
+   "id": "<TAG>-a2",
+   "title": "ติดตามทั่วไป",
+   "body": null,
+   "transcript": null,
+   "aiSummary": null,
+   "aiNextStep": null,
+   "location": null,
+   "meetingUrl": null,
+   "attendees": null,
+   "recordingFileId": null
+  },
+  {
+   "id": "<TAG>-a3",
+   "title": "ประชุมเรื่อง [ข้อมูลถูกลบ]",
+   "body": "กับ [ข้อมูลถูกลบ]",
+   "transcript": null,
+   "aiSummary": null,
+   "aiNextStep": null,
+   "location": null,
+   "meetingUrl": null,
+   "attendees": null,
+   "recordingFileId": null
+  },
+  {
+   "id": "<TAG>-a4",
+   "title": "ประชุมทั่วไป",
+   "body": "ok",
+   "transcript": null,
+   "aiSummary": null,
+   "aiNextStep": null,
+   "location": null,
+   "meetingUrl": null,
+   "attendees": null,
+   "recordingFileId": null
+  },
+  {
+   "id": "<TAG>-a5",
+   "title": "โทร [ข้อมูลถูกลบ]",
+   "body": null,
+   "transcript": null,
+   "aiSummary": null,
+   "aiNextStep": null,
+   "location": null,
+   "meetingUrl": null,
+   "attendees": null,
+   "recordingFileId": "<TAG>-rec5"
+  }
+ ],
+ "deals": [
+  {
+   "id": "<TAG>-d1",
+   "title": "ดีล [ข้อมูลถูกลบ]",
+   "nextStep": "โทร [ข้อมูลถูกลบ]",
+   "lostReason": null,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-d2",
+   "title": "ดีลทั่วไป",
+   "nextStep": null,
+   "lostReason": null,
+   "updated": false
+  }
+ ],
+ "history": [
+  {
+   "id": "<TAG>-h1",
+   "note": "ย้ายเพราะ [ข้อมูลถูกลบ]"
+  },
+  {
+   "id": "<TAG>-h2",
+   "note": "ปกติ"
+  }
+ ],
+ "timeline": [
+  {
+   "id": "<TAG>-ma1",
+   "summary": "[ข้อมูลถูกลบ] ซื้อของ",
+   "data": null
+  },
+  {
+   "id": "<TAG>-ma2",
+   "summary": "ทั่วไป",
+   "data": null
+  }
+ ],
+ "audit": [
+  {
+   "id": "<TAG>-au1",
+   "before": {
+    "name": "[ข้อมูลถูกลบ]",
+    "phone": null
+   },
+   "after": {
+    "name": "[ข้อมูลถูกลบ]",
+    "note": "[ข้อมูลถูกลบ]",
+    "phone": "[ข้อมูลถูกลบ]"
+   }
+  },
+  {
+   "id": "<TAG>-au2",
+   "before": null,
+   "after": {
+    "list": [
+     "คุย [ข้อมูลถูกลบ]",
+     {
+      "n": 3,
+      "email": "[ข้อมูลถูกลบ]"
+     }
+    ],
+    "previousEmails": "[ข้อมูลถูกลบ]"
+   }
+  },
+  {
+   "id": "<TAG>-au3",
+   "before": {
+    "score": 1
+   },
+   "after": {
+    "score": 2
+   }
+  },
+  {
+   "id": "<TAG>-au4",
+   "before": {
+    "note": "(เปลี่ยน)"
+   },
+   "after": {
+    "note": "(เปลี่ยน)"
+   }
+  }
+ ],
+ "cards": [
+  {
+   "id": "<TAG>-k1",
+   "title": "โทรหา [ข้อมูลถูกลบ]",
+   "description": "เบอร์ [ข้อมูลถูกลบ]",
+   "sourceKey": null,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-k2",
+   "title": "งานทั่วไป",
+   "description": null,
+   "sourceKey": null,
+   "updated": false
+  },
+  {
+   "id": "<TAG>-k3",
+   "title": "ส่งของ [ข้อมูลถูกลบ]",
+   "description": null,
+   "sourceKey": null,
+   "updated": true
+  },
+  {
+   "id": "<TAG>-k4",
+   "title": "ลบตามคำขอ PDPA",
+   "description": null,
+   "sourceKey": "crm:portal-request:<TAG>-r1",
+   "updated": true
+  },
+  {
+   "id": "<TAG>-k5",
+   "title": "การ์ดควบคุม",
+   "description": "ไม่เกี่ยว",
+   "sourceKey": null,
+   "updated": false
+  }
+ ],
+ "comments": [
+  {
+   "id": "<TAG>-kc1",
+   "body": "โทร [ข้อมูลถูกลบ] แล้ว"
+  },
+  {
+   "id": "<TAG>-kc2",
+   "body": "รับทราบ"
+  },
+  {
+   "id": "<TAG>-kc4",
+   "body": "หัวข้อ \"ลบตามคำขอ PDPA\" ส่งแล้ว"
+  }
+ ],
+ "history2": [
+  {
+   "id": "<TAG>-ka1",
+   "data": {
+    "title": "โทรหา [ข้อมูลถูกลบ]",
+    "nested": [
+     "[ข้อมูลถูกลบ]",
+     1
+    ]
+   }
+  },
+  {
+   "id": "<TAG>-ka4",
+   "data": {
+    "title": "ลบตามคำขอ PDPA"
+   }
+  }
+ ]
+}
