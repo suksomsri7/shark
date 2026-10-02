@@ -1,0 +1,105 @@
+page,testid,visibleRolesPlanned,it7,class,ruling
+/activities,activity-log-notice-close,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/activities,activity-row-card,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/activities,activity-row-card-board,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/activities,activity-row-card-open,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/activities,activity-row-company-link,"manager,owner",PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/activities,activity-row-pin,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/app/settings/teams,team-restore,owner,needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/app/sys/[id],crm-ai-proposal-deal-*,"manager,owner",needsWaiver,R4-2W,R4 ruling 2 — WAIVE (shown transitively / service oracle)
+/app/sys/[id],crm-ai-proposal-next-step-input,"manager,owner",needsWaiver,R4-2W,R4 ruling 2 — WAIVE (shown transitively / service oracle)
+/app/sys/[id],crm-home-stale-banner,"manager,owner",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id],crm-home-stale-row-*,"manager,nok,owner,thana",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id],crm-home-stale-row-view-*,"manager,nok,owner,thana",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id],crm-hub-switch-link,owner,needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id],crm-panel-deal,"manager,owner",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id],crm-panel-retry,"manager,owner",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id]/member/members,member-view-team,"manager,owner",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/app/sys/[id]/pos/register,pos-deal-select,"manager,owner",needsWaiver,R4-2W,R4 ruling 2 — WAIVE (shown transitively / service oracle)
+/b/[slug],portal-company-switcher,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-home-outstanding,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-home-quote-link,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-quote-accept,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-quote-confirm-submit,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-quote-reject,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-reject-reason,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug],portal-signer-name,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/documents/[id],portal-record-change-field,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/documents/[id],portal-record-change-submit,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/documents/[id],portal-record-change-value,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/documents/[id],portal-record-file,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/invoices,portal-invoice-row,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/invoices,portal-pay-promptpay,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/invoices,portal-slip-upload,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/login,portal-otp-code,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/login,portal-otp-submit,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/b/[slug]/quotations,portal-quote-row,customer,needsWaiver,IT5,R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)
+/companies,companies-page-next,"manager,owner",needsWaiver,R5-SPLIT,R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)
+/companies,companies-page-prev,"manager,owner",needsWaiver,R5-SPLIT,R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)
+/companies/[companyId],company-doc-link,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/[companyId],company-merged-link,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/[companyId],company-outstanding-alert,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/[companyId],company-parent-link,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/[companyId],company-subsidiary-link,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/new,company-new-field-bool,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/companies/new,company-new-field-input,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/companies/new,company-new-field-select,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/companies/new,company-new-field-textarea,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/companies/new,company-new-restore-confirm,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/new,company-new-restore-reason,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/companies/new,company-new-restore-submit,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/contacts,crm-card-scan-accept,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts,crm-card-scan-reject,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],contact-conn-member-link,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],contact-merged-link,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],contact-score-explain-btn,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-book-via-booking,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-accept,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-next-step,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-reject,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-summary,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-transcribe,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-ai-transcript,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-call-log-open-contact,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/contacts/[contactId],crm-merge-choice,"manager,owner",needsWaiver,R4-2W,R4 ruling 2 — WAIVE (shown transitively / service oracle)
+/contacts/[contactId],crm-object-tab-obj-*,"manager,owner",needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/contacts/import,crm-import-to-duplicates,"manager,owner",PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/contacts/new,contact-new-f-*,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/deals,deal-column-more-*,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/deals,deal-move-toast-close,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/deals,deal-req-cancel,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/deals,deal-req-field-*,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/deals,deal-req-open-link,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/deals,deals-empty-create-pipeline,owner,needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/deals,deals-filter-f-*,"manager,nok,owner,thana",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/deals,deals-first-page,"manager,nok,owner,thana",PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/deals,deals-next-page,"manager,nok,owner,thana",PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/deals/[dealId],crm-call-recording-listen,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/deals/[dealId],crm-call-recording-remove,"manager,nok,owner,thana",needsWaiver,R5-ACC,R5 — ACCEPT seed / AI-data gap (C6)
+/deals/new,deal-new-create-pipeline,owner,needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/emails/[threadKey],crm-email-attachment,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/emails/[threadKey],crm-email-show-images,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects,objects-index-settings-link,owner,needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)
+/objects/[key],object-page-next,"manager,owner",needsWaiver,R5-SPLIT,R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)
+/objects/[key],object-page-prev,"manager,owner",needsWaiver,R5-SPLIT,R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)
+/objects/[key],object-record-cancel,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects/[key],object-record-field-*,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects/[key],object-record-form,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects/[key],object-record-new-btn,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects/[key],object-record-save,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/objects/[key],object-view-delete,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/settings,crm-export-download,owner,needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/settings,crm-settings-team-room,owner,needsWaiver,GAP-MEET,"R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
+/settings,crm-settings-team-room-channel,owner,needsWaiver,GAP-MEET,"R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
+/settings,crm-settings-team-room-remove-*,owner,needsWaiver,GAP-MEET,"R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
+/settings,crm-settings-team-room-save,owner,needsWaiver,GAP-MEET,"R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
+/settings,crm-settings-team-room-team,owner,needsWaiver,GAP-MEET,"R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
+/settings/assignment,crm-assign-sim-field,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/settings/assignment,crm-assign-sim-field-value,"manager,owner",needsWaiver,R5-REC,R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)
+/settings/email,crm-email-domain-refresh,"manager,owner",needsWaiver,R4-1,R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived
+/settings/objects,object-archive-confirm-key,owner,PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/settings/objects,object-archive-reason,owner,PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/settings/objects,object-restore-btn,owner,PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/settings/objects,objects-archived-toggle,owner,PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/settings/pipelines,pl-restore-*,owner,PRESSED (fixture/opener) + needsProbe,FIXED,R5 REQUIRE / it6 fixture
+/settings/stages,settings-stages-create-link,owner,needsWaiver,R4-2G,R4 ruling 2 — ACCEPTABLE GAP (LOW)

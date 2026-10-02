@@ -1,0 +1,16 @@
+{
+  "_doc": "c42b it7 — reviewer rulings for hidden-row absences that cannot be paired in the same run (crm-C4.2-review.md 'Re-review after run5', R4 ruling 2). verdict.py --waivers: an unpaired row listed here stays a pass and is printed with its ruling; any other unpaired row (not LOCKOUT-PAIRED) is VACUOUS and FAILS. activity-row-company-link is NOT listed: it must pair (it6 fixture).",
+  "crm-ai-proposal-deal-*": "R4-2 WAIVE — shown transitively: openers crm-ai-home-at-risk / crm-ai-proposal-edit hidden-absent for nok/thana and paired",
+  "crm-ai-proposal-next-step-input": "R4-2 WAIVE — shown transitively (same openers)",
+  "crm-merge-choice": "R4-2 WAIVE — opener contact-menu-merge is paired hidden",
+  "pos-deal-select": "R4-2 WAIVE — qc-crm-c2.7 S5.4/S9.8 (deal list empty without crm.deal.update/read; select renders only when non-empty)",
+  "crm-panel-deal": "R4-2 ACCEPTABLE GAP (LOW) — briefFor filters by dealWhere (brief.ts:56)",
+  "crm-panel-retry": "R4-2 ACCEPTABLE GAP — error-state button, no data",
+  "crm-object-tab-obj-*": "R4-2 ACCEPTABLE GAP (LOW) — tabsFor returns zero records without crm.record.read",
+  "crm-home-stale-banner": "R4-2 ACCEPTABLE GAP (LOW) — count banner",
+  "crm-hub-switch-link": "R4-2 ACCEPTABLE GAP — v1 hub surface (ruling D4)",
+  "deals-empty-create-pipeline": "R4-2 ACCEPTABLE GAP — only a shop with no pipeline; destination gated and paired",
+  "deal-new-create-pipeline": "R4-2 ACCEPTABLE GAP — only a shop with no pipeline; destination gated and paired",
+  "objects-index-settings-link": "R4-2 ACCEPTABLE GAP — destination gated and paired",
+  "member-view-team": "R4-2 ACCEPTABLE GAP — member module surface"
+}
