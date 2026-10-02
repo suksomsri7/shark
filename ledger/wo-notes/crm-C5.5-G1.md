@@ -174,3 +174,42 @@ qc-ai-phase-b2 · qc-ai-tools2 · qc-kb · qc-ai-wave5b. Only qc-account-api-ai-
 - Proposal tools now need the caller's own confirm key: a STAFF can no longer "propose for the owner to confirm" (the card summary
   read data of that module). Keep, or allow proposing with confirm left to others for kinds whose summary reads nothing?
 - R1 (per-user AI conversations) and R9 (mask phones in legacy member tools).
+
+## Round 2 (review `crm-C5.5-G1-review.md` · F2 F4 F5 F6 F7 · F1/F3 and the owner questions not in this round)
+
+| finding | change |
+|---|---|
+| F2 MED | `tool-access.ts`: branch tools (`today_appointments` `queue_waiting` `shop_pending_orders` `rental_active` `restaurant_today` `ticket_event_sales`) are `branchScoped` — an actor with **no usable branch** (`actorBranches(actor)` = `[]`: the scheduled job, a member with `unitAccess []`, same rule as `canAccessUnit`) is **refused and not offered** (text says it is not "no data"). `approvals_pending` is `needsPerson` — refused/not offered to the system actor (no approver identity); humans keep it (their list is truthful). `tools.ts` `unitWhere` now reads the same `actorBranches`. Scheduled-task identity unchanged (least-privileged); no creator tracking. |
+| F6 | `actorProblem(ctx)` (actor.ts) = the one first gate: missing / unknown kind / other tenant / non-genuine system actor ⇒ refusal. Used by `runTool`, by a wrapper on every registry entry (`toolRegistry()` = `registryTools().map(guarded)`), and inside the four module adapters (they can be called directly: `crmTools()` …) — no widest-read-set fallback anywhere. The tolerant `!actor` branches of round 1 were removed. API-key actors now pass an explicit key viewer to the member and CRM runners (`keyPermissions(scopes)`, no userId) so neither consults the request cookie (CRM refuses: no human). |
+| F5 | `AiSystemActor` has no rights field any more; rights come from the job name, and only objects built by `aiSystemActor()` count (module-private `WeakSet`, object frozen). A literal `{ kind: "system", membership: OWNER }` ⇒ `actorProblem` refusal; `aiActorMembership` returns null for it. |
+| F4 | `GET /api/v1/ai/skills` (core list + skills + toolCount) and `/skills/[id]` filter with `toolVerdict(aiApiKeyActor(auth), name)` after the existing `skillToolsForApiKey`. `POST /api/v1/ai/tools/[name]` runs `toolVerdict` before anything (before opening a conversation) and answers **403 `{ error }`** — the route's other refusals are 403. Hotfix/apiv1-scope: same three files, each change is one extra filter/guard next to the hotfix's `generalToolGate` lines → small textual conflict, no semantic conflict. |
+| F7 | `member_count` is `memberWholeShop`: refused to callers the member module treats as branch-limited (`isUnitScoped`), unchanged for shop-wide readers. |
+
+ORACLE-EDIT r2 (direct `AiTool.execute` without an actor now refuses): `qc-crm-c1.10` S6.3 (the OWNER of T proposes `crm_create_deal`) and
+S10.2 (the OWNER of TB runs legacy `crm_create_lead`) pass an explicit OWNER actor; **X2.6 deliberately keeps no actor** — it asserts the
+fail-closed answer and still passes. `qc-ai-automation` (2 calls) and `qc-kb-auto` (1 call) pass `qcOwner(t.id)` (qc-kb-auto loads
+`.env.local` — not run).
+
+Probe `scripts/pending/cf9/probe-cf9-g1-r2.mts`: **RED 7/18 on fdf3cd36 src** (R2.1–R2.5 · R6.1 · R6.2 · R5.1 · R4.1 · R4.2 · R7.1;
+log `/tmp/cf9-logs/r2-red.log`) → **GREEN 18/18** (`r2-green1.log`). Positive controls P2.1 P4.1 P5.1 P6.1 P7.1 green on both trees.
+
+Verification r2 (QC3 · iso.sh + gate lock · one at a time · `/tmp/cf9-logs/v3.summary` = full run on the r2 tree, then
+`v4.summary` = the subset re-run after the refusal texts were reworded to name the missing right — "คุณไม่มีสิทธิ์…: … (ไม่ได้แปลว่าไม่มีข้อมูล)"):
+
+| check | r2 |
+|---|---|
+| `pnpm typecheck` (5 GB heap) | exit 0 (v3, v4) |
+| probe-cf9-g1 (round 1) · probe-cf9-g1-r2 | 47/47 · 18/18 (v3, v4) |
+| reviewer probe-cf9-g1-review | **15/18** — S1.3 and A1.4 flipped green; red = R1.1 R1.2 R1.3 only = F1 (shared AI conversations), out of this round **by design** (own card). Its info lines now read: A1.5 refusal = HTTP 403 · D1.1 execute without actor → error · D1.2 forged system literal → refused |
+| probe-cf8-mobile · probe-cf8-actions · probe-cf8-review | 8/8 · 9/9 · 18/19 (X1.3 no longer reproduces — as round 1) |
+| qc-mobile-authz-hotfix · qc-automation-authz-hotfix · qc-payment-authz-hotfix | 12/12 · 12/12 · 8/8 |
+| qc-crm-c3.4 · qc-crm-c1.7 · qc-crm-c2.11 | 53/53 · 57/57 · 47/47 |
+| qc-crm-c1.10 (S6.3 · S10.2 ORACLE-EDIT, X2.6 no actor) | 66/67 — only H.1 (HTTP :3215), same as 5ebea63f |
+| qc-ai-automation (ORACLE-EDIT) | 4/4 |
+| qc-account-api-ai-skill | 23/33 — same ten ids as 5ebea63f (acc-v2 seed) |
+| qc-account-api-ai-external · qc-kanban-k1.15 · qc-member-m1.11 · qc-member-m3.10 | CRASH · 29/30 · 24/26 · 6/21 — identical to 5ebea63f (env) |
+| gen-{crm,member,kanban,account}-api-docs --check | exit 0 ×4 |
+| fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 (F10 green) |
+
+Not verified r2: `qc-kb-auto` (ORACLE-EDIT, loads `.env.local`); a member with `unitAccess []` losing the branch tools is the web rule
+(`requireUnit`) but may surprise shops whose STAFF rows store `[]` — count them on prod read-only before release if wanted.

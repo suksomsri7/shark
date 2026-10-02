@@ -24,12 +24,12 @@
 
 import { evaluate, type MembershipCtx } from "@/lib/core/rbac";
 import { crmCan, crmApi } from "@/lib/modules/crm";
-import { canReadMember, hasMemberPerm, toMemberActor } from "@/lib/modules/member/access";
+import { canReadMember, hasMemberPerm, isUnitScoped, toMemberActor } from "@/lib/modules/member/access";
 import { membershipCanAccount } from "@/lib/modules/account/api/actor";
 import { memberToolScope } from "@/lib/modules/member/api/tools";
 import { accountToolScope } from "./account-ops";
 import { kanbanMembershipCan, kanbanToolScope } from "./kanban-ops";
-import { isGeneralKeyActor, type AiActor, type AiApiKeyActor } from "./actor";
+import { aiActorMembership, isGeneralKeyActor, type AiActor, type AiApiKeyActor } from "./actor";
 import { kindAccessOf } from "./proposals";
 import { toolAllowedForApiKey } from "./skills";
 
@@ -45,7 +45,18 @@ type HandRule = {
   scopedData?: true;
   /** เขียนทันทีไม่ผ่านข้อเสนอ ⇒ คีย์ API ใช้ไม่ได้ทุกใบ (หัว route `/api/v1/ai/tools`: "AI ภายนอกเปลี่ยนข้อมูลร้านเองไม่ได้เลย") */
   writesNow?: true;
+  /**
+   * r2 (F2) ข้อมูลแยกตามสาขา (ประตูเว็บ `requireUnit`) ⇒ ผู้กระทำที่ไม่มีสาขาใดเปิดได้เลย = **ปฏิเสธ + ไม่ยื่น**
+   * ("ไม่มีสิทธิ์" ต้องไม่ดูเหมือน "ไม่มีข้อมูล" — งานประจำเคยประกาศ "วันนี้ไม่มีนัด" ให้ทั้งร้านทั้งที่มีนัด)
+   */
+  branchScoped?: true;
+  /** r2 (F2) แถวที่เห็นขึ้นกับ "ตัวคน" (ผู้อนุมัติ) ⇒ งานภายในที่ไม่มีตัวคน = ปฏิเสธ + ไม่ยื่น */
+  needsPerson?: true;
+  /** r2 (F7) ตัวเลขรวมทั้งระบบสมาชิก ⇒ ต้องอ่านสมาชิกได้ทั้งร้าน (ผู้ถูกจำกัดสาขาตาม `isUnitScoped` ของโมดูลสมาชิก = ปฏิเสธ) */
+  memberWholeShop?: true;
 };
+
+const BRANCH: HandRule = { needs: [], branchScoped: true };
 
 const OPEN: HandRule = { needs: [] };
 
@@ -71,18 +82,18 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   kb_search: OPEN, // /app/kb
   reward_list_redemptions: OPEN, // reward/history (ระบบแลกรางวัลรุ่นเดิม)
   // ── อ่าน · ประตูเว็บไม่มีคีย์ แต่ผูกสาขา (requireUnit) ⇒ กรองสาขาในเครื่องมือ ──
-  today_appointments: OPEN,
-  queue_waiting: OPEN,
-  shop_pending_orders: OPEN,
-  rental_active: OPEN,
-  restaurant_today: OPEN,
-  ticket_event_sales: OPEN,
+  today_appointments: BRANCH,
+  queue_waiting: BRANCH,
+  shop_pending_orders: BRANCH,
+  rental_active: BRANCH,
+  restaurant_today: BRANCH,
+  ticket_event_sales: BRANCH,
   // ── อ่าน · ประตูเว็บกรองรายแถวด้วยผู้อนุมัติ (approval/service listPending) ──
-  approvals_pending: OPEN,
+  approvals_pending: { needs: [], needsPerson: true },
   // ── อ่าน · มีคีย์ ──
   upcoming_schedule: { needs: [{ module: "calendar", action: "calendar.event.read" }] }, // /app/calendar (+ วันลาต้อง hr.leave.read)
   chat_unread_conversations: { needs: [{ module: "chat", action: "chat.conversation.read" }] }, // chat/guard requireChatRead
-  member_count: { needs: [{ module: "member", action: "member.customer.read" }], scopedData: true },
+  member_count: { needs: [{ module: "member", action: "member.customer.read" }], scopedData: true, memberWholeShop: true },
   customer_search: { needs: [{ module: "member", action: "member.customer.read" }], scopedData: true },
   customer_points: { needs: [{ module: "member", action: "member.customer.read" }], scopedData: true },
   financial_summary: { needs: [{ module: "account", action: "account.report.view" }], scopedData: true },
@@ -211,7 +222,18 @@ export function toolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?
     return isGeneralKeyActor(actor) ? OK : DENY_KEY; // propose_plan
   }
 
+  const m = aiActorMembership(actor);
+  if (!m) return { ok: false, reason: "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้" }; // งานภายในปลอม (r2 F5)
   const userId = actor.kind === "member" ? actor.userId : "";
+  if (hand?.branchScoped && actorBranches(actor)?.length === 0) {
+    return { ok: false, reason: "คุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้: ข้อมูลแยกตามสาขา และบัญชีนี้ยังไม่ได้รับสิทธิ์สาขาใดเลย (ไม่ได้แปลว่าไม่มีข้อมูล) — ขอให้เจ้าของร้านกำหนดสาขาให้ก่อน" };
+  }
+  if (hand?.needsPerson && actor.kind !== "member") {
+    return { ok: false, reason: "งานอัตโนมัติไม่มีสิทธิ์ดูรายการนี้: รายการรออนุมัติขึ้นกับว่าใครเป็นผู้อนุมัติ (ไม่ได้แปลว่าไม่มีรายการรออนุมัติ)" };
+  }
+  if (hand?.memberWholeShop && isUnitScoped(toMemberActor(userId, m))) {
+    return { ok: false, reason: "คุณไม่มีสิทธิ์ดูตัวเลขนี้: จำนวนสมาชิกเป็นตัวเลขรวมทั้งร้าน แต่บัญชีนี้เห็นสมาชิกเฉพาะบางสาขา — ค้นสมาชิกรายคนได้ตามปกติ" };
+  }
   const needs: readonly AccessQuery[] = hand
     ? hand.needs
     : kind
@@ -220,7 +242,7 @@ export function toolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?
         ? [mod, ...(EXTRA_MODULE_TOOL_NEEDS[name] ?? [])]
         : [];
   for (const q of needs) {
-    if (!membershipCan(actor.membership, q, userId)) return denyMember(q);
+    if (!membershipCan(m, q, userId)) return denyMember(q);
   }
   return OK;
 }
@@ -233,7 +255,21 @@ export function actorCanConfirmKind(actor: AiActor, kind: string): boolean {
     // คีย์: kind ของโมดูลที่มีทะเบียน = เครื่องมือของทะเบียน (route + toolVerdict ตรวจ scope แล้ว) · kind เขียนมือ = คีย์กลางเท่านั้น
     return SCOPED_MODULES.has(q.module) ? false : isGeneralKeyActor(actor);
   }
-  return membershipCan(actor.membership, q, actor.kind === "member" ? actor.userId : "");
+  const m = aiActorMembership(actor);
+  return !!m && membershipCan(m, q, actor.kind === "member" ? actor.userId : "");
+}
+
+/**
+ * สาขาที่ผู้กระทำเปิดได้ — ประตูเว็บของโมดูลแกนสาขา (นัด/คิว/ร้านค้า/เช่า/ร้านอาหาร/ตั๋ว) = `requireUnit` → `canAccessUnit`
+ * null = ไม่จำกัด (OWNER · unitAccess "*" · คีย์ API = ระดับร้านแบบ REST รุ่นเดิมที่วนทุกสาขา) · [] = ไม่มีสาขาใดเลย (⇒ ปฏิเสธที่ toolVerdict)
+ * (ความหมายเดียวกับ `canAccessUnit` ของ rbac ทุกกรณี — tools.ts ทำเป็น where เพื่อนับ/รวมยอดในฐานข้อมูล)
+ */
+export function actorBranches(actor: AiActor): string[] | null {
+  if (actor.kind === "apiKey") return null;
+  const m = aiActorMembership(actor);
+  if (!m) return [];
+  if (m.role === "OWNER" || m.unitAccess.includes("*")) return null;
+  return [...m.unitAccess];
 }
 
 /** ชื่อเครื่องมือที่ผู้กระทำนี้ใช้ได้ (ตัวกรองของการยื่นเครื่องมือ) */

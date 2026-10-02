@@ -32,13 +32,13 @@ import { rememberFact, forgetMemory, listMemories } from "./memory";
 import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
-import { aiActorUserId, type AiActor } from "./actor";
+import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
 import { actorCanConfirmKind, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
 import { toMemberActor } from "@/lib/modules/member/access";
 import { listPending as approvalListPending } from "@/lib/modules/approval/service";
-import { membershipCan } from "./tool-access";
+import { actorBranches, membershipCan } from "./tool-access";
 
 export type ToolCtx = {
   tenantId: string;
@@ -82,19 +82,11 @@ async function findSystem(tenantId: string, type: SystemType): Promise<{ id: str
 // ── CRM C5.5-G1 ▸ ขอบเขตรายแถวของผู้กระทำ (ด่านคีย์อยู่ที่ runTool → tool-access.ts) ──
 
 /**
- * สาขาที่ผู้กระทำเปิดได้ — ประตูเว็บของโมดูลแกนสาขา (นัด/คิว/ร้านค้า/เช่า/ร้านอาหาร/ตั๋ว) = `requireUnit` → `canAccessUnit`
- * null = ไม่จำกัด (OWNER · unitAccess "*" · คีย์ API = ระดับร้านแบบ REST รุ่นเดิมที่วนทุกสาขา) · [] = ไม่มีสาขาใดเลย
- * (ความหมายเดียวกับ `canAccessUnit` ของ rbac ทุกกรณี — ทำเป็น where เพื่อให้นับ/รวมยอดในฐานข้อมูลได้)
+ * สาขาที่ผู้กระทำเปิดได้ (`actorBranches` ของ tool-access — ตัวเดียวกับด่านที่ปฏิเสธผู้ที่ไม่มีสาขาเลย) เป็น where
+ * null = ไม่จำกัด · รายการ = เฉพาะสาขาเหล่านั้น (ไม่มีสาขาเลย = ถูกปฏิเสธที่ด่านก่อนถึงตรงนี้ — r2 F2)
  */
-function unitScope(actor: AiActor): string[] | null {
-  if (!actor) return []; // เรียก execute ตรง ๆ โดยไม่มี actor (ข้าม runTool) = ไม่มีสาขาใดเลย (ปิดไว้ก่อน)
-  if (actor.kind === "apiKey") return null;
-  const m = actor.membership;
-  if (m.role === "OWNER" || m.unitAccess.includes("*")) return null;
-  return [...m.unitAccess];
-}
 const unitWhere = (actor: AiActor): { unitId?: { in: string[] } } => {
-  const s = unitScope(actor);
+  const s = actorBranches(actor);
   return s === null ? {} : { unitId: { in: s } };
 };
 
@@ -104,7 +96,7 @@ const unitWhere = (actor: AiActor): { unitId?: { in: string[] } } => {
  * คีย์ API = ไม่มีแถว (เครื่องมือรุ่นแรกของสมาชิกปิดให้คีย์ทุกใบ — AUDIT H1) · แถวที่ไม่ผูกระบบสมาชิก = ตัดสินไม่ได้ ⇒ ซ่อน
  */
 async function visibleMembers<T extends { id: string; memberSystemId: string | null }>(actor: AiActor, tenantId: string, rows: T[]): Promise<T[]> {
-  if (actor && actor.kind !== "apiKey" && actor.membership.role === "OWNER") return rows;
+  if (aiActorMembership(actor)?.role === "OWNER") return rows;
   const viewer = memberActorOf(actor);
   if (!viewer || rows.length === 0) return [];
   const bySystem = new Map<string, string[]>();
@@ -138,8 +130,8 @@ async function visibleCrmLeads(actor: AiActor, tenantId: string, limit: number) 
 
 /** ผู้กระทำที่เป็นคน/งานภายใน → MemberActor ของโมดูลสมาชิก/CRM · คีย์ API = null (เครื่องมือเขียนมือของ 2 โมดูลนี้ปิดให้คีย์แล้ว) */
 function memberActorOf(actor: AiActor) {
-  if (!actor || actor.kind === "apiKey") return null;
-  const m = actor.membership;
+  const m = aiActorMembership(actor);
+  if (!m) return null;
   return toMemberActor(aiActorUserId(actor) ?? "", { role: m.role, unitAccess: m.role === "OWNER" ? ["*"] : m.unitAccess, permissions: m.permissions });
 }
 
@@ -1453,10 +1445,11 @@ const chatUnreadConversations: AiTool = {
   async execute(ctx) {
     // CRM C5.5-G1 ▸ ด่านคีย์ chat.conversation.read อยู่ที่ runTool · สาขา = `unitAccessWhere` ของแชท (ตัวเดียวกับกล่องแชท M11)
     //   OWNER/คีย์ API = ทั้งร้าน · import แบบ lazy: บริการแชทไม่ต้องเข้ากราฟของทะเบียน (F10 โหมดไร้ env) ◂
+    const cm = aiActorMembership(ctx.actor);
     const chatUnitWhere =
-      ctx.actor.kind === "apiKey" || ctx.actor.membership.role === "OWNER"
+      ctx.actor.kind === "apiKey" || cm?.role === "OWNER"
         ? {}
-        : (await import("@/lib/modules/chat/service")).unitAccessWhere(ctx.actor.membership.unitAccess);
+        : (await import("@/lib/modules/chat/service")).unitAccessWhere(cm?.unitAccess ?? []);
     const convs = await prisma.chatConversation.findMany({
       where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
@@ -1750,7 +1743,9 @@ const approvalsPending: AiTool = {
     const mine =
       actor.kind === "apiKey"
         ? null
-        : new Set((await approvalListPending({ tenantId: ctx.tenantId }, { ...actor.membership, userId: aiActorUserId(actor) ?? "" })).map((r) => r.id));
+        : new Set(
+            (await approvalListPending({ tenantId: ctx.tenantId }, { ...(aiActorMembership(actor) ?? { role: "STAFF" as const, unitAccess: [], permissions: {} }), userId: aiActorUserId(actor) ?? "" })).map((r) => r.id),
+          );
     const rows = mine ? all.filter((r) => mine.has(r.id)) : all;
     const byType = new Map<string, { เอกสาร: string; ยอดบาท: number | null; วันที่: string | null }[]>();
     for (const r of rows) {
@@ -2067,7 +2062,8 @@ const upcomingSchedule: AiTool = {
     const to = new Date(from.getTime() + days * 86_400_000);
     // CRM C5.5-G1 ▸ ประตูเว็บ = ปฏิทิน (`calendar.event.read` ที่ runTool) · นัด/เข้าพักกรองสาขาด้วย filterAccessibleUnitIds
     //   ความหมายเดียวกัน (unitWhere) · วันลาต้องมี `hr.leave.read` เพิ่ม (calendar/service ตัวเดียวกัน) — ไม่มี = ไม่ดึงเลย ◂
-    const seesLeaves = ctx.actor.kind === "apiKey" || membershipCan(ctx.actor.membership, { module: "hr", action: "hr.leave.read" });
+    const lm = aiActorMembership(ctx.actor);
+    const seesLeaves = ctx.actor.kind === "apiKey" || (!!lm && membershipCan(lm, { module: "hr", action: "hr.leave.read" }));
     const [appts, stays, leaves] = await Promise.all([
       prisma.appointment.findMany({
         where: { tenantId: ctx.tenantId, status: { notIn: ["CANCELLED", "NO_SHOW"] }, startAt: { gte: from, lt: to }, ...unitWhere(ctx.actor) },
@@ -2393,7 +2389,21 @@ async function employeeNameForLeave(tenantId: string, leaveId: string): Promise<
   }
 }
 
+// CRM C5.5-G1 r2 (F6) ▸ ทุกเครื่องมือในทะเบียนถูกห่อด้วยด่าน actor: ใครเรียก `execute` ตรง ๆ (ข้าม runTool) โดยไม่มี actor ที่ใช้ได้
+//   = ได้ข้อความปฏิเสธ ไม่มีทางถอยไปอ่านด้วยชุดกว้าง (adapter ของ 4 โมดูลตรวจซ้ำในตัวเองด้วย — crmTools() ฯลฯ ถูกเรียกตรงได้) ◂
+const guarded = (t: AiTool): AiTool => ({
+  ...t,
+  async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+    const bad = actorProblem(ctx);
+    return bad ? JSON.stringify({ error: bad }) : t.execute(ctx, args);
+  },
+});
+
 export function toolRegistry(): AiTool[] {
+  return registryTools().map(guarded);
+}
+
+function registryTools(): AiTool[] {
   return [
     // read-only (8)
     listSystems,
@@ -2485,10 +2495,9 @@ export function toolRegistry(): AiTool[] {
 export async function runTool(ctx: ToolCtx, name: string, args: unknown): Promise<string> {
   const tool = toolRegistry().find((t) => t.def.name === name);
   if (!tool) return JSON.stringify({ error: `ไม่รู้จักเครื่องมือ "${name}"` });
-  const actor = (ctx as { actor?: unknown }).actor as AiActor | undefined;
-  if (!actor || typeof actor !== "object" || !["member", "apiKey", "system"].includes(actor.kind) || actor.tenantId !== ctx.tenantId) {
-    return JSON.stringify({ error: "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้" });
-  }
+  const bad = actorProblem(ctx);
+  if (bad) return JSON.stringify({ error: bad });
+  const actor = ctx.actor;
   try {
     const crmLegacyLead =
       actor.kind === "apiKey" && name === crmApi.LEGACY_CRM_LEAD_TOOL_DEF.name ? await crmApi.crmLegacyLeadOpen(ctx.tenantId, ctx.systemId ?? null) : false;

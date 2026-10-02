@@ -45,8 +45,8 @@ export type AiSystemActor = {
   kind: "system";
   tenantId: string;
   job: AiSystemJob;
-  /** สิทธิ์ที่งานนี้ใช้ — ตั้งจากชื่องานเท่านั้น (ผู้เรียกกำหนดเองไม่ได้) */
-  membership: MembershipCtx;
+  // CRM C5.5-G1 r2 (F5) ▸ ไม่มีช่องสิทธิ์ในตัว actor: สิทธิ์อ่านจากชื่องาน (`SYSTEM_JOB_MEMBERSHIP`) และนับเฉพาะ actor ที่
+  //   `aiSystemActor()` สร้างจริง (ทะเบียน WeakSet ภายในไฟล์นี้) — object ที่เขียนมือเอง `{ kind: "system", … }` = ปฏิเสธเสมอ ◂
 };
 
 export type AiActor = AiMemberActor | AiApiKeyActor | AiSystemActor;
@@ -81,23 +81,52 @@ export function aiApiKeyActor(k: { tenantId: string; keyId: string; scopes: stri
   return { kind: "apiKey", tenantId: k.tenantId, keyId: k.keyId, scopes: [...k.scopes], systemId: k.systemId };
 }
 
+/** actor ของงานภายในที่ไฟล์นี้สร้างจริง — ตัวอื่น (เขียน object เอง) ไม่ได้สิทธิ์อะไรเลย */
+const GENUINE_SYSTEM_ACTORS = new WeakSet<object>();
+
 /** งานภายใน — ชื่องานต้องอยู่ใน `AI_SYSTEM_JOBS` (สิทธิ์ผูกกับชื่องาน ไม่ใช่ผู้เรียก) */
 export function aiSystemActor(tenantId: string, job: AiSystemJob): AiSystemActor {
-  const m = SYSTEM_JOB_MEMBERSHIP[job];
-  return { kind: "system", tenantId, job, membership: { role: m.role, unitAccess: [...m.unitAccess], permissions: { ...m.permissions } } };
+  const a: AiSystemActor = Object.freeze({ kind: "system" as const, tenantId, job });
+  GENUINE_SYSTEM_ACTORS.add(a);
+  return a;
 }
 
 /**
  * Membership ที่ใช้ตัดสินสิทธิ์ของคน/งานภายใน · คีย์ API = null (ตัดสินด้วย scope)
- * ไม่มี actor (เรียก `AiTool.execute` ตรง ๆ ข้าม runTool — ข้อสอบ/โค้ดภายใน) = null ⇒ ตัวรันของโมดูลใช้ทางเดิม (CRM: ไม่รู้ว่าใคร = ปฏิเสธ)
+ * งานภายใน = สิทธิ์ตายตัวของชื่องาน **เฉพาะ actor ที่ aiSystemActor สร้าง** · ของปลอม = null (ไม่มีสิทธิ์)
  */
-export function aiActorMembership(a: AiActor | null | undefined): MembershipCtx | null {
-  return !a || a.kind === "apiKey" ? null : a.membership;
+export function aiActorMembership(a: AiActor): MembershipCtx | null {
+  if (a.kind === "member") return a.membership;
+  if (a.kind === "system") {
+    const m = GENUINE_SYSTEM_ACTORS.has(a) && Object.prototype.hasOwnProperty.call(SYSTEM_JOB_MEMBERSHIP, a.job) ? SYSTEM_JOB_MEMBERSHIP[a.job] : null;
+    return m ? { role: m.role, unitAccess: [...m.unitAccess], permissions: { ...m.permissions } } : null;
+  }
+  return null;
 }
 
-/** userId ของคนจริง (ประวัติ/การมองเห็นแบบ "ของฉัน") — คีย์/งานภายใน/ไม่มี actor = null */
-export function aiActorUserId(a: AiActor | null | undefined): string | null {
-  return a?.kind === "member" ? a.userId : null;
+/** userId ของคนจริง (ประวัติ/การมองเห็นแบบ "ของฉัน") — คีย์/งานภายใน = null */
+export function aiActorUserId(a: AiActor): string | null {
+  return a.kind === "member" ? a.userId : null;
+}
+
+/**
+ * CRM C5.5-G1 r2 (F6) ▸ ด่านแรกของทุกเครื่องมือ (runTool + ตัวห่อทุกตัวในทะเบียน + adapter ของ 4 โมดูล):
+ *   ไม่มี actor · ชนิดไม่รู้จัก · คนละร้าน · งานภายในที่ไม่ได้สร้างจาก aiSystemActor ⇒ ข้อความปฏิเสธ (ปิดไว้ก่อน — ไม่มีทางถอยไปชุดอ่านกว้าง)
+ *   ผ่าน = null
+ */
+export function actorProblem(ctx: { tenantId: string; actor?: unknown }): string | null {
+  const a = ctx.actor as AiActor | undefined;
+  const bad = "ไม่ทราบว่าใครเป็นผู้ใช้เครื่องมือนี้ จึงยังทำรายการให้ไม่ได้";
+  if (!a || typeof a !== "object" || a.tenantId !== ctx.tenantId) return bad;
+  if (a.kind === "member") return a.membership && typeof a.userId === "string" ? null : bad;
+  if (a.kind === "apiKey") return Array.isArray(a.scopes) ? null : bad;
+  if (a.kind === "system") return aiActorMembership(a) ? null : bad;
+  return bad;
+}
+
+/** scope ของคีย์ → permissions แบบตรงตัว (ไม่มี wildcard) — ผู้ดูของคีย์ที่ส่งให้ตัวรันของโมดูลสมาชิก/CRM */
+export function keyPermissions(scopes: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(scopes.map((s) => [s, true]));
 }
 
 /**

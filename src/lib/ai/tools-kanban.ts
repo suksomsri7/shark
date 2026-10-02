@@ -17,7 +17,7 @@ import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
 import { prisma } from "@/lib/core/db";
 import { visibleBoardsWhere } from "@/lib/modules/kanban/access";
-import { aiActorMembership, aiActorUserId } from "./actor";
+import { actorProblem, aiActorMembership, aiActorUserId } from "./actor";
 
 /** สถานะที่ตอบกลับเมื่อข้อเสนอถูกสร้างแล้วและกำลังรอคนกดยืนยัน (รูปแบบเดียวกับ action tool ทุกตัว) */
 const pendingConfirmation = "user_confirm" as const;
@@ -32,6 +32,9 @@ export function kanbanTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      // CRM C5.5-G1 r2 (F6) ▸ ไม่มี actor ที่ใช้ได้ = ปฏิเสธ (ไม่ถอยไปชุดอ่านกว้าง/คุกกี้ของคำขอ) ◂
+      const bad = actorProblem(ctx);
+      if (bad) return JSON.stringify({ error: bad });
       const m = aiActorMembership(ctx.actor);
       const outcome = await runKanbanTool(ctx.tenantId, info.name, args, {
         ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
@@ -96,6 +99,8 @@ function legacyMyTasks(description: string): AiTool {
       },
     },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      const bad = actorProblem(ctx); // CRM C5.5-G1 r2 (F6) ◂
+      if (bad) return JSON.stringify({ error: bad });
       const kanban = await prisma.appSystem.findFirst({ where: { tenantId: ctx.tenantId, type: "KANBAN", active: true }, select: { id: true } });
       if (!kanban) return JSON.stringify({ error: "ร้านนี้ยังไม่ได้เปิดระบบบอร์ดงาน (Kanban)" });
       const assignee = String((args as { assignee?: unknown } | null)?.assignee ?? "").trim();

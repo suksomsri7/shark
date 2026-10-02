@@ -12,6 +12,7 @@ import { accountToolScope } from "@/lib/ai/account-ops";
 import { prisma } from "@/lib/core/db";
 import { crmApi } from "@/lib/modules/crm";
 import { aiApiKeyActor } from "@/lib/ai/actor";
+import { toolVerdict } from "@/lib/ai/tool-access";
 
 const HEADER_SYSTEM = "x-shark-system";
 
@@ -50,6 +51,12 @@ export async function POST(
   }
   const systemId = auth.systemId ?? headerSystem;
 
+  // CRM C5.5-G1 r2 (F4) ▸ ด่านเดียวกับ executor (tool-access) ก่อนแตะอะไร — ไม่ผ่าน = 403 แบบเดียวกับการปฏิเสธอื่นของ route นี้
+  //   (เดิม 200 + error ข้างใน · และไม่เปิดห้องแชทเปล่าให้คำขอที่ทำไม่ได้) ◂
+  const actor = aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId });
+  const verdict = toolVerdict(actor, name, { crmLegacyLead });
+  if (!verdict.ok) return apiJson({ error: verdict.reason }, 403);
+
   let body: { args?: unknown; conversationId?: string };
   try {
     body = (await req.json()) as typeof body;
@@ -71,7 +78,7 @@ export async function POST(
   const result = await runTool(
     {
       tenantId: auth.tenantId,
-      actor: aiApiKeyActor({ tenantId: auth.tenantId, keyId: auth.keyId, scopes: auth.scopes, systemId: auth.systemId }),
+      actor,
       ...(conversationId ? { conversationId } : {}),
       ...(systemId ? { systemId } : {}),
     },

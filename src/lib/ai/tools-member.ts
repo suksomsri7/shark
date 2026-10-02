@@ -20,7 +20,7 @@ import { memberToolInfos, runMemberTool } from "@/lib/modules/member/api/tools";
 import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
 import { createProposal, type ProposalKind } from "./proposals";
 import type { AiTool, ToolCtx } from "./tools";
-import { aiActorMembership, aiActorUserId } from "./actor";
+import { actorProblem, aiActorMembership, aiActorUserId, keyPermissions } from "./actor";
 
 /** สถานะที่ตอบกลับเมื่อข้อเสนอถูกสร้างแล้วและกำลังรอคนกดยืนยัน (รูปแบบเดียวกับ action tool ทุกตัว) */
 const pendingConfirmation = "user_confirm" as const;
@@ -35,6 +35,9 @@ export function memberTools(): AiTool[] {
     ...(info.write ? { action: true as const } : {}),
     def: { name: info.name, description: info.description, parameters: info.parameters },
     async execute(ctx: ToolCtx, args: unknown): Promise<string> {
+      // CRM C5.5-G1 r2 (F6) ▸ ไม่มี actor ที่ใช้ได้ = ปฏิเสธ (ไม่ถอยไปชุดอ่านกว้าง/คุกกี้ของคำขอ) ◂
+      const bad = actorProblem(ctx);
+      if (bad) return JSON.stringify({ error: bad });
       // CRM C5.5-G1 ▸ ผู้ถามส่งตรง (เดิมเดาจาก cookie ของคำขอ ⇒ แอป/งานประจำไม่มี session = อ่านด้วยชุดของผู้ช่วยทั้งร้าน) ·
       //   คีย์ API = ไม่ส่ง (ผ่านด่าน scope ของ route + tool-access แล้ว — พฤติกรรมเดิม) ◂
       const m = aiActorMembership(ctx.actor);
@@ -43,6 +46,8 @@ export function memberTools(): AiTool[] {
           tenantId: ctx.tenantId,
           ...(ctx.systemId ? { systemId: ctx.systemId } : {}),
           ...(m ? { userId: aiActorUserId(ctx.actor), role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } : {}),
+          // r2 (F6): คีย์ API = ผู้ดูจาก scope ของคีย์ตรง ๆ (ไม่ปล่อยให้ตัวรันไปเดาจากคุกกี้ของคำขอ)
+          ...(ctx.actor.kind === "apiKey" ? { userId: null, role: "STAFF" as const, unitAccess: ["*"], permissions: keyPermissions(ctx.actor.scopes) } : {}),
         },
         info.name,
         args,
