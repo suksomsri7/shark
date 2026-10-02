@@ -1,0 +1,104 @@
+
+── K0 unref: a script that registers inside a (stub) request scope exits without waiting for the 3 s fallback ──
+  ✅ [K0] a pending fallback timer (unref'd) does not hold a script open for 3 s (exit − end of script < 1500 ms)
+        — ACTUAL end→exit 2 ms · ran=0 · status=0 
+(node:3473212) ExperimentalWarning: The MockTimers API is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── K1 same-millisecond ties (the 'started after the wake' rule is a sequence number, not the clock) ──
+  ✅ [K1.1] out of request, same ms: a wake after the running drain's read is drained by a later drain (no clock advance)
+        — ACTUAL pending=[] reads=2
+  ✅ [K1.2] in request, same ms: B's after() task does not resolve with A's held drain; B's row is drained by a drain started after B's wake
+        — ACTUAL readsAfterA=1 B settled while A held=false B settled=true pending=[] reads=2
+
+── K2 wake between a drain's start and its candidate read ──
+  ✅ [K2] a wake that arrives after a drain started but before it read is still covered (conservatively: one queued re-run)
+        — ACTUAL pending=[] run() calls=2 reads=2
+
+── K3 run() never resolves (hung DB): what happens to later wakes — fix vs bd435157 ──
+  ℹ️  [K3] bd435157: 60 requests over 60 s after a hung drain ⇒ after() tasks=61 · run() calls=61 · drains that read=1 · rows still pending=61 · after() promises unresolved=61/61
+  ℹ️  [K3] fix15: 60 requests over 60 s after a hung drain ⇒ after() tasks=61 · run() calls=1 · drains that read=1 · rows still pending=61 · after() promises unresolved=61/61
+  ✅ [K3] a hung drain blocks later drains on BOTH versions (the real drainOutbox chain serialises) — fix is not worse than bd435157
+        — ACTUAL old reads=1 pending=61 unresolved=61 · new reads=1 pending=61 unresolved=61
+  ℹ️  [K3] neither version has a drain timeout: a drain that never settles holds every later after() promise (waitUntil) in the instance until the platform kills it
+
+── K4 run() rejects ──
+  ✅ [K4] a rejecting run() does not reject the after() task and leaves no stuck running/queued state
+        — ACTUAL bad calls=1 rejected=false next pending=0
+
+── K5 fallback timers: bounded under bursts, cleared on normal requests ──
+  ℹ️  [K5] normal (close 50 ms): 600 wakes / 60 s ⇒ timers created=600 max live=1 live after=0 · drains read=600 · rows left=0
+  ✅ [K5.normal] normal (close 50 ms): live fallback timers stay ≤ 3 at any time and none is left behind; every row drained
+        — ACTUAL maxLive=1 liveAfter=0 pending=0
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ℹ️  [K5] slow (close 5 s): 600 wakes / 60 s ⇒ timers created=20 max live=1 live after=0 · drains read=20 · rows left=0
+  ✅ [K5.slow] slow (close 5 s): live fallback timers stay ≤ 3 at any time and none is left behind; every row drained
+        — ACTUAL maxLive=1 liveAfter=0 pending=0
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ℹ️  [K5] never: 600 wakes / 60 s ⇒ timers created=20 max live=1 live after=0 · drains read=20 · rows left=0
+  ✅ [K5.never] never: live fallback timers stay ≤ 3 at any time and none is left behind; every row drained
+        — ACTUAL maxLive=1 liveAfter=0 pending=0
+
+── K6 exactly-once start ──
+  ✅ [K6.2900] after() task at +2900 ms vs fallback at +3000 ms ⇒ exactly ONE drain; the task returns a promise that settles after that drain
+        — ACTUAL run() calls=1 reads=1 taskSettled=true
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [K6.3000] after() task at +3000 ms vs fallback at +3000 ms ⇒ exactly ONE drain; the task returns a promise that settles after that drain
+        — ACTUAL run() calls=1 reads=1 taskSettled=true
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [K6.3500] after() task at +3500 ms vs fallback at +3000 ms ⇒ exactly ONE drain; the task returns a promise that settles after that drain
+        — ACTUAL run() calls=1 reads=1 taskSettled=true
+
+── K7 sustained traffic: one write+wake every 100 ms for 60 s ──
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ℹ️  [K7] close=50 drain=30ms: OLD after()=600 run()=600 reads=600 left@60s=1 left@80s=0 | NEW after()=600 run()=600 reads=600 left@60s=1 left@80s=0
+  ℹ️  [K7] close=50 drain=300ms: OLD after()=600 run()=600 reads=267 left@60s=5 left@80s=0 | NEW after()=600 run()=201 reads=201 left@60s=5 left@80s=0
+  ℹ️  [K7] close=500 drain=30ms: OLD after()=120 run()=120 reads=120 left@60s=5 left@80s=0 | NEW after()=120 run()=120 reads=120 left@60s=5 left@80s=0
+  ℹ️  [K7] close=never drain=30ms: OLD after()=4 run()=0 reads=0 left@60s=600 left@80s=600 | NEW after()=20 run()=20 reads=20 left@60s=30 left@80s=0
+  ✅ [K7] fix: no more after() registrations and no more drains than bd435157 when tasks start; every row drained in every pattern (incl. tasks that never start)
+        — ACTUAL close=50 drain=30ms: OLD after()=600 run()=600 reads=600 left@60s=1 left@80s=0 | NEW after()=600 run()=600 reads=600 left@60s=1 left@80s=0 ‖ close=50 drain=300ms: OLD after()=600 run()=600 reads=267 left@60s=5 left@80s=0 | NEW after()=600 run()=201 reads=201 left@60s=5 left@80s=0 ‖ close=500 drain=30ms: OLD after()=120 run()=120 reads=120 left@60s=5 left@80s=0 | NEW after()=120 run()=120 reads=120 left@60s=5 left@80s=0 ‖ close=never drain=30ms: OLD after()=4 run()=0 reads=0 left@60s=600 left@80s=600 | NEW after()=20 run()=20 reads=20 left@60s=30 left@80s=0
+
+── K9 two module instances (duplicated bundles) share one state ──
+  ℹ️  [K9] distinct module objects: true
+  ✅ [K9] wakes from a second module instance during a drain of the first ⇒ one queued re-run (shared state), every row drained
+        — ACTUAL distinct=true reads=2 pending=[]
+
+── K10 PENDING_KEY holding the old number shape ──
+  ✅ [K10] an old-shape PENDING_KEY (number) does not suppress or crash a wake
+        — ACTUAL threw=false tasks=1 pending=0
+
+── K11 Date.now jumps back 1 h right after a registration whose task never starts ──
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [K11] a backwards clock jump cannot extend the blackout: the monotonic fallback timer still starts the drain ≤ 3.5 s
+        — ACTUAL second request tasks=0 pending=[] reads=1
+  ℹ️  [K11] after the jump, a new wake registers 1 task(s) and is drained=true
+  ℹ️  [K11] bd435157 under the same jump: `Date.now() - since < 15000` stays true for 1 h ⇒ every wake in the instance is swallowed for an hour (reasoning; not run)
+
+── K12 fallback warning: at most one line per minute ──
+  ✅ [K12] fallback warnings: 1 line in the first minute (12 fallbacks), a second one after 60 s
+        — ACTUAL first minute=1 total=2 · [after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+
+── K13 N9: what the after() task returns ──
+  ✅ [K13.1] normal path: the after() task returns a promise that is still pending while the drain runs and settles when it ends (waitUntil covers the drain)
+        — ACTUAL settled mid-drain=false settled after=true
+[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — draining from the timer
+  ✅ [K13.2] slow path: the late after() task returns the fallback drain's promise (pending until that drain ends) — waitUntil covers the rest of the drain
+        — ACTUAL settled mid=false after=true run() calls=1
+  ℹ️  [K13] never path: nothing awaits the fallback drain (no after() task ever runs) — it is a floating promise; see review RV15 on frozen instances
+
+── K14 out of request ──
+  ✅ [K14] out of request: drain requested synchronously, NO fallback timer created, wakes during it ⇒ one queued re-run, every row drained
+        — ACTUAL immediate=1 timers=0 reads=2 pending=0
+  ℹ️  [K14] bd435157 same pattern: run() calls=4 reads=4 (fix: run() calls=2 reads=2)
+
+── K16 re-entrant wake from inside a running drain ──
+  ✅ [K16] wakes made from inside a drain terminate (no runaway loop) and every row is drained
+        — ACTUAL run() calls=3 reads=3 pending=[]
+
+── K17 registration while the scope's after() queue is already running (Next's real AfterContext) ──
+  ✅ [K17] a registration whose after() callback Next runs synchronously still drains exactly once; the timer armed after it is harmless
+        — ACTUAL drain started synchronously inside after()=true · live timers right after the call=1 · run() calls after 3.5 s=1
+  ℹ️  [K17] stray fallback timer in this path: YES — armed after the task already started (fires 3 s later, returns early, no drain, no warning)
+
+REVIEW checks 22/22 green
+JSON_SUMMARY [["K0",true],["K1.1",true],["K1.2",true],["K2",true],["K3",true],["K4",true],["K5.normal",true],["K5.slow",true],["K5.never",true],["K6.2900",true],["K6.3000",true],["K6.3500",true],["K7",true],["K9",true],["K10",true],["K11",true],["K12",true],["K13.1",true],["K13.2",true],["K14",true],["K16",true],["K17",true]]

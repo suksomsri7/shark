@@ -1,0 +1,60 @@
+(node:3467917) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── C0 control: no background drain of this tenant ──
+  ✅ [C0] control: a row written with no wake stays PENDING for 5 s
+        — ACTUAL {"status":"PENDING","attempts":0}
+
+── R P-it6-2 with Next's real AfterContext ──
+  ✅ [R1] normal: close 100 ms after the action ⇒ rows DONE quickly, waitUntil promises settle, no fallback warning
+        — ACTUAL action ok=true rows=["crm.contact.assigned:DONE","crm.contact.created:DONE"] took=342 ms waitUntil 1/1 settled · candidate reads=2 · warnings=0
+  ✅ [R1.b] normal: no extra (fallback) drain afterwards
+        — ACTUAL warnings=0 candidate reads since=2
+  ✅ [R2] P2 (real Next): the action's after() task can never start ⇒ the fallback drains its rows within ~3 s (≤ 6 s), the action itself succeeds
+        — ACTUAL action ok=true rows=["crm.contact.assigned:DONE","crm.contact.created:DONE"] took=3325 ms · waitUntil registered=1
+  ℹ️  [R2] Next handed waitUntil 1 promise(s) for that scope; settled: 0 (the runCallbacksOnClose promise of a closed scope never settles)
+  ✅ [R5.1] the fallback logged exactly one '[after-drain] fallback drain' line
+        — ACTUAL ["[after-drain] fallback drain: an after() task did not start within 3000 ms of its registration — dra"]
+  ✅ [R3] slow response (close at +6 s): rows DONE before the close (fallback), the late after() task adds no drain and its promise settles
+        — ACTUAL rows=["crm.contact.assigned:DONE","crm.contact.created:DONE"] took=3217 ms · reads after close=0 · waitUntil 1/1
+  ✅ [R5.2] warning throttle: the second fallback within a minute logs no new line
+        — ACTUAL warnings=1
+  ✅ [R4] 8 concurrent create requests ⇒ every contact row DONE within 6 s; drain candidate reads bounded (≤ 2 per request scope that registered)
+        — ACTUAL ok=8/8 rows=16 all DONE=true took=773 ms · scopes that registered after()=8 · candidate reads=6 · warnings=1
+
+── G P-it6-1: attach block vs service, viewer × thread kind ──
+  ℹ️  [G] owner×matched: page=canAttach=false service=CONFLICT gate=true
+  ℹ️  [G] owner×unmatched-co: page=canAttach=true service=NOT_FOUND gate=true
+  ℹ️  [G] owner×unmatched-noco: page=canAttach=true service=NOT_FOUND gate=true
+  ℹ️  [G] mgrall×matched: page=canAttach=false service=CONFLICT gate=true
+  ℹ️  [G] mgrall×unmatched-co: page=canAttach=true service=NOT_FOUND gate=true
+  ℹ️  [G] mgrall×unmatched-noco: page=canAttach=true service=NOT_FOUND gate=true
+  ℹ️  [G] mgrunit×matched: page=canAttach=false service=CONFLICT gate=false
+  ℹ️  [G] mgrunit×unmatched-co: page=canAttach=false service=FORBIDDEN gate=false
+  ℹ️  [G] mgrunit×unmatched-noco: page=404 service=FORBIDDEN gate=false
+  ℹ️  [G] staffall×matched: page=404 service=CONFLICT gate=false
+  ℹ️  [G] staffall×unmatched-co: page=404 service=FORBIDDEN gate=false
+  ℹ️  [G] staffall×unmatched-noco: page=404 service=FORBIDDEN gate=false
+  ✅ [G] for every viewer × thread kind the attach block is shown exactly when the service would not refuse (never to a refused viewer, never hidden from an allowed one); matched threads never show it
+        — ACTUAL 0 inconsistent · owner×matched: page=canAttach=false service=CONFLICT gate=true | owner×unmatched-co: page=canAttach=true service=NOT_FOUND gate=true | owner×unmatched-noco: page=canAttach=true service=NOT_FOUND gate=true | mgrall×matched: page=canAttach=false service=CONFLICT gate=true | mgrall×unmatched-co: page=canAttach=true service=NOT_FOUND gate=true | mgrall×unmatched-noco: page=canAttach=true service=NOT_FOUND gate=true | mgrunit×matched: page=canAttach=false service=CONFLICT gate=false | mgrunit×unmatched-co: page=canAttach=false service=FORBIDDEN gate=false | mgrunit×unmatched-noco: page=404 service=FORBIDDEN gate=false | staffall×matched: page=404 service=CONFLICT gate=false | staffall×unmatched-co: page=404 service=FORBIDDEN gate=false | staffall×unmatched-noco: page=404 service=FORBIDDEN gate=false
+
+── M bulk move: mixed batch by a STAFF member (deal visibility OWN by default) ──
+  ℹ️  [M] staff sees the owner's deal: NOT_FOUND · result={"ok":1,"failed":[{"id":"cmurg03ir0035v1kzr03ayn69","error":"ไม่พบดีลนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่"}],"unchanged":1} · audit=[{"ok":1,"ids":["cmurg03a9002xv1kzg6y64i0y","cmurg03em0031v1kzic9anys2","cmurg03ir0035v1kzr03ayn69"],"failed":1,"reason":"ทดสอบรีวิว","stageId":"cmurg032q002pv1kzpb0k65on","unchanged":1}] · history rows for unchanged/refused=0 · events unchanged=[] refused=[] moved=["crm.deal.stage.changed"] · activities unchanged/refused=0
+  ✅ [M.1] mixed batch: ok counts only the deals that moved, the deal already in the target is 'unchanged', a refused deal (if the viewer cannot see it) is 'failed'
+        — ACTUAL {"ok":1,"failed":[{"id":"cmurg03ir0035v1kzr03ayn69","error":"ไม่พบดีลนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่"}],"unchanged":1} (refused fixture effective=true)
+  ✅ [M.2] one audit row carrying ok / unchanged / failed; no history, outbox event or activity for the unchanged deal (nor for the refused one)
+        — ACTUAL audit=1 histSame=0 histRefused=0 evSame=0 evRefused=0 actsSame=0 actsAll=0
+  ✅ [M.3] [unchanged + refused] (nothing moved, one failure) still writes an audit row (a failure is not a pure no-op)
+        — ACTUAL result={"ok":0,"failed":[{"id":"cmurg03ir0035v1kzr03ayn69","error":"ไม่พบดีลนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรชหน้าแล้วลองใหม่"}],"unchanged":1} audit rows=1
+  ✅ [CLEAN] throwaway tenant and users removed (0 rows left)
+        — ACTUAL -
+
+REVIEW checks 13/13 green
+JSON_SUMMARY [["C0",true],["R1",true],["R1.b",true],["R2",true],["R5.1",true],["R3",true],["R5.2",true],["R4",true],["G",true],["M.1",true],["M.2",true],["M.3",true],["CLEAN",true]]
