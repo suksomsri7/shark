@@ -6,6 +6,7 @@ import { systemDef } from "@/lib/systems";
 import { toMemberActor } from "@/lib/modules/member";
 import { crmCan } from "@/lib/modules/crm/access";
 import { getUserSetting, listThreads } from "@/lib/modules/crm/emails";
+import { companyTextsForViewer } from "@/lib/modules/crm/contacts"; // CRM C5.5-fix10 ◂
 import { crmEmailSettingsOf } from "@/lib/modules/crm/settings";
 import { CRM_EMAIL_REPLY_MODES, CRM_EMAIL_SIGNATURE_INPUT_MAX } from "@/lib/modules/crm/emails-shared";
 import { crmNavItems } from "@/lib/modules/crm/nav";
@@ -52,10 +53,11 @@ export default async function CrmEmailsPage({ params, searchParams }: { params: 
 
   const contactIds = [...new Set(listed.items.map((t) => t.contactId).filter((x): x is string => !!x))];
   const contacts = contactIds.length
-    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true } })
+    ? await prisma.crmContact.findMany({ where: { id: { in: contactIds }, tenantId, systemId: id }, select: { id: true, name: true, company: true, companyId: true } })
     : [];
   const nameOf = new Map(contacts.map((c) => [c.id, c.name]));
-  const companyOf = new Map(contacts.map((c) => [c.id, c.company]));
+  // CRM C5.5-fix10 ▸ (sweep FX7-1) ข้อความบริษัทของผู้ติดต่อ = ตามการมองเห็นบริษัทของผู้ดู (ผูกบริษัทที่มองไม่เห็น = ไม่แสดง) ◂
+  const companyOf = contacts.length ? await companyTextsForViewer(ctx, actor, contacts) : new Map<string, string | null>();
 
   const items: CrmEmailThreadRow[] = listed.items.map((t) => ({
     threadKey: t.threadKey,

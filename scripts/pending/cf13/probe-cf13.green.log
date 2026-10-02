@@ -1,0 +1,51 @@
+(node:2238415) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── NM · deal list / board / CSV / 360 per persona ──
+  ✅ [NM-owner] OK/OK/OK · sees 3/3 companies, 4/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
+  ✅ [NM-mgr] OK/OK/OK · sees 2/3 companies, 3/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
+  ✅ [NM-staff] OK/OK/OK · sees 1/3 companies, 1/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
+  ✅ [NM-ro] OK/OK/OK · sees 1/3 companies, 1/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
+  ✅ [NM-noco] OK/OK/OK · sees 0/3 companies, 0/4 contacts · names = viewer visibility on list/board/CSV, = deal 360, no hidden name in payload, totals 4 deals / ฿700
+  ✅ [NM-shapes] hidden companies/contacts: owner 0/0 · mgr 1/1 · staff 2/3 · ro 2/3 · noco 3/4
+  ✅ [NM-rollups] company roll-up columns and every deal.companyId unchanged by reading
+  ℹ️  [NM-rest] REST deal ops module loaded (DEALS_OPS) — they call listDeals/getBoard/exportDeals (see SW)
+  ✅ [NM-batched] 10 deals / 9 companies on the page → company reads list=1 board=1 csv=1 · contact reads 1/1/1 (≤ 1 each = one visibility query per page)
+  ✅ [NM-control-owner-identical] owner DTOs (list · board · CSV, ids/timestamps normalised) byte-identical to the RED run: true · personas that changed: mgr: list ≠ board ≠ csv ≠ · staff: list ≠ board ≠ csv ≠ · ro: list ≠ board ≠ csv ≠ · noco: list ≠ board ≠ csv ≠
+  ✅ [NM-control-visible-cards-identical] every card whose company + contact the viewer can see is byte-identical to the RED run · 0 differences
+
+── SW · sweep sites ──
+  ✅ [SW-contacts-owner] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
+  ✅ [SW-contacts-mgr] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
+  ✅ [SW-contacts-staff] list OK · export OK · 4/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
+  ✅ [SW-contacts-ro] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
+  ✅ [SW-contacts-noco] list OK · export OK · 0/4 sweep contacts visible · companyName / companyText / CSV cell / 360 companyText / brief = viewer rule
+  ✅ [SW-email-text] companyTextsForViewer per persona · hidden link ⇒ null, else the contact's text
+  ✅ [SW-sequences] owner 4 rows · mgr 4 rows · staff 4 rows · ro 0 rows · noco 0 rows
+  ✅ [SW-company360-timeline] owner 2 rows · mgr 2 rows · staff 2 rows · ro: company not visible (skip) · noco: company not visible (skip)
+  ℹ️  [SW-done] sweep checks finished
+
+── DT ──
+  ℹ️  [DT-stored] ui: sent 2026-10-09T00:30:00+07:00 → stored 2026-10-08T17:30:00.000Z · ms: sent 2026-10-08T17:30:45.678Z → stored 2026-10-08T17:30:45.678Z · ms1: sent 2026-10-08T17:30:45.001Z → stored 2026-10-08T17:30:45.001Z · sec: sent 2026-10-08T17:30:45.000Z → stored 2026-10-08T17:30:45.000Z · pre1970ms: sent 1965-03-01T03:00:00.250Z → stored 1965-03-01T03:00:00.250Z
+  ✅ [DT-ui-whole-seconds] the UI path (datetime-local → thaiInputToIso "2026-10-09T00:30:00+07:00") stores whole seconds (2026-10-08T17:30:00.000Z) · API/import can store ms (2026-10-08T17:30:45.678Z)
+  ℹ️  [DT-cells] ui=2026-10-09T00:30:00+07:00 · ms=2026-10-09T00:30:45.678+07:00 · ms1=2026-10-09T00:30:45.001+07:00 · sec=2026-10-09T00:30:45+07:00 · pre1970ms=1965-03-01T10:00:00.250+07:00
+  ✅ [DT-export-exact] every cell parses back to the stored instant exactly (ms included) · whole-second cells byte-identical to the fix7 form: true
+  ✅ [DT-roundtrip] export cell → importContacts → stored instant identical for 5 values × 2 server TZ · all exact
+  ✅ [DA-export-unchanged] DATE export cells = ["2026-10-09","2026-10-09","2026-10-09","2026-10-09","2026-10-09"]
+
+── DA ──
+  ✅ [DA-360-display] contact 360 display="9 ต.ค. 2569" · record page="9 ต.ค. 2569" · value="2026-10-09"
+  ✅ [DA-byte-identical] 29586 days 1960–2040 + 2 odd inputs: formatThaiDateFull == old record-page code, mismatches 0 · non-date text kept: "ไม่ใช่วันที่"
+  ✅ [DA-empty] empty DATE display="" value=null
+  ✅ [CLEAN-kj1m73] tenant rows left=0
+
+🟢 probe-cf13: 26/26
+JSON_SUMMARY {"total":26,"passed":26,"findings":[]}
+exit=0 2026-10-02T01:12:35Z

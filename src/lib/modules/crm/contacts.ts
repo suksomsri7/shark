@@ -58,7 +58,7 @@ import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
 import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
-import { formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
+import { formatThaiDateFull, formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂ · C5.5-fix10 ▸ DATE ◂
 import {
   CONTACT_BULK_MAX,
   CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
@@ -265,6 +265,29 @@ async function lockContactRows(tx: Tx, ctx: ContactsCtx, ids: string[]): Promise
   const sorted = [...new Set(ids.filter(Boolean))].sort();
   if (sorted.length === 0) return;
   await tx.$queryRaw`SELECT "id" FROM "CrmContact" WHERE "id" = ANY(${sorted}::text[]) AND "tenantId" = ${ctx.tenantId} ORDER BY "id" FOR UPDATE`;
+}
+
+// CRM C5.5-fix10 ▸ (sweep FX7-1) "ข้อความบริษัทเดิม" (`CrmContact.company` · มักเป็นชื่อบริษัทเดียวกับที่ผูก — ไฟล์นำเข้า/backfill) แสดงให้ผู้ดู
+//   เฉพาะเมื่อผู้ติดต่อไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น (`companies.visibleCompanyStates`) — ผูกบริษัทที่มองไม่เห็น = ไม่แสดง
+//   (เดิมเป็นทางสำรองเมื่อหาชื่อบริษัทไม่ได้ ⇒ บอกชื่อบริษัทที่ซ่อนอยู่) · ผู้ดูที่เห็นบริษัท = ผลเท่าเดิมทุกไบต์ ◂
+type CompanyStates = Map<string, { name: string; live: boolean }>;
+function companyTextFor(row: Pick<CrmContact, "companyId" | "company">, states: CompanyStates): string | null {
+  if (row.companyId && !states.has(row.companyId)) return null;
+  return row.company ?? null;
+}
+/** ชื่อบริษัทที่ผู้ดูเห็นของแถวผู้ติดต่อ: ชื่อบริษัทที่ยังใช้งาน → ข้อความบริษัทเดิม (ตามกติกาด้านบน) */
+function companyNameFor(row: Pick<CrmContact, "companyId" | "company">, states: CompanyStates): string | null {
+  const st = row.companyId ? states.get(row.companyId) : undefined;
+  return (st?.live ? st.name : null) ?? companyTextFor(row, states);
+}
+function viewerDto(row: CrmContact, states: CompanyStates): ContactDto {
+  return { ...toDto(row), companyText: companyTextFor(row, states) };
+}
+/** ข้อความบริษัทเดิมของผู้ติดต่อหลายแถว ตามการมองเห็นของผู้ดู (คิวรีเดียว) — สำหรับหน้าที่อ่านแถวผู้ติดต่อเอง (กล่องจดหมาย/เธรด) */
+export async function companyTextsForViewer(ctx: ContactsCtx, actor: MemberActor, rows: readonly { id: string; companyId: string | null; company: string | null }[]): Promise<Map<string, string | null>> {
+  const a = await enter(ctx, actor);
+  const states = await companies.visibleCompanyStates(coCtx(ctx), a, rows.map((r) => r.companyId));
+  return new Map(rows.map((r) => [r.id, companyTextFor(r, states)]));
 }
 
 function toDto(row: CrmContact): ContactDto {
@@ -1424,7 +1447,8 @@ function displayOf(type: string, value: unknown, choices: { value: string; label
   if (type === "SELECT") return choices?.find((c) => c.value === value)?.label ?? String(value);
   if (type === "MONEY" && typeof value === "number") return `฿${(value / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
   if (type === "DATETIME" && typeof value === "string") return mode === "export" ? thaiIsoDateTime(value) : formatThaiDateTimeFull(value);
-  if (type === "DATE" && typeof value === "string") return value.slice(0, 10);
+  // CRM C5.5-fix10 ▸ (คำถามเจ้าของข้อ 5) หน้า 360 แสดง DATE แบบเดียวกับหน้าระเบียน ("9 ต.ค. 2569" · formatThaiDateFull) · ไฟล์ส่งออกยัง "YYYY-MM-DD" ◂
+  if (type === "DATE" && typeof value === "string") return mode === "export" ? value.slice(0, 10) : formatThaiDateFull(value);
   return String(value);
 }
 
@@ -1511,7 +1535,9 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
     }
   }
   // ชื่อบริษัทผ่านบริการบริษัท (companyWhere · ยังใช้งาน) — ลิงก์ไปบริษัทที่ถูกรวม/เก็บถาวร/มองไม่เห็น ไม่แสดง
-  const coRefs = new Map((await companies.liveCompanyRefs(coCtx(ctx), a, links.map((l) => l.companyId))).map((c) => [c.id, c.name]));
+  //   CRM C5.5-fix10 ▸ คิวรีเดียวได้ทั้ง "ยังใช้งาน" (ลิงก์ที่แสดง — เท่าเดิม) และ "เห็นไหม" (ข้อความบริษัทเดิมของผู้ติดต่อ) ◂
+  const coStates = await companies.visibleCompanyStates(coCtx(ctx), a, [...links.map((l) => l.companyId), row.companyId]);
+  const coRefs = new Map([...coStates].filter(([, v]) => v.live).map(([k, v]) => [k, v.name]));
   const companiesOut: Contact360Company[] = links
     .filter((l) => coRefs.has(l.companyId))
     .map((l) => ({ id: l.companyId, name: coRefs.get(l.companyId) ?? "", role: l.role, jobTitle: l.jobTitle, isPrimary: l.isPrimary, current: !l.endedAt }));
@@ -1529,7 +1555,7 @@ async function getContact360In(ctx: ContactsCtx, actor: MemberActor, id: string)
   }));
   timeline.sort((x, y) => y.at.getTime() - x.at.getTime());
   return {
-    contact: toDto(row),
+    contact: viewerDto(row, coStates),
     owner: owner?.user ? { id: owner.user.id, name: owner.user.name ?? "ผู้ใช้" } : null,
     member,
     company: primary,
@@ -1758,12 +1784,11 @@ async function listContactsIn(ctx: ContactsCtx, actor: MemberActor, input: Conta
   const more = rows.length > pageSize;
   const page = more ? rows.slice(0, pageSize) : rows;
   const coIds = [...new Set(page.map((r) => r.companyId).filter((x): x is string => !!x))];
-  const [cos, owners] = await Promise.all([
-    companies.liveCompanyRefs(coCtx(ctx), a, coIds),
+  const [states, owners] = await Promise.all([
+    companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
     ownerNames(ctx, page.map((r) => r.ownerUserId)),
   ]);
-  const coName = new Map(cos.map((c) => [c.id, c.name]));
-  const items: ContactListItem[] = page.map((r) => ({ ...toDto(r), companyName: (r.companyId ? coName.get(r.companyId) : null) ?? r.company ?? null, ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
+  const items: ContactListItem[] = page.map((r) => ({ ...viewerDto(r, states), companyName: companyNameFor(r, states), ownerName: r.ownerUserId ? (owners.get(r.ownerUserId) ?? null) : null }));
   return { items, nextCursor: more ? (page[page.length - 1]?.id ?? null) : null };
 }
 
@@ -2578,11 +2603,10 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
     for (let i = 0; i < rows.length; i += 500) Object.assign(values, await eng.getFieldValues(fctx(ctx, a), rows.slice(i, i + 500).map((r) => r.id)));
   }
   const coIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
-  const [cos, owners] = await Promise.all([
-    companies.liveCompanyRefs(coCtx(ctx), a, coIds),
+  const [states, owners] = await Promise.all([
+    companies.visibleCompanyStates(coCtx(ctx), a, coIds), // CRM C5.5-fix10 ▸ เดิม liveCompanyRefs + ข้อความเดิมเสมอ ◂
     ownerNames(ctx, rows.map((r) => r.ownerUserId)),
   ]);
-  const coName = new Map(cos.map((c) => [c.id, c.name]));
   const header = ["ชื่อจริง", "นามสกุล", "เบอร์โทร", "อีเมล", "ตำแหน่ง", "บริษัท", "ขั้น", "สถานะ lead", "ผู้ดูแล", "แท็ก", "ที่มา", "ไม่รับข่าวสาร", "รหัสสมาชิกที่ผูก", "เพิ่มเมื่อ", ...customFields.map((f) => f.label)];
   const lines = [csvRow(header)];
   for (const r of rows) {
@@ -2594,7 +2618,7 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
         r.phone,
         r.email,
         r.jobTitle,
-        (r.companyId ? coName.get(r.companyId) : null) ?? r.company,
+        companyNameFor(r, states),
         LIFECYCLE_LABEL[r.lifecycleStage as ContactLifecycle],
         LEAD_STATUS_LABEL[r.leadStatus as ContactLeadStatus],
         r.ownerUserId ? (owners.get(r.ownerUserId) ?? "") : "",
@@ -2644,7 +2668,10 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
     orderBy: [{ createdAt: "asc" }],
   });
   if (!row) return null;
-  const open = await prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } });
+  const [open, coStates] = await Promise.all([
+    prisma.crmDeal.count({ where: { AND: [await dealWhere(ctx, actor), { ...identityScope(ctx), contactId: row.id, kind: "OPEN" }] } }),
+    companies.visibleCompanyStates(coCtx(ctx), actor, [row.companyId]), // CRM C5.5-fix10 ▸ ข้อความบริษัทเดิมตามการมองเห็นของผู้ดู ◂
+  ]);
   return {
     contactId: row.id,
     name: contactLabel(row),
@@ -2653,7 +2680,7 @@ export async function briefFor(ctx: ContactsCtx, actor: MemberActor | null | und
     scoreBand: (row.scoreBand as ContactScoreBand | null) ?? null,
     ownerUserId: row.ownerUserId,
     companyId: row.companyId,
-    companyName: row.company ?? null,
+    companyName: companyTextFor(row, coStates),
     memberCustomerId: row.memberCustomerId,
     openDealCount: open,
   };
