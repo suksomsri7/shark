@@ -112,7 +112,7 @@ Query:
 | `contacts.export` | `POST /contacts/export` | **danger** | `crm.contact.export` | Export the contacts this key can see as CSV text (formula cells neutralised). Needs confirm: true and a reason. |
 | `contacts.byParty` | `GET /contacts/by-party/{partyId}` | read | `crm.contact.read` | The contact card linked to a shared customer identity (Party id), or null when this key cannot see one. |
 | `contacts.get` | `GET /contacts/{id}` | read | `crm.contact.read` | One contact in full: details, owner, company, deals, custom fields, recent timeline and consent. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). |
-| `contacts.create` | `POST /contacts` | write | `crm.contact.create` | Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. |
+| `contacts.create` | `POST /contacts` | write | `crm.contact.create` | Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. A match the caller cannot see is refused (409 duplicate) without any detail of it, even with force. |
 | `contacts.update` | `PATCH /contacts/{id}` | write | `crm.contact.update` | Change a contact's details or custom fields. moveOpenDeals also moves the open deals when the main company changes. |
 | `contacts.setLeadStatus` | `PUT /contacts/{id}/lead-status` | write | `crm.contact.update` | Set the lead status (NEW, CONTACTED, QUALIFIED, UNQUALIFIED, NURTURE). |
 | `contacts.assign` | `PUT /contacts/{id}/owner` | write | `crm.contact.update` | Give the contact to another owner (a user of this shop), or null for no owner. |
@@ -214,7 +214,7 @@ One contact in full: details, owner, company, deals, custom fields, recent timel
 
 #### `POST /contacts` — contacts.create
 
-Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. (เพิ่มผู้ติดต่อ (lead)) AI tool: `crm_create_lead`.
+Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. A match the caller cannot see is refused (409 duplicate) without any detail of it, even with force. (เพิ่มผู้ติดต่อ (lead)) AI tool: `crm_create_lead`.
 
 Body:
 
@@ -363,7 +363,7 @@ Query:
 | `companies.list` | `GET /companies` | read | `crm.company.read` | List the companies this key can see, with filters and cursor paging. |
 | `companies.duplicates.list` | `GET /companies/duplicates` | read | `crm.company.merge` | Pairs of companies that look like the same business (tax id, e-mail domain or name). |
 | `companies.get` | `GET /companies/{id}` | read | `crm.company.read` | One company in full: details, contacts and their roles, deals, documents, custom fields and timeline. A timeline row with unverifiedFrom = true is inbound mail whose sender the system could not authenticate (the From can be forged). |
-| `companies.create` | `POST /companies` | write | `crm.company.create` | Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. |
+| `companies.create` | `POST /companies` | write | `crm.company.create` | Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. A same-tax-id company the caller cannot see is refused (409 duplicate) without any detail of it. |
 | `companies.update` | `PATCH /companies/{id}` | write | `crm.company.update` | Change a company's details or custom fields. A tax id that belongs to another company fails with 409. |
 | `companies.setOwner` | `PUT /companies/{id}/owner` | write | `crm.company.update` | Give the company to another owner (a user of this shop), or null for no owner. |
 | `companies.contacts.add` | `POST /companies/{id}/contacts` | write | `crm.company.update` | Link a contact to the company with a role; isPrimary makes it the contact's main company. |
@@ -406,7 +406,7 @@ One company in full: details, contacts and their roles, deals, documents, custom
 
 #### `POST /companies` — companies.create
 
-Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. (เพิ่มบริษัท) AI tool: `crm_create_company`.
+Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. A same-tax-id company the caller cannot see is refused (409 duplicate) without any detail of it. (เพิ่มบริษัท) AI tool: `crm_create_company`.
 
 Body:
 

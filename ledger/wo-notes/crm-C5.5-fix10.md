@@ -69,6 +69,7 @@ Line numbers at `ee40bfba`. "Fixed" = same pattern (a name looked up without the
 
 - RED on `ee40bfba` source (my `src` diff removed, probe unchanged): **11/24** — red: `NM-mgr`, `NM-staff`, `NM-ro`, `NM-noco`, `SW-contacts-mgr`, `SW-contacts-staff`, `SW-email-text` (helper missing), `SW-sequences`, `SW-company360-timeline`, `DT-export-exact`, `DT-roundtrip`, `DA-360-display`, `DA-byte-identical` (helper missing). Green on RED (controls): `NM-owner`, `NM-shapes`, `NM-rollups`, `NM-batched`, `SW-contacts-owner/ro/noco`, `DT-ui-whole-seconds`, `DA-export-unchanged`, `DA-empty`, CLEAN.
 - GREEN: **26/26** (the two extra rows are the positive controls that need the RED run's dump):
+  - correction (C5.5-fix12, after the fix10 review RV10-4): the baseline of this 26/26 run (`green2`) was **`/tmp/cf13-logs/red3.dump.json`** — the RED run of the final probe (`red3`, 11/24). That is the only valid baseline. `/tmp/cf13-logs/red-baseline.dump.json` is a copy of `red2`, an earlier probe version whose deal titles embedded company names; it was used only by the discarded `green1` run (22/26) and is stale;
   - `NM-control-owner-identical`: owner list / board / CSV (ids and timestamps normalised) byte-identical to the RED run;
   - `NM-control-visible-cards-identical`: every card whose company and contact the viewer can see is byte-identical to the RED run (0 differences across 5 personas).
 - Logs: `scripts/pending/cf13/probe-cf13.red.log`, `probe-cf13.green.log`.

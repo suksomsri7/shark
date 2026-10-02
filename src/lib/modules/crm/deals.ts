@@ -2202,6 +2202,11 @@ export async function getDeal360(ctx: DealsCtx, actor: MemberActor, id: string):
 
 /** ส่งออก CSV (AUDIT-CLASS X6: ทุกบรรทัดผ่าน `csvRow` — เซลล์ขึ้นต้น = + - @ ถูกทำให้เป็นกลาง) · ≤ DEAL_EXPORT_MAX_ROWS */
 export async function exportDeals(ctx: DealsCtx, actor: MemberActor, filters: DealListInput = {}): Promise<string> {
+  // CRM C5.5-fix12 ▸ RV10-4: ครอบขอบเขต memo ต่อการเรียก (crmScope) — ภาพการมองเห็นของผู้ส่งออกคิดครั้งเดียว (เดิม listWhere/dealWhere ·
+  //   companyRefsInTx · contactWhere ต่างคนต่างคิด) · ทางอ่าน (บันทึกแค่ audit) ⇒ ครอบได้ตามกติกาของ request-scope ◂
+  return crmScope(() => exportDealsIn(ctx, actor, filters));
+}
+async function exportDealsIn(ctx: DealsCtx, actor: MemberActor, filters: DealListInput): Promise<string> {
   const a = await enter(ctx, actor);
   // CRM C5.1-fix ▸ F1/F3: listWhere มี dealWhere อยู่แล้ว (ไม่ AND ซ้ำ) · มีตัวกรองฟิลด์ = นับ/เลือก id ด้วย SQL (≤ 5,000 id) ◂
   const eff = await effectiveListInput(ctx, a, { ...(filters ?? {}), cursor: null });

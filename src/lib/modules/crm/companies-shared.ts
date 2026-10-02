@@ -13,6 +13,12 @@ export const COMPANY_IMPORT_ACCOUNT_MAX = 500;
 /** เหตุผลของการกระทำอันตราย (รวม · เก็บถาวร) ยาวอย่างน้อยกี่ตัวอักษร */
 export const COMPANY_REASON_MIN = 5;
 /** ความยาวสูงสุดของช่องข้อความ */
+/**
+ * CRM C5.5-fix12 ▸ (sweep RV10-1) บริษัทที่ชน (เลขภาษี+สาขา หรือ Party เดียวกัน) อยู่นอกการมองเห็นของผู้สร้าง — ไม่สร้างซ้ำ แต่ไม่บอกอะไรของบริษัทนั้น
+ *   (ไม่มีชื่อ · รหัส · duplicateOf) ◂
+ */
+export const COMPANY_DUPLICATE_HIDDEN_MSG =
+  "มีบริษัทนี้ (เลขผู้เสียภาษี/ข้อมูลเดียวกัน) อยู่ในระบบแล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบบริษัทนั้นให้";
 export const COMPANY_NAME_MAX = 200;
 export const COMPANY_TEXT_MAX = 200;
 export const COMPANY_URL_MAX = 500;

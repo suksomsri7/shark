@@ -31,6 +31,16 @@ export const CONTACT_IMPORT_ERRORS_MAX = 500;
  */
 export const CONTACT_PRIMARY_COMPANY_HIDDEN_MSG =
   "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้";
+/**
+ * CRM C5.5-fix12 ▸ RV10-1: เบอร์/อีเมลที่กรอกตรงกับผู้ติดต่อที่ "ผู้สร้าง/ผู้แก้มองไม่เห็น" — ยังกันตัวซ้ำ (พิมพ์เขียว C1.4: ตัวซ้ำจับด้วยเบอร์/อีเมล)
+ *   แต่ไม่บอกอะไรของคนนั้น (ไม่มีชื่อ · รหัส · เบอร์ · บริษัท) · ส่ง force มาก็ไม่สร้างซ้ำ (ผู้ใช้ตรวจไม่ได้ว่าเป็นคนเดียวกันไหม) ◂
+ */
+export const CONTACT_DUPLICATE_HIDDEN_MSG =
+  "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างหรือบันทึกซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้";
+/** CRM C5.5-fix12 ▸ RV10-1: เพดานการกรอกเบอร์/อีเมลของ "คน" (หน้าจอ · ผู้ช่วย AI) ต่อร้าน — คีย์ API ใช้ถัง write ของ REST (300/นาที) อยู่แล้ว ◂ */
+export const CONTACT_IDENT_RATE = { limit: 120, windowMs: 10 * 60_000 } as const;
+export const CONTACT_IDENT_RATE_MSG = (retryAfterSec?: number) =>
+  `เพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อถี่เกินไป — รอ${retryAfterSec ? ` ${Math.max(1, Math.ceil(retryAfterSec / 60))} นาที` : "สักครู่"}แล้วลองใหม่ (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")`;
 export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const CONTACT_REASON_MIN = 5;
 export const CONTACT_TAGS_MAX = 50;

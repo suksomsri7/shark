@@ -1,0 +1,31 @@
+start 2026-10-02T03:34:04Z
+typecheck exit=0 233s · 
+probe-cf16 exit=0 242s · 🟢 probe-cf16: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
+probe-cf13 exit=0 39s · 🟢 probe-cf13: 24/24 JSON_SUMMARY {"total":24,"passed":24,"findings":[]} 
+probe-cf13-review exit=0 23s · 🟢 probe-cf13-review: 8/8 JSON_SUMMARY {"total":8,"passed":8,"findings":[]} 
+probe-cf10 exit=0 66s · 🟢 probe-cf10: 34/34 JSON_SUMMARY {"total":34,"passed":34,"findings":[]} 
+probe-cf10-review exit=0 250s · 🟢 probe-cf10-review: 18/18 JSON_SUMMARY {"total":18,"passed":18,"findings":[]} 
+probe-cf7 exit=0 172s · 🟢 probe-cf7: 30/30 JSON_SUMMARY {"total":30,"passed":30,"findings":[]} 
+probe-cf7-r2 exit=0 618s · 🟢 probe-cf7-r2: 14/14 JSON_SUMMARY {"total":14,"passed":14,"findings":[]} 
+probe-cf7-review exit=0 307s · 🟢 probe-cf7-review: 27/27 JSON_SUMMARY {"total":27,"passed":27,"findings":[]} 
+probe-cf7-review-r2 exit=0 295s · 🟢 probe-cf7-review-r2: 21/21 JSON_SUMMARY {"total":21,"passed":21,"findings":[]} 
+qc-crm-c1.5 exit=0 468s · 🟢 C1.5: 103/103 JSON_SUMMARY {"total":103,"passed":103,"findings":[]} 
+qc-crm-c1.4 exit=0 260s · 🟢 C1.4: 110/110 JSON_SUMMARY {"total":110,"passed":110,"findings":[]} 
+qc-crm-c1.3 exit=0 346s · 🟢 C1.3: 89/89 JSON_SUMMARY {"total":89,"passed":89,"findings":[]} 
+qc-crm-c1.7 exit=0 404s · 🟢 C1.7: 57/57 JSON_SUMMARY {"total":57,"passed":57,"findings":[]} 
+qc-crm-c1.10 exit=0 302s · 🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท… JSON_SUMMARY {"total":66,"passed":66,"fi
+qc-crm-c1.11 exit=0 216s · 🟢 C1.11: 66/66 JSON_SUMMARY {"total":66,"passed":66,"findings":[]} 
+qc-crm-c2.4 exit=0 234s · 🟢 C2.4: 91/91 · outbound fetch stubbed 0× JSON_SUMMARY {"total":91,"passed":91,"findings":[]} 
+qc-crm-c2.11 (run completed before the quota pause; SUMMARY line not written) · JSON_SUMMARY {"total":47,"passed":47,"findings":[]}
+--- after the pause ---
+start 2026-10-02T05:52:44Z
+qc-crm-c3.4 exit=0 45s · 🟢 C3.4: 53/53 JSON_SUMMARY {"total":53,"passed":53,"findings":[]} 
+qc-kanban-k3.1 exit=0 6s · ผ่าน 19/20 JSON_SUMMARY {"total":20,"passed":19,"findings":["K3.1-S6.3"]} 
+docs-crm exit=0 2s · ✅ docs/api/CRM-API.md ตรงกับทะเบียน (123 op) 
+docs-member exit=1 3s · ❌ .claude/skills/shark-member-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 18819 ไบต์ที่ควรเป็น) 
+docs-kanban exit=1 2s · ❌ .claude/skills/shark-kanban-api/references/endpoints.md ไม่ตรงกับทะเบียน (0 ไบต์บนดิสก์ vs 8244 ไบต์ที่ควรเป็น) 
+docs-account exit=0 2s · ✅ docs/api/ACCOUNT-API.md + skill endpoints.md ตรงกับทะเบียน (199 op) 
+fitness exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+fitness-noenv exit=0 5s · ผ่าน 36/36 JSON_SUMMARY {"total":36,"passed":36,"findings":[]} 
+ALLDONE 2026-10-02T05:53:54Z
+qc-kanban-k3.1 at 6cbb8f3c source: JSON_SUMMARY {"total":20,"passed":19,"findings":["K3.1-S6.3"]}
