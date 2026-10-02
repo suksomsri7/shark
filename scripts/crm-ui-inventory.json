@@ -446,7 +446,8 @@
       "wo": "C1.3",
       "oracle": "",
       "opener": "companies-page-next",
-      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง"
+      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง",
+      "needsWaiver": "R5-SPLIT: R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)"
     },
     {
       "page": "/companies",
@@ -466,7 +467,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง"
+      "needs": "บริษัทที่มองเห็นได้ > 50 แห่ง (ขนาดหน้า 50) — ซีดมี 20 แห่ง",
+      "needsWaiver": "R5-SPLIT: R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)"
     },
     {
       "page": "/companies/new",
@@ -601,7 +603,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดตัวเลือก (SELECT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/companies/new",
@@ -621,7 +624,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดใช่/ไม่ใช่ (BOOLEAN) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/companies/new",
@@ -641,7 +645,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความยาว (LONG_TEXT) — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/companies/new",
@@ -661,7 +666,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)"
+      "needs": "ฟิลด์กำหนดเองของบริษัทชนิดข้อความ/ตัวเลข/วันที่ — ขึ้นกับซีด (ไม่มี = ไม่แสดงช่องนี้)",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/companies/new",
@@ -812,7 +818,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของซีดไม่ถูกรวม"
+      "needs": "บริษัท [companyId] ที่ถูกรวมเข้าบริษัทอื่นแล้ว (CrmCompany.mergedIntoId) — บริษัทตัวแทนของซีดไม่ถูกรวม",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/[companyId]",
@@ -873,7 +880,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ"
+      "needs": "บริษัท [companyId] มีบริษัทแม่ (parentCompanyId) — ซีดไม่มีโครงสร้างบริษัทในเครือ",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/[companyId]",
@@ -893,7 +901,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0"
+      "needs": "บริษัท [companyId] มีบริษัทลูก (บริษัทอื่นที่ parentCompanyId = บริษัทนี้) — ซีดมี 0",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/[companyId]",
@@ -913,7 +922,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีดบัญชี"
+      "needs": "บริษัท [companyId] มียอดค้างชำระ (outstandingSatang > 0 จากเอกสารบัญชีที่ผูก) — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/[companyId]",
@@ -934,7 +944,8 @@
       "wo": "C1.3",
       "oracle": "",
       "query": "tab=documents",
-      "needs": "เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี"
+      "needs": "เอกสารบัญชีที่ผูกกับบริษัท [companyId] (ระบบ ACCOUNT ผูกแล้ว) — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/[companyId]",
@@ -1843,7 +1854,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/new",
@@ -1863,7 +1875,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/companies/new",
@@ -1884,7 +1897,8 @@
       },
       "wo": "C1.3",
       "oracle": "",
-      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร"
+      "needs": "บริษัทที่เก็บถาวรแล้วซึ่งมีเลขภาษีซ้ำกับที่กรอก (กล่องกู้คืน) — ซีดไม่มีบริษัทเก็บถาวร",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/contacts",
@@ -2725,7 +2739,8 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField ที่ใช้กับ CRM) — ขึ้นกับซีด"
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (MemberField ที่ใช้กับ CRM) — ขึ้นกับซีด",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/contacts/new",
@@ -2895,7 +2910,8 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "needs": "ผู้ติดต่อ [contactId] ที่ถูกรวมเข้าคนอื่นแล้ว (CrmContact.mergedIntoId) — ผู้ติดต่อตัวแทนของซีดไม่ถูกรวม"
+      "needs": "ผู้ติดต่อ [contactId] ที่ถูกรวมเข้าคนอื่นแล้ว (CrmContact.mergedIntoId) — ผู้ติดต่อตัวแทนของซีดไม่ถูกรวม",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -2933,7 +2949,8 @@
       },
       "wo": "C1.4",
       "oracle": "",
-      "needs": "ผู้ติดต่อ [contactId] ผูกสมาชิกในระบบสมาชิก (Customer ของ party เดียวกัน) — ขึ้นกับซีด"
+      "needs": "ผู้ติดต่อ [contactId] ผูกสมาชิกในระบบสมาชิก (Customer ของ party เดียวกัน) — ขึ้นกับซีด",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -3732,7 +3749,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline"
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (หน้าว่าง) — ซีดมี 2 pipeline",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/deals",
@@ -3935,7 +3953,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด"
+      "needs": "ฟิลด์กำหนดเองของดีลที่ตั้งให้กรองได้ — ขึ้นกับซีด",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/deals",
@@ -4062,7 +4081,25 @@
       "wo": "C1.5",
       "oracle": "",
       "opener": "deals-next-page",
-      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง"
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "query": "view=table",
+      "needsProbe": {
+        "db": {
+          "model": "CrmDeal",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": null,
+            "pipeline": {
+              "isDefault": true,
+              "archivedAt": null
+            }
+          },
+          "min": 51
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/deals",
@@ -4082,7 +4119,25 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง"
+      "needs": "ดีลที่มองเห็นได้ > 50 ดีลในมุมมองตาราง (ขนาดหน้า 50) — ซีดมี 60: owner/manager ถึง · nok/thana อาจไม่ถึง",
+      "query": "view=table",
+      "needsProbe": {
+        "db": {
+          "model": "CrmDeal",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": null,
+            "pipeline": {
+              "isDefault": true,
+              "archivedAt": null
+            }
+          },
+          "min": 51
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/deals",
@@ -4262,7 +4317,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด"
+      "needs": "ขั้นที่มีดีลมากกว่าจำนวนการ์ดที่บอร์ดแสดงต่อคอลัมน์ — ขึ้นกับจำนวนดีลต่อขั้นในซีด",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/deals",
@@ -4381,12 +4437,17 @@
         "type": "mutation",
         "target": "op:deals.bulkMove",
         "db": "CrmDeal.stageId=<ขั้น> ×n · AuditLog crm.deal.bulk_move",
-        "note": "ยืนยัน + เหตุผล ≥ 5 · ≤ 200"
+        "note": "ยืนยัน + เหตุผล ≥ 5 · ≤ 200",
+        "resultTarget": "deal-bulk-msg",
+        "resultText": "ย้ายขั้นสำเร็จ [1-9]"
       },
       "wo": "C1.5",
       "oracle": "",
       "query": "view=table",
-      "opener": "deal-row-check-*=on"
+      "opener": [
+        "deal-row-check-*=on",
+        "deal-bulk-stage=!ticked"
+      ]
     },
     {
       "page": "/deals",
@@ -4743,7 +4804,8 @@
       "alsoOn": [
         "/deals/[dealId]"
       ],
-      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/deals",
@@ -4766,7 +4828,8 @@
       "alsoOn": [
         "/deals/[dealId]"
       ],
-      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/deals",
@@ -4790,7 +4853,8 @@
       "alsoOn": [
         "/deals/[dealId]"
       ],
-      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง"
+      "needs": "ขั้นที่บังคับกรอกช่องก่อนย้าย (requiredFields ของขั้น) + การย้ายดีลเข้าไปขั้นนั้น — ซีดไม่ตั้งขั้นบังคับช่อง",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/deals",
@@ -4813,7 +4877,8 @@
       "alsoOn": [
         "/deals/[dealId]"
       ],
-      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)"
+      "needs": "ข้อความหลังย้ายขั้นสำเร็จ (โผล่ชั่วคราวหลังลากการ์ด — แถวลากทำให้หน้าโหลดใหม่ก่อนถึงแถวนี้)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/deals/[dealId]",
@@ -5565,7 +5630,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipeline"
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline เลย (ลิงก์นี้แสดงแทนฟอร์มเมื่อไม่มี pipeline) — ซีดมี 2 pipeline",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/deals/new",
@@ -6081,7 +6147,21 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0"
+      "needs": "pipeline ที่เก็บถาวรแล้ว (CrmPipeline.archivedAt) — ซีดมี 0",
+      "needsProbe": {
+        "db": {
+          "model": "CrmPipeline",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": {
+              "not": null
+            }
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/pipelines",
@@ -6263,7 +6343,8 @@
       },
       "wo": "C1.5",
       "oracle": "",
-      "needs": "ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2"
+      "needs": "ระบบ CRM ที่ยังไม่มี pipeline (ลิงก์แสดงแทนตารางขั้น) — ซีดมี 2",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/settings/stages",
@@ -7452,7 +7533,23 @@
       "wo": "C1.6",
       "oracle": "",
       "query": "scope=team",
-      "needs": "กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด"
+      "needs": "กิจกรรมค้างในรายการทีมที่ผูกบริษัทโดยตรง — ขึ้นกับซีด",
+      "needsProbe": {
+        "db": {
+          "model": "CrmActivity",
+          "where": {
+            "systemId": "$SYS",
+            "title": {
+              "startsWith": "qc-btn-act-co-"
+            },
+            "doneAt": null
+          }
+        },
+        "roles": [
+          "owner",
+          "manager"
+        ]
+      }
     },
     {
       "page": "/activities",
@@ -7473,7 +7570,8 @@
       "wo": "C1.6",
       "oracle": "",
       "needs": "โน้ต (NOTE) ในรายการกิจกรรมที่แสดง — แท็บค้าง (pending) แสดงเฉพาะงานที่ยังไม่เสร็จ",
-      "query": "scope=team"
+      "query": "scope=team",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/activities",
@@ -7581,7 +7679,8 @@
       "wo": "C1.6",
       "oracle": "",
       "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
-      "query": "scope=team"
+      "query": "scope=team",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/activities",
@@ -7602,7 +7701,8 @@
       "oracle": "",
       "opener": "activity-row-card",
       "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
-      "query": "scope=team"
+      "query": "scope=team",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/activities",
@@ -7624,7 +7724,8 @@
       "oracle": "",
       "opener": "activity-row-card",
       "needs": "บอร์ดงาน (Kanban) ≥1 ที่ผู้ใช้เปิดได้ + กิจกรรมที่ยังไม่ผูกการ์ด — ขึ้นกับซีดบอร์ดงาน",
-      "query": "scope=team"
+      "query": "scope=team",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/activities",
@@ -8051,7 +8152,8 @@
         "activities-new",
         "activity-log-type-NOTE"
       ],
-      "needs": "โน้ตที่แท็กคนแล้วบางคนไม่ได้รับแจ้งเตือน (ข้อความ 'บันทึกแล้ว — … ไม่ได้รับแจ้งเตือน') — ขึ้นกับการตั้งค่าแจ้งเตือนของพนักงาน"
+      "needs": "โน้ตที่แท็กคนแล้วบางคนไม่ได้รับแจ้งเตือน (ข้อความ 'บันทึกแล้ว — … ไม่ได้รับแจ้งเตือน') — ขึ้นกับการตั้งค่าแจ้งเตือนของพนักงาน",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -8464,7 +8566,7 @@
       "expect": {
         "type": "mutation",
         "target": "op:addMember",
-        "db": "TeamMember.userId=<userId>"
+        "db": "TeamMember +1 · TeamMember.userId=<userId>"
       },
       "wo": "C1.7",
       "oracle": "",
@@ -8506,7 +8608,7 @@
       "expect": {
         "type": "mutation",
         "target": "op:addMember",
-        "db": "TeamMember.userId=<userId>"
+        "db": "TeamMember +1 · TeamMember.userId=<userId>"
       },
       "wo": "C1.7",
       "oracle": "",
@@ -8553,7 +8655,8 @@
       "wo": "C1.7",
       "oracle": "",
       "opener": "teams-show-archived=on",
-      "needs": "ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแถวทำลายล้าง)"
+      "needs": "ทีมที่เก็บถาวรแล้ว (Team.archivedAt) — ซีดไม่มี (แถว team-archive ถูกคืนค่าทันทีเพราะเป็นแถวทำลายล้าง)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/settings/visibility",
@@ -8878,15 +8981,31 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
-        "target": "object-edit-key-hint",
-        "db": ""
+        "type": "ui",
+        "target": "object-edit-key",
+        "db": "ไม่กด — ชื่ออ้างอิงแก้ไม่ได้เมื่อวัตถุมีระเบียน (recordCount > 0)",
+        "state": "disabled"
       },
       "wo": "C1.9",
       "oracle": "",
       "query": "object=[key]",
       "opener": "object-edit-btn",
-      "needs": "วัตถุ [key] ที่ยังไม่มีระเบียน (ชื่ออ้างอิงแก้ได้เฉพาะตอนไม่มีข้อมูล — disabled เมื่อ recordCount > 0) — วัตถุ 'สัญญา' ของซีดมี 12 ระเบียน"
+      "variants": [
+        {
+          "roles": [
+            "owner"
+          ],
+          "opener": [
+            "object-edit-btn@last"
+          ],
+          "expect": {
+            "type": "inline-error",
+            "target": "object-edit-key-hint",
+            "db": ""
+          },
+          "name": "empty-object-enabled"
+        }
+      ]
     },
     {
       "page": "/settings/objects",
@@ -8997,7 +9116,24 @@
       "wo": "C1.9",
       "oracle": "",
       "query": "object=[key]",
-      "opener": "object-edit-btn"
+      "opener": "object-edit-btn",
+      "variants": [
+        {
+          "roles": [
+            "owner"
+          ],
+          "opener": [
+            "object-edit-btn@last",
+            "object-edit-key=qcbtnrenamed"
+          ],
+          "expect": {
+            "type": "mutation",
+            "target": "op:objects.update",
+            "db": "CustomObject (ชื่ออ้างอิงใหม่ qcbtnrenamed — POST_CHECK) · AuditLog crm.object.update"
+          },
+          "name": "empty-object-rename"
+        }
+      ]
     },
     {
       "page": "/settings/objects",
@@ -9063,7 +9199,22 @@
       "oracle": "",
       "query": "object=[key]",
       "opener": "object-archive-btn",
-      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน"
+      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน",
+      "needsProbe": {
+        "db": {
+          "model": "CustomObject",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": null,
+            "recordCount": {
+              "gt": 0
+            }
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/objects",
@@ -9086,7 +9237,22 @@
       "oracle": "",
       "query": "object=[key]",
       "opener": "object-archive-btn",
-      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน"
+      "needs": "วัตถุ [key] ที่มีระเบียนอยู่ (recordCount > 0 ⇒ ต้องพิมพ์ชื่ออ้างอิง + เหตุผล) — ซีดวัตถุ 'สัญญา' มี 12 ระเบียน",
+      "needsProbe": {
+        "db": {
+          "model": "CustomObject",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": null,
+            "recordCount": {
+              "gt": 0
+            }
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/objects",
@@ -9152,7 +9318,21 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี"
+      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี",
+      "needsProbe": {
+        "db": {
+          "model": "CustomObject",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": {
+              "not": null
+            }
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/objects",
@@ -9174,7 +9354,21 @@
       "wo": "C1.9",
       "oracle": "",
       "opener": "objects-archived-toggle",
-      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี"
+      "needs": "วัตถุกำหนดเองที่เก็บถาวรแล้ว (CustomObject.archivedAt) — ซีดไม่มี",
+      "needsProbe": {
+        "db": {
+          "model": "CustomObject",
+          "where": {
+            "systemId": "$SYS",
+            "archivedAt": {
+              "not": null
+            }
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/objects",
@@ -9741,7 +9935,10 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "opener": "object-import-btn"
+      "opener": [
+        "object-import-btn",
+        "object-import-text=*"
+      ]
     },
     {
       "page": "/objects/[key]",
@@ -9826,7 +10023,10 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "opener": "object-import-btn"
+      "opener": [
+        "object-import-btn",
+        "object-import-text=*"
+      ]
     },
     {
       "page": "/objects/[key]",
@@ -9892,7 +10092,8 @@
       "wo": "C1.9",
       "oracle": "",
       "opener": "object-page-next",
-      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน"
+      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน",
+      "needsWaiver": "R5-SPLIT: R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)"
     },
     {
       "page": "/objects/[key]",
@@ -9913,7 +10114,8 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน"
+      "needs": "ระเบียนของวัตถุ [key] เกินขนาดหน้า — ซีดมี 12 ระเบียน",
+      "needsWaiver": "R5-SPLIT: R5 paging SPLIT — ACCEPT with C1.10-X6.2 (UI cursor not pressed)"
     },
     {
       "page": "/objects/[key]",
@@ -9934,7 +10136,8 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects/[key]",
@@ -9959,7 +10162,8 @@
         "/objects/[key]/[recordId]"
       ],
       "opener": "object-record-new-btn",
-      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects/[key]",
@@ -9981,7 +10185,8 @@
       "wo": "C1.9",
       "oracle": "",
       "opener": "object-record-new-btn",
-      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects/[key]",
@@ -10007,7 +10212,8 @@
         "/objects/[key]/[recordId]"
       ],
       "opener": "object-record-new-btn",
-      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects/[key]",
@@ -10032,7 +10238,8 @@
         "/objects/[key]/[recordId]"
       ],
       "opener": "object-record-new-btn",
-      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)"
+      "needs": "วัตถุ [key] ที่ไม่มีแม่ (parentType NONE) — วัตถุ 'สัญญา' ของซีดผูกกับบริษัท ⇒ หน้ารายการแสดงคำแนะนำ object-add-hint แทนปุ่มเพิ่ม (เพิ่มได้จากแท็บในหน้าบริษัท)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects/[key]/[recordId]",
@@ -10114,7 +10321,8 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "needs": "Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซีด"
+      "needs": "Custom object ที่มีฟิลด์อ้างอิงผู้ติดต่อ (objects.tabsFor คืนแท็บ) — ขึ้นกับนิยามวัตถุในซีด",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/companies/[companyId]",
@@ -10269,7 +10477,8 @@
         "object-view-save-submit",
         "object-view-manage-btn"
       ],
-      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน"
+      "needs": "มุมมองที่บันทึกของวัตถุ [key] (MemberSavedView) — ซีดไม่มี · ตัวเปิดบันทึกมุมมองให้ก่อน",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/objects",
@@ -10310,7 +10519,8 @@
       },
       "wo": "C1.9",
       "oracle": "",
-      "needs": "ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'"
+      "needs": "ระบบ CRM ที่ยังไม่มีวัตถุกำหนดเอง (ลิงก์นี้อยู่ในข้อความหน้าว่าง) — ซีดมีวัตถุ 'สัญญา'",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/settings/api",
@@ -10347,7 +10557,7 @@
       "expect": {
         "type": "mutation",
         "target": "action:createCrmApiKeyAction",
-        "db": "ApiKey.systemId=<ระบบนี้>"
+        "db": "ApiKey +1 · ApiKey.systemId=<ระบบนี้>"
       },
       "wo": "C1.10",
       "oracle": "",
@@ -10431,7 +10641,7 @@
       "expect": {
         "type": "mutation",
         "target": "action:createCrmApiKeyAction",
-        "db": "ApiKey.scopesJson=<ชุด crm.* (+ crm.filter.team:<id>)>"
+        "db": "ApiKey +1 · ApiKey.scopesJson=<ชุด crm.* (+ crm.filter.team:<id>)>"
       },
       "wo": "C1.10",
       "oracle": "",
@@ -10452,11 +10662,23 @@
       "expect": {
         "type": "mutation",
         "target": "action:revokeCrmApiKeyAction",
-        "db": "ApiKey.revokedAt=<ไม่ว่าง>"
+        "db": "ApiKey.revokedAt=<ไม่ว่าง> (POST_CHECK: revokedAt ตั้งหลังกด)"
       },
       "wo": "C1.10",
       "oracle": "",
-      "needs": "API key ของระบบนี้ (ApiKey) — ซีดมี 0 · แถว crm-api-key-submit ในกลุ่มเดียวกันสร้างให้ก่อน"
+      "needs": "API key ของระบบนี้ (ApiKey) — ซีดมี 0 · แถว crm-api-key-submit ในกลุ่มเดียวกันสร้างให้ก่อน",
+      "needsProbe": {
+        "db": {
+          "model": "ApiKey",
+          "where": {
+            "systemId": "$SYS",
+            "revokedAt": null
+          }
+        },
+        "roles": [
+          "owner"
+        ]
+      }
     },
     {
       "page": "/settings/api",
@@ -10598,7 +10820,7 @@
       "expect": {
         "type": "mutation",
         "target": "action:deleteCrmWebhookAction",
-        "db": "WebhookEndpoint=<ลบแล้ว>"
+        "db": "WebhookEndpoint ถูกลบ · AuditLog crm.api.manage"
       },
       "wo": "C1.10",
       "oracle": "",
@@ -10815,7 +11037,8 @@
       },
       "wo": "C1.11",
       "oracle": "",
-      "needs": "ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2"
+      "needs": "ระบบ CRM ที่ยังใช้หน้าจอรุ่นเดิม v1 (ลิงก์อยู่บน CrmHub ของ v1 · เจ้าของร้าน · CRM_V2_SWITCH) — ซีดเป็น v2",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/settings",
@@ -10961,9 +11184,27 @@
       "oracle": "",
       "opener": [
         "crm-import-file=qc-btn-import.csv",
+        "crm-import-duplicate=candidate",
         "crm-import-submit"
       ],
-      "needs": "ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ ไม่มีลิงก์นี้)"
+      "needs": "ไฟล์นำเข้าที่มีแถวซ้ำกับผู้ติดต่อเดิม (fixture ของตัวกดเป็นข้อมูลใหม่ล้วน ⇒ ไม่มีคู่ซ้ำ ⇒ ไม่มีลิงก์นี้)",
+      "needsProbe": {
+        "db": {
+          "model": "CrmContact",
+          "where": {
+            "systemId": "$SYS",
+            "name": {
+              "startsWith": "qc-btn-",
+              "endsWith": "-import"
+            }
+          },
+          "min": 2
+        },
+        "roles": [
+          "owner",
+          "manager"
+        ]
+      }
     },
     {
       "page": "/contacts/duplicates",
@@ -11272,7 +11513,8 @@
         "contact-menu-merge",
         "contact-pick-merge-select=*"
       ],
-      "needs": "ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก (ตารางเลือกค่าโผล่หลังเลือกคน)"
+      "needs": "ผู้ติดต่ออื่นที่ค้นเจอในตัวเลือก 'ผู้ติดต่อที่จะรวมเข้ามา' + มีฟิลด์ที่ค่าต่างกันให้เลือก (ตารางเลือกค่าโผล่หลังเลือกคน)",
+      "needsWaiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -11368,7 +11610,8 @@
       "system": "CHAT",
       "query": "c=[conversationId]",
       "needs": "ห้องแชท [conversationId] ที่ผูกกับผู้ติดต่อ CRM แล้ว (ห้องที่ยังไม่ผูกแสดงปุ่มสร้าง lead แทน) + ผู้ติดต่อมีดีลเปิด",
-      "viewport": "desktop"
+      "viewport": "desktop",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/sys/[id]",
@@ -11536,7 +11779,8 @@
       "system": "CHAT",
       "query": "c=[conversationId]",
       "needs": "แผง CRM ในแชทโหลดข้อมูลล้ม (สถานะ error) — สร้างจากซีดไม่ได้",
-      "viewport": "desktop"
+      "viewport": "desktop",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/party/[partyId]",
@@ -14638,7 +14882,8 @@
       },
       "wo": "C2.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด"
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/settings/assignment",
@@ -14659,7 +14904,8 @@
       },
       "wo": "C2.3",
       "oracle": "",
-      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด"
+      "needs": "ฟิลด์กำหนดเองของผู้ติดต่อ (ช่องจำลองตามฟิลด์) — ขึ้นกับซีด",
+      "needsWaiver": "R5-REC: R5 — RECOMMEND cheap fixture (not blocking · C4.2-fix)"
     },
     {
       "page": "/settings/assignment",
@@ -15007,7 +15253,8 @@
         "crm-call-tel",
         "crm-call-save"
       ],
-      "needs": "ตั้งค่า CRM เปิดถอดเสียงสาย (settings.crm.ai.callTranscribe) + มีผู้ให้บริการถอดเสียง + เครดิต AI (ไม่ครบ = ข้อความ crm-call-ai-unavailable แทนปุ่ม)"
+      "needs": "ตั้งค่า CRM เปิดถอดเสียงสาย (settings.crm.ai.callTranscribe) + มีผู้ให้บริการถอดเสียง + เครดิต AI (ไม่ครบ = ข้อความ crm-call-ai-unavailable แทนปุ่ม)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15028,7 +15275,8 @@
       "wo": "C2.4",
       "oracle": "",
       "opener": "crm-call-tel",
-      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15049,7 +15297,8 @@
       "wo": "C2.4",
       "oracle": "",
       "opener": "crm-call-tel",
-      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15070,7 +15319,8 @@
       "wo": "C2.4",
       "oracle": "",
       "opener": "crm-call-tel",
-      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15091,7 +15341,8 @@
       "wo": "C2.4",
       "oracle": "",
       "opener": "crm-call-tel",
-      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15112,7 +15363,8 @@
       "wo": "C2.4",
       "oracle": "",
       "opener": "crm-call-tel",
-      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)"
+      "needs": "ข้อเสนอ AI ของสายที่บันทึกแล้วและมีไฟล์เสียง (หลัง crm-call-ai-transcribe — ปุ่มนั้นถูกกันด้วย CROSS_MODULE_GUARD: AI + ที่เก็บไฟล์จริง)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts",
@@ -15151,7 +15403,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง"
+      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15171,7 +15424,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "ระบบจองคิวที่ผู้ใช้เปิดได้ + ผู้ติดต่อมี party (bookingLinkFor คืนลิงก์) — ขึ้นกับสิทธิ์/ซีด"
+      "needs": "ระบบจองคิวที่ผู้ใช้เปิดได้ + ผู้ติดต่อมี party (bookingLinkFor คืนลิงก์) — ขึ้นกับสิทธิ์/ซีด",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/calendar",
@@ -15370,7 +15624,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/deals/[dealId]",
@@ -15390,7 +15645,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)"
+      "needs": "สายที่มีไฟล์เสียง (CrmActivity.recordingFileId) ≥1 ของผู้ติดต่อ/ดีลนี้ — ซีดมี 0 (แผงรายการเสียงไม่แสดงเลย)",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts/[contactId]",
@@ -15410,7 +15666,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "ผู้ติดต่อที่ไม่มีเบอร์โทร (ปุ่มบันทึกสายย้อนหลังแสดงแทน tel:) — ผู้ติดต่อ [contactId] ในซีดมีเบอร์"
+      "needs": "ผู้ติดต่อที่ไม่มีเบอร์โทร (ปุ่มบันทึกสายย้อนหลังแสดงแทน tel:) — ผู้ติดต่อ [contactId] ในซีดมีเบอร์",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/contacts",
@@ -15430,7 +15687,8 @@
       },
       "wo": "C2.4",
       "oracle": "",
-      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง"
+      "needs": "ร่างผู้ติดต่อจากการสแกนนามบัตร (สถานะในหน้า หลัง AI อ่านรูป) — crm-card-scan ถูกกันด้วย CROSS_MODULE_GUARD (AI + ที่เก็บไฟล์จริง) จึงไม่มีร่าง",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/u/[token]",
@@ -15574,7 +15832,8 @@
       },
       "wo": "C2.5",
       "oracle": "",
-      "needs": "อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)"
+      "needs": "อีเมลในเธรดที่มีรูปภายนอก (hasRemoteImages)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/emails/[threadKey]",
@@ -15595,19 +15854,20 @@
       },
       "wo": "C2.5",
       "oracle": "",
-      "needs": "อีเมลในเธรดที่มีไฟล์แนบ"
+      "needs": "อีเมลในเธรดที่มีไฟล์แนบ",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/emails/[threadKey]",
       "testid": "crm-email-attach-contact-q",
       "kind": "input",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
         "nok",
-        "thana"
+        "thana",
+        "manager"
       ],
       "expect": {
         "type": "inline-error",
@@ -15616,31 +15876,6 @@
       },
       "wo": "C2.5",
       "oracle": ""
-    },
-    {
-      "page": "/emails/[threadKey]",
-      "testid": "crm-email-attach-contact-pick",
-      "kind": "button",
-      "roles": [
-        "owner",
-        "manager"
-      ],
-      "hiddenFor": [
-        "nok",
-        "thana"
-      ],
-      "expect": {
-        "type": "mutation",
-        "target": "action:attachCrmEmailToContactAction",
-        "db": "CrmEmailMessage.matchedBy=MANUAL · CrmActivity EMAIL 1 แถว · AuditLog crm.email.attach"
-      },
-      "wo": "C2.5",
-      "oracle": "",
-      "opener": [
-        "crm-email-attach-contact-q=QC",
-        "crm-email-attach-contact-go"
-      ],
-      "needs": "เธรดที่ยังไม่ผูกผู้ติดต่อ + ผู้ติดต่อที่ค้นด้วย 'QC' เจอ"
     },
     {
       "page": "/emails/[threadKey]",
@@ -16224,7 +16459,8 @@
       },
       "wo": "C2.5",
       "oracle": "",
-      "needs": "โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODULE_GUARD (Resend จริง)"
+      "needs": "โดเมนผู้ส่งที่ลงทะเบียนแล้ว (EmailDomain) — ซีดมี 0 · ปุ่มเพิ่มโดเมนถูกกันด้วย CROSS_MODULE_GUARD (Resend จริง)",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/settings/email",
@@ -16586,12 +16822,12 @@
       "testid": "crm-email-attach-contact-go",
       "kind": "button",
       "roles": [
-        "owner",
-        "manager"
+        "owner"
       ],
       "hiddenFor": [
         "nok",
-        "thana"
+        "thana",
+        "manager"
       ],
       "expect": {
         "type": "ui",
@@ -16602,6 +16838,30 @@
       "wo": "C2.5",
       "oracle": "",
       "opener": "crm-email-attach-contact-q=วรรณา"
+    },
+    {
+      "page": "/emails/[threadKey]",
+      "testid": "crm-email-attach-contact-pick",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana",
+        "manager"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:attachCrmEmailToContactAction",
+        "db": "CrmEmailMessage.matchedBy=MANUAL · CrmActivity EMAIL 1 แถว · AuditLog crm.email.attach"
+      },
+      "wo": "C2.5",
+      "oracle": "",
+      "opener": [
+        "crm-email-attach-contact-q=QC",
+        "crm-email-attach-contact-go"
+      ]
     },
     {
       "page": "/emails/[threadKey]",
@@ -17423,7 +17683,8 @@
       "oracle": "qc-crm-c2.7 C2.7-S5.4",
       "system": "POS",
       "query": "unit=[unitId]",
-      "needs": "บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่มองเห็น)"
+      "needs": "บิลขาย POS ที่ผูกดีลได้ในหน้าลงทะเบียนขาย (ปุ่มนี้ถูกกันด้วย CROSS_MODULE_GUARD — ตรวจแค่มองเห็น)",
+      "needsWaiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
     },
     {
       "page": "/settings/scoring",
@@ -17500,7 +17761,11 @@
         "db": "settings.crm.scoring {hot,warm,decayDays} (jsonb_set คำสั่งเดียว) · AuditLog crm.score.settings"
       },
       "wo": "C2.8",
-      "oracle": ""
+      "oracle": "",
+      "opener": [
+        "crm-score-band-hot=60",
+        "crm-score-band-warm=30"
+      ]
     },
     {
       "page": "/settings/scoring",
@@ -17906,7 +18171,8 @@
       },
       "wo": "C2.8",
       "oracle": "",
-      "needs": "ประวัติคะแนนของผู้ติดต่อ [contactId] (CrmScoreLog) — ซีดไม่มีกฎคะแนน (CrmScoreRule 0) จึงไม่มีรายการ"
+      "needs": "ประวัติคะแนนของผู้ติดต่อ [contactId] (CrmScoreLog) — ซีดไม่มีกฎคะแนน (CrmScoreRule 0) จึงไม่มีรายการ",
+      "needsWaiver": "R5-ACC: R5 — ACCEPT seed / AI-data gap (C6)"
     },
     {
       "page": "/settings/notifications",
@@ -18218,7 +18484,8 @@
       },
       "wo": "C2.10",
       "oracle": "qc-crm-c2.10",
-      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/sys/[id]",
@@ -18238,7 +18505,8 @@
       },
       "wo": "C2.10",
       "oracle": "qc-crm-c2.10",
-      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/sys/[id]",
@@ -18949,9 +19217,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-home-ai-draft",
-        "db": "ไม่มีการเขียน (ปุ่มเท่านั้น · ปิดไว้ — ต่อสายในใบ C3.4)"
+        "db": "ไม่กด — ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิด · HomeAside)",
+        "state": "disabled"
       },
       "wo": "C3.2",
       "oracle": "qc-crm-c3.2"
@@ -18969,9 +19238,10 @@
         "thana"
       ],
       "expect": {
-        "type": "inline-error",
+        "type": "ui",
         "target": "crm-home-ai-summary",
-        "db": "ไม่มีการเขียน (ปุ่มเท่านั้น · ปิดไว้ — ต่อสายในใบ C3.4)"
+        "db": "ไม่กด — ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิด · HomeAside)",
+        "state": "disabled"
       },
       "wo": "C3.2",
       "oracle": "qc-crm-c3.2"
@@ -18995,7 +19265,8 @@
       },
       "wo": "C3.2",
       "oracle": "qc-crm-c3.2",
-      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0"
+      "needs": "ดีลที่ผู้ใช้คนนี้เป็นผู้ดูแล (หน้าแรก 'ดีลของฉัน'/ดีลนิ่ง) — ซีดให้ดีลทั้งหมดกับ thana/nok ⇒ owner/manager มี 0",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/sys/[id]",
@@ -20004,7 +20275,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)"
+      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/login",
@@ -20021,7 +20293,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)"
+      "needs": "รหัส OTP ที่ขอแล้ว — ปุ่มขอ OTP (portal-otp-request) ถูกกันด้วย DIRECT_SEND_GUARD (ส่งอีเมลจริง)",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/login",
@@ -20125,7 +20398,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ผู้ติดต่อพอร์ทัลที่เข้าได้ ≥2 บริษัท — fixture ของตัวกดผูก 1 บริษัท"
+      "needs": "ผู้ติดต่อพอร์ทัลที่เข้าได้ ≥2 บริษัท — fixture ของตัวกดผูก 1 บริษัท",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20157,7 +20431,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบแจ้งหนี้ค้างชำระของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
+      "needs": "ใบแจ้งหนี้ค้างชำระของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20173,7 +20448,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
+      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20189,7 +20465,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20205,7 +20482,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20222,7 +20500,8 @@
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
       "opener": "portal-quote-accept",
-      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20239,7 +20518,8 @@
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
       "opener": "portal-quote-reject",
-      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]",
@@ -20257,7 +20537,8 @@
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
       "opener": "portal-quote-accept",
-      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา"
+      "needs": "ใบเสนอราคาที่ส่งให้บริษัท [companyId] และตอบได้ (role APPROVE) — fixture เป็นสิทธิ์ VIEW และซีดบัญชีอาจไม่มีใบเสนอราคา",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/quotations",
@@ -20273,7 +20554,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
+      "needs": "ใบเสนอราคาของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -20289,7 +20571,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบแจ้งหนี้ของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี"
+      "needs": "ใบแจ้งหนี้ของบริษัท [companyId] ในระบบบัญชี — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -20306,7 +20589,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี"
+      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/invoices",
@@ -20323,7 +20607,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี"
+      "needs": "ใบแจ้งหนี้ค้างชำระที่รับ PromptPay ได้ — ขึ้นกับซีดบัญชี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/documents",
@@ -20355,7 +20640,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ไฟล์แนบ (CrmFileLink RECORD) บนระเบียนวัตถุที่เปิดพอร์ทัลของบริษัท [companyId] — ซีดไม่มี"
+      "needs": "ไฟล์แนบ (CrmFileLink RECORD) บนระเบียนวัตถุที่เปิดพอร์ทัลของบริษัท [companyId] — ซีดไม่มี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20371,7 +20657,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20387,7 +20674,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/documents/[id]",
@@ -20404,7 +20692,8 @@
       },
       "wo": "C3.5",
       "oracle": "qc-crm-c3.5",
-      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี"
+      "needs": "ฟิลด์ของวัตถุที่ portalVisible + portalEditable (ไม่ใช่ FILE/LOOKUP) บนระเบียนที่เปิดพอร์ทัล — ซีดไม่มี",
+      "needsWaiver": "IT5: R5 — it5 never-pressed waiver accepted (portal account/OTP/storage)"
     },
     {
       "page": "/b/[slug]/requests",
@@ -20793,7 +21082,8 @@
       "wo": "C3.6",
       "oracle": "qc-crm-c3.6",
       "system": "MEMBER",
-      "needs": "เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูลสมาชิก (ไม่อยู่ในทะเบียน CRM) และชิปขอบเขตไม่มี data-testid"
+      "needs": "เปิดเมนูมุมมองสมาชิก → บันทึกมุมมอง → เลือกขอบเขต 'ทั้งทีม' ก่อน — ตัวเปิดเป็นปุ่มของโมดูลสมาชิก (ไม่อยู่ในทะเบียน CRM) และชิปขอบเขตไม่มี data-testid",
+      "needsWaiver": "R4-2G: R4 ruling 2 — ACCEPTABLE GAP (LOW)"
     },
     {
       "page": "/app/sys/[id]",
@@ -21867,7 +22157,8 @@
       },
       "wo": "C3.9",
       "oracle": "qc-crm-c3.9",
-      "needs": "งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานที่แถว crm-export-start-* สร้างต้องรอตัวทำงานเบื้องหลัง"
+      "needs": "งานส่งออกทั้งร้านที่เสร็จแล้ว (CrmImportJob kind=CRM_EXPORT status=DONE) — ซีดไม่มี · งานที่แถว crm-export-start-* สร้างต้องรอตัวทำงานเบื้องหลัง",
+      "needsWaiver": "R4-1: R4 ruling 1 — page-level lock-out pairs the hidden roles; functional gap waived"
     },
     {
       "page": "/settings",
@@ -22249,7 +22540,8 @@
         "crm-ai-home-at-risk",
         "crm-ai-proposal-edit"
       ],
-      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "needsWaiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
     },
     {
       "page": "/app/sys/[id]",
@@ -22271,7 +22563,8 @@
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4",
       "opener": "crm-ai-home-at-risk",
-      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)"
+      "needs": "ข้อเสนอ AI ที่รออนุมัติ (AiProposal PENDING kind crm.assist.tasks) — ซีดมี 0 · ตัวเปิด crm-ai-home-at-risk สร้างให้ (กดได้เฉพาะเมื่อ SHARK_AI_MOCK=1)",
+      "needsWaiver": "R4-2W: R4 ruling 2 — WAIVE (shown transitively / service oracle)"
     },
     {
       "page": "/settings",
@@ -22292,7 +22585,8 @@
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4 C3.4-S8.3",
-      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)",
+      "needsWaiver": "GAP-MEET: R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
     },
     {
       "page": "/settings",
@@ -22313,7 +22607,8 @@
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4",
-      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)",
+      "needsWaiver": "GAP-MEET: R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
     },
     {
       "page": "/settings",
@@ -22334,7 +22629,8 @@
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4",
-      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)",
+      "needsWaiver": "GAP-MEET: R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
     },
     {
       "page": "/settings",
@@ -22355,7 +22651,8 @@
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4",
-      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)"
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง)",
+      "needsWaiver": "GAP-MEET: R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
     },
     {
       "page": "/settings",
@@ -22376,7 +22673,8 @@
       },
       "wo": "C3.4",
       "oracle": "qc-crm-c3.4",
-      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง) + การผูกห้องที่บันทึกแล้ว"
+      "needs": "ห้องในระบบแชททีม (MEETING) ที่ผู้ใช้เลือกได้ + ทีมขาย — ซีดไม่มีระบบ MEETING (ฟอร์มผูกห้องไม่แสดง) + การผูกห้องที่บันทึกแล้ว",
+      "needsWaiver": "GAP-MEET: R5 — ACCEPTABLE GAP, C6 test debt (seed with a MEETING system)"
     },
     {
       "page": "/app/sys/[id]/meeting",
@@ -22422,6 +22720,71 @@
         "company-menu-btn",
         "company-menu-edit"
       ]
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "company-lifecycle-correct-sheet",
+        "state": "appears",
+        "note": "แสดงเฉพาะบริษัทที่เป็น \"ลูกค้า\" และยังใช้งาน · ผู้จัดการ/เจ้าของร้านเท่านั้น"
+      },
+      "wo": "C5.4-E",
+      "oracle": ""
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct-confirm",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "mutation",
+        "target": "action:setCompanyLifecycleAction",
+        "db": "CrmCompany.lifecycleStage=PROSPECT · audit crm.company.lifecycle correction=true",
+        "note": "ลูกค้า → มีโอกาส เท่านั้น"
+      },
+      "wo": "C5.4-E",
+      "oracle": "",
+      "opener": "company-lifecycle-correct"
+    },
+    {
+      "page": "/companies/[companyId]",
+      "testid": "company-lifecycle-correct-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "manager"
+      ],
+      "hiddenFor": [
+        "nok",
+        "thana"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "company-lifecycle-correct-sheet",
+        "state": "disappears",
+        "note": "ปิดโดยไม่บันทึก"
+      },
+      "wo": "C5.4-E",
+      "oracle": "",
+      "opener": "company-lifecycle-correct"
     },
     {
       "page": "/companies",

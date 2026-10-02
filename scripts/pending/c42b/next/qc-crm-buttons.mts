@@ -92,7 +92,7 @@
 //   if missing. Exit 2 (Fatal, Thai message) if the QC server at $QC_BASE (default http://127.0.0.1:3215) does not answer.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
 const accEnv = (await import(`${process.cwd()}/scripts/acc-v2-env.mts` as string)) as { loadQcEnv: () => { host: string } };
@@ -142,6 +142,7 @@ mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const DL_DIR = resolvePath(".qc-shots/c42/dl");
 let RUN_OBJECT_KEY = ""; // ctx.objectKey — set in main (fillValueFor has no ctx)
+let RUN_COMPANY_ID = ""; // it6: the shared company pick (object import parentId)
 const DOWNLOADS: { name: string; bytes: number; state: string }[] = [];
 
 // ───────────────────────────── registry + answer key ─────────────────────────────
@@ -156,6 +157,7 @@ type Row = {
     type: string; target?: string; db?: string;
     anyOf?: string[]; resultTarget?: string; state?: "appears" | "disappears" | "changes" | "selected" | "count" | "disabled"; dropTarget?: string; note?: string;
     outcome?: "refusal"; refusalText?: string; // it5 (RV-3/RV-7): the expected result IS a server refusal (new alert matching refusalText)
+    resultText?: string; // it7 (P-it6-3): regex the resultTarget's text must match (bulk move: "ย้ายขั้นสำเร็จ [1-9]" only when a deal moved)
   };
   variants?: { name?: string; roles: string[]; opener?: string | string[]; expect: Row["expect"]; note?: string }[]; // it5 (RV-7)
   onlyHiddenFor?: Record<string, string[]>; // it5 (RV-11c): per-`only`-name extra hiddenFor (one menu, items gated by different keys)
@@ -168,6 +170,12 @@ type Row = {
   not?: string[];
   opener?: string | string[]; // C4.2 — control(s) to press first (chain, in order)
   needs?: string; // C4.2 — data precondition the standard seed may not satisfy
+  // it7 (RVR-3): a CHECKED precondition — when the probe says the data is there, a missing control is DEAD, not skippedNeeds.
+  //   db: count of <model> rows of this tenant matching `where` (placeholders "$TENANT" "$SYS" "$X:<fixture key>") ≥ min (default 1)
+  //   when: a registry testid visible on the loaded page (after the opener chain) proves the precondition
+  needsProbe?: { db?: { model: string; where?: Any; min?: number }; when?: string; roles?: string[] }; // roles: the probe speaks only for these (visibility differs per role)
+  // it7 (RVR-3): the reviewer's ruling for a `needs` row that stays unpressed (waiver class · ruling id) — printed in the summary
+  needsWaiver?: string;
   viewport?: "desktop" | "mobile"; // C4.2 — the control exists in ONE layout only (md:hidden cards · sm:hidden stage tabs)
 };
 let ROWS: Row[] = [];
@@ -203,6 +211,9 @@ const DIRECT_SEND_GUARD = new Map<string, string>([
   ["crm-email-send", "ส่งอีเมลจริง (sendCrmEmailAction)"],
   ["crm-email-test-send", "ส่งอีเมลทดสอบจริงถึงผู้กด"],
   ["portal-otp-request", "ส่ง OTP ทางอีเมลจริง (requestPortalOtp → sendEmail)"],
+  // it6 (run5): the composer FORM row submitted the composer (requestSubmit ⇒ sendCrmEmailAction) — 4 mails went through the QC
+  //   server's dev transport ("[email:dev] … subject: qc-btn template …"); with a real mail key they would have been sent
+  ["crm-email-composer", "ส่งอีเมลจริงผ่านฟอร์มเขียนจดหมาย (sendCrmEmailAction — ฟอร์มเดียวกับปุ่ม crm-email-send)"],
 ]);
 // CROSS_MODULE_GUARD — writes into another module's ledger that the snapshot cannot put back faithfully (running
 // document numbers, payroll, POS sales) or that call a paid external service (LLM / speech / OCR) or upload to the
@@ -220,8 +231,7 @@ const CROSS_MODULE_GUARD = new Map<string, string>([
   // it5 (RV-4 H): the file-link fixture points at an object that does not exist on the storage (no upload allowed) ⇒ opening it can
   //   only 404 — the private-link signing/serving is covered by the storage suites (see wo-notes it5 waiver table)
   ["crm-files-open", "เปิดไฟล์ส่วนตัวจากที่เก็บจริง — fixture ไม่มีวัตถุบนที่เก็บ (ห้ามอัปโหลด)"],
-  ["crm-home-ai-draft", "ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิดใช้ — ปิดไว้ถาวรใน HomeAside) · ตรวจแค่มองเห็น/hiddenLeak"],
-  ["crm-home-ai-summary", "ปุ่ม disabled ตามแบบ (AI หน้าแรกยังไม่เปิดใช้ — ปิดไว้ถาวรใน HomeAside) · ตรวจแค่มองเห็น/hiddenLeak"],
+  // it7 (RVR-10): crm-home-ai-draft / -summary are no longer guarded — the registry asserts `state: disabled` (never pressed either way)
   // emails.ts addDomain() POSTs the domain to the real Resend account (providerId) — the snapshot removes the EmailDomain
   // row but not the domain registered at the provider
   ["crm-email-domain-add", "ลงทะเบียนโดเมนผู้ส่งกับ Resend จริง (คืนค่าฝั่งผู้ให้บริการไม่ได้)"],
@@ -231,6 +241,9 @@ const CROSS_MODULE_GUARD = new Map<string, string>([
   // portal writes into the ACCOUNT ledger, which SNAP_MODELS does not cover
   ["portal-quote-confirm-submit", "ตอบรับ/ปฏิเสธใบเสนอราคาในระบบบัญชี (AccountDocument.status — snapshot ไม่ครอบตารางบัญชี)"],
   ["portal-pay-promptpay", "ออกคำขอชำระเงิน PromptPay ในระบบบัญชี (AccountPaymentRequest — snapshot ไม่ครอบตารางบัญชี)"],
+  // it7 (RVR-1a audit of c1522f6e — sub-audit table in wo-notes it7): two more rows reach a third party without any e-mail gate
+  ["portal-line-login", "เข้าระบบด้วย LINE — โหลด LIFF SDK จาก static.line-scdn.net + liff.login() พาออกไป LINE (PortalLoginForm.tsx:142) — ไม่กด"],
+  ["crm-email-domain-refresh", "ตรวจสถานะโดเมนที่ Resend (GET api.resend.com/domains/{id}, emails.ts:944 — ไม่มีด่าน emailEnabled) — ไม่กด"],
 ]);
 // AI_GUARD — paid LLM calls (runAssist → resolveProvider). Pressed ONLY when the QC server runs SHARK_AI_MOCK=1, read from
 // the controller's BUILD-STATE ("READY … ai=mock"); otherwise skippedSafety. Phase 1 found the 7 CrmAiPanel buttons unguarded
@@ -243,6 +256,104 @@ const AI_GUARD = new Map<string, string>([
 const BUILD_STATE_PATH = process.env.QC_BUILD_STATE ?? "/root/projects/shark-crm/.qc-shots/crm/BUILD-STATE";
 const AI_MOCK = (() => { try { return /^READY\b.*\bai=mock\b/m.test(readFileSync(BUILD_STATE_PATH, "utf8")); } catch { return false; } })();
 if (!AI_MOCK) for (const [k, v] of AI_GUARD) CROSS_MODULE_GUARD.set(k, `${v} จริง (เครดิต AI — เซิร์ฟเวอร์ QC ไม่ได้รัน SHARK_AI_MOCK=1 ตาม ${BUILD_STATE_PATH})`);
+// it7 (RVR-1a) — the guard is no longer per-testid only:
+//   (1) SAME ACTION: a row whose expect.target is the server action/op of a guarded row whose ACTION is the external effect
+//       (send / register / issue / pay / payroll — not the guarded inputs whose risk is the upload or the paid AI call) is guarded too
+//       (run3+run5: the composer FORM row reached sendCrmEmailAction while only the button was guarded);
+//   (2) STRUCTURAL (at press time, see structuralGuard): any row whose element is, or sits inside, a <form> that contains a guarded
+//       control is refused — a submit/requestSubmit/Enter in that form can reach the guarded action.
+const ACTION_EFFECT_GUARDED = new Set(["crm-email-send", "crm-email-test-send", "portal-otp-request", "crm-email-composer", "deal-quote-btn", "deal-invoice-btn",
+  "crm-commission-send-payroll", "pos-deal-select", "crm-email-domain-add", "portal-quote-confirm-submit", "portal-pay-promptpay", "portal-slip-upload",
+  "portal-line-login", "crm-email-domain-refresh"]);
+const GUARDED_TESTIDS = (): string[] => [...DIRECT_SEND_GUARD.keys(), ...CROSS_MODULE_GUARD.keys()];
+const GUARDED_ACTION_TARGETS = new Map<string, string>(); // "action:x" | "op:x" | "/pay/[token]" → the guarded testid
+for (const r of ROWS) {
+  const t = r.expect?.target ?? "";
+  if (ACTION_EFFECT_GUARDED.has(r.testid) && /^(action:|op:|\/pay\/)/.test(t)) GUARDED_ACTION_TARGETS.set(t, r.testid);
+}
+function guardOf(testid: string, expect: Row["expect"]): string | null {
+  const own = DIRECT_SEND_GUARD.get(testid) ?? CROSS_MODULE_GUARD.get(testid);
+  if (own) return own;
+  const via = expect?.target ? GUARDED_ACTION_TARGETS.get(expect.target) : undefined;
+  return via && via !== testid ? `it7 SAME-ACTION guard: ${expect.target} = action ของ ${via} (กันไว้) — ไม่กด` : null;
+}
+const SAFETY_OPENER = "SAFETY-OPENER";
+// it7 (RVR-3): the reviewer's waiver class per unpressed `needs` row (registry `needsWaiver`) — carried into skippedNeeds[]
+const ROW_WAIVER = new Map<string, string>(ROWS.filter((r) => r.needsWaiver).map((r) => [`${r.page}#${r.testid}`, r.needsWaiver!]));
+// it7 (RVR-7): time spent looking for hidden rows (reported in the summary — the cost of the equal-wait change)
+const HIDDEN_WAIT_MS = { n: 0, rows: 0 };
+const RUN_START = new Date(Date.now() - 5_000); // it7 tripwire window start
+const TRIP_SEEN = new Set<string>();
+const TRIPWIRE: string[] = [];
+/** it7 (RVR-1b): attempted webhook deliveries + payroll rows of this tenant since the run start (checked before every restore) */
+async function tripwireDeliveries(label: string): Promise<void> {
+  const d = await P.webhookDelivery.findMany({ where: { tenantId: TENANT, createdAt: { gte: RUN_START } }, select: { id: true, status: true, eventType: true } }).catch(() => []);
+  for (const x of d) if (!TRIP_SEEN.has(x.id)) { TRIP_SEEN.add(x.id); TRIPWIRE.push(`WebhookDelivery ${x.status} ${x.eventType} (${label})`); }
+  const h = await P.hrPayAdjustment.findMany({ where: { tenantId: TENANT, createdAt: { gte: RUN_START } }, select: { id: true } }).catch(() => []);
+  for (const x of h) if (!TRIP_SEEN.has(x.id)) { TRIP_SEEN.add(x.id); TRIPWIRE.push(`HrPayAdjustment ${x.id} (${label})`); }
+}
+/** it7 (audit pre-flight): DB state that would turn ordinary CRM presses into external calls through the outbox (webhooks /
+ *  automation LINE·push·webhook actions / staff push / Resend domains / payroll link). Violations abort the invocation. */
+async function preflightExternal(): Promise<string[]> {
+  const out: string[] = [];
+  const n = async (label: string, f: () => Promise<number>) => { const k = await f().catch((e: unknown) => { out.push(`${label}: อ่านไม่ได้ ${String(e).slice(0, 60)}`); return 0; }); if (k) out.push(`${label}: ${k}`); };
+  await n("WebhookEndpoint active", () => P.webhookEndpoint.count({ where: { tenantId: TENANT, active: true } }));
+  // enabled rules are fine when every action stays inside SHARK (the seed has CREATE_DEAL + SET_TIER rules); an action that reaches a
+  //   transport (LINE / push / SMS / webhook / e-mail) — new `actions[]` or legacy `actionType` — blocks the run
+  await n("AutomationRule enabled with an external action (LINE/push/SMS/webhook/e-mail)", async () => {
+    const rs = await P.automationRule.findMany({ where: { tenantId: TENANT, enabled: true }, select: { actions: true, actionType: true } });
+    const ext = (t: unknown) => /LINE|PUSH|SMS|WEBHOOK|EMAIL|MAIL/i.test(String(t ?? ""));
+    return rs.filter((r: Any) => ext(r.actionType) || (Array.isArray(r.actions) ? r.actions : []).some((a: Any) => ext(a?.type))).length;
+  });
+  await n("EmailDomain", () => P.emailDomain.count({ where: { tenantId: TENANT } }));
+  await n("CrmMailProvider", () => P.crmMailProvider.count({ where: { tenantId: TENANT } }));
+  const uids = Object.values((E as Any).users ?? {}).map((u: Any) => u?.userId).filter(Boolean);
+  await n("PushDevice of QC personas", () => P.pushDevice.count({ where: { userId: { in: uids } } }));
+  await n("MemberPushDevice of tenant", () => P.memberPushDevice.count({ where: { tenantId: TENANT } }));
+  const sys = await P.appSystem.findUnique({ where: { id: SYS }, select: { settings: true } }).catch(() => null);
+  if ((sys?.settings as Any)?.crm?.commission?.payrollLink || (sys?.settings as Any)?.crm?.commissions?.payrollLink) out.push("settings.crm.commission.payrollLink = on");
+  if (!AI_MOCK) out.push("BUILD-STATE ไม่มี ai=mock");
+  return out;
+}
+const FORCE_NOOP = new Set((process.env.QC_BTN_FORCE_NOOP ?? "").split(/[,|]/).map((x) => x.trim()).filter(Boolean)); // it7 negative control
+// it7 (RVR-8 + RVR-1b): a server-component error rendered into a 200 page and any mail/exception line of the QC server log are
+//   page FAILURES (pageErrors — a hard failure of the pass, like cleanup/verify). Markers = Next 16's built-in error UI
+//   (client/components/builtin/global-error.js + app-error.js: "This page couldn’t load" · "A server error occurred…" ·
+//   <html id="__next_error__">) and the classic "Application error: a … exception has occurred"; the app has no error.tsx.
+const PAGE_ERRORS: { page: string; user: string; device: string; kind: string; detail: string }[] = [];
+const ERROR_MARK_RE = /This page couldn’t load|A server error occurred\. Reload to try again|Application error: a (?:server|client)-side exception has occurred|Unhandled Runtime Error/;
+async function errorMarker(page: Any): Promise<string> {
+  return page.evaluate((src: string) => {
+    if (document.documentElement?.id === "__next_error__") return "html#__next_error__";
+    const m = new RegExp(src).exec(document.body?.innerText ?? "");
+    return m ? m[0] : "";
+  }, ERROR_MARK_RE.source).catch(() => "");
+}
+const SERVER_LOG = process.env.QC_SERVER_LOG ?? "/root/projects/shark-crm/.qc-shots/acc-v2/server.log";
+function serverLogSize(): number { try { return statSync(SERVER_LOG).size; } catch { return -1; } }
+/** new lines of the QC server log since `off` that are a mail send ("[email") or a server exception ("⨯") */
+function serverLogSince(off: number): string[] {
+  if (off < 0) return [];
+  try {
+    const size = statSync(SERVER_LOG).size; if (size <= off) return [];
+    const fd = openSync(SERVER_LOG, "r"); const buf = Buffer.alloc(Math.min(size - off, 4_000_000)); readSync(fd, buf, 0, buf.length, off); closeSync(fd);
+    return buf.toString("utf8").split("\n").filter((l) => /\[email|⨯/.test(l));
+  } catch { return []; }
+}
+/** it7 (RVR-1a) STRUCTURAL guard — at press time: the element (or its enclosing <form>) contains a guarded control ⇒ refuse */
+async function structuralGuard(el: Any): Promise<string | null> {
+  const names = GUARDED_TESTIDS();
+  return el.evaluate((e: Element, ns: string[]) => {
+    const f = e.tagName === "FORM" ? e : e.closest("form");
+    if (!f) return null;
+    for (const x of Array.from(f.querySelectorAll("[data-testid]"))) {
+      const t = x.getAttribute("data-testid") ?? "";
+      if (x !== e && ns.includes(t)) return `it7 STRUCTURAL guard: อยู่ใน <form> เดียวกับ ${t} (กันไว้) — submit/Enter ในฟอร์มนี้ไปถึงคำสั่งที่กันได้ — ไม่กด`;
+    }
+    const own = f.getAttribute("data-testid") ?? "";
+    return f !== e && ns.includes(own) ? `it7 STRUCTURAL guard: อยู่ในฟอร์ม ${own} (กันไว้) — ไม่กด` : null;
+  }, names).catch(() => "it7 STRUCTURAL guard: ตรวจฟอร์มไม่ได้ — ไม่กด (ปลอดภัยไว้ก่อน)");
+}
 // DESTRUCTIVE — rows after which the snapshot is restored IMMEDIATELY (the next row must not see an archived/merged/
 // deleted/erased/converted entity or a switched UI version). Everything else is restored at the end of its page group.
 const DESTRUCTIVE_RE = /(archive|delete|merge|erase|remove|revoke|convert|lost-confirm|reopen-submit|uiversion|template-apply|template-none|bulk|unowned-submit|restore|deal-card-|recompute|rotate|approve|reject|change-pipeline|stage-step)/;
@@ -515,6 +626,7 @@ type PlanItem = {
   notList: string[]; // exact testids to exclude when `testid` is a `*`-pattern (row.only expands away)
   opener: string[]; // C4.2 — chain to press first
   needs: string | null; // C4.2 — data precondition
+  needsProbe?: Row["needsProbe"]; // it7 (RVR-3)
   idx: number; // registry order (fill rows before their submit — PREFILL relies on it)
   variant?: string; // it5 (RV-7): set when this item is a row variant
 };
@@ -896,13 +1008,43 @@ async function createExtraFixtures(ctx: Ctx): Promise<void> {
     }
     PICKS.push({ user: "*", entity: "assignmentRules", id: null, why: "กฎแจกงาน 2 กฎของตัวกด (qc-btn-assign-, ปิดใช้งาน) — ซีดมี 0 ⇒ ปุ่มเลื่อนขึ้น/ลงถูก disabled" });
   }
-  // it5 (RV-8): object-edit-key is `disabled={item.recordCount > 0}` (ObjectsAdmin.tsx) and every seed object has records ⇒ an
-  //   EMPTY runner-owned object listed FIRST (sortOrder below the seed; list = sortOrder asc, createdAt asc · objects.ts listObjects)
-  if (selRow(/^object-edit-key$/)) {
-    const minSort = await P.customObject.aggregate({ where: { systemId: SYS }, _min: { sortOrder: true } }).then((a: Any) => a._min.sortOrder ?? 0).catch(() => 0);
-    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key: `qcbtn${rand}`, label: `qc-btn-obj-${rand}`, labelPlural: `qc-btn-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: minSort - 1, recordCount: 0 }, select: { id: true } });
-    XFIX.push({ model: "customObject", id: o.id }); PREFER_IDS.push(o.id);
-    PICKS.push({ user: "*", entity: "emptyObject", id: o.id, why: "วัตถุว่างของตัวกด (qc-btn-obj-, ไม่มีระเบียน) อยู่บนสุดของรายการ — ชื่ออ้างอิงแก้ได้เฉพาะวัตถุที่ไม่มีระเบียน" });
+  // it6 (run5): the it5 EMPTY-object fixture (listed first) made the archive rows act on an object with no records ⇒ no confirm-key /
+  //   reason step (object-archive-confirm-key/-reason VACUOUS for manager/nok/thana). Removed — object-edit-key now asserts the
+  //   product rule on the seed object instead (key is disabled while the object has records; registry `state: disabled`).
+  // it6: archived custom object (objects-archived-toggle / object-restore-btn render only when one exists — ObjectsAdmin.tsx)
+  if (selRow(/^(objects-archived-toggle|object-restore-btn)$/)) {
+    const maxSort = await P.customObject.aggregate({ where: { systemId: SYS }, _max: { sortOrder: true } }).then((a: Any) => a._max.sortOrder ?? 0).catch(() => 0);
+    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key: `qcbtnarch${rand}`, label: `qc-btn-archived-obj-${rand}`, labelPlural: `qc-btn-archived-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: maxSort + 1, archivedAt: new Date() }, select: { id: true } });
+    XFIX.push({ model: "customObject", id: o.id });
+    PICKS.push({ user: "*", entity: "archivedObject", id: o.id, why: "วัตถุเก็บถาวรของตัวกด (qc-btn-archived-obj-) — ซีดไม่มี" });
+  }
+  // it7 (RVR-10): the ENABLED path of object-edit-key (renaming the key is allowed only while the object has no records) is pressed
+  //   again — on an EMPTY runner object listed LAST (sortOrder max+2: the seed object stays first for every other row, unlike it5's
+  //   first-listed fixture that captured the archive rows). Variants of object-edit-key / object-edit-save open it by key.
+  if (selRow(/^object-edit-(key|save)$/)) {
+    const maxSort = await P.customObject.aggregate({ where: { systemId: SYS }, _max: { sortOrder: true } }).then((a: Any) => a._max.sortOrder ?? 0).catch(() => 0);
+    const key = `qcbtnempty${rand}`;
+    const o = await P.customObject.create({ data: { tenantId: TENANT, systemId: SYS, key, label: `qc-btn-empty-obj-${rand}`, labelPlural: `qc-btn-empty-objs-${rand}`, titleFieldKey: "name", showAsTab: false, parentType: "NONE", sortOrder: maxSort + 2, recordCount: 0 }, select: { id: true } });
+    XFIX.push({ model: "customObject", id: o.id }); XCTX.set("emptyObjectKey", key);
+    PICKS.push({ user: "*", entity: "emptyObjectLast", id: o.id, why: `วัตถุว่างของตัวกด ${key} (ไม่มีระเบียน) อยู่ท้ายรายการ — ทางที่แก้ชื่ออ้างอิงได้ของ object-edit-key` });
+  }
+  // it6: archived pipeline (pl-restore-* renders for a pipeline with archivedAt — PipelineSettings.tsx)
+  if (selRow(/^pl-restore-/)) {
+    const pipe = await P.crmPipeline.create({ data: { tenantId: TENANT, systemId: SYS, name: `qc-btn-archived-pl-${rand}`, isDefault: false, sortOrder: 95, archivedAt: new Date(),
+      stages: { create: [{ tenantId: TENANT, systemId: SYS, name: `qc-btn-archived-st-${rand}`, kind: "OPEN", sortOrder: 0, probability: 10 }] } }, select: { id: true } });
+    XFIX.push({ model: "crmPipeline", id: pipe.id }); PREFER_IDS.push(pipe.id);
+    PICKS.push({ user: "*", entity: "archivedPipeline", id: pipe.id, why: "pipeline เก็บถาวรของตัวกด (qc-btn-archived-pl-) — ซีดมี 0" });
+  }
+  // it6: a company-only OPEN activity (ActivityItems: company link renders only without deal/contact) owned by the MANAGER on the
+  //   shared company pick ⇒ in the owner's (ALL) and the manager's (own) "ค้างอยู่ · ทีม" list, first (due 45 days ago)
+  if (selRow(/^activity-row-company-link$/)) {
+    const mgr = (E.users?.manager?.userId as string | undefined) ?? null;
+    const coId = ctxForUser(ctx, "owner").companyId ?? ctx.companyId;
+    if (mgr && coId) {
+      const act = await P.crmActivity.create({ data: { tenantId: TENANT, systemId: SYS, companyId: coId, contactId: null, dealId: null, type: "TASK", title: `qc-btn-act-co-${rand}`, dueAt: new Date(Date.now() - 45 * 86_400_000), ownerUserId: mgr }, select: { id: true } });
+      XFIX.push({ model: "crmActivity", id: act.id });
+      PICKS.push({ user: "*", entity: "companyActivity", id: act.id, why: `กิจกรรมค้างผูกบริษัท ${coId} อย่างเดียว (qc-btn-act-co-) เจ้าของ manager — ซีดไม่มี` });
+    }
   }
   if (XFIX.length) console.log(`🧩 extra fixtures (it4-A): ${XFIX.length} — ${[...new Set(XFIX.map((x) => x.model))].join(" · ")}`);
 }
@@ -967,8 +1109,8 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
           const extraHidden = row.onlyHiddenFor?.[testid] ?? [];
           if (mainApplies) items.push({
             user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: row.roles.filter((x) => !extraHidden.includes(x)), hiddenFor: [...new Set([...row.hiddenFor, ...extraHidden])],
-            expect: row.expect, wo: row.wo ?? "", guard: DIRECT_SEND_GUARD.get(testid) ?? CROSS_MODULE_GUARD.get(testid) ?? null,
-            notList, opener: openerOf(row).map((o) => resolveOpener(o, user)), needs: row.needs ?? null, idx,
+            expect: row.expect, wo: row.wo ?? "", guard: guardOf(testid, row.expect),
+            notList, opener: openerOf(row).map((o) => resolveOpener(o, user)), needs: row.needs ?? null, needsProbe: row.needsProbe, idx,
           });
           // it5 (RV-7): a row VARIANT = the same control pressed again for some roles with its own opener/expect (the manager's
           //   refusal on the automation builder's default action, beside the row's own NOTIFY_STAFF save)
@@ -976,7 +1118,7 @@ function buildPlan(ctx: Ctx): { items: PlanItem[]; skipped: SkipEntry[] } {
             if (!v.roles.includes(base0)) continue;
             items.push({
               user, device, w, h, page: row.page, path: itemPath, testid, kind: row.kind, roles: v.roles, hiddenFor: [],
-              expect: v.expect, wo: row.wo ?? "", guard: null, notList, opener: (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]).map((o) => resolveOpener(o, user)),
+              expect: v.expect, wo: row.wo ?? "", guard: guardOf(testid, v.expect), notList, opener: (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]).map((o) => resolveOpener(o, user)),
               needs: null, idx: idx + 0.5 + vi / 10, variant: v.name ?? `v${vi}`,
             });
           }
@@ -1016,7 +1158,7 @@ function validateOpeners(): string[] {
     if (r.viewport !== undefined && r.viewport !== "desktop" && r.viewport !== "mobile") problems.push(`${r.page}#${r.testid}: viewport ต้องเป็น desktop|mobile`);
     for (const o0 of [...openerOf(r), ...(r.variants ?? []).flatMap((v) => (v.opener == null ? [] : Array.isArray(v.opener) ? v.opener : [v.opener]))]) {
       if (typeof o0 !== "string" || !o0.trim()) { problems.push(`${r.page}#${r.testid}: opener ว่าง/ไม่ใช่สตริง`); continue; }
-      const o = o0.includes("=") ? o0.slice(0, o0.indexOf("=")) : o0;
+      const o = (o0.includes("=") ? o0.slice(0, o0.indexOf("=")) : o0).replace(/@last$/, ""); // it7: "@last" = last visible match
       // c42b: "<self>=click" = arm a two-step button first (object-record-archive-btn: 1st press arms, 2nd press writes)
       if (o === r.testid && o0 !== `${r.testid}=click`) { problems.push(`${r.page}#${r.testid}: opener ชี้ตัวเอง`); continue; }
       if (o === r.testid) continue;
@@ -1035,7 +1177,7 @@ function validateOpeners(): string[] {
 // ═══════════════════════════════════════════════════════════════════
 // Parents first (creates run in this order, deletes in reverse). Every model here has a single `id` and a `tenantId`
 // (verified through Prisma DMMF on QC1, 27 Sep 2569 — ledger/wo-notes/crm-C4.2.md §3). Log-only tables (AuditLog,
-// OutboxEvent, AppNotification) are deliberately NOT restored: they are append-only history, never read back as state.
+// OutboxEvent) are deliberately NOT restored: they are append-only history, never read back as state. it7: AppNotification IS restored now (RVR-2).
 const SNAP_MODELS = [
   "AppSystem", "Team", "TeamMember", "Party", "Customer", "MemberConsent", "MemberField",
   "CrmPipeline", "CrmStage", "CrmLostReason", "CrmCompany", "CrmContact", "CrmCompanyContact",
@@ -1050,6 +1192,11 @@ const SNAP_MODELS = [
   // it5 (RV-9): the chat tables the CRM panel / N9 fixture touch — opening a room writes ChatReadState (FK RESTRICT on the
   //   conversation) and those rows outlived every run (6 qc-btn conversations + contacts + read states left in QC1)
   "ChatContact", "ChatConversation", "ChatMessage", "ChatAttachment", "ChatReadState", "ChatConversationPref", "ChatConversationEvent",
+  // it7 (RVR-2): tables run5 left rows in although they are outside the CRM (member/account/AI side effects of CRM presses and their
+  //   outbox consumers): accounting customers of runner parties, member attribution / tier history / notifications of runner
+  //   customers (8 QUEUED welcome e-mails), in-app notifications, and the AI wallet the mock still debits. Restored like the rest.
+  "AccountContact", "MemberAttribution", "MemberTierHistory", "MemberNotification", "AppNotification",
+  "AiCreditWallet", "AiCreditTxn", "AiUsage", "AiUsageWindow",
 ] as const;
 const toCamel = (m: string) => m.charAt(0).toLowerCase() + m.slice(1);
 const DMMF_MODELS = (Prisma?.dmmf?.datamodel?.models ?? []) as { name: string; fields: { name: string; kind: string; type: string }[] }[];
@@ -1178,6 +1325,7 @@ async function restoreSnapshot(label: string, opts: { keepNew?: boolean } = {}):
   if (!SNAP) return st;
   assertGateLockHeld(`คืนฐาน (${label})`);
   await outboxSettle(label);
+  await tripwireDeliveries(label); // it7: WebhookDelivery rows die with their endpoint in the restore cascade — count them first
   const errs = new Map<string, string>();
   for (let pass = 0; pass < 4; pass++) {
     const cur = await readAllModels();
@@ -1396,6 +1544,21 @@ function selOf(testid: string): string {
  * `waitMs` > 0 polls every 200 ms.
  */
 async function findVisible(page: Any, testid: string, notList: string[] = [], waitMs = 0): Promise<Any | null> {
+  // it7 (RVR-10): "<testid>@last" (opener form) = the LAST visible match — one button per list row (object-edit-btn of the
+  //   last-listed empty object), where the first match is the seed row
+  if (testid.endsWith("@last")) {
+    const sel1 = selOf(testid.slice(0, -5));
+    const dl = Date.now() + waitMs;
+    for (;;) {
+      const h = await page.evaluateHandle((q: string) => {
+        const v = Array.from(document.querySelectorAll(q)).filter((e) => { const r = (e as HTMLElement).getBoundingClientRect(); const cs = getComputedStyle(e as HTMLElement); return r.width > 0 && r.height > 0 && cs.display !== "none" && cs.visibility !== "hidden"; });
+        return v[v.length - 1] ?? null;
+      }, sel1).catch(() => null);
+      const el = h?.asElement?.() ?? null;
+      if (el || Date.now() >= dl) return el;
+      await sleep(200);
+    }
+  }
   const sel = selOf(testid);
   const isPattern = testid.includes("*");
   const deadline = Date.now() + waitMs;
@@ -1591,7 +1754,7 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
     if (cand) await el.select(cand.value);
   } else if (meta.tag === "input" && meta.type === "file") {
     if (!IMPORT_FILE_INPUTS.has(testid)) return { before, after: before, skipped: "file" };
-    await el.uploadFile(resolvePath(".qc-shots/c42/fixtures/qc-btn-import.csv"));
+    await el.uploadFile(resolvePath(testid === "object-import-file" ? ".qc-shots/c42/fixtures/qc-btn-object-import.csv" : ".qc-shots/c42/fixtures/qc-btn-import.csv"));
     await el.evaluate((e: Any) => e.dispatchEvent(new Event("change", { bubbles: true })));
   } else if (meta.tag === "input" && ["checkbox", "radio"].includes(meta.type)) {
     await clickEl(page, el, testid);
@@ -1616,12 +1779,26 @@ async function fillEl(page: Any, el: Any, testid: string): Promise<{ before: str
   } else if (meta.tag === "textarea" && /import-text$/.test(meta.tid)) {
     // CSV paste box: the placeholder IS the header the importer expects — header + one qc-btn- row (value set natively:
     // typing a newline through the keyboard would submit/blur)
-    await el.evaluate((e: HTMLTextAreaElement, tag: string) => {
+    // it6 (run5 W3 · dbg16/dbg17): the custom-object box needs a REAL parent (the shared company) and every required field —
+    //   the placeholder-derived row put "qc-btn-…" in parentId ("ไม่พบบริษัทที่เลือก"), then (parent fixed, header cut to
+    //   title,parentId) "ฟิลด์ 'เลขที่สัญญา' เป็นข้อมูลที่ต้องกรอก" ⇒ 0 imported. Object box: the placeholder header, parentId =
+    //   shared company, start/end dates, numbers, booleans "false". Other import boxes keep the placeholder row unchanged.
+    const objectBox = meta.tid === "object-import-text";
+    await el.evaluate((e: HTMLTextAreaElement, tag: string, obj: boolean, parent: string) => {
       const header = (e.getAttribute("placeholder") ?? "name").split("\n")[0]!.trim();
-      const row = header.split(",").map((h, i) => (i === 0 ? `qc-btn-${tag}` : /date|วัน/i.test(h) ? "2026-12-31" : /value|amount|price|มูลค่า/i.test(h) ? "100" : `qc-btn-${tag}`)).join(",");
+      const cell = (h: string, i: number): string => {
+        if (!obj) return i === 0 ? `qc-btn-${tag}` : /date|วัน/i.test(h) ? "2026-12-31" : /value|amount|price|มูลค่า/i.test(h) ? "100" : `qc-btn-${tag}`;
+        if (/^_?parentId$/.test(h)) return parent;
+        if (/start/i.test(h)) return "2026-01-01";
+        if (/date|วัน|At$/i.test(h)) return "2026-12-31";
+        if (/value|amount|price|satang|มูลค่า|qty|count|number$/i.test(h)) return "100";
+        if (/^(auto|is|has)[A-Z]|renew|enabled|active/i.test(h)) return "false";
+        return `qc-btn-${tag}${i}${Date.now().toString(36)}`; // unique per press (form row + submit row both import)
+      };
+      const row = header.split(",").map((h, i) => cell(h.trim(), i)).join(",");
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(e, `${header}\n${row}`);
       e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true }));
-    }, rand);
+    }, rand, objectBox, RUN_COMPANY_ID);
   } else if (meta.tag === "input" || meta.tag === "textarea") {
     await el.click({ clickCount: 3 }).catch(async () => { await el.evaluate((e: HTMLElement) => e.focus()); });
     await page.keyboard.down("Control"); await page.keyboard.press("KeyA"); await page.keyboard.up("Control");
@@ -1692,7 +1869,7 @@ function modelWritesOf(db: string | undefined, parsed: Clause[]): ModelWrite[] {
     const m = /^([A-Z][A-Za-z0-9]+)\b/.exec(raw);
     if (!m || seen.has(m[1]!) || !MODEL_TS.has(m[1]!)) continue;
     const ts = MODEL_TS.get(m[1]!)!; if (!ts.tenant) continue;
-    const del = /ถูกลบ|ลบแถว|แถวหาย|\bdeleted\b/.test(raw);
+    const del = /ถูกลบ|ลบแถว|ลบแล้ว|แถวหาย|\bdeleted\b/.test(raw); // it6: + "ลบแล้ว" (crm-api-hook-delete-* "WebhookEndpoint=<ลบแล้ว>")
     if (/ไม่เปลี่ยน|ไม่เพิ่ม|ไม่เขียน|ไม่ลบ/.test(raw)) continue; // the text itself says this model stays/may stay unchanged
     if (!del && !ts.updated && m[1] !== "AppSystem" && !(ts.created && /\+|แถวใหม่|1 แถว|สร้าง|PENDING(?!\s*→)/.test(raw))) continue; // update of a createdAt-only model is invisible
     out.push({ model: m[1]!, kind: del ? "delete" : "write" }); seen.add(m[1]!);
@@ -1766,6 +1943,12 @@ POST_CHECKS.set("crm-seq-archive", ({ ctx }) => want("ลำดับของ�
 POST_CHECKS.set("company-contact-remove-confirm", ({ pressedAt }) => want("ไม่มี CrmCompanyContact ที่ endedAt ถูกตั้งหลังกด", async () => !!(await P.crmCompanyContact.findFirst({ where: { tenantId: TENANT, endedAt: { gte: pressedAt } }, select: { id: true } })))());
 // the proposal is created by the row's own opener (crm-ai-home-at-risk) seconds before the press
 const proposalNow = (status: string) => async ({ pressedAt }: PostCheckArg) => want(`ไม่มี AiProposal ที่เพิ่งสร้างและเป็น ${status}`, async () => !!(await P.aiProposal.findFirst({ where: { tenantId: TENANT, status, createdAt: { gte: new Date(pressedAt.getTime() - 180_000) } }, select: { id: true } })))();
+// it7 (RVR-10): the rename variant of object-edit-save must have renamed the empty runner object (main row: label edit, checked by its db text)
+POST_CHECKS.set("object-edit-save", ({ it }) => it.variant !== "empty-object-rename" ? Promise.resolve(null) : want("วัตถุว่างของตัวกดไม่ได้เปลี่ยนชื่ออ้างอิงเป็น qcbtnrenamed", async () => !!(await P.customObject.findFirst({ where: { tenantId: TENANT, systemId: SYS, key: "qcbtnrenamed" }, select: { id: true } })))());
+// it7 (R5 REQUIRED): access-granting rows must fail on a no-op — the pressed key is revoked (revokedAt since the press)
+POST_CHECKS.set("crm-api-key-revoke-*", ({ pressedAt }) => want("ไม่มี ApiKey ของร้านที่ revokedAt ถูกตั้งหลังกด", async () => !!(await P.apiKey.findFirst({ where: { tenantId: TENANT, revokedAt: { gte: pressedAt } }, select: { id: true } })))());
+// it7 (RVR-10 / P-it6-3): bulk move must MOVE — a stage-history row entered since the press (moveCore writes none on a no-op)
+POST_CHECKS.set("deal-bulk-move", ({ pressedAt }) => want("ไม่มีดีลที่ย้ายขั้นจริงหลังกด (CrmDealStageHistory ใหม่ = 0)", async () => !!(await P.crmDealStageHistory.findFirst({ where: { tenantId: TENANT, enteredAt: { gte: pressedAt } }, select: { id: true } })))());
 POST_CHECKS.set("crm-ai-proposal-confirm", proposalNow("EXECUTED"));
 POST_CHECKS.set("crm-ai-proposal-cancel", proposalNow("REJECTED"));
 const postChecked: { page: string; testid: string; user: string; device: string }[] = [];
@@ -1785,7 +1968,7 @@ const vacuous: Failure[] = []; // c42b — hiddenFor checks on a page that did n
 const consoleErrors: Failure[] = [];
 const overflow: Failure[] = [];
 const skippedSafety: { page: string; testid: string; user: string; device: string; reason: string }[] = [];
-const skippedNeeds: { page: string; testid: string; user: string; device: string; needs: string; detail: string; shot?: string }[] = [];
+const skippedNeeds: { page: string; testid: string; user: string; device: string; needs: string; detail: string; shot?: string; probe?: string; waiver?: string | null }[] = []; // it7: probe = needsProbe result ("none"|"false") · waiver = reviewer ruling
 const dbCheckUnparsed = new Map<string, string[]>();
 const perPage = new Map<string, Any[]>();
 const PAGE_STATUS: { page: string; path: string; user: string; device: string; status: number; rows: number; hiddenRows: number }[] = [];
@@ -1846,6 +2029,11 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
     const op = await findVisible(page, tid, [], valueRan && val === null ? 4000 : el ? 600 : hidden ? 1500 : 3500);
     if (!op && el && !(valueRan && val === null) && !(val === "on" || val === "off" || val === "click" || val === "*")) { state.openChain.push(chain[i]!); continue; }
     if (!op) return { el: null, reason: `ตัวเปิด ${chain[i]} หาไม่พบ/มองไม่เห็น (ลำดับ ${chain.join(" → ")})` };
+    // it7 (RVR-1a): an opener that CLICKS (plain step, "=click", "=on/off" on a button) inside a guarded form is refused too
+    if (val === null || val === "click" || val === "on" || val === "off") {
+      const sg = await structuralGuard(op);
+      if (sg) return { el: null, reason: `${SAFETY_OPENER} ${chain[i]}: ${sg}` };
+    }
     if (val !== null) {
       valueRan = true;
       const opTag: string = await op.evaluate((e: Element) => (e.tagName === "INPUT" ? `input:${(e.getAttribute("type") ?? "").toLowerCase()}` : e.tagName.toLowerCase())).catch(() => "");
@@ -1860,6 +2048,23 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
         if (on !== (val !== "off")) await clickEl(page, op, tid).catch(() => {});
       } else if (val === "click") await clickEl(page, op, tid).catch(() => {}); // "=click" = press even though it is visible (add-condition twice)
       else if (val === "*") await fillEl(page, op, tid).catch(() => {}); // "=*" = any real choice (ids differ per seed)
+      else if (isSelect && val === "!ticked") { // it7 (RVR-10): the first option whose LABEL is not in the row of the ticked checkbox
+        //   (deal bulk move: a target stage different from the ticked deal's current stage, by name — not by seed order)
+        const v: string = await op.evaluate((s: HTMLSelectElement) => {
+          const box = Array.from(document.querySelectorAll('input[type="checkbox"][data-testid]')).find((b) => (b as HTMLInputElement).checked && !/(-all|check-all)$/.test(b.getAttribute("data-testid") ?? "")) as HTMLElement | undefined;
+          const row = box?.closest("li, tr, [role=row]")?.textContent ?? "";
+          if (!row) return "";
+          return Array.from(s.options).find((o) => o.value !== "" && !o.disabled && !row.includes(o.text.trim()))?.value ?? "";
+        }).catch(() => "");
+        if (v) await op.select(v).catch(() => {});
+        else return { el: null, reason: `ตัวเปิด ${chain[i]}: ไม่พบขั้นที่ต่างจากขั้นของดีลที่ติ๊ก` };
+      }
+      else if (isSelect && /^#\d+$/.test(val)) { // it6: "=#N" = the N-th non-empty option (ids differ per seed) — dbg15 deal-bulk-move:
+        // "=*" chose stage #1 = the ticked deal's current stage (the select starts at "") ⇒ moveCore no-op again
+        const n = Number(val.slice(1));
+        const v: string = await op.evaluate((s: HTMLSelectElement, k: number) => Array.from(s.options).filter((o) => o.value !== "" && !o.disabled)[k - 1]?.value ?? "", n).catch(() => "");
+        if (v) await op.select(v).catch(() => {});
+      }
       else if (isSelect) await op.select(val).catch(() => {});
       else await op.evaluate((e: HTMLInputElement, v: string) => {
         const setter = Object.getOwnPropertyDescriptor(e instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!;
@@ -1876,6 +2081,27 @@ async function reveal(page: Any, path: string, it: PlanItem, state: PageState, h
   // diagnostics: what the page SAYS (inline errors / alerts) — an opener that submits often fails with a Thai message
   const said = await pageSays(page);
   return { el: null, reason: `${chain.length ? `กด ${chain.join(" → ")} แล้วยังไม่เห็น ${it.testid}` : "ควรเห็นได้ (อยู่ใน roles ไม่อยู่ใน hiddenFor) แต่หาไม่พบ/มองไม่เห็น"}${said ? ` · หน้าแสดง: ${said}` : ""}` };
+}
+
+/** it7 (RVR-3): is the row's data precondition TRUE? null = the row has no probe (self-declared `needs`, waiver class applies) */
+function phResolve(v: Any, user: UserKey): Any {
+  if (typeof v === "string") return v === "$TENANT" ? TENANT : v === "$SYS" ? SYS : v.startsWith("$X:") ? (xctx(v.slice(3), user) ?? "__none__") : v;
+  if (Array.isArray(v)) return v.map((x) => phResolve(x, user));
+  if (v && typeof v === "object" && !(v instanceof Date)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, phResolve(x, user)]));
+  return v;
+}
+async function needsHolds(page: Any, it: PlanItem, user: UserKey): Promise<boolean | null> {
+  const p = it.needsProbe;
+  const base = user.startsWith("customer") ? "customer" : user;
+  if (!p || (p.roles && !p.roles.includes(base))) return null;
+  if (p.when && (await findVisible(page, p.when, [], 1500))) return true;
+  if (p.db) {
+    const d = P[toCamel(p.db.model)];
+    if (!d) return null;
+    const n: number = await d.count({ where: { tenantId: TENANT, ...phResolve(p.db.where ?? {}, user) } }).catch(() => -1);
+    if (n >= (p.db.min ?? 1)) return true;
+  }
+  return false;
 }
 
 /** PREFILL (contract): fill earlier fill-rows of the same form/dialog that are still empty before submitting */
@@ -1947,6 +2173,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
     const [path, device] = key.split("·") as [string, string];
     const [, w, h] = VIEWPORTS.find((v) => v[0] === device)!;
     const t0 = Date.now();
+    const logOff = serverLogSize(); // it7 (RVR-1b/RVR-8): server-log lines this group caused
     const page = await browser.newPage();
     await page.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: device === "mobile", hasTouch: device === "mobile" });
     await page.setCookie(...cookies);
@@ -1979,6 +2206,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       navStatus = resp?.status?.() ?? navStatus;
       await sleep(250);
       state.openChain = []; state.dirty = false;
+      { const em = await errorMarker(page); if (em) PAGE_ERRORS.push({ page: rowsOfPage[0]!.page, user, device, kind: "error-boundary (load)", detail: `${em} · HTTP ${navStatus} · ${path}` }); }
       // a console "Failed to load resource: 404" alone does not say WHICH resource — attach the ≥400 responses of this load
       // (it3: manager saw 404s on pages it may open; nok's came from the page itself = a role-forbidden page, by design)
       const hs = httpErrs.slice(hb);
@@ -2001,7 +2229,12 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       // seed right after such a row, like after a destructive row
       if (pendingChainRepair) { const full = pendingChainRepair === "full"; pendingChainRepair = false; await restoreSnapshot(`${it.page} (ซ่อมหลังตัวเปิดที่เขียน${full ? " · เต็ม" : ""})`, { keepNew: !full }); state.dirty = true; await load(); }
       const ngReveal = nonGetCount;
-      const rv = await reveal(page, path, it, state, shouldBeHidden);
+      // it7 (RVR-7): a hidden row on a page that RENDERED (< 400) is looked for with the same waits as a visible row — a late-rendering
+      //   leak must not pass; only on a refused page (≥ 400 = the key gate itself) the short waits stay
+      const tR0 = Date.now();
+      const rv = await reveal(page, path, it, state, shouldBeHidden && navStatus >= 400);
+      if (shouldBeHidden) HIDDEN_WAIT_MS.n += Date.now() - tR0, HIDDEN_WAIT_MS.rows++;
+      if (rv.reason.startsWith(SAFETY_OPENER)) { total.n--; skippedSafety.push({ page: it.page, testid: it.testid, user, device, reason: rv.reason }); rec("skippedSafety", true, rv.reason); console.log(`  🛡️ ${it.testid}: ${rv.reason}`); continue; }
       PRESENCE.push({ p: it.page, t: it.testid, d: device, u: base, h: shouldBeHidden, f: !!rv.el });
       if (nonGetCount > ngReveal && it.opener.some((o) => repairsAfter(splitOpener(o).tid))) pendingChainRepair = it.opener.some((o) => FULL_REPAIR_RE.test(splitOpener(o).tid)) ? "full" : true;
       if (shouldBeHidden) {
@@ -2012,11 +2245,26 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       if (!rv.el) {
         const why = `${rv.reason}${navStatus >= 400 ? ` · หน้าตอบ HTTP ${navStatus}` : ""}`;
         const shot = it.needs && !it.opener.length ? "" : await failShot(page, it, user, device);
-        if (it.needs) { total.n--; skippedNeeds.push({ page: it.page, testid: it.testid, user, device, needs: it.needs, detail: why, shot }); rec("skippedNeeds", true, why); }
+        // it7 (RVR-3): `needs` is CHECKED when the row carries a probe — precondition true + control missing = dead
+        const holds = it.needs ? await needsHolds(page, it, user) : null;
+        if (it.needs && holds !== true) { total.n--; skippedNeeds.push({ page: it.page, testid: it.testid, user, device, needs: it.needs, detail: why, shot, probe: holds === null ? "none" : "false", waiver: ROW_WAIVER.get(`${it.page}#${it.testid}`) ?? null }); rec("skippedNeeds", true, why); }
+        else if (it.needs) { dead.push({ page: it.page, testid: it.testid, user, device, detail: `needsProbe จริง (เงื่อนไขข้อมูลครบ) แต่หาคอนโทรลไม่พบ — ${why}`, shot: shot || await failShot(page, it, user, device) }); rec("dead-missing", false, why); }
         else { dead.push({ page: it.page, testid: it.testid, user, device, detail: why, shot }); rec("dead-missing", false, why); }
         continue;
       }
       if (it.guard) { total.n--; skippedSafety.push({ page: it.page, testid: it.testid, user, device, reason: it.guard }); rec("skippedSafety", true, it.guard); continue; }
+      { // it7 (RVR-1a): structural guard — refuse any press inside a form that holds a guarded control
+        const sg = await structuralGuard(rv.el);
+        if (sg) { total.n--; skippedSafety.push({ page: it.page, testid: it.testid, user, device, reason: sg }); rec("skippedSafety", true, sg); console.log(`  🛡️ ${it.testid} (${user} ${device}): ${sg}`); continue; }
+      }
+      // it7 (audit): the portal invite e-mails the contact only when "ส่งอีเมลเชิญ" is ticked (portal.ts:1164) — make sure it is OFF
+      //   right before EVERY invite submit (the row that unticks it may not have run on this load); still on ⇒ refuse
+      if (it.testid === "crm-portal-invite-submit") {
+        const box = await findVisible(page, "crm-portal-invite-email", [], 600);
+        const on = async () => (box ? await box.evaluate((e: Any) => e.getAttribute("aria-checked") === "true" || e.checked === true).catch(() => true) : false);
+        if (await on()) await clickEl(page, box, "crm-portal-invite-email").catch(() => {});
+        if (await on()) { total.n--; skippedSafety.push({ page: it.page, testid: it.testid, user, device, reason: "it7: ช่องส่งอีเมลเชิญยังติ๊กอยู่ — ไม่กด" }); rec("skippedSafety", true, "invite e-mail on"); continue; }
+      }
       if (it.testid === "crm-portal-invite-email") {
         const on = await rv.el.evaluate((e: Any) => e.getAttribute("aria-checked") === "true" || e.checked === true).catch(() => false);
         if (on) await clickEl(page, rv.el, it.testid).catch(() => {});
@@ -2071,6 +2319,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       const appBefore = mWrites.some((w) => w.model === "AppSystem") ? await appSettingsNow() : null;
       for (const w of mWrites) if (w.kind === "delete") delBefore.set(w.model, await P[toCamel(w.model)].count({ where: { tenantId: TENANT } }).catch(() => null));
       const pressedAt: Date = POST_CHECKS.has(it.testid) || mWrites.length ? await P.$queryRawUnsafe(`SELECT now() AS t`).then((r: Any) => new Date(new Date(r[0].t).getTime() - 500)).catch(() => new Date(Date.now() - 5_000)) : new Date();
+      let pAt: Date = pressedAt; // it7: = pressedAt, or the post-press baseline under QC_BTN_FORCE_NOOP
       let actErr = ""; let valueChanged = false; let fileSkipped = false;
       try {
         if (it.kind === "drag") {
@@ -2288,6 +2537,16 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
           detail = !nonGet ? "ไม่มี request เขียน (ควรถูกปฏิเสธโดยเซิร์ฟเวอร์ ไม่ใช่ฝั่ง client)" : !hit ? `ไม่เห็นข้อความปฏิเสธ${re ? ` /${it.expect.refusalText}/` : ""} (เห็น: ${na.slice(0, 2).join(" | ") || "-"})` : "";
         }
         if (unparsed.length) { const k = `${it.page}#${it.testid}`; dbCheckUnparsed.set(k, [...new Set([...(dbCheckUnparsed.get(k) ?? []), ...unparsed])]); }
+        // it7 (R5 negative control): QC_BTN_FORCE_NOOP=<testid,…> — the press happened, but the DB-effect checks are taken against a
+        //   baseline read AFTER it (counts re-read, "since" = now): exactly what a press that wrote nothing looks like to the checker ⇒
+        //   every DB clause of that row must FAIL (proves the clause cannot pass on a no-op)
+        if (FORCE_NOOP.has(it.testid)) {
+          await sleep(3000);
+          for (const m of [...countsBefore.keys()]) countsBefore.set(m, await countScoped(m));
+          for (const m of [...delBefore.keys()]) delBefore.set(m, await P[toCamel(m)].count({ where: { tenantId: TENANT } }).catch(() => null));
+          pAt = await P.$queryRawUnsafe(`SELECT now() AS t`).then((r: Any) => new Date(r[0].t)).catch(() => new Date());
+          console.log(`  🧪 FORCE_NOOP ${it.testid}: baseline re-read after the press — its DB clauses must fail`);
+        }
         if (ok && !fieldDeferred && !refusalExpected) {
           for (const c of parsed) {
             if (c.op === "inc" || c.op === "dec") {
@@ -2309,11 +2568,11 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         if (ok && !fieldDeferred && !refusalExpected && mWrites.length) {
           // audit rows: each required · other named models: ≥1 written (optional when a parsed clause above already proved the effect)
           for (const w of mWrites.filter((x) => x.kind === "audit")) {
-            if (!(await poll(() => writtenSince(w, pressedAt, null), 5000))) { ok = false; detail += ` · ไม่พบ AuditLog ${w.action} หลังกด`; }
+            if (!(await poll(() => writtenSince(w, pAt, null), 5000))) { ok = false; detail += ` · ไม่พบ AuditLog ${w.action} หลังกด`; }
           }
           const others = mWrites.filter((x) => x.kind !== "audit");
           if (ok && others.length && !parsed.length) {
-            const hit = await poll(async () => { for (const w of others) if (await writtenSince(w, pressedAt, delBefore.get(w.model) ?? null, appBefore)) return true; return false; }, 5000);
+            const hit = await poll(async () => { for (const w of others) if (await writtenSince(w, pAt, delBefore.get(w.model) ?? null, appBefore)) return true; return false; }, 5000);
             if (!hit) { ok = false; detail += ` · ไม่พบการเขียนของ ${others.map((w) => `${w.model}${w.kind === "delete" ? " (ลบ)" : ""}`).join(" / ")} หลังกด`; }
           }
           if (ok) dbVerified.push({ page: it.page, testid: it.testid, user, device, models: mWrites.map((w) => (w.kind === "audit" ? `AuditLog ${w.action}` : w.model)) });
@@ -2321,6 +2580,11 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
         if (ok && !fieldDeferred && it.expect.resultTarget) {
           const found = await findVisible(page, it.expect.resultTarget, [], 6000);
           if (!found) { ok = false; detail += ` · ไม่เห็น resultTarget ${it.expect.resultTarget}`; }
+          else if (it.expect.resultText) {
+            const re = new RegExp(it.expect.resultText); let txt = "";
+            for (let i = 0; i < 15; i++) { txt = String(await found.evaluate((x: Element) => x.textContent ?? "").catch(() => "")).trim(); if (re.test(txt)) break; await sleep(200); }
+            if (!re.test(txt)) { ok = false; detail += ` · ${it.expect.resultTarget} = "${txt.slice(0, 80)}" ไม่ตรง /${it.expect.resultText}/`; }
+          }
         }
       } else if (type === "inline-error") {
         ok = true; // soft — C4.3 owns deliberate bad-input assertions (see CONTRACT)
@@ -2348,7 +2612,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
       if (ok && POST_CHECKS.has(it.testid) && it.expect.outcome !== "refusal") {
         const segs = it.path.split("?")[0]!.split("/");
         const pathId = (seg: string) => { const i = segs.lastIndexOf(seg); return i >= 0 && segs[i + 1] ? segs[i + 1]! : null; };
-        const miss = await POST_CHECKS.get(it.testid)!({ it, ctx, pressedAt, pathId }).catch((e: unknown) => `ตรวจผลในฐานไม่ได้: ${e instanceof Error ? e.message.slice(0, 100) : e}`);
+        const miss = await POST_CHECKS.get(it.testid)!({ it, ctx, pressedAt: pAt, pathId }).catch((e: unknown) => `ตรวจผลในฐานไม่ได้: ${e instanceof Error ? e.message.slice(0, 100) : e}`);
         if (miss) { ok = false; detail += ` · ${miss}`; } else postChecked.push({ page: it.page, testid: it.testid, user, device });
       }
       if (!ok) { wrongExpect.push({ page: it.page, testid: it.testid, user, device, detail: detail.replace(/^ · /, ""), shot: await failShot(page, it, user, device) }); rec("wrongExpect", false, detail.replace(/^ · /, ""), { prefilled }); }
@@ -2402,6 +2666,7 @@ async function runUser(browser: Any, user: UserKey, ctx: Ctx, items: PlanItem[])
     browser.off("targetcreated", onTarget);
     await page.close().catch(() => {});
     if (wroteInGroup) await restoreSnapshot(`${rowsOfPage[0]!.page} ${device}`);
+    for (const ln of serverLogSince(logOff)) PAGE_ERRORS.push({ page: rowsOfPage[0]!.page, user, device, kind: /\[email/.test(ln) ? "server-log [email" : "server-log ⨯", detail: ln.slice(0, 300) });
     const passedHere = pageResults.filter((r) => r.ok).length;
     console.log(`  [${gi}/${groups.size}] ${user} ${device} ${rowsOfPage[0]!.page} — ${passedHere}/${pageResults.length} ok · ${((Date.now() - t0) / 1000).toFixed(0)} วิ`);
   }
@@ -2532,6 +2797,7 @@ async function main() {
     for (const u of UNRESOLVED) console.log(`  · [${u.placeholder}] ${u.reason}`);
   }
   RUN_OBJECT_KEY = ctx.objectKey ?? "";
+  RUN_COMPANY_ID = ctx.companyId ?? "";
   // throwaways must exist before the plan (their ids are in the page paths) and before the snapshot (restores keep them)
   if (!DRY) assertGateLockHeld("รอบที่เขียนฐาน"); // before ANY write (throwaways · fixtures · snapshot/restore)
   if (!DRY && !DISCOVER && [...ROWS].some((r) => AUDIT_STATE_ROWS.has(r.testid) && pageSelected(r.page))) await createThrowaways();
@@ -2571,8 +2837,17 @@ async function main() {
   const pptr = await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e}) — ต้องมี /root/dive3d/node_modules/puppeteer-core`);
   });
+  // it7 (audit pre-flight): refuse to press anything while the tenant is wired to an external transport
+  if (!DRY) {
+    const pf = await preflightExternal();
+    for (const x of pf) console.log(`  🚫 PRE-FLIGHT ${x}`);
+    if (pf.length) throw new Fatal(`pre-flight ภายนอก: ${pf.join(" · ")} — ไม่กดอะไรจนกว่าจะปิด`);
+    console.log("  ✅ pre-flight: ไม่มี webhook ที่เปิด · กฎอัตโนมัติที่เปิดและส่งออกนอกระบบ · โดเมนส่ง · ผู้ให้บริการอีเมล · อุปกรณ์ push ของ persona · payrollLink · ai=mock");
+  }
   // CSV fixture for the import rows (inside the repo — snap chromium cannot read the host /tmp)
   mkdirSync(".qc-shots/c42/fixtures", { recursive: true });
+  // it6 + it7 (RVR-10): the file path must import a row too — the seed object (สัญญา) requires เลขที่สัญญา (contractNo) besides the parent
+  writeFileSync(".qc-shots/c42/fixtures/qc-btn-object-import.csv", `title,parentId,contractNo\nqc-btn-rec-${rand}-file,${ctx.companyId ?? ""},qc-btn-${rand}-cno\n`);
   writeFileSync(".qc-shots/c42/fixtures/qc-btn-import.csv", `name,phone,email,company\nqc-btn-${rand}-import,0899999999,qc-btn-${rand}-import@example.com,qc-btn-${rand}-co\n`);
   // FIXTURES (controller ruling §9, 27 Sep) — applied BEFORE the snapshot so every mid-run restore keeps them, reverted
   // explicitly in CLEAN; the originals are written to FIXTURE_FILE first so a crashed run is healed by the next start.
@@ -2604,6 +2879,15 @@ async function main() {
     bcdp.on("Browser.downloadWillBegin", (e: Any) => { const d = { name: String(e.suggestedFilename ?? ""), bytes: 0, state: "begin" }; byGuid.set(e.guid, d); DOWNLOADS.push(d); });
     bcdp.on("Browser.downloadProgress", (e: Any) => { const d = byGuid.get(e.guid); if (d) { d.bytes = Math.max(d.bytes, Number(e.receivedBytes ?? 0), Number(e.totalBytes ?? 0)); d.state = String(e.state ?? d.state); } });
   } catch (e) { console.log(`  ⚠️ ตั้งตัวดักดาวน์โหลดไม่ได้ (${e instanceof Error ? e.message : e}) — แถว download ตัดสินจาก response อย่างเดียว`); }
+  // it7 (RVR-8) positive control of the error-boundary detector: QC_BTN_ERRMARK_PROBE_URL=<url> — the page MUST be reported
+  if (process.env.QC_BTN_ERRMARK_PROBE_URL) {
+    const pg = await browser.newPage();
+    await pg.goto(process.env.QC_BTN_ERRMARK_PROBE_URL, { waitUntil: "load", timeout: 30_000 }).catch(() => null);
+    const em = await errorMarker(pg);
+    console.log(`  🧪 ERRMARK probe ${process.env.QC_BTN_ERRMARK_PROBE_URL.slice(0, 80)} → ${em ? `DETECTED "${em}"` : "NOT detected"}`);
+    if (em) PAGE_ERRORS.push({ page: "(errmark probe)", user: "-", device: "-", kind: "error-boundary (probe)", detail: em });
+    await pg.close().catch(() => {});
+  }
   try {
     if (DISCOVER) await discover(browser, ctx, items);
     else for (const user of userKeys) { await runUser(browser, user, ctx, items); if (user.startsWith("customer")) await customerLockout(browser, user, ctx); }
@@ -2670,6 +2954,21 @@ if (!DRY && (THROWAWAY.size || LINES_DEALS.size || THREADS.size || XFIX.length))
 }
 if (!DRY && existsSync(CAP_FILE)) await healCapFixture(); // it5: never leave the manager's temporary commission cap behind
 
+// it7 (RVR-1b) TRIPWIRE of this invocation (host clock − 5 s at start; the QC1 lock serialises every job): any crm.email.sent event,
+//   any WebhookDelivery (OK/FAILED = a delivery was attempted), a LINE/PUSH/SMS member notification that left SKIPPED, a SENT member
+//   e-mail, or an e-mailed in-app notification of this tenant ⇒ hard failure of the pass (+ the server-log lines in pageErrors)
+if (!DRY && !DISCOVER) {
+  await tripwireDeliveries("จบรอบ");
+  const win = { gte: RUN_START };
+  const q = async (label: string, f: () => Promise<number>) => { const n = await f().catch((e: unknown) => { TRIPWIRE.push(`${label}: อ่านไม่ได้ ${String(e).slice(0, 80)}`); return 0; }); if (n) TRIPWIRE.push(`${label}: ${n}`); };
+  await q("OutboxEvent crm.email.sent", () => P.outboxEvent.count({ where: { tenantId: TENANT, type: "crm.email.sent", createdAt: win } }));
+  await q("WebhookDelivery (attempted)", () => P.webhookDelivery.count({ where: { tenantId: TENANT, createdAt: win } }));
+  await q("MemberNotification LINE/PUSH/SMS not SKIPPED", () => P.memberNotification.count({ where: { tenantId: TENANT, createdAt: win, channel: { in: ["LINE", "PUSH", "SMS"] }, status: { not: "SKIPPED" } } }));
+  await q("MemberNotification SENT", () => P.memberNotification.count({ where: { tenantId: TENANT, createdAt: win, status: "SENT" } }));
+  await q("AppNotification emailed", () => P.appNotification.count({ where: { tenantId: TENANT, createdAt: win, emailedAt: { not: null } } }));
+  await q("OpsEvent of a transport (email/line/push/sms/webhook)", () => P.opsEvent.count({ where: { createdAt: win, OR: [{ tenantId: TENANT }, { tenantId: null }], source: { in: ["email", "email.rich", "line", "push", "sms", "webhook", "webhooks"] } } }));
+  for (const t of TRIPWIRE) console.log(`  🚨 TRIPWIRE ${t}`);
+}
 if (!DRY && !DISCOVER) {
   writeFileSync(`${SHOTS}/summary.json`, JSON.stringify({
     at: new Date().toISOString(), users: userKeys, devices: VIEWPORTS.map((v) => v[0]), pageFilter: PAGE_FILTER,
@@ -2677,15 +2976,16 @@ if (!DRY && !DISCOVER) {
     dead, wrongExpect, hiddenLeak, vacuous, disabled: disabledCtl, consoleErrors, overflow, picks: PICKS, pageStatus: PAGE_STATUS,
     skippedNeeds, skippedSafety, restores: restoreLog, dbCheckUnparsed: Object.fromEntries(dbCheckUnparsed), fatal: fatal || null,
     cleanupFailures, outboxUnsettled, verifyFailures, postChecked, dbVerified, presence: PRESENCE, customerLockout: LOCKOUT,
+    pageErrors: PAGE_ERRORS, tripwire: TRIPWIRE, hiddenWait: { ms: HIDDEN_WAIT_MS.n, rows: HIDDEN_WAIT_MS.rows }, runStart: RUN_START.toISOString(), // it7
   }, null, 2));
   for (const [page, entries] of perPage) {
     const fname = `${SHOTS}/${page.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "root"}.json`;
     writeFileSync(fname, JSON.stringify({ page, entries }, null, 2));
   }
-  const hardFails = cleanupFailures.length + outboxUnsettled.length + verifyFailures.length + restoreLog.reduce((a, r) => a + r.failed.length, 0);
-  console.log(`\n${!fatal && passedN.n === total.n && !hardFails ? "🟢" : "🔴"} C4.2: ${passedN.n}/${total.n} · cleanup ${cleanupFailures.length} · outbox ${outboxUnsettled.length} · verify ${verifyFailures.length} · dead ${dead.length} · wrongExpect ${wrongExpect.length} · hiddenLeak ${hiddenLeak.length} · vacuous ${vacuous.length} · overflow ${overflow.length} · skippedNeeds ${skippedNeeds.length} · skippedSafety ${skippedSafety.length}`);
+  const hardFails = cleanupFailures.length + outboxUnsettled.length + verifyFailures.length + restoreLog.reduce((a, r) => a + r.failed.length, 0) + PAGE_ERRORS.length + TRIPWIRE.length;
+  console.log(`\n${!fatal && passedN.n === total.n && !hardFails ? "🟢" : "🔴"} C4.2: ${passedN.n}/${total.n} · cleanup ${cleanupFailures.length} · outbox ${outboxUnsettled.length} · verify ${verifyFailures.length} · pageErrors ${PAGE_ERRORS.length} · tripwire ${TRIPWIRE.length} · hiddenWait ${(HIDDEN_WAIT_MS.n / 1000).toFixed(0)} s/${HIDDEN_WAIT_MS.rows} · dead ${dead.length} · wrongExpect ${wrongExpect.length} · hiddenLeak ${hiddenLeak.length} · vacuous ${vacuous.length} · overflow ${overflow.length} · skippedNeeds ${skippedNeeds.length} · skippedSafety ${skippedSafety.length}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
-console.log(`JSON_SUMMARY ${JSON.stringify({ total: total.n, passed: passedN.n, disabled: disabledCtl.length, dead: dead.length, wrongExpect: wrongExpect.length, hiddenLeak: hiddenLeak.length, vacuous: vacuous.length, consoleErrors: consoleErrors.length, overflow: overflow.length, skippedNeeds: skippedNeeds.length, skippedSafety: skippedSafety.length, restoreFailures: restoreLog.reduce((a, r) => a + r.failed.length, 0), cleanupFailures: cleanupFailures.length, outboxUnsettled: outboxUnsettled.length, verifyFailures: verifyFailures.length, fatal: fatal || null })}`);
+console.log(`JSON_SUMMARY ${JSON.stringify({ total: total.n, passed: passedN.n, disabled: disabledCtl.length, dead: dead.length, wrongExpect: wrongExpect.length, hiddenLeak: hiddenLeak.length, vacuous: vacuous.length, consoleErrors: consoleErrors.length, overflow: overflow.length, skippedNeeds: skippedNeeds.length, skippedSafety: skippedSafety.length, restoreFailures: restoreLog.reduce((a, r) => a + r.failed.length, 0), cleanupFailures: cleanupFailures.length, outboxUnsettled: outboxUnsettled.length, verifyFailures: verifyFailures.length, pageErrors: PAGE_ERRORS.length, tripwire: TRIPWIRE.length, fatal: fatal || null })}`);
 await P.$disconnect().catch(() => {});
 process.exit(fatal ? 2 : 0);
