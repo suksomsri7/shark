@@ -331,6 +331,39 @@ try {
     const r2 = await CRM.deals.bulkMove(mctx, staffAll.actor, { ids: [dSame.id, dHidden.id], stageId: S1, confirm: true, reason: "ทดสอบรีวิว" });
     const audit2 = (await P.auditLog.count({ where: { tenantId: T, action: "crm.deal.bulk_move", createdAt: { gte: t1 } } })) as number;
     chk("M.3", "[unchanged + refused] (nothing moved, one failure) still writes an audit row (a failure is not a pure no-op)", r2?.ok === 0 && (expectHiddenFailed ? audit2 === 1 : audit2 === 0), `result=${j(r2)} audit rows=${audit2}`);
+    // round 2 (RV15-6): the action's shared `reason` + the table text, through the real action with the staff member's session
+    const DEAL_ACT = (await import("../../../../src/lib/modules/crm/deals-actions.ts" as string)) as Any;
+    const DT = (await import("../../../../src/app/app/sys/[id]/crm/deals/_components/DealTable.tsx" as string)) as Any;
+    const sc = realScope(staffAll.cookie, `/app/sys/${S}/crm/deals`);
+    const ar: Any = await sc.run(() => DEAL_ACT.bulkMoveAction(S, { ids: [dSame.id, dHidden.id], stageId: S1, confirm: true, reason: "ทดสอบรีวิว" }));
+    sc.close();
+    const hiddenTitle = `มองไม่เห็น ${TAG}`;
+    const txt = typeof DT.bulkResultText === "function" && ar?.ok ? String(DT.bulkResultText("ย้ายขั้น", ar)) : "";
+    info("M.4", `action=${j(ar)} · text="${txt}"`);
+    chk("M.4", "bulkMoveAction [unchanged + refused]: `reason` is the generic service message (no title/id/company of the deal the caller cannot see) and the text says nothing moved", ar?.ok === true && ar.done === 0 && ar.unchanged === 1 && ar.failed === (expectHiddenFailed ? 1 : 0) && (!expectHiddenFailed || (typeof ar.reason === "string" && !ar.reason.includes(hiddenTitle) && !ar.reason.includes(dHidden.id) && !ar.reason.includes(TAG))) && txt.startsWith(expectHiddenFailed ? "ยังไม่ได้ย้ายดีลใด — " : "ไม่มีดีลที่ต้องย้าย"), `reason=${j(ar?.reason)} text=${txt}`);
+  });
+  // ── T round 2: bulkResultText cases (pure) ──
+  console.log("\n── T bulkResultText cases ──");
+  await sub("T", async () => {
+    const DT = (await import("../../../../src/app/app/sys/[id]/crm/deals/_components/DealTable.tsx" as string)) as Any;
+    const f = (r: Any) => String(DT.bulkResultText("ย้ายขั้น", { ok: true, ...r }));
+    const cases: [string, Any, (t: string) => boolean][] = [
+      ["moved only", { done: 3, failed: 0, unchanged: 0 }, (t) => t === "ย้ายขั้นสำเร็จ 3 ดีล"],
+      ["moved + unchanged + failed (one reason)", { done: 2, failed: 1, unchanged: 4, reason: "เหตุ" }, (t) => t === "ย้ายขั้นสำเร็จ 2 ดีล · อยู่ในขั้นนี้อยู่แล้ว 4 ดีล · ย้ายไม่ได้ 1 ดีล (เหตุ)"],
+      ["moved + failed (mixed reasons)", { done: 1, failed: 2, unchanged: 0, reason: null }, (t) => t === "ย้ายขั้นสำเร็จ 1 ดีล · ย้ายไม่ได้ 2 ดีล (ดูเหตุผลที่หน้าดีลนั้น)"],
+      ["only unchanged", { done: 0, failed: 0, unchanged: 2 }, (t) => t === "ไม่มีดีลที่ต้องย้าย — อยู่ในขั้นนี้อยู่แล้ว 2 ดีล"],
+      ["nothing moved, failures + unchanged", { done: 0, failed: 1, unchanged: 1, reason: "เหตุ" }, (t) => t === "ยังไม่ได้ย้ายดีลใด — ย้ายไม่ได้ 1 ดีล (เหตุ) · อยู่ในขั้นนี้อยู่แล้ว 1 ดีล"],
+      ["nothing moved, failures only", { done: 0, failed: 2, unchanged: 0, reason: null }, (t) => t === "ยังไม่ได้ย้ายดีลใด — ย้ายไม่ได้ 2 ดีล (ดูเหตุผลที่หน้าดีลนั้น)"],
+      ["all zero", { done: 0, failed: 0, unchanged: 0 }, (t) => !t.includes("ไม่สำเร็จ") && !t.includes("ย้ายไม่ได้")],
+      ["other bulk op (no unchanged field)", { done: 2, failed: 1 }, (t) => t === "ย้ายขั้นสำเร็จ 2 ดีล · ไม่สำเร็จ 1 ดีล (ดูเหตุผลที่หน้าดีลนั้น)"],
+    ];
+    const bad: string[] = [];
+    for (const [name, r, ok] of cases) {
+      const t = f(r);
+      info("T", `${name}: "${t}"`);
+      if (!ok(t)) bad.push(`${name} → "${t}"`);
+    }
+    chk("T", "bulkResultText: no self-contradiction in any case (moved>0 keeps the 'ย้ายขั้นสำเร็จ X ดีล' prefix; nothing moved never says สำเร็จ next to failures)", bad.length === 0, bad.join(" | ") || "all as expected");
   });
 } finally {
   await sleep(4_000);

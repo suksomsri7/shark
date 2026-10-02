@@ -205,3 +205,80 @@ Rollback = restore `src/lib/core/after-drain.ts` from bd435157. It is one file, 
 - QC2-pinned suites (c2.2, c5.3) were not re-run by me; builder r2 reports them green. qc-booking-deposit and qc-pos-account were also not
   re-run (builder: identical RED on bd435157 for environmental reasons).
 - No visual check of the files card or of the bulk-move message, and no button-runner rows.
+
+## Round 2 re-check (builder tip bb7a5a5f · 2026-10-02 21:05–21:40 UTC)
+Scope: `git diff 5b91979b bb7a5a5f -- src` touches 4 files: `after-drain.ts`, `DealTable.tsx`, `deals-actions.ts`, and a comment in
+`emails.ts`.
+
+### VERDICT: MERGEABLE (round 2)
+No new findings at MED or above. RV15-1, RV15-3, RV15-5, RV15-6 and RV15-7 are applied as claimed. RV15-2 is now documented in the header as
+a known, pre-existing gap. RV15-4 is unchanged and stays INFO.
+
+### (1) `after(p)` from the fallback timer
+- **How Next 16.2.11 handles it.** `next/dist/server/after/after.js` checks for a request scope with `workAsyncStorage.getStore()`; with no
+  scope it throws synchronously. Otherwise it calls `afterContext.after(task)`. For a thenable, `after-context.js` throws synchronously if
+  `waitUntil` is missing, and otherwise calls `waitUntil(task.catch(reportTaskError))`. That call is synchronous and its return value is
+  ignored.
+- **So it has no asynchronous failure path of its own.** The only async path would be the handed promise rejecting, and it never does:
+  `startDrain`'s `done` and the queued `.then` both resolve. K18.b checks this with a rejecting `run()`: the handed promise resolves and there
+  is no unhandled rejection. A sync throw is caught, and the drain has already started once (K18.a).
+- **No second drain and no double registration.** The promise form never calls `addCallback`, so it neither queues a callback nor starts a
+  drain. The timer only fires for a registration that has not started (it is cleared on start, and since RV15-5 it is not armed when Next ran
+  the callback synchronously, K17).
+- **Exactly-once, N9 and the drain bound are unchanged.** Re-measured: K6 ×3, K7 (same numbers as round 1), K13.1/K13.2. New checks:
+  - K13.3 (never path): exactly one promise is handed; it stays pending during the drain and resolves after it.
+  - K18.c (Next's real AfterContext on an already-closed scope): `waitUntil` goes 1 → 2, and the drain promise resolves.
+  - K18.d (real AfterContext, slow response): the fallback hands the drain at 3 s; at close the callback returns the same drain. One drain,
+    and every waitUntil promise settles.
+- **Probe note:** node:test MockTimers do not carry AsyncLocalStorage into timer callbacks (real Node timers do), so K13.3/K18 run on real
+  timers. Under the fake clock the timer's `after(p)` simply throws and is caught — the K18.a behaviour.
+
+### (2) `reason` from `bulkMoveAction`
+- `reason` is set only when every failed deal has the same message.
+- The possible messages come from `moveCore` and `withDealLocks`, all through `fail()` or `mapError`:
+  - the deal NOT_FOUND constant (also used for deals the caller cannot see, because `loadDeal` applies visibility first);
+  - stage not found / not in this deal's pipeline;
+  - stage edited or deleted concurrently (CONFLICT);
+  - a closed deal moved by a non-manager (FORBIDDEN);
+  - CONFIRM_REQUIRED for a reopen;
+  - LOST needs a reason;
+  - RACE_MSG;
+  - STAGE_REQUIREMENTS: the name of the TARGET stage the caller picked, plus field labels (shop configuration);
+  - CRM limit messages (numbers);
+  - CompaniesError / Member errors mapped by `mapError`, whose messages are constants;
+  - the generic "ย้ายดีลนี้ไม่สำเร็จ ลองใหม่อีกครั้ง" for anything that is not a DealsError.
+- None of them contains customer data, or the title, id or company of a deal the caller cannot see.
+- M.4 confirms this through the real action with a STAFF session and [unchanged + a deal the staff member cannot see]. The result is
+  `reason` = the generic NOT_FOUND text, with no title, id or tag of the hidden deal.
+
+### (3) `bulkResultText` (T: 8 cases, pure)
+
+| case | result |
+|---|---|
+| moved only | "ย้ายขั้นสำเร็จ 3 ดีล" |
+| moved + unchanged + failed (one reason) | "ย้ายขั้นสำเร็จ 2 ดีล · อยู่ในขั้นนี้อยู่แล้ว 4 ดีล · ย้ายไม่ได้ 1 ดีล (เหตุ)" — keeps the "ย้ายขั้นสำเร็จ [1-9]" prefix the registry checks |
+| moved + failed, mixed reasons | "… · ย้ายไม่ได้ 2 ดีล (ดูเหตุผลที่หน้าดีลนั้น)" |
+| only unchanged | "ไม่มีดีลที่ต้องย้าย — …" |
+| nothing moved, with failures | "ยังไม่ได้ย้ายดีลใด — ย้ายไม่ได้ M ดีล (…) [· อยู่ในขั้นนี้อยู่แล้ว N ดีล]" |
+| other bulk ops (no `unchanged`) | unchanged |
+| all zero | "ย้ายขั้นสำเร็จ 0 ดีล" — not reachable: every id ends as ok, unchanged or failed |
+
+- RV15-8 · INFO (cosmetic): when the reason is NOT_FOUND, the text nests parentheses: "(ไม่พบดีลนี้… (อาจถูกลบหรืออยู่คนละระบบ) — รีเฟรช…)".
+  Not worth a card on its own.
+
+### (4) Allowed surface
+**Yes.** The 4 src files are inside the round-1 surface. There is no new control or testid (`bulkResultText` is a pure function in the same
+client component), so no button-inventory pass is needed.
+
+### Runs, round 2 (one at a time, iso + gate lock · logs in `.qc-shots/cf20-review/{r4,r5}/` · reviewer-probe logs committed)
+
+| run | DB | result |
+|---|---|---|
+| probe-cf20-rv-drain (reviewer; +K13.3, K18.a–d, K17 now requires no timer) | none | **27/27** |
+| probe-cf20-rv (reviewer; +M.4 action `reason`, T text cases) | QC3 | **15/15** incl. CLEAN |
+| typecheck (5120 MB) · fitness with QC3 env / without env | — | exit 0 · 42/42 · 42/42 |
+| probe-cf20-drain · probe-cf20 (builder) | none · QC3 | 13/13 + 9/9 · 7/7 + 14/14 |
+| probe-c54d-r2 · probe-c54d-r3 | QC3 | 13/13 · 19/19 |
+| qc-crm-c1.5 | QC3 | 103/103 |
+
+Not verified (round 2): whether Vercel honours `waitUntil` from a scope whose invocation already ended (the K18.c shape on a real platform).

@@ -60,6 +60,106 @@ console.log("\n── K0 unref: a script that registers inside a (stub) request 
   }
 }
 
+// ── R2 block (round 2, REAL timers — node:test MockTimers does not carry AsyncLocalStorage into timer callbacks, real Node timers do):
+//    the fallback timer hands its drain promise to the promise form of after() (RV15-1)
+console.log("\n── K13.3 / K18 (real timers) fallback timer → after(promise) ──");
+{
+  const sleepR = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const NEWR = (await import("@/lib/core/after-drain" as string)) as Any;
+  const PK = Symbol.for("shark.core.after-drain.pendingSince");
+  const SK = Symbol.for("shark.core.after-drain.state");
+  const hold = globalThis as unknown as Record<symbol, unknown>;
+  const rst = () => { hold[PK] = undefined; hold[SK] = undefined; };
+  const mkRun = (ms: number) => {
+    const st = { calls: 0, done: 0 };
+    const run = async () => { st.calls += 1; await sleepR(ms); st.done += 1; };
+    return { st, run };
+  };
+  const flag = (p: Any) => { const f = { done: false, rejected: false }; void Promise.resolve(p).then(() => { f.done = true; }, () => { f.done = true; f.rejected = true; }); return f; };
+  const unhandled: unknown[] = [];
+  const onUnhandled = (e: unknown) => { unhandled.push(e); };
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    await sub("K13.3", async () => {
+      // stub scope: the callback is captured and NEVER run; the promise form is recorded
+      rst();
+      const { st, run } = mkRun(1_000);
+      const sink: Any[] = [];
+      nextWork.workAsyncStorage.run({ route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: { after: (t: Any) => { sink.push(t); } } }, () => NEWR.scheduleCoalescedDrain(run));
+      await sleepR(3_200);
+      const promises = sink.filter((t) => t && typeof t.then === "function");
+      const f = flag(promises[0]);
+      await sleepR(200);
+      const mid = f.done;
+      await sleepR(1_200);
+      chk("K13.3", "never path (r2): the fallback hands exactly ONE promise to after(promise); it is pending during the drain and resolves after it; one drain", promises.length === 1 && sink.length === 2 && !mid && f.done && !f.rejected && st.calls === 1 && st.done === 1, `after() got callbacks=${sink.filter((t) => typeof t === "function").length} promises=${promises.length} · mid=${mid} end=${f.done} rejected=${f.rejected} · run() calls=${st.calls}`);
+    });
+    await sub("K18.a", async () => {
+      // after(callback) accepted, after(promise) throws synchronously ⇒ the drain still runs once, nothing escapes
+      rst();
+      const { st, run } = mkRun(10);
+      let threw = false;
+      try {
+        nextWork.workAsyncStorage.run({ route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: { after: (t: Any) => { if (typeof t !== "function") throw new Error("waitUntil not available"); } } }, () => NEWR.scheduleCoalescedDrain(run));
+      } catch { threw = true; }
+      await sleepR(3_400);
+      chk("K18.a", "after(promise) throwing synchronously inside the timer ⇒ the drain still ran exactly once; nothing thrown", !threw && st.calls === 1 && st.done === 1, `threw=${threw} run() calls=${st.calls} done=${st.done}`);
+    });
+    await sub("K18.b", async () => {
+      // the only async path of Next's promise form is the handed promise rejecting (Next logs "A promise passed to after() rejected")
+      rst();
+      let calls = 0;
+      const bad = async () => { calls += 1; throw new Error("drain failed"); };
+      const handed: Any[] = [];
+      nextWork.workAsyncStorage.run({ route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: { after: (t: Any) => { if (typeof t !== "function") handed.push(t); } } }, () => NEWR.scheduleCoalescedDrain(bad));
+      await sleepR(3_300);
+      const f = flag(handed[0]);
+      await sleepR(50);
+      chk("K18.b", "a rejecting run(): the promise handed to after(promise) RESOLVES (never rejects ⇒ Next never reports it), one call, no unhandled rejection", calls === 1 && handed.length === 1 && f.done && !f.rejected && unhandled.length === 0, `calls=${calls} handed=${handed.length} resolved=${f.done && !f.rejected} unhandled=${unhandled.length}`);
+    });
+    await sub("K18.c", async () => {
+      // Next's REAL AfterContext, response already closed (P2): waitUntil gets the drain promise from the timer
+      const nextAfter = (await import("next/dist/server/after/after-context.js" as string)) as Any;
+      const { EventEmitter } = await import("node:events");
+      rst();
+      const { st, run } = mkRun(1_000);
+      const res = new EventEmitter();
+      const waits: Any[] = [];
+      const ctxC = new nextAfter.AfterContext({ waitUntil: (p: Any) => waits.push(p), onClose: (cb: () => void) => res.on("close", cb), onTaskError: () => undefined });
+      res.emit("close");
+      nextWork.workAsyncStorage.run({ route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: ctxC }, () => NEWR.scheduleCoalescedDrain(run));
+      const before = waits.length;
+      await sleepR(3_200);
+      const flags = waits.map(flag);
+      await sleepR(200);
+      const mid = flags.filter((x) => x.done).length;
+      await sleepR(1_200);
+      const end = flags.filter((x) => x.done && !x.rejected).length;
+      chk("K18.c", "real Next AfterContext on a closed scope: the timer adds ONE waitUntil promise (the drain), pending during the drain, resolved after it; one drain", before === 1 && waits.length === 2 && mid === 0 && end === 1 && st.calls === 1 && st.done === 1, `waitUntil before=${before} after=${waits.length} · settled mid=${mid} end=${end} (runCallbacksOnClose of a closed scope never settles) · run() calls=${st.calls}`);
+    });
+    await sub("K18.d", async () => {
+      // slow response with the REAL AfterContext: fallback at 3 s hands the promise; close at 4 s runs the callback which returns the SAME drain
+      const nextAfter = (await import("next/dist/server/after/after-context.js" as string)) as Any;
+      const { EventEmitter } = await import("node:events");
+      rst();
+      const { st, run } = mkRun(2_000);
+      const res = new EventEmitter();
+      const waits: Any[] = [];
+      const ctxD = new nextAfter.AfterContext({ waitUntil: (p: Any) => waits.push(p), onClose: (cb: () => void) => res.on("close", cb), onTaskError: () => undefined });
+      nextWork.workAsyncStorage.run({ route: "/p", page: "/p/page", incrementalCache: {}, pendingRevalidatedTags: [], afterContext: ctxD }, () => NEWR.scheduleCoalescedDrain(run));
+      await sleepR(4_000);
+      res.emit("close");
+      await sleepR(2_500);
+      const fl = waits.map(flag);
+      await sleepR(50);
+      chk("K18.d", "slow response (real AfterContext): fallback + late callback ⇒ still exactly ONE drain; every waitUntil promise settles", st.calls === 1 && st.done === 1 && fl.every((x) => x.done && !x.rejected), `run() calls=${st.calls} · waitUntil promises=${waits.length} settled=${fl.filter((x) => x.done).length}`);
+    });
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+    rst();
+  }
+}
+
 // ── fake clock from here on ──
 mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_800_000_000_000 });
 const advance = async (ms: number, step = 50) => {
@@ -475,7 +575,6 @@ await sub("K13", async () => {
   const mid2 = s2.done;
   await advance(3_000);
   chk("K13.2", "slow path: the late after() task returns the fallback drain's promise (pending until that drain ends) — waitUntil covers the rest of the drain", !mid2 && s2.done && w2.calls === 1, `settled mid=${mid2} after=${s2.done} run() calls=${w2.calls}`);
-  info("K13", "never path: nothing awaits the fallback drain (no after() task ever runs) — it is a floating promise; see review RV15 on frozen instances");
 });
 
 // ── K14 out of request: no timer, immediate ──
@@ -564,8 +663,7 @@ await sub("K17", async () => {
   });
   await flush(20);
   await advance(3_500);
-  chk("K17", "a registration whose after() callback Next runs synchronously still drains exactly once; the timer armed after it is harmless", w.pending.size === 0 && w.calls === 1, `drain started synchronously inside after()=${syncStart === 1} · live timers right after the call=${liveRight} · run() calls after 3.5 s=${w.calls}`);
-  info("K17", `stray fallback timer in this path: ${liveRight > 0 ? "YES — armed after the task already started (fires 3 s later, returns early, no drain, no warning)" : "no"}`);
+  chk("K17", "a registration whose after() callback Next runs synchronously drains exactly once and arms NO fallback timer (round 2, RV15-5)", w.pending.size === 0 && w.calls === 1 && syncStart === 1 && liveRight === 0, `drain started synchronously inside after()=${syncStart === 1} · live timers right after the call=${liveRight} · run() calls after 3.5 s=${w.calls}`);
 });
 
 mock.timers.reset();
