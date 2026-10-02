@@ -1414,7 +1414,19 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
   const id = str(contactId);
   const sys = ctx?.tenantId && ctx?.systemId ? await prisma.appSystem.findFirst({ where: { id: ctx.systemId, tenantId: ctx.tenantId, type: "CRM" }, select: { id: true } }) : null;
   if (!sys || !id) throw new PortalError("NOT_FOUND", "ไม่พบระบบ CRM หรือผู้ติดต่อนี้ในร้านที่เปิดอยู่");
-  const reqs = await prisma.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id }, select: { id: true, approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
+  // CRM C5.5-fix9 ▸ hunt-3 H3-3: ทุกคำขอ (ทีละหน้า · ไม่ตัดที่ 5,000) ◂
+  const reqs: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = [];
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = await prisma.crmPortalRequest.findMany({
+      where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, approvalRequestId: true, kanbanCardId: true },
+      orderBy: { id: "asc" },
+      take: ERASE_PAGE,
+    });
+    reqs.push(...page);
+    if (page.length < ERASE_PAGE) break;
+    cursor = page[page.length - 1]!.id;
+  }
   let approvalsCancelled = 0;
   const ap = await approvalFacade();
   for (const r of reqs) {
@@ -1425,8 +1437,7 @@ export async function eraseContact(ctx: PortalStaffCtx, contactId: string): Prom
   return prisma.$transaction(async (tx) => {
     // รีวิว C3.9-fix S1: การ์ดของคำขอถูกล้างผ่าน facade บอร์ดงาน (หัว · รายละเอียด · ความเห็น · ประวัติ) — portal.ts ไม่เขียนตารางบอร์ดงานเอง
     const cards = { count: cardIds.length ? (await kb.redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX })).cards : 0 };
-    const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id }, select: { id: true }, take: 1_000 })).map((r) => r.id);
-    const sessions = accessIds.length ? await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, portalAccessId: { in: accessIds } } }) : { count: 0 };
+    const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, portalAccess: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } } });
     const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } });
     const accesses = await tx.crmPortalAccess.deleteMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, contactId: id } });
     await tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: ctx.actorUserId ? "USER" : "SYSTEM", actorId: ctx.actorUserId ?? null, action: "crm.portal.erase", targetType: "CrmContact", targetId: id, after: { accesses: accesses.count, sessions: sessions.count, requests: requests.count, approvalsCancelled, cardsRedacted: cards.count } } });
@@ -1446,34 +1457,51 @@ export async function eraseContactInTx(
   tx: Prisma.TransactionClient,
   ctx: { tenantId: string; systemId: string },
   contactIds: readonly string[],
-  opts?: { mask?: ((text: string) => string) | null },
+  opts?: { mask?: ((text: string) => string) | null; batch?: number | null },
 ): Promise<{ accesses: number; sessions: number; requests: number; cardsRedacted: number; approvalRequestIds: string[] }> {
   const ids = [...new Set(contactIds.filter(Boolean))];
   if (ids.length === 0) return { accesses: 0, sessions: 0, requests: 0, cardsRedacted: 0, approvalRequestIds: [] };
-  const reqs = await tx.crmPortalRequest.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { approvalRequestId: true, kanbanCardId: true }, take: 5_000 });
-  const cardIds = reqs.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
-  // รีวิว C3.9-fix S1: ผ่าน facade บอร์ดงาน · `mask` = ตัวปิดคำระบุตัวของการลบ (privacy.ts) ⇒ ความเห็น/ประวัติของการ์ดคำขอถูกปิดด้วยคำชุดเดียวกัน
-  const cards = { count: cardIds.length ? (await (await kanbanLinks()).redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX, mask: opts?.mask ?? null })).cards : 0 };
-  const accessIds = (await tx.crmPortalAccess.findMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } }, select: { id: true }, take: 1_000 })).map((r) => r.id);
-  const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, ...(accessIds.length ? [{ portalAccessId: { in: accessIds } }] : [])] } });
+  // CRM C5.5-fix9 ▸ hunt-3 H3-3: คำขอทุกแถว (ทีละหน้า keyset ตาม id · ไม่ตัดที่ 5,000) — การ์ดของคำขอถูกล้างก่อนแถวคำขอหาย (ลิงก์ไม่หลุด) ◂
+  const batch = erasePageOf(opts?.batch);
+  const kb = await kanbanLinks();
+  const approvalRequestIds: string[] = [];
+  let cardsRedacted = 0;
+  for (let cursor: string | null = null; ; ) {
+    const page: { id: string; approvalRequestId: string | null; kanbanCardId: string | null }[] = await tx.crmPortalRequest.findMany({
+      where: { tenantId: ctx.tenantId, contactId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, approvalRequestId: true, kanbanCardId: true },
+      orderBy: { id: "asc" },
+      take: batch,
+    });
+    for (const r of page) if (r.approvalRequestId) approvalRequestIds.push(r.approvalRequestId);
+    const cardIds = page.map((r) => r.kanbanCardId).filter((x): x is string => !!x);
+    // รีวิว C3.9-fix S1: ผ่าน facade บอร์ดงาน · `mask` = ตัวปิดคำระบุตัวของการลบ (privacy.ts) ⇒ ความเห็น/ประวัติของการ์ดคำขอถูกปิดด้วยคำชุดเดียวกัน
+    if (cardIds.length) {
+      cardsRedacted += (await kb.redactCardsInTx(tx, ctx.tenantId, cardIds, { title: PORTAL_CARD_ERASED_TITLE, sourceKeyPrefix: PORTAL_CARD_SOURCE_PREFIX, mask: opts?.mask ?? null, batch: opts?.batch ?? null })).cards;
+    }
+    if (page.length < batch) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  // session ของทุกสิทธิ์ของคนนี้ (ผ่านความสัมพันธ์ — ไม่มีรายการ id ที่ต้องตัด) + session ที่ผูกผู้ติดต่อตรง
+  const sessions = await tx.portalSession.deleteMany({ where: { tenantId: ctx.tenantId, OR: [{ crmContactId: { in: ids } }, { portalAccess: { tenantId: ctx.tenantId, contactId: { in: ids } } }] } });
   const requests = await tx.crmPortalRequest.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
   const accesses = await tx.crmPortalAccess.deleteMany({ where: { tenantId: ctx.tenantId, contactId: { in: ids } } });
-  return {
-    accesses: accesses.count,
-    sessions: sessions.count,
-    requests: requests.count,
-    cardsRedacted: cards.count,
-    approvalRequestIds: reqs.map((r) => r.approvalRequestId).filter((x): x is string => !!x),
-  };
+  return { accesses: accesses.count, sessions: sessions.count, requests: requests.count, cardsRedacted, approvalRequestIds };
 }
+
+/** ขนาดหน้าของการลบ (ค่าเริ่มต้น 5,000 = เพดานเดิม · ข้อสอบส่งค่าเล็กเพื่อพิสูจน์การวนหน้า) */
+const ERASE_PAGE = 5_000;
+const erasePageOf = (b?: number | null): number => {
+  const n = Math.floor(Number(b ?? ERASE_PAGE));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, ERASE_PAGE) : ERASE_PAGE;
+};
 
 /** ยกเลิกคำขออนุมัติของคำขอพอร์ทัลที่ถูกลบ (ขั้นหลัง commit ของการลบ PDPA) — คำขอที่ปิดไปแล้ว = ข้าม (idempotent) */
 export async function cancelErasedApprovals(tenantId: string, approvalRequestIds: readonly string[]): Promise<number> {
   if (!approvalRequestIds.length) return 0;
-  const ap = await approvalFacade();
-  let n = 0;
-  for (const id of approvalRequestIds) if (await ap.cancelRequest({ tenantId }, id)) n += 1; // ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่
-  return n;
+  // CRM C5.5-fix9 r2 (review M3): เป็นชุด (คำสั่งละ ≤ 1,000 · เฉพาะที่ยัง PENDING) แทนทีละ id — ส่งใหม่ = ทำต่อได้ ไม่เริ่มจ่ายใหม่ทั้งหมด ·
+  //   ล้ม = โยนต่อ ⇒ event ถูกส่งใหม่ ◂
+  return (await approvalFacade()).cancelRequests({ tenantId }, approvalRequestIds);
 }
 // ◂ CRM C3.9
 

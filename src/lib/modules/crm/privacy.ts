@@ -85,7 +85,14 @@ export type { ContactExportBundle, CrmExportDto, EraseCounts, EraseResult, Erase
 
 export type PrivacyCtx = { tenantId: string; systemId: string; actorUserId?: string | null };
 /** ที่เก็บไฟล์ฉีดได้ (ข้อสอบ) — `del` คืน void (throw = ลบไม่สำเร็จ) หรือ status code · `put` = ตัวอัปโหลดของ C0.4 */
-export type PrivacyDeps = { del?: (path: string) => Promise<unknown>; put?: UploadDeps["put"] };
+/**  `batch` (C5.5-fix9 · ข้อสอบ) = ขนาดหน้าของลูปการลบทุกตัว (ค่าเริ่มต้น = เพดานเดิมของแต่ละตัว) — ค่าเล็กพิสูจน์ว่าวนครบทุกหน้า */
+/**  `txTimeoutMs` (C5.5-fix9 r2 · ข้อสอบ) = เวลาของธุรกรรมการลบ (ค่าเล็กลงเท่านั้น ≤ 60 s) — พิสูจน์ทางล้มเพราะหมดเวลา */
+export type PrivacyDeps = { del?: (path: string) => Promise<unknown>; put?: UploadDeps["put"]; batch?: number | null; txTimeoutMs?: number | null };
+/** ขนาดหน้า: ค่าที่ส่งมา (1..ค่าเริ่มต้น) หรือค่าเริ่มต้น */
+const pageSize = (b: unknown, def: number): number => {
+  const n = Math.floor(Number(b ?? def));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, def) : def;
+};
 
 type Tx = Prisma.TransactionClient;
 type Actor = MemberActor;
@@ -278,7 +285,31 @@ export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: 
 
   // รีวิว C5.4-B รอบ 2 (SF): รอบของกฎ CRM ที่ subject เป็นดีลของเขาแต่ไม่มี crmContactId — หา **ก่อน** ล็อก (คำสั่งเดียว · คีย์ JSON ตรง)
   const dealRunIds = await dealRuleRunsOf(c, pre.id);
-  const out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source, { memberAllowed, dealRunIds }), TX_OPTS);
+  // CRM C5.5-fix9 r2 (review M2): ธุรกรรมเดียวเกินเวลา = rollback ทั้งก้อน (ไม่มีอะไรถูกลบ) — ไม่ปล่อยเป็น "ลองใหม่" เฉย ๆ: OpsEvent ERROR
+  //   (แจ้งเตือนทีมงานผ่าน logOps) + แถว audit ของความพยายามที่ล้ม (id/ตัวเลขล้วน · ไม่มีเหตุผลที่พิมพ์/ชื่อ/เบอร์) + ข้อความเฉพาะ (TOO_LARGE) ◂
+  const timeoutMs = pageSize(deps?.txTimeoutMs, TX_OPTS.timeout);
+  const startedAt = Date.now();
+  let out: EraseTxOut;
+  try {
+    out = await prisma.$transaction((tx) => eraseInTx(tx, c, pre.id, reason, source, { memberAllowed, dealRunIds, batch: deps?.batch ?? null }), { ...TX_OPTS, timeout: timeoutMs });
+  } catch (e) {
+    if (!isTxTimeout(e)) throw e;
+    const elapsedMs = Date.now() - startedAt;
+    await logOps("ERROR", "crm.privacy", "ลบข้อมูลส่วนบุคคลไม่สำเร็จ — ข้อมูลของผู้ติดต่อนี้มากเกินกว่าจะลบเสร็จในธุรกรรมเดียว ระบบยกเลิกทั้งหมด (ยังไม่มีอะไรถูกลบ) ต้องให้ทีมงานดำเนินการ", {
+      tenantId: c.tenantId,
+      detail: JSON.stringify({ contactId: pre.id, systemId: c.systemId, source, elapsedMs, timeoutMs }),
+    });
+    await writeAudit({
+      tenantId: c.tenantId,
+      actorId: c.actorUserId,
+      actorType: c.actorUserId ? "USER" : "SYSTEM",
+      action: CRM_ERASE_FAILED_AUDIT_ACTION,
+      targetType: "CrmContact",
+      targetId: pre.id,
+      after: { systemId: c.systemId, source, failure: "TIMEOUT", elapsedMs, timeoutMs },
+    });
+    throw fail("TOO_LARGE", "ข้อมูลของผู้ติดต่อนี้มีมากเกินกว่าจะลบให้เสร็จในครั้งเดียว — ระบบยกเลิกการลบทั้งหมด (ยังไม่มีข้อมูลใดถูกลบ) และแจ้งทีมงานแล้ว · การกดลบซ้ำจะไม่ช่วย");
+  }
   const none = { memberSkipped: false, memberPending: false };
   if (!out.erased) {
     // C3.9-fix H7: การกวาดซ้ำเจอไฟล์ที่หลุดเข้ามา (ไม่มีแถว audit ใหม่ให้ตัวรับ event) ⇒ ลบวัตถุตรงนี้ · ล้ม = WARN (id ล้วน) ให้กวาดซ้ำได้อีก
@@ -293,10 +324,15 @@ export async function eraseContact(ctx: PrivacyCtx, actor: Actor | null, input: 
   }
   let followUp: "DONE" | "PENDING" = "DONE";
   let post = { files: 0, memberErased: false, memberPending: false };
-  try {
-    post = await completeErasure(c.tenantId, pre.id, deps);
-  } catch {
-    followUp = "PENDING"; // completeErasure ลง OpsEvent WARN (id ล้วน) ไว้แล้ว · ตัวรับ event ทำต่อ
+  // C5.5-fix9 r2 (review M3): commit แล้ว = ลบแล้ว — ขั้นหลัง commit ทำในคำขอนี้เฉพาะเมื่อเล็ก (ไฟล์บนที่เก็บลบทีละไฟล์) · ใหญ่ = ปล่อยให้ตัวรับ
+  //   `crm.contact.erased` (outbox เดิม · ส่งใหม่จนสำเร็จ · ทุกขั้น idempotent) แล้วตอบ PENDING ทันที — คำขอไม่ค้างจนหน้าจอเห็นว่าล้มทั้งที่ลบแล้ว
+  if (out.followUpFiles > INLINE_FOLLOWUP_FILES_MAX) followUp = "PENDING";
+  else {
+    try {
+      post = await completeErasure(c.tenantId, pre.id, deps);
+    } catch {
+      followUp = "PENDING"; // completeErasure ลง OpsEvent WARN (id ล้วน) ไว้แล้ว · ตัวรับ event ทำต่อ
+    }
   }
   return {
     contactId: pre.id,
@@ -326,7 +362,18 @@ async function deleteFilesNow(tenantId: string, contactId: string, fileIds: read
   }
 }
 
-type EraseTxOut = { erased: boolean; partyId: string | null; counts: EraseCounts; memberSkipped: string[]; resweepFileIds: string[] };
+type EraseTxOut = { erased: boolean; partyId: string | null; counts: EraseCounts; memberSkipped: string[]; resweepFileIds: string[]; followUpFiles: number };
+/** ขั้นหลัง commit ทำในคำขอได้ไม่เกินจำนวนไฟล์นี้ (ไฟล์ลบทีละคำสั่งบนที่เก็บ) — มากกว่า = ตัวรับ outbox ทำ */
+const INLINE_FOLLOWUP_FILES_MAX = 100;
+/** แถว audit ของการลบที่ล้มเพราะหมดเวลาธุรกรรม (ไม่ใช่ธง "ลบแล้ว") */
+const CRM_ERASE_FAILED_AUDIT_ACTION = "crm.contact.erase.failed";
+/** ธุรกรรม interactive ของ Prisma หมดเวลา (P2028 · "expired"/"already closed") — ไม่นับกรณีเริ่มธุรกรรมไม่ได้ (pool เต็ม) */
+function isTxTimeout(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : "";
+  if (/Unable to start a transaction/i.test(msg)) return false;
+  const code = e instanceof Prisma.PrismaClientKnownRequestError ? e.code : null;
+  return code === "P2028" || /Transaction already closed|expired transaction|transaction.*timed? ?out/i.test(msg);
+}
 
 /** ผู้ติดต่อที่ถูกรวมเข้ามาในคนนี้ทั้งสาย (`mergedIntoId` ซ้อนกันได้) — รีวิว C3.9 B2 */
 const CHAIN_DEPTH_MAX = 20;
@@ -352,8 +399,8 @@ async function mergedChain(tx: Tx, ctx: { tenantId: string; systemId: string }, 
   return { ids: out, truncated };
 }
 
-/** แถว AuditLog ของสายนี้ที่ต้องขัดตัวตน (C3.9-fix H8) — ยกเว้นแถว `crm.contact.erase` (หลักฐาน/ธง: id + เหตุผล) */
-const AUDIT_SCRUB_MAX = 5_000;
+/** แถว AuditLog ของสายนี้ที่ต้องขัดตัวตน (C3.9-fix H8) — ยกเว้นแถว `crm.contact.erase` (หลักฐาน/ธง: id + เหตุผล) · ขนาดหน้า (C5.5-fix9: ไม่ใช่เพดาน) */
+const AUDIT_SCRUB_PAGE = 5_000;
 type AuditTrailRow = { id: string; targetId: string | null; before: Prisma.JsonValue; after: Prisma.JsonValue };
 
 /**
@@ -414,12 +461,20 @@ async function notThePerson(
     const staff = await tx.$queryRaw<{ v: string }[]>`
       SELECT lower(u."email") AS "v" FROM "Membership" m JOIN "User" u ON u."id" = m."userId" WHERE m."tenantId" = ${t} AND lower(u."email") = ANY(${em}::text[])`;
     for (const r of staff) if (r.v) out.fixedEmails.add(r.v);
+    // CRM C5.5-fix9 (sweep): "ที่อยู่ไหนมีคนอื่นถือ" = คำสั่ง DISTINCT ที่อยู่ (ไม่มี LIMIT — ผลมีได้ไม่เกินจำนวนที่อยู่ที่ถาม) ·
+    //   LIMIT เหลือเฉพาะรายชื่อผู้ถือสำหรับ WARN (≤ 20 ต่อที่อยู่ — เดิม LIMIT 200 ของคู่ (ผู้ถือ, ที่อยู่) ทำให้ที่อยู่ที่ถูกถือร่วมหลุดจากชุดได้เงียบ ๆ)
+    const heldEmails = await tx.$queryRaw<{ v: string }[]>`
+      SELECT DISTINCT lower(btrim(x.e)) AS "v" FROM "CrmContact" c, unnest(array_append(c."previousEmails", c."email")) x(e)
+       WHERE ${liveOther} AND x.e IS NOT NULL AND lower(btrim(x.e)) = ANY(${em}::text[])`;
     const contacts = await tx.$queryRaw<{ id: string; v: string }[]>`
-      SELECT DISTINCT c."id", lower(btrim(x.e)) AS "v" FROM "CrmContact" c, unnest(array_append(c."previousEmails", c."email")) x(e)
-       WHERE ${liveOther} AND x.e IS NOT NULL AND lower(btrim(x.e)) = ANY(${em}::text[]) LIMIT 200`;
+      SELECT h."id", h."v" FROM (
+        SELECT d."id", d."v", row_number() OVER (PARTITION BY d."v" ORDER BY d."id") AS "rn" FROM (
+          SELECT DISTINCT c."id", lower(btrim(x.e)) AS "v" FROM "CrmContact" c, unnest(array_append(c."previousEmails", c."email")) x(e)
+           WHERE ${liveOther} AND x.e IS NOT NULL AND lower(btrim(x.e)) = ANY(${em}::text[])) d) h
+       WHERE h."rn" <= 20`;
     const partiesHit = await tx.$queryRaw<{ v: string }[]>`
       SELECT DISTINCT lower(btrim(p."email")) AS "v" FROM "Party" p WHERE ${otherParty} AND lower(btrim(p."email")) = ANY(${em}::text[])`;
-    for (const r of [...contacts, ...partiesHit]) if (r.v) out.emails.add(r.v);
+    for (const r of [...heldEmails, ...partiesHit]) if (r.v) out.emails.add(r.v);
     for (const r of contacts) if (r.v) out.holders.push({ id: r.id, email: r.v });
     for (const e of out.fixedEmails) out.emails.add(e);
   }
@@ -468,7 +523,7 @@ async function eraseInTx(
   id: string,
   reason: string,
   source: EraseSource,
-  opts: { memberAllowed: boolean; dealRunIds?: readonly string[] },
+  opts: { memberAllowed: boolean; dealRunIds?: readonly string[]; batch?: number | null },
 ): Promise<EraseTxOut> {
   const t = ctx.tenantId;
   const sysScope = { tenantId: t, systemId: ctx.systemId };
@@ -508,21 +563,30 @@ async function eraseInTx(
 
   // ── C3.9-fix H1 (ล่าความปลอดภัย B1): คำตอบฟอร์มบนเว็บของคนในสาย (ผ่าน facade ฟอร์ม) — ล้างคำตอบ + ip/หน้า/ที่มา · เก็บค่าที่เคยกรอกไว้เป็นคำระบุตัว ──
   const forms = await import("@/lib/modules/forms");
-  const formOut = await forms.eraseCrmContactSubmissions(tx, t, ids);
+  const formOut = await forms.eraseCrmContactSubmissions(tx, t, ids, { batch: opts.batch ?? null });
   counts.formSubmissions = formOut.count;
   // ── C3.9-fix H8 (ล่าความปลอดภัย M3) + H1: ร่องรอย audit ของสาย (อ่านก่อนขัด — ตัวตนเดิมจากแถวแก้ไขเก่าเข้าชุดคำระบุตัว) ──
-  const trailRaw: AuditTrailRow[] = await tx.auditLog.findMany({
-    where: { tenantId: t, targetId: { in: ids }, NOT: { action: CRM_ERASE_AUDIT_ACTION } },
-    select: { id: true, targetId: true, before: true, after: true },
-    orderBy: { createdAt: "asc" },
-    take: AUDIT_SCRUB_MAX + 1,
-  });
-  // รีวิว C3.9-fix (NOTE): เกินเพดาน = ขัด 5,000 แถวแรก + WARN (id ล้วน) — ไม่เงียบ (ลบซ้ำ = กวาดต่อ)
-  if (trailRaw.length > AUDIT_SCRUB_MAX) {
-    await logOps("WARN", "crm.privacy", "ร่องรอย audit ของผู้ติดต่อที่ถูกลบยาวเกินเพดานของการลบครั้งเดียว — ขัดตัวตนได้บางส่วน กดลบซ้ำเพื่อกวาดต่อ", { tenantId: t, detail: JSON.stringify({ contactId: id, cap: AUDIT_SCRUB_MAX }) });
+  //   CRM C5.5-fix9 (sweep ของ hunt-3): ทุกแถว — เดิมขัด 5,000 แถวแรกตาม createdAt แล้ว WARN "ลบซ้ำ = กวาดต่อ" แต่การลบซ้ำหยิบ 5,000 แถวเดิม
+  //   (แถวที่ 5,001+ ไม่เคยถูกขัด) ⇒ รอบแรกอ่านทีละหน้า (keyset id) เก็บแค่ id + ตัวตนเดิม · รอบขัด (ท้าย tx) อ่านทีละหน้าจาก id ชุดนั้น
+  const auditPage = pageSize(opts.batch, AUDIT_SCRUB_PAGE);
+  const trailIds: string[] = [];
+  const former: { names: string[]; values: string[] } = { names: [], values: [] };
+  for (let cursor: string | null = null; ; ) {
+    const page: AuditTrailRow[] = await tx.auditLog.findMany({
+      where: { tenantId: t, targetId: { in: ids }, NOT: { action: CRM_ERASE_AUDIT_ACTION }, ...(cursor ? { id: { gt: cursor } } : {}) },
+      select: { id: true, targetId: true, before: true, after: true },
+      orderBy: { id: "asc" },
+      take: auditPage,
+    });
+    const f = formerIdentity(page, people);
+    former.names.push(...f.names);
+    former.values.push(...f.values);
+    for (const r of page) trailIds.push(r.id);
+    if (page.length < auditPage) break;
+    cursor = page[page.length - 1]!.id;
   }
-  const trail = trailRaw.slice(0, AUDIT_SCRUB_MAX);
-  const former = formerIdentity(trail, people);
+  former.names = [...new Set(former.names)];
+  former.values = [...new Set(former.values)];
 
   // ── รีวิว C3.9-fix B1 (มติผู้คุมงาน): ตัวตน "ของเขาเอง" เท่านั้น — ที่อยู่ของร้าน/ระบบ/พนักงาน และค่าที่คนอื่นที่ยังไม่ถูกลบในร้านถือร่วม ห้ามถูกนับ ──
   //   ที่อยู่ของเขา (H2) = อีเมลของผู้ติดต่อ + อีเมลเก่า + อีเมลของ Party + ช่อง `email` หลักของฟอร์ม (ช่องที่สะพานฟอร์มผูกเป็นตัวตน)
@@ -709,7 +773,7 @@ async function eraseInTx(
       const body = mask(a.body);
       if (title !== a.title || body !== a.body) await tx.crmActivity.update({ where: { id: a.id }, data: { title: title || CRM_ERASED_MASK, body } });
     }
-    const kd = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "DEAL", dealIds, (x) => maskText(x, tokens) ?? x);
+    const kd = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "DEAL", dealIds, (x) => maskText(x, tokens) ?? x, { batch: opts.batch ?? null });
     counts.kanban += kd.cards + kd.comments + kd.activities;
   }
   // ◂ CRM C5.4-B
@@ -724,7 +788,7 @@ async function eraseInTx(
   counts.clicks = (await tx.crmTrackedClick.deleteMany({ where: { tenantId: t, contactId: { in: ids } } })).count;
 
   // ── พอร์ทัล (รีวิว C3.9 B3): แถวทั้งหมดหายใน tx นี้ (`portal.eraseContactInTx` — ของ C3.5) · คำขออนุมัติยกเลิกหลัง commit ──
-  const portalOut = await portal.eraseContactInTx(tx, sysScope, ids, { mask: (s) => maskText(s, tokens) ?? s });
+  const portalOut = await portal.eraseContactInTx(tx, sysScope, ids, { mask: (s) => maskText(s, tokens) ?? s, batch: opts.batch ?? null });
   counts.portal = portalOut.accesses + portalOut.sessions + portalOut.requests;
 
   // ── ข้อเสนอ AI (นามบัตร/lead · รีวิว C3.9 S1): เฉพาะข้อเสนอชนิดของ CRM ที่เอ่ยถึงคนนี้ หรือข้อเสนอใดก็ตามที่พก id ของคนนี้ ──
@@ -796,30 +860,29 @@ async function eraseInTx(
   // CRM C5.4-B ▸ L5-M2: การ์ดที่กฎของเขาเปิด (`crm-rule:<runId>:<i>`) ก่อนมีลิงก์ผูกผู้ติดต่อ — เก็บ runId ก่อนล้าง payload ของรอบ แล้วปิดคำในการ์ดเหล่านั้น
   //   รีวิว C5.4-B note (e): ทุกรอบ (แบ่งหน้า ไม่ตัดที่ 5,000) + รอบของกฎที่ subject เป็นดีลของเขาแต่ไม่มี crmContactId (dealRuleRunsOf · คีย์ JSON)
   const ruleRuns: { id: string }[] = [];
+  const runPage = pageSize(opts.batch, 5_000);
   for (let cursor: string | null = null; ; ) {
     const page: { id: string }[] = await tx.automationRun.findMany({
       where: { tenantId: t, crmContactId: { in: ids }, ...(cursor ? { id: { gt: cursor } } : {}) },
       select: { id: true },
       orderBy: { id: "asc" },
-      take: 5_000,
+      take: runPage,
     });
     ruleRuns.push(...page);
-    if (page.length < 5_000) break;
+    if (page.length < runPage) break;
     cursor = page[page.length - 1]!.id;
   }
   ruleRuns.push(...(opts.dealRunIds ?? []).map((rid) => ({ id: rid }))); // รอบของดีลเขา (หาไว้ก่อนล็อก — dealRuleRunsOf)
   await tx.automationRun.updateMany({ where: { tenantId: t, crmContactId: { in: ids } }, data: { payload: Prisma.DbNull, detail: null } });
   // C3.9-fix H4 (ล่าความปลอดภัย B4): การ์ดที่ผูก — หัว · รายละเอียด · ความเห็น · ประวัติการ์ด ผ่าน facade ของบอร์ดงาน (ตารางบอร์ดงานไม่ถูกเขียนจากไฟล์นี้)
-  const kb = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "CRM_CONTACT", ids, (s) => maskText(s, tokens) ?? s);
+  const kb = await (await import("@/lib/modules/kanban/links")).maskCardsLinkedInTx(tx, t, "CRM_CONTACT", ids, (s) => maskText(s, tokens) ?? s, { batch: opts.batch ?? null });
   counts.kanban += kb.cards + kb.comments + kb.activities;
   if (ruleRuns.length) {
     const { maskCardsBySourcePrefixInTx } = await import("@/lib/modules/kanban/links");
     const prefixes = [...new Set(ruleRuns.map((r) => `crm-rule:${r.id}:`))];
-    // ทีละ 500 รอบ (ตัวปิดการ์ดรับได้ ≤ 2,000 ใบต่อครั้ง · รอบหนึ่งเปิดการ์ดได้ไม่กี่ใบ) — ไม่มีรอบไหนหลุด
-    for (let i = 0; i < prefixes.length; i += 500) {
-      const kr = await maskCardsBySourcePrefixInTx(tx, t, prefixes.slice(i, i + 500), (s) => maskText(s, tokens) ?? s);
-      counts.kanban += kr.cards + kr.comments + kr.activities;
-    }
+    // C5.5-fix9: ตัวปิดการ์ดรับ prefix ได้ไม่จำกัด (แบ่งคำสั่งละ 500 prefix · การ์ดทีละหน้าในตัวมันเอง) — ไม่มีรอบไหนหลุด
+    const kr = await maskCardsBySourcePrefixInTx(tx, t, prefixes, (s) => maskText(s, tokens) ?? s, { batch: opts.batch ?? null });
+    counts.kanban += kr.cards + kr.comments + kr.activities;
   }
   await tx.crmSequenceEnrollment.updateMany({
     where: { tenantId: t, contactId: { in: ids }, status: { in: ["ACTIVE", "PAUSED"] } },
@@ -853,15 +916,18 @@ async function eraseInTx(
     return v;
   };
   const asJson = (v: unknown) => (v === null || v === undefined ? Prisma.DbNull : (v as Prisma.InputJsonValue));
-  for (const r of trail) {
-    const before = scrub(r.before);
-    const after = scrub(r.after);
-    if (JSON.stringify(before) === JSON.stringify(r.before) && JSON.stringify(after) === JSON.stringify(r.after)) continue;
-    await tx.auditLog.update({ where: { id: r.id }, data: { before: asJson(before), after: asJson(after) } });
-    counts.auditScrubbed += 1;
+  for (let i = 0; i < trailIds.length; i += auditPage) {
+    const part = trailIds.slice(i, i + auditPage);
+    for (const r of await tx.auditLog.findMany({ where: { tenantId: t, id: { in: part } }, select: { id: true, before: true, after: true } })) {
+      const before = scrub(r.before);
+      const after = scrub(r.after);
+      if (JSON.stringify(before) === JSON.stringify(r.before) && JSON.stringify(after) === JSON.stringify(r.after)) continue;
+      await tx.auditLog.update({ where: { id: r.id }, data: { before: asJson(before), after: asJson(after) } });
+      counts.auditScrubbed += 1;
+    }
   }
 
-  if (resweep) return { erased: false, partyId: row.partyId, counts, memberSkipped: [], resweepFileIds: [...new Set(fileIds)] };
+  if (resweep) return { erased: false, partyId: row.partyId, counts, memberSkipped: [], resweepFileIds: [...new Set(fileIds)], followUpFiles: 0 };
 
   // ── C3.9-fix H9 (ล่าความปลอดภัย M4): ไฟล์ส่งออกของระบบที่ยังไม่หมดอายุ (สร้างก่อนการลบ = มีข้อมูลของเขา) ถูกถอน ──
   //   CRM_EXPORT: ไฟล์ส่วนตัวลบหลัง commit (followUp) · แถวงาน fileId = null + result.withdrawn ⇒ getExport = EXPIRED ·
@@ -911,7 +977,7 @@ async function eraseInTx(
     payload: { contactId: id, systemId: ctx.systemId, ...(partyId ? { partyId } : {}), ...(row.memberCustomerId ? { customerId: row.memberCustomerId } : {}) },
     systemId: ctx.systemId,
   });
-  return { erased: true, partyId, counts, memberSkipped, resweepFileIds: [] };
+  return { erased: true, partyId, counts, memberSkipped, resweepFileIds: [], followUpFiles: followUp.fileIds.length };
 }
 
 /**
@@ -1006,7 +1072,9 @@ export async function onMemberErased(evt: { tenantId: string; payload: unknown }
   if (!evt?.tenantId || !customerId) return { erased: 0 };
   let erased = 0;
   const skip: string[] = [];
+  let more = false;
   for (let round = 0; round < 50; round += 1) {
+    more = false;
     const rows = await prisma.$queryRaw<{ id: string; systemId: string }[]>`
       SELECT c."id", c."systemId" FROM "CrmContact" c
        WHERE c."tenantId" = ${evt.tenantId} AND c."memberCustomerId" = ${customerId}
@@ -1014,6 +1082,7 @@ export async function onMemberErased(evt: { tenantId: string; payload: unknown }
          AND NOT EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."action" = ${CRM_ERASE_AUDIT_ACTION} AND a."targetId" = c."id" AND a."tenantId" = c."tenantId")
        ORDER BY c."id" LIMIT 100`;
     if (rows.length === 0) break;
+    more = rows.length === 100;
     for (const r of rows) {
       try {
         const res = await eraseContact(
@@ -1033,6 +1102,8 @@ export async function onMemberErased(evt: { tenantId: string; payload: unknown }
     ? await prisma.auditLog.count({ where: { tenantId: evt.tenantId, action: CRM_ERASE_AUDIT_ACTION, targetId: { in: skip } } })
     : 0;
   if (skip.length > pending) throw new Error(`crm.privacy.onMemberErased pending (${skip.length - pending})`);
+  // CRM C5.5-fix9 (sweep): ครบ 50 รอบแล้วรอบสุดท้ายยังเต็ม = อาจยังมีผู้ติดต่อที่ผูกสมาชิกนี้เหลือ — ห้ามตอบสำเร็จ (throw ⇒ event ส่งใหม่ · คนที่ลบแล้วถูกข้าม)
+  if (more) throw new Error("crm.privacy.onMemberErased pending (more linked contacts than one delivery handles)");
   return { erased };
 }
 
@@ -1041,7 +1112,42 @@ export async function onMemberErased(evt: { tenantId: string; payload: unknown }
 /** ฟิลด์ sensitive เห็นได้ไหม (นโยบายของใบนี้: เจ้าของร้านเท่านั้น — MANAGER/STAFF/คีย์ API ได้ชุดที่ตัดค่า sensitive) */
 const seesSensitive = (actor: Actor) => actor.role === "OWNER" && !isApiActor(actor);
 
-export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: string): Promise<ContactExportBundle> {
+/**
+ * CRM C5.5-fix9 ▸ hunt-3 H3-2: ชุดข้อมูลของคนหนึ่งคน = **ทุกแถว** ของทุกตาราง — อ่านทีละหน้า (keyset ตาม id ใหม่→เก่า · ลำดับคงที่ ⇒ ส่งออกสองครั้ง
+ * ได้ไฟล์เดียวกัน) · ไฟล์ส่งกลับเป็น JSON ทั้งก้อนผ่าน server action (ไม่มีทาง stream) ⇒ ยังมีเพดานต่อตาราง `PERSON_EXPORT_TABLE_MAX` เพื่อขนาดคำตอบ/
+ * หน่วยความจำ แต่ **ไม่เงียบ**: ตารางที่ถูกตัด = แถวใหม่สุดตามเพดาน + `truncated.<ตาราง> = { exported, total }` + `complete: false` ในไฟล์และในแถว audit
+ * (หน่วยความจำ ≤ เพดาน + 1 หน้า ต่อตาราง) · `opts` = ข้อสอบเท่านั้น (เพดาน/ขนาดหน้าที่เล็กลง — ทางจริงไม่ส่ง) ◂
+ */
+const PERSON_EXPORT_TABLE_MAX = 50_000;
+const PERSON_EXPORT_PAGE = 1_000;
+/** ข้อสอบเท่านั้น: เพดาน/ขนาดหน้าที่เล็กลง · `beforeCount` = จุดแทรกระหว่างอ่านหน้ากับนับยอด (พิสูจน์ review L2) */
+export type ContactExportOpts = { tableMax?: number | null; page?: number | null; beforeCount?: ((table: string) => Promise<void>) | null };
+type ExportLim = { max: number; page: number };
+const byIdDesc = (cursor: string | null) => (cursor ? { id: { lt: cursor } } : {});
+const omitId = <R extends { id: string }>(r: R): Omit<R, "id"> => {
+  const o: Record<string, unknown> = { ...r };
+  delete o.id;
+  return o as Omit<R, "id">;
+};
+
+/**
+ * อ่านทุกหน้า (id ใหม่→เก่า) จนหน้าสั้น หรือเกินเพดาน (อ่านเกิน 1 แถวเพื่อรู้ว่าเกิน) · r2 (review L2): "ถูกตัด" ตัดสินจากการอ่านหน้าเอง
+ * (มีแถวเกินเพดานจริง) — ยอดจาก `count` ที่นับทีหลังใช้แค่บอกจำนวน (แถวถูกลบระหว่างนั้น ⇒ ยอด = max(นับได้, อ่านได้))
+ */
+async function readAllPages<R extends { id: string }>(lim: ExportLim, read: (cursor: string | null, take: number) => Promise<R[]>, count: () => Promise<number>): Promise<{ rows: R[]; total: number; cut: boolean }> {
+  const rows: R[] = [];
+  for (let cursor: string | null = null; ; ) {
+    const want = Math.min(lim.page, lim.max + 1 - rows.length);
+    const page = await read(cursor, want);
+    rows.push(...page);
+    if (page.length < want || rows.length > lim.max) break;
+    cursor = page[page.length - 1]!.id;
+  }
+  if (rows.length <= lim.max) return { rows, total: rows.length, cut: false };
+  return { rows: rows.slice(0, lim.max), total: Math.max(await count(), rows.length), cut: true };
+}
+
+export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: string, opts?: ContactExportOpts | null): Promise<ContactExportBundle> {
   assertStaff(actor);
   const sys = await resolveSystem(ctx);
   const c = { tenantId: sys.tenantId, systemId: sys.systemId, actorUserId: actor.userId };
@@ -1049,47 +1155,105 @@ export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: st
   need(actor, "crm.contact.export");
   const t = c.tenantId;
   const id = row.id;
-  const recs = await prisma.customRecord.findMany({ where: { tenantId: t, systemId: c.systemId, parentType: "CONTACT", parentId: id }, select: { id: true, objectId: true, title: true, status: true, createdAt: true, updatedAt: true } });
+  // r2 (review M1-b): ผู้ติดต่อที่ถูกรวมเข้ามาในคนนี้ทั้งสาย = คนเดียวกัน — ขอบเขตเดียวกับการลบ (`mergedChain` ตัวเดียวกัน)
+  const chainOut = await mergedChain(prisma as unknown as Tx, { tenantId: t, systemId: c.systemId }, id);
+  const ids = [id, ...chainOut.ids];
+  const lim: ExportLim = { max: pageSize(opts?.tableMax, PERSON_EXPORT_TABLE_MAX), page: pageSize(opts?.page, PERSON_EXPORT_PAGE) };
+  const truncated: Record<string, { exported: number; total: number }> = {};
+  const all = async <R extends { id: string }>(table: string, read: (cursor: string | null, take: number) => Promise<R[]>, count: () => Promise<number>): Promise<R[]> => {
+    const r = await readAllPages(lim, read, async () => {
+      if (opts?.beforeCount) await opts.beforeCount(table);
+      return count();
+    });
+    if (r.cut) truncated[table] = { exported: r.rows.length, total: r.total };
+    return r.rows;
+  };
+  const actWhere = await activityWhere(c, actor);
+  const dealW = await dealWhere(c, actor);
+  const recs = await prisma.customRecord.findMany({ where: { tenantId: t, systemId: c.systemId, parentType: "CONTACT", parentId: { in: ids } }, select: { id: true, objectId: true, title: true, status: true, createdAt: true, updatedAt: true }, orderBy: { id: "desc" } });
   const values = await prisma.customRecordValue.findMany({
-    where: { tenantId: t, recordId: { in: [id, ...recs.map((r) => r.id)] }, ...(seesSensitive(actor) ? {} : { field: { sensitive: false } }) },
+    where: { tenantId: t, recordId: { in: [...ids, ...recs.map((r) => r.id)] }, ...(seesSensitive(actor) ? {} : { field: { sensitive: false } }) },
     select: { recordId: true, valueText: true, valueNumber: true, valueDate: true, valueBool: true, valueOptions: true, valueRef: true, field: { select: { key: true, label: true, objectKey: true } } },
+    orderBy: { id: "asc" },
   });
-  const sessions = await prisma.crmWebSession.findMany({ where: { tenantId: t, contactId: id }, select: { id: true, startedAt: true, lastSeenAt: true, pageViews: true, firstUrl: true, referrer: true, utm: true, consentVersion: true, consentAt: true }, take: 5_000 });
+  const sessW = { tenantId: t, contactId: { in: ids } };
+  const sessions = await all(
+    "CrmWebSession",
+    (cur, take) => prisma.crmWebSession.findMany({ where: { ...sessW, ...byIdDesc(cur) }, select: { id: true, startedAt: true, lastSeenAt: true, pageViews: true, firstUrl: true, referrer: true, utm: true, consentVersion: true, consentAt: true }, orderBy: { id: "desc" }, take }),
+    () => prisma.crmWebSession.count({ where: sessW }),
+  );
+  const actW = { AND: [actWhere, { contactId: { in: ids } }] };
+  const mailW = { tenantId: t, systemId: c.systemId, contactId: { in: ids } };
+  // เหตุการณ์เว็บของทุก session ของเขา (ผ่านความสัมพันธ์ — ไม่ขึ้นกับรายการ session ที่ถูกตัด)
+  const evW = { tenantId: t, session: { tenantId: t, contactId: { in: ids } } };
+  const clickW = { tenantId: t, contactId: { in: ids } };
+  const scoreW = { tenantId: t, contactId: { in: ids } };
+  const forms = await import("@/lib/modules/forms");
+  const fileLinks = await fileLinksOf(lim, truncated, { tenantId: t, systemId: c.systemId }, ids, recs.map((r) => r.id), actWhere);
   const tables: Record<string, Record<string, unknown>[]> = {
-    CrmCompanyContact: rowsOf(await prisma.crmCompanyContact.findMany({ where: { tenantId: t, contactId: id }, select: { companyId: true, role: true, jobTitle: true, isPrimary: true, startedAt: true, endedAt: true, company: { select: { name: true } } } })),
-    CrmContactConsent: rowsOf(await prisma.crmContactConsent.findMany({ where: { tenantId: t, contactId: id }, select: { channel: true, granted: true, source: true, policyVersion: true, createdAt: true }, orderBy: { createdAt: "asc" } })),
-    CrmDeal: rowsOf(await prisma.crmDeal.findMany({ where: { AND: [await dealWhere(c, actor), { contactId: id }] }, select: { id: true, title: true, valueSatang: true, kind: true, paidSatang: true, currency: true, expectedCloseAt: true, closedAt: true, createdAt: true, stage: { select: { name: true } } } })),
-    CrmActivity: rowsOf(await prisma.crmActivity.findMany({ where: { AND: [await activityWhere(c, actor), { contactId: id }] }, select: { id: true, type: true, title: true, body: true, direction: true, channel: true, outcome: true, durationSec: true, dueAt: true, doneAt: true, startAt: true, createdAt: true }, take: 5_000 })),
+    CrmCompanyContact: rowsOf(await prisma.crmCompanyContact.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { companyId: true, role: true, jobTitle: true, isPrimary: true, startedAt: true, endedAt: true, company: { select: { name: true } } }, orderBy: { id: "desc" } })),
+    CrmContactConsent: rowsOf(await prisma.crmContactConsent.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { channel: true, granted: true, source: true, policyVersion: true, createdAt: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })),
+    CrmDeal: rowsOf(await prisma.crmDeal.findMany({ where: { AND: [dealW, { contactId: { in: ids } }] }, select: { id: true, title: true, valueSatang: true, kind: true, paidSatang: true, currency: true, expectedCloseAt: true, closedAt: true, createdAt: true, stage: { select: { name: true } } }, orderBy: { id: "desc" } })),
+    CrmActivity: rowsOf(
+      await all(
+        "CrmActivity",
+        (cur, take) => prisma.crmActivity.findMany({ where: { AND: [actWhere, { contactId: { in: ids } }, byIdDesc(cur)] }, select: { id: true, type: true, title: true, body: true, direction: true, channel: true, outcome: true, durationSec: true, dueAt: true, doneAt: true, startAt: true, createdAt: true }, orderBy: { id: "desc" }, take }),
+        () => prisma.crmActivity.count({ where: actW }),
+      ),
+    ),
     // AUDIT-CLASS X8: หัวจดหมายเท่านั้น — เนื้อจดหมายไม่เคยอยู่ในไฟล์ส่งออก
-    CrmEmailMessage: rowsOf(await prisma.crmEmailMessage.findMany({ where: { tenantId: t, systemId: c.systemId, contactId: id }, select: { id: true, direction: true, fromAddr: true, toAddrs: true, subject: true, status: true, sentAt: true, receivedAt: true, openCount: true, clickCount: true }, take: 5_000 })),
+    CrmEmailMessage: rowsOf(
+      await all(
+        "CrmEmailMessage",
+        (cur, take) => prisma.crmEmailMessage.findMany({ where: { ...mailW, ...byIdDesc(cur) }, select: { id: true, direction: true, fromAddr: true, toAddrs: true, subject: true, status: true, sentAt: true, receivedAt: true, openCount: true, clickCount: true }, orderBy: { id: "desc" }, take }),
+        () => prisma.crmEmailMessage.count({ where: mailW }),
+      ),
+    ),
     CrmWebSession: rowsOf(sessions),
-    CrmWebEvent: rowsOf(sessions.length ? await prisma.crmWebEvent.findMany({ where: { sessionId: { in: sessions.map((s) => s.id) } }, select: { sessionId: true, kind: true, url: true, title: true, at: true }, take: 20_000 }) : []),
-    CrmTrackedClick: rowsOf(await prisma.crmTrackedClick.findMany({ where: { tenantId: t, contactId: id }, select: { at: true, link: { select: { name: true, url: true } } }, take: 5_000 })),
-    CrmPortalAccess: rowsOf(await prisma.crmPortalAccess.findMany({ where: { tenantId: t, contactId: id }, select: { companyId: true, role: true, invitedAt: true, acceptedAt: true, lastLoginAt: true, revokedAt: true, loginMethods: true } })),
-    CrmPortalRequest: rowsOf(await prisma.crmPortalRequest.findMany({ where: { tenantId: t, contactId: id }, select: { id: true, kind: true, payload: true, status: true, createdAt: true, decidedAt: true } })),
-    CrmScoreLog: rowsOf(await prisma.crmScoreLog.findMany({ where: { tenantId: t, contactId: id }, select: { points: true, reason: true, createdAt: true }, take: 5_000 })),
-    CrmSequenceEnrollment: rowsOf(await prisma.crmSequenceEnrollment.findMany({ where: { tenantId: t, contactId: id }, select: { sequence: { select: { name: true } }, status: true, stoppedReason: true, createdAt: true, stoppedAt: true } })),
+    CrmWebEvent: rowsOf(
+      (
+        await all(
+          "CrmWebEvent",
+          (cur, take) => prisma.crmWebEvent.findMany({ where: { ...evW, ...byIdDesc(cur) }, select: { id: true, sessionId: true, kind: true, url: true, title: true, at: true }, orderBy: { id: "desc" }, take }),
+          () => prisma.crmWebEvent.count({ where: evW }),
+        )
+      ).map(omitId),
+    ),
+    CrmTrackedClick: rowsOf(
+      (
+        await all(
+          "CrmTrackedClick",
+          (cur, take) => prisma.crmTrackedClick.findMany({ where: { ...clickW, ...byIdDesc(cur) }, select: { id: true, at: true, link: { select: { name: true, url: true } } }, orderBy: { id: "desc" }, take }),
+          () => prisma.crmTrackedClick.count({ where: clickW }),
+        )
+      ).map(omitId),
+    ),
+    CrmPortalAccess: rowsOf(await prisma.crmPortalAccess.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { companyId: true, role: true, invitedAt: true, acceptedAt: true, lastLoginAt: true, revokedAt: true, loginMethods: true }, orderBy: { id: "desc" } })),
+    CrmPortalRequest: rowsOf(await prisma.crmPortalRequest.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { id: true, kind: true, payload: true, status: true, createdAt: true, decidedAt: true }, orderBy: { id: "desc" } })),
+    CrmScoreLog: rowsOf(
+      (
+        await all(
+          "CrmScoreLog",
+          (cur, take) => prisma.crmScoreLog.findMany({ where: { ...scoreW, ...byIdDesc(cur) }, select: { id: true, points: true, reason: true, createdAt: true }, orderBy: { id: "desc" }, take }),
+          () => prisma.crmScoreLog.count({ where: scoreW }),
+        )
+      ).map(omitId),
+    ),
+    CrmSequenceEnrollment: rowsOf(await prisma.crmSequenceEnrollment.findMany({ where: { tenantId: t, contactId: { in: ids } }, select: { sequence: { select: { name: true } }, status: true, stoppedReason: true, createdAt: true, stoppedAt: true }, orderBy: { id: "desc" } })),
     CustomRecord: rowsOf(recs),
     CustomRecordValue: rowsOf(values),
     // รีวิว C3.9 B1: ไฟล์แนบของผู้ติดต่อ/เรคคอร์ด/กิจกรรมของเขา — ชื่อ ชนิด ขนาด วันที่ (ไฟล์จริงเปิดผ่านหน้า 360 ด้วยลิงก์ส่วนตัว)
-    CrmFileLink: rowsOf(
-      await prisma.crmFileLink.findMany({
-        where: {
-          tenantId: t,
-          systemId: c.systemId,
-          OR: [
-            { entityType: "CONTACT", entityId: id },
-            ...(recs.length ? [{ entityType: "RECORD", entityId: { in: recs.map((r) => r.id) } }] : []),
-            { entityType: "ACTIVITY", entityId: { in: (await prisma.crmActivity.findMany({ where: { AND: [await activityWhere(c, actor), { contactId: id }] }, select: { id: true }, take: 5_000 })).map((a) => a.id) } },
-          ],
-        },
-        select: { entityType: true, entityId: true, name: true, mime: true, size: true, createdAt: true },
-        take: 5_000,
-      }),
-    ),
-    // C3.9-fix H1: คำตอบฟอร์มบนเว็บที่เขากรอก (ผ่าน facade ฟอร์ม · ตารางเดียวกับขอบเขตการลบ)
+    //   C5.5-fix9: ลิงก์ของ **ทุก** กิจกรรมที่ผู้ขอเห็น (id กิจกรรมอ่านทีละหน้า ไม่ตัดที่ 5,000) · รวมแล้วเรียง id ใหม่→เก่า · เพดานเดียวกัน
+    CrmFileLink: rowsOf(fileLinks.rows.map(omitId)),
+    // C3.9-fix H1: คำตอบฟอร์มบนเว็บที่เขากรอก (ผ่าน facade ฟอร์ม · ตารางเดียวกับขอบเขตการลบ) · C5.5-fix9: ทุกหน้า
     FormSubmission: rowsOf(
-      (await (await import("@/lib/modules/forms")).submissionsOfCrmContacts(prisma, t, [id])).map((x) => ({
+      (
+        await all(
+          "FormSubmission",
+          (cur, take) => forms.submissionsOfCrmContacts(prisma, t, ids, { take, beforeId: cur }),
+          () => forms.countSubmissionsOfCrmContacts(prisma, t, ids),
+        )
+      ).map((x) => ({
         id: x.id,
         form: x.formName,
         answers: x.answers,
@@ -1125,8 +1289,112 @@ export async function exportContact(ctx: PrivacyCtx, actor: Actor, contactId: st
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }) as Record<string, unknown>;
-  await writeAudit({ tenantId: t, actorId: actor.userId, action: "crm.contact.export.person", targetType: "CrmContact", targetId: id, after: { systemId: c.systemId, tables: Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, v.length])), sensitive: seesSensitive(actor) } });
-  return { exportedAt: new Date().toISOString(), contact, tables };
+  // r2 (review M1-a): แถว/ค่าที่ผู้ขอมองไม่เห็น (การมองเห็นกิจกรรม/ดีลของเขา · ค่าฟิลด์อ่อนไหวที่ไม่ใช่เจ้าของร้าน) — ไม่ขยายสิ่งที่ผู้ขออ่านได้
+  //   แต่ไฟล์ต้องไม่อ้างว่าครบ: นับยอดทั้งหมดเทียบยอดที่เห็น (ตัวเลขล้วน) → `scope.limitedByRequesterVisibility` + ชื่อตาราง ในไฟล์ · จำนวนใน audit
+  const withheld = await withheldByVisibility(c, ids, recs.map((r) => r.id), { actW, dealW, sensitive: seesSensitive(actor), activityLinks: fileLinks.activityLinks });
+  const truncatedAny = Object.keys(truncated).length > 0;
+  const withheldTables = Object.keys(withheld);
+  const scope = {
+    ...(chainOut.ids.length ? { mergedContactIds: chainOut.ids } : {}),
+    ...(chainOut.truncated ? { mergedChainIncomplete: true as const } : {}),
+    ...(withheldTables.length ? { limitedByRequesterVisibility: true as const, withheldTables } : {}),
+  };
+  const hasScope = Object.keys(scope).length > 0;
+  const complete = !truncatedAny && !withheldTables.length && !chainOut.truncated;
+  // audit: จำนวนที่ส่งออกต่อตาราง + (ถ้าถูกตัด) ยอดจริง + จำนวนที่ผู้ขอมองไม่เห็น + สายที่ถูกรวม — ไม่บันทึกไฟล์ที่ไม่ครบราวกับครบ
+  await writeAudit({
+    tenantId: t,
+    actorId: actor.userId,
+    action: "crm.contact.export.person",
+    targetType: "CrmContact",
+    targetId: id,
+    after: {
+      systemId: c.systemId,
+      tables: Object.fromEntries(Object.entries(tables).map(([k, v]) => [k, v.length])),
+      complete,
+      ...(truncatedAny ? { truncated } : {}),
+      ...(withheldTables.length ? { withheld } : {}),
+      ...(hasScope ? { scope } : {}),
+      sensitive: seesSensitive(actor),
+    },
+  });
+  return { exportedAt: new Date().toISOString(), complete, ...(truncatedAny ? { truncated } : {}), ...(hasScope ? { scope } : {}), contact, tables };
+}
+
+/** ลิงก์ไฟล์ของคนนี้ (ผู้ติดต่อ · เรคคอร์ดของเขา · กิจกรรมที่ผู้ขอเห็น) — ทุกหน้า · เก็บไว้ไม่เกินเพดาน (ใหม่สุดตาม id) + นับยอดจริง */
+async function fileLinksOf(
+  lim: ExportLim,
+  truncated: Record<string, { exported: number; total: number }>,
+  sys: { tenantId: string; systemId: string },
+  contactIds: readonly string[],
+  recordIds: readonly string[],
+  actWhere: Prisma.CrmActivityWhereInput,
+): Promise<{ rows: { id: string; entityType: string; entityId: string; name: string; mime: string; size: number; createdAt: Date }[]; activityLinks: number }> {
+  type L = { id: string; entityType: string; entityId: string; name: string; mime: string; size: number; createdAt: Date };
+  let kept: L[] = [];
+  let total = 0;
+  const sink = (rows: L[]) => {
+    total += rows.length;
+    kept = [...kept, ...rows].sort((x, y) => (x.id < y.id ? 1 : x.id > y.id ? -1 : 0)).slice(0, lim.max);
+  };
+  const select = { id: true, entityType: true, entityId: true, name: true, mime: true, size: true, createdAt: true } as const;
+  const linksOf = async (or: Prisma.CrmFileLinkWhereInput[]): Promise<number> => {
+    let n = 0;
+    for (let cursor: string | null = null; ; ) {
+      const page: L[] = await prisma.crmFileLink.findMany({ where: { ...sys, OR: or, ...byIdDesc(cursor) }, select, orderBy: { id: "desc" }, take: lim.page });
+      sink(page);
+      n += page.length;
+      if (page.length < lim.page) return n;
+      cursor = page[page.length - 1]!.id;
+    }
+  };
+  await linksOf([{ entityType: "CONTACT", entityId: { in: [...contactIds] } }, ...(recordIds.length ? [{ entityType: "RECORD", entityId: { in: [...recordIds] } }] : [])]);
+  let activityLinks = 0;
+  for (let cursor: string | null = null; ; ) {
+    const acts: { id: string }[] = await prisma.crmActivity.findMany({ where: { AND: [actWhere, { contactId: { in: [...contactIds] } }, byIdDesc(cursor)] }, select: { id: true }, orderBy: { id: "desc" }, take: lim.page });
+    if (acts.length) activityLinks += await linksOf([{ entityType: "ACTIVITY", entityId: { in: acts.map((a) => a.id) } }]);
+    if (acts.length < lim.page) break;
+    cursor = acts[acts.length - 1]!.id;
+  }
+  if (total > kept.length) truncated.CrmFileLink = { exported: kept.length, total };
+  return { rows: kept, activityLinks };
+}
+
+/**
+ * r2 (review M1-a): จำนวนแถว/ค่าของคนนี้ (ทั้งสาย) ที่ผู้ขอมองไม่เห็น — ตัวเลขล้วน (ไม่มีแถวใดถูกอ่านออกมา) ·
+ * กิจกรรม/ดีล = ยอดทั้งหมดของระบบนี้ − ยอดที่ผู้ขอเห็น · ไฟล์แนบของกิจกรรม = ทั้งหมด − ของกิจกรรมที่เห็น · ค่าฟิลด์อ่อนไหว (ไม่ใช่เจ้าของร้าน)
+ */
+async function withheldByVisibility(
+  c: { tenantId: string; systemId: string },
+  ids: readonly string[],
+  recordIds: readonly string[],
+  v: { actW: Prisma.CrmActivityWhereInput; dealW: Prisma.CrmDealWhereInput; sensitive: boolean; activityLinks: number },
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const people = [...ids];
+  const scopeW = { tenantId: c.tenantId, systemId: c.systemId, contactId: { in: people } };
+  const actsAll = await prisma.crmActivity.count({ where: scopeW });
+  const actsSeen = await prisma.crmActivity.count({ where: v.actW });
+  if (actsAll > actsSeen) out.CrmActivity = actsAll - actsSeen;
+  const dealsAll = await prisma.crmDeal.count({ where: scopeW });
+  const dealsSeen = await prisma.crmDeal.count({ where: { AND: [v.dealW, { contactId: { in: people } }] } });
+  if (dealsAll > dealsSeen) out.CrmDeal = dealsAll - dealsSeen;
+  if (out.CrmActivity) {
+    const linksAll = Number(
+      (
+        await prisma.$queryRaw<{ n: number }[]>`
+          SELECT count(*)::int AS "n" FROM "CrmFileLink" l
+           WHERE l."tenantId" = ${c.tenantId} AND l."systemId" = ${c.systemId} AND l."entityType" = 'ACTIVITY'
+             AND l."entityId" IN (SELECT a."id" FROM "CrmActivity" a WHERE a."tenantId" = ${c.tenantId} AND a."systemId" = ${c.systemId} AND a."contactId" = ANY(${people}::text[]))`
+      )[0]?.n ?? 0,
+    );
+    if (linksAll > v.activityLinks) out.CrmFileLink = linksAll - v.activityLinks;
+  }
+  if (!v.sensitive) {
+    const hidden = await prisma.customRecordValue.count({ where: { tenantId: c.tenantId, recordId: { in: [...people, ...recordIds] }, field: { sensitive: true } } });
+    if (hidden) out.CustomRecordValue = hidden;
+  }
+  return out;
 }
 
 // ═════════════════════════ ส่งออกทั้งระบบ (งาน async บนเลนของ C3.1) ═════════════════════════
