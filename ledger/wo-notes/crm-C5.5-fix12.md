@@ -204,3 +204,62 @@ Summary: `scripts/pending/cf16/regress-r2.summary`. Chain 1 `run-r2-regress.sh` 
 - `review/leftover-check.mts` (unedited): `qc-cf16/13/10/7-*` tenants = 0, users = 0.
 - 7 orphan `crm:contact:ident:<dead tenant>:<user>` buckets were left by the suites of the two chains (the review had left 0). I deleted them with that script's `--clean`; re-check: 0.
 - `probe-cf16-r2` deletes its own buckets (tenant prefix) and its `ApiIdempotency` rows (`keyId` prefix = its tag) in `done()`.
+
+## Round 3 (after the review's round-2 re-check): RV12r-1 · RV12r-2
+
+- Base `5067e1f6` (reviewer's re-check commit). Window 2026-10-02 08:05 → 08:21 UTC (`date -u`).
+- Probe: `scripts/pending/cf16/probe-cf16-r3.mts` (runner `run-r2.sh`), chain `run-r3-regress.sh`. Summary `regress-r3.summary`, logs `probe-cf16-r3.{red,green}.log`.
+
+### Change
+
+One pure helper `contactRefusalOf(e)` in `contacts-shared.ts` covers the contact-service refusals that must reach the person as the service's own Thai text: they are not system faults, and retrying does not help. It returns code + status + message only; `duplicates[]` is **never** forwarded. Any other `ContactsError` code → `null`, and callers keep their old path.
+
+| Code | What it is | status |
+|---|---|---|
+| `DUPLICATE` | the round-1 neutral text for a hidden match (`CONTACT_DUPLICATE_HIDDEN_MSG`: no name, id, phone, e-mail or company) | 409 |
+| `LIMIT` | plan cap, the `crmLimitMessage` text | 409 |
+| `RATE_LIMITED` | round 2 | 429 |
+
+- **RV12r-1 (web card-scan accept)**: `calls-actions.ts failOf` calls the helper before the generic "บันทึกไม่สำเร็จ … ลองใหม่อีกครั้ง". This replaces the round-2 RATE_LIMITED-only line. The UI (`src/components/crm/call/CrmCardScanButton.tsx accept()`) shows `r.error` under the scanner and **keeps the draft**, so "ทิ้งร่าง" is still there.
+- **RV12r-2 (mobile)**: `mobileErrorOf` maps the helper result to 409 `duplicate`, 409 `limit` or 429 `rate_limited` with the service text (previously DUPLICATE / LIMIT gave 500 "ระบบ CRM ขัดข้องชั่วคราว … ลองใหม่").
+  - **What the app does with it** (read): `apps/mobile/src/api/client.ts api()` turns any non-2xx into `ApiError(status, body.error, body.message)`, and `apiErrorText()` returns `body.message` verbatim whenever it contains Thai, **regardless of status**.
+  - `apps/mobile/app/(app)/crm/scan-card.tsx accept()` puts that in the on-screen `CrmNotice` (no Alert), keeps the draft, and leaves "ทิ้งร่าง" enabled.
+  - So the person now reads the neutral text ("…ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้") or the plan-cap text ("ถึงเพดานผู้ติดต่อ … ติดต่อทีม SHARK"), and is no longer told to retry.
+  - The app does not branch on 409 or on the `error` code; nothing else in the app reads this endpoint's errors. The mobile code needed no change.
+- Visible duplicates on these two paths: unchanged. `acceptLeadProposal` uses `force:true`, so a card whose match the scanner can see is still accepted (a duplicate is created, as before) and never reaches the helper. The owner still accepts a card matching a contact others cannot see.
+
+### Probe RED → GREEN (`probe-cf16-r3.mts`)
+
+- RED, on the `5067e1f6` source (src diff removed, then re-applied; md5 `2c439274…` before and after): **2/8**. The green rows are `R3-visible-control` and CLEAN.
+- GREEN: **8/8**.
+
+| Check | RED | GREEN |
+|---|---|---|
+| `R3-WEB-wired`: failOf calls the helper before the generic text (static; the action needs a request session) | ❌ | ✅ |
+| `R3-WEB-dup-hidden`: STAFF accepts a card whose phone is a hidden contact's → what the web action passes on; no hidden id/name/phone/e-mail/company | no helper (action = generic text) | DUPLICATE 409 + neutral text, no `duplicates`, leaks [] |
+| `R3-MOB-dup-hidden`: `mobileErrorOf` on the same real error; proposal stays PENDING; rows with that phone = 1 | 500 "ระบบ CRM ขัดข้องชั่วคราว" | 409 `duplicate` + neutral text |
+| `R3-visible-control`: visible match (STAFF) → accepted, duplicate created; owner on the hidden one → accepted | ✅ | ✅ (unchanged) |
+| `R3-cap`: `Tenant.limits.crm.contacts = 1` (restored after) → service LIMIT → web / mobile; nothing created | web generic, mobile 500 | web LIMIT 409, mobile 409 `limit`, Thai cap text, 0 rows |
+| `R3-rate-limited`: bucket full → 429 on both | web no helper (mobile already 429) | 429 on both |
+| `R3-scope`: other codes (VALIDATION) → helper `null`; mobile keeps its old answer | no helper | ✅ |
+
+### Regression (QC2, one job at a time, each in its own `iso.sh` unit under the gate lock)
+
+`run-r3-regress.sh` 08:11:20 → 08:20:19, src md5 `2c439274…` at start and end.
+
+| Job | Result |
+|---|---|
+| typecheck (5 GB heap) | exit 0 |
+| `probe-cf16-r3` · `probe-cf16-r2` | **8/8 · 8/8** |
+| `probe-cf16` vs `/tmp/cf16-logs/red3.dump.json` | **22/22** |
+| `review/probe-cf16-review` · `review/probe-cf16-review-r2` (not edited) | **10/10 · 6/6** |
+| `qc-crm-c2.4` (card scan) | **91/91** |
+| docs `--check` crm · account | ✅ (123 op) · ✅ (199 op). No REST change |
+| fitness (QC2 env) / without env | **36/36 / 36/36** |
+
+QC2 clean: `qc-cf16/13/10/7-*` tenants = 0, users = 0. One orphan `crm:contact:ident:*` bucket from the chain's suites was deleted with `review/leftover-check.mts --clean` (unedited); re-check: 0.
+
+### Not verified (round 3)
+
+- The web action and the mobile route were not executed end to end: the action needs a request session, the route needs a mobile Bearer token. What they return is the helper / `mobileErrorOf` result on the real errors `acceptLeadProposal` throws, plus a static check that `failOf` calls the helper. The UI handling (web `CrmCardScanButton`, app `scan-card.tsx` + `apiErrorText`) was read, not rendered.
+- `mobileErrorOf` still returns 500 for other `ContactsError` codes (e.g. VALIDATION, NOT_FOUND from contact paths): pre-existing and outside RV12r-2 (`R3-scope` pins that it is unchanged).

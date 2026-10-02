@@ -174,6 +174,19 @@ export class ContactsError extends Error {
   }
 }
 
+/**
+ * CRM C5.5-fix12 r3 ▸ RV12r-1/2: ข้อปฏิเสธของบริการผู้ติดต่อที่ต้อง "บอกผู้ใช้ตรง ๆ" (ไม่ใช่ระบบขัดข้อง · กดซ้ำไม่ช่วย) สำหรับทางที่ปกติ
+ *   ซ่อน error ไว้หลังข้อความกลาง (กดรับนามบัตร: action เว็บ `calls-actions.ts` · แอป `mobile.ts mobileErrorOf`):
+ *   DUPLICATE = ข้อความกลางของตัวซ้ำที่มองไม่เห็น (ไม่มีชื่อ/รหัส/เบอร์/อีเมล/บริษัท) → 409 · LIMIT = เพดานของระบบ → 409 ·
+ *   RATE_LIMITED = ขอถี่ → 429 · คืนเฉพาะรหัส + ข้อความไทย — **ไม่ส่ง `duplicates[]` ต่อ** · อื่น ๆ = null (ผู้เรียกใช้ทางเดิม) ◂
+ */
+export function contactRefusalOf(e: unknown): { code: "DUPLICATE" | "LIMIT" | "RATE_LIMITED"; status: 409 | 429; message: string } | null {
+  if (!(e instanceof ContactsError) || !/[ก-๙]/.test(e.message)) return null;
+  if (e.code === "DUPLICATE" || e.code === "LIMIT") return { code: e.code, status: 409, message: e.message };
+  if (e.code === "RATE_LIMITED") return { code: e.code, status: 429, message: e.message };
+  return null;
+}
+
 // ───────────────────────── ชนิด DTO ─────────────────────────
 
 export type ContactDto = {

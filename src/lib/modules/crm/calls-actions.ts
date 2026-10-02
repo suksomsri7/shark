@@ -30,7 +30,7 @@ import { CallsError, type CallAiProposalView, type CardDraft, type LogCallInput,
 // 🔴 ตัวแปลง "ระยะเวลาแบบคนพิมพ์" และ "เวลาไทยจากช่อง datetime-local" มีชุดเดียวของระบบ (C1.6) — หน้าจอส่งข้อความดิบมาให้แปลงที่นี่
 //    (ห้ามทำสำเนาสูตรเวลาไทยไว้ในคอมโพเนนต์ 'use client' — ข้อที่เพี้ยนแล้วหาไม่เจอที่สุดคือเวลา)
 import { parseDurationText, thaiLocalInputToIso } from "./activities-shared";
-import { ContactsError } from "./contacts-shared"; // CRM C5.5-fix12 r2 ▸ RV12-1 ◂
+import { contactRefusalOf } from "./contacts-shared"; // CRM C5.5-fix12 r2/r3 ▸ RV12-1 · RV12r-1 ◂
 
 type Fail = { ok: false; error: string; code?: string };
 
@@ -48,8 +48,10 @@ async function session(systemId: string, key: string): Promise<{ ctx: CallsCtx; 
 function failOf(e: unknown): Fail {
   if (e instanceof CrmV2DisabledError) return { ok: false, error: e.message, code: e.code };
   if (e instanceof CallsError) return { ok: false, error: e.message, code: e.code };
-  // CRM C5.5-fix12 r2 ▸ RV12-1: กดรับนามบัตรตอนถูกจำกัดความถี่ (กรอกเบอร์/อีเมล) = ข้อความ "รอแล้วลองใหม่" ของบริการ ไม่ใช่ข้อความกลาง ◂
-  if (e instanceof ContactsError && e.code === "RATE_LIMITED") return { ok: false, error: e.message, code: e.code };
+  // CRM C5.5-fix12 r2/r3 ▸ RV12-1 · RV12r-1: กดรับนามบัตรแล้วบริการผู้ติดต่อปฏิเสธ (ตัวซ้ำที่มองไม่เห็น = ข้อความกลาง · เพดานของระบบ · ขอถี่)
+  //   = ข้อความไทยของบริการ ไม่ใช่ "บันทึกไม่สำเร็จ … ลองใหม่" (กดซ้ำไม่ช่วย) · ไม่ส่ง duplicates[] ◂
+  const refusal = contactRefusalOf(e);
+  if (refusal) return { ok: false, error: refusal.message, code: refusal.code };
   if (e instanceof ForbiddenError) return { ok: false, error: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ในระบบ CRM — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ แล้วลองอีกครั้ง", code: "FORBIDDEN" };
   // 🔴 ไม่ส่งรายละเอียดทางเทคนิค/ข้อมูลลูกค้าออกไป (log แค่ชนิด error — AUDIT-CLASS X8)
   console.error(`[crm.calls] action ล้มเหลว — ${e instanceof Error ? e.name : "unknown"}`);
