@@ -2372,9 +2372,10 @@ const kbAutoSave: AiTool = {
     if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อความรู้" });
     if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาความรู้" });
     // CRM C5.5-G3 ▸ คลังความรู้ทุกคนในร้านอ่านได้ ⇒ ห้ามผู้ช่วยเขียนข้อมูลติดต่อของบุคคลลงไปเอง (ด่านเดียวกับความจำของร้าน) ◂
-    const contactKinds = findContactData(`${title}\n${content}`);
-    if (contactKinds.length > 0) return JSON.stringify({ error: contactDataRefusal(contactKinds, "ลงคลังความรู้") });
+    //   รอบ 2 (รีวิว RV-2): ตรวจ **ทุกช่องข้อความที่เก็บ** — หัวข้อ · เนื้อหา · หมวดหมู่ (หมวดแสดงในรายการ/ผล kb_search) ◂
     const category = String(a.category ?? "").trim() || null;
+    const contactKinds = findContactData(`${title}\n${content}\n${category ?? ""}`);
+    if (contactKinds.length > 0) return JSON.stringify({ error: contactDataRefusal(contactKinds, "ลงคลังความรู้") });
     // ใช้ service เดิม (ห้าม fork) — content → body ของบทความ
     await kbCreateArticleSvc({ tenantId: ctx.tenantId }, { title, body: content, category });
     return JSON.stringify({ ตอบผู้ใช้: `บันทึกลงคลังความรู้แล้ว: ${title}` });

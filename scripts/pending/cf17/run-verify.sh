@@ -13,6 +13,7 @@ r() { local name="$1"; shift; want "$name" || return 0; local log="$D/$LBL-${nam
 q() { r "$1" bash scripts/iso.sh env CRM_V2_SWITCH=all NODE_OPTIONS=--max-old-space-size=3584 CF9_OWNER_OUT="$D/owner-$LBL.json" bash scripts/pending/cd2/with-qc3-secret.sh bash scripts/qc3.sh bash scripts/with-gate-lock.sh pnpm exec tsx "scripts/$1.mts" "${@:2}"; }
 r typecheck bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=5120 bash scripts/with-gate-lock.sh pnpm typecheck
 q pending/cf17/probe-cf17-g3
+q pending/cf17/review/probe-cf17-g3-review
 q pending/cf14/probe-cf14-g2
 q pending/cf14/review/probe-cf14-g2-review
 q pending/cf9/probe-cf9-g1

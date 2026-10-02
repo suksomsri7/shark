@@ -143,6 +143,19 @@ try {
   const pS2 = await prompt(tA, staffA);
   chk("M1.3", stored.length === benign.length && benign.every((b) => pS2.includes(b)), `positive (false-positive controls): order numbers, prices, times, dates, barcode remembered by the OWNER ${stored.length}/${benign.length} and in the STAFF prompt=${benign.every((b) => pS2.includes(b))}`);
 
+  // ── round 2 (review RV-1): dash-like / slash separators, full-width digits — and the harmless controls they could hit ──
+  const contact2 = ["โทร 089–900–0201", "โทร 089—900—0202", "โทร 089−900−0203", "โทร 089/900/0204", "โทร ０８９９０００２０５", "โทร ＋66 89 900 0206", "โทร 02‐123‐4569"];
+  const r2Before = (await memIds(tA)).length;
+  const refused2: string[] = [];
+  for (const c of contact2) if (isErr(await rt(tA, owner, "remember_fact", { content: `ลูกค้า ${c}` }))) refused2.push(c);
+  const r2After = (await memIds(tA)).length;
+  chk("M1.4", refused2.length === contact2.length && r2After === r2Before, `round 2: OWNER shop fact with en/em dash, minus sign, hyphen U+2010, slash, full-width digits / plus → refused ${refused2.length}/${contact2.length} · rows ${r2Before}→${r2After} · not refused: ${j(contact2.filter((c) => !refused2.includes(c)))}`);
+  const benign2 = ["หยุดวันที่ 1/10/2026", "จองวันที่ 01/10/2026–05/10/2026", "ช่วงราคา 1,500–2,000 บาท", "ราคา 100/150/200 บาท", "ขนาด 0.5–1.5 กก.", "เปิด 09.00–18.00 น.", "ส่วนลด 10/20/30 %", "ปี ２０２６ ไตรมาส ３"];
+  const stored2: string[] = [];
+  for (const b of benign2) if (!isErr(await rt(tA, owner, "remember_fact", { content: b }))) stored2.push(b);
+  const pS2b = await prompt(tA, staffA);
+  chk("M1.5", stored2.length === benign2.length && benign2.every((b) => pS2b.includes(b)), `positive (round-2 false-positive controls: slash dates, dash ranges, slash price lists, full-width year) remembered ${stored2.length}/${benign2.length} and in the STAFF prompt · refused: ${j(benign2.filter((b) => !stored2.includes(b)))}`);
+
   // ═══ M2 private memories (written by a non-OWNER) ═══
   console.log("\n── M2 private memories ──");
   const PRIV = "ลูกค้าของฉัน คุณหนึ่ง 0811111111";
@@ -221,6 +234,10 @@ try {
   const k2 = await rt(tA, owner, "kb_auto_save", { title: `นโยบายคืนสินค้า ${TAG}`, content: "คืนได้ภายใน 7 วัน ราคา 1,250 บาท ใบเสร็จ INV-20261002-0042" });
   chk("K1.1", isErr(k1) && !has(ks, PHONE), `kb_auto_save with a phone → refused (${cut(k1, 80)}) · STAFF kb_search sees it=${has(ks, PHONE)}`);
   chk("K1.2", !isErr(k2), `positive: kb_auto_save without contact data (price, receipt number) → saved (${cut(k2, 60)})`);
+  const k3 = await rt(tA, owner, "kb_auto_save", { title: `ผู้ติดต่อ ${TAG}`, content: "ติดต่อฝ่ายขายผ่านหน้าร้าน", category: "ฝ่ายขาย 089-900-0301" });
+  const k3Row = await P.kbArticle.count({ where: { tenantId: tA, title: `ผู้ติดต่อ ${TAG}` } });
+  const k4 = await rt(tA, owner, "kb_auto_save", { title: `เวลาเปิด ${TAG}`, content: "เปิดทุกวัน", category: "นโยบายร้าน 2026" });
+  chk("K1.3", isErr(k3) && k3Row === 0 && !isErr(k4), `round 2 (review RV-2): phone in kb_auto_save category → ${isErr(k3) ? "refused" : "STORED"} (rows=${k3Row}) · positive: plain category saved=${!isErr(k4)}`);
 
   // ═══ P support reply push ═══
   console.log("\n── P support push ──");

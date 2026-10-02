@@ -1,7 +1,10 @@
 // contact-data.ts — "ข้อความนี้มีข้อมูลติดต่อของคนไหม" (CRM C5.5-G3 · ด่านของความจำร้าน + คลังความรู้ที่ผู้ช่วย AI เขียนเอง)
 //
 // จับ 3 ชนิด: เบอร์โทร (ไทย มือถือ/บ้าน · สากล +xx / 00xx / 66xx) · อีเมล · เลขบัตรประชาชน 13 หลัก (ผ่าน checksum)
-//   - ตัวเลขไทย ๐–๙ นับเป็นตัวเลข · ระหว่างกลุ่มตัวเลขคั่นได้ด้วย ช่องว่าง - . ( ) ไม่เกิน 2 ตัว (089-900-0102 · (02) 123 4567)
+//   - ตัวเลขไทย ๐–๙ · ตัวเลขเต็มความกว้าง ０–９ · ตัวเลขอารบิก ٠–٩ นับเป็นตัวเลข
+//   - ระหว่างกลุ่มตัวเลขคั่นได้ไม่เกิน 2 ตัวด้วย: ช่องว่าง (รวม nbsp / thin space / ช่องว่างเต็มความกว้าง) - . ( ) /
+//     ขีดแบบอื่น U+2010–U+2015 (‐ ‑ ‒ – — ―) · เครื่องหมายลบ U+2212 − · ขีด/จุด/วงเล็บ/ทับเต็มความกว้าง  (089-900-0102 · (02) 123 4567 · 089–900–0102 · 089/900/0102)
+//     รอบ 2 (รีวิว RV-1): `/` ไม่ทำให้วันที่ (1/10/2026 · 02/10/2026 = 7–8 หลัก ไม่ขึ้นต้นด้วยรูปเบอร์) หรือรายการราคา (100/150/200) กลายเป็นเบอร์ — ข้อสอบ M1.5
 //   - กลุ่มตัวเลขที่ติดกัน (เช่นสองเบอร์ในบรรทัดเดียว) ตรวจทุกช่วงต่อเนื่องของกลุ่ม ยาวไม่เกิน 15 หลัก ⇒ ช่วงละคงที่ = เชิงเส้น
 //   - ไม่จับ: วันที่ (2026-10-02 · 02/10/2026) · เวลา 09:00 · ราคา 1,250.50 · เลขที่เอกสาร SO-2026-0001 / INV-20261002-0042
 // 🔴 เชิงเส้นพิสูจน์ได้: เดินสตริงรอบเดียว ไม่มี regex ย้อนรอย (fitness F16 / บทเรียน fix5) — อีเมลใช้ตัวเชิงเส้นของ core/linear-text
@@ -16,9 +19,34 @@ const MAX_DIGITS = 15;
 function digitOf(code: number): number {
   if (code >= 48 && code <= 57) return code - 48;
   if (code >= 0x0e50 && code <= 0x0e59) return code - 0x0e50; // ๐–๙
+  if (code >= 0xff10 && code <= 0xff19) return code - 0xff10; // ０–９ (เต็มความกว้าง)
+  if (code >= 0x0660 && code <= 0x0669) return code - 0x0660; // ٠–٩ (อารบิก-อินดิก)
   return -1;
 }
-const isSep = (code: number) => code === 32 || code === 45 || code === 46 || code === 40 || code === 41 || code === 0xa0; // ␠ - . ( ) nbsp
+function isSep(code: number): boolean {
+  switch (code) {
+    case 32: // ␠
+    case 45: // -
+    case 46: // .
+    case 40: // (
+    case 41: // )
+    case 47: // /
+    case 0xa0: // nbsp
+    case 0x2009: // thin space
+    case 0x202f: // narrow nbsp
+    case 0x3000: // ช่องว่างเต็มความกว้าง
+    case 0x2212: // − เครื่องหมายลบ
+    case 0xff0d: // － 
+    case 0xff0e: // ．
+    case 0xff08: // （
+    case 0xff09: // ）
+    case 0xff0f: // ／
+      return true;
+    default:
+      return code >= 0x2010 && code <= 0x2015; // ‐ ‑ ‒ – — ―
+  }
+}
+const isPlus = (code: number) => code === 43 || code === 0xff0b; // + ＋
 
 function thaiIdValid(d: string): boolean {
   if (d.length !== 13 || d[0] === "0" || d[0] === "9") return false;
@@ -84,7 +112,7 @@ export function findContactData(text: string): ContactKind[] {
       cur += String(dg);
       continue;
     }
-    if (c === 43 /* + */) {
+    if (isPlus(c)) {
       endRun();
       plusFirst = true;
       continue;

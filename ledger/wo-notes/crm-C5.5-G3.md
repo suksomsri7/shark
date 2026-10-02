@@ -176,3 +176,28 @@ The deleted user's id stays inside those primary keys. Nobody can read the `u~` 
 - A real Expo delivery: only the requests were captured.
 - The mobile app.
 - A merged tree with `shark-hf` or with the branch that owns `likeStartsWith`.
+
+## Round 2 (review `crm-C5.5-G3-review.md` · RV-1, RV-2 · RV-3/RV-4 are owner questions, not touched) — 2026-10-02 06:02 UTC (`date -u`)
+
+| finding | change |
+|---|---|
+| RV-1 LOW | `contact-data.ts`: digits also = full-width `０–９` (U+FF10–FF19) and Arabic-Indic `٠–٩` (U+0660–0669) · separators also = `/`, U+2010–U+2015 (‐ ‑ ‒ – — ―), U+2212 −, thin / narrow nbsp / full-width space, full-width `－ ． （ ） ／` · plus also `＋` (U+FF0B). Still one linear pass (`switch` + range test, no regex); the reviewer's 2.2 M-char adversarial input runs in 196 ms (G1.3, 10× input ≈ 9× time). |
+| RV-2 LOW | `tools.ts` `kb_auto_save`: the guard scans every free-text field it stores — `title`, `content` **and `category`** (joined with newlines, which are not separators, so digits cannot merge across fields). |
+
+Why `/` and dashes do not turn dates / ranges into phones: a span becomes a phone only as exactly 10 digits `0[6-9]…`, 9 digits `0[2-7]…`, `00`+10–15, `66`+8–9, `+`/`＋`+8–15, or a checksum-valid 13-digit ID — slash dates (`1/10/2026`, `02/10/2026` = 7–8 digits), date ranges (`01/10/2026–05/10/2026`: every contiguous span ≤ 15 digits checked, none matches), price lists (`100/150/200`), dash ranges (`1,500–2,000`, `0.5–1.5`, `09.00–18.00`) never form those shapes.
+
+Probe `scripts/pending/cf17/probe-cf17-g3.mts` extended:
+- M1.4 — OWNER shop fact with en dash, em dash, minus sign, U+2010 hyphen, slash, full-width digits, full-width plus → refused (7 cases, 0 rows).
+- M1.5 — round-2 false-positive controls remembered and in the STAFF prompt: `1/10/2026` · `01/10/2026–05/10/2026` · `1,500–2,000 บาท` · `100/150/200 บาท` · `0.5–1.5 กก.` · `09.00–18.00 น.` · `10/20/30 %` · full-width year `２０２６`.
+- K1.3 — phone in `kb_auto_save` `category` → refused, no row; plain category still saved.
+
+| run (QC3 · iso.sh + gate lock · one at a time · `/tmp/cf17-logs/r2.summary`) | result |
+|---|---|
+| own probe-cf17-g3 on e6006691 (RED) | **24/26** — M1.4 (1/7 refused: only `＋66…`, via the `66` rule), K1.3 (row stored) · M1.5 green on both trees (`/tmp/cf17-logs/r2-red.log`) |
+| own probe-cf17-g3 (round 2) | **26/26** |
+| reviewer probe-cf17-g3-review (unedited) | **12/12** — G1.1 and G1.4 flipped (reviewer's run on e6006691: 10/12) |
+| probe-cf14-g2 · probe-cf14-g2-review | 34/34 · 14/14 |
+| `pnpm typecheck` (5 GB heap) | exit 0 |
+| fitness (QC3 env) · fitness (no env) | 39/39 · 39/39 |
+
+`scripts/pending/cf17/run-verify.sh` now also runs the reviewer's cf17 probe. Not verified in round 2: the other suites of round 1 (no change touches their code paths beyond `contact-data.ts` / `kb_auto_save`), `qc-kb-auto` (loads `.env.local`), prod.
