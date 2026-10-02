@@ -58,8 +58,10 @@ import { auditSystemActivity, recordSystemActivityInTx } from "./activities";
 import { isErasedContact } from "./erased"; // CRM C3.9-fix ▸ มติข้อ 4 ◂
 import { unverifiedEmailRefs } from "./email-flags"; // CRM C5.5-fix3b r2 ▸ RV-1 ◂
 import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
+import { formatThaiDateTimeFull, thaiIsoDateTime } from "@/lib/ui/date"; // CRM C5.5-fix7 ▸ RV-3 ◂
 import {
   CONTACT_BULK_MAX,
+  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
   LEGACY_NOTE_PREFIX,
   CONTACT_EXPORT_MAX_ROWS,
   CONTACT_IMPORT_BATCH,
@@ -118,6 +120,7 @@ import {
   type ImportDuplicateMode,
   type ImportJob,
   type ImportJobStatus,
+  type ImportResultEntry,
   type MergeChoiceField,
 } from "./contacts-shared";
 import { crmScope } from "./request-scope";
@@ -994,16 +997,25 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
   // CRM C5.5-fix6 ▸ F3: บริษัทหลักเปลี่ยน (ผูก · ย้าย · ถอด) ได้เฉพาะคนที่ผูกบริษัทได้ (crmCanLinkCompany: อ่าน + แก้บริษัท — คีย์เดียวกับ
   //   ช่องเลือกในหน้า) — ตรวจ **ก่อนเขียนอะไร** (เดิม: ช่องอื่น commit + audit/event บอกว่า companyId เปลี่ยน แล้วขั้นบริษัทล้มทีหลัง) ·
   //   ค่าเดิมที่ส่งกลับมา (client ที่ส่ง DTO ที่อ่านไปคืน) ไม่ใช่การเปลี่ยน ⇒ คนที่ไม่มีสิทธิ์อ่านบริษัทไม่โดนปฏิเสธและบริษัทเดิมคงอยู่ ◂
-  if (wantCompany !== undefined && wantCompany === current.companyId && !crmCan(a, "crm.company.read")) wantCompany = undefined;
-  if (wantCompany !== undefined && wantCompany !== current.companyId) {
+  // CRM C5.5-fix7 ▸ F6-5: ค่าเดิมที่ส่งกลับมา **ไม่ใช่การเปลี่ยน สำหรับทุกคน** (เดิมยกเว้นเฉพาะคนที่ไม่มีสิทธิ์อ่านบริษัท ⇒ คนที่อ่านได้แต่
+  //   มองไม่เห็นบริษัทปัจจุบันส่ง DTO คืน = VALIDATION ทั้งก้อน) · ตัดเป็น "ไม่ได้ส่ง" ตั้งแต่ตรงนี้ ⇒ ใน tx ไม่มีทางบันทึก companyId ว่าเปลี่ยน
+  //   เพราะมีคนย้ายบริษัทระหว่างที่เราอ่าน `current` กับเปิด tx (เดิม audit/event บอกว่าเปลี่ยนทั้งที่ไม่มีลิงก์ไหนถูกแตะ) ◂
+  if (wantCompany !== undefined && wantCompany === current.companyId) wantCompany = undefined;
+  if (wantCompany !== undefined) {
     need(a, "crm.company.read");
     need(a, "crm.company.update");
     // CRM C5.5-fix6 r2 ▸ F6-2/F6-3: ถอด/ย้ายออกจากบริษัทปัจจุบัน = ต้องมองเห็นบริษัทปัจจุบัน — ตรวจก่อน tx (เดิม: ช่องอื่น commit แล้ว
-    //   removeContact ล้ม NOT_FOUND · หรือย้ายผู้ติดต่อ+ดีลที่เปิดออกจากบริษัทที่มองไม่เห็นได้) · ข้อความ NOT_FOUND เดียวกับที่บริการบริษัทตอบอยู่แล้ว
-    //   (ไม่บอกอะไรเพิ่มจากเดิม) · บริษัทปลายทางตรวจด้วย assertCompany ด้านล่างเหมือนเดิม ◂
+    //   removeContact ล้ม NOT_FOUND · หรือย้ายผู้ติดต่อ+ดีลที่เปิดออกจากบริษัทที่มองไม่เห็นได้) · บริษัทปลายทางตรวจด้วย assertCompany ด้านล่างเหมือนเดิม ◂
+    // CRM C5.5-fix7 ▸ R2F-1: มองไม่เห็น = ข้อความของตัวเอง (เดิม "ไม่พบบริษัทนี้ … รีเฟรชหน้า" ซึ่งรีเฟรชแล้วก็ไม่หาย) — ข้อความเดียวกันไม่ว่า
+    //   บริษัทที่ซ่อนอยู่ยังใช้งาน/เก็บถาวร/ถูกรวม (การมองเห็นตัดสินก่อนสถานะ ⇒ ไม่มีช่องให้เดา) · ไม่มีชื่อ/รหัสบริษัทในข้อความ ◂
+    // CRM C5.5-fix7 ▸ R2F-2: "ถอด" (ค่าว่าง) ต้องผ่าน removeContact ซึ่งแก้ลิงก์ของบริษัทที่เก็บถาวร/ถูกรวมไม่ได้ (กติกาของบริการบริษัท:
+    //   กู้คืนก่อน) ⇒ ตรวจสถานะนั้น **ก่อน tx** ด้วย (เดิม: แถวผู้ติดต่อ + audit + event commit แล้วค่อยล้ม VALIDATION) · "ย้าย" ไปบริษัทอื่น
+    //   ไม่แตะลิงก์เดิม (addContact ของบริษัทปลายทาง) ⇒ ย้ายออกจากบริษัทที่เก็บถาวรได้เหมือนเดิม ◂
     if (current.companyId) {
-      await companies.assertCompanyVisible(coCtx(ctx), a, current.companyId).catch((e: unknown) => {
-        throw mapError(e);
+      await companies.assertCompanyVisible(coCtx(ctx), a, current.companyId, { live: wantCompany === null }).catch((e: unknown) => {
+        const m = mapError(e);
+        if (m instanceof ContactsError && m.code === "NOT_FOUND") throw fail("NOT_FOUND", CONTACT_PRIMARY_COMPANY_HIDDEN_MSG);
+        throw m;
       });
     }
   }
@@ -1402,13 +1414,17 @@ export async function restoreContact(ctx: ContactsCtx, actor: MemberActor, id: s
 
 // ═════════════════════════ 360 ═════════════════════════
 
-function displayOf(type: string, value: unknown, choices: { value: string; label: string }[] | undefined): string {
+// CRM C5.5-fix7 ▸ RV-3: DATETIME = ขณะจริง (เก็บเป็น UTC) — หน้า 360 แสดงวันเวลาไทยแบบเดียวกับหน้าระเบียนของพนักงาน (formatThaiDateTimeFull ·
+//   lib/ui/date) · ไฟล์ส่งออก (`mode: "export"`) เป็นข้อมูล ⇒ ISO เวลาไทยที่บอกเขตเวลาเอง (thaiIsoDateTime) ซึ่งนำเข้ากลับได้ขณะเดิม ·
+//   เดิมทั้งสองทางตัดสตริง UTC "2026-10-08 17:30" (ไม่บอกเขตเวลา · นำเข้าบนเครื่องเวลาไทยเพี้ยน 7 ชม.) · DATE ไม่เปลี่ยน ◂
+function displayOf(type: string, value: unknown, choices: { value: string; label: string }[] | undefined, mode: "page" | "export" = "page"): string {
   if (value === null || value === undefined || value === "") return "";
   if (Array.isArray(value)) return value.map((v) => choices?.find((c) => c.value === v)?.label ?? String(v)).join(", ");
   if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
   if (type === "SELECT") return choices?.find((c) => c.value === value)?.label ?? String(value);
   if (type === "MONEY" && typeof value === "number") return `฿${(value / 100).toLocaleString("th-TH", { maximumFractionDigits: 2 })}`;
-  if ((type === "DATE" || type === "DATETIME") && typeof value === "string") return value.slice(0, type === "DATE" ? 10 : 16).replace("T", " ");
+  if (type === "DATETIME" && typeof value === "string") return mode === "export" ? thaiIsoDateTime(value) : formatThaiDateTimeFull(value);
+  if (type === "DATE" && typeof value === "string") return value.slice(0, 10);
   return String(value);
 }
 
@@ -1424,6 +1440,20 @@ async function unionActivities(vis: Prisma.CrmActivityWhereInput, a: Prisma.CrmA
     .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
     .sort((p, q) => q.createdAt.getTime() - p.createdAt.getTime() || (q.id < p.id ? -1 : q.id > p.id ? 1 : 0))
     .slice(0, take);
+}
+
+/**
+ * CRM C5.5-fix7 ▸ R2F-1: บริษัทหลักปัจจุบันของผู้ติดต่อ (`contact.companyId`) อยู่นอกการมองเห็นของ actor ไหม — ด่านเดียวกับที่ updateContact ใช้
+ *   ปฏิเสธการย้าย/ถอด (assertCompanyVisible · ไม่บังคับ live) ⇒ หน้า 360 ซ่อนช่องเลือกบริษัทที่กดอะไรก็ถูกปฏิเสธ · อ่านไม่สำเร็จ = ถือว่ามองไม่เห็น
+ *   (ซ่อนช่องไว้ก่อน — บริการยังเป็นผู้ตัดสินจริง) · ไม่มีบริษัท = false ◂
+ */
+export async function isCurrentCompanyHidden(ctx: ContactsCtx, actor: MemberActor, companyId: string | null | undefined): Promise<boolean> {
+  const id = str(companyId);
+  if (!id) return false;
+  return companies.assertCompanyVisible(coCtx(ctx), actor, id).then(
+    () => false,
+    () => true,
+  );
 }
 
 export async function getContact360(ctx: ContactsCtx, actor: MemberActor, id: string): Promise<Contact360> {
@@ -2361,8 +2391,13 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   //   ผูกบริษัทไม่ได้ (crmCanLinkCompany ไม่ผ่าน) = ไม่ค้น/ไม่สร้างบริษัทเลย (ไม่มีบริษัทกำพร้า) + บอกครั้งเดียว ◂
   const canLink = crmCanLinkCompany(a);
   let linkDeniedNoted = false;
+  // CRM C5.5-fix7 ▸ R2F-3: แถวที่ล้มจริง (นับใน failed) กับหมายเหตุของแถวที่บันทึกแล้ว แยกกองกัน · ต่อกันตอนจบโดยแถวที่ล้มขึ้นก่อน ⇒
+  //   หมายเหตุจำนวนมาก (เช่น ทุกแถวผูกบริษัทไม่ได้) ดันแถวที่ล้มจริงออกจากเพดาน 500 / 50 แถวแรกที่หน้าจอและ audit เก็บไม่ได้ ·
+  //   แต่ละรายการบอก `kind` ("error" | "note") — ช่อง row/message เดิมครบ (เพิ่มอย่างเดียว) ◂
+  const fails: ImportResultEntry[] = [];
+  const notes: ImportResultEntry[] = [];
   const addNote = (row: number, message: string) => {
-    if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
+    if (notes.length < CONTACT_IMPORT_ERRORS_MAX) notes.push({ row, message, kind: "note" });
   };
   const linkRow = async (companyName: string, contactId: string, rowNo: number, done: string): Promise<void> => {
     if (!canLink) {
@@ -2380,7 +2415,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   };
   const addError = (row: number, message: string) => {
     result.failed += 1;
-    if (result.errors.length < CONTACT_IMPORT_ERRORS_MAX) result.errors.push({ row, message });
+    if (fails.length < CONTACT_IMPORT_ERRORS_MAX) fails.push({ row, message, kind: "error" });
   };
 
   const companyFor = async (name: string): Promise<string | null> => {
@@ -2465,6 +2500,7 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
     status = "FAILED";
     addError(0, importMessage(e));
   } finally {
+    result.errors = [...fails, ...notes].slice(0, CONTACT_IMPORT_ERRORS_MAX); // CRM C5.5-fix7 ▸ R2F-3 ◂
     await writeAudit({
       tenantId: ctx.tenantId,
       actorId: actorId(ctx),
@@ -2489,7 +2525,10 @@ export async function getImportJob(ctx: ContactsCtx, actor: MemberActor, jobId: 
   if (!row || !isObj(row.after)) throw fail("NOT_FOUND", "ไม่พบงานนำเข้านี้ในระบบ CRM นี้");
   const x = row.after;
   const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-  const errors = Array.isArray(x.errors) ? (x.errors as { row: number; message: string }[]) : [];
+  // CRM C5.5-fix7 ▸ R2F-3: แถว audit ก่อนใบนี้ไม่มี `kind` = รายการที่ล้ม (ก่อน fix6 r2 ไม่มีหมายเหตุ) ◂
+  const errors: ImportResultEntry[] = Array.isArray(x.errors)
+    ? (x.errors as { row?: unknown; message?: unknown; kind?: unknown }[]).map((e): ImportResultEntry => ({ row: Number(e?.row ?? 0), message: String(e?.message ?? ""), kind: e?.kind === "note" ? "note" : "error" }))
+    : [];
   return {
     jobId: String(x.jobId),
     status: (x.status === "DONE" || x.status === "FAILED" || x.status === "RUNNING" ? x.status : "DONE") as ImportJobStatus,
@@ -2564,7 +2603,7 @@ export async function exportContacts(ctx: ContactsCtx, actor: MemberActor, opts:
         r.marketingOptOut ? "ใช่" : "",
         r.memberCustomerId ? "ผูกแล้ว" : "",
         r.createdAt.toISOString().slice(0, 10),
-        ...customFields.map((f) => displayOf(f.type, bag[f.key] ?? null, f.choices)),
+        ...customFields.map((f) => displayOf(f.type, bag[f.key] ?? null, f.choices, "export")),
       ]),
     );
   }

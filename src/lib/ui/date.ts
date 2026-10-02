@@ -44,6 +44,25 @@ export const thaiDateKey = (d: Date | string = new Date()) =>
 /** งวดบัญชี "2026-07" ตามโซนไทย */
 export const thaiPeriodKey = (d: Date | string = new Date()) => thaiDateKey(d).slice(0, 7);
 
+// CRM C5.5-fix7 ▸ RV-3: ค่าฟิลด์ DATETIME ของ CRM (ขณะจริง เก็บเป็น UTC) — ตัวเดียวที่หน้าระเบียนของพนักงาน (components/crm/objects/types.ts) ·
+//   หน้าผู้ติดต่อ 360 + ไฟล์ส่งออก (crm/contacts.ts) · พอร์ทัล (crm/portal.ts) ใช้ร่วมกัน · อยู่ที่นี่เพราะทั้งคอมโพเนนต์และโมดูล import ได้
+//   (คอมโพเนนต์ import ไฟล์ลึกของ crm ไม่ได้ — fitness F2.3) · ค่าที่อ่านไม่ได้ = คืนค่าเดิม (ไม่ขึ้น "Invalid Date") ◂
+/** วันที่+เวลา ปี พ.ศ. เต็ม "9 ต.ค. 2569 00:30" — ค่าฟิลด์ DATETIME ของ CRM */
+export function formatThaiDateTimeFull(d: Date | string): string {
+  const t = new Date(d).getTime();
+  if (Number.isNaN(t)) return String(d);
+  return new Date(t).toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ });
+}
+/**
+ * ISO วันเวลาตามโซนไทยที่บอกเขตเวลาเอง "2026-10-09T00:30:00+07:00" — สำหรับ CSV/ไฟล์ส่งออก (อ่านด้วยเครื่องได้ ไม่กำกวม ·
+ * ตัวตรวจ DATETIME ของ engine ฟิลด์รับค่านี้ตรงตัว ⇒ นำเข้ากลับได้ขณะเดิมแม้เครื่องตั้งเวลาไทย) · ไทยไม่มีเวลาออมแสง ⇒ +07:00 คงที่
+ */
+export function thaiIsoDateTime(d: Date | string): string {
+  const t = new Date(d).getTime();
+  if (Number.isNaN(t)) return String(d);
+  return `${new Date(t + 7 * 60 * 60 * 1000).toISOString().slice(0, 19)}+07:00`;
+}
+
 // ─────────────────── ปี ค.ศ. (โมดูลบัญชี V2) ───────────────────
 // account-v2 ใช้ปี "คริสต์ศักราช" ไม่ใช่ พ.ศ. (ต่างจาก formatThaiDate ด้านบนที่ th-TH ให้ พ.ศ. อัตโนมัติ)
 // ตามมติเจ้าของ (DESIGN-SPEC-V2/BLUEPRINT-ACCOUNT-V2 §1 "Christian-era dates") — ห้ามใช้ toLocaleDateString("th-TH")

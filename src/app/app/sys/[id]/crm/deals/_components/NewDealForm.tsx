@@ -160,7 +160,8 @@ export function NewDealForm({
           <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span>บริษัท</span>
             <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="input text-sm" data-testid="deal-new-company">
-              <option value="">ไม่ผูกบริษัท</option>
+              {/* CRM C5.5-fix7 ▸ F6-6: ค่าว่าง = บริการใช้บริษัทหลักของผู้ติดต่อ (createDeal) — ป้ายเดิม "ไม่ผูกบริษัท" ไม่ตรงกับสิ่งที่เกิดขึ้น ◂ */}
+              <option value="">ตามบริษัทหลักของผู้ติดต่อ (ถ้ามี)</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}

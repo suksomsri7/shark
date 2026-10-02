@@ -8,6 +8,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
   CONTACT_REASON_MIN,
   // CRM C1.11 ▸ เลือกค่าต่อฟิลด์ตอนรวม ◂
   MERGE_CHOICE_FIELDS,
@@ -378,6 +379,8 @@ type MenuContact = {
   companyName?: string | null;
   /** CRM C5.5-fix6 r2 ▸ F6-4: บริษัทที่แสดงคือบริษัทหลักจริงไหม (getContact360 ใช้ลิงก์อื่นที่มองเห็นแทนเมื่อบริษัทหลักมองไม่เห็น) ◂ */
   companyIsPrimary?: boolean;
+  /** CRM C5.5-fix7 ▸ R2F-1: ผู้ดูผูกบริษัทได้ แต่บริษัทหลักปัจจุบันอยู่นอกการมองเห็น ⇒ ไม่มีช่องเลือก (ทุกการเลือกถูกปฏิเสธ) · แสดงบรรทัดอธิบายแทน ◂ */
+  companyLocked?: boolean;
 };
 
 // CRM C4.2-fix ▸ `can` = คีย์เดียวกับ server action ของแต่ละเมนู (หน้าคำนวณด้วย crmCan · C1.7) — ไม่มีสิทธิ์ = ไม่มีเมนูนั้น ·
@@ -519,6 +522,10 @@ export function ContactMenu({ systemId, contact, owners, can }: { systemId: stri
           </div>
           {can.company ? (
             <ContactPicker kind="edit-company" label="ย้ายไปบริษัทหลัก (ไม่เลือก = คงเดิม)" placeholder="พิมพ์ชื่อบริษัท" emptyLabel="— คงบริษัทเดิม —" value={companyId} onChange={setCompanyId} search={(q) => searchCompaniesAction(systemId, q)} />
+          ) : contact.companyLocked ? (
+            <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-locked">
+              {CONTACT_PRIMARY_COMPANY_HIDDEN_MSG}
+            </p>
           ) : contact.companyName ? (
             <p className="text-xs text-[color:var(--color-muted)]" data-testid="contact-edit-company-readonly">
               {contact.companyIsPrimary ? "บริษัทหลัก" : "บริษัท"}: {contact.companyName} (ย้ายบริษัทได้เฉพาะบัญชีที่มีสิทธิ์แก้ไขบริษัท)

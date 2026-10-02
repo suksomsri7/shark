@@ -2349,9 +2349,10 @@ export async function visibleCompanyInTx(tx: Tx, visible: Prisma.CrmCompanyWhere
 // CRM C5.5-fix6 r2 ▸ F6-2/F6-3: บริการผู้ติดต่อถามก่อนเปิด tx ว่า actor มองเห็นบริษัทปัจจุบันของผู้ติดต่อไหม — ตัวเดียวกับที่ removeContact
 //   ใช้ (loadCompany · ไม่บังคับ live) ⇒ มองไม่เห็น = CompaniesError NOT_FOUND ข้อความเดิม (ไม่บอกว่าบริษัทมีอยู่ที่อื่นไหม) ◂
 /** AUDIT-CLASS X1: actor มองเห็นบริษัทนี้ (ระบบเดียวกัน) — ไม่เห็น = NOT_FOUND */
-export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string): Promise<void> {
+// CRM C5.5-fix7 ▸ R2F-2: `live` = ต้องยังใช้งานด้วย (ตัวเดียวกับที่ removeContact/linkMutation บังคับ) — มองไม่เห็นยังตัดสินก่อนเสมอ (NOT_FOUND) ◂
+export async function assertCompanyVisible(ctx: CompaniesCtx, actor: MemberActor, companyId: string, opts: { live?: boolean } = {}): Promise<void> {
   const a = await enter(ctx, actor);
-  await loadCompany(ctx, a, companyId);
+  await loadCompany(ctx, a, companyId, prisma, { live: opts.live === true });
 }
 
 export async function liveCompanyRefs(ctx: CompaniesCtx, actor: MemberActor, ids: string[]): Promise<{ id: string; name: string }[]> {

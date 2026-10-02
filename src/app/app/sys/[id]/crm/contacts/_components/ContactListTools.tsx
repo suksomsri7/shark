@@ -425,7 +425,7 @@ export function ContactImportButton({ systemId, customFields }: { systemId: stri
                 <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto text-xs text-[color:var(--color-muted)]">
                   {result.errors.slice(0, 50).map((e, i) => (
                     <li key={`${e.row}-${i}`}>
-                      แถว {e.row}: {e.message}
+                      แถว {e.row}{e.kind === "note" ? " (หมายเหตุ)" : ""}: {e.message}
                     </li>
                   ))}
                 </ul>
