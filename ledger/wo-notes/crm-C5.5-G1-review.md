@@ -110,3 +110,138 @@ Conditions:
 - F3–F7 can follow.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 — re-review of `01fc0705` (parent `a63eb040`)
+
+Reviewed 2026-10-02 (`date -u` 01:01 UTC at the end of the probe runs). Read `git diff a63eb040 01fc0705` (16 files) and the builder's
+"Round 2" section. All runs on QC3, through `iso.sh` + `with-gate-lock.sh`, one at a time.
+
+| run | result |
+|---|---|
+| builder `probe-cf9-g1` | 47/47 |
+| builder `probe-cf9-g1-r2` | 18/18 |
+| my round-1 `probe-cf9-g1-review` | 15/18 — red = R1.1 R1.2 R1.3 only (= F1, separate card, by design). S1.3 and A1.4 now green; A1.5 = 403; D1.1 = refusal; D1.2 = refused |
+| new `scripts/pending/cf9/review/probe-cf9-g1-review-r2.mts` | **14/14**, CLEAN (tenant 0 rows, users 0) |
+| `pnpm typecheck` (5 GB heap, includes the new probe) | see last line of this section |
+
+## Attacks
+
+**(a) F6 — is anything outside the actor check?**
+- `toolRegistry()` builds its list on every call, and the check wrapper is applied there. The four module factories run inside that same
+  call, so no tool is registered later. Every tool, including module registries, goes through the wrapper.
+- Tool objects are module-private. Only the four factories (`crmTools` / `memberTools` / `accountTools` / `kanbanTools`) are exported,
+  `tools.ts` is their only importer, and each adapter checks the actor itself.
+- No tool calls another tool's `execute`.
+- Plan steps and proposal confirmation do not go through tools: they use `runKind` → `dispatch` with the confirmer's Membership. So the
+  double check (wrapper + `runTool` + adapter) is the same pure check run 2–3 times; it cannot break a legitimate nested call.
+- Exhaustive evidence:
+
+  | check | what was called | result |
+  |---|---|---|
+  | W1.* | `execute()` on all 204 registry tools, × 5 bad actors: none · other shop · system literal carrying OWNER rights · spread copy of a genuine system actor · unknown kind | gate refusal every time |
+  | W1.writes | the same 1,020 calls | 0 writes (KB, memory, proposals) |
+  | W2.1 | the 145 adapter tools taken straight from the four factories, no actor | all refused |
+
+- Residual (INFO): the actor check validates shape only loosely. A `member` actor needs `membership` truthy and `userId` a string. A
+  hand-written member literal with OWNER rights is still accepted. That is by design: member actors come from the session, and QC scripts
+  build exactly such literals.
+  - A missing `unitAccess` array would throw inside `toolVerdict`. In `runTool` that is caught (generic error). In `sendMessage` the
+    offer filter is outside any try. `aiMemberActor` normalises, so no product path builds such an object.
+  - Optional hardening: a fitness grep for `kind: "member"` / `kind: "system"` object literals in `src` outside `actor.ts`.
+
+**(b) F5 — can the "genuine system actor" check break in a production build?**
+- The genuine-actor list is a `WeakSet` that lives in one module: `actor.ts`.
+- The only creator is `scheduled.ts:95`, called from `api/cron/hourly/route.ts`, which imports it statically: one route handler, node runtime.
+- The consumers sit in the same call chain of that same request: `sendMessage` → `runTool` → wrapper / `tool-access` / adapters. They are
+  plain function calls, with no server-action or RSC boundary, no serialisation, no edge runtime and no worker in between.
+- Within one server runtime the bundler (webpack or Turbopack) keeps one module instance per module id and layer. A route handler's own
+  import graph sits in one layer. So the object created in `scheduled.ts` is checked against the same `WeakSet` instance. Duplicate module
+  instances matter only across layers (RSC vs SSR vs action), and no path carries a system actor across one.
+- Failure mode if that were ever wrong: fail-closed and visible. Every tool refuses with the "who is the user" text, and the notification
+  says so; no data leaks.
+- No build-level check needed. Two cheap guards:
+  - `actorProblem` logs an ops warning when it refuses a `kind: "system"` object, so a broken bundle shows on the ops dashboard instead
+    of as quietly useless summaries.
+  - One smoke call of `/api/cron/hourly` on preview after deploy.
+- Evidence:
+  - S1.1: the genuine actor is frozen and mutation is ignored. `sales_summary` runs. The branch tool is refused with the new wording.
+  - S1.2: the actor's keys are `kind`, `tenantId`, `job` — no rights field.
+  - W1: a spread copy is refused.
+
+**(c) F2 — how "no usable branch" is detected (`actorBranches`)**
+- API key → `null` (shop-wide). Member OWNER or `*` → `null`. Otherwise the list, so `[]` → refused and not offered. Forged or missing
+  rights → `[]`.
+- The web door: `requireUnit` → `canAccessUnit` = OWNER, or `*`, or the unit id in the list. So `[]` opens no branch page.
+- Parity was measured on the same session per persona (B1.1 green): STAFF `[]` gets no branch page on the web and 0/6 branch tools in the
+  AI. STAFF `*` 2/2 and 6/6. MANAGER `[u1]` u1 only and 6/6, filtered to u1. OWNER all.
+- `Membership.unitAccess` defaults to `[]` (`core.prisma:134`), so every STAFF invited without branches loses these six tools.
+  - This matches the row-level web doors, so it is not a silent regression. The refusal is visible and says it is not "no data".
+  - One difference to mention to the owner: the home dashboard (`app/app/page.tsx:55`) shows a shop-wide **count** of today's
+    appointments to everyone. That is an existing web inconsistency, not this card's.
+- INFO: the member module's `isUnitScoped` treats `[]` as shop-wide (B1.2: STAFF `[]` + `member.customer.read` → `member_count` 1). So
+  "`[]`" means "no branch" for the branch tools and "whole shop" for members. The card follows each module's own judge, which is correct,
+  but the two meanings are worth a line in the owner brief.
+
+**(d) API-key viewer passed to the member and CRM runners**
+- The viewer is `{ userId: null, role: STAFF, unitAccess: ["*"], permissions: exactly the key's scopes }`, with no wildcard expansion.
+- The member REST key actor (`memberActorForKey`) is the same, except an ADMIN-scope key gets role MANAGER there. So the AI viewer is equal
+  or narrower, never wider.
+- Inside the runner, the scopes in effect = the assistant's read set ∩ the key's scopes. In round 1 an API key got the whole assistant
+  read set inside any op its scope allowed, so round 2 narrows this.
+- System binding is still forced by the route (`systemId = auth.systemId`).
+- CRM: `userId: null` → the CRM runner refuses (no human). That was already true before this card; no key-filter scope is involved.
+- Evidence:
+  - K1.1: 140 pairs (member read tools × 4 narrow keys) — the AI never runs a tool where REST `memberScopesCan` refuses.
+  - K1.2: a `[member.tier.read]` key inside a request carrying the OWNER's cookie → `member_list` returns `phoneMasked`, no phone. The
+    cookie is ignored.
+
+**(e) F4 — the 403 response vs existing integrations and the hotfix**
+- The tools route now answers 403 `{error}` before parsing the body or opening a conversation.
+- For an integration, the step that breaks it is G1 itself (data → refusal). The 200 → 403 status change is the honest form of that,
+  and matches the route's other refusals.
+- Body shape: the hotfix's 403 is `{error, error_en, code: "key_not_general"}`; this card's is `{error}` only (H1.1).
+- Recommend (LOW): add `code` (e.g. `"tool_not_allowed"`) and `error_en`, so clients can branch on one field across both gates.
+- Merge with `shark-hf`:
+  - Textual conflicts on the same lines in all three route files (`skills/route.ts` core list + `allowedOf`, `skills/[id]` `allowed`,
+    `tools/[name]` guard block).
+  - Semantics compose: keep both filters. `toolVerdict` already implies "general key only" for hand-written tools, so `generalToolGate`
+    becomes redundant there but stays harmless.
+  - Ordering in the tools route after merge: scope gate 403 → `key_not_general` 403 → executor gate 403.
+  - Still open from round 1 (INFO): `isGeneralKeyActor` should call `isGeneralApiKey` (malformed scopes) once both are in.
+
+**(f) The three ORACLE-EDITs**
+- `qc-ai-automation` (×2) and `qc-kb-auto` (×1): only `actor: qcOwner(t.id)` added.
+- `qc-crm-c1.10` S6.3 / S10.2: an inline OWNER actor of the tenant under test; X2.6 deliberately keeps no actor and now asserts the
+  fail-closed answer.
+- No expected value changed. Minimal.
+
+## Round-1 findings — status
+
+| # | r1 sev | status after r2 | evidence |
+|---|---|---|---|
+| F1 | HIGH | **open, by design out of this card** (own card; my r1 answer to Q3 stands) | R1.1–R1.3 still red |
+| F2 | MED | **fixed** — no-branch actors refused and not offered; `approvals_pending` refused to the job; wording says it is not "no data" | S1.3 green · builder R2.1–R2.5 · B1.1 parity |
+| F3 | LOW | open (owner decision R3; not in this round) | — |
+| F4 | LOW | **fixed** — manifest = executor; refused call = 403 (body-shape nit above) | A1.4 green · A1.5 403 · H1.1 |
+| F5 | LOW | **fixed** — no rights on the object; only `aiSystemActor()` objects count; frozen | W1 system-literal/spread · S1.1 · S1.2 · D1.2 refused |
+| F6 | LOW | **fixed** — one actor check in `runTool`, the wrapper and the 4 adapters; no widest-read-set or cookie fallback | W1.* (1,020 calls) · W2.1 (145) · D1.1 · K1.2 |
+| F7 | LOW | **fixed** — branch-limited callers refused (the member module's own `isUnitScoped`) | builder R7.1 |
+
+New in round 2: none above INFO. Notes: the 403 body shape (LOW, merge hygiene); the two meanings of `unitAccess: []`; the optional fitness
+grep for hand-written actor literals.
+
+## Not verified (round 2)
+- A production `next build` and a cron call on a deployed build: (b) is reasoned from the import graph, not measured.
+- `qc-kb-auto` (loads `.env.local`).
+- The builder's full `run-verify.sh` (I ran only its probes).
+- A merged tree with `shark-hf`.
+
+Typecheck (round 2, tree `01fc0705` + new probe, 5 GB heap, iso + gate lock): exit 0 (finished 01:07 UTC).
+
+Verdict basis (round 2): the five fixes hold under exhaustive and adversarial checks. The only red left is F1, which the controller has
+already split into its own HIGH card. The remaining items are LOW or INFO. The conditions from round 1 still apply: do not present G1 to
+the owner as closing the shared-conversation leak, and F3 still needs the owner's decision.
+
+VERDICT: MERGEABLE
