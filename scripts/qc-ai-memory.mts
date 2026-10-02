@@ -20,7 +20,8 @@ try {
   if (!mem) { chk("ME-0", "มี ai/memory.ts", false); }
   else {
     const t = await prisma.tenant.create({ data: { name: "QC MEM", slug: `qc-mem-${Date.now()}` } }); tid = t.id;
-    const ctx = { tenantId: tid };
+    // ORACLE-EDIT C5.5-G3: memory functions take the viewer (ctx.actor) — the shop OWNER (shop facts, as these checks always meant)
+    const ctx = { tenantId: tid, actor: qcOwner(tid) };
     const m1 = await mem.rememberFact(ctx, "ร้านหยุดทุกวันจันทร์");
     await mem.rememberFact(ctx, "เจ้าของชอบสรุปสั้น ๆ");
     await mem.rememberFact(ctx, "ร้านหยุดทุกวันจันทร์"); // ซ้ำ → ไม่งอก
@@ -37,7 +38,7 @@ try {
     const svcSrc = (await import("node:fs")).readFileSync("src/lib/ai/service.ts", "utf8");
     chk("ME-3.1", "persona+service ฉีด memoryBlock เข้า system prompt", /memor/i.test(personaSrc) && /memoryBlock|memories/.test(svcSrc));
     const t2 = await prisma.tenant.create({ data: { name: "QC MEM2", slug: `qc-mem2-${Date.now()}` } }); tid2 = t2.id;
-    chk("ME-4.1", "tenant อื่นไม่เห็นความจำ (guard)", (await mem.memoryBlock({ tenantId: tid2 })) === "");
+    chk("ME-4.1", "tenant อื่นไม่เห็นความจำ (guard)", (await mem.memoryBlock({ tenantId: tid2, actor: qcOwner(tid2) })) === "");
   }
 } catch (e) { chk("CRASH", "จบ: " + (e instanceof Error ? e.message.slice(0, 130) : String(e)), false); }
 finally {

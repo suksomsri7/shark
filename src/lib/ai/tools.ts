@@ -33,7 +33,8 @@ import { openCaseFromAi } from "@/lib/support/service";
 import { AUTOMATION_EVENTS, eventLabel } from "@/lib/automation/labels";
 // CRM C5.5-G1 ▸ ผู้กระทำ + ด่านสิทธิ์ต่อเครื่องมือ + helper การมองเห็นของโมดูล (CRM ผ่าน facade · สมาชิก/แชท/อนุมัติผ่าน service เดิม) ◂
 import { actorProblem, aiActorMembership, aiActorUserId, type AiActor } from "./actor";
-import { canSeeConversationId, sightOf } from "./conversation-owner";
+import { canSeeConversationId, memoryScopeOf, sightOf } from "./conversation-owner";
+import { contactDataRefusal, findContactData } from "./contact-data";
 import { actorCanConfirmKind, toolVerdict } from "./tool-access";
 import { contactWhere, crmApi } from "@/lib/modules/crm";
 import { visibleCustomerIds } from "@/lib/modules/member/service";
@@ -2225,12 +2226,13 @@ const restaurantCloseBill: AiTool = {
   },
 };
 
-// ── MEM-1) remember_fact — จดข้อเท็จจริงถาวรของร้าน (เขียนทันที) ──
+// ── MEM-1) remember_fact — จดความจำถาวร (เขียนทันที) ──
+// CRM C5.5-G3 ▸ ผู้จดเป็นเจ้าของร้าน = ข้อเท็จจริงของร้าน (ทุกคนเห็น · ห้ามมีข้อมูลติดต่อ) · คนอื่น = ความจำส่วนตัวของเขา (ดู ./memory.ts) ◂
 const rememberFactTool: AiTool = {
   def: {
     name: "remember_fact",
     description:
-      "Remember a durable fact or preference about this business or its owner for use in later conversations. Writes immediately, no confirmation needed. Call it when you hear something worth keeping long term: opening hours, regular closing days, the owner's preferred style, names of regular customers, shop-specific rules. Put one short fact in content.",
+      "Remember a durable fact or preference for use in later conversations. Writes immediately, no confirmation needed. What the shop owner asks to remember becomes a shop fact every team member's assistant uses; what other team members ask to remember stays private to them. Call it when you hear something worth keeping long term: opening hours, regular closing days, preferred style, shop-specific rules. Never put customers' phone numbers, e-mail addresses or ID numbers into a shop fact (it is refused) — those belong in the member system or CRM. Put one short fact in content.",
     parameters: {
       type: "object",
       properties: {
@@ -2243,8 +2245,8 @@ const rememberFactTool: AiTool = {
   async execute(ctx, args) {
     const content = String(asRecord(args).content ?? "").trim();
     if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาที่จะจำ" });
-    const { id } = await rememberFact({ tenantId: ctx.tenantId }, content);
-    return JSON.stringify({ จำแล้ว: content, id });
+    const { id, shared } = await rememberFact({ tenantId: ctx.tenantId, actor: ctx.actor }, content);
+    return JSON.stringify({ จำแล้ว: content, id, ขอบเขต: shared ? "ความจำของร้าน (ทุกคนในร้านเห็น)" : "ความจำส่วนตัว (เฉพาะคุณ)" });
   },
 };
 
@@ -2268,17 +2270,19 @@ const forgetFactTool: AiTool = {
     const id = String(a.id ?? "").trim();
     const contentContains = String(a.contentContains ?? "").trim();
     if (id) {
-      const ok = await forgetMemory({ tenantId: ctx.tenantId }, id);
-      return JSON.stringify(ok ? { ลบแล้ว: true, id } : { error: `ไม่พบความจำรหัส ${id}` });
+      // CRM C5.5-G3 ▸ ลบได้เฉพาะของตัวเอง (OWNER: + ความจำของร้าน/ระบบ) — อื่น ๆ ตอบเหมือนไม่มี ◂
+      const ok = await forgetMemory({ tenantId: ctx.tenantId, actor: ctx.actor }, id);
+      return JSON.stringify(ok ? { ลบแล้ว: true, id } : { error: `ไม่พบความจำรหัส ${id} ที่คุณลบได้` });
     }
     if (contentContains) {
-      // จับคู่จากคำค้น แล้วลบทีละรายการผ่าน forgetMemory (guard tenant)
-      const rows = await listMemories({ tenantId: ctx.tenantId }, MAX_MEMORY_TAKE);
+      // จับคู่จากคำค้นในความจำที่ผู้ใช้เห็น แล้วลบทีละรายการผ่าน forgetMemory (ด่านสิทธิ์ลบอยู่ข้างใน)
+      const rows = await listMemories({ tenantId: ctx.tenantId, actor: ctx.actor }, MAX_MEMORY_TAKE);
       const hits = rows.filter((r) => r.content.includes(contentContains));
       if (hits.length === 0) return JSON.stringify({ error: `ไม่พบความจำที่ตรงกับ "${contentContains}"` });
-      let removed = 0;
-      for (const h of hits) if (await forgetMemory({ tenantId: ctx.tenantId }, h.id)) removed++;
-      return JSON.stringify({ ลบแล้ว: removed, เนื้อหา: hits.map((h) => h.content) });
+      const removedRows: string[] = [];
+      for (const h of hits) if (await forgetMemory({ tenantId: ctx.tenantId, actor: ctx.actor }, h.id)) removedRows.push(h.content);
+      if (removedRows.length === 0) return JSON.stringify({ error: "ความจำที่ตรงกับคำค้นเป็นความจำของร้าน — เจ้าของร้านเท่านั้นที่ลบได้" });
+      return JSON.stringify({ ลบแล้ว: removedRows.length, เนื้อหา: removedRows });
     }
     return JSON.stringify({ error: "ต้องระบุ id หรือ contentContains อย่างใดอย่างหนึ่ง" });
   },
@@ -2289,13 +2293,14 @@ const listMemoriesTool: AiTool = {
   def: {
     name: "list_memories",
     description:
-      "List every durable fact remembered about this business, with ids for deletion. Use it when the user asks what you remember, or before forgetting something.",
+      "List the durable facts this user's assistant remembers (shop facts plus the user's own private notes), with ids for deletion. Use it when the user asks what you remember, or before forgetting something.",
     parameters: NO_ARGS,
   },
   async execute(ctx) {
-    const rows = await listMemories({ tenantId: ctx.tenantId }, MAX_MEMORY_TAKE);
+    const rows = await listMemories({ tenantId: ctx.tenantId, actor: ctx.actor }, MAX_MEMORY_TAKE);
+    const scope = { shop: "ร้าน", private: "ส่วนตัว", system: "ระบบ" } as const;
     return JSON.stringify({
-      ความจำของร้าน: rows.map((r) => ({ id: r.id, เนื้อหา: r.content })),
+      ความจำของร้าน: rows.map((r) => ({ id: r.id, เนื้อหา: r.content, ขอบเขต: scope[memoryScopeOf(r.id)] })),
     });
   },
 };
@@ -2366,7 +2371,11 @@ const kbAutoSave: AiTool = {
     const content = String(a.content ?? "").trim();
     if (!title) return JSON.stringify({ error: "ต้องระบุหัวข้อความรู้" });
     if (!content) return JSON.stringify({ error: "ต้องระบุเนื้อหาความรู้" });
+    // CRM C5.5-G3 ▸ คลังความรู้ทุกคนในร้านอ่านได้ ⇒ ห้ามผู้ช่วยเขียนข้อมูลติดต่อของบุคคลลงไปเอง (ด่านเดียวกับความจำของร้าน) ◂
+    //   รอบ 2 (รีวิว RV-2): ตรวจ **ทุกช่องข้อความที่เก็บ** — หัวข้อ · เนื้อหา · หมวดหมู่ (หมวดแสดงในรายการ/ผล kb_search) ◂
     const category = String(a.category ?? "").trim() || null;
+    const contactKinds = findContactData(`${title}\n${content}\n${category ?? ""}`);
+    if (contactKinds.length > 0) return JSON.stringify({ error: contactDataRefusal(contactKinds, "ลงคลังความรู้") });
     // ใช้ service เดิม (ห้าม fork) — content → body ของบทความ
     await kbCreateArticleSvc({ tenantId: ctx.tenantId }, { title, body: content, category });
     return JSON.stringify({ ตอบผู้ใช้: `บันทึกลงคลังความรู้แล้ว: ${title}` });

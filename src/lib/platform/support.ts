@@ -103,11 +103,28 @@ export async function addPlatformMessage(
       : []),
   ]);
 
-  // push เข้าเครื่องมือถือของร้าน — best-effort ห้ามพัง flow ตอบเคส
+  // push เข้าเครื่องมือถือ — best-effort ห้ามพัง flow ตอบเคส
+  // CRM C5.5-G3 (รีวิว G2-2) ▸ เดิมยิง **ทุกเครื่องในร้าน** (`sendPushToTenant`) พร้อมคำตอบของทีมงาน 80 ตัวอักษรบนจอล็อก
+  //   ทั้งที่ห้องเปิดได้เฉพาะผู้สร้าง ⇒ ยิงเฉพาะคนที่เปิดห้องนั้นได้: ผู้สร้างห้อง (จากรหัสห้อง) · ห้องรุ่นเดิม/ของคีย์/งานภายใน
+  //   = เจ้าของร้าน (OWNER ที่ยืนยันแล้ว) ตามกติกาการมองเห็นห้อง (lib/ai/conversation-owner.ts) ◂
   if (c.conversationId) {
     try {
-      const { sendPushToTenant } = await import("@/lib/core/push");
-      await sendPushToTenant(c.tenantId, {
+      const { sendPushToUsers } = await import("@/lib/core/push");
+      const { conversationCreatorOf } = await import("@/lib/ai/conversation-owner");
+      const creator = conversationCreatorOf(c.conversationId);
+      const recipients =
+        creator?.kind === "member"
+          ? // ผู้สร้างต้องยังเป็นสมาชิกของร้านนี้ (ออกจากร้านแล้ว = ไม่ยิง)
+            (await prisma.membership.count({ where: { tenantId: c.tenantId, userId: creator.id, acceptedAt: { not: null } } })) > 0
+            ? [creator.id]
+            : []
+          : (
+              await prisma.membership.findMany({
+                where: { tenantId: c.tenantId, role: "OWNER", acceptedAt: { not: null } },
+                select: { userId: true },
+              })
+            ).map((m) => m.userId);
+      await sendPushToUsers(c.tenantId, recipients, {
         title: "ทีมงานตอบกลับแล้ว",
         body: body.slice(0, 80),
         data: { conversationId: c.conversationId },
