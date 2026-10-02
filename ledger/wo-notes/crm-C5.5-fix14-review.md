@@ -67,3 +67,59 @@ sweep. It needs its own card but does not block this one.
 - RV14-1 checked through `getContact360` only; the CRM REST views and the chat CRM panel were not traced for the member block. Not verified on prod.
 - RV14-5: who created the Party row is inferred from the timestamp only.
 - `docs --check` generators were not re-run (no REST op or serializer changed in the diff).
+
+---
+
+## Round 3 re-check (builder tip 7c151cc8 · diff `80f776a9..7c151cc8 -- src scripts`; stray ledger commit 0f6047ec ignored)
+
+### VERDICT (round 3): **NOT MERGEABLE as is.** One fix is still required: **RV14-12 = Q5**. It becomes MERGEABLE once Q5 is gated, or once the owner explicitly accepts Q5.
+
+Everything the builder claims for RV14-1/2/3/5 holds (see below). Q5 is the bare existence signal plus the raw member id on the CRM contact list,
+brief and CSV. It is exactly the class this card closed on the account side (round 2: `badges.member`, `source:member`, count). After round 3
+it also contradicts the CRM 360: the page now says "not linked", while the list one click earlier still shows the "สมาชิก" badge, and REST
+`contacts.list` returns the member id.
+
+### Findings (round 3)
+| id | sev | finding | evidence | suggested fix |
+|---|---|---|---|---|
+| RV14-12 (= Q5) | **MED · fix in this card** | A member-blind CRM viewer still gets `memberCustomerId` (the raw member id) from: `listContacts`, which feeds the web list's "สมาชิก" badge (`crm/contacts/page.tsx:150` → `ContactListTools.tsx:128`) and REST `contacts.list`/`contacts.search` (`items: r.items`, unfiltered); the CRM `briefFor` `ContactBrief.memberCustomerId` (`contacts.ts:2777`, REST `contacts.brief`/`byParty`, chat CRM panel); and the CSV column "รหัสสมาชิกที่ผูก" ("ผูกแล้ว"). The member module refuses this viewer (`visibleCustomerIds` = 0). | probe r3 `Q5-list-dto` ❌ (linked: the id; unlinked: null) · `Q5-csv` ❌ ("ผูกแล้ว" vs "") · `Q-360-fixed` ✅ (so the two disagree) | Minimal rule, identical to the account side: one helper, `memberIdsVisibleTo(ctx, actor, ids)`. It runs **no query** when `!canReadMember(actor)` (⇒ ∅). Otherwise it runs one query per page through the member facade (`memberLinkScope`-style `where` on the customer ids, or `visibleCustomerIds`). Ids not in the set ⇒ `memberCustomerId: null` in `toDto`/list items/`ContactBrief`/CSV blank. Unchanged for entitled viewers. Writes (`convertContact`, merge guards, consent routing) keep reading the raw row and are untouched. |
+| RV14-13 (= Q4) | LOW · owner trade-off, does not block | `getContact360().consent` / `consents.current` give a member-blind viewer `memberLinked:true` **and the member's consent provenance** (`source:"SIGNUP_FORM"`, `at`), next to the member's effective `granted` values. So the 360 DTO is not fully "same as not linked" (builder note §1 says so). | probe r3 `Q4-consent` ❌ (linked `{memberLinked:true, granted:true, source:"SIGNUP_FORM", at:…}` vs unlinked `{false, null…}`) | It is a genuine trade-off. The `granted` values decide sends, and `memberLinked` drives the edit lock (`memberConsentLocked`). Hiding the flag would unlock an edit that then fails or writes to the wrong side. Minimal safe rule: for viewers the member module refuses, keep the effective `granted` but null **`source`/`at`** (member provenance, not needed for outreach). Then leave the residual boolean to the owner (or make the lock viewer-neutral). |
+| RV14-14 | LOW | `followPartyMerge`'s `NOT EXISTS` counts survivor members of **any status**. If the survivor's only member in a system is CLOSED or MERGED, the dropped side's ACTIVE member is not moved, and the RV14-3 loss remains in that case. | probe r3 `F-per-system` (survivor holds only a CLOSED member in M2 ⇒ the drop member stays) | `AND k."status" NOT IN ('MERGED','CLOSED')` in the `NOT EXISTS`. |
+| RV14-15 | INFO | `followPartyMerge` also moves MERGED/CLOSED (erased) rows. `findCustomerByPartyId` does not filter status, so the survivor's card can show an older merged/erased row (RV14-6). The move writes no audit or outbox event (same as `setCustomerPartyId`), so CRM/chat bridges keyed on `member.*` events do not react. `ChatContact.partyId` keeps the dropped Party, while `ChatContact.customerId` and `CrmContact.memberCustomerId` still point to the right member (probe `F-crm-ref` ✅). Under READ COMMITTED, a concurrent link onto the survivor can leave 2 members per system on it; there is no unique constraint on `Customer.partyId`, so it does not fail. | probe r3 F-* | Optional: filter status in the move; leave the rest. |
+
+### Builder claims, verified
+1. **RV14-1:** the 360 member block and `contact.memberCustomerId` are null for a member-blind viewer (probe `Q-360-fixed` ✅; builder C1/C2/C5 ✅). **`briefFor` refusal:** 13 actor shapes agree with `visibleCustomerIds` (probe R-B). Legitimate callers I traced do not regress:
+   - `me.ts`: CUSTOMER with `customerId` ⇒ `canReadMember`.
+   - voucher `issue`: its gate `hasMemberPerm(member.promo.issue)` implies `canReadMember` for every actor shape (probe `B-voucher-gate-implies-read`). Stamp, journeys, referrals, campaigns and approval go through that gate; `issueApprovedBatch` uses `memberRefs`.
+   - `chat-bridge`: checks `canReadMember` first.
+   - Mobile staff routes: check `canReadMember`.
+   - Member REST and member AI tools: member scopes ⇒ implicit read.
+   - `members-actions.gate` / `segments` / `import` / `insights` / `tier-history` / `identities` / `activity`: behind member keys, and core `evaluate` passes STAFF only with `member.customer.read`/`member.*`.
+   - POS and kanban do not call it.
+   - Background "system" jobs pass OWNER-like or member-keyed actors.
+   - The member assistant `namesFor` for a blind asker keeps the codes (intended).
+
+   `qc-member-m1.4` (briefFor contract) **37/37**.
+2. **RV14-2 `asker`:** it is set only inside `assistantActor` from `runAccountTool(opts.asker)`; the only production caller is `tools-account.ts`, which derives it from the server-side AI actor. It cannot be smuggled through tool args (`Unrecognized key: "asker"`, probe `A-args-smuggle` / `A-runAccountTool-args`). A hand-written system actor is refused. A genuine `scheduled-task` actor gets no data. `crmViewerOfApi` is the only reader (account ops only). Kanban, member and CRM assistants never set it, so their behaviour is unchanged. Per AI actor kind (probe R-A): OWNER true · STAFF acc+member read true · STAFF acc-only false · key acc-only false · key acc+`member.customer.read` true. A key-driven assistant gets exactly what the same key gets over REST (STAFF `["*"]` + key scopes), not more.
+3. **RV14-3 `followPartyMerge`:** tagged-template `$executeRaw`, so it is parameterised (an injection-shaped id moves 0 rows). It is tenant-scoped on both sides (another tenant's row with the same `partyId` is untouched; called with the wrong tenant, it moves only that tenant's own row). It works per member system. The both-sides case leaves both (builder G3). It is inside `mergeContacts`' transaction. It never crosses tenants or systems. Edge cases: RV14-14 and RV14-15.
+4. **QC1 deletions** (read-only `review/qc1-r3-check.mts`): both leftover Party ids are gone. There are 0 references in every `*party*id` column, `Party.mergedIntoId`, KanbanCardLink PARTY, AuditLog and OutboxEvent. The seed has 0 Party rows with the P7 tax id, 63 Parties, 63 account contacts and 0 QC-TMP rows.
+5. **Oracle integrity:** `80f776a9..7c151cc8` touches no `scripts/qc-*.mts` oracle and none of my review files.
+
+### Runs (round 3; each through `iso.sh` + `with-gate-lock.sh`, one at a time)
+| run | DB | result |
+|---|---|---|
+| my round-1 probe `review/probe-cf19-review.mts` (unedited) | QC2 | **41/41** |
+| new `review/probe-cf19-review-r3.mts` (own tenants `qc-cf19r3-*`, swept to 0) | QC2 | **32/35**. Reds = `Q4-consent`, `Q5-list-dto`, `Q5-csv` (RV14-13 / RV14-12, intentional). R-B 14/14 · R-A 9/9 · R-F 6/6 · clean ✅ |
+| builder `probe-cf19.mts` | QC2 | **45/45** (links tab: OWNER 12 · no member read 11 · branch-limited 12) |
+| `qc-crm-c5.3 --only=L1,L3` | QC2 | 19/19 |
+| `qc-crm-c1.3` · `qc-crm-c1.4` | QC3 | 89/89 · 110/110 |
+| `qc-member-m1.4` (profile/briefFor contract; no live server needed) | QC3 | **37/37** |
+| `qc-member-m3.7` (history) | QC3 | 19/23. Reds S2.1 (account-document read-through empty on QC3), S3.1 (kinds document/tier missing in the data), S5.2 (4 outbox rows stuck on the shared QC3 queue), S6.2 (needs a live server for screenshots). The suite's checks do not call `briefFor`, and the visibility check S4.1 is green. **Not compared with a base run** (no clean base worktree available) |
+| typecheck (5 GB) · fitness no env · fitness QC2 | — / QC2 | exit 0 · 42/42 · 42/42 |
+| `review/qc1-r3-check.mts` (read-only) | QC1 | see point 4. No QC1 suite re-run in round 3 |
+
+### Not verified (round 3)
+- No built app or browser. CRM REST `contacts.list`/`brief` exposure of `memberCustomerId` comes from reading the code (`items: r.items`, `ContactBrief`); the service result was measured.
+- `qc-member-m3.7` reds not compared against a base tree.
+- Concurrency of `followPartyMerge` is reasoned, not raced.
+- Prod not checked.
