@@ -20,7 +20,8 @@ import { setCardLabels } from "./labels";
 import { sanitizeDescription } from "./sanitize";
 import { createCard } from "./service";
 import { LINK_TYPES, targetExists } from "./link-resolvers";
-import type { KanbanCardSourceType, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { KanbanCardSourceType } from "@prisma/client";
 import type { KanbanActor, KanbanCtx, KanbanLinkKind, KanbanLinkRole } from "./types";
 // CRM C1.6 ▸ ด่านการมองเห็นบอร์ดของโมดูลนี้เอง (visibleBoardOptions ท้ายไฟล์) · +KanbanActor ในบรรทัดบน ◂
 import { visibleBoardsWhere, KanbanForbiddenError, KanbanNotFoundError } from "./access";
@@ -581,6 +582,47 @@ async function eachChildPage<R extends { id: string }>(read: (cursor: string | n
   }
 }
 
+// C5.5-fix11: ตัวเขียนแบบชุดของตัวปิดคำ — หนึ่งคำสั่งต่อ ≤ 1,000 แถว (unnest ของพารามิเตอร์อาร์เรย์ · ไม่มี SQL จากข้อมูล) ·
+//   KanbanCard.updatedAt ตั้งในคำสั่ง (Prisma `update` เดิมตั้งให้) · ความเห็น/ประวัติไม่มี @updatedAt
+const MASK_WRITE_PAGE = 1_000;
+const nowSql = () => Prisma.sql`(${new Date().toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+async function writeCardsInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; title: string; description: string | null }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanCard" c SET "title" = v."title", "description" = v."description", "updatedAt" = ${nowSql()}
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => r.title)}::text[], ${p.map((r) => r.description)}::text[]) AS v("id", "title", "description")
+        WHERE c."id" = v."id" AND c."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+async function writeCommentsInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; body: string }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanComment" c SET "body" = v."body"
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => r.body)}::text[]) AS v("id", "body")
+        WHERE c."id" = v."id" AND c."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+async function writeActivitiesInTx(tx: Prisma.TransactionClient, tenantId: string, rows: readonly { id: string; data: unknown }[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += MASK_WRITE_PAGE) {
+    const p = rows.slice(i, i + MASK_WRITE_PAGE);
+    n += Number(
+      await tx.$executeRaw`UPDATE "KanbanActivity" a SET "data" = v."data"
+        FROM unnest(${p.map((r) => r.id)}::text[], ${p.map((r) => JSON.stringify(r.data ?? null))}::jsonb[]) AS v("id", "data")
+        WHERE a."id" = v."id" AND a."tenantId" = ${tenantId}`,
+    );
+  }
+  return n;
+}
+
 async function maskCardsInTx(
   tx: Prisma.TransactionClient,
   tenantId: string,
@@ -622,38 +664,28 @@ async function maskCardsInTx(
         : (oldTexts ?? cards.flatMap((c) => [c.title, c.description ?? ""]).map((x) => x.trim()).filter((x) => x.length >= 4 && x !== redactTitle).sort((x, y) => y.length - x.length));
     const t = text(old);
     const dj = deep(t);
+    // C5.5-fix11 (review fix9-r2 R2-1): แถวที่เปลี่ยนของหน้านี้เขียนด้วยคำสั่งเดียวต่อตาราง (ค่าใหม่คำนวณใน JS เหมือนเดิม) — เดิมหนึ่งคำสั่งต่อแถว
+    const cardRows: { id: string; title: string; description: string | null }[] = [];
     for (const c of cards) {
       const title = redactTitle ?? mask(c.title);
       const description = redactTitle !== null ? null : c.description === null ? null : mask(c.description);
-      if (title !== c.title || description !== c.description) {
-        await tx.kanbanCard.update({ where: { id: c.id }, data: { title, description } });
-        out.cards += 1;
-      }
+      if (title !== c.title || description !== c.description) cardRows.push({ id: c.id, title, description });
     }
+    out.cards += await writeCardsInTx(tx, tenantId, cardRows);
     await eachChildPage(
       (cur, take) => tx.kanbanComment.findMany({ where: { tenantId, cardId: { in: cardIds }, ...(cur ? { id: { gt: cur } } : {}) }, select: { id: true, body: true }, orderBy: { id: "asc" }, take }),
       batch,
       async (rows) => {
-        for (const r of rows) {
-          const body = t(r.body);
-          if (body !== r.body) {
-            await tx.kanbanComment.update({ where: { id: r.id }, data: { body } });
-            out.comments += 1;
-          }
-        }
+        const changed = rows.map((r) => ({ id: r.id, body: t(r.body), was: r.body })).filter((r) => r.body !== r.was);
+        out.comments += await writeCommentsInTx(tx, tenantId, changed);
       },
     );
     await eachChildPage(
       (cur, take) => tx.kanbanActivity.findMany({ where: { tenantId, cardId: { in: cardIds }, ...(cur ? { id: { gt: cur } } : {}) }, select: { id: true, data: true }, orderBy: { id: "asc" }, take }),
       batch,
       async (rows) => {
-        for (const r of rows) {
-          const data = dj(r.data);
-          if (JSON.stringify(data) !== JSON.stringify(r.data)) {
-            await tx.kanbanActivity.update({ where: { id: r.id }, data: { data: data as Prisma.InputJsonValue } });
-            out.activities += 1;
-          }
-        }
+        const changed = rows.map((r) => ({ id: r.id, data: dj(r.data), was: r.data })).filter((r) => JSON.stringify(r.data) !== JSON.stringify(r.was));
+        out.activities += await writeActivitiesInTx(tx, tenantId, changed);
       },
     );
     if (cards.length < batch) break;
