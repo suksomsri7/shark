@@ -40,6 +40,51 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 4. เลนถัดไปหลัง C3.0: C3.1 (รายงาน/scheduled) → C3.2 ∥ C3.3 → … (MASTER-PLAN §12 ลำดับ) · c20/c23 ที่ `ada8cac2` · 🔴 เปิดเลนใหม่ builder ต้อง reseed member+CRM บน QC ของตัวเอง
 5. candidate C6.1: คอลัมน์ AppNotification `dedupeKey`/`deferredUntil`/`channels` (C2.10 B1) · FK HrPayAdjustment→CrmCommission · crontab
 
+### 0.23 🔴 CHECKPOINT 2 Oct 2026 04:30 UTC — full open-items list (written on the owner's order before context compaction; START HERE, then the running log in §0.22)
+
+**Progress 46/53 (87%). Lane cap = 4 (owner). Controller = Fable, agents = Opus. Branch `session/crm` (all pushed). ⛔ Nothing from session/crm goes to main/prod without the owner's GO.**
+
+#### A. In flight right now
+| what | where | state | next step |
+|---|---|---|---|
+| fix10 merge | main tree, patch `scripts/pending/c55merge/fix10.patch` APPLIED BUT UNCOMMITTED (the 9 modified `src/` files in `git status`) | gate unit `crm-main-fix10` running, log `.qc-shots/crm/main-fix10.log` (15 steps green so far, must end ALLDONE) | all green → append gate record to `ledger/wo-notes/crm-C5.5-fix10.md` → `git add $(git -C ../shark-crm-cd2 diff ee40bfba 6cbb8f3c --name-only) scripts/pending/c55merge/fix10.patch scripts/pending/run-main-fix10.sh` → commit → push. Red → investigate, never commit a red gate |
+| G2 (AI conversations owned by creator) | cf2 `wip/crm-cf14` `be9c9658..608204d3`, reviewer verdict MERGEABLE | queued behind fix10 | patch → dry-run → apply → gate on QC3 (probe-cf14-g2, its review probe, cf9 probes, mobile-authz, ai-automation, c3.4, typecheck, docs, fitness) → commit → push |
+| fix8 round 4 (inbound mail rate limit, light-sender lane) | c54e `wip/crm-cf11` (base 53d88b71) | builder running | → round-4 re-review by the same reviewer → merge (QC3 + QC2 cf5 probes) |
+| fix12 (RV10-1 duplicate-check PII leak, RV10-2, RV10-3) | cd2 `wip/crm-cf16` | builder running | → independent review → merge |
+| G3 (per-creator AI memory + contact-data guard) | cf2 `wip/crm-cf17` | builder running | → independent review → merge |
+| C4.1 + C4.2 independent review | c42b `wip/crm-c42b` tip 8fc52fb6 (pushed) | reviewer running, writes `ledger/wo-notes/crm-C4.2-review.md` | act on verdict (see B2) |
+
+#### B. Still to do (controller), in order
+1. Merge fix10 → G2 → (as they pass review) fix8, fix12, G3. One heavy gate at a time.
+2. After the LAST fix card merges: `bash scripts/acc-v2-serve.sh stop` → rebuild :3215 (copy `scripts/pending/run-rebuild-3215-fix6.sh` to a new name, never edit a running script; serve from a unit with `-p KillMode=process`) → re-derive run5's surface list from `git diff --stat 1d23347e HEAD -- src` (or full re-run if the reviewer demands it) → run `scripts/pending/c42b/run5.sh` → triage → land runner + registry on main (`scripts/pending/c42b/next/*` → `scripts/`, registry minus the 3 ghost E rows `company-lifecycle-correct*` unless the code now has them) → **accept C4.1 + C4.2 → 48/53, tg**.
+3. S4 (member card on the account contact profile without member viewer permission) — NOT BUILT; needs QC1 acc-v2 seed + ORACLE-EDIT Q7.5. Open as a lane when one is free.
+4. Final bug-hunt pass over the merged fix chain (hunt 3 was 0 BLOCKER / 0 HIGH / 1 MED / 1 LOW before fix7+) → **close C5.5 → 49/53, tg**.
+5. Regenerate skill docs in the main checkout after the merges (`pnpm exec tsx scripts/gen-crm-api-docs.mts`).
+6. Move `ledger/CRM-C6-REGISTER-DRAFT.md` into the C6 hand-over once C5.5 closes.
+7. C6.1–C6.4 (prod migration, deploy, post-deploy smoke, hand-over) — blocked on the owner's GO for prod.
+8. Known stray state, leave alone: main checkout's uncommitted `scripts/*-expected.json` + `scripts/fixtures/**` (never commit); QC1 has +3 member signups from another lane's member-API suite (not ours, not deleted).
+
+#### C. Waiting on the OWNER (decisions / actions)
+Prod actions:
+1. Logged-in post-deploy smoke of hotfix 1 (on prod since 1 Oct 13:50 UTC) — owner has not confirmed.
+2. Deploy `hotfix/apiv1-scope` (POS session's worktree `/root/projects/shark-hf` 201d371a): `/api/v1/*` ignores key scopes on prod today; also fixes the kanban page that can revoke any key.
+3. G1 (AI tools ignore the caller's permissions) + G2 as a prod hotfix now, or wait for the C6 deploy? Reviewer advises shipping G1 and G2 together.
+4. One read-only prod query: account-bound API keys carrying non-account scopes (needs owner's OK).
+5. GO for C6.1–C6.4 when the run reaches 49/53.
+Policy / product decisions (details in `ledger/CRM-C6-REGISTER-DRAFT.md`):
+6. RV-3: should CRM AI features require `ai.chat.send`?
+7. Authz sweep rows D1–D11 (top three: D11, D3, D5).
+8. Scheduled AI tasks: which identity do they run as?
+9. General (`[]`-scope) API key minting: OWNER only?
+10. PDPA export: scope by requester visibility? merged contact rows? large-export lane?
+11. Contact export DATETIME format is now ISO `+07:00` — OK?
+12. Deal default company behaviour.
+13. G2 deploy effects to announce: legacy AI conversations become OWNER-only; REST returns 404 for others' rooms; managers can no longer confirm proposals created by an API key.
+14. AI memory policy (G3: staff memory private, shop memory shared but refuses phone/e-mail/ID numbers) + what happens to a deleted account's AI rooms (PDPA).
+15. fix8/fix9 legal + config: P14 — set `CRM_INBOUND_AUTHSERV_ID` and confirm the mail provider's own Authentication-Results header before CRM v2 inbound mail goes live.
+16. Gitignored `endpoints.md` in cd2: an agent refused to touch it; not done; owner to say if it matters.
+17. Older, still open: ABLY / RESEND / LINE OA prod keys (other runs); claude.ai Google Drive connector not authorised (not needed for CRM).
+
 ### 0.22 🔴 HANDOFF 1 Oct 2026 ~11:45 UTC — owner moves the working session again (new session starts HERE)
 
 > **UPDATE 11:46 UTC — owner cancelled the move: same session continues, cap = 3 lanes.** The "no new lanes" rule below is void. 4 agents were still running at this time (it4, fix1 r2, fix2, hotfix reviewer); a new lane opens only when the running count drops below 3. Next lanes in order: independent reviewer for fix1 r2, reviewer for fix2, then merge gates. The state table below stays the source of truth.
