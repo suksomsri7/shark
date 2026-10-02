@@ -140,7 +140,7 @@ await sub("F class exclusivity", async () => {
     touched[cls] = changed(a, await snapshot()).filter((k) => !k.includes(".notice."));
   }
   const want = {
-    V: ["crm.email.in.from.v.<h>", "crm.email.in.sys.v"],
+    V: ["crm.email.in.dom.v.<h>", "crm.email.in.from.v.<h>", "crm.email.in.sys.v"], // r4: + V per-domain bucket
     D: ["crm.email.in.dom.d.<h>", "crm.email.in.from.d.<h>", "crm.email.in.sys.d"],
     T: ["crm.email.in.from.t.<h>", "crm.email.in.msg.t.<h>", "crm.email.in.sys.t"],
     U: ["crm.email.in.from.<h>", "crm.email.in.sys"],
@@ -155,6 +155,7 @@ await sub("F class exclusivity", async () => {
   const d = await ingest(`f2-${rand}@dmarc2-${rand}.test`, "f d2", { dmarc: true });
   const t = await tReply("F3");
   const u = await ingest(`f2-${rand}@nobody2-${rand}.test`, "f u2", {});
+  await setBucket(K.sender("v", V.email), 10); // r4 light lane: only a sender above 10/h can be dropped by the class system bucket
   const v2 = await vReply("F4");
   chk("F.2", v.handled === true && d.handled === true && t.handled === true && u.handled === true && v2.reason === "rate_limited",
     `D/T/U system buckets full ⇒ V → ${v.handled ? "stored" : v.reason} · V system bucket full ⇒ D ${d.handled ? "stored" : d.reason} · T ${t.handled ? "stored" : t.reason} · U ${u.handled ? "stored" : u.reason} · and V itself → ${v2.reason ?? "stored"}`);
@@ -188,6 +189,7 @@ await sub("H owner notices", async () => {
   await ingest(`c@other-${rand}.test`, "h3", { dmarc: true });
   const nD = (await capNotices()).length;
   await setBucket(K.sys("v"), 2000);
+  await setBucket(K.sender("v", V.email), 10); // r4 light lane (see F.2)
   await vReply("H");
   const after = await capNotices();
   await setBucket(K.uSys, 1000);

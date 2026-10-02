@@ -248,3 +248,83 @@ Per system per hour at the caps: V 2,000 + D 1,000 + T 1,000 + U 1,000 = **5,000
 - Attachment and link-fetch cost under a flood at the new caps (bounded by count only — RV-7).
 - The display-name / upper-case recipient form proving thread proof was not re-run with new instrumentation (R2C.1 cannot see the new keys). The comparison code is unchanged from round 2, where it passed.
 - Real serverless memory; browser render.
+
+
+## Round 4 (review round 3 `crm-C5.5-fix8-review.md` "Round 3" — NOT MERGEABLE on RV-8; RV-6 closed)
+
+### RV-8 HIGH — V/T system buckets fillable by an attacker's own provable mailboxes · FIXED (light-sender lane, as ruled)
+- **Light-sender lane (V and T only).** A sender's first `CRM_INBOUND_LIGHT_SENDER_PER_HOUR` = 10 mails in the hour are counted in the class system bucket but can never be dropped by it.
+  - "The sender's count" is the count returned by that class's sender bucket, which is always the first step. The key is the normalised sender, so no extra query is needed.
+  - Only senders already above 10/h in that hour can be dropped by the class system bucket.
+  - The sender (100/h), V/D domain (300/h) and T per-Message-ID (100/h) buckets still apply to everyone.
+  - If the counter fails (`count` undefined), the mail is let through, the same fail-open as the limiter itself.
+- **New V per-domain bucket:** 300/h per From domain, except the free-mail list. Key `crm.email.in.dom.v.<sys>.<h>`, same mechanism as D.
+- **System-bucket audit for V/T:** the first drop of the window is audited once, via a dedupe bucket `crm.email.in.notice.audit-system-<v|t>.<sys>`. Count = limit + 1 can be reached by a light sender whose mail is not dropped, so it cannot mark the first drop. The owner notice stays ≤ 1/h per system per class.
+- **Bound.**
+  - An attacker holding k (mailbox, our-mail) pairs gets at most **system cap + 10·k** mails/h in that class: the system bucket admits at most its cap, plus each of its k senders' first 10.
+  - Also: ≤ 100/h per sender, ≤ 100/h per our OUT mail (T), and ≤ 300/h per non-free domain (V).
+  - No genuine customer who sends ≤ 10 replies/hour can be starved by the class system bucket. She can still be limited by her own sender bucket (100/h) or by the per-Message-ID / domain bucket of the mail she replies to (residuals below).
+  - Concretely, with P14 unset (today): 10 attacker pairs × 100 = 1,000 stored. The customer's 1st…10th replies are stored and her 11th is dropped, because the T system bucket is full (probe B.1).
+  - With P14 set: 20 attacker mailboxes on one DMARC domain × 100 → 300 stored (V domain bucket). The customer's V reply is stored (A.1).
+- **Sender-key variants cannot multiply the lane:** `+tag`, case and (r4) Gmail dots are folded into one key, so one mailbox gets one allowance (L.2).
+
+### RV-9 LOW — one free-mail list · FIXED
+`CRM_INBOUND_FREE_MAIL_DOMAINS` is now the module's `FREE_MAIL_DOMAINS` from `companies-shared.ts` (the same object). It adds hotmail.co.th, msn.com, mac.com, aol.com and gmx.com (F.1/F.2). The reviewer suggested further domains (outlook.co.th, live.co.th, yahoo.co.uk, qq.com, 163.com, naver.com, yandex.com, mail.ru). They were not added: that list also decides company-domain matching and the staff-domain rule (C5.4-E), so extending it is an owner/product call. Listed as a follow-up.
+
+### Normalisation (bucket key only)
+`inboundSenderBucketAddr` = lower-case → cut the local part at the first `+` → for gmail.com / googlemail.com also remove dots from the local part. Attribution, contact matching, thread proof (exact `bareEmail` equality) and stored addresses are unchanged. Dots stay significant on every other domain (L.3).
+
+### Residuals (accepted, stated)
+- **(e) Count-then-drop.** Sender, domain and message buckets are incremented before a later step drops the mail. A pair-holder of a customer's thread (the customer, CC co-recipients, anyone the mail was forwarded to) can push that customer's **T** sender bucket to 100 for the hour by sending forged thread-only mail in her name. This is narrower than base, where anyone could do it through the all-mail sender bucket. With P14 set, her own replies are class V (separate buckets) and unaffected. Same for the T per-Message-ID bucket: holders of one of our mails can exhaust that mail's 100/h.
+- **Light lane above the cap:** each provable sender adds up to 10 mails/h beyond the class cap (the `+10·k` term). k grows only by one shop-sent mail per mailbox.
+- **D has no light lane** (ruling: V and T only). A D flood can drop new authenticated non-reply mail for the hour; it cannot touch V, T or U.
+- **RV-4** (kanban page revokes any key of the shop) still ships with hotfix/apiv1-scope 201d371a.
+
+### Final bucket table (round 4)
+| class | evidence | per sender (key = lower-case mailbox, `+tag` cut, Gmail dots removed) | extra bucket | per system | light lane |
+|---|---|---|---|---|---|
+| V verified reply | DMARC proof AND thread proof | 100/h | 300/h per From domain (non-free-mail) | 2,000/h | first 10/h per sender never dropped by the system bucket |
+| D DMARC only | DMARC proof, no thread proof | 100/h | 300/h per From domain (non-free-mail) | 1,000/h | — |
+| T thread only | thread proof, no DMARC proof | 100/h | 100/h per referenced OUT Message-ID (shared) | 1,000/h | first 10/h per sender never dropped by the system bucket |
+| U unproven | neither | 100/h (fix2 key) | — | 1,000/h (fix2 key) | — |
+Free-mail list = `FREE_MAIL_DOMAINS` (companies-shared). P14 unset ⇒ only T and U exist. Per-system worst case (RV-7, C6 debt): 5,000 mails/h at the system caps, plus the light-lane term 10·(number of distinct provable V/T senders).
+
+### Final `ingestInbound` step order (round 4)
+1. Cap envelope (fix5) → CRM recipient key → loop header → system/settings → v1 / disabled → duplicate Message-ID (`select id`).
+2. `fromAddr` → `fromProof` (pure parse of the capped A-R; false when the env is unset) → refs (capped) → one narrow query (OUT, this tenant + system, ≤ 100 ids, ≤ 50 rows, `messageId/toAddrs/ccAddrs`) → `threadProofAny` + `proofMessageId` → class V/D/T/U.
+3. Buckets of that class only, in order: sender (normalised; its count feeds the light lane) → domain (V/D, non-free) or message (T) → system (V/T: light senders counted but not dropped). First trip/drop: audit + deduped owner notice → drop `rate_limited` (200, no row).
+4. Full `parent` row (`findFirst`, newest referenced) → fix2 `threadProof` (reply effects only).
+5. Reply-To, auto, subject → staff / override / verified-domain lookups → `unverifiedShopFrom` → direction → `bcc_capture_off`.
+6. HTML/text caps + sanitise.
+7. Attribution (contact / company / stranger lead) → `routing` flags (`unverifiedFrom` for every IN mail without `fromProof`).
+8. Tx: row + activity + `crm.email.received` → attachments → reply effects (`parent` OUT + (`fromProof` ∨ `threadProof`)) → replied notice → copy-in.
+
+### Round 4 RED → GREEN
+| probe | 3123f37e (round 3) | round 4 |
+|---|---|---|
+| `probe-cf11-r4` (new: B = reviewer R3B.1 · A = R3A.1 · L light-lane boundary + Gmail/`+tag`/case variants + dots only for Gmail · F free-mail parity, hotmail.co.th, D/U without lane, notices, pre-bucket reads) | 7/14 — B.1 A.1 L.1 L.2 L.3 F.1 F.2 | 14/14 |
+| `probe-cf11-r3` | 14/14 | 14/14 (F.1 expects the new `dom.v` key; F.2/H.1 preset the customer's V sender bucket to 10 so the V-system-full check exercises a heavy sender) |
+| reviewer `probe-cf11-review-r3` | 8/10 (reviewer, at 3123f37e) | **10/10**. R3B.1 ✅: after 1,000/1,000 attacker mail, the customer's reply to our quote is stored. R3A.1 ✅: 300/2,000 stored, V system bucket 300, the customer's V reply stored. R3C.1 ✅. INFO-R3F: the lists now differ in neither direction. INFO-R3D/R3D.2: the Gmail dot variants now hit ONE D sender bucket (count 0 vs 2, both stored); the probe's label text still says "separate" |
+| reviewer `probe-cf11-review-r2` · `-mail` · `-keys` | 7/8 · 12/12 · 8/9 | unchanged: 7/8 (R2C.1 instrumentation, as in round 3) · 12/12 · 8/9 (RK.6 = RV-4) |
+| hunt `probe-hunt3` (uncommitted copy) | — | S1.2/S1.3/S1.6 green · S1.5 by design · X1.1 = H3-2 |
+
+### Round 4 verification (`run-verify.sh` label v5; finished 2026-10-02 06:02 UTC — label v5 stopped after qc-crm-c2.6 by a quota pause; the remaining steps were run as label v6 on the same unchanged tree)
+| check | result |
+|---|---|
+| `pnpm typecheck` (5 GB heap, v5) | exit 0 |
+| probe-cf11 keys · contains · mail · r2 (`--skip=R2`) · r3 · r4 | 14/14 · 12/12 · 24/24 · 11/11 · 14/14 · 14/14 |
+| reviewer review-r3 · review-r2 · review-mail · review-keys | 10/10 · 7/8 (R2C.1 instrumentation) · 12/12 · 8/9 (RK.6 = RV-4) |
+| probe-hunt3 | S1.2/S1.3/S1.6 green · S1.5 by design |
+| probe-cf2 · probe-cf2-review-r2 | 36/36 · 8/10 (Q3 by design · Q6.2 stale, red at base) |
+| probe-cf8-mobile · actions · review | 8/8 · 9/9 · 17/19 (X1.1, X2 no longer reproduce, by design) |
+| probe-cf4-ci · probe-cf4-contains | 12/12 · evidence (exit 0) |
+| QC2: probe-cf5 · probe-cf5-r2 · rv-cf5 · rv-cf5-r2 | 22/22 · 14/14 · 32/32 · 16/16 |
+| qc-crm-c2.5 · c2.6 (v5) · c1.6 (v6) · qc-webhook (v6) | 105/105 · 87/87 · 79/79 · 15/15 |
+| qc-acc-v2-contact-modal · import (v6) | 96/96 · 114/114 |
+| QC2: qc-account-api-webhooks · write-settings (v6) | 22/22 · 39/39 |
+| docs --check ×4 (v6) | exit 0 |
+| fitness (QC3 env) · (no env) (v6) | 42/42 · 42/42 |
+
+### Round 4 not verified
+- The automation path that creates pairs end to end (public form → rule → OUT row); the probes insert OUT rows directly, as the reviewer did.
+- Attachment and link-fetch cost at the caps (RV-7, C6 debt). Real serverless memory. Browser render.

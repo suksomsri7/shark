@@ -95,6 +95,7 @@ import {
   CRM_TRACK_RATE_LIMITS,
   CRM_INBOUND_RATE_LIMITS, // CRM C5.5-fix2 ▸ 2a-7 ◂
   CRM_INBOUND_FREE_MAIL_DOMAINS, // CRM C5.5-fix8 r3 ◂
+  CRM_INBOUND_LIGHT_SENDER_PER_HOUR, // CRM C5.5-fix8 r4 ◂
   inboundSenderBucketAddr, // CRM C5.5-fix8 r3 ◂
   CRM_LOOP_HEADER, // CRM C5.5-fix2 ▸ 2a-1 ◂
   CRM_COPY_IN_SUBJECT_PREFIX, // CRM C5.5-fix2 ▸ 2a-1 ◂
@@ -2341,27 +2342,39 @@ async function inboundLimited(
 ): Promise<boolean> {
   const senderHash = sha256(`from:${inboundSenderBucketAddr(m.fromAddr)}`).slice(0, 32);
   const c = cls.toLowerCase();
-  const steps: { bucket: string; key: string; L: { limit: number; windowMs: number }; extra?: Record<string, unknown> }[] = [];
+  // r4: `light` = ขั้นถังทั้งระบบของ V/T — ผู้ส่งเบา (≤ CRM_INBOUND_LIGHT_SENDER_PER_HOUR ฉบับ/ชม. ตามถังผู้ส่งของชั้นนั้น) ถูกนับแต่ไม่ถูกทิ้ง
+  const steps: { bucket: string; key: string; L: { limit: number; windowMs: number }; extra?: Record<string, unknown>; light?: boolean }[] = [];
   if (cls === "U") {
     steps.push({ bucket: "sender", key: `crm.email.in.from.${systemId}.${senderHash}`, L: CRM_INBOUND_RATE_LIMITS.perSender, extra: { senderHash: senderHash.slice(0, 12) } });
     steps.push({ bucket: "system", key: `crm.email.in.sys.${systemId}`, L: CRM_INBOUND_RATE_LIMITS.perSystem });
   } else {
     const R = cls === "V" ? CRM_INBOUND_RATE_LIMITS.verified : cls === "D" ? CRM_INBOUND_RATE_LIMITS.dmarc : CRM_INBOUND_RATE_LIMITS.thread;
     steps.push({ bucket: `sender-${c}`, key: `crm.email.in.from.${c}.${systemId}.${senderHash}`, L: R.perSender, extra: { senderHash: senderHash.slice(0, 12) } });
-    if (cls === "D" && m.fromDomain && !CRM_INBOUND_FREE_MAIL_DOMAINS.includes(m.fromDomain)) {
+    // D และ (r4 · RV-8) V: ถังต่อโดเมนของ From 300/ชม. — ยกเว้นโดเมนอีเมลสาธารณะ (รายการเดียวของ CRM — RV-9)
+    if ((cls === "D" || cls === "V") && m.fromDomain && !CRM_INBOUND_FREE_MAIL_DOMAINS.has(m.fromDomain)) {
       const domHash = sha256(`dom:${m.fromDomain}`).slice(0, 32);
-      steps.push({ bucket: "domain-d", key: `crm.email.in.dom.d.${systemId}.${domHash}`, L: CRM_INBOUND_RATE_LIMITS.dmarc.perDomain, extra: { domainHash: domHash.slice(0, 12) } });
+      const DL = cls === "V" ? CRM_INBOUND_RATE_LIMITS.verified.perDomain : CRM_INBOUND_RATE_LIMITS.dmarc.perDomain;
+      steps.push({ bucket: `domain-${c}`, key: `crm.email.in.dom.${c}.${systemId}.${domHash}`, L: DL, extra: { domainHash: domHash.slice(0, 12) } });
     }
     if (cls === "T" && m.proofMessageId) {
       const msgHash = sha256(`msg:${m.proofMessageId}`).slice(0, 32);
       steps.push({ bucket: "message-t", key: `crm.email.in.msg.t.${systemId}.${msgHash}`, L: CRM_INBOUND_RATE_LIMITS.thread.perMessage, extra: { messageHash: msgHash.slice(0, 12) } });
     }
-    steps.push({ bucket: `system-${c}`, key: `crm.email.in.sys.${c}.${systemId}`, L: R.perSystem });
+    steps.push({ bucket: `system-${c}`, key: `crm.email.in.sys.${c}.${systemId}`, L: R.perSystem, light: cls === "V" || cls === "T" });
   }
+  // CRM C5.5-fix8 r4 ▸ (รีวิว RV-8 · มติผู้คุมงาน) ช่องทางผู้ส่งเบาของ V/T: ใช้ค่านับที่ถังผู้ส่งคืนมาอยู่แล้ว (ไม่มีคิวรีเพิ่ม) ·
+  //   ถังผู้ส่ง/โดเมน/ต่อฉบับยังใช้กับทุกคน · ถังทั้งระบบนับทุกฉบับ แต่ทิ้งได้เฉพาะผู้ส่งที่เกิน N ฉบับในชั่วโมงนี้แล้ว ⇒ คนร้ายที่ถือ k คู่
+  //   (กล่องจดหมาย, จดหมายของร้าน) ได้ไม่เกิน เพดานระบบ + N·k ฉบับ/ชม. และลูกค้าที่ตอบ ≤ N ฉบับ/ชม. ไม่มีวันถูกถังรวมทิ้ง ◂
+  let senderCount: number | undefined;
   for (const st of steps) {
     const v = await checkRateLimitDb(st.key, st.L);
+    if (st === steps[0]) senderCount = v.count;
     if (v.ok) continue;
-    if (v.count === st.L.limit + 1) {
+    const lightSender = st.light === true && (senderCount === undefined || senderCount <= CRM_INBOUND_LIGHT_SENDER_PER_HOUR);
+    if (lightSender) continue; // นับแล้ว ไม่ทิ้ง (ตัวนับล่ม = undefined ⇒ ปล่อยผ่านเหมือน fail-open ของตัวจำกัด)
+    // ถังที่มีช่องทางเบา: ครั้งแรกที่ "ทิ้งจริง" ของหน้าต่าง (count = limit + 1 อาจเป็นฉบับของผู้ส่งเบาที่ไม่ถูกทิ้ง) ⇒ ใช้ถังกันซ้ำแทน
+    const firstTrip = st.light === true ? await ownerNoticeDue(systemId, `audit-${st.bucket}`) : v.count === st.L.limit + 1;
+    if (firstTrip) {
       await auditInboundCap(tenantId, systemId, { bucket: st.bucket, limit: st.L.limit, windowMs: st.L.windowMs, ...(st.extra ?? {}) });
       if (cls === "U" && st.bucket === "system") {
         // RV2-3: ร้านต้องรู้ว่ากล่องจดหมายถูกถล่ม (จดหมายที่พิสูจน์ผู้ส่งไม่ได้ถูกทิ้งไปจนจบชั่วโมง) — แจ้งเจ้าของร้านทุกคน ครั้งเดียวต่อหน้าต่าง

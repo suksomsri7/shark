@@ -18,6 +18,8 @@ q3 pending/cf11/probe-cf11-contains
 q3 pending/cf11/probe-cf11-mail
 q3 pending/cf11/probe-cf11-r2 --skip=R2
 q3 pending/cf11/probe-cf11-r3
+q3 pending/cf11/probe-cf11-r4
+q3 pending/cf11/review/probe-cf11-review-r3
 q3 pending/cf11/review/probe-cf11-review-r2
 q3 pending/cf11/review/probe-cf11-review-mail
 q3 pending/cf11/review/probe-cf11-review-keys
