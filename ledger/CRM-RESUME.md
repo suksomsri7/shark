@@ -44,6 +44,15 @@ C2.4 (ข้อสอบ 78 · `CRM_ASSIST` พร้อมใช้จาก C2
 
 **Progress 46/53 (87%). Lane cap = 4 (owner). Controller = Fable, agents = Opus. Branch `session/crm` (all pushed). ⛔ Nothing from session/crm goes to main/prod without the owner's GO.**
 
+
+> **⏸️ QUOTA STOP 2 Oct 2026 04:53 UTC (owner: quota 99%).** All 4 agents were STOPPED mid-work by the controller; nothing is running except systemd jobs that finish by themselves (`crm-main-fix10` gate at 19 green steps / 0 red, and 3 `iso-*` jobs the agents had launched). State on resume:
+> - **fix10**: patch still applied UNCOMMITTED in the main tree. Read `.qc-shots/crm/main-fix10.log`: ALLDONE + every `exit=0` → commit per table row A1; otherwise investigate. Do not re-apply the patch.
+> - **G2**: MERGEABLE, not yet applied (after fix10).
+> - **fix8 r4** (c54e, wip/crm-cf11 tip 59f5a400): builder killed mid-build; UNCOMMITTED partial work in `src/lib/modules/crm/emails.ts`, `emails-shared.ts`, `scripts/pending/cf11/probe-cf11-r4.mts` (+ red log). RED probe exists; GREEN not proven. Resume the builder (id a0032b5949c66014c) or a fresh one with the round-4 ruling in the log line "fix8 r3 NOT MERGEABLE (RV-8)".
+> - **fix12** (cd2, wip/crm-cf16 on 6cbb8f3c): builder killed mid-build; UNCOMMITTED partial work in 10 files (companies/contacts ops + shared, deals.ts, kanban link-resolvers, docs) + `scripts/pending/cf16/` + note `ledger/wo-notes/crm-C5.5-fix12.md`. Not verified.
+> - **G3** (cf2, wip/crm-cf17 954a69d5, pushed): built; reviewer killed while writing its probe (`scripts/pending/cf17/review/`, untracked). No verdict yet → restart the review (brief is in the transcript / re-derive from wo-notes/crm-C5.5-G3.md).
+> - **C4.2 it5** (c42b, tip 154266a1 pushed): builder killed early; UNCOMMITTED edits in `scripts/qc-crm-buttons.mts`, `scripts/crm-ui-inventory.json`, `scripts/pending/c42b/counts.mts`, new `cleanup-chat-orphans.mts`, `facts12.mts`. Unknown whether the QC1 chat-orphan cleanup ran — check before re-running. Rulings 1–9 are in the log line "C4.1+C4.2 REVIEW".
+> - Uncommitted agent work lives only on this VPS (not pushed). :3215 still serves build ca78a54d (unit `crm-serve-3215-fix6`).
 #### A. In flight right now
 | what | where | state | next step |
 |---|---|---|---|
