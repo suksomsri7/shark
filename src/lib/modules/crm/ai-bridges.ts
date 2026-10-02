@@ -893,7 +893,7 @@ export async function cancelProposalById(tenantId: string, actor: Actor, proposa
 export async function confirmProposalById(tenantId: string, actor: Actor, proposalId: string, opts: { confirm2x?: boolean } = {}): Promise<{ handled: boolean; ok: boolean; note: string }> {
   const row = await prisma.aiProposal.findFirst({ where: { id: String(proposalId ?? ""), tenantId }, select: { kind: true, payload: true, conversationId: true } });
   if (!row || !isCrmDoorKind(row.kind, row.payload)) return { handled: false, ok: false, note: "" };
-  if (hiddenChatProposal(row, actor)) return { handled: true, ok: false, note: MSG.proposal }; // CRM C5.5-fix13 ▸ H4-2 ◂
+  if (hiddenChatProposal(row, actor)) return { handled: false, ok: false, note: "" }; // CRM C5.5-fix13 ▸ H4-2 (r2 RV13-7: คำตอบเดียวกับ id ที่ไม่มีอยู่ทุกไบต์) ◂
   const systemId = isObj(row.payload) ? str(row.payload.systemId) : null;
   if (!systemId) return { handled: true, ok: false, note: MSG.proposal };
   try {

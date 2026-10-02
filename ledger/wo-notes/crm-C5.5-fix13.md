@@ -103,8 +103,8 @@ because of it. Same rule the v2 server actions (`revalidateAndWake`), the portal
   `/app/settings/teams` actions (`run()` after `touch()`).
 - **Sweep (grep of every route/server action that imports the CRM facade without a wake, then checked which ones really enqueue):**
   fixed with the same call — `lib/mobile/crm-routes.ts#runMobileCrm` (one choke point for `/api/mobile/crm/*`: non-GET that did not answer
-  ≥ 400 ⇒ task complete, call log, card scan accept/reject) · `/t/o` open pixel and `/t/c` click (only when the hit was counted —
-  `allowed`) · `crm/tracking.ts#collect` after `identify` (only the identify type, not every page hit) · Resend webhook (when
+  ≥ 400 ⇒ task complete, call log, card scan accept/reject) · `/t/o` open pixel and `/t/c` click (round 1 gated on the
+  rate-gate verdict `allowed`, which is NOT "counted" — corrected in round 2 §R2-3: now gated on the outbox rows the counting statement wrote) · `crm/tracking.ts#collect` after `identify` (only the identify type, not every page hit) · Resend webhook (when
   `handled`) · AI confirm entry points `lib/ai/actions.ts#confirmProposalAction` / `confirmPlanAction` and `/api/mobile/proposals|plans/confirm`
   (a confirmed `crm.*` proposal from chat runs `dispatchCrmKind` without any wake) · inbound CRM mail `/api/email/inbound` (after `emails.ingestInbound` when `handled` — `crm.email.received`/`replied`; the kanban half of the route already used its own path)
   Checked, no wake needed: `/api/v1/crm/*` and `/api/v1/teams/*` (dispatch wakes) · `/t/consent`, `/t/v`, `/t/s`, `/l/[code]` (no outbox row) ·
@@ -112,8 +112,10 @@ because of it. Same rule the v2 server actions (`revalidateAndWake`), the portal
   reports export (no outbox row) · cron/consumer-driven emitters (sequences, reminders, scoring, payments, team-room posts — run inside a
   drain/cron). Not checked function-by-function: every export of the CRM `*-actions.ts` files (they all import `revalidateAndWake`; a
   write action there that forgot to call it would not show in this grep).
-- Cost note: open/click pixels are the hottest public path; the wake is post-response and coalesced (≤ 1 pending drain per instance per
-  15 s), and a drain over an empty queue is one indexed query.
+- Cost note: open/click pixels are the hottest public path; the wake is post-response and coalesced. **Corrected in round 2 (§R2-3):** the
+  round-1 claim "≤ 1 pending drain per instance per 15 s" was wrong — `core/after-drain.ts` merges only a drain that is scheduled but not yet
+  started (the flag clears when the task starts; 15 s only expires a flag whose task never started). A drain over an empty queue is one
+  indexed query.
 
 ## 6 · P-it5-3 LOW (scope addition) — `/u/[token]` done page viewport
 The done pages are raw HTML strings in the route handlers (`one-click`, and the same page in `no-track`); the `/u/[token]` confirm page itself
@@ -218,3 +220,102 @@ Round 3 — `/tmp/cf18-logs/f13v3.summary` (final tree: round 2 + the inbound-ma
 - Thai/Unicode punctuation in the "mask-only memory" delete uses Postgres `[[:punct:]]` (ASCII-class on this cluster's locale; a memory left as
   e.g. "[ข้อมูลถูกลบ] ๆ" is kept, not deleted) — code-read.
 - Prod sizes/latency of the new statements; `AiTrainingSample`/`AiFeedback` (anonymised at write by design — not checked).
+
+## Round 2 — review rulings (`crm-C5.5-fix13-review.md` · reviewer tip 1377bb9a) · 2026-10-02 (RED 11:33, GREEN 11:3x UTC, `date -u`)
+
+Probe `scripts/pending/cf18/probe-cf18-r2.mts` (own tenants `qc-cf18-*` ×2, CLEAN 0 rows; after() tasks counted, never run) · logs
+`probe-cf18-r2.red.log` (src of 1377bb9a, same swap/md5-restore procedure) / `.green.log` · regression `run-verify-r2.sh` (/tmp copy,
+summary `/tmp/cf18-logs/f13r2.summary`). No schema change: `AiScheduledTask` and `AiProposalStatus.EXPIRED` already exist.
+
+| run | controls | findings |
+|---|---|---|
+| probe-cf18-r2 on 1377bb9a | 8/8 | **12/12 RED** |
+| probe-cf18-r2 on the fix | 8/8 | **12/12 GREEN** |
+
+### R2-1 · RV13-1 — `AiScheduledTask.instruction`
+`privacy.ts`: in the same `tokensT` loop/transaction/tenant scope, `UPDATE "AiScheduledTask" SET instruction = replace(…)`; after the loop the
+task whose instruction is only masks/whitespace/punctuation is **deleted** (same rule as mask-only memories — there is nothing left to run).
+The table has no title / last-result columns (only `instruction`, `hourBkk`, `active`, `lastRunDay`); the daily outputs it produced earlier
+(`AiMessage` in the `s~` room, `AppNotification`) were already masked. Counted in `counts.aiMessages`. Probe S1.1/S1.2 (+ S1.3 other tenant /
+unrelated task untouched).
+
+### R2-2 · RV13-2 — role-word e-mail local parts
+`privacy.ts#identityTokens` (the single place tokens are built, so every table old and new benefits): the bare local part is a token only if
+it is ≥ 6 chars (unchanged) **and not a role mailbox word** — `isRoleMailboxLocal`: lower-case, digits and `. _ + -` removed, then looked up
+in `ROLE_MAILBOX_WORDS` (support, info, admin(istrator), sale(s), contact(us), hello, office, account(s/ing), billing, service(s),
+customerservice, noreply, donotreply, hr, marketing, team, (e)mail, webmaster, postmaster, hostmaster, help(desk), (customer)care, cs, order(s),
+booking(s), reservation(s), finance, purchase/purchasing, procurement, enquiry/enquiries/inquiry/inquiries, reception, frontdesk,
+invoice(s), payment(s), shop, store, online, official, hotline, callcenter, career(s), jobs, news(letter), notification(s), system, general —
+the Thai-business additions are the shop/booking/reception/hotline/callcenter group). The full address is always a token. Probe S2.1 (RED→GREEN)
++ S2.2 (full role address and a personal local part still masked). fix9/fix11 probes: see the table — `probe-cf15` Q1 end state compared
+byte-for-byte with `eq-base`.
+
+### R2-3 · RV13-3 — wake only on a real write
+- `emails.unsubscribe` / `stopTracking` now also return `flipped` (the flag really changed in this request); `trackOpen` returns `events`
+  (outbox rows the counting statement wrote — the CTE's `o`); `trackClick` returns `events` too. Routes: `/u/…/one-click` and `/no-track` wake
+  only when `flipped`; `/t/o` and `/t/c` only when `events > 0`. Response bytes unchanged for every token (X7). Chat panel create-lead now wakes
+  only when `created` (an existing contact = nothing written).
+- Re-check of every other wake: portal view (only when the daily row was inserted) · teams actions, chat log-activity, AI confirm (`ok` /
+  `doneCount > 0`), inbound mail (`handled`) — always behind a real write · identify (`/t/e`) — after a single-use ticket was consumed and
+  `identify` ran (a re-identify of the same visitor may write nothing; rare, ticket-gated) · Resend webhook — signed requests only (`handled`
+  includes `delivered`, which writes no outbox row) · `runMobileCrm` — authenticated, ≤ 120 requests/min per user; a successful non-GET can write
+  no outbox row (card scan / reject / completing an already-done task). These three are listed, not changed: none is reachable with a garbage token.
+- The real coalescing bound (note §5 corrected): at any moment at most one scheduled-but-not-started drain per instance; a request that arrives
+  after that drain started schedules one more. With the gating above, unauthenticated garbage can no longer schedule drains on `/u` or `/t/o`
+  (R5.1–R5.3 of the review probe; probe S3.1/S3.3); real writes still wake (S3.2). I did not change `core/after-drain.ts` (holding the flag
+  until the drain finishes would drop the wake of a row committed after the running drain read its candidates).
+
+### R2-4 · RV13-5 (owner Q2, controller ruling) — non-CRM AI proposals
+`privacy.ts`: after the existing CRM-kind deletes, rows of kinds `NOT LIKE 'crm%'` whose `summary` / `resultNote` / `payload` (JSON-escaped
+match) hold a token are read in pages (`FOR UPDATE`), masked (summary, resultNote, every JSON string value and key — same walker as plans) and
+written with `writeRows`; the still-PENDING ones move to **`EXPIRED`** (existing `AiProposalStatus` value — the state `executeProposal` already
+uses for "can no longer be confirmed"); finished ones keep their status. Counted in `counts.proposals`. Probe S4.1/S4.2 (+ S4.3 unrelated row).
+
+### R2-5 · RV13-4 cheap parts
+- `phoneVariants` (single builder, so messages/notifications/memories/… all benefit): + `081-2345678` / `081 2345678` (mobile 3-7) and the
+  same shape for landlines `02-1234567` / `02 1234567` (2-7). Probe S5.1.
+- JSON keys: the plan walker (and the new proposal walker) now mask keys too; a masked key that collides with an existing key gets ` #2`, ` #3` …
+  so no value is lost. Probe S5.2.
+- Not fixed (residual + owner question): a phone stored as a JSON **number** in plan/proposal payloads (the row is still selected/retired when any
+  string token matches; a number-only row is not found) · support-case attachment names and files (`SupportMessage.attachmentsJson`, uploaded
+  objects) — added to owner question 5.
+
+### R2-6 · RV13-7
+`ai-bridges.ts#confirmProposalById`: a hidden chat-room row now returns `{handled:false, ok:false, note:""}` — byte-identical to an unknown id
+(probe S6.1). Still unreachable from `executeProposal` today.
+
+### R2-7 · owner Q4 (controller ruling) — SEQ_TASK
+`sequences.ts`: for a `SEQ_TASK` step of a contact linked to a company, `{{contact.companyName}}` = the contact's company text if the **assignee**
+(the task owner chosen for the step: deal owner → contact owner → shop owner) is an accepted member who can see the company
+(`visibleCompanyStates` with the assignee's membership), else `""` (fix10 rule). Mails the system sends to the contact keep the raw text.
+Probe S7.1 (assignee without company sight) / S7.2 (OWNER assignee keeps the name). RV13-6 (stored copy of system mails readable in the thread):
+not fixed — owner question.
+
+### R2-8 · RUNNING-plan race
+`ai/plans.ts#executePlan`: the final write is now conditional on `stepsJson` still equal to the value read at the start (snapshot taken before
+the steps are mutated in place). If it changed meanwhile (the erase masked it), the run re-reads the row and writes only each step's status onto
+the current (masked) steps — no new `note` (it was computed from pre-erase data). Probe S8 (deterministic: the step's `KbArticle` insert is held
+behind a table lock until the erase has masked the RUNNING plan): RED on 1377bb9a (write-back restored name + phone), GREEN after.
+Residuals (code-read, listed): the step itself still runs with the pre-erase payload it read (S8: a KB article titled from the old payload is
+created after the erase), and the confirmer's on-screen result list is built from the in-memory summaries.
+
+### Owner questions after round 2
+- Q3 (k~ OWNER-only) and Q6 (pending plans → EXPIRED): confirmed by the controller as built. Q2 and Q4: ruled and implemented (R2-4, R2-7).
+- Open: Q1 (CRM read tools as the API key) · Q5 (erase masks SHARK support threads — now also: attachment names/files are NOT masked) ·
+  Q7 (member-module erase / export without AI rows) · RV13-6 (stored copy of system mails shows the hidden company to a restricted member).
+
+### Round 2 regression (QC3 unless marked · `/tmp/cf18-logs/f13r2.summary`)
+| step | result |
+|---|---|
+| typecheck · docs-crm `--check` · fitness without env / QC3 | exit 0 · exit 0 · 42/42 · 42/42 |
+| probe-cf18-r2 | 8/8 + 12/12 GREEN |
+| probe-cf18 · probe-cf18-outbox | 20/20 + 17/17 GREEN · 3/3 + 7/7 GREEN |
+| review/probe-cf18-review (reviewer's, unedited) | **controls 16/16 · findings reproduced 0/5** — R1.9, R1.10, R5.1, R5.2, R5.3 all NOT-REPRODUCED · info: R1.4 key masked (`false`), R1.5 JSON-number phone survives (residual, listed), R1.7 `081-2345678` masked, R1.11 non-CRM proposal EXPIRED + masked, R5.6 "→ 0 drains scheduled" · exit 0 |
+| probe-hunt4 (unedited) | controls 10/11 (K0.1 by design, H4-4) · findings 0/8 reproduced |
+| probe-cf12 · -r2 · -review · -review-r2 (fix9) | all controls green · all findings FIXED / NOT-REPRODUCED as before |
+| probe-cf15 vs `eq-base` (fix11) · -review | 7/7 incl. **Q1 end state byte-identical** · 5/5 FIXED · 5/5 — no fix9/fix11 fixture uses a role-word local part or a 3-7 phone spelling |
+| qc-crm-c3.9 · c3.5 · c2.5 · c2.6 · ai-automation | 49/49 · 67/67 · 105/105 · 87/87 · 4/4 |
+| QC2 qc-crm-c5.3 `--only=L1,L3` · qc-crm-c2.2 (sequences) · probe-cf13 (fix10) | 19/19 · 73/73 · 24/24 |
+
+Not verified in round 2: the SEQ_TASK assignee rule through the real cron (probe calls `runDue` in-process); a real Thai-locale `[[:punct:]]`
+check for mask-only tasks (same regex as memories); prod size; docs-member/kanban/account `--check` (need the main tree's `.claude/`).

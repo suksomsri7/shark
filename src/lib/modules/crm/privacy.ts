@@ -190,7 +190,9 @@ function identityTokens(rows: readonly IdentityRow[], party: { phone: string | n
     if (typeof v !== "string") continue;
     if (v.includes("@")) {
       const local = v.trim().split("@")[0] ?? "";
-      if (local.length >= 6) raw.push(local);
+      // CRM C5.5-fix13 r2 ▸ RV13-2: ส่วนหน้า @ ที่เป็นคำของกล่องจดหมายกลาง (support · info · sales · contact · booking …) ไม่ใช่คำระบุตัว — ใช้เป็นคำเดี่ยวไม่ได้
+      //   (ทับคำทั่วไปทั้งร้าน) · ที่อยู่เต็มยังเป็นคำระบุตัวเสมอ (บรรทัดของ raw) ◂
+      if (local.length >= 6 && !isRoleMailboxLocal(local)) raw.push(local);
     } else if (/^[\d\s+().-]{9,}$/.test(v.trim())) raw.push(...phoneVariants(v)); // เฉพาะค่าที่เป็นเบอร์ (ไม่ใช่ LINE id ที่มีตัวเลข)
   }
   const out = new Set<string>();
@@ -201,6 +203,20 @@ function identityTokens(rows: readonly IdentityRow[], party: { phone: string | n
   return [...out].sort((a, b) => b.length - a.length);
 }
 
+/** CRM C5.5-fix13 r2 ▸ RV13-2: คำของกล่องจดหมายกลาง/ตามหน้าที่ (เทียบหลังตัดตัวเลข . _ - ท้าย/คั่น และตัวพิมพ์เล็ก) */
+const ROLE_MAILBOX_WORDS = new Set([
+  "support", "info", "admin", "administrator", "sales", "sale", "contact", "contactus", "hello", "office", "account", "accounts", "accounting",
+  "billing", "service", "services", "customerservice", "noreply", "donotreply", "hr", "marketing", "team", "mail", "email", "webmaster",
+  "postmaster", "hostmaster", "help", "helpdesk", "care", "customercare", "cs", "order", "orders", "booking", "bookings", "reservation",
+  "reservations", "finance", "purchase", "purchasing", "procurement", "enquiry", "enquiries", "inquiry", "inquiries", "reception", "frontdesk",
+  "invoice", "invoices", "payment", "payments", "shop", "store", "online", "official", "hotline", "callcenter", "career", "careers", "jobs",
+  "news", "newsletter", "notification", "notifications", "system", "general",
+]);
+function isRoleMailboxLocal(local: string): boolean {
+  const w = String(local ?? "").toLowerCase().replace(/[0-9._+-]+/g, "");
+  return ROLE_MAILBOX_WORDS.has(w);
+}
+
 /** CRM C5.4-B ▸ hunter H3(e)/H4: รูปแบบที่คนพิมพ์เบอร์ไทยเดียวกัน (ไม่ใช่เบอร์ = []) — 0XXXXXXXXX · 0XX-XXX-XXXX · 0XX XXX XXXX · +66XXXXXXXXX · +66 XX XXX XXXX · 66XXXXXXXXX */
 function phoneVariants(raw: string): string[] {
   const d = String(raw ?? "").replace(/\D/g, "");
@@ -209,7 +225,9 @@ function phoneVariants(raw: string): string[] {
   const n = local.slice(1);
   const g = local.length === 10 ? [local.slice(0, 3), local.slice(3, 6), local.slice(6)] : [local.slice(0, 2), local.slice(2, 5), local.slice(5)];
   const ng = local.length === 10 ? [n.slice(0, 2), n.slice(2, 5), n.slice(5)] : [n.slice(0, 1), n.slice(1, 4), n.slice(4)];
-  return [local, g.join("-"), g.join(" "), `+66${n}`, `+66 ${ng.join(" ")}`, `+66-${ng.join("-")}`, `66${n}`];
+  // CRM C5.5-fix13 r2 ▸ RV13-4: + เขียนแบบ 3-7 ของมือถือ (`081-2345678` · `081 2345678`) และ 2-7 ของเบอร์บ้าน (`02-1234567` · `02 1234567`) ◂
+  const head = local.length === 10 ? 3 : 2;
+  return [local, g.join("-"), g.join(" "), `${local.slice(0, head)}-${local.slice(head)}`, `${local.slice(0, head)} ${local.slice(head)}`, `+66${n}`, `+66 ${ng.join(" ")}`, `+66-${ng.join("-")}`, `66${n}`];
 }
 
 function maskText(v: string | null, tokens: readonly string[]): string | null {
@@ -933,6 +951,10 @@ async function eraseInTx(
     counts.aiMessages += Number(
       await tx.$executeRaw`UPDATE "AiMemory" SET "content" = replace("content", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("content", ${tk}) > 0`,
     );
+    // CRM C5.5-fix13 r2 ▸ RV13-1: งานประจำของผู้ช่วย (AiScheduledTask.instruction — ส่งเข้าโมเดลทุกวัน + คัดลอกลงแจ้งเตือน/push) · ตารางนี้ไม่มีช่องผล/หัวเรื่องอื่น ◂
+    counts.aiMessages += Number(
+      await tx.$executeRaw`UPDATE "AiScheduledTask" SET "instruction" = replace("instruction", ${tk}, ${CRM_ERASED_MASK}) WHERE "tenantId" = ${t} AND strpos("instruction", ${tk}) > 0`,
+    );
   }
   // CRM C5.5-fix13 ▸ H4-1: ความจำที่หลังปิดคำแล้วไม่เหลือเนื้อหาอื่น (มีแต่ "[ข้อมูลถูกลบ]" · ช่องว่าง · เครื่องหมาย) = ทั้งแถวคือข้อมูลของเขา ⇒ ลบ
   //   (ความจำที่ยังมีเนื้อหาอื่น เช่น "ลูกค้า [ข้อมูลถูกลบ] ชอบโปรวันศุกร์" คงไว้แบบเดียวกับข้อความแชท) · ลบซ้ำ = 0 แถว ◂
@@ -941,14 +963,31 @@ async function eraseInTx(
       await tx.$executeRaw`DELETE FROM "AiMemory" WHERE "tenantId" = ${t} AND strpos("content", ${CRM_ERASED_MASK}) > 0
                             AND regexp_replace(replace("content", ${CRM_ERASED_MASK}, ''), '[[:space:][:punct:]]', '', 'g') = ''`,
     );
+    // CRM C5.5-fix13 r2 ▸ RV13-1: งานประจำที่เหลือแต่คำที่ถูกปิด = ลบ (กติกาเดียวกับความจำ — ไม่มีอะไรเหลือให้ทำ) · ที่ยังมีเนื้อหาอื่น = คงไว้ (ปิดคำแล้ว) ◂
+    counts.aiMessages += Number(
+      await tx.$executeRaw`DELETE FROM "AiScheduledTask" WHERE "tenantId" = ${t} AND strpos("instruction", ${CRM_ERASED_MASK}) > 0
+                            AND regexp_replace(replace("instruction", ${CRM_ERASED_MASK}, ''), '[[:space:][:punct:]]', '', 'g') = ''`,
+    );
   }
   // CRM C5.5-fix13 ▸ H4-1: แผนของผู้ช่วย (AiPlan — title + stepsJson: summary/payload/note ของทุกขั้น) ทุกสถานะ ทุกห้อง — ปิดคำในค่าข้อความของ JSON
   //   (เดินโครง JSON ใน JS · ไม่แทนบนข้อความ jsonb ตรง ๆ = ไม่มีทางทำ JSON พัง) · แผนที่ยัง PENDING และเอ่ยถึงเขา → EXPIRED (ทำต่อไม่ได้แล้ว —
   //   ขั้นของมันกระทำต่อคนที่ถูกลบ: เหตุผลเดียวกับจดหมาย QUEUED → FAILED และข้อเสนอ CRM ที่ถูกลบทิ้ง) · เขียนเป็นชุด (writeRows) · อ่านทีละหน้า ◂
   if (tokensT.length) {
     const tokensJ = tokensT.map((tk) => JSON.stringify(tk).slice(1, -1)); // รูปของคำในข้อความ jsonb (escape " \ ตัวควบคุม)
-    const maskJson = (v: unknown): unknown =>
-      typeof v === "string" ? maskText(v, tokensT) : Array.isArray(v) ? v.map(maskJson) : isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, maskJson(x)])) : v;
+    // CRM C5.5-fix13 r2 ▸ RV13-4: คีย์ของ JSON ก็ปิดคำด้วย — คีย์ที่ปิดแล้วชนกับคีย์ที่มีอยู่ = ต่อท้าย " #2", " #3" (ไม่มีค่าใดหายเพราะชื่อคีย์ซ้ำ) ◂
+    const maskJson = (v: unknown): unknown => {
+      if (typeof v === "string") return maskText(v, tokensT);
+      if (Array.isArray(v)) return v.map(maskJson);
+      if (!isObj(v)) return v;
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v)) {
+        const mk = maskText(k, tokensT) ?? k;
+        let key = mk;
+        for (let n = 2; key !== k && Object.prototype.hasOwnProperty.call(out, key); n += 1) key = `${mk} #${n}`;
+        out[key] = maskJson(x);
+      }
+      return out;
+    };
     const planPage = pageSize(opts.batch, 1_000);
     for (let cursor = ""; ; ) {
       const page = await tx.$queryRaw<{ id: string; title: string; status: string; stepsJson: Prisma.JsonValue }[]>`
@@ -959,6 +998,40 @@ async function eraseInTx(
       const planRows = page.map((p) => ({ id: p.id, values: [maskText(p.title, tokensT) ?? "", p.stepsJson === null ? [] : maskJson(p.stepsJson), p.status === "PENDING" ? "EXPIRED" : p.status] }));
       counts.aiMessages += await writeRows(tx, "AiPlan", t, [{ col: "title", kind: "text" }, { col: "stepsJson", kind: "jsonb" }, { col: "status", kind: "text" }], planRows);
       if (page.length < planPage) break;
+      cursor = page[page.length - 1]!.id;
+    }
+  }
+  // CRM C5.5-fix13 r2 ▸ RV13-5 (มติผู้คุมงาน — กติกาเดียวกับแผน): ข้อเสนอ AI ชนิด **ไม่ใช่ CRM** ที่เอ่ยถึงเขา (ข้อเสนอชนิด CRM ถูกลบทิ้งข้างบนแล้ว ·
+  //   C3.9 S1) — summary · resultNote · payload (เดิน JSON แบบเดียวกับแผน) ปิดคำ · ที่ยัง PENDING → EXPIRED (สถานะ "หมดอายุ" ที่มีอยู่แล้วของข้อเสนอ —
+  //   ยืนยันไม่ได้อีก: งานของมันจะสร้างข้อมูลของคนที่ถูกลบขึ้นใหม่ในอีกโมดูล) · ที่จบแล้ว = ปิดคำอย่างเดียว · ทีละหน้า · เขียนเป็นชุด ◂
+  if (tokensT.length) {
+    const tokensJ = tokensT.map((tk) => JSON.stringify(tk).slice(1, -1));
+    const maskJ = (v: unknown): unknown => {
+      if (typeof v === "string") return maskText(v, tokensT);
+      if (Array.isArray(v)) return v.map(maskJ);
+      if (!isObj(v)) return v;
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v)) {
+        const mk = maskText(k, tokensT) ?? k;
+        let key = mk;
+        for (let n = 2; key !== k && Object.prototype.hasOwnProperty.call(out, key); n += 1) key = `${mk} #${n}`;
+        out[key] = maskJ(x);
+      }
+      return out;
+    };
+    const propPage = pageSize(opts.batch, 1_000);
+    for (let cursor = ""; ; ) {
+      const page = await tx.$queryRaw<{ id: string; summary: string; resultNote: string | null; status: string; payload: Prisma.JsonValue }[]>`
+        SELECT p."id", p."summary", p."resultNote", p."status"::text AS "status", p."payload" FROM "AiProposal" p
+         WHERE p."tenantId" = ${t} AND p."id" > ${cursor} AND p."kind" NOT LIKE 'crm%'
+           AND EXISTS (SELECT 1 FROM unnest(${tokensT}::text[], ${tokensJ}::text[]) AS k(tk, tj)
+                        WHERE strpos(p."summary", k.tk) > 0 OR strpos(COALESCE(p."resultNote", ''), k.tk) > 0 OR strpos(p."payload"::text, k.tj) > 0)
+         ORDER BY p."id" LIMIT ${propPage} FOR UPDATE`;
+      const rows = page.map((p) => ({ id: p.id, values: [maskText(p.summary, tokensT) ?? "", maskText(p.resultNote, tokensT), p.payload === null ? {} : maskJ(p.payload)] }));
+      counts.proposals += await writeRows(tx, "AiProposal", t, [{ col: "summary", kind: "text" }, { col: "resultNote", kind: "text" }, { col: "payload", kind: "jsonb" }], rows);
+      const pending = page.filter((p) => p.status === "PENDING").map((p) => p.id);
+      if (pending.length) await tx.$executeRaw`UPDATE "AiProposal" SET "status" = 'EXPIRED' WHERE "tenantId" = ${t} AND "id" = ANY(${pending}::text[]) AND "status" = 'PENDING'`;
+      if (page.length < propPage) break;
       cursor = page[page.length - 1]!.id;
     }
   }

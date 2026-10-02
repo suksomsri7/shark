@@ -26,9 +26,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
     const ip = ipOf(req);
     const allowed = await emails.trackGate("c", { ip, token: clean });
     const ua = req.headers.get("user-agent");
-    const { url, ticket } = await emails.trackClick(clean, { ip, ua }, { count: allowed });
+    const { url, ticket, events } = await emails.trackClick(clean, { ip, ua }, { count: allowed });
     if (!url) return home();
-    if (allowed) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event crm.email.clicked (หลัง redirect แล้ว · รวมการปลุกซ้อน) ◂
+    if ((events ?? 0) > 0) wakeOutbox(); // CRM C5.5-fix13 r2 ▸ RV13-3: ปลุกเฉพาะเมื่อเขียนจริง (event ขาออกที่เขียนในคำสั่งนับ) · P-it5-2: event crm.email.clicked (หลัง redirect แล้ว · รวมการปลุกซ้อน) ◂
     // CRM C2.6 ▸ ตั๋วระบุตัวตน (`sd_ct`): คลิกที่ **นับจริง** ของจดหมายที่รู้ว่าเป็นของผู้ติดต่อคนไหน และปลายทางอยู่ใน
     //   โดเมนที่ร้านประกาศไว้เท่านั้น ⇒ หน้าที่ลูกค้าไปถึงผูกการเข้าชมย้อนหลังเข้ากับลูกค้าคนนั้นได้โดยไม่ต้องส่งอีเมล/เบอร์
     //   ผ่านหน้าเว็บเลย (AUDIT-CLASS X7 · X8) · ปลายทางยังเป็น url ที่เก็บไว้เสมอ (ต่อพารามิเตอร์ท้ายเท่านั้น)

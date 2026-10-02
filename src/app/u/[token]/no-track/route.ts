@@ -15,8 +15,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   try {
     const { token } = await params;
     const clean = String(token ?? "");
-    if (clean) await emails.stopTracking(clean, { ua: req.headers.get("user-agent") });
-    if (clean) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) · ระบายหลังตอบแล้ว (after) = หน้านี้ไม่ช้าลง ◂
+    const r = clean ? await emails.stopTracking(clean, { ua: req.headers.get("user-agent") }) : null;
+    if (r?.flipped) wakeOutbox(); // CRM C5.5-fix13 r2 ▸ RV13-3: ปลุกเฉพาะเมื่อเขียนจริง (ธงพลิก) · token ขยะ/ซ้ำ = ไม่ปลุก · P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) · ระบายหลังตอบแล้ว (after) = หน้านี้ไม่ช้าลง ◂
   } catch {
     // ล้มแล้วยังตอบหน้าเดิม (ไม่บอกอะไรเกี่ยวกับ token)
   }

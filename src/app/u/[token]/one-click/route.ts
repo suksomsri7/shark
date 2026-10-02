@@ -31,8 +31,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     //   (Gmail/Yahoo ยิงจาก IP ชุดเล็กที่ใช้ร่วมกันทุกร้าน) · เพดานมีไว้ชะลอเฉพาะ token ที่ไม่รู้จัก: ตอนเต็มเพดาน
     //   `unsubscribe` อ่าน 1 แถวแล้วจบ ไม่เขียนอะไร เว้นแต่ token จริงและธงยังไม่พลิก ◂
     const allowed = await emails.trackGate("u", { ip, token: clean });
-    if (clean) await emails.unsubscribe(clean, { ip, ua: req.headers.get("user-agent"), rateLimited: !allowed });
-    if (clean) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) · ระบายหลังตอบแล้ว (after) = หน้านี้ไม่ช้าลง ◂
+    const r = clean ? await emails.unsubscribe(clean, { ip, ua: req.headers.get("user-agent"), rateLimited: !allowed }) : null;
+    if (r?.flipped) wakeOutbox(); // CRM C5.5-fix13 r2 ▸ RV13-3: ปลุกเฉพาะเมื่อเขียนจริง (ธงพลิก) · token ขยะ/ซ้ำ = ไม่ปลุก · P-it5-2: ปลุกคิว outbox หลังเขียนสำเร็จ (กลไกเดียวกับ action/REST ของ CRM — `wakeOutbox` หลัง commit · ไม่เคยทำให้คำขอล้ม) · ระบายหลังตอบแล้ว (after) = หน้านี้ไม่ช้าลง ◂
   } catch {
     // ล้มแล้วยังตอบ 2xx: ผู้ให้บริการอีเมลเห็น 5xx = ซ่อนปุ่ม "ยกเลิกรับ" ของเราทิ้ง
   }
