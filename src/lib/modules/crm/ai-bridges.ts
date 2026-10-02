@@ -28,6 +28,7 @@ import { logOps } from "@/lib/core/ops";
 import type { MemberActor } from "@/lib/modules/member";
 import { canSpend, chargeUsageSafe } from "@/lib/ai/credit";
 import { resolveProvider, type AiChatMessage, type AiProvider } from "@/lib/ai/provider";
+import { canSeeConversationId, sightOfConfirmer } from "@/lib/ai/conversation-owner";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
 import { CrmV2DisabledError } from "./ui-version";
@@ -632,6 +633,21 @@ export function isCrmDoorKind(kind: string, payload: unknown): boolean {
   return kind === LEGACY_LEAD_KIND && isObj(payload) && typeof payload.systemId === "string" && payload.systemId.length > 0;
 }
 
+/** CRM C5.5-fix13 ▸ H4-2: รหัสห้องแชทของผู้ช่วย (G2: `u~`/`k~`/`s~` + ห้องรุ่นเดิมแบบ cuid) — ห้องหมายของ CRM มี ":" เสมอ (`<prefix>:<hex>`) ◂ */
+function isChatRoomId(conversationId: string): boolean {
+  return typeof conversationId === "string" && conversationId.length > 0 && !conversationId.includes(":");
+}
+/**
+ * CRM C5.5-fix13 ▸ H4-2: ข้อเสนอที่เกิดในห้องแชท (ไม่มี `requestedByUserId` · รหัสห้องแชท) ที่ผู้กดมองไม่เห็นห้อง — ตัวตรวจเดียวกับ
+ *   `executeProposal` (G2: `canSeeConversationId(sightOfConfirmer(…))`) · ข้อเสนอจากปุ่มในหน้า/ห้องหมาย = false (กติกาเดิมของประตู) ◂
+ */
+function hiddenChatProposal(row: { payload: unknown; conversationId: string }, actor: Actor): boolean {
+  const requested = isObj(row.payload) ? str(row.payload.requestedByUserId) : "";
+  if (requested || !isChatRoomId(row.conversationId)) return false;
+  if (actor.role === "CUSTOMER") return true; // ลูกค้าพอร์ทัลไม่มีห้องแชทของผู้ช่วย
+  return !canSeeConversationId(sightOfConfirmer({ role: actor.role }, actor.userId), row.conversationId);
+}
+
 /** คีย์สิทธิ์ของ kind (null = kind ที่ประตูนี้ไม่รู้จัก ⇒ ปฏิเสธเสมอ) */
 function keyOfKind(kind: string): string | null {
   if (kind === ASSIST_TASKS_KIND) return "crm.activity.create";
@@ -676,10 +692,15 @@ type DoorRow = { id: string; kind: string; status: string; payload: Record<strin
 async function loadDoorRow(ctx: AiBridgeCtx, actor: Actor, proposalId: string): Promise<{ a: Actor; sys: Sys; row: DoorRow }> {
   const { a, sys } = await enter(ctx, actor);
   const id = str(proposalId);
-  const raw = id ? await prisma.aiProposal.findFirst({ where: { id, tenantId: sys.tenantId }, select: { id: true, kind: true, status: true, payload: true, expiresAt: true, resultNote: true, risk: true } }) : null;
+  const raw = id ? await prisma.aiProposal.findFirst({ where: { id, tenantId: sys.tenantId }, select: { id: true, kind: true, status: true, payload: true, expiresAt: true, resultNote: true, risk: true, conversationId: true } }) : null;
   if (!raw || !isCrmDoorKind(raw.kind, raw.payload)) throw fail("NOT_FOUND", MSG.proposal);
   const payload = isObj(raw.payload) ? raw.payload : {};
   if (str(payload.systemId) !== sys.id) throw fail("NOT_FOUND", MSG.proposal);
+  // CRM C5.5-fix13 ▸ hunt-4 H4-2 (กติกา G2): ข้อเสนอที่เกิดในห้องแชทของผู้ช่วย (ไม่มี `requestedByUserId` และ `conversationId` เป็นรหัสห้องแชท
+  //   `u~…` / `k~…` / `s~…` / ห้องรุ่นเดิม — ไม่มี ":") เป็นของห้องนั้น ⇒ ยืนยัน/ยกเลิกได้เฉพาะคนที่เห็นห้อง (ผู้สร้างห้อง · เจ้าของร้านสำหรับห้อง
+  //   ที่ไม่ได้สร้างโดยคนในร้าน) · ไม่เห็น = ตอบแบบเดียวกับไม่มีข้อเสนอนี้ · ข้อเสนอจากปุ่มในหน้า (มี `requestedByUserId`) และห้องหมาย
+  //   (`<prefix>:…` · `crm:card:…` · `crm:activity:…`) = กติกาเดิมข้างล่าง ◂
+  if (hiddenChatProposal(raw, a)) throw fail("NOT_FOUND", MSG.proposal);
   const row: DoorRow = { id: raw.id, kind: raw.kind, status: raw.status, payload, expiresAt: raw.expiresAt, resultNote: raw.resultNote, risk: String(raw.risk) };
   const key = keyOfKind(row.kind);
   if (!key || !crmCan(a, key)) throw fail("FORBIDDEN", MSG.cannotAct);
@@ -856,8 +877,9 @@ export async function cancelProposal(ctx: AiBridgeCtx, actor: Actor, proposalId:
  * (ระบบ = payload.systemId ซึ่งประตูตรวจว่าเป็นระบบ CRM ของร้านนี้) · ไม่ใช่ข้อเสนอ CRM = `{ handled: false }` ให้ผู้เรียกทำทางเดิม
  */
 export async function cancelProposalById(tenantId: string, actor: Actor, proposalId: string): Promise<{ handled: boolean; ok: boolean; note: string }> {
-  const row = await prisma.aiProposal.findFirst({ where: { id: String(proposalId ?? ""), tenantId }, select: { kind: true, payload: true } });
+  const row = await prisma.aiProposal.findFirst({ where: { id: String(proposalId ?? ""), tenantId }, select: { kind: true, payload: true, conversationId: true } });
   if (!row || !isCrmDoorKind(row.kind, row.payload)) return { handled: false, ok: false, note: "" };
+  if (hiddenChatProposal(row, actor)) return { handled: false, ok: false, note: "" }; // CRM C5.5-fix13 ▸ H4-2: ผู้เรียกตอบแบบ id ที่ไม่มีอยู่ ◂
   const systemId = isObj(row.payload) ? str(row.payload.systemId) : null;
   if (!systemId) return { handled: true, ok: false, note: MSG.proposal };
   try {
@@ -869,8 +891,9 @@ export async function cancelProposalById(tenantId: string, actor: Actor, proposa
 }
 
 export async function confirmProposalById(tenantId: string, actor: Actor, proposalId: string, opts: { confirm2x?: boolean } = {}): Promise<{ handled: boolean; ok: boolean; note: string }> {
-  const row = await prisma.aiProposal.findFirst({ where: { id: String(proposalId ?? ""), tenantId }, select: { kind: true, payload: true } });
+  const row = await prisma.aiProposal.findFirst({ where: { id: String(proposalId ?? ""), tenantId }, select: { kind: true, payload: true, conversationId: true } });
   if (!row || !isCrmDoorKind(row.kind, row.payload)) return { handled: false, ok: false, note: "" };
+  if (hiddenChatProposal(row, actor)) return { handled: false, ok: false, note: "" }; // CRM C5.5-fix13 ▸ H4-2 (r2 RV13-7: คำตอบเดียวกับ id ที่ไม่มีอยู่ทุกไบต์) ◂
   const systemId = isObj(row.payload) ? str(row.payload.systemId) : null;
   if (!systemId) return { handled: true, ok: false, note: MSG.proposal };
   try {

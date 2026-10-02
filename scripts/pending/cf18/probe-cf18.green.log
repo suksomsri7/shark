@@ -1,0 +1,95 @@
+(node:2808670) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── E PDPA erase × AiMemory / AiPlan / SupportCase ──
+  ✅ [E0.1] (control) control (premise): 7 memories exist (u~A ×3 · u~B · o~OWNER · legacy · s~job), 6 of them name the person
+        — ACTUAL rows=7 withPerson=6 ownerFact={"จำแล้ว":"สมหญิง qc-cf18-qbxxtsfq เป็นลูกค้าประจำของร้าน","id":"o~cmuqs1xrj0001… ids=["u~","u~","u~","o~","cm","s~","u~"]
+  ✅ [E0.2] (control) control (mechanism): before the erase the prompts of A (private: phone), B (private: name) and OWNER (shop fact: name) carry the person
+        — ACTUAL A=["0836278029","สมหญิง qc-cf18-qbxxtsfq","somying-qbxxtsfq@cust.qc.invalid"] B=["สมหญิง qc-cf18-qbxxtsfq"] O=["สมหญิง qc-cf18-qbxxtsfq"] support={"caseNo":1,"ตอบผู้ใช้":"รับทราบความต้องการแล้วครับ ทีมงานจะ…
+  ✅ [E1.0] (control) control: erase succeeded, contact row anonymised
+        — ACTUAL erased=true counts.aiMessages=20 notifications=2
+  ✅ [E1.1] (control) control: AI messages / conversation title are still masked by the erase
+        — ACTUAL msgs=["ช่วยจำว่า [ข้อมูลถูกลบ] เบอร์ [ข้อมูลถูกลบ]"] title="นัด [ข้อมูลถูกลบ]"
+  ✅ [E1.2] (FINDING) FINDING: no AiMemory row (private of A and B · OWNER shop fact · legacy · job row) still holds the phone / name / e-mail
+        — ACTUAL left=0 · ["u~: ร้านปิดทุกวันจันทร์ qc-cf18-qbxxtsfq","u~: [ข้อมูลถูกลบ] ขอให้โทรช่วงบ่าย","o~: [ข้อมูลถูกลบ] เป็นลูกค้าประจำของร้าน","cm: [ข้อมูลถูกลบ] เป็นลูกค้า VIP ของร้าน ให้ส่วนลดเสมอ","s~: สรุปเช้า: [ข้อมูลถูกลบ] ยังไม่ได้จ่าย","u~: ลูกค้า [ข้อมูลถูกลบ] โทร [ข้อมูลถูกลบ] อีเมล [ข้อมูลถูกลบ] ช…"]
+  ✅ [E1.3] (FINDING) FINDING: memories keep their other content with the mask (u~ ×2 owners, o~, legacy, s~ masked in place, 'ชอบโปรวันศุกร์' kept)
+        — ACTUAL maskedKinds=["u~","o~","legacy","s~"] uRows=3
+  ✅ [E1.4] (FINDING) FINDING: the memory that was nothing but the person ('<name> <phone>') is deleted (7 → 6 rows)
+        — ACTUAL rows=6
+  ✅ [E1.5] (control) control: an unrelated memory is untouched (content and updatedAt)
+        — ACTUAL "ร้านปิดทุกวันจันทร์ qc-cf18-qbxxtsfq"
+  ✅ [E1.6] (FINDING) FINDING: the next system prompt of A, B and OWNER carries none of the erased tokens
+        — ACTUAL A=[] B=[] O=[]
+  ✅ [E1.7] (FINDING) FINDING: the pending plan holds no token (title · summary · payload incl. arrays) and is retired (EXPIRED); structure/kinds/numbers intact
+        — ACTUAL plan={"title":"โทรนัด [ข้อมูลถูกลบ]","stepsJson":[{"kind":"booking_create_appointment","status":"PENDING","payload":{"qty":2,"tags":["vip","[ข้อมูลถูกลบ]"],"phone":"[ข้อมูลถูกลบ]","customerName":"[ข้อมูลถูกลบ]"},"summary":"นัด \"[ข้อมูลถูกลบ]\" โทร [ข้อมูลถูกลบ]"}]…
+  ✅ [E1.8] (FINDING) FINDING: the finished plan (DONE) holds no token and keeps its status
+        — ACTUAL plan={"title":"ปิดยอดวันนี้","stepsJson":[{"kind":"booking_create_appointment","note":"นัดแล้ว [ข้อมูลถูกลบ]","status":"DONE","payload":{"email":"[ข้อมูลถูกลบ]"},"summary":"นัดลูกค้า"}],"status":"DONE"}
+  ✅ [E1.9] (control) control: an unrelated pending plan is untouched (PENDING, same title)
+        — ACTUAL plan={"title":"ตรวจสต็อก qc-cf18-qbxxtsfq","stepsJson":[{"kind":"booking_create_appointment","status":"PENDING","payload":{"n…
+  ✅ [E1.10] (FINDING) FINDING: the support case the assistant opened (subject + first message) no longer holds the phone / name
+        — ACTUAL cases=[{"subject":"ลูกค้า [ข้อมูลถูกลบ] แจ้งปัญหาใบเสร็จ","messages":[{"body":"ลูกค้าโทร [ข้อมูลถูกลบ] บอกว่าใบเสร็จไม่ออก"}]}]
+  ✅ [E1.11] (control) control: re-erase runs clean (no throw) and leaves the masked memories as they were
+        — ACTUAL re={"contactId":"cmuqs1y0h000c6mkz77z3assz","partyId":"cmuqs1y04000b6mkzvpmeh36i","erased":false,"counts":null,"followUp":"DONE","memberSkipped":false,"memberPendi…
+  ℹ️  [E1.12] erase counts {"emails":0,"activities":0,"recordings":0,"files":0,"webSessions":0,"clicks":0,"portal":0,"proposals":0,"notifications":2,"customValues":0,"records":0,"consents":0,"fileLinks":0,"mergedContacts":0,"partyAnonymised":true,"memberErased":false,"formSubmissions":0,"aiMessages":20,"kanban":0,"auditScrubbed":0,"exportsWithdrawn":0} · files deleted 0
+
+── P CRM proposal door × G2 rooms ──
+  ✅ [P0.1] (control) control (premise): A's chat turns left 5 pending crm.* proposals in A's own room
+        — ACTUAL {"id":"cmuqs21xn001a6mkzvqm3uxhh","kind":"crm.contacts.create","status":"PENDING"}
+  ✅ [P1.1] (FINDING) FINDING: staff B cannot cancel A's chat-room proposal (reject door) — answer identical to a non-existent id, row stays PENDING
+        — ACTUAL door={"handled":false,"ok":false,"note":""} ghost={"handled":false,"ok":false,"note":""} status=PENDING
+  ✅ [P1.2] (FINDING) FINDING: staff B cannot confirm it through the CRM page door — same refusal as a non-existent id, row stays PENDING
+        — ACTUAL B={"ok":false,"refused":"ไม่พบข้อเสนอนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกจัดการไปแล้วหรืออยู่คนละระบบ)","code":"NOT_FOUND"} ghost={"ok":false,"refused":"ไม่พบข้อเสนอนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกจัดการไปแล้วหรืออยู่คนละระบบ)","code":"NOT_FOUND"} status=PENDING
+  ✅ [P1.3] (FINDING) FINDING: the OWNER is not a viewer of A's u~ room either (G2) — page confirm and reject door answer 'not found', row stays PENDING
+        — ACTUAL owner confirm={"ok":false,"refused":"ไม่พบข้อเสนอนี้ในระบบ CRM ที่เปิดอยู่ (อาจถูกจัดการไปแล้วหรืออยู่คนละระบบ)","code":"NOT_FOUND"} reject={"handled":false,"ok":false,"note":""} status=PENDING
+  ✅ [P0.2] (control) control: A (room creator) confirms her own proposal through the CRM door
+        — ACTUAL A={"ok":true,"note":"เพิ่มผู้ติดต่อ (lead)เรียบร้อยแล้ว — \"ลูกค้าสี่ qc-cf18-qbxxtsfq\""} status=EXECUTED
+  ✅ [P0.3] (control) control: A cancels her own chat-room proposal through the reject door
+        — ACTUAL {"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"}
+  ✅ [P0.4] (control) control: pseudo-room rows keep the old door rule — staff B (has crm.contact.create) cancels a card-scan row and a page-button row
+        — ACTUAL card={"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"} page={"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"}
+  ✅ [P0.5] (control) control (premise + K: write tools stay for keys): the key's write tool answers 200 pendingConfirmation and leaves a proposal in a k~ room
+        — ACTUAL status=200/200 conv=k~cmuqs22yn00266mkz1437x0uf~93…
+  ✅ [P1.4] (FINDING) FINDING: staff B cannot cancel a key-room (k~) proposal — aligned with executeProposal (OWNER only), same answer as a non-existent id
+        — ACTUAL B={"handled":false,"ok":false,"note":""}
+  ✅ [P0.6] (control) control: the OWNER cancels a key-room proposal (route contract: the owner confirms in the app)
+        — ACTUAL {"handled":true,"ok":true,"note":"ยกเลิกข้อเสนอแล้ว"}
+
+── C {{contact.companyName}} × sender's company visibility ──
+  ✅ [C0.1] (control) control (fix10 rule): A gets no company text for y (linked company hidden from A)
+        — ACTUAL A=null
+  ✅ [C1.1] (FINDING) FINDING: A's composer mail (subject + body) does not spell out the hidden company's name (rendered as empty, like 'no company')
+        — ACTUAL mail={"subject":"Re: qc-cf18-qbxxtsfq","bodyHtml":"<p>ฝ่ายจัดซื้อ — แนบใบเสนอราคาค่ะ</p>","bodyText":"ฝ่ายจัดซื้อ — แนบใบเสนอราคาค่ะ"}
+  ✅ [C1.2] (FINDING) FINDING: A's template mail (subject + body) does not spell out the hidden company's name
+        — ACTUAL mail={"subject":"ใบเสนอราคา","bodyHtml":"<p>เรียน วิไล ฝ่ายจัดซื้อ </p>","bodyText":"เรียน วิไล ฝ่ายจัดซื้อ"}
+  ✅ [C1.3] (FINDING) FINDING: the thread A reads back holds no hidden company name
+        — ACTUAL outs=2
+  ✅ [C0.2] (control) control: the OWNER (sees the company) still gets the company name in composer and template mails
+        — ACTUAL owner composer + template
+  ✅ [C0.3] (control) control: a system send (sequence / rule sender `sendAsSystem`) keeps the raw company text — the mail goes to the contact
+        — ACTUAL {"subject":"ใบเสนอราคา บริษัทลับ qc-cf18-qbxxtsfq","bodyHtml":"<p>เรียน วิไล ฝ่ายจัดซื้อ บริษัทลับ qc-cf18-qbxxtsfq</p>","bodyText":"เรียน วิไล ฝ่ายจัดซื้อ บริษ…
+  ✅ [C0.4] (control) control: a contact with company TEXT but no linked company keeps the text for A (fix10: unlinked = original text)
+        — ACTUAL {"subject":"Re: qc-cf18-qbxxtsfq","bodyHtml":"<p>ฝ่ายจัดซื้อ ร้านเล็ก qc-cf18-qbxxtsfq</p>","bodyText":"ฝ่ายจัดซื้อ ร้านเล็ก qc-cf18-qbxxtsfq"}
+
+── K CRM-scoped key: manifest vs executor ──
+  ✅ [K1.1] (FINDING) FINDING: the manifest no longer advertises CRM read tools to a read-only CRM key (skills list + skills/crm)
+        — ACTUAL skills=[] skill/crm=404 tools=[]
+  ✅ [K1.2] (FINDING) FINDING: calling a CRM read tool with the key answers 403 naming the working path (/api/v1/crm) — no 'open the app and ask again'
+        — ACTUAL status=403 body={"error":"เครื่องมืออ่านข้อมูล CRM ของผู้ช่วยใช้ได้เฉพาะคนในร้านที่เปิดผู้ช่วยในแอป (ผู้ช่วยอ่านด้วยสิทธิ์ของคนที่ถาม) — คีย์ API อ่านข้อมูล CRM ได้ทาง REST API ที่ /api/v1/crm ด้วยคีย์ใบเดียวกันนี้"}
+  ✅ [K0.1] (control) control: a key with a CRM write scope still sees the CRM write tool (crm_create_lead)
+        — ACTUAL tools=["crm_create_lead"]
+  ✅ [K1.3] (FINDING) FINDING: …and no CRM read tool next to it
+        — ACTUAL tools=["crm_create_lead"]
+  ✅ [K0.2] (control) control: people keep the CRM tools — staff B is offered crm_search/360/create_lead; OWNER's crm_search returns data
+        — ACTUAL offered=["crm_search","crm_contact_360","crm_create_lead"] owner={"contacts":[{"id":"cmuqs24fe002p6mkz8bpwutyi","name":"กมล qc-cf18-qbxxtsfq","leadStatus":"NEW","lif…
+  ✅ [CLEAN] (control) throwaway tenant, users, system rows and rate buckets removed (0 rows left)
+        — ACTUAL - buckets=0
+
+controls 20/20 green · findings GREEN (fixed) 17/17
+JSON_SUMMARY {"controls":[["E0.1",true],["E0.2",true],["E1.0",true],["E1.1",true],["E1.5",true],["E1.9",true],["E1.11",true],["P0.1",true],["P0.2",true],["P0.3",true],["P0.4",true],["P0.5",true],["P0.6",true],["C0.1",true],["C0.2",true],["C0.3",true],["C0.4",true],["K0.1",true],["K0.2",true],["CLEAN",true]],"findings":[["E1.2","GREEN"],["E1.3","GREEN"],["E1.4","GREEN"],["E1.6","GREEN"],["E1.7","GREEN"],["E1.8","GREEN"],["E1.10","GREEN"],["P1.1","GREEN"],["P1.2","GREEN"],["P1.3","GREEN"],["P1.4","GREEN"],["C1.1","GREEN"],["C1.2","GREEN"],["C1.3","GREEN"],["K1.1","GREEN"],["K1.2","GREEN"],["K1.3","GREEN"]]}

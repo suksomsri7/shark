@@ -11,7 +11,7 @@ import { quotaMessage } from "./usage";
 import { ensureWallet } from "./credit";
 import { formatUsd } from "./pricing";
 // CRM C3.4 ▸ ประตูข้อเสนอของ CRM (ยกเลิกได้เฉพาะคนที่ยืนยันได้) ผ่าน facade ◂
-import { aiBridges } from "@/lib/modules/crm";
+import { aiBridges, wakeOutbox } from "@/lib/modules/crm";
 
 // convention action = "ai.<entity>.<verb>" — OWNER/MANAGER ผ่าน · STAFF ต้องมี ai.chat.send หรือ ai.*
 function assertAiCan(auth: Awaited<ReturnType<typeof requireTenant>>, action: string) {
@@ -157,7 +157,9 @@ export async function confirmProposalAction(
   const ctx = { tenantId: auth.active.tenantId };
   try {
     // K3.5 — id ของคนกด: ประวัติ/บันทึกของโมดูลปลายทางต้องชี้ไปที่คนจริง (บางคำสั่งต้องมีตัวตนถึงทำได้)
-    return await executeProposal(membershipOf(auth), ctx, proposalId, { ...opts, userId: auth.user.id });
+    const res = await executeProposal(membershipOf(auth), ctx, proposalId, { ...opts, userId: auth.user.id });
+    if (res.ok) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: งานของข้อเสนอ (CRM ฯลฯ) commit แล้ว ⇒ ปลุกคิว outbox ◂
+    return res;
   } catch {
     return { ok: false, note: "ทำรายการไม่สำเร็จชั่วคราว ลองใหม่อีกครั้ง" };
   }
@@ -192,6 +194,7 @@ export async function confirmPlanAction(
   const ctx = { tenantId: auth.active.tenantId };
   try {
     const res = await executePlan(membershipOf(auth), ctx, planId, { ...opts, userId: auth.user.id });
+    if (res.doneCount && res.doneCount > 0) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
     if (res.needsSecondConfirm) {
       return { ok: false, needsSecondConfirm: true, note: "แผนนี้มีรายการลบ/ยกเลิกถาวร ต้องยืนยันอีกครั้งก่อนทำจริง" };
     }

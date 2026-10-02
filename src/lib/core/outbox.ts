@@ -107,9 +107,10 @@ export async function emitOutboxMany(
     systemId?: string | null;
     unitId?: string | null;
   }[],
-): Promise<void> {
-  if (inputs.length === 0) return;
-  await tx.outboxEvent.createMany({
+): Promise<number> {
+  // CRM C5.5-fix13 ▸ คืนจำนวนแถวที่เพิ่มจริง (ซ้ำ = 0 · skipDuplicates) — ผู้เรียกที่ไม่ใช้ค่านี้ไม่ต้องแก้ ◂
+  if (inputs.length === 0) return 0;
+  const r = await tx.outboxEvent.createMany({
     data: inputs.map((input) => ({
       tenantId: input.tenantId,
       type: input.type,
@@ -120,6 +121,7 @@ export async function emitOutboxMany(
     })),
     skipDuplicates: true,
   });
+  return r.count;
 }
 
 // serialize drain ทั้งโปรเซส — drain 2 อันในโปรเซสเดียวห้ามซ้อน (best-effort ของ POS + cron + oracle)

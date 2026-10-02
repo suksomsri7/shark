@@ -181,6 +181,14 @@ export type ToolVerdict = { ok: true } | { ok: false; reason: string };
 
 const OK: ToolVerdict = { ok: true };
 const DENY_KEY: ToolVerdict = { ok: false, reason: "คีย์ API นี้ใช้เครื่องมือนี้ไม่ได้ — ใช้เครื่องมือของระบบที่คีย์ได้รับสิทธิ์ หรือคีย์ API กลางของร้าน" };
+// CRM C5.5-fix13 ▸ hunt-4 H4-4 (G1 r2 F4 "รายการเครื่องมือไม่ยื่นเครื่องมือที่ตัวรันปฏิเสธ"): เครื่องมือ **อ่าน** ของ CRM อ่านด้วยสิทธิ์ของ "คนที่ถาม"
+//   เท่านั้น (มติ C1.10 ข้อ 8 · `crm/api/tools.ts` NO_HUMAN) — คีย์ API ไม่ใช่คน ⇒ ตัวรันปฏิเสธเสมอ ⇒ ด่านนี้ปฏิเสธก่อน: รายการ skill/tool ไม่ยื่นให้คีย์ ·
+//   route ตอบ 403 พร้อมทางที่ใช้ได้จริง (REST ของ CRM) · เครื่องมือ **เขียน** ของ CRM (ข้อเสนอให้เจ้าของกดยืนยัน) คงเดิม ◂
+const DENY_KEY_CRM_READ: ToolVerdict = {
+  ok: false,
+  reason: "เครื่องมืออ่านข้อมูล CRM ของผู้ช่วยใช้ได้เฉพาะคนในร้านที่เปิดผู้ช่วยในแอป (ผู้ช่วยอ่านด้วยสิทธิ์ของคนที่ถาม) — คีย์ API อ่านข้อมูล CRM ได้ทาง REST API ที่ /api/v1/crm ด้วยคีย์ใบเดียวกันนี้",
+};
+const isCrmReadTool = (name: string): boolean => crmApi.crmToolInfos().some((t) => t.name === name && !t.write);
 const denyMember = (q: AccessQuery): ToolVerdict => ({
   ok: false,
   reason: `คุณไม่มีสิทธิ์เข้าถึงข้อมูลส่วนนี้ (ต้องมีสิทธิ์ ${q.action}) — ขอให้เจ้าของร้านเปิดสิทธิ์ให้ก่อน`,
@@ -213,6 +221,7 @@ export function toolVerdict(actor: AiActor, name: string, opts: { crmLegacyLead?
 
   if (actor.kind === "apiKey") {
     if (mod) {
+      if (mod.module === "crm" && isCrmReadTool(name)) return DENY_KEY_CRM_READ; // CRM C5.5-fix13 ▸ H4-4 ◂
       const extra = EXTRA_MODULE_TOOL_NEEDS[name] ?? [];
       if (extra.length > 0 && !isGeneralKeyActor(actor)) return DENY_KEY;
       return toolAllowedForApiKey(name, actor.scopes, opts) ? OK : DENY_KEY;

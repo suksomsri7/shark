@@ -1307,6 +1307,19 @@ function noteVerdict(env: SeqEnv, r: SequenceSendVerdict): void {
   env.sendWaitKind = env.sendWaitUntil ? (r.waitKind === "in_flight" ? "in_flight" : "cap") : undefined;
 }
 
+/** CRM C5.5-fix13 r2 ▸ owner Q4: ข้อความบริษัทของผู้ติดต่อตามที่ "ผู้รับงาน" เห็น — ไม่ใช่สมาชิกที่ยังใช้งานของร้าน / มองไม่เห็นบริษัท = "" ◂ */
+async function assigneeCompanyText(s: SeqSubject, userId: string | null | undefined): Promise<string> {
+  const companyId = s.contact.companyId;
+  if (!companyId) return s.contact.company?.trim() ?? "";
+  if (!userId) return "";
+  const m = await prisma.membership.findFirst({ where: { tenantId: s.tenantId, userId, acceptedAt: { not: null } }, select: { role: true, unitAccess: true, permissions: true } });
+  if (!m) return "";
+  const { toMemberActor } = await import("@/lib/modules/member");
+  const actor = toMemberActor(userId, m as Parameters<typeof toMemberActor>[1]);
+  const states = await visibleCompanyStates({ tenantId: s.tenantId, systemId: s.systemId }, actor, [companyId]);
+  return states.has(companyId) ? (s.contact.company?.trim() ?? "") : "";
+}
+
 // AUDIT-CLASS X8: adapter "sequence" ของตัวรันกลาง — ที่อยู่/ความยินยอมอ่านจากฐาน **ตอนขั้นทำงาน** · ตัวส่ง = deps ที่ฉีดมา (ถ้ามี) เท่านั้น
 const SEQ_ADAPTER: SubjectAdapter<SeqSubject, SeqEnv> = {
   scope: "CRM_SEQUENCE",
@@ -1324,6 +1337,9 @@ const SEQ_ADAPTER: SubjectAdapter<SeqSubject, SeqEnv> = {
     const deal = s.dealId ? await prisma.crmDeal.findFirst({ where: { id: s.dealId, tenantId: s.tenantId, systemId: s.systemId }, select: { id: true, ownerUserId: true } }) : null;
     const owner = deal?.ownerUserId ?? s.contact.ownerUserId ?? (await tenantOwnerId(s.tenantId));
     const vars = await SEQ_ADAPTER.messageVars(env, `${str(params.title)} ${str(params.body)}`);
+    // CRM C5.5-fix13 r2 ▸ owner Q4 (มติผู้คุมงาน): งานนี้เป็นข้อความถึง **ผู้รับงาน** (พนักงาน) ไม่ใช่จดหมายถึงลูกค้า ⇒ `{{contact.companyName}}`
+    //   ตามการมองเห็นบริษัทของผู้รับงาน (กติกา fix10: ผูกบริษัทที่เขามองไม่เห็น = "" เหมือนไม่มีบริษัท) · จดหมายของระบบถึงลูกค้ายังใช้ข้อความเดิม ◂
+    if (s.contact.companyId && "contact.companyName" in vars) vars["contact.companyName"] = await assigneeCompanyText(s, owner);
     const r = await activities.createSequenceTaskOnce(
       { tenantId: s.tenantId, systemId: s.systemId },
       {

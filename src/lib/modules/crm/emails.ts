@@ -1265,12 +1265,14 @@ async function isTransactionalReply(
 }
 
 /** ค่าตัวแปร `{{contact.*}}` ของผู้ติดต่อ — ชุดเดียวกันทั้งแม่แบบ (templateId) และข้อความที่ส่งจากช่องเขียนจดหมาย (C5.4-E ▸ E2) */
-function contactMergeVars(contact: CrmContact): Record<string, string> {
+/**  CRM C5.5-fix13 ▸ hunt-4 H4-3: `companyText` = ข้อความบริษัทที่ **ผู้ส่ง** เห็น (กติกา fix10 `companyTextIf` — ผูกบริษัทที่ผู้ส่งมองไม่เห็น = null ⇒ ""
+ *   เหมือนผู้ติดต่อที่ไม่มีบริษัท) · ไม่ส่งมา (ทางระบบที่ไม่มีคน) = ข้อความเดิมของแถว ◂ */
+function contactMergeVars(contact: CrmContact, companyText?: string | null): Record<string, string> {
   return {
     "contact.firstName": contact.firstName?.trim() || contact.name?.trim() || "ลูกค้า",
     "contact.lastName": contact.lastName?.trim() ?? "",
     "contact.name": contact.name?.trim() || "ลูกค้า",
-    "contact.companyName": contact.company?.trim() ?? "",
+    "contact.companyName": (companyText === undefined ? contact.company : companyText)?.trim() ?? "",
   };
 }
 const HAS_MUSTACHE = /\{\{\s*[\w.]+\s*\}\}/;
@@ -1280,11 +1282,12 @@ async function renderTemplate(
   templateId: string,
   contact: CrmContact,
   vars: Record<string, string> | undefined,
+  companyText?: string | null,
 ): Promise<{ subject: string; bodyHtml: string }> {
   const tpl = await prisma.crmEmailTemplate.findFirst({ where: { id: templateId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   if (!tpl) throw fail("NOT_FOUND", TEMPLATE_NOT_FOUND);
   // AUDIT-CLASS X6: ค่าที่หยอดเข้าไปถูก escape ครั้งเดียว ⇒ `<img onerror=…>` ในค่าตัวแปรกลายเป็นข้อความ
-  const merged: Record<string, string> = contactMergeVars(contact);
+  const merged: Record<string, string> = contactMergeVars(contact, companyText);
   for (const [k, v] of Object.entries(vars ?? {})) merged[k] = String(v ?? "");
   const escaped: Record<string, string> = {};
   for (const [k, v] of Object.entries(merged)) escaped[k] = escapeHtmlText(v);
@@ -1327,11 +1330,15 @@ async function sendCore(ctx: EmailsCtx, actor: MemberActor | null, input: SendCo
 
   // ── ตรวจก่อนแตะอะไรทั้งนั้น (AUDIT-CLASS X6) ──
   const templateId = strOrNull(input?.templateId);
-  const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars) : null;
+  // CRM C5.5-fix13 ▸ H4-3: คนส่ง (actor) ⇒ `{{contact.companyName}}` ตามที่เขาเห็น (fix10) · ทางระบบ (ไม่มี actor) = ข้อความเดิม ·
+  //   อ่านการมองเห็นเฉพาะเมื่อจะแทนตัวแปรจริงและผู้ติดต่อผูกบริษัท (ไม่ผูก = ข้อความเดิมตามกติกาอยู่แล้ว) ◂
+  const wantsVars = !!templateId || (!str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars);
+  const senderCompanyText = actor && contact.companyId && wantsVars ? ((await contacts.companyTextsForViewer(ctx, actor, [contact])).get(contact.id) ?? null) : undefined;
+  const rendered = templateId ? await renderTemplate(ctx, templateId, contact, input?.vars, senderCompanyText) : null;
   // CRM C5.4-E ▸ E2: ช่องเขียนจดหมายส่ง "ข้อความ" ของแม่แบบที่เลือก (ไม่ส่ง templateId) ⇒ เดิม `{{contact.firstName}}` ออกไปถึงลูกค้าตรงตัว ·
   //   ตอนนี้ข้อความล้วนที่ไม่มีค่าตัวแปรมาด้วย (`bodyVars`) ใช้ค่าชุดเดียวกับแม่แบบ — เนื้อความแทน **หลัง** ทำลิงก์ (escape · ไม่มีทางเป็นลิงก์
   //   กติกาเดียวกับลำดับการติดตาม) · หัวข้อแทนเป็นข้อความ · ไม่มี `{{…}}` = ผลเดิมทุกไบต์ ◂
-  const composerVars = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars ? contactMergeVars(contact) : null;
+  const composerVars = !rendered && !str(input?.bodyHtml) && typeof input?.bodyText === "string" && !input?.bodyVars ? contactMergeVars(contact, senderCompanyText) : null;
   const subjectIn = composerVars && typeof input?.subject === "string" && HAS_MUSTACHE.test(input.subject) ? renderEmailVars(input.subject, composerVars) : input?.subject;
   const subject = cleanSubject(rendered ? rendered.subject : subjectIn);
   // CRM C4.4-fix2 ▸ J1: ข้อความล้วน (ไม่มีแม่แบบ/ไม่มี HTML) → HTML ด้วยตัวแปลงกลางตัวเดียว — ผลเป็น "ข้อความที่ escape แล้ว + ลิงก์ http(s)
@@ -3109,18 +3116,19 @@ async function messageOfToken(purpose: "o" | "u" | "c", token: string): Promise<
  * นับ "เปิดอ่าน" — route ตอบ gif เดิมทุกไบต์ไม่ว่าผลจะเป็นอย่างไร
  * 🔴 นับเฉพาะเมื่อ: token รู้จัก · UA ไม่ใช่เครื่อง · ผ่านไป ≥ 2 วินาทีหลังส่ง · ผู้ติดต่อไม่ได้ปิดการติดตาม
  */
-export async function trackOpen(token: string, meta: { ip: string; ua?: string | null }, opts: { count?: boolean } = {}): Promise<{ url: string | null }> {
+/** CRM C5.5-fix13 r2 ▸ RV13-3: `events` = จำนวน event ขาออกที่คำสั่งนี้เขียนจริง (route ปลุกคิวเฉพาะเมื่อ > 0 · token ขยะ/บอท/ไม่นับ = 0) ◂ */
+export async function trackOpen(token: string, meta: { ip: string; ua?: string | null }, opts: { count?: boolean } = {}): Promise<{ url: string | null; events: number }> {
   try {
-    if (opts.count === false) return { url: null };
+    if (opts.count === false) return { url: null, events: 0 };
     const t = str(token);
-    if (!emailIdOfToken(t)) return { url: null };
-    if (isTrackingBot(meta?.ua)) return { url: null };
+    if (!emailIdOfToken(t)) return { url: null, events: 0 };
+    if (isTrackingBot(meta?.ua)) return { url: null, events: 0 };
     // CRM C5.1-fix ▸ F5 (พิมพ์เขียว §12 "เขียนอย่างเดียว"): เดิม 7 รอบไปกลับ (หาอีเมล · หาผู้ติดต่อ · BEGIN/UPDATE/INSERT/ตรวจ outbox/INSERT/COMMIT)
     //   → **คำสั่งเดียว**: เงื่อนไขเดิมทุกข้อ (token รู้จัก · ขาออก · ส่งมาแล้ว ≥ 2 วินาที · ผู้ติดต่อไม่ได้ปิดการติดตาม) อยู่ใน WHERE ·
     //   ตัวนับ + แถวเหตุการณ์ + event ขาออก (idempotencyKey เดิม · ON CONFLICT = กันซ้ำแบบ emitOutbox) อยู่ในคำสั่งเดียว = atomic (X3/X4) ◂
     const cutoff = new Date(Date.now() - OPEN_MIN_AGE_MS);
     const ua = str(meta?.ua).slice(0, 200) || null;
-    await prisma.$queryRaw`
+    const counted = await prisma.$queryRaw<{ n: number; o: number }[]>`
       WITH m AS (
         SELECT e."id", e."tenantId", e."systemId", e."contactId", e."dealId", e."companyId", e."threadKey", e."sequenceStepId"
           FROM "CrmEmailMessage" e
@@ -3142,9 +3150,9 @@ export async function trackOpen(token: string, meta: { ip: string; ua?: string |
         RETURNING "id", "emailId"
       )
       ${emailEventOutboxSql(EVT.opened)}`;
-    return { url: null };
+    return { url: null, events: Number(counted[0]?.o ?? 0) };
   } catch {
-    return { url: null };
+    return { url: null, events: 0 };
   }
 }
 
@@ -3183,14 +3191,14 @@ export async function trackClick(
   token: string,
   meta: { ip: string; ua?: string | null },
   opts: { count?: boolean } = {},
-): Promise<{ url: string | null; ticket?: ClickTicketPre }> {
+): Promise<{ url: string | null; ticket?: ClickTicketPre; events?: number }> {
   try {
     const t = str(token);
     const id = emailIdOfToken(t);
     if (!id) return { url: null };
     const doCount = opts.count !== false && !isTrackingBot(meta?.ua);
     const ua = str(meta?.ua).slice(0, 200) || null;
-    const rows = await prisma.$queryRaw<{ url: string | null; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; optOut: boolean | null; settings: unknown }[]>`
+    const rows = await prisma.$queryRaw<{ url: string | null; tenantId: string; systemId: string; contactId: string | null; contactTenantId: string | null; optOut: boolean | null; settings: unknown; o: number }[]>`
       WITH m AS (
         SELECT e."id", e."tenantId", e."systemId", e."contactId", e."dealId", e."companyId", e."threadKey", e."sequenceStepId",
                (SELECT l.v->>'url'
@@ -3231,6 +3239,7 @@ export async function trackClick(
     return {
       url,
       ticket: { emailId: id, tenantId: r.tenantId, systemId: r.systemId, contactId: r.contactId, contactTenantId: r.contactTenantId, trackingOptOut: r.optOut === true, settings: r.settings },
+      events: Number(r.o ?? 0), // CRM C5.5-fix13 r2 ▸ RV13-3: event ขาออกที่เขียนจริง (route ปลุกคิวเฉพาะเมื่อ > 0) ◂
     };
   } catch {
     return { url: null };
@@ -3247,7 +3256,8 @@ export async function trackClick(
  *   `rateLimited: true` = ผู้เรียกเต็มเพดานแล้ว ⇒ token ที่ไม่รู้จักจบที่การอ่าน 1 แถว (ไม่เขียนอะไร) · token จริงพลิกธงตามปกติ
  *   และเขียนแถวเหตุการณ์เฉพาะรอบที่ธงพลิกจริง (การยิงซ้ำตอนเต็มเพดาน = ไม่มีการเขียนเพิ่ม) · audit เขียนเฉพาะรอบที่พลิกจริงเสมอ ◂
  */
-export async function unsubscribe(token: string, meta?: { ip?: string; ua?: string | null; rateLimited?: boolean }): Promise<{ ok: true }> {
+/** CRM C5.5-fix13 r2 ▸ RV13-3: `flipped` = ธงพลิกจริงในคำขอนี้ (มี event ขาออก) — route ปลุกคิวเฉพาะเมื่อ true · คำตอบของ route ไม่เปลี่ยน (X7) ◂ */
+export async function unsubscribe(token: string, meta?: { ip?: string; ua?: string | null; rateLimited?: boolean }): Promise<{ ok: true; flipped?: boolean }> {
   try {
     const row = await messageOfToken("u", str(token));
     if (!row || !row.contactId) return { ok: true };
@@ -3271,7 +3281,7 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
     await prisma.crmEmailEvent
       .create({ data: { tenantId: row.tenantId, emailId: row.id, kind: "UNSUBSCRIBE", providerEventId: `unsub:${row.id}`, userAgent: str(meta?.ua).slice(0, 200) || null } })
       .catch(() => null);
-    if (!flipped) return { ok: true };
+    if (!flipped) return { ok: true, flipped: false };
     await writeAudit({
       tenantId: row.tenantId,
       actorId: null,
@@ -3281,7 +3291,7 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
       targetId: row.contactId,
       after: { emailId: row.id, via: "one-click" },
     });
-    return { ok: true };
+    return { ok: true, flipped: true };
   } catch {
     return { ok: true };
   }
@@ -3292,7 +3302,7 @@ export async function unsubscribe(token: string, meta?: { ip?: string; ua?: stri
  * contacts.ts (มีเงื่อนไข · ครั้งเดียว) + audit เฉพาะรอบที่พลิกจริง · token ไม่รู้จัก = ไม่ทำอะไร แต่ตอบเหมือนกัน (X7 ไม่มีเครื่องทำนาย token)
  * 🔴 ไม่ผ่านถังความถี่ (มติ F8 ใหม่ · C5.3: คำขอเลิกของลูกค้าห้ามถูกทิ้ง) — token ที่ใช้ได้เขียนฐานได้ครั้งเดียว (พลิกแล้วรอบหลังไม่เขียน)
  */
-export async function stopTracking(token: string, meta?: { ip?: string; ua?: string | null }): Promise<{ ok: true }> {
+export async function stopTracking(token: string, meta?: { ip?: string; ua?: string | null }): Promise<{ ok: true; flipped?: boolean }> {
   try {
     const row = await messageOfToken("u", str(token));
     if (!row || !row.contactId) return { ok: true };
@@ -3310,7 +3320,7 @@ export async function stopTracking(token: string, meta?: { ip?: string; ua?: str
         after: { trackingOptOut: true, source: "UNSUBSCRIBE_PAGE", emailId: row.id, ua: str(meta?.ua).slice(0, 120) || null },
       });
     }
-    return { ok: true };
+    return { ok: true, flipped }; // CRM C5.5-fix13 r2 ▸ RV13-3 ◂
   } catch {
     return { ok: true };
   }

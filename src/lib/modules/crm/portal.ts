@@ -41,6 +41,7 @@ import {
   type PortalSessionToken,
 } from "@/lib/modules/member/session-facade";
 import { emitOutboxMany } from "@/lib/core/outbox";
+import { wakeOutbox } from "./outbox-wake"; // CRM C5.5-fix13 ▸ P-it5-2 ◂
 import { privateFileUrl, uploadFile, normalizeUploadType, type UploadDeps } from "@/lib/storage/service";
 import { prisma } from "./db";
 import { crmCan, crmForbiddenMessage } from "./access";
@@ -535,7 +536,7 @@ function invoiceDto(d: DocRow, role: string): PortalInvoiceDto {
 async function markViewed(s: PortalSessionInfo): Promise<void> {
   const day = portalViewDay();
   try {
-    await emitOutboxMany(prisma, [
+    const added = await emitOutboxMany(prisma, [
       {
         tenantId: s.tenantId,
         systemId: s.crmSystemId,
@@ -544,6 +545,9 @@ async function markViewed(s: PortalSessionInfo): Promise<void> {
         payload: { companyId: s.companyId, contactId: s.crmContactId, accessId: s.portalAccessId, day },
       },
     ]);
+    // CRM C5.5-fix13 ▸ P-it5-2: event ใหม่ของวันนี้ (ครั้งแรกต่อ access ต่อวัน) ⇒ ปลุกคิว outbox (กลไกเดียวกับทางเขียนอื่นของ CRM · แถวนี้ commit แล้ว —
+    //   ไม่ใช่ธุรกรรม) · เปิดซ้ำวันเดียวกัน = ไม่มีแถวใหม่ = ไม่ปลุก · ระบายหลังตอบหน้าแล้ว (after) ⇒ หน้าไม่ช้าลง ◂
+    if (added > 0) wakeOutbox();
   } catch {
     // ตัวนับการเปิดดูเป็นของแถม — ห้ามทำให้ลูกค้าเปิดหน้าไม่ได้
   }

@@ -22,6 +22,7 @@ import QRCode from "qrcode";
 import type { MemberActor } from "@/lib/modules/member";
 import { checkRateLimitDb, rateBucketCte } from "@/lib/core/rate-limit-db";
 import { emitOutbox } from "@/lib/core/outbox";
+import { wakeOutbox } from "./outbox-wake"; // CRM C5.5-fix13 ▸ P-it5-2 sweep ◂
 import { writeAudit } from "@/lib/core/audit";
 import { logOps } from "@/lib/core/ops";
 import { prisma } from "./db";
@@ -956,6 +957,7 @@ export async function collect(body: unknown, meta: CollectMeta, deps: CollectDep
       //    (ถ้าเผาก่อนตรวจ ใครก็ยิงตั๋วที่ดักมาไปที่เว็บของร้านอื่นเพื่อ "เผาทิ้ง" ก่อนเจ้าของตัวจริงจะได้ใช้)
       if (!(await consumeIdentifyTicket(ticket.j, deps?.limiter))) return;
       await identify({ tenantId: site.tenantId, systemId: site.systemId }, { visitorId, contactId: ticket.c, by: "EMAIL_CLICK" }, { now });
+      wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event ผูกผู้เข้าชม (identify commit แล้ว) — เฉพาะชนิด identify (ไม่ใช่ทุกการเข้าชม) ◂
       return;
     }
 

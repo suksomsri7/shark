@@ -177,11 +177,12 @@ export async function POST(req: Request): Promise<Response> {
     let crmOk = false;
     let crmHandled = false;
     try {
-      const { emails } = await import("@/lib/modules/crm");
+      const { emails, wakeOutbox } = await import("@/lib/modules/crm");
       const extras = crmExtras(parsed);
       const crmRes = await emails.ingestInbound({ ...payload, to: payload.to, cc: extras.cc, headers: extras.headers });
       crmOk = crmRes.ok;
       crmHandled = crmRes.handled;
+      if (crmRes.handled) wakeOutbox(); // CRM C5.5-fix13 ▸ P-it5-2 sweep: event crm.email.received/replied ของจดหมายเข้า (commit แล้ว) ◂
     } catch {
       crmOk = false;
     }
