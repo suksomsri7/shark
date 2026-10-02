@@ -308,3 +308,91 @@ normalised; AI section viewers given `account.doc.view`.)
 - `qc-acc-v2-contact-merge` (re-seeds QC1) not run — the merge change is covered by G1–G4; `qc-acc-v2-perf` not run.
 - Prod: `getContact360` member block identical on 929c39ce (`:1282/:1326` per review, CRM v2 page behind uiVersion=2); the account AI and merge
   paths likewise — code read only, not verified on prod.
+
+## Round 4 (controller rulings on the round-3 re-check) — base 5fb1cf8a (src = 7c151cc8)
+
+### 1 · RV14-12 (= Q5, MED) CRM `memberCustomerId` on list / brief / CSV — FIXED
+- One helper, member side: `member/service.ts memberIdsVisibleTo(tenantId, viewer, ids)` (re-exported from the member facade). Same rule as
+  `memberLinkScope`: no member read ⇒ ∅ **with no query** · whole-shop viewer / `"system"` ⇒ all ids **with no query** (entitled DTOs unchanged) ·
+  branch-limited viewer or CUSTOMER ⇒ **one** query (`Customer.id IN page ids` AND the member list's branch scope `actorScopeWhere`).
+- CRM side (`crm/contacts.ts`): `memberSeen(ctx, viewer, ids)` + `maskMemberLink(row, seen)` — a member the viewer cannot see ⇒ `memberCustomerId: null`,
+  exactly like "not linked". Applied at every read that hands the value to a user:
+  | door | where | queries added (branch-limited only) |
+  |---|---|---|
+  | list + search (web list "สมาชิก" badge `crm/contacts/page.tsx:150` · REST `contacts.list` / `contacts.search` · AI `crm_search`/list tools) | `listContacts` | 1 per page (parallel with company/owner lookups) |
+  | write results (create · update · tags · lead status · owner · …) — REST / AI / server actions | `viewerDtoOf` | 1 |
+  | brief (REST `contacts.brief` / `by-party` · chat CRM panel `crm-panel-actions.ts`) | `briefFor` | 1 |
+  | CSV export column "รหัสสมาชิกที่ผูก" ("ผูกแล้ว" → blank) | `exportContacts` | 1 per 1,000 linked ids |
+  | 360 (round 3) | `getContact360` via member `briefFor` | unchanged |
+- No list filter / sort / count on "is member" exists in the CRM contact list (checked `listWhereFrom`/`effectiveListInput`/`SORTS`/CSV) — nothing else to align.
+- Writes and internal decisions keep the raw row (convert, CRM merge `DIFF_MEMBER` guard, consent routing, erase, bridges).
+- Statements per list page (probe INFO, real SQL): OWNER 3 → **3** · member-blind STAFF 3 → **3** · branch-limited STAFF 3 → **4**.
+- Remaining CRM carriers of `memberCustomerId` / a member flag — **listed, not changed**:
+  - `convertContact` result: when the contact is already linked it returns the existing `customerId` (write path, needs `crm.contact.convert` + a member target).
+  - CRM merge guard `DIFF_MEMBER` error text ("สองคนนี้เป็นสมาชิกคนละคน…") tells a blind merger both are linked to different members (write guard).
+  - Webhook/outbox payloads: `crm.contact.updated` `changedKeys: ["memberCustomerId"]` (member.created/merged bridges) and `crm.contact.erased` `customerId` (privacy.ts) — integration endpoints configured by owners (CRM family guard).
+  - Automation condition field `memberCustomerId` "เป็นสมาชิก" (`automation-shared.ts:140`) — rules run as system; a rule author can branch on membership.
+  - Bridge ingest results (`upsert…FromBridge` `memberCustomerId`), `objects.memberOfParent`, `crm-bridges/*`, audit rows — system paths, not shown to viewers.
+  - AI `recent_leads` selects no member field; CRM AI tools reuse the REST ops above (covered).
+
+### 2 · RV14-13 (= Q4, LOW) consent provenance — FIXED as ruled
+`consents.current` (360 consent block, the only viewer read): for a linked contact whose member the viewer cannot see (`memberIdsVisibleTo`),
+`granted` and `memberLinked` stay, `source` and `at` are `null`. OWNER / the system actor (emails.ts complaint flow reads `at` with an OWNER system
+actor) are unchanged. **Owner question Q4 (residual):** the `memberLinked:true` boolean still tells a member-blind CRM viewer that the contact is a
+member (it drives the edit lock) — accept, or make the lock viewer-neutral?
+- Reviewer's `Q4-consent` check stays **red** by design: it asserts the whole consent block linked == unlinked; after the ruling the block still
+  differs in `memberLinked` (true vs false) and in `granted` (member's value vs the CRM row's). Not edited.
+
+### 3 · RV14-14 (LOW) `followPartyMerge` status — FIXED
+The move and the "survivor already has a member" test both ignore `MERGED`/`CLOSED` rows (`status NOT IN ('MERGED','CLOSED')`, the real
+`MemberStatus` enum; `SUSPENDED` counts as a live member). Decision for the dropped side: MERGED/CLOSED rows **do not move** — a MERGED row
+points to the member it was merged into (`mergedIntoId`), a CLOSED row is closed/erased; moving them would only put a dead row on the survivor's
+card (`findCustomerByPartyId` does not filter status — RV14-6) and could block a later live link. Probe G5.
+
+### 4 · RV14-15 (INFO) — documented, no change
+- The move writes no audit row and no outbox event (same as `setCustomerPartyId`); CRM/chat bridges keyed on `member.*` events do not react
+  (CRM contacts link by `memberCustomerId`, which does not change).
+- `ChatContact.partyId` stays on the dropped Party. Not re-pointed: the account merge re-points **no** other module's party-linked rows (only
+  `Party.mergedIntoId` + the merge candidate), so chat re-pointing would be new behaviour for the chat module, not the consistent thing; the chat
+  link that matters (`ChatContact.customerId`) is unaffected.
+- No unique constraint on `Customer.partyId`: under READ COMMITTED a concurrent link onto the survivor can leave two live members per system on
+  it (no failure; the card shows the oldest visible).
+
+### RED (5fb1cf8a) → GREEN — probe-cf19 extended
+| id | case | 5fb1cf8a | fix |
+|---|---|---|---|
+| K1 / K2 | CRM list · search · brief · write DTO (setTags) · CSV for STAFF crm-read w/o member key / STAFF of branch B == not linked | ❌ raw id + "ผูกแล้ว" on all 5 | ✅ |
+| K3 / K4 | OWNER · home-branch STAFF still see the link on all 5 doors | ✅ | ✅ |
+| K5 | CRM REST `GET /contacts` + `/contacts/brief`, key `[crm.contact.read]` | ❌ | ✅ |
+| K6 | same, key + `member.customer.read` | ✅ | ✅ |
+| N1 / N2 | consent for refused viewers: `memberLinked` + `granted` kept, `source`/`at` null | ❌ SIGNUP_FORM + at | ✅ |
+| N3 / N4 | OWNER · entitled STAFF consent unchanged | ✅ | ✅ |
+| G5 | survivor holds only a CLOSED member → dropped ACTIVE member moves; dropped MERGED row stays | ❌ | ✅ |
+| E5 | entitled DTOs byte-identical to 5fb1cf8a (adds r4 list/brief/write/csv/consent/REST keys) | ✅ (written) | ✅ |
+| all earlier | rounds 1–3 | ✅ | ✅ |
+Totals: RED **50/56** (6 red: K1 K2 K5 N1 N2 G5) → GREEN **56/56**. Logs `red-probe-cf19-r4.log` / `g-probe-cf19-r4.log`; base `base-dto-r4.json`.
+(Probe bug fixed before the counted RED run: REST list paging is `take`, not `pageSize` — the first RED run had K6 red with a 422.)
+
+### Runs (round 4 code; iso + gate lock, one at a time)
+| check | DB | result |
+|---|---|---|
+| typecheck · fitness no env · fitness QC2 | — / QC2 | exit 0 · 42/42 · 42/42 |
+| docs `--check` crm · account | — | exit 0 (123 · 199 op) |
+| probe-cf19 | QC2 | 50/56 → **56/56** |
+| review/probe-cf19-review (unedited) | QC2 | **41/41** |
+| review/probe-cf19-review-r3 (unedited) | QC2 | **32/35** — `Q5-list-dto` ✅ and `Q5-csv` ✅ (were the intentional reds). Reds: `Q4-consent` (stays red by the ruling: linked `{memberLinked:true, granted:true, source:null, at:null}` vs unlinked `{false, granted:null}` — the kept boolean + `granted` differ; provenance is now null) · `F-moves` and `F-per-system` — **new reds caused by the RV14-14 ruling**: they assert the round-3 behaviour (a MERGED row on the dropped side moves; a CLOSED survivor member blocks the move). Both now behave as ruled (probe G5). Not edited. |
+| qc-crm-c5.3 `--only=L1,L3` | QC2 | 19/19 |
+| probe-cf13 · cf13 review (fix10 list masking) | QC2 | 24/24 · 8/8 |
+| probe-cf16-r3 | QC2 | 8/8 |
+| qc-crm-c1.10 (export) | QC2 | 66/66 |
+| qc-crm-c1.3 · c1.4 · c1.11 (import/merge) | QC3 | 89/89 · 110/110 · 66/66 |
+| qc-member-m1.4 (briefFor contract) | QC3 | 37/37 |
+No account code touched this round ⇒ no QC1 run, no leftover cleanup needed.
+
+### Owner questions after round 4
+- **Q4 (residual)** `memberLinked:true` in the CRM 360 consent block for member-blind viewers (edit lock) — accept or make the lock viewer-neutral.
+- Q1–Q3 unchanged; the CRM carriers listed under §1 (convert result, merge guard text, webhook payloads, automation condition) are owner calls.
+
+### Not verified (round 4)
+- No built app / browser: the CRM list page badge is derived from `listContacts` items (`page.tsx:150`), exercised through the service; REST through the real route handler.
+- Concurrency of `followPartyMerge` reasoned only. Prod not checked (the same CRM list/brief/CSV code is on main 929c39ce per the review's reading; not verified).

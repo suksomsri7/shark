@@ -457,6 +457,26 @@ async function memberLinkScope(viewer: MemberLinkViewer | undefined): Promise<Pr
 }
 
 /**
+ * CRM C5.5-fix14 r4 (รีวิว RV14-12) ▸ id สมาชิก (Customer.id ของทุกระบบสมาชิกในร้าน) ชุดนี้ ตัวไหนที่ผู้ดูเห็นได้ — สำหรับโมดูลอื่นที่ถือ
+ *   "ลิงก์ไปสมาชิก" ไว้ในแถวของตัวเอง (CRM `memberCustomerId`: รายการ · การ์ดย่อ · CSV · ผลของทางเขียน) · กติกาเดียวกับ `memberLinkScope`:
+ *   อ่านโมดูลสมาชิกไม่ได้ ⇒ ชุดว่าง **ไม่ยิง query** · ผู้ดูทุกสาขา/`"system"` ⇒ ทุก id ที่ส่งมา **ไม่ยิง query** (เหมือนเดิมทุกไบต์) ·
+ *   ผู้ดูที่ถูกจำกัดสาขา/ลูกค้าเอง ⇒ query เดียว (ขอบเขตสาขา = `actorScopeWhere`) — ผู้เรียกเรียกครั้งเดียวต่อหน้า
+ */
+export async function memberIdsVisibleTo(
+  tenantId: string,
+  viewer: MemberLinkViewer | undefined,
+  ids: readonly (string | null | undefined)[],
+): Promise<Set<string>> {
+  const uniq = [...new Set(ids.filter((x): x is string => typeof x === "string" && x.length > 0))];
+  if (uniq.length === 0) return new Set();
+  const scope = await memberLinkScope(viewer);
+  if (!scope) return new Set();
+  if (Object.keys(scope).length === 0) return new Set(uniq);
+  const rows = await prisma.customer.findMany({ where: { AND: [{ tenantId, id: { in: uniq } }, scope] }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * WO 3.2 — หน้าผู้ติดต่อบัญชี: ป้าย "สมาชิก" (badge) มาจากแถว Customer ที่ partyId เดียวกับ AccountContact
  * (Party = ตัวตนกลางระดับ tenant จาก WO 3.1) · 1 query ไม่ N+1 (account/contacts-list.ts เรียกครั้งเดียวต่อหน้า)
  * เส้น import account→member ได้รับอนุมัติล่วงหน้าตามใบสั่งงาน WO 3.2 (อ่านอย่างเดียว)
@@ -534,6 +554,9 @@ export async function findCustomerByPartyId(
 /**
  * CRM C5.5-fix14 r3 (รีวิว RV14-3) — โมดูลอื่นรวมตัวตน (Party `fromPartyId` → `toPartyId`, เช่นรวมผู้ติดต่อบัญชี):
  * แถวสมาชิกของ Party ที่ถูกรวมทิ้ง **ย้ายตามไป** Party ที่เหลือ ในธุรกรรมของผู้เรียก (กติกา party.mergeParties: "ผู้เรียกย้ายข้อมูลของโมดูลตัวเอง")
+ *   - r4 (RV14-14): นับ/ย้ายเฉพาะสมาชิกที่ยังใช้อยู่ (ไม่ใช่ MERGED/CLOSED) — แถวที่ถูกรวมไปแล้ว/ปิด(ลบข้อมูล)แล้วอยู่กับ Party เดิม
+ *     (ไม่ใช่ "สมาชิกของคนนี้" อีกต่อไป: MERGED ชี้ไปตัวที่รวมแล้ว · CLOSED = ลบ/ปิดตาม PDPA — ไม่ควรโผล่บนการ์ดของผู้ติดต่อที่เหลือ)
+ *     และไม่นับเป็น "มีสมาชิกอยู่แล้ว" บน Party ปลายทาง (สมาชิกที่ปิดแล้วต้องไม่บังสมาชิกตัวจริงของอีกฝั่ง)
  *   - ต่อระบบสมาชิก: Party ปลายทาง**ยังไม่มี**สมาชิกในระบบนั้น ⇒ ย้าย · **มีอยู่แล้ว** ⇒ ไม่แตะทั้งสองแถว (ไม่รวมสมาชิกให้เงียบ ๆ —
  *     สมาชิกของตัวรองยังอยู่กับ Party เดิม เปิดได้จากหน้าสมาชิก; รวมสมาชิกซ้ำเป็นงานของหน้ารวมสมาชิก)
  *   - งานระบบ (ไม่ขึ้นกับผู้กด — ผู้ที่มองไม่เห็นสมาชิกก็ต้องไม่ทำให้ลิงก์หาย) · SQL คำสั่งเดียว (อะตอมมิก · ไม่ผ่าน tenantDb ของผู้เรียก
@@ -549,7 +572,9 @@ export async function followPartyMerge(
   return tx.$executeRaw`
     UPDATE "Customer" c SET "partyId" = ${toPartyId}, "updatedAt" = now()
      WHERE c."tenantId" = ${tenantId} AND c."partyId" = ${fromPartyId}
-       AND NOT EXISTS (SELECT 1 FROM "Customer" k WHERE k."tenantId" = ${tenantId} AND k."memberSystemId" = c."memberSystemId" AND k."partyId" = ${toPartyId})`;
+       AND c."status" NOT IN ('MERGED', 'CLOSED')
+       AND NOT EXISTS (SELECT 1 FROM "Customer" k WHERE k."tenantId" = ${tenantId} AND k."memberSystemId" = c."memberSystemId" AND k."partyId" = ${toPartyId}
+                         AND k."status" NOT IN ('MERGED', 'CLOSED'))`;
 }
 
 /**

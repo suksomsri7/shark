@@ -42,7 +42,7 @@ const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: proc
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 const WRITE_BASE = process.argv.includes("--write-base");
-const BASE_FILE = "scripts/pending/cf19/base-dto-r3.json"; // round 1 base (f5e6485b) = base-dto-r1.json · round 2 (4aa42ad2) = base-dto-r2.json · round 3 = 80f776a9
+const BASE_FILE = "scripts/pending/cf19/base-dto-r4.json"; // r1 base (f5e6485b) = base-dto-r1.json · r2 (4aa42ad2) = -r2 · r3 (80f776a9) = -r3 · r4 = 5fb1cf8a
 const TAG = `qc-cf19-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
 const res: { id: string; ok: boolean }[] = [];
 const chk = (id: string, ok: boolean, msg: string) => {
@@ -293,9 +293,10 @@ try {
   const CRM = (await import("@/lib/modules/crm" as string)) as Any;
   const S = (await sysSvc.createSystem(T, "CRM", `CRM ${TAG}`)).id as string;
   await P.appSystem.update({ where: { id: S }, data: { settings: { crm: { uiVersion: 2 } } } });
-  await mk("crmNoMember", "STAFF", ["*"], { "crm.contact.read": true });
-  await mk("crmOtherBranch", "STAFF", [UB], { "crm.contact.read": true, "member.customer.read": true });
-  await mk("crmHomeBranch", "STAFF", [UA], { "crm.contact.read": true, "member.customer.read": true });
+  const CRMK = { "crm.contact.read": true, "crm.contact.update": true, "crm.contact.export": true }; // r4: + update (write DTO) + export (CSV)
+  await mk("crmNoMember", "STAFF", ["*"], { ...CRMK });
+  await mk("crmOtherBranch", "STAFF", [UB], { ...CRMK, "member.customer.read": true });
+  await mk("crmHomeBranch", "STAFF", [UA], { ...CRMK, "member.customer.read": true });
   const crmWho = ["owner", "crmNoMember", "crmOtherBranch", "crmHomeBranch"] as const;
   const ccOf: Record<string, string> = {};
   for (const who of crmWho) {
@@ -344,6 +345,77 @@ try {
   const nOwnerCrm = await sqlOf(viewerOf("owner"));
   console.log(`  ℹ️  RV14-4 (known debt, not fixed): with a CRM system in the shop the OWNER's links tab costs ${nOwnerCrm} statements (CRM contact + deal lookups) — Q1–Q3 above are measured before the CRM system exists`);
   console.log(`  ℹ️  consent block (NOT gated — listed, owner question): STAFF without member key linked==unlinked ${L3.crmNoMember!.consent === U3.crmNoMember!.consent} · linked ${cut(L3.crmNoMember!.consent, 160)}`);
+
+
+  // ═══ ROUND 4 (controller rulings on the round-3 re-check) — RED on 5fb1cf8a ═══
+  // ── RV14-12 · CRM list / search / brief / write DTO / CSV carry memberCustomerId; RV14-13 · consent provenance ──
+  console.log("\n── round 4 · RV14-12 CRM list · brief · write DTO · CSV · RV14-13 consent provenance ──");
+  // a member-side consent with provenance (source/at) for the linked member
+  await (await import("@/lib/modules/member" as string) as Any).setConsent({ tenantId: T, systemId: M, actorUserId: V.owner!.uid }, viewerOf("owner"), cust.id, { channel: "EMAIL", granted: true, source: "SIGNUP_FORM" });
+  const crmCtxW = (who: string) => ({ tenantId: T, systemId: S, actorUserId: V[who]!.uid });
+  const memberIdOf = (items: Any[], id: string) => (items ?? []).find((r: Any) => r.id === id || r.contactId === id)?.memberCustomerId ?? null;
+  const snap4 = async () => {
+    const o: Record<string, string> = {};
+    for (const who of crmWho) {
+      const v = viewerOf(who), cc = ccOf[who]!;
+      const list = await CRM.contacts.listContacts(crmCtxW(who), v, { pageSize: 100 });
+      const search = await CRM.contacts.listContacts(crmCtxW(who), v, { q: `ซีอาร์เอ็ม ${who}`, pageSize: 20 });
+      const brief = await CRM.contacts.briefFor(crmCtxW(who), v, { contactId: cc });
+      const wrote = await CRM.contacts.setTags(crmCtxW(who), v, cc, ["qc-cf19"]);
+      const csv = String(await CRM.contacts.exportContacts(crmCtxW(who), v, { confirm: true, reason: "qc-cf19 probe" }));
+      const csvLine = csv.split(/\r?\n/).find((l) => l.includes(`ซีอาร์เอ็ม ${who}`)) ?? "";
+      const d = await CRM.contacts.getContact360(crmCtxW(who), v, cc);
+      const email = (d.consent?.channels ?? []).find((c: Any) => c.channel === "EMAIL");
+      o[`list:${who}`] = loc(memberIdOf(list.items, cc), ccTok);
+      o[`search:${who}`] = loc(memberIdOf(search.items, cc), ccTok);
+      o[`brief:${who}`] = loc(brief?.memberCustomerId ?? null, ccTok);
+      o[`write:${who}`] = loc(wrote?.memberCustomerId ?? null, ccTok);
+      o[`csv:${who}`] = csvLine.includes("ผูกแล้ว") ? "ผูกแล้ว" : "";
+      o[`consent:${who}`] = loc({ memberLinked: d.consent?.memberLinked, email: email ? { granted: email.granted, source: email.source, hasAt: email.at != null } : null }, ccTok);
+    }
+    const rl = await crmRest(kCrm.rawKey, ccOf.owner!); void rl;
+    const restList = async (key: string) => {
+      const req = new Request(`http://x/api/v1/crm/contacts?take=50`, { method: "GET", headers: { authorization: `Bearer ${key}` } });
+      const r = await crmRoute.GET(req, { params: Promise.resolve({ path: ["contacts"] }) });
+      const b: Any = JSON.parse(await r.text());
+      const briefReq = new Request(`http://x/api/v1/crm/contacts/brief?ids=${ccOf.owner}`, { method: "GET", headers: { authorization: `Bearer ${key}` } });
+      const rb = await crmRoute.GET(briefReq, { params: Promise.resolve({ path: ["contacts", "brief"] }) });
+      const bb: Any = JSON.parse(await rb.text());
+      return loc({ status: [r.status, rb.status], list: memberIdOf(b?.data?.items ?? b?.data ?? [], ccOf.owner!), brief: memberIdOf(bb?.data?.items ?? bb?.data ?? [], ccOf.owner!) }, ccTok);
+    };
+    o["rest:crm"] = await restList(kCrm.rawKey);
+    o["rest:crmmem"] = await restList(kCrmMem.rawKey);
+    return o;
+  };
+  const L4 = await snap4();
+  await P.crmContact.updateMany({ where: { tenantId: T, systemId: S }, data: { memberCustomerId: null } });
+  const U4 = await snap4();
+  for (const who of crmWho) await P.crmContact.update({ where: { id: ccOf[who] }, data: { memberCustomerId: cust.id } });
+  const doors = ["list", "search", "brief", "write", "csv"] as const;
+  for (const [id, who] of [["CF19-K1", "crmNoMember"], ["CF19-K2", "crmOtherBranch"]] as const) {
+    const diff = doors.filter((d) => L4[`${d}:${who}`] !== U4[`${d}:${who}`]);
+    chk(id, diff.length === 0 && doors.every((d) => !L4[`${d}:${who}`]!.includes("<CUSTOMER>") && L4[`${d}:${who}`] !== "ผูกแล้ว"),
+      `${who}: list/search/brief/write-DTO/CSV == not linked — differing ${j(diff)} · ${j(Object.fromEntries(doors.map((d) => [d, L4[`${d}:${who}`]])))}`);
+  }
+  for (const [id, who] of [["CF19-K3", "owner"], ["CF19-K4", "crmHomeBranch"]] as const) {
+    chk(id, doors.every((d) => (d === "csv" ? L4[`${d}:${who}`] === "ผูกแล้ว" : L4[`${d}:${who}`] === j("<CUSTOMER>"))),
+      `${who}: the link still shows on every door ${j(Object.fromEntries(doors.map((d) => [d, L4[`${d}:${who}`]])))}`);
+  }
+  chk("CF19-K5", L4["rest:crm"] === U4["rest:crm"] && !L4["rest:crm"]!.includes("<CUSTOMER>"), `CRM REST list + brief · key [crm.contact.read]: linked ${L4["rest:crm"]} · unlinked ${U4["rest:crm"]}`);
+  chk("CF19-K6", JSON.parse(L4["rest:crmmem"]!).list === "<CUSTOMER>" && JSON.parse(L4["rest:crmmem"]!).brief === "<CUSTOMER>", `CRM REST list + brief · key with member.customer.read: ${L4["rest:crmmem"]}`);
+  // RV14-13: refused viewers keep granted + memberLinked, lose source/at; entitled unchanged
+  for (const [id, who] of [["CF19-N1", "crmNoMember"], ["CF19-N2", "crmOtherBranch"]] as const) {
+    const c = JSON.parse(L4[`consent:${who}`]!);
+    chk(id, c.memberLinked === true && c.email?.granted === true && c.email?.source === null && c.email?.hasAt === false, `${who}: consent ${L4[`consent:${who}`]} (granted + memberLinked kept · source/at null)`);
+  }
+  for (const [id, who] of [["CF19-N3", "owner"], ["CF19-N4", "crmHomeBranch"]] as const) {
+    const c = JSON.parse(L4[`consent:${who}`]!);
+    chk(id, c.memberLinked === true && c.email?.granted === true && c.email?.source === "SIGNUP_FORM" && c.email?.hasAt === true, `${who}: consent ${L4[`consent:${who}`]} (unchanged)`);
+  }
+  for (const k of ["list:owner", "brief:owner", "write:owner", "csv:owner", "consent:owner", "list:crmHomeBranch", "consent:crmHomeBranch", "rest:crmmem"]) r3[`r4:${k}`] = L4[k]!;
+  // statement cost of the list page per viewer (RV14-12 budget)
+  const listSql = async (who: string) => { sqlLog = []; counting = true; await CRM.contacts.listContacts(crmCtxW(who), viewerOf(who), { pageSize: 100 }); counting = false; return sqlLog.filter((q) => !/^\s*(BEGIN|COMMIT|ROLLBACK|DEALLOCATE)/i.test(q)).length; };
+  console.log(`  ℹ️  CRM contact list page SQL statements: OWNER ${await listSql("owner")} · member-blind STAFF ${await listSql("crmNoMember")} · branch-limited STAFF ${await listSql("crmOtherBranch")} / ${await listSql("crmHomeBranch")}`);
 
   // ── RV14-2 · account AI tools: the asker's own member viewer (OWNER sees the truth, member-blind = not linked) ──
   console.log("\n── round 3 · RV14-2 account AI assistant ──");
@@ -422,9 +494,17 @@ try {
   chk("CF19-G4", m3?.ok === true && surv3?.partyId === x3.pb && cust3?.partyId === x3.pb && card3?.detail === "#M-CF19Q · ระดับ MEMBER",
     `keep the secondary's Party: survivor Party = secondary's ${surv3?.partyId === x3.pb} · primary's member followed ${cust3?.partyId === x3.pb} · OWNER card ${j(card3?.detail)}`);
   console.log("  ℹ️  no un-merge / restore path exists for account contacts (grep: none in account/ or party/) — nothing to keep consistent");
+  // (4) r4 RV14-14: the survivor's only member is CLOSED → the dropped side's ACTIVE member still moves; a MERGED row on the dropped side stays
+  const x4 = await mkPair("4", "0811110004", "M-CF19C", "M-CF19A");
+  await P.customer.update({ where: { id: x4.ma }, data: { status: "CLOSED" } });
+  const mergedLeft = await P.customer.create({ data: { tenantId: T, memberSystemId: M, name: "คู่4 merged", memberCode: "M-CF19G", homeUnitId: UA, partyId: x4.pb, status: "MERGED" } });
+  const m4 = await mergeAs(x4.ca, x4.cb);
+  const [a4, c4, g4] = await Promise.all([P.customer.findFirst({ where: { id: x4.mb }, select: { partyId: true } }), P.customer.findFirst({ where: { id: x4.ma }, select: { partyId: true } }), P.customer.findFirst({ where: { id: mergedLeft.id }, select: { partyId: true } })]);
+  chk("CF19-G5", m4?.ok === true && a4?.partyId === x4.pa && c4?.partyId === x4.pa && g4?.partyId === x4.pb,
+    `survivor holds only a CLOSED member: dropped ACTIVE member moved ${a4?.partyId === x4.pa} · survivor's CLOSED row untouched ${c4?.partyId === x4.pa} · dropped MERGED row stays on its Party ${g4?.partyId === x4.pb}`);
 
   // ═══ byte-compare against the base tree (RED run on 80f776a9 writes it) ═══
-  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem", "list:owner", "list:staffEntitled", "list:staffHomeBranch", "restlist:accmem", "mergeP:owner", "mergeP:staffEntitled", "mergeP:staffHomeBranch", "crm360:owner", "crm360:crmHomeBranch", "crm360:rest:crmmem"];
+  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem", "list:owner", "list:staffEntitled", "list:staffHomeBranch", "restlist:accmem", "mergeP:owner", "mergeP:staffEntitled", "mergeP:staffHomeBranch", "crm360:owner", "crm360:crmHomeBranch", "crm360:rest:crmmem", "r4:list:owner", "r4:brief:owner", "r4:write:owner", "r4:csv:owner", "r4:consent:owner", "r4:list:crmHomeBranch", "r4:consent:crmHomeBranch", "r4:rest:crmmem"];
   const cur: Record<string, string> = Object.fromEntries(baseKeys.map((k) => [k, linked[k] ?? r3[k]!]));
   if (WRITE_BASE) {
     writeFileSync(BASE_FILE, JSON.stringify(cur, null, 1));

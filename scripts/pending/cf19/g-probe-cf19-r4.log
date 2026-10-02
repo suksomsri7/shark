@@ -1,0 +1,99 @@
+(node:2994811) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── snapshot 1: member linked to the contact's Party ──
+
+── snapshot 2: the same contact with NO member linked (customer.partyId cleared) ──
+
+── denied viewers: byte-identical to 'no member linked' ──
+  ✅ [CF19-D1] web action · STAFF with account.contact.manage, no member key: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D2] 360 page loader · STAFF with no member key: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D3] web action · STAFF with member.customer.read limited to branch B (member's home = A, no visit in B): DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D4] 360 page loader · STAFF limited to branch B: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D5] loader with no viewer (crmViewer omitted): DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D6] loader with viewer null: DTO == no-member DTO true · leaked tokens [] · member={"key":"member","title":"สมาชิก","detail":null,"linked":false,"actionLabel":null,"actionHref":null,"available":true} pos={"key":"pos","title":"POS","detail":null,"linked":false,"actionLabel":null,"actionHref":nu…
+  ✅ [CF19-D7] account REST GET /contacts/{id} · key [account.doc.view, account.contact.manage] (no member scope): DTO == no-member DTO true · leaked tokens [] · links={"member":false,"crm":false,"chat":false}
+
+── round 2 · denied viewers: list + merge byte-identical to 'no member linked' ──
+  ✅ [CF19-L1] contacts list · STAFF without member key: == no-member true · leaked [] · member count=0 memTotal=0 badge(contact)={"member":false,"crm":false}
+  ✅ [CF19-L2] contacts list · STAFF with member.customer.read limited to branch B: == no-member true · leaked [] · member count=0 memTotal=0 badge(contact)={"member":false,"crm":false}
+  ✅ [CF19-L3] contacts list · no viewer: == no-member true · leaked [] · member count=0 memTotal=0 badge(contact)={"member":false,"crm":false}
+  ✅ [CF19-L4] REST GET /contacts (group=all + group=source:member) · account-only key: == no-member true · leaked [] · member count=undefined memTotal=0 badge(contact)={"member":false,"crm":false}
+  ✅ [CF19-M1] merge page candidates · STAFF without member key: == no-member true · leaked [] · labels=[null,null]
+  ✅ [CF19-M2] merge page candidates · STAFF limited to branch B: == no-member true · leaked [] · labels=[null,null]
+  ✅ [CF19-M3] merge candidates · no viewer: == no-member true · leaked [] · labels=[null,null]
+
+── round 2 · entitled viewers: list + merge show the member ──
+  ✅ [CF19-L5] owner: member count 1 · source:member ["<CONTACT>"] · badge {"member":true,"crm":false} · merge label "#M-CF19X"
+  ✅ [CF19-L6] staffEntitled: member count 1 · source:member ["<CONTACT>"] · badge {"member":true,"crm":false} · merge label "#M-CF19X"
+  ✅ [CF19-L7] staffHomeBranch: member count 1 · source:member ["<CONTACT>"] · badge {"member":true,"crm":false} · merge label "#M-CF19X"
+  ✅ [CF19-L8] REST list · key with member.customer.read: source:member total 1 · badge {"member":true,"crm":false}
+
+── entitled viewers: identical card ──
+  ✅ [CF19-E1] owner: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E2] staffEntitled: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E3] staffHomeBranch: web action + page loader show member "#M-CF19X · ระดับ GOLD" · pos "ซื้อหน้าร้าน 3 ครั้ง · ฿1,234.50"
+  ✅ [CF19-E4] REST key holding member.customer.read (service-minted — the account page refuses member scopes since S1) → links.member=true (mechanism: the key's scopes are its member viewer)
+  ✅ [CF19-E6] OWNER and entitled STAFF see the same DTO (no CRM system in this shop ⇒ nothing else viewer-dependent)
+
+── query budget: links tab ≤ 12 ──
+  ✅ [CF19-Q1] OWNER: 12 statements
+  ✅ [CF19-Q2] STAFF without member read: 11 statements
+  ✅ [CF19-Q3] branch-limited entitled STAFF: 12 statements (was 14 at 4aa42ad2: briefFor loaded points)
+
+── round 3 · RV14-1 CRM contact 360 member block ──
+  ✅ [CF19-C1] STAFF with crm.contact.read, no member key: {member, contact} == not-linked true · leaked [] · {"member":null,"contact":{"id":"<CC-crmNoMember>","systemId":"<CRM>","partyId":null,"name":"ซีอาร์เอ็ม crmNoMember <TAG>","firstName":null,"lastName":null,"titleTh":null,"phone":null,"email":null,"lin…
+  ✅ [CF19-C2] STAFF crm + member read limited to branch B (member home A): {member, contact} == not-linked true · leaked [] · {"member":null,"contact":{"id":"<CC-crmOtherBranch>","systemId":"<CRM>","partyId":null,"name":"ซีอาร์เอ็ม crmOtherBranch <TAG>","firstName":null,"lastName":null,"titleTh":null,"phone":null,"email":nul…
+  ✅ [CF19-C5] CRM REST GET /contacts/{id} · key [crm.contact.read]: {member, contact} == not-linked true · leaked [] · {"status":200,"member":null,"memberCustomerId":null}
+  ✅ [CF19-C3] OWNER: member block {"customerId":"<CUSTOMER>","systemId":"<MEM>","memberCode":"M-CF19X","name":"คุณซีเอฟ <TAG>","tierName":null,"phoneMasked":"xxx-xxx-xxxx"} · contact.memberCustomerId "<CUSTOMER>"
+  ✅ [CF19-C4] STAFF crm + member read of the member's home branch: member block {"customerId":"<CUSTOMER>","systemId":"<MEM>","memberCode":"M-CF19X","name":"คุณซีเอฟ <TAG>","tierName":null,"phoneMasked":"xxx-xxx-xxxx"} · contact.memberCustomerId "<CUSTOMER>"
+  ✅ [CF19-C6] CRM REST · key [crm.contact.read, member.customer.read] → {"status":200,"member":{"customerId":"<CUSTOMER>","systemId":"<MEM>","memberCode":"M-CF19X","name":"คุณซีเอฟ <TAG>","tierName":null,"phoneMasked":"xxx-xxx-xxxx"},"memberCustomerId":"<CUSTOMER>"}
+  ℹ️  RV14-4 (known debt, not fixed): with a CRM system in the shop the OWNER's links tab costs 14 statements (CRM contact + deal lookups) — Q1–Q3 above are measured before the CRM system exists
+  ℹ️  consent block (NOT gated — listed, owner question): STAFF without member key linked==unlinked false · linked {"memberLinked":true,"optOut":false,"emailBounced":false,"trackingOptOut":false,"channels":[{"channel":"LINE","label":"ไลน์","granted":null,"source":null,"at":n…
+
+── round 4 · RV14-12 CRM list · brief · write DTO · CSV · RV14-13 consent provenance ──
+  ✅ [CF19-K1] crmNoMember: list/search/brief/write-DTO/CSV == not linked — differing [] · {"list":"null","search":"null","brief":"null","write":"null","csv":""}
+  ✅ [CF19-K2] crmOtherBranch: list/search/brief/write-DTO/CSV == not linked — differing [] · {"list":"null","search":"null","brief":"null","write":"null","csv":""}
+  ✅ [CF19-K3] owner: the link still shows on every door {"list":"\"<CUSTOMER>\"","search":"\"<CUSTOMER>\"","brief":"\"<CUSTOMER>\"","write":"\"<CUSTOMER>\"","csv":"ผูกแล้ว"}
+  ✅ [CF19-K4] crmHomeBranch: the link still shows on every door {"list":"\"<CUSTOMER>\"","search":"\"<CUSTOMER>\"","brief":"\"<CUSTOMER>\"","write":"\"<CUSTOMER>\"","csv":"ผูกแล้ว"}
+  ✅ [CF19-K5] CRM REST list + brief · key [crm.contact.read]: linked {"status":[200,200],"list":null,"brief":null} · unlinked {"status":[200,200],"list":null,"brief":null}
+  ✅ [CF19-K6] CRM REST list + brief · key with member.customer.read: {"status":[200,200],"list":"<CUSTOMER>","brief":"<CUSTOMER>"}
+  ✅ [CF19-N1] crmNoMember: consent {"memberLinked":true,"email":{"granted":true,"source":null,"hasAt":false}} (granted + memberLinked kept · source/at null)
+  ✅ [CF19-N2] crmOtherBranch: consent {"memberLinked":true,"email":{"granted":true,"source":null,"hasAt":false}} (granted + memberLinked kept · source/at null)
+  ✅ [CF19-N3] owner: consent {"memberLinked":true,"email":{"granted":true,"source":"SIGNUP_FORM","hasAt":true}} (unchanged)
+  ✅ [CF19-N4] crmHomeBranch: consent {"memberLinked":true,"email":{"granted":true,"source":"SIGNUP_FORM","hasAt":true}} (unchanged)
+  ℹ️  CRM contact list page SQL statements: OWNER 3 · member-blind STAFF 3 · branch-limited STAFF 4 / 4
+
+── round 3 · RV14-2 account AI assistant ──
+  ✅ [CF19-A1] owner through AI: get linked≠unlinked true · source:member list has the contact (linked true, unlinked false) · {"header":{"id":"<CONTACT>","รหัส":"C00001","ชื่อ":"คุณซีเอฟ <TAG>","ชนิด":"CUSTOMER","legalType":"COMPANY","เก็บเข้ากรุ…
+  ✅ [CF19-A2] aiEntitled through AI: get linked≠unlinked true · source:member list has the contact (linked true, unlinked false) · {"header":{"id":"<CONTACT>","รหัส":"C00001","ชื่อ":"คุณซีเอฟ <TAG>","ชนิด":"CUSTOMER","legalType":"COMPANY","เก็บเข้ากรุ…
+  ✅ [CF19-A3] aiNoMember through AI: linked == unlinked (get true · list true) · {"header":{"id":"<CONTACT>","รหัส":"C00001","ชื่อ":"คุณซีเอฟ <TAG>","ชนิด":"CUSTOMER","legalType":"COMPANY","เก็บเข้ากรุ…
+  ✅ [CF19-A4] aiOtherBranch through AI: linked == unlinked (get true · list true) · {"header":{"id":"<CONTACT>","รหัส":"C00001","ชื่อ":"คุณซีเอฟ <TAG>","ชนิด":"CUSTOMER","legalType":"COMPANY","เก็บเข้ากรุ…
+  ✅ [CF19-A5] key through AI: linked == unlinked (get true · list true) · {"header":{"id":"<CONTACT>","รหัส":"C00001","ชื่อ":"คุณซีเอฟ <TAG>","ชนิด":"CUSTOMER","legalType":"COMPANY","เก็บเข้ากรุ…
+
+── round 3 · RV14-3 merge keeps the member reachable ──
+  ✅ [CF19-G1] blind STAFF (labels on the merge page [null,null]) merges [no member] ← [member M-CF19M] with default choices → ok true · OWNER card on the survivor "#M-CF19M · ระดับ MEMBER" linked true · member now on the survivor's Party true
+  ✅ [CF19-G2] merge result to the blind user carries no member hint: keys ["moved","ok","partyMerged","primaryId","secondaryId"] · moved {"documents":0,"journalLines":0,"groupsMoved":0,"groupsDeduped":0,"recurringRules":0}
+  ✅ [CF19-G3] both sides members (M-CF19Z ← M-CF19W): survivor's member stays true · secondary's member stays on its own Party true (no member merge) · OWNER card "#M-CF19Z · ระดับ MEMBER"
+  ✅ [CF19-G4] keep the secondary's Party: survivor Party = secondary's true · primary's member followed true · OWNER card "#M-CF19Q · ระดับ MEMBER"
+  ℹ️  no un-merge / restore path exists for account contacts (grep: none in account/ or party/) — nothing to keep consistent
+  ✅ [CF19-G5] survivor holds only a CLOSED member: dropped ACTIVE member moved true · survivor's CLOSED row untouched true · dropped MERGED row stays on its Party true
+  ✅ [CF19-E5] entitled DTOs byte-identical to the base tree (page:owner, page:staffEntitled, page:staffHomeBranch, rest:accmem, list:owner, list:staffEntitled, list:staffHomeBranch, restlist:accmem, mergeP:owner, mergeP:staffEntitled, mergeP:staffHomeBranch, crm360:owner, crm360:crmHomeBranch, crm360:rest:crmmem, r4:list:owner, r4:brief:owner, r4:write:owner, r4:csv:owner, r4:consent:owner, r4:list:crmHomeBranch, r4:consent:crmHomeBranch, r4:rest:crmmem) — differing: []
+
+── branch rule == member module (assertVisible / visibleCustomerIds) ──
+  ✅ [CF19-V1] STAFF of branch B: no activity {"card":false,"set":0,"codes":0,"brief":0} · a crm (non-visit) activity in B {"card":false,"set":0,"codes":0,"brief":0} · a pos visit in B {"card":true,"set":1,"codes":1,"brief":1} — the three by-party lookups agree with visibleCustomerIds (briefFor/assertVisible) each time
+
+── INFO ──
+  ℹ️  links tab SQL statements: OWNER 12 · no member read 11 · branch-limited entitled 12
+  ✅ [CLEAN-tenant] tenant rows left=0
+  ✅ [CLEAN-users] users left=0
+
+🟢 probe cf19: 56/56
+JSON_SUMMARY {"total":56,"passed":56,"findings":[]}
