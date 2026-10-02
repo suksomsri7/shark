@@ -5,6 +5,10 @@
 //   RED shape = STAFF without member read / STAFF limited to another branch / account key without a member scope / no viewer see the card.
 //   GREEN = they get the byte-identical DTO of "no member linked" (customer.partyId unset) — no code, tier, visits, spend, id or flag —
 //   while OWNER and an entitled STAFF get the byte-identical DTO of the base tree (normalised ids, `--write-base` on the RED run).
+// Round 2 (controller rulings): the contacts list (member count · `source:member` filter · per-row badge, web + REST `contacts.list`) and the
+//   merge page's member-code label get the same viewer rule; the links tab must stay ≤ 12 SQL statements for OWNER / no member read /
+//   branch-limited STAFF (Q1–Q3); V1 shows the by-party rule agrees with the member module's own visibility (visibleCustomerIds).
+//   RED for round 2 = run on 4aa42ad2 with --write-base (base-dto-r2.json).
 // QC2 ONLY (ep-cool-shadow) · own throwaway tenant `qc-cf19-*` swept to 0 rows in finally · network blocked.
 // Run: bash scripts/iso.sh env NODE_OPTIONS=--max-old-space-size=3584 bash scripts/qc2.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/pending/cf19/probe-cf19.mts [--write-base]
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -38,7 +42,7 @@ const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: proc
 const { prisma } = await import("@/lib/core/db");
 const P = prisma as Any;
 const WRITE_BASE = process.argv.includes("--write-base");
-const BASE_FILE = "scripts/pending/cf19/base-dto.json";
+const BASE_FILE = "scripts/pending/cf19/base-dto-r2.json"; // round 1 base (f5e6485b) kept as base-dto-r1.json
 const TAG = `qc-cf19-${randomBytes(4).toString("hex").replace(/[0-9]/g, (d) => "qrstuvwxyz"[Number(d)]!)}`;
 const res: { id: string; ok: boolean }[] = [];
 const chk = (id: string, ok: boolean, msg: string) => {
@@ -84,7 +88,9 @@ try {
   ACCS.push(A);
   const M = (await sysSvc.createSystem(T, "MEMBER", `สมาชิก ${TAG}`)).id as string;
   const pty = await P.party.create({ data: { tenantId: T, name: `คุณซีเอฟ ${TAG}`, kind: "PERSON" } });
-  const contact = await P.accountContact.create({ data: { tenantId: T, systemId: A, name: `คุณซีเอฟ ${TAG}`, kind: "CUSTOMER", partyId: pty.id } });
+  const contact = await P.accountContact.create({ data: { tenantId: T, systemId: A, name: `คุณซีเอฟ ${TAG}`, kind: "CUSTOMER", partyId: pty.id, phone: "0812345679", phoneNorm: "0812345679" } });
+  // round 2: a duplicate with the same phone (merge page pair, reason PHONE) — not linked to any member
+  const contact2 = await P.accountContact.create({ data: { tenantId: T, systemId: A, name: `คุณซีเอฟ สาขาสอง ${TAG}`, kind: "CUSTOMER", phone: "081-234-5679", phoneNorm: "0812345679" } });
   const CODE = "M-CF19X";
   const cust = await P.customer.create({ data: { tenantId: T, memberSystemId: M, name: `คุณซีเอฟ ${TAG}`, memberCode: CODE, tier: "GOLD", totalSpentSatang: 123_450, visitCount: 3, homeUnitId: UA, partyId: pty.id, status: "ACTIVE" } });
 
@@ -124,7 +130,7 @@ try {
   const pagePath = `/app/sys/${A}/account/contacts/${contact.id}`;
   const norm = (v: unknown) => {
     let s = j(v);
-    for (const [id, tok] of [[contact.id, "<CONTACT>"], [cust.id, "<CUSTOMER>"], [pty.id, "<PARTY>"], [A, "<ACC>"], [M, "<MEM>"], [T, "<TENANT>"], [UA, "<UA>"], [UB, "<UB>"], [TAG, "<TAG>"]] as const) s = s.split(id).join(tok);
+    for (const [id, tok] of [[contact.id, "<CONTACT>"], [contact2.id, "<CONTACT2>"], [cust.id, "<CUSTOMER>"], [pty.id, "<PARTY>"], [A, "<ACC>"], [M, "<MEM>"], [T, "<TENANT>"], [UA, "<UA>"], [UB, "<UB>"], [TAG, "<TAG>"]] as const) s = s.split(id).join(tok);
     return s;
   };
   // web action (tab links) · the page's loader call (default tab info → links via the same function) · REST
@@ -135,6 +141,26 @@ try {
   };
   const bare = (viewer: Any) => CP.contactProfile({ tenantId: T, systemId: A }, contact.id, { base: `/app/sys/${A}/account`, tab: "links", asOf: ASOF, ...(viewer === "omit" ? {} : { crmViewer: viewer }) });
   const restGet = async (key: string) => (await rest(key, `/contacts/${contact.id}`));
+  // round 2 doors: contacts list (sidebar counts · source:member filter · per-row badge) and the merge page (memberLinkLabel)
+  const CLIST = (await import("@/lib/modules/account/contacts-list" as string)) as Any;
+  const CMERGE = (await import("@/lib/modules/account/contact-merge" as string)) as Any;
+  const ctxA = { tenantId: T, systemId: A };
+  const viewerOf = (who: string) => { const v = V[who]!; return CL.crmViewerOfSession(v.uid, { role: v.role, unitAccess: v.unitAccess, permissions: v.permissions }); };
+  // = contacts-ui.tsx ContactsPage: loadContactsSidebar(ctx, undefined, crmViewer) then listContactsPage(ctx, input, sidebar)
+  const listSummary = async (viewer: Any) => {
+    const sb = await CLIST.loadContactsSidebar(ctxA, undefined, viewer === "omit" ? undefined : viewer);
+    const all = await CLIST.listContactsPage(ctxA, { group: "all", pageSize: 100 }, sb);
+    const mem = await CLIST.listContactsPage(ctxA, { group: "source:member", pageSize: 100 }, sb);
+    return { counts: sb.counts, sourceMember: [...sb.sourceSets.member].sort(), rows: all.rows.map((r: Any) => ({ id: r.id, badges: r.badges })), memTotal: mem.total, memRows: mem.rows.map((r: Any) => r.id) };
+  };
+  // = merge/page.tsx: listMergeCandidates(ctx, crmViewerOfSession(...)) — full DTO for linked-vs-unlinked; projection (no createdAt) for the cross-run base
+  const mergeFull = (viewer: Any) => CMERGE.listMergeCandidates(ctxA, viewer === "omit" ? undefined : viewer);
+  const mergeProj = (rows: Any[]) => rows.map((m: Any) => ({ key: m.key, reason: m.reason, a: { id: m.a.id, name: m.a.name, memberLinkLabel: m.a.memberLinkLabel }, b: { id: m.b.id, name: m.b.name, memberLinkLabel: m.b.memberLinkLabel } }));
+  const restList = async (key: string) => {
+    const all = await rest(key, "/contacts?group=all&pageSize=100");
+    const mem = await rest(key, "/contacts?group=source:member&pageSize=100");
+    return { status: [all.status, mem.status], rows: (all.body?.data ?? []).map((r: Any) => ({ id: r.id, badges: r.badges })), summary: all.body?.summary, memTotal: mem.body?.page?.total, memRows: (mem.body?.data ?? []).map((r: Any) => r.id) };
+  };
   // the action has no asOf (uses now) — KPI/year fields are identical between the two snapshots of one run; the base compare uses pageLoader (fixed asOf)
 
   type Snap = Record<string, string>;
@@ -151,6 +177,16 @@ try {
     // envelope `requestId` differs per call (req_<random>) — compare status + data/error only
     s["rest:acc"] = norm({ status: ra.status, body: { data: ra.body?.data, error: ra.body?.error } });
     s["rest:accmem"] = norm({ status: rm.status, body: { data: rm.body?.data, error: rm.body?.error } });
+    for (const who of Object.keys(V)) {
+      s[`list:${who}`] = norm(await listSummary(viewerOf(who)));
+      const mf = await mergeFull(viewerOf(who));
+      s[`merge:${who}`] = norm(mf);
+      s[`mergeP:${who}`] = norm(mergeProj(mf));
+    }
+    s["list:omit"] = norm(await listSummary("omit"));
+    s["merge:omit"] = norm(await mergeFull("omit"));
+    s["restlist:acc"] = norm(await restList(kAcc.rawKey));
+    s["restlist:accmem"] = norm(await restList(kAccMem.rawKey));
     return s;
   };
 
@@ -186,6 +222,34 @@ try {
       `${label}: DTO == no-member DTO ${L === U} · leaked tokens ${j(leaks(L))} · ${extra}`);
   }
 
+  // ═══ round 2 RED → GREEN: contacts list (count · source:member filter · badge) and merge page label ═══
+  console.log("\n── round 2 · denied viewers: list + merge byte-identical to 'no member linked' ──");
+  const denied2: [string, string, string][] = [
+    ["CF19-L1", "list:staffNoMember", "contacts list · STAFF without member key"],
+    ["CF19-L2", "list:staffOtherBranch", "contacts list · STAFF with member.customer.read limited to branch B"],
+    ["CF19-L3", "list:omit", "contacts list · no viewer"],
+    ["CF19-L4", "restlist:acc", "REST GET /contacts (group=all + group=source:member) · account-only key"],
+    ["CF19-M1", "merge:staffNoMember", "merge page candidates · STAFF without member key"],
+    ["CF19-M2", "merge:staffOtherBranch", "merge page candidates · STAFF limited to branch B"],
+    ["CF19-M3", "merge:omit", "merge candidates · no viewer"],
+  ];
+  for (const [id, k, label] of denied2) {
+    const L = linked[k]!, U = unlinked[k]!;
+    const o = JSON.parse(L);
+    const sig = k.startsWith("merge") ? `labels=${j((o as Any[]).flatMap((m: Any) => [m.a.memberLinkLabel, m.b.memberLinkLabel]))}` : `member count=${j(o.counts?.source?.member)} memTotal=${j(o.memTotal)} badge(contact)=${j((o.rows ?? []).find((r: Any) => r.id === "<CONTACT>")?.badges)}`;
+    chk(id, L === U && leaks(L).length === 0 && !L.includes("\"member\":true") && (k.startsWith("merge") || !L.includes("<PARTY>")), `${label}: == no-member ${L === U} · leaked ${j(leaks(L))} · ${sig}`);
+  }
+  console.log("\n── round 2 · entitled viewers: list + merge show the member ──");
+  for (const [id, who] of [["CF19-L5", "owner"], ["CF19-L6", "staffEntitled"], ["CF19-L7", "staffHomeBranch"]] as const) {
+    const o = JSON.parse(linked[`list:${who}`]!);
+    const mg = JSON.parse(linked[`merge:${who}`]!) as Any[];
+    const lab = mg.flatMap((m: Any) => [m.a, m.b]).find((c: Any) => c.id === "<CONTACT>")?.memberLinkLabel;
+    chk(id, o.counts?.source?.member === 1 && o.memTotal === 1 && j(o.memRows) === j(["<CONTACT>"]) && o.rows.find((r: Any) => r.id === "<CONTACT>")?.badges?.member === true && lab === `#${CODE}`,
+      `${who}: member count ${o.counts?.source?.member} · source:member ${j(o.memRows)} · badge ${j(o.rows.find((r: Any) => r.id === "<CONTACT>")?.badges)} · merge label ${j(lab)}`);
+  }
+  const rl = JSON.parse(linked["restlist:accmem"]!);
+  chk("CF19-L8", rl.memTotal === 1 && rl.rows.find((r: Any) => r.id === "<CONTACT>")?.badges?.member === true, `REST list · key with member.customer.read: source:member total ${rl.memTotal} · badge ${j(rl.rows.find((r: Any) => r.id === "<CONTACT>")?.badges)}`);
+
   // ═══ positive controls: entitled viewers keep the identical card ═══
   console.log("\n── entitled viewers: identical card ──");
   const expMember = `#${CODE} · ระดับ GOLD`;
@@ -203,7 +267,7 @@ try {
     `REST key holding member.customer.read (service-minted — the account page refuses member scopes since S1) → links.member=${j(rm.body?.data?.links?.member)} (mechanism: the key's scopes are its member viewer)`);
 
   // byte-compare against the base tree (RED run writes it)
-  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem"];
+  const baseKeys = ["page:owner", "page:staffEntitled", "page:staffHomeBranch", "rest:accmem", "list:owner", "list:staffEntitled", "list:staffHomeBranch", "restlist:accmem", "mergeP:owner", "mergeP:staffEntitled", "mergeP:staffHomeBranch"];
   const cur: Record<string, string> = Object.fromEntries(baseKeys.map((k) => [k, linked[k]!]));
   if (WRITE_BASE) {
     writeFileSync(BASE_FILE, JSON.stringify(cur, null, 1));
@@ -216,18 +280,38 @@ try {
   } else chk("CF19-E5", false, `no ${BASE_FILE} — run the base tree with --write-base first`);
   chk("CF19-E6", linked["web:owner"] === linked["web:staffEntitled"] && linked["page:owner"] === linked["page:staffEntitled"], "OWNER and entitled STAFF see the same DTO (no CRM system in this shop ⇒ nothing else viewer-dependent)");
 
-  // ═══ INFO ═══
-  console.log("\n── INFO ──");
-  for (const [label, viewer] of [["no viewer", "omit"], ["OWNER", CL.crmViewerOfSession(V.owner!.uid, { role: "OWNER", unitAccess: ["*"], permissions: {} })], ["STAFF no member", CL.crmViewerOfSession(V.staffNoMember!.uid, { role: "STAFF", unitAccess: ["*"], permissions: ACC })], ["STAFF home branch (unit-scoped, entitled)", CL.crmViewerOfSession(V.staffHomeBranch!.uid, { role: "STAFF", unitAccess: V.staffHomeBranch!.unitAccess, permissions: V.staffHomeBranch!.permissions })]] as const) {
+  // ═══ query budget (WO 3.4 ceiling 12) — links tab, real SQL statements ═══
+  console.log("\n── query budget: links tab ≤ 12 ──");
+  const sqlOf = async (viewer: Any) => {
     sqlLog = []; counting = true;
     await bare(viewer);
     counting = false;
-    const n = sqlLog.filter((q) => !/^\s*(BEGIN|COMMIT|ROLLBACK|DEALLOCATE)/i.test(q)).length;
-    console.log(`  ℹ️  links tab SQL statements (${label}): ${n}`);
-  }
-  const list = await rest(kAcc.rawKey, "/contacts?group=all");
-  const row = (list.body?.data ?? []).find((r: Any) => r.id === contact.id);
-  console.log(`  ℹ️  sibling NOT fixed here (listed in the note): REST GET /contacts row badges for the account-only key = ${j(row?.badges)} (listPartyIdsWithCustomer has no viewer)`);
+    return sqlLog.filter((q) => !/^\s*(BEGIN|COMMIT|ROLLBACK|DEALLOCATE)/i.test(q)).length;
+  };
+  const nOwner = await sqlOf(viewerOf("owner"));
+  const nNoRead = await sqlOf(viewerOf("staffNoMember"));
+  const nBranch = await sqlOf(viewerOf("staffHomeBranch"));
+  chk("CF19-Q1", nOwner <= 12, `OWNER: ${nOwner} statements`);
+  chk("CF19-Q2", nNoRead <= 12, `STAFF without member read: ${nNoRead} statements`);
+  chk("CF19-Q3", nBranch <= 12, `branch-limited entitled STAFF: ${nBranch} statements (was 14 at 4aa42ad2: briefFor loaded points)`);
+
+  // ═══ rule equivalence: the branch rule is the member module's own (homeUnit OR a visit-type activity in the branch) ═══
+  console.log("\n── branch rule == member module (assertVisible / visibleCustomerIds) ──");
+  const MS = (await import("@/lib/modules/member/service" as string)) as Any;
+  const vOther = viewerOf("staffOtherBranch");
+  const probeRule = async () => ({ card: !!(await MS.findCustomerByPartyId(T, M, pty.id, vOther)), set: (await MS.listPartyIdsWithCustomer(T, M, [pty.id], vOther)).size, codes: (await MS.findMemberCodesByPartyIds(T, M, [pty.id], vOther)).size, brief: (await MS.visibleCustomerIds(T, M, vOther, [cust.id])).size });
+  const r0 = await probeRule();
+  await P.memberActivity.create({ data: { tenantId: T, customerId: cust.id, unitId: UB, module: "crm", type: "NOTE", summary: "qc-cf19 non-visit activity in branch B" } });
+  const r1 = await probeRule();
+  await P.memberActivity.create({ data: { tenantId: T, customerId: cust.id, unitId: UB, module: "pos", type: "VISIT", summary: "qc-cf19 visit in branch B" } });
+  const r2 = await probeRule();
+  await P.memberActivity.deleteMany({ where: { tenantId: T, customerId: cust.id, summary: { startsWith: "qc-cf19" } } });
+  const same = (r: Any, want: number) => r.card === (want === 1) && r.set === want && r.codes === want && r.brief === want;
+  chk("CF19-V1", same(r0, 0) && same(r1, 0) && same(r2, 1),
+    `STAFF of branch B: no activity ${j(r0)} · a crm (non-visit) activity in B ${j(r1)} · a pos visit in B ${j(r2)} — the three by-party lookups agree with visibleCustomerIds (briefFor/assertVisible) each time`);
+
+  console.log("\n── INFO ──");
+  console.log(`  ℹ️  links tab SQL statements: OWNER ${nOwner} · no member read ${nNoRead} · branch-limited entitled ${nBranch}`);
 } catch (e) {
   chk("CRASH", false, String((e as Error)?.stack ?? e).slice(0, 900));
 } finally {
