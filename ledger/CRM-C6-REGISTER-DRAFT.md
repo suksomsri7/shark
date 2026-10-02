@@ -294,3 +294,9 @@ Finished ~09:04 UTC (within time box). `gh` not authenticated here ⇒ open ques
 - **RV-4:** kanban key page revokes any key of the shop — fixed only in `hotfix/apiv1-scope` (shark-hf 201d371a) → ship with/before session/crm.
 - **P14 (launch gate):** `CRM_INBOUND_AUTHSERV_ID` set AND the inbound provider adds its own Authentication-Results header; otherwise an attacker-supplied header carrying our authserv-id is trusted.
 - Debt: non-account `contains` wildcard sites in CRM/member/kanban (list in `wo-notes/crm-C5.5-fix8.md`); `emails.ts:450/456` shopMailAddressesInTx caps (over-erasure of shop addresses past 50 systems / 2,000 settings); forged inbound mail updates lastActivityAt (`emails.ts:2592`) → postpones lead retention erase.
+
+## fix11 / G2 notes (2026-10-02)
+
+- fix11 L1: TOO_LARGE detection depends on Prisma's English "expired transaction" wording (safe direction on mismatch; also accept P2028 with numeric meta.timeout). L2 (pre-existing): the exhausted-outbox ops alert runs only in the daily cron (20:00 UTC), reports an all-time FAILED count that never clears, and does not name the event → improve before relying on it for PDPA cleanup.
+- inbound mail volume (fix8 RV-7): at the caps one CRM system accepts ≤5,000 mails/h (≈10–30 GB/h of bodies worst case) → daily byte budget per system; count copy-in sends against the outbound quota.
+- G2 deploy effects (owner): every existing AI conversation becomes legacy = OWNER-only (STAFF/MANAGER lose past AI history, no backfill); REST integrations reusing a pre-deploy conversationId get 404; shop-wide AiMemory is still injected into every member's prompt (owner decision D1 / next card).
