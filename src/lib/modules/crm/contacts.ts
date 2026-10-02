@@ -40,7 +40,8 @@ import { andSql, containsSql, cursorSql, enumEqSql, inOrder, orSql, orderBySql, 
 import { normalizeThaiText, thaiSearchVariants } from "./thai-text"; // CRM C5.4-E ▸ L6-m3 ◂
 import { resolveViewFilters, viewOptions } from "./views"; // CRM C3.2 ▸ มุมมองที่บันทึก (ทีมจริง) ◂
 // CRM C1.7 ▸ คีย์สิทธิ์ตัวเดียวของ CRM ◂
-import { crmCan, crmCanLinkCompany, crmForbiddenMessage } from "./access";
+import { crmCan, crmCanLinkCompany, crmForbiddenMessage, isApiActor } from "./access";
+import { checkRateLimitDb } from "@/lib/core/rate-limit-db"; // CRM C5.5-fix12 ▸ RV10-1 ◂
 import { assertCrmLimit } from "./limits"; // CRM C3.9 ▸ เพดานผู้ติดต่อ ◂
 import { CrmLimitError } from "./limits-shared"; // CRM C3.9 ◂
 import { CRM_ERASE_AUDIT_ACTION } from "./privacy-shared"; // CRM C3.9 ▸ ธง "ลบแล้ว" ◂
@@ -62,6 +63,9 @@ import { formatThaiDateFull, formatThaiDateTimeFull, thaiIsoDateTime } from "@/l
 import {
   CONTACT_BULK_MAX,
   CONTACT_PRIMARY_COMPANY_HIDDEN_MSG,
+  CONTACT_DUPLICATE_HIDDEN_MSG, // CRM C5.5-fix12 ◂
+  CONTACT_IDENT_RATE,
+  CONTACT_IDENT_RATE_MSG,
   LEGACY_NOTE_PREFIX,
   CONTACT_EXPORT_MAX_ROWS,
   CONTACT_IMPORT_BATCH,
@@ -124,7 +128,7 @@ import {
   type MergeChoiceField,
 } from "./contacts-shared";
 import { crmScope } from "./request-scope";
-import { crmSystemRow } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
+import { crmSystemRow, visibleIdsForViewer } from "./visibility"; // CRM C5.1-fix ▸ ระบบ CRM ผ่านด่านรวมคำสั่งเดียว (memo ต่อคำขอ) ◂
 
 export {
   CONTACT_BULK_MAX,
@@ -213,7 +217,7 @@ const NOT_FOUND_MSG = "ไม่พบผู้ติดต่อนี้ใน
 const MERGED_MSG = "ผู้ติดต่อนี้ถูกรวมเข้ากับอีกคนแล้ว — เปิดผู้ติดต่อที่เก็บไว้แทน";
 const ARCHIVED_MSG = "ผู้ติดต่อนี้ถูกเก็บถาวรแล้ว จึงแก้ไขไม่ได้ — กู้คืนก่อนถ้าต้องการใช้งานต่อ";
 
-const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[]; field?: string } = {}) => new ContactsError(code, message, extra);
+const fail = (code: ContactsError["code"], message: string, extra: { duplicates?: DuplicateHit[]; field?: string; retryAfterSec?: number } = {}) => new ContactsError(code, message, extra);
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : null);
 const newSeq = () => randomUUID().replace(/-/g, "");
 const lockKey = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
@@ -272,7 +276,11 @@ async function lockContactRows(tx: Tx, ctx: ContactsCtx, ids: string[]): Promise
 //   (เดิมเป็นทางสำรองเมื่อหาชื่อบริษัทไม่ได้ ⇒ บอกชื่อบริษัทที่ซ่อนอยู่) · ผู้ดูที่เห็นบริษัท = ผลเท่าเดิมทุกไบต์ ◂
 type CompanyStates = Map<string, { name: string; live: boolean }>;
 function companyTextFor(row: Pick<CrmContact, "companyId" | "company">, states: CompanyStates): string | null {
-  if (row.companyId && !states.has(row.companyId)) return null;
+  return companyTextIf(row, (id) => states.has(id));
+}
+/** กติกาข้อเดียว: ไม่ผูกบริษัท หรือผูกบริษัทที่ผู้ดูเห็น = ข้อความเดิม · ผูกบริษัทที่มองไม่เห็น = null */
+function companyTextIf(row: Pick<CrmContact, "companyId" | "company">, sees: (companyId: string) => boolean): string | null {
+  if (row.companyId && !sees(row.companyId)) return null;
   return row.company ?? null;
 }
 /** ชื่อบริษัทที่ผู้ดูเห็นของแถวผู้ติดต่อ: ชื่อบริษัทที่ยังใช้งาน → ข้อความบริษัทเดิม (ตามกติกาด้านบน) */
@@ -283,6 +291,55 @@ function companyNameFor(row: Pick<CrmContact, "companyId" | "company">, states: 
 function viewerDto(row: CrmContact, states: CompanyStates): ContactDto {
   return { ...toDto(row), companyText: companyTextFor(row, states) };
 }
+/**
+ * CRM C5.5-fix12 ▸ RV10-2: DTO ที่ "ทางเขียน" ส่งคืนผู้เขียน = กติกาเดียวกับหน้า 360/รายการ (viewerDto) — เดิมคืน toDto ดิบ ⇒ ข้อความบริษัทเดิม
+ *   ของบริษัทที่ผู้เขียนมองไม่เห็นหลุดกลับมาในผลของ updateContact/setTags/… (REST · AI tool · server action ใช้ผลนี้) · อ่านการมองเห็น 1 ครั้ง ◂
+ */
+async function viewerDtoOf(ctx: ContactsCtx, viewer: MemberActor, row: CrmContact): Promise<ContactDto> {
+  return viewerDto(row, await companies.visibleCompanyStates(coCtx(ctx), viewer, [row.companyId]));
+}
+
+/**
+ * CRM C5.5-fix12 ▸ RV10-1: แยกตัวซ้ำเป็น "ที่ผู้เรียกเห็น" กับ "ที่มองไม่เห็น" (contactWhere บน db/tx ของผู้เรียก · คิวรีเดียว) —
+ *   ตัวที่มองไม่เห็นห้ามออกไปในผล (ชื่อ · รหัส · เบอร์ · DTO) · ไม่มี viewer (ทางระบบ/สะพาน) = ทั้งหมดเหมือนเดิม ◂
+ */
+async function splitHitsForViewer(db: Db, ctx: ContactsCtx, viewer: MemberActor | null, dup: { hits: DuplicateHit[]; rows: CrmContact[] }): Promise<{ hits: DuplicateHit[]; rows: CrmContact[]; hidden: number }> {
+  if (!viewer || dup.rows.length === 0) return { ...dup, hidden: 0 };
+  const seen = new Set(
+    (await db.crmContact.findMany({ where: { AND: [await contactWhere(ctx, viewer, { db }), { id: { in: dup.rows.map((r) => r.id) } }] }, select: { id: true } })).map((r) => r.id),
+  );
+  const keep = dup.rows.map((r, i) => ({ r, h: dup.hits[i]! })).filter((x) => seen.has(x.r.id));
+  return { rows: keep.map((x) => x.r), hits: keep.map((x) => x.h), hidden: dup.rows.length - keep.length };
+}
+
+/**
+ * CRM C5.5-fix12 ▸ RV10-3: กติกาเดียวกัน สำหรับผู้ดูจากโมดูลอื่น (การ์ดบอร์ดงาน — kanban link-resolvers ผ่าน facade) · ผู้ติดต่ออยู่ระบบ CRM
+ *   ไหนของร้านก็ได้ ⇒ การมองเห็นบริษัทผ่าน `visibleIdsForViewer` (ตัวที่ hideInvisibleCrm ใช้ตัดสินลิงก์อยู่แล้ว) · 2 คิวรีต่อชุด ◂
+ */
+export async function companyTextsForCrossViewer(
+  tenantId: string,
+  viewer: Parameters<typeof visibleIdsForViewer>[1],
+  contactIds: readonly string[],
+): Promise<Map<string, string | null>> {
+  const ids = [...new Set(contactIds.filter((x) => typeof x === "string" && x))].slice(0, 5_000);
+  if (ids.length === 0) return new Map();
+  const rows = await prisma.crmContact.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, companyId: true, company: true } });
+  const coIds = [...new Set(rows.map((r) => r.companyId).filter((x): x is string => !!x))];
+  const seen = coIds.length ? await visibleIdsForViewer(tenantId, viewer, "COMPANY", coIds) : new Set<string>();
+  return new Map(rows.map((r) => [r.id, companyTextIf(r, (id) => seen.has(id))]));
+}
+
+/**
+ * CRM C5.5-fix12 ▸ RV10-1: ตัวซ้ำที่มองไม่เห็นยังบอก "มีเบอร์/อีเมลนี้ในร้าน" ได้ (หลีกไม่ได้ถ้าจะกันซ้ำ) ⇒ จำกัดความถี่ของคนที่กรอกเบอร์/อีเมล
+ *   (สร้าง · เปลี่ยนเบอร์/อีเมล) — คนละถังกับ REST (คีย์ API มีถัง write 300/นาทีของ REST อยู่แล้ว ⇒ ไม่นับซ้ำ) · ตัวจำกัดล่ม = ผ่าน (fail-open) ◂
+ */
+async function assertIdentRate(ctx: ContactsCtx, a: MemberActor): Promise<void> {
+  if (isApiActor(a) || !a.userId) return;
+  const r = await checkRateLimitDb(`crm:contact:ident:${ctx.tenantId}:${a.userId}`, CONTACT_IDENT_RATE);
+  // CRM C5.5-fix12 r2 ▸ RV12-1: ขอถี่ ≠ เพดานของระบบ (LIMIT · 409 เก็บตอบซ้ำ) — RATE_LIMITED = 429 rate_limited + nothingWritten (http-errors.ts) ◂
+  if (!r.ok) throw fail("RATE_LIMITED", CONTACT_IDENT_RATE_MSG(r.retryAfterSec), { retryAfterSec: r.retryAfterSec });
+}
+
 /** ข้อความบริษัทเดิมของผู้ติดต่อหลายแถว ตามการมองเห็นของผู้ดู (คิวรีเดียว) — สำหรับหน้าที่อ่านแถวผู้ติดต่อเอง (กล่องจดหมาย/เธรด) */
 export async function companyTextsForViewer(ctx: ContactsCtx, actor: MemberActor, rows: readonly { id: string; companyId: string | null; company: string | null }[]): Promise<Map<string, string | null>> {
   const a = await enter(ctx, actor);
@@ -704,6 +761,8 @@ type CreateCoreOpts = {
   // CRM C2.6 ▸ กฎมอบหมายที่ "ต้นทาง" ระบุมาเจาะจง (ฟอร์มที่ตั้ง `FormDef.assignRuleId`) — ส่งต่อให้ `assignment.pick`
   //   ทางเดียวกับที่ผู้ใช้เลือกกฎเอง · ไม่ส่ง/ไม่ตรงระบบ = ใช้กฎตามลำดับเหมือนเดิม (C2.3 `pick` เป็นคนตัดสิน) ◂
   ruleId?: string | null;
+  /** CRM C5.5-fix12 ▸ RV10-1: ตัวซ้ำที่ `actor` มองไม่เห็น = ปฏิเสธด้วยข้อความกลาง (force ก็ไม่สร้าง) และไม่คืนข้อมูลของคนนั้น — ทางของคน/API ◂ */
+  viewerGate?: boolean;
   /** CRM C5.4-E r2 ▸ SF-3: งานเป็นชุด (นำเข้า) — event `assigned` ติดรหัสชุด ⇒ ตัวส่งแจ้งเตือนไม่แจ้งทีละแถว (ผู้เรียกส่งสรุปเอง 1 ใบ) ◂ */
   batchId?: string | null;
 };
@@ -720,7 +779,10 @@ async function createCore(ctx: ContactsCtx, actor: MemberActor | null, c: Create
   try {
     return await prisma.$transaction(async (tx) => {
       for (const k of identKeys(ctx, c.phone, c.email)) await lockKey(tx, k);
-      const dup = await duplicateHits(tx, ctx, { phone: c.phone, email: c.email });
+      const raw = await duplicateHits(tx, ctx, { phone: c.phone, email: c.email });
+      // CRM C5.5-fix12 ▸ RV10-1: ทางของคน/API — ตัวซ้ำที่ผู้สร้างมองไม่เห็น: ยังกันซ้ำ แต่คืนเพียงข้อความกลาง (ก่อน insert · ใต้ล็อกตัวตน) ◂
+      const dup = opts.viewerGate ? await splitHitsForViewer(tx, ctx, actor, raw) : { ...raw, hidden: 0 };
+      if (dup.hidden > 0 && (opts.force || dup.hits.length === 0)) throw fail("DUPLICATE", CONTACT_DUPLICATE_HIDDEN_MSG);
       if (dup.hits.length > 0 && !opts.force) return { row: dup.rows[0] as CrmContact, created: false, duplicates: dup.hits };
       const row = await insertContactInTx(tx, ctx, actor, c, { ...opts, leave });
       return { row, created: true, duplicates: dup.hits };
@@ -864,8 +926,10 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
     const miss = missingRequiredCustom(await (await engine()).listLayout(fctx(ctx, a)), custom);
     if (miss) throw fail("VALIDATION", requiredCustomMessage(miss.label), { field: customFieldErrorKey(miss.key) });
   }
-  const res = await createCore(ctx, a, { ...clean, sourceKind: clean.sourceKind ?? "CRM" }, { force: input?.force === true, via: "USER", custom, auto });
-  if (!res.created) return { contact: toDto(res.row), created: false, duplicates: res.duplicates, warnings: [] };
+  if (clean.phone || clean.email) await assertIdentRate(ctx, a); // CRM C5.5-fix12 ▸ RV10-1 ◂
+  const res = await createCore(ctx, a, { ...clean, sourceKind: clean.sourceKind ?? "CRM" }, { force: input?.force === true, via: "USER", custom, auto, viewerGate: true });
+  // CRM C5.5-fix12 ▸ RV10-1/RV10-2: ตัวซ้ำที่คืนมา = คนที่ผู้สร้างเห็นเท่านั้น (viewerGate) · DTO ผ่านกติกาเดียวกับ 360 ◂
+  if (!res.created) return { contact: await viewerDtoOf(ctx, a, res.row), created: false, duplicates: res.duplicates, warnings: [] };
   const warnings: string[] = [];
   if (clean.companyId) {
     const w = await linkCompany(ctx, a, clean.companyId, res.row.id, false, clean.jobTitle);
@@ -880,7 +944,7 @@ export async function createContact(ctx: ContactsCtx, actor: MemberActor, input:
     after: { partyId: res.row.partyId, ownerUserId: res.row.ownerUserId, sourceKind: res.row.sourceKind, fields: Object.keys(custom), duplicates: res.duplicates.map((d) => d.contactId) },
   });
   const fresh = await prisma.crmContact.findFirst({ where: { ...identityScope(ctx), id: res.row.id } });
-  return { contact: toDto(fresh ?? res.row), created: true, duplicates: res.duplicates, warnings };
+  return { contact: await viewerDtoOf(ctx, a, fresh ?? res.row), created: true, duplicates: res.duplicates, warnings };
 }
 
 /**
@@ -1013,6 +1077,8 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
   let nextLast = merged.lastName !== undefined ? cleanName(merged.lastName, "นามสกุล", false) : undefined;
   let nextPhone = merged.phone !== undefined ? cleanPhone(merged.phone) : undefined;
   let nextEmail = merged.email !== undefined ? cleanEmail(merged.email) : undefined;
+  // CRM C5.5-fix12 ▸ RV10-1: เปลี่ยนเบอร์/อีเมล = ประตูตรวจตัวซ้ำอีกบาน ⇒ เพดานความถี่เดียวกับการสร้าง (ค่าเดิมที่ส่งกลับมาไม่นับ) ◂
+  if (!fillBlanksOnly && ((nextPhone && nextPhone !== current.phone) || (nextEmail && nextEmail.toLowerCase() !== (current.email ?? "").toLowerCase()))) await assertIdentRate(ctx, a); // นำเข้า (fillBlanksOnly) = งานชุด ไม่นับ
   const simple: [keyof UpdateContactPatch, string, number][] = [["titleTh", "คำนำหน้า", 40], ["jobTitle", "ตำแหน่ง", CONTACT_TEXT_MAX], ["department", "แผนก", CONTACT_TEXT_MAX], ["lineUserId", "LINE user id", 100]];
   const simpleVals: Record<string, string | null> = {};
   for (const [k, label, max] of simple) if (merged[k] !== undefined) simpleVals[k] = textOrNull(merged[k], label, max);
@@ -1090,7 +1156,9 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
       const emailChangedPre = nextEmail !== undefined && (nextEmail ?? "").toLowerCase() !== (pre.email ?? "").toLowerCase();
       if ((phoneChanged && nextPhone) || (emailChangedPre && nextEmail)) {
         // AUDIT-CLASS X3: เบอร์/อีเมลใหม่ชนผู้ติดต่ออื่นของระบบนี้ = DUPLICATE (หลังล็อกตัวตน · ขอบเขตตัวตน ไม่ใช่การมองเห็น)
-        const dup = await duplicateHits(tx, ctx, { phone: phoneChanged ? (nextPhone ?? null) : null, email: emailChangedPre ? (nextEmail ?? null) : null }, pre.id);
+        // CRM C5.5-fix12 ▸ RV10-1: ชนคนที่ผู้แก้มองไม่เห็น = ข้อความกลาง (ไม่มีชื่อ/รหัส) · ชนคนที่เห็น = ข้อความ + รายชื่อเดิม (เฉพาะที่เห็น) ◂
+        const dup = await splitHitsForViewer(tx, ctx, a, await duplicateHits(tx, ctx, { phone: phoneChanged ? (nextPhone ?? null) : null, email: emailChangedPre ? (nextEmail ?? null) : null }, pre.id));
+        if (dup.hidden > 0 && dup.hits.length === 0) throw fail("DUPLICATE", CONTACT_DUPLICATE_HIDDEN_MSG);
         if (dup.hits.length > 0) {
           throw fail("DUPLICATE", "เบอร์หรืออีเมลใหม่ตรงกับผู้ติดต่ออีกคนในระบบนี้อยู่แล้ว — ตรวจว่าเป็นคนเดียวกันไหม (รวมผู้ติดต่อได้จากเมนู …)", { duplicates: dup.hits });
         }
@@ -1173,7 +1241,7 @@ async function updateContactCore(ctx: ContactsCtx, actor: MemberActor, id: strin
     }
   }
   const fresh = await prisma.crmContact.findFirst({ where: { ...identityScope(ctx), id: current.id } });
-  return toDto(fresh ?? row);
+  return viewerDtoOf(ctx, a, fresh ?? row); // CRM C5.5-fix12 ▸ RV10-2 ◂
 }
 
 /**
@@ -1243,7 +1311,7 @@ async function mutate(
     const au = audit as { before?: unknown; after?: unknown };
     await writeAudit({ tenantId: ctx.tenantId, actorId: actorId(ctx), action, targetType: "CrmContact", targetId: current.id, before: au.before, after: opts.reason ? { ...(au.after as object), reason: opts.reason } : au.after });
   }
-  return toDto(row);
+  return viewerDtoOf(ctx, actor, row); // CRM C5.5-fix12 ▸ RV10-2 ◂
 }
 
 export async function setLeadStatus(ctx: ContactsCtx, actor: MemberActor, id: string, status: string): Promise<ContactDto> {
@@ -2479,8 +2547,14 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
       const clean = cleanCreate({ firstName: first ?? "", lastName: last, phone: vals.phone ?? null, email: vals.email ?? null, jobTitle: vals.jobTitle ?? null, tags, sourceKind });
       const companyName = vals.company ?? null;
       if (mode === "update") {
-        const dup = await duplicateHits(prisma, ctx, { phone: clean.phone, email: clean.email });
+        // CRM C5.5-fix12 ▸ (sweep RV10-1) "อัปเดตคนเดิม" ได้เฉพาะคนที่ผู้นำเข้าเห็น · ตรงกับคนที่มองไม่เห็นเท่านั้น = แถวผิดพลาดข้อความกลาง
+        //   (เดิม loadContact ล้มเป็น "ไม่พบผู้ติดต่อ…" ซึ่งไม่จริงและชวนให้นำเข้าซ้ำ) ◂
+        const dup = await splitHitsForViewer(prisma, ctx, a, await duplicateHits(prisma, ctx, { phone: clean.phone, email: clean.email }));
         const target = dup.rows[0];
+        if (!target && dup.hidden > 0) {
+          addError(rowNo, CONTACT_DUPLICATE_HIDDEN_MSG);
+          return;
+        }
         if (target) {
           // CRM C1.11 ▸ มติผู้คุมงาน C1.11 ข้อ 6: "อัปเดตคนเดิม" = เติมเฉพาะช่องที่คนเดิมยังว่าง — ตัดสินใน tx ของการเขียน (updateContactCore fillBlanksOnly)
           const patch: UpdateContactPatch = {
@@ -2501,7 +2575,9 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
           return;
         }
       }
-      const res = await createCore(ctx, a, clean, { force: mode === "candidate", via: "IMPORT", custom, batchId: jobId });
+      // CRM C5.5-fix12 ▸ (sweep RV10-1) viewerGate: ตรงกับคนที่ผู้นำเข้ามองไม่เห็น = แถวผิดพลาดข้อความกลาง ทุกโหมด (เดิม skip นับข้าม ·
+      //   candidate สร้างตัวซ้ำของคนที่ผู้นำเข้าตรวจไม่ได้) · ตรงกับคนที่เห็น = เหมือนเดิม ◂
+      const res = await createCore(ctx, a, clean, { force: mode === "candidate", via: "IMPORT", custom, batchId: jobId, viewerGate: true });
       if (!res.created) {
         result.skipped += 1;
         return;
@@ -2540,12 +2616,19 @@ export async function importContacts(ctx: ContactsCtx, actor: MemberActor, input
   return { jobId, status, result };
 }
 
-/** สถานะ/ผลของงานนำเข้า (อ่านจากร่องรอย audit ของงานนั้น — ตาราง job จริงมากับ C2.0) */
+/**
+ * สถานะ/ผลของงานนำเข้า (อ่านจากร่องรอย audit ของงานนั้น — ตาราง job จริงมากับ C2.0)
+ * CRM C5.5-fix12 r2 ▸ (sweep #22) อ่านได้เฉพาะ **คนที่สั่งนำเข้า** (actorId ของแถว audit = คนเบื้องหลังผู้เรียก) และ **เจ้าของร้าน** (OWNER —
+ *   เห็นทุกผู้ติดต่อ + ร่องรอย audit ทั้งร้านอยู่แล้ว) — แบบเดียวกับงานส่งออก (`privacy.getExport` · `reports.getExport` = เฉพาะผู้ขอ) ·
+ *   คนอื่นที่ถือ jobId (STAFF · MANAGER · คีย์ API ของคนอื่น) = "ไม่พบ" คำเดียวกับ id ที่ไม่มีจริง ◂
+ */
 export async function getImportJob(ctx: ContactsCtx, actor: MemberActor, jobId: string): Promise<ImportJob> {
-  await enter(ctx, actor);
+  const a = await enter(ctx, actor);
   const id = str(jobId);
-  const row = id
-    ? await prisma.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: "crm.contact.import", targetId: ctx.systemId, after: { path: ["jobId"], equals: id } }, select: { after: true } })
+  const me = actorId(ctx) ?? (a.userId || null);
+  const mine: Prisma.AuditLogWhereInput | null = a.role === "OWNER" && !isApiActor(a) ? {} : me ? { actorId: me } : null;
+  const row = id && mine
+    ? await prisma.auditLog.findFirst({ where: { tenantId: ctx.tenantId, action: "crm.contact.import", targetId: ctx.systemId, after: { path: ["jobId"], equals: id }, ...mine }, select: { after: true } })
     : null;
   if (!row || !isObj(row.after)) throw fail("NOT_FOUND", "ไม่พบงานนำเข้านี้ในระบบ CRM นี้");
   const x = row.after;

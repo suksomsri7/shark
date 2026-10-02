@@ -31,6 +31,20 @@ export const CONTACT_IMPORT_ERRORS_MAX = 500;
  */
 export const CONTACT_PRIMARY_COMPANY_HIDDEN_MSG =
   "บริษัทหลักปัจจุบันของผู้ติดต่อนี้อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงย้ายหรือถอดบริษัทหลักจากบัญชีนี้ไม่ได้ — ให้หัวหน้าทีมหรือเจ้าของร้านย้ายให้";
+/**
+ * CRM C5.5-fix12 ▸ RV10-1: เบอร์/อีเมลที่กรอกตรงกับผู้ติดต่อที่ "ผู้สร้าง/ผู้แก้มองไม่เห็น" — ยังกันตัวซ้ำ (พิมพ์เขียว C1.4: ตัวซ้ำจับด้วยเบอร์/อีเมล)
+ *   แต่ไม่บอกอะไรของคนนั้น (ไม่มีชื่อ · รหัส · เบอร์ · บริษัท) · ส่ง force มาก็ไม่สร้างซ้ำ (ผู้ใช้ตรวจไม่ได้ว่าเป็นคนเดียวกันไหม) ◂
+ */
+export const CONTACT_DUPLICATE_HIDDEN_MSG =
+  "มีผู้ติดต่อที่ใช้เบอร์โทรหรืออีเมลนี้อยู่แล้ว แต่อยู่นอกขอบเขตที่บัญชีนี้มองเห็น จึงสร้างหรือบันทึกซ้ำไม่ได้ — ขอให้หัวหน้าทีมหรือเจ้าของร้านตรวจ/มอบผู้ติดต่อนั้นให้";
+/** CRM C5.5-fix12 ▸ RV10-1: เพดานการกรอกเบอร์/อีเมลของ "คน" (หน้าจอ · ผู้ช่วย AI) ต่อร้าน — คีย์ API ใช้ถัง write ของ REST (300/นาที) อยู่แล้ว ◂ */
+export const CONTACT_IDENT_RATE = { limit: 120, windowMs: 10 * 60_000 } as const;
+/**
+ * CRM C5.5-fix12 r2 ▸ RV12-1: ข้อความของ "ขอถี่" (รหัส RATE_LIMITED — คนละเรื่องกับเพดานของระบบ LIMIT) · บอกว่ายังไม่ได้บันทึก +
+ *   รอกี่นาที · ไม่โทษผู้ใช้ · REST = 429 rate_limited (ไม่เก็บไว้ตอบซ้ำ ⇒ ลองคีย์เดิมได้เมื่อพ้นเวลา) ◂
+ */
+export const CONTACT_IDENT_RATE_MSG = (retryAfterSec?: number) =>
+  `มีการเพิ่มหรือแก้เบอร์โทร/อีเมลของผู้ติดต่อหลายครั้งในเวลาสั้น ๆ ระบบจึงพักรายการนี้ไว้ก่อน (ยังไม่ได้บันทึก) — รออีก${retryAfterSec ? `ประมาณ ${Math.max(1, Math.ceil(retryAfterSec / 60))} นาที` : "สักครู่"}แล้วลองใหม่ได้เลย (ถ้าต้องเพิ่มทีละมาก ๆ ใช้ "นำเข้าไฟล์")`;
 export const CONTACT_BULK_MAX = CRM_HARD_CAPS.contactBulk; // CRM C3.9 ▸ ค่าเดิม 500 ◂
 export const CONTACT_REASON_MIN = 5;
 export const CONTACT_TAGS_MAX = 50;
@@ -138,7 +152,8 @@ export type ContactSort = (typeof CONTACT_SORTS)[number];
 
 // ───────────────────────── error ─────────────────────────
 
-export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN" | "LIMIT"; // CRM C3.9 ▸ LIMIT = เกินเพดาน (ถาวร · retry ไม่ช่วย) ◂
+// CRM C3.9 ▸ LIMIT = เกินเพดาน (ถาวร · retry ไม่ช่วย) ◂ · CRM C5.5-fix12 r2 ▸ RV12-1: RATE_LIMITED = ขอถี่ (ชั่วคราว · ยังไม่ได้เขียน · retryAfterSec) ◂
+export type ContactsErrorCode = "NOT_FOUND" | "VALIDATION" | "DUPLICATE" | "CONFIRM_REQUIRED" | "CONFLICT" | "FORBIDDEN" | "LIMIT" | "RATE_LIMITED";
 export type DuplicateHit = { contactId: string; name: string; reason: "PHONE" | "EMAIL" };
 
 /** error ของบริการผู้ติดต่อ — ข้อความไทยที่ไม่โทษผู้ใช้ · `.code` ตาม CONTRACT BLOCK · ไม่มีข้อมูลของร้าน/ระบบอื่นในข้อความ */
@@ -147,13 +162,29 @@ export class ContactsError extends Error {
   readonly duplicates?: DuplicateHit[];
   /** C4.3-fix part 2 ▸ ช่องที่ข้อความเป็นของ (fieldErrors key เช่น `cf:<fieldKey>`) ◂ */
   readonly field?: string;
-  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[]; field?: string } = {}) {
+  /** CRM C5.5-fix12 r2 ▸ RV12-1: RATE_LIMITED — กี่วินาทีจึงลองใหม่ได้ (ถ้าตัวจำกัดบอก) ◂ */
+  readonly retryAfterSec?: number;
+  constructor(code: ContactsErrorCode, message: string, extra: { duplicates?: DuplicateHit[]; field?: string; retryAfterSec?: number } = {}) {
     super(message);
     this.name = "ContactsError";
     this.code = code;
     if (extra.duplicates) this.duplicates = extra.duplicates;
     if (extra.field) this.field = extra.field;
+    if (typeof extra.retryAfterSec === "number" && Number.isFinite(extra.retryAfterSec)) this.retryAfterSec = extra.retryAfterSec;
   }
+}
+
+/**
+ * CRM C5.5-fix12 r3 ▸ RV12r-1/2: ข้อปฏิเสธของบริการผู้ติดต่อที่ต้อง "บอกผู้ใช้ตรง ๆ" (ไม่ใช่ระบบขัดข้อง · กดซ้ำไม่ช่วย) สำหรับทางที่ปกติ
+ *   ซ่อน error ไว้หลังข้อความกลาง (กดรับนามบัตร: action เว็บ `calls-actions.ts` · แอป `mobile.ts mobileErrorOf`):
+ *   DUPLICATE = ข้อความกลางของตัวซ้ำที่มองไม่เห็น (ไม่มีชื่อ/รหัส/เบอร์/อีเมล/บริษัท) → 409 · LIMIT = เพดานของระบบ → 409 ·
+ *   RATE_LIMITED = ขอถี่ → 429 · คืนเฉพาะรหัส + ข้อความไทย — **ไม่ส่ง `duplicates[]` ต่อ** · อื่น ๆ = null (ผู้เรียกใช้ทางเดิม) ◂
+ */
+export function contactRefusalOf(e: unknown): { code: "DUPLICATE" | "LIMIT" | "RATE_LIMITED"; status: 409 | 429; message: string } | null {
+  if (!(e instanceof ContactsError) || !/[ก-๙]/.test(e.message)) return null;
+  if (e.code === "DUPLICATE" || e.code === "LIMIT") return { code: e.code, status: 409, message: e.message };
+  if (e.code === "RATE_LIMITED") return { code: e.code, status: 429, message: e.message };
+  return null;
 }
 
 // ───────────────────────── ชนิด DTO ─────────────────────────

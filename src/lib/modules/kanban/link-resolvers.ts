@@ -874,6 +874,16 @@ async function hideInvisibleCrm(
       const t = targets.get(key);
       if (t && !seen.has(id)) targets.set(key, { ...t, crmHidden: true });
     }
+    // CRM C5.5-fix12 ▸ RV10-3: หัวรองของลิงก์ผู้ติดต่อ = ข้อความบริษัทเดิม ⇒ กติกาเดียวกับหน้า CRM (ผูกบริษัทที่ผู้ดูมองไม่เห็น = ไม่แสดง) ◂
+    if (kind === "CRM_CONTACT") {
+      const visibleIds = ids.filter((id) => seen.has(id));
+      const texts = visibleIds.length ? await crm.contacts.companyTextsForCrossViewer(ctx.tenantId, viewer, visibleIds) : new Map<string, string | null>();
+      for (const id of visibleIds) {
+        const key = `${kind}:${id}`;
+        const t = targets.get(key);
+        if (t) targets.set(key, { ...t, subtitle: texts.get(id) ?? null });
+      }
+    }
   }
 }
 // ◂ CRM C1.7

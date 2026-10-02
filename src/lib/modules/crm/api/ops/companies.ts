@@ -90,7 +90,7 @@ const create = defineCrmOp({
   path: "/companies",
   kind: "write",
   action: "crm.company.create",
-  summary: "Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates.",
+  summary: "Create a company. A company with the same tax id, e-mail domain or a very similar name comes back as created: false with candidates. A same-tax-id company the caller cannot see is refused (409 duplicate) without any detail of it.",
   label: "เพิ่มบริษัท",
   input: z.object({ name: text(200).min(1), ...body, ownerUserId: optId, teamId: optId, parentCompanyId: optId }).strict(),
   tool: { name: "crm_create_company", hint: "Use when the user wants to add a business customer; give the company name and the tax id if known." },

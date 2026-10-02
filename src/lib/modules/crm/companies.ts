@@ -47,6 +47,7 @@ import { crmCan, crmForbiddenMessage } from "./access";
 import * as objects from "./objects";
 import { customFieldErrorKey, missingRequiredCustom, requiredCustomMessage } from "./field-errors-shared";
 import {
+  COMPANY_DUPLICATE_HIDDEN_MSG, // CRM C5.5-fix12 ◂
   COMPANY_CONTACT_ROLES,
   TAX_COMPANY_ARCHIVED_MSG,
   TAX_COMPANY_HIDDEN_MSG,
@@ -735,6 +736,15 @@ async function linkExistingAccountContact(ctx: CompaniesCtx, row: CrmCompany): P
  * `opts.requireCustom` (C4.3-fix part 2 · round 2): ทางเข้าที่ "คนกรอกฟอร์ม/เรียก API" (server action · REST `companies.create`)
  * ต้องบังคับฟิลด์กำหนดเองที่ต้องกรอก — ทางเข้าอัตโนมัติ (นำเข้าผู้ติดต่อที่สร้างบริษัทจากชื่อ) ไม่มีค่าให้กรอก จึงไม่ส่งธงนี้
  */
+/**
+ * CRM C5.5-fix12 ▸ (sweep RV10-1) ตัวซ้ำของบริษัทในทางแก้/กู้คืน/รวม: บริษัทที่ชนแต่ผู้กดมองไม่เห็น = ข้อความกลาง ไม่มี `duplicateOf`
+ *   (เดิมแอ็กชันส่งรหัสบริษัทที่ซ่อนอยู่กลับไป) · เห็น = ข้อความ + duplicateOf เดิม · ตรวจบน tx ของผู้เรียก ◂
+ */
+async function duplicateFail(db: Db, ctx: CompaniesCtx, viewer: MemberActor, dupId: string, message: string): Promise<CompaniesError> {
+  const seen = await db.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, viewer, { db }), { id: dupId }] }, select: { id: true } });
+  return seen ? fail("DUPLICATE", message, { duplicateOf: dupId }) : fail("DUPLICATE", COMPANY_DUPLICATE_HIDDEN_MSG);
+}
+
 export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input: CreateCompanyInput, opts: { requireCustom?: boolean } = {}): Promise<CreateCompanyResult> {
   const a = await enter(ctx, actor);
   need(a, "crm.company.create");
@@ -759,6 +769,9 @@ export async function createCompany(ctx: CompaniesCtx, actor: MemberActor, input
   const candidates = clean.taxId ? [] : await findCandidates(ctx, a, { name: clean.name ?? "", emailDomain: clean.emailDomain ?? null });
   const res = await createCore(ctx, a, clean, { ownerUserId, teamId, parentCompanyId }, { custom });
   if (!res.created) {
+    // CRM C5.5-fix12 ▸ (sweep RV10-1) บริษัทเดิมที่ชนแต่ผู้สร้างมองไม่เห็น = ข้อความกลาง (เดิมคืน DTO เต็ม + duplicateOf ของบริษัทที่ซ่อน) ◂
+    const seen = await prisma.crmCompany.findFirst({ where: { AND: [await companyWhere(ctx, a), { id: res.row.id }] }, select: { id: true } });
+    if (!seen) throw fail("DUPLICATE", COMPANY_DUPLICATE_HIDDEN_MSG);
     return { company: toDto(res.row), created: false, duplicateOf: res.row.id, duplicateArchived: !!res.row.archivedAt, candidates: [] };
   }
   const row = await linkExistingAccountContact(ctx, res.row);
@@ -837,11 +850,11 @@ export async function updateCompany(ctx: CompaniesCtx, actor: MemberActor, id: s
           where: { ...identityScope(ctx), taxId: nextTax, branchCode: nextBranch, mergedIntoId: null, id: { not: row.id } },
           select: { id: true },
         });
-        if (dup) throw fail("DUPLICATE", "เลขภาษี (และสาขา) นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — เปิดบริษัทนั้น หรือใช้เมนูรวมบริษัทซ้ำ", { duplicateOf: dup.id });
+        if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษี (และสาขา) นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — เปิดบริษัทนั้น หรือใช้เมนูรวมบริษัทซ้ำ"); // CRM C5.5-fix12 ◂
       }
       if (mode === "repoint" && targetParty !== row.partyId) {
         const holder = await tx.crmCompany.findFirst({ where: { ...identityScope(ctx), partyId: targetParty, id: { not: row.id } }, select: { id: true } });
-        if (holder) throw fail("DUPLICATE", "ตัวตนใหม่นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — ใช้เมนูรวมบริษัทซ้ำแทน", { duplicateOf: holder.id });
+        if (holder) throw await duplicateFail(tx, ctx, a, holder.id, "ตัวตนใหม่นี้เป็นของบริษัทอื่นในระบบนี้อยู่แล้ว — ใช้เมนูรวมบริษัทซ้ำแทน"); // CRM C5.5-fix12 ◂
         bag.partyId = targetParty;
         // ผู้ติดต่อบัญชีเดิมเป็นของตัวตนเก่า — ผูกใหม่หลัง commit (ถ้าตัวตนใหม่มีผู้ติดต่อในสมุดที่เชื่อม)
         bag.accountContactId = null;
@@ -955,7 +968,7 @@ export async function restoreCompany(ctx: CompaniesCtx, actor: MemberActor, id: 
         where: { ...identityScope(ctx), taxId: row.taxId, branchCode: row.branchCode ?? "00000", mergedIntoId: null, archivedAt: null, id: { not: row.id } },
         select: { id: true },
       });
-      if (dup) throw fail("DUPLICATE", "เลขภาษีนี้มีบริษัทอื่นที่ใช้งานอยู่ในระบบนี้แล้ว — รวมสองบริษัทแทนการกู้คืน", { duplicateOf: dup.id });
+      if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษีนี้มีบริษัทอื่นที่ใช้งานอยู่ในระบบนี้แล้ว — รวมสองบริษัทแทนการกู้คืน"); // CRM C5.5-fix12 ◂
     }
     await assertCrmLimit(ctx, "companies", 1, tx); // CRM C3.9 ▸ กู้คืน = กลับมานับในเพดานบริษัท (NOTE รีวิว) ◂
     await tx.crmCompany.update({ where: { id: row.id }, data: { archivedAt: null } });
@@ -1631,7 +1644,7 @@ export async function mergeCompanies(ctx: CompaniesCtx, actor: MemberActor, inpu
         where: { ...identityScope(ctx), taxId: carryTax.taxId, branchCode: carryTax.branchCode, mergedIntoId: null, id: { notIn: [k.id, m.id] } },
         select: { id: true },
       });
-      if (dup) throw fail("DUPLICATE", "เลขภาษีของบริษัทที่ถูกรวมเป็นของบริษัทที่สามในระบบนี้ด้วย — รวมบริษัทนั้นก่อน", { duplicateOf: dup.id });
+      if (dup) throw await duplicateFail(tx, ctx, a, dup.id, "เลขภาษีของบริษัทที่ถูกรวมเป็นของบริษัทที่สามในระบบนี้ด้วย — รวมบริษัทนั้นก่อน"); // CRM C5.5-fix12 ◂
     }
     const mLinks = await tx.crmCompanyContact.findMany({ where: { companyId: m.id, endedAt: null } });
     const kLinks = await tx.crmCompanyContact.findMany({ where: { companyId: k.id } });

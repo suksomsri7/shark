@@ -149,7 +149,7 @@ const create = defineCrmOp({
   path: "/contacts",
   kind: "write",
   action: "crm.contact.create",
-  summary: "Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true.",
+  summary: "Create a contact (lead). A matching phone or e-mail returns the existing contact with created: false unless force is true. A match the caller cannot see is refused (409 duplicate) without any detail of it, even with force.",
   label: "เพิ่มผู้ติดต่อ (lead)",
   input: createInput,
   tool: { name: "crm_create_lead", hint: "Use when the user wants to save a new lead or contact; give at least the first name." },
