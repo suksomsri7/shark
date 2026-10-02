@@ -106,14 +106,14 @@ try {
     const rs2 = await call(() => CON.createContact(s2.ctx, s2.actor, { firstName: `อีกคน ${rand}`, phone: newPhone() }));
     const rOther = await call(() => CON.createContact(s1in2.ctx, s1in2.actor, { firstName: `อีกร้าน ${rand}`, phone: newPhone() }));
     const api = toCrmApiError(rl.err);
-    chk("RL-limit", codeOf(rl) === "LIMIT" && diff(before, after) === "none" && rNoPhone.ok && rs2.ok && rOther.ok && (await count(k2)) === 1 && (await count(kOther)) === 1,
+    chk("RL-limit", codeOf(rl) === "RATE_LIMITED" && diff(before, after) === "none" && rNoPhone.ok && rs2.ok && rOther.ok && (await count(k2)) === 1 && (await count(kOther)) === 1,
       `at ${LIM}: create with phone → ${codeOf(rl)} "${cut(rl.err?.message, 70)}" writes ${diff(before, after)} · without phone → ${codeOf(rNoPhone)} · other user → ${codeOf(rs2)} · same user other shop → ${codeOf(rOther)}`);
-    info("RL-rest-shape", `REST mapping of the limit refusal: status ${api?.status} code ${api?.code} (shared "LIMIT" → 409 state_conflict, the plan-cap mapping; not 429 and not marked nothingWritten)`);
+    info("RL-rest-shape", `REST mapping of the limit refusal: status ${api?.status} code ${api?.code} (round 1 was the plan-cap "LIMIT" → 409 state_conflict; fix12 r2 wants 429 rate_limited)`);
     // the AI assistant runs as the asking person's MemberActor (crmActorOf kind "assistant") ⇒ same bucket
     const { crmActorOf } = (await import("@/lib/modules/crm/api/actor" as string)) as Any;
     const asst = crmActorOf({ kind: "assistant", module: "crm", tenantId: shop.tid, systemId: shop.S, userId: s1.uid, membership: { role: "STAFF", unitAccess: ["*"], permissions: Object.fromEntries(KEYS.map((k) => [k, true])) } });
     const ra = await call(() => CON.createContact(s1.ctx, asst, { firstName: `ผู้ช่วย ${rand}`, phone: newPhone() }));
-    chk("RL-assistant-counted", codeOf(ra) === "LIMIT", `AI assistant actor of the same person while the bucket is full → ${codeOf(ra)}`);
+    chk("RL-assistant-counted", codeOf(ra) === "RATE_LIMITED", `AI assistant actor of the same person while the bucket is full → ${codeOf(ra)}`);
     await P.chatRateBucket.deleteMany({ where: { key: k1 } });
   }
 

@@ -169,3 +169,122 @@ None needs fixing in this card.
 - RV12-1 (LOW: rate-limit REST shape) and RV12-5 #22 (LOW: job id) are cheap follow-ups. The rest is INFO.
 
 VERDICT: MERGEABLE
+
+---
+
+# Round 2 re-check (builder tip `555b02ab`, on top of review `16b4b006`)
+
+- Read `git diff 16b4b006 555b02ab -- src` and "Round 2" in `crm-C5.5-fix12.md`.
+- Window: 2026-10-02 07:5x → 08:07 UTC (`date -u`).
+- I did not edit any product source.
+
+## What I ran (QC2, each job in its own `iso.sh` unit under the gate lock, one at a time)
+
+Runner: `scripts/pending/cf16/review/run-review-r2.sh`. Logs are in `/tmp/cf16-review-logs/r2/`. Chain ran 07:57:58–08:06:27 UTC.
+
+| Job | Result |
+|---|---|
+| `probe-cf16-review-r2` (new, below) | **6/6** (also an earlier standalone run: 6/6) |
+| `probe-cf16-review` (round 1, two assertions updated, see below) | **10/10** |
+| `probe-cf16-r2` (builder) | **8/8** |
+| `probe-cf16` (builder) vs `/tmp/cf16-logs/red3.dump.json` | **22/22** |
+| `qc-crm-c1.4` (incl. S9.14 import-job read) | **110/110** |
+| `qc-crm-c1.11` | **66/66** |
+| `qc-crm-c2.4` (card scan) | **91/91** |
+| typecheck (5 GB heap) | exit 0 |
+| fitness | **36/36** |
+
+QC2 clean:
+- `qc-cf16/13/10/7-*` tenants = 0, users = 0.
+- 5 orphan `crm:contact:ident:*` buckets left by the suites' throwaway tenants were deleted with `leftover-check.mts --clean`; re-check: 0.
+- My probes delete their own buckets and `ApiIdempotency` rows.
+
+**My probe update (owned by me):** `probe-cf16-review.mts` `RL-limit` and `RL-assistant-counted` now expect `RATE_LIMITED` instead of `LIMIT`. Every other assertion in those two checks is unchanged: 0 tenant writes, no phone OK, other user OK, same user in another shop OK, the assistant is counted. The new code is the right behaviour (RV12-1). The `RL-rest-shape` info text was reworded.
+
+## 1 · The diff
+
+**Callers that matched the old code for this refusal.** None.
+- `grep` finds `"LIMIT"` matchers only for `CrmLimitError` (the plan cap) in the `*-actions.ts` files, plus `contacts.ts:395` mapping `CrmLimitError` → `LIMIT`.
+- The contact form actions (`contacts-actions.ts failOf`) pass `ContactsError` message + code through, so `RATE_LIMITED` shows the new Thai text.
+- The AI proposal confirm (`_actions/ai.ts`, `ai-bridges.confirmProposalById`) passes any Thai `message` through.
+- Import never calls the limiter.
+- Mobile and the web card-scan action were patched for `RATE_LIMITED`.
+- The REST dispatcher maps it through `toCrmApiError` → 429.
+
+**Nothing written.**
+- `updateContact`: the limiter runs before the transaction and before field seeding.
+- `createContact`: the limiter runs **after** `seedContactFields`. Measured (`NW-first-write`): on a brand-new CRM system the very first refused create still seeds the contact field layout (MemberField 0→14, MemberSection 0→1). There is no contact, party, audit or outbox row (`NW-no-contact-data`). Seeding is idempotent shop setup that any next write would do, so "nothing written" holds for the request's data. INFO (RV12r-3).
+- The bucket increment itself is the limiter's own row.
+
+**The 429 leaks nothing.**
+- `hint: "retryAfterSec=30"`, `code: rate_limited`, the Thai text and the EN text. No ids, no echo of the phone or e-mail (`ID-release-vs-store`).
+
+**Idempotent retry** (`ID-release-vs-store`, through `withIdempotency` with an API-key-shaped actor):
+- the mapped `RATE_LIMITED` returns 429 and is **not stored**: the same key retried runs again (201, not replayed);
+- the plan-cap `LIMIT` control is 409, stored, and the retry is replayed (409, `Idempotent-Replayed: true`).
+
+The mechanism is correct. In practice it cannot be reached:
+- `withIdempotency` serves only requests that carry an API key id;
+- API keys skip the person limiter (`ID-key-reach`: a key whose creator's bucket is full still creates, OK);
+- people and the AI assistant do not go through `withIdempotency`.
+
+The builder's own idem check uses a synthetic "person actor with a key id". The change is right as convention and future-proofing. INFO.
+
+**Import-job rule** (`JB-scope`):
+
+| Reader | Result |
+|---|---|
+| OWNER, any of 3 jobs | OK |
+| MANAGER, own job | OK |
+| STAFF, own job | OK |
+| MANAGER → a STAFF member's or the owner's job; another MANAGER → a manager's job; STAFF → another STAFF member's, the owner's or a manager's job | all `NOT_FOUND` |
+
+- The refusals are byte-identical to a random non-existent UUID: same code, same Thai text, same error class, same own keys.
+- Timing: one query either way. Median over 12 calls: 17.9 ms (exists, not yours) vs 18.1 ms (does not exist). Indistinguishable.
+- A caller with no person identity skips the query (faster), which an attacker cannot select.
+
+## 2 · The builder's "found, not fixed" (measured where possible)
+
+### RV12r-1 · LOW · introduced by fix12 round 1 · web card-scan accept shows a generic "try again" for the hidden-duplicate refusal
+- **Where:** `calls-actions.ts failOf` passes through only `CallsError`/`CrmV2DisabledError`/`RATE_LIMITED`. The `ContactsError("DUPLICATE", CONTACT_DUPLICATE_HIDDEN_MSG)` that `acceptLeadProposal` now throws (round-1 `CS-loop`) becomes "บันทึกไม่สำเร็จ ระบบยกเลิกรายการให้แล้ว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง". Read; the action needs a request session.
+- **Before fix12** that card was accepted (`force:true` created a duplicate), so this dead-end message is **new with fix12**.
+- **Effect:** retrying never helps and the user is not told why. The proposal stays PENDING with the neutral note (which the sheet may or may not show), and discard works. No leak and no data harm.
+
+### RV12r-2 · LOW · same class on mobile · `mobileErrorOf` returns 500 "ระบบ CRM ขัดข้องชั่วคราว … ลองใหม่" for the hidden DUPLICATE
+- Measured (`MB-mobile`): DUPLICATE → **500 `error`** "ระบบ CRM ขัดข้องชั่วคราว (ข้อมูลไม่เปลี่ยน) — ลองใหม่อีกครั้ง…". The mobile scan-card accept is the main lead-capture path.
+- The plan-cap `LIMIT` → 500 is pre-existing.
+- The DUPLICATE dead end on scan-card is **new with fix12** for the same reason as RV12r-1.
+
+**Should RV12r-1/2 block the merge?** No.
+- Not a leak, nothing written, nothing lost (the proposal can be discarded).
+- Reachable only when a scanned card's phone or e-mail belongs to a contact the scanner cannot see.
+
+They should be fixed before release, ideally in this card since each is one line of the pattern this round already added:
+- `failOf`: `if (e instanceof ContactsError && (e.code === "DUPLICATE" || e.code === "LIMIT")) return { ok:false, error:e.message, code:e.code }`;
+- `mobileErrorOf`: `ContactsError` DUPLICATE → 409 `duplicate` + `e.message`, and LIMIT → 409 `limit` + `e.message`.
+
+### RV12r-3 · INFO · `createContact` seeds the contact field layout before the limiter
+Seeding happens on the first write of a fresh system (above). Moving `assertIdentRate` above `seedContactFields` would make the refusal fully side-effect-free; optional.
+
+### RV12r-4 · INFO · the idempotent-retry path for `RATE_LIMITED` is unreachable today
+API keys are exempt; people do not use `withIdempotency`. The mapping is still correct (above).
+
+## Round-1 findings status
+- RV12-1 is **closed**: service code, 429 + nothing-written, mobile 429, web card-scan text.
+- RV12-5 #22 is **closed**: runner + owner only; everyone else gets an indistinguishable not-found.
+- RV12-2, RV12-3 and RV12-4 are unchanged INFO. RV12-3's orphan buckets recur after every suite run in QC2, and I cleaned them again.
+
+## Not verified (round 2)
+- The web card-scan and contact-form server actions were read, not executed (they need a request session).
+- No live :3215 or mobile app render of the new texts.
+- No real HTTP request through `dispatch.ts`: `withIdempotency` was driven directly.
+- No 120-request burst: the bucket was pre-filled.
+
+## Verdict (round 2)
+- No BLOCKER, HIGH or MED.
+- Both round-1 LOWs are fixed and verified:
+  - RATE_LIMITED is consistent on every surface and leaks nothing;
+  - the import job is readable only by its runner and the owner, and the refusal is indistinguishable from a non-existent id.
+- RV12r-1 and RV12r-2 (LOW, introduced by fix12 round 1: card-scan hidden-duplicate refusal shown as "try again" on web and as 500 on mobile) do not block the merge. Each is a one-line fix and should land before release, preferably in this card.
+
+VERDICT: MERGEABLE
