@@ -193,6 +193,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S5.16", "-", "[Addendum] โค้ดหน้าขาย P1.3 ไม่มีตัวบ่งชี้ระบบ CATALOG_SYSTEM_ACTOR เลย · ไม่ import scripts/** · fitness F15.1 F15.5 F15.6 เขียว"],
   ["P1.3-S5.17", "-", "[G9] ไฟล์ \"use client\" ของหน้าขายไม่ import โมดูลเซิร์ฟเวอร์ (register.ts · catalog · service · core/db · prisma · next/headers · core/context) [static]"],
   ["P1.3-S5.18", "-", "[3.2 ข้อ 13 · Q24] register.ts export registerScan ⇒ register-actions.ts export registerScanAction (async · requireTenant) [static]"],
+  ["P1.3-S5.19", "-", "[B2.1 · Q4] รางไอคอนของ /pos/register ขึ้นกับธง: isRailPath บังคับรางหน้าขายเฉพาะ id ที่ layout ส่งมา (posRegisterV2On) · AppShell+AppMain ส่ง id ต่อ · ไม่มี regex หน้าขายแบบไม่มีเงื่อนไข ⇒ ธงปิด = shell เท่า main [static]"],
   // ── S6 กลุ่มแยกของ P1.6 (SKIP เองจนกว่าโค้ดจะอ่าน settings.pos.stock.oversellPolicy · มติผู้คุมงาน 1 ต.ค. ข้อ 4) ──
   ["P1.3-S6.1", "X6", "[P1.6] ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล"],
   // ── S9 คืนสภาพ ──
@@ -825,6 +826,18 @@ async function runStatic() {
   const scanBody = scanAct ? aCode.slice(aCode.search(/export\s+async\s+function\s+registerScanAction/)).split(/\n\s*export\s+/)[0] : "";
   chk("P1.3-S5.18", !regExportsScan || (scanAct && /registerScan\s*\(/.test(scanBody)),
     "registerScan ⇒ export async function registerScanAction (เรียก registerScan)", `register.ts registerScan:${regExportsScan} · action:${scanAct} · เรียก registerScan:${/registerScan\s*\(/.test(scanBody)}`);
+  // S5.19 (B2.1 · ORACLE-EDIT): ธงปิด ⇒ หน้าขายเดิมต้องได้ shell เหมือน main (ไม่ถูกบังคับราง) — ตรวจระดับซอร์ส ไม่แตะ DB
+  //   🔴 อ่านซอร์สดิบ (ไม่ stripComments) — regex บอร์ดงาน `\/kanban\/b\//` มี "//" ที่ stripComments ตีเป็นคอมเมนต์แล้วตัดท้ายบรรทัดทิ้ง
+  const railSrc = rd("src/components/app-shell/NavRail.tsx");
+  const railFn = railSrc.slice(Math.max(0, railSrc.search(/export\s+function\s+isRailPath\b/))).split(/\n\}/)[0];
+  const railGated = /isRailPath\s*\(\s*pathname\s*:\s*string\s*,\s*posRegisterV2Ids\b/.test(railFn) && /pos\\\/register/.test(railFn) && /posRegisterV2Ids\.includes\(/.test(railFn);
+  const railUncond = /pos\\\/register\\\/\?\$\/\.test\(\s*pathname\s*\)/.test(railSrc);
+  const shellPass = ["src/components/app-shell/AppShell.tsx", "src/components/app-shell/AppMain.tsx"].filter((f) => !/isRailPath\(\s*pathname\s*,\s*posRegisterV2Ids\s*\)/.test(stripComments(rd(f))));
+  const layoutSrc = stripComments(rd("src/app/app/layout.tsx"));
+  const layoutOk = /posRegisterV2On\s*\(/.test(layoutSrc) && (layoutSrc.match(/posRegisterV2Ids=\{posRegisterV2Ids\}/g) ?? []).length >= 2;
+  chk("P1.3-S5.19", railGated && !railUncond && shellPass.length === 0 && layoutOk,
+    "isRailPath(pathname, posRegisterV2Ids) · ไม่มี regex ไม่มีเงื่อนไข · AppShell+AppMain ส่ง id · layout ใช้ posRegisterV2On ส่งทั้งคู่",
+    `gated:${railGated} uncond:${railUncond} shell-miss:${shellPass.join(",") || "-"} layout:${layoutOk}`);
 }
 
 // ═════════════════════════ 5. S1 S3 S4 (ต้องมี seed + sandbox) ═════════════════════════

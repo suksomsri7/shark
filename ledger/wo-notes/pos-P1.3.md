@@ -279,3 +279,22 @@ None required — every S5 check is green with the final tree. Observation only 
 - `src/lib/modules/pos/register-legacy-page.tsx` (new) — legacy chrome moved out of `page.tsx` (debt 0 for page.tsx, see B2.2).
 - `src/components/pos/register/RegisterDialog.tsx` + `RegisterIcon.tsx` — helper files in the register folder not named in spec §3.1.
 - Nothing under `prisma/`, no server file of B1 changed, `register-ui.tsx` / `actions/pos.ts` untouched (S5.12 green).
+
+## B2.1 — rail only when the V2 screen renders (fix of the B2 defect · base `ba6a9bb8`)
+
+**Defect:** `NavRail.isRailPath` forced the 56 px rail on `/app/sys/[id]/pos/register` from the URL alone ⇒ with `settings.pos.registerV2` OFF (every real shop) the legacy register lost the full menu (and the legacy frame carried its own padding to compensate). Violated Q4.
+
+**Fix (server-decided, SSR-consistent — no flash):**
+- `register-shared.ts` exports `posRegisterV2On(settings)` (strict `=== true`, body moved verbatim from `page.tsx`). It is the single flag reader: `page.tsx` picks the screen with it, `app/layout.tsx` uses it on the `appSystems` rows it already loads (no extra query) to build `posRegisterV2Ids` (POS systems with the flag on).
+- `layout.tsx` passes `posRegisterV2Ids` to `AppShell` and `AppMain`; `isRailPath(pathname, posRegisterV2Ids = [])` forces the rail on `/pos/register` only when the path's system id is in that list. Kanban board rule unchanged. Both client components get the prop in the first server render ⇒ the first HTML already has the right layout; no client effect / DOM probe.
+- Flag OFF ⇒ list has no such id ⇒ shell identical to origin/main; `PosLegacyRegisterFrame` lost its `LEGACY_PAD` wrapper ⇒ legacy DOM = origin/main markup (inside the normal `<main>` padding).
+- `PosRegisterUnlinked` gets `railFrame` (= flag on): flag on + no linked unit still sits under the rail (layout cannot see units) so it re-adds the same padding; flag off = origin markup.
+- Hunk sizes: NavRail 4 lines, AppShell/AppMain 4 each, layout 5 (clear of the session/crm layout hunk at the CRM menu, lines ~156).
+
+**Known edge (flag ON only, QC shops):** a 404 on `/pos/register` for a user without access is shown under the rail (layout decides before the page's guard). Harmless; flag off unaffected.
+
+**ORACLE-EDIT:** added `P1.3-S5.19` [static, no DB] to `scripts/qc-pos-p1.3.mts` — `isRailPath(pathname, posRegisterV2Ids)` gated by `.includes`, no unconditional `/pos\/register\/?$/.test(pathname)`, AppShell+AppMain pass the ids, layout uses `posRegisterV2On` and passes to both. Reads NavRail raw (the kanban regex `\/b\//` contains `//`, which the oracle's `stripComments` would treat as a comment). Simulated standalone: RED on `ba6a9bb8`, GREEN now. S5.11 re-simulated: still green (reader now lives in `src/lib/modules/pos/*.ts`, which S5.11 scans). Oracle total 119 → 120.
+
+**Gates (cloud container, no DB):** `pnpm typecheck` exit 0 · `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` exit 0 (40/40) · `pnpm exec tsx scripts/fitness-pos.mts` (no env) exit 0 (7/7). DB oracles not run (no DB access) — controller.
+
+**Controller browser pass:** flag OFF — `/pos/register` at 1440/1024 shows the pinned 288 px menu (or the rail only if the user chose collapsed), normal page padding, ‹ collapse works and is remembered; 390 = topbar ☰ + drawer as on main; compare against a main deploy. Flag ON — 1440/1024 rail from first paint (hard reload, no 288→56 jump), › opens the overlay menu; 390 unchanged (rail is lg+ only). Also: kanban board still rails; flag-ON shop with no linked unit shows padded empty state.

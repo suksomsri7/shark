@@ -15,8 +15,10 @@ import type { NavItem } from "./NavDrawer";
 //   · ปุ่มท้ายราง › = ขยายเป็นแถบเต็ม (จำสถานะต่อผู้ใช้ผ่าน preferences.navCollapsed)
 //
 // 🔴 ตัวราง **ไม่รู้จักโมดูลไหนเลย** — รับ items ชุดเดียวกับ NavDrawer จาก layout (DB-driven)
-export function isRailPath(pathname: string): boolean {
-  return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname) || /^\/app\/sys\/[^/]+\/pos\/register\/?$/.test(pathname); // POS P1.3 ▸ หน้าขายเต็มจอ ◂
+// POS P1.3 B2.1 ▸ หน้าขายบังคับรางเฉพาะระบบที่ธง registerV2 เปิด (layout ส่ง id มา · SSR ตรงกับหน้า ไม่กระพริบ) · ไม่ส่ง = เหมือน main ◂
+export function isRailPath(pathname: string, posRegisterV2Ids: readonly string[] = []): boolean {
+  const pos = /^\/app\/sys\/([^/]+)\/pos\/register\/?$/.exec(pathname);
+  return /^\/app\/sys\/[^/]+\/kanban\/b\//.test(pathname) || (!!pos && posRegisterV2Ids.includes(pos[1]));
 }
 
 export function NavRail({

@@ -7,6 +7,7 @@ import { isValidPromptPayId } from "@/lib/payment/promptpay";
 import { posUnits, resolvePosLinks, posCatalog, posMembers, posServices, registerCatalog, registerSellerLimits, registerStatus, registerVatConfig } from "@/lib/modules/pos/register";
 import { PosRegister } from "@/lib/modules/pos/register-ui";
 import { PosLegacyRegisterFrame, PosRegisterUnlinked } from "@/lib/modules/pos/register-legacy-page";
+import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 import { posTabs } from "@/lib/modules/pos/tabs";
 import { posMembership, posRegisterView } from "@/lib/modules/pos/access";
 import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
@@ -18,12 +19,8 @@ import { RegisterScreen } from "@/components/pos/register/RegisterScreen";
 //   ร้านจริง: ปิดจนกว่า P1.6 + P1.12 ลง · ร้าน QC: เปิดผ่าน scripts/seed-pos-qc.mts
 // 🔴 ด่านสิทธิ์ HF-POS-PAGES ด้านล่างใช้ร่วมทั้งสองจอ (ห้ามแยก/ข้าม) · ขอสาขาที่เข้าไม่ได้ = notFound (404 ไม่ใช่ 403)
 // 🔴 หน้าขายเดิม: <PosRegister> + โครงหน้าเดิม (register-legacy-page.tsx) props ชุดเดิมทุกตัว · register-ui.tsx ห้ามแตะ (S5.12)
-
-/** ธงหน้าขายใหม่ — เทียบ === true เคร่ง (สตริง "true" / 1 = จอเดิม) */
-function registerV2On(settings: unknown): boolean {
-  const s = (settings ?? {}) as { pos?: { registerV2?: unknown } | null };
-  return typeof s === "object" && s.pos?.registerV2 === true;
-}
+// B2.1: ตัวอ่านธงย้ายไป register-shared.ts (posRegisterV2On) — layout ใช้ตัวเดียวกันตัดสินโหมดรางของ shell ตอน SSR
+//   ⇒ ธงปิด = shell วาดแถบเมนูตามที่ผู้ใช้เลือกเหมือน main ทุกอย่าง · ธงเปิด = รางไอคอนตั้งแต่ HTML แรก (ไม่กระพริบ)
 
 export default async function PosRegisterPage({
   params,
@@ -51,14 +48,14 @@ export default async function PosRegisterPage({
 
   // ยังไม่ผูก POS กับกิจการใด → ขายไม่ได้ (createSale ต้องมี unit) → ชี้ไปเชื่อม
   if (units.length === 0 || !view.active) {
-    return <PosRegisterUnlinked title={`${def?.icon ?? ""} ${sys.name}`.trim()} tabs={tabs} systemId={id} />;
+    return <PosRegisterUnlinked title={`${def?.icon ?? ""} ${sys.name}`.trim()} tabs={tabs} systemId={id} railFrame={posRegisterV2On(sys.settings)} />;
   }
 
   // เลือก unit ที่จะขาย: จาก ?unit= ถ้าถูกต้อง ไม่งั้นตัวแรกที่เข้าได้ (posRegisterView)
   const active = view.active;
 
   // ── หน้าขายใหม่ (ธงเปิด) — ผู้ขาย = membership ของ session เท่านั้น ──
-  if (registerV2On(sys.settings)) {
+  if (posRegisterV2On(sys.settings)) {
     const actor = { userId: auth.user.id, ...posMembership(auth.active) };
     const ctx = { tenantId, systemId: id, unitId: active.id };
     const [catalog, status, vat, profile] = await Promise.all([

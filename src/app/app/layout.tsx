@@ -21,6 +21,8 @@ import { evaluate } from "@/lib/core/rbac";
 // CRM uiVersion gate ▸ ตัวอ่าน settings.crm แบบบริสุทธิ์ (แปลงค่าจาก JSON · ค่าเริ่มต้น uiVersion 1) ◂
 import { crmCan, parseCrmSettings } from "@/lib/modules/crm";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
+// POS P1.3 B2.1 ▸ ตัวอ่านธงหน้าขายใหม่ (บริสุทธิ์ · ตัวเดียวกับ register/page.tsx) ◂
+import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
 
 // ฟังก์ชันย่อยของ "ระบบหน้า fixed" (เช่น KB /app/kb) → กาง accordion เหมือนระบบอื่น
 // ⚠️ ทุก href ต้องมี page.tsx จริง — ตรวจโดย scripts/qc-nav-functions.mts (บล็อก KB)
@@ -371,6 +373,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // ได้มาจาก appSystems ที่ query ไปแล้วข้างบน ⇒ ไม่มี query เพิ่มใน layout เลย
   // ร้านที่ไม่ได้เปิดระบบแชท = ลิสต์ว่าง → ฝั่ง client ไม่ถามตัวเลขนี้เลย (ดู loadNavBadgesAction)
   const chatSystemIds = appSystems.filter((s) => s.type === "CHAT").map((s) => s.id);
+  // POS P1.3 B2.1 ▸ ระบบ POS ที่ธง settings.pos.registerV2 เปิด — shell บังคับรางบนหน้าขายของระบบเหล่านี้เท่านั้น (ไม่มี query เพิ่ม) ◂
+  const posRegisterV2Ids = appSystems.filter((s) => s.type === "POS" && posRegisterV2On(s.settings)).map((s) => s.id);
   // CRM C1.7 ▸ ลิงก์ "ทีมขาย" ในเมนูตั้งค่า: เฉพาะร้านที่มีระบบ CRM และผู้ใช้เป็นเจ้าของร้าน/ถือคีย์ crm.team.manage (หน้าเป็น 404 สำหรับคนอื่น) ◂
   const showTeams = appSystems.some((x) => x.type === "CRM") && (auth.active.role === "OWNER" || crmCan(membershipOf(auth), "crm.team.manage"));
 
@@ -400,12 +404,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         openedCodes={openedCodes}
         chatSystemIds={chatSystemIds}
         showTeams={showTeams}
+        posRegisterV2Ids={posRegisterV2Ids}
         // รายชื่อกิจการทั้งหมดของ user (สำหรับ dropdown สลับกิจการในหัว drawer)
         memberships={auth.memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, role: m.role }))}
         activeTenantId={auth.active.tenantId}
       />
       {/* ระยะขอบ (รวมการเว้นที่ให้แถบเมนูปักซ้ายบนจอใหญ่) อยู่ใน AppMain */}
-      <AppMain chatSystemIds={chatSystemIds} navCollapsed={prefs.navCollapsed}>
+      <AppMain chatSystemIds={chatSystemIds} navCollapsed={prefs.navCollapsed} posRegisterV2Ids={posRegisterV2Ids}>
         {children}
       </AppMain>
     </div>

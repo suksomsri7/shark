@@ -21,6 +21,17 @@ export const REGISTER_PAY_TYPES = ["CASH", "PROMPTPAY"] as const;
 /** เพดานส่วนลดปริยายของ STAFF (basis point · docs/modules/14-pos.md §9) — OWNER/MANAGER ไม่จำกัด เว้นตั้ง `pos._maxDiscountBp` */
 export const REGISTER_STAFF_MAX_DISCOUNT_BP = 1000;
 
+// ═══════════ ธงหน้าขายใหม่ (มติ Q4) ═══════════
+/**
+ * ธง `AppSystem(POS).settings.pos.registerV2` — เทียบ === true เคร่ง (สตริง "true" / 1 = จอเดิม)
+ * 🔴 ตัวอ่านเดียวของธงนี้: register/page.tsx (เลือกจอ) + app/layout.tsx (บอก shell ว่าหน้าขายของระบบไหนเป็นโหมดราง — B2.1)
+ *    ทั้งคู่ต้องตัดสินตรงกัน ไม่งั้นจอเดิมได้รางหรือจอใหม่ได้แถบเต็ม ⇒ ห้ามเขียนตัวอ่านซ้ำที่อื่น
+ */
+export function posRegisterV2On(settings: unknown): boolean {
+  const s = (settings ?? {}) as { pos?: { registerV2?: unknown } | null };
+  return typeof s === "object" && s.pos?.registerV2 === true;
+}
+
 // ═══════════ ชนิดข้อมูล ═══════════
 export type RegisterRole = "OWNER" | "MANAGER" | "STAFF";
 
