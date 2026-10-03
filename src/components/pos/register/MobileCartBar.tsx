@@ -19,6 +19,8 @@ export function MobileCartBar({ peek, count, totalText, payEnabled, empty, onOpe
   return (
     <div
       data-testid="pos-reg-cart-bar"
+      // B2.5: จำนวนบรรทัดให้สคริปต์ภาพ (visual-pos) ตรวจว่าคลิกเพิ่มสินค้าไม่หาย — มือถือไม่มีบรรทัดตะกร้าในหน้า
+      data-count={count}
       className="sticky bottom-0 z-20 -mx-[22px] mt-auto border-t bg-[color:var(--color-surface)] px-[22px] pb-[max(32px,env(safe-area-inset-bottom))] pt-[18px] md:hidden"
       onClick={(e) => {
         if (!empty && !(e.target as HTMLElement).closest("button")) onOpen();

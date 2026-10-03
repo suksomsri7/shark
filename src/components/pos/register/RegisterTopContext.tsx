@@ -50,17 +50,20 @@ function UnitChooser({ systemId, units, activeUnitId, label, mobile }: { systemI
   }, [open]);
   const chip = mobile
     ? "inline-flex min-w-0 items-center gap-[5px] text-[16px] font-bold text-[color:var(--color-ink)]"
-    : "inline-flex h-8 min-w-0 max-w-[200px] items-center gap-2.5 rounded-[8px] border px-2.5 text-[13px] text-[color:var(--color-ink-soft)] lg:max-w-[260px] xl:max-w-[360px] xl:gap-3";
+    : "inline-flex h-8 w-full min-w-0 items-center gap-2.5 rounded-[8px] border px-2.5 text-[13px] text-[color:var(--color-ink-soft)] xl:gap-3";
+  // B2.5 (§7.2.20 · 20A): เพดานความกว้างอยู่ที่ "กรอบ" ของชิป (flex item ตัวจริงในแถว) — เดิมอยู่ที่ปุ่มข้างใน div ⇒ div หดแต่ปุ่มไม่หด
+  //   ล้นทับจุด "● ออนไลน์" ที่ 1024 · ไอคอน (RegisterIcon shrink-0 อยู่แล้ว) ไม่หด ⇒ ชื่อถูกตัด … ก่อน ลูกศรไม่โดนบีบ
+  const capW = mobile ? "min-w-0" : "min-w-0 max-w-[200px] lg:max-w-[240px] xl:max-w-[360px]";
   if (units.length <= 1) {
     return (
-      <span data-testid="pos-reg-unit-switch" className={chip} title={label}>
+      <span data-testid="pos-reg-unit-switch" className={`${chip} ${mobile ? "" : capW}`} title={label}>
         {!mobile && <RegisterIcon name="shop" size={14} />}
         <span className="truncate">{label}</span>
       </span>
     );
   }
   return (
-    <div ref={box} className="relative min-w-0">
+    <div ref={box} className={`relative flex ${capW}`}>
       <button
         data-testid="pos-reg-unit-switch"
         className={`${chip} ${mobile ? "h-11" : ""} hover:bg-[color:var(--color-surface-2)]`}
@@ -71,7 +74,7 @@ function UnitChooser({ systemId, units, activeUnitId, label, mobile }: { systemI
         onClick={() => setOpen((o) => !o)}
       >
         {!mobile && <RegisterIcon name="shop" size={14} />}
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <RegisterIcon name="chevron" size={12} />
       </button>
       {open && (
