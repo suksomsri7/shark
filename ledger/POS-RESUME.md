@@ -377,3 +377,8 @@
   - **ลำดับเมื่อเจ้าของสั่งเดินต่อ**: typecheck เต็ม → รันซ้ำข้อสอบบังคับ/ไม่บังคับ + ถดถอย → B2.1 (rail ตามธง) → seed → build + server :3225 → `visual-pos p1.3` → ผู้ตรวจ parity (≤10 ภาพ/คน) → ผู้ตรวจโค้ด → นักล่า → รับ (5/55)
 
 > ⏸ **สถานะตอนหยุด (01 Oct 23:37 UTC)**: ไม่มี sub-agent · ไม่มี server/ build ค้าง (พอร์ต 3225 ปิดแล้วโดยเลน RC) · สาขาที่ push แล้ว: `session/pos` (ledger) · `wip/pos-p1.3` ba6a9bb8 · `wip/pos-p1.1b` f135223d · `rc/hotfixes-2026-10-01` 8999a79e · hotfix 4 ตัว · ⛔ main ไม่ถูกแตะ · ความคืบหน้า 7% (4/55) · รอเจ้าของ: O18 (deploy ตัวแก้) + คำสั่งเดินต่อ
+
+## 0.9 ▶️ cloud run — controller moved from the owner's VPS to a claude.ai cloud container (session/pos 48f9a846)
+- No VPS tooling here (no iso.sh/qc4.sh/with-gate-lock/tg/bind mounts) · commands run directly · DB = env `DATABASE_URL`/`DIRECT_URL` → QC4 (`ep-frosty-lab` asserted, hostname only) · `NODE_OPTIONS=--max-old-space-size=5632` · container is ephemeral ⇒ commit + push after every state change · lane cap 2 · owner's $250 cloud credit ⇒ economical
+- 03 Oct 07:12 UTC · step 0: `pnpm typecheck` on session/pos 48f9a846 = **exit 0 · wall 161 s** (4 vCPU · 15 GB) · worktree `../shark-p13` = `wip/pos-p1.3` ba6a9bb8 (own node_modules, pnpm install --frozen-lockfile ok) · `pos-qc-env` accepts env-exported DB (no .env files needed)
+- 03 Oct 07:12 UTC · next (per §0.8 tail order): P1.3 B2 full typecheck (running) → controller re-run forced/unforced `qc-pos-p1.3` + regressions → B2.1 (rail by flag) → seed + build + visual → parity/code reviewer → hunter → accept (5/55) · then P1.1b re-run + rulings 1–8 → builder
