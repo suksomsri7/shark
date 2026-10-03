@@ -20,6 +20,9 @@
 #   BUILD_HEAP_MB=5632 = heap ของ next build/start (รอบ 1: ค่าปริยาย 3584 ของ acc-v2-serve.sh = OOM)
 # 🔴 ห้ามแตะ: main · .env (prod) · QC1–QC3 · พอร์ต 3215 · ไม่ prisma migrate · ไม่ลบข้อมูลนอกร้าน QC POS
 set -uo pipefail
+# กันรันซ้อน: tree/DB เดียวกันห้ามมีสองรอบพร้อมกัน
+exec 9>/tmp/pos-vps-run-p1.3.lock
+flock -n 9 || { echo "🔴 มีรอบอื่นกำลังรันอยู่ (lock /tmp/pos-vps-run-p1.3.lock) — ไม่เริ่มซ้ำ"; exit 5; }
 
 TREE="${TREE:-/root/projects/shark-pos-p11}"
 EXPECT_HEAD="${EXPECT_HEAD:-653db842}"
@@ -71,9 +74,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'say "🔴 ถูกสั่งหยุด"; exit 130' INT TERM HUP
 
-# กันรันซ้อน: tree/DB เดียวกันห้ามมีสองรอบพร้อมกัน
-exec 9>/tmp/pos-vps-run-p1.3.lock
-flock -n 9 || { echo "🔴 มีรอบอื่นกำลังรันอยู่ (lock /tmp/pos-vps-run-p1.3.lock) — ไม่เริ่มซ้ำ"; exit 5; }
 
 # ตัวช่วยเล็ก (ping DB · เปิด/ปิดธง registerV2 ของระบบ POS ในร้าน QC เท่านั้น) — เขียนลง tree ชั่วคราว ลบทันทีหลังใช้
 helper_write() {
