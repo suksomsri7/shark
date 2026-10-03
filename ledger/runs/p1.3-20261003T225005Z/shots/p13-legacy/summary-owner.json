@@ -1,0 +1,60 @@
+{
+  "wo": "p13-legacy",
+  "user": "owner",
+  "tenant": "resto",
+  "base": "http://127.0.0.1:3225",
+  "at": "2026-10-03T23:23:27.520Z",
+  "shots": [
+    {
+      "page": "register",
+      "state": null,
+      "stepError": null,
+      "viewport": "1440x900",
+      "file": ".qc-shots/pos/p13-legacy/register-owner-1440x900.png",
+      "status": 200,
+      "expect": 200,
+      "finalUrl": "/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main",
+      "redirectedToLogin": false,
+      "overflow": false,
+      "overflowEl": null,
+      "consoleErrors": [],
+      "httpErrors": [],
+      "http5xx": 0,
+      "ok": true
+    },
+    {
+      "page": "register",
+      "state": null,
+      "stepError": null,
+      "viewport": "1024x768",
+      "file": ".qc-shots/pos/p13-legacy/register-owner-1024x768.png",
+      "status": 200,
+      "expect": 200,
+      "finalUrl": "/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main",
+      "redirectedToLogin": false,
+      "overflow": false,
+      "overflowEl": null,
+      "consoleErrors": [],
+      "httpErrors": [],
+      "http5xx": 0,
+      "ok": true
+    },
+    {
+      "page": "register",
+      "state": null,
+      "stepError": null,
+      "viewport": "390x844",
+      "file": ".qc-shots/pos/p13-legacy/register-owner-390x844.png",
+      "status": 200,
+      "expect": 200,
+      "finalUrl": "/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main",
+      "redirectedToLogin": false,
+      "overflow": false,
+      "overflowEl": null,
+      "consoleErrors": [],
+      "httpErrors": [],
+      "http5xx": 0,
+      "ok": true
+    }
+  ]
+}

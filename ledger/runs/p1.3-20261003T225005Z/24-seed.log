@@ -1,0 +1,32 @@
+[env] seed-pos-qc · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:587030) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ร้านกาแฟ ──
+  PQC-CF-AMER     6500 สต. · VAT 700bp · คงเหลือ 0 · PRODUCT
+  PQC-CF-LATTE    6000 สต. · VAT 700bp · คงเหลือ 0 · PRODUCT
+  PQC-CF-CROIS    5500 สต. · VAT 700bp · คงเหลือ 20 · PRODUCT
+  PQC-CF-WATER    1000 สต. · VAT 700bp · คงเหลือ 48 · 8850999000015 · PRODUCT
+  PQC-CF-EGG      2500 สต. · VAT 0bp · คงเหลือ 0 · PRODUCT
+  PQC-CF-FREE        0 สต. · VAT 700bp · คงเหลือ 0 · PRODUCT
+  PQC-CF-GIFT    15000 สต. · VAT -bp · คงเหลือ 0 · SERVICE
+── ร้านอาหาร ──
+  PQC-RS-COKE     2000 สต. · คงเหลือ 24 · 8851959132012
+  PQC-RS-ICE         0 สต. · คงเหลือ 0
+  เมนู ข้าวกะเพราหมูสับไข่ดาว 6500 สต.
+  เมนู ผัดไทยกุ้งสด 8500 สต.
+  เมนู ต้มยำกุ้งน้ำข้น 15000 สต. · สต็อกเมนู 20
+  เมนู ชาไทยเย็น 4500 สต.
+
+ลายนิ้วมือร้านอื่น 36 ค่า · ไม่เปลี่ยนเลย ✅
+FINGERPRINT_OTHER_TENANTS {"tenant":"17","tenant.maxUpdatedAt":"2026-09-30T21:47:16.041Z","user":"72","user.maxUpdatedAt":"2026-10-01T19:58:42.794Z","membership":"35","membership.maxUpdatedAt":"2026-10-01T00:43:16.914Z","businessUnit":"11","businessUnit.maxUpdatedAt":"2026-09-27T19:34:52.723Z","appSystem":"94","appSystem.maxUpdatedAt":"2026-10-01T17:04:53.296Z","customer":"68","customer.maxUpdatedAt":"2026-10-01T17:04:37.671Z","crmContact":"107","crmContact.maxUpdatedAt":"2026-09-28T18:00:41.237Z","crmDeal":"74","crmDeal.maxUpdatedAt":"2026-10-01T07:01:35.741Z","posSale":"139","posSale.maxUpdatedAt":"2026-09-27T19:35:45.879Z","invItem":"8","invItem.maxUpdatedAt":"2026-09-27T19:35:45.943Z","accountProduct":"13","accountProduct.maxUpdatedAt":"2026-09-27T19:35:46.202Z","menuItem":"0","menuItem.maxUpdatedAt":"null","menuCategory":"0","menuCategory.maxUpdatedAt":"null","shopProduct":"0","shopProduct.maxUpdatedAt":"null","accountSystemLink":"113","accountSystemLink.maxUpdatedAt":"2026-10-01T19:58:52.710Z","appSystemUnit":"60","invMovement":"11","paymentProfile":"0","outboxEvent.PENDING":"0","outboxEvent":"14157","session":"148"}
+แถวใหม่รอบนี้: ไม่มี (รันซ้ำ) · เฉลย scripts/pos-expected.json · 3 วิ
+SEED_SUMMARY {"coffee":{"units":2,"systems":5,"systemUnitLinks":10,"memberships":2,"invItems":7,"invItemsWithBarcode":1,"services":1,"accountProducts":6,"accountProductsNoVat":1,"accountProductsZeroPrice":1,"invReceives":2,"onHandTotal":68,"menuCategories":0,"menuItems":0,"kdsStations":0,"members":1,"accountSystemLinks":1,"posSales":3,"paymentProfiles":1},"resto":{"units":1,"systems":3,"systemUnitLinks":3,"memberships":2,"invItems":2,"invItemsWithBarcode":1,"services":0,"accountProducts":2,"accountProductsNoVat":0,"accountProductsZeroPrice":1,"invReceives":1,"onHandTotal":24,"menuCategories":3,"menuItems":4,"kdsStations":2,"members":0,"accountSystemLinks":1,"posSales":0,"paymentProfiles":0},"qcUsers":4,"otherTenantsUnchanged":true}
+JSON_SUMMARY {"suite":"seed-pos-qc","ok":true,"createdThisRun":{},"drift":[]}

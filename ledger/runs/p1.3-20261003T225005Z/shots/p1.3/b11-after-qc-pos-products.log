@@ -1,0 +1,53 @@
+[env] qc-pos-products · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้านของชำ (POS + คลัง + บัญชี ผูกกัน) ──
+(node:1983274) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── listPosProducts ──
+  ✅ [LIST-1] resolve inventorySystemId ผูก POS
+  ✅ [LIST-2] resolve accountSystemId (POS↔บัญชี)
+  ✅ [LIST-3] คืนสินค้าครบ 2 รายการ
+  ✅ [LIST-4] สินค้ายังไม่ตั้งราคา → salePriceSatang=null
+  ✅ [LIST-5] มีต้นทุนติดมา (น้ำเปล่า=700)
+
+── ตั้งราคาขาย (สร้าง AccountProduct ใหม่) ──
+  ✅ [SET-1] ตั้งราคาสำเร็จ
+  ✅ [SET-2] InvItem ถูกผูก accountProductId
+  ✅ [SET-3] AccountProduct.salePrice = 1200
+  ✅ [SET-4] AccountProduct.systemId = ระบบบัญชี
+  ✅ [SET-5] AccountProduct ชื่อ = ชื่อสินค้าในคลัง
+  ✅ [CAT-1] posCatalog เห็นราคาขายใหม่ (น้ำเปล่า=1200 ไม่ใช่ต้นทุน 700)
+
+── แก้ราคาซ้ำ (update ตัวเดิม) ──
+  ✅ [SET-6] แก้ราคาสำเร็จ
+  ✅ [SET-7] ไม่สร้าง AccountProduct ใหม่ (count เท่าเดิม)
+  ✅ [SET-8] salePrice อัปเดตเป็น 1500
+  ✅ [SET-9] productId เดิม (ไม่เปลี่ยนตัว)
+  ✅ [NEG-1] ราคาติดลบ → ok:false
+
+── POS ไม่เชื่อมบัญชี → ตั้งราคาสินค้าใหม่ไม่ได้ ──
+  ✅ [NOACC-1] listPosProducts: accountSystemId=null (ไม่เชื่อมบัญชี)
+  ✅ [NOACC-2] ตั้งราคาสินค้าใหม่โดยไม่มีบัญชี → ok:false
+  ✅ [NOACC-3] มีเหตุผลชี้ให้เปิดบัญชี
+  ✅ [NOACC-4] แก้ราคาสินค้าที่ผูกไว้แล้ว → ok แม้ POS ไม่ผูกบัญชี
+  ✅ [NOACC-5] salePrice อัปเดตเป็น 2800
+
+── cross-tenant guard ──
+  ✅ [XT-1] ร้าน B ตั้งราคา item ร้าน A → ok:false (ไม่พบ)
+  ✅ [XT-2] ราคาสินค้าร้าน A ไม่ถูกร้าน B แก้ (ยัง 1500)
+  ✅ [XT-3] listPosProducts ร้าน B ไม่เห็นสินค้าร้าน A
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: POS สินค้า/ราคา =====
+ผ่าน 24/24
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":24,"passed":24,"findings":[]}

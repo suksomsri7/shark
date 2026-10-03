@@ -1,0 +1,240 @@
+{
+  "$note": "เขียนโดย scripts/seed-pos-qc.mts — ห้ามแก้มือ · id หลักตายตัวจาก scripts/pos-qc-env.mts (PQC)",
+  "tag": "pos-qc",
+  "pages": [
+    "register",
+    "sales",
+    "products",
+    "close"
+  ],
+  "coffee": {
+    "tenantId": "posqc-coffee-tenant",
+    "slug": "pos-qc-coffee",
+    "posSystemId": "posqc-coffee-sys-pos",
+    "systems": {
+      "POS": "posqc-coffee-sys-pos",
+      "INVENTORY": "posqc-coffee-sys-inv",
+      "ACCOUNT": "posqc-coffee-sys-acc",
+      "MEMBER": "posqc-coffee-sys-member",
+      "POINT": "posqc-coffee-sys-point"
+    },
+    "units": {
+      "silom": "posqc-coffee-unit-silom",
+      "ari": "posqc-coffee-unit-ari"
+    },
+    "users": {
+      "owner": {
+        "userId": "posqc-coffee-user-owner",
+        "membershipId": "posqc-coffee-mb-owner",
+        "email": "pos-qc-coffee-owner@shark.local",
+        "role": "OWNER"
+      },
+      "cashier": {
+        "userId": "posqc-coffee-user-cashier",
+        "membershipId": "posqc-coffee-mb-cashier",
+        "email": "pos-qc-coffee-cashier@shark.local",
+        "role": "STAFF"
+      }
+    },
+    "memberId": "cmup7724k007o7pkzt3v8casu",
+    "items": [
+      {
+        "sku": "PQC-CF-AMER",
+        "id": "cmup77048002j7pkzjplf8ivk",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup7706x002k7pkzn41v7wrc",
+        "salePrice": 6500,
+        "vatRateBp": 700,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-LATTE",
+        "id": "cmup770cp002m7pkzlrtqpljp",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup770f0002n7pkzrmxouqa8",
+        "salePrice": 6000,
+        "vatRateBp": 700,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-CROIS",
+        "id": "cmup770ju002o7pkzuycm2dr3",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup770lz002p7pkz56ai6iwf",
+        "salePrice": 5500,
+        "vatRateBp": 700,
+        "onHand": 20,
+        "barcode": null,
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-WATER",
+        "id": "cmup7713400537pkzodcuqd2o",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup7716t00547pkz4h7rm7t8",
+        "salePrice": 1000,
+        "vatRateBp": 700,
+        "onHand": 48,
+        "barcode": "8850999000015",
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-EGG",
+        "id": "cmup771mp007h7pkzwwd1wz5z",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup771ov007i7pkz4v51p9gl",
+        "salePrice": 2500,
+        "vatRateBp": 0,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-FREE",
+        "id": "cmup771u6007k7pkzdkct4b5m",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup771wa007l7pkzkqe1n5p5",
+        "salePrice": 0,
+        "vatRateBp": 700,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-CF-GIFT",
+        "id": "cmup7720y007m7pkz7et4k61o",
+        "invPriceSatang": 15000,
+        "accountProductId": null,
+        "salePrice": null,
+        "vatRateBp": null,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "SERVICE"
+      }
+    ],
+    "counts": {
+      "units": 2,
+      "systems": 5,
+      "systemUnitLinks": 10,
+      "memberships": 2,
+      "invItems": 7,
+      "invItemsWithBarcode": 1,
+      "services": 1,
+      "accountProducts": 6,
+      "accountProductsNoVat": 1,
+      "accountProductsZeroPrice": 1,
+      "invReceives": 2,
+      "onHandTotal": 68,
+      "menuCategories": 0,
+      "menuItems": 0,
+      "kdsStations": 0,
+      "members": 1,
+      "accountSystemLinks": 1,
+      "posSales": 3,
+      "paymentProfiles": 1
+    }
+  },
+  "resto": {
+    "tenantId": "posqc-resto-tenant",
+    "slug": "pos-qc-resto",
+    "posSystemId": "posqc-resto-sys-pos",
+    "systems": {
+      "POS": "posqc-resto-sys-pos",
+      "INVENTORY": "posqc-resto-sys-inv",
+      "ACCOUNT": "posqc-resto-sys-acc"
+    },
+    "units": {
+      "main": "posqc-resto-unit-main"
+    },
+    "users": {
+      "owner": {
+        "userId": "posqc-resto-user-owner",
+        "membershipId": "posqc-resto-mb-owner",
+        "email": "pos-qc-resto-owner@shark.local",
+        "role": "OWNER"
+      },
+      "cashier": {
+        "userId": "posqc-resto-user-cashier",
+        "membershipId": "posqc-resto-mb-cashier",
+        "email": "pos-qc-resto-cashier@shark.local",
+        "role": "STAFF"
+      }
+    },
+    "items": [
+      {
+        "sku": "PQC-RS-COKE",
+        "id": "cmup772ku00a07pkz7ml317x8",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup772n600a17pkzbwblbq4r",
+        "salePrice": 2000,
+        "vatRateBp": 700,
+        "onHand": 24,
+        "barcode": "8851959132012",
+        "kind": "PRODUCT"
+      },
+      {
+        "sku": "PQC-RS-ICE",
+        "id": "cmup7733w00cf7pkzt0zrk66e",
+        "invPriceSatang": 0,
+        "accountProductId": "cmup7736000cg7pkzney7hxo8",
+        "salePrice": 0,
+        "vatRateBp": 700,
+        "onHand": 0,
+        "barcode": null,
+        "kind": "PRODUCT"
+      }
+    ],
+    "menu": [
+      {
+        "name": "ข้าวกะเพราหมูสับไข่ดาว",
+        "id": "cmup773hb00co7pkzosp7e2mm",
+        "basePrice": 6500,
+        "stockQty": null
+      },
+      {
+        "name": "ผัดไทยกุ้งสด",
+        "id": "cmup773j100cp7pkz0xgfb1nx",
+        "basePrice": 8500,
+        "stockQty": null
+      },
+      {
+        "name": "ต้มยำกุ้งน้ำข้น",
+        "id": "cmup773kj00cq7pkzif9vtfj0",
+        "basePrice": 15000,
+        "stockQty": 20
+      },
+      {
+        "name": "ชาไทยเย็น",
+        "id": "cmup773m100cr7pkzs11atbf8",
+        "basePrice": 4500,
+        "stockQty": null
+      }
+    ],
+    "counts": {
+      "units": 1,
+      "systems": 3,
+      "systemUnitLinks": 3,
+      "memberships": 2,
+      "invItems": 2,
+      "invItemsWithBarcode": 1,
+      "services": 0,
+      "accountProducts": 2,
+      "accountProductsNoVat": 0,
+      "accountProductsZeroPrice": 1,
+      "invReceives": 1,
+      "onHandTotal": 24,
+      "menuCategories": 3,
+      "menuItems": 4,
+      "kdsStations": 2,
+      "members": 0,
+      "accountSystemLinks": 1,
+      "posSales": 0,
+      "paymentProfiles": 0
+    }
+  },
+  "qcUsers": 4
+}

@@ -1,0 +1,34 @@
+  ✅ [B3-S1.1] layout.tsx เรียก getBrandingTokens(tenantId) แล้วส่งให้ ThemeRoot (server → style var ที่ราก) · ThemeRoot ตั้ง --color-accent/--color-accent-fg/--color-accent-soft/--nav-bg/--nav-fg/--nav-fg2/--nav-on
+  ✅ [B3-S1.2] globals.css ประกาศค่าปริยายของ --color-accent-fg / --nav-* (ธีมยังไม่ตั้ง = หน้าตาเดิม)
+  ✅ [B3-S1.3] ?theme=preview: ThemeRoot อ่าน sessionStorage 'shark:branding:preview' แล้วทับ var ฝั่ง client (เฉพาะแท็บนั้น ไม่บันทึก)
+  ✅ [B3-S2.1] Topbar: ซ้าย = โลโก้ (img หรือตัวย่อบนพื้น accent) + ชื่อที่แสดง (displayName) · ไม่มีปุ่ม ☰ ที่ ≥lg (มีเฉพาะ <lg และไม่มีในแอป)
+  ✅ [B3-S2.2] Topbar ขวา = 2 ปุ่ม: 'แจ้งปัญหาการใช้งาน' (testid report-issue) + SHARK AI orb (testid ai-orb) · ไม่มีค้นหา/กระดิ่ง/avatar
+  ✅ [B3-S2.3] ในแอป (inApp): orb ส่ง postMessage {ev:'open-ai'} · บนเว็บเปิด AiDock (event/handler เดียวกับ AiDock) · AiDock ไม่ลอยปุ่มมุมล่างขวาซ้ำอีก (มุมล่างว่าง)
+  ✅ [B3-S3.1] NavDrawer ใช้ var --nav-bg/--nav-fg/--nav-on แทนสี hard-coded (โทนเปลี่ยนตามร้าน) · หัวแถบมีโลโก้+ชื่อกิจการ+▾
+  ✅ [B3-S3.2] NavRail ใช้ทุกหน้า (ไม่ผูก isRailPath อีก) · โทนเดียวกับแถบ (--nav-bg) · ไม่มีโลโก้บนราง · มีปุ่ม › ขยาย (testid nav-expand) · แถบเต็มมี ‹ ย่อ (testid nav-collapse) · tooltip ชื่อระบบ · จุดแดงแจ้งเตือน
+  ✅ [B3-S3.3] AppShell เลือก rail/แถบเต็มจาก preferences.navCollapsed (server prop) · บอร์ดงาน (isRailPath) ยังบังคับราง · เปลี่ยนแล้วเรียก setNavCollapsedAction (จำต่อผู้ใช้)
+  ✅ [B3-S3.4] AppMain เว้นซ้ายตามสถานะจริง (rail 3.5rem / แถบ 18rem) ไม่ใช่ตาม path อย่างเดียว
+(node:586921) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [B3-S4.1] user-preferences (core): ปริยาย navCollapsed=false · kanbanShortcuts=true (ย้าย/รวมของ K1.14 มาที่เดียว)
+  ✅ [B3-S4.2] setUserPreferences({navCollapsed:true}) → true · ไม่ทับ kanbanShortcuts · kanban/preferences อ่านจากที่เดียวกัน
+  ✅ [B3-S4.3] parsePreferences ทน prefs เพี้ยน (array/สตริง/null) → ปริยาย
+  ✅ [B3-S5.1] จอ <lg / ในแอป: ปัดจากขอบซ้าย (≤24px) ไปทางขวา ≥60px เปิดเมนู (pointer/touch ใน AppShell หรือ SwipeEdge.tsx) · ไม่ทำงานเมื่อเริ่มในช่องพิมพ์/แนวนอนเลื่อนได้
+  ✅ [B3-S5.2] IssueReportSheet.tsx: ประเภท 3 (BUG/DISPLAY/IDEA) · ข้อความ · แนบรูป (ไม่บังคับ) · แนบ pageUrl/userAgent/appVersion อัตโนมัติ · ส่งผ่าน reportIssueAction · ไม่ใช้ alert()
+  ✅ [B3-S5.3] reportIssueAction: ต้องล็อกอิน (requireTenant) → createIssueReport(ctx,{userId,…}) · ไฟล์แนบผ่าน validateLogoFile-แบบรูป ≤2MB → uploadFile · คืน {ok} ไม่ throw
+  ✅ [B3-S5.4] issues.ts มี assertCanReport/สิทธิ์: ผู้แจ้งต้องเป็นสมาชิกร้าน (membership accepted) ไม่งั้น throw ไทย
+  ✅ [B3-S5.5] เมนูมือถือ (overlay) ท้ายเมนูมีรายการ 'แจ้งปัญหาการใช้งาน' (เพราะแถบบนจอเล็กไม่มีที่)
+  ✅ [B3-S6.1] visual-branding.mts มี spec b3: โครงแอป 3 โทน (LIGHT/BRAND/DARK) × desktop · ราง (ย่อ) · มือถือหลังปัดขวา · แผ่นแจ้งปัญหา · finally คืนค่า
+  ❌ [B3-S6.2] มีภาพจริง ≥ 8 ใบใน .qc-shots/branding/b3 — exp ≥8 | act 0
+
+===== QC Branding B3 =====
+ผ่าน 19/20
+FINDINGS: CRITICAL 0 · MAJOR 1 · MINOR 0
+JSON_SUMMARY {"total":20,"passed":19,"findings":["B3-S6.2"]}

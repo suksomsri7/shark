@@ -1,0 +1,78 @@
+[env] qc-pos-register · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้านของชำ (POS + คลัง + สมาชิก + คูปอง) ──
+(node:576882) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── catalog / links resolve ──
+  ✅ [CAT-1] resolve inventorySystemId ผูก unit
+  ✅ [CAT-2] resolve pointSystemId ผูก unit
+  ✅ [CAT-3] resolve couponSystemId ผูก unit
+  ✅ [CAT-4] resolve memberSystemId ผูก unit
+  ✅ [CAT-5] posCatalog คืนสินค้าครบ 2 รายการ
+  ✅ [CAT-6] ราคา fallback ต้นทุน (น้ำเปล่า=700)
+  ✅ [CAT-7] ราคาจาก AccountProduct.salePrice (ขนมปัง=2500 ไม่ใช่ต้นทุน 1500)
+  ✅ [CAT-8] จุดขายไม่มีคลัง → inventorySystemId=null (catalog ว่าง)
+  ✅ [MEM-1] posMembers คืนสมาชิกในระบบที่ผูก unit
+
+── ขายเงินสด ──
+  ✅ [CASH-1] บิลเงินสด status=PAID
+  ✅ [CASH-2] มีเลขใบเสร็จ (receiptNo)
+  ✅ [CASH-3] grandTotal = 3900 สตางค์
+
+── idempotency ──
+  ✅ [IDEM-1] key เดิม 2 ครั้ง → 1 บิล
+
+── ขายพร้อมเพย์ ──
+  ✅ [PP-1] บิลพร้อมเพย์ status=PAID
+  ✅ [PP-2] payment type=PROMPTPAY บันทึกถูก
+
+── ขายแนบสมาชิก → สะสมแต้ม ──
+  ✅ [MEM-2] ขายแนบสมาชิกได้แต้ม (>0 หลังระบายคิว · บิล = สมุดแต้ม)
+
+── ขายพร้อมคูปอง ──
+  ✅ [CPN-0] สร้างคูปองสำเร็จ
+  ✅ [CPN-1] validate คูปองคืนส่วนลด 2000
+  ✅ [CPN-2] ขายคูปอง grandTotal=6000 (8000-2000)
+  ✅ [CPN-3] คูปองถูก redeem ผูกกับบิล
+
+── cross-tenant guard ──
+  ✅ [XT-1] posUnitIsLinked ของตัวเอง = true
+  ✅ [XT-2] unit ร้านอื่น → posUnitIsLinked=false
+  ✅ [XT-3] ร้าน B ยิง posSystem ร้าน A → false
+  ✅ [XT-4] posCatalog ข้ามร้านไม่รั่ว (0 รายการ)
+── บริการหน้าร้าน (จากแคตตาล็อกกลาง) ──
+  ✅ [SV-1] หน้าขายเห็นบริการของหน้างานนี้
+  ✅ [SV-2] บริการที่ปิดแล้วไม่ขึ้นหน้าขาย
+  ✅ [SV-3] ราคา/ระยะเวลามาครบ (หน้าขายต้องโชว์ได้ทันที)
+  ✅ [SV-4] 🔴 บริการไม่รั่วข้ามร้าน (ร้าน B ยิงระบบสินค้า/บริการของร้าน A)
+  ✅ [SV-5] 🔴 ยิงระบบของร้านอื่นด้วย tenant ตัวเอง ก็ไม่เห็น
+  ✅ [SV-6] ขายบริการได้ → บิล PAID ยอดตรง
+  ✅ [SV-7] 🔴 ขายบริการแล้วสต็อกสินค้าไม่ขยับ (บริการไม่มีของให้ตัด)
+  ✅ [SV-8] รายการบริการไม่ผูก InvItem (itemId = null ตามสัญญา schema)
+── ธุรกิจผสม สินค้า+บริการ ──
+  ✅ [MX-1] หน้าขายเห็นทั้งบริการมีคิว และค่าบริการที่ไม่ใช่คิว
+  ✅ [MX-2] 🔴 ค่าบริการที่ไม่ใช่คิว ต้องไม่โผล่ในระบบจอง (ไม่งั้นลูกค้าจอง 'ค่าจัดส่ง' ได้)
+  ✅ [MX-3] บริการมีคิวยังโผล่ในระบบจองตามเดิม
+  ✅ [MX-4] บิลเดียวมีทั้งสินค้า/บริการ/รายการพิมพ์เอง แยกกันได้จาก itemId+serviceId
+── เชื่อมบัญชี: แยกรายได้สินค้า/บริการ ──
+  ✅ [AC-1] มี journal entry ของบิลนี้
+  ✅ [AC-2] 🔴 ยอดบริการเข้าบัญชี 4030 รายได้ค่าบริการ (สัดส่วน 300/310 ของฐาน)
+  ✅ [AC-3] ยอดสินค้าเข้าบัญชี 4000 รายได้ขายสินค้า (ส่วนที่เหลือ)
+  ✅ [AC-3b] รายได้ 2 หมวดรวมกัน = ฐานก่อน VAT ของทั้งบิล (ไม่มีเงินหาย/งอก)
+  ✅ [AC-4] 🔴 งบยังบาลานซ์ (Dr = Cr) หลังแยกรายได้ 2 หมวด
+  ✅ [MX-5] สรุปปิดวันแยกยอดสินค้า/บริการ/อื่น ๆ ได้
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC Wave1-B: POS หน้าขาย =====
+ผ่าน 42/42
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":42,"passed":42,"findings":[]}

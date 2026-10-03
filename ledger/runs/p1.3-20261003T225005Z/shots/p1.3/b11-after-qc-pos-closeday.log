@@ -1,0 +1,49 @@
+[env] qc-pos-closeday · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+── setup: ร้านกาแฟ (POS หลัก + POS สาขา 2) ──
+(node:1983072) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── seed บิลวันนี้ ──
+  ✅ [SUM-1] businessDate = วันนี้ (BKK)
+  ✅ [SUM-2] ยอดขายสุทธิ = 150.00 (100+50, ไม่รวม void)
+  ✅ [SUM-3] จำนวนบิล PAID = 2
+  ✅ [SUM-4] จำนวนบิล void = 1
+  ✅ [SUM-5] ยอด void = 30.00
+  ✅ [PAY-1] แยกวิธีจ่าย: เงินสด = 100.00 (ไม่รวม void)
+  ✅ [PAY-2] แยกวิธีจ่าย: พร้อมเพย์ = 50.00
+  ✅ [PAY-3] เงินสดควรมีในลิ้นชัก = ยอดเงินสด 100.00
+  ✅ [PAY-4] byMethod เรียง CASH ก่อน PROMPTPAY
+  ✅ [PAY-5] วิธีจ่ายมีป้ายไทย (เงินสด)
+
+── บิลวันอื่น ──
+  ✅ [DAY-1] บิลวันอื่นไม่รวมยอดวันนี้ (ยัง 150.00)
+  ✅ [DAY-2] ระบุวันนั้น (2026-09-25) → ยอด 999.00
+  ✅ [DAY-3] ระบุวันนั้น → 1 บิล
+
+── scope: ระบบ POS อื่น + tenant อื่น ──
+  ✅ [SCOPE-1] ขายระบบ POS อื่นในร้านเดียวกัน → ไม่รวม (ยัง 150.00)
+  ✅ [SCOPE-2] ระบบ POS อื่นสรุปแยกได้เอง (777.00)
+  ✅ [SCOPE-3] cross-tenant (tenantA + systemB) → ยอด 0
+
+── CSV ปิดวัน ──
+  ✅ [CSV-1] CSV มี BOM (\uFEFF) นำหน้า
+  ✅ [CSV-2] มี header ถูกต้อง
+  ✅ [CSV-3] แถวบิลครบ 3 (2 PAID + 1 VOIDED)
+  ✅ [CSV-4] มีแถวยอดขายสุทธิในบล็อกสรุป (150.00)
+  ✅ [CSV-5] มีแถวเงินสดควรมีในลิ้นชัก (100.00)
+  ✅ [CSV-6] มีสถานะ 'ยกเลิก' สำหรับบิล void
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: POS ปิดวัน =====
+ผ่าน 22/22
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":22,"passed":22,"findings":[]}

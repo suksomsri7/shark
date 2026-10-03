@@ -1,0 +1,16 @@
+[env] visual-pos · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:602695) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ register 1440x900 HTTP 200 (คาด 200) → .qc-shots/pos/p13-legacy/register-owner-1440x900.png
+  ✅ register 1024x768 HTTP 200 (คาด 200) → .qc-shots/pos/p13-legacy/register-owner-1024x768.png
+  ✅ register 390x844 HTTP 200 (คาด 200) → .qc-shots/pos/p13-legacy/register-owner-390x844.png
+
+🧹 ลบ session ของรอบนี้ 1 · ลบโปรไฟล์ chromium /tmp/chr-pos-602695 · ภาพ 3 ใบใน .qc-shots/pos/p13-legacy
+JSON_SUMMARY {"wo":"p13-legacy","user":"owner","tenant":"resto","base":"http://127.0.0.1:3225","shots":[{"page":"register","state":null,"stepError":null,"viewport":"1440x900","file":".qc-shots/pos/p13-legacy/register-owner-1440x900.png","status":200,"expect":200,"finalUrl":"/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main","redirectedToLogin":false,"overflow":false,"overflowEl":null,"http5xx":0,"ok":true,"consoleErrors":0,"httpErrors":0},{"page":"register","state":null,"stepError":null,"viewport":"1024x768","file":".qc-shots/pos/p13-legacy/register-owner-1024x768.png","status":200,"expect":200,"finalUrl":"/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main","redirectedToLogin":false,"overflow":false,"overflowEl":null,"http5xx":0,"ok":true,"consoleErrors":0,"httpErrors":0},{"page":"register","state":null,"stepError":null,"viewport":"390x844","file":".qc-shots/pos/p13-legacy/register-owner-390x844.png","status":200,"expect":200,"finalUrl":"/app/sys/posqc-resto-sys-pos/pos/register?unit=posqc-resto-unit-main","redirectedToLogin":false,"overflow":false,"overflowEl":null,"http5xx":0,"ok":true,"consoleErrors":0,"httpErrors":0}],"failures":0,"fatal":null}
