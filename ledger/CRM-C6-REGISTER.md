@@ -1,4 +1,6 @@
-# CRM v2 — C6 handover register (DRAFT)
+# CRM v2 — C6 hand-over register
+
+> **3 Oct 2026 — C5.5 CLOSED (49/53). This file (formerly `CRM-C6-REGISTER-DRAFT.md`) is now the input of record for C6.1–C6.4**: §1 = C6.1 candidates, §2 = prod runbook, §3 = owner decisions, §4–§5 = debt and unbuilt cards that go into the C6.4 HANDOVER; the dated sections below §7 are later additions (newest last). Older ledger lines still cite the DRAFT name. Nothing in C6 starts without the owner's GO.
 
 Started 2026-10-01 08:55 UTC · **DEADLINE 09:35 UTC** (40-min time box) · read-only analyst · no DB/tests/builds/typecheck run · only `git` reads.
 Paths: main = `/root/projects/shark-crm` (branch `session/crm` @ 2629997c). Worktree paths abbreviated `c54c:` = `/root/projects/shark-crm-c54c/` etc. "N" = C5.4-N note (`c54c:ledger/wo-notes/crm-C5.4-N.md`).

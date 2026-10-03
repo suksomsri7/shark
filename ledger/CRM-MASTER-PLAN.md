@@ -413,7 +413,7 @@ C3.0 → C3.1 → C3.2 ∥ C3.3 → C3.4 ∥ C3.5 → C3.6 ∥ C3.7 → C3.8 →
 | C5 | C5.1 | ✅ | (this commit) | perf at real size: 32/32 budgets · P2029 crashes fixed · migration crm_perf_indexes (index-only) · reviewer MERGEABLE · equivalence 0 diffs |
 | C5 | C5.3 | ✅ | (this commit) | qc-crm-c5.3.mts 54 checks (52 red = findings pinned) · reviewer 2 rounds · prod-exposure list · ORACLE-EDIT rulings 1–8 |
 | C5 | C5.4 | ✅ | `264c5440` | all batches on session/crm (1 Oct): A · B · C (money, 14 rounds) · D · E · F · UI fix · J3 · D2 (8cf86985) · N (JV numbering + migration 20261104000001). NOT on main/prod — owner go. Follow-ups → C5.5 fix cards / C5.4-N2 / C6.1 register |
-| C5 | C5.5 | 🔨 | `42acc952` | hunts 1 · 2a · 2b done · fix1 merged 42acc952 (2 review rounds) · fix2 in round 2 (review MERGEABLE AFTER RV2-1..5) · fix3a running · then fix3b, account ILIKE sites, hotfix forward-port |
-| C6 | C6.1–C6.4 | ⏸️ | — | |
+| C5 | C5.5 | ✅ | `07ce81c2` | CLOSED 3 Oct: hunts 1 · 2a · 2b · 3 · 4 · authz sweep · fix1–fix15 + G1–G3 all independently reviewed and merged on session/crm (last = fix15 07ce81c2, gate record 2f5e411b) · run6 final check: no new product defect · open owner decisions + debt → `ledger/CRM-C6-REGISTER.md` · NOT on main/prod |
+| C6 | C6.1–C6.4 | ⏸️ | — | waiting for the owner's GO (prod) — inputs in `ledger/CRM-C6-REGISTER.md` |
 
 รวม 53 ใบ: C0 5 · C1 12 · C2 12 · C3 11 (รวมปิดเฟส) · C4 4 · C5 5 · C6 4 · ประมาณเวลาเดินเครื่อง 6–8 วัน (เทียบ RUN สมาชิก 34 ใบ ≈ 3 วัน + รอบแก้ 1 วัน) · migration 3 ใบ · ข้อสอบ ≈ 780 (เดิม) + ≈ 350 (กลุ่ม X) + ทะเบียนปุ่ม ≈ 600–800 แถว
