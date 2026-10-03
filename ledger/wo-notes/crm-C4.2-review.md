@@ -903,3 +903,73 @@ show a cross-module outbox check.
   4. Fail when the invite e-mail box stays ticked.
 - Cleanup: apply [A] only, outside run6. Do not apply [B] as is; use the narrowed criterion or leave it. Do not apply [C] or [D].
 - Acceptance evidence: §4.
+
+---
+
+## Final check after run6 (fresh reviewer, 3 Oct 2026)
+
+Reviewer: fresh and independent (not the builder, not the it4–it7 reviewer). Written 2026-10-03 07:21 UTC (`date -u`). c42b @ `27d914e1`.
+Read and analysis only: I ran no runner, no pnpm/tsx script, touched no DB, server or network, and read no `.env*` file. Everything
+below is recomputed from the raw files in `/tmp/c42b-logs` (66 run6 summaries, 65 run5 summaries, role logs, counts, tripwire,
+leftovers), the registry, `next-it7/verdict.py`, and `git` objects of `/root/projects/shark-crm` (session/crm). I did not use the
+`VERDICT PASS` lines as evidence.
+
+**What ran.** `run6.sh` md5 255e1177 (= the reviewed copy). Build at start `READY 22:06 2f5e411b port=3215 ai=mock` (not e1caec03).
+Runner 71120e8e and registry f102f258 in `run6.md5`; the files in `scripts/` and `next/` have the same md5 now. Seed 2026100322. I
+re-drew E with the script's own code and got the recorded five pages (pool 31): `/app/sys/[id]/member/members` · `/app/party/[partyId]`
+· `/settings/tracking` · `/settings/quotas` · `/settings/portal`. Window 22:06:53Z → 01:34:04Z; all five roles rc=0.
+
+| item | result | evidence (re-derived) |
+|---|---|---|
+| a. run6 verdict | **PASS** | 66 summaries (13 chunks × 4 staff + 14 customer), no `-crash.json`, 66 `🟢` lines and 0 `🔴` in the role logs, `fatal: null` everywhere. Per role pressed = passed: owner 1042 · manager 1036 · nok 1110 · thana 1116 · customer 73 = **4377 / 4377**. In every file `total` = presence − skippedNeeds − skippedSafety (4845 − 400 − 68). dead 0 · wrongExpect 0 · hiddenLeak 0 · disabled 0 · vacuous(guard) 0 · overflow 0. No presence row with `h && f`. Every visible-but-absent row is in skippedNeeds. Hard lists all empty: restore failures 0 (342 restores) · cleanup 0 · outboxUnsettled 0 · verify 0 · tripwire 0 · pageErrors 0. Hidden absences 1844: paired 1686 · customer page lock-out 44 · LOCKOUT-PAIRED 70 · WAIVED 44 · **VACUOUS 0**. |
+| a. manager attach rows | **PASS** | `/emails/[threadKey]` answered 200 for the manager on both viewports and 9 other rows were found there. `crm-email-attach-contact-q/-go/-pick` are hidden-absent for the manager (d+m) and found by the owner (d+m), so they are paired. Owner `-pick` is dbVerified (`CrmActivity`, `AuditLog crm.email.attach`). |
+| a. `activity-row-company-link` | **PASS** | Found by owner and manager (d+m), hidden-absent for nok and thana on a 200 page: paired, not vacuous. The other 5 fixture rows (`objects-archived-toggle`, `object-restore-btn`, `object-archive-confirm-key/-reason`, `pl-restore-*`) are pressed by the owner and paired. |
+| a. `verdict.py` | **PASS** | `next-it7/verdict.py` md5 845b230d (the reviewed one). `ok` requires passed == pressed, VACUOUS 0, 0 dead/wrongExpect/hiddenLeak/disabled and `not any(hard.values())`; entries are appended only when non-empty, so PASS with a non-empty hard list is impossible. Three things it cannot see, which I checked by hand: a missing or crashed chunk (none), the self-reported `total`/`passed` (they match the presence arithmetic), and in `--combine-base` the base run's hard lists other than pageErrors (item f). `next/` holds only the runner and registry; the older `scripts/pending/c42b/verdict.py` (42bd777b) was not used. |
+| b. WAIVED and LOCKOUT-PAIRED | **PASS** | I checked all rows, not a sample. WAIVED: 11 rows / 44 items, every testid is in `waivers-it7.json` (f09fbbeb), and every one sits on a page that answered 200 for the hidden role, except `member-view-team` for nok (404). LOCKOUT-PAIRED: 17 rows / 70 items; for every row every hidden role got 404 on every load of that page and viewport (raw `pageStatus`). 16 of the 17 are on the R4 ruling 1 list. The 17th, `/emails crm-emails-thread-row`, is new: see F1. The transitive waivers hold in run6: `contact-menu-merge`, `crm-ai-home-at-risk` and `crm-ai-proposal-edit` are found by owner and manager and hidden-absent for nok and thana. |
+| c. tripwire | **PASS** | `run6-tripwire.txt`: all 7 DB counters 0, 0 `[email` / `⨯` lines after byte 121 (log size 1500), `TRIPWIRE CLEAN`, rc=0 in `run6.status`. The window covers the run: the first runner start is 22:06:55 (the summary's `runStart` is start − 5 s by design) and the last summary was written 01:34:03. I read the server log myself: it holds the Next banner, one pg warning and 6 `[after-drain] fallback drain` lines, nothing else. It is still stdout of the running server (pids 3533344 / 3533359). |
+| d. counts | **PASS** | 159 keys in both files. Exactly three differ: `AuditLog` 7655 → 8375 (+720), `OutboxEvent` 9262 → 10412 (+1150), and the `_at` timestamp. All 74 content checksums are equal, no `ERR` or `n/a` value, `qc-btn-` tags 0, live `qc-btn` sessions 0. The two deltas equal the window-leftovers numbers exactly, so nothing needs attributing to another lane. `counts-before-run6` also equals `counts-after-dbg21` apart from `_at`. |
+| e. window leftovers | **PASS** | Only `AuditLog: 720` and `OutboxEvent: 1150` out of 264 tenant models. |
+| f. combined verdict | **PASS, with F1–F3** | Recomputed base (run5, the 25 pages run6 did not touch): 3428 pressed (owner 811 · manager 835 · nok 863 · thana 869 · customer 50), 0 failures, LOCKOUT 94, WAIVED 12, VACUOUS 0. 3428 + 4377 = **7805 / 7805**, LOCKOUT-PAIRED 164, WAIVED 56. All 24 run5 wrongExpect rows and all 6 run5 outboxUnsettled lines are on pages run6 re-pressed; run5 has no restore, cleanup, verify, tripwire or fatal entry, so dropping the base hard lists hides nothing. 25 + 32 = 57 pages = every page run5 planned; no page is dropped from both. Item-level exceptions: F1, F2, F3. |
+| g. `deal-bulk-move` | **PASS** | `postChecked` and `dbVerified` (`CrmDeal`, `AuditLog crm.deal.bulk_move`) for owner, manager, nok and thana on desktop and mobile: 8 of 8. |
+| h. fix15 merged | **PASS** | session/crm: `07ce81c2` (fix15, 10 src files) then `2f5e411b` (gate record); `git diff 2f5e411b HEAD -- src` is empty, so the build is the merged tree. Gate log `.qc-shots/crm/main-fix15.log`: probe-cf20-drain exit 0, probe-cf20 exit 0 (Q1–Q3: a created contact's rows are DONE within 5 s, 271 ms and 3392 ms). probe-cf20-rv-drain exited 1 in the gate (K9); the record explains it and the committed log shows 27/27. Review verdict: MERGEABLE (round 2). In run6 `/contacts/new` was pressed 16/16 by all four staff roles on both viewports, each wrote rows (restore deleted 5–6) and none needed an outbox wait. Note: round 2 (4 src files) was merged after the it7 check read the fix15 diff; all four files are on run6 A pages. |
+| i. new product defect | **NO** | 0 dead / wrongExpect / hiddenLeak / disabled, 0 page errors, 0 `⨯` lines. The 8 consoleErrors are the play fixture's `/api/files/…` 404 on `/contacts/[contactId]`, as in run5. See O1 for the one product observation. |
+
+**Findings**
+
+- **F1 LOW–MED (run6.sh chunking; coverage): `crm-emails-thread-row` was not pressed on the fix15 build.**
+  - run5 pressed it for owner and manager (d+m, 4 items). In run6 it is in skippedNeeds ("ซีดมี 0", probe none, waiver none).
+  - Cause: the runner creates the e-mail thread fixtures only when a `[threadKey]` page is selected (qc-crm-buttons.mts:2805). `run6.sh`
+    puts `/emails` in a chunk without `/emails/[threadKey]`, so the inbox was empty. Not a product failure.
+  - Effects: the combined verdict drops the run5 press because `/emails` is a run6 page; the row is on no ruled list; and the nok/thana
+    absence is LOCKOUT-PAIRED (a real 404) where run5 had a true pairing.
+  - Why it does not block: fix15 changes only the unmatched-gate helper in `emails.ts` and the `canAttach` flag of the thread page (I read
+    the diff); the list query and the `/emails` page are not in the diff. The gate was exercised on `/emails` in run6
+    (`crm-emails-tab-unmatched`: owner pressed, manager hidden and paired), and the link's destination rendered 200 for owner and manager.
+  - Close (C4.2-fix): create the thread fixtures when `/emails` is selected, and give the row a `needsProbe`. A re-press of the one chunk
+    `re:^/emails(/\[threadKey\])?$` for owner and manager would close it outright.
+- **F2 LOW (verdict accounting): `--combine-base` replaces whole pages, not page × role.** run5 pressed `/u/[token]`
+  (`crm-unsub-confirm`, `crm-unsub-notrack`) with the four staff roles (16 items). run6 ran `/u` for the customer only (4 items, passed,
+  dbVerified), so the 16 leave the combined table. Same public page and controls; no evidence is lost that matters.
+- **F3 LOW (pre-existing): the customer lock-out of `/emails/[threadKey]` is not tested** (0/0; the runner has no thread for the customer).
+  run5 had the same gap. 44 of 44 other lock-outs (22 staff pages × 2) redirect to `/login`.
+- **F4 LOW (pre-existing, for C6): 7 registry rows on 3 pages are never planned in any run**: `/p/[slug]` ×5, `/app/sys/[id]/account/docs/…`
+  ×1, `/app/sys/[id]/meeting` ×1 (no fixture; builder note line 535). Also 6 select rows are found but have no option to choose and carry
+  no `needsWaiver`: `contact-convert-member-system`, `crm-portal-settings-board`, `crm-auto-action-board`, `crm-auto-param-field`,
+  `crm-forms-assign-*`, `crm-integrations-target-kanban`. I found no reviewer ruling that names these 13; they are unchanged since run5.
+- **O1 (product observation for the C5.5 close, not new):** the server log has 6 `[after-drain] fallback drain: an after() task did not
+  start within 3000 ms` lines in the run6 window. So the P-it6-2 symptom does occur on the real `next start` server and fix15's fallback
+  caught it each time. The root cause is still unproven, as the fix15 review says. Longest outbox wait in run6: 14.4 s
+  (`crm-score-recompute-apply`), against the runner's 60 s limit.
+
+**Not verified**
+- Anything that needs the DB or the server: I did not re-run counts, tripwire, window-leftovers or any probe; I read their outputs.
+- That the tripwire and leftovers scripts query what their source says (source read only; md5 b2c63d0a for the tripwire).
+- The fix15 probes: read from the committed logs and the gate log, not run. The hand re-run of probe-cf19 on QC2 (56/56) is in the
+  gate record only.
+- The DOM behind hidden-absent passes (the runner keeps no dumps), and the content of any screenshot.
+- When the 6 fallback lines were written (the log has no timestamps; its mtime is 00:43 UTC).
+
+**Ruling.** The seven acceptance items of the it7 check (§4) are all met from raw artefacts. F1–F4 are coverage and accounting debt
+with no failing check behind them; register them with C4.2-fix / C6. For closing C5.5: run6 shows no new product defect.
+
+FINAL VERDICT: ACCEPT
