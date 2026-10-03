@@ -26,7 +26,7 @@ EXPECT_HEAD="${EXPECT_HEAD:-653db842}"
 PORT="${PORT:-3225}"
 ONLY_VISUAL="${ONLY_VISUAL:-0}"
 BUILD_HEAP_MB="${BUILD_HEAP_MB:-5632}"
-STAMP="$(date -u +%Y%m%dT%H%MZ)"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="/root/pos-runs/p1.3-$STAMP"
 RUNS_BRANCH="wip/pos-runs-p1.3-$STAMP"
 SUMMARY="$OUT/SUMMARY.md"
@@ -68,7 +68,12 @@ cleanup() {
   helper_rm
   ( cd "$TREE" && git checkout -q -- scripts/pos-expected.json 2>/dev/null ) || true
 }
-trap cleanup EXIT INT TERM HUP
+trap cleanup EXIT
+trap 'say "🔴 ถูกสั่งหยุด"; exit 130' INT TERM HUP
+
+# กันรันซ้อน: tree/DB เดียวกันห้ามมีสองรอบพร้อมกัน
+exec 9>/tmp/pos-vps-run-p1.3.lock
+flock -n 9 || { echo "🔴 มีรอบอื่นกำลังรันอยู่ (lock /tmp/pos-vps-run-p1.3.lock) — ไม่เริ่มซ้ำ"; exit 5; }
 
 # ตัวช่วยเล็ก (ping DB · เปิด/ปิดธง registerV2 ของระบบ POS ในร้าน QC เท่านั้น) — เขียนลง tree ชั่วคราว ลบทันทีหลังใช้
 helper_write() {
