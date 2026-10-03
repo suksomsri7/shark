@@ -30,3 +30,11 @@ No DB in the cloud container ⇒ the DB checks were written without running them
 1. A client key containing `reg2:` (a colon) is refused with VALIDATION, as S3.50 already asserts. 2. The prefix is fixed as exactly `reg2:`. 4. The S5.21 name coupling is accepted.
 3. **S3.53 tightened.** Each replay must now be refused with the same code as a first submit (validated before the idempotency lookup): received 0, short by 1, or missing → `PAYMENT_MISMATCH`; negative → `VALIDATION`. The refusal must not carry `changeSatang` or `saleId`. ok with change ≥ 0 no longer passes.
    Expected on 5f97add4: still RED. Received 0 and short by 1 return ok with negative change, and missing returns ok with change 0.
+
+## Round R4.2: receipt-counter residue (VPS forced run A, 3 Oct 2026)
+- **Symptom.** S9.1/S9.2 were red with `posqc-coffee-tenant.posReceiptCounter 0→1, receiptSeqSum 0→1`. Run B right after was clean, because the leftover row then existed in the before-snapshot and its seq was restored.
+- **Source (found by reading the code).** No check sells in a real QC unit. Silom/Ari are only read (catalog/status/quote/VAT), the resto case is refused NOT_FOUND, and S3.24's positive sale is in the sandbox unit. The row came from **S3.51 (R4 K2)**, which sells exactly 1 sale at the **temporary branch 2** (`sb.unit2Id`). Cleanup deleted that sale and the branch, but removed counters only for `sb.unitId`. Counters for other units were removed only `if (realCounters.length)`. On a DB with no counter before the run, the branch-2 counter (seq 1) was left behind. The branch-2 sale is part of K2's assertion (the key must belong to another branch), so it stays where it is and the cleanup is made exact instead.
+- **Fix (cleanup only, no assertion changed).**
+  1. Counters of the temporary units (branch 2, unlinked) are deleted explicitly.
+  2. Counters in the QC tenants that are not in the before-snapshot are now always deleted, including when the snapshot is empty (`realCountersTaken` flag). If the run crashed before the snapshot was taken, nothing is deleted.
+  3. Sandbox-unit and real-counter seq restore are unchanged.

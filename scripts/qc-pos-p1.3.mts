@@ -966,6 +966,8 @@ const sb = {
 };
 const lanes: Any[] = [];
 let realCounters: Any[] = [];
+/** R4.2: snapshot ตัวนับถูกถ่ายแล้ว (ว่างก็นับว่าถ่าย) ⇒ cleanup ลบตัวนับที่ไม่อยู่ใน snapshot เสมอ · ยังไม่ถ่าย (ล้มก่อน) = ไม่แตะ */
+let realCountersTaken = false;
 
 async function lane(i: number): Promise<Any> {
   if (lanes[i]) return lanes[i];
@@ -998,6 +1000,7 @@ async function runDb() {
   const owner = actor(mOwner, E.coffee.users.owner.userId);
   const cashierReal = actor(mCash, E.coffee.users.cashier.userId);
   realCounters = await P.posReceiptCounter.findMany({ where: { tenantId: { in: envMod.PQC_TENANT_IDS } } });
+  realCountersTaken = true;
 
   // ─── S1 อ่านกริดของสาขาจริงที่ seed ไว้ (อ่านอย่างเดียว) ───
   console.log("\n── S1 ข้อมูลกริด/หมวด/ค้นหา ──");
@@ -2602,7 +2605,11 @@ async function cleanup() {
       /* แถวหาย = ไม่มีอะไรให้คืน */
     }
   }
-  if (realCounters.length) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
+  // R4.2 (VPS run A: ตัวนับของสาขา 2 ชั่วคราว (S3.51 ขาย 1 บิล) ค้าง เพราะเดิมลบเฉพาะเมื่อ snapshot ไม่ว่าง):
+  //   ตัวนับของสาขาชั่วคราวทุกสาขา · และตัวนับใด ๆ ของร้าน QC ที่ไม่อยู่ใน snapshot ก่อนรัน (snapshot ว่างก็ลบ)
+  const tmpUnits = [sb.unit2Id, sb.unlinkedUnitId].filter(Boolean);
+  if (tmpUnits.length) await del("posReceiptCounter", { tenantId: { in: tids }, unitId: { in: tmpUnits } });
+  if (realCountersTaken) await del("posReceiptCounter", { tenantId: { in: tids }, id: { notIn: realCounters.map((c: Any) => c.id) }, ...(sb.unitId ? { unitId: { not: sb.unitId } } : {}) });
   // รอบ 3.2: ลูกค้า/ระดับ/ระบบสมาชิกชั่วคราว (S3.42) — แถวที่อ้าง customerId ก่อน แล้วลูกค้า แล้วระดับ
   if (sb.customerIds.length) {
     for (const m of ["memberActivity", "memberTierHistory", "memberAttribution", "memberConsent", "memberFieldValue", "memberFieldValueHistory", "memberChannelIdentity",
