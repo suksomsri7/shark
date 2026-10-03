@@ -16,12 +16,16 @@
 #   tail -f /root/pos-run-p1.3.log          # ปิดหน้าต่างได้ งานยังเดิน · จบแล้วบรรทัดสุดท้ายบอกชื่อ branch ผล
 #
 # ตัวแปร (ไม่ต้องตั้งถ้าใช้ค่าปกติ): TREE=/root/projects/shark-pos-p11 · EXPECT_HEAD=5f97add4 · PORT=3225
+#   ONLY_VISUAL=1 = ข้ามขั้น 1–3 (typecheck/ข้อสอบ/ถดถอย) ทำเฉพาะ seed + build + ภาพ (รอบ 1 ข้อสอบผ่านครบแล้ว)
+#   BUILD_HEAP_MB=5632 = heap ของ next build/start (รอบ 1: ค่าปริยาย 3584 ของ acc-v2-serve.sh = OOM)
 # 🔴 ห้ามแตะ: main · .env (prod) · QC1–QC3 · พอร์ต 3215 · ไม่ prisma migrate · ไม่ลบข้อมูลนอกร้าน QC POS
 set -uo pipefail
 
 TREE="${TREE:-/root/projects/shark-pos-p11}"
 EXPECT_HEAD="${EXPECT_HEAD:-5f97add4}"
 PORT="${PORT:-3225}"
+ONLY_VISUAL="${ONLY_VISUAL:-0}"
+BUILD_HEAP_MB="${BUILD_HEAP_MB:-5632}"
 STAMP="$(date -u +%Y%m%dT%H%MZ)"
 OUT="/root/pos-runs/p1.3-$STAMP"
 RUNS_BRANCH="wip/pos-runs-p1.3-$STAMP"
@@ -119,6 +123,7 @@ run install pnpm install --frozen-lockfile
 helper ping > "$OUT/00-db-ping.log" 2>&1 || die "ต่อ QC4 ไม่ได้ (ดู 00-db-ping.log — รหัสใน .env.qc/.env.qc4 ยังเป็นรหัสเก่า?)"
 say "DB ping ok"
 
+if [ "$ONLY_VISUAL" != 1 ]; then
 # ───────────────────────── 1 typecheck · fitness ─────────────────────────
 run typecheck env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck
 run fitness-env bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness
@@ -137,13 +142,17 @@ for s in qc-pos-p1.1 qc-pos-p0.2 qc-pos-register qc-pos-inventory qc-pos-account
   run "$s" $QC4 pnpm exec tsx "scripts/$s.mts"
 done
 
+else
+  echo "- ONLY_VISUAL=1: ข้ามขั้น 1–3 (ผลข้อสอบอยู่ในรอบก่อน)" >> "$SUMMARY"
+fi
+
 # ───────────────────────── 4 seed · build · ภาพ ─────────────────────────
 run seed $QC4 pnpm exec tsx scripts/seed-pos-qc.mts
 cp -f "$TREE/scripts/pos-expected.json" "$OUT/pos-expected.after-seed.json" 2>/dev/null || true
 ( cd "$TREE" && git diff --stat -- scripts/pos-expected.json ) > "$OUT/pos-expected.diffstat.txt" 2>&1
 ( cd "$TREE" && git checkout -q -- scripts/pos-expected.json ) || true   # ไฟล์ tracked — ห้าม commit ผลของ seed
 
-run serve-build env ACC_V2_PORT="$PORT" bash scripts/acc-v2-serve.sh
+run serve-build env ACC_V2_PORT="$PORT" NODE_OPTIONS="--max-old-space-size=$BUILD_HEAP_MB" bash scripts/acc-v2-serve.sh
 if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login"; then
   B="--base http://127.0.0.1:$PORT"
   run visual-owner   bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1.3 --user owner   --tenant coffee $B
@@ -163,6 +172,7 @@ fi
 server_stop
 mkdir -p "$OUT/shots"
 cp -r "$TREE/.qc-shots/pos/p1.3" "$TREE/.qc-shots/pos/p13-legacy" "$OUT/shots/" 2>/dev/null || true
+cp -f "$TREE/.qc-shots/acc-v2/server.log" "$OUT/server.log" 2>/dev/null || true
 
 # residue: tree ต้องสะอาดเหมือนตอนเริ่ม
 ( cd "$TREE" && git status --porcelain --untracked-files=normal ) > "$OUT/residue-tree.txt"
