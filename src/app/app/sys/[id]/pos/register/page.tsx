@@ -37,6 +37,8 @@ export default async function PosRegisterPage({
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId, type: "POS" } });
   if (!sys) notFound();
   const def = systemDef(sys.type);
+  // B2.3 N-b: จอใหม่เฉพาะระบบที่ active — ตรงกับ layout ที่โหลดเฉพาะระบบ active มาตัดสินโหมดราง (ไม่งั้นจอใหม่ไม่มีราง)
+  const v2 = sys.active && posRegisterV2On(sys.settings);
 
   const tabs = posTabs(id);
 
@@ -48,14 +50,14 @@ export default async function PosRegisterPage({
 
   // ยังไม่ผูก POS กับกิจการใด → ขายไม่ได้ (createSale ต้องมี unit) → ชี้ไปเชื่อม
   if (units.length === 0 || !view.active) {
-    return <PosRegisterUnlinked title={`${def?.icon ?? ""} ${sys.name}`.trim()} tabs={tabs} systemId={id} railFrame={posRegisterV2On(sys.settings)} />;
+    return <PosRegisterUnlinked title={`${def?.icon ?? ""} ${sys.name}`.trim()} tabs={tabs} systemId={id} railFrame={v2} />;
   }
 
   // เลือก unit ที่จะขาย: จาก ?unit= ถ้าถูกต้อง ไม่งั้นตัวแรกที่เข้าได้ (posRegisterView)
   const active = view.active;
 
   // ── หน้าขายใหม่ (ธงเปิด) — ผู้ขาย = membership ของ session เท่านั้น ──
-  if (posRegisterV2On(sys.settings)) {
+  if (v2) {
     const actor = { userId: auth.user.id, ...posMembership(auth.active) };
     const ctx = { tenantId, systemId: id, unitId: active.id };
     const [catalog, status, vat, profile] = await Promise.all([

@@ -194,7 +194,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S5.17", "-", "[G9] ไฟล์ \"use client\" ของหน้าขายไม่ import โมดูลเซิร์ฟเวอร์ (register.ts · catalog · service · core/db · prisma · next/headers · core/context) [static]"],
   ["P1.3-S5.18", "-", "[3.2 ข้อ 13 · Q24] register.ts export registerScan ⇒ register-actions.ts export registerScanAction (async · requireTenant) [static]"],
   ["P1.3-S5.19", "-", "[B2.1 · Q4] รางไอคอนของ /pos/register ขึ้นกับธง: isRailPath บังคับรางหน้าขายเฉพาะ id ที่ layout ส่งมา (posRegisterV2On) · AppShell+AppMain ส่ง id ต่อ · ไม่มี regex หน้าขายแบบไม่มีเงื่อนไข ⇒ ธงปิด = shell เท่า main [static]"],
-  ["P1.3-S5.20", "-", "[B2.2 รีวิว B2] จอขายกันพลาดระดับซอร์ส: เพิ่มสินค้าใช้ setCart แบบฟังก์ชัน + ผลสแกนเช็กรุ่นบิล · openPay ไม่ซ้อนกล่องชำระ · หลังม่าน inert + RegisterDialog กักโฟกัส · ยืนยันชำระปิดระหว่างรอ quote · beforeunload ตอน sending/unknown · สแกน none/choose มีข้อความ · Esc ข้าม isComposing · แถวปุ่มรอง ≥40px [static]"],
+  ["P1.3-S5.20", "-", "[B2.2 รีวิว B2] จอขายกันพลาดระดับซอร์ส: เพิ่มสินค้าใช้ setCart แบบฟังก์ชัน + ผลสแกนเช็กรุ่นบิล · openPay ไม่ซ้อนกล่องชำระ · หลังม่าน inert + RegisterDialog กักโฟกัส · ยืนยันชำระปิดระหว่างรอ quote · beforeunload ตอน sending/unknown · สแกน none/choose มีข้อความ · Esc ข้าม isComposing · แถวปุ่มรอง ≥40px · [B2.3] โฟกัสค้นหาหลัง commit (ไม่เรียกข้าง pop/setLayers([])) · quote ล้มแสดงในกล่องชำระ [static]"],
   // ── S6 กลุ่มแยกของ P1.6 (SKIP เองจนกว่าโค้ดจะอ่าน settings.pos.stock.oversellPolicy · มติผู้คุมงาน 1 ต.ค. ข้อ 4) ──
   ["P1.3-S6.1", "X6", "[P1.6] ชิ้นสุดท้าย นโยบาย BLOCK (settings.pos.stock.oversellPolicy): 10 เครื่องพร้อมกัน × 3 รอบ → PAID 1 · ที่เหลือ STOCK_INSUFFICIENT · onHand 0 · ผู้แพ้ไม่มีบิล"],
   // ── S9 คืนสภาพ ──
@@ -851,14 +851,18 @@ async function runStatic() {
     s2Pay: /kind\s*===\s*"pay"/.test(fnBody(RS, "openPay")),
     s2Inert: /inert=\{\s*layers\.length\s*>\s*0\s*\}/.test(RS) && /inert=\{\s*i\s*<\s*layers\.length\s*-\s*1\s*\}/.test(RS),
     s2Trap: /focusin/.test(RD) && /"Tab"/.test(RD) && /closest\(\s*"\[inert\]"\s*\)/.test(RD),
-    n1: /quotePending/.test(PD) && /!p\.quotePending/.test(PD) && /quotePending=\{\s*!quoteFresh\s*\}/.test(RS),
+    n1: /quotePending/.test(PD) && /!p\.quotePending/.test(PD) && /quotePending=\{\s*!quoteFresh\b/.test(RS),
     n2: /beforeunload/.test(RS) && /"sending"[\s\S]{0,80}"unknown"|"unknown"[\s\S]{0,80}"sending"/.test(RS.slice(Math.max(0, RS.indexOf("beforeunload") - 300), RS.indexOf("beforeunload") + 10)),
     n3: /match\s*===\s*"choose"/.test(RS) && /search\.noResult/.test(RS),
     n4: /isComposing/.test(RS.slice(RS.indexOf('"Escape"'), RS.indexOf('"Escape"') + 300)),
     s3: !/pos-reg-(bill-discount|note|tax-invoice)"\s+className="[^"]*\bh-9\b/.test(CP),
+    // B2.3 R1: focusSearch ข้าง pop()/setLayers([]) = ไม่มีผล (หลังม่านยัง inert ตอนนั้น) ⇒ ต้องโฟกัสหลัง commit จาก effect ที่ดู layers.length
+    r1: !/(?:\bpop\(\s*\)|setLayers\(\s*\[\s*\]\s*\))\s*;?\s*(?:\S[^\n]*\n\s*){0,2}focusSearch\(/.test(RS) && /useEffect\([\s\S]{0,400}layers\.length[\s\S]{0,300}focusSearch\(\)[\s\S]{0,120}\[\s*layers\.length/.test(RS),
+    // B2.3 N-a: quote ล้ม ⇒ ส่ง error เข้ากล่องชำระ (ไม่ใช่ "กำลังโหลด" ค้าง)
+    na: /quoteError/.test(PD) && /!p\.quoteError/.test(PD) && /quotePending=\{\s*!quoteFresh\s*&&\s*!quoteFailed\s*\}/.test(RS) && /quoteError=\{/.test(RS),
   };
   const b22Bad = Object.entries(b22).filter(([, v]) => !v).map(([k]) => k);
-  chk("P1.3-S5.20", b22Bad.length === 0, "S1 S2 S3 N1–N4 ครบ (static)", b22Bad.length ? `ขาด: ${b22Bad.join(", ")}` : "ครบ");
+  chk("P1.3-S5.20", b22Bad.length === 0, "S1 S2 S3 N1–N4 + B2.3 R1 N-a ครบ (static)", b22Bad.length ? `ขาด: ${b22Bad.join(", ")}` : "ครบ");
 }
 
 // ═════════════════════════ 5. S1 S3 S4 (ต้องมี seed + sandbox) ═════════════════════════

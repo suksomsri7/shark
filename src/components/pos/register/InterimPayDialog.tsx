@@ -25,6 +25,8 @@ type Props = {
   dueSatang: number;
   /** B2.2 N1: quote ของตะกร้าปัจจุบันยังไม่มา (เพิ่งแก้ตะกร้า/ถอดสมาชิก/PAYMENT_MISMATCH) ⇒ ยืนยันไม่ได้ + ป้าย "กำลังโหลด" */
   quotePending: boolean;
+  /** B2.3 N-a: quote ของตะกร้าปัจจุบันล้ม ⇒ แสดงข้อความที่แปลงจากรหัสแล้ว (การ์ดข้อผิดพลาดเดียวกัน) + ยืนยันไม่ได้ (ไม่ใช่ "กำลังโหลด" ค้าง) */
+  quoteError: PayError | null;
   itemCount: number;
   promptpayId: string | null;
   phase: PayPhase;
@@ -49,6 +51,8 @@ export function InterimPayDialog(p: Props) {
   const [received, setReceived] = useState("");
   const recvRef = useRef<HTMLInputElement>(null);
   const zero = p.dueSatang === 0;
+  // error ของการส่งมาก่อน (ผลของการกดยืนยันครั้งล่าสุด) · ไม่มี ⇒ error ของ quote ปัจจุบัน
+  const err = p.error ?? p.quoteError;
   const busy = p.phase !== "form";
   const recvSatang = parseHundredths(received);
   const cashOk = recvSatang !== null && received.trim() !== "" && recvSatang >= p.dueSatang;
@@ -66,7 +70,7 @@ export function InterimPayDialog(p: Props) {
     if (method === "CASH" && !zero) recvRef.current?.focus();
   }, [method, zero]);
 
-  const canConfirm = !busy && !p.quotePending && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
+  const canConfirm = !busy && !p.quotePending && !p.quoteError && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
   const confirm = () => {
     if (!canConfirm) return;
     if (zero) p.onConfirm({ method: "NONE" });
@@ -107,13 +111,13 @@ export function InterimPayDialog(p: Props) {
           </div>
         </div>
 
-        {p.error && (
-          <div data-testid="pos-reg-paydlg-error" data-code={p.error.code} className="flex flex-col gap-3 rounded-[18px] border-[1.5px] border-[color:var(--color-danger)] p-5" role="alert">
+        {err && (
+          <div data-testid="pos-reg-paydlg-error" data-code={err.code} className="flex flex-col gap-3 rounded-[18px] border-[1.5px] border-[color:var(--color-danger)] p-5" role="alert">
             <div className="flex items-start gap-2.5 text-[17px] font-bold text-[color:var(--color-danger)]">
               <RegisterIcon name="warn" size={18} className="mt-0.5" />
-              <span>{t.rich(p.error.key, { ...(p.error.values ?? {}), b: (c) => <b>{c}</b> })}</span>
+              <span>{t.rich(err.key, { ...(err.values ?? {}), b: (c) => <b>{c}</b> })}</span>
             </div>
-            {p.error.code === "MEMBER_RIGHTS_UNSUPPORTED" && p.memberAttached && (
+            {err.code === "MEMBER_RIGHTS_UNSUPPORTED" && p.memberAttached && (
               <button
                 data-testid="pos-reg-paydlg-remove-member"
                 className="btn btn-ghost h-11 self-start rounded-[13px] px-5 text-[15px]"

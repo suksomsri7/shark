@@ -214,6 +214,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
   useEffect(() => {
     focusSearch();
   }, [focusSearch]);
+  // B2.3 R1: ปิดกล่องสุดท้าย ⇒ โฟกัสช่องค้นหา "หลัง commit" — ระหว่างที่ยังมีชั้นกล่อง ของหลังม่าน inert ⇒ focus() ในตัวจับเดียวกับ pop/setLayers ไม่มีผล
+  //   (บาร์โค้ดแรกของบิลถัดไปจะหาย) · focusSearch ข้ามจอสัมผัสล้วนเหมือนเดิม (ไม่เด้งคีย์บอร์ด) · ห้ามเรียก focusSearch ข้าง pop()/setLayers([]) อีก
+  const hadLayers = useRef(false);
+  useEffect(() => {
+    if (layers.length > 0) {
+      hadLayers.current = true;
+      return;
+    }
+    if (hadLayers.current) {
+      hadLayers.current = false;
+      focusSearch();
+    }
+  }, [layers.length, focusSearch]);
 
   // ── ออนไลน์/ออฟไลน์ (navigator.onLine + เหตุการณ์) ──
   useEffect(() => {
@@ -509,13 +522,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (err) return err;
     changeCart(next);
     pop();
-    focusSearch();
     return null;
   };
   const removeLine = (key: string) => {
     changeCart({ ...cart, lines: cart.lines.filter((l) => l.key !== key) });
     pop();
-    focusSearch();
   };
   const applyBillDiscount = (d: PriceDiscount | undefined): Msg | null => {
     const next: RegisterCart = { ...cart, billDiscount: d };
@@ -630,7 +641,6 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const nextSale = () => {
     resetBill();
     setLayers([]);
-    focusSearch();
   };
 
   // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
@@ -750,7 +760,6 @@ export function RegisterScreen(props: RegisterScreenProps) {
               if (cart.lines.length >= REGISTER_MAX_LINES) return { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } };
               addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1 });
               pop();
-              focusSearch();
               return null;
             }}
             onClose={pop}
@@ -765,7 +774,6 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onAdd={(price) => {
               addLine({ kind: "product", productId: l.productId, qty: 1, openPriceSatang: price });
               pop();
-              focusSearch();
             }}
             onClose={pop}
           />
@@ -778,7 +786,6 @@ export function RegisterScreen(props: RegisterScreenProps) {
             onConfirm={() => {
               resetBill();
               setLayers([]);
-              focusSearch();
             }}
             onClose={pop}
           />
@@ -788,7 +795,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
           <InterimPayDialog
             key={k}
             dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0}
-            quotePending={!quoteFresh}
+            quotePending={!quoteFresh && !quoteFailed}
+            quoteError={quoteFailed ? { code: quoteFailed, ...errorFor(quoteFailed) } : null}
             itemCount={cart.lines.length}
             promptpayId={props.promptpayId}
             phase={payPhase}

@@ -316,3 +316,11 @@ None required — every S5 check is green with the final tree. Observation only 
 **Gates:** typecheck exit 0 (1 run) · fitness no-env 40/40 exit 0 · fitness-pos no-env 7/7 exit 0 · no Thai literal outside comments in touched register files.
 
 **Browser checks for the controller:** see the B2.2 report (scan race, double pay, focus trap, quote-pending confirm, beforeunload, scan none/choose, IME Esc, 1024/768 action-row height).
+
+## B2.3 — reviewer findings on `920befb9`
+
+- **R1 (regression of B2.2 S2):** `focusSearch()` called next to `pop()` / `setLayers([])` ran while the background was still `inert` ⇒ no-op ⇒ first scan of the next bill lost. Removed the 6 dead calls (applyLine, removeLine, nextSale, custom item, open price, clear bill); one effect on `layers.length` refocuses search after the commit in which the last layer closes (covers Esc/scrim/close too). `focusSearch` still skips touch-only pointers (no keyboard pop). The grid-tap `addProduct` call (no layer open) stays.
+- **N-a:** quote failed for the current cart ⇒ `quotePending` false, `quoteError` (code + mapped `errors.*` key) passed to `InterimPayDialog`; shown in the existing error card (`pos-reg-paydlg-error`, submit error takes precedence); Confirm disabled.
+- **N-b:** `page.tsx` renders V2 only when `sys.active && posRegisterV2On(...)` (layout loads active systems only) ⇒ page and shell agree; inactive flag-on POS = legacy screen without rail.
+- **ORACLE-EDIT:** `P1.3-S5.20` gains `r1` (red if `focusSearch(` follows `pop()`/`setLayers([])` within 2 lines, or no `layers.length` effect calling it) and `na`; `n1` loosened to `quotePending={!quoteFresh…`. Simulated: GREEN now · RED on `920befb9` (r1, na) · RED on `b6338724` (all).
+- **Gates:** typecheck 0 · fitness no-env 40/40 · fitness-pos 7/7.
