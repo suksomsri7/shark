@@ -25,3 +25,8 @@ No DB in the cloud container ⇒ the DB checks were written without running them
 3. K4: the check accepts refusal OR ok with change ≥ 0, as the brief allows. Making it refusal-only would also fail "missing cashReceived → ok change 0", which 5f97add4 returns today.
 4. S5.21 depends on the names `resetBill`, `send`, `setIdemKey` or an `…idem…Ref` (same coupling level as S5.20). A builder that moves the key into another hook/file needs an ORACLE-EDIT.
 5. S3.52 is expected green on 5f97add4: the server side was already safe, and MAJOR-2 was the client rotating the key, which S5.21 covers. It is kept as the regression proof K3 asks for.
+
+## Round R4.1 — controller rulings on the questions above (3 Oct 2026)
+1. A client key containing `reg2:` (a colon) is refused with VALIDATION, as S3.50 already asserts. 2. The prefix is fixed as exactly `reg2:`. 4. The S5.21 name coupling is accepted.
+3. **S3.53 tightened.** Each replay must now be refused with the same code as a first submit (validated before the idempotency lookup): received 0, short by 1, or missing → `PAYMENT_MISMATCH`; negative → `VALIDATION`. The refusal must not carry `changeSatang` or `saleId`. ok with change ≥ 0 no longer passes.
+   Expected on 5f97add4: still RED. Received 0 and short by 1 return ok with negative change, and missing returns ok with change 0.

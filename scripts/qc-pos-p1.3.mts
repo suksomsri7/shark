@@ -177,7 +177,7 @@ const CHECKS: readonly (readonly [string, string, string])[] = [
   ["P1.3-S3.50", "X1", "[R4 K1] คีย์หน้าขายอยู่ใน namespace ของตัวเอง (เก็บ 'reg2:'+คีย์): submit คีย์ hotel-sale-<id> → บิลเก็บ reg2:… ไม่ยึดคีย์ดิบ · เช็คเอาท์โรงแรม (createSale HOTEL คีย์เดียวกัน) ได้บิลใหม่ของตัวเอง · บิลโรงแรมมาก่อน → submit ได้บิลใหม่ ไม่เจอ/ไม่รั่วบิลโรงแรม · rental-/rental-deposit-/booking-deposit- ไม่ถูกยึด · คีย์ 8–100 [A-Za-z0-9_-] (7 ตัว · จุด · โคลอน 'reg2:' · ไทย · ช่องว่าง → VALIDATION ไม่มีบิล · 8 ตัว / UUID → PAID)"],
   ["P1.3-S3.51", "X2", "[R4 K2] IDEMPOTENCY_CONFLICT พก saleId/receiptNo/saleStatus เฉพาะบิล POS สาขาเดียวกันที่ผู้ขอมองเห็น: คีย์ของสาขา 2 ใช้ที่สาขา sandbox (เจ้าของ · แคชเชียร์ · payload เดิม/ต่าง) → CONFLICT เปล่า ไม่มี id/เลขใบเสร็จ/unitId ของสาขา 2 · บิลโมดูลอื่น (HOTEL) ที่คีย์ reg2:… สาขาเดียวกัน → CONFLICT เปล่า ไม่มีบิลที่ 2 · คู่บวก: สาขา 2 payload เดิม = duplicated · payload ต่าง = CONFLICT + saleId"],
   ["P1.3-S3.52", "X1", "[R4 K3] คำขอแรกค้าง (ตัวนับใบเสร็จถูกล็อกจาก connection อื่น) · ราคาเปลี่ยน · ส่งตะกร้าที่คิดราคาใหม่ด้วยคีย์เดิม (ค้างเช่นกัน) → ปล่อยล็อก: บิล PAID เดียวของคีย์ · คำตอบหนึ่ง ok อีกคำตอบ duplicated หรือ IDEMPOTENCY_CONFLICT (saleId เดียวกัน) · ไม่มี THROW/INTERNAL/BUSY · Σ จ่าย = ยอดบิล"],
-  ["P1.3-S3.53", "X4", "[R4 K4] ส่งซ้ำคีย์เดิมด้วย cashReceivedSatang 0 / รับขาด 1 สตางค์ / ไม่ส่ง / ติดลบ → ปฏิเสธ (PAYMENT_MISMATCH|VALIDATION) หรือ ok ทอน ≥ 0 — ห้ามทอนติดลบ · บิลเดียว · ส่งซ้ำ payload เดิมยังทอนเท่าเดิม"],
+  ["P1.3-S3.53", "X4", "[R4 K4 · มติ r4 ข้อ 3] ส่งซ้ำคีย์เดิมด้วย cashReceivedSatang 0 / รับขาด 1 สตางค์ / ไม่ส่ง → PAYMENT_MISMATCH · ติดลบ → VALIDATION (ตรวจเหมือนครั้งแรก ก่อนดูคีย์ · ห้าม ok แม้ทอน ≥ 0) · บิลเดียว · ส่งซ้ำ payload เดิมยังทอนเท่าเดิม"],
   ["P1.3-S3.54", "X3", "[R4 m2 · คงมติ S3.47] STAFF ที่มี wildcard pos.* ได้ pos.sale.priceOverride: quote + PAID รายการกำหนดเอง (บันทึกพฤติกรรม — เปิด V2 = STAFF pos.* ตั้งราคาเองได้ · อยู่ใน checklist deploy)"],
   ["P1.3-S4.1", "-", "registerStatus: unit.name · user.name · roleLabel เป็นภาษาคน (ไม่ใช่ OWNER/STAFF ดิบ) · pendingSyncCount = 0 (ออฟไลน์ P3)"],
   ["P1.3-S4.2", "-", "ยังไม่มีกะ (PosShift ของ P1.9 ยังไม่มี/ไม่เปิด) → shift = null ไม่ throw"],
@@ -2436,19 +2436,20 @@ async function runDb() {
     const in53 = { idempotencyKey: k53, lines: lR4, payMethods: pay(tR4), cashReceivedSatang: tR4 + 500, expectedGrandTotalSatang: tR4 };
     const s = await subRaw(owner, in53);
     const { cashReceivedSatang: _c, ...noRecv } = in53;
-    const reps: [string, Any][] = [
-      ["รับ0", await subRaw(owner, { ...in53, cashReceivedSatang: 0 })],
-      ["รับขาด1", await subRaw(owner, { ...in53, cashReceivedSatang: tR4 - 1 })],
-      ["ไม่ส่ง", await subRaw(owner, noRecv)],
-      ["ติดลบ", await subRaw(owner, { ...in53, cashReceivedSatang: -500 })],
+    // มติผู้คุมงาน (คำถาม r4 ข้อ 3): ต้องปฏิเสธด้วยรหัสเดียวกับการส่งครั้งแรก (S3.39 · S3.36) ก่อนดูคีย์ — ทอน ≥ 0 อย่างเดียวไม่พอ
+    const reps: [string, Any, string][] = [
+      ["รับ0", await subRaw(owner, { ...in53, cashReceivedSatang: 0 }), "PAYMENT_MISMATCH"],
+      ["รับขาด1", await subRaw(owner, { ...in53, cashReceivedSatang: tR4 - 1 }), "PAYMENT_MISMATCH"],
+      ["ไม่ส่ง", await subRaw(owner, noRecv), "PAYMENT_MISMATCH"],
+      ["ติดลบ", await subRaw(owner, { ...in53, cashReceivedSatang: -500 }), "VALIDATION"],
     ];
     const same = await subRaw(owner, in53);
-    const okRep = (r: Any) => refused(r, ["PAYMENT_MISMATCH", "VALIDATION"]) || (r?.ok === true && Number.isInteger(r.changeSatang) && r.changeSatang >= 0 && r.saleId === s?.saleId);
+    const okRep = (r: Any, want: string) => refused(r, [want]) && r.changeSatang === undefined && r.saleId == null;
     const n = await salesByKey(k53);
-    ok53 = ok53 && s?.ok === true && s.changeSatang === 500 && reps.every(([, r]) => okRep(r)) && same?.ok === true && same.duplicated === true && same.changeSatang === 500 && n === 1;
-    r53.push(`แรก ${codeOf(s)} ทอน ${s?.changeSatang} · ${reps.map(([l, r]) => `${l}:${codeOf(r)}${r?.ok ? ` ทอน ${r.changeSatang}` : ""}`).join(" ")} · ซ้ำเดิม ทอน ${same?.changeSatang}/dup ${same?.duplicated} · n ${n}`);
+    ok53 = ok53 && s?.ok === true && s.changeSatang === 500 && reps.every(([, r, want]) => okRep(r, want)) && same?.ok === true && same.duplicated === true && same.changeSatang === 500 && n === 1;
+    r53.push(`แรก ${codeOf(s)} ทอน ${s?.changeSatang} · ${reps.map(([l, r, w]) => `${l}:${codeOf(r)}${r?.ok ? ` ทอน ${r.changeSatang}` : ""}(≠${w})`).join(" ")} · ซ้ำเดิม ทอน ${same?.changeSatang}/dup ${same?.duplicated} · n ${n}`);
   }
-  chk("P1.3-S3.53", ok53, "ส่งซ้ำ: เงินรับ 0/ขาด/ไม่ส่ง/ติดลบ → PAYMENT_MISMATCH|VALIDATION หรือทอน ≥ 0 · บิลเดียว · payload เดิมทอน 500", r53.join(""));
+  chk("P1.3-S3.53", ok53, "ส่งซ้ำ: เงินรับ 0/ขาด/ไม่ส่ง → PAYMENT_MISMATCH · ติดลบ → VALIDATION (ปฏิเสธเท่านั้น เหมือนครั้งแรก) · บิลเดียว · payload เดิมทอน 500", r53.join(""));
 
   // S3.54 m2 — คงมติ S3.47 (wildcard pos.* = ทุกคีย์ pos.*) · บันทึกให้เห็นว่า STAFF pos.* ทำรายการกำหนดเองได้เมื่อเปิด V2
   {
