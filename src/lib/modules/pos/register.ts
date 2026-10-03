@@ -489,8 +489,14 @@ function regCleanText(s: string): boolean {
 }
 /** id/คีย์: สตริงไม่ว่าง สะอาด ยาว ≤ 200 */
 const regIsId = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 200 && regCleanText(v);
-/** B1.1 (มติ 3.2 ข้อ 7): idempotencyKey = สตริงที่ trim แล้วไม่ว่าง · ยาว ≤ 100 · สะอาด (เก็บตามที่ส่งมา ไม่แปลง) */
-const regIsIdemKey = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 100 && regCleanText(v);
+/**
+ * R4 K1 (มติ R4.1): คีย์ของ client = [A-Za-z0-9_-] ยาว 8–100 เท่านั้น (UI ส่ง UUID) — ":" ไม่อยู่ในชุดอักษร ⇒ "reg2:…" จาก client = VALIDATION
+ * เซิร์ฟเวอร์เก็บ/ค้นด้วย REG_KEY_PREFIX + คีย์ เสมอ ⇒ หน้าขายใหม่ไม่มีวันเจอหรือยึดคีย์ของโมดูลอื่น (hotel-sale-… · rental-… · booking-deposit-…)
+ * 🔴 actions/pos.ts (หน้าขายเดิม) ยังมีรูเดิม — ไม่แตะใน P1.3 (O23 แยก hotfix)
+ */
+const regIsIdemKey = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(v);
+/** namespace ของคีย์หน้าขายใหม่ใน PosSale.idempotencyKey (ตายตัว — มติ R4.1 ข้อ 2) */
+const REG_KEY_PREFIX = "reg2:";
 /** คีย์ของออบเจกต์อยู่ในรายการที่รู้จักทั้งหมดไหม (คีย์แปลกปลอม = VALIDATION ไม่เงียบทิ้ง) */
 const regOnlyKeys = (o: Record<string, unknown>, allowed: ReadonlySet<string>) => Object.keys(o).every((k) => allowed.has(k));
 
@@ -947,6 +953,7 @@ export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, 
 // ── ส่งบิล ──
 type RegParsedSubmit = {
   cart: RegParsedCart;
+  /** คีย์ที่เก็บจริง = REG_KEY_PREFIX + คีย์ของ client (R4 K1) */
   idempotencyKey: string;
   payMethods: { type: RegisterPayType; amountSatang: number }[];
   cashReceivedSatang: number | null;
@@ -980,7 +987,7 @@ function regParseSubmit(raw: unknown): RegParsedSubmit | RegisterRefusal {
   }
   const cash = payMethods.find((p) => p.type === "CASH")?.amountSatang ?? 0;
   if (cash === 0 && cashReceivedSatang !== null && cashReceivedSatang !== 0) return regRefuse("VALIDATION", "ไม่มีส่วนเงินสด — ไม่ต้องกรอกเงินที่รับ");
-  return { cart, idempotencyKey: raw.idempotencyKey, payMethods, cashReceivedSatang, expected: raw.expectedGrandTotalSatang };
+  return { cart, idempotencyKey: REG_KEY_PREFIX + raw.idempotencyKey, payMethods, cashReceivedSatang, expected: raw.expectedGrandTotalSatang };
 }
 
 type RegSaleRow = Prisma.PosSaleGetPayload<{ include: { lines: true; payments: true } }>;
@@ -1053,10 +1060,14 @@ const regChange = (req: RegParsedSubmit): number => {
 };
 /**
  * คีย์นี้มีบิลแล้ว: payload เดิม + บิลยัง PAID = บิลเดิม (ok) · อย่างอื่นทั้งหมด (payload ต่าง หรือบิลถูก VOIDED/คืนแล้ว) =
- * IDEMPOTENCY_CONFLICT ที่พก saleId · receiptNo · saleStatus ของบิลนั้นเสมอ (มติ 3.2 ข้อ 1–2 — ห้ามตอบ ok ให้บิลที่ยกเลิกแล้ว)
+ * IDEMPOTENCY_CONFLICT ที่พก saleId · receiptNo · saleStatus ของบิลนั้น (มติ 3.2 ข้อ 1–2 — ห้ามตอบ ok ให้บิลที่ยกเลิกแล้ว)
+ * — R4 K2: พกรายละเอียดเฉพาะบิล POS ของระบบ+สาขาเดียวกัน · อื่น ๆ = CONFLICT เปล่า
  */
 function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, duplicated: boolean): RegisterSubmitResult {
   if (sale.status !== "PAID" || !regSameSubmission(s, req, sale)) {
+    // R4 K2: รายละเอียดบิล (saleId · receiptNo · สถานะ) เฉพาะบิล POS ของระบบ+สาขาเดียวกับคำขอ (ผู้ขายผ่าน regScope ของสาขานี้แล้ว = มองเห็นได้)
+    //   อย่างอื่น (สาขาอื่น · โมดูลอื่นที่ถือคีย์ reg2:… ผ่านหน้าขายเดิม) = CONFLICT เปล่า ไม่มีฟิลด์บิลเลย
+    if (sale.sourceModule !== "POS" || sale.unitId !== s.unitId || sale.systemId !== s.systemId) return regRefuse("IDEMPOTENCY_CONFLICT");
     return { ok: false, code: "IDEMPOTENCY_CONFLICT", message: REG_MESSAGE.IDEMPOTENCY_CONFLICT, saleId: sale.id, receiptNo: sale.receiptNo, saleStatus: sale.status };
   }
   return { ok: true, saleId: sale.id, receiptNo: sale.receiptNo, grandTotalSatang: sale.grandTotalSatang, changeSatang: regChange(req), duplicated };
@@ -1064,7 +1075,7 @@ function regDuplicate(s: RegScope, req: RegParsedSubmit, sale: RegSaleRow, dupli
 
 /**
  * ส่งบิล (สเปก §3.4 · Addendum 2) — ลำดับ:
- *   ขอบเขต/สิทธิ์ขาย → โครงคำขอ (VALIDATION · TOO_MANY_LINES · INVALID_LINE) → ① คีย์เดิม: payload เดิม = บิลเดิม (duplicated:true
+ *   ขอบเขต/สิทธิ์ขาย → โครงคำขอ (VALIDATION · TOO_MANY_LINES · INVALID_LINE) → ⑤ เงินสดที่รับ (R4 K4 · ก่อนค้นคีย์) → ① คีย์เดิม (reg2:+คีย์ · R4 K1): payload เดิม = บิลเดิม (duplicated:true
  *   แม้ราคาเปลี่ยนแล้ว) · payload ต่าง = IDEMPOTENCY_CONFLICT → ② คิดราคาใหม่จาก DB (ปฏิเสธของ quote ทั้งหมด) → ③ expected ≠ ยอด =
  *   PRICE_CHANGED (พกยอดสด) → ④ Σ วิธีจ่าย ≠ ยอด = PAYMENT_MISMATCH → ⑤ เงินสดที่รับขาด/ไม่ส่ง = PAYMENT_MISMATCH → ⑥ createSale เดิม
  * 🔴 กันบิลซ้ำจากคำขอพร้อมกัน: unique (tenantId, idempotencyKey) ของ PosSale ในธุรกรรมของ createSale — คำขอที่แพ้ได้ P2002
@@ -1078,6 +1089,12 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     if (isRegRefusal(s)) return s;
     const req = regParseSubmit(input);
     if (isRegRefusal(req)) return req;
+    // R4 K4 (มติ R4.1 ข้อ 3): ⑤ เงินสดที่รับ ตรวจ "ก่อน" ค้นคีย์ — คำขอแรกและคำขอซ้ำผ่านด่านเดียวกัน (ไม่มีทอนติดลบจากการส่งซ้ำ)
+    //   ส่วนเงินสดมาจากคำขอเอง (ไม่ต้องคิดราคา) · ติดลบ/ไม่ใช่จำนวนเต็ม = VALIDATION ที่ regParseSubmit แล้ว
+    const cash = req.payMethods.find((x) => x.type === "CASH")?.amountSatang ?? 0;
+    if (cash > 0 && (req.cashReceivedSatang === null || req.cashReceivedSatang < cash)) {
+      return regRefuse("PAYMENT_MISMATCH", "เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด");
+    }
     // ① คีย์เดิมก่อนคิดราคา (ลองซ้ำหลังราคาเปลี่ยนต้องได้บิลเดิม)
     const prior = await regLoadSale(db, s.tenantId, req.idempotencyKey);
     if (prior) return regDuplicate(s, req, prior, true);
@@ -1087,12 +1104,8 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
     const q = p.quote;
     // ③
     if (req.expected !== q.grandTotalSatang) return { ok: false, code: "PRICE_CHANGED", message: REG_MESSAGE.PRICE_CHANGED, ...q };
-    // ④ ⑤
+    // ④ (⑤ ย้ายไปก่อน ① — R4 K4)
     if (req.payMethods.reduce((t, x) => t + x.amountSatang, 0) !== q.grandTotalSatang) return regRefuse("PAYMENT_MISMATCH");
-    const cash = req.payMethods.find((x) => x.type === "CASH")?.amountSatang ?? 0;
-    if (cash > 0 && (req.cashReceivedSatang === null || req.cashReceivedSatang < cash)) {
-      return regRefuse("PAYMENT_MISMATCH", "เงินที่รับน้อยกว่าส่วนที่จ่ายเงินสด");
-    }
     // ⑥
     const saleInput: CreateSaleInput = {
       tenantId: s.tenantId,

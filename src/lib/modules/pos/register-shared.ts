@@ -144,7 +144,8 @@ export type RegisterSubmitOk = { ok: true; saleId: string; receiptNo: string | n
 export type RegisterPriceChanged = { ok: false; code: "PRICE_CHANGED"; message: string } & RegisterQuoteTotals;
 /**
  * B1.1 (มติ 3.2 ข้อ 1–2): IDEMPOTENCY_CONFLICT = "มีบิลของคีย์นี้อยู่แล้ว" — ไม่ใช่ "ไม่มีบิล"
- * พก saleId/receiptNo/สถานะของบิลนั้นเสมอ (รวมบิลที่ VOIDED แล้ว) ⇒ จอแสดงบิลเดิม ห้ามขายซ้ำด้วยคีย์ใหม่เงียบ ๆ
+ * พก saleId/receiptNo/สถานะของบิลนั้น (รวมบิลที่ VOIDED แล้ว) ⇒ จอแสดงบิลเดิม ห้ามขายซ้ำด้วยคีย์ใหม่เงียบ ๆ
+ * R4 K2: บิลนอกระบบ+สาขาของคำขอ (หรือโมดูลอื่น) = CONFLICT เปล่า → มาในรูป RegisterRefusal code IDEMPOTENCY_CONFLICT (ไม่มีฟิลด์บิล)
  */
 export type RegisterSaleStatus = "PAID" | "VOIDED" | "REFUNDED";
 export type RegisterIdempotencyConflict = {

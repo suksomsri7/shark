@@ -31,7 +31,8 @@ type Props = {
   promptpayId: string | null;
   phase: PayPhase;
   error: PayError | null;
-  conflict: { receiptNo: string | null; saleStatus: RegisterSaleStatus } | null;
+  /** R4 K2: saleStatus null = CONFLICT เปล่า (บิลอยู่นอกสาขา/ระบบนี้) — ไม่มีรายละเอียดบิลให้แสดง */
+  conflict: { receiptNo: string | null; saleStatus: RegisterSaleStatus | null } | null;
   memberAttached: boolean;
   salesHref: string;
   onConfirm: (c: PayChoice) => void;
@@ -136,9 +137,11 @@ export function InterimPayDialog(p: Props) {
               <RegisterIcon name="warn" size={18} className="mt-0.5" />
               <span>{t("errors.idempotencyConflict")}</span>
             </div>
-            <p className="text-[14.5px] leading-[1.65] text-[color:var(--color-ink-soft)]">
-              {t("pay.existingBill", { no: p.conflict.receiptNo ?? "-", status: t(STATUS_KEY[p.conflict.saleStatus]) })}
-            </p>
+            {p.conflict.saleStatus && (
+              <p className="text-[14.5px] leading-[1.65] text-[color:var(--color-ink-soft)]">
+                {t("pay.existingBill", { no: p.conflict.receiptNo ?? "-", status: t(STATUS_KEY[p.conflict.saleStatus]) })}
+              </p>
+            )}
             <div className="flex flex-wrap gap-2.5">
               <button data-testid="pos-reg-paydlg-new-bill" className="btn btn-primary h-12 rounded-[13px] px-5 text-[15px]" type="button" autoFocus onClick={p.onNewBill}>
                 {t("pay.newBill")}

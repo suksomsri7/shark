@@ -181,10 +181,27 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [idemKey, setIdemKey] = useState(newKey);
   const [payPhase, setPayPhase] = useState<PayPhase>("form");
   const [payError, setPayError] = useState<PayError | null>(null);
-  const [conflict, setConflict] = useState<{ receiptNo: string | null; saleStatus: RegisterSaleStatus } | null>(null);
+  const [conflict, setConflict] = useState<{ receiptNo: string | null; saleStatus: RegisterSaleStatus | null } | null>(null);
   const sendingRef = useRef(false);
   /** ชุดคำขอที่ส่งไปแล้วแต่ยังไม่รู้ผล — ลองซ้ำต้องส่งตัวนี้ (ไม่สร้างใหม่) */
   const pendingSubmit = useRef<RegisterSubmitInput | null>(null);
+  // R4 K5: คำขอที่ส่งแล้วแต่ยังไม่รู้ผล (คีย์ + payload + phase) อยู่รอด reload/Back ใน sessionStorage ต่อระบบ POS + สาขา
+  //   ทุกการแตะ storage อยู่ใน try (private mode / ถูกบล็อก = ทำงานต่อแบบไม่จำ) · ลบเมื่อรู้ผล (ok · conflict · ปฏิเสธ) หรือ resetBill
+  const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}`;
+  const savePending = (sale: RegisterSubmitInput, phase: "sending" | "unknown") => {
+    try {
+      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, idempotencyKey: sale.idempotencyKey, sale, phase }));
+    } catch {
+      /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
+    }
+  };
+  const clearPending = () => {
+    try {
+      window.sessionStorage.removeItem(pendingStoreKey);
+    } catch {
+      /* ไม่มีอะไรให้ลบ */
+    }
+  };
   const frozen = payPhase === "sending" || payPhase === "unknown" || payPhase === "conflict";
   /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
   const frozenRef = useRef(frozen);
@@ -545,10 +562,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (n < 1) return;
     changeCart({ ...cart, lines: cart.lines.map((l) => (l.key === key ? { ...l, qty: n } : l)) });
   };
+  // R4 K3: คีย์ของบิลหมุน "ที่นี่ที่เดียว" (บิลใหม่ · ล้างบิล · พักบิลภายหลัง) — ปฏิเสธใด ๆ ใน send เก็บคีย์เดิม
+  //   (ส่ง payload ที่แก้แล้วด้วยคีย์เดิม = สำเร็จครั้งเดียว หรือ IDEMPOTENCY_CONFLICT ที่กล่องรับมือได้ — ไม่มีบิลที่สองเงียบ ๆ)
   const resetBill = () => {
     billGen.current++;
     changeCart({ lines: [] });
     setIdemKey(newKey());
+    clearPending();
     setWarnAck({});
     pendingSubmit.current = null;
     setPayPhase("form");
@@ -568,6 +588,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
     sendingRef.current = true;
     pendingSubmit.current = sale;
+    savePending(sale, "sending");
     setPayPhase("sending");
     setPayError(null);
     try {
@@ -575,23 +596,28 @@ export function RegisterScreen(props: RegisterScreenProps) {
       synced();
       if (r.ok) {
         pendingSubmit.current = null;
+        clearPending();
         setPayPhase("form");
         setLayers((s) => [...s.filter((l) => l.kind !== "pay" && l.kind !== "sheet"), { kind: "done", result: r }]);
         void refreshStatus();
         return;
       }
       if (r.code === "UNKNOWN" || r.code === "INTERNAL" || r.code === "BUSY") {
+        savePending(sale, "unknown");
         setPayPhase("unknown"); // ไม่แน่ใจ — คีย์เดิม ชุดคำขอเดิม
         return;
       }
-      if (r.code === "IDEMPOTENCY_CONFLICT" && "saleId" in r) {
-        setConflict({ receiptNo: r.receiptNo, saleStatus: r.saleStatus });
+      if (r.code === "IDEMPOTENCY_CONFLICT") {
+        // R4 K2: ไม่มี saleId = CONFLICT เปล่า (บิลนอกสาขา/ระบบนี้) — ยังต้องหยุดขายด้วยคีย์นี้ ผู้ใช้กด "เริ่มบิลใหม่" เอง
+        setConflict("saleId" in r ? { receiptNo: r.receiptNo, saleStatus: r.saleStatus } : { receiptNo: null, saleStatus: null });
+        pendingSubmit.current = null;
+        clearPending();
         setPayPhase("conflict");
         return;
       }
-      // ปฏิเสธที่ชัดว่าไม่มีบิล ⇒ คีย์ใหม่สำหรับครั้งหน้า
+      // ปฏิเสธที่ชัดว่าไม่มีบิล ⇒ คีย์เดิม (R4 K3 — หมุนเฉพาะ resetBill) · ไม่มีคำขอค้าง
       pendingSubmit.current = null;
-      setIdemKey(newKey());
+      clearPending();
       setPayPhase("form");
       setPayError({ code: r.code, ...errorFor(r.code) });
       if (r.code === "PRICE_CHANGED" && "grandTotalSatang" in r) {
@@ -616,6 +642,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         setCartVer((v) => v + 1); // quote ใหม่
       }
     } catch {
+      savePending(sale, "unknown");
       setPayPhase("unknown"); // เครือข่ายล้ม/หมดเวลา — ไม่รู้ว่าบันทึกแล้วหรือยัง
     } finally {
       sendingRef.current = false;
@@ -642,6 +669,27 @@ export function RegisterScreen(props: RegisterScreenProps) {
     resetBill();
     setLayers([]);
   };
+
+  // R4 K5: เปิดจอ (reload/Back) แล้วมีคำขอค้างของระบบ+สาขานี้ ⇒ ขึ้นการ์ด "ไม่แน่ใจ" แล้วลองซ้ำด้วยคีย์เดิม ชุดคำขอเดิมทันที
+  //   (ตะกร้าบนจอไม่ถูกสร้างคืน — ยอดในกล่องมาจาก expectedGrandTotalSatang ของคำขอ) · StrictMode เรียกซ้ำ = sendingRef กันไว้
+  useEffect(() => {
+    let saved: { idempotencyKey: string; sale: RegisterSubmitInput } | null = null;
+    try {
+      const raw = window.sessionStorage.getItem(pendingStoreKey);
+      const v: unknown = raw ? JSON.parse(raw) : null;
+      const o = v as { idempotencyKey?: unknown; sale?: { idempotencyKey?: unknown } } | null;
+      if (o && typeof o.idempotencyKey === "string" && o.sale && o.sale.idempotencyKey === o.idempotencyKey) saved = o as { idempotencyKey: string; sale: RegisterSubmitInput };
+    } catch {
+      saved = null;
+    }
+    if (!saved) return;
+    pendingSubmit.current = saved.sale;
+    setIdemKey(saved.idempotencyKey);
+    setPayPhase("unknown");
+    setLayers([{ kind: "pay" }]);
+    void send(saved.sale);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ครั้งเดียวตอนเปิดจอ (key ของจอ = สาขา)
+  }, []);
 
   // ═══════ แป้นลัด: ตัวจับเดียวบน window (สเปก §3.6) ═══════
   const keyState = useRef({ top, payEnabled, q, cartLen: cart.lines.length, payPhase, frozen });
@@ -794,10 +842,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return (
           <InterimPayDialog
             key={k}
-            dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0}
+            dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? pendingSubmit.current?.expectedGrandTotalSatang ?? 0}
             quotePending={!quoteFresh && !quoteFailed}
             quoteError={quoteFailed ? { code: quoteFailed, ...errorFor(quoteFailed) } : null}
-            itemCount={cart.lines.length}
+            itemCount={cart.lines.length || (pendingSubmit.current?.lines.length ?? 0)}
             promptpayId={props.promptpayId}
             phase={payPhase}
             error={payError}
