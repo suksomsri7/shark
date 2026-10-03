@@ -205,11 +205,12 @@ export function CartPanel(p: Props) {
         </p>
       )}
 
+      {/* B2.2 S3: แถวปุ่มรอง สูง 40 ทุกความกว้าง (สเปก §4/§7 · ขั้นต่ำ .btn-sm) — เดิมต่ำกว่า xl เหลือ 36 */}
       {!empty && (
         <div className="grid shrink-0 grid-cols-3 gap-2 px-[14px] xl:gap-3 xl:px-4">
           <button
             data-testid="pos-reg-bill-discount"
-            className="btn-sm h-9 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] disabled:opacity-50 xl:h-10 xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
+            className="btn-sm h-10 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] disabled:opacity-50 xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
             type="button"
             disabled={p.frozen}
             onClick={p.onBillDiscount}
@@ -220,7 +221,7 @@ export function CartPanel(p: Props) {
           </button>
           <button
             data-testid="pos-reg-note"
-            className="btn-sm h-9 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:h-10 xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
+            className="btn-sm h-10 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
             type="button"
             aria-disabled="true"
             title={t("soon")}
@@ -231,7 +232,7 @@ export function CartPanel(p: Props) {
           </button>
           <button
             data-testid="pos-reg-tax-invoice"
-            className="btn-sm h-9 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:h-10 xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
+            className="btn-sm h-10 min-w-0 gap-[5px] rounded-[11px] px-1.5 text-[13px] xl:gap-1.5 xl:px-[14px] xl:text-[14px]"
             type="button"
             aria-disabled="true"
             title={t("soon")}

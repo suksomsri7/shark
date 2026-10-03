@@ -23,6 +23,8 @@ export type PayChoice = { method: "CASH" | "PROMPTPAY" | "NONE"; receivedSatang?
 
 type Props = {
   dueSatang: number;
+  /** B2.2 N1: quote ของตะกร้าปัจจุบันยังไม่มา (เพิ่งแก้ตะกร้า/ถอดสมาชิก/PAYMENT_MISMATCH) ⇒ ยืนยันไม่ได้ + ป้าย "กำลังโหลด" */
+  quotePending: boolean;
   itemCount: number;
   promptpayId: string | null;
   phase: PayPhase;
@@ -42,6 +44,7 @@ const STATUS_KEY: Record<RegisterSaleStatus, string> = { PAID: "pay.statusPaid",
 
 export function InterimPayDialog(p: Props) {
   const t = useTranslations("pos.register");
+  const tc = useTranslations("common");
   const [method, setMethod] = useState<"CASH" | "PROMPTPAY">("CASH");
   const [received, setReceived] = useState("");
   const recvRef = useRef<HTMLInputElement>(null);
@@ -63,7 +66,7 @@ export function InterimPayDialog(p: Props) {
     if (method === "CASH" && !zero) recvRef.current?.focus();
   }, [method, zero]);
 
-  const canConfirm = !busy && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
+  const canConfirm = !busy && !p.quotePending && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
   const confirm = () => {
     if (!canConfirm) return;
     if (zero) p.onConfirm({ method: "NONE" });
@@ -254,7 +257,9 @@ export function InterimPayDialog(p: Props) {
             >
               {p.phase === "sending"
                 ? t("pay.sending")
-                : zero
+                : p.quotePending
+                  ? tc("loading")
+                  : zero
                   ? t("pay.confirmFree")
                   : method === "CASH"
                     ? t("pay.confirmCash", { amount: moneyText(p.dueSatang) })

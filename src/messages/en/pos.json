@@ -35,6 +35,7 @@
       "scanCamera": "Scan with camera",
       "loadMore": "Show more",
       "noResult": "Nothing matches “{q}” — try another name, SKU or barcode",
+      "chooseOne": "This barcode matches {count} items — tap one below",
       "noResultCategory": "No products in this category",
       "clear": "Clear search"
     },

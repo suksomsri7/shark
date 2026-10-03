@@ -298,3 +298,21 @@ None required — every S5 check is green with the final tree. Observation only 
 **Gates (cloud container, no DB):** `pnpm typecheck` exit 0 · `env -u DATABASE_URL -u DIRECT_URL pnpm fitness` exit 0 (40/40) · `pnpm exec tsx scripts/fitness-pos.mts` (no env) exit 0 (7/7). DB oracles not run (no DB access) — controller.
 
 **Controller browser pass:** flag OFF — `/pos/register` at 1440/1024 shows the pinned 288 px menu (or the rail only if the user chose collapsed), normal page padding, ‹ collapse works and is remembered; 390 = topbar ☰ + drawer as on main; compare against a main deploy. Flag ON — 1440/1024 rail from first paint (hard reload, no 288→56 jump), › opens the overlay menu; 390 unchanged (rail is lg+ only). Also: kanban board still rails; flag-ON shop with no linked unit shows padded empty state.
+
+## B2.2 — fixes from the independent B2 review (base `b6338724`)
+
+| Item | Change |
+|---|---|
+| S1 | `addLine`/`addProduct` update via `updateCart(prev => …)` (functional `setCart`; line key made outside the updater for StrictMode). `pick`/add read `frozenRef`. `billGen` ref bumped in `resetBill`; the scan result is dropped if the generation changed or the screen froze while awaiting. Search term cleared only if unchanged. |
+| S2 | `openPay` no-op when a pay layer exists (`layersRef` + functional `setLayers` guard — double tap / F4+click cannot stack nor wipe the open dialog's error). Background wrapped in `<div className="contents" inert={layers.length>0}>`; every non-top layer wrapped `inert`. `RegisterDialog` traps focus (Tab/Shift+Tab cycle, `focusin` pull-back to the scrim, inactive when under `[inert]`); initial pull goes to the scrim (`tabIndex=-1`), not the first input — no touch keyboard pop. |
+| S3 | Cart action row (`pos-reg-bill-discount` / `-note` / `-tax-invoice`) h-10 at every width (was h-9 below xl). Stock-warning keep/reduce were already `h-10` primary/ghost, gap 8 = spec §4/row 333 — unchanged. Main buttons untouched (≥44). |
+| N1 | `InterimPayDialog` gets `quotePending` (= `!quoteFresh`): confirm disabled, label `common.loading`. |
+| N2 | `beforeunload` guard while `payPhase` is `sending` or `unknown`. (Client-side Next navigation via topbar/rail links is not covered by `beforeunload`; the scrim covers those links visually — z-50 over the topbar.) |
+| N3 | Scan `none` → toast `search.noResult {q}`; `choose` → candidates placed in the grid (catalog seq bumped, `nextCursor` null) + toast `search.chooseOne {count}` (new th+en pair); scan refusal → toast via `refusalMessageKey`. Status poll got a sequence guard. |
+| N4 | Global Esc returns early on `e.isComposing`. |
+
+**ORACLE-EDIT:** `P1.3-S5.20` [static, no DB] — source markers for S1/S2/S3/N1–N4. Simulated standalone: RED on `b6338724` (all 10 sub-flags), GREEN now. S5.19 still green. Total 120 → 121.
+
+**Gates:** typecheck exit 0 (1 run) · fitness no-env 40/40 exit 0 · fitness-pos no-env 7/7 exit 0 · no Thai literal outside comments in touched register files.
+
+**Browser checks for the controller:** see the B2.2 report (scan race, double pay, focus trap, quote-pending confirm, beforeunload, scan none/choose, IME Esc, 1024/768 action-row height).

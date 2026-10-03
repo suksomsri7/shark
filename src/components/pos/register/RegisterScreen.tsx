@@ -159,6 +159,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ ชั้นกล่อง · ข้อความลอย · การเชื่อมต่อ ═══════
   const [layers, setLayers] = useState<Layer[]>([]);
   const top = layers[layers.length - 1] ?? null;
+  /** ชั้นล่าสุดที่วาดแล้ว — ตัวกันเปิดกล่องชำระซ้อน (B2.2 S2) อ่านจากนี่ ไม่ใช่ค่าที่ติดมากับ closure */
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
   const push = (l: Layer) => setLayers((s) => [...s, l]);
   const pop = () => setLayers((s) => s.slice(0, -1));
   const [toast, setToast] = useState<Msg | null>(null);
@@ -183,6 +186,23 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** ชุดคำขอที่ส่งไปแล้วแต่ยังไม่รู้ผล — ลองซ้ำต้องส่งตัวนี้ (ไม่สร้างใหม่) */
   const pendingSubmit = useRef<RegisterSubmitInput | null>(null);
   const frozen = payPhase === "sending" || payPhase === "unknown" || payPhase === "conflict";
+  /** ค่าล่าสุดที่วาดแล้ว — งาน async (ผลสแกน) อ่านจาก ref ไม่ใช่ค่าที่ติดมากับ closure ตอนกด Enter (B2.2 S1) */
+  const frozenRef = useRef(frozen);
+  frozenRef.current = frozen;
+  /** รุ่นของบิล — resetBill เพิ่มทุกครั้ง · ผลสแกนที่เริ่มในบิลรุ่นก่อน = ทิ้ง (B2.2 S1) */
+  const billGen = useRef(0);
+
+  // B2.2 N2: ระหว่างส่ง/ผลยังไม่แน่ใจ มี "ชุดคำขอที่ส่งแล้ว" ค้างในหน่วยความจำ — ปิด/รีโหลดแท็บ = เสียชุดนั้น
+  //   (ลองซ้ำด้วยชุดเดิมไม่ได้อีก ⇒ เสี่ยงเก็บเงินซ้ำด้วยบิลใหม่) ⇒ ให้เบราว์เซอร์ถามก่อนออก
+  useEffect(() => {
+    if (payPhase !== "sending" && payPhase !== "unknown") return;
+    const guard = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [payPhase]);
 
   const focusSearch = useCallback((select = false) => {
     if (!isFinePointer()) return; // จอสัมผัสล้วน: ไม่เด้งคีย์บอร์ดทับกริด (สเปก §3.6)
@@ -212,9 +232,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
   }, []);
 
   // ── แถบสถานะ: ทุก 60 วิ ขณะเห็นจอ + หลังขายเสร็จ ──
+  const statusSeq = useRef(0);
   const refreshStatus = useCallback(async () => {
+    const seq = ++statusSeq.current;
     try {
       const r = await registerStatusAction({ systemId, unitId });
+      if (seq !== statusSeq.current) return; // B2.2 N3: คำตอบเก่าที่มาช้ากว่าคำตอบใหม่ = ทิ้ง
       if (r.ok) {
         setStatus(r);
         synced();
@@ -286,6 +309,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   const changeCart = (next: RegisterCart) => {
     setCart(next);
+    setCartVer((v) => v + 1);
+  };
+  /** แก้ตะกร้าจากค่าล่าสุดเสมอ (setCart แบบฟังก์ชัน) — ใช้กับการเพิ่มสินค้าที่อาจมาจากงาน async (B2.2 S1) */
+  const updateCart = (fn: (prev: RegisterCart) => RegisterCart) => {
+    setCart(fn);
     setCartVer((v) => v + 1);
   };
   useEffect(() => {
@@ -389,24 +417,30 @@ export function RegisterScreen(props: RegisterScreenProps) {
   /** P1.15: เปิด PIN ผู้จัดการ · วันนี้ = แสดงเหตุผล */
   const onNeedsApproval = (key: string) => showToast({ key });
 
+  // B2.2 S1: เพิ่มบรรทัด/สินค้า = แก้จากตะกร้าล่าสุด (prev) ไม่ใช่ `cart` ของ render ที่สร้างฟังก์ชันนี้
+  //   — ผลสแกนที่กลับมาหลังผู้ใช้กดเพิ่มสินค้าอื่นไปแล้วจะไม่ทับตะกร้าด้วยสำเนาเก่า · คีย์บรรทัดสร้างนอก updater (StrictMode เรียกซ้ำได้)
+  const appendTo = (prev: RegisterCart, line: NewLine, key: string): RegisterCart =>
+    prev.lines.length >= REGISTER_MAX_LINES ? prev : { ...prev, lines: [...prev.lines, { ...line, key } as RegisterCartLine] };
   const addLine = (line: NewLine) => {
-    if (frozen) return;
+    if (frozenRef.current) return;
     if (cart.lines.length >= REGISTER_MAX_LINES) return showToast({ key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
-    changeCart({ ...cart, lines: [...cart.lines, { ...line, key: newKey() } as RegisterCartLine] });
+    const key = newKey();
+    updateCart((prev) => appendTo(prev, line, key));
   };
   const addProduct = (p: RegisterProduct) => {
-    if (frozen) return;
-    const same = cart.lines.findIndex((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
-    if (same >= 0) {
-      const lines = cart.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l));
-      changeCart({ ...cart, lines });
-    } else addLine({ kind: "product", productId: p.id, qty: 1 });
+    if (frozenRef.current) return;
+    const key = newKey();
+    updateCart((prev) => {
+      const same = prev.lines.findIndex((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
+      if (same < 0) return appendTo(prev, { kind: "product", productId: p.id, qty: 1 }, key);
+      return { ...prev, lines: prev.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l)) };
+    });
     focusSearch();
   };
   /** แตะการ์ด (P1.2 จะเปิดป๊อปโอเวอร์ตัวเลือกตรงนี้เมื่อ optionGroupCount > 0) */
   const pick = (p: RegisterProduct) => {
     known.current.set(p.id, p);
-    if (frozen) return;
+    if (frozenRef.current) return;
     if (p.soldOutReason === "UNAVAILABLE") return showToast({ key: "errors.productUnavailable" });
     if (p.requiredOptionGroupCount > 0) return showToast({ key: "errors.optionsRequired" });
     if (p.priceSatang === null) {
@@ -431,14 +465,30 @@ export function RegisterScreen(props: RegisterScreenProps) {
       }
       if (products.length > 1) return;
     }
+    const gen = billGen.current;
     try {
       const r = await registerScanAction({ systemId, unitId, barcode: term });
-      if (r.ok && r.match === "one") {
+      // B2.2 S1: ระหว่างรอ บิลถูกล้าง/ขายจบ/กำลังส่ง ⇒ ผลนี้ไม่ใช่ของบิลปัจจุบันแล้ว — ทิ้ง
+      if (gen !== billGen.current || frozenRef.current) return;
+      const clearTerm = () => setQ((cur) => (cur.trim() === term ? "" : cur));
+      if (!r.ok) return showToast(errorFor(r.code));
+      if (r.match === "one") {
         pick(r.product);
-        setQ("");
+        clearTerm();
+      } else if (r.match === "choose") {
+        // B2.2 N3: บาร์โค้ดซ้ำหลายสินค้า ⇒ วางตัวเลือกในกริดให้แตะ (ตัวเลือกเต็มรูป = P1.4) + บอกให้เลือก
+        catalogSeq.current++; // คำตอบกริดที่ค้างอยู่ห้ามทับรายการนี้
+        remember(r.products);
+        setProducts(r.products);
+        setNextCursor(null);
+        setShownQ(term);
+        showToast({ key: "search.chooseOne", values: { count: r.products.length } });
+      } else {
+        // B2.2 N3: ไม่พบ = แจ้งให้เห็น (เดิมเงียบ)
+        showToast({ key: "search.noResult", values: { q: term } });
       }
     } catch {
-      showToast({ key: "errors.loadFailed" });
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
     }
   };
 
@@ -485,6 +535,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     changeCart({ ...cart, lines: cart.lines.map((l) => (l.key === key ? { ...l, qty: n } : l)) });
   };
   const resetBill = () => {
+    billGen.current++;
     changeCart({ lines: [] });
     setIdemKey(newKey());
     setWarnAck({});
@@ -496,10 +547,11 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ ชำระเงิน ═══════
   const openPay = () => {
-    if (!payEnabled) return;
+    // B2.2 S2: กล่องชำระเปิดอยู่แล้ว = ไม่ทำอะไร (แตะรัว/F4+คลิก ห้ามซ้อนกล่อง และห้ามล้าง error ของกล่องที่เปิดอยู่)
+    if (!payEnabled || layersRef.current.some((l) => l.kind === "pay")) return;
     setPayError(null);
     setPayPhase("form");
-    push({ kind: "pay" });
+    setLayers((s) => (s.some((l) => l.kind === "pay") ? s : [...s, { kind: "pay" }]));
   };
   const send = async (sale: RegisterSubmitInput) => {
     if (sendingRef.current) return; // กดซ้ำ/Enter ซ้ำ = คำขอเดียวระหว่างทาง
@@ -608,6 +660,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
         return;
       }
       if (e.key === "Escape") {
+        if (e.isComposing) return; // B2.2 N4: Esc ระหว่างพิมพ์ด้วย IME = ยกเลิกคำที่กำลังประกอบ ไม่ใช่ปิดกล่อง/ล้างบิล
         if (s.top) {
           // ปิดชั้นบนสุด · ระหว่างส่ง/ไม่แน่ใจ/บิลซ้ำ = ห้ามปิด (สเปก §3.4 ข้อ 3, 6)
           if (s.top.kind === "pay" && s.payPhase !== "form") return;
@@ -658,201 +711,210 @@ export function RegisterScreen(props: RegisterScreenProps) {
     />
   );
 
+  // ── ชั้นกล่องหนึ่งชั้น (โหนดที่วาด) ──
+  const layerNode = (l: Layer, k: string): React.ReactNode => {
+    switch (l.kind) {
+      case "sheet":
+        return wide === true ? null : (
+          <CartSheetFrame key={k} onClose={pop} locked={frozen}>
+            {cartPanel("sheet")}
+          </CartSheetFrame>
+        );
+      case "line": {
+        const line = lineOf(l.key);
+        if (!line) return null;
+        const nm = line.kind === "custom" ? line.name : displayName(known.current.get(line.productId) ?? { name: "-" }, locale);
+        return (
+          <LineEditor
+            key={k}
+            lineKey={l.key}
+            name={nm}
+            qty={line.qty}
+            discount={line.discount}
+            focus={l.focus}
+            onApply={(r) => applyLine(l.key, r)}
+            onRemove={() => removeLine(l.key)}
+            onClose={pop}
+          />
+        );
+      }
+      case "billDiscount":
+        return <BillDiscountDialog key={k} current={cart.billDiscount} onApply={applyBillDiscount} onCoupon={() => push({ kind: "coupon" })} onClose={pop} />;
+      case "coupon":
+        return <CouponDialog key={k} onClose={pop} />;
+      case "custom":
+        return (
+          <CustomItemDialog
+            key={k}
+            onAdd={(name, price) => {
+              if (cart.lines.length >= REGISTER_MAX_LINES) return { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } };
+              addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1 });
+              pop();
+              focusSearch();
+              return null;
+            }}
+            onClose={pop}
+          />
+        );
+      case "openPrice": {
+        const prod = known.current.get(l.productId);
+        return (
+          <OpenPriceDialog
+            key={k}
+            name={prod ? displayName(prod, locale) : "-"}
+            onAdd={(price) => {
+              addLine({ kind: "product", productId: l.productId, qty: 1, openPriceSatang: price });
+              pop();
+              focusSearch();
+            }}
+            onClose={pop}
+          />
+        );
+      }
+      case "clear":
+        return (
+          <ClearBillDialog
+            key={k}
+            onConfirm={() => {
+              resetBill();
+              setLayers([]);
+              focusSearch();
+            }}
+            onClose={pop}
+          />
+        );
+      case "pay":
+        return (
+          <InterimPayDialog
+            key={k}
+            dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0}
+            quotePending={!quoteFresh}
+            itemCount={cart.lines.length}
+            promptpayId={props.promptpayId}
+            phase={payPhase}
+            error={payError}
+            conflict={conflict}
+            memberAttached={!!cart.memberId}
+            salesHref={`${base}/pos/sales`}
+            onConfirm={confirmPay}
+            onRetry={retryPay}
+            onClose={() => {
+              if (payPhase === "form") pop();
+            }}
+            onNewBill={nextSale}
+            onRemoveMember={() => {
+              const next = { ...cart };
+              delete next.memberId;
+              changeCart(next);
+              setPayError(null);
+            }}
+          />
+        );
+      case "done":
+        return (
+          <SaleDone
+            key={k}
+            receiptNo={l.result.receiptNo}
+            totalSatang={l.result.grandTotalSatang}
+            changeSatang={l.result.changeSatang}
+            onNext={nextSale}
+          />
+        );
+    }
+  };
+
   return (
     <div
       data-testid="pos-reg-root"
       className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[color:var(--color-surface)] md:h-[calc(100dvh-3.5rem)] md:min-h-0 md:overflow-hidden"
     >
-      <h1 className="sr-only">{t("title")}</h1>
-      <RegisterTopContext
-        wide={wide}
-        inApp={inApp}
-        systemId={systemId}
-        tenantName={props.tenantName}
-        units={props.units}
-        activeUnitId={unitId}
-        online={online}
-        lastSyncAt={lastSyncAt}
-        user={status ? { name: status.user.name, role: status.user.role } : null}
-        onCamera={soon}
-      />
-      <ModeTabsNav systemId={systemId} />
-      {!online && (
-        <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
-          <RegisterIcon name="warn" size={18} />
-          <span>{t("status.offlineBanner", { time: formatThaiTime(offlineSince ?? new Date()) })}</span>
-        </div>
-      )}
+      {/* B2.2 S2: มีกล่องเปิด ⇒ ทุกอย่างหลังม่าน inert (คลิก/โฟกัส/โปรแกรมอ่านจอไม่ถึง) · contents = ไม่เปลี่ยนเลย์เอาต์ flex */}
+      <div className="contents" inert={layers.length > 0}>
+        <h1 className="sr-only">{t("title")}</h1>
+        <RegisterTopContext
+          wide={wide}
+          inApp={inApp}
+          systemId={systemId}
+          tenantName={props.tenantName}
+          units={props.units}
+          activeUnitId={unitId}
+          online={online}
+          lastSyncAt={lastSyncAt}
+          user={status ? { name: status.user.name, role: status.user.role } : null}
+          onCamera={soon}
+        />
+        <ModeTabsNav systemId={systemId} />
+        {!online && (
+          <div data-testid="pos-reg-offline-banner" className="flex shrink-0 items-center gap-3 bg-[color:var(--color-ink)] px-5 py-[13px] text-[14px] leading-[1.5] text-[color:var(--color-surface)]" role="status">
+            <RegisterIcon name="warn" size={18} />
+            <span>{t("status.offlineBanner", { time: formatThaiTime(offlineSince ?? new Date()) })}</span>
+          </div>
+        )}
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <div className="flex min-w-0 flex-1 flex-col px-[22px] md:min-h-0 md:border-r md:px-0">
-          <SearchRow
-            ref={searchRef}
-            q={q}
-            onQ={setQ}
-            onEnter={() => void addFromSearchEnter()}
-            wide={xl}
-            compact={wide === false}
-            canCustom={limits.canOverridePrice}
-            onCustom={() => (limits.canOverridePrice ? push({ kind: "custom" }) : onNeedsApproval("errors.needPriceOverride"))}
-            onCamera={soon}
-            disabled={frozen}
-          />
-          <CategoryChips categories={categories} active={categoryId} onPick={pickCategory} />
-          {props.initialCatalog === null && products.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-[15px] text-[color:var(--color-muted)]" role="alert">
-              <p>{t("errors.loadFailed")}</p>
-              <button data-testid="pos-reg-grid-retry" className="btn btn-ghost h-11 rounded-[13px] px-5 text-[15px]" type="button" onClick={() => loadCatalog(q, categoryId)}>
-                {t("pay.retry")}
-              </button>
-            </div>
-          ) : (
-            <ProductGrid
-              products={products}
-              inCart={inCart}
-              pending={catalogPending}
-              q={shownQ}
-              categoryId={categoryId}
-              catalogueEmpty={catalogueEmpty}
-              hasMore={!!nextCursor}
-              productsHref={`${base}/pos/products`}
-              onPick={pick}
-              onMore={loadMore}
-              onClearSearch={() => {
-                setQ("");
-                focusSearch();
-              }}
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div className="flex min-w-0 flex-1 flex-col px-[22px] md:min-h-0 md:border-r md:px-0">
+            <SearchRow
+              ref={searchRef}
+              q={q}
+              onQ={setQ}
+              onEnter={() => void addFromSearchEnter()}
+              wide={xl}
+              compact={wide === false}
+              canCustom={limits.canOverridePrice}
+              onCustom={() => (limits.canOverridePrice ? push({ kind: "custom" }) : onNeedsApproval("errors.needPriceOverride"))}
+              onCamera={soon}
+              disabled={frozen}
             />
-          )}
-          {wide !== true && (
-            <MobileCartBar
-              peek={peek}
-              count={cart.lines.length}
-              totalText={payAmount}
-              payEnabled={payEnabled}
-              empty={cart.lines.length === 0}
-              onOpen={() => push({ kind: "sheet" })}
-              onPay={openPay}
-            />
-          )}
+            <CategoryChips categories={categories} active={categoryId} onPick={pickCategory} />
+            {props.initialCatalog === null && products.length === 0 ? (
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-[15px] text-[color:var(--color-muted)]" role="alert">
+                <p>{t("errors.loadFailed")}</p>
+                <button data-testid="pos-reg-grid-retry" className="btn btn-ghost h-11 rounded-[13px] px-5 text-[15px]" type="button" onClick={() => loadCatalog(q, categoryId)}>
+                  {t("pay.retry")}
+                </button>
+              </div>
+            ) : (
+              <ProductGrid
+                products={products}
+                inCart={inCart}
+                pending={catalogPending}
+                q={shownQ}
+                categoryId={categoryId}
+                catalogueEmpty={catalogueEmpty}
+                hasMore={!!nextCursor}
+                productsHref={`${base}/pos/products`}
+                onPick={pick}
+                onMore={loadMore}
+                onClearSearch={() => {
+                  setQ("");
+                  focusSearch();
+                }}
+              />
+            )}
+            {wide !== true && (
+              <MobileCartBar
+                peek={peek}
+                count={cart.lines.length}
+                totalText={payAmount}
+                payEnabled={payEnabled}
+                empty={cart.lines.length === 0}
+                onOpen={() => push({ kind: "sheet" })}
+                onPay={openPay}
+              />
+            )}
+          </div>
+          {wide !== false && <div className="hidden min-h-0 shrink-0 md:flex md:w-[340px] lg:w-[380px] xl:w-[480px]">{cartPanel("inline")}</div>}
         </div>
-        {wide !== false && <div className="hidden min-h-0 shrink-0 md:flex md:w-[340px] lg:w-[380px] xl:w-[480px]">{cartPanel("inline")}</div>}
+
+        <RegisterStatusBar pendingStock={status?.pendingStockCount ?? 0} pendingSync={status?.pendingSyncCount ?? 0} />
       </div>
 
-      <RegisterStatusBar pendingStock={status?.pendingStockCount ?? 0} pendingSync={status?.pendingSyncCount ?? 0} />
-
-      {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) ── */}
-      {layers.map((l, i) => {
-        const k = `${l.kind}-${i}`;
-        switch (l.kind) {
-          case "sheet":
-            return wide === true ? null : (
-              <CartSheetFrame key={k} onClose={pop} locked={frozen}>
-                {cartPanel("sheet")}
-              </CartSheetFrame>
-            );
-          case "line": {
-            const line = lineOf(l.key);
-            if (!line) return null;
-            const nm = line.kind === "custom" ? line.name : displayName(known.current.get(line.productId) ?? { name: "-" }, locale);
-            return (
-              <LineEditor
-                key={k}
-                lineKey={l.key}
-                name={nm}
-                qty={line.qty}
-                discount={line.discount}
-                focus={l.focus}
-                onApply={(r) => applyLine(l.key, r)}
-                onRemove={() => removeLine(l.key)}
-                onClose={pop}
-              />
-            );
-          }
-          case "billDiscount":
-            return <BillDiscountDialog key={k} current={cart.billDiscount} onApply={applyBillDiscount} onCoupon={() => push({ kind: "coupon" })} onClose={pop} />;
-          case "coupon":
-            return <CouponDialog key={k} onClose={pop} />;
-          case "custom":
-            return (
-              <CustomItemDialog
-                key={k}
-                onAdd={(name, price) => {
-                  if (cart.lines.length >= REGISTER_MAX_LINES) return { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } };
-                  addLine({ kind: "custom", name, unitPriceSatang: price, qty: 1 });
-                  pop();
-                  focusSearch();
-                  return null;
-                }}
-                onClose={pop}
-              />
-            );
-          case "openPrice": {
-            const prod = known.current.get(l.productId);
-            return (
-              <OpenPriceDialog
-                key={k}
-                name={prod ? displayName(prod, locale) : "-"}
-                onAdd={(price) => {
-                  addLine({ kind: "product", productId: l.productId, qty: 1, openPriceSatang: price });
-                  pop();
-                  focusSearch();
-                }}
-                onClose={pop}
-              />
-            );
-          }
-          case "clear":
-            return (
-              <ClearBillDialog
-                key={k}
-                onConfirm={() => {
-                  resetBill();
-                  setLayers([]);
-                  focusSearch();
-                }}
-                onClose={pop}
-              />
-            );
-          case "pay":
-            return (
-              <InterimPayDialog
-                key={k}
-                dueSatang={quoteFresh?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0}
-                itemCount={cart.lines.length}
-                promptpayId={props.promptpayId}
-                phase={payPhase}
-                error={payError}
-                conflict={conflict}
-                memberAttached={!!cart.memberId}
-                salesHref={`${base}/pos/sales`}
-                onConfirm={confirmPay}
-                onRetry={retryPay}
-                onClose={() => {
-                  if (payPhase === "form") pop();
-                }}
-                onNewBill={nextSale}
-                onRemoveMember={() => {
-                  const next = { ...cart };
-                  delete next.memberId;
-                  changeCart(next);
-                  setPayError(null);
-                }}
-              />
-            );
-          case "done":
-            return (
-              <SaleDone
-                key={k}
-                receiptNo={l.result.receiptNo}
-                totalSatang={l.result.grandTotalSatang}
-                changeSatang={l.result.changeSatang}
-                onNext={nextSale}
-              />
-            );
-        }
-      })}
-
+      {/* ── ชั้นกล่อง (วาดตามลำดับ — ตัวท้ายอยู่บนสุด) · ชั้นที่ไม่ใช่บนสุด = inert (B2.2 S2) ── */}
+      {layers.map((l, i) => (
+        <div key={`${l.kind}-${i}`} className="contents" inert={i < layers.length - 1}>
+          {layerNode(l, `${l.kind}-${i}`)}
+        </div>
+      ))}
       {toast && (
         <div
           data-testid="pos-reg-toast"
