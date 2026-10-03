@@ -1,0 +1,26 @@
+🔨 build (ต่อคิว gate lock — อาจรอถ้ามี session อื่น build อยู่)…
+
+[130820:0x1accd150]   144922 ms: Mark-Compact 3542.6 (3630.3) -> 3527.4 (3631.3) MB, 2164.47 / 0.00 ms  (average mu = 0.154, current mu = 0.024) allocation failure; scavenge might not succeed
+[130820:0x1accd150]   147215 ms: Mark-Compact 3544.3 (3631.8) -> 3530.7 (3632.8) MB, 2107.80 / 0.00 ms  (average mu = 0.118, current mu = 0.081) allocation failure; scavenge might not succeed
+
+
+<--- JS stacktrace --->
+
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0xb78db3 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/usr/bin/node]
+ 2: 0xee8300 v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/usr/bin/node]
+ 3: 0xee85e7 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/usr/bin/node]
+ 4: 0x10fb205  [/usr/bin/node]
+ 5: 0x1113088 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [/usr/bin/node]
+ 6: 0x10e91f1 v8::internal::HeapAllocator::AllocateRawWithLightRetrySlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/usr/bin/node]
+ 7: 0x10ea385 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/usr/bin/node]
+ 8: 0x10c69a6 v8::internal::Factory::AllocateRaw(int, v8::internal::AllocationType, v8::internal::AllocationAlignment) [/usr/bin/node]
+ 9: 0x10b7e4a v8::internal::FactoryBase<v8::internal::Factory>::AllocateRawArray(int, v8::internal::AllocationType, v8::internal::AllocationAlignment) [/usr/bin/node]
+10: 0x10b7fb4 v8::internal::FactoryBase<v8::internal::Factory>::NewFixedArrayWithFiller(v8::internal::Handle<v8::internal::Map>, int, v8::internal::Handle<v8::internal::Oddball>, v8::internal::AllocationType) [/usr/bin/node]
+11: 0x13e8abd v8::internal::OrderedHashTable<v8::internal::OrderedHashMap, 2>::Allocate(v8::internal::Isolate*, int, v8::internal::AllocationType) [/usr/bin/node]
+12: 0x13e8b63 v8::internal::OrderedHashTable<v8::internal::OrderedHashMap, 2>::Rehash(v8::internal::Isolate*, v8::internal::Handle<v8::internal::OrderedHashMap>, int) [/usr/bin/node]
+13: 0x1519dc3 v8::internal::Runtime_MapGrow(int, unsigned long*, v8::internal::Isolate*) [/usr/bin/node]
+14: 0x7910d269a476 
+Next.js build worker exited with code: null and signal: SIGABRT

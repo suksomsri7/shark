@@ -1,0 +1,13 @@
+22:43:37Z
+forced exit=1
+qc-pos-p1.1 exit=0
+qc-pos-register exit=0
+qc-hf-pos-page-authz exit=0
+qc-pos-p0.2 exit=0
+qc-pos-inventory exit=0
+qc-pos-account exit=0
+qc-pos-closeday exit=0
+qc-pos-coupon exit=0
+qc-pos-products exit=0
+22:50:14Z
+DONE
