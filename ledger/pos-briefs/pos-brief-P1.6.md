@@ -38,3 +38,7 @@ Dynamic PromptPay/Beam/card gateway (P1.7) · refunds/CN (P1.8) · shifts/drawer
 - **O19 Service charge**: do shops need it now? Default proposal: % per POS, inside VAT base, off by default.
 - **O20 Tip**: accounting treatment (owed to staff = liability vs shop revenue) — accountant to decide; default: ship disabled until ruled.
 - **O21 Unit↔system guard**: callers that pick "first POS of the tenant" (shop, clinic, school, rental, AI) will start refusing on multi-POS tenants instead of silently filing to the wrong POS — accept the loud failure (recommended) or keep legacy behaviour for those callers until P2.1?
+
+## 7. Owner answers (3 Oct 2026)
+- **O19 + O20 → configurable.** Service charge and tip are both POS settings, OFF by default. Service charge: % per POS system, inside the VAT base, its own `serviceChargeSatang` column, included in grandTotal. Tip: its own `tipSatang`, not revenue, not in the VAT base. The tip's ledger account is a setting; while it is unset, the tip toggle cannot be switched on (the UI says why). The oracle covers OFF (no change to today's totals) and ON for both.
+- **O21** — controller recommendation sent to owner, awaiting answer: refuse loudly only when it is ambiguous. A caller that picks "first POS of the tenant" keeps working when the tenant has exactly 1 POS; with 2+ POS and no explicit system it returns `UNIT_SYSTEM_MISMATCH` + a Thai message ("เลือกจุดขายก่อน"). Explicit wrong pairs are always refused.
