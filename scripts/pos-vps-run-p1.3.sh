@@ -162,7 +162,7 @@ if curl -fsS -o /dev/null "http://127.0.0.1:$PORT/login"; then
   B="--base http://127.0.0.1:$PORT"
   run visual-owner   bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1.3 --user owner   --tenant coffee $B
   run visual-cashier bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1.3 --user cashier --tenant coffee $B
-  run visual-owner-en env LOCALE=en bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p1.3 --user owner --tenant coffee $B
+  run visual-owner-en bash scripts/iso.sh bash scripts/qc4.sh env LOCALE=en pnpm exec tsx scripts/visual-pos.mts p1.3 --user owner --tenant coffee $B
   # หน้าขายเดิมตอนธงปิด (ข้อ N6 ของผู้ตรวจ) — ร้าน QC ครัว · เปิดธงคืนเสมอ
   if helper off posqc-resto-sys-pos > "$OUT/flag-off.log" 2>&1; then
     run visual-legacy-flagoff bash scripts/iso.sh bash scripts/qc4.sh pnpm exec tsx scripts/visual-pos.mts p13-legacy --user owner --tenant resto --page register $B
