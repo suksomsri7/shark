@@ -15,14 +15,14 @@
 #   nohup bash scripts/pos-vps-run-p1.3.sh > /root/pos-run-p1.3.log 2>&1 &
 #   tail -f /root/pos-run-p1.3.log          # ปิดหน้าต่างได้ งานยังเดิน · จบแล้วบรรทัดสุดท้ายบอกชื่อ branch ผล
 #
-# ตัวแปร (ไม่ต้องตั้งถ้าใช้ค่าปกติ): TREE=/root/projects/shark-pos-p11 · EXPECT_HEAD=5f97add4 · PORT=3225
+# ตัวแปร (ไม่ต้องตั้งถ้าใช้ค่าปกติ): TREE=/root/projects/shark-pos-p11 · EXPECT_HEAD=653db842 · PORT=3225
 #   ONLY_VISUAL=1 = ข้ามขั้น 1–3 (typecheck/ข้อสอบ/ถดถอย) ทำเฉพาะ seed + build + ภาพ (รอบ 1 ข้อสอบผ่านครบแล้ว)
 #   BUILD_HEAP_MB=5632 = heap ของ next build/start (รอบ 1: ค่าปริยาย 3584 ของ acc-v2-serve.sh = OOM)
 # 🔴 ห้ามแตะ: main · .env (prod) · QC1–QC3 · พอร์ต 3215 · ไม่ prisma migrate · ไม่ลบข้อมูลนอกร้าน QC POS
 set -uo pipefail
 
 TREE="${TREE:-/root/projects/shark-pos-p11}"
-EXPECT_HEAD="${EXPECT_HEAD:-5f97add4}"
+EXPECT_HEAD="${EXPECT_HEAD:-653db842}"
 PORT="${PORT:-3225}"
 ONLY_VISUAL="${ONLY_VISUAL:-0}"
 BUILD_HEAP_MB="${BUILD_HEAP_MB:-5632}"
