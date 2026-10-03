@@ -336,3 +336,8 @@ None required — every S5 check is green with the final tree. Observation only 
 - **Statics (standalone copy of the oracle's S5.20–S5.22 block):** S5.20 PASS · S5.21 PASS · S5.22 PASS; S5.19 PASS. DB checks S3.50–S3.54 not runnable here.
 - **Gates:** typecheck 0 · fitness no-env 40/40 · fitness-pos 7/7.
 - **Edge for the VPS/browser run:** a restored request that comes back with a definitive refusal (e.g. PRICE_CHANGED because the first attempt never committed) leaves an empty cart with the pay dialog open in "form" (Confirm shows loading); the cashier closes it and rings the bill again (key unchanged until resetBill).
+
+## R4.1 — reviewer SHOULD-FIX on the K5 restore path (base `271f803a`)
+- **F1:** effect on `[payPhase]` (outside `send`, S5.21 stays green): phase `form` + empty cart + top layer `pay` ⇒ pay layer removed, `payError` shown as a toast; key kept. `InterimPayDialog` Confirm also requires `itemCount > 0` (never submits `lines: []`).
+- **F2:** `page.tsx` passes `userId={auth.user.id}`; storage key `pos-reg-pending:${systemId}:${unitId}:${userId}`; record carries `userId`; on restore a record with a different/missing userId is removed and ignored.
+- Statics (standalone copy): S5.20/21/22 PASS · typecheck 0 · fitness no-env 40/40 · fitness-pos 7/7.

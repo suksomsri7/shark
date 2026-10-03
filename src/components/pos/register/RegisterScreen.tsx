@@ -72,6 +72,8 @@ export type RegisterScreenProps = {
   systemId: string;
   unitId: string;
   tenantName: string;
+  /** R4.1 F2: ผู้ใช้ของ session — คำขอค้างใน sessionStorage ผูกผู้ใช้ด้วย (สลับบัญชีในแท็บเดียวกันห้ามลองซ้ำคำขอของคนอื่น) */
+  userId: string;
   units: { id: string; name: string }[];
   /** หน้าแรกของกริด (เซิร์ฟเวอร์) · null = โหลดไม่สำเร็จ (จอแจ้ง + ลองใหม่) */
   initialCatalog: { categories: RegisterCategory[]; products: RegisterProduct[]; nextCursor: string | null } | null;
@@ -122,7 +124,7 @@ function useMedia(q: string): boolean | null {
 const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
 
 export function RegisterScreen(props: RegisterScreenProps) {
-  const { systemId, unitId, limits, vat } = props;
+  const { systemId, unitId, userId, limits, vat } = props;
   const t = useTranslations("pos.register");
   const tc = useTranslations("common");
   const locale = useLocale();
@@ -187,10 +189,10 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const pendingSubmit = useRef<RegisterSubmitInput | null>(null);
   // R4 K5: คำขอที่ส่งแล้วแต่ยังไม่รู้ผล (คีย์ + payload + phase) อยู่รอด reload/Back ใน sessionStorage ต่อระบบ POS + สาขา
   //   ทุกการแตะ storage อยู่ใน try (private mode / ถูกบล็อก = ทำงานต่อแบบไม่จำ) · ลบเมื่อรู้ผล (ok · conflict · ปฏิเสธ) หรือ resetBill
-  const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}`;
+  const pendingStoreKey = `pos-reg-pending:${systemId}:${unitId}:${userId}`;
   const savePending = (sale: RegisterSubmitInput, phase: "sending" | "unknown") => {
     try {
-      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, idempotencyKey: sale.idempotencyKey, sale, phase }));
+      window.sessionStorage.setItem(pendingStoreKey, JSON.stringify({ v: 1, userId, idempotencyKey: sale.idempotencyKey, sale, phase }));
     } catch {
       /* เก็บไม่ได้ — ลองซ้ำในหน้านี้ยังได้ */
     }
@@ -670,6 +672,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setLayers([]);
   };
 
+  // R4.1 F1: คำขอที่โหลดกลับแล้วถูกปฏิเสธชัด ⇒ กล่องชำระค้างบนตะกร้าว่าง — ปิดกล่องแล้วแสดงเหตุผลเป็นข้อความลอย
+  //   (ทำนอก send ตามมติ — คีย์คงเดิมเพราะปฏิเสธชัด ไม่มีบิล) · ปกติเปิดกล่องได้เมื่อมีของในตะกร้าเท่านั้น ⇒ เงื่อนไขนี้เกิดแค่ทางโหลดกลับ
+  useEffect(() => {
+    if (payPhase !== "form" || cart.lines.length > 0 || layersRef.current[layersRef.current.length - 1]?.kind !== "pay") return;
+    setLayers((s) => s.filter((l) => l.kind !== "pay"));
+    if (payError) showToast({ key: payError.key, values: payError.values });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ตัวกระตุ้นคือ phase เปลี่ยนเท่านั้น
+  }, [payPhase]);
+
   // R4 K5: เปิดจอ (reload/Back) แล้วมีคำขอค้างของระบบ+สาขานี้ ⇒ ขึ้นการ์ด "ไม่แน่ใจ" แล้วลองซ้ำด้วยคีย์เดิม ชุดคำขอเดิมทันที
   //   (ตะกร้าบนจอไม่ถูกสร้างคืน — ยอดในกล่องมาจาก expectedGrandTotalSatang ของคำขอ) · StrictMode เรียกซ้ำ = sendingRef กันไว้
   useEffect(() => {
@@ -677,8 +688,13 @@ export function RegisterScreen(props: RegisterScreenProps) {
     try {
       const raw = window.sessionStorage.getItem(pendingStoreKey);
       const v: unknown = raw ? JSON.parse(raw) : null;
-      const o = v as { idempotencyKey?: unknown; sale?: { idempotencyKey?: unknown } } | null;
-      if (o && typeof o.idempotencyKey === "string" && o.sale && o.sale.idempotencyKey === o.idempotencyKey) saved = o as { idempotencyKey: string; sale: RegisterSubmitInput };
+      const o = v as { userId?: unknown; idempotencyKey?: unknown; sale?: { idempotencyKey?: unknown } } | null;
+      if (o && o.userId !== userId) {
+        // R4.1 F2: ระเบียนของผู้ใช้อื่น (หรือรูปแบบเก่าที่ไม่มี userId) = ไม่ลองซ้ำ · ลบทิ้ง
+        window.sessionStorage.removeItem(pendingStoreKey);
+      } else if (o && typeof o.idempotencyKey === "string" && o.sale && o.sale.idempotencyKey === o.idempotencyKey) {
+        saved = o as { idempotencyKey: string; sale: RegisterSubmitInput };
+      }
     } catch {
       saved = null;
     }

@@ -71,7 +71,8 @@ export function InterimPayDialog(p: Props) {
     if (method === "CASH" && !zero) recvRef.current?.focus();
   }, [method, zero]);
 
-  const canConfirm = !busy && !p.quotePending && !p.quoteError && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
+  // R4.1 F1: ไม่มีรายการ (คำขอที่โหลดกลับถูกปฏิเสธ ตะกร้าว่าง) = ยืนยันไม่ได้ — ห้ามส่ง lines: []
+  const canConfirm = !busy && p.itemCount > 0 && !p.quotePending && !p.quoteError && (zero || (method === "CASH" ? cashOk : !!p.promptpayId));
   const confirm = () => {
     if (!canConfirm) return;
     if (zero) p.onConfirm({ method: "NONE" });

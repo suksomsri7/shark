@@ -73,6 +73,7 @@ export default async function PosRegisterPage({
         key={active.id}
         systemId={id}
         unitId={active.id}
+        userId={auth.user.id}
         tenantName={auth.active.tenant.name}
         units={units.map((u) => ({ id: u.id, name: u.name }))}
         initialCatalog={catalog.ok ? { categories: catalog.categories, products: catalog.products, nextCursor: catalog.nextCursor } : null}
