@@ -1,0 +1,21 @@
+[env] qc-hotel-money · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:369259) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HT-1.1] จองได้ (1 คืน ฿1,070)
+  ✅ [HT-1.2] เช็คเอาท์สำเร็จ
+  ✅ [HT-2.1] เช็คเอาท์ → เกิด journal entry ค่าห้องอัตโนมัติ
+  ✅ [HT-2.2] Cr รายได้ 4000 = ฐานหลังถอด VAT (1000)
+  ✅ [HT-2.3] Σdr=Σcr
+[cleanup] ok
+
+===== QC Hotel Money =====
+ผ่าน 5/5
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":5,"passed":5,"findings":[]}

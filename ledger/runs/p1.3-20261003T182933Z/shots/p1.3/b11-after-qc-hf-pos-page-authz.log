@@ -1,0 +1,87 @@
+── [static] หน้า/แอ็กชันใช้ผลของ guard จริง ──
+  ✅ [S-8] [static] หน้าประวัติบิล: scope → notFound + where = posSaleWhere(tenantId, id, scope)
+  ✅ [C-8] [static] หน้าปิดวัน: scope → notFound + closeDaySummary/closeDayBills ส่ง unitIds ของ scope (ไม่มี assertCan)
+  ✅ [C-9] [static] CSV: ไม่มี scope → throw ForbiddenError · closeDayCsv ส่ง unitIds ของ scope
+  ✅ [P-7] [static] หน้าสินค้า: posCanSetTenantPrice กับ posPriceUnitIds → notFound (ไม่มี assertCan)
+  ✅ [P-8] [static] ตั้งราคา: posPriceUnitIds → ไม่ผ่าน throw ForbiddenError ก่อนเขียน (ไม่มี assertCan)
+  ✅ [R-11] [static] หน้าขาย: view.ok → notFound · units = view.units · active = view.active (ไม่ fallback units[0])
+  ✅ [O-1] [static] หน้าภาพรวม: posScope จาก posSalesScope · ไม่มีสิทธิ์ = ไม่ render PosContent
+  ✅ [O-2] [static] PosContent: บิลล่าสุด + ยอดรวม ใช้ posSaleWhere(scope) · สรุปวันนี้ส่ง unitIds ของ scope
+[env] qc-hf-pos-page-authz · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+── setup: ร้าน 2 สาขา + ร้านอื่น ──
+(node:1982727) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ร้านอื่น (tenant 2 เปิด id ระบบของร้านนี้) ──
+  ✅ [X-1] ร้านอื่นหา POS ของร้านนี้ไม่เจอ (หน้า → notFound)
+  ✅ [X-2] ร้านอื่นได้สาขาของ POS นี้ = 0
+  ✅ [X-3] ร้านอื่นยิงสรุปวันด้วย systemId นี้ → 0 บิล
+
+── /pos/sales + ภาพรวม /app/sys/[id] (posSaleWhere) ──
+  ✅ [S-1] OWNER เห็นบิลทั้ง 2 สาขา (control)
+  ✅ [S-2] ผู้จัดการทุกสาขา เห็นทั้ง 2 สาขา
+  ✅ [S-3] แคชเชียร์ A เห็นบิล A (control)
+  ✅ [S-4] แคชเชียร์ A ไม่เห็นบิล B
+  ✅ [S-5] ผู้จัดการสาขา A เห็นแค่ A
+  ✅ [S-6] STAFF ไม่มีสิทธิ์ POS (ทุกสาขา) → ปฏิเสธ
+  ✅ [S-7] STAFF สาขา A ไม่มีสิทธิ์ POS → ปฏิเสธ
+  ✅ [O-3] ภาพรวม OWNER: ยอดรวม/วันนี้ = 15000/15000 (control)
+  ✅ [O-4] ภาพรวม แคชเชียร์ A: 10000/10000 (ไม่รวม B)
+  ✅ [O-5] ภาพรวม ไม่มีสิทธิ์ POS → ไม่แสดงยอดขาย
+
+── /pos/close + CSV ──
+  ✅ [C-0] [data] closeDaySummary จำกัดสาขา [A] → 100.00 (ไม่รวม B)
+  ✅ [C-1] OWNER ยอดวันนี้ = 150.00 ทั้ง 2 สาขา (control)
+  ✅ [C-2] ผู้จัดการทุกสาขา ยอด = 150.00
+  ✅ [C-3] แคชเชียร์ A ยอด = 100.00 (เฉพาะ A)
+  ✅ [C-4] แคชเชียร์ A เงินสดควรมี = 100.00 (ไม่รวม B)
+  ✅ [C-5] แคชเชียร์ A รายการบิลไม่มีบิล B
+  ✅ [C-6] CSV ของแคชเชียร์ A ไม่มีเลขบิล B
+  ✅ [C-7] ไม่มีสิทธิ์ POS → ปิดวันปฏิเสธ
+
+── /pos/products + setItemSalePriceAction ──
+  ✅ [P-1] OWNER ตั้งราคาได้ (control)
+  ✅ [P-2] ผู้จัดการทุกสาขา ตั้งราคาได้
+  ✅ [P-3] STAFF ทุกสาขา + pos.product.setPrice ตั้งราคาได้
+  ✅ [P-4] ผู้จัดการสาขา A ตั้งราคาทั้งร้านไม่ได้
+  ✅ [P-5] STAFF สาขา A + setPrice ตั้งราคาทั้งร้านไม่ได้
+  ✅ [P-6] ไม่มีสิทธิ์ → ไม่ได้
+  ✅ [P-9a] POS สาขาเดียว: สาขาที่ราคาไปถึง = [S] (ไม่นับ archived) (control)
+  ✅ [P-9] ร้านสาขาเดียว: ผู้จัดการ [S] ตั้งราคาได้ (สาขา archived ไม่นับ)
+  ✅ [P-10] ร้าน 2 สาขา: ผู้จัดการ [A,B] ตั้งราคาได้
+  ✅ [P-11] ร้าน 2 สาขา: STAFF [A,B] + setPrice ตั้งราคาได้
+  ✅ [P-12] ร้าน 2 สาขา: STAFF [A,B] ไม่มี setPrice → ไม่ได้
+  ✅ [P-13] ร้าน 2 สาขา: ผู้จัดการ [A] เท่านั้น → ไม่ได้
+  ✅ [P-14] POS ยังไม่ผูกสาขา: คนจำกัดสาขาไม่ได้ · OWNER ได้
+  ✅ [P-15a] POS-X ใช้คลังร่วมกับ POS-Y: สาขาที่ราคาไปถึง = X,Y (ไม่นับ Z ที่ archived)
+  ✅ [P-15] คลังร่วม: ผู้จัดการ [X] เท่านั้น ตั้งราคาจาก POS-X ไม่ได้ (ราคาไปถึง Y)
+  ✅ [P-16] คลังร่วม: ผู้จัดการ [X,Y] ตั้งราคาได้ (Z archived ไม่นับ)
+
+── /pos/register ──
+  ✅ [R-0] POS ผูก 2 สาขา (control)
+  ✅ [R-1] OWNER ไม่ระบุสาขา → เห็น A,B · active A (เหมือนเดิม)
+  ✅ [R-2] OWNER ?unit=B → active B
+  ✅ [R-3] ผู้จัดการทุกสาขา ?unit=B → active B
+  ✅ [R-4] แคชเชียร์ A → เห็นแค่ A · active A
+  ✅ [R-5] แคชเชียร์ A ขอ ?unit=B → ปฏิเสธ (ไม่โหลดสมาชิก/สินค้าของ B)
+  ✅ [R-6] ผู้จัดการสาขา A ขอ ?unit=B → ปฏิเสธ
+  ✅ [R-7] แคชเชียร์ A ?unit=ค่ามั่ว → กลับไป A (พฤติกรรมเดิม)
+  ✅ [R-8] ไม่มีสิทธิ์ POS → ปฏิเสธ
+  ✅ [R-9] POS ยังไม่ผูกสาขา → OWNER ยังเห็นหน้าชวนเชื่อม (active ว่าง)
+  ✅ [R-10] POS ยังไม่ผูกสาขา → คนไม่มีสิทธิ์ ปฏิเสธ
+
+[cleanup] จบ
+
+===== QC: HF-POS-PAGES สิทธิ์หน้าจอ POS ต่อสาขา =====
+ผ่าน 56/56
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":56,"passed":56,"findings":[]}
