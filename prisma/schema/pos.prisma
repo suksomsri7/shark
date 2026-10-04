@@ -359,3 +359,25 @@ model PosShiftCounter {
   shiftSeq Int    @default(0)
   zSeq     Int    @default(0)
 }
+
+// POS P1.9b — ผู้จัดการนับเงินย้อนหลังของกะที่ระบบบังคับปิด (Q9.4 · มติ R1) · 1 แถวต่อกะ ครั้งเดียวจบ (R6)
+//   ผู้เขียนเดียว = pos/shift.ts recountShift · แถว PosShift ของกะไม่ถูกเขียนอีก (Z แช่แข็ง R3) · shiftId = id หลวม ไม่มี FK
+model PosShiftRecount {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  unitId             String
+  systemId           String // AppSystem.id (type POS)
+  shiftId            String   @unique // PosShift.id — 1 ครั้งต่อกะ · ดัชนีนี้ตัดสินการแข่ง (R11)
+  zNumber            Int // สำเนาจาก PosShift.zNumber
+  expectedCashSatang Int // สำเนาจาก PosShift.expectedCashSatang (Z แช่แข็ง · R4)
+  countedCashSatang  Int
+  varianceSatang     Int // counted − expected
+  countDetail        Json? // { "<ธนบัตรสตางค์>": จำนวน }
+  note               String // 1–200 (บังคับ)
+  recountedByUserId  String
+  idempotencyKey     String
+  createdAt          DateTime @default(now()) // = เวลานับ (recountedAt)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, unitId, createdAt])
+}

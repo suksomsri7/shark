@@ -240,7 +240,9 @@
       "optionsInvalid": "An option isn't valid — please choose the options again",
       "optionUnavailable": "This option is sold out — choose another",
       "variantRequired": "Choose a size or style for this item first",
-      "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first"
+      "weightRequired": "This item is sold by weight — scan the scale label or enter the weight first",
+      "shiftNotForced": "Only shifts closed by the system can be recounted",
+      "alreadyRecounted": "This shift has already been recounted"
     },
     "held": {
       "title": "Held bills",
@@ -321,6 +323,16 @@
       "TRANSFER": "Transfer",
       "DEPOSIT": "Deposit",
       "ROOM_CHARGE": "Room charge"
+    },
+    "recount": {
+      "title": "Recount (shift closed by system)",
+      "action": "Recount",
+      "counted": "Counted cash (THB)",
+      "variance": "Recount over/short",
+      "note": "Reason / note",
+      "by": "Counted by",
+      "at": "Counted at",
+      "saved": "Recount saved"
     }
   }
 }

@@ -2230,6 +2230,110 @@
       "query": "unit=[unitId]"
     },
     {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-recount-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "modal",
+        "target": "pos-shift-recount-dialog",
+        "note": "เฉพาะกะ FORCE_CLOSED ที่ยังไม่นับย้อนหลัง + สิทธิ์ pos.shift.manage (R13) · แคชเชียร์ operate ไม่เห็นปุ่ม"
+      },
+      "wo": "P1.9b",
+      "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-recount-counted",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-recount-dialog",
+        "state": "changes",
+        "note": "เงินที่นับได้ย้อนหลัง (บาท)"
+      },
+      "wo": "P1.9b",
+      "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-recount-note",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-recount-dialog",
+        "state": "changes",
+        "note": "เหตุผล/หมายเหตุ (บังคับ 1–200 ตัวอักษร · R9)"
+      },
+      "wo": "P1.9b",
+      "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-recount-submit",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "appears",
+        "note": "recountShiftAction → ปิดกล่อง · Z ของกะนั้น + บล็อก pos-shift-recount · ปฏิเสธ = ข้อความใน pos-shift-recount-error (ไม่ load ซ้ำ)"
+      },
+      "wo": "P1.9b",
+      "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-recount-cancel",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-recount-dialog",
+        "state": "disappears",
+        "note": "ปิดกล่องโดยไม่บันทึก"
+      },
+      "wo": "P1.9b",
+      "oracle": "qc-pos-p1.9b",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
       "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-shift-open-link",
       "kind": "link",

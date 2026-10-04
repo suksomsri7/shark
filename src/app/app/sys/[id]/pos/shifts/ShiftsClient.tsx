@@ -2,6 +2,7 @@
 
 // ShiftsClient.tsx — POS P1.9 จอกะขั้นต่ำ (ภาพ 07 + 13A ส่วน A): เปิดกะของเครื่องนี้ · X · เงินเข้า/ออก · ปิดกะ + Z · ประวัติ · เงินสดนอกกะ
 // 🔴 เงินเป็นสตางค์ Int ทุกที่ (ช่องกรอกเป็นบาท → ×100 ปัดครึ่งขึ้น) · คำปฏิเสธแสดงผ่าน refusalMessageKey (ไม่แสดง message ไทยของเซิร์ฟเวอร์)
+// P1.9b (R13): ผู้จัดการนับย้อนหลังกะที่ระบบปิด (ปุ่มในประวัติ + กล่อง) · Z แสดงผลนับย้อนหลังข้างกัน ไม่ผสาน
 // 🔴 ยังไม่มี: นับตามธนบัตร · ยอดนับของบัตร/พร้อมเพย์ · PIN/สลับพนักงาน (P1.15/P3.5) · ตั้งค่า pos.shift.* (P1.18) — ฝั่งเซิร์ฟเวอร์รองรับแล้ว
 
 import { useCallback, useEffect, useState } from "react";
@@ -10,7 +11,7 @@ import { useTranslations } from "next-intl";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 import { refusalMessageKey } from "@/lib/modules/pos/register-shared";
-import type { ShiftReport, ShiftView } from "@/lib/modules/pos/shift";
+import type { RecountView, ShiftListItem, ShiftReport, ShiftView } from "@/lib/modules/pos/shift";
 import {
   closeShiftAction,
   currentShiftAction,
@@ -18,6 +19,7 @@ import {
   offShiftCashAction,
   openShiftAction,
   recordCashMovementAction,
+  recountShiftAction,
   xReportAction,
   zReportAction,
 } from "@/lib/modules/pos/shift-actions";
@@ -85,15 +87,37 @@ function Report({ r, t }: { r: ShiftReport; t: (key: string, values?: Record<str
   );
 }
 
+/** P1.9b (R12/R13): ผลนับย้อนหลังแสดงข้าง Z (ไม่ผสานเข้า Z ที่แช่แข็ง) */
+function RecountBlock({ recount, t }: { recount: RecountView; t: (key: string) => string }) {
+  const line = (label: string, v: React.ReactNode) => (
+    <div className="flex justify-between border-b py-1.5 text-sm last:border-0">
+      <span className="text-[color:var(--color-muted)]">{label}</span>
+      <span className="tabular-nums">{v}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-xl border p-3" data-testid="pos-shift-recount">
+      <div className="mb-2 text-sm font-semibold">{t("recount.title")}</div>
+      {line(t("recount.counted"), <MoneyText satang={recount.countedCashSatang} decimals />)}
+      {line(t("recount.variance"), <MoneyText satang={recount.varianceSatang} decimals />)}
+      {line(t("recount.note"), recount.note)}
+      {line(t("recount.by"), recount.recountedByUserId.slice(-8))}
+      {line(t("recount.at"), new Date(recount.recountedAt).toLocaleString())}
+    </div>
+  );
+}
+
 export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const t = useTranslations("pos.shift");
   const te = useTranslations("pos.register");
+  const tc = useTranslations("common");
   const router = useRouter();
   const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
   const [shift, setShift] = useState<ShiftView | null>(null);
   const [report, setReport] = useState<ShiftReport | null>(null);
-  const [history, setHistory] = useState<ShiftView[]>([]);
+  const [history, setHistory] = useState<ShiftListItem[]>([]);
   const [viewZ, setViewZ] = useState<ShiftReport | null>(null);
+  const [viewRecount, setViewRecount] = useState<RecountView | null>(null);
   const [offShift, setOffShift] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +132,13 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const [closeKey, setCloseKey] = useState(newKey);
   // R2 F6: คีย์กันซ้ำเงินเข้า/ออก คงไว้จนสำเร็จ (แบบ closeKey) — กดซ้ำหลังเน็ตหลุด = รายการเดิม ไม่บันทึกสองครั้ง
   const [moveKey, setMoveKey] = useState(newKey);
+  // P1.9b: กล่องนับย้อนหลัง — คำปฏิเสธอยู่ในกล่อง (load() ไม่ล้าง) · คีย์คงไว้จนสำเร็จ (F6)
+  const [recountFor, setRecountFor] = useState<ShiftListItem | null>(null);
+  const [recountB, setRecountB] = useState("");
+  const [recountNote, setRecountNote] = useState("");
+  const [recountErr, setRecountErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [recountKey, setRecountKey] = useState(newKey);
 
   const base = { systemId, unitId, ...(deviceId ? { deviceId } : {}) };
   const fail = useCallback((r: { code: string }) => setError(te(refusalMessageKey(r.code))), [te]);
@@ -198,6 +229,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         return false;
       }
       setViewZ(r.report);
+      setViewRecount(null);
       setCountB("");
       setNote("");
       setCloseKey(newKey());
@@ -206,10 +238,51 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const showZ = (id: string) =>
     run(async () => {
       const r = await zReportAction({ ...base, shiftId: id });
-      if (r.ok) setViewZ(r.report);
-      else fail(r);
+      if (r.ok) {
+        setViewZ(r.report);
+        setViewRecount(r.recount ?? null);
+      } else fail(r);
       return false;
     });
+
+  const openRecount = (h: ShiftListItem) => {
+    setRecountFor(h);
+    setRecountB("");
+    setRecountNote("");
+    setRecountErr(null);
+    setNotice(null);
+  };
+  /** P1.9b: ถูกปฏิเสธ = ข้อความค้างในกล่อง ไม่ load ซ้ำ · สำเร็จ = ปิดกล่อง เปิด Z ของกะนั้นพร้อมผลนับ แล้วโหลดประวัติใหม่ */
+  const doRecount = async () => {
+    if (busy || !recountFor) return;
+    const c = bahtToSatang(recountB);
+    if (c === null || !recountNote.trim()) {
+      setRecountErr(te("errors.invalidLine"));
+      return;
+    }
+    setBusy(true);
+    setRecountErr(null);
+    try {
+      const r = await recountShiftAction({ ...base, recount: { shiftId: recountFor.id, countedCashSatang: c, note: recountNote.trim(), idempotencyKey: recountKey } });
+      if (!r.ok) {
+        setRecountErr(te(refusalMessageKey(r.code)));
+        return;
+      }
+      setRecountKey(newKey());
+      const z = await zReportAction({ ...base, shiftId: recountFor.id });
+      if (z.ok) {
+        setViewZ(z.report);
+        setViewRecount(z.recount ?? r.recount);
+      }
+      setRecountFor(null);
+      setNotice(t("recount.saved"));
+      await load(deviceId);
+    } catch {
+      setRecountErr(te("errors.unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const statusText = (s: string) => (s === "OPEN" ? t("statusOpen") : s === "FORCE_CLOSED" ? t("statusForced") : t("statusClosed"));
 
@@ -226,6 +299,11 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
             ))}
           </select>
         </label>
+      )}
+      {notice && (
+        <div role="status" className="rounded-xl border p-3 text-sm" data-testid="pos-shift-notice">
+          {notice}
+        </div>
       )}
       {error && (
         <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]">
@@ -295,6 +373,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         <section className="flex flex-col gap-2" data-testid="pos-shift-z">
           <h2 className="text-base font-semibold">{t("zReport")}</h2>
           <Report r={viewZ} t={t} />
+          {viewRecount && <RecountBlock recount={viewRecount} t={t} />}
         </section>
       )}
 
@@ -323,17 +402,77 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
                       · {t("overShort")} <MoneyText satang={h.overShortSatang} decimals />
                     </>
                   ) : null}
+                  {h.recount ? (
+                    <>
+                      {" "}
+                      · {t("recount.variance")} <MoneyText satang={h.recount.varianceSatang} decimals />
+                    </>
+                  ) : null}
                 </span>
-                {h.zNumber ? (
-                  <button data-testid={`pos-shift-z-view-${h.zNumber}`} type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy} onClick={() => showZ(h.id)}>
-                    {t("view")}
-                  </button>
-                ) : null}
+                <span className="flex shrink-0 gap-1">
+                  {h.status === "FORCE_CLOSED" && h.recount === null && canManage ? (
+                    <button data-testid={`pos-shift-recount-${h.zNumber ?? h.id}`} type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy} onClick={() => openRecount(h)}>
+                      {t("recount.action")}
+                    </button>
+                  ) : null}
+                  {h.zNumber ? (
+                    <button data-testid={`pos-shift-z-view-${h.zNumber}`} type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy} onClick={() => showZ(h.id)}>
+                      {t("view")}
+                    </button>
+                  ) : null}
+                </span>
               </div>
             ))}
           </div>
         )}
       </section>
+
+      {recountFor && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-shift-recount-title"
+            className="flex w-full max-w-sm flex-col gap-3 rounded-t-2xl bg-[color:var(--color-surface)] p-5 shadow-lg sm:rounded-2xl"
+            data-testid="pos-shift-recount-dialog"
+          >
+            <h2 id="pos-shift-recount-title" className="text-lg font-semibold">
+              {t("recount.title")}
+            </h2>
+            <p className="text-sm text-[color:var(--color-muted)]">
+              {t("shiftNo", { no: recountFor.shiftNo })}
+              {recountFor.zNumber ? ` · ${t("zNo", { no: recountFor.zNumber })}` : ""}
+              {recountFor.expectedCashSatang !== null ? (
+                <>
+                  {" "}
+                  · {t("expected")} <MoneyText satang={recountFor.expectedCashSatang} decimals />
+                </>
+              ) : null}
+            </p>
+            {recountErr && (
+              <div role="alert" className="rounded-xl border border-[color:var(--color-danger)] p-3 text-sm text-[color:var(--color-danger)]" data-testid="pos-shift-recount-error">
+                {recountErr}
+              </div>
+            )}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-[color:var(--color-muted)]">{t("recount.counted")}</span>
+              <input data-testid="pos-shift-recount-counted" className="input min-h-[44px]" inputMode="decimal" value={recountB} onChange={(e) => setRecountB(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-[color:var(--color-muted)]">{t("recount.note")}</span>
+              <input data-testid="pos-shift-recount-note" className="input min-h-[44px]" maxLength={200} value={recountNote} onChange={(e) => setRecountNote(e.target.value)} />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button data-testid="pos-shift-recount-cancel" type="button" className="btn btn-ghost min-h-[44px] text-sm" disabled={busy} onClick={() => setRecountFor(null)}>
+                {tc("cancel")}
+              </button>
+              <button data-testid="pos-shift-recount-submit" type="button" className="btn btn-primary min-h-[44px] text-sm" disabled={busy} onClick={() => void doRecount()}>
+                {t("save")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
