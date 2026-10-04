@@ -102,6 +102,11 @@ export type CreateSaleInput = {
    * `pos.shift.required.otherSources` เปิด (0 กะเปิด = SHIFT_REQUIRED · 1 กะ = ผูกกะนั้น · 2+ = นอกกะ)
    */
   shiftId?: string | null;
+  /**
+   * POS P1.17 (R6 · Q17.1 · เพิ่มล้วน): ผู้ขายของบิล (User.id) — เก็บตามที่ส่ง · ไม่ส่ง = null (ผู้เรียกเดิมไม่กระทบ)
+   * ไม่อยู่ใน payload ของคีย์ซ้ำ (samePayload) ⇒ ความหมาย idempotency เดิมทุกไบต์ · รายงานพนักงาน (reports.ts) อ่าน
+   */
+  soldByUserId?: string;
 };
 
 export type SaleResult = {
@@ -489,6 +494,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         note: input.note ?? null,
         paidAt: new Date(),
         shiftId,
+        soldByUserId: input.soldByUserId ?? null, // POS P1.17 ▸ R6 ◂
       },
     });
     // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)
@@ -699,7 +705,7 @@ function orderedLineIds(n: number): string[] {
  *   ส่วนประกอบชุด = 1 ส่วนต่อ InvItem จำนวน = qty × line.qty · คีย์ `pos-consume-<saleId>-<lineId>-<invItemId>` (R8)
  *   components ที่อ่านจาก DB ผิดรูป = ข้ามรายการนั้น (บิลชำระแล้ว ห้ามล้ม)
  */
-function lineConsumption(
+export function lineConsumption(
   saleId: string,
   l: { id: string; itemId: string | null; qty: number; weightGrams: number | null; components: unknown },
 ): { itemId: string; qty: number; key: string }[] {
@@ -888,8 +894,8 @@ export type PosDaySummary = {
   otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
 };
 
-const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE"];
-const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
+export const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE"];
+export const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
   TRANSFER: "โอน",
@@ -1025,9 +1031,11 @@ export async function closeDayBills(ctx: CloseCtx, businessDate?: string): Promi
 
 // ── CSV ปิดวัน (BOM · รายการบิล + บล็อกสรุป) — self-contained เพื่อให้ oracle เรียกได้โดยไม่ต้องมี session ──
 const CSV_BOM = "﻿";
+/** P1.17 R2-F1 — กันสูตรใน Excel/Sheets: ขึ้นต้น = + - @ TAB CR และไม่ใช่ตัวเลขล้วน ⇒ เติม ' นำหน้า (ตัวเลขติดลบคงเป็นตัวเลข) */
 function csvEsc(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  const raw = v == null ? "" : String(v);
+  const s = /^[=+\-@\t\r]/.test(raw) && !/^-?\d+(\.\d+)?$/.test(raw) ? `'${raw}` : raw;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const baht = (satang: number) => (satang / 100).toFixed(2);
 const STATUS_TH: Record<string, string> = { PAID: "ชำระแล้ว", VOIDED: "ยกเลิก" };

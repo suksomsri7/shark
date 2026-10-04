@@ -1610,6 +1610,7 @@ export async function submitRegisterSale(ctx: RegisterCtx, actor: RegisterActor,
       ...(req.tipSatang > 0 ? { tipSatang: req.tipSatang } : {}),
       ...(req.note ? { note: req.note } : {}),
       shiftId: shift.shiftId,
+      soldByUserId: actor.userId, // POS P1.17 ▸ R6 · ผู้ขาย = ผู้ใช้ของ session ◂
     };
     for (let attempt = 0; attempt < 3; attempt++) {
       try {

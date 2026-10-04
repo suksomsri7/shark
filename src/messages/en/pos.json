@@ -335,5 +335,37 @@
       "saved": "Recount saved",
       "invalid": "Enter the counted cash amount and a note"
     }
+  },
+  "report": {
+    "title": "Sales reports",
+    "from": "From",
+    "to": "To",
+    "rangeHint": "Up to 92 days (days cut at midnight Bangkok time)",
+    "allUnits": "All branches",
+    "downloadCsv": "Download CSV",
+    "empty": "No data in this range",
+    "total": "Total",
+    "unknownSeller": "Unassigned",
+    "estimated": "Estimated",
+    "noCost": "No cost",
+    "kinds": {
+      "daily": "Daily sales",
+      "products": "Top products",
+      "staff": "Sales by staff",
+      "payments": "Payment methods",
+      "margin": "Gross margin",
+      "shifts": "Shifts and over/short",
+      "tax": "Output VAT"
+    },
+    "card": {
+      "today": "Today's sales",
+      "bills": "Bills",
+      "avgBill": "Average bill",
+      "vsYesterday": "vs yesterday",
+      "openShifts": "Open shifts",
+      "topProduct": "Top seller today",
+      "voids": "Voided bills",
+      "tip": "Tips"
+    }
   }
 }
