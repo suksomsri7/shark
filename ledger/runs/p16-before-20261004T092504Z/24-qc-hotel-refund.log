@@ -1,0 +1,31 @@
+[env] qc-hotel-refund · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1166784) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [RF-1.1] จอง→เช็คอิน→เช็คเอาท์สำเร็จ
+  ✅ [RF-1.2] เช็คเอาท์ → posSale PAID (เก็บค่าห้อง)
+  ✅ [RF-1.3] หลังเช็คเอาท์ รายได้ 4000 คงค้าง (net>0)
+  ✅ [RF-2.1] cross-tenant refund ปฏิเสธ (ไม่พบการจอง)
+  ✅ [RF-2.2] หลัง cross-tenant การจองยังไม่ถูกแตะ (CHECKED_OUT)
+  ✅ [RF-3.1] refundStay สำเร็จ (saleVoided)
+  ✅ [RF-3.2] posSale → VOIDED
+  ✅ [RF-3.3] reservation → REFUNDED + refundedAt
+  ✅ [RF-3.4] หลัง refund บัญชีรายได้ 4000 net=0 (คืนครบ)
+  ✅ [RF-3.5] Σdr=Σcr ตลอด (บัญชีสมดุล)
+  ✅ [RF-4.1] refund ซ้ำ → ok:false (idempotent)
+  ✅ [RF-4.2] refund ซ้ำ → ไม่เกิด journal ใหม่ (net ยัง 0)
+  ✅ [RF-4.3] refund ซ้ำ → posSale VOIDED ยังมีใบเดียว
+  ✅ [RF-5.1] refund การจองที่ยังไม่เช็คเอาท์ → ok:false
+  ✅ [RF-5.2] การจอง CHECKED_IN ไม่ถูกเปลี่ยนเป็น REFUNDED
+[cleanup] ok
+
+===== QC Hotel Refund =====
+ผ่าน 15/15
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":15,"passed":15,"findings":[]}

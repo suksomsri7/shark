@@ -1,0 +1,17 @@
+(node:1168923) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+💥 TypeError: Cannot read properties of null (reading 'role')
+    at actorOf (/root/projects/shark-pos-b/scripts/qc-member-m2.6.mts:70:160)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/root/projects/shark-pos-b/scripts/qc-member-m2.6.mts:71:17)
+  ❌ [M2.6-ERR] ข้อสอบรันจนจบ — exp จบ | act Cannot read properties of null (reading 'role')
+
+🔴 M2.6: 0/1
+JSON_SUMMARY {"total":1,"passed":0,"findings":[{"id":"M2.6-ERR","sev":"CRITICAL"}]}
