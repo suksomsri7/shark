@@ -80,3 +80,12 @@ No fitness baseline was raised. Not run here: any DB mode, build, visual (`scrip
 
 Also expected unchanged: `qc-pos-p1.9` 53/53 (it compares `report`/fields, never whole result objects), money set (no sale path touched).
 Risk to watch on the VPS: RC10/RC11 use 10 PrismaClients × max 2 connections; `runTx` timeout 20 s / maxWait 10 s as in P1.9.
+
+## R2 (UI fixes, ShiftsClient only; server unchanged)
+
+1. Recount idempotency key is per shift: `recountKey` stays `useState(newKey)` (ST7) plus `recountKeyShift`; `openRecount` rotates the key when the dialog opens for a different shift. Rotated again after success.
+2. Final refusals `ALREADY_RECOUNTED` / `IDEMPOTENCY_CONFLICT` / `SHIFT_NOT_FORCED`: message stays in the dialog and history is refreshed via `load(deviceId)` (load does not touch `recountErr`).
+3. Success: dialog closes and notice shows first; Z fetch + `load` run in their own try, so a failure there never shows `errors.unknown` in the dialog.
+4. Client validation text: new `pos.shift.recount.invalid` (th + en) replaces `errors.invalidLine` in the dialog.
+5. "Recount saved" notice cleared when any `run()` action, `openRecount` or a new recount starts.
+No new test ids. Checks: typecheck 0 · fitness 41/41 · fitness-pos 8/8 · qc-pos-p1.9b --no-db 8/8 · qc-pos-p1.9 --no-db 13/13.
