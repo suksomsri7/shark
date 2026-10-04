@@ -5,7 +5,7 @@
 # Request file format:
 #   line 1:  <id> <tree> <branch> <head-sha-prefix>
 #   then one step per line:
-#     typecheck | fitness | fitness-pos | build | forced:<suite> | unforced:<suite> | <suite>
+#     typecheck | fitness | fitness-pos | build | migrate-qc4 (QC4 only, additive-only guard) | forced:<suite> | unforced:<suite> | <suite>
 #     (<suite> = script name without .mts; "<suite>" alone = unforced)
 #   Lines starting with # are ignored.
 # Allowed trees: /root/projects/shark-pos-b and /root/projects/shark-pos-p11 only.
@@ -101,6 +101,12 @@ tail -n +2 "$REQF" | while read -r step _; do
                  run fitness-noenv env -u DATABASE_URL -u DIRECT_URL -u QC_ENV_FILE pnpm fitness ;;
     build)       run serve-build env ACC_V2_PORT=3226 NODE_OPTIONS=--max-old-space-size=5632 bash scripts/acc-v2-serve.sh
                  ( cd "$TREE" && ACC_V2_PORT=3226 bash scripts/acc-v2-serve.sh stop ) >/dev/null 2>&1 || true ;;
+    migrate-qc4)
+      # additive-only guard: refuse if any not-yet-on-session/pos migration SQL drops/renames/truncates
+      bad="$(git diff --name-only origin/session/pos...HEAD -- 'prisma/migrations/*/migration.sql' | xargs -r grep -l -i -E 'DROP |RENAME |TRUNCATE |DELETE FROM' || true)"
+      if [ -n "$bad" ]; then echo "| - | migrate-qc4 | refused: non-additive SQL in $bad | - | |" >> "$SUMMARY"
+      else run migrate-qc4 bash scripts/iso.sh bash scripts/qc4.sh pnpm exec prisma migrate deploy
+           run prisma-generate pnpm exec prisma generate; fi ;;
     fitness-pos) run fitness-pos env -u DATABASE_URL -u DIRECT_URL bash scripts/iso.sh pnpm exec tsx scripts/fitness-pos.mts ;;
     forced:*|unforced:*|*)
       mode=unforced; s="$step"
