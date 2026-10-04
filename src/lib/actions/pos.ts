@@ -478,7 +478,7 @@ export async function setItemSalePriceAction(formData: FormData): Promise<void> 
   if (priceRaw === "" || !Number.isFinite(priceBaht) || priceBaht < 0) {
     redirect(`${base}?err=${encodeURIComponent("กรอกราคาขายเป็นตัวเลขไม่ติดลบ")}`);
   }
-  const res = await setItemSalePrice(tenantId, systemId, itemId, Math.round(priceBaht * 100));
+  const res = await setItemSalePrice(tenantId, systemId, itemId, Math.round(priceBaht * 100), auth.user.id);
   if (!res.ok) redirect(`${base}?err=${encodeURIComponent(res.reason)}`);
 
   revalidatePath(base);

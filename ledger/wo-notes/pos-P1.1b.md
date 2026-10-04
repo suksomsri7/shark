@@ -161,3 +161,11 @@ Text = the catalogue's Thai message (already says "ยังไม่ได้�
 - `CATALOG_WRITER_EXEMPT` narrowed: pdpa.ts exempts only `{dynamic}` hits whose call is `.deleteMany` — every other write in pdpa.ts is counted again.
 - Negative proofs (temp files, deleted; pdpa.ts restored byte-for-byte): `inventory/zz-p11b.ts` importing `pos/service` → F15.7 ❌ (+F2.1 unaffected since the edge exists); `zzp11b/reexp.ts` with `export *` + `export {createInvItem} from` → F15.5 ❌ at lines 1 and 2; appending `tx[m].updateMany(…)` to pdpa.ts → F15.1 ❌ `pdpa.ts dynamic 0→1 [@133 tx[m].updateMany …]`.
 - Fitness 41/41 with env and without env.
+
+## F9 — audit actor
+- `CatalogCtx.onBehalfOfUserId?` (audit only — permission still the system path) · `catalog.audit` writes `USER/<id>` when the system caller carries it · `auditSync/applyDerived/rederiveRows` take an `AuditActor`.
+- Every writing export of catalog-legacy takes a trailing optional `actorUserId` → `C.auditActorOf()` (USER when given, else SYSTEM); `sysCtx` passes it into `catalog.archive/restore/ensureForInvItem`; setPrice siblings audit as the setPrice user.
+- Doors (backward compatible, optional): `menu.createCategory/archiveCategory/createItem/updateItem/setItemOptionGroups/duplicateItem/archiveItem/setItemStock` trailing `actorUserId` · `ShopCtx.actorUserId?` · inventory `Ctx.actorUserId?` · `BookingCtx.actorUserId?` · `account/product.updateProduct/archiveProduct` trailing `actorUserId` · `register.setItemSalePrice` trailing `actorUserId`.
+- Human callers pass the session user: `actions/restaurant.ts` (6 menu calls via `ctx().userId`), `shop/actions.ts` (`ctxOf` → `auth.user.id`), `inventory/actions.ts` (5 sites), `actions/booking.ts` import, `account/product-actions.ts` (3 sites), `actions/pos.ts` setItemSalePriceAction.
+- Still SYSTEM (no human known at that layer): AI proposals (`ai/proposals.ts` not editable in Part A), REST `account/api/ops/products-write.ts`, undo-stack, inventory-link syncs, CSV import, order stock paths (no audit).
+- Typecheck 0 · fitness 41/41.

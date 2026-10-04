@@ -9,7 +9,8 @@ import * as inv from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 
-export type BookingCtx = { tenantId: string; unitId: string };
+/** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อกเมื่อนำบริการเข้าคลัง */
+export type BookingCtx = { tenantId: string; unitId: string; actorUserId?: string };
 import {
   computeStaffSlots,
   localToUtc,
@@ -310,8 +311,8 @@ export async function setServiceOffered(
 export async function importServicesToCatalog(ctx: BookingCtx): Promise<{ moved: number; linked: number; reason?: string }> {
   const catalogSystemId = await catalogSystemFor(ctx);
   if (!catalogSystemId) return { moved: 0, linked: 0, reason: "ยังไม่ได้เปิดระบบสินค้า/บริการ" };
-  const invCtx = { tenantId: ctx.tenantId, systemId: catalogSystemId };
-  const db = tenantDb(ctx);
+  const invCtx = { tenantId: ctx.tenantId, systemId: catalogSystemId, actorUserId: ctx.actorUserId };
+  const db = tenantDb({ tenantId: ctx.tenantId, unitId: ctx.unitId });
   // เฉพาะบริการที่ยังเปิดใช้อยู่ — บริการที่ร้านเอาออกไปแล้วไม่ต้องไปโผล่ในแคตตาล็อกใหม่
   // (ตรงกับจำนวนที่แถบเตือนบอก = legacy ใน serviceRoster)
   const legacy = await db.bookingService.findMany({ where: { itemId: null, active: true } });

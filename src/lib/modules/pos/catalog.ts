@@ -36,7 +36,16 @@ import { prisma } from "./db";
 /** C1: ตัวบ่งชี้ผู้เรียกระดับระบบ — มีได้จากการ import โมดูลนี้เท่านั้น (ค่าจาก JSON/คุกกี้/ฟอร์ม เป็น symbol ไม่ได้) */
 export const CATALOG_SYSTEM_ACTOR: unique symbol = Symbol("pos.catalog.system-actor");
 export type CatalogActor = string | typeof CATALOG_SYSTEM_ACTOR;
-export type CatalogCtx = { tenantId: string; systemId: string; actorUserId: CatalogActor };
+export type CatalogCtx = {
+  tenantId: string;
+  systemId: string;
+  actorUserId: CatalogActor;
+  /**
+   * P1.1b R2 F9: ผู้กระทำจริงของประตูเดิมที่เรียกแบบระบบ (catalog-legacy) — ใช้ "เฉพาะ audit" (ไม่ให้/ไม่ตรวจสิทธิ์อะไร) ·
+   * มีผลเมื่อ actorUserId คือตัวบ่งชี้ระบบเท่านั้น
+   */
+  onBehalfOfUserId?: string;
+};
 /** client ของผู้เรียก — PrismaClient (เปิดธุรกรรมให้เอง) หรือ tx ที่ผู้เรียกเปิดไว้แล้ว */
 export type CatalogClient = PrismaClient | Prisma.TransactionClient;
 
@@ -441,11 +450,13 @@ async function audit(
   after: Record<string, unknown> | null,
 ): Promise<void> {
   // ในธุรกรรมเดียวกับการเขียน · createdAt = เวลาหลังได้ล็อก (ไม่ใช่เวลาเริ่ม tx ของ DB) ⇒ เรียงตามลำดับที่เขียนจริง (C11)
+  // R2 F9: เรียกแบบระบบจากประตูเดิมที่รู้ผู้กระทำ = บันทึกคนจริง (audit อย่างเดียว)
+  const human = typeof ctx.actorUserId === "string" ? ctx.actorUserId : typeof ctx.onBehalfOfUserId === "string" && ctx.onBehalfOfUserId ? ctx.onBehalfOfUserId : null;
   await tx.auditLog.create({
     data: {
       tenantId: ctx.tenantId,
-      actorType: typeof ctx.actorUserId === "string" ? "USER" : "SYSTEM",
-      actorId: typeof ctx.actorUserId === "string" ? ctx.actorUserId : null,
+      actorType: human ? "USER" : "SYSTEM",
+      actorId: human,
       action,
       targetType,
       targetId,

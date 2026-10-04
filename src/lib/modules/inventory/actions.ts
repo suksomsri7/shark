@@ -76,7 +76,7 @@ export async function createItemAction(formData: FormData) {
   if (!systemId || !sku || !name) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   try {
-    await createItem(ctx, {
+    await createItem({ ...ctx, actorUserId: auth.user.id }, {
       sku,
       name,
       barcode: String(formData.get("barcode") ?? "").trim() || null,
@@ -103,7 +103,7 @@ export async function updateItemAction(formData: FormData) {
   if (!systemId || !itemId || !name) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   try {
-    await updateItem(ctx, itemId, {
+    await updateItem({ ...ctx, actorUserId: auth.user.id }, itemId, {
       name,
       sku: String(formData.get("sku") ?? "").trim(),
       barcode: String(formData.get("barcode") ?? "").trim() || null,
@@ -128,7 +128,7 @@ export async function archiveItemAction(formData: FormData) {
   if (!systemId || !itemId) return;
   const ctx = await requireInventoryCtx(auth.active.tenantId, systemId); // HF-INV-0: ต้องเป็นระบบคลังของร้านนี้
   try {
-    await archiveItem(ctx, itemId);
+    await archiveItem({ ...ctx, actorUserId: auth.user.id }, itemId);
   } catch (e) {
     // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
     if (!(e instanceof CatalogError)) throw e;
@@ -333,7 +333,7 @@ export async function createServiceAction(formData: FormData) {
   const price = toBaht(formData.get("priceBaht"));
   const deposit = toBaht(formData.get("depositBaht"));
   try {
-    await createItem(ctx, {
+    await createItem({ ...ctx, actorUserId: auth.user.id }, {
       sku,
       name,
       kind: "SERVICE",
@@ -366,7 +366,7 @@ export async function updateServiceAction(formData: FormData) {
   const price = toBaht(formData.get("priceBaht"));
   const deposit = toBaht(formData.get("depositBaht"));
   try {
-    await updateItem(ctx, itemId, {
+    await updateItem({ ...ctx, actorUserId: auth.user.id }, itemId, {
       name,
       ...(price != null ? { priceSatang: Math.round(price * 100) } : {}),
       durationMin: toQty(formData.get("durationMin")) || 30,

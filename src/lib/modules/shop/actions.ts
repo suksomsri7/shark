@@ -11,7 +11,7 @@ import { CatalogError } from "@/lib/modules/pos";
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
 function ctxOf(auth: UnitAuth, unitId: string) {
-  return { tenantId: auth.active.tenantId, unitId };
+  return { tenantId: auth.active.tenantId, unitId, actorUserId: auth.user.id };
 }
 
 // ตรวจสิทธิ์ระดับหน่วย (OWNER ผ่าน · MANAGER ผ่านในหน่วยที่คุม · STAFF ต้องมี permission)

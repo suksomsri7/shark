@@ -78,17 +78,17 @@ export async function createStationAction(unitSlug: string, formData: FormData) 
 
 // ───────────────────────── Categories ─────────────────────────
 export async function createCategoryAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.category.create");
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.category.create");
   const name = String(formData.get("name") ?? "").trim();
   const nameEn = String(formData.get("nameEn") ?? "").trim() || undefined;
-  if (name) await menu.createCategory(tenantId, unitId, { name, nameEn });
+  if (name) await menu.createCategory(tenantId, unitId, { name, nameEn }, userId);
   revalidatePath(`${base(unitSlug)}/menu`);
   revalidatePath(`${base(unitSlug)}/setup`);
 }
 
 export async function archiveCategoryAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.category.archive");
-  await menu.archiveCategory(tenantId, unitId, String(formData.get("id") ?? ""));
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.category.archive");
+  await menu.archiveCategory(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
@@ -140,7 +140,7 @@ const itemSchema = z.object({
 });
 
 export async function createItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.create");
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.create");
   const tags = formData.getAll("tags").map(String);
   const p = itemSchema.safeParse({
     categoryId: formData.get("categoryId"),
@@ -164,12 +164,12 @@ export async function createItemAction(unitSlug: string, formData: FormData) {
     tags,
     stockQty: p.data.stockQty ?? null,
     optionGroupIds: formData.getAll("optionGroupIds").map(String),
-  });
+  }, userId);
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
 export async function setItemStockAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.setStock");
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.setStock");
   const id = String(formData.get("id") ?? "");
   const data: { isOutOfStock?: boolean; stockQty?: number | null } = {};
   if (formData.has("isOutOfStock")) data.isOutOfStock = formData.get("isOutOfStock") === "true";
@@ -178,7 +178,7 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
     data.stockQty = v === "" ? null : Number(v);
   }
   try {
-    await menu.setItemStock(tenantId, unitId, id, data);
+    await menu.setItemStock(tenantId, unitId, id, data, userId);
   } catch (e) {
     // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
     if (!(e instanceof CatalogError)) throw e;
@@ -191,15 +191,15 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
 }
 
 export async function duplicateItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.duplicate");
-  await menu.duplicateItem(tenantId, unitId, String(formData.get("id") ?? ""));
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.duplicate");
+  await menu.duplicateItem(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   revalidatePath(`${base(unitSlug)}/menu`);
 }
 
 export async function archiveItemAction(unitSlug: string, formData: FormData) {
-  const { tenantId, unitId } = await ctx(unitSlug, "restaurant.item.archive");
+  const { tenantId, unitId, userId } = await ctx(unitSlug, "restaurant.item.archive");
   try {
-    await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""));
+    await menu.archiveItem(tenantId, unitId, String(formData.get("id") ?? ""), userId);
   } catch (e) {
     // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
     if (!(e instanceof CatalogError)) throw e;

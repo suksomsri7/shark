@@ -99,6 +99,7 @@ export async function createCategory(
   tenantId: string,
   unitId: string,
   input: { name: string; nameEn?: string; availableFrom?: string; availableTo?: string },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
   const db = tenantDb({ tenantId, unitId });
   const dup = await db.menuCategory.findFirst({ where: { name: input.name, archivedAt: null } });
@@ -109,16 +110,16 @@ export async function createCategory(
       nameEn: input.nameEn || null,
       availableFrom: input.availableFrom || null,
       availableTo: input.availableTo || null,
-    }),
+    }, actorUserId),
   );
   return { ok: true as const, id: cat.id };
 }
 
-export async function archiveCategory(tenantId: string, unitId: string, id: string) {
+export async function archiveCategory(tenantId: string, unitId: string, id: string, actorUserId?: string) {
   const db = tenantDb({ tenantId, unitId });
   const items = await db.menuItem.count({ where: { categoryId: id, archivedAt: null } });
   if (items > 0) return { ok: false as const, reason: "ยังมีเมนูในหมวดนี้ — ย้าย/ลบเมนูก่อน" };
-  await prisma.$transaction((tx) => legacy.archiveMenuCategory(tx, { tenantId, unitId }, id));
+  await prisma.$transaction((tx) => legacy.archiveMenuCategory(tx, { tenantId, unitId }, id, actorUserId));
   return { ok: true as const };
 }
 
@@ -227,6 +228,7 @@ export async function createItem(
     stockQty?: number | null;
     dailyStockQty?: number | null;
   },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
   const db = tenantDb({ tenantId, unitId });
   const cat = await db.menuCategory.findFirst({ where: { id: input.categoryId, archivedAt: null } });
@@ -251,6 +253,7 @@ export async function createItem(
       dailyStockQty: input.dailyStockQty ?? null,
       },
       (input.optionGroupIds ?? []).map((groupId, i) => ({ groupId, sortOrder: i })),
+      actorUserId,
     ),
   );
   return { ok: true as const, id: item.id };
@@ -271,8 +274,9 @@ export async function updateItem(
     tags?: string[];
     status?: MenuItemStatus;
   },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  return prisma.$transaction((tx) => legacy.updateMenuItem(tx, { tenantId, unitId }, id, data));
+  return prisma.$transaction((tx) => legacy.updateMenuItem(tx, { tenantId, unitId }, id, data, actorUserId));
 }
 
 export async function setItemOptionGroups(
@@ -280,11 +284,12 @@ export async function setItemOptionGroups(
   unitId: string,
   itemId: string,
   groupIds: string[],
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  await prisma.$transaction((tx) => legacy.setMenuItemOptionGroups(tx, { tenantId, unitId }, itemId, groupIds));
+  await prisma.$transaction((tx) => legacy.setMenuItemOptionGroups(tx, { tenantId, unitId }, itemId, groupIds, actorUserId));
 }
 
-export async function duplicateItem(tenantId: string, unitId: string, id: string) {
+export async function duplicateItem(tenantId: string, unitId: string, id: string, actorUserId?: string) {
   const item = await getItem(tenantId, unitId, id);
   if (!item) return { ok: false as const, reason: "ไม่พบเมนู" };
   const copy = await prisma.$transaction((tx) =>
@@ -303,13 +308,14 @@ export async function duplicateItem(tenantId: string, unitId: string, id: string
       images: item.images as string[],
       },
       item.optionGroups.map((og) => ({ groupId: og.groupId, sortOrder: og.sortOrder })),
+      actorUserId,
     ),
   );
   return { ok: true as const, id: copy.id };
 }
 
-export async function archiveItem(tenantId: string, unitId: string, id: string) {
-  await prisma.$transaction((tx) => legacy.archiveMenuItem(tx, { tenantId, unitId }, id));
+export async function archiveItem(tenantId: string, unitId: string, id: string, actorUserId?: string) {
+  await prisma.$transaction((tx) => legacy.archiveMenuItem(tx, { tenantId, unitId }, id, actorUserId));
 }
 
 // ───────────────────────── 86 / สต็อก ─────────────────────────
@@ -318,8 +324,9 @@ export async function setItemStock(
   unitId: string,
   id: string,
   data: { isOutOfStock?: boolean; stockQty?: number | null; dailyStockQty?: number | null },
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ — ผู้เรียกเดิมไม่ต้องแก้)
 ) {
-  return prisma.$transaction((tx) => legacy.setMenuItemStock(tx, { tenantId, unitId }, id, data));
+  return prisma.$transaction((tx) => legacy.setMenuItemStock(tx, { tenantId, unitId }, id, data, actorUserId));
 }
 
 // เมนูรูปแบบ lite สำหรับหน้าคีย์ออเดอร์ (staff/public) — serializable ส่งให้ client ได้

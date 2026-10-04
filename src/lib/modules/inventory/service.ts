@@ -18,7 +18,8 @@ import * as legacy from "@/lib/modules/pos/catalog-legacy";
 //    (อยู่ใน tx เดียวกับการ append ledger เสมอ → balanceAfter = onHand หลังรายการ)
 //    🔴 HF-INV-1: ทุกการเขียนสต็อกล็อกแถว InvItem ก่อนอ่านยอด (lockItemForStock/lockItemsInTx) — ห้ามเพิ่มจุดเขียนใหม่ที่ไม่ล็อก
 
-export type Ctx = { tenantId: string; systemId: string };
+/** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่ใช้ตรวจสิทธิ์) */
+export type Ctx = { tenantId: string; systemId: string; actorUserId?: string };
 
 // ═══════════ Multi-warehouse (WO-0037) — Location + สต็อกต่อคลัง ═══════════
 // InvItem.onHand = ยอดรวมทุกคลัง (ของเดิม ห้ามเพี้ยน) · InvLocationStock = ยอดต่อคลัง (cache)
@@ -351,7 +352,7 @@ export async function createItem(ctx: Ctx, input: CreateItemInput): Promise<{ id
       ...(input.bookable !== undefined ? { bookable: input.bookable } : {}),
       description: input.description?.trim() || null,
       // onHand = 0 (default ใน schema)
-    }),
+    }, ctx.actorUserId),
   );
   return { id: it.id };
 }
@@ -489,7 +490,7 @@ export async function updateItem(ctx: Ctx, itemId: string, patch: UpdateItemPatc
   if (Object.keys(data).length === 0) return { id: itemId };
 
   try {
-    await prisma.$transaction((tx) => legacy.updateInvItem(tx, ctx, item.id, data as Prisma.InvItemUncheckedUpdateInput));
+    await prisma.$transaction((tx) => legacy.updateInvItem(tx, ctx, item.id, data as Prisma.InvItemUncheckedUpdateInput, ctx.actorUserId));
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")
       throw new Error("มีสินค้ารหัส (SKU) นี้อยู่แล้ว");
@@ -507,7 +508,7 @@ export async function archiveItem(ctx: Ctx, itemId: string): Promise<{ id: strin
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
   if (!item.archivedAt) {
-    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, true));
+    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, true, ctx.actorUserId));
   }
   return { id: itemId };
 }
@@ -519,7 +520,7 @@ export async function unarchiveItem(ctx: Ctx, itemId: string): Promise<{ id: str
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
   if (item.archivedAt) {
     // G6: แถวแคตตาล็อกกลับมาขาย (catalog.restore — ensureForInvItem ไม่ปลดเก็บถาวรเอง)
-    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, false));
+    await prisma.$transaction((tx) => legacy.setInvItemArchived(tx, ctx, item.id, false, ctx.actorUserId));
   }
   return { id: itemId };
 }
@@ -987,7 +988,7 @@ export async function linkAccountProduct(ctx: Ctx, itemId: string, accountProduc
   const db = tenantDb(ctx);
   const item = await db.invItem.findFirst({ where: { id: itemId } });
   if (!item) throw new Error("ไม่พบสินค้าในคลัง");
-  await prisma.$transaction((tx) => legacy.linkInvItemAccountProduct(tx, ctx, item.id, accountProductId));
+  await prisma.$transaction((tx) => legacy.linkInvItemAccountProduct(tx, ctx, item.id, accountProductId, ctx.actorUserId));
   // WO 4.1: ผูกแล้วดันค่าฝั่งคลัง (sku/หน่วย/ต้นทุน) ไปตั้งต้นให้สินค้าบัญชีทันที — ขากลับ
   //   (AccountProduct.invItemId) ตั้งโดย account.linkProductToItem ซึ่งเรียกฟังก์ชันนี้ต่ออีกที
   await syncLinkedAccountProduct(ctx, itemId);
@@ -1002,7 +1003,7 @@ export async function applyAccountProductSync(
   itemId: string,
   data: { accountProductId?: string; name?: string; unitLabel?: string; sku?: string },
 ): Promise<void> {
-  await prisma.$transaction((tx) => legacy.writeInvItemFromAccountProduct(tx, ctx, itemId, data));
+  await prisma.$transaction((tx) => legacy.writeInvItemFromAccountProduct(tx, ctx, itemId, data, ctx.actorUserId));
 }
 
 // CRM C1.5 ▸ อ่านสินค้าหลายตัวในคำสั่งเดียว (scope tenant+system ผ่าน tenantDb · ของเลิกขาย/ข้ามระบบไม่คืน · ≤ 500 id)

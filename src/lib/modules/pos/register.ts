@@ -291,6 +291,7 @@ export async function setItemSalePrice(
   posSystemId: string,
   itemId: string,
   salePriceSatang: number,
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ)
 ): Promise<SetSalePriceResult> {
   if (!Number.isFinite(salePriceSatang) || salePriceSatang < 0) {
     return { ok: false, reason: "ราคาขายต้องเป็นตัวเลขไม่ติดลบ" };
@@ -307,7 +308,7 @@ export async function setItemSalePrice(
   // มี AccountProduct อยู่แล้ว → แค่แก้ราคา (รู้ productId ตรง ไม่ต้องมีระบบบัญชีผูก POS)
   if (item.accountProductId) {
     const productId = item.accountProductId;
-    const ok = await prisma.$transaction((tx) => writeAccountProductSalePrice(tx, tenantId, productId, price));
+    const ok = await prisma.$transaction((tx) => writeAccountProductSalePrice(tx, tenantId, productId, price, actorUserId));
     if (!ok) return { ok: false, reason: "อัปเดตราคาไม่สำเร็จ" };
     return { ok: true, productId: item.accountProductId };
   }
@@ -321,7 +322,7 @@ export async function setItemSalePrice(
     name: item.name,
     salePriceSatang: price,
   });
-  await inventory.linkAccountProduct(invCtx, itemId, productId);
+  await inventory.linkAccountProduct({ ...invCtx, actorUserId }, itemId, productId);
   return { ok: true, productId };
 }
 

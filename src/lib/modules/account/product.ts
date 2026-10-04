@@ -571,6 +571,7 @@ export async function updateProduct(
   systemId: string,
   id: string,
   input: ProductInput,
+  actorUserId?: string, // POS P1.1b R2 F9: ผู้กระทำจริง → audit ของแคตตาล็อก (ไม่บังคับ)
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const bad = validateProduct(input);
   if (bad) return { ok: false, reason: bad };
@@ -600,7 +601,7 @@ export async function updateProduct(
     //    WO C4: เขียน + ยิง webhook "แก้ไขสินค้า" ในธุรกรรมเดียว · คีย์กันซ้ำผูก `updatedAt`
     //    ⇒ ต้องอ่านค่า **หลังเขียน ใน tx เดียวกัน** (อ่านก่อน = ได้ค่าเก่า → แก้ 2 ครั้งได้ event ใบเดียว)
     const res = await prisma.$transaction(async (tx) => {
-      const r = await legacy.updateAccountProduct(tx, { tenantId, systemId }, id, data as Prisma.AccountProductUncheckedUpdateManyInput);
+      const r = await legacy.updateAccountProduct(tx, { tenantId, systemId }, id, data as Prisma.AccountProductUncheckedUpdateManyInput, actorUserId);
       if (r.count === 0) return r;
       const row = await tx.accountProduct.findFirst({
         where: { id, tenantId, systemId },
@@ -629,9 +630,10 @@ export async function archiveProduct(
   systemId: string,
   id: string,
   archived = true,
+  actorUserId?: string, // POS P1.1b R2 F9
 ) {
   // มติ 13: เป็นประตู — C7 ไม่นับ AP ที่เก็บถาวร ⇒ ราคาแถวแคตตาล็อกที่ผูกคิดใหม่ในธุรกรรมเดียว
-  await prisma.$transaction((tx) => legacy.archiveAccountProduct(tx, { tenantId, systemId }, id, archived));
+  await prisma.$transaction((tx) => legacy.archiveAccountProduct(tx, { tenantId, systemId }, id, archived, actorUserId));
 }
 
 // ─────────────────── บัญชี GL (สำหรับ dropdown override รายได้/ค่าใช้จ่าย) ───────────────────

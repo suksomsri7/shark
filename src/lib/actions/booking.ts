@@ -208,7 +208,7 @@ export async function importServicesToCatalogAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertBookingCan(auth, unit.id, "booking.service.create");
   try {
-    await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id });
+    await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id, actorUserId: auth.user.id });
   } catch (e) {
     // POS P1.1b G11: แคตตาล็อกปฏิเสธ (เช่น BUSY ระหว่าง backfill — สร้างบริการผ่าน inventory.createItem) คืนเป็น ?err= — ไม่ throw ถึงผู้ใช้
     if (!(e instanceof CatalogError)) throw e;

@@ -27,7 +27,14 @@ type Tx = Prisma.TransactionClient;
 type UnitScope = { tenantId: string; unitId: string };
 type SysScope = { tenantId: string; systemId: string };
 
-const sysCtx = (tenantId: string, systemId: string): C.CatalogCtx => ({ tenantId, systemId, actorUserId: CATALOG_SYSTEM_ACTOR });
+/** R2 F9: ผู้กระทำจริง (ถ้าประตูเดิมรู้) ไปอยู่ใน audit ของแคตตาล็อก — สิทธิ์ยังเป็นแบบระบบ (ประตูเดิมตรวจแล้ว) */
+const sysCtx = (tenantId: string, systemId: string, who: C.AuditActor): C.CatalogCtx => ({
+  tenantId,
+  systemId,
+  actorUserId: CATALOG_SYSTEM_ACTOR,
+  ...(who.type === "USER" && who.id ? { onBehalfOfUserId: who.id } : {}),
+});
+type Who = C.AuditActor;
 
 const INV_LITE = { id: true, systemId: true, name: true, kind: true, priceSatang: true, costSatang: true, archivedAt: true, onHand: true, accountProductId: true, sortOrder: true } as const;
 
@@ -36,11 +43,11 @@ const INV_LITE = { id: true, systemId: true, name: true, kind: true, priceSatang
 /** G7: ล็อกแถว PosProduct (เรียง id · คำสั่งเดียว) แล้วอ่านค่าปัจจุบัน — ตัวเดียวกับทางย้อน (catalog.lockProductRows) */
 const lockRows = (tx: Tx, tenantId: string, ids: (string | null | undefined)[]) => C.lockProductRows(tx, tenantId, ids);
 
-const auditSys = (tx: Tx, tenantId: string, action: string, targetType: "PosProduct" | "PosCategory", targetId: string, before: unknown, after: unknown) =>
-  C.auditSync(tx, tenantId, C.SYSTEM_AUDIT, action, targetType, targetId, before, after);
+const auditSys = (tx: Tx, who: Who, tenantId: string, action: string, targetType: "PosProduct" | "PosCategory", targetId: string, before: unknown, after: unknown) =>
+  C.auditSync(tx, tenantId, who, action, targetType, targetId, before, after);
 
 /** เขียนเฉพาะช่องที่ต่าง — catalog.applyDerived (คำสั่งเดียว · audit `pos.product.sync`) */
-const applySync = (tx: Tx, row: PosProduct, want: Record<string, unknown>) => C.applyDerived(tx, row, want, C.SYSTEM_AUDIT);
+const applySync = (tx: Tx, who: Who, row: PosProduct, want: Record<string, unknown>) => C.applyDerived(tx, row, want, who);
 
 /** ระบบ POS ที่ขายเมนูของสาขานี้ (ทางเดียวกับ backfill — C.resolvePosSystem) */
 async function posOfUnit(tx: Tx, tenantId: string, unitId: string): Promise<string | null> {
@@ -48,7 +55,7 @@ async function posOfUnit(tx: Tx, tenantId: string, unitId: string): Promise<stri
 }
 
 /** PosCategory ของหมวดเมนู (กุญแจ ระบบ+สาขา+ชื่อ แบบ backfill) — ไม่มี = สร้างด้วยตัวแปลงเดียวกับ backfill */
-async function categoryFor(tx: Tx, tenantId: string, systemId: string, menuCategoryId: string): Promise<string | null> {
+async function categoryFor(tx: Tx, who: Who, tenantId: string, systemId: string, menuCategoryId: string): Promise<string | null> {
   const mc = await tx.menuCategory.findFirst({ where: { id: menuCategoryId, tenantId } });
   if (!mc) return null;
   const find = () => tx.posCategory.findFirst({ where: { tenantId, systemId, unitId: mc.unitId, name: mc.name }, select: { id: true } });
@@ -62,22 +69,22 @@ async function categoryFor(tx: Tx, tenantId: string, systemId: string, menuCateg
     ON CONFLICT DO NOTHING`;
   const row = await find();
   if (!row) return null;
-  if (n === 1) await auditSys(tx, tenantId, "pos.category.create", "PosCategory", row.id, null, { name: f.name, unitId: f.unitId, source: "menuCategory" });
+  if (n === 1) await auditSys(tx, who, tenantId, "pos.category.create", "PosCategory", row.id, null, { name: f.name, unitId: f.unitId, source: "menuCategory" });
   return row.id;
 }
 
 /** ช่องที่เมนูเป็นเจ้าของ (ไม่รวม: ตัวนับสด stockQty/isOutOfStock · archivedAt (ประตูเก็บถาวรของตัวเอง) · trackStock · unitId) */
-async function syncMenuRow(tx: Tx, row: PosProduct, item: MenuItem): Promise<void> {
-  const catId = await categoryFor(tx, row.tenantId, row.systemId, item.categoryId);
+async function syncMenuRow(tx: Tx, who: Who, row: PosProduct, item: MenuItem): Promise<void> {
+  const catId = await categoryFor(tx, who, row.tenantId, row.systemId, item.categoryId);
   const d = C.menuItemProductFields(item, catId).data;
-  await applySync(tx, row, {
+  await applySync(tx, who, row, {
     name: d.name, nameEn: d.nameEn, categoryId: d.categoryId, basePriceSatang: d.basePriceSatang, images: d.images,
     sortOrder: d.sortOrder, stationId: d.stationId, dailyStockQty: d.dailyStockQty,
   });
 }
 
 /** แถวที่ผูก InvItem — คิดใหม่ตามแหล่งเดิม (catalog.rederiveRows · ตัวเดียวกับพี่น้องของ setPrice) · ประตูส่งธงตามช่องที่ตัวเองเปลี่ยน (G5) */
-const resyncRows = (tx: Tx, rows: PosProduct[], what: { name?: boolean; price?: boolean }) => C.rederiveRows(tx, rows, what, C.SYSTEM_AUDIT);
+const resyncRows = (tx: Tx, who: Who, rows: PosProduct[], what: { name?: boolean; price?: boolean }) => C.rederiveRows(tx, rows, what, who);
 
 /** แถวแคตตาล็อกทุกแถวที่ผูก InvItem นี้ (แถว InvItem ทุกระบบ + แถวเว็บร้านเองที่ผูกมัน) */
 async function rowIdsOfInvItem(tx: Tx, tenantId: string, invItemId: string): Promise<string[]> {
@@ -99,14 +106,16 @@ export async function createMenuItem(
   s: UnitScope,
   data: Omit<Prisma.MenuItemUncheckedCreateInput, "tenantId" | "unitId">,
   links: { groupId: string; sortOrder: number }[],
+  actorUserId?: string | null,
 ): Promise<MenuItem> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const item = await tx.menuItem.create({ data: { ...data, tenantId: s.tenantId, unitId: s.unitId } });
   for (const l of links) {
     await tx.menuItemOptionGroup.create({ data: { tenantId: s.tenantId, unitId: s.unitId, itemId: item.id, groupId: l.groupId, sortOrder: l.sortOrder } });
   }
   const sys = await posOfUnit(tx, s.tenantId, s.unitId);
   if (!sys) return item;
-  const catId = await categoryFor(tx, s.tenantId, sys, item.categoryId);
+  const catId = await categoryFor(tx, who, s.tenantId, sys, item.categoryId);
   const id = randomUUID();
   const d = C.menuItemProductFields(item, catId).data;
   await tx.posProduct.create({ data: { id, tenantId: s.tenantId, systemId: sys, ...d } });
@@ -115,21 +124,23 @@ export async function createMenuItem(
     await tx.recipeLine.create({ data: { tenantId: s.tenantId, productId: id, invItemId: item.invItemId, qty: 1 } });
   // คอลัมน์เชื่อม (เจ้าของ = ซิงก์) — ตั้งหลังสร้างแถว PosProduct ในธุรกรรมเดียว
   await tx.menuItem.updateMany({ where: { id: item.id, tenantId: s.tenantId }, data: { posProductId: id } });
-  await auditSys(tx, s.tenantId, "pos.product.create", "PosProduct", id, null, { kind: "MENU", menuItemId: item.id, basePriceSatang: d.basePriceSatang, source: "menu.createItem" });
+  await auditSys(tx, who, s.tenantId, "pos.product.create", "PosProduct", id, null, { kind: "MENU", menuItemId: item.id, basePriceSatang: d.basePriceSatang, source: "menu.createItem" });
   return { ...item, posProductId: id };
 }
 
 /** แก้เมนู (คำสั่งเดิม · กรองร้าน+สาขา) → ช่องที่เมนูเป็นเจ้าของบนแถว MENU */
-export async function updateMenuItem(tx: Tx, s: UnitScope, id: string, data: Prisma.MenuItemUncheckedUpdateInput): Promise<MenuItem> {
+export async function updateMenuItem(tx: Tx, s: UnitScope, id: string, data: Prisma.MenuItemUncheckedUpdateInput, actorUserId?: string | null): Promise<MenuItem> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const pre = await tx.menuItem.findFirst({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, select: { posProductId: true } });
   const rows = await lockRows(tx, s.tenantId, [pre?.posProductId]);
   const item = await tx.menuItem.update({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data });
-  for (const row of rows) if (row.kind === "MENU") await syncMenuRow(tx, row, item);
+  for (const row of rows) if (row.kind === "MENU") await syncMenuRow(tx, who, row, item);
   return item;
 }
 
 /** ผูกกลุ่มตัวเลือกใหม่ทั้งชุด (คำสั่งเดิม) → PosProductOptionGroup ชุดเดียวกัน (groupId:sortOrder) */
-export async function setMenuItemOptionGroups(tx: Tx, s: UnitScope, itemId: string, groupIds: string[]): Promise<void> {
+export async function setMenuItemOptionGroups(tx: Tx, s: UnitScope, itemId: string, groupIds: string[], actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const pre = await tx.menuItem.findFirst({ where: { id: itemId, tenantId: s.tenantId, unitId: s.unitId }, select: { posProductId: true } });
   const rows = await lockRows(tx, s.tenantId, [pre?.posProductId]);
   await tx.menuItemOptionGroup.deleteMany({ where: { itemId, tenantId: s.tenantId, unitId: s.unitId } });
@@ -143,12 +154,13 @@ export async function setMenuItemOptionGroups(tx: Tx, s: UnitScope, itemId: stri
     if (key(before) === key(want)) continue;
     await tx.posProductOptionGroup.deleteMany({ where: { tenantId: s.tenantId, productId: row.id } });
     if (want.length) await tx.posProductOptionGroup.createMany({ data: want.map((w) => ({ tenantId: s.tenantId, productId: row.id, ...w })), skipDuplicates: true });
-    await auditSys(tx, s.tenantId, "pos.product.sync", "PosProduct", row.id, { optionGroups: key(before) }, { optionGroups: key(want) });
+    await auditSys(tx, who, s.tenantId, "pos.product.sync", "PosProduct", row.id, { optionGroups: key(before) }, { optionGroups: key(want) });
   }
 }
 
 /** เก็บเมนู (คำสั่งเดิม: ARCHIVED + archivedAt) → แถว MENU เก็บถาวรเวลาเดียวกัน (G6 · ไม่ผ่าน catalog.archive = ไม่เขียน MenuItem ซ้ำ — G4c) */
-export async function archiveMenuItem(tx: Tx, s: UnitScope, id: string): Promise<void> {
+export async function archiveMenuItem(tx: Tx, s: UnitScope, id: string, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const pre = await tx.menuItem.findFirst({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, select: { posProductId: true } });
   const rows = await lockRows(tx, s.tenantId, [pre?.posProductId]);
   const at = new Date();
@@ -156,7 +168,7 @@ export async function archiveMenuItem(tx: Tx, s: UnitScope, id: string): Promise
   for (const row of rows) {
     if (row.archivedAt) continue;
     const r = await tx.posProduct.updateMany({ where: { id: row.id, tenantId: s.tenantId, archivedAt: null }, data: { archivedAt: at } });
-    if (r.count === 1) await auditSys(tx, s.tenantId, "pos.product.archive", "PosProduct", row.id, { archivedAt: null }, { archivedAt: at.toISOString(), source: "menu.archiveItem" });
+    if (r.count === 1) await auditSys(tx, who, s.tenantId, "pos.product.archive", "PosProduct", row.id, { archivedAt: null }, { archivedAt: at.toISOString(), source: "menu.archiveItem" });
   }
 }
 
@@ -166,12 +178,14 @@ export async function setMenuItemStock(
   s: UnitScope,
   id: string,
   data: { isOutOfStock?: boolean; stockQty?: number | null; dailyStockQty?: number | null },
+  actorUserId?: string | null,
 ): Promise<MenuItem> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const mirror = data.dailyStockQty !== undefined;
   const pre = mirror ? await tx.menuItem.findFirst({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, select: { posProductId: true } }) : null;
   const rows = await lockRows(tx, s.tenantId, [pre?.posProductId]);
   const item = await tx.menuItem.update({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data });
-  for (const row of rows) if (row.kind === "MENU") await applySync(tx, row, { dailyStockQty: item.dailyStockQty });
+  for (const row of rows) if (row.kind === "MENU") await applySync(tx, who, row, { dailyStockQty: item.dailyStockQty });
   return item;
 }
 
@@ -185,15 +199,18 @@ export async function createMenuCategory(
   tx: Tx,
   s: UnitScope,
   data: { name: string; nameEn: string | null; availableFrom: string | null; availableTo: string | null },
+  actorUserId?: string | null,
 ): Promise<{ id: string }> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const cat = await tx.menuCategory.create({ data: { tenantId: s.tenantId, unitId: s.unitId, ...data } });
   const sys = await posOfUnit(tx, s.tenantId, s.unitId);
-  if (sys) await categoryFor(tx, s.tenantId, sys, cat.id);
+  if (sys) await categoryFor(tx, who, s.tenantId, sys, cat.id);
   return { id: cat.id };
 }
 
 /** เก็บหมวดเมนู (คำสั่งเดิม) → PosCategory คู่กัน (ระบบ+สาขา+ชื่อ) เก็บถาวร */
-export async function archiveMenuCategory(tx: Tx, s: UnitScope, id: string): Promise<void> {
+export async function archiveMenuCategory(tx: Tx, s: UnitScope, id: string, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const at = new Date();
   const cat = await tx.menuCategory.update({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data: { archivedAt: at } });
   const sys = await posOfUnit(tx, s.tenantId, s.unitId);
@@ -201,7 +218,7 @@ export async function archiveMenuCategory(tx: Tx, s: UnitScope, id: string): Pro
   const pc = await tx.posCategory.findFirst({ where: { tenantId: s.tenantId, systemId: sys, unitId: s.unitId, name: cat.name, archivedAt: null }, select: { id: true } });
   if (!pc) return;
   await tx.posCategory.updateMany({ where: { id: pc.id, tenantId: s.tenantId, archivedAt: null }, data: { archivedAt: at } });
-  await auditSys(tx, s.tenantId, "pos.category.archive", "PosCategory", pc.id, { archivedAt: null }, { archivedAt: at.toISOString(), source: "menu.archiveCategory" });
+  await auditSys(tx, who, s.tenantId, "pos.category.archive", "PosCategory", pc.id, { archivedAt: null }, { archivedAt: at.toISOString(), source: "menu.archiveCategory" });
 }
 
 /** กลุ่มตัวเลือก + ตัวเลือก (คำสั่งเดิม) — แคตตาล็อกอ่านกลุ่ม/ตัวเลือกสดผ่าน PosProductOptionGroup.groupId (ไม่มีสำเนา) */
@@ -254,7 +271,8 @@ export async function restoreMenuStock(tx: Tx, itemId: string, qty: number): Pro
 // ═══════════════════ เว็บร้าน (shop/service.ts) ═══════════════════
 
 /** สินค้าเว็บใหม่ (คำสั่งเดิม) → POS แรกของร้าน: InvItem ที่ POS แรกขาย = แถวของ InvItem (สร้างถ้ายังไม่มี) · อื่น ๆ = แถวของตัวเอง (C9) */
-export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUncheckedCreateInput): Promise<ShopProduct> {
+export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUncheckedCreateInput, actorUserId?: string | null): Promise<ShopProduct> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const sp = await tx.shopProduct.create({ data });
   const t = sp.tenantId;
   const res = await C.loadPosResolution(t, tx);
@@ -265,7 +283,7 @@ export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUnchecke
   let productId: string;
   if (inv && C.resolvePosSystem(res, { kind: "invItem", inventorySystemId: inv.systemId }).systemId === sys) {
     // C9a: แถวร่วมของ InvItem (ไม่แก้แถวร่วม — ราคาเว็บไม่ใช่แหล่งราคาของมัน · G5)
-    productId = (await C.ensureForInvItem(sysCtx(t, sys), inv.id, tx)).id;
+    productId = (await C.ensureForInvItem(sysCtx(t, sys, who), inv.id, tx)).id;
   } else {
     // C9b: InvItem นอกคลังของ POS แรก = ลิงก์ InvItem ใหม่ ⇒ ล็อกร้านแบบมีงบก่อน (G7) · แถวเว็บร้านก่อนหน้าที่ชี้ InvItem เดียวกัน = ใช้ร่วม
     if (inv) await C.tryLockCatalogTenant(tx, t);
@@ -277,7 +295,7 @@ export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUnchecke
       const d = C.shopProductFields(sp, inv, ap, book).data;
       productId = randomUUID();
       await tx.posProduct.create({ data: { id: productId, tenantId: t, systemId: sys, ...d } });
-      await auditSys(tx, t, "pos.product.create", "PosProduct", productId, null, { shopProductId: sp.id, basePriceSatang: d.basePriceSatang, source: "shop.createProduct" });
+      await auditSys(tx, who, t, "pos.product.create", "PosProduct", productId, null, { shopProductId: sp.id, basePriceSatang: d.basePriceSatang, source: "shop.createProduct" });
     }
   }
   await tx.shopProduct.updateMany({ where: { id: sp.id, tenantId: t }, data: { posProductId: productId } });
@@ -288,7 +306,8 @@ export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUnchecke
  * แก้สินค้าเว็บ (คำสั่งเดิม · กรองร้าน+สาขา) → แถวของเว็บร้านเอง: ชื่อ · ราคา (C7) · VAT · รูป · ลำดับ · ปิด/เปิดขายที่สาขานั้น
  * แถวร่วมของ InvItem (C9a) = ไม่แตะ (G5 · S2.9) — ShopProduct ของตัวเองยังถูกเขียน
  */
-export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: Prisma.ShopProductUncheckedUpdateManyInput): Promise<{ count: number }> {
+export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: Prisma.ShopProductUncheckedUpdateManyInput, actorUserId?: string | null): Promise<{ count: number }> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const pre = await tx.shopProduct.findFirst({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, select: { posProductId: true } });
   const rows = await lockRows(tx, s.tenantId, [pre?.posProductId]);
   const r = await tx.shopProduct.updateMany({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data });
@@ -302,7 +321,7 @@ export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: 
     const d = C.shopProductFields(sp, src.inv, src.ap, src.book).data;
     const cur = row.unavailableUnitIds ?? [];
     const off = sp.active ? cur.filter((u) => u !== sp.unitId) : [...new Set([...cur, sp.unitId])].sort();
-    await applySync(tx, row, { name: d.name, basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp, images: d.images, sortOrder: d.sortOrder, unavailableUnitIds: off });
+    await applySync(tx, who, row, { name: d.name, basePriceSatang: d.basePriceSatang, vatRateBp: d.vatRateBp, images: d.images, sortOrder: d.sortOrder, unavailableUnitIds: off });
   }
   return r;
 }
@@ -310,22 +329,25 @@ export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: 
 // ═══════════════════ คลัง (inventory/service.ts) ═══════════════════
 
 /** สินค้า/บริการใหม่ในคลัง (คำสั่งเดิม) → แถวของ InvItem ใน POS ที่ขายคลังนั้น (ensureForInvItem: ล็อกร้านแบบมีงบ · BUSY = ทั้ง tx ล้ม) */
-export async function createInvItem(tx: Tx, ctx: SysScope, data: Prisma.InvItemUncheckedCreateInput): Promise<{ id: string }> {
+export async function createInvItem(tx: Tx, ctx: SysScope, data: Prisma.InvItemUncheckedCreateInput, actorUserId?: string | null): Promise<{ id: string }> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const it = await tx.invItem.create({ data: { ...data, tenantId: ctx.tenantId, systemId: ctx.systemId } });
   const pos = C.resolvePosSystem(await C.loadPosResolution(ctx.tenantId, tx), { kind: "invItem", inventorySystemId: ctx.systemId }).systemId;
-  if (pos) await C.ensureForInvItem(sysCtx(ctx.tenantId, pos), it.id, tx);
+  if (pos) await C.ensureForInvItem(sysCtx(ctx.tenantId, pos, who), it.id, tx);
   return { id: it.id };
 }
 
 /** แก้ InvItem (คำสั่งเดิม) → ชื่อ (แถว InvItem) · ราคาเฉพาะบริการ (InvItem.priceSatang เป็นแหล่งราคา C7 ของบริการเท่านั้น — G5) */
-export async function updateInvItem(tx: Tx, ctx: SysScope, itemId: string, data: Prisma.InvItemUncheckedUpdateInput): Promise<void> {
+export async function updateInvItem(tx: Tx, ctx: SysScope, itemId: string, data: Prisma.InvItemUncheckedUpdateInput, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, ctx.tenantId, await rowIdsOfInvItem(tx, ctx.tenantId, itemId));
   const it = await tx.invItem.update({ where: { id: itemId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
-  await resyncRows(tx, rows, { name: "name" in data, price: it.kind === "SERVICE" && "priceSatang" in data });
+  await resyncRows(tx, who, rows, { name: "name" in data, price: it.kind === "SERVICE" && "priceSatang" in data });
 }
 
 /** เก็บ/เลิกเก็บ InvItem (คำสั่งเดิม) → archive / restore แถว InvItem (G6 · ensureForInvItem ไม่ปลดเอง — P1.1a กติกา 1) */
-export async function setInvItemArchived(tx: Tx, ctx: SysScope, itemId: string, archived: boolean): Promise<void> {
+export async function setInvItemArchived(tx: Tx, ctx: SysScope, itemId: string, archived: boolean, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const ids = await rowIdsOfInvItem(tx, ctx.tenantId, itemId);
   // R2 F7 + G7: เลิกเก็บ = catalog.restore อาจล็อกร้าน (แถวมีบาร์โค้ด) ⇒ ล็อกร้านก่อนล็อกแถว (ร้าน → แถว) — ไม่ถือแถวระหว่างรอล็อกร้าน
   if (!archived && ids.length) await C.tryLockCatalogTenant(tx, ctx.tenantId);
@@ -334,16 +356,17 @@ export async function setInvItemArchived(tx: Tx, ctx: SysScope, itemId: string, 
   const live = await activePos(tx, ctx.tenantId, rows.map((r) => r.systemId));
   for (const row of rows) {
     if (!live.has(row.systemId) || (await C.legacySourceOf(row, tx)).type !== "inv") continue;
-    if (archived) await C.archive(sysCtx(ctx.tenantId, row.systemId), row.id, tx);
-    else await C.restore(sysCtx(ctx.tenantId, row.systemId), row.id, tx);
+    if (archived) await C.archive(sysCtx(ctx.tenantId, row.systemId, who), row.id, tx);
+    else await C.restore(sysCtx(ctx.tenantId, row.systemId, who), row.id, tx);
   }
 }
 
 /** ผูก InvItem ↔ AccountProduct (คำสั่งเดิม) → ราคา/VAT ของแถวคิดใหม่ (AP ของลิ้นชักเปลี่ยน · C7) */
-export async function linkInvItemAccountProduct(tx: Tx, ctx: SysScope, itemId: string, accountProductId: string): Promise<void> {
+export async function linkInvItemAccountProduct(tx: Tx, ctx: SysScope, itemId: string, accountProductId: string, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, ctx.tenantId, await rowIdsOfInvItem(tx, ctx.tenantId, itemId));
   await tx.invItem.update({ where: { id: itemId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { accountProductId } });
-  await resyncRows(tx, rows, { price: true });
+  await resyncRows(tx, who, rows, { price: true });
 }
 
 /** ซิงก์บัญชี → คลัง (ชื่อ/sku/หน่วย/ลิงก์ · คำสั่งเดิมของ inventory-link.syncProductToItem) → ชื่อแถว InvItem + ราคา (ลิงก์ AP อาจเปลี่ยน) */
@@ -352,10 +375,12 @@ export async function writeInvItemFromAccountProduct(
   ctx: SysScope,
   itemId: string,
   data: { accountProductId?: string; name?: string; unitLabel?: string; sku?: string },
+  actorUserId?: string | null,
 ): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, ctx.tenantId, await rowIdsOfInvItem(tx, ctx.tenantId, itemId));
   await tx.invItem.updateMany({ where: { id: itemId, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
-  await resyncRows(tx, rows, { name: data.name !== undefined, price: data.accountProductId !== undefined });
+  await resyncRows(tx, who, rows, { name: data.name !== undefined, price: data.accountProductId !== undefined });
 }
 
 // ═══════════════════ บัญชี (account/product.ts · inventory-link.ts · pos/register.ts) ═══════════════════
@@ -366,25 +391,28 @@ export async function createAccountProduct(tx: Tx, data: Prisma.AccountProductUn
 }
 
 /** แก้สินค้าบัญชี (คำสั่งเดิม) → ราคา C7 + VAT ของทุกแถวที่ InvItem ผูก AP นี้ (ล็อกแถวก่อน · G7) */
-export async function updateAccountProduct(tx: Tx, scope: SysScope, id: string, data: Prisma.AccountProductUncheckedUpdateManyInput): Promise<{ count: number }> {
+export async function updateAccountProduct(tx: Tx, scope: SysScope, id: string, data: Prisma.AccountProductUncheckedUpdateManyInput, actorUserId?: string | null): Promise<{ count: number }> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, scope.tenantId, await rowIdsOfAccountProduct(tx, scope.tenantId, id));
   const r = await tx.accountProduct.updateMany({ where: { id, tenantId: scope.tenantId, systemId: scope.systemId }, data });
-  if (r.count) await resyncRows(tx, rows, { price: true });
+  if (r.count) await resyncRows(tx, who, rows, { price: true });
   return r;
 }
 
 /** เก็บ/เลิกเก็บสินค้าบัญชี (คำสั่งเดิม) — มติ 13: เป็นประตู (C7 ไม่นับ AP ที่เก็บถาวร ⇒ ราคาที่คิดได้เปลี่ยน) */
-export async function archiveAccountProduct(tx: Tx, scope: SysScope, id: string, archived: boolean): Promise<void> {
+export async function archiveAccountProduct(tx: Tx, scope: SysScope, id: string, archived: boolean, actorUserId?: string | null): Promise<void> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, scope.tenantId, await rowIdsOfAccountProduct(tx, scope.tenantId, id));
   const r = await tx.accountProduct.updateMany({ where: { id, tenantId: scope.tenantId, systemId: scope.systemId }, data: { archivedAt: archived ? new Date() : null } });
-  if (r.count) await resyncRows(tx, rows, { price: true });
+  if (r.count) await resyncRows(tx, who, rows, { price: true });
 }
 
 /** ราคาขาย POS หน้า "สินค้า/ราคา" ของสินค้าที่ผูกบัญชีแล้ว (มติ 1 — คำสั่งเดียวกับ account.updateAccountProductSalePrice) */
-export async function writeAccountProductSalePrice(tx: Tx, tenantId: string, productId: string, salePriceSatang: number): Promise<boolean> {
+export async function writeAccountProductSalePrice(tx: Tx, tenantId: string, productId: string, salePriceSatang: number, actorUserId?: string | null): Promise<boolean> {
+  const who = C.auditActorOf(actorUserId); // R2 F9
   const rows = await lockRows(tx, tenantId, await rowIdsOfAccountProduct(tx, tenantId, productId));
   const r = await tx.accountProduct.updateMany({ where: { id: productId, tenantId }, data: { salePrice: Math.max(0, Math.round(salePriceSatang)) } });
-  if (r.count) await resyncRows(tx, rows, { price: true });
+  if (r.count) await resyncRows(tx, who, rows, { price: true });
   return r.count > 0;
 }
 

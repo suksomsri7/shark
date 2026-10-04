@@ -15,7 +15,8 @@ import { resolvePublicUnit } from "@/lib/core/storefront";
 // POS P1.1b ▸ G2: คำสั่งเขียน ShopProduct ย้ายไป catalog-legacy (ตารางเดิม + แคตตาล็อก POS ในธุรกรรมเดียว) — ตรวจ/ข้อความ/รูปผลลัพธ์อยู่ที่นี่ตามเดิม
 import * as legacy from "@/lib/modules/pos/catalog-legacy";
 
-export type ShopCtx = { tenantId: string; unitId: string };
+/** POS P1.1b R2 F9: actorUserId (ไม่บังคับ) = ผู้กระทำจริง → audit ของแคตตาล็อก */
+export type ShopCtx = { tenantId: string; unitId: string; actorUserId?: string };
 
 // resolve unit จาก slug (public/no-auth) → tenant+unit (ต้อง ACTIVE + type SHOP)
 export async function resolveUnit(tenantSlug: string, unitSlug: string) {
@@ -58,7 +59,7 @@ export async function createProduct(ctx: ShopCtx, input: CreateProductInput): Pr
       imageUrl: input.imageUrl?.trim() || null,
       invItemId: input.invItemId?.trim() || null,
       sortOrder: input.sortOrder ?? 0,
-    }),
+    }, ctx.actorUserId),
   );
   return { id: p.id };
 }
@@ -91,7 +92,7 @@ export async function updateProduct(ctx: ShopCtx, id: string, patch: UpdateProdu
   if (patch.active !== undefined) data.active = patch.active;
   if (patch.sortOrder !== undefined) data.sortOrder = patch.sortOrder;
 
-  await prisma.$transaction((tx) => legacy.updateShopProduct(tx, ctx, id, data));
+  await prisma.$transaction((tx) => legacy.updateShopProduct(tx, { tenantId: ctx.tenantId, unitId: ctx.unitId }, id, data, ctx.actorUserId));
   return { id };
 }
 
