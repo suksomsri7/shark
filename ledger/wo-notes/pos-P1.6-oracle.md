@@ -5,7 +5,7 @@ Container has **no DB** (TCP 5432 blocked), so the suite has never run against d
 
 ```
 bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts              # expect SKIPPED, exit 0
-QC_FORCE=1 bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-pos-p1.6.mts    # expect 8 green / 40 red, exit 1, Z1+Z2 green
+bash scripts/iso.sh bash scripts/qc4.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-pos-p1.6.mts    # expect 8 green / 40 red, exit 1, Z1+Z2 green
 ```
 
 House style is copied from `qc-pos-p1.3.mts`: the `CHECKS` registry and `--list`, the whole-suite SKIP gate (`QC_FORCE=1` runs it anyway and the result must be red for the right reason, never a crash), `call()`/`callSync()` wrappers, the `qc-p1.6-<rand>` tag plus `KTAG` for register keys, sandbox units and systems in the QC coffee tenant, cleanup in `finally`, the A5/Z1 row counts plus receipt-counter sum, the Z2 fingerprint, and `JSON_SUMMARY`.

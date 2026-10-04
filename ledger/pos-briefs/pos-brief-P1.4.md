@@ -16,3 +16,12 @@ B5 Oracle `qc-pos-p1.4.mts` (~15): burst classifier unit tests (timings table), 
 
 ## Owner question
 - **O22**: add a barcode-decoding dependency (e.g. `@zxing/browser`, lazy-loaded, ~100 KB gz) so iPhone/Safari can scan with the camera? `package.json` is shared with the CRM branch (merge cost small). Recommendation: yes.
+
+## Owner answer (4 Oct 2026)
+- **O22 → YES.** Add a barcode-decoding dependency for the camera fallback (e.g. `@zxing/browser`), lazy-loaded only when the camera opens and BarcodeDetector is missing. The builder adds it via `pnpm add` in its own tree, commits `package.json` + `pnpm-lock.yaml` by explicit path, and lists it for the CRM/main merge checklist.
+
+## Controller rulings on the oracle writer's questions (4 Oct · oracle `wip/pos-p1.45-oracle` 2b7b35ca, 21 checks)
+1. **O22 vs LANE-RULES §3:** the owner explicitly approved this one dependency, so it is an exception to "no `pnpm add` while CRM is live". Add only the camera-fallback package. Commit `package.json` and `pnpm-lock.yaml` by explicit path, and put a line in the P6.1/merge checklist ("re-resolve lockfile at CRM merge").
+2. **Search box focused:** when a burst is classified as a scan, cancel the pending 200 ms search, clear the search text, and route to `registerScan`. Never show search results for a scan.
+3. **Single entry:** exactly one add per scan. The search Enter handler must defer to the burst listener when a burst is in progress. This is checked in the controller browser check (scan with focus in search and outside it).
+4. **Names ratified** as listed in `ledger/wo-notes/pos-P1.4-oracle.md` (`scan-shared.ts` `classifyScanBurst`, `cartAddProduct`, `scanOutcome`, `SCAN_CAMERA_FALLBACK_PKG`). `registerScan` may keep its own query: it matches byBarcode semantics, as pinned by the server checks.

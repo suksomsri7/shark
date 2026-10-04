@@ -7,6 +7,7 @@
 - Hotfix RC (`rc/hotfixes-2026-10-01` = apiv1-scope + pos-page-authz + hr-privacy + inventory-atomic) is on `main` before or together with P1.3 (P1.3 merged `hotfix/inventory-atomic`; S3.18 depends on atomic counters).
 - Merge checklist (from P1.1a acceptance): `checkCatalogWrite` (catalog.ts) ≡ `posCanSetTenantPrice` (hotfix/pos-page-authz) — one rule; add `ep-frosty-lab` handling to `scripts/qc-prisma.sh` only if still used; P1.1b: `catalog-legacy.ts` in `SYSTEM_MARKER_ALLOWLIST`; P1.3 `register.ts` registerCatalog uses the same live MENU availability rule as `listForUnit` (P1.1b addendum 2 ruling 3 / S1.27).
 - `createSale` contract change (B1 `productId` optional) → run `--update-pos-contract` at merge.
+- P1.4 (O22 exception): POS added dependency `@zxing/browser@^0.2.1` (+ peer `@zxing/library@0.23.0`, `ts-custom-error`, optional `@zxing/text-encoding`) to `package.json` + `pnpm-lock.yaml` → re-resolve the lockfile at the CRM/main merge (`pnpm install` after taking both `package.json` sides; do not hand-merge `pnpm-lock.yaml`). Note `@zxing/library` declares `engines.node >= 24`.
 - Full suites green on a fresh Neon branch of prod (not QC4): POS oracles, money set (COMMON §7), hotfix oracles, fitness both modes, typecheck, production build.
 
 ## 1. Connection rules

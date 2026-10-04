@@ -16,9 +16,12 @@
 //      กดซ้ำ/Enter ซ้ำ = ส่งได้ทีละครั้ง (sendingRef)
 //   3) ข้อความผิดพลาดมาจาก refusalMessageKey(code) → pos.register.errors.* เท่านั้น (ไม่โชว์ message ไทยของเซิร์ฟเวอร์)
 //
-// จุดต่อของใบหลัง (สเปก §1.3): addFromSearchEnter (P1.4) · onHold/onOpenHeld (P1.5) · InterimPayDialog + SaleDone (P1.6 แทนทั้งไฟล์)
+// P1.4 (บาร์โค้ด): ตัวจับ keydown ทั้งหน้า (capture) แยกเครื่องสแกนด้วย classifyScanBurst → onScannedCode = ทางสแกนทางเดียว
+//   (ไม่ผ่านหน่วงค้นหา 200ms · Enter ของช่องค้นหาไม่ถึงเมื่อเป็นการสแกน) · สแกนซ้ำ = +1 (cartAddProduct) · choose = ScanChooserDialog ·
+//   none = toast + "เพิ่มเป็นรายการกำหนดเอง?" เฉพาะผู้มีสิทธิ์ราคาเปิด · กล้อง = ScanCameraDialog
+// จุดต่อของใบหลัง (สเปก §1.3): onHold/onOpenHeld (P1.5) · InterimPayDialog + SaleDone (P1.6 แทนทั้งไฟล์)
 //   memberSlot ของ CartPanel (P1.12) · onNeedsApproval (P1.15 PIN) · ProductCard.onPick → pick (P1.2 ป๊อปโอเวอร์ตัวเลือก)
-// 🔴 ไฟล์ "use client": import จากโมดูล POS ได้แค่ register-shared · pricing-shared · register-actions (G9 · S5.17)
+// 🔴 ไฟล์ "use client": import จากโมดูล POS ได้แค่ register-shared · pricing-shared · scan-shared · register-actions (G9 · S5.17)
 // 🔴 ไม่มีข้อความไทยนอกคอมเมนต์ (S5.3) · testid เขียนตรงบนแท็กเสมอ (G1)
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -27,14 +30,19 @@ import { formatThaiTime } from "@/lib/ui/date";
 import { useInApp } from "@/lib/ui/use-in-app";
 import { priceCart, type PriceDiscount } from "@/lib/modules/pos/pricing-shared";
 import {
+  cartAddProduct,
   cartToPriceInput,
   cartToQuoteInput,
   cartToSubmitInput,
   displayName,
+  HELD_CART_EXPIRE_DAYS,
   moneyText,
+  quoteInputToCart,
   refusalMessageKey,
   REGISTER_MAX_LINES,
   REGISTER_MAX_QTY,
+  type HeldCartNoticeCode,
+  type HeldCartSummary,
   type RegisterCart,
   type RegisterCartLine,
   type RegisterPayMethod,
@@ -42,11 +50,23 @@ import {
   type RegisterProduct,
   type RegisterQuote,
   type RegisterSaleStatus,
+  type RegisterScanResult,
   type RegisterStatus,
   type RegisterSubmitInput,
   type RegisterSubmitOk,
 } from "@/lib/modules/pos/register-shared";
-import { quoteRegisterCartAction, registerCatalogAction, registerScanAction, registerStatusAction, submitRegisterSaleAction } from "@/lib/modules/pos/register-actions";
+import { classifyScanBurst, scanKeyFromEvent, scanOutcome, SCAN_MAX_GAP_MS, type ScanKey } from "@/lib/modules/pos/scan-shared";
+import {
+  discardHeldCartAction,
+  holdRegisterCartAction,
+  listHeldCartsAction,
+  quoteRegisterCartAction,
+  recallHeldCartAction,
+  registerCatalogAction,
+  registerScanAction,
+  registerStatusAction,
+  submitRegisterSaleAction,
+} from "@/lib/modules/pos/register-actions";
 import { BillDiscountDialog } from "./BillDiscountDialog";
 import { CartPanel, type CartTotalsModel } from "./CartPanel";
 import type { CartLineModel } from "./CartLine";
@@ -54,6 +74,8 @@ import { CategoryChips } from "./CategoryChips";
 import { ClearBillDialog } from "./ClearBillDialog";
 import { CouponDialog } from "./CouponDialog";
 import { CustomItemDialog } from "./CustomItemDialog";
+import { HeldBillsDialog } from "./HeldBillsDrawer";
+import { HeldRecallConfirmDialog, HoldLabelDialog } from "./HeldDialogs";
 import { InterimPayDialog, type PayChoice, type PayError, type PayPhase } from "./InterimPayDialog";
 import { LineEditor, type LineEditResult } from "./LineEditor";
 import { MobileCartBar } from "./MobileCartBar";
@@ -66,6 +88,8 @@ import { RegisterIcon } from "./RegisterIcon";
 import { RegisterStatusBar } from "./RegisterStatusBar";
 import { RegisterTopContext } from "./RegisterTopContext";
 import { SaleDone } from "./SaleDone";
+import { ScanCameraDialog } from "./ScanCameraDialog";
+import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
 
 export type RegisterScreenProps = {
@@ -85,6 +109,8 @@ export type RegisterScreenProps = {
 };
 
 type Msg = { key: string; values?: Record<string, string | number> };
+/** ข้อความลอย — offerCustom = ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (สแกนไม่พบ · เฉพาะผู้มีสิทธิ์ราคาเปิด · P1.4 B4) */
+type ToastMsg = Msg & { offerCustom?: boolean };
 /** บรรทัดใหม่ (ยังไม่มี key) — Omit แบบกระจายทีละสมาชิกของ union */
 type NewLine = RegisterCartLine extends infer L ? (L extends unknown ? Omit<L, "key"> : never) : never;
 type Layer =
@@ -96,7 +122,13 @@ type Layer =
   | { kind: "openPrice"; productId: string }
   | { kind: "clear" }
   | { kind: "pay" }
-  | { kind: "done"; result: RegisterSubmitOk };
+  | { kind: "done"; result: RegisterSubmitOk }
+  | { kind: "scanChoose"; products: RegisterProduct[] }
+  | { kind: "camera" }
+  // P1.5: ลิ้นชักบิลที่พัก · กล่องตั้งป้ายก่อนพัก · ถาม "พักตะกร้านี้ก่อน?" เมื่อเรียกคืนทับตะกร้าที่มีของ
+  | { kind: "held" }
+  | { kind: "holdLabel" }
+  | { kind: "heldConfirm"; item: HeldCartSummary };
 
 const newKey = () => {
   try {
@@ -104,6 +136,16 @@ const newKey = () => {
   } catch {
     return `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
   }
+};
+/**
+ * P1.4 R2: คีย์ของเครื่องสแกนตกลงในช่องกรอกอื่น (เช่น "รับเงิน" ของกล่องชำระ) ⇒ คืนค่าก่อนการสแกน
+ *   ใช้ setter ของ prototype + เหตุการณ์ input ⇒ React (controlled input) รับค่าคืนด้วย
+ */
+const restoreFieldValue = (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+  if (el.value === value) return;
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(el, value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
 };
 const isFinePointer = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
 
@@ -152,6 +194,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ ตะกร้า + ยอด ═══════
   const [cart, setCart] = useState<RegisterCart>({ lines: [] });
   const [cartVer, setCartVer] = useState(0);
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
   const [quote, setQuote] = useState<{ ver: number; q: RegisterQuote } | null>(null);
   const [quoteErr, setQuoteErr] = useState<{ ver: number; code: string } | null>(null);
   const [quoteSlow, setQuoteSlow] = useState(false);
@@ -166,9 +210,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   layersRef.current = layers;
   const push = (l: Layer) => setLayers((s) => [...s, l]);
   const pop = () => setLayers((s) => s.slice(0, -1));
-  const [toast, setToast] = useState<Msg | null>(null);
+  const [toast, setToast] = useState<ToastMsg | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((m: Msg) => {
+  const showToast = useCallback((m: ToastMsg) => {
     setToast(m);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 4000);
@@ -178,6 +222,41 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [status, setStatus] = useState<RegisterStatus | null>(props.initialStatus);
   const synced = () => setLastSyncAt(new Date());
+
+  // ═══════ P1.5 บิลที่พักของสาขา (ป้ายจำนวน + ลิ้นชัก) ═══════
+  const [heldItems, setHeldItems] = useState<HeldCartSummary[] | null>(null);
+  const [heldCount, setHeldCount] = useState(0);
+  const [heldExpireDays, setHeldExpireDays] = useState(HELD_CART_EXPIRE_DAYS);
+  const [heldBusy, setHeldBusy] = useState(false);
+  const heldBusyRef = useRef(false);
+  /** ชื่อสินค้าของบรรทัดที่เรียกคืน (รวมที่ขายไม่ได้แล้ว — ไม่อยู่ใน known) */
+  const heldNames = useRef(new Map<string, string>());
+  /** คำเตือนของบิลที่เพิ่งเรียกคืน ผูกกับคีย์บรรทัด — เอาบรรทัดออก/บิลใหม่ = หายเอง */
+  const [heldNotices, setHeldNotices] = useState<{ key: string; code: HeldCartNoticeCode; from?: number; to?: number }[]>([]);
+  const heldSeq = useRef(0);
+  const refreshHeld = useCallback(async () => {
+    const seq = ++heldSeq.current;
+    try {
+      const r = await listHeldCartsAction({ systemId, unitId });
+      if (seq !== heldSeq.current) return;
+      if (r.ok) {
+        setHeldItems(r.items);
+        setHeldCount(r.count);
+        setHeldExpireDays(r.expireDays);
+      } else setHeldItems([]);
+    } catch {
+      if (seq === heldSeq.current) setHeldItems((v) => v ?? []);
+    }
+  }, [systemId, unitId]);
+  useEffect(() => {
+    void refreshHeld();
+    // เครื่องอื่นในสาขาพัก/เรียกคืน ⇒ ป้ายจำนวนตามทันเมื่อกลับมาที่แท็บ
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshHeld();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [refreshHeld]);
 
   // ═══════ การส่งบิล ═══════
   const [idemKey, setIdemKey] = useState(newKey);
@@ -312,10 +391,16 @@ export function RegisterScreen(props: RegisterScreenProps) {
     [systemId, unitId, showToast],
   );
   const firstQ = useRef(true);
+  /** P1.4: สแกนจากช่องค้นหาล้างคำค้น (ตัวอักษรของเครื่องสแกน) — กริดยังเป็นของคำค้นว่างอยู่แล้ว ⇒ ไม่ต้องโหลดซ้ำ */
+  const qClearedByScan = useRef(false);
   useEffect(() => {
     if (firstQ.current) {
       firstQ.current = false;
       return;
+    }
+    if (qClearedByScan.current) {
+      qClearedByScan.current = false;
+      if (q === "" && shownQ === "") return; // ตัวหน่วงที่ค้างถูกยกเลิกโดย cleanup ของ effect รอบก่อนแล้ว
     }
     const id = setTimeout(() => loadCatalog(q, categoryId), 200);
     return () => clearTimeout(id);
@@ -421,7 +506,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     const over = stockLeft !== null && l.qty > stockLeft;
     return {
       key: l.key,
-      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : "-",
+      name: l.kind === "custom" ? l.name : prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-"),
       qty: l.qty,
       unitPriceSatang: unit,
       grossSatang: ql?.grossSatang ?? ll?.grossSatang ?? unit * l.qty,
@@ -445,7 +530,90 @@ export function RegisterScreen(props: RegisterScreenProps) {
 
   // ═══════ การกระทำบนตะกร้า ═══════
   const soon = () => showToast({ key: "soon" });
-  const onHold = soon; // P1.5 แทน: พักบิล (F8)
+
+  // ═══════ P1.5 พักบิล / เรียกคืน ═══════
+  // H5: พักสำเร็จ ⇒ resetBill() (ล้างจอ + หมุนคีย์บิล "ที่เดียว" ตาม S5.21) · เรียกคืน ⇒ resetBill() ก่อนวางตะกร้าที่คืน (คีย์ใหม่เสมอ ·
+  //     บิลที่พักไม่เคยพกคีย์ไปด้วย — cartToQuoteInput ไม่มีคีย์) · พักล้ม = ตะกร้าเดิมอยู่ครบ
+  const onHold = async (label?: string): Promise<boolean> => {
+    if (frozenRef.current || frozen || !cart.lines.length || heldBusyRef.current) return false;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await holdRegisterCartAction({ systemId, unitId, cart: cartToQuoteInput(cart), label: label?.trim() || null });
+      if (!r.ok) {
+        showToast(errorFor(r.code));
+        return false;
+      }
+      resetBill();
+      setLayers((s) => s.filter((l) => l.kind !== "holdLabel"));
+      showToast({ key: "held.holdDone" });
+      void refreshHeld();
+      return true;
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+      return false;
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  const onRecallHeld = async (id: string): Promise<void> => {
+    if (frozenRef.current || heldBusyRef.current) return;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await recallHeldCartAction({ systemId, unitId, id });
+      if (!r.ok) {
+        showToast(errorFor(r.code));
+        void refreshHeld();
+        return;
+      }
+      remember(r.products);
+      r.cart.lines.forEach((l, i) => {
+        const nm = r.lineNames[i];
+        if ("productId" in l && nm) heldNames.current.set(l.productId, nm);
+      });
+      resetBill();
+      const next = quoteInputToCart(r.cart, newKey);
+      changeCart(next);
+      setHeldNotices(r.notices.flatMap((n) => (next.lines[n.lineIndex] ? [{ key: next.lines[n.lineIndex]!.key, code: n.code, from: n.heldUnitPriceSatang, to: n.unitPriceSatang }] : [])));
+      setLayers([]);
+      showToast({ key: "held.recalled" });
+      void refreshHeld();
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+    }
+  };
+  /** มติ 4: ตะกร้ามีของ ⇒ ถามก่อน (พักก่อน / ยกเลิก) · ว่าง ⇒ เรียกคืนเลย */
+  const requestRecall = (h: HeldCartSummary) => {
+    if (frozenRef.current) return;
+    if (cart.lines.length) push({ kind: "heldConfirm", item: h });
+    else void onRecallHeld(h.id);
+  };
+  const onDiscardHeld = async (h: HeldCartSummary) => {
+    if (heldBusyRef.current) return;
+    heldBusyRef.current = true;
+    setHeldBusy(true);
+    try {
+      const r = await discardHeldCartAction({ systemId, unitId, id: h.id });
+      showToast(r.ok ? { key: "held.discarded" } : errorFor(r.code));
+    } catch {
+      showToast({ key: "errors.loadFailed" });
+    } finally {
+      heldBusyRef.current = false;
+      setHeldBusy(false);
+      void refreshHeld();
+    }
+  };
+  const openHeld = () => {
+    if (frozenRef.current || layersRef.current.some((l) => l.kind === "held")) return;
+    setHeldItems(null);
+    push({ kind: "held" });
+    void refreshHeld();
+  };
   /** P1.15: เปิด PIN ผู้จัดการ · วันนี้ = แสดงเหตุผล */
   const onNeedsApproval = (key: string) => showToast({ key });
 
@@ -462,11 +630,14 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const addProduct = (p: RegisterProduct) => {
     if (frozenRef.current) return;
     const key = newKey();
-    updateCart((prev) => {
-      const same = prev.lines.findIndex((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
-      if (same < 0) return appendTo(prev, { kind: "product", productId: p.id, qty: 1 }, key);
-      return { ...prev, lines: prev.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l)) };
-    });
+    // R2: เพดานจำนวน/จำนวนบรรทัด = บอกผู้ใช้ (เดิมเงียบ) · ตรวจกับตะกร้าล่าสุดที่วาดแล้ว (cartRef)
+    const cur = cartRef.current;
+    if (cartAddProduct(cur, p.id, key) === cur) {
+      const atMaxQty = cur.lines.some((l) => l.kind === "product" && l.productId === p.id && !l.discount && l.openPriceSatang === undefined);
+      return showToast(atMaxQty ? { key: "errors.qtyInvalid", values: { max: REGISTER_MAX_QTY } } : { key: "errors.tooManyLines", values: { max: REGISTER_MAX_LINES } });
+    }
+    // P1.4 B2: สแกนซ้ำ/แตะซ้ำ = +1 บรรทัดเดิม (ราคาเดียวกัน) — ตัวลดรูปบริสุทธิ์ใน register-shared (ข้อสอบ R1)
+    updateCart((prev) => cartAddProduct(prev, p.id, key));
     focusSearch();
   };
   /** แตะการ์ด (P1.2 จะเปิดป๊อปโอเวอร์ตัวเลือกตรงนี้เมื่อ optionGroupCount > 0) */
@@ -482,10 +653,28 @@ export function RegisterScreen(props: RegisterScreenProps) {
     addProduct(p);
   };
 
-  /** Enter ในช่องค้นหา (Q24 · P1.4 รับช่วง: ตรวจจับการสแกนรัว · ตัวเลือกเมื่อบาร์โค้ดซ้ำ) */
+  // ═══════ บาร์โค้ด (P1.4) ═══════
+  /** เวลา (event.timeStamp) ของการสแกนล่าสุดที่ตัวจับแป้นรับไป — Enter ของช่องค้นหาในช่วงนี้ = ของการสแกน ห้ามเพิ่มซ้ำ (มติผู้คุมงาน 3) */
+  const lastScanAt = useRef(-Infinity);
+  /** ผลของ registerScan → ทำตาม scanOutcome (ทางเดียวทั้งเครื่องสแกน กล้อง และ Enter ในช่องค้นหา) */
+  const applyScan = (r: RegisterScanResult, code: string, from: "scan" | "search") => {
+    const o = scanOutcome(r, { canOverridePrice: limits.canOverridePrice });
+    if (o.action === "error") return showToast(errorFor(o.code));
+    if (o.action === "add") return pick(o.product);
+    if (o.action === "choose") {
+      // B4: กล่องเลือกจริง (ไม่ยึดกริด) · จำสินค้าไว้ให้บรรทัดตะกร้าวาดชื่อ/ราคาได้
+      remember(o.products);
+      return push({ kind: "scanChoose", products: o.products });
+    }
+    // none: ไม่พบ — ผู้มีสิทธิ์ราคาเปิดได้ปุ่ม "เพิ่มเป็นรายการกำหนดเอง?" (offerCustom) · คนอื่นเห็นแค่ข้อความ
+    showToast(from === "search" ? { key: "search.noResult", values: { q: code }, offerCustom: o.offerCustom } : { key: "scan.notFound", values: { code }, offerCustom: o.offerCustom });
+  };
+
+  /** Enter ในช่องค้นหา (Q24) — คนพิมพ์เท่านั้น: การสแกนรัวถูกตัวจับแป้นรับไปก่อน (capture) และไม่ถึงที่นี่ */
   const addFromSearchEnter = async () => {
     const term = q.trim();
     if (!term || frozen) return;
+    if (performance.now() - lastScanAt.current < 250) return; // P1.4: Enter นี้เป็นของการสแกนที่เพิ่งรับไป — หนึ่งสแกน = หนึ่งครั้ง
     const lc = term.toLowerCase();
     if (shownQ.trim() === term && !catalogPending) {
       const exact = products.filter((p) => (p.sku ?? "").toLowerCase() === lc || (p.barcode ?? "").toLowerCase() === lc);
@@ -503,25 +692,37 @@ export function RegisterScreen(props: RegisterScreenProps) {
       // B2.2 S1: ระหว่างรอ บิลถูกล้าง/ขายจบ/กำลังส่ง ⇒ ผลนี้ไม่ใช่ของบิลปัจจุบันแล้ว — ทิ้ง
       if (gen !== billGen.current || frozenRef.current) return;
       const clearTerm = () => setQ((cur) => (cur.trim() === term ? "" : cur));
-      if (!r.ok) return showToast(errorFor(r.code));
-      if (r.match === "one") {
-        pick(r.product);
-        clearTerm();
-      } else if (r.match === "choose") {
-        // B2.2 N3: บาร์โค้ดซ้ำหลายสินค้า ⇒ วางตัวเลือกในกริดให้แตะ (ตัวเลือกเต็มรูป = P1.4) + บอกให้เลือก
-        catalogSeq.current++; // คำตอบกริดที่ค้างอยู่ห้ามทับรายการนี้
-        remember(r.products);
-        setProducts(r.products);
-        setNextCursor(null);
-        setShownQ(term);
-        showToast({ key: "search.chooseOne", values: { count: r.products.length } });
-      } else {
-        // B2.2 N3: ไม่พบ = แจ้งให้เห็น (เดิมเงียบ)
-        showToast({ key: "search.noResult", values: { q: term } });
-      }
+      if (r.ok && (r.match === "one" || r.match === "choose")) clearTerm();
+      applyScan(r, term, "search");
     } catch {
       if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
     }
+  };
+
+  /** ทางสแกนทางเดียว (เครื่องสแกนรัว · กล้อง) — เรียก registerScanAction ตรง: ไม่ผ่านคำค้น/หน่วง 200ms/โหลดกริด (B1 · ข้อสอบ S1) */
+  const onScannedCode = async (code: string) => {
+    if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" }); // R2: ระหว่างส่งบิล = บอก ไม่เงียบ
+    const gen = billGen.current;
+    try {
+      const r = await registerScanAction({ systemId, unitId, barcode: code });
+      if (gen !== billGen.current) return; // บิลเปลี่ยนรุ่นระหว่างรอ = ทิ้ง (B2.2 S1)
+      if (frozenRef.current) return showToast({ key: "scan.ignoredWhileDialog" });
+      // B2: ระหว่างรอ ผู้ใช้เปิดกล่องชำระ/จบการขาย ⇒ ไม่แตะตะกร้าใต้กล่องนั้น
+      if (layersRef.current.some((l) => l.kind === "pay" || l.kind === "done")) return showToast({ key: "scan.ignoredWhileDialog" });
+      applyScan(r, code, "scan");
+    } catch {
+      if (gen === billGen.current) showToast({ key: "errors.loadFailed" });
+    }
+  };
+  /** สแกนจากช่องค้นหา: ตัวอักษรของเครื่องสแกนอยู่ในช่องแล้ว ⇒ ยกเลิกคำค้นที่รอหน่วง + ทิ้งผลกริดที่ค้าง + ล้างช่อง (มติผู้คุมงาน 2) */
+  const clearSearchForScan = () => {
+    catalogSeq.current++;
+    qClearedByScan.current = true;
+    setQ("");
+  };
+  const openCamera = () => {
+    if (frozenRef.current || layersRef.current.length) return;
+    push({ kind: "camera" });
   };
 
   const lineIndex = (key: string) => cart.lines.findIndex((l) => l.key === key);
@@ -758,8 +959,95 @@ export function RegisterScreen(props: RegisterScreenProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // ═══════ เครื่องสแกนแบบพิมพ์รัว (P1.4 B1): ตัวจับ keydown ทั้งหน้า ช่วง capture ═══════
+  //   capture บน window = เห็นคีย์ก่อนช่องค้นหา/ปุ่มที่โฟกัสอยู่ ⇒ Enter/Tab ที่จบการสแกนถูกกลืน (preventDefault + stopPropagation):
+  //   onKeyDown ของช่องค้นหาไม่ถึง (หนึ่งสแกน = หนึ่งครั้ง) · ปุ่มที่โฟกัสไม่ถูกกด · Tab ไม่ย้ายโฟกัส · Enter ไม่ไปยืนยันกล่องชำระ
+  //   ตัดสินที่ classifyScanBurst เท่านั้น (IME → กล่องเปิด → ช่องกรอกอื่น → จังหวะ) — คนพิมพ์ = ปล่อยผ่านตามเดิมทุกอย่าง
+  const scanBuf = useRef<ScanKey[]>([]);
+  /** ค่าของช่องกรอก (ไม่ใช่ช่องค้นหา) ตอนคีย์แรกของบัฟเฟอร์ — คืนค่านี้ถ้าบัฟเฟอร์กลายเป็นการสแกน (R2) */
+  const scanFieldSnap = useRef<{ el: HTMLInputElement | HTMLTextAreaElement; value: string } | null>(null);
+  const scanHandlers = useRef({ onScannedCode, clearSearchForScan, showToast });
+  scanHandlers.current = { onScannedCode, clearSearchForScan, showToast };
+  useEffect(() => {
+    const onScanKey = (e: KeyboardEvent) => {
+      const buf = scanBuf.current;
+      const prev = buf[buf.length - 1];
+      if (prev && e.timeStamp - prev.at > SCAN_MAX_GAP_MS) buf.length = 0; // ห่างเกินจังหวะเครื่องสแกน = เริ่มบัฟเฟอร์ใหม่
+      if (!buf.length) {
+        const t0 = e.target;
+        scanFieldSnap.current = t0 !== searchRef.current && (t0 instanceof HTMLInputElement || t0 instanceof HTMLTextAreaElement) ? { el: t0, value: t0.value } : null;
+      }
+      buf.push({ key: scanKeyFromEvent(e), at: e.timeStamp, isComposing: e.isComposing });
+      if (buf.length > 128) buf.splice(0, buf.length - 128);
+      if (e.key !== "Enter" && e.key !== "Tab") return;
+      const keys = buf.splice(0);
+      const el = e.target;
+      const target: "search" | "input" | "body" =
+        el === searchRef.current
+          ? "search"
+          : el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || (el instanceof HTMLElement && el.isContentEditable)
+            ? "input"
+            : "body";
+      const r = classifyScanBurst(keys, { dialogOpen: layersRef.current.length > 0, target });
+      const h = scanHandlers.current;
+      const snap = scanFieldSnap.current;
+      scanFieldSnap.current = null;
+      const scanTimed = r.kind === "scan" || (r.kind === "ignore" && r.reason !== "ime" && classifyScanBurst(keys, { target: "body" }).kind === "scan");
+      // R2: รหัสที่สแกนตกลงในช่องกรอกอื่น (กล่องชำระ "รับเงิน" 500 → 5008850…) ⇒ คืนค่าเดิมก่อนทำอย่างอื่น
+      if (scanTimed && snap && snap.el === el) restoreFieldValue(snap.el, snap.value);
+      if (r.kind === "scan") {
+        e.preventDefault();
+        e.stopPropagation();
+        lastScanAt.current = e.timeStamp;
+        if (target === "search") h.clearSearchForScan();
+        void h.onScannedCode(r.code);
+        return;
+      }
+      // กล่องเปิดอยู่ (ชำระ · ตัวเลือก · กล้อง …) และจังหวะเป็นเครื่องสแกน ⇒ ไม่ทำอะไร + บอกผู้ใช้ (B2) · กลืนตัวจบไม่ให้ไปกดปุ่มในกล่อง
+      if (r.kind === "ignore" && r.reason === "dialog" && scanTimed) {
+        e.preventDefault();
+        e.stopPropagation();
+        h.showToast({ key: "scan.ignoredWhileDialog" });
+      }
+    };
+    window.addEventListener("keydown", onScanKey, true);
+    return () => window.removeEventListener("keydown", onScanKey, true);
+  }, []);
+
   // ═══════ วาด ═══════
   const lineOf = (key: string) => cart.lines.find((l) => l.key === key);
+  // P1.5 H3: คำเตือนของบิลที่เรียกคืน — เฉพาะบรรทัดที่ยังอยู่ (เอาออก = หาย) · ขายไม่ได้แล้ว ⇒ quote ปฏิเสธ = ชำระไม่ได้จนกว่าจะเอาออก
+  const shownNotices = heldNotices.filter((n) => cart.lines.some((l) => l.key === n.key));
+  const noticeName = (key: string) => {
+    const l = lineOf(key);
+    if (!l) return "-";
+    if (l.kind === "custom") return l.name;
+    const prod = known.current.get(l.productId);
+    return prod ? displayName(prod, locale) : (heldNames.current.get(l.productId) ?? "-");
+  };
+  const heldNoticeNode = shownNotices.length ? (
+    <div data-testid="pos-reg-held-notices" role="status" className="flex items-start gap-2.5 rounded-[14px] border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+      <RegisterIcon name="warn" size={16} className="mt-0.5 shrink-0 text-[color:var(--color-danger)]" />
+      <ul className="min-w-0 flex-1">
+        {shownNotices.map((n) => (
+          <li key={`${n.key}-${n.code}`}>
+            {n.code === "PRICE_CHANGED"
+              ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
+              : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+          </li>
+        ))}
+      </ul>
+      <button
+        data-testid="pos-reg-held-notices-close"
+        className="-my-1.5 -mr-2 grid size-11 shrink-0 place-items-center rounded-[11px] text-[color:var(--color-muted)]"
+        type="button"
+        aria-label={t("cart.close")}
+        onClick={() => setHeldNotices([])}
+      >
+        <RegisterIcon name="x" size={14} />
+      </button>
+    </div>
+  ) : null;
   const cartPanel = (variant: "inline" | "sheet") => (
     <CartPanel
       variant={variant}
@@ -771,6 +1059,12 @@ export function RegisterScreen(props: RegisterScreenProps) {
       frozen={frozen}
       onPay={openPay}
       onSoon={soon}
+      onHold={() => {
+        if (!frozenRef.current && cart.lines.length) push({ kind: "holdLabel" });
+      }}
+      onOpenHeld={openHeld}
+      heldCount={heldCount}
+      notice={heldNoticeNode}
       onBillDiscount={() => push({ kind: "billDiscount" })}
       onOpenLine={(key, focus) => push({ kind: "line", key, focus })}
       onKeep={keepSelling}
@@ -882,6 +1176,60 @@ export function RegisterScreen(props: RegisterScreenProps) {
             }}
           />
         );
+      case "scanChoose":
+        return (
+          <ScanChooserDialog
+            key={k}
+            products={l.products}
+            locale={locale}
+            onPick={(p) => {
+              pop();
+              pick(p);
+            }}
+            onClose={pop}
+          />
+        );
+      case "held":
+        return (
+          <HeldBillsDialog
+            key={k}
+            items={heldItems}
+            expireDays={heldExpireDays}
+            busy={heldBusy}
+            onRecall={requestRecall}
+            onDiscard={(h) => void onDiscardHeld(h)}
+            onClose={pop}
+          />
+        );
+      case "holdLabel":
+        return <HoldLabelDialog key={k} busy={heldBusy} onHold={(label) => void onHold(label)} onClose={pop} />;
+      case "heldConfirm":
+        return (
+          <HeldRecallConfirmDialog
+            key={k}
+            item={l.item}
+            currentCount={cart.lines.length}
+            currentTotal={quoteFresh ? moneyText(quoteFresh.grandTotalSatang) : null}
+            busy={heldBusy}
+            onHoldFirst={() => {
+              void (async () => {
+                if (await onHold()) await onRecallHeld(l.item.id);
+              })();
+            }}
+            onClose={pop}
+          />
+        );
+      case "camera":
+        return (
+          <ScanCameraDialog
+            key={k}
+            onCode={(code) => {
+              pop();
+              void onScannedCode(code);
+            }}
+            onClose={pop}
+          />
+        );
       case "done":
         return (
           <SaleDone
@@ -913,7 +1261,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           online={online}
           lastSyncAt={lastSyncAt}
           user={status ? { name: status.user.name, role: status.user.role } : null}
-          onCamera={soon}
+          onCamera={openCamera}
         />
         <ModeTabsNav systemId={systemId} />
         {!online && (
@@ -934,7 +1282,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
               compact={wide === false}
               canCustom={limits.canOverridePrice}
               onCustom={() => (limits.canOverridePrice ? push({ kind: "custom" }) : onNeedsApproval("errors.needPriceOverride"))}
-              onCamera={soon}
+              onCamera={openCamera}
               disabled={frozen}
             />
             <CategoryChips categories={categories} active={categoryId} onPick={pickCategory} />
@@ -995,6 +1343,19 @@ export function RegisterScreen(props: RegisterScreenProps) {
           aria-live="polite"
         >
           <span className="min-w-0 flex-1">{msgNode(toast)}</span>
+          {toast.offerCustom && limits.canOverridePrice && (
+            <button
+              data-testid="pos-reg-scan-add-custom"
+              className="pointer-events-auto h-11 shrink-0 rounded-[11px] border border-[color:var(--color-surface)] px-3 text-[14px] font-semibold"
+              type="button"
+              onClick={() => {
+                setToast(null);
+                if (!frozenRef.current) push({ kind: "custom" });
+              }}
+            >
+              {t("scan.addAsCustom")}
+            </button>
+          )}
         </div>
       )}
     </div>

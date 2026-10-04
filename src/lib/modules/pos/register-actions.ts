@@ -17,7 +17,12 @@ import { requireTenant } from "@/lib/core/context";
 import { assertCan, canAccessUnit } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import { registerCatalog, registerScan, quoteRegisterCart, submitRegisterSale, registerStatus } from "./register";
+import { discardHeldCart, holdRegisterCart, listHeldCarts, recallHeldCart } from "./held-cart";
 import type {
+  DiscardHeldCartResult,
+  HoldRegisterCartResult,
+  ListHeldCartsResult,
+  RecallHeldCartResult,
   RegisterActor,
   RegisterCatalogInput,
   RegisterCatalogResult,
@@ -150,5 +155,59 @@ export async function registerStatusAction(args: Target): Promise<RegisterStatus
     return await registerStatus(s.ctx, s.actor);
   } catch (e) {
     return unexpected("registerStatusAction", e);
+  }
+}
+
+// ═══════ POS P1.5 — พักบิล / เรียกคืน (held-cart.ts) · ปฏิเสธคืนเป็นข้อมูล ไม่ throw ═══════
+
+/** พักตะกร้าปัจจุบัน — `cart` = ผลของ cartToQuoteInput (ไม่มีคีย์บิล) · label ไม่บังคับ (≤ 60 ตัวอักษร) */
+export async function holdRegisterCartAction(args: Target & { cart: RegisterQuoteInput; label?: string | null }): Promise<HoldRegisterCartResult> {
+  const auth = await session("holdRegisterCartAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await holdRegisterCart(s.ctx, s.actor, { cart: args.cart, label: args.label ?? null });
+  } catch (e) {
+    return unexpected("holdRegisterCartAction", e);
+  }
+}
+
+/** บิลที่พักของสาขานี้ (ใหม่สุดก่อน · ทิ้งบิลหมดอายุให้ด้วย) */
+export async function listHeldCartsAction(args: Target): Promise<ListHeldCartsResult> {
+  const auth = await session("listHeldCartsAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await listHeldCarts(s.ctx, s.actor);
+  } catch (e) {
+    return unexpected("listHeldCartsAction", e);
+  }
+}
+
+/** เรียกคืน (ผู้ชนะคนเดียว) — ได้ตะกร้า + quote ราคาปัจจุบัน + notices · จอต้อง resetBill() ก่อนวางตะกร้า (คีย์บิลใหม่) */
+export async function recallHeldCartAction(args: Target & { id: string }): Promise<RecallHeldCartResult> {
+  const auth = await session("recallHeldCartAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await recallHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
+  } catch (e) {
+    return unexpected("recallHeldCartAction", e);
+  }
+}
+
+/** ทิ้งบิลที่พัก (สิทธิ์เดียวกับล้างบิล · บันทึก audit) */
+export async function discardHeldCartAction(args: Target & { id: string }): Promise<DiscardHeldCartResult> {
+  const auth = await session("discardHeldCartAction");
+  if ("ok" in auth) return auth;
+  try {
+    const s = sessionScope(auth, args);
+    if ("ok" in s) return s;
+    return await discardHeldCart(s.ctx, s.actor, { id: typeof args?.id === "string" ? args.id : "" });
+  } catch (e) {
+    return unexpected("discardHeldCartAction", e);
   }
 }
