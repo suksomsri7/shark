@@ -1,0 +1,17 @@
+p15-r1 /root/projects/shark-pos-p11 wip/pos-p1.5 a67f2c59
+migrate-qc4
+typecheck
+fitness
+fitness-pos
+forced:qc-pos-p1.5
+forced:qc-pos-p1.5
+unforced:qc-pos-p1.5
+qc-pos-p1.4
+forced:qc-pos-p1.3
+qc-pos-p1.3
+qc-pos-p1.1
+qc-pos-register
+qc-pos-products
+qc-pos-inventory
+qc-pos-p0.2
+build
