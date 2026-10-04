@@ -5,6 +5,8 @@ import * as inventory from "@/lib/modules/inventory/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
+// POS P1.6 ▸ ถอด VAT สูตรเดียวกับสะพานบัญชี (R1) ◂
+import { splitIncludedVat } from "@/lib/money/vat";
 
 // POS createSale — contract 2.1 (จุดตัดเงินกลาง). MVP: PAID_NOW
 //
@@ -19,7 +21,8 @@ type Client = PrismaClient | Prisma.TransactionClient;
 
 async function withTx<T>(client: Client, fn: (tx: Client) => Promise<T>): Promise<T> {
   if ("$transaction" in client && typeof client.$transaction === "function") {
-    return (client as PrismaClient).$transaction((tx) => fn(tx));
+    // POS P1.6 ▸ BLOCK รอล็อกแถวสินค้าในtx (คิวขายชิ้นสุดท้าย) — เวลา 5 วิปริยายของ Prisma ไม่พอ ◂
+    return (client as PrismaClient).$transaction((tx) => fn(tx), { timeout: 20_000, maxWait: 10_000 });
   }
   return fn(client);
 }
@@ -55,12 +58,21 @@ export type CreateSaleInput = {
   // itemId = InvItem.id ที่ผูก → ตัดสต็อก + COGS perpetual (null/ไม่ระบุ = รายการเพิ่มเอง/บริการ ไม่ตัดสต็อก)
   // serviceId = BookingService.id (บริการ) → ใช้แยกยอดสินค้า/บริการในรายงาน · ไม่ตัดสต็อก
   // productId = PosProduct.id (POS P1.3 ▸ หน้าขายใหม่ส่งมา · ฟิลด์เพิ่มแบบไม่บังคับ — ผู้เรียกเดิมไม่ส่ง = null เหมือนเดิม ◂)
-  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string; serviceId?: string; productId?: string }[];
+  // note = หมายเหตุบรรทัด/เหตุผลส่วนลด (POS P1.6 R5 · ≤500 ตัว · ไม่ส่ง = null)
+  lines: { name: string; qty: number; unitPriceSatang: number; discountSatang?: number; itemId?: string; serviceId?: string; productId?: string; note?: string }[];
   billDiscountSatang?: number;
   // คูปอง (contract 2.3) — ต้องมาคู่กันเสมอ · ระบุแล้วใช้ไม่ได้ = โยน error (ห้ามขายต่อเงียบ ๆ)
   couponSystemId?: string;
   couponCode?: string;
-  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string }[];
+  // POS P1.6 (เพิ่มล้วน · ไม่ส่ง = พฤติกรรมเดิม):
+  //   cashTenderedSatang = เงินที่รับจริงของแถว CASH (≥ ยอดแถว · ทอน = รับ − ยอดแถว เก็บบนแถวนั้น) · reference = เลขอ้างอิงบัตร/EDC
+  payMethods: { type: PosPayType; amountSatang: number; refSaleId?: string; cashTenderedSatang?: number; reference?: string }[];
+  /** หมายเหตุบิล (≤500 ตัว) */
+  note?: string;
+  /** ค่าบริการ (สตางค์ · รวมอยู่ใน grandTotal และฐาน VAT) — ผู้เรียกคิดเอง · ไม่ส่ง = 0 (ผู้เรียกเดิมที่มีบรรทัดค่าบริการของตัวเองไม่โดนคิดซ้ำ) */
+  serviceChargeSatang?: number;
+  /** ทิป (สตางค์ · ไม่ใช่รายได้ · ไม่อยู่ใน grandTotal/ฐาน VAT) ⇒ Σ payMethods = grandTotal + tip (มติ §8 ข้อ 1) */
+  tipSatang?: number;
 };
 
 export type SaleResult = {
@@ -68,7 +80,124 @@ export type SaleResult = {
   receiptNo: string | null;
   grandTotalSatang: number;
   pointEarned: number;
+  /** POS P1.6 R6: สถานะของบิล — คีย์ซ้ำคืนบิลเดิมพร้อมสถานะจริง (บิลที่ถูก void = "VOIDED" ให้ผู้เรียกตัดสินเอง) */
+  status?: string;
 };
+
+// ── POS P1.6: รหัสปฏิเสธของ createSale (โยนเป็น error ที่มี .code คงที่ · ข้อความไทยไม่มีศัพท์เทคนิค) ──
+export type PosSaleErrorCode =
+  | "VALIDATION"
+  | "SPLIT_INVALID"
+  | "PAYMENT_MISMATCH"
+  | "IDEMPOTENCY_CONFLICT"
+  | "UNIT_SYSTEM_MISMATCH"
+  | "STOCK_INSUFFICIENT";
+export class PosSaleError extends Error {
+  readonly code: PosSaleErrorCode;
+  constructor(code: PosSaleErrorCode, message: string) {
+    // PAYMENT_MISMATCH คงรูปข้อความเดิม ("PAYMENT_MISMATCH: …") — ผู้เรียกเดิมตรวจด้วย startsWith
+    super(code === "PAYMENT_MISMATCH" ? `PAYMENT_MISMATCH: ${message}` : message);
+    this.name = "PosSaleError";
+    this.code = code;
+  }
+}
+const MAX_PAY_METHODS = 10; // R2
+const MAX_NOTE = 500; // R5
+const MAX_REFERENCE = 100;
+/** ข้อความ O21 — ร้านมี POS หลายจุดแต่สาขานี้ไม่ได้ผูกกับจุดใด */
+export const UNIT_SYSTEM_AMBIGUOUS_TH = "เลือกจุดขายก่อน — ร้านนี้มีจุดขายหลายจุด แต่สาขานี้ยังไม่ได้ผูกกับจุดขายใด";
+
+const isNonNegInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/** ตรวจโครงฟิลด์ใหม่ของ P1.6 (ก่อนแตะตัวนับ) — ฟิลด์เดิมของผู้เรียกเดิมไม่ถูกตรวจเพิ่ม (กันผู้เรียกเดิมล้ม) */
+function validateSaleInput(input: CreateSaleInput): void {
+  const bad = (m: string) => new PosSaleError("VALIDATION", m);
+  if (input.note !== undefined && input.note !== null && (typeof input.note !== "string" || input.note.length > MAX_NOTE)) throw bad(`หมายเหตุบิลยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+  for (const l of input.lines) {
+    if (l.note !== undefined && l.note !== null && (typeof l.note !== "string" || l.note.length > MAX_NOTE)) throw bad(`หมายเหตุรายการยาวเกิน ${MAX_NOTE} ตัวอักษร`);
+  }
+  if (input.serviceChargeSatang !== undefined && !isNonNegInt(input.serviceChargeSatang)) throw bad("ค่าบริการต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+  if (input.tipSatang !== undefined && !isNonNegInt(input.tipSatang)) throw bad("ทิปต้องเป็นจำนวนเต็มสตางค์ ไม่ติดลบ");
+  if (!Array.isArray(input.payMethods)) throw bad("ไม่มีรายการชำระเงิน");
+  if (input.payMethods.length > MAX_PAY_METHODS) throw new PosSaleError("SPLIT_INVALID", `แบ่งจ่ายได้ไม่เกิน ${MAX_PAY_METHODS} รายการ`);
+  for (const p of input.payMethods) {
+    if (!Number.isInteger(p.amountSatang)) throw bad("ยอดชำระต้องเป็นจำนวนเต็มสตางค์");
+    if (p.reference !== undefined && p.reference !== null && (typeof p.reference !== "string" || p.reference.length > MAX_REFERENCE)) throw bad(`เลขอ้างอิงยาวเกิน ${MAX_REFERENCE} ตัวอักษร`);
+    if (p.cashTenderedSatang === undefined || p.cashTenderedSatang === null) continue;
+    if (p.type !== "CASH") throw bad("เงินที่รับมาใส่ได้เฉพาะรายการเงินสด");
+    if (!isNonNegInt(p.cashTenderedSatang)) throw bad("เงินที่รับมาต้องเป็นจำนวนเต็มสตางค์");
+    // R3: รับน้อยกว่าส่วนเงินสด = ยอดไม่ครบ (PAYMENT_MISMATCH ตามมติ — ไม่มีรหัส TENDER_TOO_LOW)
+    if (p.cashTenderedSatang < p.amountSatang) throw new PosSaleError("PAYMENT_MISMATCH", `เงินที่รับ ${p.cashTenderedSatang} น้อยกว่าส่วนเงินสด ${p.amountSatang}`);
+  }
+}
+
+/** payload ของคีย์ซ้ำเท่ากันไหม (R6) — ถุงบรรทัด (ราคา|จำนวน|ส่วนลด ไม่สนลำดับ) · ถุงวิธีจ่าย (ชนิด|ยอด) · สาขา/ระบบ · ค่าบริการ/ทิป */
+function samePayload(
+  input: CreateSaleInput,
+  dup: {
+    unitId: string;
+    systemId: string;
+    serviceChargeSatang: number;
+    tipSatang: number;
+    lines: { qty: number; unitPriceSatang: number; discountSatang: number }[];
+    payments: { type: string; amountSatang: number }[];
+  },
+): boolean {
+  const bag = (xs: string[]) => [...xs].sort().join(",");
+  return (
+    dup.unitId === input.unitId &&
+    dup.systemId === input.systemId &&
+    dup.serviceChargeSatang === (input.serviceChargeSatang ?? 0) &&
+    dup.tipSatang === (input.tipSatang ?? 0) &&
+    bag(dup.lines.map((l) => `${l.unitPriceSatang}|${l.qty}|${l.discountSatang}`)) ===
+      bag(input.lines.map((l) => `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}`)) &&
+    bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}`)) === bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}`))
+  );
+}
+
+/**
+ * R7 + O21 (มติเจ้าของ 4 ต.ค.): สาขาต้องเป็นของระบบ POS ที่ส่งมา — ตรวจก่อนแตะตัวนับใบเสร็จ (ไม่รอล็อกของสาขาอื่น)
+ *   ผูกกับ POS นี้ = ผ่าน · ผูกกับ POS อื่น = ปฏิเสธเสมอ
+ *   ไม่ผูก POS ใด: ร้านมี POS ใช้งาน 1 ตัว = ผ่าน (ผู้เรียกแบบ "POS ตัวแรกของร้าน" ทำงานเหมือนเดิม) · 2+ ตัว = ปฏิเสธ "เลือกจุดขายก่อน"
+ */
+async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<void> {
+  const link = await tx.appSystemUnit.findUnique({
+    where: { tenantId_unitId_type: { tenantId: input.tenantId, unitId: input.unitId, type: "POS" } },
+    select: { systemId: true },
+  });
+  if (link) {
+    if (link.systemId === input.systemId) return;
+    throw new PosSaleError("UNIT_SYSTEM_MISMATCH", "สาขานี้ผูกกับจุดขายอื่น — เลือกจุดขายของสาขานี้ก่อน");
+  }
+  const posCount = await tx.appSystem.count({ where: { tenantId: input.tenantId, type: "POS", active: true } });
+  if (posCount >= 2) throw new PosSaleError("UNIT_SYSTEM_MISMATCH", UNIT_SYSTEM_AMBIGUOUS_TH);
+}
+
+/**
+ * อัตรา VAT (bp) ของบิลบนระบบ POS นี้ — กติกาเดียวกับสะพานบัญชี (applyExternalSale): ผูกสมุดที่เปิดการเชื่อมอยู่ + จด VAT
+ * (ค่าปริยายของสมุดที่ไม่มีแถวตั้งค่า = จด 7% แบบเดียวกับ vatConfigOf) · ไม่ผูก/ไม่จด/อัตราผิดรูป = 0
+ */
+export async function posVatRateBp(db: Client, tenantId: string, posSystemId: string): Promise<number> {
+  const link = await db.accountSystemLink.findFirst({
+    where: { tenantId, linkedKind: "POS", linkedId: posSystemId, archivedAt: null, enabled: true },
+    select: { systemId: true },
+  });
+  if (!link) return 0;
+  const st = await db.accountSettings.findFirst({ where: { systemId: link.systemId }, select: { vatRegistered: true, vatRateBp: true } });
+  const registered = st?.vatRegistered ?? true;
+  const rate = st?.vatRateBp ?? 700;
+  return registered && Number.isInteger(rate) && rate > 0 && rate <= 10_000 ? rate : 0;
+}
+
+/** R8: นโยบายขายเกินสต็อกของสาขา (`BusinessUnit.settings.pos.stock.oversellPolicy`) · ไม่ตั้ง/ค่าแปลก = ALLOW_NEGATIVE (วันนี้) */
+export type OversellPolicy = "ALLOW_NEGATIVE" | "BLOCK";
+export async function unitOversellPolicy(db: Client, tenantId: string, unitId: string): Promise<OversellPolicy> {
+  const u = await db.businessUnit.findFirst({ where: { id: unitId, tenantId }, select: { settings: true } });
+  const st = u?.settings as { pos?: { stock?: { oversellPolicy?: unknown } } } | null | undefined;
+  return st?.pos?.stock?.oversellPolicy === "BLOCK" ? "BLOCK" : "ALLOW_NEGATIVE";
+}
+
+const isUniqueViolation = (e: unknown) => (e as { code?: unknown } | null)?.code === "P2002";
 
 type MemberFacade = typeof import("@/lib/modules/member");
 type AppliedRights = Awaited<ReturnType<MemberFacade["applyOnSale"]>>;
@@ -98,19 +227,44 @@ async function applyMemberRights(
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
-  const result = await withTx(client, async (tx) => {
-    // idempotent
+  // POS P1.6 I7: คีย์เดียวกันพร้อมกัน — ผู้แพ้ชน unique (P2002) แล้ว tx ทั้งก้อน rollback (รวมตัวนับ) ⇒ ลองใหม่ = เจอบิลผู้ชนะที่ทางคีย์ซ้ำ
+  //   ทำได้เฉพาะเมื่อเราเป็นเจ้าของ tx (tx ของผู้เรียกที่ล้มแล้วใช้ต่อไม่ได้ — ปล่อย error ให้ผู้เรียก)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await createSaleOnce(input, client, ownsTx);
+    } catch (e) {
+      if (ownsTx && attempt < 3 && isUniqueViolation(e)) continue;
+      throw e;
+    }
+  }
+}
+
+async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: boolean): Promise<SaleResult> {
+  const result = await withTx(client, async (tx): Promise<SaleResult> => {
+    // idempotent (R6 · มติ §8 ข้อ 3): payload เดิม = คืนบิลเดิมพร้อมสถานะจริง (VOIDED ก็คืน — ผู้เรียกตัดสินเอง) · payload ต่าง = IDEMPOTENCY_CONFLICT
     const dup = await tx.posSale.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
+      include: {
+        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true } },
+        payments: { select: { type: true, amountSatang: true } },
+      },
     });
     if (dup) {
+      if (!samePayload(input, dup)) {
+        throw new PosSaleError("IDEMPOTENCY_CONFLICT", "มีบิลของรหัสรายการนี้อยู่แล้วแต่รายการ/ยอด/วิธีจ่ายไม่ตรงกัน — ตรวจบิลเดิมก่อน ห้ามขายซ้ำ");
+      }
       return {
         saleId: dup.id,
         receiptNo: dup.receiptNo,
         grandTotalSatang: dup.grandTotalSatang,
         pointEarned: dup.pointEarned,
+        status: dup.status,
       };
     }
+
+    // ── P1.6: โครงฟิลด์ใหม่ + สาขา↔ระบบ (R7/O21) — ทั้งหมดก่อนแตะตัวนับใบเสร็จ ──
+    validateSaleInput(input);
+    await assertUnitOfSystem(tx, input);
 
     const lines = input.lines.map((l) => ({
       ...l,
@@ -141,9 +295,13 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
       couponDiscount = v.discountSatang;
     }
 
-    const vat = 0; // MVP
-    const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0);
-    const beforeMember = subtotal - billDiscount - couponDiscount + vat;
+    // R4: ค่าบริการอยู่ในยอดบิล+ฐาน VAT · ทิปอยู่นอกยอดบิล (Σจ่าย = ยอด + ทิป · มติ §8 ข้อ 1)
+    const serviceCharge = input.serviceChargeSatang ?? 0;
+    const tip = input.tipSatang ?? 0;
+    // R1: VAT ถอดจากยอดสุทธิด้วยสูตรเดียวกับสะพานบัญชี (ราคารวม VAT แล้ว ⇒ ไม่บวกเพิ่ม)
+    const vatRateBp = await posVatRateBp(tx, input.tenantId, input.systemId);
+    const paidSum = input.payMethods.reduce((s, p) => s + p.amountSatang, 0) - tip;
+    const beforeMember = subtotal - billDiscount - couponDiscount + serviceCharge;
 
     // ── ระบบสมาชิกของบิลนี้ (M2.8) ──
     // ไม่มี memberId = ไม่ยิง query เพิ่มแม้แต่ครั้งเดียว ⇒ บิล walk-in เดินเส้นทางเดิมทุกประการ
@@ -154,6 +312,28 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     // ไม่มีสิทธิ์สมาชิกให้หัก → ตัดจบก่อนแตะตัวนับเลขใบเสร็จ (พฤติกรรมเดิมของ PAYMENT_MISMATCH)
     if (!memberSystemId && paidSum !== beforeMember) {
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
+    }
+
+    // ── R8 BLOCK: ล็อกแถวสินค้า (ลำดับ id ตายตัว · ก่อนตัวนับ ⇒ ลำดับล็อกเดียวกันทุกบิล ไม่ deadlock) แล้วตรวจยอดคงเหลือ ──
+    let blockInv: { tenantId: string; systemId: string } | null = null;
+    const stockLines = lines.filter((l) => l.itemId);
+    if (stockLines.length > 0 && (await unitOversellPolicy(tx, input.tenantId, input.unitId)) === "BLOCK") {
+      const invSystemId = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
+      if (invSystemId) {
+        blockInv = { tenantId: input.tenantId, systemId: invSystemId };
+        const need = new Map<string, number>();
+        for (const l of stockLines) need.set(l.itemId!, (need.get(l.itemId!) ?? 0) + Math.round(l.qty));
+        await inventory.lockItemsInTx(tx as Prisma.TransactionClient, blockInv, [...need.keys()]);
+        const items = await tx.invItem.findMany({
+          where: { tenantId: input.tenantId, systemId: invSystemId, id: { in: [...need.keys()] } },
+          select: { id: true, name: true, onHand: true, kind: true },
+        });
+        for (const it of items) {
+          if (it.kind === "SERVICE") continue; // บริการไม่มีสต็อก (ตัดไม่ได้อยู่แล้ว)
+          const want = need.get(it.id) ?? 0;
+          if (it.onHand < want) throw new PosSaleError("STOCK_INSUFFICIENT", `สินค้าในสต็อกไม่พอ: "${it.name}" เหลือ ${it.onHand} ต้องการ ${want}`);
+        }
+      }
     }
 
     // เลขใบเสร็จรันต่อ unit/เดือน
@@ -178,13 +358,16 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         status: "PAID",
         subtotalSatang: subtotal,
         discountSatang: billDiscount + couponDiscount,
-        vatSatang: vat,
+        vatSatang: splitIncludedVat(beforeMember, vatRateBp).vatSatang,
         grandTotalSatang: beforeMember,
+        serviceChargeSatang: serviceCharge,
+        tipSatang: tip,
+        note: input.note ?? null,
         paidAt: new Date(),
       },
     });
     await tx.posSaleLine.createMany({
-      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null })),
+      data: lines.map((l) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang, discountSatang: l.discountSatang, lineTotalSatang: l.lineTotalSatang, itemId: l.itemId ?? null, serviceId: l.serviceId ?? null, productId: l.productId ?? null, note: l.note ?? null })),
     });
 
     // ── ใช้สิทธิ์สมาชิกจริง (M2.8 · §9.1) — ในtx เดียวกับบิล ──
@@ -255,6 +438,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
         data: {
           discountSatang: billDiscount + couponDiscount + memberDiscount,
           grandTotalSatang: grandTotal,
+          vatSatang: splitIncludedVat(grandTotal, vatRateBp).vatSatang,
           tierDiscountSatang,
           voucherUseIds,
           giftCardTxnId,
@@ -263,8 +447,38 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
     }
 
     await tx.posPayment.createMany({
-      data: input.payMethods.map((p) => ({ tenantId: input.tenantId, unitId: input.unitId, saleId: sale.id, type: p.type, amountSatang: p.amountSatang, refSaleId: p.refSaleId })),
+      data: input.payMethods.map((p) => {
+        // R3 (มติ §8 ข้อ 2): เงินรับ/ทอนอยู่บนแถว CASH ของตัวเอง · แถวอื่น/ไม่ส่ง = null
+        const tendered = p.type === "CASH" && isNonNegInt(p.cashTenderedSatang) ? p.cashTenderedSatang : null;
+        return {
+          tenantId: input.tenantId,
+          unitId: input.unitId,
+          saleId: sale.id,
+          type: p.type,
+          amountSatang: p.amountSatang,
+          refSaleId: p.refSaleId,
+          reference: p.reference ?? null,
+          tenderedSatang: tendered,
+          changeSatang: tendered === null ? null : tendered - p.amountSatang,
+        };
+      }),
     });
+
+    // R8 BLOCK: ตัดสต็อกในtx เดียวกับบิล (ล็อกถือไว้แล้ว) — คีย์ต่อบรรทัดเดียวกับการตัดหลัง commit ⇒ ตัวหลัง commit เจอคีย์เดิม
+    //   ไม่ตัดซ้ำ แต่ยังโพสต์ต้นทุน (GL) + sync สินค้าบัญชีให้ (inventory.consume เส้นเดิม)
+    if (blockInv) {
+      const saved = await tx.posSaleLine.findMany({ where: { saleId: sale.id, itemId: { not: null } }, select: { id: true, itemId: true, qty: true } });
+      for (const l of saved) {
+        await inventory.consumeInTx(tx as Prisma.TransactionClient, blockInv, {
+          itemId: l.itemId!,
+          qty: l.qty,
+          sourceModule: "POS",
+          refType: "PosSale",
+          refId: sale.id,
+          idempotencyKey: `pos-consume-${sale.id}-${l.id}`,
+        });
+      }
+    }
 
     // คูปอง: redeem ตัวจริง (atomic re-validate) ผูกกับบิล — ใน tx เดียวกัน · ล้ม = rollback ทั้งบิล
     if (hasCoupon) {
@@ -298,7 +512,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
 
     // 🔴 แต้ม/ยอดสะสม/ไทม์ไลน์ **ไม่อยู่ที่นี่แล้ว** (M2.8) — ดูหมายเหตุหัวไฟล์
     //    `pointEarned` = 0 ตอน commit เสมอ · `src/lib/member-bridges.ts` เขียนค่าจริงหลังคิวระบาย
-    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned: 0 };
+    return { saleId: sale.id, receiptNo, grandTotalSatang: grandTotal, pointEarned: 0, status: "PAID" };
   });
 
   // ── หลัง tx commit: ตัดสต็อก (perpetual) + post บัญชี ──
@@ -306,6 +520,7 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
   //   ปล่อยให้ flow นั้นจัดการ (เลี่ยง orphan movement ถ้า tx นอกโดน rollback)
   if (ownsTx) {
     // ตัดสต็อกเฉพาะบิลที่มี line ผูก itemId — inventory.consume เปิด tx เอง + โพสต์ COGS หลัง tx
+    //   (P1.6 BLOCK: ตัดไปแล้วในtx ของบิล — คีย์เดิมคืนรายการเดิม ไม่ตัดซ้ำ แต่ยังโพสต์ COGS ให้)
     //   (Dr5000/Cr1200 ผ่าน bridge) จึงทำนอก tx ของบิล = เลี่ยง nested tx
     if (input.lines.some((l) => l.itemId)) await consumeSaleInventory(input.tenantId, input.unitId, result.saleId);
     scheduleDrain(); // post ยอดขาย→บัญชี · cron /api/cron/outbox เก็บตกถ้าล้ม
@@ -495,11 +710,12 @@ export type PosDaySummary = {
   otherSalesSatang: number; // รายการที่พนักงานพิมพ์เอง (ไม่ผูกทั้งสองอย่าง)
 };
 
-const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
+const PAY_TYPE_ORDER: PosPayType[] = ["CASH", "PROMPTPAY", "TRANSFER", "CARD", "DEPOSIT", "ROOM_CHARGE"];
 const PAY_TYPE_LABEL_TH: Record<PosPayType, string> = {
   CASH: "เงินสด",
   PROMPTPAY: "พร้อมเพย์",
   TRANSFER: "โอน",
+  CARD: "บัตร", // POS P1.6 (เลขอ้างอิง EDC · ไม่มีเกตเวย์)
   DEPOSIT: "มัดจำ",
   ROOM_CHARGE: "ลงบิลห้องพัก",
 };

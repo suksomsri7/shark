@@ -33,6 +33,9 @@ type SaleForBridge = {
   paidAt: Date | null;
   createdAt: Date;
   receiptNo?: string | null;
+  /** POS P1.6: ค่าบริการ (อยู่ในยอดบิล = รายได้ในฐาน VAT) · ทิป (นอกยอดบิล · ไม่ใช่รายได้) — ไม่ส่ง = 0 */
+  serviceChargeSatang?: number;
+  tipSatang?: number;
 };
 
 /** บรรทัดบิลที่ consumer อ่านมาจาก PosSaleLine (WO 4.2) */
@@ -67,6 +70,22 @@ function allocateBillDiscount(weights: number[], total: number): number[] {
   return out;
 }
 
+/**
+ * POS P1.6 — ทิปอยู่ในเงินที่รับ (Σจ่าย = ยอดบิล + ทิป) แต่ไม่ใช่รายได้: หักทิปออกจากแถวจ่ายจากท้ายขึ้นมา ⇒ ขา Dr = ยอดบิลเป๊ะ
+ * (การลงบัญชีพักทิปเป็นหนี้สินพนักงาน = งานต่อ · ดูโน้ต P1.6 คำถามเปิด) · ไม่มีทิป = แถวเดิมทุกตัว
+ */
+function withoutTip<T extends { amountSatang: number }>(payments: T[], tip: number): T[] {
+  if (tip <= 0) return payments;
+  const out = payments.map((p) => ({ ...p }));
+  let rest = tip;
+  for (let i = out.length - 1; i >= 0 && rest > 0; i--) {
+    const cut = Math.min(rest, out[i].amountSatang);
+    out[i].amountSatang -= cut;
+    rest -= cut;
+  }
+  return out.filter((p) => p.amountSatang > 0);
+}
+
 /** ขาย POS สำเร็จ → post บัญชี (ผ่าน facade) */
 export async function bridgePosSalePaid(
   sale: SaleForBridge,
@@ -77,7 +96,14 @@ export async function bridgePosSalePaid(
   detail?: { lines?: SaleLineForBridge[]; customer?: SaleCustomerForBridge | null },
 ): Promise<{ posted: boolean; reason?: string; docId?: string }> {
   const gross = sale.grandTotalSatang;
-  const src = detail?.lines ?? [];
+  // POS P1.6 ▸ ค่าบริการเป็นบรรทัดหนึ่งของเอกสาร (Σ บรรทัด = ยอดบิล) · ทิปไม่ใช่รายได้ ⇒ หักออกจากขา Dr ให้ JV ลงตัวที่ยอดบิล ◂
+  const serviceCharge = Math.max(0, sale.serviceChargeSatang ?? 0);
+  const src0 = detail?.lines ?? [];
+  const src: SaleLineForBridge[] =
+    serviceCharge > 0 && src0.length > 0
+      ? [...src0, { name: "ค่าบริการ", qty: 1, unitPriceSatang: serviceCharge, discountSatang: 0, lineTotalSatang: serviceCharge, itemId: null }]
+      : src0;
+  const pays = withoutTip(payments, Math.max(0, sale.tipSatang ?? 0));
   // ส่วนลดท้ายบิล = Σ บรรทัด − ยอดสุทธิ (เก็บที่หัวบิลใน PosSale.discountSatang รวมคูปองแล้ว)
   const lineSum = src.reduce((n, l) => n + l.qty * l.unitPriceSatang - l.discountSatang, 0);
   const billDiscount = lineSum - gross;
@@ -103,7 +129,7 @@ export async function bridgePosSalePaid(
     grossSatang: gross,
     // clamp: ส่วนลดท้ายบิลอาจทำให้ยอดบริการ (ก่อนลด) มากกว่ายอดสุทธิ — กันไม่ให้เกินทั้งบิล
     serviceGrossSatang: Math.min(serviceGrossSatang, gross),
-    payMethods: payments.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
+    payMethods: pays.map((p) => ({ channel: channelOf(p.type), amountSatang: p.amountSatang })),
     lines,
     customer: detail?.customer ?? undefined,
     receiptNo: sale.receiptNo ?? null,

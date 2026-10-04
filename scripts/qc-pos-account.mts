@@ -77,10 +77,15 @@ try {
   await prisma.accountSystemLink.create({
     data: { tenantId, systemId: accSys.id, linkedKind: "POS", linkedId: posSys.id },
   });
+  // POS P1.6 FIXTURE (R7/O21): ร้านนี้มี POS 2 ตัว ⇒ สาขาต้องผูกกับ POS ของบิล (เดิมขายผ่านสาขาไม่ผูก = createSale ปฏิเสธแล้ว)
+  //   สาขาหน้าร้าน ↔ POS หน้าร้าน · สาขาตู้ kiosk ↔ POS2 — ข้อสอบเดิมไม่เปลี่ยน
+  await sys.linkUnit(tenantId, posSys.id, unit.id);
+  const unit2 = await prisma.businessUnit.create({ data: { tenantId, type: "BOOKING", name: "ตู้ kiosk", slug: "kiosk" } });
+  await sys.linkUnit(tenantId, posSys2.id, unit2.id);
 
   const sale = (i: number, methods: { type: "CASH" | "TRANSFER"; amountSatang: number }[], sysId = posSys.id) =>
     pos.createSale({
-      tenantId, unitId: unit.id, systemId: sysId,
+      tenantId, unitId: sysId === posSys2.id ? unit2.id : unit.id, systemId: sysId,
       idempotencyKey: `qc-posacc-${i}-${tenant.slug}`,
       lines: [{ name: `กาแฟ #${i}`, qty: 1, unitPriceSatang: methods.reduce((a, m) => a + m.amountSatang, 0) }],
       payMethods: methods,

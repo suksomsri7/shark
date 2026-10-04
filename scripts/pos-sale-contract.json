@@ -139,6 +139,34 @@
       "payMethods[].refSaleId": {
         "optional": true,
         "type": "string"
+      },
+      "lines[].productId": {
+        "optional": true,
+        "type": "string"
+      },
+      "lines[].note": {
+        "optional": true,
+        "type": "string"
+      },
+      "payMethods[].cashTenderedSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "payMethods[].reference": {
+        "optional": true,
+        "type": "string"
+      },
+      "note": {
+        "optional": true,
+        "type": "string"
+      },
+      "serviceChargeSatang": {
+        "optional": true,
+        "type": "number"
+      },
+      "tipSatang": {
+        "optional": true,
+        "type": "number"
       }
     },
     "MemberSaleChoices": {
@@ -183,6 +211,10 @@
       "pointEarned": {
         "optional": false,
         "type": "number"
+      },
+      "status": {
+        "optional": true,
+        "type": "string"
       }
     }
   },
@@ -197,6 +229,7 @@
       "src/lib/modules/hotel/service.ts",
       "src/lib/modules/member/subscription.ts",
       "src/lib/modules/pos/api/ops/sales.ts",
+      "src/lib/modules/pos/register.ts",
       "src/lib/modules/rental/service.ts",
       "src/lib/modules/restaurant/order.ts",
       "src/lib/modules/school/service.ts",
