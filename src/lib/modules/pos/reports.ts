@@ -640,6 +640,7 @@ type LineCost = { kind: "stored"; cost: number } | { kind: "estimated"; cost: nu
 /**
  * Q17.3 — ต้นทุนของบรรทัด: ① ต้นทุนที่บันทึกตอนตัดสต็อก (InvMovement ตามคีย์ของ lineConsumption ครบทุกส่วน)
  * ② ไม่ครบ + บรรทัดผูก itemId = ต้นทุนเฉลี่ยปัจจุบัน × (กรัม ?? จำนวน) "ประมาณ" ③ อื่น ๆ = ไม่มีต้นทุน
+ * R2-F5: บรรทัดที่มีทั้ง itemId และ components แต่ movement มาแค่บางส่วน = ไม่มีต้นทุน (ไม่ประมาณจาก itemId อย่างเดียว)
  */
 function lineCost(
   l: LineRow,
@@ -648,6 +649,8 @@ function lineCost(
   itemCost: Map<string, number>,
 ): LineCost {
   if (parts.length > 0 && parts.every((x) => moved.has(x.key))) return { kind: "stored", cost: sum(parts, (x) => moved.get(x.key)!) };
+  const hasComponents = parts.length > (l.itemId ? 1 : 0);
+  if (l.itemId && hasComponents && parts.some((x) => moved.has(x.key))) return { kind: "uncosted" };
   if (l.itemId && itemCost.has(l.itemId)) return { kind: "estimated", cost: itemCost.get(l.itemId)! * (l.weightGrams ?? l.qty) };
   return { kind: "uncosted" };
 }
