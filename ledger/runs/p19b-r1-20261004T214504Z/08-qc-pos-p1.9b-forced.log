@@ -1,0 +1,40 @@
+[env] qc-pos-p1.9b · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1813782) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.9b-ST1] [static · R1] schema: model PosShiftRecount (คอลัมน์สัญญาครบ · shiftId @unique · @@unique [tenantId, idempotencyKey] · expected/counted/variance/note/zNumber ไม่ nullable · countDetail Json?)
+  ✅ [P1.9b-ST2] [static · R1] migration: CREATE TABLE "PosShiftRecount" · unique index ("shiftId") · ไม่ ALTER TABLE "PosShift" · ไม่มี DROP/RENAME/SET NOT NULL
+  ✅ [P1.9b-ST3] [static · R1] src/lib/core/scope.ts ลงทะเบียน PosShiftRecount (บรรทัดจริง ไม่ใช่คอมเมนต์ · F1 fail-closed)
+  ✅ [P1.9b-ST4] [static · R2 R3 R5 R14] shift.ts export recountShift · ShiftRefusalCode มี SHIFT_NOT_FORCED + ALREADY_RECOUNTED · MSG ไทยของทั้งสอง · recountShift เขียน auditLog "pos.shift.recount" · ไม่ update/upsert posShift · ไม่เรียก finalizeClose/bumpCounter/emitOutbox
+  ✅ [P1.9b-ST5] [static · R13] shift-actions.ts "use server" · export async ล้วน · ไม่ throw · recountShiftAction เรียก recountShift + catch
+  ✅ [P1.9b-ST6] [static · R13] ข้อความ pos.shift.recount.{title action counted variance note by at saved} + pos.register.errors.{shiftNotForced alreadyRecounted} th+en · en ไม่มีอักษรไทย · refusalMessageKey 2 รหัสใหม่ตรงคีย์
+  ✅ [P1.9b-ST7] [static · R13] ShiftsClient: เรียก recountShiftAction · ปุ่มเฉพาะ FORCE_CLOSED + canManage · คีย์ recount เก็บใน state (useState(newKey)) ไม่ใช่ newKey() ในคำขอ · Z แสดง recount (counted/variance) · ใช้ t("recount.*")
+  ✅ [P1.9b-ST8] [static · R1 R7 R14 · เขียวได้บนฐาน] PosShift คอลัมน์เท่าเดิม (ชุด P1.9 ไม่มี recount*) · ไม่มีสิทธิ์ใหม่ pos.shift.recount* · ไม่มี event pos.shift.recount* ใน outbox-consumers/labels
+
+── sandbox qc-p1.9b-apstbr (2 สาขา + 1 ระบบ POS ชั่วคราวในร้าน QC กาแฟ) ──
+  ✅ [P1.9b-RC8] ตรวจค่า: counted −1 / 1.5 / "100" / 2,000,000,001 · note ไม่ส่ง/ว่าง/ช่องว่าง/201 ตัว · countDetail รวมไม่เท่า/ธนบัตรไม่รู้จัก/จำนวนติดลบ · คีย์แปลก · ไม่มี idempotencyKey → VALIDATION · ไม่มีแถว ไม่มี audit
+  ✅ [P1.9b-RC9] ข้ามขอบเขต: ctx สาขาอื่น (ระบบเดียวกัน) + กะสาขา 1 → NOT_FOUND · เจ้าของร้าน QC อาหาร + shiftId ร้านกาแฟ → NOT_FOUND · shiftId ที่ไม่มี → NOT_FOUND · ไม่มีแถว
+  ✅ [P1.9b-RC1] นับย้อนหลังกะที่ถูกบังคับปิด (float ฿10 + ขายเงินสด ฿45 ⇒ ควรมี 5,500): เจ้าของนับได้ 5,000 + countDetail + เหตุผล → ok · แถว PosShiftRecount ร้าน/สาขา/ระบบ/shiftId/zNumber ถูก · expected 5,500 (= Z) · counted 5,000 · variance −500 · note · countDetail ตรงตัว · recountedBy · ผลคืน recount ตรงแถว
+  ✅ [P1.9b-RC2] Z แช่แข็ง: แถว PosShift ทุกคอลัมน์ (รวม updatedAt/zReport/counted null/closeKey null) ก่อน = หลังนับ · zReport().report เดิมทุกไบต์ · PosShiftCounter ไม่ขยับ · ไม่มี event ใหม่ของกะ · บิล/การจ่าย/เงินเข้าออกของสาขาไม่เปลี่ยน
+  ✅ [P1.9b-RC3] audit: AuditLog action pos.shift.recount 1 แถวต่อการนับ · targetType PosShift · targetId shiftId · unitId · actorType USER · actorId ผู้นับ · before.status FORCE_CLOSED + expected · after.recountId/countedCashSatang/varianceSatang
+  ✅ [P1.9b-RC5] เฉพาะกะบังคับปิด: กะ OPEN → SHIFT_NOT_FORCED · กะปิดปกติ (CLOSED) → SHIFT_NOT_FORCED · ไม่มีแถวนับ ไม่มี audit · แถวกะไม่เปลี่ยน
+  ✅ [P1.9b-RC4] ทางอ่าน: zReport/xReport กะที่นับแล้ว = report เดิม + recount ข้างกัน (id/counted/variance/by/at) · ไม่ผสานเข้า report · listShifts item.recount ของกะนั้นไม่ null · กะปิดปกติ recount = null (มีคีย์)
+  ✅ [P1.9b-RC6] สิทธิ์: operate อย่างเดียว (คนเปิดกะเอง) → PERMISSION_DENIED · ขายได้อย่างเดียว → PERMISSION_DENIED · ไม่มีแถว · STAFF ที่มี manage → ok · คนเปิดกะ (operate) อ่าน zReport กะตัวเองเห็น recount
+  ✅ [P1.9b-RC7] กันซ้ำ: คีย์เดิม payload เดิม → ok duplicated แถวเดิม ไม่มีแถว/audit เพิ่ม · คีย์เดิม payload ต่าง → IDEMPOTENCY_CONFLICT · คีย์ใหม่กับกะที่นับแล้ว → ALREADY_RECOUNTED · แถวเดิมไม่เปลี่ยน · audit ยัง 1
+  ✅ [P1.9b-RC10] แข่งนับ (คีย์ต่างกัน): 10 connection × 3 กะ → ok 1 · ALREADY_RECOUNTED 9 · ไม่มีรหัสอื่น · แถวนับ 1 · audit 1 · แถวที่ชนะตรงกับผล ok
+  ✅ [P1.9b-RC11] แข่งนับ (คีย์เดียวกัน payload เดียวกัน): 6 connection → ok ทั้งหมด id เดียวกัน · ไม่ duplicated ไม่เกิน 1 · แถวนับ 1 · audit 1
+  ✅ [P1.9b-RC12] คำปฏิเสธของ recountShift (SHIFT_NOT_FORCED · ALREADY_RECOUNTED · PERMISSION_DENIED · VALIDATION · NOT_FOUND · IDEMPOTENCY_CONFLICT) = คืน {ok:false, code, message} ไม่ throw · ครบทุกรหัส · message ไม่ว่าง
+  ลบแล้ว: {"outbox":19,"audit":6,"recount":6,"recountByShift":0,"move":0,"payment":1,"line":1,"sale":1,"shift":9} · กะ 9 · บิล 1 · สาขา 2 · ระบบ 1
+  ✅ [P1.9b-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ · รวม PosShift/PosShiftRecount/AuditLog) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.9b-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · PosShift · PosShiftCounter · PosShiftRecount) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.9b ===== ผ่าน 22/22 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-pos-p1.9b","total":22,"passed":22,"failed":[],"skipped":false,"forced":true,"missing":[],"a5":{"drift":[]}}

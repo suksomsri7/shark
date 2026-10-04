@@ -1,0 +1,28 @@
+🔨 build (ต่อคิว gate lock — อาจรอถ้ามี session อื่น build อยู่)…
+├ ƒ /s/[tenantSlug]/[unitSlug]/shop
+├ ƒ /s/[tenantSlug]/[unitSlug]/shop/order/[code]
+├ ƒ /s/[tenantSlug]/[unitSlug]/ticket
+├ ƒ /s/[tenantSlug]/[unitSlug]/ticket/o/[publicToken]
+├ ƒ /signup
+├ ƒ /support
+├ ƒ /suspended
+├ ƒ /t/c/[token]
+├ ƒ /t/consent
+├ ƒ /t/e
+├ ƒ /t/o/[token]
+├ ƒ /t/s/[script]
+├ ƒ /tenant/rename
+├ ƒ /tenant/switch
+├ ƒ /terms
+├ ƒ /u/[token]
+├ ƒ /u/[token]/one-click
+└ ƒ /vendor/[token]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+🚀 start ที่ http://127.0.0.1:3226 (log: /root/projects/shark-pos-p11/.qc-shots/acc-v2/server.log)
+✅ พร้อมใช้งานที่ http://127.0.0.1:3226 (pid 1824443)

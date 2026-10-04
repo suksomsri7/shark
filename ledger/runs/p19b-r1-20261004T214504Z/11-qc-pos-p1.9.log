@@ -1,0 +1,73 @@
+[env] qc-pos-p1.9 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1814411) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.9-ST1] [static · S1] schema: model PosShift (คอลัมน์สัญญาครบ · @@unique [unitId, shiftNo] + [unitId, zNumber]) · enum PosShiftStatus OPEN|CLOSED|FORCE_CLOSED · PosCashMovement (+ @@unique [tenantId, idempotencyKey]) · enum PosCashMoveKind IN|OUT · PosShiftCounter (unitId @unique · shiftSeq · zSeq) · PosSale.shiftId String?
+  ✅ [P1.9-ST2] [static · S1] migration: สร้าง "PosShift" · partial unique one_open_shift_per_device ON ("unitId","deviceId") WHERE status = 'OPEN' · "shiftId" ของ PosSale nullable · ไม่มี DROP/RENAME/SET NOT NULL ในไฟล์ที่แตะ PosShift
+  ✅ [P1.9-ST3] [static · S1] src/lib/core/scope.ts ลงทะเบียน PosShift · PosCashMovement · PosShiftCounter (F1 fail-closed)
+  ✅ [P1.9-ST4] [static · S14] core/permissions.ts โมดูล pos มี pos.shift.operate และ pos.shift.manage
+  ✅ [P1.9-ST5] [static · S13 S12] outbox-consumers.ts มี consumer pos.shift.opened + pos.shift.closed · automation/labels.ts มีป้ายทั้งคู่ · /api/cron/hourly เรียก forceCloseStaleShifts
+  ✅ [P1.9-ST6] [static · S15] ข้อความ pos.shift.{title open close float expected counted overShort reason cashIn cashOut xReport zReport offShift forced blind required} + pos.register.errors.{shiftRequired shiftAlreadyOpen shiftClosed reasonRequired drawerInsufficient} th+en · en ไม่มีอักษรไทย · refusalMessageKey 5 รหัสใหม่ตรงคีย์
+  ✅ [P1.9-ST7] [static · S3 S5 S15] shift-actions.ts "use server" · export async ล้วน · ไม่ throw · 8 action เรียกบริการของมัน + catch · RegisterCtx มี deviceId? · RegisterStatus.shift ไม่ใช่ null ตายตัว · createSale input มี shiftId?
+  ✅ [P1.9-ST8] [static · S14 · ตะเข็บ HR] ไม่มี model PosStaffPin · PosShift ไม่มีคอลัมน์ pin · shift.ts ไม่อ่าน pinCode/hrEmployee (PIN เป็นของ HR verifyPin · P1.15/P3.5)
+
+── S.R2 ข้อสถิตของการแก้ R2 (ไม่แตะ DB · ORACLE-ADD) ──
+  ✅ [P1.9-S.R2.1] [static · R2 F1] shift.ts: ทุก query PosSale ที่ผูก shiftId ของกะ (ไม่ใช่ shiftId: null) มี createdAt: { gte … } ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ
+  ✅ [P1.9-S.R2.2] [static · R2 F2] ShiftsClient doOpen: ถูกปฏิเสธ (ไม่ใช่ SHIFT_ALREADY_OPEN) = fail(r) แล้ว return false (ข้อความผิดพลาดค้างบนจอ ไม่ load ซ้ำ)
+  ✅ [P1.9-S.R2.3] [static · R2 F5] pos/api/ops/sales.ts voidErrorToApi: PosSaleError SHIFT_CLOSED → ApiError 409 state_conflict (ไม่ใช่ 500)
+  ✅ [P1.9-S.R2.4] [static · R2 F6] ShiftsClient doMove: idempotencyKey ไม่สร้างใหม่ทุกครั้ง (ไม่ใช่ newKey() ในคำขอ) · คีย์ state หมุนเฉพาะหลังสำเร็จ (แบบ closeKey)
+  ✅ [P1.9-S.R2.5] [static · R2 F7] ข้อความ pos.shift.method.{CASH CARD PROMPTPAY TRANSFER} th+en (en ไม่มีอักษรไทย) · แถวแยกวิธีชำระใน X/Z ใช้ป้าย method.* ไม่ใช่รหัสดิบ {m.type} อย่างเดียว
+
+── sandbox qc-p1.9-krdyui (4 สาขา + 3 ระบบ POS ชั่วคราวในร้าน QC กาแฟ) ──
+  ✅ [P1.9-O1] เปิดกะ: เจ้าของเปิดเครื่อง D1 เงินตั้งต้น ฿2,000 + floatDetail → ok · แถว OPEN ร้าน/สาขา/ระบบ/deviceId ถูก · shiftNo ≥ 1 · openedByUserId · floatSatang 200,000 · floatDetail ตรงตัว · currentShift(D1) = กะนี้
+  ✅ [P1.9-O2] เปิดซ้ำเครื่องเดิม → SHIFT_ALREADY_OPEN พร้อม shiftId ของกะที่เปิดอยู่ · ไม่มีแถวใหม่ · เครื่อง D2 สาขาเดียวกัน → ok กะที่ 2 (หลายกะพร้อมกันต่อสาขา) shiftNo = ของ D1 + 1
+  ✅ [P1.9-O3] เปิดกะเครื่องเดียวกัน 10 connection พร้อมกัน × 3 รอบ → ok 1 · SHIFT_ALREADY_OPEN 9 · ไม่มีรหัสอื่น · แถว OPEN ของเครื่องนั้น 1 แถว
+  ✅ [P1.9-O4] ตรวจค่าเปิดกะ: float −1 / 1.5 / "100" / 100,000,001 · deviceId สั้น/มีอักขระแปลก · floatDetail รวมไม่เท่า float / ธนบัตรไม่รู้จัก → VALIDATION · ไม่มีแถว
+  ✅ [P1.9-X1] ผูกบิลกับกะของเครื่อง: บิลหน้าขายที่ D1 → shiftId = กะ D1 · ที่ D2 → กะ D2 · บิล HOTEL (createSale เดิม) สาขาเดียวกัน → shiftId null · X ของกะ D1 ไม่นับบิลของ D2 และกลับกัน
+  ✅ [P1.9-X2] เงินที่ควรมี (S7) = float + เงินรับ − ทอน + นำเข้า − นำออก − คืนเงินสด = float + Σ CASH + เข้า − ออก − คืน = 226,500 (2,000 + 45 + 20 + 500 − 300 บาท) · ตรงกับที่ข้อสอบคำนวณเองจาก DB · ไม่นับ PromptPay/บัตร · บิล void · บิลนอกกะ
+  ✅ [P1.9-X3] X แยกวิธีชำระ: billCount 3 · salesTotal 13,500 · CASH 2 ใบ 6,500 · PROMPTPAY 1 ใบ 4,000 · CARD (หรือ TRANSFER ถ้ายังไม่มี CARD) 1 ใบ 3,000 · void 1 ใบ 9,000 · cashIn 50,000 · cashOut 30,000 · เรียก X 2 ครั้งได้ตัวเลขเท่าเดิมและไม่เขียนอะไรเลย (กะยัง OPEN · zNumber null)
+  ✅ [P1.9-X4] blind close (settings.pos.shift.blindClose): แคชเชียร์ (operate ไม่มี manage) เห็น expectedCashSatang = null แต่ตัวเลขอื่นครบ · เจ้าของเห็น 226,500 · ปิด blind แล้วแคชเชียร์เห็นตัวเลข
+  ✅ [P1.9-X5] รู้จักเงินรับ/ทอน/ทิป (P1.6): X.cashTendered 12,000 · change 5,500 · cashSales 6,500 · tendered − change = cashSales · tipSatang = Σ tip ของบิลในกะ (0)
+  ✅ [P1.9-M1] นำเงินเข้า ฿500 / ออก ฿300 → แถว PosCashMovement (shiftId · kind · amount · reason · byUserId) · คีย์ซ้ำ payload เดิม → ok duplicated แถวเดิม ไม่มีแถวเพิ่ม · คีย์ซ้ำ payload ต่าง → IDEMPOTENCY_CONFLICT
+  ✅ [P1.9-M2] ตรวจเงินเข้า/ออก: 0 / −1 / 1.5 / "100" / เหตุผลว่าง / 201 ตัว / kind แปลก → VALIDATION · นำออกเกินเงินที่ควรมี → DRAWER_INSUFFICIENT · กะที่ไม่มี → NOT_FOUND · ไม่มีแถวเกิด
+  ✅ [P1.9-C1] ปิดกะ D2 (ควรมี 106,000 นับได้ 104,500 + เหตุผล) → CLOSED · overShort −1,500 · zNumber 1 (Z แรกของสาขา) · Z = expected/counted/overShort/closedBy/note/billCount 1/cashSales 6,000 · คอลัมน์ของแถวตรงกับ Z · event pos.shift.closed พก overShort/zNumber
+  ✅ [P1.9-C2] ผลต่างเกินเกณฑ์ไม่มีเหตุผล: ปริยาย ฿100 (ขาด 10,001 สตางค์) → REASON_REQUIRED กะยัง OPEN · ตั้ง overShortReasonSatang 500 → ขาด 501 ไม่มีเหตุผล → REASON_REQUIRED
+  ✅ [P1.9-C3] ตรวจค่าปิดกะ: countDetail รวมไม่เท่ายอดนับ / ธนบัตร 300 บาท / จำนวน −1 · counted −1 / 1.5 → VALIDATION · กะยัง OPEN · ไม่มี Z
+  ✅ [P1.9-C4] ปิดกะ D1 นับตรง 226,500 พร้อม countDetail ถูก + countedOther (PROMPTPAY 4,000 · บัตร 2,900) → overShort 0 ไม่ต้องมีเหตุผล · Z.byMethod: PROMPTPAY ผลต่าง 0 · บัตร −100 · countDetail เก็บตรงตัว · ผลต่างของบัตรไม่เข้า overShort
+  ✅ [P1.9-C5] Z แช่แข็ง: หลังปิด ขายที่ D1 → SHIFT_REQUIRED · createSale(shiftId กะที่ปิด) → SHIFT_CLOSED · เงินเข้า → SHIFT_CLOSED · voidSale บิลในกะ → SHIFT_CLOSED บิลยัง PAID · แก้ยอดจ่ายใน DB ตรง ๆ แล้ว zReport = JSON เดิมทุกไบต์ · ปิดซ้ำคีย์ใหม่ → SHIFT_CLOSED แถวไม่เปลี่ยน
+  ✅ [P1.9-C6] ปิดกะเดียวกัน 10 connection (คีย์ต่างกัน) × 3 รอบ → ok 1 · SHIFT_CLOSED 9 · zNumber ต่อเนื่อง 1,2,3 ของสาขานั้น · event closed 1 ต่อกะ · ลองซ้ำด้วยคีย์ของผู้ชนะ → ok duplicated zNumber เดิม ไม่มี event เพิ่ม
+  ✅ [P1.9-C7] ขายแข่งกับปิดกะ: 8 บิลหน้าขาย + ปิดกะ 1 พร้อมกัน → ทุกบิล PAID ที่ผูกกะนี้อยู่ใน Z (billCount/cashSales ตรง DB) · บิลที่ถูกปฏิเสธ = SHIFT_REQUIRED/SHIFT_CLOSED ไม่มีบิล · ไม่มีบิลผูกกะนี้ที่เกิดหลัง closedAt
+  ✅ [P1.9-C8] เลข Z ต่อสาขา: Z ออกตามลำดับปิด (D2 ปิดก่อนได้ 1 แม้เปิดทีหลัง) · ไม่ซ้ำ ไม่ข้ามเลขในแต่ละสาขา · สาขาอื่นเริ่ม 1 ของตัวเอง · PosShiftCounter.zSeq = Z สูงสุด · shiftNo ไม่ซ้ำต่อสาขา
+  ✅ [P1.9-F1] ขี้เกียจตอนเปิด: กะเปิดค้าง 25 ชม. (มีบิลเงินสด 4,500) → openShift เครื่องเดิม ok กะใหม่ + forceClosedShiftId · กะเก่า FORCE_CLOSED · expected 5,500 · counted/overShort/closedBy = null · มี zNumber · Z.forced true · event closed forced:true
+  ✅ [P1.9-F2] ขี้เกียจตอนขาย: กะค้าง 25 ชม. → ขายที่เครื่องนั้น → SHIFT_REQUIRED ไม่มีบิล · กะนั้นกลายเป็น FORCE_CLOSED
+  ✅ [P1.9-F3] กวาด forceCloseStaleShifts({now, tenantId}): ปิด 25 ชม. · ไม่แตะ 23 ชม. · รอบสองไม่ปิดอะไรเพิ่ม · ตั้ง forceCloseAfterHours 48 → 30 ชม. ไม่ถูกปิด
+  ✅ [P1.9-F4] กะที่ถูกบังคับปิดจบแล้ว: closeShift → SHIFT_CLOSED · voidSale บิลของกะนั้น → SHIFT_CLOSED บิลยัง PAID · zReport forced true counted null
+  ✅ [P1.9-R1] POS ใหม่ (registerV2) ไม่ตั้งค่า: ขายหน้าขายไม่ส่ง deviceId / เครื่องไม่มีกะ → SHIFT_REQUIRED ไม่มีบิล ตัวนับใบเสร็จไม่ขยับ · deviceId ผิดรูป → VALIDATION · เปิดกะแล้วขายได้ ผูกกะ
+  ✅ [P1.9-R2] ลองซ้ำหลังปิดกะ: บิลที่ commit ในกะแล้วกะถูกปิด → ส่งคีย์+payload เดิม → ok duplicated saleId เดิม (ไม่ใช่ SHIFT_REQUIRED)
+  ✅ [P1.9-R3] ตั้ง required.register = false: ขายไม่มี deviceId → PAID shiftId null · ส่ง deviceId ที่มีกะเปิด → ผูกกะนั้น
+  ✅ [P1.9-R4] ผู้เรียกเดิมไม่กระทบ (otherSources ปิด): createSale HOTEL ขณะมีกะเปิดและหลังปิด → PAID shiftId null · voidSale บิลเดิมหลังปิดกะ → VOIDED · POS ที่ไม่ใช่ registerV2 ขายหน้าขายไม่ส่ง deviceId → PAID shiftId null
+  ✅ [P1.9-R5] ตั้ง required.otherSources = true: สาขาไม่มีกะเปิด → createSale เดิม SHIFT_REQUIRED ไม่มีบิล ตัวนับไม่ขยับ · มีกะเปิด 1 กะ → ผูกกะนั้นและอยู่ใน X · ปิดค่ากลับ → shiftId null แม้มีกะเปิด
+  ✅ [P1.9-R6] เงินสดนอกกะ offShiftCash: บิลเงินสดที่ shiftId null ของสาขาวันนี้ (เฉพาะส่วน CASH ของบิลแบ่งจ่าย) · ไม่รวมบิลที่ผูกกะ · ไม่รวม VOIDED · total = Σ · แคชเชียร์ operate อย่างเดียว → PERMISSION_DENIED
+  ✅ [P1.9-I1] ข้ามสาขา: ctx สาขา 2 กับกะของสาขา 1 → xReport/zReport/closeShift/recordCashMovement = NOT_FOUND · createSale สาขา 2 + shiftId กะเปิดของสาขา 1 → SHIFT_REQUIRED · deviceId เดียวกันเปิดที่สาขา 2 ได้ (คนละลิ้นชัก)
+  ✅ [P1.9-I2] ข้ามร้าน: เจ้าของร้าน QC อาหาร (ctx ร้านตัวเอง) กับ shiftId ร้านกาแฟ → NOT_FOUND ทั้ง x/z/close/cash · currentShift(deviceId เดียวกัน) = null · listShifts ไม่เห็น
+  ✅ [P1.9-P1] STAFF ไม่มี pos.shift.operate → PERMISSION_DENIED ทั้ง open/close/x/cash ไม่มีแถว · แคชเชียร์จริง (สีลม) ที่สาขา sandbox → NOT_FOUND
+  ✅ [P1.9-P2] operate ปิดกะของคนอื่น → PERMISSION_DENIED กะยัง OPEN · operate เปิด-ปิดกะของตัวเองได้ · STAFF ที่มี manage ปิดกะของคนอื่นได้
+  ✅ [P1.9-E1] event: pos.shift.opened 1 แถวต่อกะ · pos.shift.closed 1 แถวต่อกะที่ปิด (รวมบังคับปิด/แข่ง) · payload มี shiftId zNumber overShortSatang forced · consumers มีทั้งสอง · เล่นซ้ำ 2 ครั้งไม่ throw ไม่มีแถวเพิ่ม
+  ✅ [P1.9-D1] คำปฏิเสธของ shift.ts / หน้าขาย (SHIFT_REQUIRED · SHIFT_ALREADY_OPEN · SHIFT_CLOSED · REASON_REQUIRED · DRAWER_INSUFFICIENT · VALIDATION · NOT_FOUND · PERMISSION_DENIED) = คืน {ok:false, code, message} ไม่ throw
+  ✅ [P1.9-S.R2.6] R2 F3: STAFF B (operate ไม่มี manage) xReport กะที่ปิดแล้วของ A → PERMISSION_DENIED (zReport เช่นกัน) · กะเปิดของ A จากเครื่องอื่น → PERMISSION_DENIED · กะเปิดของ A ที่เครื่องที่ยืนอยู่ (ctx.deviceId = เครื่องของกะ) → ok (X4) · manage อ่านกะปิดของ A ได้ · B อ่านกะปิดของตัวเองได้
+  ✅ [P1.9-S.R2.7] R2 F4: otherSources เปิด · บิล HOTEL ผูกกะ (กะเดียวของสาขา) · ปิดกะ → voidSale บิล HOTEL สำเร็จ (VOIDED) · บิล POS ในกะเดียวกัน → ยัง SHIFT_CLOSED บิลยัง PAID (S11 ของหน้าขายคงเดิม)
+  ✅ [P1.9-S.R2.8] R2 F5 (ระดับหน่วย): voidErrorToApi(new PosSaleError("SHIFT_CLOSED")) = ApiError 409 state_conflict + ข้อความไทย/อังกฤษ · PosSaleError อื่น / Error อื่น = ส่งผ่านตัวเดิม · ข้อความ 'บิลนี้ void ไม่ได้' ยัง 409
+  ลบแล้ว: {"outbox":64,"audit":3,"move":2,"payment":21,"line":19,"sale":19,"shift":25,"product":3,"productBySystem":0} · กะ 25 · บิล 19 · สาขา 4 · ระบบ 3
+  ✅ [P1.9-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ · รวม PosShift/PosCashMovement/PosShiftCounter) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.9-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · PosShift) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.9 ===== ผ่าน 53/53
+JSON_SUMMARY {"suite":"qc-pos-p1.9","total":53,"passed":53,"failed":[],"skipped":false,"forced":false,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}

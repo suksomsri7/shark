@@ -1,0 +1,16 @@
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-frosty-lab-aoylqlv8.c-2.ap-southeast-1.aws.neon.tech"
+
+154 migrations found in prisma/migrations
+
+Applying migration `20261125000000_pos_p19b_shift_recount`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20261125000000_pos_p19b_shift_recount/
+    └─ migration.sql
+
+All migrations have been successfully applied.
