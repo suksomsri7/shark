@@ -226,7 +226,8 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
         }
         const k = q.lineIndex;
         if (typeof k !== "number" || k < 0 || k >= probe.length) break;
-        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : "PRODUCT_UNAVAILABLE" });
+        // P1.2 R2 F5: ปฏิเสธเพราะสิทธิ์ล้วน (น้ำหนักกรอกเอง) = "ต้องมีสิทธิ์" ไม่ใช่ "ขายไม่ได้แล้ว"
+        notices.push({ lineIndex: probe[k]!, code: q.code === "PRODUCT_NOT_FOUND" ? "PRODUCT_NOT_FOUND" : q.code === "PERMISSION_DENIED" ? "PERMISSION_DENIED" : "PRODUCT_UNAVAILABLE" });
         probe = probe.filter((_, x) => x !== k);
       }
     }

@@ -1041,7 +1041,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
           <li key={`${n.key}-${n.code}`}>
             {n.code === "PRICE_CHANGED"
               ? t("held.noticePriceChanged", { name: noticeName(n.key), from: moneyText(n.from ?? 0), to: moneyText(n.to ?? 0) })
-              : t("held.noticeUnavailable", { name: noticeName(n.key) })}
+              : n.code === "PERMISSION_DENIED"
+                ? t("held.noticeNeedsPermission", { name: noticeName(n.key) })
+                : t("held.noticeUnavailable", { name: noticeName(n.key) })}
           </li>
         ))}
       </ul>

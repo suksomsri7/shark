@@ -263,6 +263,7 @@
       "expiryNote": "Held bills older than {days} days are discarded automatically · prices are re-checked on recall",
       "noticePriceChanged": "{name}: price changed {from} → {to}",
       "noticeUnavailable": "{name}: no longer sold — remove it before payment",
+      "noticeNeedsPermission": "{name}: needs a manager (typed weight) — ask a manager or remove it",
       "confirmTitle": "Recall bill \"{label}\" {total}",
       "confirmDetail": "The current cart has {count} items — hold it first?",
       "confirmHoldFirst": "Hold current cart, then recall"

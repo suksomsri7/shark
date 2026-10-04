@@ -263,6 +263,7 @@
       "expiryNote": "บิลที่พักเกิน {days} วันจะถูกทิ้งอัตโนมัติ · ราคาตรวจใหม่ตอนเรียกคืน",
       "noticePriceChanged": "{name}: ราคาเปลี่ยน {from} → {to}",
       "noticeUnavailable": "{name}: ขายไม่ได้แล้ว — นำออกก่อนชำระ",
+      "noticeNeedsPermission": "{name}: ต้องให้ผู้จัดการทำรายการ (น้ำหนักที่กรอกเอง) — เรียกผู้จัดการหรือนำออก",
       "confirmTitle": "เรียกคืนบิล \"{label}\" {total}",
       "confirmDetail": "ตะกร้าปัจจุบันมี {count} รายการ — พักตะกร้านี้ก่อนไหม?",
       "confirmHoldFirst": "พักตะกร้านี้ก่อน แล้วเรียกคืน"

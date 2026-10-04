@@ -277,7 +277,8 @@ export type HeldCartSummary = {
   preview: string;
   createdAt: string;
 };
-export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE";
+/** P1.2 R2 F5: PERMISSION_DENIED = บรรทัดยังขายได้ แต่ผู้เรียกคืนไม่มีสิทธิ์ที่บรรทัดต้องใช้ (เช่น น้ำหนักที่กรอกเอง = pos.sale.priceOverride) */
+export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUCT_UNAVAILABLE" | "PERMISSION_DENIED";
 /** คำเตือนต่อบรรทัดตอนเรียกคืน (ลำดับบรรทัดเดียวกับ cart ที่คืน) — PRICE_CHANGED มีราคาตอนพัก/ราคาปัจจุบัน */
 export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
 export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };
