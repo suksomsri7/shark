@@ -172,6 +172,13 @@ const CHECKS: readonly Def[] = [
   D("S2.50", "X2", "แยกร้าน: ประตูเดิมรับ id ของอีกร้าน (menu.updateItem/archiveItem/setItemStock · shop.updateProduct · inventory.updateItem/archiveItem · account updateProduct · shop.createProduct ผูก InvItem ร้านอื่น) → ไม่มี PosProduct ใดถูกสร้าง/แก้ในร้านใด · แถวเดิมไม่เปลี่ยน · คู่บวก ร้านตัวเองซิงก์"),
   D("S2.51", "X2", "แยกสาขา: shop.updateProduct ด้วยสาขาอื่น · menu.updateItem ด้วยสาขาที่ไม่ใช่ของเมนู → ไม่เปลี่ยนทั้งสองฝั่ง · คู่บวก สาขาถูกต้องซิงก์"),
   D("S2.52", "X3", "G4b ย้อนทางใต้กติกาแคตตาล็อก: แคชเชียร์ไม่มี pos.product.setPrice → PERMISSION_DENIED ทั้ง ShopProduct และ PosProduct ไม่เปลี่ยน · คู่บวก เจ้าของตั้งได้และ ShopProduct ตาม"),
+  // ORACLE-ADD (controller R2 ruling) ▸ S2.R2 — ข้อของการแก้ R2 (brief pos-brief-P1.1b-R2.md F1–F6) · ต้องแดงบน 8bc118f6 และเขียวหลังแก้
+  D("S2.R2.1", "-", "R2 F2 ย้อนทางลงขั้นที่ชนะ: แถวเว็บร้านเอง (C9b) ผูกบริการ InvItem.priceSatang>0 → setPrice เขียน InvItem.priceSatang (ไม่ใช่ ShopProduct.priceSatang) · แก้เว็บร้านครั้งถัดไปราคาคง · --verify แถวนี้ไม่ drift"),
+  D("S2.R2.2", "-", "R2 F3 พี่น้อง: setPrice บนแถวเว็บร้านของบริการ → แถว InvItem ของบริการเดียวกันใน POS อีกระบบได้ราคาใหม่ในธุรกรรมเดียว"),
+  D("S2.R2.3", "X4", "R2 F4 setPrice(0) ที่ช่องเดิมแสดงไม่ได้ (สินค้า + AP ราคา POS ชนะ) = VALIDATION ข้อความไทย · AP และ PosProduct ไม่เปลี่ยน · คู่บวก ราคา > 0 ไป AccountProduct.salePrice"),
+  D("S2.R2.4", "-", "R2 F5 แถวเว็บร้านที่ ShopProduct สองแถวใช้ร่วม: แก้ ShopProduct แถวที่สองไม่เปลี่ยนราคา/ชื่อของแถวแคตตาล็อก (แถวแรกเป็นต้นทาง) · ShopProduct แถวที่สองยังถูกเขียน"),
+  D("S2.R2.5", "X6", "R2 F6 menu.createItem 2 ครั้งพร้อมกัน หมวดใหม่ที่ยังไม่มี PosCategory: สำเร็จทั้งคู่ · PosCategory ชื่อนั้น 1 แถว · ทั้งสองแถว MENU ชี้หมวดเดียวกัน"),
+  D("S2.R2.6", "-", "R2 F1 (static) ทุก redirect ?err= ใน inventory/actions · shop/actions · actions/booking · actions/restaurant ไปหน้าที่อ่าน err จาก searchParams แล้วแสดง (InvHub รับ err)"),
   // ── S3 · ROUND 2 (brief P1.1a-R2 · มติหลังผู้ตรวจ+นักล่า) — 1 ข้อขึ้นไปต่อ C/M ──
   D("S3.1", "X3", "C1 ผู้เรียกระดับระบบ = CATALOG_SYSTEM_ACTOR (unique symbol) ทำงาน · actorUserId null/undefined/\"\" = PERMISSION_DENIED (ensureForInvItem · createProduct · setPrice · createCategory)"),
   D("S3.2", "-", "C2 backfill/ensure ทิ้ง trackStock = null (AUTO) · read model มี trackStock (ค่าจริง) + trackStockMode auto|on|off"),
@@ -3140,6 +3147,96 @@ try {
         });
         chk("S2.28", bf.code === 0 && eA.length === 0 && eB.length === 0 && diff.length === 0, "แฝด 6 ชนิดเท่ากันทุกช่อง (PosProduct + ตัวเลือก + สูตร)",
           `backfill exit ${bf.code} · แก้ A ล้ม ${eA.join(",") || "-"} · แก้ B ล้ม ${eB.join(",") || "-"} · ต่าง ${diff.length}: ${detail.join(" · ").slice(0, 400) || "-"}`);
+      });
+
+      // ═══ ORACLE-ADD (controller R2 ruling) ▸ S2.R2.1–S2.R2.6 · brief pos-brief-P1.1b-R2.md ═══
+      await section("s2-r2", ["S2.R2.1", "S2.R2.2", "S2.R2.3", "S2.R2.4", "S2.R2.5", "S2.R2.6"], async () => {
+        const ctxX = { tenantId: cfT, systemId: fx.tInvX.id };
+        // F2 + F3: บริการในคลัง X (ขายผ่าน POS สองคลัง fx.tPos) + สินค้าเว็บร้านผูกบริการนั้น (POS แรก · C9b แถวของตัวเอง)
+        const cs = await attempt(() => inventory.createItem(ctxX, { sku: `${TAG}-r2-svc`, name: `${TAG} r2 svc`, kind: "SERVICE", priceSatang: 5000 }));
+        const svcId = cs.ok ? (cs.value?.id as string) : null;
+        const sp = svcId ? await attempt(() => shop.createProduct(ctxShop, { name: `${TAG} r2-shop-svc`, priceSatang: 1000, invItemId: svcId })) : ({ ok: false, err: "ไม่มีบริการ" } as Try);
+        const shopRowId = sp.ok ? await linkOf("ShopProduct", sp.value.id) : null;
+        const tPosRow = svcId ? (await prodByInv(svcId)).find((p) => p.systemId === fx.tPos.id) ?? null : null;
+        const sp0 = sp.ok ? await rowOf("ShopProduct", sp.value.id) : null;
+        const v1 = shopRowId ? await attempt(() => C.setPrice(ctxOwner, shopRowId, 5500)) : ({ ok: false, err: "ไม่มีแถว" } as Try);
+        const inv1 = svcId ? await rowOf("InvItem", svcId) : null;
+        const sp1 = sp.ok ? await rowOf("ShopProduct", sp.value.id) : null;
+        const e1 = sp.ok ? await attempt(() => shop.updateProduct(ctxShop, sp.value.id, { name: `${TAG} r2-shop-svc-ed` })) : ({ ok: false } as Try);
+        const p1 = await prodById(shopRowId);
+        const ver = typeof C.verifyCatalog === "function" ? await attempt(() => C.verifyCatalog({ tenantIds: [cfT] })) : ({ ok: false, err: "ไม่มี verifyCatalog" } as Try);
+        const verRows = ver.ok ? ((ver.value?.samples ?? []) as Any[]).filter((d) => d.productId === shopRowId || d.productId === tPosRow?.id) : null;
+        const r21 = {
+          setup: cs.ok && sp.ok && !!shopRowId && sp0?.priceSatang === 1000, setPrice: v1.ok, invItemPrice: inv1?.priceSatang === 5500, shopPriceKept: sp1?.priceSatang === 1000,
+          nextShopEditKeeps: e1.ok && p1?.basePriceSatang === 5500, verifyNoDrift: !!verRows && verRows.length === 0,
+        };
+        chk("S2.R2.1", Object.values(r21).every(Boolean), "InvItem.priceSatang 5500 · ShopProduct คง 1000 · แก้เว็บร้านแล้วราคาคง 5500 · verify ไม่มี drift ของสองแถวนี้",
+          `${flags2(r21)} · ${v1.ok ? "" : `setPrice ${v1.err} · `}inv ${inv1?.priceSatang} · shop ${sp1?.priceSatang} · catalogue ${p1?.basePriceSatang} · verify ${verRows ? JSON.stringify(verRows.slice(0, 2)) : ver.err}`);
+        const sib = tPosRow ? await prodById(tPosRow.id) : null;
+        chk("S2.R2.2", !!tPosRow && tPosRow.basePriceSatang === 5000 && v1.ok && sib?.basePriceSatang === 5500, "แถว InvItem ใน POS สองคลัง 5000 → 5500 (พี่น้อง)",
+          `${tPosRow ? `ก่อน ${tPosRow.basePriceSatang} · หลัง ${sib?.basePriceSatang}` : "ไม่มีแถวพี่น้อง (createItem ไม่สร้างแถวใน POS สองคลัง)"}`);
+        // F4: สินค้า + AP (salePrice ว่าง · posPrice 3500 · posEnabled) → ขั้น pos ชนะ ⇒ salePrice 0 ไม่ทำให้ราคาเป็น 0
+        const iP = await mkInv(cfT, sysC.INVENTORY, "r2-posrung", { costSatang: 100 });
+        const aP = await mkAp(cfT, sysC.ACCOUNT, iP, null, 700, 3500, { posEnabled: true });
+        const en = await attempt(() => C.ensureForInvItem(ctxSys(cfT, sysC.POS), iP.id));
+        const rowP = en.ok ? (en.value?.id as string) : null;
+        const pP0 = await prodById(rowP); const aP0 = await rowOf("AccountProduct", aP.id);
+        const z = rowP ? await attempt(() => C.setPrice(ctxOwner, rowP, 0)) : ({ ok: false, err: "ไม่มีแถว" } as Try);
+        const pP1 = await prodById(rowP); const aP1 = await rowOf("AccountProduct", aP.id);
+        const okP = rowP ? await attempt(() => C.setPrice(ctxOwner, rowP, 3600)) : ({ ok: false } as Try);
+        const aP2 = await rowOf("AccountProduct", aP.id); const pP2 = await prodById(rowP);
+        const zMsg = String(z.err ?? "");
+        const r23 = {
+          setup: pP0?.basePriceSatang === 3500, refused: refused(z, "VALIDATION") && /[฀-๿]/.test(zMsg), apKept: hashOf(aP0) === hashOf(aP1), posKept: hashOf(pP0) === hashOf(pP1),
+          positive: okP.ok && aP2?.salePrice === 3600 && pP2?.basePriceSatang === 3600,
+        };
+        chk("S2.R2.3", Object.values(r23).every(Boolean), "0 = VALIDATION ไทย · AP + PosProduct ไม่เปลี่ยน · คู่บวก 3600 → AP.salePrice", `${flags2(r23)} · ${codeOf(z)} ${zMsg.slice(0, 60)} · AP ${aP1?.salePrice}/${aP2?.salePrice} · pos ${pP1?.basePriceSatang}/${pP2?.basePriceSatang}`);
+        // F5: ShopProduct สองแถวชี้ InvItem เดียวนอก POS แรก ⇒ แถวแคตตาล็อกเดียว (C9b) · แถวแรกเป็นต้นทาง
+        const iS = await mkInv(cfT, fx.tInvX.id, "r2-shared");
+        const s1 = await attempt(() => shop.createProduct(ctxShop, { name: `${TAG} r2-sh1`, priceSatang: 1000, invItemId: iS.id }));
+        const s2r = await attempt(() => shop.createProduct(ctxShop, { name: `${TAG} r2-sh2`, priceSatang: 2000, invItemId: iS.id }));
+        const l1 = s1.ok ? await linkOf("ShopProduct", s1.value.id) : null; const l2 = s2r.ok ? await linkOf("ShopProduct", s2r.value.id) : null;
+        const ps0 = await prodById(l1);
+        const u2 = s2r.ok ? await attempt(() => shop.updateProduct(ctxShop, s2r.value.id, { priceSatang: 2500, name: `${TAG} r2-sh2-ed` })) : ({ ok: false } as Try);
+        const ps1 = await prodById(l1); const own2 = s2r.ok ? await rowOf("ShopProduct", s2r.value.id) : null;
+        const r24 = { setup: s1.ok && s2r.ok && !!l1 && l1 === l2 && ps0?.basePriceSatang === 1000, edit: u2.ok, priceKept: ps1?.basePriceSatang === 1000, nameKept: ps1?.name === `${TAG} r2-sh1`, ownWritten: own2?.priceSatang === 2500 };
+        chk("S2.R2.4", Object.values(r24).every(Boolean), "แถวร่วมคง 1000 + ชื่อแถวแรก · ShopProduct แถวที่สอง 2500", `${flags2(r24)} · ${ps1?.basePriceSatang} · ${ps1?.name}`);
+        // F6: หมวดใหม่ (ยังไม่มี PosCategory) + createItem 2 ครั้งพร้อมกัน
+        const nc = await P.menuCategory.create({ data: { tenantId: rsT, unitId: RMAIN, name: `${TAG} r2-cat` } });
+        const mk = (k: number) => attempt(() => menu.createItem(rsT, RMAIN, { categoryId: nc.id, stationId: rsStation.id, name: `${TAG} r2-race-${k}`, basePrice: 4000 + k }));
+        const [c1, c2] = await Promise.all([mk(1), mk(2)]);
+        const pcs = await q<Any>(`select id from "PosCategory" where "tenantId" = $1 and name = $2`, rsT, `${TAG} r2-cat`);
+        const cats = await Promise.all([c1, c2].map(async (c) => (c.ok && c.value?.id ? (await prodById(await linkOf("MenuItem", c.value.id)))?.categoryId : null)));
+        const r25 = { both: c1.ok && c1.value?.ok === true && c2.ok && c2.value?.ok === true, oneCategory: pcs.length === 1, sameCat: !!cats[0] && cats[0] === cats[1] && cats[0] === pcs[0]?.id };
+        chk("S2.R2.5", Object.values(r25).every(Boolean), "สำเร็จทั้งคู่ · PosCategory 1 · สองแถวชี้หมวดเดียวกัน", `${flags2(r25)} · ${c1.ok ? "" : c1.err} ${c2.ok ? "" : c2.err} · PosCategory ${pcs.length}`);
+        // F1 (static): redirect ?err= → หน้าที่อ่าน err
+        const ACT = ["src/lib/modules/inventory/actions.ts", "src/lib/modules/shop/actions.ts", "src/lib/actions/booking.ts", "src/lib/actions/restaurant.ts"];
+        const pagesOf = (tpl: string): string[] => {
+          if (/^\/app\/sys\/\$\{[^}]+\}\?err=/.test(tpl)) return ["src/app/app/sys/[id]/page.tsx"];
+          const m = /^\/app\/u\/\$\{[^}]+\}(\/[^?$]*)\?err=/.exec(tpl);
+          if (m) return [`src/app/app/u/[unitSlug]${m[1]}/page.tsx`];
+          const r = /^\$\{base\(unitSlug\)\}(\/[^?$]*|\$\{back\}|)\?err=/.exec(tpl);
+          if (r) return r[1] === "${back}" ? ["src/app/app/u/[unitSlug]/restaurant/menu/page.tsx", "src/app/app/u/[unitSlug]/restaurant/menu/stock/page.tsx"] : [`src/app/app/u/[unitSlug]/restaurant${r[1]}/page.tsx`];
+          return [`?? ${tpl}`];
+        };
+        const readsErr = (f: string) => {
+          const t = read(f);
+          return /\berr\b[^;]*=\s*await searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*(await\s+)?searchParams|\{[^}]*\berr\b[^}]*\}\s*=\s*sp\b/.test(t) && /\{err\s*&&/.test(t);
+        };
+        const bad6: string[] = []; let n6 = 0;
+        for (const f of ACT) {
+          for (const m of read(f).matchAll(/redirect\(`([^`]*\?err=[^`]*)`\)/g)) {
+            n6++;
+            for (const pg of pagesOf(m[1]!)) {
+              if (pg === "src/app/app/sys/[id]/page.tsx") {
+                const ui = read("src/lib/modules/inventory/ui.tsx");
+                const hubOk = /<InvHub[^>]*err=\{err\}/.test(read(pg)) && /function InvHub\(\{[^)]*\berr\b/.test(ui) && /\{err\s*&&/.test(ui.slice(ui.indexOf("function InvHub(")));
+                if (!hubOk) bad6.push(`${f.split("/").pop()} → ${pg} (InvHub ไม่รับ/ไม่แสดง err)`);
+              } else if (!existsSync(pg) || !readsErr(pg)) bad6.push(`${f.split("/").pop()} → ${pg}`);
+            }
+          }
+        }
+        chk("S2.R2.6", n6 > 0 && bad6.length === 0, "ทุกปลายทาง ?err= อ่าน err และแสดง", `redirect ${n6} · ไม่แสดง ${bad6.length}: ${[...new Set(bad6)].slice(0, 5).join(" · ") || "-"}`);
       });
     }
   }

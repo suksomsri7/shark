@@ -169,3 +169,16 @@ Text = the catalogue's Thai message (already says "ยังไม่ได้�
 - Human callers pass the session user: `actions/restaurant.ts` (6 menu calls via `ctx().userId`), `shop/actions.ts` (`ctxOf` → `auth.user.id`), `inventory/actions.ts` (5 sites), `actions/booking.ts` import, `account/product-actions.ts` (3 sites), `actions/pos.ts` setItemSalePriceAction.
 - Still SYSTEM (no human known at that layer): AI proposals (`ai/proposals.ts` not editable in Part A), REST `account/api/ops/products-write.ts`, undo-stack, inventory-link syncs, CSV import, order stock paths (no audit).
 - Typecheck 0 · fitness 41/41.
+
+## S2.R2 tests (ORACLE-ADD, controller R2 ruling) — `scripts/qc-pos-p1.1.mts` section `s2-r2`
+Registry 177 checks (P1.1b 62). Existing assertions untouched; new block marked `// ORACLE-ADD (controller R2 ruling)`.
+| id | fix | proves |
+|---|---|---|
+| S2.R2.1 | F2 | shop own row (C9b) on a SERVICE (`InvItem.priceSatang` 5000, warehouse X / fx.tPos) → `setPrice(5500)` writes InvItem 5500, ShopProduct stays 1000; next shop edit keeps 5500; `verifyCatalog` has no sample for either row |
+| S2.R2.2 | F3 | the sibling InvItem row of that service in fx.tPos goes 5000 → 5500 in the same tx |
+| S2.R2.3 | F4 | PRODUCT + AP (salePrice null, posPrice 3500, posEnabled) → `setPrice(0)` = VALIDATION Thai, AP + PosProduct byte-identical; control 3600 → AP.salePrice 3600 |
+| S2.R2.4 | F5 | two ShopProducts sharing one own row (InvItem outside first POS): editing #2 (2500 + rename) leaves the row at 1000 / #1's name; ShopProduct #2 written |
+| S2.R2.5 | F6 | new MenuCategory without PosCategory + 2 parallel `menu.createItem` → both ok, 1 PosCategory, both MENU rows point at it |
+| S2.R2.6 | F1 | static: all 14 `?err=` redirects in the 4 action files map to pages that read `err` from searchParams and render `{err && …}`; `/app/sys/<id>` also requires `<InvHub err={err}>` + InvHub rendering it |
+- **Red on 8bc118f6** (scratch worktree of 8bc118f6 + this oracle file, forced, then removed): `ผ่าน 169/175`, failed exactly S2.R2.1–S2.R2.6 — R2.1 `invItemPrice✗ shopPriceKept✗ nextShopEditKeeps✗` (inv 5000 · shop 5500) · R2.2 `5000 → 5000` · R2.3 `refused✗ apKept✗ posKept✗` (AP 0) · R2.4 `priceKept✗ nameKept✗` (2500) · R2.5 `both✗` (P2002 on PosCategory) · R2.6 11 of 14 targets don't show err.
+- Green on the fix head (first forced run after the block: 174/175, only R2.6 red because the test's path mapper missed `${base(unitSlug)}?err=` → restaurant root page; mapper fixed — that page already reads err).
