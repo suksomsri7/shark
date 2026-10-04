@@ -29,7 +29,7 @@
 ## 4. Post-migration (separate, manual)
 - Indexes deliberately NOT in migrations (lock risk on existing tables): InvItem barcode index and the 5 indexes removed in P1.1a R2 (M7) → `CREATE INDEX CONCURRENTLY` by hand, one at a time, outside a transaction; verify `indisvalid`.
 - Backfill: `scripts/pos-backfill-catalog.mts` dry-run on prod copy first → review price counters with the owner (`soldAtCostToday`, `apIgnoredButTillPriced`, `invalidLegacyPrice`, `priceNotSetOther`, `catalogPriceDiffersFromTill` — compare against the price actually stored, not re-derived) → real run.
-- Window between backfill and P1.1b dual-write going live: re-sync archive state + prices (`--verify` drift mode from P1.1b A5 must report 0).
+- Window between backfill and P1.1b dual-write going live: re-sync archive state + prices; re-run `--verify` AFTER the backfill (P1.1b hunter #3: a legacy edit racing the backfill on a not-yet-linked row can leave drift) — must report 0.
 - Flag `settings.pos.registerV2` stays OFF on prod until P1.6 + P1.12 are done (Q4).
 
 ## 5. Prod read-only checks owed (owner approval each)
