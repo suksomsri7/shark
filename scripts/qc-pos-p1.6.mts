@@ -933,6 +933,10 @@ async function runDb() {
       && pc3a?.serviceChargeSatang === 334 && pc3a?.grandTotalSatang === 3669 && pc3b?.serviceChargeSatang === 1200 && pc3b?.grandTotalSatang === 13200 && pc3b?.vatSatang === q3b?.vatSatang,
     "334/3669 · 1200/13200 · priceCart = quote", FX(`q ${q3a?.serviceChargeSatang}/${q3a?.grandTotalSatang} · ${q3b?.serviceChargeSatang}/${q3b?.grandTotalSatang} (${codeOf(q3b)}) · pc ${pc3a?.serviceChargeSatang}/${pc3a?.grandTotalSatang} · ${pc3b?.serviceChargeSatang}/${pc3b?.grandTotalSatang}`));
   // K4 เปิดทิป
+  // ORACLE-EDIT (controller 4 Oct · P1.6 §9 F5): tip cannot be enabled until P1.6b books the tip to its liability ledger.
+  // While TIP_BOOKED=false: K4's valid-ledger case expects TIP_NOT_AVAILABLE (tip stays off); K5 expects tip sales refused (no bill).
+  // P1.6b flips TIP_BOOKED to true, which restores the original K4/K5 expectations unchanged.
+  const TIP_BOOKED = false;
   // บัญชีพักทิป (หนี้สิน) ในสมุด sandbox: ของสมุด V (ผูก posV) = ถูก · ของสมุด N (ผูก posN) = สมุดอื่น — ลบด้วย systemId ตอนคืนสภาพ
   let ledgerV = "", ledgerN = "", fxK4 = "";
   try {
@@ -951,7 +955,8 @@ async function runDb() {
   const t4b = await setPay({ tip: { enabled: true, ledgerAccountId: ledgerV || "-" } });
   const after4b = await readPay();
   chk("P1.6-K4", !fxK4 && !!ledgerV && refused(t4a, ["TIP_ACCOUNT_REQUIRED"]) && after4a?.tip?.enabled === false && refused(t4w, ["TIP_ACCOUNT_REQUIRED"]) && after4w?.tip?.enabled === false
-      && t4b?.ok === true && after4b?.tip?.enabled === true && after4b?.tip?.ledgerAccountId === ledgerV,
+      && (TIP_BOOKED ? (t4b?.ok === true && after4b?.tip?.enabled === true && after4b?.tip?.ledgerAccountId === ledgerV)
+                     : (refused(t4b, ["TIP_NOT_AVAILABLE"]) && after4b?.tip?.enabled === false)),
     "ไม่มีบัญชี / สมุดอื่น → TIP_ACCOUNT_REQUIRED ทิปยังปิด · บัญชีสมุดที่ผูก → เปิด",
     FX(`${fxK4 ? `ledger:${fxK4} · ` : ""}${codeOf(t4a)} → ${short(after4a?.tip)} · สมุดอื่น ${codeOf(t4w)} → ${short(after4w?.tip)} · ${codeOf(t4b)} → ${short(after4b?.tip)}`));
   // K9 POS ไม่ผูกสมุด (posS) — เปิดทิปไม่ได้แม้ส่งบัญชีที่มีอยู่จริง
@@ -967,7 +972,7 @@ async function runDb() {
   const k5b = key("tip-short");
   const s5b = await quietTx((tx) => sub(owner, { idempotencyKey: k5b, lines: custom(6500), tipSatang: 500, payMethods: [{ type: "PROMPTPAY", amountSatang: 6500 }], expectedGrandTotalSatang: 6500 }, ctxV, tx));
   const pay5 = ((sale5a?.payments ?? []) as Any[]).reduce((t, p) => t + p.amountSatang, 0);
-  chk("P1.6-K5", s5a?.ok === true && sale5a?.tipSatang === 500 && sale5a?.grandTotalSatang === 6500 && sale5a?.vatSatang === 425 && bridgeVat(6500, 700) === 425 && pay5 === 7000 && refused(s5b, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k5b)),
+  chk("P1.6-K5", !TIP_BOOKED ? (refused(s5a, ["VALIDATION"]) && !sale5a && refused(s5b, ["VALIDATION", "PAYMENT_MISMATCH"]) && !(await saleByKey(k5b))) : s5a?.ok === true && sale5a?.tipSatang === 500 && sale5a?.grandTotalSatang === 6500 && sale5a?.vatSatang === 425 && bridgeVat(6500, 700) === 425 && pay5 === 7000 && refused(s5b, ["PAYMENT_MISMATCH"]) && !(await saleByKey(k5b)),
     "tip 500 · grand 6500 · vat 425 · Σจ่าย 7000 · ขาด PAYMENT_MISMATCH", FX(`${codeOf(s5a)} tip ${sale5a?.tipSatang} g${sale5a?.grandTotalSatang} vat ${sale5a?.vatSatang} Σ${pay5} · ${codeOf(s5b)}`));
   // K6 ทิปผิดรูป (เปิดอยู่) แล้วปิดทิป
   const r6k: string[] = [];
