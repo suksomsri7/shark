@@ -1,0 +1,126 @@
+
+═══ QC CRM v2 · C2.7 — account & POS bridges (the money path) ═══
+[env] DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c27-zs69vr
+
+── S0 · structure ──
+  ✅ [C2.7-S0.1] crm/payments.ts exports the 9 contract functions · crm/index.ts `export * as payments` (the SAME bindings) · DEAL_VOIDED_TAG exported
+  ✅ [C2.7-S0.2] crm-bridges/money.ts exports the 6 money handlers and crm-bridges/index.ts re-exports exactly those bindings (R-D: C2.7 owns money.ts only)
+  ✅ [C2.7-S0.3] outbox-consumers.ts wires the 6 money events inside `// CRM C2.7 ▸ … ◂` with a dynamic import of crm-bridges, and the CRM step of pos.sale.paid is appended LAST (after accounting · stamps · member)
+(node:1243246) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [C2.7-S0.4] C2.7 adds NO new outbox type (every crm.* name the money bridge emits is already in the registries and has a consumer), NO `PosSale.dealId` column (C29) and NO migration of its own (R-C.1: crm_v2_a · b · c only, and c is C3.0's)
+  ✅ [C2.7-S0.5] implementation sites marked `// AUDIT-CLASS X1 X3 X4 X8 X9` in crm/payments.ts + crm-bridges/money.ts [static]
+  ✅ [C2.7-S0.6] fitness: `pos→crm` is in ALLOWED_EDGES (with a reason) and POS reaches CRM only through the facade `@/lib/modules/crm` — never a deep import [static]
+
+── S1 · ใบเสนอราคาจากบรรทัดของดีล ──
+  ✅ [C2.7-S1.1] issueQuotation sends the deal's 3 lines to account.createExternalQuotation: ONE QUOTATION with the same 3 lines (name + unit price byte-exact), integer-satang subTotal/VAT/grandTotal, deal.quotationDocId stored, audit crm.deal.quote
+  ✅ [C2.7-S1.2] the document totals come from the account engine and stay integer satang (Σ line amounts and grandTotal are whole numbers and consistent) — no float arithmetic anywhere on the money path
+  ✅ [C2.7-S1.3] issueQuotation is idempotent per deal: a second call and 10 parallel calls all answer the SAME docId (created false) and the book holds exactly ONE quotation for that deal
+  ✅ [C2.7-S1.4] issueInvoice converts the ISSUED quotation (sourceDocId = quotation · same grandTotal · same line count), stores invoiceDocId, and 6 parallel calls still leave exactly ONE invoice
+
+── S2 · ลูกค้าตอบใบเสนอราคา ──
+  ✅ [C2.7-S2.1] customer ACCEPTS: the deal moves to pipeline.stageOnQuoteAcceptedId, ONE stage-history row is opened, ONE AUTO activity is written, and the deal OWNER gets ONE Thai notification with ids only (no name/phone/e-mail)
+  ✅ [C2.7-S2.2] customer REJECTS ⇒ the deal moves to stageOnQuoteRejectedId (kind LOST) · a pipeline with neither setting ⇒ the deal does NOT move, the event still completes (no stuck queue) and nothing is written
+  ✅ [C2.7-S2.3] X4 the responded event delivered twice in a row and 4× in parallel ⇒ ONE move (stage history unchanged after the first), ONE activity, ONE notification
+
+── S3 · รับเงิน → paidSatang · wonValue · lifecycle ──
+  ✅ [C2.7-S3.1] a real partial payment of the deal's invoice ⇒ ONE CrmDealPayment(refType PAYMENT · refId = paymentId · status COUNTED · countedAt) · paidSatang = the amount · wonValueSatang = the invoice grand total (R-E.7) · contact lifecycleStage CUSTOMER · company cache updated
+  ✅ [C2.7-S3.2] the remaining payment makes the invoice PAID: paidSatang is the EXACT sum of the counted rows (no float, no double count) and `account.invoice.paid` adds nothing on top of `account.payment.recorded`
+  ✅ [C2.7-S3.3] a payment of a document that reaches NO deal writes nothing (negative) · a payment of a RECEIPT whose sourceDocId chain reaches the deal's invoice IS counted (positive control — the account event carries no sourceDocId, the bridge must walk the chain through docLinkInfo)
+  ✅ [C2.7-S3.4] three payments of 333.33 / 333.33 / 333.34 baht: paidSatang = 10000 satang exactly, equal to the bigint SUM computed by the database (R-E.8) — integer satang, never a float
+
+── S4 · ยกเลิกการชำระ / ยกเลิกเอกสาร ──
+  ✅ [C2.7-S4.1] voiding a COUNTED payment marks its row REVERSED (reversedAt) and subtracts EXACTLY that amount once · redelivering the void twice and twice in parallel changes nothing more (M10: reverse only what was counted)
+  ✅ [C2.7-S4.2] a voided document flags the deal exactly once: tag "เอกสารถูกยกเลิก" appears once, ONE AUTO activity (Thai, no PII), dealMoney().documentVoided true — redelivery adds nothing
+
+── S5 · POS ⇄ ดีล ──
+  ✅ [C2.7-S5.1] linkSaleToDeal writes ONE CrmDealPayment(POS_SALE · refId = saleId · satang = the bill's grand total) and — because the bill is already PAID when the cashier's action runs — counts it in the same transaction · calling it twice keeps one row · a sale of another tenant or a deal of another system ⇒ NOT_FOUND (X1)
+  ✅ [C2.7-S5.2] the pos.sale.paid consumer counts a LINKED row exactly once (twice in a row + 4× in parallel ⇒ paidSatang counted once, status COUNTED) · a paid bill with no linked deal writes nothing
+  ✅ [C2.7-S5.3] void BEFORE the bill was ever counted (status LINKED) ⇒ the row becomes REVERSED and NOTHING is subtracted (paidSatang stays 0) · void AFTER it was counted ⇒ subtracted exactly once, and a redelivered void changes nothing
+  ✅ [C2.7-S5.4] openDealsForParty lists only OPEN deals the actor may see (owner: both · cashier with own-only visibility: only his own · an actor without crm.deal.read: [] and never an exception) · a fully paid deal on an autoWonOnPaid pipeline becomes WON with an audit row · the sell screen renders the deal select next to the member select
+
+── S6 · autoInvoiceOnWon ──
+  ✅ [C2.7-S6.1] a deal entering WON on an autoInvoiceOnWon pipeline gets exactly ONE invoice (invoiceDocId stored, audited) and redelivering crm.deal.won twice / twice in parallel does not issue a second one
+  ✅ [C2.7-S6.2] autoInvoiceOnWon false ⇒ NO invoice is issued on WON (negative; S6.1 is the positive control) · with the pipeline switch ON but accounting not linked, the deal still becomes WON and only the invoice is missing (the money path never blocks the sale)
+
+── S7 · ถอยหลัง: สิ่งที่ต้องไม่เปลี่ยน ──
+  ✅ [C2.7-S7.1] `pos/service.ts` is untouched by C2.7: `createSale` still owns the money transaction and still emits `pos.sale.paid` with the key `PosSale#<id>#PAID` (no dealId written inside the tx) [static]
+  ✅ [C2.7-S7.2] account transactions are untouched: `recordPayment` / `voidPayment` contain no CRM call (CRM only listens to their events) and still emit `account.payment.recorded` / `account.payment.voided` inside the transaction [static]
+  ✅ [C2.7-S7.3] no column was added to PosSale / AccountDocument / AccountDocumentPayment for this work order (C29 · R-C.1): the link lives in CrmDealPayment only [information_schema]
+  ✅ [C2.7-S7.4] the sell screen keeps its member select and its member payload (memberId + memberChoices), and the new `linkSaleToDeal` call after a successful sale is WRAPPED so that a CRM failure never fails the bill (the customer has already paid) [static]
+  ✅ [C2.7-S7.5] the consumer chains of `pos.sale.paid` / `pos.sale.voided` keep every existing step (accounting · stamps · kanban · member bridge) with the CRM step only APPENDED [static]
+  ✅ [C2.7-S7.6] compose contract, proven by execution: the CRM money extra THROWS ⇒ the event is not failed by it, a WARN is logged and the accounting side of the bill still happened · the accounting base FAILS ⇒ the CRM extra still counted the linked sale
+
+── S8 · ป้ายต่างจากใบเสนอราคา · ลิงก์ดีลบนเอกสาร ──
+  ✅ [C2.7-S8.1] "ต่างจากใบเสนอราคา": right after issuing, quotationDiffers is false and Deal360.quotationDiffers is false (positive control) · after a line is added it is true on both
+  ✅ [C2.7-S8.2] while the lines differ from the issued quotation, issueInvoice is refused with a Thai reason that does not blame the user (C1.5 behaviour kept) — and re-issuing the quotation clears the badge
+  ✅ [C2.7-S8.3] dealForDoc(tenantId, docId, actor): the deal of the invoice for the owner · null for another tenant, for an unknown document and for an actor who cannot see the deal · the account document page renders the "ดีล" link · crm-ui-inventory.json carries a wo C2.7 row for EVERY new testid (acc-doc-crm-deal · pos-deal-select · pos-deal-hint)
+
+── S9 · มติรอบ 2: บิลเดียวดีลเดียว · ประตูห้ามหยุดการถอนคืน · ภาษีหัก ณ ที่จ่าย · เอกสารซ้ำดีล ──
+  ✅ [C2.7-S9.1] B1 — a PAID bill counted on deal A cannot be linked to deal B: the second linkSaleToDeal is refused (CONFLICT · Thai · B untouched) and two cashiers linking the SAME bill to two deals at the same instant produce exactly ONE row · voiding the bills reverses each row once and the money summed over BOTH deals is 0
+  ✅ [C2.7-S9.2] B2 — the gate stops COUNTING but never REVERSING: with uiVersion 2 + bridgesEnabled false linkSaleToDeal is refused and nothing is written · money counted while the bridge was open is given back in full when `pos.sale.voided` / `account.payment.voided` arrive after the shop closed the bridge AND after it fell back to uiVersion 1 (a deal must never keep phantom money)
+  ✅ [C2.7-S9.3] SF-1 — a deal that received a ฿2,000 deposit (through the sourceDocId chain) and a ฿10,000 invoice keeps the deposit when the INVOICE is voided: deal money = the deposit alone, the deposit row stays COUNTED, the invoice's row is REVERSED and the tag "เอกสารถูกยกเลิก" is added exactly once
+  ✅ [C2.7-S9.4] SF-2 — an invoice with 3% withholding tax paid net (accounting marks it PAID): the deal is credited the FULL grand total of that document = the cash row + ONE `DOC_SETTLE#<docId>` row worth exactly the WHT · redelivering `account.invoice.paid` twice and twice in parallel adds no second row · autoWonOnPaid moves the deal to WON exactly once (audit crm.deal.won.auto once · one history row into the WON stage)
+  ✅ [C2.7-S9.5] SF-3 — 20 rounds of `moveDeal` OPEN→OPEN racing `recordDocPayment` on separate connections: `wonValueSatang` is never null and never regresses once money has been counted (it stays the anchor document's grand total), and paidSatang ends at the exact sum of the payments that were counted
+  ✅ [C2.7-S9.6] SF-4 — two deals pointing at the same quotation/invoice: the payment is counted ONCE, for the OLDEST deal, and a WARN OpsEvent (Thai · ids only · no name/phone/e-mail) records the ambiguity · voiding that document flags BOTH deals and gives the money back only where it was counted
+  ✅ [C2.7-S9.7] SF-5 — a payment of a ใบวางบิล (BILLING_NOTE) is never turned into deal money (one billing note can cover invoices of several deals): nothing is written and a Thai WARN OpsEvent with ids only records it · the INVOICE of the same deal and a DEPOSIT_RECEIPT of its chain are counted (positive control)
+  ✅ [C2.7-S9.8] N3 · N1 · N4 — a gift-card bill is refused with a Thai reason and is never counted even when a LINKED row exists · the sell screen's deal list is EMPTY for a cashier without `crm.deal.update` (and linkSaleToDeal answers FORBIDDEN without writing a row) while the same cashier WITH the key sees the deal (positive control) · a pre-existing LINKED row that finally gets counted emits `crm.deal.updated`
+
+── X3 · ยิงเงินพร้อมกัน ──
+  ✅ [C2.7-X3.1] 10 different payments of one invoice fired in PARALLEL ⇒ one CrmDealPayment per accepted payment and paidSatang = the exact bigint sum (Σ = 10 × 5000 satang) — read-modify-write anywhere on this path shows up here
+  ✅ [C2.7-X3.2a] [positive control] 2 worker PROCESSES ran and answered 10 payment attempts — if red, X3.2 proves nothing
+  ✅ [C2.7-X3.2] 2 PROCESSES × 5 parallel payments (own pools, own connections) ⇒ paidSatang = the exact sum of the payments the book accepted and exactly one CrmDealPayment per payment
+  ✅ [C2.7-X3.3] the SAME `account.payment.recorded` row delivered by 2 PROCESSES × 3 parallel deliveries ⇒ ONE CrmDealPayment and paidSatang counted exactly once (the unique key is the flag, not an in-process guard)
+
+── X4 · ส่งซ้ำทุกตัวรับ ──
+  ✅ [C2.7-X4.1] `account.payment.recorded` and `account.invoice.paid` delivered twice in a row and twice in parallel ⇒ ONE row, paidSatang counted ONCE, every delivery resolves
+  ✅ [C2.7-X4.2] `account.payment.voided` twice + twice in parallel ⇒ subtracted ONCE (paidSatang 0), the row is REVERSED once, no negative balance ever appears
+  ✅ [C2.7-X4.3] voiding a payment that CRM never counted (its document reaches no deal) writes nothing and subtracts nothing anywhere — no deal of the shop ends up with a negative paidSatang
+  ✅ [C2.7-X4.4] `account.document.voided`, `pos.sale.paid` and `pos.sale.voided` each delivered twice + twice in parallel ⇒ one flag, one count, one reversal (paidSatang 0 · the voided tag exactly once)
+
+── F1 · ลำดับ event ของการจ่ายเงิน (C2.7-fix) ──
+  ✅ [C2.7-F1.1] `account.invoice.paid` consumed BEFORE `account.payment.recorded` of the same (full) payment ⇒ paidSatang = the invoice grand total EXACTLY (not twice) · exactly one COUNTED row for the payment · at most one DOC_SETTLE row · Σ COUNTED never above the grand total (also right after the first delivery) · autoWonOnPaid once
+  ✅ [C2.7-F1.3] replaying BOTH events of the F1.1 payment in both orders and in parallel (×2) changes nothing: the rows are byte-identical, paidSatang is still exactly the grand total, every delivery resolves
+  ✅ [C2.7-F1.4] WHT: partial P1 counted · P2 (the rest, net of 3 % WHT) makes the invoice PAID · `invoice.paid` consumed BEFORE P2's `payment.recorded` ⇒ paidSatang = the grand total EXACTLY · one COUNTED row per payment · ≤ 1 DOC_SETTLE · Σ COUNTED never above the grand total
+  ✅ [C2.7-F1.5] in every delivery order the payment rows hold exactly their CASH and the settle row exactly the WHT (F1.4: P1 · P2 · settle = WHT) — no settle row worth anything without WHT (F1.1) — the settle is computed from the book (grand − Σ non-voided payments), never from which CRM rows happen to exist yet
+  ✅ [C2.7-F1.6] voiding P2 after the reversed order gives back exactly what it brought: paidSatang = P1 exactly · P2's row and the settle row REVERSED · P1 still COUNTED · no negative paidSatang in the shop
+  ✅ [C2.7-F1.2a] [positive control] 2 worker PROCESSES delivered 10 rounds each (invoice.paid ∥ payment.recorded of the same payment · payment kick-off swept -150…390 ms relative to invoice.paid), every delivery answered, and EACH side won the deal lock in ≥ 1 round — if red, F1.2 proves nothing
+  ✅ [C2.7-F1.2] the two events of one payment delivered in PARALLEL by 2 PROCESSES (own pools · own connections) × 10 rounds — every round: paidSatang = the grand total exactly, one COUNTED row for the payment, ≤ 1 settle row holding only the WHT
+  ✅ [C2.7-F1.2b] the same race in-process on separate pool connections (Promise.all · payment kick-off swept -150…390 ms relative to invoice.paid) × 10 rounds ⇒ every round exact (lock winners are reported)
+  ✅ [C2.7-F1.7] P1 (half) counted · P1 voided · P1' = the grand total makes the invoice PAID · P1's void delivered LAST after P1' and invoice.paid in BOTH orders ⇒ the deal = the grand total exactly (P1' row = its cash · P1 row REVERSED) — a cap computed from CRM rows that the void has not reached yet must not shave P1'
+  ✅ [C2.7-F1.8] WHT: P1 (net of 3 % WHT) ⇒ deal = grand · void P1 ⇒ deal = 0 (settle REVERSED) · P1'' (same net + WHT) makes the invoice PAID again WITHOUT a second `account.invoice.paid` ⇒ deal = grand again: the SAME settle row reactivated to exactly the WHT · autoWonOnPaid fired once overall
+  ✅ [C2.7-F1.9] a LATE `payment.recorded` whose payment is already voided (a) — or whose payment AND document are voided (b) — writes its row as REVERSED and counts nothing: the deal stays at 0 and a redelivered void changes nothing
+  ✅ [C2.7-F1.10] a LATE void of an already-replaced payment (P1'' re-paid and counted first) takes back only P1: the settle row stays COUNTED at the WHT because the book is still PAID ⇒ deal = the grand total = P1'' cash + WHT
+  ✅ [C2.7-F1.12] B1 — void + re-pay with a DIFFERENT withholding tax (3 %→1 %, 3 %→0 %, and a partial-payment-first variant), the void delivered before OR after the re-payment ⇒ deal = the grand total exactly · the settle row = the NEW WHT (none worth anything at 0 %) · the stale settle was taken back through REVERSED with its own events (a `reverse-doc_settle-…` and a `docsettle-…` crm.deal.updated exist · the 3→1 void-last variants show TWO `docsettle-…` = the one-transaction reverse→wake path)
+  ✅ [C2.7-F1.13] a DEPOSIT_RECEIPT paid net of 3 % WHT (no account.invoice.paid exists for deposits) ⇒ the deal = the receipt's grand total: the cash row + ONE settle row keyed by the receipt worth exactly the WHT
+  ✅ [C2.7-F1.14] the book cannot be read (the ledger reader throws — injected through `deps.ledger`) ⇒ no settle row is written or changed, the deal keeps only the cash, and a WARN OpsEvent (Thai · ids only) names the document · [positive control] the same `onInvoiceFullyPaid` with the real reader settles exactly the WHT
+  ✅ [C2.7-F1.11] C3.3/C3.2 contract across the whole F1 fixture: a CrmDealPayment row that is COUNTED in two consecutive snapshots keeps its satang and its countedAt (commissions key on `<id>#c<countedAt ms>`) · every COUNTED settle row has a `docsettle-…` event carrying {rowId, countedAt, satang} · reversedAt null after a wake · a re-derived settle's countedAt moves strictly forward and its `reverse-doc_settle-…` event carries the OLD countedAt and amount — the ONLY amount exception is a settle row re-derived from the book, which must have passed through REVERSED with its own `reverse-doc_settle-…` event in between — snapshots after every delivery step of F1.1 · F1.3 · F1.4 · F1.6 · F1.7–F1.10 · F1.12–F1.14
+
+── X1 · ขอบเขต ──
+  ✅ [C2.7-X1.1] an event of shop A carrying shop B's documentId writes NOTHING in either shop (ids from the payload are always looked up with the event's tenantId)
+  ✅ [C2.7-X1.2] cross-CRM-system inside ONE shop: the payment lands only on the deal of the system that owns the document — the other CRM system's deal keeps paidSatang 0 and gets no row
+  ✅ [C2.7-X1.3] a cashier who cannot see that deal gets NOT_FOUND (not 403, no data in the message) from linkSaleToDeal and dealMoney · the owner may link it (positive control)
+
+── X6 · X8 · X9 ──
+  ✅ [C2.7-X6.1] hostile money payloads (negative · fractional satang · MAX_SAFE_INTEGER · empty paymentId) are refused without writing anything and never move paidSatang; a well-formed payment of the same invoice is still counted (positive control)
+  ✅ [C2.7-X8.1] no name, phone or e-mail of this run appears in any crm.* outbox payload, OpsEvent row (including every WARN the money path writes — ambiguous document, billing note, a failed link after a paid bill) or log line: ids and satang only
+  ✅ [C2.7-X8.2] every crm.* event the money path emitted uses the `crm.<type>#<id>#<seq>` key shape (R-C.8) and no key was written twice
+  ✅ [C2.7-X9.1] every money mutation leaves an audit row: the automatic payment path audits the deal (actorType SYSTEM) and `linkSaleToDeal` writes `crm.deal.pos.link` for the cashier who pressed it
+  ✅ [C2.7-X9.2] the automatic transitions are attributable: auto-WON (paid ≥ value) and auto-invoice write an audit row whose actor is the SYSTEM, never a random user
+
+── U · uiVersion 1 ──
+  ✅ [C2.7-U.1] uiVersion 1: a real payment of a v1 shop's invoice leaves the CRM side untouched (no CrmDealPayment, paidSatang 0, lifecycle unchanged) while accounting completes normally and the queue still drains
+  ✅ [C2.7-U.3] uiVersion 1: a POS bill of that shop is sold, posted and drained exactly as before C2.7 — and CRM wrote nothing for it (the pilot switch is the only thing that turns the money bridge on)
+  ✅ [C2.7-U.2] uiVersion 1: linkSaleToDeal is refused with CrmV2DisabledError and nothing is written · openDealsForParty answers [] · dealForDoc answers null (no v2 surface leaks into a v1 shop)
+  ✅ [C2.7-U.4] [positive control] the same shop switched to uiVersion 2 counts the NEXT payment immediately (the gate is read live, not cached) — so U.1's silence is the gate, not a broken fixture. The payment that arrived while the shop was on v1 is NOT counted retroactively (documented semantics — controller decision in the report)
+  ✅ [C2.7-CLEAN] the oracle gives the QC database back exactly as found — every throwaway tenant, every row it owned, the throwaway users and the lab triggers are gone
+
+🟢 C2.7: 79/79
+JSON_SUMMARY {"total":79,"passed":79,"findings":[]}

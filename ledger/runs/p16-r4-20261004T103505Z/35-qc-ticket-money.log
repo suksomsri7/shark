@@ -1,0 +1,22 @@
+[env] qc-ticket-money · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1240971) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [TK-1.1] สร้างออเดอร์ตั๋วได้ (฿107)
+  ✅ [TK-2.1] markPaid → เกิด journal entry อัตโนมัติ
+  ✅ [TK-2.2] Cr รายได้ 4000 = ฐานหลังถอด VAT (100)
+  ✅ [TK-2.3] Cr ภาษีขาย 2200 = 7
+  ✅ [TK-2.4] Σdr=Σcr
+  ✅ [TK-3.1] markPaid ซ้ำ idempotent (ไม่ post เบิ้ล)
+[cleanup] ok
+
+===== QC Ticket Money =====
+ผ่าน 6/6
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":6,"passed":6,"findings":[]}

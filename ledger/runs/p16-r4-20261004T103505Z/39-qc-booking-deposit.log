@@ -1,0 +1,33 @@
+[env] qc-booking-deposit · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1241473) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [BD-1.1] setServiceDeposit ติดลบ → ok:false (validate ≥0)
+  ✅ [BD-1.2] setServiceDeposit → บริการ depositSatang = 50000
+  ✅ [BD-2.1] createAppointment → นัด snapshot depositSatang = 50000 (ยังไม่จ่าย)
+  ✅ [BD-3.1] recordDeposit ok + มี saleId
+  ✅ [BD-3.2] posSale สถานะ PAID + payment type DEPOSIT amount=50000
+  ✅ [BD-3.3] depositPaidAt ตั้ง + depositSaleId ผูกบิล
+  ✅ [BD-3.4] บัญชี Dr 2110 เงินมัดจำรับ = 50000 (มัดจำลงถูกช่อง)
+  ✅ [BD-4.1] recordDeposit ซ้ำ → no-op (ไม่ error) + บิล DEPOSIT ยัง 1 ใบ
+  ✅ [BD-4.2] Dr 2110 ไม่เบิ้ล (ยัง 50000)
+  ✅ [BD-5.1] refundDeposit ok
+  ✅ [BD-5.2] posSale → VOIDED + depositPaidAt เคลียร์ (null)
+  ✅ [BD-5.3] บัญชี Dr 2110 net=0 (กลับรายการครบ)
+  ✅ [BD-5.4] outbox pos.sale.voided ≥1
+  ✅ [BD-6.1] refundDeposit ซ้ำ → ok:false (ไม่ทำซ้ำ)
+  ✅ [BD-6.2] บิล VOIDED ยัง 1 (ไม่ void ซ้ำ)
+  ✅ [BD-7.1] ไม่ผูก POS → recordDeposit ok + depositPaidAt ตั้ง + ไม่มีบิล (saleId ว่าง)
+  ✅ [BD-8.1] cross-tenant recordDeposit → ok:false + นัด t1 ยังไม่จ่าย (ไม่ถูกแตะ)
+  ✅ [BD-9.1] ทุก journal entry สมดุล Σdr=Σcr
+
+===== QC Booking Deposit =====
+ผ่าน 18/18
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":18,"passed":18,"findings":[]}
