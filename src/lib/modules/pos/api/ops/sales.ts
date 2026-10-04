@@ -12,7 +12,7 @@ import { actorRefId, type ApiActor } from "@/lib/api/actor";
 import { ApiError } from "@/lib/api/respond";
 import { tenantDb } from "@/lib/core/db";
 import { canAccessUnit } from "@/lib/core/rbac";
-import { createSale, voidSale } from "../../index";
+import { createSale, PosSaleError, voidSale } from "../../index";
 import { posUnitIsLinked } from "../../register";
 import { definePosOp, POS_SCOPES, type ApiOp } from "../op";
 
@@ -175,10 +175,14 @@ export function foreignSaleError(sourceModule: string | null): ApiError | null {
 /** ข้อความที่ `voidSale` โยนเมื่อบิลไม่อยู่ในสถานะ PAID (service.ts — ตรวจซ้ำใน tx) */
 const VOID_STATE_MESSAGE = "บิลนี้ void ไม่ได้";
 
-/** error ของ voidSale → 409 เมื่อเป็นเรื่องสถานะ (บิลถูกยกเลิกไปแล้วระหว่างตรวจกับลงมือ) · อื่น ๆ ปล่อยผ่าน */
+/** error ของ voidSale → 409 เมื่อเป็นเรื่องสถานะ (บิลถูกยกเลิกไปแล้วระหว่างตรวจกับลงมือ · กะของบิลปิดแล้ว) · อื่น ๆ ปล่อยผ่าน */
 export function voidErrorToApi(e: unknown): unknown {
   if (e instanceof Error && e.message === VOID_STATE_MESSAGE) {
     return new ApiError(409, "state_conflict", "บิลนี้ถูกยกเลิกไปแล้วหรือไม่อยู่ในสถานะที่ยกเลิกได้", "Only paid bills can be voided.");
+  }
+  // POS P1.9 R2 F5 ▸ S11: บิลหน้าขายในกะที่ปิดแล้ว = 409 (ไม่ใช่ 500) ◂
+  if (e instanceof PosSaleError && e.code === "SHIFT_CLOSED") {
+    return new ApiError(409, "state_conflict", "กะของบิลนี้ปิดแล้ว — ยกเลิกบิลไม่ได้ ใช้การคืนเงินแทน", "The shift of this bill is closed. Use a refund instead.");
   }
   return e;
 }

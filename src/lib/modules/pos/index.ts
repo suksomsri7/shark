@@ -30,6 +30,8 @@ export {
   posSystemForSale,
   /** P1.6 R2 F2: สถานะของบิลที่ถือคีย์นี้ */
   saleStatusByKey,
+  /** P1.9 R2 F5: error มีรหัสของ createSale/voidSale (เช่น SHIFT_CLOSED) — ชั้น API แปลงเป็นสถานะ HTTP */
+  PosSaleError,
 } from "./service";
 
 // POS P1.1a ▸ แคตตาล็อกเดียว (PosProduct) — ผู้เขียน/ผู้อ่านเดียวของแคตตาล็อกขาย · ผู้เรียกนอกโมดูลใช้ `catalog.<fn>` ◂
