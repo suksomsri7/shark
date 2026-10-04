@@ -7,6 +7,8 @@ import { prisma } from "@/lib/core/db";
 import { systemForUnit } from "@/lib/modules/system/service";
 import * as inventory from "@/lib/modules/inventory/service";
 import * as account from "@/lib/modules/account";
+// POS P1.1b ▸ setItemSalePrice (สินค้าที่ผูกบัญชีแล้ว) เขียนราคาผ่าน catalog-legacy — AccountProduct + แคตตาล็อกในธุรกรรมเดียว (มติ 1) ◂
+import { writeAccountProductSalePrice } from "./catalog-legacy";
 // CRM C2.7 ▸ เส้น pos→crm (chokepoint ที่ลงทะเบียนใน scripts/fitness.mts) — หน้าขายอ่าน "ดีลที่ยังเปิดอยู่ของลูกค้าคนนี้"
 //   และผูกบิลเข้าดีล ผ่าน **facade `@/lib/modules/crm` เท่านั้น** (ห้าม import ไฟล์ภายในของ CRM · ด่าน F2.3) ◂
 import * as crm from "@/lib/modules/crm";
@@ -304,7 +306,8 @@ export async function setItemSalePrice(
 
   // มี AccountProduct อยู่แล้ว → แค่แก้ราคา (รู้ productId ตรง ไม่ต้องมีระบบบัญชีผูก POS)
   if (item.accountProductId) {
-    const ok = await account.updateAccountProductSalePrice(tenantId, item.accountProductId, price);
+    const productId = item.accountProductId;
+    const ok = await prisma.$transaction((tx) => writeAccountProductSalePrice(tx, tenantId, productId, price));
     if (!ok) return { ok: false, reason: "อัปเดตราคาไม่สำเร็จ" };
     return { ok: true, productId: item.accountProductId };
   }

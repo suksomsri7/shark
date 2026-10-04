@@ -23,6 +23,8 @@ import { emitDocumentIssued, emitProductCreated, emitProductUpdated } from "./ev
 import { inventorySystemId, productStockMap, productStockMapFrom, syncProductToItem } from "./inventory-link";
 // chokepoint account→inventory (fitness F2 · WO 4.1) — ตัด/คืนสต็อกใน tx ของเอกสาร
 import * as inventory from "@/lib/modules/inventory/service";
+// POS P1.1b ▸ G2: คำสั่งเขียน AccountProduct ของสร้าง/แก้/เก็บสินค้า ย้ายไป catalog-legacy — ราคา C7 ของแถวแคตตาล็อก POS ตามในธุรกรรมเดียว ◂
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 // WO 4.3 — ลงบัญชีเอกสารปรับปรุงสต็อก/ต้นทุน (Dr/Cr ระบุด้วยรหัสบัญชี · idempotent ต่อ (docId,event))
 import * as gl from "./gl";
 // WO 4.3 (§8.2) — ตัดสต็อกส่วนประกอบของ "รายการจัดชุด" (ตรรกะอยู่ bundle.ts · ที่นี่แค่ห่อ transaction ให้)
@@ -529,7 +531,7 @@ export async function createProduct(
   //   ห่อเฉพาะครั้งที่สำเร็จ (ไม่ใช่ทั้งลูป) — ชนเลขที่ = tx นั้น abort แล้วลูปเปิด tx ใหม่ให้เอง
   const createWithEvent = async (createData: Prisma.AccountProductUncheckedCreateInput) =>
     prisma.$transaction(async (tx) => {
-      const row = await tx.accountProduct.create({ data: createData });
+      const row = await legacy.createAccountProduct(tx, createData);
       await emitProductCreated(tx, { tenantId, systemId }, row);
       return row;
     });
@@ -598,7 +600,7 @@ export async function updateProduct(
     //    WO C4: เขียน + ยิง webhook "แก้ไขสินค้า" ในธุรกรรมเดียว · คีย์กันซ้ำผูก `updatedAt`
     //    ⇒ ต้องอ่านค่า **หลังเขียน ใน tx เดียวกัน** (อ่านก่อน = ได้ค่าเก่า → แก้ 2 ครั้งได้ event ใบเดียว)
     const res = await prisma.$transaction(async (tx) => {
-      const r = await tx.accountProduct.updateMany({ where: { id, tenantId, systemId }, data });
+      const r = await legacy.updateAccountProduct(tx, { tenantId, systemId }, id, data as Prisma.AccountProductUncheckedUpdateManyInput);
       if (r.count === 0) return r;
       const row = await tx.accountProduct.findFirst({
         where: { id, tenantId, systemId },
@@ -609,6 +611,8 @@ export async function updateProduct(
     });
     if (res.count === 0) return { ok: false, reason: "ไม่พบสินค้า/บริการนี้" };
   } catch (e) {
+    // POS P1.1b G11: แคตตาล็อกปฏิเสธ = ทั้งธุรกรรมไม่บันทึก · คืนข้อความไทยของแคตตาล็อก
+    if (e instanceof Error && e.name === "CatalogError") return { ok: false, reason: e.message };
     if (isProductCodeConflict(e)) return { ok: false, reason: "เลขที่สินค้าซ้ำกับรายการที่ใช้งานอยู่" };
     const err = e as { code?: string };
     if (err?.code === "P2002") return { ok: false, reason: "รหัสสินค้า (SKU) ซ้ำกับที่มีอยู่" };
@@ -626,10 +630,8 @@ export async function archiveProduct(
   id: string,
   archived = true,
 ) {
-  await prisma.accountProduct.updateMany({
-    where: { id, tenantId, systemId },
-    data: { archivedAt: archived ? new Date() : null },
-  });
+  // มติ 13: เป็นประตู — C7 ไม่นับ AP ที่เก็บถาวร ⇒ ราคาแถวแคตตาล็อกที่ผูกคิดใหม่ในธุรกรรมเดียว
+  await prisma.$transaction((tx) => legacy.archiveAccountProduct(tx, { tenantId, systemId }, id, archived));
 }
 
 // ─────────────────── บัญชี GL (สำหรับ dropdown override รายได้/ค่าใช้จ่าย) ───────────────────

@@ -88,8 +88,15 @@ const ALL_WRITE_MODELS = ["MenuItem", "MenuCategory", "MenuOptionGroup", "MenuOp
 const PRICE_MODELS: Record<string, readonly string[]> = {
   AccountProduct: ["salePrice", "posPrice"],
   InvItem: ["priceSatang"],
-  BookingService: ["priceSatang"],
+  // POS P1.1b ▸ มติ 2 (G9): BookingService ไม่ใช่ตารางแคตตาล็อก — ราคาเป็นสำเนาที่ serviceRoster ดึงจาก InvItem ตอนอ่าน (ทางย้อนเขียน InvItem) ◂
 };
+/**
+ * POS P1.1b ▸ มติ 2: ไฟล์ที่ยกเว้นจาก F15.1 พร้อมเหตุผล (ไม่ใช่การเขียนแคตตาล็อก — ตัวสแกน static แยกไม่ได้)
+ *   ใส่ได้เฉพาะเมื่อผู้คุมงานรับรอง · ห้ามใช้หลบผู้เขียนจริง ◂
+ */
+export const CATALOG_WRITER_EXEMPT: ReadonlyMap<string, string> = new Map([
+  ["src/lib/platform/pdpa.ts", "ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดลของร้าน) — ไม่ใช่การเขียนแคตตาล็อกรายแถว · ข้อมูลทั้งร้านหายพร้อมแถวแคตตาล็อก"],
+]);
 const WRITE_METHODS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 const NESTED_OPS = new Set(["create", "createMany", "update", "updateMany", "upsert", "connectOrCreate", "delete", "deleteMany", "set"]);
 /** ชื่อตัวแปรที่ถือว่าเป็น client ของ Prisma เมื่อเจอ `x[ไม่ใช่ literal].<write>(` (delegate ไดนามิก) */
@@ -104,14 +111,10 @@ export const CATALOG_WRITER_BASELINE: Record<string, Record<string, number>> = {
   // POS P1.1b ▸ shop/service.ts createProduct/updateProduct ย้ายเข้า catalog-legacy.ts แล้ว ◂
   // ราคาขาย POS หน้า "สินค้า/ราคา": updateAccountProductSalePrice · createAccountProductWithSalePrice
   "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 },
-  // หน้าสินค้าระบบบัญชี / import / REST+AI products-write: createProduct · updateProduct (data ทางอ้อม — fail-closed · มี salePrice/posPrice จริง)
-  "src/lib/modules/account/product.ts": { "AccountProduct.price": 2 },
+  // POS P1.1b ▸ account/product.ts createProduct/updateProduct/archiveProduct ย้ายเข้า catalog-legacy.ts แล้ว ◂
   // POS P1.1b ▸ account/inventory-link.ts ซิงก์ลิงก์คลัง↔บัญชี ย้ายเข้า catalog-legacy.ts / inventory.applyAccountProductSync แล้ว (มติ 2) ◂
   // POS P1.1b ▸ inventory/service.ts createItem/updateItem ย้ายเข้า catalog-legacy.ts แล้ว ◂
-  // BookingService.priceSatang: ซิงก์ราคาจาก InvItem ตอนอ่าน serviceRoster (:254) · ตั้งค่าบริการ (:301-302)
-  "src/lib/modules/booking/service.ts": { "BookingService.price": 3 },
-  // ลบข้อมูลทั้งร้านตาม PDPA ผ่าน delegate ไดนามิก (ทุกโมเดล รวมแคตตาล็อก) — ถูกต้อง แต่มองไม่เห็นแบบ static ⇒ fail-closed
-  "src/lib/platform/pdpa.ts": { dynamic: 1 },
+  // POS P1.1b ▸ booking/service.ts (BookingService ออกจาก PRICE_MODELS) · platform/pdpa.ts (CATALOG_WRITER_EXEMPT) — มติ 2 ◂
 };
 
 /** แผนที่ความสัมพันธ์จาก prisma/schema: Model → { field → Model ปลายทาง } + รายชื่อ delegate ทั้งหมด */
@@ -299,6 +302,7 @@ export function scanCatalogWriters(ROOT: string): CatalogWriter[] {
   for (const abs of walk(join(ROOT, "src"), (p) => /\.(ts|tsx|mts)$/.test(p))) {
     const text = readFileSync(abs, "utf8");
     if (!PREFILTER.test(text)) continue;
+    if (CATALOG_WRITER_EXEMPT.has(relative(ROOT, abs).replace(/\\/g, "/"))) continue; // POS P1.1b ▸ มติ 2 ◂
     const hits = scanFileWrites(parse(abs, text), schema);
     if (hits.length) out.push({ file: relative(ROOT, abs), hits });
   }
