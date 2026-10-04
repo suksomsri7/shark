@@ -426,6 +426,14 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
       throw new Error(`PAYMENT_MISMATCH: จ่าย ${paidSum} ≠ ยอด ${beforeMember}`);
     }
 
+    // POS P1.2 R2 F1: ส่วนประกอบชุดต้องอยู่ในคลังของสาขาที่ขายทุกชิ้น (ผู้เรียกอื่นนอกหน้าขายก็เช่นกัน) — สาขาไม่มีคลัง/ชิ้นนอกคลัง = VALIDATION ไม่มีบิล
+    const compIds = [...new Set(lines.flatMap((l) => (l.components ?? []).map((c) => c.invItemId)))];
+    if (compIds.length) {
+      const compInv = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
+      const here = compInv ? await tx.invItem.count({ where: { tenantId: input.tenantId, systemId: compInv, id: { in: compIds } } }) : 0;
+      if (here !== compIds.length) throw new PosSaleError("VALIDATION", "ชุดนี้มีส่วนประกอบที่ไม่อยู่ในคลังของสาขานี้ — ขายชุดนี้ที่สาขานี้ไม่ได้");
+    }
+
     // ── R8 BLOCK: ล็อกแถวสินค้า (ลำดับ id ตายตัว · ก่อนตัวนับ ⇒ ลำดับล็อกเดียวกันทุกบิล ไม่ deadlock) แล้วตรวจยอดคงเหลือ ──
     let blockInv: { tenantId: string; systemId: string } | null = null;
     // R2 F3: ตัดในtx เฉพาะสินค้าที่อยู่ในชุดที่ล็อกได้และไม่ใช่บริการ — ที่เหลือ (ไม่พบในคลังนี้/บริการ) เดินทางเดิมหลัง commit ไม่ทำให้บิลล้ม

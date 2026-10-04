@@ -580,9 +580,16 @@ function regVisibleWhere(s: RegScope): Prisma.Sql {
   const wh = s.unitInv
     ? Prisma.sql`(p."invItemId" IS NULL OR EXISTS (SELECT 1 FROM "InvItem" w WHERE w.id = p."invItemId" AND w."tenantId" = ${s.tenantId} AND w."systemId" = ${s.unitInv}))`
     : Prisma.sql`p."invItemId" IS NULL`;
+  // P1.2 R2 F1: ชุด (BUNDLE) ขายได้เฉพาะสาขาที่ส่วนประกอบทุกชิ้นอยู่ในคลังของสาขานั้น — สาขาไม่มีคลัง = ขายได้เฉพาะชุดที่ไม่มีส่วนประกอบ
+  //   (ไม่ผ่าน = มองไม่เห็น: กริด/ค้นหา/สแกนไม่ขึ้น · quote/submit = PRODUCT_NOT_FOUND)
+  const bundleOk = s.unitInv
+    ? Prisma.sql`NOT EXISTS (SELECT 1 FROM "RecipeLine" r WHERE r."productId" = p.id AND r."tenantId" = ${s.tenantId}
+        AND NOT EXISTS (SELECT 1 FROM "InvItem" ci WHERE ci.id = r."invItemId" AND ci."tenantId" = ${s.tenantId} AND ci."systemId" = ${s.unitInv}))`
+    : Prisma.sql`NOT EXISTS (SELECT 1 FROM "RecipeLine" r WHERE r."productId" = p.id AND r."tenantId" = ${s.tenantId})`;
   // P1.2 R6: แม่เก็บถาวร = ตัวแปรขายไม่ได้ (PRODUCT_NOT_FOUND · สแกน none)
   return Prisma.sql`p."tenantId" = ${s.tenantId} AND p."systemId" = ${s.systemId} AND p."archivedAt" IS NULL
     AND (p."unitId" IS NULL OR p."unitId" = ${s.unitId}) AND ${wh}
+    AND (p."kind" <> 'BUNDLE' OR ${bundleOk})
     AND (p."parentId" IS NULL OR EXISTS (SELECT 1 FROM "PosProduct" pp WHERE pp.id = p."parentId" AND pp."tenantId" = ${s.tenantId} AND pp."archivedAt" IS NULL))`;
 }
 const regLike = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -1136,6 +1143,14 @@ async function regPrice(
   const recipes = bundleIds.length
     ? await db.recipeLine.findMany({ where: { tenantId: s.tenantId, productId: { in: bundleIds } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { productId: true, invItemId: true, qty: true } })
     : [];
+  // P1.2 R2 F1: ตรวจซ้ำบนสูตรที่อ่านจริง (สูตรถูกแก้ระหว่างตรวจมองเห็น) — ส่วนประกอบนอกคลังของสาขานี้ = ชุดนั้นขายไม่ได้ที่นี่
+  const compIds = [...new Set(recipes.map((r) => r.invItemId))];
+  const compHere = new Set(
+    compIds.length && s.unitInv
+      ? (await db.invItem.findMany({ where: { tenantId: s.tenantId, systemId: s.unitInv, id: { in: compIds } }, select: { id: true } })).map((x) => x.id)
+      : [],
+  );
+  const bundleBlocked = new Set(recipes.filter((r) => !compHere.has(r.invItemId)).map((r) => r.productId));
   const wbs = cart.lines.some((l) => l.kind === "product" && l.weighedBarcode !== null) ? await regWeighedSettings(db, s) : null;
   const priceLines: { qty: number; unitPriceSatang: number; discount: PriceDiscount | null }[] = [];
   const meta: Omit<RegResolvedLine, "discountSatang" | "unitPriceSatang">[] = [];
@@ -1149,7 +1164,7 @@ async function regPrice(
     const v = views.get(l.productId);
     const row = rowById.get(l.productId);
     // มติ 3.1 ข้อ 3: สาขาอื่น / คลังอื่น / ร้านอื่น / เก็บถาวร / ไม่มีจริง = PRODUCT_NOT_FOUND (ไม่คิดราคา · ไม่บอกชื่อ)
-    if (!v || !row) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
+    if (!v || !row || bundleBlocked.has(row.id)) return regRefuse("PRODUCT_NOT_FOUND", undefined, i);
     if (v.soldOutReason === "UNAVAILABLE") return regRefuse("PRODUCT_UNAVAILABLE", undefined, i);
     // P1.2 R6: แม่ที่มีตัวแปรขายได้ = ต้องเลือกตัวแปร (ไม่คิดราคา)
     if (v.variantCount > 0) return regRefuse("VARIANT_REQUIRED", undefined, i);
