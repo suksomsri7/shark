@@ -127,3 +127,11 @@ The P1.3 oracle has no `--no-db` mode, so its statics were not run. I checked th
 4. The expiry note in the drawer shows the default 2 days, not the per-system setting. The list result does not carry N.
 5. There is no cap on HELD carts per unit; the list shows the newest 100. Propose a cap (e.g. 50) with a refusal code if wanted.
 6. `OPTIONS_REQUIRED` and `PRICE_NOT_SET` on recall are reported as `PRODUCT_UNAVAILABLE` notices, because the notice vocabulary has 3 codes.
+
+## R1 — controller rulings (4 Oct)
+
+- (1) `registerDb()` was removed from register.ts. `held-cart.ts` now imports `prisma` from `@/lib/core/db` directly. `scripts/fitness.mts` F5.1 baseline goes from 45 to 46, with the comment "P1.5 held-cart.ts — new POS module".
+- (2) Accepted: F8 holds at once with no label. (3) Accepted: the confirm dialog has 2 options.
+- (4) Fixed. `listHeldCarts` now also returns `expireDays`: the setting `AppSystem.settings.pos.heldCart.expireDays`, or 2 if it is unset. The screen keeps this value and the drawer's expiry note shows it.
+- (5) Note: there is no cap on HELD carts per unit. The drawer lists the newest 100.
+- Re-run with no DB: p1.5 `--no-db` 5/5 · p1.4 `--no-db` 13/13 · fitness (DB env unset) 41/41 · typecheck exit 0.

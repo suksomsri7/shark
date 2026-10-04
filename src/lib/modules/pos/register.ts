@@ -959,11 +959,6 @@ export async function quoteRegisterCart(ctx: RegisterCtx, actor: RegisterActor, 
 }
 
 // ── POS P1.5 ▸ ตัวช่วยของ held-cart.ts (พัก/เรียกคืน) — ใช้ด่านขอบเขต + ตัวตรวจตะกร้า "ชุดเดียว" กับ quote/submit ◂ ──
-/** client ของ held-cart.ts — ไม่ส่ง = prisma ของแอป (ทางเข้า DB เดียวของตระกูลหน้าขาย · ไม่เพิ่มไฟล์ raw prisma ใหม่ · fitness F5.1) */
-export function registerDb(client?: RegDb): RegDb {
-  return client ?? prisma;
-}
-
 /** ด่านขอบเขตเดียวกับหน้าขาย (ร้าน · ระบบ POS · สาขา · เข้าสาขาได้ · pos.sale.create) — ok = ctx/actor ที่ตรวจแล้ว */
 export async function registerScopeCheck(
   ctx: RegisterCtx,

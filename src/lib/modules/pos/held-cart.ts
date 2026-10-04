@@ -10,8 +10,9 @@
 // หมดอายุ (มติ 1): HELD ที่ createdAt เก่ากว่า N×24 ชม. ⇒ DISCARDED ตอน listHeldCarts (ขี้เกียจ · ไม่มี cron) · เรียกคืนบิลหมดอายุ = NOT_FOUND
 // ทิ้ง (มติ 3): สิทธิ์เดียวกับล้างบิล (pos.sale.create ที่สาขานี้) · บันทึก AuditLog ว่าใครทิ้ง (ธุรกรรมเดียวกับการเปลี่ยนสถานะ)
 
+import { prisma } from "@/lib/core/db";
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { quoteRegisterCart, registerCanonicalCart, registerDb, registerProductsByIds, registerScopeCheck } from "./register";
+import { quoteRegisterCart, registerCanonicalCart, registerProductsByIds, registerScopeCheck } from "./register";
 import {
   HELD_CART_EXPIRE_DAYS,
   HELD_CART_LABEL_MAX,
@@ -63,11 +64,14 @@ const rowWhere = (s: Scoped) => ({ tenantId: s.ctx.tenantId, systemId: s.ctx.sys
 
 /** N วันของระบบ POS นี้ (settings.pos.heldCart.expireDays · จำนวนเต็ม 1–365) — ไม่ตั้ง/ผิดรูป = HELD_CART_EXPIRE_DAYS */
 async function expireCutoff(db: Db, s: Scoped): Promise<Date> {
+  return (await expireOf(db, s)).cutoff;
+}
+async function expireOf(db: Db, s: Scoped): Promise<{ days: number; cutoff: Date }> {
   const sys = await db.appSystem.findFirst({ where: { id: s.ctx.systemId, tenantId: s.ctx.tenantId }, select: { settings: true } });
   const st = sys?.settings as { pos?: { heldCart?: { expireDays?: unknown } } } | null | undefined;
   const v = st?.pos?.heldCart?.expireDays;
   const days = typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 365 ? v : HELD_CART_EXPIRE_DAYS;
-  return new Date(Date.now() - days * DAY_MS);
+  return { days, cutoff: new Date(Date.now() - days * DAY_MS) };
 }
 
 /** ป้าย: undefined/null/ว่าง = null · ไม่ใช่สตริง / เกิน 60 ตัวอักษร / มี NUL หรือ surrogate เดี่ยว = undefined (VALIDATION) */
@@ -107,7 +111,7 @@ const ROW_SELECT = { id: true, label: true, lineCount: true, approxTotalSatang: 
 // ═══════════════════ พักบิล ═══════════════════
 export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, input: { cart: RegisterQuoteInput; label?: string | null }, client?: Db): Promise<HoldRegisterCartResult> {
   return guard("holdRegisterCart", async (): Promise<HoldRegisterCartResult> => {
-    const db: Db = registerDb(client);
+    const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
     if (!isRecord(input)) return refuse("VALIDATION");
@@ -150,10 +154,10 @@ export async function holdRegisterCart(ctx: RegisterCtx, actor: RegisterActor, i
 // ═══════════════════ รายการ (+ หมดอายุแบบขี้เกียจ) ═══════════════════
 export async function listHeldCarts(ctx: RegisterCtx, actor: RegisterActor, client?: Db): Promise<ListHeldCartsResult> {
   return guard("listHeldCarts", async (): Promise<ListHeldCartsResult> => {
-    const db: Db = registerDb(client);
+    const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
-    const cutoff = await expireCutoff(db, s);
+    const { days, cutoff } = await expireOf(db, s);
     await db.posHeldCart.updateMany({
       where: { ...rowWhere(s), status: "HELD", createdAt: { lt: cutoff } },
       data: { status: "DISCARDED", version: { increment: 1 } },
@@ -165,7 +169,7 @@ export async function listHeldCarts(ctx: RegisterCtx, actor: RegisterActor, clie
       select: ROW_SELECT,
     });
     const items = await summaries(db, rows);
-    return { ok: true, items, count: items.length };
+    return { ok: true, items, count: items.length, expireDays: days };
   });
 }
 
@@ -177,7 +181,7 @@ const idOf = (input: unknown): string | null => {
 
 export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, client?: Db): Promise<RecallHeldCartResult> {
   return guard("recallHeldCart", async (): Promise<RecallHeldCartResult> => {
-    const db: Db = registerDb(client);
+    const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
     const id = idOf(input);
@@ -244,7 +248,7 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
 // ═══════════════════ ทิ้ง ═══════════════════
 export async function discardHeldCart(ctx: RegisterCtx, actor: RegisterActor, input: { id: string }, client?: Db): Promise<DiscardHeldCartResult> {
   return guard("discardHeldCart", async (): Promise<DiscardHeldCartResult> => {
-    const db: Db = registerDb(client);
+    const db: Db = client ?? prisma;
     const s = await scope(db, ctx, actor);
     if (isRefusal(s)) return s;
     const id = idOf(input);

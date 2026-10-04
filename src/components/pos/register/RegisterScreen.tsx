@@ -226,6 +226,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   // ═══════ P1.5 บิลที่พักของสาขา (ป้ายจำนวน + ลิ้นชัก) ═══════
   const [heldItems, setHeldItems] = useState<HeldCartSummary[] | null>(null);
   const [heldCount, setHeldCount] = useState(0);
+  const [heldExpireDays, setHeldExpireDays] = useState(HELD_CART_EXPIRE_DAYS);
   const [heldBusy, setHeldBusy] = useState(false);
   const heldBusyRef = useRef(false);
   /** ชื่อสินค้าของบรรทัดที่เรียกคืน (รวมที่ขายไม่ได้แล้ว — ไม่อยู่ใน known) */
@@ -241,6 +242,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
       if (r.ok) {
         setHeldItems(r.items);
         setHeldCount(r.count);
+        setHeldExpireDays(r.expireDays);
       } else setHeldItems([]);
     } catch {
       if (seq === heldSeq.current) setHeldItems((v) => v ?? []);
@@ -1192,7 +1194,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
           <HeldBillsDialog
             key={k}
             items={heldItems}
-            expireDays={HELD_CART_EXPIRE_DAYS}
+            expireDays={heldExpireDays}
             busy={heldBusy}
             onRecall={requestRecall}
             onDiscard={(h) => void onDiscardHeld(h)}

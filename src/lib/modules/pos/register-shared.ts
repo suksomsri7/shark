@@ -200,7 +200,8 @@ export type HeldCartNoticeCode = "PRICE_CHANGED" | "PRODUCT_NOT_FOUND" | "PRODUC
 export type HeldCartNotice = { lineIndex: number; code: HeldCartNoticeCode; heldUnitPriceSatang?: number; unitPriceSatang?: number };
 export type HoldRegisterCartInput = { cart: RegisterQuoteInput; label?: string | null };
 export type HoldRegisterCartResult = { ok: true; heldCart: HeldCartSummary } | RegisterRefusal;
-export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: number } | RegisterRefusal;
+/** expireDays = วันหมดอายุที่ระบบนี้ใช้จริง (settings หรือค่าปริยาย) — ลิ้นชักแสดงค่านี้ */
+export type ListHeldCartsResult = { ok: true; items: HeldCartSummary[]; count: number; expireDays: number } | RegisterRefusal;
 /** quote = ราคาปัจจุบัน (ไม่ใช่ราคาตอนพัก) · บรรทัดที่ขายไม่ได้แล้วยังอยู่ใน cart พร้อม notice (quote จึงไม่ ok จนกว่าจะเอาออก) ·
  *  products = สินค้าของบรรทัดที่ยังขายได้ (จอใช้แสดงชื่อ/ราคา) · lineNames = ชื่อสินค้าต่อบรรทัด (null = รายการกำหนดเอง/ไม่พบ) */
 export type RecallHeldCartResult =
