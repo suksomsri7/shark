@@ -332,7 +332,8 @@
       "note": "Reason / note",
       "by": "Counted by",
       "at": "Counted at",
-      "saved": "Recount saved"
+      "saved": "Recount saved",
+      "invalid": "Enter the counted cash amount and a note"
     }
   },
   "report": {

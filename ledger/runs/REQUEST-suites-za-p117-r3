@@ -1,0 +1,8 @@
+p117-r3 /root/projects/shark-pos-p11 wip/pos-p1.17-r3 12813b8a
+typecheck
+fitness
+fitness-pos
+forced:qc-pos-p1.3
+unforced:qc-pos-p1.17
+unforced:qc-pos-p1.6
+build

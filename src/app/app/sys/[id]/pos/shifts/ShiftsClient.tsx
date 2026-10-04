@@ -138,7 +138,9 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const [recountNote, setRecountNote] = useState("");
   const [recountErr, setRecountErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // R2: คีย์กันซ้ำผูกกับกะ — เปิดกล่องของกะอื่น = คีย์ใหม่ (กะเดิมเปิดซ้ำ = คีย์เดิม จนสำเร็จ)
   const [recountKey, setRecountKey] = useState(newKey);
+  const [recountKeyShift, setRecountKeyShift] = useState<string | null>(null);
 
   const base = { systemId, unitId, ...(deviceId ? { deviceId } : {}) };
   const fail = useCallback((r: { code: string }) => setError(te(refusalMessageKey(r.code))), [te]);
@@ -175,6 +177,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
     if (busy) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       if (await fn()) await load(deviceId);
     } catch {
@@ -251,34 +254,59 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
     setRecountNote("");
     setRecountErr(null);
     setNotice(null);
+    if (recountKeyShift !== h.id) {
+      setRecountKey(newKey());
+      setRecountKeyShift(h.id);
+    }
   };
   /** P1.9b: ถูกปฏิเสธ = ข้อความค้างในกล่อง ไม่ load ซ้ำ · สำเร็จ = ปิดกล่อง เปิด Z ของกะนั้นพร้อมผลนับ แล้วโหลดประวัติใหม่ */
   const doRecount = async () => {
     if (busy || !recountFor) return;
     const c = bahtToSatang(recountB);
     if (c === null || !recountNote.trim()) {
-      setRecountErr(te("errors.invalidLine"));
+      setRecountErr(t("recount.invalid"));
       return;
     }
+    const shiftId = recountFor.id;
     setBusy(true);
     setRecountErr(null);
+    setNotice(null);
+    let saved: Extract<Awaited<ReturnType<typeof recountShiftAction>>, { ok: true }> | null = null;
     try {
-      const r = await recountShiftAction({ ...base, recount: { shiftId: recountFor.id, countedCashSatang: c, note: recountNote.trim(), idempotencyKey: recountKey } });
+      const r = await recountShiftAction({ ...base, recount: { shiftId, countedCashSatang: c, note: recountNote.trim(), idempotencyKey: recountKey } });
       if (!r.ok) {
         setRecountErr(te(refusalMessageKey(r.code)));
+        // R2: คำปฏิเสธถาวร = ข้อความค้างในกล่อง + โหลดประวัติใหม่ (load ไม่ล้าง recountErr)
+        if (r.code === "ALREADY_RECOUNTED" || r.code === "IDEMPOTENCY_CONFLICT" || r.code === "SHIFT_NOT_FORCED") {
+          try {
+            await load(deviceId);
+          } catch {
+            /* ข้อความปฏิเสธยังอยู่ในกล่อง */
+          }
+        }
         return;
       }
-      setRecountKey(newKey());
-      const z = await zReportAction({ ...base, shiftId: recountFor.id });
-      if (z.ok) {
-        setViewZ(z.report);
-        setViewRecount(z.recount ?? r.recount);
-      }
-      setRecountFor(null);
-      setNotice(t("recount.saved"));
-      await load(deviceId);
+      saved = r;
     } catch {
       setRecountErr(te("errors.unknown"));
+    } finally {
+      if (!saved) setBusy(false);
+    }
+    if (!saved) return;
+    // R2: สำเร็จ = ปิดกล่องก่อน · ขั้นหลังสำเร็จ (Z, load) พังได้โดยไม่ขึ้น errors.unknown ในกล่อง
+    setRecountKey(newKey());
+    setRecountKeyShift(null);
+    setRecountFor(null);
+    setNotice(t("recount.saved"));
+    try {
+      const z = await zReportAction({ ...base, shiftId });
+      if (z.ok) {
+        setViewZ(z.report);
+        setViewRecount(z.recount ?? saved.recount);
+      }
+      await load(deviceId);
+    } catch {
+      /* บันทึกแล้ว — ขั้นถัดไปพังไม่กระทบผล */
     } finally {
       setBusy(false);
     }
