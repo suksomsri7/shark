@@ -41,4 +41,21 @@ Dynamic PromptPay/Beam/card gateway (P1.7) · refunds/CN (P1.8) · shifts/drawer
 
 ## 7. Owner answers (3 Oct 2026)
 - **O19 + O20 → configurable.** Service charge and tip are both POS settings, OFF by default. Service charge: % per POS system, inside the VAT base, its own `serviceChargeSatang` column, included in grandTotal. Tip: its own `tipSatang`, not revenue, not in the VAT base. The tip's ledger account is a setting; while it is unset, the tip toggle cannot be switched on (the UI says why). The oracle covers OFF (no change to today's totals) and ON for both.
-- **O21** — controller recommendation sent to owner, awaiting answer: refuse loudly only when it is ambiguous. A caller that picks "first POS of the tenant" keeps working when the tenant has exactly 1 POS; with 2+ POS and no explicit system it returns `UNIT_SYSTEM_MISMATCH` + a Thai message ("เลือกจุดขายก่อน"). Explicit wrong pairs are always refused.
+- **O21 → ACCEPTED by owner (4 Oct)** — refuse loudly only when it is ambiguous. A caller that picks "first POS of the tenant" keeps working when the tenant has exactly 1 POS; with 2+ POS and no explicit system it returns `UNIT_SYSTEM_MISMATCH` + a Thai message ("เลือกจุดขายก่อน"). Explicit wrong pairs are always refused.
+
+## 8. Controller rulings on the oracle writer's questions (4 Oct · oracle `wip/pos-p1.6-oracle` 5a264e71, 47 checks)
+1. **Tip is outside grandTotal**: payments = grandTotal + tip. This amends COMMON §1 for tip only; tip is pass-through and not revenue.
+2. **Tendered/change live on the CASH `PosPayment` row** (`tenderedSatang`, `changeSatang`). Tighten C1–C3 to that location in the next oracle round.
+3. **VOIDED stored sale**:
+   - Every caller gets the stored sale back with `status: "VOIDED"` (R6).
+   - A different payload on the same key ⇒ `IDEMPOTENCY_CONFLICT`.
+   - The restaurant re-checkout must still end PAID. The restaurant caller mints a new key when the stored sale is VOIDED.
+   - I6 must assert: re-checkout ends PAID, there is exactly one PAID bill, and the voided bill stays VOIDED.
+4. **I7 kept**: concurrent same-key legacy calls return the stored sale, never a P2002 (money lane).
+5. **O21 encoding confirmed**: an unlinked unit is allowed when the tenant has exactly 1 POS, and refused when it has 2+.
+6. **Tip ledger account must belong to the book linked to that POS.** On an unlinked POS, tip cannot be enabled. K4 is adjusted accordingly.
+7. **P1.3 S3.38**: ORACLE-EDIT approved at build time; TRANSFER and CARD become valid register pay types.
+8. **Gate runs the full COMMON §7 set plus all createSale callers' suites.** Any suite that relies on an unlinked pair gets a fixture fix, never a weakened guard.
+9. **UI (R9)** is covered by controller visual + parity, not by this oracle.
+10. **Invented names are ratified as proposed**: `splitIncludedVat` in `src/lib/money/vat.ts`, the input fields, the payment-settings API, `SPLIT_INVALID`, `TIP_ACCOUNT_REQUIRED` and the message keys.
+11. **Next step**: run the oracle once on the VPS against base, unforced and forced. Expect unforced SKIPPED exit 0, and forced 8 green / 40 red with Z1/Z2 green (48 checks after e39c8d02). Then accept the oracle and merge it into session/pos, then builder S.
