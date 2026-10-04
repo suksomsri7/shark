@@ -1,0 +1,83 @@
+[env] qc-pos-p1.6 · ไฟล์ .env.qc4 · DB ep-frosty-lab-aoylqlv8-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+(node:1180396) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── V/U/R ข้อที่ไม่แตะ DB ──
+  ✅ [P1.6-V1] splitIncludedVat (src/lib/money/vat.ts) = สูตรสะพานบัญชี (gross − Math.round(gross/(1+rate))) ทุกตัวใน 10,000 ยอดสุ่ม + 0…2,000 × อัตรา 0/100/300/500/700/900/1000/1500 bp · base+vat = gross · Int · อัตรา 700 = VAT ของ priceCart INCLUDED (จอ = บิล)
+  ✅ [P1.6-V2] ผู้ใช้สูตรเดียว [static]: account/index.ts applyExternalSale เรียก splitIncludedVat และไม่มีสูตรถอด VAT แบบเขียนเอง · service.ts ไม่มี `const vat = 0` และเรียก splitIncludedVat · vat.ts ไม่ import prisma/server
+  ✅ [P1.6-U4] [static] service.ts มีการ์ด UNIT_SYSTEM_MISMATCH (ลำดับ 'ก่อนตัวนับ' พิสูจน์ที่ U1) · ทะเบียนผู้เรียก createSale ใน src = 18 จุด/15 ไฟล์ตามโน้ต (จุดใหม่/หาย = ผู้คุมงานทบทวน)
+  ✅ [P1.6-R2] [static] ไฟล์ action ของ POS (*actions*.ts): "use server" · export เฉพาะ async function · ไม่มี throw · ทุกตัวมี catch · มี updatePosPaymentSettingsAction
+  ✅ [P1.6-R3] refusalMessageKey: UNIT_SYSTEM_MISMATCH→errors.unitSystemMismatch · SPLIT_INVALID→errors.splitInvalid · STOCK_INSUFFICIENT→errors.stockInsufficient · TIP_ACCOUNT_REQUIRED→errors.tipAccountRequired · ทุกคีย์มี th+en · en ไม่มีอักษรไทย · th ของ unitSystemMismatch มี 'เลือกจุดขาย'
+
+── sandbox qc-p1.6-6nm3ct (สาขา + ระบบ POS/คลัง/บัญชี ชั่วคราวในร้าน QC กาแฟ) ──
+
+── V VAT เก็บลงบิล ──
+  ✅ [P1.6-V3] createSale บน POS ที่ผูกสมุดจด VAT 7%: vatSatang = splitIncludedVat(grandTotal, 700) (0 · 1 · 15 · 6,500 · 10,700 · 6,500−ส่วนลด 500) · grandTotal = Σบรรทัด − ส่วนลด (VAT รวมในราคา ยอดไม่เปลี่ยน)
+  ✅ [P1.6-V4] vatSatang = 0 เมื่อ POS ไม่ผูกบัญชี · ผูกสมุดที่ไม่จด VAT · การเชื่อมถูกปิด (AccountSystemLink.enabled=false)
+  ✅ [P1.6-V5] หน้าขายบน POS ที่จด VAT: vatSatang ที่เก็บ = vatSatang ของ quote (INCLUDED 700) = splitIncludedVat(grandTotal) · grandTotal = quote
+
+── T แบ่งจ่าย ──
+  ✅ [P1.6-T1] บิล 0 บาท + payMethods ว่าง → PAID 0 แถวจ่าย vat 0 ทั้ง createSale เดิมและหน้าขาย (รายการเอง 0 บาทโดยเจ้าของ)
+  ✅ [P1.6-T2] แบ่ง 1 สตางค์: CASH 1 + PROMPTPAY 1 + TRANSFER 1 + CARD ที่เหลือ → PAID · 4 แถว ชนิด/ยอดตรงทุกแถว · Σ = grandTotal
+  ✅ [P1.6-T3] 10 รายการ (ซ้ำชนิดได้) → PAID 10 แถว · 11 รายการ → SPLIT_INVALID ไม่มีบิล
+  ✅ [P1.6-T4] Σ ≠ ยอด (ขาด/เกิน 1 สตางค์) → PAYMENT_MISMATCH · รายการ 0 / −1 (ชดเชย) / 1.5 → VALIDATION · ไม่มีบิลทุกกรณี
+  ✅ [P1.6-T5] CARD + reference (EDC): หน้าขายและ createSale เดิมเก็บ reference ตรงตัว (PosPayment.reference หรือ .note)
+  ✅ [P1.6-T6] ชนิดวิธีจ่ายของหน้าขาย = CASH|PROMPTPAY|TRANSFER|CARD: TRANSFER ล้วน / CARD ล้วน → PAID · DEPOSIT / ROOM_CHARGE / รหัสมั่ว → VALIDATION ไม่มีบิล
+  ✅ [P1.6-T7] ปิดวันเห็นบัตร: closeDaySummary(POS sandbox).byMethod มี CARD = Σ ยอด CARD ของบิล PAID วันนี้ · cashInDrawer ไม่รวมบัตร · closeDayBills ของบิลบัตรไม่ใช่ '—'
+
+── C เงินสดรับ/ทอน ──
+  ✅ [P1.6-C1] หน้าขาย เงินสด 4,000 + พร้อมเพย์ รับ 5,000 → changeSatang 1,000 · แถว PosPayment CASH เก็บ tenderedSatang 5,000 + changeSatang 1,000 · พร้อมเพย์ล้วน → ไม่มีแถว CASH
+  ✅ [P1.6-C2] createSale: CASH 6,500 + cashTenderedSatang 10,000 → แถว CASH tenderedSatang 10,000 / changeSatang 3,500
+  ✅ [P1.6-C3] เงินรับ < ส่วนเงินสด 1 สตางค์ → PAYMENT_MISMATCH ทั้งหน้าขายและ createSale · ไม่มีบิล · ตัวนับใบเสร็จสาขาไม่ขยับ
+  ✅ [P1.6-C4] ผู้เรียกเดิมที่ไม่ส่งเงินรับ (createSale CASH ไม่มี cashTenderedSatang) ยัง PAID เหมือนเดิม (ไม่ปฏิเสธ · F15.2)
+
+── K ค่าบริการ / ทิป ──
+  ✅ [P1.6-K1] ปิด (ไม่มีตั้งค่า หรือ enabled:false + rateBp) → quote/บิล serviceChargeSatang 0 tipSatang 0 · grandTotal = priceCart แบบวันนี้ · createSale เดิมเก็บ 0/0
+  ✅ [P1.6-K2] ค่าบริการเปิด 10%: quote 6,500 → ค่าบริการ 650 รวม 7,150 · บิลเก็บ 650/7,150 · VAT = splitIncludedVat(7,150) = 468 (อยู่ในฐาน VAT) · จ่าย 6,500 → PAYMENT_MISMATCH
+  ✅ [P1.6-K3] ค่าบริการปัดครึ่งขึ้นจากยอดหลังส่วนลด: 3,335 → 334 (ไม่ใช่ 333) · 13,000 − ท้ายบิล 1,000 → 1,200 รวม 13,200 · priceCart(serviceChargeBp) ฝั่ง client ได้เท่ากัน
+  ✅ [P1.6-K4] เปิดทิปโดยไม่มีบัญชี / บัญชีของสมุดอื่น → TIP_ACCOUNT_REQUIRED (คืนเป็นข้อมูล) ทิปยังปิด · บัญชีของสมุดที่ผูก POS นี้ → เปิดได้
+  ✅ [P1.6-K9] POS ที่ไม่ผูกสมุดบัญชี: เปิดทิป (แม้ส่ง ledgerAccountId ของสมุดใด ๆ) → TIP_ACCOUNT_REQUIRED คืนเป็นข้อมูล · ทิปยังปิด
+  ✅ [P1.6-K5] ทิปเปิด: ทิป 500 บนบิล 6,500 → tipSatang 500 · grandTotal 6,500 (ไม่ใช่รายได้) · VAT 425 (ไม่ใช่ 458 · ไม่อยู่ในฐาน) · Σจ่าย 7,000 · จ่าย 6,500 → PAYMENT_MISMATCH
+  ✅ [P1.6-K6] ทิปปิดแต่ส่ง tipSatang 500 → VALIDATION ไม่มีบิล (ไม่เมินเงียบ) · ทิปเปิดแต่ −1 / 1.5 / "500" → VALIDATION
+  ✅ [P1.6-K7] ตั้งค่าชำระเงิน: STAFF → PERMISSION_DENIED · rateBp 1.5 / −1 / 10001 → VALIDATION · ค่าตั้งเดิมไม่เปลี่ยน
+  ✅ [P1.6-K8] ค่าบริการเปิดที่ POS แต่ผู้เรียกเดิม (createSale ไม่ส่ง serviceChargeSatang เช่นร้านอาหารที่มีบรรทัด service charge เอง) → serviceChargeSatang 0 ยอดเดิม (ไม่คิดซ้ำ)
+
+── N หมายเหตุ ──
+  ✅ [P1.6-N1] หมายเหตุบิล 500 ตัวอักษร → PosSale.note ตรงตัว (หน้าขาย + createSale) · 501 → VALIDATION ไม่มีบิล
+  ✅ [P1.6-N2] หมายเหตุบรรทัด → PosSaleLine.note ตรงตัว · 501 → VALIDATION ไม่มีบิล
+
+── I idempotency ──
+  ✅ [P1.6-I1] createSale เดิม คีย์ซ้ำ + payload เดิม (รวมสลับลำดับบรรทัด) ขณะ PAID → saleId เดิม status "PAID" · บิล 1 · แถวจ่าย 1 ชุด
+  ✅ [P1.6-I2] createSale เดิม คีย์ซ้ำ + payload ต่าง (จำนวน / ราคา / ชนิดวิธีจ่าย / แบ่งยอดต่าง) ขณะ PAID → IDEMPOTENCY_CONFLICT · บิล 1 · ยอดเดิม
+  ✅ [P1.6-I3] createSale เดิม คีย์ของบิลที่ VOIDED + payload เดิม → saleId เดิม status "VOIDED" · ไม่มีบิลใหม่ · ตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.6-I4] createSale เดิม คีย์ของบิลที่ VOIDED + payload ต่าง → IDEMPOTENCY_CONFLICT · ไม่มีบิลใหม่
+  ✅ [P1.6-I5] หน้าขาย (คงสัญญา P1.3): PAID+เดิม → ok duplicated · PAID+ต่าง → CONFLICT+saleId · VOIDED+เดิม/ต่าง → CONFLICT + saleStatus VOIDED
+  ✅ [P1.6-I6] ร้านอาหาร re-checkout (restaurant/order.ts:418 คีย์ rest-<hash>) หลัง voidCheckout รายการชุดเดิม → จบ PAID (มติ §8 ข้อ 3: ผู้เรียกออกคีย์ใหม่เมื่อบิลเดิม VOIDED) · บิลใหม่ ≠ บิลเดิม · PAID เพียง 1 บิล · บิลเดิมยัง VOIDED
+  ✅ [P1.6-I7] createSale เดิม คีย์เดียว 10 connection พร้อมกัน × 3 รอบ → ทุกคำตอบ ok saleId เดียว · บิล 1 ต่อรอบ (ไม่มี P2002 หลุดถึงผู้เรียก)
+
+── U คู่สาขา↔ระบบ ──
+  ✅ [P1.6-U1] คู่ผิดชัดแจ้ง (สาขาผูก POS อื่น): ขณะตัวนับใบเสร็จของสาขาถูกล็อกจาก connection อื่น → UNIT_SYSTEM_MISMATCH ทันที (ไม่ค้างรอ) · ไม่มีบิล · ตัวนับไม่ขยับหลังปล่อยล็อก
+  ✅ [P1.6-U2] ร้านมี POS 2+ · สาขาไม่ผูก POS ใดเลย → UNIT_SYSTEM_MISMATCH + ข้อความ 'เลือกจุดขายก่อน' · ไม่มีบิล · ไม่มีแถวตัวนับของสาขานั้น
+  ✅ [P1.6-U3] ร้านมี POS ตัวเดียว (ร้าน QC อาหาร) · สาขาไม่ผูก POS → ขายได้เหมือนวันนี้ (ผู้เรียกแบบ 'POS ตัวแรก') · คู่ที่ผูกถูก (sandbox) → PAID
+
+── B oversellPolicy ──
+  ✅ [P1.6-B1] BLOCK: เหลือ 2 ขาย 3 → STOCK_INSUFFICIENT ไม่มีบิล สต็อก 2 ไม่มี OUT ตัวนับไม่ขยับ · ขาย 2 → PAID สต็อก 0 OUT 1 แถว (ไม่ตัดซ้ำหลัง commit) · สินค้าไม่นับสต็อกยังขายได้
+  ✅ [P1.6-B2] BLOCK ผ่าน createSale รูปแบบเดิม (บรรทัดมี itemId): เหลือ 1 ขาย 2 → STOCK_INSUFFICIENT ไม่มีบิล สต็อก 1
+  ✅ [P1.6-B3] BLOCK ชิ้นสุดท้าย 10 connection × 3 รอบ → PAID 1 · STOCK_INSUFFICIENT 9 · สต็อก 0 ไม่ติดลบ · ไม่มีรหัสอื่น (deadlock/BUSY/INTERNAL/THROW)
+  ✅ [P1.6-B4] BLOCK สองสินค้าสลับลำดับบรรทัด ([X,Y]/[Y,X]) 10 connection × 3 รอบ (เหลืออย่างละ 5) → PAID 5 · STOCK_INSUFFICIENT 5 · สต็อก 0/0 · ไม่มี deadlock
+  ✅ [P1.6-B5] ไม่ตั้งนโยบาย / ALLOW_NEGATIVE → ขายเกินได้เหมือนวันนี้ (PAID · สต็อก −1)
+  ✅ [P1.6-R1] คำปฏิเสธใหม่ของหน้าขาย/ตั้งค่า (SPLIT_INVALID · STOCK_INSUFFICIENT · PAYMENT_MISMATCH เงินรับ · VALIDATION หมายเหตุ/ทิป · TIP_ACCOUNT_REQUIRED) = คืน {ok:false, code, message} ไม่ throw
+  (ลบ accountLedger ไม่ได้: update or delete on table "AccountLedger" violates RESTRICT setting of foreign key constraint "Accou)
+  ลบแล้ว: {"outbox":49,"audit":27,"journal":0,"point":0,"coupon":0,"restaurantOrderItem":1,"restaurantOrder":1,"tableSession":1,"restaurantTable":1,"restaurantZone":1,"kdsStation":1,"restaurantSetting":1,"payment":69,"line":85,"sale":59,"product":14,"productBySystem":0,"invJournal":49,"invItem":13,"counter":5,"accLink":2,"accJournal":0,"accDoc":0,"accSettings":2} · สาขา 6 · ระบบ 6
+  ✅ [P1.6-Z1] QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ
+  ✅ [P1.6-Z2] QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · InvItem · AppSystem รวม settings · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · AccountSettings · AccountSystemLink) ทุกคอลัมน์ ก่อน = หลัง
+
+===== qc-pos-p1.6 ===== ผ่าน 48/48
+JSON_SUMMARY {"suite":"qc-pos-p1.6","total":48,"passed":48,"failed":[],"skipped":false,"forced":false,"skippedChecks":{},"missing":[],"a5":{"drift":[]}}
