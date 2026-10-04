@@ -34,6 +34,9 @@ function bahtToSatang(v: string): number | null {
 }
 const newKey = () => `shift-${(crypto.randomUUID?.() ?? `${Date.now()}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "")}`;
 
+/** R2 F7: ชื่อวิธีชำระภาษาคนใน X/Z (pos.shift.method.*) · ชนิดที่ยังไม่มีป้าย = แสดงรหัสเดิม */
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
+
 function Report({ r, t }: { r: ShiftReport; t: (key: string, values?: Record<string, number>) => string }) {
   const row = (label: string, v: number | null | undefined) => (
     <div className="flex justify-between border-b py-1.5 text-sm last:border-0">
@@ -63,7 +66,7 @@ function Report({ r, t }: { r: ShiftReport; t: (key: string, values?: Record<str
       {r.byMethod.map((m) => (
         <div key={m.type} className="flex justify-between border-b py-1.5 text-sm">
           <span className="text-[color:var(--color-muted)]">
-            {m.type} ({m.count})
+            {METHOD_KEYS.has(m.type) ? t(`method.${m.type}`) : m.type} ({m.count})
           </span>
           <span className="tabular-nums">
             <MoneyText satang={m.amountSatang} decimals />
@@ -103,6 +106,8 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
   const [countB, setCountB] = useState("");
   const [note, setNote] = useState("");
   const [closeKey, setCloseKey] = useState(newKey);
+  // R2 F6: คีย์กันซ้ำเงินเข้า/ออก คงไว้จนสำเร็จ (แบบ closeKey) — กดซ้ำหลังเน็ตหลุด = รายการเดิม ไม่บันทึกสองครั้ง
+  const [moveKey, setMoveKey] = useState(newKey);
 
   const base = { systemId, unitId, ...(deviceId ? { deviceId } : {}) };
   const fail = useCallback((r: { code: string }) => setError(te(refusalMessageKey(r.code))), [te]);
@@ -121,7 +126,7 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
       if (list.ok) setHistory(list.items);
       if (off && off.ok) setOffShift(off.totalSatang);
       if (s) {
-        const x = await xReportAction({ systemId, unitId, shiftId: s.id });
+        const x = await xReportAction({ ...b, shiftId: s.id }); // R2 F3: ส่ง deviceId — แคชเชียร์เห็น X ของกะเปิดที่เครื่องนี้
         setReport(x.ok ? x.report : null);
       } else setReport(null);
       setLoaded(true);
@@ -156,7 +161,11 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         return false;
       }
       const r = await openShiftAction({ ...base, shift: { deviceId, floatSatang: f, ...(label.trim() ? { deviceLabel: label.trim() } : {}) } });
-      if (!r.ok && r.code !== "SHIFT_ALREADY_OPEN") fail(r);
+      // R2 F2: ถูกปฏิเสธ = คืน false (ไม่ load ซ้ำ ข้อความผิดพลาดค้างบนจอ) · true เฉพาะสำเร็จ / มีกะเปิดอยู่แล้ว
+      if (!r.ok && r.code !== "SHIFT_ALREADY_OPEN") {
+        fail(r);
+        return false;
+      }
       return true;
     });
   const doMove = (kind: "IN" | "OUT") =>
@@ -166,13 +175,14 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         setError(te("errors.invalidLine"));
         return false;
       }
-      const r = await recordCashMovementAction({ ...base, movement: { shiftId: shift.id, kind, amountSatang: a, reason: moveReason.trim(), idempotencyKey: newKey() } });
+      const r = await recordCashMovementAction({ ...base, movement: { shiftId: shift.id, kind, amountSatang: a, reason: moveReason.trim(), idempotencyKey: moveKey } });
       if (!r.ok) {
         fail(r);
         return false;
       }
       setMoveB("");
       setMoveReason("");
+      setMoveKey(newKey());
       return true;
     });
   const doClose = () =>

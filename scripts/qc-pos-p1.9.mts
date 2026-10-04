@@ -103,6 +103,16 @@ const CHECKS: readonly Def[] = [
   // ── Z คืนสภาพ ──
   D("Z1", "-", "QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ · รวม PosShift/PosCashMovement/PosShiftCounter) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ"),
   D("Z2", "-", "QC4 ลายนิ้วมือ: แถวเดิมของร้าน QC POS (PosProduct · PosCategory · AppSystem · AppSystemUnit · BusinessUnit · Membership · PosReceiptCounter · PosShift) ทุกคอลัมน์ ก่อน = หลัง"),
+  // ORACLE-ADD (controller R2 ruling) ▸ S.R2 — ข้อของการแก้ R2 (brief pos-brief-P1.9.md §R2 F1–F7) · ต้องแดงบน 473e1227 และเขียวหลังแก้
+  //   S.R2.1–S.R2.5 สถิต (รันใน --no-db ด้วย) · S.R2.6–S.R2.8 ต้องใช้ DB (sandbox เดิม · ต่อท้าย runDb)
+  D("S.R2.1", "-", "[static · R2 F1] shift.ts: ทุก query PosSale ที่ผูก shiftId ของกะ (ไม่ใช่ shiftId: null) มี createdAt: { gte … } ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ"),
+  D("S.R2.2", "-", "[static · R2 F2] ShiftsClient doOpen: ถูกปฏิเสธ (ไม่ใช่ SHIFT_ALREADY_OPEN) = fail(r) แล้ว return false (ข้อความผิดพลาดค้างบนจอ ไม่ load ซ้ำ)"),
+  D("S.R2.3", "-", "[static · R2 F5] pos/api/ops/sales.ts voidErrorToApi: PosSaleError SHIFT_CLOSED → ApiError 409 state_conflict (ไม่ใช่ 500)"),
+  D("S.R2.4", "X1", "[static · R2 F6] ShiftsClient doMove: idempotencyKey ไม่สร้างใหม่ทุกครั้ง (ไม่ใช่ newKey() ในคำขอ) · คีย์ state หมุนเฉพาะหลังสำเร็จ (แบบ closeKey)"),
+  D("S.R2.5", "-", "[static · R2 F7] ข้อความ pos.shift.method.{CASH CARD PROMPTPAY TRANSFER} th+en (en ไม่มีอักษรไทย) · แถวแยกวิธีชำระใน X/Z ใช้ป้าย method.* ไม่ใช่รหัสดิบ {m.type} อย่างเดียว"),
+  D("S.R2.6", "X3", "R2 F3: STAFF B (operate ไม่มี manage) xReport กะที่ปิดแล้วของ A → PERMISSION_DENIED (zReport เช่นกัน) · กะเปิดของ A จากเครื่องอื่น → PERMISSION_DENIED · กะเปิดของ A ที่เครื่องที่ยืนอยู่ (ctx.deviceId = เครื่องของกะ) → ok (X4) · manage อ่านกะปิดของ A ได้ · B อ่านกะปิดของตัวเองได้"),
+  D("S.R2.7", "X4", "R2 F4: otherSources เปิด · บิล HOTEL ผูกกะ (กะเดียวของสาขา) · ปิดกะ → voidSale บิล HOTEL สำเร็จ (VOIDED) · บิล POS ในกะเดียวกัน → ยัง SHIFT_CLOSED บิลยัง PAID (S11 ของหน้าขายคงเดิม)"),
+  D("S.R2.8", "-", "R2 F5 (ระดับหน่วย): voidErrorToApi(new PosSaleError(\"SHIFT_CLOSED\")) = ApiError 409 state_conflict + ข้อความไทย/อังกฤษ · PosSaleError อื่น / Error อื่น = ส่งผ่านตัวเดิม · ข้อความ 'บิลนี้ void ไม่ได้' ยัง 409"),
 ];
 
 if (LIST) {
@@ -377,8 +387,122 @@ async function runStatic(): Promise<void> {
   if (shiftB && /^\s*\w*pin\w*\s+/im.test(shiftB.split("\n").slice(1).join("\n"))) s8.push("PosShift มีคอลัมน์ pin");
   if (/\bpinCode\b|\bhrEmployee\b|\bpinHash\b/.test(shiftSrc)) s8.push("shift.ts อ่าน PIN/HrEmployee ตรง");
   chk("P1.9-ST8", s8.length === 0, "ไม่มีตาราง/คอลัมน์ PIN ของ POS", s8.join(" · ") || "ไม่มี (ถูก)");
+  await runStaticR2(); // ORACLE-ADD (controller R2 ruling) ▸ S.R2.1–S.R2.5
 }
 const STATIC_IDS = ["P1.9-ST1", "P1.9-ST2", "P1.9-ST3", "P1.9-ST4", "P1.9-ST5", "P1.9-ST6", "P1.9-ST7", "P1.9-ST8"];
+
+// ═════════════════════════ ORACLE-ADD (controller R2 ruling) ▸ S.R2 ข้อสถิต (ไม่แตะ DB) ═════════════════════════
+const SHIFTS_UI_FILE = "src/app/app/sys/[id]/pos/shifts/ShiftsClient.tsx";
+const API_SALES_FILE = "src/lib/modules/pos/api/ops/sales.ts";
+const R2_STATIC_IDS = ["P1.9-S.R2.1", "P1.9-S.R2.2", "P1.9-S.R2.3", "P1.9-S.R2.4", "P1.9-S.R2.5"];
+STATIC_IDS.push(...R2_STATIC_IDS);
+/** ตัวเรียกที่วงเล็บสมดุล: คืนข้อความตั้งแต่ `(` ตัวแรกหลัง at จนถึง `)` ที่ปิดมัน ("" = ไม่พบ) */
+function balancedFrom(src: string, at: number): string {
+  const open = src.indexOf("(", at);
+  if (open < 0) return "";
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i];
+    if (c === "(") depth++;
+    else if (c === ")" && --depth === 0) return src.slice(open, i + 1);
+  }
+  return "";
+}
+/** เนื้อของ `const name = …` จนถึง `const ` ตัวถัดไปในระดับเดียวกัน (ไฟล์คอมโพเนนต์ · ประมาณพอสำหรับข้อสถิต) */
+function constBody(src: string, name: string): string {
+  const m = new RegExp(`\\bconst\\s+${name}\\s*=`).exec(src);
+  if (!m) return "";
+  const rest = src.slice(m.index + m[0].length);
+  const next = rest.search(/\n\s{2}const\s+\w+\s*=/);
+  return next < 0 ? rest : rest.slice(0, next);
+}
+async function runStaticR2(): Promise<void> {
+  console.log("\n── S.R2 ข้อสถิตของการแก้ R2 (ไม่แตะ DB · ORACLE-ADD) ──");
+  // S.R2.1 (F1) — ทุก posSale.<op>(…) ใน shift.ts ที่กรอง shiftId (ไม่ใช่ null) ต้องมี createdAt gte
+  {
+    const p: string[] = [];
+    const calls = [...shiftSrc.matchAll(/\.posSale\.(findMany|findFirst|count|aggregate|groupBy)\s*\(/g)].map((m) => ({ op: m[1], body: balancedFrom(shiftSrc, m.index ?? 0) }));
+    const bound = calls.filter((c) => /\bshiftId\s*:/.test(c.body) && !/\bshiftId\s*:\s*null\b/.test(c.body));
+    if (!shiftSrc) p.push(`ไม่มี ${SHIFT_FILE}`);
+    else if (!bound.length) p.push("ไม่พบ query PosSale ที่ผูก shiftId ของกะ");
+    for (const c of bound) if (!/\bcreatedAt\s*:\s*\{\s*gte\s*:/.test(c.body)) p.push(`posSale.${c.op} ผูก shiftId แต่ไม่มี createdAt: { gte }`);
+    chk("P1.9-S.R2.1", p.length === 0, "query ของกะมี createdAt >= openedAt", p.join(" · ") || `ครบ (${bound.length} query)`);
+  }
+  const ui = stripComments(rd(SHIFTS_UI_FILE));
+  // S.R2.2 (F2)
+  {
+    const p: string[] = [];
+    const body = constBody(ui, "doOpen");
+    if (!ui) p.push(`ไม่มี ${SHIFTS_UI_FILE}`);
+    else if (!body) p.push("ไม่พบ doOpen");
+    else {
+      const at = body.search(/\bfail\s*\(\s*r\s*\)/);
+      if (at < 0) p.push("doOpen ไม่เรียก fail(r)");
+      else {
+        const after = body.slice(at);
+        const rf = after.search(/return\s+false\b/);
+        const rt = after.search(/return\s+true\b/);
+        if (rf < 0 || (rt >= 0 && rt < rf)) p.push("หลัง fail(r) ไม่ return false ก่อน return true");
+      }
+      if (!/SHIFT_ALREADY_OPEN/.test(body)) p.push("doOpen ไม่แยก SHIFT_ALREADY_OPEN");
+    }
+    chk("P1.9-S.R2.2", p.length === 0, "fail(r) → return false · true เฉพาะ ok/ALREADY_OPEN", p.join(" · ") || "ครบ");
+  }
+  // S.R2.3 (F5)
+  {
+    const p: string[] = [];
+    const api = stripComments(rd(API_SALES_FILE));
+    const at = api.search(/export\s+function\s+voidErrorToApi\b/);
+    const body = at < 0 ? "" : api.slice(at).split(/\n(?:export\s|const\s)/)[0] ?? "";
+    if (!api) p.push(`ไม่มี ${API_SALES_FILE}`);
+    else if (!body) p.push("ไม่พบ voidErrorToApi");
+    else {
+      const k = body.indexOf("SHIFT_CLOSED");
+      if (k < 0) p.push("voidErrorToApi ไม่รู้จัก SHIFT_CLOSED");
+      else if (!/new\s+ApiError\s*\(\s*409\s*,\s*["']state_conflict["']/.test(body.slice(k))) p.push("SHIFT_CLOSED ไม่แปลงเป็น ApiError(409, state_conflict)");
+    }
+    chk("P1.9-S.R2.3", p.length === 0, "SHIFT_CLOSED → 409 state_conflict", p.join(" · ") || "ครบ");
+  }
+  // S.R2.4 (F6)
+  {
+    const p: string[] = [];
+    const body = constBody(ui, "doMove");
+    if (!body) p.push("ไม่พบ doMove");
+    else {
+      const key = /idempotencyKey\s*:\s*([A-Za-z_$][\w$]*)\s*([(}),])/.exec(body);
+      if (!key) p.push("doMove ไม่ส่ง idempotencyKey");
+      else if (key[2] === "(") p.push(`idempotencyKey สร้างใหม่ทุกครั้ง (${key[1]}())`);
+      else {
+        const setter = `set${key[1][0]!.toUpperCase()}${key[1].slice(1)}`;
+        const okAt = body.search(/if\s*\(\s*!\s*r\.ok\s*\)/);
+        const setAt = body.search(new RegExp(`\\b${setter}\\s*\\(`));
+        if (!new RegExp(`\\[\\s*${key[1]}\\s*,\\s*${setter}\\s*\\]\\s*=\\s*useState`).test(ui)) p.push(`${key[1]} ไม่ใช่ state ของคอมโพเนนต์`);
+        if (setAt < 0) p.push(`ไม่หมุน ${key[1]} หลังสำเร็จ`);
+        else if (okAt < 0 || setAt < okAt) p.push(`${setter} ถูกเรียกก่อนรู้ผล`);
+      }
+    }
+    chk("P1.9-S.R2.4", p.length === 0, "คีย์เงินเข้า/ออกคงไว้จนสำเร็จ", p.join(" · ") || "ครบ");
+  }
+  // S.R2.5 (F7)
+  {
+    const p: string[] = [];
+    const th = posMessages("th");
+    const en = posMessages("en");
+    for (const m of ["CASH", "CARD", "PROMPTPAY", "TRANSFER"]) {
+      const k = `pos.shift.method.${m}`;
+      const t = th.get(k);
+      const e = en.get(k);
+      if (typeof t !== "string" || !t.trim()) p.push(`${k}: th ขาด`);
+      else if (!/[฀-๿]/.test(t) && m !== "PROMPTPAY") p.push(`${k}: th ไม่ใช่ภาษาไทย`);
+      if (typeof e !== "string" || !e.trim()) p.push(`${k}: en ขาด`);
+      else if (/[฀-๿]/.test(e)) p.push(`${k}: en มีอักษรไทย`);
+    }
+    const row = /byMethod\.map\([\s\S]*?<\/div>\s*\)\s*\)/.exec(ui)?.[0] ?? "";
+    if (!row) p.push("ไม่พบแถว byMethod ใน ShiftsClient");
+    else if (!/method\./.test(row)) p.push("แถว byMethod ไม่ใช้ป้าย method.*");
+    chk("P1.9-S.R2.5", p.length === 0, "ป้ายวิธีชำระ th+en · แถว X/Z ใช้ป้าย", p.join(" · ") || "ครบ");
+  }
+}
 
 const skipReasons: string[] = [];
 for (const f of SHIFT_FNS) if (!exportsFn(shiftSrc, f)) skipReasons.push(`${SHIFT_FILE} ยังไม่มี export ${f}`);
@@ -1505,6 +1629,98 @@ async function runDb() {
     .filter(([, r, code]) => !(r?.ok === false && r.threw !== true && r.code === code && typeof r.message === "string" && r.message.length > 0))
     .map(([l, r]) => `${l}:${r?.threw ? "THROW " : ""}${codeOf(r)}`);
   chk("P1.9-D1", dataRefusals.length >= 12 && badD1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badD1.join(" · ") || "ครบ"));
+
+  // ═══ ORACLE-ADD (controller R2 ruling) ▸ S.R2.6–S.R2.8 · brief pos-brief-P1.9.md §R2 (F3 · F4 · F5) ═══
+  // ต่อท้ายหลัง E1/D1 (ไม่กระทบข้อเดิม) · ใช้สาขา u4 / POS-R ของ sandbox เดิม (cleanup ลบตามสาขา/ระบบอยู่แล้ว) · ปิดทุกกะที่เปิดในบล็อกนี้
+  const c4r = ctx(u4, posR);
+  // ════════ S.R2.6 (F3) xReport ของคนอื่น ════════
+  {
+    const p: string[] = [];
+    const dA1 = dev("r2-a1"), dA2 = dev("r2-a2"), dB1 = dev("r2-b1");
+    const CA = sid(await open(c4r, owner, { deviceId: dA1, floatSatang: 0 }));
+    const ca = CA ? await close(c4r, owner, { shiftId: CA, countedCashSatang: 0, idempotencyKey: `${TAG}-r2-ca` }) : { ok: false, code: "NO_SHIFT" };
+    if (!CA || ca?.ok !== true) p.push(`เตรียมกะปิดของ A: open ${CA ? "ok" : "ล้ม"} close ${codeOf(ca)}`);
+    else {
+      const xB = await xr(c4r, cashOp, CA);
+      if (!refused(xB, ["PERMISSION_DENIED"])) p.push(`B xReport กะปิดของ A ${codeOf(xB)}`);
+      const zB = await zr(c4r, cashOp, CA);
+      if (!refused(zB, ["PERMISSION_DENIED"])) p.push(`B zReport กะปิดของ A ${codeOf(zB)}`);
+      const xM = await xr(c4r, cashMgr, CA);
+      if (xM?.ok !== true || rep(xM)?.shiftId !== CA) p.push(`manage xReport กะปิดของ A ${codeOf(xM)}`);
+    }
+    const OA = sid(await open(c4r, owner, { deviceId: dA2, floatSatang: 0 }));
+    if (!OA) p.push("เตรียมกะเปิดของ A ไม่ได้");
+    else {
+      const xNoDev = await xr(c4r, cashOp, OA);
+      if (!refused(xNoDev, ["PERMISSION_DENIED"])) p.push(`B xReport กะเปิดของ A ไม่ระบุเครื่อง ${codeOf(xNoDev)}`);
+      const xOther = await xr(ctx(u4, posR, dev("r2-other")), cashOp, OA);
+      if (!refused(xOther, ["PERMISSION_DENIED"])) p.push(`B xReport กะเปิดของ A จากเครื่องอื่น ${codeOf(xOther)}`);
+      const xAt = await xr(ctx(u4, posR, dA2), cashOp, OA);
+      if (xAt?.ok !== true || rep(xAt)?.shiftId !== OA) p.push(`B xReport กะเปิดของเครื่องที่ยืนอยู่ ${codeOf(xAt)}`);
+      const oc = await close(c4r, owner, { shiftId: OA, countedCashSatang: 0, idempotencyKey: `${TAG}-r2-oa` });
+      if (oc?.ok !== true) p.push(`ปิดกะเปิดของ A ${codeOf(oc)}`);
+    }
+    const CB = sid(await open(c4r, cashOp, { deviceId: dB1, floatSatang: 0 }));
+    const cb = CB ? await close(c4r, cashOp, { shiftId: CB, countedCashSatang: 0, idempotencyKey: `${TAG}-r2-cb` }) : { ok: false, code: "NO_SHIFT" };
+    if (!CB || cb?.ok !== true) p.push(`เตรียมกะของ B: open ${CB ? "ok" : "ล้ม"} close ${codeOf(cb)}`);
+    else {
+      const xOwn = await xr(c4r, cashOp, CB);
+      if (xOwn?.ok !== true || rep(xOwn)?.shiftId !== CB) p.push(`B xReport กะปิดของตัวเอง ${codeOf(xOwn)}`);
+    }
+    chk("P1.9-S.R2.6", p.length === 0, "B→กะปิดของ A = DENIED (x/z) · กะเปิดของ A ไม่ใช่เครื่องนี้ = DENIED · เครื่องนี้ ok · manage ok · ของตัวเอง ok", FX(p.join(" · ") || "ครบ"));
+  }
+  // ════════ S.R2.7 (F4) void บิลโมดูลอื่นในกะที่ปิด ════════
+  {
+    const p: string[] = [];
+    const e = await setShiftSettings(posR, { required: { otherSources: true } });
+    if (e) p.push(e);
+    const openNow = (await shiftsOf({ unitId: u4, status: "OPEN" })).length;
+    if (openNow !== 0) p.push(`สาขา u4 มีกะเปิดค้าง ${openNow} (ผูกบิลไม่ได้แน่นอน)`);
+    const SF = sid(await open(c4r, owner, { deviceId: dev("r2-f4"), floatSatang: 0 }));
+    const h = await legacy(u4, posR, 1000); // HOTEL · otherSources = ผูกกะเดียวของสาขา
+    const ps = await legacy(u4, posR, 700, { source: "POS" });
+    const rh0 = await saleRow(h.saleId);
+    const rp0 = await saleRow(ps.saleId);
+    if (!SF) p.push("เปิดกะไม่ได้");
+    if (!(h.saleId && rh0?.shiftId === SF && rh0?.sourceModule === "HOTEL")) p.push(`บิล HOTEL ${codeOf(h.r)} shiftId ${short(rh0?.shiftId, 30)}`);
+    if (!(ps.saleId && rp0?.shiftId === SF && rp0?.sourceModule === "POS")) p.push(`บิล POS ${codeOf(ps.r)} shiftId ${short(rp0?.shiftId, 30)}`);
+    const cl = SF ? await close(c4r, owner, { shiftId: SF, countedCashSatang: 1700, idempotencyKey: `${TAG}-r2-f4` }) : { ok: false, code: "NO_SHIFT" };
+    if (cl?.ok !== true) p.push(`ปิดกะ ${codeOf(cl)} ${short(cl?.message ?? "", 60)}`);
+    await setShiftSettings(posR, null);
+    if (h.saleId) {
+      const v = await voidS(u4, h.saleId);
+      if (!voidOk(v) || (await saleRow(h.saleId))?.status !== "VOIDED") p.push(`void บิล HOTEL ในกะที่ปิด ${codeOf(v)} → ${(await saleRow(h.saleId))?.status}`);
+    }
+    if (ps.saleId) {
+      const v = await voidS(u4, ps.saleId);
+      if (!refused(v, ["SHIFT_CLOSED"])) p.push(`void บิล POS ในกะที่ปิด ${codeOf(v)}`);
+      if ((await saleRow(ps.saleId))?.status !== "PAID") p.push("บิล POS ไม่ PAID");
+    }
+    chk("P1.9-S.R2.7", p.length === 0, "HOTEL ในกะปิด void ได้ · POS ในกะปิด = SHIFT_CLOSED ยัง PAID", FX(p.join(" · ") || "ครบ"));
+  }
+  // ════════ S.R2.8 (F5) แปลง SHIFT_CLOSED เป็น 409 (ระดับหน่วย) ════════
+  {
+    const p: string[] = [];
+    const ops = await tryImport("@/lib/modules/pos/api/ops/sales");
+    const respond = await tryImport("@/lib/api/respond");
+    const PSE = svc?.PosSaleError;
+    const AE = respond?.ApiError;
+    if (typeof ops?.voidErrorToApi !== "function") p.push("ไม่มี voidErrorToApi");
+    else if (typeof PSE !== "function" || typeof AE !== "function") p.push(`ไม่มี ${typeof PSE !== "function" ? "PosSaleError" : "ApiError"}`);
+    else {
+      const thai = /[฀-๿]/;
+      const sc = callSync(ops, "voidErrorToApi", new PSE("SHIFT_CLOSED", "กะของบิลนี้ปิดแล้ว"));
+      if (!(sc instanceof AE && sc.status === 409 && sc.code === "state_conflict")) p.push(`SHIFT_CLOSED → ${sc instanceof AE ? `${sc.status}:${sc.code}` : short(sc?.name ?? sc, 40)}`);
+      else if (!(thai.test(String(sc.message_th ?? "")) && String(sc.message_en ?? "").trim() && !thai.test(String(sc.message_en)))) p.push("ข้อความ th/en ไม่ครบ");
+      const other = new PSE("PAYMENT_MISMATCH", "x");
+      if (callSync(ops, "voidErrorToApi", other) !== other) p.push("PosSaleError อื่นไม่ถูกส่งผ่าน");
+      const plain = new Error("อย่างอื่น");
+      if (callSync(ops, "voidErrorToApi", plain) !== plain) p.push("Error อื่นไม่ถูกส่งผ่าน");
+      const st = callSync(ops, "voidErrorToApi", new Error("บิลนี้ void ไม่ได้"));
+      if (!(st instanceof AE && st.status === 409)) p.push("ข้อความสถานะเดิมไม่เป็น 409 แล้ว");
+    }
+    chk("P1.9-S.R2.8", p.length === 0, "SHIFT_CLOSED → 409 state_conflict th/en · อื่นส่งผ่าน · สถานะเดิม 409", FX(p.join(" · ") || "ครบ"));
+  }
 }
 
 // ═════════════════════════ 6. คืนสภาพ ═════════════════════════

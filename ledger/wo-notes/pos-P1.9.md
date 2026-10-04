@@ -84,3 +84,64 @@ There is no DB here. Nothing was run against QC4. The controller deploys the mig
   - `RegisterStatusBar` shift chip still shows "no shift". The status now carries `shift`, so it can display it.
   - The initial server status has no deviceId, so the shift-required card can flash until the first client refresh, which runs on mount.
 - **Off-shift cash** uses `PosSale.createdAt` within the BKK business date, scoped by unit (not system).
+
+## R2 — fixes after review (brief §R2 F1–F7) · builder · 4 Oct 2026
+Base `161b1731` (= 473e1227 + brief). No DB here; the DB checks below were not run. OQ-P19-1 was not coded (owner question).
+
+### Fix → commit → evidence
+| Fix | Commit | What changed | Evidence |
+|---|---|---|---|
+| F1 | `2614c14e` | `shift.ts` `computeReport`: the PosSale query adds `createdAt: { gte: openedAt − 5 min }` next to `shiftId` | S.R2.1 (static) |
+| F2 | `20e3d056` | `ShiftsClient` `doOpen`: `fail(r); return false`. It returns true only on ok or SHIFT_ALREADY_OPEN | S.R2.2 (static) |
+| F3 | `efd98cc8` | `xReport`: a caller without manage who is not the opener gets PERMISSION_DENIED. One exception, see below. `ShiftsClient` sends deviceId with `xReportAction` | S.R2.6 (DB) |
+| F4 | `d9a90a5b` | `voidSale` S11 check runs only when `sale.sourceModule === "POS"` | S.R2.7 (DB) |
+| F5 | `3ffe0aa4` | `voidErrorToApi` maps `PosSaleError("SHIFT_CLOSED")` to 409 `state_conflict` (th + en). `PosSaleError` is now exported from the `pos/index` facade | S.R2.3 (static), S.R2.8 (unit, DB mode); also checked by hand with tsx: `409 state_conflict`, other errors pass through |
+| F6 | `526b3377` | `ShiftsClient`: one `moveKey` state, like `closeKey`, rotated only after success | S.R2.4 (static) |
+| F7 | `572a46ec` | New keys `pos.shift.method.{CASH,CARD,PROMPTPAY,TRANSFER,DEPOSIT,ROOM_CHARGE}` in th and en. The by-method row shows the label; an unknown type falls back to its raw code | S.R2.5 (static) |
+| tests | `65993f05` | Block S.R2 in `qc-pos-p1.9.mts` (ORACLE-ADD), no existing assertion changed | see below |
+
+### Decisions the controller should look at
+- **F3 deviates from the literal ruling.** The ruling says "own shift only (open or closed)". Applied literally, it breaks existing check **X4**, which I may not change: X4 has the cashier (operate only) read X of the owner's OPEN shift S1 at device D1 and expects ok with expected = null under blindClose.
+  - What I built: a closed shift is own-only, with no exception. This closes the hole of reading someone else's frozen Z through X.
+  - An OPEN shift is own-only too, except when it is the open shift of the device the caller is at (`ctx.deviceId === shift.deviceId`). That is the drawer hand-over case. blindClose still hides expected cash.
+  - The deviceId is client-supplied, so this exception is no stronger than the device binding at the register.
+  - For the literal rule: delete the `atDevice` term in `xReport` (one line). X4 will then go red and needs an ORACLE-EDIT.
+- **F1 slack.** The bound is `openedAt − 5 min`, not `openedAt` exactly. This guards against clock skew between app instances (Prisma fills `now()` on the app side). The `shiftId` filter still decides membership, and the index range stays the same shape.
+- **F4.** Only `"POS"` keeps S11, as ruled. AI and API sales (`sourceModule` "AI"/"API") bound through otherSources are therefore voidable after close. Say so if those should keep S11 too.
+- **F5 for the AI proposal path.** `ai/proposals.ts` `void_sale` calls `voidSale` directly (that file is off-limits). The Thai message of `PosSaleError` then surfaces as the FAILED reason, not a 500. The REST/AI op path in `api/ops/sales.ts` is mapped to 409.
+
+### New checks (S.R2 · registry 45 → 53)
+| id | kind | Fails on 473e1227? | Now |
+|---|---|---|---|
+| S.R2.1 (F1) | static, also in --no-db | **red** (verified: ran the new oracle `--no-db` in a 473e1227 worktree, 8/13) | green |
+| S.R2.2 (F2) | static | **red** (verified) | green |
+| S.R2.3 (F5) | static | **red** (verified) | green |
+| S.R2.4 (F6) | static | **red** (verified) | green |
+| S.R2.5 (F7) | static | **red** (verified) | green |
+| S.R2.6 (F3) | DB: STAFF B xReport/zReport on A's closed shift → DENIED · A's open shift from another device → DENIED · at the shift's device → ok · manage ok · own closed ok | red expected (base returns ok for B), not run | not run (needs QC4) |
+| S.R2.7 (F4) | DB: otherSources ON · HOTEL + POS sales bound to the only open shift · close · HOTEL void → VOIDED · POS void → SHIFT_CLOSED, still PAID | red expected (base refuses the HOTEL void), not run | not run |
+| S.R2.8 (F5) | unit (DB mode, because it imports `core/db`): `voidErrorToApi(PosSaleError SHIFT_CLOSED)` = 409 `state_conflict` with th/en text · other errors pass through · old 409 kept | red expected (base passes the error through), not run | not run; the same assertion passed in a hand tsx run |
+
+- S.R2.6–8 run after D1 in `runDb`, on sandbox u4/POS-R, so E1/D1 are unaffected.
+- Every shift opened in the block is closed, and settings are reset. Cleanup already deletes by unit/system, so no residue is expected (Z1/Z2).
+
+### No-DB results (after each fix and at the end)
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | 0 errors, every step |
+| `qc-pos-p1.9 --no-db` | 8/8 after F1–F7; **13/13** with S.R2 |
+| `qc-pos-p1.9 --list` | 53 ids |
+| `qc-pos-p1.4 --no-db` | 13/13 |
+| `qc-pos-p1.5 --no-db` | 5/5 |
+| `fitness-pos` | 8/8 |
+| `pnpm fitness` (DATABASE_URL/DIRECT_URL unset) | see below |
+
+- **`pnpm fitness` is environmental red here, identically on the untouched base.**
+  - The shared generated Prisma client (`/home/user/shark/node_modules`, regenerated by another lane at 12:58) contains the model `PosSaleLineOption`, which is not in this branch's schema.
+  - So F10.1 fails, and the F13 import throws at `scope.ts` `assertRegistryComplete`.
+  - With a scratch-only preload that hides that one model from `Prisma.dmmf`: **41/41**.
+  - Not committed. I did not run `prisma generate`.
+  - On the VPS, after a generate from this branch, it should pass as is.
+
+### DB suites to run (controller)
+`qc-pos-p1.9` ×2 unforced: expected 53/53 and no residue. Then `qc-pos-p0.2` (the voidErrorToApi change, S5.14), plus the R1 list from above.

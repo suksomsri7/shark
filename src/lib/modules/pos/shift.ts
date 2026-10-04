@@ -30,6 +30,8 @@ const DEVICE_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const OTHER_METHODS = ["CARD", "PROMPTPAY", "TRANSFER"] as const;
 const METHOD_ORDER = ["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"];
 const HOUR_MS = 3_600_000;
+/** R2 F1: บิลของกะสร้างหลังเปิดกะเสมอ · เผื่อนาฬิกาเครื่องแอปเหลื่อมกัน 5 นาที (กรอง shiftId อยู่แล้ว เผื่อมากไม่ทำให้ผิด) */
+const SALE_CLOCK_SLACK_MS = 5 * 60_000;
 
 export const isShiftDeviceId = (v: unknown): v is string => typeof v === "string" && DEVICE_RE.test(v);
 
@@ -264,7 +266,8 @@ async function bumpCounter(tx: Tx, tenantId: string, unitId: string, field: "shi
 // ═══════════ รายงาน (S7/S9) — คำนวณสด อ่านอย่างเดียว ═══════════
 async function computeReport(db: Db | Tx, r: PosShift): Promise<ShiftReport> {
   const sales = await db.posSale.findMany({
-    where: { tenantId: r.tenantId, unitId: r.unitId, shiftId: r.id },
+    // R2 F1: createdAt >= openedAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt) ขณะถือล็อกแถวกะ (ไม่สแกนทั้งสาขา)
+    where: { tenantId: r.tenantId, unitId: r.unitId, createdAt: { gte: new Date(r.openedAt.getTime() - SALE_CLOCK_SLACK_MS) }, shiftId: r.id },
     select: { id: true, status: true, grandTotalSatang: true, tipSatang: true },
     orderBy: { id: "asc" },
   });
@@ -493,7 +496,7 @@ export async function currentShift(ctx: RegisterCtx, actor: RegisterActor, input
 }
 
 export type ShiftReportResult = { ok: true; report: ShiftReport } | ShiftRefusal;
-/** รายงาน X (S9) — คำนวณสด ไม่เขียนอะไร · กะที่ปิดแล้ว = Z ที่เก็บไว้ · blindClose: ไม่มี manage ไม่เห็นยอดที่ควรมีระหว่างกะเปิด */
+/** รายงาน X (S9) — คำนวณสด ไม่เขียนอะไร · กะที่ปิดแล้ว = Z ที่เก็บไว้ · blindClose: ไม่มี manage ไม่เห็นยอดที่ควรมีระหว่างกะเปิด · ไม่มี manage = กะของตัวเอง/กะเปิดของเครื่องนี้ (R2 F3) */
 export async function xReport(ctx: RegisterCtx, actor: RegisterActor, input: { shiftId: string }, client?: Db): Promise<ShiftReportResult> {
   return guard("xReport", async (): Promise<ShiftReportResult> => {
     const db = client ?? prisma;
@@ -502,6 +505,10 @@ export async function xReport(ctx: RegisterCtx, actor: RegisterActor, input: { s
     if (!s.operate && !s.manage) return refuse("PERMISSION_DENIED");
     const r = await shiftInScope(db, s, isRecord(input) ? input.shiftId : undefined);
     if (!r) return refuse("NOT_FOUND");
+    // R2 F3: ไม่มี manage อ่านได้เฉพาะกะของตัวเอง (กฎเดียวกับ zReport · กันอ่าน Z คนอื่นผ่าน X) ·
+    //   ข้อยกเว้นเดียว: กะ OPEN ของเครื่องที่ยืนอยู่ (ctx.deviceId = เครื่องของกะ) — แคชเชียร์รับลิ้นชักต่อ (X4 · blindClose ยังซ่อนยอดที่ควรมี)
+    const atDevice = r.status === "OPEN" && isRecord(ctx) && typeof ctx.deviceId === "string" && ctx.deviceId === r.deviceId;
+    if (!s.manage && r.openedByUserId !== s.actor.userId && !atDevice) return refuse("PERMISSION_DENIED");
     if (r.status !== "OPEN" && r.zReport) return { ok: true, report: r.zReport as unknown as ShiftReport };
     const rep = await computeReport(db, r);
     if (s.settings.blindClose && !s.manage && r.status === "OPEN") rep.expectedCashSatang = null;
