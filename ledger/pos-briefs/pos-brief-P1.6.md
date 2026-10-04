@@ -59,3 +59,13 @@ Dynamic PromptPay/Beam/card gateway (P1.7) · refunds/CN (P1.8) · shifts/drawer
 9. **UI (R9)** is covered by controller visual + parity, not by this oracle.
 10. **Invented names are ratified as proposed**: `splitIncludedVat` in `src/lib/money/vat.ts`, the input fields, the payment-settings API, `SPLIT_INVALID`, `TIP_ACCOUNT_REQUIRED` and the message keys.
 11. **Next step**: run the oracle once on the VPS against base, unforced and forced. Expect unforced SKIPPED exit 0, and forced 8 green / 40 red with Z1/Z2 green (48 checks after e39c8d02). Then accept the oracle and merge it into session/pos, then builder S.
+
+## 9. Controller rulings after independent review of a65f5fac (4 Oct)
+- F1: the O21 check is exported and called in each caller's PRE-claim gate (shop/clinic/school/rental/AI), so nothing is committed before a refusal. Shop undoes its claim on a createSale throw.
+- F2: restaurant re-checkout reads the stored status first; while it is VOIDED, it moves to `-rN`, even with a changed payload.
+- F3: BLOCK consume runs only on locked non-SERVICE items; anything else follows the legacy behaviour.
+- F4: same-key serialization via `pg_advisory_xact_lock(hashtext(tenant:key))` in both modes.
+- F5: tip cannot be enabled (`TIP_NOT_AVAILABLE`) until follow-up **P1.6b** books the tip to its liability account inside `applyExternalSale` (Dr each channel in full, Cr tip ledger). This is a temporary narrowing of owner answer O20 (configurable), and the owner has been told.
+- F6: the legacy idempotency compare includes item/product/service ids and memberId; the unlinked single-POS branch validates `input.systemId`; the `stockInsufficient` copy is fixed.
+- Cross-lane (CRM): `crm/commissions.ts` uses `grand − vatSatang`. With VAT now stored, commission on VAT-linked POS sales becomes net-of-VAT, about 6.5% lower than before. This needs an owner/CRM ruling; POS does not change CRM files.
+- Deferred to P1.9: closeDay/Z shows tip as its own line.
