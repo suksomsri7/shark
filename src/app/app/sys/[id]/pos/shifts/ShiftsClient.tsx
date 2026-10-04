@@ -156,7 +156,11 @@ export function ShiftsClient({ systemId, units, unitId, canManage }: Props) {
         return false;
       }
       const r = await openShiftAction({ ...base, shift: { deviceId, floatSatang: f, ...(label.trim() ? { deviceLabel: label.trim() } : {}) } });
-      if (!r.ok && r.code !== "SHIFT_ALREADY_OPEN") fail(r);
+      // R2 F2: ถูกปฏิเสธ = คืน false (ไม่ load ซ้ำ ข้อความผิดพลาดค้างบนจอ) · true เฉพาะสำเร็จ / มีกะเปิดอยู่แล้ว
+      if (!r.ok && r.code !== "SHIFT_ALREADY_OPEN") {
+        fail(r);
+        return false;
+      }
       return true;
     });
   const doMove = (kind: "IN" | "OUT") =>
