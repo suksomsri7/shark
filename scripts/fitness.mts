@@ -456,6 +456,11 @@ const ALLOWED_EDGES = new Set([
   "crm→meeting",
   "crm→kb",
   // ◂ CRM C3.4
+  // POS P1.1b ▸ G2 ประตูเดิมของคลัง/บัญชีส่ง tx ให้ `pos/catalog-legacy` (ผู้เขียนแคตตาล็อกคนที่สอง · ตารางเดิม + PosProduct ในธุรกรรมเดียว)
+  //   + server action ของคลังแปลง CatalogError (BUSY ฯลฯ) เป็น ?err= (G11) — ทิศเดียว ไม่มีโค้ด POS เรียกกลับประตูเดิม (G4c · ข้อสอบ S2.33)
+  "inventory→pos",
+  "account→pos",
+  // ◂ POS P1.1b
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

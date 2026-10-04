@@ -101,8 +101,7 @@ const CLIENT_NAMES = /^(prisma|tx|db|client|P|p|trx|tenantDb)$/;
  */
 export const CATALOG_WRITER_BASELINE: Record<string, Record<string, number>> = {
   // POS P1.1b ▸ restaurant/menu.ts + restaurant/order.ts ย้ายเข้า catalog-legacy.ts แล้ว (G2 · G8) ◂
-  // สินค้าเว็บร้าน createProduct/updateProduct
-  "src/lib/modules/shop/service.ts": { "ShopProduct.write": 2 },
+  // POS P1.1b ▸ shop/service.ts createProduct/updateProduct ย้ายเข้า catalog-legacy.ts แล้ว ◂
   // ราคาขาย POS หน้า "สินค้า/ราคา": updateAccountProductSalePrice · createAccountProductWithSalePrice
   "src/lib/modules/account/service.ts": { "AccountProduct.price": 2 },
   // หน้าสินค้าระบบบัญชี / import / REST+AI products-write: createProduct · updateProduct (data ทางอ้อม — fail-closed · มี salePrice/posPrice จริง)

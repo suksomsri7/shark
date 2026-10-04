@@ -6,6 +6,7 @@ import { z } from "zod";
 import { requireUnit } from "@/lib/core/context";
 import { assertCan } from "@/lib/core/rbac";
 import * as shop from "./service";
+import { CatalogError } from "@/lib/modules/pos";
 
 type UnitAuth = Awaited<ReturnType<typeof requireUnit>>["auth"];
 
@@ -47,14 +48,20 @@ export async function createProductAction(unitSlug: string, formData: FormData) 
     sortOrder: formData.get("sortOrder") || undefined,
   });
   if (!p.success) return;
-  await shop.createProduct(ctxOf(auth, unit.id), {
-    name: p.data.name,
-    priceSatang: Math.round(p.data.priceBaht * 100),
-    description: p.data.description,
-    imageUrl: p.data.imageUrl,
-    invItemId: p.data.invItemId,
-    sortOrder: p.data.sortOrder,
-  });
+  try {
+    await shop.createProduct(ctxOf(auth, unit.id), {
+      name: p.data.name,
+      priceSatang: Math.round(p.data.priceBaht * 100),
+      description: p.data.description,
+      imageUrl: p.data.imageUrl,
+      invItemId: p.data.invItemId,
+      sortOrder: p.data.sortOrder,
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/u/${unitSlug}/shop?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`/app/u/${unitSlug}/shop`);
 }
 
@@ -70,21 +77,33 @@ export async function updateProductAction(unitSlug: string, productId: string, f
     sortOrder: formData.get("sortOrder") || undefined,
   });
   if (!p.success) return;
-  await shop.updateProduct(ctxOf(auth, unit.id), productId, {
-    name: p.data.name,
-    priceSatang: Math.round(p.data.priceBaht * 100),
-    description: p.data.description ?? null,
-    imageUrl: p.data.imageUrl ?? null,
-    invItemId: p.data.invItemId ?? null,
-    sortOrder: p.data.sortOrder,
-  });
+  try {
+    await shop.updateProduct(ctxOf(auth, unit.id), productId, {
+      name: p.data.name,
+      priceSatang: Math.round(p.data.priceBaht * 100),
+      description: p.data.description ?? null,
+      imageUrl: p.data.imageUrl ?? null,
+      invItemId: p.data.invItemId ?? null,
+      sortOrder: p.data.sortOrder,
+    });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/u/${unitSlug}/shop?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`/app/u/${unitSlug}/shop`);
 }
 
 export async function toggleProductAction(unitSlug: string, productId: string, active: boolean) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertShopCan(auth, unit.id, "shop.product.update");
-  await shop.updateProduct(ctxOf(auth, unit.id), productId, { active });
+  try {
+    await shop.updateProduct(ctxOf(auth, unit.id), productId, { active });
+  } catch (e) {
+    // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/u/${unitSlug}/shop?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`/app/u/${unitSlug}/shop`);
 }
 

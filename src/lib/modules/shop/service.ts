@@ -12,6 +12,8 @@ import * as inventory from "@/lib/modules/inventory/service";
 import { listSystems } from "@/lib/modules/system/service";
 import { promptpayPayload } from "@/lib/payment/promptpay";
 import { resolvePublicUnit } from "@/lib/core/storefront";
+// POS P1.1b ▸ G2: คำสั่งเขียน ShopProduct ย้ายไป catalog-legacy (ตารางเดิม + แคตตาล็อก POS ในธุรกรรมเดียว) — ตรวจ/ข้อความ/รูปผลลัพธ์อยู่ที่นี่ตามเดิม
+import * as legacy from "@/lib/modules/pos/catalog-legacy";
 
 export type ShopCtx = { tenantId: string; unitId: string };
 
@@ -46,8 +48,8 @@ export async function createProduct(ctx: ShopCtx, input: CreateProductInput): Pr
   const priceSatang = Math.round(input.priceSatang);
   if (!Number.isFinite(priceSatang) || priceSatang < 0) throw new Error("ราคาสินค้าต้องไม่ติดลบ");
 
-  const p = await tenantDb(ctx).shopProduct.create({
-    data: {
+  const p = await prisma.$transaction((tx) =>
+    legacy.createShopProduct(tx, {
       tenantId: ctx.tenantId,
       unitId: ctx.unitId,
       name,
@@ -56,8 +58,8 @@ export async function createProduct(ctx: ShopCtx, input: CreateProductInput): Pr
       imageUrl: input.imageUrl?.trim() || null,
       invItemId: input.invItemId?.trim() || null,
       sortOrder: input.sortOrder ?? 0,
-    },
-  });
+    }),
+  );
   return { id: p.id };
 }
 
@@ -89,7 +91,7 @@ export async function updateProduct(ctx: ShopCtx, id: string, patch: UpdateProdu
   if (patch.active !== undefined) data.active = patch.active;
   if (patch.sortOrder !== undefined) data.sortOrder = patch.sortOrder;
 
-  await tenantDb(ctx).shopProduct.updateMany({ where: { id }, data });
+  await prisma.$transaction((tx) => legacy.updateShopProduct(tx, ctx, id, data));
   return { id };
 }
 
