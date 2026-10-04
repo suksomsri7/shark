@@ -115,6 +115,8 @@ D("S.R2.5", "X3", "[F5] เจ้าของพัก [น้ำเปล่า
 D("S.R2.6", "-", "[F6] บาร์โค้ดเดียวกันบน แม่ที่มีตัวแปร + สินค้า 2 ตัว → choose เฉพาะ 2 ตัว (ไม่มีแม่)");
 D("S.R2.7", "-", "[static · F5] HeldCartNoticeCode มี PERMISSION_DENIED · held-cart probe แยก PERMISSION_DENIED · held.noticeNeedsPermission th+en (en ไม่มีอักษรไทย) และจอใช้คีย์นี้");
 D("S.R2.8", "-", "[static · F1] regVisibleWhere ใน register.ts กรองชุดด้วย RecipeLine (ส่วนประกอบต้องอยู่ในคลังของสาขา)");
+// ORACLE-ADD (controller R3 ruling) — §R3 F7 ของ brief P1.2 · แดงบน b345a4d2 (CONFLICT) · เขียวหลังแก้
+D("S.R3.1", "-", "[F7] inventory.createItem (แถวซิงก์ P1.1b) → createProduct({invItemId, parentId}) คืน id แถวเดิม · parentId = แม่ · ราคา/ชื่อตามที่ส่ง · ชื่อย้อนลง InvItem · แถวของ InvItem ยังมีแถวเดียว · ครั้งที่สอง → CONFLICT ไม่เปลี่ยน · ไม่ส่ง parentId → CONFLICT ตามเดิม (แถวไม่เปลี่ยน)");
 D("Z2", "-", "QC4 ลายนิ้วมือ: แถวเดิม (PosProduct PosCategory InvItem AppSystem AppSystemUnit BusinessUnit Membership PosReceiptCounter MenuOptionGroup MenuOptionChoice PosProductOptionGroup RecipeLine) ก่อน = หลัง");
 
 if (LIST) {
@@ -1611,6 +1613,56 @@ async function runDb() {
     const m = (e as Error)?.message?.slice(0, 120) ?? String(e);
     console.log(`💥 S.R2: ${m}`);
     for (const id of R2_DB) if (!results.has(`P1.2-${id}`)) chk(id, false, "ถูกตรวจ", `ไม่ถึง (S.R2 ล้ม: ${m})`);
+  }
+
+  // ════════ S.R3 มติผู้คุมงานรอบ R3 (F7) ════════
+  // ORACLE-ADD (controller R3 ruling) — ไม่ใช้ asData (R1 นับเท่าเดิม) · InvItem ใน INV-S · แถวใน POS-S (sb.*) ⇒ cleanup เดิมเก็บครบ (ลบตาม systemId ด้วย)
+  console.log("\n── S.R3 มติ R3 ──");
+  try {
+    const p: string[] = [];
+    let fxA = "";
+    let PA = "", invA = "", invB = "", synA = "", synB = "";
+    const nameA = `${TAG} R3 ลูกจากคลัง`;
+    try {
+      if (!fx) {
+        PA = await mkProd({ name: `${TAG} R3 แม่`, kind: "PRODUCT", basePriceSatang: 2000 });
+        invA = await mkInv("R3A", "R3 ของคลัง A", 0);
+        invB = await mkInv("R3B", "R3 ของคลัง B", 0);
+        synA = String((await P.posProduct.findFirst({ where: { tenantId: tid, systemId: posS, invItemId: invA }, select: { id: true } }))?.id ?? "");
+        synB = String((await P.posProduct.findFirst({ where: { tenantId: tid, systemId: posS, invItemId: invB }, select: { id: true } }))?.id ?? "");
+        for (const x of [synA, synB]) if (x) sb.productIds.push(x);
+        if (!synA || !synB) throw new Error("createItem ไม่สร้างแถวแคตตาล็อกใน POS-S (P1.1b ensureForInvItem)");
+      } else fxA = "ไม่มี sandbox";
+    } catch (e) {
+      fxA = `r3-fixture:${(e as Error).message.slice(0, 100)}`;
+    }
+    if (!fxA) {
+      const a = await call(catalog, "createProduct", cctx, { name: nameA, invItemId: invA, parentId: PA, basePriceSatang: 2500 });
+      const aId = idOf(a);
+      if (aId && aId !== synA) sb.productIds.push(aId);
+      const rowA = await P.posProduct.findFirst({ where: { id: synA } });
+      const nA = await P.posProduct.count({ where: { tenantId: tid, systemId: posS, invItemId: invA } });
+      const itA = await P.invItem.findFirst({ where: { id: invA }, select: { name: true } });
+      if (!(aId === synA && rowA?.parentId === PA && rowA?.basePriceSatang === 2500 && rowA?.name === nameA && rowA?.archivedAt === null && nA === 1))
+        p.push(`รับแถว ${codeOf(a)} id=${aId === synA ? "เดิม" : short(aId, 12)} parent ${rowA?.parentId === PA} ราคา ${rowA?.basePriceSatang} แถว ${nA}`);
+      if (itA?.name !== nameA) p.push(`ชื่อ InvItem ${short(itA?.name, 40)}`);
+      const b = await call(catalog, "createProduct", cctx, { name: `${TAG} R3 ลูกซ้ำ`, invItemId: invA, parentId: PA, basePriceSatang: 2600 });
+      const bId = idOf(b);
+      if (bId && bId !== synA) sb.productIds.push(bId);
+      const rowA2 = await P.posProduct.findFirst({ where: { id: synA } });
+      if (!(refused(b, ["CONFLICT"]) && rowA2?.name === nameA && rowA2?.basePriceSatang === 2500)) p.push(`ครั้งที่สอง ${codeOf(b)} ราคา ${rowA2?.basePriceSatang}`);
+      const before = await P.posProduct.findFirst({ where: { id: synB } });
+      const c = await call(catalog, "createProduct", cctx, { name: `${TAG} R3 ไม่มีแม่`, invItemId: invB, basePriceSatang: 100 });
+      const cId = idOf(c);
+      if (cId && cId !== synB) sb.productIds.push(cId);
+      const after = await P.posProduct.findFirst({ where: { id: synB } });
+      if (!(refused(c, ["CONFLICT"]) && after?.parentId === null && after?.name === before?.name && after?.basePriceSatang === before?.basePriceSatang)) p.push(`ไม่ส่ง parentId ${codeOf(c)}`);
+    }
+    chk("S.R3.1", !fxA && p.length === 0, "id เดิม · parentId · 2,500 · ชื่อย้อน InvItem · CONFLICT ×2", FX(p.join(" · ") || "ครบ", fxA));
+  } catch (e) {
+    const m = (e as Error)?.message?.slice(0, 120) ?? String(e);
+    console.log(`💥 S.R3: ${m}`);
+    if (!results.has("P1.2-S.R3.1")) chk("S.R3.1", false, "ถูกตรวจ", `ไม่ถึง (S.R3 ล้ม: ${m})`);
   }
 
   // ════════ R1 ปฏิเสธเป็นข้อมูล ════════
