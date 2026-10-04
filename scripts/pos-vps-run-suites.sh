@@ -16,7 +16,7 @@ set -uo pipefail
 exec 9>/tmp/pos-vps-run-p1.3.lock   # same lock as the P1.3 runner: one DB-heavy run at a time
 flock -n 9 || { echo "🔴 another run holds /tmp/pos-vps-run-p1.3.lock"; exit 5; }
 
-REQF="${1:?request file}"
+REQF="$(realpath "${1:?request file}")"
 CTRL="$(pwd)"
 read -r RID TREE BRANCH EXPECT_HEAD < "$REQF" || true
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
