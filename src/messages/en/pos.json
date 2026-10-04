@@ -39,6 +39,16 @@
       "noResultCategory": "No products in this category",
       "clear": "Clear search"
     },
+    "scan": {
+      "chooseTitle": "This barcode matches several items — pick one",
+      "notFound": "No product with barcode “{code}”",
+      "addAsCustom": "Add as a custom item?",
+      "ignoredWhileDialog": "Scan ignored — close the open window first",
+      "cameraTitle": "Scan with camera",
+      "cameraHint": "Hold the barcode in the middle of the frame; it is added automatically",
+      "cameraDenied": "Camera permission was denied — allow the camera in your browser settings and try again",
+      "cameraNone": "No camera found or it could not start — use the scanner or type the code instead"
+    },
     "category": {
       "all": "All",
       "label": "Categories"

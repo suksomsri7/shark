@@ -182,6 +182,21 @@ export type RegisterCartLine =
 /** couponCode อยู่ในสถานะได้ (P1.12) แต่ `cartToQuoteInput` ไม่ส่งไปเซิร์ฟเวอร์ใน P1.3 */
 export type RegisterCart = { lines: RegisterCartLine[]; billDiscount?: PriceDiscount; couponCode?: string; memberId?: string };
 
+/**
+ * P1.4 B2: เพิ่มสินค้า 1 ชิ้น (แตะการ์ด · สแกน) — สแกนซ้ำ = +1 ที่บรรทัดแรกของสินค้าเดียวกันที่ไม่มีส่วนลดและไม่ใช่ราคาเปิด (ราคาเดียวกัน)
+ *   ไม่มีบรรทัดแบบนั้น = บรรทัดใหม่ {key:newLineKey, qty 1} · เพดาน REGISTER_MAX_QTY · ตะกร้าเต็ม REGISTER_MAX_LINES = คืนตะกร้าเดิม
+ *   ไม่แก้ตะกร้าที่ส่งเข้า (คง billDiscount/memberId) · P1.2 (ตัวเลือกสินค้า) ต้องเทียบตัวเลือกเพิ่มที่นี่
+ */
+export function cartAddProduct(cart: RegisterCart, productId: string, newLineKey: string): RegisterCart {
+  const same = cart.lines.findIndex((l) => l.kind === "product" && l.productId === productId && !l.discount && l.openPriceSatang === undefined);
+  if (same >= 0) {
+    if (cart.lines[same]!.qty >= REGISTER_MAX_QTY) return cart;
+    return { ...cart, lines: cart.lines.map((l, i) => (i === same ? { ...l, qty: Math.min(REGISTER_MAX_QTY, l.qty + 1) } : l)) };
+  }
+  if (cart.lines.length >= REGISTER_MAX_LINES) return cart;
+  return { ...cart, lines: [...cart.lines, { key: newLineKey, kind: "product", productId, qty: 1 }] };
+}
+
 // ═══════════ ตัวช่วยบริสุทธิ์ ═══════════
 
 /** ตะกร้าบนจอ → คำขอ quote (ชุดเดียวกับที่ submit ส่ง · ไม่ส่งคูปอง · ไม่ส่งราคาของสินค้าแคตตาล็อก) */

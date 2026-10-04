@@ -1425,6 +1425,87 @@
     },
     {
       "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scan-choice-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-scan-chooser",
+        "state": "disappears",
+        "note": "บาร์โค้ดตรงหลายสินค้า → กล่องเลือก · แตะแถว = ใส่ตะกร้า (สแกนซ้ำ +1)"
+      },
+      "wo": "P1.4",
+      "oracle": "qc-pos-p1.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scan-chooser-cancel",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-scan-chooser",
+        "state": "disappears",
+        "note": "ปิดกล่องเลือกโดยไม่เพิ่มสินค้า"
+      },
+      "wo": "P1.4",
+      "oracle": "qc-pos-p1.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scan-sheet-close",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-scan-sheet",
+        "state": "disappears",
+        "note": "ปิดแผ่นกล้อง · หยุดกล้องทุก track"
+      },
+      "wo": "P1.4",
+      "oracle": "qc-pos-p1.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-scan-add-custom",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "cashier"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "pos-reg-custom-dialog",
+        "state": "appears",
+        "note": "สแกนไม่พบ → ปุ่มใน toast เฉพาะผู้มีสิทธิ์ราคาเปิด (pos.sale.priceOverride)"
+      },
+      "wo": "P1.4",
+      "oracle": "qc-pos-p1.4",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
       "testid": "pos-reg-paydlg-close",
       "kind": "button",
       "roles": [
