@@ -182,7 +182,9 @@ export async function setItemStockAction(unitSlug: string, formData: FormData) {
   } catch (e) {
     // POS P1.1b G11: การปฏิเสธจากแคตตาล็อก (เช่น BUSY ระหว่าง backfill) คืนเป็นข้อมูล (?err=) — ไม่ throw ถึงผู้ใช้
     if (!(e instanceof CatalogError)) throw e;
-    redirect(`${base(unitSlug)}/menu?err=${encodeURIComponent(e.message)}`);
+    // R2 F1: กลับหน้าที่กด (หน้าสต็อกส่ง back=stock · ค่าอื่น = หน้าเมนู) — ทั้งสองหน้าแสดง ?err=
+    const back = formData.get("back") === "stock" ? "/menu/stock" : "/menu";
+    redirect(`${base(unitSlug)}${back}?err=${encodeURIComponent(e.message)}`);
   }
   revalidatePath(`${base(unitSlug)}/menu`);
   revalidatePath(`${base(unitSlug)}/menu/stock`);

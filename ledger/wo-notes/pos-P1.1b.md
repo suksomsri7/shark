@@ -130,3 +130,15 @@ then `scripts/fitness-pos.mts`: delete the last `CATALOG_WRITER_BASELINE` entry 
 - G13: all 32 suites re-run on the final code — JSON_SUMMARY identical to the before-run of 51a5e7d6 for every suite (acc-v2-products/-invitem/-pos-lines and qc-ai-actions are red/crash on the base too, unchanged).
 - Typecheck (5632 MB heap, this tree) exit 0 · fitness 40/40 with env and without env.
 - Negative proofs (temp files, deleted): MenuItem + AccountProduct.salePrice write in `src/lib/modules/restaurant/zz-p11b-probe.ts` → F15.1 ❌ naming the file; `src/app/zzp11b/page.tsx` importing catalog-legacy → F15.5 ❌ naming the file. S2.31/S2.46 prove the new F15.5 rules behaviourally (green). `--verify` positive control: MenuItem.basePrice +1 inside a rolled-back tx → `drift 1 {basePriceSatang:1}`.
+
+# R2 (controller brief `pos-brief-P1.1b-R2.md` · base 1219966c)
+
+## F1 — refusals visible (redirect target → page → banner)
+| action (file) | redirect target | page | banner |
+|---|---|---|---|
+| createItemAction · updateItemAction · archiveItemAction · createServiceAction · updateServiceAction (`inventory/actions.ts`) | `/app/sys/<id>?err=` | `src/app/app/sys/[id]/page.tsx` → `InvHub err={err}` (`inventory/ui.tsx`) | `role="alert"` danger box, same classes as `shop/orders/page.tsx` |
+| createProductAction · updateProductAction · toggleProductAction (`shop/actions.ts`) | `/app/u/<unit>/shop?err=` | `shop/page.tsx` | same |
+| importServicesToCatalogAction (`actions/booking.ts`) | `/app/u/<unit>/booking/services?err=` | `booking/services/page.tsx` | same |
+| archiveItemAction (`actions/restaurant.ts`) | `<base>/menu?err=` | `restaurant/menu/page.tsx` | same |
+| setItemStockAction (`actions/restaurant.ts`) | `<base>/menu/stock?err=` when the form sends hidden `back=stock` (stock page forms), else `<base>/menu?err=` | `restaurant/menu/stock/page.tsx` · `restaurant/menu/page.tsx` | same |
+Text = the catalogue's Thai message (already says "ยังไม่ได้บันทึก…"). Typecheck 0 · fitness 40/40.

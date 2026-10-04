@@ -121,7 +121,7 @@ export default async function SystemPage({
       )}
       {/* CRM C1.11 ▸ ทางเข้าโมดูลตามรุ่นหน้าจอ (มติ C23): 2 = หน้าแรก CRM ใหม่ · อื่น ๆ = CrmHub เดิม ◂ */}
       {sys.type === "CRM" && (parseCrmSettings(sys.settings).uiVersion === 2 ? <CrmHomeV2 systemId={id} filters={{ pipeline: sp.pipeline, owner: sp.owner, period: sp.period }} /> : <CrmHub systemId={id} />)}
-      {sys.type === "INVENTORY" && <InvHub systemId={id} />}
+      {sys.type === "INVENTORY" && <InvHub systemId={id} err={err} />}
       {sys.type === "HR" && <HrHub systemId={id} />}
       {sys.type === "MARKETING" && <MarketingHub systemId={id} />}
     </div>

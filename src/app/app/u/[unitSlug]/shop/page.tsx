@@ -9,10 +9,13 @@ const baht = (satang: number) => (satang / 100).toLocaleString("th-TH", { minimu
 // จัดการสินค้า (CRUD ย่อ: สร้าง + เปิด/ปิดขาย + ผูกสินค้าคลัง) — /app/u/[unitSlug]/shop
 export default async function ShopManagePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const ctx = { tenantId: auth.active.tenantId, unitId: unit.id };
   const [products, invItems] = await Promise.all([listProducts(ctx, {}), listInventoryItems(auth.active.tenantId)]);
@@ -20,6 +23,12 @@ export default async function ShopManagePage({
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
+      {/* POS P1.1b R2 F1: การปฏิเสธจาก server action (?err= · เช่นแคตตาล็อกไม่ว่างระหว่าง backfill) — แบบเดียวกับ shop/orders */}
+      {err && (
+        <div role="alert" className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm text-[color:var(--color-muted)]">🛍️ ร้านค้า</div>

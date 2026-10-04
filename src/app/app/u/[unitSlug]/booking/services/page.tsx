@@ -11,10 +11,13 @@ import { formatBaht } from "@/lib/ui/money";
 // หน้านี้เหลือหน้าที่เดียว = ติ๊กว่าสาขานี้เปิดรับจองบริการไหน (ราคา/เวลา/มัดจำ แก้ที่แคตตาล็อก)
 export default async function BookingServicesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ unitSlug: string }>;
+  searchParams: Promise<{ err?: string }>;
 }) {
   const { unitSlug } = await params;
+  const { err } = await searchParams;
   const { auth, unit } = await requireUnit(unitSlug);
   const { rows, catalogSystemId, legacy } = await serviceRoster({
     tenantId: auth.active.tenantId,
@@ -25,6 +28,12 @@ export default async function BookingServicesPage({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* POS P1.1b R2 F1: การปฏิเสธจาก server action (?err= · เช่นแคตตาล็อกไม่ว่างระหว่าง backfill) — แบบเดียวกับ shop/orders */}
+      {err && (
+        <div role="alert" className="rounded-lg border border-[color:var(--color-danger)] bg-rose-50 px-3 py-2 text-sm text-[color:var(--color-danger)]">
+          {err}
+        </div>
+      )}
       <PageHeader
         title="บริการ"
         desc="ติ๊กบริการที่สาขานี้เปิดรับจอง — ราคา/เวลา/มัดจำ ตั้งที่ระบบ “สินค้า/บริการ” ที่เดียว"
