@@ -183,3 +183,15 @@
 
 ## Owner answers (4 Oct 2026)
 - Owner: use all recommended defaults for every owner question in this brief (see POS-RESUME 4 Oct).
+
+## §R2 Controller rulings on review+hunt of 0b4b5cca (4 Oct 2026)
+Verdict MERGEABLE-AFTER-FIXES, no blocker. Builder-invented rules: ALL ACCEPTED (variant≠BUNDLE · scalePlu needs soldByWeight · soldByWeight PRODUCT only · recipe components not SERVICE/archived · MENU twin groups on the menu item's unit · PRICE label with 0/kg → INVALID_LINE · weightGrams needs qty 1 · weighed lines may carry options).
+Fix now:
+- **F1 (S1)** bundle sellable only where every component is in the selling unit's inventory: in `regPrice`/`regViews` refuse/hide (PRODUCT_NOT_FOUND) when any component is not in `s.unitInv`, or `s.unitInv` is null and the recipe is non-empty. Same guard in createSale for non-register callers if they can sell a bundle.
+- **F2 (S2)** sale line ids order-preserving for every line of a sale (no mixed UUID/cuid); a cart [A, B+option] must read back A, B by `orderBy id`.
+- **F3 (S3)** price-embedded label deriving weight < 1 g (or base < 1) → INVALID_LINE with lineIndex in the quote, never a generic VALIDATION at submit.
+- **F4 (N3)** `createProduct`/`updateProduct`: a variant child with null own price must have the same `soldByWeight` as its parent (VALIDATION).
+- **F5 (N5)** held-cart recall probe: a typed-weight line refused only for permission is reported as "needs permission", not "unavailable".
+- **F6 (N6)** scan `choose` list excludes parents that have variants.
+Notes only: N1 bundle grid soldOut ignores component stock → builder U / P2.3 · N2 scale label pricing without priceOverride is inherent → later device flag "labels via scan only" (P2) · N4 switching soldByWeight on an item with piece stock + per-gram cost precision → operator note in P6.1 runbook.
+Tests: block `S.R2` in `qc-pos-p1.2.mts`, `// ORACLE-ADD (controller R2 ruling)`, one check per F1–F3 (+F4 if cheap), red on 0b4b5cca, green after. No existing assertion changes.
