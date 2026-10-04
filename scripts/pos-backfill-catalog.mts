@@ -118,10 +118,10 @@ const t0 = Date.now();
 if (verify) {
   const v = await catalog.verifyCatalog({ tenantIds }, prisma);
   await prisma.$disconnect();
-  console.log(`[verify] ร้าน ${v.tenants} · ขาดแถว ${JSON.stringify(v.missing)} · drift ${v.driftTotal} ${JSON.stringify(v.drift)} · ไม่ใช่ drift ${JSON.stringify(v.info)} · ${Date.now() - t0} ms`);
+  console.log(`[verify] ร้าน ${v.tenants} · ขาดแถว ${JSON.stringify(v.missing)} · drift ${v.driftTotal} ${JSON.stringify(v.drift)} · 0 แต่ขาเดิม null ${v.zeroVsNull} · ไม่ใช่ drift ${JSON.stringify(v.info)} · ${Date.now() - t0} ms`);
   for (const d of v.samples) console.log(`  ${d.source} ${d.sourceId} → ${d.productId} · ${d.field}: เดิม ${JSON.stringify(d.legacy)} · แคตตาล็อก ${JSON.stringify(d.catalogue)}`);
   console.log(`JSON_SUMMARY ${JSON.stringify(v)}`);
-  process.exit(v.driftTotal || v.missing.invItem || v.missing.menuItem || v.missing.shopProduct ? 1 : 0);
+  process.exit(v.driftTotal || v.zeroVsNull || v.missing.invItem || v.missing.menuItem || v.missing.shopProduct ? 1 : 0);
 }
 const s = await catalog.backfillCatalog({ tenantIds, dryRun }, prisma);
 await prisma.$disconnect();
