@@ -5,7 +5,7 @@
 # Request file format:
 #   line 1:  <id> <tree> <branch> <head-sha-prefix>
 #   then one step per line:
-#     typecheck | fitness | fitness-pos | forced:<suite> | unforced:<suite> | <suite>
+#     typecheck | fitness | fitness-pos | build | forced:<suite> | unforced:<suite> | <suite>
 #     (<suite> = script name without .mts; "<suite>" alone = unforced)
 #   Lines starting with # are ignored.
 # Allowed trees: /root/projects/shark-pos-b and /root/projects/shark-pos-p11 only.
@@ -75,6 +75,9 @@ dirty="$(git status --porcelain --untracked-files=normal | grep -v '^?? node_mod
 [ -z "$dirty" ] || { echo "$dirty" > "$OUT/dirty.txt"; die "tree has uncommitted files (dirty.txt) — not touching them"; }
 git fetch -q origin "$BRANCH" || die "fetch $BRANCH"
 cur="$(git rev-parse --abbrev-ref HEAD)"
+ORIG_BRANCH="$cur"
+restore_branch() { ( cd "$TREE" && git checkout -q -- scripts/pos-expected.json 2>/dev/null; [ "$(git rev-parse --abbrev-ref HEAD)" = "$ORIG_BRANCH" ] || git checkout -q "$ORIG_BRANCH" ) || say "⚠️ could not restore branch $ORIG_BRANCH"; }
+trap restore_branch EXIT
 if [ "$cur" != "$BRANCH" ]; then
   git checkout -q "$BRANCH" 2>/dev/null || git checkout -q -b "$BRANCH" "origin/$BRANCH" || die "checkout $BRANCH"
 fi
@@ -96,6 +99,8 @@ tail -n +2 "$REQF" | while read -r step _; do
     typecheck)   run typecheck env NODE_OPTIONS=--max-old-space-size=5632 ISO_MEM=6500M bash scripts/iso.sh bash scripts/with-gate-lock.sh pnpm typecheck ;;
     fitness)     run fitness-env bash scripts/iso.sh bash scripts/qc4.sh pnpm fitness
                  run fitness-noenv env -u DATABASE_URL -u DIRECT_URL -u QC_ENV_FILE pnpm fitness ;;
+    build)       run serve-build env ACC_V2_PORT=3226 NODE_OPTIONS=--max-old-space-size=5632 bash scripts/acc-v2-serve.sh
+                 ( cd "$TREE" && ACC_V2_PORT=3226 bash scripts/acc-v2-serve.sh stop ) >/dev/null 2>&1 || true ;;
     fitness-pos) run fitness-pos env -u DATABASE_URL -u DIRECT_URL bash scripts/iso.sh pnpm exec tsx scripts/fitness-pos.mts ;;
     forced:*|unforced:*|*)
       mode=unforced; s="$step"
