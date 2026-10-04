@@ -137,40 +137,63 @@ function samePayload(
   dup: {
     unitId: string;
     systemId: string;
+    memberId: string | null;
     serviceChargeSatang: number;
     tipSatang: number;
-    lines: { qty: number; unitPriceSatang: number; discountSatang: number }[];
+    lines: { qty: number; unitPriceSatang: number; discountSatang: number; itemId: string | null; productId: string | null; serviceId: string | null }[];
     payments: { type: string; amountSatang: number }[];
   },
 ): boolean {
   const bag = (xs: string[]) => [...xs].sort().join(",");
+  // R2 F6: บรรทัดเทียบ ราคา|จำนวน|ส่วนลด|สินค้าคลัง|สินค้า POS|บริการ · สมาชิกของบิลด้วย
+  const tup = (l: { unitPriceSatang: number; qty: number; discountSatang?: number | null; itemId?: string | null; productId?: string | null; serviceId?: string | null }) =>
+    `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}|${l.itemId ?? ""}|${l.productId ?? ""}|${l.serviceId ?? ""}`;
   return (
     dup.unitId === input.unitId &&
     dup.systemId === input.systemId &&
+    (dup.memberId ?? null) === (input.memberId ?? null) &&
     dup.serviceChargeSatang === (input.serviceChargeSatang ?? 0) &&
     dup.tipSatang === (input.tipSatang ?? 0) &&
-    bag(dup.lines.map((l) => `${l.unitPriceSatang}|${l.qty}|${l.discountSatang}`)) ===
-      bag(input.lines.map((l) => `${l.unitPriceSatang}|${l.qty}|${l.discountSatang ?? 0}`)) &&
+    bag(dup.lines.map(tup)) === bag(input.lines.map(tup)) &&
     bag(dup.payments.map((p) => `${p.type}|${p.amountSatang}`)) === bag(input.payMethods.map((p) => `${p.type}|${p.amountSatang}`))
   );
 }
 
 /**
- * R7 + O21 (มติเจ้าของ 4 ต.ค.): สาขาต้องเป็นของระบบ POS ที่ส่งมา — ตรวจก่อนแตะตัวนับใบเสร็จ (ไม่รอล็อกของสาขาอื่น)
- *   ผูกกับ POS นี้ = ผ่าน · ผูกกับ POS อื่น = ปฏิเสธเสมอ
- *   ไม่ผูก POS ใด: ร้านมี POS ใช้งาน 1 ตัว = ผ่าน (ผู้เรียกแบบ "POS ตัวแรกของร้าน" ทำงานเหมือนเดิม) · 2+ ตัว = ปฏิเสธ "เลือกจุดขายก่อน"
+ * R7 + O21 (มติเจ้าของ 4 ต.ค.) — ตัวตัดสินเดียวว่าบิลของสาขานี้ไปลง POS ไหน (createSale + ด่าน POS ก่อน claim ของผู้เรียก · R2 F1):
+ *   สาขาผูก POS = POS นั้น (ส่ง systemId อื่นมา = ปฏิเสธ)
+ *   สาขาไม่ผูก POS ใด: ร้านมี POS ใช้งาน 1 ตัว = ตัวนั้น (ส่ง systemId อื่นมา = ปฏิเสธ · R2 F6) · 0 ตัว = NO_POS · 2+ ตัว = "เลือกจุดขายก่อน"
+ * อ่านอย่างเดียว · ไม่โยน
  */
-async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<void> {
-  const link = await tx.appSystemUnit.findUnique({
-    where: { tenantId_unitId_type: { tenantId: input.tenantId, unitId: input.unitId, type: "POS" } },
+export type PosSystemForSale =
+  | { ok: true; systemId: string }
+  | { ok: false; code: "NO_POS" | "UNIT_SYSTEM_MISMATCH"; message: string };
+export async function posSystemForSale(tenantId: string, unitId: string, systemId?: string, db: Client = prisma): Promise<PosSystemForSale> {
+  const link = await db.appSystemUnit.findUnique({
+    where: { tenantId_unitId_type: { tenantId, unitId, type: "POS" } },
     select: { systemId: true },
   });
   if (link) {
-    if (link.systemId === input.systemId) return;
-    throw new PosSaleError("UNIT_SYSTEM_MISMATCH", "สาขานี้ผูกกับจุดขายอื่น — เลือกจุดขายของสาขานี้ก่อน");
+    if (!systemId || link.systemId === systemId) return { ok: true, systemId: link.systemId };
+    return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: "สาขานี้ผูกกับจุดขายอื่น — เลือกจุดขายของสาขานี้ก่อน" };
   }
-  const posCount = await tx.appSystem.count({ where: { tenantId: input.tenantId, type: "POS", active: true } });
-  if (posCount >= 2) throw new PosSaleError("UNIT_SYSTEM_MISMATCH", UNIT_SYSTEM_AMBIGUOUS_TH);
+  const pos = await db.appSystem.findMany({ where: { tenantId, type: "POS", active: true }, select: { id: true }, take: 2 });
+  if (pos.length === 0) return { ok: false, code: "NO_POS", message: "ยังไม่ได้เปิดระบบขาย (POS)" };
+  if (pos.length >= 2) return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: UNIT_SYSTEM_AMBIGUOUS_TH };
+  if (systemId && pos[0]!.id !== systemId) return { ok: false, code: "UNIT_SYSTEM_MISMATCH", message: "จุดขายนี้ไม่ใช่จุดขายของร้านนี้ — เลือกจุดขายก่อน" };
+  return { ok: true, systemId: pos[0]!.id };
+}
+
+async function assertUnitOfSystem(tx: Client, input: CreateSaleInput): Promise<void> {
+  const r = await posSystemForSale(input.tenantId, input.unitId, input.systemId, tx);
+  // ร้านไม่มี POS ใช้งานเลยแต่ผู้เรียกส่ง systemId มาเอง = พฤติกรรมเดิม (ไม่มีอะไรให้สับสน · ไม่เพิ่มคำปฏิเสธนอกมติ)
+  if (!r.ok && r.code !== "NO_POS") throw new PosSaleError("UNIT_SYSTEM_MISMATCH", r.message);
+}
+
+/** R2 F2: สถานะของบิลที่ถือคีย์นี้ (null = ยังไม่มี) — ผู้เรียกใช้ตัดสินว่าจะออกคีย์ใหม่ไหม (เช่น ร้านอาหาร re-checkout หลัง void) */
+export async function saleStatusByKey(tenantId: string, idempotencyKey: string, db: Client = prisma): Promise<string | null> {
+  const s = await db.posSale.findUnique({ where: { tenantId_idempotencyKey: { tenantId, idempotencyKey } }, select: { status: true } });
+  return s?.status ?? null;
 }
 
 /**
@@ -227,8 +250,8 @@ async function applyMemberRights(
 export async function createSale(input: CreateSaleInput, client: Client = prisma): Promise<SaleResult> {
   // เราเปิด tx เอง (client = prisma) → drain outbox ได้หลัง commit · ถ้าถูกเรียกใน tx ผู้อื่น ปล่อยให้ cron เก็บ
   const ownsTx = "$transaction" in client && typeof (client as PrismaClient).$transaction === "function";
-  // POS P1.6 I7: คีย์เดียวกันพร้อมกัน — ผู้แพ้ชน unique (P2002) แล้ว tx ทั้งก้อน rollback (รวมตัวนับ) ⇒ ลองใหม่ = เจอบิลผู้ชนะที่ทางคีย์ซ้ำ
-  //   ทำได้เฉพาะเมื่อเราเป็นเจ้าของ tx (tx ของผู้เรียกที่ล้มแล้วใช้ต่อไม่ได้ — ปล่อย error ให้ผู้เรียก)
+  // POS P1.6 I7: คีย์เดียวกันพร้อมกันถูกเรียงคิวด้วย advisory lock ต่อ (ร้าน, คีย์) ก่อนค้นคีย์ซ้ำ (R2 F4 · ทั้งสองโหมด) ⇒ ไม่มี P2002 ของคีย์
+  //   ที่ยังเหลือ: P2002 ของแถวตัวนับใบเสร็จเดือนใหม่ (สองบิลคนละคีย์ upsert แถวเดียวกันพร้อมกัน) — ลองใหม่ได้เฉพาะเมื่อเราเป็นเจ้าของ tx
   for (let attempt = 0; ; attempt++) {
     try {
       return await createSaleOnce(input, client, ownsTx);
@@ -241,11 +264,13 @@ export async function createSale(input: CreateSaleInput, client: Client = prisma
 
 async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: boolean): Promise<SaleResult> {
   const result = await withTx(client, async (tx): Promise<SaleResult> => {
+    // R2 F4: เรียงคิวคีย์เดียวกัน (ปล่อยเองตอน tx จบ · ใช้ได้ทั้ง tx ของเราและของผู้เรียก)
+    await tx.$queryRaw`SELECT 1 AS x FROM (SELECT pg_advisory_xact_lock(hashtext(${input.tenantId}::text || ':' || ${input.idempotencyKey}::text))) l`;
     // idempotent (R6 · มติ §8 ข้อ 3): payload เดิม = คืนบิลเดิมพร้อมสถานะจริง (VOIDED ก็คืน — ผู้เรียกตัดสินเอง) · payload ต่าง = IDEMPOTENCY_CONFLICT
     const dup = await tx.posSale.findUnique({
       where: { tenantId_idempotencyKey: { tenantId: input.tenantId, idempotencyKey: input.idempotencyKey } },
       include: {
-        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true } },
+        lines: { select: { qty: true, unitPriceSatang: true, discountSatang: true, itemId: true, productId: true, serviceId: true } },
         payments: { select: { type: true, amountSatang: true } },
       },
     });
@@ -316,6 +341,8 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
 
     // ── R8 BLOCK: ล็อกแถวสินค้า (ลำดับ id ตายตัว · ก่อนตัวนับ ⇒ ลำดับล็อกเดียวกันทุกบิล ไม่ deadlock) แล้วตรวจยอดคงเหลือ ──
     let blockInv: { tenantId: string; systemId: string } | null = null;
+    // R2 F3: ตัดในtx เฉพาะสินค้าที่อยู่ในชุดที่ล็อกได้และไม่ใช่บริการ — ที่เหลือ (ไม่พบในคลังนี้/บริการ) เดินทางเดิมหลัง commit ไม่ทำให้บิลล้ม
+    const blockItemIds = new Set<string>();
     const stockLines = lines.filter((l) => l.itemId);
     if (stockLines.length > 0 && (await unitOversellPolicy(tx, input.tenantId, input.unitId)) === "BLOCK") {
       const invSystemId = await systemForUnit(input.tenantId, input.unitId, "INVENTORY", tx);
@@ -330,6 +357,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         });
         for (const it of items) {
           if (it.kind === "SERVICE") continue; // บริการไม่มีสต็อก (ตัดไม่ได้อยู่แล้ว)
+          blockItemIds.add(it.id);
           const want = need.get(it.id) ?? 0;
           if (it.onHand < want) throw new PosSaleError("STOCK_INSUFFICIENT", `สินค้าในสต็อกไม่พอ: "${it.name}" เหลือ ${it.onHand} ต้องการ ${want}`);
         }
@@ -469,6 +497,7 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
     if (blockInv) {
       const saved = await tx.posSaleLine.findMany({ where: { saleId: sale.id, itemId: { not: null } }, select: { id: true, itemId: true, qty: true } });
       for (const l of saved) {
+        if (!blockItemIds.has(l.itemId!)) continue;
         await inventory.consumeInTx(tx as Prisma.TransactionClient, blockInv, {
           itemId: l.itemId!,
           qty: l.qty,

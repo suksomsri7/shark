@@ -209,9 +209,10 @@ export async function returnAsset(
   //   หลังคิวระบาย) — ไทม์ไลน์ลูกค้าจึงโกหกว่า "คืนของแล้ว" ทั้งที่ของยังไม่ได้คืน
   //   แก้โดยย้ายด่านขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ PICKED_UP / ไม่พบสินทรัพย์ → ok:false มาก่อนด่าน POS
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale ◂
+  const posGate = await pos.posSystemForSale(ctx.tenantId, ctx.unitId);
+  if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนรับคืนสินทรัพย์" : posGate.message);
+  const posSys = { id: posGate.systemId };
 
   // 1) claim อะตอมมิก: PICKED_UP → RETURNED (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
   //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒

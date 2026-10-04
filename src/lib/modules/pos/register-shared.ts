@@ -359,6 +359,7 @@ const REFUSAL_KEY: Readonly<Record<string, string>> = {
   UNIT_SYSTEM_MISMATCH: "errors.unitSystemMismatch",
   SPLIT_INVALID: "errors.splitInvalid",
   TIP_ACCOUNT_REQUIRED: "errors.tipAccountRequired",
+  TIP_NOT_AVAILABLE: "errors.tipNotAvailable", // R2 F5 (ค่าตั้งการชำระเงิน)
 };
 
 /**

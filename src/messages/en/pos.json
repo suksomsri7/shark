@@ -215,7 +215,7 @@
       "billDiscountExceedsTotal": "The bill discount is more than the bill total",
       "discountExceedsLimit": "This discount is above this account's limit (max {limit}%) — ask a manager",
       "tooManyLines": "A bill can hold up to {max} items — start a new bill for the rest",
-      "stockInsufficient": "<b>Only {count} in stock</b> — you can still sell; a stock count will be flagged",
+      "stockInsufficient": "<b>Only {count} in stock</b> — not enough stock for this quantity",
       "conflict": "This was just changed elsewhere — please try again",
       "busy": "The system is busy — please try again in a moment",
       "unknown": "Something went wrong — please try again",
@@ -230,7 +230,8 @@
       "alreadyRecalled": "This bill was already recalled (maybe on another device)",
       "unitSystemMismatch": "Choose a point of sale first — this branch is not linked to this POS",
       "splitInvalid": "A bill can be split into at most 10 payments",
-      "tipAccountRequired": "Tips can't be turned on yet — choose a tip holding account in the accounting book linked to this POS first"
+      "tipAccountRequired": "Tips can't be turned on yet — choose a tip holding account in the accounting book linked to this POS first",
+      "tipNotAvailable": "Tips can't be turned on yet — tips are not posted to the tip holding account yet (coming soon)"
     },
     "held": {
       "title": "Held bills",

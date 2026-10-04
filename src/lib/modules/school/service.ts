@@ -209,9 +209,10 @@ export async function markPaid(
   //   การรับชำระที่ถูกยกเลิกไปแล้วยังทิ้ง event ค้างไว้ (และกิจกรรม VISIT ใน CRM หลังคิวระบาย) = ไทม์ไลน์โกหกว่าจ่ายแล้ว
   //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · ลำดับเดิมคงไว้: สถานะไม่ใช่ ENROLLED → ok:false มาก่อนด่าน POS
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) throw new Error("เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale ◂
+  const posGate = await pos.posSystemForSale(ctx.tenantId, ctx.unitId);
+  if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนรับชำระค่าเรียน" : posGate.message);
+  const posSys = { id: posGate.systemId };
 
   // 1) claim อะตอมมิก: ENROLLED → PAID (แพ้แข่ง/จ่ายแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
   //   (มติ C11 · ใบ C2.9 · R-B: โมดูลเรียนยิงเหตุการณ์เดียว = ตอน "ชำระค่าเรียนแล้ว" ไม่มี `school.completed`)

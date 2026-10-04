@@ -205,6 +205,10 @@ export async function promptpayForOrder(ctx: ShopCtx, orderId: string): Promise<
 export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUserId?: string): Promise<{ ok: boolean; posSaleId?: string }> {
   const db = tenantDb(ctx);
 
+  // POS P1.6 R2 F1 ▸ ด่าน POS ก่อน claim (O21): ไม่มี POS / ร้านมีหลาย POS แต่สาขานี้ไม่ผูก = โยนโดยไม่แตะออเดอร์ ◂
+  const posGate = await pos.posSystemForSale(ctx.tenantId, ctx.unitId);
+  if (!posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนยืนยันรับเงิน" : posGate.message);
+
   // 1) claim อะตอมมิก: PENDING_PAYMENT → PAID (แพ้แข่ง/สถานะอื่น → ok:false, ไม่ทำเส้นเงินซ้ำ)
   const claim = await db.shopOrder.updateMany({
     where: { id: orderId, status: "PENDING_PAYMENT" },
@@ -216,28 +220,32 @@ export async function confirmOrderPaid(ctx: ShopCtx, orderId: string, _actorUser
   const lines = await db.shopOrderLine.findMany({ where: { orderId } });
   if (!order) return { ok: false };
 
-  // 2) หา AppSystem type POS ตัวแรกของ tenant — ไม่มี = revert แล้วโยน (เงินเข้าไม่ได้ถ้าไม่มีจุดตัดเงิน)
-  const posSystems = await listSystems(ctx.tenantId, "POS");
-  const posSys = posSystems[0];
-  if (!posSys) {
-    await db.shopOrder.updateMany({
+  // 2) POS ของบิล = ด่านก่อน claim ด้านบน (สาขาที่ผูก POS · หรือ POS ตัวเดียวของร้าน — P1.6 O21)
+  const posSys = { id: posGate.systemId };
+  const revertClaim = () =>
+    db.shopOrder.updateMany({
       where: { id: orderId, status: "PAID", posSaleId: null },
       data: { status: "PENDING_PAYMENT", paidAt: null },
     });
-    throw new Error("เปิดระบบขาย (POS) ก่อนยืนยันรับเงิน");
-  }
 
   // 3) เส้นเงิน C-2 — pos.createSale (idempotent ต่อ `ecom-<orderId>`)
-  const sale = await pos.createSale({
-    tenantId: ctx.tenantId,
-    unitId: ctx.unitId,
-    systemId: posSys.id,
-    sourceModule: "ECOM",
-    sourceId: orderId,
-    idempotencyKey: `ecom-${orderId}`,
-    lines: lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
-    payMethods: [{ type: "PROMPTPAY", amountSatang: order.totalSatang }],
-  });
+  //   P1.6 R2 F1: createSale ปฏิเสธ (เช่น ยอด/คีย์/สต็อก) = ไม่มีบิล ⇒ คืนออเดอร์เป็นรอชำระเหมือนกรณีไม่มี POS แล้วโยนต่อ
+  let sale: Awaited<ReturnType<typeof pos.createSale>>;
+  try {
+    sale = await pos.createSale({
+      tenantId: ctx.tenantId,
+      unitId: ctx.unitId,
+      systemId: posSys.id,
+      sourceModule: "ECOM",
+      sourceId: orderId,
+      idempotencyKey: `ecom-${orderId}`,
+      lines: lines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
+      payMethods: [{ type: "PROMPTPAY", amountSatang: order.totalSatang }],
+    });
+  } catch (e) {
+    await revertClaim();
+    throw e;
+  }
 
   // M3.7 (ระบบสมาชิก v2 · §7.1 · D19) — ออเดอร์ชำระแล้ว → สมาชิก/แต้ม/ไทม์ไลน์ของลูกค้า (consumer ที่ composition root)
   // 🔴 ร้านค้าไม่รู้จักโมดูลสมาชิก — แค่ประกาศเหตุการณ์ · idempotencyKey ผูกออเดอร์ · ลง 3 ทะเบียนแล้ว

@@ -26,6 +26,10 @@ export {
   closeDaySummary,
   closeDayBills,
   bkkToday,
+  /** P1.6 R2 F1: บิลของสาขานี้ไปลง POS ไหน (O21) — ผู้เรียกใช้เป็นด่านก่อน claim */
+  posSystemForSale,
+  /** P1.6 R2 F2: สถานะของบิลที่ถือคีย์นี้ */
+  saleStatusByKey,
 } from "./service";
 
 // POS P1.1a ▸ แคตตาล็อกเดียว (PosProduct) — ผู้เขียน/ผู้อ่านเดียวของแคตตาล็อกขาย · ผู้เรียกนอกโมดูลใช้ `catalog.<fn>` ◂

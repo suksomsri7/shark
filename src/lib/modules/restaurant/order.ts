@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { prisma, tenantDb } from "@/lib/core/db";
 import type { Prisma, RestOrderType, ServiceRequestType } from "@prisma/client";
-import { createSale, voidSale } from "@/lib/modules/pos/service";
+import { createSale, saleStatusByKey, voidSale } from "@/lib/modules/pos/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import * as member from "@/lib/modules/member/service";
 import { bizDateBkk, kitchenOpenNow } from "./scope";
@@ -423,27 +423,26 @@ export async function checkout(input: {
   if (posSystemId) {
     const pointSystemId = (await systemForUnit(tenantId, unitId, "POINT")) ?? undefined;
     try {
-      // POS P1.6 (มติ §8 ข้อ 3 · I6): คีย์เดิมของบิลที่ถูก void แล้ว → createSale คืนบิลนั้นพร้อม status "VOIDED" (ไม่ขายใหม่ให้)
-      //   ⇒ re-checkout หลัง voidCheckout ต้องออกคีย์ใหม่เอง: rest-<hash>-r1, -r2, … (ตายตัว ⇒ ลองซ้ำหลังล่มได้บิลเดิม ไม่ซ้ำเงิน)
+      // POS P1.6 (มติ §8 ข้อ 3 · I6 · R2 F2): คีย์ของบิลที่ถูก void แล้วใช้ขายใหม่ไม่ได้ (createSale คืนบิล VOIDED / payload ต่าง = CONFLICT)
+      //   ⇒ อ่านสถานะของคีย์ก่อน: VOIDED = เลื่อนไป rest-<hash>-r1, -r2, … จนเจอคีย์ว่างหรือบิลที่ยังไม่ void
+      //   (ตายตัว ⇒ ลองซ้ำหลังล่มได้บิลเดิม · re-checkout ที่เปลี่ยนวิธีจ่าย/จำนวนหลัง void ก็ได้คีย์ใหม่)
       let key = idempotencyKey;
-      let sale: Awaited<ReturnType<typeof createSale>>;
-      for (let round = 1; ; round++) {
-        sale = await createSale({
-          tenantId,
-          unitId,
-          systemId: posSystemId,
-          pointSystemId,
-          memberId,
-          sourceModule: "RESTAURANT",
-          sourceId: sessionId,
-          idempotencyKey: key,
-          lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
-          payMethods: [{ type: payType, amountSatang: total }],
-        });
-        if (sale.status !== "VOIDED") break;
+      for (let round = 1; (await saleStatusByKey(tenantId, key)) === "VOIDED"; round++) {
         if (round > 50) return { ok: false, reason: "บิลของโต๊ะนี้ถูกยกเลิกซ้ำหลายครั้งเกินไป — ติดต่อผู้ดูแลระบบ" };
         key = `${idempotencyKey}-r${round}`;
       }
+      const sale = await createSale({
+        tenantId,
+        unitId,
+        systemId: posSystemId,
+        pointSystemId,
+        memberId,
+        sourceModule: "RESTAURANT",
+        sourceId: sessionId,
+        idempotencyKey: key,
+        lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
+        payMethods: [{ type: payType, amountSatang: total }],
+      });
       saleId = sale.saleId;
       receiptNo = sale.receiptNo;
       pointEarned = sale.pointEarned;

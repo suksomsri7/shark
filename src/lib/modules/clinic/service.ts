@@ -252,8 +252,10 @@ export async function billVisit(
   //   ย้ายขึ้นมาเป็น pre-check ก่อนเขียนอะไรทั้งสิ้น ⇒ ไม่มี POS = โยนโดยไม่แตะสถานะ ไม่มี event ไม่มีกิจกรรม
   //   ข้อความไทยเดิมทุกตัวอักษร · เงื่อนไขเดิมคงไว้: ค่าบริการ 0 = BILLED โดยไม่เปิดบิล ⇒ **ไม่ต้องมี POS** (ไม่โยน)
   const feeSatang = visit.feeSatang;
-  const posSys = feeSatang > 0 ? (await listSystems(ctx.tenantId, "POS"))[0] : null;
-  if (feeSatang > 0 && !posSys) throw new Error("เปิดระบบขาย (POS) ก่อนเก็บเงิน");
+  // POS P1.6 R2 F1 ▸ ตัวตัดสิน O21 เดียวกับ createSale (สาขาที่ผูก POS · หรือ POS ตัวเดียวของร้าน · หลาย POS ไม่ผูก = "เลือกจุดขายก่อน") ◂
+  const posGate = feeSatang > 0 ? await pos.posSystemForSale(ctx.tenantId, ctx.unitId) : null;
+  if (posGate && !posGate.ok) throw new Error(posGate.code === "NO_POS" ? "เปิดระบบขาย (POS) ก่อนเก็บเงิน" : posGate.message);
+  const posSys = posGate?.ok ? { id: posGate.systemId } : null;
 
   // 1) claim อะตอมมิก: OPEN → BILLED (แพ้แข่ง/เก็บแล้ว/ยกเลิก → ok:false ไม่ทำเส้นเงินซ้ำ)
   //   ห่อ **เฉพาะ** การ claim + `emitOutbox(tx, …)` ไว้ใน transaction เดียวกัน ⇒

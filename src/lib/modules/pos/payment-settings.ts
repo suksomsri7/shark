@@ -17,7 +17,7 @@ export type PosPaymentSettings = {
   serviceCharge: { enabled: boolean; rateBp: number };
   tip: { enabled: boolean; ledgerAccountId: string | null };
 };
-export type PosPaymentSettingsCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "TIP_ACCOUNT_REQUIRED" | "UNKNOWN";
+export type PosPaymentSettingsCode = "NOT_FOUND" | "PERMISSION_DENIED" | "VALIDATION" | "TIP_ACCOUNT_REQUIRED" | "TIP_NOT_AVAILABLE" | "UNKNOWN";
 export type PosPaymentSettingsRefusal = { ok: false; code: PosPaymentSettingsCode; message: string };
 export type PosPaymentSettingsResult = ({ ok: true } & PosPaymentSettings) | PosPaymentSettingsRefusal;
 export type PosPaymentSettingsPatch = {
@@ -31,8 +31,14 @@ const MSG: Record<PosPaymentSettingsCode, string> = {
   PERMISSION_DENIED: "เฉพาะเจ้าของร้านเท่านั้นที่ตั้งค่าการชำระเงินได้",
   VALIDATION: "ค่าที่ตั้งไม่ถูกต้อง",
   TIP_ACCOUNT_REQUIRED: "เปิดรับทิปไม่ได้ — เลือกบัญชีพักทิปในสมุดบัญชีที่เชื่อมกับจุดขายนี้ก่อน",
+  TIP_NOT_AVAILABLE: "ระบบยังไม่เปิดให้รับทิป — รอการลงบัญชีทิปเข้าบัญชีพักทิป (งานถัดไป P1.6b)",
   UNKNOWN: "เกิดข้อผิดพลาด — ลองอีกครั้ง",
 };
+/**
+ * P1.6 R2 F5 (มติผู้คุมงาน): ทิปยังลงบัญชีพักทิปไม่ได้ (JV ตัดทิปออก แต่ยังไม่บันทึก Dr เงินสด/Cr หนี้สินทิป) ⇒ ห้ามเปิดทิปจนกว่า
+ * ใบ P1.6b จะลงบัญชีทิปได้จริง · ท่อทิปอื่นทั้งหมดยังอยู่ (ค่าตั้ง · หน้าขาย · createSale · สะพาน) — P1.6b เปลี่ยนค่านี้เป็น true
+ */
+const TIP_POSTING_READY = false;
 const refuse = (code: PosPaymentSettingsCode, message?: string): PosPaymentSettingsRefusal => ({ ok: false, code, message: message ?? MSG[code] });
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -128,6 +134,8 @@ export async function updatePosPaymentSettings(
       };
       if (next.serviceCharge.enabled && next.serviceCharge.rateBp <= 0) return refuse("VALIDATION", "เปิดค่าบริการต้องระบุอัตรามากกว่า 0");
       if (next.tip.enabled && !(await tipLedgerOk(tx, ctx.tenantId, ctx.systemId, next.tip.ledgerAccountId))) return refuse("TIP_ACCOUNT_REQUIRED");
+      // R2 F5: บัญชีพักทิปถูกต้องแล้วก็ยังเปิดไม่ได้ จนกว่า P1.6b (ตรวจหลังบัญชี ⇒ ผู้ใช้เห็นปัญหาบัญชีก่อน)
+      if (next.tip.enabled && !TIP_POSTING_READY) return refuse("TIP_NOT_AVAILABLE");
 
       const base = isRecord(sys.settings) ? sys.settings : {};
       const pos = isRecord(base.pos) ? base.pos : {};
