@@ -194,3 +194,102 @@ No schema change and no migration in R2. There is no DB in this container, so th
 - F1 also changes **visibility** of such bundles in `registerCatalog`, scan and `registerProductOptions`. It does not change `catalog.listForUnit` (back office), which still lists them.
 - F5 adds one UI line and one message key. This is the minimum needed for the cashier to see the new state; the styling is unchanged for builder U.
 - The F4 parent-side guard and the F6 edge rules (1 left gives `one`; 0 left gives the variants) are my choices. Please ratify or adjust them.
+
+## R3 — F7 variant adopts the synced InvItem row (controller §R3 ruling) · cloud run · 4 Oct 2026
+Branch: local `p12-local`, pushed to **`wip/pos-p1.2-r3`** only. No schema change, no migration. No DB in this container, so the DB checks are a CONTROLLER-RUN.
+
+### F7 (`src/lib/modules/pos/catalog.ts`)
+- `createProduct` with `invItemId` whose InvItem already has a row in this POS system:
+  - archived row: the existing "restore instead" CONFLICT, whether or not `parentId` is sent;
+  - no `parentId` (absent or null): the existing CONFLICT, so P1.1a behaviour is unchanged;
+  - `parentId` given: all the normal create validations run first (unit, D6, kind vs InvItem, parent R6 rules, R9 weighed shape, R2 F4). Then the new internal `adoptVariantRow` runs.
+- `adoptVariantRow`:
+  - **Locks.** The tenant lock is already held (an `invItemId` input always takes it), so the order is tenant → rows, the same as create and restore. It locks the row in one `FOR NO KEY UPDATE` statement sorted by id; when a price has to be written back, the price-sibling rows go in the same statement.
+  - **Checks on the locked row.** It must be in this system and not archived (otherwise the restore CONFLICT). If the row's unit is one the actor cannot see, the result is the plain CONFLICT, so nothing leaks. Then come `requireRowWrite` on the row's own scope, then these refusals:
+    - the row already has a parent: CONFLICT;
+    - the row has any children (archived ones included): CONFLICT;
+    - `parentId` is the row itself: VALIDATION;
+    - the row's kind differs from the resolved kind: VALIDATION;
+    - a `vatRateBp` that differs from the row's: VALIDATION, because VAT is owned by sync (C8) and `--verify` compares it;
+    - a barcode clash (`assertBarcodeFree`, excluding the row itself): CONFLICT;
+    - a PLU clash: CONFLICT.
+  - **What it writes.** It applies the create-shaped fields `parentId name nameEn basePriceSatang barcode categoryId soldByWeight scalePlu`. A null price means inherit (P5). `unitId` and `trackStock` are applied only when sent; otherwise the row keeps its own. It returns the same id.
+  - **Name.** The name is written back to `InvItem.name` through `writeBackNames`, the same as `updateProduct` (ruling 12). That keeps verify's name comparison clean, and the forward sync's later renames stay consistent.
+  - **Price.**
+    - A non-null price goes through the setPrice path: `reverseTarget`. If `sim(price) ≠ price`, the result is VALIDATION with setPrice's message. Otherwise `writeBackPrice` runs, then `rederiveRows` on the siblings. If the sibling set grew after the lock, the result is BUSY.
+    - With no target (a PRODUCT InvItem without an AP, as in the oracle), the price is catalogue-only.
+    - **A null price is allowed only when the InvItem's legacy price rung is `none`.** Otherwise the result is VALIDATION ("this stock item has a legacy price — set the variant's own price"). See the reasoning below.
+  - **Audit.** One `pos.product.create` row with `after.adopted: true`; `before` holds the previous values of the written fields.
+- **Concurrency guard (my addition).** When `createProduct` gets any `parentId`, it now takes `FOR SHARE` on the parent row before reading it. A row being adopted (it holds `FOR NO KEY UPDATE`) therefore cannot gain a child in the meantime, and a child creator arriving after the adoption sees the new `parentId` and gets VALIDATION. This keeps variants one level deep. Lock order: a plain child create takes only the parent row lock; a create with an invItem or barcode takes tenant → parent; adoption takes tenant → parent (SHARE) → row. No cycle.
+
+### P1.1b sync on the adopted row (it remains the InvItem's row: same `(systemId, invItemId)`, so `legacySourceOf` still gives `inv`)
+- **Forward.**
+  - `updateInvItem` renames → `rederiveRows` name. The variant takes the InvItem's name, which is expected because the row is that InvItem's.
+  - Archive and unarchive → archive and restore of the row. That works, and it does not touch `parentId`.
+- **Reverse.** `updateProduct` names, `setPrice`, archive and restore are unchanged and work on the row.
+- **`--verify` (`verifyCatalog`).**
+  - The name matches because of the write-back. VAT is untouched. `archived` is untouched.
+  - Price: for rung `none` (the oracle case: no AP, PRODUCT), verify does **not** compare `basePriceSatang`.
+    - A null price stays clean.
+    - A non-null price counts only as `info.catalogueOnlyPrice`, the same as any catalogue-only price since P1.1b.
+  - For a priced rung (`sale`/`pos`/`service`/`free`), a non-null price was written back, so derived equals row. A null price is refused, because verify would report drift and the next `rederiveRows(price)` would overwrite the null.
+- **Price derivation with a null `basePriceSatang` (P1.1b).** For an inv row with rung `none`, `invItemProductFields` derives null, so a forward price re-derive leaves the inherit-null intact. **Pre-existing P1.1b behaviour I did not change:** if an AccountProduct is later linked (`linkInvItemAccountProduct`) or its price changes, `rederiveRows(price)` replaces the variant's price (null or catalogue-only) with the AP-derived price. Any catalogue-only price on an InvItem row behaves that way today.
+- `parentId` is not a sync-owned field. Backfill counts the row as `alreadyDone` (same key) and never clears `parentId`.
+
+### Category note
+The category is validated against the **sent** `unitId` (the existing early check). If the adopted row is unit-scoped and the caller does not send `unitId`, only all-unit categories pass. Sending `unitId` fixes that.
+
+### Check trace (oracle read against the new code; not run)
+- **Fixture** (`qc-pos-p1.2.mts` ~:1035–1040):
+  - `mkInv` → `createItem` → `ensureForInvItem` creates rows for `invRED`/`invBLUE` in POS-S, unit null. The resolver maps INV-S → POS-S through uS. There is no AP in the sandbox (no `AccountSystemLink` for POS-S), so the price rung is `none` and the row price is null.
+  - `mkProd(RED, {invItemId, parentId: SHIRT, 6500, barcode})` → adopted, same id. `BLUE` (no price) → rung `none`, so null is allowed; `soldByWeight` false = SHIRT false (F4 ok). `fxV` stays empty.
+- **O10.** SHIRT `registerProductOptions` gives variants RED 6500 and BLUE 5500 (inherited), with groups = [SIZE]. LATTE and nope are unchanged. **Pass.**
+- **O11.** `setProductOptionGroups(RED)` → VALIDATION (variant row). The rest is independent of variants. **Pass.**
+- **V1.**
+  - Grid: SHIRT has `variantCount` 2 and `parentId` null. Children are hidden from grid and search (their `parentId` is set).
+  - `listForUnit` variants = [RED, BLUE]. The adopted rows have unit null, and the InvItem is in INV-S, which uS uses, so they are visible.
+  - **Pass.**
+- **V2.** The RED barcode is on the adopted row → `one` (`parentId` SHIRT, 6500). The SHIRT barcode → `choose` [RED, BLUE]. BLUE → 5500. **Pass.**
+- **V3.** 6500+1000 = 7500 · 5500+1000 = 6500 · RED without options → OPTIONS_REQUIRED (parent's groups) · SHIRT → VARIANT_REQUIRED. **Pass.**
+- **V4.**
+  - The line has `productId` RED and `itemId` = `invRED` (the row keeps its `invItemId`).
+  - `trackStock` null means AUTO, which is on, because onHand is 10.
+  - RED goes 10 → 8, BLUE stays 10, and there is 1 OUT movement.
+  - **Pass.**
+- **V5.**
+  - Grandchild of RED → VALIDATION.
+  - BUNDLE parent → VALIDATION.
+  - POS-O parent → NOT_FOUND (the FOR SHARE select is system-filtered and matches nothing).
+  - The RED barcode on a new child with no invItem → plain path, `assertBarcodeFree` → CONFLICT.
+  - Archive SHIRT → RED quote PRODUCT_NOT_FOUND, scan `none`.
+  - **Pass.**
+- **R1.** V3's `asData("ขายแม่")` now gets a real VARIANT_REQUIRED refusal; it was red only because SHIRT had no children. The count is still 7. **Pass.**
+- **Z1/Z2.**
+  - Adopted rows are POS-S rows, deleted by `systemId`. Their ids join `sb.productIds` before the audit delete, so both audit rows are removed: the ensure `pos.product.create` and the adoption `pos.product.create`.
+  - The InvItem name write-back affects sandbox InvItems only, and those are deleted with INV-S.
+  - **Pass.**
+- **I expect no other reds from F7.** S.R2.4/S.R2.6 create variants without an `invItemId`; that path is unchanged apart from the parent FOR SHARE. W and B use `ensureForInvItem` without `parentId`.
+- Expected full DB run on this head: **55 checks, red only on S1 and S2** (builder U).
+
+### New check S.R3.1 (`// ORACLE-ADD (controller R3 ruling)`, 54 → 55)
+- **Setup:** parent PA (2,000). `createItem` R3A and R3B; their synced POS-S rows are found and pushed to `sb.productIds`.
+- **Adopt:** `createProduct({invItemId: R3A, parentId: PA, 2500})` returns the synced id, with `parentId` PA, price 2,500, the new name and `archivedAt` null. There is still exactly one row for R3A, and `InvItem.name` equals the new name.
+- **Second call:** CONFLICT, and the row is unchanged (name and 2,500).
+- **R3B without `parentId`:** CONFLICT, and the row is unchanged (`parentId` null, same name and price).
+- **Guards and cleanup:** a fixture guard reports `fixture:`, and a try/catch marks the check red when it is not reached. It adds no `asData`, so the R1 count is unchanged. Cleanup is the existing one (POS-S/INV-S by system).
+- **On b345a4d2 it is red:** the first call returns CONFLICT. **After F7 it is green** (by reasoning; DB not available).
+
+### Results (this container)
+- typecheck (5632) exit 0.
+- fitness (no DB env) 41/41; fitness-pos 8/8.
+- esbuild syntax ok.
+- `qc-pos-p1.2 --no-db` 10/12; only S1/S2 are red (builder U). `--list` gives 55.
+- `qc-pos-p1.4 --no-db` 13/13 · `p1.5` 5/5 · `p1.9` 13/13.
+
+### For the controller (my choices, please ratify)
+- **Null price.** It is refused when the InvItem has a legacy price rung. This keeps `--verify` clean and stops the forward sync from overwriting the null.
+- **`vatRateBp`.** A value that differs from the row's is refused.
+- **Optional fields.** `unitId` and `trackStock` are applied only when sent.
+- **Concurrency.** The parent row takes `FOR SHARE` in `createProduct`.
+- **Audit action.** The action is `pos.product.create` with `adopted: true`, not a new action name.
+- **Leftover option groups.** The row's own `PosProductOptionGroup` links, if it had any before adoption, are left in place. Variants read the parent's groups (P6), so they are inert.
