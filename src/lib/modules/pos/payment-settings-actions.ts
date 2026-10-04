@@ -7,6 +7,7 @@
 
 import { unstable_rethrow } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
+import { assertCan } from "@/lib/core/rbac";
 import { posMembership } from "./access";
 import {
   posPaymentSettings,
@@ -15,15 +16,27 @@ import {
   type PosPaymentSettingsResult,
 } from "./payment-settings";
 
+/** สิทธิ์ตั้งค่าการชำระเงิน (OWNER ผ่านเสมอ · คนอื่นต้องได้รับ pos.settings.payment — แต่ updatePosPaymentSettings ยังยอมเฉพาะ OWNER) */
+function denied(m: ReturnType<typeof posMembership>): PosPaymentSettingsResult | null {
+  try {
+    assertCan(m, { module: "pos", action: "pos.settings.payment" });
+    return null;
+  } catch {
+    return { ok: false, code: "PERMISSION_DENIED", message: "เฉพาะเจ้าของร้านเท่านั้นที่ตั้งค่าการชำระเงินได้" };
+  }
+}
+
 function unexpected(where: string, e: unknown): PosPaymentSettingsResult {
   console.error(`[pos/payment-settings-actions] ${where}`, e);
   return { ok: false, code: "UNKNOWN", message: "เกิดข้อผิดพลาด — ลองอีกครั้ง" };
 }
 
-/** อ่านค่าตั้งการชำระเงินของระบบ POS นี้ (สมาชิกของร้านอ่านได้ — หน้าขายใช้แสดงค่าบริการ/ทิป) */
+/** อ่านค่าตั้งการชำระเงินของระบบ POS นี้ (หน้าตั้งค่า · หน้าขายอ่านฝั่งเซิร์ฟเวอร์ผ่าน posPaymentSettings ตรง) */
 export async function posPaymentSettingsAction(args: { systemId: string }): Promise<PosPaymentSettingsResult> {
   try {
     const auth = await requireTenant();
+    const no = denied(posMembership(auth.active));
+    if (no) return no;
     const systemId = args && typeof args.systemId === "string" ? args.systemId : "";
     return await posPaymentSettings({ tenantId: auth.active.tenantId, systemId });
   } catch (e) {
@@ -38,6 +51,8 @@ export async function updatePosPaymentSettingsAction(args: { systemId: string; p
     const auth = await requireTenant();
     const systemId = args && typeof args.systemId === "string" ? args.systemId : "";
     const m = posMembership(auth.active);
+    const no = denied(m);
+    if (no) return no;
     return await updatePosPaymentSettings(
       { tenantId: auth.active.tenantId, systemId },
       { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions },
