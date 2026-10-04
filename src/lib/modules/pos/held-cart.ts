@@ -197,15 +197,6 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     if (isRefusal(cart) || !cart.lines.length) return refuse("VALIDATION", "บิลที่พักนี้อ่านไม่ได้ — ทิ้งแล้วเปิดบิลใหม่");
     const held = Array.isArray(j?.heldUnitPrices) ? (j.heldUnitPrices as unknown[]) : [];
 
-    const won = await db.posHeldCart.updateMany({
-      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } },
-      data: { status: "RECALLED", recalledAt: new Date(), recalledByUserId: s.actor.userId, version: { increment: 1 } },
-    });
-    if (won.count !== 1) {
-      const now = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true } });
-      return refuse(now?.status === "RECALLED" ? "ALREADY_RECALLED" : "NOT_FOUND");
-    }
-
     const quote = await quoteRegisterCart(s.ctx, s.actor, cart, db);
     const notices: HeldCartNotice[] = [];
     // ราคาปัจจุบันต่อบรรทัดสินค้าแคตตาล็อก (ไม่ใช่ราคาเปิด) — quote ทั้งบิลผ่าน = ใช้เลย · ไม่ผ่าน = ถามทีละบรรทัดที่เหลือ
@@ -241,6 +232,16 @@ export async function recallHeldCart(ctx: RegisterCtx, actor: RegisterActor, inp
     const nameRows = productIds.length ? await db.posProduct.findMany({ where: { id: { in: [...new Set(productIds)] }, tenantId: s.ctx.tenantId }, select: { id: true, name: true } }) : [];
     const nameOf = new Map(nameRows.map((r) => [r.id, r.name]));
     const lineNames = cart.lines.map((l) => ("productId" in l && typeof l.productId === "string" ? (nameOf.get(l.productId) ?? null) : null));
+    // R2: งานอ่านอย่างเดียวทั้งหมด (quote · probe · ชื่อสินค้า) ทำก่อน — UPDATE ผู้ชนะคนเดียวเป็นคำสั่งสุดท้าย
+    //     อะไรข้างบนล้ม = แถวยัง HELD (ไม่มีบิลหายแบบ RECALLED ไร้เจ้าของ)
+    const won = await db.posHeldCart.updateMany({
+      where: { id, ...rowWhere(s), status: "HELD", createdAt: { gte: cutoff } },
+      data: { status: "RECALLED", recalledAt: new Date(), recalledByUserId: s.actor.userId, version: { increment: 1 } },
+    });
+    if (won.count !== 1) {
+      const now = await db.posHeldCart.findFirst({ where: { id, ...rowWhere(s) }, select: { status: true } });
+      return refuse(now?.status === "RECALLED" ? "ALREADY_RECALLED" : "NOT_FOUND");
+    }
     return { ok: true, heldCartId: id, cart, quote, notices, products, lineNames };
   });
 }

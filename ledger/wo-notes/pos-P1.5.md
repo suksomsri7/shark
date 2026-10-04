@@ -135,3 +135,10 @@ The P1.3 oracle has no `--no-db` mode, so its statics were not run. I checked th
 - (4) Fixed. `listHeldCarts` now also returns `expireDays`: the setting `AppSystem.settings.pos.heldCart.expireDays`, or 2 if it is unset. The screen keeps this value and the drawer's expiry note shows it.
 - (5) Note: there is no cap on HELD carts per unit. The drawer lists the newest 100.
 - Re-run with no DB: p1.5 `--no-db` 5/5 · p1.4 `--no-db` 13/13 · fitness (DB env unset) 41/41 · typecheck exit 0.
+
+## R2 — reviewer SHOULD-FIX (recall order)
+
+- In `recallHeldCart`, all the read-only work now runs **before** the single-winner UPDATE: canonical cart, `quoteRegisterCart`, the line-by-line probe, the notices, `registerProductsByIds` and the `posProduct` name lookup. The conditional `updateMany … status='HELD'` is the last write. The precomputed result is returned only when `count===1`; otherwise the row is re-read and classified as before (`ALREADY_RECALLED` or `NOT_FOUND`).
+- If anything throws before the UPDATE, the row stays HELD, so a recall can no longer leave it RECALLED with no holder. No transaction is used and no row lock is held during the quote.
+- The NOTEs are unchanged (scope.ts axis, hold-then-recall partial, heldNames ref).
+- Re-run with no DB: p1.5 `--no-db` 5/5 · p1.4 13/13 · fitness (DB env unset) 41/41 · typecheck exit 0.
