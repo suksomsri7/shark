@@ -491,8 +491,10 @@ async function createSaleOnce(input: CreateSaleInput, client: Client, ownsTx: bo
         shiftId,
       },
     });
-    // POS P1.2: บรรทัดที่มีตัวเลือกได้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน) · ที่เหลือ id ปริยายแบบเดิม
-    const lineIds = lines.map((l) => (l.options && l.options.length ? randomUUID() : undefined));
+    // POS P1.2: บรรทัดที่มีตัวเลือกต้องรู้ id ตั้งแต่ตอนเขียน (ผูก PosSaleLineOption ในtx เดียวกัน)
+    //   R2 F2: บิลที่มีตัวเลือก = ตั้ง id ให้ "ทุกบรรทัด" แบบเรียงตามลำดับบรรทัด (ฐานเดียวกัน + เลขลำดับความยาวคงที่) ⇒ อ่านกลับ orderBy id
+    //   ได้ลำดับตะกร้าเดิม (ไม่ปน UUID/cuid) · บิลที่ไม่มีตัวเลือกใช้ id ปริยายแบบเดิม (ผู้เรียกเดิมไม่เปลี่ยน)
+    const lineIds = lines.some((l) => l.options && l.options.length) ? orderedLineIds(lines.length) : lines.map(() => undefined);
     await tx.posSaleLine.createMany({
       data: lines.map((l, i) => ({
         ...(lineIds[i] ? { id: lineIds[i] } : {}),
@@ -674,6 +676,15 @@ function stockErrorCode(e: unknown): string {
     cur = o.cause;
   }
   return e instanceof Error ? e.name : "unknown";
+}
+
+/**
+ * POS P1.2 R2 F2: id บรรทัดของบิลหนึ่งที่เรียงตามลำดับบรรทัดเสมอ — `c` + เวลา (base36 ยาวคงที่) + สุ่ม 12 hex + ลำดับ 4 หลัก
+ * (ตัวเลข/อักษรเล็กล้วน ความยาวเท่ากันทุกตัว ⇒ เรียงแบบสตริงตรงกับลำดับบรรทัดในทุก collation)
+ */
+function orderedLineIds(n: number): string[] {
+  const base = `c${Date.now().toString(36).padStart(9, "0")}${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  return Array.from({ length: n }, (_, i) => `${base}${String(i).padStart(4, "0")}`);
 }
 
 // ── ตัดสต็อกของบิล (perpetual) — เรียกหลัง createSale commit เท่านั้น ──
