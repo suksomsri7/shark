@@ -103,7 +103,7 @@ tail -n +2 "$REQF" | while read -r step _; do
                  ( cd "$TREE" && ACC_V2_PORT=3226 bash scripts/acc-v2-serve.sh stop ) >/dev/null 2>&1 || true ;;
     migrate-qc4)
       # additive-only guard: refuse if any not-yet-on-session/pos migration SQL drops/renames/truncates
-      bad="$(git diff --name-only origin/session/pos...HEAD -- 'prisma/migrations/*/migration.sql' | xargs -r grep -l -i -E 'DROP |RENAME |TRUNCATE |DELETE FROM' || true)"
+      bad="$(git diff --name-only origin/session/pos...HEAD -- 'prisma/migrations/*/migration.sql' | while read -r f; do [ -f "$f" ] && sed 's/--.*$//' "$f" | grep -q -i -E 'DROP |RENAME |TRUNCATE |DELETE FROM' && echo "$f"; done || true)"
       if [ -n "$bad" ]; then echo "| - | migrate-qc4 | refused: non-additive SQL in $bad | - | |" >> "$SUMMARY"
       else run migrate-qc4 bash scripts/iso.sh bash scripts/qc4.sh pnpm exec prisma migrate deploy
            run prisma-generate pnpm exec prisma generate; fi ;;
