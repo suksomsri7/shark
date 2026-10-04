@@ -7,6 +7,7 @@ import { sweepKanbanEmailHourly } from "@/lib/modules/kanban/digest";
 import { sweepUnattendedChats } from "@/lib/platform/kanban-bridges";
 import { logOps } from "@/lib/core/ops";
 import { isCronAuthorized } from "@/lib/core/cron-auth";
+import { forceCloseStaleShifts } from "@/lib/modules/pos/shift";
 
 // GET /api/cron/hourly — งานประจำของผู้ช่วย AI (Vercel Cron เรียกทุกต้นชั่วโมง)
 // auth: isCronAuthorized (Bearer SHARK_CRON_SECRET หรือ X-Cron-Secret) — ผิด/ไม่มี → 401 สั้น ๆ
@@ -78,6 +79,15 @@ export async function GET(req: Request) {
   const notificationsSent = await notificationsDue(new Date());
   // M3.8 — อีเมลรายงานสมาชิกตามเวลาที่ร้านตั้ง (ไม่ส่งซ้ำวันเดียวกัน) — ห่อ try/catch เองแล้ว คืน -1 เมื่อพัง
   const memberReportsSent = await memberReportsEmail(new Date());
+  // POS P1.9 ▸ S12: บังคับปิดกะที่เปิดค้างเกิน forceCloseAfterHours (ปริยาย 24 ชม.) — best-effort · ล้มห้ามทำให้รอบนี้แดง ◂
+  let posShiftsForced = -1;
+  try {
+    posShiftsForced = (await forceCloseStaleShifts({ now: new Date() })).closed.length;
+  } catch (e) {
+    await logOps("WARN", "cron", "forceCloseStaleShifts (บังคับปิดกะ POS ที่ค้าง) ล้ม", {
+      detail: e instanceof Error ? (e.stack ?? e.message) : String(e),
+    });
+  }
   return NextResponse.json({
     ok: true,
     ran,
@@ -90,6 +100,7 @@ export async function GET(req: Request) {
     journeyWaitsRan,
     notificationsSent,
     memberReportsSent,
+    posShiftsForced,
     at: new Date().toISOString(),
   });
 }
