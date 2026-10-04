@@ -111,3 +111,7 @@ Commits (pushed to `wip/pos-p1.6`): 78a4cd36 step 1 (createSale) · 96fe39e7 + f
 - Not touched (rulings): CRM commission base; closeDay tip line (P1.9).
 - Verified (no DB): pure oracle groups V1 V2 U4 R2 R3 green · `qc-pos-p1.6 --list` exit 0 · p1.4/p1.5 `--no-db` exit 0 · fitness (DB env unset) 41/41 · typecheck exit 0.
 - Extra suites for the controller because of F1: qc-shop (no-POS case now refuses before the claim; order stays PENDING_PAYMENT) · qc-clinic · qc-school · qc-rental · qc-shop-refund.
+
+## R3 — qc-subscription-money SM-4.1 (VPS run at 3341c290)
+- Diagnosis: the test's idempotent retry (`scripts/qc-subscription-money.mts` ~75) sent `payMethods [CASH 59900]`, but the original subscription sale was paid with **PROMPTPAY** (`sub.subscribe(... payMethod: "PROMPTPAY")`, asserted by SM-2.6). Pay type is a money field ⇒ IDEMPOTENCY_CONFLICT is correct per R6 (oracle I2 "paytype" requires it). Every other field matched: unit/system, memberId, lines price|qty|disc with no item/product/service, SC/tip 0. The line name and pointSystemId are not compared.
+- Case (b) FIXTURE: the retry now sends PROMPTPAY 59900 (same payload as the original). No assertion changed.

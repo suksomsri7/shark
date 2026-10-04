@@ -76,7 +76,8 @@ try {
     tenantId: tid, unitId: unit.id, systemId: posSys.id, memberId: cust.id,
     sourceModule: "MEMBER", sourceId: s1.id, idempotencyKey: `subscription-${s1.id}`,
     lines: [{ name: "ค่าสมาชิก รายเดือน", qty: 1, unitPriceSatang: 59900 }],
-    payMethods: [{ type: "CASH", amountSatang: 59900 }],
+    // POS P1.6 FIXTURE (R6): ส่ง payload เดิมของบิลแรก — บิลแรกจ่าย PROMPTPAY (SM-2.6) · วิธีจ่ายต่าง = IDEMPOTENCY_CONFLICT ตามมติ
+    payMethods: [{ type: "PROMPTPAY", amountSatang: 59900 }],
   });
   const after = await prisma.posSale.count({ where: { tenantId: tid } });
   chk("SM-4.1", "createSale ซ้ำ key เดิม → ไม่เกิดบิลใหม่ (idempotent)", after === before && dup.saleId === sale?.id, String(before), String(after));
