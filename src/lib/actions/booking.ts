@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { AppointmentStatus } from "@prisma/client";
 import { requireUnit } from "@/lib/core/context";
@@ -8,6 +9,7 @@ import { assertCan } from "@/lib/core/rbac";
 import { tenantDb } from "@/lib/core/db";
 import * as member from "@/lib/modules/member/service";
 import * as pos from "@/lib/modules/pos/service";
+import { CatalogError } from "@/lib/modules/pos";
 import * as booking from "@/lib/modules/booking/service";
 import { systemForUnit } from "@/lib/modules/system/service";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -205,7 +207,13 @@ export async function setServiceOfferedAction(unitSlug: string, formData: FormDa
 export async function importServicesToCatalogAction(unitSlug: string) {
   const { auth, unit } = await requireUnit(unitSlug);
   assertBookingCan(auth, unit.id, "booking.service.create");
-  await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id });
+  try {
+    await booking.importServicesToCatalog({ tenantId: auth.active.tenantId, unitId: unit.id });
+  } catch (e) {
+    // POS P1.1b G11: แคตตาล็อกปฏิเสธ (เช่น BUSY ระหว่าง backfill — สร้างบริการผ่าน inventory.createItem) คืนเป็น ?err= — ไม่ throw ถึงผู้ใช้
+    if (!(e instanceof CatalogError)) throw e;
+    redirect(`/app/u/${unitSlug}/booking/services?err=${encodeURIComponent(e.message)}`);
+  }
   revalidatePath(`/app/u/${unitSlug}/booking/services`);
 }
 
