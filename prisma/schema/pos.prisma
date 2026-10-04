@@ -14,6 +14,7 @@ enum PosPayType {
   PROMPTPAY
   DEPOSIT
   ROOM_CHARGE
+  CARD // P1.6: บัตร (EDC/อ้างอิงมือ · ไม่มีเกตเวย์ — P1.7)
 }
 
 model PosSale {
@@ -50,6 +51,11 @@ model PosSale {
   //    (โมดูล giftcard ลงบัญชีเองเป็น "รับเงินล่วงหน้า" 2110 — ขายบัตร ≠ รายได้ · §9.1 §9.4)
   giftCardId        String?
 
+  // ── P1.6 — จอชำระเงิน · เพิ่มคอลัมน์ล้วน (บิลเดิม = null/0 = พฤติกรรมเดิม) ──
+  note                String? // หมายเหตุบิล (≤500)
+  serviceChargeSatang Int     @default(0) // ค่าบริการ — อยู่ใน grandTotal และในฐาน VAT
+  tipSatang           Int     @default(0) // ทิป — ไม่อยู่ใน grandTotal · ไม่ใช่รายได้ · Σจ่าย = grandTotal + tip
+
   lines    PosSaleLine[]
   payments PosPayment[]
 
@@ -73,6 +79,7 @@ model PosSaleLine {
   serviceId       String? // BookingService.id ที่ผูก — ใช้แยกยอด "สินค้า vs บริการ" ในรายงาน
   // (itemId=null อย่างเดียวแยกไม่ออกว่าเป็นบริการหรือรายการพิมพ์เอง)
   productId       String? // P1.1a: PosProduct.id (แคตตาล็อกเดียว) · id หลวมแบบ itemId/serviceId · null = บิลเดิม
+  note            String? // P1.6: หมายเหตุบรรทัด/เหตุผลส่วนลด (≤500)
 
   @@index([saleId])
   // P1.1a: index ของคอลัมน์นี้เพิ่มใน P6.1 ด้วย CREATE INDEX CONCURRENTLY นอก prisma migrate (round 2 M1)
@@ -88,6 +95,10 @@ model PosPayment {
   amountSatang Int
   refSaleId    String? // DEPOSIT/ROOM_CHARGE อ้างบิลเดิม
   note         String?
+  // P1.6 — เงินรับ/ทอน อยู่ที่แถว CASH เท่านั้น (มติ §8 ข้อ 2) · reference = เลขอ้างอิงบัตร/EDC/โอน
+  tenderedSatang Int?
+  changeSatang   Int?
+  reference      String?
 
   @@index([saleId])
 }

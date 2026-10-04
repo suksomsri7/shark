@@ -26,6 +26,8 @@ import { lineAmount, type LineInput } from "./totals";
 import { baht } from "./service";
 // ตัวกันข้อความเทคนิค (Prisma/SDK) หลุดถึงผู้ใช้ — ใช้ตอนแปลง exception เป็น `{ok:false, reason}` ของ facade
 import { safeReason } from "./errors";
+// POS P1.6 ▸ ถอด VAT สูตรเดียวกับบิล POS ◂
+import { splitIncludedVat } from "@/lib/money/vat";
 // CRM C1.3 ▸ `accountSystemForCrm` (ท้ายไฟล์) — tenantDb (ไม่ใช่ prisma ดิบ · F5) + ตาม Party ที่ถูกรวมไปตัวปลายทาง
 import { tenantDb as crmTenantDb } from "@/lib/core/db";
 import * as crmPartyFacade from "@/lib/modules/party";
@@ -121,8 +123,8 @@ export async function applyExternalSale(input: {
   const { vatRegistered, vatRateBp, posAbbreviatedInvoice } = await vatConfigOf(link.systemId);
 
   const gross = input.grossSatang;
-  const base = vatRegistered ? Math.round(gross / (1 + vatRateBp / 10000)) : gross;
-  const vat = gross - base;
+  // POS P1.6 ▸ สูตรเดียวกับ PosSale.vatSatang (src/lib/money/vat.ts) ◂
+  const { baseSatang: base, vatSatang: vat } = vatRegistered ? splitIncludedVat(gross, vatRateBp) : { baseSatang: gross, vatSatang: 0 };
 
   // ── WO 4.2: ตรวจบรรทัดก่อนแตะอะไรทั้งสิ้น — ไม่ตรงยอด = ไม่โพสต์ ไม่สร้างเอกสาร (บิลเพี้ยนห้ามเข้าบัญชี) ──
   const lines = input.lines;
