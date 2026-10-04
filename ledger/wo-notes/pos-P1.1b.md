@@ -182,3 +182,9 @@ Registry 177 checks (P1.1b 62). Existing assertions untouched; new block marked 
 | S2.R2.6 | F1 | static: all 14 `?err=` redirects in the 4 action files map to pages that read `err` from searchParams and render `{err && …}`; `/app/sys/<id>` also requires `<InvHub err={err}>` + InvHub rendering it |
 - **Red on 8bc118f6** (scratch worktree of 8bc118f6 + this oracle file, forced, then removed): `ผ่าน 169/175`, failed exactly S2.R2.1–S2.R2.6 — R2.1 `invItemPrice✗ shopPriceKept✗ nextShopEditKeeps✗` (inv 5000 · shop 5500) · R2.2 `5000 → 5000` · R2.3 `refused✗ apKept✗ posKept✗` (AP 0) · R2.4 `priceKept✗ nameKept✗` (2500) · R2.5 `both✗` (P2002 on PosCategory) · R2.6 11 of 14 targets don't show err.
 - Green on the fix head (first forced run after the block: 174/175, only R2.6 red because the test's path mapper missed `${base(unitSlug)}?err=` → restaurant root page; mapper fixed — that page already reads err).
+
+## R2 final results
+- Forced ×2 + unforced on a5ccbbab: `ผ่าน 175/175` each (177 registered − 2 PART-B skipped by their guard: S2.11b, S2.19) · R.1/R.2 green · S2.42 = 13/6.
+- G13 re-run (32 suites) vs the 51a5e7d6 before-run: 31 identical; **qc-pos-p1.3 S5.12 red** — P1.3's byte guard requires `src/lib/actions/pos.ts` = base, and F9 had added `auth.user.id` to the `setItemSalePrice` call there. Reverted that one line (this commit) → qc-pos-p1.3 127/127 + qc-pos-products 24/24 identical to before. Consequence: the "/pos/products" price page still audits as SYSTEM (`setItemSalePrice` keeps its optional `actorUserId` for when P1.3's guard is re-baselined — open question for the controller).
+- Typecheck 0 · fitness 41/41 with env and without env.
+- No oracle file changes besides the ORACLE-ADD block. Deferred items (archived PosCategory reuse → P2.4 · book link/vatRegistered not doors → P6.1/P2.1 · unordered `inventorySystemId()` → P2.1) noted only, no code.
