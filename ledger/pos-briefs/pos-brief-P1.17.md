@@ -69,3 +69,6 @@ R16 **Dashboard card numbers.** `posDashboardCard(ctx, actor, { now? })` (now in
 
 ## 6. Out of scope
 Report/dashboard UI and mockup parity (builder U) · refunds (P1.8 fills `refund*`) · channel and multi-branch roll-ups, PDF, anomaly detection (P2.11/P2.12/P3) · per-product ex-VAT margin (needs VAT spread to lines, P2) · business-day cut-off setting (P1.18, Q17.2) · REST/AI report ops (P2.13 replaces the per-day `closeDaySummary` loop) · hourly breakdown, category, member-vs-walk-in (mockup 08 items for a later round).
+
+## Owner answers (5 Oct 2026)
+- Q17.1–Q17.4: recommended defaults. Note: legacy-screen bills keep soldByUserId null (Q4 byte guard) → fallback per Q17.1.
