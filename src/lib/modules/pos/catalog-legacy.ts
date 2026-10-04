@@ -291,8 +291,10 @@ export async function createShopProduct(tx: Tx, data: Prisma.ShopProductUnchecke
     if (shared) productId = shared.id;
     else {
       const book = await C.bookOfPosSystem(t, sys, tx);
-      const ap = await C.strictApOf(t, inv, book, tx);
-      const d = C.shopProductFields(sp, inv, ap, book).data;
+      // R3 H1: แหล่งราคา (บริการ = InvItem · AP ของลิ้นชัก) อ่านแบบ FOR SHARE หลังล็อกร้าน — ผู้เขียนราคาที่ยังไม่ commit ⇒ รอแล้วคิดจากราคาใหม่
+      const inv1 = await C.sharePriceSourceInv(t, inv, tx);
+      const ap = await C.strictApOf(t, inv1, book, tx, true);
+      const d = C.shopProductFields(sp, inv1, ap, book).data;
       productId = randomUUID();
       await tx.posProduct.create({ data: { id: productId, tenantId: t, systemId: sys, ...d } });
       await auditSys(tx, who, t, "pos.product.create", "PosProduct", productId, null, { shopProductId: sp.id, basePriceSatang: d.basePriceSatang, source: "shop.createProduct" });
@@ -313,7 +315,7 @@ export async function updateShopProduct(tx: Tx, s: UnitScope, id: string, data: 
   const r = await tx.shopProduct.updateMany({ where: { id, tenantId: s.tenantId, unitId: s.unitId }, data });
   if (!r.count) return r;
   for (const row of rows) {
-    const src = await C.legacySourceOf(row, tx);
+    const src = await C.legacySourceOf(row, tx, true); // R3 H1: แหล่งราคาแบบ FOR SHARE (หลังล็อกแถว)
     // R2 F5 / มติ 5: แถวของเว็บร้านที่หลาย ShopProduct ใช้ร่วม รับค่าจาก ShopProduct แถวแรกเท่านั้น (ต้นทางเดียวกับ backfill · rederiveRows · --verify)
     if (src.type !== "shop" || src.shopIds[0] !== id) continue;
     const sp = await tx.shopProduct.findFirst({ where: { id, tenantId: s.tenantId } });

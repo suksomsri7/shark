@@ -668,9 +668,24 @@ export type LegacySource =
 const INV_LITE = { id: true, systemId: true, name: true, kind: true, priceSatang: true, costSatang: true, archivedAt: true, onHand: true, accountProductId: true, sortOrder: true } as const;
 const AP_ROW = { id: true, systemId: true, salePrice: true, posPrice: true, posEnabled: true, vatRateBp: true, archivedAt: true } as const;
 
-/** AccountProduct แบบลิ้นชัก (C7 strictAp) ของ InvItem ในสมุดที่ผูก POS นี้ */
-export async function strictApOf(tenantId: string, inv: InvLite | null, book: BookInfo, db: CatalogClient): Promise<ApRow | null> {
+/**
+ * R3 H1 — อ่านแถวแหล่งราคาแบบ `FOR SHARE` (ทางซิงก์/สร้าง · ผู้เรียกล็อกแถว PosProduct ไว้ก่อนแล้ว — G7): ผู้เขียนราคาที่ยังไม่ commit
+ * ถือ FOR NO KEY UPDATE / UPDATE บนแถวนั้นอยู่ ⇒ ธุรกรรมนี้รอจน commit แล้วคำสั่งถัดไป (READ COMMITTED) เห็นราคาใหม่ — ไม่คิดจากราคาเก่า
+ * · InvItem ล็อกเฉพาะบริการ (InvItem.priceSatang เป็นแหล่งราคา C7 ของบริการเท่านั้น — สินค้าไม่ต่อคิวกับการตัดสต็อก)
+ */
+async function shareInv(db: CatalogClient, tenantId: string, inv: InvLite): Promise<InvLite> {
+  if (inv.kind !== "SERVICE") return inv;
+  await db.$queryRaw`SELECT id FROM "InvItem" WHERE id = ${inv.id} AND "tenantId" = ${tenantId} FOR SHARE`;
+  return (await db.invItem.findFirst({ where: { id: inv.id, tenantId }, select: INV_LITE })) ?? inv;
+}
+export async function sharePriceSourceInv(tenantId: string, inv: InvLite | null, db: CatalogClient): Promise<InvLite | null> {
+  return inv ? shareInv(db, tenantId, inv) : null;
+}
+
+/** AccountProduct แบบลิ้นชัก (C7 strictAp) ของ InvItem ในสมุดที่ผูก POS นี้ · `share` = R3 H1 (FOR SHARE ก่อนอ่าน) */
+export async function strictApOf(tenantId: string, inv: InvLite | null, book: BookInfo, db: CatalogClient, share = false): Promise<ApRow | null> {
   if (!inv?.accountProductId) return null;
+  if (share) await db.$queryRaw`SELECT id FROM "AccountProduct" WHERE id = ${inv.accountProductId} AND "tenantId" = ${tenantId} FOR SHARE`;
   const rows = await db.accountProduct.findMany({ where: { tenantId, id: inv.accountProductId }, select: AP_ROW });
   return strictAp(inv, new Map(rows.map((a) => [a.id, a])), book);
 }
@@ -678,8 +693,12 @@ export async function bookOfPosSystem(tenantId: string, posSystemId: string, db:
   return bookOfPos(tenantId, posSystemId, db);
 }
 
-/** จัดชนิดแถว (ทุกคำสั่งกรอง tenantId) — ตัวตัดสินเดียวของ "แถวนี้มีต้นฉบับเดิมที่ไหน" */
-export async function legacySourceOf(row: { id: string; tenantId: string; systemId: string; kind: PosProductKind; invItemId: string | null }, db: CatalogClient): Promise<LegacySource> {
+/** จัดชนิดแถว (ทุกคำสั่งกรอง tenantId) — ตัวตัดสินเดียวของ "แถวนี้มีต้นฉบับเดิมที่ไหน" · `share` = R3 H1 (ทางซิงก์ — หลังล็อกแถวแล้ว) */
+export async function legacySourceOf(
+  row: { id: string; tenantId: string; systemId: string; kind: PosProductKind; invItemId: string | null },
+  db: CatalogClient,
+  share = false,
+): Promise<LegacySource> {
   const t = row.tenantId;
   if (row.kind === "MENU") {
     const m = await db.menuItem.findFirst({ where: { tenantId: t, posProductId: row.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true } });
@@ -696,10 +715,11 @@ export async function legacySourceOf(row: { id: string; tenantId: string; system
       });
   if (!sellsHere && !shops.length) return { type: "native" };
   const book = await bookOfPos(t, row.systemId, db);
-  const ap = await strictApOf(t, inv, book, db);
-  if (sellsHere && inv) return { type: "inv", inv, ap, book };
+  const inv1 = share ? await sharePriceSourceInv(t, inv, db) : inv;
+  const ap = await strictApOf(t, inv1, book, db, share);
+  if (sellsHere && inv1) return { type: "inv", inv: inv1, ap, book };
   // R2 F5 / มติ 5: แถวของเว็บร้านที่หลาย ShopProduct ใช้ร่วม = ค่าของแถวแรก (ลำดับเดียวกับ backfill)
-  return { type: "shop", shopIds: shops.map((s) => s.id), first: shops[0] ?? null, inv, ap, book };
+  return { type: "shop", shopIds: shops.map((s) => s.id), first: shops[0] ?? null, inv: inv1, ap, book };
 }
 
 /** ช่องเดิมที่ราคาย้อนไปลง + ผลจำลอง "ถ้าเขียนค่านี้ ขาเดิมจะคิดราคาได้เท่าไร" (ตัวคิดเดียวกับขาไป = initialPrice) */
@@ -806,7 +826,7 @@ export async function applyDerived(tx: Prisma.TransactionClient, row: PosProduct
  */
 export async function rederiveRows(tx: Prisma.TransactionClient, rows: PosProduct[], what: { name?: boolean; price?: boolean }, who: AuditActor): Promise<void> {
   for (const row of rows) {
-    const src = await legacySourceOf(row, tx);
+    const src = await legacySourceOf(row, tx, true); // R3 H1
     const want: Record<string, unknown> = {};
     if (src.type === "inv") {
       const d = invItemProductFields(src.inv, src.ap, src.book).data;
@@ -1280,6 +1300,10 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
   });
 }
 
+/** R3 H2: สัญญาณภายใน "ชุดพี่น้องโตหลังล็อกรอบแรก" (ไม่ออกนอก setPrice) */
+class SiblingsGrew extends Error {}
+const SET_PRICE_ROUNDS = 3;
+
 /**
  * ตั้งราคาขาย (สตางค์ Int ≥ 0 · 0 = ฟรี) — สิทธิ์ pos.product.setPrice (+ ขอบเขตสาขา C4) · P1.1b: เขียนช่องเดิมที่ชนะลำดับราคาด้วย (writeBackPrice)
  * R5 F1: แถวเก็บถาวรตั้งราคาได้ (กู้คืนแล้วขายราคาปัจจุบัน — ตรึงใน S3.50)
@@ -1292,37 +1316,52 @@ export async function setPrice(
 ): Promise<{ id: string; basePriceSatang: number }> {
   return boundary(async () => {
     assertCleanInputs(ctx, id);
-    return inTx(client, async (tx) => {
-      await assertPosSystem(ctx, tx);
-      const actor = await actorOf(ctx, tx);
-      // R2 F3 + G7: อ่านดูก่อน (ไม่ล็อก) → ตรวจสิทธิ์ → หาชุดพี่น้องที่คิดราคาจากช่องเดิมเดียวกัน → ล็อกทั้งชุดเรียง id → ตรวจซ้ำบนแถวที่ล็อก
-      const peek = await loadProduct(ctx, actor, id, tx);
-      await requireRowWrite(ctx, actor, peek, PERM_SET_PRICE, tx);
-      // AUDIT-CLASS X4: จำนวนเต็มสตางค์เท่านั้น — ติดลบ/เศษสตางค์/NaN/สตริง = VALIDATION (ราคาเดิมไม่เปลี่ยน)
-      if (!isSatang(priceSatang)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
-      const t0 = reverseTarget(await legacySourceOf(peek, tx));
-      const locked = new Set((await lockProductRows(tx, ctx.tenantId, [peek.id, ...(t0 ? await siblingIdsOf(tx, ctx.tenantId, t0) : [])])).map((r) => r.id));
-      // AUDIT-CLASS X6 + C11: ค่าเดิมอ่านหลังล็อก ⇒ 2 เลนพร้อมกันได้ audit 100→200, 200→300
-      const before = await loadProduct(ctx, actor, id, tx);
-      await requireRowWrite(ctx, actor, before, PERM_SET_PRICE, tx);
-      const target = reverseTarget(await legacySourceOf(before, tx));
-      // R2 F4: ช่องเดิมที่ชนะแสดงค่านี้ไม่ได้ (เช่น 0 บนสินค้าที่ราคา POS ของบัญชีชนะ · บริการที่จะกลายเป็น "ยังไม่ตั้งราคา") = ปฏิเสธ ไม่เขียนอะไร
-      if (target && target.sim(priceSatang) !== priceSatang)
-        throw invalid(priceSatang === 0 ? "ราคา 0 ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม" : "ราคานี้ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม");
-      await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { basePriceSatang: priceSatang } });
-      if (target) {
-        // P1.1b G4b: ช่องเดิมช่องเดียวที่ชนะลำดับ C7 — ธุรกรรมเดียว · ไม่สร้าง AccountProduct (X8.1) · ไม่เรียกประตูเดิม (G4c)
-        await writeBackPrice(tx, ctx.tenantId, target, priceSatang);
-        // R2 F3: พี่น้อง (แถวอื่นที่คิดจากช่องเดิมเดียวกัน) คิดราคาใหม่แบบเดียวกับประตูขาไป — แถวที่ยังไม่ได้ล็อก (ชุดเปลี่ยนระหว่างรอ) ล็อกเพิ่ม
-        const sib = (await siblingIdsOf(tx, ctx.tenantId, target)).filter((x) => x !== before.id);
-        const extra = sib.filter((x) => !locked.has(x));
-        if (extra.length) await lockProductRows(tx, ctx.tenantId, extra);
-        const rows = sib.length ? await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, id: { in: sib } }, orderBy: { id: "asc" } }) : [];
-        await rederiveRows(tx, rows, { price: true }, auditActorOf(typeof ctx.actorUserId === "string" ? ctx.actorUserId : null));
+    // R3 H2: ชุดพี่น้องโตระหว่างรอล็อก = ปล่อยทุกอย่าง (ทิ้งธุรกรรม) แล้วลองใหม่ทั้งก้อน — ไม่ล็อกเพิ่มนอกลำดับ · ธุรกรรมของผู้เรียก/ครบรอบ = BUSY
+    const owned = "$transaction" in client && typeof client.$transaction === "function";
+    for (let round = 1; ; round++) {
+      try {
+        return await setPriceOnce(ctx, id, priceSatang, client);
+      } catch (e) {
+        if (!(e instanceof SiblingsGrew)) throw e;
+        if (!owned || round >= SET_PRICE_ROUNDS) throw busy();
       }
-      await audit(tx, ctx, "pos.product.price", "PosProduct", before.id, { basePriceSatang: before.basePriceSatang }, { basePriceSatang: priceSatang });
-      return { id: before.id, basePriceSatang: priceSatang };
-    });
+    }
+  });
+}
+
+async function setPriceOnce(ctx: CatalogCtx, id: string, priceSatang: number, client: CatalogClient): Promise<{ id: string; basePriceSatang: number }> {
+  return inTx(client, async (tx) => {
+    await assertPosSystem(ctx, tx);
+    const actor = await actorOf(ctx, tx);
+    // R2 F3 + G7: อ่านดูก่อน (ไม่ล็อก) → ตรวจสิทธิ์ → หาชุดพี่น้องที่คิดราคาจากช่องเดิมเดียวกัน → ล็อกทั้งชุดเรียง id → ตรวจซ้ำบนแถวที่ล็อก
+    const peek = await loadProduct(ctx, actor, id, tx);
+    await requireRowWrite(ctx, actor, peek, PERM_SET_PRICE, tx);
+    // AUDIT-CLASS X4: จำนวนเต็มสตางค์เท่านั้น — ติดลบ/เศษสตางค์/NaN/สตริง = VALIDATION (ราคาเดิมไม่เปลี่ยน)
+    if (!isSatang(priceSatang)) throw invalid("ราคาต้องเป็นจำนวนเต็มสตางค์ไม่ติดลบ");
+    const t0 = reverseTarget(await legacySourceOf(peek, tx));
+    const locked = new Set((await lockProductRows(tx, ctx.tenantId, [peek.id, ...(t0 ? await siblingIdsOf(tx, ctx.tenantId, t0) : [])])).map((r) => r.id));
+    // AUDIT-CLASS X6 + C11: ค่าเดิมอ่านหลังล็อก ⇒ 2 เลนพร้อมกันได้ audit 100→200, 200→300
+    const before = await loadProduct(ctx, actor, id, tx);
+    await requireRowWrite(ctx, actor, before, PERM_SET_PRICE, tx);
+    const target = reverseTarget(await legacySourceOf(before, tx));
+    // R3 H2: ชุดพี่น้องอ่านซ้ำทันทีหลังล็อก ก่อนเขียนอะไร — มีแถวที่ยังไม่ได้ล็อก (ลิงก์ใหม่ commit ระหว่างรอ) = ปล่อยแล้วลองใหม่
+    const sib = target ? (await siblingIdsOf(tx, ctx.tenantId, target)).filter((x) => x !== before.id) : [];
+    if (sib.some((x) => !locked.has(x))) throw new SiblingsGrew();
+    // R2 F4: ช่องเดิมที่ชนะแสดงค่านี้ไม่ได้ (เช่น 0 บนสินค้าที่ราคา POS ของบัญชีชนะ · บริการที่จะกลายเป็น "ยังไม่ตั้งราคา") = ปฏิเสธ ไม่เขียนอะไร
+    if (target && target.sim(priceSatang) !== priceSatang)
+      throw invalid(priceSatang === 0 ? "ราคา 0 ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม" : "ราคานี้ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม");
+    await tx.posProduct.updateMany({ where: { id: before.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data: { basePriceSatang: priceSatang } });
+    if (target) {
+      // P1.1b G4b: ช่องเดิมช่องเดียวที่ชนะลำดับ C7 — ธุรกรรมเดียว · ไม่สร้าง AccountProduct (X8.1) · ไม่เรียกประตูเดิม (G4c)
+      await writeBackPrice(tx, ctx.tenantId, target, priceSatang);
+      // R3 H2: คำสั่งเขียนอาจรอผู้ผูกลิงก์ใหม่ที่ถือ FOR SHARE ของช่องเดิมอยู่ (R3 H1) — ผูกแล้ว commit = พี่น้องใหม่ที่ไม่ได้ล็อก ⇒ ทิ้งธุรกรรมแล้วลองใหม่
+      if ((await siblingIdsOf(tx, ctx.tenantId, target)).some((x) => x !== before.id && !locked.has(x))) throw new SiblingsGrew();
+      // R2 F3: พี่น้อง (แถวอื่นที่คิดจากช่องเดิมเดียวกัน · ล็อกครบแล้ว — R3 H2) คิดราคาใหม่แบบเดียวกับประตูขาไป
+      const rows = sib.length ? await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, id: { in: sib } }, orderBy: { id: "asc" } }) : [];
+      await rederiveRows(tx, rows, { price: true }, auditActorOf(typeof ctx.actorUserId === "string" ? ctx.actorUserId : null));
+    }
+    await audit(tx, ctx, "pos.product.price", "PosProduct", before.id, { basePriceSatang: before.basePriceSatang }, { basePriceSatang: priceSatang });
+    return { id: before.id, basePriceSatang: priceSatang };
   });
 }
 
@@ -1423,15 +1462,11 @@ export async function ensureForInvItem(ctx: CatalogCtx, invItemId: string, clien
       if (existing) return { id: existing.id, created: false, archived: existing.archivedAt !== null };
       if (!locked) await tryLockTenant(tx, ctx.tenantId);
       const book = await bookOfPos(ctx.tenantId, ctx.systemId, tx);
-      const apRows = inv.accountProductId
-        ? await tx.accountProduct.findMany({
-            where: { tenantId: ctx.tenantId, id: inv.accountProductId },
-            select: { id: true, systemId: true, salePrice: true, posPrice: true, posEnabled: true, vatRateBp: true, archivedAt: true },
-          })
-        : [];
-      const ap = strictAp(inv, new Map(apRows.map((a) => [a.id, a])), book);
+      // R3 H1: แหล่งราคา (บริการ = InvItem · AP ของลิ้นชัก) อ่านแบบ FOR SHARE — ผู้เขียนราคาที่ยังไม่ commit ⇒ รอแล้วคิดจากราคาใหม่
+      const inv1 = (await sharePriceSourceInv(ctx.tenantId, inv, tx)) ?? inv;
+      const ap = await strictApOf(ctx.tenantId, inv1, book, tx, true);
       // P1.1b G3: ตัวแปลงเดียวกับ backfill (invItemProductFields)
-      const { data } = invItemProductFields(inv, ap, book);
+      const { data } = invItemProductFields(inv1, ap, book);
       const kind = data.kind;
       const r = await tx.posProduct.createMany({ data: [{ id: randomUUID(), tenantId: ctx.tenantId, systemId: ctx.systemId, ...data }], skipDuplicates: true });
       const row = await tx.posProduct.findFirst({
