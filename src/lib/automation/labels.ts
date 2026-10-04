@@ -30,6 +30,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   // POS P1.9 ▸ กะ/ลิ้นชัก (consumer = withAutomation เปล่าใน outbox-consumers.ts) ◂
   { value: "pos.shift.opened", label: "เมื่อเปิดกะ (POS)" },
   { value: "pos.shift.closed", label: "เมื่อปิดกะ (POS)" },
+  // POS P1.14 ▸ ตรวจนับสต็อก (consumer = withAutomation เปล่า) ◂
+  { value: "pos.stockCount.confirmed", label: "เมื่อยืนยันผลตรวจนับสต็อก (POS)" },
   { value: "inventory.lot.expiring", label: "เมื่อสินค้าใกล้หมดอายุ" },
   // ── บอร์ดงาน (K1.4 → ครบ 8 ตัวใน K2.9 · พิมพ์เขียว 13-kanban-v2 §7.2) ─────
   // 🔴 ประกาศที่ `KANBAN_AUTOMATION_EVENTS` ข้างบนที่เดียว แล้ว spread เข้ามาที่นี่

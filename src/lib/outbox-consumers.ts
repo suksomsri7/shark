@@ -700,6 +700,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // POS P1.9 ▸ กะ/ลิ้นชัก — กฎอัตโนมัติเท่านั้น (JV ขาด/เกิน · การ์ดนับเงิน · สรุป LINE = P3 ต่อบน event เดิม) ◂
   "pos.shift.opened": withAutomation(async () => {}),
   "pos.shift.closed": withAutomation(async () => {}),
+  // POS P1.14 ▸ ยืนยันรอบตรวจนับ — กฎอัตโนมัติเท่านั้น (ผลต่างลงบัญชี = consumer P3 บน event เดิม · Q2) ◂
+  "pos.stockCount.confirmed": withAutomation(async () => {}),
   // Wave4-A: AppNotification "ลูกค้าทักเข้ามา" ถูกสร้างแล้วใน chat.announceInbound (de-dup) —
   // consumer นี้ปิด event เป็น DONE + เป็นจุดให้ Automation rules / Webhooks ยิงราย inbound message
   // WO 7.2: + ดูดรูปบิลที่แนบมาในข้อความเข้ากล่องขาเข้าของบัญชี (เฉพาะร้านที่เปิด inboxFromChat)
