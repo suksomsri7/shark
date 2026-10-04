@@ -151,3 +151,17 @@ S16 **Legacy `closeDay`** (`closeDaySummary/Bills/Csv`, `/pos/close`) stays as i
 
 ## Owner answers (4 Oct 2026)
 - Owner: use all recommended defaults for every owner question in this brief (see POS-RESUME 4 Oct). The questions labelled O22–O26 in this brief are tracked as Q9.1–Q9.5 (ids clash with earlier O22/O23).
+
+## §R2 Controller rulings on review + hunt of 473e1227 (4 Oct 2026)
+Both verdicts: fixes needed, no deadlock, Z immutable, gap-free counter, cash math correct.
+Fix now:
+- **F1** report queries: add `createdAt >= openedAt` to every shift-bound PosSale query (`shift.ts` ~:266) so the existing (tenantId, unitId, createdAt) index is used while the shift row is held.
+- **F2** `ShiftsClient.tsx` `doOpen`: return false after `fail(r)` (error stays visible); true only on ok / SHIFT_ALREADY_OPEN.
+- **F3** `xReport`: non-manager may read only own shift (open or closed), same rule as `zReport` → PERMISSION_DENIED.
+- **F4** `voidSale` S11 (`service.ts` ~:657): voids of sales with `sourceModule != "POS"` are NOT refused with SHIFT_CLOSED (module refunds claim first, refusal would strand them). Register/POS voids keep S11.
+- **F5** public API + AI void: map `PosSaleError("SHIFT_CLOSED")` to 409 `state_conflict` (`pos/api/ops/sales.ts`), not 500.
+- **F6** cash in/out idempotency key kept until success (same as closeKey).
+- **F7** Thai labels for payment methods in X/Z by-method rows.
+Owner question (do NOT code): **OQ-P19-1** rollout for existing registerV2 POSes after deploy (shift becomes required; staff with only `pos.sale.create` cannot open one). Options: (a) deploy data step sets `required.register=false` on existing registerV2 POSes (owners opt in) — controller recommendation; (b) `pos.sale.create` may open/close own-device shift; (c) default off everywhere. Recorded in P6.1 runbook draft.
+Deferred (notes): Q9.4 manager recount of force-closed shift → new WO P1.9b · legacy `actions/pos.ts` + API create bypass shift requirement → owner/P6.1 · foreign-system open shift blocks device after relink → P2 · blind-close probing (REASON_REQUIRED / DRAWER_INSUFFICIENT) → P2 · sweep starvation ordering → P2 · duplicate-close key before permission → P2 · offShiftCash createdAt vs paidAt → P1.10 · extra settings read per legacy sale → P2 · `shiftId` loose id without FK: ratified (same as other loose ids; index in P6.1).
+Tests: new block `S.R2` in `qc-pos-p1.9.mts` marked `// ORACLE-ADD (controller R2 ruling)`: F3 (STAFF B xReport on A's closed shift → PERMISSION_DENIED), F4 (otherSources ON, module sale bound to a closed shift, voidSale succeeds), F5 (API void → 409 mapping, may be a unit-level check). Do not change existing assertions.
