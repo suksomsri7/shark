@@ -1187,6 +1187,96 @@ async function loadSellableItem(ctx: CatalogCtx, invItemId: unknown, db: Catalog
   return inv;
 }
 
+const PRIOR_ARCHIVED = "สินค้าจากคลังรายการนี้มีในแคตตาล็อกขายแล้วแต่ถูกเก็บถาวรไว้ — กู้คืนรายการเดิมได้แทนการเพิ่มใหม่";
+const PRIOR_ACTIVE = "สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว";
+
+type AdoptInput = {
+  parentId: string;
+  kind: PosProductKind;
+  name: string;
+  nameEn: string | null;
+  price: number | null;
+  barcode: string | null;
+  categoryId: string | null;
+  soldByWeight: boolean;
+  scalePlu: string | null;
+  vatRateBp: number | null;
+  /** undefined = ไม่ส่งมา (คงสาขาของแถว) */
+  unitId: string | null | undefined;
+  trackStock: boolean | null | undefined;
+};
+
+/**
+ * P1.2 R3 F7 — createProduct({invItemId, parentId}) เมื่อ InvItem มีแถวในระบบนี้แล้ว (P1.1b: inventory.createItem สร้างแถวไว้ใน tx เดียวกัน)
+ *   = "รับ" แถวนั้นเป็นตัวแปร (id เดิม · ยังเป็นแถวของ InvItem — ซิงก์ขาไป/ทางย้อน/verify ของ P1.1b ใช้ต่อได้)
+ *   ผู้เรียกถือล็อกร้านอยู่แล้ว (มี invItemId) ⇒ ลำดับ ร้าน → แถว (เหมือน create/restore) · ล็อกแถวนี้ (+ พี่น้องราคาถ้าราคาต้องย้อน) เรียง id
+ *   ตรวจบนแถวที่ล็อกแล้ว: ไม่เก็บถาวร (ไม่งั้น CONFLICT กู้คืน) · ไม่มีแม่ · ไม่มีลูก (ไม่งั้น CONFLICT) · แม่ ≠ ตัวเอง (VALIDATION)
+ *   ใส่ค่าแบบสร้างใหม่: parentId name nameEn basePriceSatang (null = สืบราคาแม่ P5) barcode categoryId soldByWeight scalePlu
+ *   (+ unitId/trackStock เมื่อส่งมา) · VAT เป็นของซิงก์ (C8) — ส่งค่าอื่นมา = VALIDATION
+ *   ราคา: ย้อนลงช่องเดิมที่ชนะแบบ setPrice (sim ไม่ตรง = VALIDATION) + คิดพี่น้องใหม่ · null ได้เฉพาะเมื่อขาเดิมไม่มีราคา (rung none)
+ *   — ไม่งั้น --verify จะเห็นราคาต่าง และซิงก์ขาไปจะเขียนราคาทับ ⇒ VALIDATION ให้ตั้งราคาตัวแปรเอง
+ *   ชื่อ: ย้อนลง InvItem.name (มติ 12 · แบบ updateProduct) ⇒ verify ชื่อไม่ต่าง · audit `pos.product.create` (adopted: true · before = ค่าเดิม)
+ */
+async function adoptVariantRow(ctx: CatalogCtx, actor: MembershipCtx | null, tx: Prisma.TransactionClient, rowId: string, a: AdoptInput): Promise<PosProduct> {
+  const peek = await tx.posProduct.findFirst({ where: { id: rowId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
+  if (!peek) throw conflict(PRIOR_ACTIVE);
+  // ราคาที่ต้องย้อน = ล็อกพี่น้อง (แถวอื่นที่คิดราคาจากช่องเดิมเดียวกัน) พร้อมกันในคำสั่งเดียว เรียง id (G7 · แบบ setPrice)
+  const t0 = a.price !== null ? reverseTarget(await legacySourceOf(peek, tx)) : null;
+  const sib0 = t0 ? await siblingIdsOf(tx, ctx.tenantId, t0) : [];
+  const locked = await lockProductRows(tx, ctx.tenantId, [rowId, ...sib0]);
+  const lockedIds = new Set(locked.map((r) => r.id));
+  const row = locked.find((r) => r.id === rowId);
+  if (!row || row.systemId !== ctx.systemId) throw conflict(PRIOR_ACTIVE);
+  if (row.archivedAt) throw conflict(PRIOR_ARCHIVED);
+  // แถวของสาขาที่ผู้กระทำเข้าไม่ได้ = CONFLICT แบบเดิม (ไม่บอกว่ามีแถวไหน)
+  if (actor && row.unitId && !canAccessUnit(actor, row.unitId)) throw conflict(PRIOR_ACTIVE);
+  await requireRowWrite(ctx, actor, { unitId: row.unitId, invItemId: row.invItemId }, PERM_MANAGE, tx);
+  if (row.parentId) throw conflict("สินค้าจากคลังรายการนี้เป็นตัวแปรของสินค้าอื่นอยู่แล้ว");
+  if (a.parentId === row.id) throw invalid("สินค้าเป็นตัวแปรของตัวเองไม่ได้");
+  if ((await tx.posProduct.count({ where: { tenantId: ctx.tenantId, parentId: row.id } })) > 0) throw conflict("สินค้าจากคลังรายการนี้มีตัวแปรของตัวเองอยู่แล้ว — เป็นตัวแปรของสินค้าอื่นไม่ได้");
+  if (row.kind !== a.kind) throw invalid("ชนิดสินค้าไม่ตรงกับแถวเดิมของสินค้าคลัง");
+  if (a.vatRateBp !== null && a.vatRateBp !== row.vatRateBp) throw invalid("VAT ของสินค้าจากคลังมาจากสมุดบัญชี — ตั้งที่ระบบบัญชีแทน");
+  // สาขา: ไม่ส่งมา = คงของแถว · หมวดตรวจแล้วที่ด่านแรกกับสาขาที่ส่งมา (ไม่ส่ง = หมวดทุกสาขาเท่านั้น)
+  const unitId = a.unitId === undefined ? row.unitId : a.unitId;
+  const categoryId = a.categoryId;
+  if (a.barcode) await assertBarcodeFree(ctx, a.barcode, row.invItemId, row.id, tx);
+  if (a.scalePlu) await assertScalePluFree(ctx, a.scalePlu, row.id, tx);
+  const src = await legacySourceOf(row, tx, true); // R3 H1: แหล่งราคาแบบ FOR SHARE (หลังล็อกแถวแล้ว)
+  const target = reverseTarget(src);
+  if (a.price === null) {
+    if (src.type === "inv" && invItemProductFields(src.inv, src.ap, src.book).price.rung !== "none")
+      throw invalid("สินค้าคลังรายการนี้มีราคาจากระบบเดิม (บัญชี/บริการ) — ตัวแปรนี้ต้องตั้งราคาเอง");
+  } else if (target) {
+    const sib = (await siblingIdsOf(tx, ctx.tenantId, target)).filter((x) => x !== row.id);
+    if (sib.some((x) => !lockedIds.has(x))) throw busy();
+    if (target.sim(a.price) !== a.price)
+      throw invalid(a.price === 0 ? "ราคา 0 ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม" : "ราคานี้ใช้กับสินค้านี้ไม่ได้ — ตั้งราคาที่ระบบเดิม");
+  }
+  const data: Prisma.PosProductUncheckedUpdateManyInput = {
+    parentId: a.parentId, name: a.name, nameEn: a.nameEn, basePriceSatang: a.price, barcode: a.barcode, categoryId,
+    soldByWeight: a.soldByWeight, scalePlu: a.scalePlu, unitId,
+    ...(a.trackStock !== undefined ? { trackStock: a.trackStock } : {}),
+  };
+  await tx.posProduct.updateMany({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId }, data });
+  if (a.price !== null && target) {
+    // ทางย้อนแบบ setPrice: ช่องเดิมที่ชนะ → พี่น้องคิดใหม่ (ล็อกครบแล้ว · โตระหว่างนี้ = BUSY)
+    await writeBackPrice(tx, ctx.tenantId, target, a.price);
+    const sib = (await siblingIdsOf(tx, ctx.tenantId, target)).filter((x) => x !== row.id);
+    if (sib.some((x) => !lockedIds.has(x))) throw busy();
+    const rows = sib.length ? await tx.posProduct.findMany({ where: { tenantId: ctx.tenantId, id: { in: sib } }, orderBy: { id: "asc" } }) : [];
+    await rederiveRows(tx, rows, { price: true }, auditActorOf(typeof ctx.actorUserId === "string" ? ctx.actorUserId : null));
+  }
+  if (a.name !== row.name) await writeBackNames(tx, ctx.tenantId, src, { name: a.name });
+  const prev: Record<string, unknown> = {};
+  for (const k of Object.keys(data)) prev[k] = (row as unknown as Record<string, unknown>)[k];
+  await audit(tx, ctx, "pos.product.create", "PosProduct", row.id, prev, {
+    adopted: true, name: a.name, kind: row.kind, unitId, invItemId: row.invItemId, basePriceSatang: a.price, vatRateBp: row.vatRateBp, barcode: a.barcode, categoryId,
+    trackStock: a.trackStock !== undefined ? a.trackStock : row.trackStock, parentId: a.parentId,
+    ...(a.soldByWeight ? { soldByWeight: a.soldByWeight, scalePlu: a.scalePlu } : {}),
+  });
+  return (await tx.posProduct.findFirst({ where: { id: row.id, tenantId: ctx.tenantId, systemId: ctx.systemId } })) ?? row;
+}
+
 /** R5 F6: คีย์ที่ createProduct รับ (sku ไม่อยู่ — SKU เป็นของ InvItem · ส่งมา = คีย์แปลก VALIDATION) */
 const CREATE_KEYS: ReadonlySet<string> = new Set(["name", "nameEn", "kind", "categoryId", "basePriceSatang", "vatRateBp", "barcode", "unitId", "invItemId", "trackStock", "parentId", "soldByWeight", "scalePlu"]);
 const ownHas = (o: Record<string, unknown>, k: string) => Object.prototype.hasOwnProperty.call(o, k);
@@ -1227,6 +1317,7 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       const categoryId = await assertCategory(ctx, i.categoryId, unitId, tx);
       let kind: PosProductKind = (i.kind as PosProductKind | undefined) ?? "PRODUCT";
       let invItemId: string | null = null;
+      let adoptId: string | null = null;
       if (i.invItemId !== undefined && i.invItemId !== null) {
         // C10: เมนู/ชุดไม่ผูก InvItem ตรง (ใช้ RecipeLine) · InvItem ต้องยังใช้งาน · ชนิดต้องตรง
         if (i.kind === "MENU" || i.kind === "BUNDLE") throw invalid("เมนู/ชุดสินค้าผูกสินค้าคลังตรงไม่ได้ — ใช้สูตร (ส่วนประกอบ) แทน");
@@ -1236,14 +1327,12 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
         if ((inv.kind === "SERVICE") !== (kind === "SERVICE")) throw invalid("ชนิดสินค้าไม่ตรงกับสินค้าคลัง (สินค้า ↔ บริการ)");
         // D6: แถวของสาขาต้องผูก InvItem ของคลังที่เสิร์ฟสาขานั้น — ไม่งั้นจะเป็นแถวที่มองไม่เห็นแต่ยึดช่อง unique (systemId, invItemId)
         if (unitId && (await unitInventory(ctx.tenantId, unitId, tx)) !== inv.systemId) throw invalid("สินค้าคลังรายการนี้ไม่ได้อยู่ในคลังของสาขาที่เลือก");
-        const prior = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { archivedAt: true } });
+        const prior = await tx.posProduct.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, invItemId: inv.id }, select: { id: true, archivedAt: true } });
         // R5 F1: แถวเดิมที่เก็บถาวร = บอกให้กู้คืน (ไม่ใส่ id — ผู้กระทำอาจมองไม่เห็นสาขาของแถวนั้น)
-        if (prior)
-          throw conflict(
-            prior.archivedAt
-              ? "สินค้าจากคลังรายการนี้มีในแคตตาล็อกขายแล้วแต่ถูกเก็บถาวรไว้ — กู้คืนรายการเดิมได้แทนการเพิ่มใหม่"
-              : "สินค้าจากคลังรายการนี้อยู่ในแคตตาล็อกขายแล้ว",
-          );
+        if (prior?.archivedAt) throw conflict(PRIOR_ARCHIVED);
+        // P1.2 R3 F7: ส่ง parentId มาด้วย = รับแถวที่ซิงก์ไว้แล้วของ InvItem นี้เป็นตัวแปร (adoptVariantRow ด้านล่าง) · ไม่ส่ง parentId = CONFLICT ตามเดิม
+        if (prior && (i.parentId === undefined || i.parentId === null)) throw conflict(PRIOR_ACTIVE);
+        if (prior) adoptId = prior.id;
         invItemId = inv.id;
       }
       if (trackStock === true && !invItemId) throw invalid("ตัดสต็อกได้เฉพาะสินค้าที่ผูกสินค้าคลัง");
@@ -1254,6 +1343,8 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       let parentSoldByWeight = false;
       if (i.parentId !== undefined && i.parentId !== null) {
         if (typeof i.parentId !== "string" || !i.parentId) throw notFound();
+        // R3 F7: ล็อกแม่แบบ FOR SHARE ก่อนอ่าน — แถวที่กำลังถูกรับเป็นตัวแปร (FOR NO KEY UPDATE) จะไม่ได้ลูกเพิ่มระหว่างนั้น (ตัวแปรชั้นเดียวคงอยู่)
+        await tx.$queryRaw`SELECT id FROM "PosProduct" WHERE id = ${i.parentId} AND "tenantId" = ${ctx.tenantId} AND "systemId" = ${ctx.systemId} FOR SHARE`;
         const parent = await tx.posProduct.findFirst({ where: { id: i.parentId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
         if (!parent || (actor && parent.unitId && !canAccessUnit(actor, parent.unitId))) throw notFound();
         if (parent.archivedAt) throw invalid("สินค้าแม่ถูกเก็บถาวรแล้ว — กู้คืนก่อนเพิ่มตัวแปร");
@@ -1269,6 +1360,12 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       assertWeighedShape(kind, soldByWeight, scalePlu);
       // R2 F4: ตัวแปรที่ไม่ตั้งราคาเอง (สืบราคาแม่) ต้องขายแบบเดียวกับแม่ — ไม่งั้นราคาต่อชิ้น/ต่อกก.ปนกัน
       if (parentId && price === null && soldByWeight !== parentSoldByWeight) throw invalid(variantWeighMismatch);
+      if (adoptId && parentId)
+        return adoptVariantRow(ctx, actor, tx, adoptId, {
+          parentId, kind, name, nameEn, price, barcode, categoryId, soldByWeight, scalePlu, vatRateBp,
+          unitId: i.unitId === undefined ? undefined : unitId,
+          trackStock: i.trackStock === undefined ? undefined : trackStock,
+        });
       if (barcode) await assertBarcodeFree(ctx, barcode, invItemId, null, tx);
       if (scalePlu) await assertScalePluFree(ctx, scalePlu, null, tx);
       const row = await tx.posProduct.create({
