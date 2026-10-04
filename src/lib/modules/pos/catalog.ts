@@ -1117,6 +1117,7 @@ function cleanSoldByWeight(v: unknown): boolean {
   return v;
 }
 /** P1.2 R9: กติการ่วมของสินค้าชั่ง (สร้าง/แก้) — ชั่งได้เฉพาะ PRODUCT · รหัสป้ายชั่งต้องคู่กับสินค้าชั่ง */
+const variantWeighMismatch = "ตัวแปรที่ใช้ราคาสินค้าแม่ต้องขายแบบเดียวกับแม่ (ตามน้ำหนัก/ต่อชิ้น) — ตั้งราคาตัวแปรเองก่อน";
 function assertWeighedShape(kind: PosProductKind, soldByWeight: boolean, scalePlu: string | null): void {
   if (soldByWeight && kind !== "PRODUCT") throw invalid("ขายตามน้ำหนักได้เฉพาะสินค้า (ไม่ใช่บริการ/เมนู/ชุด)");
   if (scalePlu !== null && !soldByWeight) throw invalid("ตั้งรหัสป้ายชั่งได้เฉพาะสินค้าที่ขายตามน้ำหนัก");
@@ -1250,6 +1251,7 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
       // P1.2 R6: ตัวแปร = แถวลูกหนึ่งชั้น — แม่ต่างระบบ/ร้าน/ไม่มีจริง/สาขาที่เข้าไม่ได้ = NOT_FOUND · แม่เก็บถาวร/เป็นตัวแปร/ชนิดอื่น = VALIDATION
       //   ราคา null = ใช้ราคาแม่ (P5 · ตัดสินตอนอ่าน) · สต็อกอยู่ที่ InvItem ของลูกเอง (C-1)
       let parentId: string | null = null;
+      let parentSoldByWeight = false;
       if (i.parentId !== undefined && i.parentId !== null) {
         if (typeof i.parentId !== "string" || !i.parentId) throw notFound();
         const parent = await tx.posProduct.findFirst({ where: { id: i.parentId, tenantId: ctx.tenantId, systemId: ctx.systemId } });
@@ -1259,11 +1261,14 @@ export async function createProduct(ctx: CatalogCtx, input: CreateProductInput, 
         if (parent.kind !== "PRODUCT" && parent.kind !== "MENU") throw invalid("เพิ่มตัวแปรได้เฉพาะสินค้าหรือเมนู");
         if (kind === "BUNDLE") throw invalid("ชุดสินค้าเป็นตัวแปรไม่ได้");
         parentId = parent.id;
+        parentSoldByWeight = parent.soldByWeight;
       }
       // P1.2 R9: สินค้าชั่ง
       const soldByWeight = i.soldByWeight === undefined ? false : cleanSoldByWeight(i.soldByWeight);
       const scalePlu = cleanScalePlu(i.scalePlu);
       assertWeighedShape(kind, soldByWeight, scalePlu);
+      // R2 F4: ตัวแปรที่ไม่ตั้งราคาเอง (สืบราคาแม่) ต้องขายแบบเดียวกับแม่ — ไม่งั้นราคาต่อชิ้น/ต่อกก.ปนกัน
+      if (parentId && price === null && soldByWeight !== parentSoldByWeight) throw invalid(variantWeighMismatch);
       if (barcode) await assertBarcodeFree(ctx, barcode, invItemId, null, tx);
       if (scalePlu) await assertScalePluFree(ctx, scalePlu, null, tx);
       const row = await tx.posProduct.create({
@@ -1343,6 +1348,15 @@ export async function updateProduct(ctx: CatalogCtx, id: string, patch: UpdatePr
         const sbw = "soldByWeight" in p ? cleanSoldByWeight(p.soldByWeight) : before.soldByWeight;
         const plu = "scalePlu" in p ? cleanScalePlu(p.scalePlu) : before.scalePlu;
         assertWeighedShape(before.kind, sbw, plu);
+        // R2 F4: ตัวแปรที่สืบราคาแม่ ต้องขายแบบเดียวกับแม่ · แม่เปลี่ยนแบบขาย ห้ามทิ้งลูกที่สืบราคาไว้คนละแบบ
+        if (sbw !== before.soldByWeight) {
+          if (before.parentId && before.basePriceSatang === null) {
+            const parent = await tx.posProduct.findFirst({ where: { id: before.parentId, tenantId: ctx.tenantId }, select: { soldByWeight: true } });
+            if (parent && parent.soldByWeight !== sbw) throw invalid(variantWeighMismatch);
+          }
+          const kids = await tx.posProduct.count({ where: { tenantId: ctx.tenantId, parentId: before.id, basePriceSatang: null, soldByWeight: { not: sbw } } });
+          if (kids > 0) throw invalid("มีตัวแปรที่ใช้ราคาของสินค้านี้อยู่ — ตั้งราคาให้ตัวแปรเหล่านั้นก่อนเปลี่ยนการขายตามน้ำหนัก");
+        }
         if (plu && plu !== before.scalePlu && !before.archivedAt) await assertScalePluFree(ctx, plu, before.id, tx);
         if ("soldByWeight" in p) data.soldByWeight = changed.soldByWeight = sbw;
         if ("scalePlu" in p) data.scalePlu = changed.scalePlu = plu;
