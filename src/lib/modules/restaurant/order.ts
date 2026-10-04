@@ -423,18 +423,27 @@ export async function checkout(input: {
   if (posSystemId) {
     const pointSystemId = (await systemForUnit(tenantId, unitId, "POINT")) ?? undefined;
     try {
-      const sale = await createSale({
-        tenantId,
-        unitId,
-        systemId: posSystemId,
-        pointSystemId,
-        memberId,
-        sourceModule: "RESTAURANT",
-        sourceId: sessionId,
-        idempotencyKey,
-        lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
-        payMethods: [{ type: payType, amountSatang: total }],
-      });
+      // POS P1.6 (มติ §8 ข้อ 3 · I6): คีย์เดิมของบิลที่ถูก void แล้ว → createSale คืนบิลนั้นพร้อม status "VOIDED" (ไม่ขายใหม่ให้)
+      //   ⇒ re-checkout หลัง voidCheckout ต้องออกคีย์ใหม่เอง: rest-<hash>-r1, -r2, … (ตายตัว ⇒ ลองซ้ำหลังล่มได้บิลเดิม ไม่ซ้ำเงิน)
+      let key = idempotencyKey;
+      let sale: Awaited<ReturnType<typeof createSale>>;
+      for (let round = 1; ; round++) {
+        sale = await createSale({
+          tenantId,
+          unitId,
+          systemId: posSystemId,
+          pointSystemId,
+          memberId,
+          sourceModule: "RESTAURANT",
+          sourceId: sessionId,
+          idempotencyKey: key,
+          lines: posLines.map((l) => ({ name: l.name, qty: l.qty, unitPriceSatang: l.unitPriceSatang })),
+          payMethods: [{ type: payType, amountSatang: total }],
+        });
+        if (sale.status !== "VOIDED") break;
+        if (round > 50) return { ok: false, reason: "บิลของโต๊ะนี้ถูกยกเลิกซ้ำหลายครั้งเกินไป — ติดต่อผู้ดูแลระบบ" };
+        key = `${idempotencyKey}-r${round}`;
+      }
       saleId = sale.saleId;
       receiptNo = sale.receiptNo;
       pointEarned = sale.pointEarned;
