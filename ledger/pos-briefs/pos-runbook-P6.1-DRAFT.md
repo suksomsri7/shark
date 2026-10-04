@@ -41,5 +41,5 @@
 - Exact table list / sizes for §2 and index plan for §4 on the day.
 - Merge order of CRM / RC / POS branches and timestamp renames.
 
-## P1.9 shift rollout (OQ-P19-1 — owner decision pending)
+## P1.9 shift rollout (OQ-P19-1 — owner chose (a), 5 Oct 2026)
 - Existing POSes with registerV2 on become shift-required after deploy; staff holding only pos.sale.create cannot open a shift. Controller recommendation (a): data step sets settings.pos.shift.required.register=false on every existing registerV2 POS before go-live; owners opt in. Alternatives (b) sale.create may open own-device shift, (c) default off. Old register tabs without deviceId must be reloaded.
