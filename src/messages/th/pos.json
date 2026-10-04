@@ -308,6 +308,14 @@
     "total": "รวม",
     "loading": "กำลังโหลด…",
     "empty": "ยังไม่มีข้อมูล",
-    "hidden": "ซ่อน"
+    "hidden": "ซ่อน",
+    "method": {
+      "CASH": "เงินสด",
+      "CARD": "บัตร",
+      "PROMPTPAY": "พร้อมเพย์",
+      "TRANSFER": "โอน",
+      "DEPOSIT": "มัดจำ",
+      "ROOM_CHARGE": "ลงบิลห้องพัก"
+    }
   }
 }

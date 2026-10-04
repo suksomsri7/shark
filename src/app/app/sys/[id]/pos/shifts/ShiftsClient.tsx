@@ -34,6 +34,9 @@ function bahtToSatang(v: string): number | null {
 }
 const newKey = () => `shift-${(crypto.randomUUID?.() ?? `${Date.now()}${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, "")}`;
 
+/** R2 F7: ชื่อวิธีชำระภาษาคนใน X/Z (pos.shift.method.*) · ชนิดที่ยังไม่มีป้าย = แสดงรหัสเดิม */
+const METHOD_KEYS = new Set(["CASH", "CARD", "PROMPTPAY", "TRANSFER", "DEPOSIT", "ROOM_CHARGE"]);
+
 function Report({ r, t }: { r: ShiftReport; t: (key: string, values?: Record<string, number>) => string }) {
   const row = (label: string, v: number | null | undefined) => (
     <div className="flex justify-between border-b py-1.5 text-sm last:border-0">
@@ -63,7 +66,7 @@ function Report({ r, t }: { r: ShiftReport; t: (key: string, values?: Record<str
       {r.byMethod.map((m) => (
         <div key={m.type} className="flex justify-between border-b py-1.5 text-sm">
           <span className="text-[color:var(--color-muted)]">
-            {m.type} ({m.count})
+            {METHOD_KEYS.has(m.type) ? t(`method.${m.type}`) : m.type} ({m.count})
           </span>
           <span className="tabular-nums">
             <MoneyText satang={m.amountSatang} decimals />

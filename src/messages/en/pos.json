@@ -308,6 +308,14 @@
     "total": "Total",
     "loading": "Loading…",
     "empty": "Nothing yet",
-    "hidden": "Hidden"
+    "hidden": "Hidden",
+    "method": {
+      "CASH": "Cash",
+      "CARD": "Card",
+      "PROMPTPAY": "PromptPay",
+      "TRANSFER": "Transfer",
+      "DEPOSIT": "Deposit",
+      "ROOM_CHARGE": "Room charge"
+    }
   }
 }
