@@ -41,7 +41,8 @@ export const STOCK_COUNT_MESSAGES: Record<StockCountRefusalCode, { th: string; e
   },
 };
 
-export type StockCountRefusal = { ok: false; code: StockCountRefusalCode; message: string; countId?: string };
+/** countId = รอบที่ขวาง (COUNT_ALREADY_OPEN) · itemId = สินค้าที่ยืนยันไม่ได้ (NOT_STOCKED ตอนยืนยัน · R2 F4) */
+export type StockCountRefusal = { ok: false; code: StockCountRefusalCode; message: string; countId?: string; itemId?: string };
 
 // ═══════════ เพดาน (R5 R13 R14) ═══════════
 export const STOCK_COUNT_QTY_MAX = 10_000_000;

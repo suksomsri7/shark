@@ -43,7 +43,7 @@ const COUNTED_MAX = 2_000_000_000; // เพดาน int4 ของยอดน
 const LOT_MAX = 64;
 
 // ═══════════ คำปฏิเสธ ═══════════
-const refuse = (code: StockCountRefusalCode, extra?: { countId?: string }): StockCountRefusal => ({ ok: false, code, message: STOCK_COUNT_MESSAGES[code].th, ...(extra ?? {}) });
+const refuse = (code: StockCountRefusalCode, extra?: { countId?: string; itemId?: string }): StockCountRefusal => ({ ok: false, code, message: STOCK_COUNT_MESSAGES[code].th, ...(extra ?? {}) });
 const isRefusal = (v: unknown): v is StockCountRefusal => !!v && typeof v === "object" && (v as { ok?: unknown }).ok === false;
 /** โยนใน tx เพื่อ rollback แล้วคืนคำปฏิเสธ (guard จับ) */
 class RefuseTx extends Error {
@@ -580,8 +580,16 @@ export async function confirmStockCount(
       if (targets.length > STOCK_COUNT_CONFIRM_MAX_LINES) throw new RefuseTx(refuse("COUNT_TOO_LARGE"));
       const ids = targets.map((l) => l.itemId);
       await inventory.lockItemsInTx(tx, invCtx, ids);
-      const items = await tx.invItem.findMany({ where: { tenantId: invCtx.tenantId, systemId: invCtx.systemId, id: { in: ids } }, select: { id: true, onHand: true, costSatang: true } });
+      const items = await tx.invItem.findMany({
+        where: { tenantId: invCtx.tenantId, systemId: invCtx.systemId, id: { in: ids } },
+        select: { id: true, onHand: true, costSatang: true, kind: true, archivedAt: true },
+      });
       const byId = new Map(items.map((i) => [i.id, i]));
+      // R2 F4: สินค้าที่กลายเป็นบริการ/เก็บถาวร/หายไปหลังเปิดรอบ → NOT_STOCKED ระบุ itemId (รอบยังเปิด — ลบออก/ยกเลิกได้)
+      for (const l of targets) {
+        const it = byId.get(l.itemId);
+        if (!it || it.kind !== "PRODUCT" || it.archivedAt) throw new RefuseTx(refuse("NOT_STOCKED", { itemId: l.itemId }));
+      }
       const zeroItems = targets.filter((l) => l.countedQty === null).map((l) => byId.get(l.itemId)).filter((i): i is NonNullable<typeof i> => !!i);
       const zeroQty = await locQtyMap(tx, invCtx, zeroItems, loc);
       const now = new Date();
@@ -591,7 +599,7 @@ export async function confirmStockCount(
       let varianceValueSatang = 0;
       for (const l of targets) {
         const it = byId.get(l.itemId);
-        if (!it) throw new Error(`stock count line item missing: ${l.itemId}`);
+        if (!it) throw new RefuseTx(refuse("NOT_STOCKED", { itemId: l.itemId })); // กันไว้ — ตรวจแล้วข้างบน
         const isZero = l.countedQty === null;
         const countedQty = isZero ? 0 : l.countedQty!;
         const expected = isZero ? (zeroQty.get(it.id) ?? 0) : (l.expectedAtCount ?? 0);
