@@ -82,3 +82,13 @@ Unforced = forced: **35/35, exit 0**. Per check:
 | Z1 · Z2 | green | reports write nothing; SB1's sales are cleaned by the oracle |
 
 Risk to watch: any older oracle that fingerprints a register-made `PosSale` row column-by-column would now see `soldByUserId` set (new column, additive). None found by name in the static checks run here; `qc-pos-p1.3`/`p1.6`/`qc-pos-account` should be run on the VPS as the brief's acceptance asks.
+
+## R2 (controller rulings F1–F5)
+- **F1** `csvEsc` in `reports.ts` and the legacy close-day `csvEsc` in `service.ts`: a cell starting with `= + - @ TAB CR` that is not a plain number (`/^-?\d+(\.\d+)?$/`) gets a leading `'` before quoting. Negative baht values (`-4.50`) stay numeric. `+1` is prefixed (not a plain number under the ruling). Legacy escaper now also quotes on `\r`.
+- **F2** `reportShifts`: one `posShiftRecount.findMany({ tenantId, shiftId: { in } })` (chunked at 1000 like every other IN). Each row gains `recountCountedCashSatang` / `recountVarianceSatang` (null when none). Totals: `overShortSatang`/`shortCount`/`overCount` stay from the frozen Z. New `recountVarianceSatang` (sum) and `recountCount`. **JSON only:** the shifts CSV header is unchanged, because oracle CSV2 compares the header row exactly (`JSON.stringify(rows[0]) !== JSON.stringify(CSV_HEADERS[k])`), so appending "นับใหม่ (บาท)" / "ส่วนต่างนับใหม่ (บาท)" would fail it. Adding the columns needs an oracle change (controller decision).
+- **F3** daily grouping pushes into the existing day array (no copy per bill).
+- **F4** `PosSaleLine.components` is selected only for the margin report (`loadLines/paidLines(..., withComponents)`). Products report and dashboard card no longer read it. **Follow-up P2.12:** SQL aggregation (groupBy / raw SUM) for daily / staff / payments / tax instead of loading bill rows.
+- **F5** `lineCost`: a line with both `itemId` and components whose movements are only partly present → uncosted (no estimate from itemId alone). No movements at all → previous rule (estimate from itemId when it has a cost). All movements present → stored.
+- Ratified as is: PERMISSION_DENIED for an accessible unit without `pos.report.view`.
+
+R2 checks: typecheck exit 0 · `fitness` (no DB env) 41/41 · `fitness-pos` 8/8 · `qc-pos-p1.17 --no-db` 6/6. The in-memory trace from R1 was not kept, so it was not re-run. The oracle fixture has no component lines and no recounts, and the oracle checks no exact key sets, so F2 and F5 leave every expected number above unchanged (recount fields = null, recount totals 0). DB expectation still 35/35.
