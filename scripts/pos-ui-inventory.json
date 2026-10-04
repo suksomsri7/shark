@@ -104,6 +104,15 @@
           "input": 1,
           "button": 1
         }
+      },
+      {
+        "file": "src/app/app/sys/[id]/pos/shifts/page.tsx",
+        "untestid": 1,
+        "closes": "P4.1",
+        "note": "แท็บโมดูล (ModuleTabs แบบเดียวกับ sales/close)",
+        "byTag": {
+          "ModuleTabs": 1
+        }
       }
     ]
   },
@@ -1958,6 +1967,284 @@
       },
       "wo": "P1.5",
       "oracle": "",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-unit",
+      "kind": "select",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/shifts",
+        "note": "?unit=<สาขาที่เข้าได้> · แสดงเมื่อเข้าได้มากกว่า 1 สาขา"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-label",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-open",
+        "state": "changes",
+        "note": "ชื่อเครื่อง ≤40 (ไม่บังคับ)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-float",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-open",
+        "state": "changes",
+        "note": "เงินทอนตั้งต้น (บาท → สตางค์)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-open-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "appears",
+        "note": "openShiftAction ของเครื่องนี้ (deviceId ใน localStorage) · มีกะอยู่แล้ว = รับกะนั้น"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-refresh",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "โหลดกะ + รายงาน X ใหม่"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-move-amount",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "จำนวนเงินเข้า/ออก (บาท)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-move-reason",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "เหตุผล 1–200 ตัว"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-cash-in",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "recordCashMovementAction IN → X อัปเดต"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-cash-out",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "recordCashMovementAction OUT · เกินเงินที่ควรมี = errors.drawerInsufficient"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-counted",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "เงินที่นับได้ (บาท)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-note",
+      "kind": "input",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-current",
+        "state": "changes",
+        "note": "เหตุผลขาด/เกิน (บังคับเมื่อเกินเกณฑ์ · ปริยาย ฿100)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-close-submit",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "appears",
+        "note": "closeShiftAction → แสดง Z · กะหายจาก 'กะปัจจุบัน'"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/shifts",
+      "testid": "pos-shift-z-view-*",
+      "kind": "button",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "pos-shift-z",
+        "state": "appears",
+        "note": "zReportAction ของกะที่ปิดแล้ว (Z แช่แข็ง)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
+      "system": "POS",
+      "query": "unit=[unitId]"
+    },
+    {
+      "page": "/app/sys/[id]/pos/register",
+      "testid": "pos-reg-shift-open-link",
+      "kind": "link",
+      "roles": [
+        "owner",
+        "cashier"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/sys/[id]/pos/shifts",
+        "note": "การ์ด 'เปิดกะก่อนเริ่มขาย' บนหน้าขาย (แสดงเมื่อจุดขายบังคับกะและเครื่องยังไม่มีกะ)"
+      },
+      "wo": "P1.9",
+      "oracle": "qc-pos-p1.9",
       "system": "POS",
       "query": "unit=[unitId]"
     }

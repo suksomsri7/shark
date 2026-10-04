@@ -37,7 +37,8 @@ import type {
 } from "./register-shared";
 
 type Session = Awaited<ReturnType<typeof requireTenant>>;
-type Target = { systemId: string; unitId: string };
+/** POS P1.9: deviceId (ไม่บังคับ) = รหัสเครื่องจาก localStorage — register.ts ตรวจรูปแบบ (ผิด = VALIDATION) */
+type Target = { systemId: string; unitId: string; deviceId?: string };
 
 function refusal(code: RegisterRefusal["code"], message: string): RegisterRefusal {
   return { ok: false, code, message };
@@ -59,7 +60,8 @@ function sessionScope(auth: Session, args: unknown): { ctx: RegisterCtx; actor: 
   } catch {
     return refusal("PERMISSION_DENIED", "บัญชีนี้ยังไม่มีสิทธิ์ขาย — ขอให้เจ้าของร้านเพิ่มสิทธิ์");
   }
-  return { ctx: { tenantId: auth.active.tenantId, systemId, unitId }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
+  const deviceId = typeof a.deviceId === "string" ? a.deviceId : undefined;
+  return { ctx: { tenantId: auth.active.tenantId, systemId, unitId, ...(deviceId !== undefined ? { deviceId } : {}) }, actor: { userId: auth.user.id, role: m.role, unitAccess: m.unitAccess, permissions: m.permissions } };
 }
 
 function unexpected(where: string, e: unknown): RegisterRefusal {

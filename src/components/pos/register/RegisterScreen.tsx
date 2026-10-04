@@ -91,6 +91,8 @@ import { SaleDone } from "./SaleDone";
 import { ScanCameraDialog } from "./ScanCameraDialog";
 import { ScanChooserDialog } from "./ScanChooserDialog";
 import { SearchRow } from "./SearchRow";
+// POS P1.9 ▸ รหัสเครื่อง → กะของเครื่อง (ผูกบิล · ล็อกปุ่มชำระเมื่อบังคับเปิดกะ) ◂
+import { getPosDeviceId } from "@/lib/modules/pos/device-id";
 
 export type RegisterScreenProps = {
   systemId: string;
@@ -168,6 +170,7 @@ const pctText = (bp: number) => String(Number((bp / 100).toFixed(2)));
 export function RegisterScreen(props: RegisterScreenProps) {
   const { systemId, unitId, userId, limits, vat } = props;
   const t = useTranslations("pos.register");
+  const ts = useTranslations("pos.shift");
   const tc = useTranslations("common");
   const locale = useLocale();
   const wide = useMedia("(min-width: 768px)");
@@ -347,7 +350,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const refreshStatus = useCallback(async () => {
     const seq = ++statusSeq.current;
     try {
-      const r = await registerStatusAction({ systemId, unitId });
+      const r = await registerStatusAction({ systemId, unitId, deviceId: getPosDeviceId() });
       if (seq !== statusSeq.current) return; // B2.2 N3: คำตอบเก่าที่มาช้ากว่าคำตอบใหม่ = ทิ้ง
       if (r.ok) {
         setStatus(r);
@@ -358,6 +361,8 @@ export function RegisterScreen(props: RegisterScreenProps) {
     }
   }, [systemId, unitId]);
   useEffect(() => {
+    // P1.9: สถานะจากเซิร์ฟเวอร์ตอนโหลดหน้าไม่รู้รหัสเครื่อง (localStorage) ⇒ ถามใหม่ทันทีพร้อม deviceId
+    void refreshStatus();
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void refreshStatus();
     }, 60_000);
@@ -474,7 +479,9 @@ export function RegisterScreen(props: RegisterScreenProps) {
   const quoteFresh = quote && quote.ver === cartVer ? quote.q : null;
   const quoteFailed = quoteErr && quoteErr.ver === cartVer ? quoteErr.code : null;
   const shownTotals: CartTotalsModel | null = quoteFresh ?? (local ? { ...local } : quote?.q ?? null);
-  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen;
+  // POS P1.9 (S15): จุดขายบังคับเปิดกะ แต่เครื่องนี้ยังไม่มีกะ = ล็อกปุ่มชำระ + การ์ด "เปิดกะก่อนเริ่มขาย"
+  const shiftBlocked = !!status?.shiftRequired && !status?.shift;
+  const payEnabled = cart.lines.length > 0 && !!quoteFresh && online && limits.canSell && payPhase === "form" && !frozen && !shiftBlocked;
   const lastAmount = quoteFresh?.grandTotalSatang ?? local?.grandTotalSatang ?? quote?.q.grandTotalSatang ?? 0;
   const payAmount = quoteSlow && !quoteFresh ? tc("loading") : moneyText(cart.lines.length ? lastAmount : 0);
 
@@ -795,7 +802,7 @@ export function RegisterScreen(props: RegisterScreenProps) {
     setPayPhase("sending");
     setPayError(null);
     try {
-      const r = await submitRegisterSaleAction({ systemId, unitId, sale });
+      const r = await submitRegisterSaleAction({ systemId, unitId, sale, deviceId: getPosDeviceId() });
       synced();
       if (r.ok) {
         pendingSubmit.current = null;
@@ -1272,6 +1279,15 @@ export function RegisterScreen(props: RegisterScreenProps) {
           </div>
         )}
 
+        {shiftBlocked && (
+          <div data-testid="pos-reg-shift-required" className="flex shrink-0 flex-wrap items-center gap-3 border-b bg-[color:var(--color-surface-2)] px-5 py-[10px] text-[14px] text-[color:var(--color-ink)]" role="status">
+            <RegisterIcon name="warn" size={18} />
+            <span className="flex-1">{t("errors.shiftRequired")}</span>
+            <a data-testid="pos-reg-shift-open-link" href={`/app/sys/${systemId}/pos/shifts?unit=${encodeURIComponent(unitId)}`} className="btn btn-primary min-h-[44px] text-sm">
+              {ts("open")}
+            </a>
+          </div>
+        )}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
           <div className="flex min-w-0 flex-1 flex-col px-[22px] md:min-h-0 md:border-r md:px-0">
             <SearchRow

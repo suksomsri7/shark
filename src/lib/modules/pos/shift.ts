@@ -8,7 +8,7 @@
 // 🔴 ไม่มี PIN ที่นี่ — PIN เป็นของ HR (verifyPin · P1.15/P3.5) · ผู้ทำรายการ = ผู้ใช้ของ session
 import { randomUUID } from "node:crypto";
 import { Prisma, type PosShift, type PrismaClient } from "@prisma/client";
-import { prisma } from "@/lib/core/db";
+import { prisma } from "./db";
 import { canAccessUnit, evaluate } from "@/lib/core/rbac";
 import { emitOutbox } from "@/lib/core/outbox";
 import { scheduleDrain } from "@/lib/outbox-consumers";
