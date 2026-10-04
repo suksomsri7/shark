@@ -2571,7 +2571,8 @@ try {
         invRev: await inv("invRev", { costSatang: 100 }), invCntAp: await inv("invCntAp", { costSatang: 100 }), invNoAp: await inv("invNoAp", { costSatang: 100 }),
         invArch: await inv("invArch", { costSatang: 100 }), invG5: await inv("invG5", { costSatang: 100 }), invSame: await inv("invSame", { costSatang: 100 }),
         sInv: await inv("sInv"), sInv2: await inv("sInv2"), invIsoAp: await inv("invIsoAp"),
-        svcA: await inv("svcA", { kind: "SERVICE", priceSatang: 8800 }), svcB: await inv("svcB", { kind: "SERVICE", priceSatang: 9000, sortOrder: -1_000_000 }), // ขึ้นหัว listServices (take 200 · sortOrder asc) — 520 แถว bulk ของ S1.37 ไม่ดันหลุดหน้าต่าง roster svcCnt: await inv("svcCnt", { kind: "SERVICE", priceSatang: 9100 }),
+        svcA: await inv("svcA", { kind: "SERVICE", priceSatang: 8800 }), svcB: await inv("svcB", { kind: "SERVICE", priceSatang: 9000, sortOrder: -1_000_000 }), // ขึ้นหัว listServices (take 200 · sortOrder asc) — 520 แถว bulk ของ S1.37 ไม่ดันหลุดหน้าต่าง roster
+        svcCnt: await inv("svcCnt", { kind: "SERVICE", priceSatang: 9100 }), // ORACLE-EDIT (controller 4 Oct): was swallowed by the comment above (S2.34)
         svcIso: await inv("svcIso", { kind: "SERVICE", priceSatang: 9200 }), svcH: await inv("svcH", { kind: "SERVICE", priceSatang: 9300 }), svcSame: await inv("svcSame", { kind: "SERVICE", priceSatang: 9400 }),
         invT4A: await inv("g3a-ap", { name: `${TAG} s2-g3-ap`, costSatang: 100 }), svcT5A: await inv("g3a-svc", { name: `${TAG} s2-g3-svc`, kind: "SERVICE", priceSatang: 4400 }),
         invT6A: await inv("g3a-arch", { name: `${TAG} s2-g3-arch`, costSatang: 100 }),
@@ -2698,7 +2699,11 @@ try {
         const lkItem = lk.ok && lk.value?.ok ? await rowOf("InvItem", lk.value.itemId) : null;
         const lkPos = lkItem ? ((await posOfInventory()).get(lkItem.systemId) ?? []) : [];
         const lkP = lkItem && lkPos.length === 1 ? await prodOfInv(lkItem, lkPos[0]) : null;
-        chk("S2.21", lk.ok && lk.value?.ok === true && lkPos.length === 1 && lkP?.basePriceSatang === 2700, "PosProduct ของ InvItem ใหม่ 2700 (ระบบ POS ที่ขายคลังนั้น)",
+        // ORACLE-EDIT (controller 4 Oct): legacy inventorySystemId() picks an arbitrary INVENTORY system (findFirst, no order — pre-existing, G2 keeps it).
+        // Expected price follows C7 for the POS that actually sells the chosen inventory: book of that POS = sysC.ACCOUNT ⇒ 2700, otherwise no AP price ⇒ null.
+        const lkBook = lkPos.length === 1 ? (await q<{ systemId: string }>(`select "systemId" from "AccountSystemLink" where "tenantId" = $1 and "linkedKind" = 'POS' and "linkedId" = $2 and "archivedAt" is null and enabled`, cfT, lkPos[0]))[0]?.systemId ?? null : null;
+        const lkWant = lkBook === sysC.ACCOUNT ? 2700 : null;
+        chk("S2.21", lk.ok && lk.value?.ok === true && lkPos.length === 1 && !!lkP && (lkP.basePriceSatang ?? null) === lkWant, `PosProduct ของ InvItem ใหม่ = ราคาตาม C7 ของ POS ที่ขายคลังนั้น (คาด ${lkWant})`,
           `${lk.ok ? (lk.value?.ok ? "" : `${lk.value?.reason} · `) : `${lk.err} · `}คลัง→POS ${lkPos.length} · ${lkP ? lkP.basePriceSatang : "ไม่มีแถว"}`);
         const propSrc = read("src/lib/ai/proposals.ts");
         const propImp = /from\s+["'][^"']*pos\/catalog(-legacy)?["']|import\(\s*["'][^"']*pos\/catalog(-legacy)?["']/.test(propSrc);
