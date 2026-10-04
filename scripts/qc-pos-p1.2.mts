@@ -106,6 +106,15 @@ D("P1", "X1", "[P1.3 S3.26 คงเดิม] ลาเต้ไม่ส่ง
 D("R1", "-", "คำปฏิเสธใหม่ (OPTIONS_INVALID OPTION_UNAVAILABLE VARIANT_REQUIRED WEIGHT_REQUIRED + OPTIONS_REQUIRED/VALIDATION ของตัวเลือก) = {ok:false, code, message} ไม่ throw");
 // ── Z คืนสภาพ ──
 D("Z1", "-", "QC4 คืนสภาพ: จำนวนแถวของร้าน QC POS ทั้งสอง (ทุกตารางที่ข้อสอบแตะ) ก่อน = หลัง · ผลรวมตัวนับใบเสร็จไม่ขยับ");
+// ORACLE-ADD (controller R2 ruling) — §R2 F1–F6 ของ brief P1.2 · แดงบน 0b4b5cca · เขียวหลังแก้ · S.R2.7–8 สถิต (รันใน --no-db ด้วย)
+D("S.R2.1", "X4", "[F1] ชุดที่ส่วนประกอบอยู่นอกคลังของสาขา: quote/submit → PRODUCT_NOT_FOUND ไม่มีบิล · ไม่ขึ้นกริด · สาขาไม่มีคลัง (ร้านอาหาร sandbox) ขายชุดที่มีส่วนประกอบ → PRODUCT_NOT_FOUND · createSale ตรงด้วยส่วนประกอบนอกคลัง → VALIDATION · ชุดปกติที่สาขาหลักยัง 15,900");
+D("S.R2.2", "-", "[F2] บิล [น้ำเปล่า, ลาเต้+M, ชา] → อ่านบรรทัด orderBy id ได้ลำดับเดิม · แถวตัวเลือกผูกบรรทัดลาเต้ · ยอดบิล = ยอด quote");
+D("S.R2.3", "X4", "[F3] ป้ายฝังราคา 1 สตางค์ (คิดได้ 0 กรัม) / 0 สตางค์ → INVALID_LINE lineIndex 1 ไม่มียอด (quote) · submit → INVALID_LINE ไม่มีบิล");
+D("S.R2.4", "-", "[F4] ตัวแปรไม่ตั้งราคาของแม่ชั่ง: soldByWeight false → VALIDATION ไม่มีแถว · true → สร้างได้ · แก้เป็น false → VALIDATION · ตั้งราคาเองแบบต่อชิ้น → สร้างได้");
+D("S.R2.5", "X3", "[F5] เจ้าของพัก [น้ำเปล่า, หมูกรอกน้ำหนัก 500 g] → แคชเชียร์ (ไม่มี priceOverride) เรียกคืน: notice บรรทัด 1 = PERMISSION_DENIED (ไม่ใช่ PRODUCT_UNAVAILABLE) · บรรทัด 0 ไม่มี notice");
+D("S.R2.6", "-", "[F6] บาร์โค้ดเดียวกันบน แม่ที่มีตัวแปร + สินค้า 2 ตัว → choose เฉพาะ 2 ตัว (ไม่มีแม่)");
+D("S.R2.7", "-", "[static · F5] HeldCartNoticeCode มี PERMISSION_DENIED · held-cart probe แยก PERMISSION_DENIED · held.noticeNeedsPermission th+en (en ไม่มีอักษรไทย) และจอใช้คีย์นี้");
+D("S.R2.8", "-", "[static · F1] regVisibleWhere ใน register.ts กรองชุดด้วย RecipeLine (ส่วนประกอบต้องอยู่ในคลังของสาขา)");
 D("Z2", "-", "QC4 ลายนิ้วมือ: แถวเดิม (PosProduct PosCategory InvItem AppSystem AppSystemUnit BusinessUnit Membership PosReceiptCounter MenuOptionGroup MenuOptionChoice PosProductOptionGroup RecipeLine) ก่อน = หลัง");
 
 if (LIST) {
@@ -490,6 +499,38 @@ async function runPure(): Promise<void> {
   }
 }
 
+// ORACLE-ADD (controller R2 ruling): ข้อสถิตของ §R2 (ไม่แตะ DB · รันทั้งโหมดปกติและ --no-db)
+const R2_PURE_IDS = ["S.R2.7", "S.R2.8"].map((x) => `P1.2-${x}`);
+function runPureR2(): void {
+  console.log("\n── S.R2 ข้อสถิต (มติ R2) ──");
+  {
+    const p: string[] = [];
+    const shared = stripComments(rd(REG_SHARED_FILE));
+    const codeLine = /type\s+HeldCartNoticeCode\s*=([^;]*);/.exec(shared)?.[1] ?? "";
+    if (!/["']PERMISSION_DENIED["']/.test(codeLine)) p.push("HeldCartNoticeCode ไม่มี PERMISSION_DENIED");
+    const hc = stripComments(rd("src/lib/modules/pos/held-cart.ts"));
+    const at = hc.search(/export\s+async\s+function\s+recallHeldCart\b/);
+    const body = at < 0 ? "" : (hc.slice(at).split(/\n\s*export\s+/)[0] ?? "");
+    if (!/notices\.push\([^;]*["']PERMISSION_DENIED["']/.test(body)) p.push("recallHeldCart ไม่แยก PERMISSION_DENIED");
+    const th = posMessages("th").get("pos.register.held.noticeNeedsPermission");
+    const en = posMessages("en").get("pos.register.held.noticeNeedsPermission");
+    if (typeof th !== "string" || !th.trim()) p.push("th ขาด");
+    if (typeof en !== "string" || !en.trim()) p.push("en ขาด");
+    else if (/[฀-๿]/.test(en)) p.push("en มีอักษรไทย");
+    const ui = REG_UI_DIRS.flatMap((d) => walk(d)).map((f) => stripComments(rd(f))).join("\n");
+    if (!/["'`]held\.noticeNeedsPermission["'`]/.test(ui)) p.push("จอไม่ใช้ held.noticeNeedsPermission");
+    chk("S.R2.7", p.length === 0, "รหัส · probe · ข้อความ th+en · ใช้ในจอ", p.join(" · ") || "ครบ");
+  }
+  {
+    const reg = stripComments(rd(REG_FILE));
+    const at = reg.search(/function\s+regVisibleWhere\b/);
+    const [a, b] = blockAt(reg, at);
+    const body = a < 0 ? "" : reg.slice(a, b + 1);
+    const ok = /"RecipeLine"/.test(body) && /BUNDLE/.test(body);
+    chk("S.R2.8", ok, "regVisibleWhere อ้าง RecipeLine + BUNDLE", body ? (ok ? "มี" : "ไม่กรองชุดด้วยสูตร") : "ไม่พบ regVisibleWhere");
+  }
+}
+
 const skipReasons: string[] = [];
 const scanSrc = stripComments(rd(SCAN_FILE));
 const catSrc = stripComments(rd(CAT_FILE));
@@ -509,7 +550,13 @@ if (NODB) {
     crashedS = (e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e);
     console.log(`💥 harness: ${crashedS}`);
   }
-  for (const id of PURE_IDS) if (!results.has(id)) chk(id, false, "ถูกตรวจ", crashedS ? `ไม่ถึง (harness ล้ม: ${crashedS.slice(0, 80)})` : "ไม่ถึง");
+  try {
+    runPureR2(); // ORACLE-ADD (controller R2 ruling)
+  } catch (e) {
+    crashedS ||= (e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e);
+    console.log(`💥 harness (S.R2): ${crashedS}`);
+  }
+  for (const id of [...PURE_IDS, ...R2_PURE_IDS]) if (!results.has(id)) chk(id, false, "ถูกตรวจ", crashedS ? `ไม่ถึง (harness ล้ม: ${crashedS.slice(0, 80)})` : "ไม่ถึง");
   const failedN = [...results.entries()].filter(([, r]) => !r.ok).map(([id]) => id);
   console.log(`\n===== ${SUITE} (--no-db) ===== ผ่าน ${results.size - failedN.length}/${results.size}`);
   console.log(`JSON_SUMMARY ${JSON.stringify({ suite: SUITE, mode: "no-db", total: results.size, passed: results.size - failedN.length, failed: failedN, skipped: false, registered: CHECKS.length, missing: skipReasons })}`);
@@ -1430,6 +1477,142 @@ async function runDb() {
     chk("X1", p.length === 0, "OPTIONS_INVALID · NOT_FOUND · PRODUCT_NOT_FOUND ×2 · none", FX(p.join(" · ") || "ครบ"));
   }
 
+  // ════════ S.R2 มติผู้คุมงานรอบ R2 (F1–F6) ════════
+  // ORACLE-ADD (controller R2 ruling) — ไม่ใช้ asData (R1 นับเท่าเดิม) · แถวทั้งหมดอยู่ใน sandbox (sb.*) ⇒ cleanup เดิมเก็บครบ
+  //   ลำดับรัน: R2.1 R2.2 R2.3 R2.5 R2.6 R2.4 (R2.4 ทำให้หมูมีตัวแปร ⇒ ต้องอยู่ท้ายสุด)
+  console.log("\n── S.R2 มติ R2 ──");
+  const R2_DB = ["S.R2.1", "S.R2.2", "S.R2.3", "S.R2.4", "S.R2.5", "S.R2.6"];
+  try {
+    // S.R2.1 (F1)
+    {
+      const p: string[] = [];
+      let fxR = "";
+      let BFX = "", invFX = "";
+      try {
+        if (!fx && !fxB) {
+          invFX = await mkInv("FX", "ของคลังอื่น R2", 0, { tenantId: tid, systemId: invZ });
+          BFX = await mkProd({ name: `${TAG} R2 เซ็ตข้ามคลัง`, kind: "BUNDLE", basePriceSatang: 5000 });
+          await P.recipeLine.create({ data: { tenantId: tid, productId: BFX, invItemId: invCA, qty: 1 } });
+          await P.recipeLine.create({ data: { tenantId: tid, productId: BFX, invItemId: invFX, qty: 1 } });
+        } else fxR = "ไม่มี fixture ชุด";
+      } catch (e) {
+        fxR = `r2-bundle-fixture:${(e as Error).message.slice(0, 100)}`;
+      }
+      const a = await quote(owner, { lines: [{ productId: BFX, qty: 1 }] });
+      if (!(refused(a, ["PRODUCT_NOT_FOUND"]) && noTotals(a) && a.lineIndex === 0)) p.push(`quote ข้ามคลัง ${codeOf(a)}/li${a?.lineIndex}`);
+      const k1 = key("r2-1");
+      const b = await sub(owner, { idempotencyKey: k1, lines: [{ productId: BFX, qty: 1 }], payMethods: pay(5000) });
+      if (!refused(b, ["PRODUCT_NOT_FOUND"]) || (await saleByKey(k1))) p.push(`submit ข้ามคลัง ${codeOf(b)}`);
+      const cat = await call(register, "registerCatalog", ctxS, owner, { limit: 500 });
+      const ids = new Set(((cat?.products ?? []) as Any[]).map((x) => x.id));
+      if (cat?.ok !== true || ids.has(BFX) || !ids.has(BSET)) p.push(`กริด ${codeOf(cat)} ข้ามคลัง ${ids.has(BFX)} ชุดปกติ ${ids.has(BSET)}`);
+      const ctxRU = { tenantId: tid, systemId: posS, unitId: uR };
+      const c = await quote(owner, { lines: [{ productId: BSET, qty: 1, options: o(SIZE.c.S!) }] }, ctxRU);
+      if (!refused(c, ["PRODUCT_NOT_FOUND"])) p.push(`สาขาไม่มีคลัง ${codeOf(c)}`);
+      const g = await quote(owner, { lines: [{ productId: BSET, qty: 1, options: o(SIZE.c.S!) }] });
+      if (!(g?.ok === true && g.grandTotalSatang === 15900)) p.push(`ชุดปกติ ${codeOf(g)} ${g?.grandTotalSatang}`);
+      const k2 = key("r2-1cs");
+      const d = await quietTx((tx) =>
+        call(service, "createSale", {
+          tenantId: tid, unitId: uS, systemId: posS, sourceModule: "POS", idempotencyKey: k2,
+          lines: [{ name: `${TAG} R2 เซ็ตข้ามคลัง`, qty: 1, unitPriceSatang: 5000, productId: BFX || null, components: [{ invItemId: invFX || "none", qty: 1 }] }],
+          payMethods: pay(5000),
+        }, tx).then((x: Any) => (x && x.ok === false ? x : { ok: true, ...x })),
+      );
+      if (!refused(d, ["VALIDATION"]) || (await saleByKey(k2))) p.push(`createSale ตรง ${codeOf(d)}`);
+      chk("S.R2.1", !fxR && p.length === 0, "PRODUCT_NOT_FOUND ×3 · ไม่ขึ้นกริด · VALIDATION · ชุดปกติ 15,900", FX(p.join(" · ") || "ครบ", fxR));
+    }
+    // S.R2.2 (F2)
+    {
+      const p: string[] = [];
+      const lines = [{ productId: PLAIN, qty: 1 }, { productId: LATTE, qty: 1, options: o(SIZE.c.M!) }, { productId: TEA, qty: 1 }];
+      const q = await quote(owner, { lines });
+      const k = key("r2-2");
+      const r = q?.ok === true ? await sub(owner, { idempotencyKey: k, lines, payMethods: pay(q.grandTotalSatang) }) : q;
+      const sale = await saleByKey(k);
+      const got = ((sale?.lines ?? []) as Any[]).map((l) => (l.productId === PLAIN ? "PLAIN" : l.productId === LATTE ? "LATTE" : l.productId === TEA ? "TEA" : "?")).join(",");
+      const rows = await optRows(sale?.id);
+      const latteLine = ((sale?.lines ?? []) as Any[]).find((l) => l.productId === LATTE);
+      if (!(r?.ok === true && sale && sale.grandTotalSatang === q?.grandTotalSatang)) p.push(`บิล ${codeOf(q)}/${codeOf(r)} g${q?.grandTotalSatang}`);
+      if (got !== "PLAIN,LATTE,TEA") p.push(`ลำดับ orderBy id ${got || "-"}`);
+      if (!(rows.length === 1 && latteLine && rows[0]?.lineId === latteLine.id && rows[0]?.choiceId === SIZE.c.M)) p.push(`แถวตัวเลือก ${rows.length} ${rows[0]?.lineId === latteLine?.id}`);
+      chk("S.R2.2", p.length === 0, "PLAIN,LATTE,TEA · ตัวเลือกผูกลาเต้ · บิล = ยอด quote", FX(p.join(" · ") || "ครบ"));
+    }
+    // S.R2.3 (F3)
+    {
+      const p: string[] = [];
+      const c1 = ean("221234500001");
+      const c0 = ean("221234500000");
+      const a = await quote(owner, { lines: [{ productId: PLAIN, qty: 1 }, { productId: PORK, qty: 1, weighedBarcode: c1 }] });
+      if (!(refused(a, ["INVALID_LINE"]) && a.lineIndex === 1 && noTotals(a))) p.push(`1 สตางค์ ${codeOf(a)}/li${a?.lineIndex}/${noTotals(a)}`);
+      const b = await quote(owner, { lines: [{ productId: PLAIN, qty: 1 }, { productId: PORK, qty: 1, weighedBarcode: c0 }] });
+      if (!(refused(b, ["INVALID_LINE"]) && b.lineIndex === 1 && noTotals(b))) p.push(`0 สตางค์ ${codeOf(b)}/li${b?.lineIndex}`);
+      const k = key("r2-3");
+      const s3 = await sub(owner, { idempotencyKey: k, lines: [{ productId: PLAIN, qty: 1 }, { productId: PORK, qty: 1, weighedBarcode: c1 }], payMethods: pay(2501) });
+      if (!(refused(s3, ["INVALID_LINE"]) && s3.lineIndex === 1) || (await saleByKey(k))) p.push(`submit ${codeOf(s3)}/li${s3?.lineIndex}`);
+      chk("S.R2.3", !fxW && p.length === 0, "INVALID_LINE ×3 · lineIndex 1 · ไม่มียอด/บิล", FX(p.join(" · ") || "ครบ", fxW));
+    }
+    // S.R2.5 (F5)
+    {
+      const p: string[] = [];
+      const h = await call(held, "holdRegisterCart", ctxS, owner, { cart: { lines: [{ productId: PLAIN, qty: 1 }, { productId: PORK, qty: 1, weightGrams: 500 }] }, label: `${TAG} R2 พัก` });
+      const id = h?.ok === true ? String(h.heldCart?.id ?? "") : "";
+      const r = id ? await call(held, "recallHeldCart", ctxS, cashier, { id }) : h;
+      const ns = (Array.isArray(r?.notices) ? r.notices : []) as Any[];
+      const n1 = ns.filter((n) => n?.lineIndex === 1).map((n) => n.code);
+      const n0 = ns.filter((n) => n?.lineIndex === 0).map((n) => n.code);
+      if (!(r?.ok === true && n1.length === 1 && n1[0] === "PERMISSION_DENIED" && n0.length === 0)) p.push(`${codeOf(h)}/${codeOf(r)} บรรทัด1 ${n1.join("+") || "-"} บรรทัด0 ${n0.join("+") || "-"}`);
+      chk("S.R2.5", !fxW && p.length === 0, "PERMISSION_DENIED บรรทัดชั่ง · ไม่มี notice บรรทัดอื่น", FX(p.join(" · ") || "ครบ", fxW));
+    }
+    // S.R2.6 (F6)
+    {
+      const p: string[] = [];
+      let fxS = "";
+      let PX = "", QA = "", QB = "";
+      const dup = `${TAG}-R2DUP`;
+      try {
+        if (!fx) {
+          PX = await mkProd({ name: `${TAG} R2 แม่บาร์โค้ดซ้ำ`, kind: "PRODUCT", basePriceSatang: 1000 });
+          await mkProd({ name: `${TAG} R2 ลูกของแม่บาร์โค้ดซ้ำ`, kind: "PRODUCT", basePriceSatang: 1100, parentId: PX });
+          QA = await mkProd({ name: `${TAG} R2 สินค้า A`, kind: "PRODUCT", basePriceSatang: 1200 });
+          QB = await mkProd({ name: `${TAG} R2 สินค้า B`, kind: "PRODUCT", basePriceSatang: 1300 });
+          await P.posProduct.updateMany({ where: { tenantId: tid, id: { in: [PX, QA, QB] } }, data: { barcode: dup } });
+        } else fxS = "ไม่มี sandbox";
+      } catch (e) {
+        fxS = `r2-scan-fixture:${(e as Error).message.slice(0, 100)}`;
+      }
+      const r = await call(register, "registerScan", ctxS, owner, { barcode: dup });
+      const got = ((r?.products ?? []) as Any[]).map((x) => x?.id);
+      if (!(r?.ok === true && r.match === "choose" && sameSet(got, [QA, QB]))) p.push(`${codeOf(r)} ${r?.match} ${got.length} ตัว แม่อยู่ ${got.includes(PX)}`);
+      chk("S.R2.6", !fxS && p.length === 0, "choose = A, B (ไม่มีแม่)", FX(p.join(" · ") || "ครบ", fxS));
+    }
+    // S.R2.4 (F4) — ท้ายสุด (หมูกลายเป็นแม่)
+    {
+      const p: string[] = [];
+      const name0 = `${TAG} R2 หมูลูกต่อชิ้น`;
+      const a = await call(catalog, "createProduct", cctx, { name: name0, kind: "PRODUCT", parentId: PORK || "none" });
+      const aId = idOf(a);
+      if (aId) sb.productIds.push(aId);
+      const n0 = await P.posProduct.count({ where: { tenantId: tid, name: name0 } });
+      if (!(refused(a, ["VALIDATION"]) && n0 === 0)) p.push(`ต่อชิ้นสืบราคา ${codeOf(a)} แถว ${n0}`);
+      const b = await call(catalog, "createProduct", cctx, { name: `${TAG} R2 หมูลูกชั่ง`, kind: "PRODUCT", parentId: PORK || "none", soldByWeight: true });
+      const bId = idOf(b);
+      if (bId) sb.productIds.push(bId);
+      if (!bId) p.push(`ชั่งสืบราคา ${codeOf(b)}`);
+      const c = bId ? await call(catalog, "updateProduct", cctx, bId, { soldByWeight: false }) : { ok: false, code: "NO_ROW" };
+      if (!refused(c, ["VALIDATION"])) p.push(`แก้เป็นต่อชิ้น ${codeOf(c)}`);
+      const d = await call(catalog, "createProduct", cctx, { name: `${TAG} R2 หมูลูกตั้งราคา`, kind: "PRODUCT", parentId: PORK || "none", basePriceSatang: 9000 });
+      const dId = idOf(d);
+      if (dId) sb.productIds.push(dId);
+      if (!dId) p.push(`ตั้งราคาเอง ${codeOf(d)}`);
+      chk("S.R2.4", !fxW && p.length === 0, "VALIDATION ×2 · สร้างได้ ×2", FX(p.join(" · ") || "ครบ", fxW));
+    }
+  } catch (e) {
+    const m = (e as Error)?.message?.slice(0, 120) ?? String(e);
+    console.log(`💥 S.R2: ${m}`);
+    for (const id of R2_DB) if (!results.has(`P1.2-${id}`)) chk(id, false, "ถูกตรวจ", `ไม่ถึง (S.R2 ล้ม: ${m})`);
+  }
+
   // ════════ R1 ปฏิเสธเป็นข้อมูล ════════
   const badR1 = dataRefusals.filter(([, r, code]) => !(r?.ok === false && r.threw !== true && r.code === code && typeof r.message === "string" && r.message.length > 0)).map(([l, r]) => `${l}:${r?.threw ? "THROW " : ""}${codeOf(r)}`);
   chk("R1", dataRefusals.length >= 7 && badR1.length === 0, `${dataRefusals.length} คำปฏิเสธ = {ok:false, code, message} ไม่ throw`, FX(badR1.join(" · ") || "ครบ"));
@@ -1522,6 +1705,7 @@ let crashed = "";
 try {
   await runPure();
   await runDb();
+  runPureR2(); // ORACLE-ADD (controller R2 ruling) — หลัง runDb (ไม่ให้ "ยังไม่ seed" ทับผลสถิต)
 } catch (e) {
   crashed = (e as Error)?.stack?.split("\n").slice(0, 3).join(" | ") ?? String(e);
   console.log(`💥 harness: ${crashed}`);
